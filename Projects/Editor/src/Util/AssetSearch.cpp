@@ -141,6 +141,16 @@ int SubsequenceScore(std::string_view text, std::string_view query)
 
 void AssetSearch::SetProjectRoot(const std::string& projectRoot)
 {
+    // 空のルートは無視する。
+    // WHY: 索引はプロセス全体で 1 つしかない。projectRoot を配線し忘れた
+    //      ウィジェット (アセットパス欄は 40 箇所以上ある) が空文字で呼ぶと、
+    //      Rebuild() が索引を空にしたまま早期 return し、
+    //      「Asset Browser の検索もオブジェクトピッカーも急に何も出なくなる」
+    //      という形で全画面の検索が死ぬ。しかも次フレームに他パネルが
+    //      正しいルートで呼び直すため、毎フレーム全再走査が走って重くもなる。
+    //      索引を捨てるのは Rebuild() を明示的に呼んだときだけにする。
+    if (projectRoot.empty()) return;
+
     SearchContext& context = Ctx();
     if (context.projectRoot == projectRoot) return;
 

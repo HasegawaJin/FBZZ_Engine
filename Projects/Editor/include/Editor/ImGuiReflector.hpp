@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Engine/Input/KeyCode.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -48,6 +49,9 @@ struct ImGuiReflector : scene::IReflector {
     bool m_rowDisabled = false;
     bool m_changed = false;
 
+    // 描画中の行 (ホバー地色の高さ記録用)。行は入れ子にならないので 1 つで足りる。
+    widgets::PropertyRowScope m_row{};
+
     // シリアライズ用 lowerCamelCase キーを Inspector 用の読みやすい表示名へ変換する。
     // WHY: Reflect() のキーを表示名に流用しても、シーン互換性を壊すキー変更なしで
     //      "fontSize" を "Font Size" のような Editor 表示へ自動変換できる。
@@ -84,16 +88,29 @@ struct ImGuiReflector : scene::IReflector {
         return nullptr;
     }
 
+    // 入れ子オブジェクト / 配列 / 配列要素の見出し。
+    // WHY: 既定の CollapsingHeader は全幅の濃い塗りバーで、コンポーネントカードの
+    //      ヘッダーと同じ重みに見える。カードの中に何個も並ぶと「どこまでが 1 コンポーネントか」
+    //      が読めなくなるため、入れ子側は塗りを持たない軽い見出しへ落として階層差を付ける。
+    static bool SubHeader(const char* label)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Header,        IM_COL32(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, EditorTheme::Color(ThemeColor::SurfaceHover));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::Color(ThemeColor::AccentSoft));
+        ImGui::PushStyleColor(ImGuiCol_Text,          EditorTheme::Color(ThemeColor::TextMuted));
+        const bool open = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen);
+        ImGui::PopStyleColor(4);
+        return open;
+    }
+
     // ── レイアウト補助 (ラベル左 + 値が右いっぱいの 2 カラム) ──────────────────
     // WHY: 全フィールドで値の左端をそろえると Unity ライクで整然と見える。
     //      従来は ImGui 既定のラベル右寄せ + 参照スロットは手書きで名前を右に追記しており、
     //      幅が溢れて切れていた。ここで「ラベル左・値右いっぱい」に統一して見た目と崩れを解消する。
 
     // 値ウィジェットの開始 X (ラベル列幅)。ウィンドウ幅に追従しつつ下限を持たせる。
-    float ValueColumnX() const
-    {
-        return (std::max)(ImGui::GetFontSize() * 7.0f, ImGui::GetWindowWidth() * 0.40f);
-    }
+    // 手書きパネル (Transform 等) と列位置をそろえるため、算出は widgets 側に一本化する。
+    float ValueColumnX() const { return widgets::PropertyLabelColumnWidth(); }
 
     // 1 フィールド行を開始する。ラベルを左に描き、続くウィジェットの左端をそろえる。
     // false ならグループ閉でスキップ。true のときは必ず EndRow() を呼ぶこと。
@@ -101,11 +118,18 @@ struct ImGuiReflector : scene::IReflector {
     {
         if (!m_groupOpen || !FieldVisible()) return false;
         ImGui::PushID(PersistentKey(name));
-        ImGui::AlignTextToFramePadding();
-        const std::string displayName = HumanizeName(name);
-        ImGui::TextUnformatted(displayName.c_str());
-        ImGui::SameLine();
+
+        // 行のホバー地色を中身より先に敷く。実測高さは EndRow が記録する。
+        m_row = widgets::BeginPropertyRow();
+
         const float col = ValueColumnX();
+        // ラベル列に収まらない長い名前は末尾を省略し、全文はホバーのツールチップへ回す。
+        // WHY: 以前は長い名前がそのまま値ウィジェットを押し出し、行ごとに値の左端が
+        //      ずれて「どこを触ればいいか」が読み取りづらくなっていた。
+        widgets::LabelEllipsis(
+            HumanizeName(name).c_str(),
+            col - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
+        ImGui::SameLine();
         if (ImGui::GetCursorPosX() < col)
             ImGui::SetCursorPosX(col);
         // 続く単一ウィジェットを右端まで広げる (複数ボタンのスロットは Button が無視するので無害)。
@@ -118,6 +142,7 @@ struct ImGuiReflector : scene::IReflector {
     {
         if (m_rowDisabled) ImGui::EndDisabled();
         m_rowDisabled = false;
+        widgets::EndPropertyRow(m_row);
         ImGui::PopID();
     }
 
@@ -126,7 +151,9 @@ struct ImGuiReflector : scene::IReflector {
     void Field(const char* name, float& v) override
     {
         if (!BeginRow(name)) return;
-        const float speed = FieldStep() > 0.0f ? FieldStep() : 0.1f;
+        // 刻みが宣言されていなければ現在値の大きさに合わせる。
+        // WHY: 固定 0.1 では 0〜1 のブレンド率が粗すぎ、数百 m の距離では細かすぎた。
+        const float speed = FieldStep() > 0.0f ? FieldStep() : widgets::AdaptiveDragSpeed(v);
         const float minimum = HasFieldMin() ? FieldMin() : 0.0f;
         const char* format = CurrentFieldHint() == FieldHint::Angle ? "%.1f deg" : "%.3f";
         if (ImGui::DragFloat("##v", &v, speed, 0.0f, 0.0f, format)) {
@@ -172,11 +199,15 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
+    // ベクトル系はすべて軸色付きの成分入力 (widgets::DragAxes) に通す。
+    // WHY: DragFloat2/3/4 は同じ見た目の数値が並ぶだけで、どれが Y でどれが Z かを
+    //      毎回数え直す必要があった。頭文字 + 色帯にすると視線だけで対象が分かり、
+    //      隣の成分を掴む誤操作も減る。刻みは宣言が無ければ値の大きさに追従させる。
     void Field(const char* name, math::Vector2& v) override
     {
         if (!BeginRow(name)) return;
         float arr[2] = { v.x, v.y };
-        if (ImGui::DragFloat2("##v", arr, FieldStep() > 0.0f ? FieldStep() : 0.1f)) {
+        if (widgets::DragAxes("##v", arr, 2, FieldStep())) {
             v = { arr[0], arr[1] };
             m_changed = true;
         }
@@ -187,7 +218,11 @@ struct ImGuiReflector : scene::IReflector {
     {
         if (!BeginRow(name)) return;
         float arr[3] = { v.x, v.y, v.z };
-        if (ImGui::DragFloat3("##v", arr, FieldStep() > 0.0f ? FieldStep() : 0.1f)) {
+        // 色として宣言された Vector3 はカラーピッカーで扱う (RGB を数値で合わせるのは非現実的)。
+        const bool edited = CurrentFieldHint() == FieldHint::Color
+            ? ImGui::ColorEdit3("##v", arr)
+            : widgets::DragAxes("##v", arr, 3, FieldStep());
+        if (edited) {
             v = { arr[0], arr[1], arr[2] };
             m_changed = true;
         }
@@ -200,7 +235,7 @@ struct ImGuiReflector : scene::IReflector {
         float arr[4] = { v.x, v.y, v.z, v.w };
         const bool edited = CurrentFieldHint() == FieldHint::Color
             ? ImGui::ColorEdit4("##v", arr)
-            : ImGui::DragFloat4("##v", arr, FieldStep() > 0.0f ? FieldStep() : 0.1f);
+            : widgets::DragAxes("##v", arr, 4, FieldStep());
         if (edited) {
             v = { arr[0], arr[1], arr[2], arr[3] };
             m_changed = true;
@@ -301,28 +336,16 @@ struct ImGuiReflector : scene::IReflector {
         const bool typeOk = !typed || !v.IsValid() || !m_refTypeValidator ||
             m_refTypeValidator(v, typeName);
 
-        // ◎/× は frame 高さの正方形でそろえる。本体ボタンは残り幅いっぱい。
-        const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float smallW  = ImGui::GetFrameHeight();
-        float btnW = ImGui::GetContentRegionAvail().x - (smallW + spacing) * 2.0f;
-        if (btnW < 24.0f) btnW = 24.0f;
-
         const ImGuiPayload* drag = ImGui::GetDragDropPayload();
         const bool droppable = drag && drag->IsDataType("FBZZ_HIERARCHY_ENTITY");
-        int pushedCol = 0;
-        if (droppable) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
-            pushedCol = 1;
-        } else if (!typeOk) {
-            ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Danger));
-            pushedCol = 1;
-        }
-        const std::string label = typeOk ? goName : (goName + "  (type?)");
-        ImGui::Button(label.c_str(), { btnW, 0.0f });
-        if (pushedCol)
-            ImGui::PopStyleColor();
-        if (typed && ImGui::IsItemHovered())
-            ImGui::SetTooltip("Requires: %s", typeName);
+
+        const auto state = !v.IsValid() ? widgets::ReferenceSlotState::Empty
+                         : typeOk       ? widgets::ReferenceSlotState::Assigned
+                                        : widgets::ReferenceSlotState::Invalid;
+
+        // 本体スロット。枠の色で「落とせる / 型違い」を出すので、
+        // 名前に "(type?)" を書き足していた旧表示は不要になった。
+        widgets::BeginReferenceSlot("##ref", goName.c_str(), state, droppable, 2);
 
         if (ImGui::BeginDragDropTarget()) {
             if (auto* payload = ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY")) {
@@ -333,39 +356,54 @@ struct ImGuiReflector : scene::IReflector {
             }
             ImGui::EndDragDropTarget();
         }
+        if (ImGui::IsItemHovered()) {
+            if (!typeOk)
+                ImGui::SetTooltip("Type mismatch\nThis slot needs a GameObject with \"%s\"", typeName);
+            else if (typed)
+                ImGui::SetTooltip("Requires: %s\nDrag a GameObject from the Hierarchy", typeName);
+            else
+                ImGui::SetTooltip("Drag a GameObject from the Hierarchy");
+        }
 
+        const widgets::ReferenceSlotButtons buttons = widgets::EndReferenceSlot();
+        if (buttons.clear) v = scene::EntityID::INVALID;
         // ◎ピッカー: ドロップせずとも一覧から検索して選べる D&D 代替。型付きなら候補も絞る。
-        ImGui::SameLine(0.0f, spacing);
-        if (ImGui::Button("O", { smallW, 0.0f }))
-            ImGui::OpenPopup("##gopick");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("一覧から選択");
+        if (buttons.pick)  ImGui::OpenPopup("##gopick");
+
         if (ImGui::BeginPopup("##gopick")) {
             static char filter[64] = "";
-            ImGui::SetNextItemWidth(220.0f);
+            if (ImGui::IsWindowAppearing()) {
+                filter[0] = '\0';
+                ImGui::SetKeyboardFocusHere();
+            }
+            ImGui::SetNextItemWidth(240.0f);
             ImGui::InputTextWithHint("##gofilter", "Search...", filter, sizeof(filter));
             ImGui::Separator();
-            if (ImGui::Selectable("(None)"))
+            if (ImGui::Selectable("(None)", !v.IsValid()))
                 v = scene::EntityID::INVALID;
+
+            int shown = 0;
             if (m_goListProvider) {
                 for (const auto& [id, nm] : m_goListProvider()) {
-                    if (filter[0] && nm.find(filter) == std::string::npos)
+                    // 絞り込みは AssetSearch と同じスコア規則にそろえる。
+                    // WHY: ここだけ大小文字を区別する find() だったため、"player" では
+                    //      "Player" が出ず、他の検索欄と当たり方が食い違っていた。
+                    if (filter[0] && AssetSearch::Match(nm, filter) == 0)
                         continue;
                     if (typed && m_refTypeValidator && !m_refTypeValidator(id, typeName))
                         continue;
                     ImGui::PushID(static_cast<int>(id.index));
-                    if (ImGui::Selectable(nm.c_str()))
+                    if (ImGui::Selectable(nm.c_str(), id == v))
                         v = id;
                     ImGui::PopID();
+                    ++shown;
                 }
             }
+            if (shown == 0)
+                ImGui::TextDisabled("%s", typed ? "No GameObject has that script."
+                                                : "No GameObject matches.");
             ImGui::EndPopup();
         }
-
-        // ×ボタンで参照クリア
-        ImGui::SameLine(0.0f, spacing);
-        if (ImGui::Button("x", { smallW, 0.0f }))
-            v = scene::EntityID::INVALID;
     }
 
     void Field(const char* name, scene::PrefabRef& v) override
@@ -378,21 +416,16 @@ struct ImGuiReflector : scene::IReflector {
                             : (slash != std::string::npos ? v.path.c_str() + slash + 1
                                                           : v.path.c_str());
 
-        const float spacing  = ImGui::GetStyle().ItemSpacing.x;
-        const float smallW   = ImGui::GetFrameHeight();
-        const bool  hasSearch = !m_projectRoot.empty();
-        const int   nSmall   = hasSearch ? 2 : 1; // [...] と [×]
-        float btnW = ImGui::GetContentRegionAvail().x - (smallW + spacing) * nSmall;
-        if (btnW < 24.0f) btnW = 24.0f;
-
-        const ImVec2 slotPos = ImGui::GetCursorScreenPos();
+        const bool hasSearch = !m_projectRoot.empty();
         const ImGuiPayload* drag = ImGui::GetDragDropPayload();
         const bool droppable = drag && drag->IsDataType("ASSET_PATH");
-        if (droppable)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
-        ImGui::Button(display, { btnW, 0.0f });
-        if (droppable)
-            ImGui::PopStyleColor();
+
+        const ImVec2 slotPos = ImGui::GetCursorScreenPos();
+        const bool bodyClicked = widgets::BeginReferenceSlot(
+            "##prefab", display,
+            v.path.empty() ? widgets::ReferenceSlotState::Empty
+                           : widgets::ReferenceSlotState::Assigned,
+            droppable, hasSearch ? 2 : 1);
 
         if (ImGui::BeginDragDropTarget()) {
             if (auto* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
@@ -401,20 +434,18 @@ struct ImGuiReflector : scene::IReflector {
             }
             ImGui::EndDragDropTarget();
         }
-
-        // "..." パス検索ピッカー (.prefab を projectRoot 以下から検索)。
-        if (hasSearch) {
-            ImGui::SameLine(0.0f, spacing);
-            if (ImGui::Button("...", { smallW, 0.0f }))
-                widgets::OpenAssetPicker(v.path, ".prefab", m_projectRoot,
-                                         { slotPos.x, ImGui::GetItemRectMax().y + 2.0f });
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Browse Prefabs...");
+        if (ImGui::IsItemHovered()) {
+            if (v.path.empty()) ImGui::SetTooltip("Drop a .prefab here, or click to browse");
+            else                ImGui::SetTooltip("%s", v.path.c_str());
         }
 
-        ImGui::SameLine(0.0f, spacing);
-        if (ImGui::Button("x", { smallW, 0.0f }))
-            v.path.clear();
+        const widgets::ReferenceSlotButtons buttons = widgets::EndReferenceSlot(hasSearch);
+        if (buttons.clear) v.path.clear();
+        // 本体クリックでもピッカーを開く。狭い Inspector で ◎ を狙うのは
+        // 当たり判定が小さく、外すたびに参照を触ってしまうため。
+        if (hasSearch && (buttons.pick || bodyClicked))
+            widgets::OpenAssetPicker(v.path, ".prefab", m_projectRoot,
+                                     { slotPos.x, slotPos.y + ImGui::GetFrameHeight() + 2.0f });
 
         m_changed |= v.path != before;
         EndRow();
@@ -432,23 +463,16 @@ struct ImGuiReflector : scene::IReflector {
                             : (slash != std::string::npos ? v.path.c_str() + slash + 1
                                                           : v.path.c_str());
 
-        const float spacing  = ImGui::GetStyle().ItemSpacing.x;
-        const float smallW   = ImGui::GetFrameHeight();
-        const bool  hasSearch = !m_projectRoot.empty();
-        const int   nSmall   = hasSearch ? 2 : 1; // [...] と [×]
-        float btnW = ImGui::GetContentRegionAvail().x - (smallW + spacing) * nSmall;
-        if (btnW < 24.0f) btnW = 24.0f;
-
-        const ImVec2 slotPos = ImGui::GetCursorScreenPos();
+        const bool hasSearch = !m_projectRoot.empty();
         const ImGuiPayload* drag = ImGui::GetDragDropPayload();
         const bool droppable = drag && drag->IsDataType("ASSET_PATH");
-        if (droppable)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
-        ImGui::Button(display, { btnW, 0.0f });
-        if (droppable)
-            ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered() && !v.type.empty())
-            ImGui::SetTooltip("Data Asset: %s (.fzdata)", v.type.c_str());
+
+        const ImVec2 slotPos = ImGui::GetCursorScreenPos();
+        const bool bodyClicked = widgets::BeginReferenceSlot(
+            "##dataasset", display,
+            v.path.empty() ? widgets::ReferenceSlotState::Empty
+                           : widgets::ReferenceSlotState::Assigned,
+            droppable, hasSearch ? 2 : 1);
 
         if (ImGui::BeginDragDropTarget()) {
             if (auto* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
@@ -468,20 +492,18 @@ struct ImGuiReflector : scene::IReflector {
             }
             ImGui::EndDragDropTarget();
         }
-
-        // "..." パス検索ピッカー (.fzdata を projectRoot 以下から検索)。
-        if (hasSearch) {
-            ImGui::SameLine(0.0f, spacing);
-            if (ImGui::Button("...", { smallW, 0.0f }))
-                widgets::OpenAssetPicker(v.path, ".fzdata", m_projectRoot,
-                                         { slotPos.x, ImGui::GetItemRectMax().y + 2.0f });
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Browse Data Assets...");
+        if (ImGui::IsItemHovered()) {
+            if (!v.path.empty())      ImGui::SetTooltip("%s", v.path.c_str());
+            else if (!v.type.empty()) ImGui::SetTooltip("Drop a .fzdata of type \"%s\" here",
+                                                        v.type.c_str());
+            else                      ImGui::SetTooltip("Drop a .fzdata here, or click to browse");
         }
 
-        ImGui::SameLine(0.0f, spacing);
-        if (ImGui::Button("x", { smallW, 0.0f }))
-            v.path.clear();
+        const widgets::ReferenceSlotButtons buttons = widgets::EndReferenceSlot(hasSearch);
+        if (buttons.clear) v.path.clear();
+        if (hasSearch && (buttons.pick || bodyClicked))
+            widgets::OpenAssetPicker(v.path, ".fzdata", m_projectRoot,
+                                     { slotPos.x, slotPos.y + ImGui::GetFrameHeight() + 2.0f });
 
         m_changed |= v.path != before;
         EndRow();
@@ -576,7 +598,7 @@ struct ImGuiReflector : scene::IReflector {
     void ListField(const char* name, std::vector<float>& values) override
     {
         DrawReorderableList(name, values, [](float& value) {
-            return ImGui::DragFloat("##value", &value, 0.1f);
+            return ImGui::DragFloat("##value", &value, widgets::AdaptiveDragSpeed(value));
         });
     }
     void ListField(const char* name, std::vector<int>& values) override
@@ -631,11 +653,12 @@ struct ImGuiReflector : scene::IReflector {
             return true;
         });
     }
+    // リスト要素のベクトルも単体フィールドと同じ軸色付き入力に揃える。
     void ListField(const char* name, std::vector<math::Vector2>& values) override
     {
         DrawReorderableList(name, values, [](math::Vector2& value) {
             float data[2] = { value.x, value.y };
-            if (!ImGui::DragFloat2("##value", data, 0.1f)) return false;
+            if (!widgets::DragAxes("##value", data, 2, 0.0f)) return false;
             value = { data[0], data[1] };
             return true;
         });
@@ -644,7 +667,7 @@ struct ImGuiReflector : scene::IReflector {
     {
         DrawReorderableList(name, values, [](math::Vector3& value) {
             float data[3] = { value.x, value.y, value.z };
-            if (!ImGui::DragFloat3("##value", data, 0.1f)) return false;
+            if (!widgets::DragAxes("##value", data, 3, 0.0f)) return false;
             value = { data[0], data[1], data[2] };
             return true;
         });
@@ -653,7 +676,7 @@ struct ImGuiReflector : scene::IReflector {
     {
         DrawReorderableList(name, values, [](math::Vector4& value) {
             float data[4] = { value.x, value.y, value.z, value.w };
-            if (!ImGui::DragFloat4("##value", data, 0.1f)) return false;
+            if (!widgets::DragAxes("##value", data, 4, 0.0f)) return false;
             value = { data[0], data[1], data[2], data[3] };
             return true;
         });
@@ -698,8 +721,7 @@ struct ImGuiReflector : scene::IReflector {
 
         if (scope.visible) {
             ImGui::PushID(PersistentKey(name));
-            scope.open = ImGui::CollapsingHeader(HumanizeName(name).c_str(),
-                                                 ImGuiTreeNodeFlags_DefaultOpen);
+            scope.open = SubHeader(HumanizeName(name).c_str());
             if (scope.open) {
                 ImGui::Indent();
                 scope.disabled = !FieldEnabled();
@@ -738,8 +760,7 @@ struct ImGuiReflector : scene::IReflector {
 
         if (scope.visible) {
             ImGui::PushID(PersistentKey(name));
-            scope.open = ImGui::CollapsingHeader(HumanizeName(name).c_str(),
-                                                 ImGuiTreeNodeFlags_DefaultOpen);
+            scope.open = SubHeader(HumanizeName(name).c_str());
             if (scope.open) {
                 ImGui::Indent();
                 ImGui::TextDisabled("%zu item(s)", count);
@@ -769,7 +790,7 @@ struct ImGuiReflector : scene::IReflector {
             ImGui::PushID(static_cast<int>(index));
             char label[32];
             std::snprintf(label, sizeof(label), "[%zu]", index);
-            scope.open = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen);
+            scope.open = SubHeader(label);
 
             // 削除ボタンは折りたたみ状態に関わらず出す。
             // WHY: 閉じた要素を消したい場合に、わざわざ開かせるのは不便。

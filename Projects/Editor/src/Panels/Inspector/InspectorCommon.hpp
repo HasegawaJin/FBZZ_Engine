@@ -9,6 +9,7 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ColliderFit.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -32,6 +33,7 @@
 #include <Engine/Scene/Components/AudioListenerComponent.hpp>
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Systems/ColliderSync.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <cstring>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
@@ -268,7 +270,20 @@ void DrawUndoableComponentBody(scene::GameObject& go,
     }
     if (!edit.active || activeAfter == edit.activeId) return;
 
-    if (edit.before.materialPath != component.materialPath) {
+    // 主スロットに加えて submesh スロットの割り当ても Undo 対象にする。
+    // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体になり、
+    //      submesh ごとの .mat 差し替えがこのコンポーネント上の編集になったため。
+    auto slotsDiffer = [](const scene::MaterialComponent& a, const scene::MaterialComponent& b) {
+        if (a.materialPath != b.materialPath) return true;
+        if (a.visible != b.visible) return true;
+        if (a.extraSlots.size() != b.extraSlots.size()) return true;
+        for (size_t i = 0; i < a.extraSlots.size(); ++i) {
+            if (a.extraSlots[i].materialPath != b.extraSlots[i].materialPath) return true;
+            if (a.extraSlots[i].visible != b.extraSlots[i].visible) return true;
+        }
+        return false;
+    };
+    if (slotsDiffer(edit.before, component)) {
         PushComponentValueCommand(
             go, ctx, std::string("Change ") + label, edit.before, component);
         if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -380,6 +395,57 @@ inline scene::GameObject* AcceptHierarchyDrop(scene::Scene* scene)
     return result;
 }
 
+// カテゴリ別のアクセント色。コンポーネントカードの左帯に使う。
+// WHY: Inspector は 10 枚以上のカードが縦に積まれるため、名前を読まないと種類が分からない。
+//      系統ごとに色を割り当てておけば、スクロール中でも「緑の帯 = 物理」で目的地を拾える。
+inline ImU32 ComponentCategoryAccent(scene::ComponentCategory category)
+{
+    using Category = scene::ComponentCategory;
+    switch (category) {
+    case Category::Rendering:   return IM_COL32( 90, 160, 245, 255);
+    case Category::Lighting:    return IM_COL32(245, 200,  80, 255);
+    case Category::Physics:     return IM_COL32(120, 205, 140, 255);
+    case Category::Animation:   return IM_COL32(210, 130, 235, 255);
+    case Category::Audio:       return IM_COL32( 90, 210, 205, 255);
+    case Category::Effects:     return IM_COL32(240, 140, 180, 255);
+    case Category::Environment: return IM_COL32(140, 200, 235, 255);
+    case Category::Navigation:  return IM_COL32(150, 190, 110, 255);
+    case Category::Terrain:     return IM_COL32(200, 165, 110, 255);
+    case Category::UI:          return IM_COL32(235, 165,  95, 255);
+    case Category::Misc:        return IM_COL32(150, 155, 170, 255);
+    case Category::Internal:    return IM_COL32(120, 125, 140, 255);
+    }
+    return IM_COL32(150, 155, 170, 255);
+}
+
+// 登録テーブルから型 → カテゴリを引く (未登録は Misc)。
+// WHY: テンプレート側で ForEachRegisteredComponent を回すと、コンポーネント型ごとに
+//      全登録ぶんの実体化が起きて (型数の 2 乗) ビルドが跳ねる。テーブル化は
+//      非テンプレート関数に閉じ込め、実体化を 1 回だけに抑える。
+inline scene::ComponentCategory LookupComponentCategory(const std::type_info& type)
+{
+    static const std::vector<std::pair<std::type_index, scene::ComponentCategory>> table = []() {
+        std::vector<std::pair<std::type_index, scene::ComponentCategory>> out;
+        scene::ForEachRegisteredComponent([&]<typename U, typename Registration>() {
+            out.emplace_back(std::type_index(typeid(U)), Registration::category);
+        });
+        return out;
+    }();
+
+    const std::type_index key(type);
+    for (const auto& [registered, category] : table)
+        if (registered == key) return category;
+    return scene::ComponentCategory::Misc;
+}
+
+// 型ごとの帯色。引き当て結果は型ごとの static に畳むので、毎フレームの検索にはならない。
+template<typename T>
+inline ImU32 ComponentAccent()
+{
+    static const ImU32 accent = ComponentCategoryAccent(LookupComponentCategory(typeid(T)));
+    return accent;
+}
+
 template<typename T, typename DrawFn>
 void DrawComponentSection(scene::GameObject* go,
                           EditorContext& ctx,
@@ -393,6 +459,9 @@ void DrawComponentSection(scene::GameObject* go,
 
     ImGui::PushID(label);
 
+    const ImU32 accent = ComponentAccent<T>();
+    widgets::ComponentHeaderResult header;
+
     // WHY: BoneComponent のような構造上常に有効な補助 Component は enabled を持たない。
     //      共通 Inspector を利用できるよう、bool enabled がある型だけ有効チェックを描画する。
     constexpr bool hasEnabled = requires(T& value) {
@@ -402,21 +471,18 @@ void DrawComponentSection(scene::GameObject* go,
         T beforeEnabled{};
         if (CanRecordEditorUndo(ctx))
             beforeEnabled = *comp;
-        if (ImGui::Checkbox("##en", &comp->enabled)) {
+        header = widgets::ComponentHeader(label, accent, &comp->enabled);
+        if (header.enabledChanged) {
             PushComponentValueCommand(
                 *go, ctx, std::string("Toggle ") + label, beforeEnabled, *comp);
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
-        ImGui::SameLine();
+    } else {
+        header = widgets::ComponentHeader(label, accent, nullptr);
     }
 
-
-    bool open = ImGui::CollapsingHeader(label,
-        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-
-    const float btnW = ImGui::GetFrameHeight();
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-    if (ImGui::SmallButton("..."))
+    const bool open = header.open;
+    if (header.menuClicked)
         ImGui::OpenPopup("##comp_opts");
 
     bool removeRequested = false;
@@ -462,6 +528,7 @@ void DrawComponentSection(scene::GameObject* go,
     }
 
     if (open) {
+        const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
         ImGui::Spacing();
         if constexpr (std::is_same_v<T, scene::MaterialComponent>
                    || std::is_same_v<T, scene::RigidBodyComponent>) {
@@ -476,7 +543,10 @@ void DrawComponentSection(scene::GameObject* go,
                 &drawFn);
         }
         ImGui::Spacing();
+        widgets::EndComponentBody(body);
     }
+    // カード同士の間隔。詰まっていると帯があっても切れ目が読めない。
+    ImGui::Spacing();
 
     ImGui::PopID();
 
@@ -599,20 +669,18 @@ void DrawComponentSectionCustom(
             [doApply, before]() { doApply(before); }));
     };
 
-    // Enable / Disable チェックボックス
+    // ヘッダー (有効チェック + 名前 + ⋯ メニュー) はカード表現へ集約済み。
+    const ImU32 accent = ComponentAccent<T>();
     const Snapshot beforeEnabled = canUndo ? captureFn(*comp) : Snapshot{};
-    if (ImGui::Checkbox("##en", &comp->enabled)) {
+    const widgets::ComponentHeaderResult header =
+        widgets::ComponentHeader(label, accent, &comp->enabled);
+    if (header.enabledChanged) {
         if (canUndo) pushUndoCmd(std::string("Toggle ") + label, beforeEnabled, captureFn(*comp));
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     }
-    ImGui::SameLine();
 
-    const bool open = ImGui::CollapsingHeader(label,
-        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-
-    const float btnW = ImGui::GetFrameHeight();
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-    if (ImGui::SmallButton("..."))
+    const bool open = header.open;
+    if (header.menuClicked)
         ImGui::OpenPopup("##comp_opts");
 
     bool removeRequested = false;
@@ -649,6 +717,7 @@ void DrawComponentSectionCustom(
     if (open) {
         static ComponentActiveEditCustom<T, Snapshot> edit{};
 
+        const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
         ImGui::Spacing();
         if (!canUndo) {
             edit.active = false;
@@ -673,7 +742,9 @@ void DrawComponentSectionCustom(
             }
         }
         ImGui::Spacing();
+        widgets::EndComponentBody(body);
     }
+    ImGui::Spacing();
 
     ImGui::PopID();
 
@@ -725,7 +796,7 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
             go.transform.position.y,
             go.transform.position.z
         };
-        if (ImGui::DragFloat3("Position", pos, 0.1f))
+        if (widgets::DragAxes("Position", pos, 3, 0.1f))
             go.transform.position = { pos[0], pos[1], pos[2] };
         ImGui::DragFloat("Range", &lc.range, 0.1f, 0.0f, 500.0f);
     }
@@ -797,46 +868,22 @@ inline scene::CapsuleColliderComponent CreateCapsuleCollider(float radius = 0.5f
     collider.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
     return collider;
 }
-inline math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
-{
-    return { a.x * b.x, a.y * b.y, a.z * b.z };
-}
-inline math::Vector3 ColliderWorldCenter(const scene::GameObject& go, const scene::ColliderComponent& col)
-{
-    return go.transform.position + go.transform.rotation * ComponentScale(col.center, go.transform.worldScale);
-}
-
+// SyncColliderPreview — Inspector で形状を編集した直後に physics::Collider へ反映する。
+// WHY: 以前はここに独自の姿勢反映コピーがあり、しかも world ではなくローカルの
+//      position / rotation を使っていたため、親を持つオブジェクトでは Inspector の
+//      プレビューとコライダー可視化がずれていた。Engine 側の ColliderSync に一本化する。
 template<typename T>
 void SyncColliderPreview(scene::GameObject& go, T& col)
 {
+    scene::SyncColliderShape(col);
     if (!col.collider) return;
 
-    const math::Vector3 worldCenter = ColliderWorldCenter(go, col);
-    if (auto* mesh = col.collider->GetType() == physics::ColliderType::TRIANGLE_MESH
-            ? static_cast<physics::TriangleMeshCollider*>(col.collider.get())
-            : nullptr) {
-        math::Vector3 scale = go.transform.worldScale;
-        if constexpr (std::is_same_v<T, scene::MeshColliderComponent>) {
-            if (!col.useTransformScale)
-                scale = math::Vector3::ONE;
-        }
-        mesh->UpdateWithScale(worldCenter, go.transform.rotation, scale);
-    } else if (auto* hf = col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
-            ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
-            : nullptr) {
-        hf->UpdateWithScale(worldCenter, go.transform.rotation, go.transform.worldScale);
-    } else if (auto* hull = col.collider->GetType() == physics::ColliderType::CONVEX_HULL
-            ? static_cast<physics::ConvexHullCollider*>(col.collider.get())
-            : nullptr) {
-        math::Vector3 scale = go.transform.worldScale;
-        if constexpr (std::is_same_v<T, scene::ConvexHullColliderComponent>) {
-            if (!col.useTransformScale)
-                scale = math::Vector3::ONE;
-        }
-        hull->UpdateWithScale(worldCenter, go.transform.rotation, scale);
-    } else {
-        col.collider->Update(worldCenter, go.transform.rotation);
+    bool useTransformScale = true;
+    if constexpr (std::is_same_v<T, scene::MeshColliderComponent> ||
+                  std::is_same_v<T, scene::ConvexHullColliderComponent>) {
+        useTransformScale = col.useTransformScale;
     }
+    scene::UpdateColliderPose(go, col, useTransformScale);
 }
 inline std::string SanitizeTerrainAssetName(const std::string& name)
 {
@@ -913,11 +960,15 @@ inline renderer::Mesh* SourceMeshFromGameObject(scene::GameObject& go,
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
         if (!smr->model && !smr->modelPath.empty())
             smr->model = asset::AssetManager::LoadModel(smr->modelPath);
-        if (smr->model && smr->meshIndex >= 0 &&
-            smr->meshIndex < static_cast<int>(smr->model->meshes.size())) {
-            outPath = smr->modelPath;
-            outMeshIndex = smr->meshIndex;
-            return smr->model->meshes[static_cast<size_t>(smr->meshIndex)].get();
+        // 1 GameObject = モデル全体になったため、コライダーのソースは
+        // Collider 側が持つ meshIndex (呼び出し前に設定済み) の submesh を使う。
+        if (smr->model) {
+            const size_t submesh = outMeshIndex >= 0 ? static_cast<size_t>(outMeshIndex) : 0u;
+            if (submesh < smr->model->meshes.size()) {
+                outPath = smr->modelPath;
+                outMeshIndex = static_cast<int>(submesh);
+                return smr->model->meshes[submesh].get();
+            }
         }
     }
 
@@ -1205,7 +1256,15 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
     if (targets.empty()) return;
     scene::GameObject& go = *targets.front();   // フィルタ表示や単体経路の基準
 
-    if (ImGui::Button(buttonLabel, { -1.0f, 0.0f }))
+    // Add Component は Inspector で最も押されるボタン。コンポーネントカードの列が
+    // 続いた後に地味な既定色で置くと底に埋もれるため、アクセント色 + 1 段高い枠にする。
+    ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::AccentSoft));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::AccentHover));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+    const bool addClicked =
+        ImGui::Button(buttonLabel, { -1.0f, ImGui::GetFrameHeight() + 6.0f });
+    ImGui::PopStyleColor(3);
+    if (addClicked)
         ImGui::OpenPopup("##add_component");
 
     if (!ImGui::BeginPopup("##add_component")) return;
@@ -1334,12 +1393,15 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
     DrawAddComponentMenuMulti({ &go }, filterBuffer, ctx, "Add Component");
 }
 
+// widgets::DragVec3 の 2 成分版。ラベル列・軸色を Vector3 の行と揃えるため同じ構成で描く。
 inline bool DragVec2(const char* label, math::Vector2& value, float speed = 0.1f, float min = 0.0f, float max = 0.0f)
 {
+    const widgets::PropertyRowScope row = widgets::BeginPropertyField(label);
     float data[2] = { value.x, value.y };
-    if (!ImGui::DragFloat2(label, data, speed, min, max)) return false;
-    value = { data[0], data[1] };
-    return true;
+    const bool changed = widgets::DragAxes("##v", data, 2, speed, min, max);
+    if (changed) value = { data[0], data[1] };
+    widgets::EndPropertyField(row);
+    return changed;
 }
 
 

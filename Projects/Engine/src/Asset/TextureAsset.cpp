@@ -136,12 +136,12 @@ TextureType GuessTextureType(std::string_view filename)
 }
 
 std::string MakeSpriteReference(
-    std::string_view texturePath, std::string_view spriteIdOrLegacyName)
+    std::string_view texturePath, std::string_view spriteId)
 {
     constexpr std::string_view MARKER = "::sprite::";
     std::string result(texturePath);
     result.append(MARKER);
-    result.append(spriteIdOrLegacyName);
+    result.append(spriteId);
     return result;
 }
 
@@ -162,15 +162,11 @@ bool ParseSpriteReference(
 }
 
 const SpriteRect* FindSprite(
-    const TextureImportSettings& settings, std::string_view spriteName)
+    const TextureImportSettings& settings, std::string_view spriteId)
 {
     const auto found = std::find_if(settings.sprites.begin(), settings.sprites.end(),
         [&](const SpriteRect& sprite) {
-            // 新規参照は永続 ID、旧 .scene / .mat は表示名を保持しているため両方を解決する。
-            return (!sprite.id.empty() && sprite.id == spriteName)
-                || sprite.name == spriteName
-                || std::find(sprite.legacyNames.begin(), sprite.legacyNames.end(), spriteName)
-                    != sprite.legacyNames.end();
+            return !sprite.id.empty() && sprite.id == spriteId;
         });
     return found != settings.sprites.end() ? &*found : nullptr;
 }

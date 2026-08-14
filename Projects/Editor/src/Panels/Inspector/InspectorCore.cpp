@@ -2,15 +2,21 @@
 // InspectorCore.cpp | fbzz::editor
 // Transform / Script の Inspector 描画
 #include "InspectorCore.hpp"
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptSnapshot.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <cfloat>
 #include <imgui_internal.h>
 
 namespace fbzz::editor {
 
 namespace {
+
+// スクリプトカードの帯色。Engine コンポーネントのどのカテゴリ色とも被らない色を当て、
+// 「ここから下はユーザーコード」であることを一目で分かるようにする。
+constexpr ImU32 kScriptAccent = IM_COL32(120, 190, 255, 255);
 
 bool TransformEquals(const scene::Transform& lhs, const scene::Transform& rhs)
 {
@@ -112,10 +118,30 @@ void PushTransformSnapshotUndo(scene::GameObject& go,
         [apply, before]() { apply(before); }));
 }
 
-// Transform ヘッダー右クリックの Copy / Paste / Reset メニュー。
+// スケールの等比リンク状態。
+// WHY: エディターの操作モードであってシーンのデータではないため、GameObject 側には
+//      持たせずセッション内の 1 つのトグルとして扱う (シーンを汚さない)。
+bool& UniformScaleLock() { static bool locked = false; return locked; }
+
+// ラベルの右クリックで「この行だけ既定値へ戻す」メニューを出す。
+// WHY: 「試しに動かしたが元に戻したい」は Inspector で最も多い後戻り操作。Ctrl+Z は
+//      直前の他の編集まで巻き戻してしまうため、行単位で戻せる口を別に用意する。
+// NOTE: ImGui の仕様上、直前に描いたアイテム (= ラベル) に紐づくので、値ウィジェットを
+//       描く前に呼び、要求だけ受け取って値の適用は後で行う。
+[[nodiscard]] bool RowResetRequested(const char* popupId)
+{
+    bool requested = false;
+    if (ImGui::BeginPopupContextItem(popupId)) {
+        if (ImGui::MenuItem("Reset")) requested = true;
+        ImGui::EndPopup();
+    }
+    return requested;
+}
+
+// Transform ヘッダーの Copy / Paste / Reset メニュー (⋯ ボタン / ヘッダー右クリック)。
 void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 {
-    if (!ImGui::BeginPopupContextItem("##transform_hdr_ctx")) return;
+    if (!ImGui::BeginPopup("##transform_hdr_ctx")) return;
     auto& t = go.transform;
     TransformClipboard& clip = TransformClip();
 
@@ -147,10 +173,19 @@ void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 
 void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
 {
-    const bool transformOpen = ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen);
-    // ヘッダー右クリック: Copy / Paste / Reset (開閉状態に関わらず有効)
+    // Transform は常に有効なのでチェックボックスを持たない。帯はテーマのアクセント色にして、
+    // 「必ず一番上にある基準のカード」であることを他のコンポーネントと区別する。
+    const widgets::ComponentHeaderResult transformHeader =
+        widgets::ComponentHeader("Transform", EditorTheme::ColorU32(ThemeColor::Accent), nullptr);
+    // ⋯ / ヘッダー右クリック: Copy / Paste / Reset (開閉状態に関わらず有効)
+    if (transformHeader.menuClicked)
+        ImGui::OpenPopup("##transform_hdr_ctx");
     DrawTransformHeaderMenu(*go, ctx);
-    if (transformOpen) {
+
+    widgets::ComponentBodyScope transformBody{};
+    if (transformHeader.open) {
+        transformBody = widgets::BeginComponentBody(transformHeader,
+                                                    EditorTheme::ColorU32(ThemeColor::Accent));
         auto& t = go->transform;
         ImGui::Spacing();
 
@@ -192,23 +227,131 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 TrackTransformEdit(*go, ctx, "Change Height");
             }
         } else {
-            float pos[3] = { t.position.x, t.position.y, t.position.z };
-            if (ImGui::DragFloat3("Position", pos, 0.1f))
-                t.position = { pos[0], pos[1], pos[2] };
-            TrackTransformEdit(*go, ctx, "Change Position");
+            // ラベルを左・値を右にそろえ、成分は軸色付き (X 赤 / Y 緑 / Z 青) にする。
+            // WHY: Transform だけ ImGui 既定の「値 → ラベル」順だったため、直下の
+            //      コンポーネント行と値の左端が食い違い、Inspector 全体が不揃いに見えていた。
+            //      軸色は「どの成分を掴んでいるか」を数え直さずに判別するためのもの。
+            const float column = widgets::PropertyLabelColumnWidth();
 
-            widgets::DragQuatEuler3("Rotation", t.rotation, 0.5f);
-            TrackTransformEdit(*go, ctx, "Change Rotation");
+            // 「地色 + ラベル + 右クリックのリセット要求」までを 1 か所にまとめる。
+            // リセットは値ウィジェットより先に問い合わせる必要がある (ImGui の
+            // コンテキストメニューは「直前のアイテム」= ラベルに紐づくため)。
+            const auto beginRow = [&](const char* label,
+                                      const char* popupId,
+                                      bool& outResetRequested) {
+                ImGui::PushID(label);
+                const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
+                widgets::LabelEllipsis(
+                    label, column - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
+                outResetRequested = RowResetRequested(popupId);
+                ImGui::SameLine();
+                if (ImGui::GetCursorPosX() < column) ImGui::SetCursorPosX(column);
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                return row;
+            };
+            const auto endRow = [](const widgets::PropertyRowScope& row) {
+                widgets::EndPropertyRow(row);
+                ImGui::PopID();
+            };
 
-            float scale[3] = { t.scale.x, t.scale.y, t.scale.z };
-            if (ImGui::DragFloat3("Scale", scale, 0.01f, 0.001f, 1000.0f))
-                t.scale = { scale[0], scale[1], scale[2] };
-            TrackTransformEdit(*go, ctx, "Change Scale");
+            // ── Position ──
+            {
+                bool resetRequested = false;
+                const widgets::PropertyRowScope row =
+                    beginRow("Position", "##pos_ctx", resetRequested);
+                widgets::DragAxes("##pos", t.position, 0.1f);
+                TrackTransformEdit(*go, ctx, "Change Position");
+                if (resetRequested) {
+                    const scene::Transform before = t;
+                    t.position = math::Vector3::ZERO;
+                    PushTransformSnapshotUndo(*go, ctx, before, "Reset Position");
+                }
+                endRow(row);
+            }
+
+            // ── Rotation (内部は Quaternion、UI はオイラー角) ──
+            {
+                bool resetRequested = false;
+                const widgets::PropertyRowScope row =
+                    beginRow("Rotation", "##rot_ctx", resetRequested);
+                widgets::DragQuatEuler3("##rot", t.rotation, 0.5f);
+                TrackTransformEdit(*go, ctx, "Change Rotation");
+                if (resetRequested) {
+                    const scene::Transform before = t;
+                    t.rotation = math::Quaternion::Identity();
+                    PushTransformSnapshotUndo(*go, ctx, before, "Reset Rotation");
+                }
+                endRow(row);
+            }
+
+            // ── Scale (等比リンク付き) ──
+            {
+                bool resetRequested = false;
+                const widgets::PropertyRowScope row =
+                    beginRow("Scale", "##scale_ctx", resetRequested);
+                widgets::DragScaleAxes("##scale", t.scale, UniformScaleLock(), 0.01f);
+                TrackTransformEdit(*go, ctx, "Change Scale");
+                if (resetRequested) {
+                    const scene::Transform before = t;
+                    t.scale = { 1.0f, 1.0f, 1.0f };
+                    PushTransformSnapshotUndo(*go, ctx, before, "Reset Scale");
+                }
+                endRow(row);
+            }
+
+            // ── ワールド座標 (読み取り専用) ──
+            // WHY: 上の 3 行はすべてローカル値。階層下のオブジェクトは
+            //      「Position が 0,0,0 なのに原点にいない」が普通に起きるため、
+            //      実際の位置を並べて出しておかないと毎回 Hierarchy を辿り直すことになる。
+            //      編集はローカル側でしかできないので、こちらは表示専用にとどめる。
+            if (const scene::GameObject* parent = go->GetParent()) {
+                ImGui::PushID("world");
+                const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
+
+                ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+                widgets::LabelEllipsis(
+                    "World", column - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::PopStyleColor();
+
+                ImGui::SameLine();
+                if (ImGui::GetCursorPosX() < column) ImGui::SetCursorPosX(column);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("%.2f   %.2f   %.2f",
+                                    t.worldPosition.x, t.worldPosition.y, t.worldPosition.z);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("World position (read-only)\nLocal values above are relative to \"%s\"",
+                                      parent->name.c_str());
+
+                widgets::EndPropertyRow(row);
+                ImGui::PopID();
+            }
+
+            // 非一様スケール + 半径ベースのコライダーの注意書き。
+            // WHY: 球とカプセルは半径ひとつで形が決まるため、軸ごとに違う倍率を掛けられない。
+            //      「見た目は潰れているのに当たり判定だけ真球」という状態は値を眺めても
+            //      気付けず、原因の分からない当たり判定バグとして時間を溶かす。
+            const bool nonUniform =
+                std::fabs(t.scale.x - t.scale.y) > 0.001f ||
+                std::fabs(t.scale.y - t.scale.z) > 0.001f;
+            const bool radialCollider =
+                go->GetComponent<scene::SphereColliderComponent>() ||
+                go->GetComponent<scene::CapsuleColliderComponent>();
+            if (nonUniform && radialCollider) {
+                ImGui::Spacing();
+                ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextUnformatted(
+                    "Non-uniform scale: sphere / capsule colliders keep a single radius "
+                    "and will not follow the squashed mesh.");
+                ImGui::PopTextWrapPos();
+                ImGui::PopStyleColor();
+            }
         }
 
         ImGui::Spacing();
+        widgets::EndComponentBody(transformBody);
     }
-
+    ImGui::Spacing();
 }
 
 void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
@@ -267,15 +410,9 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
 
         if (entry.script) {
             const char* header = entry.script->GetTypeName();
-            ImGui::Checkbox("##en", &entry.script->enabled);
-            ImGui::SameLine();
-
-            const bool open = ImGui::CollapsingHeader(header,
-                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-
-            const float btnW = ImGui::GetFrameHeight();
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-            if (ImGui::SmallButton("..."))
+            const widgets::ComponentHeaderResult hdr =
+                widgets::ComponentHeader(header, kScriptAccent, &entry.script->enabled);
+            if (hdr.menuClicked)
                 ImGui::OpenPopup("##script_opts");
 
             if (ImGui::BeginPopup("##script_opts")) {
@@ -284,7 +421,9 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                 ImGui::EndPopup();
             }
 
-            if (open) {
+            if (hdr.open) {
+                const widgets::ComponentBodyScope body =
+                    widgets::BeginComponentBody(hdr, kScriptAccent);
                 ImGui::Spacing();
                 ImGuiReflector reflector;
                 reflector.m_projectRoot = ctx.projectRoot; // アセットスロットの "..." パス検索用
@@ -339,23 +478,21 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                     editingScriptIndex = i;
 
                 ImGui::Spacing();
+                widgets::EndComponentBody(body);
             }
+            ImGui::Spacing();
         } else if (entry.serialized && !entry.serialized->type.empty()) {
-            ImGui::Checkbox("##en", &entry.serialized->enabled);
-            ImGui::SameLine();
-
             // WHY: DLL ビルド中は "Building..." と表示し、完了後に自動復元されることを示す。
             //      それ以外 (DLL 未ロード・ビルド失敗) は "Missing Script" のままにして問題を明示する。
             const bool isBuilding = ctx.scriptReloadBusy;
             const std::string header = (isBuilding ? "Building... " : "Missing Script: ")
                                        + entry.serialized->type;
-            const bool open = ImGui::CollapsingHeader(
-                header.c_str(),
-                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-
-            const float btnW = ImGui::GetFrameHeight();
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-            if (ImGui::SmallButton("..."))
+            // 帯を警告色にして、正常なスクリプトカードと一目で区別できるようにする。
+            const ImU32 accent = EditorTheme::ColorU32(
+                isBuilding ? ThemeColor::Warning : ThemeColor::Danger);
+            const widgets::ComponentHeaderResult hdr =
+                widgets::ComponentHeader(header.c_str(), accent, &entry.serialized->enabled);
+            if (hdr.menuClicked)
                 ImGui::OpenPopup("##missing_script_opts");
 
             if (ImGui::BeginPopup("##missing_script_opts")) {
@@ -364,14 +501,17 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                 ImGui::EndPopup();
             }
 
-            if (open) {
+            if (hdr.open) {
+                const widgets::ComponentBodyScope body = widgets::BeginComponentBody(hdr, accent);
                 ImGui::Spacing();
                 if (isBuilding)
                     ImGui::TextDisabled("Script DLL is building. Fields will be restored on completion.");
                 else
                     ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
                 ImGui::Spacing();
+                widgets::EndComponentBody(body);
             }
+            ImGui::Spacing();
         }
 
         ImGui::PopID();

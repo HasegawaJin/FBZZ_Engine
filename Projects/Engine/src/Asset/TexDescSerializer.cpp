@@ -27,7 +27,7 @@ std::uint64_t HashSpriteIdentity(std::string_view value, std::uint64_t seed)
 
 // ID を持たない旧 .meta へ、パス・名前・並び順から再現可能な ID を割り当てる。
 // WHY: 読み込みのたびにランダム ID を作ると、移行保存前に生成した参照が次回起動で切れるため。
-std::string MakeLegacySpriteId(
+std::string MakeSpriteId(
     std::string_view assetIdentity, std::string_view name, std::size_t index)
 {
     std::string key(assetIdentity);
@@ -198,14 +198,8 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
             const SpriteRect& source = spriteSources[index];
             toml::table sprite;
             sprite.insert("id", source.id.empty()
-                ? MakeLegacySpriteId(absPath, source.name, index) : source.id);
+                ? MakeSpriteId(absPath, source.name, index) : source.id);
             sprite.insert("name", source.name);
-            if (!source.legacyNames.empty()) {
-                toml::array legacyNames;
-                for (const std::string& legacyName : source.legacyNames)
-                    legacyNames.push_back(legacyName);
-                sprite.insert("legacy_names", std::move(legacyNames));
-            }
             sprite.insert("x", static_cast<int64_t>(source.x));
             sprite.insert("y", static_cast<int64_t>(source.y));
             sprite.insert("width", static_cast<int64_t>(source.width));
@@ -301,11 +295,6 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
             SpriteRect sprite;
             if (auto v = (*spriteTable)["id"].value<std::string>()) sprite.id = *v;
             if (auto v = (*spriteTable)["name"].value<std::string>()) sprite.name = *v;
-            if (const auto* legacyNames = (*spriteTable)["legacy_names"].as_array()) {
-                for (const auto& legacyName : *legacyNames)
-                    if (auto value = legacyName.value<std::string>())
-                        sprite.legacyNames.push_back(*value);
-            }
             if (auto v = (*spriteTable)["x"].value<int64_t>()) sprite.x = static_cast<uint32_t>(std::max<int64_t>(0, *v));
             if (auto v = (*spriteTable)["y"].value<int64_t>()) sprite.y = static_cast<uint32_t>(std::max<int64_t>(0, *v));
             if (auto v = (*spriteTable)["width"].value<int64_t>()) sprite.width = static_cast<uint32_t>(std::max<int64_t>(0, *v));
@@ -318,7 +307,7 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
             if (auto v = (*spriteTable)["border_bottom"].value<double>()) sprite.borderBottom = std::max(0.0f, static_cast<float>(*v));
             if (!sprite.name.empty()) {
                 if (sprite.id.empty())
-                    sprite.id = MakeLegacySpriteId(
+                sprite.id = MakeSpriteId(
                         spriteIdentity, sprite.name, spriteIndex);
                 s.sprites.push_back(std::move(sprite));
                 ++spriteIndex;

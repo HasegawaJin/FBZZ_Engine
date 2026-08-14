@@ -509,13 +509,27 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SetTooltip("Open the .prefab on its own so edits apply to every instance");
     }
 
+    // ── GameObject ヘッダーカード ────────────────────────────────────────────
+    // WHY: 名前 / Tag / Layer は「今どのオブジェクトを触っているか」を示す情報で、
+    //      その下に続くコンポーネント群とは階層が違う。1 枚のカードで囲って、
+    //      スクロールしても頭の 1 ブロックだけ性格が違うと分かるようにする。
+    const widgets::ComponentBodyScope headerCard = widgets::BeginCard();
+    ImGui::Spacing();
+
     char nameBuf[256];
     std::snprintf(nameBuf, sizeof(nameBuf), "%s", go->name.c_str());
     ImGui::SetNextItemWidth(-1.0f);
     static scene::EntityID namingEntity;
     static std::string nameBeforeEdit;
     const std::string nameAtFrameStart = go->name;
-    if (ImGui::InputText("##name", nameBuf, sizeof(nameBuf)))
+    // 名前欄はカードの主役なので 1 段高く取る。Tag / Layer と同じ高さだと
+    // 「今どのオブジェクトか」が周りの設定行に埋もれる。
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        { ImGui::GetStyle().FramePadding.x,
+                          ImGui::GetStyle().FramePadding.y + 3.0f });
+    const bool nameEdited = ImGui::InputText("##name", nameBuf, sizeof(nameBuf));
+    ImGui::PopStyleVar();
+    if (nameEdited)
         go->name = nameBuf;
     if (ImGui::IsItemActivated()) {
         namingEntity = go->GetID();
@@ -532,6 +546,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     auto& ps = ctx.projectSettings;
 
     {
+        ImGui::Spacing();
         const float spacing   = ImGui::GetStyle().ItemSpacing.x;
         const float labelTagW = ImGui::CalcTextSize("Tag").x   + spacing;
         const float labelLayW = ImGui::CalcTextSize("Layer").x + spacing;
@@ -591,9 +606,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
             ImGui::EndCombo();
         }
+        ImGui::Spacing();
     }
 
-    ImGui::Separator();
+    widgets::EndCard(headerCard);
+    ImGui::Spacing();
 
     { FBZZ_PROFILE_SCOPE("Inspector::Transform");
       DrawTransformInspectors(go, ctx); }

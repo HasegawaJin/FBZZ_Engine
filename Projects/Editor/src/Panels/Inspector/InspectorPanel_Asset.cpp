@@ -211,16 +211,16 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 if (values.size() == 1) {
                     materialDirty |= ImGui::DragFloat(name.c_str(), values.data(), 0.01f);
                 } else if (values.size() == 2) {
-                    materialDirty |= ImGui::DragFloat2(name.c_str(), values.data(), 0.01f);
+                    materialDirty |= widgets::DragAxes(name.c_str(), values.data(), 2, 0.01f);
                 } else if (values.size() == 3) {
-                    materialDirty |= ImGui::DragFloat3(name.c_str(), values.data(), 0.01f);
+                    materialDirty |= widgets::DragAxes(name.c_str(), values.data(), 3, 0.01f);
                 } else if (values.size() == 4) {
                     const bool looksLikeColor = name.find("color") != std::string::npos
                                              || name.find("Color") != std::string::npos
                                              || name.find("albedo") != std::string::npos;
                     materialDirty |= looksLikeColor
                         ? ImGui::ColorEdit4(name.c_str(), values.data())
-                        : ImGui::DragFloat4(name.c_str(), values.data(), 0.01f);
+                        : widgets::DragAxes(name.c_str(), values.data(), 4, 0.01f);
                 } else {
                     for (size_t i = 0; i < values.size(); ++i) {
                         ImGui::PushID(static_cast<int>(i));
@@ -925,26 +925,6 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                         sprite.name = nameBuffer;
                         dirty = true;
                     }
-                    static std::string s_spriteRenameOriginal;
-                    if (ImGui::IsItemActivated())
-                        s_spriteRenameOriginal = nameBeforeEdit;
-                    if (spriteNameChanged
-                        && !s_spriteRenameOriginal.empty()
-                        && std::find(
-                            sprite.legacyNames.begin(), sprite.legacyNames.end(),
-                            s_spriteRenameOriginal) == sprite.legacyNames.end()) {
-                        sprite.legacyNames.push_back(s_spriteRenameOriginal);
-                    }
-                    if (ImGui::IsItemDeactivatedAfterEdit()
-                        && !s_spriteRenameOriginal.empty()
-                        && s_spriteRenameOriginal != sprite.name
-                        && std::find(
-                            sprite.legacyNames.begin(), sprite.legacyNames.end(),
-                            s_spriteRenameOriginal) == sprite.legacyNames.end()) {
-                        sprite.legacyNames.push_back(s_spriteRenameOriginal);
-                        s_spriteRenameOriginal.clear();
-                        dirty = true;
-                    }
                     if (s.spriteMode == asset::SpriteMode::Multiple) {
                         int rect[4] = {
                             static_cast<int>(sprite.x), static_cast<int>(sprite.y),
@@ -961,7 +941,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                         ImGui::TextDisabled("Rect: Full Texture");
                     }
                     float pivot[2] = { sprite.pivotX, sprite.pivotY };
-                    if (ImGui::DragFloat2("Pivot", pivot, 0.01f, 0.0f, 1.0f)) {
+                    if (widgets::DragAxes("Pivot", pivot, 2, 0.01f, 0.0f, 1.0f)) {
                         sprite.pivotX = std::clamp(pivot[0], 0.0f, 1.0f);
                         sprite.pivotY = std::clamp(pivot[1], 0.0f, 1.0f);
                         dirty = true;
@@ -1471,80 +1451,25 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Type: %s", data->GetTypeName());
         ImGui::Separator();
 
-        // PostProcessProfile だけは手書きの専用 UI を使う。
-        // WHY 汎用リフレクタを使わないか: ポストプロセスは 12 個のサブセクションに
-        //     50 以上のパラメータがあり、汎用の折りたたみ一覧では実用に耐えない。
-        //     PostProcessInspectorWidgets は Project Settings と共有する編集 UI で、
-        //     セクション分け・適正レンジ・カラーピッカーが作り込まれている。
-        //     編集対象は Registry の共有実体そのものなので、変更は全参照へ即反映される。
+        // 各オーバーライドのパラメーターは共通リフレクタで描く。
+        // WHY 共通のものを使うか: Reflect() が既にレンジとカラーヒントを持っており、
+        //     ImGuiReflector はそれをプロパティ行・カラーピッカー・ファイルスロットへ
+        //     翻訳する。効果ごとの専用 UI を書かずに済み、効果の追加は Engine 側だけで閉じる。
+        ImGuiReflector reflector;
+        reflector.m_projectRoot = ctx.projectRoot;
+
         bool editedByCustomUi = false;
         if (auto* profile = dynamic_cast<asset::PostProcessProfile*>(data)) {
-            // ── 上書き対象セクション ────────────────────────────────────────
-            // WHY 設定本体より前に置くか: チェックの入っていないセクションは
-            //     いくら値をいじっても画面に反映されない。「なぜ効かないのか」を
-            //     探させないよう、責任範囲を最初に見せる。
-            auto& ov = profile->overrides;
-            if (ImGui::CollapsingHeader("Overrides", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::TextDisabled(
-                    "チェックしたセクションだけをベースへ上書きします。\n"
-                    "外したセクションは、下で値を変えても画面には反映されません。");
-
-                if (ImGui::SmallButton("All")) {
-                    ov = renderer::PostProcessOverrides::All();
-                    editedByCustomUi = true;
-                }
-                ImGui::SameLine();
-                if (ImGui::SmallButton("None")) {
-                    ov = renderer::PostProcessOverrides::None();
-                    editedByCustomUi = true;
-                }
-
-                // 2 列で並べて縦に伸びすぎないようにする。
-                const struct { const char* label; bool* value; } TOGGLES[] = {
-                    { "FXAA",              &ov.fxaa },
-                    { "Exposure",          &ov.exposure },
-                    { "Bloom",             &ov.bloom },
-                    { "Ambient Occlusion", &ov.ambientOcclusion },
-                    { "Fog",               &ov.fog },
-                    { "Color Grading",     &ov.colorGrading },
-                    { "Vignette",          &ov.vignette },
-                    { "Film Grain",        &ov.filmGrain },
-                    { "Sharpen",           &ov.sharpen },
-                    { "Depth of Field",    &ov.depthOfField },
-                    { "Lens",              &ov.lens },
-                    { "Stylized",          &ov.stylized },
-                    { "Image Quality",     &ov.imageQuality },
-                    { "Custom Effects",    &ov.customEffects },
-                };
-                if (ImGui::BeginTable("##ppOverrides", 2)) {
-                    for (const auto& toggle : TOGGLES) {
-                        ImGui::TableNextColumn();
-                        if (ImGui::Checkbox(toggle.label, toggle.value))
-                            editedByCustomUi = true;
-                    }
-                    ImGui::EndTable();
-                }
-            }
-
-            ImGui::Spacing();
-            ImGui::Separator();
-
+            // PostProcessProfile だけは専用 UI を使う。
+            // WHY 汎用リフレクタに任せないか: 中身は「効果のリスト」で、
+            //     追加・削除・並べ替え・一時無効化という配列固有の操作が要る。
+            //     汎用のフィールド列挙ではそれらを表現できない。
+            //     編集対象は Registry の共有実体そのものなので、変更は全参照へ即反映される。
             const PostProcessInspectorResult inspectorResult =
-                DrawPostProcessInspector(profile->settings);
-            editedByCustomUi = editedByCustomUi || inspectorResult.changed;
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            if (ctx.activeScene) {
-                if (ImGui::Button("Apply to Scene"))
-                    ctx.activeScene->GetRuntimePostProcessSettings() = profile->settings;
-                ImGui::SameLine();
-                if (ImGui::Button("Clear Scene Override"))
-                    ctx.activeScene->ClearRuntimePostProcessSettings();
-            }
+                DrawVolumeOverrideListInspector(*profile, reflector);
+            editedByCustomUi = inspectorResult.changed;
         } else {
             // Inspector の共通リフレクタでフィールドを描画する (スクリプトと同じ UI)。
-            ImGuiReflector reflector;
             data->Reflect(reflector);
         }
 
