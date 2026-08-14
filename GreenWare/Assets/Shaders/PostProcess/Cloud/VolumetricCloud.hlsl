@@ -9,6 +9,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
 Texture2D<float>  g_depth       : register(TEX_DEPTH);
@@ -34,19 +35,9 @@ static const float kDetailMorph = 0.35f;  // detail による縁の侵食量
 static const float kPowder      = 0.7f;   // Beer-Powder の暗縁効果の強さ
 static const float kEmptyStep   = 2.0f;   // 空白領域でのステップ倍率 (empty-space skip)
 
-struct FSTriVSOut
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-};
-
-FSTriVSOut VSMain(uint id : SV_VertexID)
-{
-    FSTriVSOut o;
-    o.uv = float2((id & 1u) ? 2.0f : 0.0f,
-                  (id & 2u) ? 2.0f : 0.0f);
-    o.svPosition = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
 float Remap(float v, float lo, float hi, float nlo, float nhi)
@@ -127,7 +118,7 @@ float LightMarch(float3 wp, float3 sunDir, float2 windWorld)
     return exp(-optical * kExtinction * max(cloudLighting.x, 0.0f));
 }
 
-float4 PSMain(FSTriVSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     float ndcDepth = g_depth.Sample(sampDefault, p.uv).r;
     float sceneDepth = ndcDepth >= 0.9999f
@@ -156,7 +147,9 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float2 windDir   = normalize(float2(cloudWind.x, cloudWind.z));
     float2 windWorld = windDir * (cloudWind.y * cloudNoise.z);
     float3 sunDir    = normalize(-lightDir);
-    float3 lightCol  = lightColor * max(lightIntensity, 0.0f);
+    // 雲の明るさは空ドームと揃える必要があるため skyDimmer を使う。
+    // lightIntensity は地表のライティング用スケールで、空の見た目とは別軸。
+    float3 lightCol  = lightColor * max(skyDimmer, 0.0f);
     float3 ambient   = (ambientColor * 2.0f + lightCol * 0.2f) * max(cloudLighting.y, 0.0f);
     float3 albedo    = cloudAlbedo.rgb;
 

@@ -31,6 +31,11 @@ static const float TENT_WEIGHTS[9] =
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
     uint2  pixel  = dtid.xy;
+    uint2 outputSize;
+    outputDst.GetDimensions(outputSize.x, outputSize.y);
+    if (any(pixel >= outputSize))
+        return;
+
     float2 dstUV  = (float2(pixel) + 0.5f) * texelSize;
     float2 srcUV  = dstUV * 0.5f;  // ソースは半分解像度
 

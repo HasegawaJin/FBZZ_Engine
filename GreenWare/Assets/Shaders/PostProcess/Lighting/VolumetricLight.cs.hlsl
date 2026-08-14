@@ -90,6 +90,12 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // ---- レイマーチ ----------------------------------------------------------
 
+    if (volSteps <= 0 || volMaxDist <= 0.0f || volLightIntensity <= 0.0f)
+    {
+        OutputVolumetric[id.xy] = 0.0f;
+        return;
+    }
+
     float3 rayStart  = cameraPos;
     float3 rayEnd    = worldPos;
     float3 rayDir    = rayEnd - rayStart;
@@ -127,8 +133,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         );
 
         // 照らされている点のみ散乱光を積分
-        // 単位: lightColor * lightIntensity * scatter * stepDist (ビールランベルト近似)
-        accumulated += lightColor * lightIntensity * scatter * visibility * stepDist;
+        // 単位: lightColor * skyDimmer * scatter * stepDist (ビールランベルト近似)
+        // WHY skyDimmer: 光芒は空ドーム・雲と一体で見える大気表現なので、地表ライティング用の
+        //      lightIntensity ではなく空側の軸に乗せる。太陽を強くしたときに光芒だけが
+        //      飽和するのを避け、明るさは volLightIntensity で独立に詰められる。
+        accumulated += lightColor * skyDimmer * scatter * visibility * stepDist;
     }
 
     // ---- 出力 ----------------------------------------------------------------
