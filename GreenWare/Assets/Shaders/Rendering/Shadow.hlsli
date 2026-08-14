@@ -27,6 +27,26 @@ float SampleCloudShadow(float3 worldPos)
                              cloudShadowSpeed, cloudShadowTime);
 }
 
+// ShadowConstants を宣言しないシェーダー向けのカスケードフォールバック。
+// WHY: ComputeShadow は cascadeCount で単一マップ経路と CSM 経路を切り替える。
+//      cascadeCount を持たないシェーダーでは 1 (= 従来の単一シャドウマップ) に落とす。
+#ifndef HAVE_SHADOW_CASCADES
+#define FBZZ_MAX_SHADOW_CASCADES 4
+static const int   cascadeCount     = 1;
+static const float cascadeBlend     = 0.0f;
+static const int   cascadeDebugView = 0;
+static const float4x4 cascadeViewProjection[FBZZ_MAX_SHADOW_CASCADES] = {
+    float4x4(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1),
+    float4x4(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1),
+    float4x4(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1),
+    float4x4(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)
+};
+static const float4 cascadeAtlasRect[FBZZ_MAX_SHADOW_CASCADES] = {
+    float4(0, 0, 1, 1), float4(0, 0, 1, 1), float4(0, 0, 1, 1), float4(0, 0, 1, 1)
+};
+static const float4 cascadeBias = float4(0, 0, 0, 0);
+#endif
+
 // AdvancedGraphicsConstants(b8) を宣言していないシェーダー向けフォールバック。
 // WHY: HLSL コンパイラはエントリポイントから到達できない関数でも全ボディを検証するため、
 //      pcssEnabled / pcssLightRadius が未定義だとコンパイルエラーになる。
@@ -71,9 +91,142 @@ float SampleShadowPCF(Texture2D<float> shadowMap,
 }
 
 // =========================================================================
+// カスケードシャドウ (CSM)
+// =========================================================================
+// 全カスケードは 1 枚の深度テクスチャを 2x2 に区切って共有する (アトラス)。
+// サンプル側の流れ:
+//   1. カスケード i のライト行列でワールド座標を投影し、カスケード内 UV [0,1] を得る
+//   2. 範囲内に収まる最も手前 (= 最も細かい) カスケードを選ぶ
+//   3. カスケード内 UV を cascadeAtlasRect でアトラス UV へ写してからテクスチャを引く
+//
+// WHY アトラス (Texture2DArray ではなく):
+//   深度テクスチャが 1 本のままなので、シャドウを読む 20 以上のシェーダーが
+//   バインドもサンプラーも一切変えずに済む。スライス DSV を作るための
+//   バックエンド追加実装 (DX11 / DX12 両方) も要らない。
+
+// CascadeUVToAtlas — カスケード内 UV [0,1] をアトラス全体の UV へ写す。
+float2 CascadeUVToAtlas(float2 uv, float4 atlasRect)
+{
+    return atlasRect.xy + uv * atlasRect.zw;
+}
+
+// CascadeBiasAt — cascadeBias (float4) から index 番目を取り出す。
+// WHY: ベクトルへの動的インデックスは HLSL では成分ごとの選択に展開され、
+//      コンパイラやモデルによって扱いが揺れる。明示的な分岐で書いて挙動を固定する。
+float CascadeBiasAt(int index)
+{
+    if (index <= 0) return cascadeBias.x;
+    if (index == 1) return cascadeBias.y;
+    if (index == 2) return cascadeBias.z;
+    return cascadeBias.w;
+}
+
+// SampleShadowCascadePCF — カスケード 1 枚ぶんの PCF。
+// WHY inset: PCF はカーネル半径ぶん周囲を舐めるため、タイル端で隣のカスケードへはみ出す。
+//      アトラスでは隣が「別の深度」なので、はみ出すと帯状の誤った影が出る。
+//      サンプル範囲をタイル内側へクランプして漏れを断つ。
+float SampleShadowCascadePCF(Texture2D<float> shadowMap,
+                             SamplerComparisonState shadowSampler,
+                             float2 uv, float depth, float4 atlasRect,
+                             float2 atlasTexelSize, int radius)
+{
+    float2 inset = atlasTexelSize * (float(radius) + 1.0f);
+    float2 uvMin = atlasRect.xy + inset;
+    float2 uvMax = atlasRect.xy + atlasRect.zw - inset;
+
+    float shadow = 0.0f;
+    float total  = 0.0f;
+
+    for (int y = -radius; y <= radius; ++y)
+    for (int x = -radius; x <= radius; ++x)
+    {
+        float2 sampleUV = CascadeUVToAtlas(uv, atlasRect) + float2(x, y) * atlasTexelSize;
+        sampleUV = clamp(sampleUV, uvMin, uvMax);
+        shadow += shadowMap.SampleCmpLevelZero(shadowSampler, sampleUV, depth);
+        total  += 1.0f;
+    }
+
+    return shadow / total;
+}
+
+// SelectShadowCascade — worldPos を含む最小のカスケードを選ぶ。
+//   outUV    : そのカスケード内の UV [0,1]
+//   outDepth : ライト空間の深度
+//   outEdge  : カスケード端への近さ [0,1] (1 = ちょうど端)。境界ブレンドに使う
+//   戻り値    : カスケード番号。どれにも入らない場合は -1
+//
+// WHY UV 内包判定で選ぶ (ビュー深度で選ぶのではなく):
+//   ビュー空間深度で選ぶ方式は、シャドウを読む全シェーダーへビュー行列か
+//   ビュー深度を配る必要がある。Terrain / Water のように独自 cbuffer を持つ
+//   シェーダーまで巻き込むと配線が増えて壊れやすい。
+//   カスケードは手前ほど狭いので、若い番号から見て最初に入ったものが常に最も細かい。
+int SelectShadowCascade(float3 worldPos, out float2 outUV, out float outDepth, out float outEdge)
+{
+    outUV    = float2(0.0f, 0.0f);
+    outDepth = 0.0f;
+    outEdge  = 0.0f;
+
+    // NOTE: 動的 break を含むため [unroll] は付けない。最大 4 回の動的ループで足りる。
+    for (int i = 0; i < FBZZ_MAX_SHADOW_CASCADES; ++i)
+    {
+        if (i >= cascadeCount) break;
+
+        float2 uv;
+        float  depth;
+        WorldToShadowUV(worldPos, cascadeViewProjection[i], uv, depth);
+
+        if (any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
+            continue;
+
+        outUV    = uv;
+        outDepth = depth;
+        // タイル中心からの最大軸距離 [0,1]。端に近いほど 1 へ寄る。
+        outEdge  = max(abs(uv.x * 2.0f - 1.0f), abs(uv.y * 2.0f - 1.0f));
+        return i;
+    }
+    return -1;
+}
+
+// ApplySlopeScaledBias — 斜め面で tan(theta) に比例してバイアスを増やす。
+// 面がライトに対して寝ているほど 1 テクセル内の深度差が大きく、固定バイアスでは
+// アクネか Peter Panning のどちらかが必ず出る。
+float ApplySlopeScaledBias(float bias, float3 N, float3 L)
+{
+    float NdotL = saturate(dot(N, L));
+    float slope = sqrt(1.0f - NdotL * NdotL) / max(NdotL, 1e-4f);
+    return clamp(bias + bias * slope, bias, bias * 6.0f);
+}
+
+// カスケード可視化色 (デバッグ)。緑=最も細かい → 赤=最も粗い。
+static const float3 FBZZ_CASCADE_DEBUG_COLOR[FBZZ_MAX_SHADOW_CASCADES] = {
+    float3(0.35f, 1.00f, 0.35f),
+    float3(1.00f, 0.95f, 0.35f),
+    float3(1.00f, 0.60f, 0.30f),
+    float3(1.00f, 0.35f, 0.35f),
+};
+
+// ShadowCascadeDebugTint — cascadeDebugView が有効なときに乗算する色。無効なら白。
+// WHY: 分割位置 (cascadeSplitLambda) と境界ブレンド幅は数値だけでは詰められない。
+//      どこで切り替わっているかを画面に出すのが唯一の実用的な調整手段。
+float3 ShadowCascadeDebugTint(float3 worldPos)
+{
+    if (cascadeDebugView == 0) return float3(1.0f, 1.0f, 1.0f);
+
+    float2 uv; float depth; float edge;
+    int index = SelectShadowCascade(worldPos, uv, depth, edge);
+    if (index < 0) return float3(0.45f, 0.45f, 0.55f); // どのカスケードにも入らない範囲
+    return FBZZ_CASCADE_DEBUG_COLOR[index];
+}
+
+// =========================================================================
 // ComputeShadow — ワールド座標からシャドウ係数を計算する
 //   N, L を受け取りスロープスケールバイアスを適用して Self-Shadow アクネを防ぐ。
-//   UV が [0,1] 外 (ライト錐台外) は常に 1.0 (照らされている) を返す。
+//   ライト錐台外 / 全カスケード外は 1.0 (照らされている) を返す。
+//
+//   lightVP / bias は cascadeCount <= 1 (単一シャドウマップ) のときに使う。
+//   CSM 有効時は ShadowConstants のカスケード配列が優先され、これらは参照されない。
+//   WHY 引数に残す: 体積光やパーティクル自己影のように、カスケードを持たない
+//       独自のライト行列で影を引きたい経路が実際にあるため。
 // =========================================================================
 float ComputeShadow(Texture2D<float> shadowMap,
                     SamplerComparisonState shadowSampler,
@@ -84,22 +237,69 @@ float ComputeShadow(Texture2D<float> shadowMap,
     // 雲影は頭上の雲によるもので、シャドウマップ (直接遮蔽) とは独立。錐台外でも乗せる。
     float cloud = SampleCloudShadow(worldPos);
 
-    float2 uv;
-    float  depth;
-    WorldToShadowUV(worldPos, lightVP, uv, depth);
-
-    // ライト錐台の外は直接影なし (ただし雲影は乗せる)
-    if (any(uv < 0.0f) || any(uv > 1.0f))
+    // 影の濃さが 0 なら、どんな factor が返っても lerp(1, 1, factor) = 1 で結果は cloud のまま。
+    // WHY: それでも PCF ループは毎ピクセル回っていた (既定 7x7 = 49 タップ)。
+    //      1080p なら 1 億回のテクスチャフェッチが、絵に一切影響しないまま消費される。
+    //      Shadow を切ったときに実際に速くなるようにするための早期 return でもある。
+    if (shadowStrength <= 0.0f)
         return cloud;
 
-    // スロープスケールバイアス: 斜め面で tan(theta) に比例してバイアスを増やす
-    float NdotL        = saturate(dot(N, L));
-    float slope        = sqrt(1.0f - NdotL * NdotL) / max(NdotL, 1e-4f);
-    float adjustedBias = clamp(bias + bias * slope, bias, bias * 6.0f);
+    // ---- 単一シャドウマップ (従来経路) ----
+    if (cascadeCount <= 1)
+    {
+        float2 uv;
+        float  depth;
+        WorldToShadowUV(worldPos, lightVP, uv, depth);
 
-    // shadowPcfRadius は ShadowConstants cbuffer から参照。全シェーダー共通で Inspector から制御可能。
-    float factor = SampleShadowPCF(shadowMap, shadowSampler, uv, depth - adjustedBias, texelSize, shadowPcfRadius);
-    // shadowStrength: 1=完全な影, 0=影なし。factor=0(影) の時に (1-strength) を最小値とする。
+        // ライト錐台の外は直接影なし (ただし雲影は乗せる)
+        if (any(uv < 0.0f) || any(uv > 1.0f))
+            return cloud;
+
+        float adjustedBias = ApplySlopeScaledBias(bias, N, L);
+        float factor = SampleShadowPCF(shadowMap, shadowSampler, uv,
+                                       depth - adjustedBias, texelSize, shadowPcfRadius);
+        // shadowStrength: 1=完全な影, 0=影なし。factor=0(影) の時に (1-strength) を最小値とする。
+        return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
+    }
+
+    // ---- カスケードシャドウ ----
+    float2 uv;
+    float  depth;
+    float  edge;
+    int    index = SelectShadowCascade(worldPos, uv, depth, edge);
+    if (index < 0)
+        return cloud; // 影の到達距離の外
+
+    float cascadeBiasValue = CascadeBiasAt(index);
+    float adjustedBias     = ApplySlopeScaledBias(cascadeBiasValue, N, L);
+    float factor = SampleShadowCascadePCF(shadowMap, shadowSampler, uv, depth - adjustedBias,
+                                          cascadeAtlasRect[index], texelSize, shadowPcfRadius);
+
+    // ---- カスケード境界のクロスフェード ----
+    // WHY: カスケードをまたぐとテクセル密度が跳ぶため、境界に沿った不連続な線が
+    //      地面を横切って見える。端付近では次のカスケードの結果と混ぜて線を消す。
+    if (cascadeBlend > 0.0f && index + 1 < cascadeCount)
+    {
+        float blendStart = 1.0f - cascadeBlend;
+        if (edge > blendStart)
+        {
+            float2 nextUV;
+            float  nextDepth;
+            WorldToShadowUV(worldPos, cascadeViewProjection[index + 1], nextUV, nextDepth);
+
+            if (all(nextUV >= 0.0f) && all(nextUV <= 1.0f))
+            {
+                float nextBias   = ApplySlopeScaledBias(CascadeBiasAt(index + 1), N, L);
+                float nextFactor = SampleShadowCascadePCF(
+                    shadowMap, shadowSampler, nextUV, nextDepth - nextBias,
+                    cascadeAtlasRect[index + 1], texelSize, shadowPcfRadius);
+
+                float t = saturate((edge - blendStart) / max(cascadeBlend, 1e-4f));
+                factor  = lerp(factor, nextFactor, t);
+            }
+        }
+    }
+
     return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
 }
 
@@ -147,23 +347,33 @@ static const float2 PCSS_POISSON_DISK[16] =
 //   receiverDepth : 受光点の深度値
 //   texelSize     : 1.0 / シャドウマップ解像度
 //   searchRadius  : 探索半径 (テクセル単位)
+//   atlasRect     : 探索を許すアトラス矩形 (xy=UV オフセット, zw=UV スケール)。
+//                   単一シャドウマップのときは (0,0,1,1) を渡す
 //   戻り値         : 遮蔽ブロッカーの平均深度、見つからない場合は -1.0
+//
+//   NOTE: uv はタイル内 UV [0,1]。アトラスへの写像と矩形内クランプはこの関数が行う。
+//         クランプしないと隣のカスケードの深度をブロッカーとして拾ってしまう。
 // =========================================================================
 float FindBlockerDepth(Texture2D<float> shadowMap,
                        SamplerState     pointSampler,
                        float2           uv,
                        float            receiverDepth,
                        float2           texelSize,
-                       float            searchRadius)
+                       float            searchRadius,
+                       float4           atlasRect)
 {
     float blockerSum   = 0.0f;
     int   blockerCount = 0;
 
+    float2 uvMin = atlasRect.xy + texelSize;
+    float2 uvMax = atlasRect.xy + atlasRect.zw - texelSize;
+
     [unroll]
     for (int i = 0; i < 16; ++i)
     {
-        float2 offset       = PCSS_POISSON_DISK[i] * searchRadius * texelSize;
-        float  blockerDepth = shadowMap.SampleLevel(pointSampler, uv + offset, 0).r;
+        float2 offset    = PCSS_POISSON_DISK[i] * searchRadius * texelSize;
+        float2 sampleUV  = clamp(CascadeUVToAtlas(uv, atlasRect) + offset, uvMin, uvMax);
+        float  blockerDepth = shadowMap.SampleLevel(pointSampler, sampleUV, 0).r;
 
         // 受光点より手前にあるテクセルがブロッカー
         if (blockerDepth < receiverDepth)
@@ -212,26 +422,42 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
     // 雲影 (頭上の雲・直接遮蔽とは独立)。全 return 経路に乗せる。
     float cloud = SampleCloudShadow(worldPos);
 
-    // UV / 深度の取得
-    float2 uv;
-    float  receiverDepth;
-    WorldToShadowUV(worldPos, lightVP, uv, receiverDepth);
-
-    // ライト錐台外は直接影なし (雲影は乗せる)
-    if (any(uv < 0.0f) || any(uv > 1.0f))
+    // 影の濃さが 0 なら結果は cloud で確定する。ブロッカー探索も PCF も回さない。
+    if (shadowStrength <= 0.0f)
         return cloud;
 
+    // UV / 深度 / 使用するタイルとバイアスをカスケード構成に応じて決める。
+    // 単一マップ時はアトラス全面 (rect = 0,0,1,1) を 1 タイルとみなせば、
+    // 以降の処理をカスケード有無で分岐させずに書ける。
+    float2 uv;
+    float  receiverDepth;
+    float4 atlasRect  = float4(0.0f, 0.0f, 1.0f, 1.0f);
+    float  activeBias = bias;
+
+    if (cascadeCount <= 1)
+    {
+        WorldToShadowUV(worldPos, lightVP, uv, receiverDepth);
+        if (any(uv < 0.0f) || any(uv > 1.0f))
+            return cloud; // ライト錐台外は直接影なし (雲影は乗せる)
+    }
+    else
+    {
+        float edge;
+        int   index = SelectShadowCascade(worldPos, uv, receiverDepth, edge);
+        if (index < 0)
+            return cloud; // 影の到達距離の外
+        atlasRect  = cascadeAtlasRect[index];
+        activeBias = CascadeBiasAt(index);
+    }
+
     // スロープスケールバイアスで Self-Shadow アクネを防ぐ
-    float NdotL        = saturate(dot(N, L));
-    float slope        = sqrt(1.0f - NdotL * NdotL) / max(NdotL, 1e-4f);
-    float adjustedBias = clamp(bias + bias * slope, bias, bias * 6.0f);
-    receiverDepth     -= adjustedBias;
+    receiverDepth -= ApplySlopeScaledBias(activeBias, N, L);
 
     // ---- ステップ 1: ブロッカー探索 ----
     // WHY: pcssLightRadius が大きいほど広い範囲でブロッカーを探し、より広い半影を生成する
     float searchRadius = pcssLightRadius * 10.0f; // world-space → テクセル空間の近似スケール
     float avgBlocker   = FindBlockerDepth(shadowMap, pointSampler,
-                                          uv, receiverDepth, texelSize, searchRadius);
+                                          uv, receiverDepth, texelSize, searchRadius, atlasRect);
 
     // ブロッカーなし = 直接照射 (雲影は乗せる)
     if (avgBlocker < 0.0f)
@@ -247,7 +473,8 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
     int pcfRadius = (int)clamp(penumbraWidth * 512.0f, 1.0f, 8.0f);
 
     // ---- ステップ 3: 可変カーネル PCF ----
-    float factor = SampleShadowPCF(shadowMap, shadowSampler, uv, receiverDepth, texelSize, pcfRadius);
+    float factor = SampleShadowCascadePCF(shadowMap, shadowSampler, uv, receiverDepth,
+                                          atlasRect, texelSize, pcfRadius);
 
     return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
 }

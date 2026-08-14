@@ -168,21 +168,44 @@ struct PerObjectCB {
     math::Matrix4 worldInvTranspose;
 };
 
+// ShadowConstantsCB — HLSL の ShadowConstants (b4) と 1 対 1 で対応する。
+// LAYOUT: Assets/Shaders/Common/ShadowConstants.hlsli と完全に一致させること。
+//         あちらが唯一の HLSL 側定義 (Constants / Terrain / Water が include する)。
 struct ShadowConstantsCB {
+    // 単一のライト行列で足りるパス向け (= cascadeViewProjection[0] と同じ内容)。
+    // パーティクル自己影・体積光など、カスケードの概念を持たない経路が使う。
     math::Matrix4 lightViewProjection;
-    float         shadowMapTexelSize[2];
-    float         shadowBias;
-    float         shadowStrength;  // 0=影なし, 1=完全な影 (HLSL ShadowConstants と一致)
-    int           shadowPcfRadius; // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
-    // 雲シャドウ (Phase C) — HLSL ShadowConstants と一致 (_pad[3] を置換し reg6 を追加)。
+    // カスケードごとのライト viewProjection。有効なのは先頭 cascadeCount 本。
+    math::Matrix4 cascadeViewProjection[renderer::kMaxShadowCascades];
+    // カスケードごとのアトラス矩形。xy = UV オフセット, zw = UV スケール。
+    math::Vector4 cascadeAtlasRect[renderer::kMaxShadowCascades];
+    // カスケードごとの NDC 深度バイアス (x=cascade0 .. w=cascade3)。
+    // WHY: カスケードごとに正射影の深度レンジが違うため、同じワールド距離のオフセットでも
+    //      NDC 換算値が変わる。1 つの値を共有するとどこかで必ず破綻する。
+    math::Vector4 cascadeBias;
+
+    float         shadowMapTexelSize[2]; // 1.0 / アトラス全体の解像度
+    float         shadowBias;            // 単一カスケード時のバイアス (= cascadeBias.x)
+    float         shadowStrength;        // 0=影なし, 1=完全な影
+
+    int           shadowPcfRadius;  // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    int           cascadeCount;     // 1 = 単一シャドウマップ (従来), 2〜4 = CSM
+    float         cascadeBlend;     // カスケード境界のクロスフェード幅 [0,1]
+    int           cascadeDebugView; // 1 = カスケード番号を色で可視化
+
+    // 雲シャドウ (Phase C)
     float         cloudShadowStrength; // 0=無効
     float         cloudShadowCoverage;
     float         cloudShadowScale;
     float         cloudShadowSpeed;
+
     float         cloudShadowTime;
     float         cloudShadowWindX;
     float         cloudShadowWindZ;
+    float         _shadowPad0 = 0.0f;
 };
+static_assert(sizeof(ShadowConstantsCB) == 464,
+    "ShadowConstantsCB must match ShadowConstants in Common/ShadowConstants.hlsli (464 bytes)");
 
 struct AtmosphereCB {
     float rayleighScattering[3];
@@ -408,6 +431,10 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
 
+    // コンピュートスキニング — ボーン変形を 1 フレーム 1 回だけ計算して各パスで共有する。
+    renderer::ResourceHandle<renderer::ShaderTag>         skinningComputeCS;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
+
     renderer::ResourceHandle<renderer::PipelineStateTag>  defaultPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  wireframePSO;
 
@@ -547,6 +574,32 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::TextureTag>        proceduralColorLut;
 };
 
+// ShadowCascade — カスケード 1 枚ぶんの描画情報。RenderSystem が毎フレーム組み立て、
+// ShadowPass がアトラスのタイルへ描き、各ライティングパスが CB へ転送する。
+// WHY: カスケードは「視錐台のどの距離帯を担当するか」以外は単一シャドウマップと同じ構造を
+//      持つ。行列・カリング錐台・書き込み先タイル・バイアスをひとまとめにしておけば、
+//      ShadowPass 側は「タイルを選んで既存の caster 提出を回す」だけで済む。
+struct ShadowCascade {
+    math::Matrix4 viewProjection;
+    // ライトビュー単体。第 3 行がライト前方への射影なので、caster を光源に近い順へ
+    // 並べ替えるための深度キー算出に使う (Hi-Z を効かせるための描画順)。
+    math::Matrix4 view;
+    // ライト視点のワールド位置。
+    math::Vector3 eyePos;
+    // このカスケードの caster カリング用錐台 (viewProjection から抽出済み)。
+    math::Frustum frustum;
+    // アトラス上の位置。xy = UV オフセット, zw = UV スケール (HLSL cascadeAtlasRect と同値)。
+    math::Vector4 atlasRect;
+    // アトラス上のピクセル矩形。ShadowPass が IRenderer::SetViewport へ渡す。
+    uint32_t      viewportX    = 0;
+    uint32_t      viewportY    = 0;
+    uint32_t      viewportSize = 0;
+    // このカスケードの正射影深度レンジで正規化した NDC バイアス。
+    float         biasNDC = 0.0f;
+    // このカスケードの 1 テクセルが覆うワールド距離 [m]。caster の極小カリングに使う。
+    float         texelWorldSize = 0.0f;
+};
+
 struct RenderPassContext {
     Scene& scene;
     renderer::IRenderer& renderer;
@@ -578,6 +631,12 @@ struct RenderPassContext {
     float                       shadowBiasNDC  = 0.0f;
     float                       shadowStrength = 1.0f;  // LightComponent から流れてくる影の濃さ
 
+    // ── カスケードシャドウ ──────────────────────────────────────────────────
+    // 有効なのは先頭 shadowCascadeCount 本。1 のときは従来の単一シャドウマップと等価
+    // (カスケード 0 がアトラス全面を占める) なので、パス側に分岐は要らない。
+    ShadowCascade               shadowCascades[renderer::kMaxShadowCascades];
+    int                         shadowCascadeCount = 1;
+
     // 雲シャドウ (Phase C) — RenderSystem が SkyRenderer から設定し、影パスが ShadowConstantsCB へ転送する。
     float                       cloudShadowStrength = 0.0f; // 0=無効
     float                       cloudShadowCoverage = 0.5f;
@@ -588,18 +647,28 @@ struct RenderPassContext {
     float                       cloudShadowTime     = 0.0f; // RenderSystem が Time::time を設定
 
     const math::Frustum* cameraFrustum = nullptr;
+    // 最遠カスケードの錐台 (= 影が届く範囲全体)。
+    // NOTE: ShadowPass はカスケードごとに shadowCascades[i].frustum でカリングする。
+    //       こちらは「影の到達範囲に入るか」を 1 回で判定したいパス向けの代表値。
     const math::Frustum* lightFrustum  = nullptr;
     OcclusionCuller*      occlusionCuller = nullptr;
     // 空連動 IBL の永続状態 (フレームをまたぐ。RenderSystem が static 実体を指す)。
     EnvironmentResources* environmentResources = nullptr;
     const physics::World* physicsWorld   = nullptr;
 
+    // カメラ視点で実際に発行した描画の統計。
+    // WHY: パスごとに手書きで加算すると新パス追加時に数え漏れる。
+    //      ジオメトリ系パスは SubmitCounted() 経由で Submit し、集計を 1 か所に集める。
     int statsTotalObjects    = 0;
     int statsFrustumCulled   = 0;
     int statsOcclusionCulled = 0;
     int statsDrawCalls       = 0;
     int statsVertexCount     = 0;
     int statsTriangleCount   = 0;
+    // シャドウマップ描画は同じジオメトリを光源視点で再描画するため、
+    // カメラ統計に混ぜず独立したカウンターへ集計する。
+    int statsShadowDrawCalls     = 0;
+    int statsShadowTriangleCount = 0;
     int statsParticleEmitters = 0;
     int statsParticleVisible = 0;
     int statsParticleCulled = 0;
@@ -612,6 +681,44 @@ struct RenderPassContext {
     //      未設定 (nullptr) の場合は空ハンドルを返す。
     std::function<renderer::ResourceHandle<renderer::RenderTargetTag>(std::string_view)> getTransientRT;
 };
+
+// DrawCall 1 件が描く三角形数。
+// WHY: indexCount=0 の非インデックス描画 (フルスクリーン三角形・SV_VertexID 生成ジオメトリ) は
+//      vertexCount を 3 で割る必要があり、加算側で毎回書き分けると数え間違いが起きる。
+[[nodiscard]] inline int DrawCallTriangleCount(const renderer::DrawCall& call)
+{
+    if (call.topology != renderer::PrimitiveTopology::TRIANGLE_LIST) return 0;
+    const uint32_t perInstance = call.indexCount > 0 ? call.indexCount / 3u : call.vertexCount / 3u;
+    return static_cast<int>(perInstance * (call.instanceCount > 0 ? call.instanceCount : 1u));
+}
+
+// DrawCall 1 件が描く頂点数 (インスタンシングを含む)。
+// WHY: インデックス描画では「メッシュのユニーク頂点数」を表示したいので vertexCount を優先し、
+//      vertexCount を埋めていないパスのために indexCount へフォールバックする。
+[[nodiscard]] inline int DrawCallVertexCount(const renderer::DrawCall& call)
+{
+    const uint32_t perInstance = call.vertexCount > 0 ? call.vertexCount : call.indexCount;
+    return static_cast<int>(perInstance * (call.instanceCount > 0 ? call.instanceCount : 1u));
+}
+
+// ジオメトリ系パス共通の Submit ラッパー。カメラ視点の描画統計を同時に加算する。
+// WHY: Stats パネルの数値は「実際に GPU へ投げた描画」でなければ意味がない。
+//      各パスがこのヘルパーを使うことで、パスを増やしても統計が自動的に追従する。
+inline void SubmitCounted(RenderPassContext& ctx, const renderer::DrawCall& call)
+{
+    ctx.renderer.Submit(call, ctx.resources);
+    ++ctx.statsDrawCalls;
+    ctx.statsVertexCount   += DrawCallVertexCount(call);
+    ctx.statsTriangleCount += DrawCallTriangleCount(call);
+}
+
+// シャドウマップ用 Submit ラッパー。光源視点の描画をカメラ統計と分けて集計する。
+inline void SubmitCountedShadow(RenderPassContext& ctx, const renderer::DrawCall& call)
+{
+    ctx.renderer.Submit(call, ctx.resources);
+    ++ctx.statsShadowDrawCalls;
+    ctx.statsShadowTriangleCount += DrawCallTriangleCount(call);
+}
 
 // スキンメッシュ描画に使う b3 パレットを解決する。優先順位:
 //   1. AnimatorComponent が評価したパレット (アニメーション中)

@@ -9,6 +9,7 @@
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
@@ -236,18 +237,16 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
                     anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
                     smr->model, h.bindPoseSkinningCB);
 
-                // 通常描画パスと同じく meshIndex 指定 (単一サブメッシュ描画) を尊重する
-                const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
-                const int meshEnd   = (smr->meshIndex < 0)
-                    ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
-                for (int mi = meshStart; mi < meshEnd; ++mi) {
+                // 通常描画パスと同じく、モデル全体のうち可視スロットの submesh だけを描く。
+                const auto* mat = go.GetComponent<MaterialComponent>();
+                for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
                     const auto& meshPtr = smr->model->meshes[mi];
                     if (!meshPtr) continue;
                     if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+                    if (mat && !mat->SlotAt(mi).visible) continue;
 
                     renderer::DrawCall dc;
-                    dc.vertexBuffer = smr->ResolveVertexBuffer(
-                        static_cast<size_t>(mi), meshPtr->vertexBuffer);
+                    dc.vertexBuffer = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
                     dc.indexBuffer = meshPtr->indexBuffer;
                     dc.indexCount = meshPtr->indexCount;
                     dc.vertexCount = meshPtr->vertexCount;

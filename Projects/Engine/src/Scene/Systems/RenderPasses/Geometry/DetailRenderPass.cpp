@@ -422,7 +422,7 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                     dc.constantBuffers[3] = handles.lightCB;
                     dc.textures[0]        = albedoTex;
 
-                    renderer.Submit(dc, resources);
+                    SubmitCounted(ctx, dc);
                 }
                 else
                 {
@@ -464,7 +464,7 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                         dc.constantBuffers[2] = matCBH;
                         dc.textures[0]        = albedoTex;
 
-                        renderer.Submit(dc, resources);
+                        SubmitCounted(ctx, dc);
                     };
 
                     if (isBillboard) {
