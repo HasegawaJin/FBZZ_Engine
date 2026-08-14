@@ -4,18 +4,18 @@ file(GLOB_RECURSE PHYSICS_SOURCES CONFIGURE_DEPENDS
     include/*.hpp
 )
 
-add_library(fbzz_physics SHARED ${PHYSICS_SOURCES})
-set_target_properties(fbzz_physics PROPERTIES
+add_library(FBZZPhysics SHARED ${PHYSICS_SOURCES})
+set_target_properties(FBZZPhysics PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON
     OUTPUT_NAME "FBZZPhysics"
 )
 
-target_include_directories(fbzz_physics
+target_include_directories(FBZZPhysics
     PUBLIC  include
     PRIVATE src
 )
 
-target_link_libraries(fbzz_physics
-    PUBLIC  fbzz_math
-    PRIVATE tomlplusplus
+target_link_libraries(FBZZPhysics
+    PUBLIC  FBZZMath
+    PRIVATE TomlPlusPlus
 )
