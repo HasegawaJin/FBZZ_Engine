@@ -53,6 +53,13 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                     mr.mesh = model->meshes[0].get();
                     });
             }
+
+            ImGui::Checkbox("Cast Shadows", &mr.castShadows);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "ShadowPass はシーンを光源視点でもう一度描く。\n"
+                    "影が絵に出ないオブジェクト (小物・天井裏・遠景) を外すと、\n"
+                    "見た目を変えずにシャドウ描画量をそのぶん減らせる。");
         });
 
     DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
@@ -65,19 +72,31 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 });
 
             if (smr.model) {
-                const int meshCount = static_cast<int>(smr.model->meshes.size());
-                ImGui::DragInt("Mesh Index", &smr.meshIndex, 1.0f, 0, std::max(0, meshCount - 1));
-                ImGui::TextDisabled("%d mesh(es) | %s skeleton",
+                // WHY: submesh の指定 UI は持たない。1 GameObject = モデル全体を描き、
+                //      submesh ごとの見た目は Material コンポーネントのスロットで決める。
+                const size_t meshCount = smr.model->meshes.size();
+                ImGui::TextDisabled("%zu submesh(es) | %s skeleton",
                     meshCount, smr.model->skeleton ? "has" : "no");
 
-                if (!ctx.GetSelectedGO()->GetComponent<scene::MaterialComponent>()) {
+                auto* selected = ctx.GetSelectedGO();
+                auto* mat = selected ? selected->GetComponent<scene::MaterialComponent>() : nullptr;
+                if (!mat) {
                     ImGui::TextColored({ 1.0f, 0.8f, 0.2f, 1.0f }, "! Material component required");
-                    if (ImGui::Button("Add Material")) {
-                        if (auto* go2 = ctx.GetSelectedGO())
-                            go2->AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+                    if (ImGui::Button("Add Material") && selected)
+                        selected->AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+                } else if (mat->SlotCount() != meshCount) {
+                    // スロット数と submesh 数がずれていても描画は主マテリアルへフォールバック
+                    // するので壊れないが、submesh ごとに .mat を割り当てたい場合に備えて促す。
+                    ImGui::TextColored({ 1.0f, 0.8f, 0.2f, 1.0f },
+                        "Material slots: %zu / %zu submesh", mat->SlotCount(), meshCount);
+                    if (ImGui::Button("Match Material Slots")) {
+                        mat->ResizeSlots(meshCount);
+                        if (ctx.markSceneDirty) ctx.markSceneDirty();
                     }
                 }
             }
+
+            ImGui::Checkbox("Cast Shadows", &smr.castShadows);
         });
 
     DrawComponentSection<scene::LODGroupComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "LOD Group",
@@ -91,7 +110,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::PushID(static_cast<int>(levelIndex));
                 const std::string label = "LOD " + std::to_string(levelIndex);
                 if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-                    ImGui::SliderFloat("Screen Relative Height", &level.screenRelativeHeight, 0.0f, 1.0f);
+                    widgets::RangeField("Screen Relative Height", level.screenRelativeHeight, 0.0f, 1.0f);
 
                     int removeRenderer = -1;
                     for (size_t rendererIndex = 0; rendererIndex < level.renderers.size(); ++rendererIndex) {

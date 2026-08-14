@@ -14,7 +14,7 @@ namespace fbzz::asset {
 
 // fzmat の render_path フィールドが取れる値。
 // WHY: カスタムシェーダーのレンダーパス振り分けをエンジンコード変更なしに制御するため。
-//      "auto"     → IsForwardOnlyShader() 名前チェックにフォールバック (従来動作)。
+//      "auto"     → 明示的なレンダーパス指定なし。
 //      "forward"  → 常に Forward パスで描画 (カスタムエフェクト・Unlit 系)。
 //      "deferred" → 常に GBuffer Deferred パスで描画 (PBR 系)。
 //      "particle" → ParticleEmitter 専用。ParticlePass が albedo テクスチャと blendMode を参照する。
@@ -24,7 +24,7 @@ enum class RenderPath { Auto, Deferred, Forward, Particle, Trail };
 // fzmat の mesh_type フィールドが取れる値。
 // WHY: Surface シェーダー判定をパス文字列検索から fzmat 宣言へ移し、
 //      任意フォルダのカスタムシェーダーでも SkinnedMeshRenderer への誤アサイン警告が機能するようにする。
-//      "surface" → static mesh 専用 (Skinned に割り当てると警告 + SkinnedPBR フォールバック)。
+//      "surface" → static mesh 専用 (Skinned に割り当てると警告 + SkinnedPBR へ置換)。
 //      "skinned" → rigged mesh 専用。
 //      "any"     → 両方可 (カスタムシェーダーのデフォルト)。
 enum class MeshType { Any, Surface, Skinned };

@@ -416,8 +416,7 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         // WHY: Blender はルートノードの +90°X / scale100 をアニメトラックでも毎キー再生する。
         //      バインド側 (ノード) からは除去済みのため、トラック側にも同じ F = q⁻¹·(1/s) を
         //      合成しないと骨階層とアニメが 90° / 100 倍ずれてしまう。
-        const aiQuaternion axisInvQ(ctx.axisFixRotation[3], -ctx.axisFixRotation[0],
-                                    -ctx.axisFixRotation[1], -ctx.axisFixRotation[2]);
+        const aiQuaternion axisInvQ;
         const float axisInvS = 1.0f / ctx.axisFixScale;
 
 

@@ -5,6 +5,85 @@
 
 namespace fbzz::editor {
 
+namespace {
+
+// submesh スロットの Inspector 表示名を生成する。
+// WHY: Mesh は GPU/頂点データのみを保持し、アセット名は Model 側で管理するため、
+//      Inspector では安定したスロット番号を表示する。
+std::string SubmeshLabel(size_t slotIndex)
+{
+    return "Element " + std::to_string(slotIndex);
+}
+
+// submesh 1 以降のマテリアルスロットを編集する UI。
+// WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体を描くようになり、
+//      submesh ごとの .mat 割り当てがこのコンポーネントの責務になった。
+//      .mat の中身 (シェーダー・パラメータ) の編集は従来どおり主スロットと
+//      Asset Inspector に任せ、ここでは「どの submesh にどの .mat か」だけを扱う。
+void DrawMaterialSlots(scene::MaterialComponent& mc, EditorContext& ctx)
+{
+    scene::GameObject* go = ctx.GetSelectedGO();
+    const auto* smr = go ? go->GetComponent<scene::SkinnedMeshRenderer>() : nullptr;
+    const size_t submeshCount = (smr && smr->model) ? smr->model->meshes.size() : 0u;
+
+    // 単一マテリアルのオブジェクトでは、追加スロットが無い限り UI を出さない。
+    if (mc.extraSlots.empty() && submeshCount <= 1u) return;
+
+    ImGui::SeparatorText("Submesh Materials");
+    if (submeshCount > 0)
+        ImGui::TextDisabled("%zu slot(s) / %zu submesh", mc.SlotCount(), submeshCount);
+
+    int removeIndex = -1;
+    for (size_t i = 0; i < mc.extraSlots.size(); ++i) {
+        auto& slot = mc.extraSlots[i];
+        const size_t slotIndex = i + 1u;
+        ImGui::PushID(static_cast<int>(slotIndex));
+
+        const std::string label = SubmeshLabel(slotIndex);
+        if (widgets::AssetPathField(label.c_str(), slot.materialPath, ".mat", ctx.projectRoot)) {
+            // AssetPathField が materialPath を直接書き換えるため、
+            // 解決済みハンドルと GPU キャッシュをここで捨てて再解決させる。
+            slot.materialAsset = {};
+            slot.material.reset();
+            slot.propertyValidationCache.clear();
+            slot.propertyValidationDescriptor = nullptr;
+            slot.EnsureMaterialAsset();
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        if (!slot.materialPath.empty() && !slot.materialAsset.IsValid())
+            ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
+                               "Missing: %s", slot.materialPath.c_str());
+        else if (slot.materialPath.empty())
+            ImGui::TextDisabled("未割当 — 主マテリアルで描画されます");
+
+        if (ImGui::Checkbox("Visible", &slot.visible)) {
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Remove")) removeIndex = static_cast<int>(i);
+        ImGui::PopID();
+    }
+
+    if (removeIndex >= 0) {
+        mc.extraSlots.erase(mc.extraSlots.begin() + removeIndex);
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
+
+    if (ImGui::Button("Add Slot")) {
+        mc.extraSlots.emplace_back();
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
+    if (submeshCount > 0 && mc.SlotCount() != submeshCount) {
+        ImGui::SameLine();
+        if (ImGui::Button("Match Submesh Count")) {
+            mc.ResizeSlots(submeshCount);
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+    }
+}
+
+} // namespace
+
 void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     DrawComponentSection<scene::MaterialComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Material",
@@ -26,7 +105,12 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
                     ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
                                        "Missing: %s", mc.materialPath.c_str());
+                ImGui::Checkbox("Visible", &mc.visible);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("submesh 0 を描画するか");
             }
+
+            DrawMaterialSlots(mc, ctx);
 
             auto* matPtr = asset::AssetManager::GetMaterial(mc.materialAsset);
             if (!matPtr)
@@ -136,16 +220,16 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     if (values.size() == 1) {
                         materialDirty |= ImGui::DragFloat(name.c_str(), values.data(), 0.01f);
                     } else if (values.size() == 2) {
-                        materialDirty |= ImGui::DragFloat2(name.c_str(), values.data(), 0.01f);
+                        materialDirty |= widgets::DragAxes(name.c_str(), values.data(), 2, 0.01f);
                     } else if (values.size() == 3) {
-                        materialDirty |= ImGui::DragFloat3(name.c_str(), values.data(), 0.01f);
+                        materialDirty |= widgets::DragAxes(name.c_str(), values.data(), 3, 0.01f);
                     } else if (values.size() == 4) {
                         const bool looksLikeColor = name.find("color") != std::string::npos
                             || name.find("Color") != std::string::npos
                             || name.find("albedo") != std::string::npos;
                         materialDirty |= looksLikeColor
                             ? ImGui::ColorEdit4(name.c_str(), values.data())
-                            : ImGui::DragFloat4(name.c_str(), values.data(), 0.01f);
+                            : widgets::DragAxes(name.c_str(), values.data(), 4, 0.01f);
                     } else {
                         for (size_t i = 0; i < values.size(); ++i) {
                             ImGui::PushID(static_cast<int>(i));

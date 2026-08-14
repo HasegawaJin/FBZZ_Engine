@@ -51,7 +51,8 @@ enum class MaterialBlendMode {
 };
 
 // MaterialComponentをDLL境界へ公開しないopaque runtime handle。
-// slotは将来の複数Material Rendererに備え、現行MaterialComponentでは0のみ有効。
+// slot は submesh 番号に対応する。SkinnedMeshRenderer は 1 GameObject で
+// モデル全体を描くため、submesh ごとの見た目はこの slot で指定する。
 class MaterialInstance {
 public:
     MaterialInstance() = default;
@@ -83,7 +84,10 @@ private:
     enum class PropertyKind { Float, Int, Vector3, Vector4, Texture };
     MaterialInstance(Script* owner, EntityRef target, uint32_t slot)
         : m_script(owner), m_target(target), m_slot(slot) {}
+    // 戻り値は MaterialSlot* (DLL 境界へ型を出さないため void*)。
     [[nodiscard]] void* ResolveComponent(bool ensure) const;
+    // スロットを所有する MaterialComponent。コンポーネント全体の操作に使う。
+    [[nodiscard]] struct MaterialComponent* ResolveOwner(bool ensure) const;
     [[nodiscard]] bool ValidateProperty(MaterialPropertyId property, PropertyKind kind) const;
     [[nodiscard]] const std::string& ResolvePropertyName(void* component,
                                                         MaterialPropertyId property) const;
@@ -104,9 +108,6 @@ struct ScriptMaterialProxy {
                            const MaterialRef& material,
                            uint32_t slot = 0) const;
 
-    // 既存Script互換のself向けshort-hand。全てinstance overrideへ書く。
-    [[deprecated("Use SetSharedMaterial(MaterialRef)")]]
-    bool SetMaterial(std::string_view materialPath) const;
     bool EnsureMaterial(std::string_view materialPath) const;
     bool HasParam(std::string_view param) const;
     bool SetFloat(std::string_view param, float value) const;
@@ -116,7 +117,14 @@ struct ScriptMaterialProxy {
     bool SetTexture(std::string_view slot, std::string_view texturePath) const;
     float GetFloat(std::string_view param) const;
     math::Vector3 GetVector3(std::string_view param) const;
+    // コンポーネント全体の有効/無効。
     bool SetEnabled(bool enabled) const;
+    // submesh (スロット) 単位の表示切替。
+    // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体を描くようになったため、
+    //      「装備の一部だけ隠す」といった操作はスロット番号で行う。
+    bool SetSlotVisible(uint32_t slot, bool visible) const;
+    // 指定 submesh だけを表示する。slot < 0 で全 submesh を表示。
+    bool SetOnlyVisibleSlot(int slot) const;
     bool SetBlendMode(MaterialBlendMode blendMode) const;
     bool SetDoubleSided(bool doubleSided) const;
     bool SetRenderQueue(int32_t renderQueue) const;

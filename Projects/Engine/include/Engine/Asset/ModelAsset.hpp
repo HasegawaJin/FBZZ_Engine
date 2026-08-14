@@ -15,6 +15,7 @@ namespace fbzz::asset {
 
 struct SubmeshEntry {
     uint32_t                        materialSlotIndex = 0;
+    std::string                     name;
     std::unique_ptr<renderer::Mesh> mesh;
 };
 
@@ -33,11 +34,6 @@ struct ModelAsset {
     bool IsSkinned()   const { return skeleton != nullptr; }
     uint32_t LodCount() const { return static_cast<uint32_t>(lods.size()); }
 
-    // 後方互換: LOD0 の全サブメッシュを返す
-    const std::vector<SubmeshEntry>& GetSubmeshes() const {
-        static const std::vector<SubmeshEntry> empty;
-        return lods.empty() ? empty : lods[0].submeshes;
-    }
 };
 
 } // namespace fbzz::asset

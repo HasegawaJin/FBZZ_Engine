@@ -467,10 +467,7 @@ bool WriteMergedMesh(
         const bool applyNodeTransform = meshTransforms && transformIt != meshTransforms->end();
         const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
         const bool applyStaticAxisFix = ctx && ctx->applyStaticNodeTransforms;
-        const aiQuaternion axisInvQ = ctx
-            ? aiQuaternion(ctx->axisFixRotation[3], -ctx->axisFixRotation[0],
-                           -ctx->axisFixRotation[1], -ctx->axisFixRotation[2])
-            : aiQuaternion();
+        const aiQuaternion axisInvQ;
         const float axisInvS = ctx ? (1.0f / ctx->axisFixScale) : 1.0f;
         // スキンメッシュは .fzasset 側と同じバインド回転を焼く。ここを揃えないと
         // 統合 .mesh (CPU 側コピー) だけ Z-up のまま残る。
@@ -677,7 +674,12 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
                                   ? mesh->mMaterialIndex : 0u;
         smHdr.vertexCount  = mesh->mNumVertices;
         smHdr.indexCount   = static_cast<uint32_t>(indices.size());
-        const FzSubmeshExtensionV2 smExt{ mesh->mNumAnimMeshes };
+        FzSubmeshExtensionV3 smExt{};
+        smExt.morphTargetCount = mesh->mNumAnimMeshes;
+        const std::string meshName = mesh->mName.length > 0
+            ? mesh->mName.C_Str() : ("Mesh_" + std::to_string(mi));
+        const size_t meshNameLength = std::min(meshName.size(), sizeof(smExt.name) - 1);
+        std::memcpy(smExt.name, meshName.data(), meshNameLength);
 
         if (!skinned || !mesh->HasBones()) {
             smHdr.vertexFormat = 0;
@@ -685,8 +687,7 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
             const auto transformIt = staticMeshTransforms.find(mi);
             const bool applyNodeTransform = transformIt != staticMeshTransforms.end();
             const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
-            const aiQuaternion axisInvQ(ctx.axisFixRotation[3], -ctx.axisFixRotation[0],
-                                        -ctx.axisFixRotation[1], -ctx.axisFixRotation[2]);
+            const aiQuaternion axisInvQ;
             const float axisInvS = 1.0f / ctx.axisFixScale;
             for (uint32_t i=0; i<mesh->mNumVertices; ++i) {
                 verts[i] = ctx.applyStaticNodeTransforms
@@ -745,8 +746,7 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         const auto transformIt = staticMeshTransforms.find(mi);
         const bool applyNodeTransform = transformIt != staticMeshTransforms.end();
         const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
-        const aiQuaternion axisInvQ(ctx.axisFixRotation[3], -ctx.axisFixRotation[0],
-                                    -ctx.axisFixRotation[1], -ctx.axisFixRotation[2]);
+        const aiQuaternion axisInvQ;
         // 静的メッシュは transform 側で既に回っているのでモーフの追加回転は不要。
         // スキンメッシュのみ、頂点へ焼いた R を同じくデルタへ適用する。
         const bool meshIsSkinned = skinned && mesh->HasBones();

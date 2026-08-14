@@ -22,7 +22,7 @@
 
 namespace fbzz::asset {
 
-constexpr uint32_t FZMODEL_VERSION      = 2;
+constexpr uint32_t FZMODEL_VERSION      = 3;
 constexpr uint32_t FZMODEL_FLAG_SKINNED = 1u << 0;
 constexpr uint32_t FZMODEL_FLAG_LOD     = 1u << 1;
 constexpr uint32_t FZMODEL_SLOT_NAME_LEN = 64;
@@ -55,9 +55,12 @@ struct FzSubmeshHeader {
 };
 static_assert(sizeof(FzSubmeshHeader) == 32, "FzSubmeshHeader size mismatch");
 
-// v2 では各 FzSubmeshHeader の直後に置き、頂点/Indexの後へ Morph データを追加する。
-struct FzSubmeshExtensionV2 {
+// v3 では、インポート元の aiMesh::mName をサブメッシュごとに保持する。
+// WHY: Scene 配置時に Mesh_0 のようなエンジン都合の名前へ置き換えず、
+//      FBX のメッシュ名をそのまま GameObject 名へ反映するため。
+struct FzSubmeshExtensionV3 {
     uint32_t morphTargetCount;
+    char     name[128];
 };
 
 struct FzMorphTargetHeader {

@@ -225,6 +225,13 @@ bool MaterialExporter::Export(const aiMaterial* material,
     material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
     paramsTbl.insert("metallic",  metallic);
     paramsTbl.insert("roughness", roughness);
+    // 拡張 PBR ローブは既存 FBX の外観を変えないよう無効値で初期化し、
+    // 必要なマテリアルだけが .mat 上で有効化できるようにする。
+    paramsTbl.insert("clearcoat",          0.0f);
+    paramsTbl.insert("clearcoatRoughness", 0.10f);
+    paramsTbl.insert("sheen",              0.0f);
+    paramsTbl.insert("anisotropy",         0.0f);
+    paramsTbl.insert("sheenColor",         toml::array{ 1.0f, 1.0f, 1.0f });
     tbl.insert("params", std::move(paramsTbl));
 
     toml::table texTbl;

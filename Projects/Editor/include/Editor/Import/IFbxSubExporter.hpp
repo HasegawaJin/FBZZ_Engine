@@ -42,7 +42,6 @@ struct FbxImportContext {
     // 回転は除去しない: 頂点・ボーンの生データは Blender の Z-up のままで、Y-up への
     // 変換はこの -90°X が担っている。除去すると Y-up ランタイムで 90° 倒れる。
     std::vector<std::string> axisFixNodes;          // 正規化した RootNode 直下ノード名
-    float axisFixRotation[4] = { 0.f, 0.f, 0.f, 1.f }; // 常に identity (静的メッシュ頂点は回転を保持)
     float axisFixScale = 1.0f;                      // 除去した均一スケール s (unitScale へ移動済み)
 
     // NOTE (2026-08): ルート直下ノードから軸補正 R を剥がして入れ子時の二重掛けを

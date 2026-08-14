@@ -110,7 +110,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
         return nullptr;
     }
 
-    if ((hdr.version != 1 && hdr.version != FZMODEL_VERSION) || hdr.lodCount == 0) {
+    if (hdr.version != FZMODEL_VERSION || hdr.lodCount == 0) {
         FBZZ_LOG_ERROR("ModelAssetImporter: unsupported header version=%u lodCount=%u [%s]",
                        hdr.version, hdr.lodCount, absPath.c_str());
         return nullptr;
@@ -150,15 +150,16 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
                                li, si, absPath.c_str());
                 return nullptr;
             }
-            FzSubmeshExtensionV2 smExt{};
-            if (hdr.version >= 2 && !r.Read(smExt)) {
-                FBZZ_LOG_ERROR("ModelAssetImporter: truncated submesh v2 extension lod=%u submesh=%u [%s]",
+            FzSubmeshExtensionV3 smExtV3{};
+            if (!r.Read(smExtV3)) {
+                FBZZ_LOG_ERROR("ModelAssetImporter: truncated submesh v3 extension lod=%u submesh=%u [%s]",
                                li, si, absPath.c_str());
                 return nullptr;
             }
 
             SubmeshEntry& entry = lod.submeshes[si];
             entry.materialSlotIndex = smHdr.materialSlotIndex;
+            entry.name = smExtV3.name;
 
             auto mesh = std::make_unique<renderer::Mesh>();
             mesh->vertexCount  = smHdr.vertexCount;
@@ -211,8 +212,9 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
                 mesh->indexBuffer = resources->CreateIndexBuffer(
                     mesh->cpuIndices.data(), smHdr.indexCount);
 
-            mesh->morphTargets.resize(smExt.morphTargetCount);
-            for (uint32_t mi = 0; mi < smExt.morphTargetCount; ++mi) {
+            const uint32_t morphTargetCount = smExtV3.morphTargetCount;
+            mesh->morphTargets.resize(morphTargetCount);
+            for (uint32_t mi = 0; mi < morphTargetCount; ++mi) {
                 FzMorphTargetHeader morphHeader{};
                 if (!r.Read(morphHeader) || morphHeader.vertexCount != smHdr.vertexCount) {
                     FBZZ_LOG_ERROR("ModelAssetImporter: invalid morph header lod=%u submesh=%u morph=%u [%s]",

@@ -1,6 +1,6 @@
 // FBZZ Engine
 // AnimSubExporter.hpp | fbzz::editor
-// FBX → .anim バイナリ v2
+// FBX → .anim バイナリ v3
 #pragma once
 #include <Editor/Import/IFbxSubExporter.hpp>
 
