@@ -430,7 +430,17 @@ bool EditorApp::SaveSceneAsDialog()
 
     std::string path;
     if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
-    path = WithFbzzExtension(path);
+    return SaveScenePath(path);
+}
+
+// 指定パスへ保存する実体。ダイアログ経由と AI (Command Bus の scene.save) が共有する。
+// WHY: 保存は「書き出す」だけでは終わらず、lastScenePath / currentScenePath の更新、
+//      クリーン状態の再取得、Recent への追加までが 1 つの操作。AI 側で書き出しだけ
+//      真似ると、保存したのに dirty のままという食い違いが残る。
+bool EditorApp::SaveScenePath(const std::string& requestedPath)
+{
+    if (!m_ctx.activeScene || requestedPath.empty()) return false;
+    const std::string path = WithFbzzExtension(requestedPath);
 
     RemoveEditorHiding();
     const bool ok = SceneIO::Save(*m_ctx.activeScene, path);

@@ -75,7 +75,12 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
 // 矢印キーで選択中 UI 要素を微移動する（1px / Shift で 10px）。allowed=false のときは何もしない。
 void HandleUINudge(EditorContext& ctx, bool allowed);
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
+// 右上のナビゲーションギズモ (Blender / Godot 風の軸ボール)。
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
+// ナビゲーションギズモがマウスを取っているか。DrawOrientationGizmo より前に問い合わせるため、
+// 返る値は前フレームの状態 (ImGuizmo の ViewManipulate 判定と同じ扱い)。
+bool IsOrientationGizmoHovered();
+bool IsOrientationGizmoActive();
 void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& lastOp, int& lastMode, bool& prevOver, bool& prevUsing);
 // 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。
 // true を返している間はスナップドラッグ中なので、呼び出し側はギズモ・ピッキング・

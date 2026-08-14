@@ -120,9 +120,6 @@ bool Application::Init(const Window::Config& windowConfig,
     m_renderer = std::move(rendererBundle.renderer);
     m_imguiRenderer = std::move(rendererBundle.imguiRenderer);
 
-    m_window->SetResizeCallback([this](uint32_t w, uint32_t h) {
-        m_renderer->Resize(w, h);
-    });
 
     // AudioSourceComponentの要求を実Voiceへ変換できるよう、Applicationを音響の合成ルートにする。
     // EditorとStandaloneは同じAudioManagerを各ProjectRuntimeへ渡して利用する。

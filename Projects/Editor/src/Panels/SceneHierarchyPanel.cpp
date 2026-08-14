@@ -6,6 +6,7 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ColliderFit.hpp>
 #include <Editor/Util/ModelPlacement.hpp>
+#include <Editor/Util/ObjectPresets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -49,6 +50,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::editor {
@@ -100,303 +102,51 @@ void SetParentWithUndo(EditorContext& ctx,
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
-enum class PrimitiveTemplate {
-    Cube,
-    Sphere,
-    Plane,
-    Quad,
-    Cylinder,
-    Cone,
-    Torus,
-    Capsule
-};
-
-renderer::Mesh* CreatePrimitiveMesh(PrimitiveTemplate type)
-{
-    auto* resources = renderer::ResourceManager::Active();
-    if (!resources) return nullptr;
-
-    switch (type) {
-    case PrimitiveTemplate::Cube:     return renderer::PrimitiveMesh::Cube(*resources);
-    case PrimitiveTemplate::Sphere:   return renderer::PrimitiveMesh::Sphere(*resources);
-    case PrimitiveTemplate::Plane:    return renderer::PrimitiveMesh::Plane(*resources);
-    case PrimitiveTemplate::Quad:     return renderer::PrimitiveMesh::Quad(*resources);
-    case PrimitiveTemplate::Cylinder: return renderer::PrimitiveMesh::Cylinder(*resources);
-    case PrimitiveTemplate::Cone:     return renderer::PrimitiveMesh::Cone(*resources);
-    case PrimitiveTemplate::Torus:    return renderer::PrimitiveMesh::Torus(*resources);
-    case PrimitiveTemplate::Capsule:  return renderer::PrimitiveMesh::Capsule(*resources);
-    default:                          return nullptr;
-    }
-}
-
-const char* GetPrimitivePath(PrimitiveTemplate type)
-{
-    switch (type) {
-    case PrimitiveTemplate::Cube:     return "primitive:cube";
-    case PrimitiveTemplate::Sphere:   return "primitive:sphere";
-    case PrimitiveTemplate::Plane:    return "primitive:plane";
-    case PrimitiveTemplate::Quad:     return "primitive:quad";
-    case PrimitiveTemplate::Cylinder: return "primitive:cylinder";
-    case PrimitiveTemplate::Cone:     return "primitive:cone";
-    case PrimitiveTemplate::Torus:    return "primitive:torus";
-    case PrimitiveTemplate::Capsule:  return "primitive:capsule";
-    }
-    return "";
-}
-
-void AddTemplateCollider(scene::GameObject& go, PrimitiveTemplate type)
-{
-    // WHY: 固定寸法テンプレートだとメッシュの実寸 (Capsule 等) とズレる。
-    //      colliderfit がアタッチ済みメッシュの bounds から寸法を自動計算するため、
-    //      プリミティブの形状を変更してもここは修正不要になる。
-    switch (type) {
-    case PrimitiveTemplate::Sphere:
-        go.AddComponent<scene::SphereColliderComponent>(colliderfit::MakeFittedSphereCollider(go));
-        break;
-    case PrimitiveTemplate::Capsule:
-        go.AddComponent<scene::CapsuleColliderComponent>(colliderfit::MakeFittedCapsuleCollider(go));
-        break;
-    default:
-        go.AddComponent<scene::BoxColliderComponent>(colliderfit::MakeFittedBoxCollider(go));
-        break;
-    }
-}
-
-void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTemplate type)
-{
-    auto& go = ctx.activeScene->CreateGameObject(name);
-
-    scene::MeshRenderer mr;
-    mr.meshPath = GetPrimitivePath(type);
-    mr.mesh = CreatePrimitiveMesh(type);
-    go.AddComponent<scene::MeshRenderer>(mr);
-
-    scene::MaterialComponent mc;
-    mc.materialPath = "Assets/Materials/Surface/Lit.mat";
-    go.AddComponent<scene::MaterialComponent>(std::move(mc));
-
-    if (type == PrimitiveTemplate::Quad) {
-        auto script = scene::ScriptFactory::Create("QuadBillboardComponent");
-        if (script) {
-            script->SetContext(ctx.activeScene, &go);
-            script->Reset();
-            script->OnValidate();
-            scene::ScriptComponent sc;
-            scene::ScriptEntry entry;
-            entry.script = std::move(script);
-            sc.scripts.emplace_back(std::move(entry));
-            go.AddComponent<scene::ScriptComponent>(std::move(sc));
-        }
-    }
-
-    AddTemplateCollider(go, type);
-
-    ctx.selectedEntities = { go.GetID() };
-}
-
-void CreateLightObject(EditorContext& ctx, const char* name, scene::LightComponent::Type type)
-{
-    auto& go = ctx.activeScene->CreateGameObject(name);
-    scene::LightComponent light;
-    light.type = type;
-    if (type == scene::LightComponent::Type::Point) {
-        light.intensity = 4.0f;
-        light.range = 8.0f;
-    } else if (type == scene::LightComponent::Type::Spot) {
-        light.intensity = 5.0f;
-        light.range = 12.0f;
-    }
-    go.AddComponent<scene::LightComponent>(light);
-    ctx.selectedEntities = { go.GetID() };
-}
-
-void CreateCameraObject(EditorContext& ctx)
-{
-    auto& go = ctx.activeScene->CreateGameObject("Camera");
-    go.transform.position = { 0.0f, 2.0f, -5.0f };
-    go.AddComponent<scene::CameraComponent>();
-    ctx.selectedEntities = { go.GetID() };
-}
-
-// デカール投影ボリューム: X/Z が投影面サイズ、Y が投影深度
-void CreateDecalObject(EditorContext& ctx, const char* name, float sizeXZ, float depth)
-{
-    auto& go = ctx.activeScene->CreateGameObject(name);
-    go.transform.scale = { sizeXZ, depth, sizeXZ };
-    go.AddComponent<scene::DecalComponent>();
-    ctx.selectedEntities = { go.GetID() };
-}
-
-// -----------------------------------------------------------------------
-// UI オブジェクト生成ヘルパー
-// WHY: Unity の GameObject/UI メニューに倣い、よく使う UI 要素を
-//      1 操作で配置できるようにする。コンポーネントの組み合わせを
-//      ここで確定させることで、ユーザーが手動で Add Component する手間を省く。
-// -----------------------------------------------------------------------
-
-// UICanvas ルートを生成する。ScreenSpace を既定値とする。
-void CreateUICanvasObject(EditorContext& ctx)
-{
-    auto& go = ctx.activeScene->CreateGameObject("Canvas");
-    go.AddComponent<scene::UICanvas>();
-    ctx.selectedEntities = { go.GetID() };
-    ctx.activeUICanvas = go.GetID();
-}
-
-// UIImage のみのシンプルな画像要素。サイズは transform.scale.xy で制御する。
-void CreateUIImageObject(EditorContext& ctx, const char* name,
-                         const math::Vector4& color, float w, float h)
-{
-    auto& go = ctx.activeScene->CreateGameObject(name);
-    go.transform.scale = { w, h, 1.0f };
-    scene::UIImage img;
-    img.color = color;
-    go.AddComponent<scene::UIImage>(img);
-    ctx.selectedEntities = { go.GetID() };
-}
-
-// UIText テキスト要素。デフォルト文字列と白色で生成する。
-void CreateUITextObject(EditorContext& ctx)
-{
-    auto& go = ctx.activeScene->CreateGameObject("Text");
-    scene::UIText txt;
-    txt.text     = "Text";
-    txt.fontSize = 42.0f;
-    txt.color    = { 1.0f, 1.0f, 1.0f, 1.0f };
-    go.AddComponent<scene::UIText>(txt);
-    ctx.selectedEntities = { go.GetID() };
-}
-
-// UIButton: 背景 Image + Button コンポーネントを親に、
-//           ラベル Text を子として持つ Unity 標準構成で生成する。
-void CreateUIButtonObject(EditorContext& ctx)
-{
-    auto& go = ctx.activeScene->CreateGameObject("Button");
-    go.transform.scale = { 160.0f, 40.0f, 1.0f };
-
-    scene::UIImage img;
-    img.color = { 0.90f, 0.90f, 0.90f, 1.0f };
-    go.AddComponent<scene::UIImage>(img);
-    go.AddComponent<scene::UIButton>();
-
-    // ラベル: 暗めテキストで中央配置 (位置は inspector で調整)
-    auto& label = ctx.activeScene->CreateGameObject("Label");
-    scene::UIText txt;
-    txt.text     = "Button";
-    txt.fontSize = 24.0f;
-    txt.color    = { 0.20f, 0.20f, 0.20f, 1.0f };
-    label.AddComponent<scene::UIText>(txt);
-    label.SetParent(&go);
-
-    ctx.selectedEntities = { go.GetID() };
-}
-
-// UILayoutGroup 水平 / 垂直レイアウト
-void CreateUILayoutGroupObject(EditorContext& ctx, const char* name, scene::UILayoutAxis axis)
-{
-    auto& go = ctx.activeScene->CreateGameObject(name);
-    scene::UILayoutGroup layout;
-    layout.axis    = axis;
-    layout.spacing = 8.0f;
-    go.AddComponent<scene::UILayoutGroup>(layout);
-    ctx.selectedEntities = { go.GetID() };
-}
-
+// GameObject 生成テンプレートは Editor/Util/ObjectPresets.hpp へ移動 (AI の preset.create と共有するため)
 // RemoveSelection / PruneSelection / DestroySelected / DuplicateHierarchyRecursive は
 // SceneEditUtils.hpp へ移動 (Scene Viewport の Delete / Ctrl+D と共有するため)
 
 // parentId が有効な場合は新規 GO を parentId の子として生成する。
+//
+// メニューの中身は ObjectPresets.hpp の登録表から組み立てる。
+// WHY: 以前はここに ImGui::MenuItem とコンポーネント構成が直接書かれていたため、
+//      (1) プリセットを増やすたびにネスト構造を手で書き足す、(2) AI からは同じものを
+//      1 個も作れない (Command Bus はこの関数を通れない)、という状態だった。
+//      表から描くことで、追加したプリセットがメニューと AI の両方へ同時に現れる。
 void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
                           scene::EntityID parentId = {})
 {
-    if (ImGui::MenuItem("Empty")) {
-        deferred = [&ctx]() {
-            auto& newGo = ctx.activeScene->CreateGameObject("GameObject");
-            ctx.selectedEntities = { newGo.GetID() };
-        };
-    }
+    std::string_view openCategory;   // 今 BeginMenu している見出し (空 = 開いていない)
+    bool             categoryOpen = false;
 
-    if (ImGui::BeginMenu("3D Object")) {
-        if (ImGui::MenuItem("Cube"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Cube", PrimitiveTemplate::Cube); };
-        if (ImGui::MenuItem("Sphere"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Sphere", PrimitiveTemplate::Sphere); };
-        if (ImGui::MenuItem("Plane"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Plane", PrimitiveTemplate::Plane); };
-        if (ImGui::MenuItem("Quad"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Quad", PrimitiveTemplate::Quad); };
-        if (ImGui::MenuItem("Cylinder"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Cylinder", PrimitiveTemplate::Cylinder); };
-        if (ImGui::MenuItem("Cone"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Cone", PrimitiveTemplate::Cone); };
-        if (ImGui::MenuItem("Torus"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Torus", PrimitiveTemplate::Torus); };
-        if (ImGui::MenuItem("Capsule"))
-            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Capsule", PrimitiveTemplate::Capsule); };
-        ImGui::EndMenu();
-    }
+    auto closeCategory = [&]() {
+        if (categoryOpen) { ImGui::EndMenu(); categoryOpen = false; }
+        openCategory = {};
+    };
 
-    if (ImGui::BeginMenu("Light")) {
-        if (ImGui::MenuItem("Directional Light"))
-            deferred = [&ctx]() { CreateLightObject(ctx, "Directional Light", scene::LightComponent::Type::Directional); };
-        if (ImGui::MenuItem("Point Light"))
-            deferred = [&ctx]() { CreateLightObject(ctx, "Point Light", scene::LightComponent::Type::Point); };
-        if (ImGui::MenuItem("Spot Light"))
-            deferred = [&ctx]() { CreateLightObject(ctx, "Spot Light", scene::LightComponent::Type::Spot); };
-        ImGui::EndMenu();
-    }
-
-    if (ImGui::MenuItem("Camera"))
-        deferred = [&ctx]() { CreateCameraObject(ctx); };
-
-    // WHY: Unity と同様に UI 系オブジェクトを右クリック 1 操作で配置できる動線を用意する。
-    //      Canvas 配下への自動ペアレントは行わず、ユーザーがヒエラルキーで自由に構成できるよう
-    //      root レベルに生成する（3D Object / Light と同じ方針）。
-    if (ImGui::BeginMenu("UI")) {
-        if (ImGui::MenuItem("Canvas"))
-            deferred = [&ctx]() { CreateUICanvasObject(ctx); };
-        ImGui::Separator();
-        if (ImGui::MenuItem("Image"))
-            deferred = [&ctx]() {
-                CreateUIImageObject(ctx, "Image",
-                    { 1.0f, 1.0f, 1.0f, 1.0f }, 100.0f, 100.0f);
-            };
-        if (ImGui::MenuItem("Text"))
-            deferred = [&ctx]() { CreateUITextObject(ctx); };
-        if (ImGui::MenuItem("Button"))
-            deferred = [&ctx]() { CreateUIButtonObject(ctx); };
-        if (ImGui::MenuItem("Panel"))
-            // 半透明グレーで canvas 全体を覆う背景パネル
-            deferred = [&ctx]() {
-                CreateUIImageObject(ctx, "Panel",
-                    { 0.20f, 0.20f, 0.20f, 0.80f }, 1920.0f, 1080.0f);
-            };
-        ImGui::Separator();
-        if (ImGui::BeginMenu("Layout Group")) {
-            if (ImGui::MenuItem("Horizontal"))
-                deferred = [&ctx]() {
-                    CreateUILayoutGroupObject(ctx, "Horizontal Layout Group",
-                        scene::UILayoutAxis::Horizontal);
-                };
-            if (ImGui::MenuItem("Vertical"))
-                deferred = [&ctx]() {
-                    CreateUILayoutGroupObject(ctx, "Vertical Layout Group",
-                        scene::UILayoutAxis::Vertical);
-                };
-            ImGui::EndMenu();
+    for (const ObjectPreset& preset : ObjectPresetCatalog()) {
+        if (preset.category != openCategory) {
+            closeCategory();
+            openCategory = preset.category;
+            // カテゴリ空文字は Add Object 直下へ置く (Empty / Camera)。
+            categoryOpen = !preset.category.empty()
+                && ImGui::BeginMenu(std::string(preset.category).c_str());
+            // BeginMenu が false = 折り畳まれている。この見出しの項目はまとめて描かない。
+            if (!preset.category.empty() && !categoryOpen) continue;
+        } else if (!preset.category.empty() && !categoryOpen) {
+            continue; // 閉じている見出しの続き
         }
-        ImGui::EndMenu();
-    }
 
-    if (ImGui::BeginMenu("Decal")) {
-        if (ImGui::MenuItem("Decal (2m x 2m)"))
-            deferred = [&ctx]() { CreateDecalObject(ctx, "Decal", 2.0f, 0.5f); };
-        if (ImGui::MenuItem("Decal (1m x 1m)"))
-            deferred = [&ctx]() { CreateDecalObject(ctx, "Decal (Small)", 1.0f, 0.3f); };
-        if (ImGui::MenuItem("Decal (5m x 5m)"))
-            deferred = [&ctx]() { CreateDecalObject(ctx, "Decal (Large)", 5.0f, 1.0f); };
-        ImGui::EndMenu();
+        if (ImGui::MenuItem(std::string(preset.label).c_str())) {
+            const std::string presetId(preset.id);
+            deferred = [&ctx, presetId, parentId]() {
+                CreateObjectFromPreset(ctx, presetId, parentId);
+            };
+        }
+        if (!preset.description.empty() && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", std::string(preset.description).c_str());
     }
+    closeCategory();
 
     // Assets/Prefabs にある .prefab ファイルをメニューからインスタンス化できる。
     // WHY: AssetBrowser からのドラッグ操作なしで Prefab を配置できる動線を用意する。
@@ -993,19 +743,10 @@ void DrawHierarchyNode(EditorContext& ctx,
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Create Child")) {
-            std::function<void()> childDeferred;
-            DrawCreateObjectMenu(ctx, childDeferred);
-            if (childDeferred) {
-                // childDeferred が選択セットした GO を parentId の子にする
-                deferred = [&ctx, id, childDeferred = std::move(childDeferred)]() {
-                    childDeferred();
-                    if (!ctx.selectedEntities.empty()) {
-                        if (auto* newGo = ctx.activeScene->GetGameObject(ctx.selectedEntities.back()))
-                            if (auto* parent = ctx.activeScene->GetGameObject(id))
-                                newGo->SetParent(parent);
-                    }
-                };
-            }
+            // 親付けは CreateObjectFromPreset が生成直後に行う。
+            // WHY: 以前は「生成後の選択」を頼りに親付けしていたため、複数 GO を作る
+            //      プリセット (Button + Label) では選択されている方が親になり得た。
+            DrawCreateObjectMenu(ctx, deferred, id);
             ImGui::EndMenu();
         }
         ImGui::Separator();

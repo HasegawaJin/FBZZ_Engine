@@ -15,6 +15,7 @@
 // 依存: Engine (TerrainComponent, Ray, Camera, Scene), ImGui
 #pragma once
 
+#include "TerrainBrush.hpp"
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -40,27 +41,15 @@ public:
         Paint,  // スプラットマップ塗布
     };
 
-    // ── Sculpt サブモード ─────────────────────────────────────────────────────
-    enum class SculptMode {
-        Raise,   // 高さを上げる
-        Lower,   // 高さを下げる
-        Smooth,  // 周囲と平滑化
-        Flatten, // 最初にクリックした高さに揃える
-        Stamp,   // ブラシ形状を押し付ける（height = max(h, weight)）
-    };
-
-    // ── ブラシのフォールオフ形状 ──────────────────────────────────────────────
-    enum class FalloffType {
-        Linear,   // 距離に比例して線形減衰
-        Smooth,   // smoothstep（端が滑らか）
-        Gaussian, // ガウス曲線（自然な盛り上がり）
-    };
-
-    struct BrushSettings {
-        float       radius   = 5.0f;             // ブラシ半径（ワールド単位）
-        float       strength = 0.05f;            // 1 フレームあたりの最大変化量 [0, 1]
-        FalloffType falloff  = FalloffType::Smooth;
-    };
+    // ── Sculpt サブモード / フォールオフ / ブラシ形状 ─────────────────────────
+    // 実体は TerrainBrush.hpp のカーネル型。ここでは従来の名前を別名として保つ。
+    // WHY: 同じブラシを AI (Command Bus の terrain.sculpt / terrain.paint) も叩くため、
+    //      型と適用ロジックの正本をカーネル側へ移した。別型にして相互変換を書くと、
+    //      片方に enum を足したときにもう片方が黙って既定値へ落ちる。別名なので
+    //      TerrainTool::SculptMode::Raise という既存の書き方と保存済み int 値は変わらない。
+    using SculptMode    = TerrainSculptOp;
+    using FalloffType   = TerrainFalloff;
+    using BrushSettings = TerrainBrush;
 
     // ── 公開 API ──────────────────────────────────────────────────────────────
 
@@ -123,7 +112,7 @@ private:
     Mode        m_mode    = Mode::Sculpt;
     SculptMode  m_sculpt  = SculptMode::Raise;
     // 修飾キーで一時的に切り替わる実効サブモード。Update() が毎フレーム設定し、
-    // ApplySculpt はこちらを参照する。WHY: Unity の Terrain と同じく Shift+drag=Smooth /
+    // ブラシ適用時はこちらを渡す。WHY: Unity の Terrain と同じく Shift+drag=Smooth /
     //      Ctrl+drag=Lower をパネルへ視線を戻さず使えるようにする。修飾を離せば m_sculpt に戻る。
     SculptMode  m_activeSculpt = SculptMode::Raise;
     BrushSettings m_brush;
@@ -159,22 +148,8 @@ private:
                                const scene::Transform&          tf,
                                math::Vector3&                   outLocalHit) const;
 
-    // ブラシを TerrainComponent の高さデータに適用する（Sculpt モード）
-    void ApplySculpt(scene::TerrainComponent& terrain,
-                     const math::Vector3&     hitLocal,
-                     float                    dt) const;
-
-    // SampleAvg4: Smooth モードで使う上下左右 4 近傍平均
-    float SampleAvg4(const scene::TerrainComponent& t, int x, int z) const;
-
-    // ブラシをスプラットマップに適用する（Paint モード）
-    void ApplyPaint(scene::TerrainComponent& terrain,
-                    const math::Vector3&     hitLocal,
-                    float                    dt,
-                    int                      layerIndex) const;
-
-    // ブラシ中心からの距離 dist に対してフォールオフウェイト [0, 1] を返す
-    float ComputeWeight(float dist) const;
+    // Sculpt / Paint の適用とフォールオフ計算は TerrainBrush.hpp のカーネル
+    // (ApplyTerrainSculpt / ApplyTerrainPaint / TerrainBrushWeight) を直接呼ぶ。
 
     // ブラシ円をビューポートに ImGui DrawList で描画する（スクリーン空間投影）
     void DrawBrushPreview(const ImVec2&           viewportMin,
