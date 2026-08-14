@@ -72,6 +72,15 @@ struct GraphNodeView {
     float pinFontScale   = 1.0f;
     float bodyFontScale  = 1.0f;
 
+    // ノード本体の最小幅 [論理px] (ズーム前)。0 なら中身なりの幅になる。
+    // WHY キャンバス側の機能にするか: ImNodes のノード幅は「中に置いた ImGui
+    //     アイテムの最大幅」でしか決まらない。文字数の少ないノード
+    //     (BehaviorTree の Selector / Wait 等) は極端に細くなり、同じグラフの中で
+    //     ノードの大きさが揃わず、構造ではなく文字数で図の印象が決まってしまう。
+    //     ツールごとに Dummy を差し込むと、ズーム倍率の掛け忘れが各ツールで再発するため、
+    //     倍率を知っているキャンバスが一括で面倒を見る。
+    float minWidth = 0.0f;
+
     std::vector<GraphPinView> inputs;
     std::vector<GraphPinView> outputs;
 

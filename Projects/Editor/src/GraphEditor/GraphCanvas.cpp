@@ -46,6 +46,19 @@ constexpr ImU32 PROGRESS_TRACK_COLOR   = IM_COL32(20, 24, 30, 180);
 
 ImU32 Or(ImU32 color, ImU32 fallback) { return color != 0 ? color : fallback; }
 
+// 直前のアイテム (通常はタイトル帯のグループ) を最小幅まで右へ詰める。
+// ImNodes はノード内アイテムの最大幅をノード幅にするので、これだけで下限が効く。
+// WHY 高さ 0 の Dummy を「同じ行」へ置くか: 改行して置くと ItemSpacing.y の分だけ
+//     タイトル帯が高くなり、最小幅を指定したノードだけ帯が厚い、という別の不揃いを生む。
+void PadLastItemToWidth(float scaledMinWidth)
+{
+    if (!(scaledMinWidth > 0.0f)) return;
+    const float remaining = scaledMinWidth - ImGui::GetItemRectSize().x;
+    if (remaining <= 0.0f) return;
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::Dummy({ remaining, 0.0f });
+}
+
 // 色のアルファだけを倍率で落とす。
 ImU32 WithAlphaScale(ImU32 color, float scale)
 {
@@ -566,16 +579,28 @@ GraphInteraction GraphCanvas::Draw(const GraphView& view, const Config& config)
 
         ImNodes::BeginNode(node.id);
 
-        if (!node.title.empty() || node.drawTitle) {
+        // 最小幅はズームと一緒に伸縮させる。論理座標で指定させておかないと、
+        // 拡大したときだけノードが相対的に細くなり、位置関係の見え方が変わる。
+        const float scaledMinWidth = (std::max)(node.minWidth, 0.0f) * m_zoom;
+        const bool hasTitleBar = !node.title.empty() || node.drawTitle;
+
+        if (hasTitleBar) {
             ImNodes::BeginNodeTitleBar();
             ImGui::SetWindowFontScale(canvasFontScale * SafeTextScale(node.titleFontScale));
+            // 帯の中身を 1 アイテムとして測れるようにまとめる (drawTitle は複数出す)。
+            ImGui::BeginGroup();
             if (node.drawTitle) node.drawTitle();
             else if (node.titleTextColor != 0)
                 ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(node.titleTextColor),
                                    "%s", node.title.c_str());
             else ImGui::TextUnformatted(node.title.c_str());
+            ImGui::EndGroup();
+            PadLastItemToWidth(scaledMinWidth);
             ImGui::SetWindowFontScale(canvasFontScale);
             ImNodes::EndNodeTitleBar();
+        } else if (scaledMinWidth > 0.0f) {
+            // タイトル帯を持たないノードは本体側で下限を張る。
+            ImGui::Dummy({ scaledMinWidth, 0.0f });
         }
 
         if (node.drawDefaultInputs) {

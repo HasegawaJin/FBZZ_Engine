@@ -27,6 +27,27 @@
 namespace fbzz::editor {
 namespace {
 
+// ノード本体の最小幅 [論理px]。
+// WHY 幅を揃えるか: ImNodes のノード幅は中身の最大幅でしか決まらないため、
+//     何もしないと "Selector" のような短い名前のノードだけ極端に細くなり、
+//     木の構造ではなく文字数でノードの大きさが決まってしまう。優先度で並ぶ
+//     BT は「兄弟が同じ大きさで縦に並ぶ」ことが読みやすさの前提なので下限を張る。
+//     値は AnimationGraphPanel の State ノード (本文 "Parameters: X / Y" 相当で
+//     およそ 200px) に合わせ、同じエディタ内でノードの大きさの感覚を統一する。
+constexpr float NODE_MIN_WIDTH = 196.0f;
+
+// 深さ 1 段ぶんの横間隔。ノード幅より僅かに広いだけだとリンクが隣のノードへ
+// 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
+// AutoLayout と「Add Child」の初期配置が同じ値を使うので、手で足した子も列が揃う。
+constexpr float NODE_COLUMN_STEP = NODE_MIN_WIDTH + 104.0f;   // 300: テンプレートの手置き座標と一致
+
+// ピンの色。AnimationGraphPanel の State ノードと同じ配色にして、
+// 「青が入力・橙が出力」という読み方をエディタ全体で共通にする。
+constexpr ImU32 PIN_IN_COLOR          = IM_COL32(82, 164, 255, 255);
+constexpr ImU32 PIN_IN_HOVERED_COLOR  = IM_COL32(132, 210, 255, 255);
+constexpr ImU32 PIN_OUT_COLOR         = IM_COL32(255, 156, 72, 255);
+constexpr ImU32 PIN_OUT_HOVERED_COLOR = IM_COL32(255, 202, 118, 255);
+
 // ノード種別の系統ごとの色。タイトル帯 = 静的な状態、という共通規約に従う。
 // WHY 系統で色を分けるか: BT は「どこが分岐でどこが行動か」が読めれば構造が判る。
 //     種別ごとに全部違う色にすると、色の意味が覚えられず飾りになる。
@@ -36,6 +57,25 @@ ImU32 TitleColorOf(fbzz::ai::BTNodeType type)
     if (fbzz::ai::BTNodeIsDecorator(type)) return IM_COL32(112, 82, 140, 255); // 紫系: 修飾
     if (fbzz::ai::BTNodeIsPureCondition(type)) return IM_COL32(126, 104, 46, 255); // 黄系: 条件
     return IM_COL32(52, 106, 82, 255);                                   // 緑系: 行動
+}
+
+// 系統名。AnimationGraphPanel が本体の 1 行目へ StateMode を出すのと同じ役割で、
+// タイトル帯の色が何を意味していたのかを文字でも読めるようにする。
+const char* CategoryNameOf(fbzz::ai::BTNodeType type)
+{
+    if (fbzz::ai::BTNodeIsComposite(type)) return "COMPOSITE";
+    if (fbzz::ai::BTNodeIsDecorator(type)) return "DECORATOR";
+    if (fbzz::ai::BTNodeIsPureCondition(type)) return "CONDITION";
+    return "ACTION";
+}
+
+// TitleColorOf と同じ系統のまま、帯の上で文字として読める明度へ持ち上げた色。
+ImVec4 CategoryTextColorOf(fbzz::ai::BTNodeType type)
+{
+    if (fbzz::ai::BTNodeIsComposite(type)) return { 0.55f, 0.76f, 1.00f, 1.0f };
+    if (fbzz::ai::BTNodeIsDecorator(type)) return { 0.78f, 0.66f, 1.00f, 1.0f };
+    if (fbzz::ai::BTNodeIsPureCondition(type)) return { 0.98f, 0.85f, 0.45f, 1.0f };
+    return { 0.53f, 0.90f, 0.68f, 1.0f };
 }
 
 // 実行状態の色。背景 = 実行中の状態、という共通規約に従う。
@@ -339,8 +379,8 @@ void BehaviorTreePanel::AutoLayout()
     const std::vector<int> roots = m_asset.FindRootIds();
     // 木なので列 = 深さがそのまま階層になり、DAG より整った結果になる。
     GraphLayoutOptions options;
-    options.columnStep = 260.0f;
-    options.rowStep = 150.0f;
+    options.columnStep = NODE_COLUMN_STEP;
+    options.rowStep = 170.0f;   // ノード高さ (タイトル + 本文 4 行 + ピン 2 行) が収まる間隔
     const auto layout = roots.empty() ? ComputeGraphLayout(nodeIds, edges, options)
                                       : ComputeGraphLayout(nodeIds, edges, roots, options);
     for (auto& node : m_asset.nodes) {
@@ -395,6 +435,9 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
         item.position = ImVec2{ node.editorX, node.editorY };
         item.title = node.name.empty() ? fbzz::ai::BTNodeTypeName(node.type) : node.name;
         item.titleColor = TitleColorOf(node.type);
+        // 大きさと文字の階層は Animation の State ノードへ揃える。
+        item.minWidth = NODE_MIN_WIDTH;
+        item.titleFontScale = 1.05f;
         if (const auto found = statusOf.find(node.id); found != statusOf.end())
             item.backgroundColor = StatusBackgroundOf(found->second);
         if (node.id == m_selectedNode) {
@@ -407,11 +450,16 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
         if (warned) item.titleColor = IM_COL32(150, 74, 60, 255);
 
         // ルート以外は入力ピンを持つ。子を持てない葉は出力ピンを持たない。
+        // WHY ラベルを付けるか: ImNodes のピン位置は「属性の矩形の縦中央」なので、
+        //     中身が空だと高さ 0 の行になり、ピンがタイトル帯や本文の境界へ貼り付く。
+        //     Animation の State ノードと同じく 1 行分の高さを持たせて位置を安定させる。
         if (node.parentId != 0 || m_asset.nodes.size() > 1)
-            item.inputs.push_back({ GraphIds::InputPin(node.id), "", 0, 0,
+            item.inputs.push_back({ GraphIds::InputPin(node.id), "IN",
+                                    PIN_IN_COLOR, PIN_IN_HOVERED_COLOR,
                                     GraphPinShape::CircleFilled });
         if (fbzz::ai::BTNodeMaxChildren(node.type) != 0)
-            item.outputs.push_back({ GraphIds::OutputPin(node.id), "", 0, 0,
+            item.outputs.push_back({ GraphIds::OutputPin(node.id), "OUT",
+                                     PIN_OUT_COLOR, PIN_OUT_HOVERED_COLOR,
                                      GraphPinShape::TriangleFilled });
 
         // ノード本体は「優先度」と種別ごとの要点だけ。詳細は Inspector が持つ。
@@ -421,8 +469,14 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
             switch (type) {
             case fbzz::ai::BTNodeType::Wait:
             case fbzz::ai::BTNodeType::Cooldown:
-            case fbzz::ai::BTNodeType::TimeLimit:
-                return std::to_string(node.duration) + " s";
+            case fbzz::ai::BTNodeType::TimeLimit: {
+                // std::to_string(float) は "2.000000" になり、ノードの幅を
+                // 意味のない桁で押し広げてしまう。表示は 2 桁で足りる。
+                char buffer[32]{};
+                std::snprintf(buffer, sizeof(buffer), "%.2f s",
+                              static_cast<double>(node.duration));
+                return buffer;
+            }
             case fbzz::ai::BTNodeType::Repeat:
                 return node.repeatCount == 0 ? std::string("infinite")
                                              : "x" + std::to_string(node.repeatCount);
@@ -445,15 +499,46 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
         }();
         const bool showAbort = node.abortMode != fbzz::ai::AbortMode::None;
         const std::string abortText = showAbort ? AbortModeName(node.abortMode) : std::string{};
-        item.drawBody = [order, detail, abortText, type]() {
-            ImGui::TextDisabled("%s", fbzz::ai::BTNodeTypeName(type));
-            if (!detail.empty()) ImGui::TextUnformatted(detail.c_str());
+        const int childCount = static_cast<int>(ChildrenOf(m_asset, node.id).size());
+        const int maxChildren = fbzz::ai::BTNodeMaxChildren(node.type);
+
+        // タイトル帯は「名前 + 木の中での立場」。State ノードの [Current] / [Default]
+        // バッジと同じ役割で、ルートがどれかを一目で判るようにする。
+        const bool isRoot = node.parentId == 0;
+        const std::string titleText = item.title;
+        item.drawTitle = [titleText, isRoot]() {
+            ImGui::TextUnformatted(titleText.empty() ? "(Unnamed)" : titleText.c_str());
+            if (isRoot) {
+                ImGui::SameLine();
+                ImGui::TextColored({ 1.0f, 0.76f, 0.28f, 1.0f }, "[Root]");
+            }
+        };
+
+        item.drawBody = [order, detail, abortText, type, childCount, maxChildren]() {
+            ImGui::TextColored(CategoryTextColorOf(type), "%s", CategoryNameOf(type));
+            ImGui::TextUnformatted(fbzz::ai::BTNodeTypeName(type));
+            if (!detail.empty()) ImGui::TextDisabled("%s", detail.c_str());
+            ImGui::Spacing();
             // 優先度は BT で最も重要な情報なので必ず出す。
-            ImGui::TextDisabled("priority %d", order);
+            if (maxChildren == 0) {
+                ImGui::TextDisabled("priority %d | leaf", order);
+            } else if (maxChildren < 0) {
+                ImGui::TextDisabled("priority %d | %d child%s", order, childCount,
+                                    childCount == 1 ? "" : "ren");
+            } else {
+                // 子数に上限がある種別は「あと何個繋げるか」まで出す。
+                ImGui::TextDisabled("priority %d | %d/%d child%s", order, childCount,
+                                    maxChildren, maxChildren == 1 ? "" : "ren");
+            }
             if (!abortText.empty())
                 ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.35f, 1.0f), "abort: %s",
                                    abortText.c_str());
         };
+
+        // ノード幅を揃えた分、長い名前やキーは本体で切り詰まって見える。
+        // ホバーで全文を出し、Inspector を開かずに確認できるようにする。
+        item.tooltip = item.title + " (" + fbzz::ai::BTNodeTypeName(node.type) + ")";
+        if (!detail.empty()) item.tooltip += "\n" + detail;
 
         // 実行中は残り時間を進捗として出す。Wait / Cooldown / TimeLimit は
         // 「止まっているのか待っているのか」が画面から区別できないため。
@@ -831,10 +916,14 @@ void BehaviorTreePanel::DrawInspector()
         if (ImGui::Checkbox("Chase Entity", &node->chaseEntity)) m_dirty = true;
         if (ImGui::DragFloat("Repath (s)", &node->repathInterval, 0.05f, 0.0f, 5.0f)) m_dirty = true;
         break;
+    // WHY 2 つを分けるか: ランタイムが読むのは LookAt が turnSpeedDeg、
+    //     IsTargetInRange が range だけ。両方出すと「設定したのに効かない」項目を
+    //     人にもAI (bt.schema) にも見せることになり、原因の判らない調整を誘発する。
     case fbzz::ai::BTNodeType::LookAt:
+        if (ImGui::DragFloat("Turn Speed", &node->turnSpeedDeg, 1.0f, 0.0f, 3600.0f, "%.0f deg/s")) m_dirty = true;
+        break;
     case fbzz::ai::BTNodeType::IsTargetInRange:
         if (ImGui::DragFloat("Range", &node->range, 0.1f, 0.0f, 200.0f)) m_dirty = true;
-        if (ImGui::DragFloat("Turn Speed", &node->turnSpeedDeg, 1.0f, 0.0f, 3600.0f, "%.0f deg/s")) m_dirty = true;
         break;
     case fbzz::ai::BTNodeType::PlayAnimation:
         if (widgets::InputString("Trigger", node->animatorTrigger, 64)) m_dirty = true;
@@ -907,7 +996,7 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
     }
     if (ImGui::BeginPopup("##BTNodeMenu")) {
         if (ImGui::BeginMenu("Add Child")) {
-            DrawNodePalette(m_paletteGridX + 260.0f, m_paletteGridY, m_selectedNode);
+            DrawNodePalette(m_paletteGridX + NODE_COLUMN_STEP, m_paletteGridY, m_selectedNode);
             ImGui::EndMenu();
         }
         if (ImGui::MenuItem("Duplicate Subtree")) DuplicateSubtree(m_selectedNode);
