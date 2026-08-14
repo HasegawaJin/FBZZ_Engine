@@ -19,8 +19,12 @@ float Sq(float x) { return x * x; }
 // x^5  (Schlick フレネル近似で頻出)
 float Pow5(float x) { float x2 = x * x; return x2 * x2 * x; }
 
-// ゼロ除算を防ぐ逆数
-float SafeRcp(float x) { return 1.0f / max(abs(x), EPSILON); }
+// 符号を保持した安全な逆数。負の値を abs だけで処理すると方向が反転する。
+float SafeRcp(float x)
+{
+    const float signValue = x < 0.0f ? -1.0f : 1.0f;
+    return signValue * rcp(max(abs(x), EPSILON));
+}
 
 // [lo, hi] へのクランプ
 float Clamp(float x, float lo, float hi) { return clamp(x, lo, hi); }

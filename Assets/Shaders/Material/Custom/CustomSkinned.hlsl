@@ -10,6 +10,9 @@
 //   5. .mat ファイルを作成し、shader フィールドにこのパスを指定する
 //      (mesh_type = 'skinned' を必ず設定すること)
 //
+// 共通ヘルパー (Rendering/SurfaceCommon.hlsli) は CustomSurface と同じ API を提供する。
+// ボーン変形は VSMain に残し、PSMain の見た目とマテリアル規約だけを自由に差し替えられる。
+//
 // バインディング早見表 (Binding.hlsli より):
 //   cbuffer スロット: b0=Camera  b1=Object  b2=Material  b3=Light  b4=Shadow
 //   テクスチャ:       t0=Albedo  t1=Normal  t2=MetallicRough  t3=Emissive  t4=AO
@@ -30,6 +33,7 @@
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Rendering/SurfaceCommon.hlsli"
 
 // WHY: #define FBZZ_MATERIAL_CONSTANTS により Constants.hlsli の
 //      デフォルト cbuffer は展開されない。ここで自分の変数を宣言する。
@@ -70,13 +74,17 @@ PSInput VSMain(SkinnedVSInput v)
     PSInput o;
     float4x4 skin    = BlendSkinMatrix(v);
     float4 localPos  = mul(float4(v.position, 1.0f), skin);
-    float3 localN    = normalize(mul(v.normal,  (float3x3)skin));
-    float3 localT    = normalize(mul(v.tangent, (float3x3)skin));
+    float3 localN    = SurfaceSafeNormalize(mul(v.normal,  (float3x3)skin),
+                                            float3(0.0f, 1.0f, 0.0f));
+    float3 localT    = SurfaceSafeNormalize(mul(v.tangent, (float3x3)skin),
+                                            float3(1.0f, 0.0f, 0.0f));
     float4 worldPos4 = mul(localPos, world);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(localN, (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(localT, (float3x3)world));
+    o.normal     = SurfaceSafeNormalize(mul(localN, (float3x3)worldInvTranspose),
+                                        float3(0.0f, 1.0f, 0.0f));
+    o.tangent    = SurfaceSafeNormalize(mul(localT, (float3x3)world),
+                                        float3(1.0f, 0.0f, 0.0f));
     o.uv         = v.uv;
     return o;
 }
@@ -84,33 +92,27 @@ PSInput VSMain(SkinnedVSInput v)
 // ここから下を自由にカスタマイズしてください。
 float4 PSMain(PSInput p) : SV_Target0
 {
-    float2 uv = p.uv * uvTiling + uvOffset;
+    float2 uv = SurfaceTransformUv(p.uv, uvTiling, uvOffset);
 
-    // Albedo
-    float4 rawAlbedo = (textureMask & (1u << 0))
-        ? texAlbedo.Sample(sampDefault, uv)
-        : float4(1.0f, 1.0f, 1.0f, 1.0f);
-    float3 col   = SRGBToLinear(rawAlbedo.rgb) * albedo.rgb;
-    float  alpha = rawAlbedo.a * albedo.a;
+    // Albedo: 共通 API がテクスチャ有無・sRGB・フォールバックを処理する。
+    float4 surfaceAlbedo = SurfaceSampleAlbedo(texAlbedo, sampDefault, uv,
+                                               albedo, textureMask);
+    float3 col   = surfaceAlbedo.rgb;
+    float  alpha = surfaceAlbedo.a;
     clip(alpha - alphaCutoff);
 
     // 法線 (法線マップがあれば適用)
-    float3 N = normalize(p.normal);
-    if (textureMask & (1u << 1))
-    {
-        float3 ns = texNormal.Sample(sampDefault, uv).rgb;
-        float3 nm = ApplyNormalMap(ns, N, normalize(p.tangent));
-        N = normalize(lerp(N, nm, normalStrength));
-    }
+    float3 N = SurfaceSampleNormal(texNormal, sampDefault, uv, p.normal,
+                                   p.tangent, normalStrength, textureMask);
 
     // シャドウ
-    float3 L      = normalize(-lightDir);
+    float3 L      = SurfaceSafeNormalize(-lightDir, float3(0.0f, 1.0f, 0.0f));
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
 
     // Blinn-Phong ライティング
-    float3 V        = normalize(cameraPos - p.worldPos);
-    float3 H        = normalize(L + V);
+    float3 V        = SurfaceSafeNormalize(cameraPos - p.worldPos, N);
+    float3 H        = SurfaceSafeNormalize(L + V, N);
     float  NdotL    = max(0.0f, dot(N, L));
     float  NdotH    = max(0.0f, dot(N, H));
     float  shininess = max(1.0f, (1.0f - roughness) * 128.0f);
@@ -125,9 +127,9 @@ float4 PSMain(PSInput p) : SV_Target0
     {
         float3 toLight = pointLights[pi].position - p.worldPos;
         float  dist    = length(toLight);
-        float3 Lp      = toLight / dist;
+        float3 Lp      = SurfaceSafeNormalize(toLight, N);
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        float3 Hp      = normalize(Lp + V);
+        float3 Hp      = SurfaceSafeNormalize(Lp + V, N);
         float  dif     = max(0.0f, dot(N, Lp)) * atten;
         float  spe     = pow(max(0.0f, dot(N, Hp)), shininess) * atten * 0.5f;
         result += pointLights[pi].color * pointLights[pi].intensity * (dif * col + spe);

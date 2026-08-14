@@ -136,4 +136,38 @@ float3 EvaluateIBL(
     return diffuse * saturate(ao) + specular + albedo * kIBLAmbientFloor;
 }
 
+float3 EvaluateIBLAdvanced(
+    float3 N, float3 V, float3 T, float3 B, float anisotropy,
+    float3 albedo, float metallic, float roughness, float ao,
+    float clearcoat, float clearcoatRoughness,
+    float sheen, float3 sheenColor,
+    TextureCube irradianceMap, TextureCube prefilterMap,
+    Texture2D<float4> brdfLUT, int maxMipLevel,
+    float diffuseScale, float specularScale,
+    SamplerState samp, SamplerState sampClamp)
+{
+    const float coat = saturate(clearcoat);
+    const float NdotV = saturate(dot(N, V));
+    float3 R = SafeNormalize(reflect(-V, N), N);
+    const float stretch = clamp(anisotropy, -0.95f, 0.95f) * 0.35f;
+    R = SafeNormalize(R + T * dot(R, T) * stretch - B * dot(R, B) * stretch, N);
+    const float3 coatF = F_SchlickRoughness(NdotV,
+        float3(0.04f, 0.04f, 0.04f), max(saturate(clearcoatRoughness), 0.03f)) * coat;
+    float3 base = EvaluateIBL(N, V, albedo, saturate(metallic),
+                              max(saturate(roughness), 0.045f), ao,
+                              irradianceMap, prefilterMap, brdfLUT, maxMipLevel,
+                              diffuseScale, specularScale, samp, sampClamp);
+    base *= saturate(1.0f - coatF);
+    const float2 coatBrdf = saturate(brdfLUT.Sample(sampClamp,
+        float2(NdotV, max(saturate(clearcoatRoughness), 0.03f))).rg);
+    const float3 coatEnv = prefilterMap.SampleLevel(
+        samp, R, max(saturate(clearcoatRoughness), 0.03f) * max((float)maxMipLevel, 0.0f)).rgb;
+    const float3 clearcoatSpec = coatEnv *
+        (float3(0.04f, 0.04f, 0.04f) * coatBrdf.x + coatBrdf.y) * coat;
+    const float grazing = Pow5(1.0f - NdotV);
+    const float3 sheenEnv = irradianceMap.Sample(samp, N) * saturate(sheen) *
+        saturate(sheenColor) * grazing * (1.0f - saturate(metallic)) * 0.5f * saturate(ao);
+    return base + clearcoatSpec + sheenEnv;
+}
+
 #endif // IBL_HLSLI

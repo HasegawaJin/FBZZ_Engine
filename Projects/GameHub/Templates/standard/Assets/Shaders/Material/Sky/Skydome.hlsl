@@ -33,9 +33,11 @@ float4 PSMain(SkyPSInput p) : SV_Target0
     float3 ray    = normalize(p.rayDir);
     float3 sunDir = normalize(-lightDir);  // DirectionalLight の向きを反転して太陽方向へ
 
-    // sunIntensity (AtmosphereConstants) を lightIntensity でスケール:
-    // 昼間 lightIntensity≈1.5 なら明るい青空、夜間 ≈0.15 なら暗い空になる
-    float scaled = sunIntensity * lightIntensity;
+    // sunIntensity (AtmosphereConstants) を skyDimmer でスケール:
+    // 昼間 skyDimmer≈1.5 なら明るい青空、夜間 ≈0.1 なら暗い空になる。
+    // WHY: 以前は lightIntensity を直接使っていたが、それだと DirectionalLight を
+    //      強くするだけで空まで白飛びした。空の明るさは skyDimmer が独立して持つ。
+    float scaled = sunIntensity * skyDimmer;
 
     // 大気散乱 + 太陽ディスク
     float3 sky = ComputeAtmosphericScattering(
