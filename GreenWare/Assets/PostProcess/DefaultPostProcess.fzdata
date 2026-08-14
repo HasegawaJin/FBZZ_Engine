@@ -1,0 +1,75 @@
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+exposure = 1.0
+type = 'Exposure'
+
+[[overrides]]
+active = true
+intensity = 0.8999999761581421
+softKnee = 0.4000000059604645
+threshold = 0.6499999761581421
+type = 'Bloom'
+
+[[overrides]]
+active = true
+intensity = 1.0
+type = 'SSAO'
+
+[[overrides]]
+active = true
+contrast = 0.05000000074505806
+hueShift = 0.0
+saturation = 1.100000023841858
+temperature = 0.019999999552965164
+tint = 0.0
+type = 'ColorGrading'
+
+[[overrides]]
+active = true
+blend = 1.0
+contrast = 0.0
+hueShift = 0.0
+saturation = 1.0
+temperature = 0.0
+tint = 0.0
+type = 'LUTColorGrading'
+
+[[overrides]]
+active = true
+radius = 1.0
+strength = 0.25
+type = 'Sharpen'
+
+[[overrides]]
+active = true
+color = [ 0.550000011920929, 0.6499999761581421, 0.75 ]
+density = 0.03999999910593033
+farDistance = 80.0
+source = 0
+type = 'Fog'
+
+[[overrides]]
+active = true
+intensity = 0.20999999344348907
+maxDistance = 50.0
+scattering = 0.12999999523162842
+steps = 8
+type = 'VolumetricLight'
+
+[[overrides]]
+active = true
+intensity = 0.800000011920929
+maxDistance = 50.0
+steps = 128
+thickness = 0.15000000596046448
+type = 'SSR'
+
+[[overrides]]
+active = true
+rayLength = 1.5
+steps = 32
+strength = 0.699999988079071
+thickness = 0.20000000298023224
+type = 'ContactShadow'

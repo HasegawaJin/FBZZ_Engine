@@ -1,0 +1,42 @@
+# FBZZ Engine — Post Process Profile
+# 新規プロジェクトの既定ルック。Post Process Volume から参照して使う。
+#
+# 中身は「効果のリスト」。ここに載っている効果だけが適用され、
+# 載っていない効果はベース (素の絵) がそのまま通る。
+#
+# 使い方:
+#   1. Hierarchy > Create > Environment > Post Process Volume を追加
+#   2. Inspector の Profile スロットへこのファイルをドロップ
+#   3. Project ウィンドウでこのファイルを選び、[+ Add Override] で効果を足す
+#
+# 場所ごとにルックを変えたいときは、このファイルを複製して必要な効果だけを残し、
+# 局所ボリューム (Global を外す) から参照する。
+#
+# NOTE: エディタで編集して保存すると、このコメントは失われキーはアルファベット順に
+#       並び替えられる (toml++ が構造だけを書き戻すため)。
+type = 'PostProcessProfile'
+
+# トーンマッピング前の露出。
+[[overrides]]
+type = 'Exposure'
+active = true
+exposure = 1.0
+
+# 画質補正。派手さは無いが、これがあるだけで全体の見え方が整う。
+[[overrides]]
+type = 'Clarity'
+active = true
+strength = 0.12
+radius = 2.0
+
+[[overrides]]
+type = 'ShadowHighlight'
+active = true
+shadowLift = 0.06
+highlightCompression = 0.1
+
+# アンチエイリアシング。TAA へ差し替えたい場合はこれを消して TAA を追加する
+# (同じ AA スロットのため、両方あると FXAA が優先される)。
+[[overrides]]
+type = 'FXAA'
+active = true

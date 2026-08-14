@@ -1,28 +1,32 @@
 // FBZZ Engine
 // PostProcessInspectorWidgets.hpp | fbzz::editor
-// Project Settings と PostProcessProfile (.fzdata) で共有するポストプロセス編集 UI
+// PostProcessProfile (.fzdata) のオーバーライド編集 UI
+//
+// WHY 独立したファイルにするか: 「リストの編集」(追加・削除・並べ替え・一時無効化) は
+//     Inspector の他のどのパネルとも構造が違い、Inspector 本体へ直接書くと埋もれる。
 #pragma once
+#include <string>
 
-namespace fbzz::renderer { struct PostProcessSettings; }
-namespace fbzz::renderer { struct RenderSettings; }
+namespace fbzz::asset { class PostProcessProfile; }
 
 namespace fbzz::editor {
 
+struct ImGuiReflector;
+
+// UI の編集結果。呼び出し側は保存タイミングの判断に使う。
 struct PostProcessInspectorResult {
-    bool changed = false;
-    bool structureChanged = false; // 要素追加/削除など構造変更があった場合 true
+    bool changed          = false;  // 何らかの値が変わった
+    bool structureChanged = false;  // オーバーライドの追加/削除/並べ替えが起きた
 };
 
-// PostProcessSettings の既存効果とカスタムパスを一貫した UI で編集する。
-// ctx を渡すと TAA/GTAO との排他スロット競合を検出してグレーアウトする。
-// PostProcessProfile Inspector など RenderSettings を持たない呼び出し元は nullptr のまま使用可。
-PostProcessInspectorResult DrawPostProcessInspector(
-    renderer::PostProcessSettings& settings,
-    const renderer::RenderSettings* ctx = nullptr);
-
-// 高度グラフィクス設定 (IBL / PCSS / SSR / GTAO / TAA / MotionBlur /
-// VolumetricLight / ContactShadows / LensFlare / LUT) を編集する。
-// RenderSettings 直下のメンバーを対象とするため引数は RenderSettings 全体を取る。
-PostProcessInspectorResult DrawAdvancedGraphicsInspector(renderer::RenderSettings& render);
+// プロファイルのオーバーライドリストを編集する。
+// @param reflector 各オーバーライドのパラメーターを描くのに使う。
+//                  projectRoot 等が配線済みのものを呼び出し側が用意する。
+// WHY パラメーター UI を ImGuiReflector に任せるか:
+//     効果ごとに専用の描画関数を書くと、効果を 1 つ足すたびに Engine 側と
+//     Editor 側の 2 か所を触ることになる。Reflect() が既にレンジとカラーヒントを
+//     持っているので、それを唯一の情報源にすれば追加作業は Engine 側だけで閉じる。
+PostProcessInspectorResult DrawVolumeOverrideListInspector(
+    asset::PostProcessProfile& profile, ImGuiReflector& reflector);
 
 } // namespace fbzz::editor

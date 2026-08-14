@@ -282,6 +282,63 @@ struct LUTColorGradingSettings {
     float       tint        = 0.0f;
 };
 
+// VolumeSettings — PostProcessVolume が上書きできる「シーンのルック」設定の全体。
+// WHY 独立した集約にするか:
+//   ポストプロセス (Bloom / Fog / ColorGrading …) と高度グラフィクス
+//   (SSR / GTAO / TAA / MotionBlur / VolumetricLight / LensFlare / LUT) は、
+//   作り手から見ればどちらも「この場所ではどう見えるか」を決める設定で、
+//   置き場所が分かれている必然性がない。Unity の Volume が両者を同じ
+//   プロファイルへまとめているのと同じ理由で、ボリュームがブレンドできる
+//   単位を 1 つの型へ集約する。
+// WHY RenderSettings をそのまま使わないか:
+//   pipeline / shadow / デバッグ表示 / パーティクル予算は「プロジェクトの構成」であって
+//   場所ごとに切り替えるものではない。ブレンド対象に混ぜると、ボリュームをまたぐたびに
+//   パイプラインが切り替わるような無意味な合成が定義できてしまう。
+// WHY IBL を含めないか:
+//   IBL は EnvironmentLightComponent が既に唯一の所有者になっている。
+//   ここにも置くと「どちらが勝つのか」を毎回考えることになる。
+struct VolumeSettings {
+    PostProcessSettings     post;
+    SSRSettings             ssr;
+    GTAOSettings            gtao;
+    ContactShadowSettings   contactShadow;
+    TAASettings             taa;
+    MotionBlurSettings      motionBlur;
+    VolumetricLightSettings volumetricLight;
+    LensFlareSettings       lensFlare;
+    LUTColorGradingSettings lutColorGrading;
+
+    // WHY 既定を「全効果 OFF」にそろえるか:
+    //   ルックの供給源は VolumeOverride のリストで、「リストに入っている効果だけが効く」
+    //   のが唯一の規則。ところが各 XxxSettings の既定値は Bloom / SSAO / ColorGrading /
+    //   Clarity / FXAA が true で、そのままだとオーバーライドを 1 つも持たない
+    //   プロファイルでもブルームが掛かってしまう。ここで一度そろえておくことで、
+    //   「素の絵」が本当に素になる。個々の構造体の既定値は他の経路
+    //   (旧シーン・単体テスト) が期待しているため触らない。
+    VolumeSettings()
+    {
+        post.fxaaEnabled                       = false;
+        post.bloom.enabled                     = false;
+        post.ambientOcclusion.enabled          = false;
+        post.colorGrading.enabled              = false;
+        post.imageQuality.clarityEnabled       = false;
+        post.imageQuality.shadowHighlightEnabled = false;
+        post.imageQuality.colorFilterEnabled   = false;
+        // 残りのセクション (fog / vignette / filmGrain / sharpen / dof / lens /
+        // stylized / ssr / gtao / …) は構造体側の既定が既に false。
+    }
+
+    // 排他的な論理スロット (AA: FXAA/TAA, AO: SSAO/GTAO) を正規化する。
+    // WHY プロファイル側にも要るか: FXAA と TAA のオーバーライドを両方リストに
+    //      入れることは操作として可能で、そのときどちらを生かすかを決める必要がある。
+    //      履歴バッファを必要としない既存パス (FXAA / SSAO) を優先する。
+    void NormalizeExclusiveSlots()
+    {
+        if (taa.enabled && post.fxaaEnabled)                taa.enabled  = false;
+        if (gtao.enabled && post.ambientOcclusion.enabled)  gtao.enabled = false;
+    }
+};
+
 struct RenderSettings {
     RenderingPipeline pipeline  = RenderingPipeline::Forward;
     ViewMode          viewMode  = ViewMode::Lit;

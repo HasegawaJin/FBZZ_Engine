@@ -195,10 +195,7 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t TOGGLE_NAVMESH = 409;
     constexpr uint16_t TOGGLE_AI_SENSORS = 414;
     constexpr uint16_t TOGGLE_DECAL_BOUNDS = 415;
-    constexpr uint16_t OPEN_POSTPROCESS = 420;
-    constexpr uint16_t TOGGLE_BLOOM = 421;
     constexpr uint16_t TOGGLE_SHADOW = 422;
-    constexpr uint16_t TOGGLE_FXAA = 423;
     constexpr uint16_t VIEW_LIT        = 410;
     constexpr uint16_t VIEW_UNLIT      = 411;
     constexpr uint16_t VIEW_WIRE_LIT   = 412;
@@ -230,13 +227,6 @@ void EditorApp::InstallNativeMenuBar()
     debugViewMode.push_back(command("Unlit", VIEW_UNLIT));
     debugViewMode.push_back(command("Wireframe Lit", VIEW_WIRE_LIT));
     debugViewMode.push_back(command("Wireframe Unlit", VIEW_WIRE_UNLIT));
-
-    MenuList postProcess;
-    postProcess.push_back(command("Open Post Process Settings...", OPEN_POSTPROCESS));
-    postProcess.push_back(separator());
-    postProcess.push_back(command("Bloom", TOGGLE_BLOOM));
-    postProcess.push_back(command("Shadow", TOGGLE_SHADOW));
-    postProcess.push_back(command("FXAA", TOGGLE_FXAA));
 
     MenuList terrainTools;
     terrainTools.push_back(command("Terrain Tool", 510));
@@ -275,8 +265,8 @@ void EditorApp::InstallNativeMenuBar()
         command("NavMesh", TOGGLE_NAVMESH), command("AI Sensors", TOGGLE_AI_SENSORS),
         command("Decal Bounds", TOGGLE_DECAL_BOUNDS),
         command("Hot Reload", TOGGLE_HOTRELOAD), separator(),
-        submenu("View Mode", std::move(debugViewMode)),
-        submenu("Post Process", std::move(postProcess))
+        command("Shadow", TOGGLE_SHADOW),
+        submenu("View Mode", std::move(debugViewMode))
     }));
     menus.push_back(submenu("Tools", {
         command("VFX Editor...", OPEN_VFX), command("Map Editing Mode", TOGGLE_MAP),
@@ -318,10 +308,7 @@ void EditorApp::InstallNativeMenuBar()
         case TOGGLE_NAVMESH: m_ctx.projectSettings.render.showNavMesh = !m_ctx.projectSettings.render.showNavMesh; break;
         case TOGGLE_AI_SENSORS: m_ctx.projectSettings.render.showNavSensors = !m_ctx.projectSettings.render.showNavSensors; break;
         case TOGGLE_DECAL_BOUNDS: m_ctx.projectSettings.render.showDecalBounds = !m_ctx.projectSettings.render.showDecalBounds; break;
-        case OPEN_POSTPROCESS: m_ctx.requestOpenProjectSettings = true; break;
-        case TOGGLE_BLOOM: m_ctx.projectSettings.render.postProcess.bloom.enabled = !m_ctx.projectSettings.render.postProcess.bloom.enabled; break;
         case TOGGLE_SHADOW: m_ctx.projectSettings.render.shadowEnabled = !m_ctx.projectSettings.render.shadowEnabled; break;
-        case TOGGLE_FXAA: m_ctx.projectSettings.render.postProcess.fxaaEnabled = !m_ctx.projectSettings.render.postProcess.fxaaEnabled; break;
         case VIEW_LIT:       m_ctx.projectSettings.render.viewMode = renderer::ViewMode::Lit; break;
         case VIEW_UNLIT:     m_ctx.projectSettings.render.viewMode = renderer::ViewMode::Unlit; break;
         case VIEW_WIRE_LIT:  m_ctx.projectSettings.render.viewMode = renderer::ViewMode::WireframeLit; break;
@@ -461,17 +448,10 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        if (ImGui::BeginMenu("Post Process")) {
-            // よく切り替える主要トグルのみ残す。全設定は ProjectSettings で編集する。
-            if (ImGui::MenuItem("Open Post Process Settings..."))
-                ctx.requestOpenProjectSettings = true;
-            ImGui::Separator();
-            auto& pp = ctx.projectSettings.render.postProcess;
-            ImGui::MenuItem("Bloom",  nullptr, &pp.bloom.enabled);
-            ImGui::MenuItem("Shadow", nullptr, &ctx.projectSettings.render.shadowEnabled);
-            ImGui::MenuItem("FXAA",   nullptr, &pp.fxaaEnabled);
-            ImGui::EndMenu();
-        }
+        // WHY Bloom / FXAA のトグルが無いか: ポストプロセスの所有者は
+        //     Post Process Volume + Post Process Profile (.fzdata) へ一本化した。
+        //     Shadow はプロジェクト全体の描画構成なのでここに残す。
+        ImGui::MenuItem("Shadow", nullptr, &ctx.projectSettings.render.shadowEnabled);
         ImGui::EndMenu();
     }
 
