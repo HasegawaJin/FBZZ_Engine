@@ -112,7 +112,6 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
         MakeProperty<P, float, &P::stretchedLengthScale>("stretchedLengthScale", PropertyType::Float, "Length Scale", "Renderer", true),
         MakeProperty<P, std::string, &P::materialPath>("materialPath", PropertyType::AssetRef, "Material", "Renderer", true),
         MakeProperty<P, std::string, &P::meshParticlePath>("meshParticlePath", PropertyType::AssetRef, "Mesh Particle", "Renderer", true),
-        MakeProperty<P, std::string, &P::texturePath>("texturePath", PropertyType::AssetRef, "Texture", "Renderer", true),
         MakeProperty<P, int, &P::spriteColumns>("spriteColumns", PropertyType::Int, "Columns", "Flipbook", true, detail::Range(1, 256)),
         MakeProperty<P, int, &P::spriteRows>("spriteRows", PropertyType::Int, "Rows", "Flipbook", true, detail::Range(1, 256)),
         MakeProperty<P, float, &P::flipbookFramesPerSecond>("flipbookFramesPerSecond", PropertyType::Float, "FPS", "Flipbook", true),
@@ -221,7 +220,6 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
     static const detail::StaticTypeSchema schema("VFXTrailSettings", {
         MakeProperty<T, std::string, &T::meshPath>("meshPath", PropertyType::AssetRef, "Mesh", "Asset", true),
         MakeProperty<T, std::string, &T::materialPath>("materialPath", PropertyType::AssetRef, "Material", "Asset", true),
-        MakeProperty<T, std::string, &T::texturePath>("texturePath", PropertyType::AssetRef, "Texture", "Asset", true),
         MakeProperty<T, math::Vector4, &T::colorStart>("colorStart", PropertyType::Color, "Start Color", "Color", true),
         MakeProperty<T, math::Vector4, &T::colorEnd>("colorEnd", PropertyType::Color, "End Color", "Color", true),
         MakeProperty<T, float, &T::lifetime>("lifetime", PropertyType::Float, "Lifetime", "Main", true),

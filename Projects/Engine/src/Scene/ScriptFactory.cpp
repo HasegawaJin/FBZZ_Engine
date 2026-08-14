@@ -18,12 +18,6 @@ std::unordered_map<std::string, ScriptFactory::Factory>& Registry()
     return registry;
 }
 
-std::unordered_map<std::string, std::string>& AliasRegistry()
-{
-    static std::unordered_map<std::string, std::string> aliases;
-    return aliases;
-}
-
 } // namespace
 
 bool ScriptFactory::Register(const std::string& typeName, Factory factory)
@@ -33,25 +27,10 @@ bool ScriptFactory::Register(const std::string& typeName, Factory factory)
     return true;
 }
 
-bool ScriptFactory::RegisterAlias(const std::string& formerTypeName,
-                                  const std::string& currentTypeName)
-{
-    if (formerTypeName.empty() || currentTypeName.empty() ||
-        formerTypeName == currentTypeName)
-        return false;
-    AliasRegistry()[formerTypeName] = currentTypeName;
-    return true;
-}
-
 std::unique_ptr<Script> ScriptFactory::Create(const std::string& typeName)
 {
     auto& registry = Registry();
     auto it = registry.find(typeName);
-    if (it == registry.end()) {
-        const auto alias = AliasRegistry().find(typeName);
-        if (alias != AliasRegistry().end())
-            it = registry.find(alias->second);
-    }
     if (it == registry.end()) return nullptr;
     return it->second();
 }
@@ -59,7 +38,6 @@ std::unique_ptr<Script> ScriptFactory::Create(const std::string& typeName)
 void ScriptFactory::UnregisterAll()
 {
     Registry().clear();
-    AliasRegistry().clear();
 }
 
 std::vector<std::string> ScriptFactory::RegisteredTypeNames()

@@ -93,7 +93,6 @@ void VFXPreviewController::RequestScrub(EditorContext& ctx,
         if (auto* actor = ctx.vfxPreviewScene->GetGameObject(actorEntity)) {
             if (auto* animator = actor->GetComponent<scene::AnimatorComponent>()) {
                 animator->playing = false;
-                animator->time = actorTime;
                 animator->stateTime = actorTime;
                 animator->previousEventTime = actorTime;
             }
@@ -136,8 +135,13 @@ bool VFXPreviewController::LoadPreviewAsset(EditorContext& ctx, const std::strin
         }
         actor->AddComponent<scene::SkinnedMeshRenderer>(std::move(renderer));
         scene::AnimatorComponent animator;
-        animator.clipSources.push_back(path);
-        animator.loop = actorLoop;
+        scene::AnimationState previewState;
+        previewState.name = "Preview";
+        previewState.sourcePath = path;
+        previewState.loop = actorLoop;
+        animator.states.push_back(std::move(previewState));
+        animator.defaultStateName = "Preview";
+        animator.currentStateName = "Preview";
         animator.speed = actorSpeed;
         actor->AddComponent<scene::AnimatorComponent>(std::move(animator));
         actor->AddComponent<scene::MaterialComponent>();
@@ -153,9 +157,15 @@ bool VFXPreviewController::LoadPreviewAsset(EditorContext& ctx, const std::strin
     if (extension == ".anim") {
         if (animator == nullptr) animator = &actor->AddComponent<scene::AnimatorComponent>();
         actorClipPath = path;
-        if (std::find(animator->clipSources.begin(), animator->clipSources.end(), path)
-            == animator->clipSources.end())
-            animator->clipSources.push_back(path);
+        animator->states.clear();
+        scene::AnimationState previewState;
+        previewState.name = "Preview";
+        previewState.sourcePath = path;
+        previewState.loop = actorLoop;
+        animator->states.push_back(std::move(previewState));
+        animator->defaultStateName = "Preview";
+        animator->currentStateName = "Preview";
+        animator->stateTime = 0.0f;
         animator->clipsLoaded = false;
         animator->playing = actorPlaying;
         return true;

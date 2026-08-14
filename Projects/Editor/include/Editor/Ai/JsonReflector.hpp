@@ -865,8 +865,6 @@ private:
     {
         if (m_applied || !m_error.empty()) return false;
         if (m_target == PersistentKey(name)) return true;
-        for (const char* formerKey : FormerKeys())
-            if (formerKey && m_target == formerKey) return true;
         return false;
     }
 

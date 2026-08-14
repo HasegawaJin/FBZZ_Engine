@@ -621,7 +621,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                         pe.materialPath.clear();
                         pe.loadedMaterialPath.clear();
                     }
-                    pe.texturePath = NormalizeAssetPath(result.albedoPath);
+                    // 生成物は .mat の albedo へ割り当てる。Emitter に直接テクスチャは保持しない。
                     pe.texture = {};
                     pe.loadedTexturePath.clear();
                     pe.spriteColumns = settings.columns;
@@ -697,8 +697,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             // MV アトラスは外部ツールでしか作れず「機能はあるのに使えない」状態だったため、
             // 現在のアトラスから生成してそのまま割り当てられるようにする。
             ImGui::Separator();
-            const std::string& atlasPath = !pe.texturePath.empty() ? pe.texturePath : pe.materialPath;
-            ImGui::BeginDisabled(pe.texturePath.empty());
+            const std::string& atlasPath = pe.materialPath;
+            ImGui::BeginDisabled(pe.materialPath.empty());
             if (ImGui::Button("Generate From Texture", { -1.0f, 0.0f })) {
                 asset::FlipbookMotionVectorSettings mvSettings;
                 mvSettings.columns = pe.spriteColumns;
@@ -706,9 +706,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                 mvSettings.loop = pe.flipbookMode == scene::ParticleFlipbookMode::FramesPerSecond
                     || pe.spriteRandomStartFrame;
                 mvSettings.rowSequences = pe.spriteRandomRow;
-                // texturePath は Assets 起点の可搬パス。ディスクを読むのは Editor 側の責務なので
-                // ここで projectRoot を補完してから渡す (Engine 側は実パスだけを扱う)。
-                const std::string diskPath = ToProjectAssetDiskPath(ctx.projectRoot, pe.texturePath);
+                // Material の albedo はこの生成器の入力画像として直接は扱わない。
+                // .mat の albedo を編集してから別途モーションベクトルを生成する。
+                const std::string diskPath = ToProjectAssetDiskPath(ctx.projectRoot, pe.materialPath);
                 const auto result = asset::GenerateFlipbookMotionVectors(diskPath, mvSettings);
                 s_motionVectorStatus = result.message;
                 s_motionVectorStatusIsError = !result.success;
@@ -721,8 +721,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                 }
             }
             ImGui::EndDisabled();
-            if (pe.texturePath.empty())
-                ImGui::TextDisabled("Renderer の Texture にアトラスを設定すると生成できます。");
+            if (pe.materialPath.empty())
+                ImGui::TextDisabled("Material の albedo を設定すると生成できます。");
             if (!s_motionVectorStatus.empty()) {
                 if (s_motionVectorStatusIsError)
                     ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", s_motionVectorStatus.c_str());
@@ -807,14 +807,6 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                                            ".fbx,.obj,.mesh,.fzasset", ctx.projectRoot);
         if (!pe.meshParticlePath.empty())
             ImGui::TextDisabled("Mesh Particle uses deterministic CPU simulation.");
-        // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
-        if (widgets::AssetPathField("Texture (fallback)", pe.texturePath,
-                                    widgets::kTextureAssetFilter, ctx.projectRoot)) {
-            pe.texture = {};
-            pe.loadedTexturePath.clear();
-            changed = true;
-        }
-
         changed |= ImGui::Checkbox("Soft Particles", &pe.softParticles);
         if (pe.softParticles)
             changed |= ImGui::DragFloat("Soft Fade Distance", &pe.softParticleFadeDistance, 0.01f, 0.001f, 100.0f);

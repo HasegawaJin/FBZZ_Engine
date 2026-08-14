@@ -22,16 +22,11 @@ enum class ParticleGpuFallbackReason {
     None = 0,
     NotRequested,          // simulationMode が Cpu。そもそも要求していない (縮退ではない)
     LocalSpace,            // simulationSpace = Local。GPU 側は World 座標でしか積分しない
-    // sortMode != None。GPU bitonic sort の導入で解消済みで、現在この値は返らない。
-    // 列挙値を詰めるとシリアライズ済みの数値と食い違うため、欠番として残す。
-    Sorting,
     Collision,             // collisionMode が Depth 以外。シーン形状との判定は CPU 側にしかない
     Prewarm,               // prewarm。過去へ遡ったスポーンは GPU の逐次積分では作れない
     FlipbookFrameBlending, // フレーム間補間
     MotionVectorFlipbook,  // モーションベクター付きフリップブック
     Trail,                 // per-particle Trail。GpuParticle は位置履歴を持たない
-    // meshParticlePath。GPU インスタンス描画の導入で解消済みで、現在この値は返らない (欠番)。
-    MeshParticle,
     SubEmitter,            // birth / death / collision SubEmitter。発火は CPU 側の処理
     SelfShadow,            // selfShadowStrength > 0。密度パスが CPU 頂点バッファを要求する
 };

@@ -272,12 +272,9 @@ struct ParticleEmitter {
 
     // .mat アセットへの参照。albedo テクスチャ・blendMode を .mat から解決する。
     // WHY: シェーダー・テクスチャ・ブレンドを .mat に集約し複数エミッター間で共有できるようにする。
-    //      空文字のとき texturePath へフォールバックするため既存シーンデータは無変更で動く。
     std::string materialPath;
     // 空でない場合はbillboardの代わりに静的Meshを各CPU粒子のTRSで描画する。
     std::string meshParticlePath;
-    // texturePath — deprecated。materialPath が空のときのフォールバック。
-    std::string texturePath;
     // テクスチャからアルファをどう取り出すか。素材の作りの違いを吸収する。
     // 既定は TextureAlpha なので、既存アセットの見た目は変わらない。
     ParticleAlphaSource alphaSource = ParticleAlphaSource::TextureAlpha;
@@ -561,7 +558,6 @@ struct ParticleEmitter {
         }
         r.Field("materialPath", materialPath);
         r.Field("meshParticlePath", meshParticlePath);
-        r.Field("texturePath", texturePath);
         int shapeValue = static_cast<int>(shape);
         r.Field("shape", shapeValue);
         shapeValue = shapeValue < 0 ? 0 : (shapeValue > 4 ? 4 : shapeValue);

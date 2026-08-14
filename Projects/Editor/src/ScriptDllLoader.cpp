@@ -228,16 +228,6 @@ bool ScriptDllLoader::ValidateAbi() const
 
     if (host.signature == dll.signature) return true;
 
-    // 旧 ABI は拡張フィールドを持たないため、末尾を詳細表示すると未初期化値をエラーとして報告してしまう。
-    const bool hasCurrentSchema = dll.msvcFullVersion >= 190000000ull
-        && (dll.pointerSize == 4 || dll.pointerSize == 8)
-        && dll.buildConfiguration >= 1 && dll.buildConfiguration <= 3
-        && dll.dynamicRuntime <= 1;
-    if (!hasCurrentSchema) {
-        FBZZ_LOG_INFO("ScriptDllLoader: legacy ABI DLL detected; rebuild scheduled");
-        return false;
-    }
-
     // 現行 schema 同士の差だけを診断する。自動再ビルド対象なので ERROR ではなく WARNING とする。
     FBZZ_LOG_WARN("ScriptDllLoader: ABI mismatch; Scripts DLL rebuild required");
     if (host.sizeofScript != dll.sizeofScript)

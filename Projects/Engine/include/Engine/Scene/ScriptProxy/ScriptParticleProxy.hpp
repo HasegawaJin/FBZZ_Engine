@@ -103,7 +103,6 @@ struct ScriptParticleProxy {
     void SetLifetime(float seconds) const;
     void SetMaxParticles(int maxParticles) const;
     void SetPlayback(bool loop, float duration, bool clearOnStop = false) const;
-    void SetTexture(std::string_view texturePath, int columns = 1, int rows = 1) const;
     void SetShape(ParticleEmitterShape shape) const;
     void SetSphereShape(float radius) const;
     void SetConeShape(float radius, float angleDegrees) const;

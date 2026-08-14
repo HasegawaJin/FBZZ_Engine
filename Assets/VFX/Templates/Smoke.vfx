@@ -66,7 +66,6 @@ velocityDamping = 0.5
 gravity = [0.0, 0.6, 0.0]
 angularVelocityMin = -0.7
 angularVelocityMax = 0.7
-texturePath = "Assets/Textures/Particles/smoke_04.png"
 # 下層の煙
 blendMode = 2
 sortMode = 1
@@ -128,7 +127,6 @@ velocityDamping = 0.3
 gravity = [0.0, 0.35, 0.0]
 angularVelocityMin = -0.4
 angularVelocityMax = 0.4
-texturePath = "Assets/Textures/Particles/smoke_08.png"
 # 本体の煙
 blendMode = 2
 sortMode = 1
@@ -185,7 +183,6 @@ emitVelocity = [0.0, 0.7, 0.0]
 velocitySpread = 0.35
 velocityDamping = 0.2
 gravity = [0.0, 0.15, 0.0]
-texturePath = "Assets/Textures/Particles/smoke_10.png"
 # 上層のたなびき
 blendMode = 2
 sortMode = 1
@@ -237,7 +234,6 @@ lifetimeRandom = 0.7
 emitVelocity = [0.0, 1.8, 0.0]
 velocitySpread = 0.3
 gravity = [0.0, 0.5, 0.0]
-texturePath = "Assets/Textures/Particles/smoke_02.png"
 blendMode = 1
 sortMode = 1
 distortion = true

@@ -1,6 +1,5 @@
 version = 2
 defaultStateName = 'Locomotion'
-clipSources = []
 anyStateTransitions = [
     { toStateName = 'JumpUp', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'Jump', op = 4, threshold = 0.0 }] },
     { toStateName = 'Fall', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'IsGrounded', op = 5, threshold = 0.0 }, { paramName = 'VerticalSpeed', op = 1, threshold = -1.0 }] }

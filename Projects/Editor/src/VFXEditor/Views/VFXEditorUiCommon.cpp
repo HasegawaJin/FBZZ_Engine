@@ -146,11 +146,10 @@ std::string VFXNodeThumbnailAsset(const asset::VFXGraphNode& node)
     switch (node.type) {
     case asset::VFXNodeType::Particle:
         // 実行時は materialPath が blendMode ごと上書きするので、あるならそちらを代表画にする。
-        return node.particle.materialPath.empty() ? node.particle.texturePath
-                                                  : node.particle.materialPath;
+        return node.particle.materialPath;
     case asset::VFXNodeType::Trail:
     case asset::VFXNodeType::MeshTrail:
-        return node.trail.materialPath.empty() ? node.trail.texturePath : node.trail.materialPath;
+        return node.trail.materialPath;
     case asset::VFXNodeType::Decal:
         return node.decal.albedoPath;
     case asset::VFXNodeType::Mesh:
@@ -197,7 +196,6 @@ void DrawVFXNodeSummary(const asset::VFXGraphNode& node)
     switch (node.type) {
     case asset::VFXNodeType::Particle:
         assetLine("M", node.particle.materialPath);
-        assetLine("T", node.particle.texturePath);
         assetLine("Mesh", node.particle.meshShapePath);
         ImGui::TextDisabled("rate %.0f/s  max %d%s", node.particle.emitRate,
                             node.particle.maxParticles, node.particle.loop ? "  loop" : "");
@@ -239,7 +237,6 @@ void DrawVFXNodeSummary(const asset::VFXGraphNode& node)
     case asset::VFXNodeType::MeshTrail:
         assetLine("Mesh", node.trail.meshPath);
         assetLine("M", node.trail.materialPath);
-        assetLine("T", node.trail.texturePath);
         ImGui::TextDisabled("life %.2fs  width %.2f->%.2f", node.trail.lifetime,
                             node.trail.widthStart, node.trail.widthEnd);
         break;

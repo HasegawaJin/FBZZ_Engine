@@ -71,7 +71,6 @@ void SetNodeActive(Scene& scene, VFXRuntimeNodeState& state, bool active)
         if (auto* graph = gameObject->GetComponent<VFXGraphComponent>()) graph->Restart();
         if (auto* animator = gameObject->GetComponent<AnimatorComponent>()) {
             animator->stateTime = 0.0f;
-            animator->time = 0.0f;
             animator->previousEventTime = 0.0f;
             animator->previousEventClipName.clear();
             animator->firedEvents.clear();
@@ -175,7 +174,6 @@ void AddParticle(GameObject& gameObject, const asset::VFXGraphNode& node)
         gameObject.AddComponent<MeshRenderer>(std::move(renderer));
         MeshTrailComponent meshParticles;
         meshParticles.materialPath = node.particle.materialPath;
-        meshParticles.texturePath = node.particle.texturePath;
         meshParticles.duration = 0.01f;
         gameObject.AddComponent<MeshTrailComponent>(std::move(meshParticles));
     }
@@ -193,7 +191,6 @@ void AddTrail(GameObject& gameObject, const asset::VFXGraphNode& node, bool mesh
         }
         MeshTrailComponent trail;
         trail.materialPath = node.trail.materialPath;
-        trail.texturePath = node.trail.texturePath;
         trail.colorStart = node.trail.colorStart;
         trail.colorEnd = node.trail.colorEnd;
         trail.duration = node.trail.lifetime;
@@ -202,7 +199,6 @@ void AddTrail(GameObject& gameObject, const asset::VFXGraphNode& node, bool mesh
     }
     TrailComponent trail;
     trail.materialPath = node.trail.materialPath;
-    trail.texturePath = node.trail.texturePath;
     trail.colorStart = node.trail.colorStart;
     trail.colorEnd = node.trail.colorEnd;
     trail.duration = node.trail.lifetime;
@@ -305,7 +301,6 @@ void ConfigureAnimatedMesh(GameObject& gameObject, const asset::VFXGraphNode& no
     if (renderer == nullptr) renderer = &gameObject.AddComponent<SkinnedMeshRenderer>();
     renderer->enabled = true;
     renderer->modelPath = node.animatedMesh.modelPath;
-    renderer->meshIndex = node.animatedMesh.meshIndex;
     renderer->model = asset::AssetManager::LoadModel(renderer->modelPath);
     renderer->morphWeights.clear();
     renderer->appliedMorphWeights.clear();
@@ -315,6 +310,11 @@ void ConfigureAnimatedMesh(GameObject& gameObject, const asset::VFXGraphNode& no
     material->materialPath = node.animatedMesh.materialPath.empty()
         ? asset::VFX_MESH_FALLBACK_MATERIAL : node.animatedMesh.materialPath;
     material->paramOverrides.clear();
+    // SkinnedMeshRenderer は常にモデル全体を描くようになったため、
+    // 「この submesh だけを出す」指定はマテリアルスロットの可視フラグで表現する。
+    if (renderer->model)
+        material->ResizeSlots(renderer->model->meshes.size());
+    material->SetOnlyVisibleSlot(node.animatedMesh.meshIndex);
 
     AnimatorComponent* animator = gameObject.GetComponent<AnimatorComponent>();
     if (animator == nullptr) animator = &gameObject.AddComponent<AnimatorComponent>();
@@ -333,9 +333,7 @@ void ConfigureAnimatedMesh(GameObject& gameObject, const asset::VFXGraphNode& no
             if (state.name == node.animatedMesh.initialState)
                 state.loop = node.animatedMesh.loop;
     animator->stateTime = 0.0f;
-    animator->time = 0.0f;
     animator->speed = node.animatedMesh.speed;
-    animator->loop = node.animatedMesh.loop;
     animator->playing = !node.animatedMesh.syncToGraphTime;
     // VFX の決定論的 Preview は Transform を動かしてはいけないため、
     // 抽出オフ時は「ポーズはそのまま (Keep)」を選ぶ。
@@ -495,9 +493,6 @@ void ApplyNodeEnvelope(Scene& scene, const VFXRuntimeNodeState& state,
                 if (selectedClip == nullptr && state->clipIndex >= 0
                     && state->clipIndex < static_cast<int>(animator->clips.size()))
                     selectedClip = &animator->clips[static_cast<std::size_t>(state->clipIndex)];
-            } else if (animator->clipIndex >= 0
-                && animator->clipIndex < static_cast<int>(animator->clips.size())) {
-                selectedClip = &animator->clips[static_cast<std::size_t>(animator->clipIndex)];
             }
             if (selectedClip != nullptr)
                 clipDuration = (std::max)(
@@ -511,7 +506,6 @@ void ApplyNodeEnvelope(Scene& scene, const VFXRuntimeNodeState& state,
             if (!node.animatedMesh.initialState.empty())
                 animator->currentStateName = node.animatedMesh.initialState;
             animator->stateTime = animationTime;
-            animator->time = animationTime;
         }
         return;
     }
@@ -708,11 +702,6 @@ private:
             m_value = value;
             return;
         }
-        for (const char* formerKey : FormerKeys())
-            if (formerKey && m_field == formerKey) {
-                m_value = value;
-                return;
-            }
     }
     std::string_view m_field;
     std::any m_value;
@@ -827,14 +816,14 @@ void ApplyRuntimeNodeSettings(Scene& scene, const VFXRuntimeNodeState& state,
         }
     } else if (node.type == asset::VFXNodeType::Trail) {
         if (auto* trail = object->GetComponent<TrailComponent>()) {
-            trail->materialPath = node.trail.materialPath; trail->texturePath = node.trail.texturePath;
+            trail->materialPath = node.trail.materialPath;
             trail->colorStart = node.trail.colorStart; trail->colorEnd = node.trail.colorEnd;
             trail->duration = node.trail.lifetime; trail->widthStart = node.trail.widthStart; trail->widthEnd = node.trail.widthEnd;
             trail->beamMode = node.trail.beamMode; trail->beamStart = node.trail.beamStart; trail->beamEnd = node.trail.beamEnd;
         }
     } else if (node.type == asset::VFXNodeType::MeshTrail) {
         if (auto* trail = object->GetComponent<MeshTrailComponent>()) {
-            trail->materialPath = node.trail.materialPath; trail->texturePath = node.trail.texturePath;
+            trail->materialPath = node.trail.materialPath;
             trail->colorStart = node.trail.colorStart; trail->colorEnd = node.trail.colorEnd; trail->duration = node.trail.lifetime;
         }
     } else if (node.type == asset::VFXNodeType::Decal) {
@@ -887,7 +876,6 @@ void ApplyRuntimeNodeSettings(Scene& scene, const VFXRuntimeNodeState& state,
             ConfigureAnimatedMesh(*object, node);
         } else if (auto* animator = object->GetComponent<AnimatorComponent>()) {
             animator->speed = node.animatedMesh.speed;
-            animator->loop = node.animatedMesh.loop;
             animator->rootMotion.mode = node.animatedMesh.applyRootMotion
                 ? RootMotionMode::ApplyToTransform
                 : RootMotionMode::None;
@@ -1462,7 +1450,6 @@ void VFXGraphSystem::Update(SystemContext& ctx)
                 if (auto* animator = parent->GetComponent<AnimatorComponent>()) {
                     const float animationTime = component->playTime * animator->speed;
                     animator->playing = false;
-                    animator->time = animationTime;
                     animator->stateTime = animationTime;
                     break;
                 }

@@ -57,7 +57,6 @@ lifetimeRandom = 0.4
 velocitySpread = 0.3
 velocityDamping = 0.2
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/star_04.png"
 # 集束する光粒: 520 粒子
 blendMode = 0
 emissiveScale = 2.5
@@ -113,7 +112,6 @@ sizeCurvePower = 0.5
 lifetime = 1.5
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/symbol_01.png"
 # 魔法陣
 blendMode = 0
 renderMode = 2
@@ -232,7 +230,6 @@ lifetimeRandom = 0.4
 velocitySpread = 11.0
 velocityDamping = 2.4
 gravity = [0.0, -0.6, 0.0]
-texturePath = "Assets/Textures/Particles/magic_05.png"
 # 解放バースト: 800 粒子
 blendMode = 0
 emissiveScale = 3.0
@@ -288,7 +285,6 @@ sizeCurvePower = 0.4
 lifetime = 0.55
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/twirl_03.png"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -401,7 +397,6 @@ emitVelocity = [0.0, 0.5, 0.0]
 velocitySpread = 0.6
 velocityDamping = 0.5
 gravity = [0.0, 0.25, 0.0]
-texturePath = "Assets/Textures/Particles/star_08.png"
 # 残光: 300 粒子
 blendMode = 0
 emissiveScale = 2.0
