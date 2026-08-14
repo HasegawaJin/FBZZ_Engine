@@ -13,7 +13,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 2.580071
+    aspectRatio = 2.185993
     cullingMask = 4294967295
     enabled = true
     farZ = 1000.0
@@ -63,23 +63,27 @@ tag = 'Untagged'
     position = [ 0.0, 3.0, 0.0 ]
     rotation = [ 0.501514, -0.501395, 0.477734, 0.518515 ]
     scale = [ 1.0, 1.0, 1.0 ]
-
 [[gameobjects]]
 active = true
-instanceId = 'b4a1f2c3-1111-4444-8888-abcdefabcdef'
+instanceId = '90d38a7d-5b4b-49f9-95f9-a5db657daa6f'
 layer = 0
-name = 'PlayerSpawner'
+name = 'Post Process Volume'
 parent = ''
 parentInstanceId = ''
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:adbee6b96d7b44518568016375345848'
+
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PlayerSpawnerComponent'

@@ -6,5 +6,10 @@ version = 1
 
 [params]
 albedo = [ 0.04500000178813934, 0.04800000041723251, 0.054999999701976776, 1.0 ]
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10000000149011612
 metallic = 0.0
 roughness = 0.6000000238418579
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

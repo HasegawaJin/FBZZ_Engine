@@ -1,0 +1,15 @@
+mesh_type = 'surface'
+name = 'M_AR_WallPanel'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.800000011920929, 0.800000011920929, 0.800000011920929, 1.0 ]
+metallic = 0.0
+roughness = 0.5
+
+[textures]
+albedo = 'T_AR_WallPanel_Albedo.png'
+metallic = 'T_AR_WallPanel_Metallic.png'
+normal = 'T_AR_WallPanel_Normal.png'

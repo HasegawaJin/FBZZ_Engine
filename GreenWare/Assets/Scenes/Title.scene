@@ -142,3 +142,28 @@ tag = 'Untagged'
         autoTransition = false
         targetScene = 'Game'
         viaScene = 'Load'
+
+[[gameobjects]]
+active = true
+instanceId = '5d5875f9-a17a-42eb-b755-6e7f61e7fc84'
+layer = 0
+name = 'Post Process Volume'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:adbee6b96d7b44518568016375345848'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

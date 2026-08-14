@@ -8,18 +8,18 @@ enabled = true
 interval_sec = 300
 
 [camera]
-last_pos_x = 1.3715308904647827
-last_pos_y = 23.307472229003906
-last_pos_z = 21.188833236694336
-last_rot_w = 0.0318068228662014
-last_rot_x = 0.0057013086043298244
-last_rot_y = -0.983798086643219
-last_rot_z = 0.17634382843971252
+last_pos_x = 3.019394874572754
+last_pos_y = 0.9373092651367188
+last_pos_z = -3.8735904693603516
+last_rot_w = 0.941500186920166
+last_rot_x = 0.08903691172599792
+last_rot_y = -0.3235943913459778
+last_rot_z = 0.03060206212103367
 sensitivity = 0.15000000596046448
 speed = 5.0
 
 [debug]
-show_colliders = false
+show_colliders = true
 show_decal_bounds = false
 show_nav_sensors = false
 show_navmesh = true
@@ -253,7 +253,95 @@ normal_map_convention = 0
 source_dcc = 0
 
 [[inspector_sections.states]]
+k = 41055455
+v = true
+
+[[inspector_sections.states]]
+k = 85077118
+v = false
+
+[[inspector_sections.states]]
+k = 97575588
+v = true
+
+[[inspector_sections.states]]
+k = 143527838
+v = true
+
+[[inspector_sections.states]]
 k = 171788150
+v = true
+
+[[inspector_sections.states]]
+k = 182547011
+v = true
+
+[[inspector_sections.states]]
+k = 261210920
+v = true
+
+[[inspector_sections.states]]
+k = 264738087
+v = true
+
+[[inspector_sections.states]]
+k = 309989070
+v = true
+
+[[inspector_sections.states]]
+k = 331844269
+v = true
+
+[[inspector_sections.states]]
+k = 337885300
+v = true
+
+[[inspector_sections.states]]
+k = 408437475
+v = true
+
+[[inspector_sections.states]]
+k = 409789409
+v = true
+
+[[inspector_sections.states]]
+k = 465768719
+v = true
+
+[[inspector_sections.states]]
+k = 465768720
+v = false
+
+[[inspector_sections.states]]
+k = 465768721
+v = false
+
+[[inspector_sections.states]]
+k = 465768722
+v = false
+
+[[inspector_sections.states]]
+k = 465768723
+v = false
+
+[[inspector_sections.states]]
+k = 465768724
+v = false
+
+[[inspector_sections.states]]
+k = 465768725
+v = false
+
+[[inspector_sections.states]]
+k = 465768726
+v = true
+
+[[inspector_sections.states]]
+k = 467311081
+v = true
+
+[[inspector_sections.states]]
+k = 515468364
 v = true
 
 [[inspector_sections.states]]
@@ -261,11 +349,83 @@ k = 541245699
 v = true
 
 [[inspector_sections.states]]
+k = 593514441
+v = true
+
+[[inspector_sections.states]]
 k = 598589106
 v = false
 
 [[inspector_sections.states]]
+k = 636136352
+v = true
+
+[[inspector_sections.states]]
+k = 637407059
+v = true
+
+[[inspector_sections.states]]
+k = 672440332
+v = true
+
+[[inspector_sections.states]]
+k = 684948636
+v = true
+
+[[inspector_sections.states]]
+k = 719904484
+v = false
+
+[[inspector_sections.states]]
+k = 790345054
+v = true
+
+[[inspector_sections.states]]
 k = 812494682
+v = true
+
+[[inspector_sections.states]]
+k = 826096896
+v = true
+
+[[inspector_sections.states]]
+k = 928207700
+v = true
+
+[[inspector_sections.states]]
+k = 969583960
+v = true
+
+[[inspector_sections.states]]
+k = 1100765732
+v = true
+
+[[inspector_sections.states]]
+k = 1112356441
+v = true
+
+[[inspector_sections.states]]
+k = 1112833656
+v = true
+
+[[inspector_sections.states]]
+k = 1135339750
+v = false
+
+[[inspector_sections.states]]
+k = 1186662887
+v = true
+
+[[inspector_sections.states]]
+k = 1188333846
+v = true
+
+[[inspector_sections.states]]
+k = 1311376811
+v = true
+
+[[inspector_sections.states]]
+k = 1326618241
 v = true
 
 [[inspector_sections.states]]
@@ -273,16 +433,60 @@ k = 1402486072
 v = true
 
 [[inspector_sections.states]]
+k = 1418821523
+v = true
+
+[[inspector_sections.states]]
+k = 1442745694
+v = true
+
+[[inspector_sections.states]]
+k = 1511295122
+v = true
+
+[[inspector_sections.states]]
+k = 1550891466
+v = true
+
+[[inspector_sections.states]]
+k = 1712741068
+v = true
+
+[[inspector_sections.states]]
 k = 1787648066
 v = false
+
+[[inspector_sections.states]]
+k = 1871903930
+v = true
 
 [[inspector_sections.states]]
 k = 1903098007
 v = false
 
 [[inspector_sections.states]]
+k = 1981452864
+v = false
+
+[[inspector_sections.states]]
 k = 1990074492
 v = true
+
+[[inspector_sections.states]]
+k = 1994370457
+v = true
+
+[[inspector_sections.states]]
+k = 2144209677
+v = true
+
+[[inspector_sections.states]]
+k = 2260825218
+v = true
+
+[[inspector_sections.states]]
+k = 2265401016
+v = false
 
 [[inspector_sections.states]]
 k = 2298574780
@@ -293,16 +497,100 @@ k = 2298668059
 v = true
 
 [[inspector_sections.states]]
+k = 2299312374
+v = true
+
+[[inspector_sections.states]]
+k = 2384430742
+v = false
+
+[[inspector_sections.states]]
 k = 2436975362
 v = false
+
+[[inspector_sections.states]]
+k = 2443480504
+v = true
 
 [[inspector_sections.states]]
 k = 2473509195
 v = false
 
 [[inspector_sections.states]]
+k = 2483779295
+v = true
+
+[[inspector_sections.states]]
+k = 2504448096
+v = true
+
+[[inspector_sections.states]]
+k = 2513269623
+v = true
+
+[[inspector_sections.states]]
+k = 2547821501
+v = true
+
+[[inspector_sections.states]]
+k = 2547986386
+v = false
+
+[[inspector_sections.states]]
+k = 2626299507
+v = false
+
+[[inspector_sections.states]]
+k = 2626913488
+v = true
+
+[[inspector_sections.states]]
+k = 2678910068
+v = true
+
+[[inspector_sections.states]]
+k = 2716065418
+v = true
+
+[[inspector_sections.states]]
+k = 2735460811
+v = true
+
+[[inspector_sections.states]]
 k = 2871093393
 v = false
+
+[[inspector_sections.states]]
+k = 2871679586
+v = false
+
+[[inspector_sections.states]]
+k = 2882564973
+v = true
+
+[[inspector_sections.states]]
+k = 2885836147
+v = true
+
+[[inspector_sections.states]]
+k = 2926098065
+v = true
+
+[[inspector_sections.states]]
+k = 2926884457
+v = true
+
+[[inspector_sections.states]]
+k = 2936622285
+v = true
+
+[[inspector_sections.states]]
+k = 2965359988
+v = true
+
+[[inspector_sections.states]]
+k = 3017406218
+v = true
 
 [[inspector_sections.states]]
 k = 3021343248
@@ -310,7 +598,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 3021343249
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 3021343250
@@ -318,22 +606,26 @@ v = false
 
 [[inspector_sections.states]]
 k = 3021343251
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 3021343252
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 3021343253
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 3021343254
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 3021343255
+v = true
+
+[[inspector_sections.states]]
+k = 3026673340
 v = true
 
 [[inspector_sections.states]]
@@ -341,12 +633,128 @@ k = 3111249855
 v = false
 
 [[inspector_sections.states]]
+k = 3115522249
+v = true
+
+[[inspector_sections.states]]
+k = 3129543268
+v = true
+
+[[inspector_sections.states]]
+k = 3196376047
+v = true
+
+[[inspector_sections.states]]
 k = 3206765092
 v = false
 
 [[inspector_sections.states]]
+k = 3229438936
+v = true
+
+[[inspector_sections.states]]
+k = 3274750871
+v = true
+
+[[inspector_sections.states]]
+k = 3306253603
+v = false
+
+[[inspector_sections.states]]
+k = 3310708095
+v = true
+
+[[inspector_sections.states]]
+k = 3310853143
+v = true
+
+[[inspector_sections.states]]
+k = 3328245526
+v = true
+
+[[inspector_sections.states]]
+k = 3339071148
+v = true
+
+[[inspector_sections.states]]
+k = 3357470736
+v = true
+
+[[inspector_sections.states]]
+k = 3441050486
+v = true
+
+[[inspector_sections.states]]
+k = 3442479011
+v = true
+
+[[inspector_sections.states]]
+k = 3448736725
+v = false
+
+[[inspector_sections.states]]
+k = 3472503500
+v = true
+
+[[inspector_sections.states]]
+k = 3479996960
+v = true
+
+[[inspector_sections.states]]
+k = 3529119059
+v = true
+
+[[inspector_sections.states]]
+k = 3549910247
+v = true
+
+[[inspector_sections.states]]
+k = 3637999217
+v = true
+
+[[inspector_sections.states]]
+k = 3640606237
+v = true
+
+[[inspector_sections.states]]
+k = 3727136806
+v = true
+
+[[inspector_sections.states]]
+k = 3863587276
+v = true
+
+[[inspector_sections.states]]
+k = 3924500087
+v = true
+
+[[inspector_sections.states]]
+k = 3947225618
+v = true
+
+[[inspector_sections.states]]
+k = 3972360449
+v = true
+
+[[inspector_sections.states]]
+k = 3991470601
+v = true
+
+[[inspector_sections.states]]
 k = 4011643295
 v = false
+
+[[inspector_sections.states]]
+k = 4061424554
+v = true
+
+[[inspector_sections.states]]
+k = 4066932478
+v = true
+
+[[inspector_sections.states]]
+k = 4190271575
+v = true
 
 [map_mode]
 hierarchy_filter = true
@@ -385,7 +793,7 @@ scale = 1.0
 
 [view]
 grid_size = 1.0
-show_grid = true
+show_grid = false
 show_light_range = true
 show_skeleton = true
 show_stats = true

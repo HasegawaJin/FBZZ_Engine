@@ -64,6 +64,68 @@ tag = 'MainCamera'
 
 [[gameobjects]]
 active = true
+instanceId = 'c7058867-28a3-47f4-aae6-71dc2f9d6a53'
+layer = 0
+name = 'Sky System'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.AtmosphericScatteringComponent]
+    enabled = true
+    fogColor = [ 0.55, 0.65, 0.75 ]
+    fogDensity = 0.04
+    fogEnabled = true
+    fogFar = 80.0
+    fogSource = 1
+
+    [gameobjects.EnvironmentLightComponent]
+    diffuseScale = 0.64
+    enabled = true
+    intensity = 0.3
+    irradiancePath = ''
+    maxMipLevel = 4
+    prefilterPath = ''
+    source = 1
+    specularScale = 0.6
+
+    [gameobjects.SkyRenderer]
+    atmosphereRadius = 6471.0
+    cloudShadowCoverage = 0.5
+    cloudShadowScale = 0.02
+    cloudShadowSpeed = 1.0
+    cloudShadowStrength = 0.0
+    dayColor = [ 1.0, 0.98, 0.95 ]
+    dayIntensity = 4.0
+    dayNightEnabled = false
+    enabled = true
+    mieG = 0.76
+    mieScattering = 0.0021
+    nightColor = [ 0.1, 0.15, 0.3 ]
+    nightIntensity = 0.3
+    planetRadius = 6371.0
+    rayleighScattering = [ 0.0058, 0.0135, 0.0331 ]
+    sunIntensity = 20.0
+    sunsetColor = [ 1.0, 0.5, 0.2 ]
+
+    [gameobjects.SunMoonRenderer]
+    enabled = true
+    moonBrightness = 0.6
+    moonColor = [ 0.85, 0.9, 1.0 ]
+    moonEnabled = false
+    moonSize = 1.0
+    sunEnabled = true
+    sunIntensity = 20.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
 instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
 layer = 0
 name = 'DirectionalLight'
@@ -121,9 +183,9 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+instanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 layer = 0
-name = 'Boss'
+name = 'Boss_Arena_Map'
 parent = ''
 parentInstanceId = ''
 prefabAssetPath = ''
@@ -131,29 +193,122 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.transform]
-    position = [ 0.0, 15.442823, 0.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
+    scale = [ 100.0, 100.0, 100.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '35524e4f-175a-48de-bb72-d3853ac38d7b'
+instanceId = 'f01b36b3-e726-4497-99e8-c433cc273fec'
 layer = 0
-name = 'Boss_Mesh0'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_Buttress.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bbab61d59a18d2e88bb3e8f55824129c'
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
 
-    [gameobjects.SkinnedMeshRenderer]
+    [gameobjects.MeshRenderer]
+    castShadows = true
     enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:0'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b260ca9b-59ef-4d34-86d1-1feb00e26e83'
+layer = 0
+name = 'ARENA_CoreRing'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:b29c433a6b40d88828032915e3c11420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:1'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '28a33f5c-9cd9-49f3-b8a8-e9427831d192'
+layer = 0
+name = 'ARENA_CoreRing2'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:b29c433a6b40d88828032915e3c11420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:2'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b7b8a543-8eb0-4965-9a80-b0870248b721'
+layer = 0
+name = 'ARENA_Floor'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e5f893d37df4a80c961d2fde0807ba05'
+    visible = true
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
     meshIndex = 0
-    modelPath = 'guid:78c7731d45e905f54de23820f6ec36bb'
+    meshPath = 'Assets/Models/Map/Boss_Arena_Map.fbx:3'
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:3'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -162,23 +317,24 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'd806152a-1848-49b9-9d51-5c74f67a517c'
+instanceId = '111bce17-7331-4634-aae8-b2eaa916ec24'
 layer = 0
-name = 'Boss_Mesh1'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_FloorHazard'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:f6b8682707d453fd643b8e6d45d28fcd'
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
 
-    [gameobjects.SkinnedMeshRenderer]
+    [gameobjects.MeshRenderer]
+    castShadows = true
     enabled = true
-    meshIndex = 1
-    modelPath = 'guid:78c7731d45e905f54de23820f6ec36bb'
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:4'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -187,23 +343,24 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'caa16c5b-accc-4b9a-aec6-c17c1fa95a2e'
+instanceId = 'ef037738-b22d-4cc6-84e6-b5f319ed1f10'
 layer = 0
-name = 'Boss_Mesh2'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_FloorPlates'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:d9296d3542e609f98a42a52112c58d1d'
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
 
-    [gameobjects.SkinnedMeshRenderer]
+    [gameobjects.MeshRenderer]
+    castShadows = true
     enabled = true
-    meshIndex = 2
-    modelPath = 'guid:78c7731d45e905f54de23820f6ec36bb'
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:5'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -212,23 +369,24 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'f2c96fac-5e3d-4103-87e0-7baaf0e831a5'
+instanceId = '5b1c4a49-f981-4ccc-bd68-9c20ff3ed3a5'
 layer = 0
-name = 'Boss_Mesh3'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_HazardKick'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:fa2803e17299ca6e09e2a6f6d6b7a65f'
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
 
-    [gameobjects.SkinnedMeshRenderer]
+    [gameobjects.MeshRenderer]
+    castShadows = true
     enabled = true
-    meshIndex = 3
-    modelPath = 'guid:78c7731d45e905f54de23820f6ec36bb'
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:6'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -237,23 +395,24 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '221a9e48-bd92-4368-95cf-64cccdb3bd52'
+instanceId = '058a55c6-f983-4198-8d0a-c7cb47639d14'
 layer = 0
-name = 'Boss_Mesh4'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_MidTrim'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:9cdc280af5b12b30707d14c8add3c9e9'
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
 
-    [gameobjects.SkinnedMeshRenderer]
+    [gameobjects.MeshRenderer]
+    castShadows = true
     enabled = true
-    meshIndex = 4
-    modelPath = 'guid:78c7731d45e905f54de23820f6ec36bb'
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:7'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -262,23 +421,24 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'a400c117-e205-4b18-af27-b7d30ce57162'
+instanceId = 'a26190ec-a7f9-43d3-80c7-473c62b00104'
 layer = 0
-name = 'Boss_Mesh5'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_MidTrim2'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:7d727b099145680838ac4188dbb3870f'
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
 
-    [gameobjects.SkinnedMeshRenderer]
+    [gameobjects.MeshRenderer]
+    castShadows = true
     enabled = true
-    meshIndex = 5
-    modelPath = 'guid:78c7731d45e905f54de23820f6ec36bb'
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:8'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -287,23 +447,24 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '207c2971-0e6a-403e-aa36-360566da676a'
+instanceId = 'c2dd577f-d947-4d3a-a2e2-c2691cf6f6d4'
 layer = 0
-name = 'Boss_Mesh6'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_Roof'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:74651deee01989ff27edb1d8ac376981'
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
 
-    [gameobjects.SkinnedMeshRenderer]
+    [gameobjects.MeshRenderer]
+    castShadows = true
     enabled = true
-    meshIndex = 6
-    modelPath = 'guid:78c7731d45e905f54de23820f6ec36bb'
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:9'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -312,70 +473,24 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
+instanceId = '9bf2468f-d346-40ca-8399-e95fd627e902'
 layer = 0
-name = 'RootNode'
-parent = 'Boss'
-parentInstanceId = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+name = 'ARENA_RoofDebris'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'RootNode'
-    generated = true
-    nodeIndex = 0
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e5f893d37df4a80c961d2fde0807ba05'
+    visible = true
 
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '2b3358b6-7404-4701-acb8-b037c67e91b5'
-layer = 0
-name = 'Boss_Armature'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'Boss_Armature'
-    generated = true
-    nodeIndex = 1
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '5c17cf77-3392-4fab-8b8a-9f9c77392480'
-layer = 0
-name = 'Root'
-parent = 'Boss_Armature'
-parentInstanceId = '2b3358b6-7404-4701-acb8-b037c67e91b5'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 0
-    boneName = 'Root'
-    generated = true
-    nodeIndex = 2
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:10'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -384,1560 +499,1317 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
+instanceId = '6c62b6c5-95ac-4a61-a995-52bf5628019e'
 layer = 0
-name = 'Body'
-parent = 'Root'
-parentInstanceId = '5c17cf77-3392-4fab-8b8a-9f9c77392480'
+name = 'ARENA_Rubble'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = 1
-    boneName = 'Body'
-    generated = true
-    nodeIndex = 3
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e5f893d37df4a80c961d2fde0807ba05'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:11'
 
     [gameobjects.transform]
-    position = [ 0.0, -0.4, -4.5 ]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '9791044a-8f9b-4c16-8fa5-94316b0fa88d'
+instanceId = 'e0caf103-9223-44e6-85b0-b530decf8e1c'
 layer = 0
-name = 'Head'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
+name = 'ARENA_TopHazard'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = 2
-    boneName = 'Head'
-    generated = true
-    nodeIndex = 4
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:12'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.4, -0.66 ]
-    rotation = [ 0.021039, 0.0, 0.0, 0.999779 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b66a9fa6-9ed4-4bac-9e56-e35b4d5fafeb'
-layer = 0
-name = 'Rear'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 3
-    boneName = 'Rear'
-    generated = true
-    nodeIndex = 5
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, -1.15, -0.98 ]
-    rotation = [ 0.988034, 0.0, 0.0, 0.154234 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'f63eb036-2e25-453e-bb3d-4261d873c9c1'
-layer = 0
-name = 'Ring'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 4
-    boneName = 'Ring'
-    generated = true
-    nodeIndex = 6
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.4, 0.18 ]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '52aa4a39-de27-451c-8b7a-feac992d1208'
+instanceId = 'cb0d0327-b467-4d09-9290-4438f4d9c268'
 layer = 0
-name = 'Core'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
+name = 'ARENA_TopTrim'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = 5
-    boneName = 'Core'
-    generated = true
-    nodeIndex = 7
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:13'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.4, 0.3 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '3752ccac-dc02-4d6c-9fc9-00523c658644'
-layer = 0
-name = 'Muzzle'
-parent = 'Core'
-parentInstanceId = '52aa4a39-de27-451c-8b7a-feac992d1208'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 6
-    boneName = 'Muzzle'
-    generated = true
-    nodeIndex = 8
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 1.44, 0.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0b500e14-699f-48df-ba50-efc66eef3557'
+instanceId = '1e802f9f-3828-4c26-be65-b5a756b2ae47'
 layer = 0
-name = 'Yaw_FR'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
+name = 'ARENA_Trusses'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = 7
-    boneName = 'Yaw_FR'
-    generated = true
-    nodeIndex = 9
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 2.28, 3.42, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '9568a2f0-0611-4db4-9ef0-770e005ddcae'
-layer = 0
-name = 'Thigh_FR'
-parent = 'Yaw_FR'
-parentInstanceId = '0b500e14-699f-48df-ba50-efc66eef3557'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 8
-    boneName = 'Thigh_FR'
-    generated = true
-    nodeIndex = 10
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.777909, 0.356052, 0.356052, -0.375914 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '53098fe8-650e-4800-8aa4-c1b913ffa304'
-layer = 0
-name = 'Shin_FR'
-parent = 'Thigh_FR'
-parentInstanceId = '9568a2f0-0611-4db4-9ef0-770e005ddcae'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 9
-    boneName = 'Shin_FR'
-    generated = true
-    nodeIndex = 11
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.67817, 0.34701, 0.205325, 0.614419 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'd781b8ae-b246-4756-86c1-58d5d67a2cbf'
-layer = 0
-name = 'Hock_FR'
-parent = 'Shin_FR'
-parentInstanceId = '53098fe8-650e-4800-8aa4-c1b913ffa304'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 10
-    boneName = 'Hock_FR'
-    generated = true
-    nodeIndex = 12
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ 0.267085, 0.351587, 0.390578, 0.807775 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'af8c0463-4a60-414b-8023-b6a9425899ad'
-layer = 0
-name = 'Foot_FR'
-parent = 'Hock_FR'
-parentInstanceId = 'd781b8ae-b246-4756-86c1-58d5d67a2cbf'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 11
-    boneName = 'Foot_FR'
-    generated = true
-    nodeIndex = 13
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ -0.109078, -0.220447, -0.220447, 0.943879 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '1c5cbae0-4d7f-468d-95b4-c08c703caf45'
-layer = 0
-name = 'Toe1A_FR'
-parent = 'Foot_FR'
-parentInstanceId = 'af8c0463-4a60-414b-8023-b6a9425899ad'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 12
-    boneName = 'Toe1A_FR'
-    generated = true
-    nodeIndex = 14
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.099636, 0.28, -0.008529 ]
-    rotation = [ -0.414932, -0.466985, -0.466986, 0.625844 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'f66757f8-5384-4149-b011-b86e82dceb36'
-layer = 0
-name = 'Toe1B_FR'
-parent = 'Toe1A_FR'
-parentInstanceId = '1c5cbae0-4d7f-468d-95b4-c08c703caf45'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 13
-    boneName = 'Toe1B_FR'
-    generated = true
-    nodeIndex = 15
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.409999, 0.0 ]
-    rotation = [ -0.016254, -0.015213, -0.003094, 0.999747 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'f45dfa2c-9450-4f4c-8900-eaa8c7481ee6'
-layer = 0
-name = 'Toe2A_FR'
-parent = 'Foot_FR'
-parentInstanceId = 'af8c0463-4a60-414b-8023-b6a9425899ad'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 14
-    boneName = 'Toe2A_FR'
-    generated = true
-    nodeIndex = 16
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.576995, -0.266592, -0.266592, 0.724524 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'd353e1b3-c1f7-4528-9cf8-8b31d5fe1a72'
-layer = 0
-name = 'Toe2B_FR'
-parent = 'Toe2A_FR'
-parentInstanceId = 'f45dfa2c-9450-4f4c-8900-eaa8c7481ee6'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 15
-    boneName = 'Toe2B_FR'
-    generated = true
-    nodeIndex = 17
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 1e-06, 0.468722, 0.0 ]
-    rotation = [ -0.012342, -0.005161, -0.000929, 0.99991 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b49170e6-67ae-4db4-80c4-6d4ee601b538'
-layer = 0
-name = 'Toe3A_FR'
-parent = 'Foot_FR'
-parentInstanceId = 'af8c0463-4a60-414b-8023-b6a9425899ad'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 16
-    boneName = 'Toe3A_FR'
-    generated = true
-    nodeIndex = 18
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.008529, 0.28, -0.099636 ]
-    rotation = [ -0.623992, -0.029628, -0.029628, 0.780307 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '0fbd056f-4152-4967-8446-e413a7ef1a6b'
-layer = 0
-name = 'Toe3B_FR'
-parent = 'Toe3A_FR'
-parentInstanceId = 'b49170e6-67ae-4db4-80c4-6d4ee601b538'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 17
-    boneName = 'Toe3B_FR'
-    generated = true
-    nodeIndex = 19
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016545, -0.000714, -0.000146, 0.999863 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'c0797801-1353-491d-9499-8e13a17d7281'
-layer = 0
-name = 'HeelA_FR'
-parent = 'Foot_FR'
-parentInstanceId = 'af8c0463-4a60-414b-8023-b6a9425899ad'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 18
-    boneName = 'HeelA_FR'
-    generated = true
-    nodeIndex = 20
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.070711, 0.28, 0.070711 ]
-    rotation = [ -0.048507, 0.605052, 0.605053, 0.515238 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '5eaf40f4-05eb-4122-ba8d-24353bb3c7fa'
-layer = 0
-name = 'HeelB_FR'
-parent = 'HeelA_FR'
-parentInstanceId = 'c0797801-1353-491d-9499-8e13a17d7281'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 19
-    boneName = 'HeelB_FR'
-    generated = true
-    nodeIndex = 21
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.020312, 0.054402, 0.013047, 0.998227 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '891aa2af-f729-4058-aafd-32ecf45043eb'
-layer = 0
-name = 'Yaw_FL'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 20
-    boneName = 'Yaw_FL'
-    generated = true
-    nodeIndex = 22
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -2.28, 3.42, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '77dfd7c0-cf14-4a80-b7a1-8bd8193df0d6'
-layer = 0
-name = 'Thigh_FL'
-parent = 'Yaw_FL'
-parentInstanceId = '891aa2af-f729-4058-aafd-32ecf45043eb'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 21
-    boneName = 'Thigh_FL'
-    generated = true
-    nodeIndex = 23
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.777909, -0.356052, -0.356052, -0.375914 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '5302c127-bf0d-4941-a483-c388a75e7ae6'
-layer = 0
-name = 'Shin_FL'
-parent = 'Thigh_FL'
-parentInstanceId = '77dfd7c0-cf14-4a80-b7a1-8bd8193df0d6'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 22
-    boneName = 'Shin_FL'
-    generated = true
-    nodeIndex = 24
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.67817, -0.34701, -0.205325, 0.614419 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '2f75fceb-396f-4a35-a245-39408692af4e'
-layer = 0
-name = 'Hock_FL'
-parent = 'Shin_FL'
-parentInstanceId = '5302c127-bf0d-4941-a483-c388a75e7ae6'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 23
-    boneName = 'Hock_FL'
-    generated = true
-    nodeIndex = 25
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ 0.267085, -0.351587, -0.390578, 0.807775 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '70fec557-b802-4fce-aa95-00aba479df4d'
-layer = 0
-name = 'Foot_FL'
-parent = 'Hock_FL'
-parentInstanceId = '2f75fceb-396f-4a35-a245-39408692af4e'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 24
-    boneName = 'Foot_FL'
-    generated = true
-    nodeIndex = 26
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ -0.109078, 0.220447, 0.220447, 0.943879 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'd0aeac70-c5aa-40f3-ba91-b35171d6d95c'
-layer = 0
-name = 'Toe1A_FL'
-parent = 'Foot_FL'
-parentInstanceId = '70fec557-b802-4fce-aa95-00aba479df4d'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 25
-    boneName = 'Toe1A_FL'
-    generated = true
-    nodeIndex = 27
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.008529, 0.28, -0.099636 ]
-    rotation = [ -0.623992, 0.029628, 0.029628, 0.780307 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '1a529af9-e8c8-4f77-b098-37ecc6bf03f9'
-layer = 0
-name = 'Toe1B_FL'
-parent = 'Toe1A_FL'
-parentInstanceId = 'd0aeac70-c5aa-40f3-ba91-b35171d6d95c'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 26
-    boneName = 'Toe1B_FL'
-    generated = true
-    nodeIndex = 28
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016545, 0.000714, 0.000146, 0.999863 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '619b79ff-73af-42d4-b225-84f6a4f74608'
-layer = 0
-name = 'Toe2A_FL'
-parent = 'Foot_FL'
-parentInstanceId = '70fec557-b802-4fce-aa95-00aba479df4d'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 27
-    boneName = 'Toe2A_FL'
-    generated = true
-    nodeIndex = 29
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.576995, 0.266592, 0.266592, 0.724524 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '6e9e81bd-d329-4804-a6f4-5e8c1e29b3e7'
-layer = 0
-name = 'Toe2B_FL'
-parent = 'Toe2A_FL'
-parentInstanceId = '619b79ff-73af-42d4-b225-84f6a4f74608'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 28
-    boneName = 'Toe2B_FL'
-    generated = true
-    nodeIndex = 30
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -1e-06, 0.468722, 0.0 ]
-    rotation = [ -0.012342, 0.005161, 0.000929, 0.99991 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '8bc08cd2-76ac-4e46-83b8-38d0d21ae1f9'
-layer = 0
-name = 'Toe3A_FL'
-parent = 'Foot_FL'
-parentInstanceId = '70fec557-b802-4fce-aa95-00aba479df4d'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 29
-    boneName = 'Toe3A_FL'
-    generated = true
-    nodeIndex = 31
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.099636, 0.28, -0.008529 ]
-    rotation = [ -0.414932, 0.466985, 0.466986, 0.625844 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'a1184dd5-fd55-46a0-a74e-8cea329c65ef'
-layer = 0
-name = 'Toe3B_FL'
-parent = 'Toe3A_FL'
-parentInstanceId = '8bc08cd2-76ac-4e46-83b8-38d0d21ae1f9'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 30
-    boneName = 'Toe3B_FL'
-    generated = true
-    nodeIndex = 32
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.409999, 0.0 ]
-    rotation = [ -0.016254, 0.015213, 0.003094, 0.999747 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '8260f820-62e5-47f6-9968-5169c4d9e13c'
-layer = 0
-name = 'HeelA_FL'
-parent = 'Foot_FL'
-parentInstanceId = '70fec557-b802-4fce-aa95-00aba479df4d'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 31
-    boneName = 'HeelA_FL'
-    generated = true
-    nodeIndex = 33
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.070711, 0.28, 0.070711 ]
-    rotation = [ -0.048507, -0.605052, -0.605053, 0.515238 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ed19a063-4c6a-47f3-a49d-15ae78300ce8'
-layer = 0
-name = 'HeelB_FL'
-parent = 'HeelA_FL'
-parentInstanceId = '8260f820-62e5-47f6-9968-5169c4d9e13c'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 32
-    boneName = 'HeelB_FL'
-    generated = true
-    nodeIndex = 34
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.020312, -0.054402, -0.013047, 0.998227 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'aaee9d6e-3462-4786-93c7-427ea94c6f3c'
-layer = 0
-name = 'Yaw_BR'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 33
-    boneName = 'Yaw_BR'
-    generated = true
-    nodeIndex = 35
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 2.28, -2.62, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b1b1ff89-12fd-44b1-b8ad-6b216e3db1ac'
-layer = 0
-name = 'Thigh_BR'
-parent = 'Yaw_BR'
-parentInstanceId = 'aaee9d6e-3462-4786-93c7-427ea94c6f3c'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 34
-    boneName = 'Thigh_BR'
-    generated = true
-    nodeIndex = 36
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.692475, 0.502388, 0.502389, -0.125262 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '1e0e278e-67ea-4dc4-aee4-2c4591879fc5'
-layer = 0
-name = 'Shin_BR'
-parent = 'Thigh_BR'
-parentInstanceId = 'b1b1ff89-12fd-44b1-b8ad-6b216e3db1ac'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 35
-    boneName = 'Shin_BR'
-    generated = true
-    nodeIndex = 37
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.664902, 0.647109, 0.244906, 0.281385 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '0cc875ec-f83e-46dd-9cce-85c0c58d42b9'
-layer = 0
-name = 'Hock_BR'
-parent = 'Shin_BR'
-parentInstanceId = '1e0e278e-67ea-4dc4-aee4-2c4591879fc5'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 36
-    boneName = 'Hock_BR'
-    generated = true
-    nodeIndex = 38
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ -0.261815, 0.339809, 0.39413, 0.8128 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'bdd5602a-639d-49b1-aa9a-8058a9a65f3e'
-layer = 0
-name = 'Foot_BR'
-parent = 'Hock_BR'
-parentInstanceId = '0cc875ec-f83e-46dd-9cce-85c0c58d42b9'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 37
-    boneName = 'Foot_BR'
-    generated = true
-    nodeIndex = 39
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ 0.185757, -0.161212, -0.161212, 0.95578 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '974cd76d-13d4-4011-b3d8-e2d11a159e20'
-layer = 0
-name = 'Toe1A_BR'
-parent = 'Foot_BR'
-parentInstanceId = 'bdd5602a-639d-49b1-aa9a-8058a9a65f3e'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 38
-    boneName = 'Toe1A_BR'
-    generated = true
-    nodeIndex = 40
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.00853, 0.28, 0.099636 ]
-    rotation = [ 0.572972, -0.248892, -0.248891, 0.740141 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'd2f7be07-a908-40d3-b02a-f8636c35d6de'
-layer = 0
-name = 'Toe1B_BR'
-parent = 'Toe1A_BR'
-parentInstanceId = '974cd76d-13d4-4011-b3d8-e2d11a159e20'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 39
-    boneName = 'Toe1B_BR'
-    generated = true
-    nodeIndex = 41
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ 0.01162, -0.057918, -0.011779, 0.998184 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'fc0afb26-8777-49bd-ace4-4baec395dd56'
-layer = 0
-name = 'Toe2A_BR'
-parent = 'Foot_BR'
-parentInstanceId = 'bdd5602a-639d-49b1-aa9a-8058a9a65f3e'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 40
-    boneName = 'Toe2A_BR'
-    generated = true
-    nodeIndex = 42
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.070711, 0.28, 0.070711 ]
-    rotation = [ 0.103069, 0.627193, 0.627193, -0.45015 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '0eaf4325-ed40-46e8-abb2-28dc6283f408'
-layer = 0
-name = 'Toe2B_BR'
-parent = 'Toe2A_BR'
-parentInstanceId = 'fc0afb26-8777-49bd-ace4-4baec395dd56'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 41
-    boneName = 'Toe2B_BR'
-    generated = true
-    nodeIndex = 43
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.468721, 0.0 ]
-    rotation = [ -0.011246, -0.028743, -0.005169, 0.99951 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'c0ca17ae-c6ad-4bb0-aa29-5b25b346caa3'
-layer = 0
-name = 'Toe3A_BR'
-parent = 'Foot_BR'
-parentInstanceId = 'bdd5602a-639d-49b1-aa9a-8058a9a65f3e'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 42
-    boneName = 'Toe3A_BR'
-    generated = true
-    nodeIndex = 44
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.099636, 0.28, 0.008529 ]
-    rotation = [ -0.364116, -0.507606, -0.507606, 0.593374 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '9b366459-4bfa-4d4c-af02-0f926e962985'
-layer = 0
-name = 'Toe3B_BR'
-parent = 'Toe3A_BR'
-parentInstanceId = 'c0ca17ae-c6ad-4bb0-aa29-5b25b346caa3'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 43
-    boneName = 'Toe3B_BR'
-    generated = true
-    nodeIndex = 45
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016136, -0.017985, -0.003658, 0.999701 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'dc1cfecd-ac71-48bf-bf98-59301f5ab491'
-layer = 0
-name = 'HeelA_BR'
-parent = 'Foot_BR'
-parentInstanceId = 'bdd5602a-639d-49b1-aa9a-8058a9a65f3e'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 44
-    boneName = 'HeelA_BR'
-    generated = true
-    nodeIndex = 46
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.547063, 0.262989, 0.262989, 0.74993 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '47bd643a-5d36-455a-917e-932cac6e4745'
-layer = 0
-name = 'HeelB_BR'
-parent = 'HeelA_BR'
-parentInstanceId = 'dc1cfecd-ac71-48bf-bf98-59301f5ab491'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 45
-    boneName = 'HeelB_BR'
-    generated = true
-    nodeIndex = 47
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.024019, 0.01012, 0.002427, 0.999657 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'c3c1f9b1-3d99-4ea4-ae3a-9ca829d4665c'
-layer = 0
-name = 'Yaw_BL'
-parent = 'Body'
-parentInstanceId = 'e293e6e0-6a16-4b89-84b3-f9d7102cd021'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 46
-    boneName = 'Yaw_BL'
-    generated = true
-    nodeIndex = 48
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -2.28, -2.62, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'c9c120a4-9f6b-40f4-b270-1ca4f2665e99'
-layer = 0
-name = 'Thigh_BL'
-parent = 'Yaw_BL'
-parentInstanceId = 'c3c1f9b1-3d99-4ea4-ae3a-9ca829d4665c'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 47
-    boneName = 'Thigh_BL'
-    generated = true
-    nodeIndex = 49
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.692475, -0.502388, -0.502389, -0.125262 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '04c8620c-a3f7-49a9-b5dc-2be05f7d6ab6'
-layer = 0
-name = 'Shin_BL'
-parent = 'Thigh_BL'
-parentInstanceId = 'c9c120a4-9f6b-40f4-b270-1ca4f2665e99'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 48
-    boneName = 'Shin_BL'
-    generated = true
-    nodeIndex = 50
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.664902, -0.647109, -0.244906, 0.281385 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'a990da33-3aa0-4858-b9c4-d9878c08f63e'
-layer = 0
-name = 'Hock_BL'
-parent = 'Shin_BL'
-parentInstanceId = '04c8620c-a3f7-49a9-b5dc-2be05f7d6ab6'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 49
-    boneName = 'Hock_BL'
-    generated = true
-    nodeIndex = 51
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ -0.261815, -0.339809, -0.39413, 0.8128 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '52b8d1b7-85a1-4d38-afaa-520548352dcd'
-layer = 0
-name = 'Foot_BL'
-parent = 'Hock_BL'
-parentInstanceId = 'a990da33-3aa0-4858-b9c4-d9878c08f63e'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 50
-    boneName = 'Foot_BL'
-    generated = true
-    nodeIndex = 52
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ 0.185757, 0.161212, 0.161212, 0.95578 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '76bd9363-eaae-4ad9-bed5-3e69ec6f2570'
-layer = 0
-name = 'Toe1A_BL'
-parent = 'Foot_BL'
-parentInstanceId = '52b8d1b7-85a1-4d38-afaa-520548352dcd'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 51
-    boneName = 'Toe1A_BL'
-    generated = true
-    nodeIndex = 53
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.099636, 0.28, 0.008529 ]
-    rotation = [ -0.364116, 0.507606, 0.507606, 0.593374 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b9b0d649-d7b9-44c8-bf1d-70332eb0af0d'
-layer = 0
-name = 'Toe1B_BL'
-parent = 'Toe1A_BL'
-parentInstanceId = '76bd9363-eaae-4ad9-bed5-3e69ec6f2570'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 52
-    boneName = 'Toe1B_BL'
-    generated = true
-    nodeIndex = 54
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016136, 0.017985, 0.003658, 0.999701 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '402f0291-4941-4daf-8763-c6befac6bf1e'
-layer = 0
-name = 'Toe2A_BL'
-parent = 'Foot_BL'
-parentInstanceId = '52b8d1b7-85a1-4d38-afaa-520548352dcd'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 53
-    boneName = 'Toe2A_BL'
-    generated = true
-    nodeIndex = 55
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.070711, 0.28, 0.070711 ]
-    rotation = [ -0.103069, 0.627193, 0.627193, 0.45015 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'decf8dd3-b895-49e9-a7af-460364b8c5c0'
-layer = 0
-name = 'Toe2B_BL'
-parent = 'Toe2A_BL'
-parentInstanceId = '402f0291-4941-4daf-8763-c6befac6bf1e'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 54
-    boneName = 'Toe2B_BL'
-    generated = true
-    nodeIndex = 56
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.468721, 0.0 ]
-    rotation = [ -0.011246, 0.028743, 0.005169, 0.99951 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'bb72a0e6-f2fb-447e-8ae9-4c0e701fffc8'
-layer = 0
-name = 'Toe3A_BL'
-parent = 'Foot_BL'
-parentInstanceId = '52b8d1b7-85a1-4d38-afaa-520548352dcd'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 55
-    boneName = 'Toe3A_BL'
-    generated = true
-    nodeIndex = 57
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ -0.00853, 0.28, 0.099636 ]
-    rotation = [ 0.572972, 0.248892, 0.248891, 0.740141 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '07ee6af2-debe-4990-8882-1123fe43d6a0'
-layer = 0
-name = 'Toe3B_BL'
-parent = 'Toe3A_BL'
-parentInstanceId = 'bb72a0e6-f2fb-447e-8ae9-4c0e701fffc8'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 56
-    boneName = 'Toe3B_BL'
-    generated = true
-    nodeIndex = 58
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ 0.01162, 0.057918, 0.011779, 0.998184 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '22a7dc6b-0ddc-4e82-b11f-45e574c13490'
-layer = 0
-name = 'HeelA_BL'
-parent = 'Foot_BL'
-parentInstanceId = '52b8d1b7-85a1-4d38-afaa-520548352dcd'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 57
-    boneName = 'HeelA_BL'
-    generated = true
-    nodeIndex = 59
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.547063, -0.262989, -0.262989, 0.74993 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b345ecb9-f5fa-4eec-8630-b8b590f5ef5c'
-layer = 0
-name = 'HeelB_BL'
-parent = 'HeelA_BL'
-parentInstanceId = '22a7dc6b-0ddc-4e82-b11f-45e574c13490'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = 58
-    boneName = 'HeelB_BL'
-    generated = true
-    nodeIndex = 60
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.024019, -0.01012, -0.002427, 0.999657 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '96cf276c-312f-49e6-bb0b-568dbe6b7b05'
-layer = 0
-name = 'E_ArmorGrey'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_ArmorGrey'
-    generated = true
-    nodeIndex = 61
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:14'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'a7fa2ed6-8860-4199-af2b-074a3f9fb7c2'
+instanceId = 'd399879e-f41b-43ac-ad56-bf7047fc2d3a'
 layer = 0
-name = 'E_CoreGlow'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
+name = 'ARENA_UpperHazard'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_CoreGlow'
-    generated = true
-    nodeIndex = 62
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:15'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '6451743b-7b46-41fa-8fec-676f54f7a01d'
+instanceId = 'b7657a5d-058a-4938-978c-84a66de4ba5a'
 layer = 0
-name = 'E_Hazard'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
+name = 'ARENA_UpperHazard2'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_Hazard'
-    generated = true
-    nodeIndex = 63
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:16'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '09126bb5-7360-4a60-937a-c647de76552e'
+instanceId = 'fb855c31-e428-48bb-8019-413bd9cbf492'
 layer = 0
-name = 'E_MetalDark'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
+name = 'ARENA_Wall'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_MetalDark'
-    generated = true
-    nodeIndex = 64
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:4507b44eb6f4b6614487bd341a781600'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:17'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '6a63f27d-881a-45fa-9842-01c3c538b8aa'
+instanceId = 'f5bec29b-2486-4688-b8c6-3c124ec9c936'
 layer = 0
-name = 'E_PanelLine'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
+name = 'ARENA_WallRibs.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_PanelLine'
-    generated = true
-    nodeIndex = 65
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:18'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '5d08fef7-3a1d-4593-9299-4407f75502da'
+instanceId = '0e4014b3-326a-44a1-9d13-4b09d9cd1a51'
 layer = 0
-name = 'E_RingGlow'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
+name = 'ARENA_WallRibsUpper'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_RingGlow'
-    generated = true
-    nodeIndex = 66
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:19'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '906f6f30-f192-4b7f-83c0-de19cd86e2a7'
+instanceId = '78e78dbe-68b8-4ca7-a46f-9906f481eff6'
 layer = 0
-name = 'E_Stencil'
-parent = 'RootNode'
-parentInstanceId = '812aed98-d470-4fb5-a1f4-5d30f34c9351'
+name = 'ARENA_WallRibsUpper2'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_Stencil'
-    generated = true
-    nodeIndex = 67
-    skinnedMeshOwner = 'Boss'
-    skinnedMeshOwnerGuid = '976e11a3-c3fa-4ac0-832f-68008f7f905a'
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:20'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '37f066fb-889c-4750-98e0-40a2d1fff8be'
+layer = 0
+name = 'ARENA_WallSeam'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:21'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8b01f667-1247-42db-a5dc-04afbf9da70a'
+layer = 0
+name = 'ARENA_WallStrips.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:8af66a56ff4bf4ab0c4d267b328b09f3'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:22'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cae941ba-169a-47c7-b07b-031418cce0ab'
+layer = 0
+name = 'ARENA_WallStripsUpper'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:8af66a56ff4bf4ab0c4d267b328b09f3'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:23'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '50e39268-68c0-4349-a93e-481c110dd6bd'
+layer = 0
+name = 'ARENA_WallStripsUpper2'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:8af66a56ff4bf4ab0c4d267b328b09f3'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:24'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '368cd4ac-cab2-4f60-95e0-a8f5389a091d'
+layer = 0
+name = 'ARENA_WallUpper'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:4507b44eb6f4b6614487bd341a781600'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:25'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cab89918-0e5d-43ab-8ca1-b24da6378c3b'
+layer = 0
+name = 'ARENA_WallUpper2'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:4507b44eb6f4b6614487bd341a781600'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:26'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '68c4fb3e-f008-4bc7-a292-f9f5db2f019c'
+layer = 0
+name = 'ARENA_WarnLights.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:12a1d54aa6b1df6be4ad1c9645488e09'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:27'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5185814b-6861-4c25-9880-a0281ee44e65'
+layer = 0
+name = 'ARENA_WarnLightsUpper'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:12a1d54aa6b1df6be4ad1c9645488e09'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:28'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ed10e55b-955a-4384-a479-ebf250ecd215'
+layer = 0
+name = 'ARENA_Floor.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:29'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6ad2d58f-e83f-4ef6-b4e1-4f6a4784372c'
+layer = 0
+name = 'ARENA_Roof.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:30'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '5125fa75-c884-4eb1-b36c-81cf85a2c087'
+layer = 0
+name = 'COL_Arena_Rubble'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:31'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '0df8e01e-a18f-4c9c-b3b2-89d89f23e993'
+layer = 0
+name = 'COL_Arena_Wall.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:32'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '5cbaaf4b-3fce-479f-be9e-fed7817d07ec'
+layer = 0
+name = 'COL_GB_DoorFrame'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:33'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'fe09fae5-2b70-41b6-8a30-3be0193f9433'
+layer = 0
+name = 'GB_Floor.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:34'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '673be584-1912-434f-89a0-dfea062ae40c'
+layer = 0
+name = 'COL_GB_Rail'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:35'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'a87443ac-3c12-4975-9927-23c36c37efd9'
+layer = 0
+name = 'GB_Ramp.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:36'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a3234cec-392c-4d09-9a27-32af8b60e639'
+layer = 0
+name = 'GB_Shutter.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:37'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '7a2fb888-3ba1-4a3b-817f-87e215598e59'
+layer = 0
+name = 'GB_Terrace.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:38'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'a67107b9-97fe-410b-adf7-d8341b67baea'
+layer = 0
+name = 'COL_GB_Wall.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:06776b224386a28c2fe50365c05cf110'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:39'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '664ad042-84be-4b30-81a2-e281f31832b0'
+layer = 0
+name = 'GB_CeilBeams.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:40'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '15268292-932c-4e8f-b4a5-b798b2ff6b71'
+layer = 0
+name = 'GB_CeilLights.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:12a1d54aa6b1df6be4ad1c9645488e09'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:41'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '927164c8-6995-4b55-b4df-4c29145a109f'
+layer = 0
+name = 'GB_Ceiling.003'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:42'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '42306445-8b13-4b29-8288-3b1a35a298c9'
+layer = 0
+name = 'GB_DoorFrame'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:43'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9d299e84-dcbc-4f20-88e9-73b3a94ed3ed'
+layer = 0
+name = 'GB_Floor.001'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e5f893d37df4a80c961d2fde0807ba05'
+    visible = true
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'Assets/Models/Map/Boss_Arena_Map.fbx:44'
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:44'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b160d440-8fa2-4d92-9ef0-7dcf3dcb72a2'
+layer = 0
+name = 'GB_FloorHazard'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:45'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'bb6e3542-de28-4e02-b7b5-ab5e270a149d'
+layer = 0
+name = 'GB_NavLight'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:b29c433a6b40d88828032915e3c11420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:46'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '367ab1cc-39b8-4913-afa5-85d05cf8f153'
+layer = 0
+name = 'GB_Ramp'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoxColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.BoxColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.BoxColliderComponent.shape]
+        halfExtents = [ 0.05, 0.018, 0.06 ]
+        type = 'OBB'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e5f893d37df4a80c961d2fde0807ba05'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:47'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'a424e3d7-10d9-4421-8c1a-3db78db3c78e'
+layer = 0
+name = 'GB_Shutter'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:48'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5a011152-172a-4cb2-85e9-cd7a6294bca2'
+layer = 0
+name = 'GB_ShutterFrame'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:49'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '03712950-6604-47b2-bcfa-23dcb12b3f0c'
+layer = 0
+name = 'GB_Spandrel'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:50'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '484c4b9d-1e84-44e7-9f93-36639e246b91'
+layer = 0
+name = 'GB_Terrace'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoxColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.BoxColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.BoxColliderComponent.shape]
+        halfExtents = [ 0.1, 0.015, 0.04 ]
+        type = 'OBB'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e5f893d37df4a80c961d2fde0807ba05'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:51'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '73ca923a-f2d3-44a3-8204-36f364a53a86'
+layer = 0
+name = 'GB_TerraceRail'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:52'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '306d602c-3c5b-4211-bdf9-0551221de1c5'
+layer = 0
+name = 'GB_Wall.003'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:4507b44eb6f4b6614487bd341a781600'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:53'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c953bfc3-2994-4270-9891-95d353ab4d97'
+layer = 0
+name = 'GB_WallKick.003'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:db755171f299c6d7d0d4ae14c50fa420'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:54'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '729b4eed-5a9c-4dac-8a2d-ce6b0cdf624b'
+layer = 0
+name = 'GB_WallKickSteel.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:55'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4aec1a2b-6da7-47b1-a360-323d94d22fb3'
+layer = 0
+name = 'GB_WallRibs.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:56'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1f731ea6-349f-4e4c-b513-b2c4f91a7f23'
+layer = 0
+name = 'GB_WallStrip.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:8af66a56ff4bf4ab0c4d267b328b09f3'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:57'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ea57499d-0c99-4327-8637-e020da3f80b9'
+layer = 0
+name = 'GB_WallTrim.002'
+parent = 'Boss_Arena_Map'
+parentInstanceId = 'b07dc915-9b0f-4f1e-a204-ae9425eacd5b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0b625ca1e6e6b8cfa4dedc7f812a175e'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'Assets/Models/Map/Boss_Arena_Map.fbx:58'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'adca9018-886a-439e-85e0-49e2b1bd1a64'
+layer = 0
+name = 'Post Process Volume'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:adbee6b96d7b44518568016375345848'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]

@@ -2,7 +2,7 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '2f98fb85b41812a6'
+settings_hash = '1df4f2c577d0853a'
 source_hash = 'a37db767aec92b0e'
 
 [meta]
@@ -15,5 +15,16 @@ importer = 'ModelImporter'
 importer_version = 1
 normal_map_convention = 'DirectX'
 selected_animations = []
-selected_meshes = []
+selected_meshes = [
+    'P_AccentGreen',
+    'P_AccentYellow',
+    'P_ArmorGrey',
+    'P_ArmorWhite',
+    'P_GlowGreen',
+    'P_GlowGreenSoft',
+    'P_LampGreen',
+    'P_MetalDark',
+    'P_PanelLine',
+    'P_VisorDark'
+]
 source_dcc = 'Auto'
