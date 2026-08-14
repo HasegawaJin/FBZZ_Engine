@@ -508,7 +508,14 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
 
     server.registerTool('bt_lint', {
         description: '.behaviortree の「保存はできるが意図どおり動かない」構成を返します。'
-            + 'valid=false は保存が拒否される致命的な不整合 (ルートが 0/2 個・循環・子数超過)。',
+            + 'valid=false は保存が拒否される致命的な不整合 (ルートが 0/2 個・循環・子数超過)。'
+            + '各 issue には severity と直し方が fix (呼ぶべきツールと引数) と '
+            + 'autoFixable (bt_repair で直せるか) として付きます。'
+            + 'caution がある項目は、その修正で失われるものを確認してから実行してください。'
+            + '最重要は no-lower-priority-abort で、Selector の高優先枝を守る条件に'
+            + 'lowerPriority 中断が無い状態です (巡回中に敵を見つけても着くまで反応しない AI になります)。'
+            + 'compileWarnings は保存も Validate も通るが実行時に効かないもの'
+            + '(解決できなかった Blackboard キー等) で、静的検査だけでは見えない層です。',
         inputSchema: { path: z.string().min(1) },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ path }) => Safely(async () => TextResult(await bus.Query({ t: 'bt.lint', path }))));
@@ -522,6 +529,77 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'bt.guide' }))));
+
+    server.registerTool('bt_schema', {
+        description: 'ノード種別ごとに「そのランタイムが実際に読むフィールド」を返します。'
+            + 'bt_node_set_field の対で、field 名・型・受理する enum 値・範囲・'
+            + 'そのフィールドを読む種別 (appliesTo) が載ります。'
+            + 'WHY 要るか: 実在するがその種別では読まれないフィールド (Wait へ range、'
+            + 'HasTarget へ duration) は以前は受理され保存まで通り、'
+            + '「設定したのに行動が変わらない」としか見えませんでした。'
+            + '木を組む前にこれを読めば、試行錯誤ではなく参照でフィールドが決まります。',
+        inputSchema: {
+            nodeType: z.string().min(1).max(64).optional()
+                .describe('指定するとその種別だけに絞る。省略で全 26 種別'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ nodeType }) => Safely(async () => TextResult(await bus.Query({
+        t: 'bt.schema', ...(nodeType === undefined ? {} : { nodeType }),
+    }))));
+
+    server.registerTool('bt_node_get_field', {
+        description: 'ノードのフィールドの現在値を返します。bt_node_set_field の対になる読み出しで、'
+            + 'value は set 側と同じ表現なので読んで一部だけ変えて書き戻せます。'
+            + 'field 省略時はその種別が実際に読むフィールドだけを全部返します。'
+            + 'WHY 要るか: 書く手段はあるのに読む手段が無く、duration や keyName に'
+            + '今何が入っているかを API 越しに確かめられませんでした '
+            + '(bt_inspect_tree は要約なので全フィールドを返しません)。',
+        inputSchema: {
+            path: z.string().min(1), nodeId: z.number().int().min(1),
+            field: z.string().min(1).max(64).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ path, nodeId, field }) => Safely(async () => TextResult(await bus.Query({
+        t: 'bt.nodeField', path, nodeId, ...(field === undefined ? {} : { field }),
+    }))));
+
+    server.registerTool('bt_runtime_state', {
+        description: 'Play 中のエージェントについて、各ノードの最終 status (DFS pre-order = 優先度順) と'
+            + 'Blackboard の実値・最終書き込み時刻を返します。'
+            + 'WHY 木だけでは足りないか: BT が意図どおり動かない原因は「条件が偽のまま」'
+            + '「割り込めていない」「そもそも到達していない」の 3 通りあり、'
+            + '木を読んでも bt_lint を掛けても区別できません。viewport_capture で敵の動きを見ても、'
+            + 'なぜその行動を選んだかは映りません。written=false のキーは一度も書かれていないので、'
+            + '条件が偽なのは木ではなく知覚側 (PerceptionSystem / スクリプト) の問題です。'
+            + 'path / id 省略時は実行中の BT を 1 体選び、候補は常に agents で返します。',
+        inputSchema: {
+            path: z.string().min(1).optional().describe('この .behaviortree を使うエージェントに絞る'),
+            id: z.string().min(1).optional().describe('GameObject の instanceId で 1 体を指定する'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ path, id }) => Safely(async () => TextResult(await bus.Query({
+        t: 'bt.runtime',
+        ...(path === undefined ? {} : { path }), ...(id === undefined ? {} : { id }),
+    }))));
+
+    server.registerTool('bt_diff', {
+        description: '2 つの .behaviortree の構造差分を返します。ノードの追加・削除・'
+            + 'フィールド変更に加え、parentId と order の変化 (= 木の意味そのものの変化) と'
+            + 'Blackboard キーの増減を出します。editorX / editorY は挙動に無関係なので含めません。'
+            + '元の木を残したまま別案を作って比較する使い方に使います。',
+        inputSchema: { base: z.string().min(1), target: z.string().min(1) },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ base, target }) => Safely(async () => TextResult(await bus.Query({
+        t: 'bt.diff', base, target,
+    }))));
+
+    server.registerTool('bt_template_catalog', {
+        description: '取り込める Behavior Tree の骨格 (Assets/AI/Templates) を列挙します。'
+            + 'bt_guide の recipes は文章なのでそのまま実体にはなりません。'
+            + '動く木が既にあるなら、ゼロから積むより bt_template_apply で取り込んで直すほうが確実です。',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => Safely(async () => TextResult(await bus.Query({ t: 'bt.templateCatalog' }))));
 
     server.registerTool('vfx_curve_presets', {
         description: '名前付きの時間カーブプリセット一覧を返します。'
@@ -1170,6 +1248,155 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
             structuredContent: { width: capture.width, height: capture.height, view: capture.view ?? view, cameraPosition: capture.cameraPosition, objects },
         };
     }));
+
+    // ── ワールドオーサリングの照会 ──
+    // WHY ここをまとめて足すか: これまで AI が読めたのは「シーンに置いたオブジェクトと
+    //     そのコンポーネント値」だけで、地形の起伏・植生の分布・NavMesh の穴・空と光の設定は
+    //     viewport_capture の絵から推測するしかなかった。絵からは「暗い」までしか言えず、
+    //     暗い原因が太陽の角度なのか露出なのか霧なのかは区別できない。
+    server.registerTool('scene_list', {
+        description: 'プロジェクト内の .scene を列挙します。現在開いているシーン(isCurrent)、未保存かどうか(dirty)も返します。'
+            + 'scene_open の前に必ず確認してください。dirty=true のまま scene_open を呼ぶと拒否されます。'
+            + 'Library / Baked は生成物なので除外します。',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => Safely(async () => TextResult(await bus.Query({ t: 'scene.list' }))));
+
+    server.registerTool('preset_catalog', {
+        description: 'Hierarchy の Add Object メニューと同じ GameObject プリセット一覧を返します。'
+            + 'id / カテゴリ / 表示名 / 「何が付くか」の説明を持ち、preset_create の preset にはこの id を渡します。'
+            + 'node_create + component_add でオブジェクトを組み立てる前に必ず見てください — '
+            + '組み立て方は毎回変わるので、人がメニューから置いたものと中身の違うオブジェクトがシーンに混ざります。',
+        inputSchema: { category: z.string().min(1).max(64).optional().describe('3D Object / Light / Environment などで絞る') },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ category }) => Safely(async () => TextResult(await bus.Query({
+        t: 'preset.catalog', ...(category === undefined ? {} : { category }),
+    }))));
+
+    server.registerTool('terrain_inspect', {
+        description: '地形のグリッド解像度・セルサイズ・最大高さ・4レイヤーのマテリアル割当と、高さ/スプラットの統計を返します。'
+            + '生の heightData (65x65 なら 4225 個) は返しません — 特定地点の実値は terrain_sample で点指定して読みます。'
+            + 'stats.flat=true は「まだ一度も彫られていない平面」を意味します。',
+        inputSchema: { id: NodeIdSchema.optional().describe('省略で全 Terrain') },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id }) => Safely(async () => TextResult(await bus.Query({
+        t: 'terrain.inspect', ...(id === undefined ? {} : { id }),
+    }))));
+
+    server.registerTool('terrain_sample', {
+        description: '指定ワールド座標の地形高さ・法線・斜度・4レイヤーの重みを返します。'
+            + 'points は [x,y,z] でも [x,z] でも構いません (高さを問う用途で y は使いません)。'
+            + 'terrain_sculpt の前後で同じ点を測れば、狙った量だけ動いたかを画像ではなく数値で確認できます。'
+            + 'slopeDegrees は Foliage を置けるか / NavMesh が歩行可能と判定するかに直結します。',
+        inputSchema: {
+            points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
+            id: NodeIdSchema.optional().describe('特定 Terrain に限定する場合'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ points, id }) => Safely(async () => TextResult(await bus.Query({
+        t: 'terrain.sample', points, ...(id === undefined ? {} : { id }),
+    }))));
+
+    server.registerTool('foliage_inspect', {
+        description: 'Foliage の Species 一覧 (モデル・配置モード・密度・スケール範囲・stamp 数) を返します。'
+            + 'bakedInstances は実際に描かれている本数で、stampCount と食い違うときは未 Bake か Terrain 外へ置いた印です。'
+            + 'foliage_scatter の species は、ここで返る index を指定します。',
+        inputSchema: { id: NodeIdSchema.optional() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id }) => Safely(async () => TextResult(await bus.Query({
+        t: 'foliage.inspect', ...(id === undefined ? {} : { id }),
+    }))));
+
+    server.registerTool('navmesh_get_state', {
+        description: 'NavMesh Surface のベイク設定・状態・ポリゴン数・歩行可能範囲(bounds)と、Agent の実行状態を返します。'
+            + '「敵が来ない」の切り分けはここから始めます — Surface と Agent の agentTypeId が食い違っていれば経路は絶対に引けません。'
+            + 'bakeState=done かつ polygonCount>0 でなければ navmesh_find_path は失敗します。',
+        inputSchema: { id: NodeIdSchema.optional() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id }) => Safely(async () => TextResult(await bus.Query({
+        t: 'navmesh.state', ...(id === undefined ? {} : { id }),
+    }))));
+
+    server.registerTool('navmesh_find_path', {
+        description: '2点間の経路を、NavMeshAgent が実行時に使うのと同じ A* + Funnel で引きます。'
+            + '「そこへ歩けるのか」を Play せずに確かめる唯一の手段です — Play して眺めても「行かない」ことしか観測できず、'
+            + '行けないのか行こうとしないのかは区別できません (後者は bt_runtime_state で見ます)。'
+            + 'from/to は座標でも NodeId (fromId/toId) でも指定できます。fromId が Agent なら agentTypeId と areaMask をその Agent から引き継ぎます。'
+            + 'found=false の reason は START_OR_GOAL_OFF_NAVMESH (点が面の外) か NO_PATH (到達不能または areaMask で遮断)。'
+            + 'areaMask で遮断されているかは areaMask=-1 で引き直せば切り分けられます。'
+            + 'detourRatio が大きいほど遠回り = 障害物か穴を迂回しています。',
+        inputSchema: {
+            from: Vec3Schema.optional(),
+            to: Vec3Schema.optional(),
+            fromId: NodeIdSchema.optional(),
+            toId: NodeIdSchema.optional(),
+            surfaceId: NodeIdSchema.optional().describe('省略で agentTypeId が一致するベイク済み Surface を選ぶ'),
+            agentTypeId: z.number().int().min(0).max(31).optional(),
+            areaMask: z.number().int().optional().describe('-1 = 全エリア通過可'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ from, to, fromId, toId, surfaceId, agentTypeId, areaMask }) => Safely(async () => TextResult(await bus.Query({
+        t: 'navmesh.path',
+        ...(from === undefined ? {} : { from }),
+        ...(to === undefined ? {} : { to }),
+        ...(fromId === undefined ? {} : { fromId }),
+        ...(toId === undefined ? {} : { toId }),
+        ...(surfaceId === undefined ? {} : { surfaceId }),
+        ...(agentTypeId === undefined ? {} : { agentTypeId }),
+        ...(areaMask === undefined ? {} : { areaMask }),
+    }))));
+
+    server.registerTool('navmesh_sample', {
+        description: '指定点が NavMesh の上かを判定し、面上なら高さ、面外なら最近傍ポリゴンへ寄せた座標を返します。'
+            + '敵の湧き位置やパトロール地点を決めるときに使います — 面の外に置いた Agent は最初の1歩で瞬間移動します。',
+        inputSchema: {
+            points: z.array(z.array(z.number().finite()).length(3)).min(1).max(256),
+            surfaceId: NodeIdSchema.optional(),
+            agentTypeId: z.number().int().min(0).max(31).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ points, surfaceId, agentTypeId }) => Safely(async () => TextResult(await bus.Query({
+        t: 'navmesh.sample', points,
+        ...(surfaceId === undefined ? {} : { surfaceId }),
+        ...(agentTypeId === undefined ? {} : { agentTypeId }),
+    }))));
+
+    server.registerTool('environment_inspect', {
+        description: '空・太陽/月・大気散乱・環境光(IBL)・ボリューメトリック雲・ポストプロセスなど環境系コンポーネントと、'
+            + '全ライトの設定を 1 回で返します。「なぜこの画がこの明るさなのか」を調べる入口です。'
+            + '返る fields は editor_catalog のフィールド定義と 1 対 1 なので、component_set でそのまま書き戻せます。'
+            + '対象は ComponentRegistry の Environment カテゴリ全体なので、環境コンポーネントが増えても自動で含まれます。',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => Safely(async () => TextResult(await bus.Query({ t: 'environment.inspect' }))));
+
+    server.registerTool('audio_inspect', {
+        description: 'AudioSource の設定 (clipPath / volume / spatialBlend / 距離減衰) と再生状態、AudioListener の一覧を返します。'
+            + 'runtime.playing は保存対象ではないため component 照会には出ません — 鳴っているかはここでしか確認できません。'
+            + 'AudioListener が 0 件なら 3D 音の距離減衰は効きません (warning に出ます)。',
+        inputSchema: { id: NodeIdSchema.optional() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id }) => Safely(async () => TextResult(await bus.Query({
+        t: 'audio.inspect', ...(id === undefined ? {} : { id }),
+    }))));
+
+    server.registerTool('ui_inspect', {
+        description: 'UI Canvas を根とする UI ツリーを、各要素のコンポーネント値ごと返します。'
+            + 'UI の位置は Transform ではなく矩形指定で決まるため、scene_get_tree の階層だけでは画面のどこに出るか分かりません。'
+            + 'gameViewport のサイズも返るので、viewport_capture(view="game") の絵と座標を突き合わせられます。',
+        inputSchema: { id: NodeIdSchema.optional().describe('省略で全 Canvas') },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id }) => Safely(async () => TextResult(await bus.Query({
+        t: 'ui.inspect', ...(id === undefined ? {} : { id }),
+    }))));
+
+    server.registerTool('build_get_status', {
+        description: 'スクリプト DLL / HLSL のビルド結果と診断 (file:line:code:message) を新しい順に返します。'
+            + 'shader_get_compile_diagnostics の Script 版です。scriptReloadBusy=true の間は play_control start が拒否されます。'
+            + 'スクリプトが通っていないと component_add も Play も無意味な結果になるため、Play が失敗したらまずここを見ます。',
+        inputSchema: { limit: z.number().int().min(1).max(20).default(5) },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ limit }) => Safely(async () => TextResult(await bus.Query({ t: 'build.status', limit }))));
 }
 
 // Stage B/C でのみ Command を登録し、MCP から engine の Undo 対応 Command Bus へ転送する。
@@ -1208,6 +1435,21 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         annotations: writeAnnotations,
     }, ({ path, nodeId }) => run({ t: 'bt.node.remove', path, nodeId }));
 
+    server.registerTool('bt_node_duplicate', {
+        description: 'ノードを部分木ごと複製します。Editor の Duplicate Subtree と同じ規則で動くため、'
+            + 'AI が作った木を人が触っても形が変わりません。'
+            + 'parentId 省略で元と同じ親の末尾へ兄弟として並びます (ルートは複製できません)。'
+            + '応答の detail に新しい id の対応表 (idMap) が載るので、'
+            + '複製直後に中身を編集するために bt_inspect_tree を読み直す必要がありません。',
+        inputSchema: {
+            path: z.string().min(1), nodeId: z.number().int().min(1),
+            parentId: z.number().int().min(1).optional(),
+        }, annotations: writeAnnotations,
+    }, ({ path, nodeId, parentId }) => run({
+        t: 'bt.node.duplicate', path, nodeId,
+        ...(parentId === undefined ? {} : { parentId }),
+    }));
+
     server.registerTool('bt_node_set_parent', {
         description: 'ノードの親を張り替えます。循環・子数上限・葉への子付けは拒否されます。',
         inputSchema: {
@@ -1234,8 +1476,8 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         inputSchema: {
             path: z.string().min(1), nodeId: z.number().int().min(1),
             field: z.string().min(1).max(64)
-                .describe('name / duration / durationRandom / repeatCount / range / keyName / '
-                    + 'moveTargetKey / animatorTrigger / scriptMethod / abortMode / compareOp など'),
+                .describe('bt_schema の fields に載っている名前。そのノード種別が読まないフィールドは '
+                    + 'BT_FIELD_NOT_APPLICABLE で拒否される'),
             value: JsonValueSchema,
         }, annotations: writeAnnotations,
     }, ({ path, nodeId, field, value }) => run({ t: 'bt.node.setField', path, nodeId, field, value }));
@@ -1262,6 +1504,45 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         inputSchema: { path: z.string().min(1) },
         annotations: writeAnnotations,
     }, ({ path }) => run({ t: 'bt.autoLayout', path }));
+
+    server.registerTool('bt_repair', {
+        description: 'bt_lint が autoFixable=true と言った不備を機械的に直します。'
+            + '直し方が一意に決まるものだけを扱い、「何をする木か」のような設計判断には触れません。'
+            + '対象は no-lower-priority-abort (abortMode を lowerPriority へ) / '
+            + 'zero-cooldown・zero-duration-wait (duration を 1.0 秒へ) / '
+            + 'zero-weights (重みを等確率へ) / unresolved-key (綴りの近い既存キーへ張り替え)。'
+            + '応答の detail に直した項目と、直せずに残った issue が載ります。'
+            + 'フラグは全て省略で有効。個別に false を渡したときだけその修復を止めます。',
+        inputSchema: {
+            path: z.string().min(1),
+            fixAborts: z.boolean().optional(), fixDurations: z.boolean().optional(),
+            fixWeights: z.boolean().optional(), fixKeys: z.boolean().optional(),
+        }, annotations: writeAnnotations,
+    }, ({ path, fixAborts, fixDurations, fixWeights, fixKeys }) => run({
+        t: 'bt.repair', path,
+        ...(fixAborts === undefined ? {} : { fixAborts }),
+        ...(fixDurations === undefined ? {} : { fixDurations }),
+        ...(fixWeights === undefined ? {} : { fixWeights }),
+        ...(fixKeys === undefined ? {} : { fixKeys }),
+    }));
+
+    server.registerTool('bt_template_apply', {
+        description: 'bt_template_catalog で見つけた骨格を .behaviortree として書き出します。'
+            + 'path は存在しなくてよく、既存ファイルを指した場合は上書きして Undo で戻せます。'
+            + 'ゼロから bt_node_add を積むより確実で、abortMode や Blackboard キーまで'
+            + '欠落なく持ち込めます。取り込み後は bt_lint → bt_node_set_field で用途に合わせて調整します。',
+        inputSchema: {
+            template: z.string().min(1).max(260)
+                .describe('bt_template_catalog の name か、projectRoot 相対の .behaviortree パス'),
+            path: z.string().min(1).describe('書き出し先の .behaviortree'),
+            name: z.string().min(1).max(128).optional(),
+            description: z.string().max(512).optional(),
+        }, annotations: writeAnnotations,
+    }, ({ template, path, name, description }) => run({
+        t: 'bt.template.apply', template, path,
+        ...(name === undefined ? {} : { name }),
+        ...(description === undefined ? {} : { description }),
+    }));
 
     server.registerTool('vfx_template_apply', {
         description: '組み込みまたはvfx_knowledge_catalogで見つけた任意のTemplateを適用します。'
@@ -2523,6 +2804,166 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
         inputSchema: {},
         annotations: writeAnnotations,
     }, () => run({ t: 'editor.redo' }));
+
+    // ── ワールドオーサリングの編集 ──
+    server.registerTool('preset_create', {
+        description: 'Add Object プリセットから GameObject を生成します。preset は preset_catalog の id です。'
+            + 'Hierarchy メニューと同じ生成関数を通るので、人が置いたものと中身が完全に一致します'
+            + '(Cube なら MeshRenderer + Lit マテリアル + 実寸に合わせた Box Collider まで含む)。'
+            + 'position はローカル座標で、parent を指定した場合は親からの相対になります。'
+            + '応答の id が生成された NodeId です。1 回の Undo で丸ごと取り消せます。'
+            + '空の GameObject が欲しいだけなら node_create でも構いません。',
+        inputSchema: {
+            preset: z.string().min(1).max(64).describe('preset_catalog が返す id (例: "3d.cube")'),
+            parent: NodeIdSchema.optional(),
+            name: z.string().min(1).max(128).optional().describe('省略でプリセット既定名'),
+            position: Vec3Schema.optional(),
+        },
+        annotations: writeAnnotations,
+    }, ({ preset, parent, name, position }) => run({
+        t: 'preset.create', preset,
+        ...(parent === undefined ? {} : { parent }),
+        ...(name === undefined ? {} : { name }),
+        ...(position === undefined ? {} : { position }),
+    }));
+
+    server.registerTool('scene_open', {
+        description: '別のシーンを開きます。scene_list の path を渡してください。'
+            + '未保存の変更があるときは既定で拒否します — 捨ててよい場合だけ discardUnsaved=true を指定します'
+            + '(Editor の確認ダイアログは AI 経由では出せないため、判断を引数として先に受け取ります)。'
+            + 'Play 中と Prefab 編集モード中は拒否されます。開くと Undo スタックは破棄されます'
+            + '(別シーンの EntityID を持つ Undo は復元できないため)。',
+        inputSchema: {
+            path: z.string().min(1).describe('projectRoot 相対の .scene パス'),
+            discardUnsaved: z.boolean().default(false).describe('未保存の変更を捨てて開く'),
+        },
+        annotations: writeAnnotations,
+    }, ({ path, discardUnsaved }) => run({ t: 'scene.open', path, discardUnsaved }));
+
+    server.registerTool('scene_save', {
+        description: '現在のシーンを保存します。path 省略で上書き保存、指定すると別名保存してカレントもそのパスになります。'
+            + 'Undo には載りません。scene_open の前や、AI が加えた編集を確定させるときに使います。',
+        inputSchema: { path: z.string().min(1).optional().describe('projectRoot 相対の .scene パス (省略で上書き)') },
+        annotations: writeAnnotations,
+    }, ({ path }) => run({ t: 'scene.save', ...(path === undefined ? {} : { path }) }));
+
+    server.registerTool('terrain_sculpt', {
+        description: '地形の高さをブラシで彫ります。人が使う Terrain Tool と同じブラシカーネルを通るので、'
+            + '同じ radius / strength を指定すれば手作業と同じ結果になります。'
+            + 'position はワールド座標で、ブラシ範囲に重なる全 Terrain へ同時に効きます (境界に段差を残しません)。'
+            + 'iterations は「マウスを押し続けた回数」に相当します — smooth と flatten は 1 回では収束しないため、'
+            + '10〜30 程度を指定してください (同じ要求を何度も投げると Undo 履歴が汚れます)。'
+            + 'flatten の targetHeight を省略するとブラシ中心の現在高さが基準になります (対話ツールの「最初にクリックした高さ」と同じ意味)。'
+            + '彫った後は NavMesh が古い形のままなので、必ず navmesh_bake を実行してください。'
+            + '結果は terrain_sample で数値確認できます。操作全体が 1 回の Undo で戻ります。',
+        inputSchema: {
+            position: Vec3Schema.describe('ブラシ中心 (ワールド座標)'),
+            op: z.enum(['raise', 'lower', 'smooth', 'flatten', 'stamp']).default('raise'),
+            radius: z.number().finite().gt(0).max(500).default(5).describe('ブラシ半径 [m]'),
+            strength: z.number().finite().gt(0).max(1).default(0.05).describe('1 回あたりの最大変化量'),
+            falloff: z.enum(['linear', 'smooth', 'gaussian']).default('smooth'),
+            iterations: z.number().int().min(1).max(64).default(1).describe('ブラシを重ねる回数'),
+            targetHeight: z.number().finite().optional().describe('flatten の基準高さ (ワールド Y)'),
+            id: NodeIdSchema.optional().describe('特定 Terrain だけに限定する場合'),
+        },
+        annotations: writeAnnotations,
+    }, ({ position, op, radius, strength, falloff, iterations, targetHeight, id }) => run({
+        t: 'terrain.sculpt', position, op, radius, strength, falloff, iterations,
+        ...(targetHeight === undefined ? {} : { targetHeight }),
+        ...(id === undefined ? {} : { id }),
+    }));
+
+    server.registerTool('terrain_paint', {
+        description: '地形のスプラットマップ (4 レイヤーの混合比) をブラシで塗ります。'
+            + '4 チャンネルの整数和は常に 255 に保たれるので、あるレイヤーを増やすと他が比率を保ったまま減ります。'
+            + '塗る前に terrain_inspect で layers[].material を確認してください — 空のレイヤーを塗っても見た目は変わりません'
+            + '(その場合は terrain_set_layer_material で .mat を割り当てます)。',
+        inputSchema: {
+            position: Vec3Schema.describe('ブラシ中心 (ワールド座標)'),
+            layer: z.number().int().min(0).max(3).describe('塗るレイヤー index'),
+            radius: z.number().finite().gt(0).max(500).default(5),
+            strength: z.number().finite().gt(0).max(1).default(0.5),
+            falloff: z.enum(['linear', 'smooth', 'gaussian']).default('smooth'),
+            iterations: z.number().int().min(1).max(64).default(1),
+            id: NodeIdSchema.optional(),
+        },
+        annotations: writeAnnotations,
+    }, ({ position, layer, radius, strength, falloff, iterations, id }) => run({
+        t: 'terrain.paint', position, layer, radius, strength, falloff, iterations,
+        ...(id === undefined ? {} : { id }),
+    }));
+
+    server.registerTool('terrain_set_layer_material', {
+        description: 'Terrain の 4 レイヤーのいずれかへ .mat を割り当てます (空文字でクリア)。'
+            + 'レイヤーが空のまま terrain_paint しても見た目が変わらないため、塗る前にここで中身を決めます。',
+        inputSchema: {
+            id: NodeIdSchema,
+            layer: z.number().int().min(0).max(3),
+            material: z.string().max(512).describe('projectRoot 相対の .mat パス (空文字でクリア)'),
+        },
+        annotations: writeAnnotations,
+    }, ({ id, layer, material }) => run({ t: 'terrain.setLayerMaterial', id, layer, material }));
+
+    server.registerTool('foliage_scatter', {
+        description: '指定した円内へ植生 (Species) を散布します。地形の高さへ吸着し、斜度が maxSlopeDegrees を超える場所は避けます。'
+            + 'id は FoliageComponent と TerrainComponent の両方を持つノードです'
+            + '(stamp は Terrain ローカル座標で保存するため、Terrain が同居していないと置けません)。'
+            + 'seed を指定すると同じ要求から必ず同じ配置になります — 指定しないと「もう一度」で別の絵になり、結果を比較できません。'
+            + '1 本も置けなかった場合は斜度超過と範囲外の内訳をエラーに含めるので、radius か maxSlopeDegrees のどちらを直すか判断できます。'
+            + '配置モードは STAMP へ切り替わります (PROCEDURAL のままだと stamps は描画に使われません)。',
+        inputSchema: {
+            id: NodeIdSchema,
+            species: z.number().int().min(0).max(63).describe('foliage_inspect が返す species index'),
+            position: Vec3Schema.describe('散布円の中心 (ワールド座標)'),
+            radius: z.number().finite().gt(0).max(500).default(5),
+            count: z.number().int().min(1).max(500).default(10),
+            maxSlopeDegrees: z.number().finite().min(0).max(90).default(40),
+            seed: z.number().int().min(1).optional().describe('決定論的な配置にする乱数種'),
+        },
+        annotations: writeAnnotations,
+    }, ({ id, species, position, radius, count, maxSlopeDegrees, seed }) => run({
+        t: 'foliage.scatter', id, species, position, radius, count, maxSlopeDegrees,
+        ...(seed === undefined ? {} : { seed }),
+    }));
+
+    server.registerTool('foliage_clear', {
+        description: '植生の stamp を削除します。position と radius を指定するとその円内だけ、省略するとその Species の全 stamp を消します。',
+        inputSchema: {
+            id: NodeIdSchema,
+            species: z.number().int().min(0).max(63),
+            position: Vec3Schema.optional(),
+            radius: z.number().finite().gt(0).max(500).optional(),
+        },
+        annotations: writeAnnotations,
+    }, ({ id, species, position, radius }) => run({
+        t: 'foliage.clear', id, species,
+        ...(position === undefined ? {} : { position }),
+        ...(radius === undefined ? {} : { radius }),
+    }));
+
+    server.registerTool('navmesh_bake', {
+        description: 'NavMesh Surface の再ベイクを要求します。id 省略で有効な全 Surface が対象です。'
+            + 'terrain_sculpt やコライダーの追加/削除の後は必ず実行してください — 古い NavMesh のまま経路を引くと'
+            + '「壁を通り抜ける経路」が返り、その経路は実行時にも使われます。'
+            + 'ベイクはバックグラウンドスレッドで走るので即座には完了しません。navmesh_get_state で bakeState=done を確認してください。',
+        inputSchema: { id: NodeIdSchema.optional() },
+        annotations: writeAnnotations,
+    }, ({ id }) => run({ t: 'navmesh.bake', ...(id === undefined ? {} : { id }) }));
+
+    server.registerTool('audio_control', {
+        description: 'AudioSource を再生 / 停止 / 一時停止 / 再開します。実行は次フレームの AudioSystem で、'
+            + '結果は audio_inspect の runtime.playing で確認します。Undo は逆方向の操作になります。',
+        inputSchema: { id: NodeIdSchema, action: z.enum(['play', 'stop', 'pause', 'resume']) },
+        annotations: writeAnnotations,
+    }, ({ id, action }) => run({ t: 'audio.control', id, action }));
+
+    server.registerTool('build_run', {
+        description: 'スクリプト DLL の再ビルドを要求します。MSBuild は数十秒かかるため同期完了は返しません'
+            + '(ここで待つと Editor のメインスレッドごと止まり、以降の要求も返らなくなります)。'
+            + 'build_get_status で building=false になるまでポーリングし、diagnostics でエラーを確認してください。',
+        inputSchema: { target: z.literal('script').default('script') },
+        annotations: writeAnnotations,
+    }, ({ target }) => run({ t: 'build.run', target }));
 
     server.registerTool('run_transaction', {
         description: '複数 Command を1つの Undo 単位として原子的に実行します。',

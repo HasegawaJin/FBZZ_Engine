@@ -10,7 +10,12 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
+// Add Object プリセットは Hierarchy メニューと同じ登録表を共有する。
+#include <Editor/Util/ObjectPresets.hpp>
+// Terrain ブラシは対話ツール (TerrainTool) と同じカーネルを叩く。
+#include <Tools/TerrainBrush.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -20,6 +25,7 @@
 #include <Editor/VFXEditor/Document/VFXGraphOps.hpp>
 #include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
+#include <Engine/AI/BehaviorTreeRuntime.hpp>
 #include <Engine/AI/BehaviorTreeTypes.hpp>
 #include <Editor/VFXEditor/Services/VFXTemplateCatalog.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -47,8 +53,18 @@
 #include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/AudioListenerComponent.hpp>
+#include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/BehaviorTreeComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/FoliageComponent.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Systems/NavMeshQuery.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
@@ -883,8 +899,7 @@ Outcome DoVFXLint(editor::EditorContext& ctx, const JsonValue& payload)
     for (const auto& node : graph.nodes) {
         switch (node.type) {
         case asset::VFXNodeType::Particle: {
-            checkAsset(node.particle.texturePath, "texture", node.id);
-            checkAsset(node.particle.materialPath, "material", node.id);
+        checkAsset(node.particle.materialPath, "material", node.id);
             checkAsset(node.particle.meshShapePath, "meshShape", node.id);
             // GPU シミュレーションの無言の縮退。simulationMode = Gpu にしても、
             // 条件のどれか 1 つを外すと黙って CPU へ落ちる。
@@ -905,8 +920,7 @@ Outcome DoVFXLint(editor::EditorContext& ctx, const JsonValue& payload)
         }
         case asset::VFXNodeType::Trail:
         case asset::VFXNodeType::MeshTrail:
-            checkAsset(node.trail.texturePath, "texture", node.id);
-            checkAsset(node.trail.materialPath, "material", node.id);
+        checkAsset(node.trail.materialPath, "material", node.id);
             checkAsset(node.trail.meshPath, "mesh", node.id);
             break;
         case asset::VFXNodeType::Audio:
@@ -1921,6 +1935,139 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
 //     編集する → 検証する」という流れは VFX グラフと同一で、面の作り方を変える理由が無い。
 //     bt.tree / bt.guide / bt.lint / bt.node.* を vfx.* と同じ語彙で揃える。
 
+// ── BT ノードのフィールド目録 ───────────────────────────────────────────────
+// WHY 表にするか: bt.node.setField は種別を見ずに代入していたため、
+//     HasTarget へ duration を書いても、Wait へ range を書いても受理され保存まで通った。
+//     効かない設定は「実行しても行動が変わらない」としか見えないので、
+//     書いた側は最後まで誤りに気づけない (VFX の UNKNOWN_SHADER_PARAM と同じ壊れ方)。
+//     受理集合を 1 つの表にして bt.schema で公開し、書き込み時も同じ表で弾く。
+//
+// appliesTo は **ランタイムが実際に読むか** で決める。Inspector の見た目ではない。
+// (例: turnSpeedDeg は LookAt しか読まず、range は IsTargetInRange しか読まない)
+struct BTFieldSpec {
+    const char* name;
+    const char* type;         // "float" | "int" | "bool" | "string" | "enum"
+    const char* description;
+    const char* enumValues;   // "" 以外なら | 区切りの受理値
+    float       minValue;     // minValue == maxValue なら範囲指定なし
+    float       maxValue;
+};
+
+const BTFieldSpec kBTFieldSpecs[] = {
+    { "name", "string", "表示名。空ならノード種別名が使われる", "", 0.0f, 0.0f },
+    { "editorX", "float", "エディタ Canvas 上の X 座標 (実行には影響しない)", "", 0.0f, 0.0f },
+    { "editorY", "float", "エディタ Canvas 上の Y 座標 (実行には影響しない)", "", 0.0f, 0.0f },
+    { "abortMode", "enum",
+      "Running 中の枝を中断する条件。lowerPriority が BT の中断機構の本体",
+      "none|self|lowerPriority|both", 0.0f, 0.0f },
+    { "duration", "float", "待機 / クールダウン / 制限時間 [s]", "", 0.0f, 600.0f },
+    { "durationRandom", "float",
+      "duration へ加える ±ランダム幅 [s]。0 だと同時スポーンした個体の待機が完全に同期する",
+      "", 0.0f, 60.0f },
+    { "repeatCount", "int", "繰り返し回数。0 = 無限", "", 0.0f, 0.0f },
+    { "repeatUntilFailure", "bool", "Failure が返るまで繰り返す", "", 0.0f, 0.0f },
+    { "successPolicy", "enum", "Parallel の成功条件", "requireOne|requireAll", 0.0f, 0.0f },
+    { "keyName", "string", "参照する Blackboard キー名 (bt.tree の blackboard に実在するもの)",
+      "", 0.0f, 0.0f },
+    { "compareOp", "enum", "比較演算子", "==|!=|<|<=|>|>=", 0.0f, 0.0f },
+    { "withinSeconds", "float", "「N 秒以内に書かれた値か」も条件に加える。0 = 時間条件なし",
+      "", 0.0f, 60.0f },
+    { "valueBool", "bool", "比較 / 代入する値 (Bool キー)", "", 0.0f, 0.0f },
+    { "valueInt", "int", "比較 / 代入する値 (Int キー)", "", 0.0f, 0.0f },
+    { "valueFloat", "float", "比較 / 代入する値 (Float キー)", "", 0.0f, 0.0f },
+    { "valueString", "string", "比較 / 代入する値 (String キー)", "", 0.0f, 0.0f },
+    { "moveTargetKey", "string", "移動目標を持つ Blackboard キー (Vector3 か Entity)",
+      "", 0.0f, 0.0f },
+    { "acceptanceRadius", "float", "到達とみなす距離 [m]", "", 0.0f, 20.0f },
+    { "chaseEntity", "bool",
+      "true なら Entity を追跡し続ける。false なら一度だけ目的地へ向かう", "", 0.0f, 0.0f },
+    { "repathInterval", "float", "経路再計算の間隔 [s]", "", 0.0f, 5.0f },
+    { "range", "float", "範囲内とみなす距離 [m]", "", 0.0f, 200.0f },
+    { "turnSpeedDeg", "float", "旋回速度 [deg/s]", "", 0.0f, 3600.0f },
+    { "animatorTrigger", "string", "Animator へ送るトリガー名", "", 0.0f, 0.0f },
+    { "waitForAnimation", "bool", "再生完了まで Running を維持する (段階 3 では未対応)",
+      "", 0.0f, 0.0f },
+    { "soundPath", "string", "再生する音声アセットのパス", "", 0.0f, 0.0f },
+    { "volume", "float", "音量", "", 0.0f, 2.0f },
+    { "scriptMethod", "string", "呼び出すスクリプトのメソッド名", "", 0.0f, 0.0f },
+    { "threshold01", "float", "HP 閾値 [0,1]", "", 0.0f, 1.0f },
+};
+
+const BTFieldSpec* FindBTFieldSpec(std::string_view field)
+{
+    for (const BTFieldSpec& spec : kBTFieldSpecs)
+        if (field == spec.name) return &spec;
+    return nullptr;
+}
+
+// そのフィールドをその種別のランタイムが読むか。
+bool BTFieldAppliesTo(std::string_view field, fbzz::ai::BTNodeType type)
+{
+    using T = fbzz::ai::BTNodeType;
+    if (field == "name" || field == "editorX" || field == "editorY") return true;
+    if (field == "abortMode")
+        return fbzz::ai::BTNodeIsPureCondition(type) || type == T::BlackboardCondition;
+    if (field == "duration" || field == "durationRandom")
+        return type == T::Wait || type == T::Cooldown || type == T::TimeLimit;
+    if (field == "repeatCount" || field == "repeatUntilFailure") return type == T::Repeat;
+    if (field == "successPolicy") return type == T::Parallel;
+    if (field == "keyName" || field == "compareOp" || field == "withinSeconds"
+        || field == "valueBool" || field == "valueInt" || field == "valueFloat"
+        || field == "valueString")
+        return type == T::BlackboardCondition || type == T::BlackboardCompare
+            || type == T::SetBlackboard;
+    if (field == "moveTargetKey" || field == "acceptanceRadius" || field == "chaseEntity"
+        || field == "repathInterval") return type == T::MoveTo;
+    if (field == "range") return type == T::IsTargetInRange;
+    if (field == "turnSpeedDeg") return type == T::LookAt;
+    if (field == "animatorTrigger" || field == "waitForAnimation") return type == T::PlayAnimation;
+    if (field == "soundPath" || field == "volume") return type == T::PlayAudio;
+    if (field == "scriptMethod") return type == T::RunScript;
+    if (field == "threshold01") return type == T::IsHealthBelow;
+    return false;
+}
+
+// ノードの現在値を JSON へ。bt.node.setField の value と同じ表現で返すので、
+// 読んで一部だけ変えて書き戻せる。
+JsonValue BTFieldValueJson(const fbzz::ai::BTNodeDef& node, std::string_view field)
+{
+    if (field == "name") return JsonValue(node.name);
+    if (field == "editorX") return JsonValue(node.editorX);
+    if (field == "editorY") return JsonValue(node.editorY);
+    if (field == "abortMode") {
+        const char* names[] = { "none", "self", "lowerPriority", "both" };
+        return JsonValue(std::string(names[static_cast<int>(node.abortMode)]));
+    }
+    if (field == "duration") return JsonValue(node.duration);
+    if (field == "durationRandom") return JsonValue(node.durationRandom);
+    if (field == "repeatCount") return JsonValue(node.repeatCount);
+    if (field == "repeatUntilFailure") return JsonValue(node.repeatUntilFailure);
+    if (field == "successPolicy")
+        return JsonValue(std::string(node.successPolicy == fbzz::ai::BTParallelPolicy::RequireOne
+                                     ? "requireOne" : "requireAll"));
+    if (field == "keyName") return JsonValue(node.keyName);
+    if (field == "compareOp")
+        return JsonValue(std::string(fbzz::ai::BTCompareOpName(node.compareOp)));
+    if (field == "withinSeconds") return JsonValue(node.withinSeconds);
+    if (field == "valueBool") return JsonValue(node.valueBool);
+    if (field == "valueInt") return JsonValue(node.valueInt);
+    if (field == "valueFloat") return JsonValue(node.valueFloat);
+    if (field == "valueString") return JsonValue(node.valueString);
+    if (field == "moveTargetKey") return JsonValue(node.moveTargetKey);
+    if (field == "acceptanceRadius") return JsonValue(node.acceptanceRadius);
+    if (field == "chaseEntity") return JsonValue(node.chaseEntity);
+    if (field == "repathInterval") return JsonValue(node.repathInterval);
+    if (field == "range") return JsonValue(node.range);
+    if (field == "turnSpeedDeg") return JsonValue(node.turnSpeedDeg);
+    if (field == "animatorTrigger") return JsonValue(node.animatorTrigger);
+    if (field == "waitForAnimation") return JsonValue(node.waitForAnimation);
+    if (field == "soundPath") return JsonValue(node.soundPath);
+    if (field == "volume") return JsonValue(node.volume);
+    if (field == "scriptMethod") return JsonValue(node.scriptMethod);
+    if (field == "threshold01") return JsonValue(node.threshold01);
+    return JsonValue();
+}
+
 // .behaviortree を読む。壊れていても構造は返す (AI が直せなければ意味が無い)。
 bool LoadBehaviorTreeForAi(editor::EditorContext& ctx, const JsonValue& payload,
                            fbzz::ai::BehaviorTreeAsset& outAsset, std::string& outRelative,
@@ -2024,6 +2171,71 @@ Outcome DoBehaviorTree(editor::EditorContext& ctx, const JsonValue& payload)
     return Outcome::Ok(std::move(result));
 }
 
+// lint の code ごとに「どう直すか」を機械可読で持つ表。vfx.lint の VFXFixHint と同じ役割。
+//
+// WHY: これまで bt.lint は「何が壊れているか」だけを返し、直し方は AI の推測だった。
+//      BT は特に「木としては正しいが意図どおり動かない」壊れ方が多く、
+//      直し方が code ごとに一意に決まるものが大半なので、推論ではなく参照にする。
+//      code は Engine の CollectBehaviorTreeWarnings が唯一の正本で、
+//      Editor の警告 banner と AI がまったく同じ集合を見る。
+//
+// autoFixable: bt.repair が判断なしで直せるもの。false は設計判断が要るため AI に残す。
+struct BTFixHint {
+    const char* code;
+    const char* severity;   // "error" 相当の実害があるものは "error"
+    bool        autoFixable;
+    const char* action;
+    const char* caution;
+};
+
+const BTFixHint* FindBTFixHint(std::string_view code)
+{
+    static constexpr BTFixHint kHints[] = {
+        { "no-lower-priority-abort", "error", true,
+          "bt_repair(fixAborts=true) で、その条件の abortMode を lowerPriority にする。"
+          "意図的に割り込ませたくない枝なら、その枝を Selector の最後へ回す (bt_node_set_order)。",
+          "lowerPriority を付けると、下位の枝が Running 中でも条件が真に立った瞬間に中断される。"
+          "中断されたくない不可分な行動 (再生中の攻撃モーション等) を含む枝には付けない。" },
+        { "unreachable-sibling", "error", false,
+          "後続の枝を活かすなら、塞いでいる子を bt_node_set_order で最後へ回すか、"
+          "無限 Repeat なら repeatCount を有限にする / repeatUntilFailure=true にする。"
+          "塞ぐのが意図なら、後続の枝は bt_node_remove で消す。",
+          "どちらが意図かは機械的に決められない。木に残っているだけで実行されない枝は、"
+          "読んだ人に「動いているはず」と誤解させ続ける。" },
+        { "empty-composite", "error", false,
+          "bt_node_add(parentId=<この id>) で子を足すか、まだ作らないなら "
+          "AlwaysSucceed / AlwaysFail で栓をする。", "" },
+        { "empty-decorator", "error", false,
+          "bt_node_add(parentId=<この id>) で子を 1 つ足す。Decorator は子が無いと何も修飾しない。", "" },
+        { "unresolved-key", "error", true,
+          "bt_repair(fixKeys=true) で、綴りの近い既存キーへ張り替える。"
+          "新しいキーが要るなら bt_blackboard_add で先に作る。",
+          "自動置換は名前の近さだけで選ぶため、置換後に bt_tree の該当ノードでキーを確認すること。" },
+        { "missing-key", "error", false,
+          "bt_node_set_field(field=\"keyName\") で参照先を設定する。"
+          "候補は bt_tree の blackboard にあるものだけ。", "" },
+        { "zero-cooldown", "warning", true,
+          "bt_repair(fixDurations=true) で duration を 1.0 秒にする。", "" },
+        { "zero-duration-wait", "warning", true,
+          "bt_repair(fixDurations=true) で duration を 1.0 秒にする。"
+          "「1 tick だけ譲る」意図なら Wait ではなく AlwaysSucceed を使う。", "" },
+        { "zero-weights", "warning", true,
+          "bt_repair(fixWeights=true) で全ての重みを 1 (等確率) へ戻す。",
+          "偏らせたい意図があった場合、その意図は復元できない。" },
+        { "empty-script-method", "warning", false,
+          "bt_node_set_field(field=\"scriptMethod\") でスクリプトのメソッド名を設定する。", "" },
+        { "empty-animator-trigger", "warning", false,
+          "bt_node_set_field(field=\"animatorTrigger\") でトリガー名を設定する。"
+          "実在するトリガー名は animation_get_graph の parameters で確認する。", "" },
+        { "empty-sound-path", "warning", false,
+          "bt_node_set_field(field=\"soundPath\") で音声アセットのパスを設定する。"
+          "実在パスは asset_list で調べる。", "" },
+    };
+    for (const auto& hint : kHints)
+        if (code == hint.code) return &hint;
+    return nullptr;
+}
+
 // bt.lint — 保存は通るが意図どおりに動かない構成を返す。
 Outcome DoBehaviorTreeLint(editor::EditorContext& ctx, const JsonValue& payload)
 {
@@ -2034,63 +2246,110 @@ Outcome DoBehaviorTreeLint(editor::EditorContext& ctx, const JsonValue& payload)
     if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) return error;
 
     JsonValue issues = JsonValue::MakeArray();
+    int autoFixableCount = 0;
     for (const auto& warning : fbzz::ai::CollectBehaviorTreeWarnings(asset)) {
         JsonValue item = JsonValue::MakeObject();
         item.Set("nodeId", JsonValue(warning.nodeId));
         item.Set("code", JsonValue(warning.code));
         item.Set("message", JsonValue(warning.message));
+        if (const BTFixHint* hint = FindBTFixHint(warning.code); hint != nullptr) {
+            item.Set("severity", JsonValue(std::string(hint->severity)));
+            item.Set("autoFixable", JsonValue(hint->autoFixable));
+            item.Set("fix", JsonValue(std::string(hint->action)));
+            if (hint->caution[0] != '\0') item.Set("caution", JsonValue(std::string(hint->caution)));
+            if (hint->autoFixable) ++autoFixableCount;
+        } else {
+            // 手順を用意していない code は「自動修復できない」と明示する。
+            // 黙って欠落させると、fix が無いことを「直さなくてよい」と読みかねない。
+            item.Set("severity", JsonValue(std::string("warning")));
+            item.Set("autoFixable", JsonValue(false));
+        }
         issues.Push(std::move(item));
     }
+
+    // コンパイル時にしか判らない不整合も併せて返す。Validate は構造しか見ないので、
+    // 「保存もできて Validate も通るが実行時に効かない」層はここにしか現れない。
+    JsonValue compileWarnings = JsonValue::MakeArray();
+    fbzz::ai::BehaviorTreeRuntime compiled;
+    std::string compileError;
+    const bool compiles = fbzz::ai::CompileBehaviorTree(asset, compiled, &compileError);
+    if (compiles)
+        for (const std::string& warning : compiled.compileWarnings)
+            compileWarnings.Push(JsonValue(warning));
+
     std::string validateError;
     const bool valid = fbzz::ai::ValidateBehaviorTreeAsset(asset, &validateError);
 
     JsonValue result = JsonValue::MakeObject();
     result.Set("path", JsonValue(relative));
     result.Set("issues", std::move(issues));
+    result.Set("autoFixableCount", JsonValue(autoFixableCount));
+    result.Set("compileWarnings", std::move(compileWarnings));
+    result.Set("compiles", JsonValue(compiles));
+    if (!compiles) result.Set("compileError", JsonValue(compileError));
     result.Set("valid", JsonValue(valid));
     if (!valid) result.Set("error", JsonValue(validateError));
     result.Set("note", JsonValue(std::string(
         "valid=false は保存が拒否される致命的な不整合 (ルートが 0/2 個・循環・子数超過)。"
-        "issues は保存できるが意図どおり動かない構成。")));
+        "issues は保存できるが意図どおり動かない構成で、autoFixable=true のものは "
+        "bt.repair がまとめて直せる。compileWarnings は保存も Validate も通るが"
+        "実行時に効かないもの (解決できなかった Blackboard キー等)。")));
     return Outcome::Ok(std::move(result));
 }
 
 // bt.guide — 木を組む前に読む規約。VFX の vfx.guide と同じ位置づけ。
 Outcome DoBehaviorTreeGuide()
 {
-    struct Rule { const char* topic; const char* rule; const char* why; };
+    // lintCode は、その規約を機械的に検査している bt.lint の issue code。
+    // 空文字は「検査できないが守るべき設計原則」で、AI 側の判断に委ねる部分を明示する。
+    struct Rule { const char* topic; const char* rule; const char* why; const char* lintCode; };
     static constexpr Rule kRules[] = {
         { "structure",
           "Selector の子は「やりたいことの優先順位」で並べる。order が小さいほど先に試される。"
           "戦闘 → 追跡 → 巡回 → 待機 のように、緊急度の高い枝を必ず左 (小さい order) へ置く。",
           "BT の挙動は木の形ではなく order で決まる。並べ替えを怠ると、"
-          "「巡回が先に Success して戦闘へ入らない」という形で静かに壊れる。" },
+          "「巡回が先に Success して戦闘へ入らない」という形で静かに壊れる。", "" },
         { "structure",
           "Sequence は AND、Selector は OR。「条件を確かめてから行動する」は "
           "Sequence(条件, 行動) で書く。",
-          "Selector で書くと条件が Failure でも行動が実行され、条件の意味が消える。" },
+          "Selector で書くと条件が Failure でも行動が実行され、条件の意味が消える。", "" },
         { "abort",
           "割り込みたい条件には abortMode=lowerPriority を付ける。"
           "付けられるのは純粋条件ノード (HasTarget / IsTargetInRange / BlackboardCondition 等) だけ。",
           "これが BT が FSM に対して優位を持つ最大の理由。無いと「巡回中にプレイヤーを"
           "発見しても、現在のウェイポイントに着くまで反応しない」鈍い AI になる。"
           "副作用のあるノードへ付けると、中断チェックのたびに世界が変わり木が非決定的になるため"
-          "Validate が拒否する。" },
+          "Validate が拒否する。", "no-lower-priority-abort" },
+        { "structure",
+          "後続の兄弟へ制御が渡らない子を途中に置かない。無限 Repeat と AlwaysRunning は "
+          "Sequence を、AlwaysSucceed と Succeeder は Selector を、そこで打ち止めにする。",
+          "木には見えているのに絶対に実行されない枝ができる。読んだ人には"
+          "「動いているはず」に見え続けるので、木を読んでも気づけない。", "unreachable-sibling" },
         { "blackboard",
           "キーは bt.tree の blackboard に載っているものだけを使う。存在しない名前を書いても"
           "保存は通り、Compile 時に解決できず実行時は黙って無視される。",
-          "「値を変えても行動が変わらない」としか見えず、綴り違いに最後まで気付けない。" },
+          "「値を変えても行動が変わらない」としか見えず、綴り違いに最後まで気付けない。",
+          "unresolved-key" },
         { "blackboard",
           "reserved=true のキーは PerceptionSystem 等が固定添字で書き込む。"
           "改名も削除もしてはならない。",
-          "固定添字が前提なので、順序が変わると別のキーへ書かれる。" },
+          "固定添字が前提なので、順序が変わると別のキーへ書かれる。", "" },
         { "timing",
           "Wait / Cooldown には durationRandom を入れる。",
-          "同時にスポーンした敵の待機が完全に同期すると、群れが機械的に見える。" },
+          "同時にスポーンした敵の待機が完全に同期すると、群れが機械的に見える。", "" },
         { "structure",
           "未実装の枝は AlwaysSucceed / AlwaysFail で栓をしてから木を組む。",
           "空の Composite は「子が 0 個」として即座に結果が確定し、"
-          "組み立て途中の木が意図しない結果を返す。" },
+          "組み立て途中の木が意図しない結果を返す。", "empty-composite" },
+        { "fields",
+          "フィールドを書く前に bt.schema でその種別が読むものを確かめる。"
+          "名前が実在しても種別が読まなければ効かない (Wait の range、HasTarget の duration)。",
+          "保存も Validate も通るため、「設定したのに行動が変わらない」としか見えない。", "" },
+        { "debug",
+          "動かないときは木ではなく bt.runtime を見る。status=notEvaluated は到達していない、"
+          "Blackboard の written=false は知覚側が書いていない、を意味する。",
+          "「条件が偽」「割り込めていない」「到達していない」は木からも画面からも区別できず、"
+          "推測で直すと別の箇所を壊す。", "" },
     };
 
     // 代表的な骨格。ゼロから積むより、この形に沿わせたほうが確実に動く。
@@ -2112,6 +2371,9 @@ Outcome DoBehaviorTreeGuide()
         entry.Set("topic", JsonValue(std::string(item.topic)));
         entry.Set("rule", JsonValue(std::string(item.rule)));
         entry.Set("why", JsonValue(std::string(item.why)));
+        // 検査できる規約は code を添える。bt.lint の同じ code がその規約の実装。
+        if (item.lintCode[0] != '\0')
+            entry.Set("lintCode", JsonValue(std::string(item.lintCode)));
         rules.Push(std::move(entry));
     }
     JsonValue recipes = JsonValue::MakeArray();
@@ -2138,6 +2400,492 @@ Outcome DoBehaviorTreeGuide()
     result.Set("rules", std::move(rules));
     result.Set("recipes", std::move(recipes));
     result.Set("nodeTypes", std::move(nodeTypes));
+    // 面が増えたので、どの順で呼ぶかを規約と一緒に返す。
+    // WHY: BT は「木としては正しいが意図どおり動かない」壊れ方をするため、
+    //      作って画面を見る、では収束しない。静的検査と実行状態の両方で挟む。
+    result.Set("workflow", JsonValue(std::string(
+        "1. bt.templateCatalog / bt.template.apply で動く骨格を取り込む "
+        "(ゼロから積むより確実で abortMode やキーまで持ち込める)。"
+        "2. bt.schema でその種別が読むフィールドを確かめてから bt.node.setField。"
+        "3. bt.lint → autoFixable=true は bt.repair でまとめて直す。"
+        "4. play_control(start) → bt.runtime で「到達しているか」「条件が真か」を確かめる。"
+        "5. bt.diff で編集前後の木の意味の変化を確認する。")));
+    return Outcome::Ok(std::move(result));
+}
+
+// bt.schema — ノード種別ごとに「何を書けるか」を返す。bt.node.setField の対。
+//
+// WHY 必要か: setField は field 名を文字列で受けるのに、その名前の一覧を知る手段が
+//     無かった。実在しない名前は BT_UNKNOWN_FIELD で弾かれるが、**実在するが
+//     その種別では読まれない名前** (Wait へ range、HasTarget へ duration) は
+//     受理され保存まで通り、「設定したのに行動が変わらない」としか見えない。
+//     受理集合そのものを公開すれば、試行錯誤ではなく参照で決まる。
+Outcome DoBehaviorTreeSchema(const JsonValue& payload)
+{
+    // nodeType 指定があればその種別だけに絞る。木を組む最中は 1 種別しか要らないのに、
+    // 全 26 種別ぶんの目録を毎回返すと応答の大半が読まれないまま context を食う。
+    const std::string filter = StringField(payload, "nodeType");
+
+    JsonValue fields = JsonValue::MakeArray();
+    for (const BTFieldSpec& spec : kBTFieldSpecs) {
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("field", JsonValue(std::string(spec.name)));
+        entry.Set("type", JsonValue(std::string(spec.type)));
+        entry.Set("description", JsonValue(std::string(spec.description)));
+        if (spec.enumValues[0] != '\0') {
+            JsonValue values = JsonValue::MakeArray();
+            std::string current;
+            for (const char* cursor = spec.enumValues; ; ++cursor) {
+                if (*cursor == '|' || *cursor == '\0') {
+                    values.Push(JsonValue(current));
+                    current.clear();
+                    if (*cursor == '\0') break;
+                } else current.push_back(*cursor);
+            }
+            entry.Set("enumValues", std::move(values));
+        }
+        if (spec.minValue != spec.maxValue) {
+            entry.Set("min", JsonValue(spec.minValue));
+            entry.Set("max", JsonValue(spec.maxValue));
+        }
+        // そのフィールドを読む種別。ここに無い種別へ書くと BT_FIELD_NOT_APPLICABLE。
+        JsonValue appliesTo = JsonValue::MakeArray();
+        for (int index = 0; index < static_cast<int>(fbzz::ai::BTNodeType::Count); ++index) {
+            const auto type = static_cast<fbzz::ai::BTNodeType>(index);
+            if (BTFieldAppliesTo(spec.name, type))
+                appliesTo.Push(JsonValue(std::string(fbzz::ai::BTNodeTypeName(type))));
+        }
+        entry.Set("appliesTo", std::move(appliesTo));
+        fields.Push(std::move(entry));
+    }
+
+    JsonValue nodeTypes = JsonValue::MakeArray();
+    for (int index = 0; index < static_cast<int>(fbzz::ai::BTNodeType::Count); ++index) {
+        const auto type = static_cast<fbzz::ai::BTNodeType>(index);
+        const std::string typeName = fbzz::ai::BTNodeTypeName(type);
+        if (!filter.empty() && filter != typeName) continue;
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("nodeType", JsonValue(typeName));
+        entry.Set("category", JsonValue(std::string(
+            fbzz::ai::BTNodeIsComposite(type) ? "composite"
+            : fbzz::ai::BTNodeIsDecorator(type) ? "decorator"
+            : fbzz::ai::BTNodeIsPureCondition(type) ? "condition" : "action")));
+        entry.Set("maxChildren", JsonValue(fbzz::ai::BTNodeMaxChildren(type)));
+        entry.Set("canAbort", JsonValue(fbzz::ai::BTNodeIsPureCondition(type)
+                                        || type == fbzz::ai::BTNodeType::BlackboardCondition));
+        JsonValue own = JsonValue::MakeArray();
+        for (const BTFieldSpec& spec : kBTFieldSpecs)
+            if (BTFieldAppliesTo(spec.name, type)) own.Push(JsonValue(std::string(spec.name)));
+        entry.Set("fields", std::move(own));
+        nodeTypes.Push(std::move(entry));
+    }
+    if (!filter.empty() && nodeTypes.AsArray().empty())
+        return Outcome::Err("BAD_ARG", "未知の BT nodeType です: " + filter);
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("fields", std::move(fields));
+    result.Set("nodeTypes", std::move(nodeTypes));
+    result.Set("note", JsonValue(std::string(
+        "appliesTo は「ランタイムが実際に読むか」で決めてある (Inspector の見た目ではない)。"
+        "ここに載っていない組み合わせを bt.node.setField へ渡すと "
+        "BT_FIELD_NOT_APPLICABLE で拒否される。")));
+    return Outcome::Ok(std::move(result));
+}
+
+// bt.nodeField — ノードの現在値を読む。bt.node.setField の対になる読み出し。
+//
+// WHY: 書く手段はあるのに読む手段が無く、duration や keyName に**今何が入っているか**を
+//      API 越しに確かめられなかった。bt.tree は要約なので全フィールドを返さない。
+//      現在値を知らないまま書くと、変更が効いたのかどうかも判断できない。
+Outcome DoBehaviorTreeNodeField(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    fbzz::ai::BehaviorTreeAsset asset;
+    std::string relative;
+    std::filesystem::path absolute;
+    Outcome error;
+    if (!LoadBehaviorTreeForAi(ctx, payload, asset, relative, absolute, error)) return error;
+
+    const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
+    const fbzz::ai::BTNodeDef* node = asset.FindNode(nodeId);
+    if (node == nullptr) return Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません");
+
+    const std::string field = StringField(payload, "field");
+    JsonValue values = JsonValue::MakeArray();
+    if (!field.empty()) {
+        if (FindBTFieldSpec(field) == nullptr)
+            return Outcome::Err("BT_UNKNOWN_FIELD", "未知のフィールドです: " + field
+                                + " (bt.schema の fields を参照してください)");
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("field", JsonValue(field));
+        entry.Set("value", BTFieldValueJson(*node, field));
+        entry.Set("appliesToType", JsonValue(BTFieldAppliesTo(field, node->type)));
+        values.Push(std::move(entry));
+    } else {
+        // field 省略時は「その種別が実際に読むフィールド」だけを返す。
+        // 全 29 フィールドを返すと、大半が既定値のまま意味を持たない行になる。
+        for (const BTFieldSpec& spec : kBTFieldSpecs) {
+            if (!BTFieldAppliesTo(spec.name, node->type)) continue;
+            JsonValue entry = JsonValue::MakeObject();
+            entry.Set("field", JsonValue(std::string(spec.name)));
+            entry.Set("value", BTFieldValueJson(*node, spec.name));
+            entry.Set("appliesToType", JsonValue(true));
+            values.Push(std::move(entry));
+        }
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("path", JsonValue(relative));
+    result.Set("nodeId", JsonValue(nodeId));
+    result.Set("nodeType", JsonValue(std::string(fbzz::ai::BTNodeTypeName(node->type))));
+    result.Set("values", std::move(values));
+    result.Set("note", JsonValue(std::string(
+        "value は bt.node.setField の value と同じ表現なので、読んで一部だけ変えて書き戻せる。"
+        "appliesToType=false はその種別のランタイムが読まないフィールド (保存されても効かない)。")));
+    return Outcome::Ok(std::move(result));
+}
+
+// bt.runtime — Play 中に「今どの枝が走っているか」と Blackboard の実値を返す。
+//
+// WHY 静的な木では足りないか: BT が意図どおり動かない原因は
+//     「条件が偽のまま」「割り込めていない」「そもそも到達していない」の 3 通りあり、
+//     木を読んでも lint を掛けても区別できない。Blackboard の実値と各ノードの
+//     最終 status を突き合わせて初めて、どれなのかが 1 回で決まる。
+//     viewport_capture で敵の動きを見ても、なぜその行動を選んだかは映らない。
+Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    if (ctx.activeScene == nullptr)
+        return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+
+    // path 省略時は「今走っている BT を 1 体」。指定時はその木を使うエージェントに絞る。
+    const std::string requested = NormalizeAssetPath(StringField(payload, "path"));
+    const std::string requestedGuid = StringField(payload, "id");
+
+    const scene::GameObject* owner = nullptr;
+    const scene::BehaviorTreeComponent* component = nullptr;
+    JsonValue agents = JsonValue::MakeArray();
+    for (scene::GameObject* gameObject :
+         ctx.activeScene->FindObjectsOfType<scene::BehaviorTreeComponent>()) {
+        if (gameObject == nullptr) continue;
+        const auto* candidate = gameObject->GetComponent<scene::BehaviorTreeComponent>();
+        if (candidate == nullptr) continue;
+        // 候補の一覧は常に返す。1 体しか返さないと「他にも居るのか」が判らず、
+        // 別のエージェントを見たいときに Hierarchy を手で探す羽目になる。
+        JsonValue item = JsonValue::MakeObject();
+        item.Set("id", JsonValue(gameObject->instanceId));
+        item.Set("name", JsonValue(gameObject->name));
+        item.Set("treePath", JsonValue(candidate->treePath));
+        item.Set("running", JsonValue(candidate->runtime != nullptr));
+        agents.Push(std::move(item));
+
+        if (component != nullptr) continue;
+        if (!requestedGuid.empty() && gameObject->instanceId != requestedGuid) continue;
+        if (!requested.empty() && NormalizeAssetPath(candidate->treePath) != requested) continue;
+        if (candidate->runtime == nullptr) continue;
+        owner = gameObject;
+        component = candidate;
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("agents", std::move(agents));
+    if (component == nullptr) {
+        // 「木が悪い」のか「そもそも走っていない」のかを取り違えさせない。
+        result.Set("active", JsonValue(false));
+        result.Set("reason", JsonValue(std::string(
+            "条件に一致する、実行中の BehaviorTreeComponent がありません。"
+            "play_control(start) で Play へ入るか、agents から id を選び直してください。")));
+        return Outcome::Ok(std::move(result));
+    }
+
+    const fbzz::ai::BehaviorTreeRuntime& runtime = *component->runtime;
+    JsonValue nodes = JsonValue::MakeArray();
+    // runtime は DFS pre-order の配列。index が小さいほど高優先度なので、
+    // この順のまま返せば「上から順に読めば優先順位」という読み方がそのまま通る。
+    for (std::size_t index = 0; index < runtime.nodes.size(); ++index) {
+        const std::uint8_t status = index < component->lastNodeStatus.size()
+            ? component->lastNodeStatus[index] : 0;
+        JsonValue item = JsonValue::MakeObject();
+        item.Set("nodeId", JsonValue(index < runtime.authoringIdOf.size()
+                                     ? runtime.authoringIdOf[index] : 0));
+        item.Set("nodeType", JsonValue(std::string(
+            fbzz::ai::BTNodeTypeName(runtime.nodes[index].type))));
+        static const char* kStatusNames[] = { "notEvaluated", "success", "failure", "running" };
+        item.Set("status", JsonValue(std::string(kStatusNames[status < 4 ? status : 0])));
+        nodes.Push(std::move(item));
+    }
+
+    // Blackboard の実値。「条件が偽のまま」なのかを判断する唯一の材料。
+    JsonValue blackboard = JsonValue::MakeArray();
+    for (std::size_t index = 0; index < runtime.blackboard.size(); ++index) {
+        const auto key = static_cast<fbzz::ai::BlackboardKey>(index);
+        const fbzz::ai::BlackboardDef& def = runtime.blackboard[index];
+        JsonValue item = JsonValue::MakeObject();
+        item.Set("name", JsonValue(def.name));
+        item.Set("type", JsonValue(std::string(fbzz::ai::BlackboardTypeName(def.type))));
+        item.Set("reserved", JsonValue(def.reserved));
+        // 一度も書かれていないキーは既定値のまま。既定値と「書かれた結果たまたま
+        // 既定値と同じ」を区別しないと、知覚システムが動いているのかが判らない。
+        item.Set("written", JsonValue(component->blackboard.IsSet(key)));
+        item.Set("lastWriteTime", JsonValue(component->blackboard.GetLastWriteTime(key)));
+        switch (def.type) {
+        case fbzz::ai::BlackboardType::Bool: {
+            bool value = false;
+            if (component->blackboard.GetBool(key, value)) item.Set("value", JsonValue(value));
+            break;
+        }
+        case fbzz::ai::BlackboardType::Int: {
+            int value = 0;
+            if (component->blackboard.GetInt(key, value)) item.Set("value", JsonValue(value));
+            break;
+        }
+        case fbzz::ai::BlackboardType::Float: {
+            float value = 0.0f;
+            if (component->blackboard.GetFloat(key, value)) item.Set("value", JsonValue(value));
+            break;
+        }
+        case fbzz::ai::BlackboardType::Vector3: {
+            math::Vector3 value = math::Vector3::ZERO;
+            if (component->blackboard.GetVector3(key, value)) {
+                JsonValue vector = JsonValue::MakeArray();
+                vector.Push(JsonValue(value.x));
+                vector.Push(JsonValue(value.y));
+                vector.Push(JsonValue(value.z));
+                item.Set("value", std::move(vector));
+            }
+            break;
+        }
+        case fbzz::ai::BlackboardType::Entity: {
+            scene::EntityID value = scene::EntityID::INVALID;
+            if (component->blackboard.GetEntity(key, value))
+                item.Set("value", JsonValue(static_cast<int>(value.index)));
+            break;
+        }
+        default: {
+            std::string value;
+            if (component->blackboard.GetString(key, value)) item.Set("value", JsonValue(value));
+            break;
+        }
+        }
+        blackboard.Push(std::move(item));
+    }
+
+    JsonValue compileWarnings = JsonValue::MakeArray();
+    for (const std::string& warning : runtime.compileWarnings)
+        compileWarnings.Push(JsonValue(warning));
+
+    result.Set("active", JsonValue(true));
+    result.Set("id", JsonValue(owner->instanceId));
+    result.Set("name", JsonValue(owner->name));
+    result.Set("treePath", JsonValue(component->loadedTreePath.empty()
+                                     ? component->treePath : component->loadedTreePath));
+    result.Set("rootStatus", JsonValue(std::string(
+        fbzz::ai::BTStatusName(component->lastRootStatus))));
+    result.Set("tickCount", JsonValue(static_cast<int>(component->tickCount)));
+    result.Set("elapsedTime", JsonValue(component->elapsedTime));
+    result.Set("nodes", std::move(nodes));
+    result.Set("blackboard", std::move(blackboard));
+    result.Set("compileWarnings", std::move(compileWarnings));
+    result.Set("note", JsonValue(std::string(
+        "nodes は DFS pre-order (index が小さいほど高優先度)。status=notEvaluated は"
+        "「今回の tick で到達しなかった」= 上位の枝で決着した、を意味する。"
+        "written=false のキーは一度も書かれていないので、条件が偽なのは"
+        "木ではなく知覚側 (PerceptionSystem / スクリプト) の問題。")));
+    return Outcome::Ok(std::move(result));
+}
+
+// bt.diff — 2 つの .behaviortree の構造差分を返す。
+//
+// WHY: 木を編集したあと「何が変わったか」を確かめる手段が bt.tree の目視比較しかなく、
+//      ノードが 20 を超えると人も AI も追えない。候補を分岐させて比較する使い方
+//      (元の木を残したまま別案を作る) も、差分が出せないと成立しない。
+Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    const auto load = [&ctx](const std::string& key, const JsonValue& source,
+                             fbzz::ai::BehaviorTreeAsset& out, Outcome& error) {
+        JsonValue wrapper = JsonValue::MakeObject();
+        wrapper.Set("path", JsonValue(StringField(source, key.c_str())));
+        std::string relative;
+        std::filesystem::path absolute;
+        return LoadBehaviorTreeForAi(ctx, wrapper, out, relative, absolute, error);
+    };
+    fbzz::ai::BehaviorTreeAsset base;
+    fbzz::ai::BehaviorTreeAsset target;
+    Outcome error;
+    if (StringField(payload, "base").empty() || StringField(payload, "target").empty())
+        return Outcome::Err("BAD_ARG", "base と target が必要です");
+    if (!load("base", payload, base, error)) return error;
+    if (!load("target", payload, target, error)) return error;
+
+    JsonValue added = JsonValue::MakeArray();
+    JsonValue removed = JsonValue::MakeArray();
+    JsonValue changed = JsonValue::MakeArray();
+
+    for (const auto& node : target.nodes) {
+        const fbzz::ai::BTNodeDef* previous = base.FindNode(node.id);
+        if (previous == nullptr) {
+            JsonValue item = JsonValue::MakeObject();
+            item.Set("nodeId", JsonValue(node.id));
+            item.Set("nodeType", JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
+            item.Set("name", JsonValue(node.name));
+            item.Set("parentId", JsonValue(node.parentId));
+            added.Push(std::move(item));
+            continue;
+        }
+        JsonValue fields = JsonValue::MakeArray();
+        const auto pushChange = [&fields](const std::string& name, JsonValue before, JsonValue after) {
+            JsonValue field = JsonValue::MakeObject();
+            field.Set("field", JsonValue(name));
+            field.Set("before", std::move(before));
+            field.Set("after", std::move(after));
+            fields.Push(std::move(field));
+        };
+        // 種別変更は「別のノードになった」に等しいので、フィールド差分より先に出す。
+        if (previous->type != node.type)
+            pushChange("nodeType",
+                       JsonValue(std::string(fbzz::ai::BTNodeTypeName(previous->type))),
+                       JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
+        // 木の形 (親・優先度) は BT の挙動そのものなので必ず差分に出す。
+        if (previous->parentId != node.parentId)
+            pushChange("parentId", JsonValue(previous->parentId), JsonValue(node.parentId));
+        if (previous->order != node.order)
+            pushChange("order", JsonValue(previous->order), JsonValue(node.order));
+        // 値の差分は「変更後の種別が読むフィールド」だけ見る。読まれないフィールドの
+        // 差分を並べても、挙動は 1 ミリも変わらないため差分の意味が薄まる。
+        for (const BTFieldSpec& spec : kBTFieldSpecs) {
+            if (spec.name == std::string_view("editorX")
+                || spec.name == std::string_view("editorY")) continue;  // 座標は挙動に無関係
+            if (!BTFieldAppliesTo(spec.name, node.type)) continue;
+            const JsonValue before = BTFieldValueJson(*previous, spec.name);
+            const JsonValue after = BTFieldValueJson(node, spec.name);
+            if (SerializeJson(before) == SerializeJson(after)) continue;
+            pushChange(spec.name, before, after);
+        }
+        if (fields.AsArray().empty()) continue;
+        JsonValue item = JsonValue::MakeObject();
+        item.Set("nodeId", JsonValue(node.id));
+        item.Set("nodeType", JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
+        item.Set("name", JsonValue(node.name));
+        item.Set("fields", std::move(fields));
+        changed.Push(std::move(item));
+    }
+    for (const auto& node : base.nodes) {
+        if (target.FindNode(node.id) != nullptr) continue;
+        JsonValue item = JsonValue::MakeObject();
+        item.Set("nodeId", JsonValue(node.id));
+        item.Set("nodeType", JsonValue(std::string(fbzz::ai::BTNodeTypeName(node.type))));
+        item.Set("name", JsonValue(node.name));
+        removed.Push(std::move(item));
+    }
+
+    // Blackboard の増減も出す。キーが消えると、それを参照するノードが実行時に無言で死ぬ。
+    JsonValue keysAdded = JsonValue::MakeArray();
+    JsonValue keysRemoved = JsonValue::MakeArray();
+    const auto hasKey = [](const fbzz::ai::BehaviorTreeAsset& asset, const std::string& name) {
+        return std::any_of(asset.blackboard.begin(), asset.blackboard.end(),
+                           [&name](const fbzz::ai::BlackboardDef& def) { return def.name == name; });
+    };
+    for (const auto& def : target.blackboard)
+        if (!hasKey(base, def.name)) keysAdded.Push(JsonValue(def.name));
+    for (const auto& def : base.blackboard)
+        if (!hasKey(target, def.name)) keysRemoved.Push(JsonValue(def.name));
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("base", JsonValue(StringField(payload, "base")));
+    result.Set("target", JsonValue(StringField(payload, "target")));
+    result.Set("addedNodes", std::move(added));
+    result.Set("removedNodes", std::move(removed));
+    result.Set("changedNodes", std::move(changed));
+    result.Set("addedKeys", std::move(keysAdded));
+    result.Set("removedKeys", std::move(keysRemoved));
+    result.Set("note", JsonValue(std::string(
+        "editorX / editorY は挙動に無関係なので差分に含めない。"
+        "parentId と order の変化は木の意味そのものが変わったことを示す。")));
+    return Outcome::Ok(std::move(result));
+}
+
+// ── Behavior Tree のテンプレート ────────────────────────────────────────────
+// 探索順は VFXTemplateCatalog と同じ「Project → 開発 Engine → 実行ファイル同梱」。
+// WHY 同じにするか: 片方だけ配布版で見つからない、という差が出ると
+//     「AI では使えるのに Editor では出てこない」テンプレートが生まれる。
+std::vector<std::filesystem::path> BehaviorTreeTemplateRoots(const editor::EditorContext& ctx)
+{
+    namespace fs = std::filesystem;
+    constexpr const char* kRelative = "Assets/AI/Templates";
+    std::vector<fs::path> roots;
+    if (!ctx.projectRoot.empty()) roots.push_back(fs::path(ctx.projectRoot) / kRelative);
+    if (!ctx.engineRoot.empty()) roots.push_back(fs::path(ctx.engineRoot) / kRelative);
+    const fs::path executableDirectory = util::FileSystem::GetExecutableDirectory();
+    roots.push_back(executableDirectory / "assets/AI/Templates");
+    roots.push_back(executableDirectory / kRelative);
+    return roots;
+}
+
+// テンプレート名 (拡張子なし) かパスから実ファイルを解決する。
+bool ResolveBehaviorTreeTemplate(const editor::EditorContext& ctx, const std::string& requested,
+                                 std::filesystem::path& outPath)
+{
+    namespace fs = std::filesystem;
+    if (requested.empty()) return false;
+    std::error_code errorCode;
+    // パス指定ならそのまま (projectRoot 配下に限る)。
+    if (requested.find('/') != std::string::npos || requested.find('\\') != std::string::npos) {
+        std::string relative;
+        if (ResolveProjectFile(ctx, requested, outPath, relative)
+            && fs::is_regular_file(outPath, errorCode)) return true;
+    }
+    for (const fs::path& root : BehaviorTreeTemplateRoots(ctx)) {
+        if (!fs::is_directory(root, errorCode)) { errorCode.clear(); continue; }
+        for (fs::recursive_directory_iterator iterator(root, errorCode), end;
+             iterator != end; iterator.increment(errorCode)) {
+            if (errorCode) { errorCode.clear(); break; }
+            const fs::directory_entry& file = *iterator;
+            if (!file.is_regular_file(errorCode)) continue;
+            if (file.path().extension() != ".behaviortree") continue;
+            if (file.path().stem().generic_string() != requested) continue;
+            outPath = file.path();
+            return true;
+        }
+    }
+    return false;
+}
+
+// bt.templateCatalog — 取り込める骨格の目録。
+// WHY: bt.guide の recipes は「こう組め」という文章で、そのまま実体にはならない。
+//      動く木が既にあるなら、ゼロから積むより取り込んで直すほうが確実に速い。
+Outcome DoBehaviorTreeTemplateCatalog(editor::EditorContext& ctx)
+{
+    namespace fs = std::filesystem;
+    JsonValue templates = JsonValue::MakeArray();
+    std::vector<std::string> seen;
+    std::error_code errorCode;
+    for (const fs::path& root : BehaviorTreeTemplateRoots(ctx)) {
+        if (!fs::is_directory(root, errorCode)) { errorCode.clear(); continue; }
+        for (fs::recursive_directory_iterator iterator(root, errorCode), end;
+             iterator != end; iterator.increment(errorCode)) {
+            if (errorCode) { errorCode.clear(); break; }
+            const fs::directory_entry& file = *iterator;
+            if (!file.is_regular_file(errorCode)) continue;
+            if (file.path().extension() != ".behaviortree") continue;
+            const std::string name = file.path().stem().generic_string();
+            // 先に見つかった root (優先度が高い) の同名を勝たせる。
+            if (std::find(seen.begin(), seen.end(), name) != seen.end()) continue;
+            seen.push_back(name);
+
+            fbzz::ai::BehaviorTreeAsset asset;
+            if (!fbzz::ai::ParseBehaviorTreeAsset(file.path().generic_string(), asset)) continue;
+            JsonValue item = JsonValue::MakeObject();
+            item.Set("name", JsonValue(name));
+            item.Set("path", JsonValue(file.path().generic_string()));
+            item.Set("treeName", JsonValue(asset.name));
+            item.Set("description", JsonValue(asset.description));
+            item.Set("nodeCount", JsonValue(static_cast<int>(asset.nodes.size())));
+            templates.Push(std::move(item));
+        }
+    }
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("templates", std::move(templates));
+    result.Set("usage", JsonValue(std::string(
+        "bt.template.apply(template=<name>, path=<書き出し先.behaviortree>) で取り込む。"
+        "取り込み後は bt.lint → bt.node.setField で用途に合わせて調整する。")));
     return Outcome::Ok(std::move(result));
 }
 
@@ -3714,9 +4462,6 @@ Outcome DoAnimationState(editor::EditorContext& ctx, const JsonValue& payload)
     JsonValue result = JsonValue::MakeObject();
     result.Set("playing", JsonValue(animator->playing));
     result.Set("enabled", JsonValue(animator->enabled));
-    result.Set("clipName", JsonValue(animator->clipName));
-    result.Set("clipIndex", JsonValue(animator->clipIndex));
-    result.Set("time", JsonValue(animator->time));
     result.Set("state", JsonValue(animator->currentStateName));
     result.Set("stateTime", JsonValue(animator->stateTime));
     result.Set("normalizedTime", JsonValue(animator->GetNormalizedTime()));
@@ -3784,16 +4529,11 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
     if (animator == nullptr) return error;
     const std::string action = StringField(payload, "action");
-    const std::string clipName = StringField(payload, "clipName");
     const std::string stateName = StringField(payload, "state");
-    const JsonValue* clipIndexValue = payload.Find("clipIndex");
     const JsonValue* timeValue = payload.Find("time");
     const JsonValue* frameValue = payload.Find("frame");
     if (action != "play" && action != "pause" && action != "stop" && action != "seek") {
         return Outcome::Err("BAD_ARG", "未知の animation action: " + action);
-    }
-    if (!stateName.empty() && (!clipName.empty() || clipIndexValue != nullptr)) {
-        return Outcome::Err("BAD_ARG", "state と clipName/clipIndex は同時指定できません");
     }
     if (action == "seek" && (timeValue == nullptr || !timeValue->IsNumber())
         && (frameValue == nullptr || !frameValue->IsNumber())) {
@@ -3805,22 +4545,8 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
         });
         if (iterator == animator->states.end()) return Outcome::Err("STATE_NOT_FOUND", "Animator state が見つかりません: " + stateName);
     }
-    if (!clipName.empty() && !animator->clips.empty()) {
-        const bool found = std::any_of(animator->clips.begin(), animator->clips.end(), [&](const asset::AnimationClip& clip) {
-            return clip.name == clipName;
-        });
-        if (!found) return Outcome::Err("CLIP_NOT_FOUND", "Animation clip が見つかりません: " + clipName);
-    }
-    if (clipIndexValue != nullptr && clipIndexValue->IsNumber() && !animator->clips.empty()) {
-        const int clipIndex = clipIndexValue->AsInt();
-        if (clipIndex < 0 || clipIndex >= static_cast<int>(animator->clips.size())) {
-            return Outcome::Err("CLIP_NOT_FOUND", "clipIndex がロード済みclip範囲外です");
-        }
-    }
     if (dryRun) return DryRunPreview("animation.control:" + action);
 
-    if (!clipName.empty()) animator->clipName = clipName;
-    if (clipIndexValue != nullptr && clipIndexValue->IsNumber()) animator->clipIndex = clipIndexValue->AsInt();
     if (!stateName.empty()) {
         animator->currentStateName = stateName;
         animator->stateTime = 0.0f;
@@ -3833,23 +4559,41 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
     else if (action == "pause") animator->playing = false;
     else if (action == "stop") {
         animator->playing = false;
-        animator->time = 0.0f;
         animator->stateTime = 0.0f;
     } else if (action == "seek") {
         float seconds = timeValue != nullptr && timeValue->IsNumber() ? static_cast<float>(timeValue->AsNumber()) : -1.0f;
         if (frameValue != nullptr && frameValue->IsNumber()) {
             const asset::AnimationClip* clip = nullptr;
-            if (!animator->clipName.empty()) {
-                for (const auto& candidate : animator->clips) if (candidate.name == animator->clipName) { clip = &candidate; break; }
-            }
-            if (clip == nullptr && animator->clipIndex >= 0 && animator->clipIndex < static_cast<int>(animator->clips.size())) {
-                clip = &animator->clips[static_cast<size_t>(animator->clipIndex)];
+            const std::string activeStateName = stateName.empty() ? animator->currentStateName : stateName;
+            const auto stateIterator = std::find_if(animator->states.begin(), animator->states.end(), [&](const scene::AnimationState& state) {
+                return state.name == activeStateName;
+            });
+            if (stateIterator != animator->states.end()) {
+                const scene::AnimationState& state = *stateIterator;
+                if (!state.sourcePath.empty()) {
+                    for (size_t index = 0; index < animator->clips.size(); ++index) {
+                        if (index < animator->clipSourcePaths.size()
+                            && animator->clipSourcePaths[index] == state.sourcePath
+                            && (state.clipName.empty() || animator->clips[index].name == state.clipName)) {
+                            clip = &animator->clips[index];
+                            break;
+                        }
+                    }
+                }
+                if (clip == nullptr && !state.clipName.empty()) {
+                    for (const auto& candidate : animator->clips) {
+                        if (candidate.name == state.clipName) { clip = &candidate; break; }
+                    }
+                }
+                if (clip == nullptr && state.clipIndex >= 0
+                    && state.clipIndex < static_cast<int>(animator->clips.size())) {
+                    clip = &animator->clips[static_cast<size_t>(state.clipIndex)];
+                }
             }
             if (clip == nullptr || clip->frameRate <= 0.0f) return Outcome::Err("CLIP_NOT_READY", "frame seek にはロード済み clip が必要です");
             seconds = static_cast<float>(frameValue->AsNumber()) / clip->frameRate;
         }
         if (seconds < 0.0f) return Outcome::Err("BAD_ARG", "seek には time または frame が必要です");
-        animator->time = seconds;
         animator->stateTime = seconds;
     }
     return DoAnimationState(ctx, payload);
@@ -3963,9 +4707,8 @@ JsonValue AnimationLayerToJson(const scene::AnimationLayer& layer)
     entry.Set("hasOwnStateMachine", JsonValue(!layer.states.empty()));
     entry.Set("stateCount", JsonValue(static_cast<int>(layer.states.size())));
     entry.Set("defaultState", JsonValue(layer.defaultStateName));
-    entry.Set("stateName", JsonValue(layer.stateName));
     entry.Set("currentState", JsonValue(
-        layer.states.empty() ? layer.stateName : layer.runtime.currentStateName));
+        layer.states.empty() ? std::string{} : layer.runtime.currentStateName));
     entry.Set("blendToState", JsonValue(layer.runtime.blendToState));
 
     if (layer.mode == scene::AnimationLayerMode::Additive) {
@@ -4483,6 +5226,9 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("totalObjects", JsonValue(rendering.renderStats.totalObjects));
     result.Set("frustumCulled", JsonValue(rendering.renderStats.frustumCulled));
     result.Set("occlusionCulled", JsonValue(rendering.renderStats.occlusionCulled));
+    // シャドウマップ描画はカメラ視点の統計と別枠。合計だけ見て「描画が軽い」と誤判断しないよう分けて返す。
+    result.Set("shadowDrawCalls", JsonValue(rendering.renderStats.shadowDrawCalls));
+    result.Set("shadowTriangles", JsonValue(rendering.renderStats.shadowTriangleCount));
     result.Set("visibleObjects", JsonValue(rendering.renderStats.totalObjects
         - rendering.renderStats.frustumCulled - rendering.renderStats.occlusionCulled));
     result.Set("topSamples", std::move(samples));
@@ -4890,13 +5636,86 @@ bool JsonToVFXParamValue(const JsonValue& json, asset::VFXParamType type, asset:
 std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
                                                     const std::string& type,
                                                     const JsonValue& payload,
-                                                    Outcome& err)
+                                                    Outcome& err,
+                                                    JsonValue* detailSink)
 {
     namespace fs = std::filesystem;
     fs::path absolute;
     std::string relative;
-    if (!ResolveProjectFile(ctx, StringField(payload, "path"), absolute, relative)
-        || !fs::is_regular_file(absolute)) {
+    if (!ResolveProjectFile(ctx, StringField(payload, "path"), absolute, relative)) {
+        err = Outcome::Err("BT_NOT_FOUND", "projectRoot 配下の .behaviortree を指定してください");
+        return nullptr;
+    }
+
+    // ── Template 取り込みだけは書き出し先が存在しなくてよい ──────────────────
+    // WHY 先に分けるか: 以降の処理は「既存の木を読んで一部を書き換える」前提で、
+    //     取り込みは「木そのものを差し替える」なので読み込みの成否条件が違う。
+    if (type == "bt.template.apply") {
+        fs::path templatePath;
+        const std::string requested = StringField(payload, "template");
+        if (!ResolveBehaviorTreeTemplate(ctx, requested, templatePath)) {
+            err = Outcome::Err("BT_TEMPLATE_NOT_FOUND",
+                "テンプレートが見つかりません: " + requested
+                + " (bt.templateCatalog で名前を確認してください)");
+            return nullptr;
+        }
+        fbzz::ai::BehaviorTreeAsset templateTree;
+        std::string templateError;
+        if (!fbzz::ai::ParseBehaviorTreeAsset(templatePath.generic_string(), templateTree,
+                                              &templateError)) {
+            err = Outcome::Err("BT_PARSE_FAILED", templateError);
+            return nullptr;
+        }
+        fbzz::ai::EnsureReservedBlackboardKeys(templateTree);
+        if (const JsonValue* value = payload.Find("name"); value != nullptr && value->IsString())
+            templateTree.name = value->AsString();
+        else templateTree.name = absolute.stem().generic_string();
+        // 説明はテンプレートのもの。持ち越すと生成した全ての木が同じ説明を持つ。
+        if (const JsonValue* value = payload.Find("description");
+            value != nullptr && value->IsString()) templateTree.description = value->AsString();
+        else templateTree.description.clear();
+
+        std::string validateError;
+        if (!fbzz::ai::ValidateBehaviorTreeAsset(templateTree, &validateError)) {
+            err = Outcome::Err("BT_INVALID", validateError);
+            return nullptr;
+        }
+
+        // 上書き先が既にあれば Undo で戻せるよう中身を控える。
+        const bool existed = fs::is_regular_file(absolute);
+        fbzz::ai::BehaviorTreeAsset previous;
+        if (existed) (void)fbzz::ai::ParseBehaviorTreeAsset(absolute.generic_string(), previous);
+
+        if (detailSink != nullptr) {
+            JsonValue report = JsonValue::MakeObject();
+            report.Set("template", JsonValue(templatePath.generic_string()));
+            report.Set("overwrote", JsonValue(existed));
+            report.Set("nodeCount", JsonValue(static_cast<int>(templateTree.nodes.size())));
+            // 取り込んだ直後に触る id が判らないと、必ず bt.tree を読み直すことになる。
+            JsonValue roots = JsonValue::MakeArray();
+            for (const int rootId : templateTree.FindRootIds()) roots.Push(JsonValue(rootId));
+            report.Set("roots", std::move(roots));
+            *detailSink = std::move(report);
+        }
+
+        editor::EditorContext* context = &ctx;
+        const std::string target = absolute.generic_string();
+        return std::make_unique<LambdaCommand>("AI: Apply Behavior Tree Template",
+            [context, target, templateTree]() {
+                std::error_code createError;
+                fs::create_directories(fs::path(target).parent_path(), createError);
+                if (fbzz::ai::SaveBehaviorTreeAsset(target, templateTree))
+                    context->requestAssetBrowserRefresh = true;
+            },
+            [context, target, existed, previous]() {
+                std::error_code removeError;
+                if (existed) (void)fbzz::ai::SaveBehaviorTreeAsset(target, previous);
+                else fs::remove(target, removeError);
+                context->requestAssetBrowserRefresh = true;
+            });
+    }
+
+    if (!fs::is_regular_file(absolute)) {
         err = Outcome::Err("BT_NOT_FOUND", "projectRoot 配下の .behaviortree を指定してください");
         return nullptr;
     }
@@ -5016,6 +5835,22 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         if (field.empty() || value == nullptr) {
             err = Outcome::Err("BAD_ARG", "field と value が必要です"); return nullptr;
         }
+        // 目録に無い名前と、名前は実在するがその種別が読まないフィールドを分けて弾く。
+        // WHY 後者も拒否するか: 保存も Validate も通ってしまい、「設定したのに
+        //     行動が変わらない」という最も気づきにくい形でしか現れないため。
+        if (FindBTFieldSpec(field) == nullptr) {
+            err = Outcome::Err("BT_UNKNOWN_FIELD", "未知のフィールドです: " + field
+                               + " (bt.schema の fields を参照してください)");
+            return nullptr;
+        }
+        if (!BTFieldAppliesTo(field, node->type)) {
+            err = Outcome::Err("BT_FIELD_NOT_APPLICABLE",
+                std::string(fbzz::ai::BTNodeTypeName(node->type)) + " は " + field
+                + " を読みません (保存はできますが実行時に無視されます)。"
+                  "bt.schema(nodeType=\"" + fbzz::ai::BTNodeTypeName(node->type)
+                + "\") でそのノードが読むフィールドを確認してください");
+            return nullptr;
+        }
         const auto asFloat = [value]() { return static_cast<float>(value->AsNumber()); };
         if (field == "name") node->name = value->AsString();
         else if (field == "duration") node->duration = asFloat();
@@ -5066,6 +5901,12 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             for (int index = 0; index < 6; ++index) if (op == names[index]) found = index;
             if (found < 0) { err = Outcome::Err("BAD_ARG", "compareOp は == != < <= > >="); return nullptr; }
             node->compareOp = static_cast<fbzz::ai::BTCompareOp>(found);
+        } else if (field == "successPolicy") {
+            // Parallel の成否。bt.schema が受理値として公開しているので、ここでも受ける。
+            const std::string policy = LowerAscii(value->AsString());
+            if (policy == "requireone") node->successPolicy = fbzz::ai::BTParallelPolicy::RequireOne;
+            else if (policy == "requireall") node->successPolicy = fbzz::ai::BTParallelPolicy::RequireAll;
+            else { err = Outcome::Err("BAD_ARG", "successPolicy は requireOne / requireAll"); return nullptr; }
         } else {
             err = Outcome::Err("BT_UNKNOWN_FIELD", "未知のフィールドです: " + field);
             return nullptr;
@@ -5082,6 +5923,167 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
                     + " (bt.tree の blackboard を確認するか bt.blackboard.add で先に作ってください)");
                 return nullptr;
             }
+        }
+    } else if (type == "bt.node.duplicate") {
+        // 部分木ごと複製する。Editor の DuplicateSubtree と同じ規則で動かし、
+        // 「AI が作った木を人間が触ると形が変わる」食い違いを作らない。
+        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
+        const fbzz::ai::BTNodeDef* source = newTree.FindNode(nodeId);
+        if (source == nullptr) {
+            err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません"); return nullptr;
+        }
+        if (source->parentId == 0) {
+            err = Outcome::Err("BT_ROOT_EXISTS", "ルートは複製できません (木にルートは 1 つだけです)");
+            return nullptr;
+        }
+        // 複製先の親。省略すると元と同じ親の末尾へ兄弟として並ぶ。
+        const int requestedParent = payload.Find("parentId") != nullptr
+            ? payload.Find("parentId")->AsInt() : source->parentId;
+
+        std::vector<editor::GraphEdge> edges;
+        for (const auto& node : newTree.nodes)
+            if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
+        const std::vector<int> subtree =
+            editor::CollectReachable(std::vector<int>{ nodeId }, edges);
+
+        // id の再割当と内部リンクの保持は framework の共通実装に任せる
+        // (Editor のクリップボードや Template 取り込みと同じ規則で動く)。
+        int nextId = newTree.nextNodeId - 1;
+        const editor::GraphExtractResult extracted =
+            editor::ExtractSubgraph(subtree, edges, nextId);
+        newTree.nextNodeId = nextId + 1;
+
+        std::vector<fbzz::ai::BTNodeDef> copies;
+        for (const auto& node : newTree.nodes) {
+            const auto mapped = extracted.idMap.find(node.id);
+            if (mapped == extracted.idMap.end()) continue;
+            fbzz::ai::BTNodeDef copy = node;
+            copy.id = mapped->second;
+            const auto mappedParent = extracted.idMap.find(node.parentId);
+            // 部分木の根だけは後で reparent するので、ここでは元の親のまま。
+            copy.parentId = mappedParent == extracted.idMap.end() ? node.parentId
+                                                                  : mappedParent->second;
+            copy.editorX += 40.0f;
+            copy.editorY += 40.0f;
+            copies.push_back(std::move(copy));
+        }
+        for (auto& copy : copies) newTree.nodes.push_back(std::move(copy));
+
+        const auto rootCopy = extracted.idMap.find(nodeId);
+        if (rootCopy == extracted.idMap.end()) {
+            err = Outcome::Err("BT_NODE_NOT_FOUND", "複製に失敗しました"); return nullptr;
+        }
+        const std::string reason = reparent(rootCopy->second, requestedParent);
+        if (!reason.empty()) { err = Outcome::Err("BT_REPARENT_REJECTED", reason); return nullptr; }
+        if (detailSink != nullptr) {
+            JsonValue report = JsonValue::MakeObject();
+            report.Set("rootNodeId", JsonValue(rootCopy->second));
+            report.Set("copiedNodes", JsonValue(static_cast<int>(extracted.idMap.size())));
+            // 新しい id を返さないと、複製直後に中身を編集するために
+            // もう一度 bt.tree を読み直すことになる。
+            JsonValue mapping = JsonValue::MakeArray();
+            for (const auto& entry : extracted.idMap) {
+                JsonValue item = JsonValue::MakeObject();
+                item.Set("from", JsonValue(entry.first));
+                item.Set("to", JsonValue(entry.second));
+                mapping.Push(std::move(item));
+            }
+            report.Set("idMap", std::move(mapping));
+            *detailSink = std::move(report);
+        }
+    } else if (type == "bt.repair") {
+        // bt.lint が autoFixable=true と言った code だけを機械的に直す。
+        // WHY: AI は lint → 修正 → lint を回すが、「abortMode を lowerPriority にする」
+        //      「0 秒の Cooldown を 1 秒にする」は毎回同じ手順で、往復させる意味がない。
+        //      直し方が一意に決まるものだけを扱い、設計判断 (何をする木か) には触れない。
+        const auto flag = [&payload](const char* name) {
+            const JsonValue* value = payload.Find(name);
+            return value == nullptr || value->AsBool();
+        };
+        const bool fixAborts    = flag("fixAborts");
+        const bool fixDurations = flag("fixDurations");
+        const bool fixWeights   = flag("fixWeights");
+        const bool fixKeys      = flag("fixKeys");
+
+        JsonValue repaired = JsonValue::MakeArray();
+        const auto record = [&repaired](const char* code, int nodeId, std::string detail) {
+            JsonValue item = JsonValue::MakeObject();
+            item.Set("code", JsonValue(std::string(code)));
+            item.Set("nodeId", JsonValue(nodeId));
+            item.Set("detail", JsonValue(std::move(detail)));
+            repaired.Push(std::move(item));
+        };
+
+        // 修復対象は lint が指した nodeId をそのまま使う。同じ判定を書き直すと、
+        // lint が指摘した箇所と repair が直す箇所がずれていく。
+        const std::vector<fbzz::ai::BTWarning> warnings =
+            fbzz::ai::CollectBehaviorTreeWarnings(newTree);
+        for (const auto& warning : warnings) {
+            fbzz::ai::BTNodeDef* node = newTree.FindNode(warning.nodeId);
+            if (node == nullptr) continue;
+            if (fixAborts && warning.code == "no-lower-priority-abort") {
+                node->abortMode = fbzz::ai::AbortMode::LowerPriority;
+                record("no-lower-priority-abort", node->id, "abortMode を lowerPriority にしました");
+            } else if (fixDurations && warning.code == "zero-cooldown") {
+                node->duration = 1.0f;
+                record("zero-cooldown", node->id, "duration を 1.0 秒にしました");
+            } else if (fixDurations && warning.code == "zero-duration-wait") {
+                node->duration = 1.0f;
+                record("zero-duration-wait", node->id, "duration を 1.0 秒にしました");
+            } else if (fixWeights && warning.code == "zero-weights") {
+                for (float& weight : node->childWeights) weight = 1.0f;
+                record("zero-weights", node->id, "全ての重みを 1 (等確率) に戻しました");
+            } else if (fixKeys && warning.code == "unresolved-key") {
+                // 綴り違いを既存キーへ寄せる。完全一致が無いので、
+                // 最も近い名前 (大文字小文字を無視した前方一致 → 部分一致) を選ぶ。
+                const auto nearest = [&newTree](const std::string& wanted) -> std::string {
+                    if (wanted.empty()) return {};
+                    const std::string lowered = LowerAscii(wanted);
+                    std::string best;
+                    for (const auto& def : newTree.blackboard) {
+                        const std::string candidate = LowerAscii(def.name);
+                        if (candidate == lowered) return def.name;
+                        const bool related = candidate.starts_with(lowered)
+                                          || lowered.starts_with(candidate)
+                                          || candidate.find(lowered) != std::string::npos
+                                          || lowered.find(candidate) != std::string::npos;
+                        // 同じくらい近いなら短い方 (余計な修飾が付いていない方) を採る。
+                        if (related && (best.empty() || def.name.size() < best.size()))
+                            best = def.name;
+                    }
+                    return best;
+                };
+                if (const std::string replacement = nearest(node->keyName);
+                    !replacement.empty() && replacement != node->keyName) {
+                    record("unresolved-key", node->id,
+                           "keyName \"" + node->keyName + "\" を \"" + replacement + "\" へ変更しました");
+                    node->keyName = replacement;
+                }
+                if (const std::string replacement = nearest(node->moveTargetKey);
+                    !replacement.empty() && replacement != node->moveTargetKey) {
+                    record("unresolved-key", node->id,
+                           "moveTargetKey \"" + node->moveTargetKey + "\" を \""
+                           + replacement + "\" へ変更しました");
+                    node->moveTargetKey = replacement;
+                }
+            }
+        }
+        if (detailSink != nullptr) {
+            JsonValue report = JsonValue::MakeObject();
+            report.Set("repaired", std::move(repaired));
+            // 直せなかったものを残す。空配列を返さないと「全部直った」と読まれる。
+            JsonValue remaining = JsonValue::MakeArray();
+            for (const auto& warning : fbzz::ai::CollectBehaviorTreeWarnings(newTree)) {
+                JsonValue item = JsonValue::MakeObject();
+                item.Set("nodeId", JsonValue(warning.nodeId));
+                item.Set("code", JsonValue(warning.code));
+                item.Set("message", JsonValue(warning.message));
+                const BTFixHint* hint = FindBTFixHint(warning.code);
+                item.Set("autoFixable", JsonValue(hint != nullptr && hint->autoFixable));
+                remaining.Push(std::move(item));
+            }
+            report.Set("remaining", std::move(remaining));
+            *detailSink = std::move(report);
         }
     } else if (type == "bt.blackboard.add") {
         const std::string name = StringField(payload, "name");
@@ -5122,9 +6124,12 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
         }
         const std::vector<int> roots = newTree.FindRootIds();
+        // 間隔は BehaviorTreePanel::AutoLayout と同じ値でなければならない。
+        // 違うと「AI が整列した木を Editor で整列し直すと座標が動く」ことになり、
+        // 差分に意味のない座標変更が毎回混ざる。
         editor::GraphLayoutOptions options;
-        options.columnStep = 260.0f;
-        options.rowStep = 150.0f;
+        options.columnStep = 300.0f;
+        options.rowStep = 170.0f;
         const auto layout = roots.empty()
             ? editor::ComputeGraphLayout(nodeIds, edges, options)
             : editor::ComputeGraphLayout(nodeIds, edges, roots, options);
@@ -5149,7 +6154,20 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
 
     editor::EditorContext* context = &ctx;
     const std::string target = absolute.generic_string();
-    return std::make_unique<LambdaCommand>("AI: Edit Behavior Tree",
+    // Undo 履歴に何をした操作か残す。全部が "Edit Behavior Tree" だと、
+    // editor_get_undo_history で自分の編集を identify できない。
+    std::string commandLabel = "AI: Edit Behavior Tree";
+    if (type == "bt.node.add") commandLabel = "AI: Add Behavior Tree Node";
+    else if (type == "bt.node.remove") commandLabel = "AI: Remove Behavior Tree Node";
+    else if (type == "bt.node.duplicate") commandLabel = "AI: Duplicate Behavior Tree Subtree";
+    else if (type == "bt.node.setParent") commandLabel = "AI: Reparent Behavior Tree Node";
+    else if (type == "bt.node.setOrder") commandLabel = "AI: Set Behavior Tree Priority";
+    else if (type == "bt.node.setField") commandLabel = "AI: Set Behavior Tree Field";
+    else if (type == "bt.blackboard.add") commandLabel = "AI: Add Blackboard Key";
+    else if (type == "bt.blackboard.remove") commandLabel = "AI: Remove Blackboard Key";
+    else if (type == "bt.autoLayout") commandLabel = "AI: Auto Layout Behavior Tree";
+    else if (type == "bt.repair") commandLabel = "AI: Repair Behavior Tree";
+    return std::make_unique<LambdaCommand>(std::move(commandLabel),
         [context, target, newTree]() {
             if (fbzz::ai::SaveBehaviorTreeAsset(target, newTree)) context->requestAssetBrowserRefresh = true;
         },
@@ -5467,10 +6485,8 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
                 if (!best.empty() && bestScore >= wanted.size() / 2 + 1) value = best;
             };
             for (auto& node : newGraph.nodes) {
-                repairPath(node.particle.texturePath);
                 repairPath(node.particle.materialPath);
                 repairPath(node.particle.meshShapePath);
-                repairPath(node.trail.texturePath);
                 repairPath(node.trail.materialPath);
                 repairPath(node.trail.meshPath);
                 repairPath(node.audio.clipPath);
@@ -5789,6 +6805,1053 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
 //   WHY: applied:true だけでは、Template 取り込みでパラメーターが改名されたことも
 //        budget が引き上げられたことも AI へ伝わらない。次の手で存在しない名前を
 //        指してしまうため、黙って起きる変更は必ず応答へ載せる。
+// ═════════════════════════════════════════════════════════════════════════════
+// ワールドオーサリング (Scene 入出力 / Terrain / Foliage / NavMesh / Environment / Audio / UI / Build)
+//
+// WHY このまとまりが必要か:
+//   ここまでの Query/Command は「シーンに置いたオブジェクトとそのコンポーネント」を扱う。
+//   しかし屋外シーンの実体は、GameObject を並べたものではなく地形の高さ・スプラット・植生・
+//   NavMesh・空と光の設定でできている。それらは Inspector のスカラー値ではなくブラシとベイク
+//   でしか変えられないため、component.set しか持たない AI からは「読むことすらできない領域」
+//   として残っていた。さらに AI が触れるのは常に「今開いているシーン 1 枚」だけで、
+//   プロジェクト内の他のシーンへ移る手段が無かった (scene.list / scene.open / scene.save)。
+// ═════════════════════════════════════════════════════════════════════════════
+
+// projectRoot 配下を走査して .scene を列挙する。
+// WHY: AI が扱えるのは「今開いているシーン」だけで、他に何があるのかを知る手段が無かった。
+//      Library/Baked は生成物で編集対象ではないため除外する (asset.list と同じ方針)。
+Outcome DoSceneList(editor::EditorContext& ctx)
+{
+    namespace fs = std::filesystem;
+    if (ctx.projectRoot.empty()) return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
+    std::error_code ec;
+    const fs::path root = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
+    if (ec) return Outcome::Err("BAD_PATH", "projectRoot の解決に失敗しました");
+
+    const fs::path currentPath = ctx.currentScenePath.empty()
+        ? fs::path{} : fs::weakly_canonical(fs::path(ctx.currentScenePath), ec);
+    ec.clear();
+
+    JsonValue scenes = JsonValue::MakeArray();
+    std::string currentRelative;
+    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+         it != end; it.increment(ec)) {
+        if (ec) { ec.clear(); continue; }
+        const fs::path& path = it->path();
+        if (it->is_directory(ec)) {
+            // 生成物・VCS ディレクトリへは降りない (走査時間と応答量の両方を無駄にする)。
+            const std::string name = path.filename().string();
+            if (name == "Library" || name == "Baked" || name == ".git" || name == "node_modules")
+                it.disable_recursion_pending();
+            continue;
+        }
+        if (LowerAscii(path.extension().string()) != ".scene") continue;
+        const fs::path relative = fs::relative(path, root, ec);
+        if (ec) { ec.clear(); continue; }
+        const bool isCurrent = !currentPath.empty() && path == currentPath;
+        if (isCurrent) currentRelative = relative.generic_string();
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("path", JsonValue(relative.generic_string()));
+        entry.Set("name", JsonValue(path.stem().string()));
+        entry.Set("sizeBytes", JsonValue(static_cast<int>(fs::file_size(path, ec))));
+        ec.clear();
+        if (isCurrent) entry.Set("isCurrent", JsonValue(true));
+        scenes.Push(std::move(entry));
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("count", JsonValue(static_cast<int>(scenes.AsArray().size())));
+    result.Set("current", JsonValue(currentRelative));
+    // dirty のときは scene.open が拒否される。先に知れないと必ず 1 往復無駄になる。
+    result.Set("dirty", JsonValue(ctx.sceneDirty));
+    result.Set("prefabEditMode", JsonValue(ctx.InPrefabEditMode()));
+    result.Set("scenes", std::move(scenes));
+    return Outcome::Ok(std::move(result));
+}
+
+// アクティブシーンを切り替える。未保存変更は discardUnsaved を明示しない限り拒否する。
+// WHY 拒否するか: Editor 本来の導線は確認モーダルだが、AI 要求の途中でモーダルを開くと
+//      人がクリックするまでバスの drain (メインスレッド) が止まり、以降の要求も返らない。
+//      「捨てる」判断を引数として先に受け取り、モーダルを介さない実体だけを呼ぶ。
+Outcome DoSceneOpen(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
+{
+    if (!ctx.openScenePathImmediate) return Outcome::Err("NO_HOST", "シーンを開く機能が未接続です");
+    if (ctx.InPrefabEditMode()) return Outcome::Err("PREFAB_EDIT_MODE", "Prefab 編集モード中はシーンを切り替えられません");
+    if (ctx.playMode != nullptr && !ctx.playMode->IsInEditor())
+        return Outcome::Err("INVALID_PLAY_STATE", "Play 中はシーンを切り替えられません。先に play_control stop を実行してください");
+
+    const std::string requested = StringField(payload, "path");
+    if (requested.empty()) return Outcome::Err("BAD_ARG", "path が必要です");
+    std::filesystem::path absolute;
+    std::string relative;
+    if (!ResolveProjectFile(ctx, requested, absolute, relative))
+        return Outcome::Err("BAD_PATH", "path は projectRoot 配下で指定してください: " + requested);
+    if (LowerAscii(absolute.extension().string()) != ".scene")
+        return Outcome::Err("BAD_PATH", ".scene を指定してください: " + relative);
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(absolute, ec))
+        return Outcome::Err("SCENE_NOT_FOUND", "シーンが見つかりません: " + relative);
+
+    const JsonValue* discardValue = payload.Find("discardUnsaved");
+    const bool discardUnsaved = discardValue != nullptr && discardValue->AsBool();
+    if (ctx.sceneDirty && !discardUnsaved) {
+        return Outcome::Err("SCENE_DIRTY",
+            "未保存の変更があります。scene_save で保存するか discardUnsaved=true を指定してください");
+    }
+
+    if (dryRun) {
+        Outcome preview = DryRunPreview("scene.open");
+        preview.result.Set("path", JsonValue(relative));
+        preview.result.Set("wouldDiscard", JsonValue(ctx.sceneDirty));
+        return preview;
+    }
+
+    if (!ctx.openScenePathImmediate(absolute.generic_string()))
+        return Outcome::Err("OPEN_FAILED", "シーンの読み込みに失敗しました: " + relative);
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("opened", JsonValue(relative));
+    result.Set("discarded", JsonValue(discardUnsaved));
+    // 開き直すと Undo スタックは破棄される (別シーンの EntityID を持つコマンドは復元できない)。
+    result.Set("undoCleared", JsonValue(true));
+    return Outcome::Ok(std::move(result));
+}
+
+// 現在のシーンを保存する。path 省略で上書き、指定で別名保存 (以降のカレントもそのパスになる)。
+Outcome DoSceneSave(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
+{
+    if (!ctx.saveScenePathImmediate) return Outcome::Err("NO_HOST", "シーン保存機能が未接続です");
+    if (ctx.InPrefabEditMode()) return Outcome::Err("PREFAB_EDIT_MODE", "Prefab 編集モード中はシーンを保存できません");
+
+    const std::string requested = StringField(payload, "path");
+    std::string relative;
+    std::string absolute;
+    if (!requested.empty()) {
+        std::filesystem::path resolved;
+        if (!ResolveProjectFile(ctx, requested, resolved, relative))
+            return Outcome::Err("BAD_PATH", "path は projectRoot 配下で指定してください: " + requested);
+        if (LowerAscii(resolved.extension().string()) != ".scene")
+            return Outcome::Err("BAD_PATH", ".scene を指定してください: " + relative);
+        absolute = resolved.generic_string();
+    } else if (ctx.currentScenePath.empty()) {
+        // 名前の決定は設計判断なので機械的に埋めない。AI に明示させる。
+        return Outcome::Err("NO_SCENE_PATH", "現在のシーンは未保存です。path を指定してください");
+    }
+
+    if (dryRun) {
+        Outcome preview = DryRunPreview("scene.save");
+        preview.result.Set("path", JsonValue(relative.empty() ? ctx.currentScenePath : relative));
+        return preview;
+    }
+
+    if (!ctx.saveScenePathImmediate(absolute))
+        return Outcome::Err("SAVE_FAILED", "シーンの保存に失敗しました");
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("saved", JsonValue(relative.empty() ? ctx.currentScenePath : relative));
+    result.Set("dirty", JsonValue(ctx.sceneDirty));
+    return Outcome::Ok(std::move(result));
+}
+
+// ── Add Object プリセット ───────────────────────────────────────────────────
+
+// Hierarchy の Add Object メニューと同じ登録表を返す。
+// WHY: これが無いと AI は「Cube を置く」ために node_create + component_add(MeshRenderer) +
+//      meshPath の推測 + component_add(MaterialComponent) + Collider の選択、を自力で組み立てる
+//      ことになる。組み立て方は毎回変わるので、人がメニューから置いた Cube と AI が置いた Cube で
+//      中身の違うオブジェクトがシーンに混ざる。プリセットを共有すれば結果が一致する。
+Outcome DoPresetCatalog(const JsonValue& payload)
+{
+    const std::string category = LowerAscii(StringField(payload, "category"));
+    JsonValue presets = JsonValue::MakeArray();
+    for (const editor::ObjectPreset& preset : editor::ObjectPresetCatalog()) {
+        if (!category.empty() && LowerAscii(std::string(preset.category)) != category) continue;
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(std::string(preset.id)));
+        entry.Set("category", JsonValue(std::string(preset.category)));
+        entry.Set("label", JsonValue(std::string(preset.label)));
+        entry.Set("description", JsonValue(std::string(preset.description)));
+        presets.Push(std::move(entry));
+    }
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("count", JsonValue(static_cast<int>(presets.AsArray().size())));
+    result.Set("presets", std::move(presets));
+    return Outcome::Ok(std::move(result));
+}
+
+// ── Terrain ─────────────────────────────────────────────────────────────────
+
+// heightData / splatData の統計を返す。値そのもの (65x65 で 4225 個) は返さない。
+// WHY: 生データを返すと 1 回の応答で context を食い潰すうえ、AI が判断に使うのは
+//      「どれくらい起伏があるか」「どのレイヤーが支配的か」という要約でしかない。
+//      特定地点の実値が要るときは terrain.sample で点を指定して読む。
+JsonValue TerrainStatsJson(const scene::TerrainComponent& terrain)
+{
+    JsonValue stats = JsonValue::MakeObject();
+    const size_t expected = static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows);
+    const bool hasHeight = terrain.heightData.size() == expected && expected > 0;
+    stats.Set("hasHeightData", JsonValue(hasHeight));
+    if (hasHeight) {
+        float minValue = terrain.heightData[0];
+        float maxValue = terrain.heightData[0];
+        double sum = 0.0;
+        for (float value : terrain.heightData) {
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
+            sum += static_cast<double>(value);
+        }
+        // 正規化値ではなくワールド高さで返す。AI が指定する targetHeight と単位を揃えるため。
+        stats.Set("minHeight", JsonValue(minValue * terrain.maxHeight));
+        stats.Set("maxHeight", JsonValue(maxValue * terrain.maxHeight));
+        stats.Set("meanHeight", JsonValue(sum / static_cast<double>(expected) * terrain.maxHeight));
+        stats.Set("flat", JsonValue((maxValue - minValue) * terrain.maxHeight < 0.001f));
+    }
+    const bool hasSplat = terrain.splatData.size() == expected * 4u && expected > 0;
+    stats.Set("hasSplatData", JsonValue(hasSplat));
+    if (hasSplat) {
+        double channelSum[4] = { 0.0, 0.0, 0.0, 0.0 };
+        for (size_t i = 0; i < expected; ++i) {
+            for (int c = 0; c < 4; ++c)
+                channelSum[c] += static_cast<double>(terrain.splatData[i * 4u + static_cast<size_t>(c)]);
+        }
+        JsonValue coverage = JsonValue::MakeArray();
+        for (int c = 0; c < 4; ++c)
+            coverage.Push(JsonValue(channelSum[c] / (static_cast<double>(expected) * 255.0)));
+        stats.Set("layerCoverage", std::move(coverage));
+    }
+    return stats;
+}
+
+Outcome DoTerrainInspect(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const std::string filterId = StringField(payload, "id");
+
+    JsonValue terrains = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::TerrainComponent>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        auto* terrain = activeScene->GetComponent<scene::TerrainComponent>(eid);
+        if (go == nullptr || terrain == nullptr) continue;
+        if (!filterId.empty() && go->instanceId != filterId) continue;
+
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(go->instanceId));
+        entry.Set("name", JsonValue(go->name));
+        entry.Set("enabled", JsonValue(terrain->enabled));
+        entry.Set("columns", JsonValue(terrain->columns));
+        entry.Set("rows", JsonValue(terrain->rows));
+        entry.Set("cellSize", JsonValue(terrain->cellSize));
+        entry.Set("maxHeight", JsonValue(terrain->maxHeight));
+        entry.Set("chunkSize", JsonValue(terrain->chunkSize));
+        entry.Set("terrainAssetPath", JsonValue(terrain->terrainAssetPath));
+        // ローカル寸法とワールド原点。ブラシ位置をワールドで指定するために両方要る。
+        entry.Set("localSize", VectorToJson({
+            static_cast<float>(terrain->columns - 1) * terrain->cellSize,
+            terrain->maxHeight,
+            static_cast<float>(terrain->rows - 1) * terrain->cellSize }));
+        entry.Set("worldOrigin", VectorToJson(go->transform.worldPosition));
+        JsonValue layers = JsonValue::MakeArray();
+        for (int i = 0; i < 4; ++i) {
+            JsonValue layer = JsonValue::MakeObject();
+            layer.Set("index", JsonValue(i));
+            layer.Set("material", JsonValue(terrain->layerMaterials[static_cast<size_t>(i)]));
+            layers.Push(std::move(layer));
+        }
+        entry.Set("layers", std::move(layers));
+        entry.Set("stats", TerrainStatsJson(*terrain));
+        terrains.Push(std::move(entry));
+    }
+
+    if (!filterId.empty() && terrains.AsArray().empty())
+        return Outcome::Err("NOT_PRESENT", "TerrainComponent を持つノードが見つかりません: " + filterId);
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("count", JsonValue(static_cast<int>(terrains.AsArray().size())));
+    result.Set("terrains", std::move(terrains));
+    return Outcome::Ok(std::move(result));
+}
+
+// ワールド座標のブラシ中心に対して、重なる Terrain を列挙する。
+struct TerrainHit {
+    GameObject*              go = nullptr;
+    scene::TerrainComponent* terrain = nullptr;
+    math::Vector3            local;   // Terrain ローカル座標へ変換したブラシ中心
+};
+
+std::vector<TerrainHit> CollectTerrainsUnderBrush(scene::Scene& activeScene,
+                                                  const math::Vector3& worldCenter,
+                                                  float radius,
+                                                  const std::string& restrictToNodeId)
+{
+    std::vector<TerrainHit> hits;
+    for (scene::EntityID eid : activeScene.GetEntities<scene::TerrainComponent>()) {
+        GameObject* go = activeScene.GetGameObject(eid);
+        auto* terrain = activeScene.GetComponent<scene::TerrainComponent>(eid);
+        if (go == nullptr || terrain == nullptr || !terrain->enabled) continue;
+        if (!restrictToNodeId.empty() && go->instanceId != restrictToNodeId) continue;
+        const math::Vector3 local = ToTerrainLocal(go->transform, worldCenter);
+        // 半径 0 の問い合わせ (sample) でも矩形内なら拾えるよう、下限を 0 として扱う。
+        if (!BrushOverlapsTerrainXZ(*terrain, local, std::max(radius, 0.0f))) continue;
+        hits.push_back({ go, terrain, local });
+    }
+    return hits;
+}
+
+// 指定ワールド点の高さ・法線・レイヤー重みを返す。Foliage を置く前の下見や、
+// sculpt 後に「本当に平らになったか」を数値で確かめるのに使う。
+Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const JsonValue* points = payload.Find("points");
+    if (points == nullptr || !points->IsArray() || points->AsArray().empty())
+        return Outcome::Err("BAD_ARG", "points ([[x,y,z], ...]) が必要です");
+    if (points->AsArray().size() > 256)
+        return Outcome::Err("BAD_ARG", "points は 256 点までです");
+    const std::string restrictTo = StringField(payload, "id");
+
+    JsonValue samples = JsonValue::MakeArray();
+    for (const JsonValue& pointValue : points->AsArray()) {
+        if (!pointValue.IsArray() || pointValue.AsArray().size() < 2) continue;
+        const auto& array = pointValue.AsArray();
+        // [x, z] の 2 要素も許す (高さを問い合わせるのに y は不要なため)。
+        const bool hasY = array.size() >= 3;
+        const math::Vector3 world{
+            static_cast<float>(array[0].AsNumber()),
+            hasY ? static_cast<float>(array[1].AsNumber()) : 0.0f,
+            static_cast<float>(array[hasY ? 2 : 1].AsNumber())
+        };
+        JsonValue sample = JsonValue::MakeObject();
+        sample.Set("query", VectorToJson(world));
+        const std::vector<TerrainHit> hits = CollectTerrainsUnderBrush(*activeScene, world, 0.0f, restrictTo);
+        if (hits.empty()) {
+            sample.Set("onTerrain", JsonValue(false));
+            samples.Push(std::move(sample));
+            continue;
+        }
+        const TerrainHit& hit = hits.front();
+        const scene::TerrainComponent& terrain = *hit.terrain;
+        const float localHeight = terrain.GetHeightAt(hit.local.x, hit.local.z);
+        const math::Vector3 localNormal = terrain.GetNormalAt(hit.local.x, hit.local.z);
+        sample.Set("onTerrain", JsonValue(true));
+        sample.Set("terrainId", JsonValue(hit.go->instanceId));
+        sample.Set("local", VectorToJson({ hit.local.x, localHeight, hit.local.z }));
+        // 高さはワールド Y で返す (ブラシの targetHeight もワールド系で受けるため)。
+        sample.Set("worldHeight", JsonValue(ToTerrainWorld(hit.go->transform,
+            { hit.local.x, localHeight, hit.local.z }).y));
+        sample.Set("normal", VectorToJson(localNormal));
+        // 斜度は Foliage / NavMesh の歩行可否と直結するので、法線から算出して添える。
+        sample.Set("slopeDegrees", JsonValue(math::ToDeg(std::acos(
+            std::clamp(localNormal.y, -1.0f, 1.0f)))));
+        const size_t expected = static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows);
+        if (terrain.splatData.size() == expected * 4u && expected > 0) {
+            const int gx = std::clamp(static_cast<int>(hit.local.x / terrain.cellSize + 0.5f), 0, terrain.columns - 1);
+            const int gz = std::clamp(static_cast<int>(hit.local.z / terrain.cellSize + 0.5f), 0, terrain.rows - 1);
+            const size_t base = (static_cast<size_t>(gz) * static_cast<size_t>(terrain.columns)
+                               + static_cast<size_t>(gx)) * 4u;
+            JsonValue weights = JsonValue::MakeArray();
+            for (int c = 0; c < 4; ++c)
+                weights.Push(JsonValue(static_cast<float>(terrain.splatData[base + static_cast<size_t>(c)]) / 255.0f));
+            sample.Set("layerWeights", std::move(weights));
+        }
+        samples.Push(std::move(sample));
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("count", JsonValue(static_cast<int>(samples.AsArray().size())));
+    result.Set("samples", std::move(samples));
+    return Outcome::Ok(std::move(result));
+}
+
+// payload からブラシ形状を読む。共通なので sculpt / paint の両方で使う。
+bool ReadTerrainBrush(const JsonValue& payload, TerrainBrush& outBrush, std::string& outError)
+{
+    if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
+        outBrush.radius = static_cast<float>(v->AsNumber());
+    if (const JsonValue* v = payload.Find("strength"); v != nullptr && v->IsNumber())
+        outBrush.strength = static_cast<float>(v->AsNumber());
+    const std::string falloff = LowerAscii(StringField(payload, "falloff"));
+    if (!falloff.empty()) {
+        if (falloff == "linear")        outBrush.falloff = TerrainFalloff::Linear;
+        else if (falloff == "smooth")   outBrush.falloff = TerrainFalloff::Smooth;
+        else if (falloff == "gaussian") outBrush.falloff = TerrainFalloff::Gaussian;
+        else { outError = "falloff は linear / smooth / gaussian です"; return false; }
+    }
+    if (!(outBrush.radius > 0.0f) || outBrush.radius > 500.0f) {
+        outError = "radius は 0 より大きく 500 以下で指定してください"; return false;
+    }
+    if (!(outBrush.strength > 0.0f) || outBrush.strength > 1.0f) {
+        outError = "strength は 0 より大きく 1 以下で指定してください"; return false;
+    }
+    return true;
+}
+
+// Terrain の Undo は「触れた Terrain の丸ごとスナップショット」で戻す (TerrainTool と同じ方式)。
+// WHY: heightData / splatData は差分の記述が複雑で、部分復元を書くと Resize や
+//      レイヤー入れ替えと組み合わせたときに壊れる。ストローク単位のコピーで揃える。
+struct TerrainSnapshot {
+    std::string             instanceId;
+    scene::TerrainComponent component;
+};
+
+std::unique_ptr<ICommand> MakeTerrainEditCommand(scene::Scene* activeScene,
+                                                 const char* label,
+                                                 std::vector<TerrainSnapshot> before,
+                                                 std::vector<TerrainSnapshot> after,
+                                                 std::function<void()> markDirty)
+{
+    auto apply = [activeScene, markDirty](const std::vector<TerrainSnapshot>& values) {
+        for (const TerrainSnapshot& snapshot : values) {
+            GameObject* target = activeScene->FindByGuid(snapshot.instanceId);
+            if (target == nullptr) continue;
+            auto* component = target->GetComponent<scene::TerrainComponent>();
+            if (component == nullptr) continue;
+            *component = snapshot.component;
+            component->heightDirty = true;
+            component->splatDirty = true;
+            component->colliderDirty = true;
+        }
+        if (markDirty) markDirty();
+    };
+    auto beforeShared = std::make_shared<std::vector<TerrainSnapshot>>(std::move(before));
+    auto afterShared  = std::make_shared<std::vector<TerrainSnapshot>>(std::move(after));
+    return std::make_unique<LambdaCommand>(label,
+        [apply, afterShared]()  { apply(*afterShared); },
+        [apply, beforeShared]() { apply(*beforeShared); });
+}
+
+// ── Foliage ─────────────────────────────────────────────────────────────────
+
+Outcome DoFoliageInspect(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const std::string filterId = StringField(payload, "id");
+
+    JsonValue nodes = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::FoliageComponent>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        auto* foliage = activeScene->GetComponent<scene::FoliageComponent>(eid);
+        if (go == nullptr || foliage == nullptr) continue;
+        if (!filterId.empty() && go->instanceId != filterId) continue;
+
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(go->instanceId));
+        entry.Set("name", JsonValue(go->name));
+        entry.Set("enabled", JsonValue(foliage->enabled));
+        // この GO に Terrain が同居しているか。stamp のローカル座標はその Terrain の空間。
+        entry.Set("hasTerrain", JsonValue(go->GetComponent<scene::TerrainComponent>() != nullptr));
+        JsonValue speciesArray = JsonValue::MakeArray();
+        for (size_t i = 0; i < foliage->species.size(); ++i) {
+            const scene::FoliageSpecies& species = foliage->species[i];
+            JsonValue item = JsonValue::MakeObject();
+            item.Set("index", JsonValue(static_cast<int>(i)));
+            item.Set("modelPath", JsonValue(species.modelPath));
+            item.Set("placementMode", JsonValue(
+                species.placementMode == scene::FoliagePlacementMode::STAMP ? "stamp" : "procedural"));
+            item.Set("stampCount", JsonValue(static_cast<int>(species.stamps.size())));
+            item.Set("densityPer100SquareMeters", JsonValue(species.densityPer100SquareMeters));
+            item.Set("minScale", JsonValue(species.minScale));
+            item.Set("maxScale", JsonValue(species.maxScale));
+            item.Set("drawDistance", JsonValue(species.drawDistance));
+            item.Set("seed", JsonValue(static_cast<int>(species.seed)));
+            item.Set("randomYRotation", JsonValue(species.randomYRotation));
+            item.Set("colliderEnabled", JsonValue(species.colliderEnabled));
+            // 実際に描かれている本数。stampCount と食い違うときは未 Bake か Terrain 外へ置いた印。
+            if (i < foliage->caches.size())
+                item.Set("bakedInstances", JsonValue(static_cast<int>(foliage->caches[i].instances.size())));
+            JsonValue materials = JsonValue::MakeArray();
+            for (const std::string& materialPath : species.subMeshMaterialPaths)
+                materials.Push(JsonValue(materialPath));
+            item.Set("subMeshMaterials", std::move(materials));
+            speciesArray.Push(std::move(item));
+        }
+        entry.Set("species", std::move(speciesArray));
+        entry.Set("needsBake", JsonValue(foliage->needsBake));
+        nodes.Push(std::move(entry));
+    }
+
+    if (!filterId.empty() && nodes.AsArray().empty())
+        return Outcome::Err("NOT_PRESENT", "FoliageComponent を持つノードが見つかりません: " + filterId);
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("count", JsonValue(static_cast<int>(nodes.AsArray().size())));
+    result.Set("nodes", std::move(nodes));
+    return Outcome::Ok(std::move(result));
+}
+
+// Foliage の Undo も species 配列の丸ごと復元で行う (stamp は個体ごとの ID を持たないため)。
+std::unique_ptr<ICommand> MakeFoliageEditCommand(scene::Scene* activeScene,
+                                                 const char* label,
+                                                 std::string instanceId,
+                                                 std::vector<scene::FoliageSpecies> before,
+                                                 std::vector<scene::FoliageSpecies> after,
+                                                 std::function<void()> markDirty)
+{
+    auto apply = [activeScene, instanceId, markDirty](const std::vector<scene::FoliageSpecies>& values) {
+        GameObject* target = activeScene->FindByGuid(instanceId);
+        if (target == nullptr) return;
+        auto* foliage = target->GetComponent<scene::FoliageComponent>();
+        if (foliage == nullptr) return;
+        foliage->species = values;
+        // 子 GO (コライダー付き stamp 実体) まで作り直す。stamp の増減はここを通らないと画に出ない。
+        foliage->RequestBake(true);
+        if (markDirty) markDirty();
+    };
+    auto beforeShared = std::make_shared<std::vector<scene::FoliageSpecies>>(std::move(before));
+    auto afterShared  = std::make_shared<std::vector<scene::FoliageSpecies>>(std::move(after));
+    return std::make_unique<LambdaCommand>(label,
+        [apply, afterShared]()  { apply(*afterShared); },
+        [apply, beforeShared]() { apply(*beforeShared); });
+}
+
+// ── NavMesh ─────────────────────────────────────────────────────────────────
+
+// Surface の設定・ベイク結果・XZ バウンドを返す。
+JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponent& surface)
+{
+    JsonValue entry = JsonValue::MakeObject();
+    entry.Set("id", JsonValue(go.instanceId));
+    entry.Set("name", JsonValue(go.name));
+    entry.Set("enabled", JsonValue(surface.enabled));
+    entry.Set("agentTypeId", JsonValue(surface.agentTypeId));
+    entry.Set("collectObjects", JsonValue(
+        surface.collectObjects == scene::NavMeshCollectObjects::Volume ? "volume" : "thisObject"));
+    entry.Set("size", VectorToJson(surface.size));
+    entry.Set("cellSize", JsonValue(surface.cellSize));
+    entry.Set("maxSlopeAngleDeg", JsonValue(surface.maxSlopeAngleDeg));
+    entry.Set("agentRadius", JsonValue(surface.agentRadius));
+    entry.Set("agentHeight", JsonValue(surface.agentHeight));
+    const char* stateName = "idle";
+    if (surface.bakeState == scene::NavMeshBakeState::Baking)    stateName = "baking";
+    else if (surface.bakeState == scene::NavMeshBakeState::Done) stateName = "done";
+    entry.Set("bakeState", JsonValue(stateName));
+    entry.Set("bakeProgress", JsonValue(surface.bakeProgress));
+    entry.Set("needsBake", JsonValue(surface.needsBake));
+    entry.Set("polygonCount", JsonValue(static_cast<int>(surface.navMesh.polygons.size())));
+    entry.Set("offMeshLinkCount", JsonValue(static_cast<int>(surface.navMesh.offMeshLinks.size())));
+    // 歩ける範囲そのもの。AI が「どこを目的地に選べるか」を知る唯一の手掛かりになる。
+    if (!surface.navMesh.polygons.empty()) {
+        math::Vector3 boundsMin{ 1e30f, 1e30f, 1e30f };
+        math::Vector3 boundsMax{ -1e30f, -1e30f, -1e30f };
+        std::unordered_map<int, int> areaHistogram;
+        for (const scene::NavMeshPolygon& polygon : surface.navMesh.polygons) {
+            ++areaHistogram[polygon.areaType];
+            for (const math::Vector3& vertex : polygon.vertices) {
+                boundsMin = { std::min(boundsMin.x, vertex.x), std::min(boundsMin.y, vertex.y), std::min(boundsMin.z, vertex.z) };
+                boundsMax = { std::max(boundsMax.x, vertex.x), std::max(boundsMax.y, vertex.y), std::max(boundsMax.z, vertex.z) };
+            }
+        }
+        JsonValue bounds = JsonValue::MakeObject();
+        bounds.Set("min", VectorToJson(boundsMin));
+        bounds.Set("max", VectorToJson(boundsMax));
+        entry.Set("bounds", std::move(bounds));
+        JsonValue areas = JsonValue::MakeArray();
+        for (const auto& [areaType, count] : areaHistogram) {
+            JsonValue area = JsonValue::MakeObject();
+            area.Set("areaType", JsonValue(areaType));
+            area.Set("polygons", JsonValue(count));
+            area.Set("cost", JsonValue(surface.areaCosts[static_cast<size_t>(std::clamp(areaType, 0, 31))]));
+            areas.Push(std::move(area));
+        }
+        entry.Set("areas", std::move(areas));
+    }
+    return entry;
+}
+
+Outcome DoNavMeshState(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const std::string filterId = StringField(payload, "id");
+
+    JsonValue surfaces = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        auto* surface = activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+        if (go == nullptr || surface == nullptr) continue;
+        if (!filterId.empty() && go->instanceId != filterId) continue;
+        surfaces.Push(NavMeshSurfaceJson(*go, *surface));
+    }
+
+    // Agent 側も併せて返す。「経路が引けない」の原因が Surface 側か Agent 設定側かは、
+    // 両方を並べて初めて切り分けられる (agentTypeId の食い違いが典型)。
+    JsonValue agents = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::NavMeshAgentComponent>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        auto* agent = activeScene->GetComponent<scene::NavMeshAgentComponent>(eid);
+        if (go == nullptr || agent == nullptr) continue;
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(go->instanceId));
+        entry.Set("name", JsonValue(go->name));
+        entry.Set("enabled", JsonValue(agent->enabled));
+        entry.Set("agentTypeId", JsonValue(agent->agentTypeId));
+        entry.Set("areaMask", JsonValue(agent->areaMask));
+        entry.Set("position", VectorToJson(go->transform.worldPosition));
+        entry.Set("hasDestination", JsonValue(agent->hasDestination));
+        if (agent->hasDestination) entry.Set("destination", VectorToJson(agent->destination));
+        const char* agentState = "idle";
+        if (agent->state == scene::NavMeshAgentState::MOVING)                agentState = "moving";
+        else if (agent->state == scene::NavMeshAgentState::TRAVERSING_LINK)  agentState = "traversingLink";
+        entry.Set("state", JsonValue(agentState));
+        entry.Set("pathWaypoints", JsonValue(static_cast<int>(agent->path.size())));
+        entry.Set("currentWaypoint", JsonValue(static_cast<int>(agent->currentWaypoint)));
+        entry.Set("isStopped", JsonValue(agent->isStopped));
+        entry.Set("destinationReached", JsonValue(agent->destinationReached));
+        entry.Set("currentSpeed", JsonValue(agent->currentSpeed));
+        agents.Push(std::move(entry));
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("surfaceCount", JsonValue(static_cast<int>(surfaces.AsArray().size())));
+    result.Set("surfaces", std::move(surfaces));
+    result.Set("agentCount", JsonValue(static_cast<int>(agents.AsArray().size())));
+    result.Set("agents", std::move(agents));
+    return Outcome::Ok(std::move(result));
+}
+
+// agentTypeId に一致し、ベイク済みの Surface を選ぶ。id 指定があればそれを優先する。
+scene::NavMeshSurfaceComponent* ResolveNavMeshSurface(scene::Scene& activeScene,
+                                                      const std::string& nodeId,
+                                                      int agentTypeId,
+                                                      GameObject** outGo)
+{
+    for (scene::EntityID eid : activeScene.GetEntities<scene::NavMeshSurfaceComponent>()) {
+        GameObject* go = activeScene.GetGameObject(eid);
+        auto* surface = activeScene.GetComponent<scene::NavMeshSurfaceComponent>(eid);
+        if (go == nullptr || surface == nullptr) continue;
+        if (!nodeId.empty()) {
+            if (go->instanceId != nodeId) continue;
+        } else {
+            if (!surface->enabled || surface->agentTypeId != agentTypeId) continue;
+            if (!surface->navMesh.IsValid()) continue;
+        }
+        if (outGo != nullptr) *outGo = go;
+        return surface;
+    }
+    return nullptr;
+}
+
+// 2 点間の経路を、Agent が実際に使うのと同じ A* + Funnel で引く。
+// WHY: 「敵がここへ来ない」の原因は、BT の条件・Agent の設定・NavMesh の穴の 3 通りある。
+//      bt_runtime_state は 1 つ目を、navmesh_get_state は 2 つ目を切り分けるが、
+//      3 つ目は経路そのものを引いてみるまで分からない。Play して眺めても
+//      「行かない」ことしか観測できず、行けないのか行こうとしないのかが区別できない。
+Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+
+    math::Vector3 from;
+    math::Vector3 to;
+    // from は座標でも Agent の NodeId でも指定できる (「今いる場所から」が最も多い問い合わせ)。
+    const std::string fromNodeId = StringField(payload, "fromId");
+    int agentTypeId = 0;
+    int areaMask = -1;
+    if (const JsonValue* v = payload.Find("agentTypeId"); v != nullptr && v->IsNumber())
+        agentTypeId = v->AsInt();
+    if (const JsonValue* v = payload.Find("areaMask"); v != nullptr && v->IsNumber())
+        areaMask = v->AsInt();
+    if (!fromNodeId.empty()) {
+        GameObject* fromGo = activeScene->FindByGuid(fromNodeId);
+        if (fromGo == nullptr) return Outcome::Err("NODE_NOT_FOUND", "fromId が見つかりません: " + fromNodeId);
+        from = fromGo->transform.worldPosition;
+        // Agent があればその agentTypeId / areaMask を既定として引き継ぐ。
+        if (auto* agent = fromGo->GetComponent<scene::NavMeshAgentComponent>()) {
+            if (payload.Find("agentTypeId") == nullptr) agentTypeId = agent->agentTypeId;
+            if (payload.Find("areaMask") == nullptr)    areaMask = agent->areaMask;
+        }
+    } else if (!ReadVec3(payload, "from", from)) {
+        return Outcome::Err("BAD_ARG", "from ([x,y,z]) または fromId が必要です");
+    }
+    const std::string toNodeId = StringField(payload, "toId");
+    if (!toNodeId.empty()) {
+        GameObject* toGo = activeScene->FindByGuid(toNodeId);
+        if (toGo == nullptr) return Outcome::Err("NODE_NOT_FOUND", "toId が見つかりません: " + toNodeId);
+        to = toGo->transform.worldPosition;
+    } else if (!ReadVec3(payload, "to", to)) {
+        return Outcome::Err("BAD_ARG", "to ([x,y,z]) または toId が必要です");
+    }
+
+    GameObject* surfaceGo = nullptr;
+    scene::NavMeshSurfaceComponent* surface =
+        ResolveNavMeshSurface(*activeScene, StringField(payload, "surfaceId"), agentTypeId, &surfaceGo);
+    if (surface == nullptr) {
+        return Outcome::Err("NO_NAVMESH",
+            "agentTypeId=" + std::to_string(agentTypeId) + " に対応するベイク済み NavMesh Surface がありません");
+    }
+    if (!surface->navMesh.IsValid())
+        return Outcome::Err("NAVMESH_NOT_BAKED", "NavMesh が未ベイクです。navmesh_bake を実行してください");
+
+    const scene::NavMesh& navMesh = surface->navMesh;
+    const int startPoly = scene::FindNearestPolygon(navMesh, from);
+    const int goalPoly  = scene::FindNearestPolygon(navMesh, to);
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("surfaceId", JsonValue(surfaceGo != nullptr ? surfaceGo->instanceId : std::string{}));
+    result.Set("agentTypeId", JsonValue(agentTypeId));
+    result.Set("areaMask", JsonValue(areaMask));
+    result.Set("from", VectorToJson(from));
+    result.Set("to", VectorToJson(to));
+    result.Set("startPolygon", JsonValue(startPoly));
+    result.Set("goalPolygon", JsonValue(goalPoly));
+
+    if (startPoly < 0 || goalPoly < 0) {
+        result.Set("found", JsonValue(false));
+        result.Set("reason", JsonValue("START_OR_GOAL_OFF_NAVMESH"));
+        return Outcome::Ok(std::move(result));
+    }
+
+    std::vector<int> polyPath;
+    if (!scene::FindPolygonPath(navMesh, startPoly, goalPoly, polyPath, areaMask, surface->areaCosts, agentTypeId)) {
+        result.Set("found", JsonValue(false));
+        // 到達不能とエリアマスクによる遮断は別物だが、A* からは区別できない。
+        // areaMask を返してあるので、-1 で引き直せば切り分けられる。
+        result.Set("reason", JsonValue("NO_PATH"));
+        return Outcome::Ok(std::move(result));
+    }
+
+    const std::vector<math::Vector3> corners = scene::BuildFunnelPath(navMesh, polyPath, from, to);
+    JsonValue cornerArray = JsonValue::MakeArray();
+    float length = 0.0f;
+    for (size_t i = 0; i < corners.size(); ++i) {
+        cornerArray.Push(VectorToJson(corners[i]));
+        if (i > 0) length += (corners[i] - corners[i - 1]).Length();
+    }
+    result.Set("found", JsonValue(true));
+    result.Set("corners", std::move(cornerArray));
+    result.Set("cornerCount", JsonValue(static_cast<int>(corners.size())));
+    result.Set("polygonCount", JsonValue(static_cast<int>(polyPath.size())));
+    result.Set("length", JsonValue(length));
+    // 直線距離との比。大きいほど遠回り = 障害物か穴を迂回している。
+    const float straight = (to - from).Length();
+    result.Set("straightDistance", JsonValue(straight));
+    result.Set("detourRatio", JsonValue(straight > 0.0001f ? length / straight : 1.0f));
+    return Outcome::Ok(std::move(result));
+}
+
+// 指定点が NavMesh 上か、面上ならその高さを返す。Agent の湧き位置を決めるのに使う。
+Outcome DoNavMeshSample(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const JsonValue* points = payload.Find("points");
+    if (points == nullptr || !points->IsArray() || points->AsArray().empty())
+        return Outcome::Err("BAD_ARG", "points ([[x,y,z], ...]) が必要です");
+    if (points->AsArray().size() > 256) return Outcome::Err("BAD_ARG", "points は 256 点までです");
+
+    int agentTypeId = 0;
+    if (const JsonValue* v = payload.Find("agentTypeId"); v != nullptr && v->IsNumber())
+        agentTypeId = v->AsInt();
+    GameObject* surfaceGo = nullptr;
+    scene::NavMeshSurfaceComponent* surface =
+        ResolveNavMeshSurface(*activeScene, StringField(payload, "surfaceId"), agentTypeId, &surfaceGo);
+    if (surface == nullptr || !surface->navMesh.IsValid())
+        return Outcome::Err("NO_NAVMESH", "ベイク済み NavMesh Surface がありません");
+
+    JsonValue samples = JsonValue::MakeArray();
+    for (const JsonValue& pointValue : points->AsArray()) {
+        if (!pointValue.IsArray() || pointValue.AsArray().size() < 3) continue;
+        const auto& array = pointValue.AsArray();
+        const math::Vector3 query{
+            static_cast<float>(array[0].AsNumber()),
+            static_cast<float>(array[1].AsNumber()),
+            static_cast<float>(array[2].AsNumber())
+        };
+        JsonValue sample = JsonValue::MakeObject();
+        sample.Set("query", VectorToJson(query));
+        const int polygon = scene::FindNearestPolygon(surface->navMesh, query);
+        if (polygon < 0) {
+            sample.Set("onNavMesh", JsonValue(false));
+            samples.Push(std::move(sample));
+            continue;
+        }
+        const bool inside = surface->navMesh.polygons[static_cast<size_t>(polygon)].ContainsXZ(query.x, query.z);
+        const float height = scene::SampleNavMeshHeight(surface->navMesh, query);
+        sample.Set("onNavMesh", JsonValue(inside));
+        sample.Set("polygon", JsonValue(polygon));
+        sample.Set("areaType", JsonValue(surface->navMesh.polygons[static_cast<size_t>(polygon)].areaType));
+        // 面の外なら最近傍ポリゴンへ寄せた点を返す。Agent を置き直す座標としてそのまま使える。
+        sample.Set("nearest", VectorToJson({ query.x, height <= -1e6f ? query.y : height, query.z }));
+        if (!inside) {
+            sample.Set("distanceXZ", JsonValue(std::sqrt(
+                surface->navMesh.polygons[static_cast<size_t>(polygon)].DistanceSqXZ(query.x, query.z))));
+        }
+        samples.Push(std::move(sample));
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("surfaceId", JsonValue(surfaceGo != nullptr ? surfaceGo->instanceId : std::string{}));
+    result.Set("count", JsonValue(static_cast<int>(samples.AsArray().size())));
+    result.Set("samples", std::move(samples));
+    return Outcome::Ok(std::move(result));
+}
+
+// ── Environment (空・光・霧・ポストプロセス) ─────────────────────────────────
+
+// 環境系コンポーネントの一覧。Reflect 済みの値をそのまま返すので、editor_catalog の
+// フィールド定義と 1 対 1 で対応し、component_set でそのまま書き戻せる。
+// WHY 専用ツールにするか: 空・太陽・霧・IBL・雲・ポストプロセスは別々の GameObject に
+//      散らばっていて、scene_get_tree を読んでも「どれが環境設定なのか」は名前から
+//      推測するしかない。「今この画がなぜこの明るさなのか」を 1 回で読めるようにする。
+Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+
+    // 対象は ComponentCategory::Environment に登録された型すべて。
+    // WHY 型名を並べないか: 空・霧・雲・IBL は今後も増える。ここへ名前表を書くと、
+    //      新しい環境コンポーネントを足した人が「AI からだけ見えない」状態を作る。
+    //      分類の正本は ComponentRegistry なので、そこから引く。
+    std::unordered_set<std::string> environmentTypes;
+    scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
+        if constexpr (Reg::category == scene::ComponentCategory::Environment
+                   && Reg::inspectorMode != scene::ComponentInspectorMode::Hidden) {
+            environmentTypes.insert(Reg::serializedName);
+        }
+    });
+
+    JsonValue nodes = JsonValue::MakeArray();
+    for (GameObject& gameObject : activeScene->GameObjects()) {
+        GameObject* go = &gameObject;
+        JsonValue components = SnapshotComponents(*go);
+        JsonValue matched = JsonValue::MakeArray();
+        for (const JsonValue& component : components.AsArray()) {
+            const JsonValue* typeValue = component.Find("type");
+            if (typeValue == nullptr || !typeValue->IsString()) continue;
+            if (environmentTypes.count(typeValue->AsString()) != 0) matched.Push(component);
+        }
+        if (matched.AsArray().empty()) continue;
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(go->instanceId));
+        entry.Set("name", JsonValue(go->name));
+        entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("components", std::move(matched));
+        nodes.Push(std::move(entry));
+    }
+
+    // ライトは環境の一部だが数が多いので、種別と強度だけの要約にする。
+    JsonValue lights = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::LightComponent>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        auto* light = activeScene->GetComponent<scene::LightComponent>(eid);
+        if (go == nullptr || light == nullptr) continue;
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(go->instanceId));
+        entry.Set("name", JsonValue(go->name));
+        entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("position", VectorToJson(go->transform.worldPosition));
+        entry.Set("forward", VectorToJson(go->transform.Forward()));
+        JsonReadReflector reader;
+        light->Reflect(reader);
+        entry.Set("fields", reader.Result());
+        lights.Push(std::move(entry));
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("nodeCount", JsonValue(static_cast<int>(nodes.AsArray().size())));
+    result.Set("nodes", std::move(nodes));
+    result.Set("lightCount", JsonValue(static_cast<int>(lights.AsArray().size())));
+    result.Set("lights", std::move(lights));
+    return Outcome::Ok(std::move(result));
+}
+
+// ── Audio ───────────────────────────────────────────────────────────────────
+
+Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const std::string filterId = StringField(payload, "id");
+
+    JsonValue sources = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::AudioSourceComponent>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        auto* source = activeScene->GetComponent<scene::AudioSourceComponent>(eid);
+        if (go == nullptr || source == nullptr) continue;
+        if (!filterId.empty() && go->instanceId != filterId) continue;
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(go->instanceId));
+        entry.Set("name", JsonValue(go->name));
+        entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("position", VectorToJson(go->transform.worldPosition));
+        JsonReadReflector reader;
+        source->Reflect(reader);
+        entry.Set("fields", reader.Result());
+        // 再生状態は Reflect に載らない (保存対象ではない) ので明示的に足す。
+        // これが無いと「鳴っているのか」を画面のスピーカーアイコン以外で確認できない。
+        JsonValue runtime = JsonValue::MakeObject();
+        runtime.Set("playing", JsonValue(source->m_isPlaying));
+        runtime.Set("paused", JsonValue(source->m_isPaused));
+        runtime.Set("voiceId", JsonValue(static_cast<int>(source->m_voiceId)));
+        runtime.Set("playOnAwakeFired", JsonValue(source->m_played));
+        entry.Set("runtime", std::move(runtime));
+        sources.Push(std::move(entry));
+    }
+
+    JsonValue listeners = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::AudioListenerComponent>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        if (go == nullptr) continue;
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("id", JsonValue(go->instanceId));
+        entry.Set("name", JsonValue(go->name));
+        entry.Set("active", JsonValue(go->activeSelf()));
+        entry.Set("position", VectorToJson(go->transform.worldPosition));
+        listeners.Push(std::move(entry));
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("sourceCount", JsonValue(static_cast<int>(sources.AsArray().size())));
+    result.Set("sources", std::move(sources));
+    result.Set("listenerCount", JsonValue(static_cast<int>(listeners.AsArray().size())));
+    result.Set("listeners", std::move(listeners));
+    // 3D 減衰は Listener が無いと成立しない。「音が聞こえない」の最頻出原因なので明示する。
+    if (listeners.AsArray().empty())
+        result.Set("warning", JsonValue("AudioListener がシーンにありません (3D 音の距離減衰が効きません)"));
+    return Outcome::Ok(std::move(result));
+}
+
+// ── UI ──────────────────────────────────────────────────────────────────────
+
+// Canvas を根とする UI ツリーを、矩形と描画順が読める形で返す。
+// WHY: UI は Transform ではなく RectTransform 的な矩形で決まり、scene_get_tree の
+//      階層だけでは「画面のどこに何が出るか」が一切分からない。viewport_capture の
+//      絵と突き合わせる相手が無いと、ずれているのか隠れているのかも言えない。
+JsonValue UIElementJson(GameObject& go)
+{
+    JsonValue entry = JsonValue::MakeObject();
+    entry.Set("id", JsonValue(go.instanceId));
+    entry.Set("name", JsonValue(go.name));
+    entry.Set("active", JsonValue(go.activeSelf()));
+    entry.Set("components", SnapshotComponents(go));
+    JsonValue children = JsonValue::MakeArray();
+    for (int i = 0; i < go.GetChildCount(); ++i) {
+        GameObject* child = go.GetChild(i);
+        if (child == nullptr || child->runtimeGenerated) continue;
+        children.Push(UIElementJson(*child));
+    }
+    entry.Set("children", std::move(children));
+    return entry;
+}
+
+Outcome DoUIInspect(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    scene::Scene* activeScene = ctx.activeScene;
+    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const std::string filterId = StringField(payload, "id");
+
+    JsonValue canvases = JsonValue::MakeArray();
+    for (scene::EntityID eid : activeScene->GetEntities<scene::UICanvas>()) {
+        GameObject* go = activeScene->GetGameObject(eid);
+        if (go == nullptr) continue;
+        if (!filterId.empty() && go->instanceId != filterId) continue;
+        canvases.Push(UIElementJson(*go));
+    }
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("count", JsonValue(static_cast<int>(canvases.AsArray().size())));
+    result.Set("canvases", std::move(canvases));
+    // 編集対象として選ばれている Canvas。UIViewport の操作対象と AI の対象を一致させる。
+    if (ctx.activeUICanvas.IsValid()) {
+        if (GameObject* activeCanvas = activeScene->GetGameObject(ctx.activeUICanvas))
+            result.Set("activeCanvasId", JsonValue(activeCanvas->instanceId));
+    }
+    // UI は Game View の解像度で座標が決まるので、基準の画面サイズも返す。
+    JsonValue viewport = JsonValue::MakeObject();
+    viewport.Set("width", JsonValue(ctx.gameViewportWidth));
+    viewport.Set("height", JsonValue(ctx.gameViewportHeight));
+    result.Set("gameViewport", std::move(viewport));
+    return Outcome::Ok(std::move(result));
+}
+
+// ── Build (スクリプト DLL / HLSL のコンパイル状態) ───────────────────────────
+
+// BuildConsole の履歴と診断を返す。shader_get_compile_diagnostics の Script 版。
+// WHY: スクリプトのコンパイルが通っていないと Play も component_add も無意味な結果になるが、
+//      AI からはその失敗が console_get_logs の断片としてしか見えず、
+//      どのファイルの何行目で落ちたのかを組み立て直す必要があった。
+Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    if (ctx.buildConsole == nullptr) return Outcome::Err("NO_BUILD_CONSOLE", "BuildConsole が未設定です");
+    const editor::BuildConsole& console = *ctx.buildConsole;
+
+    int limit = 5;
+    if (const JsonValue* v = payload.Find("limit"); v != nullptr && v->IsNumber())
+        limit = std::clamp(v->AsInt(), 1, 20);
+
+    auto recordJson = [](const editor::BuildRecord& record) {
+        JsonValue entry = JsonValue::MakeObject();
+        entry.Set("kind", JsonValue(record.kind == editor::BuildRecord::Kind::Hlsl ? "hlsl" : "script"));
+        const char* resultName = "building";
+        switch (record.result) {
+        case editor::BuildRecord::Result::Success:   resultName = "success"; break;
+        case editor::BuildRecord::Result::Failed:    resultName = "failed"; break;
+        case editor::BuildRecord::Result::Cancelled: resultName = "cancelled"; break;
+        case editor::BuildRecord::Result::Building:  resultName = "building"; break;
+        }
+        entry.Set("result", JsonValue(resultName));
+        entry.Set("exitCode", JsonValue(record.exitCode));
+        entry.Set("startClock", JsonValue(record.startClock));
+        entry.Set("durationSec", JsonValue(record.durationSec));
+        entry.Set("errorCount", JsonValue(record.errorCount));
+        entry.Set("warnCount", JsonValue(record.warnCount));
+        JsonValue diagnostics = JsonValue::MakeArray();
+        for (const editor::BuildDiagnostic& diagnostic : record.diagnostics) {
+            JsonValue item = JsonValue::MakeObject();
+            item.Set("severity", JsonValue(
+                diagnostic.severity == editor::BuildDiagnostic::Severity::Warning ? "warning" : "error"));
+            item.Set("file", JsonValue(diagnostic.file));
+            item.Set("line", JsonValue(diagnostic.line));
+            item.Set("column", JsonValue(diagnostic.column));
+            item.Set("code", JsonValue(diagnostic.code));
+            item.Set("message", JsonValue(diagnostic.message));
+            diagnostics.Push(std::move(item));
+        }
+        entry.Set("diagnostics", std::move(diagnostics));
+        return entry;
+    };
+
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("building", JsonValue(console.IsBuilding()));
+    result.Set("currentFile", JsonValue(console.CurrentFile()));
+    result.Set("hasActiveFailure", JsonValue(console.HasActiveFailure()));
+    // Play 開始が弾かれる理由そのもの。build_run の直後に見るのはここ。
+    result.Set("scriptReloadBusy", JsonValue(ctx.scriptReloadBusy));
+    if (const editor::BuildRecord* latest = console.Latest())
+        result.Set("latest", recordJson(*latest));
+    JsonValue history = JsonValue::MakeArray();
+    const auto& records = console.History();
+    for (auto it = records.rbegin(); it != records.rend() && static_cast<int>(history.AsArray().size()) < limit; ++it)
+        history.Push(recordJson(*it));
+    result.Set("history", std::move(history));
+    return Outcome::Ok(std::move(result));
+}
+
+// スクリプト DLL の再ビルドを要求する。完了は build.status のポーリングで確認する。
+// WHY 非同期のままにするか: MSBuild は数十秒かかる。ここで待つとバスの drain
+//      (メインスレッド) が止まり、Editor が固まったまま応答も返らない。
+Outcome DoBuildRun(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
+{
+    const std::string target = LowerAscii(StringField(payload, "target"));
+    if (!target.empty() && target != "script")
+        return Outcome::Err("BAD_ARG", "target は script のみ対応しています (HLSL はファイル保存で自動コンパイルされます)");
+    if (ctx.buildConsole != nullptr && ctx.buildConsole->IsBuilding())
+        return Outcome::Err("BUILD_BUSY", "既にビルド中です");
+    if (ctx.scriptReloadBusy)
+        return Outcome::Err("BUILD_BUSY", "Script DLL の再読み込み中です");
+    if (dryRun) return DryRunPreview("build.run");
+
+    ctx.requestScriptReload = true;
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("requested", JsonValue("script"));
+    // 同期完了を返せないことを明示する。待ち方を書かないと AI は即座に結果を読みに行く。
+    result.Set("async", JsonValue(true));
+    result.Set("poll", JsonValue("build_get_status で building=false になるまで確認してください"));
+    return Outcome::Ok(std::move(result));
+}
+
 std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::string& type,
                                        const JsonValue& payload, Outcome& err,
                                        std::shared_ptr<std::string> createdSink,
@@ -6033,7 +8096,7 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
             []() {});
     }
     // .behaviortree の編集も Scene を必要としない (アセット単体で完結する)。
-    if (type.starts_with("bt.")) return BuildBehaviorTreeCommand(ctx, type, payload, err);
+    if (type.starts_with("bt.")) return BuildBehaviorTreeCommand(ctx, type, payload, err, detailSink);
     // .vfx asset編集はメインSceneを必要としない。独立VFX Editorだけ開いた状態でもAI編集を許可する。
     if (type == "vfx.graph.set" || type.starts_with("vfx.node.") || type.starts_with("vfx.link.")
         || type.starts_with("vfx.param.") || type == "vfx.optimize"
@@ -6042,6 +8105,389 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
     scene::Scene* scene = ctx.activeScene;
     if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
     const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
+
+    // ── Add Object プリセット ──────────────────────────────────────────────
+    // Hierarchy の Add Object と同じ生成関数を通す。作られるものが人の操作と完全に一致する。
+    if (type == "preset.create") {
+        const std::string presetId = StringField(payload, "preset");
+        const editor::ObjectPreset* preset = editor::FindObjectPreset(presetId);
+        if (preset == nullptr) {
+            err = Outcome::Err("UNKNOWN_PRESET",
+                "未知のプリセットです: " + presetId + " (preset_catalog で一覧を確認してください)");
+            return nullptr;
+        }
+        const std::string parentId = StringField(payload, "parent");
+        if (!parentId.empty() && scene->FindByGuid(parentId) == nullptr) {
+            err = Outcome::Err("NODE_NOT_FOUND", "parent が見つかりません: " + parentId);
+            return nullptr;
+        }
+        const std::string requestedName = StringField(payload, "name");
+        math::Vector3 position;
+        const bool hasPosition = ReadVec3(payload, "position", position);
+
+        if (detailSink != nullptr) {
+            detailSink->Set("preset", JsonValue(std::string(preset->id)));
+            detailSink->Set("label", JsonValue(std::string(preset->label)));
+            detailSink->Set("contents", JsonValue(std::string(preset->description)));
+        }
+
+        // node.create と同じ方式: 生成した NodeId を shared_ptr へ記録し、Undo はそれを消す。
+        auto guid = std::make_shared<std::string>();
+        auto* contextPtr = &ctx;
+        return std::make_unique<LambdaCommand>("AI: Create " + std::string(preset->label),
+            [contextPtr, scene, presetId, parentId, requestedName, hasPosition, position, guid, createdSink, markDirty]() {
+                scene::EntityID parentEntity{};
+                if (!parentId.empty()) {
+                    if (GameObject* parentObject = scene->FindByGuid(parentId)) parentEntity = parentObject->GetID();
+                }
+                GameObject* created = editor::CreateObjectFromPreset(*contextPtr, presetId, parentEntity);
+                if (created == nullptr) return;
+                if (!requestedName.empty()) created->name = requestedName;
+                // position はローカル座標。親付けした場合は親からの相対になる (Transform と同じ規則)。
+                if (hasPosition) created->transform.position = position;
+                *guid = created->instanceId;
+                if (createdSink) *createdSink = created->instanceId;
+                markDirty();
+            },
+            [scene, guid, markDirty]() {
+                if (!guid->empty()) {
+                    if (GameObject* go = scene->FindByGuid(*guid)) scene->DestroyGameObject(go->GetID());
+                }
+                markDirty();
+            });
+    }
+
+    // ── Terrain: ブラシ操作 ─────────────────────────────────────────────────
+    // マウスドラッグを持たない AI のために、ストローク 1 回ぶんを 1 コマンドとして受ける。
+    // iterations は「押し続けた回数」に相当する。Smooth / Flatten は 1 回では収束しないため、
+    // これが無いと AI は同じ要求を何十回も投げることになる (そのぶん Undo 履歴も汚れる)。
+    if (type == "terrain.sculpt" || type == "terrain.paint") {
+        math::Vector3 center;
+        if (!ReadVec3(payload, "position", center)) {
+            err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です"); return nullptr;
+        }
+        TerrainBrush brush;
+        std::string brushError;
+        if (!ReadTerrainBrush(payload, brush, brushError)) { err = Outcome::Err("BAD_ARG", brushError); return nullptr; }
+        int iterations = 1;
+        if (const JsonValue* v = payload.Find("iterations"); v != nullptr && v->IsNumber())
+            iterations = std::clamp(v->AsInt(), 1, 64);
+
+        const std::string restrictTo = StringField(payload, "id");
+        std::vector<TerrainHit> hits = CollectTerrainsUnderBrush(*scene, center, brush.radius, restrictTo);
+        if (hits.empty()) {
+            err = Outcome::Err("NO_TERRAIN", restrictTo.empty()
+                ? "その位置に重なる TerrainComponent がありません"
+                : "指定ノードの Terrain はブラシ範囲と重なりません: " + restrictTo);
+            return nullptr;
+        }
+
+        const bool isSculpt = (type == "terrain.sculpt");
+        TerrainSculptOp sculptOp = TerrainSculptOp::Raise;
+        float flattenTarget = 0.0f;
+        int paintLayer = 0;
+        if (isSculpt) {
+            const std::string op = LowerAscii(StringField(payload, "op"));
+            if (op.empty() || op == "raise")   sculptOp = TerrainSculptOp::Raise;
+            else if (op == "lower")            sculptOp = TerrainSculptOp::Lower;
+            else if (op == "smooth")           sculptOp = TerrainSculptOp::Smooth;
+            else if (op == "flatten")          sculptOp = TerrainSculptOp::Flatten;
+            else if (op == "stamp")            sculptOp = TerrainSculptOp::Stamp;
+            else { err = Outcome::Err("BAD_ARG", "op は raise/lower/smooth/flatten/stamp です"); return nullptr; }
+            if (sculptOp == TerrainSculptOp::Flatten) {
+                // 対話ツールは「最初にクリックした高さ」を基準にする。AI にはクリックが無いので、
+                // 明示指定が無ければブラシ中心の現在高さを基準にする (同じ意味論になる)。
+                if (const JsonValue* v = payload.Find("targetHeight"); v != nullptr && v->IsNumber()) {
+                    flattenTarget = static_cast<float>(v->AsNumber());
+                } else {
+                    const TerrainHit& primary = hits.front();
+                    flattenTarget = primary.terrain->GetHeightAt(primary.local.x, primary.local.z);
+                }
+            }
+        } else {
+            const JsonValue* layerValue = payload.Find("layer");
+            if (layerValue == nullptr || !layerValue->IsNumber()) {
+                err = Outcome::Err("BAD_ARG", "layer (0〜3) が必要です"); return nullptr;
+            }
+            paintLayer = layerValue->AsInt();
+            if (paintLayer < 0 || paintLayer > 3) { err = Outcome::Err("BAD_ARG", "layer は 0〜3 です"); return nullptr; }
+        }
+
+        // Paint は Terrain ごとに塗る層を解決する。隣接 Terrain は layerMaterials の並びが
+        // 異なり得るため、同じ index を塗ると別マテリアルへ塗ってしまう (TerrainTool と同じ規則)。
+        const std::string sourceMaterial = isSculpt ? std::string{}
+            : hits.front().terrain->layerMaterials[static_cast<size_t>(paintLayer)];
+
+        // before/after を先に作り、コマンドは「スナップショットの入れ替え」だけを行う。
+        std::vector<TerrainSnapshot> before;
+        std::vector<TerrainSnapshot> after;
+        std::vector<std::string> touched;
+        before.reserve(hits.size());
+        after.reserve(hits.size());
+        for (const TerrainHit& hit : hits) {
+            int layerForThisTerrain = paintLayer;
+            if (!isSculpt && hit.terrain != hits.front().terrain) {
+                layerForThisTerrain = ResolvePaintLayerForTerrain(*hit.terrain, sourceMaterial, paintLayer);
+                if (layerForThisTerrain < 0) continue; // 対応する層が無い Terrain には塗らない
+            }
+            before.push_back({ hit.go->instanceId, *hit.terrain });
+            scene::TerrainComponent edited = *hit.terrain;
+            for (int i = 0; i < iterations; ++i) {
+                if (isSculpt) ApplyTerrainSculpt(edited, hit.local, brush, sculptOp, flattenTarget, 1.0f);
+                else          ApplyTerrainPaint(edited, hit.local, brush, layerForThisTerrain, 1.0f);
+            }
+            after.push_back({ hit.go->instanceId, std::move(edited) });
+            touched.push_back(hit.go->instanceId);
+        }
+        if (touched.empty()) {
+            err = Outcome::Err("NO_TERRAIN", "塗る対象のレイヤーを持つ Terrain がありません");
+            return nullptr;
+        }
+
+        if (detailSink != nullptr) {
+            JsonValue terrainIds = JsonValue::MakeArray();
+            for (const std::string& touchedId : touched) terrainIds.Push(JsonValue(touchedId));
+            detailSink->Set("terrains", std::move(terrainIds));
+            detailSink->Set("iterations", JsonValue(iterations));
+            if (isSculpt && sculptOp == TerrainSculptOp::Flatten)
+                detailSink->Set("targetHeight", JsonValue(flattenTarget));
+        }
+        return MakeTerrainEditCommand(scene, isSculpt ? "AI: Sculpt Terrain" : "AI: Paint Terrain",
+                                      std::move(before), std::move(after), markDirty);
+    }
+
+    // Terrain レイヤーへ .mat を割り当てる。Paint する前にレイヤーの中身を決められないと、
+    // 「塗ったのに見た目が変わらない (レイヤーが空)」という状態にしかならない。
+    if (type == "terrain.setLayerMaterial") {
+        const std::string id = StringField(payload, "id");
+        GameObject* go = scene->FindByGuid(id);
+        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        auto* terrain = go->GetComponent<scene::TerrainComponent>();
+        if (terrain == nullptr) { err = Outcome::Err("NOT_PRESENT", "TerrainComponent が装着されていません"); return nullptr; }
+        const JsonValue* layerValue = payload.Find("layer");
+        if (layerValue == nullptr || !layerValue->IsNumber()) { err = Outcome::Err("BAD_ARG", "layer (0〜3) が必要です"); return nullptr; }
+        const int layer = layerValue->AsInt();
+        if (layer < 0 || layer > 3) { err = Outcome::Err("BAD_ARG", "layer は 0〜3 です"); return nullptr; }
+        const std::string materialPath = StringField(payload, "material");
+        if (!materialPath.empty()) {
+            std::filesystem::path resolved;
+            std::string relative;
+            if (!ResolveProjectFile(ctx, materialPath, resolved, relative)
+                || LowerAscii(resolved.extension().string()) != ".mat") {
+                err = Outcome::Err("BAD_PATH", "material は projectRoot 配下の .mat で指定してください"); return nullptr;
+            }
+            std::error_code ec;
+            if (!std::filesystem::is_regular_file(resolved, ec)) {
+                err = Outcome::Err("MATERIAL_NOT_FOUND", "マテリアルが見つかりません: " + relative); return nullptr;
+            }
+        }
+        const std::string oldMaterial = terrain->layerMaterials[static_cast<size_t>(layer)];
+        return std::make_unique<LambdaCommand>("AI: Set Terrain Layer Material",
+            [scene, id, layer, materialPath, markDirty]() {
+                if (GameObject* g = scene->FindByGuid(id))
+                    if (auto* t = g->GetComponent<scene::TerrainComponent>()) t->SetLayerMaterial(layer, materialPath);
+                markDirty();
+            },
+            [scene, id, layer, oldMaterial, markDirty]() {
+                if (GameObject* g = scene->FindByGuid(id))
+                    if (auto* t = g->GetComponent<scene::TerrainComponent>()) t->SetLayerMaterial(layer, oldMaterial);
+                markDirty();
+            });
+    }
+
+    // ── Foliage: 散布 / 消去 ────────────────────────────────────────────────
+    if (type == "foliage.scatter" || type == "foliage.clear") {
+        const std::string id = StringField(payload, "id");
+        GameObject* go = scene->FindByGuid(id);
+        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        auto* foliage = go->GetComponent<scene::FoliageComponent>();
+        if (foliage == nullptr) { err = Outcome::Err("NOT_PRESENT", "FoliageComponent が装着されていません"); return nullptr; }
+        const JsonValue* speciesValue = payload.Find("species");
+        if (speciesValue == nullptr || !speciesValue->IsNumber()) { err = Outcome::Err("BAD_ARG", "species (index) が必要です"); return nullptr; }
+        const int speciesIndex = speciesValue->AsInt();
+        if (speciesIndex < 0 || speciesIndex >= static_cast<int>(foliage->species.size())) {
+            err = Outcome::Err("BAD_ARG", "species index が範囲外です (foliage_inspect で確認してください)"); return nullptr;
+        }
+        // stamp のローカル座標は「同じ GO にある Terrain」の空間。Terrain が無ければ置けない。
+        auto* terrain = go->GetComponent<scene::TerrainComponent>();
+        if (terrain == nullptr) {
+            err = Outcome::Err("NO_TERRAIN", "同じノードに TerrainComponent がありません (stamp は Terrain ローカル座標で持つため)");
+            return nullptr;
+        }
+
+        std::vector<scene::FoliageSpecies> before = foliage->species;
+        std::vector<scene::FoliageSpecies> after = before;
+        scene::FoliageSpecies& target = after[static_cast<size_t>(speciesIndex)];
+        int changed = 0;
+
+        if (type == "foliage.clear") {
+            math::Vector3 center;
+            const bool hasCenter = ReadVec3(payload, "position", center);
+            float radius = 0.0f;
+            if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
+                radius = static_cast<float>(v->AsNumber());
+            if (!hasCenter || radius <= 0.0f) {
+                changed = static_cast<int>(target.stamps.size());
+                target.stamps.clear();
+            } else {
+                const math::Vector3 localCenter = ToTerrainLocal(go->transform, center);
+                const size_t sizeBefore = target.stamps.size();
+                std::erase_if(target.stamps, [&](const scene::FoliageStamp& stamp) {
+                    const float dx = stamp.localPosition.x - localCenter.x;
+                    const float dz = stamp.localPosition.z - localCenter.z;
+                    return (dx * dx + dz * dz) <= radius * radius;
+                });
+                changed = static_cast<int>(sizeBefore - target.stamps.size());
+            }
+            if (changed == 0) { err = Outcome::Err("NO_CHANGE", "消去対象の stamp がありません"); return nullptr; }
+        } else {
+            math::Vector3 center;
+            if (!ReadVec3(payload, "position", center)) { err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です"); return nullptr; }
+            float radius = 5.0f;
+            if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
+                radius = static_cast<float>(v->AsNumber());
+            if (!(radius > 0.0f) || radius > 500.0f) { err = Outcome::Err("BAD_ARG", "radius は 0 より大きく 500 以下です"); return nullptr; }
+            int count = 10;
+            if (const JsonValue* v = payload.Find("count"); v != nullptr && v->IsNumber())
+                count = std::clamp(v->AsInt(), 1, 500);
+            // 斜面に木を生やさないための上限。既定 40 度は maxSlopeAngleDeg の既定と揃える。
+            float maxSlopeDeg = 40.0f;
+            if (const JsonValue* v = payload.Find("maxSlopeDegrees"); v != nullptr && v->IsNumber())
+                maxSlopeDeg = std::clamp(static_cast<float>(v->AsNumber()), 0.0f, 90.0f);
+            // seed を受けるのは、同じ要求から必ず同じ配置が出るようにするため。
+            // 乱数を隠すと「もう一度」で違う絵になり、AI が結果を比較できない。
+            std::uint32_t random = 1u;
+            if (const JsonValue* v = payload.Find("seed"); v != nullptr && v->IsNumber())
+                random = static_cast<std::uint32_t>(v->AsInt());
+            if (random == 0u) random = 1u;
+            auto nextRandom = [&random]() {
+                // xorshift32。外部依存を増やさずに決定論を保つ。
+                random ^= random << 13; random ^= random >> 17; random ^= random << 5;
+                return static_cast<float>(random & 0xFFFFFFu) / static_cast<float>(0x1000000u);
+            };
+
+            const math::Vector3 localCenter = ToTerrainLocal(go->transform, center);
+            const float localWidth = static_cast<float>(terrain->columns - 1) * terrain->cellSize;
+            const float localDepth = static_cast<float>(terrain->rows - 1) * terrain->cellSize;
+            int rejectedSlope = 0;
+            int rejectedBounds = 0;
+            for (int i = 0; i < count; ++i) {
+                // 円内一様分布 (sqrt を掛けないと中心に寄る)。
+                const float angle = nextRandom() * 6.2831853f;
+                const float distance = std::sqrt(nextRandom()) * radius;
+                const float x = localCenter.x + std::cos(angle) * distance;
+                const float z = localCenter.z + std::sin(angle) * distance;
+                if (x < 0.0f || x > localWidth || z < 0.0f || z > localDepth) { ++rejectedBounds; continue; }
+                const math::Vector3 normal = terrain->GetNormalAt(x, z);
+                const float slope = math::ToDeg(std::acos(std::clamp(normal.y, -1.0f, 1.0f)));
+                if (slope > maxSlopeDeg) { ++rejectedSlope; continue; }
+                const float height = terrain->GetHeightAt(x, z);
+                const float scale = target.minScale
+                    + nextRandom() * std::max(0.0f, target.maxScale - target.minScale);
+                const float rotationY = target.randomYRotation ? nextRandom() * 6.2831853f : 0.0f;
+                target.stamps.push_back({ math::Vector3{ x, height, z }, rotationY, std::max(scale, 0.0001f) });
+                ++changed;
+            }
+            // 置けなかった理由を返さないと、AI は「count を増やす」以外の直し方を選べない。
+            if (detailSink != nullptr) {
+                detailSink->Set("placed", JsonValue(changed));
+                detailSink->Set("rejectedSlope", JsonValue(rejectedSlope));
+                detailSink->Set("rejectedOutOfBounds", JsonValue(rejectedBounds));
+            }
+            if (changed == 0) {
+                err = Outcome::Err("NO_PLACEMENT",
+                    "1 本も配置できませんでした (斜度超過 " + std::to_string(rejectedSlope)
+                    + " / 範囲外 " + std::to_string(rejectedBounds) + ")");
+                return nullptr;
+            }
+            // 手動配置に切り替える。PROCEDURAL のままだと stamps は描画に使われない。
+            target.placementMode = scene::FoliagePlacementMode::STAMP;
+        }
+
+        if (detailSink != nullptr) {
+            detailSink->Set("species", JsonValue(speciesIndex));
+            detailSink->Set("stampCount", JsonValue(static_cast<int>(target.stamps.size())));
+            detailSink->Set("changed", JsonValue(changed));
+        }
+        return MakeFoliageEditCommand(scene,
+            type == "foliage.clear" ? "AI: Clear Foliage" : "AI: Scatter Foliage",
+            go->instanceId, std::move(before), std::move(after), markDirty);
+    }
+
+    // ── NavMesh: 再ベイク要求 ──────────────────────────────────────────────
+    // 地形を彫った直後の NavMesh は古い形のままで、その状態で経路を引くと
+    // 「壁を通り抜ける経路」が返る。sculpt の後は必ずこれを通す運用にする。
+    if (type == "navmesh.bake") {
+        const std::string id = StringField(payload, "id");
+        std::vector<std::string> targets;
+        for (scene::EntityID eid : scene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+            GameObject* surfaceGo = scene->GetGameObject(eid);
+            auto* surface = scene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+            if (surfaceGo == nullptr || surface == nullptr) continue;
+            if (!id.empty() && surfaceGo->instanceId != id) continue;
+            if (id.empty() && !surface->enabled) continue;
+            targets.push_back(surfaceGo->instanceId);
+        }
+        if (targets.empty()) {
+            err = Outcome::Err("NO_NAVMESH_SURFACE", id.empty()
+                ? "有効な NavMeshSurfaceComponent がシーンにありません"
+                : "NavMeshSurfaceComponent が見つかりません: " + id);
+            return nullptr;
+        }
+        if (detailSink != nullptr) {
+            JsonValue surfaceIds = JsonValue::MakeArray();
+            for (const std::string& target : targets) surfaceIds.Push(JsonValue(target));
+            detailSink->Set("surfaces", std::move(surfaceIds));
+            // ベイクはバックグラウンドスレッドで走る。完了は navmesh_get_state で確認させる。
+            detailSink->Set("async", JsonValue(true));
+            detailSink->Set("poll", JsonValue("navmesh_get_state で bakeState=done を確認してください"));
+        }
+        auto targetsShared = std::make_shared<std::vector<std::string>>(std::move(targets));
+        // Undo は「ベイク要求」を取り消せない (結果は Terrain/Collider から再生成されるキャッシュで、
+        // シーンにも保存されない)。履歴に残すのは、AI が自分の操作列を追えるようにするため。
+        auto request = [scene, targetsShared]() {
+            for (const std::string& target : *targetsShared) {
+                if (GameObject* g = scene->FindByGuid(target))
+                    if (auto* surface = g->GetComponent<scene::NavMeshSurfaceComponent>()) surface->needsBake = true;
+            }
+        };
+        return std::make_unique<LambdaCommand>("AI: Bake NavMesh", request, request);
+    }
+
+    // ── Audio: 再生制御 ────────────────────────────────────────────────────
+    // AudioSource は pending フラグを立てると AudioSystem が次フレームに実行する。
+    // WHY Undo 可能にするか: 「鳴らした」の取り消しは停止。BGM を差し替えて確認する
+    //      作業で履歴が飛び飛びになると、run_transaction で束ねたときに戻せなくなる。
+    if (type == "audio.control") {
+        const std::string id = StringField(payload, "id");
+        GameObject* go = scene->FindByGuid(id);
+        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
+        auto* source = go->GetComponent<scene::AudioSourceComponent>();
+        if (source == nullptr) { err = Outcome::Err("NOT_PRESENT", "AudioSourceComponent が装着されていません"); return nullptr; }
+        const std::string action = LowerAscii(StringField(payload, "action"));
+        if (action != "play" && action != "stop" && action != "pause" && action != "resume") {
+            err = Outcome::Err("BAD_ARG", "action は play / stop / pause / resume です"); return nullptr;
+        }
+        if (action == "play" && source->clipPath.empty()) {
+            err = Outcome::Err("NO_CLIP", "clipPath が空です (component_set で設定してください)"); return nullptr;
+        }
+        auto request = [scene, id](const std::string& requestedAction) {
+            GameObject* g = scene->FindByGuid(id);
+            if (g == nullptr) return;
+            auto* audio = g->GetComponent<scene::AudioSourceComponent>();
+            if (audio == nullptr) return;
+            if (requestedAction == "play")        audio->m_pendingPlay = true;
+            else if (requestedAction == "stop")   audio->m_pendingStop = true;
+            else if (requestedAction == "pause")  audio->m_pendingPause = true;
+            else if (requestedAction == "resume") audio->m_pendingPlay = true;
+        };
+        // 取り消し方向は「再生なら停止 / それ以外は再生」。元の再生状態へ戻す。
+        const std::string undoAction = (action == "play" || action == "resume") ? "stop"
+            : (source->m_isPlaying ? "play" : "stop");
+        return std::make_unique<LambdaCommand>("AI: Audio Control",
+            [request, action]()     { request(action); },
+            [request, undoAction]() { request(undoAction); });
+    }
 
     if (type == "vfx.instance.set" || type == "vfx.instance.clear") {
         const std::string id = StringField(payload, "id");
@@ -7167,7 +9613,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
             }
             if (const JsonValue* v = payload.Find("enabled"); v && v->IsBool()) prototype.enabled = v->AsBool();
             if (const JsonValue* v = payload.Find("maskPath"); v && v->IsString()) prototype.mask.path = v->AsString();
-            if (const JsonValue* v = payload.Find("stateName"); v && v->IsString()) prototype.stateName = v->AsString();
             if (const JsonValue* v = payload.Find("additiveSourcePath"); v && v->IsString())
                 prototype.additiveReference.sourcePath = v->AsString();
             if (const JsonValue* v = payload.Find("additiveClipName"); v && v->IsString())
@@ -7221,7 +9666,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
             const JsonValue* weightValue   = payload.Find("weight");
             const JsonValue* enabledValue  = payload.Find("enabled");
             const JsonValue* maskValue     = payload.Find("maskPath");
-            const JsonValue* stateValue    = payload.Find("stateName");
             const JsonValue* defaultValue  = payload.Find("defaultStateName");
             const JsonValue* addSrcValue   = payload.Find("additiveSourcePath");
             const JsonValue* addClipValue  = payload.Find("additiveClipName");
@@ -7231,7 +9675,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
                 ? std::clamp(static_cast<float>(weightValue->AsNumber()), 0.0f, 1.0f) : 0.0f;
             const bool  enabled = (enabledValue && enabledValue->IsBool()) && enabledValue->AsBool();
             const std::string maskPath = (maskValue && maskValue->IsString()) ? maskValue->AsString() : std::string{};
-            const std::string stateName = (stateValue && stateValue->IsString()) ? stateValue->AsString() : std::string{};
             const std::string defaultStateName = (defaultValue && defaultValue->IsString()) ? defaultValue->AsString() : std::string{};
             const std::string addSrc = (addSrcValue && addSrcValue->IsString()) ? addSrcValue->AsString() : std::string{};
             const std::string addClip = (addClipValue && addClipValue->IsString()) ? addClipValue->AsString() : std::string{};
@@ -7240,7 +9683,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
             const bool hasWeight  = weightValue && weightValue->IsNumber();
             const bool hasEnabled = enabledValue && enabledValue->IsBool();
             const bool hasMask    = maskValue && maskValue->IsString();
-            const bool hasState   = stateValue && stateValue->IsString();
             const bool hasDefault = defaultValue && defaultValue->IsString();
             const bool hasAddSrc  = addSrcValue && addSrcValue->IsString();
             const bool hasAddClip = addClipValue && addClipValue->IsString();
@@ -7258,7 +9700,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
                         // 次フレームの AnimatorSystem に読み直させる。
                         l->mask.Invalidate();
                     }
-                    if (hasState)   l->stateName = stateName;
                     if (hasDefault) l->defaultStateName = defaultStateName;
                     if (hasAddSrc)  l->additiveReference.sourcePath = addSrc;
                     if (hasAddClip) l->additiveReference.clipName = addClip;
@@ -7375,6 +9816,12 @@ Outcome DoCommand(editor::EditorContext& ctx, const std::string& type, const Jso
 
     // Avatar Mask はアセットファイル操作。シーンの UndoStack には載せない。
     if (type == "avatarMask.write") return DoAvatarMaskWrite(ctx, payload, dryRun);
+
+    // シーンの入出力とビルド要求は「シーンの中身の変更」ではないため UndoStack へ載せない。
+    // (Undo でシーンが閉じたり保存が巻き戻ったりする方が事故になる)
+    if (type == "scene.open") return DoSceneOpen(ctx, payload, dryRun);
+    if (type == "scene.save") return DoSceneSave(ctx, payload, dryRun);
+    if (type == "build.run")  return DoBuildRun(ctx, payload, dryRun);
 
     if (type == "animation.control") return DoAnimationControl(ctx, payload, dryRun);
 
@@ -7553,7 +10000,8 @@ Outcome DoCommand(editor::EditorContext& ctx, const std::string& type, const Jso
     // 汎用 mutating Command。
     Outcome err;
     auto createdSink = (type == "node.create" || type == "node.duplicate" ||
-                        type == "prefab.instantiate" || type == "prefab.create")
+                        type == "prefab.instantiate" || type == "prefab.create" ||
+                        type == "preset.create")
         ? std::make_shared<std::string>()
         : nullptr;
     JsonValue detail = JsonValue::MakeObject();
@@ -7718,6 +10166,16 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             outcome = DoBehaviorTreeLint(m_context, payload);
         } else if (type == "bt.guide") {
             outcome = DoBehaviorTreeGuide();
+        } else if (type == "bt.schema") {
+            outcome = DoBehaviorTreeSchema(payload);
+        } else if (type == "bt.nodeField") {
+            outcome = DoBehaviorTreeNodeField(m_context, payload);
+        } else if (type == "bt.runtime") {
+            outcome = DoBehaviorTreeRuntime(m_context, payload);
+        } else if (type == "bt.diff") {
+            outcome = DoBehaviorTreeDiff(m_context, payload);
+        } else if (type == "bt.templateCatalog") {
+            outcome = DoBehaviorTreeTemplateCatalog(m_context);
         } else if (type == "vfx.guide") {
             outcome = DoVFXGuide();
         } else if (type == "vfx.templateCatalog") {
@@ -7783,6 +10241,30 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             outcome = DoPhysicsOverlapSphere(m_context, payload);
         } else if (type == "physics.events") {
             outcome = DoPhysicsEvents(m_context);
+        } else if (type == "scene.list") {
+            outcome = DoSceneList(m_context);
+        } else if (type == "preset.catalog") {
+            outcome = DoPresetCatalog(payload);
+        } else if (type == "terrain.inspect") {
+            outcome = DoTerrainInspect(m_context, payload);
+        } else if (type == "terrain.sample") {
+            outcome = DoTerrainSample(m_context, payload);
+        } else if (type == "foliage.inspect") {
+            outcome = DoFoliageInspect(m_context, payload);
+        } else if (type == "navmesh.state") {
+            outcome = DoNavMeshState(m_context, payload);
+        } else if (type == "navmesh.path") {
+            outcome = DoNavMeshPath(m_context, payload);
+        } else if (type == "navmesh.sample") {
+            outcome = DoNavMeshSample(m_context, payload);
+        } else if (type == "environment.inspect") {
+            outcome = DoEnvironmentInspect(m_context);
+        } else if (type == "audio.inspect") {
+            outcome = DoAudioInspect(m_context, payload);
+        } else if (type == "ui.inspect") {
+            outcome = DoUIInspect(m_context, payload);
+        } else if (type == "build.status") {
+            outcome = DoBuildStatus(m_context, payload);
         } else if (type == "viewport.capture") {
             std::string view = StringField(payload, "view");
             if (view.empty()) view = "scene";
