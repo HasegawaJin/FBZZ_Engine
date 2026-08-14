@@ -3,8 +3,8 @@
 // STAMP モードの FoliageSpecies 1スタンプにつき子 GO 階層を1つ生成・管理する。
 // 生成される GO 構造:
 //   TerrainGO
-//     __<SpeciesName>_<idx>  ← stamp ルート: BoxColliderComponent (OBB)
-// 子 GO は "__" プレフィクスにより SceneSerializer から除外される（非永続化）。
+//     Foliage_<SpeciesName>_<idx>  ← stamp ルート: BoxColliderComponent (OBB)
+// runtimeGenerated=true により SceneSerializer から除外される（非永続化）。
 // WHY: SCATTER は GPU instancing で数千インスタンスを扱うため GO 化しない。
 //      STAMP は個別配置で数が限られるため GO 化してヒエラルキー・物理を統合する。
 //      レンダリングは引き続き FoliageRenderSystem (GPU instancing) が担う。
@@ -177,8 +177,9 @@ void FoliageBakeSystem::Update(SystemContext& ctx)
 
                 // ── stamp ルート GO ──────────────────────────────────────────
                 const std::string rootName =
-                    "__" + speciesName + "_" + std::to_string(stampIdx);
+                    "Foliage_" + speciesName + "_" + std::to_string(stampIdx);
                 auto& root = scene.CreateGameObject(rootName);
+                root.runtimeGenerated = true;
 
                 // 親子関係: TerrainGO の子にする
                 root.SetParent(*go);

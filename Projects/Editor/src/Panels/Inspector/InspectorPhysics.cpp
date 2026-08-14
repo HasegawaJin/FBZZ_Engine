@@ -21,14 +21,7 @@ void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go)
 {
     DrawColliderCommon(col);
     widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
-    auto* box = col.collider && col.collider->GetType() == physics::ColliderType::AABB
-        ? static_cast<physics::AABBCollider*>(col.collider.get())
-        : nullptr;
-    if (!box) {
-        col.collider = std::make_unique<physics::AABBCollider>(col.size * 0.5f);
-        box = static_cast<physics::AABBCollider*>(col.collider.get());
-    }
-    box->m_halfExtents = col.size * 0.5f;
+    // 形状パラメータの反映と姿勢同期は SyncColliderPreview (= ColliderSync) が行う。
     SyncColliderPreview(go, col);
 }
 
@@ -36,14 +29,6 @@ void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go)
 {
     DrawColliderCommon(col);
     widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
-    auto* box = col.collider && col.collider->GetType() == physics::ColliderType::OBB
-        ? static_cast<physics::OBBCollider*>(col.collider.get())
-        : nullptr;
-    if (!box) {
-        col.collider = std::make_unique<physics::OBBCollider>(col.size * 0.5f);
-        box = static_cast<physics::OBBCollider*>(col.collider.get());
-    }
-    box->m_halfExtents = col.size * 0.5f;
     SyncColliderPreview(go, col);
 }
 
@@ -51,14 +36,6 @@ void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& 
 {
     DrawColliderCommon(col);
     ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
-    auto* sphere = col.collider && col.collider->GetType() == physics::ColliderType::SPHERE
-        ? static_cast<physics::SphereCollider*>(col.collider.get())
-        : nullptr;
-    if (!sphere) {
-        col.collider = std::make_unique<physics::SphereCollider>(col.radius);
-        sphere = static_cast<physics::SphereCollider*>(col.collider.get());
-    }
-    sphere->m_radius = col.radius;
     SyncColliderPreview(go, col);
 }
 
@@ -67,15 +44,6 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
     DrawColliderCommon(col);
     ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
     ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
-    auto* capsule = col.collider && col.collider->GetType() == physics::ColliderType::CAPSULE
-        ? static_cast<physics::CapsuleCollider*>(col.collider.get())
-        : nullptr;
-    if (!capsule) {
-        col.collider = std::make_unique<physics::CapsuleCollider>(col.radius, col.halfHeight);
-        capsule = static_cast<physics::CapsuleCollider*>(col.collider.get());
-    }
-    capsule->m_radius = col.radius;
-    capsule->m_halfHeight = col.halfHeight;
     SyncColliderPreview(go, col);
 }
 

@@ -24,8 +24,15 @@ class DebugDraw {
 public:
     // フレーム先頭で呼ぶ。リソースを遅延初期化し、カメラ VP 行列を設定する
     static void BeginFrame(IRenderer& r, ResourceManager& resources, const math::Matrix4& viewProjection);
-    // フレーム末尾で呼ぶ。蓄積した頂点を一括 Submit し、バッチをクリアする
+    // フレーム末尾で呼ぶ。蓄積した頂点を一括 Submit し、バッチをクリアする。
+    // Submit は即時実行のため、1 フレーム内で複数回呼んでも安全 (溢れそうな時の中間 Flush 用)。
     static void Flush();
+
+    // 深度なし線分バッチの現在の頂点数と上限。
+    // WHY: バッチが満杯になると以降の Line() は黙って捨てられる。大量のラインを出すパス
+    //      (コライダー可視化・NavMesh 等) が「溢れる前に Flush する」判断をするために公開する。
+    [[nodiscard]] static size_t PendingLineVertices();
+    [[nodiscard]] static size_t MaxBatchVertices();
 
     static void Line(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                      const math::Vector4& color = {1,1,1,1});

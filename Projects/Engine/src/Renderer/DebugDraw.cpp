@@ -222,6 +222,10 @@ void DebugDraw::Flush()
     }
 }
 
+size_t DebugDraw::PendingLineVertices() { return s_batch.size(); }
+
+size_t DebugDraw::MaxBatchVertices() { return MAX_DEBUG_VERTICES; }
+
 void DebugDraw::Line(IRenderer& /*r*/,
                      const math::Vector3& from, const math::Vector3& to,
                      const math::Vector4& color)
