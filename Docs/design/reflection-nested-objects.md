@@ -350,13 +350,19 @@ struct PostProcessVolumeComponent {
 まるごと代入しているだけで、`blendWeight` / `influenceRadius` は死んでいる。
 
 ```
-result = ProjectSettings.postProcess              // ベース
-volumes = enabled なボリュームを priority 昇順にソート
+result = VolumeSettings{}                         // ベース = 既定値
+volumes = enabled かつプロファイル解決済みのボリュームを priority 昇順にソート
 for v in volumes:
     w = v.blendWeight * (v.isGlobal ? 1 : DistanceWeight(cameraPos, v))
     if w <= 0: continue
     result = Lerp(result, Resolve(v), w)
 ```
+
+> **更新**: ベースは当初 `ProjectSettings.postProcess` だったが、後に
+> ProjectSettings からポストプロセス / 高度グラフィクスの公開を完全に撤去し、
+> `VolumeSettings` の既定値をベースにした。「ボリュームを 1 つも置いていない
+> シーンは素の絵になる」という規則の方が説明しやすく、同じプロファイルを
+> 別プロジェクトへ持ち込んでも絵が変わらない。
 
 `DistanceWeight` は `influenceRadius - blendDistance` の内側で 1、
 `influenceRadius` で 0 になるよう線形に落とす。

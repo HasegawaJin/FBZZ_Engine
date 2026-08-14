@@ -63,7 +63,7 @@ Assets/Models/MiniBot/
   → スキニング結果は完全に不変
 - `AnimSubExporter` は `axisFixNodes` の回転キーを R⁻¹ で潰し、
   `axisPushNodes` (押し下げ先) のキーへ R を左掛けして整合させる
-- 静的メッシュ経路が使う `axisFixRotation` は identity のまま。頂点は Y-up で正しい
+- 静的メッシュ経路は `axisFixScale` と `bindBakeRotation` だけで頂点を Y-up 化する
 
 **この修正には全 FBX の再インポートが必要**（`.skel` / `.anim` の中身が変わるため）。
 
@@ -90,8 +90,7 @@ RootNode 直下ノードの `-90°X` だけが担っている。
 `gravity = (0,-9.81,0)` / `worldUp = (0,1,0)` の Y-up ランタイムでは全アセットが
 90° 倒れて表示されていた。現在は `F = Scale(1/s)` のみで、回転は保持する。
 
-`ctx.axisFixRotation` は互換のためフィールドを残しているが常に identity で、
-`AnimSubExporter` / `ModelSubExporter` 側の合成は自動的に無回転になる。
+回転補正用の状態は保持せず、`axisFixScale` と `bindBakeRotation` に責務を限定する。
 
 検証値 (MiniBot.fbx): 頂点 BBox extent が `(2.206, 0.670, 2.519)` → `(2.206, 2.519, 0.670)`
 となり最長軸が Z から Y へ移る。`unitScale` は `0.01 × 100 = 1.0` でサイズは不変。

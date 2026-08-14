@@ -105,17 +105,25 @@ Claude Desktop を再起動すると `fbzz-editor` ツール群が現れる。
 ## MCP ツール一覧
 
 - **Query (read+)**: `editor_catalog` / `editor_catalog_search` / `editor_get_state` / `editor_get_undo_history` / `console_get_logs` /
+  `scene_list` / `preset_catalog` / `terrain_inspect` / `terrain_sample` / `foliage_inspect` /
+  `navmesh_get_state` / `navmesh_find_path` / `navmesh_sample` /
+  `environment_inspect` / `audio_inspect` / `ui_inspect` / `build_get_status` /
   `scene_find` / `scene_get_tree` / `scene_snapshot` / `scene_diff` / `scene_validate` / `scene_get_selection` /
   `node_get_components` / `asset_list` / `asset_inspect` / `asset_find_unused` / `asset_thumbnail` / `vfx_inspect_graph` /
   `vfx_node_get_field` / `vfx_runtime_state` / `vfx_analyze_texture` / `vfx_analyze_material` / `vfx_survey_assets` /
   `vfx_preview_ensure` / `vfx_preview` / `vfx_preview_sequence` / `vfx_preview_metrics` / `vfx_preview_curve` /
   `vfx_preview_compare` / `vfx_preview_sweep` /
+  `bt_inspect_tree` / `bt_lint` / `bt_guide` / `bt_schema` / `bt_node_get_field` /
+  `bt_runtime_state` / `bt_diff` / `bt_template_catalog` /
   `shader_inspect` /
   `material_inspect` / `animation_get_state` / `animation_get_graph` / `animation_get_blend_tree` /
   `animation_get_pose` / `profiler_get_snapshot` / `physics_raycast` /
   `physics_overlap_sphere` / `physics_get_events` / `editor_wait` / `viewport_capture` /
   `viewport_capture_semantic` / `editor_perceive`
-- **Command (dry-run/write)**: `node_create` / `node_duplicate` / `node_delete` / `node_reparent` / `node_rename` /
+- **Command (dry-run/write)**: `preset_create` / `scene_open` / `scene_save` /
+  `terrain_sculpt` / `terrain_paint` / `terrain_set_layer_material` /
+  `foliage_scatter` / `foliage_clear` / `navmesh_bake` / `audio_control` / `build_run` /
+  `node_create` / `node_duplicate` / `node_delete` / `node_reparent` / `node_rename` /
   `node_set_active` / `node_set_tag` / `node_set_layer` /
   `selection_set` / `transform_set` / `component_add` / `component_set` / `component_remove` /
   `asset_import` / `prefab_instantiate` / `material_assign` / `material_set_parameter` / `material_set_shader` /
@@ -126,6 +134,9 @@ Claude Desktop を再起動すると `fbzz-editor` ツール群が現れる。
   `vfx_graph_set` / `vfx_node_duplicate` / `vfx_node_set_metadata` / `vfx_node_set_parent` /
   `vfx_link_update` / `vfx_param_remove` / `vfx_param_unbind` /
   `vfx_variant_remove` / `vfx_group_add` / `vfx_group_update` / `vfx_group_remove` /
+  `bt_node_add` / `bt_node_remove` / `bt_node_duplicate` / `bt_node_set_parent` /
+  `bt_node_set_order` / `bt_node_set_field` / `bt_blackboard_add` / `bt_blackboard_remove` /
+  `bt_auto_layout` / `bt_repair` / `bt_template_apply` /
   `input_inject` / `play_control` / `playtest_run` / `viewport_camera_set` /
   `editor_undo` / `editor_redo` / `run_transaction` / `run_transaction_and_observe`
 
@@ -186,6 +197,34 @@ Scene 状態と viewport の見た目の両方で完了条件を確認する運�
 - `playtest_run`: 呼び出し時点のログカーソルを記録し、Play開始/再開、相対時刻付き入力列、settle待機、今回のログ・FPS/frameMs・物理イベント・意味付きviewportを一括収集する。既定ではGame Viewを検証し、`view=scene`にも切り替えられる。error/warning、性能閾値、必須NodeId可視性、期待ログを判定し、途中失敗でも注入入力をclearして呼び出し前のPlay状態へ復元する。dry-runでは待機せず全Commandの入力検証だけを行う。
 - `run_transaction_and_observe`: 実行前後のScene diffに加え、lint、Editor状態、warning以上のログ、意味付きviewportを返して自己検証する。
 
+### ワールドオーサリング (Scene 入出力 / Terrain / Foliage / NavMesh / Environment / Audio / UI / Build)
+
+- **この面が無いと何が欠けるか**: ここまでのツールが扱えるのは「シーンに置いた GameObject とそのコンポーネント値」だけだった。しかし屋外シーンの実体は、オブジェクトの並びではなく**地形の高さ・スプラット・植生の分布・NavMesh・空と光の設定**でできている。それらは Inspector のスカラーではなくブラシとベイクでしか変えられないため、`component_set` しか持たない AI からは読むことすらできない領域として残っていた。加えて AI が触れるのは常に「今開いているシーン 1 枚」で、プロジェクト内の他のシーンへ移る手段が無かった。
+- `preset_catalog` / `preset_create`: Hierarchy の **Add Object メニューと同じ登録表** (`Editor/Util/ObjectPresets.hpp`) から GameObject を生成する。以前この表は `SceneHierarchyPanel.cpp` の ImGui メニュー本体に直接書かれていたため、AI からは 1 個も作れず、`node_create` + `component_add` を自力で組み立てるしかなかった。組み立て方は毎回変わるので、**人がメニューから置いた Cube と AI が置いた Cube で中身の違うオブジェクトがシーンに混ざる**（`meshPath` の綴り、Lit マテリアルの有無、Collider の種類と実寸フィット）。表を共有すれば結果が一致し、プリセットを 1 行足せばメニューと AI の両方へ同時に現れる（片方だけに存在するプリセットを作れない）。プリセットは Empty / 3D Object / Rendering / Light / Camera / Environment / Terrain / Navigation / Effects / Decal / Physics / Audio / Spline / UI の各カテゴリを持ち、`env.skySystem` (Sky+Sun/Moon+大気散乱+IBL) や `nav.aiAgent` (Agent+Sensor+Patrol+BehaviorTree) のように「揃っていないと成立しない組み合わせ」は 1 プリセットにまとめてある。
+- `scene_list` / `scene_open` / `scene_save`: プロジェクト内の `.scene` を列挙し、切り替え・保存する。`scene_open` は**未保存変更があると既定で拒否**し、`discardUnsaved=true` のときだけ捨てて開く。Editor 本来の導線は確認モーダルだが、AI 要求の途中でモーダルを開くと人がクリックするまでバスの drain (メインスレッド) が止まり、以降の要求も返らない。「捨てるかどうか」を引数として先に受け取り、モーダルを介さない実体 (`EditorContext::openScenePathImmediate`) だけを呼ぶ。開くと Undo スタックは破棄される (別シーンの EntityID を持つ Undo は復元できない)。Play 中と Prefab 編集モード中は拒否する。
+- `terrain_sculpt` / `terrain_paint`: **人が使う Terrain Tool と同一のブラシカーネル** (`Editor/src/Tools/TerrainBrush.hpp`) を叩く。別実装にすると、同じ radius / strength でも「人が塗った結果」と「AI が塗った結果」が食い違う。特に Paint の splat 正規化 (4ch 整数和を常に 255 に保つ端数配分) は書き直せば必ずズレる種類のコードで、ズレは「AI が塗ったところだけ縁が出る」という形でしか現れず原因に辿り着けない。`iterations` は「マウスを押し続けた回数」に相当する — `smooth` / `flatten` は 1 回では収束しないため、これが無いと AI は同じ要求を何十回も投げ、そのぶん Undo 履歴が汚れる。`flatten` の `targetHeight` 省略時はブラシ中心の現在高さが基準になり、対話ツールの「最初にクリックした高さ」と同じ意味論になる。境界をまたぐ Paint は Terrain ごとに `layerMaterials` から層を解決するので、隣の Terrain へ別マテリアルを塗らない。
+- `terrain_inspect` / `terrain_sample`: `terrain_inspect` は生の `heightData` (65x65 なら 4225 個) を返さず統計だけを返す。生データは 1 応答で context を食い潰すうえ、判断に使うのは「どれくらい起伏があるか」「どのレイヤーが支配的か」でしかない。特定地点の実値は `terrain_sample` で点を指定して読む。彫る前後で同じ点を測れば、狙った量だけ動いたかを画像ではなく数値で確認できる。`slopeDegrees` は Foliage を置けるか / NavMesh が歩行可能と判定するかに直結する。
+- `foliage_scatter` / `foliage_clear` / `foliage_inspect`: 円内へ植生を散布し、地形高さへ吸着させ、斜度超過の場所を避ける。`seed` を受けるのは、同じ要求から必ず同じ配置が出るようにするため — 乱数を隠すと「もう一度」で違う絵になり、AI が結果を比較できない。1 本も置けなかったときは斜度超過と範囲外の**内訳**をエラーに含める。理由が無いと AI は「count を増やす」以外の直し方を選べない。`foliage_inspect` の `bakedInstances` が `stampCount` と食い違うときは未 Bake か Terrain 外へ置いた印。
+- `navmesh_find_path`: **NavMeshAgent が実行時に使うのと同一の A* + Funnel** (`Engine/Scene/Systems/NavMeshQuery.hpp`) で経路を引く。「敵がここへ来ない」の原因は BT の条件・Agent の設定・NavMesh の穴の 3 通りあり、`bt_runtime_state` が 1 つ目、`navmesh_get_state` が 2 つ目を切り分けるが、3 つ目は**経路を引いてみるまで分からない**。Play して眺めても「行かない」ことしか観測できず、行けないのか行こうとしないのかを区別できない。別実装で引き直してはならない — A* のコスト・areaMask の解釈・Funnel の左右判定が少しでも違うと「クエリでは通れるのに Agent は通らない」という最も追いにくい食い違いになる。`found=false` の `reason` は `START_OR_GOAL_OFF_NAVMESH` か `NO_PATH` で、後者が areaMask による遮断かどうかは `areaMask=-1` で引き直せば切り分けられる。
+- `navmesh_get_state` / `navmesh_sample` / `navmesh_bake`: Surface のベイク設定・状態・歩行可能範囲と Agent の実行状態を並べて返す (agentTypeId の食い違いは両方を並べて初めて見える)。`terrain_sculpt` の後は必ず `navmesh_bake` する — 古い NavMesh のまま経路を引くと「壁を通り抜ける経路」が返り、その経路は実行時にも使われる。ベイクはバックグラウンドスレッドなので即座に完了しない (`bakeState=done` を確認する)。
+- `environment_inspect`: 空・太陽/月・大気散乱・環境光・雲・ポストプロセスと全ライトを 1 回で返す。「なぜこの画がこの明るさなのか」を調べる入口で、絵からは「暗い」までしか言えず原因が太陽の角度か露出か霧かは区別できない。対象を型名で列挙せず **`ComponentRegistry` の `Environment` カテゴリ全体**から引くので、環境コンポーネントを足した人が「AI からだけ見えない」状態を作らない。
+- `audio_inspect` / `audio_control`: `runtime.playing` は保存対象ではないため `node_get_components` には出ない。鳴っているかはここでしか確認できない。AudioListener が 0 件なら 3D 音の距離減衰は効かず、これが「音が聞こえない」の最頻出原因なので `warning` で明示する。
+- `ui_inspect`: UI の位置は Transform ではなく矩形で決まるため、`scene_get_tree` の階層だけでは画面のどこに出るかが一切分からない。`gameViewport` のサイズも返すので `viewport_capture(view="game")` の絵と座標を突き合わせられる。
+- `build_get_status` / `build_run`: `shader_get_compile_diagnostics` の Script 版。スクリプトが通っていないと Play も `component_add` も無意味な結果になるが、AI からはその失敗が `console_get_logs` の断片としてしか見えず、どのファイルの何行目で落ちたのかを組み立て直す必要があった。`build_run` は同期完了を返さない — MSBuild は数十秒かかり、ここで待つとバスの drain (メインスレッド) ごと止まって以降の要求も返らなくなる。
+
+### Behavior Tree
+
+- **BTの壊れ方の特徴**: 木としては正しく、保存もValidateも通り、それでも意図どおり動かない、という壊れ方をする。VFXが「見た目が破綻する」形で現れるのに対し、BTは**画面に何も異常が出ない**（敵が動いてはいる）。そのため観察による反復では収束せず、規約(`bt_guide`)→検査(`bt_lint`)→実行状態(`bt_runtime_state`)の3点で挟む必要がある。
+- `bt_schema`: ノード種別ごとに「そのランタイムが**実際に読む**フィールド」を返す。`bt_node_set_field`の対。以前は`field`を文字列で受けるのに一覧を知る手段が無く、実在するがその種別では読まれないフィールド（`Wait`へ`range`、`HasTarget`へ`duration`）が受理され保存まで通っていた。効かない設定は「設定したのに行動が変わらない」としか見えず、書いた側は最後まで誤りに気づけない（`UNKNOWN_SHADER_PARAM`と同じ壊れ方）。今は同じ表で書き込み時にも弾き、非該当は`BT_FIELD_NOT_APPLICABLE`を返す。`appliesTo`はInspectorの見た目ではなくランタイムの実装に合わせてあり、食い違っていた`LookAt`の`range`／`IsTargetInRange`の`turnSpeedDeg`はInspector側から取り除いて人とAIが同じ目録を見るようにした。
+- `bt_node_get_field`: ノードの現在値の読み出し。`value`は`bt_node_set_field`の`value`と同じ表現なので、読んで一部だけ変えて書き戻せる。`bt_inspect_tree`は要約なので全フィールドを返さず、`duration`や`keyName`に**今何が入っているか**を確かめる手段が無かった。`field`省略時はその種別が読むフィールドだけを返す（全29フィールドを返すと大半が既定値のまま意味を持たない行になる）。
+- `bt_lint`の`severity` / `fix` / `autoFixable`: 各issueに「どのツールをどう呼べば直るか」を機械可読で添える。codeはEngineの`CollectBehaviorTreeWarnings`が唯一の正本で、Editorの警告bannerとAIがまったく同じ集合を見る。検査項目には`no-lower-priority-abort`（Selectorの高優先枝を守る条件に`lowerPriority`中断が無い）と`unreachable-sibling`（無限Repeat/AlwaysRunning/Succeederが後続の兄弟を永久に塞ぐ）を追加した。前者は`bt_guide`が最重要と宣言している規約なのに、これまで**何も検査していなかった**項目で、「巡回中に敵を見つけても着くまで反応しない」という形でしか現れない。応答の`compileWarnings`は保存もValidateも通るが実行時に効かない層（解決できなかったBlackboardキー等）で、静的検査だけでは見えない。
+- `bt_repair`: `autoFixable=true`のcodeを機械的に直す。`no-lower-priority-abort` / `zero-cooldown` / `zero-duration-wait` / `zero-weights` / `unresolved-key`。修復対象は`bt_lint`が指した`nodeId`をそのまま使う（同じ判定を書き直すと、指摘箇所と修復箇所がずれていく）。`unreachable-sibling`は`autoFixable=false` — 「塞いでいる子を後ろへ回す」のか「後続の枝を消す」のかは意図次第で機械的に決められないため。応答の`detail`に直した項目と、直せずに残ったissueが載る。
+- `bt_runtime_state`: Play中の各ノードの最終status（DFS pre-order = 優先度順）とBlackboardの実値・最終書き込み時刻を返す。BTが意図どおり動かない原因は「条件が偽のまま」「割り込めていない」「そもそも到達していない」の3通りあり、木を読んでも`bt_lint`を掛けても区別できない。`viewport_capture`で敵の動きを見ても**なぜその行動を選んだかは映らない**。`status=notEvaluated`は「今回のtickで到達しなかった」= 上位の枝で決着した、を意味する。`written=false`のキーは一度も書かれていないので、条件が偽なのは木ではなく知覚側（`PerceptionSystem`／スクリプト）の問題だと即断できる。`path`/`id`省略時は実行中のBTを1体選び、候補は常に`agents`で返すので「他に居るのか」が判る。
+- `bt_diff`: 2つの`.behaviortree`の構造差分。ノードの追加・削除・フィールド変更に加え、`parentId`と`order`の変化（= 木の意味そのものの変化）とBlackboardキーの増減を出す。`editorX`/`editorY`は挙動に無関係なので含めない。元の木を残したまま別案を作って比較する使い方はこれが無いと成立しない。
+- `bt_template_catalog` / `bt_template_apply`: `Assets/AI/Templates`の骨格を列挙し、`.behaviortree`として書き出す。探索順は`VFXTemplateCatalog`と同じ「Project → 開発Engine → 実行ファイル同梱」で、片方だけ配布版で見つからない差を作らない。`bt_guide`の`recipes`は文章なのでそのまま実体にはならず、ゼロから`bt_node_add`を積むより取り込んで直すほうが`abortMode`やBlackboardキーまで欠落なく持ち込める。`path`は存在しなくてよく、既存を指した場合は上書きしてUndoで戻せる。
+- `bt_node_duplicate`: 部分木ごと複製する。id再割当と内部リンクの保持はEditorのDuplicate Subtreeと同じ共通実装（`ExtractSubgraph`）を通るので、AIが作った木を人が触っても形が変わらない。応答の`detail`に新旧idの対応表（`idMap`）が載るため、複製直後に中身を編集するのに`bt_inspect_tree`を読み直す必要がない。
+- BT編集のUndoラベルは操作ごとに分かれている（`AI: Add Behavior Tree Node` / `AI: Repair Behavior Tree` など）。全部が同じラベルだと`editor_get_undo_history`で自分の編集を識別できない。`bt_auto_layout`の間隔は`BehaviorTreePanel::AutoLayout`と同じ値を使う — 違うと「AIが整列した木をEditorで整列し直すと座標が動く」ことになり、差分に意味のない座標変更が毎回混ざる。
+
 ## 環境変数
 
 | 変数 | 既定 | 説明 |
@@ -197,6 +236,9 @@ Scene 状態と viewport の見た目の両方で完了条件を確認する運�
 ## 制約・注意 (現状)
 
 - **セキュリティ**: パイプは同一 Windows セッション限定。エンドポイント名は正規表現で固定。
+- `scene_open` / `scene_save` / `build_run` は Undo に載らない (Undo でシーンが閉じたり保存が巻き戻る方が事故になる)。
+- `navmesh_bake` の Undo はベイク要求の再実行になる。ベイク結果は Terrain/Collider から再生成されるキャッシュでシーンにも保存されないため、取り消す対象が存在しない。履歴に残すのは AI が自分の操作列を追えるようにするため。
+- Terrain / Foliage の Undo は「触れたコンポーネントの丸ごとスナップショット」で戻す (TerrainTool と同じ方式)。`heightData` / `splatData` は差分記述が複雑で、部分復元を書くと Resize やレイヤー入れ替えと組み合わせたときに壊れる。
 - `component_set` は反射 (`FBZZ_FIELD` 等) されたスカラー・ベクトル・文字列フィールドが対象。
   EntityID/参照型フィールドはシーン解決を要するため対象外（構造変更は `node_reparent` 等の専用 Command で行う）。
 - `node_delete` の Undo は単一ノードのスナップショット復元。子階層を持つノードの完全復元は未対応。

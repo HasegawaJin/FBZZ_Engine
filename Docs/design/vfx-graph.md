@@ -720,7 +720,7 @@ AAA 品質の頭打ちになっていたのは「AI が素材の中身を知ら�
 `ParticlePass` は **`.mat` の `blend_mode` で `emitter.blendMode` を上書きする**
 （`materialPath` を描画設定の単一の信頼元にするため）。つまり `.mat` を割り当てた時点で
 Inspector や AI が設定した `blendMode` は実行時に使われない。しかも `.mat` が指す
-テクスチャは `emitter.texturePath` とは別物なので、テクスチャ単体の推奨は
+テクスチャは `.mat` の albedo スロットで一元管理するため、テクスチャ単体の推奨は
 実際の描画と噛み合わない。
 
 `AnalyzeMaterial` は `.mat` を読み、albedo テクスチャも解析して突き合わせる。

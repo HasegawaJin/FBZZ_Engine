@@ -291,7 +291,7 @@ public:
     FBZZ_BT_ACTION(Attack)
     BTStatus Attack(float dt) {
         if (m_attackTimer > 0.0f) { m_attackTimer -= dt; return BTStatus::Running; }
-        SetAnimatorTrigger("Attack");
+        GetComponent<fbzz::scene::AnimatorComponent>()->SetTrigger("Attack");
         m_attackTimer = 0.8f;
         return BTStatus::Success;
     }
@@ -386,11 +386,18 @@ VFX と同じ「アセットを読む → 規約を読む → 編集する → �
 | 種別 | 面 | 役割 |
 |---|---|---|
 | query | `bt.tree` | 木構造・Blackboard・検証結果。ノードは `parentId` / `order` 順に並べて返す |
-| query | `bt.lint` | 保存は通るが意図どおり動かない構成 |
-| query | `bt.guide` | オーサリング規約・骨格 (Guard / Chaser / Turret)・全ノード種別の子数上限と `canAbort` |
-| command | `bt.node.add` / `remove` / `setParent` / `setOrder` / `setField` | ノード編集 |
+| query | `bt.lint` | 保存は通るが意図どおり動かない構成。`severity` / `fix` / `autoFixable` 付き |
+| query | `bt.guide` | オーサリング規約 (検査できるものは `lintCode` 付き)・骨格・子数上限と `canAbort`・呼ぶ順 (`workflow`) |
+| query | `bt.schema` | 種別ごとに「ランタイムが実際に読むフィールド」。`bt.node.setField` の対 |
+| query | `bt.nodeField` | ノードの現在値。`setField` と同じ表現なので読んで一部だけ変えて書き戻せる |
+| query | `bt.runtime` | Play 中の各ノードの最終 status と Blackboard の実値・最終書き込み時刻 |
+| query | `bt.diff` | 2 つの木の構造差分 (`parentId` / `order` の変化とキーの増減を含む) |
+| query | `bt.templateCatalog` | `Assets/AI/Templates` の骨格一覧 |
+| command | `bt.node.add` / `remove` / `duplicate` / `setParent` / `setOrder` / `setField` | ノード編集 |
 | command | `bt.blackboard.add` / `remove` | キー編集 |
-| command | `bt.autoLayout` | 深さを列にして並べ直す |
+| command | `bt.autoLayout` | 深さを列にして並べ直す (間隔は `BehaviorTreePanel::AutoLayout` と同値) |
+| command | `bt.repair` | `autoFixable=true` の issue を機械的に直す |
+| command | `bt.template.apply` | 骨格を `.behaviortree` として書き出す (新規作成可・Undo 可) |
 
 設計上の要点:
 
@@ -405,6 +412,19 @@ VFX と同じ「アセットを読む → 規約を読む → 編集する → �
   という食い違いを作らない。
 - 保存前に必ず `ValidateBehaviorTreeAsset` を通す。壊れた木を書き出すと、
   次に開いたときに「AI が壊した」のか「元から壊れていた」のか区別できなくなる。
+- **書ける集合を目録として公開する**。`bt.schema` の `appliesTo` は
+  「Inspector に出ているか」ではなく「ランタイムが実際に読むか」で決める。
+  名前が実在しても種別が読まないフィールドは保存も Validate も通り、
+  「設定したのに行動が変わらない」としか見えないので、`BT_FIELD_NOT_APPLICABLE` で拒否する。
+  食い違っていた `LookAt` の `range` / `IsTargetInRange` の `turnSpeedDeg` は
+  Inspector 側から取り除き、人と AI が同じ目録を見るようにした。
+- **lint の code は Engine が唯一の正本**。`CollectBehaviorTreeWarnings` の code を
+  Editor の警告 banner と `bt.lint` の両方が使う。別実装にすると必ずドリフトする。
+  `bt.guide` の規約は、検査できるものに `lintCode` を添えて実装と対応付ける。
+- **静的検査だけでは足りない**。BT は「木としては正しいが意図どおり動かない」壊れ方をし、
+  しかも画面に異常が出ない (敵は動いている)。原因は「条件が偽」「割り込めていない」
+  「到達していない」の 3 通りで、木からも画像からも区別できないため、
+  `bt.runtime` で各ノードの最終 status と Blackboard の実値を返して初めて 1 回で決まる。
 
 ---
 
@@ -496,6 +516,8 @@ BT アセットを用意させるのは過剰。両方の道を残すのが正�
 - [ ] `FBZZ_BT_ACTION` / `FBZZ_BT_CONDITION` + `ScriptCodeGen` 対応
 - [x] `BehaviorTreePanel` (共通 GraphCanvas) + 実行ハイライト + Blackboard サイドバー
 - [x] AI 連携 `bt.tree` / `bt.lint` / `bt.guide` / `bt.node.*` / `bt.blackboard.*` / `bt.autoLayout`
+- [x] AI 連携の強化 `bt.schema` / `bt.nodeField` / `bt.runtime` / `bt.diff` /
+      `bt.templateCatalog` / `bt.template.apply` / `bt.repair` / `bt.node.duplicate`
 - [ ] `DebugDraw` による視野・聴覚・経路の可視化
 - [ ] `Projects/Tests/AI/main.cpp`
 - [ ] Visual Studio 2022 全体ビルド
