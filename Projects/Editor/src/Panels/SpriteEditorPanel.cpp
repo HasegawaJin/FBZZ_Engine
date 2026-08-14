@@ -151,8 +151,6 @@ bool SpriteEditorPanel::LoadWorkingCopy()
     m_dragMode = DragMode::None;
     m_slicePopupOpen = false;
     m_undoPending = false;
-    m_nameEditSpriteId.clear();
-    m_nameEditOriginal.clear();
     const auto pendingUndo = m_pendingUndoSettings.find(m_metaPath);
     if (pendingUndo != m_pendingUndoSettings.end()) {
         m_working.settings = std::move(pendingUndo->second);
@@ -170,8 +168,6 @@ bool SpriteEditorPanel::LoadWorkingCopy()
 // 検証済み作業コピーだけをmetaへ保存する。
 bool SpriteEditorPanel::Apply(EditorContext& ctx)
 {
-    m_nameEditSpriteId.clear();
-    m_nameEditOriginal.clear();
     asset::TextureAsset persisted = m_working;
     if (persisted.settings.spriteMode == asset::SpriteMode::Single
         && persisted.settings.sprites.size() == 1) {
@@ -222,8 +218,6 @@ void SpriteEditorPanel::PushUndoSnapshot(
             m_working.settings = settings;
             m_selected = std::min(
                 m_selected, static_cast<int>(m_working.settings.sprites.size()) - 1);
-            m_nameEditSpriteId.clear();
-            m_nameEditOriginal.clear();
             m_dirty = true;
             m_status = "Modified by Undo/Redo.";
             return;
@@ -683,28 +677,12 @@ void SpriteEditorPanel::DrawSpriteRectInspector(
 
     char name[256];
     std::snprintf(name, sizeof(name), "%s", sprite.name.c_str());
-    const std::string nameBeforeEdit = sprite.name;
     ImGui::SetNextItemWidth(-1.0f);
     const bool spriteNameChanged = ImGui::InputText("##Name", name, sizeof(name));
     if (spriteNameChanged) {
         sprite.name = name;
         m_undoDescription = "Rename Sprite";
         m_dirty = true;
-    }
-    if (ImGui::IsItemActivated()) {
-        m_nameEditSpriteId = sprite.id;
-        m_nameEditOriginal = nameBeforeEdit;
-    }
-    if (spriteNameChanged && m_nameEditSpriteId == sprite.id
-        && !m_nameEditOriginal.empty()
-        && std::find(
-            sprite.legacyNames.begin(), sprite.legacyNames.end(),
-            m_nameEditOriginal) == sprite.legacyNames.end()) {
-        sprite.legacyNames.push_back(m_nameEditOriginal);
-    }
-    if (ImGui::IsItemDeactivated()) {
-        m_nameEditSpriteId.clear();
-        m_nameEditOriginal.clear();
     }
 
     int position[2] = { static_cast<int>(sprite.x), static_cast<int>(sprite.y) };

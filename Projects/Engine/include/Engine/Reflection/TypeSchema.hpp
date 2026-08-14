@@ -104,7 +104,6 @@ PropertyDesc MakeProperty(std::string_view key, PropertyType type, std::string_v
 // WHY: MakeProperty で enum 型のまま std::any へ入れると、AI (JSON 数値) や汎用 Inspector が
 //      渡す int と any_cast の型が一致せず set が必ず失敗する。境界では常に int で受け渡し、
 //      有効域 [0, MaximumValue] へ clamp してから enum へ戻すことで不正値の混入も同時に防ぐ。
-//      互換のため enum 型そのものを渡す既存の呼び出しも受け付ける。
 //      clamp 上限をテンプレート引数に置くのは、set がキャプチャを持てない生の関数ポインタで、
 //      通常の引数だと関数ポインタ内から参照できず clamp が黙って無効化されるため。
 template<typename Owner, typename Enum, Enum Owner::*Member, int MaximumValue>
@@ -129,7 +128,6 @@ PropertyDesc MakeEnumProperty(std::string_view key, std::string_view display,
         if (owner == nullptr) return false;
         int raw = 0;
         if (const auto* asInt = std::any_cast<int>(&value)) raw = *asInt;
-        else if (const auto* asEnum = std::any_cast<Enum>(&value)) raw = static_cast<int>(*asEnum);
         else return false;
         if (raw < 0) raw = 0;
         if (raw > MaximumValue) raw = MaximumValue;

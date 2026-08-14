@@ -42,7 +42,7 @@ public:
     // 効果は 2 つ:
     //   1. SceneSerializer が保存しない (ロード時のゾンビ GO 蓄積を防ぐ)
     //   2. Hierarchy が既定で隠す (1 エフェクト置くたびに十数行増えるのを防ぐ)
-    // NOTE: 生成側が必ず立てる。既存の "__" 規約も互換のため残してある。
+    // NOTE: 生成側が必ず立てる。
     bool runtimeGenerated = false;
 
     // Unity: gameObject.transform (常に存在。ComponentArray には入れない)

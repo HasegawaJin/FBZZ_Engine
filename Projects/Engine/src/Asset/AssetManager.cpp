@@ -255,14 +255,6 @@ static std::string ResolveModelAssetPath(const std::string& key, const std::stri
     const std::string lib = LibraryBakedModelPathFromFbx(fbxFull, basePath);
     if (!lib.empty() && util::FileSystem::Exists(lib)) return lib;
 
-    // 旧パッケージ形式 Foo/Foo.fzasset からの移行中プロジェクトを読むための後方互換。
-    const fs::path fbxPath = util::FileSystem::PathFromUtf8(fbxFull);
-    const std::string stem = util::FileSystem::PathToUtf8(fbxPath.stem());
-    const std::string legacyLogical = util::FileSystem::PathToUtf8(
-        fbxPath.parent_path() / stem / (stem + ".fzasset"));
-    const std::string legacyResolved = AssetManager::ResolveAssetPath(legacyLogical);
-    if (util::FileSystem::Exists(legacyResolved)) return legacyResolved;
-
     return fbxFull;
 }
 

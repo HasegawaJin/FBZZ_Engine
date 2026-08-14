@@ -446,7 +446,10 @@ void VFXEditorSession::CreatePreviewEmitterFromAsset(EditorContext& ctx, const s
     if (EndsWithInsensitive(path, ".mat")) emitter.materialPath = path;
     else if (EndsWithInsensitive(path, ".mesh") || EndsWithInsensitive(path, ".fbx")
              || EndsWithInsensitive(path, ".obj")) emitter.meshShapePath = path;
-    else emitter.texturePath = path;
+    else {
+        // 描画テクスチャは ParticleEmitter へ直接保持せず、.mat の albedo スロットで指定する。
+        // テクスチャ単体のドロップはマテリアル作成後に割り当てる。
+    }
     ctx.selectedEntities = { gameObject.GetID() };
     preview.selectedEntity = gameObject.GetID();
 }

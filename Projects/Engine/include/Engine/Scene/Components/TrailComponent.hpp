@@ -75,10 +75,7 @@ struct TrailComponent {
 
     // .mat アセットへの参照。albedo テクスチャを .mat から解決する。
     // WHY: テクスチャを .mat に集約することで複数 Trail 間での共有と Editor ピッカーによるアセット管理を可能にする。
-    //      空文字のとき texturePath へフォールバックするため既存シーンデータは無変更で動く。
     std::string materialPath;
-    // texturePath — deprecated。materialPath が空のときのフォールバック。
-    std::string texturePath;
     TrailUVMode uvMode = TrailUVMode::Stretch;
     float uvScrollSpeed = 0.0f;
     float uvTiling      = 1.0f;
@@ -133,7 +130,6 @@ struct TrailComponent {
         r.Field("attachOffset", attachOffset);
         r.Field("clearOnDisable", clearOnDisable);
         r.Field("materialPath", materialPath);
-        r.Field("texturePath", texturePath);
         int uvModeValue = static_cast<int>(uvMode);
         r.Field("uvMode", uvModeValue);
         uvModeValue = uvModeValue < 0 ? 0 : (uvModeValue > 1 ? 1 : uvModeValue);

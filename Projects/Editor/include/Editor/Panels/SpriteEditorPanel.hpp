@@ -86,8 +86,6 @@ private:
     asset::TextureImportSettings m_undoBefore;
     bool m_undoPending = false;
     std::string m_undoDescription = "Edit Sprite";
-    std::string m_nameEditSpriteId;
-    std::string m_nameEditOriginal;
     std::unordered_map<std::string, asset::TextureImportSettings> m_pendingUndoSettings;
     uint32_t m_textureWidth = 0;
     uint32_t m_textureHeight = 0;

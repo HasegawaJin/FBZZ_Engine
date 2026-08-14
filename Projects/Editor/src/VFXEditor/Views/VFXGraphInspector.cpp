@@ -176,7 +176,7 @@ bool VFXGraphInspector::DrawTextureAnalysis(scene::ParticleEmitter& particle)
     // そちらを解析しないと、実際には描かれない画像について推奨を出すことになる。
     if (!particle.materialPath.empty()) return DrawMaterialAnalysis(particle);
 
-    const std::string& target = particle.texturePath;
+    const std::string& target = particle.materialPath;
     if (target.empty()) {
         m_analyzedTexturePath.clear();
         return false;
@@ -732,7 +732,6 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
         // Scene Inspectorと同じUnity風モジュールスタックを使い、Graph側でも全機能を編集する。
         ImGui::TextDisabled("Quick Asset Drop");
         changed |= AssetPathField("Material##VFXQuickParticle", node->particle.materialPath, kMaterialExts);
-        changed |= AssetPathField("Texture##VFXQuickParticle", node->particle.texturePath, kTextureExts);
         changed |= AssetPathField("Mesh Shape##VFXQuickParticle", node->particle.meshShapePath, kMeshExts);
         // 割り当てたテクスチャの解析。AI が読むのと同じ AnalyzeTexture を通すことで、
         // 「人が見る面」と「AI が読む面」が一致し続ける (別実装にすると必ずドリフトする)。
@@ -748,8 +747,8 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
                || node->type == asset::VFXNodeType::MeshTrail) {
         if (node->type == asset::VFXNodeType::MeshTrail)
             changed |= AssetPathField("Mesh", node->trail.meshPath, kMeshExts);
+        changed |= AssetPathField("Material", node->trail.materialPath, ".mat");
         changed |= AssetPathField("Material", node->trail.materialPath, kMaterialExts);
-        changed |= AssetPathField("Texture", node->trail.texturePath, kTextureExts);
         changed |= ImGui::ColorEdit4("Start Color", &node->trail.colorStart.x);
         changed |= ImGui::ColorEdit4("End Color", &node->trail.colorEnd.x);
         changed |= ImGui::DragFloat("Trail Lifetime", &node->trail.lifetime, 0.01f, 0.01f, 3600.0f);

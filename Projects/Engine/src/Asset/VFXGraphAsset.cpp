@@ -210,7 +210,6 @@ toml::table WriteNode(const VFXGraphNode& node)
     toml::table trail;
     trail.insert("meshPath", node.trail.meshPath);
     trail.insert("materialPath", node.trail.materialPath);
-    trail.insert("texturePath", node.trail.texturePath);
     trail.insert("colorStart", WriteVector4(node.trail.colorStart));
     trail.insert("colorEnd", WriteVector4(node.trail.colorEnd));
     trail.insert("lifetime", node.trail.lifetime);
@@ -351,7 +350,6 @@ VFXGraphNode ReadNode(const toml::table& table)
     if (const auto* value = table["trail"].as_table()) {
         node.trail.meshPath = (*value)["meshPath"].value_or(std::string{});
         node.trail.materialPath = (*value)["materialPath"].value_or(std::string{});
-        node.trail.texturePath = (*value)["texturePath"].value_or(std::string{});
         node.trail.colorStart = ReadVector4((*value)["colorStart"], node.trail.colorStart);
         node.trail.colorEnd = ReadVector4((*value)["colorEnd"], node.trail.colorEnd);
         node.trail.lifetime = static_cast<float>((*value)["lifetime"].value_or(1.0));
@@ -527,14 +525,12 @@ std::vector<std::string> CollectVFXGraphDependencies(const VFXGraphAsset& asset)
     };
 
     for (const auto& node : asset.nodes) {
-        add(node.particle.texturePath);
         add(node.particle.materialPath);
         add(node.particle.meshShapePath);
         add(node.particle.meshParticlePath);
         add(node.particle.motionVectorTexturePath);
         add(node.trail.meshPath);
         add(node.trail.materialPath);
-        add(node.trail.texturePath);
         add(node.audio.clipPath);
         add(node.decal.albedoPath);
         add(node.decal.normalPath);
@@ -550,7 +546,6 @@ std::vector<std::string> CollectVFXGraphDependencies(const VFXGraphAsset& asset)
             || node.animatedMesh.controllerPath.empty()) continue;
         AnimatorControllerAsset controller;
         if (!LoadAnimatorControllerAsset(node.animatedMesh.controllerPath, controller)) continue;
-        for (const auto& clipSource : controller.clipSources) add(clipSource);
         for (const auto& state : controller.states) {
             add(state.sourcePath);
             for (const auto& motion : state.blendTree1D.motions) addMotion(motion);
@@ -1002,13 +997,11 @@ std::vector<VFXGraphWarning> CollectVFXGraphWarnings(const VFXGraphAsset& asset,
     };
     if (checkAssetReferences) for (const auto& node : asset.nodes) {
         if (node.type == VFXNodeType::Particle) {
-            checkAsset(node.id, node.name, "Texture", node.particle.texturePath);
             checkAsset(node.id, node.name, "Material", node.particle.materialPath);
             checkAsset(node.id, node.name, "Mesh Shape", node.particle.meshShapePath);
             checkAsset(node.id, node.name, "Mesh Particle", node.particle.meshParticlePath);
             checkAsset(node.id, node.name, "Motion Vector", node.particle.motionVectorTexturePath);
         } else if (node.type == VFXNodeType::Trail || node.type == VFXNodeType::MeshTrail) {
-            checkAsset(node.id, node.name, "Texture", node.trail.texturePath);
             checkAsset(node.id, node.name, "Material", node.trail.materialPath);
         } else if (node.type == VFXNodeType::SubGraph) {
             checkAsset(node.id, node.name, "Sub Graph", node.subGraph.graphPath);

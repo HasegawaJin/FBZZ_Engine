@@ -260,7 +260,7 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
             emitter.velocitySpread = layer.velocitySpread * scale;
             emitter.gravity = { 0.0f, layer.gravityY * scale, 0.0f };
             emitter.emitVelocity = { 0.0f, 0.0f, 0.0f };
-            emitter.texturePath = textureFor(layer.assetRole);
+            emitter.materialPath = textureFor(layer.assetRole);
             emitter.blendMode = static_cast<scene::ParticleBlendMode>(layer.blendMode);
             emitter.sortMode = static_cast<scene::ParticleSortMode>(layer.sortMode);
             emitter.emissiveScale = layer.emissiveScale;
@@ -281,7 +281,7 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
                 emitter.emitRate = layer.emitRate * countScale;
             }
         } else if (layer.nodeType == VFXNodeType::Trail) {
-            node.trail.texturePath = textureFor(layer.assetRole);
+            node.trail.materialPath = textureFor(layer.assetRole);
             node.trail.beamMode = true;
             node.trail.beamStart = { 0.0f, 0.0f, 0.0f };
             node.trail.beamEnd = { 0.0f, 0.0f, 12.0f * scale };

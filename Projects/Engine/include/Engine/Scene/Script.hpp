@@ -120,13 +120,10 @@ struct IReflector {
 
     // Reflect宣言の永続キーとInspector表示名を分離するため、各Field直前に呼ばれる。
     // WHY: 表示名を変更してもScene / Prefabの保存キーが変わらないようにする。
-    void BeginField(const char* persistentKey,
-                    const char* displayName,
-                    std::span<const char* const> formerKeys = {})
+    void BeginField(const char* persistentKey, const char* displayName)
     {
         m_persistentKey = persistentKey ? persistentKey : "";
         m_displayName = displayName ? displayName : m_persistentKey;
-        m_formerKeys = formerKeys;
         m_fieldVisible = true;
         m_fieldEnabled = true;
         m_fieldReadOnly = false;
@@ -147,11 +144,6 @@ struct IReflector {
     [[nodiscard]] const char* DisplayName(const char* fallback) const
     {
         return m_displayName.empty() ? fallback : m_displayName.c_str();
-    }
-
-    [[nodiscard]] std::span<const char* const> FormerKeys() const
-    {
-        return m_formerKeys;
     }
 
     void SetFieldVisible(bool visible) { m_fieldVisible = visible; }
@@ -304,7 +296,6 @@ struct IReflector {
 private:
     std::string m_persistentKey;
     std::string m_displayName;
-    std::span<const char* const> m_formerKeys;
     bool m_fieldVisible = true;
     bool m_fieldEnabled = true;
     bool m_fieldReadOnly = false;
@@ -435,16 +426,6 @@ struct InvokeHandle {
     })
 
 // 旧保存キーを読み込み、新しいメンバー名で保存し直すフィールド。
-// 例: FBZZ_FIELD_MIGRATED(float, moveSpeed, 4.0f, "Move Speed", "speed", "walkSpeed")
-#define FBZZ_FIELD_MIGRATED(Type, Name, Default, Display, ...)                  \
-    Type Name = Default;                                                        \
-    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
-        static const char* const _fbzz_former_keys[] = { __VA_ARGS__ };         \
-        r_.BeginField(#Name, FBZZ_DISP_(Display, Name),                         \
-            ::std::span<const char* const>(_fbzz_former_keys));                 \
-        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
-    })
-
 #define FBZZ_FIELD_MIN(Type, Name, Default, Display, Min)                       \
     Type Name = Default;                                                        \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
@@ -682,9 +663,6 @@ struct InvokeHandle {
         r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
         r_.Readonly(FBZZ_DISP_(Display, Name), Name);                           \
     })
-// 後方互換 alias — 新規コードでは FBZZ_COMPUTED を使うこと。
-#define FBZZ_FIELD_READONLY(Type, Name, Display) FBZZ_COMPUTED(Type, Name, Display)
-
 // 型安全オブジェクト参照フィールド。Inspector にドラッグ&ドロップスロットを出す。
 // Ref<T> は { this } で所有 Script を受け取り、Name.Get() / if (Name) で解決する。
 // シリアライズは内包する EntityRef (= EntityID) を対象にする。
@@ -755,6 +733,9 @@ class Script {
 public:
     virtual ~Script();
 
+    template<typename T>
+    T* GetComponent() const;
+
     virtual void OnAwake() {}
     virtual void OnStart() {}
     virtual void OnEnable() {}
@@ -797,11 +778,8 @@ public:
 #define FBZZ_PROXY_STANDALONE(Type, Name) Type Name;
 #include <Engine/Scene/ScriptProxy/ScriptProxyMembers.inl>
 #undef FBZZ_PROXY_MEMBER
-#undef FBZZ_PROXY_STANDALONE
+    #undef FBZZ_PROXY_STANDALONE
 
-    template<typename T>
-    [[deprecated("Use scene.GetComponent<T>()")]]
-    T* GetComponent() const;
 
     // Invoke / タイマー
     [[nodiscard]] InvokeHandle Invoke(std::function<void()> fn, float delay);
@@ -819,26 +797,6 @@ public:
     // QueueRenderPass / GetShaderDescriptor
     void QueueRenderPass(UserRenderPassDesc desc) const;
     const renderer::ShaderDescriptor* GetShaderDescriptor(std::string_view shaderPath) const;
-
-    // deprecated 委譲メソッド — scene.* を使うこと
-    [[deprecated("Use scene.Find()")]]
-    GameObject* Find(const std::string& name) const;
-    [[deprecated("Use scene.FindWithTag()")]]
-    GameObject* FindWithTag(const std::string& tag) const;
-    [[deprecated("Use scene.GetGameObject()")]]
-    GameObject* GetGameObject(EntityID id) const;
-    [[deprecated("Use scene.Create()")]]
-    GameObject& CreateGameObject(const std::string& name = "GameObject") const;
-    [[deprecated("Use scene.GetMainCameraObject()")]]
-    GameObject* GetMainCameraObject() const;
-    static void Destroy(GameObject& go, float delay = 0.0f);
-
-    // deprecated animator 委譲メソッド — animator.* を使うこと
-    [[deprecated("Use animator.SetFloat()")]]  void SetAnimatorFloat(std::string_view n, float v) const;
-    [[deprecated("Use animator.SetInt()")]]    void SetAnimatorInt  (std::string_view n, int v)   const;
-    [[deprecated("Use animator.SetBool()")]]   void SetAnimatorBool (std::string_view n, bool v)  const;
-    [[deprecated("Use animator.SetTrigger()")]]void SetAnimatorTrigger(std::string_view n)        const;
-    [[deprecated("Use animator.IsInState()")]] bool IsAnimatorInState(std::string_view n)         const;
 
     // ScriptSystem 専用
     void SetContext(Scene* scene, GameObject* gameObject);

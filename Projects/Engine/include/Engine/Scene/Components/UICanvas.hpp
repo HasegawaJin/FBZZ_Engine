@@ -13,8 +13,6 @@ enum class UIRenderMode {
     WorldSpace         = 1, // 3D 空間に配置し、深度の影響を受ける
     ScreenSpaceCamera  = 2, // カメラ前方 planeDistance に配置し深度テストに参加する画面 UI
 
-    // 既存コード・既存シーンとの互換性用エイリアス。
-    ScreenSpace = ScreenSpaceOverlay
 };
 
 enum class UICanvasScaleMode {

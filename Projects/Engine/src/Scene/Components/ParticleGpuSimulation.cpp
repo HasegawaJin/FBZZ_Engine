@@ -54,13 +54,11 @@ const char* ParticleGpuFallbackFieldName(ParticleGpuFallbackReason reason)
     case ParticleGpuFallbackReason::None:                  return "";
     case ParticleGpuFallbackReason::NotRequested:          return "simulationMode";
     case ParticleGpuFallbackReason::LocalSpace:            return "simulationSpace";
-    case ParticleGpuFallbackReason::Sorting:               return "sortMode";
     case ParticleGpuFallbackReason::Collision:             return "collisionMode";
     case ParticleGpuFallbackReason::Prewarm:               return "prewarm";
     case ParticleGpuFallbackReason::FlipbookFrameBlending: return "flipbookFrameBlending";
     case ParticleGpuFallbackReason::MotionVectorFlipbook:  return "motionVectorFlipbook";
     case ParticleGpuFallbackReason::Trail:                 return "trailEnabled";
-    case ParticleGpuFallbackReason::MeshParticle:          return "meshParticlePath";
     case ParticleGpuFallbackReason::SubEmitter:            return "subEmitter";
     case ParticleGpuFallbackReason::SelfShadow:            return "selfShadowStrength";
     }
@@ -79,9 +77,6 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
         return "simulationSpace = Local のため CPU で実行されます。"
                "GPU 経路はワールド座標でしか積分しません。"
                "エミッターに追従させる必要が無ければ World にすると GPU に載ります。";
-    case ParticleGpuFallbackReason::Sorting:
-        // 互換のため列挙は残すが、GPU bitonic sort の導入で返らなくなった。
-        return "sortMode は GPU シミュレーションと併用できます (GPU 側で並べ替えます)。";
     case ParticleGpuFallbackReason::Collision:
         return "collisionMode がシーン形状との判定のため CPU で実行されます。"
                "画面内の見た目だけで足りるなら Depth (深度バッファ衝突) にすると GPU に載ります。";
@@ -97,9 +92,6 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
         return "trailEnabled のため CPU で実行されます。"
                "GPU 側の粒子は位置履歴を持てません。"
                "太い帯が欲しいだけなら Trail ノードを併用し、本体は GPU に載せられます。";
-    case ParticleGpuFallbackReason::MeshParticle:
-        // 互換のため列挙は残すが、GPU インスタンス描画の導入で返らなくなった。
-        return "meshParticlePath は GPU シミュレーションと併用できます (インスタンス描画になります)。";
     case ParticleGpuFallbackReason::SubEmitter:
         return "birth / death / collision SubEmitter が設定されているため CPU で実行されます。"
                "発火判定は CPU 側にしかありません。";

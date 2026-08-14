@@ -313,8 +313,7 @@ void VFXPreviewView::DrawViewport(EditorContext& ctx, bool fillAvailable)
                 m_session.SaveEditorPreferences();
             }
             if (m_session.preview.actorPlaying)
-                m_session.preview.actorTime = animator->currentStateName.empty()
-                    ? animator->time : animator->stateTime;
+                m_session.preview.actorTime = animator->stateTime;
             if (ImGui::Button(m_session.preview.actorPlaying ? "Pause##Actor" : "Play##Actor")) {
                 m_session.preview.actorPlaying = !m_session.preview.actorPlaying;
                 if (m_session.preview.syncActorToVFX && previewGraph != nullptr) {
@@ -327,7 +326,6 @@ void VFXPreviewView::DrawViewport(EditorContext& ctx, bool fillAvailable)
             ImGui::SameLine();
             if (ImGui::Button("Restart##Actor")) {
                 m_session.preview.actorTime = 0.0f;
-                animator->time = 0.0f;
                 animator->stateTime = 0.0f;
                 if (m_session.preview.syncActorToVFX && previewGraph != nullptr)
                     previewGraph->Restart();
@@ -340,8 +338,14 @@ void VFXPreviewView::DrawViewport(EditorContext& ctx, bool fillAvailable)
                 animator->speed = m_session.preview.actorSpeed;
             }
             ImGui::SameLine();
-            if (ImGui::Checkbox("Loop##Actor", &m_session.preview.actorLoop))
-                animator->loop = m_session.preview.actorLoop;
+            if (ImGui::Checkbox("Loop##Actor", &m_session.preview.actorLoop)) {
+                for (auto& state : animator->states) {
+                    if (state.name == animator->currentStateName) {
+                        state.loop = m_session.preview.actorLoop;
+                        break;
+                    }
+                }
+            }
             if (!animator->states.empty()) {
                 const char* current = animator->currentStateName.empty()
                     ? "(Controller Default)" : animator->currentStateName.c_str();
@@ -357,28 +361,10 @@ void VFXPreviewView::DrawViewport(EditorContext& ctx, bool fillAvailable)
                     }
                     ImGui::EndCombo();
                 }
-            } else if (!animator->clips.empty()) {
-                const char* current = animator->clipName.empty()
-                    ? animator->clips[static_cast<std::size_t>(std::clamp(
-                        animator->clipIndex, 0,
-                        static_cast<int>(animator->clips.size()) - 1))].name.c_str()
-                    : animator->clipName.c_str();
-                if (ImGui::BeginCombo("Clip##Actor", current)) {
-                    for (std::size_t index = 0; index < animator->clips.size(); ++index) {
-                        const bool selected = animator->clipIndex == static_cast<int>(index);
-                        if (ImGui::Selectable(animator->clips[index].name.c_str(), selected)) {
-                            animator->clipIndex = static_cast<int>(index);
-                            animator->clipName = animator->clips[index].name;
-                            animator->time = 0.0f;
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
             }
             if (ImGui::DragFloat("Animation Time##Actor", &m_session.preview.actorTime,
                                  0.01f, 0.0f, 3600.0f, "%.3fs")) {
                 animator->playing = false;
-                animator->time = m_session.preview.actorTime;
                 animator->stateTime = m_session.preview.actorTime;
             }
             if (m_session.preview.actorBones.empty())

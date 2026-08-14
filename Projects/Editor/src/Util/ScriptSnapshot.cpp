@@ -454,12 +454,6 @@ private:
 
         if (const toml::node* node = table->get(PersistentKey(fallback)))
             return node;
-        for (const char* formerKey : FormerKeys()) {
-            if (formerKey) {
-                if (const toml::node* node = table->get(formerKey))
-                    return node;
-            }
-        }
         return nullptr;
     }
 

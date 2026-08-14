@@ -70,7 +70,6 @@ struct VFXTrailSettings {
     // MeshTrailノードでは残像元の静的Meshとして使う。Trailノードでは未使用。
     std::string meshPath;
     std::string materialPath;
-    std::string texturePath;
     math::Vector4 colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector4 colorEnd = { 1.0f, 1.0f, 1.0f, 0.0f };
     float lifetime = 1.0f;

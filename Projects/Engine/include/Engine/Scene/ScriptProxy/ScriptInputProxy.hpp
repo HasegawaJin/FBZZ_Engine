@@ -25,19 +25,12 @@ struct ScriptInputProxy {
     bool GetKey(input::KeyCode key) const;
     bool GetKeyDown(input::KeyCode key) const;
     bool GetKeyUp(input::KeyCode key) const;
-    float GetAxis(std::string_view name) const;
-    bool GetButton(std::string_view name) const;
-    bool GetButtonDown(std::string_view name) const;
-    bool GetButtonUp(std::string_view name) const;
     math::Vector2 GetMouseDelta() const;
     math::Vector2 GetMousePosition() const;
     float GetMouseScrollDelta() const;
     bool MouseButton(MouseBtn btn) const;
     bool MouseButtonDown(MouseBtn btn) const;
     bool MouseButtonUp(MouseBtn btn) const;
-    [[deprecated("Use MouseBtn enum")]] bool MouseButton(int button) const;
-    [[deprecated("Use MouseBtn enum")]] bool MouseButtonDown(int button) const;
-    [[deprecated("Use MouseBtn enum")]] bool MouseButtonUp(int button) const;
 
     // ── アクション層 ──────────────────────────────────────────────────────
     // ProjectSettings/Input.inputactions で定義した論理名で入力を取る。
