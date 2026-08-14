@@ -156,7 +156,6 @@ scene::AnimatorComponent MakeAnimationGraphSnapshot(
     scene::AnimatorComponent snapshot;
     snapshot.enabled = source.enabled;
     snapshot.controllerPath = source.controllerPath;
-    snapshot.clipSources = source.clipSources;
     snapshot.defaultStateName = source.defaultStateName;
     snapshot.states = source.states;
     snapshot.anyStateTransitions = source.anyStateTransitions;
@@ -228,7 +227,6 @@ void ApplyAnimationGraphSnapshot(
 {
     target.enabled = snapshot.enabled;
     target.controllerPath = snapshot.controllerPath;
-    target.clipSources = snapshot.clipSources;
     target.defaultStateName = snapshot.defaultStateName;
     target.states = snapshot.states;
     target.anyStateTransitions = snapshot.anyStateTransitions;

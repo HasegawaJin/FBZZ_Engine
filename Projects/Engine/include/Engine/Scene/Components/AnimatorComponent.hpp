@@ -5,11 +5,7 @@
 // 骨行列の計算と GPU 転送は AnimatorSystem が行う。
 //
 // ── ステートマシン設計 ──────────────────────────────────────────────────────────
-// states が空のとき: clipIndex/clipName/time による後方互換モードで動作する。
-// states が存在するとき: AnimatorSystem が InitStateMachine → UpdateStateMachine
-//   → EvaluateNBlendedNodeRecursive の順で処理し、Clip / BlendTree を統一評価する。
-// WHY: アーキテクチャを壊さずに Unity の Animator Controller 相当の機能を追加するため、
-//      後方互換フラグではなく「states が空か否か」で分岐する設計を選んだ。
+// AnimatorSystem は State / BlendTree を統一したステートマシンとして評価する。
 #pragma once
 
 #include <Engine/Asset/AnimationClip.hpp>
@@ -232,8 +228,6 @@ struct AnimationSlotPlayback {
 
 struct AnimationLayer {
     std::string name = "Layer";
-    // 旧形式の単一ステート指定。states が空のときだけ使う (後方互換)。
-    std::string stateName;
     float weight = 1.0f;
     AnimationLayerMode mode = AnimationLayerMode::Override;
     bool enabled = true;
@@ -241,15 +235,11 @@ struct AnimationLayer {
     // ── マスク ───────────────────────────────────────────────────────────────
     // .mask アセットへの参照。空でなければこちらを優先する。
     AnimationMaskRef mask;
-    // 旧インライン形式。mask.path が空のときのフォールバック (0/1 の二値マスク)。
-    bool maskIncludesChildren = true;
-    std::vector<std::string> avatarMaskPaths;
 
     // ── 加算 ─────────────────────────────────────────────────────────────────
     AdditiveReferencePose additiveReference;
 
     // ── レイヤー独自ステートマシン ───────────────────────────────────────────
-    // 空なら stateName の単一ステートを再生する (後方互換)。
     std::string defaultStateName;
     std::vector<AnimationState> states;
     std::vector<AnimationTransition> anyStateTransitions;
@@ -260,7 +250,6 @@ struct AnimationLayer {
     AnimationSlotPlayback slot;
 
     // ── ランタイム専用。Controller / Scene には保存しない。────────────────────
-    float time = 0.0f;                    // 旧単一ステート再生用の時刻
     AnimatorStateMachineRuntime runtime;  // states を使うときのステートマシン状態
 };
 
@@ -363,20 +352,13 @@ struct AnimatorComponent {
     std::string controllerPath;
     // ランタイム専用。参照変更時だけ Controller を再読み込みする。
     std::string loadedControllerPath;
-    int         clipIndex  = 0;
-    std::string clipName;
-    float       time       = 0.0f;
     float       speed      = 1.0f;
-    bool        loop       = true;
     bool        playing    = true;
     // ルートモーションの適用先・解決方法・軸マスク。
     // VFX の決定論的 Preview は mode = None を使い、姿勢だけを評価して Transform を動かさない。
     RootMotionSettings rootMotion;
 
-    // アニメーションクリップを含む FBX ファイルパス。シリアライズ対象
-    std::vector<std::string> clipSources;
-
-    // ランタイム専用。初回更新時に clipSources から再構築する
+    // ランタイム専用。初回更新時にステート参照から再構築する。
     std::vector<asset::AnimationClip> clips;
     // clips と同じ添字でロード元を保持し、同名クリップを Source Path で識別する。
     std::vector<std::string> clipSourcePaths;
@@ -405,7 +387,7 @@ struct AnimatorComponent {
     float currentIKWeight = 1.0f;
 
     // ── ランタイム専用（シリアライズしない）────────────────────────────────
-    // 現在再生中のステート名。空なら後方互換モード
+    // 現在再生中のステート名。
     std::string currentStateName;
     float       stateTime     = 0.0f;  // 現ステートの再生秒数
 
@@ -445,11 +427,7 @@ struct AnimatorComponent {
     {
         r.Field("enabled",          enabled);
         r.Field("controllerPath",   controllerPath);
-        r.Field("clipName",         clipName);
-        r.Field("clipIndex",        clipIndex);
-        r.Field("time",             time);
         r.Field("speed",            speed);
-        r.Field("loop",             loop);
         r.Field("playing",          playing);
         r.Field("rootMotionMode",     reinterpret_cast<int&>(rootMotion.mode));
         r.Field("rootMotionSource",   reinterpret_cast<int&>(rootMotion.source));
@@ -463,7 +441,7 @@ struct AnimatorComponent {
         r.Field("rootMotionPositionScale", rootMotion.positionScale);
         r.Field("rootMotionRotationScale", rootMotion.rotationScale);
         r.Field("defaultStateName", defaultStateName);
-        // clipSources / states / parameters は vector のため SceneSerializer で直接変換する
+    // states / parameters は vector のため SceneSerializer で直接変換する
     }
 
     // ── Script API ──────────────────────────────────────────────────────────
@@ -557,12 +535,12 @@ struct AnimatorComponent {
         return l ? l->weight : 0.0f;
     }
 
-    // レイヤーの現在ステート名。独自ステートマシンを持たないレイヤーは stateName を返す。
+    // レイヤーの現在ステート名。
     [[nodiscard]] std::string GetLayerState(std::string_view layerName) const
     {
         const AnimationLayer* l = FindLayer(layerName);
         if (!l) return {};
-        return l->states.empty() ? l->stateName : l->runtime.currentStateName;
+        return l->runtime.currentStateName;
     }
 
     [[nodiscard]] bool IsLayerInState(std::string_view layerName, std::string_view stateName) const
@@ -575,11 +553,7 @@ struct AnimatorComponent {
     {
         AnimationLayer* l = FindLayer(layerName);
         if (!l) return;
-        if (l->states.empty()) {
-            l->stateName = std::string(stateName);
-            l->time = 0.0f;
-            return;
-        }
+        if (l->states.empty()) return;
         l->runtime.currentStateName = std::string(stateName);
         l->runtime.stateTime   = 0.0f;
         l->runtime.blendToState.clear();

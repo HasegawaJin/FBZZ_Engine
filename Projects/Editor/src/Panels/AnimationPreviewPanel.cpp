@@ -555,7 +555,7 @@ bool ResolveGameObjectTarget(EditorContext& ctx, PreviewTarget& out)
     auto* animator = go->GetComponent<scene::AnimatorComponent>();
     if (!animator) return false;
 
-    // クリップ: 現在ステート → デフォルトステート → 先頭ステート → clipSources 先頭
+    // クリップ: 現在ステート → デフォルトステート → 先頭ステート
     std::string source, clipName;
     auto tryState = [&](const std::string& name) {
         if (name.empty() || !source.empty()) return;
@@ -566,8 +566,6 @@ bool ResolveGameObjectTarget(EditorContext& ctx, PreviewTarget& out)
     tryState(animator->defaultStateName);
     if (source.empty() && !animator->states.empty())
         StatePreviewSource(animator->states.front(), source, clipName);
-    if (source.empty() && !animator->clipSources.empty())
-        source = animator->clipSources.front();
 
     out.mode = PreviewTarget::Mode::Clip;
     out.label = go->name;
@@ -1264,8 +1262,13 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
          s_state.focus).Normalized();
     lightData.lightDir = { -keyDirection.x, -keyDirection.y, -keyDirection.z };
     lightData.lightColor = { 1.0f, 0.97f, 0.92f };
-    lightData.lightIntensity = 1.6f;
+    // 手調整リグなので、Lighting.hlsli の LIGHT_UNIT_SCALE (= PI) を相殺して
+    // 記述値がそのまま「絵として狙った明るさ」を表すようにする (サムネイルと同じ方針)。
+    constexpr float kPreviewUnitScale = 3.14159265358979323846f;
+    lightData.lightIntensity = 1.6f / kPreviewUnitScale;
     lightData.ambientColor = { 0.16f, 0.17f, 0.20f };
+    // LightAttenuation の逆二乗を打ち消し、intensity を「最終的な明るさ」として扱う。
+    // range = boundsRadius * 20 に対し dist は boundsRadius * 3 前後なので range 窓はほぼ 1.0。
     auto placeLight = [&](renderer::PointLight& light,
                           const math::Vector3& offset,
                           const math::Vector3& color,
@@ -1274,7 +1277,8 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         light.color = color;
         light.range = boundsRadius * 20.0f;
         const float dist = offset.Length();
-        light.intensity = intensity * (dist * dist + 1.0f);
+        // シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛ける。
+        light.intensity = intensity * std::max(dist * dist, 0.01f) / kPreviewUnitScale;
     };
     placeLight(lightData.pointLights[0],
                { boundsRadius * 2.6f, -boundsRadius * 1.2f, -boundsRadius * 2.2f },

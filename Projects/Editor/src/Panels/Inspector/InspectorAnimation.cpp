@@ -168,7 +168,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 markDirty();
             }
 
-            if (ImGui::SliderFloat("Weight", &layer.weight, 0.0f, 1.0f)) markDirty();
+            if (widgets::RangeField("Weight", layer.weight, 0.0f, 1.0f)) markDirty();
 
             static constexpr const char* kModeNames[] = { "Override", "Additive" };
             int modeIndex = static_cast<int>(layer.mode);
@@ -214,15 +214,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             // ── State Machine ────────────────────────────────────────────
             ImGui::SeparatorText("State Machine");
             if (layer.states.empty()) {
-                // レイヤー専用グラフを持たない場合は、共有 states の 1 ステートを流す旧挙動。
-                char stateBuffer[128];
-                std::snprintf(stateBuffer, sizeof(stateBuffer), "%s", layer.stateName.c_str());
-                if (ImGui::InputText("State", stateBuffer, sizeof(stateBuffer))) {
-                    layer.stateName = stateBuffer;
-                    markDirty();
-                }
-                ImGui::TextDisabled(
-                    "  専用グラフ未設定。Base Layer の 1 ステートを再生します。");
+                ImGui::TextDisabled("  ステート未設定");
             } else {
                 ImGui::Text("States: %d   Default: %s",
                             static_cast<int>(layer.states.size()),

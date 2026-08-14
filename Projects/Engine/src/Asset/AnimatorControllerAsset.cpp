@@ -67,7 +67,6 @@ scene::AnimationTransition ReadTransition(const toml::table& table)
     transition.toStateName = table["toStateName"].value_or(std::string{});
     transition.hasExitTime = table["hasExitTime"].value_or(false);
     transition.exitTime = static_cast<float>(table["exitTime"].value_or(1.0));
-    // 旧 Controller の transitionDuration は秒指定なので true を既定値にする。
     transition.fixedDuration = table["fixedDuration"].value_or(true);
     transition.transitionDuration =
         static_cast<float>(table["transitionDuration"].value_or(0.25));
@@ -207,7 +206,7 @@ toml::table WriteState(const scene::AnimationState& state)
     return stateTable;
 }
 
-// TOML から AnimationState 1 件を読む。旧 clipIndex からの Source 移行は呼び出し側で行う。
+// TOML から AnimationState 1 件を読む。
 scene::AnimationState ReadState(const toml::table& stateTable)
 {
     scene::AnimationState state;
@@ -259,10 +258,6 @@ bool SaveAnimatorControllerAsset(const std::string& path,
     root.insert("version", int64_t{6});
     root.insert("defaultStateName", asset.defaultStateName);
 
-    toml::array clipSources;
-    for (const auto& source : asset.clipSources) clipSources.push_back(source);
-    root.insert("clipSources", std::move(clipSources));
-
     toml::array states;
     for (const auto& state : asset.states)
         states.push_back(WriteState(state));
@@ -289,27 +284,19 @@ bool SaveAnimatorControllerAsset(const std::string& path,
     for (const auto& layer : asset.layers) {
         toml::table layerTable;
         layerTable.insert("name", layer.name);
-        layerTable.insert("stateName", layer.stateName);
         layerTable.insert("weight", static_cast<double>(layer.weight));
         layerTable.insert("mode", static_cast<int64_t>(layer.mode));
         layerTable.insert("enabled", layer.enabled);
-        layerTable.insert("maskIncludesChildren", layer.maskIncludesChildren);
-        toml::array maskPaths;
-        for (const auto& maskPath : layer.avatarMaskPaths) maskPaths.push_back(maskPath);
-        layerTable.insert("avatarMaskPaths", std::move(maskPaths));
-
-        // .mask アセット参照 (旧 avatarMaskPaths より優先される)。
         layerTable.insert("maskPath", layer.mask.path);
 
-        // 加算レイヤーの基準ポーズ。未設定なら空文字列で保存し、読込側は
-        // 「加算クリップ自身の先頭キー」という従来動作にフォールバックする。
+        // 加算レイヤーの基準ポーズ。
         toml::table additiveReference;
         additiveReference.insert("sourcePath", layer.additiveReference.sourcePath);
         additiveReference.insert("clipName", layer.additiveReference.clipName);
         additiveReference.insert("time", static_cast<double>(layer.additiveReference.time));
         layerTable.insert("additiveReference", std::move(additiveReference));
 
-        // レイヤー独自ステートマシン。空配列なら旧来の stateName 単体再生。
+        // レイヤー独自ステートマシン。
         layerTable.insert("defaultStateName", layer.defaultStateName);
         toml::array layerStates;
         for (const auto& state : layer.states)
@@ -348,7 +335,7 @@ bool SaveAnimatorControllerAsset(const std::string& path,
     root.insert("baseLayerMaskPath", asset.baseLayerMaskPath);
     root.insert("editorLayout", WriteEditorLayout(asset.editorLayout));
 
-    // .anim クリップ参照 (sourcePath / clipSources) を guid: 形式で保存する (リネーム・移動耐性)。
+    // .anim クリップ参照 (sourcePath) を guid: 形式で保存する (リネーム・移動耐性)。
     EncodeGuidRefs(root);
 
     std::ostringstream stream;
@@ -371,38 +358,12 @@ bool LoadAnimatorControllerAsset(const std::string& path,
 
     AnimatorControllerAsset loaded;
     loaded.defaultStateName = result["defaultStateName"].value_or(std::string{});
-    if (const auto* sources = result["clipSources"].as_array()) {
-        for (const auto& element : *sources)
-            if (const auto value = element.value<std::string>())
-                loaded.clipSources.push_back(*value);
-    }
     if (const auto* states = result["states"].as_array()) {
         for (const auto& element : *states) {
             const auto* stateTable = element.as_table();
             if (!stateTable) continue;
             scene::AnimationState state = ReadState(*stateTable);
 
-            // version 1 Controller は Source を全体配列と clipIndex で保持していた。
-            // Node 側 Source が空なら旧 index を Source 配列へ対応付けて自動移行する。
-            auto migrateSource = [&loaded](std::string& sourcePath, int clipIndex) {
-                if (!sourcePath.empty() || loaded.clipSources.empty()) return;
-                int remainingIndex = clipIndex;
-                for (const auto& legacySource : loaded.clipSources) {
-                    const auto model = AssetManager::LoadModel(legacySource);
-                    if (!model) continue;
-                    const int clipCount = static_cast<int>(model->clips.size());
-                    if (remainingIndex >= 0 && remainingIndex < clipCount) {
-                        sourcePath = legacySource;
-                        return;
-                    }
-                    remainingIndex -= clipCount;
-                }
-            };
-            migrateSource(state.sourcePath, state.clipIndex);
-            for (auto& motion : state.blendTree1D.motions)
-                migrateSource(motion.sourcePath, motion.clipIndex);
-            for (auto& motion : state.blendTree2D.motions)
-                migrateSource(motion.sourcePath, motion.clipIndex);
             loaded.states.push_back(std::move(state));
         }
     }
@@ -433,18 +394,10 @@ bool LoadAnimatorControllerAsset(const std::string& path,
             if (!layerTable) continue;
             scene::AnimationLayer layer;
             layer.name = (*layerTable)["name"].value_or(std::string{"Layer"});
-            layer.stateName = (*layerTable)["stateName"].value_or(std::string{});
             layer.weight = static_cast<float>((*layerTable)["weight"].value_or(1.0));
             layer.mode = static_cast<scene::AnimationLayerMode>(
                 (*layerTable)["mode"].value_or(int64_t{0}));
             layer.enabled = (*layerTable)["enabled"].value_or(true);
-            layer.maskIncludesChildren = (*layerTable)["maskIncludesChildren"].value_or(true);
-            if (const auto* maskPaths = (*layerTable)["avatarMaskPaths"].as_array())
-                for (const auto& maskPath : *maskPaths)
-                    if (const auto value = maskPath.value<std::string>())
-                        layer.avatarMaskPaths.push_back(*value);
-
-            // 新フィールドはすべて value_or で既定へ落ちるため、旧 Controller もそのまま読める。
             layer.mask.path = (*layerTable)["maskPath"].value_or(std::string{});
             if (const auto* additive = (*layerTable)["additiveReference"].as_table()) {
                 layer.additiveReference.sourcePath =
@@ -504,7 +457,6 @@ bool LoadAnimatorControllerAsset(const std::string& path,
 void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
                                   scene::AnimatorComponent& animator)
 {
-    animator.clipSources = asset.clipSources;
     animator.defaultStateName = asset.defaultStateName;
     animator.states = asset.states;
     animator.anyStateTransitions = asset.anyStateTransitions;
@@ -528,28 +480,6 @@ AnimatorControllerAsset MakeAnimatorControllerAsset(
     AnimatorControllerAsset asset;
     asset.defaultStateName = animator.defaultStateName;
     asset.states = animator.states;
-    // 旧 Embedded Animator からControllerを作る場合だけ index をNode Sourceへ移行する。
-    auto migrateSource = [&animator](std::string& sourcePath, int clipIndex) {
-        if (!sourcePath.empty()) return;
-        int remainingIndex = clipIndex;
-        for (const auto& legacySource : animator.clipSources) {
-            const auto model = AssetManager::LoadModel(legacySource);
-            if (!model) continue;
-            const int clipCount = static_cast<int>(model->clips.size());
-            if (remainingIndex >= 0 && remainingIndex < clipCount) {
-                sourcePath = legacySource;
-                return;
-            }
-            remainingIndex -= clipCount;
-        }
-    };
-    for (auto& state : asset.states) {
-        migrateSource(state.sourcePath, state.clipIndex);
-        for (auto& motion : state.blendTree1D.motions)
-            migrateSource(motion.sourcePath, motion.clipIndex);
-        for (auto& motion : state.blendTree2D.motions)
-            migrateSource(motion.sourcePath, motion.clipIndex);
-    }
     asset.anyStateTransitions = animator.anyStateTransitions;
     asset.parameters = animator.parameters;
     asset.layers = animator.layers;
