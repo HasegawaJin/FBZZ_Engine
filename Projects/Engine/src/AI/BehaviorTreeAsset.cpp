@@ -449,6 +449,52 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
                            [&name](const BlackboardDef& def) { return def.name == name; });
     };
 
+    // 親ごとの子を order 順に持つ。優先度に依存する検査 (中断・到達性) に使う。
+    // WHY 木の形だけでは足りないか: BT の挙動は order で決まるので、
+    //     「どの枝が先に試されるか」を復元しないと中断も到達性も判定できない。
+    std::unordered_map<int, std::vector<const BTNodeDef*>> childrenOf;
+    for (const BTNodeDef& node : asset.nodes)
+        if (node.parentId != 0) childrenOf[node.parentId].push_back(&node);
+    for (auto& entry : childrenOf) {
+        std::sort(entry.second.begin(), entry.second.end(),
+                  [](const BTNodeDef* a, const BTNodeDef* b) { return a->order < b->order; });
+    }
+    const auto displayName = [](const BTNodeDef& node) {
+        return node.name.empty() ? std::string(BTNodeTypeName(node.type)) : node.name;
+    };
+
+    // 「この枝を守っている条件」を返す。枝そのものが条件のことも、
+    // Sequence(条件, 行動...) の先頭が条件のこともある。無ければ nullptr。
+    const auto guardConditionOf = [&childrenOf](const BTNodeDef& branch) -> const BTNodeDef* {
+        const auto isGuard = [](const BTNodeDef& node) {
+            return BTNodeIsPureCondition(node.type)
+                || node.type == BTNodeType::BlackboardCondition;
+        };
+        if (isGuard(branch)) return &branch;
+        if (branch.type != BTNodeType::Sequence) return nullptr;
+        const auto found = childrenOf.find(branch.id);
+        if (found == childrenOf.end() || found->second.empty()) return nullptr;
+        const BTNodeDef* first = found->second.front();
+        return isGuard(*first) ? first : nullptr;
+    };
+
+    // その子が「後続の兄弟へ制御を渡さない」種別か。
+    // Sequence では Running を返し続ける子、Selector では必ず Success する子が該当する。
+    const auto blocksFollowingSiblings = [](const BTNodeDef& parent, const BTNodeDef& child) {
+        if (parent.type == BTNodeType::Sequence || parent.type == BTNodeType::Selector) {
+            if (child.type == BTNodeType::AlwaysRunning) return true;
+            // 無限 Repeat は Failure でも抜けない設定のときだけ永久に Running。
+            if (child.type == BTNodeType::Repeat && child.repeatCount == 0
+                && !child.repeatUntilFailure) return true;
+        }
+        if (parent.type == BTNodeType::Selector) {
+            // Selector は最初に Success した子で打ち切る。
+            if (child.type == BTNodeType::AlwaysSucceed || child.type == BTNodeType::Succeeder)
+                return true;
+        }
+        return false;
+    };
+
     for (const BTNodeDef& node : asset.nodes) {
         const auto it = childCount.find(node.id);
         const int actual = it == childCount.end() ? 0 : it->second;
@@ -484,6 +530,66 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
         if (node.type == BTNodeType::RunScript && node.scriptMethod.empty()) {
             warnings.push_back({ node.id, "empty-script-method",
                 "Run Script のメソッド名が空です" });
+        }
+        if (node.type == BTNodeType::PlayAnimation && node.animatorTrigger.empty()) {
+            warnings.push_back({ node.id, "empty-animator-trigger",
+                "Play Animation のトリガー名が空です (Animator へ何も送りません)" });
+        }
+        if (node.type == BTNodeType::PlayAudio && node.soundPath.empty()) {
+            warnings.push_back({ node.id, "empty-sound-path",
+                "Play Audio の soundPath が空です (音が鳴りません)" });
+        }
+        // Wait は 0 秒だと 1 tick で Success する。「待つ」意図が消えているのに
+        // 木としては成立するので、実行しても待たない理由が最後まで判らない。
+        if (node.type == BTNodeType::Wait && node.duration <= 0.0f && node.durationRandom <= 0.0f) {
+            warnings.push_back({ node.id, "zero-duration-wait",
+                "Wait の duration が 0 です (待機になりません)" });
+        }
+        // キーを引く種別で keyName が空 = 参照先が無い。unresolved-key (綴り違い) と
+        // 区別して出す。直し方が違う (片方は改名、片方は設定) ため。
+        const bool needsKey = node.type == BTNodeType::BlackboardCondition
+                           || node.type == BTNodeType::BlackboardCompare
+                           || node.type == BTNodeType::SetBlackboard;
+        if (needsKey && node.keyName.empty()) {
+            warnings.push_back({ node.id, "missing-key",
+                std::string(BTNodeTypeName(node.type)) + " の keyName が空です "
+                "(参照先の Blackboard キーがありません)" });
+        }
+
+        // ── 優先度に依存する検査 ────────────────────────────────────────────
+        const auto children = childrenOf.find(node.id);
+        if (children == childrenOf.end()) continue;
+        const std::vector<const BTNodeDef*>& list = children->second;
+
+        // 最も重要な検査。Selector の高優先枝を守る条件に lowerPriority 中断が無いと、
+        // 「巡回中にプレイヤーを発見しても、現在のウェイポイントに着くまで反応しない」
+        // という BT を採用する意味の大半を失った木になる。木の形は正しいので、
+        // 実行して観察する以外に気づく手段が無い類の壊れ方。
+        if (node.type == BTNodeType::Selector) {
+            for (std::size_t index = 0; index + 1 < list.size(); ++index) {
+                const BTNodeDef* guard = guardConditionOf(*list[index]);
+                if (guard == nullptr) continue;
+                if (guard->abortMode == AbortMode::LowerPriority
+                    || guard->abortMode == AbortMode::Both) continue;
+                warnings.push_back({ guard->id, "no-lower-priority-abort",
+                    "\"" + displayName(*guard) + "\" は Selector \"" + displayName(node)
+                    + "\" の高優先枝 (order " + std::to_string(list[index]->order)
+                    + ") を守る条件ですが abortMode が lowerPriority ではありません "
+                      "(下位の枝が Running 中は割り込めず、条件が真に立っても反応しません)" });
+            }
+        }
+        // 後続の兄弟へ制御が渡らない子。木には見えているのに絶対に実行されない枝は、
+        // 「書いたのに効かない」形でしか現れず、木を読んでも気づけない。
+        for (std::size_t index = 0; index + 1 < list.size(); ++index) {
+            if (!blocksFollowingSiblings(node, *list[index])) continue;
+            warnings.push_back({ list[index]->id, "unreachable-sibling",
+                "\"" + displayName(*list[index]) + "\" より後ろの "
+                + std::to_string(list.size() - index - 1)
+                + " 個の枝は実行されません ("
+                + (node.type == BTNodeType::Selector
+                       ? "Selector は最初に Success した子で打ち切ります"
+                       : "Sequence はこの子が Running のまま先へ進みません")
+                + ")" });
         }
     }
 
