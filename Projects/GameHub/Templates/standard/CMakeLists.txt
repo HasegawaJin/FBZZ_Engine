@@ -81,14 +81,14 @@ set_source_files_properties(${PROJECT_SHADER_FILES} PROPERTIES
     VS_TOOL_OVERRIDE "None"
 )
 find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
-add_custom_target(compile_shaders
+add_custom_target(CompileShaders
     COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${PROJECT_SHADER_SCRIPT}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling project HLSL shaders..."
     SOURCES ${PROJECT_SHADER_FILES} "${PROJECT_SHADER_SCRIPT}"
     VERBATIM
 )
-add_dependencies({{TARGET_NAME}}Standalone compile_shaders)
+add_dependencies({{TARGET_NAME}}Standalone CompileShaders)
 
 configure_file(
     "${FBZZ_SDK_ROOT}/cmake/FBZZ/build.config.in"

@@ -48,7 +48,7 @@
         {
             "label": "CMake: Build All (Debug)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --parallel",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --parallel 1",
             "group": "build",
             "dependsOn": "CMake: Configure (Debug)",
             "problemMatcher": "$msCompile",
@@ -60,7 +60,7 @@
         {
             "label": "CMake: Build All (Release)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --parallel",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --parallel 1",
             "group": "build",
             "dependsOn": "CMake: Configure (Release)",
             "problemMatcher": "$msCompile",
@@ -72,7 +72,7 @@
         {
             "label": "CMake: Build All (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --parallel",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --parallel 1",
             "group": {
                 "kind": "build",
                 "isDefault": true

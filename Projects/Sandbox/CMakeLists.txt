@@ -27,7 +27,7 @@ target_include_directories(SandboxScripts PRIVATE
     src
     ${CMAKE_SOURCE_DIR}/Assets
 )
-target_link_libraries(SandboxScripts PRIVATE fbzz_engine fbzz_physics)
+target_link_libraries(SandboxScripts PRIVATE FBZZEngine FBZZPhysics)
 # WHY: Script.hpp は全スクリプトが #include する重いヘッダ群を束ねる。
 #      ホットリロードのたびに再パースしないよう PCH に焼き込む。
 target_precompile_headers(SandboxScripts PRIVATE
@@ -53,15 +53,16 @@ if(MSVC)
     target_link_options(SandboxScripts PRIVATE
         "$<$<CONFIG:Debug>:/DEBUG:NONE>"
     )
-    # WHY: Ninja はプロセスレベルで並列化するが、MSBuild (Visual Studio の手動ビルド) では
-    #      /MP で cl.exe 内部の並列コンパイルを有効化する。Ninja 使用時は /MP 不要だが無害。
-    target_compile_options(SandboxScripts PRIVATE /MP)
+    # WHY (/MP をここで付けない): 数値なしの /MP はコア数ぶんの cl.exe を起こすうえ、
+    #      target_compile_options はディレクトリ既定より後ろに並ぶためルートの
+    #      /MP${FBZZ_BUILD_JOBS} を上書きしてしまう。並列度はルート CMakeLists.txt の
+    #      FBZZ_BUILD_JOBS に一元化し、このターゲットもそこから継承する。
 endif()
 
-add_executable(sandbox ${SANDBOX_SOURCES})
-add_dependencies(sandbox SandboxScripts)
+add_executable(Sandbox ${SANDBOX_SOURCES})
+add_dependencies(Sandbox SandboxScripts)
 
-set_target_properties(sandbox PROPERTIES
+set_target_properties(Sandbox PROPERTIES
     # WHY: CMake の内部ターゲット名は既存依存との互換性を保ち、公開成果物だけ PascalCase に統一する。
     OUTPUT_NAME "Sandbox"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Sandbox"
@@ -69,21 +70,21 @@ set_target_properties(sandbox PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Sandbox"
 )
 
-# WHY: post-build コマンドや sync_sandbox_assets ターゲットで参照するため、
-#      add_executable(sandbox) の直後に定義する。
-set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:sandbox>/SandboxProject")
+# WHY: post-build コマンドや SyncSandboxAssets ターゲットで参照するため、
+#      add_executable(Sandbox) の直後に定義する。
+set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:Sandbox>/SandboxProject")
 set(SANDBOX_PROJECT_TEMPLATE_DIR "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard")
 set(SANDBOX_ENSURE_PROJECT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/EnsureSandboxProject.cmake")
 
-# エンジン全アセットを sandbox 実行ディレクトリと SandboxProject に常時同期するターゲット。
+# エンジン全アセットを Sandbox 実行ディレクトリと SandboxProject に常時同期するターゲット。
 # WHY: post-build は Sandbox.exe が再ビルドされたときのみ実行される。
 #      Scripts/ などのアセットを追加・変更したときも確実に反映されるよう、
 #      ALL キーワードで毎 cmake --build 実行時に走るターゲットを分離する。
 #      rm -rf を行わず copy_directory だけで上書き同期するため、既存ファイルは保持される。
-add_custom_target(sync_sandbox_assets ALL
+add_custom_target(SyncSandboxAssets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
-        "$<TARGET_FILE_DIR:sandbox>/Assets"
+        "$<TARGET_FILE_DIR:Sandbox>/Assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
         "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
@@ -91,8 +92,8 @@ add_custom_target(sync_sandbox_assets ALL
     VERBATIM
 )
 # WHY: SandboxProject ディレクトリは sandbox の post-build で初回作成されるため、
-#      sync_sandbox_assets はその後に実行する必要がある。
-add_dependencies(sync_sandbox_assets sandbox)
+#      SyncSandboxAssets はその後に実行する必要がある。
+add_dependencies(SyncSandboxAssets Sandbox)
 
 set(SANDBOX_STANDALONE_SOURCES ${SANDBOX_SOURCES})
 
@@ -125,26 +126,26 @@ set_source_files_properties(${HLSL_FILES} PROPERTIES
 
 find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
 
-add_custom_target(compile_shaders
+add_custom_target(CompileShaders
     COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders..."
     SOURCES ${HLSL_FILES} "${SHADER_SCRIPT}"
     VERBATIM
 )
-add_dependencies(sandbox compile_shaders)
-add_dependencies(SandboxStandalone compile_shaders)
+add_dependencies(Sandbox CompileShaders)
+add_dependencies(SandboxStandalone CompileShaders)
 
-target_include_directories(sandbox PRIVATE
+target_include_directories(Sandbox PRIVATE
     src
     ${CMAKE_SOURCE_DIR}/Assets
 )
-target_link_libraries(sandbox
+target_link_libraries(Sandbox
     PRIVATE
-        fbzz_editor
-        fbzz_engine
-        fbzz_physics
-        tomlplusplus
+        FBZZEditor
+        FBZZEngine
+        FBZZPhysics
+        TomlPlusPlus
         user32
         dwmapi
         shell32
@@ -156,29 +157,29 @@ target_include_directories(SandboxStandalone PRIVATE
 )
 target_link_libraries(SandboxStandalone
     PRIVATE
-        fbzz_engine
-        fbzz_physics
-        tomlplusplus
+        FBZZEngine
+        FBZZPhysics
+        TomlPlusPlus
         user32
         dwmapi
         shell32
 )
 
-add_custom_command(TARGET sandbox POST_BUILD
+add_custom_command(TARGET Sandbox POST_BUILD
     # コア DLL を Sandbox/ に配置
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_math>    "$<TARGET_FILE_DIR:sandbox>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_physics> "$<TARGET_FILE_DIR:sandbox>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_engine>  "$<TARGET_FILE_DIR:sandbox>"
-    # WHY: fbzz_engine は共有ライブラリ版 ImGui を参照するため、Sandbox 単体起動にも DLL が必要。
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:imgui> "$<TARGET_FILE_DIR:sandbox>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZMath>    "$<TARGET_FILE_DIR:Sandbox>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZPhysics> "$<TARGET_FILE_DIR:Sandbox>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZEngine>  "$<TARGET_FILE_DIR:Sandbox>"
+# WHY: FBZZEngine は共有ライブラリ版 ImGui を参照するため、Sandbox 単体起動にも DLL が必要。
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ImGui> "$<TARGET_FILE_DIR:Sandbox>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
-        "$<TARGET_FILE_DIR:sandbox>"
+        "$<TARGET_FILE_DIR:Sandbox>"
     COMMAND ${CMAKE_COMMAND} -E rm -rf
-        "$<TARGET_FILE_DIR:sandbox>/Assets"
+        "$<TARGET_FILE_DIR:Sandbox>/Assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
-        "$<TARGET_FILE_DIR:sandbox>/Assets"
+        "$<TARGET_FILE_DIR:Sandbox>/Assets"
     COMMAND ${CMAKE_COMMAND}
         -D "SOURCE_DIR=${SANDBOX_PROJECT_TEMPLATE_DIR}"
         -D "DEST_DIR=${SANDBOX_DEFAULT_PROJECT_DIR}"
@@ -204,11 +205,11 @@ add_custom_command(TARGET sandbox POST_BUILD
 
 add_custom_command(TARGET SandboxStandalone POST_BUILD
     # コア DLL を Sandbox/ に配置 (Sandbox.exe と共有ディレクトリなので 1 コピーで済む)
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_math>    "$<TARGET_FILE_DIR:SandboxStandalone>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_physics> "$<TARGET_FILE_DIR:SandboxStandalone>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_engine>  "$<TARGET_FILE_DIR:SandboxStandalone>"
-    # WHY: Standalone のみをビルドした場合も、fbzz_engine が参照する ImGui DLL を同じ階層へ配置する。
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:imgui> "$<TARGET_FILE_DIR:SandboxStandalone>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZMath>    "$<TARGET_FILE_DIR:SandboxStandalone>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZPhysics> "$<TARGET_FILE_DIR:SandboxStandalone>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZEngine>  "$<TARGET_FILE_DIR:SandboxStandalone>"
+# WHY: Standalone のみをビルドした場合も、FBZZEngine が参照する ImGui DLL を同じ階層へ配置する。
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ImGui> "$<TARGET_FILE_DIR:SandboxStandalone>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:SandboxStandalone>"

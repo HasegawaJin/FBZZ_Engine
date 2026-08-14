@@ -32,9 +32,9 @@ foreach(TEMPLATE_KIND standard empty)
     endif()
 
     if(TEMPLATE_KIND STREQUAL "standard")
-        foreach(REQUIRED_SHADER_TEXT "add_custom_target(compile_shaders"
+        foreach(REQUIRED_SHADER_TEXT "add_custom_target(CompileShaders"
                                      "Assets/Shaders/*.hlsli"
-                                     "add_dependencies({{TARGET_NAME}}Standalone compile_shaders)")
+                                     "add_dependencies({{TARGET_NAME}}Standalone CompileShaders)")
             string(FIND "${CMAKE_TEXT}" "${REQUIRED_SHADER_TEXT}" SHADER_TEXT_POS)
             if(SHADER_TEXT_POS EQUAL -1)
                 message(FATAL_ERROR "standard: shader build integration is missing ${REQUIRED_SHADER_TEXT}")
