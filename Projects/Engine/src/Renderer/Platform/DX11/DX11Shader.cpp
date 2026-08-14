@@ -471,6 +471,8 @@ ShaderDescriptor DX11Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
 {
     m_path = path;
+    // 深度専用シャドウシェーダーの判定はここで確定させる (Submit のホットパスから外す)。
+    m_isShadowMapShader = path.find("ShadowMap") != std::string::npos;
 
     const std::string base = CompiledBase(path);
 

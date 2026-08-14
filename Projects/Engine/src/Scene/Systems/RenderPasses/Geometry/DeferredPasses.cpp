@@ -34,9 +34,8 @@ struct TransparentEntry {
 };
 
 void SortAndSubmitTransparent(
+    RenderPassContext& ctx,
     std::vector<TransparentEntry>& queue,
-    renderer::IRenderer& renderer,
-    renderer::ResourceManager& resources,
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB)
 {
     std::sort(queue.begin(), queue.end(),
@@ -45,8 +44,8 @@ void SortAndSubmitTransparent(
             return a.distSqFromCamera > b.distSqFromCamera;
         });
     for (auto& entry : queue) {
-        resources.Update(objectCB, &entry.objData, sizeof(PerObjectCB));
-        renderer.Submit(entry.dc, resources);
+        ctx.resources.Update(objectCB, &entry.objData, sizeof(PerObjectCB));
+        SubmitCounted(ctx, entry.dc);
     }
 }
 
@@ -96,22 +95,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 
-    ShadowConstantsCB shadowData{};
-    const float shadowTexelSize      = 1.0f / static_cast<float>(ctx.settings.shadow.mapResolution);
-    shadowData.lightViewProjection   = ctx.lightVP;
-    shadowData.shadowMapTexelSize[0] = shadowTexelSize;
-    shadowData.shadowMapTexelSize[1] = shadowTexelSize;
-    shadowData.shadowBias            = ctx.shadowBiasNDC;
-    shadowData.shadowStrength        = ctx.shadowStrength;
-    shadowData.shadowPcfRadius       = ctx.settings.shadow.pcfRadius;
-    shadowData.cloudShadowStrength   = ctx.cloudShadowStrength;
-    shadowData.cloudShadowCoverage   = ctx.cloudShadowCoverage;
-    shadowData.cloudShadowScale      = ctx.cloudShadowScale;
-    shadowData.cloudShadowSpeed      = ctx.cloudShadowSpeed;
-    shadowData.cloudShadowTime       = ctx.cloudShadowTime;
-    shadowData.cloudShadowWindX      = ctx.cloudShadowWindX;
-    shadowData.cloudShadowWindZ      = ctx.cloudShadowWindZ;
-    resources.Update(h.shadowCB, &shadowData, sizeof(ShadowConstantsCB));
+    UpdateShadowConstants(ctx);
 
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
@@ -141,8 +125,13 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         // WHY: GBuffer はアルファブレンドをサポートしない (MRT への書き込みが 1 つの値のため)。
         if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
 
+        ++ctx.statsTotalObjects;
+
         // フラスタムカリング: バウンディング球が視錐台外なら除外
-        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
+        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) {
+            ++ctx.statsFrustumCulled;
+            continue;
+        }
 
         // GBuffer に収まらないエフェクト系シェーダー (RimLight / Toon 等) は
         // DeferredForwardEffects パスで Forward 描画するためここではスキップする。
@@ -215,7 +204,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         if (material)
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
-        renderer.Submit(dc, resources);
+        SubmitCounted(ctx, dc);
     }
 }
 
@@ -323,13 +312,17 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
     renderer.SetRenderTarget(h.hdrRT, resources);
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
 
     std::vector<TransparentEntry> transparentQueue;
     const auto& frustum = *ctx.cameraFrustum;
 
-    // 不透明 skinned meshes → 即座に Submit
+    // skinned meshes を submesh 単位で走査し、スロットのブレンドモードで
+    // 不透明 (即 Submit) / 半透明 (キュー蓄積) へ振り分ける。
+    // WHY: 1 GameObject がモデル全体を描くようになったため、
+    //      不透明ボディと半透明バイザーのように submesh ごとに種別が違うのが常態になる。
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
@@ -337,84 +330,12 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         auto* anim = FindAnimator(go);
         if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) continue;
         if (!mat || !mat->EnsureMaterialAsset()) continue;
-        if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
-        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) continue;
-        auto* material = SyncMaterial(*mat, resources, true);
-        if (!material) continue;
 
-        // WHY: Surface 版シェーダー (Material/Surface/) はスキニング処理を持たない VS を使用する。
-        //      SkinnedMeshRenderer に誤って設定するとメッシュが破綻するため FallbackSkinned へフォールバックし、
-        //      開発者がすぐ気づけるよう警告を出す。
-        const bool surfaceMisassigned = material->shader.IsValid() && IsSurfaceMaterial(*mat);
-        if (surfaceMisassigned)
-            LogSkinnedSurfaceFallbackWarningOnce(material->shaderPath);
-        renderer::Material* drawMaterial = surfaceMisassigned
-            ? GetFallbackMaterial(resources, true)
-            : material;
-        if (!drawMaterial) continue;
-        const auto skinnedShader = drawMaterial->shader;
-        if (!skinnedShader.IsValid()) continue;
-
-        PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
-        resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
-
-        const auto skinCB = (anim && anim->skinningBuffer.IsValid())
-            ? anim->skinningBuffer : h.bindPoseSkinningCB;
-
-        const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
-        const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
-        for (int mi = meshStart; mi < meshEnd; ++mi) {
-            const auto& meshPtr = smr->model->meshes[mi];
-            if (!meshPtr) continue;
-            if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
-
-            renderer::DrawCall dc;
-            dc.vertexBuffer       = smr->ResolveVertexBuffer(
-                static_cast<size_t>(mi), meshPtr->vertexBuffer);
-            dc.indexBuffer        = meshPtr->indexBuffer;
-            dc.indexCount         = meshPtr->indexCount;
-            dc.vertexCount        = meshPtr->vertexCount;
-            dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
-            dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
-            dc.constantBuffers[0] = h.frameCB;
-            dc.constantBuffers[1] = h.objectCB;
-            dc.constantBuffers[2] = drawMaterial->paramsBuffer;
-            dc.constantBuffers[3] = h.lightCB;
-            dc.constantBuffers[4] = h.shadowCB;
-            dc.constantBuffers[7] = skinCB;
-            for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
-                if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
-            dc.textures[8] = shadowDepthTex;
-            renderer.Submit(dc, resources);
+        ++ctx.statsTotalObjects;
+        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) {
+            ++ctx.statsFrustumCulled;
+            continue;
         }
-    }
-
-    // 半透明 skinned meshes → キュー蓄積
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
-        auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
-        auto* mat  = go.GetComponent<MaterialComponent>();
-        auto* anim = FindAnimator(go);
-        if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) continue;
-        if (!mat || !mat->EnsureMaterialAsset()) continue;
-        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;
-        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) continue;
-        auto* material = SyncMaterial(*mat, resources, true);
-        if (!material) continue;
-
-        const bool surfaceMisassigned = material->shader.IsValid() && IsSurfaceMaterial(*mat);
-        if (surfaceMisassigned)
-            LogSkinnedSurfaceFallbackWarningOnce(material->shaderPath);
-        renderer::Material* drawMaterial = surfaceMisassigned
-            ? GetFallbackMaterial(resources, true)
-            : material;
-        if (!drawMaterial) continue;
-        const auto skinnedShader = drawMaterial->shader;
-        if (!skinnedShader.IsValid()) continue;
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
@@ -423,41 +344,72 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         const auto skinCB = (anim && anim->skinningBuffer.IsValid())
             ? anim->skinningBuffer : h.bindPoseSkinningCB;
 
-        const int meshStart2 = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
-        const int meshEnd2   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
-        for (int mi = meshStart2; mi < meshEnd2; ++mi) {
+        const size_t meshCount = smr->model->meshes.size();
+        for (size_t mi = 0; mi < meshCount; ++mi) {
             const auto& meshPtr = smr->model->meshes[mi];
             if (!meshPtr) continue;
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
+            auto& slot = mat->SlotAt(mi);
+            if (!slot.visible) continue;
+            slot.EnsureMaterialAsset();
+
+            auto* material = SyncMaterialSlot(*mat, mi, resources, true);
+            if (!material) continue;
+
+            // WHY: Surface 版シェーダー (Material/Surface/) はスキニング処理を持たない VS を使用する。
+            //      SkinnedMeshRenderer に誤って設定するとメッシュが破綻するため FallbackSkinned へフォールバックし、
+            //      開発者がすぐ気づけるよう警告を出す。
+            const bool surfaceMisassigned = material->shader.IsValid() && IsSurfaceMaterial(slot);
+            if (surfaceMisassigned)
+                LogSkinnedSurfaceFallbackWarningOnce(material->shaderPath);
+            renderer::Material* drawMaterial = surfaceMisassigned
+                ? GetFallbackMaterial(resources, true)
+                : material;
+            if (!drawMaterial) continue;
+            const auto skinnedShader = drawMaterial->shader;
+            if (!skinnedShader.IsValid()) continue;
+
+            const bool opaque = slot.GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND;
+
             renderer::DrawCall dc;
-            dc.vertexBuffer       = smr->ResolveVertexBuffer(
-                static_cast<size_t>(mi), meshPtr->vertexBuffer);
+            dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
             dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
-            dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
+                                                     : GetOrCreateMaterialPSO(resources, slot.GetBlendMode(), slot.IsDoubleSided());
+            dc.layer              = opaque ? renderer::RenderLayer::OPAQUE_LAYER
+                                           : renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[2] = drawMaterial->paramsBuffer;
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
+            dc.constantBuffers[8] = h.advancedGraphicsCB;
             dc.constantBuffers[7] = skinCB;
             for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
                 if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
             dc.textures[8] = shadowDepthTex;
+            dc.textures[16] = h.iblIrradiance;
+            dc.textures[17] = h.iblPrefilter;
+            dc.textures[18] = h.iblBrdfLut;
+
+            if (opaque) {
+                resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
+                SubmitCounted(ctx, dc);
+                continue;
+            }
 
             const float dx = objData.world.m[0][3] - cam.m_position.x;
             const float dy = objData.world.m[1][3] - cam.m_position.y;
             const float dz = objData.world.m[2][3] - cam.m_position.z;
-            transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->GetRenderQueue() });
+            transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, slot.GetRenderQueue() });
         }
     }
 
-    SortAndSubmitTransparent(transparentQueue, renderer, resources, h.objectCB);
+    SortAndSubmitTransparent(ctx, transparentQueue, h.objectCB);
 }
 
 // ── Deferred 内透明 Static Mesh フォワードパス ───────────────────────────────
@@ -477,6 +429,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
     renderer.SetRenderTarget(h.hdrRT, resources);
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
 
@@ -493,8 +446,13 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (mr->mesh->isSkinned) continue;
         if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;  // 透明のみ
 
+        ++ctx.statsTotalObjects;
+
         // フラスタムカリング: バウンディング球が視錐台外なら除外
-        if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) continue;
+        if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) {
+            ++ctx.statsFrustumCulled;
+            continue;
+        }
 
         auto* material = SyncMaterial(*mat, resources);
         if (!material || !material->shader.IsValid()) continue;
@@ -517,9 +475,13 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
+        dc.constantBuffers[8] = h.advancedGraphicsCB;
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
+        dc.textures[16] = h.iblIrradiance;
+        dc.textures[17] = h.iblPrefilter;
+        dc.textures[18] = h.iblBrdfLut;
 
         const float dx = objData.world.m[0][3] - cam.m_position.x;
         const float dy = objData.world.m[1][3] - cam.m_position.y;
@@ -527,7 +489,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->GetRenderQueue() });
     }
 
-    SortAndSubmitTransparent(transparentQueue, renderer, resources, h.objectCB);
+    SortAndSubmitTransparent(ctx, transparentQueue, h.objectCB);
 
     // ── 不透明エフェクト系 Static Mesh (RimLight / Toon / Subsurface 等) ──────────
     // GBuffer に収まらない独自ライティングを持つ不透明シェーダーを Forward で描画する。
@@ -568,10 +530,14 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
+        dc.constantBuffers[8] = h.advancedGraphicsCB;
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
-        renderer.Submit(dc, resources);
+        dc.textures[16] = h.iblIrradiance;
+        dc.textures[17] = h.iblPrefilter;
+        dc.textures[18] = h.iblBrdfLut;
+        SubmitCounted(ctx, dc);
     }
 }
 

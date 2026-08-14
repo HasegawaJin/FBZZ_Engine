@@ -39,13 +39,16 @@ struct OpaqueStaticEntry {
     float              distSq; // カメラからの距離^2 (前から後ろ順ソート用)
 };
 
-// 不透明スキンドメッシュのギャザーエントリ
+// 不透明スキンドメッシュのギャザーエントリ。
+// WHY: 1 GameObject がモデル全体 (複数 submesh) を描き、submesh ごとに別マテリアル
+//      スロットを持つため、ブレンドモード振り分けもキュー要素も submesh 粒度になる。
 struct OpaqueSkinnedEntry {
     GameObject*          go;
     SkinnedMeshRenderer* smr;
     MaterialComponent*   mat;
     AnimatorComponent*   anim;
     float                distSq;
+    size_t               meshIndex;
 };
 
 struct TransparentEntry {
@@ -56,9 +59,8 @@ struct TransparentEntry {
 };
 
 void SortAndSubmitTransparent(
+    RenderPassContext& ctx,
     std::vector<TransparentEntry>& queue,
-    renderer::IRenderer& renderer,
-    renderer::ResourceManager& resources,
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB)
 {
     std::sort(queue.begin(), queue.end(),
@@ -67,8 +69,8 @@ void SortAndSubmitTransparent(
             return a.distSqFromCamera > b.distSqFromCamera;
         });
     for (auto& entry : queue) {
-        resources.Update(objectCB, &entry.objData, sizeof(PerObjectCB));
-        renderer.Submit(entry.dc, resources);
+        ctx.resources.Update(objectCB, &entry.objData, sizeof(PerObjectCB));
+        SubmitCounted(ctx, entry.dc);
     }
 }
 
@@ -96,25 +98,11 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 
-    ShadowConstantsCB shadowData{};
-    const float shadowTexelSize      = 1.0f / static_cast<float>(ctx.settings.shadow.mapResolution);
-    shadowData.lightViewProjection   = ctx.lightVP;
-    shadowData.shadowMapTexelSize[0] = shadowTexelSize;
-    shadowData.shadowMapTexelSize[1] = shadowTexelSize;
-    shadowData.shadowBias            = ctx.shadowBiasNDC;
-    shadowData.shadowStrength        = ctx.shadowStrength;
-    shadowData.shadowPcfRadius       = ctx.settings.shadow.pcfRadius;
-    shadowData.cloudShadowStrength   = ctx.cloudShadowStrength;
-    shadowData.cloudShadowCoverage   = ctx.cloudShadowCoverage;
-    shadowData.cloudShadowScale      = ctx.cloudShadowScale;
-    shadowData.cloudShadowSpeed      = ctx.cloudShadowSpeed;
-    shadowData.cloudShadowTime       = ctx.cloudShadowTime;
-    shadowData.cloudShadowWindX      = ctx.cloudShadowWindX;
-    shadowData.cloudShadowWindZ      = ctx.cloudShadowWindZ;
-    resources.Update(h.shadowCB, &shadowData, sizeof(ShadowConstantsCB));
+    UpdateShadowConstants(ctx);
 
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
     const auto& frustum       = *ctx.cameraFrustum;
@@ -176,9 +164,13 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[2] = material->paramsBuffer;
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
+            dc.constantBuffers[8] = h.advancedGraphicsCB;
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
+            dc.textures[16] = h.iblIrradiance;
+            dc.textures[17] = h.iblPrefilter;
+            dc.textures[18] = h.iblBrdfLut;
             transparentQueue.push_back({ dc, objData, distSq, mat->GetRenderQueue() });
         }
     }
@@ -202,13 +194,28 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const float dz = go.transform.position.z - cam.m_position.z;
         const float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
-            opaqueSkinnedQueue.push_back({ &go, smr, mat, anim, distSq });
-        } else {
-            auto* material = SyncMaterial(*mat, resources, true);
+        // submesh ごとにマテリアルスロットを引き、そのスロットのブレンドモードで
+        // 不透明キュー / 半透明キューへ振り分ける。
+        // WHY: 1 モデル内に不透明ボディと半透明バイザーが混在するのが普通のため、
+        //      オブジェクト単位で振り分けると片方が必ず誤ったキューへ入る。
+        const size_t meshCount = smr->model->meshes.size();
+        for (size_t mi = 0; mi < meshCount; ++mi) {
+            const auto& meshPtr = smr->model->meshes[mi];
+            if (!meshPtr) continue;
+            if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+
+            auto& slot = mat->SlotAt(mi);
+            if (!slot.visible) continue;
+            slot.EnsureMaterialAsset();
+
+            if (slot.GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
+                opaqueSkinnedQueue.push_back({ &go, smr, mat, anim, distSq, mi });
+                continue;
+            }
+
+            auto* material = SyncMaterialSlot(*mat, mi, resources, true);
             if (!material) continue;
-            const bool surfaceMisassigned =
-                material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
+            const bool surfaceMisassigned = IsSurfaceMaterial(slot);
             if (surfaceMisassigned)
                 LogSkinnedSurfaceFallbackWarningOnce(material->shaderPath);
             renderer::Material* drawMaterial = surfaceMisassigned
@@ -225,34 +232,29 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
                 smr->model, h.bindPoseSkinningCB);
 
-            const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
-            const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
-            for (int mi = meshStart; mi < meshEnd; ++mi) {
-                const auto& meshPtr = smr->model->meshes[mi];
-                if (!meshPtr) continue;
-                if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
-
-                renderer::DrawCall dc;
-                dc.vertexBuffer       = smr->ResolveVertexBuffer(
-                    static_cast<size_t>(mi), meshPtr->vertexBuffer);
-                dc.indexBuffer        = meshPtr->indexBuffer;
-                dc.indexCount         = meshPtr->indexCount;
-                dc.vertexCount        = meshPtr->vertexCount;
-                dc.shader             = skinnedShader;
-                dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                         : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
-                dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
-                dc.constantBuffers[0] = h.frameCB;
-                dc.constantBuffers[1] = h.objectCB;
-                dc.constantBuffers[2] = drawMaterial->paramsBuffer;
-                dc.constantBuffers[3] = h.lightCB;
-                dc.constantBuffers[4] = h.shadowCB;
-                dc.constantBuffers[7] = skinCB;
-                for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
-                    if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
-                dc.textures[8] = shadowDepthTex;
-                transparentQueue.push_back({ dc, objData, distSq, mat->GetRenderQueue() });
-            }
+            renderer::DrawCall dc;
+            dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+            dc.indexBuffer        = meshPtr->indexBuffer;
+            dc.indexCount         = meshPtr->indexCount;
+            dc.vertexCount        = meshPtr->vertexCount;
+            dc.shader             = skinnedShader;
+            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
+                                                     : GetOrCreateMaterialPSO(resources, slot.GetBlendMode(), slot.IsDoubleSided());
+            dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
+            dc.constantBuffers[0] = h.frameCB;
+            dc.constantBuffers[1] = h.objectCB;
+            dc.constantBuffers[2] = drawMaterial->paramsBuffer;
+            dc.constantBuffers[3] = h.lightCB;
+            dc.constantBuffers[4] = h.shadowCB;
+            dc.constantBuffers[8] = h.advancedGraphicsCB;
+            dc.constantBuffers[7] = skinCB;
+            for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
+                if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
+            dc.textures[8] = shadowDepthTex;
+            dc.textures[16] = h.iblIrradiance;
+            dc.textures[17] = h.iblPrefilter;
+            dc.textures[18] = h.iblBrdfLut;
+            transparentQueue.push_back({ dc, objData, distSq, slot.GetRenderQueue() });
         }
     }
 
@@ -273,8 +275,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         });
     std::sort(opaqueSkinnedQueue.begin(), opaqueSkinnedQueue.end(),
         [](const OpaqueSkinnedEntry& a, const OpaqueSkinnedEntry& b) {
-            if (a.mat->GetRenderQueue() != b.mat->GetRenderQueue())
-                return a.mat->GetRenderQueue() < b.mat->GetRenderQueue();
+            // RenderQueue は submesh ごとのスロットから引く。
+            const int32_t qa = a.mat->SlotAt(a.meshIndex).GetRenderQueue();
+            const int32_t qb = b.mat->SlotAt(b.meshIndex).GetRenderQueue();
+            if (qa != qb) return qa < qb;
             return a.distSq < b.distSq;
         });
 
@@ -319,14 +323,14 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
+        dc.constantBuffers[8] = h.advancedGraphicsCB;
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
-        renderer.Submit(dc, resources);
-
-        ++ctx.statsDrawCalls;
-        ctx.statsVertexCount   += static_cast<int>(mr->mesh->vertexCount);
-        ctx.statsTriangleCount += static_cast<int>(mr->mesh->indexCount / 3u);
+        dc.textures[16] = h.iblIrradiance;
+        dc.textures[17] = h.iblPrefilter;
+        dc.textures[18] = h.iblBrdfLut;
+        SubmitCounted(ctx, dc);
     }
 
     // ── 不透明スキンドメッシュ ─────────────────────────────────────────────────
@@ -337,12 +341,17 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* smr  = entry.smr;
         auto* mat  = entry.mat;
         auto* anim = entry.anim;
+        const size_t mi = entry.meshIndex;
 
-        auto* material = SyncMaterial(*mat, resources, true);
+        const auto& meshPtr = smr->model->meshes[mi];
+        if (!meshPtr) continue;
+
+        auto& slot = mat->SlotAt(mi);
+        slot.EnsureMaterialAsset();
+        auto* material = SyncMaterialSlot(*mat, mi, resources, true);
         if (!material) continue;
 
-        const bool surfaceMisassigned =
-            material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
+        const bool surfaceMisassigned = IsSurfaceMaterial(slot);
         if (surfaceMisassigned)
             LogSkinnedSurfaceFallbackWarningOnce(material->shaderPath);
         renderer::Material* drawMaterial = surfaceMisassigned
@@ -361,42 +370,29 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
             smr->model, h.bindPoseSkinningCB);
 
-        const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
-        const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
-        for (int mi = meshStart; mi < meshEnd; ++mi) {
-            const auto& meshPtr = smr->model->meshes[mi];
-            if (!meshPtr) continue;
-            if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
-
-            renderer::DrawCall dc;
-                dc.vertexBuffer       = smr->ResolveVertexBuffer(
-                    static_cast<size_t>(mi), meshPtr->vertexBuffer);
-            dc.indexBuffer        = meshPtr->indexBuffer;
-            dc.indexCount         = meshPtr->indexCount;
-            dc.vertexCount        = meshPtr->vertexCount;
-            dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
-            dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
-            dc.constantBuffers[0] = h.frameCB;
-            dc.constantBuffers[1] = h.objectCB;
-            dc.constantBuffers[2] = drawMaterial->paramsBuffer;
-            dc.constantBuffers[3] = h.lightCB;
-            dc.constantBuffers[4] = h.shadowCB;
-            dc.constantBuffers[7] = skinCB;
-            for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
-                if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
-            dc.textures[8] = shadowDepthTex;
-            renderer.Submit(dc, resources);
-
-            ++ctx.statsDrawCalls;
-            ctx.statsVertexCount   += static_cast<int>(meshPtr->vertexCount);
-            ctx.statsTriangleCount += static_cast<int>(meshPtr->indexCount / 3u);
-        }
+        renderer::DrawCall dc;
+        dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+        dc.indexBuffer        = meshPtr->indexBuffer;
+        dc.indexCount         = meshPtr->indexCount;
+        dc.vertexCount        = meshPtr->vertexCount;
+        dc.shader             = skinnedShader;
+        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
+                                                 : GetOrCreateMaterialPSO(resources, slot.GetBlendMode(), slot.IsDoubleSided());
+        dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
+        dc.constantBuffers[0] = h.frameCB;
+        dc.constantBuffers[1] = h.objectCB;
+        dc.constantBuffers[2] = drawMaterial->paramsBuffer;
+        dc.constantBuffers[3] = h.lightCB;
+        dc.constantBuffers[4] = h.shadowCB;
+        dc.constantBuffers[7] = skinCB;
+        for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
+            if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
+        dc.textures[8] = shadowDepthTex;
+        SubmitCounted(ctx, dc);
     }
 
     // ── 半透明をソートして Submit ─────────────────────────────────────────────
-    SortAndSubmitTransparent(transparentQueue, renderer, resources, h.objectCB);
+    SortAndSubmitTransparent(ctx, transparentQueue, h.objectCB);
 }
 
 } // namespace fbzz::scene

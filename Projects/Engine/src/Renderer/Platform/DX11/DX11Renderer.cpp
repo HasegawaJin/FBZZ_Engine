@@ -253,6 +253,14 @@ std::unique_ptr<IBuffer> DX11Renderer::CreateNativeVertexBuffer(const void* data
     return buf;
 }
 
+std::unique_ptr<IBuffer> DX11Renderer::CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride)
+{
+    auto buf = std::make_unique<DX11Buffer>();
+    if (!buf->InitGpuWritableVertex(m_device.Get(), m_context.Get(), sizeBytes, stride))
+        return nullptr;
+    return buf;
+}
+
 std::unique_ptr<IBuffer> DX11Renderer::CreateNativeIndexBuffer(const void* data, uint32_t count)
 {
     // インデックスは uint32_t 固定 (DXGI_FORMAT_R32_UINT)。
@@ -487,6 +495,10 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         if (!sb) continue;
         uavs[2 + i] = static_cast<DX11StructuredBuffer*>(sb)->GetUAV();
     }
+    // GPU 書き込み可能な頂点バッファは u4 固定 (Binding.hlsli の UAV_SKINNED_VERTICES)。
+    // コンピュートスキニングの出力先。
+    if (auto* vb = resources.Get(call.uavVertexBuffer))
+        uavs[4] = static_cast<DX11Buffer*>(vb)->GetUAV();
     m_context->CSSetUnorderedAccessViews(0, 8, uavs, nullptr);
 
     // Dispatch
@@ -520,35 +532,44 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     // WHY: ShadowMap は VS が出した SV_POSITION の深度だけを書き込むパスで、PS は空実装。
     //      PS を残したまま colorCount=0 の RT に Draw すると RTV 未設定警告が出るため、
     //      DepthCopy のように PS 側で SV_Depth を生成するパスは除外し、ShadowMap だけ PS を外す。
-    const bool isShadowMapShader = boundShader &&
-        static_cast<DX11Shader*>(boundShader)->GetPath().find("ShadowMap") != std::string::npos;
-    if (m_currentRT && m_currentRT->GetColorCount() == 0 && isShadowMapShader)
+    // NOTE: 判定は DX11Shader::Init で 1 度だけ済ませてある (毎 DrawCall の文字列検索を避ける)。
+    const bool isDepthOnlyDraw = boundShader &&
+        static_cast<DX11Shader*>(boundShader)->IsShadowMapShader() &&
+        m_currentRT && m_currentRT->GetColorCount() == 0;
+    if (isDepthOnlyDraw)
         m_context->PSSetShader(nullptr, nullptr, 0);
 
     // ---- 3. Constant Buffers (VS・PS 両方の同スロットへバインド) ----------------
     // 同じ定数バッファを VS と PS の両方にバインドすることで、
     // シェーダーの種類ごとにスロットを分けずに済む。
+    // WHY: PS を外した深度専用描画では PS ステージへのバインドは全て無視される。
+    //      シャドウパスは 1 フレームで最も DrawCall 数が多くなりやすいので、
+    //      効かないと分かっている API 呼び出し (CB × スロット数 + SRV クリア) は丸ごと省く。
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
     {
         auto* cb = resources.Get(call.constantBuffers[i]);
         if (!cb) continue;
         ID3D11Buffer* buf = static_cast<DX11ConstantBuffer*>(cb)->GetBuffer();
         m_context->VSSetConstantBuffers(i, 1, &buf);
-        m_context->PSSetConstantBuffers(i, 1, &buf);
+        if (!isDepthOnlyDraw)
+            m_context->PSSetConstantBuffers(i, 1, &buf);
     }
 
     // ---- 4. Textures (SRV → PS ステージ) ----------------------------------------
     // WHY: DrawCall ごとに未使用スロットを NULL に戻す。
     //      前の DrawCall の SRV が残ると、次のパスで同じリソースを RTV/DSV として使った際に
     //      DX11 デバッグレイヤーの HAZARD 警告や意図しないサンプリングが起きる。
-    static ID3D11ShaderResourceView* const kNullSRVs[32] = {};
-    m_context->PSSetShaderResources(0, 32, kNullSRVs);
-    for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
+    if (!isDepthOnlyDraw)
     {
-        auto* texture = resources.Get(call.textures[i]);
-        if (!texture) continue;
-        ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(texture)->GetSRV();
-        m_context->PSSetShaderResources(i, 1, &srv);
+        static ID3D11ShaderResourceView* const kNullSRVs[32] = {};
+        m_context->PSSetShaderResources(0, 32, kNullSRVs);
+        for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
+        {
+            auto* texture = resources.Get(call.textures[i]);
+            if (!texture) continue;
+            ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(texture)->GetSRV();
+            m_context->PSSetShaderResources(i, 1, &srv);
+        }
     }
 
     // ---- 5. Primitive Topology (IA ステージ) --------------------------------------
@@ -712,6 +733,22 @@ void DX11Renderer::BindRenderTarget(IRenderTarget* rt)
 void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources)
 {
     BindRenderTarget(resources.Get(rt));
+}
+
+void DX11Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+{
+    // BindRenderTarget が RT 全体のビューポートを張った後に、その一部へ絞り込む。
+    // カスケードシャドウが 1 枚のアトラスをタイル分割して使う (IRenderer::SetViewport 参照)。
+    if (width == 0u || height == 0u) return;
+
+    D3D11_VIEWPORT vp = {};
+    vp.TopLeftX = static_cast<float>(x);
+    vp.TopLeftY = static_cast<float>(y);
+    vp.Width    = static_cast<float>(width);
+    vp.Height   = static_cast<float>(height);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_context->RSSetViewports(1, &vp);
 }
 
 // RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。

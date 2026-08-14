@@ -35,6 +35,7 @@ public:
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
     void Resize(uint32_t width, uint32_t height) override;
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
+    void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
     void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
                              uint32_t mip, ResourceManager& resources) override;
     void SetSampler(uint32_t slot, SamplerMode mode) override;
@@ -64,6 +65,7 @@ public:
 
 private:
     std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override;
+    std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride) override;
     std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override;
     std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t) override;
     std::unique_ptr<IShader> CreateNativeShader(const std::string&) override;
