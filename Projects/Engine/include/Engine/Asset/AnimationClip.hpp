@@ -76,7 +76,7 @@ struct Vector4Key {
 };
 
 struct NodeAnimationTrack {
-    // Animator 所有 GameObject からの相対 Path。空なら nodeName による後方互換検索を行う。
+    // Animator 所有 GameObject からの相対 Path。
     std::string               targetPath;
     std::string               nodeName;
     AnimInterp                interp = AnimInterp::Linear;
@@ -115,10 +115,10 @@ struct AnimEvent {
 
 struct AnimationClip {
     std::string name;
-    // durationSeconds: 最新 .anim v2 の正規化済み再生長。AnimatorSystem はこの値だけを遷移時間に使う。
+    // durationSeconds: .anim v3 の正規化済み再生長。AnimatorSystem はこの値だけを遷移時間に使う。
     double durationSeconds = 0.0;
     // durationTicks / ticksPerSecond はキー時刻を tick 空間でサンプリングするための補助値。
-    // WHY: v2 でも key.time は exporter 元の tick 単位を保持するため、秒→tick 変換係数が必要になる。
+    // WHY: key.time は exporter 元の tick 単位を保持するため、秒→tick 変換係数が必要になる。
     double durationTicks  = 0.0;
     double ticksPerSecond = 30.0;
     float  frameRate       = 30.0f;

@@ -25,8 +25,6 @@ struct AnimatorGraphLayout {
 // AnimatorComponent のランタイム状態を除いた Controller 定義。
 // WHY: 複数 GameObject が同じ遷移グラフを参照し、Hierarchy 選択なしで編集できるようにする。
 struct AnimatorControllerAsset {
-    // version 1 読込互換用。version 2 以降は State / Motion の sourcePath を使用する。
-    std::vector<std::string>                clipSources;
     std::string                             defaultStateName;
     std::vector<scene::AnimationState>      states;
     std::vector<scene::AnimationTransition> anyStateTransitions;
