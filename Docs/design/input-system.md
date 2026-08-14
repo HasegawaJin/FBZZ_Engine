@@ -172,7 +172,7 @@ public:
     static bool  GetAction    (std::string_view name);
     static bool  GetActionDown(std::string_view name);
     static bool  GetActionUp  (std::string_view name);
-    static float GetAxis      (std::string_view name);
+    static float GetActionAxis(std::string_view name);
     static math::Vector2 GetAxis2D(std::string_view xName, std::string_view yName);
 
     // --- リバインド ---

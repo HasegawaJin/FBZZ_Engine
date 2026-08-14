@@ -17,18 +17,17 @@ Material 操作は共有 `.mat` と GameObject 単位の runtime override を分
 - [x] 展開時にSprite数分の仮想サブアセットを元素材の直後へ表示する ✅
 - [x] 各SpriteRectをUVで切り抜いたIconを表示する ✅
 - [x] `texture::sprite::stable-id` 形式でD&D可能な参照を提供する ✅
-- [x] Sprite名変更後もstable IDと旧名aliasで参照を維持する ✅
+- [x] Sprite名変更後もstable IDで参照を維持する ✅
 - [x] 選択中は素材を塗り潰さず、細いaccentと軽いhoverだけを表示する ✅
 - [x] Sprite参照と`.meta`の回帰テストを追加する ✅
 
 ### SerializeField schema
 
 - [x] 永続キーと Inspector 表示名を分離する ✅
-- [x] 旧フィールド名を読む `FBZZ_FIELD_MIGRATED` を提供する ✅
-- [x] 旧 Script 型名を読む `FBZZ_SCRIPT_FORMERLY_NAMED` を提供する ✅
+- [x] フィールド名と Script 型名を単一の正規名で保存する ✅
 - [x] 未知・欠落 Script の保存済みデータを維持する ✅
 - [x] Hot Reload 前後でScene snapshot経由のフィールド値を維持する ✅
-- [x] Undo snapshotとAI schemaも同じ永続キー・旧名を使用する ✅
+- [x] Undo snapshotとAI schemaも同じ永続キーを使用する ✅
 
 ### 型付き Asset 参照とコンテナ
 
@@ -94,9 +93,9 @@ Material 操作は共有 `.mat` と GameObject 単位の runtime override を分
 
 ### 品質確認
 
-- [x] Sprite stable ID / 旧名 / `.meta` round-tripテストを追加する ✅
+- [x] Sprite stable ID / `.meta` round-tripテストを追加する ✅
 - [x] Scene保存キー / 欠落Script維持テストを追加する ✅
-- [x] Script旧名alias / Asset GUID保存テストを追加する ✅
+- [x] Script型名 / Asset GUID保存テストを追加する ✅
 - [x] Material property ID / shared-instance分離テストを追加する ✅
 - [ ] Visual Studio 2022からEditor全体とテストをビルド・実行する
 
@@ -106,9 +105,7 @@ Material 操作は共有 `.mat` と GameObject 単位の runtime override を分
 class PlayerComponent final : public fbzz::scene::Script {
 public:
     FBZZ_SCRIPT(PlayerComponent)
-    FBZZ_SCRIPT_FORMERLY_NAMED("LegacyPlayerComponent")
-
-    FBZZ_FIELD_MIGRATED(float, moveSpeed, 5.0f, "Move Speed", "speed")
+    FBZZ_FIELD(float, moveSpeed, 5.0f, "Move Speed")
     FBZZ_FIELD_RANGE(float, stamina, 100.0f, "Stamina", 0.0f, 100.0f)
     FBZZ_FIELD_TAG(targetTag, "Enemy", "Target Tag")
     FBZZ_ASSET_FIELD(fbzz::scene::MaterialRef, hitMaterial, "Hit Material")
@@ -144,7 +141,7 @@ void PlayerComponent::AssignSharedMaterial()
 ## 設計原則
 
 1. 保存キーはC++メンバー名を既定とし、表示名変更で保存データを壊さない。
-2. renameは旧キーaliasで明示的に移行し、保存時は新キーだけを書く。
+2. 保存キーと型名は現行コードの正規名だけを使用する。
 3. Asset参照はGUIDを正本とし、表示とruntime load時だけパスへ解決する。
 4. Script APIはPOD値、`EntityRef`、typed AssetRef、opaque handleだけを公開する。
 5. runtimeのMaterial変更はGameObject単位のoverrideとし、共有Asset割当は明示APIに限定する。
