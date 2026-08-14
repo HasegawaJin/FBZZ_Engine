@@ -97,14 +97,6 @@ tag = 'Player'
     clipIndex = 0
     clipName = ''
     controllerPath = 'guid:ce5dded8d74d40b1bcbc95b2e310cccc'
-    clipSources = [
-        'Assets/Models/DebugCharacter/Idle/Idle.asset',
-        'Assets/Models/DebugCharacter/Walking/Walking.asset',
-        'Assets/Models/DebugCharacter/Running/Running.asset',
-        'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.asset',
-        'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.asset',
-        'Assets/Models/DebugCharacter/Landing/Landing.asset'
-    ]
     defaultStateName = 'Idle'
     enabled = true
     loop = true

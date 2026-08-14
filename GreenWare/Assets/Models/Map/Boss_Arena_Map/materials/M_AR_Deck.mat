@@ -1,0 +1,15 @@
+mesh_type = 'surface'
+name = 'M_AR_Deck'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.800000011920929, 0.800000011920929, 0.800000011920929, 1.0 ]
+metallic = 0.0
+roughness = 0.5
+
+[textures]
+albedo = 'T_AR_Deck_Albedo.png'
+metallic = 'T_AR_Deck_Metallic.png'
+normal = 'T_AR_Deck_Normal.png'
