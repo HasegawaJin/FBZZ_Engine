@@ -297,7 +297,7 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
                 draw.constantBuffers[2] = materialCB;
                 draw.constantBuffers[3] = ctx.handles.lightCB;
                 draw.textures[0] = albedo;
-                ctx.renderer.Submit(draw, ctx.resources);
+                SubmitCounted(ctx, draw);
             }
         }
     }

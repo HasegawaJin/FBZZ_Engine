@@ -659,11 +659,10 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
         }
     }
 
-    // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
-    if (emitter.texture.IsValid() && emitter.loadedTexturePath == emitter.texturePath)
-        return;
-    emitter.texture = LoadParticleTextureOrWhite(resources, emitter.texturePath);
-    emitter.loadedTexturePath = emitter.texturePath;
+    if (!emitter.texture.IsValid()) {
+        emitter.texture = LoadParticleTextureOrWhite(resources, {});
+        emitter.loadedTexturePath.clear();
+    }
 }
 
 // GPU ソートを実際に走らせるか。
@@ -946,9 +945,7 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
     dc.constantBuffers[2] = emitter.trailRibbonCB;
     dc.textures[0]  = emitter.texture;
     ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
-    ctx.renderer.Submit(dc, resources);
-    ++ctx.statsDrawCalls;
-    ctx.statsTriangleCount += static_cast<int>(vertices.size() / 3u);
+    SubmitCounted(ctx, dc);
 }
 
 // blendMode から PSO を選ぶ。CPU/GPU 双方の描画経路で同じ判定を使う。
@@ -1649,9 +1646,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         meshDc.vsBuffers[1] = emitter.gpuSortBuffer;     // t15 (ソート無効時は無効ハンドル)
         meshDc.instanceCount = static_cast<uint32_t>(maxP);
         renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
-        renderer.Submit(meshDc, resources);
-        ctx.statsDrawCalls += 1;
-        ctx.statsTriangleCount += static_cast<int>(mesh->indexCount / 3u) * maxP;
+        SubmitCounted(ctx, meshDc);
         return;
     }
 
@@ -1685,7 +1680,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     dc.vertexCount        = static_cast<uint32_t>(maxP) * 6u;
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.Submit(dc, resources);
+    SubmitCounted(ctx, dc);
 }
 
 // CanUseGpuSimulation の実体は ParticleGpuSimulation.cpp。
@@ -2421,7 +2416,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
             dc.textures[9] = resources.GetColorTexture(h.particleSelfShadowRT, 0);
         renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
         renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-        renderer.Submit(dc, resources);
+        SubmitCounted(ctx, dc);
 
         // 帯は本体の後に描く。帯の方が面積が大きく、先に描くと本体が沈んで見えるため。
         if (ribbonTrail) DrawParticleTrailRibbons(*emitter, tf, count, ctx);

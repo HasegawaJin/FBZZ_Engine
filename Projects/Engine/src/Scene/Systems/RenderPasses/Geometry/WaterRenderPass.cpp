@@ -957,8 +957,12 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             : waterShader;
 
         for (const WaterChunk& chunk : mesh.chunks) {
-            if (!AabbVisible(frustum, transform.position, chunk.aabbMin, chunk.aabbMax))
+            // 水面チャンクも地形と同様、独立にカリングされる描画候補として数える。
+            ++ctx.statsTotalObjects;
+            if (!AabbVisible(frustum, transform.position, chunk.aabbMin, chunk.aabbMax)) {
+                ++ctx.statsFrustumCulled;
                 continue;
+            }
 
             renderer::DrawCall call;
             call.vertexBuffer = chunk.vertexBuffer;
@@ -984,7 +988,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             call.textures[7] = textures.flowMap;
             call.textures[8] = rippleTex;
             call.textures[9] = shadowDepthTexture;
-            renderer.Submit(call, resources);
+            SubmitCounted(ctx, call);
         }
     }
 }

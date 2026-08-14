@@ -198,7 +198,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         drawCall.textures[7] = depthTex;
         if (needsMask && h.decalMaskRT.IsValid())
             drawCall.textures[13] = resources.GetColorTexture(h.decalMaskRT, 0);
-        r.Submit(drawCall, resources);
+        SubmitCounted(ctx, drawCall);
     }
 
     // WHY: GameObjects() の走査中に即時削除すると iterator が無効化されるため、pass 後に破棄キューへ積む。

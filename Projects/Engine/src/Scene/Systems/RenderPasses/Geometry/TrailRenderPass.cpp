@@ -311,15 +311,10 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
                 trail.loadedTexturePath = resolvedTex;
             }
         }
-    } else if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
-        // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
-        if (trail.texturePath.empty()) {
-            static const uint8_t white[4] = { 255, 255, 255, 255 };
-            trail.texture = resources.CreateTexture(white, 1, 1);
-        } else {
-            trail.texture = resources.LoadTexture(trail.texturePath);
-        }
-        trail.loadedTexturePath = trail.texturePath;
+    } else if (!trail.texture.IsValid()) {
+        static const uint8_t white[4] = { 255, 255, 255, 255 };
+        trail.texture = resources.CreateTexture(white, 1, 1);
+        trail.loadedTexturePath.clear();
     }
 }
 
@@ -467,13 +462,8 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
         return a.distanceSq > b.distanceSq;
     });
 
-    for (const auto& item : drawItems) {
-        renderer.Submit(item.drawCall, resources);
-
-        ++ctx.statsDrawCalls;
-        ctx.statsVertexCount += static_cast<int>(item.drawCall.vertexCount);
-        ctx.statsTriangleCount += static_cast<int>(item.drawCall.vertexCount / 3u);
-    }
+    for (const auto& item : drawItems)
+        SubmitCounted(ctx, item.drawCall);
 }
 
 } // namespace fbzz::scene

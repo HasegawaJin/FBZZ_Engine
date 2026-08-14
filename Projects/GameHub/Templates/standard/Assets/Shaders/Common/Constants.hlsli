@@ -79,30 +79,20 @@ cbuffer LightConstants : register(CB_LIGHT)
     SpotLightData  spotLights[MAX_SPOT_LIGHTS];
     int   pointLightCount;
     int   spotLightCount;
-    float2 _lightPad2;
+    // 空・雲・光芒の昼夜減光係数。DirectionalLight の lightIntensity とは独立した軸。
+    // WHY: 以前は空系シェーダーが lightIntensity をそのまま減光に使っていたため、
+    //      太陽を明るくすると空まで白飛びして両者を別々に詰められなかった。
+    //      CB レイアウトを変えずに済むよう、未使用だった _lightPad2 の 1 枠を充てている。
+    float  skyDimmer;
+    float  _lightPad2;
     float3 ambientColor;
     float  _ambientPad;
 };
 
-cbuffer ShadowConstants : register(CB_SHADOW)
-{
-    float4x4 lightViewProjection;
-    float2   shadowMapTexelSize;
-    float    shadowBias;
-    float    shadowStrength;   // 0=影なし, 1=完全な影
-    int      shadowPcfRadius;  // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
-    // 雲シャドウ (Phase C) — C++ ShadowConstantsCB と一致。_shadowPcfPad[3] を置換し reg6 を追加。
-    float    cloudShadowStrength;  // 0=無効
-    float    cloudShadowCoverage;
-    float    cloudShadowScale;
-    float    cloudShadowSpeed;
-    float    cloudShadowTime;
-    float    cloudShadowWindX;
-    float    cloudShadowWindZ;
-};
-// 雲シャドウフィールドを宣言した目印 (Shadow.hlsli のフォールバック切り替え用)。
-// Terrain/Water 等 ShadowConstants をインライン宣言するシェーダーは本 define を持たず static const へ落ちる。
-#define HAVE_CLOUD_SHADOW 1
+// ShadowConstants (b4) — カスケード配列を含む定義は Common/ShadowConstants.hlsli が持つ。
+// WHY: Terrain / Water も同じ cbuffer を宣言する必要があり、レイアウトを 3 か所へ
+//      手書きしていた頃は片方だけ更新した瞬間に静かに壊れた。定義は 1 か所に集約する。
+#include "Common/ShadowConstants.hlsli"
 
 cbuffer PostProcConstants : register(CB_POSTPROC)
 {

@@ -24,14 +24,15 @@ namespace fbzz::renderer {
 
 namespace fbzz::scene {
 
+struct RenderPassContext;
+
 // SubmitTerrainShadowCasters — Terrain チャンクを現在のシャドウマップ描画へ提出する。
 // WHY: Terrain は通常 MeshRenderer を持たないため、ShadowPass 側の共通 caster 収集に
 //      専用の提出口を用意する。ライト種別や atlas / cascade 管理は ShadowPass 側に集約し、
 //      TerrainRenderPass はチャンク生成と DrawCall 化だけに責務を限定する。
+// NOTE: シャドウ描画統計を集計するため RenderPassContext ごと受け取る。
 void SubmitTerrainShadowCasters(
-    Scene&                                        scene,
-    renderer::IRenderer&                          renderer,
-    renderer::ResourceManager&                    resources,
+    RenderPassContext&                            ctx,
     const math::Frustum&                          lightFrustum,
     renderer::ResourceHandle<renderer::ShaderTag> shadowShader,
     renderer::ResourceHandle<renderer::PipelineStateTag> pipelineState,
@@ -39,7 +40,6 @@ void SubmitTerrainShadowCasters(
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB
 );
 
-struct RenderPassContext;
 void TerrainSelectionMaskSystem(RenderPassContext& ctx);
 
 // IRenderPass 実装 — RenderPipeline::AddPass<TerrainRenderPass>() で登録する。

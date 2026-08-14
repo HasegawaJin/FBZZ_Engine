@@ -29,9 +29,13 @@ public:
         int totalObjects    = 0; // カリング前の描画候補オブジェクト数
         int frustumCulled   = 0; // フラスタムカリングで除外した数
         int occlusionCulled = 0; // オクルージョンカリングで除外した数
-        int drawCalls       = 0; // 実際に発行した DrawCall 数 (不透明・半透明合計)
+        int drawCalls       = 0; // カメラ視点で実際に発行した DrawCall 数 (不透明・半透明合計)
         int vertexCount     = 0; // 描画した総頂点数
         int triangleCount   = 0; // 描画した総三角形数 (indexCount / 3)
+        // シャドウマップは同じジオメトリを光源視点で再描画する別パスのため、
+        // カメラ統計に混ぜず内訳として分けて表示する。
+        int shadowDrawCalls     = 0;
+        int shadowTriangleCount = 0;
     };
 
     struct Snapshot {

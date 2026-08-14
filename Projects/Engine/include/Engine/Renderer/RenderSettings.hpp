@@ -155,9 +155,42 @@ enum class ViewMode : uint8_t {
 // ShadowSettings — シャドウマップ品質の一元管理。
 // WHY: 解像度と PCF 半径はシャドウの精細度と GPU コストのトレードオフ。
 //      シーン単位で調整できるよう RenderSettings に持たせる。
+// カスケードシャドウの最大分割数。
+// WHY: 定数バッファは固定長なので上限を切る。4 は 2x2 のアトラス配置とちょうど対応し、
+//      HLSL 側のループ展開も現実的な長さに収まる (業界的にも 4 が標準)。
+inline constexpr int kMaxShadowCascades = 4;
+
 struct ShadowSettings {
-    uint32_t mapResolution = 8192u; // シャドウマップ解像度 (512/1024/2048/4096/8192)
+    // シャドウマップ「アトラス全体」の解像度 (512/1024/2048/4096/8192)。
+    // WHY: 既定を 8192 から 2048 へ落とした。8192² は深度だけで 268MB / 67M テクセルあり、
+    //      クリアと塗りだけで ShadowPass が数十 ms に達する。
+    // NOTE: cascadeCount >= 2 のとき、この解像度は 2x2 のタイルへ分割され、
+    //       1 カスケードあたりは mapResolution / 2 になる。メモリと塗り量は
+    //       カスケードを増やしても変わらず、近距離のテクセル密度だけが上がる。
+    uint32_t mapResolution = 2048u;
+    // カスケード分割数 (1 = 従来の単一シャドウマップ, 2〜4 = CSM)。
+    // WHY: 単一マップは「近くを細かく」と「遠くまで届かせる」を同じテクセル密度で
+    //      両立できない。視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを丸ごと
+    //      割り当てることで、遠景の到達距離を保ったまま足元の影を数 cm 精度にできる。
+    int      cascadeCount = 4;
+    // 分割位置の対数/等分ブレンド係数 [0,1]。1 に近いほど手前が細かくなる。
+    // WHY: 等分割は手前が粗すぎ、対数分割は遠方が粗すぎる。実務では両者の線形補間
+    //      (practical split scheme) を使い、シーンに合わせて係数で寄せる。
+    float    cascadeSplitLambda = 0.75f;
+    // カスケード境界のクロスフェード幅 [0,1] (カスケード端からの割合)。0 で境界が硬くなる。
+    // WHY: カスケードが切り替わるとテクセル密度が跳ぶため、境界に不連続な線が
+    //      地面を横切って見える。隣接カスケードを重ねて混ぜると、その線が消える。
+    float    cascadeBlend = 0.1f;
+    // 影ボリュームをカメラ前方の何 m まで合わせるか [m] = 影の最大到達距離。
+    // LightComponent::shadowDistance > 0 の手動指定があるときは、そちらが優先される。
+    // WHY: シーン全体へ合わせると広いレベルほどテクセルが粗くなる。見える範囲へ切ることで
+    //      テクセル密度を一定に保ち、同時に影へ描く caster もカリングで減らせる。
+    float    autoFitDistance = 120.0f;
     int      pcfRadius     = 2;     // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    // カスケード可視化 (デバッグ)。1 = 影の色をカスケード番号で塗り分ける。
+    // WHY: 分割位置と境界ブレンドは数値だけでは詰められない。どこで切り替わっているかを
+    //      直接見せるのが、cascadeSplitLambda を調整する唯一の実用的な方法。
+    bool     debugVisualizeCascades = false;
     // PCSS (Percentage Closer Soft Shadows) — 距離に応じてペナンブラが変化するソフトシャドウ。
     bool     pcssEnabled     = false;
     float    pcssLightRadius = 3.0f; // 仮想ライト半径 (world space): 大きいほどソフト

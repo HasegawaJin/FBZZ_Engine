@@ -210,15 +210,10 @@ void EnsureComponentResources(MeshTrailComponent& trail, renderer::ResourceManag
             }
             trail.doubleSided = mat->doubleSided;
         }
-    } else if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
-        // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
-        if (trail.texturePath.empty()) {
-            static const uint8_t white[4] = { 255, 255, 255, 255 };
-            trail.texture = resources.CreateTexture(white, 1, 1);
-        } else {
-            trail.texture = resources.LoadTexture(trail.texturePath);
-        }
-        trail.loadedTexturePath = trail.texturePath;
+    } else if (!trail.texture.IsValid()) {
+        static const uint8_t white[4] = { 255, 255, 255, 255 };
+        trail.texture = resources.CreateTexture(white, 1, 1);
+        trail.loadedTexturePath.clear();
     }
 }
 
@@ -289,11 +284,7 @@ void DrawStaticMeshSample(
     dc.constantBuffers[1] = h.objectCB;
     dc.constantBuffers[2] = trail.meshTrailCB;
     dc.textures[0] = trail.texture;
-    ctx.renderer.Submit(dc, resources);
-
-    ++ctx.statsDrawCalls;
-    ctx.statsVertexCount += static_cast<int>(mr.mesh->vertexCount);
-    ctx.statsTriangleCount += static_cast<int>(mr.mesh->indexCount / 3u);
+    SubmitCounted(ctx, dc);
 }
 
 void DrawSkinnedMeshSample(
@@ -321,9 +312,9 @@ void DrawSkinnedMeshSample(
     const auto skinCB = EnsureSampleSkinningCB(sample, resources, h.bindPoseSkinningCB);
 
     for (size_t meshIndex = 0; meshIndex < smr.model->meshes.size(); ++meshIndex) {
-        // 子GOが担当するsubmeshだけを描画し、剣Trailでキャラクター全身が残像化するのを防ぐ。
-        if (smr.meshIndex >= 0 && static_cast<int>(meshIndex) != smr.meshIndex)
-            continue;
+        // WHY: 以前は「submesh ごとの子 GO」の SkinnedMeshRenderer::meshIndex で
+        //      剣だけを残像化していたが、1 GO = モデル全体になったのでその手段は無くなった。
+        //      対象の絞り込みは MeshTrailComponent::excludedMeshIndices に一本化する。
         if (IsMeshIndexExcluded(trail, static_cast<int>(meshIndex)))
             continue;
         const auto& meshPtr = smr.model->meshes[meshIndex];
@@ -345,11 +336,7 @@ void DrawSkinnedMeshSample(
         dc.constantBuffers[2] = trail.meshTrailCB;
         dc.constantBuffers[7] = skinCB;
         dc.textures[0] = trail.texture;
-        ctx.renderer.Submit(dc, resources);
-
-        ++ctx.statsDrawCalls;
-        ctx.statsVertexCount += static_cast<int>(meshPtr->vertexCount);
-        ctx.statsTriangleCount += static_cast<int>(meshPtr->indexCount / 3u);
+        SubmitCounted(ctx, dc);
     }
 }
 
