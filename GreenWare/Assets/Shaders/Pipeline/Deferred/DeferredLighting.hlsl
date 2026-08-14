@@ -61,7 +61,8 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float3 col    = gb0.rgb;
     float  rough  = gb0.a;
     // サンプラー補間や GBuffer 境界でも BRDF に単位法線を渡し、鏡面値の発散を防ぐ。
-    float3 N      = normalize(gb1.rgb * 2.0f - 1.0f);  // デコード [0,1] → [-1,1]
+    float3 N      = SafeNormalize(gb1.rgb * 2.0f - 1.0f,
+                                  float3(0.0f, 1.0f, 0.0f));  // デコード [0,1] → [-1,1]
     float  met    = gb1.a;
 
     // WHAT: 画面上で急変する法線の分散を roughness に畳み込み、サブピクセル鏡面を低域化する。
@@ -71,7 +72,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float3 dNdy = ddy(N);
     float normalVariance = 0.5f * (dot(dNdx, dNdx) + dot(dNdy, dNdy));
     float kernelRoughness2 = min(2.0f * normalVariance, 0.18f);
-    rough = sqrt(saturate(saturate(rough) * saturate(rough) + kernelRoughness2));
+    rough = max(sqrt(saturate(saturate(rough) * saturate(rough) + kernelRoughness2)), 0.045f);
     met   = saturate(met);
 
     // 深度から worldPos を復元
@@ -85,8 +86,8 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
         ao = lerp(1.0f, saturate(ssao), saturate(ssaoIntensity));
     }
 
-    float3 V      = normalize(cameraPos - worldPos);
-    float3 L      = normalize(-lightDir);
+    float3 V      = SafeNormalize(cameraPos - worldPos, N);
+    float3 L      = SafeNormalize(-lightDir, N);
     float  shadow = ComputeShadow(texShadow, sampShadow, worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
 
@@ -126,7 +127,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     {
         float3 toLight = pointLights[pi].position - worldPos;
         float  dist    = length(toLight);
-        float3 Lp      = toLight / dist;
+        float3 Lp      = SafeNormalize(toLight, N);
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
         result += Lighting_PBR_Direct(N, V, Lp, col, met, rough,
                       pointLights[pi].color, pointLights[pi].intensity * atten);
@@ -137,13 +138,19 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     {
         float3 toLight = spotLights[si].position - worldPos;
         float  dist    = length(toLight);
-        float3 Ls      = toLight / dist;
+        float3 Ls      = SafeNormalize(toLight, N);
         float  atten   = LightAttenuation(dist, spotLights[si].range);
         float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
                              spotLights[si].innerCos, spotLights[si].outerCos);
         result += Lighting_PBR_Direct(N, V, Ls, col, met, rough,
                       spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
+
+    // カスケード可視化 (デバッグ)。無効時は白を返すので通常描画には影響しない。
+    // WHY: 分割位置 (Split Lambda) と境界ブレンド幅は数値だけでは詰められない。
+    //      不透明の主経路である Deferred へ入れておけば、地面や壁での切り替わりが
+    //      そのまま見えて調整できる。
+    result *= ShadowCascadeDebugTint(worldPos);
 
     return float4(result, 1.0f);
 }

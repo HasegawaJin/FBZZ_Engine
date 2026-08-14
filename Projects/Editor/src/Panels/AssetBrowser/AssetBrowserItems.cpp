@@ -1196,12 +1196,20 @@ static bool RenderMeshThumbnail(
     const math::Vector3 keyLight = (camera.m_position + math::Vector3{ radius * 1.4f, radius * 1.8f, radius * 0.8f } - center).Normalized();
     lightData.lightDir = { -keyLight.x, -keyLight.y, -keyLight.z };
     lightData.lightColor = { 1.0f, 0.96f, 0.90f }; // キー: わずかに暖色
-    lightData.lightIntensity = 1.8f;
+    // 1.8 は「相殺後の最終的な明るさ」。kPreviewUnitScale の定義は下の距離補正コメント参照。
+    lightData.lightIntensity = 1.8f / 3.14159265358979323846f;
     lightData.ambientColor = { 0.10f, 0.11f, 0.14f }; // 陰が黒潰れしない下限まで低減
 
-    // WHY: LightAttenuation は 1/(dist^2+1) の絶対距離減衰を含むため、そのままでは
+    // WHY: LightAttenuation は 1/dist^2 の絶対距離減衰を含むため、そのままでは
     //      メッシュ半径によってライトの効きが大きく変わる。狙いの明るさになるよう
     //      距離補正を強度へ掛け、どのサイズのプレビューでも同じ見た目にする。
+    //      range = radius * 20 に対し dist は radius * 3 前後なので、LightAttenuation の
+    //      range 窓 (1-(d/r)^4)^2 はほぼ 1.0 で無視でき、逆二乗だけを打ち消せばよい。
+    // NOTE: このリグは「絵として狙った明るさ」を直接指定する手調整値なので、
+    //       Lighting.hlsli の LIGHT_UNIT_SCALE (= PI) も相殺する。こうすることで
+    //       targetIntensity がそのまま最終的な寄与の強さを表し、シェーダー側の
+    //       単位換算を変えてもサムネイルの見た目は動かない。
+    constexpr float kPreviewUnitScale = 3.14159265358979323846f; // Lighting.hlsli の LIGHT_UNIT_SCALE
     const auto placeThumbnailLight = [&](renderer::PointLight& light,
                                          const math::Vector3&  offsetFromCenter,
                                          const math::Vector3&  color,
@@ -1210,7 +1218,9 @@ static bool RenderMeshThumbnail(
         light.color    = color;
         light.range    = radius * 20.0f;
         const float dist = offsetFromCenter.Length();
-        light.intensity = targetIntensity * (dist * dist + 1.0f);
+        // シェーダー側の特異点ガード max(d*d, 0.01) と同じ下限を掛け、
+        // 極小メッシュで補正が過剰にならないようにする。
+        light.intensity = targetIntensity * std::max(dist * dist, 0.01f) / kPreviewUnitScale;
     };
     // フィル: カメラ側右下から寒色を弱く当て、キーの逆サイドの形状を読ませる
     placeThumbnailLight(lightData.pointLights[0],

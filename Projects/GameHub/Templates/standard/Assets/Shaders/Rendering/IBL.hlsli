@@ -19,7 +19,6 @@
 #include "Common/Math.hlsli"
 #include "Rendering/BRDF.hlsli"
 
-// =========================================================================
 // IBL 専用 Smith-Schlick 幾何減衰関数
 //
 // ダイレクトライティング用の G_SchlickGGX は k=(roughness+1)^2/8 でリマップするが、
@@ -27,7 +26,6 @@
 // (ダイレクト用の k は光源の固体角を考慮した補正値)
 //   NdotX    : dot(N, V) または dot(N, L)、0 クランプ済み
 //   roughness: 粗さ [0, 1] (α = roughness^2 の前に渡す)
-// =========================================================================
 float G_SchlickGGX_IBL(float NdotX, float roughness)
 {
     // IBL 用リマッピング: k = roughness^2 / 2
@@ -41,7 +39,6 @@ float G_Smith_IBL(float NdotV, float NdotL, float roughness)
     return G_SchlickGGX_IBL(NdotV, roughness) * G_SchlickGGX_IBL(NdotL, roughness);
 }
 
-// =========================================================================
 // EvaluateIBL — PBR マテリアルへの環境光寄与を計算する
 //
 // split-sum 近似 (UE4 方式):
@@ -64,7 +61,6 @@ float G_Smith_IBL(float NdotV, float NdotL, float roughness)
 //   sampClamp      : Linear Clamp サンプラー (BRDF LUT 用)
 //
 // 戻り値: 環境光寄与 (ダイレクトライティングに加算する)
-// =========================================================================
 float3 EvaluateIBL(
     float3      N,
     float3      V,
@@ -88,7 +84,6 @@ float3 EvaluateIBL(
     // F0: 誘電体=0.04, メタル=albedo
     float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
 
-    // ---- 拡散 IBL --------------------------------------------------------
     // ラフネス補正フレネル: IBL の diffuse kD に使う
     float3 F        = F_SchlickRoughness(NdotV, F0, roughness);
     float3 kD       = (1.0f - F) * (1.0f - metallic);  // エネルギー保存 (メタルは拡散なし)
@@ -105,7 +100,6 @@ float3 EvaluateIBL(
 
     float3 diffuse  = kD * irradiance * albedo * max(diffuseScale, 0.0f);
 
-    // ---- 鏡面 IBL (split-sum) -------------------------------------------
     // roughness から prefilter mip を決定 (高 roughness ほど低解像度 mip をサンプル)
     float  mip           = roughness * (float)maxMipLevel;
     float3 prefilteredColor = prefilterMap.SampleLevel(samp, R, mip).rgb;
@@ -124,7 +118,6 @@ float3 EvaluateIBL(
     float3 specular = prefilteredColor * (F0 * brdf.x + brdf.y)
                     * max(specularScale, 0.0f);
 
-    // ---- 合算 + AO -------------------------------------------------------
     // SSAO は近傍ジオメトリによる拡散遮蔽の近似なので diffuse のみに適用する。
     // WHY: 低サンプルSSAOを鏡面へ直接掛けると、明るいIBL反射との白黒差が点状に強調される。
     //      鏡面遮蔽には bent normal 等が必要で、SSAOの流用はしない。

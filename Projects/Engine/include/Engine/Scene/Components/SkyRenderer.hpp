@@ -33,8 +33,24 @@ struct SkyRenderer {
     math::Vector3 dayColor        = { 1.0f, 0.98f, 0.95f }; // 日中の太陽光色
     math::Vector3 sunsetColor     = { 1.0f, 0.5f, 0.2f };   // 日の出/日没の暖色
     math::Vector3 nightColor      = { 0.1f, 0.15f, 0.3f };  // 夜の薄明 (月光相当)
-    float         dayIntensity    = 1.5f;                   // 日中のライト強度
-    float         nightIntensity  = 0.1f;                   // 夜のライト強度
+    // 昼夜サイクル有効時、dayNight が Directional の intensity を上書きする。
+    // WHY: 空の輝度は sunIntensity (既定 20) で作られ、それが SkyCapture → irradiance
+    //      キューブマップ (IrradianceConvolution の DIFFUSE_RADIANCE_LIMIT = 4 でクランプ)
+    //      を経て環境光になる。旧既定の 1.5 では太陽の直接光がこの環境光に埋もれ、
+    //      「明るい空ほど DirectionalLight が効かない」状態だった。環境光をはっきり
+    //      上回りつつ、露出を大きく振り直さずに済む 3 倍弱の比率を既定とする。
+    float         dayIntensity    = 4.0f;                   // 日中のライト強度
+    float         nightIntensity  = 0.3f;                   // 夜のライト強度 (昼との比は据え置き)
+
+    // ── 空の見た目の明るさ (地表ライティングとは独立) ───────────────────────────
+    // WHY: 以前は dayIntensity / nightIntensity が「太陽光の強さ」と「空・雲・光芒の
+    //      明るさ」を兼ねており、太陽を強くすると空まで白飛びして両立できなかった。
+    //      軸を分け、空側は LightConstants.skyDimmer 経由で Skydome / SunMoon /
+    //      VolumetricCloud / VolumetricLight / エアリアルパースへ渡す。
+    //      既定値 1.5 / 0.1 は旧 dayIntensity / nightIntensity と同値で、従来の空の
+    //      見た目をそのまま維持する。
+    float         skyDayBrightness   = 1.5f;
+    float         skyNightBrightness = 0.1f;
 
     // ── 雲シャドウ (Phase C: CloudShadow) ─────────────────────────────────────
     // WHY: 雲密度を地表へ投影した「まだら影」を全 Lit シェーダーの影係数に乗算する。
@@ -61,6 +77,8 @@ struct SkyRenderer {
         r.Field("nightColor", nightColor);
         r.Field("dayIntensity", dayIntensity);
         r.Field("nightIntensity", nightIntensity);
+        r.Field("skyDayBrightness", skyDayBrightness);
+        r.Field("skyNightBrightness", skyNightBrightness);
         r.Field("cloudShadowStrength", cloudShadowStrength);
         r.Field("cloudShadowCoverage", cloudShadowCoverage);
         r.Field("cloudShadowScale", cloudShadowScale);
