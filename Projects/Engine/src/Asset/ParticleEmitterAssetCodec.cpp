@@ -63,7 +63,6 @@ T ReadEnum(const toml::table& table, const char* key, T fallback, int maximum)
     return static_cast<T>(std::clamp(ReadInt(table, key, static_cast<int>(fallback)), 0, maximum));
 }
 
-// 旧名のまま残す薄いラッパー。実体は公開関数側にあり、VFX ノードの codec と共有する。
 void WriteCurve(toml::table& table, const char* name, const scene::ParticleCurve& curve)
 {
     table.insert(name, SerializeParticleCurve(curve));
@@ -76,12 +75,7 @@ void ReadCurve(const toml::table& table, const char* name, scene::ParticleCurve&
 
 } // namespace
 
-// カーブ / グラデーションは 2 形式を読める。
-//   旧: sizeCurve = [[t,v], ...]                  (補間モードが無い時代のアセット)
-//   新: sizeCurve = { interp = 2, keys = [[t,v], ...] }
-// WHY: 補間モードを別キー (sizeCurveInterp 等) にすると「TOML キー ⊆ スキーマ leaf」を
-//      検証している VFXSchema テストが落ちる。スキーマ上 Curve は 1 leaf なので、
-//      TOML でも 1 キーの中に閉じ込めるのが筋。読み込みだけ旧形式へ後方互換を残す。
+// カーブとグラデーションは補間モードとキー配列を 1 テーブルへまとめて保存する。
 namespace {
 
 toml::array WriteCurveKeys(const scene::ParticleCurve& curve)
@@ -102,10 +96,8 @@ scene::ParticleCurveInterpolation ReadInterpolation(const toml::node_view<const 
         std::clamp(mode, 0, static_cast<int>(scene::ParticleCurveInterpolation::Smooth)));
 }
 
-// 旧形式(配列) / 新形式(テーブル) のどちらからでもキー配列を取り出す。
 const toml::array* CurveKeyArray(const toml::node_view<const toml::node>& value)
 {
-    if (const auto* array = value.as_array()) return array;
     if (const auto* table = value.as_table()) return (*table)["keys"].as_array();
     return nullptr;
 }
@@ -203,7 +195,7 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     FBZZ_VFX_INT(renderPriority);
     FBZZ_VFX_INT(collisionMode); FBZZ_VFX_INT(collisionResponse); FBZZ_VFX_FLOAT(collisionRadius);
     FBZZ_VFX_FLOAT(collisionBounciness); FBZZ_VFX_FLOAT(collisionDamping); FBZZ_VFX_FLOAT(collisionPlaneY);
-    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath); FBZZ_VFX_STRING(texturePath); FBZZ_VFX_INT(spriteColumns);
+    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath); FBZZ_VFX_INT(spriteColumns);
     FBZZ_VFX_INT(spriteRows); FBZZ_VFX_INT(spriteStartFrame); FBZZ_VFX_INT(spriteEndFrame);
     FBZZ_VFX_INT(flipbookMode); FBZZ_VFX_FLOAT(flipbookFramesPerSecond); FBZZ_VFX_BOOL(flipbookFrameBlending);
     FBZZ_VFX_BOOL(motionVectorFlipbook); FBZZ_VFX_STRING(motionVectorTexturePath); FBZZ_VFX_FLOAT(motionVectorStrength);
@@ -267,14 +259,10 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
 #define FBZZ_VFX_STRING(name) emitter.name = table[#name].value_or(emitter.name)
     emitter.emitPosition = ReadVector3(table["emitPosition"], emitter.emitPosition);
     emitter.emitVelocity = ReadVector3(table["emitVelocity"], emitter.emitVelocity);
-    // version 1の.vfxが使っていた短縮名も読めるようにして既存アセットを移行不要にする。
-    if (!table.contains("emitVelocity"))
-        emitter.emitVelocity = ReadVector3(table["velocity"], emitter.emitVelocity);
     emitter.colorStart = ReadVector4(table["colorStart"], emitter.colorStart);
     emitter.colorEnd = ReadVector4(table["colorEnd"], emitter.colorEnd);
     emitter.gravity = ReadVector3(table["gravity"], emitter.gravity);
     emitter.boxExtents = ReadVector3(table["boxExtents"], emitter.boxExtents);
-    // 旧アセットにキーが無ければ既定の等方 {1,1,1} が保たれる (見た目は無変化)。
     emitter.sizeAxisScale = ReadVector3(table["sizeAxisScale"], emitter.sizeAxisScale);
     FBZZ_VFX_FLOAT(velocitySpread); FBZZ_VFX_FLOAT(sizeStart); FBZZ_VFX_FLOAT(sizeEnd);
     FBZZ_VFX_FLOAT(lifetime); FBZZ_VFX_FLOAT(lifetimeRandom); FBZZ_VFX_FLOAT(emitRate);
@@ -286,12 +274,9 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(sphereRadius); FBZZ_VFX_FLOAT(coneAngleDegrees); FBZZ_VFX_FLOAT(coneRadius);
     FBZZ_VFX_STRING(meshShapePath); FBZZ_VFX_INT(meshShapeIndex); FBZZ_VFX_FLOAT(meshShapeScale);
     FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation);
-    // Premultiplied 追加で上限が 1 → 2 へ。旧アセットの 0/1 はそのまま同じ意味を保つ。
     emitter.blendMode = ReadEnum(table, "blendMode", emitter.blendMode, 2);
     emitter.sortMode = ReadEnum(table, "sortMode", emitter.sortMode, 1);
     emitter.simulationMode = ReadEnum(table, "simulationMode", emitter.simulationMode, 1);
-    if (!table.contains("simulationMode") && table["gpu"].value_or(false))
-        emitter.simulationMode = scene::ParticleSimulationMode::Gpu;
     emitter.simulationSpace = ReadEnum(table, "simulationSpace", emitter.simulationSpace, 1);
     emitter.renderMode = ReadEnum(table, "renderMode", emitter.renderMode, 3);
     emitter.alphaSource = ReadEnum(table, "alphaSource", emitter.alphaSource, 6);
@@ -301,7 +286,7 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     emitter.collisionResponse = ReadEnum(table, "collisionResponse", emitter.collisionResponse, 2);
     FBZZ_VFX_FLOAT(collisionRadius); FBZZ_VFX_FLOAT(collisionBounciness);
     FBZZ_VFX_FLOAT(collisionDamping); FBZZ_VFX_FLOAT(collisionPlaneY);
-    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath); FBZZ_VFX_STRING(texturePath); FBZZ_VFX_INT(spriteColumns);
+    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath); FBZZ_VFX_INT(spriteColumns);
     FBZZ_VFX_INT(spriteRows); FBZZ_VFX_INT(spriteStartFrame); FBZZ_VFX_INT(spriteEndFrame);
     emitter.flipbookMode = ReadEnum(table, "flipbookMode", emitter.flipbookMode, 3);
     FBZZ_VFX_FLOAT(flipbookFramesPerSecond); FBZZ_VFX_BOOL(flipbookFrameBlending);
@@ -357,10 +342,6 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
             burst.probability = std::clamp(ReadFloat(*item, "probability", burst.probability), 0.0f, 1.0f);
             emitter.bursts.push_back(burst);
         }
-    }
-    if (emitter.bursts.empty()) {
-        const int legacyBurstCount = ReadInt(table, "burstCount", 0);
-        if (legacyBurstCount > 0) emitter.bursts.push_back({ .time = 0.0f, .count = legacyBurstCount });
     }
     // アセットから復元した時点ではGPU/CPU双方のランタイム状態を必ず初期状態へ戻す。
     emitter.randomState = emitter.randomSeed;

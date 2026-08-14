@@ -27,8 +27,6 @@ struct SpriteRect {
     // WHY: 表示名を参照キーにすると、Sprite Editor でのリネームが Scene / Material の参照切れになる。
     std::string id;
     std::string name;
-    // 安定 ID 導入前の名前参照を、リネーム後も解決するための旧表示名。
-    std::vector<std::string> legacyNames;
     uint32_t x = 0;
     uint32_t y = 0;
     uint32_t width = 0;
@@ -76,13 +74,13 @@ struct TextureImportSettings {
 [[nodiscard]] TextureType GuessTextureType(std::string_view filename);
 
 // Spriteサブアセット参照は元Textureパスを壊さない文字列形式で保持する。
-// 例: "Assets/UI/Atlas.png::sprite::sprite-<stable-id>"（旧形式の表示名も解決可能）
+// 例: "Assets/UI/Atlas.png::sprite::sprite-<stable-id>"
 [[nodiscard]] std::string MakeSpriteReference(
-    std::string_view texturePath, std::string_view spriteIdOrLegacyName);
+    std::string_view texturePath, std::string_view spriteId);
 [[nodiscard]] bool ParseSpriteReference(
     std::string_view reference, std::string& outTexturePath, std::string& outSpriteName);
 [[nodiscard]] const SpriteRect* FindSprite(
-    const TextureImportSettings& settings, std::string_view spriteName);
+    const TextureImportSettings& settings, std::string_view spriteId);
 
 struct TextureAsset {
     // .tex なら source フィールドが指す画像パス、直参照なら自身のパス

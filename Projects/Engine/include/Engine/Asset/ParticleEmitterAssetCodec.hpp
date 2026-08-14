@@ -17,10 +17,9 @@ namespace fbzz::asset {
 // WHY: Emitter だけでなく VFX ノード (Light の減衰カーブ、Decal のフェードカーブ) も
 //      同じ型を保存するようになったため、変換をここ 1 か所に集約する。
 //      形式が二系統に分かれると、キー数やクランプの扱いが片方だけずれる。
-//      書き出しは { interp = <int>, keys = [...] } のテーブル形式。読み込みは旧来の
-//      配列形式 (補間モードが無かった頃のアセット) も受け付ける。
+//      書き出し・読み込みとも { interp = <int>, keys = [...] } のテーブル形式に統一する。
 [[nodiscard]] toml::table SerializeParticleCurve(const scene::ParticleCurve& curve);
-// キーが無い/壊れている場合は outCurve を変更しない (既定値を保つ後方互換)。
+// キーが無い/壊れている場合は outCurve を変更しない。
 void DeserializeParticleCurve(const toml::table& table, const char* key,
                               scene::ParticleCurve& outCurve);
 
@@ -31,7 +30,7 @@ void DeserializeParticleGradient(const toml::table& table, const char* key,
 // Sceneと.vfxの双方が同じ設定schemaを使えるよう、ランタイム状態を除いて書き出す。
 [[nodiscard]] toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitter);
 
-// 未知フィールドを無視し、欠落フィールドはoutEmitterの初期値を維持して後方互換を保つ。
+// 未知フィールドを無視し、欠落フィールドは outEmitter の初期値を維持する。
 void DeserializeParticleEmitterSettings(const toml::table& table,
                                         scene::ParticleEmitter& outEmitter);
 

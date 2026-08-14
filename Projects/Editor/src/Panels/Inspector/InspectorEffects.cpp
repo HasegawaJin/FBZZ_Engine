@@ -19,8 +19,11 @@ bool DrawVFXOverrideValue(const char* label, fbzz::asset::VFXParamType type,
     if (constant == nullptr) { ImGui::TextDisabled("Dynamic source"); return false; }
     if (type == fbzz::asset::VFXParamType::Float) {
         auto* item = std::get_if<float>(constant); if (item == nullptr) return false;
-        return definition.hasRange ? ImGui::SliderFloat(label, item, definition.minimum, definition.maximum)
-                                   : ImGui::DragFloat(label, item, 0.01f);
+        // 範囲宣言があるものはゲージ + 数値ボックス、無いものは適応刻みのドラッグ。
+        return definition.hasRange
+            ? fbzz::editor::widgets::RangeField(label, *item, definition.minimum, definition.maximum)
+            : ImGui::DragFloat(label, item,
+                               fbzz::editor::widgets::AdaptiveDragSpeed(*item));
     }
     if (type == fbzz::asset::VFXParamType::Int) {
         auto* item = std::get_if<int>(constant); if (item == nullptr) return false;
@@ -37,7 +40,8 @@ bool DrawVFXOverrideValue(const char* label, fbzz::asset::VFXParamType type,
     }
     if (type == fbzz::asset::VFXParamType::Vector3) {
         auto* item = std::get_if<fbzz::math::Vector3>(constant);
-        return item != nullptr && ImGui::DragFloat3(label, &item->x, 0.01f);
+        return item != nullptr &&
+               fbzz::editor::widgets::DragAxes(label, &item->x, 3, 0.01f);
     }
     auto* item = std::get_if<std::string>(constant);
     return item != nullptr && fbzz::editor::widgets::AssetPathField(label, *item, "", projectRoot);
@@ -167,12 +171,6 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }
-            // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
-            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath,
-                                        widgets::kTextureAssetFilter, ctx.projectRoot)) {
-                trail.texture = {};
-                trail.loadedTexturePath.clear();
-            }
             const char* uvModeItems[] = { "Stretch", "Tile" };
             int uvMode = static_cast<int>(trail.uvMode);
             if (ImGui::Combo("UV Mode", &uvMode, uvModeItems, 2))
@@ -201,12 +199,6 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
                 trail.loadedMaterialPath.clear();
-                trail.texture = {};
-                trail.loadedTexturePath.clear();
-            }
-            // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
-            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath,
-                                        widgets::kTextureAssetFilter, ctx.projectRoot)) {
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }

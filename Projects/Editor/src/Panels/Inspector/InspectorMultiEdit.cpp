@@ -290,7 +290,8 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
 
     float pos[3] = { refT.position.x, refT.position.y, refT.position.z };
     if (!posAllSame) ImGui::PushStyleColor(ImGuiCol_Text, mutedColor);
-    const bool posChanged = ImGui::DragFloat3(posAllSame ? "Position" : "Position (---)", pos, 0.1f);
+    const bool posChanged =
+        widgets::DragAxes(posAllSame ? "Position" : "Position (---)", pos, 3, 0.1f);
     if (!posAllSame) ImGui::PopStyleColor();
     if (posChanged)
         for (auto* g : gos) g->transform.position = { pos[0], pos[1], pos[2] };
@@ -300,7 +301,9 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
         const math::Vector3 euler = widgets::QuatToEulerDeg(refT.rotation);
         float rot[3] = { euler.x, euler.y, euler.z };
         if (!rotAllSame) ImGui::PushStyleColor(ImGuiCol_Text, mutedColor);
-        const bool rotChanged = ImGui::DragFloat3(rotAllSame ? "Rotation" : "Rotation (---)", rot, 0.5f);
+        const bool rotChanged =
+            widgets::DragAxes(rotAllSame ? "Rotation" : "Rotation (---)", rot, 3, 0.5f,
+                              0.0f, 0.0f, "%.1f");
         if (!rotAllSame) ImGui::PopStyleColor();
         if (rotChanged) {
             const auto newRot = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
@@ -312,7 +315,7 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
     float scale[3] = { refT.scale.x, refT.scale.y, refT.scale.z };
     if (!scaleAllSame) ImGui::PushStyleColor(ImGuiCol_Text, mutedColor);
     const bool scaleChanged =
-        ImGui::DragFloat3(scaleAllSame ? "Scale" : "Scale (---)", scale, 0.01f, 0.001f, 1000.0f);
+        widgets::DragAxes(scaleAllSame ? "Scale" : "Scale (---)", scale, 3, 0.01f, 0.001f, 1000.0f);
     if (!scaleAllSame) ImGui::PopStyleColor();
     if (scaleChanged)
         for (auto* g : gos) g->transform.scale = { scale[0], scale[1], scale[2] };
@@ -340,7 +343,7 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     };
 
-    ImGui::DragFloat3("Move by", moveDelta, 0.1f);
+    widgets::DragAxes("Move by", moveDelta, 3, 0.1f);
     ImGui::SameLine();
     if (ImGui::Button("Apply##move")) {
         const math::Vector3 d{ moveDelta[0], moveDelta[1], moveDelta[2] };
@@ -348,7 +351,7 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
         moveDelta[0] = moveDelta[1] = moveDelta[2] = 0.0f;
     }
 
-    ImGui::DragFloat3("Rotate by", rotDelta, 0.5f);
+    widgets::DragAxes("Rotate by", rotDelta, 3, 0.5f, 0.0f, 0.0f, "%.1f");
     ImGui::SameLine();
     if (ImGui::Button("Apply##rot")) {
         // WHY: ワールド軸まわりの回転を左から掛けることで、各オブジェクトの現在の向きに
@@ -361,7 +364,7 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
         rotDelta[0] = rotDelta[1] = rotDelta[2] = 0.0f;
     }
 
-    ImGui::DragFloat3("Scale x", scaleMul, 0.01f, 0.001f, 1000.0f);
+    widgets::DragAxes("Scale x", scaleMul, 3, 0.01f, 0.001f, 1000.0f);
     ImGui::SameLine();
     if (ImGui::Button("Apply##scale")) {
         const math::Vector3 m{ scaleMul[0], scaleMul[1], scaleMul[2] };
@@ -407,16 +410,26 @@ void DrawSharedComponentSection(EditorContext& ctx,
         ImGui::PopID();
         return;
     } else {
-        if (!ImGui::CollapsingHeader(label)) {
+        // 単体 Inspector と同じカード表現に揃える。複数選択でも「どの系統の
+        // コンポーネントを触っているか」を帯の色で拾えるようにするため。
+        const ImU32 accent = ComponentAccent<T>();
+        const widgets::ComponentHeaderResult header =
+            widgets::ComponentHeader(label, accent, nullptr, false);
+        if (!header.open) {
+            ImGui::Spacing();
             ImGui::PopID();
             return;
         }
 
         auto* primary = gos.front()->GetComponent<T>();
         if (!primary) {
+            ImGui::Spacing();
             ImGui::PopID();
             return;
         }
+
+        const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
+        ImGui::Spacing();
 
         // ドラッグ 1 回を 1 コマンドにまとめるための編集状態 (型ごとに別インスタンス)。
         struct BulkEdit {
@@ -533,6 +546,8 @@ void DrawSharedComponentSection(EditorContext& ctx,
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
         ImGui::Spacing();
+        widgets::EndComponentBody(body);
+        ImGui::Spacing();
     }
 
     ImGui::PopID();
@@ -556,7 +571,11 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
     ImGui::Spacing();
 
     // ── Transform ────────────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+    const widgets::ComponentHeaderResult transformHeader =
+        widgets::ComponentHeader("Transform", EditorTheme::ColorU32(ThemeColor::Accent), nullptr);
+    if (transformHeader.open) {
+        const widgets::ComponentBodyScope transformBody =
+            widgets::BeginComponentBody(transformHeader, EditorTheme::ColorU32(ThemeColor::Accent));
         ImGui::Spacing();
 
         static TransformEditMode mode = TransformEditMode::Set;
@@ -580,7 +599,9 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
         else                                DrawTransformOffsetMode(ctx, gos);
 
         ImGui::Spacing();
+        widgets::EndComponentBody(transformBody);
     }
+    ImGui::Spacing();
 
     // ── 共通コンポーネント ────────────────────────────────────────────────────
     // WHY: 以前は 8 種類を決め打ちで BulletText していたため、コンポーネントを追加するたび
