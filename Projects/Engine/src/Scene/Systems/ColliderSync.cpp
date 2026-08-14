@@ -1,0 +1,349 @@
+// FBZZ Engine
+// ColliderSync.cpp | fbzz::scene
+// ColliderComponent と physics::Collider の同期処理の実体。
+// PhysicsSystem (シミュレーション中) と DebugCollidersPass (可視化) の共通基盤。
+#include "Engine/Scene/Systems/ColliderSync.hpp"
+
+#include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/GameObject.hpp"
+#include "Engine/Scene/Components/MeshRenderer.hpp"
+#include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
+#include "Engine/Scene/Components/TerrainComponent.hpp"
+#include "Engine/Scene/Components/TerrainGridComponent.hpp"
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/Model.hpp>
+#include <Engine/Renderer/Mesh.hpp>
+#include <Physics/ConvexHullCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
+#include <Physics/TriangleMeshCollider.hpp>
+#include <algorithm>
+#include <memory>
+#include <vector>
+
+namespace fbzz::scene {
+
+namespace {
+
+math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
+{
+    return { a.x * b.x, a.y * b.y, a.z * b.z };
+}
+
+// 隣接する地形タイル。境界の高さを平均するために保持する。
+struct TerrainNeighbors {
+    const TerrainComponent* north = nullptr;
+    const TerrainComponent* south = nullptr;
+    const TerrainComponent* west  = nullptr;
+    const TerrainComponent* east  = nullptr;
+    const TerrainComponent* northWest = nullptr;
+    const TerrainComponent* northEast = nullptr;
+    const TerrainComponent* southWest = nullptr;
+    const TerrainComponent* southEast = nullptr;
+};
+
+bool TryAddTerrainHeightSample(const TerrainComponent* terrain,
+                               int                     x,
+                               int                     z,
+                               float&                  sum,
+                               int&                    count)
+{
+    if (!terrain || terrain->heightData.empty())
+        return false;
+    if (x < 0 || x >= terrain->columns || z < 0 || z >= terrain->rows)
+        return false;
+
+    const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain->columns)
+                     + static_cast<size_t>(x);
+    sum += terrain->heightData[idx] * terrain->maxHeight;
+    ++count;
+    return true;
+}
+
+float SampleStitchedTerrainHeight(const TerrainComponent& terrain,
+                                  const TerrainNeighbors& neighbors,
+                                  int                     x,
+                                  int                     z)
+{
+    // WHY: 描画メッシュだけ境界平均を行うと、見た目は繋がっていても HeightFieldCollider は
+    //      元 heightData の段差を保持する。Physics へ渡す一時データも同じ平均を使い、
+    //      保存データを破壊せずに接触形状を見た目へ合わせる。
+    float sum = 0.0f;
+    int count = 0;
+
+    TryAddTerrainHeightSample(&terrain, x, z, sum, count);
+
+    if (x <= 0)
+        TryAddTerrainHeightSample(neighbors.west, neighbors.west ? neighbors.west->columns - 1 + x : x, z, sum, count);
+    if (x >= terrain.columns - 1)
+        TryAddTerrainHeightSample(neighbors.east, x - (terrain.columns - 1), z, sum, count);
+    if (z <= 0)
+        TryAddTerrainHeightSample(neighbors.north, x, neighbors.north ? neighbors.north->rows - 1 + z : z, sum, count);
+    if (z >= terrain.rows - 1)
+        TryAddTerrainHeightSample(neighbors.south, x, z - (terrain.rows - 1), sum, count);
+
+    if (x <= 0 && z <= 0) {
+        TryAddTerrainHeightSample(neighbors.northWest,
+                                  neighbors.northWest ? neighbors.northWest->columns - 1 + x : x,
+                                  neighbors.northWest ? neighbors.northWest->rows - 1 + z : z,
+                                  sum,
+                                  count);
+    }
+    if (x >= terrain.columns - 1 && z <= 0) {
+        TryAddTerrainHeightSample(neighbors.northEast,
+                                  x - (terrain.columns - 1),
+                                  neighbors.northEast ? neighbors.northEast->rows - 1 + z : z,
+                                  sum,
+                                  count);
+    }
+    if (x <= 0 && z >= terrain.rows - 1) {
+        TryAddTerrainHeightSample(neighbors.southWest,
+                                  neighbors.southWest ? neighbors.southWest->columns - 1 + x : x,
+                                  z - (terrain.rows - 1),
+                                  sum,
+                                  count);
+    }
+    if (x >= terrain.columns - 1 && z >= terrain.rows - 1) {
+        TryAddTerrainHeightSample(neighbors.southEast,
+                                  x - (terrain.columns - 1),
+                                  z - (terrain.rows - 1),
+                                  sum,
+                                  count);
+    }
+
+    if (count > 0)
+        return sum / static_cast<float>(count);
+
+    const int clampedX = std::clamp(x, 0, terrain.columns - 1);
+    const int clampedZ = std::clamp(z, 0, terrain.rows - 1);
+    const size_t idx = static_cast<size_t>(clampedZ) * static_cast<size_t>(terrain.columns)
+                     + static_cast<size_t>(clampedX);
+    return terrain.heightData[idx] * terrain.maxHeight;
+}
+
+TerrainNeighbors ResolveTerrainNeighbors(Scene& scene, EntityID eid)
+{
+    TerrainNeighbors neighbors;
+
+    const auto gridEntities = scene.GetEntities<TerrainGridComponent>();
+    if (gridEntities.empty())
+        return neighbors;
+
+    const TerrainGridComponent* terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
+    if (!terrainGrid)
+        return neighbors;
+
+    int gx = 0;
+    int gz = 0;
+    if (!terrainGrid->TryGetGridPos(eid, gx, gz))
+        return neighbors;
+
+    auto resolveNeighbor = [&](int ngx, int ngz) -> const TerrainComponent* {
+        const EntityID neid = terrainGrid->GetCell(ngx, ngz);
+        if (!scene.IsValid(neid))
+            return nullptr;
+        return scene.GetComponent<TerrainComponent>(neid);
+    };
+
+    neighbors.north     = resolveNeighbor(gx,     gz - 1);
+    neighbors.south     = resolveNeighbor(gx,     gz + 1);
+    neighbors.west      = resolveNeighbor(gx - 1, gz);
+    neighbors.east      = resolveNeighbor(gx + 1, gz);
+    neighbors.northWest = resolveNeighbor(gx - 1, gz - 1);
+    neighbors.northEast = resolveNeighbor(gx + 1, gz - 1);
+    neighbors.southWest = resolveNeighbor(gx - 1, gz + 1);
+    neighbors.southEast = resolveNeighbor(gx + 1, gz + 1);
+    return neighbors;
+}
+
+std::vector<float> BuildColliderHeightData(Scene& scene, GameObject& go, const TerrainComponent& terrain)
+{
+    const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, go.GetID());
+    std::vector<float> heights;
+    heights.resize(static_cast<size_t>(terrain.rows) * static_cast<size_t>(terrain.columns));
+
+    for (int z = 0; z < terrain.rows; ++z) {
+        for (int x = 0; x < terrain.columns; ++x) {
+            const float worldHeight = SampleStitchedTerrainHeight(terrain, neighbors, x, z);
+            heights[static_cast<size_t>(z) * static_cast<size_t>(terrain.columns) + static_cast<size_t>(x)] =
+                terrain.maxHeight != 0.0f ? worldHeight / terrain.maxHeight : 0.0f;
+        }
+    }
+    return heights;
+}
+
+// MeshCollider / ConvexHullCollider が使うソースメッシュを解決する。
+// 優先順位は MeshRenderer → SkinnedMeshRenderer → 明示指定の meshPath。
+const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
+                                                const std::string& meshPath,
+                                                int                meshIndex)
+{
+    const renderer::Mesh* mesh = nullptr;
+    if (auto* meshRenderer = go.GetComponent<MeshRenderer>())
+        mesh = meshRenderer->mesh;
+    if (!mesh) {
+        if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
+            if (!skinned->model && !skinned->modelPath.empty())
+                skinned->model = asset::AssetManager::LoadModel(skinned->modelPath);
+            // SkinnedMeshRenderer は 1 GameObject = モデル全体。コライダーのソースは
+            // 明示指定の meshIndex (col.meshIndex) を優先し、無指定なら先頭 submesh を使う。
+            if (skinned->model) {
+                const size_t submesh = meshIndex >= 0 ? static_cast<size_t>(meshIndex) : 0u;
+                if (submesh < skinned->model->meshes.size())
+                    mesh = skinned->model->meshes[submesh].get();
+            }
+        }
+    }
+    if (!mesh && !meshPath.empty()) {
+        if (auto* model = asset::AssetManager::LoadModel(meshPath)) {
+            if (meshIndex >= 0 && meshIndex < static_cast<int>(model->meshes.size()))
+                mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
+        }
+    }
+    return mesh;
+}
+
+} // namespace
+
+math::Vector3 ColliderCenterOffset(const GameObject& go, const ColliderComponent& col)
+{
+    return ComponentScale(col.center, go.transform.worldScale);
+}
+
+math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent& col)
+{
+    return go.transform.worldPosition + go.transform.worldRotation * ColliderCenterOffset(go, col);
+}
+
+void SyncColliderShape(ColliderComponent&) {}
+
+void SyncColliderShape(AabbColliderComponent& col)
+{
+    auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::AABB
+        ? static_cast<physics::AABBCollider*>(col.collider.get())
+        : nullptr;
+    if (!shape) {
+        col.collider = std::make_unique<physics::AABBCollider>(col.size * 0.5f);
+        shape = static_cast<physics::AABBCollider*>(col.collider.get());
+    }
+    shape->m_halfExtents = col.size * 0.5f;
+}
+
+void SyncColliderShape(BoxColliderComponent& col)
+{
+    auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::OBB
+        ? static_cast<physics::OBBCollider*>(col.collider.get())
+        : nullptr;
+    if (!shape) {
+        col.collider = std::make_unique<physics::OBBCollider>(col.size * 0.5f);
+        shape = static_cast<physics::OBBCollider*>(col.collider.get());
+    }
+    shape->m_halfExtents = col.size * 0.5f;
+}
+
+void SyncColliderShape(SphereColliderComponent& col)
+{
+    auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::SPHERE
+        ? static_cast<physics::SphereCollider*>(col.collider.get())
+        : nullptr;
+    if (!shape) {
+        col.collider = std::make_unique<physics::SphereCollider>(col.radius);
+        shape = static_cast<physics::SphereCollider*>(col.collider.get());
+    }
+    shape->m_radius = col.radius;
+}
+
+void SyncColliderShape(CapsuleColliderComponent& col)
+{
+    auto* shape = col.collider && col.collider->GetType() == physics::ColliderType::CAPSULE
+        ? static_cast<physics::CapsuleCollider*>(col.collider.get())
+        : nullptr;
+    if (!shape) {
+        col.collider = std::make_unique<physics::CapsuleCollider>(col.radius, col.halfHeight);
+        shape = static_cast<physics::CapsuleCollider*>(col.collider.get());
+    }
+    shape->m_radius = col.radius;
+    shape->m_halfHeight = col.halfHeight;
+}
+
+void EnsureMeshCollider(GameObject& go, MeshColliderComponent& col)
+{
+    if (col.collider) return;
+
+    const renderer::Mesh* mesh = ResolveColliderSourceMesh(go, col.meshPath, col.meshIndex);
+    if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) return;
+
+    std::vector<math::Vector3> positions;
+    positions.reserve(mesh->cpuVertices.size());
+    for (const auto& vertex : mesh->cpuVertices)
+        positions.push_back(vertex.position);
+    col.collider = std::make_unique<physics::TriangleMeshCollider>(positions, mesh->cpuIndices);
+}
+
+void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
+{
+    if (col.collider) return;
+
+    const renderer::Mesh* mesh = ResolveColliderSourceMesh(go, col.meshPath, col.meshIndex);
+    if (!mesh || mesh->cpuVertices.empty()) return;
+
+    std::vector<math::Vector3> positions;
+    positions.reserve(mesh->cpuVertices.size());
+    for (const auto& vertex : mesh->cpuVertices)
+        positions.push_back(vertex.position);
+    col.collider = std::make_unique<physics::ConvexHullCollider>(std::move(positions));
+}
+
+void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent& col)
+{
+    auto* terrain = go.GetComponent<TerrainComponent>();
+    if (!terrain || !terrain->enabled || terrain->heightData.empty()) return;
+
+    if (terrain->colliderDirty || !col.collider) {
+        const std::vector<float> colliderHeights = BuildColliderHeightData(scene, go, *terrain);
+        if (auto* hf = col.collider
+                && col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
+                ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
+                : nullptr) {
+            // 既存 HeightFieldCollider に補完済み heightData を再適用し BVH を再構築する。
+            // WHY: オブジェクト生成コストを省き、WorldHandle を維持したまま再構築できる。
+            hf->Rebuild(colliderHeights,
+                        terrain->rows, terrain->columns,
+                        terrain->cellSize, terrain->maxHeight);
+        } else {
+            col.collider = std::make_unique<physics::HeightFieldCollider>(
+                colliderHeights,
+                terrain->rows, terrain->columns,
+                terrain->cellSize, terrain->maxHeight);
+        }
+        terrain->colliderDirty = false;
+    }
+}
+
+void UpdateColliderPose(const GameObject& go, ColliderComponent& col, bool useTransformScale)
+{
+    if (!col.collider) return;
+
+    const math::Vector3 worldCenter = ColliderWorldCenter(go, col);
+    const math::Vector3 scale = useTransformScale ? go.transform.worldScale : math::Vector3::ONE;
+
+    switch (col.collider->GetType()) {
+    case physics::ColliderType::TRIANGLE_MESH:
+        static_cast<physics::TriangleMeshCollider*>(col.collider.get())
+            ->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
+        break;
+    case physics::ColliderType::CONVEX_HULL:
+        static_cast<physics::ConvexHullCollider*>(col.collider.get())
+            ->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
+        break;
+    case physics::ColliderType::HEIGHT_FIELD:
+        // 地形は useTransformScale を持たないため常に Transform スケールを適用する。
+        static_cast<physics::HeightFieldCollider*>(col.collider.get())
+            ->UpdateWithScale(worldCenter, go.transform.worldRotation, go.transform.worldScale);
+        break;
+    default:
+        col.collider->Update(worldCenter, go.transform.worldRotation);
+        break;
+    }
+}
+
+} // namespace fbzz::scene
