@@ -94,6 +94,29 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
     return normalized;
 }
 
+std::string ResolveImportedMeshName(const std::string& modelPath,
+                                    const asset::ModelAsset* modelAsset,
+                                    int meshIndex)
+{
+    if (modelAsset && !modelAsset->lods.empty() && meshIndex >= 0) {
+        const auto& submeshes = modelAsset->lods[0].submeshes;
+        if (meshIndex < static_cast<int>(submeshes.size()) &&
+            !submeshes[static_cast<size_t>(meshIndex)].name.empty())
+            return submeshes[static_cast<size_t>(meshIndex)].name;
+    }
+
+    // v2 以前の .fzasset は名前を持たないため、FBX 原本を読んで互換的に補完する。
+    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(modelPath)) == ".fbx") {
+        const FbxScanResult scan =
+            FbxImportTool::Scan(asset::AssetManager::ResolveAssetPath(modelPath));
+        if (scan.valid && meshIndex >= 0 && meshIndex < static_cast<int>(scan.meshNames.size()) &&
+            !scan.meshNames[static_cast<size_t>(meshIndex)].empty())
+            return scan.meshNames[static_cast<size_t>(meshIndex)];
+    }
+
+    return "Mesh_" + std::to_string(meshIndex);
+}
+
 void LinkBoneToRenderers(std::vector<scene::SkinnedMeshRenderer*>& renderers,
                          int nodeIndex,
                          scene::EntityID boneEntity,
@@ -220,51 +243,74 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         root.SetParent(parent);
 
     const int meshCount = static_cast<int>(model->meshes.size());
+    std::vector<std::string> meshNames;
+    meshNames.reserve(static_cast<size_t>(meshCount));
+    for (int meshIndex = 0; meshIndex < meshCount; ++meshIndex)
+        meshNames.push_back(ResolveImportedMeshName(modelPath, modelAsset, meshIndex));
+    if (meshCount == 1)
+        root.name = meshNames[0];
+
     std::vector<scene::SkinnedMeshRenderer*> skinnedRenderers;
     skinnedRenderers.reserve(static_cast<size_t>(meshCount));
 
-    auto addRenderer = [&](scene::GameObject& target, int meshIndex) {
-        renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
-        const bool isSkinned = mesh && mesh->isSkinned;
-        if (isSkinned) {
-            scene::SkinnedMeshRenderer smr;
-            smr.modelPath = modelPath;
-            smr.meshIndex = meshIndex;
-            smr.model     = model;
-            auto& renderer = target.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
-            skinnedRenderers.push_back(&renderer);
-        } else {
-            // 頂点フォーマットが静的なら MeshRenderer を使う。
-            // WHY: SkinnedMeshRenderer はボーンパレット用の入力レイアウトを要求するため、
-            //      静的メッシュへ無差別に付けると描画経路・マテリアル種別が不一致になる。
-            scene::MeshRenderer mr;
-            mr.mesh     = mesh;
-            mr.meshPath = modelPath + ":" + std::to_string(meshIndex);
-            target.AddComponent<scene::MeshRenderer>(std::move(mr));
-        }
+    // スキンドメッシュを 1 つでも含むモデルは、1 GameObject でモデル全体を描く。
+    // WHY: SkinnedMeshRenderer は submesh 指定を持たず常にモデル全体を描画するため、
+    //      submesh ごとに子 GO を作ると同じモデルが枚数分重なって描かれてしまう。
+    //      submesh ごとの .mat は MaterialComponent のスロット配列で表現する。
+    const bool anySkinned = [&] {
+        for (const auto& mesh : model->meshes)
+            if (mesh && mesh->isSkinned) return true;
+        return false;
+    }();
 
-        // FBX の内部モデルコンテナはジオメトリの実体だけを持つため、配置直後に見える最低限の既定材を割り当てる。
+    if (anySkinned) {
+        scene::SkinnedMeshRenderer smr;
+        smr.modelPath = modelPath;
+        smr.model     = model;
+        skinnedRenderers.push_back(&root.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr)));
+
+        // submesh ごとに 1 スロット。スロット i は model->meshes[i] に対応する。
         // WHY: MaterialComponent が空だと GeometryPass が描画をスキップするため、
-        //      D&D した結果がユーザーに見えない状態になる。
+        //      D&D した結果がユーザーに見えない状態になる。既定材を必ず割り当てる。
         scene::MaterialComponent mc;
-        mc.materialPath = ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex, isSkinned);
+        mc.ResizeSlots(static_cast<size_t>(meshCount));
+        for (int meshIndex = 0; meshIndex < meshCount; ++meshIndex) {
+            const renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
+            mc.RawSlotAt(static_cast<size_t>(meshIndex)).materialPath =
+                ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex,
+                                            mesh && mesh->isSkinned);
+        }
+        root.AddComponent<scene::MaterialComponent>(std::move(mc));
+
+        CreateBoneHierarchyForModel(*ctx.activeScene, root, skinnedRenderers, *model);
+        return root.GetID();
+    }
+
+    // 静的モデルは MeshRenderer が 1 メッシュしか持てないため、従来どおり
+    // submesh ごとに子 GameObject を作る。
+    auto addStaticRenderer = [&](scene::GameObject& target, int meshIndex) {
+        renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
+        scene::MeshRenderer mr;
+        mr.mesh     = mesh;
+        mr.meshPath = modelPath + ":" + std::to_string(meshIndex);
+        target.AddComponent<scene::MeshRenderer>(std::move(mr));
+
+        scene::MaterialComponent mc;
+        mc.materialPath = ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex, false);
         target.AddComponent<scene::MaterialComponent>(std::move(mc));
     };
 
     if (meshCount == 1) {
-        addRenderer(root, 0);
-        CreateBoneHierarchyForModel(*ctx.activeScene, root, skinnedRenderers, *model);
+        addStaticRenderer(root, 0);
         return root.GetID();
     }
 
     for (int meshIndex = 0; meshIndex < meshCount; ++meshIndex) {
         auto& child = ctx.activeScene->CreateGameObject(
-            root.name + "_Mesh" + std::to_string(meshIndex));
+            meshNames[static_cast<size_t>(meshIndex)]);
         child.SetParent(root);
-        addRenderer(child, meshIndex);
+        addStaticRenderer(child, meshIndex);
     }
-
-    CreateBoneHierarchyForModel(*ctx.activeScene, root, skinnedRenderers, *model);
     return root.GetID();
 }
 

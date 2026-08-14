@@ -130,8 +130,6 @@ FbxSourceDcc ResolveSourceDcc(FbxSourceDcc option, const aiScene* scene)
 //   ことに等しく、gravity = (0,-9.81,0) / worldUp = (0,1,0) の Y-up ランタイムでは
 //   全アセットが 90° 倒れて表示されていた。除去してよいのはランタイムの前提を壊す
 //   scale=100 だけで、回転はバインド姿勢として保持するのが正しい。
-//   ctx.axisFixRotation は互換のため残すが、常に identity を入れる
-//   (AnimSubExporter / ModelSubExporter 側の合成は自動的に無回転になる)。
 bool NormalizeBlenderRootTransforms(const aiScene* constScene, FbxImportContext& ctx)
 {
     // WHY: Assimp::Importer が所有する読み取り専用シーンをエクスポート前に補正する。
@@ -220,12 +218,6 @@ bool NormalizeBlenderRootTransforms(const aiScene* constScene, FbxImportContext&
         ctx.axisFixNodes.push_back(child->mName.C_Str());
     }
 
-    // F に回転成分は無い。消費側 (AnimSubExporter / ModelSubExporter) は
-    // axisFixRotation の共役を合成するので、identity を入れて無回転にする。
-    ctx.axisFixRotation[0] = 0.0f;
-    ctx.axisFixRotation[1] = 0.0f;
-    ctx.axisFixRotation[2] = 0.0f;
-    ctx.axisFixRotation[3] = 1.0f;
     ctx.axisFixScale = s;
 
     // ノードに残した回転はスキンメッシュ頂点へ焼き込む (詳細は

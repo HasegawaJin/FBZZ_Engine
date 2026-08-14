@@ -4,7 +4,7 @@
 //
 // 新パイプライン出力構造:
 //   Library/Baked/<fbx-guid>/<name>.fzasset ← 統合モデルバイナリ (FZMD)
-//   outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v2
+//   outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v3
 //   outputDir/materials/<MaterialName>.mat ← マテリアル TOML
 //   outputDir/textures/*.png     ← テクスチャコピー + *.png.meta 自動生成
 //   <source>.fbx.meta            ← GUID + モデル import 設定

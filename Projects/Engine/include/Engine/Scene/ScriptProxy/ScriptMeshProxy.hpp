@@ -18,6 +18,13 @@ struct ScriptMeshProxy {
     // どちらか一方でも enabled なら true を返す。
     bool IsEnabled() const;
 
+    // シャドウマップへ影を落とすかを切り替える。両方あれば両方を変更する。
+    // WHY: 見えているのに影だけ落としたくない演出 (半透明化中のプレイヤー、
+    //      一時的に出す UI メッシュなど) を、描画を止めずに表現できるようにする。
+    void SetCastShadows(bool castShadows) const;
+    // どちらか一方でも影を落とすなら true を返す。
+    bool GetCastShadows() const;
+
     // --- MeshRenderer 専用 ---
     // "primitive:cube" / "models/foo.fbx:0" 形式のパスを設定し meshDirty を立てる。
     void SetMeshPath(std::string_view path) const;

@@ -242,6 +242,35 @@ toml::table SerializeCollider(const ColliderComponent& col)
     return colTbl;
 }
 
+// MaterialComponent を TOML から復元する。
+// WHY: LoadScene と AppendObjects の 2 経路が同じ表を読むため、
+//      スロット配列の読み取りを 1 か所に集約して差異が生まれないようにする。
+MaterialComponent ReadMaterialComponent(const toml::table& matTbl)
+{
+    MaterialComponent mc{};
+    mc.enabled      = matTbl["enabled"].value_or(true);
+    mc.visible      = matTbl["visible"].value_or(true);
+    mc.materialPath = matTbl["material"].value_or(std::string{});
+    if (!mc.materialPath.empty())
+        mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
+
+    // submesh 1 以降のスロット (無い場合は単一マテリアルのオブジェクト)。
+    if (const auto* slotArr = matTbl["slots"].as_array()) {
+        mc.extraSlots.reserve(slotArr->size());
+        for (const auto& node : *slotArr) {
+            const auto* slotTbl = node.as_table();
+            if (!slotTbl) continue;
+            MaterialSlot slot{};
+            slot.materialPath = (*slotTbl)["material"].value_or(std::string{});
+            slot.visible      = (*slotTbl)["visible"].value_or(true);
+            if (!slot.materialPath.empty())
+                slot.materialAsset = asset::AssetManager::LoadMaterial(slot.materialPath);
+            mc.extraSlots.push_back(std::move(slot));
+        }
+    }
+    return mc;
+}
+
 void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
 {
     col.enabled   = colTbl["enabled"].value_or(true);
@@ -678,9 +707,6 @@ public:
         if (const toml::table* assetRef = node->as_table()) {
             v.guid = (*assetRef)["guid"].value_or(std::string{});
             v.path = (*assetRef)["path"].value_or(std::string{});
-        } else if (const auto legacyPath = node->value<std::string>()) {
-            // 旧string保存を読み込み、次回保存時にGUID付き形式へ移行する。
-            v.SetPath(*legacyPath);
         }
     }
     void ListField(const char* name, std::vector<float>& values) override
@@ -776,8 +802,6 @@ public:
             if (const toml::table* assetRef = node.as_table()) {
                 value.guid = (*assetRef)["guid"].value_or(std::string{});
                 value.path = (*assetRef)["path"].value_or(std::string{});
-            } else if (const auto legacyPath = node.value<std::string>()) {
-                value.SetPath(*legacyPath);
             }
             values.push_back(std::move(value));
         }
@@ -851,12 +875,6 @@ private:
 
         if (const toml::node* node = table->get(PersistentKey(fallback)))
             return node;
-        for (const char* formerKey : FormerKeys()) {
-            if (formerKey) {
-                if (const toml::node* node = table->get(formerKey))
-                    return node;
-            }
-        }
         return nullptr;
     }
 
@@ -1036,13 +1054,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
     for (auto& go : scene.GameObjects()) {
         // ランタイム専用 GO は永続化しない。システムが needsBake 時などに再生成するため、
         // 保存するとロード時にゾンビ GO が蓄積し childEntities と不整合を起こす。
-        // 判定は 2 系統ある:
-        //   runtimeGenerated — 明示フラグ (VFX Graph のノード実体など、表示名が普通の GO)
-        //   "__" プレフィックス — 旧来の名前規約 (FoliageBakeSystem / WaterSplash 等)
-        // WHY: 名前規約だけだと「読みやすい表示名」と「保存しない」を両立できないため、
-        //      フラグを正とし、規約は既存システムのための互換として残している。
         if (go.runtimeGenerated) continue;
-        if (go.name.size() >= 2 && go.name[0] == '_' && go.name[1] == '_') continue;
 
         toml::table goTbl;
         goTbl.insert("name",            go.name);
@@ -1075,8 +1087,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             if (mr->mesh && mr->meshPath.empty())
                 FBZZ_LOG_WARN("SceneSerializer: MeshRenderer '%s' has mesh but no meshPath; it cannot be restored", go.name.c_str());
             toml::table mrTbl;
-            mrTbl.insert("mesh",    mr->meshPath);
-            mrTbl.insert("enabled", mr->enabled);
+            mrTbl.insert("mesh",        mr->meshPath);
+            mrTbl.insert("enabled",     mr->enabled);
+            mrTbl.insert("castShadows", mr->castShadows);
             goTbl.insert("MeshRenderer", std::move(mrTbl));
         }
 
@@ -1085,6 +1098,21 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table matTbl;
             matTbl.insert("material", mc->materialPath);
             matTbl.insert("enabled",  mc->enabled);
+            matTbl.insert("visible",  mc->visible);
+            // submesh 1 以降のマテリアルスロット。
+            // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体になったため、
+            //      submesh ごとの .mat 割り当てはここに並ぶ。単一マテリアルの
+            //      オブジェクトでは空配列を書かず、既存シーンの diff を増やさない。
+            if (!mc->extraSlots.empty()) {
+                toml::array slotArr;
+                for (const auto& slot : mc->extraSlots) {
+                    toml::table slotTbl;
+                    slotTbl.insert("material", slot.materialPath);
+                    slotTbl.insert("visible",  slot.visible);
+                    slotArr.push_back(std::move(slotTbl));
+                }
+                matTbl.insert("slots", std::move(slotArr));
+            }
             goTbl.insert("MaterialComponent", std::move(matTbl));
         }
 
@@ -1211,7 +1239,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("AtmosphericScatteringComponent", std::move(ascAtmTbl));
         }
 
-        // PostProcessVolumeComponent — pp サブテーブルに PostProcessSettings を直列化する。
+        // PostProcessVolumeComponent — ルック本体は .fzdata プロファイル側にあるため、
+        // シーンにはボリュームの掛かり方 (参照・領域・優先度) だけを保存する。
         if (auto* ppvc = go.GetComponent<PostProcessVolumeComponent>()) {
             toml::table ppvcTbl;
             ppvcTbl.insert("enabled",         ppvc->enabled);
@@ -1223,38 +1252,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ppvcTbl.insert("blendWeight",     (double)ppvc->blendWeight);
             ppvcTbl.insert("influenceRadius", (double)ppvc->influenceRadius);
             ppvcTbl.insert("blendDistance",   (double)ppvc->blendDistance);
-
-            const auto& pp = ppvc->settings;
-            toml::table ppTbl;
-            ppTbl.insert("fxaaEnabled", pp.fxaaEnabled);
-            ppTbl.insert("exposure",    (double)pp.exposure);
-            ppTbl.insert("screenFadeAlpha", (double)pp.screenFadeAlpha);
-            ppTbl.insert("screenFadeColor", Vec3ToArr({pp.screenFadeColor[0], pp.screenFadeColor[1], pp.screenFadeColor[2]}));
-
-            // Bloom
-            { toml::table t; t.insert("enabled", pp.bloom.enabled); t.insert("intensity", (double)pp.bloom.intensity); t.insert("threshold", (double)pp.bloom.threshold); t.insert("softKnee", (double)pp.bloom.softKnee); ppTbl.insert("bloom", std::move(t)); }
-            // AmbientOcclusion
-            { toml::table t; t.insert("enabled", pp.ambientOcclusion.enabled); t.insert("intensity", (double)pp.ambientOcclusion.intensity); ppTbl.insert("ao", std::move(t)); }
-            // Fog
-            { toml::table t; t.insert("enabled", pp.fog.enabled); t.insert("density", (double)pp.fog.density); t.insert("farDistance", (double)pp.fog.farDistance); t.insert("color", Vec3ToArr({pp.fog.color[0], pp.fog.color[1], pp.fog.color[2]})); ppTbl.insert("fog", std::move(t)); }
-            // ColorGrading
-            { toml::table t; t.insert("enabled", pp.colorGrading.enabled); t.insert("contrast", (double)pp.colorGrading.contrast); t.insert("saturation", (double)pp.colorGrading.saturation); t.insert("hueShift", (double)pp.colorGrading.hueShift); t.insert("temperature", (double)pp.colorGrading.temperature); t.insert("tint", (double)pp.colorGrading.tint); ppTbl.insert("colorGrading", std::move(t)); }
-            // Vignette
-            { toml::table t; t.insert("enabled", pp.vignette.enabled); t.insert("intensity", (double)pp.vignette.intensity); t.insert("smoothness", (double)pp.vignette.smoothness); t.insert("roundness", (double)pp.vignette.roundness); t.insert("color", Vec3ToArr({pp.vignette.color[0], pp.vignette.color[1], pp.vignette.color[2]})); ppTbl.insert("vignette", std::move(t)); }
-            // FilmGrain
-            { toml::table t; t.insert("enabled", pp.filmGrain.enabled); t.insert("intensity", (double)pp.filmGrain.intensity); t.insert("response", (double)pp.filmGrain.response); ppTbl.insert("filmGrain", std::move(t)); }
-            // Sharpen
-            { toml::table t; t.insert("enabled", pp.sharpen.enabled); t.insert("strength", (double)pp.sharpen.strength); t.insert("radius", (double)pp.sharpen.radius); ppTbl.insert("sharpen", std::move(t)); }
-            // DepthOfField
-            { toml::table t; t.insert("enabled", pp.depthOfField.enabled); t.insert("focusDistance", (double)pp.depthOfField.focusDistance); t.insert("focusRange", (double)pp.depthOfField.focusRange); t.insert("blurRadius", (double)pp.depthOfField.blurRadius); ppTbl.insert("dof", std::move(t)); }
-            // Lens
-            { toml::table t; t.insert("chromaticAberrationEnabled", pp.lens.chromaticAberrationEnabled); t.insert("distortionEnabled", pp.lens.distortionEnabled); t.insert("chromaticAberration", (double)pp.lens.chromaticAberration); t.insert("distortion", (double)pp.lens.distortion); ppTbl.insert("lens", std::move(t)); }
-            // Stylized
-            { toml::table t; t.insert("sepiaEnabled", pp.stylized.sepiaEnabled); t.insert("invertEnabled", pp.stylized.invertEnabled); t.insert("posterizeEnabled", pp.stylized.posterizeEnabled); t.insert("pixelateEnabled", pp.stylized.pixelateEnabled); t.insert("sepiaIntensity", (double)pp.stylized.sepiaIntensity); t.insert("invertIntensity", (double)pp.stylized.invertIntensity); t.insert("posterizeLevels", (double)pp.stylized.posterizeLevels); t.insert("pixelSize", (double)pp.stylized.pixelSize); ppTbl.insert("stylized", std::move(t)); }
-            // ImageQuality
-            { toml::table t; t.insert("clarityEnabled", pp.imageQuality.clarityEnabled); t.insert("shadowHighlightEnabled", pp.imageQuality.shadowHighlightEnabled); t.insert("colorFilterEnabled", pp.imageQuality.colorFilterEnabled); t.insert("clarityStrength", (double)pp.imageQuality.clarityStrength); t.insert("clarityRadius", (double)pp.imageQuality.clarityRadius); t.insert("shadowLift", (double)pp.imageQuality.shadowLift); t.insert("highlightCompression", (double)pp.imageQuality.highlightCompression); t.insert("colorFilter", Vec3ToArr({pp.imageQuality.colorFilter[0], pp.imageQuality.colorFilter[1], pp.imageQuality.colorFilter[2]})); t.insert("colorFilterIntensity", (double)pp.imageQuality.colorFilterIntensity); ppTbl.insert("imageQuality", std::move(t)); }
-
-            ppvcTbl.insert("pp", std::move(ppTbl));
             goTbl.insert("PostProcessVolumeComponent", std::move(ppvcTbl));
         }
 
@@ -1291,7 +1288,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
             peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
             peTbl.insert("materialPath",   pe->materialPath);
-            peTbl.insert("texturePath",    pe->texturePath);
             peTbl.insert("spriteColumns",  (int64_t)pe->spriteColumns);
             peTbl.insert("spriteRows",     (int64_t)pe->spriteRows);
             peTbl.insert("spriteStartFrame", (int64_t)pe->spriteStartFrame);
@@ -1414,7 +1410,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("attachOffset",       Vec3ToArr(trail->attachOffset));
             trailTbl.insert("clearOnDisable",     trail->clearOnDisable);
             trailTbl.insert("materialPath",       trail->materialPath);
-            trailTbl.insert("texturePath",        trail->texturePath);
             trailTbl.insert("uvMode",             (int64_t)static_cast<int>(trail->uvMode));
             trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
             trailTbl.insert("uvTiling",           (double)trail->uvTiling);
@@ -1434,7 +1429,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("doubleSided",    trail->doubleSided);
             trailTbl.insert("clearOnDisable", trail->clearOnDisable);
             trailTbl.insert("materialPath",   trail->materialPath);
-            trailTbl.insert("texturePath",    trail->texturePath);
             toml::array excludedMeshIndices;
             for (int meshIndex : trail->excludedMeshIndices)
                 excludedMeshIndices.push_back((int64_t)meshIndex);
@@ -1631,9 +1625,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // SkinnedMeshRenderer
         if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
             toml::table smrTbl;
-            smrTbl.insert("enabled",   smr->enabled);
-            smrTbl.insert("modelPath", smr->modelPath);
-            smrTbl.insert("meshIndex", (int64_t)smr->meshIndex);
+            smrTbl.insert("enabled",     smr->enabled);
+            smrTbl.insert("castShadows", smr->castShadows);
+            smrTbl.insert("modelPath",   smr->modelPath);
+            // NOTE: 旧 "meshIndex" は書き出さない。submesh の担当は
+            //       MaterialComponent のスロット (visible) で表現する。
             goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
         }
 
@@ -1663,12 +1659,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // AnimatorComponent
         if (auto* anim = go.GetComponent<AnimatorComponent>()) {
             toml::table animTbl;
-            animTbl.insert("clipName",  anim->clipName);
-            animTbl.insert("clipIndex", (int64_t)anim->clipIndex);
-            animTbl.insert("time",      (double)anim->time);
             animTbl.insert("speed",     (double)anim->speed);
             animTbl.insert("enabled",   anim->enabled);
-            animTbl.insert("loop",      anim->loop);
             animTbl.insert("playing",   anim->playing);
             // ── Root Motion ───────────────────────────────────────────────
             animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
@@ -1685,9 +1677,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             animTbl.insert("rootMotionRotationScale",
                            (double)anim->rootMotion.rotationScale);
             animTbl.insert("controllerPath", anim->controllerPath);
-            toml::array srcArr;
-            for (const auto& s : anim->clipSources) srcArr.push_back(s);
-            animTbl.insert("clipSources", std::move(srcArr));
 
             animTbl.insert("defaultStateName", anim->defaultStateName);
 
@@ -1805,14 +1794,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             for (const auto& layer : anim->layers) {
                 toml::table layerTbl;
                 layerTbl.insert("name", layer.name);
-                layerTbl.insert("stateName", layer.stateName);
                 layerTbl.insert("weight", (double)layer.weight);
                 layerTbl.insert("mode", (int64_t)layer.mode);
                 layerTbl.insert("enabled", layer.enabled);
-                layerTbl.insert("maskIncludesChildren", layer.maskIncludesChildren);
-                toml::array masks;
-                for (const auto& mask : layer.avatarMaskPaths) masks.push_back(mask);
-                layerTbl.insert("avatarMaskPaths", std::move(masks));
                 // .mask アセット参照と加算基準ポーズ。
                 // NOTE: レイヤー独自ステートマシン (layer.states) はここには保存しない。
                 // WHY: シーンはインスタンス配置を持つ場所で、遷移グラフの置き場は
@@ -2273,6 +2257,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             MeshRenderer mr{};
             mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
             mr.enabled  = (*mrTbl)["enabled"].value_or(true);
+            // 既存シーンにキーが無い場合は true (従来どおり全メッシュが影を落とす)。
+            mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
 
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, resources);
@@ -2283,15 +2269,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         }
 
         // MaterialComponent
-        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
-            MaterialComponent mc{};
-            mc.enabled      = (*matTbl)["enabled"].value_or(true);
-            mc.materialPath = (*matTbl)["material"].value_or(std::string{});
-
-            if (!mc.materialPath.empty())
-                mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
-            go.AddComponent<MaterialComponent>(std::move(mc));
-        }
+        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
+            go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
 
         // DecalComponent
         if (auto* decalTbl = (*goTbl)["DecalComponent"].as_table()) {
@@ -2429,111 +2408,16 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
             PostProcessVolumeComponent ppvc{};
             ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
-            // 旧シーンには profile キーが無い。空のままならインライン settings が使われる
-            // (Resolve() のフォールバック) ため、無改修で従来どおり動く。
+            // 旧シーンが持っていた pp サブテーブル (インライン設定) は読み飛ばす。
+            // WHY 黙って捨てるか: ルック設定の所有者はプロファイル 1 本に統一した。
+            //     ここで読み戻せる先が既に存在しないため、キーが残っていても
+            //     どこにも反映されない。プロファイル未アサインのボリュームは無効扱い。
             ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
             ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
             ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
             ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
             ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
             ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
-            if (auto* ppTbl = (*ppvcTbl)["pp"].as_table()) {
-                auto& pp = ppvc.settings;
-                pp.fxaaEnabled   = (*ppTbl)["fxaaEnabled"].value_or(pp.fxaaEnabled);
-                pp.exposure      = (float)(*ppTbl)["exposure"].value_or((double)pp.exposure);
-                pp.screenFadeAlpha = (float)(*ppTbl)["screenFadeAlpha"].value_or(0.0);
-                if (auto* sfcArr = (*ppTbl)["screenFadeColor"].as_array(); sfcArr && sfcArr->size() >= 3) {
-                    pp.screenFadeColor[0] = (float)(*sfcArr)[0].value_or(0.0);
-                    pp.screenFadeColor[1] = (float)(*sfcArr)[1].value_or(0.0);
-                    pp.screenFadeColor[2] = (float)(*sfcArr)[2].value_or(0.0);
-                }
-                if (auto* t = (*ppTbl)["bloom"].as_table()) {
-                    pp.bloom.enabled   = (*t)["enabled"].value_or(pp.bloom.enabled);
-                    pp.bloom.intensity = (float)(*t)["intensity"].value_or((double)pp.bloom.intensity);
-                    pp.bloom.threshold = (float)(*t)["threshold"].value_or((double)pp.bloom.threshold);
-                    pp.bloom.softKnee  = (float)(*t)["softKnee"].value_or((double)pp.bloom.softKnee);
-                }
-                if (auto* t = (*ppTbl)["ao"].as_table()) {
-                    pp.ambientOcclusion.enabled   = (*t)["enabled"].value_or(pp.ambientOcclusion.enabled);
-                    pp.ambientOcclusion.intensity = (float)(*t)["intensity"].value_or((double)pp.ambientOcclusion.intensity);
-                }
-                if (auto* t = (*ppTbl)["fog"].as_table()) {
-                    pp.fog.enabled     = (*t)["enabled"].value_or(pp.fog.enabled);
-                    pp.fog.density     = (float)(*t)["density"].value_or((double)pp.fog.density);
-                    pp.fog.farDistance = (float)(*t)["farDistance"].value_or((double)pp.fog.farDistance);
-                    if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) {
-                        pp.fog.color[0] = (float)(*arr)[0].value_or(0.0);
-                        pp.fog.color[1] = (float)(*arr)[1].value_or(0.0);
-                        pp.fog.color[2] = (float)(*arr)[2].value_or(0.0);
-                    }
-                }
-                if (auto* t = (*ppTbl)["colorGrading"].as_table()) {
-                    pp.colorGrading.enabled     = (*t)["enabled"].value_or(pp.colorGrading.enabled);
-                    pp.colorGrading.contrast    = (float)(*t)["contrast"].value_or((double)pp.colorGrading.contrast);
-                    pp.colorGrading.saturation  = (float)(*t)["saturation"].value_or((double)pp.colorGrading.saturation);
-                    pp.colorGrading.hueShift    = (float)(*t)["hueShift"].value_or((double)pp.colorGrading.hueShift);
-                    pp.colorGrading.temperature = (float)(*t)["temperature"].value_or((double)pp.colorGrading.temperature);
-                    pp.colorGrading.tint        = (float)(*t)["tint"].value_or((double)pp.colorGrading.tint);
-                }
-                if (auto* t = (*ppTbl)["vignette"].as_table()) {
-                    pp.vignette.enabled    = (*t)["enabled"].value_or(pp.vignette.enabled);
-                    pp.vignette.intensity  = (float)(*t)["intensity"].value_or((double)pp.vignette.intensity);
-                    pp.vignette.smoothness = (float)(*t)["smoothness"].value_or((double)pp.vignette.smoothness);
-                    pp.vignette.roundness  = (float)(*t)["roundness"].value_or((double)pp.vignette.roundness);
-                    if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) {
-                        pp.vignette.color[0] = (float)(*arr)[0].value_or(0.0);
-                        pp.vignette.color[1] = (float)(*arr)[1].value_or(0.0);
-                        pp.vignette.color[2] = (float)(*arr)[2].value_or(0.0);
-                    }
-                }
-                if (auto* t = (*ppTbl)["filmGrain"].as_table()) {
-                    pp.filmGrain.enabled   = (*t)["enabled"].value_or(pp.filmGrain.enabled);
-                    pp.filmGrain.intensity = (float)(*t)["intensity"].value_or((double)pp.filmGrain.intensity);
-                    pp.filmGrain.response  = (float)(*t)["response"].value_or((double)pp.filmGrain.response);
-                }
-                if (auto* t = (*ppTbl)["sharpen"].as_table()) {
-                    pp.sharpen.enabled  = (*t)["enabled"].value_or(pp.sharpen.enabled);
-                    pp.sharpen.strength = (float)(*t)["strength"].value_or((double)pp.sharpen.strength);
-                    pp.sharpen.radius   = (float)(*t)["radius"].value_or((double)pp.sharpen.radius);
-                }
-                if (auto* t = (*ppTbl)["dof"].as_table()) {
-                    pp.depthOfField.enabled       = (*t)["enabled"].value_or(pp.depthOfField.enabled);
-                    pp.depthOfField.focusDistance = (float)(*t)["focusDistance"].value_or((double)pp.depthOfField.focusDistance);
-                    pp.depthOfField.focusRange    = (float)(*t)["focusRange"].value_or((double)pp.depthOfField.focusRange);
-                    pp.depthOfField.blurRadius    = (float)(*t)["blurRadius"].value_or((double)pp.depthOfField.blurRadius);
-                }
-                if (auto* t = (*ppTbl)["lens"].as_table()) {
-                    pp.lens.chromaticAberrationEnabled = (*t)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled);
-                    pp.lens.distortionEnabled          = (*t)["distortionEnabled"].value_or(pp.lens.distortionEnabled);
-                    pp.lens.chromaticAberration        = (float)(*t)["chromaticAberration"].value_or((double)pp.lens.chromaticAberration);
-                    pp.lens.distortion                 = (float)(*t)["distortion"].value_or((double)pp.lens.distortion);
-                }
-                if (auto* t = (*ppTbl)["stylized"].as_table()) {
-                    pp.stylized.sepiaEnabled     = (*t)["sepiaEnabled"].value_or(pp.stylized.sepiaEnabled);
-                    pp.stylized.invertEnabled    = (*t)["invertEnabled"].value_or(pp.stylized.invertEnabled);
-                    pp.stylized.posterizeEnabled = (*t)["posterizeEnabled"].value_or(pp.stylized.posterizeEnabled);
-                    pp.stylized.pixelateEnabled  = (*t)["pixelateEnabled"].value_or(pp.stylized.pixelateEnabled);
-                    pp.stylized.sepiaIntensity   = (float)(*t)["sepiaIntensity"].value_or((double)pp.stylized.sepiaIntensity);
-                    pp.stylized.invertIntensity  = (float)(*t)["invertIntensity"].value_or((double)pp.stylized.invertIntensity);
-                    pp.stylized.posterizeLevels  = (float)(*t)["posterizeLevels"].value_or((double)pp.stylized.posterizeLevels);
-                    pp.stylized.pixelSize        = (float)(*t)["pixelSize"].value_or((double)pp.stylized.pixelSize);
-                }
-                if (auto* t = (*ppTbl)["imageQuality"].as_table()) {
-                    pp.imageQuality.clarityEnabled         = (*t)["clarityEnabled"].value_or(pp.imageQuality.clarityEnabled);
-                    pp.imageQuality.shadowHighlightEnabled = (*t)["shadowHighlightEnabled"].value_or(pp.imageQuality.shadowHighlightEnabled);
-                    pp.imageQuality.colorFilterEnabled     = (*t)["colorFilterEnabled"].value_or(pp.imageQuality.colorFilterEnabled);
-                    pp.imageQuality.clarityStrength        = (float)(*t)["clarityStrength"].value_or((double)pp.imageQuality.clarityStrength);
-                    pp.imageQuality.clarityRadius          = (float)(*t)["clarityRadius"].value_or((double)pp.imageQuality.clarityRadius);
-                    pp.imageQuality.shadowLift             = (float)(*t)["shadowLift"].value_or((double)pp.imageQuality.shadowLift);
-                    pp.imageQuality.highlightCompression   = (float)(*t)["highlightCompression"].value_or((double)pp.imageQuality.highlightCompression);
-                    if (auto* arr = (*t)["colorFilter"].as_array(); arr && arr->size() >= 3) {
-                        pp.imageQuality.colorFilter[0] = (float)(*arr)[0].value_or(1.0);
-                        pp.imageQuality.colorFilter[1] = (float)(*arr)[1].value_or(1.0);
-                        pp.imageQuality.colorFilter[2] = (float)(*arr)[2].value_or(1.0);
-                    }
-                    pp.imageQuality.colorFilterIntensity = (float)(*t)["colorFilterIntensity"].value_or((double)pp.imageQuality.colorFilterIntensity);
-                }
-            }
             go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
         }
 
@@ -2584,7 +2468,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
             pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
             pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
@@ -2725,7 +2608,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.attachOffset   = ArrToVec3((*trailTbl)["attachOffset"].as_array(), math::Vector3::ZERO);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
             trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             int uvMode = (int)(*trailTbl)["uvMode"].value_or((int64_t)0);
             uvMode = uvMode < 0 ? 0 : (uvMode > 1 ? 1 : uvMode);
             trail.uvMode         = static_cast<TrailUVMode>(uvMode);
@@ -2749,7 +2631,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
             trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             if (const auto* excludedArr = (*trailTbl)["excludedMeshIndices"].as_array()) {
                 for (const auto& node : *excludedArr) {
                     const int meshIndex = (int)node.value_or((int64_t)-1);
@@ -2942,9 +2823,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // SkinnedMeshRenderer
         if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
             SkinnedMeshRenderer smr{};
-            smr.enabled   = (*smrTbl)["enabled"].value_or(true);
-            smr.modelPath = (*smrTbl)["modelPath"].value_or(std::string{});
-            smr.meshIndex = (int)(*smrTbl)["meshIndex"].value_or((int64_t)-1);
+            smr.enabled     = (*smrTbl)["enabled"].value_or(true);
+            smr.castShadows = (*smrTbl)["castShadows"].value_or(true);
+            smr.modelPath   = (*smrTbl)["modelPath"].value_or(std::string{});
             if (!smr.modelPath.empty()) {
                 smr.model = asset::AssetManager::LoadModel(smr.modelPath);
                 if (!smr.model)
@@ -2966,25 +2847,17 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // AnimatorComponent
         if (auto* animTbl = (*goTbl)["AnimatorComponent"].as_table()) {
             AnimatorComponent anim{};
-            anim.clipName  = (*animTbl)["clipName"].value_or(std::string{});
-            anim.clipIndex = (int)(*animTbl)["clipIndex"].value_or((int64_t)0);
-            anim.time      = (float)(*animTbl)["time"].value_or(0.0);
             anim.speed     = (float)(*animTbl)["speed"].value_or(1.0);
             anim.enabled   = (*animTbl)["enabled"].value_or(true);
-            anim.loop      = (*animTbl)["loop"].value_or(true);
             anim.playing   = (*animTbl)["playing"].value_or(true);
 
             // ── Root Motion ───────────────────────────────────────────────
-            // 旧フォーマットは bool applyRootMotion 1 本だった。
-            // true → ApplyToTransform / false → None + Strip (旧挙動と同じ) へ写す。
-            const bool legacyApply = (*animTbl)["applyRootMotion"].value_or(true);
             const auto readEnum = [&animTbl](const char* key, int fallback) {
                 return (int)(*animTbl)[key].value_or((int64_t)fallback);
             };
             anim.rootMotion.mode = (RootMotionMode)readEnum(
                 "rootMotionMode",
-                (int)(legacyApply ? RootMotionMode::ApplyToTransform
-                                  : RootMotionMode::None));
+                (int)RootMotionMode::None);
             anim.rootMotion.source = (RootMotionSource)readEnum(
                 "rootMotionSource", (int)RootMotionSource::ClipDefined);
             anim.rootMotion.poseMode = (RootMotionPoseMode)readEnum(
@@ -3006,11 +2879,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
             anim.controllerPath =
                 (*animTbl)["controllerPath"].value_or(std::string{});
-            if (const auto* srcArr = (*animTbl)["clipSources"].as_array()) {
-                for (const auto& elem : *srcArr)
-                    if (auto s = elem.value<std::string>())
-                        anim.clipSources.push_back(*s);
-            }
 
             anim.defaultStateName = (*animTbl)["defaultStateName"].value_or(std::string{});
 
@@ -3100,27 +2968,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         readMotions((*blend2DTbl)["motions"].as_array(),
                                     st.blendTree2D.motions);
                     }
-                    auto migrateSource = [&anim](std::string& sourcePath, int clipIndex) {
-                        if (!sourcePath.empty() || anim.clipSources.empty()) return;
-                        int remainingIndex = clipIndex;
-                        for (const auto& legacySource : anim.clipSources) {
-                            const auto model =
-                                asset::AssetManager::LoadModel(legacySource);
-                            if (!model) continue;
-                            const int clipCount =
-                                static_cast<int>(model->clips.size());
-                            if (remainingIndex >= 0 && remainingIndex < clipCount) {
-                                sourcePath = legacySource;
-                                return;
-                            }
-                            remainingIndex -= clipCount;
-                        }
-                    };
-                    migrateSource(st.sourcePath, st.clipIndex);
-                    for (auto& motion : st.blendTree1D.motions)
-                        migrateSource(motion.sourcePath, motion.clipIndex);
-                    for (auto& motion : st.blendTree2D.motions)
-                        migrateSource(motion.sourcePath, motion.clipIndex);
                     anim.states.push_back(std::move(st));
                 }
             }
@@ -3174,17 +3021,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     if (!layerTbl) continue;
                     AnimationLayer layer{};
                     layer.name = (*layerTbl)["name"].value_or(std::string{"Layer"});
-                    layer.stateName = (*layerTbl)["stateName"].value_or(std::string{});
                     layer.weight = (float)(*layerTbl)["weight"].value_or(1.0);
                     layer.mode = (AnimationLayerMode)(*layerTbl)["mode"].value_or((int64_t)0);
                     layer.enabled = (*layerTbl)["enabled"].value_or(true);
-                    layer.maskIncludesChildren =
-                        (*layerTbl)["maskIncludesChildren"].value_or(true);
-                    if (const auto* masks = (*layerTbl)["avatarMaskPaths"].as_array())
-                        for (const auto& mask : *masks)
-                            if (const auto value = mask.value<std::string>())
-                                layer.avatarMaskPaths.push_back(*value);
-                    // 旧シーンには存在しないキー。value_or で既定へ落ちるためそのまま読める。
                     layer.mask.path = (*layerTbl)["maskPath"].value_or(std::string{});
                     if (const auto* additiveRef = (*layerTbl)["additiveReference"].as_table()) {
                         layer.additiveReference.sourcePath =
@@ -3486,13 +3325,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<WaterComponent>(std::move(water));
         }
 
-        // NavMeshSurfaceComponent — 新キー優先、旧 NavMeshVolumeComponent キーは後方互換読み込み。
-        // collectObjects=0 は旧 AllSceneObjects → 新 ThisObject と同じ整数値なので自動移行される。
+        // NavMeshSurfaceComponent
         // navMesh は Bake で再生成するため needsBake=true で登録し非保存。
         {
             const toml::table* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table();
-            // 旧シーンファイル互換: キーが NavMeshVolumeComponent のまま保存されている場合
-            if (!surfTbl) surfTbl = (*goTbl)["NavMeshVolumeComponent"].as_table();
             if (surfTbl) {
                 NavMeshSurfaceComponent surface{};
                 surface.enabled          = (*surfTbl)["enabled"].value_or(true);
@@ -3508,7 +3344,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             }
         }
 
-        // NavMeshModifierComponent — 旧 NavMeshObstacleComponent キーは後方互換で NotWalkable として読む。
+        // NavMeshModifierComponent
         {
             const toml::table* modTbl = (*goTbl)["NavMeshModifierComponent"].as_table();
             if (modTbl) {
@@ -3516,11 +3352,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 modifier.enabled = (*modTbl)["enabled"].value_or(true);
                 modifier.mode    = static_cast<NavMeshModifierMode>(
                     static_cast<uint8_t>((*modTbl)["mode"].value_or(int64_t{0})));
-                go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
-            } else if (auto* obsTbl = (*goTbl)["NavMeshObstacleComponent"].as_table()) {
-                NavMeshModifierComponent modifier{};
-                modifier.enabled = (*obsTbl)["enabled"].value_or(true);
-                modifier.mode    = NavMeshModifierMode::NotWalkable;
                 go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
             }
         }
@@ -3802,6 +3633,7 @@ bool SceneSerializer::AppendObjects(
             MeshRenderer mr{};
             mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
             mr.enabled  = (*mrTbl)["enabled"].value_or(true);
+            mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, resources);
                 if (!mr.mesh)
@@ -3810,14 +3642,8 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<MeshRenderer>(std::move(mr));
         }
 
-        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
-            MaterialComponent mc{};
-            mc.enabled      = (*matTbl)["enabled"].value_or(true);
-            mc.materialPath = (*matTbl)["material"].value_or(std::string{});
-            if (!mc.materialPath.empty())
-                mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
-            go.AddComponent<MaterialComponent>(std::move(mc));
-        }
+        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
+            go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
 
         if (auto* lcTbl = (*goTbl)["LightComponent"].as_table()) {
             LightComponent lc{};
@@ -3880,36 +3706,16 @@ bool SceneSerializer::AppendObjects(
         if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
             PostProcessVolumeComponent ppvc{};
             ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
-            // 旧シーンには profile キーが無い。空のままならインライン settings が使われる
-            // (Resolve() のフォールバック) ため、無改修で従来どおり動く。
+            // 旧シーンが持っていた pp サブテーブル (インライン設定) は読み飛ばす。
+            // WHY 黙って捨てるか: ルック設定の所有者はプロファイル 1 本に統一した。
+            //     ここで読み戻せる先が既に存在しないため、キーが残っていても
+            //     どこにも反映されない。プロファイル未アサインのボリュームは無効扱い。
             ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
             ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
             ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
             ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
             ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
             ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
-            if (auto* ppTbl = (*ppvcTbl)["pp"].as_table()) {
-                auto& pp = ppvc.settings;
-                pp.fxaaEnabled    = (*ppTbl)["fxaaEnabled"].value_or(pp.fxaaEnabled);
-                pp.exposure       = (float)(*ppTbl)["exposure"].value_or((double)pp.exposure);
-                pp.screenFadeAlpha = (float)(*ppTbl)["screenFadeAlpha"].value_or(0.0);
-                if (auto* sfcArr = (*ppTbl)["screenFadeColor"].as_array(); sfcArr && sfcArr->size() >= 3) {
-                    pp.screenFadeColor[0] = (float)(*sfcArr)[0].value_or(0.0);
-                    pp.screenFadeColor[1] = (float)(*sfcArr)[1].value_or(0.0);
-                    pp.screenFadeColor[2] = (float)(*sfcArr)[2].value_or(0.0);
-                }
-                if (auto* t = (*ppTbl)["bloom"].as_table()) { pp.bloom.enabled = (*t)["enabled"].value_or(pp.bloom.enabled); pp.bloom.intensity = (float)(*t)["intensity"].value_or((double)pp.bloom.intensity); pp.bloom.threshold = (float)(*t)["threshold"].value_or((double)pp.bloom.threshold); pp.bloom.softKnee = (float)(*t)["softKnee"].value_or((double)pp.bloom.softKnee); }
-                if (auto* t = (*ppTbl)["ao"].as_table())    { pp.ambientOcclusion.enabled = (*t)["enabled"].value_or(pp.ambientOcclusion.enabled); pp.ambientOcclusion.intensity = (float)(*t)["intensity"].value_or((double)pp.ambientOcclusion.intensity); }
-                if (auto* t = (*ppTbl)["fog"].as_table())   { pp.fog.enabled = (*t)["enabled"].value_or(pp.fog.enabled); pp.fog.density = (float)(*t)["density"].value_or((double)pp.fog.density); pp.fog.farDistance = (float)(*t)["farDistance"].value_or((double)pp.fog.farDistance); if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) { pp.fog.color[0] = (float)(*arr)[0].value_or(0.0); pp.fog.color[1] = (float)(*arr)[1].value_or(0.0); pp.fog.color[2] = (float)(*arr)[2].value_or(0.0); } }
-                if (auto* t = (*ppTbl)["colorGrading"].as_table()) { pp.colorGrading.enabled = (*t)["enabled"].value_or(pp.colorGrading.enabled); pp.colorGrading.contrast = (float)(*t)["contrast"].value_or((double)pp.colorGrading.contrast); pp.colorGrading.saturation = (float)(*t)["saturation"].value_or((double)pp.colorGrading.saturation); pp.colorGrading.hueShift = (float)(*t)["hueShift"].value_or((double)pp.colorGrading.hueShift); pp.colorGrading.temperature = (float)(*t)["temperature"].value_or((double)pp.colorGrading.temperature); pp.colorGrading.tint = (float)(*t)["tint"].value_or((double)pp.colorGrading.tint); }
-                if (auto* t = (*ppTbl)["vignette"].as_table()) { pp.vignette.enabled = (*t)["enabled"].value_or(pp.vignette.enabled); pp.vignette.intensity = (float)(*t)["intensity"].value_or((double)pp.vignette.intensity); pp.vignette.smoothness = (float)(*t)["smoothness"].value_or((double)pp.vignette.smoothness); pp.vignette.roundness = (float)(*t)["roundness"].value_or((double)pp.vignette.roundness); if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) { pp.vignette.color[0] = (float)(*arr)[0].value_or(0.0); pp.vignette.color[1] = (float)(*arr)[1].value_or(0.0); pp.vignette.color[2] = (float)(*arr)[2].value_or(0.0); } }
-                if (auto* t = (*ppTbl)["filmGrain"].as_table())  { pp.filmGrain.enabled = (*t)["enabled"].value_or(pp.filmGrain.enabled); pp.filmGrain.intensity = (float)(*t)["intensity"].value_or((double)pp.filmGrain.intensity); pp.filmGrain.response = (float)(*t)["response"].value_or((double)pp.filmGrain.response); }
-                if (auto* t = (*ppTbl)["sharpen"].as_table())    { pp.sharpen.enabled = (*t)["enabled"].value_or(pp.sharpen.enabled); pp.sharpen.strength = (float)(*t)["strength"].value_or((double)pp.sharpen.strength); pp.sharpen.radius = (float)(*t)["radius"].value_or((double)pp.sharpen.radius); }
-                if (auto* t = (*ppTbl)["dof"].as_table())        { pp.depthOfField.enabled = (*t)["enabled"].value_or(pp.depthOfField.enabled); pp.depthOfField.focusDistance = (float)(*t)["focusDistance"].value_or((double)pp.depthOfField.focusDistance); pp.depthOfField.focusRange = (float)(*t)["focusRange"].value_or((double)pp.depthOfField.focusRange); pp.depthOfField.blurRadius = (float)(*t)["blurRadius"].value_or((double)pp.depthOfField.blurRadius); }
-                if (auto* t = (*ppTbl)["lens"].as_table())       { pp.lens.chromaticAberrationEnabled = (*t)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled); pp.lens.distortionEnabled = (*t)["distortionEnabled"].value_or(pp.lens.distortionEnabled); pp.lens.chromaticAberration = (float)(*t)["chromaticAberration"].value_or((double)pp.lens.chromaticAberration); pp.lens.distortion = (float)(*t)["distortion"].value_or((double)pp.lens.distortion); }
-                if (auto* t = (*ppTbl)["stylized"].as_table())   { pp.stylized.sepiaEnabled = (*t)["sepiaEnabled"].value_or(pp.stylized.sepiaEnabled); pp.stylized.invertEnabled = (*t)["invertEnabled"].value_or(pp.stylized.invertEnabled); pp.stylized.posterizeEnabled = (*t)["posterizeEnabled"].value_or(pp.stylized.posterizeEnabled); pp.stylized.pixelateEnabled = (*t)["pixelateEnabled"].value_or(pp.stylized.pixelateEnabled); pp.stylized.sepiaIntensity = (float)(*t)["sepiaIntensity"].value_or((double)pp.stylized.sepiaIntensity); pp.stylized.invertIntensity = (float)(*t)["invertIntensity"].value_or((double)pp.stylized.invertIntensity); pp.stylized.posterizeLevels = (float)(*t)["posterizeLevels"].value_or((double)pp.stylized.posterizeLevels); pp.stylized.pixelSize = (float)(*t)["pixelSize"].value_or((double)pp.stylized.pixelSize); }
-                if (auto* t = (*ppTbl)["imageQuality"].as_table()) { pp.imageQuality.clarityEnabled = (*t)["clarityEnabled"].value_or(pp.imageQuality.clarityEnabled); pp.imageQuality.shadowHighlightEnabled = (*t)["shadowHighlightEnabled"].value_or(pp.imageQuality.shadowHighlightEnabled); pp.imageQuality.colorFilterEnabled = (*t)["colorFilterEnabled"].value_or(pp.imageQuality.colorFilterEnabled); pp.imageQuality.clarityStrength = (float)(*t)["clarityStrength"].value_or((double)pp.imageQuality.clarityStrength); pp.imageQuality.clarityRadius = (float)(*t)["clarityRadius"].value_or((double)pp.imageQuality.clarityRadius); pp.imageQuality.shadowLift = (float)(*t)["shadowLift"].value_or((double)pp.imageQuality.shadowLift); pp.imageQuality.highlightCompression = (float)(*t)["highlightCompression"].value_or((double)pp.imageQuality.highlightCompression); if (auto* arr = (*t)["colorFilter"].as_array(); arr && arr->size() >= 3) { pp.imageQuality.colorFilter[0] = (float)(*arr)[0].value_or(1.0); pp.imageQuality.colorFilter[1] = (float)(*arr)[1].value_or(1.0); pp.imageQuality.colorFilter[2] = (float)(*arr)[2].value_or(1.0); } pp.imageQuality.colorFilterIntensity = (float)(*t)["colorFilterIntensity"].value_or((double)pp.imageQuality.colorFilterIntensity); }
-            }
             go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
         }
 
@@ -3956,7 +3762,6 @@ bool SceneSerializer::AppendObjects(
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
             pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
             pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
