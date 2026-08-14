@@ -3,23 +3,16 @@
 // Default user-editable full-screen post-process shader
 
 #include "Common/Constants.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Common/Color.hlsli"
 
 Texture2D    texInput   : register(TEX_GBUFFER0);
 SamplerState sampLinear : register(SAMPLER_DEFAULT);
 
-struct VSOut {
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-};
-
-VSOut VSMain(uint id : SV_VertexID)
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    VSOut o;
-    o.uv         = float2((id & 1u) ? 2.0f : 0.0f, (id & 2u) ? 2.0f : 0.0f);
-    o.svPosition = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
 float3 ApplyDefaultCustomEffect(float3 color, float2 uv)
@@ -38,7 +31,7 @@ float3 ApplyDefaultCustomEffect(float3 color, float2 uv)
     return saturate(result);
 }
 
-float4 PSMain(VSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     const float3 original = texInput.SampleLevel(sampLinear, p.uv, 0).rgb;
     const float3 processed = ApplyDefaultCustomEffect(original, p.uv);

@@ -46,6 +46,12 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float2 mbTexelSize = float2(1.0f / screenWidth, 1.0f / screenHeight);
     float2 uv = (float2(pixel) + 0.5f) * mbTexelSize;
 
+    if (motionBlurStrength <= 0.0f || motionBlurSamples <= 0)
+    {
+        OutputBlur[pixel] = texColor.SampleLevel(sampDefault, uv, 0);
+        return;
+    }
+
     // ── 深度からワールド座標を復元 ──────────────────────────────────────────────
     float  ndcZ     = texDepth.SampleLevel(sampDefault, uv, 0).r;
     float3 worldPos = ReconstructWorldPos(uv, ndcZ, invViewProjection);
@@ -61,7 +67,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // ── モーションベクトルが極小の場合はブラーなし ─────────────────────────────
     float motionLen = length(motionVec);
-    if (motionLen < 1e-5f || motionBlurSamples <= 0)
+    if (motionLen < 1e-5f)
     {
         OutputBlur[pixel] = texColor.SampleLevel(sampDefault, uv, 0);
         return;

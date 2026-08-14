@@ -57,6 +57,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Common/Constants.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/PostProcess.hlsli"
@@ -68,17 +69,9 @@ SamplerState sampLinear : register(SAMPLER_DEFAULT);
 // ── 頂点シェーダー ─────────────────────────────────────────────────────────
 // WHY: 三頂点だけで画面全体を覆う fullscreen triangle を生成する。
 //      頂点バッファ不要で DrawCall.vertexCount = 3 のみで動作する。
-struct VSOut {
-    float4 svPos : SV_POSITION;
-    float2 uv    : TEXCOORD0;
-};
-
-VSOut VSMain(uint id : SV_VertexID)
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    VSOut o;
-    o.uv         = float2((id & 1u) ? 2.0f : 0.0f, (id & 2u) ? 2.0f : 0.0f);
-    o.svPos      = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
 // ── ピクセルシェーダー ─────────────────────────────────────────────────────
@@ -86,7 +79,7 @@ VSOut VSMain(uint id : SV_VertexID)
 // customBlend と customIntensity を最終段で適用するパターンを守れば
 // Inspector/Script からのリアルタイム制御が自動で機能する。
 
-float4 PSMain(VSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     // ---- 入力サンプリング ------------------------------------------------
     const float3 original = texInput.SampleLevel(sampLinear, p.uv, 0).rgb;

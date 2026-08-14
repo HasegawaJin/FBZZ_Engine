@@ -55,6 +55,12 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if ((float)id.x >= outputSize.x || (float)id.y >= outputSize.y)
         return;
 
+    if (ssrIntensity <= 0.0f || ssrMaxDistance <= 0.0f || ssrSteps <= 0)
+    {
+        OutputSSR[id.xy] = 0.0f;
+        return;
+    }
+
     float2 uv = (float2(id.xy) + 0.5f) / outputSize;
 
     // ---- GBuffer サンプル ---------------------------------------------------

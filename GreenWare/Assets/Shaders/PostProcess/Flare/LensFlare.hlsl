@@ -17,6 +17,7 @@
 //   b8  = AdvancedGraphicsConstants
 
 #include "Common/Constants.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
 Texture2D    texHDR      : register(TEX_GBUFFER0); // HDR カラー入力
@@ -24,19 +25,9 @@ SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
 // ─── フルスクリーントライアングル ───────────────────────────────────────────────
 
-struct FSTriVSOut
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-};
-
-FSTriVSOut VSMain(uint id : SV_VertexID)
-{
-    FSTriVSOut o;
-    o.uv         = float2((id & 1u) ? 2.0f : 0.0f,
-                          (id & 2u) ? 2.0f : 0.0f);
-    o.svPosition = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
 // ─── ユーティリティ ──────────────────────────────────────────────────────────────
@@ -55,7 +46,7 @@ float GhostFalloff(float2 ghostUV)
 
 // ─── ピクセルシェーダー ─────────────────────────────────────────────────────────
 
-float4 PSMain(FSTriVSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     // レンズフレアが無効なら黒透明を返す（加算合成時に影響なし）
     if (lensFlareIntensity <= 0.0f)

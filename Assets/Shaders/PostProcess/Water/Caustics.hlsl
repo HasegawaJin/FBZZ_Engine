@@ -4,28 +4,19 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
 Texture2D        g_causticsTex : register(TEX_ALBEDO);
 Texture2D<float> g_depth       : register(TEX_DEPTH);
 SamplerState     sampDefault   : register(SAMPLER_DEFAULT);
 
-struct FSTriVSOut
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-};
-
-FSTriVSOut VSMain(uint id : SV_VertexID)
-{
-    FSTriVSOut o;
-    o.uv = float2((id & 1u) ? 2.0f : 0.0f,
-                  (id & 2u) ? 2.0f : 0.0f);
-    o.svPosition = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
-float4 PSMain(FSTriVSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     float ndcDepth = g_depth.Sample(sampDefault, p.uv).r;
     if (ndcDepth >= 0.9999f)

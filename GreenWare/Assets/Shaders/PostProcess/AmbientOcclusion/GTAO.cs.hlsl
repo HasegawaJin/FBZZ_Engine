@@ -82,6 +82,12 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     }
 
+    if (gtaoIntensity <= 0.0f)
+    {
+        OutputGTAO[pixel] = 1.0f;
+        return;
+    }
+
     float2 uv = (float2(pixel) + 0.5f) / outSize;
 
     // ── 深度チェック: スカイドームは AO 不要 ────────────────────────────────────

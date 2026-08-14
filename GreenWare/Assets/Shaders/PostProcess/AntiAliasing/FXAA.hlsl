@@ -4,6 +4,7 @@
 // 入力: TEX_GBUFFER0 (t5) = Composite 出力 LDR カラー
 
 #include "Common/Constants.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
 Texture2D    texLDR     : register(TEX_GBUFFER0);
@@ -13,22 +14,14 @@ static const float FXAA_SPAN_MAX   = 8.0f;
 static const float FXAA_REDUCE_MUL = 1.0f / 8.0f;
 static const float FXAA_REDUCE_MIN = 1.0f / 128.0f;
 
-struct VSOut {
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-};
-
-VSOut VSMain(uint id : SV_VertexID)
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    VSOut o;
-    o.uv         = float2((id & 1u) ? 2.0f : 0.0f, (id & 2u) ? 2.0f : 0.0f);
-    o.svPosition = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
 float Luma(float3 rgb) { return dot(rgb, float3(0.299f, 0.587f, 0.114f)); }
 
-float4 PSMain(VSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     float2 uv  = p.uv;
     float2 rcp = texelSize;

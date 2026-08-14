@@ -18,6 +18,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
 Texture2D        texCurrent : register(TEX_GBUFFER0);    // 現フレームカラー
@@ -29,19 +30,9 @@ SamplerState sampPoint   : register(SAMPLER_POINT_CLAMP); // ポイントサン�
 
 // ─── フルスクリーントライアングル ───────────────────────────────────────────────
 
-struct FSTriVSOut
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-};
-
-FSTriVSOut VSMain(uint id : SV_VertexID)
-{
-    FSTriVSOut o;
-    o.uv         = float2((id & 1u) ? 2.0f : 0.0f,
-                          (id & 2u) ? 2.0f : 0.0f);
-    o.svPosition = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
 // ─── ユーティリティ ──────────────────────────────────────────────────────────────
@@ -62,12 +53,16 @@ float3 ClipToAABB(float3 histColor, float3 minColor, float3 maxColor)
 
 // ─── ピクセルシェーダー ─────────────────────────────────────────────────────────
 
-float4 PSMain(FSTriVSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     float2 uv = p.uv;
 
     // ── 現フレームカラーを取得 ─────────────────────────────────────────────────
     float3 currentColor = texCurrent.Sample(sampDefault, uv).rgb;
+
+    // 履歴を使わない設定では深度復元・近傍サンプル・履歴サンプルを全て省略する。
+    if (taaFeedback <= 0.0f)
+        return float4(currentColor, 1.0f);
 
     // ── 深度からワールド座標を復元し、前フレーム UV を計算 ─────────────────────
     float  ndcZ     = texDepth.Sample(sampPoint, uv).r;
@@ -75,6 +70,8 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
 
     // 前フレームのクリップ空間へ投影
     float4 prevClip = mul(float4(worldPos, 1.0f), prevViewProjection);
+    if (abs(prevClip.w) < 1.0e-5f)
+        return float4(currentColor, 1.0f);
     prevClip.xyz   /= prevClip.w;
     float2 prevUV   = NdcToUv(prevClip.xy);
 
