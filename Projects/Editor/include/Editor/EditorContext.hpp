@@ -69,6 +69,11 @@ struct EditorContext {
     // WHY: query 応答と GPU 描画は同一フレームで完結しないため、capture までの猶予を frame 値で共有する。
     std::uint64_t     vfxAiPreviewUntilFrame = 0;
     renderer::Camera* editorCamera = nullptr;
+    // DebugCamera が持つオービット中心と注視距離のミラー (EditorApp が毎フレーム更新)。
+    // WHY: ナビゲーションギズモは「ピボットを動かさずに視点だけ回す」ため、
+    //      カメラ位置からは復元できない DebugCamera 内部の中心・距離を必要とする。
+    math::Vector3     editorCameraPivot         = {};
+    float             editorCameraFocusDistance = 10.0f;
     renderer::IRenderer* renderer = nullptr;
     renderer::IImGuiRenderer* imguiRenderer = nullptr;
     renderer::ResourceManager* resources = nullptr;
@@ -377,6 +382,15 @@ struct EditorContext {
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
     bool                                    requestSaveScene = false; // StatusBar の●クリック等から現在シーン保存を要求
+
+    // AI (Command Bus の scene.open / scene.save) 専用のシーン入出力。確認モーダルを挟まない。
+    // WHY: requestOpenScene は未保存変更があるとモーダル確認を開く。人の操作ならそれが正しいが、
+    //      AI 要求では「応答は返ったのに、その後エディタが人のクリック待ちで止まる」ことになり、
+    //      次の要求も処理されない (バスはメインスレッドで drain するため)。
+    //      未保存の確認は AI 側の引数 (discardUnsaved) で成立させ、ここには確認なしの実体だけを置く。
+    //      save の path が空なら現在のシーンパスへ上書き保存する。
+    std::function<bool(const std::string&)> openScenePathImmediate;
+    std::function<bool(const std::string&)> saveScenePathImmediate;
     float                                   assetBrowserIconSize       = 84.0f;
     float                                   assetBrowserTreeWidth      = 180.0f; // 左フォルダツリーの幅 (永続化)
     float                                   editorUiScale              = 1.0f;   // UI 全体スケール (永続化)

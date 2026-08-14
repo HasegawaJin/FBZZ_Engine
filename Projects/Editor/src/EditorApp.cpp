@@ -426,6 +426,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_ctx.foliageTool = m_foliageTool.get();
     m_ctx.markSceneDirty  = [this]() { MarkSceneDirty(); };
     m_ctx.requestOpenScene = [this](const std::string& path) { RequestOpenScenePath(path); };
+    // AI (Command Bus) からの入出力はモーダル確認を挟まない実体を直接呼ぶ。
+    // 未保存変更の扱いは EditorBusDispatcher 側が discardUnsaved 引数で判定する。
+    m_ctx.openScenePathImmediate = [this](const std::string& path) { return OpenScenePath(path); };
+    m_ctx.saveScenePathImmediate = [this](const std::string& path) {
+        return path.empty() ? SaveScene() : SaveScenePath(path);
+    };
 
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
@@ -1525,6 +1531,9 @@ void EditorApp::OnUpdate(float dt)
         if (!vfxViewportHovered)
             m_debugCamera.Update(dt, m_ctx.sceneViewportHovered);
         UpdateFocusAnim(dt);
+        // ナビゲーションギズモが「ピボット固定で視点だけ回す」ために読む。
+        m_ctx.editorCameraPivot         = m_debugCamera.Pivot();
+        m_ctx.editorCameraFocusDistance = m_debugCamera.FocusDistance();
     }
 
     const bool stepFrame   = playMode->ConsumeStep();

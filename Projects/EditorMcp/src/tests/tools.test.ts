@@ -144,7 +144,31 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('animation_get_pose'), true);
         assert.equal(names.includes('profiler_get_snapshot'), true);
         assert.equal(names.includes('editor_wait'), true);
+        // ワールドオーサリングの照会も read で使える。地形・植生・NavMesh・環境・UI・ビルド結果は
+        // 「壊れている理由」を探す側の情報なので、write 権限が無いと診断できない状態にはしない。
+        assert.equal(names.includes('scene_list'), true);
+        assert.equal(names.includes('preset_catalog'), true);
+        assert.equal(names.includes('terrain_inspect'), true);
+        assert.equal(names.includes('terrain_sample'), true);
+        assert.equal(names.includes('foliage_inspect'), true);
+        assert.equal(names.includes('navmesh_get_state'), true);
+        assert.equal(names.includes('navmesh_find_path'), true);
+        assert.equal(names.includes('navmesh_sample'), true);
+        assert.equal(names.includes('environment_inspect'), true);
+        assert.equal(names.includes('audio_inspect'), true);
+        assert.equal(names.includes('ui_inspect'), true);
+        assert.equal(names.includes('build_get_status'), true);
         assert.equal(names.includes('node_create'), false);
+        // ワールドを書き換える側は read では発見不能。
+        assert.equal(names.includes('preset_create'), false);
+        assert.equal(names.includes('scene_open'), false);
+        assert.equal(names.includes('scene_save'), false);
+        assert.equal(names.includes('terrain_sculpt'), false);
+        assert.equal(names.includes('terrain_paint'), false);
+        assert.equal(names.includes('foliage_scatter'), false);
+        assert.equal(names.includes('navmesh_bake'), false);
+        assert.equal(names.includes('audio_control'), false);
+        assert.equal(names.includes('build_run'), false);
         // 親子付けはアセットを書き換えるので read モードには出さない。
         assert.equal(names.includes('vfx_node_set_parent'), false);
         assert.equal(names.includes('node_set_active'), false);
@@ -478,6 +502,68 @@ test('Behavior Tree の編集はUndo可能なCommandへ写像する', async () =
             { command: { t: 'bt.node.setParent', path, nodeId: 2, parentId: 1 }, dryRun: false },
             { command: { t: 'bt.autoLayout', path }, dryRun: false },
             { command: { t: 'bt.node.remove', path, nodeId: 2 }, dryRun: false },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+test('Behavior Tree のスキーマ・現在値・実行状態・差分は読み取り面へ写像する', async () => {
+    const harness = await CreateHarness('read');
+    try {
+        const path = 'Assets/AI/Guard.behaviortree';
+        await harness.client.callTool({ name: 'bt_schema', arguments: {} });
+        await harness.client.callTool({ name: 'bt_schema', arguments: { nodeType: 'MoveTo' } });
+        // field 省略はその種別が読むフィールドを全部返す読み方。
+        await harness.client.callTool({ name: 'bt_node_get_field', arguments: { path, nodeId: 4 } });
+        await harness.client.callTool({
+            name: 'bt_node_get_field', arguments: { path, nodeId: 4, field: 'moveTargetKey' },
+        });
+        await harness.client.callTool({ name: 'bt_runtime_state', arguments: {} });
+        await harness.client.callTool({ name: 'bt_runtime_state', arguments: { path } });
+        await harness.client.callTool({
+            name: 'bt_diff', arguments: { base: path, target: 'Assets/AI/Guard.alt.behaviortree' },
+        });
+        await harness.client.callTool({ name: 'bt_template_catalog', arguments: {} });
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'bt.schema' },
+            { t: 'bt.schema', nodeType: 'MoveTo' },
+            { t: 'bt.nodeField', path, nodeId: 4 },
+            { t: 'bt.nodeField', path, nodeId: 4, field: 'moveTargetKey' },
+            { t: 'bt.runtime' },
+            { t: 'bt.runtime', path },
+            { t: 'bt.diff', base: path, target: 'Assets/AI/Guard.alt.behaviortree' },
+            { t: 'bt.templateCatalog' },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+test('Behavior Tree の複製・修復・Template適用はUndo可能なCommandへ写像する', async () => {
+    const harness = await CreateHarness('write');
+    try {
+        const path = 'Assets/AI/Guard.behaviortree';
+        await harness.client.callTool({ name: 'bt_node_duplicate', arguments: { path, nodeId: 2 } });
+        await harness.client.callTool({
+            name: 'bt_node_duplicate', arguments: { path, nodeId: 2, parentId: 1 },
+        });
+        // フラグ省略は「全部直す」。個別に false を渡したときだけその修復を止める。
+        await harness.client.callTool({ name: 'bt_repair', arguments: { path } });
+        await harness.client.callTool({ name: 'bt_repair', arguments: { path, fixKeys: false } });
+        await harness.client.callTool({
+            name: 'bt_template_apply',
+            arguments: { template: 'GuardPatrol', path: 'Assets/AI/Sentry.behaviortree', name: 'Sentry' },
+        });
+        assert.deepEqual(harness.bus.commands, [
+            { command: { t: 'bt.node.duplicate', path, nodeId: 2 }, dryRun: false },
+            { command: { t: 'bt.node.duplicate', path, nodeId: 2, parentId: 1 }, dryRun: false },
+            { command: { t: 'bt.repair', path }, dryRun: false },
+            { command: { t: 'bt.repair', path, fixKeys: false }, dryRun: false },
+            { command: {
+                t: 'bt.template.apply', template: 'GuardPatrol',
+                path: 'Assets/AI/Sentry.behaviortree', name: 'Sentry',
+            }, dryRun: false },
         ]);
     } finally {
         await harness.close();
@@ -1066,6 +1152,98 @@ test('入力・マテリアル・アニメーション操作は専用Commandへ�
             { command: { t: 'animation.removeTransition', id, transitionIndex: 0, from: 'Idle' }, dryRun: false },
             { command: { t: 'animation.removeState', id, state: 'Locomotion' }, dryRun: false },
             { command: { t: 'animation.removeParameter', id, name: 'Grounded' }, dryRun: false },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+test('ワールドオーサリングの照会は引数の少ない Query 面へ写像する', async () => {
+    const harness = await CreateHarness('read');
+    try {
+        const id = '44444444-4444-4444-8444-444444444444';
+        await harness.client.callTool({ name: 'scene_list', arguments: {} });
+        await harness.client.callTool({ name: 'preset_catalog', arguments: {} });
+        await harness.client.callTool({ name: 'terrain_inspect', arguments: {} });
+        // [x, z] の 2 要素で問い合わせられることを固定する。高さを問うのに y は要らないため。
+        await harness.client.callTool({ name: 'terrain_sample', arguments: { points: [[10, 20], [1, 2, 3]] } });
+        await harness.client.callTool({ name: 'foliage_inspect', arguments: { id } });
+        await harness.client.callTool({ name: 'navmesh_get_state', arguments: {} });
+        await harness.client.callTool({ name: 'navmesh_find_path', arguments: { from: [0, 0, 0], to: [10, 0, 10] } });
+        await harness.client.callTool({ name: 'navmesh_sample', arguments: { points: [[1, 2, 3]] } });
+        await harness.client.callTool({ name: 'environment_inspect', arguments: {} });
+        await harness.client.callTool({ name: 'audio_inspect', arguments: {} });
+        await harness.client.callTool({ name: 'ui_inspect', arguments: {} });
+        await harness.client.callTool({ name: 'build_get_status', arguments: {} });
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'scene.list' },
+            { t: 'preset.catalog' },
+            { t: 'terrain.inspect' },
+            { t: 'terrain.sample', points: [[10, 20], [1, 2, 3]] },
+            { t: 'foliage.inspect', id },
+            { t: 'navmesh.state' },
+            { t: 'navmesh.path', from: [0, 0, 0], to: [10, 0, 10] },
+            { t: 'navmesh.sample', points: [[1, 2, 3]] },
+            { t: 'environment.inspect' },
+            { t: 'audio.inspect' },
+            { t: 'ui.inspect' },
+            { t: 'build.status', limit: 5 },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+test('地形・植生・NavMesh・シーン入出力は Undo 単位の Command へ写像する', async () => {
+    const harness = await CreateHarness('write');
+    try {
+        const terrainId = '55555555-5555-4555-8555-555555555555';
+        // 省略した任意引数は payload へ載せない (C++ 側の「未指定」判定と一致させる)。
+        await harness.client.callTool({ name: 'preset_create', arguments: { preset: '3d.cube' } });
+        await harness.client.callTool({
+            name: 'preset_create',
+            arguments: { preset: 'nav.aiAgent', parent: terrainId, name: 'Enemy', position: [1, 0, 2] },
+        });
+        await harness.client.callTool({
+            name: 'terrain_sculpt',
+            // WHY iterations を明示するか: smooth / flatten は 1 回では収束しない。
+            //     既定 1 のまま送られると AI は同じ要求を何十回も投げ、Undo 履歴がそのぶん汚れる。
+            arguments: { position: [5, 0, 5], op: 'flatten', radius: 8, iterations: 20, targetHeight: 2 },
+        });
+        await harness.client.callTool({
+            name: 'terrain_paint',
+            arguments: { position: [5, 0, 5], layer: 1, radius: 4 },
+        });
+        await harness.client.callTool({
+            name: 'terrain_set_layer_material',
+            arguments: { id: terrainId, layer: 1, material: 'Assets/Materials/Grass.mat' },
+        });
+        await harness.client.callTool({
+            name: 'foliage_scatter',
+            arguments: { id: terrainId, species: 0, position: [5, 0, 5], count: 20, seed: 7 },
+        });
+        await harness.client.callTool({ name: 'foliage_clear', arguments: { id: terrainId, species: 0 } });
+        await harness.client.callTool({ name: 'navmesh_bake', arguments: {} });
+        await harness.client.callTool({ name: 'audio_control', arguments: { id: terrainId, action: 'play' } });
+        await harness.client.callTool({ name: 'scene_save', arguments: {} });
+        await harness.client.callTool({
+            name: 'scene_open',
+            arguments: { path: 'Assets/Scenes/Game.scene', discardUnsaved: true },
+        });
+        await harness.client.callTool({ name: 'build_run', arguments: {} });
+        assert.deepEqual(harness.bus.commands, [
+            { command: { t: 'preset.create', preset: '3d.cube' }, dryRun: false },
+            { command: { t: 'preset.create', preset: 'nav.aiAgent', parent: terrainId, name: 'Enemy', position: [1, 0, 2] }, dryRun: false },
+            { command: { t: 'terrain.sculpt', position: [5, 0, 5], op: 'flatten', radius: 8, strength: 0.05, falloff: 'smooth', iterations: 20, targetHeight: 2 }, dryRun: false },
+            { command: { t: 'terrain.paint', position: [5, 0, 5], layer: 1, radius: 4, strength: 0.5, falloff: 'smooth', iterations: 1 }, dryRun: false },
+            { command: { t: 'terrain.setLayerMaterial', id: terrainId, layer: 1, material: 'Assets/Materials/Grass.mat' }, dryRun: false },
+            { command: { t: 'foliage.scatter', id: terrainId, species: 0, position: [5, 0, 5], radius: 5, count: 20, maxSlopeDegrees: 40, seed: 7 }, dryRun: false },
+            { command: { t: 'foliage.clear', id: terrainId, species: 0 }, dryRun: false },
+            { command: { t: 'navmesh.bake' }, dryRun: false },
+            { command: { t: 'audio.control', id: terrainId, action: 'play' }, dryRun: false },
+            { command: { t: 'scene.save' }, dryRun: false },
+            { command: { t: 'scene.open', path: 'Assets/Scenes/Game.scene', discardUnsaved: true }, dryRun: false },
+            { command: { t: 'build.run', target: 'script' }, dryRun: false },
         ]);
     } finally {
         await harness.close();

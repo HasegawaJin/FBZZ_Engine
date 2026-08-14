@@ -122,6 +122,24 @@ export type EditorQuery = {
 } | {
     t: 'bt.guide';
 } | {
+    t: 'bt.schema';
+    nodeType?: string | undefined;
+} | {
+    t: 'bt.nodeField';
+    path: string;
+    nodeId: number;
+    field?: string | undefined;
+} | {
+    t: 'bt.runtime';
+    path?: string | undefined;
+    id?: string | undefined;
+} | {
+    t: 'bt.diff';
+    base: string;
+    target: string;
+} | {
+    t: 'bt.templateCatalog';
+} | {
     t: 'vfx.runtime';
 } | {
     t: 'vfx.previewEnsure';
@@ -203,6 +221,49 @@ export type EditorQuery = {
     w: number;
     h: number;
     view?: 'scene' | 'game' | undefined;
+} | {
+    t: 'scene.list';
+} | {
+    t: 'preset.catalog';
+    category?: string | undefined;
+} | {
+    t: 'terrain.inspect';
+    id?: string | undefined;
+} | {
+    t: 'terrain.sample';
+    points: Array<number[]>;
+    id?: string | undefined;
+} | {
+    t: 'foliage.inspect';
+    id?: string | undefined;
+} | {
+    t: 'navmesh.state';
+    id?: string | undefined;
+} | {
+    t: 'navmesh.path';
+    from?: [number, number, number] | undefined;
+    to?: [number, number, number] | undefined;
+    fromId?: string | undefined;
+    toId?: string | undefined;
+    surfaceId?: string | undefined;
+    agentTypeId?: number | undefined;
+    areaMask?: number | undefined;
+} | {
+    t: 'navmesh.sample';
+    points: Array<number[]>;
+    surfaceId?: string | undefined;
+    agentTypeId?: number | undefined;
+} | {
+    t: 'environment.inspect';
+} | {
+    t: 'audio.inspect';
+    id?: string | undefined;
+} | {
+    t: 'ui.inspect';
+    id?: string | undefined;
+} | {
+    t: 'build.status';
+    limit?: number | undefined;
 };
 export declare const EditorQuerySchema: z.ZodType<EditorQuery>;
 export type EditorCommand = {
@@ -438,6 +499,11 @@ export type EditorCommand = {
     path: string;
     nodeId: number;
 } | {
+    t: 'bt.node.duplicate';
+    path: string;
+    nodeId: number;
+    parentId?: number | undefined;
+} | {
     t: 'bt.node.setParent';
     path: string;
     nodeId: number;
@@ -465,6 +531,19 @@ export type EditorCommand = {
 } | {
     t: 'bt.autoLayout';
     path: string;
+} | {
+    t: 'bt.repair';
+    path: string;
+    fixAborts?: boolean | undefined;
+    fixDurations?: boolean | undefined;
+    fixWeights?: boolean | undefined;
+    fixKeys?: boolean | undefined;
+} | {
+    t: 'bt.template.apply';
+    template: string;
+    path: string;
+    name?: string | undefined;
+    description?: string | undefined;
 } | {
     t: 'vfx.variant.upsert';
     path: string;
@@ -709,6 +788,68 @@ export type EditorCommand = {
     t: 'editor.undo';
 } | {
     t: 'editor.redo';
+} | {
+    t: 'preset.create';
+    preset: string;
+    parent?: string | undefined;
+    name?: string | undefined;
+    position?: [number, number, number] | undefined;
+} | {
+    t: 'scene.open';
+    path: string;
+    discardUnsaved?: boolean | undefined;
+} | {
+    t: 'scene.save';
+    path?: string | undefined;
+} | {
+    t: 'terrain.sculpt';
+    position: [number, number, number];
+    op?: 'raise' | 'lower' | 'smooth' | 'flatten' | 'stamp' | undefined;
+    radius?: number | undefined;
+    strength?: number | undefined;
+    falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
+    iterations?: number | undefined;
+    targetHeight?: number | undefined;
+    id?: string | undefined;
+} | {
+    t: 'terrain.paint';
+    position: [number, number, number];
+    layer: number;
+    radius?: number | undefined;
+    strength?: number | undefined;
+    falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
+    iterations?: number | undefined;
+    id?: string | undefined;
+} | {
+    t: 'terrain.setLayerMaterial';
+    id: string;
+    layer: number;
+    material: string;
+} | {
+    t: 'foliage.scatter';
+    id: string;
+    species: number;
+    position: [number, number, number];
+    radius?: number | undefined;
+    count?: number | undefined;
+    maxSlopeDegrees?: number | undefined;
+    seed?: number | undefined;
+} | {
+    t: 'foliage.clear';
+    id: string;
+    species: number;
+    position?: [number, number, number] | undefined;
+    radius?: number | undefined;
+} | {
+    t: 'navmesh.bake';
+    id?: string | undefined;
+} | {
+    t: 'audio.control';
+    id: string;
+    action: 'play' | 'stop' | 'pause' | 'resume';
+} | {
+    t: 'build.run';
+    target?: 'script' | undefined;
 } | {
     t: 'editor.transaction';
     label: string;

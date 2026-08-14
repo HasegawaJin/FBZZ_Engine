@@ -87,6 +87,15 @@ export type EditorQuery =
     | { t: 'bt.tree'; path: string }
     | { t: 'bt.lint'; path: string }
     | { t: 'bt.guide' }
+    // ノード種別ごとの編集可能フィールド目録。bt.node.setField の対で、
+    // 「実在するがその種別では読まれない」フィールドを書いて黙って無視されるのを防ぐ。
+    | { t: 'bt.schema'; nodeType?: string | undefined }
+    // ノードの現在値。書く手段はあるのに読む手段が無かった非対称の解消。
+    | { t: 'bt.nodeField'; path: string; nodeId: number; field?: string | undefined }
+    // Play 中の実行状態。走っている枝と Blackboard の実値は木からは判らない。
+    | { t: 'bt.runtime'; path?: string | undefined; id?: string | undefined }
+    | { t: 'bt.diff'; base: string; target: string }
+    | { t: 'bt.templateCatalog' }
     // 直前の vfx.preview が構築した実行状態。引数は無く、常にその時刻のまま返る。
     | { t: 'vfx.runtime' }
     // Preview World を起動し、プレビュー系を呼べる状態かを返す。preview 系の前提確認。
@@ -117,7 +126,29 @@ export type EditorQuery =
     | { t: 'physics.overlapSphere'; center: [number, number, number]; radius: number }
     | { t: 'physics.events' }
     | { t: 'viewport.capture'; w: number; h: number; cameraId?: string | undefined; view?: 'scene' | 'game' | 'vfx' | undefined }
-    | { t: 'viewport.semantic'; w: number; h: number; view?: 'scene' | 'game' | undefined };
+    | { t: 'viewport.semantic'; w: number; h: number; view?: 'scene' | 'game' | undefined }
+    // ── ワールドオーサリング ──
+    // プロジェクト内の .scene 一覧。AI が「今開いている 1 枚」の外へ出るための入口。
+    | { t: 'scene.list' }
+    // Hierarchy の Add Object と同じプリセット表。node_create + component_add の組み立てを推測させない。
+    | { t: 'preset.catalog'; category?: string | undefined }
+    // 地形のグリッド・レイヤー・高さ統計。生の heightData は返さない (点は terrain.sample)。
+    | { t: 'terrain.inspect'; id?: string | undefined }
+    | { t: 'terrain.sample'; points: Array<number[]>; id?: string | undefined }
+    | { t: 'foliage.inspect'; id?: string | undefined }
+    // NavMesh: Surface の設定・ベイク状態と Agent の実行状態を並べて返す。
+    | { t: 'navmesh.state'; id?: string | undefined }
+    // Agent が実際に使う A* + Funnel で経路を引く。歩けるかどうかの唯一の確実な検証手段。
+    | { t: 'navmesh.path'; from?: [number, number, number] | undefined; to?: [number, number, number] | undefined;
+        fromId?: string | undefined; toId?: string | undefined; surfaceId?: string | undefined;
+        agentTypeId?: number | undefined; areaMask?: number | undefined }
+    | { t: 'navmesh.sample'; points: Array<number[]>; surfaceId?: string | undefined; agentTypeId?: number | undefined }
+    // 空・太陽・霧・IBL・雲・ポストプロセスとライト一覧をまとめて読む。
+    | { t: 'environment.inspect' }
+    | { t: 'audio.inspect'; id?: string | undefined }
+    | { t: 'ui.inspect'; id?: string | undefined }
+    // スクリプト DLL / HLSL のビルド結果と診断 (shader.diagnostics の Script 版)。
+    | { t: 'build.status'; limit?: number | undefined };
 export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t', [
     z.object({ t: z.literal('editor.catalog') }).strict(),
     z.object({
@@ -184,6 +215,17 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     z.object({ t: z.literal('bt.tree'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.lint'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.guide') }).strict(),
+    z.object({ t: z.literal('bt.schema'),
+        nodeType: z.string().min(1).max(64).optional() }).strict(),
+    z.object({ t: z.literal('bt.nodeField'), path: z.string().min(1).max(1024),
+        nodeId: z.number().int(),
+        field: z.string().min(1).max(64).optional() }).strict(),
+    z.object({ t: z.literal('bt.runtime'),
+        path: z.string().min(1).max(1024).optional(),
+        id: z.string().min(1).max(128).optional() }).strict(),
+    z.object({ t: z.literal('bt.diff'), base: z.string().min(1).max(1024),
+        target: z.string().min(1).max(1024) }).strict(),
+    z.object({ t: z.literal('bt.templateCatalog') }).strict(),
     z.object({ t: z.literal('vfx.runtime') }).strict(),
     // Preview World の起動と存在確認。preview 系を呼ぶ前の前提チェック。
     z.object({ t: z.literal('vfx.previewEnsure') }).strict(),
@@ -239,6 +281,38 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
         h: z.number().int().min(90).max(1080),
         view: z.enum(['scene', 'game']).optional(),
     }).strict(),
+    // ── ワールドオーサリング ──
+    z.object({ t: z.literal('scene.list') }).strict(),
+    z.object({ t: z.literal('preset.catalog'), category: z.string().min(1).max(64).optional() }).strict(),
+    z.object({ t: z.literal('terrain.inspect'), id: NodeIdSchema.optional() }).strict(),
+    z.object({
+        t: z.literal('terrain.sample'),
+        // [x, y, z] でも [x, z] でも受ける (高さを問うのに y は要らない)。
+        points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
+        id: NodeIdSchema.optional(),
+    }).strict(),
+    z.object({ t: z.literal('foliage.inspect'), id: NodeIdSchema.optional() }).strict(),
+    z.object({ t: z.literal('navmesh.state'), id: NodeIdSchema.optional() }).strict(),
+    z.object({
+        t: z.literal('navmesh.path'),
+        from: Vec3Schema.optional(),
+        to: Vec3Schema.optional(),
+        fromId: NodeIdSchema.optional(),
+        toId: NodeIdSchema.optional(),
+        surfaceId: NodeIdSchema.optional(),
+        agentTypeId: z.number().int().min(0).max(31).optional(),
+        areaMask: z.number().int().optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('navmesh.sample'),
+        points: z.array(z.array(z.number().finite()).length(3)).min(1).max(256),
+        surfaceId: NodeIdSchema.optional(),
+        agentTypeId: z.number().int().min(0).max(31).optional(),
+    }).strict(),
+    z.object({ t: z.literal('environment.inspect') }).strict(),
+    z.object({ t: z.literal('audio.inspect'), id: NodeIdSchema.optional() }).strict(),
+    z.object({ t: z.literal('ui.inspect'), id: NodeIdSchema.optional() }).strict(),
+    z.object({ t: z.literal('build.status'), limit: z.number().int().min(1).max(20).optional() }).strict(),
 ]);
 
 const CommandNameSchema = z.string().min(1).max(128);
@@ -312,6 +386,8 @@ export type EditorCommand =
     // parentId 省略は「ルートとして作る」。既にルートがあれば拒否される。
     | { t: 'bt.node.add'; path: string; nodeType: string; parentId?: number | undefined; name?: string | undefined }
     | { t: 'bt.node.remove'; path: string; nodeId: number }
+    // 部分木ごと複製する。parentId 省略で元と同じ親の末尾へ兄弟として並ぶ。
+    | { t: 'bt.node.duplicate'; path: string; nodeId: number; parentId?: number | undefined }
     | { t: 'bt.node.setParent'; path: string; nodeId: number; parentId: number }
     // order = 同じ親の中での優先度。小さいほど先に評価される。
     | { t: 'bt.node.setOrder'; path: string; nodeId: number; order: number }
@@ -319,6 +395,13 @@ export type EditorCommand =
     | { t: 'bt.blackboard.add'; path: string; name: string; type?: 'bool' | 'int' | 'float' | 'vector3' | 'entity' | 'string' | undefined }
     | { t: 'bt.blackboard.remove'; path: string; name: string }
     | { t: 'bt.autoLayout'; path: string }
+    // 修復フラグは全て「省略 = 有効」。個別に false を渡したときだけその修復を止める。
+    | { t: 'bt.repair'; path: string; fixAborts?: boolean | undefined;
+        fixDurations?: boolean | undefined; fixWeights?: boolean | undefined;
+        fixKeys?: boolean | undefined }
+    // 動く骨格を取り込む。path は存在しなくてよい (新規作成される)。
+    | { t: 'bt.template.apply'; template: string; path: string;
+        name?: string | undefined; description?: string | undefined }
     | { t: 'vfx.variant.upsert'; path: string; name: string; values: { [key: string]: JsonValue } }
     | { t: 'vfx.variant.remove'; path: string; name: string }
     | { t: 'vfx.group.add'; path: string; title?: string | undefined; note?: string | undefined; x?: number | undefined; y?: number | undefined; width?: number | undefined; height?: number | undefined; color?: [number, number, number, number] | undefined }
@@ -349,6 +432,29 @@ export type EditorCommand =
     | { t: 'viewport.camera'; position?: [number, number, number] | undefined; lookAt?: [number, number, number] | undefined; targetId?: string | undefined }
     | { t: 'editor.undo' }
     | { t: 'editor.redo' }
+    // ── ワールドオーサリング ──
+    // Add Object プリセットの生成。人がメニューから置いたものと中身が完全に一致する。
+    | { t: 'preset.create'; preset: string; parent?: string | undefined;
+        name?: string | undefined; position?: [number, number, number] | undefined }
+    // シーンの入出力は Undo に載らない (Undo でシーンが閉じる方が事故になる)。
+    | { t: 'scene.open'; path: string; discardUnsaved?: boolean | undefined }
+    | { t: 'scene.save'; path?: string | undefined }
+    // ブラシ 1 ストロークぶん。iterations は「押し続けた回数」に相当する。
+    | { t: 'terrain.sculpt'; position: [number, number, number]; op?: 'raise' | 'lower' | 'smooth' | 'flatten' | 'stamp' | undefined;
+        radius?: number | undefined; strength?: number | undefined; falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
+        iterations?: number | undefined; targetHeight?: number | undefined; id?: string | undefined }
+    | { t: 'terrain.paint'; position: [number, number, number]; layer: number;
+        radius?: number | undefined; strength?: number | undefined; falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
+        iterations?: number | undefined; id?: string | undefined }
+    | { t: 'terrain.setLayerMaterial'; id: string; layer: number; material: string }
+    | { t: 'foliage.scatter'; id: string; species: number; position: [number, number, number];
+        radius?: number | undefined; count?: number | undefined; maxSlopeDegrees?: number | undefined; seed?: number | undefined }
+    | { t: 'foliage.clear'; id: string; species: number; position?: [number, number, number] | undefined; radius?: number | undefined }
+    // ベイクは非同期。完了は navmesh.state の bakeState で確認する。
+    | { t: 'navmesh.bake'; id?: string | undefined }
+    | { t: 'audio.control'; id: string; action: 'play' | 'stop' | 'pause' | 'resume' }
+    // スクリプト DLL の再ビルド要求。完了は build.status のポーリングで確認する。
+    | { t: 'build.run'; target?: 'script' | undefined }
     | { t: 'editor.transaction'; label: string; cmds: EditorCommand[] };
 export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
     z.discriminatedUnion('t', [
@@ -507,6 +613,9 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             name: z.string().min(1).max(128).optional() }).strict(),
         z.object({ t: z.literal('bt.node.remove'), path: z.string().min(1).max(1024),
             nodeId: z.number().int().min(1) }).strict(),
+        z.object({ t: z.literal('bt.node.duplicate'), path: z.string().min(1).max(1024),
+            nodeId: z.number().int().min(1),
+            parentId: z.number().int().min(1).optional() }).strict(),
         z.object({ t: z.literal('bt.node.setParent'), path: z.string().min(1).max(1024),
             nodeId: z.number().int().min(1), parentId: z.number().int().min(0) }).strict(),
         z.object({ t: z.literal('bt.node.setOrder'), path: z.string().min(1).max(1024),
@@ -520,6 +629,14 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
         z.object({ t: z.literal('bt.blackboard.remove'), path: z.string().min(1).max(1024),
             name: z.string().min(1).max(64) }).strict(),
         z.object({ t: z.literal('bt.autoLayout'), path: z.string().min(1).max(1024) }).strict(),
+        // bt.lint が autoFixable=true と言った code だけを機械的に直す (Undo 可能)。
+        z.object({ t: z.literal('bt.repair'), path: z.string().min(1).max(1024),
+            fixAborts: z.boolean().optional(), fixDurations: z.boolean().optional(),
+            fixWeights: z.boolean().optional(), fixKeys: z.boolean().optional() }).strict(),
+        z.object({ t: z.literal('bt.template.apply'), template: z.string().min(1).max(256),
+            path: z.string().min(1).max(1024),
+            name: z.string().min(1).max(128).optional(),
+            description: z.string().max(512).optional() }).strict(),
         z.object({ t: z.literal('vfx.variant.upsert'), path: z.string().min(1),
             name: z.string().min(1).max(128), values: z.record(z.string().min(1).max(128), JsonValueSchema) }).strict(),
         z.object({ t: z.literal('vfx.variant.remove'), path: z.string().min(1),
@@ -779,6 +896,71 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             }),
         z.object({ t: z.literal('editor.undo') }).strict(),
         z.object({ t: z.literal('editor.redo') }).strict(),
+        // ── ワールドオーサリング ──
+        z.object({
+            t: z.literal('preset.create'),
+            preset: z.string().min(1).max(64),
+            parent: NodeIdSchema.optional(),
+            name: CommandNameSchema.optional(),
+            position: Vec3Schema.optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('scene.open'),
+            path: z.string().min(1),
+            discardUnsaved: z.boolean().optional(),
+        }).strict(),
+        z.object({ t: z.literal('scene.save'), path: z.string().min(1).optional() }).strict(),
+        z.object({
+            t: z.literal('terrain.sculpt'),
+            position: Vec3Schema,
+            op: z.enum(['raise', 'lower', 'smooth', 'flatten', 'stamp']).optional(),
+            radius: z.number().finite().gt(0).max(500).optional(),
+            strength: z.number().finite().gt(0).max(1).optional(),
+            falloff: z.enum(['linear', 'smooth', 'gaussian']).optional(),
+            iterations: z.number().int().min(1).max(64).optional(),
+            targetHeight: z.number().finite().optional(),
+            id: NodeIdSchema.optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('terrain.paint'),
+            position: Vec3Schema,
+            layer: z.number().int().min(0).max(3),
+            radius: z.number().finite().gt(0).max(500).optional(),
+            strength: z.number().finite().gt(0).max(1).optional(),
+            falloff: z.enum(['linear', 'smooth', 'gaussian']).optional(),
+            iterations: z.number().int().min(1).max(64).optional(),
+            id: NodeIdSchema.optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('terrain.setLayerMaterial'),
+            id: NodeIdSchema,
+            layer: z.number().int().min(0).max(3),
+            material: z.string().max(512),
+        }).strict(),
+        z.object({
+            t: z.literal('foliage.scatter'),
+            id: NodeIdSchema,
+            species: z.number().int().min(0).max(63),
+            position: Vec3Schema,
+            radius: z.number().finite().gt(0).max(500).optional(),
+            count: z.number().int().min(1).max(500).optional(),
+            maxSlopeDegrees: z.number().finite().min(0).max(90).optional(),
+            seed: z.number().int().min(1).optional(),
+        }).strict(),
+        z.object({
+            t: z.literal('foliage.clear'),
+            id: NodeIdSchema,
+            species: z.number().int().min(0).max(63),
+            position: Vec3Schema.optional(),
+            radius: z.number().finite().gt(0).max(500).optional(),
+        }).strict(),
+        z.object({ t: z.literal('navmesh.bake'), id: NodeIdSchema.optional() }).strict(),
+        z.object({
+            t: z.literal('audio.control'),
+            id: NodeIdSchema,
+            action: z.enum(['play', 'stop', 'pause', 'resume']),
+        }).strict(),
+        z.object({ t: z.literal('build.run'), target: z.literal('script').optional() }).strict(),
         z.object({
             t: z.literal('editor.transaction'),
             label: z.string().min(1).max(128),
