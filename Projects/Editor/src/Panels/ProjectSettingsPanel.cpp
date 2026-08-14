@@ -5,7 +5,6 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/UndoStack.hpp>
-#include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Gamepad.hpp>
@@ -18,6 +17,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
@@ -390,17 +390,20 @@ void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
     ImGui::TextUnformatted("Graphics");
     ImGui::Separator();
 
-    // 3 つの折りたたみに分ける。既定では Rendering だけ開いた状態にする。
-    // WHY Post Process を既定で閉じるか: 中身が 12 セクション 50 項目以上あり、
-    //     開いたままだと Rendering や Debug までスクロールしないと辿り着けない。
+    // WHY Post Process セクションが無いか:
+    //     Bloom / SSR / TAA といった「ルック」はシーン内の場所ごとに変わるもので、
+    //     プロジェクト全体の設定として持つと屋外と洞窟を切り替えられない。
+    //     所有者を Post Process Volume + Post Process Profile (.fzdata) へ一本化した。
     if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
         DrawRenderCore(render);
 
-    if (ImGui::CollapsingHeader("Post Process"))
-        DrawPostProcess(render);
-
     if (ImGui::CollapsingHeader("Debug"))
         DrawRenderDebug(render);
+
+    ImGui::Spacing();
+    ImGui::TextDisabled(
+        "ポストプロセス / 高度グラフィクスは Post Process Volume で設定します。\n"
+        "Hierarchy に Post Process Volume を追加し、Post Process Profile (.fzdata) を割り当ててください。");
 }
 
 void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
@@ -426,7 +429,83 @@ void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
         if (ImGui::Combo("Resolution##shadow", &resIdx, kResLabels, 5))
             render.shadow.mapResolution = kResValues[resIdx];
         ImGui::SameLine();
-        ImGui::TextDisabled("(Shadow Map)");
+        ImGui::TextDisabled("(Atlas)");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "全カスケードが共有するアトラス 1 枚ぶんの解像度。\n"
+                "2 分割以上では 2x2 タイルへ分けるので、1 カスケードは この値 / 2 になる。\n"
+                "分割数を増やしてもメモリと塗り量は変わらない (面積の配分が変わるだけ)。");
+
+        // 影の到達距離。カスケード分割の全体レンジでもある。
+        ImGui::SetNextItemWidth(100.0f);
+        ImGui::DragFloat("Shadow Distance##shadow", &render.shadow.autoFitDistance,
+                         1.0f, 5.0f, 2000.0f, "%.0f m");
+        ImGui::SameLine();
+        ImGui::TextDisabled("(影が届く最大距離)");
+
+        // ── カスケード ────────────────────────────────────────────────────────
+        ImGui::Spacing();
+        static const char* kCascadeLabels[] = { "1 – 単一", "2", "3", "4" };
+        int cascadeIdx = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades) - 1;
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::Combo("Cascades##shadow", &cascadeIdx, kCascadeLabels, 4))
+            render.shadow.cascadeCount = cascadeIdx + 1;
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Cascaded Shadow Maps)");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを丸ごと割り当てる。\n"
+                "同じ解像度・同じ塗り量のまま、近距離のテクセル密度だけを上げられる。\n"
+                "1 を選ぶと従来の単一シャドウマップに戻る。");
+
+        if (render.shadow.cascadeCount > 1)
+        {
+            ImGui::Indent();
+            ImGui::SetNextItemWidth(100.0f);
+            ImGui::SliderFloat("Split Lambda##shadow", &render.shadow.cascadeSplitLambda,
+                               0.0f, 1.0f, "%.2f");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(0=等分割 / 1=対数分割)");
+
+            ImGui::SetNextItemWidth(100.0f);
+            ImGui::SliderFloat("Blend##shadow", &render.shadow.cascadeBlend, 0.0f, 0.5f, "%.2f");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(境界のクロスフェード幅)");
+
+            ImGui::Checkbox("Visualize Cascades##shadow", &render.shadow.debugVisualizeCascades);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(緑=近 → 赤=遠)");
+            ImGui::Unindent();
+        }
+
+        // 各カスケードの実テクセル密度。分割と解像度の効き方を数値で見せる。
+        // WHY: 「解像度を上げる」より「分割数を増やす / 到達距離を縮める」ほうが
+        //      効くことが多く、それはこの表を見ないと判断できない。
+        {
+            const int      count      = std::clamp(render.shadow.cascadeCount, 1, renderer::kMaxShadowCascades);
+            const uint32_t tileSize   = std::max(render.shadow.mapResolution / (count > 1 ? 2u : 1u), 1u);
+            const float    nearZ      = 0.1f;
+            const float    lambda     = std::clamp(render.shadow.cascadeSplitLambda, 0.0f, 1.0f);
+            const float    distance   = std::max(render.shadow.autoFitDistance, 1.0f);
+            // ComputeFrustumSliceSphere と同じ k (fovY 60 / aspect 16:9 の代表値)。
+            constexpr float kSphereFactor = 1.177f;
+
+            ImGui::Spacing();
+            ImGui::TextDisabled("Cascade texel density (tile %u px)", tileSize);
+            float sliceNear = nearZ;
+            for (int i = 0; i < count; ++i) {
+                const float ratio    = static_cast<float>(i + 1) / static_cast<float>(count);
+                const float logSplit = nearZ * std::pow(distance / nearZ, ratio);
+                const float uniform  = nearZ + (distance - nearZ) * ratio;
+                const float sliceFar = (i == count - 1)
+                    ? distance : (lambda * logSplit + (1.0f - lambda) * uniform);
+                const float radius   = sliceFar * kSphereFactor;
+                const float texelCm  = (radius * 2.0f) / static_cast<float>(tileSize) * 100.0f;
+                ImGui::BulletText("Cascade %d: %.1f–%.1f m   1 texel = %.1f cm",
+                                  i, sliceNear, sliceFar, texelCm);
+                sliceNear = sliceFar;
+            }
+        }
 
         static const char* kPcfLabels[] = { "0 – Hard", "1 – 3x3", "2 – 5x5", "3 – 7x7" };
         int pcfIdx = std::clamp(render.shadow.pcfRadius, 0, 3);
@@ -502,29 +581,6 @@ void ProjectSettingsPanel::DrawRenderDebug(renderer::RenderSettings& render)
     ImGui::ColorEdit4("Outline Color", render.outlineColor);
 
     ImGui::Unindent();
-}
-
-void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
-{
-    // ─── 既存ポストプロセス効果 ───────────────────────────────────────────
-    // Bloom / SSAO / Fog / ColorGrading / Vignette / FilmGrain 等
-    {
-        // WHY: &render を渡すことで DrawPostProcessInspector 内の FXAA/SSAO グレーアウトが
-        //      機能する (TAA/GTAO との排他スロット競合検出)。
-        const PostProcessInspectorResult r = DrawPostProcessInspector(render.postProcess, &render);
-        if (r.structureChanged) ++m_editGeneration;
-    }
-
-    ImGui::Spacing();
-    ImGui::SeparatorText("Advanced Graphics");
-
-    // ─── 高度グラフィクス設定 ─────────────────────────────────────────────
-    // IBL / SSR / GTAO / ContactShadows / TAA / MotionBlur /
-    // VolumetricLight / LensFlare / LUT ColorGrading
-    {
-        const PostProcessInspectorResult r = DrawAdvancedGraphicsInspector(render);
-        if (r.structureChanged) ++m_editGeneration;
-    }
 }
 
 void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)

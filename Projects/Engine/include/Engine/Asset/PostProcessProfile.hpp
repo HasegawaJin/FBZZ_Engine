@@ -1,25 +1,31 @@
 // FBZZ Engine
 // PostProcessProfile.hpp | fbzz::asset
-// ポストプロセス設定を .fzdata (DataAsset) として共有するプロファイルアセット
+// ポストプロセス / 高度グラフィクスの「ルック」を .fzdata (DataAsset) として共有するプロファイル。
+//
+// 中身は VolumeOverride のリスト。リストに載っている効果だけが適用される。
 //
 // WHY DataAsset に載せるか:
-//   従来 PostProcessVolumeComponent は PostProcessSettings を実体で抱えていた。
-//   同じルックを複数のボリューム / シーンで使うと 30 以上のフィールドが複製され、
-//   調整のたびに全箇所を手で直すことになる。これは DataAsset.hpp が解決対象として
-//   挙げている問題そのもの (「値が N 個に複製され、リバランスが各個編集になる」)。
+//   同じルックを複数のボリューム / シーンで使うと設定値が複製され、調整のたびに
+//   全箇所を手で直すことになる。これは DataAsset.hpp が解決対象として挙げている
+//   問題そのもの (「値が N 個に複製され、リバランスが各個編集になる」)。
 //   DataAsset に載せることで以下がすべて既存機構のまま手に入る:
 //     - .fzdata は AssetDatabase の拡張子リストにあるため .meta / GUID / リネーム追随
 //     - DataAssetRef により Inspector のドラッグ&ドロップスロット
 //     - DataAssetRegistry による「パス → 共有 1 実体」キャッシュ
 //     - Asset<T> による型安全なスクリプトアクセス
 //
-// WHY 専用形式 (.fzpp) を廃止したか:
-//   ポストプロセスアセットの形式が 2 つ並ぶと、読み手に毎回「どちらを使うのか」を
-//   判断させることになる。移行対象の実ファイルが存在しなかったため一本化した。
+// WHY 固定の設定構造体 + bool マスクをやめたか:
+//   以前は 20 セクション分の値を常に保持し、「何を上書きするか」を別の
+//   PostProcessOverrides マスクで表していた。差分プロファイルでも使わない
+//   19 セクションがファイルに残り、Inspector も常に全セクションを並べていた。
+//   オーバーライドのリストにすると、ファイルの中身がそのまま「このプロファイルの責務」
+//   になり、マスクという二重管理も消える。
 #pragma once
 #include <Engine/Asset/DataAsset.hpp>
+#include <Engine/Asset/VolumeOverride.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
-#include <Engine/Renderer/PostProcessBlend.hpp>
+#include <memory>
+#include <vector>
 
 namespace fbzz::asset {
 
@@ -28,27 +34,23 @@ public:
     // Asset<T> のピッカー絞り込み・ドロップ型チェックに使われる。
     // .fzdata の "type" キーにもこの名前が保存される。
     static constexpr const char* TYPE_NAME = "PostProcessProfile";
-
     const char* GetTypeName() const override { return TYPE_NAME; }
 
-    // WHY FBZZ_FIELD マクロ群を使わず手書きするか:
-    //   PostProcessSettings はレンダラー層の既存構造体であり、フィールド宣言を
-    //   FBZZ_FIELD へ置き換えると RenderSettings.hpp が Script.hpp に依存してしまう
-    //   (依存方向の逆流)。手書きにすることで、各フィールドへ適正なレンジ・
-    //   ツールチップ・カラーピッカー指定を個別に与えられる利点もある。
     void Reflect(scene::IReflector& r) override;
 
-    renderer::PostProcessSettings settings;
+    // このプロファイルが持つ効果。リストの順に適用される。
+    // WHY unique_ptr のベクタか: 効果ごとに別クラスで、保持するパラメーターの数も型も違う。
+    //     共通の基底を値で持つことはできない。
+    std::vector<std::unique_ptr<VolumeOverride>> overrides;
 
-    // このプロファイルが上書きするセクション。false のセクションは
-    // ブレンド時にベース側の値をそのまま通す。
-    //
-    // WHY 必要か: マスクが無いと、プロファイルは常に 50 以上の全フィールドを
-    //      持ち回ることになり、「洞窟では fog だけ変えたい」場合でも
-    //      画面全体のルックを書き切る必要がある。結果としてベースを変更するたびに
-    //      それを複製した全ボリュームを手直しすることになり、
-    //      アセット化で解消したはずの複製問題がボリューム単位で再発する。
-    renderer::PostProcessOverrides overrides;
+    // 解決中の設定へ、有効なオーバーライドを weight で順に混ぜる。
+    void ApplyTo(renderer::VolumeSettings& target, float weight) const;
+
+    // 指定型のオーバーライドを既に持っているか (Add Override メニューの重複防止)。
+    [[nodiscard]] bool Contains(const char* typeName) const;
+
+    // 深いコピー。unique_ptr を持つためコピーコンストラクタが使えない。
+    [[nodiscard]] std::vector<std::unique_ptr<VolumeOverride>> CloneOverrides() const;
 };
 
 } // namespace fbzz::asset

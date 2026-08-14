@@ -47,7 +47,6 @@ private:
     void DrawGraphics(renderer::RenderSettings& render);
     void DrawRenderCore(renderer::RenderSettings& render);   // Pipeline / Shadow / ViewMode
     void DrawRenderDebug(renderer::RenderSettings& render);  // デバッグ表示・アウトライン
-    void DrawPostProcess(renderer::RenderSettings& render);
 
     void DrawPhysics(ProjectSettings& settings);
 

@@ -1,98 +1,46 @@
 // FBZZ Engine
 // PostProcessBlend.hpp | fbzz::renderer
-// PostProcessSettings の重み付き合成
+// ボリューム合成の共通プリミティブと、解決結果を描画設定へ流し込むヘルパー。
 //
-// WHY 必要か: PostProcessVolume を複数置いて「屋外 → 洞窟 → ボス演出」のように
-//      重ねるには、設定同士を連続的に混ぜる操作が要る。単純な代入だと
-//      境界をまたいだ瞬間に画面が飛ぶ。
+// WHY 補間規則をここに集約するか:
+//   実際の合成は VolumeOverride の派生 27 種がそれぞれ行う。各クラスが
+//   自前で「bool はどう混ぜるか」を決めると、効果ごとに挙動が食い違う。
+//   規則を 1 か所に置き、全オーバーライドがこれを呼ぶ形にする。
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
 
 namespace fbzz::renderer {
 
-// どのセクションを上書きするかのマスク。
-//
-// WHY PostProcessSettings に持たせないか:
-//   これは「設定値」ではなく「合成時のメタデータ」。PostProcessSettings は
-//   シェーダーへの転送元でもあり、Project Settings や runtime override とも共有される。
-//   そこへ override フラグを混ぜると、上書き対象でない経路にも意味のないフラグが付き回る。
-//   マスクをブレンド側の型として独立させることで、RenderSettings.hpp は無改修で済む。
-//
-// WHY フィールド単位でなくセクション単位か:
-//   Unity の Volume framework 相当のフィールド単位 override を入れると、
-//   PostProcessSettings の 50 以上の全フィールドが Overridable<T> ラッパーになり、
-//   シェーダー転送・シリアライズ・既存の Project Settings UI がすべて変わる。
-//   セクション単位なら 14 個の bool で済み、実用上の要求
-//   (「洞窟では fog と colorGrading だけ変えたい」) はほぼ満たせる。
-struct PostProcessOverrides {
-    bool fxaa             = true;
-    bool exposure         = true;
-    bool bloom            = true;
-    bool ambientOcclusion = true;
-    bool fog              = true;
-    bool colorGrading     = true;
-    bool vignette         = true;
-    bool filmGrain        = true;
-    bool sharpen          = true;
-    bool depthOfField     = true;
-    bool lens             = true;
-    bool stylized         = true;
-    bool imageQuality     = true;
-    bool customEffects    = true;
+// t=0 で a、t=1 で b。
+// WHY 端点を特別扱いするか: a + (b - a) * 1.0f は (b - a) の丸め誤差により
+//     b と厳密には一致しない。「ボリュームの中に完全に入っているのに設定が
+//     微妙に違う」という追跡困難な差異を防ぐため、端点を明示的に返す。
+[[nodiscard]] float BlendFloat(float a, float b, float t);
 
-    // WHY 既定を全 true にするか:
-    //   全 false を既定にすると、新規プロファイルを作って値をいじっても
-    //   画面が一切変わらず「壊れている」ように見える。
-    //   全 true なら従来の「まるごと差し替え」と同じ挙動で始まり、
-    //   不要なセクションのチェックを外していく引き算の操作になる。
-    //   インライン設定 (プロファイル未参照) のボリュームもこの既定と一致する。
-    [[nodiscard]] static PostProcessOverrides All() { return PostProcessOverrides{}; }
+// bool は連続量ではないため、重みが半分を超えた側を採用する。
+// WHY 閾値方式か: Unity の Volume framework 相当のフィールド単位 override を
+//     入れると、全パラメーターがラッパー型になりシェーダー転送まで波及する。
+//     「ブレンド途中で ON/OFF が切り替わる」限界は残るが、オーバーライドを
+//     リスト化したことで「そもそも触らない効果は素通しされる」ため実害は小さい。
+[[nodiscard]] bool BlendBool(bool a, bool b, float t);
 
-    // 全セクションを上書きしない。ベースを一切変えないプロファイルになる。
-    [[nodiscard]] static PostProcessOverrides None()
-    {
-        PostProcessOverrides mask;
-        mask.fxaa = mask.exposure = mask.bloom = mask.ambientOcclusion = false;
-        mask.fog  = mask.colorGrading = mask.vignette = mask.filmGrain = false;
-        mask.sharpen = mask.depthOfField = mask.lens = mask.stylized  = false;
-        mask.imageQuality = mask.customEffects = false;
-        return mask;
-    }
-};
+// 整数パラメーター (サンプル数・ステップ数) も閾値で切り替える。
+// WHY 丸めた線形補間にしないか: steps 32 → 128 の途中で 51 のような
+//     半端な値を経由しても品質上の意味がなく、GPU コストだけが読めなくなる。
+[[nodiscard]] int BlendInt(int a, int b, float t);
 
-// t=0 で a、t=1 で b を返す。t は呼び出し側で 0..1 にクランプ済みであること。
-//
-// 補間規則:
-//   - 数値フィールド: 線形補間
-//   - bool フィールド: t >= 0.5 で b を採用する
-//   - customEffects (配列): 補間せず t >= 0.5 で b を採用する
-//
-// WHY bool を閾値で切り替えるか:
-//   Unity の Volume framework は Overridable<T> 相当のラッパーで
-//   「この項目を上書きするか」をフィールドごとに持つが、それを導入すると
-//   PostProcessSettings の 30+ フィールドすべてがラッパー型になり、
-//   シェーダーへの転送・.fzdata の形・既存の Project Settings UI が全部変わる。
-//   閾値方式は「ブルームの ON/OFF がブレンドの途中で切り替わる」という
-//   限界を持つが、実用上は許容できる。将来の拡張余地として記録しておく。
-//
-// WHY customEffects を補間しないか:
-//   要素数も名前も異なりうる配列を補間する自然な定義が存在しない。
-//   「重みが大きい側を丸ごと採用する」が唯一破綻しない規則。
-// overrides で false のセクションは a の値をそのまま保つ (b を無視する)。
-//
-// WHY マスクがあると bool の閾値切替の実害が減るか:
-//   「ブレンド途中でブルームの ON/OFF が飛ぶ」問題は、そもそも b が
-//   そのセクションを上書きする意図があるときにしか起きない。
-//   上書きしないセクションを素通しできれば、意図しない切り替わりは発生しなくなる。
-[[nodiscard]] PostProcessSettings LerpPostProcessSettings(
-    const PostProcessSettings& a, const PostProcessSettings& b, float t,
-    const PostProcessOverrides& overrides);
+// float[3] (色) をまとめて補間する。
+void BlendColor3(const float (&a)[3], const float (&b)[3], float t, float (&out)[3]);
 
-// 全セクションを上書きする版 (従来の挙動)。
-[[nodiscard]] PostProcessSettings LerpPostProcessSettings(
-    const PostProcessSettings& a, const PostProcessSettings& b, float t);
+// 合成済みの VolumeSettings を RenderSettings の該当フィールドへ書き戻す。
+// WHY RenderSettings が VolumeSettings を直接持たないか:
+//      全 RenderPass が rs.ssr / rs.gtao のように参照しており、
+//      入れ子に変えると描画コード全体を触ることになる。
+//      「ボリュームで解決 → 描画用へ流し込む」の 1 方向だけに限定しておけば、
+//      パス側は今までどおりのフラットな設定を読み続けられる。
+void ApplyVolumeSettings(const VolumeSettings& volume, RenderSettings& out);
 
-// ボリュームの距離ウェイトを返す。
+// 球状ボリュームの距離ウェイト。
 //   distance <= radius - blendDistance : 1
 //   distance >= radius                 : 0
 //   その間                              : 線形に降下
