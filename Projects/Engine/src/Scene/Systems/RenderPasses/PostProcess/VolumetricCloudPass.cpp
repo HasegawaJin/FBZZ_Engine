@@ -46,7 +46,8 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
 {
     auto* cloud = FindActiveCloud(ctx);
     if (!cloud || !ctx.handles.volumetricCloudShader.IsValid()
-        || !ctx.handles.volumetricCloudPSO.IsValid()
+        || !ctx.handles.cloudUpscaleShader.IsValid()
+        || !ctx.handles.volumetricCloudPremultipliedPSO.IsValid()
         || !ctx.handles.volumetricCloudCB.IsValid())
         return;
 
@@ -175,9 +176,8 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     ctx.renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
 
     renderer::DrawCall up;
-    up.shader = ctx.handles.cloudUpscaleShader.IsValid()
-        ? ctx.handles.cloudUpscaleShader : ctx.handles.volumetricCloudShader;
-    up.pipelineState = ctx.handles.volumetricCloudPSO; // ALPHA_BLEND / DEPTH_OFF
+    up.shader = ctx.handles.cloudUpscaleShader;
+    up.pipelineState = ctx.handles.volumetricCloudPremultipliedPSO; // PREMULTIPLIED / DEPTH_OFF
     up.vertexCount = 3;
     up.textures[0] = ctx.resources.GetColorTexture(s_cloudRT);
     ctx.renderer.Submit(up, ctx.resources);
