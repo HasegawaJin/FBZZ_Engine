@@ -96,29 +96,42 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     }
 
+    // WHAT: 設定値をシェーダー側でも制限し、壊れたプロファイルが極端なループ回数や
+    //      HG の特異点を作らないようにする。
+    // WHY: Inspector を経由しない TOML / スクリプト / 古いアセットからも値が入るため、
+    //      CPU 側の UI 制限だけでは GPU 側の安全性を保証できない。
+    const int steps = clamp(volSteps, 1, 128);
+    const float phaseG = clamp(volScattering, -0.95f, 0.95f);
+
     float3 rayStart  = cameraPos;
     float3 rayEnd    = worldPos;
     float3 rayDir    = rayEnd - rayStart;
     float  rayLength = length(rayDir);
     rayDir           = rayDir / max(rayLength, 1e-6f); // 正規化
 
-    float stepDist   = rayLength / float(volSteps);
+    float stepDist   = rayLength / float(steps);
 
     // カメラ → ライト方向のコサイン (散乱方向)
-    float3 L         = normalize(-lightDir); // lightDir はライト → ワールドの向き
+    float  lightLen  = length(lightDir);
+    float3 L         = lightLen > 1.0e-4f
+        ? -lightDir / lightLen : float3(0.0f, 1.0f, 0.0f); // lightDir はライト → ワールドの向き
     float  cosTheta  = dot(rayDir, L);
 
     // Henyey-Greenstein 散乱値 (レイ方向依存、ループ外で計算)
     // WHY: cosTheta はステップごとに変わらないので外で一度計算してコストを下げる
-    float scatter    = HG(cosTheta, volScattering);
+    float scatter    = HG(cosTheta, phaseG);
 
     float3 accumulated = float3(0.0f, 0.0f, 0.0f);
+    float jitter = frac(sin(dot(float2(id.xy), float2(12.9898f, 78.233f))) * 43758.5453f);
 
     [loop]
-    for (int step = 0; step < volSteps; ++step)
+    for (int step = 0; step < steps; ++step)
     {
-        // ステップ中点でサンプル (ハーフステップオフセットで端点のアーティファクトを低減)
-        float3 samplePos = rayStart + rayDir * (float(step) + 0.5f) * stepDist;
+        // WHAT: ステップ位置をピクセルごとに少しずらして固定ステップの縞を分散する。
+        // WHY: 体積光は深度方向の変化が緩やかなため、等間隔サンプルをそのまま重ねると
+        //      低ステップ設定で画面全体に規則的なバンディングが出る。
+        float sampleT = (float(step) + 0.5f + (jitter - 0.5f) * 0.8f) * stepDist;
+        float3 samplePos = rayStart + rayDir * sampleT;
 
         // シャドウマップで「このサンプル点が照らされているか」を判定
         // ComputeShadow は ShadowConstants(b4) の shadowPcfRadius を内部で使用する
@@ -142,7 +155,6 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // ---- 出力 ----------------------------------------------------------------
 
-    // volLightIntensity で全体スケールを調整
-    float3 result = accumulated * volLightIntensity;
-    OutputVolumetric[id.xy] = float4(result, 1.0f);
+    // 強度は Composite 側で一度だけ適用する。ここでも掛けると intensity が二乗される。
+    OutputVolumetric[id.xy] = float4(accumulated, 1.0f);
 }

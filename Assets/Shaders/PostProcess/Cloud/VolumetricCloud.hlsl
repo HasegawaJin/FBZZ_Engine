@@ -138,15 +138,21 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 
     int   steps   = clamp((int)cloudWind.w, 8, 96);
     float density = max(cloudLayer.z, 0.0f);
-    // 細ステップは「雲層の厚み」基準で一定の細かさにする。レイ全長(t1-t0)で割ると、距離や視線角度で
-    // 雲内のサンプル密度が変わり、遠景/浅い角度で崩れて高ステップが必要になっていた。厚み基準なら
-    // どの視点でも雲内のサンプル数が一定になり、少ステップ(20前後)でも綺麗に保てる。
-    float stepLen = max((cloudLayer.y - cloudLayer.x) / (float)steps, 0.5f);
+    // WHAT: 実際に見えている雲区間を steps 分割する。
+    // WHY: 雲層の厚みだけを基準にすると、水平に近い視線では交差区間が厚みの数倍に
+    //      なり、固定反復上限の前に t1 へ到達せず、雲の後半が欠ける。
+    float pathLength = max(t1 - t0, 0.0f);
+    float stepLen = max(pathLength / (float)steps, 0.5f);
+    int maxIterations = clamp((int)ceil(pathLength / stepLen), 1, 256);
 
     // ステップ内で一定の量はループ前に求める。
-    float2 windDir   = normalize(float2(cloudWind.x, cloudWind.z));
+    float2 rawWind   = float2(cloudWind.x, cloudWind.z);
+    float  windLen   = length(rawWind);
+    float2 windDir   = windLen > 1.0e-4f ? rawWind / windLen : float2(1.0f, 0.0f);
     float2 windWorld = windDir * (cloudWind.y * cloudNoise.z);
-    float3 sunDir    = normalize(-lightDir);
+    float  lightLen  = length(lightDir);
+    float3 sunDir    = lightLen > 1.0e-4f
+        ? -lightDir / lightLen : float3(0.0f, 1.0f, 0.0f);
     // 雲の明るさは空ドームと揃える必要があるため skyDimmer を使う。
     // lightIntensity は地表のライティング用スケールで、空の見た目とは別軸。
     float3 lightCol  = lightColor * max(skyDimmer, 0.0f);
@@ -167,10 +173,10 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float3 scatter = 0.0f;
 
     // empty-space skip: 安価な Shape サンプルで空白を粗ステップ (×kEmptyStep) で飛ばし、
-    // 雲付近のみ細ステップで detail + ライトマーチを行う。厚み基準の細ステップなので浅いレイは
-    // 反復が増える → 上限を steps*4 に広げて層を貫通できるようにする (空白スキップで実コストは抑制)。
+    // 雲付近のみ細ステップで detail + ライトマーチを行う。maxIterations は実際の交差区間
+    // に合わせるため、浅い角度でも t1 まで必ず走査できる。
     [loop]
-    for (int i = 0; i < steps * 4 && t < t1 && transmittance > 0.01f; ++i)
+    for (int i = 0; i < maxIterations && t < t1 && transmittance > 0.01f; ++i)
     {
         float3 wp = cameraPos + rd * t;
 
