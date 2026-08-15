@@ -8,6 +8,10 @@
 #include "Math/Vector2.hpp"
 
 #include <array>
+#include <string>
+#include <string_view>
+#include <string>
+#include <unordered_map>
 #include <Windows.h>
 
 namespace fbzz::input {
@@ -48,6 +52,23 @@ public:
     static void HandleMouseMove   (int x, int y);
     static void HandleMouseButton (UINT msg);
     static void HandleMouseScroll (float delta);
+    static void HandleTextInput   (wchar_t character);
+    static std::string_view TextInput();
+
+    // AI 自動プレイテスト用の入力注入。通常入力と同じフレーム状態へ合成する。
+    // WHY: EditorMCP が Pause+Step と組み合わせてゲームを決定的に操作できるようにする。
+    static bool InjectKey(uint32_t virtualKey, bool pressed);
+    static bool InjectMouseButton(int button, bool pressed);
+    static void InjectMousePosition(const math::Vector2& position);
+    static void InjectMouseDelta(const math::Vector2& delta);
+    static void InjectMouseScroll(float delta);
+    static bool SetVirtualAxis(std::string_view name, float value);
+    static float GetVirtualAxis(std::string_view name);
+    static bool SetVirtualButton(std::string_view name, bool pressed);
+    static bool GetVirtualButton(std::string_view name);
+    static bool GetVirtualButtonDown(std::string_view name);
+    static bool GetVirtualButtonUp(std::string_view name);
+    static void ClearInjected();
 
 private:
     static constexpr int KEY_COUNT = 256;
@@ -61,6 +82,12 @@ private:
     static math::Vector2               s_overrideMouseDelta;
     static float                       s_scrollDelta;
     static bool                        s_hasOverrideMouseDelta;
+    static std::array<bool, KEY_COUNT> s_injectedKeys;
+    static std::array<bool, 3>         s_injectedMouseButtons;
+    static std::unordered_map<std::string, float> s_virtualAxes;
+    static std::unordered_map<std::string, bool> s_virtualButtons;
+    static std::unordered_map<std::string, bool> s_previousVirtualButtons;
+    static std::string s_textInput;
 };
 
 } // namespace fbzz::input

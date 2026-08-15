@@ -7,6 +7,7 @@
 #include "Entity.hpp"
 #include <span>
 #include <cassert>
+#include <memory>
 #include <utility>
 
 namespace fbzz::scene {
@@ -16,7 +17,7 @@ class ComponentArray {
 public:
     static constexpr uint32_t MAX = 4096;
 
-    ComponentArray() { ResetSparse(); }
+    ComponentArray() = default;
     ComponentArray(const ComponentArray&) = delete;
     ComponentArray& operator=(const ComponentArray&) = delete;
     ComponentArray(ComponentArray&& other) noexcept { MoveFrom(std::move(other)); }
@@ -27,8 +28,9 @@ public:
 
     void Add(EntityID id, T component) {
         assert(id.IsValid() && id.index < MAX);
-        assert(!Has(id));
         assert(m_count < MAX);
+        EnsureStorage();
+        assert(!Has(id));
 
         uint32_t di = m_count++;
         m_dense[di]               = std::move(component);
@@ -53,6 +55,7 @@ public:
     }
 
     bool Has(EntityID id) const {
+        if (m_sparseToIndex == nullptr) return false; // 未使用の型は確保すらしていない
         if (!id.IsValid() || id.index >= MAX) return false;
         uint32_t di = m_sparseToIndex[id.index];
         if (di == EMPTY || di >= m_count) return false;
@@ -70,13 +73,14 @@ public:
         return m_dense[m_sparseToIndex[id.index]];
     }
 
-    std::span<T>              Data()     { return { m_dense, m_count }; }
-    std::span<const T>        Data()     const { return { m_dense, m_count }; }
-    std::span<const EntityID> Entities() const { return { m_denseToEntity, m_count }; }
+    std::span<T>              Data()     { return { m_dense.get(), m_count }; }
+    std::span<const T>        Data()     const { return { m_dense.get(), m_count }; }
+    std::span<const EntityID> Entities() const { return { m_denseToEntity.get(), m_count }; }
 
     uint32_t Count() const { return m_count; }
 
     void Clear() {
+        if (m_dense == nullptr) { m_count = 0; return; }
         for (uint32_t i = 0; i < m_count; ++i) {
             m_dense[i] = {};
             m_denseToEntity[i] = {};
@@ -88,24 +92,38 @@ public:
 private:
     static constexpr uint32_t EMPTY = 0xFFFFFFFFu;
 
+    // dense/sparse を初回 Add まで確保しない。
+    // WHY: 以前は T m_dense[MAX] をインラインで持っていたため、ComponentArray 1 個だけで
+    //      sizeof(T) * 4096 を占め、それを全コンポーネント型ぶん束ねる Scene が
+    //      数十〜数百 MB の巨大オブジェクトになっていた。静的な Scene
+    //      (エディタの GameObject クリップボード) がマップ範囲を越えて
+    //      構築時にアクセス違反を起こす原因でもあった。
+    //      遅延確保にすると、実際に使われる数種類ぶんしかメモリを取らない。
+    //      確保後は決して再確保しないため、Get() が返す参照は従来どおり安定する。
+    void EnsureStorage() {
+        if (m_dense != nullptr) return;
+        m_dense          = std::make_unique<T[]>(MAX);
+        m_denseToEntity  = std::make_unique<EntityID[]>(MAX);
+        m_sparseToIndex  = std::make_unique<uint32_t[]>(MAX);
+        ResetSparse();
+    }
+
     void ResetSparse() {
         for (uint32_t i = 0; i < MAX; ++i) m_sparseToIndex[i] = EMPTY;
     }
 
+    // 確保済みバッファごと引き取る。要素単位のコピーが不要になり move も安くなる。
     void MoveFrom(ComponentArray&& other) {
-        Clear();
-        m_count = other.m_count;
-        for (uint32_t i = 0; i < m_count; ++i) {
-            m_dense[i] = std::move(other.m_dense[i]);
-            m_denseToEntity[i] = other.m_denseToEntity[i];
-            m_sparseToIndex[m_denseToEntity[i].index] = i;
-        }
-        other.Clear();
+        m_dense         = std::move(other.m_dense);
+        m_denseToEntity = std::move(other.m_denseToEntity);
+        m_sparseToIndex = std::move(other.m_sparseToIndex);
+        m_count         = other.m_count;
+        other.m_count   = 0;
     }
 
-    T        m_dense[MAX]         = {};
-    EntityID m_denseToEntity[MAX] = {};
-    uint32_t m_sparseToIndex[MAX];
+    std::unique_ptr<T[]>        m_dense;
+    std::unique_ptr<EntityID[]> m_denseToEntity;
+    std::unique_ptr<uint32_t[]> m_sparseToIndex;
     uint32_t m_count = 0;
 };
 

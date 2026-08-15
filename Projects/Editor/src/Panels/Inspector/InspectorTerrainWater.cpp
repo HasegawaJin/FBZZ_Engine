@@ -320,8 +320,10 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                     if (widgets::AssetPathField("Mesh Path", layer.meshPath, ".fbx,.fzmodel", ctx.projectRoot))
                         tdc.needsBake = true;
                 }
-                widgets::AssetPathField("Texture Path", layer.texturePath, ".fztex,.png,.dds", ctx.projectRoot);
-                if (widgets::AssetPathField("Density Map", layer.densityMapPath, ".png,.fztex", ctx.projectRoot))
+                widgets::AssetPathField("Texture Path", layer.texturePath,
+                                        widgets::kTextureAssetFilter, ctx.projectRoot);
+                if (widgets::AssetPathField("Density Map", layer.densityMapPath,
+                                            widgets::kTextureAssetFilter, ctx.projectRoot))
                     tdc.needsBake = true;
 
                 // 配置パラメータ

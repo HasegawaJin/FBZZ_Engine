@@ -4,6 +4,7 @@
 // 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
 // RenderSystem は BeginFrame / EndFrame の都合でゲームループ側から呼ぶ。
 #include "Engine/Scene/SceneManager.hpp"
+#include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Systems/FoliageBakeSystem.hpp"
@@ -11,6 +12,7 @@
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
+#include "Engine/Scene/Systems/BehaviorTreeSystem.hpp"
 #include "Engine/Scene/Systems/NavigationSystem.hpp"
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
@@ -21,6 +23,8 @@
 #include "Engine/Scene/Systems/LODSystem.hpp"
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
 #include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
+#include "Engine/Scene/Systems/VFXGraphSystem.hpp"
+#include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <string>
@@ -50,19 +54,27 @@ void SceneManager::BuildScheduler()
     // PrePhysics
     m_scheduler.AddSystem<TransformPrePhysics>();
 
-    // Physics
+    // Physics (固定ステップ)
+    // FixedScriptSystem は OrderingHints で PhysicsSystem より前に並ぶ。
+    m_scheduler.AddSystem<FixedScriptSystem>();
     m_scheduler.AddSystem<PhysicsSystem>();
 
     // PostPhysics
     m_scheduler.AddSystem<TransformPostPhysics>();
 
     // Navigation
+    // 実行順は各 System の OrderingHints が決める:
+    //   Sensor → BehaviorTree → Patrol → Navigation
+    // BehaviorTree を Patrol より前に置くのは、BT が SetTarget を呼んだ同じフレームで
+    // NavMeshPatrolSystem の `agent->target.IsValid()` による巡回抑止を効かせるため。
     m_scheduler.AddSystem<NavMeshSensorSystem>();
+    m_scheduler.AddSystem<BehaviorTreeSystem>();
     m_scheduler.AddSystem<NavMeshPatrolSystem>();
     m_scheduler.AddSystem<NavigationSystem>();
 
     // LateScript
     m_scheduler.AddSystem<LateScriptSystem>();
+    m_scheduler.AddSystem<VFXGraphSystem>();
     m_scheduler.AddSystem<AudioSystem>();
 
     // Cleanup
@@ -75,6 +87,12 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<LODSystem>();
     m_scheduler.AddSystem<AnimatorSystem>();
     m_scheduler.AddSystem<IKSystem>();
+    // DCC Bone姿勢をAnimator/IKが確定した後にSocket、Camera、表示補助を評価する。
+    m_scheduler.AddSystem<ConstraintSystem>();
+    m_scheduler.AddSystem<SplineSystem>();
+    m_scheduler.AddSystem<CameraRigSystem>();
+    m_scheduler.AddSystem<BillboardSystem>();
+    m_scheduler.AddSystem<PresentationSystem>();
     m_scheduler.AddSystem<ParticleSimulationSystem>();
 
     m_scheduler.Build();
@@ -108,10 +126,15 @@ void SceneManager::ClearScenes()
 {
     // 外部Sceneとowned Sceneは通常別実体だが、同じ実体を二重にClearしないよう比較する。
     Scene* const external = m_externalScene;
-    if (external)
+    if (external) {
+        // プールの待機列は EntityID を保持するため、Scene を空にする前に捨てる。
+        PrefabPool::Clear(*external);
         external->Clear();
-    if (m_active && m_active.get() != external)
+    }
+    if (m_active && m_active.get() != external) {
+        PrefabPool::Clear(*m_active);
         m_active->Clear();
+    }
 
     // WHAT: owned Scene自体もDLLロード中に破棄し、仮想デストラクタの呼び残しを防ぐ。
     m_active.reset();

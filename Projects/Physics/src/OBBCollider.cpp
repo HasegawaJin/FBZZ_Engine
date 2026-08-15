@@ -12,6 +12,11 @@ namespace fbzz::physics
     {
     }
 
+    float OBBCollider::ComputeVolume() const
+    {
+        return 8.0f * m_halfExtents.x * m_halfExtents.y * m_halfExtents.z;
+    }
+
     AABB OBBCollider::GetAABB() const
     {
         const math::Vector3 x = GetAxis(0);

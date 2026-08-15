@@ -8,6 +8,8 @@
 #include <Engine/Scene/ScriptDllAbi.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
+#include <Engine/Scene/PrefabPool.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -101,7 +103,17 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
     }
 
     scene::ScriptFactory::UnregisterAll();
+    scene::ScriptSerializableFactory::UnregisterAll();
     FBZZ_LOG_DEBUG("ScriptDllLoader: ScriptFactory unregistered all");
+
+    // イベント購読とオブジェクトプールを破棄する。
+    // WHY: 購読ハンドラのラムダ本体は DLL 側のコードにあるため、FreeLibrary 後に
+    //      呼ばれるとアクセス違反になる。DestroyAllScripts が通れば ~Script 経由で
+    //      解除されるはずだが、scene が渡されない経路もあるためここでも必ず空にする。
+    //      プールの待機列も破棄済み GameObject の EntityID を抱えたままにしない。
+    scene::ScriptEventBus::Clear();
+    scene::PrefabPool::ClearAll();
+    FBZZ_LOG_DEBUG("ScriptDllLoader: script event bus & prefab pool cleared");
 
     // DataAsset も DLL コード内に仮想デストラクタ/ファクトリを持つため、FreeLibrary 前に
     // 共有キャッシュを破棄し型登録をクリアする。次回 Resolve でディスクから遅延再ロードされる。
@@ -226,16 +238,6 @@ bool ScriptDllLoader::ValidateAbi() const
     const scene::ScriptDllAbiInfo dll  = infoFn();
 
     if (host.signature == dll.signature) return true;
-
-    // 旧 ABI は拡張フィールドを持たないため、末尾を詳細表示すると未初期化値をエラーとして報告してしまう。
-    const bool hasCurrentSchema = dll.msvcFullVersion >= 190000000ull
-        && (dll.pointerSize == 4 || dll.pointerSize == 8)
-        && dll.buildConfiguration >= 1 && dll.buildConfiguration <= 3
-        && dll.dynamicRuntime <= 1;
-    if (!hasCurrentSchema) {
-        FBZZ_LOG_INFO("ScriptDllLoader: legacy ABI DLL detected; rebuild scheduled");
-        return false;
-    }
 
     // 現行 schema 同士の差だけを診断する。自動再ビルド対象なので ERROR ではなく WARNING とする。
     FBZZ_LOG_WARN("ScriptDllLoader: ABI mismatch; Scripts DLL rebuild required");

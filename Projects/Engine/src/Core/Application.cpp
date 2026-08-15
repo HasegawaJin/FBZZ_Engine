@@ -14,6 +14,7 @@
 #include "Engine/Audio/AudioManager.hpp"
 #include "Engine/Audio/XAudio2Device.hpp"
 #include "Engine/Input/Input.hpp"
+#include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -96,6 +97,13 @@ bool Application::Init(const Window::Config& windowConfig,
 
     input::Input::Init();
 
+    // WHY ここで既定バインドを入れるか:
+    //   プロジェクト固有の .inputactions は「どのプロジェクトを開くか」が決まってから
+    //   ProjectRuntime 側で読み込まれる。Application::Init の時点ではまだ確定していないため、
+    //   まず既定バインドで動く状態を作っておく。設定ファイルがあれば後から上書きされる。
+    //   これにより「プロジェクト未読込のエディタでも入力が完全に死なない」状態を保証する。
+    input::InputActionMap::LoadDefaults();
+
     // WHY: バックエンド具象 (DX11 / DX12) の選択と生成は RendererFactory に集約する。
     //      合成ルートである Application は RendererBackend を指定するだけで具象を直接知らない。
     FBZZ_LOG_INFO("Application::Init: レンダラー生成を開始します");
@@ -112,9 +120,20 @@ bool Application::Init(const Window::Config& windowConfig,
     m_renderer = std::move(rendererBundle.renderer);
     m_imguiRenderer = std::move(rendererBundle.imguiRenderer);
 
-    m_window->SetResizeCallback([this](uint32_t w, uint32_t h) {
-        m_renderer->Resize(w, h);
+    // WHAT: WM_SIZE をレンダラーのスワップチェーン再構築へ橋渡しする。
+    // WHY:  これを繋がないと Window 側の m_width/m_height だけが更新され、バックバッファは
+    //       起動時の寸法のまま取り残される。flip-model のスワップチェーンはサイズ不一致を
+    //       DWM 側の引き伸ばしで吸収するため、エラーも警告も出ないまま画面全体 (3D だけでなく
+    //       ImGui の UI と文字も) がぼやけ続ける。最大化した瞬間に発生し、元のサイズへ戻すまで治らない。
+    // WHY ここで登録するか: レンダラー生成後でなければ m_renderer が空。逆に Run() まで遅らせると
+    //       Init 中に届く WM_SIZE (メニューバー設定やウィンドウ移動) を取りこぼす。
+    // NOTE: PollEvents() は BeginFrame() の前に呼ばれるため、このコールバックは常にフレーム外で走る。
+    //       リサイズドラッグ中の Win32 内部ループから再入した場合も同じ (DX12 側は m_frameOpen を見て保留する)。
+    m_window->SetResizeCallback([this](uint32_t width, uint32_t height) {
+        if (m_renderer)
+            m_renderer->Resize(width, height);
     });
+
 
     // AudioSourceComponentの要求を実Voiceへ変換できるよう、Applicationを音響の合成ルートにする。
     // EditorとStandaloneは同じAudioManagerを各ProjectRuntimeへ渡して利用する。
@@ -176,6 +195,17 @@ void Application::Run() {
             FBZZ_PROFILE_SCOPE("Window::PollEvents");
             m_window->PollEvents();
         }
+
+        // WHY PollEvents の「後」か:
+        //   Input::Update() はフレーム先頭で前フレーム状態を退避するだけで、
+        //   キーボード/マウスの現在状態は PollEvents 内の Win32 メッセージで更新される。
+        //   アクション層をその前で評価すると、常に 1 フレーム古い入力を見ることになる。
+        {
+            FBZZ_PROFILE_SCOPE("InputActionMap::Update");
+            // WHY unscaledDeltaTime か: 入力の平滑化はプレイヤーの操作感であり、
+            //      スローモーション演出 (TimeScale) に引きずられて鈍くなるべきではない。
+            input::InputActionMap::Update(Time::unscaledDeltaTime);
+        }
         if (m_window->ShouldClose()) {
             profiler::Profiler::EndFrame();
             m_memorySystem.EndFrame();
@@ -220,6 +250,17 @@ void Application::Run(IModule& module) {
         {
             FBZZ_PROFILE_SCOPE("Window::PollEvents");
             m_window->PollEvents();
+        }
+
+        // WHY PollEvents の「後」か:
+        //   Input::Update() はフレーム先頭で前フレーム状態を退避するだけで、
+        //   キーボード/マウスの現在状態は PollEvents 内の Win32 メッセージで更新される。
+        //   アクション層をその前で評価すると、常に 1 フレーム古い入力を見ることになる。
+        {
+            FBZZ_PROFILE_SCOPE("InputActionMap::Update");
+            // WHY unscaledDeltaTime か: 入力の平滑化はプレイヤーの操作感であり、
+            //      スローモーション演出 (TimeScale) に引きずられて鈍くなるべきではない。
+            input::InputActionMap::Update(Time::unscaledDeltaTime);
         }
         if (m_window->ShouldClose()) {
             // WHY: BeginFrame() 済みの Profiler / MemorySystem を必ず対で閉じる。

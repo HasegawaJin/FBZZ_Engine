@@ -360,15 +360,15 @@ RenderGraph ベースの **Deferred + Forward ハイブリッド**。パス間�
 
 ### GameHub
 
-Unity Hub に相当するプロジェクト管理ランチャー。エディターとは独立した実行ファイルとして動作する。
+Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管理ランチャー。エディターとは独立したアプリケーションとして動作する。
 
 | 機能 | 概要 |
 |------|------|
-| `ProjectManager` | プロジェクトの追加・削除・起動 |
-| `TemplateManager` | プロジェクトテンプレートからの新規作成 |
-| `ThumbnailCache` | プロジェクトサムネイルのキャッシュ |
-| `MigrationManager` | 旧バージョンプロジェクトの移行 |
-| `ProcessLauncher` | エディタープロセスの起動・管理 |
+| `App.tsx` | プロジェクト一覧・作成・設定画面の React UI |
+| `ProjectService` | プロジェクト検証・サムネイル取得・エディター起動 |
+| `TemplateService` | プロジェクトテンプレートからの新規作成 |
+| `ConfigStore` | C++ 版と互換性のある TOML 設定の永続化 |
+| `preload` / `ipc` | Renderer と OS 権限を分離する安全な API 境界 |
 
 ### オーディオ
 
@@ -403,7 +403,7 @@ FBZZ_Engine/
 │   ├── Engine/         コアエンジン。Physics / Math をリンク
 │   ├── Editor/         ImGui フルエディター。Engine をリンク
 │   ├── EditorLauncher/ エディター起動用スタンドアロンランチャー
-│   ├── GameHub/        プロジェクト管理ランチャー (Unity Hub 相当)
+│   ├── GameHub/        Electron 製プロジェクト管理ランチャー (Unity Hub 相当)
 │   ├── Sandbox/        動作確認・サンプルアプリ
 │   └── Tests/          単体テスト
 ├── Assets/
@@ -446,10 +446,10 @@ graph LR
     TP --> Engine
     TP --> Editor
     Engine --> Editor
-    Engine --> GameHub
     Engine --> Sandbox
     Engine --> Tests
     Editor --> EditorLauncher
+    GameHub -. プロセス起動 .-> EditorLauncher
 ```
 
 ### レンダリングパイプライン
@@ -530,7 +530,7 @@ cmake -B build -G "Visual Studio 17 2022" -A x64
 ```
 
 VSCode または Visual Studio でソリューションを開いてビルド。  
-シェーダーは `Assets/Shaders/compile_shaders.bat` を実行してコンパイル。
+シェーダーは Editor/CMake が自動収集し、`Assets/Shaders/compile_shaders.ps1` がinclude依存を含む差分だけをコンパイル。
 
 > **注意:** ターミナルから `ninja` / `cmake --build` を直接実行しないこと。MSVC 環境変数が設定されていないためコンパイルエラーになる。VSCode / Visual Studio からビルドすること。
 

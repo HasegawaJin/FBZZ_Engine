@@ -14,6 +14,8 @@
 #include <Engine/Util/Uuid.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -73,6 +75,53 @@ std::string UniqueName(const std::string& base, std::unordered_set<std::string>&
     return base + " (Prefab)";
 }
 
+// prefabAssetPath 同士を比べる。
+// WHY: 保存経路によって "Assets/Prefabs/A.prefab" と "assets\\prefabs\\A.prefab" が
+//      混在し得る。区切りと大小を正規化しないと、同じアセットのインスタンスを取り逃す。
+bool SamePrefabPath(const std::string& lhs, const std::string& rhs)
+{
+    if (lhs.size() != rhs.size()) return false;
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
+        char a = lhs[i];
+        char b = rhs[i];
+        if (a == '\\') a = '/';
+        if (b == '\\') b = '/';
+        a = static_cast<char>(std::tolower(static_cast<unsigned char>(a)));
+        b = static_cast<char>(std::tolower(static_cast<unsigned char>(b)));
+        if (a != b) return false;
+    }
+    return true;
+}
+
+// 同じプレファブのインスタンスが入れ子になっている場合、外側だけを対象にする。
+// WHY: 親インスタンスを Revert すると子孫ごと作り直されるため、内側も処理すると
+//      既に破棄された GO を触ることになる。
+bool HasSamePrefabAncestor(const scene::GameObject& go, const std::string& prefabAssetPath)
+{
+    for (const scene::GameObject* p = go.GetParent(); p; p = p->GetParent())
+        if (SamePrefabPath(p->prefabAssetPath, prefabAssetPath)) return true;
+    return false;
+}
+
+// 自己書き込み記録 (ディスク監視の自己反応を弾くため)。
+// キーは比較しやすいよう小文字 + '/' 区切りに正規化する。
+std::string NormalizeForCompare(const std::string& path)
+{
+    std::string out;
+    out.reserve(path.size());
+    for (char c : path) {
+        const char ch = (c == '\\') ? '/' : c;
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    return out;
+}
+
+std::unordered_map<std::string, std::chrono::steady_clock::time_point>& SelfWriteLog()
+{
+    static std::unordered_map<std::string, std::chrono::steady_clock::time_point> log;
+    return log;
+}
+
 bool ReadToml(const std::string& path, toml::table& outTable)
 {
     std::string text;
@@ -123,6 +172,38 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
     prefabInfo.insert("root_count", static_cast<int64_t>(rootSelection.size()));
     doc.insert("prefab", std::move(prefabInfo));
 
+    // インスタンス側の instanceId → アセットへ書く id の対応を先に決める。
+    //
+    // WHY: 既存インスタンスを Apply で書き戻すとき、素直に instanceId をそのまま書くと
+    //      アセット側のオブジェクト id が毎回入れ替わる。すると他インスタンスが持つ
+    //      prefabSourceId (= 旧アセット id) が行き先を失い、override の対応付けが切れる。
+    //      prefabSourceId を持っている GO は「アセット側の元 id」に書き戻すことで、
+    //      Apply を何度繰り返してもアセットの id を安定させる。
+    //
+    //      インスタンス内で子を複製した場合など prefabSourceId が重複しうるので、
+    //      先着だけがそれを使い、後発は自分の instanceId をそのまま使う。
+    std::unordered_map<std::string, std::string> assetIdMap;
+    std::unordered_set<std::string> usedAssetIds;
+    if (auto* gameObjects = sceneResult.table()["gameobjects"].as_array()) {
+        for (const auto& item : *gameObjects) {
+            const auto* source = item.as_table();
+            if (!source) continue;
+            const std::string instanceId = (*source)["instanceId"].value_or(std::string{});
+            if (instanceId.empty() || !includedIds.contains(instanceId)) continue;
+
+            const std::string sourceId = (*source)["prefabSourceId"].value_or(std::string{});
+            const std::string assetId =
+                (!sourceId.empty() && !usedAssetIds.contains(sourceId)) ? sourceId : instanceId;
+            usedAssetIds.insert(assetId);
+            assetIdMap.emplace(instanceId, assetId);
+        }
+    }
+
+    auto mapAssetId = [&assetIdMap](const std::string& id) {
+        const auto it = assetIdMap.find(id);
+        return it != assetIdMap.end() ? it->second : id;
+    };
+
     toml::array prefabObjects;
     if (auto* gameObjects = sceneResult.table()["gameobjects"].as_array()) {
         for (const auto& item : *gameObjects) {
@@ -133,13 +214,30 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
             if (instanceId.empty() || !includedIds.contains(instanceId)) continue;
 
             toml::table copied = *source;
-            const std::string parentId = copied["parentInstanceId"].value_or(std::string{});
+
+            copied.erase("instanceId");
+            copied.insert("instanceId", mapAssetId(instanceId));
+
+            const std::string parentId = (*source)["parentInstanceId"].value_or(std::string{});
+            copied.erase("parent");
+            copied.erase("parentInstanceId");
             if (parentId.empty() || !includedIds.contains(parentId)) {
-                copied.erase("parent");
                 copied.insert("parent", std::string{});
-                copied.erase("parentInstanceId");
                 copied.insert("parentInstanceId", std::string{});
+            } else {
+                copied.insert("parent", (*source)["parent"].value_or(std::string{}));
+                copied.insert("parentInstanceId", mapAssetId(parentId));
             }
+
+            // アセット側にはリンク情報を残さない。
+            // WHY: prefabAssetPath を書くと自分自身を指すインスタンスに見え、
+            //      prefabSourceId は「1 世代前のアセット id」でしかなく意味を持たない。
+            //      どちらも Instantiate が生成時に正しい値を入れ直す。
+            copied.erase("prefabAssetPath");
+            copied.insert("prefabAssetPath", std::string{});
+            copied.erase("prefabSourceId");
+            copied.insert("prefabSourceId", std::string{});
+
             prefabObjects.push_back(std::move(copied));
         }
     }
@@ -155,13 +253,51 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
         return false;
     }
 
+    SelfWriteLog()[NormalizeForCompare(outputPath)] = std::chrono::steady_clock::now();
     FBZZ_LOG_INFO("Saved prefab: %s", outputPath.c_str());
+    return true;
+}
+
+bool PrefabSerializer::WasSelfWrittenRecently(const std::string& diskPath, double withinSeconds)
+{
+    auto& log = SelfWriteLog();
+    const auto it = log.find(NormalizeForCompare(diskPath));
+    if (it == log.end()) return false;
+
+    const auto elapsed = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - it->second).count();
+    return elapsed <= withinSeconds;
+}
+
+bool PrefabSerializer::SaveSelectionAndConnect(scene::Scene& scene,
+                                               const std::vector<scene::EntityID>& selectedEntities,
+                                               const std::string& path,
+                                               std::vector<scene::EntityID>& outRoots)
+{
+    outRoots.clear();
+    if (selectedEntities.empty()) return false;
+
+    const std::string outputPath = WithPrefabExtension(path);
+    if (!SaveSelection(scene, selectedEntities, outputPath)) return false;
+
+    // Assets 起点の相対パスをルートに書き込んでインスタンス接続する。
+    // WHY: prefabAssetPath は配布後も壊れない Assets 相対で保持する。SaveSelection の後に
+    //      設定することで、保存されたアセット側には空の prefabAssetPath が入る (自己参照回避)。
+    const std::string relPath = NormalizeAssetPath(outputPath);
+    for (scene::EntityID id : selectedEntities) {
+        auto* go = scene.GetGameObject(id);
+        // 選択された祖先を持つものは子。ルートのみ接続する (SaveSelection のルート判定に合わせる)。
+        if (!go || HasSelectedAncestor(*go, selectedEntities)) continue;
+        go->prefabAssetPath = relPath;
+        outRoots.push_back(id);
+    }
     return true;
 }
 
 bool PrefabSerializer::Instantiate(scene::Scene& scene,
                                    const std::string& path,
-                                   std::vector<scene::EntityID>& outRootEntities)
+                                   std::vector<scene::EntityID>& outRootEntities,
+                                   const PrefabOverrideSet* overrides)
 {
     outRootEntities.clear();
 
@@ -178,22 +314,31 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
     for (auto& go : scene.GameObjects())
         usedNames.insert(go.name);
 
-    std::unordered_map<std::string, std::string> nameMap;
-    // guidMap: プレファブ内の instanceId (旧) → 新規 UUID (新)
-    // WHY: インスタンス化のたびに新しい UUID を割り当てることで、
-    //      同一プレファブを複数インスタンス化した場合でも GUID が衝突しない。
+    // guidMap:        プレファブ内の instanceId (旧) → 新規 UUID (新)
+    // guidToNewName:   プレファブ内の instanceId (旧) → 一意化した新名
+    // nameMap:         旧名 → 新名 (名前ベース参照のフォールバック。重複名では最後の1件のみ)
+    // WHY: インスタンス化のたびに新しい UUID を割り当てることで、同一プレファブを複数
+    //      インスタンス化しても GUID が衝突しない。加えて改名は "名前" ではなく instanceId を
+    //      キーにする。旧実装は nameMap[oldName] を上書きしていたため、プレファブ内に同名
+    //      オブジェクト (骨の "Bone" など) が複数あると全員が同じ新名へ潰れ、親子・参照解決が
+    //      壊れていた。guid をキーにすれば同名でも 1 オブジェクト 1 新名を保証できる。
     std::unordered_map<std::string, std::string> guidMap;
+    std::unordered_map<std::string, std::string> guidToNewName;
+    std::unordered_map<std::string, std::string> nameMap;
 
     for (const auto& item : *prefabObjects) {
         const auto* source = item.as_table();
         if (!source) continue;
 
         const std::string oldName = (*source)["name"].value_or(std::string{"GameObject"});
-        nameMap[oldName] = UniqueName(oldName, usedNames);
+        const std::string newName = UniqueName(oldName, usedNames);
+        nameMap[oldName] = newName;
 
         const std::string oldGuid = (*source)["instanceId"].value_or(std::string{});
-        if (!oldGuid.empty())
-            guidMap[oldGuid] = util::GenerateUUID();
+        if (!oldGuid.empty()) {
+            guidMap[oldGuid]       = util::GenerateUUID();
+            guidToNewName[oldGuid] = newName;
+        }
     }
 
     toml::array newObjects;
@@ -203,19 +348,44 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
 
         toml::table copied = *source;
         const std::string oldName = copied["name"].value_or(std::string{"GameObject"});
+        const std::string oldGuidForName = copied["instanceId"].value_or(std::string{});
+
+        // インスタンス側の override を、GUID/名前のリマップより前に流し込む。
+        // WHY: override のパスは transform や各コンポーネントのプロパティで、
+        //      リマップ対象 (name/parent/*Guid) とは重ならない。先に当てておけば
+        //      あとは通常のインスタンス化経路をそのまま通せる。
+        if (overrides && !oldGuidForName.empty()) {
+            const auto snapshot = overrides->instanceTables.find(oldGuidForName);
+            if (snapshot != overrides->instanceTables.end()) {
+                for (const PrefabOverride& ov : overrides->entries) {
+                    if (ov.prefabSourceId != oldGuidForName) continue;
+                    if (const toml::node* value = FindNodeAtPath(snapshot->second, ov.path))
+                        SetNodeAtPath(copied, ov.path, *value);
+                }
+            }
+        }
         const std::string oldParent = copied["parent"].value_or(std::string{});
         const std::string oldParentGuid = copied["parentInstanceId"].value_or(std::string{});
-        const std::string newName = nameMap.contains(oldName) ? nameMap[oldName] : oldName;
+
+        // 自身の新名は instanceId から引く (同名オブジェクトでも一意)。guid が無い旧アセットは
+        // 名前フォールバックに退避する。
+        const std::string newName =
+            (!oldGuidForName.empty() && guidToNewName.contains(oldGuidForName))
+                ? guidToNewName.at(oldGuidForName)
+                : (nameMap.contains(oldName) ? nameMap.at(oldName) : oldName);
 
         copied.erase("name");
         copied.insert("name", newName);
 
+        // parent 名前フィールドも親の guid → 新名で解決する。実際の親子付けは
+        // AppendObjects が parentInstanceId(guid) で行うため、ここは表示・root 判定用。
         copied.erase("parent");
-        if (!oldParent.empty() && nameMap.contains(oldParent)) {
-            copied.insert("parent", nameMap[oldParent]);
-        } else {
-            copied.insert("parent", std::string{});
-        }
+        std::string newParentName;
+        if (!oldParentGuid.empty() && guidToNewName.contains(oldParentGuid))
+            newParentName = guidToNewName.at(oldParentGuid);
+        else if (!oldParent.empty() && nameMap.contains(oldParent))
+            newParentName = nameMap.at(oldParent);
+        copied.insert("parent", newParentName);
 
         copied.erase("parentInstanceId");
         if (!oldParentGuid.empty() && guidMap.contains(oldParentGuid)) {
@@ -391,6 +561,14 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
             go->prefabAssetPath = relPath;
     }
 
+    // WHY: プロパティ単位の差分 (override) を後から計算できるよう、階層内の全 GO に
+    //      「プレファブ側のどのオブジェクト由来か」を刻む。instanceId は毎回振り直される
+    //      ため、これが無いとインスタンスとアセットを対応付ける手段が無い。
+    for (const auto& [sourceGuid, newGuid] : guidMap) {
+        if (auto* go = scene.FindByGuid(newGuid))
+            go->prefabSourceId = sourceGuid;
+    }
+
     return !outRootEntities.empty();
 }
 
@@ -411,10 +589,24 @@ bool PrefabSerializer::Apply(const scene::Scene& scene, scene::EntityID rootEnti
     return SaveSelection(scene, { rootEntity }, diskPath);
 }
 
+bool PrefabSerializer::RefreshInstanceKeepingOverrides(scene::Scene& scene,
+                                                       scene::EntityID rootEntity,
+                                                       std::vector<scene::EntityID>& outNewRoots,
+                                                       const std::string& projectRoot)
+{
+    // 作り直す前に現在の差分を採取する。GO は Revert で破棄されるため、
+    // PrefabOverrideSet 側が値のコピーを持っている点が要 (ポインタでは追えない)。
+    PrefabOverrideSet overrides;
+    const bool hasOverrides = ComputePrefabOverrides(scene, rootEntity, projectRoot, overrides);
+    return Revert(scene, rootEntity, outNewRoots, projectRoot,
+                  hasOverrides ? &overrides : nullptr);
+}
+
 bool PrefabSerializer::Revert(scene::Scene& scene,
                               scene::EntityID rootEntity,
                               std::vector<scene::EntityID>& outNewRoots,
-                              const std::string& projectRoot)
+                              const std::string& projectRoot,
+                              const PrefabOverrideSet* keepOverrides)
 {
     // Revert: インスタンスをプレファブアセットの定義に戻す。
     // WHAT: 1. 旧インスタンスの Transform / parent / prefabAssetPath を保存する。
@@ -430,25 +622,83 @@ bool PrefabSerializer::Revert(scene::Scene& scene,
     }
 
     // prefabAssetPath は相対パスのため、絶対パスへ解決してから Instantiate に渡す。
-    const std::string diskPath     = ToProjectAssetDiskPath(projectRoot, go->prefabAssetPath);
+    const std::string diskPath      = ToProjectAssetDiskPath(projectRoot, go->prefabAssetPath);
     const scene::Transform savedTransform = go->transform;
-    scene::GameObject* savedParent = go->GetParent();
+    scene::GameObject* savedParent  = go->GetParent();
+    const scene::EntityID savedParentId =
+        savedParent ? savedParent->GetID() : scene::EntityID{};
 
-    // 旧階層を破棄 (delay=0 → 次フレーム末尾削除)
-    scene::GameObject::Destroy(*go, 0.0f);
+    // 旧階層を「即時」破棄する。
+    // WHY: 旧実装は GameObject::Destroy(*go, 0.0f) で破棄を破棄キューへ積んでいたが、実際の
+    //      削除は次フレーム末尾まで遅延する。その間に直後の Instantiate が走ると旧階層がまだ
+    //      生存しており、新インスタンスが UniqueName で "Xxx (1)" に押し出され、シーンに重複が
+    //      残ってしまう。DestroyGameObject は DestroyImmediate 経由で子孫ごと同フレーム内に
+    //      消すため、名前も元に戻り重複も生じない。
+    scene.DestroyGameObject(rootEntity);
 
-    // 再インスタンス化
-    if (!Instantiate(scene, diskPath, outNewRoots) || outNewRoots.empty())
+    // 再インスタンス化 (keepOverrides があれば展開時に差分を当て直す)
+    if (!Instantiate(scene, diskPath, outNewRoots, keepOverrides) || outNewRoots.empty())
         return false;
 
-    // 先頭ルートに旧 Transform を復元する。
+    // 先頭ルートに旧 Transform / 親を復元する。
     // WHY: 複数ルートを持つプレファブは稀で、複数ある場合は先頭のみ位置を合わせる。
     if (auto* newGo = scene.GetGameObject(outNewRoots.front())) {
         newGo->transform = savedTransform;
-        if (savedParent) newGo->SetParent(*savedParent);
+        if (savedParentId.IsValid()) {
+            if (auto* parent = scene.GetGameObject(savedParentId))
+                newGo->SetParent(*parent);
+        }
     }
 
     return true;
+}
+
+int PrefabSerializer::CountInstances(scene::Scene& scene,
+                                     const std::string& prefabAssetPath)
+{
+    if (prefabAssetPath.empty()) return 0;
+
+    int count = 0;
+    for (const auto& go : scene.GameObjects()) {
+        if (!SamePrefabPath(go.prefabAssetPath, prefabAssetPath)) continue;
+        if (HasSamePrefabAncestor(go, prefabAssetPath)) continue;
+        ++count;
+    }
+    return count;
+}
+
+int PrefabSerializer::PropagateToInstances(scene::Scene& scene,
+                                           const std::string& prefabAssetPath,
+                                           scene::EntityID exceptRoot,
+                                           const std::string& projectRoot,
+                                           bool preserveOverrides)
+{
+    if (prefabAssetPath.empty()) return 0;
+
+    // WHY: Revert は GO を破棄して作り直すため EntityID が無効になる。走査中に
+    //      作り直すとイテレータも壊れるので、先に GUID だけを集めてから処理する。
+    //      GUID はシーン内で安定しており、他インスタンスの Revert では変化しない。
+    std::vector<std::string> targetGuids;
+    for (const auto& go : scene.GameObjects()) {
+        if (!SamePrefabPath(go.prefabAssetPath, prefabAssetPath)) continue;
+        if (HasSamePrefabAncestor(go, prefabAssetPath)) continue;
+        if (exceptRoot.IsValid() && go.GetID() == exceptRoot) continue;
+        if (go.instanceId.empty()) continue;
+        targetGuids.push_back(go.instanceId);
+    }
+
+    int updated = 0;
+    for (const std::string& guid : targetGuids) {
+        scene::GameObject* instance = scene.FindByGuid(guid);
+        if (!instance) continue;   // 先行する Revert で入れ子ごと作り直された等
+
+        std::vector<scene::EntityID> newRoots;
+        const bool ok = preserveOverrides
+            ? RefreshInstanceKeepingOverrides(scene, instance->GetID(), newRoots, projectRoot)
+            : Revert(scene, instance->GetID(), newRoots, projectRoot);
+        if (ok) ++updated;
+    }
+    return updated;
 }
 
 } // namespace fbzz::editor

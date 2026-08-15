@@ -65,7 +65,21 @@ struct ScriptDllAbiInfo {
 //      並びを変えたのに DLL が再ビルドされていないと、署名が一致したまま vtable がズレてクラッシュする。
 //      IReflector の仮想関数を追加・削除・並べ替えたら必ずこの値をインクリメントすること。
 //      これにより stale な DLL は署名不一致で安全に拒否される (Missing Script 表示、クラッシュしない)。
-constexpr uint64_t kReflectionAbiVersion = 2;
+// 履歴:
+//   3: BeginObject / EndObject / BeginObjectList / BeginObjectElement /
+//      EndObjectElement / EndObjectList を IReflector 末尾へ追加
+//      (入れ子オブジェクトと構造体配列のリフレクション対応)
+constexpr uint64_t kReflectionAbiVersion = 3;
+
+// Script 仮想関数テーブルの世代。
+// WHY: kReflectionAbiVersion と同じ問題が Script 本体にもある。OnUpdate / OnCollisionEnter /
+//      Reflect などはすべて vtable インデックスで呼ばれるが、仮想関数を途中に挿入しても
+//      sizeof(Script) は変わらないため、既存の署名では stale な DLL を検出できない。
+//      Script の仮想関数を追加・削除・並べ替えたら必ずこの値をインクリメントすること。
+// 履歴:
+//   1: 初版 (この定数の導入時点の並び)
+//   2: OnAnimationEvent の直後へ OnAnimatorMove を追加 (Root Motion の同期コールバック)
+constexpr uint64_t kScriptVtableAbiVersion = 2;
 
 [[nodiscard]] constexpr ScriptDllAbiInfo GetScriptDllAbiInfo()
 {
@@ -106,7 +120,8 @@ constexpr uint64_t kReflectionAbiVersion = 2;
     mix(info.buildConfiguration);
     mix(info.pointerSize);
     mix(info.dynamicRuntime);
-    mix(kReflectionAbiVersion);  // IReflector vtable レイアウトの世代を署名へ反映
+    mix(kReflectionAbiVersion);     // IReflector vtable レイアウトの世代を署名へ反映
+    mix(kScriptVtableAbiVersion);   // Script vtable レイアウトの世代を署名へ反映
     info.signature = sig;
 
     return info;

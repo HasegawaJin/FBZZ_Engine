@@ -5,7 +5,9 @@
 
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/PrefabRef.hpp>
+#include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <cstddef>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -62,6 +64,38 @@ struct ScriptSceneProxy {
                             std::function<void(GameObject&)> init) const;
     GameObject* Instantiate(const std::string& prefabPath,
                             std::function<void(GameObject&)> init) const;
+
+    // ── オブジェクトプール ────────────────────────────────────────────────
+    // Instantiate / Destroy の代わりに使う「借りて返す」版。
+    // 弾・ヒットエフェクト・ダメージ数字のように高頻度で出し入れするものは必ずこちら。
+    //
+    // WHY: Instantiate は .prefab のファイル読み込みから TOML 再構築、シーン全体の
+    //      参照張り直しまで走る重い経路で、しかも GameObject 配列を再確保するため
+    //      既存の GameObject* が無効化される。Spawn は 2 回目以降その経路を通らない。
+    //
+    //   auto* bullet = scene.Spawn(m_bulletPrefab, muzzlePos, muzzleRot);
+    //   ...
+    //   scene.Despawn(*bullet);      // Destroy ではなくこちらで返す
+    GameObject* Spawn(const PrefabRef& prefab,
+                      const math::Vector3& position,
+                      const math::Quaternion& rotation) const;
+    GameObject* Spawn(const std::string& prefabPath,
+                      const math::Vector3& position,
+                      const math::Quaternion& rotation) const;
+    // 自身の現在位置・回転で出す簡易版。
+    GameObject* Spawn(const PrefabRef& prefab) const;
+
+    // プールへ返す。プレファブ由来でない GO は false を返すので、
+    // その場合は Destroy へフォールバックすること。
+    bool Despawn(GameObject& gameObject) const;
+    // 自分自身を返す (弾スクリプトが寿命切れで自分を仕舞う用途)。
+    bool DespawnSelf() const;
+
+    // ロード画面などで事前生成しておく。戻り値は実際に作れた数。
+    int Prewarm(const PrefabRef& prefab, int count) const;
+    int Prewarm(const std::string& prefabPath, int count) const;
+    // 待機中の数 (チューニング用)。
+    [[nodiscard]] size_t PooledCount(const std::string& prefabPath) const;
 };
 
 } // namespace fbzz::scene

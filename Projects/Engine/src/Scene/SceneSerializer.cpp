@@ -5,6 +5,8 @@
 // ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
+#include <cstddef>
+#include <vector>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -209,11 +211,20 @@ toml::table SerializeCollider(const ColliderComponent& col)
     colTbl.insert("center",    Vec3ToArr(col.center));
     colTbl.insert("isTrigger", col.isTrigger);
 
+    // 共有 .physmat への参照。EncodeGuidRefs がドキュメント全体を走査して
+    // guid 形式へ変換するため、ここでは素のパス文字列を入れるだけでよい。
+    colTbl.insert("physicsMaterial", col.physicsMaterialPath);
+
+    // WHY 参照がある場合も値を書くか: .physmat が失われたときのフォールバック。
+    //     参照が解決できないと物理挙動が黙って既定値へ落ちるより、最後に解決できた
+    //     値を保っている方が壊れ方として穏やか。
     toml::table matTbl;
     matTbl.insert("restitution",      (double)col.material.restitution);
     matTbl.insert("staticFriction",   (double)col.material.staticFriction);
     matTbl.insert("dynamicFriction",  (double)col.material.dynamicFriction);
     matTbl.insert("density",          (double)col.material.density);
+    matTbl.insert("restitutionCombine", (int64_t)col.material.restitutionCombine);
+    matTbl.insert("frictionCombine",    (int64_t)col.material.frictionCombine);
     colTbl.insert("material", std::move(matTbl));
 
     if (col.collider) {
@@ -240,18 +251,65 @@ toml::table SerializeCollider(const ColliderComponent& col)
     return colTbl;
 }
 
+// MaterialComponent を TOML から復元する。
+// WHY: LoadScene と AppendObjects の 2 経路が同じ表を読むため、
+//      スロット配列の読み取りを 1 か所に集約して差異が生まれないようにする。
+MaterialComponent ReadMaterialComponent(const toml::table& matTbl)
+{
+    MaterialComponent mc{};
+    mc.enabled      = matTbl["enabled"].value_or(true);
+    mc.visible      = matTbl["visible"].value_or(true);
+    mc.materialPath = matTbl["material"].value_or(std::string{});
+    if (!mc.materialPath.empty())
+        mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
+
+    // submesh 1 以降のスロット (無い場合は単一マテリアルのオブジェクト)。
+    if (const auto* slotArr = matTbl["slots"].as_array()) {
+        mc.extraSlots.reserve(slotArr->size());
+        for (const auto& node : *slotArr) {
+            const auto* slotTbl = node.as_table();
+            if (!slotTbl) continue;
+            MaterialSlot slot{};
+            slot.materialPath = (*slotTbl)["material"].value_or(std::string{});
+            slot.visible      = (*slotTbl)["visible"].value_or(true);
+            if (!slot.materialPath.empty())
+                slot.materialAsset = asset::AssetManager::LoadMaterial(slot.materialPath);
+            mc.extraSlots.push_back(std::move(slot));
+        }
+    }
+    return mc;
+}
+
 void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
 {
     col.enabled   = colTbl["enabled"].value_or(true);
     col.center    = ArrToVec3(colTbl["center"].as_array(), math::Vector3::ZERO);
     col.isTrigger = colTbl["isTrigger"].value_or(false);
 
+    col.physicsMaterialPath = colTbl["physicsMaterial"].value_or(std::string{});
+
     if (auto* matTbl = colTbl["material"].as_table()) {
         col.material.restitution     = (float)(*matTbl)["restitution"].value_or(0.3);
         col.material.staticFriction  = (float)(*matTbl)["staticFriction"].value_or(0.6);
         col.material.dynamicFriction = (float)(*matTbl)["dynamicFriction"].value_or(0.4);
         col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
+
+        // 既定は選択制にする前の固定規則 (反発 = Minimum / 摩擦 = GeometricMean)。
+        // これにより合成規則を持たない既存シーンの挙動が変わらない。
+        const auto restitutionCombine = (*matTbl)["restitutionCombine"].value_or(
+            (int64_t)physics::PhysicsMaterialCombine::Minimum);
+        const auto frictionCombine = (*matTbl)["frictionCombine"].value_or(
+            (int64_t)physics::PhysicsMaterialCombine::GeometricMean);
+        col.material.restitutionCombine =
+            static_cast<physics::PhysicsMaterialCombine>(restitutionCombine);
+        col.material.frictionCombine =
+            static_cast<physics::PhysicsMaterialCombine>(frictionCombine);
     }
+
+    // 参照があるなら、この時点で共有アセットの値へ解決しておく。
+    // WHY ここでも解決するか: PhysicsSystem は Play 中しか回らない。エディタで
+    //     シーンを開いた直後の Inspector 表示を正しい値にするために、ロード時にも 1 回通す。
+    col.ResolvePhysicsMaterial();
 }
 
 void ReadAabbCollider(const toml::table& colTbl, AabbColliderComponent& col)
@@ -418,82 +476,244 @@ static input::KeyCode KeyCodeFromString(const std::string& s)
     return KC::SPACE;
 }
 
+std::string TomlTableToString(const toml::table& table);
+toml::table TomlTableFromString(const std::string& text);
+
+// 書き込み先をスタックで持つ。
+// WHY スタックが要るか: BeginObject / BeginObjectElement は「現在の書き込み先」を
+//      一時的に子テーブルへ差し替える。ネストは任意の深さになりうるため、
+//      復帰先を LIFO で覚えておく必要がある。
 class TomlWriteReflector : public IReflector {
 public:
-    explicit TomlWriteReflector(toml::table& table) : m_table(table) {}
+    explicit TomlWriteReflector(toml::table& table) { m_stack.push_back(&table); }
 
-    void Field(const char* name, float& v) override { m_table.insert(name, (double)v); }
-    void Field(const char* name, int& v) override { m_table.insert(name, (int64_t)v); }
-    void Field(const char* name, bool& v) override { m_table.insert(name, v); }
-    void Field(const char* name, math::Vector2& v) override { m_table.insert(name, Vec2ToArr(v)); }
-    void Field(const char* name, math::Vector3& v) override { m_table.insert(name, Vec3ToArr(v)); }
-    void Field(const char* name, math::Vector4& v) override { m_table.insert(name, Vec4ToArr(v)); }
-    void Field(const char* name, std::string& v) override { m_table.insert(name, v); }
-    void Field(const char* name, math::Quaternion& v) override { m_table.insert(name, QuatToArr(v)); }
+    void Field(const char* name, float& v) override { Current().insert(PersistentKey(name), (double)v); }
+    void Field(const char* name, int& v) override { Current().insert(PersistentKey(name), (int64_t)v); }
+    void Field(const char* name, bool& v) override { Current().insert(PersistentKey(name), v); }
+    void Field(const char* name, math::Vector2& v) override { Current().insert(PersistentKey(name), Vec2ToArr(v)); }
+    void Field(const char* name, math::Vector3& v) override { Current().insert(PersistentKey(name), Vec3ToArr(v)); }
+    void Field(const char* name, math::Vector4& v) override { Current().insert(PersistentKey(name), Vec4ToArr(v)); }
+    void Field(const char* name, std::string& v) override { Current().insert(PersistentKey(name), v); }
+    void Field(const char* name, math::Quaternion& v) override { Current().insert(PersistentKey(name), QuatToArr(v)); }
     void Field(const char* name, EntityID& v) override
     {
         toml::array arr;
         arr.push_back((int64_t)v.index);
         arr.push_back((int64_t)v.generation);
-        m_table.insert(name, std::move(arr));
+        Current().insert(PersistentKey(name), std::move(arr));
     }
     void Field(const char* name, input::KeyCode& v) override
     {
-        m_table.insert(name, std::string(KeyCodeToString(v)));
+        Current().insert(PersistentKey(name), std::string(KeyCodeToString(v)));
+    }
+    void AssetField(const char* name,
+                    ScriptAssetReference& v,
+                    ScriptAssetType) override
+    {
+        if (v.guid.empty() && !v.path.empty())
+            v.SetPath(v.path);
+        toml::table assetRef;
+        assetRef.insert("guid", v.guid);
+        assetRef.insert("path", v.path);
+        Current().insert(PersistentKey(name), std::move(assetRef));
+    }
+    void ListField(const char* name, std::vector<float>& values) override
+    {
+        toml::array array;
+        for (const float value : values) array.push_back(static_cast<double>(value));
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void ListField(const char* name, std::vector<int>& values) override
+    {
+        toml::array array;
+        for (const int value : values) array.push_back(static_cast<int64_t>(value));
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void ListField(const char* name, std::vector<bool>& values) override
+    {
+        toml::array array;
+        for (const bool value : values) array.push_back(value);
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void ListField(const char* name, std::vector<std::string>& values) override
+    {
+        toml::array array;
+        for (const auto& value : values) array.push_back(value);
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void ListField(const char* name, std::vector<math::Vector2>& values) override
+    {
+        toml::array array;
+        for (const auto& value : values) array.push_back(Vec2ToArr(value));
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void ListField(const char* name, std::vector<math::Vector3>& values) override
+    {
+        toml::array array;
+        for (const auto& value : values) array.push_back(Vec3ToArr(value));
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void ListField(const char* name, std::vector<math::Vector4>& values) override
+    {
+        toml::array array;
+        for (const auto& value : values) array.push_back(Vec4ToArr(value));
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void ListField(const char* name, std::vector<EntityRef>& values) override
+    {
+        toml::array array;
+        for (const auto& value : values) {
+            toml::array entity;
+            entity.push_back(static_cast<int64_t>(value.id.index));
+            entity.push_back(static_cast<int64_t>(value.id.generation));
+            array.push_back(std::move(entity));
+        }
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    void AssetListField(const char* name,
+                        std::vector<ScriptAssetReference>& values,
+                        ScriptAssetType) override
+    {
+        toml::array array;
+        for (auto& value : values) {
+            if (value.guid.empty() && !value.path.empty())
+                value.SetPath(value.path);
+            toml::table assetRef;
+            assetRef.insert("guid", value.guid);
+            assetRef.insert("path", value.path);
+            array.push_back(std::move(assetRef));
+        }
+        Current().insert(PersistentKey(name), std::move(array));
+    }
+    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    // WHY override を消したか: 従来は子リフレクタを作って入れ子テーブルを組んでいたが、
+    //      BeginObject / EndObject が同じことを行うため、二重実装になる。
+    //      一本化することで「入れ子の作り方」が 1 箇所に集約される。
+
+    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
+    void BeginObject(const char* name) override
+    {
+        // 親へ空テーブルを先に挿入し、その実体を書き込み先として積む。
+        // WHY 先に挿入するか: 構築し終えてから move で挿入する方式だと、
+        //      構築中に子のアドレスを保持できずスタックに積めない。
+        auto [iterator, inserted] =
+            Current().insert_or_assign(PersistentKey(name), toml::table{});
+        toml::table* child = iterator->second.as_table();
+        m_stack.push_back(child ? child : &Current());
+    }
+
+    void EndObject() override
+    {
+        // ルート (最初の 1 枚) は決して pop しない。
+        if (m_stack.size() > 1) m_stack.pop_back();
+    }
+
+    // ── 構造体配列 ───────────────────────────────────────────────────────────
+    std::size_t BeginObjectList(const char* name, std::size_t count) override
+    {
+        auto [iterator, inserted] =
+            Current().insert_or_assign(PersistentKey(name), toml::array{});
+        m_listStack.push_back(iterator->second.as_array());
+        return count;   // 書き込みは要素数を変えない
+    }
+
+    void BeginObjectElement(std::size_t index) override
+    {
+        (void)index;
+        toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
+        if (!array) { m_stack.push_back(&Current()); return; }
+
+        array->push_back(toml::table{});
+        toml::table* element = array->back().as_table();
+        m_stack.push_back(element ? element : &Current());
+    }
+
+    void EndObjectElement() override { EndObject(); }
+
+    std::size_t EndObjectList() override
+    {
+        if (!m_listStack.empty()) m_listStack.pop_back();
+        return NO_REMOVE;   // 永続化は要素を削除しない
+    }
+
+    void ReferenceField(const char* name, ScriptSerializedReference& value) override
+    {
+        toml::table reference;
+        reference.insert("type", value.type);
+        toml::table fields;
+        if (value.value) {
+            TomlWriteReflector child(fields);
+            value.value->Reflect(child);
+            value.preservedFieldsToml = TomlTableToString(fields);
+        } else if (!value.preservedFieldsToml.empty()) {
+            fields = TomlTableFromString(value.preservedFieldsToml);
+        }
+        reference.insert("fields", std::move(fields));
+        Current().insert(PersistentKey(name), std::move(reference));
     }
 
 private:
-    toml::table& m_table;
+    toml::table& Current() { return *m_stack.back(); }
+
+    std::vector<toml::table*> m_stack;
+    std::vector<toml::array*> m_listStack;
 };
 
+// 読み込み元をスタックで持つ。書き込み側と対称。
+// 対応するテーブルが存在しない入れ子は nullptr を積み、中のフィールドは
+// 既定値のまま残す (部分的に古いシーンでも壊れない)。
 class TomlReadReflector : public IReflector {
 public:
-    explicit TomlReadReflector(const toml::table& table) : m_table(table) {}
+    explicit TomlReadReflector(const toml::table& table) { m_stack.push_back(&table); }
 
     void Field(const char* name, float& v) override
     {
-        v = (float)m_table[name].value_or((double)v);
+        if (const toml::node* node = FindNode(name))
+            v = static_cast<float>(node->value_or(static_cast<double>(v)));
     }
 
     void Field(const char* name, int& v) override
     {
-        v = (int)m_table[name].value_or((int64_t)v);
+        if (const toml::node* node = FindNode(name))
+            v = static_cast<int>(node->value_or(static_cast<int64_t>(v)));
     }
 
     void Field(const char* name, bool& v) override
     {
-        v = m_table[name].value_or(v);
+        if (const toml::node* node = FindNode(name))
+            v = node->value_or(v);
     }
 
     void Field(const char* name, math::Vector3& v) override
     {
-        v = ArrToVec3(m_table[name].as_array(), v);
+        v = ArrToVec3(FindArray(name), v);
     }
 
     void Field(const char* name, math::Vector2& v) override
     {
-        v = ArrToVec2(m_table[name].as_array(), v);
+        v = ArrToVec2(FindArray(name), v);
     }
 
     void Field(const char* name, math::Vector4& v) override
     {
-        v = ArrToVec4(m_table[name].as_array(), v);
+        v = ArrToVec4(FindArray(name), v);
     }
 
     void Field(const char* name, std::string& v) override
     {
-        v = m_table[name].value_or(v);
+        if (const toml::node* node = FindNode(name))
+            v = node->value_or(v);
     }
 
     void Field(const char* name, math::Quaternion& v) override
     {
-        if (auto* arr = m_table[name].as_array())
+        if (const auto* arr = FindArray(name))
             v = ArrToQuat(arr);
     }
 
     void Field(const char* name, EntityID& v) override
     {
-        if (auto* arr = m_table[name].as_array(); arr && arr->size() == 2) {
+        if (const auto* arr = FindArray(name); arr && arr->size() == 2) {
             v.index      = (uint32_t)arr->at(0).value_or((int64_t)EntityID::INVALID_INDEX);
             v.generation = (uint32_t)arr->at(1).value_or(0LL);
         }
@@ -501,12 +721,198 @@ public:
 
     void Field(const char* name, input::KeyCode& v) override
     {
-        const std::string s = m_table[name].value_or(std::string{});
+        const toml::node* node = FindNode(name);
+        const std::string s = node ? node->value_or(std::string{}) : std::string{};
         if (!s.empty()) v = KeyCodeFromString(s);
+    }
+    void AssetField(const char* name,
+                    ScriptAssetReference& v,
+                    ScriptAssetType) override
+    {
+        const toml::node* node = FindNode(name);
+        if (!node) return;
+        if (const toml::table* assetRef = node->as_table()) {
+            v.guid = (*assetRef)["guid"].value_or(std::string{});
+            v.path = (*assetRef)["path"].value_or(std::string{});
+        }
+    }
+    void ListField(const char* name, std::vector<float>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(static_cast<float>(node.value_or(0.0)));
+    }
+    void ListField(const char* name, std::vector<int>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(static_cast<int>(node.value_or(int64_t{0})));
+    }
+    void ListField(const char* name, std::vector<bool>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(node.value_or(false));
+    }
+    void ListField(const char* name, std::vector<std::string>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(node.value_or(std::string{}));
+    }
+    void ListField(const char* name, std::vector<math::Vector2>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(ArrToVec2(node.as_array(), {}));
+    }
+    void ListField(const char* name, std::vector<math::Vector3>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(ArrToVec3(node.as_array(), {}));
+    }
+    void ListField(const char* name, std::vector<math::Vector4>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(ArrToVec4(node.as_array(), {}));
+    }
+    void ListField(const char* name, std::vector<EntityRef>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array) {
+            EntityRef value;
+            if (const toml::array* entity = node.as_array(); entity && entity->size() >= 2) {
+                value.id.index = static_cast<uint32_t>(
+                    entity->at(0).value_or(static_cast<int64_t>(EntityID::INVALID_INDEX)));
+                value.id.generation = static_cast<uint32_t>(
+                    entity->at(1).value_or(int64_t{0}));
+            }
+            values.push_back(value);
+        }
+    }
+    void AssetListField(const char* name,
+                        std::vector<ScriptAssetReference>& values,
+                        ScriptAssetType) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array) {
+            ScriptAssetReference value;
+            if (const toml::table* assetRef = node.as_table()) {
+                value.guid = (*assetRef)["guid"].value_or(std::string{});
+                value.path = (*assetRef)["path"].value_or(std::string{});
+            }
+            values.push_back(std::move(value));
+        }
+    }
+    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+
+    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
+    void BeginObject(const char* name) override
+    {
+        const toml::node* node = FindNode(name);
+        // 見つからなければ nullptr を積む。以降の Field は読み込み元が無いため
+        // 何もせず、呼び出し側の既定値がそのまま残る (欠損スコープ)。
+        // WHY 早期 return しないか: スコープ対は必ず EndObject と釣り合う必要がある。
+        //      積まずに抜けると EndObject でスタックが破綻する。
+        m_stack.push_back(node ? node->as_table() : nullptr);
+    }
+
+    void EndObject() override
+    {
+        if (m_stack.size() > 1) m_stack.pop_back();
+    }
+
+    // ── 構造体配列 ───────────────────────────────────────────────────────────
+    std::size_t BeginObjectList(const char* name, std::size_t count) override
+    {
+        (void)count;
+        const toml::array* array = FindArray(name);
+        m_listStack.push_back(array);
+        // 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
+        // 配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
+        return array ? array->size() : 0u;
+    }
+
+    void BeginObjectElement(std::size_t index) override
+    {
+        const toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
+        if (!array || index >= array->size()) { m_stack.push_back(nullptr); return; }
+        m_stack.push_back(array->at(index).as_table());
+    }
+
+    void EndObjectElement() override { EndObject(); }
+
+    std::size_t EndObjectList() override
+    {
+        if (!m_listStack.empty()) m_listStack.pop_back();
+        return NO_REMOVE;
+    }
+
+    void ReferenceField(const char* name, ScriptSerializedReference& value) override
+    {
+        const toml::node* node = FindNode(name);
+        const toml::table* reference = node ? node->as_table() : nullptr;
+        if (!reference) return;
+        value.type = (*reference)["type"].value_or(std::string{});
+        const toml::table* fields = (*reference)["fields"].as_table();
+        value.preservedFieldsToml = fields ? TomlTableToString(*fields) : std::string{};
+        value.value = ScriptSerializableFactory::Create(value.type);
+        if (value.value && fields) {
+            TomlReadReflector child(*fields);
+            value.value->Reflect(child);
+        }
     }
 
 private:
-    const toml::table& m_table;
+    [[nodiscard]] const toml::table* Current() const { return m_stack.back(); }
+
+    [[nodiscard]] const toml::node* FindNode(const char* fallback) const
+    {
+        const toml::table* table = Current();
+        if (!table) return nullptr;   // 欠損スコープの内側
+
+        if (const toml::node* node = table->get(PersistentKey(fallback)))
+            return node;
+        return nullptr;
+    }
+
+    [[nodiscard]] const toml::array* FindArray(const char* fallback) const
+    {
+        const toml::node* node = FindNode(fallback);
+        return node ? node->as_array() : nullptr;
+    }
+
+    std::vector<const toml::table*> m_stack;
+    std::vector<const toml::array*> m_listStack;
 };
 
 // RegistryでAutomatic指定された標準コンポーネントをReflect()だけで保存する。
@@ -673,10 +1079,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
     toml::array goArr;
 
     for (auto& go : scene.GameObjects()) {
-        // WHY: "__" プレフィックスはランタイム専用 GO の規約 (FoliageBakeSystem / WaterSplash 等)。
-        //      これらはシステムが needsBake 時に再生成するため、永続化すると
-        //      ロード時にゾンビ GO が蓄積し childEntities と不整合を起こす。
-        if (go.name.size() >= 2 && go.name[0] == '_' && go.name[1] == '_') continue;
+        // ランタイム専用 GO は永続化しない。システムが needsBake 時などに再生成するため、
+        // 保存するとロード時にゾンビ GO が蓄積し childEntities と不整合を起こす。
+        if (go.runtimeGenerated) continue;
 
         toml::table goTbl;
         goTbl.insert("name",            go.name);
@@ -685,6 +1090,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         goTbl.insert("layer",           (int64_t)go.layer);
         goTbl.insert("active",          go.activeSelf());
         goTbl.insert("prefabAssetPath", go.prefabAssetPath);
+        goTbl.insert("prefabSourceId",  go.prefabSourceId);
         if (auto* parent = go.GetParent()) {
             goTbl.insert("parent", parent->name);
             goTbl.insert("parentInstanceId", parent->instanceId);
@@ -708,8 +1114,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             if (mr->mesh && mr->meshPath.empty())
                 FBZZ_LOG_WARN("SceneSerializer: MeshRenderer '%s' has mesh but no meshPath; it cannot be restored", go.name.c_str());
             toml::table mrTbl;
-            mrTbl.insert("mesh",    mr->meshPath);
-            mrTbl.insert("enabled", mr->enabled);
+            mrTbl.insert("mesh",        mr->meshPath);
+            mrTbl.insert("enabled",     mr->enabled);
+            mrTbl.insert("castShadows", mr->castShadows);
             goTbl.insert("MeshRenderer", std::move(mrTbl));
         }
 
@@ -718,6 +1125,21 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table matTbl;
             matTbl.insert("material", mc->materialPath);
             matTbl.insert("enabled",  mc->enabled);
+            matTbl.insert("visible",  mc->visible);
+            // submesh 1 以降のマテリアルスロット。
+            // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体になったため、
+            //      submesh ごとの .mat 割り当てはここに並ぶ。単一マテリアルの
+            //      オブジェクトでは空配列を書かず、既存シーンの diff を増やさない。
+            if (!mc->extraSlots.empty()) {
+                toml::array slotArr;
+                for (const auto& slot : mc->extraSlots) {
+                    toml::table slotTbl;
+                    slotTbl.insert("material", slot.materialPath);
+                    slotTbl.insert("visible",  slot.visible);
+                    slotArr.push_back(std::move(slotTbl));
+                }
+                matTbl.insert("slots", std::move(slotArr));
+            }
             goTbl.insert("MaterialComponent", std::move(matTbl));
         }
 
@@ -822,6 +1244,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table rpcTbl;
             rpcTbl.insert("enabled",         rpc->enabled);
             rpcTbl.insert("cubemapPath",     rpc->cubemapPath);
+            rpcTbl.insert("captureMode",     (int64_t)static_cast<uint8_t>(rpc->captureMode));
+            rpcTbl.insert("captureResolution",(int64_t)rpc->captureResolution);
+            rpcTbl.insert("updateInterval",  (double)rpc->updateInterval);
             rpcTbl.insert("influenceRadius", (double)rpc->influenceRadius);
             rpcTbl.insert("intensity",       (double)rpc->intensity);
             rpcTbl.insert("boxInfluence",    rpc->boxInfluence);
@@ -841,45 +1266,19 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("AtmosphericScatteringComponent", std::move(ascAtmTbl));
         }
 
-        // PostProcessVolumeComponent — pp サブテーブルに PostProcessSettings を直列化する。
+        // PostProcessVolumeComponent — ルック本体は .fzdata プロファイル側にあるため、
+        // シーンにはボリュームの掛かり方 (参照・領域・優先度) だけを保存する。
         if (auto* ppvc = go.GetComponent<PostProcessVolumeComponent>()) {
             toml::table ppvcTbl;
             ppvcTbl.insert("enabled",         ppvc->enabled);
+            // プロファイル参照は "Assets/..." パス文字列で保存する。
+            // 保存直前に GuidRefCodec が guid: へ変換するため、リネーム耐性が付く。
+            ppvcTbl.insert("profile",         ppvc->profile.ref.path);
             ppvcTbl.insert("isGlobal",        ppvc->isGlobal);
+            ppvcTbl.insert("priority",        (int64_t)ppvc->priority);
             ppvcTbl.insert("blendWeight",     (double)ppvc->blendWeight);
             ppvcTbl.insert("influenceRadius", (double)ppvc->influenceRadius);
-
-            const auto& pp = ppvc->settings;
-            toml::table ppTbl;
-            ppTbl.insert("fxaaEnabled", pp.fxaaEnabled);
-            ppTbl.insert("exposure",    (double)pp.exposure);
-            ppTbl.insert("screenFadeAlpha", (double)pp.screenFadeAlpha);
-            ppTbl.insert("screenFadeColor", Vec3ToArr({pp.screenFadeColor[0], pp.screenFadeColor[1], pp.screenFadeColor[2]}));
-
-            // Bloom
-            { toml::table t; t.insert("enabled", pp.bloom.enabled); t.insert("intensity", (double)pp.bloom.intensity); t.insert("threshold", (double)pp.bloom.threshold); t.insert("softKnee", (double)pp.bloom.softKnee); ppTbl.insert("bloom", std::move(t)); }
-            // AmbientOcclusion
-            { toml::table t; t.insert("enabled", pp.ambientOcclusion.enabled); t.insert("intensity", (double)pp.ambientOcclusion.intensity); ppTbl.insert("ao", std::move(t)); }
-            // Fog
-            { toml::table t; t.insert("enabled", pp.fog.enabled); t.insert("density", (double)pp.fog.density); t.insert("farDistance", (double)pp.fog.farDistance); t.insert("color", Vec3ToArr({pp.fog.color[0], pp.fog.color[1], pp.fog.color[2]})); ppTbl.insert("fog", std::move(t)); }
-            // ColorGrading
-            { toml::table t; t.insert("enabled", pp.colorGrading.enabled); t.insert("contrast", (double)pp.colorGrading.contrast); t.insert("saturation", (double)pp.colorGrading.saturation); t.insert("hueShift", (double)pp.colorGrading.hueShift); t.insert("temperature", (double)pp.colorGrading.temperature); t.insert("tint", (double)pp.colorGrading.tint); ppTbl.insert("colorGrading", std::move(t)); }
-            // Vignette
-            { toml::table t; t.insert("enabled", pp.vignette.enabled); t.insert("intensity", (double)pp.vignette.intensity); t.insert("smoothness", (double)pp.vignette.smoothness); t.insert("roundness", (double)pp.vignette.roundness); t.insert("color", Vec3ToArr({pp.vignette.color[0], pp.vignette.color[1], pp.vignette.color[2]})); ppTbl.insert("vignette", std::move(t)); }
-            // FilmGrain
-            { toml::table t; t.insert("enabled", pp.filmGrain.enabled); t.insert("intensity", (double)pp.filmGrain.intensity); t.insert("response", (double)pp.filmGrain.response); ppTbl.insert("filmGrain", std::move(t)); }
-            // Sharpen
-            { toml::table t; t.insert("enabled", pp.sharpen.enabled); t.insert("strength", (double)pp.sharpen.strength); t.insert("radius", (double)pp.sharpen.radius); ppTbl.insert("sharpen", std::move(t)); }
-            // DepthOfField
-            { toml::table t; t.insert("enabled", pp.depthOfField.enabled); t.insert("focusDistance", (double)pp.depthOfField.focusDistance); t.insert("focusRange", (double)pp.depthOfField.focusRange); t.insert("blurRadius", (double)pp.depthOfField.blurRadius); ppTbl.insert("dof", std::move(t)); }
-            // Lens
-            { toml::table t; t.insert("chromaticAberrationEnabled", pp.lens.chromaticAberrationEnabled); t.insert("distortionEnabled", pp.lens.distortionEnabled); t.insert("chromaticAberration", (double)pp.lens.chromaticAberration); t.insert("distortion", (double)pp.lens.distortion); ppTbl.insert("lens", std::move(t)); }
-            // Stylized
-            { toml::table t; t.insert("sepiaEnabled", pp.stylized.sepiaEnabled); t.insert("invertEnabled", pp.stylized.invertEnabled); t.insert("posterizeEnabled", pp.stylized.posterizeEnabled); t.insert("pixelateEnabled", pp.stylized.pixelateEnabled); t.insert("sepiaIntensity", (double)pp.stylized.sepiaIntensity); t.insert("invertIntensity", (double)pp.stylized.invertIntensity); t.insert("posterizeLevels", (double)pp.stylized.posterizeLevels); t.insert("pixelSize", (double)pp.stylized.pixelSize); ppTbl.insert("stylized", std::move(t)); }
-            // ImageQuality
-            { toml::table t; t.insert("clarityEnabled", pp.imageQuality.clarityEnabled); t.insert("shadowHighlightEnabled", pp.imageQuality.shadowHighlightEnabled); t.insert("colorFilterEnabled", pp.imageQuality.colorFilterEnabled); t.insert("clarityStrength", (double)pp.imageQuality.clarityStrength); t.insert("clarityRadius", (double)pp.imageQuality.clarityRadius); t.insert("shadowLift", (double)pp.imageQuality.shadowLift); t.insert("highlightCompression", (double)pp.imageQuality.highlightCompression); t.insert("colorFilter", Vec3ToArr({pp.imageQuality.colorFilter[0], pp.imageQuality.colorFilter[1], pp.imageQuality.colorFilter[2]})); t.insert("colorFilterIntensity", (double)pp.imageQuality.colorFilterIntensity); ppTbl.insert("imageQuality", std::move(t)); }
-
-            ppvcTbl.insert("pp", std::move(ppTbl));
+            ppvcTbl.insert("blendDistance",   (double)ppvc->blendDistance);
             goTbl.insert("PostProcessVolumeComponent", std::move(ppvcTbl));
         }
 
@@ -916,7 +1315,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
             peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
             peTbl.insert("materialPath",   pe->materialPath);
-            peTbl.insert("texturePath",    pe->texturePath);
             peTbl.insert("spriteColumns",  (int64_t)pe->spriteColumns);
             peTbl.insert("spriteRows",     (int64_t)pe->spriteRows);
             peTbl.insert("spriteStartFrame", (int64_t)pe->spriteStartFrame);
@@ -1039,7 +1437,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("attachOffset",       Vec3ToArr(trail->attachOffset));
             trailTbl.insert("clearOnDisable",     trail->clearOnDisable);
             trailTbl.insert("materialPath",       trail->materialPath);
-            trailTbl.insert("texturePath",        trail->texturePath);
             trailTbl.insert("uvMode",             (int64_t)static_cast<int>(trail->uvMode));
             trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
             trailTbl.insert("uvTiling",           (double)trail->uvTiling);
@@ -1059,7 +1456,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("doubleSided",    trail->doubleSided);
             trailTbl.insert("clearOnDisable", trail->clearOnDisable);
             trailTbl.insert("materialPath",   trail->materialPath);
-            trailTbl.insert("texturePath",    trail->texturePath);
             toml::array excludedMeshIndices;
             for (int meshIndex : trail->excludedMeshIndices)
                 excludedMeshIndices.push_back((int64_t)meshIndex);
@@ -1130,6 +1526,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             auto& body = *rb->rigidBody;
             toml::table rbTbl;
             rbTbl.insert("enabled",                rb->enabled);
+            // 質量の決め方。未記載の既存シーンは Manual として読まれる (従来どおり)。
+            rbTbl.insert("massMode",               (int64_t)rb->massMode);
             rbTbl.insert("mass",                   (double)body.GetMass());
             rbTbl.insert("isStatic",               body.m_isStatic);
             rbTbl.insert("velocity",               Vec3ToArr(body.GetVelocity()));
@@ -1256,9 +1654,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // SkinnedMeshRenderer
         if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
             toml::table smrTbl;
-            smrTbl.insert("enabled",   smr->enabled);
-            smrTbl.insert("modelPath", smr->modelPath);
-            smrTbl.insert("meshIndex", (int64_t)smr->meshIndex);
+            smrTbl.insert("enabled",     smr->enabled);
+            smrTbl.insert("castShadows", smr->castShadows);
+            smrTbl.insert("modelPath",   smr->modelPath);
+            // NOTE: 旧 "meshIndex" は書き出さない。submesh の担当は
+            //       MaterialComponent のスロット (visible) で表現する。
             goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
         }
 
@@ -1288,17 +1688,24 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // AnimatorComponent
         if (auto* anim = go.GetComponent<AnimatorComponent>()) {
             toml::table animTbl;
-            animTbl.insert("clipName",  anim->clipName);
-            animTbl.insert("clipIndex", (int64_t)anim->clipIndex);
-            animTbl.insert("time",      (double)anim->time);
             animTbl.insert("speed",     (double)anim->speed);
             animTbl.insert("enabled",   anim->enabled);
-            animTbl.insert("loop",      anim->loop);
             animTbl.insert("playing",   anim->playing);
+            // ── Root Motion ───────────────────────────────────────────────
+            animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
+            animTbl.insert("rootMotionSource",   (int64_t)anim->rootMotion.source);
+            animTbl.insert("rootMotionPoseMode", (int64_t)anim->rootMotion.poseMode);
+            animTbl.insert("rootMotionNodeName", anim->rootMotion.nodeName);
+            animTbl.insert("rootMotionTarget",   anim->rootMotion.targetPath);
+            animTbl.insert("rootMotionApplyXZ",  (int64_t)anim->rootMotion.applyXZ);
+            animTbl.insert("rootMotionApplyY",   (int64_t)anim->rootMotion.applyY);
+            animTbl.insert("rootMotionApplyRotation",
+                           (int64_t)anim->rootMotion.applyRotation);
+            animTbl.insert("rootMotionPositionScale",
+                           (double)anim->rootMotion.positionScale);
+            animTbl.insert("rootMotionRotationScale",
+                           (double)anim->rootMotion.rotationScale);
             animTbl.insert("controllerPath", anim->controllerPath);
-            toml::array srcArr;
-            for (const auto& s : anim->clipSources) srcArr.push_back(s);
-            animTbl.insert("clipSources", std::move(srcArr));
 
             animTbl.insert("defaultStateName", anim->defaultStateName);
 
@@ -1411,6 +1818,43 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 paramsArr.push_back(std::move(pTbl));
             }
             animTbl.insert("parameters", std::move(paramsArr));
+
+            toml::array layersArr;
+            for (const auto& layer : anim->layers) {
+                toml::table layerTbl;
+                layerTbl.insert("name", layer.name);
+                layerTbl.insert("weight", (double)layer.weight);
+                layerTbl.insert("mode", (int64_t)layer.mode);
+                layerTbl.insert("enabled", layer.enabled);
+                // .mask アセット参照と加算基準ポーズ。
+                // NOTE: レイヤー独自ステートマシン (layer.states) はここには保存しない。
+                // WHY: シーンはインスタンス配置を持つ場所で、遷移グラフの置き場は
+                //      .animcontroller。両方に持たせると同じグラフの二重管理になる。
+                layerTbl.insert("maskPath", layer.mask.path);
+                toml::table additiveRef;
+                additiveRef.insert("sourcePath", layer.additiveReference.sourcePath);
+                additiveRef.insert("clipName", layer.additiveReference.clipName);
+                additiveRef.insert("time", (double)layer.additiveReference.time);
+                layerTbl.insert("additiveReference", std::move(additiveRef));
+                toml::array mappings;
+                for (const auto& mapping : layer.retargetMappings) {
+                    toml::table mappingTbl;
+                    mappingTbl.insert("sourcePath", mapping.sourcePath);
+                    mappingTbl.insert("targetPath", mapping.targetPath);
+                    mappingTbl.insert("translationScale", (double)mapping.translationScale);
+                    toml::array rotation;
+                    rotation.push_back((double)mapping.rotationOffset.x);
+                    rotation.push_back((double)mapping.rotationOffset.y);
+                    rotation.push_back((double)mapping.rotationOffset.z);
+                    rotation.push_back((double)mapping.rotationOffset.w);
+                    mappingTbl.insert("rotationOffset", std::move(rotation));
+                    mappings.push_back(std::move(mappingTbl));
+                }
+                layerTbl.insert("retargetMappings", std::move(mappings));
+                layersArr.push_back(std::move(layerTbl));
+            }
+            animTbl.insert("layers", std::move(layersArr));
+            animTbl.insert("baseLayerMaskPath", anim->baseLayerMask.path);
 
             goTbl.insert("AnimatorComponent", std::move(animTbl));
         }
@@ -1728,12 +2172,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 toml::table fieldsTbl;
                 if (entry.script) {
                     entry.script->SetContext(&scene, &go);
+                    entry.script->OnBeforeSerialize();
                     TomlWriteReflector reflector(fieldsTbl);
                     entry.script->Reflect(reflector);
                     const std::string type = entry.script->GetTypeName();
                     const bool enabled = entry.script->enabled;
                     if (!entry.serialized)
-                        entry.serialized = std::shared_ptr<SerializedScriptData>(new SerializedScriptData());
+                        entry.serialized = std::make_shared<SerializedScriptData>();
                     entry.serialized->type = type;
                     entry.serialized->enabled = enabled;
                     entry.serialized->fieldsToml = TomlTableToString(fieldsTbl);
@@ -1795,6 +2240,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr) return scene;
+    std::vector<Script*> pendingDeserializedScripts;
 
     // ------------------------------------------------------------------
     // Pass 1: GameObject 生成 + Component アタッチ
@@ -1821,6 +2267,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             if (!id.empty()) go.instanceId = std::move(id);
         }
         go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
+        go.prefabSourceId  = (*goTbl)["prefabSourceId"].value_or(std::string{});
 
         // Transform
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
@@ -1839,6 +2286,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             MeshRenderer mr{};
             mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
             mr.enabled  = (*mrTbl)["enabled"].value_or(true);
+            // 既存シーンにキーが無い場合は true (従来どおり全メッシュが影を落とす)。
+            mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
 
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, resources);
@@ -1849,15 +2298,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         }
 
         // MaterialComponent
-        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
-            MaterialComponent mc{};
-            mc.enabled      = (*matTbl)["enabled"].value_or(true);
-            mc.materialPath = (*matTbl)["material"].value_or(std::string{});
-
-            if (!mc.materialPath.empty())
-                mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
-            go.AddComponent<MaterialComponent>(std::move(mc));
-        }
+        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
+            go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
 
         // DecalComponent
         if (auto* decalTbl = (*goTbl)["DecalComponent"].as_table()) {
@@ -1968,6 +2410,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             ReflectionProbeComponent rpc{};
             rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
             rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
+            rpc.captureMode     = static_cast<ReflectionProbeCaptureMode>(
+                static_cast<uint8_t>((*rpcTbl)["captureMode"].value_or((int64_t)0)));
+            rpc.captureResolution = static_cast<uint32_t>((*rpcTbl)["captureResolution"].value_or((int64_t)128));
+            rpc.updateInterval  = (float)(*rpcTbl)["updateInterval"].value_or(1.0);
             rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
             rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
             rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
@@ -1991,106 +2437,16 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
             PostProcessVolumeComponent ppvc{};
             ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
+            // 旧シーンが持っていた pp サブテーブル (インライン設定) は読み飛ばす。
+            // WHY 黙って捨てるか: ルック設定の所有者はプロファイル 1 本に統一した。
+            //     ここで読み戻せる先が既に存在しないため、キーが残っていても
+            //     どこにも反映されない。プロファイル未アサインのボリュームは無効扱い。
+            ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
             ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
+            ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
             ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
             ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
-            if (auto* ppTbl = (*ppvcTbl)["pp"].as_table()) {
-                auto& pp = ppvc.settings;
-                pp.fxaaEnabled   = (*ppTbl)["fxaaEnabled"].value_or(pp.fxaaEnabled);
-                pp.exposure      = (float)(*ppTbl)["exposure"].value_or((double)pp.exposure);
-                pp.screenFadeAlpha = (float)(*ppTbl)["screenFadeAlpha"].value_or(0.0);
-                if (auto* sfcArr = (*ppTbl)["screenFadeColor"].as_array(); sfcArr && sfcArr->size() >= 3) {
-                    pp.screenFadeColor[0] = (float)(*sfcArr)[0].value_or(0.0);
-                    pp.screenFadeColor[1] = (float)(*sfcArr)[1].value_or(0.0);
-                    pp.screenFadeColor[2] = (float)(*sfcArr)[2].value_or(0.0);
-                }
-                if (auto* t = (*ppTbl)["bloom"].as_table()) {
-                    pp.bloom.enabled   = (*t)["enabled"].value_or(pp.bloom.enabled);
-                    pp.bloom.intensity = (float)(*t)["intensity"].value_or((double)pp.bloom.intensity);
-                    pp.bloom.threshold = (float)(*t)["threshold"].value_or((double)pp.bloom.threshold);
-                    pp.bloom.softKnee  = (float)(*t)["softKnee"].value_or((double)pp.bloom.softKnee);
-                }
-                if (auto* t = (*ppTbl)["ao"].as_table()) {
-                    pp.ambientOcclusion.enabled   = (*t)["enabled"].value_or(pp.ambientOcclusion.enabled);
-                    pp.ambientOcclusion.intensity = (float)(*t)["intensity"].value_or((double)pp.ambientOcclusion.intensity);
-                }
-                if (auto* t = (*ppTbl)["fog"].as_table()) {
-                    pp.fog.enabled     = (*t)["enabled"].value_or(pp.fog.enabled);
-                    pp.fog.density     = (float)(*t)["density"].value_or((double)pp.fog.density);
-                    pp.fog.farDistance = (float)(*t)["farDistance"].value_or((double)pp.fog.farDistance);
-                    if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) {
-                        pp.fog.color[0] = (float)(*arr)[0].value_or(0.0);
-                        pp.fog.color[1] = (float)(*arr)[1].value_or(0.0);
-                        pp.fog.color[2] = (float)(*arr)[2].value_or(0.0);
-                    }
-                }
-                if (auto* t = (*ppTbl)["colorGrading"].as_table()) {
-                    pp.colorGrading.enabled     = (*t)["enabled"].value_or(pp.colorGrading.enabled);
-                    pp.colorGrading.contrast    = (float)(*t)["contrast"].value_or((double)pp.colorGrading.contrast);
-                    pp.colorGrading.saturation  = (float)(*t)["saturation"].value_or((double)pp.colorGrading.saturation);
-                    pp.colorGrading.hueShift    = (float)(*t)["hueShift"].value_or((double)pp.colorGrading.hueShift);
-                    pp.colorGrading.temperature = (float)(*t)["temperature"].value_or((double)pp.colorGrading.temperature);
-                    pp.colorGrading.tint        = (float)(*t)["tint"].value_or((double)pp.colorGrading.tint);
-                }
-                if (auto* t = (*ppTbl)["vignette"].as_table()) {
-                    pp.vignette.enabled    = (*t)["enabled"].value_or(pp.vignette.enabled);
-                    pp.vignette.intensity  = (float)(*t)["intensity"].value_or((double)pp.vignette.intensity);
-                    pp.vignette.smoothness = (float)(*t)["smoothness"].value_or((double)pp.vignette.smoothness);
-                    pp.vignette.roundness  = (float)(*t)["roundness"].value_or((double)pp.vignette.roundness);
-                    if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) {
-                        pp.vignette.color[0] = (float)(*arr)[0].value_or(0.0);
-                        pp.vignette.color[1] = (float)(*arr)[1].value_or(0.0);
-                        pp.vignette.color[2] = (float)(*arr)[2].value_or(0.0);
-                    }
-                }
-                if (auto* t = (*ppTbl)["filmGrain"].as_table()) {
-                    pp.filmGrain.enabled   = (*t)["enabled"].value_or(pp.filmGrain.enabled);
-                    pp.filmGrain.intensity = (float)(*t)["intensity"].value_or((double)pp.filmGrain.intensity);
-                    pp.filmGrain.response  = (float)(*t)["response"].value_or((double)pp.filmGrain.response);
-                }
-                if (auto* t = (*ppTbl)["sharpen"].as_table()) {
-                    pp.sharpen.enabled  = (*t)["enabled"].value_or(pp.sharpen.enabled);
-                    pp.sharpen.strength = (float)(*t)["strength"].value_or((double)pp.sharpen.strength);
-                    pp.sharpen.radius   = (float)(*t)["radius"].value_or((double)pp.sharpen.radius);
-                }
-                if (auto* t = (*ppTbl)["dof"].as_table()) {
-                    pp.depthOfField.enabled       = (*t)["enabled"].value_or(pp.depthOfField.enabled);
-                    pp.depthOfField.focusDistance = (float)(*t)["focusDistance"].value_or((double)pp.depthOfField.focusDistance);
-                    pp.depthOfField.focusRange    = (float)(*t)["focusRange"].value_or((double)pp.depthOfField.focusRange);
-                    pp.depthOfField.blurRadius    = (float)(*t)["blurRadius"].value_or((double)pp.depthOfField.blurRadius);
-                }
-                if (auto* t = (*ppTbl)["lens"].as_table()) {
-                    pp.lens.chromaticAberrationEnabled = (*t)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled);
-                    pp.lens.distortionEnabled          = (*t)["distortionEnabled"].value_or(pp.lens.distortionEnabled);
-                    pp.lens.chromaticAberration        = (float)(*t)["chromaticAberration"].value_or((double)pp.lens.chromaticAberration);
-                    pp.lens.distortion                 = (float)(*t)["distortion"].value_or((double)pp.lens.distortion);
-                }
-                if (auto* t = (*ppTbl)["stylized"].as_table()) {
-                    pp.stylized.sepiaEnabled     = (*t)["sepiaEnabled"].value_or(pp.stylized.sepiaEnabled);
-                    pp.stylized.invertEnabled    = (*t)["invertEnabled"].value_or(pp.stylized.invertEnabled);
-                    pp.stylized.posterizeEnabled = (*t)["posterizeEnabled"].value_or(pp.stylized.posterizeEnabled);
-                    pp.stylized.pixelateEnabled  = (*t)["pixelateEnabled"].value_or(pp.stylized.pixelateEnabled);
-                    pp.stylized.sepiaIntensity   = (float)(*t)["sepiaIntensity"].value_or((double)pp.stylized.sepiaIntensity);
-                    pp.stylized.invertIntensity  = (float)(*t)["invertIntensity"].value_or((double)pp.stylized.invertIntensity);
-                    pp.stylized.posterizeLevels  = (float)(*t)["posterizeLevels"].value_or((double)pp.stylized.posterizeLevels);
-                    pp.stylized.pixelSize        = (float)(*t)["pixelSize"].value_or((double)pp.stylized.pixelSize);
-                }
-                if (auto* t = (*ppTbl)["imageQuality"].as_table()) {
-                    pp.imageQuality.clarityEnabled         = (*t)["clarityEnabled"].value_or(pp.imageQuality.clarityEnabled);
-                    pp.imageQuality.shadowHighlightEnabled = (*t)["shadowHighlightEnabled"].value_or(pp.imageQuality.shadowHighlightEnabled);
-                    pp.imageQuality.colorFilterEnabled     = (*t)["colorFilterEnabled"].value_or(pp.imageQuality.colorFilterEnabled);
-                    pp.imageQuality.clarityStrength        = (float)(*t)["clarityStrength"].value_or((double)pp.imageQuality.clarityStrength);
-                    pp.imageQuality.clarityRadius          = (float)(*t)["clarityRadius"].value_or((double)pp.imageQuality.clarityRadius);
-                    pp.imageQuality.shadowLift             = (float)(*t)["shadowLift"].value_or((double)pp.imageQuality.shadowLift);
-                    pp.imageQuality.highlightCompression   = (float)(*t)["highlightCompression"].value_or((double)pp.imageQuality.highlightCompression);
-                    if (auto* arr = (*t)["colorFilter"].as_array(); arr && arr->size() >= 3) {
-                        pp.imageQuality.colorFilter[0] = (float)(*arr)[0].value_or(1.0);
-                        pp.imageQuality.colorFilter[1] = (float)(*arr)[1].value_or(1.0);
-                        pp.imageQuality.colorFilter[2] = (float)(*arr)[2].value_or(1.0);
-                    }
-                    pp.imageQuality.colorFilterIntensity = (float)(*t)["colorFilterIntensity"].value_or((double)pp.imageQuality.colorFilterIntensity);
-                }
-            }
+            ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
             go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
         }
 
@@ -2141,7 +2497,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
             pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
             pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
@@ -2282,7 +2637,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.attachOffset   = ArrToVec3((*trailTbl)["attachOffset"].as_array(), math::Vector3::ZERO);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
             trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             int uvMode = (int)(*trailTbl)["uvMode"].value_or((int64_t)0);
             uvMode = uvMode < 0 ? 0 : (uvMode > 1 ? 1 : uvMode);
             trail.uvMode         = static_cast<TrailUVMode>(uvMode);
@@ -2306,7 +2660,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
             trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             if (const auto* excludedArr = (*trailTbl)["excludedMeshIndices"].as_array()) {
                 for (const auto& node : *excludedArr) {
                     const int meshIndex = (int)node.value_or((int64_t)-1);
@@ -2363,6 +2716,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            rb.massMode = static_cast<MassMode>(
+                (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
             if (!rb.rigidBody)
                 rb.rigidBody = std::make_unique<physics::RigidBody>();
 
@@ -2499,9 +2854,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // SkinnedMeshRenderer
         if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
             SkinnedMeshRenderer smr{};
-            smr.enabled   = (*smrTbl)["enabled"].value_or(true);
-            smr.modelPath = (*smrTbl)["modelPath"].value_or(std::string{});
-            smr.meshIndex = (int)(*smrTbl)["meshIndex"].value_or((int64_t)-1);
+            smr.enabled     = (*smrTbl)["enabled"].value_or(true);
+            smr.castShadows = (*smrTbl)["castShadows"].value_or(true);
+            smr.modelPath   = (*smrTbl)["modelPath"].value_or(std::string{});
             if (!smr.modelPath.empty()) {
                 smr.model = asset::AssetManager::LoadModel(smr.modelPath);
                 if (!smr.model)
@@ -2523,20 +2878,38 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // AnimatorComponent
         if (auto* animTbl = (*goTbl)["AnimatorComponent"].as_table()) {
             AnimatorComponent anim{};
-            anim.clipName  = (*animTbl)["clipName"].value_or(std::string{});
-            anim.clipIndex = (int)(*animTbl)["clipIndex"].value_or((int64_t)0);
-            anim.time      = (float)(*animTbl)["time"].value_or(0.0);
             anim.speed     = (float)(*animTbl)["speed"].value_or(1.0);
             anim.enabled   = (*animTbl)["enabled"].value_or(true);
-            anim.loop      = (*animTbl)["loop"].value_or(true);
             anim.playing   = (*animTbl)["playing"].value_or(true);
+
+            // ── Root Motion ───────────────────────────────────────────────
+            const auto readEnum = [&animTbl](const char* key, int fallback) {
+                return (int)(*animTbl)[key].value_or((int64_t)fallback);
+            };
+            anim.rootMotion.mode = (RootMotionMode)readEnum(
+                "rootMotionMode",
+                (int)RootMotionMode::None);
+            anim.rootMotion.source = (RootMotionSource)readEnum(
+                "rootMotionSource", (int)RootMotionSource::ClipDefined);
+            anim.rootMotion.poseMode = (RootMotionPoseMode)readEnum(
+                "rootMotionPoseMode", (int)RootMotionPoseMode::Strip);
+            anim.rootMotion.nodeName =
+                (*animTbl)["rootMotionNodeName"].value_or(std::string{});
+            anim.rootMotion.targetPath =
+                (*animTbl)["rootMotionTarget"].value_or(std::string{});
+            anim.rootMotion.applyXZ = (RootMotionAxisOverride)readEnum(
+                "rootMotionApplyXZ", (int)RootMotionAxisOverride::UseClip);
+            anim.rootMotion.applyY = (RootMotionAxisOverride)readEnum(
+                "rootMotionApplyY", (int)RootMotionAxisOverride::UseClip);
+            anim.rootMotion.applyRotation = (RootMotionAxisOverride)readEnum(
+                "rootMotionApplyRotation", (int)RootMotionAxisOverride::UseClip);
+            anim.rootMotion.positionScale =
+                (float)(*animTbl)["rootMotionPositionScale"].value_or(1.0);
+            anim.rootMotion.rotationScale =
+                (float)(*animTbl)["rootMotionRotationScale"].value_or(1.0);
+
             anim.controllerPath =
                 (*animTbl)["controllerPath"].value_or(std::string{});
-            if (const auto* srcArr = (*animTbl)["clipSources"].as_array()) {
-                for (const auto& elem : *srcArr)
-                    if (auto s = elem.value<std::string>())
-                        anim.clipSources.push_back(*s);
-            }
 
             anim.defaultStateName = (*animTbl)["defaultStateName"].value_or(std::string{});
 
@@ -2626,27 +2999,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         readMotions((*blend2DTbl)["motions"].as_array(),
                                     st.blendTree2D.motions);
                     }
-                    auto migrateSource = [&anim](std::string& sourcePath, int clipIndex) {
-                        if (!sourcePath.empty() || anim.clipSources.empty()) return;
-                        int remainingIndex = clipIndex;
-                        for (const auto& legacySource : anim.clipSources) {
-                            const auto model =
-                                asset::AssetManager::LoadModel(legacySource);
-                            if (!model) continue;
-                            const int clipCount =
-                                static_cast<int>(model->clips.size());
-                            if (remainingIndex >= 0 && remainingIndex < clipCount) {
-                                sourcePath = legacySource;
-                                return;
-                            }
-                            remainingIndex -= clipCount;
-                        }
-                    };
-                    migrateSource(st.sourcePath, st.clipIndex);
-                    for (auto& motion : st.blendTree1D.motions)
-                        migrateSource(motion.sourcePath, motion.clipIndex);
-                    for (auto& motion : st.blendTree2D.motions)
-                        migrateSource(motion.sourcePath, motion.clipIndex);
                     anim.states.push_back(std::move(st));
                 }
             }
@@ -2694,7 +3046,54 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     anim.parameters.push_back(std::move(p));
                 }
             }
+            if (const auto* layersArr = (*animTbl)["layers"].as_array()) {
+                for (const auto& layerElem : *layersArr) {
+                    const auto* layerTbl = layerElem.as_table();
+                    if (!layerTbl) continue;
+                    AnimationLayer layer{};
+                    layer.name = (*layerTbl)["name"].value_or(std::string{"Layer"});
+                    layer.weight = (float)(*layerTbl)["weight"].value_or(1.0);
+                    layer.mode = (AnimationLayerMode)(*layerTbl)["mode"].value_or((int64_t)0);
+                    layer.enabled = (*layerTbl)["enabled"].value_or(true);
+                    layer.mask.path = (*layerTbl)["maskPath"].value_or(std::string{});
+                    if (const auto* additiveRef = (*layerTbl)["additiveReference"].as_table()) {
+                        layer.additiveReference.sourcePath =
+                            (*additiveRef)["sourcePath"].value_or(std::string{});
+                        layer.additiveReference.clipName =
+                            (*additiveRef)["clipName"].value_or(std::string{});
+                        layer.additiveReference.time =
+                            (float)(*additiveRef)["time"].value_or(0.0);
+                    }
+                    if (const auto* mappings = (*layerTbl)["retargetMappings"].as_array()) {
+                        for (const auto& mappingElem : *mappings) {
+                            const auto* mappingTbl = mappingElem.as_table();
+                            if (!mappingTbl) continue;
+                            RetargetBoneMapping mapping{};
+                            mapping.sourcePath =
+                                (*mappingTbl)["sourcePath"].value_or(std::string{});
+                            mapping.targetPath =
+                                (*mappingTbl)["targetPath"].value_or(std::string{});
+                            mapping.translationScale =
+                                (float)(*mappingTbl)["translationScale"].value_or(1.0);
+                            if (const auto* rotation =
+                                    (*mappingTbl)["rotationOffset"].as_array();
+                                rotation && rotation->size() >= 4) {
+                                mapping.rotationOffset = {
+                                    (float)(*rotation)[0].value_or(0.0),
+                                    (float)(*rotation)[1].value_or(0.0),
+                                    (float)(*rotation)[2].value_or(0.0),
+                                    (float)(*rotation)[3].value_or(1.0)
+                                };
+                            }
+                            layer.retargetMappings.push_back(std::move(mapping));
+                        }
+                    }
+                    anim.layers.push_back(std::move(layer));
+                }
+            }
 
+            anim.baseLayerMask.path =
+                (*animTbl)["baseLayerMaskPath"].value_or(std::string{});
             go.AddComponent<AnimatorComponent>(std::move(anim));
         }
 
@@ -2957,13 +3356,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<WaterComponent>(std::move(water));
         }
 
-        // NavMeshSurfaceComponent — 新キー優先、旧 NavMeshVolumeComponent キーは後方互換読み込み。
-        // collectObjects=0 は旧 AllSceneObjects → 新 ThisObject と同じ整数値なので自動移行される。
+        // NavMeshSurfaceComponent
         // navMesh は Bake で再生成するため needsBake=true で登録し非保存。
         {
             const toml::table* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table();
-            // 旧シーンファイル互換: キーが NavMeshVolumeComponent のまま保存されている場合
-            if (!surfTbl) surfTbl = (*goTbl)["NavMeshVolumeComponent"].as_table();
             if (surfTbl) {
                 NavMeshSurfaceComponent surface{};
                 surface.enabled          = (*surfTbl)["enabled"].value_or(true);
@@ -2979,7 +3375,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             }
         }
 
-        // NavMeshModifierComponent — 旧 NavMeshObstacleComponent キーは後方互換で NotWalkable として読む。
+        // NavMeshModifierComponent
         {
             const toml::table* modTbl = (*goTbl)["NavMeshModifierComponent"].as_table();
             if (modTbl) {
@@ -2987,11 +3383,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 modifier.enabled = (*modTbl)["enabled"].value_or(true);
                 modifier.mode    = static_cast<NavMeshModifierMode>(
                     static_cast<uint8_t>((*modTbl)["mode"].value_or(int64_t{0})));
-                go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
-            } else if (auto* obsTbl = (*goTbl)["NavMeshObstacleComponent"].as_table()) {
-                NavMeshModifierComponent modifier{};
-                modifier.enabled = (*obsTbl)["enabled"].value_or(true);
-                modifier.mode    = NavMeshModifierMode::NotWalkable;
                 go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
             }
         }
@@ -3059,18 +3450,20 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             }
 
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::shared_ptr<SerializedScriptData>(new SerializedScriptData());
+            entry.serialized = std::make_shared<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
 
             auto script = ScriptFactory::Create(type);
             if (script) {
+                script->SetContext(scene.get(), &go);
                 script->enabled = enabled;
                 if (auto* fieldsTbl = scTbl["fields"].as_table()) {
                     TomlReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
+                pendingDeserializedScripts.push_back(script.get());
                 entry.script = std::move(script);
             } else {
                 // DLL 再ビルド待ちでも serialized data は保持されるため、起動時の通常経路では警告にしない。
@@ -3175,6 +3568,17 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* tgc = go.GetComponent<TerrainGridComponent>())
             tgc->ResolveFromScene(*scene);
     }
+    // GameObject配列の再配置後に非所有contextを張り直し、callback内の自己参照を安定させる。
+    for (auto& gameObject : scene->GameObjects()) {
+        if (auto* scripts = gameObject.GetComponent<ScriptComponent>()) {
+            for (auto& entry : scripts->scripts)
+                if (entry.script) entry.script->SetContext(scene.get(), &gameObject);
+        }
+    }
+    for (Script* script : pendingDeserializedScripts) {
+        script->OnAfterDeserialize();
+        script->OnValidate();
+    }
 
     return scene;
 }
@@ -3188,6 +3592,13 @@ bool SceneSerializer::LoadInPlace(
     auto newScene = Load(path, resources);
     if (!newScene) return false;
     scene = std::move(*newScene);
+    // Scene object自体をmoveしたため、Scriptが保持する非所有contextを移動先へ張り直す。
+    for (auto& gameObject : scene.GameObjects()) {
+        if (auto* scripts = gameObject.GetComponent<ScriptComponent>()) {
+            for (auto& entry : scripts->scripts)
+                if (entry.script) entry.script->SetContext(&scene, &gameObject);
+        }
+    }
     return true;
 }
 
@@ -3214,6 +3625,7 @@ bool SceneSerializer::AppendObjects(
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr || goArr->empty()) return false;
+    std::vector<Script*> pendingDeserializedScripts;
 
     // ------------------------------------------------------------------
     // Pass 1: GameObject 生成 + Component アタッチ
@@ -3235,6 +3647,7 @@ bool SceneSerializer::AppendObjects(
             if (!id.empty()) go.instanceId = std::move(id);
         }
         go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
+        go.prefabSourceId  = (*goTbl)["prefabSourceId"].value_or(std::string{});
 
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
             auto& t = go.transform;
@@ -3251,6 +3664,7 @@ bool SceneSerializer::AppendObjects(
             MeshRenderer mr{};
             mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
             mr.enabled  = (*mrTbl)["enabled"].value_or(true);
+            mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, resources);
                 if (!mr.mesh)
@@ -3259,14 +3673,8 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<MeshRenderer>(std::move(mr));
         }
 
-        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
-            MaterialComponent mc{};
-            mc.enabled      = (*matTbl)["enabled"].value_or(true);
-            mc.materialPath = (*matTbl)["material"].value_or(std::string{});
-            if (!mc.materialPath.empty())
-                mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
-            go.AddComponent<MaterialComponent>(std::move(mc));
-        }
+        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
+            go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
 
         if (auto* lcTbl = (*goTbl)["LightComponent"].as_table()) {
             LightComponent lc{};
@@ -3302,6 +3710,10 @@ bool SceneSerializer::AppendObjects(
             ReflectionProbeComponent rpc{};
             rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
             rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
+            rpc.captureMode     = static_cast<ReflectionProbeCaptureMode>(
+                static_cast<uint8_t>((*rpcTbl)["captureMode"].value_or((int64_t)0)));
+            rpc.captureResolution = static_cast<uint32_t>((*rpcTbl)["captureResolution"].value_or((int64_t)128));
+            rpc.updateInterval  = (float)(*rpcTbl)["updateInterval"].value_or(1.0);
             rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
             rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
             rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
@@ -3325,31 +3737,16 @@ bool SceneSerializer::AppendObjects(
         if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
             PostProcessVolumeComponent ppvc{};
             ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
+            // 旧シーンが持っていた pp サブテーブル (インライン設定) は読み飛ばす。
+            // WHY 黙って捨てるか: ルック設定の所有者はプロファイル 1 本に統一した。
+            //     ここで読み戻せる先が既に存在しないため、キーが残っていても
+            //     どこにも反映されない。プロファイル未アサインのボリュームは無効扱い。
+            ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
             ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
+            ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
             ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
             ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
-            if (auto* ppTbl = (*ppvcTbl)["pp"].as_table()) {
-                auto& pp = ppvc.settings;
-                pp.fxaaEnabled    = (*ppTbl)["fxaaEnabled"].value_or(pp.fxaaEnabled);
-                pp.exposure       = (float)(*ppTbl)["exposure"].value_or((double)pp.exposure);
-                pp.screenFadeAlpha = (float)(*ppTbl)["screenFadeAlpha"].value_or(0.0);
-                if (auto* sfcArr = (*ppTbl)["screenFadeColor"].as_array(); sfcArr && sfcArr->size() >= 3) {
-                    pp.screenFadeColor[0] = (float)(*sfcArr)[0].value_or(0.0);
-                    pp.screenFadeColor[1] = (float)(*sfcArr)[1].value_or(0.0);
-                    pp.screenFadeColor[2] = (float)(*sfcArr)[2].value_or(0.0);
-                }
-                if (auto* t = (*ppTbl)["bloom"].as_table()) { pp.bloom.enabled = (*t)["enabled"].value_or(pp.bloom.enabled); pp.bloom.intensity = (float)(*t)["intensity"].value_or((double)pp.bloom.intensity); pp.bloom.threshold = (float)(*t)["threshold"].value_or((double)pp.bloom.threshold); pp.bloom.softKnee = (float)(*t)["softKnee"].value_or((double)pp.bloom.softKnee); }
-                if (auto* t = (*ppTbl)["ao"].as_table())    { pp.ambientOcclusion.enabled = (*t)["enabled"].value_or(pp.ambientOcclusion.enabled); pp.ambientOcclusion.intensity = (float)(*t)["intensity"].value_or((double)pp.ambientOcclusion.intensity); }
-                if (auto* t = (*ppTbl)["fog"].as_table())   { pp.fog.enabled = (*t)["enabled"].value_or(pp.fog.enabled); pp.fog.density = (float)(*t)["density"].value_or((double)pp.fog.density); pp.fog.farDistance = (float)(*t)["farDistance"].value_or((double)pp.fog.farDistance); if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) { pp.fog.color[0] = (float)(*arr)[0].value_or(0.0); pp.fog.color[1] = (float)(*arr)[1].value_or(0.0); pp.fog.color[2] = (float)(*arr)[2].value_or(0.0); } }
-                if (auto* t = (*ppTbl)["colorGrading"].as_table()) { pp.colorGrading.enabled = (*t)["enabled"].value_or(pp.colorGrading.enabled); pp.colorGrading.contrast = (float)(*t)["contrast"].value_or((double)pp.colorGrading.contrast); pp.colorGrading.saturation = (float)(*t)["saturation"].value_or((double)pp.colorGrading.saturation); pp.colorGrading.hueShift = (float)(*t)["hueShift"].value_or((double)pp.colorGrading.hueShift); pp.colorGrading.temperature = (float)(*t)["temperature"].value_or((double)pp.colorGrading.temperature); pp.colorGrading.tint = (float)(*t)["tint"].value_or((double)pp.colorGrading.tint); }
-                if (auto* t = (*ppTbl)["vignette"].as_table()) { pp.vignette.enabled = (*t)["enabled"].value_or(pp.vignette.enabled); pp.vignette.intensity = (float)(*t)["intensity"].value_or((double)pp.vignette.intensity); pp.vignette.smoothness = (float)(*t)["smoothness"].value_or((double)pp.vignette.smoothness); pp.vignette.roundness = (float)(*t)["roundness"].value_or((double)pp.vignette.roundness); if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) { pp.vignette.color[0] = (float)(*arr)[0].value_or(0.0); pp.vignette.color[1] = (float)(*arr)[1].value_or(0.0); pp.vignette.color[2] = (float)(*arr)[2].value_or(0.0); } }
-                if (auto* t = (*ppTbl)["filmGrain"].as_table())  { pp.filmGrain.enabled = (*t)["enabled"].value_or(pp.filmGrain.enabled); pp.filmGrain.intensity = (float)(*t)["intensity"].value_or((double)pp.filmGrain.intensity); pp.filmGrain.response = (float)(*t)["response"].value_or((double)pp.filmGrain.response); }
-                if (auto* t = (*ppTbl)["sharpen"].as_table())    { pp.sharpen.enabled = (*t)["enabled"].value_or(pp.sharpen.enabled); pp.sharpen.strength = (float)(*t)["strength"].value_or((double)pp.sharpen.strength); pp.sharpen.radius = (float)(*t)["radius"].value_or((double)pp.sharpen.radius); }
-                if (auto* t = (*ppTbl)["dof"].as_table())        { pp.depthOfField.enabled = (*t)["enabled"].value_or(pp.depthOfField.enabled); pp.depthOfField.focusDistance = (float)(*t)["focusDistance"].value_or((double)pp.depthOfField.focusDistance); pp.depthOfField.focusRange = (float)(*t)["focusRange"].value_or((double)pp.depthOfField.focusRange); pp.depthOfField.blurRadius = (float)(*t)["blurRadius"].value_or((double)pp.depthOfField.blurRadius); }
-                if (auto* t = (*ppTbl)["lens"].as_table())       { pp.lens.chromaticAberrationEnabled = (*t)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled); pp.lens.distortionEnabled = (*t)["distortionEnabled"].value_or(pp.lens.distortionEnabled); pp.lens.chromaticAberration = (float)(*t)["chromaticAberration"].value_or((double)pp.lens.chromaticAberration); pp.lens.distortion = (float)(*t)["distortion"].value_or((double)pp.lens.distortion); }
-                if (auto* t = (*ppTbl)["stylized"].as_table())   { pp.stylized.sepiaEnabled = (*t)["sepiaEnabled"].value_or(pp.stylized.sepiaEnabled); pp.stylized.invertEnabled = (*t)["invertEnabled"].value_or(pp.stylized.invertEnabled); pp.stylized.posterizeEnabled = (*t)["posterizeEnabled"].value_or(pp.stylized.posterizeEnabled); pp.stylized.pixelateEnabled = (*t)["pixelateEnabled"].value_or(pp.stylized.pixelateEnabled); pp.stylized.sepiaIntensity = (float)(*t)["sepiaIntensity"].value_or((double)pp.stylized.sepiaIntensity); pp.stylized.invertIntensity = (float)(*t)["invertIntensity"].value_or((double)pp.stylized.invertIntensity); pp.stylized.posterizeLevels = (float)(*t)["posterizeLevels"].value_or((double)pp.stylized.posterizeLevels); pp.stylized.pixelSize = (float)(*t)["pixelSize"].value_or((double)pp.stylized.pixelSize); }
-                if (auto* t = (*ppTbl)["imageQuality"].as_table()) { pp.imageQuality.clarityEnabled = (*t)["clarityEnabled"].value_or(pp.imageQuality.clarityEnabled); pp.imageQuality.shadowHighlightEnabled = (*t)["shadowHighlightEnabled"].value_or(pp.imageQuality.shadowHighlightEnabled); pp.imageQuality.colorFilterEnabled = (*t)["colorFilterEnabled"].value_or(pp.imageQuality.colorFilterEnabled); pp.imageQuality.clarityStrength = (float)(*t)["clarityStrength"].value_or((double)pp.imageQuality.clarityStrength); pp.imageQuality.clarityRadius = (float)(*t)["clarityRadius"].value_or((double)pp.imageQuality.clarityRadius); pp.imageQuality.shadowLift = (float)(*t)["shadowLift"].value_or((double)pp.imageQuality.shadowLift); pp.imageQuality.highlightCompression = (float)(*t)["highlightCompression"].value_or((double)pp.imageQuality.highlightCompression); if (auto* arr = (*t)["colorFilter"].as_array(); arr && arr->size() >= 3) { pp.imageQuality.colorFilter[0] = (float)(*arr)[0].value_or(1.0); pp.imageQuality.colorFilter[1] = (float)(*arr)[1].value_or(1.0); pp.imageQuality.colorFilter[2] = (float)(*arr)[2].value_or(1.0); } pp.imageQuality.colorFilterIntensity = (float)(*t)["colorFilterIntensity"].value_or((double)pp.imageQuality.colorFilterIntensity); }
-            }
+            ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
             go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
         }
 
@@ -3396,7 +3793,6 @@ bool SceneSerializer::AppendObjects(
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
             pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
             pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
@@ -3549,6 +3945,8 @@ bool SceneSerializer::AppendObjects(
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            rb.massMode = static_cast<MassMode>(
+                (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
             if (!rb.rigidBody) rb.rigidBody = std::make_unique<physics::RigidBody>();
             rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
             rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
@@ -3595,17 +3993,19 @@ bool SceneSerializer::AppendObjects(
             if (auto* fieldsTbl = scTbl["fields"].as_table())
                 preservedFieldsToml = TomlTableToString(*fieldsTbl);
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::shared_ptr<SerializedScriptData>(new SerializedScriptData());
+            entry.serialized = std::make_shared<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
             auto script = ScriptFactory::Create(type);
             if (script) {
+                script->SetContext(&scene, &go);
                 script->enabled = enabled;
                 if (auto* fieldsTbl = scTbl["fields"].as_table()) {
                     TomlReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
+                pendingDeserializedScripts.push_back(script.get());
                 entry.script = std::move(script);
             } else {
                 FBZZ_LOG_DEBUG("AppendObjects: script type pending registration '%s'", type.c_str());
@@ -3679,15 +4079,23 @@ bool SceneSerializer::AppendObjects(
         if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
+    for (Script* script : pendingDeserializedScripts) {
+        script->OnAfterDeserialize();
+        script->OnValidate();
+    }
 
     // root 収集
+    // WHY: instanceId(guid) で GO を引く。同じプレファブを複数配置すると同名ルートが
+    //      並ぶため、Find(name) では常に先頭の 1 体しか拾えず、2 体目以降のインスタンス化が
+    //      「root 無し」で失敗扱いになっていた。guid を正としてフォールバックのみ名前引きにする。
     for (const auto& item : *goArr) {
         const auto* tbl = item.as_table();
         if (!tbl) continue;
         if (!(*tbl)["parent"].value_or(std::string{}).empty()) continue;
-        const std::string name = (*tbl)["name"].value_or(std::string{});
-        if (auto* go = scene.Find(name))
-            outRoots.push_back(go->GetID());
+        const std::string guid = (*tbl)["instanceId"].value_or(std::string{});
+        GameObject* go = !guid.empty() ? scene.FindByGuid(guid) : nullptr;
+        if (!go) go = scene.Find((*tbl)["name"].value_or(std::string{}));
+        if (go) outRoots.push_back(go->GetID());
     }
     return !outRoots.empty();
 }

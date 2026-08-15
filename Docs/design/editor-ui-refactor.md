@@ -154,6 +154,12 @@ inline void SectionHeader(const char* label) {
 
 ### 3-A. ポストプロセス設定が 3 箇所に存在
 
+> **解決済み (Volume 一本化)**: ここでの修正案 (Quick Toggle への削減) より踏み込み、
+> ProjectSettings からポストプロセス / 高度グラフィクスの公開を **完全に撤去**した。
+> 所有者は `PostProcessVolume` + `PostProcessProfile` (.fzdata) の 1 経路だけになり、
+> Debug > Post Process メニューと ProjectSettings の Post Process セクションは削除済み。
+> 「同じ値を 3 箇所から編集できる」という問題自体が消えている。以下は当時の分析。
+
 同じ `ProjectSettings.render.postProcess` フィールドを 3 つの UI から編集できる。
 
 | 設定項目 | Debug > Post Process メニュー | ProjectSettings パネル | PostProcessVolume Inspector |

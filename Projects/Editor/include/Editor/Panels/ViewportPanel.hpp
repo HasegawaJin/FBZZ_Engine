@@ -5,10 +5,23 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <string>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/Entity.hpp>
 
 namespace fbzz::renderer { class IRenderer; class ResourceManager; }
 
 namespace fbzz::editor {
+
+// Scene View への .mat ドラッグ中プレビュー状態。
+// WHY: Unity と同じく「カーソルが乗ったオブジェクトへ即座に仮適用し、外れたら元へ戻す。
+//      左ボタンを離した位置で確定」という操作にするため、仮適用先と元の値を保持する。
+//      ドラッグがビューポート外へ出た / キャンセルされた場合も、この情報で必ず巻き戻す。
+struct MaterialDragPreviewState {
+    scene::EntityID target       = scene::EntityID::INVALID; // 仮適用中の GameObject
+    std::string     materialPath;                            // ドラッグ中の .mat
+    std::string     previousPath;                            // 仮適用前の materialPath
+    bool            hadComponent = false;                    // 仮適用前に MaterialComponent があったか
+    bool            applied      = false;                    // 現在どれかに仮適用中か
+};
 
 class ViewportPanel : public IPanel {
 public:
@@ -53,6 +66,9 @@ private:
     // Scene View の矩形 (ドラッグ) 選択状態
     bool   m_rectSelecting = false;
     ImVec2 m_rectStart = {};
+
+    // Scene View への .mat ドラッグ中プレビュー
+    MaterialDragPreviewState m_materialDrag;
 
     // 前フレームでビューポート上のオーバーレイ UI (ツールバー・ブックマーク等) を
     // ホバーしていたか。true の間はクリックピッキング / 矩形選択開始を抑制する。

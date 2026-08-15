@@ -92,6 +92,10 @@ void ParticleSimulationSystem::Update(SystemContext& ctx)
         emitter->emitThisFrame = canEmit;
 
         const math::Vector3 currentPosition = gameObject->transform.worldPosition;
+        // エミッター自身の移動速度。inheritVelocity がスポーン初速へ足すために使う。
+        // dt が 0 (完全停止・スクラブ中) のときは前回値を保つ (0 除算と速度の消失を避ける)。
+        if (emitter->hasLastEmitterPosition && dt > 1.0e-6f)
+            emitter->emitterVelocity = (currentPosition - emitter->lastEmitterPosition) * (1.0f / dt);
         if (emitter->hasLastEmitterPosition && canEmit && emitter->rateOverDistance > 0.0f) {
             emitter->distanceEmitAccum += (currentPosition - emitter->lastEmitterPosition).Length()
                 * emitter->rateOverDistance;

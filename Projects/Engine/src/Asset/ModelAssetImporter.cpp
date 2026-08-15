@@ -79,6 +79,8 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
         bone.offsetMatrix = FromFloatArray(bd.offsetMatrix);
         skel.boneMap[bone.name] = static_cast<int>(bi);
     }
+    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    BuildReferencePose(skel);
     return true;
 }
 
@@ -148,9 +150,16 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
                                li, si, absPath.c_str());
                 return nullptr;
             }
+            FzSubmeshExtensionV3 smExtV3{};
+            if (!r.Read(smExtV3)) {
+                FBZZ_LOG_ERROR("ModelAssetImporter: truncated submesh v3 extension lod=%u submesh=%u [%s]",
+                               li, si, absPath.c_str());
+                return nullptr;
+            }
 
             SubmeshEntry& entry = lod.submeshes[si];
             entry.materialSlotIndex = smHdr.materialSlotIndex;
+            entry.name = smExtV3.name;
 
             auto mesh = std::make_unique<renderer::Mesh>();
             mesh->vertexCount  = smHdr.vertexCount;
@@ -202,6 +211,35 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
             if (resources)
                 mesh->indexBuffer = resources->CreateIndexBuffer(
                     mesh->cpuIndices.data(), smHdr.indexCount);
+
+            const uint32_t morphTargetCount = smExtV3.morphTargetCount;
+            mesh->morphTargets.resize(morphTargetCount);
+            for (uint32_t mi = 0; mi < morphTargetCount; ++mi) {
+                FzMorphTargetHeader morphHeader{};
+                if (!r.Read(morphHeader) || morphHeader.vertexCount != smHdr.vertexCount) {
+                    FBZZ_LOG_ERROR("ModelAssetImporter: invalid morph header lod=%u submesh=%u morph=%u [%s]",
+                                   li, si, mi, absPath.c_str());
+                    return nullptr;
+                }
+                auto& morph = mesh->morphTargets[mi];
+                morph.name = morphHeader.name;
+                morph.positionDeltas.resize(morphHeader.vertexCount);
+                morph.normalDeltas.resize(morphHeader.vertexCount);
+                morph.tangentDeltas.resize(morphHeader.vertexCount);
+                for (uint32_t vi = 0; vi < morphHeader.vertexCount; ++vi) {
+                    FzMorphDelta delta{};
+                    if (!r.Read(delta)) return nullptr;
+                    morph.positionDeltas[vi] = {
+                        delta.position[0], delta.position[1], delta.position[2]
+                    };
+                    morph.normalDeltas[vi] = {
+                        delta.normal[0], delta.normal[1], delta.normal[2]
+                    };
+                    morph.tangentDeltas[vi] = {
+                        delta.tangent[0], delta.tangent[1], delta.tangent[2]
+                    };
+                }
+            }
 
             entry.mesh = std::move(mesh);
         }

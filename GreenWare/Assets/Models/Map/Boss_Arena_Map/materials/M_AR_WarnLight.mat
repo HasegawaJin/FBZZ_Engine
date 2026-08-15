@@ -1,0 +1,15 @@
+mesh_type = 'surface'
+name = 'M_AR_WarnLight'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.029999999329447746, 0.012000000104308128, 0.004000000189989805, 1.0 ]
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10000000149011612
+metallic = 0.0
+roughness = 0.3999999761581421
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

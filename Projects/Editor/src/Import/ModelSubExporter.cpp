@@ -8,6 +8,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/mesh.h>
 #include <assimp/scene.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -187,6 +188,94 @@ void ComputeBoundsV(const float* positions, size_t count, size_t stride,
     }
 }
 
+aiVector3D TransformVector(const aiMatrix4x4& m, const aiVector3D& v)
+{
+    return {
+        m.a1 * v.x + m.a2 * v.y + m.a3 * v.z,
+        m.b1 * v.x + m.b2 * v.y + m.b3 * v.z,
+        m.c1 * v.x + m.c2 * v.y + m.c3 * v.z
+    };
+}
+
+bool WriteMorphTargets(std::ofstream& out,
+                       const aiMesh& mesh,
+                       float unitScale,
+                       bool applyNodeTransform,
+                       const aiMatrix4x4& transform,
+                       bool applyAxisFix,
+                       const aiQuaternion& axisInvQ,
+                       float axisInvScale,
+                       // スキンメッシュ頂点へ焼いたバインド回転。デルタにも同じ回転を
+                       // 掛けないとモーフだけ元の Z-up 方向へずれる。静的メッシュは
+                       // transform 側で既に回っているので identity を渡す。
+                       const aiQuaternion& bakeQ)
+{
+    using namespace asset;
+    for (uint32_t targetIndex = 0; targetIndex < mesh.mNumAnimMeshes; ++targetIndex) {
+        const aiAnimMesh* target = mesh.mAnimMeshes[targetIndex];
+        FzMorphTargetHeader header{};
+        const std::string targetName = target->mName.length > 0
+            ? target->mName.C_Str() : ("Morph_" + std::to_string(targetIndex));
+        std::memcpy(header.name, targetName.data(),
+                    std::min(targetName.size(), sizeof(header.name) - 1));
+        header.vertexCount = mesh.mNumVertices;
+        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+        std::vector<FzMorphDelta> deltas(mesh.mNumVertices);
+        for (uint32_t i = 0; i < mesh.mNumVertices; ++i) {
+            aiVector3D positionDelta = target->mVertices
+                ? target->mVertices[i] - mesh.mVertices[i] : aiVector3D{};
+            if (applyNodeTransform) positionDelta = TransformVector(transform, positionDelta);
+            if (applyAxisFix) positionDelta = axisInvQ.Rotate(positionDelta * axisInvScale);
+            positionDelta *= unitScale;
+            positionDelta = bakeQ.Rotate(positionDelta);
+
+            aiVector3D normalDelta{};
+            if (target->mNormals && mesh.mNormals) {
+                aiVector3D targetNormal = target->mNormals[i];
+                aiVector3D baseNormal = mesh.mNormals[i];
+                if (applyNodeTransform) {
+                    targetNormal = TransformDirection(transform, targetNormal);
+                    baseNormal = TransformDirection(transform, baseNormal);
+                }
+                if (applyAxisFix) {
+                    targetNormal = axisInvQ.Rotate(targetNormal);
+                    baseNormal = axisInvQ.Rotate(baseNormal);
+                }
+                normalDelta = bakeQ.Rotate(targetNormal - baseNormal);
+            }
+
+            aiVector3D tangentDelta{};
+            if (target->mTangents && mesh.mTangents) {
+                aiVector3D targetTangent = target->mTangents[i];
+                aiVector3D baseTangent = mesh.mTangents[i];
+                if (applyNodeTransform) {
+                    targetTangent = TransformDirection(transform, targetTangent);
+                    baseTangent = TransformDirection(transform, baseTangent);
+                }
+                if (applyAxisFix) {
+                    targetTangent = axisInvQ.Rotate(targetTangent);
+                    baseTangent = axisInvQ.Rotate(baseTangent);
+                }
+                tangentDelta = bakeQ.Rotate(targetTangent - baseTangent);
+            }
+            auto& delta = deltas[i];
+            delta.position[0] = positionDelta.x;
+            delta.position[1] = positionDelta.y;
+            delta.position[2] = positionDelta.z;
+            delta.normal[0] = normalDelta.x;
+            delta.normal[1] = normalDelta.y;
+            delta.normal[2] = normalDelta.z;
+            delta.tangent[0] = tangentDelta.x;
+            delta.tangent[1] = tangentDelta.y;
+            delta.tangent[2] = tangentDelta.z;
+        }
+        out.write(reinterpret_cast<const char*>(deltas.data()),
+                  static_cast<std::streamsize>(deltas.size() * sizeof(FzMorphDelta)));
+    }
+    return out.good();
+}
+
 // ── スケルトン書き出し ────────────────────────────────────────────────────
 struct NodeEntry {
     std::string name;
@@ -251,9 +340,25 @@ void TraverseNodes(const aiNode* node, int parentIdx, float us,
         TraverseNodes(node->mChildren[c], myIdx, us, indexMap, nodes);
 }
 
-bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us)
+// 頂点/法線/接線へバインド回転を焼き込む (float[3] インプレース)。
+void RotateInPlace(float v[3], const aiQuaternion& q)
+{
+    const aiVector3D r = q.Rotate(aiVector3D(v[0], v[1], v[2]));
+    v[0] = r.x; v[1] = r.y; v[2] = r.z;
+}
+
+// バインド回転 R の逆行列。offsetMatrix を offset·R⁻¹ へ補正するのに使う。
+aiMatrix4x4 InverseBakeMatrix(const float q[4])
+{
+    const aiQuaternion inv(q[3], -q[0], -q[1], -q[2]); // 単位クォータニオンの共役
+    return aiMatrix4x4(inv.GetMatrix());
+}
+
+bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us,
+                   const float bakeRotation[4])
 {
     using namespace asset;
+    const aiMatrix4x4 bakeInv = InverseBakeMatrix(bakeRotation);
 
     std::unordered_map<std::string,int> nodeIndexMap;
     std::vector<NodeEntry> nodes;
@@ -273,7 +378,8 @@ bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us)
             BoneEntry be;
             be.name = bname;
             be.nodeIndex = nodeIndexMap.count(bname) ? nodeIndexMap.at(bname) : -1;
-            CopyMatrix(bone->mOffsetMatrix, be.offsetMatrix, us);
+            // offset·R⁻¹: 頂点側に焼いた R を打ち消し、アニメ結果を不変に保つ
+            CopyMatrix(bone->mOffsetMatrix * bakeInv, be.offsetMatrix, us);
             bones.push_back(std::move(be));
             if (be.nodeIndex >= 0)
                 nodes[static_cast<size_t>(be.nodeIndex)].boneIndex = static_cast<int>(bones.size()-1);
@@ -361,17 +467,27 @@ bool WriteMergedMesh(
         const bool applyNodeTransform = meshTransforms && transformIt != meshTransforms->end();
         const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
         const bool applyStaticAxisFix = ctx && ctx->applyStaticNodeTransforms;
-        const aiQuaternion axisInvQ = ctx
-            ? aiQuaternion(ctx->axisFixRotation[3], -ctx->axisFixRotation[0],
-                           -ctx->axisFixRotation[1], -ctx->axisFixRotation[2])
-            : aiQuaternion();
+        const aiQuaternion axisInvQ;
         const float axisInvS = ctx ? (1.0f / ctx->axisFixScale) : 1.0f;
+        // スキンメッシュは .fzasset 側と同じバインド回転を焼く。ここを揃えないと
+        // 統合 .mesh (CPU 側コピー) だけ Z-up のまま残る。
+        const bool bakeThisMesh = ctx && mesh->HasBones();
+        const aiQuaternion bakeQ = bakeThisMesh
+            ? aiQuaternion(ctx->bindBakeRotation[3], ctx->bindBakeRotation[0],
+                           ctx->bindBakeRotation[1], ctx->bindBakeRotation[2])
+            : aiQuaternion();
         for (uint32_t vi = 0; vi < mesh->mNumVertices; ++vi) {
-            vertices.push_back(applyStaticAxisFix
+            Vertex v = applyStaticAxisFix
                 ? ConvertVertexWithStaticAxisFix(mesh, vi, unitScale, transform, axisInvQ, axisInvS)
                 : (applyNodeTransform
                     ? ConvertVertexWithNodeTransform(mesh, vi, unitScale, transform)
-                    : ConvertVertex(mesh, vi, unitScale)));
+                    : ConvertVertex(mesh, vi, unitScale));
+            if (bakeThisMesh) {
+                RotateInPlace(v.position, bakeQ);
+                RotateInPlace(v.normal,   bakeQ);
+                RotateInPlace(v.tangent,  bakeQ);
+            }
+            vertices.push_back(v);
         }
 
         for (uint32_t fi = 0; fi < mesh->mNumFaces; ++fi) {
@@ -516,6 +632,27 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
     FzLodHeader lodHdr{ 0.0f, submeshCount };
     out.write(reinterpret_cast<const char*>(&lodHdr), sizeof(lodHdr));
 
+    // モデル全体のバウンズは各サブメッシュの境界球を包含して求め、
+    // 全サブメッシュを書き終えてからヘッダーへ書き戻す (ヘッダーはファイル先頭で
+    // 既に出力済みのため、この時点では値が確定していない)。
+    // WHY: 未設定だと center=(0,0,0) / radius=0 のままになり、視錐台カリングが
+    //      原点の点として判定してモデルが消える。
+    bool  boundsValid = false;
+    float boundsMin[3]{}, boundsMax[3]{};
+    auto accumulateBounds = [&](const float center[3], float radius) {
+        if (radius < 0.0f) return;
+        for (int a = 0; a < 3; ++a) {
+            const float lo = center[a] - radius;
+            const float hi = center[a] + radius;
+            if (!boundsValid) { boundsMin[a] = lo; boundsMax[a] = hi; }
+            else {
+                boundsMin[a] = std::min(boundsMin[a], lo);
+                boundsMax[a] = std::max(boundsMax[a], hi);
+            }
+        }
+        boundsValid = true;
+    };
+
     for (uint32_t mi=0; mi<ms->mNumMeshes; ++mi) {
         const aiMesh* mesh = ms->mMeshes[mi];
         if (!isMeshSelected(mesh)) continue;
@@ -537,6 +674,12 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
                                   ? mesh->mMaterialIndex : 0u;
         smHdr.vertexCount  = mesh->mNumVertices;
         smHdr.indexCount   = static_cast<uint32_t>(indices.size());
+        FzSubmeshExtensionV3 smExt{};
+        smExt.morphTargetCount = mesh->mNumAnimMeshes;
+        const std::string meshName = mesh->mName.length > 0
+            ? mesh->mName.C_Str() : ("Mesh_" + std::to_string(mi));
+        const size_t meshNameLength = std::min(meshName.size(), sizeof(smExt.name) - 1);
+        std::memcpy(smExt.name, meshName.data(), meshNameLength);
 
         if (!skinned || !mesh->HasBones()) {
             smHdr.vertexFormat = 0;
@@ -544,8 +687,7 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
             const auto transformIt = staticMeshTransforms.find(mi);
             const bool applyNodeTransform = transformIt != staticMeshTransforms.end();
             const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
-            const aiQuaternion axisInvQ(ctx.axisFixRotation[3], -ctx.axisFixRotation[0],
-                                        -ctx.axisFixRotation[1], -ctx.axisFixRotation[2]);
+            const aiQuaternion axisInvQ;
             const float axisInvS = 1.0f / ctx.axisFixScale;
             for (uint32_t i=0; i<mesh->mNumVertices; ++i) {
                 verts[i] = ctx.applyStaticNodeTransforms
@@ -556,7 +698,9 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
             }
             ComputeBoundsV(verts[0].position, verts.size(), sizeof(Vertex)/sizeof(float),
                            smHdr.boundsCenter, smHdr.boundsRadius);
+            accumulateBounds(smHdr.boundsCenter, smHdr.boundsRadius);
             out.write(reinterpret_cast<const char*>(&smHdr), sizeof(smHdr));
+            out.write(reinterpret_cast<const char*>(&smExt), sizeof(smExt));
             out.write(reinterpret_cast<const char*>(verts.data()),
                       static_cast<std::streamsize>(verts.size() * sizeof(Vertex)));
         } else {
@@ -571,9 +715,17 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
             }
             for (auto& inf : infl) inf.Normalize();
 
+            // バインド回転を頂点へ焼き込む (offsetMatrix 側で R⁻¹ を打ち消し済み)。
+            // これで「ボーン行列 = identity」がそのままバインドポーズになり、
+            // サムネイル / AnimatorComponent 無しの描画でも正しい向きになる。
+            const aiQuaternion bakeQ(ctx.bindBakeRotation[3], ctx.bindBakeRotation[0],
+                                     ctx.bindBakeRotation[1], ctx.bindBakeRotation[2]);
             std::vector<SkinnedVertex> verts(mesh->mNumVertices);
             for (uint32_t i=0; i<mesh->mNumVertices; ++i) {
-                const Vertex base = ConvertVertex(mesh, i, ctx.unitScale);
+                Vertex base = ConvertVertex(mesh, i, ctx.unitScale);
+                RotateInPlace(base.position, bakeQ);
+                RotateInPlace(base.normal,   bakeQ);
+                RotateInPlace(base.tangent,  bakeQ);
                 std::memcpy(verts[i].position,    base.position, sizeof(base.position));
                 std::memcpy(verts[i].normal,      base.normal,   sizeof(base.normal));
                 std::memcpy(verts[i].tangent,     base.tangent,  sizeof(base.tangent));
@@ -583,17 +735,51 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
             }
             ComputeBoundsV(verts[0].position, verts.size(), sizeof(SkinnedVertex)/sizeof(float),
                            smHdr.boundsCenter, smHdr.boundsRadius);
+            accumulateBounds(smHdr.boundsCenter, smHdr.boundsRadius);
             out.write(reinterpret_cast<const char*>(&smHdr), sizeof(smHdr));
+            out.write(reinterpret_cast<const char*>(&smExt), sizeof(smExt));
             out.write(reinterpret_cast<const char*>(verts.data()),
                       static_cast<std::streamsize>(verts.size() * sizeof(SkinnedVertex)));
         }
         out.write(reinterpret_cast<const char*>(indices.data()),
                   static_cast<std::streamsize>(indices.size() * sizeof(uint32_t)));
+        const auto transformIt = staticMeshTransforms.find(mi);
+        const bool applyNodeTransform = transformIt != staticMeshTransforms.end();
+        const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
+        const aiQuaternion axisInvQ;
+        // 静的メッシュは transform 側で既に回っているのでモーフの追加回転は不要。
+        // スキンメッシュのみ、頂点へ焼いた R を同じくデルタへ適用する。
+        const bool meshIsSkinned = skinned && mesh->HasBones();
+        const aiQuaternion morphBakeQ = meshIsSkinned
+            ? aiQuaternion(ctx.bindBakeRotation[3], ctx.bindBakeRotation[0],
+                           ctx.bindBakeRotation[1], ctx.bindBakeRotation[2])
+            : aiQuaternion();
+        if (!WriteMorphTargets(out, *mesh, ctx.unitScale, applyNodeTransform, transform,
+                               ctx.applyStaticNodeTransforms, axisInvQ,
+                               1.0f / ctx.axisFixScale, morphBakeQ)) return false;
     }
 
     // ── スケルトン ────────────────────────────────────────────────────────
     if (skinned && ctx.scene) {
-        if (!WriteSkeleton(out, ctx.scene, ctx.unitScale)) return false;
+        if (!WriteSkeleton(out, ctx.scene, ctx.unitScale, ctx.bindBakeRotation)) return false;
+    }
+
+    // ── モデル全体バウンズをヘッダーへ書き戻す ────────────────────────────
+    // スキンドの場合はバインド姿勢の頂点から求めた保守的な球。アニメで
+    // これを超える動きをするクリップは別途スケール係数で膨らませる想定。
+    if (boundsValid) {
+        float radiusSq = 0.0f;
+        for (int a = 0; a < 3; ++a) {
+            modelHdr.boundsCenter[a] = (boundsMin[a] + boundsMax[a]) * 0.5f;
+            const float half = (boundsMax[a] - boundsMin[a]) * 0.5f;
+            radiusSq += half * half;
+        }
+        modelHdr.boundsRadius = std::sqrt(radiusSq);
+
+        const std::streampos endPos = out.tellp();
+        out.seekp(0, std::ios::beg);
+        out.write(reinterpret_cast<const char*>(&modelHdr), sizeof(modelHdr));
+        out.seekp(endPos, std::ios::beg);
     }
 
     if (!out.good()) return false;

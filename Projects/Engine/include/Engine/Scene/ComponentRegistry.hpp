@@ -43,12 +43,21 @@
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
 #include "Components/LifetimeComponent.hpp"
+#include "Components/VFXGraphComponent.hpp"
+#include "Components/VFXScreenEffect.hpp"
+#include "Components/PresentationComponents.hpp"
+#include "Components/ConstraintComponents.hpp"
+#include "Components/SplineComponents.hpp"
+#include "Components/CameraRigComponents.hpp"
+#include "Components/UIControls.hpp"
+#include "Components/AudioSpatialComponents.hpp"
 #include "Components/NavMeshSurfaceComponent.hpp"
 #include "Components/NavMeshModifierComponent.hpp"
 #include "Components/NavMeshAgentComponent.hpp"
 #include "Components/NavMeshOffMeshLinkComponent.hpp"
 #include "Components/NavMeshPatrolComponent.hpp"
 #include "Components/NavMeshSensorComponent.hpp"
+#include "Components/BehaviorTreeComponent.hpp"
 #include "ScriptComponent.hpp"
 
 #include <cstddef>
@@ -188,7 +197,38 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(EnvironmentLightComponent, Environment, "Environment Light"),
     FBZZ_CUSTOM_COMPONENT(ReflectionProbeComponent, Environment, "Reflection Probe"),
     FBZZ_CUSTOM_COMPONENT(AtmosphericScatteringComponent, Environment, "Atmospheric Scattering"),
-    FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume")
+    FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume"),
+    // WHY: ComponentRegistryはScript DLL ABIへ影響するため、新規型は既存順を崩さず末尾へ追加する。
+    FBZZ_CUSTOM_COMPONENT(VFXGraphComponent, Effects, "VFX Graph"),
+    // VFXGraphSystemがScreenEffectノードから生成する内部型。手動追加もシーン保存もしない。
+    FBZZ_INTERNAL_COMPONENT(VFXScreenEffect, "VFX Screen Effect"),
+    FBZZ_INTERNAL_COMPONENT(VFXCameraShake, "VFX Camera Shake"),
+    FBZZ_INTERNAL_COMPONENT(VFXTimeScale, "VFX Time Scale"),
+    FBZZ_COMPONENT(SpriteRendererComponent, Rendering, "Sprite Renderer"),
+    FBZZ_COMPONENT(SortingGroupComponent, Rendering, "Sorting Group"),
+    FBZZ_COMPONENT(LineRendererComponent, Rendering, "Line Renderer"),
+    FBZZ_COMPONENT(BillboardComponent, Rendering, "Billboard"),
+    FBZZ_COMPONENT(ProjectorComponent, Rendering, "Projector"),
+    FBZZ_COMPONENT(SocketAttachmentComponent, Animation, "Socket Attachment"),
+    FBZZ_COMPONENT(TransformConstraintComponent, Animation, "Transform Constraint"),
+    FBZZ_COMPONENT(SplineComponent, Misc, "Spline"),
+    FBZZ_COMPONENT(SplineFollowerComponent, Misc, "Spline Follower"),
+    FBZZ_COMPONENT(VirtualCameraComponent, Rendering, "Virtual Camera"),
+    FBZZ_COMPONENT(CameraFollowComponent, Rendering, "Camera Follow"),
+    FBZZ_COMPONENT(CameraBlendComponent, Rendering, "Camera Blend"),
+    FBZZ_COMPONENT(CameraShakeComponent, Rendering, "Camera Shake"),
+    FBZZ_COMPONENT(UISlider, UI, "UI Slider"),
+    FBZZ_COMPONENT(UIToggle, UI, "UI Toggle"),
+    FBZZ_COMPONENT(UIScrollView, UI, "UI Scroll View"),
+    FBZZ_COMPONENT(UIMask, UI, "UI Mask"),
+    FBZZ_COMPONENT(UIInputField, UI, "UI Input Field"),
+    FBZZ_COMPONENT(UIEventTrigger, UI, "UI Event Trigger"),
+    FBZZ_COMPONENT(AudioReverbZoneComponent, Audio, "Audio Reverb Zone"),
+    FBZZ_COMPONENT(AudioOcclusionComponent, Audio, "Audio Occlusion"),
+    FBZZ_COMPONENT(AudioMixerSendComponent, Audio, "Audio Mixer Send"),
+    // WHY 末尾か: ComponentRegistry の順序は Scene の SoA tuple 順と
+    //      Script DLL ABI に影響する。既存順を崩さず末尾へ追加する。
+    FBZZ_COMPONENT(BehaviorTreeComponent, Navigation, "Behavior Tree")
 >;
 
 template<typename Registry>

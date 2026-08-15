@@ -86,8 +86,15 @@ void RecalcBoneMatrix(const asset::Skeleton& skeleton,
                       std::vector<math::Matrix4>& boneMatrices,
                       int nodeIndex)
 {
+    if (nodeIndex < 0 ||
+        nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
+        nodeIndex >= static_cast<int>(nodeGlobalTransforms.size()))
+        return;
+
     const int boneIndex = skeleton.nodes[static_cast<size_t>(nodeIndex)].boneIndex;
-    if (boneIndex < 0 || boneIndex >= static_cast<int>(boneMatrices.size()))
+    if (boneIndex < 0 ||
+        boneIndex >= static_cast<int>(boneMatrices.size()) ||
+        boneIndex >= static_cast<int>(skeleton.bones.size()))
         return;
 
     const auto& bone = skeleton.bones[static_cast<size_t>(boneIndex)];
@@ -420,6 +427,15 @@ bool SolveFootLeg(const IKChain& chain,
             (FromToRotation(sole, groundHit->normal) * footRotation).Normalized();
         footRotation = math::Quaternion::Slerp(footRotation, aligned, effectiveWeight);
     }
+
+    if (leg.root < 0 || leg.mid < 0 || leg.foot < 0 ||
+        leg.root >= static_cast<int>(skeleton.nodes.size()) ||
+        leg.mid >= static_cast<int>(skeleton.nodes.size()) ||
+        leg.foot >= static_cast<int>(skeleton.nodes.size()) ||
+        leg.root >= static_cast<int>(animator.nodeGlobalTransforms.size()) ||
+        leg.mid >= static_cast<int>(animator.nodeGlobalTransforms.size()) ||
+        leg.foot >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+        return false;
 
     const size_t rootIndex = static_cast<size_t>(leg.root);
     const size_t midIndex  = static_cast<size_t>(leg.mid);

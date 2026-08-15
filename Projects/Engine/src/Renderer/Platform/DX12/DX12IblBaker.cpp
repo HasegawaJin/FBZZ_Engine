@@ -10,6 +10,7 @@
 #include "DX12StateTracker.hpp"
 #include "DX12Texture.hpp"
 #include "DX12UploadArena.hpp"
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <array>
 #include <algorithm>
@@ -43,11 +44,13 @@ bool DX12IblBaker::EnsureShaders()
 {
     if (!m_irradianceShader) {
         m_irradianceShader = std::make_unique<DX12Shader>();
-        if (!m_irradianceShader->Init("Assets/Shaders/IBL/IrradianceConvolution.cs.hlsl")) return false;
+        if (!m_irradianceShader->Init(asset::AssetManager::ResolveAssetPath(
+                "Assets/Shaders/IBL/IrradianceConvolution.cs.hlsl"))) return false;
     }
     if (!m_prefilterShader) {
         m_prefilterShader = std::make_unique<DX12Shader>();
-        if (!m_prefilterShader->Init("Assets/Shaders/IBL/PrefilteredEnvMap.cs.hlsl")) return false;
+        if (!m_prefilterShader->Init(asset::AssetManager::ResolveAssetPath(
+                "Assets/Shaders/IBL/PrefilteredEnvMap.cs.hlsl"))) return false;
     }
     return true;
 }
@@ -97,6 +100,9 @@ bool DX12IblBaker::DispatchIrradiance(DX12RenderTarget& environment, CubeOutput&
     ID3D12PipelineState* pso = m_psoCache->GetOrCreateCompute(*m_irradianceShader);
     if (!pso) return false;
     ID3D12GraphicsCommandList* commands = m_context->GetCommandList();
+    // 共有コマンドリストへ compute のルートシグネチャ・PSO を設定するため、
+    // DX12Renderer::Submit 側の状態キャッシュを無効化させる。
+    m_context->MarkPipelineStateDirty();
     commands->SetComputeRootSignature(m_psoCache->GetComputeRootSignature());
     commands->SetPipelineState(pso);
     ID3D12DescriptorHeap* heaps[] = {m_context->GetResourceSrvHeap()};
@@ -140,6 +146,9 @@ bool DX12IblBaker::DispatchPrefilter(
     ID3D12PipelineState* pso = m_psoCache->GetOrCreateCompute(*m_prefilterShader);
     if (!pso) return false;
     ID3D12GraphicsCommandList* commands = m_context->GetCommandList();
+    // 共有コマンドリストへ compute のルートシグネチャ・PSO を設定するため、
+    // DX12Renderer::Submit 側の状態キャッシュを無効化させる。
+    m_context->MarkPipelineStateDirty();
     commands->SetComputeRootSignature(m_psoCache->GetComputeRootSignature());
     commands->SetPipelineState(pso);
     for (uint32_t mip = 0; mip < output.mipCount; ++mip) {

@@ -8,10 +8,6 @@
 #include <wincodec.h>
 #include <assimp/material.h>
 #include <assimp/scene.h>
-// FBX 埋め込み画像のメモリデコード実装をこの翻訳単位だけに閉じ込める。
-// WHY: STB_IMAGE_STATIC により HdriLoader.cpp の実装とシンボル衝突しない。
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC
 #include <stb_image.h>
 #include <toml++/toml.hpp>
 #include <filesystem>
@@ -229,6 +225,13 @@ bool MaterialExporter::Export(const aiMaterial* material,
     material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
     paramsTbl.insert("metallic",  metallic);
     paramsTbl.insert("roughness", roughness);
+    // 拡張 PBR ローブは既存 FBX の外観を変えないよう無効値で初期化し、
+    // 必要なマテリアルだけが .mat 上で有効化できるようにする。
+    paramsTbl.insert("clearcoat",          0.0f);
+    paramsTbl.insert("clearcoatRoughness", 0.10f);
+    paramsTbl.insert("sheen",              0.0f);
+    paramsTbl.insert("anisotropy",         0.0f);
+    paramsTbl.insert("sheenColor",         toml::array{ 1.0f, 1.0f, 1.0f });
     tbl.insert("params", std::move(paramsTbl));
 
     toml::table texTbl;

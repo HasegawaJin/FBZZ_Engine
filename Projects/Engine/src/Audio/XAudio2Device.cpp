@@ -17,13 +17,24 @@ namespace fbzz::audio
 bool XAudio2Device::Init()
 {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    // S_FALSE はすでに初期化済みなので問題なし
-    if (FAILED(hr) && hr != S_FALSE)
+    if (hr == RPC_E_CHANGED_MODE)
     {
+        // WHY: Window が OLE ドラッグ&ドロップ (IDropTarget) のためにこのスレッドを先に STA で
+        //      初期化していると、MTA 要求は RPC_E_CHANGED_MODE を返す。XAudio2 は STA でも動作するため、
+        //      この COM 初期化を「所有しない」形でそのまま続行する (対の CoUninitialize は呼ばない)。
+        m_comInitialized = false;
+    }
+    else if (FAILED(hr) && hr != S_FALSE)
+    {
+        // S_FALSE はすでに初期化済みなので問題なし。それ以外の失敗のみエラー扱いにする。
         FBZZ_LOG_ERROR("XAudio2Device: CoInitializeEx failed");
         return false;
     }
-    m_comInitialized = true;
+    else
+    {
+        // S_OK / S_FALSE: このスレッドの COM 参照を保持し、Shutdown で対に CoUninitialize する。
+        m_comInitialized = true;
+    }
 
     UINT32 flags = 0;
 #if defined(_DEBUG)
@@ -91,7 +102,7 @@ uint32_t XAudio2Device::PlayBuffer(
 
     IXAudio2SourceVoice* voice = nullptr;
     HRESULT hr = m_xaudio2->CreateSourceVoice(
-        &voice, &wfx, 0, XAUDIO2_MAX_FREQ_RATIO);
+        &voice, &wfx, XAUDIO2_VOICE_USEFILTER, XAUDIO2_MAX_FREQ_RATIO);
     if (FAILED(hr)) return 0;
 
     XAUDIO2_BUFFER buf{};
@@ -159,6 +170,20 @@ void XAudio2Device::SetPan(uint32_t voiceId, float pan)
     matrix[1] = right;
     it->second.voice->SetOutputMatrix(
         m_masterVoice, 1, masterDetails.InputChannels, matrix.data());
+}
+
+void XAudio2Device::SetLowPass(uint32_t voiceId, float normalizedCutoff)
+{
+    auto it = m_voices.find(voiceId);
+    if (it == m_voices.end())
+        return;
+    normalizedCutoff = (std::max)(0.001f, (std::min)(normalizedCutoff, 1.0f));
+    XAUDIO2_FILTER_PARAMETERS filter{};
+    filter.Type = LowPassFilter;
+    // XAudio2の周波数係数は 2*sin(pi*cutoff/6) で、1.0を無加工相当に写像する。
+    filter.Frequency = 2.0f * std::sin(3.14159265358979323846f * normalizedCutoff / 6.0f);
+    filter.OneOverQ = 1.0f;
+    it->second.voice->SetFilterParameters(&filter);
 }
 
 bool XAudio2Device::IsPlaying(uint32_t voiceId)

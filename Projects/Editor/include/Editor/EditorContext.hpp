@@ -20,8 +20,8 @@
 namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
-namespace fbzz::scene    { struct AnimatorComponent; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; }
+namespace fbzz::scene    { struct AnimatorComponent; class ProjectRuntime; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; class BuildConsole; class ConsoleSink; }
 
 namespace fbzz::editor {
 
@@ -40,6 +40,10 @@ struct EditorContext {
         Type            type = Type::None;
         scene::EntityID entityId = scene::EntityID::INVALID;
         std::string     assetPath;
+        // どのレイヤーのグラフに対する選択か。空 = Base Layer。
+        // WHY: stateIndex はグラフごとの添字なので、レイヤー名が無いと
+        //      Inspector が別レイヤーのステートを編集してしまう。
+        std::string     layerName;
         int             stateIndex = -1;
         int             transitionIndex = -1;
 
@@ -48,6 +52,7 @@ struct EditorContext {
             type = Type::None;
             entityId = scene::EntityID::INVALID;
             assetPath.clear();
+            layerName.clear();
             stateIndex = -1;
             transitionIndex = -1;
         }
@@ -55,14 +60,34 @@ struct EditorContext {
 
     // エンジンオブジェクト (非所有)
     scene::Scene*     activeScene  = nullptr;
+    // 編集中Sceneを駆動するProjectRuntime (EditorApp所有)。Physics World等の実行時系へアクセスする。
+    // WHY: AI(EditorBusDispatcher)のraycast/overlap等はこのruntimeのPhysics Worldへ問い合わせる。
+    scene::ProjectRuntime* runtime = nullptr;
+    // VFXEditor 専用の一時 World。編集 Scene の階層・Undo・保存へ Preview Object を混入させない。
+    scene::Scene*     vfxPreviewScene = nullptr;
+    // AI の決定論プレビュー要求は VFXEditor が閉じていても専用 World を数フレームだけ駆動する。
+    // WHY: query 応答と GPU 描画は同一フレームで完結しないため、capture までの猶予を frame 値で共有する。
+    std::uint64_t     vfxAiPreviewUntilFrame = 0;
+    // AI の viewport.capture / viewport.semantic が RT を読み出す間、表示状態に関わらず
+    // Scene View / Game View を描き続けるための猶予フレーム。
+    // WHY: EditorApp は「実際に画面へ出ているビューポートだけ」を描くようになったため、
+    //      Play 中 (Scene View が隠れる) や Map 編集中 (Game View が隠れる) に AI が
+    //      キャプチャすると、描画が止まった RT の古い内容を読んでしまう。
+    //      vfxAiPreviewUntilFrame と同じく frame 値で猶予を共有する。
+    std::uint64_t     aiViewportRenderUntilFrame = 0;
     renderer::Camera* editorCamera = nullptr;
+    // DebugCamera が持つオービット中心と注視距離のミラー (EditorApp が毎フレーム更新)。
+    // WHY: ナビゲーションギズモは「ピボットを動かさずに視点だけ回す」ため、
+    //      カメラ位置からは復元できない DebugCamera 内部の中心・距離を必要とする。
+    math::Vector3     editorCameraPivot         = {};
+    float             editorCameraFocusDistance = 10.0f;
     renderer::IRenderer* renderer = nullptr;
     renderer::IImGuiRenderer* imguiRenderer = nullptr;
     renderer::ResourceManager* resources = nullptr;
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
-    std::string       engineRoot;          // .fbzz_proj の [engine] sdk_root (cmake configure で FBZZ_SDK_ROOT に使う)
+    std::string       engineRoot;          // GameHubが選択したimmutable SDK root (cmake configureへ渡す)
     std::string       standaloneTargetName = "SandboxStandalone";
     std::string       projectTargetName;   // .fbzz_proj の target_name (GameHub プロジェクトの識別に使う)
 
@@ -75,6 +100,16 @@ struct EditorContext {
     std::string       currentScenePath;
     std::string       selectedAssetPath; // アセットブラウザーで選択中のファイル絶対パス (空 = なし)
     bool              sceneDirty = false;
+
+    // OSエクスプローラーからの外部ドラッグ&ドロップ受け渡しチャンネル (プラットフォーム層 → AssetBrowser)。
+    // WHY: AssetBrowserImport がドロップ確定を遅延処理するため、ドラッグ中のライブ位置と
+    //      ドロップ確定ファイル群をフレーム跨ぎで共有する。producer が空のままなら AssetBrowser 側は何もしない。
+    bool                     externalDragActive = false; // ドラッグ中ハイライト用
+    float                    externalDragX = 0.0f;       // ドラッグ中カーソル位置 (screen space)
+    float                    externalDragY = 0.0f;
+    std::vector<std::string> droppedExternalFiles;       // 今フレーム確定したドロップファイルの絶対パス群
+    float                    droppedExternalFilesX = 0.0f; // ドロップ確定位置 (screen space)
+    float                    droppedExternalFilesY = 0.0f;
     // Animation Graph Editor のノード配置。Editor 専用のため SceneSerializer には渡さない。
     // WHY: AnimatorComponent はランタイム構造体なので、キャンバス座標は Scene 内 GO の
     //      instanceId または Controller アセットパスをキーにした別データとして保持する。
@@ -111,6 +146,17 @@ struct EditorContext {
     // ビューポート
     bool  viewportFocused  = false;
     bool  sceneViewportHovered = false; // シーンビューにマウスが乗っているか (ホイール制御に使う)
+    // HotkeyManager が「今どの文脈のキーを受け付けるか」を決めるためのフォーカス状態。
+    // WHY: 同じ Delete でも Scene View と Hierarchy では対象が違い、F2 は Hierarchy
+    //      だけで意味を持つ。各パネルが自分の描画中に立てて、次フレームの
+    //      HotkeyManager::ProcessInput が参照する (1 フレーム遅れるが実用上問題ない)。
+    bool  hierarchyFocused    = false;
+    bool  assetBrowserFocused = false;
+    // F2 リネーム要求 (HotkeyManager → Hierarchy)。
+    // WHY: リネームは編集バッファとフォーカス制御がパネル内部にあり、外へ出すと
+    //      パネルの内部状態を公開することになる。キーの割り当てだけを
+    //      HotkeyManager に集約し、「何をするか」はパネルに残すための 1 ショット。
+    bool  requestRenameSelected = false;
     float viewportWidth   = 1280.0f;
     float viewportHeight  = 720.0f;
     bool  gameViewportFocused = false;
@@ -141,6 +187,11 @@ struct EditorContext {
     MapTool mapActiveTool = MapTool::TerrainSculpt;
     bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water/Detail/Foliage だけ表示
     bool  mapInspectorFilter = true; // Map Mode 中に Map 関連 Component だけ表示
+    // システムが実行時に生成した GameObject (GameObject::runtimeGenerated) を Hierarchy へ出すか。
+    // WHY: VFX Graph は 1 エフェクトにつきノード数ぶんの GameObject を作る。爆発を 5 箇所へ
+    //      置けば数十行が Hierarchy を埋め、自分で作ったオブジェクトが探せなくなる。
+    //      既定は非表示にして行数を親 1 行へ畳み、デバッグしたいときだけ開く。
+    bool  showGeneratedObjects = false;
     bool  uiViewportFocused = false;
     float uiViewportOriginX = 0.0f;
     float uiViewportOriginY = 0.0f;
@@ -170,8 +221,15 @@ struct EditorContext {
     // ギズモ
     enum class GizmoMode  { Translate, Rotate, Scale };
     enum class GizmoSpace { World, Local };
+    // ギズモを置く基準点 (Unity の Pivot / Center トグル相当)。
+    // WHY: Pivot はプライマリ選択の原点にギズモを置く。複数選択して回すと
+    //      「たまたま最初に選んだオブジェクト」を軸に全体が振り回されるため、
+    //      選択全体のバウンズ中心を軸にする Center が要る。単一選択でも、
+    //      原点がメッシュの外にあるモデル (足元原点のキャラ等) では Center が効く。
+    enum class GizmoPivot { Pivot, Center };
     GizmoMode  gizmoMode  = GizmoMode::Translate;
     GizmoSpace gizmoSpace = GizmoSpace::World;
+    GizmoPivot gizmoPivot = GizmoPivot::Pivot;
 
     // グリッド・スナップ
     bool  showGrid     = true;
@@ -181,10 +239,42 @@ struct EditorContext {
     float snapRot      = 15.0f;   // 回転スナップ (度)
     float snapScale    = 0.25f;   // スケールスナップ
 
+    // 頂点スナップ / 面スナップ (ViewportPanel が押下状態を反映する)。
+    // WHY: 地形へ建物を隙間なく置く作業が、これが無いと目視 + 数値打ちになる。
+    //      V 押下中は選択メッシュの頂点を掴んで他メッシュの頂点へ吸着し、
+    //      Ctrl+Shift ドラッグ中はカーソル下のサーフェスへ接地させる (Unity 互換)。
+    bool  vertexSnapActive  = false;
+    bool  surfaceSnapActive = false;
+    // 面スナップ時に、接地面の法線へオブジェクトの上方向を合わせるか。
+    bool  surfaceSnapAlignToNormal = false;
+
     // プロジェクト設定
     fbzz::ProjectSettings projectSettings;
 
     // 表示オプション (エディター固有)
+    // 力場の影響体積とエミッター発生形状のワイヤー表示。
+    // シーンへ直接置いた ParticleForceField / ParticleEmitter にも効く。
+    bool showVFXGizmos = false;
+    // AI が vfx.preview で明示要求したときだけ立つ診断表示。
+    // 既定はどちらも false で、評価画は常にクリーンなまま保つ。
+    bool vfxAiPreviewOverdraw = false;
+    bool vfxAiPreviewGizmos = false;
+    // AI capture 用プレビューの視点。vfx.preview の camera 引数で上書きされる。
+    // WHY: これが無いと AI は常に同じ 1 方向・1 距離からしか自分の作ったものを見られず、
+    //      ゲーム内距離での可読性・ビルボードのシルエット・LOD の切り替わりを一度も検証できない。
+    //      注視点からの球面座標で持つのは、AI が「回り込む」「離れる」を 1 パラメーターで
+    //      指定できるようにするため (自由なカメラ行列を組ませると再現性が落ちる)。
+    struct VFXAiPreviewCamera {
+        bool  valid    = false;   // false の間は従来どおり操作用プレビューのカメラを流用する
+        float targetX  = 0.0f;    // 注視点 (エフェクト原点まわりを想定)
+        float targetY  = 0.5f;
+        float targetZ  = 0.0f;
+        float distance = 5.0f;    // 注視点からの距離 (m)。ゲーム内距離の検証はここを振る
+        float yaw      = 0.0f;    // 度。0 = 正面 (-Z 側から見る) / 90 = 真横
+        float pitch    = 10.0f;   // 度。正で見下ろし
+        float fovY     = 60.0f;   // 度
+    };
+    VFXAiPreviewCamera vfxAiPreviewCamera;
     bool showLightRange  = true;
     bool showSkeleton    = false;
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
@@ -204,11 +294,48 @@ struct EditorContext {
     float          hotReloadDoneTimer = 0.0f; // Done / Failed 表示を消すカウントダウン (秒)
     bool           scriptReloadBusy = false;  // Script DLL のビルド待ち / ロード中は Play 開始を止める
 
+    // ビルドコンソール: Script / HLSL コンパイルの出力・診断・履歴の唯一の情報源。
+    // WHY: EditorApp が所有し、Build Output パネル・StatusBar・通知バーが読み取る。
+    BuildConsole*  buildConsole = nullptr;
+    bool           requestOpenBuildOutput  = false; // Build Output パネルを開く要求 (StatusBar クリック等)
+    bool           requestFocusBuildError  = false; // 開いた上で最初のエラーへスクロールする要求 (通知バー)
+
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings  = false;
     bool requestOpenBuildSettings    = false;
     bool requestOpenAnalysis         = false;
     bool requestOpenAnimationGraph   = false; // .animcontroller ダブルクリック → AnimationGraphPanel を開く
+    bool requestOpenVFXEditor        = false; // .vfx ダブルクリック → VFXEditorPanel を開く
+    bool requestOpenBehaviorTree     = false; // .behaviortree ダブルクリック → BehaviorTreePanel を開く
+
+    // Inspector 等のアセット参照欄 → AssetBrowser: 参照先を一覧上で選択させる要求 (one-shot)。
+    // WHY: Unity の Object Field と同じく、参照を辿る動線が無いと「この .mat はどのファイルか」を
+    //      確かめるのにフォルダを手で探し回ることになる。パスは絶対 / Assets 相対のどちらでもよく、
+    //      AssetBrowser 側が実体へ解決する。空文字 = 要求なし。
+    std::string requestRevealAssetPath;
+    // true = 一覧で選択するだけでなく、Inspector の表示対象もそのアセットへ移す (ダブルクリック)。
+    bool        requestRevealAssetSelect = false;
+
+    // ── Prefab 編集モード ────────────────────────────────────────────────────
+    // WHY: プレファブを直す唯一の手段が「インスタンスを選んで Apply」だと、
+    //      シーンに 1 個も置いていないプレファブは編集できず、シーン側の
+    //      ライティングや隣接オブジェクトに紛れて中身を確認しづらい。
+    //      編集中のシーンを一時退避して .prefab だけを開き、閉じるときに戻す。
+    std::string requestOpenPrefabEdit;        // one-shot: 開きたい .prefab (Assets 相対)
+    bool     requestSavePrefabEdit  = false;
+    bool     requestClosePrefabEdit = false;  // 保存せず戻る
+    std::string prefabEditPath;                  // 空でなければ編集モード中 (Assets 相対)
+    bool     prefabEditDirty = false;
+    [[nodiscard]] bool InPrefabEditMode() const { return !prefabEditPath.empty(); }
+
+    // ディスク上で書き換わった .prefab の絶対パス。AssetBrowser のファイル監視が積み、
+    // EditorApp が「シーン内のインスタンスへ反映」して消費する。
+    // WHY: プレファブを直しても既に置いてある実体が古いままだと、
+    //      アセットとシーンの内容が静かに食い違う。外部エディタや別セッションからの
+    //      変更も含めて追従させるには、ファイルの変化そのものを拾う必要がある。
+    std::vector<std::string> pendingPrefabReloads;
+    // 独立VFXEditorの File > Open からホスト側のネイティブダイアログを要求する。
+    std::function<void()> requestOpenVFXAssetDialog;
     bool requestScriptReload         = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
@@ -241,6 +368,17 @@ struct EditorContext {
     // Util (非所有)
     HotkeyManager*      hotkeyManager = nullptr;
     UndoStack*          undoStack   = nullptr;
+    // ログ集約シンク (EditorApp 所有)。AI の console.logs クエリが履歴を読む。
+    ConsoleSink*        consoleSink = nullptr;
+    // AI 連携のライブ状態と制御口。Panel は EditorApp の所有物へ直接依存せず、この窓口だけを使う。
+    bool                aiCommandBusEnabled = false;
+    bool                aiCommandBusRunning = false;
+    std::function<bool()> startAiCommandBus;
+    std::function<void()> stopAiCommandBus;
+    // Inspector から専用 Sprite Editor を開く。パネル所有権を公開せず要求だけを渡す。
+    std::function<void(const std::string&)> openSpriteEditor;
+    // .behaviortree を BehaviorTreePanel へ渡す (同じくパネル実体は公開しない)。
+    std::function<void(const std::string&)> openBehaviorTree;
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
     WaterTool*          waterTool   = nullptr; // EditorApp が所有、ViewportPanel が使用
@@ -258,6 +396,16 @@ struct EditorContext {
     std::function<void()>                   markSceneDirty;
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
+    bool                                    requestSaveScene = false; // StatusBar の●クリック等から現在シーン保存を要求
+
+    // AI (Command Bus の scene.open / scene.save) 専用のシーン入出力。確認モーダルを挟まない。
+    // WHY: requestOpenScene は未保存変更があるとモーダル確認を開く。人の操作ならそれが正しいが、
+    //      AI 要求では「応答は返ったのに、その後エディタが人のクリック待ちで止まる」ことになり、
+    //      次の要求も処理されない (バスはメインスレッドで drain するため)。
+    //      未保存の確認は AI 側の引数 (discardUnsaved) で成立させ、ここには確認なしの実体だけを置く。
+    //      save の path が空なら現在のシーンパスへ上書き保存する。
+    std::function<bool(const std::string&)> openScenePathImmediate;
+    std::function<bool(const std::string&)> saveScenePathImmediate;
     float                                   assetBrowserIconSize       = 84.0f;
     float                                   assetBrowserTreeWidth      = 180.0f; // 左フォルダツリーの幅 (永続化)
     float                                   editorUiScale              = 1.0f;   // UI 全体スケール (永続化)
@@ -270,6 +418,25 @@ struct EditorContext {
         bool             valid = false;
     };
     std::array<CameraBookmark, 9>           cameraBookmarks;
+
+    // Inspector → AssetBrowser: 編集中 .mat のサムネイル即時更新。
+    // WHY: AssetBrowser のマテリアルサムネイルは .mat のファイル更新時刻でしか再生成されないため、
+    //      「値をいじってもアイコンが変わらない (保存するまで古いまま)」という状態だった。
+    //      Inspector 側で値が変わるたびにリビジョンを進め、AssetBrowser はそれを見て
+    //      ディスクではなく AssetManager 上の (未保存の) MaterialAsset からサムネイルを描き直す。
+    //      キーは NormalizeAssetPath 済みのプロジェクト相対パス。
+    std::unordered_map<std::string, uint64_t> materialPreviewRevisions;
+
+    void BumpMaterialPreviewRevision(const std::string& relativeMaterialPath)
+    {
+        if (relativeMaterialPath.empty()) return;
+        ++materialPreviewRevisions[relativeMaterialPath];
+    }
+    uint64_t MaterialPreviewRevision(const std::string& relativeMaterialPath) const
+    {
+        const auto it = materialPreviewRevisions.find(relativeMaterialPath);
+        return it == materialPreviewRevisions.end() ? 0ull : it->second;
+    }
 };
 
 } // namespace fbzz::editor

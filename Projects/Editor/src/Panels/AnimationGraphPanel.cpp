@@ -10,20 +10,22 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
 #include <Editor/GraphLayout.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
-#include <imnodes.h>
 #include <imgui_internal.h>
-// WHY: fbzz_editor は STATIC lib で、Sandbox / GameHub の最終リンク設定に
-//      imnodes.lib が伝播しない古い VS プロジェクトでも LNK2019 を出さないため、
-//      AnimationGraphPanel.obj に imnodes の実装を同梱する。
-#include <imnodes.cpp>
+// NOTE: 以前ここには `#include <imnodes.cpp>` があった。実装を .obj へ同梱することで
+//       imnodes.lib のリンク漏れを回避していたが、その代償として「他のどの .cpp も
+//       同じことをしてはならない」という不変条件をコメントでしか守れなくなっていた。
+//       現在は fbzz_editor が imnodes を PUBLIC リンクするため不要。
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
@@ -50,13 +52,13 @@ bool CanEditAnimationGraph(const EditorContext& ctx)
 }
 
 constexpr float SIDEBAR_WIDTH = 260.0f;
-constexpr float MIN_CANVAS_ZOOM = 0.50f;
-constexpr float MAX_CANVAS_ZOOM = 1.80f;
+// WHY: 大きなステートマシンを一望するには Unity 同等の広いズームレンジが必要。
+constexpr float MIN_CANVAS_ZOOM = 0.30f;
+constexpr float MAX_CANVAS_ZOOM = 2.00f;
 constexpr float ZOOM_STEP = 0.10f;
-constexpr float WHEEL_PAN_STEP = 56.0f;
 constexpr float BASE_NODE_CARD_WIDTH = 188.0f;
-constexpr ImGuiHoveredFlags CANVAS_HOVER_FLAGS =
-    ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+// NOTE: ホイールズーム / パンの定数 (WHEEL_PAN_STEP / CANVAS_HOVER_FLAGS) は
+//       旧 ImNodes 経路と一緒に削除した。ズームとパンは GraphCanvas が持つ。
 
 const char* ParamTypeName(scene::ParamType type)
 {
@@ -154,14 +156,69 @@ scene::AnimatorComponent MakeAnimationGraphSnapshot(
     scene::AnimatorComponent snapshot;
     snapshot.enabled = source.enabled;
     snapshot.controllerPath = source.controllerPath;
-    snapshot.clipSources = source.clipSources;
     snapshot.defaultStateName = source.defaultStateName;
     snapshot.states = source.states;
     snapshot.anyStateTransitions = source.anyStateTransitions;
     snapshot.parameters = source.parameters;
+    // レイヤーもグラフ定義の一部。含めないとレイヤー編集だけ Undo が効かなくなる。
+    snapshot.layers = source.layers;
+    snapshot.baseLayerMask.path = source.baseLayerMask.path;
     snapshot.playing = source.playing;
     return snapshot;
 }
+
+// ── レイヤーグラフの一時差し替え ─────────────────────────────────────────────
+// WHY: このパネルは 130 箇所以上で animator.states / anyStateTransitions /
+//      defaultStateName を直接触っている。レイヤー対応のために全箇所を
+//      「今どのレイヤーか」で分岐させると、描画・選択・Undo・ノード配置の
+//      すべてに条件が散り、既存の動作を壊すリスクが高い。
+//
+//      AnimationLayer は AnimatorComponent と同じ型のステート配列を持つので、
+//      描画の前後で中身を入れ替えれば、パネル側は「常に自分のグラフを見ている」
+//      ままで良い。入れ替えは 1 フレーム内で完結し、デストラクタで必ず戻す。
+struct LayerGraphScope {
+    scene::AnimatorComponent* animator = nullptr;
+    scene::AnimationLayer*    layer    = nullptr;
+
+    LayerGraphScope(scene::AnimatorComponent& a, const std::string& layerName)
+    {
+        if (layerName.empty()) return;             // Base Layer は入れ替え不要
+        layer = a.FindLayer(layerName);
+        if (layer == nullptr) return;              // 消えたレイヤーは Base Layer 扱い
+        animator = &a;
+        Swap();
+    }
+    ~LayerGraphScope() { Restore(); }
+
+    LayerGraphScope(const LayerGraphScope&) = delete;
+    LayerGraphScope& operator=(const LayerGraphScope&) = delete;
+
+    [[nodiscard]] bool Active() const { return animator != nullptr; }
+
+    // 差し替えを元へ戻す。二重呼び出ししても安全 (デストラクタと明示呼び出しの両立)。
+    // WHY: Undo のスナップショット比較は「元に戻した状態」で行う必要があるため、
+    //      スコープ終端を待たずに明示的に戻せる入口を用意する。
+    void Restore()
+    {
+        if (animator == nullptr) return;
+        Swap();
+        animator = nullptr;
+        layer = nullptr;
+    }
+
+private:
+    void Swap()
+    {
+        std::swap(animator->states, layer->states);
+        std::swap(animator->anyStateTransitions, layer->anyStateTransitions);
+        std::swap(animator->defaultStateName, layer->defaultStateName);
+        // ランタイム表示 (現在ステートのハイライト) もレイヤー側を見せる。
+        std::swap(animator->currentStateName, layer->runtime.currentStateName);
+        std::swap(animator->blendToState, layer->runtime.blendToState);
+        std::swap(animator->blendWeight, layer->runtime.blendWeight);
+        std::swap(animator->stateTime, layer->runtime.stateTime);
+    }
+};
 
 // Undo適用時はランタイム資源を保持し、Graph定義だけを書き戻す。
 void ApplyAnimationGraphSnapshot(
@@ -170,11 +227,13 @@ void ApplyAnimationGraphSnapshot(
 {
     target.enabled = snapshot.enabled;
     target.controllerPath = snapshot.controllerPath;
-    target.clipSources = snapshot.clipSources;
     target.defaultStateName = snapshot.defaultStateName;
     target.states = snapshot.states;
     target.anyStateTransitions = snapshot.anyStateTransitions;
     target.parameters = snapshot.parameters;
+    target.layers = snapshot.layers;
+    target.baseLayerMask.path = snapshot.baseLayerMask.path;
+    target.baseLayerMask.Invalidate();
     target.playing = snapshot.playing;
     target.currentStateName.clear();
     target.blendToState.clear();
@@ -967,34 +1026,11 @@ static void DrawTransitionEditor(EditorContext& ctx,
                                  const scene::AnimationState* sourceState,
                                  scene::AnimationTransition& transition);
 
-void AnimationGraphPanel::OnInit(EditorContext&)
-{
-    ImNodes::SetImGuiContext(ImGui::GetCurrentContext());
-    m_nodesContext = ImNodes::CreateContext();
-    ImNodes::SetCurrentContext(m_nodesContext);
-    ImNodes::StyleColorsDark();
-    auto& style = ImNodes::GetStyle();
-    style.Flags |= ImNodesStyleFlags_GridLinesPrimary;
-    style.Colors[ImNodesCol_GridBackground] = IM_COL32(22, 25, 30, 255);
-    style.Colors[ImNodesCol_GridLine] = IM_COL32(45, 51, 60, 120);
-    style.Colors[ImNodesCol_GridLinePrimary] = IM_COL32(61, 69, 80, 165);
-    style.Colors[ImNodesCol_MiniMapBackground] = IM_COL32(18, 21, 26, 225);
-    style.Colors[ImNodesCol_MiniMapOutline] = IM_COL32(91, 103, 119, 220);
-    m_editorContext = ImNodes::EditorContextCreate();
-}
+// ImNodes のコンテキストは GraphCanvas が所有する。以前は旧描画経路のために
+// パネル側でも 1 つ作っており、パン・ズーム・選択が二重に存在していた。
+void AnimationGraphPanel::OnInit(EditorContext&) { m_graphCanvas.CreateContexts(); }
 
-void AnimationGraphPanel::OnShutdown()
-{
-    if (m_nodesContext) ImNodes::SetCurrentContext(m_nodesContext);
-    if (m_editorContext) {
-        ImNodes::EditorContextFree(m_editorContext);
-        m_editorContext = nullptr;
-    }
-    if (m_nodesContext) {
-        ImNodes::DestroyContext(m_nodesContext);
-        m_nodesContext = nullptr;
-    }
-}
+void AnimationGraphPanel::OnShutdown() { m_graphCanvas.DestroyContexts(); }
 
 int AnimationGraphPanel::NodeId(int stateIndex)
 {
@@ -1025,6 +1061,545 @@ int AnimationGraphPanel::AnyStateLinkId(int transitionIndex)
 int AnimationGraphPanel::EntryNodeId() { return 1000010; }
 int AnimationGraphPanel::EntryOutputPinId() { return 1000012; }
 int AnimationGraphPanel::EntryLinkId() { return 0x60000000; }
+
+void AnimationGraphPanel::DrawNodeCanvas(
+    EditorContext& ctx,
+    scene::AnimatorComponent& animator,
+    const std::string& instanceId)
+{
+    ImGui::BeginChild("##AnimationGenericGraph", ImVec2(0.0f, 0.0f), true,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    auto& layout = ctx.graphLayouts[instanceId];
+    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+        const auto& state = animator.states[static_cast<std::size_t>(i)];
+        if (!layout.nodePositions.contains(state.name))
+            layout.nodePositions[state.name] = { 80.0f + 260.0f * static_cast<float>(i), 80.0f };
+    }
+
+    GraphView view;
+    GraphNodeView entry;
+    entry.id = EntryNodeId();
+    entry.position = layout.entryPosition;
+    entry.title = "Entry";
+    entry.titleColor = IM_COL32(50, 145, 82, 255);
+    entry.backgroundColor = IM_COL32(35, 82, 55, 255);
+    entry.inputs = {};
+    entry.outputs.push_back({ EntryOutputPinId(), "START", IM_COL32(92, 220, 132, 255),
+                              IM_COL32(150, 255, 178, 255), GraphPinShape::TriangleFilled });
+    entry.drawBody = [this, &animator]() {
+        const char* target = "<none>";
+        if (!animator.defaultStateName.empty()) target = animator.defaultStateName.c_str();
+        else if (!animator.states.empty()) target = animator.states.front().name.c_str();
+        ImGui::TextDisabled("DEFAULT FLOW");
+        ImGui::Text("Target: %s", target);
+    };
+    view.nodes.push_back(std::move(entry));
+
+    GraphNodeView anyState;
+    anyState.id = AnyStateNodeId();
+    anyState.position = layout.anyStatePosition;
+    anyState.title = "Any State";
+    anyState.titleColor = IM_COL32(125, 65, 145, 255);
+    anyState.backgroundColor = IM_COL32(75, 45, 85, 255);
+    anyState.inputs = {};
+    anyState.outputs.push_back({ AnyStateOutputPinId(), "OUT", IM_COL32(210, 118, 232, 255),
+                                 IM_COL32(242, 176, 255, 255), GraphPinShape::TriangleFilled });
+    anyState.drawBody = [&animator]() {
+        ImGui::TextDisabled("GLOBAL TRANSITIONS");
+        ImGui::Text("%d transition%s", static_cast<int>(animator.anyStateTransitions.size()),
+                     animator.anyStateTransitions.size() == 1 ? "" : "s");
+    };
+    view.nodes.push_back(std::move(anyState));
+
+    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+        auto* state = &animator.states[static_cast<std::size_t>(i)];
+        GraphNodeView node;
+        node.id = NodeId(i);
+        node.position = layout.nodePositions[state->name];
+        node.title = state->name;
+        node.titleColor = state->name == animator.currentStateName
+            ? IM_COL32(50, 145, 82, 255)
+            : (state->name == animator.defaultStateName
+                ? IM_COL32(154, 107, 40, 255) : IM_COL32(72, 82, 98, 255));
+        node.backgroundColor = IM_COL32(52, 58, 69, 255);
+        node.outlineColor = i == m_selectedNode ? IM_COL32(255, 198, 92, 255) : 0;
+        node.outlineThickness = i == m_selectedNode ? 2.5f : 0.0f;
+        node.inputs.push_back({ InputPinId(i), "IN", IM_COL32(82, 164, 255, 255),
+                                IM_COL32(132, 210, 255, 255), GraphPinShape::CircleFilled });
+        node.outputs.push_back({ OutputPinId(i), "OUT", IM_COL32(255, 156, 72, 255),
+                                 IM_COL32(255, 202, 118, 255), GraphPinShape::CircleFilled });
+        node.tooltip = state->name;
+        node.titleFontScale = 1.05f;
+        node.drawTitle = [state, &animator]() {
+            ImGui::TextUnformatted(state->name.empty() ? "(Unnamed)" : state->name.c_str());
+            if (state->name == animator.currentStateName) {
+                ImGui::SameLine();
+                ImGui::TextColored({ 0.45f, 1.0f, 0.62f, 1.0f }, "[Current]");
+            } else if (state->name == animator.defaultStateName
+                       || (animator.defaultStateName.empty() && state == &animator.states.front())) {
+                ImGui::SameLine();
+                ImGui::TextColored({ 1.0f, 0.76f, 0.28f, 1.0f }, "[Default]");
+            }
+        };
+        node.drawBody = [this, state, &animator]() {
+            ImGui::TextColored(StateModeTextColor(state->mode), "%s", StateModeName(state->mode));
+            ImGui::Separator();
+            switch (state->mode) {
+            case scene::AnimationStateMode::Clip:
+                ImGui::TextWrapped("%s", state->clipName.empty() ? "No clip assigned" : state->clipName.c_str());
+                ImGui::TextDisabled("%s", state->sourcePath.empty() ? "No source" : state->sourcePath.c_str());
+                break;
+            case scene::AnimationStateMode::BlendTree1D:
+                ImGui::Text("Param: %s", state->blendTree1D.paramName.empty() ? "<none>" : state->blendTree1D.paramName.c_str());
+                ImGui::TextDisabled("%d motions | Double-click to open", static_cast<int>(state->blendTree1D.motions.size()));
+                break;
+            case scene::AnimationStateMode::BlendTree2D:
+                ImGui::Text("Parameters: %s / %s",
+                    state->blendTree2D.paramX.empty() ? "<none>" : state->blendTree2D.paramX.c_str(),
+                    state->blendTree2D.paramY.empty() ? "<none>" : state->blendTree2D.paramY.c_str());
+                ImGui::TextDisabled("%d motions | Double-click to open", static_cast<int>(state->blendTree2D.motions.size()));
+                break;
+            }
+            ImGui::Spacing();
+            ImGui::TextDisabled("%s | Speed %.2f | IK %.2f", state->loop ? "LOOP" : "ONCE", state->speed, state->ikWeight);
+            ImGui::TextDisabled("%d transition%s", static_cast<int>(state->transitions.size()), state->transitions.size() == 1 ? "" : "s");
+            if (state->name == animator.currentStateName)
+                ImGui::ProgressBar(animator.GetNormalizedTime(), { -1.0f, 5.0f }, "");
+        };
+        view.nodes.push_back(std::move(node));
+    }
+
+    for (int from = 0; from < static_cast<int>(animator.states.size()); ++from) {
+        const auto& state = animator.states[static_cast<std::size_t>(from)];
+        for (int ti = 0; ti < static_cast<int>(state.transitions.size()); ++ti) {
+            const auto& transition = state.transitions[static_cast<std::size_t>(ti)];
+            const int to = FindStateIndexByName(animator, transition.toStateName);
+            if (to < 0) continue;
+            GraphLinkView link;
+            link.id = LinkId(from, ti);
+            link.fromPin = OutputPinId(from);
+            link.toPin = InputPinId(to);
+            link.color = transition.hasExitTime ? IM_COL32(228, 169, 73, 225) : IM_COL32(96, 164, 224, 220);
+            link.hoveredColor = IM_COL32(140, 213, 255, 255);
+            link.selectedColor = IM_COL32(255, 224, 125, 255);
+            link.arrowSize = 7.0f;
+            view.links.push_back(link);
+        }
+    }
+    for (int ti = 0; ti < static_cast<int>(animator.anyStateTransitions.size()); ++ti) {
+        const int to = FindStateIndexByName(animator, animator.anyStateTransitions[static_cast<std::size_t>(ti)].toStateName);
+        if (to < 0) continue;
+        GraphLinkView link;
+        link.id = AnyStateLinkId(ti);
+        link.fromPin = AnyStateOutputPinId();
+        link.toPin = InputPinId(to);
+        link.color = IM_COL32(177, 96, 214, 225);
+        link.hoveredColor = IM_COL32(222, 144, 255, 255);
+        link.selectedColor = IM_COL32(255, 224, 125, 255);
+        link.pattern = GraphLinkPattern::Dashed;
+        link.arrowSize = 7.0f;
+        view.links.push_back(link);
+    }
+    int entryTarget = FindStateIndexByName(animator, animator.defaultStateName);
+    if (entryTarget < 0 && !animator.states.empty()) entryTarget = 0;
+    if (entryTarget >= 0) {
+        GraphLinkView link;
+        link.id = EntryLinkId();
+        link.fromPin = EntryOutputPinId();
+        link.toPin = InputPinId(entryTarget);
+        link.color = IM_COL32(80, 210, 128, 230);
+        link.hoveredColor = IM_COL32(128, 244, 166, 255);
+        link.selectedColor = IM_COL32(255, 198, 92, 255);
+        link.arrowSize = 7.0f;
+        view.links.push_back(link);
+    }
+
+    m_graphCanvas.SetZoom(m_canvasZoom);
+    GraphCanvas::Config config;
+    config.id = "##AnimationGenericGraphCanvas";
+    config.showMiniMap = true;
+    config.showGrid = true;
+    config.editable = CanEditAnimationGraph(ctx);
+    const GraphInteraction interaction = m_graphCanvas.Draw(view, config);
+    m_canvasZoom = m_graphCanvas.Zoom();
+
+    if (interaction.selectionChanged) {
+        m_selectedNode = -1;
+        m_selectedAnyState = false;
+        m_selectedLink = {};
+        if (!interaction.selectedLinks.empty()) {
+            m_selectedLink = ResolveLink(interaction.selectedLinks.front(), animator);
+        } else if (!interaction.selectedNodes.empty()) {
+            const int selectedId = interaction.selectedNodes.front();
+            if (selectedId == AnyStateNodeId()) m_selectedAnyState = true;
+            else if (selectedId != EntryNodeId()) {
+                for (int i = 0; i < static_cast<int>(animator.states.size()); ++i)
+                    if (NodeId(i) == selectedId) m_selectedNode = i;
+            }
+        }
+        m_selectionOwnerInstanceId = instanceId;
+    }
+    if (interaction.nodeDoubleClicked) {
+        for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+            const auto mode = animator.states[static_cast<std::size_t>(i)].mode;
+            if (NodeId(i) == interaction.doubleClickedNode) {
+                if (mode == scene::AnimationStateMode::BlendTree1D
+                    || mode == scene::AnimationStateMode::BlendTree2D) {
+                    m_openBlendTreeState = i;
+                    m_selectedMotion = -1;
+                    m_graphCanvas.ClearSelection();
+                } else {
+                    m_renamingNode = i;
+                    std::snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s",
+                                  animator.states[static_cast<std::size_t>(i)].name.c_str());
+                    ImGui::OpenPopup("##AnimationGenericRename");
+                }
+                break;
+            }
+        }
+    }
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+        && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2)
+        && m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
+        m_renamingNode = m_selectedNode;
+        std::snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s",
+                      animator.states[static_cast<std::size_t>(m_selectedNode)].name.c_str());
+        ImGui::OpenPopup("##AnimationGenericRename");
+    }
+
+    bool moved = false;
+    for (const auto& move : interaction.movedNodes) {
+        if (move.nodeId == EntryNodeId()) layout.entryPosition = move.position;
+        else if (move.nodeId == AnyStateNodeId()) layout.anyStatePosition = move.position;
+        else {
+            for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+                if (NodeId(i) == move.nodeId) {
+                    layout.nodePositions[animator.states[static_cast<std::size_t>(i)].name] = move.position;
+                    moved = true;
+                    break;
+                }
+            }
+        }
+        moved = true;
+    }
+    if (moved) MarkDirty(ctx);
+
+    auto stateIndexFromInput = [&](int pin) {
+        for (int i = 0; i < static_cast<int>(animator.states.size()); ++i)
+            if (InputPinId(i) == pin) return i;
+        return -1;
+    };
+    auto sourceFromOutput = [&](int pin) {
+        if (pin == EntryOutputPinId()) return -3;
+        if (pin == AnyStateOutputPinId()) return -2;
+        for (int i = 0; i < static_cast<int>(animator.states.size()); ++i)
+            if (OutputPinId(i) == pin) return i;
+        return -1;
+    };
+    if (interaction.linkCreated) {
+        const int source = sourceFromOutput(interaction.createdFromPin);
+        const int target = stateIndexFromInput(interaction.createdToPin);
+        if (source == -3 && target >= 0) {
+            animator.defaultStateName = animator.states[static_cast<std::size_t>(target)].name;
+            MarkDirty(ctx);
+        } else if (source == -2 && target >= 0) {
+            const auto& targetName = animator.states[static_cast<std::size_t>(target)].name;
+            const bool exists = std::any_of(animator.anyStateTransitions.begin(), animator.anyStateTransitions.end(),
+                [&targetName](const scene::AnimationTransition& t) { return t.toStateName == targetName; });
+            if (!exists) {
+                animator.anyStateTransitions.push_back({});
+                animator.anyStateTransitions.back().toStateName = targetName;
+                m_selectedLink = { -2, static_cast<int>(animator.anyStateTransitions.size()) - 1 };
+                MarkDirty(ctx);
+            }
+        } else if (source >= 0 && target >= 0) {
+            AddTransition(ctx, animator, source, target);
+        }
+    }
+    for (const int linkId : interaction.destroyedLinks) {
+        const LinkRef link = ResolveLink(linkId, animator);
+        if (link.fromStateIndex == -2 && link.transitionIndex >= 0) {
+            animator.anyStateTransitions.erase(animator.anyStateTransitions.begin() + link.transitionIndex);
+            m_selectedLink = {};
+            MarkDirty(ctx);
+        } else if (link.fromStateIndex >= 0 && link.transitionIndex >= 0) {
+            auto& transitions = animator.states[static_cast<std::size_t>(link.fromStateIndex)].transitions;
+            transitions.erase(transitions.begin() + link.transitionIndex);
+            m_selectedLink = {};
+            MarkDirty(ctx);
+        }
+    }
+    if (interaction.deleteRequested) {
+        if (m_selectedNode >= 0) DeleteState(ctx, animator, m_selectedNode, instanceId);
+        else if (m_selectedLink.fromStateIndex == -2 && m_selectedLink.transitionIndex >= 0) {
+            animator.anyStateTransitions.erase(animator.anyStateTransitions.begin() + m_selectedLink.transitionIndex);
+            m_selectedLink = {};
+            MarkDirty(ctx);
+        } else if (m_selectedLink.fromStateIndex >= 0 && m_selectedLink.transitionIndex >= 0) {
+            auto& transitions = animator.states[static_cast<std::size_t>(m_selectedLink.fromStateIndex)].transitions;
+            transitions.erase(transitions.begin() + m_selectedLink.transitionIndex);
+            m_selectedLink = {};
+            MarkDirty(ctx);
+        }
+    }
+    if (interaction.duplicateRequested && m_selectedNode >= 0)
+        DuplicateState(ctx, animator, m_selectedNode, instanceId);
+
+    if (interaction.contextMenuRequested) {
+        m_contextSpawnX = interaction.contextSpawnPosition.x;
+        m_contextSpawnY = interaction.contextSpawnPosition.y;
+        ImGui::OpenPopup("##AnimationGenericCanvasMenu");
+    }
+    if (interaction.nodeContextMenuRequested) {
+        if (interaction.contextMenuNode >= 1 && interaction.contextMenuNode < 1000000)
+            m_selectedNode = interaction.contextMenuNode - 1;
+        else if (interaction.contextMenuNode == AnyStateNodeId()) m_selectedAnyState = true;
+        ImGui::OpenPopup("##AnimationGenericNodeMenu");
+    }
+    if (ImGui::BeginPopup("##AnimationGenericCanvasMenu")) {
+        if (ImGui::MenuItem("+ New State"))
+            AddStateAt(ctx, animator, "NewState", instanceId, m_contextSpawnX, m_contextSpawnY);
+        if (ImGui::MenuItem("Auto Layout")) AutoLayoutStates(ctx, animator, instanceId);
+        if (ImGui::MenuItem("Center View")) m_graphCanvas.ResetView();
+        ImGui::EndPopup();
+    }
+    if (ImGui::BeginPopup("##AnimationGenericNodeMenu")) {
+        if (m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
+            auto& state = animator.states[static_cast<std::size_t>(m_selectedNode)];
+            if (ImGui::MenuItem("Set as Default")) {
+                animator.defaultStateName = state.name;
+                MarkDirty(ctx);
+            }
+            if ((state.mode == scene::AnimationStateMode::BlendTree1D || state.mode == scene::AnimationStateMode::BlendTree2D)
+                && ImGui::MenuItem("Open Blend Tree")) {
+                m_openBlendTreeState = m_selectedNode;
+                m_selectedMotion = -1;
+                m_graphCanvas.ClearSelection();
+            }
+            if (ImGui::MenuItem("Duplicate")) DuplicateState(ctx, animator, m_selectedNode, instanceId);
+            if (ImGui::MenuItem("Delete")) DeleteState(ctx, animator, m_selectedNode, instanceId);
+            if (ImGui::MenuItem("Rename")) {
+                m_renamingNode = m_selectedNode;
+                std::snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s", state.name.c_str());
+                ImGui::OpenPopup("##AnimationGenericRename");
+            }
+        } else if (m_selectedAnyState) {
+            ImGui::TextDisabled("Any State");
+        }
+        ImGui::EndPopup();
+    }
+    if (m_renamingNode >= 0 && ImGui::BeginPopup("##AnimationGenericRename")) {
+        if (ImGui::InputText("Name", m_renameBuffer, sizeof(m_renameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if (m_renamingNode < static_cast<int>(animator.states.size()))
+                RenameState(ctx, animator, m_renamingNode, animator.states[static_cast<std::size_t>(m_renamingNode)].name,
+                            m_renameBuffer, instanceId);
+            m_renamingNode = -1;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::EndChild();
+}
+
+void AnimationGraphPanel::DrawBlendTreeCanvas(
+    EditorContext& ctx,
+    scene::AnimatorComponent& animator,
+    const std::string& instanceId)
+{
+    if (m_openBlendTreeState < 0 || m_openBlendTreeState >= static_cast<int>(animator.states.size())) {
+        m_openBlendTreeState = -1;
+        m_selectedMotion = -1;
+        return;
+    }
+    auto& state = animator.states[static_cast<std::size_t>(m_openBlendTreeState)];
+    if (state.mode != scene::AnimationStateMode::BlendTree1D
+        && state.mode != scene::AnimationStateMode::BlendTree2D) {
+        m_openBlendTreeState = -1;
+        m_selectedMotion = -1;
+        return;
+    }
+    auto& motions = state.mode == scene::AnimationStateMode::BlendTree1D
+        ? state.blendTree1D.motions : state.blendTree2D.motions;
+    auto& positions = ctx.graphLayouts[instanceId].blendTreeMotionPositions[state.name];
+    positions.resize(motions.size());
+    for (std::size_t i = 0; i < positions.size(); ++i) {
+        if (positions[i].x == 0.0f && positions[i].y == 0.0f)
+            positions[i] = { 160.0f + static_cast<float>(i % 3) * 280.0f,
+                              50.0f + static_cast<float>(i / 3) * 230.0f };
+    }
+
+    ImGui::BeginChild("##BlendTreeGeneric", ImVec2(0.0f, 0.0f), true,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::TextColored({ 0.52f, 0.78f, 1.0f, 1.0f }, "%s",
+        state.mode == scene::AnimationStateMode::BlendTree1D ? "Blend Tree 1D" : "Blend Tree 2D");
+    ImGui::SameLine();
+    if (state.mode == scene::AnimationStateMode::BlendTree1D) {
+        ImGui::SetNextItemWidth(180.0f);
+        DrawFloatParameterCombo(ctx, "Parameter", animator, state.blendTree1D.paramName);
+    } else {
+        ImGui::SetNextItemWidth(150.0f);
+        DrawFloatParameterCombo(ctx, "Parameter X", animator, state.blendTree2D.paramX);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(150.0f);
+        DrawFloatParameterCombo(ctx, "Parameter Y", animator, state.blendTree2D.paramY);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("+ Motion")) {
+        scene::BlendTreeMotion motion;
+        if (!animator.clips.empty()) { motion.clipName = animator.clips.front().name; motion.clipIndex = 0; }
+        motions.push_back(std::move(motion));
+        positions.push_back({ 160.0f, 50.0f });
+        m_selectedMotion = static_cast<int>(motions.size()) - 1;
+        MarkDirty(ctx);
+    }
+    ImGui::Separator();
+
+    constexpr int ROOT_NODE_ID = 2000000;
+    constexpr int ROOT_OUTPUT_ID = 2000002;
+    constexpr int MOTION_NODE_BASE = 2010000;
+    constexpr int MOTION_INPUT_BASE = 2020000;
+    constexpr int MOTION_LINK_BASE = 2030000;
+    GraphView view;
+    GraphNodeView root;
+    root.id = ROOT_NODE_ID;
+    root.position = { -220.0f, 100.0f };
+    root.title = "Blend Parameter";
+    root.titleColor = IM_COL32(39, 112, 145, 255);
+    root.backgroundColor = IM_COL32(34, 77, 98, 255);
+    root.inputs = {};
+    root.outputs.push_back({ ROOT_OUTPUT_ID, "MOTIONS", IM_COL32(104, 218, 255, 255),
+                             IM_COL32(164, 240, 255, 255), GraphPinShape::TriangleFilled });
+    root.drawBody = [&state, &animator]() {
+        if (state.mode == scene::AnimationStateMode::BlendTree1D) {
+            ImGui::Text("%s", state.blendTree1D.paramName.empty() ? "<Select Float Parameter>" : state.blendTree1D.paramName.c_str());
+            ImGui::TextDisabled("Raw %.3f", animator.GetFloat(state.blendTree1D.paramName));
+        } else {
+            ImGui::Text("X: %s", state.blendTree2D.paramX.empty() ? "<none>" : state.blendTree2D.paramX.c_str());
+            ImGui::Text("Y: %s", state.blendTree2D.paramY.empty() ? "<none>" : state.blendTree2D.paramY.c_str());
+        }
+    };
+    view.nodes.push_back(std::move(root));
+
+    for (int i = 0; i < static_cast<int>(motions.size()); ++i) {
+        auto* motion = &motions[static_cast<std::size_t>(i)];
+        GraphNodeView node;
+        node.id = MOTION_NODE_BASE + i;
+        node.position = positions[static_cast<std::size_t>(i)];
+        node.title = "Motion " + std::to_string(i + 1);
+        node.titleColor = m_selectedMotion == i ? IM_COL32(151, 103, 38, 255) : IM_COL32(72, 82, 98, 255);
+        node.backgroundColor = IM_COL32(52, 58, 69, 255);
+        node.outlineColor = m_selectedMotion == i ? IM_COL32(255, 198, 92, 255) : 0;
+        node.outlineThickness = m_selectedMotion == i ? 2.5f : 0.0f;
+        node.inputs.push_back({ MOTION_INPUT_BASE + i, "WEIGHT", IM_COL32(82, 164, 255, 255),
+                                IM_COL32(132, 210, 255, 255), GraphPinShape::CircleFilled });
+        node.drawBody = [this, &ctx, &animator, &state, motion]() {
+            ImGui::SetNextItemWidth(220.0f);
+            DrawAnimationSource(ctx, "Source", animator, motion->sourcePath);
+            ImGui::SetNextItemWidth(220.0f);
+            DrawClipCombo(ctx, "Clip", animator, motion->sourcePath, motion->clipName, motion->clipIndex);
+            if (state.mode == scene::AnimationStateMode::BlendTree1D) {
+                ImGui::SetNextItemWidth(110.0f);
+                if (ImGui::DragFloat("Threshold", &motion->threshold, 0.01f)) MarkDirty(ctx);
+            } else {
+                ImGui::SetNextItemWidth(95.0f);
+                if (ImGui::DragFloat("X", &motion->posX, 0.01f)) MarkDirty(ctx);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(95.0f);
+                if (ImGui::DragFloat("Y", &motion->posY, 0.01f)) MarkDirty(ctx);
+            }
+            ImGui::TextDisabled("Speed %.2f | IK %.2f", motion->speed, motion->ikWeight);
+        };
+        view.nodes.push_back(std::move(node));
+        view.links.push_back({ MOTION_LINK_BASE + i, ROOT_OUTPUT_ID, MOTION_INPUT_BASE + i,
+                               IM_COL32(104, 170, 210, 220), IM_COL32(140, 213, 255, 255),
+                               IM_COL32(255, 224, 125, 255), GraphLinkPattern::Solid,
+                               -1.0f, -1.0f, -1.0f, -1.0f, 7.0f });
+    }
+
+    m_graphCanvas.SetZoom(m_canvasZoom);
+    GraphCanvas::Config config;
+    config.id = "##BlendTreeGenericCanvas";
+    config.showMiniMap = true;
+    config.showGrid = true;
+    config.editable = CanEditAnimationGraph(ctx);
+    const GraphInteraction interaction = m_graphCanvas.Draw(view, config);
+    m_canvasZoom = m_graphCanvas.Zoom();
+
+    if (interaction.selectionChanged) {
+        m_selectedMotion = -1;
+        if (!interaction.selectedNodes.empty()) {
+            const int id = interaction.selectedNodes.front();
+            if (id >= MOTION_NODE_BASE && id < MOTION_NODE_BASE + static_cast<int>(motions.size()))
+                m_selectedMotion = id - MOTION_NODE_BASE;
+        }
+    }
+    for (const auto& move : interaction.movedNodes) {
+        if (move.nodeId >= MOTION_NODE_BASE && move.nodeId < MOTION_NODE_BASE + static_cast<int>(positions.size())) {
+            positions[static_cast<std::size_t>(move.nodeId - MOTION_NODE_BASE)] = move.position;
+            MarkDirty(ctx);
+        }
+    }
+
+    int pendingDelete = -1;
+    int pendingDuplicate = -1;
+    if (interaction.deleteRequested) pendingDelete = m_selectedMotion;
+    if (interaction.duplicateRequested) pendingDuplicate = m_selectedMotion;
+    if (interaction.nodeContextMenuRequested) {
+        const int id = interaction.contextMenuNode;
+        if (id >= MOTION_NODE_BASE && id < MOTION_NODE_BASE + static_cast<int>(motions.size())) {
+            m_selectedMotion = id - MOTION_NODE_BASE;
+            ImGui::OpenPopup("##BlendGenericMotionMenu");
+        }
+    }
+    if (ImGui::BeginPopup("##BlendGenericMotionMenu")) {
+        if (ImGui::MenuItem("Duplicate")) pendingDuplicate = m_selectedMotion;
+        if (ImGui::MenuItem("Delete")) pendingDelete = m_selectedMotion;
+        ImGui::EndPopup();
+    }
+    if (interaction.contextMenuRequested) {
+        ImGui::OpenPopup("##BlendGenericCanvasMenu");
+    }
+    if (ImGui::BeginPopup("##BlendGenericCanvasMenu")) {
+        if (ImGui::MenuItem("+ New Motion")) {
+            scene::BlendTreeMotion motion;
+            motions.push_back(std::move(motion));
+            positions.push_back(interaction.contextSpawnPosition);
+            m_selectedMotion = static_cast<int>(motions.size()) - 1;
+            MarkDirty(ctx);
+        }
+        if (ImGui::MenuItem("Back to Base Layer")) {
+            m_openBlendTreeState = -1;
+            m_selectedMotion = -1;
+            m_graphCanvas.ResetView();
+        }
+        ImGui::EndPopup();
+    }
+    if (interaction.assetDropped) {
+        const std::string path = NormalizeAssetPath(interaction.droppedAssetPath);
+        if (util::StringUtils::EndsWith(path, ".fbx") || util::StringUtils::EndsWith(path, ".asset")
+            || util::StringUtils::EndsWith(path, ".fzasset")) {
+            scene::BlendTreeMotion motion;
+            motion.sourcePath = path;
+            motions.push_back(std::move(motion));
+            positions.push_back(interaction.dropPosition);
+            m_selectedMotion = static_cast<int>(motions.size()) - 1;
+            MarkDirty(ctx);
+        }
+    }
+    if (pendingDuplicate >= 0 && pendingDuplicate < static_cast<int>(motions.size())) {
+        motions.insert(motions.begin() + pendingDuplicate + 1, motions[static_cast<std::size_t>(pendingDuplicate)]);
+        positions.insert(positions.begin() + pendingDuplicate + 1, positions[static_cast<std::size_t>(pendingDuplicate)] + ImVec2(40.0f, 40.0f));
+        m_selectedMotion = pendingDuplicate + 1;
+        MarkDirty(ctx);
+    }
+    if (pendingDelete >= 0 && pendingDelete < static_cast<int>(motions.size())) {
+        motions.erase(motions.begin() + pendingDelete);
+        positions.erase(positions.begin() + pendingDelete);
+        m_selectedMotion = -1;
+        MarkDirty(ctx);
+    }
+    ImGui::EndChild();
+}
 
 void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -1057,6 +1632,10 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             m_openBlendTreeState = -1;
             m_selectedMotion = -1;
             m_selectedAnyState = false;
+            m_pendingTransitionFrom = -1;
+            m_editingLayer.clear();
+            m_graphCanvas.ClearSelection();
+            m_graphCanvas.ResetView();
             ctx.animationGraphSelection.Clear();
         }
 
@@ -1064,10 +1643,17 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         scene::AnimatorComponent undoBeforeAnimator;
         GraphLayout undoBeforeLayout;
         if (allowEditing) {
+            // スナップショットは差し替え前 (= Base Layer が入っている状態) で取る。
+            // layers も含むため、レイヤー側の編集も Undo で戻せる。
             undoBeforeAnimator = MakeAnimationGraphSnapshot(animator);
             undoBeforeLayout = ctx.graphLayouts[ctx.selectedAssetPath];
         }
         const std::uint64_t undoGenerationBefore = AnimationGraphEditGeneration();
+
+        // 編集対象レイヤーを選ばせ、以降の描画中だけそのグラフへ差し替える。
+        DrawLayerSelector(ctx, animator, allowEditing);
+        LayerGraphScope layerScope(animator, m_editingLayer);
+
         ClearInvalidSelection(animator);
         ImGui::BeginDisabled(!allowEditing);
         ImGui::TextUnformatted(
@@ -1083,8 +1669,8 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::SmallButton("Base Layer")) {
                 m_openBlendTreeState = -1;
                 m_selectedMotion = -1;
-                ImNodes::ClearNodeSelection();
-                ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
+                m_graphCanvas.ClearSelection();
+                m_graphCanvas.ResetView();
             }
             ImGui::SameLine();
             ImGui::TextDisabled("> %s", breadcrumbName.c_str());
@@ -1146,6 +1732,14 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         } else if (m_selectedAnyState) {
             selection.type = EditorContext::AnimationGraphSelection::Type::AnyState;
         }
+        // どのレイヤーのグラフに対する選択かを Inspector へ伝える。
+        selection.layerName = m_editingLayer;
+
+        // Undo 比較の前にレイヤーグラフを元へ戻す。
+        // WHY: 差し替えたままスナップショットを比較すると、Base Layer とレイヤーの
+        //      ステートが入れ替わった状態が「変更」として記録されてしまう。
+        layerScope.Restore();
+
         if (allowEditing) {
             TrackAnimationGraphUndo(
                 ctx,
@@ -1179,17 +1773,25 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         m_openBlendTreeState = -1;
         m_selectedMotion = -1;
         m_selectedAnyState = false;
+        m_pendingTransitionFrom = -1;
+        m_editingLayer.clear();
         ctx.animationGraphSelection.Clear();
     }
 
-    ClearInvalidSelection(*animator);
     scene::AnimatorComponent undoBeforeAnimator;
     GraphLayout undoBeforeLayout;
     if (allowEditing) {
+        // スナップショットは差し替え前 (Base Layer が入っている状態) で取る。
         undoBeforeAnimator = MakeAnimationGraphSnapshot(*animator);
         undoBeforeLayout = ctx.graphLayouts[go->instanceId];
     }
     const std::uint64_t undoGenerationBefore = AnimationGraphEditGeneration();
+
+    // シーン上の Animator でも、編集対象レイヤーを切り替えられるようにする。
+    DrawLayerSelector(ctx, *animator, allowEditing);
+    LayerGraphScope layerScope(*animator, m_editingLayer);
+
+    ClearInvalidSelection(*animator);
     ImGui::BeginDisabled(!allowEditing);
     DrawToolbar(ctx, *animator);
     if (m_openBlendTreeState >= 0 &&
@@ -1200,8 +1802,8 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::SmallButton("Base Layer")) {
             m_openBlendTreeState = -1;
             m_selectedMotion = -1;
-            ImNodes::ClearNodeSelection();
-            ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
+            m_graphCanvas.ClearSelection();
+            m_graphCanvas.ResetView();
         }
         ImGui::SameLine();
         ImGui::TextDisabled("> %s", breadcrumbName.c_str());
@@ -1223,6 +1825,11 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndChild();
     ImGui::EndDisabled();
     PublishSelection(ctx, *go);
+    ctx.animationGraphSelection.layerName = m_editingLayer;
+
+    // Undo 比較の前にレイヤーグラフを元へ戻す。
+    layerScope.Restore();
+
     if (allowEditing) {
         TrackAnimationGraphUndo(
             ctx,
@@ -1234,6 +1841,107 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             undoBeforeLayout,
             undoGenerationBefore);
     }
+}
+
+// 編集対象レイヤーを選ぶツールバー。Base Layer と各 AnimationLayer を切り替える。
+// WHY: レイヤーごとのステートマシンは、これが無いとノードグラフから一切触れない。
+//      切り替え時は選択状態と BlendTree の掘り下げをリセットする。
+//      別グラフのインデックスを持ち越すと、存在しないステートを指したまま描画してしまう。
+void AnimationGraphPanel::DrawLayerSelector(
+    EditorContext& ctx, scene::AnimatorComponent& animator, bool allowEditing)
+{
+    // 指しているレイヤーが消えていたら Base Layer へ戻す。
+    if (!m_editingLayer.empty() && animator.FindLayer(m_editingLayer) == nullptr)
+        m_editingLayer.clear();
+
+    const auto resetSelection = [&]() {
+        m_selectedNode = -1;
+        m_selectedLink = {};
+        m_selectedMotion = -1;
+        m_selectedAnyState = false;
+        m_openBlendTreeState = -1;
+        m_pendingTransitionFrom = -1;
+        m_graphCanvas.ClearSelection();
+        ctx.animationGraphSelection.Clear();
+    };
+
+    ImGui::TextDisabled("Layer");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(200.0f);
+    const char* preview = m_editingLayer.empty() ? "Base Layer" : m_editingLayer.c_str();
+    if (ImGui::BeginCombo("##graph_layer", preview)) {
+        if (ImGui::Selectable("Base Layer", m_editingLayer.empty())) {
+            if (!m_editingLayer.empty()) { m_editingLayer.clear(); resetSelection(); }
+        }
+        for (const auto& layer : animator.layers) {
+            const bool selected = (layer.name == m_editingLayer);
+            char label[192];
+            std::snprintf(label, sizeof(label), "%s  [%s %.0f%%]%s",
+                          layer.name.c_str(),
+                          layer.mode == scene::AnimationLayerMode::Additive ? "Additive" : "Override",
+                          layer.weight * 100.0f,
+                          layer.states.empty() ? "  (no graph)" : "");
+            if (ImGui::Selectable(label, selected) && !selected) {
+                m_editingLayer = layer.name;
+                resetSelection();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!allowEditing);
+    if (ImGui::SmallButton("+ Layer")) {
+        scene::AnimationLayer layer;
+        // 名前引き API (SetLayerWeight / PlaySlot / MCP) が壊れるため同名は避ける。
+        layer.name = "Layer " + std::to_string(animator.layers.size() + 1);
+        for (int suffix = 1; animator.FindLayer(layer.name) != nullptr && suffix < 1000; ++suffix)
+            layer.name = "Layer " + std::to_string(animator.layers.size() + 1 + suffix);
+        const std::string created = layer.name;
+        animator.layers.push_back(std::move(layer));
+        m_editingLayer = created;
+        resetSelection();
+        MarkDirty(ctx);
+    }
+    if (!m_editingLayer.empty()) {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("- Layer")) {
+            const std::string target = m_editingLayer;
+            animator.layers.erase(
+                std::remove_if(animator.layers.begin(), animator.layers.end(),
+                    [&](const scene::AnimationLayer& l) { return l.name == target; }),
+                animator.layers.end());
+            m_editingLayer.clear();
+            resetSelection();
+            MarkDirty(ctx);
+        }
+    }
+    ImGui::EndDisabled();
+
+    // 選択中レイヤーの要点 (weight / mode / mask) をその場で調整できるようにする。
+    if (scene::AnimationLayer* layer = animator.FindLayer(m_editingLayer)) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        if (ImGui::SliderFloat("##layer_weight", &layer->weight, 0.0f, 1.0f, "w %.2f"))
+            MarkDirty(ctx);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        static constexpr const char* kModeNames[] = { "Override", "Additive" };
+        int modeIndex = static_cast<int>(layer->mode);
+        if (ImGui::Combo("##layer_mode", &modeIndex, kModeNames, 2)) {
+            layer->mode = static_cast<scene::AnimationLayerMode>(modeIndex);
+            MarkDirty(ctx);
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(220.0f);
+        if (widgets::AssetPathField("##layer_mask", layer->mask.path, ".mask", ctx.projectRoot)) {
+            layer->mask.Invalidate();
+            MarkDirty(ctx);
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("このレイヤーが効くボーンを決める .mask アセット");
+    }
+    ImGui::Separator();
 }
 
 void AnimationGraphPanel::DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator)
@@ -1365,1194 +2073,6 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
     ImGui::EndChild();
 }
 
-void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
-                                         scene::AnimatorComponent& animator,
-                                         const std::string& instanceId)
-{
-    const float canvasHeight = std::max(220.0f, ImGui::GetContentRegionAvail().y);
-    ImGui::BeginChild("##AnimationGraphCanvas", ImVec2(0.0f, 0.0f), true,
-                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    ImGui::SetWindowFontScale(m_canvasZoom);
-
-    if (m_nodesContext) ImNodes::SetCurrentContext(m_nodesContext);
-    if (m_editorContext) ImNodes::EditorContextSet(m_editorContext);
-
-    const ImGuiIO& io = ImGui::GetIO();
-    const bool canvasHovered = ImGui::IsWindowHovered(CANVAS_HOVER_FLAGS);
-    const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
-    const bool hasVerticalWheel = io.MouseWheel != 0.0f;
-    const bool canZoomWithWheel =
-        canvasHovered && !io.KeyShift && !io.KeyAlt && hasVerticalWheel;
-    if (canZoomWithWheel) {
-        // WHY: imnodes 本体にはズーム API がないため、パネル側でノード座標と描画寸法を拡縮する。
-        //      カーソル直下のグラフ座標を固定するようパン量も補正し、拡大時の視点移動を防ぐ。
-        const float oldZoom = m_canvasZoom;
-        const float zoomSpeed = io.KeyCtrl ? ZOOM_STEP * 1.5f : ZOOM_STEP;
-        const float newZoom = ClampZoom(oldZoom + io.MouseWheel * zoomSpeed);
-        if (std::abs(newZoom - oldZoom) > 0.0001f) {
-            const ImVec2 oldPanning = ImNodes::EditorContextGetPanning();
-            const ImVec2 mouseInCanvas(
-                io.MousePos.x - canvasOrigin.x,
-                io.MousePos.y - canvasOrigin.y);
-            const float ratio = newZoom / oldZoom;
-            const ImVec2 newPanning(
-                mouseInCanvas.x - (mouseInCanvas.x - oldPanning.x) * ratio,
-                mouseInCanvas.y - (mouseInCanvas.y - oldPanning.y) * ratio);
-            ImNodes::EditorContextResetPanning(newPanning);
-            m_canvasZoom = newZoom;
-        }
-    }
-
-    if (canvasHovered && (io.KeyShift || io.MouseWheelH != 0.0f)) {
-        // Shift+縦ホイールと横ホイールを同じ横パン操作として扱う。
-        const float horizontalWheel =
-            io.MouseWheelH != 0.0f ? io.MouseWheelH : io.MouseWheel;
-        if (horizontalWheel != 0.0f) {
-            ImVec2 panning = ImNodes::EditorContextGetPanning();
-            panning.x += horizontalWheel * WHEEL_PAN_STEP;
-            ImNodes::EditorContextResetPanning(panning);
-        }
-    }
-    if (canvasHovered && io.KeyAlt && !io.KeyShift && hasVerticalWheel) {
-        ImVec2 panning = ImNodes::EditorContextGetPanning();
-        panning.y += io.MouseWheel * WHEEL_PAN_STEP;
-        ImNodes::EditorContextResetPanning(panning);
-    }
-
-    GraphLayout& layout = ctx.graphLayouts[instanceId];
-
-    // デフォルト位置の初期化はここで行い、SetNodeGridSpacePos は BeginNodeEditor の後に移動する。
-    // WHY: BeginNodeEditor の前に SetNodeGridSpacePos を呼ぶと imnodes の内部状態が
-    //      リセットされてドラッグ操作が無効になるため、必ず Begin の後で設定する。
-    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
-        const auto& state = animator.states[static_cast<size_t>(i)];
-        if (!layout.nodePositions.contains(state.name))
-            layout.nodePositions[state.name] = ImVec2(80.0f + 260.0f * static_cast<float>(i), 80.0f);
-    }
-
-    ImNodes::PushStyleVar(ImNodesStyleVar_GridSpacing, 32.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(ImNodesStyleVar_NodePadding, ImVec2(12.0f * m_canvasZoom, 8.0f * m_canvasZoom));
-    ImNodes::PushStyleVar(ImNodesStyleVar_NodeCornerRounding, 6.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(ImNodesStyleVar_NodeBorderThickness, 2.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(ImNodesStyleVar_LinkThickness, 3.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(ImNodesStyleVar_PinCircleRadius, 5.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(ImNodesStyleVar_PinHoverRadius, 9.0f * m_canvasZoom);
-
-    std::unordered_map<int, float> outputPinScreenY;
-    std::unordered_map<int, float> inputPinScreenY;
-
-    ImNodes::BeginNodeEditor();
-    ImGui::SetWindowFontScale(m_canvasZoom);
-
-    // BeginNodeEditor 後にノード位置を設定する (imnodes の正しい使用パターン)。
-    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
-        const ImVec2 logicalPos = layout.nodePositions[animator.states[static_cast<size_t>(i)].name];
-        ImNodes::SetNodeGridSpacePos(NodeId(i), ImVec2(logicalPos.x * m_canvasZoom, logicalPos.y * m_canvasZoom));
-    }
-    ImNodes::SetNodeGridSpacePos(
-        EntryNodeId(),
-        ImVec2(layout.entryPosition.x * m_canvasZoom, layout.entryPosition.y * m_canvasZoom));
-    ImNodes::SetNodeGridSpacePos(
-        AnyStateNodeId(),
-        ImVec2(layout.anyStatePosition.x * m_canvasZoom, layout.anyStatePosition.y * m_canvasZoom));
-
-    // Entry は Animator の初期化先を表す読み取り専用ノード。
-    // WHAT: defaultStateName、未指定時は先頭 State へリンクして開始経路を可視化する。
-    ImNodes::PushColorStyle(ImNodesCol_NodeBackground, IM_COL32(35, 82, 55, 255));
-    ImNodes::PushColorStyle(ImNodesCol_NodeBackgroundHovered, IM_COL32(42, 104, 68, 255));
-    ImNodes::PushColorStyle(ImNodesCol_NodeBackgroundSelected, IM_COL32(48, 120, 76, 255));
-    ImNodes::PushColorStyle(ImNodesCol_NodeOutline, IM_COL32(82, 204, 122, 255));
-    ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(50, 145, 82, 255));
-    ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(60, 170, 96, 255));
-    ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(66, 188, 106, 255));
-    ImNodes::BeginNode(EntryNodeId());
-    ImNodes::BeginNodeTitleBar();
-    ImGui::TextUnformatted("Entry");
-    ImNodes::EndNodeTitleBar();
-    ImNodes::BeginStaticAttribute(EntryNodeId() + 10);
-    const char* entryTargetName = "<none>";
-    if (!animator.defaultStateName.empty())
-        entryTargetName = animator.defaultStateName.c_str();
-    else if (!animator.states.empty())
-        entryTargetName = animator.states.front().name.c_str();
-    ImGui::TextDisabled("DEFAULT FLOW");
-    ImGui::Text("Target: %s", entryTargetName);
-    ImNodes::EndStaticAttribute();
-    ImNodes::BeginOutputAttribute(EntryOutputPinId());
-    ImGui::TextColored(ImVec4(0.45f, 1.0f, 0.62f, 1.0f), "START >");
-    ImNodes::EndOutputAttribute();
-    ImNodes::EndNode();
-    for (int i = 0; i < 7; ++i) ImNodes::PopColorStyle();
-
-    ImNodes::PushColorStyle(ImNodesCol_NodeBackground, IM_COL32(75, 45, 85, 255));
-    ImNodes::PushColorStyle(ImNodesCol_NodeBackgroundHovered, IM_COL32(96, 52, 110, 255));
-    ImNodes::PushColorStyle(ImNodesCol_NodeBackgroundSelected, IM_COL32(111, 58, 128, 255));
-    ImNodes::PushColorStyle(ImNodesCol_NodeOutline, IM_COL32(190, 105, 222, 255));
-    ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(125, 65, 145, 255));
-    ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(151, 77, 174, 255));
-    ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(169, 87, 194, 255));
-    ImNodes::BeginNode(AnyStateNodeId());
-    ImNodes::BeginNodeTitleBar();
-    ImGui::TextUnformatted("Any State");
-    ImNodes::EndNodeTitleBar();
-    ImNodes::BeginStaticAttribute(AnyStateNodeId() + 10);
-    ImGui::TextDisabled("GLOBAL TRANSITIONS");
-    ImGui::Text("%d transition%s",
-        static_cast<int>(animator.anyStateTransitions.size()),
-        animator.anyStateTransitions.size() == 1 ? "" : "s");
-    ImNodes::EndStaticAttribute();
-    ImNodes::BeginOutputAttribute(AnyStateOutputPinId());
-    outputPinScreenY[AnyStateNodeId()] = ImGui::GetCursorScreenPos().y + ImGui::GetTextLineHeight() * 0.5f;
-    ImGui::TextColored(ImVec4(0.9f, 0.55f, 1.0f, 1.0f), "OUT >");
-    ImNodes::EndOutputAttribute();
-    ImNodes::EndNode();
-    for (int i = 0; i < 7; ++i) ImNodes::PopColorStyle();
-
-    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
-        const auto& state = animator.states[static_cast<size_t>(i)];
-        const bool isDefault = state.name == animator.defaultStateName ||
-            (animator.defaultStateName.empty() && i == 0);
-        const bool isCurrent = state.name == animator.currentStateName;
-
-        int pushedColors = 0;
-        const unsigned int backgroundColor =
-            NodeBackgroundColor(state.mode, isCurrent, isDefault);
-        const unsigned int titleColor =
-            NodeTitleColor(state.mode, isCurrent, isDefault);
-
-        ImNodes::PushColorStyle(ImNodesCol_NodeBackground, backgroundColor);
-        ++pushedColors;
-        ImNodes::PushColorStyle(ImNodesCol_NodeBackgroundHovered, IM_COL32(48, 59, 70, 255));
-        ++pushedColors;
-        ImNodes::PushColorStyle(ImNodesCol_NodeBackgroundSelected, IM_COL32(48, 67, 82, 255));
-        ++pushedColors;
-        ImNodes::PushColorStyle(ImNodesCol_NodeOutline, NodeOutlineColor(isCurrent, isDefault));
-        ++pushedColors;
-        ImNodes::PushColorStyle(ImNodesCol_TitleBar, titleColor);
-        ++pushedColors;
-        ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(72, 86, 103, 255));
-        ++pushedColors;
-        ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, titleColor);
-        ++pushedColors;
-
-        ImNodes::BeginNode(NodeId(i));
-        ImNodes::BeginNodeTitleBar();
-        ImGui::TextUnformatted(state.name.empty() ? "(Unnamed)" : state.name.c_str());
-        if (isCurrent) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.45f, 1.0f, 0.62f, 1.0f), "[Current]");
-        } else if (isDefault) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.76f, 0.28f, 1.0f), "[Default]");
-        }
-        ImNodes::EndNodeTitleBar();
-
-        ImNodes::PushColorStyle(ImNodesCol_Pin, IM_COL32(82, 164, 255, 255));
-        ImNodes::PushColorStyle(ImNodesCol_PinHovered, IM_COL32(132, 210, 255, 255));
-        ImNodes::BeginInputAttribute(InputPinId(i));
-        inputPinScreenY[NodeId(i)] = ImGui::GetCursorScreenPos().y + ImGui::GetTextLineHeight() * 0.5f;
-        ImGui::TextColored(ImVec4(0.42f, 0.72f, 1.0f, 1.0f), "< IN");
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Drop a transition here");
-        ImNodes::EndInputAttribute();
-        ImNodes::PopColorStyle();
-        ImNodes::PopColorStyle();
-
-        ImNodes::BeginStaticAttribute(NodeId(i) * 1000 + 1);
-        // ノードはグラフ把握に必要な要約だけを表示し、詳細編集は Inspector に集約する。
-        // WHY: フォームを各ノードへ並べるとサイズが揃わず、遷移線と状態構造が読みづらくなるため。
-        const float cardWidth = BASE_NODE_CARD_WIDTH * m_canvasZoom;
-        ImGui::Dummy(ImVec2(cardWidth, 0.0f));
-        ImGui::TextColored(StateModeTextColor(state.mode), "%s", StateModeName(state.mode));
-        ImGui::Separator();
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + cardWidth);
-
-        if (state.mode == scene::AnimationStateMode::Clip) {
-            ImGui::TextWrapped(
-                "%s",
-                state.clipName.empty() ? "No clip assigned" : state.clipName.c_str());
-            ImGui::TextDisabled(
-                "%s",
-                state.sourcePath.empty() ? "No source" : state.sourcePath.c_str());
-        } else if (state.mode == scene::AnimationStateMode::BlendTree1D) {
-            ImGui::Text("Param: %s",
-                state.blendTree1D.paramName.empty() ? "<none>" : state.blendTree1D.paramName.c_str());
-            const auto& bt1d = state.blendTree1D;
-            if (bt1d.motions.size() >= 2) {
-                float minT = bt1d.motions[0].threshold, maxT = bt1d.motions[0].threshold;
-                for (const auto& m : bt1d.motions) {
-                    minT = std::min(minT, m.threshold);
-                    maxT = std::max(maxT, m.threshold);
-                }
-                const float range = maxT - minT;
-                const ImVec2 barMin = ImGui::GetCursorScreenPos();
-                const float barH = 7.0f * m_canvasZoom;
-                ImDrawList* dl = ImGui::GetWindowDrawList();
-                dl->AddRectFilled(barMin, ImVec2(barMin.x + cardWidth, barMin.y + barH),
-                    IM_COL32(30, 38, 52, 220), 2.0f * m_canvasZoom);
-                if (range > 0.0f) {
-                    for (const auto& m : bt1d.motions) {
-                        const float tx = (m.threshold - minT) / range;
-                        const float px = barMin.x + tx * cardWidth;
-                        dl->AddLine(ImVec2(px, barMin.y + 1), ImVec2(px, barMin.y + barH - 1),
-                            IM_COL32(110, 160, 255, 200));
-                    }
-                    if (isCurrent && !bt1d.paramName.empty()) {
-                        const float raw = animator.GetFloat(bt1d.paramName.c_str());
-                        const float tx = std::clamp((raw - minT) / range, 0.0f, 1.0f);
-                        const float px = barMin.x + tx * cardWidth;
-                        const float tip = 4.0f * m_canvasZoom;
-                        dl->AddTriangleFilled(
-                            ImVec2(px - tip, barMin.y - 2.0f * m_canvasZoom),
-                            ImVec2(px + tip, barMin.y - 2.0f * m_canvasZoom),
-                            ImVec2(px, barMin.y + barH + m_canvasZoom),
-                            IM_COL32(255, 215, 75, 240));
-                    }
-                }
-                ImGui::Dummy(ImVec2(cardWidth, barH));
-            } else {
-                ImGui::TextDisabled("%d motions", static_cast<int>(bt1d.motions.size()));
-            }
-            ImGui::TextDisabled("Double-click to open");
-        } else {
-            ImGui::Text("Parameters: %s / %s",
-                state.blendTree2D.paramX.empty() ? "<none>" : state.blendTree2D.paramX.c_str(),
-                state.blendTree2D.paramY.empty() ? "<none>" : state.blendTree2D.paramY.c_str());
-            ImGui::TextDisabled("%d motions",
-                static_cast<int>(state.blendTree2D.motions.size()));
-            ImGui::TextDisabled("Double-click to open");
-        }
-        ImGui::PopTextWrapPos();
-
-        ImGui::Spacing();
-        ImGui::TextDisabled(
-            "%s  |  Speed %.2f  |  IK %.2f",
-            state.loop ? "LOOP" : "ONCE",
-            state.speed,
-            state.ikWeight);
-        ImGui::TextDisabled(
-            "%d transition%s",
-            static_cast<int>(state.transitions.size()),
-            state.transitions.size() == 1 ? "" : "s");
-        if (isCurrent) {
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(55, 210, 115, 220));
-            ImGui::ProgressBar(animator.GetNormalizedTime(), ImVec2(cardWidth, 3.0f), "");
-            ImGui::PopStyleColor();
-        } else if (!animator.blendToState.empty() && state.name == animator.blendToState) {
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(75, 140, 225, 180));
-            ImGui::ProgressBar(animator.blendWeight, ImVec2(cardWidth, 3.0f), "");
-            ImGui::PopStyleColor();
-        }
-        ImNodes::EndStaticAttribute();
-
-        ImNodes::PushColorStyle(ImNodesCol_Pin, IM_COL32(255, 156, 72, 255));
-        ImNodes::PushColorStyle(ImNodesCol_PinHovered, IM_COL32(255, 202, 118, 255));
-        ImNodes::BeginOutputAttribute(OutputPinId(i));
-        outputPinScreenY[NodeId(i)] = ImGui::GetCursorScreenPos().y + ImGui::GetTextLineHeight() * 0.5f;
-        ImGui::TextColored(ImVec4(1.0f, 0.68f, 0.32f, 1.0f), "OUT >");
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Drag from here to another state's To pin");
-        ImNodes::EndOutputAttribute();
-        ImNodes::PopColorStyle();
-        ImNodes::PopColorStyle();
-
-        ImNodes::EndNode();
-        while (pushedColors-- > 0) ImNodes::PopColorStyle();
-    }
-
-    for (int from = 0; from < static_cast<int>(animator.states.size()); ++from) {
-        const auto& state = animator.states[static_cast<size_t>(from)];
-        for (int ti = 0; ti < static_cast<int>(state.transitions.size()); ++ti) {
-            const auto& transition = state.transitions[static_cast<size_t>(ti)];
-            const int to = FindStateIndexByName(animator, transition.toStateName);
-            if (to < 0) continue;
-            const bool isActive =
-                state.name == animator.currentStateName &&
-                transition.toStateName == animator.blendToState;
-            const unsigned int linkColor = isActive
-                ? IM_COL32(73, 232, 137, 255)
-                : transition.hasExitTime
-                    ? IM_COL32(228, 169, 73, 225)
-                    : IM_COL32(96, 164, 224, 220);
-            ImNodes::PushColorStyle(ImNodesCol_Link, linkColor);
-            ImNodes::PushColorStyle(
-                ImNodesCol_LinkHovered,
-                isActive ? IM_COL32(123, 255, 174, 255) : IM_COL32(140, 213, 255, 255));
-            ImNodes::PushColorStyle(ImNodesCol_LinkSelected, IM_COL32(255, 224, 125, 255));
-            ImNodes::Link(LinkId(from, ti), OutputPinId(from), InputPinId(to));
-            ImNodes::PopColorStyle();
-            ImNodes::PopColorStyle();
-            ImNodes::PopColorStyle();
-        }
-    }
-
-    bool hasActiveStateTransition = false;
-    const int currentStateIndex =
-        FindStateIndexByName(animator, animator.currentStateName);
-    if (currentStateIndex >= 0) {
-        const auto& currentState =
-            animator.states[static_cast<size_t>(currentStateIndex)];
-        hasActiveStateTransition = std::any_of(
-            currentState.transitions.begin(),
-            currentState.transitions.end(),
-            [&](const scene::AnimationTransition& transition) {
-                return !animator.blendToState.empty() &&
-                    transition.toStateName == animator.blendToState;
-            });
-    }
-
-    for (int ti = 0; ti < static_cast<int>(animator.anyStateTransitions.size()); ++ti) {
-        const auto& transition = animator.anyStateTransitions[static_cast<size_t>(ti)];
-        const int to = FindStateIndexByName(
-            animator, transition.toStateName);
-        if (to >= 0) {
-            const bool isActive =
-                !hasActiveStateTransition &&
-                !animator.blendToState.empty() &&
-                transition.toStateName == animator.blendToState;
-            ImNodes::PushColorStyle(
-                ImNodesCol_Link,
-                isActive ? IM_COL32(73, 232, 137, 255) : IM_COL32(177, 96, 214, 225));
-            ImNodes::PushColorStyle(
-                ImNodesCol_LinkHovered,
-                isActive ? IM_COL32(123, 255, 174, 255) : IM_COL32(222, 144, 255, 255));
-            ImNodes::PushColorStyle(ImNodesCol_LinkSelected, IM_COL32(255, 224, 125, 255));
-            ImNodes::Link(AnyStateLinkId(ti), AnyStateOutputPinId(), InputPinId(to));
-            ImNodes::PopColorStyle();
-            ImNodes::PopColorStyle();
-            ImNodes::PopColorStyle();
-        }
-    }
-
-    ImNodes::PushColorStyle(ImNodesCol_Link, IM_COL32(80, 210, 128, 230));
-    ImNodes::PushColorStyle(ImNodesCol_LinkHovered, IM_COL32(128, 244, 166, 255));
-    ImNodes::PushColorStyle(ImNodesCol_LinkSelected, IM_COL32(255, 198, 92, 255));
-    int entryStateIndex = 0;
-    if (!animator.defaultStateName.empty()) {
-        const int defaultIndex = FindStateIndexByName(animator, animator.defaultStateName);
-        if (defaultIndex >= 0) entryStateIndex = defaultIndex;
-    }
-    if (entryStateIndex >= 0 && entryStateIndex < static_cast<int>(animator.states.size()))
-        ImNodes::Link(EntryLinkId(), EntryOutputPinId(), InputPinId(entryStateIndex));
-    ImNodes::PopColorStyle();
-    ImNodes::PopColorStyle();
-    ImNodes::PopColorStyle();
-
-    ImNodes::MiniMap(0.16f, ImNodesMiniMapLocation_BottomRight);
-    ImNodes::EndNodeEditor();
-    ImNodes::PopStyleVar(7);
-
-    // Transition の主要条件をリンク中央へバッジ表示する。
-    // WHY: 線の色だけでは Exit Time と条件遷移を区別できず、Inspector を開くまで意味が読めないため。
-    auto drawTransitionBadge = [&](int linkId,
-                                   int fromNodeId,
-                                   int toNodeId,
-                                   int parallelIndex,
-                                   const scene::AnimationTransition& transition,
-                                   bool isAnyState,
-                                   bool isActive) {
-        const bool selected = ImNodes::IsLinkSelected(linkId);
-        if (m_canvasZoom < 0.65f && !selected) return;
-
-        const ImVec2 fromPos = ImNodes::GetNodeScreenSpacePos(fromNodeId);
-        const ImVec2 fromSize = ImNodes::GetNodeDimensions(fromNodeId);
-        const ImVec2 toPos = ImNodes::GetNodeScreenSpacePos(toNodeId);
-        const ImVec2 toSize = ImNodes::GetNodeDimensions(toNodeId);
-        const ImVec2 fromCenter(
-            fromPos.x + fromSize.x,
-            outputPinScreenY.count(fromNodeId) ? outputPinScreenY.at(fromNodeId) : fromPos.y + fromSize.y * 0.5f);
-        const ImVec2 toCenter(
-            toPos.x,
-            inputPinScreenY.count(toNodeId) ? inputPinScreenY.at(toNodeId) : toPos.y + toSize.y * 0.5f);
-        const float offsetY =
-            static_cast<float>((parallelIndex % 3) - 1) * 18.0f * m_canvasZoom;
-        const ImVec2 center(
-            (fromCenter.x + toCenter.x) * 0.5f,
-            (fromCenter.y + toCenter.y) * 0.5f + offsetY);
-
-        const std::string text = BuildTransitionBadge(transition);
-        const ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
-        const ImVec2 padding(7.0f * m_canvasZoom, 4.0f * m_canvasZoom);
-        const ImVec2 min(
-            center.x - textSize.x * 0.5f - padding.x,
-            center.y - textSize.y * 0.5f - padding.y);
-        const ImVec2 max(
-            center.x + textSize.x * 0.5f + padding.x,
-            center.y + textSize.y * 0.5f + padding.y);
-
-        const ImU32 background = isActive
-            ? IM_COL32(28, 105, 62, 245)
-            : selected
-                ? IM_COL32(108, 79, 28, 245)
-                : isAnyState
-                    ? IM_COL32(70, 39, 82, 235)
-                    : transition.hasExitTime
-                        ? IM_COL32(78, 59, 27, 235)
-                        : IM_COL32(30, 48, 66, 235);
-        const ImU32 outline = isActive
-            ? IM_COL32(91, 239, 148, 255)
-            : selected
-                ? IM_COL32(255, 215, 105, 255)
-                : isAnyState
-                    ? IM_COL32(190, 111, 224, 245)
-                    : transition.hasExitTime
-                        ? IM_COL32(226, 169, 75, 245)
-                        : IM_COL32(99, 171, 226, 245);
-
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->AddRectFilled(min, max, background, 5.0f);
-        drawList->AddRect(min, max, outline, 5.0f, 0, selected ? 2.0f : 1.0f);
-        drawList->AddText(
-            ImVec2(center.x - textSize.x * 0.5f, center.y - textSize.y * 0.5f),
-            IM_COL32(235, 240, 246, 255),
-            text.c_str());
-    };
-
-    const ImVec2 canvasWindowPos = ImGui::GetWindowPos();
-    const ImVec2 canvasWindowSize = ImGui::GetWindowSize();
-    ImGui::GetWindowDrawList()->PushClipRect(
-        canvasOrigin,
-        ImVec2(
-            canvasWindowPos.x + canvasWindowSize.x,
-            canvasWindowPos.y + canvasWindowSize.y),
-        true);
-    for (int from = 0; from < static_cast<int>(animator.states.size()); ++from) {
-        const auto& state = animator.states[static_cast<size_t>(from)];
-        for (int ti = 0; ti < static_cast<int>(state.transitions.size()); ++ti) {
-            const auto& transition = state.transitions[static_cast<size_t>(ti)];
-            const int to = FindStateIndexByName(animator, transition.toStateName);
-            if (to < 0) continue;
-            drawTransitionBadge(
-                LinkId(from, ti),
-                NodeId(from),
-                NodeId(to),
-                ti,
-                transition,
-                false,
-                state.name == animator.currentStateName &&
-                    transition.toStateName == animator.blendToState);
-        }
-    }
-    for (int ti = 0; ti < static_cast<int>(animator.anyStateTransitions.size()); ++ti) {
-        const auto& transition = animator.anyStateTransitions[static_cast<size_t>(ti)];
-        const int to = FindStateIndexByName(animator, transition.toStateName);
-        if (to < 0) continue;
-        drawTransitionBadge(
-            AnyStateLinkId(ti),
-            AnyStateNodeId(),
-            NodeId(to),
-            ti,
-            transition,
-            true,
-            !hasActiveStateTransition &&
-                !animator.blendToState.empty() &&
-                transition.toStateName == animator.blendToState);
-    }
-    ImGui::GetWindowDrawList()->PopClipRect();
-
-    if (canvasHovered && ImGui::IsKeyPressed(ImGuiKey_F) &&
-        m_selectedNode >= 0 &&
-        m_selectedNode < static_cast<int>(animator.states.size())) {
-        ImNodes::EditorContextMoveToNode(NodeId(m_selectedNode));
-    }
-
-    const ImVec2 helpPos(
-        canvasOrigin.x + 10.0f,
-        canvasOrigin.y + canvasHeight - ImGui::GetTextLineHeightWithSpacing() - 10.0f);
-    ImGui::GetWindowDrawList()->AddText(
-        helpPos,
-        IM_COL32(155, 165, 178, canvasHovered ? 230 : 145),
-        "Wheel: Zoom | Shift/Alt+Wheel: Pan | Middle Drag: Pan | F: Focus");
-
-    int activePin = 0;
-    if (ImNodes::IsLinkStarted(&activePin)) {
-        const bool fromOutput = (activePin % 2) == 0;
-        ImGui::SetTooltip(fromOutput ? "Drop on a blue < To pin" : "Drop on an orange From > pin");
-    }
-
-    if (CanEditAnimationGraph(ctx)) {
-        for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
-            const auto& state = animator.states[static_cast<size_t>(i)];
-            ImVec2 pos = ImNodes::GetNodeGridSpacePos(NodeId(i));
-            pos.x /= m_canvasZoom;
-            pos.y /= m_canvasZoom;
-            ImVec2& stored = layout.nodePositions[state.name];
-            if (std::fabs(stored.x - pos.x) > 0.01f || std::fabs(stored.y - pos.y) > 0.01f) {
-                stored = pos;
-                MarkDirty(ctx);
-            }
-        }
-        auto storeSpecialNodePosition = [&](int nodeId, ImVec2& stored) {
-            ImVec2 pos = ImNodes::GetNodeGridSpacePos(nodeId);
-            pos.x /= m_canvasZoom;
-            pos.y /= m_canvasZoom;
-            if (std::fabs(stored.x - pos.x) > 0.01f ||
-                std::fabs(stored.y - pos.y) > 0.01f) {
-                stored = pos;
-                MarkDirty(ctx);
-            }
-        };
-        storeSpecialNodePosition(EntryNodeId(), layout.entryPosition);
-        storeSpecialNodePosition(AnyStateNodeId(), layout.anyStatePosition);
-    }
-
-    int startedPin = 0;
-    int endedPin = 0;
-    if (ImNodes::IsLinkCreated(&startedPin, &endedPin)) {
-        const bool fromAnyState =
-            startedPin == AnyStateOutputPinId() || endedPin == AnyStateOutputPinId();
-        const bool startIsOutput = (startedPin % 2) == 0;
-        const bool endIsOutput = (endedPin % 2) == 0;
-        const int from = startIsOutput ? (startedPin - 2) / 2 : (endedPin - 2) / 2;
-        const int to = startIsOutput ? (endedPin - 1) / 2 : (startedPin - 1) / 2;
-        if (fromAnyState && startIsOutput != endIsOutput &&
-            to >= 0 && to < static_cast<int>(animator.states.size())) {
-            const std::string& toStateName =
-                animator.states[static_cast<size_t>(to)].name;
-            const bool alreadyExists = std::any_of(
-                animator.anyStateTransitions.begin(),
-                animator.anyStateTransitions.end(),
-                [&](const scene::AnimationTransition& transition) {
-                    return transition.toStateName == toStateName;
-                });
-            if (!alreadyExists) {
-                scene::AnimationTransition transition;
-                transition.toStateName = toStateName;
-                animator.anyStateTransitions.push_back(std::move(transition));
-                m_selectedLink = {
-                    -2, static_cast<int>(animator.anyStateTransitions.size()) - 1
-                };
-                MarkDirty(ctx);
-            }
-        } else if (startIsOutput != endIsOutput &&
-            from >= 0 && from < static_cast<int>(animator.states.size()) &&
-            to >= 0 && to < static_cast<int>(animator.states.size())) {
-            AddTransition(ctx, animator, from, to);
-        }
-    }
-
-    int destroyedLink = 0;
-    if (ImNodes::IsLinkDestroyed(&destroyedLink)) {
-        LinkRef ref = ResolveLink(destroyedLink, animator);
-        if (ref.fromStateIndex == -2) {
-            animator.anyStateTransitions.erase(
-                animator.anyStateTransitions.begin() + ref.transitionIndex);
-            m_selectedLink = {};
-            MarkDirty(ctx);
-        } else if (ref.fromStateIndex >= 0) {
-            auto& transitions = animator.states[static_cast<size_t>(ref.fromStateIndex)].transitions;
-            transitions.erase(transitions.begin() + ref.transitionIndex);
-            m_selectedLink = {};
-            MarkDirty(ctx);
-        }
-    }
-
-    const int selectedLinkCount = ImNodes::NumSelectedLinks();
-    if (selectedLinkCount > 0) {
-        std::vector<int> links(static_cast<size_t>(selectedLinkCount));
-        ImNodes::GetSelectedLinks(links.data());
-        m_selectedLink = ResolveLink(links.front(), animator);
-        m_selectedNode = -1;
-        m_selectedAnyState = false;
-        ImNodes::ClearNodeSelection();
-    }
-
-    const int selectedNodeCount = ImNodes::NumSelectedNodes();
-    if (selectedLinkCount == 0 && selectedNodeCount > 0) {
-        std::vector<int> nodes(static_cast<size_t>(selectedNodeCount));
-        ImNodes::GetSelectedNodes(nodes.data());
-        m_selectedAnyState = nodes.front() == AnyStateNodeId();
-        m_selectedNode =
-            nodes.front() >= NodeId(0) &&
-            nodes.front() < NodeId(static_cast<int>(animator.states.size()))
-                ? nodes.front() - 1
-                : -1;
-        m_selectedLink = {};
-        ImNodes::ClearLinkSelection();
-    }
-
-    if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
-        if (m_selectedLink.fromStateIndex == -2) {
-            animator.anyStateTransitions.erase(
-                animator.anyStateTransitions.begin() + m_selectedLink.transitionIndex);
-            m_selectedLink = {};
-            ImNodes::ClearLinkSelection();
-            MarkDirty(ctx);
-        } else if (m_selectedLink.fromStateIndex >= 0) {
-            auto& transitions = animator.states[static_cast<size_t>(m_selectedLink.fromStateIndex)].transitions;
-            transitions.erase(transitions.begin() + m_selectedLink.transitionIndex);
-            m_selectedLink = {};
-            ImNodes::ClearLinkSelection();
-            MarkDirty(ctx);
-        } else if (m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
-            DeleteState(ctx, animator, m_selectedNode, instanceId);
-            m_selectedNode = -1;
-            ImNodes::ClearNodeSelection();
-        }
-    }
-    if (ImGui::IsWindowFocused() && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D) &&
-        m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
-        scene::AnimationState copied = animator.states[static_cast<size_t>(m_selectedNode)];
-        copied.name = MakeUniqueStateName(animator, (copied.name + "_Copy").c_str());
-        animator.states.push_back(std::move(copied));
-        m_selectedNode = static_cast<int>(animator.states.size()) - 1;
-        AutoLayoutStates(ctx, animator, instanceId);
-        MarkDirty(ctx);
-    }
-
-    int hoveredNode = 0;
-    const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
-    int hoveredLink = 0;
-    const bool linkHovered = ImNodes::IsLinkHovered(&hoveredLink);
-    if (nodeHovered &&
-        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-        hoveredNode >= NodeId(0) &&
-        hoveredNode < NodeId(static_cast<int>(animator.states.size()))) {
-        const int stateIndex = hoveredNode - NodeId(0);
-        const auto mode = animator.states[static_cast<size_t>(stateIndex)].mode;
-        if (mode == scene::AnimationStateMode::BlendTree1D ||
-            mode == scene::AnimationStateMode::BlendTree2D) {
-            m_openBlendTreeState = stateIndex;
-            m_selectedMotion = -1;
-            m_selectedNode = stateIndex;
-            m_selectedLink = {};
-            ImNodes::ClearNodeSelection();
-            ImNodes::ClearLinkSelection();
-            ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
-        }
-    }
-    if (linkHovered) {
-        const LinkRef hoveredRef = ResolveLink(hoveredLink, animator);
-        const scene::AnimationTransition* transition = nullptr;
-        const char* fromName = nullptr;
-        if (hoveredRef.fromStateIndex == -2 &&
-            hoveredRef.transitionIndex >= 0 &&
-            hoveredRef.transitionIndex < static_cast<int>(animator.anyStateTransitions.size())) {
-            transition =
-                &animator.anyStateTransitions[static_cast<size_t>(hoveredRef.transitionIndex)];
-            fromName = "Any State";
-        } else if (hoveredRef.fromStateIndex >= 0 &&
-                   hoveredRef.fromStateIndex < static_cast<int>(animator.states.size())) {
-            const auto& state =
-                animator.states[static_cast<size_t>(hoveredRef.fromStateIndex)];
-            if (hoveredRef.transitionIndex >= 0 &&
-                hoveredRef.transitionIndex < static_cast<int>(state.transitions.size())) {
-                transition = &state.transitions[static_cast<size_t>(hoveredRef.transitionIndex)];
-                fromName = state.name.c_str();
-            }
-        }
-
-        if (transition && fromName) {
-            ImGui::BeginTooltip();
-            ImGui::Text("%s  ->  %s", fromName, transition->toStateName.c_str());
-            ImGui::Separator();
-            ImGui::Text(
-                transition->fixedDuration
-                    ? "Duration: %.3f s"
-                    : "Duration: %.1f%% of source Length",
-                transition->fixedDuration
-                    ? transition->transitionDuration
-                    : transition->transitionDuration * 100.0f);
-            ImGui::Text(
-                "Exit Time: %s",
-                transition->hasExitTime ? "Enabled" : "Disabled");
-            if (transition->hasExitTime)
-                ImGui::Text("Exit Position: %.0f%%", transition->exitTime * 100.0f);
-            if (transition->conditions.empty()) {
-                ImGui::TextDisabled("No conditions");
-            } else {
-                ImGui::TextDisabled("Conditions (AND)");
-                for (const auto& condition : transition->conditions) {
-                    if (IsFloatCondition(condition.op)) {
-                        ImGui::BulletText(
-                            "%s %s %.2f",
-                            condition.paramName.c_str(),
-                            ConditionOpSymbol(condition.op),
-                            condition.threshold);
-                    } else {
-                        ImGui::BulletText(
-                            "%s %s",
-                            condition.paramName.c_str(),
-                            ConditionOpSymbol(condition.op));
-                    }
-                }
-            }
-            ImGui::EndTooltip();
-        }
-    }
-    if (canvasHovered &&
-        ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-        !nodeHovered &&
-        !linkHovered) {
-        // 空白クリックは Graph 要素の選択解除として扱い、通常の GameObject Inspector へ戻す。
-        m_selectedNode = -1;
-        m_selectedAnyState = false;
-        m_selectedLink = {};
-        ImNodes::ClearNodeSelection();
-        ImNodes::ClearLinkSelection();
-    }
-    bool openRenameModal = false;
-    if (nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-        m_selectedAnyState = hoveredNode == AnyStateNodeId();
-        m_selectedNode = m_selectedAnyState ? -1 : hoveredNode - 1;
-        m_selectedLink = {};
-        ImNodes::ClearLinkSelection();
-        ImGui::OpenPopup("##AnimationGraphNodeMenu");
-    }
-    if (ImGui::BeginPopup("##AnimationGraphNodeMenu")) {
-        if (m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
-            auto& state = animator.states[static_cast<size_t>(m_selectedNode)];
-            if (ImGui::MenuItem("Set as Default")) {
-                animator.defaultStateName = state.name;
-                animator.currentStateName.clear();
-                MarkDirty(ctx);
-            }
-            if (state.mode == scene::AnimationStateMode::BlendTree1D ||
-                state.mode == scene::AnimationStateMode::BlendTree2D) {
-                if (ImGui::MenuItem("Open Blend Tree")) {
-                    m_openBlendTreeState = m_selectedNode;
-                    m_selectedMotion = -1;
-                    ImNodes::ClearNodeSelection();
-                    ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
-                }
-            }
-            if (ImGui::BeginMenu("Add Transition To")) {
-                for (int to = 0; to < static_cast<int>(animator.states.size()); ++to) {
-                    if (to == m_selectedNode) continue;
-                    const auto& toState = animator.states[static_cast<size_t>(to)];
-                    if (ImGui::MenuItem(toState.name.empty() ? "(Unnamed)" : toState.name.c_str())) {
-                        AddTransition(ctx, animator, m_selectedNode, to);
-                    }
-                }
-                ImGui::EndMenu();
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Rename")) {
-                m_renamingNode = m_selectedNode;
-                snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s", state.name.c_str());
-                openRenameModal = true;
-            }
-            if (ImGui::MenuItem("Duplicate")) {
-                scene::AnimationState copied = state;
-                copied.name = MakeUniqueStateName(animator, (state.name + "_Copy").c_str());
-                animator.states.push_back(std::move(copied));
-                AutoLayoutStates(ctx, animator, instanceId);
-                MarkDirty(ctx);
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Delete")) {
-                DeleteState(ctx, animator, m_selectedNode, instanceId);
-                m_selectedNode = -1;
-            }
-        }
-        ImGui::EndPopup();
-    }
-    if (openRenameModal) ImGui::OpenPopup("##RenameStateModal");
-    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("##RenameStateModal", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Rename state:");
-        ImGui::SetNextItemWidth(220.0f);
-        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        const bool commit = ImGui::InputText("##renameInput", m_renameBuffer, sizeof(m_renameBuffer),
-                                             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
-        if (commit || ImGui::Button("OK", ImVec2(106.0f, 0.0f))) {
-            if (m_renamingNode >= 0 && m_renamingNode < static_cast<int>(animator.states.size())) {
-                const std::string oldName = animator.states[static_cast<size_t>(m_renamingNode)].name;
-                RenameState(ctx, animator, m_renamingNode, oldName, std::string(m_renameBuffer), instanceId);
-            }
-            m_renamingNode = -1;
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(106.0f, 0.0f))) {
-            m_renamingNode = -1;
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-    }
-
-    if (linkHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-        m_selectedLink = ResolveLink(hoveredLink, animator);
-        m_selectedNode = -1;
-        m_selectedAnyState = false;
-        ImNodes::ClearNodeSelection();
-        ImGui::OpenPopup("##AnimationGraphLinkMenu");
-    }
-    if (ImGui::BeginPopup("##AnimationGraphLinkMenu")) {
-        if (m_selectedLink.fromStateIndex == -2 &&
-            ImGui::MenuItem("Delete Transition")) {
-            animator.anyStateTransitions.erase(
-                animator.anyStateTransitions.begin() + m_selectedLink.transitionIndex);
-            m_selectedLink = {};
-            ImNodes::ClearLinkSelection();
-            MarkDirty(ctx);
-        } else if (m_selectedLink.fromStateIndex >= 0 &&
-                   ImGui::MenuItem("Delete Transition")) {
-            auto& transitions = animator.states[static_cast<size_t>(m_selectedLink.fromStateIndex)].transitions;
-            transitions.erase(transitions.begin() + m_selectedLink.transitionIndex);
-            m_selectedLink = {};
-            ImNodes::ClearLinkSelection();
-            MarkDirty(ctx);
-        }
-        ImGui::EndPopup();
-    }
-
-    if (!nodeHovered && !linkHovered && ImNodes::IsEditorHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-        ImGui::OpenPopup("##AnimationGraphCanvasMenu");
-    }
-    if (ImGui::BeginPopup("##AnimationGraphCanvasMenu")) {
-        if (ImGui::MenuItem("+ New State")) AddState(ctx, animator, "NewState");
-        if (ImGui::MenuItem("Auto Layout")) AutoLayoutStates(ctx, animator, instanceId);
-        if (ImGui::MenuItem("Reset Zoom")) m_canvasZoom = 1.0f;
-        if (ImGui::MenuItem("Center View")) ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
-        ImGui::EndPopup();
-    }
-
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::EndChild();
-}
-
-void AnimationGraphPanel::DrawBlendTreeCanvas(
-    EditorContext& ctx,
-    scene::AnimatorComponent& animator,
-    const std::string& instanceId)
-{
-    if (m_openBlendTreeState < 0 ||
-        m_openBlendTreeState >= static_cast<int>(animator.states.size())) {
-        m_openBlendTreeState = -1;
-        m_selectedMotion = -1;
-        return;
-    }
-
-    auto& state = animator.states[static_cast<size_t>(m_openBlendTreeState)];
-    if (state.mode != scene::AnimationStateMode::BlendTree1D &&
-        state.mode != scene::AnimationStateMode::BlendTree2D) {
-        m_openBlendTreeState = -1;
-        m_selectedMotion = -1;
-        return;
-    }
-
-    auto& motions = state.mode == scene::AnimationStateMode::BlendTree1D
-        ? state.blendTree1D.motions
-        : state.blendTree2D.motions;
-    auto& positions =
-        ctx.graphLayouts[instanceId].blendTreeMotionPositions[state.name];
-    if (positions.size() < motions.size()) {
-        const size_t oldSize = positions.size();
-        positions.resize(motions.size());
-        for (size_t i = oldSize; i < positions.size(); ++i)
-            positions[i] = ImVec2(
-                160.0f + static_cast<float>(i % 3) * 280.0f,
-                50.0f + static_cast<float>(i / 3) * 230.0f);
-    } else if (positions.size() > motions.size()) {
-        positions.resize(motions.size());
-    }
-
-    ImGui::BeginChild(
-        "##BlendTreeCanvas", ImVec2(0.0f, 0.0f), true,
-        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
-    ImGui::TextColored(
-        ImVec4(0.52f, 0.78f, 1.0f, 1.0f),
-        "%s", state.mode == scene::AnimationStateMode::BlendTree1D
-            ? "Blend Tree 1D"
-            : "Blend Tree 2D");
-    ImGui::SameLine();
-    if (state.mode == scene::AnimationStateMode::BlendTree1D) {
-        ImGui::SetNextItemWidth(180.0f);
-        DrawFloatParameterCombo(
-            ctx, "Parameter", animator, state.blendTree1D.paramName);
-        ImGui::SameLine();
-    } else {
-        ImGui::SetNextItemWidth(150.0f);
-        DrawFloatParameterCombo(
-            ctx, "Parameter X", animator, state.blendTree2D.paramX);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(150.0f);
-        DrawFloatParameterCombo(
-            ctx, "Parameter Y", animator, state.blendTree2D.paramY);
-        ImGui::SameLine();
-        static constexpr const char* BLEND_TYPES[] = {
-            "Simple Directional", "Freeform Cartesian"
-        };
-        int blendType = static_cast<int>(state.blendTree2D.type);
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::Combo("Type", &blendType, BLEND_TYPES, 2)) {
-            state.blendTree2D.type =
-                static_cast<scene::BlendTree2DType>(blendType);
-            MarkDirty(ctx);
-        }
-        ImGui::SameLine();
-    }
-    if (ImGui::SmallButton("+ Motion")) {
-        scene::BlendTreeMotion motion;
-        if (!animator.clips.empty()) {
-            motion.clipName = animator.clips.front().name;
-            motion.clipIndex = 0;
-        }
-        if (state.mode == scene::AnimationStateMode::BlendTree1D &&
-            !motions.empty())
-            motion.threshold = motions.back().threshold + 1.0f;
-        if (state.mode == scene::AnimationStateMode::BlendTree2D)
-            motion.posX = static_cast<float>(motions.size());
-        motions.push_back(std::move(motion));
-        positions.emplace_back(
-            160.0f + static_cast<float>((motions.size() - 1) % 3) * 280.0f,
-            50.0f + static_cast<float>((motions.size() - 1) / 3) * 230.0f);
-        m_selectedMotion = static_cast<int>(motions.size()) - 1;
-        MarkDirty(ctx);
-    }
-    if (state.mode == scene::AnimationStateMode::BlendTree1D) {
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(130.0f);
-        if (ImGui::DragFloat(
-                "Damp Time", &state.blendTree1D.dampTime,
-                0.01f, 0.0f, 2.0f, "%.2f s"))
-            MarkDirty(ctx);
-        ImGui::SameLine();
-        if (ImGui::Checkbox("Sync Phase", &state.blendTree1D.syncNormalizedTime))
-            MarkDirty(ctx);
-    }
-    ImGui::Separator();
-
-    if (m_nodesContext) ImNodes::SetCurrentContext(m_nodesContext);
-    if (m_editorContext) ImNodes::EditorContextSet(m_editorContext);
-
-    constexpr int ROOT_NODE_ID = 2000000;
-    constexpr int ROOT_OUTPUT_ID = 2000002;
-    constexpr int MOTION_NODE_BASE = 2010000;
-    constexpr int MOTION_INPUT_BASE = 2020000;
-    constexpr int MOTION_LINK_BASE = 2030000;
-    constexpr int MOTION_STATIC_BASE = 2040000;
-
-    ImNodes::PushStyleVar(ImNodesStyleVar_GridSpacing, 32.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(
-        ImNodesStyleVar_NodePadding,
-        ImVec2(12.0f * m_canvasZoom, 8.0f * m_canvasZoom));
-    ImNodes::PushStyleVar(
-        ImNodesStyleVar_NodeCornerRounding, 6.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(
-        ImNodesStyleVar_NodeBorderThickness, 2.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(ImNodesStyleVar_LinkThickness, 3.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(
-        ImNodesStyleVar_PinCircleRadius, 5.0f * m_canvasZoom);
-    ImNodes::PushStyleVar(
-        ImNodesStyleVar_PinHoverRadius, 9.0f * m_canvasZoom);
-
-    ImNodes::BeginNodeEditor();
-    ImGui::SetWindowFontScale(m_canvasZoom);
-
-    // BeginNodeEditor 後にノード位置を設定する (imnodes の正しい使用パターン)。
-    // WHY: BeginNodeEditor 前に呼ぶとドラッグ操作が無効になる。
-    ImNodes::SetNodeGridSpacePos(
-        ROOT_NODE_ID, ImVec2(-220.0f * m_canvasZoom, 100.0f * m_canvasZoom));
-    for (int i = 0; i < static_cast<int>(motions.size()); ++i) {
-        const ImVec2 position = positions[static_cast<size_t>(i)];
-        ImNodes::SetNodeGridSpacePos(
-            MOTION_NODE_BASE + i,
-            ImVec2(position.x * m_canvasZoom, position.y * m_canvasZoom));
-    }
-
-    ImNodes::PushColorStyle(
-        ImNodesCol_NodeBackground, IM_COL32(34, 77, 98, 255));
-    ImNodes::PushColorStyle(
-        ImNodesCol_TitleBar, IM_COL32(39, 112, 145, 255));
-    ImNodes::PushColorStyle(
-        ImNodesCol_NodeOutline, IM_COL32(89, 190, 226, 255));
-    ImNodes::BeginNode(ROOT_NODE_ID);
-    ImNodes::BeginNodeTitleBar();
-    ImGui::TextUnformatted("Blend Parameter");
-    ImNodes::EndNodeTitleBar();
-    ImNodes::BeginStaticAttribute(ROOT_NODE_ID + 10);
-    if (state.mode == scene::AnimationStateMode::BlendTree1D) {
-        ImGui::Text(
-            "%s", state.blendTree1D.paramName.empty()
-                ? "<Select Float Parameter>"
-                : state.blendTree1D.paramName.c_str());
-        ImGui::TextDisabled(
-            "Raw %.3f | Blend %.3f",
-            animator.GetFloat(state.blendTree1D.paramName),
-            state.blendTree1D.dampedValueInitialized
-                ? state.blendTree1D.dampedValue
-                : animator.GetFloat(state.blendTree1D.paramName));
-    } else {
-        ImGui::Text(
-            "X: %s", state.blendTree2D.paramX.empty()
-                ? "<none>" : state.blendTree2D.paramX.c_str());
-        ImGui::Text(
-            "Y: %s", state.blendTree2D.paramY.empty()
-                ? "<none>" : state.blendTree2D.paramY.c_str());
-        ImGui::TextDisabled(
-            "(%.3f, %.3f)",
-            animator.GetFloat(state.blendTree2D.paramX),
-            animator.GetFloat(state.blendTree2D.paramY));
-    }
-    ImNodes::EndStaticAttribute();
-    ImNodes::BeginOutputAttribute(ROOT_OUTPUT_ID);
-    ImGui::TextColored(ImVec4(0.4f, 0.85f, 1.0f, 1.0f), "MOTIONS >");
-    ImNodes::EndOutputAttribute();
-    ImNodes::EndNode();
-    ImNodes::PopColorStyle();
-    ImNodes::PopColorStyle();
-    ImNodes::PopColorStyle();
-
-    for (int i = 0; i < static_cast<int>(motions.size()); ++i) {
-        auto& motion = motions[static_cast<size_t>(i)];
-        ImGui::PushID(i);
-        ImNodes::PushColorStyle(
-            ImNodesCol_NodeBackground, IM_COL32(52, 58, 69, 255));
-        ImNodes::PushColorStyle(
-            ImNodesCol_TitleBar,
-            m_selectedMotion == i
-                ? IM_COL32(151, 103, 38, 255)
-                : IM_COL32(72, 82, 98, 255));
-        ImNodes::PushColorStyle(
-            ImNodesCol_NodeOutline,
-            m_selectedMotion == i
-                ? IM_COL32(255, 198, 92, 255)
-                : IM_COL32(108, 122, 143, 255));
-        ImNodes::BeginNode(MOTION_NODE_BASE + i);
-        ImNodes::BeginNodeTitleBar();
-        ImGui::Text(
-            "Motion %d  |  %s",
-            i + 1,
-            motion.clipName.empty() ? "<No Clip>" : motion.clipName.c_str());
-        ImNodes::EndNodeTitleBar();
-        ImNodes::BeginInputAttribute(MOTION_INPUT_BASE + i);
-        ImGui::TextColored(ImVec4(0.4f, 0.72f, 1.0f, 1.0f), "< WEIGHT");
-        ImNodes::EndInputAttribute();
-        ImNodes::BeginStaticAttribute(MOTION_STATIC_BASE + i);
-        ImGui::SetNextItemWidth(220.0f * m_canvasZoom);
-        DrawAnimationSource(
-            ctx, "Source", animator, motion.sourcePath);
-        ImGui::SetNextItemWidth(220.0f * m_canvasZoom);
-        DrawClipCombo(
-            ctx, "Clip", animator, motion.sourcePath,
-            motion.clipName, motion.clipIndex);
-        if (state.mode == scene::AnimationStateMode::BlendTree1D) {
-            ImGui::SetNextItemWidth(110.0f * m_canvasZoom);
-            if (ImGui::DragFloat(
-                    "Threshold", &motion.threshold, 0.01f))
-                MarkDirty(ctx);
-        } else {
-            ImGui::SetNextItemWidth(95.0f * m_canvasZoom);
-            if (ImGui::DragFloat("X", &motion.posX, 0.01f))
-                MarkDirty(ctx);
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(95.0f * m_canvasZoom);
-            if (ImGui::DragFloat("Y", &motion.posY, 0.01f))
-                MarkDirty(ctx);
-        }
-        ImGui::SetNextItemWidth(110.0f * m_canvasZoom);
-        if (ImGui::DragFloat(
-                "Speed", &motion.speed, 0.01f, -10.0f, 10.0f))
-            MarkDirty(ctx);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(95.0f * m_canvasZoom);
-        if (ImGui::DragFloat(
-                "IK", &motion.ikWeight, 0.01f, 0.0f, 1.0f))
-            MarkDirty(ctx);
-        const auto runtimeWeight = std::find_if(
-            animator.currentBlendWeights.begin(),
-            animator.currentBlendWeights.end(),
-            [&](const auto& entry) {
-                return entry.first == motion.clipName;
-            });
-        if (runtimeWeight != animator.currentBlendWeights.end()) {
-            char overlay[64]{};
-            std::snprintf(
-                overlay, sizeof(overlay), "Weight %.1f%%",
-                runtimeWeight->second * 100.0f);
-            ImGui::ProgressBar(
-                runtimeWeight->second,
-                ImVec2(220.0f * m_canvasZoom, 4.0f * m_canvasZoom),
-                overlay);
-        }
-        ImNodes::EndStaticAttribute();
-        ImNodes::EndNode();
-        ImNodes::PopColorStyle();
-        ImNodes::PopColorStyle();
-        ImNodes::PopColorStyle();
-        ImGui::PopID();
-        ImNodes::Link(
-            MOTION_LINK_BASE + i,
-            ROOT_OUTPUT_ID,
-            MOTION_INPUT_BASE + i);
-    }
-
-    ImNodes::MiniMap(0.16f, ImNodesMiniMapLocation_BottomRight);
-    ImNodes::EndNodeEditor();
-    ImNodes::PopStyleVar(7);
-
-    if (CanEditAnimationGraph(ctx)) {
-        for (int i = 0; i < static_cast<int>(motions.size()); ++i) {
-            ImVec2 position =
-                ImNodes::GetNodeGridSpacePos(MOTION_NODE_BASE + i);
-            position.x /= m_canvasZoom;
-            position.y /= m_canvasZoom;
-            ImVec2& stored = positions[static_cast<size_t>(i)];
-            if (std::abs(stored.x - position.x) > 0.01f ||
-                std::abs(stored.y - position.y) > 0.01f) {
-                stored = position;
-                MarkDirty(ctx);
-            }
-        }
-    }
-
-    const int selectedCount = ImNodes::NumSelectedNodes();
-    if (selectedCount > 0) {
-        std::vector<int> selected(static_cast<size_t>(selectedCount));
-        ImNodes::GetSelectedNodes(selected.data());
-        const int selectedId = selected.front();
-        m_selectedMotion =
-            selectedId >= MOTION_NODE_BASE &&
-            selectedId < MOTION_NODE_BASE + static_cast<int>(motions.size())
-                ? selectedId - MOTION_NODE_BASE
-                : -1;
-    }
-
-    int duplicateMotion = -1;
-    int removeMotion = -1;
-    if (m_selectedMotion >= 0 &&
-        m_selectedMotion < static_cast<int>(motions.size())) {
-        if (ImGui::IsWindowFocused() &&
-            ImGui::GetIO().KeyCtrl &&
-            ImGui::IsKeyPressed(ImGuiKey_D))
-            duplicateMotion = m_selectedMotion;
-        if (ImGui::IsWindowFocused() &&
-            ImGui::IsKeyPressed(ImGuiKey_Delete))
-            removeMotion = m_selectedMotion;
-    }
-    if (duplicateMotion >= 0) {
-        motions.insert(
-            motions.begin() + duplicateMotion + 1,
-            motions[static_cast<size_t>(duplicateMotion)]);
-        ImVec2 copyPosition = positions[static_cast<size_t>(duplicateMotion)];
-        copyPosition.x += 40.0f;
-        copyPosition.y += 40.0f;
-        positions.insert(
-            positions.begin() + duplicateMotion + 1, copyPosition);
-        m_selectedMotion = duplicateMotion + 1;
-        MarkDirty(ctx);
-    }
-    if (removeMotion >= 0) {
-        motions.erase(motions.begin() + removeMotion);
-        positions.erase(positions.begin() + removeMotion);
-        m_selectedMotion = -1;
-        ImNodes::ClearNodeSelection();
-        MarkDirty(ctx);
-    }
-
-    const ImVec2 helpPos(
-        ImGui::GetWindowPos().x + 10.0f,
-        ImGui::GetWindowPos().y + ImGui::GetWindowSize().y -
-            ImGui::GetTextLineHeightWithSpacing() - 10.0f);
-    ImGui::GetWindowDrawList()->AddText(
-        helpPos,
-        IM_COL32(155, 165, 178, 190),
-        "Drag: Move Motion | Ctrl+D: Duplicate | Delete: Remove | Base Layer: Back");
-
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::EndChild();
-}
 
 static bool DrawAnimationGraphDetails(EditorContext& ctx,
                                        scene::AnimatorComponent& animator)
@@ -2634,7 +2154,12 @@ bool DrawAnimationGraphInspector(EditorContext& ctx, scene::GameObject& gameObje
     auto& selection = ctx.animationGraphSelection;
     if (selection.entityId != gameObject.GetID()) return false;
     auto* animator = gameObject.GetComponent<scene::AnimatorComponent>();
-    return animator && DrawAnimationGraphDetails(ctx, *animator);
+    if (animator == nullptr) return false;
+    // selection.stateIndex はグラフごとの添字。パネルと同じレイヤーへ差し替えて解決する。
+    // WHY: 差し替えずに描くと、上半身レイヤーのステートを選んだのに
+    //      Base Layer の同じ添字のステートを編集してしまう。
+    LayerGraphScope layerScope(*animator, selection.layerName);
+    return DrawAnimationGraphDetails(ctx, *animator);
 }
 
 bool DrawAnimationGraphAssetInspector(EditorContext& ctx)
@@ -2642,6 +2167,8 @@ bool DrawAnimationGraphAssetInspector(EditorContext& ctx)
     if (!ctx.animationControllerEditor ||
         ctx.animationGraphSelection.assetPath != ctx.animationControllerEditorPath)
         return false;
+    LayerGraphScope layerScope(*ctx.animationControllerEditor,
+                               ctx.animationGraphSelection.layerName);
     return DrawAnimationGraphDetails(ctx, *ctx.animationControllerEditor);
 }
 
@@ -2830,6 +2357,49 @@ void AnimationGraphPanel::AddState(EditorContext& ctx, scene::AnimatorComponent&
     MarkDirty(ctx);
 }
 
+void AnimationGraphPanel::AddStateAt(EditorContext& ctx,
+                                     scene::AnimatorComponent& animator,
+                                     const char* baseName,
+                                     const std::string& instanceId,
+                                     float spawnX,
+                                     float spawnY)
+{
+    scene::AnimationState state;
+    state.name = MakeUniqueStateName(animator, baseName);
+    if (!animator.clips.empty()) state.clipName = animator.clips.front().name;
+    if (animator.defaultStateName.empty()) animator.defaultStateName = state.name;
+    // 生成前に位置を確定しておくことで、デフォルトのグリッド整列配置を経由せず即カーソル位置へ出す。
+    ctx.graphLayouts[instanceId].nodePositions[state.name] = ImVec2(spawnX, spawnY);
+    animator.states.push_back(std::move(state));
+    m_selectedNode = static_cast<int>(animator.states.size()) - 1;
+    m_selectedLink = {};
+    MarkDirty(ctx);
+}
+
+void AnimationGraphPanel::DuplicateState(EditorContext& ctx,
+                                         scene::AnimatorComponent& animator,
+                                         int stateIndex,
+                                         const std::string& instanceId)
+{
+    if (stateIndex < 0 || stateIndex >= static_cast<int>(animator.states.size())) return;
+    const auto& source = animator.states[static_cast<size_t>(stateIndex)];
+    scene::AnimationState copied = source;
+    copied.name = MakeUniqueStateName(animator, (source.name + "_Copy").c_str());
+
+    // WHY: AutoLayout で全ノードを並べ直すと手作業のレイアウトが失われる。
+    //      Unity と同じく複製元の右下へずらして置くだけに留める。
+    auto& positions = ctx.graphLayouts[instanceId].nodePositions;
+    ImVec2 spawn(80.0f, 80.0f);
+    if (const auto it = positions.find(source.name); it != positions.end())
+        spawn = ImVec2(it->second.x + 44.0f, it->second.y + 44.0f);
+    positions[copied.name] = spawn;
+
+    animator.states.push_back(std::move(copied));
+    m_selectedNode = static_cast<int>(animator.states.size()) - 1;
+    m_selectedLink = {};
+    MarkDirty(ctx);
+}
+
 void AnimationGraphPanel::AddTransition(EditorContext& ctx,
                                         scene::AnimatorComponent& animator,
                                         int fromStateIndex,
@@ -2848,7 +2418,7 @@ void AnimationGraphPanel::AddTransition(EditorContext& ctx,
     transition.toStateName = toState.name;
     fromState.transitions.push_back(std::move(transition));
     m_selectedLink = { fromStateIndex, static_cast<int>(fromState.transitions.size()) - 1 };
-    ImNodes::ClearNodeSelection();
+    m_graphCanvas.ClearSelection();
     MarkDirty(ctx);
 }
 
@@ -2858,21 +2428,46 @@ void AnimationGraphPanel::AutoLayoutStates(EditorContext& ctx,
 {
     GraphLayout& layout = ctx.graphLayouts[instanceId];
     auto& positions = layout.nodePositions;
-    constexpr int   COLUMNS = 4;
-    constexpr float START_X = 80.0f;
     constexpr float START_Y = 80.0f;
-    constexpr float STEP_X = 300.0f;
-    constexpr float STEP_Y = 220.0f;
 
-    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
-        const int col = i % COLUMNS;
-        const int row = i / COLUMNS;
-        positions[animator.states[static_cast<size_t>(i)].name] =
-            ImVec2(START_X + STEP_X * static_cast<float>(col),
-                   START_Y + STEP_Y * static_cast<float>(row));
+    // 遷移の深さを列にする共通実装を使う。
+    // WHY: 以前はここだけ「4 列の単純グリッド」で、ステートの並びが遷移の構造を
+    //      一切反映していなかった。同じ Auto Layout という操作なのに VFX とは
+    //      結果の質が違う状態で、共通アルゴリズム自体は既にあるのに未使用だった。
+    std::vector<int> nodeIds;
+    std::vector<GraphLayoutEdge> edges;
+    std::unordered_map<std::string, int> indexOfState;
+    for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
+        // ComputeGraphLayout は 1 以上の id を要求する (0 は「未解決」の意味を持つ)。
+        indexOfState[animator.states[static_cast<std::size_t>(index)].name] = index + 1;
+        nodeIds.push_back(index + 1);
+    }
+    for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
+        const auto& state = animator.states[static_cast<std::size_t>(index)];
+        for (const auto& transition : state.transitions) {
+            const auto target = indexOfState.find(transition.toStateName);
+            if (target != indexOfState.end()) edges.push_back({ index + 1, target->second });
+        }
+    }
+    // 既定ステートを根にする。入次数 0 に任せると、どこからも遷移して来ない
+    // 孤立ステートまで 1 列目へ並び、開始点が読めなくなる。
+    std::vector<int> roots;
+    if (const auto found = indexOfState.find(animator.defaultStateName);
+        found != indexOfState.end())
+        roots.push_back(found->second);
+
+    GraphLayoutOptions options;
+    options.rowStep = 220.0f;
+    options.originY = START_Y;
+    const auto computed = roots.empty() ? ComputeGraphLayout(nodeIds, edges, options)
+                                        : ComputeGraphLayout(nodeIds, edges, roots, options);
+    for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
+        const auto found = computed.find(index + 1);
+        if (found == computed.end()) continue;
+        positions[animator.states[static_cast<std::size_t>(index)].name] = found->second;
     }
     layout.entryPosition = ImVec2(-220.0f, START_Y);
-    layout.anyStatePosition = ImVec2(-220.0f, START_Y + STEP_Y);
+    layout.anyStatePosition = ImVec2(-220.0f, START_Y + options.rowStep);
     MarkDirty(ctx);
 }
 
@@ -2979,6 +2574,7 @@ void AnimationGraphPanel::ClearInvalidSelection(const scene::AnimatorComponent& 
 AnimationGraphPanel::LinkRef AnimationGraphPanel::ResolveLink(int linkId,
                                                               const scene::AnimatorComponent& animator) const
 {
+    if (linkId == EntryLinkId()) return { -3, 0 };
     if ((linkId & 0x70000000) == 0x70000000) {
         const int transitionIndex = linkId & 0x0fffffff;
         if (transitionIndex >= 0 &&

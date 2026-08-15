@@ -1,0 +1,607 @@
+version = 5
+name = "Impact"
+description = "命中の一瞬。斬撃・弾着・打撃の共通ベース。手応えはパーティクル量ではなく閃光の短さとカメラの反応で決まる。"
+tags = ["impact", "combat", "hit", "short"]
+requiredRoles = ["core", "body", "sparks"]
+# 全長が短いので既定の 25% では閃光が終わっている。立ち上がりを見せる。
+thumbnailTime = 0.06
+maxParticles = 1800
+maxLights = 1
+maxAudioVoices = 1
+
+# ------------------------------------------------------------------------------
+# Impact — 命中の一瞬。斬撃・弾着・打撃の共通ベース。
+# 層: ヒットフラッシュ / 放射状スパーク / 衝撃の歪みリング / 粉塵 / 破片
+#     + 短命の点光源 + 画面演出(色収差寄り) + 弾痕デカール
+# WHY: 命中感は総量ではなく「立ち上がりの速さ」で決まる。
+#      全ての層を 0.00-0.05s に集中させ、0.4s 以内にほぼ消えるよう寿命を切り詰めている。
+#      画面演出はフラッシュを弱め色収差を強めに——被弾の痛みは白飛びより歪みで伝わる。
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# --- 0.00s: ヒットフラッシュ。1フレーム相当で消える --------------------------
+[[nodes]]
+id = 2
+type = 2
+name = "Hit Flash"
+duration = 0.12
+editorX = 260.0
+editorY = -60.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 0.12
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 0
+sizeStart = 1.5
+sizeEnd = 0.1
+sizeCurvePower = 2.8
+lifetime = 0.09
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+# ヒットフラッシュ: 6 粒子のみ
+blendMode = 0
+sortMode = 0
+emissiveScale = 4.5
+angularVelocityMin = 0.0   # 横に伸ばしたフラッシュなので回さない (回すとせん断される)
+angularVelocityMax = 0.0
+softParticles = true
+# 着弾の芯は最前面。粉塵に隠れると当たった瞬間が読めなくなる。
+renderPriority = 60
+# 着弾フラッシュは面に沿って平たく潰れる。丸いままだと球が置かれたように見える。
+sizeAxisScale = [1.35, 0.75, 1.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.00s: 放射状スパーク。伸びるビルボードで速度を見せる --------------------
+[[nodes]]
+id = 3
+type = 2
+name = "Radial Sparks"
+duration = 0.9
+editorX = 260.0
+editorY = 130.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 0.9
+loop = false
+emitRate = 0.0
+maxParticles = 420
+shape = 2
+coneAngleDegrees = 74.0
+coneRadius = 0.05
+sizeStart = 0.13
+sizeEnd = 0.01
+lifetime = 0.5
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 0.0, 9.0]
+velocitySpread = 8.0
+velocityDamping = 3.5
+gravity = [0.0, -9.0, 0.0]
+# 放射火花
+blendMode = 0
+renderMode = 1
+stretchedVelocityScale = 0.16
+stretchedLengthScale = 3.0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.02
+collisionBounciness = 0.3
+collisionDamping = 0.5
+emissiveScale = 3.5
+renderPriority = 50
+# 尾を引かせて放射の速度感を出す。ヒット表現では「どこから飛んだか」が読めることが効く。
+# NOTE: トレイルは位置履歴を使うため CPU シミュレーション限定 (simulationMode = 0)。
+simulationMode = 0
+trailEnabled = true
+trailPointCount = 5
+trailSampleInterval = 0.012
+trailWidthScale = 0.3
+trailAlphaScale = 0.25
+colorVariation = 0.18
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 0.96, 0.80, 1.0],
+  [0.4, 1.0, 0.68, 0.22, 1.0],
+  [1.0, 0.85, 0.20, 0.03, 0.0],
+]
+bursts = [{ time = 0.0, count = 150, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+# --- 0.00s: 衝撃の歪み。広がって即消える --------------------------------------
+[[nodes]]
+id = 4
+type = 2
+name = "Impact Distortion"
+duration = 0.3
+editorX = 260.0
+editorY = 330.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 0
+sizeStart = 0.4
+sizeEnd = 4.0
+sizeCurvePower = 0.3
+lifetime = 0.22
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+blendMode = 1
+sortMode = 1
+distortion = true
+distortionStrength = 0.09
+softParticles = true
+softParticleFadeDistance = 0.5
+emissiveScale = 0.0
+# 歪みはシーンカラーを読むため必ず最後に描く。
+renderPriority = 100
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 1.0, 1.0, 1.0],
+  [0.5, 1.0, 1.0, 1.0, 0.5],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.02s: 粉塵。着弾面から低く広がる ----------------------------------------
+[[nodes]]
+id = 5
+type = 2
+name = "Dust Puff"
+duration = 1.2
+editorX = 580.0
+editorY = -60.0
+position = [0.0, 0.05, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 1.2
+loop = false
+emitRate = 0.0
+maxParticles = 260
+shape = 2
+coneAngleDegrees = 80.0
+coneRadius = 0.15
+sizeStart = 0.35
+sizeEnd = 1.6
+sizeCurvePower = 0.6
+lifetime = 0.9
+lifetimeRandom = 0.4
+emitVelocity = [0.0, 0.8, 0.0]
+velocitySpread = 3.2
+velocityDamping = 4.0
+gravity = [0.0, -0.4, 0.0]
+angularVelocityMin = 0.0   # 潰した形を Dust Shape で公開しているため回転側を捨てる
+angularVelocityMax = 0.0
+# 土煙
+blendMode = 2
+sortMode = 1
+sixWayLighting = true
+lightingStrength = 0.65
+softParticles = true
+softParticleFadeDistance = 0.4
+# 粉塵は最奥。火花より手前に来ると当たった瞬間が煙で埋まる。
+renderPriority = 0
+# 粉塵は非発光。影を受けないと着弾地点だけが明るく浮く。
+receiveShadows = true
+shadowStrength = 0.9
+colorVariation = 0.15
+# 着弾面に沿って低く広がる。等方だと球が湧いたように見える。
+sizeAxisScale = [1.4, 0.7, 1.0]
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.62, 0.56, 0.48, 0.0],
+  [0.1, 0.55, 0.50, 0.43, 0.75],
+  [1.0, 0.50, 0.47, 0.43, 0.0],
+]
+bursts = [{ time = 0.0, count = 55, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.01s: 破片。地面へ落ちて止まる ------------------------------------------
+[[nodes]]
+id = 6
+type = 2
+name = "Chips"
+duration = 1.4
+editorX = 580.0
+editorY = 160.0
+position = [0.0, 0.03, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 1.4
+loop = false
+emitRate = 0.0
+maxParticles = 140
+shape = 2
+coneAngleDegrees = 55.0
+coneRadius = 0.08
+sizeStart = 0.1
+sizeEnd = 0.07
+lifetime = 1.1
+lifetimeRandom = 0.4
+emitVelocity = [0.0, 3.6, 0.0]
+velocitySpread = 3.4
+gravity = [0.0, -16.0, 0.0]
+angularVelocityMin = -10.0
+angularVelocityMax = 10.0
+# 破片
+blendMode = 2
+sortMode = 1
+collisionMode = 3
+collisionResponse = 2
+collisionRadius = 0.03
+collisionDamping = 0.85
+softParticles = true
+renderPriority = 30
+receiveShadows = true
+shadowStrength = 0.9
+colorVariation = 0.25
+bursts = [{ time = 0.0, count = 45, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 光源: 極短。当たった面を一瞬だけ照らす -----------------------------------
+[[nodes]]
+id = 7
+type = 5
+name = "Hit Light"
+duration = 0.16
+editorX = 580.0
+editorY = 360.0
+position = [0.0, 0.15, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.light]
+color = [1.0, 0.78, 0.42]
+intensity = 14.0
+range = 5.5
+# 着弾光は「弾けて即消える」。0.16 秒とはいえ定数の明るさでは点滅する電球になる。
+useIntensityCurve = true
+intensityCurve = [[0.0, 1.0], [0.15, 0.7], [1.0, 0.0]]
+
+# --- 画面演出: フラッシュ控えめ / 色収差強め ----------------------------------
+[[nodes]]
+id = 8
+type = 11
+name = "Hit Feedback"
+duration = 0.26
+editorX = 880.0
+editorY = -60.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.screenEffect]
+flashColor = [1.0, 0.94, 0.88]
+flashIntensity = 0.12
+bloomBoost = 0.45
+chromaticAberration = 0.014
+lensDistortion = 0.05
+vignette = 0.24
+fadeInTime = 0.01
+fadeOutTime = 0.2
+
+# --- 力場: 着弾点から外へ弾く。スパークと粉塵に効く ---------------------------
+[[nodes]]
+id = 9
+type = 9
+name = "Impact Push"
+duration = 0.2
+editorX = 880.0
+editorY = 150.0
+position = [0.0, 0.05, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 2
+strength = 14.0
+radius = 3.0
+falloffPower = 2.0
+
+# --- 弾痕 ---------------------------------------------------------------------
+[[nodes]]
+id = 10
+type = 7
+name = "Impact Decal"
+duration = 5.0
+editorX = 880.0
+editorY = 320.0
+position = [0.0, 0.01, 0.0]
+rotation = [-90.0, 0.0, 0.0]
+scale = [1.1, 1.1, 1.0]
+[nodes.decal]
+albedoPath = "Assets/Textures/Particles/scratch_01.png"
+color = [0.18, 0.16, 0.15, 0.95]
+normalStrength = 0.0
+emissiveScale = 0.0
+fadeTime = 0.8
+# 弾痕は最後まで濃く残ってから消える。線形フェードだと着弾直後から薄まり、
+# 「跡が残った」という手応えが出ない。
+useFadeCurve = true
+fadeCurve = [[0.0, 1.0], [0.7, 0.95], [1.0, 0.0]]
+
+# --- 0.00s: 着弾リング。小さく速く消える -------------------------------------
+[[nodes]]
+id = 11
+type = 10
+name = "Impact Ring"
+duration = 0.22
+editorX = 260.0
+editorY = 520.0
+position = [0.0, 0.05, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.mesh]
+meshPath = "primitive:sphere"
+materialPath = ""
+scaleStart = 0.12
+scaleEnd = 2.4
+scaleEasePower = 0.28
+colorStart = [1.0, 0.90, 0.66, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+
+# --- 0.00s: 短く鋭いカメラ揺れ ------------------------------------------------
+[[nodes]]
+id = 12
+type = 12
+name = "Hit Shake"
+duration = 0.22
+editorX = 560.0
+editorY = 540.0
+position = [0.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.cameraShake]
+amplitude = 0.09
+rotationAmplitude = 0.9
+frequency = 34.0
+falloffPower = 3.0
+radius = 14.0
+
+# --- 0.00s: ヒットストップ。1〜2フレーム相当で十分 --------------------------
+[[nodes]]
+id = 13
+type = 13
+name = "Hit Stop"
+duration = 0.07
+editorX = 860.0
+editorY = 460.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.timeScale]
+timeScale = 0.1
+blendInTime = 0.0
+blendOutTime = 0.05
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.02
+[[links]]
+from = 1
+to = 6
+trigger = 1
+delay = 0.01
+[[links]]
+from = 1
+to = 7
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 8
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 9
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 10
+trigger = 1
+delay = 0.02
+[[links]]
+from = 1
+to = 11
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 12
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 13
+trigger = 1
+delay = 0.0
+
+[[groups]]
+id = 1
+title = "First Frame (0.00s)"
+note = "命中感はここで決まる。寿命を伸ばすと途端に鈍くなる。"
+x = 230.0
+y = -110.0
+width = 290.0
+height = 780.0
+color = [0.86, 0.62, 0.24, 0.16]
+
+[[groups]]
+id = 2
+title = "Surface Reaction"
+note = "着弾面の材質に合わせて粉塵と破片のテクスチャを差し替える。"
+x = 550.0
+y = -110.0
+width = 290.0
+height = 580.0
+color = [0.56, 0.48, 0.40, 0.14]
+
+[[groups]]
+id = 3
+title = "Feedback & Ground"
+note = "画面演出は弱く短く。強くすると連打時に画面が壊れる。"
+x = 850.0
+y = -110.0
+width = 290.0
+height = 520.0
+color = [0.40, 0.40, 0.62, 0.14]
+
+[[parameters]]
+name = "Impact Power"
+type = 0
+minimum = 0.0
+maximum = 30.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 8.0
+[[bindings]]
+paramName = "Impact Power"
+nodeId = 3
+schemaPath = "particle.velocitySpread"
+
+[[parameters]]
+name = "Shock Distortion"
+type = 0
+minimum = 0.0
+maximum = 0.25
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.09
+[[bindings]]
+paramName = "Shock Distortion"
+nodeId = 4
+schemaPath = "particle.distortionStrength"
+
+[[parameters]]
+name = "Dust Amount"
+type = 0
+minimum = 0.0
+maximum = 4.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 1.6
+[[bindings]]
+paramName = "Dust Amount"
+nodeId = 5
+schemaPath = "particle.sizeEnd"
+
+[[parameters]]
+name = "Hit Light"
+type = 0
+minimum = 0.0
+maximum = 40.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 14.0
+[[bindings]]
+paramName = "Hit Light"
+nodeId = 7
+schemaPath = "light.intensity"
+
+# ここより下は今回追加した表現軸のパラメーター。
+# 素材 (金属 / 石 / 土) の作り分けはこの3つでほぼ足りる。
+
+# 火花の尾。金属ヒットは長く、土や布は短く (1) する。
+[[parameters]]
+name = "Spark Trail"
+type = 1
+minimum = 1.0
+maximum = 8.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 1
+int = 5
+[[bindings]]
+paramName = "Spark Trail"
+nodeId = 3
+schemaPath = "particle.trailPointCount"
+
+# 粉塵・破片が影を受ける強さ。
+[[parameters]]
+name = "Shadow Response"
+type = 0
+minimum = 0.0
+maximum = 1.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.9
+[[bindings]]
+paramName = "Shadow Response"
+nodeId = 5
+schemaPath = "particle.shadowStrength"
+[[bindings]]
+paramName = "Shadow Response"
+nodeId = 6
+schemaPath = "particle.shadowStrength"
+
+# 粉塵の広がり方。Y を下げるほど地面を這い、上げるほど巻き上がる。
+[[parameters]]
+name = "Dust Shape"
+type = 4
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 4
+vector3 = [1.4, 0.7, 1.0]
+[[bindings]]
+paramName = "Dust Shape"
+nodeId = 5
+schemaPath = "particle.sizeAxisScale"

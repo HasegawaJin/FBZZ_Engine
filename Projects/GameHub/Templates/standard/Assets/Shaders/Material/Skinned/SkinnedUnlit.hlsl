@@ -6,7 +6,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
@@ -17,6 +17,14 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
 Texture2D    texAlbedo   : register(TEX_ALBEDO);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
+// WHY: Unlit はライティング用の法線・接線・ワールド座標を読まないため、
+//      スキニング後の位置と UV だけを補間して帯域と VS の行列演算を減らす。
+struct SkinnedUnlitPSInput
+{
+    float4 svPosition : SV_POSITION;
+    float2 uv         : TEXCOORD0;
+};
+
 float4x4 BlendSkinMatrix(SkinnedVSInput v)
 {
     return boneMatrices[v.boneIndices.x] * v.boneWeights.x
@@ -25,23 +33,18 @@ float4x4 BlendSkinMatrix(SkinnedVSInput v)
          + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
 }
 
-PSInput VSMain(SkinnedVSInput v)
+SkinnedUnlitPSInput VSMain(SkinnedVSInput v)
 {
-    PSInput o;
+    SkinnedUnlitPSInput o;
     float4x4 skin    = BlendSkinMatrix(v);
     float4 localPos  = mul(float4(v.position, 1.0f), skin);
-    float3 localN    = normalize(mul(v.normal,  (float3x3)skin));
-    float3 localT    = normalize(mul(v.tangent, (float3x3)skin));
     float4 worldPos4 = mul(localPos, world);
-    o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(localN, (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(localT, (float3x3)world));
     o.uv         = v.uv;
     return o;
 }
 
-float4 PSMain(PSInput p) : SV_Target0
+float4 PSMain(SkinnedUnlitPSInput p) : SV_Target0
 {
     float3 color = (textureMask & 1u)
         ? texAlbedo.Sample(sampDefault, p.uv).rgb

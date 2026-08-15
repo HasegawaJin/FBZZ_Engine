@@ -7,13 +7,16 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Asset/PostProcessAsset.hpp>
+#include <Engine/Asset/PostProcessProfile.hpp>
+#include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Cursor.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
+#include <Engine/Input/Gamepad.hpp>
+#include <Engine/Input/InputActionMap.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/Gizmo.hpp>
@@ -21,8 +24,13 @@
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabPool.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
+#include <Engine/Util/Easing.hpp>
+#include <Engine/Util/Random.hpp>
+#include <Engine/Util/SaveData.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
@@ -35,6 +43,7 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/Components/ParticleForceField.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
@@ -61,6 +70,11 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
+#include <Engine/Scene/Components/PresentationComponents.hpp>
+#include <Engine/Scene/Components/SplineComponents.hpp>
+#include <Engine/Scene/Components/CameraRigComponents.hpp>
+#include <Engine/Scene/Components/UIControls.hpp>
+#include <Engine/Scene/Components/AudioSpatialComponents.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Physics/RigidBody.hpp>
 #include <Physics/World.hpp>
@@ -126,6 +140,15 @@ uint32_t ParseTextureSlot(std::string_view slot)
         value = value * 10u + static_cast<uint32_t>(slot[i] - '0');
     }
     return value < 16u ? value : UINT32_MAX;
+}
+
+std::string_view CanonicalTextureProperty(std::string_view property)
+{
+    static constexpr std::string_view slots[] = {
+        "albedo", "normal", "metallic", "emissive", "ao"
+    };
+    const uint32_t slot = ParseTextureSlot(property);
+    return slot < std::size(slots) ? slots[slot] : property;
 }
 
 GameObject* FindGameObjectByCollider(Scene* scene, const physics::Collider* collider)
@@ -300,13 +323,6 @@ Transform* ScriptTransformProxy::Get() const
     return script && script->m_gameObject ? &script->m_gameObject->transform : nullptr;
 }
 
-Transform* ScriptTransformProxy::operator->() const
-{
-    auto* t = Get();
-    assert(t && "Script context is not set");
-    return t;
-}
-
 // ── ローカル空間 property getter / setter ──────────────────────────────────
 math::Vector3 ScriptTransformProxy::_GetPos() const
 {
@@ -387,34 +403,86 @@ bool ScriptInputProxy::GetKey(input::KeyCode key) const { return input::Input::K
 bool ScriptInputProxy::GetKeyDown(input::KeyCode key) const { return input::Input::KeyDown(key); }
 bool ScriptInputProxy::GetKeyUp(input::KeyCode key) const { return input::Input::KeyUp(key); }
 
-float ScriptInputProxy::GetAxis(std::string_view name) const
-{
-    // WHAT: Unity 互換の代表的な仮想軸だけを Script 層で合成する。
-    // WHY: InputSystem のアクションマップをまだ持たないため、現状の KeyCode API から決定的に作れる範囲に絞る。
-    float value = 0.0f;
-    if (name == "Horizontal") {
-        if (GetKey(input::KeyCode::A) || GetKey(input::KeyCode::LEFT)) value -= 1.0f;
-        if (GetKey(input::KeyCode::D) || GetKey(input::KeyCode::RIGHT)) value += 1.0f;
-    } else if (name == "Vertical") {
-        if (GetKey(input::KeyCode::S) || GetKey(input::KeyCode::DOWN)) value -= 1.0f;
-        if (GetKey(input::KeyCode::W) || GetKey(input::KeyCode::UP)) value += 1.0f;
-    } else if (name == "Mouse X") {
-        value = input::Input::MouseDelta().x;
-    } else if (name == "Mouse Y") {
-        value = input::Input::MouseDelta().y;
-    }
-    return value;
-}
-
 math::Vector2 ScriptInputProxy::GetMouseDelta() const { return input::Input::MouseDelta(); }
 math::Vector2 ScriptInputProxy::GetMousePosition() const { return input::Input::MousePosition(); }
 float ScriptInputProxy::GetMouseScrollDelta() const { return input::Input::MouseScrollDelta(); }
 bool ScriptInputProxy::MouseButton(MouseBtn btn) const { return input::Input::MouseButton(static_cast<int>(btn)); }
 bool ScriptInputProxy::MouseButtonDown(MouseBtn btn) const { return input::Input::MouseButtonDown(static_cast<int>(btn)); }
 bool ScriptInputProxy::MouseButtonUp(MouseBtn btn) const { return input::Input::MouseButtonUp(static_cast<int>(btn)); }
-bool ScriptInputProxy::MouseButton(int button) const { return input::Input::MouseButton(button); }
-bool ScriptInputProxy::MouseButtonDown(int button) const { return input::Input::MouseButtonDown(button); }
-bool ScriptInputProxy::MouseButtonUp(int button) const { return input::Input::MouseButtonUp(button); }
+
+// ── アクション層 ─────────────────────────────────────────────────────────────
+
+bool ScriptInputProxy::GetAction(std::string_view name) const
+{
+    return input::InputActionMap::GetAction(name);
+}
+bool ScriptInputProxy::GetActionDown(std::string_view name) const
+{
+    return input::InputActionMap::GetActionDown(name);
+}
+bool ScriptInputProxy::GetActionUp(std::string_view name) const
+{
+    return input::InputActionMap::GetActionUp(name);
+}
+float ScriptInputProxy::GetActionAxis(std::string_view name) const
+{
+    return input::InputActionMap::GetAxis(name);
+}
+
+math::Vector2 ScriptInputProxy::GetMoveAxis() const
+{
+    return input::InputActionMap::GetAxis2D("MoveX", "MoveY");
+}
+math::Vector2 ScriptInputProxy::GetLookAxis() const
+{
+    return input::InputActionMap::GetAxis2D("LookX", "LookY");
+}
+
+// ── ゲームパッド直接アクセス ─────────────────────────────────────────────────
+
+namespace {
+// pad = -1 を「接続中の最初のパッド」へ解決する。
+// 1 台も接続されていない場合は 0 を返す (未接続スロットへの問い合わせは false / 0)。
+int ResolveScriptPad(int pad)
+{
+    if (pad >= 0) return pad;
+    const int first = input::Gamepad::GetFirstConnectedPad();
+    return first >= 0 ? first : 0;
+}
+} // namespace
+
+bool ScriptInputProxy::GetPadButton(input::GamepadButton button, int pad) const
+{
+    return input::Gamepad::ButtonHeld(button, ResolveScriptPad(pad));
+}
+bool ScriptInputProxy::GetPadButtonDown(input::GamepadButton button, int pad) const
+{
+    return input::Gamepad::ButtonDown(button, ResolveScriptPad(pad));
+}
+bool ScriptInputProxy::GetPadButtonUp(input::GamepadButton button, int pad) const
+{
+    return input::Gamepad::ButtonUp(button, ResolveScriptPad(pad));
+}
+float ScriptInputProxy::GetPadAxis(input::GamepadAxis axis, int pad) const
+{
+    return input::Gamepad::Axis(axis, ResolveScriptPad(pad));
+}
+bool ScriptInputProxy::IsPadConnected(int pad) const
+{
+    if (pad >= 0) return input::Gamepad::IsConnected(pad);
+    return input::Gamepad::GetFirstConnectedPad() >= 0;
+}
+
+void ScriptInputProxy::SetVibration(float lowFrequency, float highFrequency,
+                                    float durationSeconds, int pad) const
+{
+    input::Gamepad::SetVibration(lowFrequency, highFrequency, durationSeconds,
+                                 ResolveScriptPad(pad));
+}
+void ScriptInputProxy::StopVibration(int pad) const
+{
+    input::Gamepad::StopVibration(ResolveScriptPad(pad));
+}
 
 void ScriptCursorProxy::SetVisible(bool visible) const
 {
@@ -463,6 +531,7 @@ uint32_t ScriptApplicationProxy::GetWindowHeight() const
 
 float ScriptTimeProxy::DeltaTime() const { return fbzz::Time::deltaTime; }
 float ScriptTimeProxy::UnscaledDeltaTime() const { return fbzz::Time::unscaledDeltaTime; }
+float ScriptTimeProxy::FixedDeltaTime() const { return fbzz::Time::fixedDeltaTime; }
 float ScriptTimeProxy::Time() const { return fbzz::Time::time; }
 float ScriptTimeProxy::UnscaledTime() const { return fbzz::Time::unscaledTime; }
 uint64_t ScriptTimeProxy::FrameCount() const { return fbzz::Time::frameCount; }
@@ -689,16 +758,80 @@ void ScriptColliderProxy::SetMesh(std::string_view meshPath, int meshIndex) cons
 
 void ScriptColliderProxy::SetFriction(float staticFriction, float dynamicFriction) const
 {
-    if (auto* c = SelfAnyCollider(script)) {
-        c->material.staticFriction = staticFriction;
-        c->material.dynamicFriction = dynamicFriction;
-    }
+    auto* c = SelfAnyCollider(script);
+    if (!c) return;
+    // 共有アセット参照を外してから書く。残したままだと次のフレームで
+    // ResolvePhysicsMaterial() に上書きされ、書いた値が消える。
+    c->physicsMaterialPath.clear();
+    c->material.staticFriction = staticFriction;
+    c->material.dynamicFriction = dynamicFriction;
 }
 
 void ScriptColliderProxy::SetRestitution(float restitution) const
 {
+    auto* c = SelfAnyCollider(script);
+    if (!c) return;
+    c->physicsMaterialPath.clear();
+    c->material.restitution = restitution;
+}
+
+void ScriptColliderProxy::SetDensity(float density) const
+{
+    auto* c = SelfAnyCollider(script);
+    if (!c) return;
+    c->physicsMaterialPath.clear();
+    c->material.density = density;
+}
+
+void ScriptColliderProxy::SetPhysicsMaterial(std::string_view assetPath) const
+{
     if (auto* c = SelfAnyCollider(script))
-        c->material.restitution = restitution;
+        c->SetPhysicsMaterialPath(std::string(assetPath));
+}
+
+std::string ScriptColliderProxy::GetPhysicsMaterial() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->physicsMaterialPath : std::string{};
+}
+
+float ScriptColliderProxy::GetRestitution() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.restitution : 0.0f;
+}
+
+float ScriptColliderProxy::GetStaticFriction() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.staticFriction : 0.0f;
+}
+
+float ScriptColliderProxy::GetDynamicFriction() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.dynamicFriction : 0.0f;
+}
+
+float ScriptColliderProxy::GetDensity() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.density : 0.0f;
+}
+
+bool ScriptColliderProxy::ApplyPhysicsMaterialPreset(std::string_view presetName) const
+{
+    auto* c = SelfAnyCollider(script);
+    if (!c) return false;
+    // string_view は終端 NUL を保証しないため、C API へ渡す前に string 化する。
+    const std::string name(presetName);
+    const auto* preset = physics::PhysicsMaterial::FindPreset(name.c_str());
+    if (!preset) {
+        FBZZ_LOG_WARN("Unknown physics material preset: %s", name.c_str());
+        return false;
+    }
+    c->SetMaterial(*preset);
+    return true;
 }
 
 void ScriptAudioProxy::Play(std::string_view clipPath) const
@@ -934,184 +1067,588 @@ Ray ScriptCameraProxy::ScreenPointToRay(float screenX, float screenY) const
     return { nearPt, dir };
 }
 
-MaterialComponent* ScriptMaterialProxy::Get() const
+// スロットを所有する MaterialComponent を解決する。
+// SetEnabled のようなコンポーネント全体の操作はこちらを使う。
+MaterialComponent* MaterialInstance::ResolveOwner(bool ensure) const
 {
-    return SelfComponent<MaterialComponent>(script);
-}
-
-MaterialComponent* ScriptMaterialProxy::Ensure() const
-{
-    if (!script || !script->m_gameObject) return nullptr;
-    if (auto* material = script->m_gameObject->GetComponent<MaterialComponent>())
+    if (!m_script || !m_script->m_scene) return nullptr;
+    GameObject* object = m_target.IsValid()
+        ? m_target.Resolve(*m_script->m_scene)
+        : m_script->m_gameObject;
+    if (!object || !object->IsValid()) return nullptr;
+    if (auto* material = object->GetComponent<MaterialComponent>())
         return material;
-    return &script->m_gameObject->AddComponent<MaterialComponent>();
+    return ensure ? &object->AddComponent<MaterialComponent>() : nullptr;
 }
 
-bool ScriptMaterialProxy::SetMaterial(std::string_view materialPath) const
+// m_slot が指す MaterialSlot を解決する。
+// WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体を描くようになり、
+//      submesh ごとのマテリアルはスロットとして同じ GameObject に並ぶ。
+//      スクリプトから「バイザーだけ光らせる」ような操作をスロット番号で行えるようにする。
+//      ensure=true のときは必要な数までスロットを伸ばす。
+void* MaterialInstance::ResolveComponent(bool ensure) const
 {
-    auto* material = Ensure();
-    if (!material) return false;
+    MaterialComponent* owner = ResolveOwner(ensure);
+    if (!owner) return nullptr;
+    if (m_slot >= owner->SlotCount()) {
+        if (!ensure) return nullptr;
+        owner->ResizeSlots(static_cast<size_t>(m_slot) + 1u);
+    }
+    return &owner->RawSlotAt(static_cast<size_t>(m_slot));
+}
 
-    // 別マテリアルへ差し替えるときは、旧シェーダー向けの GO 上書きを破棄する。
-    if (material->materialPath != materialPath)
-        material->paramOverrides.clear();
-    material->materialPath = std::string(materialPath);
-    material->materialAsset = material->materialPath.empty()
+bool MaterialInstance::IsValid() const
+{
+    return ResolveComponent(false) != nullptr;
+}
+
+bool MaterialInstance::HasProperty(MaterialPropertyId property) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !property.IsValid() || !material->EnsureMaterialAsset()) return false;
+    const auto* asset = asset::AssetManager::GetMaterial(material->materialAsset);
+    if (!asset) return false;
+    if (asset->params.contains(std::string(property.name)) ||
+        asset->textures.contains(std::string(property.name)))
+        return true;
+    if (m_script) {
+        const auto* descriptor = m_script->GetShaderDescriptor(material->GetShaderPath());
+        if (descriptor && descriptor->FindVar(property.name))
+            return true;
+        if (descriptor) {
+            for (const auto& texture : descriptor->textures)
+                if (texture.name == property.name) return true;
+        }
+    }
+    return ParseTextureSlot(property.name) < 5u;
+}
+
+const std::string& MaterialInstance::ResolvePropertyName(
+    void* component,
+    MaterialPropertyId property) const
+{
+    auto& material = *static_cast<MaterialSlot*>(component);
+    auto [it, inserted] = material.propertyNameCache.try_emplace(
+        property.hash, std::string(property.name));
+    if (!inserted && it->second != property.name)
+        it->second.assign(property.name);
+    return it->second;
+}
+
+bool MaterialInstance::ValidateProperty(
+    MaterialPropertyId property,
+    PropertyKind kind) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !property.IsValid() || !material->EnsureMaterialAsset())
+        return false;
+    const auto* descriptor = m_script
+        ? m_script->GetShaderDescriptor(material->GetShaderPath())
+        : nullptr;
+    if (material->propertyValidationDescriptor != descriptor) {
+        material->propertyValidationDescriptor = descriptor;
+        material->propertyValidationCache.clear();
+    }
+    const uint8_t validationBit = static_cast<uint8_t>(
+        uint8_t{1} << static_cast<uint8_t>(kind));
+    const auto cachedName = material->propertyNameCache.find(property.hash);
+    if (cachedName != material->propertyNameCache.end() &&
+        cachedName->second != property.name) {
+        material->propertyValidationCache.erase(property.hash);
+    }
+    if ((material->propertyValidationCache[property.hash] & validationBit) != 0)
+        return true;
+    if (!descriptor) {
+        const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+        bool valid = false;
+        if (shared) {
+            if (kind == PropertyKind::Texture) {
+                valid = shared->textures.contains(
+                    std::string(CanonicalTextureProperty(property.name)));
+            } else {
+                const auto parameter = shared->params.find(std::string(property.name));
+                const size_t requiredComponents =
+                    kind == PropertyKind::Vector3 ? 3u :
+                    kind == PropertyKind::Vector4 ? 4u : 1u;
+                valid = parameter != shared->params.end() &&
+                        parameter->second.size() >= requiredComponents;
+            }
+        }
+        if (valid) material->propertyValidationCache[property.hash] |= validationBit;
+        return valid;
+    }
+
+    if (kind == PropertyKind::Texture) {
+        const std::string_view canonicalName = CanonicalTextureProperty(property.name);
+        for (const auto& texture : descriptor->textures) {
+            if (texture.name == property.name ||
+                texture.name == canonicalName ||
+                texture.slot == ParseTextureSlot(property.name)) {
+                material->propertyValidationCache[property.hash] |= validationBit;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    const renderer::ShaderVarDesc* variable = descriptor->FindVar(property.name);
+    if (!variable) return false;
+    bool valid = false;
+    switch (kind) {
+    case PropertyKind::Float:
+        valid = variable->columns == 1 &&
+                variable->varType == renderer::ShaderVarType::Float;
+        break;
+    case PropertyKind::Int:
+        valid = variable->columns == 1 &&
+                variable->varType != renderer::ShaderVarType::Float;
+        break;
+    case PropertyKind::Vector3:
+        valid = variable->columns == 3 &&
+                variable->varType == renderer::ShaderVarType::Float;
+        break;
+    case PropertyKind::Vector4:
+        valid = variable->columns == 4 &&
+                variable->varType == renderer::ShaderVarType::Float;
+        break;
+    default:
+        break;
+    }
+    if (valid) material->propertyValidationCache[property.hash] |= validationBit;
+    return valid;
+}
+
+bool MaterialInstance::SetFloat(MaterialPropertyId property, float value) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !ValidateProperty(property, PropertyKind::Float)) {
+        FBZZ_LOG_WARN("Material property not found: %.*s",
+                      static_cast<int>(property.name.size()), property.name.data());
+        return false;
+    }
+    material->paramOverrides[ResolvePropertyName(material, property)] = { value };
+    return true;
+}
+
+bool MaterialInstance::SetInt(MaterialPropertyId property, int value) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !ValidateProperty(property, PropertyKind::Int)) {
+        FBZZ_LOG_WARN("Material int property not found or type mismatch: %.*s",
+                      static_cast<int>(property.name.size()), property.name.data());
+        return false;
+    }
+    material->paramOverrides[ResolvePropertyName(material, property)] = {
+        static_cast<float>(value)
+    };
+    return true;
+}
+
+bool MaterialInstance::SetVector3(MaterialPropertyId property, const math::Vector3& value) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !ValidateProperty(property, PropertyKind::Vector3)) {
+        FBZZ_LOG_WARN("Material Vector3 property not found or type mismatch: %.*s",
+                      static_cast<int>(property.name.size()), property.name.data());
+        return false;
+    }
+    material->paramOverrides[ResolvePropertyName(material, property)] = {
+        value.x, value.y, value.z
+    };
+    return true;
+}
+
+bool MaterialInstance::SetVector4(MaterialPropertyId property, const math::Vector4& value) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !ValidateProperty(property, PropertyKind::Vector4)) {
+        FBZZ_LOG_WARN("Material Vector4 property not found or type mismatch: %.*s",
+                      static_cast<int>(property.name.size()), property.name.data());
+        return false;
+    }
+    material->paramOverrides[ResolvePropertyName(material, property)] = {
+        value.x, value.y, value.z, value.w
+    };
+    return true;
+}
+
+bool MaterialInstance::SetColor(MaterialPropertyId property, const math::Vector4& value) const
+{
+    return SetVector4(property, value);
+}
+
+bool MaterialInstance::SetTexture(MaterialPropertyId property, const TextureRef& texture) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !ValidateProperty(property, PropertyKind::Texture)) {
+        FBZZ_LOG_WARN("Material texture property not found or type mismatch: %.*s",
+                      static_cast<int>(property.name.size()), property.name.data());
+        return false;
+    }
+    const MaterialPropertyId canonical(CanonicalTextureProperty(property.name));
+    const std::string& key = ResolvePropertyName(material, canonical);
+    material->textureOverrides[key] = texture.ResolvePath();
+    return true;
+}
+
+bool MaterialInstance::TryGetFloat(MaterialPropertyId property, float& value) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !property.IsValid()) return false;
+    const std::string& key = ResolvePropertyName(material, property);
+    const auto overrideIt = material->paramOverrides.find(key);
+    if (overrideIt != material->paramOverrides.end() && !overrideIt->second.empty()) {
+        value = overrideIt->second[0];
+        return true;
+    }
+    const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+    if (!shared) return false;
+    const auto it = shared->params.find(key);
+    if (it == shared->params.end() || it->second.empty()) return false;
+    value = it->second[0];
+    return true;
+}
+
+bool MaterialInstance::TryGetInt(MaterialPropertyId property, int& value) const
+{
+    float result = 0.0f;
+    if (!TryGetFloat(property, result)) return false;
+    value = static_cast<int>(result);
+    return true;
+}
+
+bool MaterialInstance::TryGetVector3(MaterialPropertyId property, math::Vector3& value) const
+{
+    math::Vector4 vector;
+    if (!TryGetVector4(property, vector)) return false;
+    value = { vector.x, vector.y, vector.z };
+    return true;
+}
+
+bool MaterialInstance::TryGetVector4(MaterialPropertyId property, math::Vector4& value) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !property.IsValid()) return false;
+    const std::string& key = ResolvePropertyName(material, property);
+    const auto overrideIt = material->paramOverrides.find(key);
+    const std::vector<float>* values = overrideIt != material->paramOverrides.end()
+        ? &overrideIt->second : nullptr;
+    if (!values) {
+        const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+        if (!shared) return false;
+        const auto sharedIt = shared->params.find(key);
+        if (sharedIt == shared->params.end()) return false;
+        values = &sharedIt->second;
+    }
+    if (values->empty()) return false;
+    value = {
+        (*values)[0],
+        values->size() > 1 ? (*values)[1] : 0.0f,
+        values->size() > 2 ? (*values)[2] : 0.0f,
+        values->size() > 3 ? (*values)[3] : 0.0f
+    };
+    return true;
+}
+
+bool MaterialInstance::TryGetColor(
+    MaterialPropertyId property,
+    math::Vector4& value) const
+{
+    return TryGetVector4(property, value);
+}
+
+bool MaterialInstance::TryGetTexture(MaterialPropertyId property, TextureRef& texture) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material || !property.IsValid()) return false;
+    const MaterialPropertyId canonical(CanonicalTextureProperty(property.name));
+    const std::string& key = ResolvePropertyName(material, canonical);
+    const auto overrideIt = material->textureOverrides.find(key);
+    if (overrideIt != material->textureOverrides.end()) {
+        texture.SetPath(overrideIt->second);
+        return true;
+    }
+    const auto* shared = asset::AssetManager::GetMaterial(material->materialAsset);
+    if (!shared) return false;
+    const auto it = shared->textures.find(key);
+    if (it == shared->textures.end()) return false;
+    texture.SetPath(it->second);
+    return true;
+}
+
+bool MaterialInstance::ClearOverride(MaterialPropertyId property) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material) return false;
+    const std::string key = ResolvePropertyName(material, property);
+    const MaterialPropertyId canonical(CanonicalTextureProperty(property.name));
+    const std::string textureKey = ResolvePropertyName(material, canonical);
+    const size_t removed = material->paramOverrides.erase(key) +
+                           material->textureOverrides.erase(textureKey);
+    return removed > 0;
+}
+
+bool MaterialInstance::ClearAllOverrides() const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material) return false;
+    material->paramOverrides.clear();
+    material->textureOverrides.clear();
+    material->hasBlendModeOverride = false;
+    material->hasDoubleSidedOverride = false;
+    material->hasRenderQueueOverride = false;
+    return true;
+}
+
+bool MaterialInstance::SetBlendMode(MaterialBlendMode blendMode) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material) return false;
+    switch (blendMode) {
+    case MaterialBlendMode::Alpha:    material->blendModeOverride = renderer::BlendMode::ALPHA_BLEND; break;
+    case MaterialBlendMode::Additive: material->blendModeOverride = renderer::BlendMode::ADDITIVE; break;
+    default:                          material->blendModeOverride = renderer::BlendMode::OPAQUE_BLEND; break;
+    }
+    material->hasBlendModeOverride = true;
+    return true;
+}
+
+bool MaterialInstance::SetDoubleSided(bool doubleSided) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material) return false;
+    material->doubleSidedOverride = doubleSided;
+    material->hasDoubleSidedOverride = true;
+    return true;
+}
+
+bool MaterialInstance::SetRenderQueue(int32_t renderQueue) const
+{
+    auto* material = static_cast<MaterialSlot*>(ResolveComponent(false));
+    if (!material) return false;
+    material->renderQueueOverride = renderQueue;
+    material->hasRenderQueueOverride = true;
+    return true;
+}
+
+MaterialInstance ScriptMaterialProxy::Instance(uint32_t slot) const
+{
+    return { script, {}, slot };
+}
+
+MaterialInstance ScriptMaterialProxy::Instance(EntityRef target, uint32_t slot) const
+{
+    return { script, target, slot };
+}
+
+bool ScriptMaterialProxy::SetSharedMaterial(const MaterialRef& material, uint32_t slot) const
+{
+    return SetSharedMaterial({}, material, slot);
+}
+
+bool ScriptMaterialProxy::SetSharedMaterial(EntityRef target,
+                                            const MaterialRef& materialRef,
+                                            uint32_t slot) const
+{
+    MaterialInstance instance{ script, target, slot };
+    auto* material = static_cast<MaterialSlot*>(instance.ResolveComponent(true));
+    if (!material) return false;
+    const std::string path = materialRef.ResolvePath();
+    const auto assetHandle = path.empty()
         ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
-        : asset::AssetManager::LoadMaterial(material->materialPath);
-    return material->materialAsset.IsValid() || material->materialPath.empty();
+        : asset::AssetManager::LoadMaterial(path);
+    if (!path.empty() && !assetHandle.IsValid()) {
+        FBZZ_LOG_WARN("Shared material could not be loaded: %s", path.c_str());
+        return false;
+    }
+    if (material->materialPath != path)
+        instance.ClearAllOverrides();
+    material->materialPath = path;
+    material->propertyValidationCache.clear();
+    material->propertyValidationDescriptor = nullptr;
+    material->materialAsset = assetHandle;
+    return true;
+}
+
+// ── 共有 .mat の読み取り ────────────────────────────────────────────────────
+
+namespace {
+
+// MaterialRef から共有アセットを解決する。未ロードならここでロードする。
+const asset::MaterialAsset* ResolveSharedMaterial(const MaterialRef& material)
+{
+    const std::string path = material.ResolvePath();
+    if (path.empty()) return nullptr;
+    const auto handle = asset::AssetManager::LoadMaterial(path);
+    if (!handle.IsValid()) return nullptr;
+    return asset::AssetManager::GetMaterial(handle);
+}
+
+} // namespace
+
+bool ScriptMaterialProxy::HasSharedProperty(const MaterialRef& material,
+                                            MaterialPropertyId property) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const std::string key(property.name);
+    return shared->params.contains(key) || shared->textures.contains(key);
+}
+
+bool ScriptMaterialProxy::TryGetSharedFloat(const MaterialRef& material,
+                                            MaterialPropertyId property, float& value) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const auto it = shared->params.find(std::string(property.name));
+    if (it == shared->params.end() || it->second.empty()) return false;
+    value = it->second[0];
+    return true;
+}
+
+bool ScriptMaterialProxy::TryGetSharedVector4(const MaterialRef& material,
+                                              MaterialPropertyId property,
+                                              math::Vector4& value) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const auto it = shared->params.find(std::string(property.name));
+    if (it == shared->params.end() || it->second.empty()) return false;
+
+    // .mat は float / float2 / float3 / float4 を同じ形式で持つため、
+    // 足りない成分は 0 で埋める (Instance() の読み出しと同じ規則)。
+    const auto& values = it->second;
+    value = {
+        values[0],
+        values.size() > 1 ? values[1] : 0.0f,
+        values.size() > 2 ? values[2] : 0.0f,
+        values.size() > 3 ? values[3] : 0.0f
+    };
+    return true;
+}
+
+bool ScriptMaterialProxy::TryGetSharedVector3(const MaterialRef& material,
+                                              MaterialPropertyId property,
+                                              math::Vector3& value) const
+{
+    math::Vector4 vector;
+    if (!TryGetSharedVector4(material, property, vector)) return false;
+    value = { vector.x, vector.y, vector.z };
+    return true;
+}
+
+bool ScriptMaterialProxy::TryGetSharedColor(const MaterialRef& material,
+                                            MaterialPropertyId property,
+                                            math::Vector4& value) const
+{
+    return TryGetSharedVector4(material, property, value);
+}
+
+bool ScriptMaterialProxy::TryGetSharedTexture(const MaterialRef& material,
+                                              MaterialPropertyId property,
+                                              TextureRef& texture) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const MaterialPropertyId canonical(CanonicalTextureProperty(property.name));
+    const auto it = shared->textures.find(std::string(canonical.name));
+    if (it == shared->textures.end()) return false;
+    texture.SetPath(it->second);
+    return true;
 }
 
 bool ScriptMaterialProxy::EnsureMaterial(std::string_view materialPath) const
 {
-    auto* material = Ensure();
+    auto* material = static_cast<MaterialSlot*>(Instance().ResolveComponent(true));
     if (!material) return false;
     if (material->materialPath != materialPath)
-        return SetMaterial(materialPath);
+        return SetSharedMaterial(MaterialRef(materialPath));
     return material->EnsureMaterialAsset();
 }
 
 bool ScriptMaterialProxy::HasParam(std::string_view param) const
 {
-    auto* material = Get();
-    if (!material || !material->EnsureMaterialAsset()) return false;
-    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
-    if (!a) return false;
-    return a->params.find(std::string(param)) != a->params.end();
+    return Instance().HasProperty(MaterialPropertyId(param));
 }
 
-// WHY: params を共有 MaterialAsset へ書くと同じ .mat を使う全インスタンスへ波及する。
-//      MaterialComponent::paramOverrides へ積み、SyncMaterial が GO 単位で上書きする
-//      ことで「このオブジェクトだけ」のパラメータ変更 (ディゾルブ・点滅等) を実現する。
-void ScriptMaterialProxy::SetFloat(std::string_view param, float v) const
+bool ScriptMaterialProxy::SetFloat(std::string_view param, float value) const
 {
-    if (auto* m = SelfComponent<MaterialComponent>(script))
-        m->paramOverrides[std::string(param)] = { v };
+    return Instance().SetFloat(MaterialPropertyId(param), value);
 }
 
-void ScriptMaterialProxy::SetInt(std::string_view param, int v) const
+bool ScriptMaterialProxy::SetInt(std::string_view param, int value) const
 {
-    SetFloat(param, static_cast<float>(v));
+    return Instance().SetInt(MaterialPropertyId(param), value);
 }
 
-void ScriptMaterialProxy::SetVector3(std::string_view param, const math::Vector3& v) const
+bool ScriptMaterialProxy::SetVector3(std::string_view param, const math::Vector3& value) const
 {
-    if (auto* m = SelfComponent<MaterialComponent>(script))
-        m->paramOverrides[std::string(param)] = { v.x, v.y, v.z };
+    return Instance().SetVector3(MaterialPropertyId(param), value);
 }
 
-void ScriptMaterialProxy::SetVector4(std::string_view param, const math::Vector4& v) const
+bool ScriptMaterialProxy::SetVector4(std::string_view param, const math::Vector4& value) const
 {
-    if (auto* m = SelfComponent<MaterialComponent>(script))
-        m->paramOverrides[std::string(param)] = { v.x, v.y, v.z, v.w };
+    return Instance().SetVector4(MaterialPropertyId(param), value);
 }
 
-void ScriptMaterialProxy::SetTexture(std::string_view slot, std::string_view texPath) const
+bool ScriptMaterialProxy::SetTexture(std::string_view slot, std::string_view texturePath) const
 {
-    auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m || !m->EnsureMaterialAsset()) return;
-    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return;
-
-    static constexpr const char* kSlots[] = { "albedo", "normal", "metallic", "emissive", "ao" };
-    std::string key(slot);
-    const uint32_t targetSlot = ParseTextureSlot(slot);
-    if (targetSlot != UINT32_MAX && targetSlot < 5u)
-        key = kSlots[targetSlot];
-    a->textures[key] = std::string(texPath);
+    return Instance().SetTexture(MaterialPropertyId(slot), TextureRef(texturePath));
 }
 
 float ScriptMaterialProxy::GetFloat(std::string_view param) const
 {
-    const auto* m = Get();
-    if (!m) return 0.0f;
-    // GO 単位の上書きを優先し、無ければ共有アセットの値を返す。
-    const auto ov = m->paramOverrides.find(std::string(param));
-    if (ov != m->paramOverrides.end() && !ov->second.empty())
-        return ov->second[0];
-    const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return 0.0f;
-    const auto it = a->params.find(std::string(param));
-    return (it != a->params.end() && !it->second.empty()) ? it->second[0] : 0.0f;
+    float value = 0.0f;
+    (void)Instance().TryGetFloat(MaterialPropertyId(param), value);
+    return value;
 }
 
 math::Vector3 ScriptMaterialProxy::GetVector3(std::string_view param) const
 {
-    const auto* m = Get();
-    if (!m) return {};
-    const auto ov = m->paramOverrides.find(std::string(param));
-    if (ov != m->paramOverrides.end() && ov->second.size() >= 3)
-        return { ov->second[0], ov->second[1], ov->second[2] };
-    const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return {};
-    const auto it = a->params.find(std::string(param));
-    if (it == a->params.end() || it->second.size() < 3) return {};
-    return { it->second[0], it->second[1], it->second[2] };
+    math::Vector3 value;
+    (void)Instance().TryGetVector3(MaterialPropertyId(param), value);
+    return value;
 }
 
 bool ScriptMaterialProxy::SetEnabled(bool enabled) const
 {
-    auto* material = Get();
+    // enabled はコンポーネント全体の有効/無効。submesh 単位の表示切替は
+    // SetSlotVisible() を使う。
+    MaterialComponent* material = Instance().ResolveOwner(false);
     if (!material) return false;
     material->enabled = enabled;
     return true;
 }
 
-MaterialComponent* ScriptMaterialProxy::Get(GameObject* go) const
+bool ScriptMaterialProxy::SetSlotVisible(uint32_t slot, bool visible) const
 {
-    return ObjectComponent<MaterialComponent>(go);
-}
-
-bool ScriptMaterialProxy::SetMaterial(GameObject* go, std::string_view materialPath) const
-{
-    if (!go || !go->IsValid()) return false;
-    auto* material = go->GetComponent<MaterialComponent>();
-    if (!material)
-        material = &go->AddComponent<MaterialComponent>();
-
-    if (material->materialPath != materialPath)
-        material->paramOverrides.clear();
-    material->materialPath = std::string(materialPath);
-    material->materialAsset = material->materialPath.empty()
-        ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
-        : asset::AssetManager::LoadMaterial(material->materialPath);
-    return material->materialAsset.IsValid() || material->materialPath.empty();
-}
-
-void ScriptMaterialProxy::SetFloat(GameObject* go, std::string_view param, float v) const
-{
-    if (auto* m = ObjectComponent<MaterialComponent>(go))
-        m->paramOverrides[std::string(param)] = { v };
-}
-
-bool ScriptMaterialProxy::SetBlendMode(renderer::BlendMode blendMode) const
-{
-    auto* material = Get();
-    if (!material || !material->EnsureMaterialAsset()) return false;
-    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
-    if (!a) return false;
-    a->blendMode = blendMode;
+    auto* material = static_cast<MaterialSlot*>(Instance(slot).ResolveComponent(true));
+    if (!material) return false;
+    material->visible = visible;
     return true;
+}
+
+bool ScriptMaterialProxy::SetOnlyVisibleSlot(int slot) const
+{
+    MaterialComponent* material = Instance().ResolveOwner(false);
+    if (!material) return false;
+    material->SetOnlyVisibleSlot(slot);
+    return true;
+}
+
+bool ScriptMaterialProxy::SetBlendMode(MaterialBlendMode blendMode) const
+{
+    return Instance().SetBlendMode(blendMode);
 }
 
 bool ScriptMaterialProxy::SetDoubleSided(bool doubleSided) const
 {
-    auto* material = Get();
-    if (!material || !material->EnsureMaterialAsset()) return false;
-    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
-    if (!a) return false;
-    a->doubleSided = doubleSided;
-    return true;
+    return Instance().SetDoubleSided(doubleSided);
 }
 
 bool ScriptMaterialProxy::SetRenderQueue(int32_t renderQueue) const
 {
-    auto* material = Get();
-    if (!material || !material->EnsureMaterialAsset()) return false;
-    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
-    if (!a) return false;
-    a->renderQueue = renderQueue;
-    return true;
+    return Instance().SetRenderQueue(renderQueue);
 }
 
 void ScriptMaterialProxy::QueueRenderPass(UserRenderPassDesc desc) const
@@ -1240,17 +1777,6 @@ void ScriptParticleProxy::SetPlayback(bool loop, float duration, bool clearOnSto
         p->loop = loop;
         p->duration = (std::max)(duration, 0.0f);
         p->clearOnStop = clearOnStop;
-    }
-}
-
-void ScriptParticleProxy::SetTexture(std::string_view texturePath, int columns, int rows) const
-{
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->texturePath = std::string(texturePath);
-        p->spriteColumns = (std::max)(columns, 1);
-        p->spriteRows = (std::max)(rows, 1);
-        p->texture = {};
-        p->loadedTexturePath.clear();
     }
 }
 
@@ -1431,6 +1957,106 @@ void ScriptParticleProxy::SetReceiveForceFields(bool receive) const
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->receiveForceFields = receive;
 }
 
+void ScriptVFXProxy::Play(bool restart) const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script)) {
+        if (restart) graph->Restart();
+        else graph->Resume();
+    }
+}
+
+void ScriptVFXProxy::Pause() const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script)) graph->Pause();
+}
+
+void ScriptVFXProxy::Stop() const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script)) graph->Stop();
+}
+
+void ScriptVFXProxy::SetSpeed(float speed) const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script))
+        graph->speed = (std::max)(speed, 0.0f);
+}
+
+bool ScriptVFXProxy::SetGraph(const VFXRef& reference, bool restart) const
+{
+    auto* graph = SelfComponent<VFXGraphComponent>(script);
+    const std::string path = reference.ResolvePath();
+    if (graph == nullptr || path.empty()) return false;
+    graph->graphPath = path;
+    graph->reloadRequested = true;
+    if (restart) graph->Restart();
+    return true;
+}
+
+bool ScriptVFXProxy::Trigger(std::string_view name) const
+{
+    auto* graph = SelfComponent<VFXGraphComponent>(script);
+    if (graph == nullptr || name.empty()) return false;
+    graph->Trigger(name);
+    return true;
+}
+
+namespace {
+bool SetVFXOverride(Script* script, std::string_view name, asset::VFXParamValue value)
+{
+    auto* graph = SelfComponent<VFXGraphComponent>(script);
+    if (graph == nullptr || name.empty()) return false;
+    auto iterator = std::find_if(graph->parameterOverrides.begin(), graph->parameterOverrides.end(),
+        [name](const asset::VFXParamOverride& item) { return item.paramName == name; });
+    if (iterator == graph->parameterOverrides.end())
+        graph->parameterOverrides.push_back({ std::string(name), std::move(value) });
+    else iterator->value = std::move(value);
+    graph->reloadRequested = true;
+    return true;
+}
+}
+
+bool ScriptVFXProxy::SetFloat(std::string_view name, float value) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ value } }); }
+bool ScriptVFXProxy::SetInt(std::string_view name, int value) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ value } }); }
+bool ScriptVFXProxy::SetBool(std::string_view name, bool value) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ value } }); }
+bool ScriptVFXProxy::SetColor(std::string_view name, float r, float g, float b, float a) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ math::Vector4{ r, g, b, a } } }); }
+bool ScriptVFXProxy::SetVector3(std::string_view name, float x, float y, float z) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ math::Vector3{ x, y, z } } }); }
+bool ScriptVFXProxy::SetAsset(std::string_view name, std::string_view path) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ std::string(path) } }); }
+bool ScriptVFXProxy::ClearOverride(std::string_view name) const
+{
+    auto* graph = SelfComponent<VFXGraphComponent>(script);
+    if (graph == nullptr) return false;
+    const auto oldSize = graph->parameterOverrides.size();
+    std::erase_if(graph->parameterOverrides,
+        [name](const asset::VFXParamOverride& item) { return item.paramName == name; });
+    if (graph->parameterOverrides.size() == oldSize) return false;
+    graph->reloadRequested = true;
+    return true;
+}
+
+bool ScriptVFXProxy::IsPlaying() const
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    return graph != nullptr && graph->playing;
+}
+
+float ScriptVFXProxy::GetTime() const
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    return graph != nullptr ? graph->playTime : 0.0f;
+}
+
+float ScriptVFXProxy::GetDuration() const
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    return graph != nullptr ? graph->graphDuration : 0.0f;
+}
+
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
 {
     if (auto* t = SelfComponent<TrailComponent>(script)) {
@@ -1490,17 +2116,6 @@ void ScriptTrailProxy::SetColor(const math::Vector4& start, const math::Vector4&
     if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->colorStart = start;
         t->colorEnd = end;
-    }
-}
-
-void ScriptTrailProxy::SetTexture(std::string_view texturePath, float uvTiling, float uvScrollSpeed) const
-{
-    if (auto* t = SelfComponent<TrailComponent>(script)) {
-        t->texturePath = std::string(texturePath);
-        t->uvTiling = (std::max)(uvTiling, 0.001f);
-        t->uvScrollSpeed = uvScrollSpeed;
-        t->texture = {};
-        t->loadedTexturePath.clear();
     }
 }
 
@@ -1607,15 +2222,6 @@ void ScriptMeshTrailProxy::SetDoubleSided(bool doubleSided) const
         t->doubleSided = doubleSided;
 }
 
-void ScriptMeshTrailProxy::SetTexture(std::string_view texturePath) const
-{
-    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
-        t->texturePath = std::string(texturePath);
-        t->texture = {};
-        t->loadedTexturePath.clear();
-    }
-}
-
 void ScriptMeshTrailProxy::AddExcludedMeshIndex(int meshIndex) const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
@@ -1632,9 +2238,111 @@ void ScriptMeshTrailProxy::ClearExcludedMeshIndices() const
         t->excludedMeshIndices.clear();
 }
 
+// ── UIButton 入力の取得 ──────────────────────────────────────────────────────
+// UISystem が毎フレーム立て直す onClick / onEnter / onExit / state をそのまま読む。
+// 取得系はボタンが無い場合に「押されていない」を返す方が呼び出し側の分岐が減るため、
+// nullptr は一律 false / Disabled に潰す。
+namespace {
+
+UIButtonPhase ToButtonPhase(const UIButton* button)
+{
+    if (!button || !button->enabled || !button->isInteractable)
+        return UIButtonPhase::Disabled;
+    switch (button->state) {
+    case UIButtonState::HOVERED: return UIButtonPhase::Hovered;
+    case UIButtonState::PRESSED: return UIButtonPhase::Pressed;
+    default:                     return UIButtonPhase::Normal;
+    }
+}
+
+} // namespace
+
+bool ScriptUIProxy::WasClicked() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->onClick;
+}
+
+bool ScriptUIProxy::WasHoverEnter() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->onEnter;
+}
+
+bool ScriptUIProxy::WasHoverExit() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->onExit;
+}
+
+bool ScriptUIProxy::IsHovered() const
+{
+    return GetButtonPhase() == UIButtonPhase::Hovered;
+}
+
+bool ScriptUIProxy::IsPressed() const
+{
+    return GetButtonPhase() == UIButtonPhase::Pressed;
+}
+
+bool ScriptUIProxy::IsInteractable() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->enabled && b->isInteractable;
+}
+
+UIButtonPhase ScriptUIProxy::GetButtonPhase() const
+{
+    return ToButtonPhase(SelfComponent<UIButton>(script));
+}
+
+bool ScriptUIProxy::WasClicked(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->onClick;
+}
+
+bool ScriptUIProxy::WasHoverEnter(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->onEnter;
+}
+
+bool ScriptUIProxy::WasHoverExit(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->onExit;
+}
+
+bool ScriptUIProxy::IsHovered(GameObject* go) const
+{
+    return GetButtonPhase(go) == UIButtonPhase::Hovered;
+}
+
+bool ScriptUIProxy::IsPressed(GameObject* go) const
+{
+    return GetButtonPhase(go) == UIButtonPhase::Pressed;
+}
+
+bool ScriptUIProxy::IsInteractable(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->enabled && b->isInteractable;
+}
+
+UIButtonPhase ScriptUIProxy::GetButtonPhase(GameObject* go) const
+{
+    return ToButtonPhase(ObjectComponent<UIButton>(go));
+}
+
 void ScriptUIProxy::SetButtonInteractable(bool v) const
 {
     if (auto* b = SelfComponent<UIButton>(script)) b->isInteractable = v;
+}
+
+void ScriptUIProxy::SetButtonInteractable(GameObject* go, bool v) const
+{
+    if (auto* b = ObjectComponent<UIButton>(go)) b->isInteractable = v;
 }
 
 void ScriptUIProxy::SetImageColor(const math::Vector4& color) const
@@ -1752,12 +2460,12 @@ bool ScriptUIAnimatorProxy::IsPlaying() const
 
 GameObject* ScriptSceneProxy::Find(std::string_view name) const
 {
-    return script ? script->Find(std::string(name)) : nullptr;
+    return script && script->m_scene ? script->m_scene->Find(std::string(name)) : nullptr;
 }
 
 GameObject* ScriptSceneProxy::FindWithTag(std::string_view tag) const
 {
-    return script ? script->FindWithTag(std::string(tag)) : nullptr;
+    return script && script->m_scene ? script->m_scene->FindWithTag(std::string(tag)) : nullptr;
 }
 
 GameObject* ScriptSceneProxy::Self() const
@@ -1767,29 +2475,34 @@ GameObject* ScriptSceneProxy::Self() const
 
 GameObject* ScriptSceneProxy::GetGameObject(EntityID id) const
 {
-    return script ? script->GetGameObject(id) : nullptr;
+    return script && script->m_scene ? script->m_scene->GetGameObject(id) : nullptr;
 }
 
 GameObject* ScriptSceneProxy::GetMainCameraObject() const
 {
-    return script ? script->GetMainCameraObject() : nullptr;
+    if (!script || !script->m_scene) return nullptr;
+    for (auto& go : script->m_scene->GameObjects()) {
+        auto* camera = go.GetComponent<CameraComponent>();
+        if (camera && camera->enabled && camera->isMain) return &go;
+    }
+    return nullptr;
 }
 
 GameObject& ScriptSceneProxy::Create(std::string_view name) const
 {
-    assert(script && "Script context is not set");
-    return script->CreateGameObject(std::string(name));
+    assert(script && script->m_scene && "Script context is not set");
+    return script->m_scene->CreateGameObject(std::string(name));
 }
 
 void ScriptSceneProxy::Destroy(GameObject& go, float delay) const
 {
-    Script::Destroy(go, delay);
+    GameObject::Destroy(go, delay);
 }
 
 void ScriptSceneProxy::DestroySelf(float delay) const
 {
     if (script && script->m_gameObject)
-        Script::Destroy(*script->m_gameObject, delay);
+        GameObject::Destroy(*script->m_gameObject, delay);
 }
 
 bool ScriptSceneProxy::IsActiveAndEnabled() const
@@ -1830,6 +2543,66 @@ GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath,
     auto* go = Instantiate(prefabPath);
     if (go && init) init(*go);
     return go;
+}
+
+// ── オブジェクトプール ──────────────────────────────────────────────────────
+
+GameObject* ScriptSceneProxy::Spawn(const PrefabRef& prefab,
+                                    const math::Vector3& position,
+                                    const math::Quaternion& rotation) const
+{
+    return Spawn(prefab.path, position, rotation);
+}
+
+GameObject* ScriptSceneProxy::Spawn(const std::string& prefabPath,
+                                    const math::Vector3& position,
+                                    const math::Quaternion& rotation) const
+{
+    if (!script || !script->m_scene) return nullptr;
+    // Instantiate と同じ理由で Scene* を先に退避する。プールが空だった場合は
+    // 内部で Instantiate が走り、GameObject 配列が再確保され得る。
+    Scene* scene = script->m_scene;
+    return PrefabPool::Spawn(*scene, prefabPath, position, rotation);
+}
+
+GameObject* ScriptSceneProxy::Spawn(const PrefabRef& prefab) const
+{
+    if (!script || !script->m_gameObject) return nullptr;
+    // WHY 値へコピーしてから渡すか: Spawn の内部で Instantiate が走ると Scene の
+    //     GameObject 配列が再確保され、m_gameObject->transform の参照先が無効になる。
+    const math::Vector3    position = script->m_gameObject->transform.worldPosition;
+    const math::Quaternion rotation = script->m_gameObject->transform.worldRotation;
+    return Spawn(prefab.path, position, rotation);
+}
+
+bool ScriptSceneProxy::Despawn(GameObject& gameObject) const
+{
+    if (!script || !script->m_scene) return false;
+    return PrefabPool::Despawn(*script->m_scene, gameObject);
+}
+
+bool ScriptSceneProxy::DespawnSelf() const
+{
+    if (!script || !script->m_scene || !script->m_gameObject) return false;
+    return PrefabPool::Despawn(*script->m_scene, *script->m_gameObject);
+}
+
+int ScriptSceneProxy::Prewarm(const PrefabRef& prefab, int count) const
+{
+    return Prewarm(prefab.path, count);
+}
+
+int ScriptSceneProxy::Prewarm(const std::string& prefabPath, int count) const
+{
+    if (!script || !script->m_scene) return 0;
+    Scene* scene = script->m_scene;
+    return PrefabPool::Prewarm(*scene, prefabPath, count);
+}
+
+size_t ScriptSceneProxy::PooledCount(const std::string& prefabPath) const
+{
+    if (!script || !script->m_scene) return 0;
+    return PrefabPool::AvailableCount(*script->m_scene, prefabPath);
 }
 
 void ScriptSceneProxy::LoadScene(std::string_view name) const
@@ -2068,6 +2841,200 @@ void ScriptAnimatorProxy::Play(GameObject* go, std::string_view stateName) const
     }
 }
 
+void ScriptAnimatorProxy::SetLayerWeight(std::string_view layerName, float weight) const
+{
+    if (auto* animator = SelfComponent<AnimatorComponent>(script)) {
+        for (auto& layer : animator->layers)
+            if (layer.name == layerName) {
+                layer.weight = std::clamp(weight, 0.0f, 1.0f);
+                return;
+            }
+    }
+}
+
+float ScriptAnimatorProxy::GetLayerWeight(std::string_view layerName) const
+{
+    if (const auto* animator = SelfComponent<AnimatorComponent>(script))
+        for (const auto& layer : animator->layers)
+            if (layer.name == layerName) return layer.weight;
+    return 0.0f;
+}
+
+// ── レイヤー制御 / Slot ──────────────────────────────────────────────────────
+// WHY: 判定と状態遷移は AnimatorComponent 側のメソッドに集約済み。
+//      ここは Script から自 GameObject の Animator を引くだけの薄い委譲に留める。
+
+std::string ScriptAnimatorProxy::GetLayerState(std::string_view layerName) const
+{
+    if (const auto* animator = SelfComponent<AnimatorComponent>(script))
+        return animator->GetLayerState(layerName);
+    return {};
+}
+
+bool ScriptAnimatorProxy::IsLayerInState(
+    std::string_view layerName, std::string_view stateName) const
+{
+    if (const auto* animator = SelfComponent<AnimatorComponent>(script))
+        return animator->IsLayerInState(layerName, stateName);
+    return false;
+}
+
+void ScriptAnimatorProxy::PlayLayerState(
+    std::string_view layerName, std::string_view stateName) const
+{
+    if (auto* animator = SelfComponent<AnimatorComponent>(script))
+        animator->PlayLayerState(layerName, stateName);
+}
+
+void ScriptAnimatorProxy::SetLayerMask(
+    std::string_view layerName, std::string_view maskPath) const
+{
+    auto* animator = SelfComponent<AnimatorComponent>(script);
+    if (!animator) return;
+    AnimationLayer* layer = animator->FindLayer(layerName);
+    if (!layer) return;
+    layer->mask.path = std::string(maskPath);
+    // ロード済みキャッシュを落とし、次フレームの AnimatorSystem に読み直させる。
+    layer->mask.Invalidate();
+}
+
+void ScriptAnimatorProxy::PlaySlot(std::string_view layerName,
+                                   std::string_view sourcePath,
+                                   std::string_view clipName,
+                                   float fadeIn, float fadeOut,
+                                   float speed, bool loop) const
+{
+    if (auto* animator = SelfComponent<AnimatorComponent>(script))
+        animator->PlaySlot(layerName, sourcePath, clipName, fadeIn, fadeOut, speed, loop);
+}
+
+void ScriptAnimatorProxy::StopSlot(std::string_view layerName, float fadeOut) const
+{
+    if (auto* animator = SelfComponent<AnimatorComponent>(script))
+        animator->StopSlot(layerName, fadeOut);
+}
+
+bool ScriptAnimatorProxy::IsSlotPlaying(std::string_view layerName) const
+{
+    if (const auto* animator = SelfComponent<AnimatorComponent>(script))
+        return animator->IsSlotPlaying(layerName);
+    return false;
+}
+
+float ScriptAnimatorProxy::GetSlotWeight(std::string_view layerName) const
+{
+    if (const auto* animator = SelfComponent<AnimatorComponent>(script))
+        return animator->GetSlotWeight(layerName);
+    return 0.0f;
+}
+
+void ScriptAnimatorProxy::SetMorphWeight(std::string_view morphName, float weight) const
+{
+    if (!script || !script->m_gameObject) return;
+    GameObject* owner = script->m_gameObject;
+    SkinnedMeshRenderer* renderer = owner->GetComponent<SkinnedMeshRenderer>();
+    if (!renderer) {
+        for (int i = 0; i < owner->GetChildCount(); ++i) {
+            GameObject* child = owner->GetChild(i);
+            if (child && (renderer = child->GetComponent<SkinnedMeshRenderer>())) break;
+        }
+    }
+    if (renderer) renderer->morphWeights[std::string(morphName)] = weight;
+}
+
+float ScriptAnimatorProxy::GetMorphWeight(std::string_view morphName) const
+{
+    if (!script || !script->m_gameObject) return 0.0f;
+    GameObject* owner = script->m_gameObject;
+    SkinnedMeshRenderer* renderer = owner->GetComponent<SkinnedMeshRenderer>();
+    if (!renderer) {
+        for (int i = 0; i < owner->GetChildCount(); ++i) {
+            GameObject* child = owner->GetChild(i);
+            if (child && (renderer = child->GetComponent<SkinnedMeshRenderer>())) break;
+        }
+    }
+    if (!renderer) return 0.0f;
+    const auto it = renderer->morphWeights.find(std::string(morphName));
+    return it != renderer->morphWeights.end() ? it->second : 0.0f;
+}
+
+math::Vector3 ScriptAnimatorProxy::GetRootMotionDeltaPosition() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotionDeltaPosition : math::Vector3::ZERO;
+}
+
+math::Quaternion ScriptAnimatorProxy::GetRootMotionDeltaRotation() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotionDeltaRotation : math::Quaternion::Identity();
+}
+
+math::Vector3 ScriptAnimatorProxy::GetRootMotionWorldDelta() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotionWorldDelta : math::Vector3::ZERO;
+}
+
+math::Vector3 ScriptAnimatorProxy::GetRootMotionWorldVelocity() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotionWorldVelocity : math::Vector3::ZERO;
+}
+
+float ScriptAnimatorProxy::GetRootMotionDeltaTime() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotionDeltaTime : 0.0f;
+}
+
+bool ScriptAnimatorProxy::IsRootMotionAppliedByEngine() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator && animator->rootMotionAppliedByEngine;
+}
+
+void ScriptAnimatorProxy::SetRootMotionMode(int mode) const
+{
+    auto* animator = SelfComponent<AnimatorComponent>(script);
+    if (!animator) return;
+    if (mode < static_cast<int>(RootMotionMode::None) ||
+        mode > static_cast<int>(RootMotionMode::ApplyToRigidBody)) return;
+    animator->rootMotion.mode = static_cast<RootMotionMode>(mode);
+}
+
+int ScriptAnimatorProxy::GetRootMotionMode() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? static_cast<int>(animator->rootMotion.mode)
+                    : static_cast<int>(RootMotionMode::None);
+}
+
+void ScriptAnimatorProxy::SetRootMotionPositionScale(float scale) const
+{
+    if (auto* animator = SelfComponent<AnimatorComponent>(script))
+        animator->rootMotion.positionScale = scale;
+}
+
+void ScriptAnimatorProxy::SetRootMotionRotationScale(float scale) const
+{
+    if (auto* animator = SelfComponent<AnimatorComponent>(script))
+        animator->rootMotion.rotationScale = scale;
+}
+
+void ScriptAnimatorProxy::SetRootMotionNodeName(std::string_view nodeName) const
+{
+    auto* animator = SelfComponent<AnimatorComponent>(script);
+    if (!animator) return;
+    animator->rootMotion.nodeName = nodeName;
+    // 名前を指定したら解決方法も NodeName へ切り替える。空なら クリップ指定へ戻す。
+    animator->rootMotion.source = nodeName.empty()
+        ? RootMotionSource::ClipDefined
+        : RootMotionSource::NodeName;
+    // トラックが変わるとサンプル位置の連続性が失われるため、キャッシュを捨てる。
+    animator->rootMotionSamples.clear();
+}
+
 void ScriptDebugProxy::Log(std::string_view msg) const
 {
     core::Logger::Info("%.*s", static_cast<int>(msg.size()), msg.data());
@@ -2233,12 +3200,24 @@ bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x,
     return true;
 }
 
-bool ScriptPostProcessProxy::LoadProfile(std::string_view path) const
+bool ScriptPostProcessProxy::LoadProfile(std::string_view profilePath) const
 {
-    renderer::PostProcessSettings loaded;
-    if (!asset::LoadPostProcessAssetFromFile(path, loaded))
-        return false;
-    Set(loaded);
+    // WHY DataAssetRegistry を経由するか: 同じプロファイルを複数箇所から読んでも
+    //     TOML の再パースが起きず、エディタでの編集が即座に反映される。
+    //     ファイルを直接パースしていた旧 .fzpp 経路より安く、共有実体とも一致する。
+    auto* profile = dynamic_cast<asset::PostProcessProfile*>(
+        asset::DataAssetRegistry::Resolve(std::string(profilePath)));
+    if (!profile) return false;
+
+    // プロファイルは「効果のリスト」なので、まず既定値へ重み 1 で解決して
+    // 具体的な設定へ落としてから渡す。
+    // WHY ポストプロセス部分だけ渡すか: このプロキシが書き込むランタイム上書きの器は
+    //     Scene の PostProcessSettings で、SSR や TAA といった高度グラフィクスの
+    //     置き場が無い。恒久的にプロファイル全体を効かせたい場合は、
+    //     PostProcessVolume からこのプロファイルを参照させる。
+    renderer::VolumeSettings resolved;
+    profile->ApplyTo(resolved, 1.0f);
+    Set(resolved.post);
     return true;
 }
 
@@ -2565,6 +3544,25 @@ bool ScriptMeshProxy::IsEnabled() const
         if (mr->enabled) return true;
     if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
         if (smr->enabled) return true;
+    return false;
+}
+
+void ScriptMeshProxy::SetCastShadows(bool castShadows) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+        mr->castShadows = castShadows;
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+        smr->castShadows = castShadows;
+}
+
+bool ScriptMeshProxy::GetCastShadows() const
+{
+    if (!script || !script->m_gameObject) return false;
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+        if (mr->castShadows) return true;
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+        if (smr->castShadows) return true;
     return false;
 }
 
@@ -3309,6 +4307,527 @@ void ScriptWindProxy::SetTurbulence(float turbulence) const
 void ScriptWindProxy::SetPulseFrequency(float frequency) const
 {
     if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->pulseFrequency = (std::max)(frequency, 0.0f);
+}
+
+bool ScriptGameplayProxy::SetSprite(std::string_view assetPath) const
+{
+    auto* component = SelfComponent<SpriteRendererComponent>(script);
+    if (!component)
+        return false;
+    component->spritePath = std::string(assetPath);
+    component->runtimeSignature = 0;
+    return true;
+}
+
+bool ScriptGameplayProxy::SetSpriteColor(float r, float g, float b, float a) const
+{
+    auto* component = SelfComponent<SpriteRendererComponent>(script);
+    if (!component)
+        return false;
+    component->color = { r, g, b, a };
+    return true;
+}
+
+bool ScriptGameplayProxy::PlaySpline(bool restart) const
+{
+    auto* component = SelfComponent<SplineFollowerComponent>(script);
+    if (!component)
+        return false;
+    if (restart)
+        component->normalizedPosition = component->reverse ? 1.0f : 0.0f;
+    component->playing = true;
+    return true;
+}
+
+bool ScriptGameplayProxy::PauseSpline() const
+{
+    auto* component = SelfComponent<SplineFollowerComponent>(script);
+    if (!component)
+        return false;
+    component->playing = false;
+    return true;
+}
+
+bool ScriptGameplayProxy::SetSplinePosition(float normalizedPosition) const
+{
+    auto* component = SelfComponent<SplineFollowerComponent>(script);
+    if (!component)
+        return false;
+    component->normalizedPosition = std::clamp(normalizedPosition, 0.0f, 1.0f);
+    return true;
+}
+
+bool ScriptGameplayProxy::SetSliderValue(float value) const
+{
+    auto* component = SelfComponent<UISlider>(script);
+    if (!component)
+        return false;
+    const float next = std::clamp(value, (std::min)(component->minimum, component->maximum),
+                                  (std::max)(component->minimum, component->maximum));
+    component->onValueChanged = next != component->value;
+    component->value = next;
+    return true;
+}
+
+float ScriptGameplayProxy::GetSliderValue() const
+{
+    const auto* component = SelfComponent<UISlider>(script);
+    return component ? component->value : 0.0f;
+}
+
+bool ScriptGameplayProxy::SetToggle(bool value) const
+{
+    auto* component = SelfComponent<UIToggle>(script);
+    if (!component)
+        return false;
+    component->onValueChanged = component->isOn != value;
+    component->isOn = value;
+    return true;
+}
+
+bool ScriptGameplayProxy::GetToggle() const
+{
+    const auto* component = SelfComponent<UIToggle>(script);
+    return component && component->isOn;
+}
+
+bool ScriptGameplayProxy::SetInputText(std::string_view text) const
+{
+    auto* component = SelfComponent<UIInputField>(script);
+    if (!component)
+        return false;
+    component->text = std::string(text);
+    if (component->characterLimit > 0
+        && component->text.size() > static_cast<size_t>(component->characterLimit))
+        component->text.resize(static_cast<size_t>(component->characterLimit));
+    component->caretPosition = component->text.size();
+    component->onValueChanged = true;
+    return true;
+}
+
+std::string_view ScriptGameplayProxy::GetInputText() const
+{
+    const auto* component = SelfComponent<UIInputField>(script);
+    return component ? std::string_view(component->text) : std::string_view{};
+}
+
+bool ScriptGameplayProxy::StartCameraShake(float amplitude, float duration, int seed) const
+{
+    auto* component = SelfComponent<CameraShakeComponent>(script);
+    if (!component)
+        return false;
+    component->amplitude = (std::max)(amplitude, 0.0f);
+    component->duration = (std::max)(duration, 0.0f);
+    component->seed = seed;
+    component->elapsed = 0.0f;
+    component->playing = true;
+    return true;
+}
+
+bool ScriptGameplayProxy::SetVirtualCameraPriority(int priority) const
+{
+    auto* component = SelfComponent<VirtualCameraComponent>(script);
+    if (!component)
+        return false;
+    component->priority = priority;
+    return true;
+}
+
+bool ScriptGameplayProxy::SetAudioMixerSend(std::string_view busName, float level) const
+{
+    auto* component = SelfComponent<AudioMixerSendComponent>(script);
+    if (!component || busName.empty())
+        return false;
+    component->busName = std::string(busName);
+    component->sendLevel = std::clamp(level, 0.0f, 1.0f);
+    return true;
+}
+
+// ── ScriptSaveProxy ─────────────────────────────────────────────────────────
+// util::SaveData へそのまま転送する。スクリプトに Engine 実装を include させないための層。
+
+void ScriptSaveProxy::SetSlot(std::string_view path) const
+{
+    util::SaveData::SetSlotPath(std::string(path));
+}
+
+std::string ScriptSaveProxy::GetSlot() const
+{
+    return util::SaveData::GetSlotPath();
+}
+
+void ScriptSaveProxy::SetBool(std::string_view key, bool value) const
+{
+    util::SaveData::SetBool(key, value);
+}
+
+void ScriptSaveProxy::SetInt(std::string_view key, int value) const
+{
+    util::SaveData::SetInt(key, value);
+}
+
+void ScriptSaveProxy::SetFloat(std::string_view key, float value) const
+{
+    util::SaveData::SetFloat(key, value);
+}
+
+void ScriptSaveProxy::SetString(std::string_view key, std::string_view value) const
+{
+    util::SaveData::SetString(key, value);
+}
+
+void ScriptSaveProxy::SetVector2(std::string_view key, const math::Vector2& value) const
+{
+    util::SaveData::SetVector2(key, value);
+}
+
+void ScriptSaveProxy::SetVector3(std::string_view key, const math::Vector3& value) const
+{
+    util::SaveData::SetVector3(key, value);
+}
+
+void ScriptSaveProxy::SetVector4(std::string_view key, const math::Vector4& value) const
+{
+    util::SaveData::SetVector4(key, value);
+}
+
+bool ScriptSaveProxy::GetBool(std::string_view key, bool defaultValue) const
+{
+    return util::SaveData::GetBool(key, defaultValue);
+}
+
+int ScriptSaveProxy::GetInt(std::string_view key, int defaultValue) const
+{
+    return util::SaveData::GetInt(key, defaultValue);
+}
+
+float ScriptSaveProxy::GetFloat(std::string_view key, float defaultValue) const
+{
+    return util::SaveData::GetFloat(key, defaultValue);
+}
+
+std::string ScriptSaveProxy::GetString(std::string_view key, std::string_view defaultValue) const
+{
+    return util::SaveData::GetString(key, defaultValue);
+}
+
+math::Vector2 ScriptSaveProxy::GetVector2(std::string_view key, const math::Vector2& defaultValue) const
+{
+    return util::SaveData::GetVector2(key, defaultValue);
+}
+
+math::Vector3 ScriptSaveProxy::GetVector3(std::string_view key, const math::Vector3& defaultValue) const
+{
+    return util::SaveData::GetVector3(key, defaultValue);
+}
+
+math::Vector4 ScriptSaveProxy::GetVector4(std::string_view key, const math::Vector4& defaultValue) const
+{
+    return util::SaveData::GetVector4(key, defaultValue);
+}
+
+bool ScriptSaveProxy::Has(std::string_view key) const
+{
+    return util::SaveData::Has(key);
+}
+
+void ScriptSaveProxy::Remove(std::string_view key) const
+{
+    util::SaveData::Remove(key);
+}
+
+void ScriptSaveProxy::Clear() const
+{
+    util::SaveData::Clear();
+}
+
+bool ScriptSaveProxy::Save() const
+{
+    return util::SaveData::Save();
+}
+
+bool ScriptSaveProxy::Load() const
+{
+    return util::SaveData::Load();
+}
+
+bool ScriptSaveProxy::IsDirty() const
+{
+    return util::SaveData::IsDirty();
+}
+
+// ── ScriptEventProxy ────────────────────────────────────────────────────────
+// Subscribe / Publish はテンプレートなのでヘッダ側。ここは非テンプレート分だけ。
+
+void ScriptEventProxy::UnsubscribeAll() const
+{
+    ScriptEventBus::UnsubscribeOwner(script);
+}
+
+// ── ScriptRandomProxy ───────────────────────────────────────────────────────
+
+float ScriptRandomProxy::Value() const
+{
+    return util::Random::Value();
+}
+
+float ScriptRandomProxy::Range(float min, float max) const
+{
+    return util::Random::Range(min, max);
+}
+
+int ScriptRandomProxy::Range(int min, int max) const
+{
+    return util::Random::Range(min, max);
+}
+
+bool ScriptRandomProxy::Chance(float probability) const
+{
+    return util::Random::Value() < probability;
+}
+
+float ScriptRandomProxy::Sign() const
+{
+    return util::Random::Value() < 0.5f ? -1.0f : 1.0f;
+}
+
+math::Vector2 ScriptRandomProxy::InsideUnitCircle() const
+{
+    return util::Random::InsideUnitCircle();
+}
+
+math::Vector2 ScriptRandomProxy::OnUnitCircle() const
+{
+    return util::Random::OnUnitCircle();
+}
+
+math::Vector3 ScriptRandomProxy::InsideUnitSphere() const
+{
+    return util::Random::InsideUnitSphere();
+}
+
+math::Vector3 ScriptRandomProxy::OnUnitSphere() const
+{
+    return util::Random::OnUnitSphere();
+}
+
+math::Vector3 ScriptRandomProxy::ConeDirection(const math::Vector3& axis, float maxAngleDeg) const
+{
+    const math::Vector3 forward = axis.Normalized();
+    if (maxAngleDeg <= 0.0f) return forward;
+
+    // 円錐内の一様サンプリング。cos を一様に引くことで、頂点付近に偏らせない。
+    const float maxCos = std::cos(std::clamp(maxAngleDeg, 0.0f, 180.0f) * DEG_TO_RAD);
+    const float cosTheta = util::Random::Range(maxCos, 1.0f);
+    const float sinTheta = std::sqrt((std::max)(0.0f, 1.0f - cosTheta * cosTheta));
+    const float phi = util::Random::Range(0.0f, 6.28318530718f);
+
+    // forward に直交する基底を作る。forward と平行になりにくい軸を選んで外積する。
+    const math::Vector3 reference =
+        std::abs(forward.y) < 0.99f ? math::Vector3{ 0.0f, 1.0f, 0.0f }
+                                    : math::Vector3{ 1.0f, 0.0f, 0.0f };
+    const math::Vector3 right = math::Vector3::Cross(forward, reference).Normalized();
+    const math::Vector3 up    = math::Vector3::Cross(right, forward);
+
+    return (right * (sinTheta * std::cos(phi))
+          + up    * (sinTheta * std::sin(phi))
+          + forward * cosTheta).Normalized();
+}
+
+void ScriptRandomProxy::SetSeed(uint32_t seed) const
+{
+    util::Random::SetSeed(static_cast<unsigned int>(seed));
+}
+
+// ── ScriptTweenProxy ────────────────────────────────────────────────────────
+
+float ScriptTweenProxy::Evaluate(TweenEase ease, float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    switch (ease) {
+    case TweenEase::InQuad:     return util::Easing::EaseInQuad(t);
+    case TweenEase::OutQuad:    return util::Easing::EaseOutQuad(t);
+    case TweenEase::InOutQuad:  return util::Easing::EaseInOutQuad(t);
+    case TweenEase::InCubic:    return util::Easing::EaseInCubic(t);
+    case TweenEase::OutCubic:   return util::Easing::EaseOutCubic(t);
+    case TweenEase::InOutCubic: return util::Easing::EaseInOutCubic(t);
+    case TweenEase::InSine:     return util::Easing::EaseInSine(t);
+    case TweenEase::OutSine:    return util::Easing::EaseOutSine(t);
+    case TweenEase::InOutSine:  return util::Easing::EaseInOutSine(t);
+    case TweenEase::InExpo:     return util::Easing::EaseInExpo(t);
+    case TweenEase::OutExpo:    return util::Easing::EaseOutExpo(t);
+    case TweenEase::InOutExpo:  return util::Easing::EaseInOutExpo(t);
+    case TweenEase::InBack:     return util::Easing::EaseInBack(t);
+    case TweenEase::OutBack:    return util::Easing::EaseOutBack(t);
+    case TweenEase::InOutBack:  return util::Easing::EaseInOutBack(t);
+    case TweenEase::OutElastic: return util::Easing::EaseOutElastic(t);
+    case TweenEase::OutBounce:  return util::Easing::EaseOutBounce(t);
+    case TweenEase::Linear:
+    default:                    return t;
+    }
+}
+
+namespace {
+
+// Tween 1 ステップぶんの経過時間。Scaled / Unscaled の分岐をここへ集約する。
+float TweenStepDelta(const Script* script, TweenClock clock)
+{
+    if (!script) return 0.0f;
+    return clock == TweenClock::Unscaled ? script->time.UnscaledDeltaTime()
+                                         : script->time.DeltaTime();
+}
+
+} // namespace
+
+Coroutine ScriptTweenProxy::MoveTo(math::Vector3 target, float duration,
+                                   TweenEase ease, TweenClock clock) const
+{
+    // WHY 引数を値で受けるか: コルーチンの引数は最初の中断で保存されるが、参照は
+    //     呼び出し側の一時オブジェクトを指したまま残り得るため必ずコピーで持つ。
+    Script* owner = script;
+    if (!owner) co_return;
+
+    if (duration <= 0.0f) {
+        owner->transform.position = target;
+        co_return;
+    }
+
+    const math::Vector3 start = owner->transform.position;
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        owner->transform.position = math::Vector3::Lerp(start, target, t);
+    }
+    // 端数で終値に届かないことがあるため、最後に必ず合わせる。
+    owner->transform.position = target;
+}
+
+Coroutine ScriptTweenProxy::MoveBy(math::Vector3 delta, float duration,
+                                   TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner) co_return;
+
+    // 開始位置は呼ばれた「今」を基準にする。連続で呼べば相対移動として積み上がる。
+    // WHY MoveTo を co_await せず展開するか: Coroutine 自体は awaiter ではないため
+    //     (待機命令は WaitForSeconds 等のみ)、入れ子にできない。処理を直接書く。
+    const math::Vector3 start  = owner->transform.position;
+    const math::Vector3 target = start + delta;
+
+    if (duration <= 0.0f) {
+        owner->transform.position = target;
+        co_return;
+    }
+
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        owner->transform.position = math::Vector3::Lerp(start, target, t);
+    }
+    owner->transform.position = target;
+}
+
+Coroutine ScriptTweenProxy::ScaleTo(math::Vector3 target, float duration,
+                                    TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner) co_return;
+
+    if (duration <= 0.0f) {
+        owner->transform.scale = target;
+        co_return;
+    }
+
+    const math::Vector3 start = owner->transform.scale;
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        owner->transform.scale = math::Vector3::Lerp(start, target, t);
+    }
+    owner->transform.scale = target;
+}
+
+Coroutine ScriptTweenProxy::RotateTo(math::Quaternion target, float duration,
+                                     TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner) co_return;
+
+    if (duration <= 0.0f) {
+        owner->transform.rotation = target;
+        co_return;
+    }
+
+    const math::Quaternion start = owner->transform.rotation;
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        // WHY Slerp か: 角速度が一定になるため、イージング曲線の形がそのまま
+        //     見た目の速度変化になる。Lerp だと曲線に回転量の歪みが乗る。
+        owner->transform.rotation = math::Quaternion::Slerp(start, target, t);
+    }
+    owner->transform.rotation = target;
+}
+
+Coroutine ScriptTweenProxy::Value(float from, float to, float duration,
+                                  std::function<void(float)> apply,
+                                  TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner || !apply) co_return;
+
+    if (duration <= 0.0f) {
+        apply(to);
+        co_return;
+    }
+
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        apply(from + (to - from) * t);
+    }
+    apply(to);
+}
+
+Coroutine ScriptTweenProxy::ShakePosition(float amplitude, float duration,
+                                          float frequency, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner || duration <= 0.0f || amplitude <= 0.0f) co_return;
+
+    const math::Vector3 origin = owner->transform.position;
+    // 揺れの向きは毎フレーム引き直すのではなく、位相を進めた正弦で決める。
+    // WHY: 毎フレーム乱数だとフレームレートで揺れの速さが変わってしまう。
+    //      周波数で定義すれば、何 fps でも同じ速さに見える。
+    util::RandomStream rng{ static_cast<uint64_t>(
+        static_cast<uint32_t>(amplitude * 1000.0f) + 1u) };
+    const math::Vector3 axisA = rng.OnUnitSphere();
+    const math::Vector3 axisB = rng.OnUnitSphere();
+
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+
+        const float normalized = std::clamp(elapsed / duration, 0.0f, 1.0f);
+        const float decay = 1.0f - normalized;               // 線形に収束させる
+        const float phase = elapsed * frequency;
+        const math::Vector3 offset =
+            axisA * (std::sin(phase) * amplitude * decay) +
+            axisB * (std::cos(phase * 1.37f) * amplitude * decay);
+        owner->transform.position = origin + offset;
+    }
+    owner->transform.position = origin;
 }
 
 } // namespace fbzz::scene

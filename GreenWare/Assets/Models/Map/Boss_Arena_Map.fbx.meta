@@ -1,0 +1,79 @@
+file_format_version = 1
+
+[cache]
+baked_container = 'Library/Baked/<asset-guid>'
+settings_hash = '613b6e6f5919b6a5'
+source_hash = 'fe0a7a454d6fb515'
+
+[meta]
+guid = 'a2e5eaa33ad3a1272bac5ef18717d217'
+
+[model]
+default_compression = 'Auto'
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 1
+normal_map_convention = 'DirectX'
+selected_animations = []
+selected_meshes = [
+    'ARENA_Buttress.002',
+    'ARENA_CoreRing',
+    'ARENA_CoreRing2',
+    'ARENA_Floor',
+    'ARENA_FloorHazard',
+    'ARENA_FloorPlates',
+    'ARENA_HazardKick',
+    'ARENA_MidTrim',
+    'ARENA_MidTrim2',
+    'ARENA_Roof',
+    'ARENA_RoofDebris',
+    'ARENA_Rubble',
+    'ARENA_TopHazard',
+    'ARENA_TopTrim',
+    'ARENA_Trusses',
+    'ARENA_UpperHazard',
+    'ARENA_UpperHazard2',
+    'ARENA_Wall',
+    'ARENA_WallRibs.001',
+    'ARENA_WallRibsUpper',
+    'ARENA_WallRibsUpper2',
+    'ARENA_WallSeam',
+    'ARENA_WallStrips.001',
+    'ARENA_WallStripsUpper',
+    'ARENA_WallStripsUpper2',
+    'ARENA_WallUpper',
+    'ARENA_WallUpper2',
+    'ARENA_WarnLights.001',
+    'ARENA_WarnLightsUpper',
+    'ARENA_Floor.001',
+    'ARENA_Roof.001',
+    'COL_Arena_Rubble',
+    'COL_Arena_Wall.001',
+    'COL_GB_DoorFrame',
+    'GB_Floor.002',
+    'COL_GB_Rail',
+    'GB_Ramp.001',
+    'GB_Shutter.001',
+    'GB_Terrace.001',
+    'COL_GB_Wall.001',
+    'GB_CeilBeams.002',
+    'GB_CeilLights.002',
+    'GB_Ceiling.003',
+    'GB_DoorFrame',
+    'GB_Floor.001',
+    'GB_FloorHazard',
+    'GB_NavLight',
+    'GB_Ramp',
+    'GB_Shutter',
+    'GB_ShutterFrame',
+    'GB_Spandrel',
+    'GB_Terrace',
+    'GB_TerraceRail',
+    'GB_Wall.003',
+    'GB_WallKick.003',
+    'GB_WallKickSteel.002',
+    'GB_WallRibs.002',
+    'GB_WallStrip.002',
+    'GB_WallTrim.002'
+]
+source_dcc = 'Auto'

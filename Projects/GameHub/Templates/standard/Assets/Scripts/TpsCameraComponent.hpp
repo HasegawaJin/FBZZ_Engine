@@ -53,7 +53,7 @@ inline void TpsCameraComponent::OnLateUpdate()
     if (!m_target || !m_target->IsValid()) FindTarget();
     if (!m_target) return;
 
-    if (mouseOrbit && input.MouseButton(1)) {
+        if (mouseOrbit && input.MouseButton(MouseBtn::Right)) {
         const Vector2 delta = input.GetMouseDelta();
         yaw   += delta.x * mouseSensitivity;
         pitch  = Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);

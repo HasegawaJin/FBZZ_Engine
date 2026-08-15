@@ -51,7 +51,7 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         // 静的メッシュ
@@ -78,12 +78,13 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
                 const auto skinCB = (anim && anim->skinningBuffer.IsValid())
                     ? anim->skinningBuffer : h.bindPoseSkinningCB;
 
-                for (const auto& meshPtr : smr->model->meshes) {
+                for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
+                    const auto& meshPtr = smr->model->meshes[mi];
                     if (!meshPtr) continue;
                     if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
                     renderer::DrawCall dc;
-                    dc.vertexBuffer       = meshPtr->vertexBuffer;
+                    dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
                     dc.indexBuffer        = meshPtr->indexBuffer;
                     dc.indexCount         = meshPtr->indexCount;
                     dc.shader             = h.selectionMaskSkinnedShader;
@@ -177,6 +178,11 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         data.decalTangent     = go.transform.right.Normalized();
         data.decalBitangent   = go.transform.forward.Normalized();
         data.decalNormal      = go.transform.up.Normalized();
+        data.angleFadeStrength = std::clamp(dc->angleFadeStrength, 0.0f, 1.0f);
+        // 角度は度で持ち、シェーダーへは cos で渡す。ピクセルごとに acos を取るのは無駄。
+        // 90 度で cos=0 になり全ての面が残るため、89 度で上限を切って「必ず何かは消える」形にする。
+        data.angleFadeCos = std::cos(
+            std::clamp(dc->angleFadeDegrees, 0.0f, 89.0f) * (3.14159265358979323846f / 180.0f));
         resources.Update(h.decalCB, &data, sizeof(DecalCB));
 
         renderer::DrawCall drawCall;
@@ -192,7 +198,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         drawCall.textures[7] = depthTex;
         if (needsMask && h.decalMaskRT.IsValid())
             drawCall.textures[13] = resources.GetColorTexture(h.decalMaskRT, 0);
-        r.Submit(drawCall, resources);
+        SubmitCounted(ctx, drawCall);
     }
 
     // WHY: GameObjects() の走査中に即時削除すると iterator が無効化されるため、pass 後に破棄キューへ積む。

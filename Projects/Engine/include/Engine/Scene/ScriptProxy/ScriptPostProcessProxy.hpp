@@ -49,9 +49,14 @@ struct ScriptPostProcessProxy {
     // SetCustomParameters: customParameters.xyzw をまとめて更新する。
     bool SetCustomParameters(std::string_view name, float x, float y, float z, float w) const;
 
-    // LoadProfile: .fzpp ファイルを読み込み、ランタイム PostProcess 設定を全置換する。
-    // WHY: シーン遷移や演出変化に合わせて複数の設定ファイルをスクリプトから差し替えられるようにする。
-    bool LoadProfile(std::string_view path) const;
+    // LoadProfile: PostProcessProfile (.fzdata) を読み込み、ランタイム設定を全置換する。
+    // WHY: シーン遷移や演出変化に合わせてプロファイルをスクリプトから差し替えられるようにする。
+    // 解決できない (未存在 / 型不一致) 場合は false を返し、現在の設定を変更しない。
+    // NOTE: 反映されるのはプロファイルのポストプロセス部分のみ。ランタイム上書きの器が
+    //       PostProcessSettings なので、SSR / GTAO / TAA / MotionBlur / VolumetricLight /
+    //       LensFlare / LUT は含まれない。それらも効かせたい場合は
+    //       PostProcessVolumeComponent の profile を差し替える。
+    bool LoadProfile(std::string_view profilePath) const;
 };
 
 } // namespace fbzz::scene

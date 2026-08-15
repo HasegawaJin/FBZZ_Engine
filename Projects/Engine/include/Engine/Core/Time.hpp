@@ -6,7 +6,7 @@
 #include <cstdint>
 
 #ifdef _WIN32
-#   ifdef fbzz_engine_EXPORTS
+#   ifdef FBZZEngine_EXPORTS
 #       define FBZZ_ENGINE_API __declspec(dllexport)
 #   else
 #       define FBZZ_ENGINE_API __declspec(dllimport)
@@ -24,6 +24,11 @@ struct FBZZ_ENGINE_API Time {
     static float    time;               // 累積秒 (TimeScale 適用済み)
     static float    unscaledTime;       // 累積秒 (TimeScale 未適用)
     static uint64_t frameCount;         // 起動からのフレーム数
+    // 固定ステップ 1 回ぶんの秒数 (Phase::Physics の設定 hz の逆数)。
+    // Script::OnFixedUpdate() と PhysicsSystem がこの刻みで進む。
+    // WHY deltaTime と分けるか: OnFixedUpdate は 1 描画フレームに 0 回にも複数回にも
+    //     なるため、そこで deltaTime を使うと積分量が合わない。
+    static float    fixedDeltaTime;
 
     // ── 設定 (読み書き可) ────────────────────────────────────────────────
     // 0=停止, 0.5=スローモーション, 1=通常, 2=2倍速

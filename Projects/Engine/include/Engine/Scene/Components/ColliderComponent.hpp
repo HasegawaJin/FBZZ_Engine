@@ -27,7 +27,18 @@ struct ColliderComponent {
     //      World には Collider* (非所有) を渡す。
     std::unique_ptr<physics::Collider> collider;
     physics::ColliderHandle colliderHandle;
+
+    // 実効的な表面物性。physicsMaterialPath が設定されていれば、そこから解決した値の
+    // キャッシュになる (物理ソルバはこの値だけを見る)。空なら手打ちのインライン値。
+    //
+    // WHY 解決結果をここへ焼き戻すか: PhysicsSystem は毎フレーム &material を World へ
+    //     渡しており、その経路は共有アセット化の前後で変えたくない。アセットの内容を
+    //     このフィールドへ同期する形にすれば、ソルバ側は 1 行も変わらない。
     physics::PhysicsMaterial material = physics::PhysicsMaterial::Default;
+
+    // 共有 .physmat アセットへの参照 (Assets 起点の相対パス)。空 = インライン値を使う。
+    std::string physicsMaterialPath;
+
     math::Vector3 center = math::Vector3::ZERO;
     bool isTrigger = false;
     bool enabled = true;
@@ -41,6 +52,7 @@ struct ColliderComponent {
         : collider(nullptr)
         , colliderHandle{}
         , material(o.material)
+        , physicsMaterialPath(o.physicsMaterialPath)
         , center(o.center)
         , isTrigger(o.isTrigger)
         , enabled(o.enabled)
@@ -48,12 +60,13 @@ struct ColliderComponent {
     ColliderComponent& operator=(const ColliderComponent& o)
     {
         if (this != &o) {
-            collider       = nullptr;
-            colliderHandle = {};
-            material       = o.material;
-            center         = o.center;
-            isTrigger      = o.isTrigger;
-            enabled        = o.enabled;
+            collider            = nullptr;
+            colliderHandle      = {};
+            material            = o.material;
+            physicsMaterialPath = o.physicsMaterialPath;
+            center              = o.center;
+            isTrigger           = o.isTrigger;
+            enabled             = o.enabled;
         }
         return *this;
     }
@@ -66,6 +79,11 @@ struct ColliderComponent {
         r.Field("enabled", enabled);
         r.Field("center", center);
         r.Field("isTrigger", isTrigger);
+        r.Field("physicsMaterial", physicsMaterialPath);
+        // WHY 共有アセットを使っていてもインライン値を保存し続けるか:
+        //     .physmat が見つからない (削除された・別プロジェクトへ持ち出した) 場合に
+        //     最後に解決できた値へフォールバックできる。物理挙動が黙って既定値へ
+        //     戻るより、直前の見た目を保つ方が壊れ方として穏やか。
         r.Field("restitution", material.restitution);
         r.Field("staticFriction", material.staticFriction);
         r.Field("dynamicFriction", material.dynamicFriction);
@@ -78,7 +96,22 @@ struct ColliderComponent {
     void SetEnabled(bool v) { enabled = v; }
     void SetTrigger(bool v) { isTrigger = v; }
     void SetCenter(const math::Vector3& v) { center = v; }
-    void SetMaterial(const physics::PhysicsMaterial& v) { material = v; }
+    // 共有アセットの参照を切り、インライン値で上書きする。
+    void SetMaterial(const physics::PhysicsMaterial& v)
+    {
+        physicsMaterialPath.clear();
+        material = v;
+    }
+    // 共有 .physmat を割り当てる。空文字で参照を外し、直前の解決値をインライン値として残す。
+    void SetPhysicsMaterialPath(std::string path)
+    {
+        physicsMaterialPath = std::move(path);
+        ResolvePhysicsMaterial();
+    }
+    // physicsMaterialPath から material を解決する。参照が無ければ何もしない。
+    // 解決できたら true。PhysicsSystem が毎フレーム呼ぶため、.physmat を編集すると
+    // 参照している全コライダーへ即座に反映される。
+    bool ResolvePhysicsMaterial();
 };
 
 struct AabbColliderComponent : public ColliderComponent {

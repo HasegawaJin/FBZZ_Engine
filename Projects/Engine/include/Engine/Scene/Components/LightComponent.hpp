@@ -14,7 +14,18 @@ struct LightComponent {
 
     Type          type      = Type::Directional;
     math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
-    float         intensity = 1.0f;
+    // intensity の単位 (Lighting.hlsli の LIGHT_UNIT_SCALE を参照):
+    //   1.0 = 完全拡散の白面へ正面から当てたとき albedo そのままの明るさになる強さ。
+    //   Directional / Point / Spot で単位は共通。
+    //
+    //   既定 3.0 は、空由来の IBL 環境光 (概ね albedo × 1.5 相当) を明確に上回る
+    //   Directional の基準値。旧既定 1.0 では環境光に埋もれて効果が見えなかった。
+    //
+    //   Point / Spot はシェーダーが物理的な 1/d^2 で減衰する (LightAttenuation) ため、
+    //   3.0 だと range = 10m のライトで 3m 地点の寄与は albedo × 0.33 程度。屋内や
+    //   夜間ならこれで十分だが、明るい屋外で存在感を出すには 15〜30 が目安になる。
+    //   これは逆二乗を持つ PBR エンジン全般に共通の運用。
+    float         intensity = 3.0f;
     float         range     = 10.0f;    // Point / Spot のみ
     float         innerCone = 15.0f;    // Spot のみ (degrees)
     float         outerCone = 30.0f;    // Spot のみ (degrees)

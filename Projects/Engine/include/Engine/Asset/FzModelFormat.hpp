@@ -22,7 +22,7 @@
 
 namespace fbzz::asset {
 
-constexpr uint32_t FZMODEL_VERSION      = 1;
+constexpr uint32_t FZMODEL_VERSION      = 3;
 constexpr uint32_t FZMODEL_FLAG_SKINNED = 1u << 0;
 constexpr uint32_t FZMODEL_FLAG_LOD     = 1u << 1;
 constexpr uint32_t FZMODEL_SLOT_NAME_LEN = 64;
@@ -54,6 +54,26 @@ struct FzSubmeshHeader {
     float    boundsRadius;
 };
 static_assert(sizeof(FzSubmeshHeader) == 32, "FzSubmeshHeader size mismatch");
+
+// v3 では、インポート元の aiMesh::mName をサブメッシュごとに保持する。
+// WHY: Scene 配置時に Mesh_0 のようなエンジン都合の名前へ置き換えず、
+//      FBX のメッシュ名をそのまま GameObject 名へ反映するため。
+struct FzSubmeshExtensionV3 {
+    uint32_t morphTargetCount;
+    char     name[128];
+};
+
+struct FzMorphTargetHeader {
+    char name[128];
+    uint32_t vertexCount;
+};
+
+struct FzMorphDelta {
+    float position[3];
+    float normal[3];
+    float tangent[3];
+};
+static_assert(sizeof(FzMorphDelta) == 36, "FzMorphDelta size mismatch");
 
 // FzSkelHeader / FzSkeletonNodeData / FzBoneData / FZSKEL_VERSION は
 // FzAssetFormat.hpp で定義済み (上記 include 経由で参照可)

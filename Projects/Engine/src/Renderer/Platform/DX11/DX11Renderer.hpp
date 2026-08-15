@@ -64,6 +64,7 @@ public:
 
     // オフスクリーン RT に切り替える (nullptr でバックバッファに戻す)
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
+    void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
 
     // キューブマップ RT の 1 面 (+mip) を描画先にバインドする (SkyCapture 用)
     void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
@@ -97,12 +98,23 @@ public:
                       std::unique_ptr<ITexture>& outIrradiance,
                       std::unique_ptr<ITexture>& outPrefilter) override;
 
+    // AI 連携 (viewport.capture): Scene View RT を PNG バイト列へ読み戻す。
+    bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                  std::vector<uint8_t>& outPng,
+                                  uint32_t& outWidth, uint32_t& outHeight) override;
+
+    // AI 連携 (vfx.previewMetrics): 同じ RT を HDR 線形値のまま数値評価用に読み戻す。
+    bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                         std::vector<float>& outRgba,
+                                         uint32_t& outWidth, uint32_t& outHeight) override;
+
     // DX11Buffer 等の DX11 サブシステムが Init 時にデバイスを必要とする場合に使用
     ID3D11Device*        GetDevice()       const { return m_device.Get(); }
     ID3D11DeviceContext* GetDeviceContext() const { return m_context.Get(); }
 
 private:
     std::unique_ptr<IBuffer>         CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) override;
+    std::unique_ptr<IBuffer>         CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride) override;
     std::unique_ptr<IBuffer>         CreateNativeIndexBuffer(const void* data, uint32_t count) override;
     std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) override;
     std::unique_ptr<IShader>         CreateNativeShader(const std::string& path) override;

@@ -133,8 +133,12 @@ bool SpawnRebuildAndRelaunch(const std::wstring& exePath)
     bat += L")\r\n";
     bat += L"rem 2) Engine を含む全ターゲットを再ビルド (増分ビルド)\r\n";
     bat += L"echo === Rebuilding FBZZ Engine (" + configW + L") ===\r\n";
+    // WHY (--parallel 1): 並列度はルート CMakeLists.txt の /MP${FBZZ_BUILD_JOBS} に
+    //      一元化している。ここで MSBuild のノード並列 (/m) を開けると
+    //      「プロジェクト数 × /MP」ぶんの cl.exe が同時に走り、メモリ使用量が
+    //      掛け算で膨らんで並行中の別ビルドまで巻き添えにする。
     bat += L"" + Quote(cmakeW) + L" --build " + Quote(buildDirW) +
-           L" --config " + configW + L" --parallel\r\n";
+           L" --config " + configW + L" --parallel 1\r\n";
     bat += L"if errorlevel 1 (\r\n";
     bat += L"    echo.\r\n";
     bat += L"    echo *** Engine rebuild FAILED - 上のログを確認してください ***\r\n";

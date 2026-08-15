@@ -7,7 +7,9 @@
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 
 namespace fbzz::scene {
@@ -53,6 +55,47 @@ void ScriptSystem::Update(SystemContext& ctx)
                 s->TickCoroutines();
                 s->OnUpdate();
             }
+        }
+    }
+}
+
+OrderingHints FixedScriptSystem::GetOrder() const
+{
+    // スクリプトが加えた力・速度変更を同じステップ内で積分させるため、物理より前。
+    return OrderingHints{}.Before<PhysicsSystem>();
+}
+
+void FixedScriptSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
+    FBZZ_PROFILE_SCOPE("FixedScriptSystem");
+
+    // OnFixedUpdate 内から time.FixedDeltaTime() で参照できるようにする。
+    // WHY ここで書くか: 刻み幅は SystemScheduler の PhaseConfig が持っており、
+    //     Time 側からは見えない。固定ステップループに入るこの System が唯一
+    //     正しい値を知る場所になる (SetPhysicsHz で変更されても追従する)。
+    fbzz::Time::fixedDeltaTime = ctx.fixedDt;
+
+    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+        auto* sc = scene.GetComponent<ScriptComponent>(id);
+        auto* go = scene.GetGameObject(id);
+        if (!sc || !go) continue;
+
+        // ScriptSystem と同じ理由で添字ループ + 生ポインタを使う
+        // (OnFixedUpdate 内の AddScript による vector 再確保に耐えるため)。
+        const size_t initialCount = sc->scripts.size();
+        for (size_t i = 0; i < initialCount; ++i) {
+            Script* s = sc->scripts[i].script.get();
+            if (!s) continue;
+
+            // WHY Awake/Start を呼ばないか: 初期化の責務は ScriptSystem 側に一本化する。
+            //     同フレームで Phase::Script が先に走るため、ここへ来る時点では
+            //     初期化済みが保証される。まだ起きていない Script はこのステップを飛ばす。
+            if (!sc->scripts[i].m_started) continue;
+
+            s->SetContext(&scene, go);
+            if (s->enabled)
+                s->OnFixedUpdate();
         }
     }
 }

@@ -9,8 +9,28 @@
 namespace fbzz::renderer {
 
 enum class RenderingPipeline : uint8_t {
-    Forward  = 0,
-    Deferred = 1,
+    Forward      = 0,
+    Deferred     = 1,
+    // クラスタライトカリングを併用する経路。不透明の描き方は上の 2 つと同じで、
+    // 「点光源 / スポットをどう供給するか」だけが変わる。
+    ForwardPlus  = 2,
+    DeferredPlus = 3,
+};
+
+// クラスタライトカリング (Forward+ / Deferred+) の設定。
+struct ClusteredSettings {
+    // pipeline が *Plus のときの実行可否。false ならクラスタ経路を止めて従来動作へ戻す。
+    bool  enabled      = true;
+    // クラスタ Z 分割の最遠距離 [m]。これより遠いライトは最終スライスへ丸める。
+    // WHY camera.far をそのまま使わないか: far が 10000 のようなシーンでは指数分割の
+    //     手前側が潰れ、カメラ近傍のクラスタがほとんど機能しなくなる。
+    float maxDistance  = 200.0f;
+    // 1 クラスタあたりのライト数をヒートマップ表示する (緑=空き, 赤=上限, 青成分=あふれ)。
+    bool  debugHeatmap = false;
+    // カリングを無効化し、全ライトを線形評価する。
+    // WHY: 「評価側のバグ」と「カリング側のバグ」を切り分けるための A/B スイッチ。
+    //      これを true にしてレガシー経路と絵が一致すれば、評価側は正しいと確定できる。
+    bool  forceAllLights = false;
 };
 
 struct RenderSelectionID {
@@ -155,9 +175,42 @@ enum class ViewMode : uint8_t {
 // ShadowSettings — シャドウマップ品質の一元管理。
 // WHY: 解像度と PCF 半径はシャドウの精細度と GPU コストのトレードオフ。
 //      シーン単位で調整できるよう RenderSettings に持たせる。
+// カスケードシャドウの最大分割数。
+// WHY: 定数バッファは固定長なので上限を切る。4 は 2x2 のアトラス配置とちょうど対応し、
+//      HLSL 側のループ展開も現実的な長さに収まる (業界的にも 4 が標準)。
+inline constexpr int kMaxShadowCascades = 4;
+
 struct ShadowSettings {
-    uint32_t mapResolution = 8192u; // シャドウマップ解像度 (512/1024/2048/4096/8192)
+    // シャドウマップ「アトラス全体」の解像度 (512/1024/2048/4096/8192)。
+    // WHY: 既定を 8192 から 2048 へ落とした。8192² は深度だけで 268MB / 67M テクセルあり、
+    //      クリアと塗りだけで ShadowPass が数十 ms に達する。
+    // NOTE: cascadeCount >= 2 のとき、この解像度は 2x2 のタイルへ分割され、
+    //       1 カスケードあたりは mapResolution / 2 になる。メモリと塗り量は
+    //       カスケードを増やしても変わらず、近距離のテクセル密度だけが上がる。
+    uint32_t mapResolution = 2048u;
+    // カスケード分割数 (1 = 従来の単一シャドウマップ, 2〜4 = CSM)。
+    // WHY: 単一マップは「近くを細かく」と「遠くまで届かせる」を同じテクセル密度で
+    //      両立できない。視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを丸ごと
+    //      割り当てることで、遠景の到達距離を保ったまま足元の影を数 cm 精度にできる。
+    int      cascadeCount = 4;
+    // 分割位置の対数/等分ブレンド係数 [0,1]。1 に近いほど手前が細かくなる。
+    // WHY: 等分割は手前が粗すぎ、対数分割は遠方が粗すぎる。実務では両者の線形補間
+    //      (practical split scheme) を使い、シーンに合わせて係数で寄せる。
+    float    cascadeSplitLambda = 0.75f;
+    // カスケード境界のクロスフェード幅 [0,1] (カスケード端からの割合)。0 で境界が硬くなる。
+    // WHY: カスケードが切り替わるとテクセル密度が跳ぶため、境界に不連続な線が
+    //      地面を横切って見える。隣接カスケードを重ねて混ぜると、その線が消える。
+    float    cascadeBlend = 0.1f;
+    // 影ボリュームをカメラ前方の何 m まで合わせるか [m] = 影の最大到達距離。
+    // LightComponent::shadowDistance > 0 の手動指定があるときは、そちらが優先される。
+    // WHY: シーン全体へ合わせると広いレベルほどテクセルが粗くなる。見える範囲へ切ることで
+    //      テクセル密度を一定に保ち、同時に影へ描く caster もカリングで減らせる。
+    float    autoFitDistance = 120.0f;
     int      pcfRadius     = 2;     // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    // カスケード可視化 (デバッグ)。1 = 影の色をカスケード番号で塗り分ける。
+    // WHY: 分割位置と境界ブレンドは数値だけでは詰められない。どこで切り替わっているかを
+    //      直接見せるのが、cascadeSplitLambda を調整する唯一の実用的な方法。
+    bool     debugVisualizeCascades = false;
     // PCSS (Percentage Closer Soft Shadows) — 距離に応じてペナンブラが変化するソフトシャドウ。
     bool     pcssEnabled     = false;
     float    pcssLightRadius = 3.0f; // 仮想ライト半径 (world space): 大きいほどソフト
@@ -249,6 +302,63 @@ struct LUTColorGradingSettings {
     float       tint        = 0.0f;
 };
 
+// VolumeSettings — PostProcessVolume が上書きできる「シーンのルック」設定の全体。
+// WHY 独立した集約にするか:
+//   ポストプロセス (Bloom / Fog / ColorGrading …) と高度グラフィクス
+//   (SSR / GTAO / TAA / MotionBlur / VolumetricLight / LensFlare / LUT) は、
+//   作り手から見ればどちらも「この場所ではどう見えるか」を決める設定で、
+//   置き場所が分かれている必然性がない。Unity の Volume が両者を同じ
+//   プロファイルへまとめているのと同じ理由で、ボリュームがブレンドできる
+//   単位を 1 つの型へ集約する。
+// WHY RenderSettings をそのまま使わないか:
+//   pipeline / shadow / デバッグ表示 / パーティクル予算は「プロジェクトの構成」であって
+//   場所ごとに切り替えるものではない。ブレンド対象に混ぜると、ボリュームをまたぐたびに
+//   パイプラインが切り替わるような無意味な合成が定義できてしまう。
+// WHY IBL を含めないか:
+//   IBL は EnvironmentLightComponent が既に唯一の所有者になっている。
+//   ここにも置くと「どちらが勝つのか」を毎回考えることになる。
+struct VolumeSettings {
+    PostProcessSettings     post;
+    SSRSettings             ssr;
+    GTAOSettings            gtao;
+    ContactShadowSettings   contactShadow;
+    TAASettings             taa;
+    MotionBlurSettings      motionBlur;
+    VolumetricLightSettings volumetricLight;
+    LensFlareSettings       lensFlare;
+    LUTColorGradingSettings lutColorGrading;
+
+    // WHY 既定を「全効果 OFF」にそろえるか:
+    //   ルックの供給源は VolumeOverride のリストで、「リストに入っている効果だけが効く」
+    //   のが唯一の規則。ところが各 XxxSettings の既定値は Bloom / SSAO / ColorGrading /
+    //   Clarity / FXAA が true で、そのままだとオーバーライドを 1 つも持たない
+    //   プロファイルでもブルームが掛かってしまう。ここで一度そろえておくことで、
+    //   「素の絵」が本当に素になる。個々の構造体の既定値は他の経路
+    //   (旧シーン・単体テスト) が期待しているため触らない。
+    VolumeSettings()
+    {
+        post.fxaaEnabled                       = false;
+        post.bloom.enabled                     = false;
+        post.ambientOcclusion.enabled          = false;
+        post.colorGrading.enabled              = false;
+        post.imageQuality.clarityEnabled       = false;
+        post.imageQuality.shadowHighlightEnabled = false;
+        post.imageQuality.colorFilterEnabled   = false;
+        // 残りのセクション (fog / vignette / filmGrain / sharpen / dof / lens /
+        // stylized / ssr / gtao / …) は構造体側の既定が既に false。
+    }
+
+    // 排他的な論理スロット (AA: FXAA/TAA, AO: SSAO/GTAO) を正規化する。
+    // WHY プロファイル側にも要るか: FXAA と TAA のオーバーライドを両方リストに
+    //      入れることは操作として可能で、そのときどちらを生かすかを決める必要がある。
+    //      履歴バッファを必要としない既存パス (FXAA / SSAO) を優先する。
+    void NormalizeExclusiveSlots()
+    {
+        if (taa.enabled && post.fxaaEnabled)                taa.enabled  = false;
+        if (gtao.enabled && post.ambientOcclusion.enabled)  gtao.enabled = false;
+    }
+};
+
 struct RenderSettings {
     RenderingPipeline pipeline  = RenderingPipeline::Forward;
     ViewMode          viewMode  = ViewMode::Lit;
@@ -262,6 +372,11 @@ struct RenderSettings {
     bool showSkeleton         = false;
     bool showGrid             = false;
     bool showLightRange       = false;
+    // パーティクル力場の影響半径・向きと、エミッターの発生形状をワイヤーで描く。
+    // WHY: 力場もエミッター形状も「見えない体積」なので、radius 3.2 と 4.0 の違いを
+    //      粒子の挙動から逆算するしかなかった。炎が横に千切れる/広がらない類の
+    //      調整はここが見えるかどうかで作業時間が桁で変わる。
+    bool showVFXGizmos        = false;
     bool showConstraints      = false;
     bool showSelectionOutline = true;
     // true のとき、各パスの RT サムネイルと CPU タイミングを ImGui ウィンドウで表示する。
@@ -270,6 +385,18 @@ struct RenderSettings {
     // 全Particleのフレーム予算。0以下は無制限。RenderPassがエミッター順に残量を配分する。
     int particleBudget = 20000;
     bool particleBudgetEnabled = true;
+    // true のとき、パーティクル描画の上へ「重なり枚数」のヒートマップを上書きする診断表示。
+    // WHY: パーティクルの実コストは粒子数ではなく fill rate で決まるが、
+    //      重なりは通常の絵からは読めない。VFX Editor のプレビューから切り替えて使う。
+    bool particleOverdrawView = false;
+    // trueならヒートマップ未描画領域に通常のMesh/SkinnedMesh表示を残す。
+    bool particleOverdrawIncludeModels = false;
+    // true のとき、重なり枚数を GPU から CPU へ読み戻して統計を取る (ParticleOverdrawStats)。
+    // WHY: ヒートマップは「見れば判る」が、AI は数値でないと閾値を持てず、
+    //      「重なりすぎ」を毎回違う基準で判定してしまう。
+    //      読み戻しは GPU 同期を伴ってフレームを止めるため、既定は false。
+    //      AI の決定論プレビューのように、実時間性能より正確さが要る場面だけで立てる。
+    bool particleOverdrawReadback = false;
 
     bool IsWireframe() const { return viewMode == ViewMode::WireframeLit || viewMode == ViewMode::WireframeUnlit; }
     bool IsUnlit()     const { return viewMode == ViewMode::Unlit        || viewMode == ViewMode::WireframeUnlit; }
@@ -286,6 +413,7 @@ struct RenderSettings {
     ContactShadowSettings    contactShadow;
     LensFlareSettings        lensFlare;
     LUTColorGradingSettings  lutColorGrading;
+    ClusteredSettings        clustered;
 
     float outlineWidth = 0.045f;
     float outlineColor[4] = { 1.0f, 0.82f, 0.22f, 1.0f };
@@ -323,6 +451,16 @@ struct RenderSettings {
     [[nodiscard]] bool IsGtaoActive() const
     {
         return gtao.enabled && !postProcess.ambientOcclusion.enabled;
+    }
+
+    // クラスタライティング経路を使うか。
+    // NOTE: 実際に有効化できるかは CS とバッファが揃っているかにも依存するため、
+    //       RenderSystem 側でリソースの有無と AND を取ってから使うこと。
+    [[nodiscard]] bool UsesClusteredLighting() const
+    {
+        return clustered.enabled
+            && (pipeline == RenderingPipeline::ForwardPlus
+             || pipeline == RenderingPipeline::DeferredPlus);
     }
 
     // IBL は irradiance と prefilter の両キューブマップが揃って初めて有効になる。

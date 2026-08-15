@@ -16,6 +16,8 @@ namespace fbzz::physics
         ColliderType GetType() const override { return ColliderType::AABB; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
+        // 8 * hx * hy * hz
+        [[nodiscard]] float ComputeVolume() const override;
 
         // 中心から各面までの距離。Update() 後もローカル軸ではなくワールド軸基準で扱う。
         math::Vector3 m_halfExtents;

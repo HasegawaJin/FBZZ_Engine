@@ -26,6 +26,13 @@ public:
     void BeginFrame(uint32_t frameIndex);
     Allocation Allocate(size_t sizeBytes, size_t alignment);
 
+    // BeginFrame のたびに進む世代。アリーナはここでオフセットを 0 へ巻き戻すため、
+    // 以前に配った GPU アドレスはこの値が変わった時点で無効になる。
+    // WHY: 呼び出し側 (DX12ConstantBuffer) が「前回配られたアドレスをまだ使い回せるか」を
+    //      判定するのに使う。フレームインデックスは 2 つを往復するだけなので、
+    //      往復して同じ値に戻ったときに古いアドレスを有効と誤認しないよう単調増加させる。
+    uint64_t GetEpoch() const { return m_epoch; }
+
 private:
     static constexpr uint32_t FRAME_COUNT = 2;
     struct FrameArena {
@@ -37,6 +44,7 @@ private:
     std::array<FrameArena, FRAME_COUNT> m_frames;
     size_t m_capacity = 0;
     uint32_t m_currentFrame = 0;
+    uint64_t m_epoch = 0;
 };
 
 } // namespace fbzz::renderer

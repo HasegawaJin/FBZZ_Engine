@@ -1,0 +1,113 @@
+# FBZZ Engine — Behavior Tree
+# ノードの木構造は parent / order が持つ。order が左→右の優先順位。
+#
+# GuardPatrol — 「巡回し、プレイヤーを発見したら追跡する」最小構成のテンプレート。
+#
+#   Selector (Root)
+#    ├─ Sequence (Chase)          order 0 = 高優先度
+#    │   ├─ HasTarget             abortMode = LowerPriority (発見した瞬間に巡回を中断)
+#    │   └─ MoveTo (TargetEntity) chaseEntity = true
+#    └─ Patrol                    order 1 = 低優先度 (何もすることが無ければ巡回)
+#
+# HasTarget の abortMode = 2 (LowerPriority) が要点。これが無いと、
+# 巡回中にプレイヤーを見つけてもウェイポイントに着くまで反応しない。
+
+version = 1
+name = "Guard Patrol"
+description = "巡回し、視界に入ったターゲットを追跡する"
+nextNodeId = 5
+
+[[nodes]]
+id = 1
+parent = 0
+order = 0
+type = 1              # Selector
+name = "Root"
+editorX = 80.0
+editorY = 200.0
+
+[[nodes]]
+id = 2
+parent = 1
+order = 0
+type = 0              # Sequence
+name = "Chase"
+editorX = 380.0
+editorY = 120.0
+
+[[nodes]]
+id = 3
+parent = 2
+order = 0
+type = 18             # HasTarget
+name = "Has Target"
+editorX = 680.0
+editorY = 60.0
+abortMode = 2         # LowerPriority
+
+[[nodes]]
+id = 4
+parent = 2
+order = 1
+type = 10             # MoveTo
+name = "Chase Target"
+editorX = 680.0
+editorY = 200.0
+moveTargetKey = "TargetEntity"
+chaseEntity = true
+repathInterval = 0.4
+acceptanceRadius = 1.5
+
+[[nodes]]
+id = 5
+parent = 1
+order = 1
+type = 11             # Patrol
+name = "Patrol"
+editorX = 380.0
+editorY = 320.0
+
+[[blackboard]]
+name = "Self"
+type = 4
+reserved = true
+
+[[blackboard]]
+name = "TargetEntity"
+type = 4
+reserved = true
+
+[[blackboard]]
+name = "TargetPosition"
+type = 3
+reserved = true
+
+[[blackboard]]
+name = "LastKnownPosition"
+type = 3
+reserved = true
+
+[[blackboard]]
+name = "HasTarget"
+type = 0
+reserved = true
+
+[[blackboard]]
+name = "HomePosition"
+type = 3
+reserved = true
+
+[[blackboard]]
+name = "Health01"
+type = 2
+reserved = true
+
+[[blackboard]]
+name = "Awareness"
+type = 2
+reserved = true
+
+[[blackboard]]
+name = "NoisePosition"
+type = 3
+reserved = true

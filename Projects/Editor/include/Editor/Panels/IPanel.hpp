@@ -35,17 +35,28 @@ public:
         bool open = ImGui::Begin(GetWindowName(), CanClose() ? &visible : nullptr, GetWindowFlags());
         OnAfterBegin(ctx);
         if (!open || !visible) {
+            m_contentRendered = false;
             ImGui::End();
             OnAfterEnd(ctx);
             return;
         }
 
+        m_contentRendered = true;
         OnRenderContent(ctx);
         ImGui::End();
         OnAfterEnd(ctx);
     }
 
     bool visible = true;
+
+    // 直近の OnRender で中身を実際に描いたか。
+    // WHY visible と別に要るか: ドッキングされたタブが非アクティブな場合、visible は true のまま
+    //     ImGui::Begin が false を返し、中身は 1 ピクセルも表示されない。
+    //     ビューポートのように「表示されていないなら重い描画を丸ごと省きたい」パネルは、
+    //     ウィンドウが閉じているかどうかではなく、この区別を見る必要がある。
+    // NOTE: visible == false のパネルは OnRender 自体が呼ばれないため値が更新されない。
+    //       参照側は必ず visible と併せて判定すること。
+    [[nodiscard]] bool WasContentRendered() const { return m_contentRendered; }
 
 protected:
     virtual void OnRenderContent(EditorContext& ctx) = 0;
@@ -54,6 +65,10 @@ protected:
     virtual void OnBeforeBegin(EditorContext& ctx) { (void)ctx; }
     virtual void OnAfterBegin(EditorContext& ctx) { (void)ctx; }
     virtual void OnAfterEnd(EditorContext& ctx) { (void)ctx; }
+
+private:
+    // 初期値 true: 起動直後の 1 フレーム目からビューポートを描かせる。
+    bool m_contentRendered = true;
 };
 
 } // namespace fbzz::editor

@@ -9,6 +9,7 @@
 //   u2  = RWStructuredBuffer<GpuParticle> (パーティクルプール DEFAULT)
 
 #include "Common/Binding.hlsli"
+#include "Rendering/ParticleNoise.hlsli"
 
 // ---------- 構造体 --------------------------------------------------------
 
@@ -24,6 +25,9 @@ struct GpuParticle
     float  angularVelocity;
     float  spriteSeed;
     float4 uvRect;
+    // 粒子ごとの色倍率 (colorVariation)。毎フレーム作り直す色へ掛け直すために保持する。
+    float3 colorScale;
+    float  colorScalePad;
 };
 
 struct GpuSpawnEntry
@@ -93,61 +97,61 @@ cbuffer GpuEmitterCB : register(b0)
     float    gFlipbookFramesPerSecond;
     float    gPad1;
     GpuForceField gForceFields[MAX_FORCE_FIELDS];
-    float4   gCurveFlags;
+    float4   gCurveFlags;       // x=size, y=velocity, z=gradient, w=frameBlend
     float4   gSizeCurveKeys01;
     float4   gSizeCurveKeys23;
     float4   gVelocityCurveKeys01;
     float4   gVelocityCurveKeys23;
     float4   gGradientTimes;
     float4   gGradientColors[4];
+    float4x4 gViewProjection;
+    float    gScreenWidth;
+    float    gScreenHeight;
+    float    gDepthThickness;
+    float    gDepthBounciness;
+    uint     gDepthCollision;
+    uint     gDepthResponse;
+    float    gDepthDamping;
+    float    gDepthPad;
+    // ── over-lifetime モジュール追加分 (末尾追加で既存オフセットを変えない) ──
+    float4   gCurveFlags2;          // x=rotation, y=drag, z/w=予約
+    float4   gRotationCurveKeys01;
+    float4   gRotationCurveKeys23;
+    float4   gDragCurveKeys01;
+    float4   gDragCurveKeys23;
+    float3   gOrbitalAxis;          // CPU 側で正規化済み
+    float    gOrbitalVelocity;
+    float    gRadialVelocity;
+    // bit0 = spriteRandomStartFrame / bit1 = spriteRandomRow
+    uint     gSpriteRandomFlags;
+    float    gVelocityPad0;
+    float    gVelocityPad1;
+    // ── カーブ 8 キー化の追加分 (RenderPassContext.hpp の GpuParticleEmitterCB と対) ──
+    // 既存の *Keys01/23 (キー 0〜3) はオフセットを保ち、キー 4〜7 を末尾へ足す。
+    float4   gSizeCurveKeys45;
+    float4   gSizeCurveKeys67;
+    float4   gVelocityCurveKeys45;
+    float4   gVelocityCurveKeys67;
+    float4   gRotationCurveKeys45;
+    float4   gRotationCurveKeys67;
+    float4   gDragCurveKeys45;
+    float4   gDragCurveKeys67;
+    float4   gGradientTimes47;
+    float4   gGradientColors47[4];
+    float4   gCurveKeyCounts;       // x=size, y=velocity, z=rotation, w=drag の有効キー数
+    float4   gCurveModes;           // 補間モード 0=Linear 1=Step 2=Smooth
+    float4   gGradientMeta;         // x=キー数, y=補間モード, z/w=予約
 };
 
 StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
 RWStructuredBuffer<GpuParticle>   gParticles   : register(UAV_GPU_PARTICLES);
+Texture2D<float>                   gSceneDepth : register(TEX_DEPTH);
 
 // ---------- カールノイズ (乱流ベクトルフィールド) ---------------------------
 // 式は ParticlePass.cpp の同名関数と一致させること (CPU/GPU で挙動を揃える)。
 
-// 整数ハッシュ (PCG 系)。格子点から再現可能な擬似乱数を作る。
-uint PcgHash(uint x)
-{
-    x ^= x >> 16; x *= 0x7feb352du;
-    x ^= x >> 15; x *= 0x846ca68bu;
-    x ^= x >> 16;
-    return x;
-}
-
-// 格子点 (整数座標) → [-1, 1] の擬似乱数値
-float LatticeValue(int3 c)
-{
-    uint h = PcgHash((uint)c.x * 73856093u ^ (uint)c.y * 19349663u ^ (uint)c.z * 83492791u);
-    return (float)h * (2.0f / 4294967295.0f) - 1.0f;
-}
-
-// 3D 値ノイズ [-1, 1]。8 格子点を smoothstep 重みでトリリニア補間する。
-float ValueNoise3D(float3 p)
-{
-    float3 f = floor(p);
-    int3   c = (int3)f;
-    float3 t = p - f;
-    // smoothstep フェード: 格子境界で勾配を連続にする
-    t = t * t * (3.0f - 2.0f * t);
-    float c000 = LatticeValue(c + int3(0, 0, 0));
-    float c100 = LatticeValue(c + int3(1, 0, 0));
-    float c010 = LatticeValue(c + int3(0, 1, 0));
-    float c110 = LatticeValue(c + int3(1, 1, 0));
-    float c001 = LatticeValue(c + int3(0, 0, 1));
-    float c101 = LatticeValue(c + int3(1, 0, 1));
-    float c011 = LatticeValue(c + int3(0, 1, 1));
-    float c111 = LatticeValue(c + int3(1, 1, 1));
-    float x00 = lerp(c000, c100, t.x);
-    float x10 = lerp(c010, c110, t.x);
-    float x01 = lerp(c001, c101, t.x);
-    float x11 = lerp(c011, c111, t.x);
-    float y0  = lerp(x00, x10, t.y);
-    float y1  = lerp(x01, x11, t.y);
-    return lerp(y0, y1, t.z);
-}
+// PcgHash / LatticeValue / ValueNoise3D は Rendering/ParticleNoise.hlsli にある。
+// 描画側のボリュメトリック煙が同じ式で密度を作るため、共有ヘッダーへ集約した。
 
 // カールノイズ: 3 成分のベクトルポテンシャル ψ の回転 (∇×ψ) を中心差分で求める。
 // WHY: 回転場は発散ゼロのため粒子が一点に溜まらず、煙・炎らしい滑らかな渦を作れる。
@@ -179,6 +183,34 @@ float3 TurbulenceSamplePoint(float3 position, float frequency, float speed, floa
     return position * frequency + float3(scroll, scroll * 0.35f, scroll * 0.7f);
 }
 
+// ---------- 速度モジュール (周回 / 放射) ------------------------------------
+
+// 周回 (orbital) と放射 (radial) の加速度を速度へ加える。
+// 式は ParticlePass.cpp の ApplyOrbitalVelocity と一致させること (CPU/GPU で挙動を揃える)。
+// gOrbitalAxis は CPU 側で正規化済み。軸が退化していた場合は gOrbitalVelocity が 0 で渡る。
+void ApplyOrbitalVelocity(float3 position, inout float3 velocity)
+{
+    if (gOrbitalVelocity == 0.0f && gRadialVelocity == 0.0f) return;
+
+    float3 offset = position - gEmitterPos;
+    float  dist   = length(offset);
+    // 原点に重なった粒子は接線・放射方向が定義できない。ゼロ除算を避けて素通しする。
+    if (dist < 1.0e-5f) return;
+    float3 radialDir = offset / dist;
+
+    if (gRadialVelocity != 0.0f)
+        velocity += radialDir * (gRadialVelocity * gDeltaTime);
+
+    if (gOrbitalVelocity != 0.0f)
+    {
+        // 接線 = axis × radial。軸と平行な粒子では長さ 0 になるので正規化前に確認する。
+        float3 tangent = cross(gOrbitalAxis, radialDir);
+        float  tangentLength = length(tangent);
+        if (tangentLength > 1.0e-5f)
+            velocity += (tangent / tangentLength) * (gOrbitalVelocity * gDeltaTime);
+    }
+}
+
 // ---------- 力場 (ParticleForceField) --------------------------------------
 
 // 力場を粒子速度へ適用する。式は ParticlePass.cpp の ApplyForceFields と一致させること。
@@ -195,7 +227,9 @@ void ApplyForceFields(float3 position, inout float3 velocity)
         {
             float dist = length(toParticle);
             if (dist >= radius) continue;
-            influence = pow(1.0f - dist / radius, f.params.y);
+            // WHY: dist < radius により底は数学的に正だが、FXC は分岐条件を考慮せず
+            // X3571 を出すため、abs で非負値であることを明示する。
+            influence = pow(abs(1.0f - dist / radius), f.params.y);
         }
         float impulse   = f.dirStrength.w * influence * gDeltaTime;
         uint  fieldType = (uint)f.params.x;
@@ -230,36 +264,62 @@ void ApplyForceFields(float3 position, inout float3 velocity)
     }
 }
 
-float EvaluateCurve4(float4 keys01, float4 keys23, float t)
+// 補間係数へ曲線モードを適用する。
+// ParticleEmitter.hpp の ApplyCurveInterpolation と必ず同じ式にすること
+// (片方だけ直すと「CPU では正しいが GPU では違う」形で静かに壊れる)。
+float ApplyCurveInterpolation(float alpha, float mode)
 {
-    float2 keys[4] = { keys01.xy, keys01.zw, keys23.xy, keys23.zw };
+    if (mode > 1.5f) return alpha * alpha * (3.0f - 2.0f * alpha); // Smooth
+    if (mode > 0.5f) return 0.0f;                                  // Step
+    return alpha;                                                  // Linear
+}
+
+// 8キーカーブを評価する。float4 1本へ (time,value) を2点ずつ、計4本で8キー。
+// count は有効キー数。超過分は最終キーで埋めてあるが、count で打ち切らないと
+// 末尾のダミー区間を踏んで CPU の Evaluate と結果がずれる。
+float EvaluateCurve8(float4 keys01, float4 keys23, float4 keys45, float4 keys67,
+                     float count, float mode, float t)
+{
+    float2 keys[8] = {
+        keys01.xy, keys01.zw, keys23.xy, keys23.zw,
+        keys45.xy, keys45.zw, keys67.xy, keys67.zw
+    };
+    uint last = (uint)clamp(count, 1.0f, 8.0f) - 1u;
     if (t <= keys[0].x) return keys[0].y;
-    [unroll]
-    for (uint i = 1; i < 4; ++i)
+    for (uint i = 1; i < 8; ++i)
     {
+        if (i > last) break;
         if (t <= keys[i].x)
         {
             float alpha = saturate((t - keys[i - 1].x) / max(keys[i].x - keys[i - 1].x, 1.0e-4f));
-            return lerp(keys[i - 1].y, keys[i].y, alpha);
+            return lerp(keys[i - 1].y, keys[i].y, ApplyCurveInterpolation(alpha, mode));
         }
     }
-    return keys[3].y;
+    return keys[last].y;
 }
 
-float4 EvaluateGradient4(float t)
+float4 EvaluateGradient8(float t)
 {
-    if (t <= gGradientTimes.x) return gGradientColors[0];
-    [unroll]
-    for (uint i = 1; i < 4; ++i)
+    float times[8] = {
+        gGradientTimes.x, gGradientTimes.y, gGradientTimes.z, gGradientTimes.w,
+        gGradientTimes47.x, gGradientTimes47.y, gGradientTimes47.z, gGradientTimes47.w
+    };
+    float4 colors[8] = {
+        gGradientColors[0], gGradientColors[1], gGradientColors[2], gGradientColors[3],
+        gGradientColors47[0], gGradientColors47[1], gGradientColors47[2], gGradientColors47[3]
+    };
+    uint last = (uint)clamp(gGradientMeta.x, 1.0f, 8.0f) - 1u;
+    if (t <= times[0]) return colors[0];
+    for (uint i = 1; i < 8; ++i)
     {
-        if (t <= gGradientTimes[i])
+        if (i > last) break;
+        if (t <= times[i])
         {
-            float alpha = saturate((t - gGradientTimes[i - 1])
-                / max(gGradientTimes[i] - gGradientTimes[i - 1], 1.0e-4f));
-            return lerp(gGradientColors[i - 1], gGradientColors[i], alpha);
+            float alpha = saturate((t - times[i - 1]) / max(times[i] - times[i - 1], 1.0e-4f));
+            return lerp(colors[i - 1], colors[i], ApplyCurveInterpolation(alpha, gGradientMeta.y));
         }
     }
-    return gGradientColors[3];
+    return colors[last];
 }
 
 // ---------- カーネル -------------------------------------------------------
@@ -289,6 +349,14 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         p.angularVelocity = s.angularVelocity;
         p.spriteSeed      = s.spriteSeed;
         p.uvRect          = s.uvRect;
+        // CPU が配ったゆらぎ済み色と、CB の基準色との比を倍率として取り出す。
+        // WHY: GpuSpawnEntry を太らせずに済み、CPU 側は既存の colorStart 書き込みだけで完結する。
+        //      基準色が 0 のチャンネルは何を掛けても 0 なので、倍率は 1 にしておけばよい。
+        p.colorScale = float3(
+            gColorStart.r > 1.0e-5f ? s.colorStart.r / gColorStart.r : 1.0f,
+            gColorStart.g > 1.0e-5f ? s.colorStart.g / gColorStart.g : 1.0f,
+            gColorStart.b > 1.0e-5f ? s.colorStart.b / gColorStart.b : 1.0f);
+        p.colorScalePad = 0.0f;
     }
     else
     {
@@ -297,10 +365,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         if (p.age >= p.lifetime) return;
     }
 
+    // 更新後の正規化寿命。drag / 回転 / 速度カーブが同じ値を見るよう先に 1 回だけ求める
+    // (CPU 側も age を進めた後の t を全カーブで共有している)。
+    float normalizedAge = saturate((p.age + gDeltaTime) / max(p.lifetime, 1.0e-4f));
+
     // 物理積分 (半陽的オイラー)。スポーン直後も同フレームから重力・力場・Noiseを受ける。
     p.velocity += gGravity * gDeltaTime;
-    // 速度減衰: CPU の max(0, 1 - damping * dt) と同じ式
-    float damping = max(0.0f, 1.0f - gVelocityDamping * gDeltaTime);
+    // 周回・放射。式は ParticlePass.cpp の ApplyOrbitalVelocity と一致させること。
+    ApplyOrbitalVelocity(p.position, p.velocity);
+    // 速度減衰: CPU の max(0, 1 - damping * dragScale * dt) と同じ式
+    float dragScale = gCurveFlags2.y > 0.5f
+        ? max(EvaluateCurve8(gDragCurveKeys01, gDragCurveKeys23, gDragCurveKeys45,
+                             gDragCurveKeys67, gCurveKeyCounts.w, gCurveModes.w, normalizedAge), 0.0f)
+        : 1.0f;
+    float damping = max(0.0f, 1.0f - gVelocityDamping * dragScale * gDeltaTime);
     p.velocity *= damping;
     // ベクトルフィールド: シーンの力場 + エミッター固有ノイズを速度へ加算 (CPU と同順)
     ApplyForceFields(p.position, p.velocity);
@@ -309,28 +387,74 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         p.velocity += CurlNoise(TurbulenceSamplePoint(
             p.position, gNoiseFrequency, gNoiseSpeed, gTime)) * (gNoiseStrength * gDeltaTime);
     }
-    float normalizedAge = saturate((p.age + gDeltaTime) / max(p.lifetime, 1.0e-4f));
     float velocityScale = gCurveFlags.y > 0.5f
-        ? max(EvaluateCurve4(gVelocityCurveKeys01, gVelocityCurveKeys23, normalizedAge), 0.0f)
+        ? max(EvaluateCurve8(gVelocityCurveKeys01, gVelocityCurveKeys23, gVelocityCurveKeys45,
+                             gVelocityCurveKeys67, gCurveKeyCounts.y, gCurveModes.y, normalizedAge), 0.0f)
         : 1.0f;
+    float3 previousPosition = p.position;
     p.position += p.velocity * (gDeltaTime * velocityScale);
+    if (gDepthCollision != 0u)
+    {
+        float4 clip = mul(float4(p.position, 1.0f), gViewProjection);
+        if (clip.w > 1.0e-5f)
+        {
+            float3 ndc = clip.xyz / clip.w;
+            float2 uv = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
+            if (all(uv >= 0.0f) && all(uv <= 1.0f) && ndc.z >= 0.0f && ndc.z <= 1.0f)
+            {
+            // UV=1.0 は解像度ちょうどの範囲外座標になるため、右端・下端を必ず有効画素へ収める。
+            int2 pixel = clamp(int2(uv * float2(gScreenWidth, gScreenHeight)),
+                               int2(0, 0), int2(gScreenWidth - 1u, gScreenHeight - 1u));
+                float sceneDepth = gSceneDepth.Load(int3(pixel, 0));
+                if (ndc.z >= sceneDepth && ndc.z - sceneDepth <= gDepthThickness)
+                {
+                    p.position = previousPosition;
+                    if (gDepthResponse == 1u)
+                    {
+                        p.age = p.lifetime;
+                        gParticles[i] = p;
+                        return;
+                    }
+                    if (gDepthResponse == 2u) p.velocity = 0.0f;
+                    else p.velocity = -p.velocity * gDepthBounciness;
+                    p.velocity *= max(0.0f, 1.0f - gDepthDamping);
+                }
+            }
+        }
+    }
     p.age      += gDeltaTime;
 
-    // 回転更新
-    p.rotation += p.angularVelocity * gDeltaTime;
+    // 回転更新。回転カーブは角速度への時間倍率 (CPU の useRotationCurve と同じ)。
+    float rotationScale = gCurveFlags2.x > 0.5f
+        ? EvaluateCurve8(gRotationCurveKeys01, gRotationCurveKeys23, gRotationCurveKeys45,
+                         gRotationCurveKeys67, gCurveKeyCounts.z, gCurveModes.z, normalizedAge)
+        : 1.0f;
+    p.rotation += p.angularVelocity * gDeltaTime * rotationScale;
 
     // 寿命 t [0, 1] で色・サイズ補間 (CPU の colorCurvePower / sizeCurvePower と一致)
     float t = saturate(p.age / p.lifetime);
     p.color = gCurveFlags.z > 0.5f
-        ? EvaluateGradient4(t)
+        ? EvaluateGradient8(t)
         : lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower));
+    // 粒子ごとの色ゆらぎを掛け直す (alpha はフェード制御なので触らない)。
+    p.color.rgb *= p.colorScale;
     float sizeT = gCurveFlags.x > 0.5f
-        ? saturate(EvaluateCurve4(gSizeCurveKeys01, gSizeCurveKeys23, t))
+        ? saturate(EvaluateCurve8(gSizeCurveKeys01, gSizeCurveKeys23, gSizeCurveKeys45,
+                                  gSizeCurveKeys67, gCurveKeyCounts.x, gCurveModes.x, t))
         : pow(t, gSizeCurvePower);
     p.size = lerp(gSizeStart, gSizeEnd, sizeT);
 
-    // スプライトアニメーション (CPU の ComputeSpriteRect と一致)
-    uint spriteSpan = gSpriteEndFrame - gSpriteStartFrame;
+    // スプライトアニメーション (CPU の ComputeSpriteFrameState と一致させること)
+    uint spriteStart = gSpriteStartFrame;
+    uint spriteEnd   = gSpriteEndFrame;
+    // Random Row: 粒子ごとに 1 行を選び、その行の中だけで再生する
+    if ((gSpriteRandomFlags & 2u) != 0u && gSpriteRows > 1u)
+    {
+        uint row = min((uint)(saturate(p.spriteSeed) * (float)gSpriteRows), gSpriteRows - 1u);
+        spriteStart = row * gSpriteColumns;
+        spriteEnd   = spriteStart + gSpriteColumns - 1u;
+    }
+    uint spriteSpan = spriteEnd - spriteStart;
     uint relativeFrame = (uint)(t * (float)spriteSpan);
     if (gFlipbookMode == 1 && spriteSpan > 0)
         relativeFrame = (uint)(p.age * gFlipbookFramesPerSecond) % (spriteSpan + 1);
@@ -341,7 +465,16 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         uint cycle = (uint)(p.age * gFlipbookFramesPerSecond) % max(spriteSpan * 2, 1u);
         relativeFrame = cycle <= spriteSpan ? cycle : spriteSpan * 2 - cycle;
     }
-    uint frame = gSpriteStartFrame + relativeFrame;
+    // Random Start Frame: 再生位相を粒子ごとにずらす (RandomFrame モードでは不要)。
+    // seed の使い回しで行と位相が相関しないよう、CPU 側と同じ係数でずらして小数部を取る。
+    if ((gSpriteRandomFlags & 1u) != 0u && spriteSpan > 0u && gFlipbookMode != 2u)
+    {
+        float phaseSeed = saturate(p.spriteSeed) * 7.13f + 0.37f;
+        float decorrelated = phaseSeed - floor(phaseSeed);
+        uint cycle = spriteSpan + 1u;
+        relativeFrame = (relativeFrame + (uint)(decorrelated * (float)cycle)) % cycle;
+    }
+    uint frame = spriteStart + relativeFrame;
     uint sx         = frame % gSpriteColumns;
     uint sy         = frame / gSpriteColumns;
     float invCols   = 1.0f / (float)gSpriteColumns;

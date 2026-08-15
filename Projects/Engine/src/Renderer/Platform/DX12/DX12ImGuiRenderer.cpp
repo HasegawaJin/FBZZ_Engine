@@ -114,9 +114,23 @@ void DX12ImGuiRenderer::ImGuiRenderDrawData()
 {
     if (!m_imguiInitialized || !m_context->IsFrameOpen())
         return;
+    // ImGui はここから自前のルートシグネチャ・PSO・ヒープを共有コマンドリストへ設定する。
+    // DX12Renderer::Submit が持つ「直前に束縛した状態」のキャッシュを無効化させる。
+    m_context->MarkPipelineStateDirty();
     ID3D12DescriptorHeap* heaps[] = {m_context->GetImGuiSrvHeap()};
     m_context->GetCommandList()->SetDescriptorHeaps(1, heaps);
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_context->GetCommandList());
+}
+
+// ImGui DX12 backend が追加 Window ごとに管理する SwapChain と CommandList を描画する。
+void DX12ImGuiRenderer::ImGuiRenderPlatformWindows()
+{
+    if (!m_imguiInitialized
+        || (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) == 0) {
+        return;
+    }
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
 }
 
 bool DX12ImGuiRenderer::AllocateDescriptor(

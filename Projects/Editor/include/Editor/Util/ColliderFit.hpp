@@ -18,13 +18,12 @@
 
 namespace fbzz::editor::colliderfit {
 
-// CPU 頂点 (静的 / スキンの両対応) からローカル AABB を求める。頂点が無ければ false。
-inline bool MeshLocalBounds(const renderer::Mesh& mesh,
-                            math::Vector3& outMin, math::Vector3& outMax)
+// CPU 頂点 (静的 / スキンの両対応) でローカル AABB を広げる。頂点が 1 つでもあれば true。
+// WHY: 複数 submesh を合成できるよう、min/max を初期化せず「広げる」形にしている。
+inline bool ExtendMeshLocalBounds(const renderer::Mesh& mesh,
+                                  math::Vector3& outMin, math::Vector3& outMax)
 {
     bool any = false;
-    outMin = {  1e30f,  1e30f,  1e30f };
-    outMax = { -1e30f, -1e30f, -1e30f };
     auto extend = [&](const math::Vector3& p) {
         outMin.x = std::min(outMin.x, p.x); outMax.x = std::max(outMax.x, p.x);
         outMin.y = std::min(outMin.y, p.y); outMax.y = std::max(outMax.y, p.y);
@@ -36,28 +35,44 @@ inline bool MeshLocalBounds(const renderer::Mesh& mesh,
     return any;
 }
 
-// GameObject の描画メッシュを取得する (MeshRenderer 優先、次に SkinnedMeshRenderer)。
-inline const renderer::Mesh* AnyMeshFromGameObject(scene::GameObject& go)
+// CPU 頂点からローカル AABB を求める。頂点が無ければ false。
+inline bool MeshLocalBounds(const renderer::Mesh& mesh,
+                            math::Vector3& outMin, math::Vector3& outMax)
 {
+    outMin = {  1e30f,  1e30f,  1e30f };
+    outMax = { -1e30f, -1e30f, -1e30f };
+    return ExtendMeshLocalBounds(mesh, outMin, outMax);
+}
+
+// GameObject の描画メッシュ全体のローカル AABB。
+// WHY: SkinnedMeshRenderer は 1 GameObject = モデル全体を描くため、
+//      コライダーも先頭 submesh ではなく全 submesh を包む寸法でなければならない。
+inline bool LocalBoundsFromGameObject(scene::GameObject& go,
+                                      math::Vector3& outMin, math::Vector3& outMax)
+{
+    outMin = {  1e30f,  1e30f,  1e30f };
+    outMax = { -1e30f, -1e30f, -1e30f };
+
     if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh)
-        return mr->mesh;
+        return ExtendMeshLocalBounds(*mr->mesh, outMin, outMax);
+
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
         if (!smr->model && !smr->modelPath.empty())
             smr->model = asset::AssetManager::LoadModel(smr->modelPath);
-        if (smr->model && smr->meshIndex >= 0 &&
-            smr->meshIndex < static_cast<int>(smr->model->meshes.size()))
-            return smr->model->meshes[static_cast<size_t>(smr->meshIndex)].get();
+        if (!smr->model) return false;
+        bool any = false;
+        for (const auto& mesh : smr->model->meshes)
+            if (mesh) any |= ExtendMeshLocalBounds(*mesh, outMin, outMax);
+        return any;
     }
-    return nullptr;
+    return false;
 }
 
 // bounds の half extents。メッシュ無し / 退化時は false。
 inline bool HalfExtentsFromGameObject(scene::GameObject& go, math::Vector3& outHalf)
 {
-    const renderer::Mesh* mesh = AnyMeshFromGameObject(go);
-    if (!mesh) return false;
     math::Vector3 mn, mx;
-    if (!MeshLocalBounds(*mesh, mn, mx)) return false;
+    if (!LocalBoundsFromGameObject(go, mn, mx)) return false;
     // 平面等の薄いメッシュでも物理が安定するよう最小厚みを保証する
     constexpr float kMinHalf = 0.01f;
     outHalf = { std::max((mx.x - mn.x) * 0.5f, kMinHalf),

@@ -1,9 +1,12 @@
 // FBZZ Engine
 // StatusBar.cpp | fbzz::editor
-// DockSpaceHost 内でインライン描画される情報バー
+// DockSpaceHost の画面下端でインライン描画される情報バー
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/BuildConsole.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
@@ -24,9 +27,30 @@ void Sep()
     ImGui::TextDisabled(" | ");
     ImGui::SameLine();
 }
+
 } // namespace
 
-void StatusBar::Draw(EditorContext& ctx)
+// 下端ドロワーの開閉ボタン。開いている間は押下色にして状態を一目で分かるようにする。
+// WHY: Unreal の Content Drawer と同じで、Viewメニューやドックタブを探さずに
+//      どのレイアウトからでも同じ位置で開閉できることに価値がある。
+void DrawDrawerToggle(const char* label, bool* visible, const char* tooltipTarget)
+{
+    if (visible == nullptr) return;
+    const bool wasVisible = *visible;
+    if (wasVisible)
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    char buttonLabel[64];
+    std::snprintf(buttonLabel, sizeof(buttonLabel), "%s  %s", label, wasVisible ? "v" : "^");
+    if (ImGui::SmallButton(buttonLabel))
+        *visible = !wasVisible;
+    if (wasVisible)
+        ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s %s", *visible ? "Hide" : "Show", tooltipTarget);
+    Sep();
+}
+
+void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consoleVisible)
 {
     // FPS / フレームタイム
     m_fpsTimer += ImGui::GetIO().DeltaTime;
@@ -40,7 +64,7 @@ void StatusBar::Draw(EditorContext& ctx)
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 4.0f, 2.0f });
     const float barH = ImGui::GetFrameHeight() + 2.0f;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.13f, 0.13f, 0.13f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, EditorTheme::Color(ThemeColor::Canvas));
     ImGui::BeginChild("##statusbar_strip", { 0.0f, barH }, false,
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PopStyleColor();
@@ -48,21 +72,24 @@ void StatusBar::Draw(EditorContext& ctx)
 
     ImGui::SetCursorPosY((barH - ImGui::GetTextLineHeight()) * 0.5f);
 
-    // ── プレイ状態 ────────────────────────────────────────────────────
+    // ── 下端ドロワー ──────────────────────────────────────────────────
+    DrawDrawerToggle("Asset Browser", assetBrowserVisible, "Asset Browser");
+    DrawDrawerToggle("Console", consoleVisible, "Console (debug log)");
+
     if (ctx.playMode) {
         switch (ctx.playMode->GetState()) {
         case PlayState::Playing:
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.3f, 0.95f, 0.45f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Success));
             ImGui::TextUnformatted("  PLAYING ");
             ImGui::PopStyleColor();
             break;
         case PlayState::Paused:
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
             ImGui::TextUnformatted("  PAUSED ");
             ImGui::PopStyleColor();
             break;
         default:
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
             ImGui::TextUnformatted("  EDITOR ");
             ImGui::PopStyleColor();
             break;
@@ -70,11 +97,26 @@ void StatusBar::Draw(EditorContext& ctx)
         Sep();
     }
 
-    // ── シーン名 + FPS ────────────────────────────────────────────────
+    // ── シーン名 + 未保存インジケーター ───────────────────────────────
+    // WHY: 未保存状態は「タイトルバーの *」「AssetBrowser の Save* (N)」に分散していた。
+    //      ここへ シーン未保存の橙ドットと 未保存アセット件数を集約し、一目で保存漏れを把握できるようにする。
     const std::string sceneName = ctx.currentScenePath.empty()
         ? "Untitled"
         : util::FileSystem::GetFilename(ctx.currentScenePath);
-    ImGui::Text("Scene: %s%s", sceneName.c_str(), ctx.sceneDirty ? "*" : "");
+    ImGui::Text("Scene: %s", sceneName.c_str());
+    if (ctx.sceneDirty) {
+        ImGui::SameLine(0.0f, 4.0f);
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "\xE2\x97\x8F"); // ● 未保存
+        // クリックで即保存できるようにする (タイトルバー * と StatusBar 表示の導線を一致させる)。
+        if (ImGui::IsItemClicked()) ctx.requestSaveScene = true;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Scene has unsaved changes \xe2\x80\x94 click to save (Ctrl+S)");
+    }
+    if (const int dirtyAssets = static_cast<int>(AssetDirtyRegistry::GetAll().size()); dirtyAssets > 0) {
+        ImGui::SameLine(0.0f, 6.0f);
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%d unsaved asset%s",
+                           dirtyAssets, dirtyAssets == 1 ? "" : "s");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Unsaved assets — Save from the Asset Browser");
+    }
     Sep();
     ImGui::Text("FPS: %.1f  (%.2f ms)", m_fps, ms);
 
@@ -104,7 +146,8 @@ void StatusBar::Draw(EditorContext& ctx)
     // ── スナップ設定 ──────────────────────────────────────────────────
     Sep();
     ImGui::PushStyleColor(ImGuiCol_Text,
-        ctx.snapEnabled ? ImVec4(0.4f, 0.9f, 1.0f, 1.0f) : ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        ctx.snapEnabled ? EditorTheme::Color(ThemeColor::Accent)
+                        : EditorTheme::Color(ThemeColor::TextMuted));
     ImGui::Checkbox("Snap", &ctx.snapEnabled);
     ImGui::PopStyleColor();
     if (ImGui::IsItemHovered())
@@ -192,41 +235,66 @@ void StatusBar::Draw(EditorContext& ctx)
                 ? (ctx.hotReloadMessage.empty() ? "Compiling Scripts..." : ctx.hotReloadMessage.c_str())
                 : (ctx.hotReloadMessage.empty() ? "Reloading DLL..."    : ctx.hotReloadMessage.c_str());
             const ImVec4 barCol = completed
-                ? ImVec4(0.35f, 0.85f, 0.40f, 1.0f)
-                : (compiling ? ImVec4(0.85f, 0.65f, 0.05f, 1.0f)
-                             : ImVec4(0.25f, 0.60f, 0.95f, 1.0f));
+                ? EditorTheme::Color(ThemeColor::Success)
+                : (compiling ? EditorTheme::Color(ThemeColor::Warning)
+                             : EditorTheme::Color(ThemeColor::Info));
             if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);
             ImGui::SetCursorPosY(1.0f);
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
             const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
             const float progress    = hasProgress ? ctx.hotReloadProgress : t;
+            // コンパイル中は現在コンパイル対象のファイル名を重畳し、擬似進捗を実感のある表示にする。
+            const char* curFile = (compiling && ctx.buildConsole && !ctx.buildConsole->CurrentFile().empty())
+                                      ? ctx.buildConsole->CurrentFile().c_str() : nullptr;
             char progressLabel[256];
-            if (hasProgress) {
+            if (curFile) {
+                std::snprintf(progressLabel, sizeof(progressLabel), "%s  %s", label, curFile);
+            } else if (hasProgress) {
                 std::snprintf(progressLabel, sizeof(progressLabel), "%s %.0f%%", label, progress * 100.0f);
             }
-            ImGui::ProgressBar(progress, { pbW, barH - 4.0f }, hasProgress ? progressLabel : label);
+            const bool hasLabel = curFile || hasProgress;
+            ImGui::ProgressBar(progress, { pbW, barH - 4.0f }, hasLabel ? progressLabel : label);
+            // クリックで Build Output を開けるようにする。
+            if (ImGui::IsItemClicked()) ctx.requestOpenBuildOutput = true;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to open Build Output");
             ImGui::PopStyleColor(2);
         } else if (detailBaking) {
             if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);
             ImGui::SetCursorPosY(1.0f);
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.30f, 0.75f, 0.40f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, EditorTheme::Color(ThemeColor::Success));
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
             ImGui::ProgressBar(t, { pbW, barH - 4.0f }, "Baking Detail...");
             ImGui::PopStyleColor(2);
         } else {
+            // 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
+            // ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
             const char* reloadText  = nullptr;
-            ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-            if (hrs == EditorContext::HotReloadState::Done) {
-                reloadText  = ctx.hotReloadMessage.empty() ? "Reload OK" : ctx.hotReloadMessage.c_str();
-                reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };
-            } else if (hrs == EditorContext::HotReloadState::Failed) {
-                reloadText  = ctx.hotReloadMessage.empty() ? "Reload Failed" : ctx.hotReloadMessage.c_str();
-                reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };
-            } else if (!m_message.empty()) {
+            ImVec4      reloadColor = EditorTheme::Color(ThemeColor::Text);
+            char        summary[160] = {};
+
+            const BuildRecord* latest = ctx.buildConsole ? ctx.buildConsole->Latest() : nullptr;
+            if (!m_message.empty()) {
+                // 一時的な操作メッセージ (保存など) を最優先で表示する。
                 reloadText  = m_message.c_str();
-                reloadColor = { 0.6f, 0.85f, 1.0f, 1.0f };
+                reloadColor = EditorTheme::Color(ThemeColor::Info);
+            } else if (latest && latest->result == BuildRecord::Result::Failed) {
+                std::snprintf(summary, sizeof(summary), "Build failed  %d error(s)  %s",
+                              latest->errorCount, latest->startClock.c_str());
+                reloadText  = summary;
+                reloadColor = EditorTheme::Color(ThemeColor::Danger);
+            } else if (latest && latest->result == BuildRecord::Result::Success) {
+                const char* kind = latest->kind == BuildRecord::Kind::Script ? "Scripts" : "HLSL";
+                if (latest->warnCount > 0)
+                    std::snprintf(summary, sizeof(summary), "%s OK  %dW  %s (%.1fs)",
+                                  kind, latest->warnCount, latest->startClock.c_str(), latest->durationSec);
+                else
+                    std::snprintf(summary, sizeof(summary), "%s OK  %s (%.1fs)",
+                                  kind, latest->startClock.c_str(), latest->durationSec);
+                reloadText  = summary;
+                reloadColor = EditorTheme::Color(ThemeColor::Success);
             }
+
             if (reloadText) {
                 const float msgW = ImGui::CalcTextSize(reloadText).x + 8.0f;
                 const float rx   = ImGui::GetWindowWidth() - msgW;
@@ -234,6 +302,9 @@ void StatusBar::Draw(EditorContext& ctx)
                 ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
                 ImGui::TextUnformatted(reloadText);
                 ImGui::PopStyleColor();
+                // ビルド結果テキストのクリックで Build Output を開く。
+                if (latest && ImGui::IsItemClicked())  ctx.requestOpenBuildOutput = true;
+                if (latest && ImGui::IsItemHovered())  ImGui::SetTooltip("Click to open Build Output");
             }
         }
     }

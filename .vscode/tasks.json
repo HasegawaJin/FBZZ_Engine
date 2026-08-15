@@ -1,3 +1,14 @@
+// FBZZ Engine
+// tasks.json | .vscode
+// ビルド・テスト・SDK 公開の入口。
+//
+// 設計方針:
+//   - Visual Studio の場所を知っているのは Tools\VcBuild.ps1 だけ。ここには絶対パスを書かない。
+//   - configure は VcBuild.ps1 が「未 configure の時だけ」自動実行する。
+//     そのため各ビルドタスクは Configure タスクへ dependsOn しない (毎回の再構成が無駄なため)。
+//     CMakeLists.txt を編集した時は VS ジェネレーターの ZERO_CHECK が自動で再構成する。
+//   - C++ ビルドの前には必ず実行中のエンジンプロセスを落とす。
+//     起動中の Editor が FBZZEngine.dll を掴んでいると LNK1168 でリンクが失敗するため。
 {
     "version": "2.0.0",
     "windows": {
@@ -11,222 +22,398 @@
             }
         }
     },
+    "presentation": {
+        "panel": "shared",
+        "reveal": "always",
+        "clear": true
+    },
     "tasks": [
+        // ------------------------------------------------------------------
+        // プロセス停止
+        // WHY: 出力ファイルを掴んでいるプロセスを先に落とす。taskkill は対象が
+        //      居ないと exit 1 を返すので、常に exit 0 へ潰してタスク連鎖を止めない。
+        // ------------------------------------------------------------------
         {
-            "label": "CMake: Configure (Debug)",
+            "label": "Kill: Engine Processes",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --preset debug",
-            "group": "build",
-            "problemMatcher": "$msCompile",
+            "command": "taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM FBZZVFXEditor.exe >nul 2>&1 & taskkill /F /T /IM Sandbox.exe >nul 2>&1 & taskkill /F /T /IM SandboxStandalone.exe >nul 2>&1 & exit 0",
+            "problemMatcher": [],
             "presentation": {
-                "panel": "shared",
-                "reveal": "always"
+                "reveal": "silent",
+                "close": true
             }
         },
         {
-            "label": "CMake: Configure (Release)",
+            "label": "Kill: GameHub",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --preset release",
-            "group": "build",
-            "problemMatcher": "$msCompile",
+            "command": "taskkill /F /T /IM FBZZGameHub.exe >nul 2>&1 & exit 0",
+            "problemMatcher": [],
             "presentation": {
-                "panel": "shared",
-                "reveal": "always"
+                "reveal": "silent",
+                "close": true
             }
+        },
+        {
+            "label": "Kill: All FBZZ Processes",
+            "dependsOn": [
+                "Kill: Engine Processes",
+                "Kill: GameHub"
+            ],
+            "problemMatcher": []
+        },
+
+        // ------------------------------------------------------------------
+        // CMake Configure
+        // 通常は不要 (VcBuild.ps1 が初回だけ自動実行する)。
+        // CMakePresets.json やキャッシュ変数を触った後、明示的に作り直したい時に使う。
+        // ------------------------------------------------------------------
+        {
+            "label": "CMake: Configure (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" configure debug",
+            "problemMatcher": "$msCompile"
         },
         {
             "label": "CMake: Configure (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --preset development",
-            "group": "build",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" configure development",
+            "problemMatcher": "$msCompile"
         },
+        {
+            "label": "CMake: Configure (Release)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" configure release",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "CMake: Configure (SDK Publisher)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" configure sdk",
+            "problemMatcher": "$msCompile"
+        },
+
+        // ------------------------------------------------------------------
+        // CMake Build — 全ターゲット
+        // ------------------------------------------------------------------
         {
             "label": "CMake: Build All (Debug)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --parallel",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug",
             "group": "build",
-            "dependsOn": "CMake: Configure (Debug)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
-        },
-        {
-            "label": "CMake: Build All (Release)",
-            "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --parallel",
-            "group": "build",
-            "dependsOn": "CMake: Configure (Release)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
             "label": "CMake: Build All (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --parallel",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "dependsOn": "CMake: Configure (Development)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development",
+            "group": "build",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
-            "label": "CMake: Build GameHub (Debug)",
+            "label": "CMake: Build All (Release)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_hub",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release",
             "group": "build",
-            "dependsOn": "CMake: Configure (Debug)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+
+        // ------------------------------------------------------------------
+        // CMake Build — エディター (日常の編集ループで最も回す単位)
+        // WHY: Editor と VFXEditor は同じ Engine を共有し、SDK へも常に同じ版で
+        //      入るため片方だけ古い状態を作らない。1 コマンドで両方を上げる。
+        // ------------------------------------------------------------------
+        {
+            "label": "CMake: Build Editor (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZEditorLauncher FBZZVFXEditor",
+            "group": "build",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
-            "label": "CMake: Build GameHub (Release)",
+            "label": "CMake: Build Editor (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target fbzz_hub",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZEditorLauncher FBZZVFXEditor",
             "group": "build",
-            "dependsOn": "CMake: Configure (Release)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
-            "label": "CMake: Build GameHub (Development)",
+            "label": "CMake: Build Editor (Release)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_hub",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZEditorLauncher FBZZVFXEditor",
             "group": "build",
-            "dependsOn": "CMake: Configure (Development)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
+
+        // ------------------------------------------------------------------
+        // CMake Build — Sandbox
+        // ------------------------------------------------------------------
         {
             "label": "CMake: Build Sandbox (Debug)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target sandbox",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target Sandbox",
             "group": "build",
-            "dependsOn": "CMake: Configure (Debug)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
-        },
-        {
-            "label": "CMake: Build Sandbox (Release)",
-            "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target sandbox",
-            "group": "build",
-            "dependsOn": "CMake: Configure (Release)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
             "label": "CMake: Build Sandbox (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target sandbox",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target Sandbox",
             "group": "build",
-            "dependsOn": "CMake: Configure (Development)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
-            "label": "CMake: Build EditorLauncher (Debug)",
+            "label": "CMake: Build Sandbox (Release)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_editor_launcher",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target Sandbox",
             "group": "build",
-            "dependsOn": "CMake: Configure (Debug)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+
+        // ------------------------------------------------------------------
+        // テスト
+        // ------------------------------------------------------------------
+        {
+            "label": "CMake: Build Tests (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsCoreAuto",
+            "group": "build",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
-            "label": "CMake: Build EditorLauncher (Release)",
+            "label": "CMake: Build Tests (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target fbzz_editor_launcher",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsCoreAuto",
             "group": "build",
-            "dependsOn": "CMake: Configure (Release)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
-            "label": "CMake: Build EditorLauncher (Development)",
+            "label": "CMake: Build Tests (Release)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_editor_launcher",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsCoreAuto",
             "group": "build",
-            "dependsOn": "CMake: Configure (Development)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
         },
         {
-            "label": "CMake: Build Test (Debug)",
+            // gtest_discover_tests() が CTest へ登録済みなので exe 直叩きではなく ctest を通す。
+            // ManualTest は OS 状態 (Window/Cursor) を触るため CTest 未登録で、ここでは走らない。
+            "label": "Tests: Run (Debug)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_tests",
-            "group": "build",
-            "dependsOn": "CMake: Configure (Debug)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" test debug",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "dependsOn": "CMake: Build Tests (Debug)",
+            "problemMatcher": []
         },
         {
-            "label": "CMake: Build Test (Release)",
+            "label": "Tests: Run (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target fbzz_tests",
-            "group": "build",
-            "dependsOn": "CMake: Configure (Release)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" test development",
+            "group": "test",
+            "dependsOn": "CMake: Build Tests (Development)",
+            "problemMatcher": []
         },
         {
-            "label": "CMake: Build Test (Development)",
+            "label": "Tests: Run (Release)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_tests",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" test release",
+            "group": "test",
+            "dependsOn": "CMake: Build Tests (Release)",
+            "problemMatcher": []
+        },
+
+        // ------------------------------------------------------------------
+        // 共有 SDK の公開
+        // WHY: SDK は専用の sdk preset (テスト無効・ソース再ビルド無効) で作る。
+        //      成果物は SDK/<sdk-id>/ へ入り、GameHub はそこからエディターを起動する。
+        // ------------------------------------------------------------------
+        {
+            "label": "CMake: Build SDK (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build sdk sdk-debug --target FBZZSDK",
             "group": "build",
-            "dependsOn": "CMake: Configure (Development)",
-            "problemMatcher": "$msCompile",
-            "presentation": {
-                "panel": "shared",
-                "reveal": "always"
-            }
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "CMake: Build SDK (Development)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build sdk sdk-development --target FBZZSDK",
+            "group": "build",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "CMake: Build SDK (Release)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build sdk sdk-release --target FBZZSDK",
+            "group": "build",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+
+        // ------------------------------------------------------------------
+        // GameHub (Electron / TypeScript)
+        // ------------------------------------------------------------------
+        {
+            "label": "GameHub: Typecheck",
+            "type": "npm",
+            "script": "typecheck",
+            "path": "Projects/GameHub",
+            "problemMatcher": "$tsc"
+        },
+        {
+            "label": "GameHub: Build (Debug)",
+            "type": "npm",
+            "script": "build:debug",
+            "path": "Projects/GameHub",
+            "group": "build",
+            "dependsOn": "GameHub: Typecheck",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Build (Development)",
+            "type": "npm",
+            "script": "build:development",
+            "path": "Projects/GameHub",
+            "group": "build",
+            "dependsOn": "GameHub: Typecheck",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Build (Release)",
+            "type": "npm",
+            "script": "build:release",
+            "path": "Projects/GameHub",
+            "group": "build",
+            "dependsOn": "GameHub: Typecheck",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Assemble Distribution (Debug)",
+            "type": "npm",
+            "script": "assemble:debug",
+            "path": "Projects/GameHub",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Assemble Distribution (Development)",
+            "type": "npm",
+            "script": "assemble:development",
+            "path": "Projects/GameHub",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Assemble Distribution (Release)",
+            "type": "npm",
+            "script": "assemble:release",
+            "path": "Projects/GameHub",
+            "problemMatcher": []
+        },
+
+        // ------------------------------------------------------------------
+        // 統合ビルド — GameHub から実際に起動するまでの一式
+        // WHY: GameHub は SDK/<sdk-id>/tools/ のエディターを起動するため、
+        //      Hub だけ・エンジンだけを新しくしても起動するのは古い方になる。
+        //      SDK 公開 → Hub ビルドの順を固定して、その食い違いを構造的に防ぐ。
+        // ------------------------------------------------------------------
+        {
+            "label": "GameHub + SDK: Build (Debug)",
+            "dependsOn": [
+                "Kill: All FBZZ Processes",
+                "CMake: Build SDK (Debug)",
+                "GameHub: Build (Debug)"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub + SDK: Build (Development)",
+            "dependsOn": [
+                "Kill: All FBZZ Processes",
+                "CMake: Build SDK (Development)",
+                "GameHub: Build (Development)"
+            ],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub + SDK: Build (Release)",
+            "dependsOn": [
+                "Kill: All FBZZ Processes",
+                "CMake: Build SDK (Release)",
+                "GameHub: Build (Release)"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+
+        // ------------------------------------------------------------------
+        // 配布物の組み立て
+        // ------------------------------------------------------------------
+        {
+            "label": "Distribution: Assemble (Debug)",
+            "dependsOn": [
+                "GameHub + SDK: Build (Debug)",
+                "GameHub: Assemble Distribution (Debug)"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "Distribution: Assemble (Development)",
+            "dependsOn": [
+                "GameHub + SDK: Build (Development)",
+                "GameHub: Assemble Distribution (Development)"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "Distribution: Assemble (Release)",
+            "dependsOn": [
+                "GameHub + SDK: Build (Release)",
+                "GameHub: Assemble Distribution (Release)"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+
+        // ------------------------------------------------------------------
+        // EditorMcp (AI 連携サーバー)
+        // ------------------------------------------------------------------
+        {
+            "label": "EditorMcp: Build",
+            "type": "npm",
+            "script": "build",
+            "path": "Projects/EditorMcp",
+            "group": "build",
+            "problemMatcher": "$tsc"
+        },
+        {
+            "label": "EditorMcp: Test",
+            "type": "npm",
+            "script": "test",
+            "path": "Projects/EditorMcp",
+            "group": "test",
+            "problemMatcher": "$tsc"
         }
     ]
 }

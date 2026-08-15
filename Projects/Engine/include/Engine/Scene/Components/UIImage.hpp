@@ -21,6 +21,12 @@ enum class UIImageFillOrigin {
     Top    = 3, // 上端を固定し下側を削る
 };
 
+// Simpleは通常の1枚描画、SlicedはSprite Borderを保持して中央だけを伸縮する。
+enum class UIImageType {
+    Simple = 0,
+    Sliced = 1
+};
+
 struct UIImage {
     std::string   texturePath = "";
     renderer::ResourceHandle<renderer::TextureTag> texture = {};
@@ -34,8 +40,15 @@ struct UIImage {
     // UISystem が描画時に矩形と UV を fillOrigin 方向へクリップする (transform.scale は変えない)。
     float             fillAmount = 1.0f;
     UIImageFillOrigin fillOrigin = UIImageFillOrigin::Left;
+    UIImageType       imageType = UIImageType::Simple;
     // ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
     std::string   loadedTexturePath = {};
+    // Spriteサブアセット参照時に.metaから解決したUV。通常TextureではuvMin/uvMaxを使う。
+    math::Vector2 resolvedSpriteUvMin = { 0.0f, 0.0f };
+    math::Vector2 resolvedSpriteUvMax = { 1.0f, 1.0f };
+    math::Vector4 resolvedSpriteBorder = { 0.0f, 0.0f, 0.0f, 0.0f }; // L,T,R,B pixels
+    math::Vector2 resolvedTextureSize = { 0.0f, 0.0f };
+    bool          hasResolvedSprite = false;
 
     // ピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW, texH) で正規化した UV ペアに変換する。
     // スクリプトからスプライトシートの切り抜き範囲を設定するときに使う。
@@ -54,6 +67,11 @@ struct UIImage {
         r.Field("uvMin",       uvMin);
         r.Field("uvMax",       uvMax);
         r.Field("sortOrder",   sortOrder);
+        static constexpr const char* kImageTypeLabels[] = { "Simple", "Sliced" };
+        int type = static_cast<int>(imageType);
+        r.Enum("imageType", type, kImageTypeLabels);
+        type = (type < 0 || type > 1) ? 0 : type;
+        imageType = static_cast<UIImageType>(type);
         r.FloatRange("fillAmount", fillAmount, 0.0f, 1.0f);
         static constexpr const char* kFillOriginLabels[] = { "Left", "Right", "Bottom", "Top" };
         int fill = static_cast<int>(fillOrigin);

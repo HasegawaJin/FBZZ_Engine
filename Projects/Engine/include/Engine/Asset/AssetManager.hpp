@@ -35,6 +35,7 @@ namespace fbzz::asset {
 struct AnimationClip;
 struct AnimatorControllerAsset;
 struct ModelAsset;
+struct PhysicsMaterialAsset;
 struct TerrainAsset;
 struct TextureAsset;
 
@@ -173,6 +174,7 @@ public:
 private:
     static renderer::ResourceManager* s_resources;
     static std::string                s_basePath;
+    static std::string                s_engineBasePath;
     static bool                       s_initialized;
 
     static std::unordered_map<std::string, std::unique_ptr<Model>>    s_models;
@@ -216,6 +218,8 @@ template<>
 AssetHandle<TerrainAsset> AssetManager::Load<TerrainAsset>(const std::string& relativePath);
 template<>
 AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& relativePath);
+template<>
+AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath);
 
 template<>
 ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h);
@@ -229,6 +233,8 @@ template<>
 TerrainAsset* AssetManager::Get<TerrainAsset>(AssetHandle<TerrainAsset> h);
 template<>
 TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h);
+template<>
+PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h);
 
 template<>
 void AssetManager::Unload<ModelAsset>(const std::string& relativePath);
@@ -242,5 +248,7 @@ template<>
 void AssetManager::Unload<TerrainAsset>(const std::string& relativePath);
 template<>
 void AssetManager::Unload<TextureAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath);
 
 } // namespace fbzz::asset

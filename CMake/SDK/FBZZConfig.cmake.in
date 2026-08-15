@@ -2,8 +2,11 @@
 # FBZZConfig.cmake | CMake
 # 外部ゲーム向け共有 SDK package と ABI 検証
 
+@PACKAGE_INIT@
+
 set(FBZZ_VERSION "@PROJECT_VERSION@")
 get_filename_component(FBZZ_SDK_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(FBZZ_ENGINE_ASSET_ROOT "${FBZZ_SDK_ROOT}/share/fbzz/Assets")
 
 if(NOT MSVC)
     message(FATAL_ERROR "FBZZ SDK ${FBZZ_VERSION} supports MSVC only")
@@ -37,5 +40,8 @@ function(fbzz_stage_runtime TARGET_NAME)
         COMMAND "${CMAKE_COMMAND}" -E copy_directory
             "${FBZZ_SDK_ROOT}/bin/$<CONFIG>"
             "$<TARGET_FILE_DIR:${TARGET_NAME}>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${FBZZ_ENGINE_ASSET_ROOT}"
+            "$<TARGET_FILE_DIR:${TARGET_NAME}>/EngineAssets"
         COMMENT "Staging FBZZ ${FBZZ_VERSION} runtime for ${TARGET_NAME}")
 endfunction()

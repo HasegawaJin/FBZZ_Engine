@@ -4,7 +4,7 @@
 #pragma once
 
 #ifdef _WIN32
-#   ifdef fbzz_engine_EXPORTS
+#   ifdef FBZZEngine_EXPORTS
 #       define FBZZ_ENGINE_API __declspec(dllexport)
 #   else
 #       define FBZZ_ENGINE_API __declspec(dllimport)

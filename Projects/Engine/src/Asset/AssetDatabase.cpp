@@ -84,6 +84,40 @@ bool WriteGuidToMeta(const std::string& metaPath, const std::string& guid)
     return util::FileSystem::WriteText(metaPath, ss.str());
 }
 
+// "Foo.fbx" のインポートで生成される従属フォルダ "Foo/" か判定する。
+// WHY: 従属フォルダは原本モデルから再生成されるため、独立した guid を持たせない。
+//      持たせると再インポートのたびに孤児 .meta が残り、索引が汚れる。
+bool IsGeneratedModelPackageDir(const std::filesystem::path& dir)
+{
+    namespace fs = std::filesystem;
+    const std::string stem = util::FileSystem::PathToUtf8(dir.filename());
+    if (stem.empty()) return false;
+
+    // 兄弟に同名のモデル原本があれば、このフォルダはその出力先。
+    static constexpr const char* kModelExts[] = { ".fbx", ".obj", ".gltf", ".glb" };
+    for (const char* ext : kModelExts) {
+        if (util::FileSystem::Exists(dir.parent_path() / (stem + ext))) return true;
+    }
+    // 原本が消えていても、内部コンテナが残っていれば生成物と分かる。
+    std::error_code ec;
+    return fs::exists(dir / (stem + ".fzasset"), ec);
+}
+
+// 本体が存在しない孤児 .meta を削除する。
+// WHY: エディター外 (エクスプローラー / git) でアセットを消すと .meta だけが残る。
+//      放置すると Asset Browser には出ないのにファイルだけ増え続け、
+//      同名アセットを作り直したときに古い guid を拾って参照が入れ替わる。
+bool RemoveIfOrphanMeta(const std::filesystem::path& metaPath)
+{
+    const std::string metaUtf8 = util::FileSystem::PathToUtf8(metaPath);
+    // "Foo.png.meta" → "Foo.png" / "Textures.meta" → "Textures" (ディレクトリ)
+    const std::string ownerUtf8 = metaUtf8.substr(0, metaUtf8.size() - 5);
+    if (util::FileSystem::Exists(ownerUtf8)) return false;
+    if (!util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(metaUtf8))) return false;
+    FBZZ_LOG_INFO("AssetDatabase: removed orphan meta [%s]", metaUtf8.c_str());
+    return true;
+}
+
 // ロック取得済み前提でインデックスに登録する。guid 重複はエラーログを出し先勝ち。
 void RegisterLocked(const std::string& guid, const std::string& absPath)
 {
@@ -110,8 +144,15 @@ bool AssetDatabase::ShouldHaveMeta(std::string_view lowerExt)
         // モデルソース
         ".fbx",
         // native アセット (エディターで作る著作物)
-        ".mat", ".anim", ".animcontroller", ".animctrl",
+        ".mat", ".anim", ".animcontroller", ".animctrl", ".mask",
         ".scene", ".terrain", ".fzdata", ".fnt", ".ibl",
+        // 物理マテリアル。ColliderComponent がパスで参照するため GUID が要る
+        // (リネーム・移動しても参照が切れないように)。
+        ".physmat",
+        // Behavior Tree。BehaviorTreeComponent がパスで参照するため GUID が要る。
+        // NOTE: .vfx はこのリストに入っておらず GUID を持たない (既存の穴)。
+        //       .behaviortree では同じ轍を踏まない。
+        ".behaviortree",
         // シェーダーソース (.mat から参照される)
         ".hlsl",
         // オーディオ
@@ -120,6 +161,27 @@ bool AssetDatabase::ShouldHaveMeta(std::string_view lowerExt)
     for (const auto e : kExts)
         if (lowerExt == e) return true;
     return false;
+}
+
+bool AssetDatabase::ShouldHaveFolderMeta(std::string_view folderName)
+{
+    if (folderName.empty()) return false;
+
+    // ドット始まりは VCS / エディター内部の管理ディレクトリ (.git / .import_presets 等)。
+    if (folderName.front() == '.') return false;
+
+    // 再生成される中間・出力物。guid を振っても参照先として意味を持たない。
+    static constexpr std::string_view kExcluded[] = {
+        "library", "build", "temp", "obj", "bin", "intermediate", "compiled",
+    };
+    std::string lower;
+    lower.reserve(folderName.size());
+    for (const char c : folderName)
+        lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    for (const auto e : kExcluded)
+        if (lower == e) return false;
+
+    return true;
 }
 
 std::string AssetDatabase::GenerateGuid()
@@ -153,29 +215,73 @@ void AssetDatabase::Init(const std::string& assetsRoot)
         return;
     }
 
-    size_t healed = 0;
-    for (const fs::path& p : util::FileSystem::ListFilesRecursive(root)) {
-        const std::string absPath = NormalizePath(util::FileSystem::PathToUtf8(p));
-        const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
-        if (!ShouldHaveMeta(ext)) continue;
+    size_t healed  = 0;
+    size_t orphans = 0;
 
+    // .meta を持つべき対象を 1 件処理する共通クロージャ (ファイル / フォルダ共通)。
+    const auto indexTarget = [&](const std::string& absPath) {
         const std::string metaPath = absPath + ".meta";
         std::string guid = ReadGuidFromMeta(metaPath);
         if (guid.empty()) {
-            // 自己修復: .meta が無い / guid が無いアセットに新規発行する。
+            // 自己修復: .meta が無い / guid が無い対象に新規発行する。
             guid = GenerateGuid();
             if (!WriteGuidToMeta(metaPath, guid)) {
                 FBZZ_LOG_WARN("AssetDatabase: cannot write meta [%s]", metaPath.c_str());
-                continue;
+                return;
             }
             ++healed;
         }
         RegisterLocked(guid, absPath);
+    };
+
+    for (const fs::path& p : util::FileSystem::ListFilesRecursive(root)) {
+        const std::string absPath = NormalizePath(util::FileSystem::PathToUtf8(p));
+        const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
+
+        // 孤児 .meta の掃除は索引構築と同じ 1 パスで行う。
+        if (ext == ".meta") {
+            if (RemoveIfOrphanMeta(p)) ++orphans;
+            continue;
+        }
+
+        if (!ShouldHaveMeta(ext)) continue;
+        indexTarget(absPath);
+    }
+
+    // ── フォルダの .meta ──────────────────────────────────────────────────
+    // WHY: フォルダも参照される (デフォルト保存先・検索スコープ)。パスで覚えると
+    //      リネームや移動で参照が切れるため、ファイルと同じ guid 方式に揃える。
+    //      走査はファイルと分けている。ListFilesRecursive がファイルのみを返すため。
+    {
+        // NOTE: range-for は begin() が反復子のコピーを返すため disable_recursion_pending が
+        //       効かない。除外フォルダの配下を辿らないよう、明示的な while ループで回す。
+        std::error_code ec;
+        fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+        const fs::recursive_directory_iterator last;
+        while (!ec && it != last) {
+            const fs::directory_entry& entry = *it;
+
+            std::error_code dirEc;
+            if (entry.is_directory(dirEc) && !dirEc) {
+                const fs::path&   dir  = entry.path();
+                const std::string name = util::FileSystem::PathToUtf8(dir.filename());
+                // 除外フォルダと、モデルインポートの従属フォルダは配下ごと辿らない。
+                if (!ShouldHaveFolderMeta(name) || IsGeneratedModelPackageDir(dir))
+                    it.disable_recursion_pending();
+                else
+                    indexTarget(NormalizePath(util::FileSystem::PathToUtf8(dir)));
+            }
+
+            it.increment(ec);
+        }
+        if (ec) {
+            FBZZ_LOG_WARN("AssetDatabase: folder scan stopped [%s]", ec.message().c_str());
+        }
     }
 
     s_initialized = true;
-    FBZZ_LOG_INFO("AssetDatabase: indexed %zu assets (%zu meta healed) under [%s]",
-                  s_guidToPath.size(), healed, assetsRoot.c_str());
+    FBZZ_LOG_INFO("AssetDatabase: indexed %zu assets (%zu meta healed, %zu orphans removed) under [%s]",
+                  s_guidToPath.size(), healed, orphans, assetsRoot.c_str());
 }
 
 void AssetDatabase::Shutdown()
@@ -203,9 +309,16 @@ std::string AssetDatabase::GuidFromPath(const std::string& absPath)
 
     // 未登録: インデックス構築後に追加されたアセット。自己修復して登録する。
     // 実在しないパスに .meta を作らないよう必ず存在確認する。
-    const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
-    if (!ShouldHaveMeta(ext)) return {};
     if (!util::FileSystem::Exists(absPath)) return {};
+
+    if (util::FileSystem::IsDirectory(absPath)) {
+        const std::filesystem::path dir = util::FileSystem::PathFromUtf8(absPath);
+        if (!ShouldHaveFolderMeta(util::FileSystem::PathToUtf8(dir.filename()))) return {};
+        if (IsGeneratedModelPackageDir(dir)) return {};
+    } else {
+        const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
+        if (!ShouldHaveMeta(ext)) return {};
+    }
 
     const std::string metaPath = absPath + ".meta";
     std::string guid = ReadGuidFromMeta(metaPath);

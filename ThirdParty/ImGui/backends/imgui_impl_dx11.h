@@ -24,6 +24,7 @@ struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11SamplerState;
 struct ID3D11Buffer;
+struct DXGI_SWAP_CHAIN_DESC;
 
 // Follow "Getting Started" link and check examples/ folder to learn about using backends!
 IMGUI_IMPL_API bool     ImGui_ImplDX11_Init(ID3D11Device* device, ID3D11DeviceContext* device_context);
@@ -37,6 +38,13 @@ IMGUI_IMPL_API void     ImGui_ImplDX11_InvalidateDeviceObjects();
 
 // (Advanced) Use e.g. if you need to precisely control the timing of texture updates (e.g. for staged rendering), by setting ImDrawData::Textures = nullptr to handle this manually.
 IMGUI_IMPL_API void     ImGui_ImplDX11_UpdateTexture(ImTextureData* tex);
+
+// Multi-Viewports: configure templates used when creating swapchains for secondary viewports. Will try them in order.
+// [FBZZ 変更] 上流は .cpp にのみ定義し「利用側で宣言をコピーせよ」としているが、
+// 本プロジェクトは imgui を SHARED ライブラリとしてビルドしているため
+// IMGUI_IMPL_API (dllexport/dllimport) 付きの宣言がヘッダーに必要になる。
+// 手書きの extern 宣言では dllimport が付かず LNK2019 になる。
+IMGUI_IMPL_API void     ImGui_ImplDX11_SetSwapChainDescs(const DXGI_SWAP_CHAIN_DESC* desc_templates, int desc_templates_count);
 
 // [BETA] Selected render state data shared with callbacks.
 // This is temporarily stored in GetPlatformIO().Renderer_RenderState during the ImGui_ImplDX11_RenderDrawData() call.

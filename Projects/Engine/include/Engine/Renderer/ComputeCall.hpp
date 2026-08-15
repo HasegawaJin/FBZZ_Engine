@@ -19,6 +19,10 @@ struct ComputeCall {
     // WHY: GPU パーティクルのスポーンバッファ等、テクスチャとは独立した型付きバッファを CS に渡すために追加。
     std::array<ResourceHandle<StructuredBufferTag>, 2> srvBuffers       = {}; // StructuredBuffer SRV: t14〜t15
     std::array<ResourceHandle<StructuredBufferTag>, 2> uavBuffers       = {}; // RWStructuredBuffer UAV: u2〜u3
+    // GPU 書き込み可能な頂点バッファ UAV: u4。コンピュートスキニングの出力先。
+    // WHY: 出力は「CS が書いて IA が読む」二役なので StructuredBufferTag ではなく
+    //      BufferTag (頂点バッファ) 側で確保する。バインド口だけここに分けて持つ。
+    ResourceHandle<BufferTag>                         uavVertexBuffer  = {}; // u4
 
     uint32_t dispatchX = 1;
     uint32_t dispatchY = 1;

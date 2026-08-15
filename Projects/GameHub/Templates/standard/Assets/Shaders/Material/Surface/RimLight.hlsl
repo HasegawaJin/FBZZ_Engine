@@ -5,7 +5,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 
@@ -59,26 +59,12 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 result = Lighting_BlinnPhong(N, V, L, col, roughness,
                                         lightColor, lightIntensity, shadow);
 
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = toLight / dist;
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_BlinnPhong_Direct(N, V, Lp, col, roughness,
-                      pointLights[pi].color, pointLights[pi].intensity * atten);
-    }
-    [loop] for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = toLight / dist;
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_BlinnPhong_Direct(N, V, Ls, col, roughness,
-                      spotLights[si].color, spotLights[si].intensity * atten * cone);
-    }
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        result += Lighting_BlinnPhong_Direct(N, V, ps.L, col, roughness,
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
     // リムライト: Ngeo でシルエットを安定させ、rimPower=0 の pow(x,0)=1 フラッシュを防ぐ
     float rimFactor = pow(1.0f - saturate(dot(Ngeo, V)), max(rimPower, 0.01f));
