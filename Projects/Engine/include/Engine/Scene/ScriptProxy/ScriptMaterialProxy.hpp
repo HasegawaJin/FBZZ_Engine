@@ -108,6 +108,27 @@ struct ScriptMaterialProxy {
                            const MaterialRef& material,
                            uint32_t slot = 0) const;
 
+    // ── 共有 .mat アセットの読み取り (書き込みは提供しない) ────────────────
+    // 差し替え候補の .mat に書かれている値を、実際に適用する前に参照するためのもの。
+    // 例: 「被弾マテリアルの発光色を読んで、その色でヒットエフェクトを出す」。
+    //
+    // WHY 書き込み版が無いか: .mat は参照する全 GameObject が共有する実体で、
+    //     ランタイムに書き換えると 1 体だけ光らせたい演出が全体へ波及する。
+    //     さらに変更は AssetManager 上のメモリにしか残らず Play 停止でも戻らないため、
+    //     エディタセッションを汚染する。オブジェクト単位の変更は Instance() を使うこと。
+    [[nodiscard]] bool HasSharedProperty(const MaterialRef& material,
+                                         MaterialPropertyId property) const;
+    [[nodiscard]] bool TryGetSharedFloat(const MaterialRef& material,
+                                         MaterialPropertyId property, float& value) const;
+    [[nodiscard]] bool TryGetSharedVector3(const MaterialRef& material,
+                                           MaterialPropertyId property, math::Vector3& value) const;
+    [[nodiscard]] bool TryGetSharedVector4(const MaterialRef& material,
+                                           MaterialPropertyId property, math::Vector4& value) const;
+    [[nodiscard]] bool TryGetSharedColor(const MaterialRef& material,
+                                         MaterialPropertyId property, math::Vector4& value) const;
+    [[nodiscard]] bool TryGetSharedTexture(const MaterialRef& material,
+                                           MaterialPropertyId property, TextureRef& texture) const;
+
     bool EnsureMaterial(std::string_view materialPath) const;
     bool HasParam(std::string_view param) const;
     bool SetFloat(std::string_view param, float value) const;

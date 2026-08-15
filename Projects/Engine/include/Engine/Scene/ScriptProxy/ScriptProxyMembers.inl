@@ -59,3 +59,7 @@ FBZZ_PROXY_MEMBER(ScriptLifetimeProxy,      lifetime)
 // WHY: ScriptのDLL ABIで既存Proxyのオフセットを維持するため、新規Proxyは末尾へ追加する。
 FBZZ_PROXY_MEMBER(ScriptVFXProxy,           vfx)
 FBZZ_PROXY_MEMBER(ScriptGameplayProxy,      gameplay)
+FBZZ_PROXY_MEMBER(ScriptSaveProxy,          save)
+FBZZ_PROXY_MEMBER(ScriptEventProxy,         events)
+FBZZ_PROXY_MEMBER(ScriptRandomProxy,        random)
+FBZZ_PROXY_MEMBER(ScriptTweenProxy,         tween)

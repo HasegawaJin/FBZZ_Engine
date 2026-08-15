@@ -689,6 +689,17 @@ struct ImGuiReflector : scene::IReflector {
             return value.id != before;
         });
     }
+    // 型付き参照リスト。各スロットへ typeName を渡し、型不一致のドロップを拒否する。
+    void RefListField(const char* name,
+                      std::vector<scene::EntityRef>& values,
+                      const char* typeName) override
+    {
+        DrawReorderableList(name, values, [this, typeName](scene::EntityRef& value) {
+            const scene::EntityID before = value.id;
+            DrawObjectRefSlot(value.id, typeName ? typeName : "");
+            return value.id != before;
+        });
+    }
     void AssetListField(const char* name,
                         std::vector<scene::ScriptAssetReference>& values,
                         scene::ScriptAssetType type) override

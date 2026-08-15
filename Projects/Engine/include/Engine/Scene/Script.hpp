@@ -203,6 +203,14 @@ struct IReflector {
     virtual void ListField(const char* name, std::vector<math::Vector3>& values) { (void)name; (void)values; }
     virtual void ListField(const char* name, std::vector<math::Vector4>& values) { (void)name; (void)values; }
     virtual void ListField(const char* name, std::vector<EntityRef>& values) { (void)name; (void)values; }
+    // 型付きオブジェクト参照のリスト (FBZZ_REF_LIST_FIELD 用)。
+    // 既定は型情報を落として通常のリストとして扱うため、TOML 側は無変更で済む。
+    // Inspector だけが typeName を使ってドロップ可否を判定する。
+    virtual void RefListField(const char* name, std::vector<EntityRef>& values, const char* typeName)
+    {
+        (void)typeName;
+        ListField(name, values);
+    }
     virtual void AssetListField(const char* name,
                                 std::vector<ScriptAssetReference>& values,
                                 ScriptAssetType type)
@@ -674,6 +682,33 @@ struct InvokeHandle {
             ::fbzz::scene::RefTypeNameOf<Type>());                              \
     })
 
+// 型安全オブジェクト参照の可変長リスト。ウェイポイント列・砲塔の候補ターゲット・
+// スポーン地点の集合など「同じ型の参照を N 個並べる」用途に使う。
+//
+// WHY std::vector<Ref<T>> を直接リフレクタへ渡さないか:
+//   シリアライズの実体は EntityRef (= EntityID) だけで足り、リフレクタ実装 3 種
+//   (Inspector / TOML 読み / TOML 書き) が Ref<T> というテンプレートを知る必要はない。
+//   ここで EntityRef 列へ詰め替えることで、リフレクタ側は 1 つの非テンプレート
+//   オーバーロードだけを実装すればよくなる。
+//   詰め替え後は owner を貼り直す — 要素が増えたときの Ref<T> は既定構築 (owner=nullptr)
+//   で、そのままでは Get() が解決できないため。
+#define FBZZ_REF_LIST_FIELD(Type, Name, Display)                                \
+    ::std::vector<::fbzz::scene::Ref<Type>> Name;                               \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        ::std::vector<::fbzz::scene::EntityRef> _fbzz_refIds;                   \
+        _fbzz_refIds.reserve(Name.size());                                      \
+        for (const auto& _fbzz_item : Name)                                     \
+            _fbzz_refIds.push_back(_fbzz_item.ref);                             \
+        r_.RefListField(FBZZ_DISP_(Display, Name), _fbzz_refIds,                \
+            ::fbzz::scene::RefTypeNameOf<Type>());                              \
+        Name.resize(_fbzz_refIds.size());                                       \
+        for (::std::size_t _fbzz_i = 0; _fbzz_i < _fbzz_refIds.size(); ++_fbzz_i) { \
+            Name[_fbzz_i].ref   = _fbzz_refIds[_fbzz_i];                        \
+            Name[_fbzz_i].owner = this;                                         \
+        }                                                                       \
+    })
+
 // Inspector グループ見出し。順序保持のためタグを 1 つ消費する。
 #define FBZZ_GROUP(Label)     FBZZ_GROUP_(Label, __LINE__)
 #define FBZZ_GROUP_(Label, L) FBZZ_GROUP__(Label, L)
@@ -770,6 +805,24 @@ public:
     virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 
+    // ── 固定ステップ更新 ────────────────────────────────────────────────────
+    // Phase::Physics と同じ固定タイムステップ (既定 60Hz) で、物理の直前に呼ばれる。
+    // フレームレートに関わらず 1 秒あたりの呼び出し回数が一定なので、力の加算や
+    // 移動量の積分はここへ置くと PC 性能で挙動が変わらない。
+    // 経過時間は time.DeltaTime() ではなく time.FixedDeltaTime() を使うこと。
+    //
+    // WHY OnUpdate と分けるか: OnUpdate は描画フレームごと (可変 dt) に 1 回で、
+    //     入力の取りこぼしを避けたい処理や見た目の更新に向く。両者は呼ばれる回数が
+    //     違うため、物理に効く処理を OnUpdate に書くと重い/軽い環境で結果がずれる。
+    virtual void OnFixedUpdate() {}
+
+    // ── オブジェクトプール ──────────────────────────────────────────────────
+    // scene.Spawn() で貸し出された / scene.Despawn() で返却された瞬間に呼ばれる。
+    // 再利用インスタンスでは OnAwake / OnStart は再発火しないため、
+    // 「毎回リセットしたい状態」(HP・経過時間・軌跡バッファ) はここで初期化する。
+    virtual void OnSpawn() {}
+    virtual void OnDespawn() {}
+
     bool enabled = true;
 
     // Proxy — カテゴリごとに責務を分け、Script.hpp の肥大化を避ける。
@@ -859,6 +912,10 @@ private:
     friend struct ScriptVolumeProxy;
     friend struct ScriptReflectionProbeProxy;
     friend struct ScriptLifetimeProxy;
+    friend struct ScriptSaveProxy;
+    friend struct ScriptEventProxy;
+    friend struct ScriptRandomProxy;
+    friend struct ScriptTweenProxy;
 
     struct InvokeEntry {
         std::function<void()> fn;

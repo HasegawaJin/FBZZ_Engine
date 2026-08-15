@@ -4,6 +4,7 @@
 // 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
 // RenderSystem は BeginFrame / EndFrame の都合でゲームループ側から呼ぶ。
 #include "Engine/Scene/SceneManager.hpp"
+#include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Systems/FoliageBakeSystem.hpp"
@@ -53,7 +54,9 @@ void SceneManager::BuildScheduler()
     // PrePhysics
     m_scheduler.AddSystem<TransformPrePhysics>();
 
-    // Physics
+    // Physics (固定ステップ)
+    // FixedScriptSystem は OrderingHints で PhysicsSystem より前に並ぶ。
+    m_scheduler.AddSystem<FixedScriptSystem>();
     m_scheduler.AddSystem<PhysicsSystem>();
 
     // PostPhysics
@@ -123,10 +126,15 @@ void SceneManager::ClearScenes()
 {
     // 外部Sceneとowned Sceneは通常別実体だが、同じ実体を二重にClearしないよう比較する。
     Scene* const external = m_externalScene;
-    if (external)
+    if (external) {
+        // プールの待機列は EntityID を保持するため、Scene を空にする前に捨てる。
+        PrefabPool::Clear(*external);
         external->Clear();
-    if (m_active && m_active.get() != external)
+    }
+    if (m_active && m_active.get() != external) {
+        PrefabPool::Clear(*m_active);
         m_active->Clear();
+    }
 
     // WHAT: owned Scene自体もDLLロード中に破棄し、仮想デストラクタの呼び残しを防ぐ。
     m_active.reset();

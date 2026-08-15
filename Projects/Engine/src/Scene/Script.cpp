@@ -4,6 +4,7 @@
 // template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
@@ -203,6 +204,12 @@ void Script::TickCoroutines()
 
 void Script::CancelEventSubscriptions()
 {
+    // ScriptEventBus の購読はオーナー単位で一括解除する。
+    // WHY ここで必ず行うか: ~Script から通るこの経路が、DLL ホットリロードで
+    //     解放されるコードを指すハンドラがバスに残らないことの唯一の保証になる。
+    ScriptEventBus::UnsubscribeOwner(this);
+
+    // 個別に登録された解除処理 (将来の別バス用の拡張点)。
     for (auto& unsubscribe : m_eventUnsubscribers) {
         if (unsubscribe) unsubscribe(this);
     }
