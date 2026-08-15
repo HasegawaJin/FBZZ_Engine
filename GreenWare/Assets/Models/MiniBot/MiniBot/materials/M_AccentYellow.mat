@@ -1,0 +1,15 @@
+mesh_type = 'skinned'
+name = 'M_AccentYellow'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.6200000047683716, 0.23999999463558197, 0.10999999940395355, 1.0 ]
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10000000149011612
+metallic = 0.0
+roughness = 0.2800000309944153
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

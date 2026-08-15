@@ -420,9 +420,11 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                     dc.constantBuffers[0] = handles.frameCB;
                     dc.constantBuffers[2] = handles.detailGrassCB;
                     dc.constantBuffers[3] = handles.lightCB;
+                    if (!ctx.isDeferred)
+                        BindClusterLighting(dc, ctx);
                     dc.textures[0]        = albedoTex;
 
-                    renderer.Submit(dc, resources);
+                    SubmitCounted(ctx, dc);
                 }
                 else
                 {
@@ -462,9 +464,12 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                         dc.instanceBuffer = instBuf;
                         dc.constantBuffers[0] = handles.frameCB;
                         dc.constantBuffers[2] = matCBH;
+                        dc.constantBuffers[3] = handles.lightCB;
+                        if (!ctx.isDeferred)
+                            BindClusterLighting(dc, ctx);
                         dc.textures[0]        = albedoTex;
 
-                        renderer.Submit(dc, resources);
+                        SubmitCounted(ctx, dc);
                     };
 
                     if (isBillboard) {

@@ -4,6 +4,7 @@ out/
 build_log.txt
 .cache/
 /SDK/
+/Artifacts/
 
 # CMake
 CMakeCache.txt
@@ -61,6 +62,11 @@ Thumbs.db
 # Library — import 生成物 (baked) のキャッシュ。ソースから再生成できるため追跡しない
 **/Library/
 
+# .fbzz — エディターのプロジェクトローカル作業領域。
+# Trash/ には Asset Browser で削除したアセットの実体が退避される (自動削除しない) ため、
+# 追跡すると「消したはずのもの」が履歴に残り続ける。
+**/.fbzz/
+
 # Assets — 大容量バイナリ素材のみ除外 (10MB 超の恐れがあるもの)
 # **/Assets/** とすることで Projects/GameHub/Templates/standard/Assets/ 等にも適用
 # テキスト系 (シェーダー / スクリプト / マテリアル定義 / シーン) は追跡する
@@ -89,3 +95,11 @@ Thumbs.db
 
 # Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
 Projects/GameHub/Templates/standard/Assets/Nature/Tree/**
+
+# Python bytecode (Tools/BlenderExport など)
+__pycache__/
+*.pyc
+
+# 手動バックアップファイル
+*.bak
+*.bak_*

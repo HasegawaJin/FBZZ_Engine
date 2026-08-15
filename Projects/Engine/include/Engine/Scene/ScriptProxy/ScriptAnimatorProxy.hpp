@@ -3,6 +3,8 @@
 // Script から AnimatorComponent を操作するショートハンド
 #pragma once
 
+#include <Math/Quaternion.hpp>
+#include <Math/Vector3.hpp>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -47,6 +49,55 @@ struct ScriptAnimatorProxy {
     void        Play(std::string_view stateName) const;
     void        SetSpeed(GameObject* go, float speed) const;
     void        Play(GameObject* go, std::string_view stateName) const;
+    void        SetLayerWeight(std::string_view layerName, float weight) const;
+    float       GetLayerWeight(std::string_view layerName) const;
+
+    // ── レイヤー制御 (上半身 / 下半身の出し分け) ─────────────────────────────
+    // レイヤーの現在ステート名。独自ステートマシンを持たないレイヤーは stateName を返す。
+    std::string GetLayerState(std::string_view layerName) const;
+    bool        IsLayerInState(std::string_view layerName, std::string_view stateName) const;
+    // レイヤーのステートマシンを指定ステートへ即座に飛ばす (クロスフェードなし)。
+    void        PlayLayerState(std::string_view layerName, std::string_view stateName) const;
+    // レイヤーのマスクを差し替える (.mask アセットのパス)。空文字列でマスク解除。
+    // WHY: 同じ上半身レイヤーを、武器種によって「腕だけ」「腕＋頭」と切り替えたいことがある。
+    void        SetLayerMask(std::string_view layerName, std::string_view maskPath) const;
+
+    // ── Slot (ワンショット差し込み) ──────────────────────────────────────────
+    // 指定レイヤーへクリップを割り込ませる。終端に達すると自動でフェードアウトする。
+    // 例: 移動を流したまま上半身レイヤーへ攻撃モーションを差し込む。
+    void  PlaySlot(std::string_view layerName, std::string_view sourcePath,
+                   std::string_view clipName,
+                   float fadeIn = 0.15f, float fadeOut = 0.15f,
+                   float speed = 1.0f, bool loop = false) const;
+    void  StopSlot(std::string_view layerName, float fadeOut = -1.0f) const;
+    bool  IsSlotPlaying(std::string_view layerName) const;
+    float GetSlotWeight(std::string_view layerName) const;
+    void        SetMorphWeight(std::string_view morphName, float weight) const;
+    float       GetMorphWeight(std::string_view morphName) const;
+
+    // ── Root Motion ─────────────────────────────────────────────────────────
+    // 移動の権威を Script 側へ持ってくるときは Script::OnAnimatorMove() を使うこと。
+    // 下のアクセサは「エンジンが適用した結果を後から読む」用途で、AnimatorSystem が
+    // Phase::LateUpdate に居るため OnUpdate から呼ぶと 1 フレーム前の値になる。
+    math::Vector3    GetRootMotionDeltaPosition() const;   // ローカル空間の移動量
+    math::Quaternion GetRootMotionDeltaRotation() const;
+    math::Vector3    GetRootMotionWorldDelta() const;      // ワールド空間の移動量
+    math::Vector3    GetRootMotionWorldVelocity() const;   // ワールド空間の速度 (m/s)
+    float            GetRootMotionDeltaTime() const;
+    // エンジンが Transform / RigidBody へ適用済みか。ExtractOnly なら false。
+    bool             IsRootMotionAppliedByEngine() const;
+
+    // ルートモーションの受け取り方を実行時に切り替える。
+    // mode: 0=None / 1=ApplyToTransform / 2=ExtractOnly / 3=ApplyToRigidBody
+    // WHY: 「通常移動はスクリプト制御、攻撃モーションの間だけルートモーションに任せる」
+    //      という切り替えは Inspector の固定設定では表現できない。
+    void  SetRootMotionMode(int mode) const;
+    int   GetRootMotionMode() const;
+    // 抽出したルートモーションへ掛ける倍率。アニメの歩幅とゲーム速度を合わせる調整用。
+    void  SetRootMotionPositionScale(float scale) const;
+    void  SetRootMotionRotationScale(float scale) const;
+    // 名前指定でルートモーショントラックを差し替える。空文字列でクリップ指定へ戻す。
+    void  SetRootMotionNodeName(std::string_view nodeName) const;
 };
 
 } // namespace fbzz::scene

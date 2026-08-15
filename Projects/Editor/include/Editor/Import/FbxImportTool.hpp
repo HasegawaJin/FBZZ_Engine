@@ -4,7 +4,7 @@
 //
 // 新パイプライン出力構造:
 //   Library/Baked/<fbx-guid>/<name>.fzasset ← 統合モデルバイナリ (FZMD)
-//   outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v2
+//   outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v3
 //   outputDir/materials/<MaterialName>.mat ← マテリアル TOML
 //   outputDir/textures/*.png     ← テクスチャコピー + *.png.meta 自動生成
 //   <source>.fbx.meta            ← GUID + モデル import 設定
@@ -29,6 +29,8 @@ struct FbxImportOptions {
     asset::TextureCompression     defaultCompression     = asset::TextureCompression::Auto;
     std::vector<std::string>      selectedMeshNames;
     std::vector<std::string>      selectedAnimNames;
+    // ルートモーションを取り出すノード名 (空 = 候補名から自動判定)。
+    std::string                   rootMotionNodeName;
 };
 
 struct FbxScanResult {

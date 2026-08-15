@@ -55,8 +55,6 @@ struct ScriptTransformProxy {
     float   DistanceTo  (const GameObject& other)              const;
     math::Vector3 DirectionTo(const GameObject& other)         const;
 
-    [[deprecated("Use transform.position / transform.worldPosition directly")]]
-    Transform* operator->() const;
 };
 
 } // namespace fbzz::scene

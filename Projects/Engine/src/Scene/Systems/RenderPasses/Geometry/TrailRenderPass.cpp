@@ -28,32 +28,15 @@ namespace fbzz::scene {
 
 namespace {
 
-// TrailVertex — Assets/Shaders/Material/Effects/Trail.hlsl の VS 入力と一致する CPU 頂点。
-struct TrailVertex {
-    math::Vector3 position;
-    float         age;
-    float         v;
-    float         u;
-};
-
-// TrailCB — TrailConstants(cbuffer b2) の C++ ミラー。
-struct TrailCB {
-    math::Vector4 colorStart;
-    math::Vector4 colorEnd;
-    float uvScrollSpeed = 0.0f;
-    float uvTiling = 1.0f;
-    float time = 0.0f;
-    float _pad = 0.0f;
-};
+// TrailVertex / TrailCB の定義は GeometryPasses.hpp。
+// WHY: per-particle Trail のリボン (ParticlePass.cpp) が同じ頂点・同じ CB・同じシェーダーを使う。
+//      ここに閉じたままだと、片方だけ直して「Trail ノードは正しいが粒子の帯は崩れる」形で壊れる。
 
 // TrailDrawItem — Trail の透明描画をカメラから遠い順へ並べるための一時データ。
 struct TrailDrawItem {
     renderer::DrawCall drawCall;
     float distanceSq = 0.0f;
 };
-
-static_assert(sizeof(TrailVertex) == 24, "TrailVertex layout mismatch");
-static_assert(sizeof(TrailCB) == 48, "TrailCB layout mismatch");
 
 void InitTrailStorage(TrailComponent& trail)
 {
@@ -328,15 +311,10 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
                 trail.loadedTexturePath = resolvedTex;
             }
         }
-    } else if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
-        // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
-        if (trail.texturePath.empty()) {
-            static const uint8_t white[4] = { 255, 255, 255, 255 };
-            trail.texture = resources.CreateTexture(white, 1, 1);
-        } else {
-            trail.texture = resources.LoadTexture(trail.texturePath);
-        }
-        trail.loadedTexturePath = trail.texturePath;
+    } else if (!trail.texture.IsValid()) {
+        static const uint8_t white[4] = { 255, 255, 255, 255 };
+        trail.texture = resources.CreateTexture(white, 1, 1);
+        trail.loadedTexturePath.clear();
     }
 }
 
@@ -425,7 +403,20 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
 
         EnsureResources(*trail, ctx);
 
-        if (trail->enabled) {
+        if (trail->enabled && trail->beamMode) {
+            const auto transformPoint = [&go](const math::Vector3& local) {
+                const math::Vector3 scaled{ local.x * go.transform.worldScale.x,
+                                            local.y * go.transform.worldScale.y,
+                                            local.z * go.transform.worldScale.z };
+                return go.transform.worldPosition + go.transform.worldRotation * scaled;
+            };
+            trail->ringHead = 0;
+            trail->ringTail = 0;
+            trail->ringCount = 0;
+            RingPushBack(*trail, { transformPoint(trail->beamStart), currentTime });
+            RingPushBack(*trail, { transformPoint(trail->beamEnd), currentTime });
+            trail->lastSampleTime = currentTime;
+        } else if (trail->enabled) {
             const math::Vector3 samplePos = ResolveTrailSamplePosition(ctx.scene, go, *trail);
             UpdateTrailPoints(*trail, samplePos, currentTime);
         }
@@ -471,13 +462,8 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
         return a.distanceSq > b.distanceSq;
     });
 
-    for (const auto& item : drawItems) {
-        renderer.Submit(item.drawCall, resources);
-
-        ++ctx.statsDrawCalls;
-        ctx.statsVertexCount += static_cast<int>(item.drawCall.vertexCount);
-        ctx.statsTriangleCount += static_cast<int>(item.drawCall.vertexCount / 3u);
-    }
+    for (const auto& item : drawItems)
+        SubmitCounted(ctx, item.drawCall);
 }
 
 } // namespace fbzz::scene

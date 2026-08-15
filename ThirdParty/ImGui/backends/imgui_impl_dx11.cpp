@@ -716,13 +716,18 @@ struct ImGui_ImplDX11_ViewportData
 };
 
 // Multi-Viewports: configure templates used when creating swapchains for secondary viewports. Will try them in order.
-// This is intentionally not declared in the .h file yet, so you will need to copy this declaration:
-void ImGui_ImplDX11_SetSwapChainDescs(const DXGI_SWAP_CHAIN_DESC* desc_templates, int desc_templates_count);
-void ImGui_ImplDX11_SetSwapChainDescs(const DXGI_SWAP_CHAIN_DESC* desc_templates, int desc_templates_count)
+// [FBZZ 変更] 上流はこの関数を .h に宣言せず「呼び出し側で宣言をコピーせよ」としているが、
+// 本プロジェクトは imgui を SHARED ライブラリとしてビルドしている (ThirdParty/CMakeLists.txt)。
+// IMGUI_IMPL_API (= dllexport/dllimport) を付けないと DLL から公開されず、
+// 利用側で LNK2019 未解決シンボルになる。宣言は imgui_impl_dx11.h へ移した。
+IMGUI_IMPL_API void ImGui_ImplDX11_SetSwapChainDescs(const DXGI_SWAP_CHAIN_DESC* desc_templates, int desc_templates_count)
 {
     ImGui_ImplDX11_Data* bd = ImGui_ImplDX11_GetBackendData();
     bd->SwapChainDescsForViewports.resize(desc_templates_count);
-    memcpy(bd->SwapChainDescsForViewports.Data, desc_templates, sizeof(DXGI_SWAP_CHAIN_DESC));
+    // [FBZZ 変更] 上流は件数によらず 1 件分しかコピーしておらず、2 件以上渡すと
+    // 2 件目以降が未初期化のまま SwapChain 作成に使われる。件数分コピーする。
+    memcpy(bd->SwapChainDescsForViewports.Data, desc_templates,
+           sizeof(DXGI_SWAP_CHAIN_DESC) * (size_t)desc_templates_count);
 }
 
 static void ImGui_ImplDX11_CreateWindow(ImGuiViewport* viewport)

@@ -136,6 +136,11 @@ void AudioManager::SetVoicePan(uint32_t voiceId, float pan)
     if (voiceId != 0) m_device.SetPan(voiceId, pan);
 }
 
+void AudioManager::SetVoiceLowPass(uint32_t voiceId, float normalizedCutoff)
+{
+    if (voiceId != 0) m_device.SetLowPass(voiceId, normalizedCutoff);
+}
+
 bool AudioManager::IsVoicePlaying(uint32_t voiceId)
 {
     if (voiceId == 0) return false;

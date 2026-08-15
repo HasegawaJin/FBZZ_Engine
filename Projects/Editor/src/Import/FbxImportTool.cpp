@@ -111,18 +111,25 @@ FbxSourceDcc ResolveSourceDcc(FbxSourceDcc option, const aiScene* scene)
 
 // Blender 製 FBX のルート焼き込み変換を正規化する ("Apply Transform" 相当)。
 //
-// Blender の FBX エクスポーターは座標系変換 (Z-up→Y-up の +90°X 回転) と単位変換
+// Blender の FBX エクスポーターは座標系変換 (Z-up→Y-up の -90°X 回転) と単位変換
 // (m→cm のスケール 100) を頂点に適用せず、RootNode 直下のオブジェクトノードへ焼き込む。
 // アニメーションも同ノードのトラックが同じ回転・スケールを毎キー再生して自己整合させている。
 // このままだと骨階層に scale=100 の中間ノードが入り、IK / 物理 / トレイルなど
 // 「Y-up / m / scale1」を前提とするランタイム系が全て破綻する。
 //
-// 正規化 = 全ノードのグローバル変換に F = Rot(q⁻¹)·Scale(1/s) を左掛けすること。
-//   - RootNode 直下ノードのローカルだけが変わり、子孫のローカル変換は数学的に不変
+// 正規化 = 全ノードのグローバル変換に F = Scale(1/s) を左掛けすること。
+//   - RootNode 直下ノードのローカルからスケールだけが消え、子孫のローカル変換は不変
 //   - ボーンの offsetMatrix も (F·Gb)⁻¹·(F·Gm) = Gb⁻¹·Gm で不変
 //   - 除去したスケール s は unitScale へ移すため、正味のモデルサイズも不変
 // よってシーン側はここでの書き換えだけで完結し、AnimSubExporter が同名トラックの
 // キーへ同じ F を合成すれば全データが整合する。
+//
+// WHY 回転は剥がさない: 頂点・ボーンの生データは Blender の Z-up のままで、
+//   Y-up への変換はこの root ノードの -90°X 回転だけが担っている。かつて F に
+//   Rot(q⁻¹) を含めて回転ごと除去していたが、それはモデルを Z-up のまま取り込む
+//   ことに等しく、gravity = (0,-9.81,0) / worldUp = (0,1,0) の Y-up ランタイムでは
+//   全アセットが 90° 倒れて表示されていた。除去してよいのはランタイムの前提を壊す
+//   scale=100 だけで、回転はバインド姿勢として保持するのが正しい。
 bool NormalizeBlenderRootTransforms(const aiScene* constScene, FbxImportContext& ctx)
 {
     // WHY: Assimp::Importer が所有する読み取り専用シーンをエクスポート前に補正する。
@@ -150,9 +157,10 @@ bool NormalizeBlenderRootTransforms(const aiScene* constScene, FbxImportContext&
     }
     if (!foundBasis) return false;
     const float s = s0.x;
-    const bool identityRotation = std::abs(q0.w) > 0.99996f; // ずれ 1° 未満は無視
-    const bool identityScale    = std::abs(s - 1.0f) < 1e-3f;
-    if (identityRotation && identityScale) return false;
+    // 除去対象はスケールのみ。scale≈1 なら (回転が -90°X でも) 触る必要がない。
+    // 例: apply_scale_options=FBX_SCALE_ALL の Blender FBX は 100 を UnitScaleFactor
+    //     へ入れてノードには scale 1 を書くため、この時点で既に整合している。
+    if (std::abs(s - 1.0f) < 1e-3f) return false;
 
     // 非均一スケールは想定外 (Blender は均一 100 を焼く)。安全側に倒して無補正。
     if (std::abs(s0.y - s) > std::abs(s) * 1e-3f ||
@@ -187,32 +195,45 @@ bool NormalizeBlenderRootTransforms(const aiScene* constScene, FbxImportContext&
         }
     }
 
-    // F を各 Root 直下子のローカルへ適用: 回転→identity、スケール→1、位置→q⁻¹·(p/s)。
-    const aiQuaternion invQ(q0.w, -q0.x, -q0.y, -q0.z); // 単位クォータニオンの共役 = 逆
+    // F = Scale(1/s) を各 Root 直下子のローカルへ適用。
+    //   M = T(p)·R(q)·S(s·I) に対し Scale(1/s)·M = T(p/s)·R(q)·S(1)
+    // 回転 R(q) はそのまま残す (Z-up→Y-up のバインド姿勢そのもの)。
+    //
+    // NOTE: 2026-08 に「R をノードから消して入れ子の二重掛けを無くす」試みを
+    //   2 通り (左掛け / 基底変換) 行ったがいずれも失敗し revert した。
+    //   - 左掛け (L→R·L) は W(bone) を保つ変換なので R が 1 段下へ移るだけで無意味
+    //   - 基底変換 (L→R·L·R⁻¹) は理屈は合うが offset・アニメキー・ルートモーションまで
+    //     一斉に整合させる必要があり、スキニングとアウトラインが別版を見る不整合が出た
+    //   入れ子時の二重掛けは scene::AttachToSocket() が実測で吸収するため、
+    //   インポート層は初版の「回転は残す」方針を維持する。
     for (uint32_t i = 0; i < root->mNumChildren; ++i) {
         aiNode* child = root->mChildren[i];
         aiVector3D cs, cp;
         aiQuaternion cq;
         child->mTransformation.Decompose(cs, cq, cp);
         if (!matchesBasis(cs, cq)) continue;
-        const aiVector3D newPos   = invQ.Rotate(cp * (1.0f / s));
+        const aiVector3D newPos   = cp * (1.0f / s);
         const aiVector3D newScale(cs.x / s, cs.y / s, cs.z / s);
-        const aiQuaternion newRot = invQ * cq; // ≈ identity
-        child->mTransformation = aiMatrix4x4(newScale, newRot, newPos);
+        child->mTransformation = aiMatrix4x4(newScale, cq, newPos);
         ctx.axisFixNodes.push_back(child->mName.C_Str());
     }
 
-    ctx.axisFixRotation[0] = q0.x;
-    ctx.axisFixRotation[1] = q0.y;
-    ctx.axisFixRotation[2] = q0.z;
-    ctx.axisFixRotation[3] = q0.w;
     ctx.axisFixScale = s;
+
+    // ノードに残した回転はスキンメッシュ頂点へ焼き込む (詳細は
+    // FbxImportContext::bindBakeRotation のコメント)。スケールは含めない。
+    ctx.bindBakeRotation[0] = q0.x;
+    ctx.bindBakeRotation[1] = q0.y;
+    ctx.bindBakeRotation[2] = q0.z;
+    ctx.bindBakeRotation[3] = q0.w;
     // 除去したスケールは単位系へ移す (頂点・骨 translation・アニメキーに一律で掛かる)。
     ctx.unitScale *= s;
 
-    FBZZ_LOG_INFO("FbxImportTool: Blender axis fix applied (rot %.1fdeg, scale %.1f) to %zu root node(s)",
+    FBZZ_LOG_INFO("FbxImportTool: Blender scale fix applied (scale %.1f, root rotation %.1fdeg kept) "
+                  "to %zu root node(s)",
+                  s,
                   2.0 * std::acos(std::min(1.0f, std::abs(q0.w))) * 180.0 / 3.14159265,
-                  s, ctx.axisFixNodes.size());
+                  ctx.axisFixNodes.size());
     return true;
 }
 
@@ -307,6 +328,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     ctx.defaultCompression      = options.defaultCompression;
     ctx.selectedMeshNames       = options.selectedMeshNames;
     ctx.selectedAnimNames       = options.selectedAnimNames;
+    ctx.rootMotionNodeName      = options.rootMotionNodeName;
     ctx.applyStaticNodeTransforms = !hasSkin && sourceDcc == FbxSourceDcc::Blender;
 
     // ── DCC 座標系補正 ───────────────────────────────────────────────────

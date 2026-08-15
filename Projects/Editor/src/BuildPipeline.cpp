@@ -416,6 +416,24 @@ bool BuildPipeline::ExecuteStep()
             }
         }
 
+        // --- 入力バインド (.inputactions) をコピー ---
+        // WHY 必須か: ProjectSettings.toml と同じディレクトリの Input.inputactions を
+        //      ランタイムが読む。これを配布物へ入れ忘れると、ビルドしたゲームだけ
+        //      既定バインドに戻り、エディタで設定したキーコンフィグが反映されない。
+        // WHY 存在しなくても失敗にしないか: 入力設定は任意。無ければ既定バインドで動く。
+        {
+            const std::filesystem::path settingsDir =
+                std::filesystem::path(settingsRelPath).parent_path();
+            const std::filesystem::path relative = settingsDir / "Input.inputactions";
+            const std::filesystem::path src = root / relative;
+            if (util::FileSystem::Exists(src)) {
+                if (!util::FileSystem::CopyFile(src, m_tmpDir / relative)) {
+                    SetFailed("Failed to copy input bindings: " + util::FileSystem::PathToUtf8(src));
+                    return false;
+                }
+            }
+        }
+
         // --- シーンをコピー ---
         // WHY: EnabledScenes() は BuildSettings パネルでユーザーが手動追加したシーン。
         //      それに加えて ProjectSettings の runtime.start_scene / project.default_scene も

@@ -44,9 +44,6 @@ struct ScriptTrailProxy {
     // SetColor — 最新点と最古点の色を設定する。
     void SetColor(const math::Vector4& start, const math::Vector4& end) const;
 
-    // SetTexture — Trail テクスチャと UV スクロールを設定する。
-    void SetTexture(std::string_view texturePath, float uvTiling = 1.0f, float uvScrollSpeed = 0.0f) const;
-
     // SetMaterial — Trail 用 .mat アセットを指定する。空文字で materialPath を解除する。
     void SetMaterial(std::string_view materialPath) const;
 

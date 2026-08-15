@@ -56,6 +56,8 @@ void DX12UploadArena::BeginFrame(uint32_t frameIndex)
 {
     m_currentFrame = frameIndex % FRAME_COUNT;
     m_frames[m_currentFrame].offset = 0;
+    // ここで配り直しが始まる = 既に配ったアドレスは無効。世代を進めて呼び出し側へ知らせる。
+    ++m_epoch;
 }
 
 DX12UploadArena::Allocation DX12UploadArena::Allocate(size_t sizeBytes, size_t alignment)

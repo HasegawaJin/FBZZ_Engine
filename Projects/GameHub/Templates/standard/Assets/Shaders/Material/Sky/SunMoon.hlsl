@@ -3,7 +3,7 @@
 // スカイドーム上へ太陽・月ディスクだけを加算描画する
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/Atmosphere.hlsli"
 
 struct SkyVSInput
@@ -32,7 +32,8 @@ float4 PSMain(SkyPSInput p) : SV_Target0
     float3 ray    = normalize(p.rayDir);
     float3 sunDir = normalize(-lightDir);
 
-    float3 color = SunDisk(ray, sunDir, sunIntensity * lightIntensity);
+    // skyDimmer で昼夜の明るさを取る (Skydome と同じ軸に揃え、太陽ディスクと空を一致させる)。
+    float3 color = SunDisk(ray, sunDir, sunIntensity * skyDimmer);
     if (moonEnabled > 0.5f)
     {
         float3 moonDir = -sunDir;

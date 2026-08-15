@@ -44,7 +44,7 @@ public:
     ResourceHandle<ShaderTag> ReloadShader(std::string_view path);
 
     // HLSL ホットリロード: キャッシュ済みシェーダーをすべて再読み込みする。
-    // WHY: HLSL ファイル変更時に compile_shaders.bat が全シェーダーを再コンパイルするため、
+    // WHY: HLSL変更時にcompile_shaders.ps1が影響を受けたシェーダーを再コンパイルするため、
     //      個別パスではなく一括で呼ぶ方が効率的。
     void ReloadAllShaders();
     // デバイスロスト復帰用に全 GPU リソースを破棄し、次フレームの遅延再生成を促す。
@@ -61,6 +61,9 @@ public:
         const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth);
 
     ResourceHandle<BufferTag> CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride);
+    // CS が書き込み、IA が頂点として読むバッファ (コンピュートスキニングの出力先)。
+    // 未対応バックエンドでは無効ハンドルが返る。呼び出し側は VS スキニングへフォールバックすること。
+    ResourceHandle<BufferTag> CreateGpuWritableVertexBuffer(size_t bytes, uint32_t stride);
     ResourceHandle<BufferTag> CreateIndexBuffer(const void* data, uint32_t count);
     ResourceHandle<ConstantBufferTag> CreateConstantBuffer(size_t sizeBytes);
     ResourceHandle<PipelineStateTag> CreatePipelineState(const PipelineStateDesc& desc);

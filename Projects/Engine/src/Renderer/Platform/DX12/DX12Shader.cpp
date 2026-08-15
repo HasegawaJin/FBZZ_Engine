@@ -4,6 +4,7 @@
 #include "DX12Shader.hpp"
 
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
 #include <Engine/Renderer/ShaderDependencyTracker.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
@@ -97,6 +98,7 @@ std::vector<uint8_t> CompileShader(
     const std::string& path, const char* entryPoint, const char* target,
     const std::string& csoSavePath)
 {
+    ClearShaderCompileDiagnosticsFor(path, entryPoint, target);
     const std::wstring resolved = ResolveShaderPath(path);
     std::filesystem::path shaderRoot = std::filesystem::path(resolved).parent_path();
     while (!shaderRoot.empty()) {
@@ -108,13 +110,18 @@ std::vector<uint8_t> CompileShader(
     Microsoft::WRL::ComPtr<IDxcUtils> utils;
     Microsoft::WRL::ComPtr<IDxcCompiler3> compiler;
     if (!CreateDxcServices(utils, &compiler)) {
-        FBZZ_LOG_ERROR("DX12Shader: dxcompiler.dll を読み込めません。DXC を実行ファイルの隣へ配置するか FBZZ_DXC を設定してください");
+        const std::string message =
+            "dxcompiler.dll を読み込めません。DXC を実行ファイルの隣へ配置するか FBZZ_DXC を設定してください";
+        FBZZ_LOG_ERROR("DX12Shader: %s", message.c_str());
+        ReportShaderCompileDiagnostic(path, entryPoint, target, message, true);
         return {};
     }
 
     Microsoft::WRL::ComPtr<IDxcBlobEncoding> source;
     if (FAILED(utils->LoadFile(resolved.c_str(), nullptr, &source))) {
-        FBZZ_LOG_ERROR("DX12Shader: HLSLを読み込めません: %s", path.c_str());
+        const std::string message = "HLSLを読み込めません";
+        FBZZ_LOG_ERROR("DX12Shader: %s: %s", message.c_str(), path.c_str());
+        ReportShaderCompileDiagnostic(path, entryPoint, target, message, true);
         return {};
     }
     const std::wstring wideEntry = util::StringUtils::ToWide(entryPoint);
@@ -138,20 +145,26 @@ std::vector<uint8_t> CompileShader(
     Microsoft::WRL::ComPtr<IDxcResult> result;
     if (FAILED(compiler->Compile(&sourceBuffer, arguments.data(),
                                  static_cast<uint32_t>(arguments.size()), includeHandler.Get(),
-                                 IID_PPV_ARGS(&result))))
+                                 IID_PPV_ARGS(&result)))) {
+        const std::string message = "DXCコンパイラの呼び出しに失敗しました";
+        FBZZ_LOG_ERROR("DX12Shader: %s: %s", message.c_str(), path.c_str());
+        ReportShaderCompileDiagnostic(path, entryPoint, target, message, true);
         return {};
+    }
 
     Microsoft::WRL::ComPtr<IDxcBlobUtf8> errors;
     result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
     HRESULT status = E_FAIL;
     result->GetStatus(&status);
     if (errors && errors->GetStringLength() > 0) {
+        const std::string message(errors->GetStringPointer(), errors->GetStringLength());
         if (FAILED(status))
             FBZZ_LOG_ERROR("DX12Shader: DXCコンパイル失敗 %s (%s/%s)\n%s",
-                           path.c_str(), entryPoint, target, errors->GetStringPointer());
+                           path.c_str(), entryPoint, target, message.c_str());
         else
             FBZZ_LOG_WARN("DX12Shader: DXCコンパイル警告 %s\n%s",
-                          path.c_str(), errors->GetStringPointer());
+                          path.c_str(), message.c_str());
+        ReportShaderCompileDiagnostic(path, entryPoint, target, message, FAILED(status));
     }
     Microsoft::WRL::ComPtr<IDxcBlob> code;
     if (FAILED(status) || FAILED(result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&code), nullptr)) || !code)

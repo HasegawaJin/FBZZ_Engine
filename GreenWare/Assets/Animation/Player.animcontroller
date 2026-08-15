@@ -1,0 +1,81 @@
+version = 2
+defaultStateName = 'Locomotion'
+anyStateTransitions = [
+    { toStateName = 'JumpUp', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'Jump', op = 4, threshold = 0.0 }] },
+    { toStateName = 'Fall', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'IsGrounded', op = 5, threshold = 0.0 }, { paramName = 'VerticalSpeed', op = 1, threshold = -1.0 }] }
+]
+parameters = [
+    { name = 'Speed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
+    { name = 'VerticalSpeed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
+    { name = 'IsGrounded', type = 2, floatValue = 0.0, intValue = 0, boolValue = true },
+    { name = 'Jump', type = 3, floatValue = 0.0, intValue = 0, boolValue = false },
+    { name = 'Land', type = 3, floatValue = 0.0, intValue = 0, boolValue = false }
+]
+[[states]]
+name = 'Locomotion'
+mode = 1
+clipName = ''
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 1.0
+[states.blendTree1D]
+paramName = 'Speed'
+dampTime = 0.18
+motions = [
+    { sourcePath = 'Assets/Models/DebugCharacter/Idle/Idle.asset', clipName = 'Idle', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Walking/Walking.asset', clipName = 'Walking', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Running/Running.asset', clipName = 'Running', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 }
+]
+[[states]]
+name = 'JumpUp'
+mode = 0
+sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.asset'
+clipName = 'JumpingUp'
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.0
+[[states.transitions]]
+toStateName = 'Fall'
+hasExitTime = false
+exitTime = 1.0
+transitionDuration = 0.2
+conditions = [{ paramName = 'VerticalSpeed', op = 1, threshold = -0.5 }]
+[[states]]
+name = 'Fall'
+mode = 0
+sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.asset'
+clipName = 'FallingIdle'
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+[[states.transitions]]
+toStateName = 'Landing'
+hasExitTime = false
+exitTime = 1.0
+transitionDuration = 0.1
+conditions = [{ paramName = 'Land', op = 4, threshold = 0.0 }]
+[[states]]
+name = 'Landing'
+mode = 0
+sourcePath = 'Assets/Models/DebugCharacter/Landing/Landing.asset'
+clipName = 'Landing'
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.5
+[[states.transitions]]
+toStateName = 'Locomotion'
+hasExitTime = true
+exitTime = 0.35
+fixedDuration = true
+transitionDuration = 0.18
+conditions = [{ paramName = 'Speed', op = 0, threshold = 0.1 }]
+[[states.transitions]]
+toStateName = 'Locomotion'
+hasExitTime = true
+exitTime = 0.75
+transitionDuration = 0.12
+conditions = []

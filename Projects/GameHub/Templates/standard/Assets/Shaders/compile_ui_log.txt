@@ -1,5 +1,0 @@
-[compile_ui_shaders] 2026/06/19 16:37:36.37 
-compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\UI.UISprite.vs.cso
-compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\UI.UISprite.ps.cso
-compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\UI.UIText.vs.cso
-compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\UI.UIText.ps.cso

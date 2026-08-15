@@ -12,7 +12,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// .fbzz / .mat / .prefab / .animcontroller ファイルを rootPath 以下から検索し、
+// .scene / .mat / .prefab / .animcontroller / .vfx ファイルを rootPath 以下から検索し、
 // assetPath のファイル名またはステムを含むものを列挙する。
 std::vector<std::string> ScanRefs(const std::string& assetPath, const std::string& rootPath)
 {
@@ -28,7 +28,7 @@ std::vector<std::string> ScanRefs(const std::string& assetPath, const std::strin
         const std::string ext      = util::StringUtils::ToLower(
             util::FileSystem::GetExtension(scanPath));
         if (ext != ".scene" && ext != ".mat" && ext != ".prefab"
-            && ext != ".animcontroller") continue;
+            && ext != ".animcontroller" && ext != ".vfx") continue;
 
         std::string content;
         util::FileSystem::ReadText(scanPath, content);
@@ -78,7 +78,7 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
     ImGui::Separator();
 
     if (m_results.empty()) {
-        ImGui::TextDisabled("No references found in scenes, materials, prefabs, or animation controllers.");
+        ImGui::TextDisabled("No references found in scenes, materials, prefabs, animation controllers, or VFX graphs.");
         return;
     }
 
@@ -96,6 +96,7 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
         else if (ext == ".fzasset")      { badge = "FZ"; badgeColor = { 0.9f, 0.6f, 0.1f, 1.0f }; }
         else if (ext == ".prefab")     { badge = "PF"; badgeColor = { 0.9f, 0.7f, 0.3f, 1.0f }; }
         else if (ext == ".animcontroller") { badge = "AN"; badgeColor = { 0.8f, 0.4f, 0.9f, 1.0f }; }
+        else if (ext == ".vfx")            { badge = "VX"; badgeColor = { 0.95f, 0.35f, 0.55f, 1.0f }; }
 
         ImGui::TextColored(badgeColor, "%s", badge);
         ImGui::SameLine();

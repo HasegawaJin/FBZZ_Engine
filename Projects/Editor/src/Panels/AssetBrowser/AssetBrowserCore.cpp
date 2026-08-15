@@ -4,6 +4,7 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 
 namespace fbzz::editor {
 
@@ -40,27 +41,47 @@ bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
     auto* go = ctx.activeScene->GetGameObject(droppedId);
     if (!go) return false;
 
+    // ドラッグ中の GO が現在の選択に含まれるなら選択全体を、そうでなければその 1 体だけを
+    // プレファブ化する。
+    // WHY: Unity と同様、複数選択したまま 1 体を掴んで AssetBrowser へ落とすと選択全体が
+    //      1 つのプレファブになる。ドラッグ payload は掴んだ 1 体しか運ばないため、ここで
+    //      選択集合と突き合わせて対象を決める。命名は掴んだ GO を代表名にする。
+    std::vector<scene::EntityID> selection;
+    if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), droppedId)
+        != ctx.selectedEntities.end())
+        selection = ctx.selectedEntities;
+    else
+        selection = { droppedId };
+
     const std::string path = UniquePrefabPathInDir(targetDir, go->name);
-    if (!PrefabSerializer::SaveSelection(*ctx.activeScene, { droppedId }, path))
+    std::vector<scene::EntityID> connectedRoots;
+    if (!PrefabSerializer::SaveSelectionAndConnect(*ctx.activeScene, selection, path, connectedRoots))
         return false;
 
-    if (ctx.undoStack) {
-        std::string content;
-        if (util::FileSystem::ReadText(path, content)) {
-            EditorContext* context = &ctx;
-            auto refresh = [context]() { context->requestAssetBrowserRefresh = true; };
-            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                "Create Prefab",
-                [path, content, refresh]() {
-                    util::FileSystem::WriteText(path, content);
-                    refresh();
-                },
-                [path, refresh]() {
-                    util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
-                    refresh();
-                }));
-        }
+    const std::string relPath = NormalizeAssetPath(path);
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+
+    // シーン側のリンク (prefabAssetPath) だけを Undo 対象にする。
+    // WHY .prefab ファイル自体を戻さないか: 旧実装の Undo は RemoveAll(path) で
+    //     .prefab を削除していた。プレファブを作ってから中身を編集し、その後
+    //     無関係な作業のあとで Ctrl+Z を重ねると、編集ぶんごとファイルが消える。
+    //     ファイルの存在は Undo の対象にせず、消したいときは Delete でごみ箱へ送る。
+    if (ctx.undoStack && ctx.activeScene) {
+        EditorContext* context = &ctx;
+        const std::vector<scene::EntityID> roots = connectedRoots;
+        auto applyLink = [context, roots](const std::string& assetPath) {
+            if (!context->activeScene) return;
+            for (scene::EntityID id : roots)
+                if (auto* g = context->activeScene->GetGameObject(id))
+                    g->prefabAssetPath = assetPath;
+            if (context->markSceneDirty) context->markSceneDirty();
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Link Prefab Instance",
+            [applyLink, relPath]() { applyLink(relPath); },
+            [applyLink]()          { applyLink({}); }));
     }
+    ctx.requestAssetBrowserRefresh = true;
     return true;
 }
 
@@ -124,6 +145,97 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
     m_watcher.Start(m_rootPath);
     RefreshDirectory();
     ScanAndQueueUnimported(m_rootPath);
+}
+
+namespace {
+
+// FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
+// ナビゲート先やパス比較に使う前に落とす。
+std::string DirectoryOfPath(const std::string& path)
+{
+    std::string directory = util::FileSystem::GetDirectory(path);
+    while (directory.size() > 1 && (directory.back() == '/' || directory.back() == '\\'))
+        directory.pop_back();
+    return directory;
+}
+
+} // namespace
+
+void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
+{
+    if (ctx.requestRevealAssetPath.empty()) return;
+
+    // 要求は 1 回で消費する。解決に失敗しても再挑戦させない (毎フレーム同じ探索を繰り返さないため)。
+    const std::string request           = ctx.requestRevealAssetPath;
+    const bool        selectForInspector = ctx.requestRevealAssetSelect;
+    ctx.requestRevealAssetPath.clear();
+    ctx.requestRevealAssetSelect = false;
+
+    // Sprite 参照 ("<画像>::sprite::<id>") は元画像の位置を示す。
+    std::string logicalPath;
+    std::string spriteName;
+    (void)asset::ParseSpriteReference(request, logicalPath, spriteName);
+
+    // 参照欄が持つのは Assets 起点の相対パス、ブラウザは実ファイル操作のため絶対パス。
+    const std::string absolute = util::FileSystem::NormalizePathSeparators(
+        asset::AssetManager::ResolveAssetPath(logicalPath));
+    if (absolute.empty() || !util::FileSystem::Exists(absolute)) {
+        FBZZ_LOG_WARN("AssetBrowser: reveal target not found [%s]", request.c_str());
+        return;
+    }
+    // エンジン内蔵アセットへフォールバック解決された場合、実体はプロジェクトの Assets の外にある。
+    // ブラウザの表示範囲 (ルート + マウント) の外へは移動しない — 出たところで戻る導線がない。
+    if (!IsRootOrMountedPath(DirectoryOfPath(absolute))) {
+        FBZZ_LOG_WARN("AssetBrowser: reveal target is outside the browsable roots [%s]",
+                      absolute.c_str());
+        return;
+    }
+
+    // 横断検索の結果を出したままだと現在フォルダの一覧に切り替わらないため解除する。
+    if (IsGlobalSearchActive()) {
+        m_searchBuf.fill('\0');
+        m_searchResults.clear();
+        m_searchResultsQuery.clear();
+        m_searchResultsTypeFilter = -1;
+    }
+    // タイプフィルタで除外されていると選択しても見えないので、Reveal では常に外す。
+    m_typeFilter = TypeFilter::All;
+
+    // FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
+    // 原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
+    std::string navigateDir = DirectoryOfPath(absolute);
+    for (std::filesystem::path dir = util::FileSystem::PathFromUtf8(navigateDir);
+         !dir.empty() && dir.has_parent_path() && dir != dir.parent_path();
+         dir = dir.parent_path()) {
+        if (!IsModelPackageDirectory(dir)) continue;
+        const std::string fbxPath = util::FileSystem::NormalizePathSeparators(
+            util::FileSystem::PathToUtf8(
+                dir.parent_path() / (util::FileSystem::PathToUtf8(dir.filename()) + ".fbx")));
+        m_expandedAssets.insert(fbxPath);
+        navigateDir = DirectoryOfPath(fbxPath);
+        break;
+    }
+
+    if (!util::FileSystem::SamePathText(navigateDir, m_currentPath))
+        m_currentPath = navigateDir;
+    RefreshDirectory();   // 展開状態を反映した一覧に組み直す
+    // RefreshDirectory は「フォルダを移動したら先頭へ戻す」ため m_resetScroll を立てる。
+    // Reveal は逆に対象タイルの位置までスクロールさせたいので、その要求だけ取り下げる。
+    m_resetScroll = false;
+
+    m_selectedPaths.clear();
+    m_selectedPaths.insert(absolute);
+    m_lastClickedPath = absolute;
+    m_pendingRenamePath.clear();
+    m_scrollToPath  = absolute;
+    m_pingPath      = absolute;
+    m_pingStartTime = static_cast<float>(ImGui::GetTime());
+
+    // ダブルクリック相当のときだけ Inspector の表示対象も移す (Unity の Ping と選択の違い)。
+    if (selectForInspector) {
+        ctx.selectedAssetPath = absolute;
+        ctx.selectedEntities.clear();
+    }
 }
 
 void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
@@ -228,6 +340,7 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_meshPreviews);
     evictStaleEntries(m_prefabPreviews);
     evictStaleEntries(m_terrainPreviews);
+    evictStaleEntries(m_spritePreviews);
     m_texLoadQueue.clear();
     const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
     for (const auto& p : util::FileSystem::ListAll(currentPath)) {
@@ -238,6 +351,14 @@ void AssetBrowserPanel::RefreshDirectory()
         e.ext   = util::StringUtils::ToLower(util::FileSystem::GetExtension(p));
         e.isDir = util::FileSystem::IsDirectory(p);
         if (!ShouldDisplayEntry(e.path, e.name, e.isDir)) continue;
+        if (!e.isDir) {
+            e.hasSubAssets = e.ext == ".fbx";
+            if (e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg" ||
+                e.ext == ".tga" || e.ext == ".dds" || e.ext == ".hdr" ||
+                e.ext == ".exr" || e.ext == ".bmp") {
+                e.hasSubAssets = !GetAssetSubEntries(e.path).empty();
+            }
+        }
         m_entries.push_back(std::move(e));
     }
 
@@ -262,13 +383,14 @@ void AssetBrowserPanel::RefreshDirectory()
         }
     });
 
-    // 展開済み FBX のサブエントリをその直後に挿入する
+    // 展開済み FBX / Sprite Texture のサブエントリを元素材の直後に挿入する。
+    // WHY: 元画像と切り抜かれた各 Sprite を同時に見せ、atlas 内の見た目を一覧で比較できるようにする。
     if (!m_expandedAssets.empty()) {
         std::vector<Entry> withSubs;
         withSubs.reserve(m_entries.size() * 2);
         for (const Entry& e : m_entries) {
             withSubs.push_back(e);
-            if (e.ext == ".fbx" && m_expandedAssets.count(e.path)) {
+            if (e.hasSubAssets && m_expandedAssets.count(e.path)) {
                 for (auto& sub : GetAssetSubEntries(e.path))
                     withSubs.push_back(std::move(sub));
             }
@@ -320,10 +442,8 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
 
     // シェーダー配布物を作る補助スクリプトとログはエディタ内部の保守用ファイル。
     static constexpr const char* kShaderToolFiles[] = {
-        "compile_shaders.bat",
-        "compile_ui_shaders.bat",
+        "compile_shaders.ps1",
         "compile_log.txt",
-        "compile_ui_log.txt",
     };
     for (const char* toolFile : kShaderToolFiles) {
         if (lowerName == toolFile) return false;
@@ -426,21 +546,61 @@ bool AssetBrowserPanel::IsRootOrMountedPath(const std::string& path) const
 }
 
 std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
-    const std::string& modelSourcePath)
+    const std::string& sourceAssetPath)
 {
-    AssetSubItems& cached = m_assetSubItemsCache[modelSourcePath];
+    AssetSubItems& cached = m_assetSubItemsCache[sourceAssetPath];
 
-    const std::string modelExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(modelSourcePath));
+    const std::string modelExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(sourceAssetPath));
+    const bool isTexture =
+        modelExt == ".png" || modelExt == ".jpg" || modelExt == ".jpeg" ||
+        modelExt == ".tga" || modelExt == ".dds" || modelExt == ".hdr" ||
+        modelExt == ".exr" || modelExt == ".bmp";
+    if (isTexture) {
+        const std::string metaPath = sourceAssetPath + ".meta";
+        const auto metaWriteTime = util::FileSystem::LastWriteTime(
+            util::FileSystem::PathFromUtf8(metaPath));
+        if (cached.lastWriteTime == metaWriteTime && !cached.items.empty())
+            return cached.items;
+
+        cached = {};
+        cached.lastWriteTime = metaWriteTime;
+
+        asset::TextureAsset textureAsset;
+        asset::TexDescSerializer serializer;
+        if (!serializer.Load(metaPath, textureAsset) ||
+            textureAsset.settings.type != asset::TextureType::Sprite)
+            return cached.items;
+
+        // WHAT: 各 SpriteRect を永続 ID 付き参照へ変換し、実ファイルを増やさず Unity 風の
+        //       サブアセットとして公開する。Single / Multiple のどちらも同じ表示規則にする。
+        for (size_t index = 0; index < textureAsset.settings.sprites.size(); ++index) {
+            const asset::SpriteRect& sprite = textureAsset.settings.sprites[index];
+            const std::string token = sprite.id.empty() ? sprite.name : sprite.id;
+            Entry entry;
+            entry.path = asset::MakeSpriteReference(sourceAssetPath, token);
+            entry.name = sprite.name.empty()
+                ? ("Sprite " + std::to_string(index))
+                : std::string(sprite.name);
+            entry.ext = ".sprite";
+            entry.isSubAsset = true;
+            entry.isSpriteSubAsset = true;
+            entry.sourceAssetPath = sourceAssetPath;
+            entry.spriteIndex = static_cast<uint32_t>(index);
+            cached.items.push_back(std::move(entry));
+        }
+        return cached.items;
+    }
+
     if (modelExt != ".fbx" && modelExt != ".fzasset")
         return cached.items;
 
     // .fbx は Unity のように展開可能なモデルノードとして扱う。
     // WHY: 内部 .fzasset コンテナは Library の再生成物であり、UI と保存パスは原本 .fbx に一本化する。
-    const std::filesystem::path sourcePath = util::FileSystem::PathFromUtf8(modelSourcePath);
+    const std::filesystem::path sourcePath = util::FileSystem::PathFromUtf8(sourceAssetPath);
     const std::filesystem::path packageDir = (modelExt == ".fbx")
         ? sourcePath.parent_path() / sourcePath.stem()
         : sourcePath.parent_path();
-    std::string modelWritePath = asset::AssetManager::ResolveAssetPath(modelSourcePath);
+    std::string modelWritePath = asset::AssetManager::ResolveAssetPath(sourceAssetPath);
     if (modelExt == ".fbx") {
         const std::string containerLogical = util::FileSystem::NormalizePathSeparators(
             util::FileSystem::PathToUtf8(packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".fzasset")));
@@ -514,7 +674,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         // WHY: .fzasset 生成前に一度失敗した Null cache が残っていると、
         //      ファイル更新後もサブアセット展開が importer まで到達しない。
         asset::AssetManager::FlushFailed();
-        auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(modelSourcePath);
+        auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(sourceAssetPath);
         if (const auto* model = asset::AssetManager::Get(modelHandle)) {
             if (!model->lods.empty()) {
                 for (size_t i = 0; i < model->lods[0].submeshes.size(); ++i) {
@@ -524,7 +684,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
                         ? model->materialSlotNames[sub.materialSlotIndex]
                         : ("Mesh " + std::to_string(i));
                     Entry e;
-                    e.path       = modelSourcePath + "::mesh::" + std::to_string(i);
+                    e.path       = sourceAssetPath + "::mesh::" + std::to_string(i);
                     e.name       = meshName + ".mesh";
                     e.ext        = ".mesh";
                     e.isDir      = false;

@@ -27,6 +27,7 @@ public:
     void SetVolume(uint32_t voiceId, float volume) override;
     void SetPitch(uint32_t voiceId, float pitch) override;
     void SetPan(uint32_t voiceId, float pan) override;
+    void SetLowPass(uint32_t voiceId, float normalizedCutoff) override;
     [[nodiscard]] bool IsPlaying(uint32_t voiceId) override;
 
 private:

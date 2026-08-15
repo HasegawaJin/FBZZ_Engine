@@ -1,0 +1,671 @@
+version = 5
+name = "Magic"
+description = "詠唱から解放までの魔法陣。溜め→収束→解放の時間構成を持ち、色を変えるだけで属性違いを量産できる。"
+tags = ["magic", "cast", "channel", "fantasy"]
+requiredRoles = ["core", "body", "sparks"]
+# 溜めが終わって解放へ移る山場。頭出しでは魔法陣しか写らない。
+thumbnailTime = 1.2
+maxParticles = 3400
+maxLights = 2
+maxAudioVoices = 1
+
+# ------------------------------------------------------------------------------
+# Magic — 詠唱から解放までの魔法陣。
+# 構成: [詠唱] 吸引する粒 + 回転する紋章 + 蓄積の光
+#       -> [解放] 爆発的な放出 + 空間の歪み + 画面演出 + 残光
+# WHY: 魔法が「強そう」に見えるのは放出の瞬間ではなく、その前の溜めがあるから。
+#      Delay ノードで詠唱 1.2s を明示的に確保し、Attract 力場で粒を中心へ吸わせてから
+#      Repulse へ切り替えて弾けさせる、という力場の反転で溜め -> 解放を作っている。
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# ============================ 詠唱フェーズ ====================================
+
+# --- 吸い込まれる粒子 ----------------------------------------------------------
+[[nodes]]
+id = 2
+type = 2
+name = "Gathering Motes"
+duration = 1.4
+editorX = 260.0
+editorY = -60.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 1.4
+loop = false
+emitRate = 90.0
+maxParticles = 520
+shape = 1
+sphereRadius = 3.2
+sizeStart = 0.14
+sizeEnd = 0.02
+lifetime = 1.3
+lifetimeRandom = 0.4
+velocitySpread = 0.3
+velocityDamping = 0.2
+gravity = [0.0, 0.0, 0.0]
+# 集束する光粒: 520 粒子
+blendMode = 0
+emissiveScale = 2.5
+angularVelocityMin = -3.0
+angularVelocityMax = 3.0
+softParticles = true
+renderPriority = 40
+colorVariation = 0.20
+# 中心へ螺旋を描いて吸い込まれる動き。
+# WHY: 力場 (Attractor + Vortex) はシーン全体に効く「場」で、エミッターが移動すると
+#      渦の中心だけ取り残される。orbital/radial はエミッター原点基準なので、
+#      詠唱者が歩いても魔法陣が付いてくる。負の radialVelocity が吸い込み。
+orbitalAxis = [0.0, 1.0, 0.0]
+orbitalVelocity = 4.5
+radialVelocity = -3.2
+# 粒ごとに尾を引かせ、螺旋の軌跡を読めるようにする。
+trailEnabled = true
+trailPointCount = 6
+trailSampleInterval = 0.03
+trailWidthScale = 0.3
+trailAlphaScale = 0.35
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.42, 0.72, 1.0, 0.0],
+  [0.25, 0.62, 0.86, 1.0, 1.0],
+  [0.8, 0.82, 0.62, 1.0, 0.9],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+
+# --- 回転する紋章 --------------------------------------------------------------
+[[nodes]]
+id = 3
+type = 2
+name = "Sigil Ring"
+duration = 1.6
+editorX = 260.0
+editorY = 140.0
+position = [0.0, 0.06, 0.0]
+rotation = [-90.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 1.6
+loop = false
+emitRate = 0.0
+maxParticles = 12
+shape = 0
+sizeStart = 0.6
+sizeEnd = 3.2
+sizeCurvePower = 0.5
+lifetime = 1.5
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+# 魔法陣
+blendMode = 0
+renderMode = 2
+angularVelocityMin = 1.4
+angularVelocityMax = 1.4
+emissiveScale = 2.2
+softParticles = true
+softParticleFadeDistance = 0.3
+# 紋章は地面に貼り付く層。motes より奥に置いて、粒が紋章の上を舞うようにする。
+renderPriority = 10
+# 回転は一定速のまま最後まで回す (紋章が途中で止まると術が切れたように見える)。
+# ここでカーブを使わないのは意図的。
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.40, 0.70, 1.0, 0.0],
+  [0.2, 0.55, 0.80, 1.0, 0.85],
+  [0.85, 0.85, 0.70, 1.0, 1.0],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.4, probability = 1.0 }]
+
+# --- 中心へ吸い寄せる力場 ------------------------------------------------------
+[[nodes]]
+id = 4
+type = 9
+name = "Charge Attractor"
+duration = 1.3
+editorX = 260.0
+editorY = 360.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 1
+strength = 9.0
+radius = 4.5
+falloffPower = 0.8
+
+# --- 吸引に回転を混ぜて渦にする ------------------------------------------------
+[[nodes]]
+id = 5
+type = 9
+name = "Charge Vortex"
+duration = 1.3
+editorX = 260.0
+editorY = 520.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 3
+strength = 5.5
+radius = 4.5
+falloffPower = 1.0
+direction = [0.0, 1.0, 0.0]
+
+# --- 蓄積の光 ------------------------------------------------------------------
+[[nodes]]
+id = 6
+type = 5
+name = "Charge Light"
+duration = 1.3
+editorX = 560.0
+editorY = -60.0
+position = [0.0, 0.7, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.light]
+color = [0.42, 0.68, 1.0]
+intensity = 7.0
+range = 7.0
+# 詠唱光は「弱く始まり、解放直前に最大へ」。定数だと溜めの緊張感が出ない。
+useIntensityCurve = true
+intensityCurve = [[0.0, 0.15], [0.5, 0.45], [0.85, 1.0], [1.0, 1.0]]
+
+# --- 詠唱の待ち。ここを伸ばすと溜めが長くなる --------------------------------
+[[nodes]]
+id = 7
+type = 1
+name = "Cast Time"
+duration = 1.2
+editorX = 560.0
+editorY = 150.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# ============================ 解放フェーズ ====================================
+
+# --- 放出。詠唱で集めた粒が一気に弾ける --------------------------------------
+[[nodes]]
+id = 8
+type = 2
+name = "Release Burst"
+duration = 1.3
+editorX = 880.0
+editorY = -60.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 1.3
+loop = false
+emitRate = 0.0
+maxParticles = 800
+shape = 1
+sphereRadius = 0.25
+sizeStart = 0.5
+sizeEnd = 0.03
+sizeCurvePower = 1.6
+lifetime = 0.95
+lifetimeRandom = 0.4
+velocitySpread = 11.0
+velocityDamping = 2.4
+gravity = [0.0, -0.6, 0.0]
+# 解放バースト: 800 粒子
+blendMode = 0
+emissiveScale = 3.0
+angularVelocityMin = -5.0
+angularVelocityMax = 5.0
+softParticles = true
+noiseStrength = 1.4
+noiseFrequency = 1.2
+noiseSpeed = 1.6
+renderPriority = 50
+colorVariation = 0.22
+# 放出した粒に尾を付ける。詠唱で集めた粒が「弾け飛んだ」経路が読める。
+trailEnabled = true
+trailPointCount = 6   # "Mote Trail" が両ノードを駆動するため値を揃える
+trailSampleInterval = 0.018
+trailWidthScale = 0.28
+trailAlphaScale = 0.3
+# 初速で強く回り、減速に合わせて回転も収める。
+useRotationCurve = true
+rotationCurve = [[0.0, 1.0], [1.0, 0.2]]
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 1.0, 1.0, 1.0],
+  [0.2, 0.66, 0.86, 1.0, 1.0],
+  [0.7, 0.42, 0.44, 1.0, 0.8],
+  [1.0, 0.24, 0.16, 0.62, 0.0],
+]
+bursts = [{ time = 0.0, count = 240, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 空間の歪み。魔法の「圧」を背景の屈折で見せる ----------------------------
+[[nodes]]
+id = 9
+type = 2
+name = "Arcane Distortion"
+duration = 0.7
+editorX = 880.0
+editorY = 160.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 0.7
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 0
+sizeStart = 0.6
+sizeEnd = 8.0
+sizeCurvePower = 0.4
+lifetime = 0.55
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+blendMode = 1
+sortMode = 1
+distortion = true
+distortionStrength = 0.065
+angularVelocityMin = 2.5
+angularVelocityMax = 2.5
+softParticles = true
+softParticleFadeDistance = 0.6
+emissiveScale = 0.0
+# 歪みはシーンカラーを読むため必ず最後に描く。
+renderPriority = 100
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 1.0, 1.0, 1.0],
+  [0.55, 1.0, 1.0, 1.0, 0.5],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.05, probability = 1.0 }]
+
+# --- 外向きに弾く力場。詠唱の Attract と入れ替わる ---------------------------
+[[nodes]]
+id = 10
+type = 9
+name = "Release Push"
+duration = 0.4
+editorX = 880.0
+editorY = 380.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 2
+strength = 20.0
+radius = 6.0
+falloffPower = 1.4
+
+# --- 解放の光 ------------------------------------------------------------------
+[[nodes]]
+id = 11
+type = 5
+name = "Release Light"
+duration = 0.6
+editorX = 1180.0
+editorY = -60.0
+position = [0.0, 0.7, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.light]
+color = [0.58, 0.74, 1.0]
+intensity = 24.0
+range = 15.0
+# 解放光は一瞬で立ち上がり、余韻を残して落ちる。
+useIntensityCurve = true
+intensityCurve = [[0.0, 1.0], [0.12, 0.9], [0.45, 0.3], [1.0, 0.0]]
+# 白 -> 青白 -> 藍。alpha が明るさ倍率として RGB に掛かる。
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.95, 0.98, 1.0, 1.0],
+  [0.25, 0.58, 0.78, 1.0, 0.85],
+  [1.0, 0.28, 0.36, 0.92, 0.0],
+]
+
+# --- 画面演出: 青白い抜けとレンズ歪み ----------------------------------------
+[[nodes]]
+id = 12
+type = 11
+name = "Arcane Flash"
+duration = 0.55
+editorX = 1180.0
+editorY = 130.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.screenEffect]
+flashColor = [0.72, 0.84, 1.0]
+flashIntensity = 0.26
+bloomBoost = 1.4
+chromaticAberration = 0.011
+lensDistortion = -0.08
+vignette = 0.2
+fadeInTime = 0.025
+fadeOutTime = 0.42
+
+# --- 残光。ゆっくり散って余韻を作る -------------------------------------------
+[[nodes]]
+id = 13
+type = 2
+name = "Afterglow"
+duration = 2.4
+editorX = 1180.0
+editorY = 310.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 2.4
+loop = false
+emitRate = 30.0
+maxParticles = 300
+shape = 1
+sphereRadius = 1.6
+sizeStart = 0.1
+sizeEnd = 0.01
+lifetime = 2.0
+lifetimeRandom = 0.8
+emitVelocity = [0.0, 0.5, 0.0]
+velocitySpread = 0.6
+velocityDamping = 0.5
+gravity = [0.0, 0.25, 0.0]
+# 残光: 300 粒子
+blendMode = 0
+emissiveScale = 2.0
+noiseStrength = 1.1
+noiseFrequency = 0.7
+noiseSpeed = 0.5
+renderPriority = 30
+colorVariation = 0.25
+# 余韻の粒はゆっくり周回しながら上がる。まっすぐ散ると術の残り香に見えない。
+orbitalAxis = [0.0, 1.0, 0.0]
+orbitalVelocity = 0.9
+radialVelocity = 0.35
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.70, 0.86, 1.0, 0.0],
+  [0.25, 0.58, 0.72, 1.0, 0.9],
+  [1.0, 0.34, 0.28, 0.72, 0.0],
+]
+
+# --- 解放と同時に広がる魔力のシェル -------------------------------------------
+[[nodes]]
+id = 14
+type = 10
+name = "Release Shell"
+duration = 0.6
+editorX = 880.0
+editorY = 540.0
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.mesh]
+meshPath = "primitive:sphere"
+materialPath = ""
+scaleStart = 0.25
+scaleEnd = 7.0
+scaleEasePower = 0.32
+colorStart = [0.62, 0.82, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 6
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 7
+trigger = 1
+delay = 0.0
+[[links]]
+from = 7
+to = 8
+trigger = 0
+delay = 0.0
+[[links]]
+from = 7
+to = 9
+trigger = 0
+delay = 0.0
+[[links]]
+from = 7
+to = 10
+trigger = 0
+delay = 0.0
+[[links]]
+from = 7
+to = 11
+trigger = 0
+delay = 0.0
+[[links]]
+from = 7
+to = 12
+trigger = 0
+delay = 0.0
+[[links]]
+from = 7
+to = 13
+trigger = 0
+delay = 0.15
+[[links]]
+from = 7
+to = 14
+trigger = 0
+delay = 0.0
+
+[[groups]]
+id = 1
+title = "Cast (0.0 - 1.2s)"
+note = "Attract + Vortex で粒を中心へ巻き込む。溜めの長さは Cast Time で決める。"
+x = 230.0
+y = -110.0
+width = 290.0
+height = 780.0
+color = [0.32, 0.46, 0.78, 0.16]
+
+[[groups]]
+id = 2
+title = "Charge"
+note = "Delay ノードが詠唱の待ち。ここを起点に解放側が全て走る。"
+x = 530.0
+y = -110.0
+width = 290.0
+height = 380.0
+color = [0.40, 0.40, 0.72, 0.14]
+
+[[groups]]
+id = 3
+title = "Release"
+note = "Attract を Repulse へ反転させることで溜め -> 解放の対比が出る。"
+x = 850.0
+y = -110.0
+width = 290.0
+height = 800.0
+color = [0.62, 0.36, 0.72, 0.16]
+
+[[groups]]
+id = 4
+title = "Aftermath"
+note = "光・画面演出・残光。余韻がないと連発しても軽く見える。"
+x = 1150.0
+y = -110.0
+width = 290.0
+height = 560.0
+color = [0.34, 0.52, 0.66, 0.14]
+
+[[parameters]]
+name = "Cast Time"
+type = 0
+minimum = 0.0
+maximum = 5.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 1.2
+[[bindings]]
+paramName = "Cast Time"
+nodeId = 7
+schemaPath = "duration"
+
+[[parameters]]
+name = "Charge Pull"
+type = 0
+minimum = 0.0
+maximum = 300.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 90.0
+[[bindings]]
+paramName = "Charge Pull"
+nodeId = 2
+schemaPath = "particle.emitRate"
+
+[[parameters]]
+name = "Release Power"
+type = 0
+minimum = 0.0
+maximum = 40.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 11.0
+[[bindings]]
+paramName = "Release Power"
+nodeId = 8
+schemaPath = "particle.velocitySpread"
+
+[[parameters]]
+name = "Arcane Distortion"
+type = 0
+minimum = 0.0
+maximum = 0.25
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.065
+[[bindings]]
+paramName = "Arcane Distortion"
+nodeId = 9
+schemaPath = "particle.distortionStrength"
+
+[[parameters]]
+name = "Magic Color"
+type = 3
+minimum = 0.0
+maximum = 1.0
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 3
+color = [0.58, 0.74, 1.0, 1.0]
+[[bindings]]
+paramName = "Magic Color"
+nodeId = 11
+schemaPath = "light.color"
+
+# 詠唱の渦の速さ。上げるほど激しく巻き込み、0 にすると真っ直ぐ吸い込まれる。
+# 力場ではなくエミッター原点基準の運動なので、詠唱者が移動しても渦が付いてくる。
+[[parameters]]
+name = "Swirl Speed"
+type = 0
+minimum = 0.0
+maximum = 20.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 4.5
+[[bindings]]
+paramName = "Swirl Speed"
+nodeId = 2
+schemaPath = "particle.orbitalVelocity"
+
+# 中心へ吸い込む強さ。負の値が内向き。0 でその場を周回するだけになる。
+[[parameters]]
+name = "Pull Strength"
+type = 0
+minimum = -12.0
+maximum = 0.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = -3.2
+[[bindings]]
+paramName = "Pull Strength"
+nodeId = 2
+schemaPath = "particle.radialVelocity"
+
+# 粒が引く尾の長さ。1 で点、大きいほど軌跡が長く残る。
+[[parameters]]
+name = "Mote Trail"
+type = 1
+minimum = 1.0
+maximum = 8.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 1
+int = 6
+[[bindings]]
+paramName = "Mote Trail"
+nodeId = 2
+schemaPath = "particle.trailPointCount"
+[[bindings]]
+paramName = "Mote Trail"
+nodeId = 8
+schemaPath = "particle.trailPointCount"

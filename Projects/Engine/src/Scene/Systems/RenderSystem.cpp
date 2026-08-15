@@ -29,6 +29,8 @@
 #include "Engine/Scene/Components/AtmosphericScatteringComponent.hpp"
 #include "Engine/Scene/Components/SkyRenderer.hpp"
 #include "Engine/Scene/Components/PostProcessVolumeComponent.hpp"
+#include "Engine/Renderer/PostProcessBlend.hpp"
+#include "Engine/Scene/Components/VFXScreenEffect.hpp"
 #include "Engine/Scene/Components/ReflectionProbeComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
@@ -47,6 +49,7 @@
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
+#include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
 #include <bit>
@@ -275,6 +278,67 @@ bool ComputeTerrainWorldBounds(const Transform& transform, const TerrainComponen
     return outBounds.radius > 0.0f;
 }
 
+// 視錐台スライス [nearZ, farZ] の外接球。centerDistance はカメラ前方への距離。
+// WHY 外接球で包むか: カスケードの担当範囲をスライスの 8 頂点へぴったり合わせると、
+//     カメラを回すたびに箱の大きさが変わり、影の精細度が回転で脈動する。
+//     外接球はカメラの向きに依存しない半径を返すので、その脈動が起きない。
+struct FrustumSliceSphere {
+    float centerDistance = 0.0f;
+    float radius         = 0.0f;
+};
+
+FrustumSliceSphere ComputeFrustumSliceSphere(const renderer::Camera& camera,
+                                             float nearZ, float farZ)
+{
+    constexpr float DEG_TO_RAD = 0.01745329251994329577f;
+    nearZ = (std::max)(nearZ, 0.01f);
+    farZ  = (std::max)(farZ, nearZ + 0.01f);
+
+    // 視錐台の対角方向の傾き。k = |(±aspect*t, ±t, 1)| の xy 成分の長さ。
+    const float tanHalfFov = std::tan(camera.m_fovY * 0.5f * DEG_TO_RAD);
+    const float k  = tanHalfFov * std::sqrt(1.0f + camera.m_aspect * camera.m_aspect);
+    const float k2 = k * k;
+
+    FrustumSliceSphere sphere;
+    // near 面が far 面より広いほど中心は手前へ寄る。k² が十分大きいときは
+    // far 面の外接円がスライス全体を包むので、中心は far 面上に載る。
+    if (k2 >= (farZ - nearZ) / (farZ + nearZ)) {
+        sphere.centerDistance = farZ;
+        sphere.radius         = farZ * k;
+        return sphere;
+    }
+
+    const float sum  = farZ + nearZ;
+    const float diff = farZ - nearZ;
+    sphere.centerDistance = 0.5f * sum * (1.0f + k2);
+    sphere.radius = 0.5f * std::sqrt(diff * diff
+                                   + 2.0f * (farZ * farZ + nearZ * nearZ) * k2
+                                   + sum * sum * k2 * k2);
+    return sphere;
+}
+
+// ComputeCascadeSplits — practical split scheme でカスケード境界距離を決める。
+// 対数分割 (手前を細かく) と等分割 (遠方を細かく) を lambda で線形補間する。
+// WHY: 対数分割だけだと最遠カスケードが担当する帯が広すぎて遠景の影が溶け、
+//      等分割だけだと足元のカスケードが広すぎて肝心の近距離が粗くなる。
+//      両者の中間を係数 1 本で選べるのが実務上いちばん扱いやすい。
+// outSplits[i] は「カスケード i が担当する far 距離」。outSplits[count-1] == shadowDistance。
+void ComputeCascadeSplits(float nearZ, float shadowDistance, int cascadeCount,
+                          float lambda, float* outSplits)
+{
+    const float clampedLambda = std::clamp(lambda, 0.0f, 1.0f);
+    const float range         = shadowDistance - nearZ;
+
+    for (int i = 0; i < cascadeCount; ++i) {
+        const float ratio = static_cast<float>(i + 1) / static_cast<float>(cascadeCount);
+        const float logSplit     = nearZ * std::pow(shadowDistance / nearZ, ratio);
+        const float uniformSplit = nearZ + range * ratio;
+        outSplits[i] = clampedLambda * logSplit + (1.0f - clampedLambda) * uniformSplit;
+    }
+    // 丸め誤差で最遠が shadowDistance を下回ると、影の到達距離が設定より短くなる。
+    outSplits[cascadeCount - 1] = shadowDistance;
+}
+
 SceneShadowBounds ComputeSceneShadowBounds(Scene& scene, fbzz::LayerMask cullingMask)
 {
     SceneShadowBounds result{};
@@ -308,7 +372,7 @@ SceneShadowBounds ComputeSceneShadowBounds(Scene& scene, fbzz::LayerMask culling
 void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   renderer::ResourceManager& resources,
-                  const renderer::Camera& camera,
+                  const renderer::Camera& inputCamera,
                   renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
                   const renderer::RenderSettings* settings,
                   fbzz::LayerMask cullingMask,
@@ -317,10 +381,58 @@ void RenderSystem(Scene& scene,
 {
     FBZZ_PROFILE_SCOPE("RenderSystem");
 
+    // VFXCameraShake — VFX グラフの Camera Shake ノードによる揺れ。
+    // WHY: カメラ本体の position/rotation を書き換えると DebugCamera が持つ yaw/pitch と
+    //      乖離して操作が壊れる (既知の落とし穴)。描画に使うカメラのコピーだけをずらし、
+    //      呼び出し側のカメラ状態には一切触れない。カリングも揺れた視点で行われるため、
+    //      画面端で物が消える不整合も起きない。
+    renderer::Camera shakenCamera = inputCamera;
+    {
+        math::Vector3 offset = math::Vector3::ZERO;
+        float rollDegrees = 0.0f;
+        for (auto [tf, shake] : scene.View<Transform, VFXCameraShake>()) {
+            const float weight = shake.enabled ? std::clamp(shake.weight, 0.0f, 1.0f) : 0.0f;
+            if (weight <= 0.0f) continue;
+            // 発生源から遠いほど弱める。radius <= 0 は距離減衰なし。
+            float distanceScale = 1.0f;
+            if (shake.radius > 0.0f) {
+                const float distance = (tf.worldPosition - inputCamera.m_position).Length();
+                distanceScale = std::clamp(1.0f - distance / shake.radius, 0.0f, 1.0f);
+            }
+            const float amount = weight * distanceScale;
+            if (amount <= 0.0f) continue;
+            // 軸ごとに位相をずらした正弦の合成。決定論的で、フレームレートに依存しない。
+            const float phase = shake.elapsed * shake.frequency;
+            offset.x += std::sin(phase * 1.00f) * shake.amplitude * amount;
+            offset.y += std::sin(phase * 1.37f + 1.7f) * shake.amplitude * amount;
+            offset.z += std::sin(phase * 0.83f + 3.1f) * shake.amplitude * amount * 0.5f;
+            rollDegrees += std::sin(phase * 1.11f + 0.6f) * shake.rotationAmplitude * amount;
+        }
+        if (offset.LengthSq() > 0.0f || rollDegrees != 0.0f) {
+            constexpr float DEG_TO_RAD = 0.01745329251994329577f;
+            // オフセットはカメラのローカル軸で与え、向きに依らず自然に揺れるようにする。
+            shakenCamera.m_position = inputCamera.m_position
+                + inputCamera.GetRight() * offset.x
+                + inputCamera.GetUp() * offset.y
+                + inputCamera.GetForward() * offset.z;
+            shakenCamera.m_rotation = inputCamera.m_rotation
+                * math::Quaternion::FromEuler({ 0.0f, 0.0f, rollDegrees * DEG_TO_RAD });
+        }
+    }
+    const renderer::Camera& camera = shakenCamera;
+
     static renderer::RenderSettings sDefaultSettings;
     renderer::RenderSettings effectiveSettings = settings ? *settings : sDefaultSettings;
+
+    // ── ルック設定の解決 ───────────────────────────────────────────
+    // ベースは VolumeSettings の既定値。ProjectSettings はもうポストプロセスも
+    // 高度グラフィクスも持たない (公開を撤去した) ため、ボリュームが唯一の供給源。
+    // WHY 既定値から始めるか: 「ボリュームを 1 つも置いていないシーンは素の絵になる」
+    //      という規則が一番説明しやすい。プロジェクト全体の隠れたベースがあると、
+    //      同じプロファイルを別プロジェクトへ持ち込んだときに絵が変わる。
+    renderer::VolumeSettings volumeSettings;
     if (const auto* runtimePostProcess = scene.TryGetRuntimePostProcessSettings())
-        effectiveSettings.postProcess = *runtimePostProcess;
+        volumeSettings.post = *runtimePostProcess;
 
     // ── コンポーネントによる設定上書き (ProjectSettings < runtimePostProcess < Component) ───
     // EnvironmentLightComponent — シーン Inspector から IBL を上書きする。
@@ -342,7 +454,7 @@ void RenderSystem(Scene& scene,
     // AtmosphericScatteringComponent — シーン Inspector から霧設定を上書きする。
     for (auto [tf, atm] : scene.View<Transform, AtmosphericScatteringComponent>()) {
         if (!atm.enabled) continue;
-        auto& fog      = effectiveSettings.postProcess.fog;
+        auto& fog      = volumeSettings.post.fog;
         fog.enabled    = atm.fogEnabled;
         fog.source     = static_cast<int>(atm.fogSource);
         fog.density    = atm.fogDensity;
@@ -352,12 +464,101 @@ void RenderSystem(Scene& scene,
         fog.color[2]   = atm.fogColor.z;
         break;
     }
-    // PostProcessVolumeComponent — カメラに付けてポストプロセス設定を Inspector から制御する。
-    // isGlobal=true のとき常時適用する。将来的に blendWeight によるブレンド合成へ拡張予定。
-    for (auto [tf, ppv] : scene.View<Transform, PostProcessVolumeComponent>()) {
-        if (!ppv.enabled || !ppv.isGlobal) continue;
-        effectiveSettings.postProcess = ppv.settings;
-        break;
+    // ── PostProcessVolumeComponent の合成 ────────────────────────────────────
+    // ベース (既定値 / runtime 上書き) の上に、有効なボリュームを
+    // priority 昇順で重み付きにブレンドしていく。
+    //
+    // WHY priority で明示的に並べるか: View の走査順に依存させると、
+    //      GameObject を作り直しただけで重なり順が変わり、見た目が非決定的になる。
+    {
+        struct VolumeEntry {
+            const PostProcessVolumeComponent* volume  = nullptr;
+            const asset::PostProcessProfile*  profile = nullptr;
+            float weight = 0.0f;
+        };
+        std::vector<VolumeEntry> entries;
+
+        // 距離判定はシェイク適用後のカメラ位置で行う。
+        // WHY: シェイク量は数十 cm 程度で、influenceRadius に対して無視できる。
+        //      別の位置を使い分けるより、実際に描画している視点で統一する方が単純。
+        const math::Vector3 viewPosition = camera.m_position;
+
+        for (auto [tf, ppv] : scene.View<Transform, PostProcessVolumeComponent>()) {
+            if (!ppv.enabled) continue;
+
+            // プロファイル未アサイン / 参照切れのボリュームは何も適用しない。
+            // WHY 既定値へフォールバックしないか: 参照が切れたボリュームが
+            //      「素のルック」を主張すると、priority 次第で他のボリュームを
+            //      打ち消してしまう。壊れている事実は Inspector の警告に留める。
+            const asset::PostProcessProfile* resolved = ppv.Resolve();
+            if (!resolved) continue;
+
+            float weight = std::clamp(ppv.blendWeight, 0.0f, 1.0f);
+            if (!ppv.isGlobal) {
+                const float distance = (viewPosition - tf.worldPosition).Length();
+                weight *= renderer::PostProcessVolumeDistanceWeight(
+                    distance, ppv.influenceRadius, ppv.blendDistance);
+            }
+            if (weight <= 0.0f) continue;
+
+            entries.push_back({ &ppv, resolved, weight });
+        }
+
+        // priority 昇順。同値は安定ソートで走査順を保つ (再現性のため)。
+        std::stable_sort(entries.begin(), entries.end(),
+            [](const VolumeEntry& lhs, const VolumeEntry& rhs) {
+                return lhs.volume->priority < rhs.volume->priority;
+            });
+
+        for (const VolumeEntry& entry : entries) {
+            // プロファイルが持つオーバーライドだけが現在の合成結果へ混ざる。
+            // 載っていない効果は素通しされるため、「洞窟プロファイルは Fog と
+            // Color Grading の 2 つだけ持つ」という差分オーサリングが成立する。
+            entry.profile->ApplyTo(volumeSettings, entry.weight);
+        }
+
+        // 解決したルックを描画用の RenderSettings へ流し込む。
+        // 以降のコード (VFXScreenEffect / 各 RenderPass) は今までどおり
+        // effectiveSettings.postProcess や .ssr をフラットに読む。
+        renderer::ApplyVolumeSettings(volumeSettings, effectiveSettings);
+    }
+    // VFXScreenEffect — VFX グラフの ScreenEffect ノードが出す一時的な画面演出。
+    // WHY: PostProcessVolume は「設定の差し替え」なので、爆発フラッシュのような
+    //      一瞬の上乗せや、複数エフェクトの同時発生を表現できない。
+    //      解決済み設定へ後段で加算することで、シーンのグレーディングを壊さずに重ねる。
+    //      フラッシュだけは加算し合うと即飽和するため、最も強いものを採用する。
+    {
+        renderer::PostProcessSettings& pp = effectiveSettings.postProcess;
+        float strongestFlash = 0.0f;
+        for (auto [tf, effect] : scene.View<Transform, VFXScreenEffect>()) {
+            const float weight = effect.enabled ? std::clamp(effect.weight, 0.0f, 1.0f) : 0.0f;
+            if (weight <= 0.0f) continue;
+            if (effect.bloomBoost > 0.0f) {
+                pp.bloom.enabled = true;
+                pp.bloom.intensity += effect.bloomBoost * weight;
+            }
+            if (effect.chromaticAberration > 0.0f) {
+                pp.lens.chromaticAberrationEnabled = true;
+                pp.lens.chromaticAberration += effect.chromaticAberration * weight;
+            }
+            if (effect.lensDistortion != 0.0f) {
+                pp.lens.distortionEnabled = true;
+                pp.lens.distortion += effect.lensDistortion * weight;
+            }
+            if (effect.vignette > 0.0f) {
+                pp.vignette.enabled = true;
+                pp.vignette.intensity += effect.vignette * weight;
+            }
+            const float flash = effect.flashIntensity * weight;
+            if (flash > strongestFlash) {
+                strongestFlash = flash;
+                pp.screenFadeColor[0] = effect.flashColor.x;
+                pp.screenFadeColor[1] = effect.flashColor.y;
+                pp.screenFadeColor[2] = effect.flashColor.z;
+            }
+        }
+        if (strongestFlash > 0.0f)
+            pp.screenFadeAlpha = std::clamp(pp.screenFadeAlpha + strongestFlash, 0.0f, 1.0f);
     }
     // NOTE: ReflectionProbeComponent は将来の局所反射ブレンド実装で使用予定。
     //       現時点は Inspector / Serializer のみ対応し、RenderSystem での適用は未実装。
@@ -376,6 +577,8 @@ void RenderSystem(Scene& scene,
     static renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
     static auto shadowShader         = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
     static auto skinnedShadowShader  = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
+    // コンピュートスキニング。無効ならスキンド描画は従来の VS スキニング経路へ落ちる。
+    static auto skinningComputeCS    = resources.LoadShader("Assets/Shaders/Pipeline/Skinning/SkinningCompute.cs.hlsl");
 
     // スキンドメッシュに AnimatorComponent がない場合のアイデンティティボーンパレット
     static renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
@@ -397,6 +600,8 @@ void RenderSystem(Scene& scene,
     static auto bloomUpShader           = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomUpsample.cs.hlsl");
     static auto selectionMaskShader     = resources.LoadShader("Assets/Shaders/Debug/SelectionMask.hlsl");
     static auto selectionMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskSkinnedMesh.hlsl");
+    static auto selectionMaskParticleShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskParticle.hlsl");
+    static auto selectionMaskParticleGpuShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskParticleGPU.hlsl");
     static auto selectionOutlineShader  = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
     static auto fxaaShader              = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
 
@@ -455,12 +660,30 @@ void RenderSystem(Scene& scene,
     static auto deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
     static auto depthCopyShader        = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
 
+    // クラスタライトカリング (Forward+ / Deferred+)。
+    static auto clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
+    // ライト配列とクラスタリストは解像度非依存の固定長なので、確保は初回の 1 回だけ。
+    // WHY RW にするか: clusterIndexBuffer は CS が u2 へ書き、PS が t30 から読む。
+    //      punctualLightBuffer は CPU が毎フレーム更新して CS/PS が読むだけなので読み取り専用。
+    static auto punctualLightBuffer = resources.CreateStructuredBuffer(
+        nullptr, kMaxPunctualLights, static_cast<uint32_t>(sizeof(PunctualLightGPU)));
+    static auto clusterIndexBuffer = resources.CreateRWStructuredBuffer(
+        nullptr, kClusterCount * kClusterStride, static_cast<uint32_t>(sizeof(uint32_t)));
+    static auto clusterCB = resources.CreateConstantBuffer(sizeof(ClusterConstantsCB));
+
     static auto decalShader     = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
     static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
 
     static auto particleShader      = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
     static auto particleGpuSimCS   = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
     static auto particleGpuShader  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
+    // GPU ソート 3 段 (キー生成 / グローバル段 / LDS 段)。sortMode != None のときだけ走る。
+    static auto particleGpuSortKeysCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortKeys.cs.hlsl");
+    static auto particleGpuSortStepCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortStep.cs.hlsl");
+    static auto particleGpuSortLocalCS = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortLocal.cs.hlsl");
+    static auto particleGpuMeshShader  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuMesh.hlsl");
+    // 自己影: 光源から見た密度を積む。selfShadowStrength > 0 のエミッターがあるときだけ走る。
+    static auto particleSelfShadowShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleSelfShadowDensity.hlsl");
     static auto trailShader    = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
     static auto meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
     static auto skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
@@ -498,11 +721,21 @@ void RenderSystem(Scene& scene,
     static auto objectCB   = resources.CreateConstantBuffer(sizeof(PerObjectCB));
     static auto lightCB    = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
     static auto shadowCB   = resources.CreateConstantBuffer(sizeof(ShadowConstantsCB));
+    // コンピュートスキニングの b0 (頂点数のみ)。16 バイト境界へ切り上げられる。
+    static auto skinningCB = resources.CreateConstantBuffer(16);
     static auto postprocCB = resources.CreateConstantBuffer(sizeof(PostProcCB));
     static auto outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
     static auto atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
     static auto decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
     static auto volumetricCloudCB = resources.CreateConstantBuffer(80);
+    // パーティクル自己影: 光源側の密度 RT と、光源行列を入れる専用 frame CB。
+    // WHY: RenderPassHandles はフレームごとに作り直される値型なので、
+    //      パス側で遅延生成すると毎フレーム新しい RT を作って漏らす。ここで静的に持つ。
+    // NOTE: 解像度は固定。自己影が拾うのは「煙の内部で光がどれだけ減るか」という
+    //       低周波の情報で、輪郭の鮮鋭さは要らない。
+    static auto particleSelfShadowRT =
+        resources.CreateRenderTarget(RenderPassHandles::kSelfShadowResolution, RenderPassHandles::kSelfShadowResolution, 1);
+    static auto particleSelfShadowFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
 
     // WHY: static handle は通常フレームでは再利用し、ResourceManager::Reset() 後だけ世代差分で再生成する。
     //      これによりデバイスロスト復帰時も旧ネイティブリソースへ触らない。
@@ -541,6 +774,11 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
     });
+    static auto particlePremultipliedPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::PREMULTIPLIED,
+        renderer::DepthMode::DEPTH_READ
+    });
     static auto particleGpuPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ADDITIVE,
@@ -549,6 +787,11 @@ void RenderSystem(Scene& scene,
     static auto particleGpuAlphaPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto particleGpuPremultipliedPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::PREMULTIPLIED,
         renderer::DepthMode::DEPTH_READ
     });
     static auto trailPSO = resources.CreatePipelineState({
@@ -579,6 +822,13 @@ void RenderSystem(Scene& scene,
     static auto volumetricCloudPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_OFF
+    });
+    // VolumetricCloud.hlsl は scatter.rgb に既に透過率を積分した premultiplied 値を返す。
+    // Overdraw 可視化も volumetricCloudPSO を共有するため、雲の合成だけ専用 PSO に分離する。
+    static auto volumetricCloudPremultipliedPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::PREMULTIPLIED,
         renderer::DepthMode::DEPTH_OFF
     });
     // ---- Advanced Graphics PSO / 定数バッファ ----
@@ -613,6 +863,9 @@ void RenderSystem(Scene& scene,
         shadowMapRT = resources.CreateRenderTarget(shadowRes, shadowRes, 0);
         shadowShader        = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
         skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
+        skinningComputeCS   = resources.LoadShader("Assets/Shaders/Pipeline/Skinning/SkinningCompute.cs.hlsl");
+        // Mesh* / AnimatorComponent* をキーにしたキャッシュはリソースリセットで無効になる。
+        ReleaseSkinningComputeCaches();
         compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
         causticsShader      = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
         volumetricCloudShader = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/VolumetricCloud.hlsl");
@@ -623,6 +876,8 @@ void RenderSystem(Scene& scene,
         bloomUpShader       = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomUpsample.cs.hlsl");
         selectionMaskShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMask.hlsl");
         selectionMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskSkinnedMesh.hlsl");
+        selectionMaskParticleShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskParticle.hlsl");
+        selectionMaskParticleGpuShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskParticleGPU.hlsl");
         selectionOutlineShader = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
         fxaaShader = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
         skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
@@ -631,11 +886,17 @@ void RenderSystem(Scene& scene,
         gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
         deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
         depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+        clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
         decalShader = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
         decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
         particleShader     = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
         particleGpuSimCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
         particleGpuShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
+        particleGpuSortKeysCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortKeys.cs.hlsl");
+        particleGpuSortStepCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortStep.cs.hlsl");
+        particleGpuSortLocalCS = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSortLocal.cs.hlsl");
+        particleGpuMeshShader  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuMesh.hlsl");
+        particleSelfShadowShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleSelfShadowDensity.hlsl");
         trailShader = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
         meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
         skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
@@ -676,6 +937,12 @@ void RenderSystem(Scene& scene,
             bindPoseSkinningCB = resources.CreateConstantBuffer(sizeof(BindPoseData));
             resources.Update(bindPoseSkinningCB, &bp, sizeof(BindPoseData));
         }
+        // モデル側のリファレンスポーズ CB もデバイスリセットで失われる。
+        // ハンドルを落としておけば下の遅延生成が次フレームで作り直す。
+        for (auto& go : scene.GameObjects()) {
+            if (auto* smr = go.GetComponent<SkinnedMeshRenderer>())
+                if (smr->model) smr->model->referencePoseCB = {};
+        }
         frameCB    = resources.CreateConstantBuffer(sizeof(PerFrameCB));
         objectCB   = resources.CreateConstantBuffer(sizeof(PerObjectCB));
         lightCB    = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
@@ -685,6 +952,9 @@ void RenderSystem(Scene& scene,
         atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
         decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
         volumetricCloudCB = resources.CreateConstantBuffer(80);
+        particleSelfShadowRT = resources.CreateRenderTarget(
+            RenderPassHandles::kSelfShadowResolution, RenderPassHandles::kSelfShadowResolution, 1);
+        particleSelfShadowFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
 
         defaultPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         wireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
@@ -693,14 +963,17 @@ void RenderSystem(Scene& scene,
         sunMoonPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_SKY });
         particlePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
         particleAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        particlePremultipliedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::PREMULTIPLIED, renderer::DepthMode::DEPTH_READ });
         particleGpuPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
         particleGpuAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        particleGpuPremultipliedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::PREMULTIPLIED, renderer::DepthMode::DEPTH_READ });
         trailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailDoubleSidedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         postprocPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
         causticsPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_OFF });
         volumetricCloudPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
+        volumetricCloudPremultipliedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::PREMULTIPLIED, renderer::DepthMode::DEPTH_OFF });
         decalPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
         decalMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
     }
@@ -834,9 +1107,40 @@ void RenderSystem(Scene& scene,
     float dirShadowStrength = 1.0f;
     float dirShadowDistance = 0.0f;
 
+    // クラスタライティング用の統合ライト配列。b3 の固定長配列と並行して構築する。
+    // WHY 並行構築か: b3 は点 8 / スポット 4 で打ち切るため、それを超えたライトは
+    //      これまで黙って捨てられていた。こちらは 256 本まで拾い、対応済みのパスだけが参照する。
+    //      b3 側の詰め方は 1 行も変えないので、未対応パスの見た目は完全に据え置きになる。
+    std::vector<PunctualLightGPU> punctualLights;
+    punctualLights.reserve(32);
+
     constexpr float kDegToRad = 3.14159265f / 180.0f;
     for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
         if (!lc.enabled) continue;
+        // 点光源 / スポットは上限に達するまで統合配列へも積む。
+        // NOTE: 追加順は b3 と同じ ECS 走査順。ただし b3 が「点を全部→スポットを全部」の
+        //       2 配列なのに対しこちらは 1 本なので、混在シーンでは評価順が変わりうる。
+        //       不透明ライティングの加算なので結果は変わらない (順序による丸め差のみ)。
+        if (lc.type != LightComponent::Type::Directional
+            && punctualLights.size() < kMaxPunctualLights) {
+            PunctualLightGPU& gpu = punctualLights.emplace_back();
+            gpu.position  = tf.position;
+            gpu.range     = lc.range;
+            gpu.color     = lc.color;
+            gpu.intensity = lc.intensity;
+            if (lc.type == LightComponent::Type::Spot) {
+                gpu.direction = tf.forward.Normalized();
+                gpu.innerCos  = std::cos(lc.innerCone * kDegToRad);
+                gpu.outerCos  = std::cos(lc.outerCone * kDegToRad);
+                gpu.type      = static_cast<uint32_t>(1); // FBZZ_LIGHT_TYPE_SPOT
+            } else {
+                gpu.direction = { 0.0f, -1.0f, 0.0f };
+                gpu.innerCos  = 0.0f;
+                gpu.outerCos  = 0.0f;
+                gpu.type      = static_cast<uint32_t>(0); // FBZZ_LIGHT_TYPE_POINT
+            }
+        }
+
         if (lc.type == LightComponent::Type::Directional) {
             lightData.lightDir       = tf.forward.Normalized();
             lightData.lightColor     = lc.color;
@@ -902,6 +1206,11 @@ void RenderSystem(Scene& scene,
         col = lerp3(col, sky.sunsetColor, horizonMix);
         lightData.lightColor     = col;
         lightData.lightIntensity = sky.nightIntensity + (sky.dayIntensity - sky.nightIntensity) * dayMix;
+        // 空の明るさは太陽光の強さとは別軸で補間する (Skydome / SunMoon / 雲 / 光芒 /
+        // エアリアルパースが参照)。分離前は lightIntensity を共用していたため、太陽を
+        // 強くすると空まで白飛びしていた。詳細は SkyRenderer::skyDayBrightness を参照。
+        lightData.skyDimmer      = sky.skyNightBrightness
+                                 + (sky.skyDayBrightness - sky.skyNightBrightness) * dayMix;
         } // if (sky.dayNightEnabled)
         break;
     }
@@ -913,6 +1222,9 @@ void RenderSystem(Scene& scene,
         lightData.lightIntensity  = 0.0f;
         lightData.pointLightCount = 0;
         lightData.spotLightCount  = 0;
+        // 空も消灯する。分離前は lightIntensity=0 が空系シェーダーにも効いていたので、
+        // Unlit 表示で空が黒く落ちる従来の挙動を skyDimmer 側で維持する。
+        lightData.skyDimmer       = 0.0f;
     }
 
     math::Vector3 lightDir = lightData.lightDir.Normalized();
@@ -927,27 +1239,140 @@ void RenderSystem(Scene& scene,
         shadowBounds.valid = true;
     }
 
-    // dirShadowDistance > 0 のとき手動サイズを優先、0 のときシーンに自動フィット
-    const float shadowRadius = (dirShadowDistance > 0.0f)
-        ? dirShadowDistance
-        : (std::max)(shadowBounds.radius, 5.0f);
-    math::Vector3 lightPos = shadowBounds.center - lightDir * (shadowRadius + 20.0f);
-    math::Vector3 up = (std::abs(lightDir.y) > 0.99f)
-                       ? math::Vector3{ 1.0f, 0.0f, 0.0f }
-                       : math::Vector3{ 0.0f, 1.0f, 0.0f };
-    math::Matrix4 lightView = math::Matrix4::LookAt(lightPos, shadowBounds.center, up);
-    math::Matrix4 lightProj = math::Matrix4::Orthographic(-shadowRadius, shadowRadius,
-                                                           -shadowRadius, shadowRadius,
-                                                           1.0f,
-                                                           shadowRadius * 2.0f + 40.0f);
-    math::Matrix4 lightVP   = lightProj * lightView;
+    // ── カスケードシャドウ (CSM) のフィッティング ───────────────────────────────
+    // WHY: シャドウの精細さを決めるのは解像度そのものではなく「1 テクセルが覆うワールド距離」。
+    //      単一シャドウマップは、影の到達距離を伸ばすとその割り算の分母が伸びるだけで、
+    //      近距離の精細さと遠距離の到達距離を同時に満たせない。
+    //      視錐台を距離で区切り、手前ほど狭い範囲へ 1 タイルを丸ごと割り当てることで、
+    //      到達距離を保ったまま足元のテクセル密度だけを上げる。
+    // NOTE: shadowBounds (シーン全体) は「これ以上大きくしない」上限としてだけ使う。
+    //       小さなシーンでは最遠カスケードがシーン全体をそのまま覆う。
+    const int cascadeCount =
+        std::clamp(rs.shadow.cascadeCount, 1, fbzz::renderer::kMaxShadowCascades);
+
+    // アトラス配置: 1 分割なら全面、2 分割以上なら 2x2 タイル。
+    // WHY: 全カスケードを 1 枚の深度テクスチャへ収めることで、影を読む 20 以上のシェーダーが
+    //      バインドもサンプラーも変えずに済む。解像度とメモリは分割数によらず一定で、
+    //      増えるのは「同じ面積をどう配分するか」だけ。
+    const uint32_t atlasResolution = (std::max)(rs.shadow.mapResolution, 1u);
+    const uint32_t tilesPerSide    = (cascadeCount > 1) ? 2u : 1u;
+    const uint32_t tileSize        = (std::max)(atlasResolution / tilesPerSide, 1u);
+
+    // 影の最大到達距離。LightComponent::shadowDistance > 0 は従来どおり手動指定を優先する。
+    const float shadowDistance = (dirShadowDistance > 0.0f)
+        ? (std::max)(dirShadowDistance, 1.0f)
+        : (std::max)(rs.shadow.autoFitDistance, 1.0f);
+
+    float cascadeSplits[fbzz::renderer::kMaxShadowCascades] = {};
+    ComputeCascadeSplits((std::max)(camera.m_near, 0.01f), shadowDistance,
+                         cascadeCount, rs.shadow.cascadeSplitLambda, cascadeSplits);
+
+    const math::Vector3 up = (std::abs(lightDir.y) > 0.99f)
+                             ? math::Vector3{ 1.0f, 0.0f, 0.0f }
+                             : math::Vector3{ 0.0f, 1.0f, 0.0f };
+    // 位置を持たない回転だけのライト空間。テクセルスナップの量子化格子として使う。
+    const math::Matrix4 snapView     = math::Matrix4::LookAt(math::Vector3::ZERO, lightDir, up);
+    const math::Matrix4 snapViewInv  = math::Matrix4::Inverse(snapView);
+
+    ShadowCascade cascades[fbzz::renderer::kMaxShadowCascades] = {};
+    float cascadeSliceNear = (std::max)(camera.m_near, 0.01f);
+
+    for (int i = 0; i < cascadeCount; ++i) {
+        const float sliceFar = cascadeSplits[i];
+
+        // このカスケードが担当する視錐台スライスの外接球。
+        // 外接球はカメラの向きに依存しない半径を返すので、振り向いてもボリュームの
+        // 大きさが変わらず、影の精細度が回転で脈動しない。
+        const FrustumSliceSphere slice =
+            ComputeFrustumSliceSphere(camera, cascadeSliceNear, sliceFar);
+
+        // シーン全体より大きい影ボリュームを作っても無駄なテクセルが増えるだけ。
+        float radius = (std::max)((std::min)(slice.radius, shadowBounds.radius), 1.0f);
+
+        math::Vector3 center = camera.m_position + camera.GetForward() * slice.centerDistance;
+        if (radius < shadowBounds.radius) {
+            // シーン球からはみ出さないよう、中心をシーン球内へ引き戻す。
+            const math::Vector3 offset   = center - shadowBounds.center;
+            const float         distance = offset.Length();
+            const float         limit    = (std::max)(shadowBounds.radius - radius, 0.0f);
+            if (distance > limit && distance > 0.0001f)
+                center = shadowBounds.center + offset * (limit / distance);
+        } else {
+            center = shadowBounds.center;
+        }
+
+        // テクセルスナップ。中心がカメラに追従すると、サブテクセルのずれで影の縁が
+        // 毎フレーム別のテクセルへ丸められ、静止していても輪郭が波打つ (shadow swimming)。
+        // 中心をライト空間で 1 テクセル単位へ量子化すると、カメラが動いてもマップ上の
+        // 標本位置が変わらなくなり、この揺れが消える。
+        const float texelWorldSize = (radius * 2.0f) / static_cast<float>(tileSize);
+        {
+            math::Vector4 lightSpace =
+                snapView * math::Vector4{ center.x, center.y, center.z, 1.0f };
+            lightSpace.x = std::floor(lightSpace.x / texelWorldSize) * texelWorldSize;
+            lightSpace.y = std::floor(lightSpace.y / texelWorldSize) * texelWorldSize;
+            const math::Vector4 snapped = snapViewInv * lightSpace;
+            center = { snapped.x, snapped.y, snapped.z };
+        }
+
+        // 深度レンジ。影ボリュームを縮めても、その外側にいる背の高い caster (建物・地形) が
+        // 影を落とし込めるよう、ライト方向の引きはシーン全体の広がりから取る。
+        // WHY: near/far だけ広げても塗るテクセル数は増えないので、フィルレートは無関係。
+        const float pullback   = (std::max)(shadowBounds.radius, radius) + 20.0f;
+        const float depthRange = pullback + radius + 20.0f;
+
+        const math::Vector3 eye  = center - lightDir * pullback;
+        const math::Matrix4 view = math::Matrix4::LookAt(eye, center, up);
+        const math::Matrix4 proj = math::Matrix4::Orthographic(-radius, radius,
+                                                               -radius, radius,
+                                                               1.0f, depthRange);
+
+        ShadowCascade& cascade = cascades[i];
+        cascade.viewProjection = proj * view;
+        cascade.view           = view;
+        cascade.eyePos         = eye;
+        cascade.frustum        = math::Frustum::FromViewProjection(cascade.viewProjection);
+        cascade.texelWorldSize = texelWorldSize;
+        // ワールド空間で約 5mm 相当の一定バイアスになるよう深度レンジで正規化する。
+        // カスケードごとにレンジが違うので、値もカスケードごとに持つ。
+        cascade.biasNDC = (0.005f * dirShadowBias) / (std::max)(depthRange - 1.0f, 1.0f);
+
+        // アトラス内のタイル位置 (2x2 を左上から Z 字順に埋める)。
+        const uint32_t tileX = static_cast<uint32_t>(i) % tilesPerSide;
+        const uint32_t tileY = static_cast<uint32_t>(i) / tilesPerSide;
+        cascade.viewportX    = tileX * tileSize;
+        cascade.viewportY    = tileY * tileSize;
+        cascade.viewportSize = tileSize;
+
+        const float uvScale = static_cast<float>(tileSize) / static_cast<float>(atlasResolution);
+        cascade.atlasRect = {
+            static_cast<float>(cascade.viewportX) / static_cast<float>(atlasResolution),
+            static_cast<float>(cascade.viewportY) / static_cast<float>(atlasResolution),
+            uvScale, uvScale
+        };
+
+        cascadeSliceNear = sliceFar;
+    }
+
+    // 単一のライト行列で足りるパス (パーティクル自己影など) 向けの代表値。
+    // 最遠カスケードを渡す: 影の到達範囲全体をいちばん広く覆うのがこれだから。
+    // WHY view と viewProjection を対で渡すか: パーティクル自己影はビルボードを光源へ
+    //      正対させるために view の内訳を要求する。片方だけ別カスケードにすると破綻する。
+    const ShadowCascade& widestCascade = cascades[cascadeCount - 1];
+    const math::Matrix4  lightVP   = widestCascade.viewProjection;
+    const math::Matrix4  lightView = widestCascade.view;
+    const math::Vector3  lightPos  = widestCascade.eyePos;
 
     // Forward / Deferred の切り替えで見た目が変わらないよう、不透明物は可能な限り共通の
     // GBuffer → AO → DeferredLighting 経路を通す。
     // WHY: Forward 直描き経路では SSAO/GTAO/ContactShadows/SSR/IBL が Terrain/Detail/Foliage に
     //      乗らず、Unity のようなレンダリングモード切り替え時の見た目互換性を保てない。
     //      必須リソースが欠ける場合だけ従来 Forward にフォールバックする。
+    const bool wantsDeferredPipeline =
+        rs.pipeline == renderer::RenderingPipeline::Deferred
+        || rs.pipeline == renderer::RenderingPipeline::DeferredPlus;
     const bool useGBufferOpaquePipeline =
+        wantsDeferredPipeline &&
         gbufferRT.IsValid() &&
         gbufferShader.IsValid() &&
         deferredLightingShader.IsValid() &&
@@ -992,6 +1417,8 @@ void RenderSystem(Scene& scene,
     passHandles.cloudUpscaleShader    = cloudUpscaleShader;
     passHandles.selectionMaskShader       = selectionMaskShader;
     passHandles.selectionMaskSkinnedShader = selectionMaskSkinnedShader;
+    passHandles.selectionMaskParticleShader = selectionMaskParticleShader;
+    passHandles.selectionMaskParticleGpuShader = selectionMaskParticleGpuShader;
     passHandles.selectionOutlineShader    = selectionOutlineShader;
     passHandles.fxaaShader        = fxaaShader;
     passHandles.customPostProcessShaders.resize(rs.postProcess.customEffects.size());
@@ -1008,10 +1435,39 @@ void RenderSystem(Scene& scene,
     passHandles.postprocPSO       = postprocPSO;
     passHandles.causticsPSO       = causticsPSO;
     passHandles.volumetricCloudPSO = volumetricCloudPSO;
+    passHandles.volumetricCloudPremultipliedPSO = volumetricCloudPremultipliedPSO;
     passHandles.frameCB           = frameCB;
     passHandles.objectCB          = objectCB;
     passHandles.lightCB           = lightCB;
     passHandles.bindPoseSkinningCB = bindPoseSkinningCB;
+
+    // ── スキンドモデルのリファレンスポーズ CB を遅延生成 ─────────────────
+    // WHY: AnimatorComponent を持たない SkinnedMeshRenderer の既定パレット。
+    //   モデル単位 (= スケルトン単位) に 1 本で、全インスタンスが共有する。
+    //   これが無いと単位行列へフォールバックし、ノード階層にバインド変換を持つ
+    //   アセットが倒れて描画される。
+    {
+        struct RefPoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };
+        for (auto& go : scene.GameObjects()) {
+            auto* smr = go.GetComponent<SkinnedMeshRenderer>();
+            if (!smr || !smr->model || !smr->model->skeleton) continue;
+            asset::Model& model = *smr->model;
+            if (model.referencePoseCB.IsValid()) continue;
+
+            const std::vector<math::Matrix4>& refPose = model.skeleton->referencePose;
+            if (refPose.empty()) continue;
+
+            RefPoseData rp{};
+            for (auto& m : rp.bones) m = math::Matrix4::Identity();
+            const size_t maxBones = static_cast<size_t>(asset::MAX_SKINNING_BONES);
+            const size_t count = refPose.size() < maxBones ? refPose.size() : maxBones;
+            for (size_t i = 0; i < count; ++i) rp.bones[i] = refPose[i];
+
+            model.referencePoseCB = resources.CreateConstantBuffer(sizeof(RefPoseData));
+            if (model.referencePoseCB.IsValid())
+                resources.Update(model.referencePoseCB, &rp, sizeof(RefPoseData));
+        }
+    }
     passHandles.postprocCB        = postprocCB;
     passHandles.outlineCB         = outlineCB;
     passHandles.volumetricCloudCB = volumetricCloudCB;
@@ -1028,6 +1484,8 @@ void RenderSystem(Scene& scene,
     passHandles.shadowShader         = shadowShader;
     passHandles.shadowSkinnedShader  = skinnedShadowShader;
     passHandles.shadowCB             = shadowCB;
+    passHandles.skinningComputeCS    = skinningComputeCS;
+    passHandles.skinningCB           = skinningCB;
     passHandles.defaultPSO           = defaultPSO;
     passHandles.wireframePSO         = wireframePSO;
     passHandles.skyShader            = skydomeShader;
@@ -1045,13 +1503,22 @@ void RenderSystem(Scene& scene,
     passHandles.particleShader       = particleShader;
     passHandles.particlePSO          = particlePSO;
     passHandles.particleAlphaPSO     = particleAlphaPSO;
+    passHandles.particlePremultipliedPSO = particlePremultipliedPSO;
     passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
     passHandles.particleGpuSimCS     = particleGpuSimCS;
+    passHandles.particleGpuSortKeysCS  = particleGpuSortKeysCS;
+    passHandles.particleGpuSortStepCS  = particleGpuSortStepCS;
+    passHandles.particleGpuSortLocalCS = particleGpuSortLocalCS;
+    passHandles.particleGpuMeshShader  = particleGpuMeshShader;
+    passHandles.particleSelfShadowShader = particleSelfShadowShader;
+    passHandles.particleSelfShadowRT      = particleSelfShadowRT;
+    passHandles.particleSelfShadowFrameCB = particleSelfShadowFrameCB;
     passHandles.particleGpuShader    = particleGpuShader;
     passHandles.particleGpuAlphaShader = particleGpuShader; // 同一シェーダー、PSO で合成モードを切り替える
     passHandles.particleGpuPSO       = particleGpuPSO;
     passHandles.particleGpuAlphaPSO  = particleGpuAlphaPSO;
+    passHandles.particleGpuPremultipliedPSO = particleGpuPremultipliedPSO;
     passHandles.trailShader          = trailShader;
     passHandles.trailPSO             = trailPSO;
     passHandles.meshTrailShader      = meshTrailShader;
@@ -1073,6 +1540,10 @@ void RenderSystem(Scene& scene,
     passHandles.gbufferShader        = gbufferShader;
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
+    passHandles.clusterCullCS        = clusterCullCS;
+    passHandles.punctualLightBuffer  = punctualLightBuffer;
+    passHandles.clusterIndexBuffer   = clusterIndexBuffer;
+    passHandles.clusterCB            = clusterCB;
 
     // ---- Advanced Graphics ハンドルを passHandles に束縛 ----
     passHandles.advancedGraphicsCB   = advancedGraphicsCB;
@@ -1131,14 +1602,71 @@ void RenderSystem(Scene& scene,
     const math::Frustum lightFrustum  = math::Frustum::FromViewProjection(lightVP);
     OcclusionCuller occlusionCuller;
 
+    // 参照メンバー (scene / renderer / resources / camera / settings / handles) までは
+    // 集成体初期化で埋める必要があるが、それ以降は名前付きで代入する。
+    // WHY: 以前は末尾まで位置指定で並べていたため、RenderPassContext へフィールドを 1 つ
+    //      挿しただけで以降の値が全て 1 つずつずれた。名前で書けばその事故は起きない。
     RenderPassContext passCtx{
         scene, renderer, resources, camera, rs,
-        outputRT, cullingMask, passHandles,
-        sHdrW, sHdrH, selectionOutlineEnabled,
-        lightData, lightVP, useGBufferOpaquePipeline, ssaoEnabled, 0.0f, 1.0f,
-        0.0f, 0.5f, 0.02f, 1.0f, 1.0f, 0.3f, 0.0f,
-        &cameraFrustum, &lightFrustum, &occlusionCuller
+        outputRT, cullingMask, passHandles
     };
+    passCtx.width                   = sHdrW;
+    passCtx.height                  = sHdrH;
+    passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
+    passCtx.lightData               = lightData;
+    passCtx.lightVP                 = lightVP;
+    passCtx.lightView               = lightView;
+    passCtx.lightEyePos             = lightPos;
+    passCtx.isDeferred              = useGBufferOpaquePipeline;
+    passCtx.ssaoEnabled             = ssaoEnabled;
+
+    // ── クラスタライトカリングのモード決定と定数の組み立て ──────────────────────
+    // WHY useGBufferOpaquePipeline の判定式には手を触れないか: あちらは「GBuffer 経路を
+    //     使えるか」であって、ライトの供給方法とは直交する軸。混ぜると Forward/Deferred の
+    //     選択そのものが変わり、本件と無関係な見た目変更が全シーンへ波及する。
+    const bool clusteredAvailable =
+        punctualLightBuffer.IsValid() && clusterIndexBuffer.IsValid() && clusterCB.IsValid();
+    const bool clusteredEnabled =
+        rs.UsesClusteredLighting() && !rs.IsUnlit() && clusteredAvailable && clusterCullCS.IsValid();
+
+    ClusterLightMode clusterMode = ClusterLightMode::Legacy;
+    if (clusteredEnabled)
+        clusterMode = rs.clustered.forceAllLights ? ClusterLightMode::Linear
+                                                  : ClusterLightMode::Clustered;
+
+    passCtx.punctualLights    = std::move(punctualLights);
+    passCtx.clusterLightMode  = clusterMode;
+    passCtx.clusterDebugHeatmap =
+        clusteredEnabled && rs.clustered.debugHeatmap && clusterMode == ClusterLightMode::Clustered;
+
+    if (clusteredAvailable) {
+        // ライト配列は毎フレーム転送する。上限 256 本 × 64B = 16KB で、部分更新の価値はない。
+        if (!passCtx.punctualLights.empty()) {
+            resources.Update(punctualLightBuffer, passCtx.punctualLights.data(),
+                             passCtx.punctualLights.size() * sizeof(PunctualLightGPU));
+        }
+
+        // 指数分割の係数。slice = log(viewZ) * scale + bias が [0, GridZ) に収まるよう決める。
+        //   slice(nearZ) = 0 / slice(clusterFar) = GridZ
+        // WHY 対数か: 点光源のカリングで効くのは深度方向の薄さで、カメラ近傍ほど細かく
+        //      切りたい。等間隔だと手前の 1 スライスが広くなりすぎて何も落とせない。
+        const float nearZ = std::max(camera.m_near, 0.01f);
+        const float farZ  = std::max(std::min(camera.m_far, rs.clustered.maxDistance), nearZ * 2.0f);
+        const float logRatio = std::log(farZ / nearZ);
+
+        ClusterConstantsCB clusterData{};
+        clusterData.clusterTilePx[0] = static_cast<float>(sHdrW) / static_cast<float>(kClusterGridX);
+        clusterData.clusterTilePx[1] = static_cast<float>(sHdrH) / static_cast<float>(kClusterGridY);
+        clusterData.clusterSliceScale = static_cast<float>(kClusterGridZ) / logRatio;
+        clusterData.clusterSliceBias  = -static_cast<float>(kClusterGridZ) * std::log(nearZ) / logRatio;
+        clusterData.clusterLightMode  = static_cast<uint32_t>(clusterMode);
+        clusterData.punctualLightCount = static_cast<uint32_t>(passCtx.punctualLights.size());
+        clusterData.clusterDebugMode  = passCtx.clusterDebugHeatmap ? 1u : 0u;
+        resources.Update(clusterCB, &clusterData, sizeof(ClusterConstantsCB));
+    }
+    passCtx.cameraFrustum           = &cameraFrustum;
+    passCtx.lightFrustum            = &lightFrustum;
+    passCtx.occlusionCuller         = &occlusionCuller;
     passCtx.physicsWorld  = physicsWorld;
     passCtx.environmentResources = &sEnvironmentResources; // 空連動 IBL の永続状態 (フレームをまたぐ)
     // 雲シャドウ (Phase C): SkyRenderer から読んだ params + 現在時刻を影パスへ渡す。
@@ -1147,12 +1675,19 @@ void RenderSystem(Scene& scene,
     passCtx.cloudShadowScale    = skyCloudShadowScale;
     passCtx.cloudShadowSpeed    = skyCloudShadowSpeed;
     passCtx.cloudShadowTime     = Time::time;
-    // near=1.0, far=shadowRadius*2+40 の深度範囲でスケール正規化したバイアス。
-    // 固定 NDC 値はシーンが広がるほど Peter Panning が悪化するため、
-    // ワールド空間で約 5mm 相当の一定バイアスになるよう depthRange で除算する。
-    // dirShadowBias でスケールし、Inspector から Peter Panning / アクネをチューニング可能にする。
-    passCtx.shadowBiasNDC  = (0.005f * dirShadowBias) / (shadowRadius * 2.0f + 39.0f);
-    passCtx.shadowStrength = dirCastShadows ? dirShadowStrength : 0.0f;
+    // Shadow トグルを CB まで伝える。
+    // WHY: 以前 rs.shadowEnabled は ShadowPass の「描画」しか止めておらず、
+    //      ライティング側のシェーダーは影を切っても PCF ループ (既定 7x7 = 49 タップ) を
+    //      毎ピクセル回し続けていた。クリア済みの深度を舐めて必ず factor=1 を得るだけの
+    //      完全な無駄で、しかも「影を切っても速くならない」ため切り分けの道具としても
+    //      機能していなかった。強度 0 を CB へ流し、シェーダー側で早期 return させる。
+    passCtx.shadowStrength =
+        (rs.shadowEnabled && dirCastShadows) ? dirShadowStrength : 0.0f;
+    // 単一カスケード相当のバイアス。カスケードごとの値は ShadowCascade::biasNDC が持つ。
+    passCtx.shadowBiasNDC  = cascades[0].biasNDC;
+    passCtx.shadowCascadeCount = cascadeCount;
+    for (int i = 0; i < cascadeCount; ++i)
+        passCtx.shadowCascades[i] = cascades[i];
 
     // ── 空連動 IBL (環境システム Phase A): source=DynamicSky のとき空→動的 IBL を用意する ──
     // WHY: AdvancedGraphicsCB / 各 Lit パスより前に焼くことで、同フレームで動的 IBL を消費できる。
@@ -1160,6 +1695,8 @@ void RenderSystem(Scene& scene,
     //      (順序が消費パスと厳密化する必要が出た段階で §4-2 のグラフ統合へ移す)。
     //      SkyCapture/SkyLightBake は dirty を内部判定し、不要フレームは即 return する (キャッシュ)。
     bool dynamicIblReady = false;
+    float reflectionProbeIntensity = 1.0f;
+    int dynamicIblMipCount = 0;
     if (activeIblSource == IblSource::DynamicSky) {
         ExecuteSkyCapturePass(passCtx);
         ExecuteSkyLightBakePass(passCtx);
@@ -1167,7 +1704,19 @@ void RenderSystem(Scene& scene,
             passHandles.iblIrradiance = sEnvironmentResources.skyIrradiance;
             passHandles.iblPrefilter  = sEnvironmentResources.skyPrefilter;
             dynamicIblReady = true;
+            dynamicIblMipCount = static_cast<int>(sEnvironmentResources.prefilteredMipCount);
         }
+    }
+
+    // 局所 Reflection Probe はカメラが影響範囲内にいるとき、グローバル IBL より優先する。
+    // WHY: Lit シェーダーの IBL スロットを既存のまま共有すれば、各マテリアルへ専用分岐や
+    //      追加テクスチャを持たせず、空のみ／周辺メッシュ込みの両キャプチャ方式を適用できる。
+    if (auto* localProbe = ExecuteReflectionProbeCapturePass(passCtx)) {
+        passHandles.iblIrradiance = localProbe->runtimeIrradiance;
+        passHandles.iblPrefilter  = localProbe->runtimePrefilter;
+        dynamicIblReady = true;
+        reflectionProbeIntensity = localProbe->intensity;
+        dynamicIblMipCount = static_cast<int>(localProbe->runtimePrefilterMipCount);
     }
 
     // ---- AdvancedGraphicsCB を毎フレーム更新 ----
@@ -1182,12 +1731,12 @@ void RenderSystem(Scene& scene,
         const bool iblResourcesReady =
             (dynamicIblReady || (rs.ibl.enabled && rs.HasValidIblAssets())) &&
             passHandles.iblIrradiance.IsValid() && passHandles.iblPrefilter.IsValid();
-        agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity : 0.0f;
+        agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity * reflectionProbeIntensity : 0.0f;
         agData.iblDiffuseScale       = rs.ibl.diffuseScale;
         agData.iblSpecularScale      = rs.ibl.specularScale;
         // 動的 IBL は SkyLightBake が焼いた prefilter mip 数に合わせる (maxMip = mip 数 - 1)。
         agData.iblMaxMipLevel        = dynamicIblReady
-            ? static_cast<int>(sEnvironmentResources.prefilteredMipCount) - 1
+            ? dynamicIblMipCount - 1
             : rs.ibl.maxMipLevel;
         agData.ssrMaxDistance        = rs.ssr.maxDistance;
         agData.ssrThickness          = rs.ssr.thickness;
@@ -1279,6 +1828,26 @@ void RenderSystem(Scene& scene,
             }, desc.allowCulling);
         }
     };
+
+    // ── Skinning (コンピュート) ───────────────────────────────────────────────
+    // WHY Shadow より前: 変形結果をシャドウ・GBuffer・Forward が共有する。
+    //     ここで 1 回だけ計算しておかないと、各パスの VS が同じ変形を繰り返す。
+    // NOTE: RenderGraph のリソース依存には乗せない (出力は論理リソースではなく
+    //       SkinnedMeshRenderer が持つ頂点バッファのため)。カリング禁止で常に実行する。
+    pipeline.AddRawPass("SkinningCompute", {}, {}, [&]() {
+        ExecuteSkinningComputePass(passCtx);
+    }, false);
+
+    // ── クラスタライトカリング ────────────────────────────────────────────────
+    // WHY Shadow より前か: Forward / Deferred のどちらの経路でも同じクラスタ結果を読む。
+    //     ここで 1 回だけ作っておけば、以降のライティングパスは引くだけで済む。
+    // NOTE: 出力は StructuredBuffer で RenderGraph の論理リソースではないため
+    //       reads/writes は空。カリング禁止で常に実行する (SkinningCompute と同じ)。
+    if (clusteredEnabled) {
+        pipeline.AddRawPass("ClusterLightCull", {}, {}, [&]() {
+            ExecuteClusterLightCullPass(passCtx);
+        }, false);
+    }
 
     // ── Shadow ────────────────────────────────────────────────────────────────
     pipeline.AddRawPass("Shadow", {}, { "ShadowMap" }, [&]() {
@@ -1469,6 +2038,14 @@ void RenderSystem(Scene& scene,
         ExecuteParticlePass(passCtx);
     });
 
+    // Overdraw 可視化は診断表示。有効なときだけ Particle の直後に HDR を上書きする。
+    // GPU 時間を Particle パスの実測値と混ぜないよう、別パスとして計測させる。
+    if (rs.particleOverdrawView) {
+        pipeline.AddRawPass("ParticleOverdraw", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteParticleOverdrawPass(passCtx);
+        });
+    }
+
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
     // ── Selection / Debug ─────────────────────────────────────────────────────
@@ -1483,6 +2060,7 @@ void RenderSystem(Scene& scene,
     pipeline.AddPass<AnimatorDebugPass>();
     pipeline.AddPass<GridDebugPass>();
     pipeline.AddPass<LightRangeDebugPass>();
+    pipeline.AddPass<VFXGizmoDebugPass>();
     pipeline.AddPass<TerrainCollisionDebugPass>();
 
     pipeline.AddRawPass("ScriptDebugDraw", { "HDR" }, { "HDR" }, [&]() {
@@ -1776,6 +2354,8 @@ void RenderSystem(Scene& scene,
         dbgSnap.renderStats.drawCalls       = passCtx.statsDrawCalls;
         dbgSnap.renderStats.vertexCount     = passCtx.statsVertexCount;
         dbgSnap.renderStats.triangleCount   = passCtx.statsTriangleCount;
+        dbgSnap.renderStats.shadowDrawCalls     = passCtx.statsShadowDrawCalls;
+        dbgSnap.renderStats.shadowTriangleCount = passCtx.statsShadowTriangleCount;
 
         renderer::RenderDebugOverlay::UpdateSnapshot(dbgSnap, rs.passViewerEnabled);
     }

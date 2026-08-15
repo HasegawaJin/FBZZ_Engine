@@ -20,6 +20,8 @@
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/ModelAssetImporter.hpp>
 #include <Engine/Asset/ModelImporter.hpp>
+#include <Engine/Asset/PhysicsMaterialAsset.hpp>
+#include <Engine/Asset/PhysicsMaterialImporter.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
@@ -28,6 +30,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Windows.h>
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -40,6 +43,47 @@
 namespace fbzz::asset {
 
 namespace {
+
+// SDKのEngine assetsはプロジェクト外に一つだけ保持する。
+// GameHub起動時は環境変数、配布Standaloneはexe隣のEngineAssetsから解決する。
+std::string DiscoverEngineAssetRoot()
+{
+    const DWORD required = GetEnvironmentVariableW(L"FBZZ_ENGINE_ASSET_ROOT", nullptr, 0);
+    if (required > 1) {
+        std::wstring value(required, L'\0');
+        const DWORD written = GetEnvironmentVariableW(
+            L"FBZZ_ENGINE_ASSET_ROOT", value.data(), required);
+        if (written > 0 && written < required) {
+            value.resize(written);
+            return util::FileSystem::PathToUtf8(std::filesystem::path(value));
+        }
+    }
+
+    std::wstring executable(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD written = GetModuleFileNameW(
+            nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+        if (written == 0) return {};
+        if (written < executable.size()) {
+            executable.resize(written);
+            break;
+        }
+        executable.resize(executable.size() * 2);
+    }
+    const std::filesystem::path executableDirectory =
+        std::filesystem::path(executable).parent_path();
+    const std::filesystem::path stagedCandidate = executableDirectory / L"EngineAssets";
+    if (util::FileSystem::Exists(util::FileSystem::PathToUtf8(stagedCandidate)))
+        return util::FileSystem::PathToUtf8(stagedCandidate);
+
+    // SDK Editorは tools/<Config>/Editor にあり、共有assetはSDK root/share配下にある。
+    const std::filesystem::path sdkCandidate =
+        executableDirectory.parent_path().parent_path().parent_path()
+        / L"share" / L"fbzz" / L"Assets";
+    return util::FileSystem::Exists(util::FileSystem::PathToUtf8(sdkCandidate))
+        ? util::FileSystem::PathToUtf8(sdkCandidate)
+        : std::string{};
+}
 
 std::unique_ptr<Model> ConvertModelAssetToLegacyModel(std::unique_ptr<ModelAsset> asset)
 {
@@ -136,6 +180,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
 
 renderer::ResourceManager* AssetManager::s_resources   = nullptr;
 std::string                AssetManager::s_basePath     = "Assets/";
+std::string                AssetManager::s_engineBasePath;
 bool                       AssetManager::s_initialized  = false;
 
 bool                       AssetManager::S_init() noexcept { return s_initialized; }
@@ -255,14 +300,6 @@ static std::string ResolveModelAssetPath(const std::string& key, const std::stri
     const std::string lib = LibraryBakedModelPathFromFbx(fbxFull, basePath);
     if (!lib.empty() && util::FileSystem::Exists(lib)) return lib;
 
-    // 旧パッケージ形式 Foo/Foo.fzasset からの移行中プロジェクトを読むための後方互換。
-    const fs::path fbxPath = util::FileSystem::PathFromUtf8(fbxFull);
-    const std::string stem = util::FileSystem::PathToUtf8(fbxPath.stem());
-    const std::string legacyLogical = util::FileSystem::PathToUtf8(
-        fbxPath.parent_path() / stem / (stem + ".fzasset"));
-    const std::string legacyResolved = AssetManager::ResolveAssetPath(legacyLogical);
-    if (util::FileSystem::Exists(legacyResolved)) return legacyResolved;
-
     return fbxFull;
 }
 
@@ -301,6 +338,14 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
 
     if (IsAbsPath(key)) return key;
     if (util::FileSystem::Exists(full)) return full;
+    if (!s_engineBasePath.empty()) {
+        std::string enginePath = s_engineBasePath;
+        if (enginePath.back() != '/') enginePath.push_back('/');
+        std::string relative = key;
+        if (StartsWithCI(relative, "Assets/")) relative = relative.substr(7);
+        enginePath += relative;
+        if (util::FileSystem::Exists(enginePath)) return enginePath;
+    }
     if (util::FileSystem::Exists(key))  return key;
     return full;
 }
@@ -317,6 +362,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     assert(!s_initialized && "AssetManager::Init() must be called once");
     s_resources   = &resources;
     s_basePath    = Normalize(basePath);
+    s_engineBasePath = Normalize(DiscoverEngineAssetRoot());
     s_initialized = true;
 
     // GUID ⇄ パス索引を構築する (.meta の自己修復もここで走る)。
@@ -335,6 +381,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     RegisterImporter<TerrainAsset>            (std::make_unique<TerrainImporter>());
     RegisterImporter<TextureAsset>            (std::make_unique<ImageImporter>());
     RegisterImporter<IblAsset>               (std::make_unique<IblImporter>());
+    RegisterImporter<PhysicsMaterialAsset>    (std::make_unique<PhysicsMaterialImporter>());
 }
 
 void AssetManager::UnloadAll()
@@ -354,6 +401,7 @@ void AssetManager::UnloadAll()
     s_materialSlots.emplace_back();
     s_materialFreeList.clear();
     s_resources   = nullptr;
+    s_engineBasePath.clear();
     s_initialized = false;
 
     // GUID 索引もアセットと同じライフサイクルで破棄する (再 Init で再構築)。
@@ -458,6 +506,12 @@ AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& re
 }
 
 template<>
+AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath)
+{
+    return LoadFromStore<PhysicsMaterialAsset>(relativePath);
+}
+
+template<>
 ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h)
 {
     return GetFromStore<ModelAsset>(h);
@@ -494,6 +548,12 @@ TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h)
 }
 
 template<>
+PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h)
+{
+    return GetFromStore<PhysicsMaterialAsset>(h);
+}
+
+template<>
 void AssetManager::Unload<ModelAsset>(const std::string& relativePath)
 {
     UnloadFromStore<ModelAsset>(relativePath);
@@ -527,6 +587,12 @@ template<>
 void AssetManager::Unload<TextureAsset>(const std::string& relativePath)
 {
     UnloadFromStore<TextureAsset>(relativePath);
+}
+
+template<>
+void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath)
+{
+    UnloadFromStore<PhysicsMaterialAsset>(relativePath);
 }
 
 void AssetManager::FlushFailed()

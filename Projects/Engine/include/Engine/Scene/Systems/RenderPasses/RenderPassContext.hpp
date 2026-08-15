@@ -10,6 +10,7 @@
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/Model.hpp>
 #include <Engine/Scene/Systems/RenderPasses/EnvironmentResources.hpp>
 #include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <Math/Frustum.hpp>
@@ -100,9 +101,56 @@ struct GpuParticleEmitterCB {
     math::Vector4 velocityCurveKeys23;
     math::Vector4 gradientTimes;
     math::Vector4 gradientColors[4];
+    math::Matrix4 viewProjection;
+    float         screenWidth;
+    float         screenHeight;
+    float         depthThickness;
+    float         depthBounciness;
+    uint32_t      depthCollision;
+    uint32_t      depthResponse;
+    float         depthDamping;
+    float         depthPad;
+    // ── over-lifetime モジュール追加分 (末尾追加で既存オフセットを変えない) ──
+    // 既存 curveFlags が埋まっているため 2 本目のフラグ束を持つ。
+    math::Vector4 curveFlags2;          // x=rotation, y=drag, z/w=予約
+    math::Vector4 rotationCurveKeys01;  // time0,value0,time1,value1
+    math::Vector4 rotationCurveKeys23;
+    math::Vector4 dragCurveKeys01;
+    math::Vector4 dragCurveKeys23;
+    math::Vector3 orbitalAxis;          // 正規化済み
+    float         orbitalVelocity;
+    float         radialVelocity;
+    // bit0 = spriteRandomStartFrame / bit1 = spriteRandomRow
+    uint32_t      spriteRandomFlags;
+    float         velocityPad0;
+    float         velocityPad1;
+    // ── カーブ 8 キー化の追加分 ──────────────────────────────────────────────
+    // WHY: 既存の *Keys01/23 (キー 0〜3) はオフセットを変えずそのまま残し、
+    //      キー 4〜7 を末尾へ足す。CB は「末尾追加のみ」を規約にしてあり、
+    //      途中へ挿すと HLSL 側の全オフセットがずれて静かに壊れる。
+    math::Vector4 sizeCurveKeys45;
+    math::Vector4 sizeCurveKeys67;
+    math::Vector4 velocityCurveKeys45;
+    math::Vector4 velocityCurveKeys67;
+    math::Vector4 rotationCurveKeys45;
+    math::Vector4 rotationCurveKeys67;
+    math::Vector4 dragCurveKeys45;
+    math::Vector4 dragCurveKeys67;
+    math::Vector4 gradientTimes47;
+    math::Vector4 gradientColors47[4];
+    // 実キー数。4 キー固定だった頃は不要だったが、8 キー化で「どこまでが有効か」を
+    // GPU 側も知らないと、末尾のダミーキーを踏んで CPU と違う値を返す。
+    math::Vector4 curveKeyCounts;   // x=size, y=velocity, z=rotation, w=drag
+    // 補間モード (0=Linear, 1=Step, 2=Smooth)。CPU の ApplyCurveInterpolation と対。
+    math::Vector4 curveModes;       // x=size, y=velocity, z=rotation, w=drag
+    math::Vector4 gradientMeta;     // x=キー数, y=補間モード, z/w=予約
 };
-static_assert(sizeof(GpuParticleEmitterCB) == 688,
-    "GpuParticleEmitterCB must match GpuEmitterCB in ParticleGpuSim.cs.hlsl (688 bytes)");
+// 内訳: 従来 784 + over-lifetime 追加分 112
+//   (float4 × 5 = 80) + (orbitalAxis 12 + orbitalVelocity 4 = 16)
+//   + (radialVelocity 4 + spriteRandomFlags 4 + pad 4 × 2 = 16)
+// + カーブ 8 キー化 256 (float4 × 16: curve 4 本 × 2 + gradient 1 + 色 4 + meta 3)
+static_assert(sizeof(GpuParticleEmitterCB) == 1152,
+    "GpuParticleEmitterCB must match GpuEmitterCB in ParticleGpuSim.cs.hlsl (1152 bytes)");
 
 struct PerFrameCB {
     math::Matrix4 view;
@@ -120,21 +168,98 @@ struct PerObjectCB {
     math::Matrix4 worldInvTranspose;
 };
 
+// ── クラスタライトカリング (Forward+ / Deferred+) ────────────────────────────
+// LAYOUT: Assets/Shaders/Common/ClusterConstants.hlsli と完全に一致させること。
+//         片方だけ変えるとライトが黙って別の位置・別の色で評価される。
+
+// グリッドは解像度非依存の固定分割。
+// WHY: 画面ピクセル数からタイル数を決めると、ビューポートをリサイズするたびに
+//      クラスタバッファを作り直すことになる。16:9 に合わせた固定分割なら確保は起動時 1 回で済む。
+inline constexpr uint32_t kClusterGridX = 32;
+inline constexpr uint32_t kClusterGridY = 18;
+inline constexpr uint32_t kClusterGridZ = 24;
+inline constexpr uint32_t kClusterCount = kClusterGridX * kClusterGridY * kClusterGridZ;
+
+// 1 クラスタが保持できるライト数。あふれた分はライト番号の昇順で切り捨てる (決定的)。
+inline constexpr uint32_t kMaxLightsPerCluster = 32;
+// クラスタ 1 個分の uint 数。先頭がライト数、続けてライト番号が並ぶ。
+inline constexpr uint32_t kClusterStride = kMaxLightsPerCluster + 1;
+// 点光源 + スポットを統合した配列の上限 (従来は点 8 / スポット 4 だった)。
+inline constexpr uint32_t kMaxPunctualLights = 256;
+
+// ライト供給モード。ClusterConstants.hlsli の FBZZ_LIGHT_MODE_* と一致させること。
+// WHY 3 状態か: cbuffer 未束縛のパスは中身が全ゼロで読まれる。0 = Legacy にしておけば、
+//      b9 と t29/t30 を渡していない既存パスは今までと 1 ビットも変わらず動く。
+enum class ClusterLightMode : uint32_t {
+    Legacy    = 0, // b3 の固定長 cbuffer (点 8 / スポット 4)
+    Linear    = 1, // StructuredBuffer を全数走査 (カリング無効・A/B 検証用)
+    Clustered = 2, // クラスタが持つライトだけ走査
+};
+
+// 点光源とスポットを統合した 1 本ぶん (64 bytes)。
+// WHY 統合するか: インデックス空間が 1 本になり、カリング CS も PS も 1 重ループで済む。
+struct PunctualLightGPU {
+    math::Vector3 position;  float    range;
+    math::Vector3 color;     float    intensity;
+    math::Vector3 direction; float    innerCos;   // Spot のみ
+    float         outerCos;  uint32_t type;       float _lightPad[2];
+};
+static_assert(sizeof(PunctualLightGPU) == 64,
+    "PunctualLightGPU must match PunctualLight in Common/ClusterConstants.hlsli (64 bytes)");
+
+struct ClusterConstantsCB {
+    // 1 クラスタが覆う画面上のピクセル数 = screenSize / (GridX, GridY)。
+    // WHY CPU 側で割るか: マテリアルパスは PostProcConstants (b5) を束縛しないため、
+    //     シェーダー側で screenSize を参照できない。
+    float    clusterTilePx[2];
+    float    clusterSliceScale;
+    float    clusterSliceBias;
+    uint32_t clusterLightMode;   // ClusterLightMode
+    uint32_t punctualLightCount;
+    uint32_t clusterDebugMode;   // 0=通常, 1=クラスタあたりライト数のヒートマップ
+    uint32_t _clusterPad0 = 0;
+};
+static_assert(sizeof(ClusterConstantsCB) == 32,
+    "ClusterConstantsCB must match ClusterConstants in Common/ClusterConstants.hlsli (32 bytes)");
+
+// ShadowConstantsCB — HLSL の ShadowConstants (b4) と 1 対 1 で対応する。
+// LAYOUT: Assets/Shaders/Common/ShadowConstants.hlsli と完全に一致させること。
+//         あちらが唯一の HLSL 側定義 (Constants / Terrain / Water が include する)。
 struct ShadowConstantsCB {
+    // 単一のライト行列で足りるパス向け (= cascadeViewProjection[0] と同じ内容)。
+    // パーティクル自己影・体積光など、カスケードの概念を持たない経路が使う。
     math::Matrix4 lightViewProjection;
-    float         shadowMapTexelSize[2];
-    float         shadowBias;
-    float         shadowStrength;  // 0=影なし, 1=完全な影 (HLSL ShadowConstants と一致)
-    int           shadowPcfRadius; // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
-    // 雲シャドウ (Phase C) — HLSL ShadowConstants と一致 (_pad[3] を置換し reg6 を追加)。
+    // カスケードごとのライト viewProjection。有効なのは先頭 cascadeCount 本。
+    math::Matrix4 cascadeViewProjection[renderer::kMaxShadowCascades];
+    // カスケードごとのアトラス矩形。xy = UV オフセット, zw = UV スケール。
+    math::Vector4 cascadeAtlasRect[renderer::kMaxShadowCascades];
+    // カスケードごとの NDC 深度バイアス (x=cascade0 .. w=cascade3)。
+    // WHY: カスケードごとに正射影の深度レンジが違うため、同じワールド距離のオフセットでも
+    //      NDC 換算値が変わる。1 つの値を共有するとどこかで必ず破綻する。
+    math::Vector4 cascadeBias;
+
+    float         shadowMapTexelSize[2]; // 1.0 / アトラス全体の解像度
+    float         shadowBias;            // 単一カスケード時のバイアス (= cascadeBias.x)
+    float         shadowStrength;        // 0=影なし, 1=完全な影
+
+    int           shadowPcfRadius;  // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    int           cascadeCount;     // 1 = 単一シャドウマップ (従来), 2〜4 = CSM
+    float         cascadeBlend;     // カスケード境界のクロスフェード幅 [0,1]
+    int           cascadeDebugView; // 1 = カスケード番号を色で可視化
+
+    // 雲シャドウ (Phase C)
     float         cloudShadowStrength; // 0=無効
     float         cloudShadowCoverage;
     float         cloudShadowScale;
     float         cloudShadowSpeed;
+
     float         cloudShadowTime;
     float         cloudShadowWindX;
     float         cloudShadowWindZ;
+    float         _shadowPad0 = 0.0f;
 };
+static_assert(sizeof(ShadowConstantsCB) == 464,
+    "ShadowConstantsCB must match ShadowConstants in Common/ShadowConstants.hlsli (464 bytes)");
 
 struct AtmosphereCB {
     float rayleighScattering[3];
@@ -293,6 +418,14 @@ struct DecalCB {
     float         _pad2;
     math::Vector3 decalNormal;
     float         _pad3;
+    // 角度フェード。受け面の法線が投影軸から傾くほどデカールを薄くする。
+    // WHY: OBB 投影は投影軸に対して斜めな面へ当てると、テクスチャが引き伸ばされて
+    //      長い筋になる。着弾痕や血痕が壁の角をまたいだ瞬間に「伸びた汚れ」として
+    //      露見する、デカールで最も目立つ破綻がこれ。
+    //      角度で薄めれば、破綻する範囲がそのまま消える。
+    float         angleFadeStrength = 1.0f; // 0 = フェードなし (従来の挙動)
+    float         angleFadeCos = 0.34f;     // この cos より寝た面では完全に消える (既定 70 度)
+    float         _pad4[2] = { 0.0f, 0.0f };
 };
 
 struct RenderPassHandles {
@@ -320,6 +453,8 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> causticsShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskSkinnedShader;
+    renderer::ResourceHandle<renderer::ShaderTag> selectionMaskParticleShader;
+    renderer::ResourceHandle<renderer::ShaderTag> selectionMaskParticleGpuShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
     renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
     std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
@@ -331,6 +466,9 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
+    // 最終フォールバックの単位行列パレット。スケルトンが解決できない場合のみ使う。
+    // 通常は Model::referencePoseCB (リファレンスポーズ) が優先される。
+    // ResolveSkinningCB() を必ず経由すること。
     renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> postprocCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
@@ -346,6 +484,10 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         shadowShader;
     renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+
+    // コンピュートスキニング — ボーン変形を 1 フレーム 1 回だけ計算して各パスで共有する。
+    renderer::ResourceHandle<renderer::ShaderTag>         skinningComputeCS;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
 
     renderer::ResourceHandle<renderer::PipelineStateTag>  defaultPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  wireframePSO;
@@ -367,15 +509,34 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         particleShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleAlphaPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particlePremultipliedPSO;
     renderer::ResourceHandle<renderer::BufferTag>         particleVB;
     renderer::ResourceHandle<renderer::BufferTag>         particleIB;
 
     // GPU パーティクル
     renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSimCS;   // CS: シミュレーション+スポーン
+    // GPU ソート 3 段。半透明を大量に出すとき、描画順をカメラ距離で並べ替えるために使う。
+    // WHY: .cs.hlsl はエントリ 1 本なので、キー生成 / グローバル段 / LDS 段で 3 本に分かれる。
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSortKeysCS;
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSortStepCS;
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSortLocalCS;
+    // メッシュパーティクルのインスタンス描画 (VS が SV_InstanceID で粒子を引く)。
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuMeshShader;
+    // 自己影: 光源から見た密度を積む専用 RT / シェーダー / 光源行列を入れた frame CB。
+    // WHY: 頂点展開ロジックを Particle.hlsl と共有するため、b0 の view/viewProjection だけを
+    //      光源のものへ差し替える。h.frameCB を書き換えると後続パスへ漏れるので別 CB を持つ。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   particleSelfShadowRT;
+    renderer::ResourceHandle<renderer::ShaderTag>         particleSelfShadowShader;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> particleSelfShadowFrameCB;
+    // 自己影の密度バッファ 1 辺の解像度 [px]。
+    // WHY: 自己影が拾うのは「煙の内部で光がどれだけ減るか」という低周波の情報で、
+    //      輪郭の鮮鋭さは要らない。シャドウマップより粗くしてフィルレートを抑える。
+    static constexpr std::uint32_t kSelfShadowResolution = 512u;
     renderer::ResourceHandle<renderer::ShaderTag>         particleGpuShader;  // VS+PS: billboard 描画 (加算合成)
     renderer::ResourceHandle<renderer::ShaderTag>         particleGpuAlphaShader; // VS+PS: billboard 描画 (アルファ合成)
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuAlphaPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPremultipliedPSO;
 
     renderer::ResourceHandle<renderer::ShaderTag>         trailShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  trailPSO;
@@ -388,6 +549,14 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
     renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
     renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
+
+    // ---- クラスタライトカリング (Forward+ / Deferred+) ----
+    // punctualLightBuffer は PS の t29 / CS の t14 へ、clusterIndexBuffer は PS の t30 /
+    // CS の u2 へ束縛する。clusterCB (b9) はモードとグリッド係数を運ぶ。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> punctualLightBuffer;
+    renderer::ResourceHandle<renderer::StructuredBufferTag> clusterIndexBuffer;
+    renderer::ResourceHandle<renderer::ConstantBufferTag>   clusterCB;
+    renderer::ResourceHandle<renderer::ShaderTag>           clusterCullCS;
 
     // Detail System (Terrain Detail — GPU Instancing)
     renderer::ResourceHandle<renderer::ShaderTag>         detailMeshShader;
@@ -430,6 +599,7 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         volumetricCloudShader;
     renderer::ResourceHandle<renderer::ShaderTag>         cloudUpscaleShader; // ハーフ解像度→HDR 合成
     renderer::ResourceHandle<renderer::PipelineStateTag>  volumetricCloudPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  volumetricCloudPremultipliedPSO; // 雲の premultiplied 合成専用
     renderer::ResourceHandle<renderer::ConstantBufferTag> volumetricCloudCB;
     // 3D ボリューメトリック雲ノイズ (起動時 CPU 焼き・タイラブル)。
     //   shape  = 128³ 低周波 Perlin-Worley + Worley FBM 帯 (RGBA)
@@ -467,6 +637,32 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::TextureTag>        proceduralColorLut;
 };
 
+// ShadowCascade — カスケード 1 枚ぶんの描画情報。RenderSystem が毎フレーム組み立て、
+// ShadowPass がアトラスのタイルへ描き、各ライティングパスが CB へ転送する。
+// WHY: カスケードは「視錐台のどの距離帯を担当するか」以外は単一シャドウマップと同じ構造を
+//      持つ。行列・カリング錐台・書き込み先タイル・バイアスをひとまとめにしておけば、
+//      ShadowPass 側は「タイルを選んで既存の caster 提出を回す」だけで済む。
+struct ShadowCascade {
+    math::Matrix4 viewProjection;
+    // ライトビュー単体。第 3 行がライト前方への射影なので、caster を光源に近い順へ
+    // 並べ替えるための深度キー算出に使う (Hi-Z を効かせるための描画順)。
+    math::Matrix4 view;
+    // ライト視点のワールド位置。
+    math::Vector3 eyePos;
+    // このカスケードの caster カリング用錐台 (viewProjection から抽出済み)。
+    math::Frustum frustum;
+    // アトラス上の位置。xy = UV オフセット, zw = UV スケール (HLSL cascadeAtlasRect と同値)。
+    math::Vector4 atlasRect;
+    // アトラス上のピクセル矩形。ShadowPass が IRenderer::SetViewport へ渡す。
+    uint32_t      viewportX    = 0;
+    uint32_t      viewportY    = 0;
+    uint32_t      viewportSize = 0;
+    // このカスケードの正射影深度レンジで正規化した NDC バイアス。
+    float         biasNDC = 0.0f;
+    // このカスケードの 1 テクセルが覆うワールド距離 [m]。caster の極小カリングに使う。
+    float         texelWorldSize = 0.0f;
+};
+
 struct RenderPassContext {
     Scene& scene;
     renderer::IRenderer& renderer;
@@ -482,7 +678,21 @@ struct RenderPassContext {
     bool selectionOutlineEnabled = false;
 
     renderer::LightConstantsCB lightData;
+
+    // ---- クラスタライトカリング ----
+    // punctualLights は b3 の固定長配列 (点 8 / スポット 4) と並行して構築される。
+    // WHY 併存させるか: b3 は Sky / Terrain / Particle など 20 以上のシェーダーが
+    //      directional・ambient を読むために使っており、消すと影響範囲が広すぎる。
+    //      点光源とスポットだけをこちらへ逃がし、対応済みのパスから順に切り替える。
+    std::vector<PunctualLightGPU> punctualLights;
+    ClusterLightMode              clusterLightMode = ClusterLightMode::Legacy;
+    bool                          clusterDebugHeatmap = false;
+
     math::Matrix4               lightVP;
+    // 影の光源視点。ビルボードを光源へ正対させる必要があるパス
+    // (パーティクル自己影の密度積み) が lightVP の内訳を要求する。
+    math::Matrix4               lightView;
+    math::Vector3               lightEyePos;
     // GBuffer を使う不透明パイプラインが有効かどうか。
     // WHY: RenderSettings の Forward/Deferred 名ではなく、各パスが GBuffer 入力を読めるかを判定する。
     bool                        isDeferred  = false;
@@ -494,6 +704,12 @@ struct RenderPassContext {
     float                       shadowBiasNDC  = 0.0f;
     float                       shadowStrength = 1.0f;  // LightComponent から流れてくる影の濃さ
 
+    // ── カスケードシャドウ ──────────────────────────────────────────────────
+    // 有効なのは先頭 shadowCascadeCount 本。1 のときは従来の単一シャドウマップと等価
+    // (カスケード 0 がアトラス全面を占める) なので、パス側に分岐は要らない。
+    ShadowCascade               shadowCascades[renderer::kMaxShadowCascades];
+    int                         shadowCascadeCount = 1;
+
     // 雲シャドウ (Phase C) — RenderSystem が SkyRenderer から設定し、影パスが ShadowConstantsCB へ転送する。
     float                       cloudShadowStrength = 0.0f; // 0=無効
     float                       cloudShadowCoverage = 0.5f;
@@ -504,18 +720,28 @@ struct RenderPassContext {
     float                       cloudShadowTime     = 0.0f; // RenderSystem が Time::time を設定
 
     const math::Frustum* cameraFrustum = nullptr;
+    // 最遠カスケードの錐台 (= 影が届く範囲全体)。
+    // NOTE: ShadowPass はカスケードごとに shadowCascades[i].frustum でカリングする。
+    //       こちらは「影の到達範囲に入るか」を 1 回で判定したいパス向けの代表値。
     const math::Frustum* lightFrustum  = nullptr;
     OcclusionCuller*      occlusionCuller = nullptr;
     // 空連動 IBL の永続状態 (フレームをまたぐ。RenderSystem が static 実体を指す)。
     EnvironmentResources* environmentResources = nullptr;
     const physics::World* physicsWorld   = nullptr;
 
+    // カメラ視点で実際に発行した描画の統計。
+    // WHY: パスごとに手書きで加算すると新パス追加時に数え漏れる。
+    //      ジオメトリ系パスは SubmitCounted() 経由で Submit し、集計を 1 か所に集める。
     int statsTotalObjects    = 0;
     int statsFrustumCulled   = 0;
     int statsOcclusionCulled = 0;
     int statsDrawCalls       = 0;
     int statsVertexCount     = 0;
     int statsTriangleCount   = 0;
+    // シャドウマップ描画は同じジオメトリを光源視点で再描画するため、
+    // カメラ統計に混ぜず独立したカウンターへ集計する。
+    int statsShadowDrawCalls     = 0;
+    int statsShadowTriangleCount = 0;
     int statsParticleEmitters = 0;
     int statsParticleVisible = 0;
     int statsParticleCulled = 0;
@@ -528,5 +754,61 @@ struct RenderPassContext {
     //      未設定 (nullptr) の場合は空ハンドルを返す。
     std::function<renderer::ResourceHandle<renderer::RenderTargetTag>(std::string_view)> getTransientRT;
 };
+
+// DrawCall 1 件が描く三角形数。
+// WHY: indexCount=0 の非インデックス描画 (フルスクリーン三角形・SV_VertexID 生成ジオメトリ) は
+//      vertexCount を 3 で割る必要があり、加算側で毎回書き分けると数え間違いが起きる。
+[[nodiscard]] inline int DrawCallTriangleCount(const renderer::DrawCall& call)
+{
+    if (call.topology != renderer::PrimitiveTopology::TRIANGLE_LIST) return 0;
+    const uint32_t perInstance = call.indexCount > 0 ? call.indexCount / 3u : call.vertexCount / 3u;
+    return static_cast<int>(perInstance * (call.instanceCount > 0 ? call.instanceCount : 1u));
+}
+
+// DrawCall 1 件が描く頂点数 (インスタンシングを含む)。
+// WHY: インデックス描画では「メッシュのユニーク頂点数」を表示したいので vertexCount を優先し、
+//      vertexCount を埋めていないパスのために indexCount へフォールバックする。
+[[nodiscard]] inline int DrawCallVertexCount(const renderer::DrawCall& call)
+{
+    const uint32_t perInstance = call.vertexCount > 0 ? call.vertexCount : call.indexCount;
+    return static_cast<int>(perInstance * (call.instanceCount > 0 ? call.instanceCount : 1u));
+}
+
+// ジオメトリ系パス共通の Submit ラッパー。カメラ視点の描画統計を同時に加算する。
+// WHY: Stats パネルの数値は「実際に GPU へ投げた描画」でなければ意味がない。
+//      各パスがこのヘルパーを使うことで、パスを増やしても統計が自動的に追従する。
+inline void SubmitCounted(RenderPassContext& ctx, const renderer::DrawCall& call)
+{
+    ctx.renderer.Submit(call, ctx.resources);
+    ++ctx.statsDrawCalls;
+    ctx.statsVertexCount   += DrawCallVertexCount(call);
+    ctx.statsTriangleCount += DrawCallTriangleCount(call);
+}
+
+// シャドウマップ用 Submit ラッパー。光源視点の描画をカメラ統計と分けて集計する。
+inline void SubmitCountedShadow(RenderPassContext& ctx, const renderer::DrawCall& call)
+{
+    ctx.renderer.Submit(call, ctx.resources);
+    ++ctx.statsShadowDrawCalls;
+    ctx.statsShadowTriangleCount += DrawCallTriangleCount(call);
+}
+
+// スキンメッシュ描画に使う b3 パレットを解決する。優先順位:
+//   1. AnimatorComponent が評価したパレット (アニメーション中)
+//   2. Model のリファレンスポーズ (無アニメ時の既定。Unity / Unreal と同じ考え方)
+//   3. 単位行列 (スケルトン未解決時のみ。本来は到達しない)
+//
+// WHY: 以前は 2 が無く、AnimatorComponent が無いだけで単位行列パレットが使われていた。
+//   単位行列が正しい姿勢になるのは頂点がモデル空間そのままのアセットに限られ、
+//   ノード階層にバインド変換を持つアセット (Blender 由来など) は倒れて描画された。
+inline renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveSkinningCB(
+    const renderer::ResourceHandle<renderer::ConstantBufferTag>& animatorPalette,
+    const asset::Model* model,
+    const renderer::ResourceHandle<renderer::ConstantBufferTag>& identityFallback)
+{
+    if (animatorPalette.IsValid()) return animatorPalette;
+    if (model && model->referencePoseCB.IsValid()) return model->referencePoseCB;
+    return identityFallback;
+}
 
 } // namespace fbzz::scene

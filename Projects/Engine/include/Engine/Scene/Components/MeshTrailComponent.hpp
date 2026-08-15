@@ -45,7 +45,6 @@ struct MeshTrailComponent {
         , doubleSided(other.doubleSided)
         , clearOnDisable(other.clearOnDisable)
         , materialPath(other.materialPath)
-        , texturePath(other.texturePath)
         , excludedMeshIndices(other.excludedMeshIndices)
     {
     }
@@ -64,7 +63,6 @@ struct MeshTrailComponent {
         doubleSided = other.doubleSided;
         clearOnDisable = other.clearOnDisable;
         materialPath = other.materialPath;
-        texturePath = other.texturePath;
         excludedMeshIndices = other.excludedMeshIndices;
         samples.clear();
         sampleHead = 0;
@@ -97,11 +95,7 @@ struct MeshTrailComponent {
     bool clearOnDisable = true;
     // .mat アセットへの参照。albedo テクスチャと doubleSided を .mat から解決する。
     // WHY: テクスチャを .mat に集約することで複数の MeshTrail 間での共有と Editor ピッカーを使ったアセット管理を可能にする。
-    //      空文字のとき texturePath へフォールバックするため既存シーンデータは無変更で動く。
     std::string materialPath;
-    // texturePath — deprecated。materialPath が空のときのフォールバック。
-    // WHY: 元 Material を再利用せず、残像演出だけにノイズ・グラデーション・マスクを適用できるようにする。
-    std::string texturePath;
     // excludedMeshIndices — SkinnedModel 内で残像を描かない submesh index。
     // WHY: 顔や素体を除外し、武器・甲冑など演出対象だけにメッシュ残像を限定できるようにする。
     std::vector<int> excludedMeshIndices;
@@ -135,7 +129,6 @@ struct MeshTrailComponent {
         r.Field("doubleSided", doubleSided);
         r.Field("clearOnDisable", clearOnDisable);
         r.Field("materialPath", materialPath);
-        r.Field("texturePath", texturePath);
     }
 };
 

@@ -12,12 +12,13 @@
 | `MeshRenderer` | `MaterialComponent`（`.mat` パス） | ✅ 対応済み |
 | `SkinnedMeshRenderer` | `MaterialComponent`（`.mat` パス） | ✅ 対応済み |
 | `TerrainComponent` | `layerMaterials[4]`（`.mat` パス×4） | ✅ 対応済み |
-| `ParticleEmitter` | `texturePath`・`blendMode`・`colorStart/End` を直接保持 | ❌ 未対応 |
-| `TrailComponent` | `texturePath`・`colorStart/End` を直接保持 | ❌ 未対応 |
-| `MeshTrailComponent` | `texturePath`・`colorStart/End` を直接保持 | ❌ 未対応 |
+| `ParticleEmitter` | `materialPath`（`.mat`） | ✅ 対応済み |
+| `TrailComponent` | `materialPath`（`.mat`） | ✅ 対応済み |
+| `MeshTrailComponent` | `materialPath`（`.mat`） | ✅ 対応済み |
 
 **結論:** MeshRenderer・SkinnedMeshRenderer・Terrain は既に `.mat` 対応済み。
-未対応なのは **ParticleEmitter・TrailComponent・MeshTrailComponent の 3 コンポーネント**のみ。
+ParticleEmitter・TrailComponent・MeshTrailComponent も `.mat` を正本とし、全対象が
+`.mat` ベースの統一経路へ移行済み。
 
 ---
 
@@ -46,16 +47,14 @@ sortMode (Particle)  sampleInterval / maxPoints
 
 ```cpp
 // 変更前 (ParticleEmitter)
-std::string texturePath;   // 直接テクスチャパスを保持
 ParticleBlendMode blendMode;
 
 // 変更後
 std::string materialPath;  // .mat ファイルへの参照（新規追加）
-std::string texturePath;   // 後方互換のため deprecated で残す
-                           // materialPath が空のときのフォールバック
+// 直接テクスチャパスは保持しない。描画テクスチャは MaterialAsset が所有する。
+// materialPath が空のときは白テクスチャと既定値を使用する
 ```
 
-- `materialPath` が空 → 従来の `texturePath` でフォールバック（既存シーンは無変更で動く）
 - `materialPath` が設定済み → `.mat` の shader / texture / blendMode を使用
 
 ### 2-3. `.mat` の `render_path` / `mesh_type` 相当フィールド
@@ -85,14 +84,14 @@ albedo = "Assets/Textures/Particles/spark.fztex"
 
 | ファイル | 変更内容 | 規模 |
 |---|---|---|
-| `Engine/include/Engine/Scene/Components/ParticleEmitter.hpp` | `materialPath` 追加、`texturePath` を deprecated コメント付きで残す、Reflect() 更新 | S |
+| `Engine/include/Engine/Scene/Components/ParticleEmitter.hpp` | `materialPath` と Reflect() を定義 | S |
 | `Engine/include/Engine/Asset/MaterialAsset.hpp` | `RenderPath::Particle` を追加 (or `mesh_type = "particle"` 追加) | XS |
 | Particle レンダーパス .cpp（1〜2 ファイル） | `materialPath` が存在する場合に AssetManager 経由で .mat をロードし、テクスチャ・ブレンド・シェーダーを差し替える | M |
-| `ScriptParticleProxy.cpp` | `SetTexture()` が `materialPath` と `texturePath` の両方に対応 | S |
+| `ScriptParticleProxy.cpp` | マテリアル経由の設定に統一 | S |
 | `Engine/src/Scene/SceneSerializer.cpp` | `materialPath` フィールドの読み書きを追加 | S |
 | `Editor/src/Panels/Inspector/` (Particle Inspector) | `materialPath` の Inspector UI（ファイルピッカー）を追加 | S |
 
-**Phase 1 合計: 約 6 ファイル変更。既存シーンへの影響なし（後方互換フォールバックあり）。**
+**Phase 1 合計: 約 6 ファイル変更。**
 
 ---
 
@@ -104,7 +103,7 @@ albedo = "Assets/Textures/Particles/spark.fztex"
 | `Engine/include/Engine/Scene/Components/MeshTrailComponent.hpp` | `materialPath` 追加、`doubleSided` を `.mat` から読むように変更 | S |
 | Trail レンダーパス .cpp（1〜2 ファイル） | materialPath 対応 | M |
 | MeshTrail レンダーパス .cpp（1〜2 ファイル） | materialPath 対応 | M |
-| `ScriptTrailProxy.cpp` / `ScriptMeshTrailProxy.cpp` | SetTexture() 対応 | S |
+| `ScriptTrailProxy.cpp` / `ScriptMeshTrailProxy.cpp` | マテリアル設定 API 対応 | S |
 | `SceneSerializer.cpp` | Trail・MeshTrail の materialPath 読み書き追加 | S |
 | Inspector パネル (Trail・MeshTrail 各 1 ファイル) | materialPath UI | S |
 
@@ -124,9 +123,9 @@ albedo = "Assets/Textures/Particles/spark.fztex"
 
 | リスク | 内容 | 対策 |
 |---|---|---|
-| シーンファイルの互換性 | 既存 `.scene` の `texturePath` が消える | `texturePath` フォールバックを残す（任意期間の後に削除） |
-| Inspector の複雑化 | texturePath と materialPath が並立して混乱 | Inspector は `materialPath` が空のときだけ `texturePath` を表示し、設定済みなら隠す |
-| ScriptParticleProxy API | `SetTexture()` の挙動が変わる | materialPath 未設定時は従来通り `texturePath` を操作、警告ログは出さない |
+| シーンファイルの形式 | `materialPath` が未設定のシーン | 白テクスチャとコンポーネント既定値で描画する |
+| Inspector の複雑化 | 描画設定とシミュレーション設定の混同 | 描画設定は `.mat` に限定する |
+| ScriptParticleProxy API | 直接テクスチャ変更の扱い | Material API のスロット設定へ統一する |
 | Particle .mat の mesh_type 誤割り当て | Surface シェーダー用 .mat を Particle に割り当てる誤操作 | `render_path = "particle"` チェックをレンダーパスで行い、不正アサインを警告 |
 
 ---
@@ -136,7 +135,7 @@ albedo = "Assets/Textures/Particles/spark.fztex"
 **Phase 1（ParticleEmitter のみ）: 着手可能・工数は小〜中。**
 
 - 変更ファイルは 6 件、1〜2 日で完了可能
-- 後方互換フォールバックがあるので既存シーンを壊さない
+- 未設定値は明確な既定値で描画し、形式を一つに保つ
 - `DemoGame/Assets/Materials/Particles/` ディレクトリを新設し、
   `.mat` テンプレートを数個用意するだけで新しいワークフローに移行できる
 
@@ -159,7 +158,7 @@ albedo = "Assets/Textures/Particles/spark.fztex"
 
 ```
 1. MaterialAsset に RenderPath::Particle を追加
-2. ParticleEmitter.hpp に materialPath を追加（texturePath はフォールバックとして存続）
+2. ParticleEmitter.hpp に materialPath を追加
 3. Particle レンダーパスを materialPath 優先ロジックに更新
 4. SceneSerializer の読み書き追加
 5. Inspector の materialPath ピッカー追加

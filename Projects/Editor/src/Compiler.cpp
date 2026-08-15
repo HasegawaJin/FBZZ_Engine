@@ -31,14 +31,24 @@ bool Compiler::Start(const Config& config)
         return false;
     SetHandleInformation(m_hStdoutRead, HANDLE_FLAG_INHERIT, 0);
 
-    std::wstring command =
-        L"\"" + config.cmakeExe.wstring() + L"\""
-        L" --build \"" + config.buildDir.wstring() + L"\""
-        L" --target " + util::StringUtils::ToWide(config.target) +
-        L" --config " + util::StringUtils::ToWide(config.configuration) +
-        L" --parallel";  // MSBuild: /m — 全 CPU コアで並列コンパイル
+    const bool usesExplicitCommand = !config.commandLine.empty();
+    std::wstring command = config.commandLine;
+    if (!usesExplicitCommand) {
+        command =
+            L"\"" + config.cmakeExe.wstring() + L"\""
+            L" --build \"" + config.buildDir.wstring() + L"\""
+            L" --target " + util::StringUtils::ToWide(config.target) +
+            L" --config " + util::StringUtils::ToWide(config.configuration) +
+            // WHY (--parallel 1): cl.exe 側の並列度はルート CMakeLists.txt の
+            //      /MP${FBZZ_BUILD_JOBS} で既に上限が入っている。ここで MSBuild の
+            //      ノード並列 (/m) まで開けると「プロジェクト数 × /MP」の cl.exe が
+            //      同時に走り、メモリ使用量が掛け算で膨らむ。エディタからのビルドは
+            //      裏で走るビルドなので、手動ビルドや実行中のエディタを止めないよう
+            //      プロジェクト単位の多重化はしない。
+            L" --parallel 1";
+    }
 
-    if (config.skipDeps)
+    if (!usesExplicitCommand && config.skipDeps)
         command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
 
     // WHY: 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
@@ -83,8 +93,14 @@ bool Compiler::Start(const Config& config)
         SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", sdkRoot.c_str());
     }
 
+    const std::wstring workingDirectory = config.workingDirectory.wstring();
+    // WHY (BELOW_NORMAL_PRIORITY_CLASS): 優先度クラスは cmake → MSBuild → cl.exe と
+    //      子プロセスへ継承される。エディタからのビルドは裏方なので、Visual Studio /
+    //      VSCode の手動ビルドやエディタ自身の描画スレッドから CPU を奪わないようにする。
     const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
-                                   CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+                                   CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
+                                   workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
+                                   &si, &pi);
     if (oldClSize > 0)
         SetEnvironmentVariableW(L"CL", oldCl.c_str());
     else

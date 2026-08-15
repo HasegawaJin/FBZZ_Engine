@@ -70,6 +70,15 @@ public:
     virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
     virtual void ClearDepth(float depth = 1.0f) = 0;
 
+    // SetViewport — 現在の描画先の一部矩形だけへ描くようビューポートを絞る。
+    // WHY: カスケードシャドウは 1 枚のシャドウマップを 2x2 のタイルに分け、
+    //      カスケードごとに別のタイルへ描き込む (アトラス)。RT を分けずに済むので
+    //      深度テクスチャは 1 本のまま、サンプル側も SRV 1 本で全カスケードを引ける。
+    // NOTE: SetRenderTarget は必ずビューポートを RT 全体へ戻すため、
+    //       「SetRenderTarget → SetViewport」の順で呼ぶこと。
+    //       絞ったビューポートは次の SetRenderTarget まで有効。
+    virtual void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) = 0;
+
     // SetRenderTargetFace — キューブマップ RT の 1 面 (+mip) を描画先にバインドする。
     // WHY: 空連動 IBL の SkyCapture が、空ドームを 6 面それぞれの向きで描き込むために使う。
     //      DX11 以外のバックエンドは未対応 (no-op)。CreateCubemapRenderTarget で作った RT 以外を
@@ -111,10 +120,34 @@ public:
     //      Editor が DX11Renderer に直接ダウンキャストしなくて済むようにする。
     virtual std::unique_ptr<IIblBaker> CreateIblBaker() { return nullptr; }
 
+    // CaptureRenderTargetToPng — 指定 RenderTarget のカラーを PNG バイト列として CPU へ読み戻す。
+    // WHY: AI 連携 (MCP viewport.capture) が「現在の Scene View を Claude に見せる」ために使う。
+    //      GPU テクスチャ読み戻し・PNG エンコードはバックエンド固有 (DX11: CopyResource + DirectXTex /
+    //      DX12: CommandQueue + DirectXTex) のため、上位 Editor が具象へダウンキャストせずに済むよう
+    //      抽象入口だけ提供し、実装は各 Platform に閉じる。DX11/DX12 が実装し、他は未対応 (false)。
+    //      outPng は PNG ファイル全体のバイト列、out{Width,Height} は実 RT サイズ (要求サイズではない)。
+    virtual bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> /*rt*/, ResourceManager& /*resources*/,
+                                          std::vector<uint8_t>& /*outPng*/,
+                                          uint32_t& /*outWidth*/, uint32_t& /*outHeight*/) { return false; }
+
+    // CaptureRenderTargetToLinearRGBA — 同じ RT を「絵」ではなく「数値」として読み戻す。
+    // WHY: PNG は 8bit UNORM へクランプされるため、白飛びしているのか単に明るいのかが
+    //      エンコードの時点で失われる。露出・画面占有・動きの量を機械的に判定するには
+    //      HDR のままの線形値が要る (AI の VFX 評価 = vfx.previewMetrics が使う)。
+    //      outRgba は width*height*4 の行優先 float 列。トーンマップもガンマ変換も行わない。
+    virtual bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> /*rt*/, ResourceManager& /*resources*/,
+                                                 std::vector<float>& /*outRgba*/,
+                                                 uint32_t& /*outWidth*/, uint32_t& /*outHeight*/) { return false; }
+
 private:
     friend class ResourceManager;
 
     virtual std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
+    // CS が書き込み、IA が頂点として読むバッファ。コンピュートスキニングの出力先。
+    // WHY: スキニング結果を 1 度だけ計算してシャドウ・GBuffer・Forward で共有するため、
+    //      同じバッファに UAV 書き込みと頂点入力の両方を許す必要がある。
+    //      未対応バックエンドは nullptr を返してよい (呼び出し側は VS スキニングへフォールバックする)。
+    virtual std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t /*sizeBytes*/, uint32_t /*stride*/) { return nullptr; }
     virtual std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void* data, uint32_t count) = 0;
     virtual std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
     virtual std::unique_ptr<IShader> CreateNativeShader(const std::string& path) = 0;

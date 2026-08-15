@@ -4,10 +4,11 @@ file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
     include/*.hpp
 )
 
-add_library(fbzz_engine SHARED ${ENGINE_SOURCES})
-set_target_properties(fbzz_engine PROPERTIES
+add_library(FBZZEngine SHARED ${ENGINE_SOURCES})
+set_target_properties(FBZZEngine PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON
     OUTPUT_NAME "FBZZEngine"
+    EXPORT_NAME "Engine"
 )
 
 # ── EngineRebuildBootstrap 用のビルド情報埋め込み ────────────────────────────
@@ -21,11 +22,11 @@ set_target_properties(fbzz_engine PROPERTIES
 #      CMAKE_BINARY_DIR は add_subdirectory のネストに関係なく常にトップ build ディレクトリを指すため、
 #      ルート・ParticleGame・GameHub 生成プロジェクトいずれのビルドでも build.config と同じ場所になる。
 get_filename_component(FBZZ_ENGINE_ROOT_ABS "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-target_compile_definitions(fbzz_engine PRIVATE
+target_compile_definitions(FBZZEngine PRIVATE
     FBZZ_CMAKE_CONFIG="$<CONFIG>"
-    "$<$<NOT:$<CONFIG:Release>>:FBZZ_DEV_BUILD_DIR=\"${CMAKE_BINARY_DIR}\">"
-    "$<$<NOT:$<CONFIG:Release>>:FBZZ_DEV_ENGINE_ROOT=\"${FBZZ_ENGINE_ROOT_ABS}\">"
-    "$<$<NOT:$<CONFIG:Release>>:FBZZ_DEV_CMAKE_COMMAND=\"${CMAKE_COMMAND}\">"
+    "$<$<AND:$<BOOL:${FBZZ_ENABLE_SOURCE_REBUILD}>,$<NOT:$<CONFIG:Release>>>:FBZZ_DEV_BUILD_DIR=\"${CMAKE_BINARY_DIR}\">"
+    "$<$<AND:$<BOOL:${FBZZ_ENABLE_SOURCE_REBUILD}>,$<NOT:$<CONFIG:Release>>>:FBZZ_DEV_ENGINE_ROOT=\"${FBZZ_ENGINE_ROOT_ABS}\">"
+    "$<$<AND:$<BOOL:${FBZZ_ENABLE_SOURCE_REBUILD}>,$<NOT:$<CONFIG:Release>>>:FBZZ_DEV_CMAKE_COMMAND=\"${CMAKE_COMMAND}\">"
 )
 
 set(DIRECTXTEX_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/include")
@@ -49,19 +50,24 @@ foreach(REQUIRED_PATH
     endif()
 endforeach()
 
-target_include_directories(fbzz_engine
-    PUBLIC  include
+target_include_directories(FBZZEngine
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:include>"
     PRIVATE src
     PRIVATE ${DIRECTXTEX_INCLUDE}
     PRIVATE ${ASSIMP_INCLUDE}
 )
 
-target_link_libraries(fbzz_engine
+target_link_libraries(FBZZEngine
     PUBLIC
-        fbzz_physics
-        fbzz_math
-        tomlplusplus
+        FBZZPhysics
+        FBZZMath
+        TomlPlusPlus
         xaudio2
+        # ゲームパッド入力 (Engine/Input/Gamepad.cpp)。
+        # xinput.lib は XInput 1.4 (Windows 8 以降) を指す。旧 xinput9_1_0 は使わない。
+        xinput
         mfplat
         mfreadwrite
         mfuuid
@@ -71,7 +77,9 @@ target_link_libraries(fbzz_engine
         dxguid
         d3dcompiler
     PRIVATE
-        imgui
+        # WHY: ImGui は Engine 実装専用だが、CMake の install export はリンク依存先も
+        #      同じ export set に要求する。SDK 側では FBZZ::ImGui として整合性を保つ。
+        ImGui
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
         "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${DIRECTXTEX_LIB_RELEASE}>"
         "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"
@@ -95,10 +103,10 @@ if(FBZZ_DXC_EXECUTABLE)
     get_filename_component(FBZZ_DXC_DIRECTORY "${FBZZ_DXC_EXECUTABLE}" DIRECTORY)
     foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
         if(EXISTS "${FBZZ_DXC_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
-            add_custom_command(TARGET fbzz_engine POST_BUILD
+            add_custom_command(TARGET FBZZEngine POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${FBZZ_DXC_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
-                    "$<TARGET_FILE_DIR:fbzz_engine>/${FBZZ_DXC_RUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:FBZZEngine>/${FBZZ_DXC_RUNTIME_DLL}"
                 COMMENT "Copying ${FBZZ_DXC_RUNTIME_DLL} for DXIL runtime support"
             )
         endif()

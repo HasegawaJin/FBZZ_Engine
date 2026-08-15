@@ -172,6 +172,40 @@ Matrix4 Matrix4::Inverse(const Matrix4& mat) {
     return result;
 }
 
+Matrix4 Matrix4::InverseTransposeAffine(const Matrix4& mat) {
+    // アフィン行列 M = [[A, 0], [t, 1]] (行優先・行ベクトル規約) の逆行列は
+    //   M^-1 = [[A^-1, 0], [-t*A^-1, 1]]
+    // なので、その転置の左上 3x3 は (A^-1)^T になる。平行移動 t は一切効かない。
+    // さらに A^-1 = adj(A)/det = cofactor(A)^T/det より (A^-1)^T = cofactor(A)/det。
+    // つまり左上 3x3 の余因子行列を行列式で割るだけでよい。
+    const auto& a = mat.m;
+
+    const float c00 = a[1][1]*a[2][2] - a[1][2]*a[2][1];
+    const float c01 = a[1][2]*a[2][0] - a[1][0]*a[2][2];
+    const float c02 = a[1][0]*a[2][1] - a[1][1]*a[2][0];
+
+    const float det = a[0][0]*c00 + a[0][1]*c01 + a[0][2]*c02;
+    Matrix4 result = Identity();
+    // スケール 0 などで退化した場合は単位行列を返す。
+    // WHY assert しないか: Transform のスケールに 0 を入れるのはエディタ操作として普通に起きる。
+    //      描画のたびに停止させる類の異常ではないので、法線を素通しして描き続ける。
+    if (NearlyZero(det))
+        return result;
+
+    const float c10 = a[0][2]*a[2][1] - a[0][1]*a[2][2];
+    const float c11 = a[0][0]*a[2][2] - a[0][2]*a[2][0];
+    const float c12 = a[0][1]*a[2][0] - a[0][0]*a[2][1];
+    const float c20 = a[0][1]*a[1][2] - a[0][2]*a[1][1];
+    const float c21 = a[0][2]*a[1][0] - a[0][0]*a[1][2];
+    const float c22 = a[0][0]*a[1][1] - a[0][1]*a[1][0];
+
+    const float inv = 1.0f / det;
+    result.m[0][0] = c00 * inv; result.m[0][1] = c01 * inv; result.m[0][2] = c02 * inv;
+    result.m[1][0] = c10 * inv; result.m[1][1] = c11 * inv; result.m[1][2] = c12 * inv;
+    result.m[2][0] = c20 * inv; result.m[2][1] = c21 * inv; result.m[2][2] = c22 * inv;
+    return result;
+}
+
 Matrix4 Matrix4::Transposed() const { return Transpose(*this); }
 
 } // namespace fbzz::math

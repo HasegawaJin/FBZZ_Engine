@@ -36,6 +36,12 @@ public:
     // ゲームループ毎に呼ぶ。viewportHovered が false のときマウスホイールを無視する。
     void Update(float dt, bool viewportHovered = true);
 
+    // オービットの中心と注視距離。
+    // WHY: エディタのナビゲーションギズモは「今のピボットを保ったまま視点だけ回す」必要があり、
+    //      外から同じ中心・同じ距離を再現できないと Teleport のたびに寄り引きが変わってしまう。
+    [[nodiscard]] const math::Vector3& Pivot()         const noexcept { return m_pivot; }
+    [[nodiscard]] float                FocusDistance() const noexcept { return m_focusDistance; }
+
 private:
     float         m_yaw           = 0.0f;
     float         m_pitch         = 0.0f;

@@ -808,6 +808,10 @@ void AnalysisPanel::DrawRendering()
         row("Draw Calls",       stats.drawCalls);
         row("Triangles",        stats.triangleCount);
         row("Vertices",         stats.vertexCount);
+        // シャドウマップは同じジオメトリを光源視点で描き直す別コスト。
+        // カメラ統計に混ぜず内訳として並べる。
+        row("Shadow Draw Calls", stats.shadowDrawCalls);
+        row("Shadow Triangles",  stats.shadowTriangleCount);
 
         ImGui::TableNextRow();
         ImGui::TableNextColumn();

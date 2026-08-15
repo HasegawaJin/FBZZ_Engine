@@ -26,6 +26,10 @@ public:
     // ImGui::Render() 後の DrawData を現在のバックバッファへ送信する。
     virtual void ImGuiRenderDrawData() = 0;
 
+    // Multi-Viewport で生成された追加 OS ウィンドウを更新・描画する。
+    // WHY: Editor から DX11 / DX12 バックエンド関数を直接呼ばず、API 固有の実装をこの境界へ閉じ込める。
+    virtual void ImGuiRenderPlatformWindows() = 0;
+
     // RenderTarget を ImGui::Image が受け取れるテクスチャ ID へ変換する。
     // WHY: ImGui 表示用の ID 解決は UI バックエンド固有の処理なので IRenderer から分離する。
     virtual void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) = 0;

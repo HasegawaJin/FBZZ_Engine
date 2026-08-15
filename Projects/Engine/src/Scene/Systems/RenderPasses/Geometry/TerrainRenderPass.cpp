@@ -20,6 +20,7 @@
 //   - heightDirty: 全チャンクを削除して再構築
 //   - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
+#include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
@@ -794,8 +795,13 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             for (int cx = 0; cx < chunkCountX; ++cx) {
                 const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, neighbors, resources);
 
-                if (!IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax))
+                // 地形チャンクはそれぞれ独立にカリングされる描画候補なので、
+                // メッシュと同じ粒度で統計に数える。
+                ++ctx.statsTotalObjects;
+                if (!IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax)) {
+                    ++ctx.statsFrustumCulled;
                     continue;
+                }
 
                 const math::Vector3 localCenter = {
                     (chunk.aabbMin.x + chunk.aabbMax.x) * 0.5f,
@@ -829,6 +835,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 call.constantBuffers[1] = terrainCBH;
                 call.constantBuffers[3] = lightCB;
                 call.constantBuffers[4] = shadowCB;
+                BindClusterLighting(call, ctx);
 
                 call.textures[0]  = textures.splatmap;
                 call.textures[1]  = textures.diffuse[0];
@@ -845,7 +852,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 call.textures[12] = textures.aoRoughness[3];
                 call.textures[13] = shadowDepthTexture;
 
-                renderer.Submit(call, resources);
+                SubmitCounted(ctx, call);
             }
         }
     }
@@ -854,9 +861,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
 // ─── SubmitTerrainShadowCasters ───────────────────────────────────────────
 
 void SubmitTerrainShadowCasters(
-    Scene&                                        scene,
-    renderer::IRenderer&                          renderer,
-    renderer::ResourceManager&                    resources,
+    RenderPassContext&                            ctx,
     const math::Frustum&                          lightFrustum,
     renderer::ResourceHandle<renderer::ShaderTag> shadowShader,
     renderer::ResourceHandle<renderer::PipelineStateTag> pipelineState,
@@ -867,6 +872,9 @@ void SubmitTerrainShadowCasters(
     //      こちらは「指定されたライト視錐台へ描けるチャンクを提出する」だけにする。
     if (!shadowShader.IsValid() || !pipelineState.IsValid())
         return;
+
+    Scene&                     scene     = ctx.scene;
+    renderer::ResourceManager& resources = ctx.resources;
 
     TerrainGridComponent* terrainGrid = nullptr;
     {
@@ -880,7 +888,16 @@ void SubmitTerrainShadowCasters(
         math::Matrix4 worldInvTranspose;
     };
 
-    for (auto [terrain, transform] : scene.View<TerrainComponent, Transform>()) {
+    // WHY: View<TerrainComponent, Transform> はエンティティ ID を返さないため、以前は
+    //      コンポーネントのアドレス一致で ID を逆引きしていた (地形 1 個につき全地形を走査)。
+    //      エンティティ側から引けば逆引きは要らず、O(n²) が消える。
+    for (EntityID eid : scene.GetEntities<TerrainComponent>()) {
+        auto* terrainPtr = scene.GetComponent<TerrainComponent>(eid);
+        auto* gameObject = scene.GetGameObject(eid);
+        if (!terrainPtr || !gameObject) continue;
+
+        TerrainComponent& terrain   = *terrainPtr;
+        Transform&        transform = gameObject->transform;
         if (!terrain.enabled || terrain.heightData.empty())
             continue;
 
@@ -888,15 +905,6 @@ void SubmitTerrainShadowCasters(
                                           * static_cast<size_t>(terrain.rows));
         assert(terrain.chunkSize > 0);
 
-        EntityID eid{};
-        for (EntityID candidate : scene.GetEntities<TerrainComponent>()) {
-            if (scene.GetComponent<TerrainComponent>(candidate) == &terrain) {
-                eid = candidate;
-                break;
-            }
-        }
-        if (!scene.IsValid(eid))
-            continue;
         {
             const auto* go = scene.GetGameObject(eid);
             if (!go || !go->activeInHierarchy()) continue;
@@ -915,7 +923,7 @@ void SubmitTerrainShadowCasters(
 
         ShadowObjectCB objData{};
         objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         resources.Update(objectCB, &objData, sizeof(objData));
 
         const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
@@ -925,17 +933,25 @@ void SubmitTerrainShadowCasters(
                 if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
+                // シャドウ用は 1 段粗い LOD (格子ステップ 2 = 三角形数 1/4) を使う。
+                // WHY: 影の形はシャドウマップのテクセルと PCF カーネルで既に鈍っており、
+                //      地形の最密メッシュを光源視点でもう一度流しても輪郭は変わらない。
+                //      落ちるのは頂点処理と極小三角形のラスタライズだけなので、
+                //      見た目を保ったまま地形シャドウのコストを大きく削れる。
+                // NOTE: 粗い LOD が未生成のチャンクは LOD0 へフォールバックする。
+                const int lod = (chunk.indexCountLOD[1] > 0 && chunk.indexBufferLOD[1].IsValid()) ? 1 : 0;
+
                 renderer::DrawCall dc;
                 dc.vertexBuffer       = chunk.vertexBuffer;
-                dc.indexBuffer        = chunk.indexBufferLOD[0];
-                dc.indexCount         = chunk.indexCountLOD[0];
+                dc.indexBuffer        = chunk.indexBufferLOD[lod];
+                dc.indexCount         = chunk.indexCountLOD[lod];
                 dc.shader             = shadowShader;
                 dc.pipelineState      = pipelineState;
                 dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
                 dc.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
                 dc.constantBuffers[0] = frameCB;
                 dc.constantBuffers[1] = objectCB;
-                renderer.Submit(dc, resources);
+                SubmitCountedShadow(ctx, dc);
             }
         }
     }
@@ -977,7 +993,7 @@ void TerrainSelectionMaskSystem(RenderPassContext& ctx)
         const math::Matrix4 world = transform.GetWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         for (auto& [key, chunk] : g_chunkCache) {

@@ -1,0 +1,15 @@
+mesh_type = 'skinned'
+name = 'M_ArmorGrey'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.17000000178813934, 0.18000000715255737, 0.1979999989271164, 1.0 ]
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10000000149011612
+metallic = 0.0
+roughness = 0.41999995708465576
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

@@ -8,16 +8,24 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Panels/AiSettingsPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/HotkeyManager.hpp>
+#include <Editor/Util/SceneEditUtils.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Window.hpp>
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <utility>
 
 namespace fbzz::editor {
 
@@ -156,20 +164,205 @@ bool PlayToolbarButton(
 
 } // namespace
 
+void EditorApp::InstallNativeMenuBar()
+{
+    using NativeMenuItem = core::Window::NativeMenuItem;
+    using MenuList = std::vector<NativeMenuItem>;
+
+    constexpr uint16_t NEW_SCENE       = 100;
+    constexpr uint16_t OPEN_SCENE      = 101;
+    constexpr uint16_t SAVE_SCENE      = 102;
+    constexpr uint16_t SAVE_SCENE_AS   = 103;
+    constexpr uint16_t CLOSE_PREFAB    = 104;
+    constexpr uint16_t SAVE_ALL_ASSETS = 105;
+    constexpr uint16_t EXIT_EDITOR     = 106;
+    constexpr uint16_t UNDO            = 200;
+    constexpr uint16_t REDO            = 201;
+    constexpr uint16_t PLAY            = 300;
+    constexpr uint16_t STOP            = 301;
+    constexpr uint16_t PAUSE           = 302;
+    constexpr uint16_t STEP            = 303;
+    constexpr uint16_t RELOAD_SCRIPTS  = 304;
+    constexpr uint16_t OPEN_ANALYSIS   = 400;
+    constexpr uint16_t TOGGLE_GRID     = 401;
+    constexpr uint16_t TOGGLE_LIGHTS   = 402;
+    constexpr uint16_t TOGGLE_VFX      = 403;
+    constexpr uint16_t TOGGLE_SKELETON = 404;
+    constexpr uint16_t TOGGLE_STATS    = 405;
+    constexpr uint16_t TOGGLE_HOTRELOAD = 406;
+    constexpr uint16_t TOGGLE_COLLIDERS = 407;
+    constexpr uint16_t TOGGLE_TERRAIN_COLLISION = 408;
+    constexpr uint16_t TOGGLE_NAVMESH = 409;
+    constexpr uint16_t TOGGLE_AI_SENSORS = 414;
+    constexpr uint16_t TOGGLE_DECAL_BOUNDS = 415;
+    constexpr uint16_t TOGGLE_SHADOW = 422;
+    constexpr uint16_t VIEW_LIT        = 410;
+    constexpr uint16_t VIEW_UNLIT      = 411;
+    constexpr uint16_t VIEW_WIRE_LIT   = 412;
+    constexpr uint16_t VIEW_WIRE_UNLIT = 413;
+    constexpr uint16_t OPEN_VFX         = 500;
+    constexpr uint16_t TOGGLE_MAP       = 501;
+    constexpr uint16_t OPEN_BUILD       = 502;
+    constexpr uint16_t OPEN_IBL         = 503;
+    constexpr uint16_t OPEN_AI_SETTINGS = 600;
+    constexpr uint16_t PANEL_BASE       = 1000;
+
+    const auto command = [](const char* label, uint16_t id) {
+        return NativeMenuItem{ util::StringUtils::ToWide(label), id, false, {} };
+    };
+    const auto separator = []() { return NativeMenuItem{ {}, 0, true, {} }; };
+    const auto submenu = [](const char* label, MenuList children) {
+        return NativeMenuItem{ util::StringUtils::ToWide(label), 0, false, std::move(children) };
+    };
+
+    MenuList panels;
+    for (std::size_t i = 0; i < m_panels.size(); ++i) {
+        if (!m_panels[i]->ShowInViewMenu()) continue;
+        panels.push_back(command(m_panels[i]->GetViewMenuName(),
+                                 static_cast<uint16_t>(PANEL_BASE + i)));
+    }
+
+    MenuList debugViewMode;
+    debugViewMode.push_back(command("Lit", VIEW_LIT));
+    debugViewMode.push_back(command("Unlit", VIEW_UNLIT));
+    debugViewMode.push_back(command("Wireframe Lit", VIEW_WIRE_LIT));
+    debugViewMode.push_back(command("Wireframe Unlit", VIEW_WIRE_UNLIT));
+
+    MenuList terrainTools;
+    terrainTools.push_back(command("Terrain Tool", 510));
+    terrainTools.push_back(command("Water Tool", 511));
+    terrainTools.push_back(command("Detail Tool", 512));
+    terrainTools.push_back(command("Foliage Tool", 513));
+
+    MenuList menus;
+    menus.push_back(submenu("File", {
+        command("New Scene", NEW_SCENE),
+        command("Open...", OPEN_SCENE),
+        command("Save", SAVE_SCENE),
+        command("Save As...", SAVE_SCENE_AS),
+        command("Close Prefab", CLOSE_PREFAB),
+        command("Save All Assets", SAVE_ALL_ASSETS),
+        separator(),
+        command("Exit", EXIT_EDITOR)
+    }));
+    menus.push_back(submenu("Edit", {
+        command("Undo", UNDO), command("Redo", REDO)
+    }));
+    menus.push_back(submenu("Play", {
+        command("Play", PLAY), command("Stop", STOP), command("Pause", PAUSE),
+        command("Step", STEP), separator(), command("Reload Scripts", RELOAD_SCRIPTS)
+    }));
+    menus.push_back(submenu("View", {
+        submenu("Panels", std::move(panels)),
+        command("Reset UI Scale", 700)
+    }));
+    menus.push_back(submenu("Debug", {
+        command("Analysis", OPEN_ANALYSIS), separator(),
+        command("Grid", TOGGLE_GRID), command("Light Range", TOGGLE_LIGHTS),
+        command("VFX Force Fields / Emitters", TOGGLE_VFX),
+        command("Skeleton", TOGGLE_SKELETON), command("Stats", TOGGLE_STATS),
+        command("Colliders", TOGGLE_COLLIDERS), command("Terrain Collision", TOGGLE_TERRAIN_COLLISION),
+        command("NavMesh", TOGGLE_NAVMESH), command("AI Sensors", TOGGLE_AI_SENSORS),
+        command("Decal Bounds", TOGGLE_DECAL_BOUNDS),
+        command("Hot Reload", TOGGLE_HOTRELOAD), separator(),
+        command("Shadow", TOGGLE_SHADOW),
+        submenu("View Mode", std::move(debugViewMode))
+    }));
+    menus.push_back(submenu("Tools", {
+        command("VFX Editor...", OPEN_VFX), command("Map Editing Mode", TOGGLE_MAP),
+        submenu("Terrain & Map", std::move(terrainTools)),
+        command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL)
+    }));
+    menus.push_back(submenu("AI", { command("AI Settings...", OPEN_AI_SETTINGS) }));
+
+    m_window->SetNativeMenu(std::move(menus), [this](uint16_t id) {
+        if (id >= PANEL_BASE && id < PANEL_BASE + m_panels.size()) {
+            m_panels[id - PANEL_BASE]->visible = !m_panels[id - PANEL_BASE]->visible;
+            return true;
+        }
+
+        switch (id) {
+        case NEW_SCENE:       RequestNewScene(); break;
+        case OPEN_SCENE:      RequestOpenSceneFromDialog(); break;
+        case SAVE_SCENE:      SaveScene(); break;
+        case SAVE_SCENE_AS:   SaveSceneAsDialog(); break;
+        case CLOSE_PREFAB:    m_ctx.requestClosePrefabEdit = true; break;
+        case SAVE_ALL_ASSETS: AssetDirtyRegistry::SaveAll(); break;
+        case EXIT_EDITOR:     RequestExit(); break;
+        case UNDO: if (m_ctx.undoStack && m_ctx.undoStack->CanUndo()) m_ctx.undoStack->Undo(); break;
+        case REDO: if (m_ctx.undoStack && m_ctx.undoStack->CanRedo()) m_ctx.undoStack->Redo(); break;
+        case PLAY:           StartPlayMode(); break;
+        case STOP:           StopPlayMode(); break;
+        case PAUSE:          if (m_playMode.IsPlaying() || m_playMode.IsPaused()) m_playMode.Pause(); break;
+        case STEP:           m_playMode.RequestStep(); break;
+        case RELOAD_SCRIPTS: m_ctx.requestScriptReload = true; break;
+        case OPEN_ANALYSIS:  m_ctx.requestOpenAnalysis = true; break;
+        case TOGGLE_GRID:    m_ctx.showGrid = !m_ctx.showGrid; break;
+        case TOGGLE_LIGHTS:  m_ctx.showLightRange = !m_ctx.showLightRange; break;
+        case TOGGLE_VFX:     m_ctx.showVFXGizmos = !m_ctx.showVFXGizmos; break;
+        case TOGGLE_SKELETON:m_ctx.showSkeleton = !m_ctx.showSkeleton; break;
+        case TOGGLE_STATS:   m_ctx.showStats = !m_ctx.showStats; break;
+        case TOGGLE_HOTRELOAD: m_ctx.hotReloadEnabled = !m_ctx.hotReloadEnabled; break;
+        case TOGGLE_COLLIDERS: m_ctx.projectSettings.render.showColliders = !m_ctx.projectSettings.render.showColliders; break;
+        case TOGGLE_TERRAIN_COLLISION: m_ctx.projectSettings.render.showTerrainCollision = !m_ctx.projectSettings.render.showTerrainCollision; break;
+        case TOGGLE_NAVMESH: m_ctx.projectSettings.render.showNavMesh = !m_ctx.projectSettings.render.showNavMesh; break;
+        case TOGGLE_AI_SENSORS: m_ctx.projectSettings.render.showNavSensors = !m_ctx.projectSettings.render.showNavSensors; break;
+        case TOGGLE_DECAL_BOUNDS: m_ctx.projectSettings.render.showDecalBounds = !m_ctx.projectSettings.render.showDecalBounds; break;
+        case TOGGLE_SHADOW: m_ctx.projectSettings.render.shadowEnabled = !m_ctx.projectSettings.render.shadowEnabled; break;
+        case VIEW_LIT:       m_ctx.projectSettings.render.viewMode = renderer::ViewMode::Lit; break;
+        case VIEW_UNLIT:     m_ctx.projectSettings.render.viewMode = renderer::ViewMode::Unlit; break;
+        case VIEW_WIRE_LIT:  m_ctx.projectSettings.render.viewMode = renderer::ViewMode::WireframeLit; break;
+        case VIEW_WIRE_UNLIT:m_ctx.projectSettings.render.viewMode = renderer::ViewMode::WireframeUnlit; break;
+        case 700:            m_ctx.editorUiScale = 1.0f; EditorTheme::SetUiScale(1.0f); break;
+        case OPEN_VFX:       m_ctx.requestOpenVFXEditor = true; break;
+        case TOGGLE_MAP:     m_ctx.requestMapEditingModeToggle = true; break;
+        case OPEN_BUILD:     m_ctx.requestOpenBuildSettings = true; break;
+        case OPEN_IBL:       if (m_iblBakePanel) m_iblBakePanel->visible = true; break;
+        case OPEN_AI_SETTINGS: if (m_aiSettingsPanel) m_aiSettingsPanel->visible = true; break;
+        case 510: m_ctx.showTerrainTool = !m_ctx.showTerrainTool; break;
+        case 511: m_ctx.showWaterTool = !m_ctx.showWaterTool; break;
+        case 512: m_ctx.showDetailTool = !m_ctx.showDetailTool; break;
+        case 513: m_ctx.showFoliageTool = !m_ctx.showFoliageTool; break;
+        default: return false;
+        }
+        return true;
+    });
+}
+
 void EditorApp::BuildMenuBar(EditorContext& ctx)
 {
     if (!ImGui::BeginMenuBar()) return;
 
+    // FBZZ Studio のワークスペースであることを常時示すブランドマーク。
+    // WHY: OS タイトルバーを隠す最大化・マルチビューポート環境でも製品識別を失わない。
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
+    ImGui::TextUnformatted("FBZZ");
+    ImGui::PopStyleColor();
+    ImGui::SameLine(0.0f, 4.0f);
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
+    ImGui::TextUnformatted("STUDIO");
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::Separator();
+    ImGui::SameLine();
+
     // --- File ------------------------------------------------------------
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("New Scene"))
+        // Prefab 編集モード中はシーン操作を伏せ、対象がアセットであることを明示する。
+        // WHY: 項目名が "Save" のままだと、何が保存されるのかが読み取れない。
+        const bool inPrefabEdit = ctx.InPrefabEditMode();
+        if (ImGui::MenuItem("New Scene", nullptr, false, !inPrefabEdit))
             RequestNewScene();
-        if (ImGui::MenuItem("Open...", "Ctrl+O", false, ctx.activeScene != nullptr))
+        if (ImGui::MenuItem("Open...", "Ctrl+O", false, ctx.activeScene != nullptr && !inPrefabEdit))
             RequestOpenSceneFromDialog();
-        if (ImGui::MenuItem("Save", "Ctrl+S", false, ctx.activeScene != nullptr))
-            SaveScene();
-        if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, ctx.activeScene != nullptr))
+        if (ImGui::MenuItem(inPrefabEdit ? "Save Prefab" : "Save", "Ctrl+S",
+                            false, ctx.activeScene != nullptr))
+            SaveScene();   // 編集モード中は SaveScene が SavePrefabEdit へ読み替える
+        if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false,
+                            ctx.activeScene != nullptr && !inPrefabEdit))
             SaveSceneAsDialog();
+        if (inPrefabEdit && ImGui::MenuItem("Close Prefab"))
+            ctx.requestClosePrefabEdit = true;
         {
             const bool hasUnsaved = AssetDirtyRegistry::HasAny();
             if (ImGui::MenuItem("Save All Assets", nullptr, false, hasUnsaved))
@@ -232,6 +425,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         // --- Scene Overlays ---
         ImGui::MenuItem("Grid",        nullptr, &ctx.showGrid);
         ImGui::MenuItem("Light Range", nullptr, &ctx.showLightRange);
+        ImGui::MenuItem("VFX Force Fields / Emitters", nullptr, &ctx.showVFXGizmos);
         ImGui::MenuItem("Skeleton",    nullptr, &ctx.showSkeleton);
         ImGui::MenuItem("Stats",       nullptr, &ctx.showStats);
         ImGui::Separator();
@@ -254,21 +448,17 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        if (ImGui::BeginMenu("Post Process")) {
-            // よく切り替える主要トグルのみ残す。全設定は ProjectSettings で編集する。
-            if (ImGui::MenuItem("Open Post Process Settings..."))
-                ctx.requestOpenProjectSettings = true;
-            ImGui::Separator();
-            auto& pp = ctx.projectSettings.render.postProcess;
-            ImGui::MenuItem("Bloom",  nullptr, &pp.bloom.enabled);
-            ImGui::MenuItem("Shadow", nullptr, &ctx.projectSettings.render.shadowEnabled);
-            ImGui::MenuItem("FXAA",   nullptr, &pp.fxaaEnabled);
-            ImGui::EndMenu();
-        }
+        // WHY Bloom / FXAA のトグルが無いか: ポストプロセスの所有者は
+        //     Post Process Volume + Post Process Profile (.fzdata) へ一本化した。
+        //     Shadow はプロジェクト全体の描画構成なのでここに残す。
+        ImGui::MenuItem("Shadow", nullptr, &ctx.projectSettings.render.shadowEnabled);
         ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("Tools")) {
+        if (ImGui::MenuItem("VFX Editor..."))
+            ctx.requestOpenVFXEditor = true;
+        ImGui::Separator();
         bool mapMode = ctx.mapEditingMode;
         if (ImGui::MenuItem("Map Editing Mode", nullptr, &mapMode))
             ctx.requestMapEditingModeToggle = true;
@@ -293,21 +483,37 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
+    if (ImGui::BeginMenu("AI")) {
+        if (ImGui::MenuItem("AI Settings...")) {
+            if (m_aiSettingsPanel) {
+                m_aiSettingsPanel->visible = true;
+                ImGui::SetNextWindowFocus();
+            }
+        }
+        ImGui::Separator();
+        const char* busStatus = ctx.aiCommandBusRunning
+            ? "Editor Command Bus: Running"
+            : "Editor Command Bus: Stopped";
+        ImGui::MenuItem(busStatus, nullptr, false, false);
+        ImGui::EndMenu();
+    }
+
     ImGui::EndMenuBar();
 }
 
 void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 {
-    // WHY: Godot は Play 系操作を上部中央へ独立配置しており、メニュー項目より実行状態が読み取りやすい。
-    //      FBZZ でも DockSpace の直上に固定ツールバーを置くことで、各パネルのドッキングを崩さず同じ操作感に寄せる。
+    // WHY: Play 系操作を上部中央へ独立配置し、メニュー項目より実行状態を読み取りやすくする。
     constexpr float TOOLBAR_HEIGHT = 34.0f;
     const ImVec2 BUTTON_SIZE { 34.0f, 24.0f };
     constexpr float BUTTON_SPACING = 4.0f;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 8.0f, 5.0f });
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { BUTTON_SPACING, 0.0f });
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, EditorTheme::Color(ThemeColor::Surface));
     ImGui::BeginChild("##MainPlayToolbar", { 0.0f, TOOLBAR_HEIGHT }, false,
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleColor();
 
     PlayModeController* pm = ctx.playMode;
     const bool hasScene = ctx.activeScene != nullptr;
@@ -318,7 +524,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     const float toolbarButtonY = ImGui::GetCursorPosY();
     const bool canToggleMapMode = isEditor && hasScene;
     if (ctx.mapEditingMode)
-        ImGui::PushStyleColor(ImGuiCol_Button, { 0.18f, 0.55f, 0.32f, 1.0f });
+        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Secondary));
     if (!canToggleMapMode)
         ImGui::BeginDisabled();
     if (ImGui::Button(ctx.mapEditingMode ? "EXIT MAP" : "MAP MODE", { 92.0f, 24.0f }))
@@ -337,8 +543,14 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     }
 
     const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;
+    // ここでは Map ボタンを描いた後でも、子 Window 全体の幅を基準にする。
+    // GetContentRegionAvail() は現在カーソル位置からの残幅なので、Map ボタン分だけ
+    // 二重に引かれて Play 群が左へ寄り、右端が欠ける原因になる。
     const float availableWidth = ImGui::GetWindowWidth();
-    const float centerOffset = (availableWidth > groupWidth) ? (availableWidth - groupWidth) * 0.5f : 0.0f;
+    // Mapボタンの領域を予約してから中央寄せする。以前はツールバー全体の中央を
+    // 基準にしていたため、ウィンドウ幅が一時的に狭くなると MAP MODE と Play 群が重なった。
+    const float playAreaLeft = 8.0f + 92.0f + 16.0f;
+    const float centerOffset = (std::max)(playAreaLeft, (availableWidth - groupWidth) * 0.5f);
     ImGui::SetCursorPos({ centerOffset, toolbarButtonY });
     const bool scriptReloadBusy =
         ctx.scriptReloadBusy ||
@@ -348,9 +560,9 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         ? "Scripts are compiling/reloading..."
         : (isPaused ? "Resume from Play Mode" : "Play");
 
-    const ImVec4 playColor  { 0.18f, 0.58f, 0.33f, 1.0f };
-    const ImVec4 stopColor  { 0.62f, 0.20f, 0.20f, 1.0f };
-    const ImVec4 pauseColor { 0.72f, 0.52f, 0.18f, 1.0f };
+    const ImVec4 playColor  = EditorTheme::Color(ThemeColor::Success);
+    const ImVec4 stopColor  = EditorTheme::Color(ThemeColor::Danger);
+    const ImVec4 pauseColor = EditorTheme::Color(ThemeColor::Warning);
 
     if (PlayToolbarButton(
         "##PlayModePlay",
@@ -450,19 +662,25 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         if (playLabel)  totalW += ImGui::CalcTextSize(playLabel).x  + kGap;
 
         if (totalW > 0.0f) {
+            const float groupRight = centerOffset + groupWidth;
             const float posX = availableWidth - totalW - 8.0f;
             const float posY = (TOOLBAR_HEIGHT - ImGui::GetTextLineHeight()) * 0.5f;
-            if (posX > ImGui::GetCursorPosX())
-                ImGui::SetCursorPos({ posX, posY });
+            // ステータス文字をボタン群へ重ねず、狭いフレームでは表示を省略する。
+            // WHY: Compiling / PLAYING の表示が Play ボタンを押しつぶして欠けるより、
+            //      操作ボタンを常に完全表示する方が安全である。
+            if (posX > groupRight + kGap) {
+                if (posX > ImGui::GetCursorPosX())
+                    ImGui::SetCursorPos({ posX, posY });
 
-            if (reloadText) {
-                ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
-                ImGui::TextUnformatted(reloadText);
-                ImGui::PopStyleColor();
-                if (playLabel) ImGui::SameLine(0.0f, kGap);
+                if (reloadText) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
+                    ImGui::TextUnformatted(reloadText);
+                    ImGui::PopStyleColor();
+                    if (playLabel) ImGui::SameLine(0.0f, kGap);
+                }
+                if (playLabel)
+                    ImGui::TextColored(playLabelCol, "%s", playLabel);
             }
-            if (playLabel)
-                ImGui::TextColored(playLabelCol, "%s", playLabel);
         }
     }
 
@@ -473,6 +691,45 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 
     ImGui::EndChild();
     ImGui::PopStyleVar(2);
+}
+
+// =============================================================================
+// ビルド失敗通知バー
+// =============================================================================
+
+// WHY: 従来はビルド失敗が StatusBar に数秒表示されて消えるだけで見落としやすかった。
+//      失敗が残っている間、ツールバー直下に消えない赤帯を出し、[Show] で該当エラーへ、
+//      [Dismiss] で明示的に閉じられるようにする。成功ビルドで自動的に消える。
+void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
+{
+    if (!ctx.buildConsole || !ctx.buildConsole->HasActiveFailure()) return;
+
+    const BuildRecord* fail = ctx.buildConsole->LatestFailure();
+    if (!fail) return;
+
+    const float barH = ImGui::GetFrameHeight() + 4.0f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, EditorTheme::Color(ThemeColor::SurfaceRaised));
+    ImGui::BeginChild("##BuildFailBar", ImVec2(0.0f, barH), false, ImGuiWindowFlags_NoScrollbar);
+
+    ImGui::AlignTextToFramePadding();
+    const char* kind = fail->kind == BuildRecord::Kind::Script ? "Script" : "HLSL";
+    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.50f, 1.0f),
+                       "  %s build failed  \xE2\x80\x94  %d error(s), %d warning(s)  [%s]",
+                       kind, fail->errorCount, fail->warnCount, fail->startClock.c_str());
+
+    // 右寄せで操作ボタンを置く。
+    const float btnW = 150.0f;
+    ImGui::SameLine(ImGui::GetWindowWidth() - btnW);
+    if (ImGui::SmallButton("Show")) {
+        ctx.requestFocusBuildError = true;   // Build Output を開いて最初のエラーへスクロール
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Dismiss")) {
+        ctx.buildConsole->DismissNotification();
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
 }
 
 // =============================================================================
@@ -489,6 +746,13 @@ void EditorApp::StartPlayMode()
         m_ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
     if (!m_ctx.activeScene || !m_playMode.IsInEditor() || scriptReloadBusy)
         return;
+    // Prefab 編集面には「シーン」が無い (カメラもライトも無い、プレファブ単体)。
+    // WHY: そのまま Play すると空舞台でゲームが動き出し、Stop 時のスナップショット復元も
+    //      プレファブの内容に対して行われる。編集面から出るまで開始させない。
+    if (m_ctx.InPrefabEditMode()) {
+        FBZZ_LOG_WARN("Play: close the prefab edit mode first");
+        return;
+    }
 
     m_undoStack.Clear();
     RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
@@ -535,29 +799,201 @@ void EditorApp::TogglePlayMode()
         StopPlayMode();
 }
 
+// =============================================================================
+// ホットキー登録 — エディター内の全ショートカットの単一の定義場所
+//
+// WHY: ここに無いキーはリバインドできず、F1 の一覧にも出ない。逆に言えば、
+//      ここに書けば入力処理・一覧・リバインド UI・設定への永続化が全部ついてくる。
+//      パネル側で IsKeyPressed を直接叩くと、その 4 つが揃わないものが増える。
+// =============================================================================
 void EditorApp::RegisterDefaultHotkeys()
 {
-    m_hotkeys.Register({ "Undo",           ImGuiKey_Z, true,  false, false,
-        [this]() { m_undoStack.Undo(); } });
-    m_hotkeys.Register({ "Redo",           ImGuiKey_Y, true,  false, false,
-        [this]() { m_undoStack.Redo(); } });
+    using Cat   = HotkeyCategory;
+    using Scope = HotkeyScope;
+
+    // 「シーンを編集できる状態か」— Play 中とプレファブ編集中は対象が違う。
+    const auto canEditScene = [this]() {
+        return m_ctx.activeScene != nullptr && m_playMode.IsInEditor();
+    };
+    const auto hasSelection = [this]() { return !m_ctx.selectedEntities.empty(); };
+    const auto canEditSelection = [this, canEditScene, hasSelection]() {
+        return canEditScene() && hasSelection();
+    };
+
+    // Register の引数が増えたので、指定を読みやすくする小さな組み立てヘルパー。
+    auto add = [this](const char* name, int key, bool ctrl, bool shift, bool alt,
+                      Scope scope, Cat category,
+                      std::function<void()> callback,
+                      std::function<bool()> enabled = {}) {
+        Hotkey hk;
+        hk.name     = name;
+        hk.imguiKey = key;
+        hk.ctrl     = ctrl;
+        hk.shift    = shift;
+        hk.alt      = alt;
+        hk.scope    = scope;
+        hk.category = category;
+        hk.callback = std::move(callback);
+        hk.enabled  = std::move(enabled);
+        m_hotkeys.Register(std::move(hk));
+    };
+
+    // ── File ────────────────────────────────────────────────────────────────
+    add("New Scene",     ImGuiKey_N, true, false, false, Scope::Global, Cat::File,
+        [this]() { RequestNewScene(); });
+    add("Open Scene",    ImGuiKey_O, true, false, false, Scope::Global, Cat::File,
+        [this]() { RequestOpenSceneFromDialog(); });
+    add("Save",          ImGuiKey_S, true, false, false, Scope::Global, Cat::File,
+        [this]() { SaveScene(); });   // Prefab 編集中はプレファブ保存に読み替わる
+    add("Save Scene As", ImGuiKey_S, true, true,  false, Scope::Global, Cat::File,
+        [this]() { SaveSceneAsDialog(); });
+
+    // ── Edit ────────────────────────────────────────────────────────────────
+    add("Undo", ImGuiKey_Z, true, false, false, Scope::Global, Cat::Edit,
+        [this]() { m_undoStack.Undo(); },
+        [this]() { return m_undoStack.CanUndo(); });
+    add("Redo", ImGuiKey_Y, true, false, false, Scope::Global, Cat::Edit,
+        [this]() { m_undoStack.Redo(); },
+        [this]() { return m_undoStack.CanRedo(); });
     // WHY: Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させ、
     //      どちらの操作習慣のユーザーでも迷わないようにする。
-    m_hotkeys.Register({ "Redo (Alt)",     ImGuiKey_Z, true,  true,  false,
-        [this]() { m_undoStack.Redo(); } });
-    m_hotkeys.Register({ "New Scene",      ImGuiKey_N, true,  false, false,
-        [this]() { RequestNewScene(); } });
-    m_hotkeys.Register({ "Open Scene",     ImGuiKey_O, true,  false, false,
-        [this]() { RequestOpenSceneFromDialog(); } });
-    m_hotkeys.Register({ "Save Scene",     ImGuiKey_S, true,  false, false,
-        [this]() { SaveScene(); } });
-    m_hotkeys.Register({ "Save Scene As",  ImGuiKey_S, true,  true,  false,
-        [this]() { SaveSceneAsDialog(); } });
-    // Unity 互換の Play 系ショートカット
-    m_hotkeys.Register({ "Play/Stop",      ImGuiKey_P, true,  false, false,
-        [this]() { TogglePlayMode(); } });
-    m_hotkeys.Register({ "Pause",          ImGuiKey_P, true,  true,  false,
-        [this]() { if (!m_playMode.IsInEditor()) m_playMode.Pause(); } });
+    add("Redo (Alt)", ImGuiKey_Z, true, true, false, Scope::Global, Cat::Edit,
+        [this]() { m_undoStack.Redo(); },
+        [this]() { return m_undoStack.CanRedo(); });
+
+    // Scene View と Hierarchy のどちらにフォーカスがあっても効く編集操作。
+    // WHY: Unity では Scene View で選んだまま Delete / Ctrl+D が効く。
+    //      Hierarchy へフォーカスを移さないと消せないのは動線として遠回り。
+    constexpr Scope kEditScopes = Scope::SceneViewport | Scope::Hierarchy;
+
+    add("Delete Selected", ImGuiKey_Delete, false, false, false, kEditScopes, Cat::Edit,
+        [this]() { DeleteSelectedWithUndo(m_ctx); }, canEditSelection);
+    add("Duplicate", ImGuiKey_D, true, false, false, kEditScopes, Cat::Edit,
+        [this]() { DuplicateSelectedWithUndo(m_ctx); }, canEditSelection);
+    add("Copy", ImGuiKey_C, true, false, false, kEditScopes, Cat::Edit,
+        [this]() { CopySelectedToClipboard(m_ctx); }, canEditSelection);
+    add("Paste", ImGuiKey_V, true, false, false, kEditScopes, Cat::Edit,
+        [this]() { PasteClipboardWithUndo(m_ctx); },
+        [this, canEditScene]() { return canEditScene() && HasGameObjectClipboard(); });
+    add("Paste As Child", ImGuiKey_V, true, true, false, kEditScopes, Cat::Edit,
+        [this]() {
+            PasteClipboardWithUndo(m_ctx, m_ctx.selectedEntities.size() == 1
+                                              ? m_ctx.selectedEntities[0]
+                                              : scene::EntityID{});
+        },
+        [this, canEditScene]() { return canEditScene() && HasGameObjectClipboard(); });
+    add("Rename", ImGuiKey_F2, false, false, false, Scope::Hierarchy, Cat::Edit,
+        [this]() { m_ctx.requestRenameSelected = true; },
+        [this, canEditScene]() {
+            return canEditScene() && m_ctx.selectedEntities.size() == 1;
+        });
+
+    // ── Selection ───────────────────────────────────────────────────────────
+    add("Select All", ImGuiKey_A, true, false, false, kEditScopes, Cat::Selection,
+        [this]() {
+            m_ctx.selectedEntities.clear();
+            for (auto& go : m_ctx.activeScene->GameObjects())
+                if (!m_ctx.IsLocked(go.GetID()))
+                    m_ctx.selectedEntities.push_back(go.GetID());
+        },
+        canEditScene);
+    add("Clear Selection", ImGuiKey_Escape, false, false, false, kEditScopes, Cat::Selection,
+        [this]() { m_ctx.selectedEntities.clear(); }, hasSelection);
+    add("Selection Back", ImGuiKey_LeftArrow, false, false, true, Scope::Global, Cat::Selection,
+        [this]() { NavigateSelectionHistory(-1); });
+    add("Selection Forward", ImGuiKey_RightArrow, false, false, true, Scope::Global, Cat::Selection,
+        [this]() { NavigateSelectionHistory(1); });
+
+    // ── Viewport ────────────────────────────────────────────────────────────
+    add("Frame Selected", ImGuiKey_F, false, false, false, Scope::SceneViewport, Cat::Viewport,
+        [this]() {
+            math::Vector3 center{};
+            float radius = 0.0f;
+            if (!ComputeSelectionBounds(m_ctx, center, radius)) return;
+            m_ctx.focusTargetPosition    = center;
+            m_ctx.focusTargetRadius      = radius;
+            m_ctx.requestFocusOnSelected = true;
+        },
+        hasSelection);
+
+    // ── Gizmo ───────────────────────────────────────────────────────────────
+    // WHY: 右ドラッグ中の W/A/S/D はカメラのフライ移動。ギズモ切替と衝突するので、
+    //      押下中は無効にする (Unity と同じ調停)。
+    const auto gizmoEnabled = [this]() {
+        return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && m_playMode.IsInEditor();
+    };
+    add("Gizmo: Move", ImGuiKey_W, false, false, false, Scope::SceneViewport, Cat::Gizmo,
+        [this]() { m_ctx.gizmoMode = EditorContext::GizmoMode::Translate; }, gizmoEnabled);
+    add("Gizmo: Rotate", ImGuiKey_E, false, false, false, Scope::SceneViewport, Cat::Gizmo,
+        [this]() { m_ctx.gizmoMode = EditorContext::GizmoMode::Rotate; }, gizmoEnabled);
+    add("Gizmo: Scale", ImGuiKey_R, false, false, false, Scope::SceneViewport, Cat::Gizmo,
+        [this]() { m_ctx.gizmoMode = EditorContext::GizmoMode::Scale; }, gizmoEnabled);
+    add("Gizmo: World / Local", ImGuiKey_Q, false, false, false, Scope::SceneViewport, Cat::Gizmo,
+        [this]() {
+            m_ctx.gizmoSpace = (m_ctx.gizmoSpace == EditorContext::GizmoSpace::World)
+                ? EditorContext::GizmoSpace::Local
+                : EditorContext::GizmoSpace::World;
+        }, gizmoEnabled);
+    add("Gizmo: Pivot / Center", ImGuiKey_Z, false, false, false, Scope::SceneViewport, Cat::Gizmo,
+        [this]() {
+            m_ctx.gizmoPivot = (m_ctx.gizmoPivot == EditorContext::GizmoPivot::Pivot)
+                ? EditorContext::GizmoPivot::Center
+                : EditorContext::GizmoPivot::Pivot;
+        }, gizmoEnabled);
+    add("Toggle Grid Snap", ImGuiKey_X, false, false, false, Scope::SceneViewport, Cat::Gizmo,
+        [this]() { m_ctx.snapEnabled = !m_ctx.snapEnabled; }, gizmoEnabled);
+
+    // ── Play ────────────────────────────────────────────────────────────────
+    add("Play / Stop", ImGuiKey_P, true, false, false, Scope::Global, Cat::Play,
+        [this]() { TogglePlayMode(); });
+    add("Pause", ImGuiKey_P, true, true, false, Scope::Global, Cat::Play,
+        [this]() { if (!m_playMode.IsInEditor()) m_playMode.Pause(); },
+        [this]() { return !m_playMode.IsInEditor(); });
+
+    // ── Panels ──────────────────────────────────────────────────────────────
+    add("Command Palette", ImGuiKey_K, true, false, false, Scope::Global, Cat::Panels,
+        [this]() { m_commandPaletteOpen = true; });
+    add("Shortcut List", ImGuiKey_F1, false, false, false, Scope::Global, Cat::Panels,
+        [this]() { m_showShortcutsOverlay = !m_showShortcutsOverlay; });
+    // 独立VFXEditorはEditorのDock/Focus状態に依存せず、専用プロセスとして起動する。
+    add("Open VFX Editor", ImGuiKey_V, true, false, true, Scope::Global, Cat::Panels,
+        [this]() { m_ctx.requestOpenVFXEditor = true; });
+
+    // ── 説明専用エントリ ─────────────────────────────────────────────────────
+    // WHY: マウス操作や数字キー列はキー 1 つに割り当てられないが、
+    //      「どう操作するか」の一覧としては同じくらい知りたい情報。別表に切り出すと
+    //      そこがまた手書きの二重管理になるので、同じ器に入れて一覧を 1 本に保つ。
+    m_hotkeys.RegisterInfo("Look around",     "RMB drag",       Cat::Viewport, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Fly (while RMB)", "W / A / S / D / Q / E", Cat::Viewport, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Pan",             "MMB drag",       Cat::Viewport, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Orbit",           "Alt + LMB drag", Cat::Viewport, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Zoom",            "Mouse wheel",    Cat::Viewport, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Camera bookmark: save / recall",
+                           "Shift+1~9 / 1~9", Cat::Viewport, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Multi-select",    "Ctrl + click",   Cat::Selection, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Box select",      "LMB drag on empty space",
+                           Cat::Selection, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Momentary grid snap", "Hold Ctrl while dragging a gizmo",
+                           Cat::Gizmo, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Vertex snap",     "Hold V + drag",  Cat::Gizmo, Scope::SceneViewport);
+    m_hotkeys.RegisterInfo("Surface snap",    "Ctrl + Shift + drag", Cat::Gizmo, Scope::SceneViewport);
+
+    // NOTE: 保存済みリバインドの適用は呼び出し側 (EditorApp::Init) が
+    //       この直後に行う。既定値を全部積んだ後でないと Rebind が対象を引けないため。
+
+    // scope の判定は EditorContext のフォーカス状態から答える。
+    // WHY: パネルは自分の描画中にしか自身のフォーカスを知れないため、
+    //      ここで見るのは 1 フレーム前の状態になる。キー入力の応答としては問題ない。
+    m_hotkeys.SetScopeResolver([this](HotkeyScope scope) {
+        if (HasScope(scope, HotkeyScope::SceneViewport) &&
+            (m_ctx.viewportFocused || m_ctx.sceneViewportHovered))
+            return true;
+        if (HasScope(scope, HotkeyScope::Hierarchy) && m_ctx.hierarchyFocused)
+            return true;
+        if (HasScope(scope, HotkeyScope::AssetBrowser) && m_ctx.assetBrowserFocused)
+            return true;
+        return false;
+    });
 }
 
 } // namespace fbzz::editor

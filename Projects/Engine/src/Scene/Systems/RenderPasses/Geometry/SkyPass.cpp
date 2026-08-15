@@ -12,7 +12,6 @@ namespace fbzz::scene {
 
 void ExecuteSkyPass(RenderPassContext& ctx)
 {
-    auto& renderer  = ctx.renderer;
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
 
@@ -49,14 +48,13 @@ void ExecuteSkyPass(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[5] = h.postprocCB;
         dc.constantBuffers[6] = h.atmosphereCB;
-        renderer.Submit(dc, resources);
+        SubmitCounted(ctx, dc);
         break;
     }
 }
 
 void ExecuteSunMoonPass(RenderPassContext& ctx)
 {
-    auto& renderer  = ctx.renderer;
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
 
@@ -86,7 +84,7 @@ void ExecuteSunMoonPass(RenderPassContext& ctx)
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[6] = h.atmosphereCB;
-        renderer.Submit(dc, resources);
+        SubmitCounted(ctx, dc);
         break;
     }
 }

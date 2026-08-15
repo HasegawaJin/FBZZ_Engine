@@ -99,7 +99,7 @@ FBZZ_FIELD_RANGE(float, swingStartTime, 0.18f, "Swing Start Time", 0.0f, 1.0f)
 
 - 表示名 `"Swing Start Time"` は `swingStartTime` の機械的な整形にすぎず、**ほぼ常に重複**。
 - 位置引数が 6 個あり、min/max の順序ミスや型/既定値の取り違えを AI がやりがち。
-- マクロが `FBZZ_FIELD` / `FBZZ_FIELD_RANGE` / `FBZZ_FIELD_ENUM` / `FBZZ_FIELD_REF` / `FBZZ_COMPUTED` / `FBZZ_FIELD_READONLY` と分岐し、どれを使うべきかの判断が必要。
+- マクロが `FBZZ_FIELD` / `FBZZ_FIELD_RANGE` / `FBZZ_FIELD_ENUM` / `FBZZ_FIELD_REF` / `FBZZ_COMPUTED` と分岐し、どれを使うべきかの判断が必要。
 
 ### 1-D. ゲーム語彙が魔法文字列で散在
 
@@ -313,7 +313,7 @@ FBZZ_FIELD(float, swingStartTime, 0.18f) FBZZ_RANGE(0, 1)   // 表示名は自�
 
 1. **P2 の生成方式**: 案 a（X-macro）か案 b（記述子テーブル）か。MSVC マクロ展開の安定性を踏まえると案 b 推奨だが、要 PoC。
 2. **`Ref<T>` の解決タイミング**: 毎回解決 / 1 フレームキャッシュ / `OnStart` で 1 回。シーン再読み込みとの整合を決める。
-3. **後方互換の猶予期間**: 文字列 `ownerName` 系を deprecated 併存にするか、一括移行するか。
+3. **識別子の設計**: 文字列参照は現行の `EntityID` / `Ref<T>` 解決へ統一する。
 4. **1 ファイル化の TU 戦略**: `inline` メソッド化 vs 集約 TU。ビルド時間への影響を計測。
 </content>
 </invoke>

@@ -13,6 +13,7 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -209,15 +210,10 @@ void EnsureComponentResources(MeshTrailComponent& trail, renderer::ResourceManag
             }
             trail.doubleSided = mat->doubleSided;
         }
-    } else if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
-        // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
-        if (trail.texturePath.empty()) {
-            static const uint8_t white[4] = { 255, 255, 255, 255 };
-            trail.texture = resources.CreateTexture(white, 1, 1);
-        } else {
-            trail.texture = resources.LoadTexture(trail.texturePath);
-        }
-        trail.loadedTexturePath = trail.texturePath;
+    } else if (!trail.texture.IsValid()) {
+        static const uint8_t white[4] = { 255, 255, 255, 255 };
+        trail.texture = resources.CreateTexture(white, 1, 1);
+        trail.loadedTexturePath.clear();
     }
 }
 
@@ -269,7 +265,7 @@ void DrawStaticMeshSample(
 
     PerObjectCB objData{};
     objData.world = sample.world;
-    objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+    objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
     resources.Update(h.objectCB, &objData, sizeof(objData));
 
     MeshTrailCB cb{};
@@ -288,11 +284,7 @@ void DrawStaticMeshSample(
     dc.constantBuffers[1] = h.objectCB;
     dc.constantBuffers[2] = trail.meshTrailCB;
     dc.textures[0] = trail.texture;
-    ctx.renderer.Submit(dc, resources);
-
-    ++ctx.statsDrawCalls;
-    ctx.statsVertexCount += static_cast<int>(mr.mesh->vertexCount);
-    ctx.statsTriangleCount += static_cast<int>(mr.mesh->indexCount / 3u);
+    SubmitCounted(ctx, dc);
 }
 
 void DrawSkinnedMeshSample(
@@ -310,7 +302,7 @@ void DrawSkinnedMeshSample(
 
     PerObjectCB objData{};
     objData.world = sample.world;
-    objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+    objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
     resources.Update(h.objectCB, &objData, sizeof(objData));
 
     MeshTrailCB cb{};
@@ -320,9 +312,9 @@ void DrawSkinnedMeshSample(
     const auto skinCB = EnsureSampleSkinningCB(sample, resources, h.bindPoseSkinningCB);
 
     for (size_t meshIndex = 0; meshIndex < smr.model->meshes.size(); ++meshIndex) {
-        // 子GOが担当するsubmeshだけを描画し、剣Trailでキャラクター全身が残像化するのを防ぐ。
-        if (smr.meshIndex >= 0 && static_cast<int>(meshIndex) != smr.meshIndex)
-            continue;
+        // WHY: 以前は「submesh ごとの子 GO」の SkinnedMeshRenderer::meshIndex で
+        //      剣だけを残像化していたが、1 GO = モデル全体になったのでその手段は無くなった。
+        //      対象の絞り込みは MeshTrailComponent::excludedMeshIndices に一本化する。
         if (IsMeshIndexExcluded(trail, static_cast<int>(meshIndex)))
             continue;
         const auto& meshPtr = smr.model->meshes[meshIndex];
@@ -332,7 +324,7 @@ void DrawSkinnedMeshSample(
             continue;
 
         renderer::DrawCall dc;
-        dc.vertexBuffer = meshPtr->vertexBuffer;
+        dc.vertexBuffer = smr.ResolveVertexBuffer(meshIndex, meshPtr->vertexBuffer);
         dc.indexBuffer = meshPtr->indexBuffer;
         dc.indexCount = meshPtr->indexCount;
         dc.vertexCount = meshPtr->vertexCount;
@@ -344,11 +336,7 @@ void DrawSkinnedMeshSample(
         dc.constantBuffers[2] = trail.meshTrailCB;
         dc.constantBuffers[7] = skinCB;
         dc.textures[0] = trail.texture;
-        ctx.renderer.Submit(dc, resources);
-
-        ++ctx.statsDrawCalls;
-        ctx.statsVertexCount += static_cast<int>(meshPtr->vertexCount);
-        ctx.statsTriangleCount += static_cast<int>(meshPtr->indexCount / 3u);
+        SubmitCounted(ctx, dc);
     }
 }
 
@@ -404,6 +392,41 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
             continue;
 
         EnsureComponentResources(*trail, resources);
+        if (auto* emitter = go.GetComponent<ParticleEmitter>();
+            emitter != nullptr && !emitter->meshParticlePath.empty()) {
+            auto* mesh = go.GetComponent<MeshRenderer>();
+            if (mesh == nullptr) continue;
+            const math::Vector4 savedStart = trail->colorStart;
+            const math::Vector4 savedEnd = trail->colorEnd;
+            const std::size_t particleCount = (std::min)(emitter->particles.size(),
+                static_cast<std::size_t>((std::max)(emitter->visibleParticleCount, 0)));
+            for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+                const Particle& particle = emitter->particles[particleIndex];
+                math::Vector3 position = particle.position;
+                if (emitter->simulationSpace == ParticleSimulationSpace::Local) {
+                    const math::Vector3 scaled{ position.x * go.transform.worldScale.x,
+                                                position.y * go.transform.worldScale.y,
+                                                position.z * go.transform.worldScale.z };
+                    position = go.transform.worldPosition + go.transform.worldRotation * scaled;
+                }
+                MeshTrailSample sample;
+                sample.timestamp = currentTime;
+                sample.position = position;
+                // Mesh Particle は billboard と違い 3 軸すべてを使えるため、
+                // sizeAxisScale の z も反映する (billboard 経路は xy のみ)。
+                sample.world = math::Matrix4::TRS(position,
+                    math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, particle.rotation),
+                    { particle.size * emitter->sizeAxisScale.x,
+                      particle.size * emitter->sizeAxisScale.y,
+                      particle.size * emitter->sizeAxisScale.z });
+                trail->colorStart = particle.color;
+                trail->colorEnd = particle.color;
+                DrawStaticMeshSample(*trail, sample, *mesh, ctx, currentTime);
+            }
+            trail->colorStart = savedStart;
+            trail->colorEnd = savedEnd;
+            continue;
+        }
         ExpireSamples(*trail, resources, currentTime);
 
         if (trail->enabled && ShouldSample(*trail, go.transform.worldPosition, currentTime))

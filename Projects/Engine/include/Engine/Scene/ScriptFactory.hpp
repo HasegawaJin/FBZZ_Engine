@@ -22,9 +22,9 @@ public:
     static bool Register()
     {
         static_assert(std::is_base_of_v<Script, T>);
-        return Register(T::TYPE_NAME, []() { return std::make_unique<T>(); });
+        const bool registered = Register(T::TYPE_NAME, []() { return std::make_unique<T>(); });
+        return registered;
     }
-
     static bool Register(const std::string& typeName, Factory factory);
     static std::unique_ptr<Script> Create(const std::string& typeName);
     static std::vector<std::string> RegisteredTypeNames();

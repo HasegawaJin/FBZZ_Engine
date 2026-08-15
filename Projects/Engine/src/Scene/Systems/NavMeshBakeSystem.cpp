@@ -24,6 +24,7 @@
 #include "Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"
+#include "Engine/Scene/Systems/ColliderSync.hpp"
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>
@@ -90,13 +91,21 @@ bool TryGetObstacle(Scene& scene, EntityID eid, const GameObject& go, Obstacle& 
                                box->size.z * 0.5f * s.z };
         return true;
     }
+    // WHY: Mesh/ConvexHull の physics::Collider は PhysicsSystem (RunMode::SimOnly) が構築する。
+    //      Play していない状態で Bake すると nullptr のままで、障害物として無視されていた。
+    //      ここで ColliderSync の遅延構築を明示的に走らせ、停止中の Bake でも同じ結果にする。
+    if (GameObject* mutableGo = scene.GetGameObject(eid)) {
+        if (auto* meshCol = scene.GetComponent<MeshColliderComponent>(eid))
+            EnsureMeshCollider(*mutableGo, *meshCol);
+        if (auto* hullCol = scene.GetComponent<ConvexHullColliderComponent>(eid))
+            EnsureConvexHullCollider(*mutableGo, *hullCol);
+    }
+
     ColliderComponent* col = scene.GetComponent<SphereColliderComponent>(eid);
     if (!col) col = scene.GetComponent<CapsuleColliderComponent>(eid);
     if (!col) col = scene.GetComponent<AabbColliderComponent>(eid);
     if (!col) col = scene.GetComponent<MeshColliderComponent>(eid);
     if (!col) col = scene.GetComponent<ConvexHullColliderComponent>(eid);
-    // WHY: Mesh/ConvexHull は非同期アセット読み込み後に PhysicsSystem が構築するため、
-    //      Play していない状態で Bake すると nullptr のままの場合がある。
     if (!col || !col->enabled || !col->collider) return false;
 
     col->collider->Update(p + rot * ComponentScale(col->center, s), rot);

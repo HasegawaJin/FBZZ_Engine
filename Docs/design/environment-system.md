@@ -31,18 +31,18 @@ EnvironmentRenderer
 | Cloud | `Cloud.hlsli`（FBM 手続き型・平面レイヤー・セルフシャドウ近似） | ◯ 簡易版あり |
 | Water (Ocean/Lake/River) | 単一 `WaterRenderPass` + `Water.hlsl`（Gerstner・SSR・屈折・泡・接岸） | ✅ あり（**既に統合済み**） |
 | Foam | `Water.hlsl` 内（接岸泡＋ペイントマスク） | ✅ あり |
-| Caustics | `UnderwaterCaustics` パス + `PostProcess/Water/Caustics.hlsl`（画面空間・水没時） | ◯ 水中のみあり |
+| Caustics | `WaterCaustics` パス + `PostProcess/Water/Caustics.hlsl`（水面から水底への投影） | ✅ あり |
 | Fog | `Composite.hlsl` の指数フォグ（深度復元） | ✅ あり |
 | SunMoon | 太陽ディスクは `Atmosphere.hlsli::SunDisk` のみ。月・昼夜遷移は無し | ◯ 太陽のみ |
-| EnvironmentLighting / IBL | `IBLBrdfBake` パス・`DX11IblBaker`（irradiance/prefilter/BRDF LUT compute）・`EnvironmentLightComponent`・`ReflectionProbeComponent` | ◯ **オフライン経路のみ** |
+| EnvironmentLighting / IBL | `IBLBrdfBake`・runtime Sky IBL・`ReflectionProbeComponent` の静的／動的キャプチャ | ✅ あり |
 | VolumetricClouds（レイマーチ） | 無し | ❌ 新規 |
 | CloudShadow（投影） | 無し | ❌ 新規 |
 | AerialPerspective | 無し（Composite フォグで代替中） | ❌ 新規 |
 
 **重要な事実:**
 - **Water は既に 1 パスに統合済み** → Ocean/Lake/River への分割は不要（後述）。
-- **Caustics は既にある**（ただし「カメラ水没時の画面効果」。水面越しに水底へ落ちる**投影コースティクス**は別物で未実装）。
-- **IBL の計算機構（compute）は完成している**が、入力は「HDRI ファイル→DDS をディスクに焼く**オフライン経路**」。`ReflectionProbeComponent.hpp` にも *「将来は動的キャプチャへ拡張予定。現時点は静的 .dds のみ」* と明記済み。
+- **Caustics は投影経路まで実装済み**。`WaterCaustics` が水面マテリアルの設定からパターンを選び、水面下の HDR ジオメトリへ加算する。
+- **IBL は runtime 経路を持つ**。Reflection Probe は静的 `.dds` に加え、空のみを焼く軽量方式と周辺 Mesh を含む完全方式を更新間隔付きで選択できる。
 - つまり要石 `IBL = 空から生成` の実体は **「空キューブマップを実行時に生成し、既存 compute へ流す runtime 経路の新設」**。コンピュートシェーダは流用できる。
 
 ### 1-1. このエンジンの命名規則

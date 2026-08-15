@@ -43,14 +43,29 @@ float3 ApplyColorAdjustments(float3 color,
                              float temperature,
                              float tint)
 {
-    color = ApplyWhiteBalance(color, temperature, tint);
-    color = ApplyHueShift(color, hueDegrees);
+    // 各値の既定値が無効状態を表すため、無効な処理はピクセル単位でスキップする。
+    // WHY: Composite は全画面で実行されるので、ゼロ強度でも行列計算や sin/cos を
+    //      実行すると、見た目を変えない設定が常時コストになる。
+    [branch]
+    if (abs(temperature) > 1.0e-4f || abs(tint) > 1.0e-4f)
+        color = ApplyWhiteBalance(color, temperature, tint);
+    [branch]
+    if (abs(hueDegrees) > 1.0e-4f)
+        color = ApplyHueShift(color, hueDegrees);
 
-    float midpoint = 0.5f;
-    color = (color - midpoint) * (1.0f + contrastValue) + midpoint;
+    [branch]
+    if (abs(contrastValue) > 1.0e-4f)
+    {
+        const float midpoint = 0.5f;
+        color = (color - midpoint) * (1.0f + contrastValue) + midpoint;
+    }
 
-    float luma = Luminance(color);
-    color = lerp(float3(luma, luma, luma), color, saturationValue);
+    [branch]
+    if (abs(saturationValue - 1.0f) > 1.0e-4f)
+    {
+        const float luma = Luminance(color);
+        color = lerp(float3(luma, luma, luma), color, saturationValue);
+    }
     return saturate(color);
 }
 
@@ -61,6 +76,9 @@ float3 ApplyVignette(float3 color,
                      float roundness,
                      float3 vignetteCol)
 {
+    if (intensity <= 0.0f)
+        return color;
+
     float2 centered = uv * 2.0f - 1.0f;
     centered.x *= lerp(1.0f, screenSize.x / max(screenSize.y, 1.0f), saturate(roundness));
     float d = dot(centered, centered);
@@ -70,6 +88,9 @@ float3 ApplyVignette(float3 color,
 
 float3 ApplyFilmGrain(float3 color, float2 uv, float intensity, float response)
 {
+    if (intensity <= 0.0f)
+        return color;
+
     float noise = Hash2D(uv * screenSize + time * 97.0f) * 2.0f - 1.0f;
     float luma = Luminance(color);
     float weight = lerp(1.0f, 1.0f - saturate(luma), saturate(response));
@@ -90,6 +111,9 @@ float2 ApplyPixelateUV(float2 uv, float pixelBlockSize)
 
 float3 ApplySepia(float3 color, float intensity)
 {
+    if (intensity <= 0.0f)
+        return color;
+
     float3 sepia = float3(
         dot(color, float3(0.393f, 0.769f, 0.189f)),
         dot(color, float3(0.349f, 0.686f, 0.168f)),
@@ -99,6 +123,9 @@ float3 ApplySepia(float3 color, float intensity)
 
 float3 ApplyInvert(float3 color, float intensity)
 {
+    if (intensity <= 0.0f)
+        return color;
+
     return lerp(color, float3(1.0f, 1.0f, 1.0f) - color, saturate(intensity));
 }
 
@@ -113,6 +140,9 @@ float3 ApplyPosterize(float3 color, float levels)
 
 float3 ApplyShadowHighlight(float3 color, float shadowAmount, float highlightAmount)
 {
+    if (shadowAmount <= 0.0f && highlightAmount <= 0.0f)
+        return color;
+
     // WHAT: 暗部は持ち上げ、明部は軽く圧縮して白飛びを抑える。
     // WHY: HDR トーンマップ後の LDR に対する軽量な見た目補正として、露出を変えずに階調を残す。
     float luma = Luminance(color);
@@ -125,6 +155,9 @@ float3 ApplyShadowHighlight(float3 color, float shadowAmount, float highlightAmo
 
 float3 ApplyColorFilter(float3 color, float3 filterColor, float intensity)
 {
+    if (intensity <= 0.0f)
+        return color;
+
     // WHAT: ホワイトバランス後の最終色に薄いフィルター色を乗算する。
     // WHY: LUT を導入せず、昼/夕方/室内などのルックをシーン設定だけで寄せられるようにする。
     return saturate(lerp(color, color * max(filterColor, 0.0f), saturate(intensity)));

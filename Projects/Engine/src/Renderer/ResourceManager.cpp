@@ -27,7 +27,11 @@ ResourceManager* s_activeResourceManager = nullptr;
 // Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
 std::string TextureCacheKey(std::string_view path)
 {
-    std::string key(path);
+    std::string key;
+    std::string spriteName;
+    // Sprite参照はGPU上では親Textureを共有する。サブアセット名をキャッシュキーへ
+    // 含めると同じ画像を重複ロードするため、ここで親パスへ正規化する。
+    asset::ParseSpriteReference(path, key, spriteName);
     std::replace(key.begin(), key.end(), '\\', '/');
     return key;
 }
@@ -189,6 +193,12 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture3D(
 ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride)
 {
     return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride), "VertexBuffer", __FILE__, __LINE__);
+}
+
+ResourceHandle<BufferTag> ResourceManager::CreateGpuWritableVertexBuffer(size_t bytes, uint32_t stride)
+{
+    return m_buffers.Insert(m_renderer.CreateNativeGpuWritableVertexBuffer(bytes, stride),
+                            "GpuWritableVertexBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count)

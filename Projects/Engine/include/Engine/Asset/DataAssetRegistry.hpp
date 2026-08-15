@@ -33,6 +33,19 @@ public:
     // キャッシュ済み実体の型名を返す (Inspector がどの型を描画するか等に使う)。未キャッシュなら空。
     static std::string TypeOf(const std::string& path);
 
+    // ── Undo スナップショット ────────────────────────────────────────────────
+    // WHY: DataAsset は多態基底で値コピーできないため、.mat のような
+    //      「編集前の値をまるごと控える」方式が使えない。TOML 直列化を
+    //      スナップショットの実体として使い、Editor 側は不透明な文字列として扱う。
+
+    // キャッシュ済み実体を .fzdata と同じ TOML テキストへ書き出す。未キャッシュなら空。
+    static std::string Snapshot(const std::string& path);
+
+    // Snapshot() の文字列を、キャッシュ済みの「同じ実体」へ読み戻す。
+    // WHY 実体を作り直さないか: Asset<T>::Get() が返したポインタを保持している
+    //      参照側 (スクリプト・Inspector) がいる。アドレスは維持し中身だけ差し替える。
+    static bool RestoreSnapshot(const std::string& path, const std::string& snapshot);
+
     // DLL ホットリロード時にキャッシュを破棄する。
     // WHY: キャッシュした DataAsset の仮想デストラクタは DLL コード内にあるため、
     //      FreeLibrary 前にここで破棄しておかないとリロード後にアクセス違反になる。

@@ -14,6 +14,8 @@ struct ScriptTimeProxy {
 
     float DeltaTime() const;
     float UnscaledDeltaTime() const;
+    // 固定ステップ 1 回ぶんの秒数。OnFixedUpdate() 内での積分にはこちらを使う。
+    float FixedDeltaTime() const;
     float Time() const;
     float UnscaledTime() const;
     uint64_t FrameCount() const;

@@ -19,8 +19,11 @@
 #include "DX11Texture.hpp"
 #include "DX11RenderTarget.hpp"
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
+#include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
+#include <DirectXTex.h>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <dxgi1_5.h>
 #include <string>
@@ -251,6 +254,14 @@ std::unique_ptr<IBuffer> DX11Renderer::CreateNativeVertexBuffer(const void* data
     return buf;
 }
 
+std::unique_ptr<IBuffer> DX11Renderer::CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride)
+{
+    auto buf = std::make_unique<DX11Buffer>();
+    if (!buf->InitGpuWritableVertex(m_device.Get(), m_context.Get(), sizeBytes, stride))
+        return nullptr;
+    return buf;
+}
+
 std::unique_ptr<IBuffer> DX11Renderer::CreateNativeIndexBuffer(const void* data, uint32_t count)
 {
     // インデックスは uint32_t 固定 (DXGI_FORMAT_R32_UINT)。
@@ -375,8 +386,11 @@ bool DX11Renderer::BakeSkyLight(ResourceHandle<RenderTargetTag> envCubeRT, Resou
 
     // 入力キューブは mip0 のみ (SkyCapture)。prefilter の env LOD は mip0 を参照する (envMipCount=1)。
     // ConvolveCubeToTextures は結果を戻り値で返す (out 引数ではない)。
+    // WHY: プロジェクトへEngine shaderを複製せず、GameHubが選択したSDKの共有assetを使う。
+    const std::string compiledShaders =
+        asset::AssetManager::ResolveAssetPath("Assets/Shaders/compiled/");
     IblTextureSet set = m_runtimeIblBaker->ConvolveCubeToTextures(
-        envSRV, "Assets/Shaders/compiled/",
+        envSRV, compiledShaders,
         irradianceSize, prefilterSize, prefilterMips, sampleCount, /*envMipCount=*/1);
     if (!set.IsValid()) return false;
 
@@ -485,6 +499,10 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         if (!sb) continue;
         uavs[2 + i] = static_cast<DX11StructuredBuffer*>(sb)->GetUAV();
     }
+    // GPU 書き込み可能な頂点バッファは u4 固定 (Binding.hlsli の UAV_SKINNED_VERTICES)。
+    // コンピュートスキニングの出力先。
+    if (auto* vb = resources.Get(call.uavVertexBuffer))
+        uavs[4] = static_cast<DX11Buffer*>(vb)->GetUAV();
     m_context->CSSetUnorderedAccessViews(0, 8, uavs, nullptr);
 
     // Dispatch
@@ -518,35 +536,44 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     // WHY: ShadowMap は VS が出した SV_POSITION の深度だけを書き込むパスで、PS は空実装。
     //      PS を残したまま colorCount=0 の RT に Draw すると RTV 未設定警告が出るため、
     //      DepthCopy のように PS 側で SV_Depth を生成するパスは除外し、ShadowMap だけ PS を外す。
-    const bool isShadowMapShader = boundShader &&
-        static_cast<DX11Shader*>(boundShader)->GetPath().find("ShadowMap") != std::string::npos;
-    if (m_currentRT && m_currentRT->GetColorCount() == 0 && isShadowMapShader)
+    // NOTE: 判定は DX11Shader::Init で 1 度だけ済ませてある (毎 DrawCall の文字列検索を避ける)。
+    const bool isDepthOnlyDraw = boundShader &&
+        static_cast<DX11Shader*>(boundShader)->IsShadowMapShader() &&
+        m_currentRT && m_currentRT->GetColorCount() == 0;
+    if (isDepthOnlyDraw)
         m_context->PSSetShader(nullptr, nullptr, 0);
 
     // ---- 3. Constant Buffers (VS・PS 両方の同スロットへバインド) ----------------
     // 同じ定数バッファを VS と PS の両方にバインドすることで、
     // シェーダーの種類ごとにスロットを分けずに済む。
+    // WHY: PS を外した深度専用描画では PS ステージへのバインドは全て無視される。
+    //      シャドウパスは 1 フレームで最も DrawCall 数が多くなりやすいので、
+    //      効かないと分かっている API 呼び出し (CB × スロット数 + SRV クリア) は丸ごと省く。
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
     {
         auto* cb = resources.Get(call.constantBuffers[i]);
         if (!cb) continue;
         ID3D11Buffer* buf = static_cast<DX11ConstantBuffer*>(cb)->GetBuffer();
         m_context->VSSetConstantBuffers(i, 1, &buf);
-        m_context->PSSetConstantBuffers(i, 1, &buf);
+        if (!isDepthOnlyDraw)
+            m_context->PSSetConstantBuffers(i, 1, &buf);
     }
 
     // ---- 4. Textures (SRV → PS ステージ) ----------------------------------------
     // WHY: DrawCall ごとに未使用スロットを NULL に戻す。
     //      前の DrawCall の SRV が残ると、次のパスで同じリソースを RTV/DSV として使った際に
     //      DX11 デバッグレイヤーの HAZARD 警告や意図しないサンプリングが起きる。
-    static ID3D11ShaderResourceView* const kNullSRVs[32] = {};
-    m_context->PSSetShaderResources(0, 32, kNullSRVs);
-    for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
+    if (!isDepthOnlyDraw)
     {
-        auto* texture = resources.Get(call.textures[i]);
-        if (!texture) continue;
-        ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(texture)->GetSRV();
-        m_context->PSSetShaderResources(i, 1, &srv);
+        static ID3D11ShaderResourceView* const kNullSRVs[32] = {};
+        m_context->PSSetShaderResources(0, 32, kNullSRVs);
+        for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
+        {
+            auto* texture = resources.Get(call.textures[i]);
+            if (!texture) continue;
+            ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(texture)->GetSRV();
+            m_context->PSSetShaderResources(i, 1, &srv);
+        }
     }
 
     // ---- 5. Primitive Topology (IA ステージ) --------------------------------------
@@ -571,7 +598,12 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     // WHY: StructuredBuffer<T> を SV_InstanceID でインデックスする方式は、
     //      通常 Draw に切り替えると VS が未バインドのインスタンスデータを読み、
     //      1 個だけ生成された Detail や Particle が描画されなくなるため。
-    const bool isInstanced = call.instanceCount > 0 && call.instanceBuffer.IsValid();
+    // instanceCount が 2 以上なら instanceBuffer が無くてもインスタンス描画する。
+    // WHY: GPU メッシュパーティクルは per-instance データを t0 ではなく t14
+    //      (vsBuffers, StructuredBuffer<GpuParticle>) から SV_InstanceID で引く。
+    //      同じ .hlsl に t0 の Texture2D (albedo) があるため t0 は使えない。
+    const bool isInstanced = call.instanceCount > 1
+        || (call.instanceCount > 0 && call.instanceBuffer.IsValid());
     if (isInstanced)
     {
         if (auto* sb = resources.Get(call.instanceBuffer))
@@ -591,6 +623,18 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
         m_context->VSSetShaderResources(14 + i, 1, &srv);
         hasVsBuffers = true;
+    }
+
+    // PS-readable StructuredBuffer (t29〜t30): クラスタライティングのライト配列 / インデックスリスト
+    // WHY: vsBuffers は VS にしか束縛されないため、PS からバッファを読む経路がこれしかない。
+    bool hasPsBuffers = false;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.psBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.psBuffers[i]);
+        if (!sb) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+        m_context->PSSetShaderResources(kPsBufferBaseSlot + i, 1, &srv);
+        hasPsBuffers = true;
     }
 
     if (auto* indexBuffer = resources.Get(call.indexBuffer))
@@ -622,6 +666,14 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
         m_context->VSSetShaderResources(14, 2, nullSRVs);
     }
+    // PS SRV も解除する。クラスタバッファは CS が UAV として書き込むため、
+    // 束縛したままだと次フレームの Dispatch で SRV/UAV が同一リソースへ同時束縛になり、
+    // ドライバーが UAV 側を黙って無効化する (D3D11 の警告付き)。
+    if (hasPsBuffers)
+    {
+        ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+        m_context->PSSetShaderResources(kPsBufferBaseSlot, 2, nullSRVs);
+    }
 }
 
 // =============================================================================
@@ -631,6 +683,10 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
 void DX11Renderer::Resize(uint32_t width, uint32_t height)
 {
     if (width == 0 || height == 0) return;
+    // WHY 同寸で弾くか: WM_SIZE は最大化/復元/フォーカス変化などで同じ寸法のまま何度も届く。
+    //     素通しすると毎回 RTV/DSV の破棄と ResizeBuffers が走り、深度バッファの再確保で
+    //     目に見えるヒッチが出る。実際に寸法が変わった時だけ再構築する。
+    if (width == m_width && height == m_height) return;
 
     m_width  = width;
     m_height = height;
@@ -705,6 +761,56 @@ void DX11Renderer::BindRenderTarget(IRenderTarget* rt)
 void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources)
 {
     BindRenderTarget(resources.Get(rt));
+}
+
+void DX11Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+{
+    // BindRenderTarget が RT 全体のビューポートを張った後に、その一部へ絞り込む。
+    // カスケードシャドウが 1 枚のアトラスをタイル分割して使う (IRenderer::SetViewport 参照)。
+    if (width == 0u || height == 0u) return;
+
+    D3D11_VIEWPORT vp = {};
+    vp.TopLeftX = static_cast<float>(x);
+    vp.TopLeftY = static_cast<float>(y);
+    vp.Width    = static_cast<float>(width);
+    vp.Height   = static_cast<float>(height);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_context->RSSetViewports(1, &vp);
+}
+
+// RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。
+// WHY: 2 つの入口が別々に CaptureTexture を呼ぶと、片方だけ RT 形式の変更に追従し損ねる。
+static bool CaptureDX11RenderTargetImage(ID3D11Device* device, ID3D11DeviceContext* context,
+                                         IRenderTarget* base, DirectX::ScratchImage& outImage)
+{
+    // Platform 層内なので IRenderTarget → 具象へのキャストは許容 (上位からのダウンキャスト禁止規約の対象外)。
+    auto* target = static_cast<DX11RenderTarget*>(base);
+    if (target == nullptr) return false;
+    ID3D11ShaderResourceView* srv = target->GetColorSRV(0);
+    if (srv == nullptr) return false;
+
+    // SRV から元テクスチャ (R16G16B16A16_FLOAT) を取り出す。CaptureTexture が内部で STAGING コピーする。
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    srv->GetResource(resource.GetAddressOf());
+    if (!resource) return false;
+    return SUCCEEDED(DirectX::CaptureTexture(device, context, resource.Get(), outImage));
+}
+
+bool DX11Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                            std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
+{
+    DirectX::ScratchImage captured;
+    if (!CaptureDX11RenderTargetImage(m_device.Get(), m_context.Get(), resources.Get(rt), captured)) return false;
+    return detail::EncodeCapturedImageToPng(captured, outPng, outWidth, outHeight);
+}
+
+bool DX11Renderer::CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                                   std::vector<float>& outRgba, uint32_t& outWidth, uint32_t& outHeight)
+{
+    DirectX::ScratchImage captured;
+    if (!CaptureDX11RenderTargetImage(m_device.Get(), m_context.Get(), resources.Get(rt), captured)) return false;
+    return detail::ReadCapturedImageAsLinearRGBA(captured, outRgba, outWidth, outHeight);
 }
 
 void DX11Renderer::SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,

@@ -1,83 +1,52 @@
+// FBZZ Engine
+// launch.json | .vscode
+// デバッグ実行の入口。
+//
+// 2 つの起動経路がある:
+//   1. ビルドツリー直接起動 (FBZZEditor / FBZZVFXEditor / Sandbox / Tests)
+//      → 最短でブレークポイントに入れる。日常のデバッグはこちら。
+//   2. GameHub 経由 (GameHub + SDK)
+//      → 実際のユーザー体験と同じ経路。ただし GameHub は Editor を
+//        detached で起動する (projectService.ts) ため、デバッガーは付かない。
+//        この経路で Editor を止めたい時は "Attach: FBZZ プロセス" を使う。
+//
+// ビルドツリー直接起動には環境変数が 2 つ要る:
+//   FBZZ_ENGINE_ASSET_ROOT — AssetManager の探索は「exe 隣の EngineAssets」か
+//       「SDK の share/fbzz/Assets」しか見ず、ソースツリーへのフォールバックが無い。
+//       未指定だとエンジンアセット (シェーダー等) が一切解決できずに起動する。
+//   FBZZ_SKIP_ENGINE_REBUILD — 未指定だと CheckEngineFreshnessAndRelaunch() が
+//       ソースと DLL の時刻を比べてリビルド確認ダイアログを出し、プロセスを
+//       起動し直す。デバッガーが元プロセスごと外れるため必ず抑止する。
+//       preLaunchTask が既にビルド済みなので判定自体が不要。
+//
+// なおビルドツリー起動ではスクリプト DLL のコンパイルは使えない。
+// FBZZ_SDK_ROOT が指す公開済み SDK を必要とし、その ID は編集のたびに変わるため
+// ここへ固定値を書けない。スクリプトを触る時は GameHub 経由で起動すること。
 {
     "version": "0.2.0",
     "configurations": [
+        // ------------------------------------------------------------------
+        // エディター — ビルドツリー直接起動
+        // ------------------------------------------------------------------
         {
-            "name": "GameHub (Debug)",
+            "name": "FBZZEditor (Development)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Hub/FBZZHub.exe",
-            "args": [],
+            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZEditor.exe",
+            "args": [
+                "--project",
+                "${input:fbzzProjectPath}"
+            ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Hub",
-            "environment": [],
+            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build GameHub (Debug)"
-        },
-        {
-            "name": "GameHub (Release)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Release/Binaries/Release/Hub/FBZZHub.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Release/Binaries/Release/Hub",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build GameHub (Release)"
-        },
-        {
-            "name": "GameHub (Development)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Hub/FBZZHub.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Hub",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build GameHub (Development)"
-        },
-        {
-            "name": "Sandbox (Debug)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Sandbox/Sandbox.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Sandbox",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build Sandbox (Debug)"
-        },
-        {
-            "name": "Sandbox (Release)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Release/Binaries/Release/Sandbox/Sandbox.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Release/Binaries/Release/Sandbox",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build Sandbox (Release)"
-        },
-        {
-            "name": "Sandbox (Development)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Sandbox/Sandbox.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Sandbox",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build Sandbox (Development)"
+            "preLaunchTask": "CMake: Build Editor (Development)",
+            "presentation": { "group": "1_editor", "order": 1 }
         },
         {
             "name": "FBZZEditor (Debug)",
@@ -90,89 +59,201 @@
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build EditorLauncher (Debug)"
-        },
-        {
-            "name": "FBZZEditor (Release)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Release/Binaries/Release/Editor/FBZZEditor.exe",
-            "args": [
-                "--project",
-                "${input:fbzzProjectPath}"
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Release/Binaries/Release/Editor",
-            "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build EditorLauncher (Release)"
+            "preLaunchTask": "CMake: Build Editor (Debug)",
+            "presentation": { "group": "1_editor", "order": 2 }
         },
         {
-            "name": "FBZZEditor (Development)",
+            "name": "FBZZVFXEditor (Development)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZVFXEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
-            "environment": [],
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build EditorLauncher (Development)"
+            "preLaunchTask": "CMake: Build Editor (Development)",
+            "presentation": { "group": "1_editor", "order": 3 }
         },
         {
-            "name": "Test Physics (Development)",
+            // GameHub から起動した Editor / VFXEditor はデバッガーを持たないので、
+            // 後からここでアタッチする。プロセス一覧から FBZZEditor.exe を選ぶ。
+            "name": "Attach: FBZZ プロセス",
+            "type": "cppvsdbg",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "requireExactSource": false,
+            "presentation": { "group": "1_editor", "order": 4 }
+        },
+
+        // ------------------------------------------------------------------
+        // ランタイム / テスト
+        // ------------------------------------------------------------------
+        {
+            "name": "Sandbox (Development)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Tests/FBZZTestsPhysics.exe",
+            "program": "${workspaceFolder}/build/Development/Binaries/Development/Sandbox/Sandbox.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Tests",
-            "environment": [],
+            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Sandbox",
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build All (Development)"
+            "preLaunchTask": "CMake: Build Sandbox (Development)",
+            "presentation": { "group": "2_runtime", "order": 1 }
         },
         {
-            "name": "Test Math (Development)",
+            "name": "Sandbox (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Tests/FBZZTestsMath.exe",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Sandbox/Sandbox.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Tests",
-            "environment": [],
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Sandbox",
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build All (Development)"
+            "preLaunchTask": "CMake: Build Sandbox (Debug)",
+            "presentation": { "group": "2_runtime", "order": 2 }
         },
         {
-            "name": "Test Scene (Development)",
+            // --gtest_filter を渡したい時のために引数を対話入力にしてある。
+            // 空 Enter で全テスト実行。
+            "name": "Tests: Core Auto (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Tests/FBZZTestsScene.exe",
-            "args": [],
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests/FBZZTestsCoreAuto.exe",
+            "args": [
+                "${input:gtestFilter}"
+            ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Tests",
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests",
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build All (Development)"
+            "preLaunchTask": "CMake: Build Tests (Debug)",
+            "presentation": { "group": "2_runtime", "order": 3 }
+        },
+        {
+            // Window / Cursor の OS 状態を触るため CTest には登録されていない。
+            // 手動で確認したい時だけここから起動する。
+            "name": "Tests: Core Manual (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests/FBZZTestsCoreManual.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Tests",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Tests (Debug)",
+            "presentation": { "group": "2_runtime", "order": 4 }
+        },
+
+        // ------------------------------------------------------------------
+        // GameHub — 実際のユーザー起動経路 (Editor にはデバッガーが付かない)
+        // ------------------------------------------------------------------
+        {
+            "name": "GameHub + SDK (Development)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Projects/GameHub/out/Development/FBZZGameHub-win32-x64/FBZZGameHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/Projects/GameHub/out/Development/FBZZGameHub-win32-x64",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "GameHub + SDK: Build (Development)",
+            "postDebugTask": "Kill: All FBZZ Processes",
+            "presentation": { "group": "3_hub", "order": 1 }
+        },
+        {
+            "name": "GameHub + SDK (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Projects/GameHub/out/Debug/FBZZGameHub-win32-x64/FBZZGameHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/Projects/GameHub/out/Debug/FBZZGameHub-win32-x64",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "GameHub + SDK: Build (Debug)",
+            "postDebugTask": "Kill: All FBZZ Processes",
+            "presentation": { "group": "3_hub", "order": 2 }
+        },
+        {
+            "name": "GameHub + SDK (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Projects/GameHub/out/Release/FBZZGameHub-win32-x64/FBZZGameHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/Projects/GameHub/out/Release/FBZZGameHub-win32-x64",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "GameHub + SDK: Build (Release)",
+            "postDebugTask": "Kill: All FBZZ Processes",
+            "presentation": { "group": "3_hub", "order": 3 }
+        },
+
+        // ------------------------------------------------------------------
+        // ツール
+        // ------------------------------------------------------------------
+        {
+            "name": "EditorMcp Server",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/Projects/EditorMcp/dist/stdio.js",
+            "cwd": "${workspaceFolder}/Projects/EditorMcp",
+            "console": "integratedTerminal",
+            "env": {
+                "FBZZ_MCP_PERMISSION": "write"
+            },
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "preLaunchTask": "EditorMcp: Build",
+            "presentation": { "group": "4_tools", "order": 1 }
         }
     ],
     "inputs": [
         {
+            // 既定はリポジトリ同梱のサンプルプロジェクト。
+            // 空プロジェクトから確認したい時は Projects/GameHub/Templates/standard を指定する。
             "id": "fbzzProjectPath",
             "type": "promptString",
-            "description": "FBZZ project folder",
-            "default": "${workspaceFolder}/Projects/GameHub/Templates/standard"
+            "description": "FBZZ プロジェクトフォルダー",
+            "default": "${workspaceFolder}/GreenWare"
+        },
+        {
+            "id": "gtestFilter",
+            "type": "promptString",
+            "description": "GoogleTest フィルター (空なら全実行)",
+            "default": "--gtest_filter=*"
         }
     ]
 }

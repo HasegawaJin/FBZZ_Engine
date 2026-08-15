@@ -7,7 +7,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
@@ -18,19 +18,25 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
 Texture2D    texAlbedo   : register(TEX_ALBEDO);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
-PSInput VSMain(VSInput v)
+// WHY: Unlit は法線・接線・ワールド座標を一切参照しない。
+//      共通 PSInput を使うと不要な行列乗算と補間レジスタを毎頂点・毎ピクセルで消費するため、
+//      専用の最小入力へ縮退させる。
+struct UnlitPSInput
 {
-    PSInput o;
+    float4 svPosition : SV_POSITION;
+    float2 uv         : TEXCOORD0;
+};
+
+UnlitPSInput VSMain(VSInput v)
+{
+    UnlitPSInput o;
     float4 worldPos4 = mul(float4(v.position, 1.0f), world);
-    o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(v.normal,  (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(v.tangent, (float3x3)world));
     o.uv         = v.uv;
     return o;
 }
 
-float4 PSMain(PSInput p) : SV_Target0
+float4 PSMain(UnlitPSInput p) : SV_Target0
 {
     float3 color = (textureMask & 1u)
         ? texAlbedo.Sample(sampDefault, p.uv).rgb
