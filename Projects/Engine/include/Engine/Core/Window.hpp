@@ -57,7 +57,9 @@ public:
         uint32_t GetWidth()    const { return m_width; }
         uint32_t GetHeight()   const { return m_height; }
 
-        // リサイズコールバック (DX11Renderer が登録する)
+        // リサイズコールバック。WM_SIZE で実クライアント寸法 (物理ピクセル) を通知する。
+        // 登録するのは合成ルートである Application で、IRenderer::Resize へ橋渡しする。
+        // Window は描画バックエンドを知らないので、ここでは std::function に留める。
         using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
         void SetResizeCallback(ResizeCallback cb) { m_resizeCallback = std::move(cb); }
 

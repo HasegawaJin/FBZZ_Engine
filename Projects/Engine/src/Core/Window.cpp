@@ -5,6 +5,7 @@
 // Renderer / ImGui とはコールバックで疎結合に接続する。
 
 #include "Engine/Core/Window.hpp"
+#include "Engine/Core/Logger.hpp"
 #include "Engine/Input/Input.hpp"
 #include "Engine/Util/FileSystem.hpp"
 
@@ -29,6 +30,12 @@
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
 #endif
 
+// WM_DPICHANGED は Windows 8.1 SDK (WINVER >= 0x0603) 以降でのみ定義される。
+// 古い SDK でビルドされても WndProc の case が消えないよう、値を明示して補う。
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
 using namespace fbzz::core;
 
 namespace
@@ -38,10 +45,36 @@ namespace
 
     void EnableDpiAwareness()
     {
-        if (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
-            return;
+        // 正規の宣言は CMake/FBZZApp.manifest 側。ローダーがプロセス起動時に適用するため、
+        // ここへ来た時点で既に PerMonitorV2 が確定しており、この呼び出しは FALSE を返す
+        // (ERROR_ACCESS_DENIED = 設定済み)。それが正常系。
+        // WHY 呼び出しを残すか: マニフェストが剥がれたビルド (手製の exe、旧 SDK 経由の
+        //     外部ゲーム) でも DPI 非対応のまま起動させないための保険。
+        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+            SetProcessDPIAware();
 
-        SetProcessDPIAware();
+        // WHY 実際の値をログへ出すか: DPI 非対応のまま起動すると Windows がウィンドウ全体を
+        //     ビットマップ拡大するため、100% 以外の環境で UI と文字が一律に滲む。
+        //     この症状は「フォントが汚い」としか見えず、原因の切り分けに非常に手間がかかる。
+        //     宣言の成否ではなく確定後の実値を残し、ログだけで判別できるようにする。
+        const DPI_AWARENESS awareness =
+            GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
+        switch (awareness) {
+        case DPI_AWARENESS_PER_MONITOR_AWARE:
+            FBZZ_LOG_INFO("Window: DPI 認識 = Per-Monitor (system DPI=%u)", GetDpiForSystem());
+            break;
+        case DPI_AWARENESS_SYSTEM_AWARE:
+            FBZZ_LOG_WARN("Window: DPI 認識 = System のみ。別 DPI のモニターへ移動すると滲みます");
+            break;
+        case DPI_AWARENESS_UNAWARE:
+            FBZZ_LOG_ERROR("Window: DPI 非対応で起動しました — OS がウィンドウ全体を拡大するため "
+                           "UI と文字が滲みます。マニフェスト (CMake/FBZZApp.manifest) の埋め込みを確認してください");
+            break;
+        default:
+            FBZZ_LOG_WARN("Window: DPI 認識を判定できませんでした (awareness=%d)",
+                          static_cast<int>(awareness));
+            break;
+        }
     }
 
     bool AdjustWindowRectForDpi(RECT& rect, DWORD style, DWORD exStyle, UINT dpi)
@@ -423,6 +456,30 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         window->m_height = h;
         if (window->m_resizeCallback)
             window->m_resizeCallback(w, h);
+        return 0;
+    }
+
+    // DPI の異なるモニターへ移動した / 表示スケールが変更された。
+    case WM_DPICHANGED:
+    {
+        // WHY 推奨矩形へ追従させるか: PER_MONITOR_AWARE_V2 が OS 側で自動処理するのは
+        //     非クライアント領域 (タイトルバー・枠) の再スケールまで。ウィンドウ本体の
+        //     寸法を新 DPI へ合わせるのはアプリの責務で、ここで何もしないと物理ピクセル数が
+        //     据え置かれ、移動先モニターでエディター全体が相対的に小さく (または大きく) なる。
+        // lParam = OS が算出した推奨ウィンドウ矩形 (新 DPI・フレーム込みの物理ピクセル)。
+        const auto* suggested = reinterpret_cast<const RECT*>(lParam);
+        if (!suggested) return 0;
+
+        SetWindowPos(hwnd, nullptr,
+                     suggested->left, suggested->top,
+                     suggested->right - suggested->left,
+                     suggested->bottom - suggested->top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        // NOTE: クライアント寸法が変わればこの SetWindowPos から WM_SIZE が届き、
+        //       そこで Application 登録のコールバックがスワップチェーンを再構築する。
+        //       ここで直接 Resize を呼ぶと同じ寸法で二重に走るため、WM_SIZE に任せる。
+        // NOTE: ImGui のフォント/スタイル倍率 (EditorTheme::SetUiScale) はユーザーの明示設定なので、
+        //       DPI 変更で勝手に上書きしない。物理解像度への追従だけをここで担う。
         return 0;
     }
 
