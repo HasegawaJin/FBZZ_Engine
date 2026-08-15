@@ -68,6 +68,15 @@ public:
     uint32_t GetDynamicSrvUsage() const { return m_dynamicSrvOffsets[m_frameIndex]; }
     uint32_t GetDynamicSrvCapacity() const { return DYNAMIC_DESCRIPTORS_PER_FRAME; }
     bool IsFrameOpen() const { return m_frameOpen; }
+
+    // ---- 共有コマンドリストのパイプライン状態の世代 ----
+    // WHY: フレーム用コマンドリストは DX12Renderer 以外 (ImGui / IblBaker) も記録に使い、
+    //      そこでルートシグネチャ・PSO・ディスクリプタヒープを勝手に差し替える。
+    //      DX12Renderer::Submit は冗長設定を弾くために「直前に何を束縛したか」を覚えているので、
+    //      外部が状態を触ったらこの世代を上げて知らせる契約にする。
+    //      (ルートシグネチャの再設定は全ルート引数を無効化するため、黙って踏むと描画が壊れる)
+    void MarkPipelineStateDirty() { ++m_pipelineStateGeneration; }
+    uint64_t GetPipelineStateGeneration() const { return m_pipelineStateGeneration; }
     uint64_t GetCompletedFenceValue() const { return m_fence ? m_fence->GetCompletedValue() : 0; }
     uint64_t GetFrameFenceValue(uint32_t index) const { return m_frames[index % FRAME_COUNT].fenceValue; }
     // DXIL / DXR パス選択に使う実機 capability。シェーダーマクロだけで対応可否を決めない。
@@ -137,6 +146,7 @@ private:
     uint32_t m_height = 0;
     bool m_allowTearing = false;
     bool m_frameOpen = false;
+    uint64_t m_pipelineStateGeneration = 0;
     bool m_suspended = false;
     bool m_occluded = false;   // 直前の Present が DXGI_STATUS_OCCLUDED (ウィンドウ遮蔽) を返した
     bool m_resizePending = false;
