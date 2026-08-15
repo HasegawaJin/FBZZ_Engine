@@ -26,6 +26,7 @@
 #define FBZZ_MATERIAL_CONSTANTS  // DetailGrassCB で MaterialConstants を上書きするため
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Rendering/Lighting.hlsli"
 
 // ============================================================
 // b2 = DetailGrassCB
@@ -74,6 +75,7 @@ struct PsIn
     float2 uv      : TEXCOORD0;
     float  bladetT : TEXCOORD1; // [0=根元, 1=先端]
     float3 normal  : NORMAL;
+    float3 worldPos : TEXCOORD2;
 };
 
 // ============================================================
@@ -140,6 +142,7 @@ PsIn VSMain(uint vertId : SV_VertexID, uint instId : SV_InstanceID)
     o.uv      = uv;
     o.bladetT = t;
     o.normal  = normal;
+    o.worldPos = worldPos;
     return o;
 }
 
@@ -171,8 +174,14 @@ float4 PSMain(PsIn p) : SV_Target0
     // ambientColor は Lit モードで {0.08,...}、Unlit モードで RenderSystem が {1,1,1} に設定する。
     // lightIntensity は Unlit モードで 0 になるため、Unlit 時は ambientColor のみが乗算される。
     float3 N    = normalize(p.normal);
+    float3 baseColor = col.rgb;
     float  NdotL = abs(dot(N, normalize(-lightDir)));
-    col.rgb *= ambientColor + lightColor * (NdotL * lightIntensity);
+    col.rgb = baseColor * (ambientColor + lightColor * (NdotL * lightIntensity));
+
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPos.xy, N)
+        col.rgb += Lighting_Lambert_Direct(N, ps.L, baseColor,
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
     return col;
 }

@@ -94,26 +94,12 @@ float4 PSMain(PSInput p) : SV_Target0
 
     float3 result = ambient + diffuse + scatter;
 
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = toLight / dist;
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        float  ndotlp  = saturate((dot(N, Lp) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
-        result += col * pointLights[pi].color * pointLights[pi].intensity * atten * ndotlp;
-    }
-    [loop] for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = toLight / dist;
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        float  ndotls  = saturate((dot(N, Ls) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
-        result += col * spotLights[si].color * spotLights[si].intensity * atten * cone * ndotls;
-    }
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        float ndotlp = saturate((dot(N, ps.L) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
+        result += col * ps.color * ps.intensity * ndotlp;
+    FBZZ_PUNCTUAL_END
 
     return float4(result, alpha);
 }

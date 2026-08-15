@@ -6,7 +6,7 @@ active = true
 instanceId = 'a1000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Canvas'
-parent = ''
+parent = ''
 parentInstanceId = ''
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -33,7 +33,7 @@ active = true
 instanceId = 'a1000001-0000-0000-0000-000000000002'
 layer = 0
 name = 'Background'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -55,7 +55,7 @@ active = true
 instanceId = 'a1000001-0000-0000-0000-000000000003'
 layer = 0
 name = 'TitleText'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -78,7 +78,7 @@ active = true
 instanceId = 'a1000001-0000-0000-0000-000000000004'
 layer = 0
 name = 'SubText'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -101,7 +101,7 @@ active = true
 instanceId = 'a1000001-0000-0000-0000-000000000005'
 layer = 0
 name = 'StartButton'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -138,32 +138,7 @@ tag = 'Untagged'
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        autoDelay = 1.5
-        autoTransition = false
-        targetScene = 'Game'
-        viaScene = 'Load'
-
-[[gameobjects]]
-active = true
-instanceId = '5d5875f9-a17a-42eb-b755-6e7f61e7fc84'
-layer = 0
-name = 'Post Process Volume'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.PostProcessVolumeComponent]
-    blendDistance = 2.0
-    blendWeight = 1.0
-    enabled = true
-    influenceRadius = 10.0
-    isGlobal = true
-    priority = 0
-    profile = 'guid:adbee6b96d7b44518568016375345848'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
+        'Auto Delay' = 1.5
+        'Auto Transition' = false
+        'Target Scene' = 'Main'
+        'Via Scene' = 'Load'

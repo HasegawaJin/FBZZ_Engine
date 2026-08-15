@@ -18,8 +18,9 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
 Texture2D    texAlbedo   : register(TEX_ALBEDO);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
-// WHY: Unlit はライティングを行わないため、PSInput の法線・接線・ワールド座標を
-//      生成・補間しない。帯域と頂点シェーダーの演算を最小化しつつ、UV は維持する。
+// WHY: Unlit は法線・接線・ワールド座標を一切参照しない。
+//      共通 PSInput を使うと不要な行列乗算と補間レジスタを毎頂点・毎ピクセルで消費するため、
+//      専用の最小入力へ縮退させる。
 struct UnlitPSInput
 {
     float4 svPosition : SV_POSITION;

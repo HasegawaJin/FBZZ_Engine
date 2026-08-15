@@ -17,8 +17,8 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
 Texture2D    texAlbedo   : register(TEX_ALBEDO);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
-// WHY: Unlit はライティングを行わないため、PSInput の法線・接線・ワールド座標を
-//      生成・補間しない。スキニング後の位置と UV だけをピクセル段へ渡す。
+// WHY: Unlit はライティング用の法線・接線・ワールド座標を読まないため、
+//      スキニング後の位置と UV だけを補間して帯域と VS の行列演算を減らす。
 struct SkinnedUnlitPSInput
 {
     float4 svPosition : SV_POSITION;

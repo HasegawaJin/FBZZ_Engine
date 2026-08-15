@@ -1,34 +1,15 @@
-blend_mode = 'Opaque'
-double_sided = false
 mesh_type = 'skinned'
+name = 'M_VisorDark'
 render_path = 'deferred'
-render_queue = 2000
-shader = 'guid:192f4bf06a664016b7c0005485f14793'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
 version = 1
 
 [params]
-albedo = [ 0.11489361524581909, 0.11489361524581909, 0.11489361524581909, 1.0 ]
-alphaCutoff = 0.5
+albedo = [ 0.019999999552965164, 0.024000000208616257, 0.03200000151991844, 1.0 ]
 anisotropy = 0.0
 clearcoat = 0.0
-clearcoatRoughness = 0.0
-emissiveColor = [ 1.0, 1.0, 1.0 ]
-emissiveScale = 0.0
-metallic = 1.0
-normalStrength = 1.0
-occlusionStrength = 1.0
+clearcoatRoughness = 0.10000000149011612
+metallic = 0.0
 roughness = 0.08000004291534424
 sheen = 0.0
-sheenColor = [ 0.0, 0.0, 0.0 ]
-uvOffset = [ 0.0, 0.0 ]
-uvTiling = [ 1.0, 1.0 ]
-
-[textures]
-albedo = ''
-ao = ''
-emissive = ''
-metallic = ''
-normal = ''
-tex5 = ''
-tex6 = ''
-tex7 = ''
+sheenColor = [ 1.0, 1.0, 1.0 ]

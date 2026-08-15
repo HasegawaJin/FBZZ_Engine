@@ -1,0 +1,34 @@
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+intensity = 1.0
+type = 'SSAO'
+
+[[overrides]]
+active = true
+feedback = 0.8999999761581421
+type = 'TAA'
+
+[[overrides]]
+active = true
+intensity = 0.8999999761581421
+softKnee = 0.4000000059604645
+threshold = 0.6499999761581421
+type = 'Bloom'
+
+[[overrides]]
+active = true
+blend = 1.0
+contrast = 0.0
+hueShift = 0.0
+saturation = 1.0
+temperature = 0.0
+tint = 0.0
+type = 'LUTColorGrading'
+
+[[overrides]]
+active = true
+radius = 1.0
+strength = 0.3499999940395355
+type = 'Sharpen'

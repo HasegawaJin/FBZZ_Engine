@@ -18,6 +18,7 @@ FBZZFullscreenVertex FBZZMakeFullscreenVertex(uint vertexId)
     FBZZFullscreenVertex vertex;
     vertex.uv = float2((vertexId & 1u) != 0u ? 2.0f : 0.0f,
                        (vertexId & 2u) != 0u ? 2.0f : 0.0f);
+    // DX のテクスチャ UV と NDC の Y 軸差をここで一度だけ吸収する。
     vertex.svPosition = float4(vertex.uv * float2(2.0f, -2.0f)
                              + float2(-1.0f, 1.0f), 0.0f, 1.0f);
     return vertex;

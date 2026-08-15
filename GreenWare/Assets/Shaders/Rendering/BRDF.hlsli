@@ -146,6 +146,7 @@ float3 F_SchlickRoughness(float cosTheta, float3 F0, float roughness)
     return F0 + (limit - F0) * Pow5(saturate(1.0f - cosTheta));
 }
 
+// 異方性 GGX。tangent / bitangent 方向の粗さを変えてブラシ状の反射を作る。
 float D_GGX_Anisotropic(float3 N, float3 H, float3 T, float3 B,
                         float roughness, float anisotropy)
 {
@@ -175,6 +176,7 @@ float3 BRDF_SpecularAdvanced(float3 N, float3 V, float3 L, float3 F0,
     return (D * G * F) / max(4.0f * NdotV * NdotL, EPSILON);
 }
 
+// Disney 系の sheen 近似。布の grazing 反射を diffuse と独立した lobe として扱う。
 float3 BRDF_Sheen(float3 N, float3 V, float3 L, float3 sheenColor, float sheen)
 {
     const float NdotL = saturate(dot(N, L));
@@ -206,6 +208,7 @@ float3 BRDF_Clearcoat(float3 N, float3 V, float3 L,
            max(4.0f * NdotV * NdotL, EPSILON);
 }
 
+// 追加ローブを base diffuse/base specular のエネルギーから差し引いて評価する。
 BRDFResult EvaluateBRDFAdvanced(
     float3 N, float3 V, float3 L, float3 T, float3 B,
     float3 albedo, float metallic, float roughness,
@@ -222,6 +225,7 @@ BRDFResult EvaluateBRDFAdvanced(
     const float coatF = coat * F_Schlick(VdotH, float3(0.04f, 0.04f, 0.04f)).r;
     const float baseEnergy = saturate(1.0f - coatF);
     const float sheenEnergy = saturate(sheen) * 0.5f;
+
     BRDFResult result;
     result.NdotL = saturate(dot(N, L));
     if (result.NdotL <= EPSILON || saturate(dot(N, V)) <= EPSILON) {
@@ -229,6 +233,7 @@ BRDFResult EvaluateBRDFAdvanced(
         result.specular = float3(0.0f, 0.0f, 0.0f);
         return result;
     }
+
     const float3 kD = (1.0f - F) * (1.0f - m);
     result.diffuse = kD * (1.0f - sheenEnergy) * baseEnergy * BRDF_Diffuse(albedo);
     result.specular = baseEnergy * BRDF_SpecularAdvanced(

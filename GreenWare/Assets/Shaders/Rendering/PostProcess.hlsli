@@ -43,6 +43,9 @@ float3 ApplyColorAdjustments(float3 color,
                              float temperature,
                              float tint)
 {
+    // 各値の既定値が無効状態を表すため、無効な処理はピクセル単位でスキップする。
+    // WHY: Composite は全画面で実行されるので、ゼロ強度でも行列計算や sin/cos を
+    //      実行すると、見た目を変えない設定が常時コストになる。
     [branch]
     if (abs(temperature) > 1.0e-4f || abs(tint) > 1.0e-4f)
         color = ApplyWhiteBalance(color, temperature, tint);

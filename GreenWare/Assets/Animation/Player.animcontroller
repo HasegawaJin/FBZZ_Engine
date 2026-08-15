@@ -1,267 +1,81 @@
-clipSources = []
+version = 2
 defaultStateName = 'Locomotion'
-layers = []
-version = 5
-
-[editorLayout]
-anyStateX = -145.00001525878906
-anyStateY = 376.2500305175781
-entryX = -220.0
-entryY = 80.0
-
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 0
-    stateName = 'Locomotion'
-    x = 160.0
-    y = 50.0
-
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 1
-    stateName = 'Locomotion'
-    x = 465.0000305175781
-    y = 47.500022888183594
-
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 2
-    stateName = 'Locomotion'
-    x = 786.2498779296875
-    y = 47.500022888183594
-
-    [[editorLayout.nodes]]
-    stateName = 'Landing'
-    x = 680.0
-    y = 300.0
-
-    [[editorLayout.nodes]]
-    stateName = 'Locomotion'
-    x = 92.50000762939453
-    y = -8.750000953674316
-
-    [[editorLayout.nodes]]
-    stateName = 'Fall'
-    x = 680.0
-    y = 80.0
-
-    [[editorLayout.nodes]]
-    stateName = 'JumpUp'
-    x = 380.0
-    y = 80.0
-
-[[anyStateTransitions]]
-exitTime = 1.0
-fixedDuration = true
-hasExitTime = false
-toStateName = 'JumpUp'
-transitionDuration = 0.03999999910593033
-
-    [[anyStateTransitions.conditions]]
-    op = 4
-    paramName = 'Jump'
-    threshold = 0.0
-
-[[anyStateTransitions]]
-exitTime = 1.0
-fixedDuration = true
-hasExitTime = false
-toStateName = 'Fall'
-transitionDuration = 0.03999999910593033
-
-    [[anyStateTransitions.conditions]]
-    op = 5
-    paramName = 'IsGrounded'
-    threshold = 0.0
-
-    [[anyStateTransitions.conditions]]
-    op = 1
-    paramName = 'VerticalSpeed'
-    threshold = -1.0
-
-[[parameters]]
-boolValue = false
-floatValue = 0.0
-intValue = 0
-name = 'Speed'
-type = 0
-
-[[parameters]]
-boolValue = false
-floatValue = 0.0
-intValue = 0
-name = 'VerticalSpeed'
-type = 0
-
-[[parameters]]
-boolValue = true
-floatValue = 0.0
-intValue = 0
-name = 'IsGrounded'
-type = 2
-
-[[parameters]]
-boolValue = false
-floatValue = 0.0
-intValue = 0
-name = 'Jump'
-type = 3
-
+anyStateTransitions = [
+    { toStateName = 'JumpUp', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'Jump', op = 4, threshold = 0.0 }] },
+    { toStateName = 'Fall', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.04, conditions = [{ paramName = 'IsGrounded', op = 5, threshold = 0.0 }, { paramName = 'VerticalSpeed', op = 1, threshold = -1.0 }] }
+]
+parameters = [
+    { name = 'Speed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
+    { name = 'VerticalSpeed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
+    { name = 'IsGrounded', type = 2, floatValue = 0.0, intValue = 0, boolValue = true },
+    { name = 'Jump', type = 3, floatValue = 0.0, intValue = 0, boolValue = false },
+    { name = 'Land', type = 3, floatValue = 0.0, intValue = 0, boolValue = false }
+]
 [[states]]
-clipIndex = -1
-clipName = ''
-ikWeight = 1.0
-loop = true
-mode = 1
 name = 'Locomotion'
-sourcePath = ''
-speed = 1.0
-transitions = []
-
-    [states.blendTree1D]
-    dampTime = 0.18000000715255737
-    paramName = 'Speed'
-    syncNormalizedTime = true
-
-        [[states.blendTree1D.motions]]
-        clipIndex = -1
-        clipName = 'mixamo.com'
-        ikWeight = 1.0
-        posX = 0.0
-        posY = 0.0
-        sourcePath = 'guid:ee2af3191ea243a298c0b8a6d217bd32'
-        speed = 1.0
-        threshold = 0.0
-
-        [[states.blendTree1D.motions]]
-        clipIndex = -1
-        clipName = 'mixamo.com'
-        ikWeight = 1.0
-        posX = 0.0
-        posY = 0.0
-        sourcePath = 'guid:a284341d60c147e49acb66926e5742b6'
-        speed = 1.0
-        threshold = 4.0
-
-        [[states.blendTree1D.motions]]
-        clipIndex = -1
-        clipName = 'mixamo.com'
-        ikWeight = 1.0
-        posX = 0.0
-        posY = 0.0
-        sourcePath = 'guid:5344d10b0b1d4204aa3ab8950cb0c9c3'
-        speed = 1.0
-        threshold = 7.199999809265137
-
-    [states.blendTree2D]
-    motions = []
-    paramX = ''
-    paramY = ''
-    type = 0
-
-[[states]]
+mode = 1
+clipName = ''
 clipIndex = -1
-clipName = 'mixamo.com'
-ikWeight = 0.0
-loop = false
-mode = 0
-name = 'JumpUp'
-sourcePath = 'guid:eb9b47457d9d43ec83a295997ea27f8e'
 speed = 1.0
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    motions = []
-    paramX = ''
-    paramY = ''
-    type = 0
-
-    [[states.transitions]]
-    exitTime = 1.0
-    fixedDuration = true
-    hasExitTime = false
-    toStateName = 'Fall'
-    transitionDuration = 0.20000000298023224
-
-        [[states.transitions.conditions]]
-        op = 1
-        paramName = 'VerticalSpeed'
-        threshold = -0.5
-
-[[states]]
-clipIndex = -1
-clipName = 'mixamo.com'
-ikWeight = 0.0
 loop = true
-mode = 0
-name = 'Fall'
-sourcePath = 'guid:379f4a3bca874dd7846ab9b26389d612'
-speed = 1.0
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    motions = []
-    paramX = ''
-    paramY = ''
-    type = 0
-
-    [[states.transitions]]
-    exitTime = 1.0
-    fixedDuration = true
-    hasExitTime = false
-    toStateName = 'Landing'
-    transitionDuration = 0.10000000149011612
-
-        [[states.transitions.conditions]]
-        op = 4
-        paramName = 'IsGrounded'
-        threshold = 0.0
-
-[[states]]
-clipIndex = -1
-clipName = 'mixamo.com'
 ikWeight = 1.0
-loop = false
+[states.blendTree1D]
+paramName = 'Speed'
+dampTime = 0.18
+motions = [
+    { sourcePath = 'Assets/Models/DebugCharacter/Idle/Idle.asset', clipName = 'Idle', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Walking/Walking.asset', clipName = 'Walking', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Running/Running.asset', clipName = 'Running', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 }
+]
+[[states]]
+name = 'JumpUp'
 mode = 0
-name = 'Landing'
-sourcePath = 'guid:0cda3533845842879c13429243d57caf'
+sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.asset'
+clipName = 'JumpingUp'
+clipIndex = -1
 speed = 1.0
-
-    [states.blendTree1D]
-    dampTime = 0.0
-    motions = []
-    paramName = ''
-    syncNormalizedTime = false
-
-    [states.blendTree2D]
-    motions = []
-    paramX = ''
-    paramY = ''
-    type = 0
-
-    [[states.transitions]]
-    exitTime = 0.3499999940395355
-    fixedDuration = true
-    hasExitTime = true
-    toStateName = 'Locomotion'
-    transitionDuration = 0.18000000715255737
-
-        [[states.transitions.conditions]]
-        op = 0
-        paramName = 'Speed'
-        threshold = 0.10000000149011612
-
-    [[states.transitions]]
-    conditions = []
-    exitTime = 0.75
-    fixedDuration = true
-    hasExitTime = true
-    toStateName = 'Locomotion'
-    transitionDuration = 0.11999999731779099
+loop = false
+ikWeight = 0.0
+[[states.transitions]]
+toStateName = 'Fall'
+hasExitTime = false
+exitTime = 1.0
+transitionDuration = 0.2
+conditions = [{ paramName = 'VerticalSpeed', op = 1, threshold = -0.5 }]
+[[states]]
+name = 'Fall'
+mode = 0
+sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.asset'
+clipName = 'FallingIdle'
+clipIndex = -1
+speed = 1.0
+loop = true
+ikWeight = 0.0
+[[states.transitions]]
+toStateName = 'Landing'
+hasExitTime = false
+exitTime = 1.0
+transitionDuration = 0.1
+conditions = [{ paramName = 'Land', op = 4, threshold = 0.0 }]
+[[states]]
+name = 'Landing'
+mode = 0
+sourcePath = 'Assets/Models/DebugCharacter/Landing/Landing.asset'
+clipName = 'Landing'
+clipIndex = -1
+speed = 1.0
+loop = false
+ikWeight = 0.5
+[[states.transitions]]
+toStateName = 'Locomotion'
+hasExitTime = true
+exitTime = 0.35
+fixedDuration = true
+transitionDuration = 0.18
+conditions = [{ paramName = 'Speed', op = 0, threshold = 0.1 }]
+[[states.transitions]]
+toStateName = 'Locomotion'
+hasExitTime = true
+exitTime = 0.75
+transitionDuration = 0.12
+conditions = []

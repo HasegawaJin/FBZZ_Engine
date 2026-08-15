@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'any'
 render_path = 'auto'
 render_queue = 2000
-shader = 'guid:60be603ce2e244c1b75b963aa1b87925'
+shader = 'guid:73d100e5a351425aaf52953c23425438'
 version = 1
 
 [params]
@@ -25,11 +25,11 @@ uvOffset = [ 0.0, 0.0 ]
 uvTiling = [ 1.0, 1.0 ]
 
 [textures]
-albedo = 'guid:c7034400eed746239d5c7c886ba26336'
+albedo = 'guid:98b181123b73404b97016d836d66630c'
 ao = ''
 emissive = ''
 metallic = ''
-normal = 'guid:3371a29265ea4ce789398fadb5a91787'
+normal = 'guid:9562ad968edb4ebe97080da2c049e2ec'
 roughness = ''
 tex5 = ''
 tex6 = ''

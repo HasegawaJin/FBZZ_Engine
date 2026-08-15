@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'surface'
 render_path = 'forward'
 render_queue = 3000
-shader = 'guid:bd3811c092504906984dd4688a7b3e75'
+shader = 'guid:c496f8e37c024b17aac1fce28730e300'
 version = 1
 
 [params]
@@ -48,11 +48,11 @@ causticsTex = ''
 emissive = ''
 envCubemap = ''
 flowMap = ''
-foamTex = 'guid:ea46769ec9aa43cdb843806b1b6bf6f6'
+foamTex = 'guid:44ba4fae935d479ca9804e8acec862f0'
 metallic = ''
 normal = ''
-normalMap1 = 'guid:0867082aeef74eb0bb3248c08787733a'
-normalMap2 = 'guid:0867082aeef74eb0bb3248c08787733a'
+normalMap1 = 'guid:2148b6ad26d8455fb17a5409db92777d'
+normalMap2 = 'guid:2148b6ad26d8455fb17a5409db92777d'
 tex5 = ''
 tex6 = ''
 tex7 = ''

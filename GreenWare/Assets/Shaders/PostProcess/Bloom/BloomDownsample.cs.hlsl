@@ -21,11 +21,13 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
     outputDst.GetDimensions(outputSize.x, outputSize.y);
     if (any(pixel >= outputSize))
         return;
+
     if (bloomIntensity <= 0.0f)
     {
         outputDst[pixel] = 0.0f;
         return;
     }
+
     // 出力テクセルサイズ (入力の 2 倍)
     float2 srcUV  = (float2(pixel) + 0.5f) * texelSize * 2.0f;
 

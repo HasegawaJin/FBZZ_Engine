@@ -128,8 +128,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     }
     [branch]
     if (bloomIntensity > 0.0f)
+    {
         hdr += texBloom.Sample(sampDefault, uv).rgb * bloomIntensity;
-
+    }
     float ndcDepth = 1.0f;
     [branch]
     if (dofBlurRadius > 0.0f || fogDensity > 0.0f || underwaterStrength > 0.0f)
@@ -151,6 +152,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     if (volLightIntensity > 0.0f)
     {
         float3 volSample = texVolumetric.Sample(sampDefault, uv).rgb;
+        // Compute は物理量だけを書き、ユーザー強度はこのパスで一度だけ適用する。
         hdr += volSample * volLightIntensity;
     }
 

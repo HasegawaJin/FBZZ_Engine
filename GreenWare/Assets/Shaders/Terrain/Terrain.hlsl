@@ -300,30 +300,14 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
         N, V, L, albedo, roughness, lightColor, lightIntensity) * shadow;
     float3 result  = ambient + direct;
 
-    [loop]
-    for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
         result += Lighting_BlinnPhong_Direct(
-            N, V, toLight / dist, albedo, roughness,
-            pointLights[pi].color, pointLights[pi].intensity * atten);
-    }
+            N, V, ps.L, albedo, roughness,
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
-    [loop]
-    for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = toLight / dist;
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_BlinnPhong_Direct(
-            N, V, Ls, albedo, roughness,
-            spotLights[si].color, spotLights[si].intensity * atten * cone);
-    }
 
     return float4(result, 1.0f);
 }

@@ -6,7 +6,7 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Canvas'
-parent = ''
+parent = ''
 parentInstanceId = ''
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -33,7 +33,7 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000002'
 layer = 0
 name = 'Background'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -55,7 +55,7 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000003'
 layer = 0
 name = 'LoadingText'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -78,7 +78,7 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000004'
 layer = 0
 name = 'LoadController'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -93,32 +93,7 @@ tag = 'Untagged'
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        autoDelay = 1.5
-        autoTransition = true
-        targetScene = ''
-        viaScene = ''
-
-[[gameobjects]]
-active = true
-instanceId = '88fae412-0349-4436-a622-1831a37d80fe'
-layer = 0
-name = 'Post Process Volume'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.PostProcessVolumeComponent]
-    blendDistance = 2.0
-    blendWeight = 1.0
-    enabled = true
-    influenceRadius = 10.0
-    isGlobal = true
-    priority = 0
-    profile = 'guid:adbee6b96d7b44518568016375345848'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
+        'Auto Delay' = 1.5
+        'Auto Transition' = true
+        'Target Scene' = ''
+        'Via Scene' = ''

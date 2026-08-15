@@ -50,6 +50,33 @@ cbuffer DetailMaterialCB : register(CB_MATERIAL)
     float    _detailPad;
 };
 
+// b3 = LightConstants。Common/Constants.hlsli は b0 を定義済みのため、
+// この専用 CameraConstants と衝突しないようライトだけ同じレイアウトで宣言する。
+#define MAX_POINT_LIGHTS 8
+#define MAX_SPOT_LIGHTS  4
+struct PointLightData { float3 position; float range; float3 color; float intensity; };
+struct SpotLightData {
+    float3 position; float range;
+    float3 direction; float innerCos;
+    float3 color; float outerCos;
+    float intensity; float3 _pad;
+};
+cbuffer LightConstants : register(CB_LIGHT)
+{
+    float3 lightDir; float _lightPad;
+    float3 lightColor; float lightIntensity;
+    PointLightData pointLights[MAX_POINT_LIGHTS];
+    SpotLightData  spotLights[MAX_SPOT_LIGHTS];
+    int pointLightCount;
+    int spotLightCount;
+    float skyDimmer;
+    float _lightPad2;
+    float3 ambientColor;
+    float _ambientPad;
+};
+
+#include "Rendering/Lighting.hlsli"
+
 // ============================================================
 // インスタンスバッファ (VS t0 = DrawCall.instanceBuffer)
 // ============================================================
@@ -153,6 +180,16 @@ float4 PSMain(PsIn p) : SV_Target0
     // アルファテスト — alphaCutoff > 0 のときのみ適用
     if (alphaCutoff > 0.0f)
         clip(col.a - alphaCutoff);
+
+    const float3 N = normalize(p.normal);
+    const float3 baseColor = col.rgb;
+    col.rgb = Lighting_Lambert(N, normalize(-lightDir), baseColor,
+                               lightColor, lightIntensity, 1.0f);
+
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPos.xy, N)
+        col.rgb += Lighting_Lambert_Direct(N, ps.L, baseColor,
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
     return col;
 }

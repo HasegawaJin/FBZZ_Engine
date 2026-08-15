@@ -1,5 +1,10 @@
-version = 3
+version = 5
 name = "Impact"
+description = "命中の一瞬。斬撃・弾着・打撃の共通ベース。手応えはパーティクル量ではなく閃光の短さとカメラの反応で決まる。"
+tags = ["impact", "combat", "hit", "short"]
+requiredRoles = ["core", "body", "sparks"]
+# 全長が短いので既定の 25% では閃光が終わっている。立ち上がりを見せる。
+thumbnailTime = 0.06
 maxParticles = 1800
 maxLights = 1
 maxAudioVoices = 1
@@ -48,7 +53,6 @@ sizeCurvePower = 2.8
 lifetime = 0.09
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/muzzle_03.png"
 # ヒットフラッシュ: 6 粒子のみ
 blendMode = 0
 sortMode = 0
@@ -92,7 +96,6 @@ emitVelocity = [0.0, 0.0, 9.0]
 velocitySpread = 8.0
 velocityDamping = 3.5
 gravity = [0.0, -9.0, 0.0]
-texturePath = "Assets/Textures/Particles/spark_06.png"
 # 放射火花
 blendMode = 0
 renderMode = 1
@@ -148,7 +151,6 @@ sizeCurvePower = 0.3
 lifetime = 0.22
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/twirl_02.png"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -199,7 +201,6 @@ velocityDamping = 4.0
 gravity = [0.0, -0.4, 0.0]
 angularVelocityMin = 0.0   # 潰した形を Dust Shape で公開しているため回転側を捨てる
 angularVelocityMax = 0.0
-texturePath = "Assets/Textures/Particles/smoke_01.png"
 # 土煙
 blendMode = 2
 sortMode = 1
@@ -254,7 +255,6 @@ velocitySpread = 3.4
 gravity = [0.0, -16.0, 0.0]
 angularVelocityMin = -10.0
 angularVelocityMax = 10.0
-texturePath = "Assets/Textures/Particles/dirt_01.png"
 # 破片
 blendMode = 2
 sortMode = 1

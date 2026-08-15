@@ -1,5 +1,10 @@
-version = 3
+version = 5
 name = "Explosion"
+description = "多層構成の爆発。閃光→火球→熱歪み→火花/破片→煙柱→残り火の時間差で「空気を殴った」感触を作る。着弾・爆散・破壊演出の出発点。"
+tags = ["explosion", "combat", "burst", "outdoor"]
+requiredRoles = ["core", "body", "sparks"]
+# 火球が最大に膨らみ、煙柱がまだ視界を塞いでいない時刻。
+thumbnailTime = 0.12
 maxParticles = 4200
 maxLights = 2
 maxAudioVoices = 2
@@ -48,7 +53,6 @@ sizeCurvePower = 2.4
 lifetime = 0.14
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/flare_01.png"
 # 閃光: 8 粒子だけなので強くてよい。ここが白飛びの主役ではない
 blendMode = 0
 sortMode = 0
@@ -91,7 +95,6 @@ velocityDamping = 3.2
 gravity = [0.0, -1.2, 0.0]
 angularVelocityMin = -2.5
 angularVelocityMax = 2.5
-texturePath = "Assets/Textures/Particles/fire_02.png"
 # 火球: 900 粒子。旧 6.0 では重なった瞬間に白飽和していた
 blendMode = 0
 sortMode = 0
@@ -147,7 +150,6 @@ sizeCurvePower = 0.35
 lifetime = 0.45
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/twirl_01.png"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -194,7 +196,6 @@ lifetimeRandom = 0.6
 velocitySpread = 14.0
 velocityDamping = 1.1
 gravity = [0.0, -16.0, 0.0]
-texturePath = "Assets/Textures/Particles/spark_04.png"
 # 火花
 blendMode = 0
 renderMode = 1
@@ -250,7 +251,6 @@ velocitySpread = 5.5
 gravity = [0.0, -18.0, 0.0]
 angularVelocityMin = -8.0
 angularVelocityMax = 8.0
-texturePath = "Assets/Textures/Particles/dirt_02.png"
 # 破片: 不透明な小片。Premultiplied
 blendMode = 2
 sortMode = 1
@@ -298,7 +298,6 @@ velocityDamping = 0.5
 gravity = [0.0, 0.55, 0.0]
 angularVelocityMin = -0.6
 angularVelocityMax = 0.6
-texturePath = "Assets/Textures/Particles/smoke_07.png"
 # 煙柱: 背景を隠す本体
 blendMode = 2
 sortMode = 1
@@ -355,7 +354,6 @@ emitVelocity = [0.0, 1.4, 0.0]
 velocitySpread = 1.2
 velocityDamping = 0.6
 gravity = [0.0, 0.8, 0.0]
-texturePath = "Assets/Textures/Particles/spark_01.png"
 # 残り火
 blendMode = 0
 emissiveScale = 3.0
