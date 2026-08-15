@@ -1,12 +1,13 @@
 // FBZZ Engine
 // BuildGameHub.mjs | GameHub
-// Vite生成物とElectronランタイムを構成別の実行可能パッケージへ組み立てる
+// SDKの最新性を検証し、Vite生成物とElectronランタイムを構成別パッケージへ組み立てる
 
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { build as BuildViteBundle } from 'vite';
+import { AssertSdkIsCurrent } from './SdkFreshness.mjs';
 
 const require = createRequire(import.meta.url);
 const ViteConfigGenerator = require('@electron-forge/plugin-vite/dist/ViteConfig.js').default;
@@ -61,7 +62,21 @@ async function AssemblePackage(projectRoot, configuration) {
   };
   await writeFile(path.join(stagingRoot, 'package.json'), `${JSON.stringify(runtimePackage, null, 2)}\n`, 'utf8');
 
-  await cp(path.join(projectRoot, 'Templates'), path.join(resourcesRoot, 'Templates'), { recursive: true });
+  const templatesRoot = path.join(projectRoot, 'Templates');
+  const sharedShaderRoot = path.join(templatesRoot, 'standard', 'Assets', 'Shaders');
+  const sharedShaderMeta = `${sharedShaderRoot}.meta`;
+  const generatedTemplateRoots = new Set(['Binaries', 'Build', 'Lib', 'Library']);
+  await cp(templatesRoot, path.join(resourcesRoot, 'Templates'), {
+    recursive: true,
+    // Engine shaderとローカル生成物は配布templateへ梱包しない。
+    filter: (source) => {
+      const relativeParts = path.relative(templatesRoot, source).split(path.sep);
+      if (relativeParts.length >= 2 && generatedTemplateRoots.has(relativeParts[1])) return false;
+      return source !== sharedShaderMeta
+        && source !== sharedShaderRoot
+        && !source.startsWith(`${sharedShaderRoot}${path.sep}`);
+    },
+  });
   if (configuration === 'Release') {
     await createPackage(stagingRoot, path.join(resourcesRoot, 'app.asar'));
     await rm(stagingRoot, { recursive: true, force: true });
@@ -92,9 +107,11 @@ async function RunBuild() {
 
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const projectRoot = path.resolve(scriptDirectory, '..');
+  const repositoryRoot = path.resolve(projectRoot, '..', '..');
   process.env.FBZZ_BUILD_CONFIG = configuration;
 
   try {
+    await AssertSdkIsCurrent(repositoryRoot, configuration);
     await BuildVite(projectRoot);
     const executablePath = await AssemblePackage(projectRoot, configuration);
     console.log(`${configuration}ビルドを生成しました: ${executablePath}`);

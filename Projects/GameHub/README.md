@@ -38,6 +38,6 @@ VS Codeでは`GameHub (Debug)`、`GameHub (Development)`、`GameHub (Release)`�
 - `.fbzz_proj`フォーマット
 - `FBZZEditor.exe --project <path>`起動契約
 
-SDK設定が空、または旧Engineルートを指している場合は、起動時に`SDK/<engine-version>`を探索します。`fbzz-sdk.toml`、`cmake/FBZZ/FBZZConfig.cmake`、`include/Engine`を確認できたパスだけを`hub_config.toml`へ保存します。
+SDK設定が空、または旧Engineルートを指している場合は、起動時に祖先ディレクトリの`SDK/` storeを探索します。`fbzz-sdk.toml`、`cmake/FBZZ/FBZZConfig.cmake`、`include/Engine`を確認できるimmutable SDKだけを選択し、manifestのSDK IDを`hub_config.toml`へ保存します。
 
-GameHubはCMakeのビルド対象から独立しています。共有SDKが必要な場合は、Visual Studioから`fbzz_sdk`ターゲットを明示的にビルドしてください。
+GameHubの構成別ビルドは、開始時にGit revisionと未コミット差分からCMakeと同じimmutable SDK IDを計算し、同じ構成のDLL・LIB・Editorまで公開済みか確認します。SDKが古い、または不完全な場合はビルドを中止するため、案内された`CMake: Build SDK (<構成>)`を実行してから再ビルドしてください。GameHub・SDKをまとめた配布物が必要な場合は`Distribution: Assemble (<構成>)`を使用します。新規プロジェクトは`.fbzz_proj`へSDK IDのみを保存し、SDKの絶対パスはGameHubが起動時に環境変数で渡します。

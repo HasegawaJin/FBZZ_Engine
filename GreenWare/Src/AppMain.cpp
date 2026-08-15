@@ -18,33 +18,33 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/EngineRebuildBootstrap.hpp>
-#include <Engine/Core/ILogSink.hpp>
+#include <Engine/Core/IModule.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Input/Input.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Renderer/Camera.hpp>
+#include <Engine/Renderer/DebugCamera.hpp>
+#include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/StandaloneProjectModule.hpp>
+#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
+#include <Engine/Core/ILogSink.hpp>
+#include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
-#include <Engine/Core/IModule.hpp>
-#include <Engine/Input/Input.hpp>
-#include <Engine/Renderer/Camera.hpp>
-#include <Engine/Renderer/DebugCamera.hpp>
-#include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Scene/ProjectLauncher.hpp>
-#include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/SceneManager.hpp>
-#include <Engine/Scene/Script.hpp>
-#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
-#include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
 #include <imgui.h>
-#include <Physics/World.hpp>
 #endif
+#include <Physics/World.hpp>
 
 #include <Windows.h>
 #include <shellapi.h>
@@ -306,14 +306,32 @@ public:
                                      PathToUtf8(m_project.sceneFile)))
             return false;
 
-        const auto& projectSettings = m_editorApp.GetContext().projectSettings;
+        fbzz::scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
+        fbzz::scene::ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_gameUICtx);
+        fbzz::scene::ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_sceneUICtx);
         auto& sceneManager = m_editorApp.GetSceneManager();
-        fbzz::scene::ProjectLauncher::ApplySettings(m_physicsWorld, sceneManager, projectSettings, &m_gameUICtx);
-        fbzz::scene::ProjectLauncher::ApplyAdditionalUIContext(projectSettings, m_sceneUICtx);
         sceneManager.SetScene(m_scene.get());
-        // Play 中の LoadScene が解決できるよう、プロジェクト内の全 .scene を名前で登録する。
-        fbzz::scene::ProjectLauncher::RegisterScenesFromDirectory(
-            sceneManager, m_project.root / L"Assets" / L"Scenes", m_resources);
+        sceneManager.SetPhysicsHz(m_editorApp.GetContext().projectSettings.physics.hz);
+
+        // Play 中の LoadScene が解決できるよう、プロジェクト内の全 Scene を名前で登録する。
+        const std::filesystem::path scenesDir = m_project.root / L"Assets" / L"Scenes";
+        std::error_code fsErr;
+        if (std::filesystem::exists(scenesDir, fsErr)) {
+            std::filesystem::recursive_directory_iterator sceneIt(
+                scenesDir,
+                std::filesystem::directory_options::skip_permission_denied,
+                fsErr);
+            const std::filesystem::recursive_directory_iterator sceneEnd;
+            while (sceneIt != sceneEnd && !fsErr) {
+                if (sceneIt->is_regular_file(fsErr) && sceneIt->path().extension() == L".scene") {
+                    sceneManager.RegisterFromFile(
+                        PathToUtf8(sceneIt->path().stem()),
+                        PathToUtf8(sceneIt->path()),
+                        m_resources);
+                }
+                sceneIt.increment(fsErr);
+            }
+        }
 
         m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
         m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
@@ -383,11 +401,11 @@ public:
             ? fbzz::scene::ResolveGameCullingMask(*activeScene)
             : fbzz::Layer::Everything;
 
-        m_renderer.BeginFrame();
+        { FBZZ_PROFILE_SCOPE("Renderer::BeginFrame"); m_renderer.BeginFrame(); }
         RenderSceneViewport(sceneRT);
         RenderGameViewport(gameRT, gameCamera, cullingMask);
         RenderEditorPanels();
-        m_renderer.EndFrame();
+        { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
     }
 
     void OnShutdown() override
@@ -408,11 +426,11 @@ public:
 
 private:
     struct FocusAnim {
-        bool              active   = false;
+        bool                active   = false;
         fbzz::math::Vector3 startPos = {};
         fbzz::math::Vector3 endPos   = {};
         fbzz::math::Vector3 target   = {};
-        float             t        = 0.0f;
+        float               t        = 0.0f;
     };
 
     [[nodiscard]] float SimulationDeltaTime() const
@@ -566,8 +584,8 @@ private:
     FocusAnim                           m_focusAnim;
     fbzz::scene::UISystemContext        m_sceneUICtx;
     fbzz::scene::UISystemContext        m_gameUICtx;
-    float                               m_frameDt            = 0.0f;
-    bool                                m_stepFrame          = false;
+    float                               m_frameDt   = 0.0f;
+    bool                                m_stepFrame = false;
 };
 #endif
 
@@ -577,25 +595,6 @@ private:
 
 /// ProjectSettings からウィンドウ設定を構築して StandaloneModule を起動する。
 /// WHY: Application::Init() 前にウィンドウサイズを決定し、Renderer 初期化時点で正しいバックバッファを作る。
-// ゲームログを exe 隣の game.log に書き出すシンク。
-// WHY: WIN32 サブシステムはコンソールがなく printf が見えない。
-//      OutputDebugString はデバッガなしでは確認できないため、ファイルに残す。
-struct FileLogSink final : fbzz::core::ILogSink {
-    std::ofstream file;
-    void OnLog(const fbzz::core::LogEntry& entry) override {
-        if (!file.is_open()) return;
-        const char* prefix = "";
-        switch (entry.level) {
-        case fbzz::core::LogLevel::DEBUG:     prefix = "[DEBUG] "; break;
-        case fbzz::core::LogLevel::INFO:      prefix = "[INFO]  "; break;
-        case fbzz::core::LogLevel::WARNING:   prefix = "[WARN]  "; break;
-        case fbzz::core::LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
-        }
-        file << prefix << entry.message << '\n';
-        file.flush();
-    }
-};
-
 [[nodiscard]] int RunStandalone(fbzz::core::Application& app, const LaunchProject& project)
 {
     fbzz::ProjectSettings settings;
@@ -681,10 +680,22 @@ int Run()
     //      Assets が project.root にあるため、相対 shader path が解決できるよう CWD を切り替える。
     SetCurrentDirectoryW(workingDirectory.wstring().c_str());
 
-    // game.log を exe 隣に生成する (Standalone 時のみ。Editor では ConsolePanel を使う)
-    // WHY: WIN32 サブシステムはコンソールがなく、デバッガなしでは OutputDebugString も見えない。
-    //      INFO/WARN/ERROR は Release でも出力されるため、ファイルに残すことで問題を診断できる。
-    FileLogSink logSink;
+    // game.log を exe 隣に生成する (Standalone 時のみ)
+    struct FileLogSink final : fbzz::core::ILogSink {
+        std::ofstream file;
+        void OnLog(const fbzz::core::LogEntry& entry) override {
+            if (!file.is_open()) return;
+            const char* prefix = "";
+            switch (entry.level) {
+            case fbzz::core::LogLevel::DEBUG:     prefix = "[DEBUG] "; break;
+            case fbzz::core::LogLevel::INFO:      prefix = "[INFO]  "; break;
+            case fbzz::core::LogLevel::WARNING:   prefix = "[WARN]  "; break;
+            case fbzz::core::LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
+            }
+            file << prefix << entry.message << '\n';
+            file.flush();
+        }
+    } logSink;
 #ifdef FBZZ_STANDALONE_TARGET
     const bool isStandalone = true;
 #else

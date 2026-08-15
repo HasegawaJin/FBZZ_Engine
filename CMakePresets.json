@@ -11,7 +11,8 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
-                "FBZZ_BUILD_TESTS": "ON"
+                "FBZZ_BUILD_TESTS": "ON",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "ON"
             }
         },
         {
@@ -22,7 +23,8 @@
             "binaryDir": "${sourceDir}/build/Release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "OFF"
             }
         },
         {
@@ -33,7 +35,20 @@
             "binaryDir": "${sourceDir}/build/Development",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Development",
-                "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "ON"
+            }
+        },
+        {
+            "name": "sdk",
+            "displayName": "Shared SDK Publisher",
+            "generator": "Visual Studio 18 2026",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build/SDK",
+            "cacheVariables": {
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
+                "FBZZ_BUILD_TESTS": "OFF",
+                "FBZZ_ENABLE_SOURCE_REBUILD": "OFF"
             }
         }
     ],
@@ -52,6 +67,21 @@
             "name": "development",
             "configurePreset": "development",
             "configuration": "Development"
+        },
+        {
+            "name": "sdk-debug",
+            "configurePreset": "sdk",
+            "configuration": "Debug"
+        },
+        {
+            "name": "sdk-development",
+            "configurePreset": "sdk",
+            "configuration": "Development"
+        },
+        {
+            "name": "sdk-release",
+            "configurePreset": "sdk",
+            "configuration": "Release"
         }
     ]
 }

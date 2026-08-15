@@ -1,30 +1,57 @@
+// FBZZ Engine
+// c_cpp_properties.json | .vscode
+// IntelliSense の解決設定。
+//
+// WHY (compileCommands を使わない): Visual Studio ジェネレーターは
+//     CMAKE_EXPORT_COMPILE_COMMANDS を無視するため compile_commands.json が
+//     一切生成されない。以前はここから build/Debug/compile_commands.json を
+//     参照していたが実体が無く、黙って includePath へフォールバックしていた。
+//     参照を消して、includePath を唯一の情報源として正しく揃える。
+//
+// WHY (compilerPath を書かない): MSVC ツールセットのバージョン番号を含む
+//     絶対パスを固定すると、Visual Studio を更新するたびに壊れる。
+//     未指定にすると C/C++ 拡張が vswhere で最新の MSVC を自動検出する
+//     (Tools\VcBuild.ps1 と同じ解決方法) ため、両者がずれない。
 {
     "configurations": [
         {
             "name": "FBZZ Engine",
             "includePath": [
-                "${workspaceFolder}/Projects/EditorLauncher/src",
-                "${workspaceFolder}/Projects/Editor/include",
-                "${workspaceFolder}/Projects/Engine/include",
+                // 自作レイヤー (依存方向: Sandbox / Editor / GameHub → Engine → Physics → Math)
                 "${workspaceFolder}/Projects/Math/include",
                 "${workspaceFolder}/Projects/Physics/include",
+                "${workspaceFolder}/Projects/Engine/include",
+                "${workspaceFolder}/Projects/Engine/src",
+                "${workspaceFolder}/Projects/Editor/include",
+                "${workspaceFolder}/Projects/Editor/src",
+                "${workspaceFolder}/Projects/EditorLauncher/src",
+                "${workspaceFolder}/Projects/VFXEditorLauncher/src",
+                "${workspaceFolder}/Projects/Sandbox/src",
+                "${workspaceFolder}/Projects/Tests",
+                // サードパーティ
                 "${workspaceFolder}/ThirdParty/ImGui",
                 "${workspaceFolder}/ThirdParty/ImGui/backends",
                 "${workspaceFolder}/ThirdParty/ImGuizmo/src",
+                "${workspaceFolder}/ThirdParty/ImNodes",
                 "${workspaceFolder}/ThirdParty/Stb",
+                "${workspaceFolder}/ThirdParty/TinyExr",
                 "${workspaceFolder}/ThirdParty/TomlPlusPlus/include",
                 "${workspaceFolder}/ThirdParty/DirectXTex/include",
                 "${workspaceFolder}/ThirdParty/Assimp/include"
             ],
             "defines": [
+                // IntelliSense は単一構成しか持てないため Debug 相当で解決する。
                 "_DEBUG",
                 "UNICODE",
                 "_UNICODE",
+                "NOMINMAX",
                 "TOML_EXCEPTIONS=0",
-                "IMGUI_DEFINE_MATH_OPERATORS"
+                "IMGUI_DEFINE_MATH_OPERATORS",
+                // CMake が $<CONFIG> から焼き込むマクロ。未定義だと
+                // これらを参照する箇所が丸ごとグレーアウトして追えなくなる。
+                "FBZZ_CMAKE_CONFIG=\"Debug\"",
+                "FBZZ_SOURCE_TREE_BUILD=1"
             ],
-            "compilerPath": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe",
-            "compileCommands": "${workspaceFolder}/build/Debug/compile_commands.json",
             "windowsSdkVersion": "10.0.26100.0",
             "cppStandard": "c++20",
             "intelliSenseMode": "windows-msvc-x64"

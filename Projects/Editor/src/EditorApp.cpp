@@ -230,9 +230,23 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
         ctx.projectTargetName    = targetName;
     }
 
-    // sdk_root が共有参照モデルの正本。root は移行前プロジェクトを開くためのフォールバック。
-    const std::string engineRoot = table["engine"]["sdk_root"].value_or(
-        table["engine"]["root"].value_or(std::string{}));
+    // SDKの実パスはマシン固有なのでGameHubが環境変数で渡す。
+    // .fbzz_projにはportableなsdk_idだけを保存し、旧sdk_root/rootは移行用に限って読む。
+    std::string engineRoot;
+    const DWORD sdkRootSize = GetEnvironmentVariableW(L"FBZZ_SDK_ROOT", nullptr, 0);
+    if (sdkRootSize > 1) {
+        std::wstring sdkRoot(sdkRootSize, L'\0');
+        const DWORD written = GetEnvironmentVariableW(
+            L"FBZZ_SDK_ROOT", sdkRoot.data(), sdkRootSize);
+        if (written > 0 && written < sdkRootSize) {
+            sdkRoot.resize(written);
+            engineRoot = util::FileSystem::PathToUtf8(std::filesystem::path(sdkRoot));
+        }
+    }
+    if (engineRoot.empty()) {
+        engineRoot = table["engine"]["sdk_root"].value_or(
+            table["engine"]["root"].value_or(std::string{}));
+    }
     if (!engineRoot.empty() && engineRoot.rfind("{{", 0) != 0) {
         std::filesystem::path path = util::FileSystem::PathFromUtf8(engineRoot);
         if (!path.is_absolute())

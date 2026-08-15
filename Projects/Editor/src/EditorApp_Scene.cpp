@@ -14,6 +14,7 @@
 #include <Editor/Util/ScriptCodeGen.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
@@ -743,7 +744,7 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     //      エディタが Development 構成で VS プロジェクトを生成させるために明示的に上書きする。
     //      スペースを含むフラグは引数全体を "" で括ることで CreateProcessW に正しく渡せる。
     cmd += L" -DCMAKE_CONFIGURATION_TYPES=Debug;Release;Development";
-    cmd += L" \"-DCMAKE_CXX_FLAGS_DEVELOPMENT=/Zi /O2 /Ob1 /FS\"";
+    cmd += L" \"-DCMAKE_CXX_FLAGS_DEVELOPMENT=/Zi /O2 /Ob2 /FS\"";
     cmd += L" \"-DCMAKE_EXE_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
     cmd += L" \"-DCMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
     std::vector<wchar_t> mutableCmd(cmd.begin(), cmd.end());
@@ -825,7 +826,9 @@ void EditorApp::InitScriptDll()
 
         const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         m_scriptsSourceDir     = engineRoot / L"Assets" / L"Scripts";
-        m_hlslSourceDir        = engineRoot / L"Assets" / L"shaders";
+        // WHY: Engine shaderはプロジェクトへコピーせず、選択中SDKの共有assetを正本とする。
+        m_hlslSourceDir        = util::FileSystem::PathFromUtf8(
+            asset::AssetManager::ResolveAssetPath("Assets/Shaders"));
         m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.ps1";
 
         m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
@@ -937,45 +940,6 @@ void EditorApp::InitScriptDll()
     if (!toolchain.found) return;
 
     // ── 起動時 Assets 即時同期 ──────────────────────────────────────────────
-    // WHY: cmake --build の post-build は EXE が再ビルドされたときのみ実行される。
-    //      ビルドなしでエディタを起動した場合、SandboxProject/Assets/ は古い状態のままになる。
-    //      InitScriptDll() でエンジンソースのパスが分かった時点で Assets/ を即時同期することで、
-    //      cmake を実行せずともスクリプト・カスタムシェーダーが AssetBrowser に表示される。
-    {
-        const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
-        const std::filesystem::path projectAssetsDir =
-            util::FileSystem::PathFromUtf8(m_ctx.projectRoot) / L"Assets";
-        const std::filesystem::path engineAssetsDir  = engineRoot / L"Assets";
-
-        // プロジェクト側が別ディレクトリの場合のみ同期する (同一なら不要)
-        if (!m_ctx.projectRoot.empty() &&
-            util::FileSystem::Exists(engineAssetsDir) &&
-            !util::FileSystem::SamePath(engineAssetsDir, projectAssetsDir))
-        {
-            // Scripts/ を同期
-            const std::filesystem::path srcScripts = engineAssetsDir / L"Scripts";
-            const std::filesystem::path dstScripts = projectAssetsDir / L"Scripts";
-            if (util::FileSystem::Exists(srcScripts)) {
-                util::FileSystem::EnsureDirectory(dstScripts);
-                for (const auto& path : util::FileSystem::ListFiles(srcScripts)) {
-                    util::FileSystem::CopyFile(path, dstScripts / path.filename());
-                }
-            }
-
-            // shaders/Material/Custom/ を同期
-            const std::filesystem::path srcCustom = engineAssetsDir / L"shaders" / L"Material" / L"Custom";
-            const std::filesystem::path dstCustom = projectAssetsDir / L"shaders" / L"Material" / L"Custom";
-            if (util::FileSystem::Exists(srcCustom)) {
-                util::FileSystem::EnsureDirectory(dstCustom);
-                for (const auto& path : util::FileSystem::ListFiles(srcCustom)) {
-                    util::FileSystem::CopyFile(path, dstCustom / path.filename());
-                }
-            }
-
-            FBZZ_LOG_INFO("InitScriptDll: synced Assets/Scripts/ and shaders/Material/Custom/");
-        }
-    }
-
     // 最終更新時刻をキャッシュする (初回は変更なしと判定)
     if (!m_scriptsSourceDir.empty()) {
         const std::filesystem::path scriptScanRoot = GetScriptScanRoot(m_scriptsSourceDir);
@@ -1174,6 +1138,10 @@ void EditorApp::TickScriptCompile()
 
 void EditorApp::CheckHlslDirty()
 {
+#if !defined(FBZZ_SOURCE_TREE_BUILD) || !FBZZ_SOURCE_TREE_BUILD
+    // WHY: immutable SDKの共有shaderをEditor実行中に書き換えてはならない。
+    return;
+#else
     if (!m_ctx.hotReloadEnabled) return;
     if (m_hlslSourceDir.empty()) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
@@ -1202,10 +1170,15 @@ void EditorApp::CheckHlslDirty()
     m_hlslDebounceTimer  = 0.5f;
     FBZZ_LOG_DEBUG("HLSL: change detected in %s; recompiling after 500 ms debounce",
                    m_ctx.hlslSourceDir.c_str());
+#endif
 }
 
 void EditorApp::TickHlslCompile()
 {
+#if !defined(FBZZ_SOURCE_TREE_BUILD) || !FBZZ_SOURCE_TREE_BUILD
+    // SDK EditorではSDK publish時に確定したcompiled shaderだけを使用する。
+    return;
+#else
     if (m_hlslCompilePending) {
         m_hlslDebounceTimer -= 0.016f;
         if (m_hlslDebounceTimer > 0.0f) return;
@@ -1278,6 +1251,7 @@ void EditorApp::TickHlslCompile()
         m_ctx.hotReloadDoneTimer = 8.0f;
         m_hlslCompiler.Reset();
     }
+#endif
 }
 
 void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std::string& msg)

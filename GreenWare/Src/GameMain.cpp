@@ -4,12 +4,12 @@
 //
 // WHAT: RegisterScripts() は editor / standalone どちらの起動でも呼ばれる。
 //       ScriptCodeGen が Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンし、
-//       @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間を自動同期する。エントリポイント (main) は AppMain.cpp にある。
+//       @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間を自動同期する。
+//       エントリポイント (main) は AppMain.cpp にある — ここには書かないこと。
 //
-// WHY (EXE / DLL エントリ一元管理):
+// WHY (DLL と静的の二重登録):
 //   エディタのホットリロードは GreenWareScripts.dll をロードして ScriptFactory を更新する。
-//   RuntimeBuild Standalone exe は DLL をロードせず、FBZZ_REGISTER_SCRIPT で解決する。
-//   登録エントリは Assets/Scripts/ScriptList.inl (X-macro ファイル) で一元管理されるため、
+//   RuntimeBuild Standalone exe は DLL をロードせず、ここの FBZZ_REGISTER_SCRIPT で解決する。
 //   ScriptCodeGen は ScriptList.inl と include ブロックを同期するため、登録の手動編集は不要。
 #include "GreenWare/ProjectAPI.hpp"
 #include <Engine/Scene/ScriptFactory.hpp>
@@ -17,17 +17,11 @@
 #include <Engine/Scene/Scene.hpp>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-#include "Scripts/MagnetPrototypeComponent.hpp"
 #include "Scripts/PlayerControllerComponent.hpp"
-#include "Scripts/PlayerSpawnerComponent.hpp"
-#include "Scripts/ResultDisplayScript.hpp"
 #include "Scripts/SceneManagerScript.hpp"
 #include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
-// WHY: エントリは Assets/Scripts/ScriptList.inl で一元管理する。
-//      ScriptCodeGen は ScriptList.inl だけを更新するため、このファイルのエントリを手動編集する必要はない。
-//      FBZZ_SCRIPT_ENTRY(ns, T) → FBZZ_REGISTER_SCRIPT(::ns::T) に展開される。
 #define FBZZ_SCRIPT_ENTRY(ns, T) FBZZ_REGISTER_SCRIPT(::ns::T)
 #include "Scripts/ScriptList.inl"
 #undef FBZZ_SCRIPT_ENTRY

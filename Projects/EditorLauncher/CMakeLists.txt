@@ -15,6 +15,9 @@ add_executable(FBZZEditorLauncher WIN32
     "${EDITOR_LAUNCHER_RESOURCE}"
 )
 
+# DPI 認識をプロセス起動時に確定させる (未適用だと高 DPI 環境で UI 全体が滲む)。
+fbzz_apply_app_manifest(FBZZEditorLauncher)
+
 set_target_properties(FBZZEditorLauncher PROPERTIES
     OUTPUT_NAME "FBZZEditor"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Editor"

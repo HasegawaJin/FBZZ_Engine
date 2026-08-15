@@ -5,6 +5,9 @@ add_executable(FBZZVFXEditor WIN32
     src/main.cpp
 )
 
+# DPI 認識をプロセス起動時に確定させる (未適用だと高 DPI 環境で UI 全体が滲む)。
+fbzz_apply_app_manifest(FBZZVFXEditor)
+
 set_target_properties(FBZZVFXEditor PROPERTIES
     OUTPUT_NAME "FBZZVFXEditor"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Editor"

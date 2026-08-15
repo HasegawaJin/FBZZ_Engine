@@ -8,6 +8,7 @@ add_library(FBZZEngine SHARED ${ENGINE_SOURCES})
 set_target_properties(FBZZEngine PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON
     OUTPUT_NAME "FBZZEngine"
+    EXPORT_NAME "Engine"
 )
 
 # ── EngineRebuildBootstrap 用のビルド情報埋め込み ────────────────────────────
@@ -23,9 +24,9 @@ set_target_properties(FBZZEngine PROPERTIES
 get_filename_component(FBZZ_ENGINE_ROOT_ABS "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 target_compile_definitions(FBZZEngine PRIVATE
     FBZZ_CMAKE_CONFIG="$<CONFIG>"
-    "$<$<NOT:$<CONFIG:Release>>:FBZZ_DEV_BUILD_DIR=\"${CMAKE_BINARY_DIR}\">"
-    "$<$<NOT:$<CONFIG:Release>>:FBZZ_DEV_ENGINE_ROOT=\"${FBZZ_ENGINE_ROOT_ABS}\">"
-    "$<$<NOT:$<CONFIG:Release>>:FBZZ_DEV_CMAKE_COMMAND=\"${CMAKE_COMMAND}\">"
+    "$<$<AND:$<BOOL:${FBZZ_ENABLE_SOURCE_REBUILD}>,$<NOT:$<CONFIG:Release>>>:FBZZ_DEV_BUILD_DIR=\"${CMAKE_BINARY_DIR}\">"
+    "$<$<AND:$<BOOL:${FBZZ_ENABLE_SOURCE_REBUILD}>,$<NOT:$<CONFIG:Release>>>:FBZZ_DEV_ENGINE_ROOT=\"${FBZZ_ENGINE_ROOT_ABS}\">"
+    "$<$<AND:$<BOOL:${FBZZ_ENABLE_SOURCE_REBUILD}>,$<NOT:$<CONFIG:Release>>>:FBZZ_DEV_CMAKE_COMMAND=\"${CMAKE_COMMAND}\">"
 )
 
 set(DIRECTXTEX_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/include")
@@ -50,7 +51,9 @@ foreach(REQUIRED_PATH
 endforeach()
 
 target_include_directories(FBZZEngine
-    PUBLIC  include
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:include>"
     PRIVATE src
     PRIVATE ${DIRECTXTEX_INCLUDE}
     PRIVATE ${ASSIMP_INCLUDE}
@@ -74,7 +77,9 @@ target_link_libraries(FBZZEngine
         dxguid
         d3dcompiler
     PRIVATE
-        imgui
+        # WHY: ImGui は Engine 実装専用だが、CMake の install export はリンク依存先も
+        #      同じ export set に要求する。SDK 側では FBZZ::ImGui として整合性を保つ。
+        ImGui
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
         "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${DIRECTXTEX_LIB_RELEASE}>"
         "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"

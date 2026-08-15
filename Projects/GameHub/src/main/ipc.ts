@@ -78,7 +78,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('project:create', async (_event, request: CreateProjectRequest) => {
     try {
       await ensureConfigLoaded();
-      const projectPath = await templateService.create(request, configStore.snapshot().settings.sdkRoot);
+      const settings = configStore.snapshot().settings;
+      if (!settings.sdkId) throw new Error('新規プロジェクトを作成する前にFBZZ SDKを選択してください。');
+      const projectPath = await templateService.create(request, settings.sdkId, ENGINE_VERSION);
       const lastOpened = await configStore.touchProject(projectPath);
       return success(await projectService.inspectProject({ path: projectPath, lastOpened }));
     } catch (error) { return failure(error); }
@@ -93,7 +95,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('project:open', async (_event, projectPath: string) => {
     try {
       await ensureConfigLoaded();
-      await projectService.openProject(projectPath, configStore.snapshot().settings);
+      const settings = configStore.snapshot().settings;
+      const projectSdkId = await projectService.readProjectSdkId(projectPath);
+      const sdkRoot = await configStore.resolveSdkRoot(projectSdkId);
+      await projectService.openProject(projectPath, settings, sdkRoot);
       await configStore.touchProject(projectPath);
       return success();
     } catch (error) { return failure(error); }

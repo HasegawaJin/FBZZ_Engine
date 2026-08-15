@@ -17,4 +17,4 @@ binary_root = "{{BINARY_ROOT}}"
 build_root = "{{BUILD_ROOT}}"
 
 [engine]
-sdk_root = "{{SDK_ROOT}}"
+sdk_id = "{{SDK_ID}}"

@@ -7,16 +7,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ソースツリー専用EditorだけがEngineの自動再ビルドを利用する。
+# WHY: SDKへ公開するDLLに開発機の絶対パスを埋め込むと、共有SDKから元のソースbuildが起動してしまう。
+option(FBZZ_ENABLE_SOURCE_REBUILD "Enable source-tree Engine rebuild bootstrap" OFF)
+
 # WHY: 共有 SDK とゲーム側で CRT の選択が暗黙値に依存すると、同じ構成名でも
 #      STL オブジェクトを DLL 境界へ渡した時点で ABI が壊れる。全ターゲットを
 #      Debug=/MDd、Development/Release=/MD に固定し、SDK package 側でも同値を検証する。
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-# Development: 最適化ON + デバッグシンボルあり + NDEBUG なし（アサート有効）
+# Development: Release相当の最適化 + デバッグシンボルあり + NDEBUG なし（アサート有効）。
+# WHY: /Ob1 は明示的に inline 指定した関数しか展開しないため、DX12 のコマンド記録のように
+#      小さな関数を大量に呼ぶ経路で Release と大きな差が出る。/Ob2 で通常の最適化インラインを許可する。
 if(CMAKE_GENERATOR MATCHES "Visual Studio")
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
 endif()
-set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1 /FS"            CACHE STRING "Development CXX flags"        FORCE)
+set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob2 /FS"            CACHE STRING "Development CXX flags"        FORCE)
 set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development EXE linker flags" FORCE)
 set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development DLL linker flags" FORCE)
 
@@ -96,6 +102,11 @@ if(MSVC)
     #      実行コードや ABI を変えず C1128 を防ぐ。
     add_compile_options(/utf-8 /MP${FBZZ_BUILD_JOBS} /FS $<$<COMPILE_LANGUAGE:CXX>:/bigobj>)
 endif()
+
+# 実行ファイル共通のアプリケーションマニフェスト (DPI 認識の宣言) を提供する。
+# WHY サブディレクトリより前か: 各 Launcher の CMakeLists が fbzz_apply_app_manifest() を呼ぶため、
+#      関数定義がその時点で見えている必要がある。
+include(CMake/AppManifest.cmake)
 
 # Add subdirectories in dependency order.
 add_subdirectory(ThirdParty)

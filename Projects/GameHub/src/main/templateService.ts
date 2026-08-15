@@ -6,7 +6,7 @@ import { app } from 'electron';
 import { access, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'smol-toml';
-import { ENGINE_VERSION, type CreateProjectRequest, type TemplateInfo } from '../shared/contracts';
+import type { CreateProjectRequest, TemplateInfo } from '../shared/contracts';
 
 interface ProjectNameInfo {
   name: string;
@@ -49,13 +49,14 @@ function assertValidName(info: ProjectNameInfo): void {
   }
 }
 
-function applyPlaceholders(text: string, info: ProjectNameInfo, createdAt: string, sdkRoot: string): string {
+function applyPlaceholders(text: string, info: ProjectNameInfo, createdAt: string, sdkId: string, engineVersion: string): string {
   const replacements: Record<string, string> = {
     PROJECT_NAME: info.name,
     PROJECT_ID: info.projectId,
     CPP_NAMESPACE: info.cppNamespace,
     TARGET_NAME: info.targetName,
-    ENGINE_VERSION,
+    ENGINE_VERSION: engineVersion,
+    SDK_ID: sdkId,
     CREATED_AT: createdAt,
     SETTINGS_PATH: 'ProjectSettings/ProjectSettings.toml',
     API_ROOT: 'Include/',
@@ -64,8 +65,6 @@ function applyPlaceholders(text: string, info: ProjectNameInfo, createdAt: strin
     LIBRARY_ROOT: 'Lib/',
     BINARY_ROOT: 'Binaries/',
     BUILD_ROOT: 'Build/',
-    SDK_ROOT: sdkRoot.replaceAll('\\', '/'),
-    ENGINE_ROOT: sdkRoot.replaceAll('\\', '/'),
   };
   return text.replace(/\{\{([A-Z_]+)\}\}/g, (original, key: string) => replacements[key] ?? original);
 }
@@ -110,7 +109,7 @@ export class TemplateService {
     return templates.filter((template): template is TemplateInfo => template !== null);
   }
 
-  async create(request: CreateProjectRequest, sdkRoot: string): Promise<string> {
+  async create(request: CreateProjectRequest, sdkId: string, engineVersion: string): Promise<string> {
     const info = makeProjectName(request.displayName);
     assertValidName(info);
 
@@ -125,40 +124,30 @@ export class TemplateService {
 
     const createdAt = new Date().toISOString();
     await mkdir(projectRoot, { recursive: false });
-    await this.copyTemplateDirectory(templateRoot, projectRoot, info, createdAt, sdkRoot);
-
-    const sdkAssets = path.join(sdkRoot, 'Assets');
-    if (sdkRoot && await exists(sdkAssets)) {
-      const projectAssets = path.join(projectRoot, 'Assets');
-      await this.copySdkDirectory(sdkAssets, projectAssets, false);
-
-      // シェーダーは Engine と C++ 側の CB / binding ABI が一体なので SDK 版を正本にする。
-      // 新規作成直後だけ上書きし、古いテンプレートと新SDKの混在を防ぐ。
-      const sdkShaders = path.join(sdkAssets, 'Shaders');
-      if (await exists(sdkShaders)) {
-        await this.copySdkDirectory(sdkShaders, path.join(projectAssets, 'Shaders'), true);
-      }
-      await this.syncScriptRegistrations(projectRoot, info);
-    }
+    await this.copyTemplateDirectory(templateRoot, projectRoot, info, createdAt, sdkId, engineVersion);
+    await this.syncScriptRegistrations(projectRoot, info);
     return projectRoot;
   }
 
-  private async copyTemplateDirectory(sourceRoot: string, projectRoot: string, info: ProjectNameInfo, createdAt: string, sdkRoot: string): Promise<void> {
+  private async copyTemplateDirectory(sourceRoot: string, projectRoot: string, info: ProjectNameInfo, createdAt: string, sdkId: string, engineVersion: string): Promise<void> {
     const walk = async (sourceDirectory: string, relativeDirectory: string): Promise<void> => {
       for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
         if (!relativeDirectory && entry.name === 'template.toml') continue;
-        const replacedName = applyPlaceholders(entry.name, info, createdAt, sdkRoot).replace(/\.tmpl$/, '');
+        const replacedName = applyPlaceholders(entry.name, info, createdAt, sdkId, engineVersion).replace(/\.tmpl$/, '');
         const relativePath = path.join(relativeDirectory, replacedName);
         const sourcePath = path.join(sourceDirectory, entry.name);
         const outputPath = path.join(projectRoot, relativePath);
+        const normalizedRelativePath = relativePath.replaceAll('\\', '/');
+        if (normalizedRelativePath === 'Assets/Shaders' || normalizedRelativePath === 'Assets/Shaders.meta') continue;
+        if (!relativeDirectory && entry.isDirectory() && GENERATED_ROOT_DIRECTORIES.has(entry.name)) continue;
         if (entry.isDirectory()) {
+          // Engine shaderはSDKのread-only共有assetを使用し、プロジェクトへ複製しない。
           await mkdir(outputPath, { recursive: true });
-          if (!relativeDirectory && GENERATED_ROOT_DIRECTORIES.has(entry.name)) continue;
           await walk(sourcePath, relativePath);
         } else if (entry.isFile()) {
           await mkdir(path.dirname(outputPath), { recursive: true });
           if (isTextTemplate(sourcePath)) {
-            const text = applyPlaceholders(await readFile(sourcePath, 'utf8'), info, createdAt, sdkRoot);
+            const text = applyPlaceholders(await readFile(sourcePath, 'utf8'), info, createdAt, sdkId, engineVersion);
             await writeFile(outputPath, text, 'utf8');
           } else {
             await copyFile(sourcePath, outputPath);
@@ -167,19 +156,6 @@ export class TemplateService {
       }
     };
     await walk(sourceRoot, '');
-  }
-
-  private async copySdkDirectory(sourceRoot: string, destinationRoot: string, overwriteExisting: boolean): Promise<void> {
-    await mkdir(destinationRoot, { recursive: true });
-    for (const entry of await readdir(sourceRoot, { withFileTypes: true })) {
-      const sourcePath = path.join(sourceRoot, entry.name);
-      const destinationPath = path.join(destinationRoot, entry.name);
-      if (entry.isDirectory()) {
-        await this.copySdkDirectory(sourcePath, destinationPath, overwriteExisting);
-      } else if (entry.isFile() && (overwriteExisting || !await exists(destinationPath))) {
-        await copyFile(sourcePath, destinationPath);
-      }
-    }
   }
 
   private async syncScriptRegistrations(projectRoot: string, info: ProjectNameInfo): Promise<void> {

@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # WHY: 共有 SDK と同じ CRT を使用し、Script DLL が STL/C++ オブジェクトを渡す境界の ABI を固定する。
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
-set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1 /FS"            CACHE STRING "Development CXX flags"        FORCE)
+set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob2 /FS"            CACHE STRING "Development CXX flags"        FORCE)
 set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development EXE linker flags" FORCE)
 set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development DLL linker flags" FORCE)
 
@@ -70,6 +70,7 @@ target_link_options({{TARGET_NAME}}Standalone PRIVATE
 
 # Standaloneの正式ビルドでは毎回差分走査し、追加・変更・削除を統合スクリプトへ自動反映する。
 set(PROJECT_SHADER_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/Shaders/compile_shaders.ps1")
+if(EXISTS "${PROJECT_SHADER_SCRIPT}")
 file(GLOB_RECURSE PROJECT_SHADER_FILES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/Assets/Shaders/*.hlsl"
     "${CMAKE_SOURCE_DIR}/Assets/Shaders/*.hlsli"
@@ -89,6 +90,7 @@ add_custom_target(CompileShaders
     VERBATIM
 )
 add_dependencies({{TARGET_NAME}}Standalone CompileShaders)
+endif()
 
 configure_file(
     "${FBZZ_SDK_ROOT}/cmake/FBZZ/build.config.in"
