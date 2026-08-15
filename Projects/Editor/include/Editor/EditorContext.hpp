@@ -68,6 +68,13 @@ struct EditorContext {
     // AI の決定論プレビュー要求は VFXEditor が閉じていても専用 World を数フレームだけ駆動する。
     // WHY: query 応答と GPU 描画は同一フレームで完結しないため、capture までの猶予を frame 値で共有する。
     std::uint64_t     vfxAiPreviewUntilFrame = 0;
+    // AI の viewport.capture / viewport.semantic が RT を読み出す間、表示状態に関わらず
+    // Scene View / Game View を描き続けるための猶予フレーム。
+    // WHY: EditorApp は「実際に画面へ出ているビューポートだけ」を描くようになったため、
+    //      Play 中 (Scene View が隠れる) や Map 編集中 (Game View が隠れる) に AI が
+    //      キャプチャすると、描画が止まった RT の古い内容を読んでしまう。
+    //      vfxAiPreviewUntilFrame と同じく frame 値で猶予を共有する。
+    std::uint64_t     aiViewportRenderUntilFrame = 0;
     renderer::Camera* editorCamera = nullptr;
     // DebugCamera が持つオービット中心と注視距離のミラー (EditorApp が毎フレーム更新)。
     // WHY: ナビゲーションギズモは「ピボットを動かさずに視点だけ回す」ため、
