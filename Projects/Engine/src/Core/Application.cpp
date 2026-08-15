@@ -120,6 +120,20 @@ bool Application::Init(const Window::Config& windowConfig,
     m_renderer = std::move(rendererBundle.renderer);
     m_imguiRenderer = std::move(rendererBundle.imguiRenderer);
 
+    // WHAT: WM_SIZE をレンダラーのスワップチェーン再構築へ橋渡しする。
+    // WHY:  これを繋がないと Window 側の m_width/m_height だけが更新され、バックバッファは
+    //       起動時の寸法のまま取り残される。flip-model のスワップチェーンはサイズ不一致を
+    //       DWM 側の引き伸ばしで吸収するため、エラーも警告も出ないまま画面全体 (3D だけでなく
+    //       ImGui の UI と文字も) がぼやけ続ける。最大化した瞬間に発生し、元のサイズへ戻すまで治らない。
+    // WHY ここで登録するか: レンダラー生成後でなければ m_renderer が空。逆に Run() まで遅らせると
+    //       Init 中に届く WM_SIZE (メニューバー設定やウィンドウ移動) を取りこぼす。
+    // NOTE: PollEvents() は BeginFrame() の前に呼ばれるため、このコールバックは常にフレーム外で走る。
+    //       リサイズドラッグ中の Win32 内部ループから再入した場合も同じ (DX12 側は m_frameOpen を見て保留する)。
+    m_window->SetResizeCallback([this](uint32_t width, uint32_t height) {
+        if (m_renderer)
+            m_renderer->Resize(width, height);
+    });
+
 
     // AudioSourceComponentの要求を実Voiceへ変換できるよう、Applicationを音響の合成ルートにする。
     // EditorとStandaloneは同じAudioManagerを各ProjectRuntimeへ渡して利用する。

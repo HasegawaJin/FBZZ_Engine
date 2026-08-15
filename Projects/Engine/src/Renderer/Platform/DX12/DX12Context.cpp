@@ -396,7 +396,14 @@ void DX12Context::Resize(uint32_t width, uint32_t height)
         return;
     }
     m_suspended = false;
-    if (width == m_width && height == m_height) return;
+    if (width == m_width && height == m_height) {
+        // WHY 保留を取り消すか: リサイズドラッグ中は 1 フレームに何度も WM_SIZE が届く。
+        //     途中サイズで m_resizePending を立てた後、最後に元の寸法へ戻された場合、
+        //     ここで素通しすると古い中間サイズが次の BeginFrame で適用され、
+        //     バックバッファだけがウィンドウより小さいまま引き伸ばされる。
+        m_resizePending = false;
+        return;
+    }
     if (m_frameOpen) {
         m_resizePending = true;
         m_pendingWidth = width;
