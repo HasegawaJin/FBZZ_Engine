@@ -20,6 +20,7 @@
 //   - heightDirty: 全チャンクを削除して再構築
 //   - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
+#include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
@@ -834,6 +835,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 call.constantBuffers[1] = terrainCBH;
                 call.constantBuffers[3] = lightCB;
                 call.constantBuffers[4] = shadowCB;
+                BindClusterLighting(call, ctx);
 
                 call.textures[0]  = textures.splatmap;
                 call.textures[1]  = textures.diffuse[0];
@@ -921,7 +923,7 @@ void SubmitTerrainShadowCasters(
 
         ShadowObjectCB objData{};
         objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         resources.Update(objectCB, &objData, sizeof(objData));
 
         const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
@@ -991,7 +993,7 @@ void TerrainSelectionMaskSystem(RenderPassContext& ctx)
         const math::Matrix4 world = transform.GetWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         for (auto& [key, chunk] : g_chunkCache) {

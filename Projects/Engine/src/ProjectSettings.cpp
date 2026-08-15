@@ -11,6 +11,7 @@
 #include <cmath>
 #include <filesystem>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 namespace fbzz {
@@ -78,6 +79,33 @@ float ReadFloat(const toml::table& table, const char* key, float fallback)
     if (auto value = table[key].value<int64_t>())
         return static_cast<float>(*value);
     return fallback;
+}
+
+renderer::RenderingPipeline RenderingPipelineFromString(std::string_view value,
+                                                        renderer::RenderingPipeline fallback)
+{
+    // 手編集された旧表記も受け付け、既存の ProjectSettings.toml を壊さず移行する。
+    if (value == "forward" || value == "Forward")
+        return renderer::RenderingPipeline::Forward;
+    if (value == "deferred" || value == "Deferred")
+        return renderer::RenderingPipeline::Deferred;
+    if (value == "forward_plus" || value == "forward+" || value == "Forward+")
+        return renderer::RenderingPipeline::ForwardPlus;
+    if (value == "deferred_plus" || value == "deferred+" || value == "Deferred+")
+        return renderer::RenderingPipeline::DeferredPlus;
+    return fallback;
+}
+
+const char* RenderingPipelineToString(renderer::RenderingPipeline pipeline)
+{
+    switch (pipeline) {
+    // 保存値も Editor の表示名に揃える。Load 側は旧 lowercase / underscore 表記も受け付ける。
+    case renderer::RenderingPipeline::Forward:      return "Forward";
+    case renderer::RenderingPipeline::Deferred:     return "Deferred";
+    case renderer::RenderingPipeline::ForwardPlus:  return "Forward+";
+    case renderer::RenderingPipeline::DeferredPlus: return "Deferred+";
+    }
+    return "Forward";
 }
 
 } // namespace
@@ -161,9 +189,7 @@ bool ProjectSettings::Load(const std::string& path)
     if (auto* renderTbl = tbl["render"].as_table()) {
         {
             const auto s = (*renderTbl)["pipeline"].value_or(std::string("forward"));
-            render.pipeline = (s == "deferred")
-                ? renderer::RenderingPipeline::Deferred
-                : renderer::RenderingPipeline::Forward;
+            render.pipeline = RenderingPipelineFromString(s, render.pipeline);
         }
         {
             const int vm = (*renderTbl)["viewMode"].value_or(static_cast<int>(render.viewMode));
@@ -186,6 +212,14 @@ bool ProjectSettings::Load(const std::string& path)
             ReadFloat(*renderTbl, "shadowCascadeBlend", render.shadow.cascadeBlend);
         render.shadow.pcssEnabled     = ReadBool(*renderTbl,  "pcssEnabled",     render.shadow.pcssEnabled);
         render.shadow.pcssLightRadius = ReadFloat(*renderTbl, "pcssLightRadius", render.shadow.pcssLightRadius);
+
+        render.clustered.enabled = ReadBool(*renderTbl, "clusteredEnabled", render.clustered.enabled);
+        render.clustered.maxDistance = ReadFloat(
+            *renderTbl, "clusteredMaxDistance", render.clustered.maxDistance);
+        render.clustered.debugHeatmap = ReadBool(
+            *renderTbl, "clusteredDebugHeatmap", render.clustered.debugHeatmap);
+        render.clustered.forceAllLights = ReadBool(
+            *renderTbl, "clusteredForceAllLights", render.clustered.forceAllLights);
 
         // ── デバッグ表示 ──────────────────────────────────────────
         render.showColliders        = (*renderTbl)["showColliders"].value_or(render.showColliders);
@@ -291,7 +325,7 @@ bool ProjectSettings::Save(const std::string& path) const
     // [render] の保存対象は Load と対になる「プロジェクト全体で固定の構成」のみ。
     // ルック (ポストプロセス / 高度グラフィクス) は PostProcessProfile (.fzdata) が保存する。
     toml::table renderTbl;
-    renderTbl.insert("pipeline", render.pipeline == renderer::RenderingPipeline::Deferred ? "deferred" : "forward");
+    renderTbl.insert("pipeline", RenderingPipelineToString(render.pipeline));
     renderTbl.insert("viewMode", static_cast<int>(render.viewMode));
 
     // ── Shadow 品質 ─────────────────────────────────────────────────────────
@@ -304,6 +338,11 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("shadowCascadeBlend",       (double)render.shadow.cascadeBlend);
     renderTbl.insert("pcssEnabled",       render.shadow.pcssEnabled);
     renderTbl.insert("pcssLightRadius",   (double)render.shadow.pcssLightRadius);
+
+    renderTbl.insert("clusteredEnabled",        render.clustered.enabled);
+    renderTbl.insert("clusteredMaxDistance",    (double)render.clustered.maxDistance);
+    renderTbl.insert("clusteredDebugHeatmap",   render.clustered.debugHeatmap);
+    renderTbl.insert("clusteredForceAllLights", render.clustered.forceAllLights);
 
     // ── デバッグ表示 ────────────────────────────────────────────────────────
     renderTbl.insert("showColliders",        render.showColliders);

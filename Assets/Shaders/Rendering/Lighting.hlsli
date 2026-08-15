@@ -336,4 +336,12 @@ float3 Lighting_Toon_Direct(float3 N, float3 L,
     return albedo * lightColor * lightIntensity * band;
 }
 
+// 点光源 / スポットの走査層。
+// WHY ファイル末尾で include するか: ClusteredLights.hlsli が LightAttenuation /
+//     SpotConeWeight / SafeNormalize を呼ぶため、それらの定義より後に置く必要がある
+//     (HLSL には前方宣言がない)。
+// WHY ここに置くか: 光源ループを持つ 24 個のシェーダーは例外なく Lighting.hlsli を
+//     include 済みなので、各ファイルへ include を足さずにイテレータが行き渡る。
+#include "Rendering/ClusteredLights.hlsli"
+
 #endif // LIGHTING_HLSLI

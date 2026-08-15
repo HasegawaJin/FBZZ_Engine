@@ -98,12 +98,15 @@ cbuffer LightConstants : register(CB_LIGHT)
     int            pointLightCount;
     int            spotLightCount;
     float2         _lightPad2;
+    float3         ambientColor;
+    float          _ambientPad;
 };
 
 // ShadowConstants (b4) — カスケード配列を含むためレイアウトは 1 か所で定義する。
 #include "Common/ShadowConstants.hlsli"
 
 #include "Rendering/Shadow.hlsli"
+#include "Rendering/Lighting.hlsli"
 
 Texture2D g_normalMap1 : register(t0);
 Texture2D g_normalMap2 : register(t1);
@@ -363,6 +366,13 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float specular = pow(NdotH, max(specularExponent, 1.0f)) * lightIntensity * shadow;
     float sparkle = pow(saturate(dot(reflect(-V, N), L)), max(specularExponent * 0.45f, 1.0f));
     color += lightColor * (specular * specularStrength + sparkle * specularStrength * 0.18f) * lerp(0.65f, 1.0f, shadow);
+
+    // Forward+ / Deferred+ の局所光。水面は透明材質なので、局所光の影は共通影とは分離し、
+    // 水色の拡散寄与だけを加算する。Deferred 経路でも Water は HDR へ直接描くためここで評価する。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        color += Lighting_Lambert_Direct(N, ps.L, waterColor,
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
     float rim = pow(1.0f - NdotV, 3.0f) * rimGlowStrength;
     color += lerp(waterColor, skyReflectTint, 0.35f) * rim;

@@ -33,6 +33,16 @@ struct TransparentEntry {
     int32_t            renderQueue;
 };
 
+// GBuffer パスが 1 度収集してから並べ替えるための中間表現。
+// WHY DrawCall まで作らないか: DrawCall は 500 バイト超あり、可視オブジェクトぶん保持すると
+//     ソートのたびに大量のコピーが発生する。参照だけ持ち、DrawCall は提出時に組む。
+struct GBufferEntry {
+    GameObject*         go;
+    MeshRenderer*       mr;
+    renderer::Material* material;  // SyncMaterial 解決済み (マテリアル順ソートのキー)
+    float               distSq;    // カメラからの距離の 2 乗 (前→後ろ順の並べ替え用)
+};
+
 void SortAndSubmitTransparent(
     RenderPassContext& ctx,
     std::vector<TransparentEntry>& queue,
@@ -113,6 +123,17 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         s_gbufMatCB = resources.CreateConstantBuffer(kGBufCBSize);
 
     const auto& frustum = *ctx.cameraFrustum;
+    const auto& cam     = ctx.camera;
+
+    // =========================================================================
+    // Phase 1: フラスタムカリング + ギャザー
+    // =========================================================================
+    // WHY 一気に Submit せず一度集めるか: 提出順を後から選べるようにするため。
+    //     GBuffer は「オクルージョンカリングのための前→後ろ順」と
+    //     「バックエンドの束縛キャッシュを効かせるためのマテリアル順」という
+    //     両立しない 2 つの順序を欲しがるので、集めてから 2 段階で並べ替える。
+    std::vector<GBufferEntry> queue;
+    queue.reserve(64);
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
@@ -137,7 +158,61 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         // DeferredForwardEffects パスで Forward 描画するためここではスキップする。
         if (IsForwardOnly(*mat)) continue;
 
+        // マテリアル解決をここで済ませる。マテリアル順ソートのキーに実体が要るため。
         auto* material = SyncMaterial(*mat, resources);
+
+        const float dx = go.transform.position.x - cam.m_position.x;
+        const float dy = go.transform.position.y - cam.m_position.y;
+        const float dz = go.transform.position.z - cam.m_position.z;
+        queue.push_back({ &go, mr, material, dx*dx + dy*dy + dz*dz });
+    }
+
+    // =========================================================================
+    // Phase 2: 前→後ろ順に並べてオクルージョンカリング
+    // =========================================================================
+    // WHY この順序が必須か: SW オクルージョンカリングは「既に描いた物」で遮蔽を判定するため、
+    //     手前から順に流し込まないと遮蔽者が育たず、ほとんど何も落とせない。
+    std::sort(queue.begin(), queue.end(),
+        [](const GBufferEntry& a, const GBufferEntry& b) { return a.distSq < b.distSq; });
+
+    if (ctx.occlusionCuller) {
+        ctx.occlusionCuller->Reset(cam);
+        auto visibleEnd = queue.begin();
+        for (auto it = queue.begin(); it != queue.end(); ++it) {
+            const auto bounds = ComputeWorldBounds(it->go->transform, *it->mr->mesh);
+            if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
+                ++ctx.statsOcclusionCulled;
+                continue;
+            }
+            *visibleEnd++ = *it;
+        }
+        queue.erase(visibleEnd, queue.end());
+    }
+
+    // =========================================================================
+    // Phase 3: マテリアル順へ並べ替えて提出
+    // =========================================================================
+    // WHY 距離順のまま出さないか: GBuffer は不透明のみなので提出順は絵に影響しない。
+    //     一方 DX12 バックエンドは「直前 Draw と同じテクスチャ集合か」でディスクリプタの
+    //     コピーを省くため、マテリアルがばらけた順序だとほぼ毎 Draw でコピーが走る。
+    //     遮蔽判定を終えた後なら距離順を保つ理由はもう無いので、束縛が揃う順へ組み替える。
+    // NOTE: キーはマテリアル実体のアドレス。同一フレーム内で安定していれば十分で、
+    //       フレーム間で順序が揺れても不透明描画の結果は変わらない。
+    std::sort(queue.begin(), queue.end(),
+        [](const GBufferEntry& a, const GBufferEntry& b) {
+            if (a.material != b.material) return a.material < b.material;
+            return a.mr->mesh < b.mr->mesh;
+        });
+
+    // 直前の Draw で共有マテリアル CB へ書いた内容の持ち主。
+    // WHY: 同じマテリアルが連続する間は詰め直しも Update も不要。マテリアル順ソート後は
+    //      これがそのまま効き、96 バイト再パックの回数がマテリアル種類数まで落ちる。
+    const renderer::Material* lastPackedMaterial = nullptr;
+
+    for (const auto& entry : queue) {
+        auto& go       = *entry.go;
+        auto* mr       = entry.mr;
+        auto* material = entry.material;
 
         // マテリアル CB を GBuffer 互換レイアウト (96 バイト) に変換してバインドする。
         renderer::ResourceHandle<renderer::ConstantBufferTag> gbufMatCB;
@@ -145,6 +220,11 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
             if (material->paramData.size() == kGBufCBSize) {
                 // デフォルト 96 バイトレイアウト (PBR 等) はそのまま使える。
                 gbufMatCB = material->paramsBuffer;
+            } else if (material == lastPackedMaterial) {
+                // 直前の Draw と同じマテリアル — 共有 CB の中身は既に正しい。
+                // WHY: 詰め直しは ShaderDescriptor の名前引き (文字列比較) を最大 8 回行うので、
+                //      マテリアル順に並べた今、同じ内容を作り直すのは純粋な無駄になる。
+                gbufMatCB = s_gbufMatCB;
             } else {
                 // 独自レイアウト: フィールド名で抽出して 96 バイトバッファに詰め直す。
                 std::array<uint8_t, kGBufCBSize> gbufParams{};
@@ -182,13 +262,14 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                     }
                 }
                 resources.Update(s_gbufMatCB, gbufParams.data(), kGBufCBSize);
-                gbufMatCB = s_gbufMatCB;
+                gbufMatCB          = s_gbufMatCB;
+                lastPackedMaterial = material;
             }
         }
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
@@ -282,6 +363,16 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     // b8: iblIntensity など IBL パラメータを含む AdvancedGraphicsCB
     // iblIntensity == 0.0 のとき HLSL は IBL テクスチャをサンプルせず fallback ambient を使う
     dc.constantBuffers[8] = h.advancedGraphicsCB;
+    // b9 + t29/t30: クラスタライティング。Legacy モードのときは束縛しない。
+    // WHY 束縛しないと安全か: b9 が未束縛だと clusterLightMode が 0 (= Legacy) として読まれ、
+    //     シェーダーは b3 の固定長配列へフォールバックする。つまり従来と完全に同じ経路になる。
+    if (ctx.clusterLightMode != ClusterLightMode::Legacy) {
+        dc.constantBuffers[9] = h.clusterCB;
+        dc.psBuffers[0]       = h.punctualLightBuffer;  // t29
+        // クラスタリストは Clustered モードでしか読まれない (Linear は全数走査)。
+        if (ctx.clusterLightMode == ClusterLightMode::Clustered)
+            dc.psBuffers[1]   = h.clusterIndexBuffer;   // t30
+    }
     dc.textures[5]        = resources.GetColorTexture(h.gbufferRT, 0);  // TEX_GBUFFER0
     dc.textures[6]        = resources.GetColorTexture(h.gbufferRT, 1);  // TEX_GBUFFER1
     dc.textures[7]        = resources.GetDepthTexture(h.gbufferRT);     // TEX_DEPTH
@@ -339,7 +430,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
         const auto skinCB = (anim && anim->skinningBuffer.IsValid())
             ? anim->skinningBuffer : h.bindPoseSkinningCB;
@@ -389,6 +480,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             dc.constantBuffers[7] = skinCB;
+            BindClusterLighting(dc, ctx);
             for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
                 if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -459,7 +551,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = mr->mesh->vertexBuffer;
@@ -476,6 +568,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[8] = h.advancedGraphicsCB;
+        BindClusterLighting(dc, ctx);
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
@@ -513,7 +606,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
@@ -531,6 +624,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[8] = h.advancedGraphicsCB;
+        BindClusterLighting(dc, ctx);
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;

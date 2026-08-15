@@ -660,6 +660,17 @@ void RenderSystem(Scene& scene,
     static auto deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
     static auto depthCopyShader        = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
 
+    // クラスタライトカリング (Forward+ / Deferred+)。
+    static auto clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
+    // ライト配列とクラスタリストは解像度非依存の固定長なので、確保は初回の 1 回だけ。
+    // WHY RW にするか: clusterIndexBuffer は CS が u2 へ書き、PS が t30 から読む。
+    //      punctualLightBuffer は CPU が毎フレーム更新して CS/PS が読むだけなので読み取り専用。
+    static auto punctualLightBuffer = resources.CreateStructuredBuffer(
+        nullptr, kMaxPunctualLights, static_cast<uint32_t>(sizeof(PunctualLightGPU)));
+    static auto clusterIndexBuffer = resources.CreateRWStructuredBuffer(
+        nullptr, kClusterCount * kClusterStride, static_cast<uint32_t>(sizeof(uint32_t)));
+    static auto clusterCB = resources.CreateConstantBuffer(sizeof(ClusterConstantsCB));
+
     static auto decalShader     = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
     static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
 
@@ -813,6 +824,13 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_OFF
     });
+    // VolumetricCloud.hlsl は scatter.rgb に既に透過率を積分した premultiplied 値を返す。
+    // Overdraw 可視化も volumetricCloudPSO を共有するため、雲の合成だけ専用 PSO に分離する。
+    static auto volumetricCloudPremultipliedPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::PREMULTIPLIED,
+        renderer::DepthMode::DEPTH_OFF
+    });
     // ---- Advanced Graphics PSO / 定数バッファ ----
     // taaPSO: OPAQUE — TAA は ping-pong バッファへ上書きするため α ブレンドは不要
     static auto taaPSO = resources.CreatePipelineState({
@@ -868,6 +886,7 @@ void RenderSystem(Scene& scene,
         gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
         deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
         depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+        clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
         decalShader = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
         decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
         particleShader     = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
@@ -954,6 +973,7 @@ void RenderSystem(Scene& scene,
         postprocPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
         causticsPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_OFF });
         volumetricCloudPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
+        volumetricCloudPremultipliedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::PREMULTIPLIED, renderer::DepthMode::DEPTH_OFF });
         decalPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
         decalMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
     }
@@ -1087,9 +1107,40 @@ void RenderSystem(Scene& scene,
     float dirShadowStrength = 1.0f;
     float dirShadowDistance = 0.0f;
 
+    // クラスタライティング用の統合ライト配列。b3 の固定長配列と並行して構築する。
+    // WHY 並行構築か: b3 は点 8 / スポット 4 で打ち切るため、それを超えたライトは
+    //      これまで黙って捨てられていた。こちらは 256 本まで拾い、対応済みのパスだけが参照する。
+    //      b3 側の詰め方は 1 行も変えないので、未対応パスの見た目は完全に据え置きになる。
+    std::vector<PunctualLightGPU> punctualLights;
+    punctualLights.reserve(32);
+
     constexpr float kDegToRad = 3.14159265f / 180.0f;
     for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
         if (!lc.enabled) continue;
+        // 点光源 / スポットは上限に達するまで統合配列へも積む。
+        // NOTE: 追加順は b3 と同じ ECS 走査順。ただし b3 が「点を全部→スポットを全部」の
+        //       2 配列なのに対しこちらは 1 本なので、混在シーンでは評価順が変わりうる。
+        //       不透明ライティングの加算なので結果は変わらない (順序による丸め差のみ)。
+        if (lc.type != LightComponent::Type::Directional
+            && punctualLights.size() < kMaxPunctualLights) {
+            PunctualLightGPU& gpu = punctualLights.emplace_back();
+            gpu.position  = tf.position;
+            gpu.range     = lc.range;
+            gpu.color     = lc.color;
+            gpu.intensity = lc.intensity;
+            if (lc.type == LightComponent::Type::Spot) {
+                gpu.direction = tf.forward.Normalized();
+                gpu.innerCos  = std::cos(lc.innerCone * kDegToRad);
+                gpu.outerCos  = std::cos(lc.outerCone * kDegToRad);
+                gpu.type      = static_cast<uint32_t>(1); // FBZZ_LIGHT_TYPE_SPOT
+            } else {
+                gpu.direction = { 0.0f, -1.0f, 0.0f };
+                gpu.innerCos  = 0.0f;
+                gpu.outerCos  = 0.0f;
+                gpu.type      = static_cast<uint32_t>(0); // FBZZ_LIGHT_TYPE_POINT
+            }
+        }
+
         if (lc.type == LightComponent::Type::Directional) {
             lightData.lightDir       = tf.forward.Normalized();
             lightData.lightColor     = lc.color;
@@ -1317,7 +1368,11 @@ void RenderSystem(Scene& scene,
     // WHY: Forward 直描き経路では SSAO/GTAO/ContactShadows/SSR/IBL が Terrain/Detail/Foliage に
     //      乗らず、Unity のようなレンダリングモード切り替え時の見た目互換性を保てない。
     //      必須リソースが欠ける場合だけ従来 Forward にフォールバックする。
+    const bool wantsDeferredPipeline =
+        rs.pipeline == renderer::RenderingPipeline::Deferred
+        || rs.pipeline == renderer::RenderingPipeline::DeferredPlus;
     const bool useGBufferOpaquePipeline =
+        wantsDeferredPipeline &&
         gbufferRT.IsValid() &&
         gbufferShader.IsValid() &&
         deferredLightingShader.IsValid() &&
@@ -1380,6 +1435,7 @@ void RenderSystem(Scene& scene,
     passHandles.postprocPSO       = postprocPSO;
     passHandles.causticsPSO       = causticsPSO;
     passHandles.volumetricCloudPSO = volumetricCloudPSO;
+    passHandles.volumetricCloudPremultipliedPSO = volumetricCloudPremultipliedPSO;
     passHandles.frameCB           = frameCB;
     passHandles.objectCB          = objectCB;
     passHandles.lightCB           = lightCB;
@@ -1484,6 +1540,10 @@ void RenderSystem(Scene& scene,
     passHandles.gbufferShader        = gbufferShader;
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
+    passHandles.clusterCullCS        = clusterCullCS;
+    passHandles.punctualLightBuffer  = punctualLightBuffer;
+    passHandles.clusterIndexBuffer   = clusterIndexBuffer;
+    passHandles.clusterCB            = clusterCB;
 
     // ---- Advanced Graphics ハンドルを passHandles に束縛 ----
     passHandles.advancedGraphicsCB   = advancedGraphicsCB;
@@ -1559,6 +1619,51 @@ void RenderSystem(Scene& scene,
     passCtx.lightEyePos             = lightPos;
     passCtx.isDeferred              = useGBufferOpaquePipeline;
     passCtx.ssaoEnabled             = ssaoEnabled;
+
+    // ── クラスタライトカリングのモード決定と定数の組み立て ──────────────────────
+    // WHY useGBufferOpaquePipeline の判定式には手を触れないか: あちらは「GBuffer 経路を
+    //     使えるか」であって、ライトの供給方法とは直交する軸。混ぜると Forward/Deferred の
+    //     選択そのものが変わり、本件と無関係な見た目変更が全シーンへ波及する。
+    const bool clusteredAvailable =
+        punctualLightBuffer.IsValid() && clusterIndexBuffer.IsValid() && clusterCB.IsValid();
+    const bool clusteredEnabled =
+        rs.UsesClusteredLighting() && !rs.IsUnlit() && clusteredAvailable && clusterCullCS.IsValid();
+
+    ClusterLightMode clusterMode = ClusterLightMode::Legacy;
+    if (clusteredEnabled)
+        clusterMode = rs.clustered.forceAllLights ? ClusterLightMode::Linear
+                                                  : ClusterLightMode::Clustered;
+
+    passCtx.punctualLights    = std::move(punctualLights);
+    passCtx.clusterLightMode  = clusterMode;
+    passCtx.clusterDebugHeatmap =
+        clusteredEnabled && rs.clustered.debugHeatmap && clusterMode == ClusterLightMode::Clustered;
+
+    if (clusteredAvailable) {
+        // ライト配列は毎フレーム転送する。上限 256 本 × 64B = 16KB で、部分更新の価値はない。
+        if (!passCtx.punctualLights.empty()) {
+            resources.Update(punctualLightBuffer, passCtx.punctualLights.data(),
+                             passCtx.punctualLights.size() * sizeof(PunctualLightGPU));
+        }
+
+        // 指数分割の係数。slice = log(viewZ) * scale + bias が [0, GridZ) に収まるよう決める。
+        //   slice(nearZ) = 0 / slice(clusterFar) = GridZ
+        // WHY 対数か: 点光源のカリングで効くのは深度方向の薄さで、カメラ近傍ほど細かく
+        //      切りたい。等間隔だと手前の 1 スライスが広くなりすぎて何も落とせない。
+        const float nearZ = std::max(camera.m_near, 0.01f);
+        const float farZ  = std::max(std::min(camera.m_far, rs.clustered.maxDistance), nearZ * 2.0f);
+        const float logRatio = std::log(farZ / nearZ);
+
+        ClusterConstantsCB clusterData{};
+        clusterData.clusterTilePx[0] = static_cast<float>(sHdrW) / static_cast<float>(kClusterGridX);
+        clusterData.clusterTilePx[1] = static_cast<float>(sHdrH) / static_cast<float>(kClusterGridY);
+        clusterData.clusterSliceScale = static_cast<float>(kClusterGridZ) / logRatio;
+        clusterData.clusterSliceBias  = -static_cast<float>(kClusterGridZ) * std::log(nearZ) / logRatio;
+        clusterData.clusterLightMode  = static_cast<uint32_t>(clusterMode);
+        clusterData.punctualLightCount = static_cast<uint32_t>(passCtx.punctualLights.size());
+        clusterData.clusterDebugMode  = passCtx.clusterDebugHeatmap ? 1u : 0u;
+        resources.Update(clusterCB, &clusterData, sizeof(ClusterConstantsCB));
+    }
     passCtx.cameraFrustum           = &cameraFrustum;
     passCtx.lightFrustum            = &lightFrustum;
     passCtx.occlusionCuller         = &occlusionCuller;
@@ -1732,6 +1837,17 @@ void RenderSystem(Scene& scene,
     pipeline.AddRawPass("SkinningCompute", {}, {}, [&]() {
         ExecuteSkinningComputePass(passCtx);
     }, false);
+
+    // ── クラスタライトカリング ────────────────────────────────────────────────
+    // WHY Shadow より前か: Forward / Deferred のどちらの経路でも同じクラスタ結果を読む。
+    //     ここで 1 回だけ作っておけば、以降のライティングパスは引くだけで済む。
+    // NOTE: 出力は StructuredBuffer で RenderGraph の論理リソースではないため
+    //       reads/writes は空。カリング禁止で常に実行する (SkinningCompute と同じ)。
+    if (clusteredEnabled) {
+        pipeline.AddRawPass("ClusterLightCull", {}, {}, [&]() {
+            ExecuteClusterLightCullPass(passCtx);
+        }, false);
+    }
 
     // ── Shadow ────────────────────────────────────────────────────────────────
     pipeline.AddRawPass("Shadow", {}, { "ShadowMap" }, [&]() {

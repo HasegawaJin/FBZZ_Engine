@@ -265,7 +265,7 @@ void DrawStaticMeshSample(
 
     PerObjectCB objData{};
     objData.world = sample.world;
-    objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+    objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
     resources.Update(h.objectCB, &objData, sizeof(objData));
 
     MeshTrailCB cb{};
@@ -302,7 +302,7 @@ void DrawSkinnedMeshSample(
 
     PerObjectCB objData{};
     objData.world = sample.world;
-    objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+    objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
     resources.Update(h.objectCB, &objData, sizeof(objData));
 
     MeshTrailCB cb{};

@@ -51,7 +51,7 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         // 静的メッシュ

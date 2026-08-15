@@ -44,26 +44,12 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 result = Lighting_Toon(N, L, col, lightColor, lightIntensity, shadow);
     float3 V      = normalize(cameraPos - p.worldPos);
 
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = toLight / dist;
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_Toon_Direct(N, Lp, col,
-                      pointLights[pi].color, pointLights[pi].intensity * atten);
-    }
-    [loop] for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = toLight / dist;
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_Toon_Direct(N, Ls, col,
-                      spotLights[si].color, spotLights[si].intensity * atten * cone);
-    }
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        result += Lighting_Toon_Direct(N, ps.L, col,
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
     // リムライト: 輪郭に明るいエッジを加えてセル感を強調
     float  rim = 1.0f - saturate(dot(N, V));

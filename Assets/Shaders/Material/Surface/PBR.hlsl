@@ -125,28 +125,13 @@ float4 PSMain(PSInput p) : SV_Target0
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow);
 
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = SafeNormalize(toLight, N);
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_PBR_Advanced(N, V, Lp, T, B, col, met, rough,
-                      clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
-                      pointLights[pi].color, pointLights[pi].intensity * atten, 1.0f);
-    }
-    [loop] for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = SafeNormalize(toLight, N);
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_PBR_Advanced(N, V, Ls, T, B, col, met, rough,
-                      clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
-                      spotLights[si].color, spotLights[si].intensity * atten * cone, 1.0f);
-    }
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        result += Lighting_PBR_Advanced(N, V, ps.L, T, B, col, met, rough,
+            clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
+            ps.color, ps.intensity, 1.0f);
+    FBZZ_PUNCTUAL_END
 
     // Emissive: テクスチャがあれば sRGB デコードして乗算。emissiveScale=0 で非発光。
     float3 emissiveTex = (textureMask & (1u << 3))

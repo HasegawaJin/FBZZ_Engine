@@ -117,7 +117,7 @@ void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
 
         PerObjectCB object{};
         object.world = go.transform.GetWorldMatrix();
-        object.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(object.world));
+        object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(object.world);
         resources.Update(h.objectCB, &object, sizeof(object));
 
         renderer::DrawCall draw{};
