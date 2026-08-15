@@ -47,3 +47,7 @@
 #include <Engine/Scene/ScriptProxy/ScriptReflectionProbeProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptLifetimeProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptGameplayProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptSaveProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptEventProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptRandomProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptTweenProxy.hpp>

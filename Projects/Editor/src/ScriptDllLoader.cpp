@@ -8,6 +8,8 @@
 #include <Engine/Scene/ScriptDllAbi.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
+#include <Engine/Scene/PrefabPool.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -103,6 +105,15 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
     scene::ScriptFactory::UnregisterAll();
     scene::ScriptSerializableFactory::UnregisterAll();
     FBZZ_LOG_DEBUG("ScriptDllLoader: ScriptFactory unregistered all");
+
+    // イベント購読とオブジェクトプールを破棄する。
+    // WHY: 購読ハンドラのラムダ本体は DLL 側のコードにあるため、FreeLibrary 後に
+    //      呼ばれるとアクセス違反になる。DestroyAllScripts が通れば ~Script 経由で
+    //      解除されるはずだが、scene が渡されない経路もあるためここでも必ず空にする。
+    //      プールの待機列も破棄済み GameObject の EntityID を抱えたままにしない。
+    scene::ScriptEventBus::Clear();
+    scene::PrefabPool::ClearAll();
+    FBZZ_LOG_DEBUG("ScriptDllLoader: script event bus & prefab pool cleared");
 
     // DataAsset も DLL コード内に仮想デストラクタ/ファクトリを持つため、FreeLibrary 前に
     // 共有キャッシュを破棄し型登録をクリアする。次回 Resolve でディスクから遅延再ロードされる。

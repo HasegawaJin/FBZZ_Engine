@@ -24,8 +24,13 @@
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabPool.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
+#include <Engine/Util/Easing.hpp>
+#include <Engine/Util/Random.hpp>
+#include <Engine/Util/SaveData.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
@@ -526,6 +531,7 @@ uint32_t ScriptApplicationProxy::GetWindowHeight() const
 
 float ScriptTimeProxy::DeltaTime() const { return fbzz::Time::deltaTime; }
 float ScriptTimeProxy::UnscaledDeltaTime() const { return fbzz::Time::unscaledDeltaTime; }
+float ScriptTimeProxy::FixedDeltaTime() const { return fbzz::Time::fixedDeltaTime; }
 float ScriptTimeProxy::Time() const { return fbzz::Time::time; }
 float ScriptTimeProxy::UnscaledTime() const { return fbzz::Time::unscaledTime; }
 uint64_t ScriptTimeProxy::FrameCount() const { return fbzz::Time::frameCount; }
@@ -752,16 +758,80 @@ void ScriptColliderProxy::SetMesh(std::string_view meshPath, int meshIndex) cons
 
 void ScriptColliderProxy::SetFriction(float staticFriction, float dynamicFriction) const
 {
-    if (auto* c = SelfAnyCollider(script)) {
-        c->material.staticFriction = staticFriction;
-        c->material.dynamicFriction = dynamicFriction;
-    }
+    auto* c = SelfAnyCollider(script);
+    if (!c) return;
+    // 共有アセット参照を外してから書く。残したままだと次のフレームで
+    // ResolvePhysicsMaterial() に上書きされ、書いた値が消える。
+    c->physicsMaterialPath.clear();
+    c->material.staticFriction = staticFriction;
+    c->material.dynamicFriction = dynamicFriction;
 }
 
 void ScriptColliderProxy::SetRestitution(float restitution) const
 {
+    auto* c = SelfAnyCollider(script);
+    if (!c) return;
+    c->physicsMaterialPath.clear();
+    c->material.restitution = restitution;
+}
+
+void ScriptColliderProxy::SetDensity(float density) const
+{
+    auto* c = SelfAnyCollider(script);
+    if (!c) return;
+    c->physicsMaterialPath.clear();
+    c->material.density = density;
+}
+
+void ScriptColliderProxy::SetPhysicsMaterial(std::string_view assetPath) const
+{
     if (auto* c = SelfAnyCollider(script))
-        c->material.restitution = restitution;
+        c->SetPhysicsMaterialPath(std::string(assetPath));
+}
+
+std::string ScriptColliderProxy::GetPhysicsMaterial() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->physicsMaterialPath : std::string{};
+}
+
+float ScriptColliderProxy::GetRestitution() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.restitution : 0.0f;
+}
+
+float ScriptColliderProxy::GetStaticFriction() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.staticFriction : 0.0f;
+}
+
+float ScriptColliderProxy::GetDynamicFriction() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.dynamicFriction : 0.0f;
+}
+
+float ScriptColliderProxy::GetDensity() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->material.density : 0.0f;
+}
+
+bool ScriptColliderProxy::ApplyPhysicsMaterialPreset(std::string_view presetName) const
+{
+    auto* c = SelfAnyCollider(script);
+    if (!c) return false;
+    // string_view は終端 NUL を保証しないため、C API へ渡す前に string 化する。
+    const std::string name(presetName);
+    const auto* preset = physics::PhysicsMaterial::FindPreset(name.c_str());
+    if (!preset) {
+        FBZZ_LOG_WARN("Unknown physics material preset: %s", name.c_str());
+        return false;
+    }
+    c->SetMaterial(*preset);
+    return true;
 }
 
 void ScriptAudioProxy::Play(std::string_view clipPath) const
@@ -1397,6 +1467,93 @@ bool ScriptMaterialProxy::SetSharedMaterial(EntityRef target,
     material->propertyValidationCache.clear();
     material->propertyValidationDescriptor = nullptr;
     material->materialAsset = assetHandle;
+    return true;
+}
+
+// ── 共有 .mat の読み取り ────────────────────────────────────────────────────
+
+namespace {
+
+// MaterialRef から共有アセットを解決する。未ロードならここでロードする。
+const asset::MaterialAsset* ResolveSharedMaterial(const MaterialRef& material)
+{
+    const std::string path = material.ResolvePath();
+    if (path.empty()) return nullptr;
+    const auto handle = asset::AssetManager::LoadMaterial(path);
+    if (!handle.IsValid()) return nullptr;
+    return asset::AssetManager::GetMaterial(handle);
+}
+
+} // namespace
+
+bool ScriptMaterialProxy::HasSharedProperty(const MaterialRef& material,
+                                            MaterialPropertyId property) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const std::string key(property.name);
+    return shared->params.contains(key) || shared->textures.contains(key);
+}
+
+bool ScriptMaterialProxy::TryGetSharedFloat(const MaterialRef& material,
+                                            MaterialPropertyId property, float& value) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const auto it = shared->params.find(std::string(property.name));
+    if (it == shared->params.end() || it->second.empty()) return false;
+    value = it->second[0];
+    return true;
+}
+
+bool ScriptMaterialProxy::TryGetSharedVector4(const MaterialRef& material,
+                                              MaterialPropertyId property,
+                                              math::Vector4& value) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const auto it = shared->params.find(std::string(property.name));
+    if (it == shared->params.end() || it->second.empty()) return false;
+
+    // .mat は float / float2 / float3 / float4 を同じ形式で持つため、
+    // 足りない成分は 0 で埋める (Instance() の読み出しと同じ規則)。
+    const auto& values = it->second;
+    value = {
+        values[0],
+        values.size() > 1 ? values[1] : 0.0f,
+        values.size() > 2 ? values[2] : 0.0f,
+        values.size() > 3 ? values[3] : 0.0f
+    };
+    return true;
+}
+
+bool ScriptMaterialProxy::TryGetSharedVector3(const MaterialRef& material,
+                                              MaterialPropertyId property,
+                                              math::Vector3& value) const
+{
+    math::Vector4 vector;
+    if (!TryGetSharedVector4(material, property, vector)) return false;
+    value = { vector.x, vector.y, vector.z };
+    return true;
+}
+
+bool ScriptMaterialProxy::TryGetSharedColor(const MaterialRef& material,
+                                            MaterialPropertyId property,
+                                            math::Vector4& value) const
+{
+    return TryGetSharedVector4(material, property, value);
+}
+
+bool ScriptMaterialProxy::TryGetSharedTexture(const MaterialRef& material,
+                                              MaterialPropertyId property,
+                                              TextureRef& texture) const
+{
+    const auto* shared = ResolveSharedMaterial(material);
+    if (!shared || !property.IsValid()) return false;
+    const MaterialPropertyId canonical(CanonicalTextureProperty(property.name));
+    const auto it = shared->textures.find(std::string(canonical.name));
+    if (it == shared->textures.end()) return false;
+    texture.SetPath(it->second);
     return true;
 }
 
@@ -2081,9 +2238,111 @@ void ScriptMeshTrailProxy::ClearExcludedMeshIndices() const
         t->excludedMeshIndices.clear();
 }
 
+// ── UIButton 入力の取得 ──────────────────────────────────────────────────────
+// UISystem が毎フレーム立て直す onClick / onEnter / onExit / state をそのまま読む。
+// 取得系はボタンが無い場合に「押されていない」を返す方が呼び出し側の分岐が減るため、
+// nullptr は一律 false / Disabled に潰す。
+namespace {
+
+UIButtonPhase ToButtonPhase(const UIButton* button)
+{
+    if (!button || !button->enabled || !button->isInteractable)
+        return UIButtonPhase::Disabled;
+    switch (button->state) {
+    case UIButtonState::HOVERED: return UIButtonPhase::Hovered;
+    case UIButtonState::PRESSED: return UIButtonPhase::Pressed;
+    default:                     return UIButtonPhase::Normal;
+    }
+}
+
+} // namespace
+
+bool ScriptUIProxy::WasClicked() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->onClick;
+}
+
+bool ScriptUIProxy::WasHoverEnter() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->onEnter;
+}
+
+bool ScriptUIProxy::WasHoverExit() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->onExit;
+}
+
+bool ScriptUIProxy::IsHovered() const
+{
+    return GetButtonPhase() == UIButtonPhase::Hovered;
+}
+
+bool ScriptUIProxy::IsPressed() const
+{
+    return GetButtonPhase() == UIButtonPhase::Pressed;
+}
+
+bool ScriptUIProxy::IsInteractable() const
+{
+    const auto* b = SelfComponent<UIButton>(script);
+    return b && b->enabled && b->isInteractable;
+}
+
+UIButtonPhase ScriptUIProxy::GetButtonPhase() const
+{
+    return ToButtonPhase(SelfComponent<UIButton>(script));
+}
+
+bool ScriptUIProxy::WasClicked(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->onClick;
+}
+
+bool ScriptUIProxy::WasHoverEnter(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->onEnter;
+}
+
+bool ScriptUIProxy::WasHoverExit(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->onExit;
+}
+
+bool ScriptUIProxy::IsHovered(GameObject* go) const
+{
+    return GetButtonPhase(go) == UIButtonPhase::Hovered;
+}
+
+bool ScriptUIProxy::IsPressed(GameObject* go) const
+{
+    return GetButtonPhase(go) == UIButtonPhase::Pressed;
+}
+
+bool ScriptUIProxy::IsInteractable(GameObject* go) const
+{
+    const auto* b = ObjectComponent<UIButton>(go);
+    return b && b->enabled && b->isInteractable;
+}
+
+UIButtonPhase ScriptUIProxy::GetButtonPhase(GameObject* go) const
+{
+    return ToButtonPhase(ObjectComponent<UIButton>(go));
+}
+
 void ScriptUIProxy::SetButtonInteractable(bool v) const
 {
     if (auto* b = SelfComponent<UIButton>(script)) b->isInteractable = v;
+}
+
+void ScriptUIProxy::SetButtonInteractable(GameObject* go, bool v) const
+{
+    if (auto* b = ObjectComponent<UIButton>(go)) b->isInteractable = v;
 }
 
 void ScriptUIProxy::SetImageColor(const math::Vector4& color) const
@@ -2284,6 +2543,66 @@ GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath,
     auto* go = Instantiate(prefabPath);
     if (go && init) init(*go);
     return go;
+}
+
+// ── オブジェクトプール ──────────────────────────────────────────────────────
+
+GameObject* ScriptSceneProxy::Spawn(const PrefabRef& prefab,
+                                    const math::Vector3& position,
+                                    const math::Quaternion& rotation) const
+{
+    return Spawn(prefab.path, position, rotation);
+}
+
+GameObject* ScriptSceneProxy::Spawn(const std::string& prefabPath,
+                                    const math::Vector3& position,
+                                    const math::Quaternion& rotation) const
+{
+    if (!script || !script->m_scene) return nullptr;
+    // Instantiate と同じ理由で Scene* を先に退避する。プールが空だった場合は
+    // 内部で Instantiate が走り、GameObject 配列が再確保され得る。
+    Scene* scene = script->m_scene;
+    return PrefabPool::Spawn(*scene, prefabPath, position, rotation);
+}
+
+GameObject* ScriptSceneProxy::Spawn(const PrefabRef& prefab) const
+{
+    if (!script || !script->m_gameObject) return nullptr;
+    // WHY 値へコピーしてから渡すか: Spawn の内部で Instantiate が走ると Scene の
+    //     GameObject 配列が再確保され、m_gameObject->transform の参照先が無効になる。
+    const math::Vector3    position = script->m_gameObject->transform.worldPosition;
+    const math::Quaternion rotation = script->m_gameObject->transform.worldRotation;
+    return Spawn(prefab.path, position, rotation);
+}
+
+bool ScriptSceneProxy::Despawn(GameObject& gameObject) const
+{
+    if (!script || !script->m_scene) return false;
+    return PrefabPool::Despawn(*script->m_scene, gameObject);
+}
+
+bool ScriptSceneProxy::DespawnSelf() const
+{
+    if (!script || !script->m_scene || !script->m_gameObject) return false;
+    return PrefabPool::Despawn(*script->m_scene, *script->m_gameObject);
+}
+
+int ScriptSceneProxy::Prewarm(const PrefabRef& prefab, int count) const
+{
+    return Prewarm(prefab.path, count);
+}
+
+int ScriptSceneProxy::Prewarm(const std::string& prefabPath, int count) const
+{
+    if (!script || !script->m_scene) return 0;
+    Scene* scene = script->m_scene;
+    return PrefabPool::Prewarm(*scene, prefabPath, count);
+}
+
+size_t ScriptSceneProxy::PooledCount(const std::string& prefabPath) const
+{
+    if (!script || !script->m_scene) return 0;
+    return PrefabPool::AvailableCount(*script->m_scene, prefabPath);
 }
 
 void ScriptSceneProxy::LoadScene(std::string_view name) const
@@ -4122,6 +4441,393 @@ bool ScriptGameplayProxy::SetAudioMixerSend(std::string_view busName, float leve
     component->busName = std::string(busName);
     component->sendLevel = std::clamp(level, 0.0f, 1.0f);
     return true;
+}
+
+// ── ScriptSaveProxy ─────────────────────────────────────────────────────────
+// util::SaveData へそのまま転送する。スクリプトに Engine 実装を include させないための層。
+
+void ScriptSaveProxy::SetSlot(std::string_view path) const
+{
+    util::SaveData::SetSlotPath(std::string(path));
+}
+
+std::string ScriptSaveProxy::GetSlot() const
+{
+    return util::SaveData::GetSlotPath();
+}
+
+void ScriptSaveProxy::SetBool(std::string_view key, bool value) const
+{
+    util::SaveData::SetBool(key, value);
+}
+
+void ScriptSaveProxy::SetInt(std::string_view key, int value) const
+{
+    util::SaveData::SetInt(key, value);
+}
+
+void ScriptSaveProxy::SetFloat(std::string_view key, float value) const
+{
+    util::SaveData::SetFloat(key, value);
+}
+
+void ScriptSaveProxy::SetString(std::string_view key, std::string_view value) const
+{
+    util::SaveData::SetString(key, value);
+}
+
+void ScriptSaveProxy::SetVector2(std::string_view key, const math::Vector2& value) const
+{
+    util::SaveData::SetVector2(key, value);
+}
+
+void ScriptSaveProxy::SetVector3(std::string_view key, const math::Vector3& value) const
+{
+    util::SaveData::SetVector3(key, value);
+}
+
+void ScriptSaveProxy::SetVector4(std::string_view key, const math::Vector4& value) const
+{
+    util::SaveData::SetVector4(key, value);
+}
+
+bool ScriptSaveProxy::GetBool(std::string_view key, bool defaultValue) const
+{
+    return util::SaveData::GetBool(key, defaultValue);
+}
+
+int ScriptSaveProxy::GetInt(std::string_view key, int defaultValue) const
+{
+    return util::SaveData::GetInt(key, defaultValue);
+}
+
+float ScriptSaveProxy::GetFloat(std::string_view key, float defaultValue) const
+{
+    return util::SaveData::GetFloat(key, defaultValue);
+}
+
+std::string ScriptSaveProxy::GetString(std::string_view key, std::string_view defaultValue) const
+{
+    return util::SaveData::GetString(key, defaultValue);
+}
+
+math::Vector2 ScriptSaveProxy::GetVector2(std::string_view key, const math::Vector2& defaultValue) const
+{
+    return util::SaveData::GetVector2(key, defaultValue);
+}
+
+math::Vector3 ScriptSaveProxy::GetVector3(std::string_view key, const math::Vector3& defaultValue) const
+{
+    return util::SaveData::GetVector3(key, defaultValue);
+}
+
+math::Vector4 ScriptSaveProxy::GetVector4(std::string_view key, const math::Vector4& defaultValue) const
+{
+    return util::SaveData::GetVector4(key, defaultValue);
+}
+
+bool ScriptSaveProxy::Has(std::string_view key) const
+{
+    return util::SaveData::Has(key);
+}
+
+void ScriptSaveProxy::Remove(std::string_view key) const
+{
+    util::SaveData::Remove(key);
+}
+
+void ScriptSaveProxy::Clear() const
+{
+    util::SaveData::Clear();
+}
+
+bool ScriptSaveProxy::Save() const
+{
+    return util::SaveData::Save();
+}
+
+bool ScriptSaveProxy::Load() const
+{
+    return util::SaveData::Load();
+}
+
+bool ScriptSaveProxy::IsDirty() const
+{
+    return util::SaveData::IsDirty();
+}
+
+// ── ScriptEventProxy ────────────────────────────────────────────────────────
+// Subscribe / Publish はテンプレートなのでヘッダ側。ここは非テンプレート分だけ。
+
+void ScriptEventProxy::UnsubscribeAll() const
+{
+    ScriptEventBus::UnsubscribeOwner(script);
+}
+
+// ── ScriptRandomProxy ───────────────────────────────────────────────────────
+
+float ScriptRandomProxy::Value() const
+{
+    return util::Random::Value();
+}
+
+float ScriptRandomProxy::Range(float min, float max) const
+{
+    return util::Random::Range(min, max);
+}
+
+int ScriptRandomProxy::Range(int min, int max) const
+{
+    return util::Random::Range(min, max);
+}
+
+bool ScriptRandomProxy::Chance(float probability) const
+{
+    return util::Random::Value() < probability;
+}
+
+float ScriptRandomProxy::Sign() const
+{
+    return util::Random::Value() < 0.5f ? -1.0f : 1.0f;
+}
+
+math::Vector2 ScriptRandomProxy::InsideUnitCircle() const
+{
+    return util::Random::InsideUnitCircle();
+}
+
+math::Vector2 ScriptRandomProxy::OnUnitCircle() const
+{
+    return util::Random::OnUnitCircle();
+}
+
+math::Vector3 ScriptRandomProxy::InsideUnitSphere() const
+{
+    return util::Random::InsideUnitSphere();
+}
+
+math::Vector3 ScriptRandomProxy::OnUnitSphere() const
+{
+    return util::Random::OnUnitSphere();
+}
+
+math::Vector3 ScriptRandomProxy::ConeDirection(const math::Vector3& axis, float maxAngleDeg) const
+{
+    const math::Vector3 forward = axis.Normalized();
+    if (maxAngleDeg <= 0.0f) return forward;
+
+    // 円錐内の一様サンプリング。cos を一様に引くことで、頂点付近に偏らせない。
+    const float maxCos = std::cos(std::clamp(maxAngleDeg, 0.0f, 180.0f) * DEG_TO_RAD);
+    const float cosTheta = util::Random::Range(maxCos, 1.0f);
+    const float sinTheta = std::sqrt((std::max)(0.0f, 1.0f - cosTheta * cosTheta));
+    const float phi = util::Random::Range(0.0f, 6.28318530718f);
+
+    // forward に直交する基底を作る。forward と平行になりにくい軸を選んで外積する。
+    const math::Vector3 reference =
+        std::abs(forward.y) < 0.99f ? math::Vector3{ 0.0f, 1.0f, 0.0f }
+                                    : math::Vector3{ 1.0f, 0.0f, 0.0f };
+    const math::Vector3 right = math::Vector3::Cross(forward, reference).Normalized();
+    const math::Vector3 up    = math::Vector3::Cross(right, forward);
+
+    return (right * (sinTheta * std::cos(phi))
+          + up    * (sinTheta * std::sin(phi))
+          + forward * cosTheta).Normalized();
+}
+
+void ScriptRandomProxy::SetSeed(uint32_t seed) const
+{
+    util::Random::SetSeed(static_cast<unsigned int>(seed));
+}
+
+// ── ScriptTweenProxy ────────────────────────────────────────────────────────
+
+float ScriptTweenProxy::Evaluate(TweenEase ease, float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    switch (ease) {
+    case TweenEase::InQuad:     return util::Easing::EaseInQuad(t);
+    case TweenEase::OutQuad:    return util::Easing::EaseOutQuad(t);
+    case TweenEase::InOutQuad:  return util::Easing::EaseInOutQuad(t);
+    case TweenEase::InCubic:    return util::Easing::EaseInCubic(t);
+    case TweenEase::OutCubic:   return util::Easing::EaseOutCubic(t);
+    case TweenEase::InOutCubic: return util::Easing::EaseInOutCubic(t);
+    case TweenEase::InSine:     return util::Easing::EaseInSine(t);
+    case TweenEase::OutSine:    return util::Easing::EaseOutSine(t);
+    case TweenEase::InOutSine:  return util::Easing::EaseInOutSine(t);
+    case TweenEase::InExpo:     return util::Easing::EaseInExpo(t);
+    case TweenEase::OutExpo:    return util::Easing::EaseOutExpo(t);
+    case TweenEase::InOutExpo:  return util::Easing::EaseInOutExpo(t);
+    case TweenEase::InBack:     return util::Easing::EaseInBack(t);
+    case TweenEase::OutBack:    return util::Easing::EaseOutBack(t);
+    case TweenEase::InOutBack:  return util::Easing::EaseInOutBack(t);
+    case TweenEase::OutElastic: return util::Easing::EaseOutElastic(t);
+    case TweenEase::OutBounce:  return util::Easing::EaseOutBounce(t);
+    case TweenEase::Linear:
+    default:                    return t;
+    }
+}
+
+namespace {
+
+// Tween 1 ステップぶんの経過時間。Scaled / Unscaled の分岐をここへ集約する。
+float TweenStepDelta(const Script* script, TweenClock clock)
+{
+    if (!script) return 0.0f;
+    return clock == TweenClock::Unscaled ? script->time.UnscaledDeltaTime()
+                                         : script->time.DeltaTime();
+}
+
+} // namespace
+
+Coroutine ScriptTweenProxy::MoveTo(math::Vector3 target, float duration,
+                                   TweenEase ease, TweenClock clock) const
+{
+    // WHY 引数を値で受けるか: コルーチンの引数は最初の中断で保存されるが、参照は
+    //     呼び出し側の一時オブジェクトを指したまま残り得るため必ずコピーで持つ。
+    Script* owner = script;
+    if (!owner) co_return;
+
+    if (duration <= 0.0f) {
+        owner->transform.position = target;
+        co_return;
+    }
+
+    const math::Vector3 start = owner->transform.position;
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        owner->transform.position = math::Vector3::Lerp(start, target, t);
+    }
+    // 端数で終値に届かないことがあるため、最後に必ず合わせる。
+    owner->transform.position = target;
+}
+
+Coroutine ScriptTweenProxy::MoveBy(math::Vector3 delta, float duration,
+                                   TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner) co_return;
+
+    // 開始位置は呼ばれた「今」を基準にする。連続で呼べば相対移動として積み上がる。
+    // WHY MoveTo を co_await せず展開するか: Coroutine 自体は awaiter ではないため
+    //     (待機命令は WaitForSeconds 等のみ)、入れ子にできない。処理を直接書く。
+    const math::Vector3 start  = owner->transform.position;
+    const math::Vector3 target = start + delta;
+
+    if (duration <= 0.0f) {
+        owner->transform.position = target;
+        co_return;
+    }
+
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        owner->transform.position = math::Vector3::Lerp(start, target, t);
+    }
+    owner->transform.position = target;
+}
+
+Coroutine ScriptTweenProxy::ScaleTo(math::Vector3 target, float duration,
+                                    TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner) co_return;
+
+    if (duration <= 0.0f) {
+        owner->transform.scale = target;
+        co_return;
+    }
+
+    const math::Vector3 start = owner->transform.scale;
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        owner->transform.scale = math::Vector3::Lerp(start, target, t);
+    }
+    owner->transform.scale = target;
+}
+
+Coroutine ScriptTweenProxy::RotateTo(math::Quaternion target, float duration,
+                                     TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner) co_return;
+
+    if (duration <= 0.0f) {
+        owner->transform.rotation = target;
+        co_return;
+    }
+
+    const math::Quaternion start = owner->transform.rotation;
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        // WHY Slerp か: 角速度が一定になるため、イージング曲線の形がそのまま
+        //     見た目の速度変化になる。Lerp だと曲線に回転量の歪みが乗る。
+        owner->transform.rotation = math::Quaternion::Slerp(start, target, t);
+    }
+    owner->transform.rotation = target;
+}
+
+Coroutine ScriptTweenProxy::Value(float from, float to, float duration,
+                                  std::function<void(float)> apply,
+                                  TweenEase ease, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner || !apply) co_return;
+
+    if (duration <= 0.0f) {
+        apply(to);
+        co_return;
+    }
+
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+        const float t = Evaluate(ease, elapsed / duration);
+        apply(from + (to - from) * t);
+    }
+    apply(to);
+}
+
+Coroutine ScriptTweenProxy::ShakePosition(float amplitude, float duration,
+                                          float frequency, TweenClock clock) const
+{
+    Script* owner = script;
+    if (!owner || duration <= 0.0f || amplitude <= 0.0f) co_return;
+
+    const math::Vector3 origin = owner->transform.position;
+    // 揺れの向きは毎フレーム引き直すのではなく、位相を進めた正弦で決める。
+    // WHY: 毎フレーム乱数だとフレームレートで揺れの速さが変わってしまう。
+    //      周波数で定義すれば、何 fps でも同じ速さに見える。
+    util::RandomStream rng{ static_cast<uint64_t>(
+        static_cast<uint32_t>(amplitude * 1000.0f) + 1u) };
+    const math::Vector3 axisA = rng.OnUnitSphere();
+    const math::Vector3 axisB = rng.OnUnitSphere();
+
+    float elapsed = 0.0f;
+    while (elapsed < duration) {
+        co_await WaitForFrames(1);
+        elapsed += TweenStepDelta(owner, clock);
+
+        const float normalized = std::clamp(elapsed / duration, 0.0f, 1.0f);
+        const float decay = 1.0f - normalized;               // 線形に収束させる
+        const float phase = elapsed * frequency;
+        const math::Vector3 offset =
+            axisA * (std::sin(phase) * amplitude * decay) +
+            axisB * (std::cos(phase * 1.37f) * amplitude * decay);
+        owner->transform.position = origin + offset;
+    }
+    owner->transform.position = origin;
 }
 
 } // namespace fbzz::scene

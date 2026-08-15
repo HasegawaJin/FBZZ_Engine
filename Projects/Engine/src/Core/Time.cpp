@@ -14,6 +14,9 @@ float    Time::unscaledDeltaTime = 0.0f;
 float    Time::time              = 0.0f;
 float    Time::unscaledTime      = 0.0f;
 uint64_t Time::frameCount        = 0;
+// 既定値は SceneManager が設定する Phase::Physics の 60Hz と一致させる。
+// 実際の値は固定ステップ実行時に FixedScriptSystem が毎回上書きする。
+float    Time::fixedDeltaTime    = 1.0f / 60.0f;
 float    Time::timeScale         = 1.0f;
 int      Time::targetFps         = 0;
 int64_t  Time::s_lastCount       = 0;
