@@ -114,6 +114,9 @@ void DX12ImGuiRenderer::ImGuiRenderDrawData()
 {
     if (!m_imguiInitialized || !m_context->IsFrameOpen())
         return;
+    // ImGui はここから自前のルートシグネチャ・PSO・ヒープを共有コマンドリストへ設定する。
+    // DX12Renderer::Submit が持つ「直前に束縛した状態」のキャッシュを無効化させる。
+    m_context->MarkPipelineStateDirty();
     ID3D12DescriptorHeap* heaps[] = {m_context->GetImGuiSrvHeap()};
     m_context->GetCommandList()->SetDescriptorHeaps(1, heaps);
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_context->GetCommandList());

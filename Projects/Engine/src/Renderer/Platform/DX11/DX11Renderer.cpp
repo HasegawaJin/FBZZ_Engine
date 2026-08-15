@@ -19,6 +19,7 @@
 #include "DX11Texture.hpp"
 #include "DX11RenderTarget.hpp"
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
 #include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
@@ -385,8 +386,11 @@ bool DX11Renderer::BakeSkyLight(ResourceHandle<RenderTargetTag> envCubeRT, Resou
 
     // 入力キューブは mip0 のみ (SkyCapture)。prefilter の env LOD は mip0 を参照する (envMipCount=1)。
     // ConvolveCubeToTextures は結果を戻り値で返す (out 引数ではない)。
+    // WHY: プロジェクトへEngine shaderを複製せず、GameHubが選択したSDKの共有assetを使う。
+    const std::string compiledShaders =
+        asset::AssetManager::ResolveAssetPath("Assets/Shaders/compiled/");
     IblTextureSet set = m_runtimeIblBaker->ConvolveCubeToTextures(
-        envSRV, "Assets/Shaders/compiled/",
+        envSRV, compiledShaders,
         irradianceSize, prefilterSize, prefilterMips, sampleCount, /*envMipCount=*/1);
     if (!set.IsValid()) return false;
 
@@ -621,6 +625,18 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         hasVsBuffers = true;
     }
 
+    // PS-readable StructuredBuffer (t29〜t30): クラスタライティングのライト配列 / インデックスリスト
+    // WHY: vsBuffers は VS にしか束縛されないため、PS からバッファを読む経路がこれしかない。
+    bool hasPsBuffers = false;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.psBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.psBuffers[i]);
+        if (!sb) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+        m_context->PSSetShaderResources(kPsBufferBaseSlot + i, 1, &srv);
+        hasPsBuffers = true;
+    }
+
     if (auto* indexBuffer = resources.Get(call.indexBuffer))
     {
         // DXGI_FORMAT_R32_UINT: インデックスは uint32_t 固定
@@ -650,6 +666,14 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
         m_context->VSSetShaderResources(14, 2, nullSRVs);
     }
+    // PS SRV も解除する。クラスタバッファは CS が UAV として書き込むため、
+    // 束縛したままだと次フレームの Dispatch で SRV/UAV が同一リソースへ同時束縛になり、
+    // ドライバーが UAV 側を黙って無効化する (D3D11 の警告付き)。
+    if (hasPsBuffers)
+    {
+        ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+        m_context->PSSetShaderResources(kPsBufferBaseSlot, 2, nullSRVs);
+    }
 }
 
 // =============================================================================
@@ -659,6 +683,10 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
 void DX11Renderer::Resize(uint32_t width, uint32_t height)
 {
     if (width == 0 || height == 0) return;
+    // WHY 同寸で弾くか: WM_SIZE は最大化/復元/フォーカス変化などで同じ寸法のまま何度も届く。
+    //     素通しすると毎回 RTV/DSV の破棄と ResizeBuffers が走り、深度バッファの再確保で
+    //     目に見えるヒッチが出る。実際に寸法が変わった時だけ再構築する。
+    if (width == m_width && height == m_height) return;
 
     m_width  = width;
     m_height = height;

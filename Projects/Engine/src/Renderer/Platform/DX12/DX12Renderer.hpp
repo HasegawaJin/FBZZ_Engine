@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Engine/Renderer/IRenderer.hpp>
+#include <unordered_map>
 #include <unordered_set>
 #include "DX12Context.hpp"
 #include "DX12UploadArena.hpp"
@@ -91,16 +92,55 @@ private:
     D3D12_GPU_VIRTUAL_ADDRESS m_nullConstantAddress = 0;
 
     // WHY: 連続する Draw が同じテクスチャ/バッファ集合を束縛する場合 (同一マテリアルのバッチ等)、
-    //      shader-visible リングへの CopyDescriptorsSimple を毎 Draw 発行するのは無駄。
-    //      直前 Draw の束縛シグネチャと GPU テーブルをキャッシュし、一致すればコピーを丸ごと省略する。
+    //      shader-visible リングへの CopyDescriptors を毎 Draw 発行するのは無駄。
+    //      束縛シグネチャをキーに GPU テーブルをキャッシュし、一致すればコピーを丸ごと省略する。
     //      リングはフレームごとに巻き戻る (BeginFrame でオフセットリセット) ため、フレームを跨いだ
     //      再利用は不可 — BeginFrame で必ず無効化する。
-    std::array<ResourceHandle<TextureTag>, 32> m_lastPixelTextures{};
+    //
+    // WHY 直前 1 件ではなくフレーム内マップか: GBuffer のようにマテリアルが交互に来るパスでは
+    //      「直前と同じか」だけの判定はほぼ毎 Draw で外れ、32 回のディスクリプタコピーが
+    //      そのまま記録コストになる。フレーム内で同じ束縛が再登場したら必ず当たるようにする。
+    // テクスチャ 32 枠 + PS-readable StructuredBuffer 2 枠を (id,gen) へ畳んだ束縛シグネチャ。
+    // WHY タグ違いのハンドルを uint64 へ潰すか: textures は TextureTag、psBuffers は
+    //     StructuredBufferTag と型が違うため 1 本の配列に並べられない。
+    //     比較とハッシュにしか使わないので、identity をそのまま数値化する。
+    static constexpr size_t kPixelTableKeySize = 34;
+    using PixelTableKey = std::array<uint64_t, kPixelTableKeySize>;
+    static PixelTableKey MakePixelTableKey(const DrawCall& call);
+    struct PixelTableKeyHash {
+        size_t operator()(const PixelTableKey& key) const noexcept;
+    };
+    std::unordered_map<PixelTableKey, D3D12_GPU_DESCRIPTOR_HANDLE, PixelTableKeyHash> m_pixelTableCache;
+    // 直前 Draw の結果だけは別に持ち、マップ探索すら省く高速路にする。
+    PixelTableKey m_lastPixelTextures{};
     D3D12_GPU_DESCRIPTOR_HANDLE m_lastPixelTableGpu{};
     bool m_lastPixelTableValid = false;
     std::array<ResourceHandle<StructuredBufferTag>, 3> m_lastVertexBuffers{};
     D3D12_GPU_DESCRIPTOR_HANDLE m_lastVertexTableGpu{};
     bool m_lastVertexTableValid = false;
+
+    // 直前に root スロットへ束縛した CBV の GPU VA。変化したスロットだけ再設定するために持つ。
+    // WHY: 従来は毎 Draw「14 スロットを null で埋めてから実 CB で上書き」していて最大 28 回の
+    //      SetGraphicsRootConstantBufferView が出ていた。GBuffer では実際に変わるのは
+    //      Object CB と Material CB だけなので、差分だけ出せば 2〜3 回で済む。
+    // NOTE: グラフィクスとコンピュートで root signature が別物のため、Dispatch を挟んだら
+    //       必ず無効化する (InvalidateRootCbvCache)。
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, 14> m_lastRootCbv{};
+    bool m_rootCbvCacheValid = false;
+
+    // 冗長なパイプライン状態設定を弾くための直前値。
+    // NOTE: m_lastGraphicsRootSignature は「正しさ」のために必要 (ルートシグネチャの再設定は
+    //       全ルート引数を無効化するため、m_lastRootCbv の前提が崩れる)。
+    //       他の 2 つは記録コスト削減のみが目的。
+    ID3D12RootSignature* m_lastGraphicsRootSignature = nullptr;
+    ID3D12PipelineState* m_lastPipelineState = nullptr;
+    ID3D12DescriptorHeap* m_lastDescriptorHeap = nullptr;
+    // 共有コマンドリストへ他所が記録したことを検知するための世代 (DX12Context 側が上げる)。
+    uint64_t m_seenPipelineStateGeneration = 0;
+
+    // Compute へ切り替えるとグラフィクス側のルート束縛は当てにできなくなる。
+    // Dispatch / BeginFrame / コマンドリスト再取得のたびに呼ぶこと。
+    void InvalidateRootCbvCache();
 
     // 頂点バッファ実ストライドとリフレクション推定ストライドの不一致を
     // シェーダーごとに一度だけ警告するための記録。

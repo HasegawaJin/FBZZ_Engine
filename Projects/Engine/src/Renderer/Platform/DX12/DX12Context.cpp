@@ -15,6 +15,10 @@ namespace fbzz::renderer {
 
 namespace {
 
+// VSync は常時無効。Present の第 1 引数を 0 に固定し、対応環境では tearing も許可する。
+// WHY: フレームレート制御は Application 側の targetFps に任せ、DXGI の表示周期待ちを描画同期に混ぜない。
+constexpr UINT kPresentSyncIntervalNoVsync = 0;
+
 bool CheckResult(HRESULT result, const char* operation)
 {
     if (SUCCEEDED(result))
@@ -135,18 +139,27 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
 #if defined(_DEBUG)
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
     if (SUCCEEDED(m_device.As(&infoQueue))) {
+        // DX11 と同じく、検証は維持しつつ Warning/Info の蓄積と定期フラッシュを止める。
+        // WHY: D3D12 はリソース遷移・ディスクリプタ操作の通知が多く、毎フレーム蓄積すると
+        //      Development/Debug 実行の CPU コストとメモリ使用量が Release と大きく離れる。
+        infoQueue->SetMuteDebugOutput(FALSE);
+        infoQueue->SetMessageCountLimit(-1);
+        infoQueue->ClearStoredMessages();
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, FALSE);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_INFO, FALSE);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_MESSAGE, FALSE);
 
-        // RTはパスごとに異なる色でクリアするため、固定optimized clear valueを持てない。
-        // 結果には影響しない既知の性能通知だけを抑制し、他のWarningは引き続き出力する。
-        D3D12_MESSAGE_ID ignoredIds[] = {
-            D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+        // ERROR 以上は残し、Warning 以下は蓄積自体を止める。
+        D3D12_MESSAGE_SEVERITY denySeverities[] = {
+            D3D12_MESSAGE_SEVERITY_INFO,
+            D3D12_MESSAGE_SEVERITY_MESSAGE,
+            D3D12_MESSAGE_SEVERITY_WARNING,
         };
         D3D12_INFO_QUEUE_FILTER filter{};
-        filter.DenyList.NumIDs = static_cast<UINT>(std::size(ignoredIds));
-        filter.DenyList.pIDList = ignoredIds;
+        filter.DenyList.NumSeverities = static_cast<UINT>(std::size(denySeverities));
+        filter.DenyList.pSeverityList = denySeverities;
         infoQueue->AddStorageFilterEntries(&filter);
     }
 #endif
@@ -160,6 +173,7 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     BOOL tearing = FALSE;
     m_allowTearing = SUCCEEDED(m_factory->CheckFeatureSupport(
         DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing, sizeof(tearing))) && tearing;
+    FBZZ_LOG_INFO("DX12Context: Present VSync=OFF / tearing=%s", m_allowTearing ? "ON" : "OFF");
     return true;
 }
 
@@ -322,7 +336,7 @@ bool DX12Context::BeginFrame()
     // WHY: ロック画面や全面被覆で Present が OCCLUDED を返す間、記録・Present を続けると
     //      GPU/CPU を無駄に消費する。DXGI_PRESENT_TEST は実 Present せず可視性だけ確認する。
     if (m_occluded) {
-        if (m_swapChain->Present(0, DXGI_PRESENT_TEST) != S_OK)
+        if (m_swapChain->Present(kPresentSyncIntervalNoVsync, DXGI_PRESENT_TEST) != S_OK)
             return false;
         m_occluded = false;
     }
@@ -370,7 +384,7 @@ void DX12Context::EndFrame()
     m_commandQueue->Signal(m_fence.Get(), fenceValue);
     m_frames[m_frameIndex].fenceValue = fenceValue;
     const HRESULT presentResult = m_swapChain->Present(
-        0, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
+        kPresentSyncIntervalNoVsync, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
     if (presentResult == DXGI_STATUS_OCCLUDED) {
         // 遮蔽開始。次フレームは BeginFrame の Present-test 復帰待ちへ回す (エラーではない)。
         m_occluded = true;
