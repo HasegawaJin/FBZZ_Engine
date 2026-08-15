@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Inspector/InspectorPanel_Asset.cpp | fbzz::editor
 // Asset Browser から選択したファイル用 Inspector
+// Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
+#include "InspectorCommon.hpp"
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationPreviewPanel.hpp>
@@ -25,6 +27,7 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
@@ -1451,6 +1454,17 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Type: %s", data->GetTypeName());
         ImGui::Separator();
 
+        // 編集前の状態を控える。DataAsset は多態基底で値コピーできないため、
+        // .mat のような「構造体まるごとのコピー」ではなく TOML 直列化を控えに使う。
+        // WHY 毎フレーム取るか: どのウィジェットが掴まれるかは描画前には分からず、
+        //     掴まれた瞬間に「その直前の値」が必要になる。文字列 1 本ぶんの
+        //     コストで、選択中の 1 アセットに対してだけ走る。
+        const bool canRecordFzDataUndo = CanRecordEditorUndo(ctx);
+        const std::string fzdataBeforeDraw = canRecordFzDataUndo
+            ? asset::DataAssetRegistry::Snapshot(relPath)
+            : std::string{};
+        const ImGuiID fzdataActiveBefore = ImGui::GetActiveID();
+
         // 各オーバーライドのパラメーターは共通リフレクタで描く。
         // WHY 共通のものを使うか: Reflect() が既にレンジとカラーヒントを持っており、
         //     ImGuiReflector はそれをプロパティ行・カラーピッカー・ファイルスロットへ
@@ -1490,6 +1504,82 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             s_fzdataDirty = false;
         }
 
+        // ── Undo 記録 ────────────────────────────────────────────────────────
+        // WHY: .fzdata だけ Undo が一切効かず、しかも自動保存でディスクへ即書き戻すため、
+        //      値を壊すと戻す手段が無かった (Ctrl+Z を押しても無関係な履歴が戻るだけ)。
+        //      記録の粒度は .mat と同じ「ウィジェットを掴んでから離すまで = 1 操作」。
+        //      フレーム単位で積むとドラッグ 1 回が数十件の中間値で履歴を埋めてしまう。
+        struct FzDataUndoTracker {
+            std::string path;      // どの .fzdata に対する記録か
+            std::string before;    // 掴んだ直前のスナップショット
+            ImGuiID     activeId = 0;
+            bool        active   = false;
+            bool        changed  = false;
+        };
+        static FzDataUndoTracker fzdataUndo;
+        const ImGuiID fzdataActiveAfter = ImGui::GetActiveID();
+
+        auto pushFzDataCommand = [&ctx, &relPath](const std::string& before,
+                                                  const std::string& after) {
+            if (!ctx.undoStack || before.empty() || before == after) return;
+            EditorContext*    context      = &ctx;
+            const std::string capturedPath = relPath;
+            auto apply = [context, capturedPath](const std::string& snapshot) {
+                if (!asset::DataAssetRegistry::RestoreSnapshot(capturedPath, snapshot)) return;
+                // 復元した値はディスクへも書き戻す。
+                // WHY: .fzdata は編集確定ごとに自動保存される。メモリだけ戻すと
+                //      次のロードやホットリロードで巻き戻り、「Undo したのに直っていない」
+                //      という一番たちの悪い壊れ方になる (.mat と同じ規則へ揃える)。
+                asset::DataAssetRegistry::Save(capturedPath);
+                context->requestAssetBrowserRefresh = true;
+            };
+            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                "Edit Data Asset",
+                [apply, after]()  { apply(after); },
+                [apply, before]() { apply(before); }));
+        };
+
+        if (!canRecordFzDataUndo) {
+            fzdataUndo.active = false;
+        } else {
+            // 選択が別の .fzdata へ移ったら記録途中の操作は捨てる
+            // (別アセットの値で before/after が混ざるのを防ぐ)。
+            if (fzdataUndo.active && fzdataUndo.path != relPath)
+                fzdataUndo.active = false;
+
+            if (!fzdataUndo.active) {
+                if (fzdataActiveAfter != 0 && fzdataActiveAfter != fzdataActiveBefore) {
+                    fzdataUndo.path     = relPath;
+                    fzdataUndo.before   = fzdataBeforeDraw;
+                    fzdataUndo.activeId = fzdataActiveAfter;
+                    fzdataUndo.active   = true;
+                    fzdataUndo.changed  = editedThisFrame;
+                } else if (editedThisFrame) {
+                    // 掴まずに 1 フレームで確定した編集 (オーバーライドの追加・削除など)。
+                    // 掴み→離しの経路に乗らないので、その場で 1 操作として積む。
+                    pushFzDataCommand(fzdataBeforeDraw,
+                                      asset::DataAssetRegistry::Snapshot(relPath));
+                }
+            } else if (fzdataActiveAfter == fzdataUndo.activeId) {
+                fzdataUndo.changed |= editedThisFrame;   // ドラッグ継続中
+            } else {
+                // 離したフレーム。ボタンは「離した瞬間」に効くので、この 1 回ぶんも拾う。
+                fzdataUndo.changed |= editedThisFrame;
+                if (fzdataUndo.changed)
+                    pushFzDataCommand(fzdataUndo.before,
+                                      asset::DataAssetRegistry::Snapshot(relPath));
+                fzdataUndo.active  = false;
+                fzdataUndo.changed = false;
+                // 離した直後に別ウィジェットを掴んでいたら、そこから記録し直す。
+                if (fzdataActiveAfter != 0) {
+                    fzdataUndo.path     = relPath;
+                    fzdataUndo.before   = asset::DataAssetRegistry::Snapshot(relPath);
+                    fzdataUndo.activeId = fzdataActiveAfter;
+                    fzdataUndo.active   = true;
+                }
+            }
+        }
+
         ImGui::Spacing();
         ImGui::Separator();
         // 保険の手動保存 (自動保存があるので通常は不要)。
@@ -1497,6 +1587,131 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             asset::DataAssetRegistry::Save(relPath);
         ImGui::SameLine();
         ImGui::TextDisabled(s_fzdataDirty && s_fzdataDirtyPath == relPath
+                            ? "Saving on release..." : "Auto-saved");
+    } else if (ext == ".physmat") {
+        // ── PhysicsMaterial (共有物理マテリアル) ──────────────────────────
+        // WHY AssetManager 上の実体を直接編集するか:
+        //     ColliderComponent::ResolvePhysicsMaterial() が毎フレーム同じキャッシュから
+        //     値を引いている。ここを書き換えれば、参照している全コライダーの物性が
+        //     再ロードもシーン再生も挟まずにその場で変わる (アセットを共有にした本来の狙い)。
+        const std::string relPath = NormalizeAssetPath(absPath);
+        const auto handle = asset::AssetManager::Load<asset::PhysicsMaterialAsset>(relPath);
+        auto* physicsMaterial = asset::AssetManager::Get<asset::PhysicsMaterialAsset>(handle);
+        if (!physicsMaterial) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .physmat");
+            return;
+        }
+
+        // 掴む直前の値を毎フレーム控える (.fzdata と同じ理由: どのウィジェットが
+        // 掴まれるかは描画前に分からない)。中身は float 数個なのでコピーは無視できる。
+        const bool canRecordUndo = CanRecordEditorUndo(ctx);
+        const asset::PhysicsMaterialAsset beforeDraw = *physicsMaterial;
+        const ImGuiID activeBefore = ImGui::GetActiveID();
+
+        bool editedByPreset = false;
+        if (ImGui::BeginCombo("Preset", physicsMaterial->presetName.empty()
+                                            ? "(custom)"
+                                            : physicsMaterial->presetName.c_str())) {
+            for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
+                const char* name = physics::PhysicsMaterial::PresetName(i);
+                if (!ImGui::Selectable(name)) continue;
+                if (const auto* preset = physics::PhysicsMaterial::PresetAt(i)) {
+                    physicsMaterial->material   = *preset;
+                    physicsMaterial->presetName = name;
+                    editedByPreset = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::Separator();
+
+        // フィールドは共通リフレクタで描く (Inspector と TOML 出力で同じ Reflect を共有)。
+        ImGuiReflector reflector;
+        reflector.m_projectRoot = ctx.projectRoot;
+        physicsMaterial->Reflect(reflector);
+
+        ImGui::Spacing();
+        ImGui::TextDisabled("合成規則が異なる材質同士では、優先度の高い側が採用される");
+        ImGui::TextDisabled("(Average < Geometric Mean < Minimum < Multiply < Maximum)");
+
+        // 自動保存 (.fzdata と同じ規則: 操作が終わったフレームで書き戻す)。
+        const bool editedThisFrame =
+            (GImGui && GImGui->ActiveIdHasBeenEditedThisFrame) || editedByPreset;
+        static bool        s_physmatDirty = false;
+        static std::string s_physmatDirtyPath;
+        if (editedThisFrame) {
+            s_physmatDirty     = true;
+            s_physmatDirtyPath = relPath;
+            // プリセット以外の手編集はプリセット由来の表示を外す。
+            if (!editedByPreset) physicsMaterial->presetName.clear();
+        }
+        if (s_physmatDirty && s_physmatDirtyPath == relPath && !ImGui::IsAnyItemActive()) {
+            if (asset::SavePhysicsMaterialAssetToFile(absPath, *physicsMaterial))
+                ctx.requestAssetBrowserRefresh = true;
+            s_physmatDirty = false;
+        }
+
+        // Undo: 掴んでから離すまでを 1 操作として積む (.mat / .fzdata と同じ粒度)。
+        struct PhysMatUndoTracker {
+            std::string                  path;
+            asset::PhysicsMaterialAsset  before;
+            ImGuiID                      activeId = 0;
+            bool                         active   = false;
+        };
+        static PhysMatUndoTracker physmatUndo;
+        const ImGuiID activeAfter = ImGui::GetActiveID();
+
+        auto pushPhysMatCommand = [&ctx, &relPath, &absPath](
+            const asset::PhysicsMaterialAsset& before,
+            const asset::PhysicsMaterialAsset& after) {
+            if (!ctx.undoStack) return;
+            EditorContext*    context     = &ctx;
+            const std::string capturedRel = relPath;
+            const std::string capturedAbs = absPath;
+            auto apply = [context, capturedRel, capturedAbs](const asset::PhysicsMaterialAsset& value) {
+                const auto h = asset::AssetManager::Load<asset::PhysicsMaterialAsset>(capturedRel);
+                auto* target = asset::AssetManager::Get<asset::PhysicsMaterialAsset>(h);
+                if (!target) return;
+                *target = value;
+                // メモリだけ戻すと次のロードで巻き戻るため、ディスクへも書き戻す。
+                (void)asset::SavePhysicsMaterialAssetToFile(capturedAbs, value);
+                context->requestAssetBrowserRefresh = true;
+            };
+            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                "Edit Physics Material",
+                [apply, after]()  { apply(after); },
+                [apply, before]() { apply(before); }));
+        };
+
+        if (!canRecordUndo) {
+            physmatUndo.active = false;
+        } else {
+            if (physmatUndo.active && physmatUndo.path != relPath)
+                physmatUndo.active = false;
+
+            if (!physmatUndo.active) {
+                if (activeAfter != 0 && activeAfter != activeBefore) {
+                    physmatUndo.path     = relPath;
+                    physmatUndo.before   = beforeDraw;
+                    physmatUndo.activeId = activeAfter;
+                    physmatUndo.active   = true;
+                } else if (editedByPreset) {
+                    // プリセット適用は掴み→離しの経路に乗らないため、その場で 1 操作にする。
+                    pushPhysMatCommand(beforeDraw, *physicsMaterial);
+                }
+            } else if (activeAfter != physmatUndo.activeId) {
+                // 掴んでいたウィジェットから手が離れた = 1 操作の終わり。
+                pushPhysMatCommand(physmatUndo.before, *physicsMaterial);
+                physmatUndo.active = false;
+            }
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (ImGui::Button("Save .physmat"))
+            (void)asset::SavePhysicsMaterialAssetToFile(absPath, *physicsMaterial);
+        ImGui::SameLine();
+        ImGui::TextDisabled(s_physmatDirty && s_physmatDirtyPath == relPath
                             ? "Saving on release..." : "Auto-saved");
     } else {
         ImGui::TextDisabled("Type: %s", ext.c_str());

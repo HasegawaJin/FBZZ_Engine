@@ -20,6 +20,8 @@
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/ModelAssetImporter.hpp>
 #include <Engine/Asset/ModelImporter.hpp>
+#include <Engine/Asset/PhysicsMaterialAsset.hpp>
+#include <Engine/Asset/PhysicsMaterialImporter.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
@@ -379,6 +381,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     RegisterImporter<TerrainAsset>            (std::make_unique<TerrainImporter>());
     RegisterImporter<TextureAsset>            (std::make_unique<ImageImporter>());
     RegisterImporter<IblAsset>               (std::make_unique<IblImporter>());
+    RegisterImporter<PhysicsMaterialAsset>    (std::make_unique<PhysicsMaterialImporter>());
 }
 
 void AssetManager::UnloadAll()
@@ -503,6 +506,12 @@ AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& re
 }
 
 template<>
+AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath)
+{
+    return LoadFromStore<PhysicsMaterialAsset>(relativePath);
+}
+
+template<>
 ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h)
 {
     return GetFromStore<ModelAsset>(h);
@@ -539,6 +548,12 @@ TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h)
 }
 
 template<>
+PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h)
+{
+    return GetFromStore<PhysicsMaterialAsset>(h);
+}
+
+template<>
 void AssetManager::Unload<ModelAsset>(const std::string& relativePath)
 {
     UnloadFromStore<ModelAsset>(relativePath);
@@ -572,6 +587,12 @@ template<>
 void AssetManager::Unload<TextureAsset>(const std::string& relativePath)
 {
     UnloadFromStore<TextureAsset>(relativePath);
+}
+
+template<>
+void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath)
+{
+    UnloadFromStore<PhysicsMaterialAsset>(relativePath);
 }
 
 void AssetManager::FlushFailed()

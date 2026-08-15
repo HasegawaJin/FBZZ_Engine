@@ -10,6 +10,11 @@ namespace fbzz::physics
         : m_halfExtents(halfExtents)
     {}
 
+    float AABBCollider::ComputeVolume() const
+    {
+        return 8.0f * m_halfExtents.x * m_halfExtents.y * m_halfExtents.z;
+    }
+
     AABB AABBCollider::GetAABB() const
     {
         return { m_worldCenter - m_halfExtents, m_worldCenter + m_halfExtents };

@@ -3,12 +3,18 @@
 // 球形コライダー
 #include <Physics/SphereCollider.hpp>
 
-namespace fbzz::physics 
+namespace fbzz::physics
 {
 
     SphereCollider::SphereCollider(float radius)
         : m_radius(radius)
     {}
+
+    float SphereCollider::ComputeVolume() const
+    {
+        constexpr float PI = 3.14159265358979323846f;
+        return (4.0f / 3.0f) * PI * m_radius * m_radius * m_radius;
+    }
 
     AABB SphereCollider::GetAABB() const
     {

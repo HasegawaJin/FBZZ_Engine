@@ -7,41 +7,81 @@ namespace fbzz::editor {
 
 namespace {
 
-void DrawColliderCommon(scene::ColliderComponent& col)
+// プリセット適用ボタン。共有アセットを使っていないコライダーの初期値決めに使う。
+// WHY ここに出すか: physics::PhysicsMaterial のプリセット (Rubber / Ice / ...) は
+//     以前から定義されていたのに Editor から選ぶ手段が無く、実質使われていなかった。
+void DrawPhysicsMaterialPresetMenu(physics::PhysicsMaterial& material)
+{
+    // 選択結果を保持しない「適用するだけ」のコンボ。
+    // WHY 現在値を表示しないか: 適用後に値を手で触れるため、プリセット名を出すと
+    //     実際の値と食い違ったまま表示が残る。適用の入口としてだけ機能させる。
+    if (!ImGui::BeginCombo("Preset", "Apply preset..."))
+        return;
+    for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
+        const char* name = physics::PhysicsMaterial::PresetName(i);
+        if (!ImGui::Selectable(name)) continue;
+        if (const auto* preset = physics::PhysicsMaterial::PresetAt(i))
+            material = *preset;
+    }
+    ImGui::EndCombo();
+}
+
+void DrawColliderCommon(scene::ColliderComponent& col, const std::string& projectRoot)
 {
     widgets::DragVec3("Center", col.center, 0.01f, -1000.0f, 1000.0f);
     ImGui::Checkbox("Is Trigger", &col.isTrigger);
+
+    // 共有 .physmat スロット。割り当てるとインライン編集を閉じる。
+    if (widgets::AssetPathField("Physics Material", col.physicsMaterialPath, ".physmat", projectRoot))
+        col.ResolvePhysicsMaterial();
+
+    const bool usesSharedAsset = !col.physicsMaterialPath.empty();
+    if (usesSharedAsset) {
+        // 解決済みの実効値を読み取り専用で見せる。
+        // WHY 表示するか: 「このコライダーが結局どんな物性で動くのか」を、
+        //     .physmat を開き直さずに確認できるようにする。編集は共有アセット側で行う。
+        col.ResolvePhysicsMaterial();
+        ImGui::TextDisabled("Restitution %.3f  /  Friction %.3f (static %.3f)  /  Density %.3f",
+                            col.material.restitution,
+                            col.material.dynamicFriction,
+                            col.material.staticFriction,
+                            col.material.density);
+        ImGui::TextDisabled("値の編集は .physmat 側で行う (参照している全コライダーへ反映)");
+        return;
+    }
+
+    DrawPhysicsMaterialPresetMenu(col.material);
     ImGui::DragFloat("Restitution", &col.material.restitution, 0.01f, 0.0f, 1.0f);
     ImGui::DragFloat("Static Friction", &col.material.staticFriction, 0.01f, 0.0f, 10.0f);
     ImGui::DragFloat("Dynamic Friction", &col.material.dynamicFriction, 0.01f, 0.0f, 10.0f);
     ImGui::DragFloat("Density", &col.material.density, 0.01f, 0.0f, 100000.0f);
 }
 
-void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go)
+void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col);
+    DrawColliderCommon(col, projectRoot);
     widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
     // 形状パラメータの反映と姿勢同期は SyncColliderPreview (= ColliderSync) が行う。
     SyncColliderPreview(go, col);
 }
 
-void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go)
+void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col);
+    DrawColliderCommon(col, projectRoot);
     widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
 }
 
-void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& go)
+void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col);
+    DrawColliderCommon(col, projectRoot);
     ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
 }
 
-void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject& go)
+void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col);
+    DrawColliderCommon(col, projectRoot);
     ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
     ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
@@ -49,7 +89,7 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
 
 void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col);
+    DrawColliderCommon(col, projectRoot);
     widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
@@ -68,9 +108,9 @@ void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, 
     SyncColliderPreview(go, col);
 }
 
-void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject& go)
+void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col);
+    DrawColliderCommon(col, projectRoot);
     if (!go.GetComponent<scene::TerrainComponent>())
         ImGui::TextColored({ 1.0f, 0.6f, 0.2f, 1.0f }, "TerrainComponent が同じ GO に必要です");
     SyncColliderPreview(go, col);
@@ -78,7 +118,7 @@ void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject
 
 void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col);
+    DrawColliderCommon(col, projectRoot);
     widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
@@ -103,6 +143,10 @@ void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::Game
 //      geometry (meshPath/meshIndex/useTransformScale) が変わった場合のみ collider をリセットする。
 struct MeshColliderValue {
     physics::PhysicsMaterial material;
+    // 共有 .physmat の参照も Undo 対象に含める。
+    // WHY: 参照だけ戻らないと「Undo したのに物性が元に戻らない」という、
+    //      原因が最も分かりにくい壊れ方をする。
+    std::string physicsMaterialPath;
     math::Vector3 center;
     std::string meshPath;
     int meshIndex = 0;
@@ -113,7 +157,8 @@ struct MeshColliderValue {
 
 MeshColliderValue CaptureMeshColliderValue(const scene::MeshColliderComponent& c)
 {
-    return { c.material, c.center, c.meshPath, c.meshIndex, c.isTrigger, c.useTransformScale, c.enabled };
+    return { c.material, c.physicsMaterialPath, c.center, c.meshPath, c.meshIndex,
+             c.isTrigger, c.useTransformScale, c.enabled };
 }
 
 void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderValue& v)
@@ -122,6 +167,7 @@ void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderV
         || c.meshIndex != v.meshIndex
         || c.useTransformScale != v.useTransformScale;
     c.material = v.material;
+    c.physicsMaterialPath = v.physicsMaterialPath;
     c.center = v.center;
     c.isTrigger = v.isTrigger;
     c.enabled = v.enabled;
@@ -133,7 +179,8 @@ void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderV
 
 MeshColliderValue CaptureConvexHullValue(const scene::ConvexHullColliderComponent& c)
 {
-    return { c.material, c.center, c.meshPath, c.meshIndex, c.isTrigger, c.useTransformScale, c.enabled };
+    return { c.material, c.physicsMaterialPath, c.center, c.meshPath, c.meshIndex,
+             c.isTrigger, c.useTransformScale, c.enabled };
 }
 
 void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColliderValue& v)
@@ -142,6 +189,7 @@ void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColli
         || c.meshIndex != v.meshIndex
         || c.useTransformScale != v.useTransformScale;
     c.material = v.material;
+    c.physicsMaterialPath = v.physicsMaterialPath;
     c.center = v.center;
     c.isTrigger = v.isTrigger;
     c.enabled = v.enabled;
@@ -156,23 +204,23 @@ void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColli
 void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     DrawComponentSection<scene::AabbColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "AABB Collider",
-        [go](scene::AabbColliderComponent& col, EditorContext&) {
-            DrawAabbCollider(col, *go);
+        [go](scene::AabbColliderComponent& col, EditorContext& ctx2) {
+            DrawAabbCollider(col, *go, ctx2.projectRoot);
         });
 
     DrawComponentSection<scene::BoxColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Box Collider",
-        [go](scene::BoxColliderComponent& col, EditorContext&) {
-            DrawBoxCollider(col, *go);
+        [go](scene::BoxColliderComponent& col, EditorContext& ctx2) {
+            DrawBoxCollider(col, *go, ctx2.projectRoot);
         });
 
     DrawComponentSection<scene::SphereColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Sphere Collider",
-        [go](scene::SphereColliderComponent& col, EditorContext&) {
-            DrawSphereCollider(col, *go);
+        [go](scene::SphereColliderComponent& col, EditorContext& ctx2) {
+            DrawSphereCollider(col, *go, ctx2.projectRoot);
         });
 
     DrawComponentSection<scene::CapsuleColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Capsule Collider",
-        [go](scene::CapsuleColliderComponent& col, EditorContext&) {
-            DrawCapsuleCollider(col, *go);
+        [go](scene::CapsuleColliderComponent& col, EditorContext& ctx2) {
+            DrawCapsuleCollider(col, *go, ctx2.projectRoot);
         });
 
     DrawComponentSectionCustom<scene::MeshColliderComponent, MeshColliderValue>(
@@ -192,8 +240,8 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
         [](scene::ConvexHullColliderComponent& c, const MeshColliderValue& v) { ApplyConvexHullValue(c, v); });
 
     DrawComponentSection<scene::TerrainColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Collider",
-        [go](scene::TerrainColliderComponent& col, EditorContext&) {
-            DrawTerrainCollider(col, *go);
+        [go](scene::TerrainColliderComponent& col, EditorContext& ctx2) {
+            DrawTerrainCollider(col, *go, ctx2.projectRoot);
         });
 
     DrawComponentSection<scene::RigidBodyComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Rigid Body",
@@ -210,9 +258,22 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 body.SetMass(body.GetMass());
             }
 
+            // 質量の決め方。From Density は「コライダー体積 × PhysicsMaterial.density」を
+            // PhysicsSystem が毎フレーム算出して上書きするため、ここでは手入力させない。
+            static constexpr const char* kMassModeLabels[] = { "Manual", "From Density" };
+            int massModeIndex = static_cast<int>(rb.massMode);
+            if (ImGui::Combo("Mass Mode", &massModeIndex, kMassModeLabels, 2))
+                rb.massMode = static_cast<scene::MassMode>(massModeIndex);
+
             float mass = body.GetMass();
-            if (ImGui::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f))
+            if (rb.massMode == scene::MassMode::FromDensity) {
+                ImGui::BeginDisabled();
+                ImGui::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f);
+                ImGui::EndDisabled();
+                ImGui::TextDisabled("コライダー体積 x 密度から算出 (Play 中も追従)");
+            } else if (ImGui::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f)) {
                 body.SetMass(mass);
+            }
 
             math::Vector3 velocity = body.GetVelocity();
             if (widgets::DragVec3("Velocity", velocity, 0.05f))

@@ -150,6 +150,16 @@ void AddColliderInstance(Scene& scene,
     auto* rb = go.GetComponent<RigidBodyComponent>();
     physics::RigidBody* body = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
 
+    // 共有 .physmat を参照しているなら、この時点で実効値へ解決する。
+    // WHY 毎フレームか: エディタで .physmat を編集した結果を、参照している全コライダーへ
+    //     待ち時間なく反映させるため。未参照なら即 return、参照ありでも AssetManager の
+    //     パスキャッシュ引きだけなので、フレームコストは実質ゼロ。
+    col.ResolvePhysicsMaterial();
+
+    // 密度モードの剛体へ、このコライダーぶんの質量を積む。
+    if (rb && rb->massMode == MassMode::FromDensity && col.collider)
+        rb->computedMass += col.collider->ComputeVolume() * col.material.density;
+
     const math::Vector3 centerOffset = ColliderCenterOffset(go, col);
     physics::ColliderInstance instance{ col.collider.get(), body, &col.material, centerOffset, col.isTrigger, go.layer };
     col.colliderHandle = world.SyncCollider(col.colliderHandle, instance);
@@ -324,6 +334,16 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         }
     }
 
+    // 密度から質量を出す剛体は、コライダー同期の中で体積 × 密度を積算する。
+    // ここでその累算器をゼロに戻す。
+    // WHY コライダー側で積むか: 1 つの GameObject に複数のコライダーが付くことがあり
+    //     (胴 + 頭のカプセル等)、質量は「全部の体積の合計」であるべきだから。
+    //     コライダーの走査はどのみち毎フレーム行うので、そこに相乗りするのが最も安い。
+    for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
+        auto* rb = scene.GetComponent<RigidBodyComponent>(id);
+        if (rb && rb->massMode == MassMode::FromDensity) rb->computedMass = 0.0f;
+    }
+
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncColliders");
         SyncColliderComponents<AabbColliderComponent>(scene, world, colliderOwners, dt);
@@ -333,6 +353,18 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         SyncColliderComponents<MeshColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<ConvexHullColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<TerrainColliderComponent>(scene, world, colliderOwners, dt);
+    }
+
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::ApplyDensityMass");
+        for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
+            auto* rb = scene.GetComponent<RigidBodyComponent>(id);
+            if (!rb || rb->massMode != MassMode::FromDensity || !rb->rigidBody) continue;
+            // コライダーが 1 つも付いていない (= 体積 0) 剛体を質量 0 にすると
+            // invMass が無限大になり、わずかな接触で吹き飛ぶ。下限で守る。
+            constexpr float MIN_MASS = 0.001f;
+            rb->rigidBody->SetMass(std::max(rb->computedMass, MIN_MASS));
+        }
     }
 
     {
