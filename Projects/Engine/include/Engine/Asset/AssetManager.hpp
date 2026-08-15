@@ -173,6 +173,7 @@ public:
 private:
     static renderer::ResourceManager* s_resources;
     static std::string                s_basePath;
+    static std::string                s_engineBasePath;
     static bool                       s_initialized;
 
     static std::unordered_map<std::string, std::unique_ptr<Model>>    s_models;
