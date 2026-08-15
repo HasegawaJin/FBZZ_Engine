@@ -146,6 +146,9 @@ bool AssetDatabase::ShouldHaveMeta(std::string_view lowerExt)
         // native アセット (エディターで作る著作物)
         ".mat", ".anim", ".animcontroller", ".animctrl", ".mask",
         ".scene", ".terrain", ".fzdata", ".fnt", ".ibl",
+        // 物理マテリアル。ColliderComponent がパスで参照するため GUID が要る
+        // (リネーム・移動しても参照が切れないように)。
+        ".physmat",
         // Behavior Tree。BehaviorTreeComponent がパスで参照するため GUID が要る。
         // NOTE: .vfx はこのリストに入っておらず GUID を持たない (既存の穴)。
         //       .behaviortree では同じ轍を踏まない。

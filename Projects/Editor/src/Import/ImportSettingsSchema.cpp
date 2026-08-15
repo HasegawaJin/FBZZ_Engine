@@ -34,6 +34,7 @@ ImportCategory CategoryForExtension(std::string_view lowerExt)
         lowerExt == ".anim" || lowerExt == ".animcontroller" || lowerExt == ".animctrl" ||
         lowerExt == ".mask" ||
         lowerExt == ".terrain" || lowerExt == ".fzdata" || lowerExt == ".fnt" ||
+        lowerExt == ".physmat" ||
         lowerExt == ".ibl" || lowerExt == ".hlsl" || lowerExt == ".vfx")
         return ImportCategory::Native;
 

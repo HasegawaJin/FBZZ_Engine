@@ -211,11 +211,20 @@ toml::table SerializeCollider(const ColliderComponent& col)
     colTbl.insert("center",    Vec3ToArr(col.center));
     colTbl.insert("isTrigger", col.isTrigger);
 
+    // 共有 .physmat への参照。EncodeGuidRefs がドキュメント全体を走査して
+    // guid 形式へ変換するため、ここでは素のパス文字列を入れるだけでよい。
+    colTbl.insert("physicsMaterial", col.physicsMaterialPath);
+
+    // WHY 参照がある場合も値を書くか: .physmat が失われたときのフォールバック。
+    //     参照が解決できないと物理挙動が黙って既定値へ落ちるより、最後に解決できた
+    //     値を保っている方が壊れ方として穏やか。
     toml::table matTbl;
     matTbl.insert("restitution",      (double)col.material.restitution);
     matTbl.insert("staticFriction",   (double)col.material.staticFriction);
     matTbl.insert("dynamicFriction",  (double)col.material.dynamicFriction);
     matTbl.insert("density",          (double)col.material.density);
+    matTbl.insert("restitutionCombine", (int64_t)col.material.restitutionCombine);
+    matTbl.insert("frictionCombine",    (int64_t)col.material.frictionCombine);
     colTbl.insert("material", std::move(matTbl));
 
     if (col.collider) {
@@ -277,12 +286,30 @@ void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
     col.center    = ArrToVec3(colTbl["center"].as_array(), math::Vector3::ZERO);
     col.isTrigger = colTbl["isTrigger"].value_or(false);
 
+    col.physicsMaterialPath = colTbl["physicsMaterial"].value_or(std::string{});
+
     if (auto* matTbl = colTbl["material"].as_table()) {
         col.material.restitution     = (float)(*matTbl)["restitution"].value_or(0.3);
         col.material.staticFriction  = (float)(*matTbl)["staticFriction"].value_or(0.6);
         col.material.dynamicFriction = (float)(*matTbl)["dynamicFriction"].value_or(0.4);
         col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
+
+        // 既定は選択制にする前の固定規則 (反発 = Minimum / 摩擦 = GeometricMean)。
+        // これにより合成規則を持たない既存シーンの挙動が変わらない。
+        const auto restitutionCombine = (*matTbl)["restitutionCombine"].value_or(
+            (int64_t)physics::PhysicsMaterialCombine::Minimum);
+        const auto frictionCombine = (*matTbl)["frictionCombine"].value_or(
+            (int64_t)physics::PhysicsMaterialCombine::GeometricMean);
+        col.material.restitutionCombine =
+            static_cast<physics::PhysicsMaterialCombine>(restitutionCombine);
+        col.material.frictionCombine =
+            static_cast<physics::PhysicsMaterialCombine>(frictionCombine);
     }
+
+    // 参照があるなら、この時点で共有アセットの値へ解決しておく。
+    // WHY ここでも解決するか: PhysicsSystem は Play 中しか回らない。エディタで
+    //     シーンを開いた直後の Inspector 表示を正しい値にするために、ロード時にも 1 回通す。
+    col.ResolvePhysicsMaterial();
 }
 
 void ReadAabbCollider(const toml::table& colTbl, AabbColliderComponent& col)
@@ -1499,6 +1526,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             auto& body = *rb->rigidBody;
             toml::table rbTbl;
             rbTbl.insert("enabled",                rb->enabled);
+            // 質量の決め方。未記載の既存シーンは Manual として読まれる (従来どおり)。
+            rbTbl.insert("massMode",               (int64_t)rb->massMode);
             rbTbl.insert("mass",                   (double)body.GetMass());
             rbTbl.insert("isStatic",               body.m_isStatic);
             rbTbl.insert("velocity",               Vec3ToArr(body.GetVelocity()));
@@ -2687,6 +2716,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            rb.massMode = static_cast<MassMode>(
+                (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
             if (!rb.rigidBody)
                 rb.rigidBody = std::make_unique<physics::RigidBody>();
 
@@ -3914,6 +3945,8 @@ bool SceneSerializer::AppendObjects(
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            rb.massMode = static_cast<MassMode>(
+                (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
             if (!rb.rigidBody) rb.rigidBody = std::make_unique<physics::RigidBody>();
             rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
             rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));

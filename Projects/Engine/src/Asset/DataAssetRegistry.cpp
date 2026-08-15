@@ -332,6 +332,42 @@ bool DataAssetRegistry::Create(const std::string& path, const std::string& typeN
     return true;
 }
 
+std::string DataAssetRegistry::Snapshot(const std::string& path)
+{
+    const std::string key = NormalizeKey(path);
+    auto& cache = Cache();
+    auto it = cache.find(key);
+    if (it == cache.end() || !it->second.asset) return {};
+
+    std::ostringstream oss;
+    oss << BuildTable(*it->second.asset);
+    return oss.str();
+}
+
+bool DataAssetRegistry::RestoreSnapshot(const std::string& path, const std::string& snapshot)
+{
+    if (snapshot.empty()) return false;
+
+    const std::string key = NormalizeKey(path);
+    auto& cache = Cache();
+    auto it = cache.find(key);
+    if (it == cache.end() || !it->second.asset) return false;
+
+    auto result = toml::parse(snapshot);
+    if (!result) {
+        FBZZ_LOG_ERROR("DataAssetRegistry: snapshot parse failed -> %s", path.c_str());
+        return false;
+    }
+
+    // "type" キーは読み飛ばす。復元先は常に「今キャッシュされている実体」であり、
+    // スナップショットで型を差し替えることはしない (型が変わる操作は Undo 対象外)。
+    // 構造体配列は BeginObjectList が保存時の要素数を返し、呼び出し側がその値で
+    // resize するため、スナップショットより要素が増えている状態からでも正しく縮む。
+    TomlReadReflector reader(result.table());
+    it->second.asset->Reflect(reader);
+    return true;
+}
+
 std::string DataAssetRegistry::TypeOf(const std::string& path)
 {
     const std::string key = NormalizeKey(path);

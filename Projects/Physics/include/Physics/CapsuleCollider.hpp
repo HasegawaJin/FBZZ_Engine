@@ -16,6 +16,8 @@ namespace fbzz::physics
         ColliderType GetType() const override { return ColliderType::CAPSULE; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
+        // 円柱 (π r² * 2h) + 両端の半球 (= 球 1 個ぶん 4/3 π r³)
+        [[nodiscard]] float ComputeVolume() const override;
 
         math::Vector3 GetSegmentStart() const { return m_worldStart; }
         math::Vector3 GetSegmentEnd() const { return m_worldEnd; }

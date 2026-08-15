@@ -16,6 +16,8 @@ namespace fbzz::physics {
         ColliderType GetType() const override { return ColliderType::SPHERE; }
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
+        // 4/3 π r³
+        [[nodiscard]] float ComputeVolume() const override;
 
         float m_radius;
 
