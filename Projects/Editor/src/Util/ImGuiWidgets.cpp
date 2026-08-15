@@ -348,6 +348,37 @@ bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
     return dropped;
 }
 
+namespace {
+
+// AssetBrowser へ渡す Ping / 選択要求の唯一の置き場。
+// WHY: 1 フレームに何度クリックが起きても最後の 1 件だけが意味を持つため、キューではなく
+//      上書きの単一スロットにする。EditorApp が取り出した時点で空へ戻す。
+AssetRevealRequest s_revealRequest;
+bool               s_revealRequestPending = false;
+
+} // namespace
+
+void RequestAssetReveal(std::string assetPath, bool selectInInspector)
+{
+    if (assetPath.empty()) return;
+    // ダブルクリックは「1 回目のクリック (Ping) → 2 回目 (選択)」の順で届く。
+    // 同じアセットへの要求なら選択指定を落とさないよう OR で畳む。
+    if (s_revealRequestPending && s_revealRequest.path == assetPath)
+        selectInInspector = selectInInspector || s_revealRequest.selectInInspector;
+    s_revealRequest.path              = std::move(assetPath);
+    s_revealRequest.selectInInspector = selectInInspector;
+    s_revealRequestPending            = true;
+}
+
+bool ConsumeAssetRevealRequest(AssetRevealRequest& out)
+{
+    if (!s_revealRequestPending) return false;
+    out                    = std::move(s_revealRequest);
+    s_revealRequest        = {};
+    s_revealRequestPending = false;
+    return true;
+}
+
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
                     const std::string& projectRoot)
@@ -419,6 +450,11 @@ bool AssetPathField(const char* label, std::string& path,
         ImGui::InvisibleButton("##display", boxSize);
         const bool hovered = ImGui::IsItemHovered();
         const bool clicked = ImGui::IsItemClicked();
+        // ホバー判定と押下判定はツールチップを描く前に確定させる。
+        // WHY: BeginTooltip 内のテキストで ImGui の「直前のアイテム」が上書きされるため、
+        //      IsItemClicked 系をツールチップの後ろで呼ぶと本体ではなく別物を見てしまう。
+        const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+        const bool rightClicked  = hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right);
 
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const ImVec2 boxMax = { boxMin.x + boxSize.x, boxMin.y + boxSize.y };
@@ -480,14 +516,45 @@ bool AssetPathField(const char* label, std::string& path,
                 ImGui::Separator();
             }
             ImGui::TextUnformatted(path.c_str());
+            ImGui::Separator();
+            ImGui::TextDisabled("Click: Asset Browser で表示  /  Double-Click: 選択して Inspector へ");
+            ImGui::TextDisabled("Right-Click: パス編集・コピー・クリア");
             ImGui::EndTooltip();
         }
-        if (clicked) {
-            storage->SetBool(editingId, true);
-            storage->SetBool(focusReqId, true);
-        }
+
+        // Unity の Object Field と同じ動線にする。
+        // シングルクリックは Ping (AssetBrowser 側で場所を示すだけ)、ダブルクリックは選択して
+        // Inspector の表示対象そのものを参照先アセットへ移す。
+        // NOTE: ダブルクリック時は 2 回目の押下で clicked / doubleClicked が同時に立つ。
+        //       RequestAssetReveal が同一パスの要求を畳むため、選択指定は落ちない。
+        if (clicked)       RequestAssetReveal(path, false);
+        if (doubleClicked) RequestAssetReveal(path, true);
+
+        // ドロップ受理はメニュー描画より前に置く。
+        // WHY: BeginDragDropTarget は「直前のアイテム」を受け皿にするため、間に別ウィンドウの
+        //      アイテム (ポップアップの MenuItem 等) を挟むと本体の矩形を見失う。
         if (AcceptAssetPathDrop(path, filterExts))
             changed = true;
+
+        // パスを文字列として直接いじりたいケース (手打ち・貼り付け・参照外し) は
+        // クリックから右クリックメニューへ移す。頻度の低い操作に主クリックを使わせない。
+        if (rightClicked) ImGui::OpenPopup("##assetFieldMenu");
+        if (ImGui::BeginPopup("##assetFieldMenu")) {
+            if (ImGui::MenuItem("Show in Asset Browser"))
+                RequestAssetReveal(path, true);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Edit Path...")) {
+                storage->SetBool(editingId, true);
+                storage->SetBool(focusReqId, true);
+            }
+            if (ImGui::MenuItem("Copy Path"))
+                ImGui::SetClipboardText(path.c_str());
+            if (ImGui::MenuItem("Clear")) {
+                path.clear();
+                changed = true;
+            }
+            ImGui::EndPopup();
+        }
     }
 
     ImGui::SameLine(0.0f, style.ItemSpacing.x);

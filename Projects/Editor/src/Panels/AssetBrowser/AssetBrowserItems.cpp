@@ -23,6 +23,7 @@
 #include <array>
 #include <bit>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -54,86 +55,61 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs)
     return true;
 }
 
-class AssetDeleteCommand final : public ICommand {
-public:
-    struct Entry {
-        std::string original;
-        std::string backup;
-    };
-
-    AssetDeleteCommand(std::vector<Entry> entries, EditorContext* context)
-        : m_entries(std::move(entries))
-        , m_context(context)
-    {
-    }
-
-    ~AssetDeleteCommand() override
-    {
-        // Undo されないまま履歴から消えた削除データだけを最終破棄する。
-        if (!m_deleted) return;
-        for (const Entry& entry : m_entries)
-            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(entry.backup));
-    }
-
-    void Execute() override
-    {
-        bool movedAny = false;
-        for (const Entry& entry : m_entries) {
-            if (!util::FileSystem::Exists(entry.original)) continue;
-            util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(entry.backup));
-            movedAny |= util::FileSystem::Rename(
-                util::FileSystem::PathFromUtf8(entry.original),
-                util::FileSystem::PathFromUtf8(entry.backup));
-        }
-        m_deleted = movedAny || m_deleted;
-        RequestRefresh();
-    }
-
-    void Undo() override
-    {
-        for (const Entry& entry : m_entries) {
-            if (!util::FileSystem::Exists(entry.backup)) continue;
-            util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(entry.original));
-            util::FileSystem::Rename(
-                util::FileSystem::PathFromUtf8(entry.backup),
-                util::FileSystem::PathFromUtf8(entry.original));
-        }
-        m_deleted = false;
-        RequestRefresh();
-    }
-
-    std::string GetDescription() const override { return "Delete Asset"; }
-
-private:
-    void RequestRefresh()
-    {
-        if (m_context) m_context->requestAssetBrowserRefresh = true;
-    }
-
-    std::vector<Entry> m_entries;
-    EditorContext*     m_context = nullptr;
-    bool               m_deleted = false;
-};
-
-std::unique_ptr<ICommand> CreateAssetDeleteCommand(const std::vector<std::string>& paths,
-                                                   EditorContext& ctx)
+// 削除は Undo 履歴へ載せず、プロジェクト内のごみ箱へ退避する。
+//
+// WHY 履歴に載せないか (重要):
+//   Undo スタックはシーン編集と共有されている。削除をそこへ積むと、Scene View で
+//   Ctrl+Z / Ctrl+Y を押しただけでディスク上のファイルが復活したり再削除されたりする。
+//   さらに旧実装は「Undo されないまま履歴からあふれたらデストラクタで退避データを完全削除」
+//   していたため、履歴が 128 件を超えた瞬間に復元手段が予告なく消えていた。
+//
+// WHY ごみ箱へ移すか:
+//   Undo 対象から外しても「消したものを取り戻せない」状態にはしたくない。
+//   Unity の OS ごみ箱行きと同じ扱いで、実体は .fbzz/Trash/<日時>/ に残し続ける
+//   (自動削除しない)。復元はエクスプローラーで戻すだけで済む。
+// @return ごみ箱へ移せた項目数
+std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ctx)
 {
-    const std::string undoRoot = ctx.projectRoot + "/.fbzz/Undo/" + util::GenerateUUID() + "/";
-    std::vector<AssetDeleteCommand::Entry> entries;
-    entries.reserve(paths.size() * 2);
+    if (paths.empty()) return 0;
+
+    // 退避先は 1 回の削除操作につき 1 フォルダ。複数選択の削除をまとめて戻せるようにする。
+    const std::time_t now = std::time(nullptr);
+    std::tm           local{};
+    localtime_s(&local, &now);
+    char stamp[32] = {};
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+    const std::string trashRoot =
+        ctx.projectRoot + "/.fbzz/Trash/" + stamp + "-" + util::GenerateUUID().substr(0, 8) + "/";
+
+    std::size_t moved = 0;
     for (std::size_t i = 0; i < paths.size(); ++i) {
-        const std::string backup =
-            undoRoot + std::to_string(i) + "_" + util::FileSystem::GetFilename(paths[i]);
-        entries.push_back({ paths[i], backup });
+        if (!util::FileSystem::Exists(paths[i])) continue;
+
+        const std::string dest =
+            trashRoot + std::to_string(i) + "_" + util::FileSystem::GetFilename(paths[i]);
+        util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(dest));
+        if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(paths[i]),
+                                      util::FileSystem::PathFromUtf8(dest))) {
+            FBZZ_LOG_ERROR("AssetBrowser: delete failed [%s]", paths[i].c_str());
+            continue;
+        }
+        ++moved;
 
         // .meta サイドカーも一緒に退避する。
-        // WHY: 本体だけ消すと孤児 .meta が残り、Undo 復元時も guid を維持したいため
-        //      同じバックアップ機構でペア移動させる。
+        // WHY: 本体だけ消すと孤児 .meta が残る。ペアで移せば手で戻したときに guid も戻る。
         const std::string metaPath = paths[i] + ".meta";
-        if (util::FileSystem::Exists(metaPath))
-            entries.push_back({ metaPath, backup + ".meta" });
+        if (util::FileSystem::Exists(metaPath)) {
+            util::FileSystem::Rename(util::FileSystem::PathFromUtf8(metaPath),
+                                     util::FileSystem::PathFromUtf8(dest + ".meta"));
+        }
     }
-    return std::make_unique<AssetDeleteCommand>(std::move(entries), &ctx);
+
+    if (moved > 0) {
+        FBZZ_LOG_INFO("AssetBrowser: moved %zu item(s) to %s", moved, trashRoot.c_str());
+        Toast::Info("Deleted " + std::to_string(moved) + " item(s) \xe2\x86\x92 .fbzz/Trash");
+    }
+    ctx.requestAssetBrowserRefresh = true;
+    return moved;
 }
 
 std::string UniqueDuplicatePath(const std::string& srcPath, bool isDir)
@@ -215,18 +191,11 @@ bool MoveProjectAssetToDirectory(const std::string& srcProjectPath,
         return false;
     }
 
-    if (ctx.undoStack) {
-        EditorContext* context = &ctx;
-        auto applyMove = [context](const std::string& from, const std::string& to) {
-            if (util::FileSystem::Exists(from) && !util::FileSystem::Exists(to))
-                MoveAssetWithSidecar(from, to);
-            context->requestAssetBrowserRefresh = true;
-        };
-        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-            "Move Asset",
-            [applyMove, srcAbs, dstAbs]() { applyMove(srcAbs, dstAbs); },
-            [applyMove, srcAbs, dstAbs]() { applyMove(dstAbs, srcAbs); }));
-    }
+    // 移動も Undo 履歴には積まない。
+    // WHY: ファイルの場所はディスクの状態であって、シーン編集の履歴とは別の軸にある。
+    //      同じスタックに載せると Scene View の Ctrl+Z がアセットを勝手に動かし、
+    //      そのあいだに外部エディタや別操作が入ると復元先が実態と食い違う。
+    ctx.requestAssetBrowserRefresh = true;
 
     outSrcAbs = srcAbs;
     outDstAbs = dstAbs;
@@ -257,6 +226,8 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".vfx", nullptr },                                   { 0.95f, 0.35f, 0.55f, 1.0f }, "VFX"     },
     { { ".behaviortree", nullptr },                          { 0.45f, 0.80f, 0.65f, 1.0f }, "AI"      },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
+    // 物理マテリアル。見た目の .mat と取り違えないよう、色は物理系 (青緑) から離す。
+    { { ".physmat", nullptr },                               { 0.90f, 0.50f, 0.25f, 1.0f }, "PHYSMAT" },
     { { ".tex", nullptr },                                   { 0.40f, 0.80f, 0.90f, 1.0f }, "TEX"     },
     { { ".mesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".animctrl", nullptr },                              { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
@@ -1454,19 +1425,8 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
                     newDir = dir.path + "/New Folder " + std::to_string(n);
                 if (!util::FileSystem::Exists(newDir)) {
                     util::FileSystem::EnsureDirectory(newDir);
-                    if (ctx.undoStack) {
-                        EditorContext* context = &ctx;
-                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                            "Create Folder",
-                            [newDir, context]() {
-                                util::FileSystem::EnsureDirectory(newDir);
-                                context->requestAssetBrowserRefresh = true;
-                            },
-                            [newDir, context]() {
-                                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(newDir));
-                                context->requestAssetBrowserRefresh = true;
-                            }));
-                    }
+                    // Undo 履歴には積まない。旧実装の Undo は RemoveAll(newDir) で、
+                    // 作成後にユーザーがそこへ入れたアセットまで巻き添えで消していた。
                     m_currentPath = dir.path;
                     InvalidateTreeCache(dir.path);
                     RefreshDirectory();
@@ -1481,19 +1441,8 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             if (ImGui::MenuItem("Duplicate")) {
                 const std::string dstPath = UniqueDuplicatePath(dir.path, true);
                 if (!dstPath.empty() && CopyAssetPath(dir.path, dstPath, true)) {
-                    if (ctx.undoStack) {
-                        EditorContext* context = &ctx;
-                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                            "Duplicate Folder",
-                            [srcPath = dir.path, dstPath, context]() {
-                                CopyAssetPath(srcPath, dstPath, true);
-                                context->requestAssetBrowserRefresh = true;
-                            },
-                            [dstPath, context]() {
-                                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
-                                context->requestAssetBrowserRefresh = true;
-                            }));
-                    }
+                    // 複製も Undo 対象外 (削除と同じく、消したいときは Delete から
+                    // ごみ箱へ送る)。Ctrl+Z でフォルダごと RemoveAll されない。
                     m_currentPath = normDir;
                     InvalidateTreeCache(normDir);
                     RefreshDirectory();
@@ -1523,13 +1472,13 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
                 const std::string parent = normDir;
                 EditorContext* context = &ctx;
                 ModalDialog::OpenConfirm("Delete Folder",
-                    "Delete \"" + util::FileSystem::GetFilename(path) + "\" and all contents?",
+                    "Delete \"" + util::FileSystem::GetFilename(path) + "\" and all contents?\n"
+                    "(moved to .fbzz/Trash — not undoable with Ctrl+Z)",
                     [this, path, parent, context]() {
                         if (util::FileSystem::SamePathText(m_currentPath, path) ||
                             util::FileSystem::IsChildPathText(m_currentPath, path))
                             m_currentPath = parent;
-                        if (context->undoStack)
-                            context->undoStack->Execute(CreateAssetDeleteCommand({ path }, *context));
+                        TrashAssets({ path }, *context);
                         InvalidateTreeCache(parent);
                         RefreshDirectory();
                     });
@@ -2527,13 +2476,13 @@ void AssetBrowserPanel::CopySelectionToClipboard()
     }
 }
 
-// 現在開いているフォルダへクリップボードの内容を複製する (Duplicate と同じ Undo 経路)。
+// 現在開いているフォルダへクリップボードの内容を複製する。
+// 生成した実体は Undo 対象外 (取り消したいときは Delete でごみ箱へ送る)。
 void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
 {
     if (m_clipboardPaths.empty()) return;
     const std::string destDir = m_currentPath;
 
-    auto command = std::make_unique<CompositeCommand>("Paste Assets");
     std::vector<std::string> pastedPaths;
     for (const auto& srcPath : m_clipboardPaths) {
         if (!util::FileSystem::Exists(srcPath)) continue;  // 元がリネーム/削除済みなら黙ってスキップ
@@ -2546,21 +2495,7 @@ void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
             continue;
         }
         pastedPaths.push_back(dstPath);
-
-        EditorContext* context = &ctx;
-        command->Add(std::make_unique<LambdaCommand>(
-            "Paste Asset",
-            [srcPath, dstPath, isDir, context]() {
-                CopyAssetPath(srcPath, dstPath, isDir);
-                context->requestAssetBrowserRefresh = true;
-            },
-            [dstPath, context]() {
-                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
-                context->requestAssetBrowserRefresh = true;
-            }));
     }
-    if (ctx.undoStack && !command->Empty())
-        ctx.undoStack->Push(std::move(command));
 
     RefreshDirectory();
 
@@ -2616,27 +2551,13 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         ImGui::BeginDisabled(includesPackageAsset);
         if (ImGui::MenuItem(label)) {
             std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
-            auto command = std::make_unique<CompositeCommand>("Duplicate Assets");
             for (const auto& srcPath : paths) {
                 const bool isDir = util::FileSystem::IsDirectory(srcPath);
                 const std::string dstPath = UniqueDuplicatePath(srcPath, isDir);
                 if (dstPath.empty()) continue;
-                if (CopyAssetPath(srcPath, dstPath, isDir)) {
-                    EditorContext* context = &ctx;
-                    command->Add(std::make_unique<LambdaCommand>(
-                        "Duplicate Asset",
-                        [srcPath, dstPath, isDir, context]() {
-                            CopyAssetPath(srcPath, dstPath, isDir);
-                            context->requestAssetBrowserRefresh = true;
-                        },
-                        [dstPath, context]() {
-                            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
-                            context->requestAssetBrowserRefresh = true;
-                        }));
-                }
+                if (!CopyAssetPath(srcPath, dstPath, isDir))
+                    FBZZ_LOG_ERROR("Duplicate failed: %s", srcPath.c_str());
             }
-            if (ctx.undoStack && !command->Empty())
-                ctx.undoStack->Push(std::move(command));
             RefreshDirectory();
         }
         ImGui::EndDisabled();
@@ -2647,10 +2568,10 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
             EditorContext* context = &ctx;
             ModalDialog::OpenConfirm("Delete",
-                "Delete " + std::to_string(n) + " selected items?",
+                "Delete " + std::to_string(n) + " selected items?\n"
+                "(moved to .fbzz/Trash — not undoable with Ctrl+Z)",
                 [this, paths, context]() {
-                    if (context->undoStack)
-                        context->undoStack->Execute(CreateAssetDeleteCommand(paths, *context));
+                    TrashAssets(paths, *context);
                     m_selectedPaths.clear();
                     RefreshDirectory();
                 });
@@ -2777,21 +2698,6 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         const std::string dstPath = UniqueDuplicatePath(e.path, e.isDir);
         if (!dstPath.empty()) {
             if (CopyAssetPath(e.path, dstPath, e.isDir)) {
-                if (ctx.undoStack) {
-                    const std::string srcPath = e.path;
-                    const bool isDir = e.isDir;
-                    EditorContext* context = &ctx;
-                    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                        "Duplicate Asset",
-                        [srcPath, dstPath, isDir, context]() {
-                            CopyAssetPath(srcPath, dstPath, isDir);
-                            context->requestAssetBrowserRefresh = true;
-                        },
-                        [dstPath, context]() {
-                            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
-                            context->requestAssetBrowserRefresh = true;
-                        }));
-                }
                 RefreshDirectory();
                 BeginRenameForPath(dstPath, &ctx);
             } else {
@@ -2876,10 +2782,10 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         const std::string path = e.path;
         EditorContext* context = &ctx;
         ModalDialog::OpenConfirm("Delete",
-            "Delete \"" + util::FileSystem::GetFilename(path) + "\"?",
+            "Delete \"" + util::FileSystem::GetFilename(path) + "\"?\n"
+            "(moved to .fbzz/Trash — not undoable with Ctrl+Z)",
             [this, path, context]() {
-                if (context->undoStack)
-                    context->undoStack->Execute(CreateAssetDeleteCommand({ path }, *context));
+                TrashAssets({ path }, *context);
                 if (m_selectedFbxPath == path) { m_selectedFbxPath.clear(); m_selectedModel = nullptr; }
                 m_selectedPaths.erase(path);
                 ResetAssetPreviewCache(path);
@@ -2937,23 +2843,10 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
                         if (!MoveAssetWithSidecar(oldPath, newPath)) {
                             FBZZ_LOG_ERROR("Rename failed: %s -> %s", oldPath.c_str(), newPath.c_str());
                         } else {
-                            if (context->undoStack) {
-                                const auto refresh = [context]() {
-                                    context->requestAssetBrowserRefresh = true;
-                                };
-                                context->undoStack->Push(std::make_unique<LambdaCommand>(
-                                    "Rename Asset",
-                                    [oldPath, newPath, refresh]() {
-                                        if (util::FileSystem::Exists(oldPath))
-                                            MoveAssetWithSidecar(oldPath, newPath);
-                                        refresh();
-                                    },
-                                    [oldPath, newPath, refresh]() {
-                                        if (util::FileSystem::Exists(newPath))
-                                            MoveAssetWithSidecar(newPath, oldPath);
-                                        refresh();
-                                    }));
-                            }
+                            // リネームも Undo 履歴には積まない (移動・生成・削除と同じ扱い)。
+                            // ファイル名はディスクの状態であり、シーン編集の履歴に混ぜると
+                            // Scene View の Ctrl+Z がアセットを勝手に改名することになる。
+                            context->requestAssetBrowserRefresh = true;
                             if (m_selectedFbxPath == oldPath) m_selectedFbxPath = newPath;
                             ResetAssetPreviewCache(oldPath);
                             RefreshDirectory();
@@ -3036,6 +2929,25 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     }
 
     ui::DrawTileSelection(dl, tileMin, tileMax, selected, hov, emphasized, panelFocused, 5.0f);
+
+    // Ping: 参照欄クリックで飛んできた対象を短時間だけ光らせる。
+    // WHY: 選択ハイライトだけだと、大量のタイルが並ぶ一覧の中で「今どれに飛ばされたのか」を
+    //      目で拾えない。Unity の Project ウィンドウと同じく、数百 ms のフラッシュで視線を誘導する。
+    if (!m_pingPath.empty() && m_pingPath == e.path) {
+        constexpr float PING_DURATION = 1.2f;
+        const float elapsed = static_cast<float>(ImGui::GetTime()) - m_pingStartTime;
+        if (elapsed < 0.0f || elapsed > PING_DURATION) {
+            m_pingPath.clear();
+        } else {
+            // 2 回明滅させてから消える。線形フェードだと「点いて消えた」だけで気づきにくい。
+            const float phase = std::fabs(std::cos(elapsed * 6.2831853f));
+            const float alpha = phase * (1.0f - elapsed / PING_DURATION);
+            const ImVec4 accent = EditorTheme::Color(ThemeColor::Accent);
+            dl->AddRect(tileMin, tileMax,
+                        ImGui::GetColorU32({ accent.x, accent.y, accent.z, alpha }),
+                        5.0f, 0, 2.5f);
+        }
+    }
 
     DrawAssetPreviewIconAt(origin, sz, e, ctx, hov);
     DrawEntryBadges(dl, origin, sz, e);

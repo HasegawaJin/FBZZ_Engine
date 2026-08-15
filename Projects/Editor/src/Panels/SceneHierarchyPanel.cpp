@@ -223,36 +223,32 @@ void SaveSelectedAsPrefab(EditorContext& ctx, const std::string& objectName)
     scene::Scene& scene = *ctx.activeScene;
 
     // 保存 + インスタンス接続をまとめて実行する (Unity 互換の Create Prefab)。
-    // 接続したルート GO は rootSelection に返り、Undo でファイル削除と接続解除に使う。
+    // 接続したルート GO は rootSelection に返り、Undo で接続解除に使う。
     const std::string path = UniquePrefabPath(ctx, objectName);
     std::vector<scene::EntityID> rootSelection;
     if (!PrefabSerializer::SaveSelectionAndConnect(scene, ctx.selectedEntities, path, rootSelection))
         return;
     const std::string relPath = NormalizeAssetPath(path);
 
+    // Undo 対象はシーン側のリンク (prefabAssetPath) だけ。.prefab ファイルは残す。
+    // WHY: 旧実装の Undo は RemoveAll(path) で .prefab を消していた。プレファブを
+    //      作ってから中身を編集し、無関係な作業のあと Ctrl+Z を重ねると、編集ぶんごと
+    //      ファイルが消える。ディスク上のアセットの存在は Undo の対象にしない
+    //      (消したいときは Asset Browser の Delete でごみ箱へ送る)。
     if (ctx.undoStack) {
-        std::string content;
-        util::FileSystem::ReadText(path, content);
         EditorContext* context = &ctx;
         const std::vector<scene::EntityID> roots = rootSelection;
+        auto applyLink = [context, roots](const std::string& assetPath) {
+            if (!context->activeScene) return;
+            for (scene::EntityID id : roots)
+                if (auto* go = context->activeScene->GetGameObject(id))
+                    go->prefabAssetPath = assetPath;
+            context->requestAssetBrowserRefresh = true;
+        };
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-            "Create Prefab",
-            [path, content, relPath, roots, context]() {
-                util::FileSystem::WriteText(path, content);
-                if (context->activeScene)
-                    for (scene::EntityID id : roots)
-                        if (auto* go = context->activeScene->GetGameObject(id))
-                            go->prefabAssetPath = relPath;
-                context->requestAssetBrowserRefresh = true;
-            },
-            [path, roots, context]() {
-                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
-                if (context->activeScene)
-                    for (scene::EntityID id : roots)
-                        if (auto* go = context->activeScene->GetGameObject(id))
-                            go->prefabAssetPath.clear();
-                context->requestAssetBrowserRefresh = true;
-            }));
+            "Link Prefab Instance",
+            [applyLink, relPath]() { applyLink(relPath); },
+            [applyLink]()          { applyLink({}); }));
     }
     if (ctx.markSceneDirty) ctx.markSceneDirty();
     ctx.requestAssetBrowserRefresh = true;

@@ -118,6 +118,11 @@ private:
     void BeginRenameForPath(const std::string& path, EditorContext* ctx = nullptr);
     void HandleEntryClick(const Entry& e, EditorContext& ctx, bool hov);
     void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
+
+    // ctx.requestRevealAssetPath (Inspector 等の参照欄クリック) を処理する。
+    // 対象フォルダへ移動し、そのアセットを選択して Ping ハイライトを開始する。
+    // FBX の従属アセット (Foo/materials/*.mat 等) は親 FBX を展開してから選択する。
+    void HandleRevealRequest(EditorContext& ctx);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
 
     // --- Ctrl+C / Ctrl+V (複数選択対応のアセットコピー&ペースト) -----------------
@@ -193,6 +198,15 @@ private:
     std::vector<AssetMount> m_mounts;
     std::vector<Entry>    m_entries;
     std::array<char, 256> m_searchBuf = {};
+
+    // ── Reveal / Ping (参照欄からの「このアセットを見せろ」要求) ───────────────
+    // 次に描くフレームで表示範囲へスクロールさせる対象 (絶対パス)。
+    // WHY スクロールを 1 フレーム遅らせるか: ImGui の SetScrollY はフレーム末尾で反映されるため、
+    //      グリッドは要求フレームでは旧スクロール位置のまま描かれる。行位置だけ先に決めておく。
+    std::string m_scrollToPath;
+    // Ping ハイライト対象と開始時刻 (ImGui::GetTime())。一定時間だけ枠を光らせて視線を誘導する。
+    std::string m_pingPath;
+    float       m_pingStartTime = 0.0f;
 
     // ── 横断検索 ─────────────────────────────────────────────────────────────
     // WHY 必要か: 従来の検索欄は「現在フォルダのエントリを名前で絞る」だけで、

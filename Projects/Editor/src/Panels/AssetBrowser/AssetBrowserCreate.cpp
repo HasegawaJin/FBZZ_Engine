@@ -7,6 +7,7 @@
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
+#include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
@@ -17,28 +18,25 @@ namespace fbzz::editor {
 
 namespace {
 
-void RegisterCreatedPath(EditorContext& ctx, const std::string& path)
+// 生成したアセットをユーザーへ知らせる。Undo 履歴には積まない。
+//
+// WHY 履歴に積まないか (重要):
+//   以前はここで「Undo = そのパスを RemoveAll する」コマンドを積んでいた。これは
+//   ディスク上のファイルの存在そのものを Undo 対象にする設計で、次の壊れ方をする。
+//     1. アセットを作る → 中身を編集する (.mat / .fzdata は自動保存でディスクへ書かれる)
+//        → 無関係な作業のあと Ctrl+Z を数回 → 生成コマンドまで巻き戻り、
+//          編集ぶんごとファイルが消える。作業内容がどこにも残らない。
+//     2. 「Create Folder」の Undo はフォルダを丸ごと RemoveAll する。作成後にそこへ
+//        入れたアセットまで巻き添えで消える。
+//     3. パスだけを覚えているため、その後リネーム / 再作成された別物を消しうる。
+//   Undo スタックはシーン編集と共有で、Scene View で Ctrl+Z を押しただけでこれらが
+//   起きる。ファイルの生成・削除は Unity と同じく Undo の対象外とし、履歴には
+//   「メモリ上の値の編集」だけを載せる。
+void NotifyAssetCreated(const std::string& path)
 {
-    if (!ctx.undoStack || path.empty() || !util::FileSystem::Exists(path)) return;
-
-    const bool isDirectory = util::FileSystem::IsDirectory(path);
-    std::string content;
-    if (!isDirectory) util::FileSystem::ReadText(path, content);
-    EditorContext* context = &ctx;
-    auto refresh = [context]() { context->requestAssetBrowserRefresh = true; };
-    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-        "Create Asset",
-        [path, isDirectory, content, refresh]() {
-            if (isDirectory)
-                util::FileSystem::EnsureDirectory(path);
-            else
-                util::FileSystem::WriteText(path, content);
-            refresh();
-        },
-        [path, refresh]() {
-            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
-            refresh();
-        }));
+    if (path.empty()) return;
+    FBZZ_LOG_INFO("Asset created: %s", path.c_str());
+    Toast::Success("Created " + util::FileSystem::GetFilename(path));
 }
 
 } // namespace
@@ -199,7 +197,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newDir))
             newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
         util::FileSystem::EnsureDirectory(newDir);
-        RegisterCreatedPath(ctx, newDir);
+        NotifyAssetCreated(newDir);
         RefreshDirectory();
         BeginRenameForPath(newDir, &ctx);
     }
@@ -210,7 +208,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".scene";
         util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
-        RegisterCreatedPath(ctx, newPath);
+        NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
@@ -242,7 +240,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             "emissive_color = [1.0, 1.0, 1.0]\n"
             "emissive_scale = 0.0\n";
         util::FileSystem::WriteText(newPath, materialTemplate);
-        RegisterCreatedPath(ctx, newPath);
+        NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
@@ -261,7 +259,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             FBZZ_LOG_ERROR("Post Process Profile creation failed: %s", newPath.c_str());
             return;
         }
-        RegisterCreatedPath(ctx, newPath);
+        NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
@@ -276,7 +274,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             FBZZ_LOG_ERROR("Animator Controller creation failed: %s", newPath.c_str());
             return;
         }
-        RegisterCreatedPath(ctx, newPath);
+        NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
@@ -295,7 +293,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             FBZZ_LOG_ERROR("Avatar Mask creation failed: %s", newPath.c_str());
             return;
         }
-        RegisterCreatedPath(ctx, newPath);
+        NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
@@ -321,7 +319,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 FBZZ_LOG_ERROR("VFX Graph creation failed: %s (%s)", newPath.c_str(), error.c_str());
                 return;
             }
-            RegisterCreatedPath(ctx, newPath);
+            NotifyAssetCreated(newPath);
             RefreshDirectory();
             BeginRenameForPath(newPath, &ctx);
         };
@@ -392,9 +390,41 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                            newPath.c_str(), error.c_str());
             return;
         }
-        RegisterCreatedPath(ctx, newPath);
+        NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
+    }
+
+    // ── Physics Material (共有物理マテリアル) ─────────────────────
+    // プリセットを選んで .physmat を生成する。
+    // WHY プリセットから作らせるか: 反発 0.3 / 摩擦 0.6 のような数値は、それだけ見ても
+    //     「どんな材質か」が分からない。ゴム・氷・金属という名前から始めれば、
+    //     そこからの微調整として値をいじれる。
+    if (ImGui::BeginMenu("Physics Material")) {
+        for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
+            const char* presetName = physics::PhysicsMaterial::PresetName(i);
+            if (!ImGui::MenuItem(presetName)) continue;
+
+            std::string newPath = m_currentPath + "/" + presetName + ".physmat";
+            int suffix = 1;
+            while (util::FileSystem::Exists(newPath))
+                newPath = m_currentPath + "/" + presetName + " " +
+                    std::to_string(suffix++) + ".physmat";
+
+            asset::PhysicsMaterialAsset physicsMaterial;
+            if (const auto* preset = physics::PhysicsMaterial::PresetAt(i))
+                physicsMaterial.material = *preset;
+            physicsMaterial.presetName = presetName;
+
+            if (!asset::SavePhysicsMaterialAssetToFile(newPath, physicsMaterial)) {
+                FBZZ_LOG_ERROR("Physics Material creation failed: %s", newPath.c_str());
+                continue;
+            }
+            NotifyAssetCreated(newPath);
+            RefreshDirectory();
+            BeginRenameForPath(newPath, &ctx);
+        }
+        ImGui::EndMenu();
     }
 
     // ── Data Asset (純共有 ScriptableObject) ──────────────────────
@@ -414,7 +444,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                     newPath = m_currentPath + "/New " + typeName + " " +
                         std::to_string(suffix++) + ".fzdata";
                 util::FileSystem::WriteText(newPath, "type = \"" + typeName + "\"\n");
-                RegisterCreatedPath(ctx, newPath);
+                NotifyAssetCreated(newPath);
                 RefreshDirectory();
                 BeginRenameForPath(newPath, &ctx);
             }
@@ -437,7 +467,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ModalDialog::OpenInput(
             "New C++ Script",
             "NewScript",
-            [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath, context = &ctx]
+            [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
             (const std::string& name) {
                 const std::string path =
                     ScriptCodeGen::CreateScript(name, resolvedScriptsDir, dllPath, staticPath);
@@ -448,7 +478,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 // プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
                 if (!projScriptsDir.empty() && projScriptsDir != resolvedScriptsDir)
                     ScriptCodeGen::CreateScript(name, projScriptsDir, "", "");
-                RegisterCreatedPath(*context, path);
+                NotifyAssetCreated(path);
                 m_pendingNavigate = projScriptsDir;
                 RefreshDirectory();
                 FBZZ_LOG_INFO("C++ Script generated: %s", path.c_str());
@@ -464,9 +494,9 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         const std::string resolvedHlslDir =
             engineHlslDir.empty() ? projHlslDir : engineHlslDir;
 
-        auto makeHlslCallback = [this, resolvedHlslDir, projHlslDir, context = &ctx]
+        auto makeHlslCallback = [this, resolvedHlslDir, projHlslDir]
             (ScriptCodeGen::HlslKind kind) {
-            return [this, resolvedHlslDir, projHlslDir, kind, context]
+            return [this, resolvedHlslDir, projHlslDir, kind]
                 (const std::string& name) {
                 const std::string path =
                     ScriptCodeGen::CreateHlsl(name, resolvedHlslDir, kind);
@@ -477,7 +507,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 // プロジェクト側にも即コピー
                 if (!projHlslDir.empty() && projHlslDir != resolvedHlslDir)
                     ScriptCodeGen::CreateHlsl(name, projHlslDir, kind);
-                RegisterCreatedPath(*context, path);
+                NotifyAssetCreated(path);
                 const std::string destDir =
                     (kind == ScriptCodeGen::HlslKind::SurfaceVSPS)
                         ? (projHlslDir + "/Material/Custom")

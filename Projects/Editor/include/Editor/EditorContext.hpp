@@ -308,6 +308,14 @@ struct EditorContext {
     bool requestOpenVFXEditor        = false; // .vfx ダブルクリック → VFXEditorPanel を開く
     bool requestOpenBehaviorTree     = false; // .behaviortree ダブルクリック → BehaviorTreePanel を開く
 
+    // Inspector 等のアセット参照欄 → AssetBrowser: 参照先を一覧上で選択させる要求 (one-shot)。
+    // WHY: Unity の Object Field と同じく、参照を辿る動線が無いと「この .mat はどのファイルか」を
+    //      確かめるのにフォルダを手で探し回ることになる。パスは絶対 / Assets 相対のどちらでもよく、
+    //      AssetBrowser 側が実体へ解決する。空文字 = 要求なし。
+    std::string requestRevealAssetPath;
+    // true = 一覧で選択するだけでなく、Inspector の表示対象もそのアセットへ移す (ダブルクリック)。
+    bool        requestRevealAssetSelect = false;
+
     // ── Prefab 編集モード ────────────────────────────────────────────────────
     // WHY: プレファブを直す唯一の手段が「インスタンスを選んで Apply」だと、
     //      シーンに 1 個も置いていないプレファブは編集できず、シーン側の
