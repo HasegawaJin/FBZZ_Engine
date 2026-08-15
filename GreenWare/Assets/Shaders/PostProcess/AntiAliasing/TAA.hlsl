@@ -59,6 +59,8 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 
     // ── 現フレームカラーを取得 ─────────────────────────────────────────────────
     float3 currentColor = texCurrent.Sample(sampDefault, uv).rgb;
+
+    // 履歴を使わない設定では深度復元・近傍サンプル・履歴サンプルを全て省略する。
     if (taaFeedback <= 0.0f)
         return float4(currentColor, 1.0f);
 

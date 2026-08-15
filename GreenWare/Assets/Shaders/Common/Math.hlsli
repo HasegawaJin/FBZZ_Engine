@@ -19,7 +19,8 @@ float Sq(float x) { return x * x; }
 // x^5  (Schlick フレネル近似で頻出)
 float Pow5(float x) { float x2 = x * x; return x2 * x2 * x; }
 
-// 符号を保持した安全な逆数。負の値を abs だけで処理すると方向が反転する。
+// 符号を保持した安全な逆数。負の深度差や方向成分を扱う呼び出し側で
+// abs(x) だけを分母に使うと、結果の向きが反転するため符号を復元する。
 float SafeRcp(float x)
 {
     const float signValue = x < 0.0f ? -1.0f : 1.0f;

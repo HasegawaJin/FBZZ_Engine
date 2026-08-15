@@ -136,6 +136,8 @@ float3 EvaluateIBL(
     return diffuse * saturate(ao) + specular + albedo * kIBLAmbientFloor;
 }
 
+// Clearcoat は専用の低粗さ specular lobe として環境反射にも加え、
+// その Fresnel 分を base layer から差し引いて二重加算を防ぐ。
 float3 EvaluateIBLAdvanced(
     float3 N, float3 V, float3 T, float3 B, float anisotropy,
     float3 albedo, float metallic, float roughness, float ao,
@@ -158,12 +160,14 @@ float3 EvaluateIBLAdvanced(
                               irradianceMap, prefilterMap, brdfLUT, maxMipLevel,
                               diffuseScale, specularScale, samp, sampClamp);
     base *= saturate(1.0f - coatF);
+
     const float2 coatBrdf = saturate(brdfLUT.Sample(sampClamp,
         float2(NdotV, max(saturate(clearcoatRoughness), 0.03f))).rg);
     const float3 coatEnv = prefilterMap.SampleLevel(
         samp, R, max(saturate(clearcoatRoughness), 0.03f) * max((float)maxMipLevel, 0.0f)).rgb;
     const float3 clearcoatSpec = coatEnv *
         (float3(0.04f, 0.04f, 0.04f) * coatBrdf.x + coatBrdf.y) * coat;
+
     const float grazing = Pow5(1.0f - NdotV);
     const float3 sheenEnv = irradianceMap.Sample(samp, N) * saturate(sheen) *
         saturate(sheenColor) * grazing * (1.0f - saturate(metallic)) * 0.5f * saturate(ao);

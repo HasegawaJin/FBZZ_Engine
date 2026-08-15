@@ -65,8 +65,10 @@ PSInput VSMain(VSInput v)
     float4 worldPos4 = mul(float4(v.position, 1.0f), world);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = SurfaceSafeNormalize(mul(v.normal,  (float3x3)worldInvTranspose), float3(0.0f, 1.0f, 0.0f));
-    o.tangent    = SurfaceSafeNormalize(mul(v.tangent, (float3x3)world), float3(1.0f, 0.0f, 0.0f));
+    o.normal     = SurfaceSafeNormalize(mul(v.normal,  (float3x3)worldInvTranspose),
+                                        float3(0.0f, 1.0f, 0.0f));
+    o.tangent    = SurfaceSafeNormalize(mul(v.tangent, (float3x3)world),
+                                        float3(1.0f, 0.0f, 0.0f));
     o.uv         = v.uv;
     return o;
 }
@@ -77,9 +79,9 @@ float4 PSMain(PSInput p) : SV_Target0
 {
     float2 uv = SurfaceTransformUv(p.uv, uvTiling, uvOffset);
 
-    // Albedo
+    // Albedo: 共通 API がテクスチャ有無・sRGB・フォールバックを処理する。
     float4 surfaceAlbedo = SurfaceSampleAlbedo(texAlbedo, sampDefault, uv,
-                                                albedo, textureMask);
+                                               albedo, textureMask);
     float3 col   = surfaceAlbedo.rgb;
     float  alpha = surfaceAlbedo.a;
     clip(alpha - alphaCutoff);
@@ -106,17 +108,14 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 result   = ambient + diffuse + specular;
 
     // ポイントライト (点光源)
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = SurfaceSafeNormalize(toLight, N);
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        float3 Hp      = SurfaceSafeNormalize(Lp + V, N);
-        float  dif     = max(0.0f, dot(N, Lp)) * atten;
-        float  spe     = pow(max(0.0f, dot(N, Hp)), shininess) * atten * 0.5f;
-        result += pointLights[pi].color * pointLights[pi].intensity * (dif * col + spe);
-    }
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        float3 Hp  = SurfaceSafeNormalize(ps.L + V, N);
+        float  dif = max(0.0f, dot(N, ps.L));
+        float  spe = pow(max(0.0f, dot(N, Hp)), shininess) * 0.5f;
+        result += ps.color * ps.intensity * (dif * col + spe);
+    FBZZ_PUNCTUAL_END
 
     // 自発光
     result += col * emissiveScale;

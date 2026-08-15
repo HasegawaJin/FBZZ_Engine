@@ -122,29 +122,12 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
                               lightColor, lightIntensity, shadow, ao);
     }
 
-    // ---- ポイントライトループ ------------------------------------------------
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = SafeNormalize(toLight, N);
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_PBR_Direct(N, V, Lp, col, met, rough,
-                      pointLights[pi].color, pointLights[pi].intensity * atten);
-    }
-
-    // ---- スポットライトループ ------------------------------------------------
-    [loop] for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = SafeNormalize(toLight, N);
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_PBR_Direct(N, V, Ls, col, met, rough,
-                      spotLights[si].color, spotLights[si].intensity * atten * cone);
-    }
+    // ---- 点光源 / スポットライト ----------------------------------------------
+    // 走査元 (b3 の固定長配列 / StructuredBuffer / クラスタリスト) は
+    // ClusteredLights.hlsli が clusterLightMode で切り替える。
+    FBZZ_PUNCTUAL_BEGIN(worldPos, p.svPosition.xy, N)
+        result += Lighting_PBR_Direct(N, V, ps.L, col, met, rough, ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
 
     // カスケード可視化 (デバッグ)。無効時は白を返すので通常描画には影響しない。
     // WHY: 分割位置 (Split Lambda) と境界ブレンド幅は数値だけでは詰められない。

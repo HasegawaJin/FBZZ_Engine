@@ -95,4 +95,24 @@
 #define UAV_CONTACT_SHADOW   u3   // コンタクトシャドウ Compute 書き込み先 (UAV_SSR と時分割で再利用)
 #define UAV_BRDF_LUT         u0   // BRDF LUT ベイク出力 (起動時 1 回のみ。UAV_OUTPUT と時分割で再利用)
 
+// ---- Clustered Lighting (Forward+ / Deferred+) ------------------------
+#define CB_CLUSTER           b9   // ClusterConstants (グリッド寸法 / Z スライス係数 / ライト数)
+
+// ピクセルシェーダーが読むライトデータ。DrawCall::psBuffers[0..1] がここへ束縛される。
+// LAYOUT: Engine/Renderer/DrawCall.hpp の kPsBufferBaseSlot (=29) と一致させること。
+// WHY t14/t15 を使わないか: あちらは両バックエンドとも頂点シェーダー専用スロットで、
+//     PS からは読めない (DX11 は VSSetShaderResources、DX12 の root param 15 は VERTEX 可視)。
+#define SB_PUNCTUAL_LIGHTS   t29  // StructuredBuffer<PunctualLight>  点光源+スポットを統合した配列
+#define SB_CLUSTER_INDICES   t30  // StructuredBuffer<uint>  [cluster*stride] = 個数, 続けてライト番号
+
+// カリング CS の入力。ComputeCall::srvBuffers[0] が t14 へ束縛される。
+// GPU パーティクル / スキニングと同じスロットだが、別ディスパッチなので競合しない。
+#define SB_CLUSTER_LIGHTS_CS t14  // StructuredBuffer<PunctualLight>
+
+// カリング CS の出力。ComputeCall::uavBuffers[0] が u2 へ束縛される。
+// WHY UAV が 1 本で足りるか: 1 スレッド = 1 クラスタにするとカウンタがスレッド内で完結するため、
+//     InterlockedAdd も offset テーブルも不要になり、固定ストライドで直接書ける。
+//     おかげで UAV_SSR / UAV_CONTACT_SHADOW / UAV_GPU_SORT が密集する u3 を避けられる。
+#define UAV_CLUSTER_LIGHTS   u2   // RWStructuredBuffer<uint> (UAV_GPU_PARTICLES と時分割で再利用)
+
 #endif // BINDING_HLSLI

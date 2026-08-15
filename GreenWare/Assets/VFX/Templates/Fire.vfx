@@ -1,5 +1,10 @@
-version = 3
+version = 5
 name = "Fire"
+description = "常時ループする焚き火 / 松明。煙(最奥)→外炎→芯炎→火の粉→陽炎の層構成。ループ前提なので継ぎ目の確認を忘れないこと。"
+tags = ["fire", "loop", "ambient", "prop"]
+requiredRoles = ["core", "body", "sparks"]
+# ループなので立ち上がり直後ではなく、全層が出揃った定常状態を代表画にする。
+thumbnailTime = 1.5
 maxParticles = 3000
 maxLights = 1
 maxAudioVoices = 1
@@ -72,7 +77,6 @@ gravity = [0.0, 0.0, 0.0]
 # 縦に伸ばす層なので回転させない (回すとせん断される)。
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
-texturePath = "Assets/Textures/Particles/flame_03.png"
 # 芯炎: 260 粒子が重なるので単体は控えめに。光量は Light ノードが担う
 blendMode = 0
 sortMode = 0
@@ -128,7 +132,6 @@ velocityDamping = 1.35
 gravity = [0.0, 0.0, 0.0]
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
-texturePath = "Assets/Textures/Particles/flame_05.png"
 # WHY: 炎が「物体」に見えるには不透明な芯が要る。全部加算だと背景が透けて
 #      光の靄になり、輪郭が消える。body は Premultiplied、hot core だけ加算にする。
 # 外炎: 素材が事前乗算相当なので Premultiplied。Alpha だと縁が汚れる
@@ -183,7 +186,6 @@ lifetimeRandom = 0.5
 emitVelocity = [0.0, 1.0, 0.0]
 velocitySpread = 0.3
 gravity = [0.0, 0.0, 0.0]
-texturePath = "Assets/Textures/Particles/smoke_03.png"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -232,7 +234,6 @@ velocityDamping = 0.35
 # 火の粉だけは下向き重力を持つ。上がりっぱなしだと「立ち上る点」にしか見えず、
 # 上昇風の外へ抜けて落ちる粒があることで初めて熱気の境界が見える。
 gravity = [0.0, -0.6, 0.0]
-texturePath = "Assets/Textures/Particles/spark_01.png"
 # 火の粉: 小さく数も少ないので強めでよい
 blendMode = 0
 emissiveScale = 3.5
@@ -290,7 +291,6 @@ gravity = [0.0, 0.0, 0.0]
 angularVelocityMin = -0.4
 angularVelocityMax = 0.4
 sizeAxisScale = [1.0, 1.0, 1.0]
-texturePath = "Assets/Textures/Particles/smoke_09.png"
 # 煤煙: 背景を隠す本体。Premultiplied で二重暗化を避ける
 blendMode = 2
 sortMode = 1

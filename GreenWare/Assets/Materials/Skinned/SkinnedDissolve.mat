@@ -1,5 +1,5 @@
 version = 1
-shader = "guid:c7e9a8e8b85247b688b7168135b41226"
+shader = "guid:5155fa803d1743ecb0ed9c4c6cf05556"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

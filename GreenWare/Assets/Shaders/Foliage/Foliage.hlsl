@@ -8,6 +8,7 @@
 #define FBZZ_MATERIAL_CONSTANTS  // FoliageMaterialCB で MaterialConstants を上書きするため
 #include "Common/Constants.hlsli"
 #include "Platform/Backend.hlsli"
+#include "Rendering/Lighting.hlsli"
 
 cbuffer FoliageMaterialCB : register(CB_MATERIAL)
 {
@@ -61,6 +62,7 @@ struct PsIn
     float4 svPos : SV_POSITION;
     float3 normal : NORMAL;
     float2 uv : TEXCOORD0;
+    float3 worldPos : TEXCOORD1;
 };
 
 PsIn VSMain(VsIn input, uint instanceId : SV_InstanceID)
@@ -81,6 +83,7 @@ PsIn VSMain(VsIn input, uint instanceId : SV_InstanceID)
     output.svPos = mul(float4(worldPosition, 1.0f), viewProjection);
     output.normal = normalize(mul(rotation, input.normal));
     output.uv = input.uv;
+    output.worldPos = worldPosition;
     return output;
 }
 
@@ -92,9 +95,17 @@ float4 PSMain(PsIn input) : SV_Target0
     if (alphaCutoff > 0.0f)
         clip(color.a - alphaCutoff);
 
-    const float ndotl = saturate(dot(normalize(input.normal), normalize(-lightDir)));
+    const float3 N = normalize(input.normal);
+    const float3 albedoColor = color.rgb;
+    const float ndotl = saturate(dot(N, normalize(-lightDir)));
     // ambientColor は Lit モードで {0.08,...}、Unlit モードで RenderSystem が {1,1,1} に設定する。
     // lightIntensity は Unlit モードで 0 になるため、Unlit 時は ambientColor のみが乗算される。
-    color.rgb *= ambientColor + lightColor * (ndotl * lightIntensity);
+    color.rgb = albedoColor * (ambientColor + lightColor * (ndotl * lightIntensity));
+
+    FBZZ_PUNCTUAL_BEGIN(input.worldPos, input.svPos.xy, N)
+        color.rgb += Lighting_Lambert_Direct(N, ps.L, albedoColor,
+            ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_END
+
     return color;
 }

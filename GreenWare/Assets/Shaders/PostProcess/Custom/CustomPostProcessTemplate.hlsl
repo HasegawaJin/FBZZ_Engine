@@ -7,14 +7,18 @@
 //  2. PSMain の "エフェクト実装" セクションを編集する
 //  3. 保存後はEditor/CMakeが自動収集し、compile_shaders.ps1が差分だけをコンパイルする
 //  4. 以下のいずれかで登録する:
-//     [.fzpp] custom_effects に追加:
-//       [[custom_effects]]
-//       name    = "MyEffect"
-//       enabled = true
-//       shader  = "assets/shaders/PostProcess/Custom/MyEffect.hlsl"
-//       intensity   = 1.0
-//       blend       = 1.0
-//       parameters  = [0.0, 0.0, 0.0, 0.0]
+//     [PostProcessProfile (.fzdata)] customEffects に追加:
+//       [[customEffects]]
+//       name       = "MyEffect"
+//       enabled    = true
+//       shaderPath = "assets/shaders/PostProcess/Custom/MyEffect.hlsl"
+//       intensity  = 1.0
+//       blend      = 1.0
+//       param0     = 0.0
+//       param1     = 0.0
+//       param2     = 0.0
+//       param3     = 0.0
+//     (Inspector なら Post Process Profile の Custom Effects で "+" するだけでよい)
 //
 //     [Script]
 //       postProcess.AddCustom("MyEffect",

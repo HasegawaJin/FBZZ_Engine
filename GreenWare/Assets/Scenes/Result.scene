@@ -6,7 +6,7 @@ active = true
 instanceId = 'a3000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Canvas'
-parent = ''
+parent = ''
 parentInstanceId = ''
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -28,20 +28,12 @@ tag = 'Untagged'
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'ResultDisplayScript'
-
-        [gameobjects.ScriptComponents.fields]
-        resultTextObjectName = 'ResultText'
-        scoreTextObjectName = 'ScoreText'
-
 [[gameobjects]]
 active = true
 instanceId = 'a3000001-0000-0000-0000-000000000002'
 layer = 0
 name = 'Background'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -63,7 +55,7 @@ active = true
 instanceId = 'a3000001-0000-0000-0000-000000000003'
 layer = 0
 name = 'ResultText'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -83,33 +75,10 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'a3000001-0000-0000-0000-000000000004'
-layer = 0
-name = 'ScoreText'
-parent = 'Canvas'
-parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.UIText]
-    color = [ 0.85, 0.85, 0.85, 1.0 ]
-    enabled = true
-    fontPath = ''
-    fontSize = 32.0
-    letterSpacing = 4.0
-    text = 'SCORE 0'
-
-    [gameobjects.transform]
-    position = [ 800.0, 340.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 200.0, 32.0, 1.0 ]
-
-[[gameobjects]]
-active = true
 instanceId = 'a3000001-0000-0000-0000-000000000005'
 layer = 0
 name = 'RetryButton'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -146,17 +115,17 @@ tag = 'Untagged'
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        autoDelay = 1.5
-        autoTransition = false
-        targetScene = 'Game'
-        viaScene = 'Load'
+        'Auto Delay' = 1.5
+        'Auto Transition' = false
+        'Target Scene' = 'Main'
+        'Via Scene' = 'Load'
 
 [[gameobjects]]
 active = true
 instanceId = 'a3000001-0000-0000-0000-000000000006'
 layer = 0
 name = 'TitleButton'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -193,32 +162,7 @@ tag = 'Untagged'
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        autoDelay = 1.5
-        autoTransition = false
-        targetScene = 'Title'
-        viaScene = 'Load'
-
-[[gameobjects]]
-active = true
-instanceId = '875d1240-730c-4784-a705-8ddf2f12861a'
-layer = 0
-name = 'Post Process Volume'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.PostProcessVolumeComponent]
-    blendDistance = 2.0
-    blendWeight = 1.0
-    enabled = true
-    influenceRadius = 10.0
-    isGlobal = true
-    priority = 0
-    profile = 'guid:adbee6b96d7b44518568016375345848'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
+        'Auto Delay' = 1.5
+        'Auto Transition' = false
+        'Target Scene' = 'Title'
+        'Via Scene' = 'Load'

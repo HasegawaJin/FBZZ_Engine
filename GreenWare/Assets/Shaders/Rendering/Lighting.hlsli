@@ -179,6 +179,7 @@ float3 Lighting_PBR_IBL(
 }
 
 // =========================================================================
+// 拡張 PBR のダイレクト評価。T/B は法線マップから作った正規直交基底。
 float3 Lighting_PBR_Advanced(
     float3 N, float3 V, float3 L, float3 T, float3 B,
     float3 albedo, float metallic, float roughness,
@@ -334,5 +335,13 @@ float3 Lighting_Toon_Direct(float3 N, float3 L,
     // Lighting_Toon と同じ理由で LIGHT_UNIT_SCALE は掛けない。
     return albedo * lightColor * lightIntensity * band;
 }
+
+// 点光源 / スポットの走査層。
+// WHY ファイル末尾で include するか: ClusteredLights.hlsli が LightAttenuation /
+//     SpotConeWeight / SafeNormalize を呼ぶため、それらの定義より後に置く必要がある
+//     (HLSL には前方宣言がない)。
+// WHY ここに置くか: 光源ループを持つ 24 個のシェーダーは例外なく Lighting.hlsli を
+//     include 済みなので、各ファイルへ include を足さずにイテレータが行き渡る。
+#include "Rendering/ClusteredLights.hlsli"
 
 #endif // LIGHTING_HLSLI
