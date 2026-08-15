@@ -1611,8 +1611,32 @@ void EditorApp::OnRender()
 
     m_renderer->BeginFrame();
 
-    RenderSceneView(gameCamera, gameCullingMask);
-    RenderGameView(gameCamera, gameCullingMask);
+    // 実際に画面へ出ているビューポートだけを描く。
+    // WHY: Scene View と Game View は同じシーンをそれぞれフル描画する (Shadow / GBuffer /
+    //      ライティング / ポストプロセス一式) ため、両方を毎フレーム回すと描画コストが素で 2 倍になる。
+    //      しかも Play 中は Game View だけ、Map 編集中は Scene View だけを残してもう片方を
+    //      visible = false にする構成なので、隠れている側の 1 周ぶんは完全な捨て仕事だった。
+    // NOTE: WasContentRendered() はパネル描画が本関数より後にあるため 1 フレーム遅れの情報。
+    //       visible と併せて見ることで、閉じられた瞬間はその場で止まり、
+    //       開き直したときは (隠す前の値が残っているため) 待たずに描き始められる。
+    const auto isViewportShowing = [](const ViewportPanel* panel) {
+        return panel != nullptr && panel->visible && panel->WasContentRendered();
+    };
+    // AI が RT を読み出す間は表示状態に関わらず描き続ける (キャプチャが古い絵を掴まないように)。
+    const bool aiViewportCaptureActive = m_ctx.aiViewportRenderUntilFrame != 0
+        && Time::frameCount <= m_ctx.aiViewportRenderUntilFrame;
+
+    const bool needSceneView = isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive;
+    // Game View の RT は UI Viewport が背景として共有する (m_uiViewportPanel->hdrRT = m_gameViewportRT)。
+    // どちらか一方でも出ていれば描かないと、UI 編集画面が止まった絵のままになる。
+    const bool needGameView = isViewportShowing(m_gameViewportPanel)
+        || isViewportShowing(m_uiViewportPanel)
+        || aiViewportCaptureActive;
+
+    if (needSceneView)
+        RenderSceneView(gameCamera, gameCullingMask);
+    if (needGameView)
+        RenderGameView(gameCamera, gameCullingMask);
     RenderVFXPreview();
 
     m_renderer->SetRenderTarget({}, *m_resources);

@@ -10271,6 +10271,9 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             if (view != "scene" && view != "game" && view != "vfx") {
                 outcome = Outcome::Err("BAD_ARG", "view は scene、game、vfx のいずれかで指定してください");
             } else {
+                // EditorApp は画面に出ているビューポートしか描かないため、キャプチャ中だけは
+                // 隠れているビューも描き続けさせる。連続キャプチャで古い絵を掴まないための猶予。
+                m_context.aiViewportRenderUntilFrame = Time::frameCount + 8;
                 const auto target = view == "game" ? m_gameViewportRT
                     : (view == "vfx" ? m_vfxPreviewRT : m_sceneViewportRT);
                 outcome = DoViewportCapture(m_context, target);
@@ -10279,6 +10282,8 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
         } else if (type == "viewport.semantic") {
             std::string view = StringField(payload, "view");
             if (view.empty()) view = "scene";
+            // viewport.capture と同じ理由で、隠れているビューも描き続けさせる。
+            m_context.aiViewportRenderUntilFrame = Time::frameCount + 8;
             if (view != "scene" && view != "game") {
                 outcome = Outcome::Err("BAD_ARG", "view は scene または game で指定してください");
             } else if (view == "scene" && m_context.editorCamera == nullptr) {
