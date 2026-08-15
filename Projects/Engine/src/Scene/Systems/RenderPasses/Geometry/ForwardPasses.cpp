@@ -148,7 +148,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
             PerObjectCB objData{};
             objData.world             = go.transform.GetWorldMatrix();
-            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+            objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
             renderer::DrawCall dc;
             dc.vertexBuffer       = mr->mesh->vertexBuffer;
@@ -165,6 +165,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
+            BindClusterLighting(dc, ctx);
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -227,7 +228,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
             PerObjectCB objData{};
             objData.world             = go.transform.GetWorldMatrix();
-            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+            objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
             const auto skinCB = ResolveSkinningCB(
                 anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
                 smr->model, h.bindPoseSkinningCB);
@@ -248,6 +249,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             dc.constantBuffers[7] = skinCB;
+            BindClusterLighting(dc, ctx);
             for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
                 if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -306,7 +308,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
@@ -324,6 +326,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[8] = h.advancedGraphicsCB;
+        BindClusterLighting(dc, ctx);
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
@@ -363,7 +366,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         const auto skinCB = ResolveSkinningCB(
@@ -385,6 +388,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[7] = skinCB;
+        BindClusterLighting(dc, ctx);
         for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
             if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
         dc.textures[8] = shadowDepthTex;

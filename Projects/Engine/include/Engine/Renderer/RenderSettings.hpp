@@ -9,8 +9,28 @@
 namespace fbzz::renderer {
 
 enum class RenderingPipeline : uint8_t {
-    Forward  = 0,
-    Deferred = 1,
+    Forward      = 0,
+    Deferred     = 1,
+    // クラスタライトカリングを併用する経路。不透明の描き方は上の 2 つと同じで、
+    // 「点光源 / スポットをどう供給するか」だけが変わる。
+    ForwardPlus  = 2,
+    DeferredPlus = 3,
+};
+
+// クラスタライトカリング (Forward+ / Deferred+) の設定。
+struct ClusteredSettings {
+    // pipeline が *Plus のときの実行可否。false ならクラスタ経路を止めて従来動作へ戻す。
+    bool  enabled      = true;
+    // クラスタ Z 分割の最遠距離 [m]。これより遠いライトは最終スライスへ丸める。
+    // WHY camera.far をそのまま使わないか: far が 10000 のようなシーンでは指数分割の
+    //     手前側が潰れ、カメラ近傍のクラスタがほとんど機能しなくなる。
+    float maxDistance  = 200.0f;
+    // 1 クラスタあたりのライト数をヒートマップ表示する (緑=空き, 赤=上限, 青成分=あふれ)。
+    bool  debugHeatmap = false;
+    // カリングを無効化し、全ライトを線形評価する。
+    // WHY: 「評価側のバグ」と「カリング側のバグ」を切り分けるための A/B スイッチ。
+    //      これを true にしてレガシー経路と絵が一致すれば、評価側は正しいと確定できる。
+    bool  forceAllLights = false;
 };
 
 struct RenderSelectionID {
@@ -393,6 +413,7 @@ struct RenderSettings {
     ContactShadowSettings    contactShadow;
     LensFlareSettings        lensFlare;
     LUTColorGradingSettings  lutColorGrading;
+    ClusteredSettings        clustered;
 
     float outlineWidth = 0.045f;
     float outlineColor[4] = { 1.0f, 0.82f, 0.22f, 1.0f };
@@ -430,6 +451,16 @@ struct RenderSettings {
     [[nodiscard]] bool IsGtaoActive() const
     {
         return gtao.enabled && !postProcess.ambientOcclusion.enabled;
+    }
+
+    // クラスタライティング経路を使うか。
+    // NOTE: 実際に有効化できるかは CS とバッファが揃っているかにも依存するため、
+    //       RenderSystem 側でリソースの有無と AND を取ってから使うこと。
+    [[nodiscard]] bool UsesClusteredLighting() const
+    {
+        return clustered.enabled
+            && (pipeline == RenderingPipeline::ForwardPlus
+             || pipeline == RenderingPipeline::DeferredPlus);
     }
 
     // IBL は irradiance と prefilter の両キューブマップが揃って初めて有効になる。

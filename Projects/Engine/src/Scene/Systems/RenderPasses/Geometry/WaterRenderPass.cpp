@@ -6,6 +6,7 @@
 //      Component に GPU リソースを持たせず System 側の static cache に閉じることで、
 //      Scene データは保存しやすい純粋なパラメータのまま保つ。
 #include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
+#include "GeometryPasses.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -586,7 +587,7 @@ void WaterSelectionMaskSystem(RenderPassContext& ctx)
         const math::Matrix4 world = transform.GetWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         for (const WaterChunk& chunk : it->second.chunks) {
@@ -978,6 +979,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             call.constantBuffers[3] = lightCB;
             call.constantBuffers[4] = shadowCB;
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
+            BindClusterLighting(call, ctx);
             call.textures[0] = textures.normalMap1;
             call.textures[1] = textures.normalMap2;
             call.textures[2] = textures.foamTex;

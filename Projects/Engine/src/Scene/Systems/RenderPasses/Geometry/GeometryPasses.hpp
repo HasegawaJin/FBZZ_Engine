@@ -5,6 +5,7 @@
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/Mesh.hpp>
+#include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/RenderState.hpp>
 #include "Engine/Scene/Transform.hpp"
 #include <Math/Frustum.hpp>
@@ -28,6 +29,21 @@ struct SkinnedMeshRenderer;
 
 // HDR レンダーターゲットのクリアカラー。Forward / Deferred 両パスで共有する。
 inline constexpr math::Vector4 kHdrClearColor = { 0.005f, 0.005f, 0.02f, 1.0f };
+
+// Forward 系ピクセルシェーダーへクラスタライトの共通リソースを束縛する。
+// WHY: DX11 は PSSetShaderResources、DX12 はピクセル SRV テーブルへ別々に渡す必要があるが、
+//      DrawCall に詰める契約は共通なので、各描画パスでの束縛漏れをこの関数で防ぐ。
+//      Legacy では未束縛の b9 を 0 (= Legacy) として扱うため、従来パスの互換性も保つ。
+inline void BindClusterLighting(renderer::DrawCall& drawCall, const RenderPassContext& ctx)
+{
+    if (ctx.clusterLightMode == ClusterLightMode::Legacy)
+        return;
+
+    drawCall.constantBuffers[9] = ctx.handles.clusterCB;
+    drawCall.psBuffers[0]       = ctx.handles.punctualLightBuffer;
+    if (ctx.clusterLightMode == ClusterLightMode::Clustered)
+        drawCall.psBuffers[1]   = ctx.handles.clusterIndexBuffer;
+}
 
 // パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
 constexpr int kMaxParticleDraw = 10000;
@@ -159,6 +175,10 @@ void ExecuteSkinningComputePass            (RenderPassContext& ctx);
 // Mesh* / AnimatorComponent* をキーにした内部キャッシュを破棄する。
 // シーン切り替えやリソースリセットの際に呼ぶこと。
 void ReleaseSkinningComputeCaches          ();
+// クラスタライトカリング。Shadow より前に 1 回だけ実行し、Forward / Deferred の
+// 両方が同じクラスタ結果を読む。出力は StructuredBuffer なので RenderGraph の
+// 論理リソースには乗らない (SkinningCompute と同じ扱い)。
+void ExecuteClusterLightCullPass           (RenderPassContext& ctx);
 void ExecuteShadowPass                     (RenderPassContext& ctx);
 void ExecuteForwardPasses                  (RenderPassContext& ctx);
 void ExecuteGBufferPass                    (RenderPassContext& ctx);

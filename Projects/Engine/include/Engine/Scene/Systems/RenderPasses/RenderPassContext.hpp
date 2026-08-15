@@ -168,6 +168,60 @@ struct PerObjectCB {
     math::Matrix4 worldInvTranspose;
 };
 
+// ── クラスタライトカリング (Forward+ / Deferred+) ────────────────────────────
+// LAYOUT: Assets/Shaders/Common/ClusterConstants.hlsli と完全に一致させること。
+//         片方だけ変えるとライトが黙って別の位置・別の色で評価される。
+
+// グリッドは解像度非依存の固定分割。
+// WHY: 画面ピクセル数からタイル数を決めると、ビューポートをリサイズするたびに
+//      クラスタバッファを作り直すことになる。16:9 に合わせた固定分割なら確保は起動時 1 回で済む。
+inline constexpr uint32_t kClusterGridX = 32;
+inline constexpr uint32_t kClusterGridY = 18;
+inline constexpr uint32_t kClusterGridZ = 24;
+inline constexpr uint32_t kClusterCount = kClusterGridX * kClusterGridY * kClusterGridZ;
+
+// 1 クラスタが保持できるライト数。あふれた分はライト番号の昇順で切り捨てる (決定的)。
+inline constexpr uint32_t kMaxLightsPerCluster = 32;
+// クラスタ 1 個分の uint 数。先頭がライト数、続けてライト番号が並ぶ。
+inline constexpr uint32_t kClusterStride = kMaxLightsPerCluster + 1;
+// 点光源 + スポットを統合した配列の上限 (従来は点 8 / スポット 4 だった)。
+inline constexpr uint32_t kMaxPunctualLights = 256;
+
+// ライト供給モード。ClusterConstants.hlsli の FBZZ_LIGHT_MODE_* と一致させること。
+// WHY 3 状態か: cbuffer 未束縛のパスは中身が全ゼロで読まれる。0 = Legacy にしておけば、
+//      b9 と t29/t30 を渡していない既存パスは今までと 1 ビットも変わらず動く。
+enum class ClusterLightMode : uint32_t {
+    Legacy    = 0, // b3 の固定長 cbuffer (点 8 / スポット 4)
+    Linear    = 1, // StructuredBuffer を全数走査 (カリング無効・A/B 検証用)
+    Clustered = 2, // クラスタが持つライトだけ走査
+};
+
+// 点光源とスポットを統合した 1 本ぶん (64 bytes)。
+// WHY 統合するか: インデックス空間が 1 本になり、カリング CS も PS も 1 重ループで済む。
+struct PunctualLightGPU {
+    math::Vector3 position;  float    range;
+    math::Vector3 color;     float    intensity;
+    math::Vector3 direction; float    innerCos;   // Spot のみ
+    float         outerCos;  uint32_t type;       float _lightPad[2];
+};
+static_assert(sizeof(PunctualLightGPU) == 64,
+    "PunctualLightGPU must match PunctualLight in Common/ClusterConstants.hlsli (64 bytes)");
+
+struct ClusterConstantsCB {
+    // 1 クラスタが覆う画面上のピクセル数 = screenSize / (GridX, GridY)。
+    // WHY CPU 側で割るか: マテリアルパスは PostProcConstants (b5) を束縛しないため、
+    //     シェーダー側で screenSize を参照できない。
+    float    clusterTilePx[2];
+    float    clusterSliceScale;
+    float    clusterSliceBias;
+    uint32_t clusterLightMode;   // ClusterLightMode
+    uint32_t punctualLightCount;
+    uint32_t clusterDebugMode;   // 0=通常, 1=クラスタあたりライト数のヒートマップ
+    uint32_t _clusterPad0 = 0;
+};
+static_assert(sizeof(ClusterConstantsCB) == 32,
+    "ClusterConstantsCB must match ClusterConstants in Common/ClusterConstants.hlsli (32 bytes)");
+
 // ShadowConstantsCB — HLSL の ShadowConstants (b4) と 1 対 1 で対応する。
 // LAYOUT: Assets/Shaders/Common/ShadowConstants.hlsli と完全に一致させること。
 //         あちらが唯一の HLSL 側定義 (Constants / Terrain / Water が include する)。
@@ -496,6 +550,14 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
     renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
 
+    // ---- クラスタライトカリング (Forward+ / Deferred+) ----
+    // punctualLightBuffer は PS の t29 / CS の t14 へ、clusterIndexBuffer は PS の t30 /
+    // CS の u2 へ束縛する。clusterCB (b9) はモードとグリッド係数を運ぶ。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> punctualLightBuffer;
+    renderer::ResourceHandle<renderer::StructuredBufferTag> clusterIndexBuffer;
+    renderer::ResourceHandle<renderer::ConstantBufferTag>   clusterCB;
+    renderer::ResourceHandle<renderer::ShaderTag>           clusterCullCS;
+
     // Detail System (Terrain Detail — GPU Instancing)
     renderer::ResourceHandle<renderer::ShaderTag>         detailMeshShader;
     renderer::ResourceHandle<renderer::ShaderTag>         detailBillboardShader;
@@ -537,6 +599,7 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         volumetricCloudShader;
     renderer::ResourceHandle<renderer::ShaderTag>         cloudUpscaleShader; // ハーフ解像度→HDR 合成
     renderer::ResourceHandle<renderer::PipelineStateTag>  volumetricCloudPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  volumetricCloudPremultipliedPSO; // 雲の premultiplied 合成専用
     renderer::ResourceHandle<renderer::ConstantBufferTag> volumetricCloudCB;
     // 3D ボリューメトリック雲ノイズ (起動時 CPU 焼き・タイラブル)。
     //   shape  = 128³ 低周波 Perlin-Worley + Worley FBM 帯 (RGBA)
@@ -615,6 +678,16 @@ struct RenderPassContext {
     bool selectionOutlineEnabled = false;
 
     renderer::LightConstantsCB lightData;
+
+    // ---- クラスタライトカリング ----
+    // punctualLights は b3 の固定長配列 (点 8 / スポット 4) と並行して構築される。
+    // WHY 併存させるか: b3 は Sky / Terrain / Particle など 20 以上のシェーダーが
+    //      directional・ambient を読むために使っており、消すと影響範囲が広すぎる。
+    //      点光源とスポットだけをこちらへ逃がし、対応済みのパスから順に切り替える。
+    std::vector<PunctualLightGPU> punctualLights;
+    ClusterLightMode              clusterLightMode = ClusterLightMode::Legacy;
+    bool                          clusterDebugHeatmap = false;
+
     math::Matrix4               lightVP;
     // 影の光源視点。ビルボードを光源へ正対させる必要があるパス
     // (パーティクル自己影の密度積み) が lightVP の内訳を要求する。

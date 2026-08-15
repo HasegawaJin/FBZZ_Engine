@@ -296,6 +296,8 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
                 draw.constantBuffers[0] = ctx.handles.frameCB;
                 draw.constantBuffers[2] = materialCB;
                 draw.constantBuffers[3] = ctx.handles.lightCB;
+                if (!ctx.isDeferred)
+                    BindClusterLighting(draw, ctx);
                 draw.textures[0] = albedo;
                 SubmitCounted(ctx, draw);
             }

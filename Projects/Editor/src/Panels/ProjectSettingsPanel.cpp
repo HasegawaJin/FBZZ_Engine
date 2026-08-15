@@ -410,10 +410,44 @@ void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
 {
     ImGui::Indent();
 
-    const char* pipelineItems[] = { "Forward", "Deferred" };
-    int pipelineIdx = static_cast<int>(render.pipeline);
-    if (ImGui::Combo("Pipeline", &pipelineIdx, pipelineItems, 2))
-        render.pipeline = static_cast<renderer::RenderingPipeline>(pipelineIdx);
+    // WHAT: Combo のポップアップへ候補を個別に描画し、Forward+ / Deferred+ も常に表示する。
+    // WHY: ImGui::Combo の配列オーバーロードは表示領域を呼び出し側へ委ねるため、
+    //      狭い Project Settings パネルでは Plus 系の候補が確認しづらい。
+    const char* pipelineItems[] = { "Forward", "Deferred", "Forward+", "Deferred+" };
+    int pipelineIdx = std::clamp(static_cast<int>(render.pipeline), 0, 3);
+    ImGui::SetNextItemWidth(220.0f);
+    if (ImGui::BeginCombo("Pipeline", pipelineItems[pipelineIdx]))
+    {
+        for (int index = 0; index < 4; ++index)
+        {
+            const bool selected = pipelineIdx == index;
+            if (ImGui::Selectable(pipelineItems[index], selected))
+                pipelineIdx = index;
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    render.pipeline = static_cast<renderer::RenderingPipeline>(pipelineIdx);
+
+    const bool clusteredPipeline = render.pipeline == renderer::RenderingPipeline::ForwardPlus
+                                || render.pipeline == renderer::RenderingPipeline::DeferredPlus;
+    if (clusteredPipeline)
+    {
+        ImGui::Indent();
+        ImGui::Checkbox("Enable clustered lights", &render.clustered.enabled);
+        if (render.clustered.enabled)
+        {
+            ImGui::SetNextItemWidth(150.0f);
+            ImGui::DragFloat("Max distance##clustered", &render.clustered.maxDistance,
+                             1.0f, 1.0f, 10000.0f, "%.0f m");
+            ImGui::Checkbox("Debug heatmap##clustered", &render.clustered.debugHeatmap);
+            ImGui::Checkbox("Force all lights##clustered", &render.clustered.forceAllLights);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(Linear validation mode)");
+        }
+        ImGui::Unindent();
+    }
 
     ImGui::Spacing();
     ImGui::Checkbox("Shadow", &render.shadowEnabled);

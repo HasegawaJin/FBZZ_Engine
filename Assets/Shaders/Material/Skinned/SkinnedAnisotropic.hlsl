@@ -118,32 +118,14 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 diffuse = col * lightColor * lightIntensity * NdotL * shadow;
     float3 result  = ambient + diffuse + specular;
 
-    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
-    {
-        float3 toLight = pointLights[pi].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Lp      = toLight / dist;
-        float3 Hp      = normalize(V + Lp);
-        float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        float  NdotLp  = saturate(dot(N, Lp));
-        float  specP   = KajiyaKaySpec(T, Hp, shininess) * (1.0f - rough);
-        result += (col * NdotLp + specColor * specP)
-                * pointLights[pi].color * pointLights[pi].intensity * atten;
-    }
-    [loop] for (int si = 0; si < spotLightCount; ++si)
-    {
-        float3 toLight = spotLights[si].position - p.worldPos;
-        float  dist    = length(toLight);
-        float3 Ls      = toLight / dist;
-        float3 Hs      = normalize(V + Ls);
-        float  atten   = LightAttenuation(dist, spotLights[si].range);
-        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
-                             spotLights[si].innerCos, spotLights[si].outerCos);
-        float  NdotLs  = saturate(dot(N, Ls));
-        float  specS   = KajiyaKaySpec(T, Hs, shininess) * (1.0f - rough);
-        result += (col * NdotLs + specColor * specS)
-                * spotLights[si].color * spotLights[si].intensity * atten * cone;
-    }
+    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        float3 Hp     = normalize(V + ps.L);
+        float  NdotLp = saturate(dot(N, ps.L));
+        float  specP  = KajiyaKaySpec(T, Hp, shininess) * (1.0f - rough);
+        result += (col * NdotLp + specColor * specP) * ps.color * ps.intensity;
+    FBZZ_PUNCTUAL_END
 
     float3 emissiveTex = (textureMask & (1u << 3))
         ? texEmissive.Sample(sampDefault, uv).rgb
