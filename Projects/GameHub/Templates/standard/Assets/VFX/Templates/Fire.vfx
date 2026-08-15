@@ -1,0 +1,608 @@
+version = 5
+name = "Fire"
+description = "常時ループする焚き火 / 松明。煙(最奥)→外炎→芯炎→火の粉→陽炎の層構成。ループ前提なので継ぎ目の確認を忘れないこと。"
+tags = ["fire", "loop", "ambient", "prop"]
+requiredRoles = ["core", "body", "sparks"]
+# ループなので立ち上がり直後ではなく、全層が出揃った定常状態を代表画にする。
+thumbnailTime = 1.5
+maxParticles = 3000
+maxLights = 1
+maxAudioVoices = 1
+
+# ------------------------------------------------------------------------------
+# Fire — 常時ループする焚き火 / 松明。
+# 層: 外炎(不透明な body) / 芯炎(加算の hot core) / 陽炎 / 火の粉 / 煤煙 + 揺らぐ点光源
+#
+# 作り直しの根拠 (旧版が「炎に見えなかった」理由):
+#  1. 上昇力を emitVelocity・gravity(+Y)・Wind 力場の 3 箇所で二重三重に足していたため、
+#     0.16m の発生源から 3m 近く吹き上がる「ガスの噴流」になっていた。
+#     → 上昇加速度の出所を Air Flow の力場だけに一本化し、gravity は 0 にした。
+#  2. 芯炎・外炎の両方が加算 (blendMode=0) で emissiveScale 5.5/3.2。
+#     数十枚が重なると白飽和して「光の玉」になる。
+#     → 外炎を Premultiplied にして炎の輪郭 (body) を作り、加算は芯と火の粉だけに残した。
+#     素材 (Kenney 系) はパレット PNG + tRNS のグレースケールで RGB≒alpha、つまり
+#     事前乗算アルファ相当。Alpha(1) で描くと RGB が alpha で二重に落ちて縁が汚れる。
+#     emissiveScale も重なり枚数に対して過大だったので実用域まで下げた。
+#  3. 回転 (angularVelocity) と非等方サイズ (sizeAxisScale) を同時に掛けていた。
+#     Particle.hlsl は回転の後に軸倍率を掛けるため、回るほどスプライトが平行四辺形へ
+#     せん断される。→ 縦長にする層は回さない / 回す層は等方、と排他にした。
+#  4. sizeEnd がほぼ 0 で、上がるほど点へ収束して炎の舌にならなかった。
+#     → sizeEnd を sizeStart の 5〜6 割に留め、尖らせるのは寿命とアルファに任せる。
+#
+# velocitySpread は 3 軸へ等方に効く (旧実装は X/Z のみで、上向きの炎は全粒子が
+# 同速に揃ってしまっていた)。縦のばらつきはこれと lifetimeRandom で作る。
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# --- 芯炎: 小さく明るい hot core。加算で光らせる ------------------------------
+[[nodes]]
+id = 2
+type = 2
+name = "Core Flame"
+duration = 6.0
+editorX = 260.0
+editorY = -40.0
+position = [0.0, 0.06, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 6.0
+loop = true
+emitRate = 60.0
+maxParticles = 260
+shape = 1
+sphereRadius = 0.11
+sizeStart = 0.34
+sizeEnd = 0.20
+sizeCurvePower = 1.2
+lifetime = 0.6
+lifetimeRandom = 0.45
+# 上昇は Air Flow の力場が担当する。ここでは初速だけ与え、gravity は 0 にする。
+# WHY: 初速・重力・風の 3 重計上が旧版の「噴流化」の原因だった。
+emitVelocity = [0.0, 1.4, 0.0]
+velocitySpread = 0.28
+velocityDamping = 1.2
+gravity = [0.0, 0.0, 0.0]
+# 縦に伸ばす層なので回転させない (回すとせん断される)。
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+# 芯炎: 260 粒子が重なるので単体は控えめに。光量は Light ノードが担う
+blendMode = 0
+sortMode = 0
+emissiveScale = 1.8
+softParticles = true
+softParticleFadeDistance = 0.3
+noiseStrength = 0.7
+noiseFrequency = 2.2
+noiseSpeed = 2.4
+# 芯は必ず外炎より手前。加算なので前後関係が崩れると光り方が変わる。
+renderPriority = 30
+sizeAxisScale = [0.85, 1.3, 1.0]
+# 粒子ごとに色温度を散らす。全部同じ色だと炎がベタ塗りに見える。
+# 芯炎・外炎とも公開パラメーター "Color Variation" が駆動するので値は必ず揃える。
+colorVariation = 0.15
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 0.96, 0.78, 0.0],
+  [0.12, 1.0, 0.88, 0.52, 1.0],
+  [0.55, 1.0, 0.52, 0.16, 0.8],
+  [1.0, 0.85, 0.26, 0.05, 0.0],
+]
+
+# --- 外炎: 炎の body。Premultiplied で背景を隠し、シルエットを作る ------------
+[[nodes]]
+id = 3
+type = 2
+name = "Outer Flame"
+duration = 6.0
+editorX = 260.0
+editorY = 160.0
+position = [0.0, 0.02, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 6.0
+loop = true
+emitRate = 40.0
+maxParticles = 320
+shape = 1
+sphereRadius = 0.19
+sizeStart = 0.5
+sizeEnd = 0.3
+sizeCurvePower = 1.0
+lifetime = 0.78
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 0.95, 0.0]
+velocitySpread = 0.42
+velocityDamping = 1.35
+gravity = [0.0, 0.0, 0.0]
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+# WHY: 炎が「物体」に見えるには不透明な芯が要る。全部加算だと背景が透けて
+#      光の靄になり、輪郭が消える。body は Premultiplied、hot core だけ加算にする。
+# 外炎: 素材が事前乗算相当なので Premultiplied。Alpha だと縁が汚れる
+blendMode = 2
+# Premultiplied は粒子の前後関係で結果が変わるため、必ず距離ソートする。
+sortMode = 1
+emissiveScale = 1.0
+softParticles = true
+softParticleFadeDistance = 0.35
+noiseStrength = 1.0
+noiseFrequency = 1.5
+noiseSpeed = 1.8
+# 外炎は芯より奥。芯の明るい部分が必ず手前に出るようにする。
+renderPriority = 20
+sizeAxisScale = [0.9, 1.2, 1.0]
+colorVariation = 0.15
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 0.66, 0.26, 0.0],
+  [0.14, 1.0, 0.46, 0.12, 0.92],
+  [0.62, 0.72, 0.20, 0.04, 0.62],
+  [1.0, 0.22, 0.05, 0.01, 0.0],
+]
+
+# --- 陽炎: 炎の上の空気が揺れる ------------------------------------------------
+[[nodes]]
+id = 4
+type = 2
+name = "Heat Haze"
+duration = 6.0
+editorX = 260.0
+editorY = 380.0
+# 炎そのものではなく「炎の上の空気」が揺れる。炎の頂点 (≒1.0m) の少し上に置く。
+position = [0.0, 0.85, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 6.0
+loop = true
+emitRate = 12.0
+maxParticles = 90
+shape = 1
+sphereRadius = 0.28
+sizeStart = 0.5
+sizeEnd = 1.3
+sizeCurvePower = 0.8
+lifetime = 1.3
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 1.0, 0.0]
+velocitySpread = 0.3
+gravity = [0.0, 0.0, 0.0]
+blendMode = 1
+sortMode = 1
+distortion = true
+distortionStrength = 0.022
+softParticles = true
+softParticleFadeDistance = 0.5
+emissiveScale = 0.0
+# 陽炎は背景 (炎を含む) を屈折させるため、必ず全レイヤーの後に描く。
+renderPriority = 100
+# 陽炎は「うっすら」が正解。alpha を上げすぎると屈折像が板として見えてしまう。
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 1.0, 1.0, 0.0],
+  [0.35, 1.0, 1.0, 1.0, 0.3],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+
+# --- 火の粉: 上昇して乱流で散り、風の外で落ちる --------------------------------
+[[nodes]]
+id = 5
+type = 2
+name = "Sparks"
+duration = 6.0
+editorX = 580.0
+editorY = -40.0
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 6.0
+loop = true
+emitRate = 16.0
+maxParticles = 160
+shape = 1
+sphereRadius = 0.18
+sizeStart = 0.05
+sizeEnd = 0.008
+lifetime = 1.8
+lifetimeRandom = 0.9
+emitVelocity = [0.0, 1.9, 0.0]
+velocitySpread = 0.7
+velocityDamping = 0.35
+# 火の粉だけは下向き重力を持つ。上がりっぱなしだと「立ち上る点」にしか見えず、
+# 上昇風の外へ抜けて落ちる粒があることで初めて熱気の境界が見える。
+gravity = [0.0, -0.6, 0.0]
+# 火の粉: 小さく数も少ないので強めでよい
+blendMode = 0
+emissiveScale = 3.5
+noiseStrength = 1.4
+noiseFrequency = 1.6
+noiseSpeed = 1.4
+# 火の粉は最前面。小さく明るいので、煙に隠れると存在が消える。
+renderPriority = 40
+# 粒ごとに尾を引かせる。点が浮いているだけの状態から「舞い上がる軌跡」になる。
+# 履歴が要るため GPU シミュレーションでは動かず、この Emitter は CPU で実行される。
+trailEnabled = true
+trailPointCount = 6
+trailSampleInterval = 0.035
+trailWidthScale = 0.35
+trailAlphaScale = 0.3
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 0.88, 0.52, 1.0],
+  [0.5, 1.0, 0.42, 0.10, 0.9],
+  [1.0, 0.45, 0.08, 0.01, 0.0],
+]
+
+# --- 煤煙: six-way lighting で炎の光を受ける ----------------------------------
+[[nodes]]
+id = 6
+type = 2
+name = "Soot Smoke"
+duration = 6.0
+editorX = 580.0
+editorY = 190.0
+position = [0.0, 1.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 6.0
+loop = true
+emitRate = 10.0
+maxParticles = 240
+shape = 1
+sphereRadius = 0.26
+sizeStart = 0.55
+sizeEnd = 1.9
+sizeCurvePower = 0.75
+lifetime = 2.6
+lifetimeRandom = 1.0
+emitVelocity = [0.0, 0.9, 0.0]
+velocitySpread = 0.4
+velocityDamping = 0.3
+gravity = [0.0, 0.0, 0.0]
+# 煙は回してよい。ただし回す層は等方サイズに固定する (回転後に軸倍率が
+# 掛かるため、非等方のまま回すとスプライトがせん断される)。
+angularVelocityMin = -0.4
+angularVelocityMax = 0.4
+sizeAxisScale = [1.0, 1.0, 1.0]
+# 煤煙: 背景を隠す本体。Premultiplied で二重暗化を避ける
+blendMode = 2
+sortMode = 1
+sixWayLighting = true
+# WHY: lightingStrength は shader 側で saturate される。1.0 を超えると煙の色が
+#      完全に (ambient + N·L) へ置き換わり、暗いプレビュー環境では真っ黒になる。
+#      0.6 前後に留めて、元の煤色を残したまま炎の光を拾わせる。
+lightingStrength = 0.6
+softParticles = true
+softParticleFadeDistance = 0.5
+noiseStrength = 0.6
+noiseFrequency = 0.5
+noiseSpeed = 0.4
+# 煙は最奥。炎の芯より手前に来ると、光っているはずの炎が濁る。
+renderPriority = 0
+# 煙は影を受けて初めて背景へ埋まる。炎自身の光は six-way lighting が担当する。
+receiveShadows = true
+shadowStrength = 0.7
+colorVariation = 0.10
+useDragCurve = true
+dragCurve = [[0.0, 0.4], [1.0, 1.6]]
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.32, 0.28, 0.26, 0.0],
+  [0.18, 0.26, 0.23, 0.22, 0.5],
+  [1.0, 0.21, 0.20, 0.20, 0.0],
+]
+
+# --- 光源 ---------------------------------------------------------------------
+[[nodes]]
+id = 7
+type = 5
+name = "Fire Light"
+duration = 6.0
+editorX = 580.0
+editorY = 420.0
+# 炎の重心付近。高すぎると足元が暗いまま「浮いた炎」に見える。
+position = [0.0, 0.55, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.light]
+color = [1.0, 0.48, 0.16]
+intensity = 4.2
+range = 7.0
+# 光量をノード寿命に沿って揺らす。定数の明るさだと炎が動いていても
+# 周囲の陰影が固まったままで「絵に貼った炎」に見える。
+# ParticleCurve は最大4キーなので、その範囲でゆっくりした呼吸を作り、
+# ループ端 (1.0) を先頭 (0.0) と同値にして継ぎ目が飛ばないようにしている。
+useIntensityCurve = true
+intensityCurve = [[0.0, 0.86], [0.33, 1.0], [0.68, 0.76], [1.0, 0.86]]
+
+# --- 上昇乱流: 炎と煙を同じ空気の流れに乗せる ---------------------------------
+[[nodes]]
+id = 8
+type = 9
+name = "Updraft"
+duration = 6.0
+editorX = 880.0
+editorY = -40.0
+position = [0.0, 0.9, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 4
+# 旧版の 2.2 は炎が横に千切れる強さだった。炎本体は 1.0 前後で十分揺れる。
+strength = 1.0
+radius = 3.5
+falloffPower = 1.0
+noiseFrequency = 1.4
+noiseSpeed = 1.6
+
+# --- 上昇風: 炎・煙・火の粉の上昇加速度はここ 1 箇所だけが持つ -----------------
+[[nodes]]
+id = 9
+type = 9
+name = "Convection"
+duration = 6.0
+editorX = 880.0
+editorY = 190.0
+position = [0.0, 0.8, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 0
+# WHY: 各 Emitter の gravity を 0 にした分をここへ集約している。値を変えると
+#      炎・煙・火の粉の伸びが同時に変わり、「同じ空気で動いている」感が保たれる。
+strength = 1.4
+radius = 3.2
+falloffPower = 1.2
+direction = [0.0, 1.0, 0.0]
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 0.1
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.05
+[[links]]
+from = 1
+to = 6
+trigger = 1
+delay = 0.15
+[[links]]
+from = 1
+to = 7
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 8
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 9
+trigger = 1
+delay = 0.0
+
+[[groups]]
+id = 1
+title = "Flame Body"
+note = "外炎(Alpha=輪郭) + 芯炎(加算=発光) + 陽炎。全部加算にすると白飽和して光の玉になる。"
+x = 230.0
+y = -90.0
+width = 290.0
+height = 620.0
+color = [0.86, 0.46, 0.16, 0.16]
+
+[[groups]]
+id = 2
+title = "Airborne"
+note = "火の粉・煤煙・光。six-way lighting で煙が炎の色を拾う (strength は 1.0 未満に)。"
+x = 550.0
+y = -90.0
+width = 290.0
+height = 600.0
+color = [0.48, 0.44, 0.52, 0.14]
+
+[[groups]]
+id = 3
+title = "Air Flow"
+note = "上昇加速度の唯一の出所。Emitter 側 gravity は全て 0 で、伸びはここだけで決まる。"
+x = 850.0
+y = -90.0
+width = 290.0
+height = 380.0
+color = [0.28, 0.58, 0.52, 0.14]
+
+# ------------------------------------------------------------------------------
+# 公開パラメーター
+# 注意: default は生成時に必ず [nodes.particle] のフィールドを上書きする
+#       (VFXGraphSystem::ApplyVFXBindings)。ノード側の値を直したら、その leaf を
+#       bind しているパラメーターの default も必ず同じ値へ揃えること。
+#       揃っていないとノード側の編集が「保存はされるが効かない」状態になる。
+# ------------------------------------------------------------------------------
+
+[[parameters]]
+name = "Intensity"
+type = 0
+minimum = 0.0
+maximum = 300.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 60.0
+[[bindings]]
+paramName = "Intensity"
+nodeId = 2
+schemaPath = "particle.emitRate"
+
+# 炎の高さは寿命で決まる (上昇速度は Convection 側が持つ)。
+[[parameters]]
+name = "Flame Height"
+type = 0
+minimum = 0.2
+maximum = 2.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.6
+[[bindings]]
+paramName = "Flame Height"
+nodeId = 2
+schemaPath = "particle.lifetime"
+
+[[parameters]]
+name = "Heat Haze"
+type = 0
+minimum = 0.0
+maximum = 0.12
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.022
+[[bindings]]
+paramName = "Heat Haze"
+nodeId = 4
+schemaPath = "particle.distortionStrength"
+
+# 空気の乱れ。Emitter 固有ノイズではなく Updraft 力場を駆動するので、
+# 炎・煙・火の粉が同時に同じ揺れ方をする。
+[[parameters]]
+name = "Turbulence"
+type = 0
+minimum = 0.0
+maximum = 6.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 1.0
+[[bindings]]
+paramName = "Turbulence"
+nodeId = 8
+schemaPath = "forceField.strength"
+
+# 炎の伸び。上昇加速度の唯一の出所なので、全レイヤーの高さがこれで揃って動く。
+[[parameters]]
+name = "Updraft"
+type = 0
+minimum = 0.0
+maximum = 6.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 1.4
+[[bindings]]
+paramName = "Updraft"
+nodeId = 9
+schemaPath = "forceField.strength"
+
+[[parameters]]
+name = "Light Intensity"
+type = 0
+minimum = 0.0
+maximum = 40.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 4.2
+[[bindings]]
+paramName = "Light Intensity"
+nodeId = 7
+schemaPath = "light.intensity"
+
+# 炎の縦横比。1 に近づけるとキャンプファイアの丸い炎、Y を上げると松明の細い炎になる。
+# 注意: この層は angularVelocity を 0 にしてある。回転させると Particle.hlsl が
+#       回転の後に軸倍率を掛けるため、スプライトが平行四辺形へせん断される。
+[[parameters]]
+name = "Flame Shape"
+type = 4
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 4
+vector3 = [0.85, 1.3, 1.0]
+[[bindings]]
+paramName = "Flame Shape"
+nodeId = 2
+schemaPath = "particle.sizeAxisScale"
+
+# 火の粉の尾の長さ。0 で尾なし (点のみ) になる。
+[[parameters]]
+name = "Spark Trail"
+type = 1
+minimum = 1.0
+maximum = 8.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 1
+int = 6
+[[bindings]]
+paramName = "Spark Trail"
+nodeId = 5
+schemaPath = "particle.trailPointCount"
+
+# 色のばらつき。0 で単色、上げるほど炎の中に色温度差が出る。
+[[parameters]]
+name = "Color Variation"
+type = 0
+minimum = 0.0
+maximum = 0.5
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.15
+[[bindings]]
+paramName = "Color Variation"
+nodeId = 2
+schemaPath = "particle.colorVariation"
+[[bindings]]
+paramName = "Color Variation"
+nodeId = 3
+schemaPath = "particle.colorVariation"
