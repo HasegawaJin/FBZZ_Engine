@@ -246,8 +246,24 @@ struct ReferenceSlotButtons {
 // 本体の右へ ◎ と × を並べる。グリフはフォントに依存しないよう自前描画。
 ReferenceSlotButtons EndReferenceSlot(bool showPick = true, bool showClear = true);
 
+// アセット参照欄 → AssetBrowser への「この参照先を一覧で見せろ」要求 (Unity の Ping / 選択相当)。
+// WHY: 参照欄に入っているのはパス文字列だが、ユーザーが知りたいのは「どのアセットか」で
+//      あって文字列ではない。クリックでフルパスの編集欄に化けるだけだと、参照先を確かめる
+//      には結局フォルダを手で辿ることになる。クリックで AssetBrowser 側の選択へ橋渡しする。
+// HOW: widgets 層は EditorContext を知らないため one-shot の静的チャネルに積み、
+//      EditorApp が毎フレーム 1 回だけ取り出して EditorContext のパネル間リクエストへ移す。
+struct AssetRevealRequest {
+    std::string path;                      // 欄に入っている値 (Assets 起点の相対パス)
+    bool        selectInInspector = false; // true = Inspector の表示対象もこのアセットへ移す
+};
+void RequestAssetReveal(std::string assetPath, bool selectInInspector);
+// 保留中の要求を取り出して消す。要求が無ければ false (out は変更しない)。
+[[nodiscard]] bool ConsumeAssetRevealRequest(AssetRevealRequest& out);
+
 // アセットパス入力フィールド。"..." ボタンで projectRoot/ 以下を検索できるモーダルを開く。
 // filterExts: カンマ区切り拡張子 ".mat,.hlsl" (空 = すべてのファイル)
+// 操作: シングルクリック = AssetBrowser で Ping / ダブルクリック = 選択して Inspector を切替 /
+//       右クリック = パス直接編集・コピー・クリア / D&D と "..." は従来どおり。
 // @return true if path was changed (InputText 編集 / drag-drop / picker 選択のいずれか)
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,

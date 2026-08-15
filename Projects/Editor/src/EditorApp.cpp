@@ -16,6 +16,7 @@
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/VFXEditorLauncher.hpp>
@@ -1084,6 +1085,23 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         const profiler::ProfileScope panelScope(
             profiler::ProfilerMarker(panel->GetWindowName(), "Editor Panels"));
         panel->OnRender(ctx);
+    }
+
+    // アセット参照欄 (widgets::AssetPathField) のクリック → Asset Browser でその実体を示す。
+    // WHY ここで中継するか: widgets 層は EditorContext を知らないため、要求は静的チャネルに
+    //     積まれる。パネル描画の後に 1 回だけ取り出せば、どのパネルの参照欄から出た要求でも
+    //     同じ経路で Asset Browser へ届く (次フレームの OnRenderContent が消費する)。
+    if (widgets::AssetRevealRequest reveal; widgets::ConsumeAssetRevealRequest(reveal)) {
+        ctx.requestRevealAssetPath   = std::move(reveal.path);
+        ctx.requestRevealAssetSelect = reveal.selectInInspector;
+        for (auto& panel : m_panels) {
+            if (std::strcmp(panel->GetWindowName(), "Asset Browser") != 0) continue;
+            // 閉じている / 非アクティブなタブに埋もれていると「示した」ことにならないため、
+            // 表示 ON + タブを手前へ出すところまでを 1 操作で済ませる。
+            panel->visible = true;
+            ImGui::SetWindowFocus(panel->GetWindowName());
+            break;
+        }
     }
 
     // GPU レンダリング完了後・ImGui フレーム内のここで描画する。

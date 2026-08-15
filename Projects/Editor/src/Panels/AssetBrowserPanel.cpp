@@ -120,6 +120,11 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ctx.requestAssetBrowserRefresh = false;
     }
 
+    // Inspector 等の参照欄クリック → そのアセットのフォルダへ移動して選択する。
+    // WHY Refresh の後か: Reveal は自前で RefreshDirectory を呼ぶため、直後に一括 Refresh が
+    //     走ると展開したサブアセットまで組み直され、選択位置の計算がやり直しになる。
+    HandleRevealRequest(ctx);
+
     // 横断検索の索引はプロジェクトルート基準。ルートが変わったときだけ再構築される。
     AssetSearch::SetProjectRoot(ctx.projectRoot);
 
@@ -444,6 +449,23 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             ? static_cast<int>((visIndices.size() + cols - 1) / cols)
             : 0;
 
+        // Reveal 要求の対象を表示範囲へ入れる。
+        // WHY 行を自前で計算するか: グリッドは ImGuiListClipper で間引くため、対象タイルが
+        //     画面外だとそもそも描かれず SetScrollHereY を呼ぶ機会がない。可視インデックス列から
+        //     行番号を割り出し、ビューの中央へ来るようスクロール量を直接指定する。
+        if (!m_scrollToPath.empty()) {
+            for (size_t visible = 0; visible < visIndices.size(); ++visible) {
+                if (entries[visIndices[visible]].path != m_scrollToPath) continue;
+                const float targetY = static_cast<float>(visible / static_cast<size_t>(cols)) * rowH;
+                const float centered = targetY - (ImGui::GetContentRegionAvail().y - rowH) * 0.5f;
+                ImGui::SetScrollY(std::max(0.0f, centered));
+                break;
+            }
+            // 一覧に無かった場合も要求は捨てる (フィルタ・展開状態が合わないだけで、
+            // 毎フレーム走査し続ける理由にはならない)。
+            m_scrollToPath.clear();
+        }
+
         // 展開した親アセット + 直後に並ぶサブアセット群を 1 本の帯として描くための判定。
         // WHY: サブアセットは RefreshDirectory が親の直後へ挿入するため、帯の範囲は
         //      「展開中の親から、連続する isSubAsset が途切れるまで」という並び順だけで決まる。
@@ -724,14 +746,29 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
         });
     }
 
+    // Reveal 要求の対象行。間引かれていても必ず描かせてからスクロールを合わせる。
+    // WHY: ImGuiListClipper は表示範囲外の行を一切描かないため、IncludeItemByIndex で
+    //      対象行だけ描画対象へ戻さないと SetScrollHereY を呼ぶ機会が来ない。
+    int scrollToRow = -1;
+    if (!m_scrollToPath.empty()) {
+        for (size_t visible = 0; visible < visIndices.size(); ++visible) {
+            if (entries[visIndices[visible]].path != m_scrollToPath) continue;
+            scrollToRow = static_cast<int>(visible);
+            break;
+        }
+        m_scrollToPath.clear();
+    }
+
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(visIndices.size()));
+    if (scrollToRow >= 0) clipper.IncludeItemByIndex(scrollToRow);
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
             const Entry& e = entries[visIndices[i]];
             ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
+            if (i == scrollToRow) ImGui::SetScrollHereY(0.5f);
 
             // 主選択 (Inspector に出ている 1 件) もハイライト対象にする。
             // WHY: グリッドでは主選択が強調されるのに、リストでは Ctrl 選択した

@@ -61,32 +61,27 @@ bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
     const std::string relPath = NormalizeAssetPath(path);
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 
-    if (ctx.undoStack) {
-        std::string content;
-        if (util::FileSystem::ReadText(path, content)) {
-            EditorContext* context = &ctx;
-            const std::vector<scene::EntityID> roots = connectedRoots;
-            auto refresh = [context]() { context->requestAssetBrowserRefresh = true; };
-            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                "Create Prefab",
-                [path, content, relPath, roots, context, refresh]() {
-                    util::FileSystem::WriteText(path, content);
-                    if (context->activeScene)
-                        for (scene::EntityID id : roots)
-                            if (auto* g = context->activeScene->GetGameObject(id))
-                                g->prefabAssetPath = relPath;
-                    refresh();
-                },
-                [path, roots, context, refresh]() {
-                    util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
-                    if (context->activeScene)
-                        for (scene::EntityID id : roots)
-                            if (auto* g = context->activeScene->GetGameObject(id))
-                                g->prefabAssetPath.clear();
-                    refresh();
-                }));
-        }
+    // シーン側のリンク (prefabAssetPath) だけを Undo 対象にする。
+    // WHY .prefab ファイル自体を戻さないか: 旧実装の Undo は RemoveAll(path) で
+    //     .prefab を削除していた。プレファブを作ってから中身を編集し、その後
+    //     無関係な作業のあとで Ctrl+Z を重ねると、編集ぶんごとファイルが消える。
+    //     ファイルの存在は Undo の対象にせず、消したいときは Delete でごみ箱へ送る。
+    if (ctx.undoStack && ctx.activeScene) {
+        EditorContext* context = &ctx;
+        const std::vector<scene::EntityID> roots = connectedRoots;
+        auto applyLink = [context, roots](const std::string& assetPath) {
+            if (!context->activeScene) return;
+            for (scene::EntityID id : roots)
+                if (auto* g = context->activeScene->GetGameObject(id))
+                    g->prefabAssetPath = assetPath;
+            if (context->markSceneDirty) context->markSceneDirty();
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Link Prefab Instance",
+            [applyLink, relPath]() { applyLink(relPath); },
+            [applyLink]()          { applyLink({}); }));
     }
+    ctx.requestAssetBrowserRefresh = true;
     return true;
 }
 
@@ -150,6 +145,97 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
     m_watcher.Start(m_rootPath);
     RefreshDirectory();
     ScanAndQueueUnimported(m_rootPath);
+}
+
+namespace {
+
+// FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
+// ナビゲート先やパス比較に使う前に落とす。
+std::string DirectoryOfPath(const std::string& path)
+{
+    std::string directory = util::FileSystem::GetDirectory(path);
+    while (directory.size() > 1 && (directory.back() == '/' || directory.back() == '\\'))
+        directory.pop_back();
+    return directory;
+}
+
+} // namespace
+
+void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
+{
+    if (ctx.requestRevealAssetPath.empty()) return;
+
+    // 要求は 1 回で消費する。解決に失敗しても再挑戦させない (毎フレーム同じ探索を繰り返さないため)。
+    const std::string request           = ctx.requestRevealAssetPath;
+    const bool        selectForInspector = ctx.requestRevealAssetSelect;
+    ctx.requestRevealAssetPath.clear();
+    ctx.requestRevealAssetSelect = false;
+
+    // Sprite 参照 ("<画像>::sprite::<id>") は元画像の位置を示す。
+    std::string logicalPath;
+    std::string spriteName;
+    (void)asset::ParseSpriteReference(request, logicalPath, spriteName);
+
+    // 参照欄が持つのは Assets 起点の相対パス、ブラウザは実ファイル操作のため絶対パス。
+    const std::string absolute = util::FileSystem::NormalizePathSeparators(
+        asset::AssetManager::ResolveAssetPath(logicalPath));
+    if (absolute.empty() || !util::FileSystem::Exists(absolute)) {
+        FBZZ_LOG_WARN("AssetBrowser: reveal target not found [%s]", request.c_str());
+        return;
+    }
+    // エンジン内蔵アセットへフォールバック解決された場合、実体はプロジェクトの Assets の外にある。
+    // ブラウザの表示範囲 (ルート + マウント) の外へは移動しない — 出たところで戻る導線がない。
+    if (!IsRootOrMountedPath(DirectoryOfPath(absolute))) {
+        FBZZ_LOG_WARN("AssetBrowser: reveal target is outside the browsable roots [%s]",
+                      absolute.c_str());
+        return;
+    }
+
+    // 横断検索の結果を出したままだと現在フォルダの一覧に切り替わらないため解除する。
+    if (IsGlobalSearchActive()) {
+        m_searchBuf.fill('\0');
+        m_searchResults.clear();
+        m_searchResultsQuery.clear();
+        m_searchResultsTypeFilter = -1;
+    }
+    // タイプフィルタで除外されていると選択しても見えないので、Reveal では常に外す。
+    m_typeFilter = TypeFilter::All;
+
+    // FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
+    // 原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
+    std::string navigateDir = DirectoryOfPath(absolute);
+    for (std::filesystem::path dir = util::FileSystem::PathFromUtf8(navigateDir);
+         !dir.empty() && dir.has_parent_path() && dir != dir.parent_path();
+         dir = dir.parent_path()) {
+        if (!IsModelPackageDirectory(dir)) continue;
+        const std::string fbxPath = util::FileSystem::NormalizePathSeparators(
+            util::FileSystem::PathToUtf8(
+                dir.parent_path() / (util::FileSystem::PathToUtf8(dir.filename()) + ".fbx")));
+        m_expandedAssets.insert(fbxPath);
+        navigateDir = DirectoryOfPath(fbxPath);
+        break;
+    }
+
+    if (!util::FileSystem::SamePathText(navigateDir, m_currentPath))
+        m_currentPath = navigateDir;
+    RefreshDirectory();   // 展開状態を反映した一覧に組み直す
+    // RefreshDirectory は「フォルダを移動したら先頭へ戻す」ため m_resetScroll を立てる。
+    // Reveal は逆に対象タイルの位置までスクロールさせたいので、その要求だけ取り下げる。
+    m_resetScroll = false;
+
+    m_selectedPaths.clear();
+    m_selectedPaths.insert(absolute);
+    m_lastClickedPath = absolute;
+    m_pendingRenamePath.clear();
+    m_scrollToPath  = absolute;
+    m_pingPath      = absolute;
+    m_pingStartTime = static_cast<float>(ImGui::GetTime());
+
+    // ダブルクリック相当のときだけ Inspector の表示対象も移す (Unity の Ping と選択の違い)。
+    if (selectForInspector) {
+        ctx.selectedAssetPath = absolute;
+        ctx.selectedEntities.clear();
+    }
 }
 
 void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
