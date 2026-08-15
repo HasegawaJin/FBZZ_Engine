@@ -80,7 +80,7 @@ struct EditorContext {
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
-    std::string       engineRoot;          // .fbzz_proj の [engine] sdk_root (cmake configure で FBZZ_SDK_ROOT に使う)
+    std::string       engineRoot;          // GameHubが選択したimmutable SDK root (cmake configureへ渡す)
     std::string       standaloneTargetName = "SandboxStandalone";
     std::string       projectTargetName;   // .fbzz_proj の target_name (GameHub プロジェクトの識別に使う)
 

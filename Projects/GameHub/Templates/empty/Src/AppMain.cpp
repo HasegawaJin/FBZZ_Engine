@@ -17,7 +17,6 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
-#include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/Core/IModule.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
@@ -650,11 +649,6 @@ private:
 
 int Run()
 {
-    // WHY: FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
-    //      新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
-    if (fbzz::core::CheckEngineFreshnessAndRelaunch())
-        return 0;
-
     const LaunchArgs args = ParseArgs();
 
     if (args.projectPath.empty()) {

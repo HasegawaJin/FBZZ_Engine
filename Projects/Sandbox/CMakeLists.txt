@@ -62,6 +62,9 @@ endif()
 add_executable(Sandbox ${SANDBOX_SOURCES})
 add_dependencies(Sandbox SandboxScripts)
 
+# DPI 認識をプロセス起動時に確定させる (未適用だと高 DPI 環境で UI 全体が滲む)。
+fbzz_apply_app_manifest(Sandbox)
+
 set_target_properties(Sandbox PROPERTIES
     # WHY: CMake の内部ターゲット名は既存依存との互換性を保ち、公開成果物だけ PascalCase に統一する。
     OUTPUT_NAME "Sandbox"
@@ -101,6 +104,9 @@ set(SANDBOX_STANDALONE_SOURCES ${SANDBOX_SOURCES})
 # Build Settings からゲーム本体だけを再コンパイルできる。
 add_executable(SandboxStandalone ${SANDBOX_STANDALONE_SOURCES})
 target_compile_definitions(SandboxStandalone PRIVATE FBZZ_STANDALONE_TARGET)
+
+# DPI 認識をプロセス起動時に確定させる (配布 exe も Editor と同じ挙動にする)。
+fbzz_apply_app_manifest(SandboxStandalone)
 
 set_target_properties(SandboxStandalone PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Sandbox"

@@ -5,10 +5,13 @@
 export const ENGINE_VERSION = '0.1.0';
 
 export type HubTheme = 'midnight' | 'dark';
+export type SdkBuildConfiguration = 'Debug' | 'Development' | 'Release';
 
 export interface HubSettings {
   editorExe: string;
   sdkRoot: string;
+  sdkId: string;
+  sdkConfiguration: SdkBuildConfiguration;
   theme: HubTheme;
 }
 
@@ -17,6 +20,7 @@ export interface ProjectEntry {
   projectId: string;
   path: string;
   engineVersion: string;
+  sdkId: string;
   lastOpened: string;
   thumbnailDataUrl: string;
   pathExists: boolean;

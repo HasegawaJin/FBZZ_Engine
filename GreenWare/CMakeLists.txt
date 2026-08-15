@@ -68,28 +68,6 @@ target_link_options(GreenWareStandalone PRIVATE
     "$<$<CONFIG:Release>:/ENTRY:mainCRTStartup>"
 )
 
-# Standaloneの正式ビルドでは毎回差分走査し、追加・変更・削除を統合スクリプトへ自動反映する。
-set(PROJECT_SHADER_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/Shaders/compile_shaders.ps1")
-file(GLOB_RECURSE PROJECT_SHADER_FILES CONFIGURE_DEPENDS
-    "${CMAKE_SOURCE_DIR}/Assets/Shaders/*.hlsl"
-    "${CMAKE_SOURCE_DIR}/Assets/Shaders/*.hlsli"
-)
-# WHY: Visual Studio の FXCompile による main 固定の二重コンパイルを防ぎ、
-#      VSMain / PSMain / CSMain の処理を compile_shaders.ps1 だけに集約する。
-set_source_files_properties(${PROJECT_SHADER_FILES} PROPERTIES
-    HEADER_FILE_ONLY TRUE
-    VS_TOOL_OVERRIDE "None"
-)
-find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
-add_custom_target(CompileShaders
-    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${PROJECT_SHADER_SCRIPT}"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Compiling project HLSL shaders..."
-    SOURCES ${PROJECT_SHADER_FILES} "${PROJECT_SHADER_SCRIPT}"
-    VERBATIM
-)
-add_dependencies(GreenWareStandalone CompileShaders)
-
 configure_file(
     "${FBZZ_SDK_ROOT}/cmake/FBZZ/build.config.in"
     "${CMAKE_BINARY_DIR}/build.config"

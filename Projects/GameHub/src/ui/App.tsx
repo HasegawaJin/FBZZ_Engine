@@ -32,7 +32,7 @@ function ProjectCard({ project, onOpen, onReveal, onRemove }: {
       </div>
       <div className="project-body">
         <div className="project-heading">
-          <div><h3>{project.name}</h3><p>FBZZ {project.engineVersion}</p></div>
+          <div><h3>{project.name}</h3><p>FBZZ {project.engineVersion}{project.sdkId ? ` · ${project.sdkId}` : ''}</p></div>
           <button className="icon-button" onClick={onReveal} title="Explorerで表示"><Icon name="folder" size={15} /></button>
         </div>
         <p className="project-path" title={project.path}>{project.path}</p>
@@ -62,7 +62,7 @@ function WorkspaceHero({ data, onCreate, onTemplates }: { data: BootstrapData; o
     <div className="hero-metrics">
       <div><span>PROJECTS</span><strong>{data.projects.length.toString().padStart(2, '0')}</strong><small>in workspace</small></div>
       <div><span>READY</span><strong>{readyCount.toString().padStart(2, '0')}</strong><small>validated</small></div>
-      <div className={data.settings.sdkRoot ? 'metric-online' : 'metric-offline'}><span>SDK</span><strong><i />{data.settings.sdkRoot ? 'LIVE' : 'OFF'}</strong><small>v{data.engineVersion}</small></div>
+      <div className={data.settings.sdkRoot ? 'metric-online' : 'metric-offline'}><span>SDK</span><strong><i />{data.settings.sdkRoot ? 'LIVE' : 'OFF'}</strong><small>{data.settings.sdkId || `v${data.engineVersion}`}</small></div>
     </div>
   </section>;
 }
@@ -108,7 +108,8 @@ function SettingsPage({ settings, onSave }: { settings: HubSettings; onSave: (se
     <div className="section-title"><span className="eyebrow">CONFIGURATION</span><h1>Settings</h1><p>Editorと共有SDKの場所を設定します。</p></div>
     <section className="settings-card"><h3>Toolchain</h3>
       <label className="field"><span>Editor executable</span><div className="path-input"><input value={draft.editorExe} onChange={(event) => setDraft({ ...draft, editorExe: event.target.value })} placeholder="Automatic discovery" /><button onClick={async () => { const value = await window.gameHub.chooseEditorExecutable(); if (value) setDraft({ ...draft, editorExe: value }); }}>Browse</button></div></label>
-      <label className="field"><span>FBZZ SDK root</span><div className="path-input"><input value={draft.sdkRoot} onChange={(event) => setDraft({ ...draft, sdkRoot: event.target.value })} placeholder="SDK/0.1.0" /><button onClick={async () => { const value = await window.gameHub.chooseDirectory(); if (value) setDraft({ ...draft, sdkRoot: value }); }}>Browse</button></div></label>
+      <label className="field"><span>Published FBZZ SDK</span><div className="path-input"><input value={draft.sdkRoot} onChange={(event) => setDraft({ ...draft, sdkRoot: event.target.value, sdkId: '' })} placeholder="SDK/0.1.0" /><button onClick={async () => { const value = await window.gameHub.chooseDirectory(); if (value) setDraft({ ...draft, sdkRoot: value, sdkId: '' }); }}>Browse</button></div></label>
+      <label className="field"><span>Editor configuration</span><select value={draft.sdkConfiguration} onChange={(event) => setDraft({ ...draft, sdkConfiguration: event.target.value as HubSettings['sdkConfiguration'] })}><option value="Debug">Debug</option><option value="Development">Development</option><option value="Release">Release</option></select></label>
     </section>
     <section className="settings-card"><h3>Appearance</h3><div className="theme-row">
       {(['midnight', 'dark'] as const).map((theme) => <button key={theme} className={`theme-choice ${draft.theme === theme ? 'selected' : ''}`} onClick={() => setDraft({ ...draft, theme })}><i className={`theme-preview ${theme}`} /><span>{theme === 'midnight' ? 'Midnight violet' : 'Carbon dark'}</span></button>)}
@@ -170,7 +171,7 @@ export function App() {
         <button className={page === 'templates' ? 'active' : ''} onClick={() => setPage('templates')}><i><Icon name="layers" /></i>Templates</button>
         <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><i><Icon name="settings" /></i>Settings</button>
       </nav>
-      <div className="engine-card"><div className="engine-card-icon"><Icon name="cpu" size={17} /></div><span>ENGINE CHANNEL</span><strong><i className="live-dot" />FBZZ {data.engineVersion}</strong><small>{data.settings.sdkRoot || 'SDK path not configured'}</small></div>
+      <div className="engine-card"><div className="engine-card-icon"><Icon name="cpu" size={17} /></div><span>ENGINE SDK</span><strong><i className="live-dot" />{data.settings.sdkId || `FBZZ ${data.engineVersion}`}</strong><small>{data.settings.sdkRoot || 'SDK path not configured'}</small></div>
     </aside>
     <main className="content">
       {page === 'settings' ? <SettingsPage settings={data.settings} onSave={async (settings) => { await run(() => window.gameHub.saveSettings(settings), 'Settings saved'); }} /> : <>

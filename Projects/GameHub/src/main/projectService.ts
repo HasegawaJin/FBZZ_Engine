@@ -2,10 +2,10 @@
 // projectService.ts | main
 // プロジェクト検証、サムネイル取得、Editor起動をOS権限側へ集約する
 
-import { app, shell } from 'electron';
+import { shell } from 'electron';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import { parse } from 'smol-toml';
 import { ENGINE_VERSION, type HubSettings, type ProjectEntry } from '../shared/contracts';
 import type { ConfigProject } from './configStore';
@@ -23,31 +23,6 @@ function stringField(table: Record<string, unknown>, key: string, fallback = '')
   return typeof table[key] === 'string' ? table[key] as string : fallback;
 }
 
-const EDITOR_BUILD_CONFIGURATIONS = ['Debug', 'Development', 'Release'] as const;
-
-/** パッケージ版GameHubからリポジトリルートを遡り、利用可能なEditorビルドを探索する。 */
-async function FindEditorInAncestors(start: string): Promise<string | null> {
-  let current = path.resolve(start);
-  for (let depth = 0; depth < 10; depth += 1) {
-    for (const configuration of EDITOR_BUILD_CONFIGURATIONS) {
-      const candidate = path.join(
-        current,
-        'build',
-        configuration,
-        'Binaries',
-        configuration,
-        'Editor',
-        'FBZZEditor.exe',
-      );
-      if (await exists(candidate)) return candidate;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return null;
-}
-
 export class ProjectService {
   createPendingProjects(configProjects: ConfigProject[]): ProjectEntry[] {
     return configProjects
@@ -58,6 +33,7 @@ export class ProjectService {
           projectId: '',
           path: projectRoot,
           engineVersion: '-',
+          sdkId: '',
           lastOpened: project.lastOpened,
           thumbnailDataUrl: '',
           pathExists: false,
@@ -81,7 +57,7 @@ export class ProjectService {
   async inspectProject(configProject: ConfigProject): Promise<ProjectEntry> {
     const projectRoot = path.resolve(configProject.path);
     const empty: ProjectEntry = {
-      name: path.basename(projectRoot), projectId: '', path: projectRoot, engineVersion: '-', lastOpened: configProject.lastOpened,
+      name: path.basename(projectRoot), projectId: '', path: projectRoot, engineVersion: '-', sdkId: '', lastOpened: configProject.lastOpened,
       thumbnailDataUrl: '', pathExists: false, projectFileValid: false, cmakeExists: false, layoutValid: false,
       generatedRootsExist: false, engineVersionMismatch: false, migrationRequired: false, validationPending: false,
     };
@@ -105,34 +81,59 @@ export class ProjectService {
       if (projectFile === null) return empty;
       const document = parse(projectFile) as Record<string, unknown>;
       const project = (document.project ?? {}) as Record<string, unknown>;
+      const engine = (document.engine ?? {}) as Record<string, unknown>;
       empty.name = stringField(project, 'name', empty.name);
       empty.projectId = stringField(project, 'project_id');
       empty.engineVersion = stringField(project, 'engine_version', '-');
+      empty.sdkId = stringField(engine, 'sdk_id');
       empty.projectFileValid = Boolean(empty.name && empty.projectId);
       empty.engineVersionMismatch = empty.engineVersion !== '-' && empty.engineVersion !== ENGINE_VERSION;
-      empty.migrationRequired = empty.engineVersionMismatch;
+      empty.migrationRequired = empty.engineVersionMismatch || !empty.sdkId;
     } catch {
       // 壊れたプロジェクトも一覧から消さず、修復できるよう状態として返す。
     }
     return empty;
   }
 
-  async openProject(projectPath: string, settings: HubSettings): Promise<void> {
-    const editorPath = await this.resolveEditorPath(settings);
-    if (!editorPath) throw new Error('FBZZEditor.exeが見つかりません。Settingsでパスを指定してください。');
+  async readProjectSdkId(projectPath: string): Promise<string> {
+    try {
+      const document = parse(await readFile(path.join(projectPath, '.fbzz_proj'), 'utf8')) as Record<string, unknown>;
+      return stringField((document.engine ?? {}) as Record<string, unknown>, 'sdk_id');
+    } catch {
+      return '';
+    }
+  }
+
+  async openProject(projectPath: string, settings: HubSettings, sdkRoot: string): Promise<void> {
+    if (!sdkRoot) throw new Error('プロジェクトが要求するFBZZ SDKがSDK storeにありません。');
+    const editorPath = await this.resolveEditorPath(settings, sdkRoot);
+    if (!editorPath) throw new Error(`SDK ${settings.sdkConfiguration}用FBZZEditor.exeが見つかりません。`);
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(editorPath, ['--project', path.resolve(projectPath)], {
+      const editorArgs = ['--project', path.resolve(projectPath)];
+      const launchOptions: SpawnOptions = {
         detached: true,
         stdio: 'ignore',
-        windowsHide: false,
-        // 未展開の旧 .fbzz_proj でもEditorがSDKを特定してキャッシュ・シェーダーを移行できるよう渡す。
-        env: { ...process.env, FBZZ_SDK_ROOT: settings.sdkRoot },
-      });
-      child.once('spawn', () => {
-        child.unref();
+        windowsHide: true,
+        // Editor・CMake・AssetManagerへ同じimmutable SDKを渡し、ソースツリー探索を禁止する。
+        env: {
+          ...process.env,
+          FBZZ_SDK_ROOT: sdkRoot,
+          FBZZ_ENGINE_ASSET_ROOT: path.join(sdkRoot, 'share', 'fbzz', 'Assets'),
+          // Shared SDK は immutable artifact であり、Engine ソースの鮮度判定・再ビルド対象ではない。
+          FBZZ_SKIP_ENGINE_REBUILD: '1',
+        },
+      };
+      // WHY: Windows では短命の start ブローカーに Editor を生成させ、GameHub が
+      //      Editor の直接の親・lifetime owner にならないようにする。
+      //      shell オプションは使わず引数配列で渡し、プロジェクトパスをコマンドとして解釈させない。
+      const launcher = process.platform === 'win32'
+        ? spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', 'start', '', '/normal', editorPath, ...editorArgs], launchOptions)
+        : spawn(editorPath, editorArgs, launchOptions);
+      launcher.once('spawn', () => {
+        launcher.unref();
         resolve();
       });
-      child.once('error', (error) => {
+      launcher.once('error', (error) => {
         reject(new Error(`FBZZEditor.exeを起動できませんでした: ${error.message}`));
       });
     });
@@ -152,21 +153,13 @@ export class ProjectService {
     return '';
   }
 
-  private async resolveEditorPath(settings: HubSettings): Promise<string | null> {
+  private async resolveEditorPath(settings: HubSettings, sdkRoot: string): Promise<string | null> {
     const candidates = [
       settings.editorExe,
-      settings.sdkRoot ? path.join(settings.sdkRoot, 'tools', 'Debug', 'Editor', 'FBZZEditor.exe') : '',
-      settings.sdkRoot ? path.join(settings.sdkRoot, 'tools', 'Development', 'Editor', 'FBZZEditor.exe') : '',
-      settings.sdkRoot ? path.join(settings.sdkRoot, 'tools', 'Release', 'Editor', 'FBZZEditor.exe') : '',
+      path.join(sdkRoot, 'tools', settings.sdkConfiguration, 'Editor', 'FBZZEditor.exe'),
     ].filter(Boolean);
     for (const candidate of candidates) {
       if (await exists(candidate)) return candidate;
-    }
-
-    // WHY: out/<構成>/...から起動したGameHubではcwdもappPathもリポジトリルートではないため、親を探索する。
-    for (const start of [process.cwd(), app.getAppPath(), path.dirname(process.execPath)]) {
-      const discovered = await FindEditorInAncestors(start);
-      if (discovered) return discovered;
     }
     return null;
   }

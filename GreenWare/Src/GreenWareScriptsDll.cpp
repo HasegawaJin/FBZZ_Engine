@@ -15,9 +15,6 @@
 //   3. Assets/Scripts/ScriptList.inl の FBZZ_SCRIPT_ENTRY(ns, Xxx) を同期
 //   → Editor の AssetBrowser から "Create → C++ Script..." でも自動生成できる
 
-// WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。
-//      スクリプトヘッダは Script.hpp しかインクルードしないため、
-//      DLL エントリポイントで Scene.hpp を明示的にインクルードする。
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptDllAbi.hpp>
@@ -28,18 +25,12 @@
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-#include "Scripts/MagnetPrototypeComponent.hpp"
 #include "Scripts/PlayerControllerComponent.hpp"
-#include "Scripts/PlayerSpawnerComponent.hpp"
-#include "Scripts/ResultDisplayScript.hpp"
 #include "Scripts/SceneManagerScript.hpp"
 #include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // DataAsset 型を DataAssetFactory へ直接自己登録する (純共有 ScriptableObject)。
-// WHY: DataAssetFactory は shared runtime 側の静的レジストリで、Script のような
-//      callback 渡しを要しない (エディタ専用のデータ定義のため)。リロード時は
-//      ScriptDllLoader が ClearCache/UnregisterAll した後、再ロードで再登録される。
 #define FBZZ_DATA_ASSET_ENTRY(ns, T) FBZZ_REGISTER_DATA_ASSET(::ns::T)
 #include "Scripts/DataAssetList.inl"
 #undef FBZZ_DATA_ASSET_ENTRY
@@ -58,7 +49,7 @@ struct ScriptEntry {
 };
 
 // WHY: エントリは Assets/Scripts/ScriptList.inl で一元管理する。
-//      ScriptCodeGen は ScriptList.inl だけを更新するため、このファイルのエントリを手動編集する必要はない。
+//      ScriptCodeGen は ScriptList.inl と include ブロックを同期するため、このファイルのエントリは手動編集不要。
 const std::vector<ScriptEntry>& AllEntries()
 {
     static const std::vector<ScriptEntry> entries = {

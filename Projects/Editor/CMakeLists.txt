@@ -40,6 +40,8 @@ target_compile_definitions(FBZZEditor
         # WHY: #ifdef NDEBUG は Development (NDEBUG なし・最適化 ON) を Debug と誤判定する。
         #      $<CONFIG> をビルド時に文字列として焼き込み、cmake --config に正確に渡す。
         FBZZ_CMAKE_CONFIG="$<CONFIG>"
+        # SDK内Editorは共有assetを読み取り専用で利用し、source treeだけがHLSLを再コンパイルする。
+        "FBZZ_SOURCE_TREE_BUILD=$<BOOL:${FBZZ_ENABLE_SOURCE_REBUILD}>"
 )
 
 target_include_directories(FBZZEditor
