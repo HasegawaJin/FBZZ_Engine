@@ -67,8 +67,7 @@ const char* BlendModeToString(renderer::BlendMode mode)
 
 RenderPath RenderPathFromString(std::string_view value)
 {
-    if (value == "forward" || value == "Forward") return RenderPath::Forward;
-    if (value == "deferred" || value == "Deferred") return RenderPath::Deferred;
+    if (value == "auto" || value == "Auto") return RenderPath::Auto;
     if (value == "particle" || value == "Particle") return RenderPath::Particle;
     if (value == "trail" || value == "Trail") return RenderPath::Trail;
     return RenderPath::Auto;
@@ -77,8 +76,6 @@ RenderPath RenderPathFromString(std::string_view value)
 const char* RenderPathToString(RenderPath rp)
 {
     switch (rp) {
-    case RenderPath::Forward:  return "forward";
-    case RenderPath::Deferred: return "deferred";
     case RenderPath::Particle: return "particle";
     case RenderPath::Trail:    return "trail";
     case RenderPath::Auto:

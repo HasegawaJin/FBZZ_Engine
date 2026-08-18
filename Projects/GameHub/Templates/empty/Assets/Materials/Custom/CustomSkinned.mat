@@ -1,6 +1,6 @@
 mesh_type = 'skinned'
 name = 'CustomSkinned'
-render_path = 'forward'
+render_path = 'auto'
 shader = 'guid:1202083082a1429191e9a7b94408b72f'
 version = 1
 

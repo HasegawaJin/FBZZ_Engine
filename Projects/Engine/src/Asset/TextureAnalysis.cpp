@@ -469,8 +469,6 @@ const char* BlendModeName(renderer::BlendMode mode)
 const char* RenderPathName(RenderPath path)
 {
     switch (path) {
-    case RenderPath::Deferred: return "deferred";
-    case RenderPath::Forward:  return "forward";
     case RenderPath::Particle: return "particle";
     case RenderPath::Trail:    return "trail";
     case RenderPath::Auto:
