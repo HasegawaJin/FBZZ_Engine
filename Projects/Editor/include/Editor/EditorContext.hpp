@@ -4,6 +4,7 @@
 #pragma once
 #include <Editor/GraphLayout.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
+#include <Editor/Util/EditorSceneState.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Quaternion.hpp>
@@ -25,6 +26,8 @@ namespace fbzz::editor   { class UndoStack; class PlayModeController; class Terr
 
 namespace fbzz::editor {
 
+struct InspectorComponentDrawCollector;
+
 struct EditorContext {
     // Animation Graph 上で選択中の編集対象をパネル間で共有する。
     // WHY: ノードキャンバスと詳細編集を別パネルへ分離するため、ポインタではなく EntityID と index を保持する。
@@ -34,7 +37,8 @@ struct EditorContext {
             State,
             Transition,
             AnyState,
-            AnyStateTransition
+            AnyStateTransition,
+            BlendTreeMotion
         };
 
         Type            type = Type::None;
@@ -46,6 +50,15 @@ struct EditorContext {
         std::string     layerName;
         int             stateIndex = -1;
         int             transitionIndex = -1;
+        // BlendTree 内で選択中の Motion。stateIndex が親 State、motionIndex が Motion の添字。
+        // WHY: Motion は State の配列とは別の入れ子データなので、State と同じ index だけでは
+        //      Inspector がどの Motion を編集すべきか特定できない。
+        int             motionIndex = -1;
+        // グラフ上で掴んでいるステートの数 (矩形選択・Ctrl クリック)。
+        // WHY 数だけ持つか: Inspector が編集するのは常にプライマリ 1 件だが、
+        //     Delete は選択全部に効く。件数を見せないと「1 個選んでいるつもりで
+        //     3 個消える」ように見えるため、食い違いを UI 上で明示する。
+        int             selectedCount = 0;
 
         void Clear()
         {
@@ -55,6 +68,8 @@ struct EditorContext {
             layerName.clear();
             stateIndex = -1;
             transitionIndex = -1;
+            motionIndex = -1;
+            selectedCount = 0;
         }
     };
 
@@ -115,6 +130,22 @@ struct EditorContext {
     //      instanceId または Controller アセットパスをキーにした別データとして保持する。
     std::unordered_map<std::string, GraphLayout> graphLayouts;
     AnimationGraphSelection animationGraphSelection;
+    // Inspector の Name 欄でステートを改名したことを Animation Graph パネルへ伝える 1 ショット。
+    // WHY: パネルの選択は「名前が権威」(ResolveSelectionIndices) なので、
+    //      Inspector だけで改名すると次フレームに旧名が見つからず、
+    //      名前を変えた瞬間にグラフ上の選択が外れてしまう。
+    //      パネルは描画の先頭でこれを消費し、覚えている名前を差し替える。
+    std::string animationGraphRenamedFrom;
+    std::string animationGraphRenamedTo;
+    // Inspector の Layers 欄でレイヤー名を改名したことを Animation Graph パネルへ伝える 1 ショット。
+    // WHY: Graph はレイヤー名を編集対象の識別子として保持しているため、データ側だけを
+    //      改名すると次フレームに旧名が見つからず Base Layer へ戻り、Mask 欄も消えたように見える。
+    std::string animationGraphLayerRenamedFrom;
+    std::string animationGraphLayerRenamedTo;
+    // Inspector で追加・改名したレイヤーを Graph 側で表示する要求。空なら通常の選択を維持する。
+    std::string animationGraphLayerFocus;
+    // Inspector で削除したレイヤー。Graph 側の古いステート選択を Base Layer に誤適用させない。
+    std::string animationGraphLayerRemoved;
     // Animation Graph と Inspector が共有する Controller アセット編集モデル。
     std::shared_ptr<scene::AnimatorComponent> animationControllerEditor;
     std::string animationControllerEditorPath;
@@ -379,6 +410,11 @@ struct EditorContext {
     std::function<void(const std::string&)> openSpriteEditor;
     // .behaviortree を BehaviorTreePanel へ渡す (同じくパネル実体は公開しない)。
     std::function<void(const std::string&)> openBehaviorTree;
+    // .animcontroller を AnimationGraphPanel へ渡す。
+    // WHY 要求経路を分けるか: 以前 Animation Graph は selectedAssetPath に追従していたため、
+    //     Asset Browser で別ファイルをクリックしただけで編集対象が入れ替わり、
+    //     未保存の変更が確認なしに消えていた。「開く」を明示的な操作として切り出す。
+    std::function<void(const std::string&)> openAnimationGraph;
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
     WaterTool*          waterTool   = nullptr; // EditorApp が所有、ViewportPanel が使用
@@ -386,6 +422,11 @@ struct EditorContext {
     FoliageTool*        foliageTool = nullptr; // EditorApp が所有、ViewportPanel が使用
     // Inspector セクション折り畳み状態 (EditorSettings ↔ ImGui StateStorage の中継)
     std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
+    // 現在の Scene に紐づく Editor 専用メタデータ。Scene 本体には保存しない。
+    EditorSceneState editorSceneState;
+    // Inspector がカテゴリ別の既存描画関数から Component カードを収集するための一時窓口。
+    // 1 フレームだけ設定し、描画順を決定した後に必ず nullptr へ戻す。
+    InspectorComponentDrawCollector* inspectorComponentCollector = nullptr;
 
     // デフォルトインポート設定 (EditorSettings に永続化)
     FbxImportOptions                        defaultImportOptions;

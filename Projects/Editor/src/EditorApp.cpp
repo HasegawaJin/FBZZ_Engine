@@ -22,6 +22,9 @@
 #include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
+#include <Editor/Panels/PreviewPanel.hpp>
+#include <Editor/Panels/AnimationPreview.hpp>
+#include <Editor/Panels/AnimationMaskPreviewPanel.hpp>
 #include <Editor/Panels/ViewportPanel.hpp>
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/Panels/BuildOutputPanel.hpp>
@@ -44,6 +47,8 @@
 #include "Tools/WaterTool.hpp"
 #include "Tools/DetailTool.hpp"
 #include "Tools/FoliageTool.hpp"
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Cursor.hpp>
@@ -75,7 +80,9 @@
 #include <imgui_impl_win32.h>
 #include <toml++/toml.hpp>
 #include <Windows.h>
+#include <algorithm>
 #include <filesystem>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -267,7 +274,10 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
 //      ヘッダーのインクルード先 (main.cpp 等) では TerrainTool の定義が見えない。
 //      std::unique_ptr のデストラクタは完全型を要求するので、
 //      TerrainTool.hpp をインクルードしているこの .cpp で定義する必要がある。
-EditorApp::EditorApp()  = default;
+EditorApp::EditorApp()
+{
+    SceneIO::SetEditorSceneState(&m_ctx.editorSceneState);
+}
 EditorApp::~EditorApp() = default;
 
 bool EditorApp::StartAiCommandBus()
@@ -450,7 +460,18 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
-    m_panels.push_back(std::make_unique<AnimationGraphPanel>());
+    // Animation / Material / VFX を同じ選択導線で確認できる共通プレビュー。
+    m_panels.push_back(std::make_unique<PreviewPanel>());
+    m_panels.push_back(std::make_unique<AnimationMaskPreviewPanel>());
+    {
+        // .animcontroller は「開く」操作でこのパネルへ渡す (BehaviorTree と同じ方式)。
+        auto animationGraph = std::make_unique<AnimationGraphPanel>();
+        AnimationGraphPanel* animationGraphPtr = animationGraph.get();
+        m_ctx.openAnimationGraph = [animationGraphPtr](const std::string& path) {
+            animationGraphPtr->RequestOpen(path);
+        };
+        m_panels.push_back(std::move(animationGraph));
+    }
     {
         // .behaviortree はダブルクリックでこのパネルへ渡す。以前は作れるのに
         // 開く手段が無く、TOML を手書きするしかなかった。
@@ -610,6 +631,7 @@ void EditorApp::Shutdown()
 
     for (auto& panel : m_panels)
         panel->OnShutdown();
+    ShutdownAnimationPreview();
 
     // --- EditorContext → EditorSettings への書き戻し ----------------------
     // WHY: パネルやメインループは EditorContext のライブ値を直接変更する。
@@ -692,11 +714,28 @@ void EditorApp::Shutdown()
         m_settings.detailShowCounts      = m_detailTool->GetShowCounts();
     }
 
-    // Inspector 折り畳み状態を ImGui StateStorage から回収して設定に書き戻す
+    // Inspector 折り畳み状態を ImGui StateStorage から回収して設定に書き戻す。
+    //
+    // WHY 全エントリを舐めないか (不具合修正):
+    //   ImGuiStorage は key → 共用体 (int / float / void*) の平坦な表で、型を覚えていない。
+    //   以前はここで Data 全件を "val_i != 0" として保存し、起動時に SetInt で書き戻して
+    //   いたため、折り畳み以外の値まで 0/1 の int へ潰していた。実害として、
+    //   カード本文の高さ (SetFloat) が壊れた状態で復元される、参照欄 (AssetPathField) が
+    //   パス直接編集モードのまま固定される、といった「終了時の状態が焼き付く」挙動が出る。
+    //   ComponentHeader が名乗り出た ID だけを保存対象にする。
+    // WHY 前回値を土台にするか: 今回のセッションで一度も表示しなかったカードの状態を
+    //   落とさないため。ctx.inspectorSectionState は起動時に読んだ内容のまま保持している。
     if (ImGuiWindow* win = ImGui::FindWindowByName("Inspector")) {
-        m_settings.inspectorSectionState.clear();
-        for (const auto& entry : win->StateStorage.Data)
-            m_settings.inspectorSectionState.emplace_back(entry.key, entry.val_i != 0);
+        std::unordered_map<ImGuiID, bool> merged;
+        for (const auto& [key, open] : m_ctx.inspectorSectionState) merged[key] = open;
+        for (const ImGuiID id : widgets::ComponentHeaderStateIds())
+            merged[id] = win->StateStorage.GetInt(id, 0) != 0;
+
+        m_settings.inspectorSectionState.assign(merged.begin(), merged.end());
+        // TOML の差分を安定させる (毎回並びが変わると保存のたびに全行が変更扱いになる)。
+        std::sort(m_settings.inspectorSectionState.begin(),
+                  m_settings.inspectorSectionState.end(),
+                  [](const auto& a, const auto& b) { return a.first < b.first; });
     }
 
     // Debug メニュー - レンダリングオーバーレイ
@@ -722,6 +761,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     m_projectRoot      = projectRoot;
     m_ctx.projectRoot  = projectRoot;
+    m_ctx.editorSceneState.Clear();
 
     // --- EditorConfig を Assets/EditorConfig/ からロード --------------------
     // WHY: Init() 時点では projectRoot が未確定なので、ここで遅延ロードする。
@@ -1087,11 +1127,42 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         panel->OnRender(ctx);
     }
 
-    // アセット参照欄 (widgets::AssetPathField) のクリック → Asset Browser でその実体を示す。
+    // アセット参照欄 (widgets::AssetPathField) のクリック → 参照先アセットを辿る。
+    // 要求は 2 つの独立した仕事に分かれる:
+    //   ・Inspector の表示対象をそのアセットへ移す (ダブルクリック) — ここで即座に確定させる
+    //   ・Asset Browser の一覧を該当フォルダへ移動して ping する — 次フレームのパネルが消費する
     // WHY ここで中継するか: widgets 層は EditorContext を知らないため、要求は静的チャネルに
     //     積まれる。パネル描画の後に 1 回だけ取り出せば、どのパネルの参照欄から出た要求でも
-    //     同じ経路で Asset Browser へ届く (次フレームの OnRenderContent が消費する)。
+    //     同じ経路で届く。
     if (widgets::AssetRevealRequest reveal; widgets::ConsumeAssetRevealRequest(reveal)) {
+        // Inspector の表示対象の切り替えはここで完結させる。
+        //
+        // WHY Asset Browser へ任せないか (重要):
+        //   以前は ctx.selectedAssetPath を AssetBrowserPanel::HandleRevealRequest だけが
+        //   書いていた。あれは OnRenderContent の中にあるため、次の 2 つの条件で
+        //   1 度も走らず、参照欄をダブルクリックしても Inspector が沈黙していた。
+        //     1. Asset Browser が非アクティブなドッキングタブだと ImGui::Begin が false を
+        //        返し OnRenderContent 自体が呼ばれない (IPanel::OnRender / WasContentRendered)。
+        //        Inspector と同じドックノードに同居していると常にこの状態になる。
+        //     2. 一覧へナビゲートできない参照 (ファイル欠落・ブラウズ可能ルート外 =
+        //        エンジン内蔵マテリアル等) では、あちらが選択を書く前に return する。
+        //   「参照を辿って中身を見る」は Inspector 単体で成立すべき動線で、
+        //   一覧上で位置を示す (ping) のはその副作用にすぎない。責務を分離する。
+        if (reveal.selectInInspector) {
+            // Sprite 参照 ("<画像>::sprite::<id>") は元画像を Inspector へ出す。
+            // ParseSpriteReference は false のときも logicalPath へ元の文字列を書くため、
+            // 戻り値を見る必要はない (AssetBrowserPanel::HandleRevealRequest と同じ扱い)。
+            std::string logicalPath;
+            std::string spriteToken;
+            (void)asset::ParseSpriteReference(reveal.path, logicalPath, spriteToken);
+            std::string absolute = util::FileSystem::NormalizePathSeparators(
+                asset::AssetManager::ResolveAssetPath(logicalPath));
+            if (!absolute.empty() && util::FileSystem::Exists(absolute)) {
+                ctx.selectedAssetPath = std::move(absolute);
+                ctx.selectedEntities.clear();
+            }
+        }
+
         ctx.requestRevealAssetPath   = std::move(reveal.path);
         ctx.requestRevealAssetSelect = reveal.selectInInspector;
         for (auto& panel : m_panels) {
@@ -1142,6 +1213,11 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         }
     }
 
+    // WHY requestOpenAnimationGraph が「窓を出す」だけか:
+    //   どの .animcontroller を開くかは ctx.openAnimationGraph(path) で呼び出し元が
+    //   明示する。両方をここで兼ねると、Inspector が渡したパスを直後に
+    //   selectedAssetPath で上書きしてしまう (Inspector の選択は GameObject なので、
+    //   そこで selectedAssetPath を見ると無関係なアセットを開くことになる)。
     if (ctx.requestOpenAnimationGraph) {
         ctx.requestOpenAnimationGraph = false;
         for (auto& panel : m_panels) {
@@ -1673,6 +1749,10 @@ void EditorApp::OnRender()
             m_ctx.selectedEntities.clear();
         m_ctx.activeScene = nextActive;
     }
+    // Animation Preview はウィンドウが閉じていても選択対象と再生時刻を保持する。
+    // WHY: Preview パネルの OnRenderContent だけに任せると、非表示タブや Inspector の
+    //      初回表示では選択変化を拾えず、再アタッチするまでプレビューが更新されない。
+    TickAnimationPreview(m_ctx);
     RenderPanels(m_ctx);
     // AssetBrowserから独立VFXEditorウィンドウ上でreleaseされたdragをIPC dropへ変換する。
     VFXEditorLauncher::UpdateTrackedAssetDrag();
@@ -1721,9 +1801,11 @@ void EditorApp::WarmupRenderResources()
         uiOptions.viewportHeight = h;
         uiOptions.targetView    = scene::UIRenderTargetView::SceneViewport;
         uiOptions.context       = &m_sceneUICtx;
+        const scene::CameraCullingSettings warmupSceneViewCulling{};
         scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
                             m_debugCamera.camera, sceneRT, nullptr,
-                            fbzz::Layer::Everything, &uiOptions);
+                            fbzz::Layer::Everything, &uiOptions, nullptr,
+                            &warmupSceneViewCulling);
     }
 
     const auto gameRT = m_gameViewportRT;
@@ -1845,9 +1927,15 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         //      SceneView も新シーンをエディタカメラで描画する。
     scene::Scene* const sceneViewScene = (m_playMode.IsPlaying() && m_runtime.GetActiveScene())
         ? m_runtime.GetActiveScene() : m_scene.get();
+        // Scene View はデバッグカメラの視点なので、ゲームカメラのカリング設定は持ち込まない。
+        // WHY: Unity と同様、Occlusion Culling を切ったゲームカメラの都合で
+        //      編集用ビューの見え方が変わると、何を編集しているのか分からなくなる。
+        //      cullingMask を Everything にしているのと同じ理由。
+        const scene::CameraCullingSettings sceneViewCulling{};
         scene::RenderSystem(*sceneViewScene, *m_renderer, *m_resources,
                             m_debugCamera.camera, sceneRT, &sceneRenderSettings,
-                        fbzz::Layer::Everything, &uiOptions, &m_runtime.GetPhysicsWorld());
+                        fbzz::Layer::Everything, &uiOptions, &m_runtime.GetPhysicsWorld(),
+                        &sceneViewCulling);
     }
 }
 

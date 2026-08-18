@@ -9,6 +9,8 @@ namespace fbzz::scene { class Scene; struct EntityID; }
 
 namespace fbzz::editor {
 
+struct EditorSceneState;
+
 class SceneIO {
 public:
     static bool Save(const scene::Scene& scene, const std::string& path);
@@ -24,6 +26,9 @@ public:
 
     // スナップショット用作業ディレクトリを設定する (OpenProject で呼ぶ)
     static void SetProjectRoot(const std::string& projectRoot);
+
+    // Editor 専用サイドカーを保存・復元する状態を接続する。SceneIO は非所有で参照する。
+    static void SetEditorSceneState(EditorSceneState* state);
 };
 
 } // namespace fbzz::editor
