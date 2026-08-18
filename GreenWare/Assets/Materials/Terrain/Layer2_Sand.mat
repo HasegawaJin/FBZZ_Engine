@@ -1,7 +1,7 @@
 blend_mode = 'Opaque'
 double_sided = false
 mesh_type = 'surface'
-render_path = 'deferred'
+render_path = 'auto'
 render_queue = 2000
 shader = ''
 version = 1

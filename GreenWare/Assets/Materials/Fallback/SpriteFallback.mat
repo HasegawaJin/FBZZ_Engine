@@ -7,7 +7,7 @@ blend_mode = "AlphaBlend"
 double_sided = true
 depth_write = false
 render_queue = 3000
-render_path = "forward"
+render_path = "auto"
 mesh_type = "surface"
 
 [textures]
