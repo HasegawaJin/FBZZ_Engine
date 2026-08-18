@@ -175,7 +175,7 @@ void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*ca
     for (auto& entry : scriptComp->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, &go);
-        (entry.script.get()->*callback)();
+        entry.script->InvokeNoArg(callback, "navigation callback");
     }
 }
 

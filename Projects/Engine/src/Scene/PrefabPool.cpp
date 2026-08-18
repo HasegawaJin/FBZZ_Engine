@@ -38,9 +38,9 @@ void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
             // 再利用時は OnAwake / OnStart が再発火しないため、コンテキストだけ張り直す。
             script->SetContext(&scene, &gameObject);
             if (spawned)
-                script->OnSpawn();
+                script->InvokeNoArg(&Script::OnSpawn, "OnSpawn");
             else
-                script->OnDespawn();
+                script->InvokeNoArg(&Script::OnDespawn, "OnDespawn");
         }
     }
 

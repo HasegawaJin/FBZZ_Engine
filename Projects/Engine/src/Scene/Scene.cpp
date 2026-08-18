@@ -90,7 +90,7 @@ void Scene::DestroyImmediate(EntityID id) {
     if (auto* sc = GetComponent<ScriptComponent>(id))
         for (auto& entry : sc->scripts)
             if (entry.script && entry.m_started)
-                entry.script->OnDestroy();
+                entry.script->InvokeNoArg(&Script::OnDestroy, "OnDestroy");
 
     // Component 削除
     RemoveAllComponents(id);
@@ -340,7 +340,7 @@ void Scene::Clear()
         if (!sc) continue;
         for (auto& entry : sc->scripts)
             if (entry.script && entry.m_started)
-                entry.script->OnDestroy();
+                entry.script->InvokeNoArg(&Script::OnDestroy, "OnDestroy");
     }
 
     m_destroyQueue.clear();

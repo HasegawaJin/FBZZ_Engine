@@ -10,9 +10,13 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <algorithm>
 #include <cassert>
 #include <utility>
+#if defined(_MSC_VER)
+#include <excpt.h>
+#endif
 
 namespace fbzz::scene {
 
@@ -40,6 +44,148 @@ void Script::SetContext(Scene* scene, GameObject* gameObject)
     m_gameObject = gameObject;
 }
 
+namespace {
+
+// Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
+// WHY: 空の Ref<T> を誤って operator-> で使った場合、MSVC はアクセス違反を SEH として通知する。
+//      C++ 例外ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
+void MarkScriptRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
+{
+    script.enabled = false;
+    FBZZ_LOG_ERROR("Script '%s' disabled after an invalid reference/access violation in %s().",
+                   script.GetTypeName(), callbackName ? callbackName : "callback");
+}
+
+} // namespace
+
+bool Script::InvokeNoArg(void (Script::*callback)(), const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        MarkScriptRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    (this->*callback)();
+    return true;
+#endif
+}
+
+bool Script::InvokeCollision(void (Script::*callback)(const CollisionInfo&),
+                             const CollisionInfo& info,
+                             const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        MarkScriptRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    (this->*callback)(info);
+    return true;
+#endif
+}
+
+bool Script::InvokeAnimationEvent(const AnimationEventInfo& info)
+{
+    if (m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        OnAnimationEvent(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        MarkScriptRuntimeFault(*this, "OnAnimationEvent");
+        return false;
+    }
+#else
+    OnAnimationEvent(info);
+    return true;
+#endif
+}
+
+bool Script::InvokeAnimatorMove(const RootMotionInfo& info)
+{
+    if (m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        OnAnimatorMove(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        MarkScriptRuntimeFault(*this, "OnAnimatorMove");
+        return false;
+    }
+#else
+    OnAnimatorMove(info);
+    return true;
+#endif
+}
+
+bool Script::InvokeSetupRenderPasses(RenderPipeline& pipeline, RenderPassContext& context)
+{
+    if (m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        OnSetupRenderPasses(pipeline, context);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        MarkScriptRuntimeFault(*this, "OnSetupRenderPasses");
+        return false;
+    }
+#else
+    OnSetupRenderPasses(pipeline, context);
+    return true;
+#endif
+}
+
+bool Script::InvokeFunction(const std::function<void()>& function, const char* callbackName)
+{
+    if (!function || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        function();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        MarkScriptRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    function();
+    return true;
+#endif
+}
+
+bool Script::InvokeCoroutineStep(Coroutine& coroutine)
+{
+    if (m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        coroutine.Step();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        MarkScriptRuntimeFault(*this, "Coroutine");
+        return false;
+    }
+#else
+    coroutine.Step();
+    return true;
+#endif
+}
+
 void Script::SyncEnabledState()
 {
     // WHY: enabled は public 互換性を維持するため setter 化しない。
@@ -47,16 +193,16 @@ void Script::SyncEnabledState()
     if (!m_enableStateInitialized) {
         m_lastEnabled = enabled;
         m_enableStateInitialized = true;
-        if (enabled) OnEnable();
+        if (enabled) InvokeNoArg(&Script::OnEnable, "OnEnable");
         return;
     }
 
     if (m_lastEnabled == enabled) return;
     m_lastEnabled = enabled;
     if (enabled)
-        OnEnable();
+        InvokeNoArg(&Script::OnEnable, "OnEnable");
     else
-        OnDisable();
+        InvokeNoArg(&Script::OnDisable, "OnDisable");
 }
 
 
@@ -125,7 +271,8 @@ void Script::TickInvokes(float dt)
 
         // WHAT: callback 内から Invoke / CancelInvoke が呼ばれてもよい。
         //      fn はコピーしてから呼び、vector の再配置や canceled 更新の影響を受けないようにする。
-        if (fn) fn();
+        if (fn && !InvokeFunction(fn, "Invoke callback"))
+            break;
     }
     m_isTickingInvokes = false;
 
@@ -159,7 +306,8 @@ void Script::TickFrameDelays()
             m_frameDelays.push_back(std::move(entry));
             continue;
         }
-        if (entry.fn) entry.fn();
+        if (entry.fn && !InvokeFunction(entry.fn, "FrameDelay callback"))
+            break;
     }
 }
 
@@ -187,7 +335,8 @@ void Script::TickCoroutines()
     // WHY: 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回り、
     //      m_coroutines は本ループ中に再確保されない。
     for (size_t i = 0; i < m_coroutines.size(); ++i)
-        m_coroutines[i].Step();
+        if (!InvokeCoroutineStep(m_coroutines[i]))
+            break;
     m_isTickingCoroutines = false;
 
     // 完了したコルーチンを除去する。
