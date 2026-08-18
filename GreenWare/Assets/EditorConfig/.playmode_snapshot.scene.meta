@@ -1,2 +1,115 @@
+[editor]
+format_version = 2
+
+    [[editor.game_objects]]
+    component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Environment Light', 'Atmospheric Scattering' ]
+    instance_id = 'a32b8f80-b125-4507-8ca5-9902943a2913'
+
+    [[editor.game_objects]]
+    component_order = [ 'Camera', 'Script:TpsCameraComponent' ]
+    instance_id = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '85dfb354-3483-4b03-b795-408927f9fb0d'
+
+    [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '7f00224e-d247-49c8-b664-12b03be16d72'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '04f214bf-8316-416e-b88f-278949a9031e'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '4078b94b-6ed3-4657-979f-daef0006defe'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'ceeb0fbb-12f8-4f41-ae12-d134292c357b'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'd3945bae-4fea-4458-a155-98adabf9b325'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'b5fe3ad9-370c-479f-bc2b-7dac9b2e5b19'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '0015777a-24bb-4c72-b224-35656ca2e62f'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'f341282b-9730-4d5d-9904-f6c1699cb53c'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '86c37a9f-bced-4660-b712-4af6fd78d330'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '21675421-d07a-4323-9670-2adceee4f23c'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'd4a5a493-22b2-42f9-a5ae-3c15068c4a86'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'f27e4293-8d46-42f1-b825-808f6a4480df'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'd5093642-ddbd-48e8-b240-4296a712de81'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '184ddf7c-542e-4299-89a2-d1bb9342642d'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Box Collider', 'Script:PolarityTargetComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-000000000020'
+
+    [[editor.game_objects]]
+    component_order = [
+        'Mesh Renderer',
+        'Material',
+        'Sphere Collider',
+        'Rigid Body',
+        'Script:PolarityTargetComponent',
+        'Script:PolarityBodyComponent',
+        'Script:EnemyHealthComponent',
+        'Script:EnemyChaserComponent'
+    ]
+    instance_id = 'f4000001-0000-0000-0000-000000000011'
+
+    [[editor.game_objects]]
+    component_order = [
+        'Mesh Renderer',
+        'Material',
+        'Sphere Collider',
+        'Rigid Body',
+        'Script:PolarityTargetComponent',
+        'Script:PolarityBodyComponent',
+        'Script:EnemyHealthComponent',
+        'Script:EnemyChaserComponent'
+    ]
+    instance_id = 'f4000001-0000-0000-0000-000000000010'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:PolarityFieldComponent', 'Script:GameFlowComponent' ]
+    instance_id = 'f4000001-0000-0000-0000-000000000001'
+
+    [[editor.game_objects]]
+    component_order = [ 'Animator', 'Script:PlayerControllerComponent', 'Rigid Body', 'Capsule Collider', 'Character Controller' ]
+    instance_id = '47fc7176-2e28-437b-b370-fea4e6fda463'
+
 [meta]
-guid = 'a1cb51b24476b0682ee537593d8aff62'
+guid = '41b4ab9efd567d60740f1428f21d51b5'
