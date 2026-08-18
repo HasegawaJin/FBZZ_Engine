@@ -2,18 +2,22 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '613b6e6f5919b6a5'
+settings_hash = 'f777393583fbe99f'
 source_hash = 'fe0a7a454d6fb515'
 
 [meta]
-guid = 'a2e5eaa33ad3a1272bac5ef18717d217'
+guid = '329c7a7f6784b08a34f592a1345b04ab'
 
 [model]
+clips = []
 default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
 generate_tex_descriptors = true
 importer = 'ModelImporter'
-importer_version = 1
+importer_version = 3
 normal_map_convention = 'DirectX'
+root_motion_node = ''
 selected_animations = []
 selected_meshes = [
     'ARENA_Buttress.002',
@@ -77,3 +81,5 @@ selected_meshes = [
     'GB_WallTrim.002'
 ]
 source_dcc = 'Auto'
+unit_scale_multiplier = 100.0
+up_axis = 0

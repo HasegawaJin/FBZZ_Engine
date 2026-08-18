@@ -2,18 +2,24 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '330be7ad0135b604'
+settings_hash = 'ddd17dafaf628c52'
 source_hash = 'e51c82c3dac7ad0e'
 
 [meta]
-guid = '0cd5809055e2ecd0c01ed466678152e4'
+guid = 'f5f285a0bec7ebe4d76a9d38505c7fc2'
 
 [model]
+clips = []
 default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
 generate_tex_descriptors = true
 importer = 'ModelImporter'
-importer_version = 1
+importer_version = 3
 normal_map_convention = 'DirectX'
+root_motion_node = ''
 selected_animations = []
 selected_meshes = []
 source_dcc = 'Auto'
+unit_scale_multiplier = 1.0
+up_axis = 0
