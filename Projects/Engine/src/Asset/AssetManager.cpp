@@ -94,16 +94,54 @@ std::unique_ptr<Model> ConvertModelAssetToLegacyModel(std::unique_ptr<ModelAsset
     model->meshes.reserve(lod0.submeshes.size());
     model->materials.reserve(lod0.submeshes.size());
 
-    for (SubmeshEntry& submesh : lod0.submeshes) {
+    // submesh の添字 → model->meshes の添字。
+    // WHY 対応表が要るか: 下のループは mesh を持たない submesh を飛ばすため、
+    //     ModelNode::meshIndices (submesh 基準) をそのまま使うと 1 個ずれた
+    //     メッシュを指す。ノードが別の部位を描く、という静かな壊れ方になる。
+    constexpr uint32_t kDropped = UINT32_MAX;
+    std::vector<uint32_t> submeshToMesh(lod0.submeshes.size(), kDropped);
+
+    for (size_t si = 0; si < lod0.submeshes.size(); ++si) {
+        SubmeshEntry& submesh = lod0.submeshes[si];
         if (!submesh.mesh) continue;
 
         // WHY: LoadModel() は旧コンポーネント向けの所有モデルを返すため、
         //      新 .fzasset 表現の LOD0 だけを移譲し、マテリアルは別アセット束縛までの既定値で埋める。
+        submeshToMesh[si] = static_cast<uint32_t>(model->meshes.size());
         model->meshes.push_back(std::move(submesh.mesh));
         model->materials.push_back(std::make_unique<renderer::Material>());
     }
 
     model->skeleton = std::move(asset->skeleton);
+
+    // ノード階層を meshes の添字系へ張り替えて引き継ぐ。
+    model->nodes.reserve(asset->nodes.size());
+    for (const ModelNode& source : asset->nodes) {
+        ModelNode node = source;
+        node.meshIndices.clear();
+        for (const uint32_t submeshIndex : source.meshIndices) {
+            if (submeshIndex >= submeshToMesh.size()) continue;
+            const uint32_t meshIndex = submeshToMesh[submeshIndex];
+            if (meshIndex != kDropped) node.meshIndices.push_back(meshIndex);
+        }
+        model->nodes.push_back(std::move(node));
+    }
+    model->rootNodeIndex       = asset->nodes.empty() ? -1 : asset->rootNodeIndex;
+    model->nodeTransformsBaked = asset->nodeTransformsBaked;
+
+    // ベイクが v3 以前でノード情報が無い場合は、全メッシュを担当する
+    // ルート 1 個として表現する。配置側にノード有無の分岐を書かせない。
+    if (model->nodes.empty() && !model->meshes.empty()) {
+        ModelNode root;
+        root.name = "Mesh";
+        root.meshIndices.reserve(model->meshes.size());
+        for (uint32_t i = 0; i < static_cast<uint32_t>(model->meshes.size()); ++i)
+            root.meshIndices.push_back(i);
+        model->nodes.push_back(std::move(root));
+        model->rootNodeIndex       = 0;
+        model->nodeTransformsBaked = true;
+    }
+
     return model;
 }
 
@@ -171,6 +209,16 @@ std::unique_ptr<Model> LoadFzMeshModel(
     auto model = std::make_unique<Model>();
     model->meshes.push_back(std::move(mesh));
     model->materials.push_back(std::make_unique<renderer::Material>());
+
+    // .mesh は単一メッシュを結合済みで持つ形式なので、階層は常にルート 1 個。
+    // 配置側にノード有無の分岐を持たせないため、その 1 個を明示的に作る。
+    ModelNode root;
+    root.name = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(absPath).stem());
+    if (root.name.empty()) root.name = "Mesh";
+    root.meshIndices.push_back(0u);
+    model->nodes.push_back(std::move(root));
+    model->rootNodeIndex = 0;
     return model;
 }
 
@@ -236,12 +284,42 @@ static bool EndsWithCI(const std::string& s, const char* suffix)
 }
 
 // import 生成物 (baked) の拡張子か。これらは Assets ではなく Library/Baked に置かれる。
+//
+// WHY .anim を含めるか: クリップは FBX から毎回焼き直される派生物で、編集対象となる設定
+//     (Loop Time 等) は原本の .fbx.meta 側にある。Assets に置いておく理由が無く、
+//     置いたままだと 1 モデルにつき数十ファイルがブラウザーを埋める。
+//     取り出して独立編集したい場合は Extract で Assets へ複製する (新 GUID が振られる)。
+// WHY .mat を含めても手作りマテリアルが壊れないか:
+//     LibraryBakedPath は「パッケージ規約 (Foo/ の隣に原本 Foo.fbx)」が成立しない限り
+//     空を返す。Assets/Materials/*.mat のような手作りはここで必ず外れ、
+//     さらに上の "Assets 優先" 分岐で先に実体が返るため、2 重に守られている。
 static bool IsBakedModelExt(const std::string& key)
 {
-    return EndsWithCI(key, ".fzasset") || EndsWithCI(key, ".mesh") || EndsWithCI(key, ".skel");
+    return EndsWithCI(key, ".fzasset") || EndsWithCI(key, ".mesh") ||
+           EndsWithCI(key, ".skel")    || EndsWithCI(key, ".anim") ||
+           EndsWithCI(key, ".mat");
 }
 
-// 論理パス "<dir>/Foo/Foo.fzasset" → 物理パス "<projectRoot>/Library/Baked/<fbx-guid>/Foo.fzasset"。
+// Extract で Assets 側へ取り出せる生成物か。取り出した実体があればそちらを優先する。
+// 画像は "textures/" 配下に居るときだけ生成物なので、拡張子だけでは判定しない
+// (手持ちのテクスチャまで Library を探しに行かせない)。
+static bool IsExtractableBaked(const std::string& key)
+{
+    static constexpr const char* kImageExts[] = {
+        ".png", ".jpg", ".jpeg", ".tga", ".dds", ".bmp", ".hdr", ".exr"
+    };
+    if (EndsWithCI(key, ".anim") || EndsWithCI(key, ".mat")) return true;
+    for (const char* ext : kImageExts)
+        if (EndsWithCI(key, ext)) return true;
+    return false;
+}
+
+// 論理パス → 物理パス "<projectRoot>/Library/Baked/<fbx-guid>/[anims/]<file>"。
+//
+// 扱う 2 形:
+//   "<dir>/Foo/Foo.fzasset"            → Library/Baked/<guid>/Foo.fzasset
+//   "<dir>/Foo/anims/Foo@Idle.anim"    → Library/Baked/<guid>/anims/Foo@Idle.anim
+//
 // パッケージ規約 (Foo/ の隣に原本 Foo.fbx) から fbx を特定し、その guid でキャッシュを引く。
 // fbx が存在しない / basePath が "Assets/" で終わらない場合は空を返す (呼び出し側がフォールバック)。
 static std::string LibraryBakedPath(const std::string& absPath, const std::string& basePath)
@@ -249,18 +327,32 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
     namespace fs = std::filesystem;
     if (!EndsWithCI(basePath, "assets/")) return {};
 
-    const fs::path p       = util::FileSystem::PathFromUtf8(absPath);
-    const fs::path pkgDir  = p.parent_path();
+    const fs::path p = util::FileSystem::PathFromUtf8(absPath);
+    fs::path pkgDir  = p.parent_path();
+
+    // anims/ と materials/ は 1 階層深い。Library 側でも同じサブディレクトリを維持することで、
+    // 同名クリップ・同名マテリアルを持つ別 FBX どうしがぶつからない。
+    std::string subDir;
+    {
+        std::string leaf = util::FileSystem::PathToUtf8(pkgDir.filename());
+        std::transform(leaf.begin(), leaf.end(), leaf.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (leaf == "anims" || leaf == "materials" || leaf == "textures") {
+            subDir = leaf + "/";
+            pkgDir = pkgDir.parent_path();
+        }
+    }
+
     const std::string pkg  = util::FileSystem::PathToUtf8(pkgDir.filename());
     const fs::path fbxPath = pkgDir.parent_path() / (pkg + ".fbx");
 
     // GuidFromPath は実在チェック込み。fbx が無ければ空 = Library 対象外。
-    const std::string guid = AssetDatabase::GuidFromPath(
+    const std::string guid = AssetDatabase::TryGetGuidFromPath(
         util::FileSystem::PathToUtf8(fbxPath));
     if (guid.empty()) return {};
 
     const std::string projectRoot = basePath.substr(0, basePath.size() - 7); // "assets/" を除去
-    return projectRoot + "Library/Baked/" + guid + "/" +
+    return projectRoot + "Library/Baked/" + guid + "/" + subDir +
            util::FileSystem::PathToUtf8(p.filename());
 }
 
@@ -272,7 +364,7 @@ static std::string LibraryBakedModelPathFromFbx(const std::string& fbxAbsPath, c
     namespace fs = std::filesystem;
     if (!EndsWithCI(basePath, "assets/")) return {};
 
-    const std::string guid = AssetDatabase::GuidFromPath(fbxAbsPath);
+    const std::string guid = AssetDatabase::TryGetGuidFromPath(fbxAbsPath);
     if (guid.empty()) return {};
 
     const fs::path fbxPath = util::FileSystem::PathFromUtf8(fbxAbsPath);
@@ -328,12 +420,31 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
         full += k;
     }
 
-    // baked (.fzasset/.mesh/.skel) は Library/Baked/<fbx-guid>/ を優先して解決する。
-    // WHY: import 生成物を Assets ツリーから隔離する (P5)。旧配置に実ファイルが残っている間は
-    //      下のフォールバックで従来どおり解決されるため、移行途中でも壊れない。
-    if (IsBakedModelExt(key)) {
+    // baked 生成物は Library/Baked/<fbx-guid>/ から解決する。
+    //
+    // WHY .anim / .mat だけ Assets を先に見るか (Extract の仕組み):
+    //   これらは AssetBrowser の "Extract to Assets" で Assets 側へ取り出せる。
+    //   取り出した実体があるならそちらが人の編集を受けた正であり、
+    //   Library の再生成物より優先されなければならない。取り出していなければ
+    //   Assets 側は存在しないので、そのまま Library へ落ちる。
+    //   .fzasset / .mesh / .skel は取り出しの対象外なので常に Library が先。
+    if (IsBakedModelExt(key) || IsExtractableBaked(key)) {
+        if (IsExtractableBaked(key) && util::FileSystem::Exists(full)) return full;
+
         const std::string lib = LibraryBakedPath(full, basePath);
         if (!lib.empty() && util::FileSystem::Exists(lib)) return lib;
+    }
+
+    // 開いた Scene / Prefab がリネーム前の論理パスを一時的に保持していても、
+    // AssetDatabase の移動 alias から現在の実体へ追従させる。
+    // WHY: 保存時だけ GUID 化できても、リネーム直後のプレビューや Inspector の
+    //      実体ロードが旧パスのままだと「参照が切れた」と見えて編集を続けられない。
+    if (const std::string movedGuid = AssetDatabase::TryGetGuidFromPath(full);
+        !movedGuid.empty()) {
+        const std::string movedPath = AssetDatabase::PathFromGuid(movedGuid);
+        if (!movedPath.empty() && movedPath != full
+            && util::FileSystem::Exists(movedPath))
+            return movedPath;
     }
 
     if (IsAbsPath(key)) return key;
@@ -353,6 +464,17 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
 std::string AssetManager::ResolveAssetPath(const std::string& path)
 {
     return ResolvePath(Normalize(path), s_basePath);
+}
+
+std::string AssetManager::BakedDirForSource(const std::string& sourceAbsPath)
+{
+    if (!EndsWithCI(s_basePath, "assets/")) return {};
+
+    const std::string guid = AssetDatabase::TryGetGuidFromPath(Normalize(sourceAbsPath));
+    if (guid.empty()) return {};
+
+    const std::string projectRoot = s_basePath.substr(0, s_basePath.size() - 7);
+    return projectRoot + "Library/Baked/" + guid;
 }
 
 // ── Init / UnloadAll ──────────────────────────────────────────────────────
@@ -387,12 +509,18 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
 void AssetManager::UnloadAll()
 {
     // 新 API ストアをクリア
+    // WHY 全型を漏れなく並べるか: 消し忘れた型はプロジェクトを切り替えても
+    //     前のプロジェクトのアセットが cache に残り続ける。パスが同名なら
+    //     別プロジェクトの中身が黙って引き当たるという、最も気付きにくい壊れ方をする。
     AssetStore<ModelAsset>::Get().Clear();
     AssetStore<AnimationClip>::Get().Clear();
+    AssetStore<Skeleton>::Get().Clear();
     AssetStore<MaterialAsset>::Get().Clear();
     AssetStore<AnimatorControllerAsset>::Get().Clear();
     AssetStore<TerrainAsset>::Get().Clear();
     AssetStore<TextureAsset>::Get().Clear();
+    AssetStore<IblAsset>::Get().Clear();
+    AssetStore<PhysicsMaterialAsset>::Get().Clear();
 
     // 旧 API キャッシュをクリア
     s_models.clear();
@@ -597,12 +725,20 @@ void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath)
 
 void AssetManager::FlushFailed()
 {
+    // WHY Init() のインポーター登録と同じ並び・同じ顔ぶれで書くか:
+    //     ここに 1 つ書き忘れると、その型は「一度ロードに失敗したら
+    //     プロセスが終わるまで二度と復帰しない」という無音の不具合になる。
+    //     LoadFromStore() は失敗も cache へ焼き付けるため、掃除口はここしかない。
+    //     実際 .physmat は登録漏れで、アセットを直しても参照が復活しなかった。
     FlushStore<ModelAsset>();
     FlushStore<AnimationClip>();
+    FlushStore<Skeleton>();
     FlushStore<MaterialAsset>();
     FlushStore<AnimatorControllerAsset>();
     FlushStore<TerrainAsset>();
     FlushStore<TextureAsset>();
+    FlushStore<IblAsset>();
+    FlushStore<PhysicsMaterialAsset>();
 
     for (auto it = s_models.begin(); it != s_models.end(); )
         it = it->second ? ++it : s_models.erase(it);

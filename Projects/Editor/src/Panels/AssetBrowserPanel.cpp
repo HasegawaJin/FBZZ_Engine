@@ -3,6 +3,7 @@
 // AssetBrowserPanel のフォルダツリーとアセットグリッド描画
 #include "AssetBrowser/AssetBrowserCommon.hpp"
 #include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/VFXEditorLauncher.hpp>
 
 namespace fbzz::editor {
 
@@ -201,6 +202,11 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_rootPath)) {
             RefreshDirectory();
         }
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            std::string sourcePath;
+            if (ReadAssetDragPayload(p, sourcePath))
+                QueueAssetMove(sourcePath, m_rootPath);
+        }
         ImGui::EndDragDropTarget();
     }
     if (rootOpen) {
@@ -236,6 +242,11 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 if (SaveHierarchyPayloadAsPrefab(
                         ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, mount.path)) {
                     RefreshDirectory();
+                }
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string sourcePath;
+                    if (ReadAssetDragPayload(p, sourcePath))
+                        QueueAssetMove(sourcePath, mount.path);
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -557,6 +568,13 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_currentPath)) {
             RefreshDirectory();
         }
+        // 空白領域へのドロップは現在フォルダへの移動として扱う。
+        // WHY: フォルダが表示されていない検索結果 / List 表示でも、移動先を失わないため。
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            std::string sourcePath;
+            if (ReadAssetDragPayload(p, sourcePath))
+                QueueAssetMove(sourcePath, m_currentPath);
+        }
         ImGui::EndDragDropTarget();
     }
 
@@ -570,6 +588,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     //      いずれにもヒットしなければ現在フォルダへ取り込まれる。
     if (m_externalDrop.active)
         FinalizeExternalDrop();
+    FinalizePendingAssetMove(ctx);
 }
 
 void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
@@ -788,6 +807,23 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
             }
             if (selected) ImGui::PopStyleColor();
             const bool hov = ImGui::IsItemHovered();
+            // グリッドと同じ ASSET_PATH を発行し、List 表示でもファイル / フォルダを整理できるようにする。
+            if (!e.isMount && !e.isPackageAsset && ImGui::BeginDragDropSource()) {
+                m_entryDragStarted = true;
+                const std::string payloadPath = ToAssetDragPayloadPath(e.path, ctx);
+                ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
+                VFXEditorLauncher::TrackAssetDrag(ctx.projectRoot, payloadPath);
+                ImGui::TextUnformatted(e.name.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (e.isDir && ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string sourcePath;
+                    if (ReadAssetDragPayload(p, sourcePath))
+                        QueueAssetMove(sourcePath, e.path);
+                }
+                ImGui::EndDragDropTarget();
+            }
             // 主選択の行だけ左端にアクセントバーを立て、複数選択の中の「現在の対象」を示す。
             if (selected && emphasized) {
                 ui::DrawSelectionAccent(ImGui::GetWindowDrawList(),

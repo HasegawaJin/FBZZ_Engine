@@ -67,6 +67,7 @@ void AssetFileWatcher::Stop()
 
     m_readPending = false;
     m_queue.clear();
+    m_pendingRenameOld.clear();
 }
 
 std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
@@ -138,8 +139,6 @@ void AssetFileWatcher::ParseBuffer(DWORD bytesTransferred)
     if (bytesTransferred == 0) return;
 
     const uint8_t* ptr = m_buffer;
-    std::string pendingRenameOld; // FILE_ACTION_RENAMED_OLD_NAME の記憶用
-
     for (;;)
     {
         const auto* info = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(ptr);
@@ -169,13 +168,13 @@ void AssetFileWatcher::ParseBuffer(DWORD bytesTransferred)
 
         case FILE_ACTION_RENAMED_OLD_NAME:
             // 次の通知が NEW_NAME のはず。ペアにするために記憶する。
-            pendingRenameOld = relPath;
+            m_pendingRenameOld = relPath;
             break;
 
         case FILE_ACTION_RENAMED_NEW_NAME:
-            ev = { EventType::Renamed, relPath, pendingRenameOld };
+            ev = { EventType::Renamed, relPath, m_pendingRenameOld };
             m_queue.push_back(std::move(ev));
-            pendingRenameOld.clear();
+            m_pendingRenameOld.clear();
             break;
 
         default:

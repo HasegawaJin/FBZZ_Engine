@@ -136,6 +136,17 @@ private:
     // FBX または Sprite Texture の従属アセットを列挙して、展開時のグリッドに挿入する。
     std::vector<Entry> GetAssetSubEntries(const std::string& sourceAssetPath);
 
+    // ── 生成物の取り出し (Unity の Extract 相当) ──────────────────────────
+    // Library/Baked 配下のパスか。取り出し対象かどうかは拡張子ではなく場所で決まる。
+    // Extract メニューとコピー&ペーストの両方がこの 1 つの判定を共有する。
+    [[nodiscard]] static bool IsBakedLibraryPath(const std::string& absPath);
+    // Library/Baked に隔離された実ファイルのサブアセットか。
+    // 仮想サブアセット (Sprite / ::mesh::) と、既に Assets に居るものは対象外。
+    [[nodiscard]] static bool IsExtractableSubAsset(const Entry& e);
+    // Assets 側へ複製し、作成された絶対パスを返す (失敗時は空)。
+    // 元ファイルと参照は変更しない。
+    [[nodiscard]] std::string ExtractSubAsset(const Entry& e, EditorContext& ctx) const;
+
     // 未変換モデルファイルを検出してインポートキューに積む (relPath は m_rootPath 相対)。
     // WHY: PNG / JPG 等のテクスチャは ResourceManager が原本を直接読むため変換しない。
     void TryQueuePendingImport(const std::string& relPath);
@@ -153,6 +164,16 @@ private:
     };
     ExternalDrop m_externalDrop;
 
+    // ASSET_PATH の移動は一覧の描画が終わってから実行する。
+    // WHY: DrawEntry が参照している m_entries を移動直後に RefreshDirectory で差し替えると、
+    //      同じフレームの参照が無効化され、選択や表示が不定になる。
+    struct PendingAssetMove {
+        std::string sourcePath;
+        std::string targetDir;
+        bool active = false;
+    };
+    PendingAssetMove m_pendingAssetMove;
+
     // ドラッグ中 (ドロップ確定前) のライブハイライト状態。OnBeforeBegin で ctx から取り込む。
     bool   m_extDragActive = false;
     ImVec2 m_extDragPoint{ 0.0f, 0.0f };
@@ -163,6 +184,9 @@ private:
     void ConsiderExternalDropTarget(const std::string& folderAbs, const ImVec2& mn, const ImVec2& mx);
     // 解決済み (または現在フォルダ) へ実際にコピーし、m_externalDrop をクリアする。
     void FinalizeExternalDrop();
+    // 描画中に受け付けた AssetBrowser 内移動を、全アイテム描画後に確定する。
+    void QueueAssetMove(const std::string& sourcePath, const std::string& targetDir);
+    void FinalizePendingAssetMove(EditorContext& ctx);
     // sources を destDirUtf8 へコピーする共通処理 (同名は採番、Assets 配下の自己コピーは除外)。
     void CopyExternalFilesInto(const std::vector<std::string>& sources, const std::string& destDirUtf8);
     // 未変換ファイルかどうか判定する

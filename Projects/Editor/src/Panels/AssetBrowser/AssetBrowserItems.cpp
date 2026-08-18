@@ -40,15 +40,31 @@ namespace {
 //      ディレクトリ移動時は OnAssetMoved が配下の索引をプレフィックス付け替えで追随させる。
 bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs)
 {
+    if (fromAbs.empty() || toAbs.empty() ||
+        util::FileSystem::SamePathText(fromAbs, toAbs) ||
+        !util::FileSystem::Exists(fromAbs) || util::FileSystem::Exists(toAbs))
+        return false;
+
+    const std::string fromMeta = fromAbs + ".meta";
+    const std::string toMeta = toAbs + ".meta";
+    const bool hasMeta = util::FileSystem::Exists(fromMeta);
+    // 本体だけ移動して既存の .meta と結び付くと GUID の所有者が変わるため、先に拒否する。
+    if (util::FileSystem::Exists(toMeta)) return false;
+
     if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(fromAbs),
                                   util::FileSystem::PathFromUtf8(toAbs)))
         return false;
 
-    const std::string fromMeta = fromAbs + ".meta";
-    if (util::FileSystem::Exists(fromMeta)) {
+    if (hasMeta) {
         if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(fromMeta),
-                                      util::FileSystem::PathFromUtf8(toAbs + ".meta")))
+                                      util::FileSystem::PathFromUtf8(toMeta))) {
+            // サイドカーを移せない場合は本体を元へ戻し、半端な移動を残さない。
+            if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(toAbs),
+                                          util::FileSystem::PathFromUtf8(fromAbs)))
+                FBZZ_LOG_ERROR("AssetBrowser: move rollback failed [%s]", toAbs.c_str());
             FBZZ_LOG_WARN("AssetBrowser: sidecar move failed [%s]", fromMeta.c_str());
+            return false;
+        }
     }
 
     asset::AssetDatabase::OnAssetMoved(fromAbs, toAbs);
@@ -169,6 +185,16 @@ bool CopyAssetPath(const std::string& srcPath, const std::string& dstPath, bool 
             util::FileSystem::PathFromUtf8(dstPath));
 }
 
+std::string ResolveMoveSourcePath(const std::string& payloadPath, const EditorContext& ctx)
+{
+    const std::string normalized = util::FileSystem::NormalizePathSeparators(payloadPath);
+    if (normalized.empty()) return {};
+
+    // 外部マウントの ASSET_PATH は絶対パスのまま渡されるため、projectRoot を二重付与しない。
+    if (util::FileSystem::PathFromUtf8(normalized).is_absolute()) return normalized;
+    return ToProjectAssetDiskPath(ctx.projectRoot, normalized);
+}
+
 bool MoveProjectAssetToDirectory(const std::string& srcProjectPath,
                                  const std::string& dstDir,
                                  EditorContext& ctx,
@@ -177,11 +203,13 @@ bool MoveProjectAssetToDirectory(const std::string& srcProjectPath,
 {
     if (srcProjectPath.empty() || dstDir.empty()) return false;
 
-    const std::string srcAbs = util::FileSystem::NormalizePathSeparators(
-        ctx.projectRoot + "/" + srcProjectPath);
+    const std::string srcAbs = ResolveMoveSourcePath(srcProjectPath, ctx);
     const std::string dstAbs = util::FileSystem::NormalizePathSeparators(
         dstDir + "/" + util::FileSystem::GetFilename(srcAbs));
-    if (srcAbs == dstAbs || util::FileSystem::Exists(dstAbs)) return false;
+    if (srcAbs.empty() || !util::FileSystem::IsDirectory(dstDir) ||
+        util::FileSystem::SamePathText(srcAbs, dstAbs) ||
+        util::FileSystem::Exists(dstAbs) || util::FileSystem::Exists(dstAbs + ".meta"))
+        return false;
     if (util::FileSystem::IsDirectory(srcAbs) &&
         util::FileSystem::IsChildPathText(dstDir, srcAbs))
         return false;
@@ -307,6 +335,17 @@ static std::string ToTextureLoadPath(const std::string& path, const EditorContex
         return projectRoot + "/" + normalized;
     }
     return normalized;
+}
+
+// FBX の従属アセットを Library/Baked/<guid> から解決する。
+// WHY: インポーターが生成する .fzasset / .mat の正規配置を一箇所に固定し、
+//      AssetBrowser が原本 FBX 隣の中間生成物へ依存しないようにする。
+static std::filesystem::path ResolveModelGeneratedDir(const std::string& sourcePath,
+                                                       const char* generatedName)
+{
+    const std::string bakedDir = asset::AssetManager::BakedDirForSource(sourcePath);
+    if (bakedDir.empty()) return {};
+    return util::FileSystem::PathFromUtf8(bakedDir) / generatedName;
 }
 
 static ImTextureID ToImTextureID(void* ptr)
@@ -1335,6 +1374,43 @@ static bool DrawThumbnailIfReady(T& t, ImVec2 origin, float sz,
 
 } // namespace
 
+void AssetBrowserPanel::QueueAssetMove(const std::string& sourcePath, const std::string& targetDir)
+{
+    if (sourcePath.empty() || targetDir.empty() || m_pendingAssetMove.active) return;
+
+    m_pendingAssetMove.sourcePath = sourcePath;
+    m_pendingAssetMove.targetDir = targetDir;
+    m_pendingAssetMove.active = true;
+}
+
+void AssetBrowserPanel::FinalizePendingAssetMove(EditorContext& ctx)
+{
+    if (!m_pendingAssetMove.active) return;
+
+    // 先にキューを空にする。失敗時も同じ payload が次フレームに残らないようにする。
+    const PendingAssetMove request = std::move(m_pendingAssetMove);
+    m_pendingAssetMove = {};
+
+    std::string srcAbs;
+    std::string dstAbs;
+    if (!MoveProjectAssetToDirectory(request.sourcePath, request.targetDir,
+                                     ctx, srcAbs, dstAbs)) {
+        Toast::Error("Move failed: " + request.sourcePath);
+        return;
+    }
+
+    if (util::FileSystem::SamePathText(ctx.selectedAssetPath, srcAbs))
+        ctx.selectedAssetPath.clear();
+    ResetAssetPreviewCache(srcAbs);
+    InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
+    InvalidateTreeCache(request.targetDir);
+
+    // ここは全アイテムの描画が終わった後なので、m_entries を安全に再構築できる。
+    RefreshDirectory();
+    ctx.requestAssetBrowserRefresh = false;
+    Toast::Success("Moved " + util::FileSystem::GetFilename(dstAbs));
+}
+
 ImVec4 AssetBrowserPanel::EntryColor(const Entry& e)
 {
     if (e.isDir) return { 0.80f, 0.60f, 0.10f, 1.0f };
@@ -1492,16 +1568,9 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
                 RefreshDirectory();
             }
             if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                const std::string srcRelPath(static_cast<const char*>(p->Data), p->DataSize - 1);
-                std::string srcAbs;
-                std::string dstAbs;
-                if (MoveProjectAssetToDirectory(srcRelPath, dir.path, ctx, srcAbs, dstAbs)) {
-                    if (ctx.selectedAssetPath == srcAbs) ctx.selectedAssetPath.clear();
-                    ResetAssetPreviewCache(srcAbs);
-                    InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
-                    InvalidateTreeCache(dir.path);
-                    RefreshDirectory();
-                }
+                std::string sourcePath;
+                if (ReadAssetDragPayload(p, sourcePath))
+                    QueueAssetMove(sourcePath, dir.path);
             }
             ImGui::EndDragDropTarget();
         }
@@ -1754,7 +1823,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         if (e.ext == ".fbx") {
             const std::filesystem::path p = util::FileSystem::PathFromUtf8(e.path);
             const std::string stem = util::FileSystem::PathToUtf8(p.stem());
-            const std::string fbxGuid = asset::AssetDatabase::GuidFromPath(
+            const std::string fbxGuid = asset::AssetDatabase::TryGetGuidFromPath(
                 util::FileSystem::NormalizePathSeparators(e.path));
             if (!fbxGuid.empty()) {
                 const std::filesystem::path bakedPath =
@@ -1795,12 +1864,9 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         // マテリアルスロットを初回ロード (materials/slotName.mat -> per-slot MaterialPreview)
         if (preview.handle.IsValid() && !preview.materialsLoaded) {
             preview.materialsLoaded = true;
-            const std::filesystem::path srcPath =
-                util::FileSystem::PathFromUtf8(previewModelPath);
-            const std::filesystem::path pkgDir =
-                srcPath.parent_path() / srcPath.stem();
             const std::string matDir = util::FileSystem::NormalizePathSeparators(
-                util::FileSystem::PathToUtf8(pkgDir / "materials"));
+                util::FileSystem::PathToUtf8(
+                    ResolveModelGeneratedDir(previewModelPath, "materials")));
             if (const asset::ModelAsset* m0 = asset::AssetManager::Get(preview.handle)) {
                 preview.slotMaterials.resize(m0->materialSlotNames.size());
                 for (size_t si = 0; si < m0->materialSlotNames.size(); ++si) {
@@ -2454,6 +2520,8 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
     } else if (ext == ".animcontroller") {
+        // 開くドキュメントを明示的に渡してから窓を出す (.behaviortree と同じ扱い)。
+        if (ctx.openAnimationGraph) ctx.openAnimationGraph(path);
         ctx.requestOpenAnimationGraph = true;
     } else if (ext == ".vfx") {
         ctx.requestOpenVFXEditor = true;
@@ -2478,12 +2546,20 @@ void AssetBrowserPanel::CopySelectionToClipboard()
 
 // 現在開いているフォルダへクリップボードの内容を複製する。
 // 生成した実体は Undo 対象外 (取り消したいときは Delete でごみ箱へ送る)。
+//
+// WHY Library の生成物を「取り出し」として扱うか:
+//   Library/Baked の .anim / .mat / textures をコピペすると、.meta を複製しない仕様の
+//   おかげで結果的に「新しい GUID を持つ独立アセット」ができる。これは Extract と
+//   まったく同じ結果だが、以前は何の説明も出ないため「ただのコピー」に見えていた。
+//   同じ結果を出す道が 2 本あって片方だけ意味が語られている状態を解消し、
+//   コピペを取り出しの正式な動線として認める。
 void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
 {
     if (m_clipboardPaths.empty()) return;
     const std::string destDir = m_currentPath;
 
     std::vector<std::string> pastedPaths;
+    int extractedCount = 0;
     for (const auto& srcPath : m_clipboardPaths) {
         if (!util::FileSystem::Exists(srcPath)) continue;  // 元がリネーム/削除済みなら黙ってスキップ
         if (m_packageAssetPaths.count(srcPath) > 0) continue;
@@ -2494,6 +2570,7 @@ void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
             FBZZ_LOG_ERROR("Paste failed: %s -> %s", srcPath.c_str(), dstPath.c_str());
             continue;
         }
+        if (IsBakedLibraryPath(srcPath)) ++extractedCount;
         pastedPaths.push_back(dstPath);
     }
 
@@ -2508,6 +2585,13 @@ void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
         m_selectedPaths.insert(pastedPaths.begin(), pastedPaths.end());
         ctx.selectedAssetPath = pastedPaths.front();
     }
+
+    // 取り出しが起きたことは必ず伝える。黙って独立アセットが増えると、
+    // 「なぜ再インポートしても更新されないのか」が後から分からなくなる。
+    if (extractedCount > 0) {
+        Toast::Success(std::to_string(extractedCount) +
+                       " generated asset(s) extracted to Assets");
+    }
 }
 
 void AssetBrowserPanel::HandleClipboardShortcuts(EditorContext& ctx)
@@ -2521,6 +2605,66 @@ void AssetBrowserPanel::HandleClipboardShortcuts(EditorContext& ctx)
         CopySelectionToClipboard();
     else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false))
         PasteClipboardAssets(ctx);
+}
+
+bool AssetBrowserPanel::IsBakedLibraryPath(const std::string& absPath)
+{
+    // 取り出し対象かどうかは拡張子ではなく「どこに居るか」で決まる。
+    // Library/Baked = 再インポートで作り直される生成物、Assets = 人の著作物。
+    const std::string normalized = util::StringUtils::ToLower(
+        util::FileSystem::NormalizePathSeparators(absPath));
+    return normalized.find("/library/baked/") != std::string::npos;
+}
+
+bool AssetBrowserPanel::IsExtractableSubAsset(const Entry& e)
+{
+    if (e.isDir || !e.isSubAsset) return false;
+    // 仮想サブアセット (Sprite の "path::id" / "::mesh::N") は実ファイルではない。
+    if (e.isSpriteSubAsset) return false;
+    if (e.path.find("::mesh::") != std::string::npos) return false;
+    if (!util::FileSystem::Exists(e.path)) return false;
+
+    // Assets に居る .mat / textures は既に独立した実体なので、複製したいなら
+    // 通常の Duplicate を使えばよく、Extract という別概念を増やす必要が無い。
+    return IsBakedLibraryPath(e.path);
+}
+
+std::string AssetBrowserPanel::ExtractSubAsset(const Entry& e, EditorContext& ctx) const
+{
+    if (!IsExtractableSubAsset(e)) return {};
+
+    // 取り出し先は原本 FBX の隣。
+    // WHY 現在のフォルダではなく原本の隣か: 取り出したクリップは、どのモデルから来たのかが
+    //     分からなくなると使い道が消える。原本と同じ場所に置けば対応が保たれる。
+    std::string destDir = m_currentPath;
+    if (!e.sourceAssetPath.empty())
+        destDir = util::FileSystem::GetDirectory(e.sourceAssetPath);
+    if (destDir.empty()) destDir = ctx.projectRoot + "/Assets";
+    // GetDirectory は末尾に '/' を付けて返す。連結で "//" にならないよう落とす。
+    while (!destDir.empty() && (destDir.back() == '/' || destDir.back() == '\\'))
+        destDir.pop_back();
+    if (!util::FileSystem::EnsureDirectory(destDir)) return {};
+
+    const std::string fileName = util::FileSystem::GetFilename(e.path);
+    std::string destPath = destDir + "/" + fileName;
+    // 既存を黙って上書きしない。2 回目の Extract は別名で残す。
+    if (util::FileSystem::Exists(destPath)) {
+        const std::size_t dot = fileName.rfind('.');
+        const std::string stem = dot == std::string::npos ? fileName : fileName.substr(0, dot);
+        const std::string ext  = dot == std::string::npos ? std::string{} : fileName.substr(dot);
+        for (int suffix = 1; suffix < 10000; ++suffix) {
+            destPath = destDir + "/" + stem + " " + std::to_string(suffix) + ext;
+            if (!util::FileSystem::Exists(destPath)) break;
+        }
+    }
+
+    if (!CopyAssetPath(e.path, destPath, false)) return {};
+
+    // .meta は複製しない。
+    // WHY: GUID をコピーすると 2 つの実体が同じ GUID を名乗り、参照解決が
+    //      どちらを返すか不定になる。.meta を作らずに置けば、AssetDatabase の
+    //      スキャンが新しい GUID を採番して独立したアセットになる。
+    return destPath;
 }
 
 void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
@@ -2601,6 +2745,48 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         }
         ImGui::EndPopup();
         return;
+    }
+
+    // Library/Baked に隔離された生成物 (.anim 等) を Assets へ取り出す。
+    //
+    // WHY 取り出しを用意するか (Unity の "Extract From Prefab" 相当):
+    //   隔離した .anim は再インポートのたびに上書きされる。1 本だけ手で調整したい
+    //   (イベントを足す・別のクリップとして派生させる) 場合、上書きされない実体が要る。
+    //   コピーして Assets へ置き、新しい GUID を振れば独立アセットになり、
+    //   以降は原本 FBX の再インポートから切り離される。
+    //
+    // WHY 元の参照を書き換えないか:
+    //   既存のシーンや .animcontroller は Library 側を guid で指している。取り出した
+    //   瞬間に全部を新しい方へ向けると、「複製したつもりが元も変わった」ことになる。
+    //   取り出した実体を使うかどうかは、人が参照を差し替えて決める。
+    if (!e.isDir && e.isSubAsset && !e.isSpriteSubAsset && IsExtractableSubAsset(e)) {
+        if (ImGui::MenuItem("Extract to Assets")) {
+            const std::string extracted = ExtractSubAsset(e, ctx);
+            if (extracted.empty()) {
+                Toast::Error("Extract failed: " + e.name);
+            } else {
+                Toast::Success("Extracted " + util::FileSystem::GetFilename(extracted));
+                // 取り出した実体を選択状態にする。
+                // WHY: Ctrl+V は貼った項目を選択する。取り出しは「出して続けて編集する」
+                //      動線なので、同じ結果になる操作で選択の扱いが違うと迷う。
+                m_pendingNavigate = util::FileSystem::GetDirectory(extracted);
+                m_selectedPaths.clear();
+                m_lastClickedPath     = extracted;
+                ctx.selectedAssetPath = extracted;
+                RefreshDirectory();
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Copy this generated asset into Assets/ as an independent file.\n"
+                "It stops being overwritten by reimport. Existing references keep\n"
+                "pointing at the generated one until you reassign them.\n"
+                "\n"
+                "Ctrl+C then Ctrl+V does the same thing, but pastes into the\n"
+                "folder you are currently viewing.");
+        }
+        ImGui::Separator();
     }
 
     // プレファブ本体の編集面へ入る動線。
@@ -2688,8 +2874,16 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     if (!e.isMount && !e.isPackageAsset) {
         // 右クリックした e が事前に左クリック選択されているとは限らないため、
         // m_lastClickedPath 頼みの CopySelectionToClipboard() ではなくこの項目自体を積む。
+        const bool copiesGenerated = IsBakedLibraryPath(e.path);
         if (ImGui::MenuItem("Copy", "Ctrl+C"))
             m_clipboardPaths = { e.path };
+        // 生成物を掴んだときは、貼り付けが「取り出し」になることを先に言う。
+        // WHY: 結果として独立アセットが増えるのに、操作名が Copy のままだと
+        //      「再インポートしても更新されない実体」を作った自覚が持てない。
+        if (copiesGenerated) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(extracts on paste)");
+        }
         if (ImGui::MenuItem("Paste", "Ctrl+V", false, !m_clipboardPaths.empty()))
             PasteClipboardAssets(ctx);
         ImGui::Separator();
@@ -2720,7 +2914,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         // NOTE: 以前はファイル名に加えて「拡張子を除いた stem」でも一致とみなしていたが、
         //       これは "Fire" のような短い名前が無関係なファイルの本文へ大量に当たり、
         //       結果一覧が使い物にならなかった。stem 単独の一致は採らない。
-        const std::string guid = asset::AssetDatabase::GuidFromPath(e.path);
+        const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(e.path);
         const std::string guidRef = guid.empty()
             ? std::string{} : std::string(asset::AssetDatabase::kGuidPrefix) + guid;
         // パス参照は "Assets/..." 起点で書かれる。
@@ -2963,7 +3157,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     // ドラッグソース。フォルダも移動対象にし、左ペインのフォルダツリーへ直接整理できるようにする。
     if (!e.isMount && !e.isPackageAsset && ImGui::BeginDragDropSource()) {
         m_entryDragStarted = true;  // ドラッグ中はリリース時の選択変更を抑制
-        const std::string payloadPath = ToProjectAssetPath(e.path, ctx);
+        const std::string payloadPath = ToAssetDragPayloadPath(e.path, ctx);
         ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
         // ImGui payloadはプロセス境界を越えないため、同じdragを独立VFXEditor向けIPCでも追跡する。
         VFXEditorLauncher::TrackAssetDrag(ctx.projectRoot, payloadPath);
@@ -2972,20 +3166,14 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     }
     // ドロップターゲット (ディレクトリのみ)
     if (e.isDir && ImGui::BeginDragDropTarget()) {
-        if (SaveHierarchyPayloadAsPrefab(
-                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, e.path))
-            RefreshDirectory();
+        // SaveHierarchyPayloadAsPrefab が requestAssetBrowserRefresh を立てるため、ここで
+        // RefreshDirectory() は呼ばない。DrawEntry の参照列を描画中に無効化してしまう。
+        SaveHierarchyPayloadAsPrefab(
+            ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, e.path);
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            const std::string srcRelPath(static_cast<const char*>(p->Data), p->DataSize - 1);
-            std::string srcAbs;
-            std::string dstAbs;
-            if (MoveProjectAssetToDirectory(srcRelPath, e.path, ctx, srcAbs, dstAbs)) {
-                if (ctx.selectedAssetPath == srcAbs) ctx.selectedAssetPath.clear();
-                ResetAssetPreviewCache(srcAbs);
-                InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
-                InvalidateTreeCache(e.path);
-                RefreshDirectory();
-            }
+            std::string sourcePath;
+            if (ReadAssetDragPayload(p, sourcePath))
+                QueueAssetMove(sourcePath, e.path);
         }
         ImGui::EndDragDropTarget();
     }

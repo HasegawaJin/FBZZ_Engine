@@ -24,7 +24,7 @@ void ScriptAssetReference::SetPath(std::string_view assetPath)
         : asset::AssetManager::ResolveAssetPath(guidPath);
     guid = absolutePath.empty()
         ? std::string{}
-        : asset::AssetDatabase::GuidFromPath(absolutePath);
+        : asset::AssetDatabase::TryGetGuidFromPath(absolutePath);
 }
 
 void ScriptAssetReference::Clear()

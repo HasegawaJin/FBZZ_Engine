@@ -117,6 +117,15 @@ public:
 
     [[nodiscard]] static std::string ResolveAssetPath(const std::string& path);
 
+    // 原本 FBX に対応する Library/Baked/<fbx-guid>/ の絶対パスを返す (末尾に '/' なし)。
+    // guid が引けない (Assets 外の FBX 等) 場合は空文字。
+    //
+    // WHY 公開するか: AssetBrowser がサブアセット (.anim 等) を列挙するには、
+    //     ファイル名を知らない状態で「隔離先のディレクトリ」を知る必要がある。
+    //     ResolveAssetPath は実在するファイルのパスしか返せないため、
+    //     ディレクトリを引く経路を別に用意する。
+    [[nodiscard]] static std::string BakedDirForSource(const std::string& sourceAbsPath);
+
     // ── 新統一 API ─────────────────────────────────────────────────────
 
     template<typename T>
