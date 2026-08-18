@@ -94,8 +94,33 @@ std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx
 {
     // WHY: Asset Browser の内部パスは実ファイル操作のため絶対パスを保持するが、
     //      Scene / Prefab に保存する payload は配布後も壊れない Assets 起点の相対パスにする。
-    (void)ctx;
-    return NormalizeAssetPath(path);
+    const std::string normalized = util::FileSystem::NormalizePathSeparators(path);
+    const std::string projectAssets = util::FileSystem::NormalizePathSeparators(
+        ctx.projectRoot + "/Assets");
+    if (util::FileSystem::IsChildPathText(normalized, projectAssets))
+        return NormalizeAssetPath(normalized);
+
+    // 外部マウントはプロジェクト相対へ変換できないため、実パスを保持する。
+    return normalized;
+}
+
+std::string ToAssetDragPayloadPath(const std::string& path, const EditorContext& ctx)
+{
+    // ASSET_PATH は内部移動にも使うため、外部マウントを見失わない形式を選ぶ。
+    return ToProjectAssetPath(path, ctx);
+}
+
+bool ReadAssetDragPayload(const ImGuiPayload* payload, std::string& outPath)
+{
+    outPath.clear();
+    if (!payload || !payload->Data || payload->DataSize <= 0) return false;
+
+    const auto* bytes = static_cast<const char*>(payload->Data);
+    const size_t size = static_cast<size_t>(payload->DataSize);
+    const size_t length = bytes[size - 1] == '\0' ? size - 1 : size;
+    if (length == 0) return false;
+    outPath.assign(bytes, length);
+    return true;
 }
 
 std::filesystem::path GetPackageModelPath(const std::filesystem::path& dirPath)
@@ -231,11 +256,16 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
     m_pingPath      = absolute;
     m_pingStartTime = static_cast<float>(ImGui::GetTime());
 
-    // ダブルクリック相当のときだけ Inspector の表示対象も移す (Unity の Ping と選択の違い)。
-    if (selectForInspector) {
-        ctx.selectedAssetPath = absolute;
+    // ダブルクリック相当のときは一覧側の選択も合わせる (Unity の Ping と選択の違い)。
+    //
+    // WHY Inspector の表示対象をここで触らないか:
+    //   ctx.selectedAssetPath は EditorApp が要求を受けた時点で確定させている。
+    //   この関数は OnRenderContent の中にあり、非アクティブなドッキングタブでは
+    //   1 度も呼ばれない。ここが唯一の書き手だった頃は、Asset Browser が Inspector と
+    //   同じドックノードに居るだけで参照を辿れなくなっていた。
+    //   上の 2 つの early return (ファイル欠落 / ルート外) でも同じ形で選択が消えていた。
+    if (selectForInspector)
         ctx.selectedEntities.clear();
-    }
 }
 
 void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
@@ -616,9 +646,25 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
     const std::filesystem::path mergedMeshPath = util::FileSystem::PathFromUtf8(
         asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(
             packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".mesh"))));
-    const std::filesystem::path animDir = packageDir / "anims";
-    const std::filesystem::path materialDir = packageDir / "materials";
-    const std::filesystem::path textureDir = packageDir / "textures";
+    // anims/ と materials/ は Library/Baked/<fbx-guid>/ へ隔離済み。
+    // WHY 旧配置もフォールバックで見るか: 隔離を入れる前にインポートしたモデルは
+    //     Assets 側にこれらを持ったままになる。再インポートするまでは
+    //     そちらを見せないとクリップとマテリアルが一覧から消えてしまう。
+    //     Extract で Assets へ取り出した実体も、この経路では出てこない
+    //     (取り出した先は原本 FBX の隣なので、通常のエントリとして並ぶ)。
+    const auto resolveGeneratedDir = [&](const char* name) {
+        std::filesystem::path dir = packageDir / name;
+        if (modelExt != ".fbx") return dir;
+        const std::string bakedDir =
+            asset::AssetManager::BakedDirForSource(sourceAssetPath);
+        if (!bakedDir.empty() &&
+            util::FileSystem::IsDirectory(bakedDir + "/" + name))
+            dir = util::FileSystem::PathFromUtf8(bakedDir + "/" + name);
+        return dir;
+    };
+    const std::filesystem::path animDir     = resolveGeneratedDir("anims");
+    const std::filesystem::path materialDir = resolveGeneratedDir("materials");
+    const std::filesystem::path textureDir  = resolveGeneratedDir("textures");
     const std::string animDirStr = util::FileSystem::NormalizePathSeparators(
         util::FileSystem::PathToUtf8(animDir));
     const std::string materialDirStr = util::FileSystem::NormalizePathSeparators(
@@ -702,6 +748,8 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         e.ext        = ".mat";
         e.isDir      = false;
         e.isSubAsset = true;
+        // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
 
@@ -712,6 +760,8 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         e.ext       = ".anim";
         e.isDir     = false;
         e.isSubAsset = true;
+        // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
 
@@ -729,6 +779,8 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
             e.ext        = imageExt;
             e.isDir      = false;
             e.isSubAsset = true;
+            // 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+            e.sourceAssetPath = sourceAssetPath;
             cached.items.push_back(std::move(e));
         }
     }

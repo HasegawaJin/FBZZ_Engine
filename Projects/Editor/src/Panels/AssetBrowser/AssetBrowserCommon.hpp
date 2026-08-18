@@ -61,5 +61,11 @@ std::string UniquePrefabPathInDir(const std::string& dir, const std::string& obj
 bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload, EditorContext& ctx, const std::string& targetDir);
 ImVec4 Lighten(ImVec4 c);
 std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx);
+// ドラッグ中のパスを、プロジェクト内は Assets 起点、外部マウントは絶対パスで保持する。
+// WHY: 単純な文字列変換では外部プロジェクトの ".../Assets/..." まで自プロジェクトの
+//      Assets と誤認し、移動元を壊れたパスへ解決してしまう。
+std::string ToAssetDragPayloadPath(const std::string& path, const EditorContext& ctx);
+// ImGui payload の終端を検証して、安全に ASSET_PATH 文字列を取り出す。
+bool ReadAssetDragPayload(const ImGuiPayload* payload, std::string& outPath);
 
 } // namespace fbzz::editor

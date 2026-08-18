@@ -57,6 +57,9 @@ private:
     alignas(DWORD) uint8_t m_buffer[65536]{};
 
     std::vector<FileEvent> m_queue;
+    // FILE_ACTION_RENAMED_OLD_NAME と NEW_NAME が別の通知バッファへ分割されても
+    // ペアを失わないため、ParseBuffer をまたいで一時保持する。
+    std::string m_pendingRenameOld;
     bool m_readPending = false;
 };
 
