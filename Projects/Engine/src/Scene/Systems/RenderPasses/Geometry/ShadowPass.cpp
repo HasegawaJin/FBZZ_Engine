@@ -132,7 +132,14 @@ void CollectStaticMeshShadowCasters(RenderPassContext& ctx,
         // 全カスケードのカリング判定と深度キーを 1 回の bounds 計算で賄う。
         const bool hasBounds = mr->mesh->boundsRadius > 0.0f;
         WorldBounds bounds{};
-        if (hasBounds) bounds = ComputeWorldBounds(go.transform, *mr->mesh);
+        // 余白はカメラ側の Culling Bounds Padding と共通。
+        // WHY 影にも効かせるか: bounds が実際のシルエットより小さいという問題は同じで、
+        //     カメラ側だけ広げると「本体は出ているのに影だけ消える」というさらに分かりにくい
+        //     壊れ方になる。
+        if (hasBounds) bounds = ComputeWorldBounds(go.transform, *mr->mesh, ctx.cullingBoundsPadding);
+
+        // 距離カリングで本体が消えた caster は影も落とさない。
+        if (hasBounds && !IsWithinCullDistance(ctx, go, bounds)) continue;
 
         const uint32_t cascadeMask = ComputeCascadeMask(ctx, cascadeCount, bounds, hasBounds);
         if (cascadeMask == 0) continue;  // どのカスケードにも映らない
@@ -155,7 +162,7 @@ void CollectStaticMeshShadowCasters(RenderPassContext& ctx,
         caster.indexBuffer  = mr->mesh->indexBuffer;
         caster.indexCount   = mr->mesh->indexCount;
         caster.shader       = h.shadowShader;
-        caster.world        = go.transform.GetWorldMatrix();
+        caster.world        = go.transform.GetPresentationWorldMatrix();
         outCasters.push_back(caster);
     }
 }
@@ -181,7 +188,11 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx,
 
         // bounds 計算は全 submesh を 2 周するので、安いフラグ判定を全て通してから呼ぶ。
         WorldBounds bounds{};
-        const bool hasBounds = ComputeSkinnedWorldBounds(go.transform, *smr, bounds);
+        const bool hasBounds =
+            ComputeSkinnedWorldBounds(go.transform, *smr, bounds, ctx.cullingBoundsPadding);
+
+        // 距離カリングで本体が消えた caster は影も落とさない。
+        if (hasBounds && !IsWithinCullDistance(ctx, go, bounds)) continue;
 
         const uint32_t cascadeMask = ComputeCascadeMask(ctx, cascadeCount, bounds, hasBounds);
         if (cascadeMask == 0) continue;
@@ -197,14 +208,15 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx,
             anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
             smr->model, h.bindPoseSkinningCB);
 
-        const math::Matrix4 world = go.transform.GetWorldMatrix();
+        const math::Matrix4 world = go.transform.GetPresentationWorldMatrix();
 
-        // 1 GameObject = モデル全体。submesh を全て影として収集する。
+        // この Renderer が担当する submesh を全て影として収集する。
         // 深度キーは全 submesh 共通なので、安定ソート後も 1 オブジェクトの submesh は
         // 隣り合ったままになり、PerObjectCB の更新は 1 回で済む。
-        const size_t meshCount = smr->model->meshes.size();
+        // mi はローカルスロット番号で、model->meshes の添字とは一致しないことがある。
+        const size_t meshCount = smr->SubmeshCount();
         for (size_t mi = 0; mi < meshCount; ++mi) {
-            const auto& meshPtr = smr->model->meshes[mi];
+            renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
             if (!meshPtr) continue;
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
             MaterialSlot& slot = mat->SlotAt(mi);
@@ -229,7 +241,8 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx,
             //      キャラの submesh 数がそのまま影の描画数になっていた原因がこれ。
             uint32_t submeshMask = cascadeMask;
             if (meshPtr->boundsRadius > 0.0f) {
-                const WorldBounds submeshBounds = ComputeWorldBounds(go.transform, *meshPtr);
+                const WorldBounds submeshBounds =
+                    ComputeWorldBounds(go.transform, *meshPtr, ctx.cullingBoundsPadding);
                 submeshMask &= ComputeCascadeMask(ctx, cascadeCount, submeshBounds, true);
                 if (submeshMask == 0) continue;
             }
@@ -246,13 +259,13 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx,
             // WHY: 変形は SkinningCompute パスで済んでいるので、VS でボーンを混ぜ直す必要がない。
             //      静的シェーダーは POSITION だけを読むうえ、頂点あたり 16 回の
             //      動的ボーン行列アクセスが丸ごと消える。
-            const auto skinnedVB = smr->ResolveSkinnedVertexBuffer(mi);
+            const auto skinnedVB = smr->ResolveSlotSkinnedVertexBuffer(mi);
             if (skinnedVB.IsValid()) {
                 caster.vertexBuffer = skinnedVB;
                 caster.shader       = h.shadowShader;   // 静的メッシュ用 (スキニングなし)
             } else {
                 // フォールバック: 従来どおり VS でスキニングする。
-                caster.vertexBuffer = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+                caster.vertexBuffer = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
                 caster.shader       = h.shadowSkinnedShader;
                 caster.skinningCB   = skinCB;
             }

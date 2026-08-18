@@ -35,6 +35,19 @@ public:
     int* shutdownCounter = nullptr;
 };
 
+// 固定ステップ後に公開される描画補間率を記録するテスト用 System。
+class PhysicsAlphaRecordingSystem final : public fbzz::ISystem {
+public:
+    void Update(fbzz::SystemContext& context) override
+    {
+        physicsAlpha = context.physicsAlpha;
+    }
+    std::string_view Name() const override { return "PhysicsAlphaRecordingSystem"; }
+    fbzz::Phase GetPhase() const override { return fbzz::Phase::PostPhysics; }
+
+    float physicsAlpha = -1.0f;
+};
+
 TEST(SystemSchedulerTest, BuildsAndFindsASystemByItsPublicName)
 {
     fbzz::SystemScheduler scheduler;
@@ -63,10 +76,30 @@ TEST(SystemSchedulerTest, UpdatesSystemsInTheirConfiguredPhase)
     fbzz::scene::Scene scene;
     fbzz::physics::World world;
     fbzz::SystemContext context{ scene, world, nullptr, nullptr,
-                                 1.0f / 60.0f, 1.0f / 60.0f, true };
+                                 1.0f / 60.0f, 1.0f / 60.0f, 0.0f, true };
     scheduler.Update(context);
 
     EXPECT_EQ(systemAddress->updateCount, 1);
+    scheduler.Shutdown();
+}
+
+TEST(SystemSchedulerTest, PublishesRemainingFixedStepFractionForPresentation)
+{
+    fbzz::SystemScheduler scheduler;
+    scheduler.ConfigurePhase(
+        fbzz::Phase::Physics, { .fixedStep = true, .hz = 60, .maxCatchUp = 8.0f });
+    auto system = std::make_unique<PhysicsAlphaRecordingSystem>();
+    PhysicsAlphaRecordingSystem* systemAddress = system.get();
+    scheduler.AddSystemPtr(std::move(system));
+    scheduler.Build();
+
+    fbzz::scene::Scene scene;
+    fbzz::physics::World world;
+    fbzz::SystemContext context{
+        scene, world, nullptr, nullptr, 1.0f / 120.0f, 0.0f, 0.0f, true };
+    scheduler.Update(context);
+
+    EXPECT_NEAR(systemAddress->physicsAlpha, 0.5f, 0.0001f);
     scheduler.Shutdown();
 }
 

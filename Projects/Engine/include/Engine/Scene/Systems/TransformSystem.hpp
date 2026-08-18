@@ -43,11 +43,33 @@ public:
     RunMode          GetRunMode() const override { return RunMode::SimOnly; }
 };
 
+// 物理確定直後に表示姿勢を作り、LateScript の追従カメラから参照できるようにする。
+class TransformPresentationPostPhysics final : public ISystem {
+public:
+    std::string_view Name()       const override { return "TransformPresentation.PostPhysics"; }
+    Phase            GetPhase()   const override { return Phase::PostPhysics; }
+    RunMode          GetRunMode() const override { return RunMode::SimOnly; }
+    ComponentAccess  GetAccess()  const override { return ComponentAccess{}.Unrestricted(); }
+    OrderingHints    GetOrder()   const override;
+    void Update(SystemContext& ctx) override;
+};
+
 class TransformLateUpdate final : public TransformSystem {
 public:
     std::string_view Name()       const override { return "TransformSystem.LateUpdate"; }
     Phase            GetPhase()   const override { return Phase::LateUpdate; }
     RunMode          GetRunMode() const override { return RunMode::Always; }
+};
+
+// Animator / IK / Constraint / Camera の最終結果を表示階層へ反映してから Render へ渡す。
+class TransformPresentationLateUpdate final : public ISystem {
+public:
+    std::string_view Name()       const override { return "TransformPresentation.LateUpdate"; }
+    Phase            GetPhase()   const override { return Phase::LateUpdate; }
+    RunMode          GetRunMode() const override { return RunMode::Always; }
+    ComponentAccess  GetAccess()  const override { return ComponentAccess{}.Unrestricted(); }
+    OrderingHints    GetOrder()   const override;
+    void Update(SystemContext& ctx) override;
 };
 
 // ──────────────────────────────────────────────────────────────────────────────

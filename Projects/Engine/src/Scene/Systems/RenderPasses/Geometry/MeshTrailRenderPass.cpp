@@ -150,8 +150,8 @@ void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::Resource
 {
     MeshTrailSample sample{};
     sample.timestamp = currentTime;
-    sample.position = go.transform.worldPosition;
-    sample.world = go.transform.GetWorldMatrix();
+    sample.position = go.transform.presentationWorldPosition;
+    sample.world = go.transform.GetPresentationWorldMatrix();
 
     // 子SkinnedMeshRendererは親GameObjectのAnimatorを共有する。
     // WHY: 自GOだけを見るとbone paletteが空になり、武器残像がbind poseで描画されるため。
@@ -311,20 +311,22 @@ void DrawSkinnedMeshSample(
 
     const auto skinCB = EnsureSampleSkinningCB(sample, resources, h.bindPoseSkinningCB);
 
-    for (size_t meshIndex = 0; meshIndex < smr.model->meshes.size(); ++meshIndex) {
-        // WHY: 以前は「submesh ごとの子 GO」の SkinnedMeshRenderer::meshIndex で
-        //      剣だけを残像化していたが、1 GO = モデル全体になったのでその手段は無くなった。
-        //      対象の絞り込みは MeshTrailComponent::excludedMeshIndices に一本化する。
+    for (size_t meshIndex = 0; meshIndex < smr.SubmeshCount(); ++meshIndex) {
+        // 対象の絞り込みは MeshTrailComponent::excludedMeshIndices で行う。
+        // WHY 除外番号がローカルスロット番号か: 剣だけを残像化する、といった指定は
+        //     「この Renderer の何番目か」で書くのが自然で、モデル全体の submesh 番号を
+        //     知る必要がない。ノードごとに子 GO へ分けた構成では、剣の Renderer が
+        //     持つ submesh は 1 個だけになり excludedMeshIndices すら不要になる。
         if (IsMeshIndexExcluded(trail, static_cast<int>(meshIndex)))
             continue;
-        const auto& meshPtr = smr.model->meshes[meshIndex];
+        const renderer::Mesh* meshPtr = smr.SubmeshMesh(meshIndex);
         if (!meshPtr)
             continue;
         if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid())
             continue;
 
         renderer::DrawCall dc;
-        dc.vertexBuffer = smr.ResolveVertexBuffer(meshIndex, meshPtr->vertexBuffer);
+        dc.vertexBuffer = smr.ResolveSlotVertexBuffer(meshIndex, meshPtr->vertexBuffer);
         dc.indexBuffer = meshPtr->indexBuffer;
         dc.indexCount = meshPtr->indexCount;
         dc.vertexCount = meshPtr->vertexCount;
@@ -404,10 +406,12 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
                 const Particle& particle = emitter->particles[particleIndex];
                 math::Vector3 position = particle.position;
                 if (emitter->simulationSpace == ParticleSimulationSpace::Local) {
-                    const math::Vector3 scaled{ position.x * go.transform.worldScale.x,
-                                                position.y * go.transform.worldScale.y,
-                                                position.z * go.transform.worldScale.z };
-                    position = go.transform.worldPosition + go.transform.worldRotation * scaled;
+                    const math::Vector3 scaled{
+                        position.x * go.transform.presentationWorldScale.x,
+                        position.y * go.transform.presentationWorldScale.y,
+                        position.z * go.transform.presentationWorldScale.z };
+                    position = go.transform.presentationWorldPosition +
+                        go.transform.presentationWorldRotation * scaled;
                 }
                 MeshTrailSample sample;
                 sample.timestamp = currentTime;
@@ -429,7 +433,8 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
         }
         ExpireSamples(*trail, resources, currentTime);
 
-        if (trail->enabled && ShouldSample(*trail, go.transform.worldPosition, currentTime))
+        if (trail->enabled && ShouldSample(
+                *trail, go.transform.presentationWorldPosition, currentTime))
             CaptureSample(go, *trail, resources, currentTime);
 
         ExpireSamples(*trail, resources, currentTime);

@@ -328,14 +328,16 @@ math::Vector3 ResolveTrailSamplePosition(Scene& scene, GameObject& go, const Tra
                     const int nodeIndex = it->second;
                     if (nodeIndex >= 0 && nodeIndex < static_cast<int>(smr->nodeEntities.size())) {
                         if (auto* boneGo = scene.GetGameObject(smr->nodeEntities[static_cast<size_t>(nodeIndex)]))
-                            return boneGo->transform.worldPosition + boneGo->transform.worldRotation * trail.attachOffset;
+                            return boneGo->transform.presentationWorldPosition +
+                                boneGo->transform.presentationWorldRotation * trail.attachOffset;
                     }
                 }
             }
         }
     }
 
-    return go.transform.worldPosition + go.transform.worldRotation * trail.attachOffset;
+    return go.transform.presentationWorldPosition +
+        go.transform.presentationWorldRotation * trail.attachOffset;
 }
 
 void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, float currentTime)
@@ -405,10 +407,12 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
 
         if (trail->enabled && trail->beamMode) {
             const auto transformPoint = [&go](const math::Vector3& local) {
-                const math::Vector3 scaled{ local.x * go.transform.worldScale.x,
-                                            local.y * go.transform.worldScale.y,
-                                            local.z * go.transform.worldScale.z };
-                return go.transform.worldPosition + go.transform.worldRotation * scaled;
+                const math::Vector3 scaled{
+                    local.x * go.transform.presentationWorldScale.x,
+                    local.y * go.transform.presentationWorldScale.y,
+                    local.z * go.transform.presentationWorldScale.z };
+                return go.transform.presentationWorldPosition +
+                    go.transform.presentationWorldRotation * scaled;
             };
             trail->ringHead = 0;
             trail->ringTail = 0;

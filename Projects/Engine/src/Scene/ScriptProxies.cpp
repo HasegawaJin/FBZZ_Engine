@@ -3497,6 +3497,45 @@ void ScriptCharacterProxy::Jump(const math::Vector3& impulse) const
     cc->Jump(SelfRigidBody(script), impulse);
 }
 
+void ScriptCharacterProxy::JumpAtVelocity(float verticalSpeed) const
+{
+    auto* cc = SelfCharacter(script);
+    if (cc) cc->JumpAtVelocity(SelfRigidBody(script), verticalSpeed);
+}
+
+void ScriptCharacterProxy::SetHorizontalVelocity(const math::Vector3& velocity) const
+{
+    auto* cc = SelfCharacter(script);
+    if (cc) cc->SetHorizontalVelocity(SelfRigidBody(script), velocity);
+}
+
+void ScriptCharacterProxy::AddHorizontalVelocity(const math::Vector3& velocity) const
+{
+    auto* cc = SelfCharacter(script);
+    if (cc) cc->AddHorizontalVelocity(SelfRigidBody(script), velocity);
+}
+
+void ScriptCharacterProxy::Move(const math::Vector3& desiredVelocity,
+                                float dt,
+                                float acceleration,
+                                float deceleration) const
+{
+    auto* cc = SelfCharacter(script);
+    if (cc) cc->Move(SelfRigidBody(script), desiredVelocity, dt, acceleration, deceleration);
+}
+
+math::Vector3 ScriptCharacterProxy::GetVelocity() const
+{
+    auto* cc = SelfCharacter(script);
+    return cc ? cc->GetVelocity(SelfRigidBody(script)) : math::Vector3::ZERO;
+}
+
+math::Vector3 ScriptCharacterProxy::GetHorizontalVelocity() const
+{
+    auto* cc = SelfCharacter(script);
+    return cc ? cc->GetHorizontalVelocity(SelfRigidBody(script)) : math::Vector3::ZERO;
+}
+
 void ScriptCharacterProxy::RegisterGroundContact(const CollisionInfo& info) const
 {
     if (auto* cc = SelfCharacter(script)) cc->RegisterGroundContact(info);
@@ -3518,6 +3557,21 @@ math::Vector3 ScriptCharacterProxy::GetGroundNormal() const
 {
     auto* cc = SelfCharacter(script);
     return cc ? cc->groundNormal : math::Vector3::UP;
+}
+
+void ScriptCharacterProxy::ForceGrounded(const math::Vector3& normal) const
+{
+    if (auto* cc = SelfCharacter(script)) cc->ForceGrounded(normal);
+}
+
+void ScriptCharacterProxy::ForceAirborne() const
+{
+    if (auto* cc = SelfCharacter(script)) cc->ForceAirborne();
+}
+
+void ScriptCharacterProxy::UseAutomaticGrounding() const
+{
+    if (auto* cc = SelfCharacter(script)) cc->UseAutomaticGrounding();
 }
 
 void ScriptCharacterProxy::SetEnabled(bool enabled) const
@@ -4325,6 +4379,74 @@ bool ScriptGameplayProxy::SetSpriteColor(float r, float g, float b, float a) con
     if (!component)
         return false;
     component->color = { r, g, b, a };
+    return true;
+}
+
+bool ScriptGameplayProxy::HasLineRenderer() const
+{
+    return SelfComponent<LineRendererComponent>(script) != nullptr;
+}
+
+bool ScriptGameplayProxy::SetLineEnabled(bool enabled) const
+{
+    auto* component = SelfComponent<LineRendererComponent>(script);
+    if (!component)
+        return false;
+    component->enabled = enabled;
+    return true;
+}
+
+bool ScriptGameplayProxy::SetLine(const math::Vector3& start,
+                                  const math::Vector3& end,
+                                  bool worldSpace) const
+{
+    const math::Vector3 points[] = { start, end };
+    return SetLinePoints(points, worldSpace);
+}
+
+bool ScriptGameplayProxy::SetLinePoints(std::span<const math::Vector3> points,
+                                        bool worldSpace) const
+{
+    auto* component = SelfComponent<LineRendererComponent>(script);
+    if (!component)
+        return false;
+
+    // WHY assign か: 毎フレーム呼ばれる想定なので、点数が変わらない限り
+    //      vector の再確保が起きない代入で更新する。
+    component->points.assign(points.begin(), points.end());
+    component->space = worldSpace ? LineSpace::World : LineSpace::Local;
+    // runtimeSignature は points から毎フレーム計算されるため、ここで触る必要はない
+    // (SpriteRenderer と違い、内容が変わればメッシュは自動で作り直される)。
+    return true;
+}
+
+bool ScriptGameplayProxy::SetLineColors(const math::Vector4& startColor,
+                                        const math::Vector4& endColor) const
+{
+    auto* component = SelfComponent<LineRendererComponent>(script);
+    if (!component)
+        return false;
+    component->startColor = startColor;
+    component->endColor = endColor;
+    return true;
+}
+
+bool ScriptGameplayProxy::SetLineWidth(float startWidth, float endWidth) const
+{
+    auto* component = SelfComponent<LineRendererComponent>(script);
+    if (!component)
+        return false;
+    component->startWidth = startWidth;
+    component->endWidth = endWidth;
+    return true;
+}
+
+bool ScriptGameplayProxy::SetLineMaterial(std::string_view materialPath) const
+{
+    auto* component = SelfComponent<LineRendererComponent>(script);
+    if (!component)
+        return false;
+    component->materialPath = std::string(materialPath);
     return true;
 }
 

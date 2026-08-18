@@ -33,6 +33,15 @@ struct RigidBodyComponent {
     //     数値が妥当かどうかをオーサリング中に判断できない。
     float computedMass = 0.0f;
 
+    // 固定ステップの前後姿勢。ゲームロジック用 Transform とは分離し、描画時だけ補間する。
+    // WHY Component が持つか: physics::RigidBody は現在姿勢だけを正として扱い、
+    //     描画フレームの都合を Physics 層へ逆流させないため。
+    math::Vector3 previousPhysicsPosition = math::Vector3::ZERO;
+    math::Vector3 currentPhysicsPosition  = math::Vector3::ZERO;
+    math::Quaternion previousPhysicsRotation = math::Quaternion::Identity();
+    math::Quaternion currentPhysicsRotation  = math::Quaternion::Identity();
+    bool hasPhysicsPoseHistory = false;
+
     RigidBodyComponent() = default;
     ~RigidBodyComponent() = default;
     RigidBodyComponent(const RigidBodyComponent& o)
@@ -41,7 +50,10 @@ struct RigidBodyComponent {
         , enabled(o.enabled)
         , massMode(o.massMode)
         , computedMass(o.computedMass)
-    {}
+    {
+        if (rigidBody)
+            ResetPhysicsPoseHistory(rigidBody->GetPosition(), rigidBody->GetRotation());
+    }
     RigidBodyComponent& operator=(const RigidBodyComponent& o)
     {
         if (this != &o) {
@@ -50,6 +62,9 @@ struct RigidBodyComponent {
             enabled      = o.enabled;
             massMode     = o.massMode;
             computedMass = o.computedMass;
+            hasPhysicsPoseHistory = false;
+            if (rigidBody)
+                ResetPhysicsPoseHistory(rigidBody->GetPosition(), rigidBody->GetRotation());
         }
         return *this;
     }
@@ -57,6 +72,39 @@ struct RigidBodyComponent {
     RigidBodyComponent& operator=(RigidBodyComponent&&) = default;
 
     const char* GetTypeName() const { return "Rigid Body"; }
+
+    // テレポート・生成・複製時は補間区間を潰し、過去位置から尾を引かせない。
+    void ResetPhysicsPoseHistory(const math::Vector3& position,
+                                 const math::Quaternion& rotation)
+    {
+        previousPhysicsPosition = position;
+        currentPhysicsPosition = position;
+        previousPhysicsRotation = rotation.Normalized();
+        currentPhysicsRotation = previousPhysicsRotation;
+        hasPhysicsPoseHistory = true;
+    }
+
+    // 1 fixed step の開始時に現在姿勢を前回姿勢へ送る。
+    void BeginPhysicsStep()
+    {
+        if (!hasPhysicsPoseHistory && rigidBody)
+            ResetPhysicsPoseHistory(rigidBody->GetPosition(), rigidBody->GetRotation());
+        previousPhysicsPosition = currentPhysicsPosition;
+        previousPhysicsRotation = currentPhysicsRotation;
+    }
+
+    // 物理解決後の確定姿勢を、補間区間の終点として保存する。
+    void CommitPhysicsPose(const math::Vector3& position,
+                           const math::Quaternion& rotation)
+    {
+        if (!hasPhysicsPoseHistory) {
+            ResetPhysicsPoseHistory(position, rotation);
+            return;
+        }
+        currentPhysicsPosition = position;
+        currentPhysicsRotation = rotation.Normalized();
+    }
+
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);

@@ -46,4 +46,9 @@ math::Matrix4 Transform::GetWorldMatrix() const {
     return math::Matrix4::TRS(worldPosition, worldRotation, worldScale);
 }
 
+math::Matrix4 Transform::GetPresentationWorldMatrix() const {
+    return math::Matrix4::TRS(
+        presentationWorldPosition, presentationWorldRotation, presentationWorldScale);
+}
+
 } // namespace fbzz::scene

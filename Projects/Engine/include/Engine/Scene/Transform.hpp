@@ -21,6 +21,12 @@ struct Transform {
     math::Quaternion worldRotation = math::Quaternion::Identity(); // ワールド回転 (旧 rotation)
     math::Vector3    worldScale    = math::Vector3::ONE;
 
+    // 表示専用ワールド姿勢。動的剛体だけ固定ステップ間を補間し、それ以外は world と一致する。
+    // ゲームロジック・物理同期はこの値を書き戻さず、描画と追従カメラだけが参照する。
+    math::Vector3    presentationWorldPosition = math::Vector3::ZERO;
+    math::Quaternion presentationWorldRotation = math::Quaternion::Identity();
+    math::Vector3    presentationWorldScale    = math::Vector3::ONE;
+
     // worldRotation から算出。大文字メソッドと小文字プロパティの両方を提供する。
     // __declspec(property) により go.transform.forward で直接アクセスできる。
     math::Vector3 Forward() const;
@@ -38,6 +44,9 @@ struct Transform {
 
     // worldPosition + worldRotation + scale から TRS 行列を生成
     math::Matrix4 GetWorldMatrix() const;
+
+    // presentationWorldPosition + presentationWorldRotation + scale から描画用 TRS 行列を生成
+    math::Matrix4 GetPresentationWorldMatrix() const;
 };
 
 } // namespace fbzz::scene

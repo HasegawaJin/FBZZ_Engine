@@ -438,7 +438,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
                      const Transform& transform, const renderer::Camera& camera, float time)
 {
     WaterCB cb{};
-    const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
     cb.worldMatrix = world;
     cb.wvpMatrix = camera.GetViewProjection() * world;
 
@@ -584,7 +584,7 @@ void WaterSelectionMaskSystem(RenderPassContext& ctx)
         auto it = s_meshCache.find(eid.index);
         if (it == s_meshCache.end()) continue;
 
-        const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
@@ -960,7 +960,9 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         for (const WaterChunk& chunk : mesh.chunks) {
             // 水面チャンクも地形と同様、独立にカリングされる描画候補として数える。
             ++ctx.statsTotalObjects;
-            if (!AabbVisible(frustum, transform.position, chunk.aabbMin, chunk.aabbMax)) {
+            // 地形チャンクと同様、カメラの Frustum Culling を切っている間は落とさない。
+            if (ctx.frustumCullingEnabled &&
+                !AabbVisible(frustum, transform.position, chunk.aabbMin, chunk.aabbMax)) {
                 ++ctx.statsFrustumCulled;
                 continue;
             }

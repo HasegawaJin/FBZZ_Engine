@@ -603,6 +603,10 @@ namespace fbzz::physics
         //      Terrain/TriangleMesh がある resting scene ではここが World::Step の主な CPU 負荷になる。
         // WHAT: Scene 同期で追加・削除がなく、動いている非 Static body もない場合は、
         //       前回 contacts から Stay/Exit 分類だけを更新して collision pipeline を省略する。
+        // 衝突の強さはフレーム単位で集計する。止まっているシーンの早期 return でも
+        // 前フレームの値が残らないよう、分岐より前に落とす。
+        m_frameImpacts.clear();
+
         if (!m_sceneSyncChanged && !HasActiveSimulationBodies()) {
             ClassifyCollisions();
             return;
@@ -625,8 +629,12 @@ namespace fbzz::physics
             UpdateColliders();
             BroadPhase();
             NarrowPhase(s == 0); // WarmStart は最初のサブステップのみ
+            // Resolve は速度を書き換えるため、「ぶつかった勢い」はこの時点でしか取れない。
+            RecordApproachVelocities();
             WakeSleepingContacts();
             Resolve();
+            // 実際に加わったインパルスは解決後に確定する。
+            RecordContactImpulses();
             UpdateSleepStates(subDt);
         }
 
@@ -874,6 +882,50 @@ namespace fbzz::physics
         }
     }
 
+    void World::RecordApproachVelocities()
+    {
+        for (const auto& cp : m_contacts)
+        {
+            if (cp.isTrigger) continue;
+
+            const math::Vector3 vRel = PhysicsSolver::RelativeVelocityAt(cp);
+            // normal は b → a 向きなので、近づいているとき Dot は負になる。
+            // ゲーム側が扱いやすいよう「正 = 接近」へ符号を反転する。
+            const float approach = -math::Vector3::Dot(vRel, cp.normal);
+            if (approach <= 0.0f) continue;   // 離れていく接触は衝突ではない
+
+            const Collider* a = cp.colliderA;
+            const Collider* b = cp.colliderB;
+            if (a > b) std::swap(a, b);
+
+            ContactImpact& impact = m_frameImpacts[ColliderPair{ a, b }];
+            if (approach > impact.approachSpeed) {
+                impact.approachSpeed    = approach;
+                impact.relativeVelocity = vRel;
+            }
+        }
+    }
+
+    void World::RecordContactImpulses()
+    {
+        for (const auto& cp : m_contacts)
+        {
+            if (cp.isTrigger) continue;
+
+            const Collider* a = cp.colliderA;
+            const Collider* b = cp.colliderB;
+            if (a > b) std::swap(a, b);
+
+            // WHY find か: 接近していない接触 (床に載っているだけ等) は
+            //      RecordApproachVelocities が積んでいない。そこへインパルスだけを
+            //      入れると「速度 0 なのに強い衝突」に見えるエントリができる。
+            const auto it = m_frameImpacts.find(ColliderPair{ a, b });
+            if (it == m_frameImpacts.end()) continue;
+
+            it->second.normalImpulse = std::max(it->second.normalImpulse, cp.cachedNormalImpulse);
+        }
+    }
+
     void World::ClassifyCollisions()
     {
         m_enterEvents.clear();
@@ -888,10 +940,18 @@ namespace fbzz::physics
             if (a > b) std::swap(a, b);
 
             const ColliderPair pair{ a, b };
-            currentEvents.insert({
-                pair,
-                { cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB, cp.point, cp.normal, cp.depth, cp.isTrigger }
-            });
+            CollisionEvent event{
+                cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB,
+                cp.point, cp.normal, cp.depth, cp.isTrigger
+            };
+            // このフレーム中に観測した衝突の強さを載せる。
+            // 接触が継続しているだけ (Stay) なら 0 のままになる。
+            if (const auto impact = m_frameImpacts.find(pair); impact != m_frameImpacts.end()) {
+                event.relativeVelocity = impact->second.relativeVelocity;
+                event.approachSpeed    = impact->second.approachSpeed;
+                event.normalImpulse    = impact->second.normalImpulse;
+            }
+            currentEvents.insert({ pair, event });
         }
 
         for (auto& [pair, event] : currentEvents)
@@ -904,8 +964,15 @@ namespace fbzz::physics
 
         for (auto& [pair, event] : m_prevEvents)
         {
-            if (currentEvents.count(pair) == 0)
-                m_exitEvents.push_back(event);
+            if (currentEvents.count(pair) != 0) continue;
+
+            // 離れた瞬間のイベントに「ぶつかった強さ」は無い。前フレームの値を
+            // そのまま残すと、Exit を見ているスクリプトが古い衝突速度を読んでしまう。
+            CollisionEvent exitEvent = event;
+            exitEvent.relativeVelocity = math::Vector3::ZERO;
+            exitEvent.approachSpeed    = 0.0f;
+            exitEvent.normalImpulse    = 0.0f;
+            m_exitEvents.push_back(exitEvent);
         }
 
         m_prevEvents = std::move(currentEvents);

@@ -35,6 +35,14 @@ namespace fbzz::physics
         // PGS ベースの衝突解決 (Warm Starting 済みの蓄積インパルスを引き継ぐ)
         void Resolve(std::vector<ContactPoint>& contacts);
 
+        // 接触点における 2 剛体の相対速度 (A から見た B との差、角速度の寄与を含む)。
+        //
+        // WHY 公開するか: Resolve は速度を書き換えるため、呼んだ後では「ぶつかった勢い」が
+        //     もう残っていない。ゲーム側が衝突の強さを知るには Resolve の前に同じ値を
+        //     取る必要がある。ResolveVelocity 内の計算と食い違うと、解決に使った速度と
+        //     ゲームへ報告する速度が別物になるため、両者で同じ関数を使う。
+        [[nodiscard]] static math::Vector3 RelativeVelocityAt(const ContactPoint& cp);
+
     private:
         bool TestSphereSphere(const SphereCollider& a, const SphereCollider& b,
                             ContactPoint& out);

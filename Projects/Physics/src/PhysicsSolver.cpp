@@ -920,6 +920,26 @@ namespace fbzz::physics
     }
 
     // ---------------------------------------------------------- ResolveVelocity (PGS)
+    math::Vector3 PhysicsSolver::RelativeVelocityAt(const ContactPoint& cp)
+    {
+        const RigidBody* bodyA = cp.bodyA;
+        const RigidBody* bodyB = cp.bodyB;
+
+        const math::Vector3 vA = bodyA ? bodyA->GetVelocity()        : math::Vector3::ZERO;
+        const math::Vector3 vB = bodyB ? bodyB->GetVelocity()        : math::Vector3::ZERO;
+        const math::Vector3 wA = bodyA ? bodyA->GetAngularVelocity() : math::Vector3::ZERO;
+        const math::Vector3 wB = bodyB ? bodyB->GetAngularVelocity() : math::Vector3::ZERO;
+
+        const math::Vector3 rA = bodyA ? cp.point - bodyA->GetPosition() : math::Vector3::ZERO;
+        const math::Vector3 rB = bodyB ? cp.point - bodyB->GetPosition() : math::Vector3::ZERO;
+
+        // 角速度による接触点の速度も含める。回転しながらぶつかる物体では
+        // 重心速度だけを見ると実際の当たりの強さと合わない。
+        const math::Vector3 vAContact = vA + math::Vector3::Cross(wA, rA);
+        const math::Vector3 vBContact = vB + math::Vector3::Cross(wB, rB);
+        return vAContact - vBContact;
+    }
+
     void PhysicsSolver::ResolveVelocity(ContactPoint& cp)
     {
         if (cp.isTrigger) return;
@@ -930,18 +950,11 @@ namespace fbzz::physics
         const float invMassA = bodyA ? bodyA->GetInvMass() : 0.0f;
         const float invMassB = bodyB ? bodyB->GetInvMass() : 0.0f;
 
-        const math::Vector3 vA = bodyA ? bodyA->GetVelocity()        : math::Vector3::ZERO;
-        const math::Vector3 vB = bodyB ? bodyB->GetVelocity()        : math::Vector3::ZERO;
-        const math::Vector3 wA = bodyA ? bodyA->GetAngularVelocity() : math::Vector3::ZERO;
-        const math::Vector3 wB = bodyB ? bodyB->GetAngularVelocity() : math::Vector3::ZERO;
-
         const math::Vector3 rA = bodyA ? cp.point - bodyA->GetPosition() : math::Vector3::ZERO;
         const math::Vector3 rB = bodyB ? cp.point - bodyB->GetPosition() : math::Vector3::ZERO;
 
-        const math::Vector3 vAContact = vA + math::Vector3::Cross(wA, rA);
-        const math::Vector3 vBContact = vB + math::Vector3::Cross(wB, rB);
-        const math::Vector3 vRel      = vAContact - vBContact;
-        const float         vRelN     = math::Vector3::Dot(vRel, cp.normal);
+        const math::Vector3 vRel  = RelativeVelocityAt(cp);
+        const float         vRelN = math::Vector3::Dot(vRel, cp.normal);
 
         // WHY: Warm Start の過去インパルスが強すぎると、小さい Collider が大きい床上で微小な上向き速度を持つ。
         //      cachedNormalImpulse が残っている接触では即 return せず、下の PGS 累積クランプで過剰分を戻す。
@@ -1664,6 +1677,24 @@ namespace fbzz::physics
                 bestDistSq  = dSq;
                 bestCapsule = sample;
                 bestTriPt   = tp;
+            }
+        }
+
+        // WHY: 端点・中点だけのサンプリングでは、傾斜面に対する線分の
+        // 最近接位置を取り逃がし、移動方向によって接触点と法線が跳ぶ。
+        // 線分が三角形平面を横切る位置も候補に加え、接触判定を移動方向から安定させる。
+        const float planeDelta = signedDistS - signedDistE;
+        if (std::abs(planeDelta) > 1e-6f)
+        {
+            const float planeT = std::clamp(signedDistS / planeDelta, 0.0f, 1.0f);
+            const math::Vector3 sample = segS + (segE - segS) * planeT;
+            const math::Vector3 tp     = ClosestPointOnTriangle(sample, tri);
+            const float dSq = (sample - tp).LengthSq();
+            if (dSq < bestDistSq)
+            {
+                bestDistSq = dSq;
+                bestCapsule = sample;
+                bestTriPt = tp;
             }
         }
 

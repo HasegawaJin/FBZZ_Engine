@@ -44,6 +44,13 @@ namespace fbzz::physics
         struct CacheEntry
         {
             math::Vector3 point;
+            // 前フレームの接触基底。法線が変わったときに摩擦インパルスを
+            // 現フレームの接線へ変換するために保持する。
+            math::Vector3 normal            = math::Vector3::ZERO;
+            math::Vector3 tangent[2]        = {
+                math::Vector3::ZERO,
+                math::Vector3::ZERO
+            };
             float         normalImpulse       = 0.0f;
             float         tangentImpulse[2]   = {0.0f, 0.0f};
             int           age                 = 0;   // UpdateCache が呼ばれるたびにリセット

@@ -122,8 +122,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     if (!s_gbufMatCB.IsValid())
         s_gbufMatCB = resources.CreateConstantBuffer(kGBufCBSize);
 
-    const auto& frustum = *ctx.cameraFrustum;
-    const auto& cam     = ctx.camera;
+    const auto& cam = ctx.camera;
 
     // =========================================================================
     // Phase 1: フラスタムカリング + ギャザー
@@ -148,11 +147,8 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 
         ++ctx.statsTotalObjects;
 
-        // フラスタムカリング: バウンディング球が視錐台外なら除外
-        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) {
-            ++ctx.statsFrustumCulled;
-            continue;
-        }
+        // 距離 / 極小 / 錐台カリング。落ちた理由の統計は IsMeshVisible が加算する。
+        if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
         // GBuffer に収まらないエフェクト系シェーダー (RimLight / Toon 等) は
         // DeferredForwardEffects パスで Forward 描画するためここではスキップする。
@@ -175,11 +171,12 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     std::sort(queue.begin(), queue.end(),
         [](const GBufferEntry& a, const GBufferEntry& b) { return a.distSq < b.distSq; });
 
-    if (ctx.occlusionCuller) {
+    if (ctx.occlusionCuller && ctx.occlusionCullingEnabled) {
         ctx.occlusionCuller->Reset(cam);
         auto visibleEnd = queue.begin();
         for (auto it = queue.begin(); it != queue.end(); ++it) {
-            const auto bounds = ComputeWorldBounds(it->go->transform, *it->mr->mesh);
+            const auto bounds =
+                ComputeWorldBounds(it->go->transform, *it->mr->mesh, ctx.cullingBoundsPadding);
             if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
                 ++ctx.statsOcclusionCulled;
                 continue;
@@ -268,7 +265,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         }
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
+        objData.world             = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -408,7 +405,6 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
 
     std::vector<TransparentEntry> transparentQueue;
-    const auto& frustum = *ctx.cameraFrustum;
 
     // skinned meshes を submesh 単位で走査し、スロットのブレンドモードで
     // 不透明 (即 Submit) / 半透明 (キュー蓄積) へ振り分ける。
@@ -423,21 +419,20 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         if (!mat || !mat->EnsureMaterialAsset()) continue;
 
         ++ctx.statsTotalObjects;
-        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) {
-            ++ctx.statsFrustumCulled;
-            continue;
-        }
+        if (!IsSkinnedVisible(ctx, go, *smr)) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
+        objData.world             = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
         const auto skinCB = (anim && anim->skinningBuffer.IsValid())
             ? anim->skinningBuffer : h.bindPoseSkinningCB;
 
-        const size_t meshCount = smr->model->meshes.size();
+        // mi は「この Renderer の中での」スロット番号。model->meshes の添字とは
+        // 一致しないことがあるため (submeshIndices)、メッシュは必ずアクセサから引く。
+        const size_t meshCount = smr->SubmeshCount();
         for (size_t mi = 0; mi < meshCount; ++mi) {
-            const auto& meshPtr = smr->model->meshes[mi];
+            renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
             if (!meshPtr) continue;
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
@@ -464,7 +459,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             const bool opaque = slot.GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND;
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+            dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
@@ -527,8 +522,6 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 
     std::vector<TransparentEntry> transparentQueue;
 
-    const auto& frustumTransp = *ctx.cameraFrustum;
-
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
@@ -540,17 +533,14 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 
         ++ctx.statsTotalObjects;
 
-        // フラスタムカリング: バウンディング球が視錐台外なら除外
-        if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) {
-            ++ctx.statsFrustumCulled;
-            continue;
-        }
+        // 距離 / 極小 / 錐台カリング。落ちた理由の統計は IsMeshVisible が加算する。
+        if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
         auto* material = SyncMaterial(*mat, resources);
         if (!material || !material->shader.IsValid()) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
+        objData.world             = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
         renderer::DrawCall dc;
@@ -599,13 +589,13 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;  // 不透明のみ
         if (!IsForwardOnly(*mat)) continue;                                        // エフェクト系のみ
 
-        if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) continue;
+        if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
         auto* material = SyncMaterial(*mat, resources);
         if (!material || !material->shader.IsValid()) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
+        objData.world             = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
