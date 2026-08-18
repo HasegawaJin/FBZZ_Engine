@@ -2,12 +2,16 @@
 // SceneIO.cpp | fbzz::editor
 // Editor wrapper for scene save/load and in-memory playmode snapshots
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/EditorSceneState.hpp>
+#include <Editor/Util/EditorSerializer.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <cassert>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -15,6 +19,7 @@ namespace {
 
 std::string s_snapshotDir  = "Assets/EditorConfig";
 std::string s_snapshotPath = "Assets/EditorConfig/.playmode_snapshot.scene";
+EditorSceneState* s_editorSceneState = nullptr;
 
 } // namespace
 
@@ -24,13 +29,25 @@ void SceneIO::SetProjectRoot(const std::string& projectRoot)
     s_snapshotPath = s_snapshotDir + "/.playmode_snapshot.scene";
 }
 
+void SceneIO::SetEditorSceneState(EditorSceneState* state)
+{
+    s_editorSceneState = state;
+}
+
 bool SceneIO::Save(const scene::Scene& scene, const std::string& path)
 {
     // Engine の SceneSerializer::Save が非const Scene& を要求する設計になっているため const_cast で対応。
     // Save は概念的に読み取り専用 (シーンを変更しない) なので安全だが、
     // Engine 側が const 対応になったタイミングで除去すること。
     scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
-    return scene::SceneSerializer::Save(mutableScene, path);
+    if (!scene::SceneSerializer::Save(mutableScene, path)) return false;
+    if (s_editorSceneState) {
+        std::vector<std::string> instanceIds;
+        for (auto& go : mutableScene.GameObjects())
+            if (!go.runtimeGenerated) instanceIds.push_back(go.instanceId);
+        s_editorSceneState->PruneToInstances(instanceIds);
+    }
+    return !s_editorSceneState || EditorSerializer::Save(*s_editorSceneState, path);
 }
 
 bool SceneIO::Load(scene::Scene& scene, const std::string& path)
@@ -38,7 +55,8 @@ bool SceneIO::Load(scene::Scene& scene, const std::string& path)
     (void)core::Application::Get().GetRenderer();
     auto* resources = renderer::ResourceManager::Active();
     assert(resources && "ResourceManager must be initialized before editor scene load");
-    return scene::SceneSerializer::LoadInPlace(scene, path, *resources);
+    if (!scene::SceneSerializer::LoadInPlace(scene, path, *resources)) return false;
+    return !s_editorSceneState || EditorSerializer::Load(*s_editorSceneState, path);
 }
 
 std::string SceneIO::Serialize(const scene::Scene& scene)

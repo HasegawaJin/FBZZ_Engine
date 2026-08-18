@@ -57,6 +57,10 @@
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
+// ComponentUndoCompare の特化で参照する。
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
+#include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
@@ -69,6 +73,7 @@
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Scene/ScriptValidation.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ShaderDescriptor.hpp>
@@ -97,9 +102,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
+#include <iterator>
 #include <memory>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <typeindex>
 #include <typeinfo>
@@ -152,6 +160,356 @@ void PushComponentValueCommand(scene::GameObject& go,
         [apply, after]() { apply(after); },
         [apply, before]() { apply(before); }));
 }
+
+// ── Undo 判定 ────────────────────────────────────────────────────────────────
+// 「ユーザーが Inspector で編集しうる値」が変わったかを比較する。
+//
+// 従来は「ImGui の ActiveID が動いた = 編集した」とみなして積んでいた。しかし
+// ActiveID はクリックや折りたたみの開閉でも動くため、参照先を見に行っただけで
+// 中身の変わらない履歴が残っていた。この判定があると、編集ウィジェットを
+// コンポーネントのセクション内へ自由に置けるようになる。
+//
+// WHY 構造体全体を比較しないか (重要):
+//   コンポーネントはランタイム状態を同じ構造体に持っている — GPU ハンドル、ボーンの
+//   EntityID、スキニング済み頂点バッファ、ベイク結果、dirty フラグ、LOD の可視フラグ。
+//   これらはシステムが毎フレーム書き換えるため、全体比較にすると「触っていないのに
+//   毎フレーム差分あり」になって Undo が溢れる。
+//
+// WHY Reflect() を基準にするか:
+//   Reflect() に載っていないフィールドは SceneSerializer にも保存されない。つまり
+//   「Reflect() されている = 永続的なユーザー状態」がほぼ成り立つ。1 つ 1 つ手で
+//   フィールドを列挙するより、リフレクションを通した値を比較する方が短く、
+//   フィールドを増やしたときに比較を書き忘れて Undo が静かに壊れることもない。
+//
+//   例外は「Reflect() では表現できず SceneSerializer が専用コードで読み書きする」
+//   フィールドを持つコンポーネント (vector<struct> 等)。そちらは下で個別に特化し、
+//   リフレクションの digest に加えてその配列も比較する。
+
+// Reflect() された値をすべて 1 本の文字列へ落とすリフレクタ。
+// WHY 文字列へ落とすか: 型ごとの比較関数を書かずに済み、フィールドの追加・削除にも
+//     自動で追従する。呼ばれるのは 1 操作の終わりだけなので毎フレームのコストにならない。
+class ComponentReflectDigest final : public scene::IReflector {
+public:
+    [[nodiscard]] const std::string& Result() const { return m_out; }
+
+    void Field(const char* name, float& v) override         { Put(name); m_out += std::to_string(v); }
+    void Field(const char* name, int& v) override           { Put(name); m_out += std::to_string(v); }
+    void Field(const char* name, bool& v) override          { Put(name); m_out += (v ? '1' : '0'); }
+    void Field(const char* name, std::string& v) override   { Put(name); m_out += v; }
+    void Field(const char* name, math::Vector2& v) override { Put(name); Nums({ v.x, v.y }); }
+    void Field(const char* name, math::Vector3& v) override { Put(name); Nums({ v.x, v.y, v.z }); }
+    void Field(const char* name, math::Vector4& v) override { Put(name); Nums({ v.x, v.y, v.z, v.w }); }
+    void Field(const char* name, math::Quaternion& v) override { Put(name); Nums({ v.x, v.y, v.z, v.w }); }
+
+    // 既定実装が空の入口も埋める。埋め忘れるとその型のフィールドが digest に載らず、
+    // 「編集したのに Undo できない」側へ倒れる。
+    void Field(const char* name, scene::EntityID& v) override
+    {
+        Put(name);
+        m_out += std::to_string(v.index);
+        m_out += ':';
+        m_out += std::to_string(v.generation);
+    }
+    void Field(const char* name, input::KeyCode& v) override
+    {
+        Put(name); m_out += std::to_string(static_cast<int>(v));
+    }
+    void ListField(const char* name, std::vector<float>& values) override        { Put(name); for (float x : values)  { m_out += std::to_string(x); m_out += ','; } }
+    void ListField(const char* name, std::vector<int>& values) override          { Put(name); for (int x : values)    { m_out += std::to_string(x); m_out += ','; } }
+    void ListField(const char* name, std::vector<bool>& values) override         { Put(name); for (bool x : values)   { m_out += (x ? '1' : '0'); } }
+    void ListField(const char* name, std::vector<std::string>& values) override  { Put(name); for (const auto& x : values) { m_out += x; m_out += ','; } }
+    void ListField(const char* name, std::vector<math::Vector2>& values) override { Put(name); for (const auto& x : values) Nums({ x.x, x.y }); }
+    void ListField(const char* name, std::vector<math::Vector3>& values) override { Put(name); for (const auto& x : values) Nums({ x.x, x.y, x.z }); }
+    void ListField(const char* name, std::vector<math::Vector4>& values) override { Put(name); for (const auto& x : values) Nums({ x.x, x.y, x.z, x.w }); }
+    void ListField(const char* name, std::vector<scene::EntityRef>& values) override
+    {
+        Put(name);
+        for (const auto& x : values) { m_out += std::to_string(x.id.index); m_out += ','; }
+    }
+    void AssetListField(const char* name,
+                        std::vector<scene::ScriptAssetReference>& values,
+                        scene::ScriptAssetType) override
+    {
+        Put(name);
+        for (const auto& x : values) { m_out += x.guid; m_out += '|'; m_out += x.path; m_out += ','; }
+    }
+
+private:
+    void Put(const char* name) { m_out += ';'; m_out += name ? name : ""; m_out += '='; }
+    void Nums(std::initializer_list<float> values)
+    {
+        for (float x : values) { m_out += std::to_string(x); m_out += ','; }
+    }
+    std::string m_out;
+};
+
+// component の Reflect() を通した値の digest。
+// WHY 非 const 参照を取るか: Reflect() は値を書き戻す実装 (enum のクランプ等) があり
+//     const では呼べない。呼び出し側はどちらも実体を持っているので問題にならない。
+template<typename T>
+[[nodiscard]] std::string CaptureComponentDigest(T& component)
+{
+    ComponentReflectDigest digest;
+    component.Reflect(digest);
+    return digest.Result();
+}
+
+// Reflect() がそのコンポーネントの編集可能な状態を完全に覆っていることの宣言。
+// 既定は false = 従来どおり必ず Undo を積む (安全側)。
+//
+// WHY オプトインにするか: 宣言を書き忘れても挙動は今までと同じ (履歴が少し多い) で済む。
+//     逆に既定を true にすると、Reflect() が不完全なコンポーネントで
+//     「編集したのに Undo できない」という取り返しのつかない壊れ方になる。
+template<typename T>
+struct ComponentUndoReflects : std::false_type {};
+
+template<typename T>
+struct ComponentUndoCompare {
+    static bool UserValuesEqual(T& a, T& b)
+    {
+        if constexpr (ComponentUndoReflects<T>::value)
+            return CaptureComponentDigest(a) == CaptureComponentDigest(b);
+        else
+            return false;
+    }
+};
+
+// Reflect() が編集可能な状態を完全に覆っているコンポーネント。
+// (Reflect() に載っていないフィールドは SceneSerializer にも保存されないため、
+//  この一覧は「専用の保存コードを持たないコンポーネント」と一致する)
+#define FBZZ_COMPONENT_UNDO_REFLECTS(Type)                                      \
+    template<> struct ComponentUndoReflects<scene::Type> : std::true_type {};
+
+FBZZ_COMPONENT_UNDO_REFLECTS(AabbColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(AnimatorComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(AtmosphericScatteringComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(BoneComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(BoxColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(CapsuleColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(CharacterControllerComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(ConvexHullColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(DecalComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(EnvironmentLightComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(LightComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(MeshColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(MeshTrailComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshAgentComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshModifierComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshOffMeshLinkComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSensorComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSurfaceComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(ParticleEmitter)
+FBZZ_COMPONENT_UNDO_REFLECTS(ParticleForceField)
+FBZZ_COMPONENT_UNDO_REFLECTS(PostProcessVolumeComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(ReflectionProbeComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(RigidBodyComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(SkyRenderer)
+FBZZ_COMPONENT_UNDO_REFLECTS(SphereColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(SunMoonRenderer)
+FBZZ_COMPONENT_UNDO_REFLECTS(TerrainColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(TrailComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(VFXGraphComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(VolumeComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(VolumetricCloudComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(WaterComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(WindZoneComponent)
+
+#undef FBZZ_COMPONENT_UNDO_REFLECTS
+
+// ── Reflect() だけでは足りないコンポーネントの特化 ────────────────────────────
+// いずれも「digest + Reflect に載らない編集対象」を比較する。
+// digest 側でカバーされるフィールドは重複して書かない (増減に自動追従させる)。
+
+// 固定長配列・vector<struct> の比較ヘルパー。
+template<typename T, typename Equal>
+[[nodiscard]] bool RangesEqual(const std::vector<T>& a, const std::vector<T>& b, Equal equal)
+{
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (!equal(a[i], b[i])) return false;
+    return true;
+}
+
+// DrawComponentSectionCustom (unique_ptr を持つため専用 Snapshot を使うコンポーネント) の
+// 変更判定。Snapshot が operator== を持っていればそれを使い、無ければ従来どおり必ず積む。
+//
+// WHY 型特化ではなく operator== の検出にするか:
+//   Snapshot 型は使う側の .cpp の無名名前空間で定義されている。ヘッダー側から
+//   明示的特化を書けないため、Snapshot に == を足すだけで有効になる形にしておく。
+template<typename Snapshot>
+struct ComponentSnapshotCompare {
+    static bool Equal(const Snapshot& a, const Snapshot& b)
+    {
+        if constexpr (requires { a == b; }) return a == b;
+        else return false;
+    }
+};
+
+// マテリアルスロット 1 つぶんの、ユーザーが編集しうる値。
+// paramOverrides / textureOverrides / 各 override フラグはスクリプトが実行中に
+// 書き込むランタイム専用の状態なので比較に含めない。
+inline bool MaterialSlotUserValuesEqual(const scene::MaterialSlot& a,
+                                        const scene::MaterialSlot& b)
+{
+    return a.materialPath == b.materialPath && a.visible == b.visible;
+}
+
+// Renderer 系は mesh / model が生ポインタで Reflect に載らない (パスから解決される)。
+// Inspector でメッシュを差し替えるとポインタだけが変わる瞬間があるため明示的に見る。
+// lodVisible は LODSystem が毎フレーム書き換えるランタイム値なので除く。
+template<>
+struct ComponentUndoCompare<scene::MeshRenderer> {
+    static bool UserValuesEqual(scene::MeshRenderer& a, scene::MeshRenderer& b)
+    {
+        return a.mesh == b.mesh
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// nodeEntities / morphWeights / 各頂点バッファ / gpuSkinnedThisFrame は
+// AnimatorSystem と SkinningComputePass が毎フレーム書き換えるため除く。
+// submeshIndices は配置時に決まり Reflect には載らないので明示的に見る。
+template<>
+struct ComponentUndoCompare<scene::SkinnedMeshRenderer> {
+    static bool UserValuesEqual(scene::SkinnedMeshRenderer& a, scene::SkinnedMeshRenderer& b)
+    {
+        return a.model          == b.model
+            && a.submeshIndices == b.submeshIndices
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// MaterialComponent::Reflect はスロット 0 の materialPath までしか載せない。
+// extraSlots (submesh 1 以降) は SceneSerializer が専用コードで読み書きする。
+template<>
+struct ComponentUndoCompare<scene::MaterialComponent> {
+    static bool UserValuesEqual(scene::MaterialComponent& a, scene::MaterialComponent& b)
+    {
+        if (a.SlotCount() != b.SlotCount()) return false;
+        for (size_t i = 0; i < a.SlotCount(); ++i)
+            if (!MaterialSlotUserValuesEqual(a.RawSlotAt(i), b.RawSlotAt(i)))
+                return false;
+        return CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// layerCullDistances は固定長配列で IReflector に対応する Field が無い。
+template<>
+struct ComponentUndoCompare<scene::CameraComponent> {
+    static bool UserValuesEqual(scene::CameraComponent& a, scene::CameraComponent& b)
+    {
+        for (size_t i = 0; i < std::size(a.layerCullDistances); ++i)
+            if (a.layerCullDistances[i] != b.layerCullDistances[i]) return false;
+        return CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// levels は入れ子 vector のため Reflect に載らない。
+// 比較するのは Inspector で編集できる閾値と Renderer 参照の並びだけ。
+// (LODRendererReference::entity は instanceId から解決されるランタイム値)
+template<>
+struct ComponentUndoCompare<scene::LODGroupComponent> {
+    static bool UserValuesEqual(scene::LODGroupComponent& a, scene::LODGroupComponent& b)
+    {
+        const auto levelEqual = [](const scene::LODLevel& x, const scene::LODLevel& y) {
+            if (x.screenRelativeHeight != y.screenRelativeHeight) return false;
+            return RangesEqual(x.renderers, y.renderers,
+                [](const scene::LODRendererReference& p, const scene::LODRendererReference& q) {
+                    return p.instanceId == q.instanceId;
+                });
+        };
+        return RangesEqual(a.levels, b.levels, levelEqual)
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// waypoints と対応する per-waypoint 配列は Reflect に載らない。
+template<>
+struct ComponentUndoCompare<scene::NavMeshPatrolComponent> {
+    static bool UserValuesEqual(scene::NavMeshPatrolComponent& a,
+                                scene::NavMeshPatrolComponent& b)
+    {
+        const auto vec3Equal = [](const math::Vector3& x, const math::Vector3& y) {
+            return x.x == y.x && x.y == y.y && x.z == y.z;
+        };
+        const auto floatEqual = [](float x, float y) { return x == y; };
+        return RangesEqual(a.waypoints, b.waypoints, vec3Equal)
+            && RangesEqual(a.waypointWaitTimes, b.waypointWaitTimes, floatEqual)
+            && RangesEqual(a.waypointSpeeds, b.waypointSpeeds, floatEqual)
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// layerMaterials は string 配列のため Reflect に載らない。
+// heightData / splatData は地形ツールが塗るデータで、Inspector の編集対象ではない
+// (ツール側が専用の Undo を持つ)。ここで比較すると巨大配列の走査が入るだけなので除く。
+template<>
+struct ComponentUndoCompare<scene::TerrainComponent> {
+    static bool UserValuesEqual(scene::TerrainComponent& a, scene::TerrainComponent& b)
+    {
+        return a.layerMaterials == b.layerMaterials
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// ── 以下は Reflect に載らない vector<struct> を持つが、その中身は専用ツール
+//    (Foliage / Detail ブラシ、IK チェーン編集、Terrain Grid の生成) が編集し、
+//    それぞれが自前の Undo を持つ。要素数だけを見て、追加・削除は取りこぼさない。
+//    WHY 中身まで比較しないか: 要素が数千件になりうる (植生インスタンス・詳細レイヤー)。
+//        1 操作ごとに全走査すると Inspector の応答が落ちる。
+template<>
+struct ComponentUndoCompare<scene::FoliageComponent> {
+    static bool UserValuesEqual(scene::FoliageComponent& a, scene::FoliageComponent& b)
+    {
+        return a.species.size() == b.species.size()
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+template<>
+struct ComponentUndoCompare<scene::TerrainDetailComponent> {
+    static bool UserValuesEqual(scene::TerrainDetailComponent& a,
+                                scene::TerrainDetailComponent& b)
+    {
+        return a.layers.size() == b.layers.size()
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+template<>
+struct ComponentUndoCompare<scene::IKSolverComponent> {
+    static bool UserValuesEqual(scene::IKSolverComponent& a, scene::IKSolverComponent& b)
+    {
+        // IKChain は 15 個以上のフィールドを持つが、Inspector で 1 つ変えるたびに
+        // Undo を積むべきなので主要な編集対象を見る。チェーン数の増減も拾う。
+        const auto chainEqual = [](const scene::IKChain& x, const scene::IKChain& y) {
+            return x.type       == y.type
+                && x.enabled    == y.enabled
+                && x.weight     == y.weight
+                && x.order      == y.order
+                && x.boneNames  == y.boneNames
+                && x.targetGuid == y.targetGuid
+                && x.poleGuid   == y.poleGuid
+                && x.maxExtension        == y.maxExtension
+                && x.softness            == y.softness
+                && x.minBendAngleDegrees == y.minBendAngleDegrees
+                && x.maxBendAngleDegrees == y.maxBendAngleDegrees
+                && x.autoPole            == y.autoPole;
+        };
+        return RangesEqual(a.chains, b.chains, chainEqual)
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
+
+// cells / cellInstanceIds はグリッド生成の結果で、Inspector から直接は編集しない。
+template<>
+struct ComponentUndoCompare<scene::TerrainGridComponent> {
+    static bool UserValuesEqual(scene::TerrainGridComponent& a, scene::TerrainGridComponent& b)
+    {
+        return a.cellInstanceIds == b.cellInstanceIds
+            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
+    }
+};
 
 // コンポーネント編集の開始状態を保持する。
 // WHY: MSVC 14.51 は関数テンプレート内の依存型を持つローカル構造体で ICE するため、
@@ -222,6 +580,12 @@ void DrawGenericUndoableComponentBody(scene::GameObject& go,
     }
     if (!edit.active || activeAfter == edit.activeId) return;
 
+    // 値が動いていない操作 (参照欄のクリック・折りたたみの開閉など) では積まない。
+    if (ComponentUndoCompare<T>::UserValuesEqual(edit.before, component)) {
+        edit.active = false;
+        return;
+    }
+
     PushComponentValueCommand(
         go, ctx, std::string("Change ") + label, edit.before, component);
     if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -270,20 +634,10 @@ void DrawUndoableComponentBody(scene::GameObject& go,
     }
     if (!edit.active || activeAfter == edit.activeId) return;
 
-    // 主スロットに加えて submesh スロットの割り当ても Undo 対象にする。
-    // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体になり、
-    //      submesh ごとの .mat 差し替えがこのコンポーネント上の編集になったため。
-    auto slotsDiffer = [](const scene::MaterialComponent& a, const scene::MaterialComponent& b) {
-        if (a.materialPath != b.materialPath) return true;
-        if (a.visible != b.visible) return true;
-        if (a.extraSlots.size() != b.extraSlots.size()) return true;
-        for (size_t i = 0; i < a.extraSlots.size(); ++i) {
-            if (a.extraSlots[i].materialPath != b.extraSlots[i].materialPath) return true;
-            if (a.extraSlots[i].visible != b.extraSlots[i].visible) return true;
-        }
-        return false;
-    };
-    if (slotsDiffer(edit.before, component)) {
+    // 全スロットの割り当てを Undo 対象にする。判定は汎用側と同じ
+    // ComponentUndoCompare を使う (以前はここに同じ比較を手書きで重複させていた)。
+    if (!ComponentUndoCompare<scene::MaterialComponent>::UserValuesEqual(
+            edit.before, component)) {
         PushComponentValueCommand(
             go, ctx, std::string("Change ") + label, edit.before, component);
         if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -347,6 +701,18 @@ void DrawUndoableComponentBody(scene::GameObject& go,
     if (!edit.active || activeAfter == edit.activeId) return;
 
     const Snapshot after = capture(component);
+
+    // 値が動いていない操作 (参照欄のクリック等) では積まない。
+    // WHY component の digest だけで足りるか: RigidBodyComponent::Reflect は
+    //     rigidBody ポインタの先 (mass / gravityScale 等) まで読み書きする。
+    //     Snapshot は body を深いコピーで持つため、before 側の digest も実値を反映する。
+    if (edit.before.hasBody == after.hasBody &&
+        ComponentUndoCompare<scene::RigidBodyComponent>::UserValuesEqual(
+            edit.before.component, component)) {
+        edit.active = false;
+        return;
+    }
+
     if (ctx.undoStack && ctx.activeScene) {
         scene::Scene* scene = ctx.activeScene;
         const std::string instanceId = go.instanceId;
@@ -446,6 +812,114 @@ inline ImU32 ComponentAccent()
     return accent;
 }
 
+// 既存のカテゴリ別 Inspector を一度収集し、GameObject が持つ順序で再生するための一時バッファ。
+// WHY: 専用 Inspector 関数を一つへ統合すると、既存の Component 固有 UI と Undo 実装を
+//      大規模に書き換える必要がある。描画要求だけを遅延させれば、既存の責務を保ったまま
+//      カードの並び順だけを差し替えられる。
+struct InspectorComponentDrawCollector {
+    struct Request {
+        std::string key;
+        std::function<void()> draw;
+    };
+
+    scene::GameObject* gameObject = nullptr;
+    EditorSceneState* editorState = nullptr;
+    std::vector<Request> requests;
+    bool drawing = false;
+    // 収集が「この GameObject の全 Component」を網羅しているときだけ true。
+    // WHY: Map モードの絞り込み表示では地形系しか収集されない。そこで残骸掃除まで
+    //      走らせると、表示していないだけの Component の並び順を消してしまう。
+    bool complete = false;
+
+    void Add(std::string key, std::function<void()> draw)
+    {
+        requests.push_back({ std::move(key), std::move(draw) });
+    }
+
+    void DrawInOrder()
+    {
+        if (!gameObject) return;
+
+        // 今フレーム実在するキーだけを保存対象に残す (削除された Component の残骸掃除)。
+        if (complete && editorState) {
+            std::vector<std::string> presentKeys;
+            presentKeys.reserve(requests.size());
+            for (const Request& request : requests) presentKeys.push_back(request.key);
+            editorState->PruneComponentOrder(gameObject->instanceId, presentKeys);
+        }
+
+        std::vector<bool> drawn(requests.size(), false);
+        const auto drawRequest = [&](size_t index) {
+            if (index >= requests.size() || drawn[index]) return;
+            drawn[index] = true;
+            drawing = true;
+            requests[index].draw();
+            drawing = false;
+        };
+
+        // 描画中のドロップで順序が変更されてもイテレータを無効化しないよう、
+        // 並び順はフレーム開始時点のスナップショットを使う。
+        const std::vector<std::string> order = editorState
+            ? editorState->GetComponentOrder(gameObject->instanceId)
+            : std::vector<std::string>{};
+        // 保存済み順序に存在する要求を先に描き、後から追加された Component は末尾へ置く。
+        for (const std::string& key : order) {
+            for (size_t i = 0; i < requests.size(); ++i)
+                if (requests[i].key == key) drawRequest(i);
+        }
+        for (size_t i = 0; i < requests.size(); ++i)
+            drawRequest(i);
+    }
+};
+
+// Component カードの移動を 1 回の Undo 操作として記録する。
+// WHY: ドロップ後に別のカードを追加・削除しても GameObject* を保持し続けないよう、
+//      Undo/Redo 時は instanceId から対象を引き直す。
+inline void MoveInspectorComponentWithUndo(scene::GameObject& go,
+                                            EditorContext& ctx,
+                                            std::string_view draggedKey,
+                                            std::string_view targetKey,
+                                            bool insertAfter)
+{
+    const std::vector<std::string> before =
+        ctx.editorSceneState.GetComponentOrder(go.instanceId);
+    if (!ctx.editorSceneState.MoveComponentOrder(
+            go.instanceId, draggedKey, targetKey, insertAfter)) return;
+    const std::vector<std::string> after =
+        ctx.editorSceneState.GetComponentOrder(go.instanceId);
+    if (before == after) return;
+
+    if (CanRecordEditorUndo(ctx) && ctx.activeScene) {
+        EditorSceneState* editorState = &ctx.editorSceneState;
+        const std::string instanceId = go.instanceId;
+        const auto markDirty = ctx.markSceneDirty;
+        const auto apply = [editorState, instanceId, markDirty](
+                               const std::vector<std::string>& order) {
+            editorState->SetComponentOrder(instanceId, order);
+            if (markDirty) markDirty();
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Reorder Components",
+            [apply, after]()  { apply(after); },
+            [apply, before]() { apply(before); }));
+    }
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+}
+
+// エンジン Component カード共通の並び替え指定。
+// WHY まとめるか: scope 文字列とドロップ処理を各カードで書き写すと、片方だけ直したときに
+//      「一部のカードだけ並び替えできない / 別リストへ落とせてしまう」ズレが生まれる。
+inline widgets::ComponentReorderTarget MakeComponentReorderTarget(
+    scene::GameObject* go, EditorContext& ctx, const char* label)
+{
+    widgets::ComponentReorderTarget reorder;
+    reorder.scope  = "COMPONENT";
+    reorder.onDrop = [go, &ctx, label](std::string_view draggedKey, bool insertAfter) {
+        MoveInspectorComponentWithUndo(*go, ctx, draggedKey, label, insertAfter);
+    };
+    return reorder;
+}
+
 template<typename T, typename DrawFn>
 void DrawComponentSection(scene::GameObject* go,
                           EditorContext& ctx,
@@ -456,6 +930,20 @@ void DrawComponentSection(scene::GameObject* go,
 {
     auto* comp = go->GetComponent<T>();
     if (!comp) return;
+
+    if (ctx.inspectorComponentCollector && !ctx.inspectorComponentCollector->drawing) {
+        const std::string key = label;
+        ctx.editorSceneState.EnsureComponentOrder(go->instanceId, key);
+        auto* collector = ctx.inspectorComponentCollector;
+        collector->Add(key, [collector, go, &ctx, &compClipboard, &compClipboardType,
+                             key, drawFn]() {
+            collector->drawing = true;
+            DrawComponentSection<T>(go, ctx, compClipboard, compClipboardType,
+                                    key.c_str(), drawFn);
+            collector->drawing = false;
+        });
+        return;
+    }
 
     ImGui::PushID(label);
 
@@ -471,14 +959,18 @@ void DrawComponentSection(scene::GameObject* go,
         T beforeEnabled{};
         if (CanRecordEditorUndo(ctx))
             beforeEnabled = *comp;
-        header = widgets::ComponentHeader(label, accent, &comp->enabled);
+        header = widgets::ComponentHeader(
+            label, accent, &comp->enabled, true,
+            MakeComponentReorderTarget(go, ctx, label));
         if (header.enabledChanged) {
             PushComponentValueCommand(
                 *go, ctx, std::string("Toggle ") + label, beforeEnabled, *comp);
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
     } else {
-        header = widgets::ComponentHeader(label, accent, nullptr);
+        header = widgets::ComponentHeader(
+            label, accent, nullptr, true,
+            MakeComponentReorderTarget(go, ctx, label));
     }
 
     const bool open = header.open;
@@ -646,6 +1138,21 @@ void DrawComponentSectionCustom(
     auto* comp = go->GetComponent<T>();
     if (!comp) return;
 
+    if (ctx.inspectorComponentCollector && !ctx.inspectorComponentCollector->drawing) {
+        const std::string key = label;
+        ctx.editorSceneState.EnsureComponentOrder(go->instanceId, key);
+        auto* collector = ctx.inspectorComponentCollector;
+        collector->Add(key, [collector, go, &ctx, &compClipboard, &compClipboardType,
+                             key, drawFn, captureFn, applyFn]() {
+            collector->drawing = true;
+            DrawComponentSectionCustom<T, Snapshot>(
+                go, ctx, compClipboard, compClipboardType, key.c_str(),
+                drawFn, captureFn, applyFn);
+            collector->drawing = false;
+        });
+        return;
+    }
+
     ImGui::PushID(label);
     const bool canUndo = CanRecordEditorUndo(ctx);
 
@@ -672,8 +1179,9 @@ void DrawComponentSectionCustom(
     // ヘッダー (有効チェック + 名前 + ⋯ メニュー) はカード表現へ集約済み。
     const ImU32 accent = ComponentAccent<T>();
     const Snapshot beforeEnabled = canUndo ? captureFn(*comp) : Snapshot{};
-    const widgets::ComponentHeaderResult header =
-        widgets::ComponentHeader(label, accent, &comp->enabled);
+    const widgets::ComponentHeaderResult header = widgets::ComponentHeader(
+        label, accent, &comp->enabled, true,
+        MakeComponentReorderTarget(go, ctx, label));
     if (header.enabledChanged) {
         if (canUndo) pushUndoCmd(std::string("Toggle ") + label, beforeEnabled, captureFn(*comp));
         if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -736,8 +1244,12 @@ void DrawComponentSectionCustom(
             } else if (edit.active && edit.entityId != go->GetID()) {
                 if (activeAfter != edit.activeId) edit.active = false;
             } else if (edit.active && activeAfter != edit.activeId) {
-                pushUndoCmd(std::string("Change ") + label, edit.before, captureFn(*comp));
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                const Snapshot after = captureFn(*comp);
+                // 値が動いていない操作 (参照欄のクリック等) では積まない。
+                if (!ComponentSnapshotCompare<Snapshot>::Equal(edit.before, after)) {
+                    pushUndoCmd(std::string("Change ") + label, edit.before, after);
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                }
                 edit.active = false;
             }
         }
@@ -1166,6 +1678,72 @@ std::unique_ptr<ICommand> AddRegisteredComponentWithUndo(scene::GameObject& go,
         [apply, removers]() { apply(removers); });
 }
 
+// 型名 (文字列) で登録済みコンポーネントを追加する。
+//
+// WHY 名前引きの経路が要るか:
+//   FBZZ_REQUIRE_COMPONENT の要求は DLL 境界を越える都合で型名の文字列でしか運べない。
+//   ここで ComponentRegistry を畳んで名前を突き合わせ、追加そのものは
+//   AddRegisteredComponent<T> へ委ねる。こうすると Fix ボタンで付いたコンポーネントが
+//   Add Component メニューから付けたものと完全に同じ初期値になる
+//   (コライダーの自動フィット、RigidBody の既定質量、Animator の随伴追加など)。
+//   ここで go.AddComponent<T>() を直接呼ぶと、その既定値だけが失われる。
+inline bool AddRegisteredComponentByName(scene::GameObject& go, std::string_view typeName)
+{
+    bool handled = false;
+    scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if (handled) return;
+        if (!Registration::addable) return;              // 内部型は手で足せない
+        if (typeName != Registration::serializedName) return;
+        if (!go.GetComponent<T>()) AddRegisteredComponent<T>(go);
+        handled = true;
+    });
+    return handled;
+}
+
+// 不足している必須コンポーネントをまとめて追加し、この操作で増えた型だけを戻す
+// Undo コマンドを返す。Inspector の "Fix" ボタンの実体。
+//
+// WHY 1 コマンドにまとめるか: 3 個足りない状態を直したとき、Ctrl+Z 3 回で戻るのは
+//     「1 回のクリックを 1 回で取り消せる」という期待に反する。押した操作の単位で戻す。
+inline std::unique_ptr<ICommand> AddMissingComponentsWithUndo(
+    scene::GameObject& go,
+    EditorContext& ctx,
+    const std::vector<std::string>& typeNames)
+{
+    const bool canRecordUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
+    std::vector<std::type_index> before;
+    if (canRecordUndo) before = CapturePresentComponentTypes(go);
+
+    bool anyAdded = false;
+    for (const std::string& typeName : typeNames)
+        anyAdded |= AddRegisteredComponentByName(go, typeName);
+
+    if (!anyAdded || !canRecordUndo) return nullptr;
+
+    std::vector<std::function<void(scene::GameObject&)>> adders;
+    std::vector<std::function<void(scene::GameObject&)>> removers;
+    CollectAddedComponentOps(go, before, adders, removers);
+    if (adders.empty()) return nullptr;
+
+    scene::Scene* scene = ctx.activeScene;
+    const std::string instanceId = go.instanceId;
+    const auto markDirty = ctx.markSceneDirty;
+
+    // WHY: GameObject* は Undo までの間に無効化され得るため、instanceId から引き直す。
+    auto apply = [scene, instanceId, markDirty](
+                     const std::vector<std::function<void(scene::GameObject&)>>& ops) {
+        auto* target = scene->FindByGuid(instanceId);
+        if (!target) return;
+        for (const auto& op : ops) op(*target);
+        if (markDirty) markDirty();
+    };
+
+    return std::make_unique<LambdaCommand>(
+        "Add Missing Components",
+        [apply, adders]()   { apply(adders); },
+        [apply, removers]() { apply(removers); });
+}
+
 // スクリプトを 1 件追加し、その 1 件だけを戻す Undo コマンドを返す。
 // WHY: スクリプト追加は ScriptComponent::scripts への要素追加であり、
 //      「型が増えたか」を見る汎用差分では ScriptComponent が既にある場合を検出できない。
@@ -1421,6 +1999,12 @@ void DrawAutomaticInspectors(scene::ComponentCategory category,
                              const std::type_info*& componentClipboardType);
 void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
+// スクリプトカードを Component 並びへ個別登録するための描画ライフサイクル。
+// Begin/End は 1 GameObject の全カードを囲み、DrawScriptCard は 1 枚だけ描く。
+std::string GetScriptOrderKey(const scene::ScriptComponent& component, int index);
+void BeginScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx);
+void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index);
+void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx);
 void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx);
 
 } // namespace fbzz::editor

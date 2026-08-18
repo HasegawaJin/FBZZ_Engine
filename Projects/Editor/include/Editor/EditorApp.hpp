@@ -267,6 +267,9 @@ private:
     bool                     m_scriptInitialBuild    = false; // true のとき初回ビルド (skipDeps=false)
     float                    m_scriptDebounceTimer   = 0.0f;  // デバウンス用タイマー (秒)
     float                    m_scriptDirtyPollTimer  = 0.0f;  // Scripts/ ツリー監視を毎フレーム走らせないための間隔管理
+    // SDK 解決失敗による CMakeCache 再構成をこのセッションで実施済みか。
+    // WHY: SDK が本当に存在しない場合に configure 失敗 → 再ビルド → 同じ失敗を繰り返さないよう 1 回に制限する。
+    bool                     m_scriptSdkRecoveryDone = false;
 
     // HLSL ホットリロード
     std::filesystem::path    m_hlslSourceDir;      // Assets/shaders/ ディレクトリ
