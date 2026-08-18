@@ -29,6 +29,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
@@ -156,17 +157,23 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vect
 // albedo に Sprite サブアセットが指定された場合、Sprite矩形を標準UV変換へ合成する。
 // WHY: GPU Texture 自体はatlas全体を共有するため、3D Materialで個別Spriteを使うには
 //      頂点UVを矩形のscale/offsetへ写像する必要がある。
-void ApplyAlbedoSpriteUv(const asset::MaterialAsset& materialAsset,
+//
+// WHY 共有 .mat ではなく「実効 albedo 参照」を受け取るか:
+//   textureOverrides で GameObject 単位に albedo を差し替えた場合、共有 .mat 側を見ていると
+//   矩形が元のスプライトのまま残る。atlas は 1 枚のテクスチャなので、テクスチャだけ
+//   差し替わって矩形が変わらないと「別のコマを指定したのに絵が変わらない」という、
+//   スクリプトからは原因の見えない壊れ方をする。表情・目パチのようにコマを
+//   ランタイムで切り替える用途はこの経路しか通らないため、実効値で解決する。
+void ApplyAlbedoSpriteUv(std::string_view albedoReference,
                          const renderer::ShaderDescriptor& desc,
                          renderer::ResourceManager& resources,
                          std::vector<uint8_t>& paramData)
 {
-    const auto albedo = materialAsset.textures.find("albedo");
-    if (albedo == materialAsset.textures.end()) return;
+    if (albedoReference.empty()) return;
 
     std::string texturePath;
     std::string spriteName;
-    if (!asset::ParseSpriteReference(albedo->second, texturePath, spriteName)) return;
+    if (!asset::ParseSpriteReference(albedoReference, texturePath, spriteName)) return;
 
     struct CachedTransform {
         std::filesystem::file_time_type metaWriteTime{};
@@ -182,7 +189,7 @@ void ApplyAlbedoSpriteUv(const asset::MaterialAsset& materialAsset,
     const std::string metaPath = absoluteTexturePath + ".meta";
     std::error_code ec;
     const auto metaWriteTime = std::filesystem::last_write_time(metaPath, ec);
-    CachedTransform& transform = s_cache[albedo->second];
+    CachedTransform& transform = s_cache[std::string(albedoReference)];
     if (!transform.resolved || transform.metaWriteTime != metaWriteTime) {
         transform = {};
         transform.metaWriteTime = metaWriteTime;
@@ -351,8 +358,6 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
     // 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
     if (desc && !mc.paramOverrides.empty())
         ApplyMaterialParamOverrides(mc.paramOverrides, *desc, material.paramData);
-    if (desc && matAsset)
-        ApplyAlbedoSpriteUv(*matAsset, *desc, resources, material.paramData);
 
     std::array<std::string, kTextureSlotNames.size()> texturePaths{};
     if (matAsset) {
@@ -366,6 +371,11 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
         if (overrideIt != mc.textureOverrides.end())
             texturePaths[i] = overrideIt->second;
     }
+
+    // Sprite 矩形は「最終的に t0 へ束縛される参照」から決める。共有 .mat の値ではなく
+    // 上書き適用後の texturePaths[0] を渡すため、テクスチャ解決より後に置く。
+    if (desc)
+        ApplyAlbedoSpriteUv(texturePaths[0], *desc, resources, material.paramData);
 
     const size_t slotCount = texturePaths.size();
     material.textures.resize(slotCount);
@@ -437,10 +447,10 @@ bool IsForwardOnly(const MaterialSlot& mc)
 {
     const auto* a = asset::AssetManager::GetMaterial(mc.materialAsset);
     if (a) {
-        if (a->renderPath == asset::RenderPath::Forward)  return true;
         // WHY: 2枚のGBufferにはclearcoat/sheen/anisotropyと接線基底を保持できない。
         //      拡張ローブをDeferredへ落とすと情報が欠落し、物理的なエネルギー配分も
-        //      変わるため、Surface PBRだけは拡張値が有効な場合にForwardで完全評価する。
+        //      変わるため、拡張値が有効な場合だけ Forward の完全評価へフォールバックする。
+        //      これは Material の render_path 指定ではなく、現在の GBuffer 仕様からの自動判定。
         const auto hasFeature = [&](std::string_view name) {
             const auto overrideIt = mc.paramOverrides.find(std::string(name));
             if (overrideIt != mc.paramOverrides.end())
@@ -451,7 +461,6 @@ bool IsForwardOnly(const MaterialSlot& mc)
         const bool advancedPbr = a->meshType != asset::MeshType::Skinned &&
             (hasFeature("clearcoat") || hasFeature("sheen") || hasFeature("anisotropy"));
         if (advancedPbr) return true;
-        if (a->renderPath == asset::RenderPath::Deferred) return false;
         if (a->shaderPath.empty()) return true;
     }
     return a == nullptr;
@@ -517,9 +526,9 @@ void UpdateShadowConstants(RenderPassContext& ctx)
     ctx.resources.Update(ctx.handles.shadowCB, &data, sizeof(ShadowConstantsCB));
 }
 
-WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh)
+WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, float padding)
 {
-    const math::Matrix4& world = tf.GetWorldMatrix();
+    const math::Matrix4 world = tf.GetPresentationWorldMatrix();
 
     // ローカル空間バウンディング球中心をワールド空間に変換する。
     // 行列は列ベクトル規則 (M * v) なので:
@@ -541,23 +550,13 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh)
     const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
     const float maxScale = std::max({ sx, sy, sz });
 
-    return { worldCenter, mesh.boundsRadius * maxScale };
-}
-
-bool IsVisibleInFrustum(const math::Frustum& frustum,
-                        const Transform& tf,
-                        const renderer::Mesh& mesh)
-{
-    // boundsRadius が 0 なら ComputeBounds 未実行メッシュ → カリングしない
-    if (mesh.boundsRadius <= 0.0f) return true;
-
-    const auto bounds = ComputeWorldBounds(tf, mesh);
-    return frustum.IntersectsSphere(bounds.center, bounds.radius);
+    return { worldCenter, mesh.boundsRadius * maxScale + (padding > 0.0f ? padding : 0.0f) };
 }
 
 bool ComputeSkinnedWorldBounds(const Transform& tf,
                                const SkinnedMeshRenderer& smr,
-                               WorldBounds& outBounds)
+                               WorldBounds& outBounds,
+                               float padding)
 {
     if (!smr.model) return false;
 
@@ -568,7 +567,12 @@ bool ComputeSkinnedWorldBounds(const Transform& tf,
     // WHAT: 各 submesh のワールド球を半径重みで平均し、最後に全 submesh を包む半径へ拡張する。
     // WHY: 毎フレーム CPU スキニングして厳密 bounds を取ると頂点数に比例して重い。
     //      バインドポーズ球は保守的だが、視錐台外の遠いキャラクターを安く除外できる。
-    for (const auto& meshPtr : smr.model->meshes) {
+    // この Renderer が描く submesh だけを包む。
+    // WHY モデル全体で取らないか: ノードごとに子 GameObject へ分けた構成では、
+    //     モデル全体の球はどの子にとっても過大になり、画面外の部位のぶんまで
+    //     視錐台に残ってしまう。カリングの単位は「実際に描くもの」に揃える。
+    for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
+        const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
         if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
         const WorldBounds bounds = ComputeWorldBounds(tf, *meshPtr);
         const float weight = (std::max)(bounds.radius, 0.001f);
@@ -581,23 +585,121 @@ bool ComputeSkinnedWorldBounds(const Transform& tf,
 
     outBounds.center = weightedCenter * (1.0f / totalWeight);
     outBounds.radius = 0.0f;
-    for (const auto& meshPtr : smr.model->meshes) {
+    // この Renderer が描く submesh だけを包む。
+    // WHY モデル全体で取らないか: ノードごとに子 GameObject へ分けた構成では、
+    //     モデル全体の球はどの子にとっても過大になり、画面外の部位のぶんまで
+    //     視錐台に残ってしまう。カリングの単位は「実際に描くもの」に揃える。
+    for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
+        const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
         if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
         const WorldBounds bounds = ComputeWorldBounds(tf, *meshPtr);
         const math::Vector3 delta = bounds.center - outBounds.center;
         outBounds.radius = (std::max)(outBounds.radius, delta.Length() + bounds.radius);
     }
 
+    // 余白は submesh ごとではなく合成後の球へ 1 回だけ足す。
+    // WHY: ComputeWorldBounds へ渡して submesh 単位で足すと、合成時の
+    //      「中心距離 + 半径」に padding が二重・三重で積み上がる。
+    if (padding > 0.0f) outBounds.radius += padding;
+
     return true;
 }
 
-bool IsSkinnedVisibleInFrustum(const math::Frustum& frustum,
-                               const Transform& tf,
-                               const SkinnedMeshRenderer& smr)
+namespace {
+
+// このレイヤーに適用する描画距離 [m] を返す。0 は「距離カリングしない」。
+float ResolveCullDistance(const RenderPassContext& ctx, int layer)
+{
+    if (ctx.hasLayerCullDistances) {
+        const float perLayer = ctx.cullLayerDistances[layer & (kCullLayerCount - 1)];
+        if (perLayer > 0.0f) return perLayer;
+    }
+    return ctx.cullMaxDistance;
+}
+
+// 距離 → 極小 → 錐台 の順で判定し、落ちた場合は理由の統計を加算して false を返す。
+// WHY この順序か: 前段ほど計算が安く、かつ後段より多くを落とす。
+//      距離は減算と内積だけ、極小は除算 1 回、錐台は 6 平面。
+//      逆順にすると、遠くて画面に 1 ピクセルも占めないオブジェクトにまで
+//      毎フレーム 6 平面テストを通すことになる。
+bool TestBoundsVisible(RenderPassContext& ctx, const GameObject& go, const WorldBounds& bounds)
+{
+    // 半径 0 = ComputeBounds 未実行。安全に判定できないので必ず描く。
+    if (bounds.radius <= 0.0f) return true;
+
+    const math::Vector3 toObject = bounds.center - ctx.camera.m_position;
+
+    // 距離カリングと極小判定は同じ距離を使うので 1 回だけ求める。
+    // 球距離モードでも深度距離モードでも「カメラからの前方距離」として扱う。
+    const float distance = ctx.cullDistanceSpherical
+        ? toObject.Length()
+        : math::Vector3::Dot(toObject, ctx.cullCameraForward);
+
+    // ── 距離カリング ──
+    // 球の最近点で測る。中心で測ると、大きな地形メッシュが境界をまたいだ瞬間に丸ごと消える。
+    const float cullDistance = ResolveCullDistance(ctx, go.layer);
+    if (cullDistance > 0.0f && distance - bounds.radius > cullDistance) {
+        ++ctx.statsDistanceCulled;
+        return false;
+    }
+
+    // ── 極小オブジェクトカリング ──
+    // 画面高さ比 = radius * (1/tan(fovY/2)) / 距離。
+    // 単位は LODLevel::screenRelativeHeight と同じで、LODSystem の projectedHeight と一致する。
+    if (ctx.smallObjectScreenHeight > 0.0f && ctx.cullProjScaleY > 0.0f && distance > 0.0f) {
+        const float screenHeight = bounds.radius * ctx.cullProjScaleY / distance;
+        if (screenHeight < ctx.smallObjectScreenHeight) {
+            ++ctx.statsSmallObjectCulled;
+            return false;
+        }
+    }
+
+    // ── フラスタムカリング ──
+    // 錐台未設定 (プローブキャプチャ等の派生コンテキスト) は「カリングしない」に倒す。
+    if (ctx.frustumCullingEnabled && ctx.cameraFrustum &&
+        !ctx.cameraFrustum->IntersectsSphere(bounds.center, bounds.radius)) {
+        ++ctx.statsFrustumCulled;
+        return false;
+    }
+
+    return true;
+}
+
+} // namespace
+
+bool IsMeshVisible(RenderPassContext& ctx,
+                   const GameObject& go,
+                   const renderer::Mesh& mesh)
+{
+    if (mesh.boundsRadius <= 0.0f) return true;
+    const WorldBounds bounds =
+        ComputeWorldBounds(go.transform, mesh, ctx.cullingBoundsPadding);
+    return TestBoundsVisible(ctx, go, bounds);
+}
+
+bool IsSkinnedVisible(RenderPassContext& ctx,
+                      const GameObject& go,
+                      const SkinnedMeshRenderer& smr)
 {
     WorldBounds bounds{};
-    if (!ComputeSkinnedWorldBounds(tf, smr, bounds)) return true;
-    return frustum.IntersectsSphere(bounds.center, bounds.radius);
+    // bounds を作れない (CPU 頂点未生成など) 場合は安全側に倒して描く。
+    if (!ComputeSkinnedWorldBounds(go.transform, smr, bounds, ctx.cullingBoundsPadding))
+        return true;
+    return TestBoundsVisible(ctx, go, bounds);
+}
+
+bool IsWithinCullDistance(const RenderPassContext& ctx,
+                          const GameObject& go,
+                          const WorldBounds& bounds)
+{
+    const float cullDistance = ResolveCullDistance(ctx, go.layer);
+    if (cullDistance <= 0.0f) return true;
+
+    const math::Vector3 toObject = bounds.center - ctx.camera.m_position;
+    const float distance = ctx.cullDistanceSpherical
+        ? toObject.Length()
+        : math::Vector3::Dot(toObject, ctx.cullCameraForward);
+    return distance - bounds.radius <= cullDistance;
 }
 
 ActiveWindZone FindActiveWindZone(Scene& scene)

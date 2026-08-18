@@ -62,6 +62,11 @@ public:
 
     virtual void Submit(const DrawCall& call, ResourceManager& resources) = 0;
     virtual void Dispatch(const ComputeCall& call, ResourceManager& resources) = 0;
+    // 相互依存しない Dispatch 群の UAV バリアをバッチ末尾へまとめる。
+    // WHY: スキニングのように各 Dispatch が別バッファへ書くパスでは、Dispatch ごとの
+    //      ResourceBarrier 呼び出しは不要。未対応バックエンドは既定の no-op でよい。
+    virtual void BeginComputeBatch() {}
+    virtual void EndComputeBatch() {}
 
     virtual void Resize(uint32_t width, uint32_t height) = 0;
     virtual uint32_t GetWidth() const = 0;
@@ -166,7 +171,22 @@ private:
     // キューブマップ RT の TextureCube SRV を ITexture 化する (TextureTag として束縛可能にする)。
     virtual std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget& /*rt*/) { return nullptr; }
     virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
+    // CPU から矩形単位で書き換えられるテクスチャ。ITexture::UpdateRegion と対で使う。
+    // 中身は未初期化ではなくゼロクリアされた状態で返すこと。
+    //
+    // WHY: フォントの動的アトラス (使われたグリフだけを実行時にラスタライズして貼る) が要求する。
+    //      Immutable な CreateNativeTextureFromData では 1 グリフ増えるたびに
+    //      テクスチャ全体を作り直すことになり、ハンドルも毎回変わってしまう。
+    //      未対応バックエンドは nullptr を返してよい (呼び出し側は静的アトラスへ縮退する)。
+    virtual std::unique_ptr<ITexture> CreateNativeDynamicTexture(
+        uint32_t /*width*/, uint32_t /*height*/, DynamicTextureFormat /*format*/) { return nullptr; }
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
+    // 初期データだけを持つ GPU ローカル SRV。DX11 など専用経路がない場合は通常の SRV へ縮退する。
+    virtual std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
+        const void* data, uint32_t elementCount, uint32_t stride)
+    {
+        return CreateNativeStructuredBuffer(data, elementCount, stride);
+    }
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
 };
 

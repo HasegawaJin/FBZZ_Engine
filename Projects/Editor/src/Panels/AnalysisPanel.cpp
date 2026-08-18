@@ -804,10 +804,17 @@ void AnalysisPanel::DrawRendering()
             ImGui::TableNextColumn(); ImGui::TextUnformatted(label);
             ImGui::TableNextColumn(); ImGui::Text("%d", value);
         };
+        auto row64 = [](const char* label, uint64_t value) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(label);
+            ImGui::TableNextColumn(); ImGui::Text("%llu", static_cast<unsigned long long>(value));
+        };
 
         row("Draw Calls",       stats.drawCalls);
         row("Triangles",        stats.triangleCount);
         row("Vertices",         stats.vertexCount);
+        row64("Skinning Vertices",   stats.skinningVertexCount);
+        row64("Skinning Dispatches", stats.skinningDispatchCount);
         // シャドウマップは同じジオメトリを光源視点で描き直す別コスト。
         // カメラ統計に混ぜず内訳として並べる。
         row("Shadow Draw Calls", stats.shadowDrawCalls);
@@ -820,8 +827,11 @@ void AnalysisPanel::DrawRendering()
         row("Objects (pre-cull)",     stats.totalObjects);
         row("Frustum Culled",         stats.frustumCulled);
         row("Occlusion Culled",       stats.occlusionCulled);
+        row("Distance Culled",        stats.distanceCulled);
+        row("Small Object Culled",    stats.smallObjectCulled);
 
-        const int rendered = stats.totalObjects - stats.frustumCulled - stats.occlusionCulled;
+        const int rendered = stats.totalObjects - stats.frustumCulled - stats.occlusionCulled
+                           - stats.distanceCulled - stats.smallObjectCulled;
         row("Rendered Objects",        rendered);
 
         ImGui::EndTable();

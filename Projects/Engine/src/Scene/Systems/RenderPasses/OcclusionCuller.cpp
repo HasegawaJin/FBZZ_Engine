@@ -110,13 +110,44 @@ bool OcclusionCuller::TestAndRaster(const math::Vector3& worldCenter, float worl
     if (isOccluded) return false; // 完全隠蔽確定
 
     // ── オクルーダー登録 ──────────────────────────────────────────────────────
-    // 球が可視なので、球の前面深度を深度バッファに書き込む。
-    // 以降の「より奥にある」球はここで遮られてカリングされる。
-    const float frontLinDepth = nearLinDepth;
-    for (int y = y0; y <= y1; ++y) {
-        for (int x = x0; x <= x1; ++x) {
+    // 可視だったので、この球を「以降のオブジェクトを遮るもの」として深度バッファへ焼く。
+    //
+    // WHY ここが従来バグっていたか:
+    //   旧実装は「球の前面深度 (nearFaceZ)」を「スクリーン AABB 全域」へ書いていた。
+    //   これは遮蔽者としては両方向に過大申告で、見えているオブジェクトが消える。
+    //     1) 深度: 球の前面はメッシュ表面の最も手前の 1 点でしかない。全域をその深度で
+    //        埋めると、実際にはメッシュが存在しない (球の縁の) 位置まで「手前に不透明面が
+    //        ある」と主張することになる。
+    //     2) 被覆: AABB の四隅は球の投影円の外側で、そもそも球すら覆っていない。
+    //   結果、大きな柱や地面の隣に立っているだけのオブジェクトが、柱の球の AABB に
+    //   重なるというだけで丸ごとカリングされていた。
+    //
+    // WHAT 直した内容: 遮蔽者は「確実に覆う範囲」を「確実に手前と言える深度」でだけ
+    //   主張する、という保守側へ倒す。
+    //     - 被覆: 投影円に内接する軸平行正方形 (半径 × 1/√2) のみ。円の外へはみ出さない。
+    //     - 深度: 球の背面 (viewZ + radius)。球に内包されるメッシュ表面は必ずこれより手前
+    //       にあるので、この深度で遮蔽できるものは実メッシュでも確実に遮蔽できる。
+    //   落とせる数は減るが、「見えているのに消える」は原理的に起きなくなる。
+    //   NOTE: バウンディング球はメッシュ形状の近似でしかないため、これ以上に効かせるには
+    //         専用の低ポリ occluder メッシュをラスタライズする方式が必要になる。
+    constexpr float kInscribedScale = 0.70710678f; // 1/√2
+    const float innerRx = screenRx * kInscribedScale;
+    const float innerRy = screenRy * kInscribedScale;
+
+    const int ox0 = std::max(0,           static_cast<int>(std::ceil (centerSx - innerRx)));
+    const int oy0 = std::max(0,           static_cast<int>(std::ceil (centerSy - innerRy)));
+    const int ox1 = std::min(kWidth  - 1, static_cast<int>(std::floor(centerSx + innerRx)));
+    const int oy1 = std::min(kHeight - 1, static_cast<int>(std::floor(centerSy + innerRy)));
+    if (ox0 > ox1 || oy0 > oy1) return true; // 内接領域が 1 ピクセルにも満たない → 遮蔽者にしない
+
+    const float farFaceZ = viewZ + worldRadius;
+    const float backLinDepth = std::clamp(
+        (farFaceZ - m_nearZ) / (m_farZ - m_nearZ), 0.0f, 1.0f);
+
+    for (int y = oy0; y <= oy1; ++y) {
+        for (int x = ox0; x <= ox1; ++x) {
             float& cell = m_depth[y * kWidth + x];
-            if (frontLinDepth < cell) cell = frontLinDepth;
+            if (backLinDepth < cell) cell = backLinDepth;
         }
     }
 

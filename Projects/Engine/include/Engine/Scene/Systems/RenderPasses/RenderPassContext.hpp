@@ -11,6 +11,7 @@
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/EnvironmentResources.hpp>
 #include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <Math/Frustum.hpp>
@@ -672,7 +673,34 @@ struct RenderPassContext {
     renderer::ResourceHandle<renderer::RenderTargetTag> outputRT;
     fbzz::LayerMask cullingMask;
 
+    // NOTE: ここまでが集成体初期化で埋める前半。参照メンバー handles より前に
+    //       既定値付きフィールドを挿すと呼び出し側の初期化子が 1 つずつずれるため、
+    //       新しい設定は必ず handles より後ろへ追加すること。
     RenderPassHandles& handles;
+
+    // ---- カリング挙動 (CameraComponent 由来) ----
+    // WHY パスが直接 CameraComponent を読まないか: Scene View / VFX プレビューのように
+    //      「シーンのメインカメラとは別の視点」で描く経路があり、そこでゲームカメラの
+    //      設定が効いてしまうと、エディタ上の見え方が編集対象と食い違う。
+    bool  frustumCullingEnabled   = true;
+    bool  occlusionCullingEnabled = true;
+    // 全バウンディング球へ加算するワールド単位の余白 [m]。
+    float cullingBoundsPadding    = 0.0f;
+    // 距離カリング。値は解決済み (負値なし)。0 は「無効」。
+    float cullMaxDistance         = 0.0f;
+    float cullLayerDistances[kCullLayerCount] = {};
+    // レイヤー別距離が 1 つでも設定されているか。全 0 のときは 32 要素の探索ごと省く。
+    bool  hasLayerCullDistances   = false;
+    bool  cullDistanceSpherical   = true;
+    // 極小オブジェクトカリングのしきい値 (画面高さ比)。0 は無効。
+    float smallObjectScreenHeight = 0.0f;
+    // 画面高さ比の算出に使う射影スケール = projection.m[1][1] = 1/tan(fovY/2)。
+    // WHY 事前計算して持つか: Camera::GetProjectionMatrix() は毎回行列を組み直して返すため、
+    //      オブジェクトごとに呼ぶと判定より行列生成の方が高くつく。
+    float cullProjScaleY          = 0.0f;
+    // 距離計算用のカメラ前方ベクトル (深度距離モードでのみ使う)。同じ理由で事前計算する。
+    math::Vector3 cullCameraForward = { 0.0f, 0.0f, 1.0f };
+
     uint32_t width = 0;
     uint32_t height = 0;
     bool selectionOutlineEnabled = false;
@@ -735,9 +763,15 @@ struct RenderPassContext {
     int statsTotalObjects    = 0;
     int statsFrustumCulled   = 0;
     int statsOcclusionCulled = 0;
+    int statsDistanceCulled    = 0;
+    int statsSmallObjectCulled = 0;
     int statsDrawCalls       = 0;
     int statsVertexCount     = 0;
     int statsTriangleCount   = 0;
+    // SkinningComputePass がこのフレームのポーズについて実際に処理した仕事量。
+    // Scene/Game View が結果を共有した場合も、後側のビューへ同じ値を引き継ぐ。
+    uint64_t statsSkinningVertexCount = 0;
+    uint32_t statsSkinningDispatchCount = 0;
     // シャドウマップ描画は同じジオメトリを光源視点で再描画するため、
     // カメラ統計に混ぜず独立したカウンターへ集計する。
     int statsShadowDrawCalls     = 0;

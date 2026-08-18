@@ -8,6 +8,7 @@
 
 #include <Engine/Core/Window.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Physics/Layer.hpp>
@@ -44,5 +45,9 @@ void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx = nul
 
 /// シーン内のメイン CameraComponent の cullingMask を返す。見つからなければ Layer::Everything を返す。
 [[nodiscard]] fbzz::LayerMask ResolveGameCullingMask(Scene& scene);
+
+/// シーン内のメイン CameraComponent のカリング設定を返す。見つからなければ既定値を返す。
+/// 実体は CameraCullingSettings.hpp (RenderSystem 側と共有する POD)。
+[[nodiscard]] CameraCullingSettings ResolveGameCullingSettings(Scene& scene);
 
 } // namespace fbzz::scene

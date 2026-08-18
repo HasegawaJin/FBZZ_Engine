@@ -5223,6 +5223,12 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("drawCalls", JsonValue(rendering.renderStats.drawCalls));
     result.Set("triangles", JsonValue(rendering.renderStats.triangleCount));
     result.Set("vertices", JsonValue(rendering.renderStats.vertexCount));
+    result.Set("skinningVertices", JsonValue(
+        static_cast<std::int64_t>(rendering.renderStats.skinningVertexCount)));
+    // uint32_t は JsonValue の int / int64_t / double と暗黙変換が競合するため、
+    // JSON の整数表現へ明示的に昇格させる。
+    result.Set("skinningDispatches", JsonValue(
+        static_cast<std::int64_t>(rendering.renderStats.skinningDispatchCount)));
     result.Set("totalObjects", JsonValue(rendering.renderStats.totalObjects));
     result.Set("frustumCulled", JsonValue(rendering.renderStats.frustumCulled));
     result.Set("occlusionCulled", JsonValue(rendering.renderStats.occlusionCulled));

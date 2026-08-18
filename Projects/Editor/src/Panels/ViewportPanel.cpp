@@ -803,16 +803,18 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
             // 頂点数・三角形数をカンマ区切りで読みやすく表示する
             // (snprintf で手動フォーマット。printf の %'d はクロスプラットフォームで動作しないため)
-            char vtxBuf[32], triBuf[32];
-            auto fmtK = [](char* buf, int n) {
+            char vtxBuf[32], triBuf[32], skinVtxBuf[32];
+            auto fmtK = [](char* buf, uint64_t n) {
                 if (n >= 1000000)      std::snprintf(buf, 32, "%.1fM", n / 1000000.0f);
                 else if (n >= 1000)    std::snprintf(buf, 32, "%.1fK", n / 1000.0f);
-                else                   std::snprintf(buf, 32, "%d", n);
+                else                   std::snprintf(buf, 32, "%llu", static_cast<unsigned long long>(n));
             };
             fmtK(vtxBuf, rs.vertexCount);
             fmtK(triBuf, rs.triangleCount);
+            fmtK(skinVtxBuf, rs.skinningVertexCount);
             ImGui::Text("Vertices   %s", vtxBuf);
             ImGui::Text("Triangles  %s", triBuf);
+            ImGui::Text("Skinning   %s (%u dispatches)", skinVtxBuf, rs.skinningDispatchCount);
 
             // シャドウマップは光源視点でジオメトリを描き直す別コストなので内訳として出す。
             char shadowTriBuf[32];
@@ -832,9 +834,16 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             ImGui::Text("Occlusion  %d (%.0f%%)",
                         rs.occlusionCulled,
                         rs.occlusionCulled / total * 100.0f);
+            ImGui::Text("Distance   %d (%.0f%%)",
+                        rs.distanceCulled,
+                        rs.distanceCulled / total * 100.0f);
+            ImGui::Text("Small Obj  %d (%.0f%%)",
+                        rs.smallObjectCulled,
+                        rs.smallObjectCulled / total * 100.0f);
 
             // 合計カリング率を色付きで表示 (50% 以上は緑、30% 未満は赤)
-            const int totalCulled = rs.frustumCulled + rs.occlusionCulled;
+            const int totalCulled = rs.frustumCulled + rs.occlusionCulled
+                                  + rs.distanceCulled + rs.smallObjectCulled;
             const float cullRate  = totalCulled / total * 100.0f;
             ImVec4 rateColor = cullRate >= 50.0f
                 ? ImVec4{ 0.4f, 1.0f, 0.4f, 1.0f }

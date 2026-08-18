@@ -6,6 +6,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 #include "DX12Context.hpp"
 #include "DX12UploadArena.hpp"
 #include "DX12PsoCache.hpp"
@@ -34,6 +35,8 @@ public:
     void ClearDepth(float depth = 1.0f) override;
     void Submit(const DrawCall& call, ResourceManager& resources) override;
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
+    void BeginComputeBatch() override;
+    void EndComputeBatch() override;
     void Resize(uint32_t width, uint32_t height) override;
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
     void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
@@ -79,13 +82,20 @@ private:
     std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget&) override;
     std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override;
+    std::unique_ptr<ITexture> CreateNativeDynamicTexture(uint32_t width, uint32_t height,
+                                                         DynamicTextureFormat format) override;
     std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t, uint32_t) override;
+    std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
+        const void*, uint32_t, uint32_t) override;
     std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override;
 
     DX12Context m_context;
     DX12UploadArena m_uploadArena;
     DX12PsoCache m_psoCache;
     DX12StateTracker m_stateTracker;
+    // 独立 Dispatch 群が書いた UAV を保持し、パス末尾の 1 回の ResourceBarrier へ集約する。
+    std::vector<ID3D12Resource*> m_computeBatchWrittenResources;
+    bool m_computeBatchActive = false;
     class DX12RenderTarget* m_currentRenderTarget = nullptr;
     std::unique_ptr<class DX12IblBaker> m_iblBaker;
     D3D12_CPU_DESCRIPTOR_HANDLE m_currentCubeRtv{};
