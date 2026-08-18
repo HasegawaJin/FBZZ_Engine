@@ -16,11 +16,25 @@ if(MSVC)
     add_compile_options(/utf-8 /FS)
 endif()
 
+# WHY: 一度 CMakeCache に入った FBZZ_SDK_ROOT は環境変数より優先されるため、SDK を入れ替え・削除すると
+#      消えたディレクトリを指したまま固定され、find_package(FBZZ) が毎回失敗して復帰できなくなる。
+#      実体を失った cache 値は破棄し、FBZZ Hub が渡す現在の SDK を取り直す。
+if(DEFINED FBZZ_SDK_ROOT AND NOT FBZZ_SDK_ROOT STREQUAL ""
+   AND NOT EXISTS "${FBZZ_SDK_ROOT}/cmake/FBZZ/FBZZConfig.cmake")
+    message(WARNING "FBZZ_SDK_ROOT '${FBZZ_SDK_ROOT}' no longer contains an SDK; re-resolving from the environment.")
+    unset(FBZZ_SDK_ROOT)
+    unset(FBZZ_SDK_ROOT CACHE)
+endif()
 if((NOT DEFINED FBZZ_SDK_ROOT OR FBZZ_SDK_ROOT STREQUAL "") AND DEFINED ENV{FBZZ_SDK_ROOT})
     set(FBZZ_SDK_ROOT "$ENV{FBZZ_SDK_ROOT}" CACHE PATH "Versioned FBZZ SDK root" FORCE)
 endif()
 if(NOT DEFINED FBZZ_SDK_ROOT OR FBZZ_SDK_ROOT STREQUAL "")
     message(FATAL_ERROR "FBZZ_SDK_ROOT is required. Select the versioned SDK in FBZZ Hub.")
+endif()
+# WHY: find_package の失敗メッセージは候補ファイル名の羅列で原因が読み取りにくい。
+#      SDK 実体の欠落はここで名指しして弾き、Hub での再選択へ誘導する。
+if(NOT EXISTS "${FBZZ_SDK_ROOT}/cmake/FBZZ/FBZZConfig.cmake")
+    message(FATAL_ERROR "FBZZ SDK not found at '${FBZZ_SDK_ROOT}'. Re-select the versioned SDK in FBZZ Hub.")
 endif()
 list(PREPEND CMAKE_PREFIX_PATH "${FBZZ_SDK_ROOT}/cmake")
 find_package(FBZZ {{ENGINE_VERSION}} EXACT CONFIG REQUIRED)
