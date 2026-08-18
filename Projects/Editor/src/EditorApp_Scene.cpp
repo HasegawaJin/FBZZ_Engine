@@ -330,6 +330,7 @@ void EditorApp::NewScene()
     m_ctx.selectedEntities.clear();
     m_ctx.graphLayouts.clear();
     m_ctx.editorHiddenGuids.clear();
+    m_ctx.editorSceneState.Clear();
     RebuildEditorUIFromScene();
     m_settings.lastScenePath.clear();
     m_ctx.currentScenePath.clear();
@@ -666,15 +667,46 @@ void EditorApp::CheckHotReload()
 
 namespace {
 
+// CMakeCache.txt に記録された FBZZ_SDK_ROOT の値を 1 行分そのまま取り出す。
+// 見つからない / cache が読めない場合は空文字列を返す。
+std::string ReadCachedSdkRoot(const std::filesystem::path& buildDir)
+{
+    std::string cacheText;
+    if (!util::FileSystem::ReadText(buildDir / L"CMakeCache.txt", cacheText)) return {};
+
+    static constexpr std::string_view kSdkKey = "FBZZ_SDK_ROOT:PATH=";
+    const std::size_t keyBegin = cacheText.find(kSdkKey);
+    if (keyBegin == std::string::npos) return {};
+    const std::size_t valueBegin = keyBegin + kSdkKey.size();
+    const std::size_t valueEnd   = cacheText.find_first_of("\r\n", valueBegin);
+    return cacheText.substr(valueBegin, valueEnd - valueBegin);
+}
+
+// find_package(FBZZ CONFIG) が解決できる実体が残っている SDK root かを判定する。
+// WHY: SDK ディレクトリを削除・改名しても cache の値だけは残るため、値の一致だけでは
+//      「使える SDK を指しているか」を保証できない。
+bool IsUsableSdkRoot(const std::string& sdkRoot)
+{
+    if (sdkRoot.empty()) return false;
+    return util::FileSystem::Exists(
+        util::FileSystem::PathFromUtf8(sdkRoot) / L"cmake" / L"FBZZ" / L"FBZZConfig.cmake");
+}
+
 bool CMakeCacheUsesSdkRoot(const std::filesystem::path& buildDir, const std::string& sdkRoot)
 {
     if (sdkRoot.empty()) return true;
-    std::string cacheText;
-    if (!util::FileSystem::ReadText(buildDir / L"CMakeCache.txt", cacheText)) return false;
+    const std::string cachedRoot = ReadCachedSdkRoot(buildDir);
+    if (cachedRoot.empty()) return false;
 
-    const std::string normalizedCache = util::FileSystem::NormalizePathSeparators(cacheText);
-    const std::string normalizedSdk = util::FileSystem::NormalizePathSeparators(sdkRoot);
-    return normalizedCache.find("FBZZ_SDK_ROOT:PATH=" + normalizedSdk) != std::string::npos;
+    // WHY: 以前は cache 全文への部分一致で判定していたため、".../SDK/0.1.0" が
+    //      ".../SDK/0.1.0-dev.dirty" へ前方一致し、既に消えた SDK を指す cache を
+    //      「一致」と誤判定していた。その結果 reconfigure が永久にスキップされ、
+    //      毎起動 find_package(FBZZ) 失敗 → Scripts compile error を繰り返していた。
+    //      行末までを含めた値の完全一致 (区切り文字・大小文字は正規化) で比較する。
+    if (!util::FileSystem::SamePathText(cachedRoot, sdkRoot)) return false;
+
+    // 値が一致していても SDK 実体が無ければ configure は必ず失敗するので stale 扱いにする。
+    return IsUsableSdkRoot(cachedRoot);
 }
 
 // コピーされたテンプレートのCMakeCacheは生成元を指すため、configure前に破棄する。
@@ -778,6 +810,17 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     }
     FBZZ_LOG_DEBUG("ScriptDll: SDK cache configured");
     return true;
+}
+
+// Scripts ビルドの失敗ログが「コンパイルエラー」ではなく「SDK を解決できない configure 失敗」かを判定する。
+// WHY: cmake --build は generate.stamp が古いと暗黙に configure をやり直すため、
+//      壊れた CMakeCache は compile error の顔をして毎回同じ内容で失敗し続ける。
+//      この形の失敗だけは再ビルドではなく cache の作り直しでしか復帰できない。
+bool LooksLikeSdkConfigureFailure(const std::string& log)
+{
+    return log.find("FBZZConfig.cmake")            != std::string::npos
+        || log.find("FBZZ_SDK_ROOT")               != std::string::npos
+        || log.find("CMake Configure step failed") != std::string::npos;
 }
 
 } // namespace
@@ -1118,16 +1161,41 @@ void EditorApp::TickScriptCompile()
 
     if (m_scriptCompiler.GetState() == Compiler::State::Failed) {
         // 失敗ログを取り込み、診断を確定する。Build Output パネルへ件数と file:line が並ぶ。
-        m_buildConsole.IngestFullLog(m_scriptCompiler.GetLog());
+        const std::string buildLog = m_scriptCompiler.GetLog();
+        m_buildConsole.IngestFullLog(buildLog);
         m_buildConsole.EndBuild(false, m_scriptCompiler.GetExitCode());
         const int errs = m_buildConsole.Latest() ? m_buildConsole.Latest()->errorCount : 0;
         const std::string msg = errs > 0
             ? "Scripts: " + std::to_string(errs) + " error(s)"
             : "Scripts: compile error (exit=" + std::to_string(m_scriptCompiler.GetExitCode()) + ")";
-        FBZZ_LOG_ERROR("ScriptDll: %s\n%s", msg.c_str(), m_scriptCompiler.GetLog().c_str());
+        FBZZ_LOG_ERROR("ScriptDll: %s\n%s", msg.c_str(), buildLog.c_str());
+        m_scriptCompiler.Reset();
+
+        // 自己修復: SDK を解決できない CMakeCache は、放置すると起動のたびに同じ失敗を出す。
+        // configure をやり直して cache を作り直し、その場で 1 度だけ再ビルドを予約する。
+        // WHY: 1 セッションにつき 1 回に制限するのは、SDK 自体が本当に無い場合に
+        //      configure 失敗 → 再ビルド → 同じ失敗、の無限ループへ落ちないようにするため。
+        if (!m_scriptSdkRecoveryDone
+            && !m_ctx.projectRoot.empty()
+            && LooksLikeSdkConfigureFailure(buildLog)) {
+            m_scriptSdkRecoveryDone = true;
+            FBZZ_LOG_WARN("ScriptDll: SDK を解決できない CMakeCache を検出しました。configure をやり直します");
+            if (TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot)) {
+                m_scriptCompilePending = true;
+                m_scriptDebounceTimer  = 0.0f;
+                // 依存ターゲットも含めた初回ビルド扱いにする (cache 再生成後は中間物が失われている)。
+                m_scriptInitialBuild   = true;
+                m_ctx.scriptReloadBusy = true;
+                SetHotReloadState(EditorContext::HotReloadState::Compiling,
+                                  "Scripts: SDK cache を再構成しました。再ビルド中...");
+                m_ctx.hotReloadProgress = 0.0f;
+                return;
+            }
+            FBZZ_LOG_ERROR("ScriptDll: SDK cache の再構成に失敗しました。FBZZ Hub で SDK を選び直してください");
+        }
+
         SetHotReloadState(EditorContext::HotReloadState::Failed, msg);
         m_ctx.hotReloadDoneTimer = 8.0f;
-        m_scriptCompiler.Reset();
         m_ctx.scriptReloadBusy = false;
     }
 }

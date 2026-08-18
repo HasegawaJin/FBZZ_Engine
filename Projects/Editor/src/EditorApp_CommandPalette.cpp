@@ -161,6 +161,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
                     RequestOpenScenePath(path);
                 } else if (ext == ".animcontroller") {
                     ctx.selectedAssetPath = path;
+                    if (ctx.openAnimationGraph) ctx.openAnimationGraph(path);
                     ctx.requestOpenAnimationGraph = true;
                 } else if (ext == ".vfx") {
                     ctx.selectedAssetPath = path;

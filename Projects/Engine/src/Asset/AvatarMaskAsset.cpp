@@ -2,12 +2,14 @@
 // AvatarMaskAsset.cpp | fbzz::asset
 // .mask アセットの TOML 入出力とボーン別ウェイト評価
 #include <Engine/Asset/AvatarMaskAsset.hpp>
+#include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <sstream>
 
 namespace fbzz::asset {
@@ -115,6 +117,81 @@ HumanoidPatternTable()
 
 } // namespace
 
+std::string BuildSkeletonNodePath(const Skeleton& skeleton, int nodeIndex)
+{
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()))
+        return {};
+
+    std::vector<std::string_view> reverseNames;
+    std::vector<bool> visited(skeleton.nodes.size(), false);
+    int current = nodeIndex;
+    while (current >= 0 && current < static_cast<int>(skeleton.nodes.size())) {
+        if (visited[static_cast<size_t>(current)]) return {};
+        visited[static_cast<size_t>(current)] = true;
+        reverseNames.push_back(skeleton.nodes[static_cast<size_t>(current)].name);
+        current = skeleton.nodes[static_cast<size_t>(current)].parentIndex;
+    }
+
+    std::string path;
+    for (auto it = reverseNames.rbegin(); it != reverseNames.rend(); ++it) {
+        if (!path.empty()) path += '/';
+        path += *it;
+    }
+    return path;
+}
+
+namespace {
+
+bool IsDescendantPath(std::string_view ancestor, std::string_view candidate)
+{
+    return candidate.size() > ancestor.size()
+        && candidate.compare(0, ancestor.size(), ancestor) == 0
+        && candidate[ancestor.size()] == '/';
+}
+
+} // namespace
+
+void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
+{
+    std::vector<AvatarMaskEntry> compressed;
+    compressed.reserve(mask.entries.size());
+
+    for (const AvatarMaskEntry& entry : mask.entries) {
+        if (entry.bonePath.empty()) continue;
+
+        bool replaced = false;
+        for (AvatarMaskEntry& existing : compressed) {
+            if (existing.bonePath == entry.bonePath) {
+                existing = entry;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) compressed.push_back(entry);
+    }
+
+    const std::vector<AvatarMaskEntry> original = compressed;
+    compressed.erase(
+        std::remove_if(compressed.begin(), compressed.end(),
+            [&original](const AvatarMaskEntry& entry) {
+                for (const AvatarMaskEntry& parent : original) {
+                    if (parent.bonePath == entry.bonePath || !parent.includeChildren
+                        || parent.blendDepth != 0
+                        || !IsDescendantPath(parent.bonePath, entry.bonePath)) {
+                        continue;
+                    }
+                    if (parent.weight == entry.weight
+                        && entry.includeChildren == parent.includeChildren) {
+                        return true;
+                    }
+                }
+                return false;
+            }),
+        compressed.end());
+
+    mask.entries = std::move(compressed);
+}
+
 float EvaluateAvatarMaskWeight(
     const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName)
 {
@@ -212,16 +289,28 @@ HumanoidBodyPart GuessBodyPartForBone(std::string_view boneName)
 
 bool SaveAvatarMaskAsset(const std::string& path, const AvatarMaskAsset& asset)
 {
+    AvatarMaskAsset normalized = asset;
+    for (auto& entry : normalized.entries) {
+        // 外部編集や旧形式から NaN / 範囲外が入っても、保存値を必ずランタイムの
+        // 評価範囲へ戻す。std::clamp は NaN を検出しないため有限値を先に確認する。
+        entry.weight = std::isfinite(entry.weight)
+            ? std::clamp(entry.weight, 0.0f, 1.0f)
+            : 0.0f;
+        entry.blendDepth = (std::max)(entry.blendDepth, 0);
+    }
+    CompressAvatarMaskEntries(normalized);
+
     toml::table root;
     toml::table header;
     header.insert("version", int64_t{ 1 });
-    header.insert("name", asset.name);
-    header.insert("default_include", asset.defaultInclude);
-    header.insert("skeleton_source", asset.skeletonSourcePath);
+    header.insert("name", normalized.name);
+    header.insert("default_include", normalized.defaultInclude);
+    header.insert("skeleton_source", normalized.skeletonSourcePath);
+    header.insert("skeleton_source_signature", normalized.skeletonSourceSignature);
     root.insert("mask", std::move(header));
 
     toml::array entries;
-    for (const auto& entry : asset.entries) {
+    for (const auto& entry : normalized.entries) {
         toml::table t;
         t.insert("bone", entry.bonePath);
         t.insert("weight", static_cast<double>(entry.weight));
@@ -258,6 +347,8 @@ bool LoadAvatarMaskAsset(const std::string& path, AvatarMaskAsset& outAsset)
         outAsset.name = (*header)["name"].value_or(std::string{});
         outAsset.defaultInclude = (*header)["default_include"].value_or(false);
         outAsset.skeletonSourcePath = (*header)["skeleton_source"].value_or(std::string{});
+        outAsset.skeletonSourceSignature =
+            (*header)["skeleton_source_signature"].value_or(std::string{});
     }
     if (outAsset.name.empty())
         outAsset.name = util::FileSystem::GetFilename(path);
