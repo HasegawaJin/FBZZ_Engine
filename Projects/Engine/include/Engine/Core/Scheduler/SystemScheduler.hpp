@@ -55,6 +55,7 @@ private:
     std::array<std::vector<std::vector<ISystem*>>, static_cast<size_t>(Phase::Count)> m_batches;
     std::array<PhaseConfig, static_cast<size_t>(Phase::Count)>                        m_phaseConfigs{};
     float m_accumulator  = 0.0f;
+    float m_physicsAlpha = 0.0f;
     bool  m_singleStep   = false;
     bool  m_built        = false;
     int   m_frameCounter = 0;

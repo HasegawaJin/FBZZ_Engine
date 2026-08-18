@@ -27,7 +27,7 @@ namespace fbzz::physics
 {
 
     // Step() の最後に前フレームとの差分から生成するイベント。
-    struct CollisionEvent 
+    struct CollisionEvent
     {
         const Collider* colliderA;
         const Collider* colliderB;
@@ -37,6 +37,24 @@ namespace fbzz::physics
         math::Vector3 normal = math::Vector3::UP;
         float depth = 0.0f;
         bool isTrigger = false;
+
+        // ── 衝突の強さ ──────────────────────────────────────────────────────
+        // WHY 別途記録するか: このイベントは Step() の末尾で作られるが、その時点では
+        //     Resolve が既に速度を書き換えているため、bodyA/bodyB から「ぶつかった勢い」を
+        //     復元できない。ゲーム側 (衝突ダメージ・ヒットストップ・SE の強弱) が必要と
+        //     するのはまさに解決前の値なので、Resolve の前後で拾ってここへ持ち越す。
+        //
+        //     substep を増やすと 2 回目以降の NarrowPhase では既に減速しているため、
+        //     フレーム内で観測した最大値を保持する (substep 数を変えても値がぶれない)。
+
+        // 接触点での相対速度 (A から見た B との差、角速度の寄与を含む)。解決前の値。
+        math::Vector3 relativeVelocity = math::Vector3::ZERO;
+        // 法線方向の接近速度。正 = 近づいている = 実際にぶつかった強さ。
+        // 「一定速度以上で衝突したときだけダメージ」の判定はこの値を使う。
+        float approachSpeed = 0.0f;
+        // 解決で実際に加わった法線インパルス (質量込みの強さ)。
+        // 軽い敵と重い敵で手応えを変えたい場合は approachSpeed ではなくこちらを使う。
+        float normalImpulse = 0.0f;
     };
 
     // Physics モジュールの統合点。剛体・コライダー・制約を受け取り、1 フレーム分の物理を進める。
@@ -130,6 +148,10 @@ namespace fbzz::physics
         void ClassifyCollisions();
         void CCDPhase(float dt);    // 高速物体のトンネリング防止 (IntegrateBodies の前)
         bool HasActiveSimulationBodies() const;
+        // Resolve の直前に呼ぶ。接触点の相対速度 (= 衝突直前の勢い) を記録する。
+        void RecordApproachVelocities();
+        // Resolve の直後に呼ぶ。実際に加わった法線インパルスを記録する。
+        void RecordContactImpulses();
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
         int m_substeps = 1;
@@ -176,6 +198,18 @@ namespace fbzz::physics
         std::vector<CollisionEvent> m_enterEvents;
         std::vector<CollisionEvent> m_stayEvents;
         std::vector<CollisionEvent> m_exitEvents;
+
+        // このフレームで観測した衝突の強さ。Step() の先頭で clear し、
+        // 各サブステップの Resolve 前後で最大値を更新して ClassifyCollisions が読む。
+        // WHY 最大値か: 1 フレームに複数サブステップがあると、2 回目以降は既に
+        //     減速している。最初の当たりの勢いこそがゲーム側の欲しい値なので、
+        //     substep 数を変えてもダメージ量が変わらないよう最大値で代表させる。
+        struct ContactImpact {
+            math::Vector3 relativeVelocity = math::Vector3::ZERO;
+            float approachSpeed = 0.0f;
+            float normalImpulse = 0.0f;
+        };
+        std::map<ColliderPair, ContactImpact> m_frameImpacts;
     };
 
 } // namespace fbzz::physics

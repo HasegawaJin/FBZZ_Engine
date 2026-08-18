@@ -17,6 +17,7 @@ struct SystemContext {
     audio::AudioManager*        audioManager; // SetAudioManager で設定するまで null
     float                       dt;
     float                       fixedDt;      // Physics 固定ステップ時のみ有効
+    float                       physicsAlpha; // 前回と現在の物理姿勢を描画補間する 0〜1 の比率
     bool                        simulating;
 };
 

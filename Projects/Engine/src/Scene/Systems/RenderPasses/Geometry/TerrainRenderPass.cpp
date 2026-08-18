@@ -781,7 +781,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
 
-        const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
         TerrainObjectCB terrainCBData = g_cbParamCache.count(eid.index)
                                       ? g_cbParamCache.at(eid.index)
                                       : TerrainObjectCB{};
@@ -798,7 +798,10 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 // 地形チャンクはそれぞれ独立にカリングされる描画候補なので、
                 // メッシュと同じ粒度で統計に数える。
                 ++ctx.statsTotalObjects;
-                if (!IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax)) {
+                // カメラの Frustum Culling を切っている間はチャンクも落とさない。
+                // WHY: メッシュだけ全部出て地形だけ消えると、切り分けの道具として成立しない。
+                if (ctx.frustumCullingEnabled &&
+                    !IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax)) {
                     ++ctx.statsFrustumCulled;
                     continue;
                 }
@@ -919,7 +922,7 @@ void SubmitTerrainShadowCasters(
 
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
-        const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
 
         ShadowObjectCB objData{};
         objData.world             = world;
@@ -990,7 +993,7 @@ void TerrainSelectionMaskSystem(RenderPassContext& ctx)
         }
         if (!selected) continue;
 
-        const math::Matrix4 world = transform.GetWorldMatrix();
+    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);

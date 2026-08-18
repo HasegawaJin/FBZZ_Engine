@@ -50,6 +50,22 @@ struct ColliderOwner {
 using ColliderOwnerMap = std::unordered_map<const physics::Collider*, ColliderOwner>;
 using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
 
+// Transform の直接編集は動的剛体に対するテレポート要求として扱う。
+// 浮動小数の再計算誤差では履歴をリセットしないよう、位置と回転に小さい許容値を持たせる。
+bool PoseChanged(const RigidBodyComponent& component, const Transform& transform)
+{
+    if (!component.hasPhysicsPoseHistory)
+        return true;
+    constexpr float POSITION_EPSILON_SQ = 1.0e-10f;
+    constexpr float ROTATION_DOT_EPSILON = 1.0e-5f;
+    const bool positionChanged =
+        (transform.worldPosition - component.currentPhysicsPosition).LengthSq() >
+        POSITION_EPSILON_SQ;
+    const float rotationDot = std::abs(math::Quaternion::Dot(
+        transform.worldRotation.Normalized(), component.currentPhysicsRotation));
+    return positionChanged || (1.0f - rotationDot) > ROTATION_DOT_EPSILON;
+}
+
 // WaterBuoyancyVolume — WaterComponent の Gerstner 波を CPU 側で評価する浮力 Volume。
 // WHY: physics モジュールに WaterComponent 依存を入れると依存方向が逆転するため、
 //      Engine の PhysicsSystem 内で physics::Volume を実装し、World には抽象 Volume として渡す。
@@ -219,12 +235,52 @@ void SyncColliderComponents(Scene& scene,
     }
 }
 
+// event の向きは A → B で固定されているため、B 側のスクリプトへ渡すときは
+// 法線と相対速度を反転させて「自分から見た相手」に揃える。
+// approachSpeed / normalImpulse はスカラーで、両者を同時に反転すると
+// 内積の符号が変わらないため、どちら側でも同じ値になる。
+CollisionInfo BuildCollisionInfo(const ColliderOwner& self,
+                                 const ColliderOwner& other,
+                                 const physics::CollisionEvent& event,
+                                 bool flipped)
+{
+    const float sign = flipped ? -1.0f : 1.0f;
+
+    CollisionInfo info;
+    info.self = self.gameObject;
+    info.other = other.gameObject;
+    info.selfCollider = self.collider;
+    info.otherCollider = other.collider;
+    info.contactNormal = event.normal * sign;
+    info.contactPoint = event.point;
+    info.contactDepth = event.depth;
+    info.relativeVelocity = event.relativeVelocity * sign;
+    info.approachSpeed = event.approachSpeed;
+    info.impactImpulse = event.normalImpulse;
+    return info;
+}
+
+// CharacterController は Script の有無にかかわらず物理接触を受け取る。
+// WHY: 接地判定のためだけに全キャラクターへ同じ OnCollisionStay 実装を要求すると、
+//      スクリプトを使わない敵・NPC・プレハブが成立しないため。
+void RegisterCharacterGroundContact(const ColliderOwner& self,
+                                    const ColliderOwner& other,
+                                    const physics::CollisionEvent& event,
+                                    bool flipped)
+{
+    if (!self.gameObject || !other.gameObject) return;
+
+    auto* controller = self.gameObject->GetComponent<CharacterControllerComponent>();
+    if (!controller) return;
+
+    controller->RegisterGroundContact(BuildCollisionInfo(self, other, event, flipped));
+}
+
 void DispatchToScript(Scene& scene,
                       const ColliderOwner& self,
                       const ColliderOwner& other,
-                      const math::Vector3& contactNormal,
-                      const math::Vector3& contactPoint,
-                      float contactDepth,
+                      const physics::CollisionEvent& event,
+                      bool flipped,
                       ScriptCollisionCallback callback)
 {
     if (!self.gameObject || !other.gameObject) return;
@@ -232,35 +288,32 @@ void DispatchToScript(Scene& scene,
     auto* scriptComponent = self.gameObject->GetComponent<ScriptComponent>();
     if (!scriptComponent) return;
 
-    CollisionInfo info;
-    info.self = self.gameObject;
-    info.other = other.gameObject;
-    info.selfCollider = self.collider;
-    info.otherCollider = other.collider;
-    info.contactNormal = contactNormal;
-    info.contactPoint = contactPoint;
-    info.contactDepth = contactDepth;
+    CollisionInfo info = BuildCollisionInfo(self, other, event, flipped);
 
     for (auto& entry : scriptComponent->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, self.gameObject);
-        (entry.script.get()->*callback)(info);
+        entry.script->InvokeCollision(callback, info, "collision callback");
     }
 }
 
 void DispatchCollisionEvent(Scene& scene,
                             const ColliderOwnerMap& owners,
                             const physics::CollisionEvent& event,
-                            ScriptCollisionCallback callback)
+                            ScriptCollisionCallback callback,
+                            bool registerGroundContact)
 {
     auto ownerA = owners.find(event.colliderA);
     auto ownerB = owners.find(event.colliderB);
     if (ownerA == owners.end() || ownerB == owners.end()) return;
 
-    DispatchToScript(scene, ownerA->second, ownerB->second,
-                     event.normal, event.point, event.depth, callback);
-    DispatchToScript(scene, ownerB->second, ownerA->second,
-                     -event.normal, event.point, event.depth, callback);
+    if (registerGroundContact && !event.isTrigger) {
+        RegisterCharacterGroundContact(ownerA->second, ownerB->second, event, false);
+        RegisterCharacterGroundContact(ownerB->second, ownerA->second, event, true);
+    }
+
+    DispatchToScript(scene, ownerA->second, ownerB->second, event, false, callback);
+    DispatchToScript(scene, ownerB->second, ownerA->second, event, true,  callback);
 }
 
 void DispatchCollisionEvents(Scene& scene,
@@ -271,21 +324,21 @@ void DispatchCollisionEvents(Scene& scene,
     {
         DispatchCollisionEvent(scene, owners, event, event.isTrigger
             ? &Script::OnTriggerEnter
-            : &Script::OnCollisionEnter);
+            : &Script::OnCollisionEnter, true);
     }
 
     for (const auto& event : world.GetStayEvents())
     {
         DispatchCollisionEvent(scene, owners, event, event.isTrigger
             ? &Script::OnTriggerStay
-            : &Script::OnCollisionStay);
+            : &Script::OnCollisionStay, true);
     }
 
     for (const auto& event : world.GetExitEvents())
     {
         DispatchCollisionEvent(scene, owners, event, event.isTrigger
             ? &Script::OnTriggerExit
-            : &Script::OnCollisionExit);
+            : &Script::OnCollisionExit, false);
     }
 }
 
@@ -294,8 +347,8 @@ void DispatchCollisionEvents(Scene& scene,
 ComponentAccess PhysicsSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<ColliderComponent, RigidBodyComponent, CharacterControllerComponent>()
-        .Writes<RigidBodyComponent, VolumeComponent>();
+        .Reads<ColliderComponent, RigidBodyComponent>()
+        .Writes<RigidBodyComponent, CharacterControllerComponent, VolumeComponent>();
 }
 
 void PhysicsSystem::Update(SystemContext& ctx) {
@@ -328,8 +381,16 @@ void PhysicsSystem::Update(SystemContext& ctx) {
 
             // WHY: BodyHandle は Component 側へ永続化される runtime state。
             //      SceneView の structured binding に依存せず、Component 実体へ直接書き戻す。
-            rb->rigidBody->SetPosition(go->transform.worldPosition);
-            rb->rigidBody->SetRotation(go->transform.worldRotation);
+            // 動的剛体は Physics を正とし、Transform が前回物理姿勢から明示的に変わった時だけ
+            // テレポートとして Scene → Physics へ送る。毎 step の無条件再送は補間履歴と
+            // FixedScript からの直接的な剛体操作を巻き戻すため削除する。
+            if (rb->rigidBody->IsStatic() || PoseChanged(*rb, go->transform)) {
+                rb->rigidBody->SetPosition(go->transform.worldPosition);
+                rb->rigidBody->SetRotation(go->transform.worldRotation);
+                rb->ResetPhysicsPoseHistory(
+                    go->transform.worldPosition, go->transform.worldRotation);
+            }
+            rb->BeginPhysicsStep();
             rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody.get());
         }
     }
@@ -386,7 +447,10 @@ void PhysicsSystem::Update(SystemContext& ctx) {
             GameObject* go = scene.GetGameObject(id);
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
             if (!go || !rb || !rb->enabled || !rb->rigidBody) continue;
-            WriteWorldPoseToTransform(*go, rb->rigidBody->GetPosition(), rb->rigidBody->GetRotation());
+            const math::Vector3 position = rb->rigidBody->GetPosition();
+            const math::Quaternion rotation = rb->rigidBody->GetRotation();
+            rb->CommitPhysicsPose(position, rotation);
+            WriteWorldPoseToTransform(*go, position, rotation);
         }
     }
 }

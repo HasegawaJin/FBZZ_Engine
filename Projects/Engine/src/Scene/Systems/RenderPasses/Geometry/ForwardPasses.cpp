@@ -105,7 +105,6 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
-    const auto& frustum       = *ctx.cameraFrustum;
 
     // =========================================================================
     // Phase 1: フラスタムカリング + ギャザー
@@ -128,11 +127,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
         ++ctx.statsTotalObjects;
 
-        // フラスタムカリング: バウンディング球が視錐台外なら除外
-        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) {
-            ++ctx.statsFrustumCulled;
-            continue;
-        }
+        // 距離 / 極小 / 錐台カリング。落ちた理由の統計は IsMeshVisible が加算する。
+        if (!IsMeshVisible(ctx, go, *mr->mesh)) continue;
 
         const float dx = go.transform.position.x - cam.m_position.x;
         const float dy = go.transform.position.y - cam.m_position.y;
@@ -147,7 +143,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!material || !material->shader.IsValid()) continue;
 
             PerObjectCB objData{};
-            objData.world             = go.transform.GetWorldMatrix();
+            objData.world             = go.transform.GetPresentationWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
             renderer::DrawCall dc;
@@ -185,10 +181,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!smr || !smr->enabled || !smr->lodVisible || !smr->model || !mat || !mat->EnsureMaterialAsset()) continue;
 
         ++ctx.statsTotalObjects;
-        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) {
-            ++ctx.statsFrustumCulled;
-            continue;
-        }
+        if (!IsSkinnedVisible(ctx, go, *smr)) continue;
 
         const float dx = go.transform.position.x - cam.m_position.x;
         const float dy = go.transform.position.y - cam.m_position.y;
@@ -199,9 +192,11 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         // 不透明キュー / 半透明キューへ振り分ける。
         // WHY: 1 モデル内に不透明ボディと半透明バイザーが混在するのが普通のため、
         //      オブジェクト単位で振り分けると片方が必ず誤ったキューへ入る。
-        const size_t meshCount = smr->model->meshes.size();
+        // mi は「この Renderer の中での」スロット番号。model->meshes の添字とは
+        // 一致しないことがあるため (submeshIndices)、メッシュは必ずアクセサから引く。
+        const size_t meshCount = smr->SubmeshCount();
         for (size_t mi = 0; mi < meshCount; ++mi) {
-            const auto& meshPtr = smr->model->meshes[mi];
+            renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
             if (!meshPtr) continue;
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
@@ -227,14 +222,14 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!skinnedShader.IsValid()) continue;
 
             PerObjectCB objData{};
-            objData.world             = go.transform.GetWorldMatrix();
+            objData.world             = go.transform.GetPresentationWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
             const auto skinCB = ResolveSkinningCB(
                 anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
                 smr->model, h.bindPoseSkinningCB);
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+            dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
@@ -287,7 +282,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     // =========================================================================
     // Phase 3: オクルージョンカリング + 不透明描画
     // =========================================================================
-    if (ctx.occlusionCuller)
+    // カメラ側で Occlusion Culling を切っている場合はテストも遮蔽者登録も行わない。
+    const bool useOcclusion = ctx.occlusionCuller != nullptr && ctx.occlusionCullingEnabled;
+    if (useOcclusion)
         ctx.occlusionCuller->Reset(cam);
 
     // ── 不透明静的メッシュ ─────────────────────────────────────────────────────
@@ -300,14 +297,17 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!material || !material->shader.IsValid()) continue;
 
         // オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
-        const auto bounds = ComputeWorldBounds(go.transform, *mr->mesh);
-        if (ctx.occlusionCuller && !ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
-            ++ctx.statsOcclusionCulled;
-            continue;
+        if (useOcclusion) {
+            const auto bounds =
+                ComputeWorldBounds(go.transform, *mr->mesh, ctx.cullingBoundsPadding);
+            if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
+                ++ctx.statsOcclusionCulled;
+                continue;
+            }
         }
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
+        objData.world             = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -346,7 +346,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* anim = entry.anim;
         const size_t mi = entry.meshIndex;
 
-        const auto& meshPtr = smr->model->meshes[mi];
+        renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
         if (!meshPtr) continue;
 
         auto& slot = mat->SlotAt(mi);
@@ -365,7 +365,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!skinnedShader.IsValid()) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
+        objData.world             = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -374,7 +374,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             smr->model, h.bindPoseSkinningCB);
 
         renderer::DrawCall dc;
-        dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+        dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
         dc.indexBuffer        = meshPtr->indexBuffer;
         dc.indexCount         = meshPtr->indexCount;
         dc.vertexCount        = meshPtr->vertexCount;

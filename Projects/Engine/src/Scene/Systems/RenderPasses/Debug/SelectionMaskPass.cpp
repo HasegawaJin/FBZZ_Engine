@@ -42,16 +42,16 @@ bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& 
 math::Vector3 ParticleWorldPoint(const Transform& transform, const math::Vector3& localPoint)
 {
     const math::Vector3 scaled = {
-        localPoint.x * transform.worldScale.x,
-        localPoint.y * transform.worldScale.y,
-        localPoint.z * transform.worldScale.z
+        localPoint.x * transform.presentationWorldScale.x,
+        localPoint.y * transform.presentationWorldScale.y,
+        localPoint.z * transform.presentationWorldScale.z
     };
-    return transform.worldPosition + transform.worldRotation * scaled;
+    return transform.presentationWorldPosition + transform.presentationWorldRotation * scaled;
 }
 
 math::Vector3 ParticleWorldVector(const Transform& transform, const math::Vector3& localVector)
 {
-    return transform.worldRotation * localVector;
+    return transform.presentationWorldRotation * localVector;
 }
 
 // 選択されたParticleEmitterの現在形状を、テクスチャAlpha込みでSelection Maskへ描く。
@@ -203,7 +203,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
         if (!IsSelectedForOutline(go, ctx.settings)) continue;
 
         PerObjectCB objData{};
-        objData.world = go.transform.GetWorldMatrix();
+        objData.world = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -239,14 +239,15 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
 
                 // 通常描画パスと同じく、モデル全体のうち可視スロットの submesh だけを描く。
                 const auto* mat = go.GetComponent<MaterialComponent>();
-                for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
-                    const auto& meshPtr = smr->model->meshes[mi];
+                // mi はローカルスロット番号 (submeshIndices 対応)。
+                for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
+                    renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                     if (!meshPtr) continue;
                     if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
                     if (mat && !mat->SlotAt(mi).visible) continue;
 
                     renderer::DrawCall dc;
-                    dc.vertexBuffer = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+                    dc.vertexBuffer = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
                     dc.indexBuffer = meshPtr->indexBuffer;
                     dc.indexCount = meshPtr->indexCount;
                     dc.vertexCount = meshPtr->vertexCount;

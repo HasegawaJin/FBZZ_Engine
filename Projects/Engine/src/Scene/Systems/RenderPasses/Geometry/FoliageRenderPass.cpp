@@ -177,7 +177,7 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
             continue;
         }
 
-        const math::Matrix4 terrainWorld = transform.GetWorldMatrix();
+    const math::Matrix4 terrainWorld = transform.GetPresentationWorldMatrix();
         const bool transformChanged =
             !foliage.hasBakedTransform
             || foliage.bakedWorldPosition != transform.worldPosition

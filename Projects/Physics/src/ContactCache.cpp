@@ -29,9 +29,25 @@ namespace fbzz::physics
                 const float distSq = (cp.point - entry.point).LengthSq();
                 if (distSq > MATCH_RADIUS_SQ) continue;
 
-                cp.cachedNormalImpulse      = entry.normalImpulse;
-                cp.cachedTangentImpulse[0]  = entry.tangentImpulse[0];
-                cp.cachedTangentImpulse[1]  = entry.tangentImpulse[1];
+                // WHY: 摩擦インパルスは接触法線に依存するため、前フレームの
+                // 接線係数を現在の接線へそのまま渡すと、床の三角形境界などで
+                // 前後方向の速度を誤って注入する。法線が大きく変わった接触は
+                // キャッシュを使わず、安定した接触から再構築する。
+                if (entry.normal.LengthSq() <= 1e-6f ||
+                    math::Vector3::Dot(entry.normal, cp.normal) < 0.98f)
+                {
+                    break;
+                }
+
+                const math::Vector3 cachedImpulse =
+                    entry.normal * entry.normalImpulse +
+                    entry.tangent[0] * entry.tangentImpulse[0] +
+                    entry.tangent[1] * entry.tangentImpulse[1];
+
+                cp.cachedNormalImpulse      = std::max(0.0f,
+                    math::Vector3::Dot(cachedImpulse, cp.normal));
+                cp.cachedTangentImpulse[0]  = math::Vector3::Dot(cachedImpulse, cp.tangent[0]);
+                cp.cachedTangentImpulse[1]  = math::Vector3::Dot(cachedImpulse, cp.tangent[1]);
 
                 // Warm Start: 蓄積済みインパルスを即時適用
                 if (!cp.isTrigger)
@@ -97,6 +113,9 @@ namespace fbzz::physics
                 if ((cp.point - entry.point).LengthSq() <= MATCH_RADIUS_SQ)
                 {
                     entry.point              = cp.point;
+                    entry.normal            = cp.normal;
+                    entry.tangent[0]        = cp.tangent[0];
+                    entry.tangent[1]        = cp.tangent[1];
                     entry.normalImpulse      = cp.cachedNormalImpulse;
                     entry.tangentImpulse[0]  = cp.cachedTangentImpulse[0];
                     entry.tangentImpulse[1]  = cp.cachedTangentImpulse[1];
@@ -110,6 +129,9 @@ namespace fbzz::physics
             {
                 CacheEntry e;
                 e.point             = cp.point;
+                e.normal            = cp.normal;
+                e.tangent[0]        = cp.tangent[0];
+                e.tangent[1]        = cp.tangent[1];
                 e.normalImpulse     = cp.cachedNormalImpulse;
                 e.tangentImpulse[0] = cp.cachedTangentImpulse[0];
                 e.tangentImpulse[1] = cp.cachedTangentImpulse[1];

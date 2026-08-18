@@ -50,7 +50,7 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
         if (fbzz::Layer::Contains(receiverLayerMask, go.layer)) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
+        objData.world             = go.transform.GetPresentationWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -78,13 +78,14 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
                 const auto skinCB = (anim && anim->skinningBuffer.IsValid())
                     ? anim->skinningBuffer : h.bindPoseSkinningCB;
 
-                for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
-                    const auto& meshPtr = smr->model->meshes[mi];
+                // mi はローカルスロット番号 (submeshIndices 対応)。
+                for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
+                    renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                     if (!meshPtr) continue;
                     if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
                     renderer::DrawCall dc;
-                    dc.vertexBuffer       = smr->ResolveVertexBuffer(mi, meshPtr->vertexBuffer);
+                    dc.vertexBuffer       = smr->ResolveSlotVertexBuffer(mi, meshPtr->vertexBuffer);
                     dc.indexBuffer        = meshPtr->indexBuffer;
                     dc.indexCount         = meshPtr->indexCount;
                     dc.shader             = h.selectionMaskSkinnedShader;
@@ -160,7 +161,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
 
         // 定数バッファ更新
         DecalCB data{};
-        data.invDecalWorld    = math::Matrix4::Inverse(go.transform.GetWorldMatrix());
+        data.invDecalWorld    = math::Matrix4::Inverse(go.transform.GetPresentationWorldMatrix());
         data.albedo[0]        = dc->albedoColor[0];
         data.albedo[1]        = dc->albedoColor[1];
         data.albedo[2]        = dc->albedoColor[2];
