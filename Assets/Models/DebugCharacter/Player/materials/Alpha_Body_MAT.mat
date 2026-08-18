@@ -1,6 +1,6 @@
 mesh_type = 'skinned'
 name = 'Alpha_Body_MAT'
-render_path = 'deferred'
+render_path = 'auto'
 shader = 'guid:192f4bf06a664016b7c0005485f14793'
 version = 1
 

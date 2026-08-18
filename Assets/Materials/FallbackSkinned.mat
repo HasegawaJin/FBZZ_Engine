@@ -3,7 +3,7 @@ shader = "guid:c39404bd5cca4b3fa429850aea3484d8"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000
-render_path = "forward"
+render_path = "auto"
 mesh_type = "skinned"
 
 [textures]

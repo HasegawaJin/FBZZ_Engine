@@ -13,13 +13,14 @@
 namespace fbzz::asset {
 
 // fzmat の render_path フィールドが取れる値。
-// WHY: カスタムシェーダーのレンダーパス振り分けをエンジンコード変更なしに制御するため。
-//      "auto"     → 明示的なレンダーパス指定なし。
-//      "forward"  → 常に Forward パスで描画 (カスタムエフェクト・Unlit 系)。
-//      "deferred" → 常に GBuffer Deferred パスで描画 (PBR 系)。
+//      "auto"     → 通常の材質。Forward / Deferred はプロジェクト設定に従う。
 //      "particle" → ParticleEmitter 専用。ParticlePass が albedo テクスチャと blendMode を参照する。
 //      "trail"    → TrailComponent / MeshTrailComponent 専用。TrailRenderPass が albedo テクスチャを参照する。
-enum class RenderPath { Auto, Deferred, Forward, Particle, Trail };
+//
+// WHY Forward / Deferred をここへ持たないか:
+//      描画経路は RenderSettings::pipeline がプロジェクト全体で決める責務であり、
+//      Material ごとに上書きすると同じシーン内でライティング・GBuffer の前提が混在する。
+enum class RenderPath { Auto, Particle, Trail };
 
 // fzmat の mesh_type フィールドが取れる値。
 // WHY: Surface シェーダー判定をパス文字列検索から fzmat 宣言へ移し、

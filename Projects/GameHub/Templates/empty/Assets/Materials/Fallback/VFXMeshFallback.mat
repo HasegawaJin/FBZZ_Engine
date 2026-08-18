@@ -11,7 +11,7 @@ shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
 blend_mode = "Additive"
 double_sided = true
 render_queue = 3000
-render_path = "forward"
+render_path = "auto"
 mesh_type = "surface"
 
 [textures]
