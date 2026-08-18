@@ -5,7 +5,10 @@
 #include "InspectorCommon.hpp"
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
-#include <Editor/Panels/AnimationPreviewPanel.hpp>
+#include <Editor/Panels/AnimationMaskPreview.hpp>
+#include <Editor/Panels/AnimationPreview.hpp>
+#include <Editor/Panels/MaterialPreview.hpp>
+#include <Editor/Panels/VFXPreview.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>
@@ -48,9 +51,13 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
+#include <cmath>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace fbzz::editor {
@@ -74,6 +81,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
     const std::string filename = util::FileSystem::GetFilename(assetPath);
     const std::string ext =
         util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
+    bool drawVfxPreviewAtBottom = false;
 
     // deselect 自動保存: 前回の .mat が dirty のまま別アセットへ移動したとき保存する。
     // WHY: 「Save ボタンを押し忘れる」問題を解消しつつ、mid-drag 中の大量書き込みを避けるため
@@ -162,12 +170,17 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             materialDirty |= ImGui::Checkbox("Double Sided",  &mat.doubleSided);
             materialDirty |= ImGui::DragInt  ("Render Queue", &mat.renderQueue, 1.0f, 0, 5000);
             {
-                static constexpr const char* kRenderPathNames[] = { "Auto", "Deferred", "Forward" };
-                int rpIndex = static_cast<int>(mat.renderPath);
-                if (ImGui::Combo("Render Path", &rpIndex, kRenderPathNames, 3)) {
-                    mat.renderPath = static_cast<asset::RenderPath>(rpIndex);
+                // 通常の Forward / Deferred はプロジェクト設定で決まる。
+                // ここでは専用レンダーパス (Particle / Trail) の用途だけを指定する。
+                static constexpr const char* kMaterialUsageNames[] = {
+                    "Auto", "Particle", "Trail" };
+                int usageIndex = static_cast<int>(mat.renderPath);
+                if (ImGui::Combo("Material Usage", &usageIndex,
+                                 kMaterialUsageNames, 3)) {
+                    mat.renderPath = static_cast<asset::RenderPath>(usageIndex);
                     materialDirty = true;
                 }
+                ImGui::TextDisabled("Forward / Deferred: Project Settings");
             }
             {
                 static constexpr const char* kMeshTypeNames[] = { "Any", "Surface", "Skinned" };
@@ -381,6 +394,17 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         } else {
             ImGui::TextDisabled("Saved");
         }
+
+        // AnimationPreview と同じく、編集項目を確認した後の Inspector 最下部へ置く。
+        // WHY: プレビューを先頭に固定すると、Shader / Params / Textures が長い材質ほど
+        //      設定を開くたびにプレビューが画面を占有し、編集対象へ到達しにくくなる。
+        ImGui::SeparatorText("Preview");
+        DrawMaterialPreviewWidget(ctx, mat, 240.0f);
+    } else if (ext == ".vfx") {
+        ImGui::TextDisabled("Type: VFX Graph");
+        // MaterialPreview / AnimationPreview と同じく、分岐の最後で描画する。
+        // WHY: VFX の概要や編集項目が増えても、プレビューを Inspector 上部へ戻さないため。
+        drawVfxPreviewAtBottom = true;
     } else if (ext == ".animcontroller") {
         if (DrawAnimationGraphAssetInspector(ctx)) {
             // Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
@@ -391,11 +415,21 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::Spacing();
             ImGui::TextDisabled("The controller can be edited without selecting a Hierarchy object.");
         }
-        if (ctx.animationControllerDirty) {
-            ImGui::Spacing();
-            ImGui::TextColored(
-                {1.0f, 0.8f, 0.2f, 1.0f},
-                "Modified - use Save Controller in Animation Graph.");
+        // 未保存表示は他のアセット型と同じ規約に揃える。
+        // WHY absPath ではなく editorPath で判定するか: Inspector が今表示している
+        //     .animcontroller と、Animation Graph が開いているドキュメントは別物でありうる
+        //     (ブラウザーで別のコントローラーを選んでも編集対象は切り替わらないため)。
+        //     dirty なのは「開いている方」なので、そちらと一致するときだけ Modified を出す。
+        const bool isThisControllerOpen =
+            NormalizeAssetPath(ctx.animationControllerEditorPath) == NormalizeAssetPath(absPath);
+        ImGui::Separator();
+        if (isThisControllerOpen && ctx.animationControllerDirty) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                               "Modified - Ctrl+S or Save Controller in Animation Graph.");
+        } else if (isThisControllerOpen) {
+            ImGui::TextDisabled("Saved");
+        } else {
+            ImGui::TextDisabled("Not open. Double-click to edit in Animation Graph.");
         }
     } else if (ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb") {
         namespace fs = std::filesystem;
@@ -539,7 +573,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::LabelText("Duration",     "%.3f s", clip->GetDurationSeconds());
             ImGui::LabelText("FPS",          "%.1f",  clip->frameRate);
             ImGui::LabelText("Tracks",       "%zu",   clip->tracks.size());
-            ImGui::LabelText("Loop",         "%s",    clip->loop ? "Yes" : "No");
+            // Loop Time は .anim へ焼かれた値。編集は原本の FBX 側で行う。
+            // WHY ここで編集させないか: .anim は再インポートで上書きされる生成物なので、
+            //     ここに書いても次の再インポートで消える。設定の在り処を明示する。
+            ImGui::LabelText("Loop Time", "%s", clip->loop ? "On" : "Off");
+            ImGui::TextDisabled("Edit in the source FBX > Animation.");
 
             // ── Root Motion ────────────────────────────────────────────
             // WHY: 以前は "Yes / No" しか出しておらず、No のとき「専用ノードが
@@ -670,6 +708,24 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 dirty = true;
             }
 
+            ImGui::SetNextItemWidth(140.0f);
+            dirty |= ImGui::DragFloat("Unit Scale", &s_modelOptions.unitScaleMultiplier,
+                                      0.01f, 0.001f, 100.0f, "%.3fx");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("FBX の自動単位変換後に掛ける倍率。");
+
+            static constexpr const char* kUpAxisNames[] = { "Auto", "Y Up", "Z Up" };
+            int upAxisIdx = static_cast<int>(s_modelOptions.upAxis);
+            ImGui::SetNextItemWidth(140.0f);
+            if (ImGui::Combo("Source Up Axis", &upAxisIdx, kUpAxisNames, 3)) {
+                s_modelOptions.upAxis = static_cast<FbxUpAxis>(upAxisIdx);
+                dirty = true;
+            }
+
+            dirty |= ImGui::Checkbox("Generate Normals", &s_modelOptions.generateNormals);
+            ImGui::SameLine();
+            dirty |= ImGui::Checkbox("Generate Tangents", &s_modelOptions.generateTangents);
+
             dirty |= ImGui::Checkbox("Auto-generate texture .meta", &s_modelOptions.generateTexDescriptors);
 
             static constexpr const char* kConventionNames[] = { "DirectX", "OpenGL" };
@@ -688,10 +744,161 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 dirty = true;
             }
 
-            ImGui::SeparatorText("Sub Assets");
-            ImGui::LabelText("Selected Meshes", "%zu", s_modelOptions.selectedMeshNames.size());
-            ImGui::LabelText("Selected Animations", "%zu", s_modelOptions.selectedAnimNames.size());
-            ImGui::TextDisabled("Mesh / animation selection is edited from Model Import Settings.");
+            // ── Animation (Unity の Model Import Settings > Animation 相当) ──
+            //
+            // WHY 一覧を FBX のスキャンから引くか: .fbx.meta には既定から外れた設定しか
+            //     書かないため、meta だけを見てもクリップの全体像が出ない。原本を軽量
+            //     スキャンして名前を並べ、meta の値を重ねて表示する。
+            ImGui::SeparatorText("Animation");
+            {
+                // スキャン結果は FBX ごとにキャッシュする。毎フレーム開くと重い。
+                static std::string   s_scannedFbxPath;
+                static FbxScanResult s_scan;
+                if (s_scannedFbxPath != sourcePath) {
+                    s_scannedFbxPath = sourcePath;
+                    s_scan = FbxImportTool::Scan(sourcePath);
+                }
+
+                if (!s_scan.valid || s_scan.animNames.empty()) {
+                    ImGui::TextDisabled("No animation clips in this FBX.");
+                } else {
+                    ImGui::TextDisabled(
+                        "Loop Time bakes into the .anim on reimport.");
+                    if (ImGui::BeginTable("##ClipImportSettings", 5,
+                                          ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                        ImGui::TableSetupColumn("Clip", ImGuiTableColumnFlags_WidthStretch);
+                        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+                        ImGui::TableSetupColumn("Start", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+                        ImGui::TableSetupColumn("End", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+                        ImGui::TableSetupColumn("Loop Time", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                        ImGui::TableHeadersRow();
+
+                        for (const std::string& clipName : s_scan.animNames) {
+                            ImGui::PushID(clipName.c_str());
+                            const auto findClip = [&]() {
+                                return std::find_if(
+                                    s_modelOptions.clipSettings.begin(),
+                                    s_modelOptions.clipSettings.end(),
+                                    [&clipName](const AnimationClipImportSettings& settings) {
+                                        return settings.name == clipName;
+                                    });
+                            };
+                            const auto currentIt = findClip();
+                            AnimationClipImportSettings current = currentIt != s_modelOptions.clipSettings.end()
+                                ? *currentIt : AnimationClipImportSettings{ .name = clipName };
+                            const auto updateClip = [&](AnimationClipImportSettings next) {
+                                const bool isDefault = !next.loop && next.startFrame == 0.0 &&
+                                    next.endFrame < 0.0 && next.outputName.empty();
+                                auto it = findClip();
+                                if (isDefault) {
+                                    if (it != s_modelOptions.clipSettings.end())
+                                        s_modelOptions.clipSettings.erase(it);
+                                } else if (it != s_modelOptions.clipSettings.end()) {
+                                    *it = std::move(next);
+                                } else {
+                                    s_modelOptions.clipSettings.push_back(std::move(next));
+                                }
+                                dirty = true;
+                            };
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImGui::TextUnformatted(clipName.c_str());
+
+                            ImGui::TableNextColumn();
+                            char outputNameBuffer[256] = {};
+                            std::snprintf(outputNameBuffer, sizeof(outputNameBuffer), "%s",
+                                          current.outputName.empty() ? clipName.c_str() : current.outputName.c_str());
+                            if (ImGui::InputText("##name", outputNameBuffer, sizeof(outputNameBuffer))) {
+                                current.outputName = std::string(outputNameBuffer) == clipName
+                                    ? std::string{} : std::string(outputNameBuffer);
+                                updateClip(current);
+                            }
+
+                            ImGui::TableNextColumn();
+                            float startFrame = static_cast<float>(current.startFrame);
+                            if (ImGui::DragFloat("##start", &startFrame, 0.25f, 0.0f, 100000.0f, "%.1f")) {
+                                current.startFrame = std::max(0.0f, startFrame);
+                                updateClip(current);
+                            }
+
+                            ImGui::TableNextColumn();
+                            float endFrame = static_cast<float>(current.endFrame);
+                            if (ImGui::DragFloat("##end", &endFrame, 0.25f, -1.0f, 100000.0f, "%.1f")) {
+                                current.endFrame = endFrame < 0.0f ? -1.0 : endFrame;
+                                updateClip(current);
+                            }
+
+                            ImGui::TableNextColumn();
+                            bool loop = current.loop;
+                            if (ImGui::Checkbox("##loop", &loop)) {
+                                current.loop = loop;
+                                updateClip(current);
+                            }
+                            ImGui::PopID();
+                        }
+                        ImGui::EndTable();
+                    }
+                }
+
+                // Root Motion の抽出元を Inspector から直接指定する。
+                // WHY: 自動判定だけではリグ固有の移動ノードを拾えないため、
+                //      .anim を生成する前の原本設定として .meta に保存する。
+                ImGui::Spacing();
+                char rootMotionBuffer[256] = {};
+                std::snprintf(rootMotionBuffer, sizeof(rootMotionBuffer), "%s",
+                              s_modelOptions.rootMotionNodeName.c_str());
+                if (ImGui::InputTextWithHint("Root Motion Node", "Auto Detect",
+                                             rootMotionBuffer, sizeof(rootMotionBuffer))) {
+                    s_modelOptions.rootMotionNodeName = rootMotionBuffer;
+                    dirty = true;
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("空欄は自動判定。指定したノードから Root Motion を抽出します。");
+
+                ImGui::SeparatorText("Sub Assets");
+                ImGui::TextDisabled("空欄は全て選択。チェックを外すと選択対象を限定します。");
+                auto drawSelectionList = [&dirty](const char* label,
+                                                   const std::vector<std::string>& allNames,
+                                                   std::vector<std::string>& selectedNames)
+                {
+                    if (allNames.empty()) return;
+                    ImGui::PushID(label);
+                    ImGui::TextDisabled("%s", label);
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("All")) {
+                        // 空の配列はインポーター上で「全選択」を意味する。
+                        selectedNames.clear();
+                        dirty = true;
+                    }
+                    ImGui::BeginChild("##selection_list", { 0.0f, 120.0f }, true);
+                    for (const std::string& name : allNames) {
+                        const bool allSelected = selectedNames.empty();
+                        const bool selected = allSelected ||
+                            std::find(selectedNames.begin(), selectedNames.end(), name)
+                                != selectedNames.end();
+                        bool checked = selected;
+                        if (ImGui::Checkbox(name.c_str(), &checked)) {
+                            if (checked) {
+                                if (!allSelected &&
+                                    std::find(selectedNames.begin(), selectedNames.end(), name)
+                                        == selectedNames.end())
+                                    selectedNames.push_back(name);
+                            } else {
+                                if (allSelected)
+                                    selectedNames = allNames;
+                                selectedNames.erase(
+                                    std::remove(selectedNames.begin(), selectedNames.end(), name),
+                                    selectedNames.end());
+                            }
+                            dirty = true;
+                        }
+                    }
+                    ImGui::EndChild();
+                    ImGui::PopID();
+                };
+                drawSelectionList("Meshes", s_scan.meshNames, s_modelOptions.selectedMeshNames);
+                drawSelectionList("Animations", s_scan.animNames, s_modelOptions.selectedAnimNames);
+            }
 
             if (dirty) {
                 AssetDirtyRegistry::Register(
@@ -1158,6 +1365,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         static asset::AvatarMaskAsset s_mask;
         static std::string            s_maskPath;
+        static int                    s_maskAnchorNode = -1;
+        static std::string            s_maskSelectedPath;
+        static std::string            s_maskAnchorSourcePath;
+        static std::string            s_maskPresetPath;
+        static std::string            s_maskPresetMessage;
         static std::filesystem::file_time_type s_maskWriteTime{};
         std::error_code maskTimeError;
         const auto currentMaskWriteTime = std::filesystem::last_write_time(absPath, maskTimeError);
@@ -1166,12 +1378,250 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             && !AssetDirtyRegistry::IsDirty(absPath);
         if (s_maskPath != absPath || maskExternallyUpdated) {
             s_maskPath = absPath;
+            s_maskAnchorNode = -1;
+            s_maskSelectedPath.clear();
+            ClearAnimationMaskPreviewSelection();
             s_mask = asset::AvatarMaskAsset{};
             if (!asset::LoadAvatarMaskAsset(absPath, s_mask))
                 s_mask.name = util::FileSystem::GetFilename(absPath);
             s_maskWriteTime = currentMaskWriteTime;
         }
+        std::string previewSelectionPath;
+        if (ConsumeAnimationMaskPreviewSelection(previewSelectionPath))
+            s_maskSelectedPath = std::move(previewSelectionPath);
         bool maskDirty = false;
+
+        // .mask も他の Inspector アセットと同じく、1 回のウィジェット操作を 1 件の
+        // Undo コマンドとして記録する。
+        // WHY: 毎フレーム履歴へ積むと Weight の入力中に中間値が大量に残り、また
+        //      Apply 前の編集を Undo/Redo したときに表示と保存先が食い違うため。
+        struct MaskUndoTracker {
+            std::string            path;
+            asset::AvatarMaskAsset before;
+            ImGuiID                activeId = 0;
+            bool                   active = false;
+            bool                   changed = false;
+        };
+        static MaskUndoTracker s_maskUndo;
+        const bool canRecordMaskUndo = CanRecordEditorUndo(ctx);
+        const asset::AvatarMaskAsset maskBeforeDraw = s_mask;
+        const ImGuiID maskActiveBefore = ImGui::GetActiveID();
+        const asset::Model* maskModel = s_mask.skeletonSourcePath.empty()
+            ? nullptr : asset::AssetManager::LoadModel(s_mask.skeletonSourcePath);
+        const asset::Skeleton* maskSkeleton =
+            (maskModel && maskModel->skeleton) ? maskModel->skeleton.get() : nullptr;
+        if (s_maskAnchorSourcePath != s_mask.skeletonSourcePath) {
+            s_maskAnchorSourcePath = s_mask.skeletonSourcePath;
+            s_maskAnchorNode = -1;
+        }
+        const auto sourceSignature = [](const std::string& sourcePath) {
+            if (sourcePath.empty()) return std::string{};
+            const std::string resolved = asset::AssetManager::ResolveAssetPath(sourcePath);
+            if (resolved.empty()) return std::string{};
+            std::error_code error;
+            const std::filesystem::path path = util::FileSystem::PathFromUtf8(resolved);
+            if (!std::filesystem::exists(path, error) || error) return std::string{};
+            const auto writeTime = std::filesystem::last_write_time(path, error);
+            if (error) return std::string{};
+            const uintmax_t fileSize = std::filesystem::file_size(path, error);
+            if (error) return std::string{};
+            return std::to_string(writeTime.time_since_epoch().count()) +
+                   ":" + std::to_string(fileSize);
+        };
+        const std::string currentSourceSignature = sourceSignature(s_mask.skeletonSourcePath);
+        const bool sourceSignatureMissing =
+            !s_mask.skeletonSourcePath.empty() && s_mask.skeletonSourceSignature.empty();
+        const bool sourceChanged =
+            !sourceSignatureMissing && !currentSourceSignature.empty() &&
+            currentSourceSignature != s_mask.skeletonSourceSignature;
+        const auto prepareMaskForSave = [&]() {
+            // UI で skeletonSourcePath 自体が変更された場合も、描画開始時の古い署名を
+            // 保存しないように、その時点のパスから再計算する。
+            // 重複した Bone パスは Advanced Rules の直接編集で発生し得るため、保存前に
+            // 正規化して「削除したのに同じルールが残る」状態も防ぐ。
+            asset::CompressAvatarMaskEntries(s_mask);
+            s_mask.skeletonSourceSignature = sourceSignature(s_mask.skeletonSourcePath);
+        };
+
+        enum class MaskRuleState { Inherit, Include, Exclude, Mixed };
+
+        const auto findEntry = [&](std::string_view path) -> asset::AvatarMaskEntry* {
+            for (auto& entry : s_mask.entries)
+                if (entry.bonePath == path) return &entry;
+            return nullptr;
+        };
+        const auto findEntryIndex = [&](std::string_view path) -> int {
+            for (int i = 0; i < static_cast<int>(s_mask.entries.size()); ++i)
+                if (s_mask.entries[static_cast<size_t>(i)].bonePath == path) return i;
+            return -1;
+        };
+        const auto ruleState = [&](std::string_view path) {
+            const auto* entry = findEntry(path);
+            if (!entry) return MaskRuleState::Inherit;
+            return entry->weight > 0.001f ? MaskRuleState::Include : MaskRuleState::Exclude;
+        };
+        const auto setRule = [&](std::string path, MaskRuleState state, float weight = 1.0f) {
+            const int index = findEntryIndex(path);
+            if (state == MaskRuleState::Inherit) {
+                if (index >= 0) s_mask.entries.erase(s_mask.entries.begin() + index);
+                return;
+            }
+            weight = std::isfinite(weight) ? std::clamp(weight, 0.0f, 1.0f) : 0.0f;
+            if (index < 0) {
+                asset::AvatarMaskEntry entry;
+                entry.bonePath = std::move(path);
+                entry.weight = weight;
+                entry.includeChildren = true;
+                s_mask.entries.push_back(std::move(entry));
+                return;
+            }
+            auto& entry = s_mask.entries[static_cast<size_t>(index)];
+            entry.weight = weight;
+            entry.includeChildren = true;
+        };
+        const auto cycleState = [](MaskRuleState state) {
+            switch (state) {
+            case MaskRuleState::Inherit: return MaskRuleState::Include;
+            case MaskRuleState::Include: return MaskRuleState::Exclude;
+            case MaskRuleState::Exclude: return MaskRuleState::Inherit;
+            case MaskRuleState::Mixed: return MaskRuleState::Include;
+            }
+            return MaskRuleState::Inherit;
+        };
+        const auto nodePath = [&](int nodeIndex) {
+            return asset::BuildSkeletonNodePath(*maskSkeleton, nodeIndex);
+        };
+        const auto setNodeRule = [&](int nodeIndex, MaskRuleState state) {
+            if (!maskSkeleton) return;
+            const std::string path = nodePath(nodeIndex);
+            if (path.empty()) return;
+            setRule(path, state);
+        };
+        const auto clearBranchEntries = [&](int nodeIndex) {
+            if (!maskSkeleton) return;
+            const std::string rootPath = nodePath(nodeIndex);
+            if (rootPath.empty()) return;
+            s_mask.entries.erase(
+                std::remove_if(s_mask.entries.begin(), s_mask.entries.end(),
+                    [&rootPath](const asset::AvatarMaskEntry& entry) {
+                        if (entry.bonePath == rootPath) return true;
+                        return entry.bonePath.size() > rootPath.size()
+                            && entry.bonePath.compare(0, rootPath.size(), rootPath) == 0
+                            && entry.bonePath[rootPath.size()] == '/';
+                    }),
+                s_mask.entries.end());
+        };
+        const auto applyBranchRule = [&](int nodeIndex, MaskRuleState state) {
+            // いったん配下の明示ルールを消してから親へ設定する。
+            // WHY: Include 済みの親に子の Exclude が残っていると、表示が Mixed のまま
+            //      になり、Include → Exclude → Inherit の循環が成立しないため。
+            clearBranchEntries(nodeIndex);
+            if (state != MaskRuleState::Inherit)
+                setNodeRule(nodeIndex, state);
+        };
+        const auto lowerCopy = [](std::string value) {
+            return util::StringUtils::ToLower(value);
+        };
+        const auto addNameRule = [&](const std::string& name) {
+            if (!maskSkeleton) {
+                setRule(name, MaskRuleState::Include);
+                return;
+            }
+            for (int i = 0; i < static_cast<int>(maskSkeleton->nodes.size()); ++i) {
+                const auto& node = maskSkeleton->nodes[static_cast<size_t>(i)];
+                if (lowerCopy(node.name) == lowerCopy(name)) {
+                    setNodeRule(i, MaskRuleState::Include);
+                    return;
+                }
+            }
+            setRule(name, MaskRuleState::Include);
+        };
+        const auto addBodyPartRules = [&](asset::HumanoidBodyPart part) {
+            bool added = false;
+            if (maskSkeleton) {
+                for (int i = 0; i < static_cast<int>(maskSkeleton->nodes.size()); ++i) {
+                    const auto& node = maskSkeleton->nodes[static_cast<size_t>(i)];
+                    if (!asset::BoneNameMatchesBodyPart(node.name, part)) continue;
+                    setNodeRule(i, MaskRuleState::Include);
+                    added = true;
+                }
+            }
+            if (!added) {
+                const auto& patterns = asset::HumanoidBonePatterns(part);
+                setRule(patterns.empty() ? asset::HumanoidBodyPartName(part) : patterns.front(),
+                        MaskRuleState::Include);
+            }
+        };
+        const auto replaceWithPreset = [&](const char* preset) {
+            s_mask.entries.clear();
+            s_mask.defaultInclude = false;
+            if (std::strcmp(preset, "Upper Body") == 0) {
+                addNameRule("Spine");
+                addBodyPartRules(asset::HumanoidBodyPart::Head);
+                addBodyPartRules(asset::HumanoidBodyPart::LeftArm);
+                addBodyPartRules(asset::HumanoidBodyPart::RightArm);
+                addBodyPartRules(asset::HumanoidBodyPart::LeftHand);
+                addBodyPartRules(asset::HumanoidBodyPart::RightHand);
+            } else if (std::strcmp(preset, "Lower Body") == 0) {
+                addNameRule("Hips");
+                addBodyPartRules(asset::HumanoidBodyPart::LeftLeg);
+                addBodyPartRules(asset::HumanoidBodyPart::RightLeg);
+            } else if (std::strcmp(preset, "Arms Only") == 0) {
+                addBodyPartRules(asset::HumanoidBodyPart::LeftArm);
+                addBodyPartRules(asset::HumanoidBodyPart::RightArm);
+            } else if (std::strcmp(preset, "Hands Only") == 0) {
+                addBodyPartRules(asset::HumanoidBodyPart::LeftHand);
+                addBodyPartRules(asset::HumanoidBodyPart::RightHand);
+            } else if (std::strcmp(preset, "Facial") == 0) {
+                addBodyPartRules(asset::HumanoidBodyPart::Head);
+            } else if (std::strcmp(preset, "Root Motion Only") == 0) {
+                addBodyPartRules(asset::HumanoidBodyPart::Root);
+            }
+            asset::CompressAvatarMaskEntries(s_mask);
+            maskDirty = true;
+        };
+        const auto mirrorPath = [](std::string path) {
+            const auto replaceAll = [](std::string& value,
+                                        std::string_view from,
+                                        std::string_view to) {
+                size_t position = 0;
+                while ((position = value.find(from, position)) != std::string::npos) {
+                    value.replace(position, from.size(), to);
+                    position += to.size();
+                }
+            };
+            replaceAll(path, "Left", "__FBZZ_RIGHT__");
+            replaceAll(path, "Right", "Left");
+            replaceAll(path, "__FBZZ_RIGHT__", "Right");
+            replaceAll(path, "left", "__fbzz_right__");
+            replaceAll(path, "right", "left");
+            replaceAll(path, "__fbzz_right__", "right");
+            replaceAll(path, "_L", "__FBZZ_R__");
+            replaceAll(path, "_R", "_L");
+            replaceAll(path, "__FBZZ_R__", "_R");
+            replaceAll(path, "_l", "__fbzz_r__");
+            replaceAll(path, "_r", "_l");
+            replaceAll(path, "__fbzz_r__", "_r");
+            replaceAll(path, "L_", "__FBZZ_R_PREFIX__");
+            replaceAll(path, "R_", "L_");
+            replaceAll(path, "__FBZZ_R_PREFIX__", "R_");
+            replaceAll(path, "l_", "__fbzz_r_prefix__");
+            replaceAll(path, "r_", "l_");
+            replaceAll(path, "__fbzz_r_prefix__", "r_");
+            return path;
+        };
+        const auto mirrorMask = [&]() {
+            std::vector<asset::AvatarMaskEntry> mirrored;
+            mirrored.reserve(s_mask.entries.size());
+            for (const auto& entry : s_mask.entries) {
+                auto copy = entry;
+                copy.bonePath = mirrorPath(copy.bonePath);
+                mirrored.push_back(std::move(copy));
+            }
+            s_mask.entries = std::move(mirrored);
+            asset::CompressAvatarMaskEntries(s_mask);
+            maskDirty = true;
+        };
 
         ImGui::SeparatorText("Mask");
         // defaultInclude を切り替えると「列挙したボーンだけ有効」と「列挙したボーンだけ無効」が
@@ -1185,48 +1635,78 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
 
         // ── Humanoid プリセット ───────────────────────────────────────────
-        // 参照スケルトンがあればボーン名から実体を拾い、無ければ体パーツ名を
-        // そのままボーン名エントリとして置く (ボーン名部分一致でランタイムが解決する)。
-        ImGui::SeparatorText("Humanoid Presets");
+        // FBX を指定すると同じスケルトンをツリーで編集できる。AssetPathField は
+        // ピッカー・拡張子検証・Asset Browser からの D&D を共通で提供する。
+        ImGui::SeparatorText("Skeleton Source");
         if (widgets::AssetPathField("Skeleton Source", s_mask.skeletonSourcePath,
-                                    ".fbx", ctx.projectRoot))
+                                     ".fbx", ctx.projectRoot)) {
+            s_mask.skeletonSourceSignature.clear();
             maskDirty = true;
-
-        const asset::Model* maskModel = s_mask.skeletonSourcePath.empty()
-            ? nullptr : asset::AssetManager::LoadModel(s_mask.skeletonSourcePath);
-        const asset::Skeleton* maskSkeleton =
-            (maskModel && maskModel->skeleton) ? maskModel->skeleton.get() : nullptr;
-
-        // 指定パーツに属するボーンを weight で登録する。
-        const auto applyBodyPart = [&](asset::HumanoidBodyPart part, float weight) {
-            const auto upsert = [&](const std::string& bone) {
-                for (auto& e : s_mask.entries) {
-                    if (e.bonePath == bone) { e.weight = weight; return; }
-                }
-                asset::AvatarMaskEntry entry;
-                entry.bonePath = bone;
-                entry.weight = weight;
-                entry.includeChildren = false; // パーツ単位で個別に列挙するため子孫は含めない
-                s_mask.entries.push_back(std::move(entry));
-            };
-            if (maskSkeleton) {
-                for (const auto& node : maskSkeleton->nodes)
-                    if (asset::BoneNameMatchesBodyPart(node.name, part)) upsert(node.name);
-            } else {
-                // スケルトン未指定でも最低限使えるよう、パーツ名をそのまま登録する。
-                upsert(asset::HumanoidBonePatterns(part).empty()
-                       ? std::string(asset::HumanoidBodyPartName(part))
-                       : asset::HumanoidBonePatterns(part).front());
+        }
+        if (sourceChanged) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                               "元FBXが変更されています。ボーン構成とマスクルールを確認してください。");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Accept Current FBX")) {
+                s_mask.skeletonSourceSignature = currentSourceSignature;
+                maskDirty = true;
             }
-            maskDirty = true;
-        };
+        } else if (sourceSignatureMissing && !s_mask.skeletonSourcePath.empty()) {
+            ImGui::TextDisabled("FBX変更検知の基準は未保存です。Applyで現在のFBXを基準にします。");
+        }
 
+        ImGui::TextDisabled("FBXを指定すると階層ツリーが表示されます。ツリーのボーンをドラッグして範囲へ追加できます。");
+        ImGui::SeparatorText("Presets");
+        constexpr const char* kPresets[] = {
+            "Upper Body", "Lower Body", "Arms Only", "Hands Only", "Facial", "Root Motion Only" };
+        for (int i = 0; i < static_cast<int>(std::size(kPresets)); ++i) {
+            if (i > 0) ImGui::SameLine();
+            if (ImGui::Button(kPresets[i])) replaceWithPreset(kPresets[i]);
+        }
+
+        ImGui::SeparatorText("Saved Presets");
+        widgets::AssetPathField("Preset File", s_maskPresetPath,
+                                ".maskpreset,.mask", ctx.projectRoot);
+        ImGui::SameLine();
+        if (ImGui::Button("Load Preset") && !s_maskPresetPath.empty()) {
+            asset::AvatarMaskAsset loadedPreset;
+            const std::string presetLoadPath = asset::AssetManager::ResolveAssetPath(s_maskPresetPath);
+            if (asset::LoadAvatarMaskAsset(
+                    presetLoadPath.empty() ? s_maskPresetPath : presetLoadPath, loadedPreset)) {
+                const std::string currentSource = s_mask.skeletonSourcePath;
+                const std::string currentSignature = currentSourceSignature;
+                s_mask = std::move(loadedPreset);
+                if (!currentSource.empty()) {
+                    s_mask.skeletonSourcePath = currentSource;
+                    s_mask.skeletonSourceSignature = currentSignature;
+                }
+                s_maskPresetMessage = "Preset loaded";
+                maskDirty = true;
+            } else {
+                s_maskPresetMessage = "Preset load failed";
+            }
+        }
+        if (!s_maskPresetMessage.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", s_maskPresetMessage.c_str());
+        }
+
+        ImGui::SeparatorText("Body Parts");
         for (int p = 0; p < static_cast<int>(asset::HumanoidBodyPart::Count); ++p) {
             const auto part = static_cast<asset::HumanoidBodyPart>(p);
             ImGui::PushID(p);
-            if (ImGui::SmallButton("+")) applyBodyPart(part, 1.0f);
+            if (ImGui::SmallButton("+")) {
+                addBodyPartRules(part);
+                asset::CompressAvatarMaskEntries(s_mask);
+                maskDirty = true;
+            }
             ImGui::SameLine();
-            if (ImGui::SmallButton("-")) applyBodyPart(part, 0.0f);
+            if (ImGui::SmallButton("-")) {
+                const auto& patterns = asset::HumanoidBonePatterns(part);
+                setRule(patterns.empty() ? asset::HumanoidBodyPartName(part) : patterns.front(),
+                        MaskRuleState::Exclude, 0.0f);
+                maskDirty = true;
+            }
             ImGui::SameLine();
             ImGui::TextUnformatted(asset::HumanoidBodyPartName(part));
             ImGui::PopID();
@@ -1234,78 +1714,401 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.5f);
         }
 
-        // 上半身 / 下半身は最頻出なのでワンボタンで用意する。
         ImGui::Spacing();
-        if (ImGui::Button("Upper Body Preset")) {
-            s_mask.entries.clear();
-            s_mask.defaultInclude = false;
-            // Spine から下へ 3 階層かけて立ち上げ、腰の継ぎ目を目立たなくする。
-            asset::AvatarMaskEntry spine;
-            spine.bonePath = "Spine";
-            spine.weight = 1.0f;
-            spine.includeChildren = true;
-            spine.blendDepth = 3;
-            s_mask.entries.push_back(std::move(spine));
+        if (ImGui::Button("Mirror Left / Right")) mirrorMask();
+        ImGui::SameLine();
+        if (ImGui::Button("All Include")) {
+            s_mask.defaultInclude = true;
             maskDirty = true;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Lower Body Preset")) {
-            s_mask.entries.clear();
+        if (ImGui::Button("All Exclude")) {
             s_mask.defaultInclude = false;
-            for (const char* bone : { "Hips", "LeftUpLeg", "RightUpLeg" }) {
-                asset::AvatarMaskEntry entry;
-                entry.bonePath = bone;
-                entry.weight = 1.0f;
-                entry.includeChildren = true;
-                s_mask.entries.push_back(std::move(entry));
-            }
-            // 上半身側を明示的に 0 にして、Hips 配下の背骨が巻き込まれないようにする。
-            asset::AvatarMaskEntry spine;
-            spine.bonePath = "Spine";
-            spine.weight = 0.0f;
-            spine.includeChildren = true;
-            s_mask.entries.push_back(std::move(spine));
+            s_mask.entries.clear();
             maskDirty = true;
         }
 
         // ── エントリ一覧 ──────────────────────────────────────────────────
-        ImGui::SeparatorText("Bones");
+        ImGui::SeparatorText("Hierarchy");
+        auto drawDropZone = [&](const char* label, MaskRuleState state) {
+            ImGui::Button(label, { ImGui::GetContentRegionAvail().x, 30.0f });
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload("FBZZ_MASK_BONE_PATH")) {
+                    const size_t size = payload->DataSize > 0
+                        ? static_cast<size_t>(payload->DataSize - 1) : 0;
+                    setRule(std::string(static_cast<const char*>(payload->Data), size), state);
+                    maskDirty = true;
+                }
+                ImGui::EndDragDropTarget();
+            }
+        };
+        drawDropZone("Drop bone here to Include", MaskRuleState::Include);
+        drawDropZone("Drop bone here to Exclude", MaskRuleState::Exclude);
+
+        if (maskSkeleton) {
+            static char s_maskSearch[128] = {};
+            static bool s_maskChangedOnly = false;
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55f);
+            ImGui::InputTextWithHint("##mask_search", "Search bone name or path",
+                                     s_maskSearch, sizeof(s_maskSearch));
+            ImGui::SameLine();
+            ImGui::Checkbox("Changed only", &s_maskChangedOnly);
+
+            std::vector<int> flattenedNodes;
+            std::vector<bool> visited(maskSkeleton->nodes.size(), false);
+            const std::function<void(int)> collectNodes = [&](int nodeIndex) {
+                if (nodeIndex < 0 || nodeIndex >= static_cast<int>(maskSkeleton->nodes.size())
+                    || visited[static_cast<size_t>(nodeIndex)]) return;
+                visited[static_cast<size_t>(nodeIndex)] = true;
+                flattenedNodes.push_back(nodeIndex);
+                for (const int child : maskSkeleton->nodes[static_cast<size_t>(nodeIndex)].children)
+                    collectNodes(child);
+            };
+            for (int i = 0; i < static_cast<int>(maskSkeleton->nodes.size()); ++i)
+                if (maskSkeleton->nodes[static_cast<size_t>(i)].parentIndex < 0) collectNodes(i);
+            for (int i = 0; i < static_cast<int>(maskSkeleton->nodes.size()); ++i)
+                collectNodes(i);
+
+            int missingRuleCount = 0;
+            for (const auto& entry : s_mask.entries) {
+                if (entry.bonePath.find('/') == std::string::npos) continue;
+                bool found = false;
+                for (int nodeIndex : flattenedNodes) {
+                    if (nodePath(nodeIndex) == entry.bonePath) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) ++missingRuleCount;
+            }
+            if (sourceChanged && missingRuleCount > 0) {
+                ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                                   "%d mask rule(s) no longer exist in this FBX.", missingRuleCount);
+            }
+
+            const auto ruleLabel = [](MaskRuleState state) {
+                switch (state) {
+                case MaskRuleState::Include: return "✓";
+                case MaskRuleState::Exclude: return "×";
+                case MaskRuleState::Mixed: return "~";
+                case MaskRuleState::Inherit: return "－";
+                }
+                return "－";
+            };
+            const auto ruleName = [](MaskRuleState state) {
+                switch (state) {
+                case MaskRuleState::Include: return "Included";
+                case MaskRuleState::Exclude: return "Excluded";
+                case MaskRuleState::Mixed: return "Mixed";
+                case MaskRuleState::Inherit: return "Inherited";
+                }
+                return "Inherited";
+            };
+            const auto mixColor = [](ImVec4 a, ImVec4 b, float amount) {
+                const float t = std::clamp(amount, 0.0f, 1.0f);
+                return ImVec4(
+                    a.x + (b.x - a.x) * t,
+                    a.y + (b.y - a.y) * t,
+                    a.z + (b.z - a.z) * t,
+                    a.w + (b.w - a.w) * t);
+            };
+            const auto weightColor = [&](float weight) {
+                // 0.0 = 危険色、0.5 = 注意色、1.0 = 有効色の信号機配色にする。
+                // WHY: 現在の薄い灰色では「除外」と「未設定」を見分けにくく、
+                //      メッシュ Preview の色とも対応しなかったため。
+                if (weight < 0.5f) {
+                    return mixColor(EditorTheme::Color(ThemeColor::Danger),
+                                    EditorTheme::Color(ThemeColor::Warning), weight * 2.0f);
+                }
+                return mixColor(EditorTheme::Color(ThemeColor::Warning),
+                                EditorTheme::Color(ThemeColor::Success),
+                                (weight - 0.5f) * 2.0f);
+            };
+            const auto stateColor = [&](MaskRuleState state, float effectiveWeight) {
+                switch (state) {
+                case MaskRuleState::Include:
+                    return EditorTheme::Color(ThemeColor::Success);
+                case MaskRuleState::Exclude:
+                    return EditorTheme::Color(ThemeColor::Danger);
+                case MaskRuleState::Mixed:
+                    return EditorTheme::Color(ThemeColor::Warning);
+                case MaskRuleState::Inherit:
+                    // 親の Include を継承して効いているノードは青、未適用はミュート。
+                    return effectiveWeight > 0.001f
+                        ? EditorTheme::Color(ThemeColor::Accent)
+                        : EditorTheme::Color(ThemeColor::TextMuted);
+                }
+                return EditorTheme::Color(ThemeColor::TextMuted);
+            };
+            const std::string searchText = lowerCopy(s_maskSearch);
+            const std::function<bool(int)> nodeVisible = [&](int nodeIndex) {
+                if (nodeIndex < 0 || nodeIndex >= static_cast<int>(maskSkeleton->nodes.size()))
+                    return false;
+                const auto& node = maskSkeleton->nodes[static_cast<size_t>(nodeIndex)];
+                const std::string path = nodePath(nodeIndex);
+                const std::string lowerName = lowerCopy(node.name);
+                const bool matchesSearch = searchText.empty()
+                    || lowerName.find(searchText) != std::string::npos
+                    || lowerCopy(path).find(searchText) != std::string::npos;
+                const bool isChanged = ruleState(path) != MaskRuleState::Inherit;
+                if ((matchesSearch && (!s_maskChangedOnly || isChanged))) return true;
+                for (const int child : node.children)
+                    if (nodeVisible(child)) return true;
+                return false;
+            };
+            struct BranchWeightFlags {
+                bool hasIncluded = false;
+                bool hasExcluded = false;
+            };
+            std::vector<BranchWeightFlags> branchWeightCache(maskSkeleton->nodes.size());
+            std::vector<bool> branchWeightCached(maskSkeleton->nodes.size(), false);
+            const std::function<BranchWeightFlags(int)> collectBranchWeights =
+                [&](int nodeIndex) {
+                    BranchWeightFlags result;
+                    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(maskSkeleton->nodes.size()))
+                        return result;
+                    if (branchWeightCached[static_cast<size_t>(nodeIndex)])
+                        return branchWeightCache[static_cast<size_t>(nodeIndex)];
+                    const auto& branchNode = maskSkeleton->nodes[static_cast<size_t>(nodeIndex)];
+                    const std::string branchPath = nodePath(nodeIndex);
+                    const float branchWeight = asset::EvaluateAvatarMaskWeight(
+                        s_mask, branchPath, branchNode.name);
+                    result.hasIncluded = branchWeight > 0.001f;
+                    result.hasExcluded = !result.hasIncluded;
+                    for (const int child : branchNode.children) {
+                        const BranchWeightFlags childFlags = collectBranchWeights(child);
+                        result.hasIncluded = result.hasIncluded || childFlags.hasIncluded;
+                        result.hasExcluded = result.hasExcluded || childFlags.hasExcluded;
+                    }
+                    branchWeightCache[static_cast<size_t>(nodeIndex)] = result;
+                    branchWeightCached[static_cast<size_t>(nodeIndex)] = true;
+                    return result;
+                };
+            const auto displayState = [&](int nodeIndex) {
+                const BranchWeightFlags branch = collectBranchWeights(nodeIndex);
+                if (branch.hasIncluded && branch.hasExcluded)
+                    return MaskRuleState::Mixed;
+                return ruleState(nodePath(nodeIndex));
+            };
+            const auto nextRule = [&](MaskRuleState state, int nodeIndex) {
+                const MaskRuleState next = cycleState(state);
+                if (ImGui::GetIO().KeyShift && s_maskAnchorNode >= 0) {
+                    const auto anchor = std::find(flattenedNodes.begin(), flattenedNodes.end(),
+                                                  s_maskAnchorNode);
+                    const auto current = std::find(flattenedNodes.begin(), flattenedNodes.end(),
+                                                   nodeIndex);
+                    if (anchor != flattenedNodes.end() && current != flattenedNodes.end()) {
+                        const auto first = std::min(anchor, current);
+                        const auto last = std::max(anchor, current);
+                        for (auto it = first; it != last + 1; ++it)
+                            setNodeRule(*it, next);
+                        return;
+                    }
+                }
+                applyBranchRule(nodeIndex, next);
+            };
+            const std::function<void(int, int)> drawNode = [&](int nodeIndex, int depth) {
+                if (!nodeVisible(nodeIndex)) return;
+                const auto& node = maskSkeleton->nodes[static_cast<size_t>(nodeIndex)];
+                const std::string path = nodePath(nodeIndex);
+                const MaskRuleState state = displayState(nodeIndex);
+                const float effectiveWeight =
+                    asset::EvaluateAvatarMaskWeight(s_mask, path, node.name);
+                const std::string lowerPath = lowerCopy(path);
+                const bool matchesSearch = !searchText.empty()
+                    && (lowerCopy(node.name).find(searchText) != std::string::npos
+                        || lowerPath.find(searchText) != std::string::npos);
+                // SpanAvailWidth はテーブルの固定操作列まで TreeNode の矩形に含めるため、
+                //      長いノード名が Weight 入力欄の上へ描画される。ノード列のクリップに任せる。
+                ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow;
+                if (node.children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
+                if (!searchText.empty() || s_maskChangedOnly)
+                    flags |= ImGuiTreeNodeFlags_DefaultOpen;
+                if (matchesSearch || s_maskSelectedPath == path)
+                    flags |= ImGuiTreeNodeFlags_Selected;
+                // TreePush はテーブル全体の横幅を狭めて固定操作列へ侵入するため使わず、
+                //      Bone 列の中だけへ深さを描画する。これで深い階層でも Weight 列を守る。
+                flags |= ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+                const ImVec4 nodeColor = stateColor(state, effectiveWeight);
+                bool open = false;
+                bool clicked = false;
+                ImGui::PushID(path.c_str());
+                if (ImGui::BeginTable("##mask_node_row", 4,
+                                      ImGuiTableFlags_SizingStretchProp |
+                                      ImGuiTableFlags_NoSavedSettings)) {
+                    ImGui::TableSetupColumn("##mask_node_label", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("##mask_node_state",
+                                            ImGuiTableColumnFlags_WidthFixed, 38.0f);
+                    ImGui::TableSetupColumn("##mask_node_weight",
+                                             ImGuiTableColumnFlags_WidthFixed, 104.0f);
+                    ImGui::TableSetupColumn("##mask_node_state_name",
+                                             ImGuiTableColumnFlags_WidthFixed, 96.0f);
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    const float rowStartX = ImGui::GetCursorPosX();
+                    ImGui::SetCursorPosX(rowStartX +
+                                         depth * ImGui::GetStyle().IndentSpacing);
+                    ImGui::PushStyleColor(ImGuiCol_Text, nodeColor);
+                    open = ImGui::TreeNodeEx(path.c_str(), flags, "%s", node.name.c_str());
+                    ImGui::PopStyleColor();
+                    clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Include branch")) {
+                            applyBranchRule(nodeIndex, MaskRuleState::Include);
+                            maskDirty = true;
+                        }
+                        if (ImGui::MenuItem("Exclude branch")) {
+                            applyBranchRule(nodeIndex, MaskRuleState::Exclude);
+                            maskDirty = true;
+                        }
+                        if (ImGui::MenuItem("Reset branch")) {
+                            applyBranchRule(nodeIndex, MaskRuleState::Inherit);
+                            maskDirty = true;
+                        }
+                        ImGui::Separator();
+                        ImGui::TextDisabled("Path: %s", path.c_str());
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::TableNextColumn();
+                    ImVec4 statusButtonColor = nodeColor;
+                    statusButtonColor.w = 0.22f;
+                    ImVec4 statusButtonHover = nodeColor;
+                    statusButtonHover.w = 0.38f;
+                    ImVec4 statusButtonActive = nodeColor;
+                    statusButtonActive.w = 0.55f;
+                    ImGui::PushStyleColor(ImGuiCol_Button, statusButtonColor);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, statusButtonHover);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, statusButtonActive);
+                    if (ImGui::Button(ruleLabel(state), ImVec2(-FLT_MIN, 0.0f))) {
+                        nextRule(state, nodeIndex);
+                        s_maskAnchorNode = nodeIndex;
+                        maskDirty = true;
+                    }
+                    ImGui::PopStyleColor(3);
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("%s\n%s", ruleName(state), path.c_str());
+
+                    ImGui::TableNextColumn();
+                    float editedWeight = effectiveWeight;
+                    ImGui::PushStyleColor(ImGuiCol_Text, weightColor(effectiveWeight));
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    const bool weightEdited = ImGui::InputFloat(
+                        "##weight", &editedWeight, 0.01f, 0.1f, "%.2f");
+                    if (weightEdited) {
+                        // ImGui の直接入力・ステップ操作・貼り付けのどの経路でも、
+                        // NaN や上限超過を .mask へ渡さず 0..1 に確定させる。
+                        editedWeight = std::isfinite(editedWeight)
+                            ? std::clamp(editedWeight, 0.0f, 1.0f)
+                            : effectiveWeight;
+                        setRule(path,
+                                editedWeight > 0.001f
+                                    ? MaskRuleState::Include : MaskRuleState::Exclude,
+                                editedWeight);
+                        maskDirty = true;
+                        s_maskSelectedPath = path;
+                        SetAnimationMaskPreviewSelection(path);
+                    }
+                    ImGui::PopStyleColor();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("Weight を直接入力 (0.00〜1.00)\nInherited の値を変更すると明示ルールを作成");
+
+                    ImGui::TableNextColumn();
+                    ImGui::TextColored(nodeColor, "%s", ruleName(state));
+                    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                        ImGui::SetDragDropPayload("FBZZ_MASK_BONE_PATH",
+                                                  path.c_str(), path.size() + 1);
+                        ImGui::TextUnformatted(path.c_str());
+                        ImGui::EndDragDropSource();
+                    }
+                    ImGui::EndTable();
+                }
+                if (open) {
+                    for (const int child : node.children)
+                        drawNode(child, depth + 1);
+                }
+                ImGui::PopID();
+                if (clicked) {
+                    s_maskSelectedPath = path;
+                    SetAnimationMaskPreviewSelection(path);
+                }
+            };
+
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Success), "✓ Include");
+            ImGui::SameLine();
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "× Exclude");
+            ImGui::SameLine();
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::TextMuted), "－ Inherit");
+            ImGui::SameLine();
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "~ Mixed");
+            ImGui::SameLine();
+            ImGui::TextDisabled("| Weight: 0 red → 1 green | Shift+クリックで範囲選択");
+            ImGui::BeginChild("##mask_hierarchy", { 0.0f, 300.0f }, true);
+            for (int i = 0; i < static_cast<int>(maskSkeleton->nodes.size()); ++i)
+                if (maskSkeleton->nodes[static_cast<size_t>(i)].parentIndex < 0)
+                    drawNode(i, 0);
+            ImGui::EndChild();
+        } else if (!s_mask.skeletonSourcePath.empty()) {
+            ImGui::TextDisabled("スケルトンを読み込めませんでした。");
+        } else {
+            ImGui::TextDisabled("Skeleton Source に FBX を指定してください。");
+        }
+
+        ImGui::SeparatorText("Advanced Rules");
         int removeEntry = -1;
-        for (int i = 0; i < static_cast<int>(s_mask.entries.size()); ++i) {
-            auto& entry = s_mask.entries[static_cast<size_t>(i)];
-            ImGui::PushID(i);
+        if (ImGui::BeginTable("##mask_advanced_rules", 5,
+                              ImGuiTableFlags_BordersInnerV |
+                              ImGuiTableFlags_SizingStretchProp |
+                              ImGuiTableFlags_NoSavedSettings)) {
+            ImGui::TableSetupColumn("Bone", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Weight", ImGuiTableColumnFlags_WidthFixed, 104.0f);
+            ImGui::TableSetupColumn("Depth", ImGuiTableColumnFlags_WidthFixed, 94.0f);
+            ImGui::TableSetupColumn("Children", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+            ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+            ImGui::TableHeadersRow();
 
-            char boneBuffer[256];
-            std::snprintf(boneBuffer, sizeof(boneBuffer), "%s", entry.bonePath.c_str());
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.45f);
-            if (ImGui::InputText("##bone", boneBuffer, sizeof(boneBuffer))) {
-                entry.bonePath = boneBuffer;
-                maskDirty = true;
+            for (int i = 0; i < static_cast<int>(s_mask.entries.size()); ++i) {
+                auto& entry = s_mask.entries[static_cast<size_t>(i)];
+                ImGui::PushID(i);
+                ImGui::TableNextRow();
+
+                ImGui::TableNextColumn();
+                char boneBuffer[256];
+                std::snprintf(boneBuffer, sizeof(boneBuffer), "%s", entry.bonePath.c_str());
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::InputText("##bone", boneBuffer, sizeof(boneBuffer))) {
+                    entry.bonePath = boneBuffer;
+                    maskDirty = true;
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("ボーン名 (\"Spine1\") またはパス (\"Hips/Spine/Spine1\")");
+
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::SliderFloat("##w", &entry.weight, 0.0f, 1.0f, "w %.2f"))
+                    maskDirty = true;
+
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::DragInt("##depth", &entry.blendDepth, 0.1f, 0, 8, "depth %d"))
+                    maskDirty = true;
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                    ImGui::SetTooltip(
+                        "0 なら配下一律。1 以上でこのボーンから下へ段階的に weight を立ち上げ、\n"
+                        "上半身/下半身の境界でポーズが折れるのを防ぎます。");
+                }
+
+                ImGui::TableNextColumn();
+                if (ImGui::Checkbox("##children", &entry.includeChildren))
+                    maskDirty = true;
+
+                ImGui::TableNextColumn();
+                if (ImGui::SmallButton("x")) removeEntry = i;
+                ImGui::PopID();
             }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("ボーン名 (\"Spine1\") またはパス (\"Hips/Spine/Spine1\")");
-
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::SliderFloat("##w", &entry.weight, 0.0f, 1.0f, "w %.2f"))
-                maskDirty = true;
-
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(80.0f);
-            if (ImGui::DragInt("##depth", &entry.blendDepth, 0.1f, 0, 8, "depth %d"))
-                maskDirty = true;
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-                ImGui::SetTooltip(
-                    "0 なら配下一律。1 以上でこのボーンから下へ段階的に weight を立ち上げ、\n"
-                    "上半身/下半身の境界でポーズが折れるのを防ぎます。");
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Checkbox("children", &entry.includeChildren)) maskDirty = true;
-            ImGui::SameLine();
-            if (ImGui::SmallButton("x")) removeEntry = i;
-
-            ImGui::PopID();
+            ImGui::EndTable();
         }
         if (removeEntry >= 0) {
             s_mask.entries.erase(s_mask.entries.begin() + removeEntry);
@@ -1317,36 +2120,102 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
 
         // ── スケルトンのボーンツリー (実効ウェイトのプレビュー) ─────────────
-        if (maskSkeleton) {
-            ImGui::SeparatorText("Skeleton Preview");
-            ImGui::TextDisabled("各ボーンにこのマスクを適用したときの実効ウェイトです。");
-            ImGui::BeginChild("##mask_bone_tree", { 0.0f, 220.0f }, true);
-            for (const auto& node : maskSkeleton->nodes) {
-                const float w = asset::EvaluateAvatarMaskWeight(s_mask, node.name, node.name);
-                // 効いているボーンだけ色を付け、無効ボーンは沈める。
-                const ImVec4 color = w > 0.001f
-                    ? ImVec4(0.55f + 0.45f * w, 0.85f, 0.55f, 1.0f)
-                    : ImVec4(0.45f, 0.45f, 0.45f, 1.0f);
-                ImGui::TextColored(color, "%-32s  %.2f", node.name.c_str(), w);
-            }
-            ImGui::EndChild();
-        } else if (!s_mask.skeletonSourcePath.empty()) {
-            ImGui::TextDisabled("スケルトンを読み込めませんでした。");
-        }
 
         // ── 保存 ─────────────────────────────────────────────────────────
+        const ImGuiID maskActiveAfter = ImGui::GetActiveID();
+        auto pushMaskCommand = [&](const asset::AvatarMaskAsset& before,
+                                   const asset::AvatarMaskAsset& after) {
+            if (!ctx.undoStack || before == after) return;
+            prepareMaskForSave();
+            const asset::AvatarMaskAsset normalizedAfter = s_mask;
+            if (before == normalizedAfter) return;
+
+            EditorContext* context = &ctx;
+            const std::string capturedPath = absPath;
+            asset::AvatarMaskAsset* liveMask = &s_mask;
+            std::string* livePath = &s_maskPath;
+            auto* liveWriteTime = &s_maskWriteTime;
+            auto apply = [context, capturedPath, liveMask, livePath, liveWriteTime](
+                             const asset::AvatarMaskAsset& value) {
+                // 別の .mask を選択中に古い履歴を実行しても、現在表示中の値を壊さない。
+                if (*livePath == capturedPath)
+                    *liveMask = value;
+                if (!asset::SaveAvatarMaskAsset(capturedPath, value)) return;
+
+                if (*livePath == capturedPath) {
+                    std::error_code error;
+                    *liveWriteTime = std::filesystem::last_write_time(
+                        capturedPath, error);
+                }
+                AssetDirtyRegistry::MarkClean(capturedPath);
+                context->requestAssetBrowserRefresh = true;
+            };
+            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                "Edit Avatar Mask",
+                [apply, normalizedAfter]() { apply(normalizedAfter); },
+                [apply, before]() { apply(before); }));
+        };
+
+        if (!canRecordMaskUndo) {
+            s_maskUndo.active = false;
+            s_maskUndo.changed = false;
+        } else {
+            // アセットを切り替えたときに、前の .mask の操作と現在の操作を混ぜない。
+            if (s_maskUndo.active && s_maskUndo.path != absPath)
+                s_maskUndo.active = false;
+
+            if (!s_maskUndo.active) {
+                if (maskActiveAfter != 0 && maskActiveAfter != maskActiveBefore) {
+                    s_maskUndo.path = absPath;
+                    s_maskUndo.before = maskBeforeDraw;
+                    s_maskUndo.activeId = maskActiveAfter;
+                    s_maskUndo.active = true;
+                    s_maskUndo.changed = maskDirty;
+                } else if (maskDirty) {
+                    // プリセット適用、ノードの一括変更、追加/削除などの即時操作。
+                    pushMaskCommand(maskBeforeDraw, s_mask);
+                }
+            } else if (maskActiveAfter == s_maskUndo.activeId) {
+                s_maskUndo.changed |= maskDirty;
+            } else {
+                // 入力を離したフレームで、操作全体の before/after を 1 件に確定する。
+                s_maskUndo.changed |= maskDirty;
+                if (s_maskUndo.changed)
+                    pushMaskCommand(s_maskUndo.before, s_mask);
+                s_maskUndo.active = false;
+                s_maskUndo.changed = false;
+                if (maskActiveAfter != 0) {
+                    s_maskUndo.path = absPath;
+                    s_maskUndo.before = s_mask;
+                    s_maskUndo.activeId = maskActiveAfter;
+                    s_maskUndo.active = true;
+                    s_maskUndo.changed = maskDirty;
+                }
+            }
+        }
+
         ImGui::Spacing();
         const bool isMaskDirty = AssetDirtyRegistry::IsDirty(absPath) || maskDirty;
         if (maskDirty) {
+            prepareMaskForSave();
             AssetDirtyRegistry::Register(
                 absPath, util::FileSystem::GetFilename(absPath), "MASK",
-                [path = absPath, maskCopy = s_mask]() {
-                    return asset::SaveAvatarMaskAsset(path, maskCopy);
+                [path = absPath, maskCopy = s_mask, livePath = &s_maskPath,
+                 liveWriteTime = &s_maskWriteTime]() {
+                    const bool saved = asset::SaveAvatarMaskAsset(path, maskCopy);
+                    if (saved && *livePath == path) {
+                        std::error_code error;
+                        *liveWriteTime = std::filesystem::last_write_time(path, error);
+                    }
+                    return saved;
                 });
         }
         if (ImGui::Button("Apply") ||
             (isMaskDirty && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))) {
+            prepareMaskForSave();
             if (asset::SaveAvatarMaskAsset(absPath, s_mask)) {
+                std::error_code error;
+                s_maskWriteTime = std::filesystem::last_write_time(absPath, error);
                 AssetDirtyRegistry::MarkClean(absPath);
                 ctx.requestAssetBrowserRefresh = true;
             }
@@ -1355,12 +2224,33 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (ImGui::Button("Revert")) {
             s_mask = asset::AvatarMaskAsset{};
             (void)asset::LoadAvatarMaskAsset(absPath, s_mask);
+            std::error_code error;
+            s_maskWriteTime = std::filesystem::last_write_time(absPath, error);
+            s_maskUndo.active = false;
+            s_maskUndo.changed = false;
             AssetDirtyRegistry::MarkClean(absPath);
         }
         if (isMaskDirty) {
             ImGui::SameLine();
             ImGui::TextColored({ 1.0f, 0.8f, 0.2f, 1.0f }, "Modified");
         }
+
+        // .mask 選択時は Inspector の最下部で、現在の編集状態をそのまま可視化する。
+        // WHY: 別 Preview ウィンドウへ切り替えずに、木構造の変更結果とメッシュの色を
+        //      同じ視線で確認できるようにする。保存前の s_mask を渡すため即時反映される。
+        ImGui::SeparatorText("Animation Mask Preview");
+        ImGui::TextDisabled("FBX mesh is colored by effective mask weight.");
+        ImGui::TextColored(ImVec4(0.90f, 0.20f, 0.20f, 1.0f), "0.0 Excluded");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.90f, 0.85f, 0.20f, 1.0f), "0.5 Blended");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.20f, 0.90f, 0.35f, 1.0f), "1.0 Included");
+
+        static AnimationMaskPreview s_animationMaskPreview;
+        const float previewHeight =
+            (std::max)(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing(), 180.0f);
+        if (!s_animationMaskPreview.DrawPreview(ctx, absPath, s_mask, previewHeight))
+            ImGui::TextDisabled("FBX と .mask を指定するとプレビューできます。");
     } else if (ext == ".terrain") {
         // ── .terrain アセット ─────────────────────────────────────────────
         // WHY: 実際のオンディスク形式は scene::TerrainAssetSerializer が読み書きする TOML。
@@ -1717,6 +2607,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Type: %s", ext.c_str());
         ImGui::Spacing();
         ImGui::TextDisabled("Drag from Asset Browser to assign to a field.");
+    }
+
+    if (drawVfxPreviewAtBottom) {
+        ImGui::SeparatorText("Preview");
+        DrawVFXPreviewWidget(ctx, absPath, 240.0f);
     }
 }
 
