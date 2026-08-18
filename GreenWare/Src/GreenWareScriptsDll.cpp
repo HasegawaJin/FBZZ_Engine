@@ -25,9 +25,22 @@
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-#include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/Camera/TpsCameraComponent.hpp"
+#include "Scripts/Combat/EnemyChaserComponent.hpp"
+#include "Scripts/Combat/EnemyHealthComponent.hpp"
+#include "Scripts/Data/PlayerTuning.hpp"
+#include "Scripts/Data/PolarityTuning.hpp"
+#include "Scripts/Game/GameFlowComponent.hpp"
+#include "Scripts/Game/ResultPresenterComponent.hpp"
+#include "Scripts/Player/EyeBlinkComponent.hpp"
+#include "Scripts/Player/PlayerAimComponent.hpp"
+#include "Scripts/Player/PlayerControllerComponent.hpp"
+#include "Scripts/Player/PlayerHealthComponent.hpp"
+#include "Scripts/Player/PolarityGunComponent.hpp"
+#include "Scripts/Polarity/PolarityBodyComponent.hpp"
+#include "Scripts/Polarity/PolarityFieldComponent.hpp"
+#include "Scripts/Polarity/PolarityTargetComponent.hpp"
 #include "Scripts/SceneManagerScript.hpp"
-#include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // DataAsset 型を DataAssetFactory へ直接自己登録する (純共有 ScriptableObject)。

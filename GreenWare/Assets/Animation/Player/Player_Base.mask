@@ -1,0 +1,8 @@
+entries = []
+
+[mask]
+default_include = true
+name = 'New Avatar Mask'
+skeleton_source = 'Assets/Models/MiniBot/MiniBot.fbx'
+skeleton_source_signature = '134301453199362190:3758348'
+version = 1
