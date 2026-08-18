@@ -28,6 +28,8 @@ private:
     // SetParent 成功後、次フレームで強制 open するノードの EntityID
     scene::EntityID m_pendingExpand;
     scene::EntityID m_lastClickedEntity;               // Shift+クリック範囲選択のアンカー
+    scene::EntityID m_pendingClickEntity;              // ドラッグにならなかったクリックの保留
+    bool            m_hierarchyDragStarted = false;    // 今フレームをまたいでドラッグ中か
     scene::EntityID m_renamingId;                      // F2 リネーム対象
     char            m_renameBuffer[256] = {};
     bool            m_renameFocusPending = false;      // インライン入力欄へ初回フォーカスを移す

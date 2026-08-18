@@ -203,6 +203,17 @@ std::string BuildScriptTemplate(const std::string& name)
     ss << "\n";
     ss << "class " << className << " : public Script {\n";
     ss << "    FBZZ_SCRIPT(" << className << ")\n";
+    ss << "\n";
+    ss << "    // このスクリプトが成立するために必要なコンポーネントを宣言する。\n";
+    ss << "    // 宣言しておくと 3 箇所が自動で面倒を見る:\n";
+    ss << "    //   - Inspector が不足を赤帯で名指しし、Fix ボタンで一括追加できる\n";
+    ss << "    //   - Play 開始時にシーン全体を検証して Console へ出す\n";
+    ss << "    //   - Hierarchy の Add Object > Script Object が要求ごと組み立てる\n";
+    ss << "    // 宣言しないと、付け忘れは「動かないのにエラーも出ない」形でしか現れない。\n";
+    ss << "    // 対象の型ヘッダを上で #include すること。\n";
+    ss << "    // FBZZ_REQUIRE_COMPONENT(RigidBodyComponent, AnimatorComponent)\n";
+    ss << "    // FBZZ_OPTIONAL_COMPONENT(IKSolverComponent)  // 無くても縮退動作するもの\n";
+    ss << "\n";
     ss << "public:\n";
     ss << "    // フィールドはここに書くだけで Inspector / シリアライズに自動反映される。\n";
     ss << "    // 表示名 \"\" は変数名から自動生成される (例: speed -> \"Speed\")。\n";
@@ -221,6 +232,80 @@ std::string BuildScriptTemplate(const std::string& name)
     ss << "}\n";
     ss << "\n";
     ss << "} // namespace sandbox\n";
+    return ss.str();
+}
+
+// アタッチしないユーティリティクラスのテンプレート。
+//
+// WHY 登録マクロを持たせないか:
+//   ScriptCodeGen は Assets/**/*.hpp の FBZZ_SCRIPT( を走査して ScriptList.inl を作る。
+//   マクロが無いヘッダは登録されず、Add Script メニューにも出ない。つまり
+//   「Unity で MonoBehaviour を継承しない普通のクラス」がそのまま成立する。
+//   CMake の GLOB は Assets/*.hpp を全部拾うので、置くだけで DLL のビルド対象に入る。
+std::string BuildUtilityTemplate(const std::string& name)
+{
+    std::ostringstream ss;
+    ss << "// FBZZ Engine\n";
+    ss << "// " << name << ".hpp | sandbox\n";
+    ss << "// アタッチしないユーティリティ。FBZZ_SCRIPT を持たないため Inspector の\n";
+    ss << "// Add Script には現れず、ScriptList.inl にも登録されない。\n";
+    ss << "// 使う側のスクリプトから #include して呼ぶ。\n";
+    ss << "#pragma once\n";
+    ss << "\n";
+    ss << "// WHY Script.hpp を引くか: Vector3 / Quaternion / Time など、ゲームコードが\n";
+    ss << "//     ほぼ必ず使う型の共通プレリュードを兼ねているため。数学型を使わない\n";
+    ss << "//     純粋なヘルパーなら、この include は外してよい。\n";
+    ss << "#include <Engine/Scene/Script.hpp>\n";
+    ss << "\n";
+    ss << "using namespace fbzz::math;\n";
+    ss << "\n";
+    ss << "namespace sandbox {\n";
+    ss << "\n";
+    ss << "// 状態を持たないヘルパーは static 関数を並べる。値を保持したいなら\n";
+    ss << "// 普通のクラスとして書き、スクリプト側のメンバーとして持たせる。\n";
+    ss << "class " << name << " {\n";
+    ss << "public:\n";
+    ss << "    // static float Example(float value) { return value; }\n";
+    ss << "};\n";
+    ss << "\n";
+    ss << "} // namespace sandbox\n";
+    return ss.str();
+}
+
+// 共有調整値 (.fzdata) のテンプレート。Unity の ScriptableObject に相当する。
+//
+// WHY コンポーネントのフィールドで持たないか:
+//   同じ調整値を N 体のインスタンスがそれぞれ持つと、リバランスが N 個の個別編集になる。
+//   DataAsset は値を 1 ファイルへ切り出し、参照側すべてが同じ実体を見る。
+//   1 か所いじれば全部に効く。
+std::string BuildDataAssetTemplate(const std::string& name)
+{
+    std::ostringstream ss;
+    ss << "// FBZZ Engine\n";
+    ss << "// " << name << ".hpp | sandbox\n";
+    ss << "// 共有データアセット (ScriptableObject 相当)。\n";
+    ss << "// AssetBrowser の Create > Data Asset > " << name << " で .fzdata を作り、\n";
+    ss << "// 参照側スクリプトの FBZZ_ASSET フィールドへドラッグして割り当てる。\n";
+    ss << "#pragma once\n";
+    ss << "\n";
+    ss << "#include <Engine/Asset/DataAsset.hpp>\n";
+    ss << "\n";
+    ss << "namespace sandbox {\n";
+    ss << "\n";
+    ss << "class " << name << " : public fbzz::DataAsset {\n";
+    ss << "    FBZZ_DATA_ASSET(" << name << ")\n";
+    ss << "public:\n";
+    ss << "    // スクリプトと同じ登録マクロがそのまま使える。\n";
+    ss << "    // FBZZ_FIELD_RANGE(float, maxHp, 100.0f, \"Max HP\", 1.0f, 9999.0f)\n";
+    ss << "};\n";
+    ss << "\n";
+    ss << "FBZZ_REFLECT(" << name << ")\n";
+    ss << "\n";
+    ss << "} // namespace sandbox\n";
+    ss << "\n";
+    ss << "// 参照側スクリプトでの使い方:\n";
+    ss << "//   FBZZ_ASSET(sandbox::" << name << ", stats, \"Stats\")\n";
+    ss << "//   if (stats) hp = stats->maxHp;\n";
     return ss.str();
 }
 
@@ -353,11 +438,14 @@ std::string BuildComputeHlslTemplate(const std::string& name)
 std::string ScriptCodeGen::CreateScript(const std::string& name,
                                         const std::string& scriptsDir,
                                         const std::string& dllCppPath,
-                                        const std::string& staticCppPath)
+                                        const std::string& staticCppPath,
+                                        ScriptKind kind)
 {
     if (name.empty() || scriptsDir.empty()) return {};
 
-    const std::string className  = name + "Component";
+    // "Component" サフィックスはアタッチするスクリプトの慣習。
+    // ユーティリティや DataAsset に付けると意味が逆になるため、Behaviour だけに付ける。
+    const std::string className  = (kind == ScriptKind::Behaviour) ? name + "Component" : name;
     const std::string headerName = className + ".hpp";
     const std::string headerPath = scriptsDir + "/" + headerName;
 
@@ -372,7 +460,15 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
         FBZZ_LOG_ERROR("ScriptCodeGen: failed to create Scripts directory: %s", scriptsDir.c_str());
         return {};
     }
-    if (!util::FileSystem::WriteText(headerPath, BuildScriptTemplate(name))) {
+    const std::string source = [&] {
+        switch (kind) {
+        case ScriptKind::Utility:   return BuildUtilityTemplate(className);
+        case ScriptKind::DataAsset: return BuildDataAssetTemplate(className);
+        case ScriptKind::Behaviour: break;
+        }
+        return BuildScriptTemplate(name);
+    }();
+    if (!util::FileSystem::WriteText(headerPath, source)) {
         FBZZ_LOG_ERROR("ScriptCodeGen: failed to write file: %s", headerPath.c_str());
         return {};
     }

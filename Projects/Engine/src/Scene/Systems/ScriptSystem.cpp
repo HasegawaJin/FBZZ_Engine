@@ -7,10 +7,12 @@
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include "Engine/Scene/ScriptValidation.hpp"
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -39,13 +41,24 @@ void ScriptSystem::Update(SystemContext& ctx)
 
             if (!sc->scripts[i].m_awoken) {
                 FBZZ_LOG_DEBUG("ScriptSystem: OnAwake  [%s]", s->GetTypeName());
-                s->OnAwake();
+                s->InvokeNoArg(&Script::OnAwake, "OnAwake");
                 sc->scripts[i].m_awoken = true;
             }
 
             if (!sc->scripts[i].m_started) {
+                // FBZZ_REQUIRE_COMPONENT の充足を、そのスクリプトにつき一度だけ検査する。
+                // WHY ここ (OnStart の直前) か: 自分の OnAwake で GetOrAddComponent<T>() を
+                //     呼んで自前で揃えるスクリプトを誤検知しないよう、OnAwake の後に見る。
+                //     エディタは Play 開始前に同じ検証をまとめて出すが、この経路は
+                //     Standalone ビルドでも動く最後の防壁になる (実行時追加にも追従する)。
+                std::vector<ScriptRequirementIssue> issues;
+                CollectScriptRequirementIssues(*go, *s, issues);
+                for (const auto& issue : issues)
+                    FBZZ_LOG_ERROR("Script requirement: %s",
+                                   FormatScriptRequirementIssue(issue).c_str());
+
                 FBZZ_LOG_DEBUG("ScriptSystem: OnStart  [%s]", s->GetTypeName());
-                s->OnStart();
+                s->InvokeNoArg(&Script::OnStart, "OnStart");
                 sc->scripts[i].m_started = true;
             }
 
@@ -53,7 +66,7 @@ void ScriptSystem::Update(SystemContext& ctx)
                 s->TickFrameDelays();
                 s->TickInvokes(dt);
                 s->TickCoroutines();
-                s->OnUpdate();
+                s->InvokeNoArg(&Script::OnUpdate, "OnUpdate");
             }
         }
     }
@@ -95,7 +108,7 @@ void FixedScriptSystem::Update(SystemContext& ctx)
 
             s->SetContext(&scene, go);
             if (s->enabled)
-                s->OnFixedUpdate();
+                s->InvokeNoArg(&Script::OnFixedUpdate, "OnFixedUpdate");
         }
     }
 }
@@ -116,7 +129,7 @@ void LateScriptSystem::Update(SystemContext& ctx)
             entry.script->SetContext(&scene, go);
             entry.script->SyncEnabledState();
             if (entry.script->enabled)
-                entry.script->OnLateUpdate();
+                entry.script->InvokeNoArg(&Script::OnLateUpdate, "OnLateUpdate");
         }
     }
 }

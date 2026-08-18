@@ -76,10 +76,22 @@ constexpr uint64_t kReflectionAbiVersion = 3;
 //      Reflect などはすべて vtable インデックスで呼ばれるが、仮想関数を途中に挿入しても
 //      sizeof(Script) は変わらないため、既存の署名では stale な DLL を検出できない。
 //      Script の仮想関数を追加・削除・並べ替えたら必ずこの値をインクリメントすること。
+//
+// WHY 仮想関数以外の変更でも上げるか:
+//      コールバック引数として DLL 境界を越える「値型」も同じ穴を持つ。CollisionInfo /
+//      RootMotionInfo / AnimationEventInfo は Script のメンバーではないため、
+//      フィールドを足しても sizeof(Script) / sizeof(Scene) / sizeof(ScriptComponent) の
+//      どれも変わらない。署名が一致したまま呼び出し側と受け取り側でレイアウトがずれ、
+//      引数が化けたまま実行される。これらの構造体を変更したときも必ずここを上げること。
+//
 // 履歴:
 //   1: 初版 (この定数の導入時点の並び)
 //   2: OnAnimationEvent の直後へ OnAnimatorMove を追加 (Root Motion の同期コールバック)
-constexpr uint64_t kScriptVtableAbiVersion = 2;
+//   3: OnDespawn の直後へ RequiredComponents / OptionalComponents を追加
+//      (FBZZ_REQUIRE_COMPONENT による必須コンポーネント宣言)
+//   4: CollisionInfo 末尾へ relativeVelocity / approachSpeed / impactImpulse を追加
+//      (衝突の強さ。仮想関数の並びは 3 から変わっていない)
+constexpr uint64_t kScriptVtableAbiVersion = 4;
 
 [[nodiscard]] constexpr ScriptDllAbiInfo GetScriptDllAbiInfo()
 {

@@ -7,7 +7,9 @@
 #include <Editor/Util/ScriptSnapshot.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <algorithm>
 #include <cfloat>
+#include <charconv>
 #include <imgui_internal.h>
 
 namespace fbzz::editor {
@@ -17,6 +19,199 @@ namespace {
 // スクリプトカードの帯色。Engine コンポーネントのどのカテゴリ色とも被らない色を当て、
 // 「ここから下はユーザーコード」であることを一目で分かるようにする。
 constexpr ImU32 kScriptAccent = IM_COL32(120, 190, 255, 255);
+
+// スクリプトカードを Component の表示順リストへ載せるためのキー。
+//
+// WHY index ではなく型名か: キーは .meta へ保存され、次にシーンを開いたときに
+//   同じカードを指し続けなければならない。index はスクリプトを 1 つ足しただけで
+//   全部ずれる。型名なら足しても消しても他のカードのキーが動かない。
+// WHY "Script:" を前置するか: エンジン Component のキーは表示名そのもの ("Mesh Renderer")
+//   なので、ユーザーが同名のスクリプトを書いたときに衝突する。名前空間を分ける。
+// WHY 同型が複数あるとき "#n" を足すか: 1 つの GameObject に同じスクリプトを 2 つ
+//   付けられる (弾を 2 門ぶん等)。キーが重複すると 2 枚が同じ席を奪い合う。
+std::string ScriptOrderKey(const scene::ScriptComponent& sc, int index)
+{
+    const auto typeNameOf = [](const scene::ScriptEntry& entry) -> std::string {
+        if (entry.script) return entry.script->GetTypeName();
+        if (entry.serialized) return entry.serialized->type;
+        return "Unknown";
+    };
+    if (index < 0 || index >= static_cast<int>(sc.scripts.size())) return {};
+
+    const std::string type = typeNameOf(sc.scripts[static_cast<std::size_t>(index)]);
+    int sameTypeBefore = 0;
+    for (int i = 0; i < index; ++i)
+        if (typeNameOf(sc.scripts[static_cast<std::size_t>(i)]) == type) ++sameTypeBefore;
+
+    std::string key = "Script:" + type;
+    if (sameTypeBefore > 0) key += "#" + std::to_string(sameTypeBefore);
+    return key;
+}
+
+// 1 フレームのあいだ全スクリプトカードで共有する状態。
+//
+// WHY ファイルスコープの static か: カードは Component と混ざって 1 枚ずつ別々の
+//   コールバックから描かれるようになったため、以前のように 1 つの関数のローカル変数で
+//   持てない。Inspector は 1 フレームに 1 GameObject しか描かないので単一で足りる。
+struct ScriptInspectorFrame {
+    // 編集開始時の値 (Undo の before)。index → スナップショット。
+    std::vector<std::string> beforeSnapshots;
+    ImGuiID activeBefore     = 0;
+    int     editingIndex     = -1;   // この frame に編集が始まったカード
+    int     removeIndex      = -1;   // ⋯ → Remove Component
+    bool    canTrackUndo     = false;
+    bool    active           = false; // Begin〜End の内側か
+};
+ScriptInspectorFrame s_scriptFrame;
+
+// スクリプト 1 個ぶんの編集を 1 コマンドとして記録する追跡状態。
+//
+// WHY: 以前はシーン全体を TOML 化して before/after にしていた。スクリプトの実体は
+//      DLL の向こうにあり、型を知らないエディタからは値を取り出せないというのが理由。
+//      だが Script は Reflect() を実装しているので、IReflector を 1 つ用意すれば
+//      型を知らないまま「そのスクリプトだけ」を読み書きできる。
+//      これで Undo が全シーン再構築ではなく値の復元になり、EntityID も選択も維持される。
+struct ScriptUndoTracker {
+    ImGuiID     activeId = 0;
+    std::string before;        // 編集開始時のスナップショット
+    std::string instanceId;    // 対象 GameObject
+    std::string typeName;      // 対象スクリプトの型 (index だけだと取り違える)
+    int         scriptIndex = -1;
+    bool        active = false;
+};
+ScriptUndoTracker s_scriptUndo;
+
+// 表示順 (Component 順リスト) に合わせて sc.scripts を並べ替え、リスト側のキーも
+// 並べ替え後の実体に合わせて書き直す。
+//
+// WHY 表示順を正にするか: スクリプトカードがエンジン Component と同じ 1 枚として
+//   並ぶようになった以上、「上にあるカードほど先に動く」以外の対応付けは説明できない。
+//   実行順 (ScriptSystem が回す順) を表示順から導出し、2 つの並びが食い違う状態を作らない。
+//
+// WHY キーを書き直すか (同型スクリプト対策): キーの "#n" は「配列の中で同じ型が何番目か」
+//   なので、同じ型を 2 つ付けた GameObject で 2 枚を入れ替えると、実体と一緒にキーも
+//   入れ替わる。書き直さないと「入れ替える → キーも入れ替わる → 次フレームまた入れ替える」
+//   と毎フレーム反転し続ける。並べ替えた直後に、リスト上のスクリプト席へ配列順の
+//   キーを埋め直して自己整合にする。
+// @return 実際に並びが変わったら true
+bool SyncScriptOrderToDisplay(scene::ScriptComponent& sc,
+                              EditorContext& ctx,
+                              const std::string& instanceId)
+{
+    const int count = static_cast<int>(sc.scripts.size());
+    if (count < 2) return false;
+
+    const std::vector<std::string> displayOrder =
+        ctx.editorSceneState.GetComponentOrder(instanceId);
+
+    // 表示順に現れるスクリプトキーを拾い、その順に並べたい index 列を作る。
+    // 併せて「リストのどの席がスクリプトだったか」も覚えておく (後でキーを埋め直す)。
+    std::vector<int>         desired;
+    std::vector<std::size_t> scriptSlots;
+    desired.reserve(static_cast<std::size_t>(count));
+    for (std::size_t slot = 0; slot < displayOrder.size(); ++slot) {
+        for (int i = 0; i < count; ++i) {
+            if (ScriptOrderKey(sc, i) != displayOrder[slot]) continue;
+            if (std::find(desired.begin(), desired.end(), i) == desired.end()) {
+                desired.push_back(i);
+                scriptSlots.push_back(slot);
+            }
+            break;
+        }
+    }
+    // 表示順に載っていないカード (追加直後など) は現状の順で末尾へ回す。
+    for (int i = 0; i < count; ++i)
+        if (std::find(desired.begin(), desired.end(), i) == desired.end())
+            desired.push_back(i);
+
+    bool alreadySorted = true;
+    for (int i = 0; i < count; ++i)
+        if (desired[static_cast<std::size_t>(i)] != i) { alreadySorted = false; break; }
+    if (alreadySorted) return false;
+
+    std::vector<scene::ScriptEntry> reordered;
+    reordered.reserve(static_cast<std::size_t>(count));
+    for (const int index : desired)
+        reordered.push_back(std::move(sc.scripts[static_cast<std::size_t>(index)]));
+    sc.scripts = std::move(reordered);
+
+    // 並べ替え後の配列順で振り直したキーを、元のスクリプト席へ順に埋め戻す。
+    if (!scriptSlots.empty()) {
+        std::vector<std::string> rewritten = displayOrder;
+        for (std::size_t n = 0; n < scriptSlots.size(); ++n)
+            rewritten[scriptSlots[n]] = ScriptOrderKey(sc, static_cast<int>(n));
+        ctx.editorSceneState.SetComponentOrder(instanceId, std::move(rewritten));
+    }
+    return true;
+}
+
+// FBZZ_REQUIRE_COMPONENT の不足をスクリプトカードの先頭へ出す。
+// 戻り値: Fix が押されて実際に追加が起きたら true (呼び出し側がシーンを dirty にする)。
+//
+// WHY 自動追加ではなく警告 + 明示的な Fix にするか:
+//   スクリプトを付けた瞬間に黙ってコンポーネントが増えると、(1) シーンが自分の知らない
+//   ところで書き換わり、(2) Undo の粒度が「スクリプト 1 件」からずれ、(3) そもそも
+//   Animator は Controller 未設定なら足しても動かないので「揃っているのに動かない」
+//   という一段深い迷子を作る。足りないことを名指しし、直すかどうかは人が決める。
+bool DrawScriptRequirementBanner(scene::GameObject& go,
+                                 const scene::Script& script,
+                                 EditorContext& ctx)
+{
+    std::vector<scene::ScriptRequirementIssue> issues;
+    // 任意コンポーネント (FBZZ_OPTIONAL_COMPONENT) も拾って情報として並べる。
+    scene::CollectScriptRequirementIssues(go, script, issues, /*includeOptional=*/true);
+    if (issues.empty()) return false;
+
+    // 「足せば直る」必須のものだけを Fix の対象にする。
+    // unknown (宣言側の綴り違い) と addable=false (内部型) はボタンを出しても直らない。
+    std::vector<std::string> fixable;
+    for (const auto& issue : issues)
+        if (!issue.optional && !issue.unknown && issue.addable)
+            fixable.push_back(issue.componentType);
+
+    const bool hasError = std::any_of(issues.begin(), issues.end(),
+        [](const scene::ScriptRequirementIssue& i) { return !i.optional; });
+    const ImVec4 accent = EditorTheme::Color(hasError ? ThemeColor::Danger : ThemeColor::Warning);
+
+    ImGui::PushStyleColor(ImGuiCol_Text, accent);
+    ImGui::PushTextWrapPos(0.0f);
+    for (const auto& issue : issues) {
+        if (issue.unknown) {
+            ImGui::Text("Unknown component type '%s' in FBZZ_REQUIRE_COMPONENT",
+                        issue.componentType.c_str());
+        } else if (issue.optional) {
+            ImGui::Text("Optional: '%s' is not attached (this script degrades without it)",
+                        issue.componentDisplay.c_str());
+        } else if (!issue.addable) {
+            ImGui::Text("Missing: '%s' (internal component — cannot be added by hand)",
+                        issue.componentDisplay.c_str());
+        } else {
+            ImGui::Text("Missing required component: %s", issue.componentDisplay.c_str());
+        }
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+
+    if (fixable.empty()) {
+        ImGui::Spacing();
+        return false;
+    }
+
+    bool added = false;
+    if (ImGui::SmallButton("Fix")) {
+        // fixable は「登録済み・追加可能・未アタッチ」だけを残した集合なので、
+        // 押された時点で必ず 1 個以上増える。コマンドが null になるのは
+        // Undo を記録できない文脈 (Play 中など) のときだけ。
+        auto command = AddMissingComponentsWithUndo(go, ctx, fixable);
+        if (command && ctx.undoStack) ctx.undoStack->Push(std::move(command));
+        added = true;
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Add the missing components with their default setup");
+
+    ImGui::Spacing();
+    return added;
+}
 
 bool TransformEquals(const scene::Transform& lhs, const scene::Transform& rhs)
 {
@@ -170,6 +365,11 @@ void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 }
 
 } // namespace
+
+std::string GetScriptOrderKey(const scene::ScriptComponent& component, int index)
+{
+    return ScriptOrderKey(component, index);
+}
 
 void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
 {
@@ -354,70 +554,89 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
     ImGui::Spacing();
 }
 
-void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
+void BeginScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
 {
-    FBZZ_PROFILE_SCOPE("Inspector::Scripts");
+    s_scriptFrame = {};
+    auto* sc = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
+    if (!sc) return;
 
-    auto* sc = go->GetComponent<scene::ScriptComponent>();
-    if (!sc)
-        return;
-
-    // スクリプト 1 個ぶんの編集を 1 コマンドとして記録する。
-    //
-    // WHY: 以前はシーン全体を TOML 化して before/after にしていた。スクリプトの実体は
-    //      DLL の向こうにあり、型を知らないエディタからは値を取り出せないというのが理由。
-    //      だが Script は Reflect() を実装しているので、IReflector を 1 つ用意すれば
-    //      型を知らないまま「そのスクリプトだけ」を読み書きできる。
-    //      これで Undo が全シーン再構築ではなく値の復元になり、EntityID も選択も維持される。
-    struct ScriptUndoTracker {
-        ImGuiID     activeId = 0;
-        std::string before;        // 編集開始時のスナップショット
-        std::string instanceId;    // 対象 GameObject
-        std::string typeName;      // 対象スクリプトの型 (index だけだと取り違える)
-        int         scriptIndex = -1;
-        bool        active = false;
-    };
-    static ScriptUndoTracker undo;
-
-    const bool canTrackUndo =
+    s_scriptFrame.active = true;
+    s_scriptFrame.canTrackUndo =
         ctx.activeScene != nullptr &&
         ctx.undoStack != nullptr &&
         ctx.undoStack->IsRecordingEnabled();
-    const ImGuiID activeBefore = ImGui::GetActiveID();
+    s_scriptFrame.activeBefore = ImGui::GetActiveID();
+
     // WHY: 眺めているだけのフレームでスナップショットを取らない。操作の開始候補
     //      (クリック / Enter / Space) が来たフレームだけ各スクリプトの現在値を控える。
     const bool mayStartEdit =
-        !undo.active &&
+        !s_scriptUndo.active &&
         (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
          ImGui::IsKeyPressed(ImGuiKey_Enter) ||
          ImGui::IsKeyPressed(ImGuiKey_Space));
 
     // index → 描画前スナップショット。どのスクリプトが編集対象になるかは
     // ActiveID が確定するまで分からないため、候補フレームでは全件控えておく。
-    std::vector<std::string> beforeSnapshots;
-    if (canTrackUndo && mayStartEdit) {
-        beforeSnapshots.reserve(sc->scripts.size());
+    if (s_scriptFrame.canTrackUndo && mayStartEdit) {
+        s_scriptFrame.beforeSnapshots.reserve(sc->scripts.size());
         for (const auto& e : sc->scripts)
-            beforeSnapshots.push_back(e.script ? CaptureScriptSnapshot(*e.script) : std::string{});
+            s_scriptFrame.beforeSnapshots.push_back(
+                e.script ? CaptureScriptSnapshot(*e.script) : std::string{});
     }
-    // ImGui のアイテム ID から「どのスクリプトを描画中だったか」を辿るための記録。
-    int editingScriptIndex = -1;
+}
 
-    int removeIndex = -1;
-    for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i) {
-        auto& entry = sc->scripts[static_cast<size_t>(i)];
-        ImGui::PushID(i);
+void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
+{
+    FBZZ_PROFILE_SCOPE("Inspector::ScriptCard");
 
+    auto* sc = go->GetComponent<scene::ScriptComponent>();
+    if (!sc || index < 0 || index >= static_cast<int>(sc->scripts.size())) return;
+
+    const int i = index;
+    auto& entry = sc->scripts[static_cast<size_t>(i)];
+
+    // 並び替えはエンジン Component とまったく同じ仕組み (COMPONENT スコープ) に乗せる。
+    //
+    // WHY 専用スコープをやめたか (不具合修正): 以前はスクリプトだけ別スコープ
+    //   ("SCRIPT") で、Component 順リストには "Scripts" という 1 個のキーしか
+    //   登録されていなかった。そのキーを持つドラッグ元 / ドロップ先を描く UI が
+    //   どこにも無いため、スクリプトのカードは Component との相対位置を一切
+    //   変えられず (常に最後尾に固定)、逆に Component をスクリプトより後ろへ
+    //   落とすこともできなかった。カード 1 枚 = 並び順の 1 席に統一する。
+    const std::string orderKey = ScriptOrderKey(*sc, i);
+    const widgets::ComponentReorderTarget reorder =
+        MakeComponentReorderTarget(go, ctx, orderKey.c_str());
+
+    // ⋯ メニューの Move Up / Move Down。1 つ隣へずらすだけならメニューの方が確実で、
+    // カードを畳んでいない縦長の Inspector ではドラッグの移動距離が大きくなる。
+    const auto drawMoveMenuItems = [&]() {
+        const std::vector<std::string>& order =
+            ctx.editorSceneState.GetComponentOrder(go->instanceId);
+        const auto at = std::find(order.begin(), order.end(), orderKey);
+        const bool hasPrev = at != order.end() && at != order.begin();
+        const bool hasNext = at != order.end() && std::next(at) != order.end();
+        if (ImGui::MenuItem("Move Up", nullptr, false, hasPrev))
+            MoveInspectorComponentWithUndo(*go, ctx, orderKey, *std::prev(at), false);
+        if (ImGui::MenuItem("Move Down", nullptr, false, hasNext))
+            MoveInspectorComponentWithUndo(*go, ctx, orderKey, *std::next(at), true);
+    };
+
+    ImGui::PushID(i);
+
+    {
         if (entry.script) {
             const char* header = entry.script->GetTypeName();
             const widgets::ComponentHeaderResult hdr =
-                widgets::ComponentHeader(header, kScriptAccent, &entry.script->enabled);
+                widgets::ComponentHeader(header, kScriptAccent, &entry.script->enabled,
+                                         true, reorder);
             if (hdr.menuClicked)
                 ImGui::OpenPopup("##script_opts");
 
             if (ImGui::BeginPopup("##script_opts")) {
+                drawMoveMenuItems();
+                ImGui::Separator();
                 if (ImGui::MenuItem("Remove Component"))
-                    removeIndex = i;
+                    s_scriptFrame.removeIndex = i;
                 ImGui::EndPopup();
             }
 
@@ -425,6 +644,12 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                 const widgets::ComponentBodyScope body =
                     widgets::BeginComponentBody(hdr, kScriptAccent);
                 ImGui::Spacing();
+                // 不足している必須コンポーネントはフィールドより先に出す。
+                // WHY 先頭か: 値をいじっても直らない類の問題なので、パラメーター調整に
+                //      入る前に目に入る位置へ置く。
+                if (DrawScriptRequirementBanner(*go, *entry.script, ctx)) {
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                }
                 ImGuiReflector reflector;
                 reflector.m_projectRoot = ctx.projectRoot; // アセットスロットの "..." パス検索用
                 if (ctx.activeScene) {
@@ -475,7 +700,7 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                     entry.script->OnValidate();
                 const ImGuiID activeAfterScript = ImGui::GetActiveID();
                 if (activeAfterScript != 0 && activeAfterScript != activeBeforeScript)
-                    editingScriptIndex = i;
+                    s_scriptFrame.editingIndex = i;
 
                 ImGui::Spacing();
                 widgets::EndComponentBody(body);
@@ -490,14 +715,20 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
             // 帯を警告色にして、正常なスクリプトカードと一目で区別できるようにする。
             const ImU32 accent = EditorTheme::ColorU32(
                 isBuilding ? ThemeColor::Warning : ThemeColor::Danger);
+            // DLL 未ロードのカードも並び替え対象にする。
+            // WHY: 実行順は serialized のまま保存されるので、ビルドが通っていない間でも
+            //   順番を整えられないと「直せるのはビルド成功後だけ」という余計な待ちが生まれる。
             const widgets::ComponentHeaderResult hdr =
-                widgets::ComponentHeader(header.c_str(), accent, &entry.serialized->enabled);
+                widgets::ComponentHeader(header.c_str(), accent, &entry.serialized->enabled,
+                                         true, reorder);
             if (hdr.menuClicked)
                 ImGui::OpenPopup("##missing_script_opts");
 
             if (ImGui::BeginPopup("##missing_script_opts")) {
+                drawMoveMenuItems();
+                ImGui::Separator();
                 if (ImGui::MenuItem("Remove Component"))
-                    removeIndex = i;
+                    s_scriptFrame.removeIndex = i;
                 ImGui::EndPopup();
             }
 
@@ -513,20 +744,45 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
             }
             ImGui::Spacing();
         }
-
-        ImGui::PopID();
     }
 
-    if (removeIndex >= 0) {
-        sc->scripts.erase(sc->scripts.begin() + removeIndex);
-        if (sc->scripts.empty())
+    ImGui::PopID();
+}
+
+void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
+{
+    if (!s_scriptFrame.active) return;
+    s_scriptFrame.active = false;
+
+    auto* sc = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
+    if (!sc) return;
+
+    if (s_scriptFrame.removeIndex >= 0 &&
+        s_scriptFrame.removeIndex < static_cast<int>(sc->scripts.size())) {
+        sc->scripts.erase(sc->scripts.begin() + s_scriptFrame.removeIndex);
+        if (sc->scripts.empty()) {
             go->RemoveComponent<scene::ScriptComponent>();
+            return;
+        }
     }
 
-    if (!canTrackUndo) {
-        undo.active = false;
+    // 表示順 (Component 順リスト) を正として実行順を追従させる。
+    //
+    // WHY 毎フレーム同期するか: 並び替えは Component 順リスト側で起きるため、
+    //   移動を検知する専用の経路を作るとドラッグ / メニュー / Undo / Redo の 4 か所へ
+    //   同じ同期を書き写すことになる。導出を 1 か所に置けば、どの経路で順序が
+    //   変わっても必ず追従し、食い違いが原理的に起きない。
+    //   並びが既に一致していれば何もしない (通常フレームのコストは比較だけ)。
+    if (SyncScriptOrderToDisplay(*sc, ctx, go->instanceId)) {
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
+
+    if (!s_scriptFrame.canTrackUndo) {
+        s_scriptUndo.active = false;
         return;
     }
+
+    ScriptUndoTracker& undo = s_scriptUndo;
 
     // 対象スクリプトの現在値を撮る (追跡中のものを Undo コマンドの after にする)。
     const auto captureTracked = [&]() -> std::string {
@@ -568,24 +824,41 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
             [apply, before]() { apply(before); }));
     };
 
-    const ImGuiID activeAfter = ImGui::GetActiveID();
+    const ImGuiID activeAfter    = ImGui::GetActiveID();
+    const int     editingIndex   = s_scriptFrame.editingIndex;
+    const auto&   beforeSnapshots = s_scriptFrame.beforeSnapshots;
 
-    if (!undo.active && activeAfter != 0 && activeAfter != activeBefore &&
-        editingScriptIndex >= 0 &&
-        editingScriptIndex < static_cast<int>(beforeSnapshots.size())) {
+    if (!undo.active && activeAfter != 0 && activeAfter != s_scriptFrame.activeBefore &&
+        editingIndex >= 0 &&
+        editingIndex < static_cast<int>(beforeSnapshots.size()) &&
+        editingIndex < static_cast<int>(sc->scripts.size())) {
         // 編集開始: 対象スクリプトの控えを Undo の before にする。
-        auto& e = sc->scripts[static_cast<std::size_t>(editingScriptIndex)];
+        auto& e = sc->scripts[static_cast<std::size_t>(editingIndex)];
         undo.activeId    = activeAfter;
-        undo.before      = beforeSnapshots[static_cast<std::size_t>(editingScriptIndex)];
+        undo.before      = beforeSnapshots[static_cast<std::size_t>(editingIndex)];
         undo.instanceId  = go->instanceId;
         undo.typeName    = e.script ? e.script->GetTypeName() : "";
-        undo.scriptIndex = editingScriptIndex;
+        undo.scriptIndex = editingIndex;
         undo.active      = true;
     } else if (undo.active && activeAfter != undo.activeId) {
         // 編集終了 (別のウィジェットへ移った / 入力欄から離れた)。
         pushCommand(undo.before, captureTracked());
         undo.active = false;
     }
+}
+
+// 旧 API 互換の一括描画。Inspector は 1 枚ずつ描く経路へ移ったが、
+// 他所から「このオブジェクトのスクリプトを全部出す」用途で呼べるように残す。
+void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
+{
+    FBZZ_PROFILE_SCOPE("Inspector::Scripts");
+    auto* sc = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
+    if (!sc) return;
+
+    BeginScriptInspectorFrame(go, ctx);
+    for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i)
+        DrawScriptCard(go, ctx, i);
+    EndScriptInspectorFrame(go, ctx);
 }
 
 } // namespace fbzz::editor
