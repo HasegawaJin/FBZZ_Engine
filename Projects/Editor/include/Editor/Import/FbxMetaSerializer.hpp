@@ -33,12 +33,10 @@ public:
     //   FBX を消して入れ直しても source_hash が同じなので同様に効かない。
     //
     // 履歴:
-    //   1 : 初版 (現行)。軸補正の回転はルート直下ノードに残す方針。
-    //
-    // NOTE: 2026-08 に軸補正の扱いを変える試み (左掛け / 基底変換) を行い版数 2 を
-    //   採番したが、いずれも不整合が出たため revert し 1 へ戻した。
-    //   次にインポータの出力を変えたときに 2 を使うこと。
-    static constexpr int kModelImporterVersion = 1;
+    //   1 : 初版 (軸補正の回転はルート直下ノードに残す方針)。
+    //   2 : Unit Scale / Up Axis / Normals / Tangents とクリップ範囲・名前変更を追加。
+    //   3 : Assimp / TOML の float メタデータを正しく読み、Unit Scale を実値へ反映。
+    static constexpr int kModelImporterVersion = 3;
 
     // .meta に記録された版数を返す。未記録・読めない場合は 0。
     [[nodiscard]] static int LoadImporterVersion(const std::string& fbxAbsPath);

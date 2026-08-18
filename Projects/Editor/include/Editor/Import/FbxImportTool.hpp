@@ -22,15 +22,34 @@ namespace fbzz::editor {
 
 // NormalMapConvention は IFbxSubExporter.hpp で定義 (循環インクルード回避)
 
+// AnimationClipImportSettings は IFbxSubExporter.hpp で定義 (循環インクルード回避)
+
 struct FbxImportOptions {
     FbxSourceDcc                 sourceDcc              = FbxSourceDcc::Auto;
+    FbxUpAxis                    upAxis                 = FbxUpAxis::Auto;
     NormalMapConvention           normalMapConvention    = NormalMapConvention::DirectX;
+    float                         unitScaleMultiplier    = 1.0f;
+    bool                          generateNormals        = true;
+    bool                          generateTangents       = true;
     bool                          generateTexDescriptors = true;
     asset::TextureCompression     defaultCompression     = asset::TextureCompression::Auto;
     std::vector<std::string>      selectedMeshNames;
     std::vector<std::string>      selectedAnimNames;
     // ルートモーションを取り出すノード名 (空 = 候補名から自動判定)。
     std::string                   rootMotionNodeName;
+    // クリップ単位の設定。既定と同じ (loop=false) のものは保存しないため、
+    // ここに無いクリップは既定値として扱う。
+    std::vector<AnimationClipImportSettings> clipSettings;
+
+    // 指定クリップの設定を引く。未登録なら既定値を返す。
+    [[nodiscard]] AnimationClipImportSettings ClipSettingsFor(const std::string& clipName) const
+    {
+        for (const AnimationClipImportSettings& settings : clipSettings)
+            if (settings.name == clipName) return settings;
+        AnimationClipImportSettings fallback;
+        fallback.name = clipName;
+        return fallback;
+    }
 };
 
 struct FbxScanResult {

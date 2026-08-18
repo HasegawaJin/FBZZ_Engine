@@ -98,7 +98,10 @@ struct MorphExportTrack {
     std::vector<FzFloatKeyV3> keys;
 };
 
-std::vector<MorphExportTrack> BuildMorphTracks(const aiScene& scene, const aiAnimation& anim)
+std::vector<MorphExportTrack> BuildMorphTracks(const aiScene& scene,
+                                               const aiAnimation& anim,
+                                               double startTicks,
+                                               double endTicks)
 {
     std::vector<MorphExportTrack> result;
     for (uint32_t ci = 0; ci < anim.mNumMorphMeshChannels; ++ci) {
@@ -139,6 +142,7 @@ std::vector<MorphExportTrack> BuildMorphTracks(const aiScene& scene, const aiAni
             track.keys.reserve(channel->mNumKeys);
             for (uint32_t ki = 0; ki < channel->mNumKeys; ++ki) {
                 const aiMeshMorphKey& key = channel->mKeys[ki];
+                if (key.mTime < startTicks || key.mTime > endTicks) continue;
                 float weight = 0.0f;
                 for (uint32_t vi = 0; vi < key.mNumValuesAndWeights; ++vi) {
                     if (key.mValues[vi] == targetIndex) {
@@ -146,9 +150,9 @@ std::vector<MorphExportTrack> BuildMorphTracks(const aiScene& scene, const aiAni
                         break;
                     }
                 }
-                track.keys.push_back({ key.mTime, weight, 0.0f, 0.0f, 0.0f });
+                track.keys.push_back({ key.mTime - startTicks, weight, 0.0f, 0.0f, 0.0f });
             }
-            result.push_back(std::move(track));
+            if (!track.keys.empty()) result.push_back(std::move(track));
         }
     }
     return result;
@@ -264,13 +268,32 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
     if (!scene || scene->mNumAnimations == 0) return true; // アニメーションなしは正常
 
     namespace fs = std::filesystem;
-    const fs::path animDir = util::FileSystem::PathFromUtf8(ctx.outputDir) / "anims";
-    util::FileSystem::EnsureDirectory(animDir);
+    // .anim は Library 側へ出す (隠蔽)。
+    //
+    // WHY .meta を持たせなくてよいか: GUID は原本 FBX の GUID + "anims/<file>.anim" から
+    //     AssetDatabase::DeriveGuid で決定論的に導出される。どの環境でも同じ値になり、
+    //     Library を消して再インポートしても復元されるため、git 管理下の .meta が要らない。
+    //     (乱数 GUID + .meta 方式のままここを Library へ移すと、クローン直後の再インポートで
+    //      別 GUID が振られ、.animcontroller の参照が全部切れる。)
+    //
+    // WHY (ディレクトリを事前に作らない): 選択的インポート (selectedAnimNames) で全クリップが
+    //   除外された場合や、クリップが 1 本も書き出されなかった場合に空の anims/ が残るため、
+    //   作成は実際に .anim を書く直前 (下の EnsureParentDirectory) まで遅延させる。
+    const fs::path animDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "anims";
 
     std::unordered_map<std::string, uint32_t> usedClipStems;
     for (uint32_t ai = 0; ai < scene->mNumAnimations; ++ai) {
         const aiAnimation* anim = scene->mAnimations[ai];
         const std::string animName = anim->mName.C_Str();
+
+        AnimationClipImportSettings clipOptions;
+        clipOptions.name = animName;
+        for (const AnimationClipImportSettings& settings : ctx.clipSettings) {
+            if (settings.name == animName) {
+                clipOptions = settings;
+                break;
+            }
+        }
 
         // 選択的インポート
         if (!ctx.selectedAnimNames.empty()) {
@@ -280,23 +303,34 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
             if (!found) continue;
         }
 
-        const std::string clipName = SanitizeClipName(animName, ai);
+        const double startTicks = std::clamp(
+            std::max(0.0, clipOptions.startFrame), 0.0, anim->mDuration);
+        const double requestedEndTicks = clipOptions.endFrame < 0.0
+            ? anim->mDuration : clipOptions.endFrame;
+        const double endTicks = std::clamp(requestedEndTicks, startTicks, anim->mDuration);
+        const double clipDurationTicks = endTicks - startTicks;
+        const std::string requestedClipName = clipOptions.outputName.empty()
+            ? animName : clipOptions.outputName;
+        const std::string clipName = SanitizeClipName(requestedClipName, ai);
         std::string clipStem = ctx.baseName + "@" + clipName;
         uint32_t& sameNameCount = usedClipStems[clipStem];
         if (sameNameCount > 0)
             clipStem += "_" + std::to_string(sameNameCount);
         ++sameNameCount;
 
-        const std::string animPath = util::FileSystem::PathToUtf8(
-            animDir / (clipStem + ".anim"));
+        const fs::path     animFsPath = animDir / (clipStem + ".anim");
+        const std::string  animPath   = util::FileSystem::PathToUtf8(animFsPath);
+
+        // 実際に書き出すクリップが確定したこの時点で初めて anims/ を作る。
+        if (!util::FileSystem::EnsureParentDirectory(animFsPath)) return false;
 
         std::ofstream out(animPath, std::ios::binary);
         if (!out) return false;
 
         const double tps = (anim->mTicksPerSecond > 0.0) ? anim->mTicksPerSecond : 30.0;
-        const double durationSec = anim->mDuration / tps;
         const float  frameRate   = static_cast<float>(tps);
-        const std::vector<MorphExportTrack> morphTracks = BuildMorphTracks(*scene, *anim);
+        const std::vector<MorphExportTrack> morphTracks =
+            BuildMorphTracks(*scene, *anim, startTicks, endTicks);
         std::vector<const aiNodeAnim*> nodeChannels;
         std::vector<FzAnimEventV3> animationEvents;
         RootMotionCandidate rootMotion;
@@ -335,13 +369,15 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
                 aiVector3D previousValue = restValue;
                 for (uint32_t keyIndex = 1; keyIndex < keyCount; ++keyIndex) {
                     const aiVector3D& value = channel->mPositionKeys[keyIndex].mValue;
+                    const double keyTime = channel->mPositionKeys[keyIndex].mTime;
+                    if (keyTime < startTicks || keyTime > endTicks) continue;
                     const bool changed  = !sameValue(value, previousValue);
                     const bool isActive = !sameValue(value, restValue);
                     previousValue = value;
                     if (!changed || !isActive) continue;
 
                     FzAnimEventV3 event{};
-                    event.time = channel->mPositionKeys[keyIndex].mTime / tps;
+                    event.time = (keyTime - startTicks) / tps;
                     std::memcpy(event.name, eventName.data(),
                                 std::min(eventName.size(), sizeof(event.name) - 1));
                     event.intParam   = static_cast<int32_t>(std::lround(value.x));
@@ -377,18 +413,21 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         FzAnimHeader hdr{};
         hdr.magic[0]='F'; hdr.magic[1]='Z'; hdr.magic[2]='A'; hdr.magic[3]='N';
         hdr.version      = 3;
-        hdr.durationTicks  = anim->mDuration;
+        hdr.durationTicks  = clipDurationTicks;
         hdr.ticksPerSecond = tps;
         hdr.trackCount   = static_cast<uint32_t>(nodeChannels.size());
-        const size_t nameLen = std::min(animName.size(), sizeof(hdr.name)-1);
-        std::memcpy(hdr.name, animName.data(), nameLen);
+        const size_t nameLen = std::min(clipName.size(), sizeof(hdr.name)-1);
+        std::memcpy(hdr.name, clipName.data(), nameLen);
         out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
 
         // FzAnimV3Extension
         FzAnimV3Extension ext{};
-        ext.durationSeconds      = durationSec;
+        ext.durationSeconds      = clipDurationTicks / tps;
         ext.frameRate            = frameRate;
-        ext.loop                 = 0;
+        // Loop Time は .fbx.meta のクリップ設定から焼く。
+        // WHY ここで解決するか: .anim は再インポートのたびに上書きされる生成物なので、
+        //     設定の権威は原本の横 (.fbx.meta) にある。毎回そこから読み直して焼き込む。
+        ext.loop = clipOptions.loop ? 1 : 0;
         // hasRootMotion を立てるのは「ルートモーション専用ノード」が見つかったときだけ。
         //
         // WHY: Hips / Armature のような骨階層のルート相当は候補としては拾いたいが、
@@ -436,9 +475,10 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
             scaleKeys.reserve(ch->mNumScalingKeys);
             for (uint32_t ki = 0; ki < ch->mNumPositionKeys; ++ki) {
                 const auto& k = ch->mPositionKeys[ki];
+                if (k.mTime < startTicks || k.mTime > endTicks) continue;
                 aiVector3D v = k.mValue;
                 if (applyAxisFix) v = axisInvQ.Rotate(v * axisInvS);
-                FzVectorKey vk{ k.mTime,
+                FzVectorKey vk{ k.mTime - startTicks,
                     v.x * ctx.unitScale,
                     v.y * ctx.unitScale,
                     v.z * ctx.unitScale,
@@ -447,16 +487,18 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
             }
             for (uint32_t ki = 0; ki < ch->mNumRotationKeys; ++ki) {
                 const auto& k = ch->mRotationKeys[ki];
+                if (k.mTime < startTicks || k.mTime > endTicks) continue;
                 aiQuaternion q = k.mValue;
                 if (applyAxisFix) q = axisInvQ * q; // F の回転を左掛け (バインド側と同じ変換)
-                FzQuaternionKey qk{ k.mTime, q.x, q.y, q.z, q.w };
+                FzQuaternionKey qk{ k.mTime - startTicks, q.x, q.y, q.z, q.w };
                 rotationKeys.push_back(qk);
             }
             for (uint32_t ki = 0; ki < ch->mNumScalingKeys; ++ki) {
                 const auto& k = ch->mScalingKeys[ki];
+                if (k.mTime < startTicks || k.mTime > endTicks) continue;
                 aiVector3D v = k.mValue;
                 if (applyAxisFix) v = v * axisInvS; // scale100 キー → 1.0
-                FzVectorKey vk{ k.mTime, v.x, v.y, v.z, 0.0f };
+                FzVectorKey vk{ k.mTime - startTicks, v.x, v.y, v.z, 0.0f };
                 scaleKeys.push_back(vk);
             }
             OptimizeVectorKeys(positionKeys, ext.positionError);

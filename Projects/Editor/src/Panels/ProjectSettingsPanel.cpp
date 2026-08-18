@@ -199,8 +199,16 @@ std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
             const auto& tbl = parsed.table();
             if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
                 p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
+            if (auto v = tbl["options"]["up_axis"].value<int64_t>())
+                p.options.upAxis = static_cast<FbxUpAxis>(*v);
             if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
                 p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
+            if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>())
+                p.options.unitScaleMultiplier = *v;
+            if (auto v = tbl["options"]["generate_normals"].value<bool>())
+                p.options.generateNormals = *v;
+            if (auto v = tbl["options"]["generate_tangents"].value<bool>())
+                p.options.generateTangents = *v;
             if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
                 p.options.generateTexDescriptors = *v;
             if (auto v = tbl["options"]["default_compression"].value<int64_t>())
@@ -235,6 +243,17 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
             if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3))
                 opt.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
         }
+        {
+            static constexpr const char* kAxisNames[] = { "Auto", "Y Up", "Z Up" };
+            int axisIdx = static_cast<int>(opt.upAxis);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo("Source Up Axis", &axisIdx, kAxisNames, 3))
+                opt.upAxis = static_cast<FbxUpAxis>(axisIdx);
+        }
+        ImGui::DragFloat("Unit Scale", &opt.unitScaleMultiplier, 0.01f, 0.001f, 100.0f, "%.3fx");
+        ImGui::Checkbox("Generate Normals", &opt.generateNormals);
+        ImGui::SameLine();
+        ImGui::Checkbox("Generate Tangents", &opt.generateTangents);
         {
             static constexpr const char* kConvNames[] = { "DirectX (keep G)", "OpenGL (flip G)" };
             int convIdx = static_cast<int>(opt.normalMapConvention);
@@ -295,9 +314,12 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
                     ImGui::TextUnformatted(p.name.c_str());
 
                     ImGui::TableSetColumnIndex(1);
-                    ImGui::TextDisabled("DCC=%s  Conv=%s  GenTex=%s",
+                    ImGui::TextDisabled("DCC=%s  Axis=%s  Scale=%.2f  Conv=%s  GenTex=%s",
                         p.options.sourceDcc == FbxSourceDcc::Blender ? "Blender" :
                         p.options.sourceDcc == FbxSourceDcc::Maya ? "Maya" : "Auto",
+                        p.options.upAxis == FbxUpAxis::ZUp ? "Z" :
+                        p.options.upAxis == FbxUpAxis::YUp ? "Y" : "Auto",
+                        p.options.unitScaleMultiplier,
                         p.options.normalMapConvention == NormalMapConvention::OpenGL ? "OpenGL" : "DirectX",
                         p.options.generateTexDescriptors ? "on" : "off");
 

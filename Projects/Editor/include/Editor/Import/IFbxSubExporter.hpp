@@ -19,6 +19,30 @@ enum class NormalMapConvention { DirectX, OpenGL };
 // WHY: Blender はルートノードに座標系変換を焼き込みやすいため、手動指定で補正を固定できるようにする。
 enum class FbxSourceDcc { Auto, Maya, Blender };
 
+// FBX の上方向。Auto は既存の Assimp / DCC 判定を維持し、ZUp は Y-up のエンジンへ変換する。
+enum class FbxUpAxis { Auto, YUp, ZUp };
+
+// FBX 内のクリップ 1 本ぶんのインポート設定 (Unity の Model Import Settings > Animation 相当)。
+//
+// WHY モデル全体ではなくクリップ単位か:
+//   1 つの FBX に Idle / Run / Attack が入っているとき、ループさせたいのは Idle と Run だけ、
+//   というのが普通。モデル単位の設定ではこれを表現できない。
+//
+// WHY .anim を直接編集させないか:
+//   .anim は FBX からの生成物で、再インポートのたびに上書きされる。設定を生成物側に
+//   置くと再インポートで消えるため、原本の横 (.fbx.meta) に置いて毎回焼き直す。
+//
+// WHY ここ (IFbxSubExporter.hpp) に置くか:
+//   NormalMapConvention / FbxSourceDcc と同じ理由。FbxImportContext から参照する必要があり、
+//   FbxImportTool.hpp を include すると循環する。
+struct AnimationClipImportSettings {
+    std::string name;          // FBX 内のクリップ名 (FbxScanResult::animNames と一致)
+    bool        loop = false;  // Unity の "Loop Time"
+    double      startFrame = 0.0;  // 取り込み開始フレーム。0 未満は 0 に丸める。
+    double      endFrame = -1.0;   // 取り込み終了フレーム。負数はクリップ末尾。
+    std::string outputName;        // 出力名。空欄は FBX 内の元名を使う。
+};
+
 struct FbxImportContext {
     const aiScene* scene       = nullptr; // アニメーション用 (ボーン階層あり)
     const aiScene* meshScene   = nullptr; // 静的メッシュ用 (PreTransformVertices 済み)
@@ -74,6 +98,9 @@ struct FbxImportContext {
     // 選択的インポート (空 = 全選択)
     std::vector<std::string> selectedMeshNames;
     std::vector<std::string> selectedAnimNames;
+    // クリップ単位のインポート設定 (Loop Time など)。
+    // 未登録のクリップは既定値として扱う。
+    std::vector<AnimationClipImportSettings> clipSettings;
     // パイプライン内で共有する出力情報
     std::string outputModelPath; // ModelSubExporter が書き込む .fzasset パス
 };

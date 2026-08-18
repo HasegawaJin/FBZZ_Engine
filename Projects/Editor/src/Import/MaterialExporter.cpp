@@ -125,7 +125,14 @@ std::string DumpEmbeddedAsPng(const aiTexture* texture,
         image = rgba.GetImage(0, 0, 0);
     }
 
-    if (!image || FAILED(DirectX::SaveToWICFile(*image, DirectX::WIC_FLAGS_NONE,
+    if (!image) return {};
+
+    // WHY: textures/ の作成はここまで遅延させる。呼び出し側で先に掘ってしまうと、
+    //      埋め込みテクスチャが 1 枚も無い FBX や、デコードに失敗した FBX でも
+    //      空フォルダだけが残ってしまう。実際に書き出す直前に親を用意する。
+    if (!util::FileSystem::EnsureParentDirectory(outPath)) return {};
+
+    if (FAILED(DirectX::SaveToWICFile(*image, DirectX::WIC_FLAGS_NONE,
                                        GUID_ContainerFormatPng, outPath.c_str())))
         return {};
     return filename;
@@ -137,7 +144,9 @@ std::string ResolveTexture(const aiScene* scene,
                             const std::string& fbxDir,
                             const std::string& texturesDir)
 {
-    util::FileSystem::EnsureDirectory(util::FileSystem::PathFromUtf8(texturesDir));
+    // WHY: ここで texturesDir を掘らない。参照が解決できなければ 1 枚もコピーされず、
+    //      空フォルダだけが残る。実際の書き出しは DumpEmbeddedAsPng と
+    //      FileSystem::CopyFile が行い、どちらも書き込み直前に親ディレクトリを作る。
 
     // Assimp は埋め込みを "*0" または元ファイル名で返すため、両形式を公式 API で解決する。
     const auto [embedded, embeddedIndex] = scene->GetEmbeddedTextureAndIndex(rawPath.c_str());
@@ -194,7 +203,8 @@ bool MaterialExporter::Export(const aiMaterial* material,
 {
     // マテリアルの既知スロットに現れない画像も含め、FBX 内包テクスチャを全て PNG 化する。
     // WHY: Assimp が UNKNOWN/HEIGHT 等へ分類した画像も import package から欠落させない。
-    util::FileSystem::EnsureDirectory(util::FileSystem::PathFromUtf8(texturesDir));
+    // WHY (ディレクトリを掘らない): mNumTextures == 0 の FBX ではループが 1 度も回らない。
+    //      ここで EnsureDirectory すると空の textures/ だけが残る。作成は DumpEmbeddedAsPng に任せる。
     for (uint32_t textureIndex = 0; textureIndex < scene->mNumTextures; ++textureIndex) {
         if (DumpEmbeddedAsPng(scene->mTextures[textureIndex],
                               static_cast<int>(textureIndex), texturesDir).empty())
@@ -206,7 +216,8 @@ bool MaterialExporter::Export(const aiMaterial* material,
     tbl.insert("shader", skinned
         ? std::string{ "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl" }
         : std::string{ "Assets/Shaders/Material/Surface/PBR.hlsl" });
-    tbl.insert("render_path", std::string{ "deferred" });
+    // 通常材質の描画経路はプロジェクト設定が決めるため、インポート時に固定しない。
+    tbl.insert("render_path", std::string{ "auto" });
     tbl.insert("mesh_type", skinned ? std::string{ "skinned" } : std::string{ "surface" });
 
     aiString matName;
