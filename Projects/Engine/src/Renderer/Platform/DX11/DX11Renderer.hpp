@@ -131,6 +131,8 @@ private:
     std::unique_ptr<IRenderTarget>   CreateNativeCubemapRenderTarget(uint32_t size, uint32_t mipCount) override;
     std::unique_ptr<ITexture>        CreateNativeCubeTextureFromRenderTarget(IRenderTarget& rt) override;
     std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>           CreateNativeDynamicTexture(uint32_t width, uint32_t height,
+                                                                   DynamicTextureFormat format) override;
     std::unique_ptr<IStructuredBuffer>  CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
     std::unique_ptr<IStructuredBuffer>  CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
 

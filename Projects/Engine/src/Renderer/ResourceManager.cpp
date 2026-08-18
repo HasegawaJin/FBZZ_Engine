@@ -275,6 +275,19 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width,
     return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height), "ComputeTexture", __FILE__, __LINE__);
 }
 
+ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
+    uint32_t width, uint32_t height, DynamicTextureFormat format)
+{
+    auto texture = m_renderer.CreateNativeDynamicTexture(width, height, format);
+    if (!texture) {
+        // 未対応バックエンドでは nullptr が返る。呼び出し側は Null ハンドルで縮退を判断する。
+        FBZZ_LOG_WARN("CreateDynamicTexture: backend does not support dynamic textures (%ux%u)",
+                      width, height);
+        return ResourceHandle<TextureTag>::Null();
+    }
+    return m_textures.Insert(std::move(texture), "DynamicTexture", __FILE__, __LINE__);
+}
+
 ResourceHandle<TextureTag> ResourceManager::RegisterTexture(std::unique_ptr<ITexture> texture)
 {
     if (!texture) return ResourceHandle<TextureTag>::Null();
@@ -289,6 +302,18 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(cons
         return ResourceHandle<StructuredBufferTag>::Null();
     }
     return m_structuredBuffers.Insert(std::move(sb), "StructuredBuffer", __FILE__, __LINE__);
+}
+
+ResourceHandle<StructuredBufferTag> ResourceManager::CreateGpuLocalStructuredBuffer(
+    const void* data, uint32_t elementCount, uint32_t stride)
+{
+    auto sb = m_renderer.CreateNativeGpuLocalStructuredBuffer(data, elementCount, stride);
+    if (!sb) {
+        FBZZ_LOG_ERROR("ResourceManager::CreateGpuLocalStructuredBuffer failed (count=%u stride=%u)",
+                       elementCount, stride);
+        return ResourceHandle<StructuredBufferTag>::Null();
+    }
+    return m_structuredBuffers.Insert(std::move(sb), "GpuLocalStructuredBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)

@@ -28,9 +28,16 @@ public:
     bool InitCubeFromResource(DX12Context* context, ID3D12Resource* resource, DXGI_FORMAT srvFormat,
                               uint32_t size, uint32_t mipCount);
     bool InitForCompute(DX12Context* context, DX12StateTracker* tracker, uint32_t width, uint32_t height);
+    // CPU から矩形単位で書き換えられるテクスチャ (フォントの動的アトラス用)。
+    // DEFAULT ヒープにゼロ初期化して作り、PIXEL_SHADER_RESOURCE 状態で待機する。
+    bool InitDynamic(DX12Context* context, DX12StateTracker* tracker,
+                     uint32_t width, uint32_t height, DynamicTextureFormat format);
     void RegisterState(DX12StateTracker* tracker, D3D12_RESOURCE_STATES state);
     uint32_t GetWidth() const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
+
+    bool UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                      const void* pixels, uint32_t srcRowPitch) override;
     D3D12_CPU_DESCRIPTOR_HANDLE GetSrvCpu() const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetUavCpu() const;
     ID3D12Resource* GetResource() const { return m_resource.Get(); }
@@ -38,12 +45,21 @@ public:
 
 private:
     bool CreateSrv(DX12Context* context, DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM);
+    // 矩形ぶんのアップロードバッファを作って CopyTextureRegion する共通処理。
+    // currentState には呼び出し時点のリソース状態を渡す (生成直後は COPY_DEST、
+    // 通常運用時は PIXEL_SHADER_RESOURCE)。完了後は必ず PIXEL_SHADER_RESOURCE になる。
+    bool UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                              const void* pixels, uint32_t srcRowPitch,
+                              D3D12_RESOURCE_STATES currentState);
     Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_srvHeap;
     DX12StateTracker* m_tracker = nullptr;
     DX12Context* m_context = nullptr;
     uint32_t m_descriptorIncrement = 0;
     bool m_hasUav = false;
+    // InitDynamic で作られたときだけ true。UpdateRegion はこれを見て可否を判断する。
+    bool m_isDynamic = false;
+    uint32_t m_bytesPerPixel = 0;
     DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
     uint32_t m_width = 0;
     uint32_t m_height = 0;

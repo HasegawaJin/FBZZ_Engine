@@ -27,9 +27,14 @@
 
 ## サードパーティライブラリ
 
-OK: `Assimp` / `DirectX 11 SDK` / `DirectX 12 SDK` / `Microsoft::WRL::ComPtr` / `ImGui` / `ImGuizmo` / `ImNodes` / `toml++` / `stb_image` / `DirectXTex` / `XAudio2`
+OK: `Assimp` / `DirectX 11 SDK` / `DirectX 12 SDK` / `Microsoft::WRL::ComPtr` / `ImGui` / `ImGuizmo` / `ImNodes` / `toml++` / `stb_image` / `stb_truetype` / `stb_rect_pack` / `DirectXTex` / `XAudio2`
 
 NG: `GLM` / `GLFW` / `Bullet` / `PhysX` / `Box2D`
+
+`stb_truetype` / `stb_rect_pack` はフォントの実行時ラスタライズとアトラス配置に使う (`Docs/design/font-system.md`)。
+**WHY**: 「数学・物理は自作」という方針は保つが、TrueType の字形解釈は別ドメインであり、
+glyf / loca / cmap / hmtx の自前パースはフォント機能とは別スケールの投資になる。
+`stb_image` を既に許可している方針と整合させ、public domain の単一ヘッダを `ThirdParty/Stb/` へベンダーする。
 
 ---
 

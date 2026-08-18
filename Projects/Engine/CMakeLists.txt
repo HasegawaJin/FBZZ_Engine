@@ -33,6 +33,11 @@ set(DIRECTXTEX_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/
 set(DIRECTXTEX_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/lib/x64/Debug/DirectXTex.lib")
 set(DIRECTXTEX_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/lib/x64/Release/DirectXTex.lib")
 
+# stb_truetype / stb_rect_pack (public domain, ヘッダオンリー)。
+# フォントの実行時ラスタライズとアトラス配置に使う (Docs/design/font-system.md)。
+# 実装の展開は src/Renderer/StbFontImpl.cpp のみが行う。
+set(STB_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Stb")
+
 set(ASSIMP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/include")
 set(ASSIMP_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Debug/assimp-vc145-mtd.lib")
 set(ASSIMP_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Release/assimp-vc145-mt.lib")
@@ -44,6 +49,8 @@ foreach(REQUIRED_PATH
     "${ASSIMP_INCLUDE}"
     "${ASSIMP_LIB_DEBUG}"
     "${ASSIMP_LIB_RELEASE}"
+    "${STB_INCLUDE}/stb_truetype.h"
+    "${STB_INCLUDE}/stb_rect_pack.h"
 )
     if(NOT EXISTS "${REQUIRED_PATH}")
         message(FATAL_ERROR "Required third-party dependency was not found: ${REQUIRED_PATH}")
@@ -57,6 +64,7 @@ target_include_directories(FBZZEngine
     PRIVATE src
     PRIVATE ${DIRECTXTEX_INCLUDE}
     PRIVATE ${ASSIMP_INCLUDE}
+    PRIVATE ${STB_INCLUDE}
 )
 
 target_link_libraries(FBZZEngine
