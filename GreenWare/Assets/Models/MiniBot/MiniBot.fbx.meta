@@ -2,29 +2,24 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '1df4f2c577d0853a'
+settings_hash = 'ddd17dafaf628c52'
 source_hash = 'a37db767aec92b0e'
 
 [meta]
-guid = 'dd0118aaba152e13d32d5c1d56a61382'
+guid = '6f5237de2580cf3fdb37a4be0a71ad85'
 
 [model]
+clips = []
 default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
 generate_tex_descriptors = true
 importer = 'ModelImporter'
-importer_version = 1
+importer_version = 3
 normal_map_convention = 'DirectX'
+root_motion_node = ''
 selected_animations = []
-selected_meshes = [
-    'P_AccentGreen',
-    'P_AccentYellow',
-    'P_ArmorGrey',
-    'P_ArmorWhite',
-    'P_GlowGreen',
-    'P_GlowGreenSoft',
-    'P_LampGreen',
-    'P_MetalDark',
-    'P_PanelLine',
-    'P_VisorDark'
-]
+selected_meshes = []
 source_dcc = 'Auto'
+unit_scale_multiplier = 1.0
+up_axis = 0
