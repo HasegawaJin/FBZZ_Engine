@@ -14,6 +14,8 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
+#include <Editor/Util/Toast.hpp>
+#include <Engine/Scene/ScriptValidation.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Window.hpp>
 #include <Engine/Audio/AudioManager.hpp>
@@ -752,6 +754,23 @@ void EditorApp::StartPlayMode()
     if (m_ctx.InPrefabEditMode()) {
         FBZZ_LOG_WARN("Play: close the prefab edit mode first");
         return;
+    }
+
+    // FBZZ_REQUIRE_COMPONENT の充足をシーン全体でまとめて検証する。
+    //
+    // WHY ここか: 付け忘れは「動かないけどエラーも出ない」という形でしか現れないため、
+    //     気付くのは大抵 Play したあと。Play を押した瞬間に Console へ全件出しておけば、
+    //     ゲームの挙動を目で追う前に原因が名指しで並んでいる状態から始められる。
+    // WHY Play を止めないか: 不足があっても他の部分は動くし、そもそも作りかけの
+    //     シーンを走らせて確かめるのが Play の役目。止めると「試せない」ほうの
+    //     コストが上回る。Unity の Console と同じく、報告はするが進行は妨げない。
+    if (const auto issues = scene::ValidateSceneScriptRequirements(*m_ctx.activeScene);
+        !issues.empty()) {
+        for (const auto& issue : issues)
+            FBZZ_LOG_ERROR("Script requirement: %s",
+                           scene::FormatScriptRequirementIssue(issue).c_str());
+        Toast::Error(std::to_string(issues.size()) +
+                     " missing script component(s) — see Console");
     }
 
     m_undoStack.Clear();

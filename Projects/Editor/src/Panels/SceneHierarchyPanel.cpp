@@ -10,8 +10,10 @@
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/ScriptObjectFactory.hpp>
 #include <Editor/Util/SelectionVisuals.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -106,6 +108,21 @@ void SetParentWithUndo(EditorContext& ctx,
 // RemoveSelection / PruneSelection / DestroySelected / DuplicateHierarchyRecursive は
 // SceneEditUtils.hpp へ移動 (Scene Viewport の Delete / Ctrl+D と共有するため)
 
+// Create の既定の親を決める。選択中のオブジェクトがあればその子として生成する (Unity 互換)。
+//
+// WHY: 以前はどの Create 経路も親を渡していなかったため、ヒエラルキーで選択してから
+//      Create しても必ずルート直下に出てしまい、作るたびにドラッグで親付けし直していた。
+//      「選択 = これから編集する場所」なので、そこを既定の生成先にする。
+//      複数選択のときは最後に選んだもの (Unity の active object 相当) を親にする。
+[[nodiscard]] scene::EntityID ResolveDefaultCreateParent(const EditorContext& ctx)
+{
+    if (ctx.activeScene == nullptr || ctx.selectedEntities.empty()) return {};
+    const scene::EntityID candidate = ctx.selectedEntities.back();
+    if (!candidate.IsValid()) return {};
+    // 削除直後などで選択が実体を失っていることがある。その場合はルート直下へ。
+    return ctx.activeScene->GetGameObject(candidate) ? candidate : scene::EntityID{};
+}
+
 // parentId が有効な場合は新規 GO を parentId の子として生成する。
 //
 // メニューの中身は ObjectPresets.hpp の登録表から組み立てる。
@@ -164,11 +181,21 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
             anyFound = true;
             const std::string name = util::FileSystem::GetFilename(path);
             if (ImGui::MenuItem(name.c_str())) {
-                deferred = [&ctx, path]() {
-                    ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, path]() {
+                deferred = [&ctx, path, parentId]() {
+                    ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, path, parentId]() {
                         std::vector<scene::EntityID> roots;
-                        if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots))
-                            ctx.selectedEntities = roots;
+                        if (!PrefabSerializer::Instantiate(*ctx.activeScene, path, roots)) return;
+                        // Prefab もプリセットと同じ親付け規則に従わせる。
+                        // WHY: 同じ Create メニューの中で Prefab だけルート直下に出ると、
+                        //      「どこに置かれるか」がメニューの項目ごとに変わってしまう。
+                        if (parentId.IsValid()) {
+                            if (auto* parent = ctx.activeScene->GetGameObject(parentId)) {
+                                for (scene::EntityID rootId : roots)
+                                    if (auto* root = ctx.activeScene->GetGameObject(rootId))
+                                        root->SetParent(parent);
+                            }
+                        }
+                        ctx.selectedEntities = roots;
                     });
                 };
             }
@@ -177,6 +204,36 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
             ImGui::TextDisabled("(No prefabs found in Assets/Prefabs)");
 
         ImGui::EndMenu();
+    }
+
+    // スクリプト 1 つから、それが要求するコンポーネントを揃えた GameObject を作る。
+    //
+    // WHY この動線が要るか:
+    //   汎用の EnemyScript を書いても、置くたびに RigidBody / Collider / Animator を
+    //   手で選び直すのでは共通化した労力が配置作業へ移っただけになる。
+    //   FBZZ_REQUIRE_COMPONENT で宣言済みの要求を、そのまま組み立て手順として使う。
+    //   ここで作ったものを "Save As Prefab" すれば、以降はプレファブ 1 個のドラッグで済む。
+    if (ImGui::BeginMenu("Script Object")) {
+        const std::vector<std::string> types = ScriptObjectTypeNames();
+        if (types.empty()) {
+            // DLL 未ロード / ビルド失敗中はここが空になる。原因を書いておかないと
+            // 「メニューが壊れている」ようにしか見えない。
+            ImGui::TextDisabled("(No scripts registered — is the script DLL built?)");
+        }
+        for (const std::string& typeName : types) {
+            if (!ImGui::MenuItem(typeName.c_str())) continue;
+            deferred = [&ctx, typeName, parentId]() {
+                ExecuteSceneEditWithUndo(ctx, "Create Script Object",
+                    [&ctx, typeName, parentId]() {
+                        CreateScriptObject(ctx, typeName, parentId);
+                    });
+            };
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Create a GameObject with the script and every component\n"
+                          "it declares via FBZZ_REQUIRE_COMPONENT.");
     }
 }
 
@@ -328,6 +385,9 @@ void DrawHierarchyNode(EditorContext& ctx,
                        std::function<void()>& deferred,
                        scene::EntityID* pendingExpand,
                        scene::EntityID& lastClicked,
+                       scene::EntityID& pendingClick,
+                       bool& hierarchyDragStarted,
+                       bool& hierarchyNodeHovered,
                        std::vector<scene::EntityID>& outVisible,
                        const std::vector<scene::EntityID>& prevVisible,
                        InlineRenameState rename)
@@ -425,6 +485,7 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool   nodeHovered     = ImGui::IsItemHovered();
     const bool   nodeClicked     = ImGui::IsItemClicked(ImGuiMouseButton_Left);
     const bool   nodeToggledOpen = ImGui::IsItemToggledOpen();
+    hierarchyNodeHovered = hierarchyNodeHovered || nodeHovered;
 
     // 隠している生成物の件数バッジ。「Hierarchy に出ていない = 存在しない」ではないことを示す。
     // WHY: VFX を再生すると裏では十数個の GameObject が動いている。行が増えないのは
@@ -531,29 +592,10 @@ void DrawHierarchyNode(EditorContext& ctx,
         const bool iconAreaClick = ehClick || visClick || lockClick;
         if (nodeClicked && !nodeToggledOpen
             && !isLocked && !iconAreaClick) {
-            ctx.selectedAssetPath.clear();
-            const bool shiftHeld = ImGui::GetIO().KeyShift;
-            const bool ctrlHeld  = ImGui::GetIO().KeyCtrl;
-            if (shiftHeld && lastClicked.IsValid()) {
-                // Shift+クリック: prevVisible の順番で lastClicked〜id の範囲を選択
-                auto it1 = std::find(prevVisible.begin(), prevVisible.end(), lastClicked);
-                auto it2 = std::find(prevVisible.begin(), prevVisible.end(), id);
-                if (it1 != prevVisible.end() && it2 != prevVisible.end()) {
-                    if (!ctrlHeld) ctx.selectedEntities.clear();
-                    if (it1 > it2) std::swap(it1, it2);
-                    for (auto it = it1; it <= it2; ++it)
-                        if (!ContainsEntity(ctx.selectedEntities, *it))
-                            ctx.selectedEntities.push_back(*it);
-                }
-            } else {
-                if (!ctrlHeld) ctx.selectedEntities.clear();
-                auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);
-                if (it != ctx.selectedEntities.end())
-                    ctx.selectedEntities.erase(it);
-                else
-                    ctx.selectedEntities.push_back(id);
-                lastClicked = id;
-            }
+            // ここではまだ選択を変更しない。MouseClicked はドラッグ開始より先に来るため、
+            // 先に選択すると「つかんだ瞬間に Inspector が別 GO へ切り替わる」。
+            // クリックかドラッグか確定する MouseReleased まで保留する。
+            pendingClick = id;
         }
         if (nodeHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
             && !isLocked && !iconAreaClick) {
@@ -568,6 +610,8 @@ void DrawHierarchyNode(EditorContext& ctx,
     }
 
     if (!isLocked && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+        hierarchyDragStarted = true;
+        pendingClick = {};
         ImGui::SetDragDropPayload("FBZZ_HIERARCHY_ENTITY", &id, sizeof(id));
         ImGui::TextUnformatted(go.name.c_str());
         ImGui::EndDragDropSource();
@@ -678,6 +722,34 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
     }
 
+    if (pendingClick == id && ImGui::IsMouseReleased(ImGuiMouseButton_Left)
+        && nodeHovered && !hierarchyDragStarted) {
+        ctx.selectedAssetPath.clear();
+        const bool shiftHeld = ImGui::GetIO().KeyShift;
+        const bool ctrlHeld  = ImGui::GetIO().KeyCtrl;
+        if (shiftHeld && lastClicked.IsValid()) {
+            // Shift+クリック: prevVisible の順番で lastClicked〜id の範囲を選択
+            auto it1 = std::find(prevVisible.begin(), prevVisible.end(), lastClicked);
+            auto it2 = std::find(prevVisible.begin(), prevVisible.end(), id);
+            if (it1 != prevVisible.end() && it2 != prevVisible.end()) {
+                if (!ctrlHeld) ctx.selectedEntities.clear();
+                if (it1 > it2) std::swap(it1, it2);
+                for (auto it = it1; it <= it2; ++it)
+                    if (!ContainsEntity(ctx.selectedEntities, *it))
+                        ctx.selectedEntities.push_back(*it);
+            }
+        } else {
+            if (!ctrlHeld) ctx.selectedEntities.clear();
+            auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);
+            if (it != ctx.selectedEntities.end())
+                ctx.selectedEntities.erase(it);
+            else
+                ctx.selectedEntities.push_back(id);
+            lastClicked = id;
+        }
+        pendingClick = {};
+    }
+
     if (ImGui::BeginPopupContextItem()) {
         // 右クリックした GO が既に複数選択中なら選択を維持する。
         // そうでなければ単一選択に切り替える。
@@ -734,15 +806,17 @@ void DrawHierarchyNode(EditorContext& ctx,
             ctx.ToggleLock(id);
         ImGui::Separator();
 
-        if (ImGui::BeginMenu("Create")) {
-            DrawCreateObjectMenu(ctx, deferred);
+        // 右クリックしたオブジェクトの子として生成する (Unity のヒエラルキー右クリックと同じ)。
+        // 親付けは CreateObjectFromPreset が生成直後に行う。
+        // WHY: 以前は「生成後の選択」を頼りに親付けしていたため、複数 GO を作る
+        //      プリセット (Button + Label) では選択されている方が親になり得た。
+        if (ImGui::BeginMenu("Create Child")) {
+            DrawCreateObjectMenu(ctx, deferred, id);
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Create Child")) {
-            // 親付けは CreateObjectFromPreset が生成直後に行う。
-            // WHY: 以前は「生成後の選択」を頼りに親付けしていたため、複数 GO を作る
-            //      プリセット (Button + Label) では選択されている方が親になり得た。
-            DrawCreateObjectMenu(ctx, deferred, id);
+        // 親を付けたくない場合の逃げ道。選択に関係なくルート直下へ置く。
+        if (ImGui::BeginMenu("Create at Root")) {
+            DrawCreateObjectMenu(ctx, deferred);
             ImGui::EndMenu();
         }
         ImGui::Separator();
@@ -913,7 +987,9 @@ void DrawHierarchyNode(EditorContext& ctx,
         if (opened) {
             for (int i = 0; i < go.GetChildCount(); ++i) {
                 if (auto* child = go.GetChild(i))
-                    DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, pendingExpand, lastClicked, outVisible, prevVisible, rename);
+                    DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, pendingExpand,
+                                      lastClicked, pendingClick, hierarchyDragStarted,
+                                      hierarchyNodeHovered, outVisible, prevVisible, rename);
             }
             ImGui::TreePop();
         } else {
@@ -952,6 +1028,20 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextDisabled("No active scene");
         return;
     }
+
+    // ドラッグ開始後の選択保留を、マウス操作が終わったアイドルフレームで解放する。
+    // MouseReleased のフレームではまだドロップ判定が残っているため、ここでは消さない。
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)
+        && !ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        m_pendingClickEntity = {};
+        m_hierarchyDragStarted = false;
+    }
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        m_hierarchyDragStarted = false;
+    bool hierarchyNodeHovered = false;
+
+    // Hierarchy の項目を長いツリーの上下へ移動できるよう、ドラッグ中だけ自動スクロールする。
+    widgets::UpdateDragAutoScroll();
 
     if (ctx.mapEditingMode) {
         ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
@@ -1117,7 +1207,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 && !go->GetComponent<scene::FoliageComponent>())
                 continue;
             DrawHierarchyNode(ctx, *go, 0, rootCount, visited, deferred, &m_pendingExpand,
-                m_lastClickedEntity, mapVisible, m_visibleOrder,
+                m_lastClickedEntity, m_pendingClickEntity, m_hierarchyDragStarted,
+                hierarchyNodeHovered, mapVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
         }
 
@@ -1148,7 +1239,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     const size_t rootCount = roots.size();
     for (size_t i = 0; i < roots.size(); ++i)
         if (roots[i]) DrawHierarchyNode(ctx, *roots[i], i, rootCount, visited, deferred,
-            &m_pendingExpand, m_lastClickedEntity, outVisible, m_visibleOrder,
+            &m_pendingExpand, m_lastClickedEntity, m_pendingClickEntity,
+            m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
             InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
 
     // 親がいないのに GetRootGameObjects に含まれなかった孤立オブジェクトを救済する。
@@ -1156,13 +1248,18 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (!ContainsEntity(visited, go.GetID()) && go.GetParent() == nullptr)
             DrawHierarchyNode(ctx, go, 0, 0, visited, deferred,
-                &m_pendingExpand, m_lastClickedEntity, outVisible, m_visibleOrder,
+                &m_pendingExpand, m_lastClickedEntity, m_pendingClickEntity,
+                m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
     }
 
     m_visibleOrder = std::move(outVisible);
 
-    if (ImGui::BeginDragDropTargetCustom(ImRect(hierarchyMin, hierarchyMax), hierarchyDropId)) {
+    // ノード行の上では各ノードのドロップターゲットに任せる。
+    // WHY: 自分自身 (または子孫) の行で離したときに、この背景ターゲットまで受け取ると
+    //      「対象ノードへの操作なし」を「ルート化」と誤認して親を外してしまう。
+    if (!hierarchyNodeHovered
+        && ImGui::BeginDragDropTargetCustom(ImRect(hierarchyMin, hierarchyMax), hierarchyDropId)) {
         scene::EntityID draggedId;
         if (ReadEntityPayload(ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), draggedId)) {
             deferred = [&ctx, draggedId]() {
@@ -1218,7 +1315,24 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::MenuItem("Paste", "Ctrl+V", false, HasGameObjectClipboard()))
             deferred = [&ctx]() { PasteClipboardWithUndo(ctx); };
         ImGui::Separator();
-        DrawCreateObjectMenu(ctx, deferred);
+
+        // 選択があればその子として生成する。生成先が一目で分かるよう親名を出し、
+        // ルート直下へ置きたいときのために "Create at Root" を併置する。
+        const scene::EntityID createParent = ResolveDefaultCreateParent(ctx);
+        auto* createParentGO = createParent.IsValid()
+            ? ctx.activeScene->GetGameObject(createParent) : nullptr;
+        if (createParentGO) {
+            ImGui::TextDisabled("Create under \"%s\"", createParentGO->name.c_str());
+            ImGui::Separator();
+        }
+        DrawCreateObjectMenu(ctx, deferred, createParent);
+        if (createParentGO) {
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Create at Root")) {
+                DrawCreateObjectMenu(ctx, deferred);
+                ImGui::EndMenu();
+            }
+        }
         ImGui::EndPopup();
     }
 

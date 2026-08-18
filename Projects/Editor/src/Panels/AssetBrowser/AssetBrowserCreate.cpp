@@ -36,6 +36,19 @@ void NotifyAssetCreated(const std::string& path)
 {
     if (path.empty()) return;
     FBZZ_LOG_INFO("Asset created: %s", path.c_str());
+
+    // 失敗キャッシュを掃除する。
+    //
+    // WHY ここでやるか: AssetManager はロード失敗も cache へ焼き付けるため、実体が
+    //     生まれる前に一度でも参照されたパスは、ファイルを作っても無音で無効なままになる
+    //     (コンポーネントへ先にパスを書いてからアセットを作る、という順序は普通に起きる)。
+    //     ここは AssetBrowser の全生成経路が通る唯一の合流点なので、掃除を 1 か所で効かせられる。
+    //
+    // WHY RefreshDirectory() 側に置かないか: あちらはファイル監視や各操作の後に高頻度で
+    //     走る。そこで掃除すると、本当に壊れているアセットの再インポートを延々と試み続ける。
+    //     「実体が増えた瞬間」だけに絞る方が、掃除の意味とコストが釣り合う。
+    asset::AssetManager::FlushFailed();
+
     Toast::Success("Created " + util::FileSystem::GetFilename(path));
 }
 
@@ -139,7 +152,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
                     IM_COL32(255, 255, 255, 220), label);
 
         if (ImGui::BeginDragDropSource()) {
-            const std::string payloadPath = ToProjectAssetPath(payload, ctx);
+            const std::string payloadPath = ToAssetDragPayloadPath(payload, ctx);
             ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
             ImGui::Text("%s: %s", label,
                 util::FileSystem::GetFilename(payloadPath).c_str());
@@ -454,7 +467,15 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
 
     // ── C++ スクリプト ────────────────────────────────────────────
     ImGui::Separator();
-    if (ImGui::MenuItem("C++ Script...")) {
+    // 3 種類を同じ入口に並べる。
+    //
+    // WHY 種類を分けて見せるか:
+    //   ここに "C++ Script..." しか無いと、ユーティリティ関数も共有の調整値も
+    //   「アタッチするスクリプト」として作るしかないように見える。実際には
+    //   FBZZ_SCRIPT を持たないヘッダは ScriptList.inl に登録されず、Add Script にも
+    //   出ない普通のクラスとして使える (CMake の GLOB が拾うのでビルドはされる)。
+    //   その選択肢を入口に置かないと、実装があっても誰も辿り着けない。
+    if (ImGui::BeginMenu("C++...")) {
         const std::string engineScriptsDir = ctx.scriptsSourceDir;
         const std::string projScriptsDir   = ctx.projectRoot + "/Assets/Scripts";
         const std::string dllPath          = ctx.scriptsDllCppPath;
@@ -464,26 +485,66 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         //      DLL 登録なしでヘッダだけを生成できるようにする。
         const std::string resolvedScriptsDir =
             engineScriptsDir.empty() ? projScriptsDir : engineScriptsDir;
-        ModalDialog::OpenInput(
-            "New C++ Script",
-            "NewScript",
-            [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
-            (const std::string& name) {
-                const std::string path =
-                    ScriptCodeGen::CreateScript(name, resolvedScriptsDir, dllPath, staticPath);
+        const std::string destination =
+            "Destination: " + (resolvedScriptsDir.empty() ? projScriptsDir : resolvedScriptsDir);
+
+        // 生成先が 2 箇所ある (SDK 側ソースとプロジェクト側 Assets) のは既存仕様。
+        // 種類が増えても分岐が散らないよう、コールバックの組み立てを 1 本化する。
+        auto makeCallback = [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
+            (ScriptCodeGen::ScriptKind kind, const char* label) {
+            return [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath, kind, label]
+                (const std::string& name) {
+                const std::string path = ScriptCodeGen::CreateScript(
+                    name, resolvedScriptsDir, dllPath, staticPath, kind);
                 if (path.empty()) {
-                    FBZZ_LOG_WARN("C++ Script creation failed: %s", name.c_str());
+                    FBZZ_LOG_WARN("%s creation failed: %s", label, name.c_str());
                     return;
                 }
                 // プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
                 if (!projScriptsDir.empty() && projScriptsDir != resolvedScriptsDir)
-                    ScriptCodeGen::CreateScript(name, projScriptsDir, "", "");
+                    ScriptCodeGen::CreateScript(name, projScriptsDir, "", "", kind);
                 NotifyAssetCreated(path);
                 m_pendingNavigate = projScriptsDir;
                 RefreshDirectory();
-                FBZZ_LOG_INFO("C++ Script generated: %s", path.c_str());
-            },
-            "Destination: " + (resolvedScriptsDir.empty() ? projScriptsDir : resolvedScriptsDir));
+                FBZZ_LOG_INFO("%s generated: %s", label, path.c_str());
+            };
+        };
+
+        if (ImGui::MenuItem("Script (attach to GameObject)...")) {
+            ModalDialog::OpenInput(
+                "New C++ Script", "NewScript",
+                makeCallback(ScriptCodeGen::ScriptKind::Behaviour, "C++ Script"),
+                destination + "\nA \"Component\" suffix is appended to the class name.");
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("FBZZ_SCRIPT を持つ通常のスクリプト。Add Script に並ぶ。\n"
+                              "必要なコンポーネントは FBZZ_REQUIRE_COMPONENT で宣言する。");
+        }
+
+        if (ImGui::MenuItem("Utility Header (not attached)...")) {
+            ModalDialog::OpenInput(
+                "New C++ Utility Header", "NewHelpers",
+                makeCallback(ScriptCodeGen::ScriptKind::Utility, "C++ Utility Header"),
+                destination + "\nPlain class — never appears in Add Script.");
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("登録マクロを持たない普通のクラス。\n"
+                              "Unity で MonoBehaviour を継承しないクラスに相当する。\n"
+                              "ファイル分割・ヘルパー関数はこちらで書く。");
+        }
+
+        if (ImGui::MenuItem("Data Asset (shared values)...")) {
+            ModalDialog::OpenInput(
+                "New C++ Data Asset", "NewStats",
+                makeCallback(ScriptCodeGen::ScriptKind::DataAsset, "C++ Data Asset"),
+                destination + "\nDefines a type; create .fzdata files from Create > Data Asset.");
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("FBZZ_DATA_ASSET を持つ共有調整値の型 (ScriptableObject 相当)。\n"
+                              "スクリプト DLL のビルド後、Create > Data Asset に型名が並ぶ。");
+        }
+
+        ImGui::EndMenu();
     }
 
     // ── HLSL シェーダー ───────────────────────────────────────────

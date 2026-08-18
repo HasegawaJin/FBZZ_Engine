@@ -99,6 +99,24 @@ struct CollisionInfo {
     math::Vector3 contactNormal = math::Vector3::UP;
     math::Vector3 contactPoint = math::Vector3::ZERO;
     float contactDepth = 0.0f;
+
+    // ── 衝突の強さ ──────────────────────────────────────────────────────────
+    // WHY 値を渡す必要があるか: このコールバックは物理ソルバーが速度を解決した後に
+    //     呼ばれる。その時点で physics.GetVelocity() を読んでも「ぶつかった後」の
+    //     速度しか得られず、衝突の激しさは復元できない。衝突ダメージ・ヒットストップ・
+    //     SE の強弱はどれも解決前の勢いを必要とするため、物理側で記録した値を運ぶ。
+    //
+    // NOTE: OnCollisionEnter でのみ意味のある値。接触が続いているだけの
+    //       OnCollisionStay や、離れた OnCollisionExit では 0 になる。
+
+    // 接触点での相対速度 (self から見た other との差、角速度の寄与を含む)。
+    math::Vector3 relativeVelocity = math::Vector3::ZERO;
+    // 法線方向の接近速度 (m/s)。正 = 近づいていた = ぶつかった強さ。
+    // 「一定速度以上の衝突だけダメージにする」判定はこの値で行う。
+    float approachSpeed = 0.0f;
+    // 解決で実際に加わった法線インパルス (質量込みの強さ)。
+    // 軽い相手と重い相手で手応えを変えたい場合は approachSpeed ではなくこちらを見る。
+    float impactImpulse = 0.0f;
 };
 
 // ── IReflector ────────────────────────────────────────────────────────────────
@@ -397,6 +415,97 @@ struct InvokeHandle {
     static constexpr int _fbzz_base = __COUNTER__;                              \
     void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
                        ::fbzz::scene::IReflector&) {}
+
+namespace detail {
+
+// "RigidBodyComponent, AnimatorComponent" → { "RigidBodyComponent", "AnimatorComponent" }
+// WHY 名前空間修飾を落とすか: スクリプトは using namespace fbzz::scene; の下で短縮名を
+//     書くのが普通だが、曖昧さを避けて fbzz::scene::RigidBodyComponent と書くこともある。
+//     どちらで書かれても ComponentRegistry の serializedName (= #Type の短縮名) と
+//     突き合わせられるよう、最後の "::" より後だけを名前として採る。
+inline std::vector<std::string> SplitComponentNames(const char* list)
+{
+    std::vector<std::string> names;
+    if (!list) return names;
+
+    const std::string_view all(list);
+    std::size_t begin = 0;
+    while (begin <= all.size()) {
+        const std::size_t comma = all.find(',', begin);
+        std::string_view token =
+            all.substr(begin, comma == std::string_view::npos ? all.size() - begin : comma - begin);
+
+        // 前後の空白を落としてから名前空間修飾を剥がす。
+        while (!token.empty() && (token.front() == ' ' || token.front() == '\t'))
+            token.remove_prefix(1);
+        while (!token.empty() && (token.back() == ' ' || token.back() == '\t'))
+            token.remove_suffix(1);
+        if (const std::size_t scope = token.rfind("::"); scope != std::string_view::npos)
+            token.remove_prefix(scope + 2);
+
+        if (!token.empty()) names.emplace_back(token);
+        if (comma == std::string_view::npos) break;
+        begin = comma + 1;
+    }
+    return names;
+}
+
+// 要求に並べた型が「完全型か」を静的に確かめるだけの補助。
+// WHY: 名前は #__VA_ARGS__ の文字列から採るため、型そのものは一度も使われない。
+//      それだと綴り違いや include 漏れが実行時まで露見しないので、sizeof で
+//      完全型を強制して宣言した場所でコンパイルエラーにする。
+template<typename... Ts>
+struct ComponentCompleteness {
+    static constexpr std::size_t value = (sizeof(Ts) + ... + 0);
+};
+
+} // namespace detail
+
+// ── 必須 / 任意コンポーネントの宣言 ──────────────────────────────────────────
+//
+// WHY (無言の no-op を潰す):
+//   スクリプトは scene.GetComponent<T>() が null なら黙って早期 return し、
+//   プロキシ (animator.SetFloat 等) も対象コンポーネントが無ければ何もしない。
+//   結果として「付け忘れ」はエラーにならず、動かない理由がどこにも出ない。
+//   要求を宣言しておけば 3 箇所が同じ情報を使って名指しする:
+//     - Inspector    … 不足を赤帯で表示し、Fix ボタンで一括追加
+//     - Play 開始時  … Console へエラーを出力 (シーン全体をまとめて検証)
+//     - ScriptSystem … 実行時に一度だけ警告 (Standalone ビルドでも出る)
+//
+//   FBZZ_REQUIRE_COMPONENT  — 無いと成立しない。エラー扱い。
+//   FBZZ_OPTIONAL_COMPONENT — 無くても縮退動作する。Inspector に情報として出るだけ。
+//
+// 使い方 (クラス本体・FBZZ_SCRIPT の直後):
+//   class EnemyComponent : public Script {
+//       FBZZ_SCRIPT(EnemyComponent)
+//       FBZZ_REQUIRE_COMPONENT(RigidBodyComponent, CharacterControllerComponent)
+//       FBZZ_OPTIONAL_COMPONENT(IKSolverComponent)
+//   ...
+//
+// WHY 型で書かせて文字列にしないか:
+//   "RigidBodyComponnet" のような綴り違いは文字列だとコンパイルを通ってしまい、
+//   「宣言したのに検証されない」という一番たちの悪い壊れ方をする。型で受ければ
+//   ComponentCompleteness が完全型を要求するので、その場でコンパイルエラーになる。
+//   名前は #__VA_ARGS__ から採るため、型名の綴りがそのまま検証キーになる。
+#define FBZZ_REQUIRE_COMPONENT(...)                                             \
+    ::std::span<const ::std::string> RequiredComponents() const override {      \
+        static_assert(                                                          \
+            ::fbzz::scene::detail::ComponentCompleteness<__VA_ARGS__>::value > 0,\
+            "FBZZ_REQUIRE_COMPONENT: 未定義の型です (include 漏れ / 綴り違い)"); \
+        static const ::std::vector<::std::string> names_ =                      \
+            ::fbzz::scene::detail::SplitComponentNames(#__VA_ARGS__);           \
+        return names_;                                                          \
+    }
+
+#define FBZZ_OPTIONAL_COMPONENT(...)                                            \
+    ::std::span<const ::std::string> OptionalComponents() const override {      \
+        static_assert(                                                          \
+            ::fbzz::scene::detail::ComponentCompleteness<__VA_ARGS__>::value > 0,\
+            "FBZZ_OPTIONAL_COMPONENT: 未定義の型です (include 漏れ / 綴り違い)");\
+        static const ::std::vector<::std::string> names_ =                      \
+            ::fbzz::scene::detail::SplitComponentNames(#__VA_ARGS__);           \
+        return names_;                                                          \
+    }
 
 // Script以外のネスト値型へ同じ宣言式Reflectを与える。
 #define FBZZ_SERIALIZABLE(T)                                                    \
@@ -823,6 +932,17 @@ public:
     virtual void OnSpawn() {}
     virtual void OnDespawn() {}
 
+    // このスクリプトが成立するために同じ GameObject へ必要なコンポーネント型名。
+    // FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT が override する。
+    // 返す名前は ComponentRegistry の serializedName (= 型名そのもの) と同じ綴り。
+    //
+    // WHY 仮想関数をここ (Script の仮想関数列の末尾) に置くか:
+    //     スクリプト DLL は vtable インデックスで仮想呼び出しする。途中へ挿入すると
+    //     既存関数のインデックスまでずれるため、追加は必ず末尾に行い、
+    //     ScriptDllAbi.hpp の kScriptVtableAbiVersion をインクリメントすること。
+    virtual std::span<const std::string> RequiredComponents() const { return {}; }
+    virtual std::span<const std::string> OptionalComponents() const { return {}; }
+
     bool enabled = true;
 
     // Proxy — カテゴリごとに責務を分け、Script.hpp の肥大化を避ける。
@@ -854,6 +974,18 @@ public:
     // ScriptSystem 専用
     void SetContext(Scene* scene, GameObject* gameObject);
     void SyncEnabledState();
+    // Script 内の空参照によるアクセス違反を Editor プロセスへ伝播させない共通入口。
+    // WHY: C++ の nullptr 参照は例外ではなく、通常の try/catch では保護できない。
+    //      すべての実行時コールバックをここへ通し、問題の Script だけを停止する。
+    bool InvokeNoArg(void (Script::*callback)(), const char* callbackName);
+    bool InvokeCollision(void (Script::*callback)(const CollisionInfo&),
+                         const CollisionInfo& info,
+                         const char* callbackName);
+    bool InvokeAnimationEvent(const AnimationEventInfo& info);
+    bool InvokeAnimatorMove(const RootMotionInfo& info);
+    bool InvokeSetupRenderPasses(RenderPipeline& pipeline, RenderPassContext& context);
+    bool InvokeFunction(const std::function<void()>& function, const char* callbackName);
+    bool InvokeCoroutineStep(Coroutine& coroutine);
     void TickInvokes(float dt);
     void TickFrameDelays();
     void TickCoroutines();
@@ -871,6 +1003,8 @@ protected:
 
     Scene*      m_scene      = nullptr;
     GameObject* m_gameObject = nullptr;
+    // アクセス違反後は同じ Script を毎フレーム呼ばず、Play を継続できるようにする。
+    bool        m_runtimeFaulted = false;
 
 private:
     friend struct ScriptTransformProxy;

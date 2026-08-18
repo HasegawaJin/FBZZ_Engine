@@ -215,6 +215,45 @@ using namespace fbzz::input;
 
 ---
 
+## Assets/ に置く 3 種類のヘッダ
+
+`Assets/**/*.hpp` は CMake の GLOB がすべて Script DLL のビルド対象へ入れるが、**登録されるかどうかはマクロで決まる**。ScriptCodeGen が `FBZZ_SCRIPT(` / `FBZZ_DATA_ASSET(` を走査して `ScriptList.inl` / `DataAssetList.inl` を同期する。
+
+| 種類 | マクロ | 登録先 | Add Script に出るか |
+|------|--------|--------|--------------------|
+| スクリプト (アタッチする) | `FBZZ_SCRIPT(T)` | `ScriptList.inl` | 出る |
+| ユーティリティ (アタッチしない) | **なし** | されない | 出ない |
+| 共有調整値 (`.fzdata`) | `FBZZ_DATA_ASSET(T)` | `DataAssetList.inl` | 出ない |
+
+**ユーティリティは登録マクロを付けないだけでよい。** Unity で `MonoBehaviour` を継承しない普通のクラスに相当し、ファイル分割・ヘルパー関数・データ構造はこちらで書く。テンプレートは AssetBrowser の `Create > C++...` に 3 種類とも並ぶ。
+
+---
+
+## 必須コンポーネントの宣言 (`FBZZ_REQUIRE_COMPONENT`)
+
+スクリプトが同じ GameObject に必要とするコンポーネントは、クラス本体で宣言する。
+
+```cpp
+class EnemyComponent : public Script {
+    FBZZ_SCRIPT(EnemyComponent)
+    FBZZ_REQUIRE_COMPONENT(RigidBodyComponent, CharacterControllerComponent)
+    FBZZ_OPTIONAL_COMPONENT(AnimatorComponent)   // 無くても縮退動作するもの
+```
+
+**WHY**: `scene.GetComponent<T>()` は無ければ `nullptr` を返して早期 return し、`animator.SetFloat()` などのプロキシも対象が無ければ黙って何もしない。宣言が無いと、付け忘れは「動かないのにエラーも出ない」形でしか現れない。宣言すると 3 箇所が同じ情報で名指しする:
+
+- **Inspector** — 不足を赤帯で表示。`Fix` ボタンで既定値付きの一括追加
+- **Play 開始時** — シーン全体を検証して Console へエラー出力 (Play は止めない)
+- **ScriptSystem** — 実行時に一度だけ警告。Standalone ビルドでも出る
+
+また Hierarchy の `Add Object > Script Object > <型名>` が、この宣言をそのまま組み立て手順として使う (スクリプト + 要求コンポーネント一式の GameObject を生成)。そのまま `Save As Prefab` すれば、以降はプレファブ 1 個のドラッグで配置できる。
+
+型名は**型そのもの**で書く (文字列ではない)。綴り違いや `#include` 漏れはコンパイルエラーになる。対象の型ヘッダを `#include` すること。
+
+> **自動追加にはしない。** Animator は Controller 未設定なら足しても動かず、Collider は寸法が決まらない。黙って増やすと「揃っているのに動かない」一段深い迷子を作るため、不足を名指しして判断は人に残す。
+
+---
+
 ## 禁止パターン
 
 | パターン | 理由 |
