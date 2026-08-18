@@ -17,6 +17,8 @@
 
 namespace fbzz::asset {
 
+struct Skeleton;
+
 // ボーン 1 本 (と、任意でその子孫) に対するマスク設定。
 struct AvatarMaskEntry {
     // スケルトンノードのパス ("Hips/Spine/Spine1") または末端ボーン名 ("Spine1")。
@@ -63,6 +65,8 @@ struct AvatarMaskAsset {
     // このマスクを作った元スケルトン。Editor がボーンツリーを再表示するために覚えておく。
     // ランタイムの評価には使わない。
     std::string skeletonSourcePath;
+    // 元 FBX の更新検知用署名。空文字は旧形式または未保存状態を表す。
+    std::string skeletonSourceSignature;
 
     bool operator==(const AvatarMaskAsset&) const = default;
 };
@@ -89,5 +93,13 @@ struct AvatarMaskAsset {
 
 // ボーン名からもっとも当てはまる体パーツを推定する。判定できなければ Count を返す。
 [[nodiscard]] HumanoidBodyPart GuessBodyPartForBone(std::string_view boneName);
+
+// SkeletonNode の親を辿って、Inspector とランタイムで共有できる完全パスを構築する。
+// WHY: ノード名だけでは同名ボーンを区別できず、階層編集したマスクが別ボーンへ誤適用される。
+[[nodiscard]] std::string BuildSkeletonNodePath(const Skeleton& skeleton, int nodeIndex);
+
+// 保存前に、親ルールと同じ結果になる冗長な子ルールを取り除く。
+// WHY: ツリーで大量のボーンを選択しても、.mask は最小限の階層ルールとして保つ。
+void CompressAvatarMaskEntries(AvatarMaskAsset& mask);
 
 } // namespace fbzz::asset

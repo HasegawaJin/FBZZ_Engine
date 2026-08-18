@@ -6,6 +6,7 @@
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -16,7 +17,9 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Toast.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -119,11 +122,20 @@ void MarkDirty(EditorContext& ctx)
         return;
 
     ++AnimationGraphEditGeneration();
+    // WHY selectedAssetPath ではなく animationControllerEditorPath を見るか (重要):
+    //   以前はここが「Asset Browser で今選ばれているファイル」を編集対象と見なしていた。
+    //   ところがクリップを Source 欄へドラッグするには Asset Browser を触る必要があり、
+    //   その瞬間に selectedAssetPath が .anim / .fbx へ移る。すると
+    //     - この分岐が false になり、編集が AssetDirtyRegistry に登録されない
+    //     - 保存先も見失う (Save が効いていないように見える)
+    //     - Inspector の "Modified" 表示も出ない
+    //   という 3 つが同時に起きていた。編集対象は「パネルが開いているドキュメント」であって
+    //   ブラウザーの選択ではない。animationControllerEditorPath がその唯一の識別子。
     if (util::StringUtils::EndsWith(
-            ctx.selectedAssetPath, ".animcontroller")) {
+            ctx.animationControllerEditorPath, ".animcontroller")) {
         ctx.animationControllerDirty = true;
         // Registry に登録し Save All / 終了時確認で一括保存できるようにする
-        const std::string capturedPath = ctx.selectedAssetPath;
+        const std::string capturedPath = ctx.animationControllerEditorPath;
         EditorContext* context = &ctx;
         std::weak_ptr<scene::AnimatorComponent> weakAnimator = ctx.animationControllerEditor;
         AssetDirtyRegistry::Register(
@@ -179,12 +191,16 @@ scene::AnimatorComponent MakeAnimationGraphSnapshot(
 struct LayerGraphScope {
     scene::AnimatorComponent* animator = nullptr;
     scene::AnimationLayer*    layer    = nullptr;
+    scene::AnimatorComponent* ownerAnimator = nullptr;
+    scene::AnimationLayer*    ownerLayer = nullptr;
 
     LayerGraphScope(scene::AnimatorComponent& a, const std::string& layerName)
     {
         if (layerName.empty()) return;             // Base Layer は入れ替え不要
         layer = a.FindLayer(layerName);
         if (layer == nullptr) return;              // 消えたレイヤーは Base Layer 扱い
+        ownerAnimator = &a;
+        ownerLayer = layer;
         animator = &a;
         Swap();
     }
@@ -204,6 +220,17 @@ struct LayerGraphScope {
         Swap();
         animator = nullptr;
         layer = nullptr;
+    }
+
+    // 保存など、AnimatorComponent 全体の定義を読む処理の前に一時的に元へ戻す。
+    // WHY: 差し替え中の animator.states は選択 Layer の内容なので、そのまま保存すると
+    //      選択 Layer が Base Layer として書き出される。保存後は表示を継続するため再適用する。
+    void Reapply()
+    {
+        if (animator != nullptr || ownerAnimator == nullptr || ownerLayer == nullptr) return;
+        animator = ownerAnimator;
+        layer = ownerLayer;
+        Swap();
     }
 
 private:
@@ -340,6 +367,30 @@ std::string MakeUniqueStateName(const scene::AnimatorComponent& animator, const 
         if (!exists(candidate)) return candidate;
     }
     return base + "_";
+}
+
+// State / Motion の Source として受け付けられるアセットか。
+// .anim = クリップ単体、.fbx / .fzasset / .asset = クリップを内包するモデルコンテナ。
+// AnimatorSystem::LoadClips が実際に読める形だけを許可し、UI 側で無効な参照を作らせない。
+bool IsAnimationSourceAsset(const std::string& path)
+{
+    const std::string lower = util::StringUtils::ToLower(path);
+    return util::StringUtils::EndsWith(lower, ".anim")
+        || util::StringUtils::EndsWith(lower, ".fbx")
+        || util::StringUtils::EndsWith(lower, ".fzasset")
+        || util::StringUtils::EndsWith(lower, ".asset");
+}
+
+// ドロップされたアセットパスから State の初期名を作る。
+// WHY "@" 以降を採るか: FBX から焼かれたクリップは "<Model>@<Clip>.anim" 命名なので、
+//   ファイル名そのままだとどの State も "Player@..." で始まり、グラフ上で見分けられない。
+std::string StateNameFromAssetPath(const std::string& path)
+{
+    std::string stem = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(path).stem());
+    if (const auto at = stem.find_last_of('@'); at != std::string::npos && at + 1 < stem.size())
+        stem = stem.substr(at + 1);
+    return stem.empty() ? std::string("NewState") : stem;
 }
 
 int FindStateIndexByName(const scene::AnimatorComponent& animator, const std::string& name)
@@ -484,61 +535,76 @@ bool DrawFloatParameterCombo(EditorContext& ctx,
     return changed;
 }
 
+// クリップの取得元アセットを選ぶ欄。
+//
+// WHY 共通ウィジェットを使うか:
+//   ここは以前 ImGui::InputText と AcceptDragDropPayload("ASSET_PATH") を手書きしていた。
+//   その結果、(1) "..." の検索ピッカーが無く目的のクリップを Asset Browser で
+//   探し回るしかない、(2) 拡張子を検証しないので .png でもフォルダでも受け付けて
+//   静かに壊れる、(3) パスの表示規則が Inspector の他のアセット欄と揃わない、
+//   という 3 つが同時に起きていた。widgets::AssetPathField は検索・型フィルター・
+//   Ping・右クリックメニュー・D&D を 1 箇所で持っているので、そちらへ寄せる。
+//   Inspector 側の "Ref Source" (加算レイヤーの基準ポーズ) は既にこれを使っており、
+//   同じ種類の値をパネルごとに違う UI で編集している状態を解消する意味もある。
 bool DrawAnimationSource(EditorContext& ctx,
                          const char* label,
                          scene::AnimatorComponent& animator,
                          std::string& sourcePath)
 {
-    char sourceBuffer[512]{};
-    std::snprintf(
-        sourceBuffer, sizeof(sourceBuffer), "%s", sourcePath.c_str());
-    bool changed = false;
-    if (ImGui::InputText(label, sourceBuffer, sizeof(sourceBuffer))) {
-        sourcePath = NormalizeAssetPath(sourceBuffer);
-        changed = true;
-    }
-    if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload =
-                ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            sourcePath =
-                NormalizeAssetPath(static_cast<const char*>(payload->Data));
-            changed = true;
-        }
-        ImGui::EndDragDropTarget();
-    }
+    // .anim = クリップ単体、.fbx = インポート元、.asset/.fzasset = インポート済みモデル。
+    //
+    // WHY .anim を受けるか (不具合修正):
+    //   ランタイム (AnimatorSystem::LoadClips) は sourcePath が .anim のとき
+    //   AnimationClip として直接ロードする経路を持っており、「1 クリップ = 1 .anim」が
+    //   FBZZ の標準的な指定方法になっている。にもかかわらずこの欄のフィルターが
+    //   ".asset,.fbx" のままだったため、AcceptAssetPathDrop が .anim を無言で捨てていた。
+    //   結果、FBX の展開先 (Library/Baked/<guid>/anims/) から Assets へ取り出した .anim を
+    //   ドラッグしても「何も起きない」= アタッチできない状態になっていた。
+    const bool changed = widgets::AssetPathField(
+        label, sourcePath, ".anim,.asset,.fzasset,.fbx", ctx.projectRoot);
     if (changed) {
         animator.clips.clear();
         animator.clipSourcePaths.clear();
         animator.clipsLoaded = false;
         MarkDirty(ctx);
     }
-    ImGui::TextDisabled("Drop an animation .asset source here.");
     return changed;
 }
 
 // 指定された Source / Clip の実再生秒数を返し、Graph UI の Length 表示に使用する。
-float GetClipLength(const scene::AnimatorComponent& animator,
-                    const std::string& sourcePath,
-                    const std::string& clipName,
-                    int clipIndex)
+// Source / Clip 名 / index から実体のクリップを引く。
+// WHY 切り出すか: Length 表示と Loop Time の引き継ぎが同じ探索を必要とする。
+//     片方だけ規則を変えると「表示している尺と、参照しているクリップが別」になる。
+const asset::AnimationClip* FindClip(const scene::AnimatorComponent& animator,
+                                     const std::string& sourcePath,
+                                     const std::string& clipName,
+                                     int clipIndex)
 {
-    const asset::AnimationClip* fallback = nullptr;
+    const asset::AnimationClip* found = nullptr;
     for (size_t i = 0; i < animator.clips.size(); ++i) {
         if (!sourcePath.empty() &&
             (i >= animator.clipSourcePaths.size() ||
              animator.clipSourcePaths[i] != sourcePath))
             continue;
-        if (!fallback) fallback = &animator.clips[i];
+        if (!found) found = &animator.clips[i];
         if (!clipName.empty() && animator.clips[i].name == clipName) {
-            fallback = &animator.clips[i];
+            found = &animator.clips[i];
             break;
         }
     }
-    if (!fallback && clipIndex >= 0 &&
+    if (!found && clipIndex >= 0 &&
         clipIndex < static_cast<int>(animator.clips.size()))
-        fallback = &animator.clips[static_cast<size_t>(clipIndex)];
-    if (!fallback) return 0.0f;
-    return static_cast<float>(fallback->GetDurationSeconds());
+        found = &animator.clips[static_cast<size_t>(clipIndex)];
+    return found;
+}
+
+float GetClipLength(const scene::AnimatorComponent& animator,
+                    const std::string& sourcePath,
+                    const std::string& clipName,
+                    int clipIndex)
+{
+    const asset::AnimationClip* clip = FindClip(animator, sourcePath, clipName, clipIndex);
+    return clip ? static_cast<float>(clip->GetDurationSeconds()) : 0.0f;
 }
 
 // 単一 Clip ステートの Length を返す。BlendTree は実行時 Weight 依存のため 0 を返す。
@@ -660,6 +726,43 @@ void DrawTransitionTimeline(const scene::AnimatorComponent& animator,
     }
 }
 
+// sourcePath が指すクリップを animator.clips へ読み込む (未読込のときだけ)。
+//
+// WHY 関数に切り出すか: Clip コンボとキャンバスへのアセットドロップが同じ読み込みを必要とする。
+// WHY .anim を分岐するか (不具合修正):
+//   .anim は「1 ファイル = 1 クリップ」のバイナリで、モデルコンテナではない。
+//   LoadModel に渡すと ModelImporter まで落ちて必ず失敗するため、以前はここで
+//   何も積まれず、.anim を Source に指定しても Clip コンボが空・Clip Length が
+//   "unavailable" のままだった (実行時は AnimatorSystem::LoadClips が同じ分岐を
+//   持っているので再生自体はできる、というエディターとランタイムの食い違い)。
+void EnsureSourceClipsLoaded(scene::AnimatorComponent& animator, const std::string& sourcePath)
+{
+    if (sourcePath.empty()) return;
+    const bool alreadyLoaded = std::any_of(
+        animator.clipSourcePaths.begin(),
+        animator.clipSourcePaths.end(),
+        [&sourcePath](const std::string& loadedSource) {
+            return loadedSource == sourcePath;
+        });
+    if (alreadyLoaded) return;
+
+    if (util::StringUtils::EndsWith(util::StringUtils::ToLower(sourcePath), ".anim")) {
+        const auto handle = asset::AssetManager::Load<asset::AnimationClip>(sourcePath);
+        if (const asset::AnimationClip* clip = asset::AssetManager::Get(handle)) {
+            animator.clips.push_back(*clip);
+            animator.clipSourcePaths.push_back(sourcePath);
+        }
+        return;
+    }
+
+    if (auto model = asset::AssetManager::LoadModel(sourcePath)) {
+        for (const auto& clip : model->clips) {
+            animator.clips.push_back(clip);
+            animator.clipSourcePaths.push_back(sourcePath);
+        }
+    }
+}
+
 bool DrawClipCombo(EditorContext& ctx,
                    const char* label,
                    scene::AnimatorComponent& animator,
@@ -667,20 +770,7 @@ bool DrawClipCombo(EditorContext& ctx,
                    std::string& clipName,
                    int& clipIndex)
 {
-    const bool sourceAlreadyLoaded = std::any_of(
-        animator.clipSourcePaths.begin(),
-        animator.clipSourcePaths.end(),
-        [&sourcePath](const std::string& loadedSource) {
-            return loadedSource == sourcePath;
-        });
-    if (!sourcePath.empty() && !sourceAlreadyLoaded) {
-        if (auto model = asset::AssetManager::LoadModel(sourcePath)) {
-            for (const auto& clip : model->clips) {
-                animator.clips.push_back(clip);
-                animator.clipSourcePaths.push_back(sourcePath);
-            }
-        }
-    }
+    EnsureSourceClipsLoaded(animator, sourcePath);
 
     const char* preview = clipName.empty() ? "<Auto / First Clip>" : clipName.c_str();
     bool changed = false;
@@ -788,14 +878,27 @@ void DrawBlendTreeEditor(EditorContext& ctx,
     }
 
     if (state.mode == scene::AnimationStateMode::Clip) {
-        DrawAnimationSource(ctx, "Source", animator, state.sourcePath);
-        DrawClipCombo(
-            ctx,
-            "Clip",
-            animator,
-            state.sourcePath,
-            state.clipName,
-            state.clipIndex);
+        DrawAnimationSource(ctx, "Animation (.anim)##state_source", animator, state.sourcePath);
+        if (DrawClipCombo(
+                ctx,
+                "Clip",
+                animator,
+                state.sourcePath,
+                state.clipName,
+                state.clipIndex)) {
+            // クリップを選び直したら、そのクリップの Loop Time を State の既定値にする。
+            //
+            // WHY 実行時の権威を State のままにするか (設計判断 A):
+            //   AnimatorSystem は一貫して state.loop を見ており、既存の .animcontroller は
+            //   すべて loop を保存済み (既定 true)。クリップ側を権威にすると、
+            //   今動いているコントローラーの再生が黙って変わる。
+            //   クリップは「オーサリング時の初期値の供給元」に留め、
+            //   ステートごとの例外は従来どおり Inspector で作れるようにする。
+            if (const asset::AnimationClip* clip =
+                    FindClip(animator, state.sourcePath, state.clipName, state.clipIndex)) {
+                state.loop = clip->loop;
+            }
+        }
         return;
     }
 
@@ -1019,6 +1122,67 @@ void DrawBlendTreeEditor(EditorContext& ctx,
     }
 }
 
+// ステート名の変更をグラフデータ全体へ波及させる。
+//
+// WHY 自由関数にするか: 名前は states[].name だけでなく、遷移 (toStateName)・
+//     defaultStateName・ノード配置マップのキーでもある。リネームの入口が
+//     グラフパネル (F2 / 右クリック) と Inspector の Name 欄の 2 つある以上、
+//     「参照を全部張り替える」責務を 1 箇所に集めておかないと、
+//     片方の入口だけ張り替え漏れを起こすという壊れ方をする。
+//     パネル固有の選択追従は呼び出し側 (AnimationGraphPanel) の仕事として分ける。
+//
+// 戻り値: 実際に改名したら true。空名・重複名・添字範囲外は何もせず false。
+bool RenameStateInGraph(EditorContext& ctx,
+                        scene::AnimatorComponent& animator,
+                        int stateIndex,
+                        const std::string& oldName,
+                        const std::string& newName,
+                        const std::string& instanceId)
+{
+    if (stateIndex < 0 || stateIndex >= static_cast<int>(animator.states.size())) return false;
+    if (newName.empty() || oldName == newName) return false;
+
+    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+        if (i != stateIndex && animator.states[static_cast<std::size_t>(i)].name == newName)
+            return false;
+    }
+
+    animator.states[static_cast<std::size_t>(stateIndex)].name = newName;
+    for (auto& state : animator.states) {
+        for (auto& transition : state.transitions) {
+            if (transition.toStateName == oldName) transition.toStateName = newName;
+        }
+    }
+    for (auto& transition : animator.anyStateTransitions)
+        if (transition.toStateName == oldName) transition.toStateName = newName;
+
+    if (animator.defaultStateName == oldName) animator.defaultStateName = newName;
+    if (animator.currentStateName == oldName) animator.currentStateName = newName;
+    if (animator.blendToState == oldName)     animator.blendToState = newName;
+
+    auto& positions = ctx.graphLayouts[instanceId].nodePositions;
+    if (auto it = positions.find(oldName); it != positions.end()) {
+        const ImVec2 renamedPosition = it->second;
+        positions.erase(it);
+        positions[newName] = renamedPosition;
+    }
+    auto& blendPositions = ctx.graphLayouts[instanceId].blendTreeMotionPositions;
+    if (auto it = blendPositions.find(oldName); it != blendPositions.end()) {
+        auto renamedPositions = std::move(it->second);
+        blendPositions.erase(it);
+        blendPositions[newName] = std::move(renamedPositions);
+    }
+
+    // グラフパネルは「名前で覚えている選択」を持つので、Inspector から改名したときは
+    // その追従を依頼する。放置すると次フレームの ResolveSelectionIndices が
+    // 旧名を「消えたステート」と判定し、改名した瞬間に選択が外れる。
+    ctx.animationGraphRenamedFrom = oldName;
+    ctx.animationGraphRenamedTo   = newName;
+
+    MarkDirty(ctx);
+    return true;
+}
+
 } // namespace
 
 static void DrawTransitionEditor(EditorContext& ctx,
@@ -1031,6 +1195,140 @@ static void DrawTransitionEditor(EditorContext& ctx,
 void AnimationGraphPanel::OnInit(EditorContext&) { m_graphCanvas.CreateContexts(); }
 
 void AnimationGraphPanel::OnShutdown() { m_graphCanvas.DestroyContexts(); }
+
+// ── 選択の同一性 (名前が権威 / 添字は派生値) ────────────────────────────────
+
+int AnimationGraphPanel::IndexOfState(const scene::AnimatorComponent& animator,
+                                      const std::string& name)
+{
+    if (name.empty()) return -1;
+    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i)
+        if (animator.states[static_cast<std::size_t>(i)].name == name) return i;
+    return -1;
+}
+
+void AnimationGraphPanel::ClearSelectionState()
+{
+    m_selectedStateNames.clear();
+    m_selectedKind = NodeKind::None;
+    m_selectedNode = -1;
+    m_selectedAnyState = false;
+    m_selectedLink = {};
+    m_selectedLinkKind = NodeKind::None;
+    m_selectedLinkFromName.clear();
+}
+
+// 名前から添字を作り直す。states[] を触った直後と、描画の先頭で必ず通る。
+//
+// WHY 毎フレームやるか: 削除・並べ替え・リネームのたびに個別へ添字を直して回ると、
+//     直し漏れた 1 箇所が「選択が別のステートを指す」という気付きにくい不具合になる。
+//     解決を 1 箇所に集めれば、名前が消えた = 選択が消える、が自動的に保証される。
+void AnimationGraphPanel::ResolveSelectionIndices(const scene::AnimatorComponent& animator)
+{
+    // 存在しなくなった名前を落とす (削除されたステートの選択はここで消える)。
+    std::erase_if(m_selectedStateNames, [&](const std::string& name) {
+        return IndexOfState(animator, name) < 0;
+    });
+    if (m_selectedStateNames.empty() && m_selectedKind == NodeKind::State)
+        m_selectedKind = NodeKind::None;
+
+    m_selectedNode = (m_selectedKind == NodeKind::State && !m_selectedStateNames.empty())
+        ? IndexOfState(animator, m_selectedStateNames.front())
+        : -1;
+    m_selectedAnyState = (m_selectedKind == NodeKind::AnyState);
+
+    // 遷移の選択。起点ステートが消えていたら選択ごと落とす。
+    switch (m_selectedLinkKind) {
+    case NodeKind::AnyState:
+        m_selectedLink.fromStateIndex = -2;
+        break;
+    case NodeKind::State: {
+        const int from = IndexOfState(animator, m_selectedLinkFromName);
+        if (from < 0) { m_selectedLink = {}; m_selectedLinkKind = NodeKind::None; }
+        else          { m_selectedLink.fromStateIndex = from; }
+        break;
+    }
+    default:
+        m_selectedLink = {};
+        m_selectedLinkKind = NodeKind::None;
+        m_selectedLinkFromName.clear();
+        break;
+    }
+
+    m_openBlendTreeState = IndexOfState(animator, m_openBlendTreeStateName);
+    if (m_openBlendTreeState < 0) m_openBlendTreeStateName.clear();
+
+    m_renamingNode = IndexOfState(animator, m_renamingStateName);
+
+    switch (m_pendingTransitionKind) {
+    case NodeKind::Entry:    m_pendingTransitionFrom = -3; break;
+    case NodeKind::AnyState: m_pendingTransitionFrom = -2; break;
+    case NodeKind::State: {
+        const int from = IndexOfState(animator, m_pendingTransitionFromName);
+        m_pendingTransitionFrom = from;
+        if (from < 0) m_pendingTransitionKind = NodeKind::None;
+        break;
+    }
+    default: m_pendingTransitionFrom = -1; break;
+    }
+}
+
+void AnimationGraphPanel::CaptureCanvasSelection(const scene::AnimatorComponent& animator,
+                                                 const std::vector<int>& selectedNodes,
+                                                 const std::vector<int>& selectedLinks)
+{
+    ClearSelectionState();
+
+    if (!selectedLinks.empty()) {
+        const LinkRef link = ResolveLink(selectedLinks.front(), animator);
+        m_selectedLink = link;
+        if (link.fromStateIndex == -2) {
+            m_selectedLinkKind = NodeKind::AnyState;
+        } else if (link.fromStateIndex >= 0 &&
+                   link.fromStateIndex < static_cast<int>(animator.states.size())) {
+            m_selectedLinkKind = NodeKind::State;
+            m_selectedLinkFromName =
+                animator.states[static_cast<std::size_t>(link.fromStateIndex)].name;
+        }
+        return;
+    }
+
+    // WHY front() だけでなく全部を取るか: 矩形選択で複数掴んでも 1 個しか
+    //     覚えていなかったため、「見えている選択」と Delete が消す対象が食い違っていた。
+    for (const int nodeId : selectedNodes) {
+        if (nodeId == AnyStateNodeId()) {
+            if (m_selectedKind == NodeKind::None) m_selectedKind = NodeKind::AnyState;
+            continue;
+        }
+        if (nodeId == EntryNodeId()) {
+            if (m_selectedKind == NodeKind::None) m_selectedKind = NodeKind::Entry;
+            continue;
+        }
+        for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+            if (NodeId(i) != nodeId) continue;
+            m_selectedKind = NodeKind::State;   // ステートが 1 つでもあればステート選択とみなす
+            m_selectedStateNames.push_back(animator.states[static_cast<std::size_t>(i)].name);
+            break;
+        }
+    }
+}
+
+void AnimationGraphPanel::SelectStateByName(const scene::AnimatorComponent& animator,
+                                            const std::string& name)
+{
+    ClearSelectionState();
+    const int index = IndexOfState(animator, name);
+    if (index < 0) return;
+
+    m_selectedKind = NodeKind::State;
+    m_selectedStateNames.push_back(name);
+    m_selectedNode = index;
+    // WHY キャンバスへも伝えるか: 以前はパネル側の選択だけを更新していたため、
+    //     ステートを追加・複製した直後に Inspector には新ステートが出るのに
+    //     グラフ上はどこも光っていない、という食い違いが起きていた。
+    //     VFX エディタは既に RequestSelection で揃えている。同じ規約へ寄せる。
+    m_graphCanvas.RequestSelection({ NodeId(index) });
+}
 
 int AnimationGraphPanel::NodeId(int stateIndex)
 {
@@ -1069,6 +1367,21 @@ void AnimationGraphPanel::DrawNodeCanvas(
 {
     ImGui::BeginChild("##AnimationGenericGraph", ImVec2(0.0f, 0.0f), true,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    // 名前 (権威) から添字 (派生値) を作り直す。以降のコードは添字で書けるが、
+    // その添字は常に「今の states[]」と一致していることがここで保証される。
+    ResolveSelectionIndices(animator);
+
+    // リネームのポップアップは、どのポップアップの内側でもないここで開く。
+    // WHY: MenuItem のハンドラから OpenPopup すると親メニューの子として開かれ、
+    //      親が閉じると同時に消える (コンテキストメニューの Rename が動かなかった原因)。
+    if (m_renameRequested) {
+        m_renameRequested = false;
+        m_renameError.clear();
+        m_renameFocusPending = true;
+        ImGui::OpenPopup("##AnimationGenericRename");
+    }
+
     auto& layout = ctx.graphLayouts[instanceId];
     for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
         const auto& state = animator.states[static_cast<std::size_t>(i)];
@@ -1224,48 +1537,40 @@ void AnimationGraphPanel::DrawNodeCanvas(
     m_canvasZoom = m_graphCanvas.Zoom();
 
     if (interaction.selectionChanged) {
-        m_selectedNode = -1;
-        m_selectedAnyState = false;
-        m_selectedLink = {};
-        if (!interaction.selectedLinks.empty()) {
-            m_selectedLink = ResolveLink(interaction.selectedLinks.front(), animator);
-        } else if (!interaction.selectedNodes.empty()) {
-            const int selectedId = interaction.selectedNodes.front();
-            if (selectedId == AnyStateNodeId()) m_selectedAnyState = true;
-            else if (selectedId != EntryNodeId()) {
-                for (int i = 0; i < static_cast<int>(animator.states.size()); ++i)
-                    if (NodeId(i) == selectedId) m_selectedNode = i;
-            }
-        }
+        CaptureCanvasSelection(animator, interaction.selectedNodes, interaction.selectedLinks);
+        ResolveSelectionIndices(animator);
         m_selectionOwnerInstanceId = instanceId;
     }
+    // リネームを開始する共通経路。実際に開くのは次フレームの先頭 (m_renameRequested)。
+    const auto beginRename = [this, &animator](int stateIndex) {
+        if (stateIndex < 0 || stateIndex >= static_cast<int>(animator.states.size())) return;
+        m_renamingStateName = animator.states[static_cast<std::size_t>(stateIndex)].name;
+        std::snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s",
+                      m_renamingStateName.c_str());
+        m_renameRequested = true;
+    };
+
+    // WHY ダブルクリックでリネームしないか: 以前は Clip ステートならリネーム、
+    //     Blend Tree なら中へ入る、と同じ操作の意味がノードの型で変わっていた。
+    //     ダブルクリック =「中へ入る」に統一し、リネームは F2 と右クリックに寄せる
+    //     (Blend Tree を持たないステートでは何も起きないのが正しい)。
     if (interaction.nodeDoubleClicked) {
         for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+            if (NodeId(i) != interaction.doubleClickedNode) continue;
             const auto mode = animator.states[static_cast<std::size_t>(i)].mode;
-            if (NodeId(i) == interaction.doubleClickedNode) {
-                if (mode == scene::AnimationStateMode::BlendTree1D
-                    || mode == scene::AnimationStateMode::BlendTree2D) {
-                    m_openBlendTreeState = i;
-                    m_selectedMotion = -1;
-                    m_graphCanvas.ClearSelection();
-                } else {
-                    m_renamingNode = i;
-                    std::snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s",
-                                  animator.states[static_cast<std::size_t>(i)].name.c_str());
-                    ImGui::OpenPopup("##AnimationGenericRename");
-                }
-                break;
+            if (mode == scene::AnimationStateMode::BlendTree1D
+                || mode == scene::AnimationStateMode::BlendTree2D) {
+                m_openBlendTreeStateName = animator.states[static_cast<std::size_t>(i)].name;
+                m_openBlendTreeState = i;
+                m_selectedMotion = -1;
+                m_graphCanvas.ClearSelection();
             }
+            break;
         }
     }
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
-        && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2)
-        && m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
-        m_renamingNode = m_selectedNode;
-        std::snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s",
-                      animator.states[static_cast<std::size_t>(m_selectedNode)].name.c_str());
-        ImGui::OpenPopup("##AnimationGenericRename");
-    }
+        && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2))
+        beginRename(m_selectedNode);
 
     bool moved = false;
     for (const auto& move : interaction.movedNodes) {
@@ -1310,6 +1615,8 @@ void AnimationGraphPanel::DrawNodeCanvas(
                 animator.anyStateTransitions.push_back({});
                 animator.anyStateTransitions.back().toStateName = targetName;
                 m_selectedLink = { -2, static_cast<int>(animator.anyStateTransitions.size()) - 1 };
+                m_selectedLinkKind = NodeKind::AnyState;
+                m_selectedLinkFromName.clear();
                 MarkDirty(ctx);
             }
         } else if (source >= 0 && target >= 0) {
@@ -1321,29 +1628,81 @@ void AnimationGraphPanel::DrawNodeCanvas(
         if (link.fromStateIndex == -2 && link.transitionIndex >= 0) {
             animator.anyStateTransitions.erase(animator.anyStateTransitions.begin() + link.transitionIndex);
             m_selectedLink = {};
+            m_selectedLinkKind = NodeKind::None;
+            m_selectedLinkFromName.clear();
             MarkDirty(ctx);
         } else if (link.fromStateIndex >= 0 && link.transitionIndex >= 0) {
             auto& transitions = animator.states[static_cast<std::size_t>(link.fromStateIndex)].transitions;
             transitions.erase(transitions.begin() + link.transitionIndex);
             m_selectedLink = {};
+            m_selectedLinkKind = NodeKind::None;
+            m_selectedLinkFromName.clear();
             MarkDirty(ctx);
         }
     }
+    // 選択中のステートを「すべて」消す。
+    //
+    // WHY 名前で回すか: DeleteState は erase で添字を詰めるため、添字のリストを
+    //     順に渡すと 2 件目以降が別のステートを指す。名前は消しても他へずれないので、
+    //     1 件ずつ引き直して消せば取り違えが起きない。
+    const auto deleteSelectedStates = [&]() {
+        if (m_selectedStateNames.empty()) return;
+        const std::vector<std::string> targets = m_selectedStateNames;
+        for (const std::string& name : targets) {
+            const int index = IndexOfState(animator, name);
+            if (index >= 0) DeleteState(ctx, animator, index, instanceId);
+        }
+        ClearSelectionState();
+        m_graphCanvas.ClearSelection();
+    };
+
     if (interaction.deleteRequested) {
-        if (m_selectedNode >= 0) DeleteState(ctx, animator, m_selectedNode, instanceId);
+        if (!m_selectedStateNames.empty()) deleteSelectedStates();
         else if (m_selectedLink.fromStateIndex == -2 && m_selectedLink.transitionIndex >= 0) {
             animator.anyStateTransitions.erase(animator.anyStateTransitions.begin() + m_selectedLink.transitionIndex);
             m_selectedLink = {};
+            m_selectedLinkKind = NodeKind::None;
+            m_selectedLinkFromName.clear();
             MarkDirty(ctx);
         } else if (m_selectedLink.fromStateIndex >= 0 && m_selectedLink.transitionIndex >= 0) {
             auto& transitions = animator.states[static_cast<std::size_t>(m_selectedLink.fromStateIndex)].transitions;
             transitions.erase(transitions.begin() + m_selectedLink.transitionIndex);
             m_selectedLink = {};
+            m_selectedLinkKind = NodeKind::None;
+            m_selectedLinkFromName.clear();
             MarkDirty(ctx);
         }
     }
     if (interaction.duplicateRequested && m_selectedNode >= 0)
         DuplicateState(ctx, animator, m_selectedNode, instanceId);
+
+    // Asset Browser からクリップを落として State を作る (Unity の Animator と同じ操作)。
+    //
+    // WHY 追加するか (不具合修正): これまでステートマシンのキャンバスには
+    //   ドロップの受け皿が一切なく、.anim を持ってきても落とせなかった。
+    //   State を作ってから Inspector の Source 欄で選び直すしかなく、
+    //   「クリップをグラフへ置く」という一番自然な導線が存在しなかった。
+    if (interaction.assetDropped) {
+        const std::string dropped = NormalizeAssetPath(interaction.droppedAssetPath);
+        if (IsAnimationSourceAsset(dropped)) {
+            AddStateAt(ctx, animator, StateNameFromAssetPath(dropped).c_str(),
+                       instanceId, interaction.dropPosition.x, interaction.dropPosition.y);
+            auto& created = animator.states.back();
+            created.mode       = scene::AnimationStateMode::Clip;
+            created.sourcePath = dropped;
+            // AddStateAt は「既存クリップの先頭」を初期値に入れる。落としたアセットとは
+            // 無関係な名前なので必ず捨て、Source 側の解決 (<Auto / First Clip>) に任せる。
+            created.clipName.clear();
+            created.clipIndex = -1;
+            // Loop Time はクリップに焼かれた値を State の初期値として引き継ぐ
+            // (Clip コンボで選び直したときと同じ規則)。
+            EnsureSourceClipsLoaded(animator, dropped);
+            if (const asset::AnimationClip* clip =
+                    FindClip(animator, dropped, created.clipName, created.clipIndex))
+                created.loop = clip->loop;
+            MarkDirty(ctx);
+        }
+    }
 
     if (interaction.contextMenuRequested) {
         m_contextSpawnX = interaction.contextSpawnPosition.x;
@@ -1351,14 +1710,37 @@ void AnimationGraphPanel::DrawNodeCanvas(
         ImGui::OpenPopup("##AnimationGenericCanvasMenu");
     }
     if (interaction.nodeContextMenuRequested) {
-        if (interaction.contextMenuNode >= 1 && interaction.contextMenuNode < 1000000)
-            m_selectedNode = interaction.contextMenuNode - 1;
-        else if (interaction.contextMenuNode == AnyStateNodeId()) m_selectedAnyState = true;
+        // WHY 総当りで引くか: 以前は "id >= 1 && id < 1000000 なら id-1 が添字" という
+        //     ID 体系への直接依存で、Entry (1000010) がどちらの分岐にも入らず
+        //     「直前の選択のままメニューが開く」不具合になっていた。
+        //     ノードは種別で判定し、ステートは NodeId() の逆引きで確実に特定する。
+        const int contextNode = interaction.contextMenuNode;
+        if (contextNode == AnyStateNodeId()) {
+            ClearSelectionState();
+            m_selectedKind = NodeKind::AnyState;
+            m_selectedAnyState = true;
+        } else if (contextNode == EntryNodeId()) {
+            ClearSelectionState();
+            m_selectedKind = NodeKind::Entry;
+        } else {
+            for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+                if (NodeId(i) != contextNode) continue;
+                // 右クリックしたノードが選択外なら、そのノードだけを選び直す。
+                // 選択済みなら複数選択を保つ (まとめて Delete したい流れを壊さない)。
+                const std::string& name = animator.states[static_cast<std::size_t>(i)].name;
+                const bool alreadySelected =
+                    std::find(m_selectedStateNames.begin(), m_selectedStateNames.end(), name)
+                        != m_selectedStateNames.end();
+                if (!alreadySelected) SelectStateByName(animator, name);
+                else m_selectedNode = i;
+                break;
+            }
+        }
         ImGui::OpenPopup("##AnimationGenericNodeMenu");
     }
     if (ImGui::BeginPopup("##AnimationGenericCanvasMenu")) {
-        if (ImGui::MenuItem("+ New State"))
-            AddStateAt(ctx, animator, "NewState", instanceId, m_contextSpawnX, m_contextSpawnY);
+        if (ImGui::MenuItem("+ Empty Node"))
+            AddStateAt(ctx, animator, "NewNode", instanceId, m_contextSpawnX, m_contextSpawnY);
         if (ImGui::MenuItem("Auto Layout")) AutoLayoutStates(ctx, animator, instanceId);
         if (ImGui::MenuItem("Center View")) m_graphCanvas.ResetView();
         ImGui::EndPopup();
@@ -1372,31 +1754,62 @@ void AnimationGraphPanel::DrawNodeCanvas(
             }
             if ((state.mode == scene::AnimationStateMode::BlendTree1D || state.mode == scene::AnimationStateMode::BlendTree2D)
                 && ImGui::MenuItem("Open Blend Tree")) {
+                m_openBlendTreeStateName = state.name;
                 m_openBlendTreeState = m_selectedNode;
                 m_selectedMotion = -1;
                 m_graphCanvas.ClearSelection();
             }
             if (ImGui::MenuItem("Duplicate")) DuplicateState(ctx, animator, m_selectedNode, instanceId);
-            if (ImGui::MenuItem("Delete")) DeleteState(ctx, animator, m_selectedNode, instanceId);
-            if (ImGui::MenuItem("Rename")) {
-                m_renamingNode = m_selectedNode;
-                std::snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s", state.name.c_str());
-                ImGui::OpenPopup("##AnimationGenericRename");
-            }
+            if (ImGui::MenuItem("Delete")) deleteSelectedStates();
+            // OpenPopup はここで呼ばない (親メニューの子として開かれ、すぐ閉じてしまう)。
+            // 次フレームの先頭で開く。
+            if (ImGui::MenuItem("Rename", "F2")) beginRename(m_selectedNode);
         } else if (m_selectedAnyState) {
             ImGui::TextDisabled("Any State");
         }
         ImGui::EndPopup();
     }
-    if (m_renamingNode >= 0 && ImGui::BeginPopup("##AnimationGenericRename")) {
-        if (ImGui::InputText("Name", m_renameBuffer, sizeof(m_renameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if (m_renamingNode < static_cast<int>(animator.states.size()))
-                RenameState(ctx, animator, m_renamingNode, animator.states[static_cast<std::size_t>(m_renamingNode)].name,
-                            m_renameBuffer, instanceId);
-            m_renamingNode = -1;
-            ImGui::CloseCurrentPopup();
+
+    if (ImGui::BeginPopup("##AnimationGenericRename")) {
+        // 開いた最初のフレームだけ入力欄へフォーカスを移す。
+        // WHY: これが無いと F2 や右クリックで開いても欄をクリックするまで打てず、
+        //      「リネームできない」という体験になっていた。
+        if (m_renameFocusPending) {
+            ImGui::SetKeyboardFocusHere();
+            m_renameFocusPending = false;
         }
+        const bool committed = ImGui::InputText(
+            "Name", m_renameBuffer, sizeof(m_renameBuffer),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+
+        if (!m_renameError.empty())
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "%s", m_renameError.c_str());
+
+        // Enter で確定。閉じるのは成功したときだけで、弾かれたら理由を出したまま残す。
+        // WHY 残すか: 以前は無言で失敗して閉じていたため、
+        //      「打って Enter したのに名前が変わらない」理由がどこにも出なかった。
+        if (committed && m_renamingNode >= 0) {
+            const std::string oldName =
+                animator.states[static_cast<std::size_t>(m_renamingNode)].name;
+            const std::string newName = m_renameBuffer;
+            if (newName.empty()) {
+                m_renameError = "Name cannot be empty.";
+            } else if (newName != oldName && IndexOfState(animator, newName) >= 0) {
+                m_renameError = "A state named '" + newName + "' already exists.";
+            } else {
+                RenameState(ctx, animator, m_renamingNode, oldName, newName, instanceId);
+                m_renamingStateName.clear();
+                m_renameError.clear();
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::TextDisabled("Enter to apply / Esc to cancel");
         ImGui::EndPopup();
+    } else if (!m_renamingStateName.empty() && !m_renameRequested) {
+        // ポップアップ外クリックや Esc で閉じられた。状態を残すと次回の F2 が
+        // 「開いているつもり」で始まってしまうため、必ず片付ける。
+        m_renamingStateName.clear();
+        m_renameError.clear();
     }
     ImGui::EndChild();
 }
@@ -1406,7 +1819,12 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     scene::AnimatorComponent& animator,
     const std::string& instanceId)
 {
+    // Blend Tree を開いている間は DrawNodeCanvas が呼ばれないため、
+    // 添字の解決はここでも行う (開いているステートが削除・リネームされた場合に追従する)。
+    ResolveSelectionIndices(animator);
+
     if (m_openBlendTreeState < 0 || m_openBlendTreeState >= static_cast<int>(animator.states.size())) {
+        m_openBlendTreeStateName.clear();
         m_openBlendTreeState = -1;
         m_selectedMotion = -1;
         return;
@@ -1414,6 +1832,7 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     auto& state = animator.states[static_cast<std::size_t>(m_openBlendTreeState)];
     if (state.mode != scene::AnimationStateMode::BlendTree1D
         && state.mode != scene::AnimationStateMode::BlendTree2D) {
+        m_openBlendTreeStateName.clear();
         m_openBlendTreeState = -1;
         m_selectedMotion = -1;
         return;
@@ -1568,6 +1987,7 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
             MarkDirty(ctx);
         }
         if (ImGui::MenuItem("Back to Base Layer")) {
+            m_openBlendTreeStateName.clear();
             m_openBlendTreeState = -1;
             m_selectedMotion = -1;
             m_graphCanvas.ResetView();
@@ -1576,8 +1996,10 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     }
     if (interaction.assetDropped) {
         const std::string path = NormalizeAssetPath(interaction.droppedAssetPath);
-        if (util::StringUtils::EndsWith(path, ".fbx") || util::StringUtils::EndsWith(path, ".asset")
-            || util::StringUtils::EndsWith(path, ".fzasset")) {
+        // .anim もここで受ける。ブレンドツリーの各モーションは 1 クリップなので、
+        // むしろ .anim が本来の指定形。以前は弾いていたため、クリップを落としても
+        // Motion が生えなかった。
+        if (IsAnimationSourceAsset(path)) {
             scene::BlendTreeMotion motion;
             motion.sourcePath = path;
             motions.push_back(std::move(motion));
@@ -1605,34 +2027,88 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("AnimationGraphPanel::Render");
 
+    // Inspector の Name 欄で起きた改名を、パネルが名前で覚えている選択へ取り込む。
+    // グラフデータ側 (遷移・レイアウト) の張り替えは RenameStateInGraph が済ませている。
+    if (!ctx.animationGraphRenamedFrom.empty()) {
+        AdoptStateRename(ctx.animationGraphRenamedFrom, ctx.animationGraphRenamedTo);
+        ctx.animationGraphRenamedFrom.clear();
+        ctx.animationGraphRenamedTo.clear();
+    }
+    if (!ctx.animationGraphLayerRenamedFrom.empty()) {
+        const std::string oldName = ctx.animationGraphLayerRenamedFrom;
+        const std::string newName = ctx.animationGraphLayerRenamedTo;
+        AdoptLayerRename(oldName, newName);
+        if (ctx.animationGraphSelection.layerName == oldName)
+            ctx.animationGraphSelection.layerName = newName;
+        ctx.animationGraphLayerRenamedFrom.clear();
+        ctx.animationGraphLayerRenamedTo.clear();
+    }
+
     // WHY: Play Mode 中は Animator の実行時状態が毎フレーム変化する。
     //      編集用 snapshot と Undo 追跡を続けると、監視表示だけで大きな CPU 負荷になる。
     const bool allowEditing = CanEditAnimationGraph(ctx);
+
+    // ── 編集ドキュメントの決定 ────────────────────────────────────────────
+    // WHY 選択追従をやめるか:
+    //   以前は ctx.selectedAssetPath をそのまま編集対象にしていた。しかし Source 欄へ
+    //   クリップをドラッグするには Asset Browser を触る必要があり、そこで選択が変わると
+    //   編集対象ごと切り替わって未保存の変更が確認なしで消えていた。
+    //   ここでは「明示的に開いたパス」を保持し、選択が動いても手放さない。
+    //   まだ何も開いていないときだけ、選択中の .animcontroller を初回の入口として拾う
+    //   (BehaviorTreePanel と同じ規則)。
+    if (!m_requestedPath.empty()) {
+        // WHY 絶対パスへ正規化するか: 呼び出し元によって "Assets/..." 相対 (Inspector の
+        //     controllerPath) と絶対パス (Asset Browser の選択) が混ざる。AssetDirtyRegistry の
+        //     キーは絶対パス前提なので、ここで 1 度だけ揃えておかないと
+        //     「Modified 表示は出るのに Save All で拾われない」といった食い違いが起きる。
+        const std::string requested =
+            asset::AssetManager::ResolveAssetPath(m_requestedPath);
+        m_requestedPath.clear();
+        if (requested != ctx.animationControllerEditorPath) {
+            ctx.animationControllerEditorPath = requested;
+            ctx.animationControllerEditor.reset();  // 下のロード経路へ落とす
+        }
+    } else if (ctx.animationControllerEditorPath.empty() &&
+               util::StringUtils::EndsWith(ctx.selectedAssetPath, ".animcontroller")) {
+        ctx.animationControllerEditorPath = ctx.selectedAssetPath;
+    }
+
+    const std::string docPath = ctx.animationControllerEditorPath;
     const bool editingControllerAsset =
-        util::StringUtils::EndsWith(ctx.selectedAssetPath, ".animcontroller");
+        util::StringUtils::EndsWith(docPath, ".animcontroller");
     if (editingControllerAsset) {
-        if (ctx.animationControllerEditorPath != ctx.selectedAssetPath ||
-            !ctx.animationControllerEditor) {
+        if (!ctx.animationControllerEditor) {
             asset::AnimatorControllerAsset controller;
-            if (!asset::LoadAnimatorControllerAsset(ctx.selectedAssetPath, controller)) {
+            if (!asset::LoadAnimatorControllerAsset(docPath, controller)) {
                 ImGui::TextDisabled("Failed to load Animator Controller.");
+                ImGui::TextDisabled("%s", docPath.c_str());
+                if (ImGui::Button("Close")) {
+                    ctx.animationControllerEditorPath.clear();
+                    ctx.animationControllerDirty = false;
+                }
                 return;
             }
             ctx.animationControllerEditor =
                 std::shared_ptr<scene::AnimatorComponent>(new scene::AnimatorComponent());
             asset::ApplyAnimatorControllerAsset(
                 controller, *ctx.animationControllerEditor);
-            ctx.animationControllerEditorPath = ctx.selectedAssetPath;
             ctx.animationControllerDirty = false;
-            ctx.graphLayouts[ctx.selectedAssetPath] =
+            ctx.graphLayouts[docPath] =
                 ToEditorGraphLayout(controller.editorLayout);
             m_selectionOwnerInstanceId.clear();
-            m_selectedLink = {};
-            m_selectedNode = -1;
+            // 名前側 (権威) を必ず落とす。派生値だけ消しても、次の
+            // ResolveSelectionIndices が名前から復元してしまう。
+            ClearSelectionState();
+            m_openBlendTreeStateName.clear();
+            m_openBlendTreeStateName.clear();
             m_openBlendTreeState = -1;
             m_selectedMotion = -1;
-            m_selectedAnyState = false;
+            m_pendingTransitionKind = NodeKind::None;
+            m_pendingTransitionFromName.clear();
             m_pendingTransitionFrom = -1;
+            m_renamingStateName.clear();
+            m_renameRequested = false;
+            m_renameError.clear();
             m_editingLayer.clear();
             m_graphCanvas.ClearSelection();
             m_graphCanvas.ResetView();
@@ -1646,7 +2122,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             // スナップショットは差し替え前 (= Base Layer が入っている状態) で取る。
             // layers も含むため、レイヤー側の編集も Undo で戻せる。
             undoBeforeAnimator = MakeAnimationGraphSnapshot(animator);
-            undoBeforeLayout = ctx.graphLayouts[ctx.selectedAssetPath];
+            undoBeforeLayout = ctx.graphLayouts[docPath];
         }
         const std::uint64_t undoGenerationBefore = AnimationGraphEditGeneration();
 
@@ -1657,16 +2133,17 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         ClearInvalidSelection(animator);
         ImGui::BeginDisabled(!allowEditing);
         ImGui::TextUnformatted(
-            util::FileSystem::GetFilename(ctx.selectedAssetPath).c_str());
+            util::FileSystem::GetFilename(docPath).c_str());
         ImGui::SameLine();
-        if (m_openBlendTreeState < 0 && ImGui::Button("+ State"))
-            AddState(ctx, animator, "NewState");
+        if (m_openBlendTreeState < 0 && ImGui::Button("+ Node"))
+            AddState(ctx, animator, "NewNode");
         if (m_openBlendTreeState >= 0 &&
             m_openBlendTreeState < static_cast<int>(animator.states.size())) {
             const std::string breadcrumbName =
                 animator.states[static_cast<size_t>(m_openBlendTreeState)].name;
             ImGui::SameLine();
             if (ImGui::SmallButton("Base Layer")) {
+                m_openBlendTreeStateName.clear();
                 m_openBlendTreeState = -1;
                 m_selectedMotion = -1;
                 m_graphCanvas.ClearSelection();
@@ -1675,17 +2152,33 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SameLine();
             ImGui::TextDisabled("> %s", breadcrumbName.c_str());
         }
+        // 保存操作は他のアセット型と揃える。
+        // WHY Ctrl+S を足すか: .tex / .mask / .terrain / Model Meta は既に
+        //     「Apply ボタン または Ctrl+S」で保存できる。Animator Controller だけが
+        //     専用ボタンのみで、他と同じつもりで Ctrl+S を押しても何も起きなかった。
+        const bool controllerDirty =
+            ctx.animationControllerDirty || AssetDirtyRegistry::IsDirty(docPath);
         ImGui::SameLine();
-        if (ImGui::Button("Save Controller")) {
-            if (SaveAnimatorControllerWithLayout(ctx, ctx.selectedAssetPath, animator)) {
+        const bool savePressed = ImGui::Button("Save Controller");
+        const bool saveShortcut =
+            allowEditing && controllerDirty &&
+            ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S);
+        if (savePressed || saveShortcut) {
+            // LayerGraphScope は描画中の states を選択 Layerへ差し替えているため、
+            // 保存時だけ必ず Base + layers の正規形へ戻す。これをしないと空の新規 Layerを
+            // 選択して保存した瞬間、Base Layer が空の Controller として書き出される。
+            layerScope.Restore();
+            const bool saved = SaveAnimatorControllerWithLayout(ctx, docPath, animator);
+            layerScope.Reapply();
+            if (saved) {
                 ctx.animationControllerDirty = false;
-                AssetDirtyRegistry::MarkClean(ctx.selectedAssetPath);
+                AssetDirtyRegistry::MarkClean(docPath);
                 ctx.requestAssetBrowserRefresh = true;
                 if (ctx.activeScene) {
                     asset::AnimatorControllerAsset controller;
-                    if (asset::LoadAnimatorControllerAsset(ctx.selectedAssetPath, controller)) {
+                    if (asset::LoadAnimatorControllerAsset(docPath, controller)) {
                         const std::string savedPath =
-                            NormalizeAssetPath(ctx.selectedAssetPath);
+                            NormalizeAssetPath(docPath);
                         for (auto [sceneAnimator] :
                              ctx.activeScene->View<scene::AnimatorComponent>()) {
                             if (NormalizeAssetPath(sceneAnimator.controllerPath) == savedPath) {
@@ -1697,6 +2190,42 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
                         }
                     }
                 }
+            } else {
+                // WHY 失敗を必ず言うか: 以前は else が無く、書き込みに失敗しても
+                //     ログもトーストも出なかった。ユーザーからは「押しても保存できない」
+                //     としか見えず、原因を絞る手がかりが 1 つも残らない。
+                FBZZ_LOG_ERROR("Animator Controller save failed: %s", docPath.c_str());
+                Toast::Error("Failed to save " +
+                             util::FileSystem::GetFilename(docPath));
+            }
+        }
+        // 未保存であることを常に見せる。Material の "Modified" / "Saved" 表示と同じ規約。
+        ImGui::SameLine();
+        if (controllerDirty)
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "Modified");
+        else
+            ImGui::TextDisabled("Saved");
+
+        // 掴んでいるノード数。Delete の対象と一致する。
+        if (m_selectedStateNames.size() > 1) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("| %zu selected", m_selectedStateNames.size());
+        }
+
+        // ドキュメントを閉じてシーン内 Animator の編集モードへ戻る。
+        // WHY 必要か: 編集対象を選択から切り離した結果、一度アセットを開くと
+        //     GameObject の AnimatorComponent を直接いじる従来モードへ戻れなくなる。
+        //     「開く」を明示にした以上、「閉じる」も明示の操作として要る。
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Close")) {
+            if (controllerDirty) {
+                // 破棄はしない。閉じる前に保存を促す (誤操作で作業を失わせない)。
+                Toast::Warning("Save the controller before closing.");
+            } else {
+                ctx.animationControllerEditorPath.clear();
+                ctx.animationControllerEditor.reset();
+                ctx.animationControllerDirty = false;
+                ctx.animationGraphSelection.Clear();
             }
         }
         DrawZoomControls();
@@ -1708,9 +2237,9 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         {
             FBZZ_PROFILE_SCOPE("AnimationGraphPanel::Canvas");
             if (m_openBlendTreeState >= 0)
-                DrawBlendTreeCanvas(ctx, animator, ctx.selectedAssetPath);
+                DrawBlendTreeCanvas(ctx, animator, docPath);
             else
-                DrawNodeCanvas(ctx, animator, ctx.selectedAssetPath);
+                DrawNodeCanvas(ctx, animator, docPath);
         }
         ImGui::EndGroup();
         ImGui::EndChild();
@@ -1718,8 +2247,15 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
 
         auto& selection = ctx.animationGraphSelection;
         selection.Clear();
-        selection.assetPath = ctx.selectedAssetPath;
-        if (m_selectedLink.fromStateIndex == -2) {
+        selection.assetPath = docPath;
+        // BlendTree を開いている間は、Motion ノードの選択を State 選択より優先して公開する。
+        // WHY: m_selectedMotion はキャンバス内では更新されていたが、従来はここで捨てられ、
+        //      Inspector が親 State のままになっていた。
+        if (m_openBlendTreeState >= 0 && m_selectedMotion >= 0) {
+            selection.type = EditorContext::AnimationGraphSelection::Type::BlendTreeMotion;
+            selection.stateIndex = m_openBlendTreeState;
+            selection.motionIndex = m_selectedMotion;
+        } else if (m_selectedLink.fromStateIndex == -2) {
             selection.type = EditorContext::AnimationGraphSelection::Type::AnyStateTransition;
             selection.transitionIndex = m_selectedLink.transitionIndex;
         } else if (m_selectedLink.fromStateIndex >= 0) {
@@ -1734,6 +2270,8 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         }
         // どのレイヤーのグラフに対する選択かを Inspector へ伝える。
         selection.layerName = m_editingLayer;
+        // 複数選択中は「何個掴んでいるか」を Inspector 側でも出せるようにする。
+        selection.selectedCount = static_cast<int>(m_selectedStateNames.size());
 
         // Undo 比較の前にレイヤーグラフを元へ戻す。
         // WHY: 差し替えたままスナップショットを比較すると、Base Layer とレイヤーの
@@ -1743,7 +2281,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         if (allowEditing) {
             TrackAnimationGraphUndo(
                 ctx,
-                ctx.selectedAssetPath,
+                docPath,
                 {},
                 ctx.animationControllerEditor,
                 animator,
@@ -1754,9 +2292,14 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
+    // ここから下は「アセットを開いていないとき」の経路で、シーン内 GameObject の
+    // AnimatorComponent を直接編集する従来モード。
     scene::GameObject* go = ctx.GetSelectedGO();
     if (!go) {
-        ImGui::TextDisabled("Select a GameObject with AnimatorComponent.");
+        ImGui::TextDisabled("No Animator Controller is open.");
+        ImGui::Spacing();
+        ImGui::TextDisabled("Open a .animcontroller from the Asset Browser (double-click),");
+        ImGui::TextDisabled("or select a GameObject that has an AnimatorComponent.");
         return;
     }
 
@@ -1768,12 +2311,15 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
 
     if (m_selectionOwnerInstanceId != go->instanceId) {
         m_selectionOwnerInstanceId = go->instanceId;
-        m_selectedLink = {};
-        m_selectedNode = -1;
+        ClearSelectionState();
+        m_openBlendTreeStateName.clear();
+        m_openBlendTreeStateName.clear();
         m_openBlendTreeState = -1;
         m_selectedMotion = -1;
-        m_selectedAnyState = false;
+        m_pendingTransitionKind = NodeKind::None;
+        m_pendingTransitionFromName.clear();
         m_pendingTransitionFrom = -1;
+        m_renamingStateName.clear();
         m_editingLayer.clear();
         ctx.animationGraphSelection.Clear();
     }
@@ -1800,6 +2346,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             animator->states[static_cast<size_t>(m_openBlendTreeState)].name;
         ImGui::SameLine();
         if (ImGui::SmallButton("Base Layer")) {
+            m_openBlendTreeStateName.clear();
             m_openBlendTreeState = -1;
             m_selectedMotion = -1;
             m_graphCanvas.ClearSelection();
@@ -1850,20 +2397,46 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
 void AnimationGraphPanel::DrawLayerSelector(
     EditorContext& ctx, scene::AnimatorComponent& animator, bool allowEditing)
 {
-    // 指しているレイヤーが消えていたら Base Layer へ戻す。
-    if (!m_editingLayer.empty() && animator.FindLayer(m_editingLayer) == nullptr)
-        m_editingLayer.clear();
-
     const auto resetSelection = [&]() {
-        m_selectedNode = -1;
-        m_selectedLink = {};
+        ClearSelectionState();
         m_selectedMotion = -1;
-        m_selectedAnyState = false;
+        m_openBlendTreeStateName.clear();
+        m_openBlendTreeStateName.clear();
         m_openBlendTreeState = -1;
+        m_pendingTransitionKind = NodeKind::None;
+        m_pendingTransitionFromName.clear();
         m_pendingTransitionFrom = -1;
+        m_renamingStateName.clear();
+        m_layerRenameActive = false;
+        m_layerRenameFocusPending = false;
+        m_layerRenameError.clear();
         m_graphCanvas.ClearSelection();
         ctx.animationGraphSelection.Clear();
     };
+
+    if (!ctx.animationGraphLayerRemoved.empty()) {
+        if (m_editingLayer == ctx.animationGraphLayerRemoved) {
+            m_editingLayer.clear();
+            resetSelection();
+        }
+        ctx.animationGraphLayerRemoved.clear();
+    }
+    if (!ctx.animationGraphLayerFocus.empty()) {
+        const std::string requestedLayer = ctx.animationGraphLayerFocus;
+        ctx.animationGraphLayerFocus.clear();
+        if (animator.FindLayer(requestedLayer) != nullptr &&
+            m_editingLayer != requestedLayer) {
+            m_editingLayer = requestedLayer;
+            resetSelection();
+        }
+    }
+    // 指しているレイヤーが消えていたら Base Layer へ戻し、古いレイヤーのステート選択も捨てる。
+    // WHY ここでリセットするか: 先に名前だけを空にすると、残った stateIndex が Base Layer
+    //      の同じ添字へ誤って適用され、Mask 欄も別レイヤーの内容に見えてしまう。
+    if (!m_editingLayer.empty() && animator.FindLayer(m_editingLayer) == nullptr) {
+        m_editingLayer.clear();
+        resetSelection();
+    }
 
     ImGui::TextDisabled("Layer");
     ImGui::SameLine();
@@ -1918,6 +2491,59 @@ void AnimationGraphPanel::DrawLayerSelector(
     }
     ImGui::EndDisabled();
 
+    // Layer 名は Graph の表示対象そのものなので、入力途中に即時変更すると
+    // m_editingLayer が古い名前を指し続けて Base Layer へ誤フォールバックする。
+    // そのため入力は専用バッファへ保持し、Apply の瞬間だけ定義へ反映する。
+    if (!m_editingLayer.empty()) {
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!allowEditing);
+        if (!m_layerRenameActive) {
+            if (ImGui::SmallButton("Rename Layer")) {
+                if (const scene::AnimationLayer* layer = animator.FindLayer(m_editingLayer)) {
+                    std::snprintf(m_layerRenameBuffer,
+                                  sizeof(m_layerRenameBuffer),
+                                  "%s",
+                                  layer->name.c_str());
+                    m_layerRenameActive = true;
+                    m_layerRenameFocusPending = true;
+                    m_layerRenameError.clear();
+                }
+            }
+        } else {
+            ImGui::SetNextItemWidth(180.0f);
+            if (m_layerRenameFocusPending) {
+                ImGui::SetKeyboardFocusHere();
+                m_layerRenameFocusPending = false;
+            }
+            const bool enterRename = ImGui::InputText(
+                "##graph_layer_rename_input",
+                m_layerRenameBuffer,
+                sizeof(m_layerRenameBuffer),
+                ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            const bool applyRename =
+                enterRename || ImGui::SmallButton("Apply##graph_layer_rename_apply");
+            ImGui::SameLine();
+            const bool cancelRename = ImGui::SmallButton("Cancel##graph_layer_rename_cancel");
+            if (applyRename) {
+                const std::string oldName = m_editingLayer;
+                RenameLayer(ctx, animator, oldName, m_layerRenameBuffer);
+            }
+            if (cancelRename) {
+                m_layerRenameActive = false;
+                m_layerRenameFocusPending = false;
+                m_layerRenameError.clear();
+            }
+        }
+        ImGui::EndDisabled();
+        if (!m_layerRenameError.empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger),
+                               "%s",
+                               m_layerRenameError.c_str());
+        }
+    }
+
     // 選択中レイヤーの要点 (weight / mode / mask) をその場で調整できるようにする。
     if (scene::AnimationLayer* layer = animator.FindLayer(m_editingLayer)) {
         ImGui::SameLine();
@@ -1950,8 +2576,8 @@ void AnimationGraphPanel::DrawToolbar(EditorContext& ctx, scene::AnimatorCompone
     ImGui::TextUnformatted(go ? go->name.c_str() : "Animation Graph");
     ImGui::SameLine();
 
-    if (m_openBlendTreeState < 0 && ImGui::Button("+ State")) {
-        AddState(ctx, animator, "NewState");
+    if (m_openBlendTreeState < 0 && ImGui::Button("+ Node")) {
+        AddState(ctx, animator, "NewNode");
     }
     ImGui::SameLine();
     if (ImGui::Button("+ Param")) {
@@ -2046,10 +2672,12 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
             if (ImGui::Checkbox("Value", &param.boolValue)) MarkDirty(ctx);
             break;
         case scene::ParamType::Trigger:
-            if (ImGui::SmallButton(param.boolValue ? "Triggered" : "Fire")) {
-                param.boolValue = true;
-                MarkDirty(ctx);
-            }
+            // Trigger は Draw/Holster/Jump など実行時入力からのみ発火させる。
+            // WHY 手動 Fire を置かないか: ここで true にすると、その値が Controller へ
+            //      保存され、再ロード時に「起動直後から遷移する」「別の遷移まで巻き込む」
+            //      という非決定的な状態になる。Graph は定義編集、Trigger はランタイム入力
+            //      という責務分離にする。
+            ImGui::TextDisabled("Runtime Trigger");
             break;
         }
 
@@ -2074,8 +2702,79 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
 }
 
 
+// 選択中ステートの名前を編集する欄。
+//
+// WHY Inspector にも置くか: 従来のリネーム導線はグラフ上の F2 と右クリックメニューだけで、
+//     Inspector を見ているあいだは名前を変えられること自体に気付けなかった。
+//     Unity と同じく「選択したノードの名前は Inspector の一番上で変えられる」に揃える。
+//
+// WHY 1 文字ごとに反映しないか: 名前は遷移 (toStateName)・defaultStateName・
+//     ノード配置マップのキーそのもの。打鍵のたびに改名すると、"Idle" → "Idl" → "Id"…と
+//     中間状態で参照を張り替え続けることになり、Undo 履歴もその分だけ刻まれる。
+//     Enter またはフォーカスを外したときにだけ確定する。
+// ownerKey: ctx.graphLayouts のキー (GameObject なら instanceId、アセットなら .animcontroller パス)。
+static void DrawStateNameField(EditorContext& ctx,
+                               scene::AnimatorComponent& animator,
+                               scene::AnimationState& state,
+                               int stateIndex,
+                               const std::string& ownerKey,
+                               const std::string& layerName)
+{
+    // 編集中テキストは「確定するまで state.name と食い違う」ため、フレームを跨いで持つ。
+    // 対象が変わったら (別ステート選択・別グラフ・改名確定後) 必ず貼り直す。
+    static std::string editingKey;
+    static std::string editError;
+    static char        nameBuffer[128]{};
+
+    const std::string key = ownerKey + "|" + layerName + "|" + state.name;
+    if (editingKey != key) {
+        editingKey = key;
+        editError.clear();
+        std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", state.name.c_str());
+    }
+
+    const bool allowEditing = CanEditAnimationGraph(ctx);
+    ImGui::BeginDisabled(!allowEditing);
+    ImGui::SetNextItemWidth(-1.0f);
+    // EnterReturnsTrue と IsItemDeactivatedAfterEdit の両方を確定条件にする。
+    // WHY 両方か: Enter を押さずに他の欄へ移る操作が普通にあるため、
+    //     Enter だけだと「打ったのに変わらない」状態でフォーカスが外れる。
+    // WHY AutoSelectAll を付けないか: 常設の欄なので、クリックのたびに全選択されると
+    //     語尾だけ直す操作 (Idle → Idle_Loop) ができない。全消しは Ctrl+A で足りる。
+    const bool submitted = ImGui::InputText(
+        "Name##state_name", nameBuffer, sizeof(nameBuffer),
+        ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool committed = submitted || ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::EndDisabled();
+
+    // 弾いた理由は必ず出す。無言で元の名前へ戻ると原因が何も残らない。
+    if (!editError.empty())
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "%s", editError.c_str());
+
+    if (!committed || !allowEditing) return;
+
+    const std::string oldName = state.name;
+    const std::string newName = nameBuffer;
+    if (newName == oldName) { editError.clear(); return; }
+
+    if (newName.empty()) {
+        editError = "Name cannot be empty.";
+        return;
+    }
+    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+        if (i != stateIndex && animator.states[static_cast<std::size_t>(i)].name == newName) {
+            editError = "A state named '" + newName + "' already exists.";
+            return;
+        }
+    }
+
+    if (RenameStateInGraph(ctx, animator, stateIndex, oldName, newName, ownerKey))
+        editError.clear();
+}
+
 static bool DrawAnimationGraphDetails(EditorContext& ctx,
-                                       scene::AnimatorComponent& animator)
+                                       scene::AnimatorComponent& animator,
+                                       const std::string& ownerKey)
 {
     auto& selection = ctx.animationGraphSelection;
     if (selection.type == EditorContext::AnimationGraphSelection::Type::None)
@@ -2087,7 +2786,73 @@ static bool DrawAnimationGraphDetails(EditorContext& ctx,
             EditorContext::AnimationGraphSelection::Type::AnyStateTransition;
     ImGui::TextUnformatted(
         isTransitionSelection ? "Transition Inspector" : "Animation Details");
+    // 複数選択中であることを必ず出す。
+    // WHY: 編集できるのはプライマリ 1 件だけだが Delete は選択全部に効くため、
+    //      件数を隠すと「1 個選んだつもりで複数消えた」ように見える。
+    if (selection.type == EditorContext::AnimationGraphSelection::Type::State &&
+        selection.selectedCount > 1) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                           "%d states selected - editing the primary one",
+                           selection.selectedCount);
+    }
     ImGui::Separator();
+
+    if (selection.type == EditorContext::AnimationGraphSelection::Type::BlendTreeMotion) {
+        if (selection.stateIndex < 0 ||
+            selection.stateIndex >= static_cast<int>(animator.states.size())) {
+            selection.Clear();
+            return false;
+        }
+
+        auto& state = animator.states[static_cast<size_t>(selection.stateIndex)];
+        const bool is1D = state.mode == scene::AnimationStateMode::BlendTree1D;
+        const bool is2D = state.mode == scene::AnimationStateMode::BlendTree2D;
+        if ((!is1D && !is2D) || selection.motionIndex < 0) {
+            selection.Clear();
+            return false;
+        }
+
+        auto& motions = is1D ? state.blendTree1D.motions : state.blendTree2D.motions;
+        if (selection.motionIndex >= static_cast<int>(motions.size())) {
+            selection.Clear();
+            return false;
+        }
+
+        ImGui::Text("Motion %d", selection.motionIndex + 1);
+        ImGui::TextDisabled("State: %s", state.name.c_str());
+        ImGui::SeparatorText(is1D ? "Blend Tree 1D Motion" : "Blend Tree 2D Motion");
+
+        auto& motion = motions[static_cast<size_t>(selection.motionIndex)];
+        DrawAnimationSource(ctx, "Source##motion", animator, motion.sourcePath);
+        DrawClipCombo(
+            ctx,
+            "Clip##motion",
+            animator,
+            motion.sourcePath,
+            motion.clipName,
+            motion.clipIndex);
+
+        if (is1D) {
+            ImGui::SetNextItemWidth(140.0f);
+            if (ImGui::DragFloat("Threshold##motion", &motion.threshold, 0.01f))
+                MarkDirty(ctx);
+        } else {
+            ImGui::SetNextItemWidth(95.0f);
+            if (ImGui::DragFloat("X##motion", &motion.posX, 0.01f))
+                MarkDirty(ctx);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(95.0f);
+            if (ImGui::DragFloat("Y##motion", &motion.posY, 0.01f))
+                MarkDirty(ctx);
+        }
+
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::DragFloat("Motion Speed##motion", &motion.speed, 0.01f, -10.0f, 10.0f))
+            MarkDirty(ctx);
+        if (ImGui::DragFloat("Motion IK##motion", &motion.ikWeight, 0.01f, 0.0f, 1.0f))
+            MarkDirty(ctx);
+        return true;
+    }
 
     if (selection.type == EditorContext::AnimationGraphSelection::Type::State) {
         if (selection.stateIndex < 0 ||
@@ -2096,8 +2861,15 @@ static bool DrawAnimationGraphDetails(EditorContext& ctx,
             return false;
         }
         auto& state = animator.states[static_cast<size_t>(selection.stateIndex)];
-        ImGui::Text("State: %s", state.name.c_str());
+        ImGui::TextUnformatted("Animation Node");
+        ImGui::TextDisabled("State Node");
+        DrawStateNameField(
+            ctx, animator, state, selection.stateIndex, ownerKey, selection.layerName);
         DrawBlendTreeEditor(ctx, animator, state);
+        if (state.mode == scene::AnimationStateMode::Clip && state.sourcePath.empty()) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                               "Empty Node - attach an .anim in Animation (.anim).");
+        }
         ImGui::SeparatorText("State Settings");
         if (ImGui::DragFloat("IK Weight##det", &state.ikWeight, 0.01f, 0.0f, 1.0f))
             MarkDirty(ctx);
@@ -2105,6 +2877,26 @@ static bool DrawAnimationGraphDetails(EditorContext& ctx,
             MarkDirty(ctx);
         if (ImGui::Checkbox("Loop##det", &state.loop))
             MarkDirty(ctx);
+        // クリップ側の Loop Time と食い違っているときだけ、その旨を出す。
+        //
+        // WHY 出すか: 実行時の権威は State (設計 A) なので、FBX で Loop Time を入れても
+        //     既存ステートは自動では変わらない。黙って食い違うと
+        //     「FBX でループにしたのにループしない」の原因が見えなくなる。
+        if (state.mode == scene::AnimationStateMode::Clip) {
+            if (const asset::AnimationClip* clip =
+                    FindClip(animator, state.sourcePath, state.clipName, state.clipIndex)) {
+                if (clip->loop != state.loop) {
+                    ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                                       "Clip Loop Time is %s",
+                                       clip->loop ? "ON" : "OFF");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Use Clip")) {
+                        state.loop = clip->loop;
+                        MarkDirty(ctx);
+                    }
+                }
+            }
+        }
         return true;
     }
 
@@ -2159,7 +2951,8 @@ bool DrawAnimationGraphInspector(EditorContext& ctx, scene::GameObject& gameObje
     // WHY: 差し替えずに描くと、上半身レイヤーのステートを選んだのに
     //      Base Layer の同じ添字のステートを編集してしまう。
     LayerGraphScope layerScope(*animator, selection.layerName);
-    return DrawAnimationGraphDetails(ctx, *animator);
+    // ownerKey は ctx.graphLayouts のキー。パネルが DrawNodeCanvas へ渡すものと同じにする。
+    return DrawAnimationGraphDetails(ctx, *animator, gameObject.instanceId);
 }
 
 bool DrawAnimationGraphAssetInspector(EditorContext& ctx)
@@ -2169,7 +2962,8 @@ bool DrawAnimationGraphAssetInspector(EditorContext& ctx)
         return false;
     LayerGraphScope layerScope(*ctx.animationControllerEditor,
                                ctx.animationGraphSelection.layerName);
-    return DrawAnimationGraphDetails(ctx, *ctx.animationControllerEditor);
+    return DrawAnimationGraphDetails(
+        ctx, *ctx.animationControllerEditor, ctx.animationControllerEditorPath);
 }
 
 static void DrawTransitionEditor(EditorContext& ctx,
@@ -2332,7 +3126,12 @@ void AnimationGraphPanel::PublishSelection(EditorContext& ctx,
     selection.Clear();
     selection.entityId = gameObject.GetID();
 
-    if (m_selectedLink.fromStateIndex == -2) {
+    // BlendTree を開いているときは Motion 選択を Inspector へ公開する。
+    if (m_openBlendTreeState >= 0 && m_selectedMotion >= 0) {
+        selection.type = EditorContext::AnimationGraphSelection::Type::BlendTreeMotion;
+        selection.stateIndex = m_openBlendTreeState;
+        selection.motionIndex = m_selectedMotion;
+    } else if (m_selectedLink.fromStateIndex == -2) {
         selection.type = EditorContext::AnimationGraphSelection::Type::AnyStateTransition;
         selection.transitionIndex = m_selectedLink.transitionIndex;
     } else if (m_selectedLink.fromStateIndex >= 0) {
@@ -2351,9 +3150,16 @@ void AnimationGraphPanel::AddState(EditorContext& ctx, scene::AnimatorComponent&
 {
     scene::AnimationState state;
     state.name = MakeUniqueStateName(animator, baseName);
-    if (!animator.clips.empty()) state.clipName = animator.clips.front().name;
     if (animator.defaultStateName.empty()) animator.defaultStateName = state.name;
+    // 空 Node はアニメーションを自動割り当てしない。
+    // WHY: Graph 上の既存クリップ一覧から先頭を勝手に選ぶと、作成した Node が
+    //      意図しない .anim を再生し、Inspector で設定する前に意味を持ってしまう。
+    //      Unity と同じく、Node の作成と Motion の割り当てを分離する。
+    state.sourcePath.clear();
+    state.clipName.clear();
+    state.clipIndex = -1;
     animator.states.push_back(std::move(state));
+    SelectStateByName(animator, animator.states.back().name);
     MarkDirty(ctx);
 }
 
@@ -2366,13 +3172,17 @@ void AnimationGraphPanel::AddStateAt(EditorContext& ctx,
 {
     scene::AnimationState state;
     state.name = MakeUniqueStateName(animator, baseName);
-    if (!animator.clips.empty()) state.clipName = animator.clips.front().name;
     if (animator.defaultStateName.empty()) animator.defaultStateName = state.name;
+    // 右クリック作成もツールバー作成と同じ空 Node にする。
+    state.sourcePath.clear();
+    state.clipName.clear();
+    state.clipIndex = -1;
     // 生成前に位置を確定しておくことで、デフォルトのグリッド整列配置を経由せず即カーソル位置へ出す。
     ctx.graphLayouts[instanceId].nodePositions[state.name] = ImVec2(spawnX, spawnY);
+    const std::string createdName = state.name;
     animator.states.push_back(std::move(state));
-    m_selectedNode = static_cast<int>(animator.states.size()) - 1;
-    m_selectedLink = {};
+    // 作った直後はそれだけを選択し、キャンバスのハイライトも合わせる。
+    SelectStateByName(animator, createdName);
     MarkDirty(ctx);
 }
 
@@ -2394,9 +3204,9 @@ void AnimationGraphPanel::DuplicateState(EditorContext& ctx,
         spawn = ImVec2(it->second.x + 44.0f, it->second.y + 44.0f);
     positions[copied.name] = spawn;
 
+    const std::string copiedName = copied.name;
     animator.states.push_back(std::move(copied));
-    m_selectedNode = static_cast<int>(animator.states.size()) - 1;
-    m_selectedLink = {};
+    SelectStateByName(animator, copiedName);
     MarkDirty(ctx);
 }
 
@@ -2417,7 +3227,12 @@ void AnimationGraphPanel::AddTransition(EditorContext& ctx,
     scene::AnimationTransition transition;
     transition.toStateName = toState.name;
     fromState.transitions.push_back(std::move(transition));
+    // 作った遷移を選択状態にする。起点は名前で覚える (添字は次フレームに解決される)。
+    m_selectedStateNames.clear();
+    m_selectedKind = NodeKind::None;
     m_selectedLink = { fromStateIndex, static_cast<int>(fromState.transitions.size()) - 1 };
+    m_selectedLinkKind = NodeKind::State;
+    m_selectedLinkFromName = fromState.name;
     m_graphCanvas.ClearSelection();
     MarkDirty(ctx);
 }
@@ -2504,6 +3319,8 @@ void AnimationGraphPanel::DeleteState(EditorContext& ctx,
     if (animator.currentStateName == removedName) animator.currentStateName.clear();
     if (animator.blendToState == removedName) animator.blendToState.clear();
     m_selectedLink = {};
+    m_selectedLinkKind = NodeKind::None;
+    m_selectedLinkFromName.clear();
     MarkDirty(ctx);
 }
 
@@ -2514,40 +3331,80 @@ void AnimationGraphPanel::RenameState(EditorContext& ctx,
                                       const std::string& newName,
                                       const std::string& instanceId)
 {
-    if (stateIndex < 0 || stateIndex >= static_cast<int>(animator.states.size())) return;
-    if (newName.empty() || oldName == newName) return;
+    if (!RenameStateInGraph(ctx, animator, stateIndex, oldName, newName, instanceId))
+        return;
 
-    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
-        if (i != stateIndex && animator.states[static_cast<size_t>(i)].name == newName) return;
+    // 自分で起こした改名なので、パネル側の追従はここで済ませる。
+    // 通知を残したままにすると次フレームに二重適用され (旧名はもう無いので実害は無いが)、
+    // 「誰が改名したのか」が曖昧になるため、その場で消費しておく。
+    AdoptStateRename(oldName, newName);
+    ctx.animationGraphRenamedFrom.clear();
+    ctx.animationGraphRenamedTo.clear();
+}
+
+void AnimationGraphPanel::RenameLayer(EditorContext& ctx,
+                                      scene::AnimatorComponent& animator,
+                                      const std::string& oldName,
+                                      const std::string& newName)
+{
+    m_layerRenameError.clear();
+    if (oldName.empty() || animator.FindLayer(oldName) == nullptr) {
+        m_layerRenameError = "Layer が見つかりません。";
+        return;
+    }
+    if (newName.empty()) {
+        m_layerRenameError = "Layer 名を空にできません。";
+        return;
+    }
+    if (oldName == newName) {
+        m_layerRenameActive = false;
+        m_layerRenameFocusPending = false;
+        return;
+    }
+    if (std::any_of(animator.layers.begin(), animator.layers.end(),
+                    [&](const scene::AnimationLayer& layer) {
+                        return layer.name == newName;
+                    })) {
+        m_layerRenameError = "同名の Layer が既に存在します。";
+        return;
     }
 
-    animator.states[static_cast<size_t>(stateIndex)].name = newName;
-    for (auto& state : animator.states) {
-        for (auto& transition : state.transitions) {
-            if (transition.toStateName == oldName) transition.toStateName = newName;
-        }
-    }
-    for (auto& transition : animator.anyStateTransitions)
-        if (transition.toStateName == oldName) transition.toStateName = newName;
-
-    if (animator.defaultStateName == oldName) animator.defaultStateName = newName;
-    if (animator.currentStateName == oldName) animator.currentStateName = newName;
-    if (animator.blendToState == oldName) animator.blendToState = newName;
-
-    auto& positions = ctx.graphLayouts[instanceId].nodePositions;
-    if (auto it = positions.find(oldName); it != positions.end()) {
-        const ImVec2 renamedPosition = it->second;
-        positions.erase(it);
-        positions[newName] = renamedPosition;
-    }
-    auto& blendPositions =
-        ctx.graphLayouts[instanceId].blendTreeMotionPositions;
-    if (auto it = blendPositions.find(oldName); it != blendPositions.end()) {
-        auto renamedPositions = std::move(it->second);
-        blendPositions.erase(it);
-        blendPositions[newName] = std::move(renamedPositions);
-    }
+    animator.FindLayer(oldName)->name = newName;
+    if (m_editingLayer == oldName) m_editingLayer = newName;
+    if (ctx.animationGraphSelection.layerName == oldName)
+        ctx.animationGraphSelection.layerName = newName;
+    ctx.animationGraphLayerFocus = newName;
+    m_layerRenameActive = false;
+    m_layerRenameFocusPending = false;
     MarkDirty(ctx);
+}
+
+// 名前が選択の権威なので、リネームしたら選択側も追従させる。
+// これを忘れると次の ResolveSelectionIndices で「消えたステート」と判定され、
+// リネーム直後に選択が外れる。
+// WHY 独立させたか: Inspector の Name 欄からの改名もこの追従を必要とするため、
+//     パネル外で起きた改名を取り込む入口としても使う。
+void AnimationGraphPanel::AdoptStateRename(const std::string& oldName,
+                                            const std::string& newName)
+{
+    if (oldName.empty() || newName.empty() || oldName == newName) return;
+
+    for (std::string& selected : m_selectedStateNames)
+        if (selected == oldName) selected = newName;
+    if (m_openBlendTreeStateName == oldName)    m_openBlendTreeStateName = newName;
+    if (m_selectedLinkFromName == oldName)      m_selectedLinkFromName = newName;
+    if (m_pendingTransitionFromName == oldName) m_pendingTransitionFromName = newName;
+    if (m_renamingStateName == oldName)         m_renamingStateName = newName;
+}
+
+void AnimationGraphPanel::AdoptLayerRename(const std::string& oldName,
+                                           const std::string& newName)
+{
+    if (oldName.empty() || newName.empty() || oldName == newName) return;
+    if (m_editingLayer == oldName) m_editingLayer = newName;
+    m_layerRenameActive = false;
+    m_layerRenameFocusPending = false;
+    m_layerRenameError.clear();
 }
 
 void AnimationGraphPanel::ClearInvalidSelection(const scene::AnimatorComponent& animator)
@@ -2555,19 +3412,26 @@ void AnimationGraphPanel::ClearInvalidSelection(const scene::AnimatorComponent& 
     if (m_selectedLink.fromStateIndex == -2) {
         if (m_selectedLink.transitionIndex < 0 ||
             m_selectedLink.transitionIndex >=
-                static_cast<int>(animator.anyStateTransitions.size()))
+                static_cast<int>(animator.anyStateTransitions.size())) {
             m_selectedLink = {};
+            m_selectedLinkKind = NodeKind::None;
+            m_selectedLinkFromName.clear();
+        }
         return;
     }
     if (m_selectedLink.fromStateIndex < 0) return;
     if (m_selectedLink.fromStateIndex >= static_cast<int>(animator.states.size())) {
         m_selectedLink = {};
+        m_selectedLinkKind = NodeKind::None;
+        m_selectedLinkFromName.clear();
         return;
     }
     const auto& transitions = animator.states[static_cast<size_t>(m_selectedLink.fromStateIndex)].transitions;
     if (m_selectedLink.transitionIndex < 0 ||
         m_selectedLink.transitionIndex >= static_cast<int>(transitions.size())) {
         m_selectedLink = {};
+        m_selectedLinkKind = NodeKind::None;
+        m_selectedLinkFromName.clear();
     }
 }
 

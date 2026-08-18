@@ -3,12 +3,48 @@
 // Animation / IK 系 Component の Inspector 描画
 #include "InspectorAnimation.hpp"
 #include <Editor/Util/EditorTheme.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
+#include <algorithm>
 
 namespace fbzz::editor {
 
 namespace {
+
+// Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
+// Inspector のレイヤー編集も Graph の編集モデルへ反映する。
+// WHY: Controller を開いた Graph は scene component のコピーを編集しているため、Inspector
+//      側だけを書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
+void SyncOpenControllerLayers(EditorContext& ctx,
+                              const scene::AnimatorComponent& source)
+{
+    if (!ctx.animationControllerEditor ||
+        ctx.animationControllerEditor.get() == &source ||
+        source.controllerPath.empty() ||
+        ctx.animationControllerEditorPath.empty() ||
+        asset::AssetManager::ResolveAssetPath(source.controllerPath) !=
+            ctx.animationControllerEditorPath) {
+        return;
+    }
+
+    auto& target = *ctx.animationControllerEditor;
+    target.layers = source.layers;
+    target.baseLayerMask = source.baseLayerMask;
+    ctx.animationControllerDirty = true;
+}
+
+void QueueLayerRename(EditorContext& ctx,
+                      const std::string& oldName,
+                      const std::string& newName)
+{
+    if (oldName.empty() || newName.empty() || oldName == newName) return;
+    ctx.animationGraphLayerRenamedFrom = oldName;
+    ctx.animationGraphLayerRenamedTo = newName;
+    ctx.animationGraphLayerFocus = newName;
+    if (ctx.animationGraphSelection.layerName == oldName)
+        ctx.animationGraphSelection.layerName = newName;
+}
 
 // ── Root Motion ──────────────────────────────────────────────────────────────
 // WHY: 従来は "Apply Root Motion" チェックボックス 1 個しかなく、
@@ -124,12 +160,16 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         "Base Layer が全身のポーズを作り、各レイヤーが Mask のボーンだけを上書き / 加算します。");
 
     const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
+    const auto markLayerDirty = [&]() {
+        SyncOpenControllerLayers(ctx, anim);
+        markDirty();
+    };
 
     // Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
     if (widgets::AssetPathField("Base Layer Mask", anim.baseLayerMask.path,
                                 ".mask", ctx.projectRoot)) {
         anim.baseLayerMask.Invalidate();
-        markDirty();
+        markLayerDirty();
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::SetTooltip(
@@ -152,7 +192,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                       layer.weight * 100.0f,
                       layer.slot.active ? "  (slot)" : "");
 
-        if (ImGui::Checkbox("##layer_enabled", &layer.enabled)) markDirty();
+        if (ImGui::Checkbox("##layer_enabled", &layer.enabled)) markLayerDirty();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("このレイヤーを評価するか");
         ImGui::SameLine();
 
@@ -164,17 +204,27 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             char nameBuffer[128];
             std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", layer.name.c_str());
             if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
-                layer.name = nameBuffer;
-                markDirty();
+                const std::string oldName = layer.name;
+                const std::string newName = nameBuffer;
+                const bool duplicate = std::any_of(
+                    anim.layers.begin(), anim.layers.end(),
+                    [&](const scene::AnimationLayer& candidate) {
+                        return &candidate != &layer && candidate.name == newName;
+                    });
+                if (!newName.empty() && !duplicate) {
+                    layer.name = newName;
+                    QueueLayerRename(ctx, oldName, newName);
+                    markLayerDirty();
+                }
             }
 
-            if (widgets::RangeField("Weight", layer.weight, 0.0f, 1.0f)) markDirty();
+            if (widgets::RangeField("Weight", layer.weight, 0.0f, 1.0f)) markLayerDirty();
 
             static constexpr const char* kModeNames[] = { "Override", "Additive" };
             int modeIndex = static_cast<int>(layer.mode);
             if (ImGui::Combo("Blending", &modeIndex, kModeNames, 2)) {
                 layer.mode = static_cast<scene::AnimationLayerMode>(modeIndex);
-                markDirty();
+                markLayerDirty();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::SetTooltip(
@@ -186,7 +236,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             if (widgets::AssetPathField("Mask", layer.mask.path, ".mask", ctx.projectRoot)) {
                 // 次フレームの AnimatorSystem に読み直させる。
                 layer.mask.Invalidate();
-                markDirty();
+                markLayerDirty();
             }
             if (layer.mask.path.empty()) {
                 ImGui::TextDisabled("  Mask 未設定 = 全身に効きます");
@@ -196,19 +246,22 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             if (layer.mode == scene::AnimationLayerMode::Additive) {
                 ImGui::SeparatorText("Additive Reference Pose");
                 ImGui::TextDisabled("空なら加算クリップ自身の先頭フレームを基準にします。");
+                // 基準ポーズも通常の Source と同じ種類のアセットを受ける。
+                // .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
+                // (Pose_XXX.anim 等) をドロップで割り当てられない。
                 if (widgets::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
-                                            ".fbx", ctx.projectRoot))
-                    markDirty();
+                                            ".anim,.asset,.fzasset,.fbx", ctx.projectRoot))
+                    markLayerDirty();
                 char clipBuffer[128];
                 std::snprintf(clipBuffer, sizeof(clipBuffer), "%s",
                               layer.additiveReference.clipName.c_str());
                 if (ImGui::InputText("Ref Clip", clipBuffer, sizeof(clipBuffer))) {
                     layer.additiveReference.clipName = clipBuffer;
-                    markDirty();
+                    markLayerDirty();
                 }
                 if (ImGui::DragFloat("Ref Time", &layer.additiveReference.time,
                                      0.01f, 0.0f, 600.0f, "%.2f s"))
-                    markDirty();
+                    markLayerDirty();
             }
 
             // ── State Machine ────────────────────────────────────────────
@@ -242,8 +295,12 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
     }
 
     if (removeIndex >= 0) {
+        const std::string removedName = anim.layers[static_cast<size_t>(removeIndex)].name;
         anim.layers.erase(anim.layers.begin() + removeIndex);
-        markDirty();
+        if (ctx.animationGraphSelection.layerName == removedName)
+            ctx.animationGraphSelection.Clear();
+        ctx.animationGraphLayerRemoved = removedName;
+        markLayerDirty();
     }
 
     if (ImGui::Button("Add Layer", ImVec2(-1.0f, 0.0f))) {
@@ -252,8 +309,10 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         layer.name = "Layer " + std::to_string(anim.layers.size() + 1);
         for (int suffix = 1; anim.FindLayer(layer.name) != nullptr && suffix < 1000; ++suffix)
             layer.name = "Layer " + std::to_string(anim.layers.size() + 1 + suffix);
+        const std::string createdName = layer.name;
         anim.layers.push_back(std::move(layer));
-        markDirty();
+        ctx.animationGraphLayerFocus = createdName;
+        markLayerDirty();
     }
 }
 
@@ -305,8 +364,13 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 return;
             }
 
-            if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f)))
+            if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f))) {
+                // WHY selectedAssetPath 任せにしないか: ここでの選択は GameObject であって
+                //     .animcontroller ではない。開くべき対象はこの Animator が指している
+                //     Controller なので、パスを明示して渡す。
+                if (ctx.openAnimationGraph) ctx.openAnimationGraph(anim.controllerPath);
                 ctx.requestOpenAnimationGraph = true;
+            }
 
             ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
             ImGui::Checkbox("Playing", &anim.playing);

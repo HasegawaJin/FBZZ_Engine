@@ -543,6 +543,59 @@ struct AnimatorComponent {
         return l->runtime.currentStateName;
     }
 
+    // 指定 Layer の現在ステートを、そのステートの実クリップ長で 0..1 に正規化する。
+    // WHY: 武器のように「アニメーションの途中で親を差し替える」処理は、フレーム数や
+    //      固定秒数ではなく、実際のクリップ再生位置へ同期しないと速度変更・遷移時間変更で
+    //      手と銃の位置がずれる。Base Layer 用の GetNormalizedTime と同じ規則を Layer にも公開する。
+    [[nodiscard]] float GetLayerNormalizedTime(std::string_view layerName) const
+    {
+        const AnimationLayer* layer = FindLayer(layerName);
+        if (!layer || layer->runtime.currentStateName.empty()) return 0.0f;
+
+        const AnimationState* state = nullptr;
+        for (const auto& candidate : layer->states) {
+            if (candidate.name == layer->runtime.currentStateName) {
+                state = &candidate;
+                break;
+            }
+        }
+        if (!state) return 0.0f;
+        if (state->mode != AnimationStateMode::Clip) {
+            return layer->runtime.blendDuration > 0.0f
+                ? std::clamp(layer->runtime.stateTime / layer->runtime.blendDuration, 0.0f, 1.0f)
+                : 0.0f;
+        }
+
+        const asset::AnimationClip* clip = nullptr;
+        if (!state->sourcePath.empty()) {
+            for (size_t i = 0; i < clips.size(); ++i) {
+                if (i >= clipSourcePaths.size() || clipSourcePaths[i] != state->sourcePath)
+                    continue;
+                if (!clip) clip = &clips[i];
+                if (!state->clipName.empty() && clips[i].name == state->clipName) {
+                    clip = &clips[i];
+                    break;
+                }
+            }
+        }
+        if (!clip && !state->clipName.empty()) {
+            for (const auto& candidate : clips)
+                if (candidate.name == state->clipName) {
+                    clip = &candidate;
+                    break;
+                }
+        }
+        if (!clip && state->clipIndex >= 0 &&
+            state->clipIndex < static_cast<int>(clips.size()))
+            clip = &clips[static_cast<size_t>(state->clipIndex)];
+        if (!clip) return 0.0f;
+
+        const float duration = static_cast<float>(clip->GetDurationSeconds());
+        return duration > 0.0f
+            ? std::clamp(layer->runtime.stateTime / duration, 0.0f, 1.0f)
+            : 0.0f;
+    }
+
     [[nodiscard]] bool IsLayerInState(std::string_view layerName, std::string_view stateName) const
     {
         return GetLayerState(layerName) == stateName;

@@ -20,6 +20,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -508,7 +509,8 @@ void DispatchAnimationEvents(GameObject& owner,
             event.name, event.intParam, event.floatParam, eventTime, Time::frameCount });
         if (scripts != nullptr)
             for (auto& entry : scripts->scripts)
-                if (entry.script) entry.script->OnAnimationEvent(info);
+                if (entry.script)
+                    entry.script->InvokeAnimationEvent(info);
     }
 }
 
@@ -788,6 +790,24 @@ GameObject* FindBoneDescendant(GameObject& root, int nodeIndex)
     return nullptr;
 }
 
+// スケルトンの親参照が循環していないかを確認し、生成時の再帰を止める。
+// WHY: 通常のインポーターは木構造を作るが、古いキャッシュや破損した .fzasset は
+//      親インデックスだけが循環することがあり、Base Layer の初回評価をハングさせる。
+bool HasAcyclicParentChain(const asset::Skeleton& skeleton, int nodeIndex)
+{
+    std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
+    int current = nodeIndex;
+    while (current >= 0) {
+        if (current >= static_cast<int>(skeleton.nodes.size()))
+            return false;
+        if (visited[static_cast<size_t>(current)] != 0)
+            return false;
+        visited[static_cast<size_t>(current)] = 1;
+        current = skeleton.nodes[static_cast<size_t>(current)].parentIndex;
+    }
+    return true;
+}
+
 GameObject& EnsureBoneObject(Scene& scene,
                              GameObject& owner,
                              SkinnedMeshRenderer& smr,
@@ -809,7 +829,25 @@ GameObject& EnsureBoneObject(Scene& scene,
         }
     }
 
-    if (GameObject* found = FindBoneDescendant(owner, nodeIndex)) {
+    // 既存ボーンの捜索範囲。
+    //
+    // WHY owner の子孫だけでは足りないか (重要):
+    //   ノードごとに子 GameObject へ分けた構成では、Renderer は Body / Visor といった
+    //   子に付き、ボーンは兄弟の Armature 側に居る。owner の子孫しか見ないと 1 本も
+    //   見つからず、Renderer ごとに同じスケルトンを作り直してしまう。
+    //   同じキャラの Renderer が 3 つあればボーン階層が 3 セット生えて、
+    //   アニメーションはそのうち 1 つにしか効かない、という壊れ方になる。
+    //   skeletonRootEntity (Unity の rootBone 相当) が解決できていればその親を範囲にする。
+    //   別キャラの兄弟へ誤って束縛しないよう、範囲は「起点ボーンの親」までに限る。
+    GameObject* searchScope = &owner;
+    if (GameObject* skeletonRoot = scene.GetGameObject(smr.skeletonRootEntity)) {
+        if (auto* skeletonParent = skeletonRoot->GetParent())
+            searchScope = skeletonParent;
+        else
+            searchScope = skeletonRoot;
+    }
+
+    if (GameObject* found = FindBoneDescendant(*searchScope, nodeIndex)) {
         if (auto* bone = found->GetComponent<BoneComponent>()) {
             bone->boneName = node.name;
             bone->boneIndex = node.boneIndex;
@@ -823,7 +861,8 @@ GameObject& EnsureBoneObject(Scene& scene,
 
     GameObject* parent = &owner;
     if (node.parentIndex >= 0 &&
-        node.parentIndex < static_cast<int>(skeleton.nodes.size()))
+        node.parentIndex < static_cast<int>(skeleton.nodes.size()) &&
+        HasAcyclicParentChain(skeleton, node.parentIndex))
         parent = &EnsureBoneObject(scene, owner, smr, skeleton, node.parentIndex);
 
     GameObject& boneObject = scene.CreateGameObject(node.name);
@@ -883,11 +922,17 @@ void PropagateBoneTransforms(Scene& scene,
                              const asset::Skeleton& skeleton,
                              SkinnedMeshRenderer& smr,
                              int nodeIndex,
-                             const Transform& parentTransform)
+                             const Transform& parentTransform,
+                             std::vector<uint8_t>& visited)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
         nodeIndex >= static_cast<int>(smr.nodeEntities.size()))
         return;
+    // アセット破損で children が循環していても、Base Layer の全身評価を
+    // 無限再帰にしない。通常の Assimp 階層では各ノードは一度だけ通る。
+    if (visited[static_cast<size_t>(nodeIndex)] != 0)
+        return;
+    visited[static_cast<size_t>(nodeIndex)] = 1;
     GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(nodeIndex)]);
     if (!boneObject) return;
 
@@ -895,7 +940,7 @@ void PropagateBoneTransforms(Scene& scene,
     PropagateNonBoneChildTransforms(*boneObject);
 
     for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
-        PropagateBoneTransforms(scene, skeleton, smr, child, boneObject->transform);
+        PropagateBoneTransforms(scene, skeleton, smr, child, boneObject->transform, visited);
 }
 
 void RebuildSkinningFromBoneTransforms(Scene& scene,
@@ -1013,19 +1058,44 @@ void LoadClips(AnimatorComponent& animator)
         if (std::find(sources.begin(), sources.end(), sourcePath) == sources.end())
             sources.push_back(sourcePath);
     };
-    for (const auto& state : animator.states) {
+    const auto addStateSources = [&addSource](const AnimationState& state) {
         addSource(state.sourcePath);
         for (const auto& motion : state.blendTree1D.motions) addSource(motion.sourcePath);
         for (const auto& motion : state.blendTree2D.motions) addSource(motion.sourcePath);
-    }
+    };
+
+    // Base Layer だけでなく、追加 Layer の Draw/Holster や攻撃モーションも同じ
+    // Animator クリップ配列へ登録する。Layer 側だけに接続された Motion を見落とすと、
+    // Base Layer を有効にした後に「Layer のステート名は合っているのに動かない」状態になる。
+    for (const auto& state : animator.states)
+        addStateSources(state);
+    for (const auto& layer : animator.layers)
+        for (const auto& state : layer.states)
+            addStateSources(state);
 
     for (const auto& src : sources) {
         if (src.empty()) continue;
 
+        // Controller は .anim を GUID で保存するため、GUID 文字列そのものには
+        // 拡張子が無い。解決前に ModelImporter へ渡すと、追加レイヤーの .anim を
+        // FBX / .fzasset として解釈してクラッシュする経路になる。
+        const std::string resolvedSource = asset::AssetManager::ResolveAssetPath(src);
+        const auto hasAnimExtension = [](const std::string& path) {
+            if (path.size() < 5) return false;
+            const size_t offset = path.size() - 5;
+            for (size_t i = 0; i < 5; ++i) {
+                const char c = static_cast<char>(std::tolower(
+                    static_cast<unsigned char>(path[offset + i])));
+                constexpr char suffix[] = ".anim";
+                if (c != suffix[i]) return false;
+            }
+            return true;
+        };
+
         // .anim ファイルは AnimationClip として直接ロードする。
         // WHY: FBX インポート時のアニメーションクリップは .anim に分離されており、
         //      .fzasset (モデルファイル) には clips が含まれないため。
-        if (src.size() > 5 && src.rfind(".anim") == src.size() - 5) {
+        if (hasAnimExtension(resolvedSource)) {
             auto h = asset::AssetManager::Load<asset::AnimationClip>(src);
             if (!h.IsValid()) {
                 FBZZ_LOG_WARN("AnimatorSystem: .anim source '%s' failed to load", src.c_str());
@@ -1479,9 +1549,15 @@ void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
                                    int nodeIndex,
                                    const math::Matrix4& parentGlobal,
                                    std::vector<math::Matrix4>& palette,
-                                   std::vector<math::Matrix4>& nodeGlobals)
+                                   std::vector<math::Matrix4>& nodeGlobals,
+                                   std::vector<uint8_t>& visited)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+    // Base Layer は全スケルトンを評価するため、壊れたキャッシュの循環参照が
+    // あるとここがフレームを返さなくなる。評価済みノードを一度だけ処理する。
+    if (visited[static_cast<size_t>(nodeIndex)] != 0)
+        return;
+    visited[static_cast<size_t>(nodeIndex)] = 1;
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
     const NodeLocalPose blended = BlendNodePose(node, clips);
     const math::Matrix4 global =
@@ -1499,7 +1575,7 @@ void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
     }
     for (int child : node.children)
         EvaluateNBlendedNodeRecursive(
-            skeleton, clips, child, global, palette, nodeGlobals);
+            skeleton, clips, child, global, palette, nodeGlobals, visited);
 }
 
 void ApplyNBlendedPoseToBones(Scene& scene,
@@ -1520,8 +1596,11 @@ void ApplyNBlendedPoseToBones(Scene& scene,
         //      前フレームの姿勢を残すと、上のレイヤーが weight 0 になった瞬間に
         //      最後のポーズで固まってしまう。バインドへ戻せば常に決定的になる。
         float weight = 1.0f;
-        if (baseMask != nullptr)
-            weight = asset::EvaluateAvatarMaskWeight(*baseMask, node.name, node.name);
+        if (baseMask != nullptr) {
+            const std::string path = asset::BuildSkeletonNodePath(
+                skeleton, static_cast<int>(i));
+            weight = asset::EvaluateAvatarMaskWeight(*baseMask, path, node.name);
+        }
 
         if (weight >= 1.0f - math::EPSILON) {
             boneObject->transform.position = pose.translation;
@@ -2068,7 +2147,8 @@ void DispatchAnimatorMove(GameObject& owner, const AnimatorComponent& animator)
     info.appliedByEngine = animator.rootMotionAppliedByEngine;
 
     for (auto& entry : scripts->scripts)
-        if (entry.script && entry.script->enabled) entry.script->OnAnimatorMove(info);
+        if (entry.script && entry.script->enabled)
+            entry.script->InvokeAnimatorMove(info);
 }
 
 // 加重クリップ集合からルートモーションを抽出し、適用して Script へ通知するまでを行う。
@@ -2446,6 +2526,10 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
 
     for (auto& layer : animator.layers) {
         if (!layer.enabled) continue;
+        // Layer を追加した直後はステートも Slot も無い。空 Layer で Mask のロードや
+        // Slot の更新まで行うと、まだ何も接続していない編集操作が再生経路へ副作用を
+        // 持ち込むため、定義と一時再生の両方が空なら評価を完全に省略する。
+        if (layer.states.empty() && !layer.slot.active) continue;
         EnsureMaskLoaded(layer.mask);
 
         // Slot はレイヤー weight が 0 でも時間を進める。
@@ -2508,7 +2592,9 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
     }
 
     if (poseChanged) {
-        PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex, owner.transform);
+        std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
+        PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex,
+                                owner.transform, visited);
         RebuildSkinningFromBoneTransforms(scene, owner, skeleton, smr, animator);
     }
 }
@@ -2623,16 +2709,19 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     // 移動量も同じ比率で混ざる (旧実装は支配クリップ 1 本しか見ていなかった)。
     ProcessRootMotion(animator, go, currentClips, dt);
 
+    std::vector<uint8_t> evaluationVisited(skeleton.nodes.size(), 0);
     EvaluateNBlendedNodeRecursive(
         skeleton, currentClips, skeleton.rootNodeIndex,
         math::Matrix4::Identity(),
-        animator.boneMatrices, animator.nodeGlobalTransforms);
+        animator.boneMatrices, animator.nodeGlobalTransforms, evaluationVisited);
     // Base Layer マスク: 未設定なら nullptr を渡し、従来どおり全ボーンへ適用する。
     EnsureMaskLoaded(animator.baseLayerMask);
     ApplyNBlendedPoseToBones(scene, skeleton, currentClips, smr,
                              animator.baseLayerMask.loaded ? &animator.baseLayerMask.asset : nullptr);
 
-    PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex, go.transform);
+    std::vector<uint8_t> propagationVisited(skeleton.nodes.size(), 0);
+    PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex,
+                            go.transform, propagationVisited);
     RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
 }
 

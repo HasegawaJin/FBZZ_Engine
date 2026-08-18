@@ -275,7 +275,12 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         parameterTable.insert("type", static_cast<int64_t>(parameter.type));
         parameterTable.insert("floatValue", static_cast<double>(parameter.floatValue));
         parameterTable.insert("intValue", static_cast<int64_t>(parameter.intValue));
-        parameterTable.insert("boolValue", parameter.boolValue);
+        // Trigger は状態値ではなく一瞬の発火信号なので、Controller へ保存しない。
+        // WHY: Editor の一時操作や古い .animcontroller の boolValue=true を復元すると、
+        //      起動直後に Trigger 遷移が発火して意図しない State へ進んでしまう。
+        parameterTable.insert(
+            "boolValue",
+            parameter.type == scene::ParamType::Trigger ? false : parameter.boolValue);
         parameters.push_back(std::move(parameterTable));
     }
     root.insert("parameters", std::move(parameters));
@@ -457,21 +462,76 @@ bool LoadAnimatorControllerAsset(const std::string& path,
 void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
                                   scene::AnimatorComponent& animator)
 {
+    // Controller の初回ロードや差し替えでは再生状態を初期化するが、Graph の保存後に
+    // 同じ Controller をライブ Animator へ反映する場合は、現在のモーションを止めない。
+    // loadedControllerPath は AnimatorSystem が初回ロード完了後に設定するため、
+    // 「初回ロード」と「編集反映」を安全に区別できる。
+    const bool preservePlayback =
+        !animator.loadedControllerPath.empty() &&
+        animator.loadedControllerPath == animator.controllerPath;
+    const std::string previousStateName = animator.currentStateName;
+    const float previousStateTime = animator.stateTime;
+    const std::string previousBlendToState = animator.blendToState;
+    const float previousBlendToTime = animator.blendToTime;
+    const float previousBlendWeight = animator.blendWeight;
+    const float previousBlendDuration = animator.blendDuration;
+    const auto previousLayers = animator.layers;
+
     animator.defaultStateName = asset.defaultStateName;
     animator.states = asset.states;
     animator.anyStateTransitions = asset.anyStateTransitions;
     animator.parameters = asset.parameters;
+    // 旧形式・手編集された Controller に残る Trigger の true も実行開始前に捨てる。
+    // Trigger は SetTrigger() でのみ発火し、アセットの初期値にはしない。
+    for (auto& parameter : animator.parameters) {
+        if (parameter.type == scene::ParamType::Trigger)
+            parameter.boolValue = false;
+    }
     animator.layers = asset.layers;
     animator.baseLayerMask.path = asset.baseLayerMaskPath;
     animator.baseLayerMask.Invalidate();
     animator.currentStateName.clear();
     animator.blendToState.clear();
     animator.stateTime = 0.0f;
+    animator.blendToTime = 0.0f;
+    animator.blendWeight = 0.0f;
+    animator.blendDuration = 0.25f;
     animator.clips.clear();
     animator.clipSourcePaths.clear();
     animator.clipsLoaded = false;
     // clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
     animator.rootMotionSamples.clear();
+
+    if (preservePlayback) {
+        const auto stateExists = [](const std::vector<scene::AnimationState>& states,
+                                    const std::string& name) {
+            if (name.empty()) return false;
+            for (const auto& state : states)
+                if (state.name == name) return true;
+            return false;
+        };
+        if (stateExists(animator.states, previousStateName)) {
+            animator.currentStateName = previousStateName;
+            animator.stateTime = previousStateTime;
+            if (stateExists(animator.states, previousBlendToState)) {
+                animator.blendToState = previousBlendToState;
+                animator.blendToTime = previousBlendToTime;
+                animator.blendWeight = previousBlendWeight;
+                animator.blendDuration = previousBlendDuration;
+            }
+        }
+
+        // Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
+        // 新規 Layer は previousLayers に存在しないため、既定の空ランタイム状態のままになる。
+        for (auto& layer : animator.layers) {
+            for (const auto& previousLayer : previousLayers) {
+                if (previousLayer.name != layer.name) continue;
+                if (stateExists(layer.states, previousLayer.runtime.currentStateName))
+                    layer.runtime = previousLayer.runtime;
+                break;
+            }
+        }
+    }
 }
 
 AnimatorControllerAsset MakeAnimatorControllerAsset(
