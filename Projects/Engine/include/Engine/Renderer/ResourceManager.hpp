@@ -8,6 +8,9 @@
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourcePool.hpp>
 #include <Engine/Renderer/RenderState.hpp>
+// WHY: DynamicTextureFormat を CreateDynamicTexture の引数に取るため、
+//      ITexture の前方宣言だけでは足りず実体が要る (ヘッダ自体は cstdint のみに依存する軽量なもの)。
+#include <Engine/Renderer/ITexture.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -73,11 +76,20 @@ public:
     // TextureTag を DrawCall.textures[] へ束縛して行う。未対応バックエンドでは Null を返す。
     ResourceHandle<RenderTargetTag> CreateCubemapRenderTarget(uint32_t size, uint32_t mipCount = 1);
     ResourceHandle<TextureTag> CreateComputeTexture(uint32_t width, uint32_t height);
+    // CPU から矩形単位で書き換えられるテクスチャ (ゼロクリア済み) を作る。
+    // 更新は Get(handle)->UpdateRegion(...) で行う。フォントの動的アトラスが使う。
+    // 未対応バックエンドでは Null ハンドルが返る。
+    ResourceHandle<TextureTag> CreateDynamicTexture(
+        uint32_t width, uint32_t height, DynamicTextureFormat format);
     // 外部 (IRenderer) が生成済みの ITexture を ResourcePool に引き取り TextureTag を返す。
     // WHY: 空連動 IBL の BakeSkyLight が畳み込んだキューブ SRV ラッパーを Lit パスへ束縛可能にする。
     ResourceHandle<TextureTag> RegisterTexture(std::unique_ptr<ITexture> texture);
     // GPU Instancing 用 StructuredBuffer。elementCount 個・stride バイトの DYNAMIC バッファを作成する。
     ResourceHandle<StructuredBufferTag> CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride);
+    // 初期データを一度だけ転送し、GPU ローカルな読み取り専用 SRV として保持する。
+    // WHY: 毎フレーム不変なスキニング入力を UPLOAD Heap から読むと PCIe/UMA 経路が律速になるため。
+    ResourceHandle<StructuredBufferTag> CreateGpuLocalStructuredBuffer(
+        const void* data, uint32_t elementCount, uint32_t stride);
     // CS が RWStructuredBuffer として書き込む DEFAULT バッファ (SRV + UAV)。GPU パーティクルプール等に使う。
     ResourceHandle<StructuredBufferTag> CreateRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride);
 

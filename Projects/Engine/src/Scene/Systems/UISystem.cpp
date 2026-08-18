@@ -29,6 +29,7 @@
 #include "Math/Plane.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Core/Logger.hpp"
+#include "Engine/Util/Utf8.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -589,6 +590,43 @@ renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
     return atlas;
 }
 
+// テキストを UTF-8 コードポイント単位で走査し、行ごとの表示幅 (スケール適用済み) を返す。
+// 改行で区切られた行数だけ要素が入る (空文字列でも 1 要素)。
+//
+// WHY: レイアウト計算 (ComputeTextLogicalSize) と描画 (SubmitTextWithAtlas) の両方が
+//      まったく同じ送り幅の規則を必要とする。ここに 1 本化しないと、
+//      カーニングや UTF-8 の扱いが片方だけズレて中央揃えが崩れる。
+std::vector<float> ComputeLineWidths(const UIText& text,
+                                     const renderer::FontAtlas& atlas,
+                                     float scale)
+{
+    std::vector<float> lineWidths;
+    float    lineW    = 0.0f;
+    char32_t previous = 0;
+
+    std::size_t offset = 0;
+    while (offset < text.text.size()) {
+        const char32_t code = util::Utf8::Decode(text.text, offset);
+        if (code == U'\n') {
+            lineWidths.push_back(lineW);
+            lineW    = 0.0f;
+            previous = 0;
+            continue;
+        }
+
+        // カーニングは「前の文字との組」に対して定義されるため、行頭では適用しない。
+        if (previous != 0)
+            lineW += atlas.GetKerning(previous, code) * scale;
+
+        const renderer::FontGlyph* glyph = atlas.GetGlyph(code);
+        const float advance = glyph ? glyph->advance : atlas.GetFallbackAdvance();
+        lineW += advance * scale + text.letterSpacing;
+        previous = code;
+    }
+    lineWidths.push_back(lineW);
+    return lineWidths;
+}
+
 math::Vector2 ComputeTextLogicalSize(const UIText& text,
                                      UISystemContext& ctx,
                                      renderer::ResourceManager& resources)
@@ -597,24 +635,21 @@ math::Vector2 ComputeTextLogicalSize(const UIText& text,
     renderer::FontAtlas& atlas = GetOrLoadFontAtlas(path, ctx, resources);
     if (!atlas.IsValid()) return {};
 
+    // 動的フォントでは、この文字列に必要なグリフをここで焼く。
+    // WHY: レイアウトは送り幅を必要とするため、幅を測る前に登録が済んでいる必要がある。
+    //      静的フォントでは即 return するのでコストはかからない。
+    atlas.PrepareText(text.text, resources);
+
     const float scale = text.fontSize / atlas.GetLineHeight();
-    const float cellW = atlas.GetCellW() * scale;
     const float cellH = atlas.GetLineHeight() * scale;
 
-    float maxW = 0.0f, lineW = 0.0f;
-    float totalH = cellH;
-    for (char c : text.text) {
-        if (c == '\n') {
-            maxW  = (std::max)(maxW, lineW);
-            lineW = 0.0f;
-            totalH += cellH;
-            continue;
-        }
-        const renderer::FontGlyph* g = atlas.GetGlyph(c);
-        lineW += g ? (g->advance * scale + text.letterSpacing) : (cellW * 0.5f + text.letterSpacing);
-    }
-    maxW = (std::max)(maxW, lineW);
-    return { maxW, totalH };
+    const std::vector<float> lineWidths = ComputeLineWidths(text, atlas, scale);
+
+    float maxW = 0.0f;
+    for (float lineW : lineWidths)
+        maxW = (std::max)(maxW, lineW);
+
+    return { maxW, cellH * static_cast<float>(lineWidths.size()) };
 }
 
 void UpdateTextSizesRecursive(GameObject& go,
@@ -653,21 +688,18 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
     renderer::FontAtlas& atlas = GetOrLoadFontAtlas(text.fontPath, ctx, resources);
     if (!atlas.IsValid()) return;
 
+    // 描画経路からも焼いておく。
+    // WHY: UITextSizeSystem を通らずに描画されるテキスト (サイズ自動調整の対象外) でも
+    //      グリフが揃っている必要がある。登録済みなら UTF-8 走査だけで戻る。
+    atlas.PrepareText(text.text, resources);
+
     const float scale = text.fontSize / atlas.GetLineHeight();
-    const float cellW = atlas.GetCellW() * scale;
     const float cellH = atlas.GetLineHeight() * scale;
 
-    // Center / Right 整列のために行ごとの幅を事前計算する
-    std::vector<float> lineWidths;
-    if (text.align != TextAlign::Left) {
-        float lineW = 0.0f;
-        for (char c : text.text) {
-            if (c == '\n') { lineWidths.push_back(lineW); lineW = 0.0f; continue; }
-            const renderer::FontGlyph* g = atlas.GetGlyph(c);
-            lineW += g ? (g->advance * scale + text.letterSpacing) : (cellW * 0.5f + text.letterSpacing);
-        }
-        lineWidths.push_back(lineW);
-    }
+    // 整列と改行位置の決定に行幅が必要なので、常に事前計算する。
+    // WHY: 旧実装は Left 以外のときだけ計算していたが、UTF-8 走査を 2 度書く方が
+    //      ズレの温床になる。1 行あたり数十文字の走査であり、コストは無視できる。
+    const std::vector<float> lineWidths = ComputeLineWidths(text, atlas, scale);
 
     int lineIdx = 0;
     auto lineStartX = [&]() -> float {
@@ -679,41 +711,60 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
 
     math::Vector2 pen = { lineStartX(), position.y };
 
-    std::vector<UIVertex> verts;
-    verts.reserve(text.text.size() * 6);
+    // ページごとに頂点を分ける。
+    // WHY: BMFont のマルチページアトラス (日本語のように 1 枚へ収まらない字種) では
+    //      グリフごとに参照テクスチャが変わる。ページ単位でまとめてから
+    //      ドローコールを分けることで、テクスチャ切り替えを最小回数に抑える。
+    std::vector<std::vector<UIVertex>> pageVerts(atlas.GetPageCount());
+    if (pageVerts.empty()) return;
+    pageVerts[0].reserve(text.text.size() * 6);
 
-    for (char c : text.text) {
-        if (c == '\n') {
+    char32_t    previous = 0;
+    std::size_t cursor   = 0;
+    while (cursor < text.text.size()) {
+        const char32_t code = util::Utf8::Decode(text.text, cursor);
+        if (code == U'\n') {
             ++lineIdx;
-            pen.x = lineStartX();
-            pen.y += cellH;
+            pen.x    = lineStartX();
+            pen.y   += cellH;
+            previous = 0;
             continue;
         }
 
-        const renderer::FontGlyph* g = atlas.GetGlyph(c);
+        if (previous != 0)
+            pen.x += atlas.GetKerning(previous, code) * scale;
+        previous = code;
+
+        const renderer::FontGlyph* g = atlas.GetGlyph(code);
         if (!g) {
-            pen.x += cellW * 0.5f + text.letterSpacing;
+            pen.x += atlas.GetFallbackAdvance() * scale + text.letterSpacing;
             continue;
         }
 
-        const float x  = pen.x;
-        const float y  = pen.y;
-        const float x2 = x + cellW;
-        const float y2 = y + cellH;
+        // 空白文字のように画像を持たないグリフは、送りだけ進めて四角形を出さない。
+        if (g->width > 0.0f && g->height > 0.0f) {
+            const float x  = pen.x + g->xOffset * scale;
+            const float y  = pen.y + g->yOffset * scale;
+            const float x2 = x + g->width  * scale;
+            const float y2 = y + g->height * scale;
 
-        verts.push_back({ {x,  y},  { g->u0, g->v0 } });
-        verts.push_back({ {x,  y2}, { g->u0, g->v1 } });
-        verts.push_back({ {x2, y},  { g->u1, g->v0 } });
-        verts.push_back({ {x2, y},  { g->u1, g->v0 } });
-        verts.push_back({ {x,  y2}, { g->u0, g->v1 } });
-        verts.push_back({ {x2, y2}, { g->u1, g->v1 } });
+            const std::size_t page =
+                (g->page >= 0 && static_cast<std::size_t>(g->page) < pageVerts.size())
+                    ? static_cast<std::size_t>(g->page) : 0;
+            std::vector<UIVertex>& verts = pageVerts[page];
+
+            verts.push_back({ {x,  y},  { g->u0, g->v0 } });
+            verts.push_back({ {x,  y2}, { g->u0, g->v1 } });
+            verts.push_back({ {x2, y},  { g->u1, g->v0 } });
+            verts.push_back({ {x2, y},  { g->u1, g->v0 } });
+            verts.push_back({ {x,  y2}, { g->u0, g->v1 } });
+            verts.push_back({ {x2, y2}, { g->u1, g->v1 } });
+        }
 
         pen.x += g->advance * scale + text.letterSpacing;
     }
 
-    if (verts.empty()) return;
-
-    // 定数バッファは全チャンク共通なので 1 回だけ更新する。
+    // 定数バッファは全ページ・全チャンク共通なので 1 回だけ更新する。
     UIConstants constants{};
     constants.ortho  = canvasToClip;
     constants.color  = text.color;
@@ -728,18 +779,25 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
     call.constantBuffers[0] = ctx.constants;
     call.layer              = layer;
     call.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
-    call.textures[0]        = atlas.GetTexture();
 
-    // kTextVBVertices を超えるテキストはチャンク分割して複数ドローコールで描く。
-    // WHY: 固定 VB サイズを超えてもエラーで打ち切らず全グリフを描画するため。
-    uint32_t offset = 0;
-    const uint32_t total = static_cast<uint32_t>(verts.size());
-    while (offset < total) {
-        const uint32_t chunk = (std::min)(total - offset, kTextVBVertices);
-        resources.Update(ctx.textVB, verts.data() + offset, chunk * sizeof(UIVertex));
-        call.vertexCount = chunk;
-        renderer.Submit(call, resources);
-        offset += chunk;
+    for (std::size_t page = 0; page < pageVerts.size(); ++page) {
+        const std::vector<UIVertex>& verts = pageVerts[page];
+        if (verts.empty()) continue;
+
+        call.textures[0] = atlas.GetTexture(static_cast<int>(page));
+        if (!call.textures[0].IsValid()) continue;
+
+        // kTextVBVertices を超えるテキストはチャンク分割して複数ドローコールで描く。
+        // WHY: 固定 VB サイズを超えてもエラーで打ち切らず全グリフを描画するため。
+        uint32_t offset = 0;
+        const uint32_t total = static_cast<uint32_t>(verts.size());
+        while (offset < total) {
+            const uint32_t chunk = (std::min)(total - offset, kTextVBVertices);
+            resources.Update(ctx.textVB, verts.data() + offset, chunk * sizeof(UIVertex));
+            call.vertexCount = chunk;
+            renderer.Submit(call, resources);
+            offset += chunk;
+        }
     }
 }
 

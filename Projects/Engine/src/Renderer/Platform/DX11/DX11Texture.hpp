@@ -41,8 +41,21 @@ public:
     // RGBA16F テクスチャを SRV + UAV 両用で生成する (Compute Shader の出力先として使用)
     bool InitForCompute(ID3D11Device* device, uint32_t width, uint32_t height);
 
+    // CPU から矩形単位で書き換えられるテクスチャを生成する (フォントの動的アトラス用)。
+    // USAGE_DEFAULT + UpdateSubresource 方式。中身はゼロクリアして返す。
+    //
+    // WHY (DYNAMIC + Map ではなく DEFAULT + UpdateSubresource): D3D11_USAGE_DYNAMIC は
+    //   Map(WRITE_DISCARD) で全面を書き直す用途向けで、部分更新には向かない。
+    //   グリフ 1 個の追記でアトラス全体を再転送するのは無駄が大きい。
+    //   DEFAULT + UpdateSubresource なら更新矩形のバイトだけを送れる。
+    bool InitDynamic(ID3D11Device* device, ID3D11DeviceContext* context,
+                     uint32_t width, uint32_t height, DynamicTextureFormat format);
+
     uint32_t GetWidth()  const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
+
+    bool UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                      const void* pixels, uint32_t srcRowPitch) override;
 
     // PSSetShaderResources / CSSetShaderResources に渡す SRV
     ID3D11ShaderResourceView*  GetSRV() const { return m_srv.Get(); }
@@ -53,6 +66,13 @@ public:
 private:
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_srv;
     Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_uav;
+
+    // 動的テクスチャ (InitDynamic) のときだけ保持する更新経路。
+    // UpdateRegion はこの 2 つが揃っているときのみ動作し、それ以外では false を返す。
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>   m_dynamicTexture;
+    ID3D11DeviceContext*                      m_dynamicContext = nullptr;  // 非所有 (Renderer が所有)
+    uint32_t m_bytesPerPixel = 0;
+
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
 };

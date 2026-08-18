@@ -414,6 +414,15 @@ std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t widt
     return tex;
 }
 
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeDynamicTexture(
+    uint32_t width, uint32_t height, DynamicTextureFormat format)
+{
+    auto tex = std::make_unique<DX11Texture>();
+    if (!tex->InitDynamic(m_device.Get(), m_context.Get(), width, height, format))
+        return nullptr;
+    return tex;
+}
+
 std::unique_ptr<IStructuredBuffer> DX11Renderer::CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
 {
     auto sb = std::make_unique<DX11StructuredBuffer>();
