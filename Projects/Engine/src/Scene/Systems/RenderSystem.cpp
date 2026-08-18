@@ -3,6 +3,8 @@
 // Scene から DrawCall を生成するオーケストレーター
 // 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include "Engine/Scene/Systems/RenderSystem.hpp"
+// ResolveGameCullingSettings — 呼び出し側が明示しなかったときのフォールバック解決に使う。
+#include "Engine/Scene/SceneUtils.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/DetailRenderPass.hpp"
@@ -267,7 +269,7 @@ bool ComputeTerrainWorldBounds(const Transform& transform, const TerrainComponen
         static_cast<float>(terrain.rows - 1) * terrain.cellSize * 0.5f
     };
 
-    const math::Vector4 worldCenter = transform.GetWorldMatrix()
+    const math::Vector4 worldCenter = transform.GetPresentationWorldMatrix()
         * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
     const float maxScale = (std::max)(
         (std::max)(std::abs(transform.worldScale.x), std::abs(transform.worldScale.y)),
@@ -377,9 +379,17 @@ void RenderSystem(Scene& scene,
                   const renderer::RenderSettings* settings,
                   fbzz::LayerMask cullingMask,
                   const RenderSystemUIOptions* uiOptions,
-                  const physics::World* physicsWorld)
+                  const physics::World* physicsWorld,
+                  const CameraCullingSettings* cullingSettings)
 {
     FBZZ_PROFILE_SCOPE("RenderSystem");
+
+    // カリング挙動は「明示指定 > シーンのメインカメラ > 既定値」の順で解決する。
+    // WHY シーンから引くフォールバックを持つか: Standalone / GameHub テンプレートは
+    //     RenderSystem をそのまま呼ぶだけなので、呼び出し側を書き換えなくても
+    //     CameraComponent のカリング設定が効くようにしておきたい。
+    const CameraCullingSettings resolvedCulling =
+        cullingSettings ? *cullingSettings : ResolveGameCullingSettings(scene);
 
     // VFXCameraShake — VFX グラフの Camera Shake ノードによる揺れ。
     // WHY: カメラ本体の position/rotation を書き換えると DebugCamera が持つ yaw/pitch と
@@ -1610,6 +1620,22 @@ void RenderSystem(Scene& scene,
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles
     };
+    passCtx.frustumCullingEnabled   = resolvedCulling.frustumCulling;
+    passCtx.occlusionCullingEnabled = resolvedCulling.occlusionCulling;
+    passCtx.cullingBoundsPadding    = resolvedCulling.cullingBoundsPadding;
+    passCtx.cullMaxDistance         = resolvedCulling.maxDrawDistance;
+    passCtx.cullDistanceSpherical   = resolvedCulling.cullDistanceSpherical;
+    passCtx.smallObjectScreenHeight = resolvedCulling.smallObjectScreenHeight;
+    for (int i = 0; i < kCullLayerCount; ++i) {
+        passCtx.cullLayerDistances[i] = resolvedCulling.layerCullDistances[i];
+        if (resolvedCulling.layerCullDistances[i] > 0.0f)
+            passCtx.hasLayerCullDistances = true;
+    }
+    // 極小オブジェクト判定用の射影スケール = 1/tan(fovY/2)。
+    // WHY ここで 1 回だけ求めるか: Camera::GetProjectionMatrix() は毎回行列を組み直すため、
+    //     オブジェクトごとに呼ぶと判定本体より行列生成の方が高くつく。
+    passCtx.cullProjScaleY    = camera.GetProjectionMatrix().m[1][1];
+    passCtx.cullCameraForward = camera.GetForward();
     passCtx.width                   = sHdrW;
     passCtx.height                  = sHdrH;
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
@@ -1650,8 +1676,9 @@ void RenderSystem(Scene& scene,
         //   slice(nearZ) = 0 / slice(clusterFar) = GridZ
         // WHY 対数か: 点光源のカリングで効くのは深度方向の薄さで、カメラ近傍ほど細かく
         //      切りたい。等間隔だと手前の 1 スライスが広くなりすぎて何も落とせない。
-        const float nearZ = std::max(camera.m_near, 0.01f);
-        const float farZ  = std::max(std::min(camera.m_far, rs.clustered.maxDistance), nearZ * 2.0f);
+        // Windows.h の min/max マクロ展開を防ぎ、std::max/std::min を確実に呼び出す。
+        const float nearZ = (std::max)(camera.m_near, 0.01f);
+        const float farZ  = (std::max)((std::min)(camera.m_far, rs.clustered.maxDistance), nearZ * 2.0f);
         const float logRatio = std::log(farZ / nearZ);
 
         ClusterConstantsCB clusterData{};
@@ -2003,7 +2030,7 @@ void RenderSystem(Scene& scene,
             if (!entry.script || !entry.script->enabled)
                 continue;
             entry.script->SetContext(&scene, go);
-            entry.script->OnSetupRenderPasses(pipeline, passCtx);
+            entry.script->InvokeSetupRenderPasses(pipeline, passCtx);
         }
     }
 
@@ -2079,7 +2106,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled) continue;
                 entry.script->SetContext(&scene, go);
                 entry.script->gizmo.renderer = &passCtx.renderer;
-                entry.script->OnDrawGizmos();
+                entry.script->InvokeNoArg(&Script::OnDrawGizmos, "OnDrawGizmos");
                 entry.script->gizmo.renderer = nullptr;
             }
         }
@@ -2284,7 +2311,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled)
                     continue;
                 entry.script->SetContext(&scene, go);
-                entry.script->OnPreRender();
+                entry.script->InvokeNoArg(&Script::OnPreRender, "OnPreRender");
             }
         }
     }
@@ -2325,7 +2352,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled)
                     continue;
                 entry.script->SetContext(&scene, go);
-                entry.script->OnPostRender();
+                entry.script->InvokeNoArg(&Script::OnPostRender, "OnPostRender");
             }
         }
     }
@@ -2351,9 +2378,13 @@ void RenderSystem(Scene& scene,
         dbgSnap.renderStats.totalObjects    = passCtx.statsTotalObjects;
         dbgSnap.renderStats.frustumCulled   = passCtx.statsFrustumCulled;
         dbgSnap.renderStats.occlusionCulled = passCtx.statsOcclusionCulled;
+        dbgSnap.renderStats.distanceCulled    = passCtx.statsDistanceCulled;
+        dbgSnap.renderStats.smallObjectCulled = passCtx.statsSmallObjectCulled;
         dbgSnap.renderStats.drawCalls       = passCtx.statsDrawCalls;
         dbgSnap.renderStats.vertexCount     = passCtx.statsVertexCount;
         dbgSnap.renderStats.triangleCount   = passCtx.statsTriangleCount;
+        dbgSnap.renderStats.skinningVertexCount = passCtx.statsSkinningVertexCount;
+        dbgSnap.renderStats.skinningDispatchCount = passCtx.statsSkinningDispatchCount;
         dbgSnap.renderStats.shadowDrawCalls     = passCtx.statsShadowDrawCalls;
         dbgSnap.renderStats.shadowTriangleCount = passCtx.statsShadowTriangleCount;
 

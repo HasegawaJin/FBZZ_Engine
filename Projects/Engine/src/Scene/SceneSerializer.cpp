@@ -26,6 +26,7 @@
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
+#include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
@@ -1197,6 +1198,25 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ccTbl.insert("isMain",  cc->isMain);
             ccTbl.insert("enabled", cc->enabled);
             ccTbl.insert("cullingMask", (int64_t)cc->cullingMask);
+            ccTbl.insert("frustumCulling", cc->frustumCulling);
+            ccTbl.insert("occlusionCulling", cc->occlusionCulling);
+            ccTbl.insert("cullingBoundsPadding", (double)cc->cullingBoundsPadding);
+            ccTbl.insert("maxDrawDistance", (double)cc->maxDrawDistance);
+            ccTbl.insert("cullDistanceSpherical", cc->cullDistanceSpherical);
+            ccTbl.insert("smallObjectScreenHeight", (double)cc->smallObjectScreenHeight);
+            // レイヤー別距離は「1 つでも設定されているとき」だけ 32 要素の配列を書く。
+            // WHY: 既定 (全 0) のカメラすべてに 32 個のゼロが並ぶと、シーンの差分が読めなくなる。
+            {
+                bool anyLayerDistance = false;
+                for (int i = 0; i < kCullLayerCount; ++i)
+                    if (cc->layerCullDistances[i] > 0.0f) { anyLayerDistance = true; break; }
+                if (anyLayerDistance) {
+                    toml::array layerArr;
+                    for (int i = 0; i < kCullLayerCount; ++i)
+                        layerArr.push_back((double)cc->layerCullDistances[i]);
+                    ccTbl.insert("layerCullDistances", std::move(layerArr));
+                }
+            }
             goTbl.insert("CameraComponent", std::move(ccTbl));
         }
 
@@ -1280,6 +1300,25 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ppvcTbl.insert("influenceRadius", (double)ppvc->influenceRadius);
             ppvcTbl.insert("blendDistance",   (double)ppvc->blendDistance);
             goTbl.insert("PostProcessVolumeComponent", std::move(ppvcTbl));
+        }
+
+        // VFXGraphComponent — グラフ本体と Inspector で編集する再生設定を保存する。
+        // WHY: VFX は Custom Inspector で扱うため Automatic serialization の対象外。
+        //      graphPath を保存しないと、Scene を再読込した時点で参照欄が空になり、
+        //      同じ GameObject の VFX が再生できなくなる。
+        if (auto* vfx = go.GetComponent<VFXGraphComponent>()) {
+            toml::table vfxTbl;
+            vfxTbl.insert("enabled",            vfx->enabled);
+            vfxTbl.insert("graphPath",          vfx->graphPath);
+            vfxTbl.insert("playOnAwake",        vfx->playOnAwake);
+            vfxTbl.insert("loop",               vfx->loop);
+            vfxTbl.insert("speed",              static_cast<double>(vfx->speed));
+            vfxTbl.insert("syncParentAnimator", vfx->syncParentAnimator);
+            vfxTbl.insert("variant",            vfx->variant);
+            // SerializeVFXOverrides 内で埋め込み参照も GUID 化する。
+            vfxTbl.insert("parameterOverrides",
+                          asset::SerializeVFXOverrides(vfx->parameterOverrides));
+            goTbl.insert("VFXGraphComponent", std::move(vfxTbl));
         }
 
         // ParticleEmitter
@@ -1558,6 +1597,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // CharacterControllerComponent
         if (auto* cc = go.GetComponent<CharacterControllerComponent>()) {
             toml::table ccTbl;
+            ccTbl.insert("enabled",              cc->enabled);
+            ccTbl.insert("groundingMode",        static_cast<int>(cc->groundingMode));
             ccTbl.insert("jumpMinAirTime",        (double)cc->jumpMinAirTime);
             ccTbl.insert("fallVelThreshold",      (double)cc->fallVelThreshold);
             ccTbl.insert("groundVelThreshold",    (double)cc->groundVelThreshold);
@@ -1657,8 +1698,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             smrTbl.insert("enabled",     smr->enabled);
             smrTbl.insert("castShadows", smr->castShadows);
             smrTbl.insert("modelPath",   smr->modelPath);
-            // NOTE: 旧 "meshIndex" は書き出さない。submesh の担当は
-            //       MaterialComponent のスロット (visible) で表現する。
+            // この Renderer が担当する submesh の添字列。
+            // 空のときは書き出さない = 「モデル全体を描く」を既定値で表す。
+            // WHY 配列で持つか: DCC のノード 1 個が複数マテリアルを持つため、
+            //     1 GameObject が複数 submesh を担当しうる (Unity の materials 配列と同じ)。
+            if (!smr->submeshIndices.empty()) {
+                toml::array submeshes;
+                for (const uint32_t index : smr->submeshIndices)
+                    submeshes.push_back(static_cast<int64_t>(index));
+                smrTbl.insert("submeshIndices", std::move(submeshes));
+            }
+            // ボーン階層の起点 (Unity の SkinnedMeshRenderer.rootBone 相当)。
+            //
+            // WHY 保存が必要になったか (重要):
+            //   nodeEntities は保存せず、AnimatorSystem の EnsureBoneHierarchy が
+            //   「自分の子孫から BoneComponent を探す」ことで作り直していた。これは
+            //   Renderer とボーンが同じ GameObject 配下にある前提で、ノードごとに
+            //   子 GameObject へ分けるとボーンは兄弟の Armature 側に居るため見つからず、
+            //   Renderer ごとにスケルトンが複製される。起点を明示すれば推測が要らない。
+            //   EntityID は実行ごとに変わるため、BoneComponent と同じく GUID + 名前で持つ。
+            if (smr->skeletonRootEntity.IsValid()) {
+                if (auto* skeletonRoot = scene.GetGameObject(smr->skeletonRootEntity)) {
+                    smrTbl.insert("skeletonRootGuid", skeletonRoot->instanceId);
+                    smrTbl.insert("skeletonRootName", skeletonRoot->name);
+                }
+            }
             goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
         }
 
@@ -1814,7 +1878,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 pTbl.insert("type",       (int64_t)p.type);
                 pTbl.insert("floatValue", (double)p.floatValue);
                 pTbl.insert("intValue",   (int64_t)p.intValue);
-                pTbl.insert("boolValue",  p.boolValue);
+                // Trigger は一時的な発火信号であり、Scene に初期値を保存しない。
+                // WHY: 保存された true がロード直後の遷移を発火させると、Play 開始時に
+                //      Player の Jump / Draw / Holster が勝手に再生される。
+                pTbl.insert(
+                    "boolValue",
+                    p.type == ParamType::Trigger ? false : p.boolValue);
                 paramsArr.push_back(std::move(pTbl));
             }
             animTbl.insert("parameters", std::move(paramsArr));
@@ -2362,6 +2431,20 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.isMain  = (*ccTbl)["isMain"].value_or(true);
             cc.enabled = (*ccTbl)["enabled"].value_or(true);
             cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);
+            // 既定値は「これまでの挙動」= 両方有効・余白なし。旧シーンを読んでも絵は変わらない。
+            cc.frustumCulling   = (*ccTbl)["frustumCulling"].value_or(true);
+            cc.occlusionCulling = (*ccTbl)["occlusionCulling"].value_or(true);
+            cc.cullingBoundsPadding = (float)(*ccTbl)["cullingBoundsPadding"].value_or(0.0);
+            cc.maxDrawDistance = (float)(*ccTbl)["maxDrawDistance"].value_or(0.0);
+            cc.cullDistanceSpherical = (*ccTbl)["cullDistanceSpherical"].value_or(true);
+            cc.smallObjectScreenHeight = (float)(*ccTbl)["smallObjectScreenHeight"].value_or(0.0);
+            // 要素数が足りない / 多い旧データでも壊れないよう、書ける範囲だけ読む。
+            if (const auto* layerArr = (*ccTbl)["layerCullDistances"].as_array()) {
+                const size_t count =
+                    (std::min)(layerArr->size(), (size_t)kCullLayerCount);
+                for (size_t i = 0; i < count; ++i)
+                    cc.layerCullDistances[i] = (float)(*layerArr)[i].value_or(0.0);
+            }
             go.AddComponent<CameraComponent>(cc);
         }
 
@@ -2448,6 +2531,22 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
             ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
             go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
+        }
+
+        if (auto* vfxTbl = (*goTbl)["VFXGraphComponent"].as_table()) {
+            VFXGraphComponent vfx{};
+            vfx.enabled             = (*vfxTbl)["enabled"].value_or(true);
+            vfx.graphPath           = (*vfxTbl)["graphPath"].value_or(std::string{});
+            vfx.playOnAwake         = (*vfxTbl)["playOnAwake"].value_or(true);
+            vfx.loop                = (*vfxTbl)["loop"].value_or(false);
+            vfx.speed               = static_cast<float>((*vfxTbl)["speed"].value_or(1.0));
+            vfx.syncParentAnimator  = (*vfxTbl)["syncParentAnimator"].value_or(false);
+            vfx.variant             = (*vfxTbl)["variant"].value_or(std::string{});
+            vfx.serializedParameterOverrides =
+                (*vfxTbl)["parameterOverrides"].value_or(std::string{});
+            asset::DeserializeVFXOverrides(vfx.serializedParameterOverrides,
+                                           vfx.parameterOverrides);
+            go.AddComponent<VFXGraphComponent>(std::move(vfx));
         }
 
         // ParticleEmitter
@@ -2758,6 +2857,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // CharacterControllerComponent
         if (auto* ccTbl = (*goTbl)["CharacterControllerComponent"].as_table()) {
             CharacterControllerComponent cc{};
+            cc.enabled                 = (*ccTbl)["enabled"].value_or(true);
+            const int groundingMode    = (*ccTbl)["groundingMode"].value_or(0);
+            cc.groundingMode           = static_cast<CharacterGroundingMode>(
+                std::clamp(groundingMode, 0, 2));
             cc.jumpMinAirTime        = (float)(*ccTbl)["jumpMinAirTime"].value_or(0.2);
             cc.fallVelThreshold      = (float)(*ccTbl)["fallVelThreshold"].value_or(-0.5);
             cc.groundVelThreshold    = (float)(*ccTbl)["groundVelThreshold"].value_or(0.3);
@@ -2861,6 +2964,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 smr.model = asset::AssetManager::LoadModel(smr.modelPath);
                 if (!smr.model)
                     FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
+            }
+            // 無い / 空なら submeshIndices は空のまま = モデル全体を描く。
+            if (auto* submeshes = (*smrTbl)["submeshIndices"].as_array()) {
+                smr.submeshIndices.reserve(submeshes->size());
+                for (const auto& node : *submeshes)
+                    if (const auto value = node.value<int64_t>(); value && *value >= 0)
+                        smr.submeshIndices.push_back(static_cast<uint32_t>(*value));
             }
             go.AddComponent<SkinnedMeshRenderer>(std::move(smr));
         }
@@ -3043,6 +3153,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     p.floatValue = (float)(*pTbl)["floatValue"].value_or(0.0);
                     p.intValue   = (int)(*pTbl)["intValue"].value_or((int64_t)0);
                     p.boolValue  = (*pTbl)["boolValue"].value_or(false);
+                    // 旧 Scene に残った Trigger=true もランタイム初期値にはしない。
+                    if (p.type == ParamType::Trigger)
+                        p.boolValue = false;
                     anim.parameters.push_back(std::move(p));
                 }
             }
@@ -3561,6 +3674,31 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
 
+    // SkinnedMeshRenderer: skeletonRootEntity
+    // WHY Pass 3 か: 起点のボーン GameObject は Pass 1 の時点でまだ生成されていない
+    //     ことがあるため、全 GO を追加し終えてから識別子を EntityID へ変換する。
+    //     これが解決できていれば、AnimatorSystem は自分の子孫を探さずに
+    //     共有スケルトンへ束縛できる (兄弟の Armature を持つ構成で必須)。
+    for (size_t i = 0; i < goArr->size(); ++i) {
+        auto* goTbl = (*goArr)[i].as_table();
+        if (!goTbl) continue;
+        auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table();
+        if (!smrTbl) continue;
+        const std::string rootGuid = (*smrTbl)["skeletonRootGuid"].value_or(std::string{});
+        const std::string rootName = (*smrTbl)["skeletonRootName"].value_or(std::string{});
+        if (rootGuid.empty() && rootName.empty()) continue;
+        const std::string ownerGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        GameObject* ownerGo = ownerGuid.empty() ? nullptr : scene->FindByGuid(ownerGuid);
+        if (!ownerGo) ownerGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
+        if (!ownerGo) continue;
+        auto* smr = ownerGo->GetComponent<SkinnedMeshRenderer>();
+        if (!smr) continue;
+        GameObject* skeletonRoot = nullptr;
+        if (!rootGuid.empty()) skeletonRoot = scene->FindByGuid(rootGuid);
+        if (!skeletonRoot && !rootName.empty()) skeletonRoot = scene->Find(rootName);
+        if (skeletonRoot) smr->skeletonRootEntity = skeletonRoot->GetID();
+    }
+
     // TerrainGridComponent の cellInstanceIds → cells を全 GO ロード後に解決する。
     // WHY: Grid が参照する Terrain GO はシリアライズ順で後に来る可能性があるため、
     //      全 GO を追加してから GUID → EntityID の変換を行う。
@@ -3748,6 +3886,22 @@ bool SceneSerializer::AppendObjects(
             ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
             ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
             go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
+        }
+
+        if (auto* vfxTbl = (*goTbl)["VFXGraphComponent"].as_table()) {
+            VFXGraphComponent vfx{};
+            vfx.enabled             = (*vfxTbl)["enabled"].value_or(true);
+            vfx.graphPath           = (*vfxTbl)["graphPath"].value_or(std::string{});
+            vfx.playOnAwake         = (*vfxTbl)["playOnAwake"].value_or(true);
+            vfx.loop                = (*vfxTbl)["loop"].value_or(false);
+            vfx.speed               = static_cast<float>((*vfxTbl)["speed"].value_or(1.0));
+            vfx.syncParentAnimator  = (*vfxTbl)["syncParentAnimator"].value_or(false);
+            vfx.variant             = (*vfxTbl)["variant"].value_or(std::string{});
+            vfx.serializedParameterOverrides =
+                (*vfxTbl)["parameterOverrides"].value_or(std::string{});
+            asset::DeserializeVFXOverrides(vfx.serializedParameterOverrides,
+                                           vfx.parameterOverrides);
+            go.AddComponent<VFXGraphComponent>(std::move(vfx));
         }
 
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {

@@ -53,6 +53,7 @@ bool DX12Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
 void DX12Renderer::Shutdown()
 {
+    EndComputeBatch();
     m_context.Flush();
     m_iblBaker.reset();
     if (m_gpuReadback && m_gpuMappedTimestamps) m_gpuReadback->Unmap(0, nullptr);
@@ -106,6 +107,8 @@ void DX12Renderer::InvalidateRootCbvCache()
 void DX12Renderer::BeginFrame()
 {
     if (m_context.BeginFrame()) {
+        m_computeBatchActive = false;
+        m_computeBatchWrittenResources.clear();
         m_currentRenderTarget = nullptr;
         m_currentCubeRtv = {};
         // WHAT: shader-visible SRVリングはフレーム単位で巻き戻るため、前フレームのGPUテーブル
@@ -130,6 +133,8 @@ void DX12Renderer::BeginFrame()
 
 void DX12Renderer::EndFrame()
 {
+    // 呼び出し側が閉じ忘れても、UAV 書き込みを未同期のまま Submit しない。
+    EndComputeBatch();
     m_context.EndFrame();
 }
 
@@ -530,14 +535,53 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     m_stateTracker.FlushBarriers(commands);
     commands->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
     if (writtenCount > 0) {
-        // WHAT: このDispatchが書き込んだUAVの読み出し前ハザードを防ぐバリアも1回にまとめて発行する。
-        std::array<D3D12_RESOURCE_BARRIER, 10> uavBarriers{};
-        for (uint32_t index = 0; index < writtenCount; ++index) {
-            uavBarriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-            uavBarriers[index].UAV.pResource = writtenResources[index];
+        if (m_computeBatchActive) {
+            // バッチ内 Dispatch は相互依存しない契約なので、ここでは記録だけ行う。
+            // 同じ UAV が複数回現れてもパス末尾のバリアは 1 個で十分。
+            for (uint32_t index = 0; index < writtenCount; ++index) {
+                if (std::find(m_computeBatchWrittenResources.begin(),
+                              m_computeBatchWrittenResources.end(),
+                              writtenResources[index]) == m_computeBatchWrittenResources.end()) {
+                    m_computeBatchWrittenResources.push_back(writtenResources[index]);
+                }
+            }
+        } else {
+            // 通常 Dispatch は後続 Dispatch が同じ UAV を読む可能性があるため即時同期する。
+            std::array<D3D12_RESOURCE_BARRIER, 10> uavBarriers{};
+            for (uint32_t index = 0; index < writtenCount; ++index) {
+                uavBarriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                uavBarriers[index].UAV.pResource = writtenResources[index];
+            }
+            commands->ResourceBarrier(writtenCount, uavBarriers.data());
         }
-        commands->ResourceBarrier(writtenCount, uavBarriers.data());
     }
+}
+
+void DX12Renderer::BeginComputeBatch()
+{
+    // ネストは契約外。既存バッチを安全に閉じてから新しい収集を開始する。
+    if (m_computeBatchActive) EndComputeBatch();
+    m_computeBatchWrittenResources.clear();
+    m_computeBatchActive = true;
+}
+
+void DX12Renderer::EndComputeBatch()
+{
+    if (!m_computeBatchActive) return;
+
+    if (m_context.IsFrameOpen() && !m_computeBatchWrittenResources.empty()) {
+        std::vector<D3D12_RESOURCE_BARRIER> barriers(m_computeBatchWrittenResources.size());
+        for (size_t index = 0; index < m_computeBatchWrittenResources.size(); ++index) {
+            barriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+            barriers[index].UAV.pResource = m_computeBatchWrittenResources[index];
+        }
+        // WHAT: Dispatch ごとの API 呼び出しをやめ、パス全体を 1 回の UAV barrier 群で確定する。
+        m_context.GetCommandList()->ResourceBarrier(
+            static_cast<UINT>(barriers.size()), barriers.data());
+    }
+
+    m_computeBatchWrittenResources.clear();
+    m_computeBatchActive = false;
 }
 
 void DX12Renderer::Resize(uint32_t width, uint32_t height)
@@ -810,11 +854,27 @@ std::unique_ptr<ITexture> DX12Renderer::CreateNativeComputeTexture(uint32_t widt
     return texture;
 }
 
+std::unique_ptr<ITexture> DX12Renderer::CreateNativeDynamicTexture(
+    uint32_t width, uint32_t height, DynamicTextureFormat format)
+{
+    auto texture = std::make_unique<DX12Texture>();
+    if (!texture->InitDynamic(&m_context, &m_stateTracker, width, height, format)) return nullptr;
+    return texture;
+}
+
 std::unique_ptr<IStructuredBuffer> DX12Renderer::CreateNativeStructuredBuffer(
     const void* data, uint32_t count, uint32_t stride)
 {
     auto buffer = std::make_unique<DX12StructuredBuffer>();
     if (!buffer->Init(&m_context, &m_stateTracker, data, count, stride, false)) return nullptr;
+    return buffer;
+}
+
+std::unique_ptr<IStructuredBuffer> DX12Renderer::CreateNativeGpuLocalStructuredBuffer(
+    const void* data, uint32_t count, uint32_t stride)
+{
+    auto buffer = std::make_unique<DX12StructuredBuffer>();
+    if (!buffer->Init(&m_context, &m_stateTracker, data, count, stride, false, true)) return nullptr;
     return buffer;
 }
 

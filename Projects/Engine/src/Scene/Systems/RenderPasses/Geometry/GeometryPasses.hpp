@@ -261,27 +261,53 @@ struct WorldBounds {
 
 // メッシュのローカルバウンディング球をワールド空間に変換する。
 // boundsRadius が 0 のメッシュ (ComputeBounds 未実行) は半径 0 を返す。
-WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh);
-
-// バウンディング球が視錐台と交差するかを判定する。
-// false → フラスタム外確定 → 描画スキップ可能。
-bool IsVisibleInFrustum(const math::Frustum& frustum,
-                        const Transform& tf,
-                        const renderer::Mesh& mesh);
+// padding はワールド単位で半径へ加算する余白 (カメラの Culling Bounds Padding)。
+WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
+                               float padding = 0.0f);
 
 // SkinnedMeshRenderer の全 submesh bounds を 1 つの保守的なワールド球へまとめる。
 // false の場合は CPU bounds 未生成などで安全にカリングできないため、呼び出し側は描画を継続する。
 bool ComputeSkinnedWorldBounds(const Transform& tf,
                                const SkinnedMeshRenderer& smr,
-                               WorldBounds& outBounds);
+                               WorldBounds& outBounds,
+                               float padding = 0.0f);
 
-bool IsSkinnedVisibleInFrustum(const math::Frustum& frustum,
-                               const Transform& tf,
-                               const SkinnedMeshRenderer& smr);
+// ── パス側から使うカリング入口 ────────────────────────────────────────────────
+// カメラのカリング設定 (距離 / 極小 / 錐台) をこの順で 1 回の bounds 計算から判定し、
+// 落とした理由に対応する統計カウンターまでここで加算する。
+//
+// WHY 個別の判定関数をパスから直接呼ばないか:
+//   1. 「カメラの Frustum Culling を切ったら本当に全部出る」ことを保証したい。
+//      パスごとに if (ctx.frustumCullingEnabled && ...) を手書きすると、
+//      新しいパスを足したときに必ずどこかで書き漏らす。
+//   2. 統計をパス側で ++ すると、判定を 1 つ足すたびに全パスへカウンターの追加が要る。
+//      「どのカリングで落ちたか」は不具合報告で最初に知りたい情報なので、
+//      判定と数え上げは同じ場所に置く。
+//   3. 距離・極小・錐台はすべて同じワールド球を使う。呼び出し側で分けると
+//      スキンドメッシュの bounds (全 submesh を 2 周する) を何度も作り直すことになる。
+//
+// 戻り値 false = このカメラでは描かない。統計は加算済みなので呼び出し側は continue するだけでよい。
+bool IsMeshVisible(RenderPassContext& ctx,
+                   const GameObject& go,
+                   const renderer::Mesh& mesh);
 
-// fzmat の render_path フィールドから描画パスを決定する。
-// WHY: カスタムシェーダーはエンジンコードを触らず render_path = "forward"/"deferred" で
-//      自分のレンダーパスを制御できるようにするため。
+bool IsSkinnedVisible(RenderPassContext& ctx,
+                      const GameObject& go,
+                      const SkinnedMeshRenderer& smr);
+
+// 距離カリングの判定だけを単体で行う (ShadowPass 用)。
+// WHY 影にも要るか: 距離で本体を消しても caster を残すと、オブジェクトが無い場所に
+//     影だけが落ちる。カリングの中で一番目につく壊れ方なので、同じ距離で揃える。
+// NOTE: 極小オブジェクト判定は共有しない。ShadowPass はシャドウマップのテクセル基準で
+//       独自の極小カリングを持っており、そちらの方が影の解像度に即している。
+bool IsWithinCullDistance(const RenderPassContext& ctx,
+                          const GameObject& go,
+                          const WorldBounds& bounds);
+
+// GBuffer に格納できない材質かを自動判定する。
+// WHY: Forward / Deferred の主経路は RenderSettings::pipeline が決めるため、
+//      Material の render_path による通常材質の上書きは行わない。
+//      ただし GBuffer に表現できない高度なローブだけは情報欠落を避けるため Forward へ送る。
 // NOTE: MaterialSlot を受けるので MaterialComponent (= スロット 0) も submesh 別スロットも渡せる。
 bool IsForwardOnly(const MaterialSlot& slot);
 

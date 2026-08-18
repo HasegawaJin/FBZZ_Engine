@@ -7,6 +7,7 @@
 #include <Physics/Layer.hpp>
 #include <memory>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 
 namespace fbzz::scene    { class Scene; }
@@ -46,6 +47,13 @@ void RenderSystem(Scene& scene,
                   const renderer::RenderSettings* settings = nullptr,
                   fbzz::LayerMask cullingMask = fbzz::Layer::Everything,
                   const RenderSystemUIOptions* uiOptions = nullptr,
-                  const physics::World* physicsWorld = nullptr);
+                  const physics::World* physicsWorld = nullptr,
+                  // カリング挙動の上書き。nullptr のときはシーンのメインカメラから解決する。
+                  // WHY 既定を「シーンから解決」にするか: Standalone / GameHub テンプレートは
+                  //     RenderSystem を素朴に呼ぶだけなので、呼び出し側を書き換えなくても
+                  //     CameraComponent の設定が効くようにしておきたい。
+                  //     Editor の Scene View は自前のデバッグカメラで描くため、
+                  //     ゲームカメラの設定を持ち込まないよう明示的に既定値を渡す。
+                  const CameraCullingSettings* cullingSettings = nullptr);
 
 } // namespace fbzz::scene
