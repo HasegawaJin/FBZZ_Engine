@@ -250,6 +250,13 @@ std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
 
+    // どのノードがどの submesh を描くかの対応表。
+    // WHY スケルトンと別に持つか: Skeleton::nodes は「変形の材料」で、ボーンも補助ノードも
+    //     含む全ノードが並ぶ。こちらが答えるのは「GameObject をどこに何個作り、それぞれ
+    //     どの submesh を描かせるか」という配置の問だけで、目的が違う。
+    //     スキンドは PreTransformVertices を通していないため、階層はそのまま残っている。
+    ImportModelNodes(scene, unitScale, *model);
+
     // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
     if (model->skeleton) BuildReferencePose(*model->skeleton);
 

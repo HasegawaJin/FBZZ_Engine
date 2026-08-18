@@ -261,12 +261,12 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
 
         if (smr && smr->model) {
-            // 1 GameObject = モデル全体。submesh ごとの子 GO は無くなったので、
-            // どの submesh に当たっても選ばれるのはこの GameObject 自身。
+            // どの submesh に当たっても選ばれるのはこの Renderer の GameObject 自身。
             // 描画されていない (非表示スロットの) submesh は判定から外す。
+            // mi はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
             const auto* mat = go.GetComponent<scene::MaterialComponent>();
-            for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
-                const auto& meshPtr = smr->model->meshes[mi];
+            for (size_t mi = 0; mi < smr->SubmeshCount(); ++mi) {
+                const renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                 if (!meshPtr) continue;
                 if (mat && !mat->SlotAt(mi).visible) continue;
                 // WHY: スキンメッシュはアニメーションでバインドポーズより外へ動くため、

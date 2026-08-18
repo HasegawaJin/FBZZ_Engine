@@ -16,16 +16,36 @@
 //     FzSkelHeader
 //     FzSkeletonNodeData[] (各ノードの childCount × int32 が直後に続く)
 //     FzBoneData[]
+//   ノード階層 (v4 以降・NODES フラグ時):
+//     FzModelNodeChunkHeader
+//     FzModelNodeData[] (各ノードの meshCount × uint32 と childCount × int32 が直後に続く)
 #pragma once
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <cstdint>
 
 namespace fbzz::asset {
 
-constexpr uint32_t FZMODEL_VERSION      = 3;
+// v4: 末尾に DCC のノード階層チャンク (FZND) を追加。
+// WHY 末尾へ足すか: 既存の全オフセットに触れずに拡張できる。読み手は LOD と
+//     スケルトンを読み終えた後で、フラグを見てから続きを読むだけでよい。
+constexpr uint32_t FZMODEL_VERSION      = 4;
 constexpr uint32_t FZMODEL_FLAG_SKINNED = 1u << 0;
 constexpr uint32_t FZMODEL_FLAG_LOD     = 1u << 1;
+// ノード階層チャンクが存在する。メッシュを持たないモデルでは立たない。
+constexpr uint32_t FZMODEL_FLAG_NODES   = 1u << 2;
+// ノードの変換が既に頂点へ焼き込まれている。
+//
+// WHY このフラグが要るか (重要):
+//   現状の書き出しは 2 通りとも頂点をモデル空間へ落としている。
+//     静的: aiProcess_PreTransformVertices / applyStaticNodeTransforms で頂点へベイク
+//     スキンド: 描画はボーンパレット経由で、メッシュノードの変換は使われない
+//   それでもノードの TRS は情報として保存する価値がある (将来ベイクを止めたときに必要)。
+//   保存された TRS を無条件に GameObject の Transform へ入れると二重変換になるため、
+//   「入れてよいか」を配置側が判断できるようにフラグで明示する。これが無いと
+//   モデルが原点へ潰れる / 二重に回るという、原因の見えない壊れ方をする。
+constexpr uint32_t FZMODEL_FLAG_NODE_TRANSFORMS_BAKED = 1u << 3;
 constexpr uint32_t FZMODEL_SLOT_NAME_LEN = 64;
+constexpr uint32_t FZMODEL_NODE_NAME_LEN = 64;
 
 struct FzModelHeader {
     char     magic[4];           // "FZMD"
@@ -74,6 +94,31 @@ struct FzMorphDelta {
     float tangent[3];
 };
 static_assert(sizeof(FzMorphDelta) == 36, "FzMorphDelta size mismatch");
+
+// ── ノード階層チャンク (v4) ────────────────────────────────────────────
+// DCC のノード 1 個 = 配置時の 1 GameObject。ノード内のマテリアル分割は
+// meshIndices の複数要素 (= Renderer の submesh 列) として表現する。
+struct FzModelNodeChunkHeader {
+    char     magic[4];        // "FZND"
+    uint32_t nodeCount;
+    int32_t  rootNodeIndex;
+    uint32_t _pad;
+};
+static_assert(sizeof(FzModelNodeChunkHeader) == 16, "FzModelNodeChunkHeader size mismatch");
+
+// 1 ノードのシリアライズ形式。
+// 直後に meshCount × uint32_t (lods[0].submeshes の添字)、
+// 続いて childCount × int32_t が並ぶ。
+struct FzModelNodeData {
+    char     name[FZMODEL_NODE_NAME_LEN];
+    int32_t  parentIndex;
+    float    localTranslation[3];
+    float    localRotation[4];    // x,y,z,w
+    float    localScale[3];
+    uint32_t meshCount;
+    uint32_t childCount;
+};
+static_assert(sizeof(FzModelNodeData) == 116, "FzModelNodeData size mismatch");
 
 // FzSkelHeader / FzSkeletonNodeData / FzBoneData / FZSKEL_VERSION は
 // FzAssetFormat.hpp で定義済み (上記 include 経由で参照可)

@@ -43,6 +43,19 @@ std::unique_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
                                                     const aiMesh* mesh,
                                                     renderer::ResourceManager& resources);
 
+// ── ノード階層 ─────────────────────────────────────────────────
+// aiNode を再帰的に辿り Model::nodes / rootNodeIndex を構築する。
+// aiNode::mMeshes をそのまま ModelNode::meshIndices へ写すため、DCC 上で 1 個だった
+// オブジェクトがマテリアル分割で複数 aiMesh になっていても 1 ノードに束ねられる。
+// NOTE: aiProcess_PreTransformVertices を通したシーンでは階層が既に潰れているため、
+//       呼んでも「全メッシュを持つルート 1 個」しか得られない。
+void ImportModelNodes(const aiScene* scene, float unitScale, Model& model);
+
+// 階層情報を持たないシーン用に「全メッシュを担当するルート 1 個」を作る。
+// WHY: 呼び出し側 (spawner) に「nodes が空なら別の経路」という分岐を書かせないため、
+//      平坦なシーンも 1 ノードのツリーとして同じ形で表現しておく。
+void BuildFlatModelNode(Model& model, const std::string& rootName);
+
 // ── サブインポーター ───────────────────────────────────────────
 // ModelImporter::Import() から呼び出す。各 .cpp ファイルで定義する。
 std::unique_ptr<Model> ImportStaticModel(const aiScene* scene,
