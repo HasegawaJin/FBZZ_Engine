@@ -93,6 +93,49 @@ std::vector<std::string> ReadStringArray(const toml::array* arr)
     return values;
 }
 
+// クリップ設定を TOML の配列テーブルへ。
+//
+// WHY 既定値のエントリを書かないか: FBX には数十本のクリップが入ることがあり、
+//     全部を書くと .meta が「何も設定していないのに長大」になって差分が読めなくなる。
+//     既定から外れたものだけを残せば、.meta を見ればどこを触ったかが分かる。
+toml::array ToTomlArray(const std::vector<AnimationClipImportSettings>& clips)
+{
+    toml::array arr;
+    for (const AnimationClipImportSettings& clip : clips) {
+        if (clip.name.empty()) continue;
+        if (!clip.loop && clip.startFrame == 0.0 && clip.endFrame < 0.0 && clip.outputName.empty())
+            continue; // 既定と同じなら省略
+        toml::table entry;
+        entry.insert("name", clip.name);
+        entry.insert("loop", clip.loop);
+        entry.insert("start_frame", clip.startFrame);
+        entry.insert("end_frame", clip.endFrame);
+        entry.insert("output_name", clip.outputName);
+        arr.push_back(std::move(entry));
+    }
+    return arr;
+}
+
+std::vector<AnimationClipImportSettings> ReadClipSettings(const toml::array* arr)
+{
+    std::vector<AnimationClipImportSettings> clips;
+    if (!arr) return clips;
+    clips.reserve(arr->size());
+    for (const auto& item : *arr) {
+        const toml::table* entry = item.as_table();
+        if (!entry) continue;
+        AnimationClipImportSettings settings;
+        if (auto value = (*entry)["name"].value<std::string>()) settings.name = *value;
+        if (settings.name.empty()) continue;
+        settings.loop = (*entry)["loop"].value_or(false);
+        settings.startFrame = (*entry)["start_frame"].value_or(0.0);
+        settings.endFrame = (*entry)["end_frame"].value_or(-1.0);
+        settings.outputName = (*entry)["output_name"].value_or(std::string{});
+        clips.push_back(std::move(settings));
+    }
+    return clips;
+}
+
 uint64_t Fnv1a(std::string_view text, uint64_t hash = 1469598103934665603ull)
 {
     for (unsigned char c : text) {
@@ -115,13 +158,31 @@ std::string ComputeSettingsHash(const FbxImportOptions& options)
     // Library/Baked のコンテナも別キーになるので古い Bake が再利用されない。
     uint64_t hash = Fnv1a("iv:" + std::to_string(FbxMetaSerializer::kModelImporterVersion));
     hash = Fnv1a(FbxSourceDccToString(options.sourceDcc), hash);
+    hash = Fnv1a(std::to_string(static_cast<int>(options.upAxis)), hash);
     hash = Fnv1a(NormalMapConventionToString(options.normalMapConvention), hash);
+    hash = Fnv1a(std::to_string(options.unitScaleMultiplier), hash);
+    hash = Fnv1a(options.generateNormals ? "normals:1" : "normals:0", hash);
+    hash = Fnv1a(options.generateTangents ? "tangents:1" : "tangents:0", hash);
     hash = Fnv1a(options.generateTexDescriptors ? "tex:1" : "tex:0", hash);
     hash = Fnv1a(TextureCompressionToString(options.defaultCompression), hash);
+    hash = Fnv1a("root_motion:" + options.rootMotionNodeName, hash);
     for (const std::string& meshName : options.selectedMeshNames)
         hash = Fnv1a("mesh:" + meshName, hash);
     for (const std::string& animName : options.selectedAnimNames)
         hash = Fnv1a("anim:" + animName, hash);
+    // クリップ設定もハッシュへ含める。これで Loop Time を切り替えるだけで
+    // settings_hash が変わり、既存の再インポート判定がそのまま走る
+    // (専用の「再インポートが要るか」判定を足さなくて済む)。
+    for (const AnimationClipImportSettings& clip : options.clipSettings) {
+        // 既定値のクリップは .meta にもハッシュにも不要。
+        if (!clip.loop && clip.startFrame == 0.0 && clip.endFrame < 0.0 && clip.outputName.empty())
+            continue;
+        hash = Fnv1a("clip:" + clip.name, hash);
+        hash = Fnv1a(clip.loop ? "loop:1" : "loop:0", hash);
+        hash = Fnv1a(std::to_string(clip.startFrame), hash);
+        hash = Fnv1a(std::to_string(clip.endFrame), hash);
+        hash = Fnv1a(clip.outputName, hash);
+    }
     return Hex64(hash);
 }
 
@@ -169,11 +230,17 @@ void WriteOptionsToRoot(toml::table& root, const FbxImportOptions& options)
     model.insert("importer_version",
                  static_cast<int64_t>(FbxMetaSerializer::kModelImporterVersion));
     model.insert("source_dcc", FbxSourceDccToString(options.sourceDcc));
+    model.insert("up_axis", static_cast<int64_t>(options.upAxis));
     model.insert("normal_map_convention", NormalMapConventionToString(options.normalMapConvention));
+    model.insert("unit_scale_multiplier", options.unitScaleMultiplier);
+    model.insert("generate_normals", options.generateNormals);
+    model.insert("generate_tangents", options.generateTangents);
     model.insert("generate_tex_descriptors", options.generateTexDescriptors);
     model.insert("default_compression", TextureCompressionToString(options.defaultCompression));
+    model.insert("root_motion_node", options.rootMotionNodeName);
     model.insert("selected_meshes", ToTomlArray(options.selectedMeshNames));
     model.insert("selected_animations", ToTomlArray(options.selectedAnimNames));
+    model.insert("clips", ToTomlArray(options.clipSettings));
 
     root.insert_or_assign("file_format_version", static_cast<int64_t>(1));
     root.insert_or_assign("model", std::move(model));
@@ -194,15 +261,31 @@ bool FbxMetaSerializer::LoadOptions(const std::string& fbxAbsPath, FbxImportOpti
 
     if (auto value = (*model)["source_dcc"].value<std::string>())
         outOptions.sourceDcc = StringToFbxSourceDcc(*value);
+    if (auto value = (*model)["up_axis"].value<int64_t>())
+        outOptions.upAxis = static_cast<FbxUpAxis>(*value);
     if (auto value = (*model)["normal_map_convention"].value<std::string>())
         outOptions.normalMapConvention = StringToNormalMapConvention(*value);
+    // toml++ は保存時の C++ 型を保持するため、float で保存した既存 .meta は
+    // value<double>() では取得できない。float / double の両方を受け入れ、
+    // 保存形式に依存せず FBXImport へ設定値を渡す。
+    if (auto value = (*model)["unit_scale_multiplier"].value<float>())
+        outOptions.unitScaleMultiplier = *value;
+    else if (auto value = (*model)["unit_scale_multiplier"].value<double>())
+        outOptions.unitScaleMultiplier = static_cast<float>(*value);
+    if (auto value = (*model)["generate_normals"].value<bool>())
+        outOptions.generateNormals = *value;
+    if (auto value = (*model)["generate_tangents"].value<bool>())
+        outOptions.generateTangents = *value;
     if (auto value = (*model)["generate_tex_descriptors"].value<bool>())
         outOptions.generateTexDescriptors = *value;
     if (auto value = (*model)["default_compression"].value<std::string>())
         outOptions.defaultCompression = StringToTextureCompression(*value);
+    if (auto value = (*model)["root_motion_node"].value<std::string>())
+        outOptions.rootMotionNodeName = *value;
 
     outOptions.selectedMeshNames = ReadStringArray((*model)["selected_meshes"].as_array());
     outOptions.selectedAnimNames = ReadStringArray((*model)["selected_animations"].as_array());
+    outOptions.clipSettings      = ReadClipSettings((*model)["clips"].as_array());
     return true;
 }
 

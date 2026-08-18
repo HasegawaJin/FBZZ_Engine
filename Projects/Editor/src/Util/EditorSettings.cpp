@@ -106,8 +106,16 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     // デフォルトインポート設定
     if (auto v = tbl["import"]["source_dcc"].value<int64_t>())
         defaultImportOptions.sourceDcc = static_cast<fbzz::editor::FbxSourceDcc>(*v);
+    if (auto v = tbl["import"]["up_axis"].value<int64_t>())
+        defaultImportOptions.upAxis = static_cast<fbzz::editor::FbxUpAxis>(*v);
     if (auto v = tbl["import"]["normal_map_convention"].value<int64_t>())
         defaultImportOptions.normalMapConvention = static_cast<fbzz::editor::NormalMapConvention>(*v);
+    if (auto v = tbl["import"]["unit_scale_multiplier"].value<float>())
+        defaultImportOptions.unitScaleMultiplier = *v;
+    if (auto v = tbl["import"]["generate_normals"].value<bool>())
+        defaultImportOptions.generateNormals = *v;
+    if (auto v = tbl["import"]["generate_tangents"].value<bool>())
+        defaultImportOptions.generateTangents = *v;
     if (auto v = tbl["import"]["generate_tex_descriptors"].value<bool>())
         defaultImportOptions.generateTexDescriptors = *v;
     if (auto v = tbl["import"]["default_compression"].value<int64_t>())
@@ -354,7 +362,11 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     // デフォルトインポート設定
     toml::table importTbl;
     importTbl.insert("source_dcc",                static_cast<int64_t>(defaultImportOptions.sourceDcc));
+    importTbl.insert("up_axis",                   static_cast<int64_t>(defaultImportOptions.upAxis));
     importTbl.insert("normal_map_convention",    static_cast<int64_t>(defaultImportOptions.normalMapConvention));
+    importTbl.insert("unit_scale_multiplier",    defaultImportOptions.unitScaleMultiplier);
+    importTbl.insert("generate_normals",         defaultImportOptions.generateNormals);
+    importTbl.insert("generate_tangents",        defaultImportOptions.generateTangents);
     importTbl.insert("generate_tex_descriptors", defaultImportOptions.generateTexDescriptors);
     importTbl.insert("default_compression",      static_cast<int64_t>(defaultImportOptions.defaultCompression));
 

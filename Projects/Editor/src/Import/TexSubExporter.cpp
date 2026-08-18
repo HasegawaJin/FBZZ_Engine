@@ -42,7 +42,7 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
 
     if (!ctx.generateTexDescriptors) return true; // .meta 自動生成無効
 
-    const fs::path texDir = util::FileSystem::PathFromUtf8(ctx.outputDir) / "textures";
+    const fs::path texDir = util::FileSystem::PathFromUtf8(ctx.manifestDir) / "textures";
     if (!util::FileSystem::Exists(texDir)) return true; // テクスチャなし
 
     // OpenGL 法線マップ → G を反転する

@@ -33,8 +33,6 @@ namespace {
 
 constexpr unsigned int kBaseFlags =
     aiProcess_Triangulate           |
-    aiProcess_GenSmoothNormals      |
-    aiProcess_CalcTangentSpace      |
     aiProcess_JoinIdenticalVertices |
     aiProcess_LimitBoneWeights      |
     aiProcess_ImproveCacheLocality  |
@@ -42,15 +40,42 @@ constexpr unsigned int kBaseFlags =
     aiProcess_FlipWindingOrder      |
     aiProcess_FlipUVs;
 
-constexpr unsigned int kStaticFlags =
-    kBaseFlags | aiProcess_PreTransformVertices;
+unsigned int BuildImportFlags(const FbxImportOptions& options, bool preTransform)
+{
+    unsigned int flags = kBaseFlags;
+    if (options.generateNormals)  flags |= aiProcess_GenSmoothNormals;
+    if (options.generateTangents) flags |= aiProcess_CalcTangentSpace;
+
+    unsigned int removeComponents = 0;
+    if (!options.generateNormals)  removeComponents |= aiComponent_NORMALS;
+    if (!options.generateTangents) removeComponents |= aiComponent_TANGENTS_AND_BITANGENTS;
+    if (removeComponents != 0) flags |= aiProcess_RemoveComponent;
+    return preTransform ? flags | aiProcess_PreTransformVertices : flags;
+}
+
+void ConfigureImporter(Assimp::Importer& importer, const FbxImportOptions& options)
+{
+    unsigned int removeComponents = 0;
+    if (!options.generateNormals)  removeComponents |= aiComponent_NORMALS;
+    if (!options.generateTangents) removeComponents |= aiComponent_TANGENTS_AND_BITANGENTS;
+    if (removeComponents != 0)
+        importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS,
+                                    static_cast<int>(removeComponents));
+}
 
 float ReadUnitScale(const aiScene* scene)
 {
     if (!scene->mMetaData) return 0.01f;
-    double factor = 1.0;
-    if (scene->mMetaData->Get("UnitScaleFactor", factor))
-        return static_cast<float>(factor * 0.01);
+    // Assimp の ai_real はビルド設定によって float / double が変わるため、
+    // FBXImport のメタデータ型を決め打ちすると UnitScaleFactor を取りこぼす。
+    // Engine 側の ModelImporterUtils と同じく両方を確認し、FBX の「1単位=x cm」を
+    // エンジンのメートル単位へ変換する。
+    double factorD = 1.0;
+    float factorF = 1.0f;
+    if (scene->mMetaData->Get("UnitScaleFactor", factorD))
+        return static_cast<float>(factorD * 0.01);
+    if (scene->mMetaData->Get("UnitScaleFactor", factorF))
+        return factorF * 0.01f;
     return 0.01f;
 }
 
@@ -107,6 +132,73 @@ FbxSourceDcc ResolveSourceDcc(FbxSourceDcc option, const aiScene* scene)
     if (option != FbxSourceDcc::Auto)
         return option;
     return DetectSourceDcc(scene);
+}
+
+aiVector3D TransformVector(const aiMatrix4x4& matrix, const aiVector3D& value)
+{
+    return {
+        matrix.a1 * value.x + matrix.a2 * value.y + matrix.a3 * value.z,
+        matrix.b1 * value.x + matrix.b2 * value.y + matrix.b3 * value.z,
+        matrix.c1 * value.x + matrix.c2 * value.y + matrix.c3 * value.z };
+}
+
+aiVector3D TransformDirection(const aiMatrix4x4& matrix, const aiVector3D& value)
+{
+    aiVector3D result = TransformVector(matrix, value);
+    if (result.Length() > 1.0e-6f) result.Normalize();
+    return result;
+}
+
+void ConvertSceneToYUp(aiScene* scene)
+{
+    if (!scene) return;
+
+    // Z-up → Y-up: source +Z becomes engine +Y, source +Y becomes engine -Z。
+    const aiQuaternion basisQ(0.70710678118f, -0.70710678118f, 0.0f, 0.0f);
+    const aiQuaternion inverseQ(0.70710678118f, 0.70710678118f, 0.0f, 0.0f);
+    // aiMatrix4x4 の aiMatrix3x3 コンストラクターは explicit のため、直接初期化する。
+    const aiMatrix4x4 basis(basisQ.GetMatrix());
+    const aiMatrix4x4 inverse(inverseQ.GetMatrix());
+
+    std::function<void(aiNode*)> convertNode = [&](aiNode* node) {
+        if (!node) return;
+        node->mTransformation = basis * node->mTransformation * inverse;
+        for (uint32_t i = 0; i < node->mNumChildren; ++i)
+            convertNode(node->mChildren[i]);
+    };
+    convertNode(scene->mRootNode);
+
+    for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
+        aiMesh* mesh = scene->mMeshes[mi];
+        for (uint32_t i = 0; i < mesh->mNumVertices; ++i) {
+            mesh->mVertices[i] = TransformVector(basis, mesh->mVertices[i]);
+            if (mesh->mNormals) mesh->mNormals[i] = TransformDirection(basis, mesh->mNormals[i]);
+            if (mesh->mTangents) mesh->mTangents[i] = TransformDirection(basis, mesh->mTangents[i]);
+            if (mesh->mBitangents) mesh->mBitangents[i] = TransformDirection(basis, mesh->mBitangents[i]);
+        }
+        for (uint32_t ai = 0; ai < mesh->mNumBones; ++ai)
+            mesh->mBones[ai]->mOffsetMatrix = basis * mesh->mBones[ai]->mOffsetMatrix * inverse;
+        for (uint32_t ti = 0; ti < mesh->mNumAnimMeshes; ++ti) {
+            aiAnimMesh* target = mesh->mAnimMeshes[ti];
+            for (uint32_t i = 0; i < target->mNumVertices; ++i) {
+                if (target->mVertices) target->mVertices[i] = TransformVector(basis, target->mVertices[i]);
+                if (target->mNormals) target->mNormals[i] = TransformDirection(basis, target->mNormals[i]);
+                if (target->mTangents) target->mTangents[i] = TransformDirection(basis, target->mTangents[i]);
+                if (target->mBitangents) target->mBitangents[i] = TransformDirection(basis, target->mBitangents[i]);
+            }
+        }
+    }
+
+    for (uint32_t ai = 0; ai < scene->mNumAnimations; ++ai) {
+        aiAnimation* animation = scene->mAnimations[ai];
+        for (uint32_t ci = 0; ci < animation->mNumChannels; ++ci) {
+            aiNodeAnim* channel = animation->mChannels[ci];
+            for (uint32_t ki = 0; ki < channel->mNumPositionKeys; ++ki)
+                channel->mPositionKeys[ki].mValue = TransformVector(basis, channel->mPositionKeys[ki].mValue);
+            for (uint32_t ki = 0; ki < channel->mNumRotationKeys; ++ki)
+                channel->mRotationKeys[ki].mValue = basisQ * channel->mRotationKeys[ki].mValue * inverseQ;
+        }
+    }
 }
 
 // Blender 製 FBX のルート焼き込み変換を正規化する ("Apply Transform" 相当)。
@@ -257,10 +349,11 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 {
     // ── Assimp 第 1 パス: スキン/アニメーション用 ─────────────────────────
     Assimp::Importer importer;
+    ConfigureImporter(importer, options);
     importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
     // FBX 内包テクスチャを aiScene::mTextures へ展開し、MaterialExporter で PNG 化する。
     importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_READ_TEXTURES, true);
-    const aiScene* scene = importer.ReadFile(fbxPath, kBaseFlags);
+    const aiScene* scene = importer.ReadFile(fbxPath, BuildImportFlags(options, false));
     if (!scene || !scene->mRootNode) return false;
 
     const bool hasSkin = HasSkinning(scene);
@@ -272,7 +365,8 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     if (!hasSkin && sourceDcc != FbxSourceDcc::Blender) {
         staticImporter.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
         staticImporter.SetPropertyBool(AI_CONFIG_IMPORT_FBX_READ_TEXTURES, true);
-        meshScene = staticImporter.ReadFile(fbxPath, kStaticFlags);
+        ConfigureImporter(staticImporter, options);
+        meshScene = staticImporter.ReadFile(fbxPath, BuildImportFlags(options, true));
         if (!meshScene || !meshScene->mRootNode) return false;
     }
 
@@ -282,23 +376,23 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     // baked (.fzasset/.mesh/.skel) は Library/Baked/<fbx-guid>/ に隔離する。
     // WHY: 再生成可能な派生バイナリを Assets から出し、Assets には著作物 (.mat/.anim/.meta) だけを残す。
     //      guid キーなので fbx をリネームしてもキャッシュが迷子にならない。
-    //      guid が引けない場合 (Assets 外の fbx 等) は従来どおりパッケージ内へ出力する。
-    fs::path manifestDir = outDirPath;
+    //      GUID を解決できない場合も Assets 側へ fallback せず、Import を中断する。
+    //      FBX の派生物を原本の隣へ一度でも書くと、Foo/ が生成されるため。
+    fs::path manifestDir;
     {
-        const std::string normOut = util::FileSystem::NormalizePathSeparators(outputDir);
-        const size_t assetsPos = util::StringUtils::ToLower(normOut).rfind("/assets/");
+        // AssetDatabase が保持する Assets ルートを基準にし、outputDir には一切書き込まない。
+        const std::string assetsRoot = util::FileSystem::NormalizePathSeparators(
+            asset::AssetDatabase::AssetsRoot());
         const std::string fbxGuid = asset::AssetDatabase::GuidFromPath(
             util::FileSystem::NormalizePathSeparators(fbxPath));
-        if (assetsPos != std::string::npos && !fbxGuid.empty()) {
-            manifestDir = util::FileSystem::PathFromUtf8(
-                normOut.substr(0, assetsPos) + "/Library/Baked/" + fbxGuid);
-        }
+        if (assetsRoot.empty() || fbxGuid.empty()) return false;
+        manifestDir = util::FileSystem::PathFromUtf8(assetsRoot).parent_path()
+                    / "Library" / "Baked" / fbxGuid;
     }
 
     // ── 出力ディレクトリを作成 ────────────────────────────────────────────
-    if (!util::FileSystem::EnsureDirectory(outDirPath)) return false;
-    if (manifestDir != outDirPath &&
-        !util::FileSystem::EnsureDirectory(manifestDir)) return false;
+    // 生成物の親ディレクトリは Library 側だけを作る。Assets/Foo/ は作成しない。
+    if (!util::FileSystem::EnsureDirectory(manifestDir)) return false;
 
     FbxImportContext ctx;
 
@@ -306,9 +400,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     bool success = false;
     auto cleanup = [&] {
         if (!success) {
-            util::FileSystem::RemoveAll(outDirPath);
-            if (manifestDir != outDirPath)
-                util::FileSystem::RemoveAll(manifestDir);
+            util::FileSystem::RemoveAll(manifestDir);
         }
     };
     struct Guard { std::function<void()> fn; ~Guard() { fn(); } } guard{ cleanup };
@@ -319,9 +411,10 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     ctx.fbxPath                 = fbxPath;
     ctx.fbxDir                  = util::FileSystem::PathToUtf8(fbxFsPath.parent_path());
     ctx.baseName                = util::FileSystem::PathToUtf8(fbxFsPath.stem());
-    ctx.outputDir               = outputDir;
+    // outputDir は互換のため受け取るが、実体の出力先は常に Library 側へ統一する。
+    ctx.outputDir               = util::FileSystem::PathToUtf8(manifestDir);
     ctx.manifestDir             = util::FileSystem::PathToUtf8(manifestDir);
-    ctx.unitScale               = ReadUnitScale(meshScene);
+    ctx.unitScale               = ReadUnitScale(meshScene) * options.unitScaleMultiplier;
     ctx.hasSkin                 = hasSkin;
     ctx.normalMapConvention     = options.normalMapConvention;
     ctx.generateTexDescriptors  = options.generateTexDescriptors;
@@ -329,12 +422,20 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     ctx.selectedMeshNames       = options.selectedMeshNames;
     ctx.selectedAnimNames       = options.selectedAnimNames;
     ctx.rootMotionNodeName      = options.rootMotionNodeName;
+    ctx.clipSettings            = options.clipSettings;
     ctx.applyStaticNodeTransforms = !hasSkin && sourceDcc == FbxSourceDcc::Blender;
 
     // ── DCC 座標系補正 ───────────────────────────────────────────────────
     // Blender 製 FBX はルートに焼かれた +90°X / scale100 を正規化してから書き出す。
     // Maya / FBX SDK 製はルートがクリーンなので Source DCC で素通りさせる。
     // 静的 Blender は PreTransformVertices を使わず、補正後ノード transform を ModelSubExporter で頂点へ焼く。
+    // Blender は既存の root 補正が同じ Z-up 変換を担うため、明示軸変換を重ねない。
+    if (options.upAxis == FbxUpAxis::ZUp && sourceDcc != FbxSourceDcc::Blender) {
+        ConvertSceneToYUp(const_cast<aiScene*>(scene));
+        if (meshScene != scene)
+            ConvertSceneToYUp(const_cast<aiScene*>(meshScene));
+    }
+
     if (sourceDcc == FbxSourceDcc::Blender)
         NormalizeBlenderRootTransforms(scene, ctx);
 
@@ -342,6 +443,48 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     auto pipeline = BuildPipeline();
     for (auto& exporter : pipeline) {
         if (!exporter->Export(ctx)) return false;
+    }
+
+    // ── 旧配置の生成物を掃除 ─────────────────────────────────────────────
+    //
+    // WHY: 派生バイナリを Library/Baked へ隔離する前にインポートしたモデルは、
+    //      Assets 側にも .fzasset / .mesh / .skel / anims/ を持ったままになる。
+    //      ResolvePath は Library を優先するので実害は出ないが、
+    //        - AssetBrowser にノイズとして並ぶ
+    //        - どちらが使われているのか読み手に分からない
+    //        - 再生成物が git に載り続ける
+    //      という状態が残る。Library 隔離が有効なときだけ、
+    //      成功した import の最後に旧実体を消す。失敗時に消さないよう success の直前に置く。
+    if (manifestDir != outDirPath) {
+        const std::string baseName = util::FileSystem::PathToUtf8(fbxFsPath.stem());
+        for (const char* bakedExt : { ".fzasset", ".mesh", ".skel" }) {
+            const fs::path stale = outDirPath / (baseName + bakedExt);
+            if (util::FileSystem::Exists(stale))
+                util::FileSystem::RemoveAll(util::FileSystem::PathToUtf8(stale));
+        }
+        // anims/ と materials/ は Library 側へ出力するようになった。
+        // Assets 側に残った旧実体とその .meta を消し、フォルダを汚さない状態へ揃える。
+        //
+        // NOTE (破壊的): 旧 .anim / .mat は乱数 GUID を .meta に持ち、.animcontroller や
+        //       .scene から guid: で参照されていた。この削除でそれらの参照は解決しなくなる。
+        //       新しい GUID は AssetDatabase::DeriveGuid で原本 FBX から導出されるため、
+        //       参照は Inspector / Animation Graph で貼り直す必要がある。
+        for (const char* generatedDir : { "anims", "materials", "textures" }) {
+            const std::string stale =
+                util::FileSystem::PathToUtf8(outDirPath / generatedDir);
+            if (util::FileSystem::IsDirectory(stale))
+                util::FileSystem::RemoveAll(stale);
+            // ディレクトリの .meta も道連れにする (残すと孤児 meta になる)。
+            const std::string staleMeta = stale + ".meta";
+            if (util::FileSystem::Exists(staleMeta))
+                util::FileSystem::RemoveAll(staleMeta);
+        }
+
+        // 旧実装が残した空の Foo/ は、派生物を Library へ移した後は不要。
+        // 中身がある既存フォルダはユーザー作成物の可能性があるため削除しない。
+        std::error_code emptyDirEc;
+        if (fs::is_empty(outDirPath, emptyDirEc) && !emptyDirEc)
+            util::FileSystem::RemoveAll(outDirPath);
     }
 
     success = true;

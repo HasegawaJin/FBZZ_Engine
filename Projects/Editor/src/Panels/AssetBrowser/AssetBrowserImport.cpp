@@ -80,8 +80,16 @@ std::vector<ImportPreset> LoadPresetsFromDir(const std::string& presetsDir)
             const auto& tbl = parsed.table();
             if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
                 p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
+            if (auto v = tbl["options"]["up_axis"].value<int64_t>())
+                p.options.upAxis = static_cast<FbxUpAxis>(*v);
             if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
                 p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
+            if (auto v = tbl["options"]["unit_scale_multiplier"].value<float>())
+                p.options.unitScaleMultiplier = *v;
+            if (auto v = tbl["options"]["generate_normals"].value<bool>())
+                p.options.generateNormals = *v;
+            if (auto v = tbl["options"]["generate_tangents"].value<bool>())
+                p.options.generateTangents = *v;
             if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
                 p.options.generateTexDescriptors = *v;
             if (auto v = tbl["options"]["default_compression"].value<int64_t>())
@@ -99,7 +107,11 @@ bool SavePreset(const std::string& presetsDir, const std::string& name, const Fb
     util::FileSystem::EnsureDirectory(presetsDir);
     toml::table optTbl;
     optTbl.insert("source_dcc",                static_cast<int64_t>(opts.sourceDcc));
+    optTbl.insert("up_axis",                   static_cast<int64_t>(opts.upAxis));
     optTbl.insert("normal_map_convention",    static_cast<int64_t>(opts.normalMapConvention));
+    optTbl.insert("unit_scale_multiplier",    opts.unitScaleMultiplier);
+    optTbl.insert("generate_normals",         opts.generateNormals);
+    optTbl.insert("generate_tangents",        opts.generateTangents);
     optTbl.insert("generate_tex_descriptors", opts.generateTexDescriptors);
     optTbl.insert("default_compression",      static_cast<int64_t>(opts.defaultCompression));
     toml::table root;
@@ -492,6 +504,19 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             ev.type == AssetFileWatcher::EventType::Removed ||
             ev.type == AssetFileWatcher::EventType::Renamed)
         {
+            if (ev.type == AssetFileWatcher::EventType::Removed
+                && util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath)) != ".meta") {
+                // 削除後に同じ名前で別アセットを作成しても、旧 GUID の逆引きが残らないよう
+                // watcher の Removed を索引にも通知する。.meta 単体の通知は本体が残るため無視する。
+                asset::AssetDatabase::OnAssetRemoved(absPath);
+            }
+            if (ev.type == AssetFileWatcher::EventType::Renamed && !oldAbsPath.empty()) {
+                // Explorer / IDE からの移動も Asset Browser 内の移動と同じ GUID 更新経路へ
+                // 通す。ここを欠くと .meta は一緒に移動しても、実行中の索引だけが旧パスを
+                // 保持し、次回保存時に参照を正しく GUID 化できない。
+                asset::AssetDatabase::OnAssetMoved(oldAbsPath, absPath);
+            }
+
             // 変更が起きたディレクトリのツリーキャッシュを無効化
             InvalidateTreeCache(util::FileSystem::GetDirectory(absPath));
             if (!oldAbsPath.empty())
@@ -512,8 +537,11 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             // WHY: 生成箇所 (Create メニュー / ツリー右クリック / エクスプローラー D&D /
             //      OS 側の操作) ごとに .meta 発行を書くと必ずどれかが抜ける。
             //      ウォッチャーの Added は全経路が合流する唯一の地点なので、ここ 1 箇所に集約する。
-            //      対象外 (生成物・従属フォルダ) は GuidFromPath が空を返して何もしない。
-            (void)asset::AssetDatabase::GuidFromPath(absPath);
+            //      ただし FBX は Import ボタンまで原本の .meta を作らない。
+            const std::string addedExt = util::StringUtils::ToLower(
+                util::FileSystem::GetExtension(absPath));
+            if (addedExt != ".fbx")
+                (void)asset::AssetDatabase::GuidFromPath(absPath);
         }
 
         // .prefab の内容が変わったら、シーンに置いてあるインスタンスへ反映させる。
@@ -606,8 +634,9 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             const fs::path srcPath = util::FileSystem::PathFromUtf8(imp.path);
             const std::string outDir =
                 util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
-            FbxMetaSerializer::SaveOptions(imp.path, imp.options);
             if (FbxImportTool::Import(imp.path, outDir, imp.path, imp.options)) {
+                // 設定は実際に Import が成功した後で初めて原本の .meta に確定する。
+                FbxMetaSerializer::SaveOptions(imp.path, imp.options);
                 FbxMetaSerializer::SaveCacheInfo(imp.path, imp.options);
                 std::lock_guard<std::mutex> lock(m_importStatusMtx);
                 m_completedImportPaths.push_back(imp.path);
@@ -1159,6 +1188,20 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         }
     }
 
+    {
+        static constexpr const char* kAxisNames[] = { "Auto", "Y Up", "Z Up" };
+        int axisIdx = static_cast<int>(m_importSettings.options.upAxis);
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::Combo("Source Up Axis", &axisIdx, kAxisNames, 3))
+            m_importSettings.options.upAxis = static_cast<FbxUpAxis>(axisIdx);
+    }
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::DragFloat("Unit Scale", &m_importSettings.options.unitScaleMultiplier,
+                     0.01f, 0.001f, 100.0f, "%.3fx");
+    ImGui::Checkbox("Generate Normals", &m_importSettings.options.generateNormals);
+    ImGui::SameLine();
+    ImGui::Checkbox("Generate Tangents", &m_importSettings.options.generateTangents);
+
     ImGui::SeparatorText("Texture Generation");
     ImGui::Checkbox("Auto-generate .meta sidecars",
                     &m_importSettings.options.generateTexDescriptors);
@@ -1281,7 +1324,6 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             for (int i = 0; i < (int)m_pendingConfirmImports.size(); ++i) {
                 const bool inc = (i < (int)m_pendingConfirmIncludes.size()) && m_pendingConfirmIncludes[i];
                 if (inc) {
-                    FbxMetaSerializer::SaveOptions(m_pendingConfirmImports[i], m_importSettings.options);
                     m_pendingImports.push_back({ m_pendingConfirmImports[i], m_importSettings.options });
                 }
             }
@@ -1297,7 +1339,6 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ImGui::SameLine();
         if (ImGui::Button("Import All", { 95.0f, 0.0f })) {
             for (const auto& p : m_pendingConfirmImports) {
-                FbxMetaSerializer::SaveOptions(p, m_importSettings.options);
                 m_pendingImports.push_back({ p, m_importSettings.options });
             }
             m_pendingConfirmImports.clear();
@@ -1327,7 +1368,6 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             }
             if (!found)
                 m_pendingImports.push_back({ m_importSettings.path, m_importSettings.options });
-            FbxMetaSerializer::SaveOptions(m_importSettings.path, m_importSettings.options);
         };
         if (ImGui::Button("Import", { 90.0f, 0.0f })) {
             enqueueCurrentFile();
