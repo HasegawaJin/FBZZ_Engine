@@ -3,7 +3,7 @@
 // 選択 Entity / Asset の Inspector ルーティング
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
-#include <Editor/Panels/AnimationPreviewPanel.hpp>
+#include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorCommon.hpp"
@@ -80,6 +80,9 @@ void InspectorPanel::OnShutdown()
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Render");
+    // Hierarchy / AssetBrowser から Inspector 下部の Component へドラッグできるよう、
+    // ペイン上下端にカーソルを置いたときだけ現在のウィンドウを自動スクロールする。
+    widgets::UpdateDragAutoScroll();
     widgets::DrawAssetPickerModal(ctx.resources, ctx.imguiRenderer);
 
     if (ctx.mapEditingMode) {
@@ -124,6 +127,22 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     } else {
         go = selectedGo;
     }
+
+    // Animation Graph の Node 選択は、Asset Browser で参照 .anim を選んだ瞬間も維持する。
+    // WHY: Node Inspector より先に Asset Inspector へ分岐すると、Node を作成してから
+    //      .anim を D&D したフレームに Inspector が .anim の情報画面へ切り替わり、
+    //      名前や Node 設定を編集できなくなる。Graph の選択を明示的な優先対象にする。
+    const bool graphSelectionActive =
+        ctx.animationGraphSelection.type != EditorContext::AnimationGraphSelection::Type::None;
+    const bool graphSelectionForScene =
+        graphSelectionActive && go != nullptr &&
+        ctx.animationGraphSelection.entityId == go->GetID();
+    const bool graphSelectionForController =
+        graphSelectionActive && ctx.animationControllerEditor != nullptr &&
+        !ctx.animationControllerEditorPath.empty() &&
+        ctx.animationGraphSelection.assetPath == ctx.animationControllerEditorPath;
+    if (graphSelectionForScene || graphSelectionForController)
+        assetPathToInspect.clear();
 
     // --- Play 中の編集警告バナー ---
     // WHY: Play 中の Inspector 編集は Stop 時のスナップショット復元で巻き戻る。
@@ -211,6 +230,16 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     if ((!m_locked || assetLocked) && !assetPathToInspect.empty()) {
         FBZZ_PROFILE_SCOPE("Inspector::Asset");
         DrawAssetInspector(ctx, assetPathToInspect);
+        return;
+    }
+
+    // Controller アセットを開いた状態では GameObject が無くても Node Inspector を表示する。
+    // Asset Browser の選択が参照 .anim へ移っても、開いている Controller の選択を優先する。
+    if (!go && graphSelectionForController) {
+        if (DrawAnimationGraphAssetInspector(ctx)) {
+            ImGui::SeparatorText("Preview");
+            DrawAnimationPreviewWidget(ctx, 240.0f);
+        }
         return;
     }
 
@@ -614,6 +643,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     { FBZZ_PROFILE_SCOPE("Inspector::Transform");
       DrawTransformInspectors(go, ctx); }
+
+    InspectorComponentDrawCollector componentCollector;
+    componentCollector.gameObject = go;
+    componentCollector.editorState = &ctx.editorSceneState;
+    ctx.inspectorComponentCollector = &componentCollector;
     if (ctx.mapEditingMode && ctx.mapInspectorFilter) {
         const bool hasMapComponent =
             go->GetComponent<scene::TerrainComponent>()
@@ -624,11 +658,14 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (!hasMapComponent) {
             ImGui::TextDisabled("No Map component on this GameObject.");
             ImGui::TextDisabled("Disable Map Components Only to inspect everything.");
+            ctx.inspectorComponentCollector = nullptr;
             return;
         }
         { FBZZ_PROFILE_SCOPE("Inspector::TerrainWater");
           DrawTerrainWaterInspectors(
-              go, ctx, m_componentClipboard, m_componentClipboardType); }
+               go, ctx, m_componentClipboard, m_componentClipboardType); }
+        componentCollector.DrawInOrder();
+        ctx.inspectorComponentCollector = nullptr;
         return;
     }
     const auto drawAutomatic = [&](scene::ComponentCategory category) {
@@ -666,7 +703,30 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
       DrawTerrainWaterInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     drawAutomatic(scene::ComponentCategory::Terrain);
     drawAutomatic(scene::ComponentCategory::Misc);
-    DrawScriptInspectors(go, ctx);
+    auto* scriptComponent = go->GetComponent<scene::ScriptComponent>();
+    if (scriptComponent) {
+        // ScriptComponent は 1 つの入れ物だが、Inspector 上は各スクリプトを
+        // 独立した Component カードとして扱う。これにより Engine Component と
+        // スクリプトを同じ COMPONENT 順序リストで相互に入れ替えられる。
+        BeginScriptInspectorFrame(go, ctx);
+        for (int i = 0; i < static_cast<int>(scriptComponent->scripts.size()); ++i) {
+            const std::string orderKey = GetScriptOrderKey(*scriptComponent, i);
+            ctx.editorSceneState.EnsureComponentOrder(go->instanceId, orderKey);
+            componentCollector.Add(orderKey, [&componentCollector, go, &ctx, i]() {
+                componentCollector.drawing = true;
+                DrawScriptCard(go, ctx, i);
+                componentCollector.drawing = false;
+            });
+        }
+    }
+    // ここまでが「この GameObject の全 Component」の収集。以降で残骸キーを掃除してよい。
+    // NOTE: 上の Map モード絞り込み経路では complete を立てないこと。地形系しか
+    //       収集していない状態で掃除すると、隠れているだけの Component の並びが消える。
+    componentCollector.complete = true;
+    componentCollector.DrawInOrder();
+    ctx.inspectorComponentCollector = nullptr;
+    if (scriptComponent)
+        EndScriptInspectorFrame(go, ctx);
 
     ImGui::Spacing();
     { FBZZ_PROFILE_SCOPE("Inspector::AddComponent");
@@ -676,9 +736,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     // WHY: Unity と同じ動線。Animator 付きオブジェクトを選ぶだけでモーションを
     //   確認できるようにする。SkinnedMeshRenderer は子に分かれている構成も
     //   あるため、判定は Animator の有無だけで行う。
-    // 対象未解決のときに空の "Preview" 見出しだけ残らないよう、
-    // 直前フレームの解決結果 (HasAnimationPreviewTarget) で出し分ける。
-    if (go->GetComponent<scene::AnimatorComponent>() && HasAnimationPreviewTarget()) {
+    // 対象の解決は DrawAnimationPreviewWidget / TickAnimationPreview が行う。
+    // HasAnimationPreviewTarget() をここで先に判定すると、初回選択時に Preview 自身が
+    // 呼ばれず、再選択やパネルの再アタッチまで対象が解決されない。
+    if (go->GetComponent<scene::AnimatorComponent>()) {
         FBZZ_PROFILE_SCOPE("Inspector::AnimationPreview");
         ImGui::Spacing();
         ImGui::SeparatorText("Preview");
