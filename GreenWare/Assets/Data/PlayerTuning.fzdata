@@ -1,0 +1,11 @@
+dodgeCooldown = 0.800000011920929
+dodgeDuration = 0.2199999988079071
+dodgeSpeed = 16.0
+groundAccel = 100.0
+groundDecel = 100.0
+hitInvulnerable = 0.6000000238418579
+jumpSpeed = 15.0
+maxHealth = 5
+moveSpeed = 10.0
+turnSpeed = 14.0
+type = 'PlayerTuning'

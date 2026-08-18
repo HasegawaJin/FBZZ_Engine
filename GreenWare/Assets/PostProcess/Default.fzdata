@@ -2,7 +2,7 @@ type = 'PostProcessProfile'
 
 [[overrides]]
 active = true
-intensity = 1.0
+intensity = 1.0057142972946167
 type = 'SSAO'
 
 [[overrides]]
@@ -19,16 +19,13 @@ type = 'Bloom'
 
 [[overrides]]
 active = true
-blend = 1.0
-contrast = 0.0
-hueShift = 0.0
-saturation = 1.0
-temperature = 0.0
-tint = 0.0
-type = 'LUTColorGrading'
+intensity = 0.04571428522467613
+maxDistance = 3.2742857933044434
+scattering = 0.1599999964237213
+steps = 64
+type = 'VolumetricLight'
 
 [[overrides]]
 active = true
-radius = 1.0
-strength = 0.3499999940395355
-type = 'Sharpen'
+exposure = 1.0
+type = 'Exposure'

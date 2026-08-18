@@ -13,7 +13,18 @@
 // ScriptCodeGen は Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンして、この範囲を自動同期する。
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-FBZZ_SCRIPT_ENTRY(sandbox, PlayerControllerComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, SceneManagerScript)
 FBZZ_SCRIPT_ENTRY(sandbox, TpsCameraComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, EnemyChaserComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, EnemyHealthComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, GameFlowComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, ResultPresenterComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, EyeBlinkComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PlayerAimComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PlayerControllerComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PlayerHealthComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PolarityGunComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PolarityBodyComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PolarityFieldComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PolarityTargetComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, SceneManagerScript)
 // @@FBZZ_SCRIPT_ENTRIES_END

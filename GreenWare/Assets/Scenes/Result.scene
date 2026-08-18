@@ -64,14 +64,20 @@ tag = 'Untagged'
     color = [ 1.0, 1.0, 1.0, 1.0 ]
     enabled = true
     fontPath = ''
-    fontSize = 84.0
+    fontSize = 42.0
     letterSpacing = 4.0
     text = 'RESULT'
 
     [gameobjects.transform]
-    position = [ 800.0, 250.0, 0.0 ]
+    position = [ 650.0, 150.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 277.473694, 84.0, 1.0 ]
+    scale = [ 620.0, 260.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ResultPresenterComponent'
+
+        [gameobjects.ScriptComponents.fields]
 
 [[gameobjects]]
 active = true

@@ -34,6 +34,12 @@ namespace sandbox {
 
 class SceneManagerScript : public Script {
     FBZZ_SCRIPT(SceneManagerScript)
+
+    // ボタンモードでのみ UIButton を読む (autoTransition=true の Load.scene 用途では不要)。
+    // 「どちらの使い方でも成立する」ので必須にはできない。付け忘れたときに
+    // 気付けるよう、任意として名前だけ出しておく。
+    FBZZ_OPTIONAL_COMPONENT(UIButton)
+
 public:
     // 遷移先シーン名。autoTransition=true の場合は OnStart で s_next から上書きされる。
     FBZZ_FIELD(std::string, targetScene,    "", "Target Scene")
