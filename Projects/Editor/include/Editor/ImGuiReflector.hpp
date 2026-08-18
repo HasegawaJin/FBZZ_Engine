@@ -169,7 +169,23 @@ struct ImGuiReflector : scene::IReflector {
         const int speed = FieldStep() > 0.0f ? (std::max)(1, static_cast<int>(FieldStep())) : 1;
         const int minimum = HasFieldMin() ? static_cast<int>(FieldMin()) : 0;
         if (CurrentFieldHint() == FieldHint::LayerMask) {
-            if (ImGui::BeginCombo("##v", "Layers")) {
+            // 閉じたままでも何番のレイヤーが有効かを読めるようにする (Flags と同じ規則)。
+            std::string preview = "(None)";
+            {
+                int selectedCount = 0;
+                std::string joined;
+                for (int layer = 0; layer < 32; ++layer) {
+                    if ((static_cast<uint32_t>(v) & (uint32_t{1} << layer)) == 0) continue;
+                    ++selectedCount;
+                    if (selectedCount <= 2) {
+                        if (!joined.empty()) joined += ", ";
+                        joined += std::to_string(layer);
+                    }
+                }
+                if (selectedCount > 2)      preview = std::to_string(selectedCount) + " layers";
+                else if (selectedCount > 0) preview = "Layer " + joined;
+            }
+            if (ImGui::BeginCombo("##v", preview.c_str())) {
                 for (int layer = 0; layer < 32; ++layer) {
                     const uint32_t bit = uint32_t{1} << layer;
                     bool selected = (static_cast<uint32_t>(v) & bit) != 0;
@@ -544,54 +560,122 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
+    // ── 配列フィールド共通のリスト描画 ───────────────────────────────────────
+    // 見た目は Inspector の他の行にそろえる:
+    //   Name                              3 items [+]
+    //     ⠿  [ 値ウィジェット ............. ]  [▲][▼][✕]
+    // 行はプロパティ行 (ホバー地色) に乗せ、値の左端は他のフィールドと同じ列に置く。
+
+    // 「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
+    // 抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
+    static int ListDropDestination(int dragged, int target, bool insertAfter)
+    {
+        int destination = insertAfter ? target + 1 : target;
+        if (dragged < destination) --destination;
+        return destination;
+    }
+
+    // 1 要素を目的の位置まで隣と入れ替えながら運ぶ。間の要素の相対順序は保たれる。
+    //
+    // WHY std::rotate を使わないか: std::vector<bool> の operator[] はプロキシ参照を返し、
+    //     iter_swap / rotate が要求する ValueSwappable を処理系依存でしか満たさない。
+    //     値のコピーで書けば bool 特殊化を含めどの要素型でも同じ 1 実装で通る。
+    template<typename T>
+    static bool ApplyListMove(std::vector<T>& values, int from, int to)
+    {
+        const int count = static_cast<int>(values.size());
+        if (from < 0 || from >= count || to < 0 || to >= count || from == to) return false;
+        const int step = (from < to) ? 1 : -1;
+        for (int i = from; i != to; i += step) {
+            T current = values[static_cast<size_t>(i)];
+            values[static_cast<size_t>(i)] = values[static_cast<size_t>(i + step)];
+            values[static_cast<size_t>(i + step)] = current;
+        }
+        return true;
+    }
+
+    // 見出し行 ("N items" + 追加ボタン)。追加された場合 true。
+    // emplace は要素型を知る呼び出し側に任せる。
+    bool DrawListHeaderRow(const char* name, std::size_t count, bool addable)
+    {
+        if (!BeginRow(name)) return false;
+        const bool added = widgets::ListAddButton(count, addable);
+        EndRow();
+        return added;
+    }
+
+    // 要素 1 行ぶんの枠 (つまみ → 値 → ▲▼✕) を描き、操作要求を移動/削除へ畳む。
+    // drawValue には値ウィジェットだけを描かせる (幅とカーソル位置はこちらで整える)。
+    template<typename T, typename DrawValue>
+    void DrawListRows(std::vector<T>& values, bool removable, DrawValue&& drawValue)
+    {
+        const ImGuiID listId = widgets::ListScopeId();
+        const float toolbarWidth = widgets::ListRowToolbarWidth(removable);
+        const int   count = static_cast<int>(values.size());
+
+        int removeIndex = -1;
+        int moveFrom = -1;
+        int moveTo   = -1;
+
+        for (int index = 0; index < count; ++index) {
+            ImGui::PushID(index);
+            const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
+
+            // つまみは値カラムより左 (ラベル列の右端) へ置く。ラベルの無い行なので、
+            // ここが「この行の持ち手」であることが位置だけで分かる。
+            bool insertAfter = false;
+            const int dragged = widgets::ListRowDragHandle(listId, index, insertAfter);
+            if (dragged >= 0) {
+                moveFrom = dragged;
+                moveTo   = ListDropDestination(dragged, index, insertAfter);
+            }
+
+            ImGui::SameLine();
+            if (ImGui::GetCursorPosX() < ValueColumnX())
+                ImGui::SetCursorPosX(ValueColumnX());
+
+            // 右端に操作ボタンぶんの余白を確保してから値を描く。参照スロットのように
+            // 自分で残り幅を測るウィジェットでも ▲▼✕ が押し出されない。
+            const widgets::RightReserveScope reserve = widgets::BeginRightReserve(toolbarWidth);
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            m_changed |= drawValue(values[static_cast<size_t>(index)]);
+            widgets::EndRightReserve(reserve);
+
+            const widgets::ListRowButtons buttons =
+                widgets::ListRowToolbar(index, count, removable);
+            if (buttons.moveUp)   { moveFrom = index; moveTo = index - 1; }
+            if (buttons.moveDown) { moveFrom = index; moveTo = index + 1; }
+            if (buttons.remove)   removeIndex = index;
+
+            widgets::EndPropertyRow(row);
+            ImGui::PopID();
+        }
+
+        // 走査中に配列を触るとイテレータが壊れるため、ここでまとめて適用する。
+        if (removeIndex >= 0) {
+            values.erase(values.begin() + removeIndex);
+            m_changed = true;
+        } else if (ApplyListMove(values, moveFrom, moveTo)) {
+            m_changed = true;
+        }
+    }
+
     template<typename T, typename DrawValue>
     void DrawReorderableList(const char* name,
                              std::vector<T>& values,
                              DrawValue&& drawValue)
     {
-        const bool canEdit = FieldEnabled();
-        if (!BeginRow(name)) return;
-        ImGui::TextDisabled("%zu item(s)", values.size());
-        const bool fixed = FixedList();
-        if (!fixed) {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("+")) {
-                values.emplace_back();
-                m_changed = true;
-            }
-        }
-        EndRow();
-        if (!canEdit) return;
+        const bool canEdit  = FieldEnabled();
+        const bool editable = !FixedList();
 
-        ImGui::PushID(PersistentKey(name));
-        int removeIndex = -1;
-        for (int index = 0; index < static_cast<int>(values.size()); ++index) {
-            ImGui::PushID(index);
-            ImGui::SetNextItemWidth((std::max)(80.0f, ImGui::GetContentRegionAvail().x - 82.0f));
-            m_changed |= drawValue(values[static_cast<size_t>(index)]);
-            ImGui::SameLine();
-            if (ImGui::SmallButton("^") && index > 0) {
-                std::swap(values[static_cast<size_t>(index)],
-                          values[static_cast<size_t>(index - 1)]);
-                m_changed = true;
-            }
-            ImGui::SameLine();
-            if (ImGui::SmallButton("v") && index + 1 < static_cast<int>(values.size())) {
-                std::swap(values[static_cast<size_t>(index)],
-                          values[static_cast<size_t>(index + 1)]);
-                m_changed = true;
-            }
-            if (!fixed) {
-                ImGui::SameLine();
-                if (ImGui::SmallButton("x"))
-                    removeIndex = index;
-            }
-            ImGui::PopID();
-        }
-        if (removeIndex >= 0) {
-            values.erase(values.begin() + removeIndex);
+        if (DrawListHeaderRow(name, values.size(), editable)) {
+            values.emplace_back();
             m_changed = true;
         }
+        if (!canEdit || !m_groupOpen || !FieldVisible()) return;
+
+        ImGui::PushID(PersistentKey(name));
+        DrawListRows(values, editable, std::forward<DrawValue>(drawValue));
         ImGui::PopID();
     }
 
@@ -607,41 +691,18 @@ struct ImGuiReflector : scene::IReflector {
             return ImGui::DragInt("##value", &value);
         });
     }
+    // std::vector<bool> は operator[] がプロキシを返すため bool& を取れない。
+    // 値ウィジェット側を auto&& で受け、プロキシ経由で書き戻す。
+    // WHY 共通経路に寄せるか: 以前はここだけ独自ループで、並び替えボタンが無く
+    //     (▲▼ が出ない)、行の地色も付かない別物の見た目になっていた。
     void ListField(const char* name, std::vector<bool>& values) override
     {
-        const bool canEdit = FieldEnabled();
-        if (!BeginRow(name)) return;
-        ImGui::TextDisabled("%zu item(s)", values.size());
-        const bool fixed = FixedList();
-        if (!fixed) {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("+")) {
-                values.push_back(false);
-                m_changed = true;
-            }
-        }
-        EndRow();
-        if (!canEdit) return;
-        ImGui::PushID(PersistentKey(name));
-        int removeIndex = -1;
-        for (int index = 0; index < static_cast<int>(values.size()); ++index) {
-            ImGui::PushID(index);
-            bool value = values[static_cast<size_t>(index)];
-            if (ImGui::Checkbox("##value", &value)) {
-                values[static_cast<size_t>(index)] = value;
-                m_changed = true;
-            }
-            if (!fixed) {
-                ImGui::SameLine();
-                if (ImGui::SmallButton("x")) removeIndex = index;
-            }
-            ImGui::PopID();
-        }
-        if (removeIndex >= 0) {
-            values.erase(values.begin() + removeIndex);
-            m_changed = true;
-        }
-        ImGui::PopID();
+        DrawReorderableList(name, values, [](auto&& slot) {
+            bool value = slot;
+            if (!ImGui::Checkbox("##value", &value)) return false;
+            slot = value;
+            return true;
+        });
     }
     void ListField(const char* name, std::vector<std::string>& values) override
     {
@@ -774,14 +835,11 @@ struct ImGuiReflector : scene::IReflector {
             scope.open = SubHeader(HumanizeName(name).c_str());
             if (scope.open) {
                 ImGui::Indent();
-                ImGui::TextDisabled("%zu item(s)", count);
-                if (scope.editable) {
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("+")) {
-                        // 要素の追加は戻り値で伝える。呼び出し側が resize する。
-                        scope.count = count + 1;
-                        m_changed = true;
-                    }
+                // 件数表示 + 追加ボタンは単純配列の見出し行と同じ部品を使う。
+                if (widgets::ListAddButton(count, scope.editable)) {
+                    // 要素の追加は戻り値で伝える。呼び出し側が resize する。
+                    scope.count = count + 1;
+                    m_changed = true;
                 }
             }
         }
@@ -805,9 +863,10 @@ struct ImGuiReflector : scene::IReflector {
 
             // 削除ボタンは折りたたみ状態に関わらず出す。
             // WHY: 閉じた要素を消したい場合に、わざわざ開かせるのは不便。
+            // ✕ は参照スロットのクリアと同じ自前グリフで描き、素の "x" 文字をやめる。
             if (!m_listScopes.empty() && m_listScopes.back().editable) {
                 ImGui::SameLine();
-                if (ImGui::SmallButton("x")) {
+                if (widgets::ListRemoveButton()) {
                     m_listScopes.back().removeIndex = index;
                     m_changed = true;
                 }
@@ -898,7 +957,10 @@ struct ImGuiReflector : scene::IReflector {
     void IntRange(const char* name, int& v, int min, int max) override
     {
         if (!BeginRow(name)) return;
-        m_changed |= ImGui::SliderInt("##v", &v, min, max);
+        // float 版と同じ「塗り付きゲージ + 数値ボックス」にそろえる。
+        // WHY: 以前ここだけ素の SliderInt で、同じカードの中に見た目の違う
+        //      レンジ入力が 2 種類並んでいた。
+        m_changed |= widgets::RangeField("##v", v, min, max);
         EndRow();
     }
 
@@ -930,10 +992,31 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
+    // 複数選択コンボの表示文字列を作る。
+    // WHY: 従来はプレビューが "Flags" / "Layers" の固定文字で、何が選ばれているかを
+    //   知るには毎回コンボを開くしかなかった。閉じたままでも中身が読めるようにする。
+    //   全部並べると欄からあふれるので、2 件を超えたら件数表示へ畳む。
+    static std::string BitMaskPreview(int value, std::span<const char* const> labels)
+    {
+        int selected = 0;
+        std::string joined;
+        for (int index = 0; index < static_cast<int>(labels.size()); ++index) {
+            if ((value & (1 << index)) == 0) continue;
+            ++selected;
+            if (selected <= 2) {
+                if (!joined.empty()) joined += ", ";
+                joined += labels[static_cast<size_t>(index)];
+            }
+        }
+        if (selected == 0) return "(None)";
+        if (selected > 2)  return std::to_string(selected) + " selected";
+        return joined;
+    }
+
     void Flags(const char* name, int& v, std::span<const char* const> labels) override
     {
         if (labels.empty() || !BeginRow(name)) return;
-        if (ImGui::BeginCombo("##v", "Flags")) {
+        if (ImGui::BeginCombo("##v", BitMaskPreview(v, labels).c_str())) {
             for (int index = 0; index < static_cast<int>(labels.size()); ++index) {
                 const int bit = 1 << index;
                 bool selected = (v & bit) != 0;

@@ -348,6 +348,51 @@ bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
     return dropped;
 }
 
+bool UpdateDragAutoScroll(const DragAutoScrollOptions& options)
+{
+    const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+    if (!window) return false;
+    // InnerClipRect はスクロール量を含まない、現在画面に見えているコンテンツ領域。
+    // GetWindowContentRegionMin/Max はスクロール量を含むため、画面端判定には使わない。
+    return UpdateDragAutoScroll(window->InnerClipRect.Min, window->InnerClipRect.Max, options);
+}
+
+bool UpdateDragAutoScroll(const ImVec2& regionMin, const ImVec2& regionMax,
+                          const DragAutoScrollOptions& options)
+{
+    // Payload が無いときは通常のマウス移動なので、スクロールを発生させない。
+    if (!ImGui::IsDragDropActive()) return false;
+    if (options.edgeSize <= 0.0f || options.maxSpeed <= 0.0f) return false;
+    if (regionMax.x <= regionMin.x || regionMax.y <= regionMin.y) return false;
+    if (!ImGui::IsMouseHoveringRect(regionMin, regionMax, false)) return false;
+
+    const float edgeSize = options.edgeSize;
+    const float mouseY = ImGui::GetIO().MousePos.y;
+    float intensity = 0.0f;
+    float direction = 0.0f;
+    if (mouseY < regionMin.y + edgeSize) {
+        intensity = 1.0f - std::clamp((mouseY - regionMin.y) / edgeSize, 0.0f, 1.0f);
+        direction = -1.0f;
+    } else if (mouseY > regionMax.y - edgeSize) {
+        intensity = 1.0f - std::clamp((regionMax.y - mouseY) / edgeSize, 0.0f, 1.0f);
+        direction = 1.0f;
+    }
+    if (intensity <= 0.0f) return false;
+
+    // 端に近いほど加速させる。線形速度だと帯の入口で急に速く感じるため、
+    // 二乗カーブで微調整しやすく、端では十分な速度になるようにする。
+    const float deltaTime = ImGui::GetIO().DeltaTime > 0.0f
+        ? ImGui::GetIO().DeltaTime : (1.0f / 60.0f);
+    const float speed = options.maxSpeed * intensity * intensity;
+    const float current = ImGui::GetScrollY();
+    const float target = std::clamp(current + direction * speed * deltaTime,
+                                    0.0f, ImGui::GetScrollMaxY());
+    if (std::abs(target - current) <= 0.001f) return false;
+
+    ImGui::SetScrollY(target);
+    return true;
+}
+
 namespace {
 
 // AssetBrowser へ渡す Ping / 選択要求の唯一の置き場。
@@ -1037,6 +1082,61 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     return changed;
 }
 
+bool RangeField(const char* label, int& value, int min, int max, const char* fmt,
+                const char* tooltip)
+{
+    // 構成は float 版と同じ「塗り付きゲージ + 数値ボックス」。
+    // WHY float 版へ委譲しないか: ImGui の書式指定子は型と対でなければならず、
+    //   整数値を float スライダーに通すと "%d" が使えない (あるいは丸め残りで
+    //   1 ずれた値が表示される)。見た目の規則だけを共有し、型は分けて扱う。
+    ImGui::PushID(label);
+    bool changed = false;
+    bool hovered = false;
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float inputW  = ImGui::CalcTextSize("-8888.888").x + style.FramePadding.x * 2.0f;
+    const float total   = ImGui::CalcItemWidth();
+    const float sliderW = std::max(40.0f, total - inputW - style.ItemSpacing.x);
+
+    ImGui::SetNextItemWidth(sliderW);
+    if (ImGui::SliderInt("##slider", &value, min, max, "")) changed = true;
+    hovered |= ImGui::IsItemHovered();
+
+    if (max > min && !ImGui::TempInputIsActive(ImGui::GetItemID())) {
+        const ImVec2 lo = ImGui::GetItemRectMin();
+        const ImVec2 hi = ImGui::GetItemRectMax();
+        const float t = std::clamp(static_cast<float>(value - min) /
+                                   static_cast<float>(max - min), 0.0f, 1.0f);
+        if (t > 0.0f) {
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                lo, { lo.x + (hi.x - lo.x) * t, hi.y },
+                EditorTheme::ColorU32(ThemeColor::Accent, 0.30f),
+                style.FrameRounding,
+                t >= 1.0f ? ImDrawFlags_RoundCornersAll : ImDrawFlags_RoundCornersLeft);
+        }
+    }
+
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    ImGui::SetNextItemWidth(inputW);
+    // 刻みは範囲の 0.5% (最低 1)。広い範囲でもドラッグ 1 往復で端まで届く。
+    const float dragSpeed = std::max(1.0f, static_cast<float>(max - min) * 0.005f);
+    if (ImGui::DragInt("##input", &value, dragSpeed, min, max, fmt ? fmt : "%d",
+                       ImGuiSliderFlags_AlwaysClamp))
+        changed = true;
+    hovered |= ImGui::IsItemHovered();
+
+    if (!(label[0] == '#' && label[1] == '#')) {
+        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+        ImGui::TextUnformatted(label);
+        hovered |= ImGui::IsItemHovered();
+    }
+    if (tooltip && tooltip[0] && hovered)
+        ImGui::SetTooltip("%s", tooltip);
+
+    ImGui::PopID();
+    return changed;
+}
+
 namespace {
 
 // 軸色 (X=赤 / Y=緑 / Z=青 / W=灰)。彩度は抑えめにして暗色テーマで浮かないようにする。
@@ -1346,7 +1446,203 @@ void DrawClearGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color
                       ImVec2{ center.x + reach, center.y - reach }, color, thickness);
 }
 
+// ▲ / ▼ (1 つ上へ / 1 つ下へ)。三角の塗りではなく山形の 2 本線にする。
+// WHY: 塗り三角は小さい寸法だとアンチエイリアスで潰れて「点」に見える。
+//      線なら太さを font size に比例させられ、UI スケールを変えても形が残る。
+void DrawChevronGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color, bool up)
+{
+    const float halfW     = size * 0.20f;
+    const float halfH     = size * 0.10f;
+    const float thickness = (std::max)(1.0f, size * 0.10f);
+    const float dir       = up ? -1.0f : 1.0f;
+    const ImVec2 apex{ center.x, center.y + halfH * dir };
+    drawList->AddLine(ImVec2{ center.x - halfW, center.y - halfH * dir }, apex, color, thickness);
+    drawList->AddLine(ImVec2{ center.x + halfW, center.y - halfH * dir }, apex, color, thickness);
+}
+
+// + (要素を足す)。
+void DrawPlusGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
+{
+    const float reach     = size * 0.24f;
+    const float thickness = (std::max)(1.0f, size * 0.10f);
+    drawList->AddLine(ImVec2{ center.x - reach, center.y },
+                      ImVec2{ center.x + reach, center.y }, color, thickness);
+    drawList->AddLine(ImVec2{ center.x, center.y - reach },
+                      ImVec2{ center.x, center.y + reach }, color, thickness);
+}
+
+// ⠿ (ドラッグつまみ)。2 列 3 段の点で「掴んで動かせる」ことを示す慣用表現。
+void DrawGripGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
+{
+    const float stepY  = (std::max)(2.0f, size * 0.17f);
+    const float stepX  = (std::max)(2.0f, size * 0.13f);
+    const float radius = (std::max)(1.0f, size * 0.055f);
+    for (int row = -1; row <= 1; ++row)
+        for (int col = -1; col <= 1; col += 2)
+            drawList->AddCircleFilled(
+                { center.x + stepX * static_cast<float>(col),
+                  center.y + stepY * static_cast<float>(row) },
+                radius, color, 6);
+}
+
+// リスト行の小さなグリフボタン共通処理。
+// 参照スロットの ◎ / × と同じく「透明ボタン + 自前グリフ + ホバーで明色化」で組む。
+enum class ListGlyph { Up, Down, Remove, Add, Grip };
+
+bool ListGlyphButton(const char* id, ListGlyph glyph, bool enabled, const char* tooltip)
+{
+    const float size = ImGui::GetFrameHeight();
+    ImGui::BeginDisabled(!enabled);
+    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(0, 0, 0, 0));
+    const bool pressed = ImGui::Button(id, { size, size });
+    ImGui::PopStyleColor();
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
+
+    const ImVec2 center{ (ImGui::GetItemRectMin().x + ImGui::GetItemRectMax().x) * 0.5f,
+                         (ImGui::GetItemRectMin().y + ImGui::GetItemRectMax().y) * 0.5f };
+    // 無効なボタンは沈めた色にして、押せる / 押せないを色で先に伝える。
+    const ImU32 color = EditorTheme::ColorU32(
+        !enabled ? ThemeColor::TextFaint : (hovered ? ThemeColor::Text : ThemeColor::TextMuted));
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    switch (glyph) {
+    case ListGlyph::Up:     DrawChevronGlyph(drawList, center, size, color, true);  break;
+    case ListGlyph::Down:   DrawChevronGlyph(drawList, center, size, color, false); break;
+    case ListGlyph::Remove: DrawClearGlyph(drawList, center, size, color);          break;
+    case ListGlyph::Add:    DrawPlusGlyph(drawList, center, size, color);           break;
+    case ListGlyph::Grip:   DrawGripGlyph(drawList, center, size, color);           break;
+    }
+    ImGui::EndDisabled();
+
+    if (hovered && tooltip && tooltip[0]) ImGui::SetTooltip("%s", tooltip);
+    return pressed && enabled;
+}
+
+// 並び替えペイロード。listId を載せることで、同時に開いている別のリストへは落とせない。
+// WHY 文字列 scope ではなく ID か: 配列フィールドは名前が同じでも別 Script / 別要素に
+//     いくらでも生えるため、一意な名前を人が付けられない。ImGui の ID 木をそのまま使う。
+struct ListReorderPayload {
+    ImGuiID listId = 0;
+    int     index  = -1;
+};
+
 } // namespace
+
+float ListRowToolbarWidth(bool removable)
+{
+    const int count = removable ? 3 : 2;
+    return (ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x)
+         * static_cast<float>(count);
+}
+
+ListRowButtons ListRowToolbar(int index, int count, bool removable)
+{
+    ListRowButtons result;
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    result.moveUp = ListGlyphButton("##up", ListGlyph::Up, index > 0, "Move up");
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    result.moveDown = ListGlyphButton("##down", ListGlyph::Down, index + 1 < count, "Move down");
+    if (removable) {
+        ImGui::SameLine(0.0f, style.ItemSpacing.x);
+        result.remove = ListGlyphButton("##remove", ListGlyph::Remove, true, "Remove this item");
+    }
+    return result;
+}
+
+ImGuiID ListScopeId()
+{
+    return ImGui::GetID("##fbzz_list_scope");
+}
+
+int ListRowDragHandle(ImGuiID listId, int index, bool& outInsertAfter)
+{
+    outInsertAfter = false;
+
+    // つまみ自体はボタンとして描く (押しても何も起きないが、ホバー地色で掴めることが伝わる)。
+    ListGlyphButton("##grip", ListGlyph::Grip, true, "Drag to reorder");
+    const ImVec2 rowMin = ImGui::GetItemRectMin();
+    const ImVec2 rowMax = ImGui::GetItemRectMax();
+
+    if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+        const ListReorderPayload payload{ listId, index };
+        ImGui::SetDragDropPayload("FBZZ_LIST_ROW", &payload, sizeof(payload));
+        ImGui::Text("Move item %d", index);
+        ImGui::EndDragDropSource();
+    }
+
+    int draggedIndex = -1;
+    if (ImGui::BeginDragDropTarget()) {
+        // Component カードの並び替えと同じ規則:
+        //   Preview 中はガイド線だけを描き、実際の並び替えは Delivery の 1 回だけ返す。
+        //   前後どちらへ挿すかはマウス位置で決め、線もその辺へ描いて結果と一致させる。
+        constexpr ImGuiDragDropFlags kAcceptFlags =
+            ImGuiDragDropFlags_AcceptBeforeDelivery
+            | ImGuiDragDropFlags_AcceptNoDrawDefaultRect;
+        if (const ImGuiPayload* payload =
+                ImGui::AcceptDragDropPayload("FBZZ_LIST_ROW", kAcceptFlags)) {
+            if (payload->Data && payload->DataSize == sizeof(ListReorderPayload)) {
+                ListReorderPayload dragged{};
+                std::memcpy(&dragged, payload->Data, sizeof(dragged));
+                // 別のリストからのドラッグは受け付けない。
+                if (dragged.listId == listId && dragged.index != index) {
+                    const float mid = (rowMin.y + rowMax.y) * 0.5f;
+                    const bool insertAfter = ImGui::GetMousePos().y >= mid;
+                    const float lineY = insertAfter ? rowMax.y : rowMin.y;
+                    // ガイド線は行の全幅へ引く (つまみの幅だけだと線が短すぎて見落とす)。
+                    const float right = ImGui::GetWindowPos().x
+                                      + ImGui::GetWindowContentRegionMax().x;
+                    ImGui::GetWindowDrawList()->AddLine(
+                        { rowMin.x, lineY }, { right, lineY },
+                        EditorTheme::ColorU32(ThemeColor::Accent), 2.0f);
+                    if (payload->IsDelivery()) {
+                        draggedIndex   = dragged.index;
+                        outInsertAfter = insertAfter;
+                    }
+                }
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+    return draggedIndex;
+}
+
+bool ListAddButton(std::size_t count, bool addable)
+{
+    ImGui::TextDisabled("%zu item%s", count, count == 1 ? "" : "s");
+    if (!addable) return false;
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
+    return ListGlyphButton("##add", ListGlyph::Add, true, "Add an item");
+}
+
+bool ListRemoveButton()
+{
+    return ListGlyphButton("##remove", ListGlyph::Remove, true, "Remove this item");
+}
+
+RightReserveScope BeginRightReserve(float reserve)
+{
+    RightReserveScope scope;
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (!window || reserve <= 0.0f) return scope;
+
+    scope.previousWorkRight = window->WorkRect.Max.x;
+    scope.active = true;
+    // 詰めすぎて幅が消えると値ウィジェットが潰れるので、最低限の幅は残す。
+    const float minimum = window->WorkRect.Min.x + ImGui::GetFontSize() * 4.0f;
+    window->WorkRect.Max.x = (std::max)(minimum, scope.previousWorkRight - reserve);
+    return scope;
+}
+
+void EndRightReserve(const RightReserveScope& scope)
+{
+    if (!scope.active) return;
+    if (ImGuiWindow* window = ImGui::GetCurrentWindow())
+        window->WorkRect.Max.x = scope.previousWorkRight;
+}
 
 bool BeginReferenceSlot(const char* id, const char* text, ReferenceSlotState state,
                         bool dropActive, int trailing)
@@ -1446,8 +1742,26 @@ ReferenceSlotButtons EndReferenceSlot(bool showPick, bool showClear)
     return result;
 }
 
+namespace {
+
+// ComponentHeader が折り畳み状態を書き込む ImGuiID の集合。
+// 1 セッション内で描かれたカードのぶんだけ溜まる (ラベルごとに 1 つなので数百程度)。
+std::unordered_set<ImGuiID>& HeaderStateIdRegistry()
+{
+    static std::unordered_set<ImGuiID> ids;
+    return ids;
+}
+
+} // namespace
+
+const std::unordered_set<ImGuiID>& ComponentHeaderStateIds()
+{
+    return HeaderStateIdRegistry();
+}
+
 ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
-                                      bool* enabled, bool defaultOpen)
+                                       bool* enabled, bool defaultOpen,
+                                       const ComponentReorderTarget& reorder)
 {
     ComponentHeaderResult result;
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -1492,7 +1806,75 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
     //      右から始まり、カードの左端が毎行ギザギザになっていた。
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_AllowOverlap;
     if (defaultOpen) flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    // 折り畳み状態の保存先 ID を名乗っておく (EditorApp が永続化対象を絞るのに使う)。
+    // CollapsingHeader は GetID("##hdr") をキーにウィンドウの StateStorage へ開閉を書く。
+    HeaderStateIdRegistry().insert(ImGui::GetID("##hdr"));
     result.open = ImGui::CollapsingHeader("##hdr", flags);
+
+    // ヘッダー自体をドラッグ元 / ドロップ先にする。
+    // WHY ヘッダーだけか: メニューや有効チェックをドラッグ対象にすると、既存のクリック操作と
+    //     競合する。Component の境界を表すヘッダーだけに並び替え操作を限定する。
+    //
+    // WHY 並び替え可能なカードだけを掴めるようにするか (不具合修正):
+    //     以前は BeginDragDropSource だけが reorder の有無を見ておらず、全カードが
+    //     "FBZZ_COMPONENT_ORDER" を撒いていた。結果、Transform やスクリプトカード、
+    //     Post Process のカードまで掴めるのに落としても何も起きない (掴める = 動かせる、
+    //     という UI の約束が破れている) 状態になり、さらに Transform を Component カードへ
+    //     落とすと「描画順のリストに存在しないキー」が保存データへ紛れ込んでいた。
+    if (reorder) {
+        // ペイロード名はリスト (scope) ごとに分ける。ImGui のペイロード名は
+        // 32 バイト上限なので、prefix 13 文字 + scope は 18 文字以内に収めること。
+        char payloadType[32];
+        std::snprintf(payloadType, sizeof(payloadType), "FBZZ_REORDER_%s", reorder.scope);
+        const char* dragKey = reorder.dragKey ? reorder.dragKey : label;
+
+        if (ImGui::IsItemHovered())
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+            ImGui::SetDragDropPayload(payloadType, dragKey, std::strlen(dragKey) + 1);
+            ImGui::Text("Move %s", label);
+            ImGui::EndDragDropSource();
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            // Preview 中に順序を書き換えると、同じフレームの描画順と保存順がずれる。
+            // ドロップラインだけを Preview で描き、順序変更は Delivery の 1 回だけ実行する。
+            constexpr ImGuiDragDropFlags kAcceptFlags =
+                ImGuiDragDropFlags_AcceptBeforeDelivery
+                | ImGuiDragDropFlags_AcceptNoDrawDefaultRect;
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload(payloadType, kAcceptFlags)) {
+                const char* dragged = static_cast<const char*>(payload->Data);
+                const bool valid = dragged != nullptr
+                                && payload->DataSize > 0
+                                && std::memchr(dragged, '\0', payload->DataSize) != nullptr
+                                && dragged[0] != '\0'
+                                && std::strcmp(dragged, dragKey) != 0;
+                if (valid) {
+                    const ImVec2 dropMin = ImGui::GetItemRectMin();
+                    const ImVec2 dropMax = ImGui::GetItemRectMax();
+
+                    // カードの上半分なら手前へ、下半分なら後ろへ挿入する。
+                    //
+                    // WHY 修正したか: 以前は挿入位置が常に「対象の手前」で固定なのに、
+                    //   ガイド線だけを下端に描いていた。(1) 線が指す位置と実際の着地が
+                    //   1 枚ずれる、(2) どのカードへ落としても手前にしか入らないため
+                    //   最後尾へは絶対に移動できず、末尾のカードが事実上固定される、
+                    //   という 2 つが同時に起きていた。マウス位置で前後を決め、
+                    //   ガイド線もその辺へ描くことで見た目と結果を一致させる。
+                    const float mid = (dropMin.y + dropMax.y) * 0.5f;
+                    const bool  insertAfter = ImGui::GetMousePos().y >= mid;
+                    const float lineY = insertAfter ? dropMax.y : dropMin.y;
+                    ImGui::GetWindowDrawList()->AddLine(
+                        { dropMin.x, lineY }, { dropMax.x, lineY },
+                        EditorTheme::ColorU32(ThemeColor::Accent), 2.0f);
+                    if (payload->IsDelivery())
+                        reorder.onDrop(dragged, insertAfter);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+    }
 
     ImGui::PopStyleColor(3);
     ImGui::PopStyleVar();

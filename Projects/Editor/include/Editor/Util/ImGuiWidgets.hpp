@@ -10,6 +10,9 @@
 #include <Math/Quaternion.hpp>
 #include <cmath>
 #include <string>
+#include <string_view>
+#include <functional>
+#include <unordered_set>
 
 namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
@@ -79,6 +82,12 @@ void ReadOnlyText(const char* label, const char* text);
 //        呼び出し側の ImGui::IsItemHovered() では最後のアイテムしか拾えないため、
 //        説明の出し方はウィジェット側に持たせている。
 // @return true if value changed
+// 整数版のレンジ入力。float 版と同じ「ゲージ + 数値ボックス」の見た目で描く。
+// WHY: 以前 IntRange だけ素の ImGui::SliderInt で、同じ Inspector の中に
+//      塗り付きゲージと素のスライダーが混在していた。
+bool RangeField(const char* label, int& value, int min, int max,
+                const char* fmt = "%d", const char* tooltip = nullptr);
+
 bool RangeField(const char* label, float& value, float min, float max,
                 const char* fmt = "%.3f", const char* tooltip = nullptr);
 
@@ -190,14 +199,41 @@ struct ComponentHeaderResult {
     ImVec2 rectMax{};
 };
 
+// ドロップを受けたときの通知。
+// @param draggedKey  掴まれた側の識別子 (ComponentReorderTarget::dragKey、既定は label)
+// @param insertAfter true = このカードの直後へ、false = 直前へ挿入する
+using ComponentReorderCallback =
+    std::function<void(std::string_view draggedKey, bool insertAfter)>;
+
+// カードをマウスで並び替えられるようにする指定。
+//
+// WHY scope が要るか: Inspector には「Component の表示順」「Script の実行順」
+//     「Post Process の適用順」という別々のリストが同時に並ぶ。ペイロード名を
+//     共通にすると Script カードを Component カードへ落とせてしまい、
+//     どちらのリストにも属さないキーが混ざる。scope ごとにペイロード名を分け、
+//     同じリストの中でしかドロップが成立しないようにする。
+//
+// WHY dragKey を別に持てるか: Script のように同じ表示名が複数並びうるリストでは、
+//     label だけでは要素を一意に指せない。呼び出し側が index などの一意キーを渡せる。
+struct ComponentReorderTarget {
+    const char*              scope   = nullptr; // 並び替えグループ ID (英数字・18 文字以内)
+    const char*              dragKey = nullptr; // ペイロードに載せる識別子。null なら label
+    ComponentReorderCallback onDrop{};
+
+    // scope と onDrop の両方が揃って初めて並び替え可能とみなす。
+    explicit operator bool() const { return scope != nullptr && static_cast<bool>(onDrop); }
+};
+
 // コンポーネントカードのヘッダー。
 //   [帯] [▼] [✓] Name ................................... [⋯]
 // @param label   表示名 (ImGui ID もこの文字列から作るので、同じ親の中で一意にすること)
 // @param accent  左帯の色 (カテゴリ色)
 // @param enabled 有効チェックを出す場合の参照先。nullptr ならチェックを描かない
 //                (BoneComponent のように常に有効な補助コンポーネント用)
+// @param reorder マウスでの並び替え指定。既定 (空) ならドラッグ元にもドロップ先にもならない
 ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
-                                      bool* enabled, bool defaultOpen = true);
+                                      bool* enabled, bool defaultOpen = true,
+                                      const ComponentReorderTarget& reorder = {});
 
 // カード本文のスコープ。淡い地色とヘッダーから続く左帯を敷き、中身を一段字下げする。
 // HOW: PropertyRowScope と同じく、ImGui は「これから描く中身の高さ」を事前に知れないため
@@ -214,6 +250,16 @@ struct ComponentBodyScope {
 };
 [[nodiscard]] ComponentBodyScope BeginComponentBody(const ComponentHeaderResult& header, ImU32 accent);
 void EndComponentBody(const ComponentBodyScope& body);
+
+// このセッションで ComponentHeader が使った折り畳み状態の ImGuiID 一覧。
+//
+// WHY 公開するか: 折り畳み状態は editor_settings.toml へ永続化するが、ImGui の
+//   ウィンドウ StateStorage には折り畳み以外の値も同居している (カード本文の高さ =
+//   float、AssetPathField の編集モード = bool など)。保存側が「どれが折り畳みか」を
+//   知る手段が無いと、全エントリを int とみなして書き戻すしかなく、float の値が
+//   ビットパターンのまま潰れて復元される。ComponentHeader が自分で作った ID だけを
+//   名乗り出ることで、保存対象を安全に絞り込めるようにする。
+const std::unordered_set<ImGuiID>& ComponentHeaderStateIds();
 
 // 汎用カード (GameObject ヘッダーなど、コンポーネント以外のまとまりを囲う)。
 // 中身を描く前に呼び、必ず EndCard() で閉じる。
@@ -245,6 +291,66 @@ struct ReferenceSlotButtons {
 };
 // 本体の右へ ◎ と × を並べる。グリフはフォントに依存しないよう自前描画。
 ReferenceSlotButtons EndReferenceSlot(bool showPick = true, bool showClear = true);
+
+// ─── リスト行 (配列フィールド) ─────────────────────────────────────────────
+// WHY: 配列フィールドは Reflector が自動生成する唯一の「行が縦に積まれる」UI だが、
+//      これまで ImGui 既定の SmallButton("+" / "^" / "v" / "x") をそのまま並べていた。
+//      カード・プロパティ行・自前グリフで組んだ他の Inspector と語彙が合わず、
+//      ここだけ素の ImGui に見えていた。さらに文字ボタンは太さと中心が行ごとに
+//      ばらつき、アイコンとして読めていない。参照スロットの ◎ / × と同じ
+//      「自前グリフ + テーマ色 + ツールチップ + 無効化」の規則へ揃える。
+
+struct ListRowButtons {
+    bool moveUp   = false;
+    bool moveDown = false;
+    bool remove   = false;
+};
+
+// リスト要素 1 行の右端に並べる操作ボタン (▲ ▼ ✕)。直前のアイテムへ SameLine で続ける。
+// 端の要素では対応するボタンを無効表示にする。
+// WHY 無効化するか: 従来は先頭要素でも ▲ が押せる見た目のまま、押しても何も
+//     起きなかった (`SmallButton("^") && index > 0` で結果だけ捨てていた)。
+//     押せるのに動かないボタンは、壊れているのか仕様なのかを操作でしか確かめられない。
+// @param removable false なら ✕ を出さない (FBZZ_FIXED_LIST)
+ListRowButtons ListRowToolbar(int index, int count, bool removable);
+
+// ListRowToolbar が占める横幅。値ウィジェットの幅を決めるのに使う。
+[[nodiscard]] float ListRowToolbarWidth(bool removable);
+
+// リスト全体を指す ID。並び替えのドロップ先を同じリスト内へ限定するために使う。
+// リスト用の PushID 直後・要素ごとの PushID より前に 1 回だけ取得すること。
+[[nodiscard]] ImGuiID ListScopeId();
+
+// 行頭のドラッグつまみ。ここを掴んで行を並び替える。
+// WHY 行全体ではなくつまみか: 行の本体は値ウィジェット (DragFloat 等) で、
+//     そこを掴むのは「値を動かす」操作である。並び替えの掴みどころを別に持たせないと
+//     2 つの操作が同じドラッグに重なる。
+// @param listId       ListScopeId() の値
+// @param index        この行の index
+// @param outInsertAfter ドロップ位置がこの行の前か後ろか
+// @return ドロップされた要素の元 index。ドロップが無ければ -1
+int ListRowDragHandle(ImGuiID listId, int index, bool& outInsertAfter);
+
+// リスト見出し行の右側に置く「N item(s)」表示と + ボタン。
+// @return + が押されたら true
+bool ListAddButton(std::size_t count, bool addable);
+
+// 単独の ✕ (削除) ボタン。並び替えを持たない要素見出し (構造体配列) 用。
+bool ListRemoveButton();
+
+// 行の右端に reserve だけ余白を空けたまま値ウィジェットを描くためのスコープ。
+//
+// WHY SetNextItemWidth では足りないか: BeginReferenceSlot / AssetPathField / DragAxes は
+//     自分の幅を GetContentRegionAvail() から決める複合ウィジェットで、SetNextItemWidth を
+//     見ない。作業領域の右端そのものを一時的に詰めることで、値ウィジェットの種類に
+//     関係なく「右に必ず操作ボタンぶんの余白が残る」状態を作れる。
+//     これをやらないと、参照スロットの行だけ ▲▼✕ が画面外へ押し出される。
+struct RightReserveScope {
+    float previousWorkRight = 0.0f;
+    bool  active            = false;
+};
+[[nodiscard]] RightReserveScope BeginRightReserve(float reserve);
+void EndRightReserve(const RightReserveScope& scope);
 
 // アセット参照欄 → AssetBrowser への「この参照先を一覧で見せろ」要求 (Unity の Ping / 選択相当)。
 // WHY: 参照欄に入っているのはパス文字列だが、ユーザーが知りたいのは「どのアセットか」で
@@ -307,6 +413,24 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
 // filterExts が指定された場合は手入力欄と同じ拡張子制約をドロップにも適用する。
 // @return true if an asset path was dropped (outPath に正規化済みパスを格納)
 bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts = nullptr);
+
+// ドラッグ中にスクロール領域の上下端へカーソルを置くと、自動で縦スクロールする設定。
+// WHY: Hierarchy / Inspector / AssetBrowser などの各パネルが個別に実装すると、
+//      端からの距離・速度・DeltaTime の扱いがばらつき、ドラッグ操作の感触が揃わない。
+struct DragAutoScrollOptions {
+    float edgeSize = 48.0f;  // 上下端からこの距離以内をスクロール帯にする (px)
+    float maxSpeed = 720.0f; // スクロール帯の最端での最大速度 (px / 秒)
+};
+
+// 現在の ImGui ウィンドウを、ドラッグ中の自動スクロール対象にする。
+// @return 今フレームに自動スクロールを試みた場合 true
+bool UpdateDragAutoScroll(const DragAutoScrollOptions& options = {});
+
+// 任意の画面座標矩形をドラッグ中の自動スクロール対象にする。
+// Child ウィンドウや分割ペインなど、現在のウィンドウ全体とは異なる領域で使う。
+// @return 今フレームに自動スクロールを試みた場合 true
+bool UpdateDragAutoScroll(const ImVec2& regionMin, const ImVec2& regionMax,
+                          const DragAutoScrollOptions& options = {});
 
 // Quaternion → オイラー角 (度, YXZ 順)。InspectorPanel と ImGuiReflector で共用
 // YXZ 内因順: X(Pitch) が中間角で ±90° 制約、Y(Yaw) は ±180° 任意範囲。
