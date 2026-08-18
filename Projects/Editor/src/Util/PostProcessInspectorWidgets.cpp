@@ -21,6 +21,7 @@
 #include <imgui.h>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -210,9 +211,26 @@ std::string DrawAddOverridePopup(const asset::PostProcessProfile& profile)
 // イテレータが壊れるため、要求だけ集めて後段でまとめて適用する。
 enum class CardAction { None, Remove, MoveUp, MoveDown, Reset };
 
+// カードのドラッグ結果。適用は一覧を描き終えてから行う。
+struct CardDragResult {
+    int from = -1;
+    int to   = -1;
+    bool Valid() const { return from >= 0 && to >= 0 && from != to; }
+};
+
+// 「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
+// 抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
+int ResolveDropDestination(int dragged, int target, bool insertAfter)
+{
+    int destination = insertAfter ? target + 1 : target;
+    if (dragged < destination) --destination;
+    return destination;
+}
+
 // ── オーバーライドカード ────────────────────────────────────────────────
 CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
-                            ImGuiReflector& reflector, bool& changed)
+                            ImGuiReflector& reflector, bool& changed,
+                            CardDragResult& drag)
 {
     CardAction action = CardAction::None;
 
@@ -221,8 +239,29 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
 
     const ImU32 accent = CategoryAccent(entry.GetCategory());
     const bool activeBefore = entry.active;
+
+    // ドラッグでも並び替えられるようにする。
+    // WHY 追加したか: 適用順は Bloom → Tonemap のように結果が変わる要素なのに、
+    //   これまで ⋯ メニューの Move Up / Move Down しか無く、離れた位置へ動かすには
+    //   メニューを何度も開き直す必要があった。dragKey は同名カード (Custom Effect) を
+    //   区別するため index を使う。
+    const std::string dragKey = std::to_string(index);
+    widgets::ComponentReorderTarget reorder;
+    reorder.scope   = "POSTFX";
+    reorder.dragKey = dragKey.c_str();
+    reorder.onDrop  = [&drag, index](std::string_view draggedKey, bool insertAfter) {
+        int dragged = 0;
+        const char* begin = draggedKey.data();
+        const char* end   = draggedKey.data() + draggedKey.size();
+        const auto [ptr, ec] = std::from_chars(begin, end, dragged);
+        if (ec != std::errc{} || ptr != end || dragged < 0) return;
+        drag.from = dragged;
+        drag.to   = ResolveDropDestination(dragged, index, insertAfter);
+    };
+
     widgets::ComponentHeaderResult header =
-        widgets::ComponentHeader(entry.GetDisplayName(), accent, &entry.active);
+        widgets::ComponentHeader(entry.GetDisplayName(), accent, &entry.active,
+                                 true, reorder);
     if (entry.active != activeBefore) changed = true;
 
     // ⋯ メニュー / ヘッダー右クリック。
@@ -324,13 +363,14 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     int removeIndex = -1;
     int swapIndex   = -1;   // この要素と swapIndex+1 を入れ替える
     int resetIndex  = -1;
+    CardDragResult drag;
 
     const int count = static_cast<int>(profile.overrides.size());
     for (int i = 0; i < count; ++i) {
         VolumeOverride* entry = profile.overrides[static_cast<std::size_t>(i)].get();
         if (!entry) continue;
 
-        switch (DrawOverrideCard(*entry, i, count, reflector, result.changed)) {
+        switch (DrawOverrideCard(*entry, i, count, reflector, result.changed, drag)) {
         case CardAction::Remove:   removeIndex = i; break;
         case CardAction::MoveUp:   swapIndex   = i - 1; break;
         case CardAction::MoveDown: swapIndex   = i; break;
@@ -354,6 +394,15 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
     if (swapIndex >= 0 && swapIndex + 1 < count) {
         std::swap(profile.overrides[static_cast<std::size_t>(swapIndex)],
                   profile.overrides[static_cast<std::size_t>(swapIndex + 1)]);
+        result.changed = result.structureChanged = true;
+    }
+    // ドラッグでの移動。unique_ptr の配列なので 1 要素だけを回転させて移す。
+    if (drag.Valid() && drag.from < count && drag.to < count) {
+        const auto begin = profile.overrides.begin();
+        if (drag.from < drag.to)
+            std::rotate(begin + drag.from, begin + drag.from + 1, begin + drag.to + 1);
+        else
+            std::rotate(begin + drag.to, begin + drag.from, begin + drag.from + 1);
         result.changed = result.structureChanged = true;
     }
     if (removeIndex >= 0) {
