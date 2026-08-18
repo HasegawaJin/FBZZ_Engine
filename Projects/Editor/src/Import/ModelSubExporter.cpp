@@ -354,6 +354,94 @@ aiMatrix4x4 InverseBakeMatrix(const float q[4])
     return aiMatrix4x4(inv.GetMatrix());
 }
 
+// DCC のノード階層を FZND チャンクとして書き出す。
+//
+// submeshRemap は「aiMesh の添字 → 出力 submesh の添字」。選択的インポートと
+// 頂点 0 件のメッシュで出力側が飛ぶため、aiNode::mMeshes をそのまま書くと
+// 存在しない submesh を指すノードができる。除外されたメッシュはここで落とす。
+bool WriteModelNodes(std::ofstream& out,
+                     const aiScene* scene,
+                     float unitScale,
+                     const std::unordered_map<uint32_t, uint32_t>& submeshRemap)
+{
+    using namespace asset;
+    if (!scene || !scene->mRootNode) return false;
+
+    struct Entry {
+        const aiNode* node = nullptr;
+        int parentIndex = -1;
+        std::vector<int> children;
+    };
+    std::vector<Entry> entries;
+    entries.reserve(128);
+
+    // 幅優先で番号を振る。再帰にすると children の添字を親へ書き戻すのに
+    // 二度走査が必要になるため、キューで順に確定させる。
+    std::vector<std::pair<const aiNode*, int>> queue{ { scene->mRootNode, -1 } };
+    while (!queue.empty()) {
+        const auto [node, parentIndex] = queue.front();
+        queue.erase(queue.begin());
+
+        const int index = static_cast<int>(entries.size());
+        entries.push_back({ node, parentIndex, {} });
+        if (parentIndex >= 0)
+            entries[static_cast<size_t>(parentIndex)].children.push_back(index);
+
+        for (uint32_t i = 0; i < node->mNumChildren; ++i)
+            queue.emplace_back(node->mChildren[i], index);
+    }
+
+    FzModelNodeChunkHeader hdr{};
+    hdr.magic[0] = 'F'; hdr.magic[1] = 'Z'; hdr.magic[2] = 'N'; hdr.magic[3] = 'D';
+    hdr.nodeCount     = static_cast<uint32_t>(entries.size());
+    hdr.rootNodeIndex = entries.empty() ? -1 : 0;
+    out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+
+    for (const Entry& entry : entries) {
+        std::vector<uint32_t> meshIndices;
+        meshIndices.reserve(entry.node->mNumMeshes);
+        for (uint32_t i = 0; i < entry.node->mNumMeshes; ++i) {
+            const auto it = submeshRemap.find(entry.node->mMeshes[i]);
+            if (it != submeshRemap.end()) meshIndices.push_back(it->second);
+        }
+
+        aiVector3D   scaling;
+        aiVector3D   position;
+        aiQuaternion rotation;
+        entry.node->mTransformation.Decompose(scaling, rotation, position);
+
+        FzModelNodeData nd{};
+        const std::string name = entry.node->mName.length > 0
+            ? entry.node->mName.C_Str() : std::string("Node");
+        const size_t nameLength = std::min(name.size(),
+                                           static_cast<size_t>(FZMODEL_NODE_NAME_LEN - 1));
+        std::memcpy(nd.name, name.data(), nameLength);
+        nd.parentIndex = entry.parentIndex;
+        // 平行移動だけが長さの次元を持つ。回転・スケールは無次元。
+        nd.localTranslation[0] = position.x * unitScale;
+        nd.localTranslation[1] = position.y * unitScale;
+        nd.localTranslation[2] = position.z * unitScale;
+        nd.localRotation[0] = rotation.x;
+        nd.localRotation[1] = rotation.y;
+        nd.localRotation[2] = rotation.z;
+        nd.localRotation[3] = rotation.w;
+        nd.localScale[0] = scaling.x;
+        nd.localScale[1] = scaling.y;
+        nd.localScale[2] = scaling.z;
+        nd.meshCount  = static_cast<uint32_t>(meshIndices.size());
+        nd.childCount = static_cast<uint32_t>(entry.children.size());
+        out.write(reinterpret_cast<const char*>(&nd), sizeof(nd));
+
+        if (!meshIndices.empty())
+            out.write(reinterpret_cast<const char*>(meshIndices.data()),
+                      static_cast<std::streamsize>(meshIndices.size() * sizeof(uint32_t)));
+        if (!entry.children.empty())
+            out.write(reinterpret_cast<const char*>(entry.children.data()),
+                      static_cast<std::streamsize>(entry.children.size() * sizeof(int32_t)));
+    }
+    return out.good();
+}
+
 bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us,
                    const float bakeRotation[4])
 {
@@ -599,6 +687,19 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
     modelHdr.magic[0]='F'; modelHdr.magic[1]='Z'; modelHdr.magic[2]='M'; modelHdr.magic[3]='D';
     modelHdr.version          = FZMODEL_VERSION;
     modelHdr.flags            = skinned ? FZMODEL_FLAG_SKINNED : 0u;
+    // ノード階層を書けるなら必ず書く。配置側が「DCC 上の 1 オブジェクト = 1 GameObject」を
+    // 復元するための唯一の情報源で、これが無いと submesh を平坦に扱うしかなくなる。
+    //
+    // ノード階層は常に保存するが、頂点変換のベイクは静的インポートだけに限定する:
+    //   静的   — PreTransformVertices / applyStaticNodeTransforms で頂点がモデル空間
+    //   スキンド — ボーン付きメッシュはパレット、剛体メッシュはノード行列で動かす
+    // WHY: アニメーション付き FBX に混在する「ボーンを持たない剛体メッシュ」まで
+    //      BAKED と宣言すると、Preview / ランタイムがノード変換を二重に打ち消してしまう。
+    if (ms && ms->mRootNode) {
+        modelHdr.flags |= FZMODEL_FLAG_NODES;
+        if (!skinned)
+            modelHdr.flags |= FZMODEL_FLAG_NODE_TRANSFORMS_BAKED;
+    }
     modelHdr.lodCount         = 1;
     modelHdr.materialSlotCount = static_cast<uint32_t>(slotNames.size());
     out.write(reinterpret_cast<const char*>(&modelHdr), sizeof(modelHdr));
@@ -653,10 +754,17 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         boundsValid = true;
     };
 
+    // aiMesh の添字 → 出力 submesh の添字。ノードチャンクが submesh を指すのに使う。
+    // WHY 別に持つか: 下のループは未選択メッシュと頂点 0 件を飛ばすため、
+    //     出力側の連番と aiMesh の添字が一致しない。
+    std::unordered_map<uint32_t, uint32_t> submeshRemap;
+    uint32_t writtenSubmeshIndex = 0;
+
     for (uint32_t mi=0; mi<ms->mNumMeshes; ++mi) {
         const aiMesh* mesh = ms->mMeshes[mi];
         if (!isMeshSelected(mesh)) continue;
         if (mesh->mNumVertices == 0) continue;
+        submeshRemap[mi] = writtenSubmeshIndex++;
 
         // インデックス
         std::vector<uint32_t> indices;
@@ -762,6 +870,12 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
     // ── スケルトン ────────────────────────────────────────────────────────
     if (skinned && ctx.scene) {
         if (!WriteSkeleton(out, ctx.scene, ctx.unitScale, ctx.bindBakeRotation)) return false;
+    }
+
+    // ── ノード階層 (v4) ───────────────────────────────────────────────────
+    // 最後に置く。既存チャンクのオフセットに触れずに拡張できるため。
+    if ((modelHdr.flags & FZMODEL_FLAG_NODES) != 0u) {
+        if (!WriteModelNodes(out, ms, ctx.unitScale, submeshRemap)) return false;
     }
 
     // ── モデル全体バウンズをヘッダーへ書き戻す ────────────────────────────

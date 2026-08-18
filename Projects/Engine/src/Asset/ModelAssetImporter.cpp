@@ -84,6 +84,53 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
     return true;
 }
 
+// v4 のノード階層チャンクを読む。ファイル末尾に置かれている。
+bool ReadNodes(BinaryReader& r, ModelAsset& out, const std::string& path)
+{
+    FzModelNodeChunkHeader hdr{};
+    if (!r.Read(hdr) ||
+        hdr.magic[0] != 'F' || hdr.magic[1] != 'Z' ||
+        hdr.magic[2] != 'N' || hdr.magic[3] != 'D') {
+        FBZZ_LOG_ERROR("ModelAssetImporter: bad node chunk magic [%s]", path.c_str());
+        return false;
+    }
+
+    out.rootNodeIndex = hdr.rootNodeIndex;
+    out.nodes.resize(hdr.nodeCount);
+
+    for (uint32_t ni = 0; ni < hdr.nodeCount; ++ni) {
+        FzModelNodeData nd{};
+        if (!r.Read(nd)) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated node %u [%s]", ni, path.c_str());
+            return false;
+        }
+
+        ModelNode& node       = out.nodes[ni];
+        node.name             = nd.name;
+        node.parentIndex      = nd.parentIndex;
+        node.localTranslation = { nd.localTranslation[0], nd.localTranslation[1],
+                                  nd.localTranslation[2] };
+        node.localRotation    = { nd.localRotation[0], nd.localRotation[1],
+                                  nd.localRotation[2], nd.localRotation[3] };
+        node.localScale       = { nd.localScale[0], nd.localScale[1], nd.localScale[2] };
+
+        node.meshIndices.resize(nd.meshCount);
+        if (nd.meshCount > 0 &&
+            !r.ReadBytes(node.meshIndices.data(), nd.meshCount * sizeof(uint32_t))) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated node meshes %u [%s]", ni, path.c_str());
+            return false;
+        }
+
+        node.children.resize(nd.childCount);
+        if (nd.childCount > 0 &&
+            !r.ReadBytes(node.children.data(), nd.childCount * sizeof(int32_t))) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated node children %u [%s]", ni, path.c_str());
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
@@ -249,6 +296,18 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
     if (skinned) {
         if (!ReadSkeleton(r, *model, absPath)) {
             FBZZ_LOG_WARN("ModelAssetImporter: skeleton read failed [%s]", absPath.c_str());
+        }
+    }
+
+    // ノード階層 (v4)。読めなくても配置側が「全 submesh を 1 GameObject」へ
+    // フォールバックできるため、失敗は警告に留めてモデル自体は返す。
+    if ((hdr.flags & FZMODEL_FLAG_NODES) != 0u) {
+        model->nodeTransformsBaked =
+            (hdr.flags & FZMODEL_FLAG_NODE_TRANSFORMS_BAKED) != 0u;
+        if (!ReadNodes(r, *model, absPath)) {
+            FBZZ_LOG_WARN("ModelAssetImporter: node hierarchy read failed [%s]", absPath.c_str());
+            model->nodes.clear();
+            model->rootNodeIndex = -1;
         }
     }
 

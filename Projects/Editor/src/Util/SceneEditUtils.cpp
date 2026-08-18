@@ -139,6 +139,7 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
     dst.prefabAssetPath = src->prefabAssetPath;
     dst.transform = src->transform;
     ctx.activeScene->DuplicateComponents(srcId, dst.GetID());
+    ctx.editorSceneState.CopyComponentOrder(src->instanceId, dst.instanceId);
 
     if (parentId.IsValid()) {
         if (auto* parent = ctx.activeScene->GetGameObject(parentId))
@@ -268,11 +269,12 @@ void ComputeGameObjectBounds(scene::GameObject& go,
     }
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-        // 1 GameObject = モデル全体なので、全 submesh の境界球を合成する。
+        // この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
         // 非表示スロットの submesh は描画されないので境界にも含めない。
+        // i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
-        for (size_t i = 0; i < smr->model->meshes.size(); ++i) {
-            const auto& meshPtr = smr->model->meshes[i];
+        for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
+            const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
             if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
             if (mat && !mat->SlotAt(i).visible) continue;
             const math::Vector3 c = worldPoint(meshPtr->boundsCenter);
