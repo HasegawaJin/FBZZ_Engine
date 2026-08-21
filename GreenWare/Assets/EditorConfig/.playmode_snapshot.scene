@@ -13,7 +13,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.708015
+    aspectRatio = 2.038674
     cullDistanceSpherical = true
     cullingBoundsPadding = 0.0
     cullingMask = 4294967295
@@ -28,9 +28,9 @@ tag = 'MainCamera'
     smallObjectScreenHeight = 0.0
 
     [gameobjects.transform]
-    position = [ 6.957511, 5.834551, -3.761041 ]
-    rotation = [ -0.143586, 0.812718, -0.517759, -0.225385 ]
-    scale = [ 1.000002, 1.0, 1.000002 ]
+    position = [ 3.957511, 1.834551, 3.238959 ]
+    rotation = [ 0.0, 0.963631, 0.0, -0.267237 ]
+    scale = [ 1.000003, 1.0, 1.000003 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -162,13 +162,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:0'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:0|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -188,13 +188,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:982fe3b5e60716989390674d7d27cab2'
+    material = 'guid:982fe3b5e60716989390674d7d27cab2|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:1'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:1|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -214,13 +214,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:982fe3b5e60716989390674d7d27cab2'
+    material = 'guid:982fe3b5e60716989390674d7d27cab2|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:2'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:2|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -240,7 +240,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshColliderComponent]
@@ -248,7 +248,7 @@ tag = 'Untagged'
     enabled = true
     isTrigger = false
     meshIndex = 0
-    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:3'
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:3|Assets/Models/Map/Boss_Arena_Map.fbx'
     physicsMaterial = ''
     useTransformScale = true
 
@@ -266,7 +266,7 @@ tag = 'Untagged'
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:3'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:3|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -286,13 +286,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:4'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:4|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -312,13 +312,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:5'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:5|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -338,13 +338,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:6'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:6|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -364,13 +364,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:7'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:7|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -390,13 +390,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:8'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:8|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -416,13 +416,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:9'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:9|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -442,13 +442,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:10'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:10|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -468,13 +468,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:11'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:11|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -494,13 +494,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:12'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:12|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -520,13 +520,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:13'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:13|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -546,13 +546,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:14'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:14|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -572,13 +572,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:15'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:15|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -598,13 +598,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:16'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:16|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -624,13 +624,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:17'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:17|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -650,13 +650,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:18'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:18|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -676,13 +676,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:19'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:19|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -702,13 +702,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:20'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:20|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -728,13 +728,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:21'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:21|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -754,13 +754,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:22'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:22|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -780,13 +780,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:23'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:23|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -806,13 +806,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:24'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:24|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -832,13 +832,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:25'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:25|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -858,13 +858,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:26'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:26|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -884,13 +884,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c5b10c9363ce62f7b0c961977273826d'
+    material = 'guid:c5b10c9363ce62f7b0c961977273826d|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:27'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:27|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -910,13 +910,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c5b10c9363ce62f7b0c961977273826d'
+    material = 'guid:c5b10c9363ce62f7b0c961977273826d|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:28'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:28|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -936,13 +936,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:29'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:29|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -962,13 +962,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:30'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:30|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -988,13 +988,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:31'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:31|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1014,13 +1014,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:32'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:32|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1040,13 +1040,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:33'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:33|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1066,13 +1066,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:34'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:34|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1092,13 +1092,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:35'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:35|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1118,13 +1118,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:36'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:36|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1144,13 +1144,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:37'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:37|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1170,13 +1170,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:38'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:38|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1196,13 +1196,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:39'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:39|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1222,13 +1222,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:40'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:40|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1248,13 +1248,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c5b10c9363ce62f7b0c961977273826d'
+    material = 'guid:c5b10c9363ce62f7b0c961977273826d|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:41'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:41|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1274,13 +1274,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:42'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:42|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1300,13 +1300,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:43'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:43|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1326,13 +1326,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:44'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:44|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1352,13 +1352,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:45'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:45|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1378,13 +1378,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:982fe3b5e60716989390674d7d27cab2'
+    material = 'guid:982fe3b5e60716989390674d7d27cab2|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:46'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:46|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1404,13 +1404,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:47'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:47|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1430,13 +1430,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:48'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:48|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1456,13 +1456,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:49'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:49|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1482,13 +1482,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:50'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:50|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1508,13 +1508,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:51'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:51|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1534,13 +1534,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:52'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:52|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1560,13 +1560,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:53'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:53|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1586,13 +1586,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20c273aa55c60f5510d4d0333c82659f'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:54'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:54|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1612,13 +1612,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:55'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:55|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1638,13 +1638,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:56'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:56|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1664,13 +1664,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:57'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:57|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1690,13 +1690,13 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c12015f1730207907a992d18d1bb080a'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
     castShadows = true
     enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:58'
+    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:58|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1734,7 +1734,7 @@ tag = 'PolarityAnchor'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:92227fa32d994467a8093bd9e3ab6911'
+    material = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1752,14 +1752,14 @@ tag = 'PolarityAnchor'
     type = 'PolarityTargetComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e'
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         debugRemaining = 0.0
         emissiveSlot = 0
         isAnchor = true
         polarityClass = 3
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = 'f4000001-0000-0000-0000-000000000010'
 layer = 0
 name = 'Enemy_Normal_A'
@@ -1771,7 +1771,7 @@ tag = 'Enemy'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:92227fa32d994467a8093bd9e3ab6911'
+    material = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1827,7 +1827,7 @@ tag = 'Enemy'
     type = 'PolarityTargetComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e'
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         debugRemaining = 0.0
         emissiveSlot = 0
         isAnchor = false
@@ -1838,7 +1838,7 @@ tag = 'Enemy'
     type = 'PolarityBodyComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e'
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         debugPartner = ''
         debugPhase = 'Idle'
         drawDebugFlight = false
@@ -1874,7 +1874,7 @@ tag = 'Enemy'
         turnSpeed = 10.0
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = 'f4000001-0000-0000-0000-000000000011'
 layer = 0
 name = 'Enemy_Normal_B'
@@ -1886,7 +1886,7 @@ tag = 'Enemy'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:92227fa32d994467a8093bd9e3ab6911'
+    material = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1942,7 +1942,7 @@ tag = 'Enemy'
     type = 'PolarityTargetComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e'
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         debugRemaining = 0.0
         emissiveSlot = 0
         isAnchor = false
@@ -1953,7 +1953,7 @@ tag = 'Enemy'
     type = 'PolarityBodyComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e'
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         debugPartner = ''
         debugPhase = 'Idle'
         drawDebugFlight = false
@@ -2009,7 +2009,7 @@ tag = 'Untagged'
     type = 'PolarityFieldComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e'
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         consumePolarityOnImpact = true
         debugChargedCount = 0
         debugLinkCount = 0
@@ -2038,7 +2038,567 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+instanceId = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+layer = 0
+name = 'WPN_Pistol_R'
+parent = 'SOCKET_Holster_R'
+parentInstanceId = '6f1416cb-bb94-4497-b61c-481c92afe5a8'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.AnimatorComponent]
+    anyStateTransitions = []
+    baseLayerMaskPath = ''
+    controllerPath = 'guid:9478929ab61c4dc1ad71873024f4cd28|Assets/Animation/WPN_Pistol_R.animcontroller'
+    defaultStateName = 'WeaponIdle'
+    enabled = true
+    parameters = []
+    playing = true
+    rootMotionApplyRotation = 0
+    rootMotionApplyXZ = 0
+    rootMotionApplyY = 0
+    rootMotionMode = 1
+    rootMotionNodeName = ''
+    rootMotionPoseMode = 0
+    rootMotionPositionScale = 1.0
+    rootMotionRotationScale = 1.0
+    rootMotionSource = 0
+    rootMotionTarget = ''
+    speed = 1.0
+    states = []
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = ''
+        mode = 0
+        name = 'Base Layer'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = ''
+            sourcePath = ''
+            time = 0.0
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:d0c3e92b087a373fab06cbae2cce147d|Library/Baked/0c315630613f1903ef30b5afb15dfda3/materials/M_ArmorWhite.mat'
+    visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:d4f307311c1e374570be829db18a33af|Library/Baked/0c315630613f1903ef30b5afb15dfda3/materials/M_PanelLine.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:0d0bdc2766faae7b85adca08942a6161|Library/Baked/0c315630613f1903ef30b5afb15dfda3/materials/M_GunMark_Plus.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:b4b9ebf57d5bd3162ec681e3af7b7ec0|Library/Baked/0c315630613f1903ef30b5afb15dfda3/materials/M_MetalDark.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:f6e2153fa4d10a9b06c570664ef03985|Library/Baked/0c315630613f1903ef30b5afb15dfda3/materials/M_GunGlow_Plus.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:2d79af8e4ea9fdf98bdca4f8adfde10f|Library/Baked/0c315630613f1903ef30b5afb15dfda3/materials/M_GunAccent.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:0b1e9fc07d09d2c6b18e2897300715a4|Library/Baked/0c315630613f1903ef30b5afb15dfda3/materials/M_GunGlowCore_Plus.mat'
+        visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:0c315630613f1903ef30b5afb15dfda3|Assets/Models/WPN_Pistol_R/WPN_Pistol_R.fbx'
+    skeletonRootGuid = '7ad9d4ae-f8a9-496e-a69f-d539db4f4881'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 0, 1, 2, 3, 4, 5, 6 ]
+
+    [gameobjects.SocketAttachmentComponent]
+    blendDuration = 0.0
+    enabled = true
+    followPosition = true
+    followRotation = true
+    followScale = false
+    localSocketName = 'SOCKET_Grip'
+    positionOffset = [ 0.0, 0.0, 0.0 ]
+    rotationOffsetDegrees = [ 0.0, 0.0, 0.0 ]
+    scaleMultiplier = [ 1.0, 1.0, 1.0 ]
+    socketName = 'SOCKET_Holster_R'
+    target = [ 4294967295, 0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'WeaponAnimatorComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        deployClipFile = 'guid:c3aa764eb84cd5f18432af0f7fe8afc6|Assets/Models/WPN_Pistol_R/Deploy.fbx'
+        deployClipName = 'Deploy'
+        drawSockets = false
+        dryClipFile = 'guid:df911da605b32a33b8b7963b7d16a65b|Assets/Models/WPN_Pistol_R/Dry.fbx'
+        dryClipName = 'Dry'
+        fireClipFile = 'guid:e8782dc9a7e251d15ad53237815964f6|Assets/Models/WPN_Pistol_R/Fire_R.fbx'
+        fireClipName = 'Fire_R'
+        fireFadeIn = 0.0
+        fireFadeOut = 0.08
+        foldClipFile = 'guid:5eff63e3cc2b236381f4ccf7d7c748d6|Assets/Models/WPN_Pistol_R/Fold.fbx'
+        foldClipName = 'Fold'
+        foldedIdleClipFile = 'guid:d320334be048e88d9f22d76257f6da2a|Assets/Models/WPN_Pistol_R/Folded_Idle.fbx'
+        foldedIdleClipName = 'Folded_Idle'
+        hand = 1
+        muzzleFlashPrefab = ''
+        reloadClipFile = 'guid:371940c28b79e7bfa6cd9301cc1d4add|Assets/Models/WPN_Pistol_R/Reload.fbx'
+        reloadClipName = 'Reload'
+        sfxDry = ''
+        sfxFire = ''
+        sfxShell = ''
+        shellPrefab = ''
+        slotLayerName = 'Base Layer'
+
+[[gameobjects]]
+active = true
+instanceId = '7ad9d4ae-f8a9-496e-a69f-d539db4f4881'
+layer = 0
+name = 'RootNode'
+parent = 'WPN_Pistol_R'
+parentInstanceId = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'RootNode'
+    generated = true
+    nodeIndex = 0
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '522e13b2-c899-4d7f-9db2-58c3f5ee34fb'
+layer = 0
+name = 'WPN_Pistol_R'
+parent = 'RootNode'
+parentInstanceId = '7ad9d4ae-f8a9-496e-a69f-d539db4f4881'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'WPN_Pistol_R'
+    generated = true
+    nodeIndex = 1
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '54ff0e2f-2d32-4258-b86d-c5384413b4f5'
+layer = 0
+name = 'WPN_Pistol_R_Rig'
+parent = 'RootNode'
+parentInstanceId = '7ad9d4ae-f8a9-496e-a69f-d539db4f4881'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'WPN_Pistol_R_Rig'
+    generated = true
+    nodeIndex = 2
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cb98c625-0bef-4767-a812-87e40ce86feb'
+layer = 0
+name = 'WRoot'
+parent = 'WPN_Pistol_R_Rig'
+parentInstanceId = '54ff0e2f-2d32-4258-b86d-c5384413b4f5'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 0
+    boneName = 'WRoot'
+    generated = true
+    nodeIndex = 3
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '67bd800c-b3e8-4f52-a39e-abeb093df7e9'
+layer = 0
+name = 'SOCKET_Grip'
+parent = 'WRoot'
+parentInstanceId = 'cb98c625-0bef-4767-a812-87e40ce86feb'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 1
+    boneName = 'SOCKET_Grip'
+    generated = true
+    nodeIndex = 4
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8a64a088-95a0-448e-9d57-ac3454d7cb86'
+layer = 0
+name = 'Fold_Root'
+parent = 'WRoot'
+parentInstanceId = 'cb98c625-0bef-4767-a812-87e40ce86feb'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 2
+    boneName = 'Fold_Root'
+    generated = true
+    nodeIndex = 5
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5521174b-b282-4d50-b169-3825f1ed0b0c'
+layer = 0
+name = 'Body'
+parent = 'Fold_Root'
+parentInstanceId = '8a64a088-95a0-448e-9d57-ac3454d7cb86'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 3
+    boneName = 'Body'
+    generated = true
+    nodeIndex = 6
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.05, -0.0875 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a826b91f-49f4-4c4b-8003-9ad1bc9e6666'
+layer = 0
+name = 'SOCKET_Eject'
+parent = 'Body'
+parentInstanceId = '5521174b-b282-4d50-b169-3825f1ed0b0c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 4
+    boneName = 'SOCKET_Eject'
+    generated = true
+    nodeIndex = 7
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.07, 0.065, -0.0325 ]
+    rotation = [ 0.0, 0.0, -0.707107, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2dc3cbbc-e584-4c89-a81f-1cf3d6b68f8c'
+layer = 0
+name = 'Shell'
+parent = 'Body'
+parentInstanceId = '5521174b-b282-4d50-b169-3825f1ed0b0c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 5
+    boneName = 'Shell'
+    generated = true
+    nodeIndex = 8
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.062, 0.065, -0.0325 ]
+    rotation = [ 0.0, 0.0, -0.707107, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '910c078b-6a38-4733-bef6-d0eff5ef3238'
+layer = 0
+name = 'Fold_Top'
+parent = 'Fold_Root'
+parentInstanceId = '8a64a088-95a0-448e-9d57-ac3454d7cb86'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 6
+    boneName = 'Fold_Top'
+    generated = true
+    nodeIndex = 9
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.05, -0.1675 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6d116420-cb8a-4d16-8993-9572a64eac31'
+layer = 0
+name = 'Fold_Barrel'
+parent = 'Fold_Root'
+parentInstanceId = '8a64a088-95a0-448e-9d57-ac3454d7cb86'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 7
+    boneName = 'Fold_Barrel'
+    generated = true
+    nodeIndex = 10
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.15, -0.11 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0e3cc277-5b60-4776-b072-90247e63fdd9'
+layer = 0
+name = 'Slide'
+parent = 'Fold_Barrel'
+parentInstanceId = '6d116420-cb8a-4d16-8993-9572a64eac31'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 8
+    boneName = 'Slide'
+    generated = true
+    nodeIndex = 11
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '72a4d64e-07a4-45d9-ab17-2e9809cad286'
+layer = 0
+name = 'SOCKET_Muzzle'
+parent = 'Slide'
+parentInstanceId = '0e3cc277-5b60-4776-b072-90247e63fdd9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 9
+    boneName = 'SOCKET_Muzzle'
+    generated = true
+    nodeIndex = 12
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.185, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8321c252-ea88-4ea2-ba88-8fa18f4757ab'
+layer = 0
+name = 'Fold_Grip'
+parent = 'Fold_Root'
+parentInstanceId = '8a64a088-95a0-448e-9d57-ac3454d7cb86'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 10
+    boneName = 'Fold_Grip'
+    generated = true
+    nodeIndex = 13
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.005, -0.03 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd8e844bf-af2e-4da0-9a51-5581ea4ee145'
+layer = 0
+name = 'Cell'
+parent = 'Fold_Grip'
+parentInstanceId = '8321c252-ea88-4ea2-ba88-8fa18f4757ab'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 11
+    boneName = 'Cell'
+    generated = true
+    nodeIndex = 14
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.105, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad9bb047-6e90-43d6-8b59-ef067efa3477'
+layer = 0
+name = 'Fold_Trigger'
+parent = 'Fold_Root'
+parentInstanceId = '8a64a088-95a0-448e-9d57-ac3454d7cb86'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 12
+    boneName = 'Fold_Trigger'
+    generated = true
+    nodeIndex = 15
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.075, -0.03 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ad986c42-2f27-4b8c-a25b-836f85f170ad'
+layer = 0
+name = 'Trigger'
+parent = 'Fold_Trigger'
+parentInstanceId = 'ad9bb047-6e90-43d6-8b59-ef067efa3477'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 13
+    boneName = 'Trigger'
+    generated = true
+    nodeIndex = 16
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.025, 0.02 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '19dd18e9-3886-45a2-a3b2-5d595621d8b4'
+layer = 0
+name = 'Fold_Rear'
+parent = 'Fold_Root'
+parentInstanceId = '8a64a088-95a0-448e-9d57-ac3454d7cb86'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 14
+    boneName = 'Fold_Rear'
+    generated = true
+    nodeIndex = 17
+    skinnedMeshOwner = 'WPN_Pistol_R'
+    skinnedMeshOwnerGuid = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.072, -0.1 ]
+    rotation = [ 0.0, 0.0, 1.0, 0.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 layer = 0
 name = 'Player'
 parent = ''
@@ -2048,9 +2608,9 @@ prefabSourceId = ''
 tag = 'Player'
 
     [gameobjects.AnimatorComponent]
-    baseLayerMaskPath = 'guid:cdb832421a9b2cc6a6dcd596c98ac244'
-    controllerPath = 'guid:5949c2451489eaf92addfbe768d1e99a'
-    defaultStateName = ''
+    baseLayerMaskPath = 'guid:328750624304cb9808548b4930d0e50a|Assets/Animation/Player/Player_Base.mask'
+    controllerPath = 'guid:5949c2451489eaf92addfbe768d1e99a|Assets/Animation/Player/Player.animcontroller'
+    defaultStateName = 'Locomotion'
     enabled = true
     playing = true
     rootMotionApplyRotation = 0
@@ -2094,17 +2654,81 @@ tag = 'Player'
             paramName = 'VerticalSpeed'
             threshold = -1.0
 
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Dodge_Roll'
+        transitionDuration = 0.06
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Dodge'
+            threshold = 0.0
+
         [[gameobjects.AnimatorComponent.layers]]
         enabled = true
-        maskPath = 'guid:007ea536d5d6032d92b88119f8e141fa'
-        mode = 1
-        name = 'Layer 1'
+        maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
+        mode = 0
+        name = 'UpperBody'
         retargetMappings = []
         weight = 1.0
 
             [gameobjects.AnimatorComponent.layers.additiveReference]
             clipName = ''
             sourcePath = ''
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
+        mode = 1
+        name = 'Aim'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Aim_CC'
+            sourcePath = 'guid:2f94d611352a50ac60ca2d6b8b0a653e|Library/Baked/71130474175b633ec726cf12cba77d2a/anims/Aim_CC.anim'
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
+        mode = 1
+        name = 'Add_AimSway'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Pose_AimUpper'
+            sourcePath = 'guid:bb61e445aa4c7ecb813d64ecf7cd9795|Library/Baked/e32e34d813b2041918c6a71ce7e1bec6/anims/Pose_AimUpper.anim'
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
+        mode = 1
+        name = 'Add_Hit'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Idle'
+            sourcePath = 'guid:f6689ee1d3df6224c22143e77f83e99a|Library/Baked/53992e9f203a644e714cca00230a6cab/anims/Idle.anim'
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:3e580ab75da1e770c6901b590996c446|Assets/Animation/Player/M_Arms.mask'
+        mode = 1
+        name = 'Add_Fire'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Pose_FireZero'
+            sourcePath = 'guid:95ee4808dfee3ba5dacb8d45cf1f00f3|Library/Baked/9758dfab2642f470536582d036806fb2/anims/Pose_FireZero.anim'
             time = 0.0
 
         [[gameobjects.AnimatorComponent.parameters]]
@@ -2139,6 +2763,27 @@ tag = 'Player'
         boolValue = false
         floatValue = 0.0
         intValue = 0
+        name = 'Dodge'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'AimYaw'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'AimPitch'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
         name = 'Draw'
         type = 3
 
@@ -2161,37 +2806,37 @@ tag = 'Player'
         transitions = []
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
-            dampTime = 0.0
+            dampTime = 0.08
             paramName = 'Speed'
             syncNormalizedTime = true
 
                 [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
-                clipIndex = 1
+                clipIndex = -1
                 clipName = 'Idle'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'guid:ba9a3a7766c3bec76c7c1ddf9ab152f0'
+                sourcePath = 'guid:f6689ee1d3df6224c22143e77f83e99a|Library/Baked/53992e9f203a644e714cca00230a6cab/anims/Idle.anim'
                 speed = 1.0
                 threshold = 0.0
 
                 [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
-                clipIndex = 2
+                clipIndex = -1
                 clipName = 'Walk'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'guid:3836ea49fc4972b2bf7d106258996fae'
+                sourcePath = 'guid:58e563008174aa1f67e6a0ce332a9869|Library/Baked/bd9603dd72da663ce93340c61dc017b7/anims/Walk.anim'
                 speed = 1.0
                 threshold = 0.15
 
                 [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
-                clipIndex = 0
+                clipIndex = -1
                 clipName = 'Run'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'guid:902ceab774458114c4260b35a7292e2f'
+                sourcePath = 'guid:369aaaa277078d08d2512ad9e608701a|Library/Baked/3a48dd956489169cdef746fd739836e0/anims/Run.anim'
                 speed = 1.0
                 threshold = 0.38
 
@@ -2203,12 +2848,12 @@ tag = 'Player'
 
         [[gameobjects.AnimatorComponent.states]]
         clipIndex = -1
-        clipName = ''
+        clipName = 'JumpUp'
         ikWeight = 1.0
         loop = false
         mode = 0
         name = 'Player_JumpUp'
-        sourcePath = 'guid:9e988b73fbf4aed78c4c2524b8488bc8'
+        sourcePath = 'guid:12d93b9fd6b3acf2a7aefaa4aacc2130|Library/Baked/fe1168e497beb8bfb7de559e594b6b86/anims/JumpUp.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -2237,12 +2882,12 @@ tag = 'Player'
 
         [[gameobjects.AnimatorComponent.states]]
         clipIndex = -1
-        clipName = ''
+        clipName = 'FallIdle'
         ikWeight = 1.0
         loop = true
         mode = 0
         name = 'Player_FallIdle'
-        sourcePath = 'guid:577688b6ca782ec75d36f3e46867e4cc'
+        sourcePath = 'guid:f3e8f1a78e435f9ba59111e23516a1ed|Library/Baked/74f29b51acba81e88101e9645013ab0c/anims/FallIdle.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -2271,12 +2916,12 @@ tag = 'Player'
 
         [[gameobjects.AnimatorComponent.states]]
         clipIndex = -1
-        clipName = ''
+        clipName = 'Land'
         ikWeight = 1.0
         loop = false
         mode = 0
         name = 'Player_Land'
-        sourcePath = 'guid:0d43d7a778b6d5d7d4bb8e6bc3a4f119'
+        sourcePath = 'guid:62dc00731466745c65d36fc8919531d2|Library/Baked/9679356bf2ec9ed54e59504aa9ab8ebb/anims/Land.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -2292,27 +2937,68 @@ tag = 'Player'
             type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
             exitTime = 0.35
             fixedDuration = true
             hasExitTime = true
             toStateName = 'Locomotion'
             transitionDuration = 0.18
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'Speed'
-                threshold = 0.1
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Dodge_Roll'
+        ikWeight = 0.0
+        loop = false
+        mode = 0
+        name = 'Dodge_Roll'
+        sourcePath = 'guid:544ca929fc1ea483d7dd92d3eb90e5a1|Library/Baked/1e9e95050ca4b2f844fc43866cb68907/anims/Dodge_Roll.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
             conditions = []
-            exitTime = 0.75
+            exitTime = 0.95
             fixedDuration = false
             hasExitTime = true
             toStateName = 'Locomotion'
             transitionDuration = 0.12
 
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Hit_Heavy'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Hit_Heavy'
+        sourcePath = 'guid:c169090d98a98d2cc85dc1d870104b56|Library/Baked/d0aeff5dcb528d368b496f6ede6961c5/anims/Hit_Heavy.anim'
+        speed = 1.0
+        transitions = []
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
+
     [gameobjects.CapsuleColliderComponent]
-    center = [ 0.0, 1.03, 0.0 ]
+    center = [ 0.0, 0.96, 0.0 ]
     enabled = true
     isTrigger = false
     physicsMaterial = ''
@@ -2365,31 +3051,43 @@ tag = 'Player'
     velocity = [ 0.0, 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 5.486404, 0.0, -4.417697 ]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
-    type = 'PlayerControllerComponent'
+    type = 'PlayerComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:079a5e380ed2ea9c207fe6941e5e28fe'
-        airAccel = 3.0
-        dodgeCooldown = 0.8
-        dodgeDuration = 0.22
-        dodgeSpeed = 16.0
-        drawAttachNormalizedTime = 0.6
+        aimLayerName = 'Aim'
+        aimSwayLayerName = 'Add_AimSway'
+        coneDegrees = 18.0
+        debugHealth = 0
+        debugTargetName = ''
+        distanceWeight = 6.0
+        drawDebugLine = false
+        drawDebugTracer = false
+        drawDuration = 0.9
+        drawSocketGizmos = true
         drawStateName = 'DrawPistols'
-        groundAccel = 18.0
-        groundDecel = 22.0
-        handSocketLeft = [ 4294967295, 0 ]
-        handSocketRight = [ 4294967295, 0 ]
-        holsterDetachNormalizedTime = 0.6
-        holsterLeft = [ 4294967295, 0 ]
-        holsterRight = [ 4294967295, 0 ]
+        drawTransferDelay = 0.3
+        fallbackToRaycast = true
+        fireLayerGain = 2.0
+        fireLayerName = 'Add_Fire'
+        fireLeftClipFile = 'guid:bd25df58d95f4297f208069c014514f5|Library/Baked/57dc1feaaa919480addc187f8797d482/anims/Fire_Pistol_L.anim'
+        fireLeftClipName = 'Fire_Pistol_L'
+        fireRightClipFile = 'guid:48b26f14e4c8e89df23b7012356ea83f|Library/Baked/ddfbf771594ff72e7182484d3d0d0afe/anims/Fire_Pistol_R.anim'
+        fireRightClipName = 'Fire_Pistol_R'
+        gripSocketName = 'SOCKET_Grip'
+        hitFrontClipFile = 'guid:399f84087c05a267c373d75c4a778b11|Library/Baked/1773fde5854e4830e224dc5e578f8b93/anims/Hit_F.anim'
+        hitFrontClipName = 'Hit_F'
+        hitLayerName = 'Add_Hit'
+        holsterDuration = 0.9
         holsterStateName = 'HolsterPistols'
-        jumpSpeed = 7.0
+        holsterTransferDelay = 0.45
+        hurtShakeAmplitude = 0.25
+        hurtShakeDuration = 0.25
         keyBackward = 'S'
         keyDodge = 'Shift'
         keyDraw = 'G'
@@ -2397,45 +3095,61 @@ tag = 'Player'
         keyHolster = 'H'
         keyJump = 'Space'
         keyLeft = 'A'
+        keyMinus = 'Q'
+        keyPlus = 'E'
         keyRight = 'D'
+        maxRange = 40.0
         modelYawOffsetDegrees = 180.0
-        moveSpeed = 6.0
+        muzzleLeft = [ 4294967295, 0 ]
+        muzzleRight = [ 4294967295, 0 ]
+        paramAimPitch = 'AimPitch'
+        paramAimYaw = 'AimYaw'
         paramDodgeTrigger = 'Dodge'
-        paramDrawTrigger = 'Draw'
-        paramHolsterTrigger = 'Holster'
         paramIsGrounded = 'IsGrounded'
         paramJumpTrigger = 'Jump'
         paramSpeed = 'Speed'
         paramVerticalSpeed = 'VerticalSpeed'
+        polarityTuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         rotateToMoveDirection = true
-        turnSpeed = 14.0
+        sfxDeath = ''
+        sfxEmpty = ''
+        sfxFire = ''
+        sfxHit = ''
+        sfxHurt = ''
+        sfxNeutralize = ''
+        stickyBonus = 4.0
+        transferBlendDuration = 0.16
+        tuning = 'guid:079a5e380ed2ea9c207fe6941e5e28fe|Assets/Data/PlayerTuning.fzdata'
         useCameraForward = true
         useFootIK = true
-        weaponLayerName = 'Layer 1'
-        weaponLeft = [ 4294967295, 0 ]
-        weaponRight = [ 4294967295, 0 ]
+        useMouseButtons = true
+        weaponLayerName = 'UpperBody'
+        weaponLeft = [ 168, 1 ]
+        weaponMinus = [ 168, 1 ]
+        weaponPlus = [ 67, 1 ]
+        weaponRight = [ 67, 1 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'a67f97f3-7b2a-4614-96e0-e30e8165b743'
+instanceId = '1f0c3a25-cf64-4371-9dd5-ad02268013ca'
 layer = 0
 name = 'P_AccentGreen'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:2b1dd237b99c9a7ccc271417b5fd43a6'
+    material = 'guid:0d301a9552ac64a1f3303c2f9630dc97|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_AccentGreen.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 0 ]
 
@@ -2446,25 +3160,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '14f3b297-6e44-4ab3-8aa9-77ad2550f323'
+instanceId = '1b972ecf-1ab4-47a2-a487-2b1afea23e62'
 layer = 0
 name = 'P_AccentYellow'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:816e4450f9bceb5ddad7481bddb4c5bf'
+    material = 'guid:e2ef5eb020e7930eaf0f8d63f3c6f04c|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_AccentYellow.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 1 ]
 
@@ -2475,25 +3189,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '04120b98-8e18-43fe-a6c1-773fdc26c92f'
+instanceId = 'd292fa39-4cdc-4466-9fad-37bfaac8968a'
 layer = 0
 name = 'P_ArmorGrey'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c6668b16f064c2bde3877d326a59485b'
+    material = 'guid:c70a9b3b35b10dd4ec3b7971c7deb46e|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 2 ]
 
@@ -2504,25 +3218,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'c4875ad0-dd3d-4607-b7f3-5461e776f5a7'
+instanceId = '1f7d3f7b-2acc-4504-b1ce-c316fb7c03cd'
 layer = 0
 name = 'P_ArmorWhite'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:f37c243ddf3e4ff3cb737f1db8d9b171'
+    material = 'guid:705c3539bbfad6447613138ab4395cfe|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_ArmorWhite.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 3 ]
 
@@ -2533,25 +3247,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '28d7cece-0923-41fe-a907-012045e59723'
+instanceId = '5074f8b3-c352-4cb5-b07e-19c694fb83c8'
 layer = 0
 name = 'P_GlowGreen'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:29c53a79bc20ee81fc5d9e3aed740953'
+    material = 'guid:fda776f8b5e13cd41f342dff99c1ced2|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_GlowGreen.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 4 ]
 
@@ -2562,25 +3276,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '06a29daf-099a-41df-83ce-0d3020458d02'
+instanceId = '92309dd0-a052-4ad5-9ab2-779f69455711'
 layer = 0
 name = 'P_GlowGreenSoft'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:884f3dbae6fb6551c7cee35ee8172957'
+    material = 'guid:2caae78b321f33b464c2acf871226716|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_GlowGreenSoft.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 5 ]
 
@@ -2591,25 +3305,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'ac2d3c7e-bfff-4195-bdd0-7928e49b4637'
+instanceId = '296f007c-2005-4166-9f5c-832aa80af792'
 layer = 0
 name = 'P_LampGreen'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:f19f7208ac07fdbc3818bd4549a59372'
+    material = 'guid:f9dce58d3fe0d65dbbb76079dc261d1f|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_LampGreen.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 6 ]
 
@@ -2620,25 +3334,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'fa15c157-e533-4ff8-9aba-572f216f6b76'
+instanceId = '9ca75349-7ced-41f9-9fea-aeefccaa0a73'
 layer = 0
 name = 'P_MetalDark'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:c84cf6790c7d6c725527cdb4e64302cc'
+    material = 'guid:3e051e08edbf3b37447a2bec144f8c6d|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 7 ]
 
@@ -2649,25 +3363,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '184dcdff-6d18-46b4-8483-43a004f15c1a'
+instanceId = '68e02ad3-d2c8-45fd-8138-b1a9e7242c0a'
 layer = 0
 name = 'P_PanelLine'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:841765ee45d697e9c7395d7f903a1363'
+    material = 'guid:aeb2ce9ff6c028504b141ec263d9b59e|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 8 ]
 
@@ -2678,25 +3392,25 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'a4eda823-3f71-4c40-94ff-3d2862e0e7be'
+instanceId = '7a454cea-12a9-46ef-aefa-c84393950a9e'
 layer = 0
 name = 'P_VisorDark'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a0ba3d3ca6578bde3f849be74d7d0100'
+    material = 'guid:30fdc47cf5330707059b6c28e0f93e3d|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_VisorDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
     castShadows = true
     enabled = true
-    modelPath = 'guid:6f5237de2580cf3fdb37a4be0a71ad85'
-    skeletonRootGuid = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+    modelPath = 'guid:316de8c22c0b4fe9763dfffb7f26a9b1|Assets/Models/Player/Player.fbx'
+    skeletonRootGuid = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
     skeletonRootName = 'RootNode'
     submeshIndices = [ 9 ]
 
@@ -2707,11 +3421,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+instanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 layer = 0
 name = 'RootNode'
 parent = 'Player'
-parentInstanceId = '47fc7176-2e28-437b-b370-fea4e6fda463'
+parentInstanceId = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2722,7 +3436,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 0
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -2731,11 +3445,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '5a3b2e6e-a876-434a-a586-2ce9d22a0db6'
+instanceId = 'b8532963-f35a-4561-aafa-4ac3b9de1efc'
 layer = 0
 name = 'MiniBot_Armature'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2746,7 +3460,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 1
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -2755,59 +3469,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'a36ee631-dbbd-4f8e-a6c8-c60e443a802c'
-layer = 0
-name = 'FBZZ_EVENT__WeaponAttach'
-parent = 'MiniBot_Armature'
-parentInstanceId = '5a3b2e6e-a876-434a-a586-2ce9d22a0db6'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'FBZZ_EVENT__WeaponAttach'
-    generated = true
-    nodeIndex = 2
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ 2.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '214aa14c-01de-4cfb-9fd7-469d96336eed'
-layer = 0
-name = 'FBZZ_EVENT__WeaponHolster'
-parent = 'MiniBot_Armature'
-parentInstanceId = '5a3b2e6e-a876-434a-a586-2ce9d22a0db6'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'FBZZ_EVENT__WeaponHolster'
-    generated = true
-    nodeIndex = 3
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ 1.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ad7ef8eb-7f3c-46cf-8ce6-83aa55abcc55'
+instanceId = '448089c4-75e4-4953-9a7a-329413b9f838'
 layer = 0
 name = 'Root_Motion'
 parent = 'MiniBot_Armature'
-parentInstanceId = '5a3b2e6e-a876-434a-a586-2ce9d22a0db6'
+parentInstanceId = 'b8532963-f35a-4561-aafa-4ac3b9de1efc'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2816,9 +3482,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'Root_Motion'
     generated = true
-    nodeIndex = 4
+    nodeIndex = 2
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -2827,11 +3493,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'd43c1c43-a9a8-4d0c-9df1-858e6fbfac3c'
+instanceId = '613a4fab-8833-4915-8da4-7844d3d2f98b'
 layer = 0
 name = 'Root'
 parent = 'MiniBot_Armature'
-parentInstanceId = '5a3b2e6e-a876-434a-a586-2ce9d22a0db6'
+parentInstanceId = 'b8532963-f35a-4561-aafa-4ac3b9de1efc'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2840,22 +3506,22 @@ tag = 'Untagged'
     boneIndex = 0
     boneName = 'Root'
     generated = true
-    nodeIndex = 5
+    nodeIndex = 3
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ -0.001193, 0.0, -0.007924 ]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ce22dc81-46fe-41f3-b34f-b2678829fd31'
+instanceId = '64a37042-da84-4f33-abea-a39b4eb31bb0'
 layer = 0
 name = 'Pelvis'
 parent = 'Root'
-parentInstanceId = 'd43c1c43-a9a8-4d0c-9df1-858e6fbfac3c'
+parentInstanceId = '613a4fab-8833-4915-8da4-7844d3d2f98b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2864,22 +3530,22 @@ tag = 'Untagged'
     boneIndex = 1
     boneName = 'Pelvis'
     generated = true
-    nodeIndex = 6
+    nodeIndex = 4
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.8695, 0.0 ]
-    rotation = [ -0.004809, 0.005206, 2.5e-05, 0.999975 ]
+    rotation = [ 0.019999, 0.0, 0.0, 0.9998 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+instanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 layer = 0
 name = 'Chest'
 parent = 'Pelvis'
-parentInstanceId = 'ce22dc81-46fe-41f3-b34f-b2678829fd31'
+parentInstanceId = '64a37042-da84-4f33-abea-a39b4eb31bb0'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2888,70 +3554,22 @@ tag = 'Untagged'
     boneIndex = 2
     boneName = 'Chest'
     generated = true
-    nodeIndex = 7
+    nodeIndex = 5
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.187, 0.0 ]
-    rotation = [ 0.006342, 0.003938, -2.5e-05, 0.999972 ]
+    rotation = [ 0.014999, 0.0, 0.0, 0.999888 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '14410e2a-1af6-4c31-98eb-fd6c81f097f6'
-layer = 0
-name = 'Sock_Holster_L'
-parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'Sock_Holster_L'
-    generated = true
-    nodeIndex = 8
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ 0.2568, 0.0528, 0.2915 ]
-    rotation = [ 0.003561, -0.409751, -0.125182, 0.90356 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ec718052-b4d1-47f2-b14f-9d1817b2727a'
-layer = 0
-name = 'Sock_Holster_R'
-parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'Sock_Holster_R'
-    generated = true
-    nodeIndex = 9
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ -0.2568, 0.0528, 0.2915 ]
-    rotation = [ 0.044078, 0.39315, 0.121393, 0.910359 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '407c1440-5e3c-4955-b563-420c084c01f8'
+instanceId = '69d5ba76-4788-4c3a-84c0-59f7591e0206'
 layer = 0
 name = 'Head'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2960,22 +3578,22 @@ tag = 'Untagged'
     boneIndex = 3
     boneName = 'Head'
     generated = true
-    nodeIndex = 10
+    nodeIndex = 6
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.4435, 0.0 ]
-    rotation = [ 0.006473, 0.034975, 0.016588, 0.99923 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '8306c447-837e-4b62-831d-4fe7723d3746'
+instanceId = '278f5ba2-b63c-4c48-a457-54055e51ef62'
 layer = 0
 name = 'Ant_A'
 parent = 'Head'
-parentInstanceId = '407c1440-5e3c-4955-b563-420c084c01f8'
+parentInstanceId = '69d5ba76-4788-4c3a-84c0-59f7591e0206'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2984,22 +3602,22 @@ tag = 'Untagged'
     boneIndex = 4
     boneName = 'Ant_A'
     generated = true
-    nodeIndex = 11
+    nodeIndex = 7
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.6772, 0.1357 ]
-    rotation = [ 0.241904, 0.0, 0.0, 0.9703 ]
+    rotation = [ 0.281594, 0.0, 0.0, 0.959534 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0edd806c-100a-4a4d-861d-9d38b8c0d56a'
+instanceId = 'c2726ace-3a0e-4933-9a4f-c931eebbbf87'
 layer = 0
 name = 'Ant_B'
 parent = 'Ant_A'
-parentInstanceId = '8306c447-837e-4b62-831d-4fe7723d3746'
+parentInstanceId = '278f5ba2-b63c-4c48-a457-54055e51ef62'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3008,22 +3626,22 @@ tag = 'Untagged'
     boneIndex = 5
     boneName = 'Ant_B'
     generated = true
-    nodeIndex = 12
+    nodeIndex = 8
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.121824, 0.0 ]
-    rotation = [ 0.084255, 0.0, 0.0, 0.996444 ]
+    rotation = [ 0.148865, 0.0, 0.0, 0.988858 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b18e8eae-d6fb-4546-9d6c-6410714e26b0'
+instanceId = '90505b23-0f0e-42e1-9a6e-965bac59608c'
 layer = 0
 name = 'Ant_C'
 parent = 'Ant_B'
-parentInstanceId = '0edd806c-100a-4a4d-861d-9d38b8c0d56a'
+parentInstanceId = 'c2726ace-3a0e-4933-9a4f-c931eebbbf87'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3032,22 +3650,22 @@ tag = 'Untagged'
     boneIndex = 6
     boneName = 'Ant_C'
     generated = true
-    nodeIndex = 13
+    nodeIndex = 9
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.100002, 0.0 ]
-    rotation = [ 0.060793, 0.0, 0.0, 0.99815 ]
+    rotation = [ 0.122405, 0.0, 0.0, 0.99248 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '296a0e6c-051d-4d77-977b-03b2b2e98adb'
+instanceId = 'cd047d2b-6b0e-4c79-8822-b380d2fac46c'
 layer = 0
 name = 'UpperArm_L'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3056,22 +3674,22 @@ tag = 'Untagged'
     boneIndex = 7
     boneName = 'UpperArm_L'
     generated = true
-    nodeIndex = 14
+    nodeIndex = 10
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.221, 0.2885, 0.0 ]
-    rotation = [ 0.000346, -0.00132, 0.967259, -0.253787 ]
+    rotation = [ 0.301014, -0.529353, 0.715505, -0.342387 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '149ef3aa-7118-4367-a084-b8e304d98963'
+instanceId = '02756e9c-1374-4762-bbe0-e8188e4371f3'
 layer = 0
 name = 'Forearm_L'
 parent = 'UpperArm_L'
-parentInstanceId = '296a0e6c-051d-4d77-977b-03b2b2e98adb'
+parentInstanceId = 'cd047d2b-6b0e-4c79-8822-b380d2fac46c'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3080,22 +3698,22 @@ tag = 'Untagged'
     boneIndex = 8
     boneName = 'Forearm_L'
     generated = true
-    nodeIndex = 15
+    nodeIndex = 11
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.282, 0.0 ]
-    rotation = [ -0.11338, 0.0, 0.0, 0.993552 ]
+    rotation = [ -0.015348, 0.514774, 0.009488, 0.857136 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0da77209-157b-4512-ba40-0ab0b760241e'
+instanceId = 'ba85f38b-5b0a-4994-bdf9-918ef3527cdf'
 layer = 0
 name = 'Hand_L'
 parent = 'Forearm_L'
-parentInstanceId = '149ef3aa-7118-4367-a084-b8e304d98963'
+parentInstanceId = '02756e9c-1374-4762-bbe0-e8188e4371f3'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3104,22 +3722,22 @@ tag = 'Untagged'
     boneIndex = 9
     boneName = 'Hand_L'
     generated = true
-    nodeIndex = 16
+    nodeIndex = 12
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.284, 0.0 ]
-    rotation = [ 0.004165, -1e-05, -0.002463, 0.999988 ]
+    rotation = [ 0.082641, -0.204306, -0.018198, 0.975243 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '4672dcb3-20b5-400a-8a40-bbd2e55ae254'
+instanceId = 'af4c1a91-6648-4399-86e9-f7146353ef18'
 layer = 0
 name = 'F1A_L'
 parent = 'Hand_L'
-parentInstanceId = '0da77209-157b-4512-ba40-0ab0b760241e'
+parentInstanceId = 'ba85f38b-5b0a-4994-bdf9-918ef3527cdf'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3128,22 +3746,22 @@ tag = 'Untagged'
     boneIndex = 10
     boneName = 'F1A_L'
     generated = true
-    nodeIndex = 17
+    nodeIndex = 13
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ -0.000776, 0.156998, -0.063 ]
-    rotation = [ -0.297264, -0.641587, -0.297264, 0.641588 ]
+    position = [ -0.000775, 0.156998, -0.063 ]
+    rotation = [ -0.297264, -0.641587, -0.297263, 0.641588 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ca9bda4b-4f93-4a04-8d92-b6faebd44732'
+instanceId = 'b85a42a6-da93-42ce-8399-2e48596df473'
 layer = 0
 name = 'F1B_L'
 parent = 'F1A_L'
-parentInstanceId = '4672dcb3-20b5-400a-8a40-bbd2e55ae254'
+parentInstanceId = 'af4c1a91-6648-4399-86e9-f7146353ef18'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3152,22 +3770,22 @@ tag = 'Untagged'
     boneIndex = 11
     boneName = 'F1B_L'
     generated = true
-    nodeIndex = 18
+    nodeIndex = 14
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.515038, 0.0, 0.0, 0.857167 ]
+    rotation = [ -0.514996, 0.0, 0.0, 0.857193 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'bc185bd6-3a4e-4da9-a164-35cf5490080f'
+instanceId = '1544db53-1f49-4062-8655-5142049b29dd'
 layer = 0
 name = 'F1C_L'
 parent = 'F1B_L'
-parentInstanceId = 'ca9bda4b-4f93-4a04-8d92-b6faebd44732'
+parentInstanceId = 'b85a42a6-da93-42ce-8399-2e48596df473'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3176,22 +3794,22 @@ tag = 'Untagged'
     boneIndex = 12
     boneName = 'F1C_L'
     generated = true
-    nodeIndex = 19
+    nodeIndex = 15
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.382684, 0.0, 0.0, 0.92388 ]
+    rotation = [ -0.38269, 0.0, 0.0, 0.923877 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '71e834d7-7245-4319-9b71-3c847f1d1595'
+instanceId = 'ae5616e1-a069-4f51-abea-ea59a39e730a'
 layer = 0
 name = 'F2A_L'
 parent = 'Hand_L'
-parentInstanceId = '0da77209-157b-4512-ba40-0ab0b760241e'
+parentInstanceId = 'ba85f38b-5b0a-4994-bdf9-918ef3527cdf'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3200,22 +3818,22 @@ tag = 'Untagged'
     boneIndex = 13
     boneName = 'F2A_L'
     generated = true
-    nodeIndex = 20
+    nodeIndex = 16
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ -0.000775, 0.156998, 0.0 ]
+    position = [ -0.000776, 0.156998, 0.0 ]
     rotation = [ -0.297264, -0.641587, -0.297264, 0.641587 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '3c14eaf9-c54b-40c2-bc24-e5ebcc20928d'
+instanceId = '1c58ca61-e542-4893-becf-4a5a57473574'
 layer = 0
 name = 'F2B_L'
 parent = 'F2A_L'
-parentInstanceId = '71e834d7-7245-4319-9b71-3c847f1d1595'
+parentInstanceId = 'ae5616e1-a069-4f51-abea-ea59a39e730a'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3224,22 +3842,22 @@ tag = 'Untagged'
     boneIndex = 14
     boneName = 'F2B_L'
     generated = true
-    nodeIndex = 21
+    nodeIndex = 17
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.515038, 0.0, 0.0, 0.857167 ]
+    rotation = [ -0.514996, 0.0, 0.0, 0.857193 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '2f44047a-6f5c-4323-a1b2-2a4e8a3b6795'
+instanceId = '1553c94f-36d4-41cc-bdd2-54242df6d3ed'
 layer = 0
 name = 'F2C_L'
 parent = 'F2B_L'
-parentInstanceId = '3c14eaf9-c54b-40c2-bc24-e5ebcc20928d'
+parentInstanceId = '1c58ca61-e542-4893-becf-4a5a57473574'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3248,22 +3866,22 @@ tag = 'Untagged'
     boneIndex = 15
     boneName = 'F2C_L'
     generated = true
-    nodeIndex = 22
+    nodeIndex = 18
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.382684, 0.0, 0.0, 0.92388 ]
+    rotation = [ -0.38269, 0.0, 0.0, 0.923877 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ebc89a1a-d72c-49c6-a63d-b6583daf4f4f'
+instanceId = 'ec1bb67c-b0aa-4fee-99e2-81dbd4f90776'
 layer = 0
 name = 'F3A_L'
 parent = 'Hand_L'
-parentInstanceId = '0da77209-157b-4512-ba40-0ab0b760241e'
+parentInstanceId = 'ba85f38b-5b0a-4994-bdf9-918ef3527cdf'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3272,22 +3890,22 @@ tag = 'Untagged'
     boneIndex = 16
     boneName = 'F3A_L'
     generated = true
-    nodeIndex = 23
+    nodeIndex = 19
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ -0.000776, 0.156998, 0.063 ]
-    rotation = [ -0.297264, -0.641587, -0.297264, 0.641588 ]
+    position = [ -0.000775, 0.156998, 0.063 ]
+    rotation = [ -0.297264, -0.641586, -0.297263, 0.641588 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '99842e60-8c18-4b00-84e7-d511bd48c5c3'
+instanceId = '88803b78-c5cf-4951-b1ef-f412589a070e'
 layer = 0
 name = 'F3B_L'
 parent = 'F3A_L'
-parentInstanceId = 'ebc89a1a-d72c-49c6-a63d-b6583daf4f4f'
+parentInstanceId = 'ec1bb67c-b0aa-4fee-99e2-81dbd4f90776'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3296,22 +3914,22 @@ tag = 'Untagged'
     boneIndex = 17
     boneName = 'F3B_L'
     generated = true
-    nodeIndex = 24
+    nodeIndex = 20
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.515038, 0.0, 0.0, 0.857167 ]
+    rotation = [ -0.514996, 0.0, 0.0, 0.857193 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'f1f81120-3830-4427-a538-5cb2b5d2af6b'
+instanceId = '349dca2e-d07e-42fc-b2cb-450fcfc5e0ba'
 layer = 0
 name = 'F3C_L'
 parent = 'F3B_L'
-parentInstanceId = '99842e60-8c18-4b00-84e7-d511bd48c5c3'
+parentInstanceId = '88803b78-c5cf-4951-b1ef-f412589a070e'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3320,22 +3938,22 @@ tag = 'Untagged'
     boneIndex = 18
     boneName = 'F3C_L'
     generated = true
-    nodeIndex = 25
+    nodeIndex = 21
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.382684, 0.0, 0.0, 0.92388 ]
+    rotation = [ -0.38269, 0.0, 0.0, 0.923877 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'f76f61b1-e497-4c60-845d-1d0fedeba00d'
+instanceId = '287ee8ad-db88-4dfc-96ce-60dc3946daf7'
 layer = 0
 name = 'ThA_L'
 parent = 'Hand_L'
-parentInstanceId = '0da77209-157b-4512-ba40-0ab0b760241e'
+parentInstanceId = 'ba85f38b-5b0a-4994-bdf9-918ef3527cdf'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3344,9 +3962,9 @@ tag = 'Untagged'
     boneIndex = 19
     boneName = 'ThA_L'
     generated = true
-    nodeIndex = 26
+    nodeIndex = 22
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.034566, 0.088171, -0.085 ]
@@ -3355,11 +3973,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '7cde6474-7611-4075-b88a-0517531bdf82'
+instanceId = '7e0197ee-6e72-4709-8186-5fbee2685d0c'
 layer = 0
 name = 'ThB_L'
 parent = 'ThA_L'
-parentInstanceId = 'f76f61b1-e497-4c60-845d-1d0fedeba00d'
+parentInstanceId = '287ee8ad-db88-4dfc-96ce-60dc3946daf7'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3368,22 +3986,22 @@ tag = 'Untagged'
     boneIndex = 20
     boneName = 'ThB_L'
     generated = true
-    nodeIndex = 27
+    nodeIndex = 23
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.193408, 0.0, 0.0, 0.981118 ]
+    rotation = [ -0.193413, 0.0, 0.0, 0.981117 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '1d61a100-e34e-4cae-a60c-b32d6d97dacf'
+instanceId = '9f15fe73-18fa-4892-a13d-967b0cc97abe'
 layer = 0
 name = 'ThC_L'
 parent = 'ThB_L'
-parentInstanceId = '7cde6474-7611-4075-b88a-0517531bdf82'
+parentInstanceId = '7e0197ee-6e72-4709-8186-5fbee2685d0c'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3392,22 +4010,22 @@ tag = 'Untagged'
     boneIndex = 21
     boneName = 'ThC_L'
     generated = true
-    nodeIndex = 28
+    nodeIndex = 24
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.143692, 0.0, 0.0, 0.989623 ]
+    rotation = [ -0.143678, 0.0, 0.0, 0.989624 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b48bc378-d405-4c35-a624-e91e839157b5'
+instanceId = 'c78c0472-5f54-4141-bab5-8ba9191a5c64'
 layer = 0
 name = 'Grip_L'
 parent = 'Hand_L'
-parentInstanceId = '0da77209-157b-4512-ba40-0ab0b760241e'
+parentInstanceId = 'ba85f38b-5b0a-4994-bdf9-918ef3527cdf'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3416,9 +4034,9 @@ tag = 'Untagged'
     boneIndex = 22
     boneName = 'Grip_L'
     generated = true
-    nodeIndex = 29
+    nodeIndex = 25
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.000557, 0.112999, -0.045 ]
@@ -3427,59 +4045,35 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '89ac60d8-17c6-4ca6-89be-25a9ffcdd6a0'
+instanceId = '3dd5df67-6baa-4244-b9fb-b80b9bed694f'
 layer = 0
-name = 'GunSocket_Hand_L'
+name = 'SOCKET_Hand_L'
 parent = 'Grip_L'
-parentInstanceId = 'b48bc378-d405-4c35-a624-e91e839157b5'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'GunSocket_Hand_L'
-    generated = true
-    nodeIndex = 30
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ 0.027272, 0.080273, 0.046237 ]
-    rotation = [ 0.54118, -0.479557, -0.514517, -0.460893 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '41981b02-7c5a-4c40-90ce-4dde5613efe9'
-layer = 0
-name = 'SOCK_Hand_L'
-parent = 'Grip_L'
-parentInstanceId = 'b48bc378-d405-4c35-a624-e91e839157b5'
+parentInstanceId = 'c78c0472-5f54-4141-bab5-8ba9191a5c64'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 23
-    boneName = 'SOCK_Hand_L'
+    boneName = 'SOCKET_Hand_L'
     generated = true
-    nodeIndex = 31
+    nodeIndex = 26
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.027272, 0.080273, 0.046237 ]
-    rotation = [ 0.54118, -0.479556, -0.514517, -0.460893 ]
+    rotation = [ 0.465715, 0.381755, 0.656787, -0.453876 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'c27d1761-84be-43c3-abb0-8aa4900fa1e2'
+instanceId = '13cf892d-6f44-4a3b-99d9-3dc93f200ba1'
 layer = 0
 name = 'UpperArm_R'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3488,22 +4082,22 @@ tag = 'Untagged'
     boneIndex = 24
     boneName = 'UpperArm_R'
     generated = true
-    nodeIndex = 32
+    nodeIndex = 27
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.221, 0.2885, 0.0 ]
-    rotation = [ -0.000346, -0.00132, 0.967259, 0.253787 ]
+    rotation = [ -0.342025, -0.502373, 0.695461, 0.383373 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '62371e59-e15a-4662-a8ba-68794f357ce2'
+instanceId = '2c6d065b-fcf8-445a-8cf0-3fea9a7381c8'
 layer = 0
 name = 'Forearm_R'
 parent = 'UpperArm_R'
-parentInstanceId = 'c27d1761-84be-43c3-abb0-8aa4900fa1e2'
+parentInstanceId = '13cf892d-6f44-4a3b-99d9-3dc93f200ba1'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3512,22 +4106,22 @@ tag = 'Untagged'
     boneIndex = 25
     boneName = 'Forearm_R'
     generated = true
-    nodeIndex = 33
+    nodeIndex = 28
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.282, 0.0 ]
-    rotation = [ -0.11338, 0.0, 0.0, 0.993552 ]
+    rotation = [ -0.024564, -0.514445, -0.012022, 0.857087 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '2d76af72-1f0c-4b58-8562-a9118be7a005'
+instanceId = '83b21779-4e46-40a3-811c-55db6582c058'
 layer = 0
 name = 'Hand_R'
 parent = 'Forearm_R'
-parentInstanceId = '62371e59-e15a-4662-a8ba-68794f357ce2'
+parentInstanceId = '2c6d065b-fcf8-445a-8cf0-3fea9a7381c8'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3536,22 +4130,22 @@ tag = 'Untagged'
     boneIndex = 26
     boneName = 'Hand_R'
     generated = true
-    nodeIndex = 34
+    nodeIndex = 29
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.284, 0.0 ]
-    rotation = [ -0.004165, -1e-05, 0.002463, 0.999988 ]
+    rotation = [ 0.082641, 0.204306, 0.018198, 0.975243 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'bb121b9f-d637-46dd-84e7-5eb512cf38ae'
+instanceId = '56feb06a-ac8c-4277-8bfb-66794245f07d'
 layer = 0
 name = 'F1A_R'
 parent = 'Hand_R'
-parentInstanceId = '2d76af72-1f0c-4b58-8562-a9118be7a005'
+parentInstanceId = '83b21779-4e46-40a3-811c-55db6582c058'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3560,22 +4154,22 @@ tag = 'Untagged'
     boneIndex = 27
     boneName = 'F1A_R'
     generated = true
-    nodeIndex = 35
+    nodeIndex = 30
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ 0.000776, 0.156998, -0.063 ]
-    rotation = [ -0.297264, 0.641587, 0.297264, 0.641588 ]
+    position = [ 0.000775, 0.156998, -0.063 ]
+    rotation = [ -0.297264, 0.641587, 0.297263, 0.641588 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b718d093-d176-4d78-9059-688d863a63f8'
+instanceId = '071d30fd-db59-421a-988c-e826faea7dcd'
 layer = 0
 name = 'F1B_R'
 parent = 'F1A_R'
-parentInstanceId = 'bb121b9f-d637-46dd-84e7-5eb512cf38ae'
+parentInstanceId = '56feb06a-ac8c-4277-8bfb-66794245f07d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3584,22 +4178,22 @@ tag = 'Untagged'
     boneIndex = 28
     boneName = 'F1B_R'
     generated = true
-    nodeIndex = 36
+    nodeIndex = 31
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.515038, 0.0, 0.0, 0.857167 ]
+    rotation = [ -0.514996, 0.0, 0.0, 0.857193 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '9970c778-860a-485d-815c-be1ffa9017da'
+instanceId = 'c2a36b0b-01e9-43e9-ad5a-1e7e13ad32a3'
 layer = 0
 name = 'F1C_R'
 parent = 'F1B_R'
-parentInstanceId = 'b718d093-d176-4d78-9059-688d863a63f8'
+parentInstanceId = '071d30fd-db59-421a-988c-e826faea7dcd'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3608,22 +4202,22 @@ tag = 'Untagged'
     boneIndex = 29
     boneName = 'F1C_R'
     generated = true
-    nodeIndex = 37
+    nodeIndex = 32
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.382684, 0.0, 0.0, 0.923879 ]
+    rotation = [ -0.38269, 0.0, 0.0, 0.923877 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '4f8021c8-4504-49cc-b9ce-0baba826ddd9'
+instanceId = '18afded4-aedf-435c-a5a7-1cdc9ae84c22'
 layer = 0
 name = 'F2A_R'
 parent = 'Hand_R'
-parentInstanceId = '2d76af72-1f0c-4b58-8562-a9118be7a005'
+parentInstanceId = '83b21779-4e46-40a3-811c-55db6582c058'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3632,22 +4226,22 @@ tag = 'Untagged'
     boneIndex = 30
     boneName = 'F2A_R'
     generated = true
-    nodeIndex = 38
+    nodeIndex = 33
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ 0.000776, 0.156998, 0.0 ]
+    position = [ 0.000775, 0.156998, 0.0 ]
     rotation = [ -0.297264, 0.641587, 0.297264, 0.641587 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'be5b2ce7-88b7-45cc-a69f-c55e02346988'
+instanceId = 'ef35da3c-b52d-4cdb-ad15-e000f6c39c2a'
 layer = 0
 name = 'F2B_R'
 parent = 'F2A_R'
-parentInstanceId = '4f8021c8-4504-49cc-b9ce-0baba826ddd9'
+parentInstanceId = '18afded4-aedf-435c-a5a7-1cdc9ae84c22'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3656,22 +4250,22 @@ tag = 'Untagged'
     boneIndex = 31
     boneName = 'F2B_R'
     generated = true
-    nodeIndex = 39
+    nodeIndex = 34
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.515038, 0.0, 0.0, 0.857167 ]
+    rotation = [ -0.514996, 0.0, 0.0, 0.857193 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '77c062bc-c7aa-403f-8c60-258fcbf45693'
+instanceId = '964192fb-a39f-4e35-aa7e-6dbd8c12b140'
 layer = 0
 name = 'F2C_R'
 parent = 'F2B_R'
-parentInstanceId = 'be5b2ce7-88b7-45cc-a69f-c55e02346988'
+parentInstanceId = 'ef35da3c-b52d-4cdb-ad15-e000f6c39c2a'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3680,22 +4274,22 @@ tag = 'Untagged'
     boneIndex = 32
     boneName = 'F2C_R'
     generated = true
-    nodeIndex = 40
+    nodeIndex = 35
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.382684, 0.0, 0.0, 0.92388 ]
+    rotation = [ -0.38269, 0.0, 0.0, 0.923877 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'de064c54-6e3d-454b-bda7-9f92dee91d58'
+instanceId = 'f2216ef0-ebce-44b8-b84f-9e655f127607'
 layer = 0
 name = 'F3A_R'
 parent = 'Hand_R'
-parentInstanceId = '2d76af72-1f0c-4b58-8562-a9118be7a005'
+parentInstanceId = '83b21779-4e46-40a3-811c-55db6582c058'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3704,22 +4298,22 @@ tag = 'Untagged'
     boneIndex = 33
     boneName = 'F3A_R'
     generated = true
-    nodeIndex = 41
+    nodeIndex = 36
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.000775, 0.156998, 0.063 ]
-    rotation = [ -0.297264, 0.641587, 0.297263, 0.641588 ]
+    rotation = [ -0.297264, 0.641586, 0.297263, 0.641588 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '346fc6a0-3d18-47e2-aa3f-f5e5c2978cf1'
+instanceId = '3afcd165-093e-4a76-99a8-e481b0e31f7b'
 layer = 0
 name = 'F3B_R'
 parent = 'F3A_R'
-parentInstanceId = 'de064c54-6e3d-454b-bda7-9f92dee91d58'
+parentInstanceId = 'f2216ef0-ebce-44b8-b84f-9e655f127607'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3728,22 +4322,22 @@ tag = 'Untagged'
     boneIndex = 34
     boneName = 'F3B_R'
     generated = true
-    nodeIndex = 42
+    nodeIndex = 37
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.515038, 0.0, 0.0, 0.857167 ]
+    rotation = [ -0.514996, 0.0, 0.0, 0.857193 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '87c82e0e-8966-4ac3-8d50-30b37f9cb8d0'
+instanceId = 'de74edb3-7d84-45cd-8fb8-ed4a5f9d0d23'
 layer = 0
 name = 'F3C_R'
 parent = 'F3B_R'
-parentInstanceId = '346fc6a0-3d18-47e2-aa3f-f5e5c2978cf1'
+parentInstanceId = '3afcd165-093e-4a76-99a8-e481b0e31f7b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3752,22 +4346,22 @@ tag = 'Untagged'
     boneIndex = 35
     boneName = 'F3C_R'
     generated = true
-    nodeIndex = 43
+    nodeIndex = 38
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.382684, 0.0, 0.0, 0.923879 ]
+    rotation = [ -0.382691, 0.0, 0.0, 0.923877 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '2e92b49d-dd42-46b9-a370-7d06a703950c'
+instanceId = 'b95b6e30-e7e9-452a-a201-85637e597481'
 layer = 0
 name = 'ThA_R'
 parent = 'Hand_R'
-parentInstanceId = '2d76af72-1f0c-4b58-8562-a9118be7a005'
+parentInstanceId = '83b21779-4e46-40a3-811c-55db6582c058'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3776,9 +4370,9 @@ tag = 'Untagged'
     boneIndex = 36
     boneName = 'ThA_R'
     generated = true
-    nodeIndex = 44
+    nodeIndex = 39
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.034566, 0.088171, -0.085 ]
@@ -3787,11 +4381,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '6732a9be-f066-4cec-8525-91f3827f190c'
+instanceId = '60f8485f-6125-4b41-8587-3acd8a515657'
 layer = 0
 name = 'ThB_R'
 parent = 'ThA_R'
-parentInstanceId = '2e92b49d-dd42-46b9-a370-7d06a703950c'
+parentInstanceId = 'b95b6e30-e7e9-452a-a201-85637e597481'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3800,22 +4394,22 @@ tag = 'Untagged'
     boneIndex = 37
     boneName = 'ThB_R'
     generated = true
-    nodeIndex = 45
+    nodeIndex = 40
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0552, 0.0 ]
-    rotation = [ -0.193408, 0.0, 0.0, 0.981118 ]
+    rotation = [ -0.193414, 0.0, 0.0, 0.981117 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '57552916-64ba-4509-b397-0d3013a8cf89'
+instanceId = '666c78a7-7328-408d-94a2-d99eb2f308bc'
 layer = 0
 name = 'ThC_R'
 parent = 'ThB_R'
-parentInstanceId = '6732a9be-f066-4cec-8525-91f3827f190c'
+parentInstanceId = '60f8485f-6125-4b41-8587-3acd8a515657'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3824,22 +4418,22 @@ tag = 'Untagged'
     boneIndex = 38
     boneName = 'ThC_R'
     generated = true
-    nodeIndex = 46
+    nodeIndex = 41
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0445, 0.0 ]
-    rotation = [ -0.143692, 0.0, 0.0, 0.989622 ]
+    rotation = [ -0.143678, 0.0, 0.0, 0.989624 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '576e0af9-9108-47fb-a220-afc184236799'
+instanceId = '08e36db0-bd74-4f1c-a8b9-c4fa8766d226'
 layer = 0
 name = 'Grip_R'
 parent = 'Hand_R'
-parentInstanceId = '2d76af72-1f0c-4b58-8562-a9118be7a005'
+parentInstanceId = '83b21779-4e46-40a3-811c-55db6582c058'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3848,9 +4442,9 @@ tag = 'Untagged'
     boneIndex = 39
     boneName = 'Grip_R'
     generated = true
-    nodeIndex = 47
+    nodeIndex = 42
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.000557, 0.112999, -0.045 ]
@@ -3859,59 +4453,35 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '19ea6edf-fec8-401d-b3a5-0c858f97db01'
+instanceId = 'ca3d81e1-b113-493a-8388-1bcd557b1b07'
 layer = 0
-name = 'GunSocket_Hand_R'
+name = 'SOCKET_Hand_R'
 parent = 'Grip_R'
-parentInstanceId = '576e0af9-9108-47fb-a220-afc184236799'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'GunSocket_Hand_R'
-    generated = true
-    nodeIndex = 48
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ -0.027287, 0.080273, 0.046139 ]
-    rotation = [ 0.531654, 0.475839, 0.522561, -0.466746 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '273fb660-5c90-426c-88f6-6c0fd9970936'
-layer = 0
-name = 'SOCK_Hand_R'
-parent = 'Grip_R'
-parentInstanceId = '576e0af9-9108-47fb-a220-afc184236799'
+parentInstanceId = '08e36db0-bd74-4f1c-a8b9-c4fa8766d226'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 40
-    boneName = 'SOCK_Hand_R'
+    boneName = 'SOCKET_Hand_R'
     generated = true
-    nodeIndex = 49
+    nodeIndex = 43
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.027288, 0.080273, 0.046139 ]
-    rotation = [ 0.531653, 0.47584, 0.52256, -0.466747 ]
+    rotation = [ -0.421335, 0.34837, 0.68649, 0.479423 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '9bc8d699-14ae-4874-8303-deeb3335a6e3'
+instanceId = 'e6e85cf0-9648-4b9b-a623-4ef439579e10'
 layer = 0
 name = 'Core'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3920,9 +4490,9 @@ tag = 'Untagged'
     boneIndex = 41
     boneName = 'Core'
     generated = true
-    nodeIndex = 50
+    nodeIndex = 44
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.2285, -0.27 ]
@@ -3931,11 +4501,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '5d29227f-021e-4741-978a-a01d671b3c80'
+instanceId = '1c088785-4f9d-45c9-ae40-5af3463411f1'
 layer = 0
 name = 'Vent_L_Rotor'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3944,9 +4514,9 @@ tag = 'Untagged'
     boneIndex = 42
     boneName = 'Vent_L_Rotor'
     generated = true
-    nodeIndex = 51
+    nodeIndex = 45
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.208, 0.1656, 0.2198 ]
@@ -3955,11 +4525,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'ac382193-9045-402b-b28b-c57731d369c1'
+instanceId = 'd24628c2-5831-45eb-9f8a-f098b20924cf'
 layer = 0
 name = 'Vent_R_Rotor'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -3968,9 +4538,9 @@ tag = 'Untagged'
     boneIndex = 43
     boneName = 'Vent_R_Rotor'
     generated = true
-    nodeIndex = 52
+    nodeIndex = 46
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.208, 0.1656, 0.2198 ]
@@ -3979,22 +4549,22 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '9aa13cac-9d48-4e86-9848-f759ca7553c0'
+instanceId = '3de5c588-b421-40f6-afe7-05b1731b568f'
 layer = 0
-name = 'Mount_Shoulder_L'
+name = 'SOCKET_Shoulder_L'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 44
-    boneName = 'Mount_Shoulder_L'
+    boneName = 'SOCKET_Shoulder_L'
     generated = true
-    nodeIndex = 53
+    nodeIndex = 47
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.17, 0.3955, 0.01 ]
@@ -4003,22 +4573,22 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '938e6457-b6bb-4393-be60-a7fcec95d5d0'
+instanceId = '0294beec-6f65-4caf-bdf5-bd2e5460ecb5'
 layer = 0
-name = 'Mount_Shoulder_R'
+name = 'SOCKET_Shoulder_R'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 45
-    boneName = 'Mount_Shoulder_R'
+    boneName = 'SOCKET_Shoulder_R'
     generated = true
-    nodeIndex = 54
+    nodeIndex = 48
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.17, 0.3955, 0.01 ]
@@ -4027,11 +4597,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '059fe569-ca55-4c04-bb5e-031fa73d500b'
+instanceId = 'f4030dab-2d16-4a5f-b11f-ab63c1717485'
 layer = 0
 name = 'Mount_Back'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4040,9 +4610,9 @@ tag = 'Untagged'
     boneIndex = 46
     boneName = 'Mount_Back'
     generated = true
-    nodeIndex = 55
+    nodeIndex = 49
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.3635, 0.2 ]
@@ -4051,70 +4621,22 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'eb2294ca-cf0d-41b9-a38f-014f9dc37fea'
+instanceId = '77fd51c1-3b1f-4eb7-bc2f-c988cdbac38a'
 layer = 0
-name = 'GunSocket_Back'
+name = 'SOCKET_Back'
 parent = 'Mount_Back'
-parentInstanceId = '059fe569-ca55-4c04-bb5e-031fa73d500b'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'GunSocket_Back'
-    generated = true
-    nodeIndex = 56
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ -0.17, 0.175, 0.14 ]
-    rotation = [ -0.270598, -0.270598, 0.653282, 0.653281 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '3fc394bf-2b49-4358-8ac3-37084c54c5b8'
-layer = 0
-name = 'Sock_Back_Pistol'
-parent = 'GunSocket_Back'
-parentInstanceId = 'eb2294ca-cf0d-41b9-a38f-014f9dc37fea'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'Sock_Back_Pistol'
-    generated = true
-    nodeIndex = 57
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '092ad231-8408-4899-95ad-51b830efdf1d'
-layer = 0
-name = 'SOCK_Back'
-parent = 'Mount_Back'
-parentInstanceId = '059fe569-ca55-4c04-bb5e-031fa73d500b'
+parentInstanceId = 'f4030dab-2d16-4a5f-b11f-ab63c1717485'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 47
-    boneName = 'SOCK_Back'
+    boneName = 'SOCKET_Back'
     generated = true
-    nodeIndex = 58
+    nodeIndex = 50
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.17, 0.175, 0.14 ]
@@ -4123,59 +4645,59 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '1a7cb9a5-a629-4bde-bfbb-d9112bbf9283'
+instanceId = 'e2029f83-b760-4f90-b390-3d81368a2cc3'
 layer = 0
-name = 'SOCK_Holster_R'
+name = 'SOCKET_Holster_L'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 48
-    boneName = 'SOCK_Holster_R'
+    boneName = 'SOCKET_Holster_L'
     generated = true
-    nodeIndex = 59
+    nodeIndex = 51
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ -0.2568, 0.0528, 0.2915 ]
-    rotation = [ 0.044078, 0.39315, 0.121393, 0.910359 ]
+    position = [ 0.219732, 0.057608, 0.324709 ]
+    rotation = [ 0.705109, -0.053114, -0.705109, 0.053114 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '1a10cf7f-54fa-4e5d-b172-670e4efe3ce1'
+instanceId = '6f1416cb-bb94-4497-b61c-481c92afe5a8'
 layer = 0
-name = 'SOCK_Holster_L'
+name = 'SOCKET_Holster_R'
 parent = 'Chest'
-parentInstanceId = '57b4aafe-506f-47a6-8d0b-351398e112be'
+parentInstanceId = '8a8e87c4-c62c-4e13-bf1c-b11673c5fc4d'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 49
-    boneName = 'SOCK_Holster_L'
+    boneName = 'SOCKET_Holster_R'
     generated = true
-    nodeIndex = 60
+    nodeIndex = 52
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
-    position = [ 0.2568, 0.0528, 0.2915 ]
-    rotation = [ 0.003561, -0.409751, -0.125182, 0.90356 ]
+    position = [ -0.220474, 0.05356, 0.325849 ]
+    rotation = [ 0.705109, 0.053114, 0.705109, 0.053114 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'a70269a1-f083-4c53-afe0-80b41ca21506'
+instanceId = 'a00dfd9c-a804-49f3-bbb8-1a8d90cdced0'
 layer = 0
 name = 'Thigh_L'
 parent = 'Pelvis'
-parentInstanceId = 'ce22dc81-46fe-41f3-b34f-b2678829fd31'
+parentInstanceId = '64a37042-da84-4f33-abea-a39b4eb31bb0'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4184,22 +4706,22 @@ tag = 'Untagged'
     boneIndex = 50
     boneName = 'Thigh_L'
     generated = true
-    nodeIndex = 61
+    nodeIndex = 53
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.185, 0.0, 0.0 ]
-    rotation = [ -0.000192, 0.007343, 0.99963, -0.026176 ]
+    rotation = [ 0.0, -0.0035, 0.999994, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '3b821f4b-b1e4-4b26-8407-9226bba70b74'
+instanceId = 'f3b1b376-02fa-494c-942d-5f6b17880406'
 layer = 0
 name = 'Shin_L'
 parent = 'Thigh_L'
-parentInstanceId = 'a70269a1-f083-4c53-afe0-80b41ca21506'
+parentInstanceId = 'a00dfd9c-a804-49f3-bbb8-1a8d90cdced0'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4208,22 +4730,22 @@ tag = 'Untagged'
     boneIndex = 51
     boneName = 'Shin_L'
     generated = true
-    nodeIndex = 62
+    nodeIndex = 54
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.29, 0.0 ]
-    rotation = [ 0.027557, 0.0, 0.0, 0.99962 ]
+    rotation = [ 0.040989, 0.0, 0.0, 0.99916 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'e8d0cf6c-f212-43ce-b565-219f140d32bc'
+instanceId = '0db19f47-f3fc-4730-bb71-d6316ecc537b'
 layer = 0
 name = 'Foot_L'
 parent = 'Shin_L'
-parentInstanceId = '3b821f4b-b1e4-4b26-8407-9226bba70b74'
+parentInstanceId = 'f3b1b376-02fa-494c-942d-5f6b17880406'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4232,22 +4754,22 @@ tag = 'Untagged'
     boneIndex = 52
     boneName = 'Foot_L'
     generated = true
-    nodeIndex = 63
+    nodeIndex = 55
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.3875, 0.0 ]
-    rotation = [ -0.39571, 0.0, 0.0, 0.918376 ]
+    rotation = [ -0.384191, 0.0, 0.0, 0.923254 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ee73f629-9062-4e08-bb47-80a3b06f94ad'
+instanceId = '649845b7-b425-4e89-abe2-276f0eff9349'
 layer = 0
 name = 'Toe_L'
 parent = 'Foot_L'
-parentInstanceId = 'e8d0cf6c-f212-43ce-b565-219f140d32bc'
+parentInstanceId = '0db19f47-f3fc-4730-bb71-d6316ecc537b'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4256,9 +4778,9 @@ tag = 'Untagged'
     boneIndex = 53
     boneName = 'Toe_L'
     generated = true
-    nodeIndex = 64
+    nodeIndex = 56
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.178281, 0.0 ]
@@ -4267,11 +4789,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '79093baf-bb9a-4163-b7f7-5721b79f0d13'
+instanceId = '90f5c840-bd98-4f5c-9d62-4f6b2a9e7e85'
 layer = 0
 name = 'Thigh_R'
 parent = 'Pelvis'
-parentInstanceId = 'ce22dc81-46fe-41f3-b34f-b2678829fd31'
+parentInstanceId = '64a37042-da84-4f33-abea-a39b4eb31bb0'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4280,22 +4802,22 @@ tag = 'Untagged'
     boneIndex = 54
     boneName = 'Thigh_R'
     generated = true
-    nodeIndex = 65
+    nodeIndex = 57
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ -0.185, 0.0, 0.0 ]
-    rotation = [ 7.2e-05, 0.002731, 0.999654, 0.026177 ]
+    rotation = [ 0.0, -0.0035, 0.999994, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '6c52ad0a-deb0-4160-b882-264ce4541483'
+instanceId = 'db7a35bb-8c98-490a-b84f-4025bbead0ce'
 layer = 0
 name = 'Shin_R'
 parent = 'Thigh_R'
-parentInstanceId = '79093baf-bb9a-4163-b7f7-5721b79f0d13'
+parentInstanceId = '90f5c840-bd98-4f5c-9d62-4f6b2a9e7e85'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4304,22 +4826,22 @@ tag = 'Untagged'
     boneIndex = 55
     boneName = 'Shin_R'
     generated = true
-    nodeIndex = 66
+    nodeIndex = 58
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.29, 0.0 ]
-    rotation = [ 0.027557, 0.0, 0.0, 0.99962 ]
+    rotation = [ 0.040989, 0.0, 0.0, 0.99916 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'c833cd20-4854-4182-8ab7-dcd765474840'
+instanceId = '063dff03-2884-4317-8465-2c08b71cd468'
 layer = 0
 name = 'Foot_R'
 parent = 'Shin_R'
-parentInstanceId = '6c52ad0a-deb0-4160-b882-264ce4541483'
+parentInstanceId = 'db7a35bb-8c98-490a-b84f-4025bbead0ce'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4328,22 +4850,22 @@ tag = 'Untagged'
     boneIndex = 56
     boneName = 'Foot_R'
     generated = true
-    nodeIndex = 67
+    nodeIndex = 59
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.3875, 0.0 ]
-    rotation = [ -0.39571, 0.0, 0.0, 0.918376 ]
+    rotation = [ -0.384191, 0.0, 0.0, 0.923254 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b6810712-be0e-45c0-963a-0363ef26b9d0'
+instanceId = '76aec9e4-e7d1-4b7c-8922-bd5485946aca'
 layer = 0
 name = 'Toe_R'
 parent = 'Foot_R'
-parentInstanceId = 'c833cd20-4854-4182-8ab7-dcd765474840'
+parentInstanceId = '063dff03-2884-4317-8465-2c08b71cd468'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4352,9 +4874,9 @@ tag = 'Untagged'
     boneIndex = 57
     boneName = 'Toe_R'
     generated = true
-    nodeIndex = 68
+    nodeIndex = 60
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.178281, 0.0 ]
@@ -4363,11 +4885,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '75989cc8-584d-4ea5-a53e-3bea1f7e41ca'
+instanceId = 'b3a2a708-7714-4bdc-81b8-7c4eb0b465f4'
 layer = 0
 name = 'P_AccentGreen'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4376,9 +4898,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_AccentGreen'
     generated = true
-    nodeIndex = 69
+    nodeIndex = 61
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4387,11 +4909,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'e4270357-c295-49ef-a49f-daeeb1bd924d'
+instanceId = '54085c10-879f-4eff-a8e7-9dc1c89c67aa'
 layer = 0
 name = 'P_AccentYellow'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4400,9 +4922,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_AccentYellow'
     generated = true
-    nodeIndex = 70
+    nodeIndex = 62
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4411,11 +4933,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '4831469b-aa0a-410b-a683-e519a54148ab'
+instanceId = 'f2fe631f-6a0f-437c-aa9a-1a29b38d8d94'
 layer = 0
 name = 'P_ArmorGrey'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4424,9 +4946,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_ArmorGrey'
     generated = true
-    nodeIndex = 71
+    nodeIndex = 63
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4435,11 +4957,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '1bce1ffd-8a9d-4256-82a0-45c8493138d6'
+instanceId = 'eb16b943-bddd-4a4f-9627-e557674f0e66'
 layer = 0
 name = 'P_ArmorWhite'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4448,9 +4970,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_ArmorWhite'
     generated = true
-    nodeIndex = 72
+    nodeIndex = 64
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4458,12 +4980,12 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = true
-instanceId = '48fc21c6-42ed-4b61-8340-9317148d70bf'
+active = false
+instanceId = '70a5bde6-c19d-48f4-b235-61dc43fccd92'
 layer = 0
 name = 'P_GlowGreen'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4472,9 +4994,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_GlowGreen'
     generated = true
-    nodeIndex = 73
+    nodeIndex = 65
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4483,11 +5005,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'dae48276-bc02-41d3-976e-4d43a936bfb6'
+instanceId = '23bff7d9-ca1f-4073-a064-ab936e43c94c'
 layer = 0
 name = 'P_GlowGreenSoft'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4496,9 +5018,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_GlowGreenSoft'
     generated = true
-    nodeIndex = 74
+    nodeIndex = 66
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4507,11 +5029,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '78d45608-b53a-4511-bc9a-5524dc78e552'
+instanceId = '2d9ed49f-28cf-49b4-ad5b-624131c7dea0'
 layer = 0
 name = 'P_LampGreen'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4520,9 +5042,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_LampGreen'
     generated = true
-    nodeIndex = 75
+    nodeIndex = 67
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4531,11 +5053,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'c1757113-ca70-4bf6-a248-ab307ff83bfc'
+instanceId = 'd8e2939a-695a-4cd9-8b1c-48d3152d526c'
 layer = 0
 name = 'P_MetalDark'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4544,9 +5066,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_MetalDark'
     generated = true
-    nodeIndex = 76
+    nodeIndex = 68
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4555,11 +5077,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '18e449ad-8dee-45e5-b4fa-05b7513bd5fb'
+instanceId = '80f7cf4d-a319-4f95-bc2c-59a2cc2cbb09'
 layer = 0
 name = 'P_PanelLine'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4568,9 +5090,9 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_PanelLine'
     generated = true
-    nodeIndex = 77
+    nodeIndex = 69
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -4579,11 +5101,11 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'e466eb2b-8cc1-461c-8499-98b50ab6daaf'
+instanceId = 'c24940f3-ea9c-414f-9851-fa079c0c1bc0'
 layer = 0
 name = 'P_VisorDark'
 parent = 'RootNode'
-parentInstanceId = '90941e20-966e-4d67-a30b-fb8ab2815b83'
+parentInstanceId = '013d25cf-ee2e-4ac8-a76d-4a555fdc30ad'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -4592,11 +5114,543 @@ tag = 'Untagged'
     boneIndex = -1
     boneName = 'P_VisorDark'
     generated = true
-    nodeIndex = 78
+    nodeIndex = 70
     skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '47fc7176-2e28-437b-b370-fea4e6fda463'
+    skinnedMeshOwnerGuid = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '690a2cb8-dd61-452c-b990-c7a748f32156'
+layer = 0
+name = 'WPN_Pistol_L'
+parent = 'SOCKET_Holster_L'
+parentInstanceId = 'e2029f83-b760-4f90-b390-3d81368a2cc3'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.AnimatorComponent]
+    anyStateTransitions = []
+    baseLayerMaskPath = ''
+    controllerPath = 'guid:682568a1d1266de93f93908e54cffd2e|Assets/Animation/WPN_Pistol_L.animcontroller'
+    defaultStateName = 'WeaponIdle'
+    enabled = true
+    parameters = []
+    playing = true
+    rootMotionApplyRotation = 0
+    rootMotionApplyXZ = 0
+    rootMotionApplyY = 0
+    rootMotionMode = 1
+    rootMotionNodeName = ''
+    rootMotionPoseMode = 0
+    rootMotionPositionScale = 1.0
+    rootMotionRotationScale = 1.0
+    rootMotionSource = 0
+    rootMotionTarget = ''
+    speed = 1.0
+    states = []
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = ''
+        mode = 0
+        name = 'Base Layer'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = ''
+            sourcePath = ''
+            time = 0.0
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:711327139332dd754dd4a91f9eb114f3|Library/Baked/d2cfe13d69d18d74f27b360595f632af/materials/M_ArmorWhite.mat'
+    visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:6e3ab66e85cbcda7d05502c75ca43ee9|Library/Baked/d2cfe13d69d18d74f27b360595f632af/materials/M_PanelLine.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:add1bdf3289ac437835f9cebdc506a25|Library/Baked/d2cfe13d69d18d74f27b360595f632af/materials/M_GunMark_Minus.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:86344a78281ae298148a9352234b1372|Library/Baked/d2cfe13d69d18d74f27b360595f632af/materials/M_MetalDark.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:6d41db45f9ec49fbf38e62fe0481e40d|Library/Baked/d2cfe13d69d18d74f27b360595f632af/materials/M_GunGlow_Minus.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:8a4974ef362c0c177c4c57826d3b0a6d|Library/Baked/d2cfe13d69d18d74f27b360595f632af/materials/M_GunAccent.mat'
+        visible = true
+
+        [[gameobjects.MaterialComponent.slots]]
+        material = 'guid:849538c9c3d3999452e247a7a68b102a|Library/Baked/d2cfe13d69d18d74f27b360595f632af/materials/M_GunGlowCore_Minus.mat'
+        visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d2cfe13d69d18d74f27b360595f632af|Assets/Models/WPN_Pistol_L/WPN_Pistol_L.fbx'
+    skeletonRootGuid = '477e6a98-b7bf-4e2b-a820-db7c7293c65e'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 0, 1, 2, 3, 4, 5, 6 ]
+
+    [gameobjects.SocketAttachmentComponent]
+    blendDuration = 0.0
+    enabled = true
+    followPosition = true
+    followRotation = true
+    followScale = false
+    localSocketName = 'SOCKET_Grip'
+    positionOffset = [ 0.0, 0.0, 0.0 ]
+    rotationOffsetDegrees = [ 0.0, 0.0, 0.0 ]
+    scaleMultiplier = [ 1.0, 1.0, 1.0 ]
+    socketName = 'SOCKET_Holster_L'
+    target = [ 4294967295, 0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 0.999999, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '477e6a98-b7bf-4e2b-a820-db7c7293c65e'
+layer = 0
+name = 'RootNode'
+parent = 'WPN_Pistol_L'
+parentInstanceId = '690a2cb8-dd61-452c-b990-c7a748f32156'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'RootNode'
+    generated = true
+    nodeIndex = 0
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6c22c60e-91b6-4c6c-a5a3-26cc3e1ab414'
+layer = 0
+name = 'WPN_Pistol_L'
+parent = 'RootNode'
+parentInstanceId = '477e6a98-b7bf-4e2b-a820-db7c7293c65e'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'WPN_Pistol_L'
+    generated = true
+    nodeIndex = 1
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '26ef484d-18c7-4c1c-903c-71fc1bfa3d60'
+layer = 0
+name = 'WPN_Pistol_L_Rig'
+parent = 'RootNode'
+parentInstanceId = '477e6a98-b7bf-4e2b-a820-db7c7293c65e'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'WPN_Pistol_L_Rig'
+    generated = true
+    nodeIndex = 2
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e9ed3cd9-ffaa-438a-8449-b875b8264e2b'
+layer = 0
+name = 'WRoot'
+parent = 'WPN_Pistol_L_Rig'
+parentInstanceId = '26ef484d-18c7-4c1c-903c-71fc1bfa3d60'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 0
+    boneName = 'WRoot'
+    generated = true
+    nodeIndex = 3
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '54572414-d8eb-4f65-959f-ec800dfd2a2a'
+layer = 0
+name = 'SOCKET_Grip'
+parent = 'WRoot'
+parentInstanceId = 'e9ed3cd9-ffaa-438a-8449-b875b8264e2b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 1
+    boneName = 'SOCKET_Grip'
+    generated = true
+    nodeIndex = 4
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c8a80e2c-9c7e-43f1-9b7f-73deb0ab0581'
+layer = 0
+name = 'Fold_Root'
+parent = 'WRoot'
+parentInstanceId = 'e9ed3cd9-ffaa-438a-8449-b875b8264e2b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 2
+    boneName = 'Fold_Root'
+    generated = true
+    nodeIndex = 5
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e12c4aaf-0a3b-4c23-ac72-d200336f11ae'
+layer = 0
+name = 'Body'
+parent = 'Fold_Root'
+parentInstanceId = 'c8a80e2c-9c7e-43f1-9b7f-73deb0ab0581'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 3
+    boneName = 'Body'
+    generated = true
+    nodeIndex = 6
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.05, -0.0875 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'eb323f6f-aa55-45ad-8981-d4af2617ac9d'
+layer = 0
+name = 'SOCKET_Eject'
+parent = 'Body'
+parentInstanceId = 'e12c4aaf-0a3b-4c23-ac72-d200336f11ae'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 4
+    boneName = 'SOCKET_Eject'
+    generated = true
+    nodeIndex = 7
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.07, 0.065, -0.0325 ]
+    rotation = [ 0.0, 0.0, -0.707107, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8bacfea1-2161-43a5-af8f-d5f588250652'
+layer = 0
+name = 'Shell'
+parent = 'Body'
+parentInstanceId = 'e12c4aaf-0a3b-4c23-ac72-d200336f11ae'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 5
+    boneName = 'Shell'
+    generated = true
+    nodeIndex = 8
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.062, 0.065, -0.0325 ]
+    rotation = [ 0.0, 0.0, -0.707107, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e3c168d9-4e7b-4ba1-a6f0-83eb4cfd0cd9'
+layer = 0
+name = 'Fold_Top'
+parent = 'Fold_Root'
+parentInstanceId = 'c8a80e2c-9c7e-43f1-9b7f-73deb0ab0581'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 6
+    boneName = 'Fold_Top'
+    generated = true
+    nodeIndex = 9
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.05, -0.1675 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a5a0cdb1-da82-42cc-b56f-359acd732c9f'
+layer = 0
+name = 'Fold_Barrel'
+parent = 'Fold_Root'
+parentInstanceId = 'c8a80e2c-9c7e-43f1-9b7f-73deb0ab0581'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 7
+    boneName = 'Fold_Barrel'
+    generated = true
+    nodeIndex = 10
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.15, -0.11 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cd399b80-de5f-403c-a9e9-8bbe60589738'
+layer = 0
+name = 'Slide'
+parent = 'Fold_Barrel'
+parentInstanceId = 'a5a0cdb1-da82-42cc-b56f-359acd732c9f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 8
+    boneName = 'Slide'
+    generated = true
+    nodeIndex = 11
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9f31c45f-3c7b-492c-b77b-4c3699e3a476'
+layer = 0
+name = 'SOCKET_Muzzle'
+parent = 'Slide'
+parentInstanceId = 'cd399b80-de5f-403c-a9e9-8bbe60589738'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 9
+    boneName = 'SOCKET_Muzzle'
+    generated = true
+    nodeIndex = 12
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.185, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a0fcbca4-0f32-4689-8218-82c59b7c95d8'
+layer = 0
+name = 'Fold_Grip'
+parent = 'Fold_Root'
+parentInstanceId = 'c8a80e2c-9c7e-43f1-9b7f-73deb0ab0581'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 10
+    boneName = 'Fold_Grip'
+    generated = true
+    nodeIndex = 13
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.005, -0.03 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cc715e4c-f223-437a-a14f-8e0eed8f005b'
+layer = 0
+name = 'Cell'
+parent = 'Fold_Grip'
+parentInstanceId = 'a0fcbca4-0f32-4689-8218-82c59b7c95d8'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 11
+    boneName = 'Cell'
+    generated = true
+    nodeIndex = 14
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.105, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '70ace8ce-3428-47d7-a095-70ce4821a1ed'
+layer = 0
+name = 'Fold_Trigger'
+parent = 'Fold_Root'
+parentInstanceId = 'c8a80e2c-9c7e-43f1-9b7f-73deb0ab0581'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 12
+    boneName = 'Fold_Trigger'
+    generated = true
+    nodeIndex = 15
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.075, -0.03 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b4877e86-33aa-4017-975e-1e594158fe76'
+layer = 0
+name = 'Trigger'
+parent = 'Fold_Trigger'
+parentInstanceId = '70ace8ce-3428-47d7-a095-70ce4821a1ed'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 13
+    boneName = 'Trigger'
+    generated = true
+    nodeIndex = 16
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.025, 0.02 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f5f211e1-8977-435d-b0bf-7df51b01ec71'
+layer = 0
+name = 'Fold_Rear'
+parent = 'Fold_Root'
+parentInstanceId = 'c8a80e2c-9c7e-43f1-9b7f-73deb0ab0581'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 14
+    boneName = 'Fold_Rear'
+    generated = true
+    nodeIndex = 17
+    skinnedMeshOwner = 'WPN_Pistol_L'
+    skinnedMeshOwnerGuid = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.072, -0.1 ]
+    rotation = [ 0.0, 0.0, 1.0, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]

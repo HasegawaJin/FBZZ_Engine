@@ -8,13 +8,13 @@ enabled = true
 interval_sec = 300
 
 [camera]
-last_pos_x = 8.896059036254883
-last_pos_y = -6.424497604370117
-last_pos_z = -13.429411888122559
-last_rot_w = 0.9896472692489624
-last_rot_x = -0.0909358337521553
-last_rot_y = -0.11056980490684509
-last_rot_z = -0.010159940458834171
+last_pos_x = 0.0
+last_pos_y = 3.0
+last_pos_z = 0.0
+last_rot_w = 0.7294952273368835
+last_rot_x = 0.5422497987747192
+last_rot_y = -0.33458584547042847
+last_rot_z = 0.24870498478412628
 sensitivity = 0.15000000596046448
 speed = 5.0
 
@@ -47,42 +47,42 @@ space = 0
 alt = false
 ctrl = true
 key = 559
-name = 'New Scene'
+name = 'scene.new'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 560
-name = 'Open Scene'
+name = 'scene.open'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 564
-name = 'Save'
+name = 'scene.save'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 564
-name = 'Save Scene As'
+name = 'scene.save_as'
 shift = true
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 571
-name = 'Undo'
+name = 'edit.undo'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 570
-name = 'Redo'
+name = 'edit.redo'
 shift = false
 
 [[hotkeys.overrides]]
@@ -96,154 +96,161 @@ shift = true
 alt = false
 ctrl = false
 key = 522
-name = 'Delete Selected'
+name = 'edit.delete_selected'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 549
-name = 'Duplicate'
+name = 'edit.duplicate'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 548
-name = 'Copy'
+name = 'edit.copy'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 567
-name = 'Paste'
+name = 'edit.paste'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 567
-name = 'Paste As Child'
+name = 'edit.paste_as_child'
 shift = true
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 573
-name = 'Rename'
+name = 'edit.rename'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 546
-name = 'Select All'
+name = 'select.all'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 526
-name = 'Clear Selection'
+name = 'select.clear'
 shift = false
 
 [[hotkeys.overrides]]
 alt = true
 ctrl = false
 key = 513
-name = 'Selection Back'
+name = 'select.back'
 shift = false
 
 [[hotkeys.overrides]]
 alt = true
 ctrl = false
 key = 514
-name = 'Selection Forward'
+name = 'select.forward'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 551
-name = 'Frame Selected'
+name = 'view.frame_selected'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 568
-name = 'Gizmo: Move'
+name = 'gizmo.move'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 550
-name = 'Gizmo: Rotate'
+name = 'gizmo.rotate'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 563
-name = 'Gizmo: Scale'
+name = 'gizmo.scale'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 562
-name = 'Gizmo: World / Local'
+name = 'gizmo.toggle_space'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 571
-name = 'Gizmo: Pivot / Center'
+name = 'gizmo.toggle_pivot'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 569
-name = 'Toggle Grid Snap'
+name = 'gizmo.toggle_snap'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 561
-name = 'Play / Stop'
+name = 'play.toggle'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 561
-name = 'Pause'
+name = 'play.pause'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 547
+name = 'tools.build_settings'
 shift = true
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = true
 key = 556
-name = 'Command Palette'
+name = 'panel.command_palette'
 shift = false
 
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
 key = 572
-name = 'Shortcut List'
+name = 'panel.shortcut_list'
 shift = false
 
 [[hotkeys.overrides]]
 alt = true
 ctrl = true
 key = 567
-name = 'Open VFX Editor'
+name = 'panel.vfx_editor'
 shift = false
 
 [import]
@@ -345,6 +352,10 @@ k = 269991865
 v = true
 
 [[inspector_sections.states]]
+k = 295295110
+v = false
+
+[[inspector_sections.states]]
 k = 304844679
 v = true
 
@@ -359,6 +370,10 @@ v = true
 [[inspector_sections.states]]
 k = 349960779
 v = true
+
+[[inspector_sections.states]]
+k = 361012331
+v = false
 
 [[inspector_sections.states]]
 k = 378886244
@@ -586,7 +601,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 1112356441
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 1112833656
@@ -849,6 +864,10 @@ k = 1981452864
 v = false
 
 [[inspector_sections.states]]
+k = 1991217881
+v = false
+
+[[inspector_sections.states]]
 k = 1994370457
 v = true
 
@@ -887,6 +906,10 @@ v = true
 [[inspector_sections.states]]
 k = 2116735495
 v = true
+
+[[inspector_sections.states]]
+k = 2129324169
+v = false
 
 [[inspector_sections.states]]
 k = 2134828511
@@ -1109,6 +1132,10 @@ k = 2926884457
 v = true
 
 [[inspector_sections.states]]
+k = 2935615967
+v = true
+
+[[inspector_sections.states]]
 k = 2936622285
 v = true
 
@@ -1269,6 +1296,10 @@ k = 3390262126
 v = true
 
 [[inspector_sections.states]]
+k = 3391704998
+v = false
+
+[[inspector_sections.states]]
 k = 3400703613
 v = true
 
@@ -1418,7 +1449,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 3947225618
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 3954395121
@@ -1533,7 +1564,7 @@ last_path = 'Assets/Scenes/Main.scene'
 recent = [ 'Assets/Scenes/Main.scene' ]
 
 [snap]
-enabled = false
+enabled = true
 pos = 1.0
 rot = 15.0
 scale = 0.25
