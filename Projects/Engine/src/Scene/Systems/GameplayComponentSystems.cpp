@@ -75,18 +75,72 @@ void SetWorldScale(GameObject& go, const math::Vector3& value)
         go.transform.scale = value;
 }
 
+// この GameObject 自身がソケット名に一致するか。
+//
+// WHY 名前と BoneComponent の両方を見るか:
+//   ソケットは「FBX から生成された骨ノード」のことも「人が手で置いた空の GameObject」の
+//   こともある。前者は GameObject 名をリネームされても boneName が原本を保つため、
+//   両方を見ないとどちらか一方の運用でだけ引けなくなる。
+[[nodiscard]] bool MatchesSocket(GameObject& node, const std::string& socketName)
+{
+    if (socketName.empty())
+        return false;
+    if (node.name == socketName)
+        return true;
+    const auto* bone = node.GetComponent<BoneComponent>();
+    return bone && bone->boneName == socketName;
+}
+
 GameObject* FindSocket(GameObject* root, const std::string& socketName)
 {
     if (!root)
         return nullptr;
-    if (socketName.empty() || root->name == socketName)
-        return root;
-    if (const auto* bone = root->GetComponent<BoneComponent>();
-        bone && bone->boneName == socketName)
+    // 空名は「target 自身に付ける」の意味。従来動作なのでここだけ空を許す。
+    if (socketName.empty() || MatchesSocket(*root, socketName))
         return root;
     for (int index = 0; index < root->GetChildCount(); ++index) {
         if (GameObject* result = FindSocket(root->GetChild(index), socketName))
             return result;
+    }
+    return nullptr;
+}
+
+// target 未設定のとき、自分の祖先を根へ向かってたどりながらソケットを探す。
+//
+// WHY target を必須にしないか:
+//   target は EntityRef、つまり「シーン内の特定 GameObject」への参照。Prefab はシーン上の
+//   オブジェクトを参照できないので、target が必須である限り「武器 Prefab 自身が追従の
+//   宣言を持つ」ことが原理的に成立しない。さらに JsonReflector は参照型を読み書きしない
+//   (JsonReflector.hpp 冒頭) ため、Inspector 以外から target を書く手段も無い。
+//   結果として「スクリプトが Play 開始時に代入する」以外の経路が塞がれ、編集中だけ追従が
+//   成立しない = エディタと再生で配置が食い違う、という状態になっていた。
+//   target を省略できるようにすると、宣言をシーンにも Prefab にも保存でき、編集時と実行時が
+//   同じ 1 本の計算を通る。
+//
+// WHY シーン全体の名前検索にしないか:
+//   SOCKET_Muzzle は左右の銃にそれぞれ 1 本ずつ存在する。名前がシーン内で一意でない以上、
+//   全体検索では「どちらか片方」が返り、しかもどちらが返るかは GameObject の生成順に依存する。
+//   祖先方向へ上がりながら探せば必ず「自分から一番近いソケット」が最初に見つかる。
+//
+// WHY 自分が上がってきた枝を除外するか:
+//   自分の部分木にも同名のソケットがあり得る (銃側とキャラ側で同じソケット名を使う運用)。
+//   自分側を先に拾うと自分自身へ追従して、その場から動かなくなる。
+GameObject* FindSocketInAncestors(GameObject& self, const std::string& socketName)
+{
+    if (socketName.empty())
+        return nullptr;
+    GameObject* visited = &self;
+    for (GameObject* node = self.GetParent(); node;
+         visited = node, node = node->GetParent()) {
+        if (MatchesSocket(*node, socketName))
+            return node;
+        for (int index = 0; index < node->GetChildCount(); ++index) {
+            GameObject* child = node->GetChild(index);
+            if (!child || child == visited)
+                continue;
+            if (GameObject* result = FindSocket(child, socketName))
+                return result;
+        }
     }
     return nullptr;
 }
@@ -171,18 +225,98 @@ void ConstraintSystem::Update(SystemContext& ctx)
         auto* attachment = ctx.scene.GetComponent<SocketAttachmentComponent>(id);
         if (!go || !attachment || !attachment->enabled || !go->activeInHierarchy())
             continue;
-        GameObject* socket = FindSocket(attachment->target.Resolve(ctx.scene), attachment->socketName);
+        GameObject* targetRoot = attachment->target.Resolve(ctx.scene);
+
+        // 追従先が書き換わった瞬間だけを「切り替え」として拾う。呼び出し側は
+        // socketName へ行き先を代入するだけでよく、開始通知を送る必要がない。
+        // WHY イベントにしないか: 通知を取りこぼすと補間が始まらないまま行き先だけ
+        //      変わり、銃が瞬間移動する。差分検出なら取りこぼしようがない。
+        if (attachment->socketName != attachment->appliedSocketName) {
+            attachment->blendFromSocketName = attachment->appliedSocketName;
+            attachment->appliedSocketName   = attachment->socketName;
+            // 初回 (補間元が無い) と編集中はスナップする。編集中に補間を進めると、
+            // Play していないのに Inspector の値が毎フレーム変わって見える。
+            attachment->blendRemaining =
+                (attachment->blendFromSocketName.empty() || !ctx.simulating)
+                    ? 0.0f
+                    : std::max(attachment->blendDuration, 0.0f);
+        }
+
+        // target が指定されていればその部分木から、省略されていれば自分の祖先から探す。
+        // どちらの経路でも「見つかったソケットのワールド姿勢に合わせる」以降は同一。
+        const auto resolveSocket = [&](const std::string& name) -> GameObject* {
+            return targetRoot ? FindSocket(targetRoot, name)
+                              : FindSocketInAncestors(*go, name);
+        };
+
+        GameObject* socket = resolveSocket(attachment->socketName);
         if (!socket)
             continue;
         const math::Quaternion offsetRotation =
             math::Quaternion::FromEuler(attachment->rotationOffsetDegrees * DEG_TO_RAD);
+
+        // ソケット 1 つぶんの「合わせたいワールド姿勢」。オフセットまで畳んだ形で返す。
+        const auto poseOf = [&](const GameObject& s,
+                                math::Vector3& position,
+                                math::Quaternion& rotation,
+                                math::Vector3& scale) {
+            position = s.transform.worldPosition
+                + s.transform.worldRotation * attachment->positionOffset;
+            rotation = (s.transform.worldRotation * offsetRotation).Normalized();
+            scale    = Multiply(s.transform.worldScale, attachment->scaleMultiplier);
+        };
+
+        math::Vector3    desiredPosition;
+        math::Quaternion desiredRotation;
+        math::Vector3    desiredScale;
+        poseOf(*socket, desiredPosition, desiredRotation, desiredScale);
+
+        // 切り替え中は旧ソケットと新ソケットの「その瞬間の」姿勢を混ぜる。
+        // 両方ともアニメーションで動き続けるので、キャラが歩いていても置き去りにならない。
+        if (attachment->blendRemaining > 0.0f) {
+            attachment->blendRemaining =
+                std::max(0.0f, attachment->blendRemaining - std::max(ctx.dt, 0.0f));
+            GameObject* from = resolveSocket(attachment->blendFromSocketName);
+            if (from && attachment->blendDuration > 0.0f) {
+                const float linear =
+                    Clamp01(1.0f - attachment->blendRemaining / attachment->blendDuration);
+                // smoothstep。等速で移すと出だしと着地が硬く、手に「置いた」感が出ない。
+                const float t = linear * linear * (3.0f - 2.0f * linear);
+                math::Vector3    fromPosition;
+                math::Quaternion fromRotation;
+                math::Vector3    fromScale;
+                poseOf(*from, fromPosition, fromRotation, fromScale);
+                desiredPosition = math::Vector3::Lerp(fromPosition, desiredPosition, t);
+                desiredRotation =
+                    math::Quaternion::Slerp(fromRotation, desiredRotation, t).Normalized();
+                desiredScale    = math::Vector3::Lerp(fromScale, desiredScale, t);
+            } else {
+                // 旧ソケットが消えた / 補間時間が 0。追いかけようがないので打ち切る。
+                attachment->blendRemaining = 0.0f;
+            }
+        }
+
+        // 自分側の合わせ点。「この子ソケットが相手ソケットに重なる」ように原点をずらす。
+        // 相対姿勢は自分のローカル空間で測るため、自分自身の現在姿勢には依存しない。
+        if (!attachment->localSocketName.empty()) {
+            GameObject* localSocket = FindSocket(go, attachment->localSocketName);
+            if (localSocket && localSocket != go) {
+                const math::Quaternion selfInverse = go->transform.worldRotation.Inverse();
+                const math::Quaternion localRotation =
+                    (selfInverse * localSocket->transform.worldRotation).Normalized();
+                const math::Vector3 localPosition = selfInverse
+                    * (localSocket->transform.worldPosition - go->transform.worldPosition);
+                desiredRotation = (desiredRotation * localRotation.Inverse()).Normalized();
+                desiredPosition = desiredPosition - desiredRotation * localPosition;
+            }
+        }
+
         if (attachment->followPosition)
-            SetWorldPosition(*go, socket->transform.worldPosition
-                + socket->transform.worldRotation * attachment->positionOffset);
+            SetWorldPosition(*go, desiredPosition);
         if (attachment->followRotation)
-            SetWorldRotation(*go, socket->transform.worldRotation * offsetRotation);
+            SetWorldRotation(*go, desiredRotation);
         if (attachment->followScale)
-            SetWorldScale(*go, Multiply(socket->transform.worldScale, attachment->scaleMultiplier));
+            SetWorldScale(*go, desiredScale);
     }
     FlushWorldTransforms(ctx.scene);
     for (EntityID id : ctx.scene.GetEntities<TransformConstraintComponent>()) {
