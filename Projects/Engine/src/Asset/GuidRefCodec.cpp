@@ -103,6 +103,26 @@ void TransformStrings(toml::table& tbl, const Fn& fn)
     }
 }
 
+// 絶対パスをプロジェクト相対 ("Assets/..." / "Library/Baked/...") へ落とす。
+// プロジェクト外なら空文字列。ヒントは git に載るので、機械固有の絶対パスは書かない。
+std::string ToProjectRelative(const std::string& absPath)
+{
+    const std::string root = AssetDatabase::ProjectRoot();
+    if (root.empty() || !StartsWithCI(absPath, root)) return {};
+    return absPath.substr(root.size());
+}
+
+// ランタイム標準の参照形式へ戻す ("Assets/..." 相対、それ以外は絶対パスのまま)。
+// WHY 相対に寄せるか: Inspector の表示も既存の比較ロジックも "Assets/..." 前提で、
+//     ここだけ絶対パスを返すと同じアセットが 2 通りの文字列で流通する。
+std::string ToRuntimeRef(const std::string& absPath, const std::string& suffix)
+{
+    const std::string root = AssetDatabase::AssetsRoot();
+    if (!root.empty() && StartsWithCI(absPath, root))
+        return "Assets/" + absPath.substr(root.size()) + suffix;
+    return absPath + suffix;
+}
+
 } // namespace
 
 std::string EncodeGuidRef(const std::string& pathOrRef)
@@ -120,27 +140,44 @@ std::string EncodeGuidRef(const std::string& pathOrRef)
     const std::string absPath = AssetManager::ResolveAssetPath(parts.base);
     const std::string guid = AssetDatabase::TryGetGuidFromPath(absPath);
     if (guid.empty()) return pathOrRef;
-    return std::string(AssetDatabase::kGuidPrefix) + guid + parts.suffix;
+
+    std::string encoded = std::string(AssetDatabase::kGuidPrefix) + guid + parts.suffix;
+
+    // 読める形を後ろへ併記する。権威はあくまで guid で、ヒントは読み手のためと
+    // guid が引けなくなったときの復旧経路にしか使わない。
+    if (const std::string hint = ToProjectRelative(absPath); !hint.empty())
+        encoded += AssetDatabase::kRefHintSeparator + hint;
+    return encoded;
 }
 
 std::string DecodeGuidRef(const std::string& ref)
 {
     if (!AssetDatabase::IsGuidRef(ref)) return ref;
 
-    const AssetReferenceParts parts = SplitAssetReference(ref);
-    const std::string abs = AssetDatabase::PathFromGuid(
-        parts.base.substr(AssetDatabase::kGuidPrefix.size()));
-    if (abs.empty()) {
-        // アセット削除済み等。元の guid: を残せば ResolvePath が改めてエラーを報告する。
-        FBZZ_LOG_WARN("GuidRefCodec: unresolved guid reference [%s]", ref.c_str());
-        return ref;
+    // ヒントを先に切り離す。パスにはドットもコロンも入りうるので、
+    // SplitAssetReference へ渡す前に落とさないとサブアセット接尾辞と混ざる。
+    const std::string hint = AssetDatabase::HintFromRef(ref);
+    const size_t sep = ref.find(AssetDatabase::kRefHintSeparator);
+    const std::string guidRef = sep == std::string::npos ? ref : ref.substr(0, sep);
+
+    const AssetReferenceParts parts = SplitAssetReference(guidRef);
+    const std::string abs = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(parts.base));
+    if (!abs.empty()) return ToRuntimeRef(abs, parts.suffix);
+
+    // guid が引けない。.meta を作り直した後などに起きる。
+    // ヒントの実体が残っているなら、そちらで拾い直して参照を生かす。
+    if (!hint.empty()) {
+        const std::string recovered = AssetDatabase::ProjectRoot() + hint;
+        if (util::FileSystem::Exists(recovered)) {
+            FBZZ_LOG_WARN("GuidRefCodec: guid unresolved, recovered by path hint [%s]",
+                          hint.c_str());
+            return ToRuntimeRef(recovered, parts.suffix);
+        }
     }
 
-    // ランタイム標準の "Assets/..." 相対形式へ戻す (Inspector や既存比較ロジックとの互換)。
-    const std::string root = AssetDatabase::AssetsRoot();
-    if (!root.empty() && StartsWithCI(abs, root))
-        return "Assets/" + abs.substr(root.size()) + parts.suffix;
-    return abs + parts.suffix;
+    // 復旧もできない。元の文字列を残せば ResolvePath が改めてエラーを報告する。
+    FBZZ_LOG_WARN("GuidRefCodec: unresolved guid reference [%s]", ref.c_str());
+    return ref;
 }
 
 void EncodeGuidRefs(toml::table& root)
