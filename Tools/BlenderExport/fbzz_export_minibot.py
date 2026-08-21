@@ -53,6 +53,10 @@ RIGS = [
         "prefix": "MiniBot_",
         "root_bone": "Root",
         "root_motion": True,
+        # 全クリップ共通の基準ポーズ。rest へ戻したあと、この順に流し込む。
+        # Idle が 23 ボーン、Pose_GripPistols が指 24 ボーンを埋め、
+        # 残り (SOCKET_* / Core / Vent_*_Rotor / Grip_L/R / Mount_Back) は rest のまま。
+        "base_poses": ["MiniBot_Idle", "MiniBot_Pose_GripPistols"],
     },
 
     {
@@ -61,6 +65,8 @@ RIGS = [
         "prefix": "Assault_",
         "root_bone": None,
         "root_motion": False,
+        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
+        "base_poses": None,
     },
     {
         "package": "WPN_Pistol_R",
@@ -68,6 +74,8 @@ RIGS = [
         "prefix": "Pistol_",
         "root_bone": None,
         "root_motion": False,
+        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
+        "base_poses": None,
         # 左右のピストルは別アーマチュアだが同じ Pistol_ 接頭辞を共有するため、
         # スロット (slot identifier) で所属を判定する。
         "slot_filter": "OBWPN_Pistol_R_Rig",
@@ -78,6 +86,8 @@ RIGS = [
         "prefix": "Pistol_",
         "root_bone": None,
         "root_motion": False,
+        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
+        "base_poses": None,
         "slot_filter": "OBWPN_Pistol_L_Rig",
     },
     {
@@ -86,6 +96,8 @@ RIGS = [
         "prefix": "Sword_",
         "root_bone": None,
         "root_motion": False,
+        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
+        "base_poses": None,
         "slot_filter": "OBWPN_Sword_R_Rig",
     },
     {
@@ -94,6 +106,8 @@ RIGS = [
         "prefix": "Sword_",
         "root_bone": None,
         "root_motion": False,
+        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
+        "base_poses": None,
         "slot_filter": "OBWPN_Sword_L_Rig",
     },
 ]
@@ -135,6 +149,23 @@ COMMON_FBX_OPTIONS = dict(
 #      設計方針 (Docs/design/animation-system-v3.md) どおり DCC 側でベイクして
 #      Transform キーへ落とす。simplify_factor=0 で間引かず、キー削減は
 #      エンジンの OptimizeVectorKeys / OptimizeQuaternionKeys に任せる。
+#
+#      bake_anim_use_all_bones=True は「未キーのボーンにもキーを強制生成する」。
+#      MiniBot のクリップはすべて部分ボーンしかキーしていない (最大 42 / 58、
+#      Idle でさえ 23 / 58) ため、この設定は全クリップに影響する。
+#
+#      False にしても効果が無いことを実測で確認済み: Blender の FBX エクスポータは
+#      定数カーブの間引きを AnimationCurveNodeWrapper.simplify() で行うが、
+#      同関数は simplify_factor == 0.0 で即 return する。よって
+#      simplify_factor=0.0 のもとでは use_all_bones の True/False は結果が同一
+#      (Hit_F: どちらも AnimCurveNode 180 本)。
+#
+#      そこで「トラックを減らす」のではなく「焼かれる中身を決定論にする」で解く。
+#      export_clip() が毎回 base_poses を流し込んでから本命のアクションを
+#      割り当てるため、未キーのボーンは常に同じ既知のポーズになる。
+#      これで Additive レイヤーの差分は該当ボーンで厳密に 0 になり
+#      (AnimatorSystem::ResolveAdditiveReferencePose の定数トラック挙動)、
+#      Override レイヤーでも「偶然の残留ポーズ」ではなく意図した姿勢が入る。
 ANIM_BAKE_OPTIONS = dict(
     bake_anim=True,
     bake_anim_use_all_bones=True,
@@ -211,6 +242,55 @@ def clip_name_for(rig, action):
     return name or action.name
 
 
+def resolve_base_poses(rig):
+    """このリグの「未キーのボーンを固定する」基準アクション列を返す。"""
+    names = rig.get("base_poses") or [rig["prefix"] + "Idle"]
+    return [a for a in (bpy.data.actions.get(n) for n in names) if a is not None]
+
+
+def reset_pose_to_rest(armature):
+    """全ポーズボーンの basis を恒等へ戻す (オペレータ / モード切替なし)。"""
+    for pb in armature.pose.bones:
+        pb.location = (0.0, 0.0, 0.0)
+        pb.scale = (1.0, 1.0, 1.0)
+        if pb.rotation_mode == "QUATERNION":
+            pb.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
+        elif pb.rotation_mode == "AXIS_ANGLE":
+            pb.rotation_axis_angle = (0.0, 0.0, 1.0, 0.0)
+        else:
+            pb.rotation_euler = (0.0, 0.0, 0.0)
+    bpy.context.view_layer.update()
+
+
+def apply_base_poses(armature, actions):
+    """未キーのボーンを既知の姿勢へ落としてから本命のアクションを割り当てる。
+
+    WHY: bake_anim_use_all_bones=True はアクションがキーを持たないボーンにも
+         キーを強制生成する。その値は「pose bone の現在の basis」= 直前に
+         再生していたアクションの残留ポーズであり、放置すると指や脚に
+         無関係なポーズが焼き込まれる。
+         rest へ戻してから基準ポーズを順に流し込むことで、焼かれる中身を
+         偶然ではなく意図で決める。アクションはキーを持つチャンネルしか
+         書き換えないため、後から本命のアクションを割り当てても
+         未キーのボーンは基準ポーズのまま残る。
+
+         全クリップで同じ基準ポーズを使うことが重要。未キーのボーンの値が
+         クリップ間で一致していれば、Additive レイヤーの
+         「評価ポーズ - 基準ポーズ」は該当ボーンで厳密に 0 になり、
+         ベースの姿勢を一切汚さない。
+    """
+    reset_pose_to_rest(armature)
+    applied = []
+    for action in actions:
+        armature.animation_data_create()
+        armature.animation_data.action = action
+        rm._assign_first_slot(armature)
+        bpy.context.scene.frame_set(int(round(action.frame_range[0])))
+        bpy.context.view_layer.update()
+        applied.append(action.name)
+    return applied
+
+
 def normalize_root_transforms(armature):
     """スキンメッシュのオブジェクト変換を恒等・原点ゼロに揃える (冪等)。
 
@@ -283,6 +363,11 @@ def export_clip(rig, action, output_dir, root_motion_empty):
     scene = bpy.context.scene
     armature = bpy.data.objects[rig["armature"]]
 
+    clip = clip_name_for(rig, action)
+
+    # 未キーのボーンを基準ポーズで埋めてから書き出す。全クリップで実施する。
+    apply_base_poses(armature, [a for a in resolve_base_poses(rig) if a is not action])
+
     armature.animation_data_create()
     armature.animation_data.action = action
     rm._assign_first_slot(armature)
@@ -295,7 +380,6 @@ def export_clip(rig, action, output_dir, root_motion_empty):
 
     # ベイク範囲とテイク名を一時的に差し替える
     saved = (scene.name, scene.frame_start, scene.frame_end)
-    clip = clip_name_for(rig, action)
     scene.frame_start = frame_start
     scene.frame_end = frame_end
     scene.name = clip
@@ -365,6 +449,7 @@ def main(models_dir, rig_names=None, clip_filter=None, export_mesh=True,
             # 対応する EV_ アクションが無いノードは静止したまま書き出され、
             # 取り込み側では「値が変化しない = イベント 0 件」になるので無害。
             entry["events"] = ev.bind_events_for_action(armature, action)
+            entry["base_poses"] = [a.name for a in resolve_base_poses(rig)]
             entry["fbx"] = export_clip(rig, action, output_dir, root_motion_empty)
             report.append(entry)
 
