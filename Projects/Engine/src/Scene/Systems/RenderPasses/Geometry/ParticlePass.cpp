@@ -1822,7 +1822,8 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
     for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
         auto* emitter = scene.GetComponent<ParticleEmitter>(id);
         GameObject* gameObject = scene.GetGameObject(id);
-        if (!emitter || !gameObject || !emitter->enabled || CanUseGpuSimulation(*emitter)) continue;
+        if (!emitter || !gameObject || !gameObject->activeInHierarchy()
+            || !emitter->enabled || CanUseGpuSimulation(*emitter)) continue;
         // GPU指定を一時的にCPUへ縮退した場合、制約解除後に古いGPU粒子が復活しないよう履歴を破棄する。
         if (emitter->simulationMode == ParticleSimulationMode::Gpu)
             emitter->gpuClearPending = true;
