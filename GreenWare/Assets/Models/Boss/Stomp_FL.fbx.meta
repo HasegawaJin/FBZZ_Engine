@@ -2,7 +2,7 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = 'ddd17dafaf628c52'
+settings_hash = '18f10c26b1ca5223'
 source_hash = 'f36d341cda101577'
 
 [meta]
@@ -15,7 +15,7 @@ generate_normals = true
 generate_tangents = true
 generate_tex_descriptors = true
 importer = 'ModelImporter'
-importer_version = 3
+importer_version = 4
 normal_map_convention = 'DirectX'
 root_motion_node = ''
 selected_animations = []

@@ -6,7 +6,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
-#include <Scripts/Player/PlayerHealthComponent.hpp>
+#include <Scripts/Player/PlayerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <algorithm>
@@ -139,8 +139,8 @@ inline void EnemyChaserComponent::OnCollisionStay(const CollisionInfo& info)
     if (!player || info.other != player || m_attackRemaining > 0.0f || IsMovementLocked())
         return;
 
-    if (auto* health = scene.GetScript<PlayerHealthComponent>(player)) {
-        if (health->TakeDamage(std::max(attackDamage, 1)))
+    if (auto* playerComponent = scene.GetScript<PlayerComponent>(player)) {
+        if (playerComponent->TakeDamage(std::max(attackDamage, 1)))
             m_attackRemaining = std::max(attackCooldown, 0.05f);
     }
 }

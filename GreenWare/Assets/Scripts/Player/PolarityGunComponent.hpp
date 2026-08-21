@@ -19,10 +19,13 @@
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
+#include <Scripts/Player/WeaponAnimatorComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/CooldownTimer.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/WeaponSockets.hpp>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -37,11 +40,18 @@ class PolarityGunComponent : public Script {
     FBZZ_OPTIONAL_COMPONENT(AudioSourceComponent)
 
 public:
-    FBZZ_ASSET(PolarityTuning, tuning, "Tuning")
-    FBZZ_TOOLTIP("クールダウンと持続時間。未割り当てだと既定値 (CD 1.2s) で動く")
+    // PlayerComponent が必須 PolarityTuning を注入する。クールダウンを Inspector 側へ複製しない。
+    fbzz::Asset<PolarityTuning> tuning{};
 
-    FBZZ_GROUP("Muzzles")
-    // 発射エフェクトの発生位置。未設定でも銃モデル内の muzzle ソケットを名前で復旧する。
+    FBZZ_GROUP("Weapons")
+    // 銃本体。ここから WeaponAnimatorComponent を引いて発砲モーションを再生する。
+    // 未設定でも WPN_Pistol_R / WPN_Pistol_L を名前で復旧する。
+    FBZZ_REF(GameObject, weaponPlus,  "Weapon (+) / Right")
+    FBZZ_REF(GameObject, weaponMinus, "Weapon (-) / Left")
+
+    FBZZ_GROUP("Muzzles (override)")
+    // 通常は空でよい。銃側の SOCKET_Muzzle が自動で使われる。
+    // WHY それでも残すか: マズルを意図的にずらしたい演出用の逃げ道。
     FBZZ_REF(GameObject, muzzleRight, "Muzzle Right (+)")
     FBZZ_REF(GameObject, muzzleLeft,  "Muzzle Left (-)")
 
@@ -68,6 +78,8 @@ public:
     // UI のクールダウンゲージ用。1 = 撃てる / 0 = 撃った直後。
     [[nodiscard]] float ChargeOf(Polarity polarity) const;
     [[nodiscard]] bool  CanFire(Polarity polarity) const;
+    void SetAimComponent(PlayerAimComponent* aim) { m_aimOverride = aim; }
+    void SetController(PlayerControllerComponent* controller) { m_controllerOverride = controller; }
 
     void OnStart()  override;
     void OnUpdate() override;
@@ -81,9 +93,16 @@ private:
                           const Vector3& targetPos);
     [[nodiscard]] float CooldownSeconds() const;
     [[nodiscard]] Vector3 MuzzlePosition(Polarity polarity) const;
+    // 銃 GameObject と、その上の WeaponAnimatorComponent を引く。
+    // 銃は Draw/Holster で親が張り替わるが GameObject 自体は生き続けるため、
+    // 無効化されたときだけ引き直す。
+    [[nodiscard]] GameObject* WeaponObject(Polarity polarity) const;
+    [[nodiscard]] WeaponAnimatorComponent* WeaponAnim(Polarity polarity) const;
 
     CooldownTimer m_plus;
     CooldownTimer m_minus;
+    PlayerAimComponent* m_aimOverride = nullptr;
+    PlayerControllerComponent* m_controllerOverride = nullptr;
 };
 
 FBZZ_REFLECT(PolarityGunComponent)
@@ -92,7 +111,7 @@ FBZZ_REFLECT(PolarityGunComponent)
 
 inline float PolarityGunComponent::CooldownSeconds() const
 {
-    return tuning ? tuning->gunCooldown : 1.2f;
+    return tuning->gunCooldown;
 }
 
 inline float PolarityGunComponent::ChargeOf(Polarity polarity) const
@@ -115,14 +134,12 @@ inline void PolarityGunComponent::OnStart()
     //     敵の極性持続時間 ＞ クールダウン × 2 ＋ 狙いを定める時間
     // 破っていると 2 体目を撃つ前に 1 体目の極性が切れ、ゲームが成立しない。
     // 破綻の仕方が「なんとなく繋がらない」なので、明示的に言わないと気付けない。
-    if (tuning) {
-        constexpr float kAimSecondsEstimate = 0.6f; // 振り向いて狙いを付けるまでの見積もり
-        const float shortest = tuning->ShortestDuration();
-        if (!tuning->SatisfiesTimingConstraint(shortest, kAimSecondsEstimate)) {
-            debug.LogError(
-                "PolarityTuning breaks the 7.7 timing constraint: shortest duration "
-                "must exceed cooldown x 2 + aim time. Combos will not connect.");
-        }
+    constexpr float kAimSecondsEstimate = 0.6f; // 振り向いて狙いを付けるまでの見積もり
+    const float shortest = tuning->ShortestDuration();
+    if (!tuning->SatisfiesTimingConstraint(shortest, kAimSecondsEstimate)) {
+        debug.LogError(
+            "PolarityTuning breaks the 7.7 timing constraint: shortest duration "
+            "must exceed cooldown x 2 + aim time. Combos will not connect.");
     }
 }
 
@@ -150,10 +167,12 @@ inline void PolarityGunComponent::TryFire(Polarity polarity)
         // 空撃ちにも音を返す。無反応だと「入力が拾われていない」のか
         // 「クールダウン中」なのか区別できず、リズムを覚えられない。
         if (!sfxEmpty.empty()) audio.PlayOneShot(sfxEmpty);
+        // 銃側にも空撃ちを伝える。スライドが動かないままカチッと鳴るのが正しい。
+        if (auto* weapon = WeaponAnim(polarity)) weapon->PlayDry();
         return;
     }
 
-    auto* aim = scene.GetScript<PlayerAimComponent>();
+    auto* aim = m_aimOverride ? m_aimOverride : scene.GetScript<PlayerAimComponent>();
     if (!aim) {
         // 6 章のエイム補助はこのゲームの前提。無い状態で撃てるようにすると、
         // 「当たらない」原因がプレイヤーの腕前に見えてしまう。
@@ -182,6 +201,13 @@ inline void PolarityGunComponent::ApplyToTarget(Polarity polarity,
     CooldownTimer& timer = (polarity == Polarity::Plus) ? m_plus : m_minus;
     timer.Trigger(CooldownSeconds());
 
+    // 銃の見た目 (スライド後退・マズル・薬莢) は銃側の責務。ここは 1 回呼ぶだけ。
+    // マズルフラッシュと薬莢はクリップのイベントが 1F / 3F で別々に出す。
+    if (auto* weapon = WeaponAnim(polarity)) weapon->PlayFire();
+    if (auto* player = m_controllerOverride
+        ? m_controllerOverride : scene.GetScript<PlayerControllerComponent>())
+        player->PlayFireAnimation(polarity == Polarity::Plus);
+
     PlayFireFeedback(polarity, result, targetObject.transform.worldPosition);
 }
 
@@ -209,19 +235,45 @@ inline void PolarityGunComponent::PlayFireFeedback(Polarity polarity,
     }
 }
 
+inline GameObject* PolarityGunComponent::WeaponObject(Polarity polarity) const
+{
+    const auto& reference = (polarity == Polarity::Plus) ? weaponPlus : weaponMinus;
+    if (GameObject* object = reference.Get())
+        return object;
+    return scene.Find(WeaponObjectName(HandOf(polarity)));
+}
+
+inline WeaponAnimatorComponent* PolarityGunComponent::WeaponAnim(Polarity polarity) const
+{
+    GameObject* weapon = WeaponObject(polarity);
+    return weapon ? scene.GetScript<WeaponAnimatorComponent>(weapon) : nullptr;
+}
+
 inline Vector3 PolarityGunComponent::MuzzlePosition(Polarity polarity) const
 {
+    // 1) Inspector で明示的に指定されたマズル (演出上ずらしたい場合)
     const auto& muzzle = (polarity == Polarity::Plus) ? muzzleRight : muzzleLeft;
     if (GameObject* object = muzzle.Get())
         return object->transform.worldPosition;
 
-    // 旧シーンで EntityRef が未保存でも、銃モデル内のソケットを使う。
-    // WHY: Player 原点へフォールバックすると、銃を手へ移した後も弾道だけが原点から出る。
-    const char* socketName = polarity == Polarity::Plus
-        ? "Sock_Muzzle_R"
-        : "Sock_Muzzle_L";
-    if (GameObject* socket = scene.Find(socketName))
-        return socket->transform.worldPosition;
+    // 2) 銃側が解決済みの SOCKET_Muzzle
+    // WHY scene.Find("SOCKET_Muzzle") としないか: 同名ソケットが左右の銃に 1 本ずつ
+    //     存在するため、グローバル検索ではどちらが返るか GameObject の生成順に依存する。
+    //     症状が日替わりになる種類のバグなので、必ず銃の部分木から引く。
+    if (auto* weapon = WeaponAnim(polarity))
+        return weapon->MuzzlePosition();
+
+    // 3) 旧シーン救済 (FBX 再インポート前)
+    if (GameObject* weapon = WeaponObject(polarity)) {
+        const bool right = polarity == Polarity::Plus;
+        if (GameObject* socket = FindSocketInSubtree(
+                *weapon, kSocketMuzzle,
+                right ? kLegacySocketMuzzleR : kLegacySocketMuzzleL))
+            return socket->transform.worldPosition;
+    }
+
+    // WHY Player 原点へ落とすのを最後にするか: ここへ来ると銃を手へ移した後も
+    //     弾道だけが足元から出る。見た目が微妙にズレるだけなので気付きにくい。
     return transform.worldPosition;
 }
 

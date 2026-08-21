@@ -18,6 +18,8 @@
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Player/PlayerAimComponent.hpp>
+#include <Scripts/Player/WeaponRigComponent.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string_view>
@@ -30,40 +32,6 @@ using fbzz::Time;
 
 namespace sandbox {
 
-// 親を差し替えても、その瞬間のワールド姿勢を維持する。
-// WHY: SetParent だけではローカル座標がそのまま残り、銃が原点へ跳ぶため、Draw/Holster の
-//      アニメーション途中で「現在位置から取り出す」という操作にならない。
-inline bool ReparentKeepingWorld(GameObject& child, GameObject& parent)
-{
-    const Vector3 worldPosition = child.transform.worldPosition;
-    const Quaternion worldRotation = child.transform.worldRotation;
-    const Vector3 worldScale = child.transform.worldScale;
-    const Quaternion inverseParentRotation = parent.transform.worldRotation.Inverse();
-    const Vector3 localPosition = inverseParentRotation *
-        (worldPosition - parent.transform.worldPosition);
-    const Vector3 parentScale = parent.transform.worldScale;
-    const auto divideByParentScale = [](float value, float scale) {
-        return std::abs(scale) > 0.000001f ? value / scale : value;
-    };
-
-    if (!child.SetParent(&parent))
-        return false;
-
-    child.transform.position = {
-        divideByParentScale(localPosition.x, parentScale.x),
-        divideByParentScale(localPosition.y, parentScale.y),
-        divideByParentScale(localPosition.z, parentScale.z),
-    };
-    child.transform.rotation =
-        (inverseParentRotation * worldRotation).Normalized();
-    child.transform.scale = {
-        divideByParentScale(worldScale.x, parentScale.x),
-        divideByParentScale(worldScale.y, parentScale.y),
-        divideByParentScale(worldScale.z, parentScale.z),
-    };
-    return true;
-}
-
 class PlayerControllerComponent : public Script {
     FBZZ_SCRIPT(PlayerControllerComponent)
 
@@ -75,25 +43,17 @@ class PlayerControllerComponent : public Script {
     FBZZ_OPTIONAL_COMPONENT(AnimatorComponent, IKSolverComponent)
 
 public:
-    FBZZ_ASSET(PlayerTuning, tuning, "Tuning")
-    FBZZ_TOOLTIP("移動・ジャンプ・回避の共有値。未割り当てなら下の既定値で動く")
+    // PlayerComponent が必須参照を束ねて注入する。移動値をここへ複製しないことで、
+    // Inspector では PlayerTuning.fzdata だけが調整値の正本になる。
+    fbzz::Asset<PlayerTuning> tuning{};
 
     FBZZ_GROUP("Movement")
-    FBZZ_FIELD_RANGE(float, moveSpeed,              6.0f,  "Move Speed",        0.1f, 20.0f)
     FBZZ_FIELD_RANGE(float, modelYawOffsetDegrees, 180.0f, "Model Yaw Offset",  0.0f, 360.0f)
-    FBZZ_FIELD_RANGE(float, groundAccel,            18.0f, "Ground Accel",       1.0f, 100.0f)
-    FBZZ_FIELD_RANGE(float, groundDecel,            22.0f, "Ground Decel",       1.0f, 100.0f)
-    FBZZ_FIELD_RANGE(float, airAccel,                3.0f, "Air Accel",          0.0f,  50.0f)
-    FBZZ_FIELD_RANGE(float, turnSpeed,              14.0f, "Turn Speed",         0.1f,  30.0f)
-    FBZZ_FIELD_RANGE(float, jumpSpeed,               7.0f, "Jump Speed",          0.1f,  30.0f)
     FBZZ_FIELD(bool, useCameraForward,      true, "Use Camera Forward")
     FBZZ_FIELD(bool, rotateToMoveDirection, true, "Rotate To Move Dir")
     FBZZ_FIELD(bool, useFootIK,             true, "Use Foot IK")
 
     FBZZ_GROUP("Dodge")
-    FBZZ_FIELD_RANGE(float, dodgeSpeed,    16.0f, "Dodge Speed",    1.0f, 60.0f)
-    FBZZ_FIELD_RANGE(float, dodgeDuration, 0.22f, "Dodge Duration", 0.05f, 1.0f)
-    FBZZ_FIELD_RANGE(float, dodgeCooldown,  0.8f, "Dodge Cooldown", 0.0f,  5.0f)
     FBZZ_TOOLTIP("無敵時間は持たない (11 章 / 19 章がジャスト回避を本バージョンから外しているため)")
 
     FBZZ_GROUP("Key Bindings")
@@ -111,25 +71,35 @@ public:
     FBZZ_FIELD(std::string, paramJumpTrigger,   "Jump",         "Jump Trigger Param")
     FBZZ_FIELD(std::string, paramDodgeTrigger,  "Dodge",        "Dodge Trigger Param")
 
-    FBZZ_GROUP("Weapon Animation")
-    // Draw / Holster は入力とアニメーションの責務を分け、銃の親だけをこのスクリプトで切り替える。
+    FBZZ_GROUP("Aim Animation")
+    // AimOffset は現在のソフトエイム対象をプレイヤー基準の角度へ変換して駆動する。
+    FBZZ_FIELD(std::string, paramAimYaw,   "AimYaw",   "Aim Yaw Param")
+    FBZZ_FIELD(std::string, paramAimPitch, "AimPitch", "Aim Pitch Param")
+    FBZZ_FIELD(std::string, aimLayerName,  "Aim",      "Aim Layer")
+    FBZZ_FIELD(std::string, aimSwayLayerName, "Add_AimSway", "Aim Sway Layer")
+
+    FBZZ_GROUP("Weapon Keys")
+    // ここは「抜きたい / 収めたい」という意思の入口だけ。何が起きるかは
+    // WeaponRigComponent が持つ。キーバインドの変更で銃の挙動を読まなくて済む。
     FBZZ_FIELD(KeyCode, keyDraw,    KeyCode::G, "Draw Weapons")
     FBZZ_FIELD(KeyCode, keyHolster, KeyCode::H, "Holster Weapons")
-    FBZZ_FIELD(std::string, paramDrawTrigger,    "Draw",          "Draw Trigger Param")
-    FBZZ_FIELD(std::string, paramHolsterTrigger, "Holster",       "Holster Trigger Param")
-    FBZZ_FIELD(std::string, weaponLayerName,      "Layer 1",       "Weapon Layer")
-    FBZZ_FIELD(std::string, drawStateName,        "DrawPistols",   "Draw State")
-    FBZZ_FIELD(std::string, holsterStateName,     "HolsterPistols","Holster State")
-    FBZZ_FIELD_RANGE(float, drawAttachNormalizedTime,    0.60f, "Draw Attach Time",    0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, holsterDetachNormalizedTime, 0.60f, "Holster Attach Time", 0.0f, 1.0f)
 
-    // 参照が保存されていない旧シーンでも名前で復旧できるよう、GUID参照と既定名を併用する。
-    FBZZ_REF(GameObject, weaponLeft,     "Left Pistol")
-    FBZZ_REF(GameObject, weaponRight,    "Right Pistol")
-    FBZZ_REF(GameObject, holsterLeft,    "Left Holster Socket")
-    FBZZ_REF(GameObject, holsterRight,   "Right Holster Socket")
-    FBZZ_REF(GameObject, handSocketLeft, "Left Hand Socket")
-    FBZZ_REF(GameObject, handSocketRight,"Right Hand Socket")
+    FBZZ_GROUP("Player Fire Animation")
+    // 発砲リコイルは銃のスライドとは別に Player の Add_Fire へ加算する。
+    FBZZ_FIELD(std::string, fireLayerName, "Add_Fire", "Fire Layer")
+    FBZZ_FIELD_FILE(fireLeftClipFile,  "guid:bd25df58d95f4297f208069c014514f5", "Left Fire Clip",  ".anim,.fbx")
+    FBZZ_FIELD_FILE(fireRightClipFile, "guid:48b26f14e4c8e89df23b7012356ea83f", "Right Fire Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, fireLeftClipName,  "Fire_Pistol_L", "Left Fire Clip Name")
+    FBZZ_FIELD(std::string, fireRightClipName, "Fire_Pistol_R", "Right Fire Clip Name")
+    // Fire_Pistol_L/R は手首 26 度・前腕 7 度しか動かず、肩と上体は静止している。
+    // クリップを作り直すまでの暫定として、加算レイヤーの倍率で振れ幅を稼ぐ。
+    FBZZ_FIELD_RANGE(float, fireLayerGain, 2.0f, "Fire Recoil Gain", 0.0f, 4.0f)
+    FBZZ_TOOLTIP("Add_Fire の加算倍率。1.0 = クリップそのまま")
+
+    FBZZ_GROUP("Player Hit Animation")
+    FBZZ_FIELD(std::string, hitLayerName, "Add_Hit", "Hit Layer")
+    FBZZ_FIELD_FILE(hitFrontClipFile, "guid:399f84087c05a267c373d75c4a778b11", "Front Hit Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, hitFrontClipName, "Hit_F", "Front Hit Clip Name")
 
     // 回避中か。被弾処理や敵 AI が「今は掴めない」を判断するのに使える。
     [[nodiscard]] bool  IsDodging() const { return m_dodgeRemaining > 0.0f; }
@@ -139,34 +109,40 @@ public:
     void OnStart() override;
     void OnUpdate() override;
     void OnFixedUpdate() override;
+    // PolarityGunComponent から呼ばれる Player 側の発砲リコイル。
+    void PlayFireAnimation(bool rightHand);
+    // 被弾通知から呼ばれる標準の正面リアクション。
+    void PlayHitAnimation();
+    // PlayerComponent が内部モジュールとして保持するときのエイム結果の注入先。
+    void SetAimComponent(PlayerAimComponent* aim) { m_aimOverride = aim; }
+    // 武器の挙動そのものは WeaponRigComponent が持つ。ここは要求を渡すだけ。
+    void SetWeaponRig(WeaponRigComponent* rig) { m_weaponRig = rig; }
 
 private:
     // 回避の開始判定と、回避中の速度上書き。
     void TickDodge(const Vector3& moveDirection, bool hasInput,
                    bool dodgeRequested, RigidBody& phy, float dt);
-    void StartWeaponAction(bool draw);
-    void UpdateWeaponAction(float dt);
-    void AttachWeaponsToHands();
-    void AttachWeaponsToHolsters();
-    GameObject* ResolveObject(const Ref<GameObject>& reference,
-                              std::string_view fallbackName) const;
     void UpdateIK();
+    void UpdateAimParameters();
     void UpdateSlopeLean(IKSolverComponent& ik, CharacterControllerComponent* cc,
                          RigidBodyComponent* rb);
     Vector3 GetMoveForward() const;
     Vector3 GetMoveRight(const Vector3& forward) const;
 
-    // 値は DataAsset があればそちらを、無ければ自分のフィールドを使う。
-    // WHY 両方持つか: アセットを作る前でも触って動かせる状態を保ちたい。
-    //      DataAsset を割り当てた瞬間に共有値へ切り替わる。
-    [[nodiscard]] float MoveSpeed()     const { return tuning ? tuning->moveSpeed     : moveSpeed; }
-    [[nodiscard]] float GroundAccel()   const { return tuning ? tuning->groundAccel   : groundAccel; }
-    [[nodiscard]] float GroundDecel()   const { return tuning ? tuning->groundDecel   : groundDecel; }
-    [[nodiscard]] float TurnSpeed()     const { return tuning ? tuning->turnSpeed     : turnSpeed; }
-    [[nodiscard]] float JumpSpeed()     const { return tuning ? tuning->jumpSpeed     : jumpSpeed; }
-    [[nodiscard]] float DodgeSpeed()    const { return tuning ? tuning->dodgeSpeed    : dodgeSpeed; }
-    [[nodiscard]] float DodgeDuration() const { return tuning ? tuning->dodgeDuration : dodgeDuration; }
-    [[nodiscard]] float DodgeCooldown() const { return tuning ? tuning->dodgeCooldown : dodgeCooldown; }
+    // 移動・回避の数値は必須 PlayerTuning からのみ読む。フォールバックを持たせないことで、
+    // fzdata の未設定を「たまたま動く」状態にしない。
+    [[nodiscard]] float MoveSpeed()     const { return tuning->moveSpeed; }
+    [[nodiscard]] float GroundAccel()   const { return tuning->groundAccel; }
+    [[nodiscard]] float GroundDecel()   const { return tuning->groundDecel; }
+    [[nodiscard]] float AirAccel()      const { return tuning->airAccel; }
+    [[nodiscard]] float TurnSpeed()     const { return tuning->turnSpeed; }
+    [[nodiscard]] float JumpSpeed()     const { return tuning->jumpSpeed; }
+    [[nodiscard]] float DodgeSpeed()    const { return tuning->dodgeSpeed; }
+    [[nodiscard]] float DodgeDuration() const { return tuning->dodgeDuration; }
+    [[nodiscard]] float DodgeCooldown() const { return tuning->dodgeCooldown; }
+
+    PlayerAimComponent* m_aimOverride = nullptr;
+    WeaponRigComponent* m_weaponRig   = nullptr;
 
     bool m_hasSpineTargetBase = false;
     Vector3 m_spineTargetBase = Vector3::ZERO;
@@ -180,12 +156,6 @@ private:
     bool    m_hasMoveInput = false;
     bool    m_jumpRequested = false;
     bool    m_dodgeRequested = false;
-
-    enum class WeaponAction { None, Draw, Holster };
-    WeaponAction m_weaponAction = WeaponAction::None;
-    float m_weaponActionTime = 0.0f;
-    bool m_weaponActionSwitched = false;
-    bool m_gunsDrawn = false;
 };
 
 // Reflect() をフィールド宣言から自動生成する (旧 .generated.hpp は廃止)。
@@ -194,6 +164,17 @@ FBZZ_REFLECT(PlayerControllerComponent)
 // ── 実装 (inline) ─────────────────────────────────────────────────────────────
 inline void PlayerControllerComponent::OnStart()
 {
+    // PlayerComponent から注入される共有調整値が無い場合は、ヘルパーの
+    // tuning->参照を実行しない。単体配置の設定漏れを SEH へ進ませず、
+    // スクリプトを安全に停止する。
+    if (!tuning) {
+        debug.LogError(
+            "PlayerControllerComponent requires PlayerTuning .fzdata asset. "
+            "Attach it through PlayerComponent before entering Play mode.");
+        enabled = false;
+        return;
+    }
+
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
     m_dodgeRemaining = 0.0f;
@@ -202,16 +183,11 @@ inline void PlayerControllerComponent::OnStart()
     m_hasMoveInput   = false;
     m_jumpRequested  = false;
     m_dodgeRequested = false;
-    m_weaponAction = WeaponAction::None;
-    m_weaponActionTime = 0.0f;
-    m_weaponActionSwitched = false;
-    m_gunsDrawn = false;
-    AttachWeaponsToHolsters();
 }
 
 inline void PlayerControllerComponent::OnUpdate()
 {
-    if (!transform) return;
+    if (!enabled || !transform || !tuning) return;
     const Vector3 forward = GetMoveForward();
     const Vector3 right   = GetMoveRight(forward);
     Vector3 move = Vector3::ZERO;
@@ -224,8 +200,12 @@ inline void PlayerControllerComponent::OnUpdate()
     m_moveDirection = m_hasMoveInput ? move.Normalized() : Vector3::ZERO;
     m_jumpRequested = m_jumpRequested || input.GetKeyDown(keyJump);
     m_dodgeRequested = m_dodgeRequested || input.GetKeyDown(keyDodge);
-    if (input.GetKeyDown(keyDraw))    StartWeaponAction(true);
-    if (input.GetKeyDown(keyHolster)) StartWeaponAction(false);
+    // 入力はここまで。抜く / 収める の中身は WeaponRigComponent の担当で、
+    // このスクリプトは銃の存在もソケットも知らない。
+    if (m_weaponRig) {
+        if (input.GetKeyDown(keyDraw))    m_weaponRig->RequestDraw();
+        if (input.GetKeyDown(keyHolster)) m_weaponRig->RequestHolster();
+    }
 
     auto* cc = scene.GetComponent<CharacterControllerComponent>();
     auto* rb = scene.GetComponent<RigidBodyComponent>();
@@ -238,99 +218,70 @@ inline void PlayerControllerComponent::OnUpdate()
     animator.SetFloat(paramSpeed, IsDodging()
         ? DodgeSpeed()
         : std::sqrtf(velocity.x * velocity.x + velocity.z * velocity.z));
-    UpdateWeaponAction(std::max(Time::deltaTime, 0.0f));
+    UpdateAimParameters();
     UpdateIK();
 }
 
-inline GameObject* PlayerControllerComponent::ResolveObject(
-    const Ref<GameObject>& reference, std::string_view fallbackName) const
+inline void PlayerControllerComponent::UpdateAimParameters()
 {
-    if (GameObject* object = reference.Get())
-        return object;
-    return scene.Find(fallbackName);
-}
+    // 銃を収納している間は、エイム差分と歩行中の上半身揺れを無効にする。
+    // レイヤー自体は Controller に常駐させ、再び抜いたときの再構築コストを避ける。
+    // 「抜いているか」は銃の側の事実なので、WeaponRigComponent に聞く。
+    const float aimWeight = (m_weaponRig && m_weaponRig->IsDrawn()) ? 1.0f : 0.0f;
+    animator.SetLayerWeight(aimLayerName, aimWeight);
+    animator.SetLayerWeight(aimSwayLayerName, aimWeight);
 
-inline void PlayerControllerComponent::StartWeaponAction(bool draw)
-{
-    auto* animatorComponent = scene.GetComponent<AnimatorComponent>();
-    if (!animatorComponent)
-        return;
-
-    const WeaponAction requested = draw ? WeaponAction::Draw : WeaponAction::Holster;
-    if (m_weaponAction == WeaponAction::None &&
-        ((draw && m_gunsDrawn) || (!draw && !m_gunsDrawn)))
-        return;
-    if (m_weaponAction == requested)
-        return;
-
-    m_weaponAction = requested;
-    m_weaponActionTime = 0.0f;
-    m_weaponActionSwitched = false;
-    animator.SetTrigger(draw ? paramDrawTrigger : paramHolsterTrigger);
-}
-
-inline void PlayerControllerComponent::UpdateWeaponAction(float dt)
-{
-    if (m_weaponAction == WeaponAction::None)
-        return;
-
-    auto* animatorComponent = scene.GetComponent<AnimatorComponent>();
-    if (!animatorComponent) {
-        m_weaponAction = WeaponAction::None;
+    auto* aim = m_aimOverride ? m_aimOverride : scene.GetScript<PlayerAimComponent>();
+    GameObject* target = aim ? aim->CurrentTarget() : nullptr;
+    if (!target) {
+        animator.SetFloat(paramAimYaw, 0.0f);
+        animator.SetFloat(paramAimPitch, 0.0f);
         return;
     }
 
-    m_weaponActionTime += dt;
-    const bool draw = m_weaponAction == WeaponAction::Draw;
-    const std::string& stateName = draw ? drawStateName : holsterStateName;
-    const bool stateActive = animatorComponent->GetLayerState(weaponLayerName) == stateName;
-    const float normalizedTime = animatorComponent->GetLayerNormalizedTime(weaponLayerName);
-    const float attachTime = draw ? drawAttachNormalizedTime : holsterDetachNormalizedTime;
+    // Animator の入力は設計書のエイムコーン (-1..1) に正規化する。
+    // ワールド角ではなくプレイヤーのローカル角を使うため、キャラクターの旋回と
+    // カメラの向きが変わっても 9 セルの意味が変わらない。
+    const Vector3 localTarget = transform.worldRotation.Inverse() *
+        (target->transform.worldPosition - transform.worldPosition);
+    const float horizontalLength =
+        std::sqrtf(localTarget.x * localTarget.x + localTarget.z * localTarget.z);
+    constexpr float RAD_TO_DEGREES = 57.29577951308232f;
+    const float yawDegrees = std::atan2f(localTarget.x, localTarget.z) * RAD_TO_DEGREES;
+    const float pitchDegrees = std::atan2f(localTarget.y,
+                                           std::max(horizontalLength, 0.0001f)) * RAD_TO_DEGREES;
 
-    // クリップがまだロードされていない場合も、入力処理を永久にロックしない。
-    // 通常は正規化時間で同期し、Controller不整合時だけ短い時間のフォールバックを使う。
-    if (!m_weaponActionSwitched &&
-        ((stateActive && normalizedTime >= attachTime) || m_weaponActionTime >= 0.75f)) {
-        if (draw)
-            AttachWeaponsToHands();
-        else
-            AttachWeaponsToHolsters();
-        m_weaponActionSwitched = true;
-        m_gunsDrawn = draw;
-    }
-
-    // ステートが終わったら待機し、壊れた遷移定義でも2秒以内に入力を受け付ける。
-    if (m_weaponActionSwitched &&
-        ((!stateActive && m_weaponActionTime >= 0.20f) || m_weaponActionTime >= 2.0f))
-        m_weaponAction = WeaponAction::None;
+    animator.SetFloat(paramAimYaw,
+                      std::clamp(yawDegrees / 45.0f, -1.0f, 1.0f));
+    animator.SetFloat(paramAimPitch,
+                      std::clamp(pitchDegrees / (pitchDegrees >= 0.0f ? 39.0f : 34.0f),
+                                 -1.0f, 1.0f));
 }
 
-inline void PlayerControllerComponent::AttachWeaponsToHands()
+inline void PlayerControllerComponent::PlayFireAnimation(bool rightHand)
 {
-    GameObject* leftWeapon = ResolveObject(weaponLeft, "WPN_Pistol_L");
-    GameObject* rightWeapon = ResolveObject(weaponRight, "WPN_Pistol_R");
-    GameObject* leftSocket = ResolveObject(handSocketLeft, "GunSocket_Hand_L");
-    GameObject* rightSocket = ResolveObject(handSocketRight, "GunSocket_Hand_R");
-    if (leftWeapon && leftSocket)
-        ReparentKeepingWorld(*leftWeapon, *leftSocket);
-    if (rightWeapon && rightSocket)
-        ReparentKeepingWorld(*rightWeapon, *rightSocket);
+    const std::string& clipFile = rightHand ? fireRightClipFile : fireLeftClipFile;
+    const std::string& clipName = rightHand ? fireRightClipName : fireLeftClipName;
+    if (clipFile.empty()) return;
+
+    // Fire は Additive Reference Pose = Pose_FireZero のレイヤーでのみ再生する。
+    // Aim / Hit と基準ポーズが異なるため、別レイヤーへ分けて混線を防ぐ。
+    // 倍率は撃つたびに入れ直す。Inspector で触った値がその場の 1 発から効く。
+    animator.SetLayerWeight(fireLayerName, fireLayerGain);
+    animator.PlaySlot(fireLayerName, clipFile, clipName, 0.0f, 0.08f, 1.0f, false);
 }
 
-inline void PlayerControllerComponent::AttachWeaponsToHolsters()
+inline void PlayerControllerComponent::PlayHitAnimation()
 {
-    GameObject* leftWeapon = ResolveObject(weaponLeft, "WPN_Pistol_L");
-    GameObject* rightWeapon = ResolveObject(weaponRight, "WPN_Pistol_R");
-    GameObject* leftSocket = ResolveObject(holsterLeft, "Sock_Holster_L");
-    GameObject* rightSocket = ResolveObject(holsterRight, "Sock_Holster_R");
-    if (leftWeapon && leftSocket)
-        ReparentKeepingWorld(*leftWeapon, *leftSocket);
-    if (rightWeapon && rightSocket)
-        ReparentKeepingWorld(*rightWeapon, *rightSocket);
+    if (hitFrontClipFile.empty()) return;
+    animator.PlaySlot(hitLayerName, hitFrontClipFile, hitFrontClipName,
+                      0.03f, 0.10f, 1.0f, false);
 }
 
 inline void PlayerControllerComponent::OnFixedUpdate()
 {
+    if (!enabled || !tuning) return;
+
     auto* cc = scene.GetComponent<CharacterControllerComponent>();
     auto* rb = scene.GetComponent<RigidBodyComponent>();
     if (!cc || !rb || !rb->enabled || !rb->rigidBody)
@@ -372,7 +323,7 @@ inline void PlayerControllerComponent::OnFixedUpdate()
         ? m_moveDirection * MoveSpeed()
         : Vector3::ZERO;
     const float acceleration = m_hasMoveInput
-        ? (cc->isGrounded ? GroundAccel() : airAccel)
+        ? (cc->isGrounded ? GroundAccel() : AirAccel())
         : -1.0f;
     cc->Move(&phy, desiredVelocity, dt, acceleration, GroundDecel());
 }

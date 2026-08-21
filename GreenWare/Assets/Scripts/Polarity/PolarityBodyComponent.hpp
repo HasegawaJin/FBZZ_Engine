@@ -69,8 +69,8 @@ class PolarityBodyComponent : public Script {
     FBZZ_OPTIONAL_COMPONENT(LineRendererComponent)
 
 public:
-    FBZZ_ASSET(PolarityTuning, tuning, "Tuning")
-    FBZZ_TOOLTIP("引力の数値。未割り当てだと既定値で動く")
+    FBZZ_REQUIRED_ASSET(PolarityTuning, tuning, "Tuning")
+    FBZZ_TOOLTIP("引力の共有調整値。未割り当てでは動作を開始しない")
 
     FBZZ_GROUP("Link Line (12.5)")
     FBZZ_FIELD(bool, drawLink, true, "Draw Link Line")
@@ -123,6 +123,9 @@ public:
 private:
     void TickCharging(float dt);
     void TickFlying(float dt);
+    void RegisterImpact(GameObject& other, const Vector3& contactPoint,
+                        const Vector3& contactNormal, float approachSpeed,
+                        float impactImpulse);
     void UpdateLinkLine();
     void EndFlight(PullPhase next);
 
@@ -130,13 +133,13 @@ private:
     // 線と飛行の基準点。原点が足元にあるモデルでも胴体の高さを狙う。
     [[nodiscard]] Vector3 LinkPoint() const;
 
-    [[nodiscard]] float ChargeSeconds()   const { return tuning ? tuning->chargeSeconds        : 0.15f; }
-    [[nodiscard]] float AttractSpeed()    const { return tuning ? tuning->attractSpeed         : 18.0f; }
-    [[nodiscard]] float JitterSpeed()     const { return tuning ? tuning->chargeJitterSpeed    : 0.9f; }
-    [[nodiscard]] float MaxFlightSeconds()const { return tuning ? tuning->maxFlightSeconds     : 3.0f; }
-    [[nodiscard]] float MinImpactSpeed()  const { return tuning ? tuning->minImpactSpeed       : 6.0f; }
-    [[nodiscard]] float StunSeconds()     const { return tuning ? tuning->impactStunSeconds    : 0.45f; }
-    [[nodiscard]] float KnockbackSpeed()  const { return tuning ? tuning->impactKnockbackSpeed : 6.0f; }
+    [[nodiscard]] float ChargeSeconds()   const { return tuning->chargeSeconds; }
+    [[nodiscard]] float AttractSpeed()    const { return tuning->attractSpeed; }
+    [[nodiscard]] float JitterSpeed()     const { return tuning->chargeJitterSpeed; }
+    [[nodiscard]] float MaxFlightSeconds()const { return tuning->maxFlightSeconds; }
+    [[nodiscard]] float MinImpactSpeed()  const { return tuning->minImpactSpeed; }
+    [[nodiscard]] float StunSeconds()     const { return tuning->impactStunSeconds; }
+    [[nodiscard]] float KnockbackSpeed()  const { return tuning->impactKnockbackSpeed; }
 
     EntityRef m_partner;
     PullPhase m_phase   = PullPhase::Idle;
@@ -158,6 +161,11 @@ FBZZ_REFLECT(PolarityBodyComponent)
 
 inline void PolarityBodyComponent::OnStart()
 {
+    if (!tuning) {
+        debug.LogError("PolarityBodyComponent requires PolarityTuning.fzdata.");
+        enabled = false;
+        return;
+    }
     m_phase     = PullPhase::Idle;
     m_timer     = 0.0f;
     m_hasImpact = false;
@@ -281,6 +289,17 @@ inline void PolarityBodyComponent::TickFlying(float dt)
     const Vector3 direction = toPartner / distance;
     physics.SetVelocity(direction * AttractSpeed());
 
+    // 物理イベントは高速移動・接触解決の順序によって、相手の中心へ到達したフレームを
+    // 取りこぼす場合がある。相手がリンク先であることは既に確定しているため、
+    // コライダー同士の接触に相当する距離へ入ったら同じ Impact 経路へ送る。
+    // WHY 1.1m か: Main.scene の敵 SphereCollider は半径 0.5m、Transform scale 2.0
+    //     なので中心間距離 1.0m が接触目安になる。少し余裕を持たせてトンネルを防ぐ。
+    constexpr float CONTACT_DISTANCE = 1.1f;
+    if (distance <= CONTACT_DISTANCE) {
+        RegisterImpact(*partner, LinkPoint(), -direction, AttractSpeed(), 0.0f);
+        return;
+    }
+
     if (drawDebugFlight)
         debug.DrawLine(LinkPoint(), targetPoint, PolarityColor(Polarity::Plus));
 
@@ -302,9 +321,37 @@ inline void PolarityBodyComponent::EndFlight(PullPhase next)
     m_timer   = (next == PullPhase::Recovering) ? StunSeconds() : 0.0f;
 }
 
+inline void PolarityBodyComponent::RegisterImpact(GameObject& other,
+                                                   const Vector3& contactPoint,
+                                                   const Vector3& contactNormal,
+                                                   float approachSpeed,
+                                                   float impactImpulse)
+{
+    if (m_hasImpact)
+        return;
+
+    m_impact.mover   = scene.Self();
+    m_impact.struck  = &other;
+    m_impact.point   = contactPoint;
+    m_impact.normal  = contactNormal;
+    m_impact.speed   = approachSpeed;
+    m_impact.impulse = impactImpulse;
+
+    const auto* struckTarget = scene.GetScript<PolarityTargetComponent>(&other);
+    m_impact.struckIsAnchor = struckTarget ? struckTarget->isAnchor : true;
+    m_hasImpact = true;
+    EndFlight(PullPhase::Recovering);
+
+    if (KnockbackSpeed() > 0.0f && MinImpactSpeed() > 0.0f) {
+        const float ratio = Clamp01(approachSpeed / (MinImpactSpeed() * 2.0f));
+        physics.SetVelocity(contactNormal * (KnockbackSpeed() * ratio));
+    }
+}
+
 inline void PolarityBodyComponent::OnCollisionEnter(const CollisionInfo& info)
 {
     if (m_phase != PullPhase::Flying) return;
+    if (m_hasImpact) return;
     if (!info.other) return;
     // プレイヤーは極性システムの外側にいる (5章 / 7.5)。飛行経路へ偶然入っても、
     // プレイヤーを柱扱いして敵へ衝突ダメージを与えてはいけない。
@@ -320,26 +367,8 @@ inline void PolarityBodyComponent::OnCollisionEnter(const CollisionInfo& info)
     if (!isPartner && info.approachSpeed < MinImpactSpeed())
         return;
 
-    m_impact.mover   = info.self ? info.self : scene.Self();
-    m_impact.struck  = info.other;
-    m_impact.point   = info.contactPoint;
-    m_impact.normal  = info.contactNormal;
-    m_impact.speed   = info.approachSpeed;
-    m_impact.impulse = info.impactImpulse;
-
-    const auto* struckTarget = scene.GetScript<PolarityTargetComponent>(info.other);
-    m_impact.struckIsAnchor =
-        struckTarget ? struckTarget->isAnchor : true; // 柱・壁・地形は極性を持たない = 動かない
-    m_hasImpact = true;
-
-    EndFlight(PullPhase::Recovering);
-
-    // 接触法線に沿って弾き返す。ソルバーの反発だけだと正面衝突で両者がその場に
-    // 止まり、12.6 の「ドンッ」が出ない。速度に比例させて弱い衝突では跳ねさせない。
-    if (KnockbackSpeed() > 0.0f && MinImpactSpeed() > 0.0f) {
-        const float ratio = Clamp01(info.approachSpeed / (MinImpactSpeed() * 2.0f));
-        physics.SetVelocity(info.contactNormal * (KnockbackSpeed() * ratio));
-    }
+    RegisterImpact(*info.other, info.contactPoint, info.contactNormal,
+                   info.approachSpeed, info.impactImpulse);
 }
 
 inline void PolarityBodyComponent::OnUpdate()

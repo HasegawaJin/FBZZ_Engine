@@ -42,8 +42,8 @@ class PolarityTargetComponent : public Script {
     FBZZ_REQUIRE_COMPONENT(MaterialComponent)
 
 public:
-    FBZZ_ASSET(PolarityTuning, tuning, "Tuning")
-    FBZZ_TOOLTIP("持続時間と明滅の設定。未割り当てだと既定値で動く")
+    FBZZ_REQUIRED_ASSET(PolarityTuning, tuning, "Tuning")
+    FBZZ_TOOLTIP("持続時間と明滅の共有調整値。未割り当てでは動作を開始しない")
 
     FBZZ_FIELD_ENUM(PolarityClass, polarityClass, PolarityClass::NormalSlime, "Class",
                     "Normal Slime", "Shooter Slime", "Heavy Slime", "Pillar")
@@ -105,18 +105,6 @@ inline constexpr MaterialPropertyId kEmissiveScaleId{ "emissiveScale" };
 
 inline float PolarityTargetComponent::BaseDuration() const
 {
-    // WHY 既定値を持つか: tuning 未割り当てでも「撃ったら光って消える」ところまでは
-    //     動いてほしい。アセットを作る前に手触りを見られる状態を保つ。
-    if (!tuning) {
-        switch (polarityClass) {
-        case PolarityClass::ShooterSlime: return 7.0f;
-        case PolarityClass::HeavySlime:   return 12.0f;
-        case PolarityClass::Pillar:       return 15.0f;
-        case PolarityClass::NormalSlime:  break;
-        }
-        return 5.0f;
-    }
-
     switch (polarityClass) {
     case PolarityClass::ShooterSlime: return tuning->durationShooter;
     case PolarityClass::HeavySlime:   return tuning->durationHeavy;
@@ -135,7 +123,7 @@ inline float PolarityTargetComponent::RemainingNormalized() const
 inline PolarityResult PolarityTargetComponent::Apply(Polarity incoming)
 {
     const PolarityResult result = ResolvePolarity(m_polarity, incoming);
-    m_hitReactRemaining = tuning ? tuning->hitReactSeconds : 0.08f;
+    m_hitReactRemaining = tuning->hitReactSeconds;
 
     switch (result.change) {
     case PolarityChange::Applied:
@@ -148,8 +136,8 @@ inline PolarityResult PolarityTargetComponent::Apply(Polarity incoming)
         // 残り時間へ加算する。上限が無いと 1 体を撃ち続けるだけで永久に帯電でき、
         // 3.3 の「残り何秒かを把握し続ける」という思考そのものが消える。
         const float base    = BaseDuration();
-        const float ratio   = tuning ? tuning->extendRatio    : 0.6f;
-        const float capMul  = tuning ? tuning->extendCapRatio : 2.0f;
+        const float ratio   = tuning->extendRatio;
+        const float capMul  = tuning->extendCapRatio;
         m_remaining = Min(m_remaining + base * ratio, base * capMul);
         // 上限まで伸びた状態を 1.0 として扱えるよう、基準も伸ばす。
         m_chargeBase = Max(m_chargeBase, m_remaining);
@@ -177,6 +165,11 @@ inline void PolarityTargetComponent::ClearPolarity()
 
 inline void PolarityTargetComponent::OnStart()
 {
+    if (!tuning) {
+        debug.LogError("PolarityTargetComponent requires PolarityTuning.fzdata.");
+        enabled = false;
+        return;
+    }
     // 開始時は必ず無極。前回 Play の状態が見た目に残らないようにする。
     m_hitReactRemaining = 0.0f;
     ClearPolarity();
@@ -219,9 +212,9 @@ inline void PolarityTargetComponent::ApplyVisual()
     //   - 残りが減るほど明滅が速くなる
     //   - 切れる直前に色が薄くなる
     const float remaining = RemainingNormalized();
-    const float hzMin  = tuning ? tuning->blinkHzMin : 0.8f;
-    const float hzMax  = tuning ? tuning->blinkHzMax : 7.0f;
-    const float depth  = tuning ? tuning->blinkDepth : 0.35f;
+    const float hzMin  = tuning->blinkHzMin;
+    const float hzMax  = tuning->blinkHzMax;
+    const float depth  = tuning->blinkDepth;
 
     // remaining 1 → hzMin / remaining 0 → hzMax
     const float hz    = Lerp(hzMax, hzMin, remaining);

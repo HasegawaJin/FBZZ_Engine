@@ -15,6 +15,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PlayerTuning.hpp>
 #include <Scripts/Camera/TpsCameraComponent.hpp>
+#include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <functional>
 
 using namespace fbzz::scene;
@@ -29,7 +30,8 @@ class PlayerHealthComponent : public Script {
     FBZZ_OPTIONAL_COMPONENT(AudioSourceComponent)
 
 public:
-    FBZZ_ASSET(PlayerTuning, tuning, "Tuning")
+    // PlayerComponent が必須 PlayerTuning を注入する。HP 値をこの Script に複製しない。
+    fbzz::Asset<PlayerTuning> tuning{};
 
     FBZZ_GROUP("Feedback")
     FBZZ_FIELD_FILE(sfxHurt, "", "SFX Hurt", ".wav,.ogg")
@@ -62,10 +64,12 @@ public:
 
     void OnStart()  override;
     void OnUpdate() override;
+    void SetController(PlayerControllerComponent* controller) { m_controllerOverride = controller; }
 
 private:
     int   m_health       = 0;
     float m_invulnerable = 0.0f;
+    PlayerControllerComponent* m_controllerOverride = nullptr;
 };
 
 FBZZ_REFLECT(PlayerHealthComponent)
@@ -74,7 +78,7 @@ FBZZ_REFLECT(PlayerHealthComponent)
 
 inline int PlayerHealthComponent::MaxHealth() const
 {
-    return tuning ? tuning->maxHealth : 5;
+    return tuning->maxHealth;
 }
 
 inline float PlayerHealthComponent::Normalized() const
@@ -108,7 +112,7 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
 
     m_health = m_health > amount ? m_health - amount : 0;
     debugHealth = m_health;
-    m_invulnerable = tuning ? tuning->hitInvulnerable : 0.6f;
+    m_invulnerable = tuning->hitInvulnerable;
 
     if (hurtShakeAmplitude > 0.0f) {
         if (GameObject* camera = scene.GetMainCameraObject()) {
@@ -124,6 +128,9 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
     }
 
     if (!sfxHurt.empty()) audio.PlayOneShot(sfxHurt);
+    if (auto* controller = m_controllerOverride
+        ? m_controllerOverride : scene.GetScript<PlayerControllerComponent>())
+        controller->PlayHitAnimation();
     return true;
 }
 
