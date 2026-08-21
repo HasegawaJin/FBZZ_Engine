@@ -250,12 +250,15 @@ inline void PolarityFieldComponent::BuildLinks()
             // ここで捨てないと、動かない組がリンク枠を食って本当に飛ぶ組が作れなくなる。
             if (!a.movable && !b.movable) continue;
 
+            // 継続中のリンクは距離に関わらず最優先で維持する。途中で相手が変わると
+            // 溜めからやり直しになり、飛んでいる最中に方向が切り替わって何が起きたのか
+            // 読めなくなる。半径の足切りも同じ理由で継続中の組には掛けない
+            // (予備動作で離れた瞬間に半径を跨いだ組が、離れただけで終わってしまう)。
+            const bool  ongoing    = IsOngoingLink(a, b);
             const float distanceSq = (a.position - b.position).LengthSq();
-            if (distanceSq > radiusSq) continue;
+            if (!ongoing && distanceSq > radiusSq) continue;
 
-            // 継続中のリンクは距離に関わらず最優先。途中で相手が変わると溜めからやり直しになり、
-            // 飛んでいる最中に方向が切り替わって何が起きたのか読めなくなる。
-            const float priority = IsOngoingLink(a, b) ? -1.0f : distanceSq;
+            const float priority = ongoing ? -1.0f : distanceSq;
             m_pairs.push_back({ i, j, priority });
         }
     }

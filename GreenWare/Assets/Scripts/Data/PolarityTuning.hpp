@@ -53,17 +53,36 @@ public:
     // 下げると死角が生まれ、単体の敵を処理できない場面が出る。
     FBZZ_FIELD_RANGE(float, attractionRadius, 10.0f, "Attraction Radius", 1.0f, 30.0f)
     FBZZ_TOOLTIP("9 章のカバー率 97.1% はこの値が 10m である前提。下げると死角が生まれる")
-    FBZZ_FIELD_RANGE(float, chargeSeconds, 0.15f, "Charge Seconds", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("引き寄せ前の溜め。予兆であると同時に、次の組み立てへ動き出すための猶予")
-    FBZZ_FIELD_RANGE(float, attractSpeed, 18.0f, "Attract Speed", 1.0f, 60.0f)
-    FBZZ_TOOLTIP("溜めのあと一気に乗せる速度。漸進させると 17 章の「ギュンッ」が出ない")
-    FBZZ_FIELD_RANGE(float, minImpactSpeed, 6.0f, "Min Impact Speed", 0.0f, 40.0f)
-    FBZZ_TOOLTIP("これ未満の相対速度で当たってもダメージにしない (7.4)")
-    // 溜めの「その場で震え」の振れ幅 (7.3 ①)。予備動作なので移動してはいけない。
+    // ── 溜め (7.3 ①) ───────────────────────────────────────────────────────
+    // 異極が揃った 2 体は、まず重力が抜けたように浮きながら互いと逆へ離れ、
+    // 終盤で震え、そこから一気に撃ち出される。
+    //
+    // WHY 助走と滞空を作るか: 溜めが「その場で震える」だけだと、飛び出しの直前と直後で
+    //     絵がほとんど変わらず、衝突の重さが「速いから」ではなく「急に始まったから」に
+    //     見える。一度引き離して足を地面から離しておくと、同じ速度でも移動距離と
+    //     落差が付き、ぶつかる瞬間の速さが目で読める。
+    FBZZ_FIELD_RANGE(float, windupSeconds, 0.45f, "Windup Seconds", 0.0f, 3.0f)
+    FBZZ_TOOLTIP("リンク成立から撃ち出しまでの時間。衝突までの合計は これ + Impact Seconds")
+    FBZZ_FIELD_RANGE(float, windupGravityScale, 0.15f, "Windup Gravity", -1.0f, 1.0f)
+    FBZZ_TOOLTIP("溜め中の重力倍率。0 で完全な無重力、負値で浮き上がり続ける")
+    FBZZ_FIELD_RANGE(float, windupLiftSpeed, 1.8f, "Windup Lift", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("溜めに入った瞬間に上へ与える初速。重力倍率と合わせて滞空の高さが決まる")
+    FBZZ_FIELD_RANGE(float, recoilSpeed, 4.5f, "Recoil Speed", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("相手と逆へ離れる速さ。溜めの序盤で強く、終盤へ向けて 0 まで落ちる")
     // WHY 速度で表現するか: 剛体の Transform を直接ずらしても物理同期で戻されるため、
     //     震えは高周波で向きが変わる速度として与える。純移動量はほぼゼロになる。
     FBZZ_FIELD_RANGE(float, chargeJitterSpeed, 0.9f, "Charge Jitter", 0.0f, 5.0f)
-    FBZZ_TOOLTIP("溜め中の震えの速さ。上げるほど激しく震えるが、その場から動きはしない")
+    FBZZ_TOOLTIP("溜め終盤の震えの速さ。離れ切ったあとに強まり、撃ち出しの直前が最大になる")
+
+    // ── 撃ち出し (7.3 ②③) ─────────────────────────────────────────────────
+    FBZZ_FIELD_RANGE(float, impactSeconds, 0.18f, "Impact Seconds", 0.02f, 2.0f)
+    FBZZ_TOOLTIP("撃ち出しから衝突までの目標時間。距離から速度を逆算するので、"
+                 "離れていても近くても同じ間合いでぶつかる")
+    FBZZ_FIELD_RANGE(float, attractSpeed, 18.0f, "Attract Speed Floor", 1.0f, 120.0f)
+    FBZZ_TOOLTIP("撃ち出し速度の下限。近距離で Impact Seconds どおりにすると遅くなりすぎるため、"
+                 "この値を下回らないようにする (下限に当たった分だけ早く着く)")
+    FBZZ_FIELD_RANGE(float, minImpactSpeed, 6.0f, "Damage Speed Threshold", 0.0f, 40.0f)
+    FBZZ_TOOLTIP("これ未満の相対速度で当たってもダメージにしない (7.4)")
     // 飛行が終わらないまま残り続けるのを防ぐ保険。
     // WHY 要るか: 相手が別の何かに阻まれて永久に届かない配置は必ず作れてしまう。
     //     その場合に敵が延々と壁へ突き刺さり続けると、AI 停止 (7.3) も解けず盤面が死ぬ。

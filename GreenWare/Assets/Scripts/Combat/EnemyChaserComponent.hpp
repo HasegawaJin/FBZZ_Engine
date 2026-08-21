@@ -96,6 +96,17 @@ inline void EnemyChaserComponent::StopHorizontal()
 
 inline void EnemyChaserComponent::OnFixedUpdate()
 {
+    // WHY 引力に掴まれている間は速度へ一切触らないか:
+    //   極性の引力・溜め・衝突後のノックバックは、PolarityBodyComponent が速度そのもので
+    //   表現している。この AI は同じ固定ステップの *後* に走るため、水平成分を 0 に戻すと
+    //   引力が書いた値が毎回消え、敵はその場で震えるだけになる。AI がすべきなのは
+    //   「自分から動かないこと」であって、他人が書いた速度を打ち消すことではない。
+    if (const auto* body = scene.GetScript<PolarityBodyComponent>();
+        body && (body->IsBeingPulled() || body->IsStunned())) {
+        debugState = body->IsStunned() ? "Stunned" : "Pulled";
+        return;
+    }
+
     if (IsMovementLocked()) {
         debugState = "Locked";
         StopHorizontal();

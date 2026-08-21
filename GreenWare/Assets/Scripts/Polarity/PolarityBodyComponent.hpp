@@ -25,6 +25,7 @@
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <algorithm>
 #include <cmath>
 
 using namespace fbzz::scene;
@@ -54,8 +55,8 @@ struct PolarityImpact {
 // 7.3 の 3 段階に、衝突後の硬直 (7.4) を足した 4 状態。
 enum class PullPhase : int {
     Idle       = 0,
-    Charging   = 1, // ① 溜め。その場で震える
-    Flying     = 2, // ②③ 加速して直進する
+    Windup     = 1, // ① 溜め。重力を抜いて浮かせ、相手と逆へ離してから震わせる
+    Flying     = 2, // ②③ 一定速度で直進する
     Recovering = 3, // 衝突後の短時間スタン
 };
 
@@ -96,7 +97,7 @@ public:
     // 敵 AI はこれが true の間、移動と攻撃を止める。
     [[nodiscard]] bool IsBeingPulled() const
     {
-        return m_phase == PullPhase::Charging || m_phase == PullPhase::Flying;
+        return m_phase == PullPhase::Windup || m_phase == PullPhase::Flying;
     }
     // 衝突後の硬直中 (7.4)。敵 AI はこの間も動かない。
     [[nodiscard]] bool IsStunned() const { return m_phase == PullPhase::Recovering; }
@@ -113,6 +114,8 @@ public:
 
     void OnStart() override;
     void OnUpdate() override;
+    // 溜めの途中で消える / リロードされる経路でも重力を戻す。
+    void OnDestroy() override { EndFloat(); }
     // WHY 運動を OnFixedUpdate に置くか:
     //   速度の書き込みは物理ステップの直前で行わないと、書いた直後に重力が 1 フレーム分
     //   乗って軌道が沈む。固定ステップならフレームレートが変わっても飛距離が一定になり、
@@ -121,8 +124,13 @@ public:
     void OnCollisionEnter(const CollisionInfo& info) override;
 
 private:
-    void TickCharging(float dt);
+    void TickWindup(float dt);
     void TickFlying(float dt);
+    // 相手から自分へ向く水平単位ベクトル。離れる向きと飛ぶ向きの符号違いで共有する。
+    [[nodiscard]] Vector3 AwayFromPartner(const GameObject& partner) const;
+    // 溜め中だけ重力を弱める。抜けるときは必ず元へ戻す。
+    void BeginFloat();
+    void EndFloat();
     void RegisterImpact(GameObject& other, const Vector3& contactPoint,
                         const Vector3& contactNormal, float approachSpeed,
                         float impactImpulse);
@@ -133,7 +141,11 @@ private:
     // 線と飛行の基準点。原点が足元にあるモデルでも胴体の高さを狙う。
     [[nodiscard]] Vector3 LinkPoint() const;
 
-    [[nodiscard]] float ChargeSeconds()   const { return tuning->chargeSeconds; }
+    [[nodiscard]] float WindupSeconds()   const { return tuning->windupSeconds; }
+    [[nodiscard]] float WindupGravity()   const { return tuning->windupGravityScale; }
+    [[nodiscard]] float WindupLift()      const { return tuning->windupLiftSpeed; }
+    [[nodiscard]] float RecoilSpeed()     const { return tuning->recoilSpeed; }
+    [[nodiscard]] float ImpactSeconds()   const { return tuning->impactSeconds; }
     [[nodiscard]] float AttractSpeed()    const { return tuning->attractSpeed; }
     [[nodiscard]] float JitterSpeed()     const { return tuning->chargeJitterSpeed; }
     [[nodiscard]] float MaxFlightSeconds()const { return tuning->maxFlightSeconds; }
@@ -142,6 +154,11 @@ private:
     [[nodiscard]] float KnockbackSpeed()  const { return tuning->impactKnockbackSpeed; }
 
     EntityRef m_partner;
+    // 撃ち出し速度。距離と impactSeconds から launch 時に 1 度だけ決め、飛行中は変えない。
+    float     m_flightSpeed = 0.0f;
+    // 溜めに入る前の重力倍率。シーンが 1.0 以外を設定している場合があるので保存して戻す。
+    float     m_savedGravityScale = 1.0f;
+    bool      m_floating = false;
     PullPhase m_phase   = PullPhase::Idle;
     // Charging では溜めの残り / Flying では経過 / Recovering では硬直の残り。
     float     m_timer   = 0.0f;
@@ -166,10 +183,15 @@ inline void PolarityBodyComponent::OnStart()
         enabled = false;
         return;
     }
-    m_phase     = PullPhase::Idle;
-    m_timer     = 0.0f;
-    m_hasImpact = false;
-    m_partner   = {};
+    m_phase       = PullPhase::Idle;
+    m_timer       = 0.0f;
+    m_hasImpact   = false;
+    m_partner     = {};
+    m_flightSpeed = 0.0f;
+    // 溜めの途中でリロードされた場合に備え、重力を通常へ戻してから始める。
+    m_floating          = true;
+    m_savedGravityScale = 1.0f;
+    EndFloat();
 
     // ID から作る決定的な位相ずれ。乱数にすると Play のたびに震え方が変わり、
     // 手触りの調整で「今の値が良かったのか」を判断できなくなる。
@@ -193,14 +215,40 @@ inline void PolarityBodyComponent::BeginPull(GameObject& partner, bool partnerIs
         return;
 
     m_partner = EntityRef{ partner.GetID() };
-    m_phase   = PullPhase::Charging;
-    m_timer   = ChargeSeconds();
+    m_phase   = PullPhase::Windup;
+    m_timer   = std::max(WindupSeconds(), 0.0f);
+    BeginFloat();
+}
+
+// 溜めの入口で重力を弱め、上向きの初速を一度だけ与える。
+// WHY 毎ステップ y 速度を書かないか: 書き続けると重力が積み上がらず、上がって止まるだけの
+//     直線運動になる。初速だけ与えて弱い重力に任せると、上がって落ちる弧を描く。
+inline void PolarityBodyComponent::BeginFloat()
+{
+    if (m_floating) return;
+    m_floating = true;
+    m_savedGravityScale = physics.GetGravityScale();
+    physics.SetGravityScale(WindupGravity());
+
+    if (WindupLift() > 0.0f) {
+        Vector3 velocity = physics.GetVelocity();
+        velocity.y = WindupLift();
+        physics.SetVelocity(velocity);
+    }
+}
+
+inline void PolarityBodyComponent::EndFloat()
+{
+    if (!m_floating) return;
+    m_floating = false;
+    physics.SetGravityScale(m_savedGravityScale);
 }
 
 inline void PolarityBodyComponent::CancelPull()
 {
     if (m_phase == PullPhase::Recovering) return; // 硬直は最後まで通す
 
+    EndFloat();
     m_partner = {};
     m_phase   = PullPhase::Idle;
     m_timer   = 0.0f;
@@ -218,8 +266,8 @@ inline void PolarityBodyComponent::OnFixedUpdate()
     const float dt = time.FixedDeltaTime();
 
     switch (m_phase) {
-    case PullPhase::Charging:   TickCharging(dt); break;
-    case PullPhase::Flying:     TickFlying(dt);   break;
+    case PullPhase::Windup:     TickWindup(dt); break;
+    case PullPhase::Flying:     TickFlying(dt); break;
     case PullPhase::Recovering:
         m_timer -= dt;
         if (m_timer <= 0.0f) {
@@ -232,9 +280,22 @@ inline void PolarityBodyComponent::OnFixedUpdate()
     }
 }
 
-// ① 溜め (7.3)。その場で震えるだけで、位置は動かさない。
-// 予備動作であると同時に、衝突より前に結果を予測させて次の組み立てへ移らせるための間。
-inline void PolarityBodyComponent::TickCharging(float dt)
+inline Vector3 PolarityBodyComponent::AwayFromPartner(const GameObject& partner) const
+{
+    Vector3 away = transform.worldPosition - partner.transform.worldPosition;
+    // 水平だけで測る。上下成分を残すと、離れる動きで浮いて次の直進が空中から始まる。
+    away.y = 0.0f;
+    const float distance = away.Length();
+    return distance > EPSILON ? away / distance : Vector3::ZERO;
+}
+
+// ① 溜め (7.3)。重力を抜いて浮かせながら、相手と逆へ離し、終盤で震わせる。
+//
+// WHY 1 つの段階で「離れる」と「震える」を両方やるか:
+//   段階を分けると、離れ終わった瞬間に速度が不連続に切り替わって一度止まって見える。
+//   進行度で重みを移せば、離れる力が抜けるのと震えが強まるのが同じ曲線の上で起き、
+//   「引き絞られて、耐えきれずに撃ち出される」という 1 本の動きになる。
+inline void PolarityBodyComponent::TickWindup(float dt)
 {
     GameObject* partner = Partner();
     if (!partner) {                 // 相手が消えた (倒された / Wave リセット)
@@ -242,20 +303,41 @@ inline void PolarityBodyComponent::TickCharging(float dt)
         return;
     }
 
+    const float total = std::max(WindupSeconds(), EPSILON);
+    // 0 = 溜め始め / 1 = 撃ち出し直前。
+    const float progress = Clamp01(1.0f - m_timer / total);
+
+    const Vector3 away = AwayFromPartner(*partner);
     // 高周波で向きを変える水平速度。1 周期で往復するため純移動量はほぼゼロになる。
-    // WHY y を触らないか: 上下に震わせると接地が外れて浮き、次の直進が空中から始まる。
-    const float phase = Time::time * 55.0f + m_jitterSeed;
+    const float   phase = Time::time * 55.0f + m_jitterSeed;
     const Vector3 jitter{ std::sin(phase * 1.7f), 0.0f, std::cos(phase * 2.3f) };
 
+    const float recoilWeight = 1.0f - progress;
     Vector3 velocity = physics.GetVelocity();
-    velocity.x = jitter.x * JitterSpeed();
-    velocity.z = jitter.z * JitterSpeed();
+    // WHY y を書かないか: 上向きの初速は BeginFloat が一度だけ与えている。毎ステップ
+    //     上書きすると弱めた重力が積み上がらず、浮いたまま落ちてこない。
+    velocity.x = away.x * RecoilSpeed() * recoilWeight + jitter.x * JitterSpeed() * progress;
+    velocity.z = away.z * RecoilSpeed() * recoilWeight + jitter.z * JitterSpeed() * progress;
     physics.SetVelocity(velocity);
 
     m_timer -= dt;
     if (m_timer > 0.0f) return;
 
     // ② 加速。漸進させず、この 1 ステップで最高速へ乗せる (7.3「一気に高速へ乗せる」)。
+    //    速度は今の距離と impactSeconds から逆算し、飛行中は変えない。
+    //    こうすると「離れていても近くても同じ間合いでぶつかる」が成立する。
+    Vector3 toPartner = partner->transform.worldPosition - transform.worldPosition;
+    if (m_partnerIsAnchor) toPartner.y = 0.0f;
+    const float distance = toPartner.Length();
+    // WHY 相手が動くときだけ半分にするか: 敵どうしは同じ溜めを共有していて、互いに
+    //     同じ速度で寄る。距離をそのまま時間で割ると、寄る速度が 2 倍になって
+    //     impactSeconds の半分でぶつかる。柱・壁は動かないので割り引かない。
+    const float closingFactor = m_partnerIsAnchor ? 1.0f : 2.0f;
+    const float travelSeconds = std::max(ImpactSeconds(), 0.02f) * closingFactor;
+    m_flightSpeed = std::max(distance / travelSeconds, AttractSpeed());
+
+    // 撃ち出しからは自前の等速直進なので、重力は元へ戻しておく。
+    EndFloat();
     m_phase = PullPhase::Flying;
     m_timer = 0.0f;
 }
@@ -287,7 +369,7 @@ inline void PolarityBodyComponent::TickFlying(float dt)
     }
 
     const Vector3 direction = toPartner / distance;
-    physics.SetVelocity(direction * AttractSpeed());
+    physics.SetVelocity(direction * m_flightSpeed);
 
     // 物理イベントは高速移動・接触解決の順序によって、相手の中心へ到達したフレームを
     // 取りこぼす場合がある。相手がリンク先であることは既に確定しているため、
@@ -296,7 +378,7 @@ inline void PolarityBodyComponent::TickFlying(float dt)
     //     なので中心間距離 1.0m が接触目安になる。少し余裕を持たせてトンネルを防ぐ。
     constexpr float CONTACT_DISTANCE = 1.1f;
     if (distance <= CONTACT_DISTANCE) {
-        RegisterImpact(*partner, LinkPoint(), -direction, AttractSpeed(), 0.0f);
+        RegisterImpact(*partner, LinkPoint(), -direction, m_flightSpeed, 0.0f);
         return;
     }
 
@@ -316,9 +398,12 @@ inline void PolarityBodyComponent::TickFlying(float dt)
 
 inline void PolarityBodyComponent::EndFlight(PullPhase next)
 {
-    m_partner = {};
-    m_phase   = next;
-    m_timer   = (next == PullPhase::Recovering) ? StunSeconds() : 0.0f;
+    // 溜めの途中で打ち切られる経路もここを通る。重力を戻し忘れると浮いたままになる。
+    EndFloat();
+    m_partner     = {};
+    m_phase       = next;
+    m_flightSpeed = 0.0f;
+    m_timer       = (next == PullPhase::Recovering) ? StunSeconds() : 0.0f;
 }
 
 inline void PolarityBodyComponent::RegisterImpact(GameObject& other,
@@ -377,7 +462,7 @@ inline void PolarityBodyComponent::OnUpdate()
 
     switch (m_phase) {
     case PullPhase::Idle:       debugPhase = "Idle";       break;
-    case PullPhase::Charging:   debugPhase = "Charging";   break;
+    case PullPhase::Windup:     debugPhase = "Windup";     break;
     case PullPhase::Flying:     debugPhase = "Flying";     break;
     case PullPhase::Recovering: debugPhase = "Recovering"; break;
     }

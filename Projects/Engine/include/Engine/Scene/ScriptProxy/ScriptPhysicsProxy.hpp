@@ -34,6 +34,10 @@ struct ScriptPhysicsProxy {
     float GetMass() const;
     void SetMass(float mass) const;
     void SetStatic(bool isStatic) const;
+    // 剛体ごとの重力倍率。World の重力ベクトルは共有したまま、この個体だけ効きを変える。
+    // 1 = 通常 / 0 = 無重力 / 負値 = 反重力。浮かせる演出の間だけ下げて、終わったら戻す。
+    [[nodiscard]] float GetGravityScale() const;
+    void SetGravityScale(float scale) const;
     void SetVelocity(const math::Vector3& v) const;
     math::Vector3 GetVelocity() const;
     void SetVelocity(GameObject* go, const math::Vector3& v) const;
