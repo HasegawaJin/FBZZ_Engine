@@ -20,9 +20,12 @@
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ITexture.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <string>
+#include <unordered_set>
 
 namespace fbzz::scene {
 namespace {
@@ -250,8 +253,22 @@ void ConstraintSystem::Update(SystemContext& ctx)
         };
 
         GameObject* socket = resolveSocket(attachment->socketName);
-        if (!socket)
+        if (!socket) {
+            // WHY 報告するか: ここで黙って抜けると症状は「追従先を切り替えたのに動かない」
+            //     だけになり、名前の綴り違い・ソケットが階層の別枝にある・Target の指定漏れ
+            //     のどれなのかが画面から区別できない。どの経路で探したかまで残す。
+            // WHY 1 度だけか: 解決は毎フレーム試みるので、そのまま出すと Console が
+            //     同じ 1 行で埋まり、他のログを押し出す。
+            if (!attachment->socketName.empty()) {
+                static std::unordered_set<std::string> reported;
+                if (reported.insert(go->name + '\n' + attachment->socketName).second) {
+                    FBZZ_LOG_WARN("SocketAttachment: socket '%s' not found for [%s] (searched %s)",
+                                  attachment->socketName.c_str(), go->name.c_str(),
+                                  targetRoot ? "Target subtree" : "ancestors");
+                }
+            }
             continue;
+        }
         const math::Quaternion offsetRotation =
             math::Quaternion::FromEuler(attachment->rotationOffsetDegrees * DEG_TO_RAD);
 
