@@ -490,6 +490,10 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool   nodeHovered     = ImGui::IsItemHovered();
     const bool   nodeClicked     = ImGui::IsItemClicked(ImGuiMouseButton_Left);
     const bool   nodeToggledOpen = ImGui::IsItemToggledOpen();
+    // 右クリックメニュー用のホバー。別ノードのメニューを開いたまま行を移れるよう、
+    // BeginPopupContextItem() 内部と同じ AllowWhenBlockedByPopup を使う。
+    const bool   nodeHoveredForMenu =
+        ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
     hierarchyNodeHovered = hierarchyNodeHovered || nodeHovered;
 
     // 隠している生成物の件数バッジ。「Hierarchy に出ていない = 存在しない」ではないことを示す。
@@ -687,10 +691,11 @@ void DrawHierarchyNode(EditorContext& ctx,
     //      並び順の変更に Order メニュー (ルート限定) を往復する羽目になる。
     if (const ImGuiPayload* dragging = ImGui::GetDragDropPayload();
         dragging && dragging->IsDataType("FBZZ_HIERARCHY_ENTITY")) {
-        const ImVec2 rMin = ImGui::GetItemRectMin();
-        const ImVec2 rMax = ImGui::GetItemRectMax();
+        // 帯は行の下端に置く。ここで GetItemRect を読み直すと、バッジを持つノードでは
+        // バッジの矩形 (行の一部) だけが挿入先になり、行のどこを狙っても入らなくなる。
         constexpr float kBandHalf = 3.0f;  // 挿入帯の半分の高さ (px)
-        const ImRect band({ rMin.x, rMax.y - kBandHalf }, { rMax.x, rMax.y + kBandHalf });
+        const ImRect band({ nodeMin.x, nodeMax.y - kBandHalf },
+                          { nodeMax.x, nodeMax.y + kBandHalf });
         const ImGuiID bandId = ImGui::GetID("##reorder_after");
         if (ImGui::BeginDragDropTargetCustom(band, bandId)) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
@@ -698,7 +703,8 @@ void DrawHierarchyNode(EditorContext& ctx,
                     ImGuiDragDropFlags_AcceptBeforeDelivery | ImGuiDragDropFlags_AcceptNoDrawDefaultRect)) {
                 // ドロップ位置プレビューの挿入ライン
                 ImGui::GetWindowDrawList()->AddLine(
-                    { rMin.x, rMax.y }, { rMax.x, rMax.y }, IM_COL32(100, 180, 255, 255), 2.0f);
+                    { nodeMin.x, nodeMax.y }, { nodeMax.x, nodeMax.y },
+                    IM_COL32(100, 180, 255, 255), 2.0f);
 
                 scene::EntityID draggedId;
                 if (payload->IsDelivery() && ReadEntityPayload(payload, draggedId) && draggedId != id) {
@@ -755,7 +761,14 @@ void DrawHierarchyNode(EditorContext& ctx,
         pendingClick = {};
     }
 
-    if (ImGui::BeginPopupContextItem()) {
+    // WHY 引数なしの BeginPopupContextItem() を使わないか: あれは LastItemData を対象に取る。
+    //     上の「隠し生成物」バッジ (TextDisabled) は ID を持たない item なので、バッジが出る
+    //     ノード (= ランタイム生成物を子孫に持つノード) では id == 0 になり ImGui が assert する。
+    //     開く判定も TreeNodeEx 直後に取ったホバーを使い、バッジではなく行を対象にする。
+    static constexpr const char* kNodeMenuId = "##node_context";
+    if (nodeHoveredForMenu && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+        ImGui::OpenPopup(kNodeMenuId);
+    if (ImGui::BeginPopup(kNodeMenuId)) {
         // 右クリックした GO が既に複数選択中なら選択を維持する。
         // そうでなければ単一選択に切り替える。
         {
