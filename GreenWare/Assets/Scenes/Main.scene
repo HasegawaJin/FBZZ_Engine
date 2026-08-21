@@ -1,5 +1,5 @@
 [scene]
-format_version = 1
+format_version = 2
 
 [[gameobjects]]
 active = true
@@ -13,7 +13,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 2.038674
+    aspectRatio = 1.581952
     cullDistanceSpherical = true
     cullingBoundsPadding = 0.0
     cullingMask = 4294967295
@@ -54,21 +54,21 @@ active = true
 instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
 layer = 0
 name = 'DirectionalLight'
-parent = ''
-parentInstanceId = ''
+parent = 'Enviorment'
+parentInstanceId = '214cc015-9228-4d2f-ad2d-1987b53ac061'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
-    color = [ 1.0, 0.956863, 0.839216 ]
+    color = [ 1.0, 1.0, 1.0 ]
     enabled = true
     intensity = 1.0
     type = 'Directional'
 
     [gameobjects.transform]
-    position = [ -0.002227, 24.136452, 0.004797 ]
-    rotation = [ 0.871292, -0.042254, 0.076228, 0.482965 ]
+    position = [ 9.098, 24.136452, 0.004797 ]
+    rotation = [ 0.133689, -0.471605, 0.868589, 0.072587 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -76,8 +76,8 @@ active = true
 instanceId = 'a32b8f80-b125-4507-8ca5-9902943a2913'
 layer = 0
 name = 'Sky System'
-parent = ''
-parentInstanceId = ''
+parent = 'Enviorment'
+parentInstanceId = '214cc015-9228-4d2f-ad2d-1987b53ac061'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -102,21 +102,21 @@ tag = 'Untagged'
 
     [gameobjects.SkyRenderer]
     atmosphereRadius = 6471.0
-    cloudShadowCoverage = 0.5
-    cloudShadowScale = 0.02
+    cloudShadowCoverage = 0.361702
+    cloudShadowSize = 10000.0
     cloudShadowSpeed = 1.0
     cloudShadowStrength = 0.0
     dayColor = [ 1.0, 0.98, 0.95 ]
-    dayIntensity = 4.0
+    dayIntensity = 9.13
     dayNightEnabled = true
     enabled = true
     mieG = 0.76
     mieScattering = 0.0021
     nightColor = [ 0.1, 0.15, 0.3 ]
-    nightIntensity = 0.3
+    nightIntensity = 0.45
     planetRadius = 6371.0
-    rayleighScattering = [ 0.0058, 0.0135, 0.0331 ]
-    sunIntensity = 20.0
+    rayleighScattering = [ 0.0058, 0.014, 0.0331 ]
+    sunIntensity = 30.1
     sunsetColor = [ 1.0, 0.5, 0.2 ]
 
     [gameobjects.SunMoonRenderer]
@@ -127,6 +127,84 @@ tag = 'Untagged'
     moonSize = 1.0
     sunEnabled = true
     sunIntensity = 20.0
+
+    [gameobjects.VolumetricCloudComponent]
+    albedo = [ 1.0, 0.991489, 0.974468 ]
+    ambientGradient = 0.0
+    ambientStrength = 0.28
+    ambientTint = [ 1.0, 1.0, 1.0 ]
+    anisotropy = 0.35
+    bottomHeight = 695.0
+    bottomSoftness = 0.307568
+    cloudSize = 4220.0
+    coverage = 0.443769
+    density = 0.68
+    detailSize = 604.0
+    detailStrength = 0.832827
+    enabled = true
+    evolutionSpeed = 2.0
+    extinction = 0.03
+    fadeDistance = 492.0
+    halfResolution = true
+    horizonFade = 0.25
+    lightAbsorption = 1.91
+    lightShaftStrength = 1.0
+    lightStepCount = 2
+    maxDistance = 5100.0
+    minDistance = 168.0
+    multiScatter = 0.390577
+    powderStrength = 0.7
+    silverLining = 0.42
+    stepCount = 48
+    sunIntensity = 1.5
+    sunTint = [ 1.0, 1.0, 1.0 ]
+    thickness = 1160.0
+    topSoftness = 0.350851
+    weatherAmount = 1.0
+    weatherSize = 2200.0
+    windDirection = [ 1.0, 0.25 ]
+    windSpeed = 66.5
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '29f249cf-bc13-44e7-a403-cc15ee729734'
+layer = 0
+name = 'Post Process Volume'
+parent = 'Enviorment'
+parentInstanceId = '214cc015-9228-4d2f-ad2d-1987b53ac061'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:780d411a94de69f51d92bb1f35ac2574|Assets/PostProcess/Default.fzdata'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '214cc015-9228-4d2f-ad2d-1987b53ac061'
+layer = 0
+name = 'Enviorment'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1759,7 +1837,7 @@ tag = 'PolarityAnchor'
         polarityClass = 3
 
 [[gameobjects]]
-active = false
+active = true
 instanceId = 'f4000001-0000-0000-0000-000000000010'
 layer = 0
 name = 'Enemy_Normal_A'
@@ -1852,7 +1930,7 @@ tag = 'Enemy'
 
         [gameobjects.ScriptComponents.fields]
         anchorDamageMultiplier = 1.0
-        baseImpactDamage = 100
+        baseImpactDamage = 40
         debugHealth = 100
         destroyDelay = 0.05
         maxHealth = 100
@@ -1873,8 +1951,28 @@ tag = 'Enemy'
         stopDistance = 1.35
         turnSpeed = 10.0
 
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
+        barHeight = 0.16
+        barWidth = 1.2
+        borderWidth = 0.02
+        debugAnchorHeight = 0.0
+        drainColor = [ 1.0, 0.95, 0.75, 1.0 ]
+        drainHold = 0.18
+        drainSpeed = 0.9
+        drawAnchor = false
+        emptyColor = [ 0.85, 0.35, 0.2, 1.0 ]
+        fallbackBodyHeight = 1.0
+        fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
+        headroom = 0.35
+        hideWhenFull = false
+
 [[gameobjects]]
-active = false
+active = true
 instanceId = 'f4000001-0000-0000-0000-000000000011'
 layer = 0
 name = 'Enemy_Normal_B'
@@ -1967,7 +2065,7 @@ tag = 'Enemy'
 
         [gameobjects.ScriptComponents.fields]
         anchorDamageMultiplier = 1.0
-        baseImpactDamage = 100
+        baseImpactDamage = 40
         debugHealth = 100
         destroyDelay = 0.05
         maxHealth = 100
@@ -1987,6 +2085,26 @@ tag = 'Enemy'
         playerTag = 'Player'
         stopDistance = 1.35
         turnSpeed = 10.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
+        barHeight = 0.16
+        barWidth = 1.2
+        borderWidth = 0.02
+        debugAnchorHeight = 0.0
+        drainColor = [ 1.0, 0.95, 0.75, 1.0 ]
+        drainHold = 0.18
+        drainSpeed = 0.9
+        drawAnchor = false
+        emptyColor = [ 0.85, 0.35, 0.2, 1.0 ]
+        fallbackBodyHeight = 1.0
+        fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
+        headroom = 0.35
+        hideWhenFull = false
 
 [[gameobjects]]
 active = true
@@ -2129,7 +2247,7 @@ tag = 'Untagged'
     rotationOffsetDegrees = [ 0.0, 0.0, 0.0 ]
     scaleMultiplier = [ 1.0, 1.0, 1.0 ]
     socketName = 'SOCKET_Holster_R'
-    target = [ 4294967295, 0 ]
+    target = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -3100,8 +3218,8 @@ tag = 'Player'
         keyRight = 'D'
         maxRange = 40.0
         modelYawOffsetDegrees = 180.0
-        muzzleLeft = [ 4294967295, 0 ]
-        muzzleRight = [ 4294967295, 0 ]
+        muzzleLeft = ''
+        muzzleRight = ''
         paramAimPitch = 'AimPitch'
         paramAimYaw = 'AimYaw'
         paramDodgeTrigger = 'Dodge'
@@ -3124,10 +3242,20 @@ tag = 'Player'
         useFootIK = true
         useMouseButtons = true
         weaponLayerName = 'UpperBody'
-        weaponLeft = [ 168, 1 ]
-        weaponMinus = [ 168, 1 ]
-        weaponPlus = [ 67, 1 ]
-        weaponRight = [ 67, 1 ]
+        weaponLeft = ''
+        weaponMinus = ''
+        weaponPlus = ''
+        weaponRight = ''
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PlayerHealthBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        emptyColor = [ 0.95, 0.2, 0.15, 1.0 ]
+        fullColor = [ 0.16, 0.89, 0.77, 1.0 ]
+        healthBackground = 'f4000002-0000-0000-0000-000000000002'
+        healthFill = 'f4000002-0000-0000-0000-000000000003'
 
 [[gameobjects]]
 active = true
@@ -3418,6 +3546,28 @@ tag = 'Untagged'
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EyeBlinkComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        closedDuration = 0.09
+        debugState = 'Open'
+        debugTimer = 0.0
+        doubleBlinkGap = 0.11
+        doubleBlinkPercent = 25
+        eyeRenderer = ''
+        intervalMax = 2.0
+        intervalMin = 1.0
+
+            [gameobjects.ScriptComponents.fields.closedSprite]
+            guid = '7f90c4e045b524d2bd76c6774c4b29a5'
+            path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::6389c2a4-4ed2-427c-900c-f1716118284d|Assets/Sprites/T_VisorEyes.png'
+
+            [gameobjects.ScriptComponents.fields.openSprite]
+            guid = '7f90c4e045b524d2bd76c6774c4b29a5'
+            path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b|Assets/Sprites/T_VisorEyes.png'
 
 [[gameobjects]]
 active = true
@@ -4980,7 +5130,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = false
+active = true
 instanceId = '70a5bde6-c19d-48f4-b235-61dc43fccd92'
 layer = 0
 name = 'P_GlowGreen'
@@ -5216,12 +5366,40 @@ tag = 'Untagged'
     rotationOffsetDegrees = [ 0.0, 0.0, 0.0 ]
     scaleMultiplier = [ 1.0, 1.0, 1.0 ]
     socketName = 'SOCKET_Holster_L'
-    target = [ 4294967295, 0 ]
+    target = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 0.999999, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'WeaponAnimatorComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        deployClipFile = ''
+        deployClipName = 'Pistol_Deploy'
+        drawSockets = false
+        dryClipFile = ''
+        dryClipName = ''
+        fireClipFile = ''
+        fireClipName = ''
+        fireFadeIn = 0.0
+        fireFadeOut = 0.08
+        foldClipFile = ''
+        foldClipName = 'Pistol_Fold'
+        foldedIdleClipFile = ''
+        foldedIdleClipName = 'Pistol_Folded_Idle'
+        hand = 1
+        muzzleFlashPrefab = ''
+        reloadClipFile = ''
+        reloadClipName = ''
+        sfxDry = ''
+        sfxFire = ''
+        sfxShell = ''
+        shellPrefab = ''
+        slotLayerName = 'Base Layer'
 
 [[gameobjects]]
 active = true
@@ -5654,3 +5832,87 @@ tag = 'Untagged'
     position = [ 0.0, -0.072, -0.1 ]
     rotation = [ 0.0, 0.0, 1.0, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000001'
+layer = 0
+name = 'HUD_Canvas'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    faceCamera = false
+    matchWidthOrHeight = 0.0
+    planeDistance = 2.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    scaleMode = 0
+    sortOrder = 10
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000002'
+layer = 0
+name = 'HUD_HealthBackground'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    color = [ 0.02, 0.02, 0.03, 0.78 ]
+    enabled = true
+    fillAmount = 1.0
+    fillOrigin = 0
+    imageType = 0
+    sortOrder = 0
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 64.0, 990.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 420.0, 26.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000003'
+layer = 0
+name = 'HUD_HealthFill'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    color = [ 0.16, 0.89, 0.77, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillOrigin = 0
+    imageType = 0
+    sortOrder = 1
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 68.0, 994.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 412.0, 18.0, 1.0 ]
