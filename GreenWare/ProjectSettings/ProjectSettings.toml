@@ -44,7 +44,7 @@ names = [
 
 [physics]
 gravity = [ 0.0, -9.81, 0.0 ]
-hz = 60
+hz = 144
 substeps = 1
 
 [project]

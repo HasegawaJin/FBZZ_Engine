@@ -1,0 +1,12 @@
+[mask]
+default_include = false
+name = 'M_UpperBody'
+skeleton_source = 'Assets/Models/Player/Player.fbx'
+skeleton_source_signature = ''
+version = 1
+
+[[entries]]
+blend_depth = 2
+bone = 'Chest'
+include_children = true
+weight = 1.0

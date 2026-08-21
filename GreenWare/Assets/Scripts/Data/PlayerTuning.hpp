@@ -20,6 +20,7 @@ public:
     FBZZ_FIELD_RANGE(float, moveSpeed,   6.0f,  "Move Speed",   0.1f, 20.0f)
     FBZZ_FIELD_RANGE(float, groundAccel, 18.0f, "Ground Accel", 1.0f, 100.0f)
     FBZZ_FIELD_RANGE(float, groundDecel, 22.0f, "Ground Decel", 1.0f, 100.0f)
+    FBZZ_FIELD_RANGE(float, airAccel,     3.0f, "Air Accel",     0.0f,  50.0f)
     FBZZ_FIELD_RANGE(float, turnSpeed,   14.0f, "Turn Speed",   0.1f, 30.0f)
     // CharacterController::JumpAtVelocity へ渡す上向き初速 (m/s)。
     // 質量に依存しないため、RigidBody の密度を変えても跳躍感を維持できる。

@@ -2,11 +2,11 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = 'ddd17dafaf628c52'
-source_hash = '1853941961b6e74b'
+settings_hash = '18f10c26b1ca5223'
+source_hash = 'be1dac0f818419ea'
 
 [meta]
-guid = '7f12db3285d3777934068b3a3a45255e'
+guid = 'd2cfe13d69d18d74f27b360595f632af'
 
 [model]
 clips = []
@@ -15,7 +15,7 @@ generate_normals = true
 generate_tangents = true
 generate_tex_descriptors = true
 importer = 'ModelImporter'
-importer_version = 3
+importer_version = 4
 normal_map_convention = 'DirectX'
 root_motion_node = ''
 selected_animations = []

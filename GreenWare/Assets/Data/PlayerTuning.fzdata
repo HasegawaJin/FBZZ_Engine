@@ -3,6 +3,7 @@ dodgeDuration = 0.2199999988079071
 dodgeSpeed = 16.0
 groundAccel = 100.0
 groundDecel = 100.0
+airAccel = 3.0
 hitInvulnerable = 0.6000000238418579
 jumpSpeed = 15.0
 maxHealth = 5

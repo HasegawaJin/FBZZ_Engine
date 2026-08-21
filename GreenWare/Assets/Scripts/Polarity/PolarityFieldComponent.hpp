@@ -45,8 +45,8 @@ class PolarityFieldComponent : public Script {
     FBZZ_OPTIONAL_COMPONENT(AudioSourceComponent)
 
 public:
-    FBZZ_ASSET(PolarityTuning, tuning, "Tuning")
-    FBZZ_TOOLTIP("作用半径・溜め・速度。未割り当てだと既定値 (半径 10m) で動く")
+    FBZZ_REQUIRED_ASSET(PolarityTuning, tuning, "Tuning")
+    FBZZ_TOOLTIP("作用半径・溜め・速度の共有調整値。未割り当てでは動作を開始しない")
 
     FBZZ_GROUP("Links")
     // 同時に成立させるリンクの上限。Wave で敵が増えたときに盤面が線だらけになるのを防ぐ。
@@ -128,8 +128,8 @@ private:
     // 既に飛んでいる相手との組み合わせか (継続中のリンクを途中で乗り換えさせない)。
     [[nodiscard]] bool IsOngoingLink(const Candidate& a, const Candidate& b) const;
 
-    [[nodiscard]] float AttractionRadius() const { return tuning ? tuning->attractionRadius : 10.0f; }
-    [[nodiscard]] float MinImpactSpeed()   const { return tuning ? tuning->minImpactSpeed   : 6.0f; }
+    [[nodiscard]] float AttractionRadius() const { return tuning->attractionRadius; }
+    [[nodiscard]] float MinImpactSpeed()   const { return tuning->minImpactSpeed; }
 
     std::vector<Candidate>      m_candidates;
     std::vector<PairCandidate>  m_pairs;
@@ -147,6 +147,11 @@ FBZZ_REFLECT(PolarityFieldComponent)
 
 inline void PolarityFieldComponent::OnStart()
 {
+    if (!tuning) {
+        debug.LogError("PolarityFieldComponent requires PolarityTuning.fzdata.");
+        enabled = false;
+        return;
+    }
     m_hitstopRemaining = 0.0f;
     m_savedTimeScale   = 1.0f;
 

@@ -6,8 +6,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Game/GameResultState.hpp>
-#include <Scripts/Player/PlayerHealthComponent.hpp>
-#include <Scripts/Player/PolarityGunComponent.hpp>
+#include <Scripts/Player/PlayerComponent.hpp>
 #include <Scripts/Polarity/PolarityFieldComponent.hpp>
 #include <algorithm>
 #include <string>
@@ -45,8 +44,7 @@ private:
     void RefreshHud(int enemiesAlive);
     [[nodiscard]] int CountEnemies() const;
 
-    PlayerHealthComponent* m_playerHealth = nullptr;
-    PolarityGunComponent* m_gun = nullptr;
+    PlayerComponent* m_player = nullptr;
     bool m_sawEnemy = false;
     bool m_ending = false;
     bool m_victory = false;
@@ -72,14 +70,13 @@ inline void GameFlowComponent::OnStart()
         field->onImpact = [this](const PolarityImpact& impact) { ResolveImpact(impact); };
 
     if (GameObject* player = scene.FindWithTag("Player")) {
-        m_playerHealth = scene.GetScript<PlayerHealthComponent>(player);
-        m_gun = scene.GetScript<PolarityGunComponent>(player);
-        if (m_playerHealth)
-            m_playerHealth->onDeath = [this]() { BeginEnd(false); };
+        m_player = scene.GetScript<PlayerComponent>(player);
+        if (m_player)
+            m_player->SetOnDeath([this]() { BeginEnd(false); });
     }
 
-    if (!m_playerHealth)
-        debug.LogError("GameFlowComponent requires a PlayerHealthComponent on the Player-tagged object.");
+    if (!m_player)
+        debug.LogError("GameFlowComponent requires a PlayerComponent on the Player-tagged object.");
 }
 
 inline int GameFlowComponent::CountEnemies() const
@@ -118,15 +115,15 @@ inline void GameFlowComponent::BeginEnd(bool victory)
 inline void GameFlowComponent::RefreshHud(int enemiesAlive)
 {
     if (GameObject* text = scene.Find(healthTextName)) {
-        const int health = m_playerHealth ? m_playerHealth->Current() : 0;
-        const int maxHealth = m_playerHealth ? m_playerHealth->MaxHealth() : 0;
+        const int health = m_player ? m_player->Current() : 0;
+        const int maxHealth = m_player ? m_player->MaxHealth() : 0;
         ui.SetText(text, "HP " + std::to_string(health) + " / " + std::to_string(maxHealth));
     }
     if (GameObject* text = scene.Find(enemyTextName))
         ui.SetText(text, "ENEMIES " + std::to_string(enemiesAlive));
     if (GameObject* text = scene.Find(gunTextName)) {
-        const int plus = m_gun ? static_cast<int>(m_gun->ChargeOf(Polarity::Plus) * 100.0f) : 0;
-        const int minus = m_gun ? static_cast<int>(m_gun->ChargeOf(Polarity::Minus) * 100.0f) : 0;
+        const int plus = m_player ? static_cast<int>(m_player->ChargeOf(Polarity::Plus) * 100.0f) : 0;
+        const int minus = m_player ? static_cast<int>(m_player->ChargeOf(Polarity::Minus) * 100.0f) : 0;
         ui.SetText(text, "+ " + std::to_string(plus) + "%    - " + std::to_string(minus) + "%");
     }
     if (GameObject* text = scene.Find(objectiveTextName))

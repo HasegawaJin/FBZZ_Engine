@@ -1,0 +1,79 @@
+version = 6
+defaultStateName = 'WeaponIdle'
+baseLayerMaskPath = ''
+
+[[layers]]
+name = 'Base Layer'
+weight = 1.0
+mode = 0
+enabled = true
+maskPath = ''
+defaultStateName = 'WeaponIdle'
+    [[layers.states]]
+    name = 'WeaponIdle'
+    mode = 0
+    sourcePath = ''
+    clipName = ''
+    clipIndex = -1
+    speed = 1.0
+    loop = true
+    ikWeight = 1.0
+    [[layers.states]]
+    name = 'PreloadWeaponClips'
+    mode = 0
+    sourcePath = ''
+    clipName = ''
+    clipIndex = -1
+    speed = 1.0
+    loop = true
+    ikWeight = 1.0
+        [layers.states.blendTree1D]
+        paramName = ''
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Deploy.fbx'
+            clipName = 'Deploy'
+            clipIndex = -1
+            threshold = 0.0
+            speed = 1.0
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Draw.fbx'
+            clipName = 'Draw'
+            clipIndex = -1
+            threshold = 1.0
+            speed = 1.0
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Dry.fbx'
+            clipName = 'Dry'
+            clipIndex = -1
+            threshold = 2.0
+            speed = 1.0
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Fire_L.fbx'
+            clipName = 'Fire_L'
+            clipIndex = -1
+            threshold = 3.0
+            speed = 1.0
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Fold.fbx'
+            clipName = 'Fold'
+            clipIndex = -1
+            threshold = 4.0
+            speed = 1.0
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Folded_Idle.fbx'
+            clipName = 'Folded_Idle'
+            clipIndex = -1
+            threshold = 5.0
+            speed = 1.0
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Idle.fbx'
+            clipName = 'Idle'
+            clipIndex = -1
+            threshold = 6.0
+            speed = 1.0
+            [[layers.states.blendTree1D.motions]]
+            sourcePath = 'Assets/Models/WPN_Pistol_L/Reload.fbx'
+            clipName = 'Reload'
+            clipIndex = -1
+            threshold = 7.0
+            speed = 1.0
