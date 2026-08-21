@@ -58,6 +58,14 @@ export type VFXPreviewCamera = z.infer<typeof VFXPreviewCameraSchema>;
 export type EditorQuery =
     | { t: 'editor.catalog' }
     | { t: 'editor.catalog.search'; query?: string | undefined; category?: string | undefined; limit?: number | undefined }
+    // Operator モデルの目録。メニュー・ホットキー・コマンドパレットが読むのと同じ登録簿。
+    // Docs/design/editor-operator-model.md
+    | { t: 'editor.op.list'; search?: string | undefined; category?: string | undefined; includeUnavailable?: boolean | undefined }
+    // kind=query の Operator を実行して結果データを読む。
+    // WHY editor.op.invoke と分けるか: invoke は write 権限のツールとして公開される。
+    //      読むだけの操作までそこに閉じ込めると、read 権限の接続からは
+    //      「目録には出るのに 1 つも呼べない Query」に見える。
+    | { t: 'editor.op.query'; id: string; args?: Record<string, unknown> | undefined }
     | { t: 'editor.state' }
     | { t: 'editor.undoHistory'; limit?: number | undefined }
     | { t: 'console.logs'; minLevel?: 'debug' | 'info' | 'warning' | 'error' | undefined; contains?: string | undefined; limit?: number | undefined; afterSequence?: number | undefined }
@@ -151,6 +159,19 @@ export type EditorQuery =
     | { t: 'build.status'; limit?: number | undefined };
 export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t', [
     z.object({ t: z.literal('editor.catalog') }).strict(),
+    z.object({
+        t: z.literal('editor.op.list'),
+        search: z.string().min(1).max(128).optional(),
+        category: z.string().min(1).max(64).optional(),
+        includeUnavailable: z.boolean().optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('editor.op.query'),
+        id: z.string().min(1).max(128),
+        // 引数は Editor 側の params 宣言だけで検証する。ここで形を固定すると
+        // 「Operator を 1 つ足すたび TypeScript も直す」という重複が復活する。
+        args: z.record(z.string(), z.unknown()).optional(),
+    }).strict(),
     z.object({
         t: z.literal('editor.catalog.search'),
         query: z.string().min(1).max(128).optional(),
@@ -320,6 +341,9 @@ const ComponentNameSchema = z.string().min(1).max(128);
 
 // Scene を変更しうる要求。engine 側で Undo 可能な Command Bus へ転送される。
 export type EditorCommand =
+    // Operator を 1 つ実行する。実行可否 (poll) の判定は Editor 側の登録簿にあり、
+    // メニューやホットキーと同じ述語が効く。args は operator が宣言した params に従う。
+    | { t: 'editor.op.invoke'; id: string; args?: Record<string, unknown> | undefined }
     | { t: 'node.create'; parent?: string | undefined; name?: string | undefined }
     | { t: 'node.duplicate'; id: string; parent?: string | undefined; name?: string | undefined }
     | { t: 'node.delete'; id: string }
@@ -458,6 +482,14 @@ export type EditorCommand =
     | { t: 'editor.transaction'; label: string; cmds: EditorCommand[] };
 export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
     z.discriminatedUnion('t', [
+        // args の中身は Editor 側の params 宣言に従って検証される。
+        // ここで形を固定しないのは、operator が増えてもこのファイルを触らずに済ませるため
+        // (Editor に 1 つ足すたび TypeScript も直す、が今回無くしたい重複そのもの)。
+        z.object({
+            t: z.literal('editor.op.invoke'),
+            id: z.string().min(1).max(128),
+            args: z.record(z.string(), z.unknown()).optional(),
+        }).strict(),
         z.object({ t: z.literal('node.create'), parent: NodeIdSchema.optional(), name: CommandNameSchema.optional() }).strict(),
         z.object({
             t: z.literal('node.duplicate'),

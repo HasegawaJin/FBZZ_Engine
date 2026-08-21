@@ -104,7 +104,7 @@ Claude Desktop を再起動すると `fbzz-editor` ツール群が現れる。
 
 ## MCP ツール一覧
 
-- **Query (read+)**: `editor_catalog` / `editor_catalog_search` / `editor_get_state` / `editor_get_undo_history` / `console_get_logs` /
+- **Query (read+)**: `editor_op_list` / `editor_op_query` / `editor_catalog` / `editor_catalog_search` / `editor_get_state` / `editor_get_undo_history` / `console_get_logs` /
   `scene_list` / `preset_catalog` / `terrain_inspect` / `terrain_sample` / `foliage_inspect` /
   `navmesh_get_state` / `navmesh_find_path` / `navmesh_sample` /
   `environment_inspect` / `audio_inspect` / `ui_inspect` / `build_get_status` /
@@ -120,7 +120,7 @@ Claude Desktop を再起動すると `fbzz-editor` ツール群が現れる。
   `animation_get_pose` / `profiler_get_snapshot` / `physics_raycast` /
   `physics_overlap_sphere` / `physics_get_events` / `editor_wait` / `viewport_capture` /
   `viewport_capture_semantic` / `editor_perceive`
-- **Command (dry-run/write)**: `preset_create` / `scene_open` / `scene_save` /
+- **Command (dry-run/write)**: `editor_op_invoke` / `preset_create` / `scene_open` / `scene_save` /
   `terrain_sculpt` / `terrain_paint` / `terrain_set_layer_material` /
   `foliage_scatter` / `foliage_clear` / `navmesh_bake` / `audio_control` / `build_run` /
   `node_create` / `node_duplicate` / `node_delete` / `node_reparent` / `node_rename` /
@@ -145,6 +145,99 @@ Scene 状態と viewport の見た目の両方で完了条件を確認する運�
 
 ### 発見性と構造操作
 
+- `editor_op_list` / `editor_op_invoke`: **Operator モデル**の入口 (`Docs/design/editor-operator-model.md`)。
+  Editor のメニュー・ホットキー・コマンドパレット・Play ツールバー・ネイティブメニューが読むのと
+  **同一の登録簿** (`OperatorRegistry`) を公開する。従来は Editor 側の機能 1 つにつき
+  C++ の dispatcher・`tools.ts` の zod スキーマ・このドキュメントの 3 箇所へ書いており、
+  写し損ねると人が使う経路と AI が使う経路で結果が食い違った
+  (`ObjectPresets` / `TerrainBrush` / `NavMeshQuery` / `ExtractSubgraph` / `AnalyzeTexture` /
+  `CollectBehaviorTreeWarnings` / `AutoLayout` / `bt_schema` の 8 件は、いずれも症状が出てから
+  共通実装へ寄せた事後対応)。operator として登録された操作はここを通って自動的に AI から見えるため、
+  **以後どれだけ操作が増えてもこの 2 ツールのままで、TypeScript 側は 1 行も増えない**。
+  応答の `available` は実行可能条件 (`poll`) の評価結果で、実行前に「今できない」を判別できる。
+  `kind` は `query` / `action` / `mutation` で、`mutation` だけが Undo 履歴に残る
+  (`Save` や `Play` を Undo に載せると「Undo で保存が巻き戻る」事故になるため分けてある)。
+  `available=false` の操作も既定で返すのは、「存在しない」と「今は使えない」を区別できないと
+  AI が実在する手段を諦めて別のやり方を組み立て始めるため。
+  `editor_op_invoke` は同じ `poll` で拒否するので、**メニューでグレーアウトされる状況では AI からも通らない** —
+  AI にだけできる操作という抜け道が構造的に存在しない。
+
+- `editor_op_query`: `kind=query` の operator を実行して**結果データ**を返す (read 権限で可)。
+  `editor_op_invoke` は write 権限のツールなので、読むだけの操作までそこへ入れると
+  read で接続した AI からは「目録には出るのに 1 つも呼べない Query」に見える。
+  入口を分け、`kind != query` はここでは `NOT_A_QUERY` で拒否するので書き込みの抜け道にはならない。
+  応答の `data` が operator の返り値で、`OpResult::data` (`Editor/Op/OpData.hpp`) を JSON へ写したもの。
+
+  **移行前は Query 操作が 1 つも登録できなかった。** `OpKind::Query` は型としては最初からあったのに、
+  `OpResult` が持てるのは `ok` / `errorCode` / `message` だけで**読み取り結果を返す場所が無かった**ため、
+  「読む機能」は Operator にできず 10,000 行の dispatcher へ書き続けるしかなかった。
+  結果として AI から見た Editor は「`op.list` に出る操作」と「dispatcher にしか無い照会」の
+  2 系統に割れており、無くしたはずの「1 機能 3 箇所」が読み取り側にだけ残っていた。
+
+- `editor_op_list` の応答が返す `params[].enum` / `min` / `max` と、項目の `checked`:
+  - `enum` は取りうる値の宣言。以前は `desc` の文章にしか書けず、AI は綴りを推測していた
+    (外した場合の弾き方も操作ごとの手書きだった)。検証は Editor 側 1 箇所 (`ValidateArgs`) で行い、
+    `editor_op_invoke` の dry-run も同じ判定を通る。
+  - `checked` はトグル操作の現在値で、メニューのチェックマークと同じ式から出る。
+    これが無いと「切り替えられるのに今どちらか読めない」ままになり、
+    必ず ON にしたい場面で 2 回撮って比べるしかなかった。
+    必須引数を持つ操作 (`render.set_view_mode` の `mode` など) は目録では評価されず、
+    `editor_op_invoke` の dry-run に引数を渡したときだけ確定する。
+
+  この経路で新たに AI から到達できるようになった主なもの (いずれも移行前は UI にしか無かった):
+
+  | operator | 移行前どこにあったか |
+  |----------|----------------------|
+  | `asset.save` | Save ボタン / Save All のみ |
+  | `animation.auto_layout` | Animation Graph のキャンバス右クリックのみ |
+  | `animation.set_state_position` | ノードのドラッグのみ (数値指定は不可能) |
+  | `transform.copy` / `transform.paste` / `transform.reset` | Inspector の Transform ヘッダー右クリックのみ |
+  | `component.reset` | Inspector のコンポーネント ⋯ メニューのみ |
+  | `component.move_up` / `component.move_down` | Inspector のカード ⋯ メニューのみ |
+  | `asset.refresh` / `asset.reveal` / `asset.open_import_settings` | AssetBrowser の更新・参照欄・再インポート設定 UI のみ |
+  | `node.rename` | Hierarchy のインライン編集 (AI 版と別実装だった) |
+  | `render.show_*` / `render.set_view_mode` | Debug メニューのみ |
+  | `bt.auto_layout` | Behavior Tree のキャンバス右クリックのみ |
+  | `panel.list` / `panel.set_visible` / `panel.focus` | View > Panels とコマンドパレットのみ |
+  | `asset.open` | AssetBrowser のダブルクリックのみ |
+  | `prefab.edit` / `prefab.close` | AssetBrowser の Alt+ダブルクリック / File メニューのみ |
+  | `render.show_stats` / `debug.hot_reload` | Debug メニューのみ |
+  | `view.set_ui_scale` / `view.reset_ui_scale` | View メニューのみ |
+  | `ai.command_bus` | AI Settings パネルのみ (メニューは押せない状態表示だった) |
+
+  **`asset.open` の欠落は `asset.save` と同じ形をしている。** AI は `.animcontroller` も
+  `.vfx` も `.behaviortree` も編集できるのに、**どれ一つ「開く」ことができなかった**。
+  開く経路は AssetBrowser のダブルクリックだけが持っており、拡張子ごとの振り分けもそこに閉じていた。
+  実害は 2 つあり、1 つは人へ結果を見せる導線が「Assets を辿ってダブルクリックしてください」
+  しか無いこと、もう 1 つは**パネルが開いていることを前提にした操作を自分で満たせない**こと
+  (`bt.auto_layout` は `BehaviorTreePanel` がワンショット要求を消費して初めて動く)。
+  `.prefab` は「配置」と「中身の編集」で意味が割れるため `asset.open` では扱わず、
+  `prefab.edit` (編集モードへ入る) と `prefab_instantiate` (シーンへ置く) に分けてある。
+
+  **`panel.*` は「二重管理が無いから Operator にしない」という判断の見直しでもある。**
+  パネル一覧は `m_panels` という単一の出所から出ているので実装は重複していなかったが、
+  その判断は**人が使う 2 面しか数えていない**。重複が無いことは Operator にしない理由になるが、
+  AI から到達できない理由にはならない。`panel.list` の `contentRendered` は
+  「実際に描かれたか」で、`visible=true` でもドッキングされたタブが背面なら false になる
+  (見えている前提で撮ると、無い画を探すことになる)。前面へ出すには `panel.focus` を使う。
+
+  **`render.*` の欠落も影響が大きかった。** AI は `viewport_capture` で絵を撮れるのに、
+  **何を写すかを選べなかった**。「敵がここへ来ない」を調べるのに NavMesh を可視化できず、
+  「当たらない」を調べるのに Collider を出せず、粒子の重なりを疑っても overdraw ビューへ
+  切り替えられない。撮る前に `render.show_navmesh` / `render.show_colliders` /
+  `render.show_nav_sensors` を立てると、数値クエリでは切り分けられない種類の原因が絵に出る。
+  `render.set_view_mode` の `unlit` はライティングを外してアルベドだけを見るので、
+  「暗い」の原因がマテリアルか光かを一発で分けられる。
+  各トグルは `enabled` を省略すると反転、指定すればその値になる
+  (AI は「必ず ON にしてから撮る」と決められる)。
+
+  **`asset.save` の欠落はとくに影響が大きかった。** AI は `animation_add_state` 等で
+  Animator の構造を一通り編集できるのに、**保存する手段が 1 つも無かった**。
+  編集直後は `animation_get_graph` にも viewport にも正しく反映されるため、
+  観察による反復では気づけず、「AI が直したはずなのに次に開くと戻っている」
+  という形でしか現れない。Animator を編集したら必ず `asset.save` で締める。
+  保存は Editor の Save ボタンと同じ関数を通るので、
+  キャンバス配置のように保存時にだけ書き出される情報も欠落しない。
 - `editor_catalog`: `ComponentRegistry`と各`Reflect()`を正本に、公開コンポーネントの正確な型名、表示名、分類、追加可否、編集可能フィールドを返す。フィールドには型・既定値に加え、宣言されているenumラベル、range、group、tooltipを含む。
 - `scene_find`: `name`部分一致、`tag`、`active`、`comp`（互換入力）、`components[]`、`properties[]`をAND条件で検索する。
   プロパティ演算子は `equals` / `notEquals` / `contains` / `greater` / `less`。結果は安定NodeId、名前、タグ、active、階層パス、親NodeIdを含む。
@@ -154,6 +247,14 @@ Scene 状態と viewport の見た目の両方で完了条件を確認する運�
 - `editor_get_undo_history`: Undo/Redoスタックを新しい順で返す。canUndo/canRedo、cursor、次にundo/redoされる操作の説明、履歴エントリ(index・ラベル・applied)を含む。自分の編集が期待どおりのラベル(例:`AI: Add Animator State`)で残ったか検証したり、何回`editor_undo`で戻れるか判断するのに使う。read権限で利用可。
 - `console_get_logs`: 重大度・本文部分一致・件数で絞り込み、新しい順に返す。応答の単調増加`cursor`を次回`afterSequence`へ渡すと、今回の操作後に発生したログだけを取得できる。リングバッファから取りこぼした場合は`dropped=true`。
 - `prefab_instantiate`: projectRoot配下の`.prefab`だけをインスタンス化する。生成ルートのNodeIdを返し、操作はUndo対応。
+- `prefab_apply`: インスタンスの現在状態を`.prefab`へ書き戻し、**同じシーン内の他インスタンスも新定義へ揃える**。
+  以前はアセットファイルを書き換えるだけで伝播していなかったため、
+  同じ「Apply」でも人が Inspector から押すと 100 個の実体へ反映され、
+  AI が実行するとファイルだけ変わって画面は何も変わらない、という食い違いがあった
+  (`PrefabSerializer::ApplyAndPropagate` として 1 操作に閉じ、UI と共有した)。
+  各インスタンスの個別調整 (override) は保持される。伝播でインスタンスが作り直され
+  **EntityID が変わる**ため、応答後に掴んでいた NodeId で参照し直すこと。
+  Undo はアセットとシーンの両方を戻す。
 - `viewport_camera_set`: Scene Viewカメラの座標移動と、座標またはNodeIdへの注視を行う。直後に`viewport_capture`で視覚確認する。
 - `physics_raycast` / `physics_overlap_sphere`: Editor Playと同じPhysics Worldを数値照会し、Colliderに対応するNodeIdも返す。
 - `viewport_capture` / `viewport_capture_semantic`: `view=scene|game`で取得元を選ぶ。semantic版はPNGに加えて、全GameObjectのNodeId、親、world座標、投影pixel、depth、画面内判定を同一応答で返す。Game Viewは実描画と同じカメラ解決規則とRTアスペクト比を使う。
@@ -232,6 +333,34 @@ Scene 状態と viewport の見た目の両方で完了条件を確認する運�
 | `FBZZ_MCP_PERMISSION` | `read` | `read` / `dry-run` / `write` |
 | `FBZZ_EDITOR_PIPE` | `\\.\pipe\FBZZEditorCommandBus` | 接続先パイプ（`\\.\pipe\FBZZEditor*` のみ許可） |
 | `FBZZ_EDITOR_BUS_TIMEOUT_MS` | `10000` | 応答タイムアウト (1000〜60000 にクランプ) |
+
+## JSON Schema 方言 (draft 2020-12)
+
+Anthropic Messages API は `tool.input_schema` を **JSON Schema draft 2020-12** で検証し、1 ツールでも
+違反があるとリクエスト全体が落ちる:
+
+```
+API Error: 400 tools.41.custom.input_schema: JSON schema is invalid.
+It must match JSON Schema draft 2020-12
+```
+
+一方 `@modelcontextprotocol/sdk` (1.29) の `tools/list` は zod → JSON Schema 変換の target を
+`draft-7` に固定しており (`server/zod-json-schema-compat.js`)、`target` を外から渡す口が無い。
+このため draft-07 でしか合法でない形がそのまま送られていた:
+
+| draft-07 出力 | 2020-12 での問題 | 由来 |
+|---------------|------------------|------|
+| `"items": [A, B, C]` | `items` は単一スキーマでなければならない (タプルは `prefixItems`) | `z.tuple()` = `Vec3Schema` / `color` / `input_inject.value` など 22 ツール |
+| `definitions` + `#/definitions/...` | 2020-12 の再利用キーワードは `$defs` | `JsonValueSchema` の再帰参照 |
+| `$schema: draft-07` | 受け手に旧方言を宣言してしまう | SDK 既定 |
+
+`src/jsonSchemaDraft2020.ts` が `tools/list` 応答を一段包んで 2020-12 へ正規化する
+(`server.ts` の `InstallDraft2020ToolSchemas`)。固定長タプルは `prefixItems` + `minItems`/`maxItems`
+へ、rest 付きは `additionalItems` → `items` へ移す。回帰は
+`src/tests/toolSchemas.test.ts` が全権限モードの全ツールを走査して防ぐ。
+
+**この変更は `dist/` の再ビルドが必要** — 古い `dist/` のまま登録していると 400 が再発する
+(`npm run build`、または VSCode の `EditorMcp: Build` タスク)。
 
 ## 制約・注意 (現状)
 

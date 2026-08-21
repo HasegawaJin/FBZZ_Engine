@@ -184,6 +184,57 @@ function RegisterQueryTools(server, bus) {
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'editor.catalog' }))));
+    // ── Operator ゲートウェイ (Docs/design/editor-operator-model.md) ──
+    // WHY: 従来は Editor 側の機能 1 つにつき、C++ の dispatcher・この tools.ts の
+    //      zod スキーマ・ドキュメントのツール一覧へ 3 度書いていた。写し損ねると
+    //      人が使う経路と AI が使う経路で結果が食い違い、実際にその修正を
+    //      ObjectPresets / TerrainBrush / NavMeshQuery など 8 回している。
+    //      operator として登録された操作はここを通って自動的に AI から見えるので、
+    //      以後 Editor に操作を足しても TypeScript 側は 1 行も増えない。
+    server.registerTool('editor_op_list', {
+        description: 'Editor に登録された操作 (Operator) の目録を返します。'
+            + 'メニュー・ホットキー・コマンドパレットが読むのと同じ登録簿なので、'
+            + '「人が UI からできること」と一致します。'
+            + '各項目の available は実行可能条件 (poll) の評価結果で、'
+            + '実行前に「今できない理由がある」ことを判別できます。'
+            + 'kind は query / action / mutation で、mutation だけが Undo 履歴に残ります。'
+            + 'params が付いている操作は editor_op_invoke の args にその名前で渡します。',
+        inputSchema: {
+            search: z.string().min(1).max(128).optional()
+                .describe('id / label / desc の部分一致 (大小無視)'),
+            category: z.string().min(1).max(64).optional()
+                .describe('File / Edit / Selection / Viewport / Gizmo / Play / Tools / Panels'),
+            includeUnavailable: z.boolean().optional()
+                .describe('既定 true。false にすると今実行できる操作だけを返す'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ search, category, includeUnavailable }) => Safely(async () => TextResult(await bus.Query({
+        t: 'editor.op.list',
+        ...(search === undefined ? {} : { search }),
+        ...(category === undefined ? {} : { category }),
+        ...(includeUnavailable === undefined ? {} : { includeUnavailable }),
+    }))));
+    // 読み取り側の Operator。invoke (write) と入口を分けてあるので read 権限でも呼べる。
+    // WHY 必要か: OpKind::Query は型としては最初からあったのに、結果を返す器が
+    //      OpResult に無かったため登録された Query が 1 つも無く、「読む機能」は
+    //      すべて専用ツールとして手書きするしかなかった。器と入口を用意したことで、
+    //      以後は読み取りも登録簿へ載り、ここのツール数は増えない。
+    server.registerTool('editor_op_query', {
+        description: 'kind=query の Operator を実行し、結果データを返します。'
+            + 'editor_op_list で id と params を調べてから呼びます。'
+            + '書き込み系 (action / mutation) はここでは拒否され、editor_op_invoke を使います。',
+        inputSchema: {
+            id: z.string().min(1).max(128)
+                .describe('operator の id (例: "panel.list")'),
+            args: z.record(z.string(), z.unknown()).optional()
+                .describe('editor_op_list の params に対応する引数'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id, args }) => Safely(async () => TextResult(await bus.Query({
+        t: 'editor.op.query',
+        id,
+        ...(args === undefined ? {} : { args }),
+    }))));
     server.registerTool('editor_catalog_search', {
         description: 'Component API を型名・表示名・カテゴリ・フィールド名・tooltipから検索し、必要な項目だけ返します。',
         inputSchema: {
@@ -1303,6 +1354,28 @@ function RegisterCommandTools(server, bus, permission) {
         idempotentHint: false,
         openWorldHint: false,
     };
+    // ── Operator ゲートウェイ ──
+    // editor_op_list で見つけた操作をそのまま実行する。実行可否の判定は Editor 側の
+    // poll が持つので、ホットキーやメニューでグレーアウトされる状況ではここも拒否される
+    // (AI にだけできる操作、という抜け道を作らない)。
+    server.registerTool('editor_op_invoke', {
+        description: 'editor_op_list に載っている操作を実行します。'
+            + 'メニューやホットキーが呼ぶのと同一の実体を通るため、人が UI で行った場合と結果が一致します。'
+            + '実行可能条件を満たさない場合は NOT_AVAILABLE で拒否され、シーンには触れません。'
+            + 'args は operator が宣言した params の名前で渡します (未宣言のキーはエラー)。'
+            + 'dry-run 権限では引数検証と実行可否の判定だけを行います。',
+        inputSchema: {
+            id: z.string().min(1).max(128)
+                .describe('operator の id (例: "scene.save" / "gizmo.move")'),
+            args: z.record(z.string(), z.unknown()).optional()
+                .describe('editor_op_list の params に対応する引数。引数なしの操作では省略する'),
+        },
+        annotations: writeAnnotations,
+    }, ({ id, args }) => run({
+        t: 'editor.op.invoke',
+        id,
+        ...(args === undefined ? {} : { args }),
+    }));
     // ── Behavior Tree の編集 ──
     server.registerTool('bt_node_add', {
         description: 'Behavior Tree へノードを追加します。parentId 省略はルート作成で、'

@@ -39,6 +39,19 @@ export const VFXPreviewCameraSchema = z.object({
 export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('editor.catalog') }).strict(),
     z.object({
+        t: z.literal('editor.op.list'),
+        search: z.string().min(1).max(128).optional(),
+        category: z.string().min(1).max(64).optional(),
+        includeUnavailable: z.boolean().optional(),
+    }).strict(),
+    z.object({
+        t: z.literal('editor.op.query'),
+        id: z.string().min(1).max(128),
+        // 引数は Editor 側の params 宣言だけで検証する。ここで形を固定すると
+        // 「Operator を 1 つ足すたび TypeScript も直す」という重複が復活する。
+        args: z.record(z.string(), z.unknown()).optional(),
+    }).strict(),
+    z.object({
         t: z.literal('editor.catalog.search'),
         query: z.string().min(1).max(128).optional(),
         category: z.string().min(1).max(128).optional(),
@@ -204,6 +217,14 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
 const CommandNameSchema = z.string().min(1).max(128);
 const ComponentNameSchema = z.string().min(1).max(128);
 export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
+    // args の中身は Editor 側の params 宣言に従って検証される。
+    // ここで形を固定しないのは、operator が増えてもこのファイルを触らずに済ませるため
+    // (Editor に 1 つ足すたび TypeScript も直す、が今回無くしたい重複そのもの)。
+    z.object({
+        t: z.literal('editor.op.invoke'),
+        id: z.string().min(1).max(128),
+        args: z.record(z.string(), z.unknown()).optional(),
+    }).strict(),
     z.object({ t: z.literal('node.create'), parent: NodeIdSchema.optional(), name: CommandNameSchema.optional() }).strict(),
     z.object({
         t: z.literal('node.duplicate'),
