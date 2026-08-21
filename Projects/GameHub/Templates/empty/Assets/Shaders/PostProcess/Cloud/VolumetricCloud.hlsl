@@ -1,121 +1,64 @@
 // FBZZ Engine
 // PostProcess/Cloud/VolumetricCloud.hlsl | PostProcess
 // 事前ベイクした 3D ノイズ (Shape + Detail) を使う本格ボリューメトリック雲。
-// 視線レイマーチ + 太陽方向ライトマーチ (セルフシャドウ) + Beer-Powder + HG 位相。
+// 視線レイマーチ + 太陽方向ライトマーチ (セルフシャドウ) + 多重散乱近似 + HG 位相。
 //
 // WHY: 手続き型 FBM をステップ毎に回すと ALU ネックになるため、Nubis/Horizon と同様に
 //      タイラブルな 3D ノイズを HW トライリニアでサンプルする。立体的な塊・パララックス・
 //      光の回り込み (シルバーライニング) が安価に出せる。
-#define FBZZ_MATERIAL_CONSTANTS
-#include "Common/Constants.hlsli"
+#include "Rendering/CloudVolume.hlsli"
 #include "Common/Space.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
-Texture2D<float>  g_depth       : register(TEX_DEPTH);
-Texture3D<float4> g_cloudShape  : register(TEX_CLOUD_SHAPE);   // R=Perlin-Worley, GBA=Worley FBM 帯
-Texture3D<float4> g_cloudDetail : register(TEX_CLOUD_DETAIL);  // RGB=高周波 Worley FBM
-SamplerState sampDefault : register(SAMPLER_DEFAULT);     // s0: depth (clamp)
-SamplerState sampNoise   : register(SAMPLER_WRAP_LINEAR); // s4: 3D ノイズ (wrap)
+Texture2D<float> g_depth : register(TEX_DEPTH);
+SamplerState sampDefault : register(SAMPLER_DEFAULT); // s0: depth (clamp)
 
-cbuffer VolumetricCloudConstants : register(CB_MATERIAL)
-{
-    float4 cloudLayer;    // x=bottom, y=top, z=density, w=coverage
-    float4 cloudNoise;    // x=shapeScale, y=detailScale, z=time, w=maxDistance
-    float4 cloudWind;     // xz=windDir, y=windSpeed, w=stepCount
-    float4 cloudLighting; // x=absorption, y=ambient, z=silverLining, w=unused
-    float4 cloudAlbedo;   // rgb=albedo
-};
+static const float kEmptyStep = 2.0f; // 空白領域でのステップ倍率 (empty-space skip)
 
-// ---- チューニング定数 (見た目はここと Inspector の density/coverage/absorption で詰める) ----
-static const float kPI          = 3.14159265f;
-static const int   kLightSteps  = 4;      // 太陽方向ライトマーチのステップ数 (6→4 で軽量化)
-static const float kExtinction  = 0.03f;  // 密度→消散係数のスケール
-static const float kDetailMorph = 0.35f;  // detail による縁の侵食量
-static const float kPowder      = 0.7f;   // Beer-Powder の暗縁効果の強さ
-static const float kEmptyStep   = 2.0f;   // 空白領域でのステップ倍率 (empty-space skip)
+// 多重散乱近似 (Wrenninge) — オクターブごとに消散・寄与・位相の鋭さを弱めて足す。
+// WHY: 単散乱だけだと雲の内側が真っ黒に落ちる。実際の雲は内部で光が何度も跳ね返って
+//      影側まで回り込むため、減衰の弱い「ぼけた光」を重ねてその分を補う。
+static const int   kMsOctaves      = 3;
+static const float kMsAttenuation  = 0.5f;
+static const float kMsEccentricity = 0.5f;
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
     return FBZZMakeFullscreenVertex(id);
 }
 
-float Remap(float v, float lo, float hi, float nlo, float nhi)
-{
-    return nlo + saturate((v - lo) / max(hi - lo, 1e-5f)) * (nhi - nlo);
-}
-
-// 雲層内の高さ (0=底, 1=天) に対する密度プロファイル。底は丸く、天はなだらかに減衰。
-float HeightGradient(float h)
-{
-    return smoothstep(0.0f, 0.18f, h) * (1.0f - smoothstep(0.55f, 1.0f, h));
-}
-
+// 4π 正規化を外した HG。
+// WHY: この積分は σs=σe (散乱アルベド 1) を前提に「太陽の放射輝度 = lightColor」で解いている。
+//      PDF として 1/4π で割ると太陽項だけが 1/12.6 に沈み、環境光しか見えない雲になる。
 float HenyeyGreenstein(float cosT, float g)
 {
     float g2 = g * g;
-    return (1.0f - g2) / (4.0f * kPI * pow(max(1.0f + g2 - 2.0f * g * cosT, 1e-4f), 1.5f));
+    return (1.0f - g2) / pow(max(1.0f + g2 - 2.0f * g * cosT, 1e-4f), 1.5f);
 }
 
-bool IntersectCloudLayer(float3 ro, float3 rd, out float t0, out float t1)
+// 前方 / 後方 2 ローブ。anisotropy を上げるほど太陽の周りへ光が集まる。
+float CloudPhase(float cosT, float eccentricity)
 {
-    float bottom = cloudLayer.x;
-    float top    = cloudLayer.y;
-    if (abs(rd.y) < 1e-4f)
-    {
-        if (ro.y < bottom || ro.y > top) return false;
-        t0 = 0.0f; t1 = cloudNoise.w; return true;
-    }
-    float tb = (bottom - ro.y) / rd.y;
-    float tt = (top    - ro.y) / rd.y;
-    t0 = max(min(tb, tt), 0.0f);
-    t1 = max(tb, tt);
-    return t1 > t0;
+    float g = clamp(cloudProfile.z, 0.0f, 0.95f) * eccentricity;
+    return lerp(HenyeyGreenstein(cosT, g), HenyeyGreenstein(cosT, -g * 0.55f), 0.35f);
 }
 
-// Shape のみの密度 (0..1)。空白判定・ライトマーチ用の安価サンプル (Texture3D 1 回)。
-float SampleShape01(float3 wp, float2 windWorld)
+// 太陽方向の光学的深さから、多重散乱ぶんを含む到達光量を求める。
+float SunEnergy(float opticalToSun, float cosT)
 {
-    float bottom = cloudLayer.x;
-    float top    = cloudLayer.y;
-    float h = saturate((wp.y - bottom) / max(top - bottom, 1.0f));
-    float grad = HeightGradient(h);
-    if (grad <= 0.0f) return 0.0f;
-
-    // Shape: ワールド座標に風オフセットを足して 3D サンプル (xz=流れ, y=ゆっくり進化)。
-    float3 sp = (wp + float3(windWorld.x, cloudNoise.z * 2.0f, windWorld.y)) * cloudNoise.x;
-    // WHY: 可変回数のレイマーチ内では暗黙微分が未定義になるため、LOD 0 を明示する。
-    float4 shape = g_cloudShape.SampleLevel(sampNoise, sp, 0.0f);
-    float lowFreq = shape.g * 0.625f + shape.b * 0.25f + shape.a * 0.125f;
-    float base = Remap(shape.r, lowFreq - 1.0f, 1.0f, 0.0f, 1.0f) * grad;
-    // カバレッジで雲量を制御 (Remap で薄い所を削り、濃い所を残す)。
-    return Remap(base, 1.0f - cloudLayer.w, 1.0f, 0.0f, 1.0f);
-}
-
-// Detail (高周波 Worley) で縁を侵食して綿のようなウィスプを作る。base01 は SampleShape01 の結果。
-float ErodeDetail(float base01, float3 wp, float2 windWorld)
-{
-    if (base01 <= 0.0f) return 0.0f;
-    float3 dp = (wp + float3(windWorld.x * 2.0f, 0.0f, windWorld.y * 2.0f)) * cloudNoise.x * cloudNoise.y;
-    // WHY: Shape と同様に可変回数ループから呼ばれるため、暗黙微分を使用しない。
-    float3 det = g_cloudDetail.SampleLevel(sampNoise, dp, 0.0f).rgb;
-    float detFbm = det.r * 0.625f + det.g * 0.25f + det.b * 0.125f;
-    return saturate(base01 - detFbm * kDetailMorph * (1.0f - base01));
-}
-
-// 太陽方向へ短くマーチして到達光の透過率を求める (セルフシャドウ)。Shape のみで軽量化。
-float LightMarch(float3 wp, float3 sunDir, float2 windWorld)
-{
-    float stepLen = max((cloudLayer.y - cloudLayer.x) / float(kLightSteps), 1.0f);
-    float density = max(cloudLayer.z, 0.0f);
-    float optical = 0.0f;
+    float msContribution = saturate(cloudShading.w);
+    float energy = 0.0f;
+    float attenuation = 1.0f, contribution = 1.0f, eccentricity = 1.0f;
     [unroll]
-    for (int k = 0; k < kLightSteps; ++k)
+    for (int n = 0; n < kMsOctaves; ++n)
     {
-        float3 lp = wp + sunDir * (float(k) + 0.5f) * stepLen;
-        optical += SampleShape01(lp, windWorld) * density * stepLen;
+        energy += contribution * CloudPhase(cosT, eccentricity) * exp(-opticalToSun * attenuation);
+        attenuation  *= kMsAttenuation;
+        contribution *= msContribution;
+        eccentricity *= kMsEccentricity;
     }
-    return exp(-optical * kExtinction * max(cloudLighting.x, 0.0f));
+    return energy;
 }
 
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
@@ -129,43 +72,43 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float3 rd = normalize(farPos - cameraPos);
 
     float t0, t1;
-    if (!IntersectCloudLayer(cameraPos, rd, t0, t1))
+    if (!FBZZCloudSlabIntersect(cameraPos, rd, t0, t1))
         return float4(0.0f, 0.0f, 0.0f, 0.0f);
 
     t1 = min(t1, min(sceneDepth, cloudNoise.w));
     if (t1 <= t0)
         return float4(0.0f, 0.0f, 0.0f, 0.0f);
 
-    int   steps   = clamp((int)cloudWind.w, 8, 96);
-    float density = max(cloudLayer.z, 0.0f);
-    // WHAT: 実際に見えている雲区間を steps 分割する。
-    // WHY: 雲層の厚みだけを基準にすると、水平に近い視線では交差区間が厚みの数倍に
-    //      なり、固定反復上限の前に t1 へ到達せず、雲の後半が欠ける。
+    int   steps      = clamp((int)cloudWind.w, 8, 96);
+    float density    = max(cloudLayer.z, 0.0f);
+    float extinction = FBZZCloudExtinction();
+    // WHY: 雲層の厚みだけを基準にステップ長を決めると、水平に近い視線では交差区間が厚みの
+    //      数倍になり、固定反復上限の前に t1 へ到達せず雲の後半が欠ける。実際に見えている
+    //      区間 (t1 - t0) を steps 分割する。
     float pathLength = max(t1 - t0, 0.0f);
     float stepLen = max(pathLength / (float)steps, 0.5f);
     int maxIterations = clamp((int)ceil(pathLength / stepLen), 1, 256);
 
-    // ステップ内で一定の量はループ前に求める。
-    float2 rawWind   = float2(cloudWind.x, cloudWind.z);
-    float  windLen   = length(rawWind);
-    float2 windDir   = windLen > 1.0e-4f ? rawWind / windLen : float2(1.0f, 0.0f);
-    float2 windWorld = windDir * (cloudWind.y * cloudNoise.z);
+    float2 windWorld = FBZZCloudWindOffset();
     float  lightLen  = length(lightDir);
-    float3 sunDir    = lightLen > 1.0e-4f
-        ? -lightDir / lightLen : float3(0.0f, 1.0f, 0.0f);
+    float3 sunDir    = lightLen > 1.0e-4f ? -lightDir / lightLen : float3(0.0f, 1.0f, 0.0f);
     // 雲の明るさは空ドームと揃える必要があるため skyDimmer を使う。
     // lightIntensity は地表のライティング用スケールで、空の見た目とは別軸。
-    float3 lightCol  = lightColor * max(skyDimmer, 0.0f);
-    float3 ambient   = (ambientColor * 2.0f + lightCol * 0.2f) * max(cloudLighting.y, 0.0f);
+    float3 lightCol  = lightColor * max(skyDimmer, 0.0f) * max(cloudShading.y, 0.0f) * cloudSunTint.rgb;
+    float3 ambientTop = (ambientColor * 2.0f + lightCol * 0.2f)
+                      * max(cloudLighting.y, 0.0f) * cloudAmbTint.rgb;
+    float  ambientFloor = saturate(cloudAlbedo.w);
     float3 albedo    = cloudAlbedo.rgb;
 
-    // 2 ローブ HG 位相 + 太陽近傍のシルバーライニング。
-    float cosT  = dot(rd, sunDir);
-    float phase = max(HenyeyGreenstein(cosT, 0.2f), HenyeyGreenstein(cosT, -0.15f) * 0.6f);
+    float cosT   = dot(rd, sunDir);
     float silver = pow(saturate(cosT), 4.0f) * max(cloudLighting.z, 0.0f);
+    float powderStrength = saturate(cloudShading.z);
 
-    // バンディング抑制: 開始位置をピクセルごとに [0,1)*stepLen だけずらす
-    // (ハーフ解像度 + 少ステップでも縞が出ないように)。
+    // 手前を抜くフェード。ステップ位置 t が minDistance を越えてから fadeDistance かけて濃くなる。
+    float nearStart = max(cloudRange.x, 0.0f);
+    float nearFade  = max(cloudRange.y, 1.0e-3f);
+
+    // バンディング抑制: 開始位置をピクセルごとに [0,1)*stepLen だけずらす。
     float dither = frac(sin(dot(p.uv, float2(12.9898f, 78.233f))) * 43758.5453f);
     float t = t0 + dither * stepLen;
 
@@ -173,36 +116,52 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float3 scatter = 0.0f;
 
     // empty-space skip: 安価な Shape サンプルで空白を粗ステップ (×kEmptyStep) で飛ばし、
-    // 雲付近のみ細ステップで detail + ライトマーチを行う。maxIterations は実際の交差区間
-    // に合わせるため、浅い角度でも t1 まで必ず走査できる。
+    // 雲付近のみ細ステップで detail + ライトマーチを行う。
     [loop]
     for (int i = 0; i < maxIterations && t < t1 && transmittance > 0.01f; ++i)
     {
         float3 wp = cameraPos + rd * t;
 
-        float base = SampleShape01(wp, windWorld);
+        float weather = FBZZCloudWeather(wp, windWorld);
+        float base = FBZZCloudShape01(wp, windWorld, weather);
         if (base <= 0.001f) { t += stepLen * kEmptyStep; continue; }
 
-        float d = ErodeDetail(base, wp, windWorld) * density;
+        // WHY: カメラが雲層の高さまで上がると視線が雲の内部から始まり、1 ステップ目で
+        //      透過率が飽和して画面全体が真っ白になる。手前を抜くと内部を通り抜けられる。
+        float d = FBZZCloudErodeDetail(base, wp, windWorld) * density
+                * saturate((t - nearStart) / nearFade);
         if (d > 0.001f)
         {
-            float lightT = LightMarch(wp, sunDir, windWorld);
-            // Beer-Powder: 太陽側の縁を暗く落として立体感を強調。
-            float powder = 1.0f - exp(-d * stepLen * kExtinction * 2.0f);
-            powder = lerp(1.0f, powder, kPowder);
-
-            float3 sun = lightCol * lightT * (phase + silver) * powder;
-            float3 inScatter = (sun + ambient) * albedo * d;
-
-            // ステップ区間で消散を解析積分してエネルギー保存させる。
-            float sigmaE    = max(d * kExtinction, 1e-5f);
+            float sigmaE    = d * extinction;
             float stepTrans = exp(-sigmaE * stepLen);
-            scatter += transmittance * inScatter * (1.0f - stepTrans) / sigmaE;
+
+            float opticalToSun = FBZZCloudOpticalDepthToSun(wp, sunDir, windWorld, weather);
+            // Beer-Powder: 太陽側の縁を暗く落として立体感を強調。
+            float powder = lerp(1.0f, 1.0f - exp(-sigmaE * stepLen * 2.0f), powderStrength);
+
+            float3 sun = lightCol * (SunEnergy(opticalToSun, cosT)
+                                   + silver * exp(-opticalToSun * 0.25f)) * powder;
+            // 環境光は雲の天面から届くので、層の下ほど暗くする。
+            float hFrac = saturate((wp.y - cloudLayer.x) / max(cloudLayer.y - cloudLayer.x, 1.0f));
+            float3 ambient = ambientTop * lerp(ambientFloor, 1.0f, hFrac);
+
+            // σs = σe (散乱アルベド 1) として区間内の消散を解析積分する。
+            // 1 - stepTrans がこの区間で散乱に回るエネルギーの割合そのもの。
+            scatter += transmittance * (sun + ambient) * albedo * (1.0f - stepTrans);
             transmittance *= stepTrans;
         }
         t += stepLen;
     }
 
-    float alpha = saturate(1.0f - transmittance);
-    return float4(scatter, alpha);
+    // 水平線ぎわのフェード。
+    // WHY: 視線を水平へ倒していくと、雲層に入る距離 t0 が伸びて Max Distance を越えた瞬間に
+    //      雲が消える。その直前まで交差区間は不透明なので、地平線に沿って硬い切れ目が出る。
+    //      Max Distance の手前 horizonFade 割ぶんで薄くしていき、切れ目を溶かす。
+    float horizonFade = saturate(cloudRange.z);
+    float horizonMask = horizonFade > 1.0e-4f
+        ? 1.0f - smoothstep(cloudNoise.w * (1.0f - horizonFade), cloudNoise.w, t0)
+        : 1.0f;
+
+    float alpha = saturate(1.0f - transmittance) * horizonMask;
+    return float4(scatter * horizonMask, alpha);
 }

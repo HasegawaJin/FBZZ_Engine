@@ -246,6 +246,17 @@ struct VolumetricLightSettings {
     float scattering = 0.3f;   // Henyey-Greenstein 散乱係数 g
     float intensity  = 0.8f;
     float maxDist    = 30.0f;
+    // この距離まではレイを積分しない。カメラ直前に薄い靄が張り付くのを避ける。
+    float minDist    = 0.0f;
+    // 大気自身の消散係数。0 で減衰なし (光芒が距離に比例して増え続ける従来挙動)。
+    // 上げると遠くの光芒ほど手前の大気に吸われ、奥行きが出る。
+    float density    = 0.0f;
+    // 高度による密度減衰 [1/m]。0 で無効。地表付近ほど濃い霧になり、光芒が床から立ち上がる。
+    float heightFalloff = 0.0f;
+    float heightStart   = 0.0f; // 減衰の基準高度 [world Y]
+    // maxDist 手前でフェードする幅 (割合 [0,1])。0 だと最遠部で光芒が硬く切れる。
+    float edgeFade   = 0.2f;
+    float tint[3]    = { 1.0f, 1.0f, 1.0f }; // 光芒に掛ける色
 };
 
 // TAASettings — テンポラルアンチエイリアシング。FXAA より大幅に高品質でサブピクセルを安定させる。

@@ -11,6 +11,62 @@
 
 namespace fbzz::renderer {
 
+namespace {
+
+// 静的サンプラーはシェーダーレジスタ (s0〜) 単位で決まる。Assets/Shaders/Common/Binding.hlsli の
+// SAMPLER_* 定義と 1:1 で対応させること。
+//
+// WHY: DX11 は SetSampler(slot, mode) でパスごとに差し替えられるが、DX12 は Root Signature に
+//      焼き込む静的サンプラーなので、レジスタごとに 1 つの意味へ固定するしかない。以前は
+//      SamplerMode の列挙順をそのままレジスタ番号として並べていたため、s1 が比較サンプラーでなく
+//      通常 Linear (ComparisonFunc=NEVER) に、s4 が wrap でなく clamp になっていた。
+//      前者は SampleCmpLevelZero が常に 0 を返して全面影に、後者はタイラブルな 3D ノイズが
+//      端テクセルへ張り付いて雲が一枚の白い板になる。
+std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
+{
+    struct Preset {
+        D3D12_FILTER filter;
+        D3D12_TEXTURE_ADDRESS_MODE address;
+        UINT maxAnisotropy;
+        D3D12_COMPARISON_FUNC comparison;
+    };
+    // s6〜s8 は現状どのシェーダーも宣言していない予約枠。
+    constexpr Preset kPresets[9] = {
+        // s0 SAMPLER_DEFAULT      : メッシュテクスチャのタイリングが主用途
+        { D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,   16, D3D12_COMPARISON_FUNC_NEVER },
+        // s1 SAMPLER_SHADOW       : SamplerComparisonState (PCF)
+        { D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 1, D3D12_COMPARISON_FUNC_LESS_EQUAL },
+        // s2 SAMPLER_LINEAR_CLAMP : IBL BRDF LUT / 3D LUT / スプラットマップ
+        { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        // s3 SAMPLER_POINT_CLAMP  : TAA 再投影ルックアップ
+        { D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        // s4 SAMPLER_WRAP_LINEAR  : ボリューメトリック雲のタイラブル 3D ノイズ
+        { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_WRAP,    1, D3D12_COMPARISON_FUNC_NEVER },
+        // s5                      : UI スプライト / テキスト
+        { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        { D3D12_FILTER_MIN_MAG_MIP_POINT,                 D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        { D3D12_FILTER_MIN_MAG_MIP_LINEAR,                D3D12_TEXTURE_ADDRESS_MODE_CLAMP,   1, D3D12_COMPARISON_FUNC_NEVER },
+        { D3D12_FILTER_ANISOTROPIC,                       D3D12_TEXTURE_ADDRESS_MODE_WRAP,    4, D3D12_COMPARISON_FUNC_NEVER },
+    };
+
+    std::array<D3D12_STATIC_SAMPLER_DESC, 9> samplers{};
+    for (UINT slot = 0; slot < samplers.size(); ++slot) {
+        auto& sampler = samplers[slot];
+        sampler.Filter = kPresets[slot].filter;
+        sampler.AddressU = sampler.AddressV = sampler.AddressW = kPresets[slot].address;
+        sampler.MaxAnisotropy = kPresets[slot].maxAnisotropy;
+        sampler.ComparisonFunc = kPresets[slot].comparison;
+        // ライト錐台外のシャドウサンプルは「照らされている」に倒す。
+        sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+        sampler.MaxLOD = D3D12_FLOAT32_MAX;
+        sampler.ShaderRegister = slot;
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    }
+    return samplers;
+}
+
+} // namespace
+
 size_t DX12PsoCache::KeyHash::operator()(const Key& key) const
 {
     size_t hash = std::hash<const DX12Shader*>{}(key.shader);
@@ -62,21 +118,7 @@ bool DX12PsoCache::CreateComputeRootSignature()
     uavRange.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
     parameters[15].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     parameters[15].DescriptorTable = {1, &uavRange};
-    std::array<D3D12_STATIC_SAMPLER_DESC, 9> samplers{};
-    for (UINT slot = 0; slot < samplers.size(); ++slot) {
-        auto& sampler = samplers[slot];
-        sampler.Filter = slot == 0 || slot == 4 || slot == 8 ? D3D12_FILTER_ANISOTROPIC
-                       : slot == 3 || slot == 6 ? D3D12_FILTER_MIN_MAG_MIP_POINT
-                       : slot == 7 ? D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT
-                                   : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-        sampler.AddressU = sampler.AddressV = sampler.AddressW =
-            slot >= 4 && slot <= 7 ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-        sampler.MaxAnisotropy = slot == 0 || slot == 4 ? 16 : slot == 8 ? 4 : 1;
-        sampler.MaxLOD = D3D12_FLOAT32_MAX;
-        sampler.ShaderRegister = slot;
-        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    }
+    const auto samplers = MakeStaticSamplers();
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc{};
     desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
     desc.Desc_1_1.NumParameters = static_cast<UINT>(parameters.size());
@@ -123,27 +165,7 @@ bool DX12PsoCache::CreateRootSignature()
     parameters[15].DescriptorTable = {1, &vertexSrv};
     parameters[15].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
-    std::array<D3D12_STATIC_SAMPLER_DESC, 9> samplers{};
-    for (UINT slot = 0; slot < samplers.size(); ++slot) {
-        auto& sampler = samplers[slot];
-        sampler.Filter = slot == 0 || slot == 4 || slot == 8 ? D3D12_FILTER_ANISOTROPIC
-                       : slot == 3 || slot == 6 ? D3D12_FILTER_MIN_MAG_MIP_POINT
-                       : slot == 7 ? D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT
-                                   : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-        sampler.AddressU = sampler.AddressV = sampler.AddressW =
-            slot >= 4 && slot <= 7 ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        if (slot == 7) {
-            sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-            sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-            sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-        } else {
-            sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-        }
-        sampler.MaxAnisotropy = slot == 0 || slot == 4 ? 16 : slot == 8 ? 4 : 1;
-        sampler.MaxLOD = D3D12_FLOAT32_MAX;
-        sampler.ShaderRegister = slot;
-        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    }
+    const auto samplers = MakeStaticSamplers();
 
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc{};
     desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;

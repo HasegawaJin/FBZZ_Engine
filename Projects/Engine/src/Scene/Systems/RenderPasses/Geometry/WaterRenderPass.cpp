@@ -65,13 +65,11 @@ struct WaterMesh {
     math::Vector3 aabbMax;
 };
 
+// 水面が使うテクスチャはエンジンが生成する泡マスクだけ。
+// WHY: 法線・泡・環境反射をすべて手続き / 空連動 IBL から取るようにしたため、
+//      オーサリング済みのテクスチャ資産は水面に不要になった。
 struct WaterTextures {
-    renderer::ResourceHandle<renderer::TextureTag> normalMap1;
-    renderer::ResourceHandle<renderer::TextureTag> normalMap2;
-    renderer::ResourceHandle<renderer::TextureTag> foamTex;
     renderer::ResourceHandle<renderer::TextureTag> foamMask;
-    renderer::ResourceHandle<renderer::TextureTag> envTex;
-    renderer::ResourceHandle<renderer::TextureTag> flowMap;
 };
 
 struct WaterRipple {
@@ -99,12 +97,16 @@ struct WaterCB {
     math::Vector4 shallowColorDepth;
     math::Vector4 deepColorDepth;
     math::Vector4 surfaceParams;
-    math::Vector4 normalMap1Params;
-    math::Vector4 normalMap2Params;
+    math::Vector4 normalParams;
+    math::Vector4 timeParams;
     math::Vector4 foamParams;
     math::Vector4 refractionFlowParams;
     math::Vector4 waveDir[4];
     math::Vector4 waveParams[4];
+    math::Vector4 detailParams;
+    math::Vector4 sssParams;
+    math::Vector4 reflectParams;
+    math::Vector4 flowParams;
 };
 
 // WaterEffectParams — MaterialConstants cbuffer (b2) の C++ ミラー。
@@ -121,7 +123,8 @@ struct WaterEffectParams {
 static_assert(sizeof(WaterEffectParams) == 48, "WaterEffectParams layout mismatch with MaterialConstants");
 
 static_assert(sizeof(WaterVertex) == 20, "WaterVertex size mismatch");
-static_assert(sizeof(WaterCB) == 368, "WaterCB size mismatch");
+// Matrix4 x2 (128) + float4 x7 (112) + waveDir[4]/waveParams[4] (128) + float4 x4 (64)
+static_assert(sizeof(WaterCB) == 432, "WaterCB size mismatch");
 
 static std::unordered_map<uint32_t, WaterMesh> s_meshCache;
 static std::unordered_map<uint32_t, WaterTextures> s_texCache;
@@ -307,73 +310,17 @@ inline math::Vector3 WGetF3(const asset::MaterialAsset* m, const char* name, mat
         return { it->second[0], it->second[1], it->second[2] };
     return def;
 }
-inline std::string WGetTex(const asset::MaterialAsset* m, const char* name)
-{
-    if (!m) return {};
-    auto it = m->textures.find(name);
-    if (it != m->textures.end()) return it->second;
-    return {};
-}
-
-renderer::ResourceHandle<renderer::TextureTag> GetProceduralRiverFlowMap(renderer::ResourceManager& resources)
-{
-    // WHAT: 外部 flowMap が未設定でも River プリセットが動くよう、川方向の簡易 FlowMap を生成する。
-    // WHY: アーティスト製フローマップが揃う前の段階でも Phase D の水流シェーダー挙動を確認できる。
-    static renderer::ResourceHandle<renderer::TextureTag> s_flowMap;
-    static uint64_t s_resetVersion = 0;
-    if (s_flowMap.IsValid() && s_resetVersion == resources.GetResetVersion())
-        return s_flowMap;
-
-    constexpr uint32_t size = 128;
-    std::vector<uint8_t> pixels(static_cast<size_t>(size) * static_cast<size_t>(size) * 4u, 255u);
-    for (uint32_t y = 0; y < size; ++y) {
-        for (uint32_t x = 0; x < size; ++x) {
-            const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(size);
-            const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(size);
-            const float meander = std::sin(v * math::TWO_PI * 3.0f + std::sin(u * math::TWO_PI * 2.0f) * 0.7f);
-            const math::Vector2 flow = math::Vector2(0.92f, meander * 0.26f).Normalized();
-            const size_t p = (static_cast<size_t>(y) * size + x) * 4u;
-            pixels[p + 0] = static_cast<uint8_t>(math::Clamp01(flow.x * 0.5f + 0.5f) * 255.0f);
-            pixels[p + 1] = static_cast<uint8_t>(math::Clamp01(flow.y * 0.5f + 0.5f) * 255.0f);
-            pixels[p + 2] = 0u;
-            pixels[p + 3] = 255u;
-        }
-    }
-
-    s_flowMap = resources.CreateTexture(pixels.data(), size, size);
-    s_resetVersion = resources.GetResetVersion();
-    return s_flowMap;
-}
 
 WaterTextures BuildTextureSet(
-    const asset::MaterialAsset* mat,
     const WaterComponent& water,
     const Transform& waterTransform,
     Scene& scene,
     renderer::ResourceManager& resources,
     float foamThreshold,
-    float foamFade,
-    renderer::ResourceHandle<renderer::TextureTag> flatNormal,
-    renderer::ResourceHandle<renderer::TextureTag> white,
-    renderer::ResourceHandle<renderer::TextureTag> black,
-    renderer::ResourceHandle<renderer::TextureTag> neutralFlow)
+    float foamFade)
 {
-    const std::string normalMap1Path = WGetTex(mat, "normalMap1");
-    const std::string normalMap2Path = WGetTex(mat, "normalMap2");
-    const std::string foamTexPath    = WGetTex(mat, "foamTex");
-    const std::string envCubemapPath = WGetTex(mat, "envCubemap");
-    const std::string flowMapPath    = WGetTex(mat, "flowMap");
-    const bool enableFlow = WGetF(mat, "enableFlowMap", 0.0f) > 0.5f;
-
     WaterTextures textures;
-    textures.normalMap1 = normalMap1Path.empty() ? flatNormal : resources.LoadTexture(normalMap1Path);
-    textures.normalMap2 = normalMap2Path.empty() ? flatNormal : resources.LoadTexture(normalMap2Path);
-    textures.foamTex    = foamTexPath.empty()    ? white      : resources.LoadTexture(foamTexPath);
-    textures.foamMask   = BuildFoamMask(scene, water, waterTransform, foamThreshold, foamFade, resources);
-    textures.envTex     = envCubemapPath.empty() ? black      : resources.LoadTexture(envCubemapPath);
-    textures.flowMap    = !enableFlow
-        ? neutralFlow
-        : (flowMapPath.empty() ? GetProceduralRiverFlowMap(resources) : resources.LoadTexture(flowMapPath));
+    textures.foamMask = BuildFoamMask(scene, water, waterTransform, foamThreshold, foamFade, resources);
     return textures;
 }
 
@@ -435,7 +382,8 @@ void UpdateRippleState(WaterRippleState& state, float dt, renderer::ResourceMana
 }
 
 WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* mat,
-                     const Transform& transform, const renderer::Camera& camera, float time)
+                     const Transform& transform, const renderer::Camera& camera, float time,
+                     float skyReflection)
 {
     WaterCB cb{};
     const math::Matrix4 world = transform.GetWorldMatrix();
@@ -454,22 +402,45 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         WGetF(mat, "fresnelBias",   0.02f),
         WGetF(mat, "fresnelPower",  5.0f)
     };
-    const auto scroll1 = WGetF2(mat, "normalMap1Scroll", { 0.02f,  0.01f });
-    const auto scroll2 = WGetF2(mat, "normalMap2Scroll", { -0.01f, 0.02f });
-    cb.normalMap1Params = { scroll1.x, scroll1.y, WGetF(mat, "normalMap1Tiling", 4.0f), WGetF(mat, "normalStrength", 1.0f) };
-    cb.normalMap2Params = { scroll2.x, scroll2.y, WGetF(mat, "normalMap2Tiling", 6.0f), time };
+    cb.normalParams = { 0.0f, 0.0f, 0.0f, WGetF(mat, "normalStrength", 1.0f) };
+    cb.timeParams   = { 0.0f, 0.0f, 0.0f, time };
     cb.foamParams = {
         WGetF(mat, "foamThreshold",     0.3f),
         WGetF(mat, "foamFade",          0.5f),
         WGetF(mat, "foamStrength",      1.0f),
-        WGetF(mat, "foamTiling",        8.0f)
+        // 泡のムラはワールド座標で評価するため、旧 foamTiling(UV 倍率) とは単位が違う。
+        WGetF(mat, "foamNoiseScale",    0.5f)
     };
     cb.refractionFlowParams = {
         WGetF(mat, "refractionStrength", 0.03f),
         WGetF(mat, "flowSpeed",          0.3f),
-        WGetF(mat, "flowTiling",         1.0f),
-        WGetF(mat, "enableFlowMap",      0.0f)
+        0.0f,
+        0.0f
     };
+    cb.detailParams = {
+        WGetF(mat, "detailScale",    0.35f),
+        WGetF(mat, "detailSpeed",    0.6f),
+        WGetF(mat, "detailStrength", 1.0f),
+        math::Clamp01(WGetF(mat, "smoothness", 0.92f))
+    };
+    const auto sssColor = WGetF3(mat, "sssColor", { 0.12f, 0.50f, 0.46f });
+    cb.sssParams = { sssColor.x, sssColor.y, sssColor.z,
+                     math::Clamp01(WGetF(mat, "sssStrength", 0.6f)) };
+    // 波の山ほど透過光を強くするため、CPU 側と同じ「振幅の合計」を波高の基準として渡す。
+    float waveHeightSum = 0.0f;
+    if (water.enableGerstnerWaves)
+        for (const GerstnerWave& w : water.waves) waveHeightSum += (std::max)(w.amplitude, 0.0f);
+    cb.reflectParams = {
+        skyReflection * math::Clamp01(WGetF(mat, "skyReflection", 1.0f)),
+        0.0f, // y は未使用 (mip 数は b8 の iblMaxMipLevel を使う)
+        transform.position.y,
+        (std::max)(waveHeightSum, 0.01f)
+    };
+    const auto flowDir = WGetF2(mat, "flowDirection", { 1.0f, 0.0f });
+    const float flowLen = std::sqrt(flowDir.x * flowDir.x + flowDir.y * flowDir.y);
+    cb.flowParams = flowLen > 1.0e-4f
+        ? math::Vector4{ flowDir.x / flowLen, flowDir.y / flowLen, 0.0f, 0.0f }
+        : math::Vector4{ 1.0f, 0.0f, 0.0f, 0.0f };
 
     for (int i = 0; i < 4; ++i) {
         const GerstnerWave& wave = water.waves[static_cast<size_t>(i)];
@@ -652,21 +623,9 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         return h;
     }();
     static auto waterEffectCBH = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
-    static auto flatNormalTex = [&] {
-        const uint8_t n[4] = { 128, 128, 255, 255 };
-        return resources.CreateTexture(n, 1, 1);
-    }();
-    static auto whiteTex = [&] {
-        const uint8_t w[4] = { 255, 255, 255, 255 };
-        return resources.CreateTexture(w, 1, 1);
-    }();
     static auto blackTex = [&] {
         const uint8_t b[4] = { 0, 0, 0, 255 };
         return resources.CreateTexture(b, 1, 1);
-    }();
-    static auto neutralFlowTex = [&] {
-        const uint8_t f[4] = { 128, 128, 0, 255 };
-        return resources.CreateTexture(f, 1, 1);
     }();
     static auto neutralRippleTex = [&] {
         const uint8_t r[4] = { 128, 128, 255, 255 };
@@ -691,10 +650,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         waterCBH          = resources.CreateConstantBuffer(sizeof(WaterCB));
         defaultEffectCBH  = [&] { WaterEffectParams d{}; auto h = resources.CreateConstantBuffer(sizeof(WaterEffectParams)); resources.Update(h, &d, sizeof(WaterEffectParams)); return h; }();
         waterEffectCBH    = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
-        flatNormalTex     = [&] { const uint8_t n[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(n, 1, 1); }();
-        whiteTex          = [&] { const uint8_t w[4] = { 255, 255, 255, 255 }; return resources.CreateTexture(w, 1, 1); }();
         blackTex          = [&] { const uint8_t b[4] = {   0,   0,   0, 255 }; return resources.CreateTexture(b, 1, 1); }();
-        neutralFlowTex    = [&] { const uint8_t f[4] = { 128, 128,   0, 255 }; return resources.CreateTexture(f, 1, 1); }();
         neutralRippleTex  = [&] { const uint8_t r[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(r, 1, 1); }();
         copyColorShader   = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         depthCopyShader   = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
@@ -842,10 +798,10 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         }
     }
 
+    // スロットの意味は Binding.hlsli の SAMPLER_* に揃える (s1=比較, s2=clamp linear)。
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
+    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
     renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
-    renderer.SetSampler(3, renderer::SamplerMode::BORDER_ZERO);
 
     {
         struct CameraCB {
@@ -919,9 +875,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
 
         if (water.texDirty || water.foamDirty || !s_texCache.contains(eid.index)) {
             s_texCache[eid.index] = BuildTextureSet(
-                mat, water, transform, scene, resources,
-                foamThreshold, foamFade,
-                flatNormalTex, whiteTex, blackTex, neutralFlowTex);
+                water, transform, scene, resources, foamThreshold, foamFade);
             water.texDirty = false;
             water.foamDirty = false;
         }
@@ -934,7 +888,12 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         if (!AabbVisible(frustum, transform.position, mesh.aabbMin, mesh.aabbMax))
             continue;
 
-        const WaterCB cb = BuildWaterCB(water, mat, transform, camera, elapsedTime);
+        // 空反射は空連動 IBL のキューブが焼けているときだけ有効にする。
+        // WHY: DX12 の未バインドスロットは Texture2D の null ディスクリプタなので、
+        //      TextureCube 宣言のまま参照させない。0 を渡してシェーダー側の分岐を閉じる。
+        const bool hasSkyCube = ctx.handles.iblPrefilter.IsValid();
+        const WaterCB cb = BuildWaterCB(water, mat, transform, camera, elapsedTime,
+                                        hasSkyCube ? 1.0f : 0.0f);
         resources.Update(waterCBH, &cb, sizeof(cb));
 
         auto effectCBH = defaultEffectCBH;
@@ -982,16 +941,12 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             call.constantBuffers[4] = shadowCB;
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
             BindClusterLighting(call, ctx);
-            call.textures[0] = textures.normalMap1;
-            call.textures[1] = textures.normalMap2;
-            call.textures[2] = textures.foamTex;
-            call.textures[3] = textures.foamMask;
-            call.textures[4] = textures.envTex;
-            call.textures[5] = depthTex;
-            call.textures[6] = colorTex;
-            call.textures[7] = textures.flowMap;
-            call.textures[8] = rippleTex;
-            call.textures[9] = shadowDepthTexture;
+            call.textures[3]  = textures.foamMask;
+            call.textures[5]  = depthTex;
+            call.textures[6]  = colorTex;
+            call.textures[8]  = rippleTex;
+            call.textures[9]  = shadowDepthTexture;
+            call.textures[17] = ctx.handles.iblPrefilter; // TEX_IBL_PREFILTER: 空反射
             SubmitCounted(ctx, call);
         }
     }

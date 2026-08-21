@@ -1,10 +1,17 @@
 // FBZZ Engine
 // Water.hlsl | Water
-// Gerstner 波・深度グラデーション・泡・屈折・フローマップ・波紋を合成する水面シェーダー
+// Gerstner 波・手続きさざ波・深度吸収・屈折・空反射・接岸泡を合成する水面シェーダー
 //
 // WHY: 水面は Terrain / Mesh と異なり半透明で、シーン深度と HDR カラーを読む必要がある。
 //      専用シェーダーに閉じることで通常マテリアルのテクスチャスロットを圧迫しない。
+//
+// WHY オーサリング済みテクスチャを使わないか:
+//      法線マップに依存すると、水面 1 枚ごとにタイリングとスクロール速度を詰め直す必要があり、
+//      大きさの違う水面を並べた瞬間にさざ波の粒度が揃わなくなる。さざ波・泡のムラは
+//      ワールド座標で手続き生成し、反射は空連動 IBL キューブマップから引く。
+//      これで水面はアセット 0 個で成立し、どのスケールでも同じ細かさになる。
 #include "Common/Binding.hlsli"
+#include "Common/Random.hlsli"
 
 #define MAX_POINT_LIGHTS 8
 #define MAX_SPOT_LIGHTS 4
@@ -48,7 +55,10 @@ cbuffer CameraConstants : register(CB_CAMERA)
 // 反射元にはなれない。共通設定だけを受け取り、水面 PS 内でコピー済み深度を追跡する。
 cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
 {
-    float4 _iblParams;
+    float  iblIntensity;
+    float  iblDiffuseScale;
+    float  iblSpecularScale;
+    int    iblMaxMipLevel;
     float  ssrMaxDistance;
     float  ssrThickness;
     int    ssrSteps;
@@ -64,12 +74,16 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_shallowColorDepth;    // xyz=浅瀬色, w=浅瀬深度
     float4   g_deepColorDepth;       // xyz=深部色, w=深部深度
     float4   g_surfaceParams;        // x=opacity, y=reflectivity, z=fresnelBias, w=fresnelPower
-    float4   g_normalMap1Params;     // xy=scroll, z=tiling, w=normalStrength
-    float4   g_normalMap2Params;     // xy=scroll, z=tiling, w=time
-    float4   g_foamParams;           // x=threshold, y=fade, z=strength, w=tiling
-    float4   g_refractionFlowParams; // x=refraction, y=flowSpeed, z=flowTiling, w=enableFlowMap
+    float4   g_normalParams;         // w=normalStrength (xyz は旧 normalMap スクロール枠・未使用)
+    float4   g_timeParams;           // w=time (xyz は旧 normalMap スクロール枠・未使用)
+    float4   g_foamParams;           // x=threshold, y=fade, z=strength, w=foamNoiseScale
+    float4   g_refractionFlowParams; // x=refraction, y=flowSpeed, z=未使用, w=未使用
     float4   g_waveDir[4];           // xy=direction, z=steepness, w=enabled
     float4   g_waveParams[4];        // x=amplitude, y=wavelength, z=omega, w=k
+    float4   g_detailParams;         // x=detailScale, y=detailSpeed, z=detailStrength, w=smoothness
+    float4   g_sssParams;            // xyz=透過光の色, w=強度
+    float4   g_reflectParams;        // x=skyReflection(0で無効), y=iblMaxMip, z=水面基準Y, w=波高合計
+    float4   g_flowParams;           // xy=流れ方向(正規化), z=未使用, w=未使用
 };
 
 // ユーザー定義エフェクトパラメータ。MaterialComponent.paramData にマップされる。
@@ -108,21 +122,21 @@ cbuffer LightConstants : register(CB_LIGHT)
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/Lighting.hlsli"
 
-Texture2D g_normalMap1 : register(t0);
-Texture2D g_normalMap2 : register(t1);
-Texture2D g_foamTex    : register(t2);
-Texture2D g_foamMask   : register(t3);
-Texture2D g_envTex     : register(t4);
-Texture2D g_sceneDepth : register(t5);
-Texture2D g_sceneColor : register(t6);
-Texture2D g_flowMap    : register(t7);
-Texture2D g_rippleTex  : register(t8);
+// 水面が読むテクスチャは「エンジンが生成するもの」だけ。オーサリング資産は要らない。
+Texture2D g_foamMask   : register(t3); // 岸沿いの泡マスク (地形高さから CPU 生成)
+Texture2D g_sceneDepth : register(t5); // Water 描画直前の深度コピー
+Texture2D g_sceneColor : register(t6); // Water 描画直前の HDR コピー
+Texture2D g_rippleTex  : register(t8); // 着水波紋 (CPU 生成)
 Texture2D<float> g_shadowMap : register(t9);
+TextureCube g_skyReflection : register(TEX_IBL_PREFILTER); // 空連動 IBL の事前フィルタ済みキューブ
 
-SamplerState g_sampler      : register(s0);
-SamplerState g_samplerClamp : register(s1);
-SamplerState g_samplerEnv   : register(s2);
-SamplerComparisonState g_shadowSampler : register(s3);
+// サンプラーのレジスタ割り当ては Binding.hlsli の SAMPLER_* に従う。
+// WHY: DX12 は静的サンプラーを Root Signature へ焼き込むため、レジスタごとの意味は
+//      全シェーダーで一致していなければならない。Water だけ独自番号を使うと、
+//      DX12 では比較サンプラーの位置に通常サンプラーが来て影が壊れる。
+SamplerState g_sampler      : register(SAMPLER_DEFAULT);
+SamplerState g_samplerClamp : register(SAMPLER_LINEAR_CLAMP); // 環境反射のサンプルも兼ねる
+SamplerComparisonState g_shadowSampler : register(SAMPLER_SHADOW);
 
 struct WaterVSInput
 {
@@ -139,6 +153,7 @@ struct WaterPSInput
     float3 tangent    : TEXCOORD3;
     float3 binormal   : TEXCOORD4;
     float4 screenPos  : TEXCOORD5;
+    float  waveCrest  : TEXCOORD6; // 0=谷, 1=うねりの山。透過光の強さに使う
 };
 
 float3 GerstnerDisplace(float4 dirData, float4 params, float3 pos, float time, inout float3 tangent, inout float3 binormal)
@@ -170,7 +185,7 @@ float3 GerstnerDisplace(float4 dirData, float4 params, float3 pos, float time, i
 WaterPSInput VSMain(WaterVSInput v)
 {
     WaterPSInput o;
-    float time = g_normalMap2Params.w;
+    float time = g_timeParams.w;
     float3 worldPos = mul(float4(v.position, 1.0f), g_worldMatrix).xyz;
     float3 tangent = float3(1.0f, 0.0f, 0.0f);
     float3 binormal = float3(0.0f, 0.0f, 1.0f);
@@ -183,7 +198,10 @@ WaterPSInput VSMain(WaterVSInput v)
     worldPos += disp;
     tangent = normalize(tangent);
     binormal = normalize(binormal);
-    float3 normal = normalize(cross(tangent, binormal));
+    // tangent = ∂P/∂x, binormal = ∂P/∂z。法線は cross(binormal, tangent) で +Y を向く。
+    // WHY: 逆順 cross(tangent, binormal) は平坦な水面で (0,-1,0) を返す。以前はこれで法線が
+    //      真下を向き、NdotV が常に 0 → フレネル飽和・スペキュラ消失・影の向き反転を起こしていた。
+    float3 normal = normalize(cross(binormal, tangent));
 
     o.svPosition = mul(float4(worldPos, 1.0f), viewProjection);
     o.worldPos = worldPos;
@@ -192,40 +210,78 @@ WaterPSInput VSMain(WaterVSInput v)
     o.tangent = tangent;
     o.binormal = binormal;
     o.screenPos = o.svPosition;
+    // 変位そのものから山の高さを取る。親 Transform があっても基準面がずれない。
+    o.waveCrest = saturate(disp.y / max(g_reflectParams.w, 0.01f));
     return o;
 }
 
-float3 SampleWaterNormal(float2 uv, float time)
+// 値ノイズと解析勾配を同時に返す (xy=∂/∂p, z=値)。
+// WHY: 法線を得るのに近傍を 3 回サンプルする必要がなく、1 セルぶんの計算で勾配が出る。
+float3 WaterNoiseD(float2 p)
 {
-    float enableFlow = g_refractionFlowParams.w;
-    float3 waveNormal;
+    float2 i = floor(p);
+    float2 f = frac(p);
+    float2 u  = f * f * (3.0f - 2.0f * f);
+    float2 du = 6.0f * f * (1.0f - f);
 
-    if (enableFlow > 0.5f)
+    float a = Hash2D(i);
+    float b = Hash2D(i + float2(1.0f, 0.0f));
+    float c = Hash2D(i + float2(0.0f, 1.0f));
+    float d = Hash2D(i + float2(1.0f, 1.0f));
+
+    float k1 = b - a;
+    float k2 = c - a;
+    float k3 = a - b - c + d;
+    return float3(du * (float2(k1, k2) + k3 * u.yx),
+                  a + k1 * u.x + k2 * u.y + k3 * u.x * u.y);
+}
+
+// オクターブごとの固有ドリフト。同じ向きに揃うと縞が流れて見えるため方向をばらす。
+static const float2 kWaterDrift[4] = {
+    float2( 0.31f,  0.17f), float2(-0.23f,  0.41f),
+    float2( 0.47f, -0.29f), float2(-0.37f, -0.13f)
+};
+
+// さざ波の高さ勾配 (∂h/∂x, ∂h/∂z) をワールド XZ で積む。
+// WHY ワールド座標: UV で評価すると extent の違う水面どうしでさざ波の細かさが揃わない。
+float2 WaterDetailGradient(float2 worldXZ, float time)
+{
+    float scale = max(g_detailParams.x, 1.0e-4f);
+    float speed = g_detailParams.y;
+    float2 flow = g_flowParams.xy * (speed * time);
+
+    // オクターブごとに座標を回し、値ノイズの格子が縞として残らないようにする。
+    float2x2 rot = float2x2(1.0f, 0.0f, 0.0f, 1.0f);
+    const float2x2 step = float2x2(0.80f, -0.60f, 0.60f, 0.80f);
+
+    float2 grad = float2(0.0f, 0.0f);
+    float amp = 1.0f, freq = scale, norm = 0.0f;
+
+    [unroll]
+    for (int i = 0; i < 4; ++i)
     {
-        // WHAT: Valve 方式の 2 フェーズ flow map。UV リセットの継ぎ目を三角波ブレンドで隠す。
-        float2 flow = g_flowMap.Sample(g_samplerClamp, uv * g_refractionFlowParams.z).rg * 2.0f - 1.0f;
-        float phase0 = frac(time * g_refractionFlowParams.y);
-        float phase1 = frac(time * g_refractionFlowParams.y + 0.5f);
-        float blend = abs(2.0f * phase0 - 1.0f);
-        float2 uv0 = uv * g_normalMap1Params.z + flow * phase0;
-        float2 uv1 = uv * g_normalMap1Params.z + flow * phase1;
-        float3 n0 = g_normalMap1.Sample(g_sampler, uv0).rgb * 2.0f - 1.0f;
-        float3 n1 = g_normalMap1.Sample(g_sampler, uv1).rgb * 2.0f - 1.0f;
-        waveNormal = normalize(lerp(n0, n1, blend));
+        float2 q = mul(rot, worldXZ) * freq + (flow + kWaterDrift[i] * (time * speed)) * freq;
+        float3 n = WaterNoiseD(q);
+        // 勾配は回した座標系で出るので、rot の逆 (= 転置) を掛けて元の軸へ戻す。
+        grad += mul(n.xy, rot) * (amp * freq);
+        norm += amp;
+        rot   = mul(step, rot);
+        amp  *= 0.55f;
+        freq *= 2.07f;
     }
-    else
-    {
-        float2 uv1 = uv * g_normalMap1Params.z + g_normalMap1Params.xy * time;
-        float2 uv2 = uv * g_normalMap2Params.z + g_normalMap2Params.xy * time;
-        float3 n1 = g_normalMap1.Sample(g_sampler, uv1).rgb * 2.0f - 1.0f;
-        float3 n2 = g_normalMap2.Sample(g_sampler, uv2).rgb * 2.0f - 1.0f;
-        waveNormal = normalize(float3(n1.xy + n2.xy, n1.z * n2.z));
-    }
+    return grad / max(norm, 1.0e-4f);
+}
+
+// 接空間法線。tangent = +X(world), binormal = +Z(world) なので xy がそのまま world XZ に対応する。
+float3 SampleWaterNormal(float2 worldXZ, float2 uv, float time)
+{
+    float2 grad = WaterDetailGradient(worldXZ, time) * max(g_detailParams.z, 0.0f);
+    float3 waveNormal = normalize(float3(-grad.x, -grad.y, 1.0f));
 
     float2 ripple = g_rippleTex.Sample(g_samplerClamp, uv).rg * 2.0f - 1.0f;
     float3 rippleNormal = float3(ripple.xy, sqrt(saturate(1.0f - dot(ripple.xy, ripple.xy))));
     waveNormal = normalize(waveNormal + rippleNormal * 0.5f);
-    return normalize(lerp(float3(0.0f, 0.0f, 1.0f), waveNormal, g_normalMap1Params.w));
+    return normalize(lerp(float3(0.0f, 0.0f, 1.0f), waveNormal, g_normalParams.w));
 }
 
 float LinearizeDepth(float rawDepth)
@@ -283,18 +339,21 @@ float4 TraceWaterSSR(float3 worldPos, float3 normal)
 
 float4 PSMain(WaterPSInput p) : SV_Target0
 {
-    float time = g_normalMap2Params.w;
+    float time = g_timeParams.w;
     float2 screenUV = p.screenPos.xy / p.screenPos.w * float2(0.5f, -0.5f) + 0.5f;
 
-    float3 tangentNormal = SampleWaterNormal(p.uv, time);
+    float3 tangentNormal = SampleWaterNormal(p.worldPos.xz, p.uv, time);
     float3x3 tbn = float3x3(normalize(p.tangent), normalize(p.binormal), normalize(p.normal));
     float3 N = normalize(mul(tangentNormal, tbn));
     float3 V = normalize(cameraPos - p.worldPos);
     float NdotV = saturate(dot(N, V));
 
-    float fresnelTerm = pow(saturate(1.0f - NdotV), g_surfaceParams.w);
-    float fresnel = saturate(g_surfaceParams.z + (1.0f - g_surfaceParams.z) * fresnelTerm);
-    fresnel *= g_surfaceParams.y;
+    // Schlick フレネル。g_surfaceParams.z を水の F0 (実測 0.02 前後) として扱う。
+    // WHY: 以前の bias + (1-bias)*pow は grazing 角以外でも下駄を履かせていたため、
+    //      真上から見た水面まで一定量の反射が乗って「板に空が映っている」見え方になっていた。
+    float f0 = saturate(g_surfaceParams.z);
+    float fresnel = f0 + (1.0f - f0) * pow(saturate(1.0f - NdotV), max(g_surfaceParams.w, 1.0f));
+    fresnel = saturate(fresnel * g_surfaceParams.y * 2.0f);
 
     float rawSceneDepth = g_sceneDepth.Sample(g_samplerClamp, screenUV).r;
     // WHAT: 深度が far plane に張り付く場所は、Terrain / Mesh が存在しない背景ピクセルとして扱う。
@@ -328,16 +387,24 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     if (refrLinearDepth < linearSurfDepth)
         refrUV = screenUV;
     float3 refractColor = g_sceneColor.Sample(g_samplerClamp, refrUV).rgb;
-    // sceneColor が未コピーの場合 refractColor ≈ (0,0,0) になるため、
-    // シーンの輝度がゼロのときは waterColor を透過色として代用し、
-    // 設定した浅瀬/深部カラーが常に視覚に反映されるようにする。
-    float sceneAvail = saturate(dot(refractColor, float3(1.0f, 1.0f, 1.0f))) * (1.0f - backgroundMask);
-    float3 baseRefract = lerp(waterColor, refractColor * absorptionTint, sceneAvail);
+    // 背景 (底が見えない) ピクセルだけ水色そのものへ倒し、それ以外は素直に透過色を使う。
+    // WHY: 以前は refractColor の輝度がゼロに近いほど waterColor へ寄せていたため、
+    //      水中の暗い岩や影の部分が水色に塗り潰されて沈んだ物体が見えなくなっていた。
+    float3 baseRefract = lerp(refractColor * absorptionTint, waterColor, backgroundMask);
     waterColor = lerp(baseRefract, waterColor, saturate(depthFactor * 0.65f));
 
-    float3 envSample = g_envTex.Sample(g_samplerEnv, screenUV + tangentNormal.xy * 0.015f).rgb;
-    float envAvailable = saturate(dot(envSample, float3(1.0f, 1.0f, 1.0f)));
-    float3 reflectColor = lerp(skyReflectTint, envSample, envMapBlend * envAvailable);
+    // 空反射は空連動 IBL の事前フィルタ済みキューブから引く (専用の環境テクスチャは不要)。
+    // smoothness が低いほど粗い mip を引き、ざらついた水面では反射がぼける。
+    float3 R = reflect(-V, N);
+    float  roughness = saturate(1.0f - g_detailParams.w);
+    float3 reflectColor = skyReflectTint;
+    [branch]
+    if (g_reflectParams.x > 0.001f)
+    {
+        float3 sky = g_skyReflection.SampleLevel(g_samplerClamp, R,
+                                                 roughness * (float)max(iblMaxMipLevel, 0)).rgb;
+        reflectColor = lerp(skyReflectTint, sky, saturate(g_reflectParams.x));
+    }
 
     // 反射ウェイト(フレネル)を先に求め、SSR は寄与が実際に見えるピクセルだけトレースする。
     // WHY: TraceWaterSSR は上限付きでも複数回レイマーチする WaterForward の主コスト。水面を見下ろす
@@ -361,11 +428,21 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
     color *= lerp(0.72f, 1.0f, shadow);
 
+    // 太陽のきらめき。smoothness から指数を決め、Blinn-Phong の正規化係数を上限付きで掛ける。
+    // WHY: 正規化しないと鏡面に近い水面でもハイライトが lightIntensity 止まりで沈む。逆に
+    //      無制限に正規化すると 1 ピクセルだけ数百の輝度が出て Bloom がちらつく。上限で挟む。
     float3 H = normalize(L + V);
     float NdotH = saturate(dot(N, H));
-    float specular = pow(NdotH, max(specularExponent, 1.0f)) * lightIntensity * shadow;
-    float sparkle = pow(saturate(dot(reflect(-V, N), L)), max(specularExponent * 0.45f, 1.0f));
-    color += lightColor * (specular * specularStrength + sparkle * specularStrength * 0.18f) * lerp(0.65f, 1.0f, shadow);
+    float specPower = exp2(saturate(g_detailParams.w) * 10.0f + 2.0f); // 4 .. 4096
+    float specNorm  = min((specPower + 8.0f) * 0.125f, 24.0f);
+    float specular  = pow(NdotH, specPower) * specNorm * max(lightIntensity, 0.0f) * shadow;
+    color += lightColor * specular * specularStrength * lerp(0.65f, 1.0f, shadow);
+
+    // 波の背面から透ける光 (subsurface)。うねりの山ほど強く、太陽を背にしたとき最大になる。
+    // WHY: 海面が「光を通す液体」に見えるかはここで決まる。反射とスペキュラだけだと
+    //      金属板のような硬い水面になり、Unity の Ocean との差が最も出る部分。
+    float sss = pow(saturate(dot(V, -L)), 4.0f) * p.waveCrest * saturate(g_sssParams.w);
+    color += g_sssParams.rgb * lightColor * sss * lerp(0.4f, 1.0f, shadow);
 
     // Forward+ / Deferred+ の局所光。水面は透明材質なので、局所光の影は共通影とは分離し、
     // 水色の拡散寄与だけを加算する。Deferred 経路でも Water は HDR へ直接描くためここで評価する。
@@ -386,9 +463,11 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float shoreFoam     = (1.0f - smoothstep(foamThreshold, foamThreshold + foamFade, waterDepth)) * (1.0f - backgroundMask);
 
     float foamMaskVal = g_foamMask.Sample(g_samplerClamp, p.uv).r;
-    float foamTexVal  = g_foamTex.Sample(g_sampler, p.uv * g_foamParams.w + time * 0.03f).r;
-    // ペイント泡マスクと接岸泡を統合し、テクスチャでブレイクアップして自然なムラを与える。
-    float foamAmount  = max(foamMaskVal, shoreFoam) * foamTexVal;
+    // 泡のムラも手続きノイズで作る。ワールド座標なので水面の大きさに依らず粒が揃う。
+    float2 foamP = p.worldPos.xz * max(g_foamParams.w, 1.0e-4f)
+                 + g_flowParams.xy * (time * 0.35f);
+    float foamTexVal = saturate(WaterNoiseD(foamP).z * 1.6f);
+    float foamAmount = max(foamMaskVal, shoreFoam) * foamTexVal;
     float foam = smoothstep(0.05f, 1.0f, foamAmount) * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
     float3 foamColor = lerp(float3(0.72f, 0.88f, 0.92f), float3(1.0f, 1.0f, 1.0f), saturate(foamTexVal));
     color = lerp(color, foamColor, saturate(foam));

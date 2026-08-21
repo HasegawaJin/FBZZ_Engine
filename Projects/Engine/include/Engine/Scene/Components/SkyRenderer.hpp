@@ -58,7 +58,10 @@ struct SkyRenderer {
     //      (低コスト・パス追加不要)。視認上の空の雲とは別系統で、地表の光のゆらぎを演出する。
     float         cloudShadowStrength = 0.0f;   // 0=無効。0.5〜0.8 で自然なまだら影
     float         cloudShadowCoverage = 0.5f;   // 雲量 (大きいほど影が広い) [0,1]
-    float         cloudShadowScale    = 0.02f;  // world→ノイズ UV スケール (小さいほど大きな雲影)
+    // 影のまだら 1 周期の大きさ [m]。シェーダーへ渡すときに逆数へ変換する。
+    // WHY: 中身は world→ノイズ UV スケールだが、そのまま公開すると 0.02 のような
+    //      「何メートルなのか分からない」値を触ることになる。
+    float         cloudShadowSize     = 50.0f;
     float         cloudShadowSpeed    = 1.0f;   // 流れる速さ
 
     const char* GetTypeName() const { return "Sky Renderer"; }
@@ -81,8 +84,9 @@ struct SkyRenderer {
         r.Field("skyNightBrightness", skyNightBrightness);
         r.Field("cloudShadowStrength", cloudShadowStrength);
         r.Field("cloudShadowCoverage", cloudShadowCoverage);
-        r.Field("cloudShadowScale", cloudShadowScale);
+        r.Field("cloudShadowSize", cloudShadowSize);
         r.Field("cloudShadowSpeed", cloudShadowSpeed);
+        if (cloudShadowSize < 1.0f) cloudShadowSize = 1.0f;
     }
 };
 

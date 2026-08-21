@@ -106,6 +106,13 @@ private:
                          const std::string& projectRoot,
                          const std::function<void()>& markDirty) const;
 
+    // .mat の視覚パラメータをその場でスライダー編集する (色 / 透明度 / さざ波 / 泡)。
+    // WHY: 以前はプリセットボタンしかなく、詰めるには .mat を Inspector で開き直す必要があった。
+    //      水面は見ながら追い込むものなので、ビューポート横で直接触れるようにする。
+    void DrawSurfaceEditor(scene::WaterComponent& water,
+                           const std::string& projectRoot,
+                           const std::function<void()>& markDirty) const;
+
     // ツールウィンドウの波エディタセクション
     void DrawWaveEditor(scene::WaterComponent& water,
                         const std::function<void()>& markDirty) const;

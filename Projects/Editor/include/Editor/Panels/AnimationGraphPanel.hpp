@@ -100,6 +100,10 @@ private:
     void DrawLayerSelector(EditorContext& ctx, scene::AnimatorComponent& animator,
                            bool allowEditing);
     void DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator);
+    // Base Layer と各レイヤーのマスクを重ねた結果を、ボーンごとの持ち分として見せる。
+    // WHY パネルにするか: マスクを 1 枚ずつ開いても「Base が何 % 残るか」は出てこない。
+    //      合成後の数字は、レイヤーを並べているこの画面にしか置き場がない。
+    void DrawLayerComposition(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawZoomControls();
     // ホイールズーム (カーソル位置固定) + Shift/Alt ホイールパン。
     // メインキャンバスと Blend Tree キャンバスで同じ操作感を共有する。
@@ -189,6 +193,10 @@ private:
     // 右クリックメニューを開いた瞬間の論理グリッド座標。"New State" をカーソル位置に生成するために保持する。
     float                 m_contextSpawnX = 80.0f;
     float                 m_contextSpawnY = 80.0f;
+    // レイヤー合成ビューの表示状態と絞り込み。
+    bool                  m_showComposition = false;
+    bool                  m_compositionIssuesOnly = false;
+    char                  m_compositionFilter[64] = {};
     // RequestOpen() で積まれた「次に開くパス」。描画の先頭で 1 回だけ消費する。
     std::string           m_requestedPath;
 };

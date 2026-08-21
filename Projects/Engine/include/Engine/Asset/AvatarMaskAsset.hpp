@@ -80,6 +80,28 @@ struct AvatarMaskAsset {
 [[nodiscard]] float EvaluateAvatarMaskWeight(
     const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName);
 
+// blendDepth によるランプ。エントリのルート骨 (depth 0) は weight/(blendDepth+1) から始まり、
+// depth >= blendDepth で weight に到達する。
+// WHY 公開するか: 「指定した骨自身は weight に届かない」という規則は、Inspector の
+//     blendDepth 入力欄からも .mask のテキストからも読み取れない。Editor がその場で
+//     ランプを表示できないと、今回の「Chest が 0.33 で Base が 67% 残る」が再発する。
+[[nodiscard]] float AvatarMaskRampedWeight(const AvatarMaskEntry& entry, int depth);
+
+// EvaluateAvatarMaskWeight が内部で行う一致判定の結果。勝者だけでなく全候補を返す。
+struct AvatarMaskMatch {
+    int   entryIndex  = -1;
+    int   depth       = 0;   // エントリのルート骨からの階層差
+    float weight      = 0.0f;// このエントリ単独で採用された場合の実効ウェイト
+    int   specificity = -1;  // 大きいほど優先。同点は先に書かれた方が勝つ
+};
+
+// bonePath / boneName に一致するエントリを、勝つ順 (specificity 降順) に返す。
+// WHY: 名前指定とフルパス指定を両方書いたマスクでは、どちらが効くかが内部規則にしかない。
+//      負け続けて何もしていないエントリを Editor が見せられるようにする。
+// NOTE: 割り当てを伴うため毎フレーム経路では使わないこと (ランタイムは Evaluate 側)。
+[[nodiscard]] std::vector<AvatarMaskMatch> MatchAvatarMaskEntries(
+    const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName);
+
 // 体パーツの表示名 ("Left Arm" 等)。Editor UI とログに使う。
 [[nodiscard]] const char* HumanoidBodyPartName(HumanoidBodyPart part);
 

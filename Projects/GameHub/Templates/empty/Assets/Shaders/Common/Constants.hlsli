@@ -252,6 +252,14 @@ cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
     // Reprojection 行列 (TAA / Motion Blur 共用)
     float4x4 prevViewProjection;
     float4x4 invPrevViewProjection;
+
+    // Volumetric Lighting (拡張分)
+    float  volMinDist;          // 積分を始める距離
+    float  volDensity;          // 大気の消散係数 (0 で減衰なし)
+    float  volHeightFalloff;    // 高度による密度減衰 [1/m] (0 で無効)
+    float  volHeightStart;      // 減衰の基準高度 [world Y]
+    float3 volTint;             // 光芒に掛ける色
+    float  volEdgeFade;         // volMaxDist 手前のフェード幅 (割合)
 };
 // Shadow.hlsli が b8 宣言の有無を判定するためのガード。
 // WHY: Terrain 等 b8 を宣言しないシェーダーでは pcssEnabled/pcssLightRadius が

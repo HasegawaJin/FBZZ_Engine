@@ -13,19 +13,25 @@ type = 'TAA'
 [[overrides]]
 active = true
 intensity = 0.8999999761581421
-softKnee = 0.4000000059604645
+softKnee = 0.2867298722267151
 threshold = 0.6499999761581421
 type = 'Bloom'
 
 [[overrides]]
 active = true
-intensity = 0.04571428522467613
-maxDistance = 3.2742857933044434
-scattering = 0.1599999964237213
-steps = 64
-type = 'VolumetricLight'
+exposure = 1.0
+type = 'Exposure'
 
 [[overrides]]
 active = true
-exposure = 1.0
-type = 'Exposure'
+density = 0.0
+edgeFade = 1.0
+heightFalloff = 0.058056872338056564
+heightStart = 500.0
+intensity = 0.09478673338890076
+maxDistance = 1488.7796630859375
+minDistance = 500.0
+scattering = 0.14218010008335114
+steps = 4
+tint = [ 1.0, 1.0, 1.0 ]
+type = 'VolumetricLight'

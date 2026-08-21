@@ -1797,7 +1797,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             srTbl.insert("nightIntensity",     (double)sr->nightIntensity);
             srTbl.insert("cloudShadowStrength",(double)sr->cloudShadowStrength);
             srTbl.insert("cloudShadowCoverage",(double)sr->cloudShadowCoverage);
-            srTbl.insert("cloudShadowScale",   (double)sr->cloudShadowScale);
+            srTbl.insert("cloudShadowSize",    (double)sr->cloudShadowSize);
             srTbl.insert("cloudShadowSpeed",   (double)sr->cloudShadowSpeed);
             goTbl.insert("SkyRenderer", std::move(srTbl));
         }
@@ -1818,21 +1818,41 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // VolumetricCloudComponent
         if (auto* cloud = go.GetComponent<VolumetricCloudComponent>()) {
             toml::table cloudTbl;
-            cloudTbl.insert("enabled",          cloud->enabled);
-            cloudTbl.insert("bottomHeight",     (double)cloud->bottomHeight);
-            cloudTbl.insert("thickness",        (double)cloud->thickness);
-            cloudTbl.insert("coverage",         (double)cloud->coverage);
-            cloudTbl.insert("density",          (double)cloud->density);
-            cloudTbl.insert("noiseScale",       (double)cloud->noiseScale);
-            cloudTbl.insert("detailScale",      (double)cloud->detailScale);
-            cloudTbl.insert("windSpeed",        (double)cloud->windSpeed);
-            cloudTbl.insert("windDirection",    Vec2ToArr(cloud->windDirection));
-            cloudTbl.insert("lightAbsorption",  (double)cloud->lightAbsorption);
-            cloudTbl.insert("ambientStrength",  (double)cloud->ambientStrength);
-            cloudTbl.insert("silverLining",     (double)cloud->silverLining);
-            cloudTbl.insert("albedo",           Vec3ToArr(cloud->albedo));
-            cloudTbl.insert("stepCount",        (int64_t)cloud->stepCount);
-            cloudTbl.insert("maxDistance",      (double)cloud->maxDistance);
+            cloudTbl.insert("enabled",           cloud->enabled);
+            cloudTbl.insert("bottomHeight",      (double)cloud->bottomHeight);
+            cloudTbl.insert("thickness",         (double)cloud->thickness);
+            cloudTbl.insert("coverage",          (double)cloud->coverage);
+            cloudTbl.insert("density",           (double)cloud->density);
+            cloudTbl.insert("cloudSize",         (double)cloud->cloudSize);
+            cloudTbl.insert("detailSize",        (double)cloud->detailSize);
+            cloudTbl.insert("detailStrength",    (double)cloud->detailStrength);
+            cloudTbl.insert("weatherSize",       (double)cloud->weatherSize);
+            cloudTbl.insert("weatherAmount",     (double)cloud->weatherAmount);
+            cloudTbl.insert("bottomSoftness",    (double)cloud->bottomSoftness);
+            cloudTbl.insert("topSoftness",       (double)cloud->topSoftness);
+            cloudTbl.insert("evolutionSpeed",    (double)cloud->evolutionSpeed);
+            cloudTbl.insert("windSpeed",         (double)cloud->windSpeed);
+            cloudTbl.insert("windDirection",     Vec2ToArr(cloud->windDirection));
+            cloudTbl.insert("lightAbsorption",   (double)cloud->lightAbsorption);
+            cloudTbl.insert("extinction",        (double)cloud->extinction);
+            cloudTbl.insert("sunIntensity",      (double)cloud->sunIntensity);
+            cloudTbl.insert("ambientStrength",   (double)cloud->ambientStrength);
+            cloudTbl.insert("ambientGradient",   (double)cloud->ambientGradient);
+            cloudTbl.insert("silverLining",      (double)cloud->silverLining);
+            cloudTbl.insert("multiScatter",      (double)cloud->multiScatter);
+            cloudTbl.insert("powderStrength",    (double)cloud->powderStrength);
+            cloudTbl.insert("anisotropy",        (double)cloud->anisotropy);
+            cloudTbl.insert("albedo",            Vec3ToArr(cloud->albedo));
+            cloudTbl.insert("sunTint",           Vec3ToArr(cloud->sunTint));
+            cloudTbl.insert("ambientTint",       Vec3ToArr(cloud->ambientTint));
+            cloudTbl.insert("lightShaftStrength",(double)cloud->lightShaftStrength);
+            cloudTbl.insert("minDistance",       (double)cloud->minDistance);
+            cloudTbl.insert("fadeDistance",      (double)cloud->fadeDistance);
+            cloudTbl.insert("horizonFade",       (double)cloud->horizonFade);
+            cloudTbl.insert("maxDistance",       (double)cloud->maxDistance);
+            cloudTbl.insert("stepCount",         (int64_t)cloud->stepCount);
+            cloudTbl.insert("lightStepCount",    (int64_t)cloud->lightStepCount);
+            cloudTbl.insert("halfResolution",    cloud->halfResolution);
             goTbl.insert("VolumetricCloudComponent", std::move(cloudTbl));
         }
 
@@ -3059,7 +3079,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sr.nightIntensity = (float)(*srTbl)["nightIntensity"].value_or(0.1);
             sr.cloudShadowStrength = (float)(*srTbl)["cloudShadowStrength"].value_or(0.0);
             sr.cloudShadowCoverage = (float)(*srTbl)["cloudShadowCoverage"].value_or(0.5);
-            sr.cloudShadowScale    = (float)(*srTbl)["cloudShadowScale"].value_or(0.02);
+            // 旧シーンは world→ノイズのスケールで保存されている。大きさ [m] へ読み替える。
+            if (auto legacy = (*srTbl)["cloudShadowScale"].value<double>(); legacy && *legacy > 1.0e-6)
+                sr.cloudShadowSize = 1.0f / (float)*legacy;
+            sr.cloudShadowSize     = (float)(*srTbl)["cloudShadowSize"].value_or(sr.cloudShadowSize);
             sr.cloudShadowSpeed    = (float)(*srTbl)["cloudShadowSpeed"].value_or(1.0);
             go.AddComponent<SkyRenderer>(sr);
         }
@@ -3079,22 +3102,49 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
         // VolumetricCloudComponent
         if (auto* cloudTbl = (*goTbl)["VolumetricCloudComponent"].as_table()) {
-            VolumetricCloudComponent cloud{};
+            VolumetricCloudComponent cloud{}; // 未保存のキーは構造体の既定値のまま残す
             cloud.enabled         = (*cloudTbl)["enabled"].value_or(true);
-            cloud.bottomHeight    = (float)(*cloudTbl)["bottomHeight"].value_or(650.0);
-            cloud.thickness       = (float)(*cloudTbl)["thickness"].value_or(420.0);
-            cloud.coverage        = (float)(*cloudTbl)["coverage"].value_or(0.48);
-            cloud.density         = (float)(*cloudTbl)["density"].value_or(0.72);
-            cloud.noiseScale      = (float)(*cloudTbl)["noiseScale"].value_or(0.0018);
-            cloud.detailScale     = (float)(*cloudTbl)["detailScale"].value_or(5.0);
-            cloud.windSpeed       = (float)(*cloudTbl)["windSpeed"].value_or(18.0);
-            cloud.windDirection   = ArrToVec2((*cloudTbl)["windDirection"].as_array(), { 1.0f, 0.25f });
-            cloud.lightAbsorption = (float)(*cloudTbl)["lightAbsorption"].value_or(1.35);
-            cloud.ambientStrength = (float)(*cloudTbl)["ambientStrength"].value_or(0.28);
-            cloud.silverLining    = (float)(*cloudTbl)["silverLining"].value_or(0.42);
-            cloud.albedo          = ArrToVec3((*cloudTbl)["albedo"].as_array(), { 1.0f, 0.96f, 0.88f });
-            cloud.stepCount       = (int)(*cloudTbl)["stepCount"].value_or((int64_t)48);
-            cloud.maxDistance     = (float)(*cloudTbl)["maxDistance"].value_or(6000.0);
+            cloud.bottomHeight    = (float)(*cloudTbl)["bottomHeight"].value_or(cloud.bottomHeight);
+            cloud.thickness       = (float)(*cloudTbl)["thickness"].value_or(cloud.thickness);
+            cloud.coverage        = (float)(*cloudTbl)["coverage"].value_or(cloud.coverage);
+            cloud.density         = (float)(*cloudTbl)["density"].value_or(cloud.density);
+            // 旧シーンは world→ノイズのスケールで保存されている。大きさ [m] へ読み替える。
+            if (auto legacy = (*cloudTbl)["noiseScale"].value<double>(); legacy && *legacy > 1.0e-7)
+                cloud.cloudSize = 1.0f / (float)*legacy;
+            cloud.cloudSize       = (float)(*cloudTbl)["cloudSize"].value_or(cloud.cloudSize);
+            if (auto legacy = (*cloudTbl)["detailScale"].value<double>(); legacy && *legacy > 1.0e-4)
+                cloud.detailSize = cloud.cloudSize / (float)*legacy;
+            cloud.detailSize      = (float)(*cloudTbl)["detailSize"].value_or(cloud.detailSize);
+            cloud.detailStrength  = (float)(*cloudTbl)["detailStrength"].value_or(cloud.detailStrength);
+            if (auto legacy = (*cloudTbl)["weatherScale"].value<double>(); legacy && *legacy > 1.0e-9)
+                cloud.weatherSize = 1.0f / (float)*legacy;
+            cloud.weatherSize     = (float)(*cloudTbl)["weatherSize"].value_or(cloud.weatherSize);
+            cloud.weatherAmount   = (float)(*cloudTbl)["weatherAmount"].value_or(cloud.weatherAmount);
+            cloud.bottomSoftness  = (float)(*cloudTbl)["bottomSoftness"].value_or(cloud.bottomSoftness);
+            cloud.topSoftness     = (float)(*cloudTbl)["topSoftness"].value_or(cloud.topSoftness);
+            cloud.evolutionSpeed  = (float)(*cloudTbl)["evolutionSpeed"].value_or(cloud.evolutionSpeed);
+            cloud.windSpeed       = (float)(*cloudTbl)["windSpeed"].value_or(cloud.windSpeed);
+            cloud.windDirection   = ArrToVec2((*cloudTbl)["windDirection"].as_array(), cloud.windDirection);
+            cloud.lightAbsorption = (float)(*cloudTbl)["lightAbsorption"].value_or(cloud.lightAbsorption);
+            cloud.extinction      = (float)(*cloudTbl)["extinction"].value_or(cloud.extinction);
+            cloud.sunIntensity    = (float)(*cloudTbl)["sunIntensity"].value_or(cloud.sunIntensity);
+            cloud.ambientStrength = (float)(*cloudTbl)["ambientStrength"].value_or(cloud.ambientStrength);
+            cloud.ambientGradient = (float)(*cloudTbl)["ambientGradient"].value_or(cloud.ambientGradient);
+            cloud.silverLining    = (float)(*cloudTbl)["silverLining"].value_or(cloud.silverLining);
+            cloud.multiScatter    = (float)(*cloudTbl)["multiScatter"].value_or(cloud.multiScatter);
+            cloud.powderStrength  = (float)(*cloudTbl)["powderStrength"].value_or(cloud.powderStrength);
+            cloud.anisotropy      = (float)(*cloudTbl)["anisotropy"].value_or(cloud.anisotropy);
+            cloud.albedo          = ArrToVec3((*cloudTbl)["albedo"].as_array(), cloud.albedo);
+            cloud.sunTint         = ArrToVec3((*cloudTbl)["sunTint"].as_array(), cloud.sunTint);
+            cloud.ambientTint     = ArrToVec3((*cloudTbl)["ambientTint"].as_array(), cloud.ambientTint);
+            cloud.lightShaftStrength = (float)(*cloudTbl)["lightShaftStrength"].value_or(cloud.lightShaftStrength);
+            cloud.minDistance     = (float)(*cloudTbl)["minDistance"].value_or(cloud.minDistance);
+            cloud.fadeDistance    = (float)(*cloudTbl)["fadeDistance"].value_or(cloud.fadeDistance);
+            cloud.horizonFade     = (float)(*cloudTbl)["horizonFade"].value_or(cloud.horizonFade);
+            cloud.maxDistance     = (float)(*cloudTbl)["maxDistance"].value_or(cloud.maxDistance);
+            cloud.stepCount       = (int)(*cloudTbl)["stepCount"].value_or((int64_t)cloud.stepCount);
+            cloud.lightStepCount  = (int)(*cloudTbl)["lightStepCount"].value_or((int64_t)cloud.lightStepCount);
+            cloud.halfResolution  = (*cloudTbl)["halfResolution"].value_or(cloud.halfResolution);
             go.AddComponent<VolumetricCloudComponent>(cloud);
         }
 

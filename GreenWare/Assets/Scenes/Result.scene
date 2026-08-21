@@ -1,21 +1,24 @@
 [scene]
-format_version = 1
+format_version = 2
 
 [[gameobjects]]
 active = true
 instanceId = 'a3000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Canvas'
-parent = ''
+parent = ''
 parentInstanceId = ''
 prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.UICanvas]
     canvasHeight = 1080.0
     canvasWidth = 1920.0
     enabled = true
+    faceCamera = false
     matchWidthOrHeight = 0.0
+    planeDistance = 2.0
     referenceHeight = 1080.0
     referenceWidth = 1920.0
     renderMode = 0
@@ -33,14 +36,19 @@ active = true
 instanceId = 'a3000001-0000-0000-0000-000000000002'
 layer = 0
 name = 'Background'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.UIImage]
-    color = [ 0.1, 0.06, 0.04, 1.0 ]
+    color = [ 0.1, 1.0, 0.04, 1.0 ]
     enabled = true
+    fillAmount = 1.0
+    fillOrigin = 0
+    imageType = 0
+    sortOrder = 0
     texturePath = ''
     uvMax = [ 1.0, 1.0 ]
     uvMin = [ 0.0, 0.0 ]
@@ -52,44 +60,17 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'a3000001-0000-0000-0000-000000000003'
-layer = 0
-name = 'ResultText'
-parent = 'Canvas'
-parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.UIText]
-    color = [ 1.0, 1.0, 1.0, 1.0 ]
-    enabled = true
-    fontPath = ''
-    fontSize = 42.0
-    letterSpacing = 4.0
-    text = 'RESULT'
-
-    [gameobjects.transform]
-    position = [ 650.0, 150.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 620.0, 260.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'ResultPresenterComponent'
-
-        [gameobjects.ScriptComponents.fields]
-
-[[gameobjects]]
-active = true
 instanceId = 'a3000001-0000-0000-0000-000000000005'
 layer = 0
 name = 'RetryButton'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.UIButton]
+    disabledColor = [ 0.5, 0.5, 0.5, 0.5 ]
     enabled = true
     hoverColor = [ 0.3, 0.3, 0.4, 1.0 ]
     isInteractable = true
@@ -99,44 +80,54 @@ tag = 'Untagged'
     [gameobjects.UIImage]
     color = [ 0.18, 0.18, 0.25, 1.0 ]
     enabled = true
+    fillAmount = 1.0
+    fillOrigin = 0
+    imageType = 0
+    sortOrder = 0
     texturePath = ''
     uvMax = [ 1.0, 1.0 ]
     uvMin = [ 0.0, 0.0 ]
 
     [gameobjects.UIText]
+    align = 0
     color = [ 1.0, 1.0, 1.0, 1.0 ]
     enabled = true
     fontPath = ''
     fontSize = 36.0
     letterSpacing = 4.0
+    sortOrder = 0
     text = 'RETRY'
 
     [gameobjects.transform]
     position = [ 1108.0, 400.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 111.578941, 36.0, 1.0 ]
+    scale = [ 0.0, 0.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        'Auto Delay' = 1.5
-        'Auto Transition' = false
-        'Target Scene' = 'Main'
-        'Via Scene' = 'Load'
+        autoDelay = 1.5
+        autoTransition = false
+        fadeDuration = 0.5
+        fadeEnabled = true
+        targetScene = ''
+        viaScene = ''
 
 [[gameobjects]]
 active = true
 instanceId = 'a3000001-0000-0000-0000-000000000006'
 layer = 0
 name = 'TitleButton'
-parent = 'Canvas'
+parent = 'Canvas'
 parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
+prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.UIButton]
+    disabledColor = [ 0.5, 0.5, 0.5, 0.5 ]
     enabled = true
     hoverColor = [ 0.28, 0.18, 0.18, 1.0 ]
     isInteractable = true
@@ -146,29 +137,69 @@ tag = 'Untagged'
     [gameobjects.UIImage]
     color = [ 0.15, 0.1, 0.1, 1.0 ]
     enabled = true
+    fillAmount = 1.0
+    fillOrigin = 0
+    imageType = 0
+    sortOrder = 0
     texturePath = ''
     uvMax = [ 1.0, 1.0 ]
     uvMin = [ 0.0, 0.0 ]
 
     [gameobjects.UIText]
+    align = 0
     color = [ 1.0, 1.0, 1.0, 1.0 ]
     enabled = true
     fontPath = ''
     fontSize = 36.0
     letterSpacing = 4.0
+    sortOrder = 0
     text = 'TITLE'
 
     [gameobjects.transform]
     position = [ 700.0, 400.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 98.315781, 36.0, 1.0 ]
+    scale = [ 0.0, 0.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        'Auto Delay' = 1.5
-        'Auto Transition' = false
-        'Target Scene' = 'Title'
-        'Via Scene' = 'Load'
+        autoDelay = 1.5
+        autoTransition = false
+        fadeDuration = 0.5
+        fadeEnabled = true
+        targetScene = ''
+        viaScene = ''
+
+[[gameobjects]]
+active = true
+instanceId = 'a3000001-0000-0000-0000-000000000003'
+layer = 0
+name = 'ResultText'
+parent = 'Canvas'
+parentInstanceId = 'a3000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 42.0
+    letterSpacing = 4.0
+    sortOrder = 0
+    text = 'RESULT'
+
+    [gameobjects.transform]
+    position = [ 650.0, 150.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.0, 0.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ResultPresenterComponent'
+
+        [gameobjects.ScriptComponents.fields]

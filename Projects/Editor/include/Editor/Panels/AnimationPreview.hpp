@@ -34,6 +34,13 @@ void SetAnimationMaskPreviewSelection(std::string_view nodePath);
 bool ConsumeAnimationMaskPreviewSelection(std::string& nodePath);
 void ClearAnimationMaskPreviewSelection();
 
+// Animation Mask Preview Panel の対象を外部から差し替える。
+// WHY: Animation Graph のレイヤー一覧から「このレイヤーのマスクを 3D で見る」へ
+//      直行させるため。Asset Browser で .mask を選び直す遠回りを挟むと、
+//      どのレイヤーの話をしていたのかが途中で分からなくなる。
+// modelPath が空なら .mask の Skeleton Source をそのまま使う。
+void RequestAnimationMaskPreview(std::string_view maskPath, std::string_view modelPath = {});
+
 // Animation Mask Preview Panel の本文を描画する。
 void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx);
 

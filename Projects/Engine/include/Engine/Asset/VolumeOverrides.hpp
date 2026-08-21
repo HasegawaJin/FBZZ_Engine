@@ -180,7 +180,13 @@ class VolumetricLightOverride final : public VolumeOverride {
                               "Volumetric Light", Atmosphere)
     float scattering  = 0.3f;
     float intensity   = 0.8f;
+    float minDistance = 0.0f;
     float maxDistance = 30.0f;
+    float edgeFade    = 0.2f;
+    float density     = 0.0f;
+    float heightFalloff = 0.0f;
+    float heightStart   = 0.0f;
+    float tint[3]     = { 1.0f, 1.0f, 1.0f };
     int   steps       = 32;
 };
 

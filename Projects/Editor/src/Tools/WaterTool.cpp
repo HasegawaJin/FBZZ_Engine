@@ -103,65 +103,112 @@ void MarkWaterVisualDirty(scene::WaterComponent& water)
     water.foamDirty = true;
 }
 
+float GetParam1(const asset::MaterialAsset* mat, const char* key, float def)
+{
+    if (!mat) return def;
+    auto it = mat->params.find(key);
+    if (it != mat->params.end() && !it->second.empty()) return it->second[0];
+    return def;
+}
+
+math::Vector3 GetParam3(const asset::MaterialAsset* mat, const char* key, math::Vector3 def)
+{
+    if (!mat) return def;
+    auto it = mat->params.find(key);
+    if (it != mat->params.end() && it->second.size() >= 3)
+        return { it->second[0], it->second[1], it->second[2] };
+    return def;
+}
+
+math::Vector2 GetParam2(const asset::MaterialAsset* mat, const char* key, math::Vector2 def)
+{
+    if (!mat) return def;
+    auto it = mat->params.find(key);
+    if (it != mat->params.end() && it->second.size() >= 2)
+        return { it->second[0], it->second[1] };
+    return def;
+}
+
 void ApplyWaterLookPreset(scene::WaterComponent& water, const std::string& projectRoot, int preset)
 {
     asset::MaterialAsset* mat = LoadWaterMaterial(water);
     if (!mat)
         return;
 
-    if (preset == 0) {
+    if (preset == 0) { // Clear Coastal
         SetParam3(*mat, "shallowColor", 0.09f, 0.56f, 0.63f);
         SetParam3(*mat, "deepColor",    0.00f, 0.14f, 0.32f);
         SetParam1(*mat, "shallowDepth", 1.20f);
         SetParam1(*mat, "deepDepth",    8.00f);
-        SetParam1(*mat, "opacity",      0.55f);
-        SetParam1(*mat, "reflectivity", 0.42f);
-        SetParam1(*mat, "fresnelPower", 4.20f);
+        SetParam1(*mat, "opacity",      0.90f);
+        SetParam1(*mat, "reflectivity", 0.50f);
+        SetParam1(*mat, "fresnelBias",  0.02f);
+        SetParam1(*mat, "fresnelPower", 5.00f);
         SetParam1(*mat, "refractionStrength", 0.020f);
-        SetParam1(*mat, "normalStrength", 0.75f);
-        SetParam1(*mat, "foamStrength", 0.55f);
+        SetParam1(*mat, "normalStrength", 0.85f);
+        SetParam1(*mat, "detailScale",    0.35f);
+        SetParam1(*mat, "detailSpeed",    0.60f);
+        SetParam1(*mat, "detailStrength", 1.00f);
+        SetParam1(*mat, "smoothness",     0.94f);
+        SetParam1(*mat, "skyReflection",  1.00f);
+        SetParam3(*mat, "sssColor",       0.10f, 0.52f, 0.50f);
+        SetParam1(*mat, "sssStrength",    0.70f);
+        SetParam1(*mat, "foamStrength",   0.55f);
+        SetParam1(*mat, "foamNoiseScale", 0.55f);
         SetParam1(*mat, "rimGlowStrength", 0.32f);
         SetParam1(*mat, "minShallowAlpha", 0.48f);
-        SetParam1(*mat, "specularStrength", 0.65f);
-        SetParam1(*mat, "specularExponent", 96.0f);
+        SetParam1(*mat, "specularStrength", 0.9f);
         SetParam3(*mat, "skyReflectTint", 0.48f, 0.78f, 0.92f);
-        SetParam1(*mat, "envMapBlend", 0.28f);
-    } else if (preset == 1) {
+    } else if (preset == 1) { // Calm Lake
         SetParam3(*mat, "shallowColor", 0.16f, 0.48f, 0.58f);
         SetParam3(*mat, "deepColor",    0.02f, 0.08f, 0.18f);
         SetParam1(*mat, "shallowDepth", 0.65f);
         SetParam1(*mat, "deepDepth",    4.50f);
-        SetParam1(*mat, "opacity",      0.68f);
-        SetParam1(*mat, "reflectivity", 0.28f);
-        SetParam1(*mat, "fresnelPower", 5.50f);
-        SetParam1(*mat, "refractionStrength", 0.012f);
-        SetParam1(*mat, "normalStrength", 0.35f);
-        SetParam1(*mat, "foamStrength", 0.18f);
+        SetParam1(*mat, "opacity",      0.92f);
+        SetParam1(*mat, "reflectivity", 0.55f);
+        SetParam1(*mat, "fresnelBias",  0.02f);
+        SetParam1(*mat, "fresnelPower", 5.00f);
+        SetParam1(*mat, "refractionStrength", 0.010f);
+        SetParam1(*mat, "normalStrength", 0.45f);
+        SetParam1(*mat, "detailScale",    0.22f);
+        SetParam1(*mat, "detailSpeed",    0.25f);
+        SetParam1(*mat, "detailStrength", 0.55f);
+        SetParam1(*mat, "smoothness",     0.97f);
+        SetParam1(*mat, "skyReflection",  1.00f);
+        SetParam3(*mat, "sssColor",       0.10f, 0.34f, 0.36f);
+        SetParam1(*mat, "sssStrength",    0.35f);
+        SetParam1(*mat, "foamStrength",   0.18f);
+        SetParam1(*mat, "foamNoiseScale", 0.40f);
         SetParam1(*mat, "rimGlowStrength", 0.22f);
         SetParam1(*mat, "minShallowAlpha", 0.56f);
-        SetParam1(*mat, "specularStrength", 0.38f);
-        SetParam1(*mat, "specularExponent", 128.0f);
+        SetParam1(*mat, "specularStrength", 1.0f);
         SetParam3(*mat, "skyReflectTint", 0.42f, 0.70f, 0.82f);
-        SetParam1(*mat, "envMapBlend", 0.20f);
-    } else {
+    } else { // River Green
         SetParam3(*mat, "shallowColor", 0.06f, 0.38f, 0.34f);
         SetParam3(*mat, "deepColor",    0.01f, 0.10f, 0.09f);
         SetParam1(*mat, "shallowDepth", 0.40f);
         SetParam1(*mat, "deepDepth",    2.25f);
-        SetParam1(*mat, "opacity",      0.62f);
-        SetParam1(*mat, "reflectivity", 0.18f);
-        SetParam1(*mat, "fresnelPower", 6.50f);
+        SetParam1(*mat, "opacity",      0.88f);
+        SetParam1(*mat, "reflectivity", 0.40f);
+        SetParam1(*mat, "fresnelBias",  0.02f);
+        SetParam1(*mat, "fresnelPower", 5.00f);
         SetParam1(*mat, "refractionStrength", 0.018f);
-        SetParam1(*mat, "normalStrength", 0.50f);
-        SetParam1(*mat, "foamStrength", 0.28f);
-        SetParam2(*mat, "normalMap1Scroll", 0.00f, 0.035f);
-        SetParam2(*mat, "normalMap2Scroll", 0.015f, 0.045f);
+        SetParam1(*mat, "normalStrength", 0.70f);
+        SetParam1(*mat, "detailScale",    0.55f);
+        SetParam1(*mat, "detailSpeed",    1.40f);
+        SetParam1(*mat, "detailStrength", 1.20f);
+        SetParam1(*mat, "smoothness",     0.88f);
+        SetParam1(*mat, "skyReflection",  0.85f);
+        SetParam2(*mat, "flowDirection",  0.0f, 1.0f);
+        SetParam1(*mat, "flowSpeed",      1.20f);
+        SetParam3(*mat, "sssColor",       0.10f, 0.40f, 0.26f);
+        SetParam1(*mat, "sssStrength",    0.50f);
+        SetParam1(*mat, "foamStrength",   0.35f);
+        SetParam1(*mat, "foamNoiseScale", 0.85f);
         SetParam1(*mat, "rimGlowStrength", 0.18f);
         SetParam1(*mat, "minShallowAlpha", 0.52f);
-        SetParam1(*mat, "specularStrength", 0.30f);
-        SetParam1(*mat, "specularExponent", 80.0f);
+        SetParam1(*mat, "specularStrength", 0.7f);
         SetParam3(*mat, "skyReflectTint", 0.38f, 0.62f, 0.58f);
-        SetParam1(*mat, "envMapBlend", 0.16f);
     }
 
     MarkWaterVisualDirty(water);
@@ -396,6 +443,8 @@ void WaterTool::DrawContentBody(
         DrawLookPresets(*water, projectRoot, trackDirty);
         ImGui::Spacing();
         DrawWaveEditor(*water, trackDirty);
+        ImGui::Spacing();
+        DrawSurfaceEditor(*water, projectRoot, trackDirty);
 
         const ImGuiID activeAfter = ImGui::GetActiveID();
         auto pushCommand = [&](const std::string& iid,
@@ -568,24 +617,115 @@ void WaterTool::DrawLookPresets(
 {
     ImGui::SeparatorText("Look Presets");
     if (water.materialPath.empty()) {
-        ImGui::TextDisabled("Assign a water .mat to edit visual presets.");
+        ImGui::TextDisabled("No material assigned.");
+        if (ImGui::Button("Use Default Water Material", { -1.0f, 0.0f })) {
+            water.materialPath = DefaultWaterMaterialPath();
+            MarkWaterVisualDirty(water);
+            markDirty();
+        }
         return;
     }
 
-    if (ImGui::Button("Clear Coastal", { -1.0f, 0.0f })) {
-        ApplyWaterLookPreset(water, projectRoot, 0);
-        markDirty();
-    }
-    if (ImGui::Button("Calm Lake", { -1.0f, 0.0f })) {
-        ApplyWaterLookPreset(water, projectRoot, 1);
-        markDirty();
-    }
-    if (ImGui::Button("River Green", { -1.0f, 0.0f })) {
-        ApplyWaterLookPreset(water, projectRoot, 2);
-        markDirty();
+    const float third = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
+    if (ImGui::Button("Coastal", { third, 0.0f })) { ApplyWaterLookPreset(water, projectRoot, 0); markDirty(); }
+    ImGui::SameLine();
+    if (ImGui::Button("Lake", { third, 0.0f }))    { ApplyWaterLookPreset(water, projectRoot, 1); markDirty(); }
+    ImGui::SameLine();
+    if (ImGui::Button("River", { third, 0.0f }))   { ApplyWaterLookPreset(water, projectRoot, 2); markDirty(); }
+}
+
+// =============================================================================
+// サーフェスエディタ — .mat の視覚パラメータをその場で編集する
+// =============================================================================
+
+void WaterTool::DrawSurfaceEditor(
+    scene::WaterComponent&       water,
+    const std::string&           projectRoot,
+    const std::function<void()>& markDirty) const
+{
+    ImGui::SeparatorText("Surface");
+    asset::MaterialAsset* mat = LoadWaterMaterial(water);
+    if (!mat) {
+        ImGui::TextDisabled("Assign a water .mat to edit the surface.");
+        return;
     }
 
-    ImGui::TextDisabled("Updates the referenced .mat and refreshes water textures.");
+    bool changed = false;
+    // 保存は編集が終わった瞬間 (アイテム非アクティブ化) にだけ行う。
+    // WHY: ドラッグ中に毎フレーム .mat を書き出すと、スライダー 1 本動かすだけで
+    //      数百回のディスク書き込みが走り、アセットウォッチャーが再インポートを撃ち続ける。
+    bool deactivated = false;
+    const auto slider = [&](const char* label, const char* key, float def,
+                            float min, float max, const char* fmt = "%.3f") {
+        float v = GetParam1(mat, key, def);
+        if (ImGui::SliderFloat(label, &v, min, max, fmt)) { SetParam1(*mat, key, v); changed = true; }
+        deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+    };
+    const auto color3 = [&](const char* label, const char* key, math::Vector3 def) {
+        math::Vector3 c = GetParam3(mat, key, def);
+        float rgb[3] = { c.x, c.y, c.z };
+        if (ImGui::ColorEdit3(label, rgb)) { SetParam3(*mat, key, rgb[0], rgb[1], rgb[2]); changed = true; }
+        deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+    };
+
+    color3("Shallow Color", "shallowColor", { 0.09f, 0.56f, 0.63f });
+    color3("Deep Color",    "deepColor",    { 0.00f, 0.14f, 0.32f });
+    slider("Shallow Depth", "shallowDepth", 1.2f, 0.05f, 20.0f, "%.2f m");
+    slider("Deep Depth",    "deepDepth",    8.0f, 0.10f, 80.0f, "%.2f m");
+    slider("Opacity",       "opacity",      0.9f, 0.0f, 1.0f, "%.2f");
+    slider("Refraction",    "refractionStrength", 0.02f, 0.0f, 0.15f, "%.3f");
+
+    ImGui::SeparatorText("Reflection");
+    slider("Reflectivity",  "reflectivity", 0.5f, 0.0f, 1.0f, "%.2f");
+    slider("Smoothness",    "smoothness",   0.92f, 0.0f, 1.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("反射のシャープさと太陽のきらめきの鋭さ。\n下げるとざらついた水面になります。");
+    slider("Sky Reflection", "skyReflection", 1.0f, 0.0f, 1.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("空連動 IBL のキューブマップをどれだけ映すか。\n"
+                          "0 で下の Sky Tint の単色になります。\n"
+                          "IBL がベイクされていない場合も単色にフォールバックします。");
+    color3("Sky Tint", "skyReflectTint", { 0.48f, 0.78f, 0.92f });
+
+    ImGui::SeparatorText("Ripples (procedural)");
+    ImGui::TextDisabled("法線マップ不要。ワールド座標で評価します。");
+    slider("Detail Scale",    "detailScale",    0.35f, 0.02f, 2.0f, "%.3f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("さざ波の細かさ (1 ワールド単位あたりのノイズセル数)。");
+    slider("Detail Strength", "detailStrength", 1.0f, 0.0f, 3.0f, "%.2f");
+    slider("Detail Speed",    "detailSpeed",    0.6f, 0.0f, 4.0f, "%.2f");
+    slider("Normal Strength", "normalStrength", 1.0f, 0.0f, 2.0f, "%.2f");
+    {
+        math::Vector2 flow = GetParam2(mat, "flowDirection", { 1.0f, 0.0f });
+        float dir[2] = { flow.x, flow.y };
+        if (ImGui::DragFloat2("Flow Direction", dir, 0.01f, -1.0f, 1.0f)) {
+            SetParam2(*mat, "flowDirection", dir[0], dir[1]);
+            changed = true;
+        }
+        deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+    }
+    slider("Flow Speed", "flowSpeed", 0.3f, 0.0f, 5.0f, "%.2f");
+
+    ImGui::SeparatorText("Light Response");
+    color3("Subsurface Color", "sssColor", { 0.12f, 0.50f, 0.46f });
+    slider("Subsurface", "sssStrength", 0.6f, 0.0f, 1.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("波の山を透けてくる光。太陽を背にしたときに最も効きます。");
+    slider("Specular", "specularStrength", 0.9f, 0.0f, 3.0f, "%.2f");
+    slider("Rim Glow", "rimGlowStrength", 0.32f, 0.0f, 2.0f, "%.2f");
+
+    ImGui::SeparatorText("Foam");
+    slider("Shore Threshold", "foamThreshold", 0.3f, 0.0f, 3.0f, "%.2f m");
+    slider("Shore Fade",      "foamFade",      0.5f, 0.01f, 3.0f, "%.2f m");
+    slider("Foam Strength",   "foamStrength",  0.55f, 0.0f, 2.0f, "%.2f");
+    slider("Foam Noise Scale", "foamNoiseScale", 0.5f, 0.02f, 3.0f, "%.3f");
+
+    if (changed) {
+        MarkWaterVisualDirty(water);
+        markDirty();
+    }
+    if (deactivated)
+        (void)SaveWaterMaterial(water, projectRoot);
 }
 
 void WaterTool::DrawWaveEditor(

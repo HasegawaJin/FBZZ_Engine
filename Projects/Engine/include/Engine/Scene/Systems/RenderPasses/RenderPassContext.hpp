@@ -306,9 +306,12 @@ struct AdvancedGraphicsCB {
     // Reprojection 行列 (TAA / Motion Blur 共用)
     math::Matrix4 prevViewProjection;
     math::Matrix4 invPrevViewProjection;
+    // Volumetric Lighting (拡張分)
+    float volMinDist;         float volDensity;          float volHeightFalloff;   float volHeightStart;
+    float volTintR;           float volTintG;            float volTintB;           float volEdgeFade;
 };
-static_assert(sizeof(AdvancedGraphicsCB) == 288,
-    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in Constants.hlsli (288 bytes)");
+static_assert(sizeof(AdvancedGraphicsCB) == 320,
+    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in Constants.hlsli (320 bytes)");
 
 struct PostProcCB {
     float texelSize[2];
