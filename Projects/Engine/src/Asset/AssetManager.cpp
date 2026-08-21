@@ -38,6 +38,7 @@
 #include <filesystem>
 #include <limits>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 
 namespace fbzz::asset {
@@ -83,6 +84,20 @@ std::string DiscoverEngineAssetRoot()
     return util::FileSystem::Exists(util::FileSystem::PathToUtf8(sdkCandidate))
         ? util::FileSystem::PathToUtf8(sdkCandidate)
         : std::string{};
+}
+
+// 壊れた guid 参照は解決のたびに (= 毎フレーム) 通るため、同じ参照は 1 度だけ報告する。
+// WHY: Console のリングバッファは 512 件しかなく、1 件が毎フレーム流れると
+//      他のログを押し出して「エラーが出ている」こと自体が見えなくなる。
+std::unordered_set<std::string>& BrokenRefReports()
+{
+    static std::unordered_set<std::string> reported;
+    return reported;
+}
+
+bool ShouldReportBrokenRef(const std::string& ref)
+{
+    return BrokenRefReports().insert(ref).second;
 }
 
 std::unique_ptr<Model> ConvertModelAssetToLegacyModel(std::unique_ptr<ModelAsset> asset)
@@ -406,8 +421,14 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
     if (AssetDatabase::IsGuidRef(key)) {
         // GuidFromRef が併記されたパスヒントとサブアセット接尾辞を落とす。
         std::string p = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(key));
-        if (p.empty())
-            FBZZ_LOG_ERROR("AssetManager: unresolved guid reference [%s]", key.c_str());
+        // 索引を引けても実体が消えていれば参照は切れている。どちらも同じ「パス切れ」として報告する。
+        if ((p.empty() || !util::FileSystem::Exists(p)) && ShouldReportBrokenRef(key)) {
+            const std::string hint = AssetDatabase::HintFromRef(key);
+            FBZZ_LOG_ERROR("AssetManager: broken guid reference [%s]%s%s",
+                           key.c_str(),
+                           hint.empty() ? "" : "\n  last known path: ",
+                           hint.c_str());
+        }
         return p;
     }
 
@@ -489,6 +510,8 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     s_basePath    = Normalize(basePath);
     s_engineBasePath = Normalize(DiscoverEngineAssetRoot());
     s_initialized = true;
+    // プロジェクトを切り替えたら、前プロジェクトで報告済みの参照は関係なくなる。
+    BrokenRefReports().clear();
 
     // GUID ⇄ パス索引を構築する (.meta の自己修復もここで走る)。
     // ResolvePath の "guid:" 分岐が使う前提なので、importer 登録より先に済ませる。
@@ -534,6 +557,7 @@ void AssetManager::UnloadAll()
     s_resources   = nullptr;
     s_engineBasePath.clear();
     s_initialized = false;
+    BrokenRefReports().clear();
 
     // GUID 索引もアセットと同じライフサイクルで破棄する (再 Init で再構築)。
     AssetDatabase::Shutdown();

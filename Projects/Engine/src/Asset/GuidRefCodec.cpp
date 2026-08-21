@@ -162,9 +162,13 @@ std::string DecodeGuidRef(const std::string& ref)
 
     const AssetReferenceParts parts = SplitAssetReference(guidRef);
     const std::string abs = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(parts.base));
-    if (!abs.empty()) return ToRuntimeRef(abs, parts.suffix);
+    // WHY 実体の有無まで見るか: 索引に載っていてもファイルを消していれば参照は切れている。
+    //     索引だけで成功扱いにすると、その先の読み込み失敗が「空のアセット」として
+    //     静かに流れ、Console にも何も出ないまま見た目だけが壊れる。
+    if (!abs.empty() && util::FileSystem::Exists(abs))
+        return ToRuntimeRef(abs, parts.suffix);
 
-    // guid が引けない。.meta を作り直した後などに起きる。
+    // guid が引けない / 実体が消えている。.meta を作り直した後などに起きる。
     // ヒントの実体が残っているなら、そちらで拾い直して参照を生かす。
     if (!hint.empty()) {
         const std::string recovered = AssetDatabase::ProjectRoot() + hint;
@@ -175,8 +179,18 @@ std::string DecodeGuidRef(const std::string& ref)
         }
     }
 
-    // 復旧もできない。元の文字列を残せば ResolvePath が改めてエラーを報告する。
-    FBZZ_LOG_WARN("GuidRefCodec: unresolved guid reference [%s]", ref.c_str());
+    // 復旧もできない。索引の実パスが分かっているならそちらを返し、
+    // 後段のロードエラーが guid ではなくファイル名で読めるようにする。
+    if (!abs.empty()) {
+        FBZZ_LOG_ERROR("GuidRefCodec: asset file is missing [%s]\n  guid ref: %s",
+                       abs.c_str(), ref.c_str());
+        return ToRuntimeRef(abs, parts.suffix);
+    }
+
+    FBZZ_LOG_ERROR("GuidRefCodec: unresolved guid reference [%s]%s%s",
+                   ref.c_str(),
+                   hint.empty() ? "" : "\n  last known path: ",
+                   hint.c_str());
     return ref;
 }
 
