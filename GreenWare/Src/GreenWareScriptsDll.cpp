@@ -27,6 +27,7 @@
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 #include "Scripts/Camera/TpsCameraComponent.hpp"
 #include "Scripts/Combat/EnemyChaserComponent.hpp"
+#include "Scripts/Combat/EnemyHealthBarComponent.hpp"
 #include "Scripts/Combat/EnemyHealthComponent.hpp"
 #include "Scripts/Data/PlayerTuning.hpp"
 #include "Scripts/Data/PolarityTuning.hpp"
@@ -36,6 +37,7 @@
 #include "Scripts/Player/PlayerAimComponent.hpp"
 #include "Scripts/Player/PlayerComponent.hpp"
 #include "Scripts/Player/PlayerControllerComponent.hpp"
+#include "Scripts/Player/PlayerHealthBarComponent.hpp"
 #include "Scripts/Player/PlayerHealthComponent.hpp"
 #include "Scripts/Player/PolarityGunComponent.hpp"
 #include "Scripts/Player/WeaponAnimatorComponent.hpp"
