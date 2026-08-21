@@ -37,6 +37,30 @@ test('空の transform.set は拒否し、有効な transaction は受理する'
     }).success, true);
 });
 
+test('Operator ゲートウェイの契約を検証する', () => {
+    // 目録は絞り込み条件なしでも引ける (全操作の一覧が出発点になる)。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.op.list' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({
+        t: 'editor.op.list',
+        search: 'gizmo',
+        category: 'Gizmo',
+        includeUnavailable: false,
+    }).success, true);
+    // strict なので綴り違いは受理しない。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.op.list', query: 'gizmo' }).success, false);
+
+    // 引数なしの操作は id だけで呼べる。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: 'scene.save' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'editor.op.invoke',
+        id: 'node.set_tag',
+        args: { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' },
+    }).success, true);
+    // id は必須。args の中身は Editor 側の params 宣言で検証されるため、ここでは形だけを見る。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: '' }).success, false);
+});
+
 test('viewport.capture は既定上限を超える要求を拒否する', () => {
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540 }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'vfx' }).success, true);

@@ -149,6 +149,15 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('audio_inspect'), true);
         assert.equal(names.includes('ui_inspect'), true);
         assert.equal(names.includes('build_get_status'), true);
+        // Operator の目録は読み取りのみ。「何ができるか」を知る手段が write 権限に
+        // 縛られていると、read で疎通確認している段階では操作面が一切見えない。
+        assert.equal(names.includes('editor_op_list'), true);
+        // kind=query の Operator を読むゲートウェイも read で見える。
+        // WHY: これが write 側にあると、read 権限では「目録には出るのに
+        //      1 つも呼べない Query」を見ることになる。
+        assert.equal(names.includes('editor_op_query'), true);
+        // 実行はシーンを変えうるので read では発見不能。
+        assert.equal(names.includes('editor_op_invoke'), false);
         assert.equal(names.includes('node_create'), false);
         // ワールドを書き換える側は read では発見不能。
         assert.equal(names.includes('preset_create'), false);
@@ -319,6 +328,47 @@ test('dry-run mode は Command を公開し dryRun=true を強制する', async 
             command: { t: 'node.create', name: 'AI Cube' },
             dryRun: true,
         });
+    }
+    finally {
+        await harness.close();
+    }
+});
+test('Operator ゲートウェイは目録 Query と実行 Command へ写像する', async () => {
+    const harness = await CreateHarness('write');
+    try {
+        await harness.client.callTool({
+            name: 'editor_op_list',
+            arguments: { category: 'Gizmo', includeUnavailable: false },
+        });
+        assert.deepEqual(harness.bus.queries.at(-1), {
+            t: 'editor.op.list', category: 'Gizmo', includeUnavailable: false,
+        });
+        // 引数なしの操作は id だけで実行できる。
+        await harness.client.callTool({ name: 'editor_op_invoke', arguments: { id: 'scene.save' } });
+        assert.deepEqual(harness.bus.commands.at(-1), {
+            command: { t: 'editor.op.invoke', id: 'scene.save' },
+            dryRun: false,
+        });
+        // args は素通しする。中身の検証は Editor 側の params 宣言が持つので、
+        // 操作が増えても MCP 側のスキーマを直す必要がない。
+        await harness.client.callTool({
+            name: 'editor_op_invoke',
+            arguments: { id: 'node.set_tag', args: { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' } },
+        });
+        assert.deepEqual(harness.bus.commands.at(-1), {
+            command: {
+                t: 'editor.op.invoke',
+                id: 'node.set_tag',
+                args: { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' },
+            },
+            dryRun: false,
+        });
+        // Query 側は Command ではなく Query として流れる (read 権限でも通る経路)。
+        await harness.client.callTool({
+            name: 'editor_op_query',
+            arguments: { id: 'panel.list' },
+        });
+        assert.deepEqual(harness.bus.queries.at(-1), { t: 'editor.op.query', id: 'panel.list' });
     }
     finally {
         await harness.close();

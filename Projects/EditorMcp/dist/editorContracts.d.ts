@@ -41,6 +41,15 @@ export type EditorQuery = {
     category?: string | undefined;
     limit?: number | undefined;
 } | {
+    t: 'editor.op.list';
+    search?: string | undefined;
+    category?: string | undefined;
+    includeUnavailable?: boolean | undefined;
+} | {
+    t: 'editor.op.query';
+    id: string;
+    args?: Record<string, unknown> | undefined;
+} | {
     t: 'editor.state';
 } | {
     t: 'editor.undoHistory';
@@ -267,6 +276,10 @@ export type EditorQuery = {
 };
 export declare const EditorQuerySchema: z.ZodType<EditorQuery>;
 export type EditorCommand = {
+    t: 'editor.op.invoke';
+    id: string;
+    args?: Record<string, unknown> | undefined;
+} | {
     t: 'node.create';
     parent?: string | undefined;
     name?: string | undefined;
