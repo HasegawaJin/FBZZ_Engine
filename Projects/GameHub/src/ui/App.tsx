@@ -126,6 +126,8 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const refreshGeneration = useRef(0);
+  const initialLoadStarted = useRef(false);
+  const resolvedSettings = useRef<HubSettings | null>(null);
 
   const refresh = async () => {
     const generation = ++refreshGeneration.current;
@@ -137,7 +139,7 @@ export function App() {
     }
 
     // 設定・テンプレート・仮カードを先に表示し、重い検証結果は後から差し替える。
-    setData(result.value);
+    setData({ ...result.value, settings: resolvedSettings.current ?? result.value.settings });
     void window.gameHub.listProjects().then((projectsResult) => {
       if (generation !== refreshGeneration.current) return;
       if (projectsResult.ok && projectsResult.value) {
@@ -147,7 +149,21 @@ export function App() {
       }
     });
   };
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    const unsubscribe = window.gameHub.onSettingsUpdated((settings) => {
+      resolvedSettings.current = settings;
+      setData((current) => current ? { ...current, settings } : current);
+    });
+    return unsubscribe;
+  }, []);
+  useEffect(() => {
+    // React.StrictMode は開発時に effect を二度実行する。
+    // WHY: refresh はIPCとプロジェクト検証を開始する副作用なので、再実行すると
+    //      起動直後に同じディスク走査を二重に発生させてしまう。
+    if (initialLoadStarted.current) return;
+    initialLoadStarted.current = true;
+    void refresh();
+  }, []);
   useEffect(() => { if (data) document.documentElement.dataset.theme = data.settings.theme; }, [data?.settings.theme]);
 
   const projects = useMemo(() => data?.projects.filter((project) => `${project.name} ${project.path}`.toLowerCase().includes(query.toLowerCase())) ?? [], [data?.projects, query]);
