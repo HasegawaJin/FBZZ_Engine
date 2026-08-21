@@ -77,6 +77,8 @@ function isTextTemplate(filePath: string): boolean {
 }
 
 export class TemplateService {
+  private templatesPromise: Promise<TemplateInfo[]> | null = null;
+
   private async resolveTemplatesRoot(): Promise<string> {
     const candidates = [
       path.join(process.resourcesPath, 'Templates'),
@@ -91,6 +93,20 @@ export class TemplateService {
   }
 
   async listTemplates(): Promise<TemplateInfo[]> {
+    // テンプレートはGameHubの実行中に変化しないため、一覧をプロセス内で共有する。
+    // WHY: bootstrap は設定保存後や操作完了後にも呼ばれる。毎回 template.toml を
+    //      探して読むと、起動直後のStrictMode再実行も含めて不要なI/Oが増える。
+    if (!this.templatesPromise) {
+      this.templatesPromise = this.loadTemplates().catch((error: unknown) => {
+        // 一時的なファイルアクセス失敗から復帰できるよう、失敗したPromiseは捨てる。
+        this.templatesPromise = null;
+        throw error;
+      });
+    }
+    return this.templatesPromise;
+  }
+
+  private async loadTemplates(): Promise<TemplateInfo[]> {
     const root = await this.resolveTemplatesRoot();
     const entries = await readdir(root, { withFileTypes: true });
     const templates = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {

@@ -70,6 +70,7 @@ export interface GameHubApi {
   openProject(projectPath: string): Promise<OperationResult>;
   revealProject(projectPath: string): Promise<OperationResult>;
   saveSettings(settings: HubSettings): Promise<OperationResult<BootstrapData>>;
+  onSettingsUpdated(callback: (settings: HubSettings) => void): () => void;
   minimizeWindow(): void;
   maximizeWindow(): void;
   closeWindow(): void;

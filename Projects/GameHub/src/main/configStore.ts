@@ -91,10 +91,21 @@ function asSdkConfiguration(value: unknown): SdkBuildConfiguration {
  * SDK store直下から、manifest更新時刻が最も新しいSDKを返す。
  * 通常は`SDK/<version>/`が1つだけ存在するが、旧方式の世代が残っていても最新を選べる。
  */
-async function findLatestSdkInStore(storeRoot: string): Promise<string> {
+async function findLatestSdkInStore(storeRoot: string, preferredVersion = ''): Promise<string> {
   try {
-    const candidates = await Promise.all((await readdir(storeRoot, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory())
+    const entries = (await readdir(storeRoot, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory());
+
+    // 通常は現行SDKが `SDK/<ENGINE_VERSION>` にある。全候補のmanifestを検証する前に
+    // それだけを確認すると、旧世代SDKが多数残ったstoreでも起動時のI/Oを抑えられる。
+    const preferredEntry = entries.find((entry) => entry.name === preferredVersion);
+    if (preferredEntry) {
+      const preferredRoot = path.join(storeRoot, preferredEntry.name);
+      if (await isSdkRoot(preferredRoot)) return preferredRoot;
+    }
+
+    const candidates = await Promise.all(entries
+      .filter((entry) => entry !== preferredEntry)
       .map(async (entry) => {
         const root = path.join(storeRoot, entry.name);
         if (!await isSdkRoot(root)) return null;
@@ -130,7 +141,7 @@ async function detectSdkRoot(configuredPath: string): Promise<string> {
   )];
   for (let depth = 0; depth < 8 && currentRoots.length > 0; depth += 1) {
     const stores = [...new Set(currentRoots.map((current) => path.join(current, 'SDK')))];
-    const candidates = await Promise.all(stores.map(findLatestSdkInStore));
+    const candidates = await Promise.all(stores.map((store) => findLatestSdkInStore(store, ENGINE_VERSION)));
     const found = candidates.find(Boolean);
     if (found) return found;
 
@@ -144,6 +155,8 @@ async function detectSdkRoot(configuredPath: string): Promise<string> {
 
 export class ConfigStore {
   private config: HubConfig = structuredClone(DEFAULT_CONFIG);
+  private sdkResolutionPromise: Promise<void> = Promise.resolve();
+  private configGeneration = 0;
 
   private get configPath(): string {
     return path.join(app.getPath('appData'), 'FBZZHub', 'hub_config.toml');
@@ -177,33 +190,31 @@ export class ConfigStore {
         }),
       };
 
-      const detectedSdkRoot = await detectSdkRoot(this.config.settings.sdkRoot);
-      if (detectedSdkRoot && detectedSdkRoot !== this.config.settings.sdkRoot) {
-        this.config.settings.sdkRoot = detectedSdkRoot;
-        shouldSave = true;
-      }
-      const detectedSdkId = await readSdkId(this.config.settings.sdkRoot);
-      if (detectedSdkId && detectedSdkId !== this.config.settings.sdkId) {
-        this.config.settings.sdkId = detectedSdkId;
-        shouldSave = true;
-      }
     } catch (error) {
       // 初回起動時のファイル不存在は正常系。壊れた既存設定は上書きせず既定値で起動する。
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         console.warn('hub_config.tomlを読み込めませんでした。', error);
       }
       this.config = structuredClone(DEFAULT_CONFIG);
-      const detectedSdkRoot = await detectSdkRoot('');
-      if (detectedSdkRoot) {
-        this.config.settings.sdkRoot = detectedSdkRoot;
-        this.config.settings.sdkId = await readSdkId(detectedSdkRoot);
-      }
       shouldSave = true;
     }
 
     if (shouldSave) await this.save();
 
+    // SDK探索はネットワークドライブや大量の旧SDKを含むと遅くなるため、設定ファイルの
+    // 読み込みとは分離する。GameHubは保存済み設定で即座に画面を出し、探索結果は後から反映する。
+    const generation = this.configGeneration;
+    this.sdkResolutionPromise = this.resolveSdkInBackground(generation).catch((error: unknown) => {
+      // 自動検出は補助機能なので、失敗してもGameHubの画面表示や手動設定を止めない。
+      console.warn('SDKの自動検出に失敗しました。', error);
+    });
+
     return this.snapshot();
+  }
+
+  /** 起動時に開始したSDK探索が必要な操作だけ完了を待つ。 */
+  async ensureSdkResolved(): Promise<void> {
+    await this.sdkResolutionPromise;
   }
 
   snapshot(): HubConfig {
@@ -211,6 +222,8 @@ export class ConfigStore {
   }
 
   async setSettings(settings: HubSettings): Promise<void> {
+    // ユーザーの手動設定を、起動時に残っている自動検出結果で上書きしない。
+    this.configGeneration += 1;
     const theme: HubTheme = settings.theme === 'dark' ? 'dark' : 'midnight';
     const sdkRoot = settings.sdkRoot.trim();
     const sdkId = await readSdkId(sdkRoot);
@@ -227,6 +240,7 @@ export class ConfigStore {
 
   /** プロジェクトのSDK IDを、選択中SDKまたは同じstore内の同versionのSDKへ解決する。 */
   async resolveSdkRoot(sdkId: string): Promise<string> {
+    await this.ensureSdkResolved();
     const selected = this.config.settings.sdkRoot;
     const requestedVersion = sdkVersionOf(sdkId || this.config.settings.sdkId);
     if (selected && (!requestedVersion || sdkVersionOf(await readSdkId(selected)) === requestedVersion)) return selected;
@@ -259,6 +273,27 @@ export class ConfigStore {
     const lastOpened = new Date().toISOString();
     await this.addProject(projectPath, lastOpened);
     return lastOpened;
+  }
+
+  private async resolveSdkInBackground(generation: number): Promise<void> {
+    const configuredRoot = this.config.settings.sdkRoot;
+    const detectedSdkRoot = await detectSdkRoot(configuredRoot);
+    if (generation !== this.configGeneration) return;
+
+    let changed = false;
+    if (detectedSdkRoot && detectedSdkRoot !== this.config.settings.sdkRoot) {
+      this.config.settings.sdkRoot = detectedSdkRoot;
+      changed = true;
+    }
+
+    const detectedSdkId = await readSdkId(this.config.settings.sdkRoot);
+    if (generation !== this.configGeneration) return;
+    if (detectedSdkId && detectedSdkId !== this.config.settings.sdkId) {
+      this.config.settings.sdkId = detectedSdkId;
+      changed = true;
+    }
+
+    if (changed) await this.save();
   }
 
   private async save(): Promise<void> {
