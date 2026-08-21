@@ -6,8 +6,10 @@
 #include <Editor/Ai/EditorBusProtocol.hpp>
 #include <Editor/Ai/Json.hpp>
 #include <Editor/Ai/JsonReflector.hpp>
+#include <Editor/Ai/OperatorBridge.hpp>
 #include <Editor/Ai/PreviewMetrics.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/BuildConsole.hpp>
@@ -20,8 +22,10 @@
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
 #include <Editor/GraphEditor/GraphSubgraphOps.hpp>
+#include <Editor/VFXEditor/Document/VFXGraphEditOps.hpp>
 #include <Editor/VFXEditor/Document/VFXGraphOps.hpp>
 #include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
@@ -321,6 +325,15 @@ struct Outcome {
         return outcome;
     }
 };
+
+// OperatorBridge の結果を Outcome へ詰め替える。
+// WHY: Outcome はこの翻訳単位に閉じた型で、Operator 層 (Editor/Op) と AI 層の
+//      両方から見える場所へ置くと依存が広がる。境界で 1 度だけ変換する。
+Outcome FromBridge(OperatorBridgeResult bridge)
+{
+    if (bridge.ok) return Outcome::Ok(std::move(bridge.result));
+    return Outcome::Err(std::move(bridge.code), std::move(bridge.message));
+}
 
 Outcome SearchEditorCatalog(const JsonValue& payload)
 {
@@ -5735,96 +5748,41 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
     fbzz::ai::BehaviorTreeAsset newTree = oldTree;
 
     // 子の数を数える。子数上限の検査に使う。
-    const auto childCount = [&newTree](int parentId) {
-        return static_cast<int>(std::count_if(newTree.nodes.begin(), newTree.nodes.end(),
-            [parentId](const fbzz::ai::BTNodeDef& node) { return node.parentId == parentId; }));
-    };
-    // childId が ancestorId の子孫か。循環の作成を防ぐ。
-    const auto isDescendant = [&newTree](int ancestorId, int childId) {
-        int current = childId;
-        for (std::size_t guard = 0; guard <= newTree.nodes.size() && current != 0; ++guard) {
-            if (current == ancestorId) return true;
-            const fbzz::ai::BTNodeDef* node = newTree.FindNode(current);
-            if (node == nullptr) return false;
-            current = node->parentId;
-        }
-        return false;
-    };
-    // 親へ繋げてよいかを 1 か所で判定する。Editor の TryReparent と同じ規則で、
-    // 「AI からは繋げるが人間の UI では弾かれる」食い違いを作らない。
-    const auto reparent = [&](int childId, int parentId) -> std::string {
-        fbzz::ai::BTNodeDef* child = newTree.FindNode(childId);
-        if (child == nullptr) return "ノードが見つかりません";
-        if (childId == parentId) return "自分自身を親にはできません";
-        if (parentId != 0) {
-            const fbzz::ai::BTNodeDef* parent = newTree.FindNode(parentId);
-            if (parent == nullptr) return "親ノードが見つかりません";
-            if (isDescendant(childId, parentId)) return "自分の子孫を親にはできません (循環します)";
-            const int maxChildren = fbzz::ai::BTNodeMaxChildren(parent->type);
-            if (maxChildren == 0)
-                return std::string(fbzz::ai::BTNodeTypeName(parent->type)) + " は葉ノードなので子を持てません";
-            if (maxChildren > 0 && child->parentId != parentId && childCount(parentId) >= maxChildren)
-                return std::string(fbzz::ai::BTNodeTypeName(parent->type)) + " が持てる子は "
-                     + std::to_string(maxChildren) + " 個までです";
-        } else {
-            for (const auto& node : newTree.nodes)
-                if (node.parentId == 0 && node.id != childId) return "ルートは 1 つだけです";
-        }
-        child->parentId = parentId;
-        int nextOrder = 0;
-        for (const auto& node : newTree.nodes)
-            if (node.parentId == parentId && node.id != childId)
-                nextOrder = (std::max)(nextOrder, node.order + 1);
-        child->order = nextOrder;
-        return {};
-    };
-
+    // 追加・削除・親付け・複製の実体は Editor/GraphEditor/BehaviorTreeOps.hpp。
+    // WHY: 以前はここに BehaviorTreePanel と同じ検査規則が手で書かれており、
+    //      「Editor の TryReparent と同じ規則で食い違いを作らない」というコメントで
+    //      手動の同期を約束していた。実際には文言が既にずれていた
+    //      (ルート重複の理由文がパネル側だけ「既存のルートへ繋いでください」と続く)。
+    //      Docs/design/editor-operator-model.md
     if (type == "bt.node.add") {
+        fbzz::ai::BTNodeType nodeType{};
         const std::string typeName = StringField(payload, "nodeType");
-        int found = -1;
-        for (int index = 0; index < static_cast<int>(fbzz::ai::BTNodeType::Count); ++index)
-            if (typeName == fbzz::ai::BTNodeTypeName(static_cast<fbzz::ai::BTNodeType>(index))) found = index;
-        if (found < 0) { err = Outcome::Err("BAD_ARG", "未知の BT nodeType です: " + typeName); return nullptr; }
-
-        fbzz::ai::BTNodeDef node;
-        node.id = newTree.nextNodeId++;
-        node.type = static_cast<fbzz::ai::BTNodeType>(found);
-        node.name = StringField(payload, "name");
-        if (node.name.empty()) node.name = fbzz::ai::BTNodeTypeName(node.type);
-        const bool hasRoot = std::any_of(newTree.nodes.begin(), newTree.nodes.end(),
-            [](const fbzz::ai::BTNodeDef& item) { return item.parentId == 0; });
+        if (!editor::btops::FindNodeType(typeName, nodeType)) {
+            err = Outcome::Err("BAD_ARG", "未知の BT nodeType です: " + typeName); return nullptr;
+        }
         const JsonValue* parentValue = payload.Find("parentId");
         const int requestedParent = parentValue != nullptr ? parentValue->AsInt() : 0;
-        node.parentId = 0;
-        newTree.nodes.push_back(node);
-        if (hasRoot) {
-            if (requestedParent == 0) {
-                err = Outcome::Err("BT_ROOT_EXISTS",
-                                   "ルートは既にあります。parentId を指定してください");
-                return nullptr;
-            }
-            const std::string reason = reparent(node.id, requestedParent);
-            if (!reason.empty()) { err = Outcome::Err("BT_REPARENT_REJECTED", reason); return nullptr; }
+
+        // orphanOnReject=false: API 経路なので、繋げないなら追加ごと取り消して
+        // 呼び出しを成否で完結させる (孤立ノードが黙って増えない)。
+        const editor::btops::AddNodeResult added = editor::btops::AddNode(
+            newTree, nodeType, StringField(payload, "name"), requestedParent,
+            0.0f, 0.0f, /*orphanOnReject=*/false);
+        if (!added.rejectReason.empty()) {
+            const bool rootExists = added.rejectReason.rfind("ルートは既にあります", 0) == 0;
+            err = Outcome::Err(rootExists ? "BT_ROOT_EXISTS" : "BT_REPARENT_REJECTED",
+                               added.rejectReason);
+            return nullptr;
         }
     } else if (type == "bt.node.remove") {
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        if (newTree.FindNode(nodeId) == nullptr) {
+        if (editor::btops::RemoveSubtree(newTree, nodeId) == 0) {
             err = Outcome::Err("BT_NODE_NOT_FOUND", "ノードが見つかりません"); return nullptr;
         }
-        // 子孫ごと消す。親だけ消して子が浮くと、残された枝の意味が判らなくなる。
-        std::vector<editor::GraphEdge> edges;
-        for (const auto& node : newTree.nodes)
-            if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
-        const std::vector<int> doomed =
-            editor::CollectReachable(std::vector<int>{ nodeId }, edges);
-        const std::unordered_set<int> doomedSet(doomed.begin(), doomed.end());
-        std::erase_if(newTree.nodes, [&doomedSet](const fbzz::ai::BTNodeDef& node) {
-            return doomedSet.contains(node.id);
-        });
     } else if (type == "bt.node.setParent") {
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
         const int parentId = payload.Find("parentId") != nullptr ? payload.Find("parentId")->AsInt() : 0;
-        const std::string reason = reparent(nodeId, parentId);
+        const std::string reason = editor::btops::TryReparentNode(newTree, nodeId, parentId);
         if (!reason.empty()) { err = Outcome::Err("BT_REPARENT_REJECTED", reason); return nullptr; }
     } else if (type == "bt.node.setOrder") {
         fbzz::ai::BTNodeDef* node = newTree.FindNode(
@@ -5931,8 +5889,8 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
             }
         }
     } else if (type == "bt.node.duplicate") {
-        // 部分木ごと複製する。Editor の DuplicateSubtree と同じ規則で動かし、
-        // 「AI が作った木を人間が触ると形が変わる」食い違いを作らない。
+        // 部分木ごと複製する。Editor の Duplicate Subtree と同一実装なので、
+        // 「AI が作った木を人間が触ると形が変わる」食い違いが起きない。
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
         const fbzz::ai::BTNodeDef* source = newTree.FindNode(nodeId);
         if (source == nullptr) {
@@ -5944,51 +5902,27 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         }
         // 複製先の親。省略すると元と同じ親の末尾へ兄弟として並ぶ。
         const int requestedParent = payload.Find("parentId") != nullptr
-            ? payload.Find("parentId")->AsInt() : source->parentId;
+            ? payload.Find("parentId")->AsInt() : 0;
 
-        std::vector<editor::GraphEdge> edges;
-        for (const auto& node : newTree.nodes)
-            if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
-        const std::vector<int> subtree =
-            editor::CollectReachable(std::vector<int>{ nodeId }, edges);
-
-        // id の再割当と内部リンクの保持は framework の共通実装に任せる
-        // (Editor のクリップボードや Template 取り込みと同じ規則で動く)。
-        int nextId = newTree.nextNodeId - 1;
-        const editor::GraphExtractResult extracted =
-            editor::ExtractSubgraph(subtree, edges, nextId);
-        newTree.nextNodeId = nextId + 1;
-
-        std::vector<fbzz::ai::BTNodeDef> copies;
-        for (const auto& node : newTree.nodes) {
-            const auto mapped = extracted.idMap.find(node.id);
-            if (mapped == extracted.idMap.end()) continue;
-            fbzz::ai::BTNodeDef copy = node;
-            copy.id = mapped->second;
-            const auto mappedParent = extracted.idMap.find(node.parentId);
-            // 部分木の根だけは後で reparent するので、ここでは元の親のまま。
-            copy.parentId = mappedParent == extracted.idMap.end() ? node.parentId
-                                                                  : mappedParent->second;
-            copy.editorX += 40.0f;
-            copy.editorY += 40.0f;
-            copies.push_back(std::move(copy));
+        const editor::btops::DuplicateResult duplicated =
+            editor::btops::DuplicateSubtree(newTree, nodeId, 40.0f, 40.0f, requestedParent);
+        if (duplicated.newRootId == 0) {
+            err = Outcome::Err("BT_NODE_NOT_FOUND",
+                               duplicated.rejectReason.empty() ? "複製に失敗しました"
+                                                               : duplicated.rejectReason);
+            return nullptr;
         }
-        for (auto& copy : copies) newTree.nodes.push_back(std::move(copy));
-
-        const auto rootCopy = extracted.idMap.find(nodeId);
-        if (rootCopy == extracted.idMap.end()) {
-            err = Outcome::Err("BT_NODE_NOT_FOUND", "複製に失敗しました"); return nullptr;
+        if (!duplicated.rejectReason.empty()) {
+            err = Outcome::Err("BT_REPARENT_REJECTED", duplicated.rejectReason); return nullptr;
         }
-        const std::string reason = reparent(rootCopy->second, requestedParent);
-        if (!reason.empty()) { err = Outcome::Err("BT_REPARENT_REJECTED", reason); return nullptr; }
         if (detailSink != nullptr) {
             JsonValue report = JsonValue::MakeObject();
-            report.Set("rootNodeId", JsonValue(rootCopy->second));
-            report.Set("copiedNodes", JsonValue(static_cast<int>(extracted.idMap.size())));
+            report.Set("rootNodeId", JsonValue(duplicated.newRootId));
+            report.Set("copiedNodes", JsonValue(static_cast<int>(duplicated.idMap.size())));
             // 新しい id を返さないと、複製直後に中身を編集するために
             // もう一度 bt.tree を読み直すことになる。
             JsonValue mapping = JsonValue::MakeArray();
-            for (const auto& entry : extracted.idMap) {
+            for (const auto& entry : duplicated.idMap) {
                 JsonValue item = JsonValue::MakeObject();
                 item.Set("from", JsonValue(entry.first));
                 item.Set("to", JsonValue(entry.second));
@@ -6123,28 +6057,11 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         }
         newTree.blackboard.erase(found);
     } else if (type == "bt.autoLayout") {
-        std::vector<int> nodeIds;
-        std::vector<editor::GraphLayoutEdge> edges;
-        for (const auto& node : newTree.nodes) {
-            nodeIds.push_back(node.id);
-            if (node.parentId != 0) edges.push_back({ node.parentId, node.id });
-        }
-        const std::vector<int> roots = newTree.FindRootIds();
-        // 間隔は BehaviorTreePanel::AutoLayout と同じ値でなければならない。
-        // 違うと「AI が整列した木を Editor で整列し直すと座標が動く」ことになり、
-        // 差分に意味のない座標変更が毎回混ざる。
-        editor::GraphLayoutOptions options;
-        options.columnStep = 300.0f;
-        options.rowStep = 170.0f;
-        const auto layout = roots.empty()
-            ? editor::ComputeGraphLayout(nodeIds, edges, options)
-            : editor::ComputeGraphLayout(nodeIds, edges, roots, options);
-        for (auto& node : newTree.nodes) {
-            const auto found = layout.find(node.id);
-            if (found == layout.end()) continue;
-            node.editorX = found->second.x;
-            node.editorY = found->second.y;
-        }
+        // 間隔の定数ごと共有実装が持つ。以前はここに 300.0f を直書きして
+        // 「BehaviorTreePanel::AutoLayout と同じ値でなければならない」と
+        // コメントで約束していたが、向こうは NODE_MIN_WIDTH + 104 の計算値なので
+        // ノード幅を変えた瞬間に黙ってずれる状態だった。
+        editor::btops::AutoLayout(newTree);
     } else {
         err = Outcome::Err("UNKNOWN_COMMAND", "未対応の BT コマンドです: " + type);
         return nullptr;
@@ -6208,19 +6125,13 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
         if (const JsonValue* value = payload.Find("maxAudioVoices"); value != nullptr)
             newGraph.maxAudioVoices = value->AsInt();
     } else if (type == "vfx.node.add") {
+        // id 採番・既定 duration・既定座標は VFXGraphCanvas と共有する
+        // (Editor/VFXEditor/Document/VFXGraphEditOps.hpp)。
         const auto nodeType = ParseVFXNodeType(StringField(payload, "nodeType"));
         if (!nodeType.has_value()) { err = Outcome::Err("BAD_ARG", "未知のVFX nodeTypeです"); return nullptr; }
-        int nextId = 1;
-        for (const auto& node : newGraph.nodes) nextId = (std::max)(nextId, node.id + 1);
-        asset::VFXGraphNode node;
-        node.id = nextId;
-        node.type = *nodeType;
-        node.name = StringField(payload, "name");
-        if (node.name.empty()) node.name = asset::VFXNodeTypeName(*nodeType);
-        node.editorX = 260.0f + static_cast<float>((newGraph.nodes.size() % 3) * 220);
-        node.editorY = 80.0f + static_cast<float>((newGraph.nodes.size() / 3) * 170);
-        node.duration = *nodeType == asset::VFXNodeType::Delay ? 0.25f
-            : (*nodeType == asset::VFXNodeType::Particle ? node.particle.duration : 1.0f);
+        asset::VFXGraphNode node =
+            editor::vfxops::MakeNode(newGraph, *nodeType, StringField(payload, "name"));
+        const int nextId = node.id;
         if (*nodeType == asset::VFXNodeType::SubGraph)
             node.subGraph.graphPath = StringField(payload, "assetPath");
         newGraph.nodes.push_back(std::move(node));
@@ -6231,7 +6142,12 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
                 [](const asset::VFXGraphNode& item) { return item.type == asset::VFXNodeType::Entry; });
             if (entry != newGraph.nodes.end()) from = entry->id;
         }
-        if (from > 0) newGraph.links.push_back({ from, nextId, asset::VFXLinkTrigger::OnStart, 0.0f });
+        // validateSchedule=false: 壊れたグラフも受け取り、vfx_lint で指摘して
+        // AI に修復させる方針 (拒否すると修復の起点を持てない)。対話編集とは方針が違う。
+        if (from > 0)
+            (void)editor::vfxops::AddLink(newGraph, from, nextId,
+                                          asset::VFXLinkTrigger::OnStart, 0.0f,
+                                          /*validateSchedule=*/false);
     } else if (type == "vfx.node.duplicate") {
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
         const auto source = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
@@ -6251,19 +6167,12 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
             ? static_cast<float>(payload.Find("editorY")->AsNumber()) : duplicate.editorY + 40.0f;
         newGraph.nodes.push_back(std::move(duplicate));
     } else if (type == "vfx.node.remove") {
+        // ノード / リンク / binding / parentNodeId の後始末は共有実装が持つ。
+        // 移行前は VFXGraphCanvas 側だけ後ろ 2 つを取りこぼしていた。
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        const auto node = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-            [nodeId](const asset::VFXGraphNode& item) { return item.id == nodeId; });
-        if (node == newGraph.nodes.end() || node->type == asset::VFXNodeType::Entry) {
+        if (!editor::vfxops::RemoveNode(newGraph, nodeId)) {
             err = Outcome::Err("BAD_ARG", "削除可能なnodeIdが必要です"); return nullptr;
         }
-        std::erase_if(newGraph.nodes, [nodeId](const auto& item) { return item.id == nodeId; });
-        std::erase_if(newGraph.links, [nodeId](const auto& item) {
-            return item.fromNode == nodeId || item.toNode == nodeId;
-        });
-        std::erase_if(newGraph.bindings, [nodeId](const auto& item) { return item.nodeId == nodeId; });
-        for (auto& remaining : newGraph.nodes)
-            if (remaining.parentNodeId == nodeId) remaining.parentNodeId = -1;
     } else if (type == "vfx.node.setEnabled") {
         const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
         const JsonValue* enabled = payload.Find("enabled");
@@ -6516,7 +6425,13 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
         trigger = asset::VFXLinkTrigger::OnTrigger;
         const float delay = payload.Find("delay") != nullptr
             ? static_cast<float>(payload.Find("delay")->AsNumber()) : 0.0f;
-        newGraph.links.push_back({ from, to, trigger, delay });
+        // Entry へは入力リンクを張れない、という規則だけは共有する。
+        // スケジュール検証は掛けない — 壊れたグラフも受け取り vfx_lint で指摘する方針。
+        if (!editor::vfxops::AddLink(newGraph, from, to, trigger, delay,
+                                     /*validateSchedule=*/false)) {
+            err = Outcome::Err("BAD_ARG", "from / to が不正です (Entry へは繋げません)");
+            return nullptr;
+        }
     } else if (type == "vfx.link.update") {
         const int index = payload.Find("index") != nullptr ? payload.Find("index")->AsInt() : -1;
         if (index < 0 || index >= static_cast<int>(newGraph.links.size())) {
@@ -7849,7 +7764,14 @@ Outcome DoBuildRun(editor::EditorContext& ctx, const JsonValue& payload, bool dr
         return Outcome::Err("BUILD_BUSY", "Script DLL の再読み込み中です");
     if (dryRun) return DryRunPreview("build.run");
 
-    ctx.requestScriptReload = true;
+    // 実体は script.reload operator。Play ツールバーの Reload Scripts と同じ経路を通る。
+    // WHY フラグを直に立てないか: operator の poll は scriptReloadBusy に加えて
+    //     hotReloadState (Compiling / Reloading) も見る。上の 2 条件だけを写すと、
+    //     ホットリロードが走らせたコンパイルの最中に AI からもう 1 本走らせられる。
+    if (const editor::OpResult result = editor::InvokeOperator(ctx, "script.reload"); !result.ok)
+        return Outcome::Err(result.errorCode.empty() ? "BUILD_BUSY" : result.errorCode,
+                            result.message);
+
     JsonValue result = JsonValue::MakeObject();
     result.Set("requested", JsonValue("script"));
     // 同期完了を返せないことを明示する。待ち方を書かないと AI は即座に結果を読みに行く。
@@ -8763,22 +8685,47 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
         const std::string projectRoot = ctx.projectRoot;
         auto beforeContent = std::make_shared<std::string>();
         auto existedBefore = std::make_shared<bool>(false);
+        // Propagate は他インスタンスを作り直すため、アセットだけ戻しても
+        // シーンは新定義のままになる。シーンのスナップショットも併せて持つ。
+        auto beforeScene = std::make_shared<std::string>();
+        auto afterScene  = std::make_shared<std::string>();
+        auto captured    = std::make_shared<bool>(false);
         return std::make_unique<LambdaCommand>("AI: Apply Prefab",
-            [scene, id, projectRoot, beforeContent, existedBefore, markDirty]() {
+            [scene, id, projectRoot, beforeContent, existedBefore,
+             beforeScene, afterScene, captured, markDirty]() {
                 GameObject* target = scene->FindByGuid(id);
                 if (target == nullptr || target->prefabAssetPath.empty()) return;
-                // Apply 前のアセット内容を退避して undo で書き戻せるようにする。
-                const std::string disk = editor::ToProjectAssetDiskPath(projectRoot, target->prefabAssetPath);
-                *existedBefore = util::FileSystem::ReadText(disk, *beforeContent);
-                editor::PrefabSerializer::Apply(*scene, target->GetID(), projectRoot);
+                if (!*captured) {
+                    // Apply 前のアセット内容とシーンを退避して undo で書き戻せるようにする。
+                    const std::string disk =
+                        editor::ToProjectAssetDiskPath(projectRoot, target->prefabAssetPath);
+                    *existedBefore = util::FileSystem::ReadText(disk, *beforeContent);
+                    *beforeScene = editor::SceneIO::Serialize(*scene);
+                    // WHY ApplyAndPropagate か (不具合修正): 以前はここが Apply だけを呼び、
+                    //   同じ .prefab の他インスタンスを新定義へ揃えていなかった。
+                    //   UI の Apply ボタン 4 箇所はすべて直後に PropagateToInstances を
+                    //   呼んでおり、**AI から実行したときだけ「ファイルは変わったのに
+                    //   画面の実体は古いまま」**になっていた。
+                    (void)editor::PrefabSerializer::ApplyAndPropagate(
+                        *scene, target->GetID(), projectRoot);
+                    *afterScene = editor::SceneIO::Serialize(*scene);
+                    *captured = true;
+                } else if (!afterScene->empty()) {
+                    editor::SceneIO::Deserialize(*scene, *afterScene);
+                }
                 markDirty();
             },
-            [scene, id, projectRoot, beforeContent, existedBefore, markDirty]() {
-                GameObject* target = scene->FindByGuid(id);
-                if (target == nullptr || target->prefabAssetPath.empty()) return;
-                const std::string disk = editor::ToProjectAssetDiskPath(projectRoot, target->prefabAssetPath);
-                if (*existedBefore) util::FileSystem::WriteText(disk, *beforeContent);
-                else std::filesystem::remove(std::filesystem::path(disk));
+            [scene, id, projectRoot, beforeContent, existedBefore,
+             beforeScene, markDirty]() {
+                // アセットを戻し、伝播で作り直された実体もシーンごと戻す。
+                if (GameObject* target = scene->FindByGuid(id);
+                    target != nullptr && !target->prefabAssetPath.empty()) {
+                    const std::string disk =
+                        editor::ToProjectAssetDiskPath(projectRoot, target->prefabAssetPath);
+                    if (*existedBefore) util::FileSystem::WriteText(disk, *beforeContent);
+                    else std::filesystem::remove(std::filesystem::path(disk));
+                }
+                if (!beforeScene->empty()) editor::SceneIO::Deserialize(*scene, *beforeScene);
                 markDirty();
             });
     }
@@ -8925,31 +8872,37 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
         asset::MaterialAsset newAsset = oldAsset;
         newAsset.shaderPath = shaderPath;
         editor::EditorContext* context = &ctx;
+        // WHY Unload ではなく ReloadPath か: Unload はスロットを解放して世代を進めるため、
+        //     既に配ってある AssetHandle が一斉に死ぬ。しかもレンダラーが実際に読むのは
+        //     旧 API 側の s_materials で、そちらは Unload の対象外だった。
+        //     ReloadPath はハンドルを保ったまま両方の実体を差し替える。
+        const auto applyToDisk = [context](const fs::path& file,
+                                           const asset::MaterialAsset& value) {
+            if (!asset::SaveMaterialAssetToFile(file.generic_string(), value)) return;
+            asset::AssetManager::ReloadPath(file.generic_string());
+            context->requestAssetBrowserRefresh = true;
+        };
         return std::make_unique<LambdaCommand>("AI: Set Material Shader",
-            [context, materialFile, materialPath, newAsset]() {
-                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), newAsset)) {
-                    asset::AssetManager::Unload<asset::MaterialAsset>(materialPath);
-                    context->requestAssetBrowserRefresh = true;
-                }
-            },
-            [context, materialFile, materialPath, oldAsset]() {
-                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), oldAsset)) {
-                    asset::AssetManager::Unload<asset::MaterialAsset>(materialPath);
-                    context->requestAssetBrowserRefresh = true;
-                }
-            });
+            [applyToDisk, materialFile, newAsset]() { applyToDisk(materialFile, newAsset); },
+            [applyToDisk, materialFile, oldAsset]() { applyToDisk(materialFile, oldAsset); });
     }
 
+    // 実体は SceneEditUtils の MakeRenameNodeCommand。Hierarchy パネルのインライン
+    // リネームも同じものを通るので、Undo の重さも復元の仕方も経路で変わらない。
+    // Docs/design/editor-operator-model.md
     if (type == "node.rename") {
         const std::string id = StringField(payload, "id");
         const std::string name = StringField(payload, "name");
         GameObject* go = scene->FindByGuid(id);
         if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
         if (name.empty()) { err = Outcome::Err("BAD_ARG", "name が空です"); return nullptr; }
-        auto oldName = std::make_shared<std::string>(go->name);
-        return std::make_unique<LambdaCommand>("AI: Rename Node",
-            [scene, id, name, markDirty]()    { if (GameObject* g = scene->FindByGuid(id)) g->name = name; markDirty(); },
-            [scene, id, oldName, markDirty]() { if (GameObject* g = scene->FindByGuid(id)) g->name = *oldName; markDirty(); });
+        // 履歴ラベルだけ AI 用にする — editor_get_undo_history で自分の編集を識別できるため。
+        // dryRun でもここまでは通るため、適用は UndoStack::Execute に任せる
+        // (applyNow=true にすると dryRun が実際にシーンを書き換えてしまう)。
+        auto command = MakeRenameNodeCommand(ctx, go->GetID(), name,
+                                             "AI: Rename Node", /*applyNow=*/false);
+        if (!command) { err = Outcome::Err("NO_CHANGE", "名前が変わりません: " + name); return nullptr; }
+        return command;
     }
 
     if (type == "node.setActive") {
@@ -9889,12 +9842,25 @@ Outcome DoCommand(editor::EditorContext& ctx, const std::string& type, const Jso
         return Outcome::Ok(std::move(result));
     }
 
+    // Operator へ移送済み (Step 3)。
+    // WHY: edit.undo / edit.redo は既に Operator として登録され、メニュー・ホットキー・
+    //      コマンドパレットがそれを呼んでいる。ここに 2 つ目の実装を残すと、
+    //      「実行できるかどうか」の判定が AI 側だけ別式という状態が復活する。
+    //      応答の形 (applied / description) は互換のまま維持する — MCP の
+    //      editor_undo / editor_redo は既存ツール名で使われているため。
+    //      Docs/design/editor-operator-model.md
     if (type == "editor.undo" || type == "editor.redo") {
         if (ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
+        if (ctx.operators == nullptr) return Outcome::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
+
         const bool isUndo = (type == "editor.undo");
-        const bool can = isUndo ? ctx.undoStack->CanUndo() : ctx.undoStack->CanRedo();
-        const std::string desc = isUndo ? ctx.undoStack->GetUndoDescription() : ctx.undoStack->GetRedoDescription();
-        if (!can) {
+        const char* operatorId = isUndo ? "edit.undo" : "edit.redo";
+        // 説明は実行前に読む (実行するとカーソルが動いて別のエントリを指す)。
+        const std::string desc = isUndo ? ctx.undoStack->GetUndoDescription()
+                                        : ctx.undoStack->GetRedoDescription();
+
+        OpContext opContext{ ctx, *ctx.undoStack };
+        if (!ctx.operators->CanInvoke(operatorId, opContext)) {
             JsonValue result = JsonValue::MakeObject();
             result.Set("applied", JsonValue(false));
             return Outcome::Ok(std::move(result));
@@ -9906,7 +9872,12 @@ Outcome DoCommand(editor::EditorContext& ctx, const std::string& type, const Jso
             result.Set("description", JsonValue(desc));
             return Outcome::Ok(std::move(result));
         }
-        if (isUndo) ctx.undoStack->Undo(); else ctx.undoStack->Redo();
+
+        const OpResult opResult = ctx.operators->Invoke(operatorId, opContext);
+        if (!opResult.ok)
+            return Outcome::Err(opResult.errorCode.empty() ? "OP_FAILED" : opResult.errorCode,
+                                opResult.message);
+
         JsonValue result = JsonValue::MakeObject();
         result.Set("applied", JsonValue(true));
         result.Set("description", JsonValue(desc));
@@ -10307,11 +10278,26 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
                     outcome = DoSemanticViewportCapture(m_context, m_gameViewportRT, gameCamera, "game");
                 }
             }
+        } else if (type == "editor.op.list") {
+            // Operator モデルの目録 (Docs/design/editor-operator-model.md)。
+            // メニュー・ホットキー・コマンドパレットが読むのと同じ登録簿を返すため、
+            // AI からだけ見えない操作も、AI にだけできる操作も原理的に作れない。
+            outcome = FromBridge(ListOperators(m_context, payload));
+        } else if (type == "editor.op.query") {
+            // kind=query の Operator を実行して結果データを返す。
+            // WHY 入口を分けるか: editor.op.invoke は MCP 側で write 権限のツール。
+            //      読むだけの操作をそこへ閉じ込めると、read 権限で接続した AI が
+            //      「目録には出るが 1 つも呼べない Query」を見ることになる。
+            outcome = FromBridge(QueryOperator(m_context, payload));
         } else {
             outcome = Outcome::Err("UNKNOWN_QUERY", "未対応の Query: " + type);
         }
     }
     // ── Command (Undo 可能に適用 / dryRun は試算のみ) ─────────────────────
+    else if (type == "editor.op.invoke") {
+        // 実行可否 (poll) の判定は Operator 側にあり、人が使う面と同じ述語が効く。
+        outcome = FromBridge(InvokeOperator(m_context, payload, request->dryRun));
+    }
     else {
         outcome = DoCommand(m_context, type, payload, request->dryRun);
     }
