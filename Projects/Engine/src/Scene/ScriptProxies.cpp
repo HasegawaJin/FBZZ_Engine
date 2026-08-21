@@ -1683,54 +1683,22 @@ void ScriptParticleProxy::SetEnabled(bool enabled) const
 
 void ScriptParticleProxy::Play(bool restart) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->playing = true;
-        if (restart) {
-            p->playTime = 0.0f;
-            p->delayTime = 0.0f;
-            p->emitAccum = 0.0f;
-            p->randomState = p->randomSeed;
-            p->burstCyclesFired.clear();
-            p->prewarmed = false;
-            p->prewarmSpawnPending = 0;
-            p->hasLastEmitterPosition = false;
-        }
-    }
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->Play(restart);
 }
 
 void ScriptParticleProxy::Stop(bool clear) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->playing = false;
-        p->emitAccum = 0.0f;
-        p->burstPending = 0;
-        if (clear)
-            Clear();
-    }
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->Stop(clear);
 }
 
 void ScriptParticleProxy::Burst(int count) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        if (count > 0)
-            p->burstPending += count;
-    }
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->Burst(count);
 }
 
 void ScriptParticleProxy::Clear() const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->particles.clear();
-        p->emitAccum = 0.0f;
-        p->burstPending = 0;
-        p->playTime = 0.0f;
-        p->delayTime = 0.0f;
-        p->gpuClearPending = true;
-        p->gpuWriteHead = 0;
-        p->gpuSpawnCount = 0;
-        p->collisionCountThisFrame = 0;
-        p->prewarmSpawnPending = 0;
-    }
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->ClearParticles();
 }
 
 void ScriptParticleProxy::SetGravity(const math::Vector3& gravity) const
@@ -2507,7 +2475,8 @@ void ScriptSceneProxy::DestroySelf(float delay) const
 
 bool ScriptSceneProxy::IsActiveAndEnabled() const
 {
-    return script && script->m_gameObject && script->m_gameObject->activeSelf() && script->enabled;
+    // Unity の isActiveAndEnabled と同じく、親 GameObject の無効化も実効状態へ反映する。
+    return script && script->m_gameObject && script->m_gameObject->activeInHierarchy() && script->enabled;
 }
 
 GameObject* ScriptSceneProxy::Instantiate(const PrefabRef& prefab) const
@@ -2524,7 +2493,7 @@ GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath) const
     //      Scene* はデシリアライズ後も同アドレスに存在し続けるため、先に退避しておく。
     Scene* scene = script->m_scene;
     std::vector<EntityID> roots;
-    if (!Script::InvokePrefabInstantiate(*scene, prefabPath, roots) || roots.empty())
+    if (!Script::InstantiatePrefab(*scene, prefabPath, roots) || roots.empty())
         return nullptr;
     return scene->GetGameObject(roots.front());
 }

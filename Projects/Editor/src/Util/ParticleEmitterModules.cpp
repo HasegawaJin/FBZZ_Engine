@@ -157,21 +157,20 @@ bool DrawShapeGizmo(scene::ParticleEmitter& pe)
 
 void DrawParticleEmitterPlaybackButtons(scene::ParticleEmitter& pe)
 {
-    if (ImGui::Button(pe.playing ? "Pause" : "Play")) pe.playing = !pe.playing;
-    ImGui::SameLine();
-    if (ImGui::Button("Restart")) pe.ResetPlayback();
-    ImGui::SameLine();
-    if (ImGui::Button("Stop")) pe.playing = false;
-    ImGui::SameLine();
-    if (ImGui::Button("Clear")) {
-        pe.particles.clear();
-        pe.emitAccum = 0.0f;
-        pe.burstPending = 0;
-        pe.prewarmSpawnPending = 0;
-        pe.gpuClearPending = true;
+    if (ImGui::Button(pe.playing ? "Pause" : "Play")) {
+        if (pe.playing) pe.Pause();
+        else            pe.Play();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Burst")) pe.burstPending += 10;
+    if (ImGui::Button("Restart")) pe.Play(true);
+    ImGui::SameLine();
+    if (ImGui::Button("Stop")) pe.Stop();
+    ImGui::SameLine();
+    if (ImGui::Button("Clear")) {
+        pe.ClearParticles();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Burst")) pe.Burst(10);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Emit 10 particles immediately");
 }
