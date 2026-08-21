@@ -218,12 +218,18 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 }
             }
 
-            if (widgets::RangeField("Weight", layer.weight, 0.0f, 1.0f)) markLayerDirty();
+            // Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
+            // 足りないときの誇張がここで完結する。
+            const float weightMax = layer.mode == scene::AnimationLayerMode::Additive
+                ? scene::MAX_LAYER_WEIGHT : 1.0f;
+            if (widgets::RangeField("Weight", layer.weight, 0.0f, weightMax)) markLayerDirty();
 
             static constexpr const char* kModeNames[] = { "Override", "Additive" };
             int modeIndex = static_cast<int>(layer.mode);
             if (ImGui::Combo("Blending", &modeIndex, kModeNames, 2)) {
                 layer.mode = static_cast<scene::AnimationLayerMode>(modeIndex);
+                if (layer.mode == scene::AnimationLayerMode::Override)
+                    layer.weight = std::min(layer.weight, 1.0f);
                 markLayerDirty();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {

@@ -502,14 +502,15 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
     // clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
     animator.rootMotionSamples.clear();
 
+    const auto stateExists = [](const std::vector<scene::AnimationState>& states,
+                                const std::string& name) {
+        if (name.empty()) return false;
+        for (const auto& state : states)
+            if (state.name == name) return true;
+        return false;
+    };
+
     if (preservePlayback) {
-        const auto stateExists = [](const std::vector<scene::AnimationState>& states,
-                                    const std::string& name) {
-            if (name.empty()) return false;
-            for (const auto& state : states)
-                if (state.name == name) return true;
-            return false;
-        };
         if (stateExists(animator.states, previousStateName)) {
             animator.currentStateName = previousStateName;
             animator.stateTime = previousStateTime;
@@ -520,16 +521,17 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
                 animator.blendDuration = previousBlendDuration;
             }
         }
+    }
 
-        // Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
-        // 新規 Layer は previousLayers に存在しないため、既定の空ランタイム状態のままになる。
-        for (auto& layer : animator.layers) {
-            for (const auto& previousLayer : previousLayers) {
-                if (previousLayer.name != layer.name) continue;
-                if (stateExists(layer.states, previousLayer.runtime.currentStateName))
-                    layer.runtime = previousLayer.runtime;
-                break;
-            }
+    // Layer の追加・名前変更だけで、既存 Layer のステート時間も巻き戻さない。
+    // 初回 Controller 読込前に Script が PlayLayerState を呼んだ場合も、同名ステートが
+    // Controller 側に存在するなら、その要求を復元して初回フレームから再生できる。
+    for (auto& layer : animator.layers) {
+        for (const auto& previousLayer : previousLayers) {
+            if (previousLayer.name != layer.name) continue;
+            if (stateExists(layer.states, previousLayer.runtime.currentStateName))
+                layer.runtime = previousLayer.runtime;
+            break;
         }
     }
 }
