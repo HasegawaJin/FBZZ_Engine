@@ -269,7 +269,7 @@ bool ComputeTerrainWorldBounds(const Transform& transform, const TerrainComponen
         static_cast<float>(terrain.rows - 1) * terrain.cellSize * 0.5f
     };
 
-    const math::Vector4 worldCenter = transform.GetPresentationWorldMatrix()
+    const math::Vector4 worldCenter = transform.GetWorldMatrix()
         * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
     const float maxScale = (std::max)(
         (std::max)(std::abs(transform.worldScale.x), std::abs(transform.worldScale.y)),

@@ -116,7 +116,7 @@ void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
         if (!gpuMaterial || !gpuMaterial->shader.IsValid()) continue;
 
         PerObjectCB object{};
-        object.world = go.transform.GetPresentationWorldMatrix();
+        object.world = go.transform.GetWorldMatrix();
         object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(object.world);
         resources.Update(h.objectCB, &object, sizeof(object));
 

@@ -438,7 +438,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
                      const Transform& transform, const renderer::Camera& camera, float time)
 {
     WaterCB cb{};
-    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
     cb.worldMatrix = world;
     cb.wvpMatrix = camera.GetViewProjection() * world;
 
@@ -584,7 +584,7 @@ void WaterSelectionMaskSystem(RenderPassContext& ctx)
         auto it = s_meshCache.find(eid.index);
         if (it == s_meshCache.end()) continue;
 
-    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);

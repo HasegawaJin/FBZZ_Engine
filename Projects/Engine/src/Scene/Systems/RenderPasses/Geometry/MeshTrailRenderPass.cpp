@@ -150,8 +150,8 @@ void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::Resource
 {
     MeshTrailSample sample{};
     sample.timestamp = currentTime;
-    sample.position = go.transform.presentationWorldPosition;
-    sample.world = go.transform.GetPresentationWorldMatrix();
+            sample.position = go.transform.worldPosition;
+            sample.world = go.transform.GetWorldMatrix();
 
     // 子SkinnedMeshRendererは親GameObjectのAnimatorを共有する。
     // WHY: 自GOだけを見るとbone paletteが空になり、武器残像がbind poseで描画されるため。
@@ -407,11 +407,11 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
                 math::Vector3 position = particle.position;
                 if (emitter->simulationSpace == ParticleSimulationSpace::Local) {
                     const math::Vector3 scaled{
-                        position.x * go.transform.presentationWorldScale.x,
-                        position.y * go.transform.presentationWorldScale.y,
-                        position.z * go.transform.presentationWorldScale.z };
-                    position = go.transform.presentationWorldPosition +
-                        go.transform.presentationWorldRotation * scaled;
+        position.x * go.transform.worldScale.x,
+        position.y * go.transform.worldScale.y,
+        position.z * go.transform.worldScale.z };
+    position = go.transform.worldPosition +
+        go.transform.worldRotation * scaled;
                 }
                 MeshTrailSample sample;
                 sample.timestamp = currentTime;
@@ -434,7 +434,7 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
         ExpireSamples(*trail, resources, currentTime);
 
         if (trail->enabled && ShouldSample(
-                *trail, go.transform.presentationWorldPosition, currentTime))
+            *trail, go.transform.worldPosition, currentTime))
             CaptureSample(go, *trail, resources, currentTime);
 
         ExpireSamples(*trail, resources, currentTime);

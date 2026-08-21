@@ -271,7 +271,7 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
         if (!detail.enabled || detail.layers.empty()) continue;
         if (!terrain.enabled || terrain.heightData.empty()) continue;
 
-    const math::Matrix4 terrainWorld = transform.GetPresentationWorldMatrix();
+    const math::Matrix4 terrainWorld = transform.GetWorldMatrix();
         const bool transformChanged =
             !detail.hasBakedTransform
             || detail.bakedWorldPosition != transform.worldPosition

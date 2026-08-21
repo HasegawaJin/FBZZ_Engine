@@ -162,7 +162,7 @@ void CollectStaticMeshShadowCasters(RenderPassContext& ctx,
         caster.indexBuffer  = mr->mesh->indexBuffer;
         caster.indexCount   = mr->mesh->indexCount;
         caster.shader       = h.shadowShader;
-        caster.world        = go.transform.GetPresentationWorldMatrix();
+        caster.world        = go.transform.GetWorldMatrix();
         outCasters.push_back(caster);
     }
 }
@@ -208,7 +208,7 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx,
             anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
             smr->model, h.bindPoseSkinningCB);
 
-        const math::Matrix4 world = go.transform.GetPresentationWorldMatrix();
+        const math::Matrix4 world = go.transform.GetWorldMatrix();
 
         // この Renderer が担当する submesh を全て影として収集する。
         // 深度キーは全 submesh 共通なので、安定ソート後も 1 オブジェクトの submesh は

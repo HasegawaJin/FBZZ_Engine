@@ -41,8 +41,8 @@ renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio)
         if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
 
         renderer::Camera result;
-        result.m_position = go.transform.presentationWorldPosition;
-        result.m_rotation = go.transform.presentationWorldRotation;
+        result.m_position = go.transform.worldPosition;
+        result.m_rotation = go.transform.worldRotation;
         result.m_fovY     = cam->fovY;
         result.m_near     = cam->nearZ;
         result.m_far      = cam->farZ;
@@ -69,8 +69,8 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
         auto* cam = go.GetComponent<CameraComponent>();
         if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
 
-        camera.m_position = go.transform.presentationWorldPosition;
-        camera.m_rotation = go.transform.presentationWorldRotation;
+        camera.m_position = go.transform.worldPosition;
+        camera.m_rotation = go.transform.worldRotation;
         camera.m_fovY     = cam->fovY;
         camera.m_near     = cam->nearZ;
         camera.m_far      = cam->farZ;

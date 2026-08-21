@@ -99,10 +99,7 @@ inline void TpsCameraComponent::OnLateUpdate()
     const Quaternion yawRot   = Quaternion::FromAxisAngle(Vector3::UP,    ToRad(yaw));
     const Quaternion pitchRot = Quaternion::FromAxisAngle(Vector3::RIGHT, ToRad(pitch));
     const Quaternion rotation = (yawRot * pitchRot).Normalized();
-    // 追従対象は固定物理の確定姿勢ではなく、描画と同じ補間済み姿勢を見る。
-    // WHY: カメラと Player が異なる時間軸を参照すると、距離が fixed step ごとに伸縮するため。
-    const Vector3 focus =
-        target->transform.presentationWorldPosition + Vector3::UP * height;
+    const Vector3 focus = target->transform.worldPosition + Vector3::UP * height;
     const Vector3 targetCamPos = focus - (rotation * Vector3::FORWARD) * distance;
 
     // WHY: 指数補間で dt に依存した補間率を計算。初回のみスナップして位置ずれを防ぐ。

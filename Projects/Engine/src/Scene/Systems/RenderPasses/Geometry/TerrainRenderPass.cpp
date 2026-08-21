@@ -781,7 +781,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
 
-    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
         TerrainObjectCB terrainCBData = g_cbParamCache.count(eid.index)
                                       ? g_cbParamCache.at(eid.index)
                                       : TerrainObjectCB{};
@@ -922,7 +922,7 @@ void SubmitTerrainShadowCasters(
 
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
-    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
 
         ShadowObjectCB objData{};
         objData.world             = world;
@@ -993,7 +993,7 @@ void TerrainSelectionMaskSystem(RenderPassContext& ctx)
         }
         if (!selected) continue;
 
-    const math::Matrix4 world = transform.GetPresentationWorldMatrix();
+    const math::Matrix4 world = transform.GetWorldMatrix();
         PerObjectCB objData{};
         objData.world             = world;
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);

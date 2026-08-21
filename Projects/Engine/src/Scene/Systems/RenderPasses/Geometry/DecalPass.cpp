@@ -50,7 +50,7 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
         if (fbzz::Layer::Contains(receiverLayerMask, go.layer)) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetPresentationWorldMatrix();
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -161,7 +161,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
 
         // 定数バッファ更新
         DecalCB data{};
-        data.invDecalWorld    = math::Matrix4::Inverse(go.transform.GetPresentationWorldMatrix());
+        data.invDecalWorld    = math::Matrix4::Inverse(go.transform.GetWorldMatrix());
         data.albedo[0]        = dc->albedoColor[0];
         data.albedo[1]        = dc->albedoColor[1];
         data.albedo[2]        = dc->albedoColor[2];

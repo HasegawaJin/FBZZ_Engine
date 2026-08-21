@@ -33,14 +33,16 @@ struct RigidBodyComponent {
     //     数値が妥当かどうかをオーサリング中に判断できない。
     float computedMass = 0.0f;
 
-    // 固定ステップの前後姿勢。ゲームロジック用 Transform とは分離し、描画時だけ補間する。
-    // WHY Component が持つか: physics::RigidBody は現在姿勢だけを正として扱い、
-    //     描画フレームの都合を Physics 層へ逆流させないため。
+    // Transform から物理へ明示的にテレポートされたかを検出するための最後の同期姿勢。
+    // 表示用の別姿勢は持たず、world Transform と physics::RigidBody を同じ確定値で扱う。
+    math::Vector3 lastPhysicsPosition = math::Vector3::ZERO;
+    math::Quaternion lastPhysicsRotation = math::Quaternion::Identity();
+    // 可変フレームの描画だけが fixed step の段差を跨がないよう、直前の確定姿勢を保持する。
+    // Physics / Collider は常に lastPhysics* を使い、これらは描画補間専用である。
     math::Vector3 previousPhysicsPosition = math::Vector3::ZERO;
-    math::Vector3 currentPhysicsPosition  = math::Vector3::ZERO;
     math::Quaternion previousPhysicsRotation = math::Quaternion::Identity();
-    math::Quaternion currentPhysicsRotation  = math::Quaternion::Identity();
     bool hasPhysicsPoseHistory = false;
+    bool hasPhysicsSyncState = false;
 
     RigidBodyComponent() = default;
     ~RigidBodyComponent() = default;
@@ -52,7 +54,7 @@ struct RigidBodyComponent {
         , computedMass(o.computedMass)
     {
         if (rigidBody)
-            ResetPhysicsPoseHistory(rigidBody->GetPosition(), rigidBody->GetRotation());
+            ResetPhysicsSyncState(rigidBody->GetPosition(), rigidBody->GetRotation());
     }
     RigidBodyComponent& operator=(const RigidBodyComponent& o)
     {
@@ -62,9 +64,9 @@ struct RigidBodyComponent {
             enabled      = o.enabled;
             massMode     = o.massMode;
             computedMass = o.computedMass;
-            hasPhysicsPoseHistory = false;
+            hasPhysicsSyncState = false;
             if (rigidBody)
-                ResetPhysicsPoseHistory(rigidBody->GetPosition(), rigidBody->GetRotation());
+                ResetPhysicsSyncState(rigidBody->GetPosition(), rigidBody->GetRotation());
         }
         return *this;
     }
@@ -73,36 +75,31 @@ struct RigidBodyComponent {
 
     const char* GetTypeName() const { return "Rigid Body"; }
 
-    // テレポート・生成・複製時は補間区間を潰し、過去位置から尾を引かせない。
-    void ResetPhysicsPoseHistory(const math::Vector3& position,
-                                 const math::Quaternion& rotation)
+    // 生成・複製・テレポート後の物理同期基準を現在姿勢へ揃える。
+    void ResetPhysicsSyncState(const math::Vector3& position,
+                               const math::Quaternion& rotation)
     {
+        lastPhysicsPosition = position;
+        lastPhysicsRotation = rotation.Normalized();
         previousPhysicsPosition = position;
-        currentPhysicsPosition = position;
         previousPhysicsRotation = rotation.Normalized();
-        currentPhysicsRotation = previousPhysicsRotation;
         hasPhysicsPoseHistory = true;
+        hasPhysicsSyncState = true;
     }
 
-    // 1 fixed step の開始時に現在姿勢を前回姿勢へ送る。
-    void BeginPhysicsStep()
+    // 物理解決後の確定姿勢を、次回のテレポート検出基準として保存する。
+    void CommitPhysicsSyncState(const math::Vector3& position,
+                                const math::Quaternion& rotation)
     {
-        if (!hasPhysicsPoseHistory && rigidBody)
-            ResetPhysicsPoseHistory(rigidBody->GetPosition(), rigidBody->GetRotation());
-        previousPhysicsPosition = currentPhysicsPosition;
-        previousPhysicsRotation = currentPhysicsRotation;
-    }
-
-    // 物理解決後の確定姿勢を、補間区間の終点として保存する。
-    void CommitPhysicsPose(const math::Vector3& position,
-                           const math::Quaternion& rotation)
-    {
-        if (!hasPhysicsPoseHistory) {
-            ResetPhysicsPoseHistory(position, rotation);
+        if (!hasPhysicsSyncState) {
+            ResetPhysicsSyncState(position, rotation);
             return;
         }
-        currentPhysicsPosition = position;
-        currentPhysicsRotation = rotation.Normalized();
+        previousPhysicsPosition = lastPhysicsPosition;
+        previousPhysicsRotation = lastPhysicsRotation;
+        lastPhysicsPosition = position;
+        lastPhysicsRotation = rotation.Normalized();
+        hasPhysicsPoseHistory = true;
     }
 
     void Reflect(IReflector& r)
