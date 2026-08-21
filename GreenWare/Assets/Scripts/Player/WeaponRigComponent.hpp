@@ -126,6 +126,8 @@ private:
     bool   m_transferred = false;
     bool   m_drawn       = false;
     bool   m_warnedNoWeapon = false;
+    // ResolveWeapon は const。1 度だけ警告するためのフラグなので mutable で持つ。
+    mutable bool m_warnedWrongWeaponRef = false;
 };
 
 FBZZ_REFLECT(WeaponRigComponent)
@@ -152,8 +154,16 @@ inline void WeaponRigComponent::OnStart()
 inline GameObject* WeaponRigComponent::ResolveWeapon(HandSide hand) const
 {
     const Ref<GameObject>& reference = hand == HandSide::Right ? weaponRight : weaponLeft;
-    if (GameObject* object = reference.Get())
-        return object;
+    GameObject* referenced = reference.Get();
+    if (IsWeaponObject(referenced, hand))
+        return referenced;
+
+    if (referenced && !m_warnedWrongWeaponRef) {
+        m_warnedWrongWeaponRef = true;
+        debug.LogWarning(std::string("WeaponRigComponent: ") + WeaponObjectName(hand)
+            + " reference points at '" + referenced->name
+            + "'. Falling back to lookup by name (clear the slot in the Inspector to silence).");
+    }
     return scene.Find(WeaponObjectName(hand));
 }
 
