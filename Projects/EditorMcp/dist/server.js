@@ -2,7 +2,24 @@
 // server.ts | EditorMcp
 // transport 非依存の MCP サーバと Editor ツール集合を生成する
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ToDraft2020ToolsResult } from './jsonSchemaDraft2020.js';
 import { RegisterEditorTools } from './tools.js';
+// tools/list の応答を draft 2020-12 へ正規化する。
+// WHY: SDK は zod → JSON Schema 変換の target を draft-7 に固定しており
+//      (server/zod-json-schema-compat.js)、Anthropic API は draft 2020-12 で
+//      input_schema を検証するため z.tuple() などがそのままだと 400 になる。
+//      SDK に target を渡す口が無いので、登録済みハンドラを一段包んで変換する。
+//      transport ではなくここで包むことで stdio / in-memory の双方に効く。
+function InstallDraft2020ToolSchemas(server) {
+    const handlers = server.server._requestHandlers;
+    const original = handlers?.get('tools/list');
+    if (!handlers || !original) {
+        // SDK の内部構造が変わった場合。ツール一覧自体は動くので落とさず警告に留める。
+        console.error('[FBZZ Editor MCP] warn: tools/list ハンドラを包めず、JSON Schema は draft-07 のままです');
+        return;
+    }
+    handlers.set('tools/list', async (request, extra) => ToDraft2020ToolsResult(await original(request, extra)));
+}
 // stdio 以外の transport を後日追加しても同じツール実装を再利用できる factory を提供する。
 export function CreateEditorMcpServer(bus, permission) {
     const server = new McpServer({
@@ -19,6 +36,7 @@ export function CreateEditorMcpServer(bus, permission) {
         ].join(' '),
     });
     RegisterEditorTools(server, bus, permission);
+    InstallDraft2020ToolSchemas(server);
     return server;
 }
 //# sourceMappingURL=server.js.map
