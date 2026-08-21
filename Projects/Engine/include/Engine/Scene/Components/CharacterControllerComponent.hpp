@@ -130,7 +130,21 @@ struct CharacterControllerComponent {
     void RegisterGroundContact(const CollisionInfo& info)
     {
         if (!enabled || groundingMode == CharacterGroundingMode::ForcedAirborne) return;
-        if (info.contactNormal.y < minGroundNormalY) return;
+        const math::Vector3 contactNormal = info.contactNormal.Normalized();
+        if (contactNormal.y < minGroundNormalY)
+        {
+            // 歩行不可面でも、水平成分を次の入力ステップの壁制約へ引き継ぐ。
+            // WHY: ここを単に接地対象外として捨てると、入力が壁方向の速度を毎回
+            //      再注入し、PhysicsSolver の法線インパルスと競合して振動する。
+            math::Vector3 blockingNormal = contactNormal;
+            blockingNormal.y = 0.0f;
+            if (blockingNormal.LengthSq() > math::EPSILON)
+            {
+                m_blockingContactNormal = blockingNormal.Normalized();
+                m_blockingContactTimer = groundContactGrace;
+            }
+            return;
+        }
         if (m_ignoreGroundTimer > 0.0f) return;
 
         m_hasGroundContact   = true;
@@ -140,7 +154,7 @@ struct CharacterControllerComponent {
         m_jumpTimer          = 0.0f;
         m_isIntentionalJump  = false;
         m_intentionalJumpTimer = 0.0f;
-        groundNormal = info.contactNormal.Normalized();
+        groundNormal = contactNormal;
         RemoveVelocityIntoGround(info.contactNormal, info.self);
     }
 
@@ -237,26 +251,33 @@ struct CharacterControllerComponent {
     {
         if (!enabled || !rb || rb->IsStatic()) return;
 
+        math::Vector3 constrainedVelocity = desiredVelocity;
+        if (isGrounded && m_groundContactTimer > 0.0f)
+            RemoveVelocityIntoSurface(constrainedVelocity, groundNormal);
+        if (m_blockingContactTimer > 0.0f)
+            RemoveVelocityIntoSurface(constrainedVelocity, m_blockingContactNormal);
+
         math::Vector3 current = rb->GetVelocity();
         const float currentSpeed = std::sqrtf(current.x * current.x + current.z * current.z);
         const float desiredSpeed = std::sqrtf(
-            desiredVelocity.x * desiredVelocity.x + desiredVelocity.z * desiredVelocity.z);
+            constrainedVelocity.x * constrainedVelocity.x +
+            constrainedVelocity.z * constrainedVelocity.z);
         const float rate = desiredSpeed > currentSpeed ? acceleration : deceleration;
 
         if (rate < 0.0f || dt <= 0.0f) {
-            current.x = desiredVelocity.x;
-            current.z = desiredVelocity.z;
+            current.x = constrainedVelocity.x;
+            current.z = constrainedVelocity.z;
             rb->SetVelocity(current);
             return;
         }
 
         const float maxDelta = rate * dt;
-        const float dx = desiredVelocity.x - current.x;
-        const float dz = desiredVelocity.z - current.z;
+        const float dx = constrainedVelocity.x - current.x;
+        const float dz = constrainedVelocity.z - current.z;
         const float deltaLength = std::sqrtf(dx * dx + dz * dz);
         if (deltaLength <= maxDelta || deltaLength <= math::EPSILON) {
-            current.x = desiredVelocity.x;
-            current.z = desiredVelocity.z;
+            current.x = constrainedVelocity.x;
+            current.z = constrainedVelocity.z;
         } else {
             const float scale = maxDelta / deltaLength;
             current.x += dx * scale;
@@ -283,8 +304,10 @@ private:
     bool  m_isIntentionalJump    = false;
     float m_jumpTimer            = 0.0f;
     float m_groundContactTimer   = 0.0f;
+    float m_blockingContactTimer = 0.0f;
     float m_ignoreGroundTimer    = 0.0f;
     float m_intentionalJumpTimer = 0.0f;
+    math::Vector3 m_blockingContactNormal = math::Vector3::ZERO;
 
     bool HasGroundContact() const
     {
@@ -295,6 +318,8 @@ private:
     {
         m_groundContactTimer -= dt;
         if (m_groundContactTimer < 0.0f) m_groundContactTimer = 0.0f;
+        m_blockingContactTimer -= dt;
+        if (m_blockingContactTimer < 0.0f) m_blockingContactTimer = 0.0f;
         m_ignoreGroundTimer  -= dt;
         if (m_ignoreGroundTimer  < 0.0f) m_ignoreGroundTimer  = 0.0f;
     }
@@ -370,6 +395,20 @@ private:
         if (isGrounded) return 0.0f;
         if (vy > 0.0f && !m_isIntentionalJump) return 0.0f;
         return vy;
+    }
+
+    // 入力目標から接触面へ食い込む速度成分だけを除去する。
+    // WHY: FixedScript は毎ステップ入力速度を再設定するため、物理解決が除去した
+    //      壁・斜面方向の速度をそのまま渡すと、入力と衝突解決が交互に同じ成分を
+    //      注入・除去し、前後方向のジッターになる。
+    void RemoveVelocityIntoSurface(math::Vector3& velocity,
+                                   const math::Vector3& surfaceNormal) const
+    {
+        if (surfaceNormal.LengthSq() <= math::EPSILON) return;
+        const math::Vector3 normal = surfaceNormal.Normalized();
+        const float intoSurface = math::Vector3::Dot(velocity, normal);
+        if (intoSurface < 0.0f)
+            velocity -= normal * intoSurface;
     }
 
     // 接地面に垂直な速度成分 (正負両方向) を除去する。

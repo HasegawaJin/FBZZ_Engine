@@ -1508,6 +1508,89 @@ namespace fbzz::physics
             const float w = vc * denom;
             return a + ab * v + ac * w;
         }
+
+        // 点が三角形の内側または辺上にあるかを符号付き面積で判定する。
+        // WHY: 線分と三角形面の交差候補を、三角形の外側へ誤って採用しないため。
+        bool IsPointOnTriangle(const math::Vector3& p, const Triangle& tri)
+        {
+            constexpr float EPS = 1e-5f;
+            const math::Vector3& a = tri.v[0];
+            const math::Vector3& b = tri.v[1];
+            const math::Vector3& c = tri.v[2];
+            const math::Vector3& n = tri.normal;
+
+            const float edge0 = math::Vector3::Dot(math::Vector3::Cross(b - a, p - a), n);
+            const float edge1 = math::Vector3::Dot(math::Vector3::Cross(c - b, p - b), n);
+            const float edge2 = math::Vector3::Dot(math::Vector3::Cross(a - c, p - c), n);
+            return edge0 >= -EPS && edge1 >= -EPS && edge2 >= -EPS;
+        }
+
+        // 線分と三角形の最近接点を、端点サンプリングなしで求める。
+        // WHAT: 線分の端点と三角形、線分と三角形の各辺、線分と三角形面の
+        //       内部交差を全候補として比較する。
+        // WHY: 端点・中点だけの近似では、傾斜面や三角形境界で最近接点と法線が
+        //      移動方向に応じて跳ぶため、カプセルの前後振動を誘発する。
+        float ClosestPointsOnSegmentTriangle(const math::Vector3& segS,
+                                              const math::Vector3& segE,
+                                              const Triangle&       tri,
+                                              math::Vector3&        outSegment,
+                                              math::Vector3&        outTriangle)
+        {
+            float bestDistSq = std::numeric_limits<float>::max();
+            outSegment = segS;
+            outTriangle = tri.v[0];
+
+            auto Consider = [&](const math::Vector3& segmentPoint,
+                                const math::Vector3& trianglePoint)
+            {
+                const float distanceSq = (segmentPoint - trianglePoint).LengthSq();
+                if (distanceSq < bestDistSq)
+                {
+                    bestDistSq = distanceSq;
+                    outSegment = segmentPoint;
+                    outTriangle = trianglePoint;
+                }
+            };
+
+            // 線分の端点と三角形の最近接点。
+            Consider(segS, ClosestPointOnTriangle(segS, tri));
+            Consider(segE, ClosestPointOnTriangle(segE, tri));
+
+            // 線分と三角形の各辺の最近接点。
+            for (int edge = 0; edge < 3; ++edge)
+            {
+                math::Vector3 segmentPoint;
+                math::Vector3 edgePoint;
+                ClosestPointsOnSegments(segS, segE,
+                                         tri.v[edge], tri.v[(edge + 1) % 3],
+                                         segmentPoint, edgePoint);
+                Consider(segmentPoint, edgePoint);
+            }
+
+            // 線分が三角形面を横切り、交点が三角形内にある場合は距離 0。
+            const float signedStart = math::Vector3::Dot(segS - tri.v[0], tri.normal);
+            const float signedEnd   = math::Vector3::Dot(segE - tri.v[0], tri.normal);
+            const float planeDelta  = signedStart - signedEnd;
+            if (std::abs(planeDelta) > 1e-6f)
+            {
+                const float planeT = signedStart / planeDelta;
+                if (planeT >= 0.0f && planeT <= 1.0f)
+                {
+                    const math::Vector3 intersection = segS + (segE - segS) * planeT;
+                    if (IsPointOnTriangle(intersection, tri))
+                        Consider(intersection, intersection);
+                }
+            }
+            else if (std::abs(signedStart) <= 1e-5f &&
+                     (IsPointOnTriangle(segS, tri) || IsPointOnTriangle(segE, tri)))
+            {
+                // 線分全体が面とほぼ平行かつ同一平面にある退化ケース。
+                Consider(IsPointOnTriangle(segS, tri) ? segS : segE,
+                         IsPointOnTriangle(segS, tri) ? segS : segE);
+            }
+
+            return bestDistSq;
+        }
     } // anonymous namespace
 
     bool PhysicsSolver::TestSphereTriangle(const SphereCollider& s,
@@ -1627,8 +1710,8 @@ namespace fbzz::physics
     }
 
     bool PhysicsSolver::TestCapsuleTriangle(const CapsuleCollider& c,
-                                             const Triangle& tri,
-                                             ContactPoint& out)
+                                              const Triangle& tri,
+                                              ContactPoint& out)
     {
         const math::Vector3 segS = c.GetSegmentStart();
         const math::Vector3 segE = c.GetSegmentEnd();
@@ -1645,58 +1728,10 @@ namespace fbzz::physics
             return false;
         }
 
-        // カプセル線分と三角形の各エッジの最近傍点ペアを探す
-        float   bestDistSq = std::numeric_limits<float>::max();
-        math::Vector3 bestCapsule, bestTriPt;
-
-        // エッジ 3 本との線分-線分最近傍
-        for (int k = 0; k < 3; ++k)
-        {
-            const math::Vector3& ta = tri.v[k];
-            const math::Vector3& tb = tri.v[(k + 1) % 3];
-            math::Vector3 cp, tp;
-            ClosestPointsOnSegments(segS, segE, ta, tb, cp, tp);
-            const float dSq = (cp - tp).LengthSq();
-            if (dSq < bestDistSq)
-            {
-                bestDistSq = dSq;
-                bestCapsule = cp;
-                bestTriPt   = tp;
-            }
-        }
-
-        // 三角形面への投影点も候補に加える
-        // カプセル線分のサンプル点 (3 点) を三角形上の最近傍点と比較
-        for (float t : {0.0f, 0.5f, 1.0f})
-        {
-            const math::Vector3 sample = segS + (segE - segS) * t;
-            const math::Vector3 tp     = ClosestPointOnTriangle(sample, tri);
-            const float dSq = (sample - tp).LengthSq();
-            if (dSq < bestDistSq)
-            {
-                bestDistSq  = dSq;
-                bestCapsule = sample;
-                bestTriPt   = tp;
-            }
-        }
-
-        // WHY: 端点・中点だけのサンプリングでは、傾斜面に対する線分の
-        // 最近接位置を取り逃がし、移動方向によって接触点と法線が跳ぶ。
-        // 線分が三角形平面を横切る位置も候補に加え、接触判定を移動方向から安定させる。
-        const float planeDelta = signedDistS - signedDistE;
-        if (std::abs(planeDelta) > 1e-6f)
-        {
-            const float planeT = std::clamp(signedDistS / planeDelta, 0.0f, 1.0f);
-            const math::Vector3 sample = segS + (segE - segS) * planeT;
-            const math::Vector3 tp     = ClosestPointOnTriangle(sample, tri);
-            const float dSq = (sample - tp).LengthSq();
-            if (dSq < bestDistSq)
-            {
-                bestDistSq = dSq;
-                bestCapsule = sample;
-                bestTriPt = tp;
-            }
-        }
+        math::Vector3 bestCapsule;
+        math::Vector3 bestTriPt;
+        const float bestDistSq = ClosestPointsOnSegmentTriangle(
+            segS, segE, tri, bestCapsule, bestTriPt);
 
         if (bestDistSq >= c.m_radius * c.m_radius) return false;
 
@@ -1966,28 +2001,67 @@ namespace fbzz::physics
     }
 
     bool PhysicsSolver::TestCapsuleTriangleMesh(const CapsuleCollider& c,
-                                                 const TriangleMeshCollider& mesh,
-                                                 ContactPoint& out)
+                                                  const TriangleMeshCollider& mesh,
+                                                  ContactPoint& out)
     {
         // カプセルの AABB で BVH をクエリ
         const AABB queryAABB = c.GetAABB();
-        bool    found    = false;
-        float   maxDepth = -1.0f;
-        ContactPoint best;
+        std::vector<ContactPoint> candidates;
+        candidates.reserve(8);
 
         mesh.GetBVH().Query(queryAABB, [&](const Triangle& tri)
         {
             ContactPoint cp;
-            if (TestCapsuleTriangle(c, tri, cp) && cp.depth > maxDepth)
-            {
-                maxDepth = cp.depth;
-                best     = cp;
-                found    = true;
-            }
+            if (TestCapsuleTriangle(c, tri, cp))
+                candidates.push_back(cp);
         });
 
-        if (found) out = best;
-        return found;
+        if (candidates.empty()) return false;
+
+        // 最深接触を基準に、同じ接触パッチに属する三角形だけをマージする。
+        // WHY: MeshCollider は三角形ごとに法線を持つため、境界を跨ぐたびに
+        //      最深の1枚を選ぶと接触法線・摩擦方向がフレーム単位で切り替わる。
+        //      法線差が大きい面まで平均すると鋭い角を丸めてしまうため、
+        //      近い接触点かつ近い法線の候補に限定する。
+        auto deepest = std::max_element(candidates.begin(), candidates.end(),
+            [](const ContactPoint& lhs, const ContactPoint& rhs) {
+                return lhs.depth < rhs.depth;
+            });
+        const float maxDepth = deepest->depth;
+        const math::Vector3 referencePoint = deepest->point;
+        const math::Vector3 referenceNormal = deepest->normal;
+        const float mergeRadius = std::max(0.05f, c.m_radius * 0.5f);
+        const float mergeRadiusSq = mergeRadius * mergeRadius;
+        constexpr float DEPTH_TOLERANCE = 0.02f;
+        constexpr float NORMAL_MERGE_DOT = 0.96f;
+
+        math::Vector3 normalSum = math::Vector3::ZERO;
+        math::Vector3 pointSum = math::Vector3::ZERO;
+        float weightSum = 0.0f;
+        int mergedCount = 0;
+        for (const ContactPoint& candidate : candidates)
+        {
+            if (maxDepth - candidate.depth > DEPTH_TOLERANCE) continue;
+            if ((candidate.point - referencePoint).LengthSq() > mergeRadiusSq) continue;
+            if (math::Vector3::Dot(candidate.normal, referenceNormal) < NORMAL_MERGE_DOT) continue;
+
+            // 深い接触ほど大きく反映し、接触点・法線の急な切り替わりを抑える。
+            const float weight = std::max(candidate.depth, 1e-4f);
+            normalSum += candidate.normal * weight;
+            pointSum += candidate.point * weight;
+            weightSum += weight;
+            ++mergedCount;
+        }
+
+        out = *deepest;
+        if (mergedCount > 1 && weightSum > 0.0f && normalSum.LengthSq() > 1e-8f)
+        {
+            out.normal = normalSum.Normalized();
+            out.point = pointSum * (1.0f / weightSum);
+            // 深度は最大値を残す。平均すると位置補正が不足して再び貫通するため。
+            out.depth = maxDepth;
+        }
+        return true;
     }
 
     bool PhysicsSolver::TestOBBTriangleMesh(const OBBCollider& b,
