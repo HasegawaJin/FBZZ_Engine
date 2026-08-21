@@ -157,6 +157,11 @@ struct AnimatorParameter {
 // Base Layer の結果へ重ねる追加レイヤー。
 enum class AnimationLayerMode : int { Override = 0, Additive = 1 };
 
+/// レイヤー weight の上限。
+/// Additive は 1.0 を超えるとクリップの差分をそのまま誇張する (1.0 未満は従来どおり減衰)。
+/// Override は補間係数なので 1.0 より上は意味を持たず、適用時に 1.0 へ丸められる。
+inline constexpr float MAX_LAYER_WEIGHT = 4.0f;
+
 struct RetargetBoneMapping {
     std::string sourcePath;
     std::string targetPath;
@@ -364,6 +369,9 @@ struct AnimatorComponent {
     std::vector<std::string> clipSourcePaths;
     bool clipsLoaded          = false;
     int  clipsAttemptGeneration = -1; // FlushGeneration at last LoadClips attempt
+    // 最後に Controller / クリップ / マスクを取り込んだときのアセット世代。
+    // これが AssetManager の現在値と食い違う間は、派生キャッシュが古い。
+    int  appliedAssetGeneration = -1;
 
     std::vector<math::Matrix4> boneMatrices;
     std::vector<math::Matrix4> nodeGlobalTransforms;
@@ -526,7 +534,7 @@ struct AnimatorComponent {
     void SetLayerWeight(std::string_view layerName, float w)
     {
         if (AnimationLayer* l = FindLayer(layerName))
-            l->weight = std::clamp(w, 0.0f, 1.0f);
+            l->weight = std::clamp(w, 0.0f, MAX_LAYER_WEIGHT);
     }
 
     [[nodiscard]] float GetLayerWeight(std::string_view layerName) const
@@ -606,7 +614,13 @@ struct AnimatorComponent {
     {
         AnimationLayer* l = FindLayer(layerName);
         if (!l) return;
-        if (l->states.empty()) return;
+        // Controller の初回ロード前でも要求をランタイム状態へ保持する。
+        // WHY: Script は AnimatorSystem より先に実行されるため、開始直後の入力で
+        //      states がまだ空だと PlayLayerState が無言で消え、次のフレームの
+        //      Controller 適用で再生要求を復元できなくなる。
+        //      ApplyAnimatorControllerAsset は同名 Layer の runtime を引き継ぐので、
+        //      ロード完了後にこの要求をそのまま実行できる。
+        if (stateName.empty()) return;
         l->runtime.currentStateName = std::string(stateName);
         l->runtime.stateTime   = 0.0f;
         l->runtime.blendToState.clear();

@@ -2815,7 +2815,7 @@ void ScriptAnimatorProxy::SetLayerWeight(std::string_view layerName, float weigh
     if (auto* animator = SelfComponent<AnimatorComponent>(script)) {
         for (auto& layer : animator->layers)
             if (layer.name == layerName) {
-                layer.weight = std::clamp(weight, 0.0f, 1.0f);
+                layer.weight = std::clamp(weight, 0.0f, MAX_LAYER_WEIGHT);
                 return;
             }
     }
