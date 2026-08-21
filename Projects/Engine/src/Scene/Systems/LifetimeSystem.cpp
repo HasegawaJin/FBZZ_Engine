@@ -25,12 +25,12 @@ void LifetimeSystem::Update(SystemContext& ctx)
     const float dt = ctx.dt;
     for (EntityID id : scene.GetEntities<LifetimeComponent>()) {
         auto* lc = scene.GetComponent<LifetimeComponent>(id);
-        if (!lc) continue;
+        auto* go = scene.GetGameObject(id);
+        if (!lc || !go || !go->activeInHierarchy()) continue;
         if (!lc->enabled) continue;
         lc->remaining -= dt;
         if (lc->remaining <= 0.0f) {
-            auto* go = scene.GetGameObject(id);
-            if (go) GameObject::Destroy(*go, 0.0f);
+            GameObject::Destroy(*go, 0.0f);
         }
     }
 }

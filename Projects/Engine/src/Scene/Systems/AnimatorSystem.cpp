@@ -510,7 +510,7 @@ void DispatchAnimationEvents(GameObject& owner,
         if (scripts != nullptr)
             for (auto& entry : scripts->scripts)
                 if (entry.script)
-                    entry.script->InvokeAnimationEvent(info);
+                    entry.script->ExecuteCallback(&Script::OnAnimationEvent, info);
     }
 }
 
@@ -2148,7 +2148,7 @@ void DispatchAnimatorMove(GameObject& owner, const AnimatorComponent& animator)
 
     for (auto& entry : scripts->scripts)
         if (entry.script && entry.script->enabled)
-            entry.script->InvokeAnimatorMove(info);
+            entry.script->ExecuteCallback(&Script::OnAnimatorMove, info);
 }
 
 // 加重クリップ集合からルートモーションを抽出し、適用して Script へ通知するまでを行う。

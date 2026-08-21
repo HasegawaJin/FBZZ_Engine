@@ -386,7 +386,7 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
     for (EntityID eid : scene.GetEntities<BehaviorTreeComponent>()) {
         auto* bt = scene.GetComponent<BehaviorTreeComponent>(eid);
         auto* go = scene.GetGameObject(eid);
-        if (!bt || !go || !bt->enabled) continue;
+        if (!bt || !go || !go->activeInHierarchy() || !bt->enabled) continue;
 
         // ── ロード / 再ロード ────────────────────────────────────────────────
         if (!bt->initialized || bt->reloadRequested || bt->loadedTreePath != bt->treePath) {

@@ -49,7 +49,7 @@ void ParticleSimulationSystem::Update(SystemContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<ParticleEmitter>()) {
         auto* emitter = ctx.scene.GetComponent<ParticleEmitter>(id);
         GameObject* gameObject = ctx.scene.GetGameObject(id);
-        if (!emitter || !gameObject || !emitter->enabled) continue;
+        if (!emitter || !gameObject || !gameObject->activeInHierarchy() || !emitter->enabled) continue;
 
         // VFX Editor のタイムラインスクラブ要求。決定論的な再シミュレーションで状態を作り直すため、
         // このフレームの通常再生はスキップする (フレームガードはスクラブ側が立てる)。

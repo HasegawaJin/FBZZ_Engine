@@ -18,7 +18,7 @@
 //
 //   待機命令: WaitForSeconds / WaitForSecondsRealtime / WaitForFrames / WaitUntil / WaitWhile
 //
-// 進行は ScriptSystem が毎フレーム Script::TickCoroutines() を呼んで行う。
+// 進行は ScriptSystem が毎フレーム Script::UpdateCoroutines() を呼んで行う。
 // Script が破棄されると保持中のコルーチンも安全に破棄される (再開されない)。
 #pragma once
 

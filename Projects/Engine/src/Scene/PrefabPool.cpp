@@ -38,9 +38,9 @@ void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
             // 再利用時は OnAwake / OnStart が再発火しないため、コンテキストだけ張り直す。
             script->SetContext(&scene, &gameObject);
             if (spawned)
-                script->InvokeNoArg(&Script::OnSpawn, "OnSpawn");
+                script->ExecuteCallback(&Script::OnSpawn, "OnSpawn");
             else
-                script->InvokeNoArg(&Script::OnDespawn, "OnDespawn");
+                script->ExecuteCallback(&Script::OnDespawn, "OnDespawn");
         }
     }
 
@@ -55,7 +55,7 @@ void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
 GameObject* InstantiateRoot(Scene& scene, const std::string& prefabPath)
 {
     std::vector<EntityID> roots;
-    if (!Script::InvokePrefabInstantiate(scene, prefabPath, roots) || roots.empty()) {
+    if (!Script::InstantiatePrefab(scene, prefabPath, roots) || roots.empty()) {
         FBZZ_LOG_WARN("PrefabPool: instantiate failed -> %s", prefabPath.c_str());
         return nullptr;
     }

@@ -8,7 +8,7 @@
 //   演出を毎回 OnUpdate に経過時間の変数を足して手書きすることになっていた。
 //
 //   コルーチンを返す形にするのは、Tween 専用のマネージャーとその更新順序を
-//   新設せずに済ませるため。既にある StartCoroutine / TickCoroutines に乗るだけで、
+//   新設せずに済ませるため。既にある StartCoroutine / UpdateCoroutines に乗るだけで、
 //   Script が破棄されれば動作中の Tween も一緒に止まる (寿命管理が増えない)。
 //
 //     void OnStart() override { StartCoroutine(tween.MoveTo({ 0, 3, 0 }, 0.4f,

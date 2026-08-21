@@ -1375,6 +1375,12 @@ void VFXGraphSystem::Update(SystemContext& ctx)
         VFXGraphComponent* component = ctx.scene.GetComponent<VFXGraphComponent>(id);
         if (owner == nullptr || component == nullptr) continue;
 
+        // GameObject を無効化したら、生成済みの一時ノードも止めて次回有効化時に再開する。
+        if (!owner->activeInHierarchy()) {
+            if (component->initialized) DestroyRuntimeNodes(ctx.scene, *owner, *component);
+            continue;
+        }
+
         const bool editorPreview = component->editorPreviewFrame > 0
             && component->editorPreviewFrame + 2 >= Time::frameCount;
         if (!ctx.simulating && !editorPreview) {
