@@ -76,6 +76,7 @@
 #include <cstring>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
 #include <cctype>
 #include <cassert>
 
@@ -480,13 +481,51 @@ static input::KeyCode KeyCodeFromString(const std::string& s)
 std::string TomlTableToString(const toml::table& table);
 toml::table TomlTableFromString(const std::string& text);
 
+// instanceId → GameObject の索引。
+//
+// WHY 索引を作るか: Scene::FindByGuid は m_gameObjects の線形探索で、ロード後の
+//     参照解決は GameObject ごとに呼ぶため全体で O(n^2) になる。189 体では無視できるが、
+//     数千体のシーンでは秒単位に効いてくる。解決パスの間だけ索引を持って O(n) に落とす。
+//
+// WHY 一時オブジェクトにするか: Scene に索引を常駐させると、GameObject の生成・破棄・
+//     instanceId 変更のたびに同期が要る。同期漏れは「参照が解決できない」ではなく
+//     「別のオブジェクトに解決される」形で出るため、ロード中だけ作って捨てる方が安全。
+class GuidIndex {
+public:
+    explicit GuidIndex(Scene& scene)
+    {
+        for (GameObject& go : scene.GameObjects()) {
+            if (!go.instanceId.empty())
+                m_objects.emplace(go.instanceId, &go);
+        }
+    }
+
+    [[nodiscard]] GameObject* Find(const std::string& guid) const
+    {
+        const auto it = m_objects.find(guid);
+        return it == m_objects.end() ? nullptr : it->second;
+    }
+
+private:
+    std::unordered_map<std::string, GameObject*> m_objects;
+};
+
 // 書き込み先をスタックで持つ。
 // WHY スタックが要るか: BeginObject / BeginObjectElement は「現在の書き込み先」を
 //      一時的に子テーブルへ差し替える。ネストは任意の深さになりうるため、
 //      復帰先を LIFO で覚えておく必要がある。
 class TomlWriteReflector : public IReflector {
 public:
-    explicit TomlWriteReflector(toml::table& table) { m_stack.push_back(&table); }
+    // WHY Scene が要るか: GameObject 参照は EntityID (= シーン内の並び順の番号) ではなく
+    //     GameObject::instanceId で保存する。番号は GameObject を 1 つ増減させただけで
+    //     以降が全部ずれるうえ、ずれた参照は無効にならず *別のオブジェクトを指したまま
+    //     有効* になる。壊れても気付けない参照になるため、永続化には UUID だけを使う。
+    //     EntityID → instanceId の変換に Scene が要る。
+    explicit TomlWriteReflector(toml::table& table, const Scene* scene = nullptr)
+        : m_scene(scene)
+    {
+        m_stack.push_back(&table);
+    }
 
     void Field(const char* name, float& v) override { Current().insert(PersistentKey(name), (double)v); }
     void Field(const char* name, int& v) override { Current().insert(PersistentKey(name), (int64_t)v); }
@@ -498,10 +537,7 @@ public:
     void Field(const char* name, math::Quaternion& v) override { Current().insert(PersistentKey(name), QuatToArr(v)); }
     void Field(const char* name, EntityID& v) override
     {
-        toml::array arr;
-        arr.push_back((int64_t)v.index);
-        arr.push_back((int64_t)v.generation);
-        Current().insert(PersistentKey(name), std::move(arr));
+        Current().insert(PersistentKey(name), GuidOfEntity(v));
     }
     void Field(const char* name, input::KeyCode& v) override
     {
@@ -563,12 +599,7 @@ public:
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         toml::array array;
-        for (const auto& value : values) {
-            toml::array entity;
-            entity.push_back(static_cast<int64_t>(value.id.index));
-            entity.push_back(static_cast<int64_t>(value.id.generation));
-            array.push_back(std::move(entity));
-        }
+        for (const auto& value : values) array.push_back(GuidOfEntity(value.id));
         Current().insert(PersistentKey(name), std::move(array));
     }
     void AssetListField(const char* name,
@@ -643,7 +674,7 @@ public:
         reference.insert("type", value.type);
         toml::table fields;
         if (value.value) {
-            TomlWriteReflector child(fields);
+            TomlWriteReflector child(fields, m_scene);
             value.value->Reflect(child);
             value.preservedFieldsToml = TomlTableToString(fields);
         } else if (!value.preservedFieldsToml.empty()) {
@@ -656,6 +687,15 @@ public:
 private:
     toml::table& Current() { return *m_stack.back(); }
 
+    // 解決できない参照は空文字列。読み込み側は空を「未設定」として扱う。
+    [[nodiscard]] std::string GuidOfEntity(EntityID id) const
+    {
+        if (!m_scene || !id.IsValid()) return {};
+        const GameObject* go = m_scene->GetGameObject(id);
+        return go ? go->instanceId : std::string{};
+    }
+
+    const Scene* m_scene = nullptr;
     std::vector<toml::table*> m_stack;
     std::vector<toml::array*> m_listStack;
 };
@@ -665,7 +705,13 @@ private:
 // 既定値のまま残す (部分的に古いシーンでも壊れない)。
 class TomlReadReflector : public IReflector {
 public:
-    explicit TomlReadReflector(const toml::table& table) { m_stack.push_back(&table); }
+    // guids が null の場合、GameObject 参照は解決されず無効のまま残る。
+    // 参照先がまだ生成されていない Pass 1 では正常な状態で、あとの解決パスが埋め直す。
+    explicit TomlReadReflector(const toml::table& table, const GuidIndex* guids = nullptr)
+        : m_guids(guids)
+    {
+        m_stack.push_back(&table);
+    }
 
     void Field(const char* name, float& v) override
     {
@@ -714,10 +760,8 @@ public:
 
     void Field(const char* name, EntityID& v) override
     {
-        if (const auto* arr = FindArray(name); arr && arr->size() == 2) {
-            v.index      = (uint32_t)arr->at(0).value_or((int64_t)EntityID::INVALID_INDEX);
-            v.generation = (uint32_t)arr->at(1).value_or(0LL);
-        }
+        if (const toml::node* node = FindNode(name))
+            v = EntityFromGuid(*node);
     }
 
     void Field(const char* name, input::KeyCode& v) override
@@ -806,16 +850,8 @@ public:
         if (!array) return;
         values.clear();
         values.reserve(array->size());
-        for (const auto& node : *array) {
-            EntityRef value;
-            if (const toml::array* entity = node.as_array(); entity && entity->size() >= 2) {
-                value.id.index = static_cast<uint32_t>(
-                    entity->at(0).value_or(static_cast<int64_t>(EntityID::INVALID_INDEX)));
-                value.id.generation = static_cast<uint32_t>(
-                    entity->at(1).value_or(int64_t{0}));
-            }
-            values.push_back(value);
-        }
+        for (const auto& node : *array)
+            values.push_back(EntityRef{ EntityFromGuid(node) });
     }
     void AssetListField(const char* name,
                         std::vector<ScriptAssetReference>& values,
@@ -888,12 +924,23 @@ public:
         value.preservedFieldsToml = fields ? TomlTableToString(*fields) : std::string{};
         value.value = ScriptSerializableFactory::Create(value.type);
         if (value.value && fields) {
-            TomlReadReflector child(*fields);
+            TomlReadReflector child(*fields, m_guids);
             value.value->Reflect(child);
         }
     }
 
-private:
+protected:
+    [[nodiscard]] EntityID EntityFromGuid(const toml::node& node) const
+    {
+        if (!m_guids) return EntityID::INVALID;
+        const std::string guid = node.value_or(std::string{});
+        if (guid.empty()) return EntityID::INVALID;
+        const GameObject* go = m_guids->Find(guid);
+        return go ? go->GetID() : EntityID::INVALID;
+    }
+
+    const GuidIndex* m_guids = nullptr;
+
     [[nodiscard]] const toml::table* Current() const { return m_stack.back(); }
 
     [[nodiscard]] const toml::node* FindNode(const char* fallback) const
@@ -912,20 +959,74 @@ private:
         return node ? node->as_array() : nullptr;
     }
 
+private:
     std::vector<const toml::table*> m_stack;
     std::vector<const toml::array*> m_listStack;
 };
 
+// GameObject 参照だけを解決し直す読み込みリフレクタ。
+//
+// WHY 2 度読むか:
+//   参照先の GameObject は、参照元より後ろに並んでいることがある。1 パスでは
+//   「まだ生成されていない GameObject の instanceId」を解決できない。かといって
+//   読み込み中に patch 先のアドレスを覚えておくこともできない — コンポーネントは
+//   ローカル変数へ読んでから ComponentArray へ move されるため、そのアドレスは死ぬ。
+//   全 GameObject を生成し終えてから、実体化済みのコンポーネント/スクリプトに対して
+//   参照フィールドだけをもう一度流し込むのが、追加の状態を持たずに済む唯一の形。
+//
+// 値フィールドを無効化しているのは、この 2 度目が「解決のためだけのパス」であることを
+// 型で示すため。値まで読み直しても結果は同じだが、意図が読めなくなる。
+class EntityRefResolveReflector : public TomlReadReflector {
+public:
+    using TomlReadReflector::TomlReadReflector;
+
+    void Field(const char*, float&) override {}
+    void Field(const char*, int&) override {}
+    void Field(const char*, bool&) override {}
+    void Field(const char*, math::Vector2&) override {}
+    void Field(const char*, math::Vector3&) override {}
+    void Field(const char*, math::Vector4&) override {}
+    void Field(const char*, std::string&) override {}
+    void Field(const char*, math::Quaternion&) override {}
+    void Field(const char*, input::KeyCode&) override {}
+    void AssetField(const char*, ScriptAssetReference&, ScriptAssetType) override {}
+    void ListField(const char*, std::vector<float>&) override {}
+    void ListField(const char*, std::vector<int>&) override {}
+    void ListField(const char*, std::vector<bool>&) override {}
+    void ListField(const char*, std::vector<std::string>&) override {}
+    void ListField(const char*, std::vector<math::Vector2>&) override {}
+    void ListField(const char*, std::vector<math::Vector3>&) override {}
+    void ListField(const char*, std::vector<math::Vector4>&) override {}
+    void AssetListField(const char*, std::vector<ScriptAssetReference>&, ScriptAssetType) override {}
+
+    // 入れ子の Serializable は作り直さず、既にある実体の参照だけを解決する。
+    // WHY: 基底の実装はファクトリで作り直すため、Pass 1 で読んだオブジェクトが
+    //      丸ごと別インスタンスに差し替わる。ここは解決だけを行うパスなので、
+    //      実体の同一性を壊してはいけない。
+    void ReferenceField(const char* name, ScriptSerializedReference& value) override
+    {
+        if (!value.value) return;
+        const toml::node* node = FindNode(name);
+        const toml::table* reference = node ? node->as_table() : nullptr;
+        if (!reference) return;
+        const toml::table* fields = (*reference)["fields"].as_table();
+        if (!fields) return;
+
+        EntityRefResolveReflector child(*fields, m_guids);
+        value.value->Reflect(child);
+    }
+};
+
 // RegistryでAutomatic指定された標準コンポーネントをReflect()だけで保存する。
 // WHY: 新型追加時にSceneSerializerへ型別ifブロックを増やさず、単純データを共通経路へ流す。
-void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable)
+void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable, const Scene* scene)
 {
     ForEachRegisteredComponent([&]<typename T, typename Registration>() {
         if constexpr (Registration::serializationMode == ComponentSerializationMode::Automatic
                       && requires(T& component, IReflector& reflector) { component.Reflect(reflector); }) {
             if (T* component = go.GetComponent<T>()) {
                 toml::table componentTable;
-                TomlWriteReflector reflector(componentTable);
+                TomlWriteReflector reflector(componentTable, scene);
                 component->Reflect(reflector);
                 gameObjectTable.insert(Registration::serializedName, std::move(componentTable));
             }
@@ -948,6 +1049,47 @@ void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
             }
         }
     });
+}
+
+// 全 GameObject 生成後に呼ぶ。コンポーネントとスクリプトの GameObject 参照を
+// instanceId から EntityID へ解決する。
+void ResolveEntityReferences(GameObject& go,
+                             const toml::table& gameObjectTable,
+                             const GuidIndex& guids)
+{
+    ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if constexpr (Registration::serializationMode == ComponentSerializationMode::Automatic
+                      && requires(T& component, IReflector& reflector) { component.Reflect(reflector); }) {
+            if (const toml::table* componentTable =
+                    gameObjectTable[Registration::serializedName].as_table()) {
+                if (T* component = go.GetComponent<T>()) {
+                    EntityRefResolveReflector reflector(*componentTable, &guids);
+                    component->Reflect(reflector);
+                }
+            }
+        }
+    });
+
+    auto* sc = go.GetComponent<ScriptComponent>();
+    const auto* scriptsArr = gameObjectTable["ScriptComponents"].as_array();
+    if (!sc || !scriptsArr) return;
+
+    // 読み込み時と同じ規則で歩幅を合わせる。readScriptEntry は type が空の項目を
+    // 読み飛ばすため、単純な添字対応にすると 1 つずれた Script へ書き込む。
+    size_t scriptIndex = 0;
+    for (const auto& item : *scriptsArr) {
+        const auto* scTbl = item.as_table();
+        if (!scTbl) continue;
+        if ((*scTbl)["type"].value_or(std::string{}).empty()) continue;
+        if (scriptIndex >= sc->scripts.size()) break;
+
+        Script* script = sc->scripts[scriptIndex++].script.get();
+        if (!script) continue;   // DLL 未登録。fieldsToml のまま保持され、保存時に戻る
+        if (const toml::table* fieldsTbl = (*scTbl)["fields"].as_table()) {
+            EntityRefResolveReflector reflector(*fieldsTbl, &guids);
+            script->Reflect(reflector);
+        }
+    }
 }
 
 std::string TomlTableToString(const toml::table& table)
@@ -1074,7 +1216,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
     toml::table doc;
 
     toml::table sceneTbl;
-    sceneTbl.insert("format_version", 1);
+    // 2 = GameObject 参照を EntityID の並び順番号ではなく instanceId で保存する形式。
+    // 読み込み側は分岐しない (旧形式は移行済み)。読む人向けの目印として上げておく。
+    sceneTbl.insert("format_version", 2);
     doc.insert("scene", std::move(sceneTbl));
 
     toml::array goArr;
@@ -2233,7 +2377,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("NavMeshSensorComponent", std::move(sensorTbl));
         }
 
-        WriteAutomaticComponents(go, goTbl);
+        WriteAutomaticComponents(go, goTbl, &scene);
 
         if (auto* sc = go.GetComponent<ScriptComponent>()) {
             toml::array scriptsArr;
@@ -2242,7 +2386,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 if (entry.script) {
                     entry.script->SetContext(&scene, &go);
                     entry.script->OnBeforeSerialize();
-                    TomlWriteReflector reflector(fieldsTbl);
+                    TomlWriteReflector reflector(fieldsTbl, &scene);
                     entry.script->Reflect(reflector);
                     const std::string type = entry.script->GetTypeName();
                     const bool enabled = entry.script->enabled;
@@ -3597,6 +3741,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         }
     }
 
+    // 以降の解決パスはすべてこの索引を引く。全 GameObject 生成後に一度だけ作る。
+    const GuidIndex guids(*scene);
+
     // ------------------------------------------------------------------
     // Pass 2: 親子関係の解決
     // ------------------------------------------------------------------
@@ -3610,16 +3757,26 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
         if (childGuid.empty()) continue;
 
-        auto* child = scene->FindByGuid(childGuid);
-        auto* parent = scene->FindByGuid(parentGuid);
+        auto* child = guids.Find(childGuid);
+        auto* parent = guids.Find(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 
     // ------------------------------------------------------------------
-    // Pass 3: EntityID 参照を名前から解決する
-    // WHY: EntityID は実行ごとに変わりうるためシリアライズ時は名前で保存している。
+    // Pass 3: EntityID 参照を識別子から解決する
+    // WHY: EntityID は実行ごとに変わりうるためシリアライズ時は識別子で保存している。
     //      全 GameObject がロードされた後にまとめて解決する。
     // ------------------------------------------------------------------
+
+    // Reflect() を通る全コンポーネント / スクリプトの GameObject 参照。
+    for (auto& item : *goArr) {
+        const auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+        const std::string guid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (guid.empty()) continue;
+        if (GameObject* go = guids.Find(guid))
+            ResolveEntityReferences(*go, *goTbl, guids);
+    }
 
     // IKSolverComponent: targetEntity / poleEntity を GUID 優先・名前フォールバックで解決する。
     // WHY: GUID はリネームに耐性があり複数インスタンス時も衝突しない。
@@ -3632,7 +3789,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             {
                 GameObject* resolved = nullptr;
                 if (!chain.targetGuid.empty())
-                    resolved = scene->FindByGuid(chain.targetGuid);
+                    resolved = guids.Find(chain.targetGuid);
                 if (!resolved && !chain.targetName.empty())
                     resolved = scene->Find(chain.targetName);
                 if (resolved) chain.targetEntity = resolved->GetID();
@@ -3641,7 +3798,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             {
                 GameObject* resolved = nullptr;
                 if (!chain.poleGuid.empty())
-                    resolved = scene->FindByGuid(chain.poleGuid);
+                    resolved = guids.Find(chain.poleGuid);
                 if (!resolved && !chain.poleName.empty())
                     resolved = scene->Find(chain.poleName);
                 if (resolved) chain.poleEntity = resolved->GetID();
@@ -3669,7 +3826,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         auto* bone = boneGo->GetComponent<BoneComponent>();
         if (!bone) continue;
         GameObject* owner = nullptr;
-        if (!ownerGuid.empty()) owner = scene->FindByGuid(ownerGuid);
+        if (!ownerGuid.empty()) owner = guids.Find(ownerGuid);
         if (!owner && !ownerName.empty()) owner = scene->Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
@@ -3688,13 +3845,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         const std::string rootName = (*smrTbl)["skeletonRootName"].value_or(std::string{});
         if (rootGuid.empty() && rootName.empty()) continue;
         const std::string ownerGuid = (*goTbl)["instanceId"].value_or(std::string{});
-        GameObject* ownerGo = ownerGuid.empty() ? nullptr : scene->FindByGuid(ownerGuid);
+        GameObject* ownerGo = ownerGuid.empty() ? nullptr : guids.Find(ownerGuid);
         if (!ownerGo) ownerGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
         if (!ownerGo) continue;
         auto* smr = ownerGo->GetComponent<SkinnedMeshRenderer>();
         if (!smr) continue;
         GameObject* skeletonRoot = nullptr;
-        if (!rootGuid.empty()) skeletonRoot = scene->FindByGuid(rootGuid);
+        if (!rootGuid.empty()) skeletonRoot = guids.Find(rootGuid);
         if (!skeletonRoot && !rootName.empty()) skeletonRoot = scene->Find(rootName);
         if (skeletonRoot) smr->skeletonRootEntity = skeletonRoot->GetID();
     }
@@ -4177,6 +4334,9 @@ bool SceneSerializer::AppendObjects(
         }
     }
 
+    // 以降の解決パスはすべてこの索引を引く。全 GameObject 生成後に一度だけ作る。
+    const GuidIndex guids(scene);
+
     // ------------------------------------------------------------------
     // Pass 2: 親子関係の解決
     // ------------------------------------------------------------------
@@ -4189,27 +4349,36 @@ bool SceneSerializer::AppendObjects(
         std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
         if (childGuid.empty()) continue;
 
-        auto* child = scene.FindByGuid(childGuid);
-        auto* parent = scene.FindByGuid(parentGuid);
+        auto* child = guids.Find(childGuid);
+        auto* parent = guids.Find(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 
     // ------------------------------------------------------------------
     // Pass 3: EntityID 参照の解決
     // ------------------------------------------------------------------
+    for (auto& item : *goArr) {
+        const auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+        const std::string guid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (guid.empty()) continue;
+        if (GameObject* go = guids.Find(guid))
+            ResolveEntityReferences(*go, *goTbl, guids);
+    }
+
     for (auto& go : scene.GameObjects()) {
         auto* ik = go.GetComponent<IKSolverComponent>();
         if (!ik) continue;
         for (auto& chain : ik->chains) {
             {
                 GameObject* resolved = nullptr;
-                if (!chain.targetGuid.empty()) resolved = scene.FindByGuid(chain.targetGuid);
+                if (!chain.targetGuid.empty()) resolved = guids.Find(chain.targetGuid);
                 if (!resolved && !chain.targetName.empty()) resolved = scene.Find(chain.targetName);
                 if (resolved) chain.targetEntity = resolved->GetID();
             }
             {
                 GameObject* resolved = nullptr;
-                if (!chain.poleGuid.empty()) resolved = scene.FindByGuid(chain.poleGuid);
+                if (!chain.poleGuid.empty()) resolved = guids.Find(chain.poleGuid);
                 if (!resolved && !chain.poleName.empty()) resolved = scene.Find(chain.poleName);
                 if (resolved) chain.poleEntity = resolved->GetID();
             }
@@ -4229,7 +4398,7 @@ bool SceneSerializer::AppendObjects(
         auto* bone = boneGo->GetComponent<BoneComponent>();
         if (!bone) continue;
         GameObject* owner = nullptr;
-        if (!ownerGuid.empty()) owner = scene.FindByGuid(ownerGuid);
+        if (!ownerGuid.empty()) owner = guids.Find(ownerGuid);
         if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
@@ -4247,7 +4416,7 @@ bool SceneSerializer::AppendObjects(
         if (!tbl) continue;
         if (!(*tbl)["parent"].value_or(std::string{}).empty()) continue;
         const std::string guid = (*tbl)["instanceId"].value_or(std::string{});
-        GameObject* go = !guid.empty() ? scene.FindByGuid(guid) : nullptr;
+        GameObject* go = !guid.empty() ? guids.Find(guid) : nullptr;
         if (!go) go = scene.Find((*tbl)["name"].value_or(std::string{}));
         if (go) outRoots.push_back(go->GetID());
     }
