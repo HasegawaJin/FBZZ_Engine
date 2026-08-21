@@ -30,6 +30,8 @@ std::unordered_map<std::string, std::string> s_movedPathAliases;
 std::mutex  s_mutex;
 bool        s_initialized = false;
 std::string s_assetsRoot;  // Init に渡された Assets ルート (末尾 '/' 付き正規化)
+// 索引が最後の書き出し以降に変わったか。FlushIndexFile が見る。
+bool        s_indexDirty = false;
 
 std::string NormalizePath(std::string p)
 {
@@ -134,6 +136,7 @@ void RegisterLocked(const std::string& guid, const std::string& absPath, bool pr
 {
     const std::string key = PathKey(absPath);
     s_movedPathAliases.erase(key);
+    s_indexDirty = true;
     const auto it = s_guidToPath.find(guid);
     if (it != s_guidToPath.end() && PathKey(it->second) != key) {
         // 外部ツールの移動で Renamed 通知が欠落した場合、古い実体が消えていれば
@@ -406,6 +409,7 @@ void AssetDatabase::Init(const std::string& assetsRoot)
         const std::string projectRoot = s_assetsRoot.substr(0, s_assetsRoot.size() - 7);
         IndexBakedLibraryLocked(projectRoot + "Library/Baked");
     }
+    s_indexDirty = true;
 }
 
 void AssetDatabase::Shutdown()
@@ -517,6 +521,7 @@ void AssetDatabase::OnAssetMoved(const std::string& oldAbsPath, const std::strin
 void AssetDatabase::OnAssetRemoved(const std::string& absPath)
 {
     std::lock_guard lock(s_mutex);
+    s_indexDirty = true;
     const std::string key = PathKey(absPath);
     const std::string prefix = key + "/";
     std::vector<std::string> removedGuids;
@@ -560,6 +565,113 @@ std::string AssetDatabase::AssetsRoot()
 {
     std::lock_guard lock(s_mutex);
     return s_assetsRoot;
+}
+
+namespace {
+
+// s_assetsRoot ("<proj>/Assets/") から "<proj>/" を作る。呼び出し側がロック済みである前提。
+std::string ProjectRootLocked()
+{
+    constexpr size_t kAssetsLen = 7;  // "Assets/"
+    if (s_assetsRoot.size() > kAssetsLen
+        && LowerCopy(s_assetsRoot.substr(s_assetsRoot.size() - kAssetsLen)) == "assets/")
+        return s_assetsRoot.substr(0, s_assetsRoot.size() - kAssetsLen);
+    return s_assetsRoot;
+}
+
+// TOML の basic string へ落とす。パスは正規化済みで '/' 区切りなので、
+// 実質エスケープが要るのは引用符だけだが、規格どおり両方処理する。
+std::string TomlQuote(const std::string& value)
+{
+    std::string out;
+    out.reserve(value.size() + 2);
+    out.push_back('"');
+    for (const char c : value) {
+        if (c == '"' || c == '\\') out.push_back('\\');
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
+}
+
+} // namespace
+
+std::string AssetDatabase::ProjectRoot()
+{
+    std::lock_guard lock(s_mutex);
+    return ProjectRootLocked();
+}
+
+std::string AssetDatabase::GuidFromRef(std::string_view ref)
+{
+    if (!IsGuidRef(ref)) return {};
+    ref.remove_prefix(kGuidPrefix.size());
+
+    // パスヒントとサブアセット接尾辞を落とす。guid は 32 桁 hex 固定なので、
+    // 「hex が続く限り」で切れば区切り文字の種類に依存せず取り出せる。
+    size_t length = 0;
+    while (length < ref.size() && length < 32
+           && std::isxdigit(static_cast<unsigned char>(ref[length]))) ++length;
+    return LowerCopy(std::string(ref.substr(0, length)));
+}
+
+std::string AssetDatabase::HintFromRef(std::string_view ref)
+{
+    if (!IsGuidRef(ref)) return {};
+    const size_t sep = ref.find(kRefHintSeparator);
+    if (sep == std::string_view::npos) return {};
+    return std::string(ref.substr(sep + 1));
+}
+
+void AssetDatabase::SaveIndexFile()
+{
+    std::vector<std::pair<std::string, std::string>> entries;  // guid, プロジェクト相対パス
+    std::string projectRoot;
+    {
+        std::lock_guard lock(s_mutex);
+        if (!s_initialized) return;
+        projectRoot = ProjectRootLocked();
+        if (projectRoot.empty()) return;
+
+        const std::string rootKey = LowerCopy(projectRoot);
+        entries.reserve(s_guidToPath.size());
+        for (const auto& [guid, absPath] : s_guidToPath) {
+            std::string relative = absPath;
+            if (relative.size() > rootKey.size()
+                && LowerCopy(relative.substr(0, rootKey.size())) == rootKey)
+                relative = relative.substr(rootKey.size());
+            entries.emplace_back(guid, std::move(relative));
+        }
+        s_indexDirty = false;
+    }
+
+    // パス順に並べる。関連するアセットが固まって読めるうえ、書き出すたびに
+    // 行が入れ替わらないので差分としても意味を持つ。
+    std::sort(entries.begin(), entries.end(),
+              [](const auto& a, const auto& b) { return a.second < b.second; });
+
+    std::ostringstream out;
+    out << "# 自動生成 — AssetDatabase が索引を更新するたびに書き直す。手で編集しても読み戻さない。\n"
+           "# guid -> プロジェクト相対パス。Library/Baked 配下は import 生成物で、\n"
+           "# その guid は原本 GUID + サブキーから DeriveGuid で導出されるためファイル中には存在しない。\n"
+           "# ここを引けば、エディターを起動していなくても任意の guid を解決できる。\n\n";
+    out << "count = " << entries.size() << "\n\n[guids]\n";
+    for (const auto& [guid, relative] : entries)
+        out << TomlQuote(guid) << " = " << TomlQuote(relative) << "\n";
+
+    const std::string path = projectRoot + "Library/AssetIndex.toml";
+    util::FileSystem::EnsureDirectory(projectRoot + "Library");
+    if (!util::FileSystem::WriteText(path, out.str()))
+        FBZZ_LOG_WARN("AssetDatabase: index write failed [%s]", path.c_str());
+}
+
+void AssetDatabase::FlushIndexFile()
+{
+    {
+        std::lock_guard lock(s_mutex);
+        if (!s_indexDirty || !s_initialized) return;
+    }
+    SaveIndexFile();
 }
 
 } // namespace fbzz::asset

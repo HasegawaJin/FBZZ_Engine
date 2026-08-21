@@ -13,6 +13,14 @@
 //   Encode: AssetDatabase で guid に解決できた文字列値のみ "guid:..." へ置換。
 //           baked (.fzasset/.mesh 等 guid を持たない) や未登録パスは素通り。
 //   Decode: "guid:..." のみ "Assets/..." 相対パスへ置換。解決不能なら元のまま。
+//
+// ディスク上の形式は "guid:<32hex>[<サブアセット接尾辞>]|<プロジェクト相対パス>"。
+// '|' 以降は人と外部ツールのためのヒントで、権威は常に guid 側にある。
+// WHY 併記するか: guid だけだと「どのファイルか」をファイルの中から辿れない。
+//     特に Library/Baked の導出 guid は DeriveGuid の計算結果でしかなく、
+//     ディスク上のどこにも文字列として存在しないため grep でも見つからない。
+//     副次的に、.meta を作り直して guid が変わった場合の復旧経路にもなる
+//     (guid が引けず、ヒントの実体が残っていればそちらを使う)。
 #pragma once
 #include <toml++/toml.hpp>
 #include <string>

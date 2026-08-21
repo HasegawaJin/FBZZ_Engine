@@ -8,6 +8,8 @@
 
 // 参照側 (.mat / .scene / コンポーネント) は "guid:<32hex>" 形式の文字列を保存でき、
 // AssetManager::ResolvePath がロード時に実パスへ解決する。
+// 読み手のために "|<プロジェクト相対パス>" を後ろへ併記できる (GuidRefCodec が付ける)。
+// 権威は guid 側で、ヒントは解決できなかったときの復旧にしか使わない。
 // WHY: パス文字列参照はリネーム・移動で全参照が壊れる。GUID は生成後不変なので、
 //      ファイルを動かしてもインデックスの再構築だけで参照が生き続ける。
 //
@@ -55,6 +57,39 @@ public:
     [[nodiscard]] static bool IsGuidRef(std::string_view ref) {
         return ref.rfind(kGuidPrefix, 0) == 0;
     }
+
+    // 参照へ人が読めるパスを併記するときの区切り。
+    //   guid:<32hex>[<サブアセット接尾辞>]|<プロジェクト相対パス>
+    //
+    // WHY 併記するか: guid 単体は「どのファイルか」をファイルの中から一切辿れない。
+    //     特に Library/Baked の導出 guid は DeriveGuid の計算結果でしかなく、
+    //     どこにも文字列として存在しないため grep でも見つからない。
+    //     権威は guid のまま、後ろに読める形を足して、人と外部ツールが
+    //     ファイルを見ただけで対象を特定できるようにする (Godot の uid + path と同じ)。
+    //     '|' は Windows のファイル名に使えないため、パスと衝突しない。
+    static constexpr char kRefHintSeparator = '|';
+
+    // 参照文字列から guid 本体 (32hex) だけを取り出す。
+    // "guid:" プレフィックス・パスヒント・サブアセット接尾辞をすべて落とす。
+    // guid 参照でなければ空文字列。
+    [[nodiscard]] static std::string GuidFromRef(std::string_view ref);
+
+    // 参照文字列に併記されたパスヒント (プロジェクト相対) を取り出す。無ければ空文字列。
+    [[nodiscard]] static std::string HintFromRef(std::string_view ref);
+
+    // Init に渡された Assets ルートの 1 つ上 (末尾 '/' 付き)。
+    // パスヒントと索引ファイルをプロジェクト相対で書くために使う。
+    [[nodiscard]] static std::string ProjectRoot();
+
+    // guid → パスの索引を Library/AssetIndex.toml へ書き出す。
+    //
+    // WHY ファイルに落とすか: 索引はこれまでメモリ上にしか存在せず、エディターを
+    //     起動していない状態では guid を 1 つも解決できなかった。導出 guid に至っては
+    //     起動していても grep で辿れない。1 ファイル読めば全部引ける形を用意する。
+    static void SaveIndexFile();
+
+    // 索引が変わっていれば SaveIndexFile する。毎フレーム呼んでよい。
+    static void FlushIndexFile();
 
     // 32 桁 hex の新規 GUID を生成する (Unity と同形式)。
     [[nodiscard]] static std::string GenerateGuid();
