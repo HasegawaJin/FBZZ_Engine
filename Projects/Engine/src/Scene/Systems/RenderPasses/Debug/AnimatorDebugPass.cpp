@@ -143,8 +143,9 @@ void AnimatorDebugPass::Execute(RenderPassContext& ctx)
 
         // 関節ボックスのワールド位置 = ownerWorld * rootInverseTransform * nodeGlobal * 原点。
         // 前段の 2 つは全ノード共通なので、ループの外で 1 回だけ合成する。
+        // 骨 GameObject / SOCKET_HAND と同じ world 姿勢でデバッグ骨格を描く。
         const math::Matrix4 toWorld =
-            owner.transform.GetPresentationWorldMatrix() * skeleton.rootInverseTransform;
+            owner.transform.GetWorldMatrix() * skeleton.rootInverseTransform;
         const auto jointWorldPos = [&toWorld](const math::Matrix4& nodeGlobal) -> math::Vector3 {
             const math::Matrix4 m = toWorld * nodeGlobal;
             return { m.m[0][3], m.m[1][3], m.m[2][3] };

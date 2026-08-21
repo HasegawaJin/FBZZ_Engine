@@ -54,15 +54,15 @@ using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
 // 浮動小数の再計算誤差では履歴をリセットしないよう、位置と回転に小さい許容値を持たせる。
 bool PoseChanged(const RigidBodyComponent& component, const Transform& transform)
 {
-    if (!component.hasPhysicsPoseHistory)
+    if (!component.hasPhysicsSyncState)
         return true;
     constexpr float POSITION_EPSILON_SQ = 1.0e-10f;
     constexpr float ROTATION_DOT_EPSILON = 1.0e-5f;
     const bool positionChanged =
-        (transform.worldPosition - component.currentPhysicsPosition).LengthSq() >
+        (transform.worldPosition - component.lastPhysicsPosition).LengthSq() >
         POSITION_EPSILON_SQ;
     const float rotationDot = std::abs(math::Quaternion::Dot(
-        transform.worldRotation.Normalized(), component.currentPhysicsRotation));
+        transform.worldRotation.Normalized(), component.lastPhysicsRotation));
     return positionChanged || (1.0f - rotationDot) > ROTATION_DOT_EPSILON;
 }
 
@@ -387,10 +387,9 @@ void PhysicsSystem::Update(SystemContext& ctx) {
             if (rb->rigidBody->IsStatic() || PoseChanged(*rb, go->transform)) {
                 rb->rigidBody->SetPosition(go->transform.worldPosition);
                 rb->rigidBody->SetRotation(go->transform.worldRotation);
-                rb->ResetPhysicsPoseHistory(
+                rb->ResetPhysicsSyncState(
                     go->transform.worldPosition, go->transform.worldRotation);
             }
-            rb->BeginPhysicsStep();
             rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody.get());
         }
     }
@@ -451,7 +450,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
             if (!go || !go->activeInHierarchy() || !rb || !rb->enabled || !rb->rigidBody) continue;
             const math::Vector3 position = rb->rigidBody->GetPosition();
             const math::Quaternion rotation = rb->rigidBody->GetRotation();
-            rb->CommitPhysicsPose(position, rotation);
+            rb->CommitPhysicsSyncState(position, rotation);
             WriteWorldPoseToTransform(*go, position, rotation);
         }
     }

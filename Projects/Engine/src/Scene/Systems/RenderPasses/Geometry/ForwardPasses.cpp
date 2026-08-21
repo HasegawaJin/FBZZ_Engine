@@ -143,7 +143,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!material || !material->shader.IsValid()) continue;
 
             PerObjectCB objData{};
-            objData.world             = go.transform.GetPresentationWorldMatrix();
+            objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
             renderer::DrawCall dc;
@@ -222,7 +222,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!skinnedShader.IsValid()) continue;
 
             PerObjectCB objData{};
-            objData.world             = go.transform.GetPresentationWorldMatrix();
+            // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
+            objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
             const auto skinCB = ResolveSkinningCB(
                 anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
@@ -307,7 +308,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         }
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetPresentationWorldMatrix();
+        // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -365,7 +367,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!skinnedShader.IsValid()) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetPresentationWorldMatrix();
+        // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 

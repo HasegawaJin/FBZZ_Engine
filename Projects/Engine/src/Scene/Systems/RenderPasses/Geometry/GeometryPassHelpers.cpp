@@ -528,7 +528,7 @@ void UpdateShadowConstants(RenderPassContext& ctx)
 
 WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, float padding)
 {
-    const math::Matrix4 world = tf.GetPresentationWorldMatrix();
+    const math::Matrix4 world = tf.GetWorldMatrix();
 
     // ローカル空間バウンディング球中心をワールド空間に変換する。
     // 行列は列ベクトル規則 (M * v) なので:

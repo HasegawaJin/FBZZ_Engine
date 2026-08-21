@@ -42,16 +42,16 @@ bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& 
 math::Vector3 ParticleWorldPoint(const Transform& transform, const math::Vector3& localPoint)
 {
     const math::Vector3 scaled = {
-        localPoint.x * transform.presentationWorldScale.x,
-        localPoint.y * transform.presentationWorldScale.y,
-        localPoint.z * transform.presentationWorldScale.z
+        localPoint.x * transform.worldScale.x,
+        localPoint.y * transform.worldScale.y,
+        localPoint.z * transform.worldScale.z
     };
-    return transform.presentationWorldPosition + transform.presentationWorldRotation * scaled;
+    return transform.worldPosition + transform.worldRotation * scaled;
 }
 
 math::Vector3 ParticleWorldVector(const Transform& transform, const math::Vector3& localVector)
 {
-    return transform.presentationWorldRotation * localVector;
+    return transform.worldRotation * localVector;
 }
 
 // 選択されたParticleEmitterの現在形状を、テクスチャAlpha込みでSelection Maskへ描く。
@@ -203,7 +203,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
         if (!IsSelectedForOutline(go, ctx.settings)) continue;
 
         PerObjectCB objData{};
-        objData.world = go.transform.GetPresentationWorldMatrix();
+        objData.world = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 

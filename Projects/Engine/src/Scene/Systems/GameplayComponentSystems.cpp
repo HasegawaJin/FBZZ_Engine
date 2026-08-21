@@ -311,14 +311,8 @@ void CameraRigSystem::Update(SystemContext& ctx)
         GameObject* target = follow ? follow->target.Resolve(ctx.scene) : nullptr;
         if (!go || !follow || !follow->enabled || !target)
             continue;
-        // 動的剛体へ追従するときは描画と同じ補間姿勢を使う。
-        // WHY: worldPosition は fixed step ごとに段階更新され、カメラの damping と干渉するため。
-        const math::Vector3 targetPosition = ctx.simulating
-            ? target->transform.presentationWorldPosition
-            : target->transform.worldPosition;
-        const math::Quaternion targetRotation = ctx.simulating
-            ? target->transform.presentationWorldRotation
-            : target->transform.worldRotation;
+        const math::Vector3 targetPosition = target->transform.worldPosition;
+        const math::Quaternion targetRotation = target->transform.worldRotation;
         const math::Vector3 offset = follow->useTargetRotation
             ? targetRotation * follow->offset : follow->offset;
         const math::Vector3 desired = targetPosition + offset;

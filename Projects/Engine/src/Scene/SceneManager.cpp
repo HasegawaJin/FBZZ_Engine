@@ -61,7 +61,6 @@ void SceneManager::BuildScheduler()
 
     // PostPhysics
     m_scheduler.AddSystem<TransformPostPhysics>();
-    m_scheduler.AddSystem<TransformPresentationPostPhysics>();
 
     // Navigation
     // 実行順は各 System の OrderingHints が決める:
@@ -95,7 +94,6 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<BillboardSystem>();
     m_scheduler.AddSystem<PresentationSystem>();
     m_scheduler.AddSystem<ParticleSimulationSystem>();
-    m_scheduler.AddSystem<TransformPresentationLateUpdate>();
 
     m_scheduler.Build();
 }
@@ -201,7 +199,7 @@ void SceneManager::Update(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
-    m_scheduler.Update({ *scene, world, nullptr, m_audioManager, dt, 0.0f, 0.0f, m_simulating });
+    m_scheduler.Update({ *scene, world, nullptr, m_audioManager, dt, 0.0f, m_simulating });
 }
 
 void SceneManager::LateUpdate(float dt, physics::World& world)
@@ -211,7 +209,7 @@ void SceneManager::LateUpdate(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
-    m_scheduler.LateUpdate({ *scene, world, renderer::ResourceManager::Active(), m_audioManager, dt, 0.0f, 0.0f, m_simulating });
+    m_scheduler.LateUpdate({ *scene, world, renderer::ResourceManager::Active(), m_audioManager, dt, 0.0f, m_simulating });
 }
 
 Scene* SceneManager::GetActive()

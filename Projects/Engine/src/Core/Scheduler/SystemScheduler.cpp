@@ -159,7 +159,6 @@ void SystemScheduler::SetSingleStep(bool enabled)
 void SystemScheduler::ResetAccumulator()
 {
     m_accumulator = 0.0f;
-    m_physicsAlpha = 0.0f;
 }
 
 // ─── Frame Update ────────────────────────────────────────────────────────────
@@ -211,27 +210,18 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
     if (m_singleStep) {
         runBatches(fixedCtx);
         m_singleStep = false;
-        // フレーム送りでは補間待ちの 1 fixed step 遅延を見せず、確定姿勢を表示する。
-        m_physicsAlpha = 1.0f;
     } else {
         m_accumulator = std::min(m_accumulator + ctx.dt, maxAccum);
         while (m_accumulator >= fixedDt) {
             runBatches(fixedCtx);
             m_accumulator -= fixedDt;
         }
-        // WHAT: 未消化時間が次の固定ステップへどこまで進んだかを描画補間率にする。
-        // WHY: 固定物理の段階的な姿勢を可変リフレッシュの描画へ直接露出させないため。
-        m_physicsAlpha = fixedDt > 0.0f
-            ? std::clamp(m_accumulator / fixedDt, 0.0f, 1.0f)
-            : 0.0f;
     }
-    ctx.physicsAlpha = m_physicsAlpha;
 }
 
 void SystemScheduler::Update(SystemContext ctx)
 {
     assert(m_built);
-    ctx.physicsAlpha = m_physicsAlpha;
     RunPhase(Phase::PreScript,   ctx);
     RunPhase(Phase::Script,      ctx);
     RunPhase(Phase::PrePhysics,  ctx);
@@ -246,7 +236,14 @@ void SystemScheduler::Update(SystemContext ctx)
 void SystemScheduler::LateUpdate(SystemContext ctx)
 {
     assert(m_built);
-    ctx.physicsAlpha = m_physicsAlpha;
+    const PhaseConfig& physicsConfig = m_phaseConfigs[static_cast<size_t>(Phase::Physics)];
+    if (physicsConfig.fixedStep && physicsConfig.hz > 0)
+    {
+        const float fixedDt = 1.0f / static_cast<float>(physicsConfig.hz);
+        // Update() 後に残った accumulator は、現在の確定姿勢から次の fixed step
+        // までの経過割合。LateUpdate の描画だけをこの係数で補間する。
+        ctx.interpolationAlpha = std::clamp(m_accumulator / fixedDt, 0.0f, 1.0f);
+    }
     RunPhase(Phase::LateUpdate, ctx);
 }
 

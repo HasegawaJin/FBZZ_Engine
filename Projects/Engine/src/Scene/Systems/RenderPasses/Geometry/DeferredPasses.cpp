@@ -265,7 +265,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         }
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetPresentationWorldMatrix();
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
@@ -422,7 +422,8 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         if (!IsSkinnedVisible(ctx, go, *smr)) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetPresentationWorldMatrix();
+        // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
         const auto skinCB = (anim && anim->skinningBuffer.IsValid())
@@ -540,7 +541,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!material || !material->shader.IsValid()) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetPresentationWorldMatrix();
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
 
         renderer::DrawCall dc;
@@ -595,7 +596,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!material || !material->shader.IsValid()) continue;
 
         PerObjectCB objData{};
-        objData.world             = go.transform.GetPresentationWorldMatrix();
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
