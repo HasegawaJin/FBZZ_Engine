@@ -88,3 +88,11 @@ template<typename T> using Asset = asset::Asset<T>;
 #define FBZZ_ASSET(Type, Name, Display)                                         \
     ::fbzz::asset::Asset<Type> Name{};                                          \
     FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name.ref))
+
+// 必須の共有データアセットであることを宣言する別名。
+// Inspector の編集体験は通常の FBZZ_ASSET と同じに保ち、実行時の必須検査は
+// 所有する Script の OnStart で行う。値のフォールバックを持たせないため、
+// 未割り当て状態を既定値で隠さず、シーン設定の不備を即座にログへ出せる。
+#define FBZZ_REQUIRED_ASSET(Type, Name, Display)                                \
+    ::fbzz::asset::Asset<Type> Name{};                                          \
+    FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name.ref))
