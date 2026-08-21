@@ -527,6 +527,44 @@ struct ParticleEmitter {
         gpuClearPending        = true;
     }
 
+    // Inspector / Script / Operator が共有する再生制御。
+    // WHY: UI と ScriptProxy がそれぞれランタイム状態を列挙すると、Clear や Restart の
+    //      対象漏れが経路ごとに発生する。エミッター自身に責務を集め、AI も同じ挙動を使う。
+    void Play(bool restart = false)
+    {
+        if (restart) ResetPlayback();
+        else         playing = true;
+    }
+
+    void Pause() { playing = false; }
+
+    void Stop(bool clear = false)
+    {
+        playing      = false;
+        emitAccum     = 0.0f;
+        burstPending  = 0;
+        if (clear) ClearParticles();
+    }
+
+    void Burst(int count)
+    {
+        if (count > 0) burstPending += count;
+    }
+
+    void ClearParticles()
+    {
+        particles.clear();
+        emitAccum = 0.0f;
+        burstPending = 0;
+        playTime = 0.0f;
+        delayTime = 0.0f;
+        gpuClearPending = true;
+        gpuWriteHead = 0;
+        gpuSpawnCount = 0;
+        collisionCountThisFrame = 0;
+        prewarmSpawnPending = 0;
+    }
+
     const char* GetTypeName() const { return "Particle Emitter"; }
     void Reflect(IReflector& r)
     {
