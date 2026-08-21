@@ -29,6 +29,7 @@
 #include "Math/Plane.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Core/Logger.hpp"
+#include "Engine/Core/Time.hpp"
 #include "Engine/Util/Utf8.hpp"
 #include <algorithm>
 #include <cmath>
@@ -168,22 +169,32 @@ void EnsureInit(UISystemContext& ctx, renderer::ResourceManager& resources)
     static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
     ctx.whiteTexture = resources.CreateTexture(kWhite, 1, 1);
 
-    ctx.imageVB = resources.CreateVertexBuffer(nullptr, kImageVBVertices * sizeof(UIVertex), sizeof(UIVertex));
-    ctx.textVB  = resources.CreateVertexBuffer(nullptr, kTextVBVertices  * sizeof(UIVertex), sizeof(UIVertex));
-
     if (!ctx.shader.IsValid() || !ctx.textShader.IsValid() || !ctx.constants.IsValid() ||
-        !ctx.pso.IsValid() || !ctx.worldPso.IsValid() ||
-        !ctx.whiteTexture.IsValid() || !ctx.imageVB.IsValid() || !ctx.textVB.IsValid()) {
-        FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d worldPso=%d white=%d imageVB=%d textVB=%d",
+        !ctx.pso.IsValid() || !ctx.worldPso.IsValid() || !ctx.whiteTexture.IsValid()) {
+        FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d worldPso=%d white=%d",
                        static_cast<int>(ctx.shader.IsValid()),
                        static_cast<int>(ctx.textShader.IsValid()),
                        static_cast<int>(ctx.constants.IsValid()),
                        static_cast<int>(ctx.pso.IsValid()),
                        static_cast<int>(ctx.worldPso.IsValid()),
-                       static_cast<int>(ctx.whiteTexture.IsValid()),
-                       static_cast<int>(ctx.imageVB.IsValid()),
-                       static_cast<int>(ctx.textVB.IsValid()));
+                       static_cast<int>(ctx.whiteTexture.IsValid()));
     }
+}
+
+// この DrawCall 専用の頂点バッファを 1 本借りる。足りなければ増やし、以降は使い回す。
+// WHY 借用制にするか: UISystemContext のコメントを参照。記録型バックエンドでは
+//     「Draw ごとに別実体」が正しさの条件になる。
+renderer::ResourceHandle<renderer::BufferTag> AcquireVertexBuffer(
+    std::vector<renderer::ResourceHandle<renderer::BufferTag>>& pool,
+    std::size_t& cursor,
+    uint32_t vertexCapacity,
+    renderer::ResourceManager& resources)
+{
+    if (cursor >= pool.size()) {
+        pool.push_back(resources.CreateVertexBuffer(
+            nullptr, vertexCapacity * sizeof(UIVertex), sizeof(UIVertex)));
+    }
+    return pool[cursor++];
 }
 
 // ── Canvas 収集 ──────────────────────────────────────────────────────────────
@@ -455,7 +466,10 @@ void SubmitImage(renderer::IRenderer& renderer,
         { rot(-hW,  hH), { uvMin.x, uvMax.y } },
         { rot( hW,  hH), { uvMax.x, uvMax.y } },
     };
-    resources.Update(ctx.imageVB, vertices, sizeof(vertices));
+    const auto vertexBuffer = AcquireVertexBuffer(
+        ctx.imageVertexBuffers, ctx.imageVertexCursor, kImageVBVertices, resources);
+    if (!vertexBuffer.IsValid()) return;
+    resources.Update(vertexBuffer, vertices, sizeof(vertices));
 
     UIConstants constants{};
     constants.ortho  = canvasToClip;
@@ -464,7 +478,7 @@ void SubmitImage(renderer::IRenderer& renderer,
     resources.Update(ctx.constants, &constants, sizeof(constants));
 
     renderer::DrawCall call;
-    call.vertexBuffer       = ctx.imageVB;
+    call.vertexBuffer       = vertexBuffer;
     call.shader             = ctx.shader;
     call.pipelineState      = pso;
     call.constantBuffers[0] = ctx.constants;
@@ -772,7 +786,6 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
     resources.Update(ctx.constants, &constants, sizeof(constants));
 
     renderer::DrawCall call;
-    call.vertexBuffer       = ctx.textVB;
     // WHY: UIText.hlsl の .r チャンネルを coverage として使い、alpha チャンネル依存を排除する。
     call.shader             = ctx.textShader;
     call.pipelineState      = pso;
@@ -793,8 +806,14 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
         const uint32_t total = static_cast<uint32_t>(verts.size());
         while (offset < total) {
             const uint32_t chunk = (std::min)(total - offset, kTextVBVertices);
-            resources.Update(ctx.textVB, verts.data() + offset, chunk * sizeof(UIVertex));
-            call.vertexCount = chunk;
+            // チャンクごとに別実体を借りる。1 本を上書きすると、記録型バックエンドでは
+            // 全チャンクが最後のグリフ群になる。
+            const auto vertexBuffer = AcquireVertexBuffer(
+                ctx.textVertexBuffers, ctx.textVertexCursor, kTextVBVertices, resources);
+            if (!vertexBuffer.IsValid()) break;
+            resources.Update(vertexBuffer, verts.data() + offset, chunk * sizeof(UIVertex));
+            call.vertexBuffer = vertexBuffer;
+            call.vertexCount  = chunk;
             renderer.Submit(call, resources);
             offset += chunk;
         }
@@ -1399,9 +1418,17 @@ void UISystem(Scene& scene,
               UIRenderTargetView targetView)
 {
     EnsureInit(ctx, resources);
+
+    // 頂点バッファの貸し出しを巻き戻す。フレームが変わったときだけ行うのは、
+    // 同じフレーム内で 1 つの Context が複数回描いても実体が衝突しないようにするため。
+    if (ctx.lastResetFrame != fbzz::Time::frameCount) {
+        ctx.lastResetFrame    = fbzz::Time::frameCount;
+        ctx.imageVertexCursor = 0;
+        ctx.textVertexCursor  = 0;
+    }
+
     if (!ctx.shader.IsValid() || !ctx.constants.IsValid() ||
-        !ctx.pso.IsValid() || !ctx.worldPso.IsValid() ||
-        !ctx.whiteTexture.IsValid() || !ctx.imageVB.IsValid() || !ctx.textVB.IsValid())
+        !ctx.pso.IsValid() || !ctx.worldPso.IsValid() || !ctx.whiteTexture.IsValid())
         return;
 
     std::vector<CanvasEntry> canvases;
