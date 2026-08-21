@@ -6,6 +6,7 @@
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
 #include <Editor/GraphEditor/GraphSubgraphOps.hpp>
 #include <Editor/VFXEditor/Application/VFXEditorSession.hpp>
+#include <Editor/VFXEditor/Document/VFXGraphEditOps.hpp>
 #include <Editor/VFXEditor/Views/VFXEditorUiCommon.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -58,12 +59,10 @@ using namespace vfx;
 void VFXGraphCanvas::AddNode(asset::VFXNodeType type)
 {
     m_session.PushUndo();
-    int nextId = 1;
-    for (const auto& node : m_session.document.graph.nodes) nextId = (std::max)(nextId, node.id + 1);
-    asset::VFXGraphNode node;
-    node.id = nextId;
-    node.type = type;
-    node.name = asset::VFXNodeTypeName(type);
+    // id 採番・既定 duration・既定座標は AI の vfx.node.add と共有する。
+    // 移行前は同じ式が両方に書かれており、片方だけ直すとノードの生まれ方が経路で違った。
+    asset::VFXGraphNode node = vfxops::MakeNode(m_session.document.graph, type, {});
+    const int nextId = node.id;
     // Reroute は配線の折れ点なので時間を持たない。既定の duration=1 のまま作ると
     // 「線を整理しただけ」のつもりでエフェクトが 1 秒伸びる (スケジュール側でも 0 として
     // 扱うが、アセットの値も揃えておかないと Inspector の表示と実挙動が食い違う)。
@@ -114,24 +113,17 @@ void VFXGraphCanvas::AddNode(asset::VFXNodeType type)
                 });
         };
         for (int attempt = 0; attempt < 32 && occupied(); ++attempt) node.editorY += 140.0f;
-    } else {
-        node.editorX = 260.0f + static_cast<float>((m_session.document.graph.nodes.size() % 3) * 220);
-        node.editorY = 80.0f + static_cast<float>((m_session.document.graph.nodes.size() / 3) * 170);
     }
-    node.duration = type == asset::VFXNodeType::Delay ? 0.25f
-        : (type == asset::VFXNodeType::Particle ? node.particle.duration : 1.0f);
+    // 上の分岐で座標を上書きしなかった場合は MakeNode が置いた既定グリッドのまま。
     m_session.document.graph.nodes.push_back(std::move(node));
 
     // 自動リンクは「成立するときだけ」張る。循環などで破綻するなら黙って孤立ノードに留める。
+    // 検証規則そのものは AI 側と共有し、破綻したときに取り消すかどうかだけを
+    // ここで宣言する (対話的な編集なので取り消す)。
     const auto tryLink = [this](int fromNode, int toNode) {
-        if (fromNode <= 0 || toNode <= 0) return;
-        const auto* target = FindGraphNode(m_session.document.graph, toNode);
-        if (target == nullptr || target->type == asset::VFXNodeType::Entry) return;
-        m_session.document.graph.links.push_back({ fromNode, toNode });
-        std::vector<float> starts;
-        float duration = 0.0f;
-        if (!asset::BuildVFXGraphSchedule(m_session.document.graph, starts, duration, nullptr))
-            m_session.document.graph.links.pop_back();
+        (void)vfxops::AddLink(m_session.document.graph, fromNode, toNode,
+                              asset::VFXLinkTrigger::OnComplete, 0.0f,
+                              /*validateSchedule=*/true);
     };
     tryLink(autoConnectFrom, nextId);
     tryLink(nextId, wireToNode);
@@ -187,13 +179,13 @@ void VFXGraphCanvas::DeleteSelectedNode()
     const auto* node = FindGraphNode(m_session.document.graph, m_session.selectedNodeId);
     if (node == nullptr || node->type == asset::VFXNodeType::Entry) return;
     m_session.PushUndo();
-    const int id = node->id;
-    std::erase_if(m_session.document.graph.links, [id](const asset::VFXGraphLink& link) {
-        return link.fromNode == id || link.toNode == id;
-    });
-    std::erase_if(m_session.document.graph.nodes, [id](const asset::VFXGraphNode& candidate) {
-        return candidate.id == id;
-    });
+    // WHY 共有実装か (不具合修正): ここは以前ノードとリンクしか消しておらず、
+    //   公開パラメーターの binding と、このノードを親にしていた子の parentNodeId が
+    //   存在しない id を指したまま残っていた。AI の vfx.node.remove は最初から
+    //   両方を掃除しており、**エディタで消したときだけ参照が壊れる**状態だった。
+    //   どちらも保存は通るので、「パラメーターを動かしても何も変わらない」
+    //   「子の位置が親から外れる」という形でしか現れない。
+    (void)vfxops::RemoveNode(m_session.document.graph, node->id);
     m_session.selectedNodeId = -1;
     m_session.document.dirty = true;
 }
@@ -471,14 +463,10 @@ void VFXGraphCanvas::DeleteSelectedNodes()
     });
     if (selected.empty()) return;
     m_session.PushUndo();
-    for (const int id : selected) {
-        std::erase_if(m_session.document.graph.links, [id](const asset::VFXGraphLink& link) {
-            return link.fromNode == id || link.toNode == id;
-        });
-        std::erase_if(m_session.document.graph.nodes, [id](const asset::VFXGraphNode& node) {
-            return node.id == id;
-        });
-    }
+    // 複数選択の削除も同じ後始末を通す (binding と parentNodeId の掃除)。
+    // ここも移行前は単体削除と同じ取りこぼしがあった。
+    for (const int id : selected)
+        (void)vfxops::RemoveNode(m_session.document.graph, id);
     m_session.selectedNodeId = -1;
     m_session.document.dirty = true;
     m_genericSelectedNodes.clear();

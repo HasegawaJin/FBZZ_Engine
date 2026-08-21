@@ -11,6 +11,7 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/GraphEditor/AnimatorGraphOps.hpp>
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
 #include <Editor/GraphLayout.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -91,30 +92,12 @@ GraphLayout ToEditorGraphLayout(const asset::AnimatorGraphLayout& source)
     return layout;
 }
 
-asset::AnimatorGraphLayout ToAssetGraphLayout(const GraphLayout& source)
-{
-    asset::AnimatorGraphLayout layout;
-    layout.entryPosition = { source.entryPosition.x, source.entryPosition.y };
-    layout.anyStatePosition = { source.anyStatePosition.x, source.anyStatePosition.y };
-    for (const auto& [stateName, pos] : source.nodePositions)
-        layout.nodePositions[stateName] = { pos.x, pos.y };
-    for (const auto& [stateName, positions] : source.blendTreeMotionPositions) {
-        auto& dst = layout.blendTreeMotionPositions[stateName];
-        dst.reserve(positions.size());
-        for (const ImVec2& pos : positions)
-            dst.push_back({ pos.x, pos.y });
-    }
-    return layout;
-}
-
-bool SaveAnimatorControllerWithLayout(EditorContext& ctx,
-                                      const std::string& path,
-                                      const scene::AnimatorComponent& animator)
-{
-    auto controller = asset::MakeAnimatorControllerAsset(animator);
-    controller.editorLayout = ToAssetGraphLayout(ctx.graphLayouts[path]);
-    return asset::SaveAnimatorControllerAsset(path, controller);
-}
+// NOTE: ToAssetGraphLayout / SaveAnimatorControllerWithLayout /
+//       dirty 登録の本体は Editor/GraphEditor/AnimatorGraphOps.hpp へ移した。
+//       WHY: パネルの private/static に閉じていたため、パネルを描画していないと
+//            呼べず、AI からは Animator の構造は編集できるのに**保存できない**
+//            (次回起動で編集が消える) 状態だった。
+//            Docs/design/editor-operator-model.md
 
 void MarkDirty(EditorContext& ctx)
 {
@@ -131,22 +114,8 @@ void MarkDirty(EditorContext& ctx)
     //     - Inspector の "Modified" 表示も出ない
     //   という 3 つが同時に起きていた。編集対象は「パネルが開いているドキュメント」であって
     //   ブラウザーの選択ではない。animationControllerEditorPath がその唯一の識別子。
-    if (util::StringUtils::EndsWith(
-            ctx.animationControllerEditorPath, ".animcontroller")) {
-        ctx.animationControllerDirty = true;
-        // Registry に登録し Save All / 終了時確認で一括保存できるようにする
-        const std::string capturedPath = ctx.animationControllerEditorPath;
-        EditorContext* context = &ctx;
-        std::weak_ptr<scene::AnimatorComponent> weakAnimator = ctx.animationControllerEditor;
-        AssetDirtyRegistry::Register(
-            capturedPath, NormalizeAssetPath(capturedPath), "CTRL",
-            [capturedPath, context, weakAnimator]() {
-                auto animator = weakAnimator.lock();
-                if (!animator || !context) return false;
-                return SaveAnimatorControllerWithLayout(*context, capturedPath, *animator);
-            });
+    if (MarkAnimatorControllerDirty(ctx))
         return;
-    }
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
@@ -2548,7 +2517,11 @@ void AnimationGraphPanel::DrawLayerSelector(
     if (scene::AnimationLayer* layer = animator.FindLayer(m_editingLayer)) {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(120.0f);
-        if (ImGui::SliderFloat("##layer_weight", &layer->weight, 0.0f, 1.0f, "w %.2f"))
+        // Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
+        // 足りないときの誇張がここで完結する。
+        const float weightMax = layer->mode == scene::AnimationLayerMode::Additive
+            ? scene::MAX_LAYER_WEIGHT : 1.0f;
+        if (ImGui::SliderFloat("##layer_weight", &layer->weight, 0.0f, weightMax, "w %.2f"))
             MarkDirty(ctx);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(110.0f);
@@ -2556,6 +2529,8 @@ void AnimationGraphPanel::DrawLayerSelector(
         int modeIndex = static_cast<int>(layer->mode);
         if (ImGui::Combo("##layer_mode", &modeIndex, kModeNames, 2)) {
             layer->mode = static_cast<scene::AnimationLayerMode>(modeIndex);
+            if (layer->mode == scene::AnimationLayerMode::Override)
+                layer->weight = std::min(layer->weight, 1.0f);
             MarkDirty(ctx);
         }
         ImGui::SameLine();
@@ -3241,48 +3216,11 @@ void AnimationGraphPanel::AutoLayoutStates(EditorContext& ctx,
                                            scene::AnimatorComponent& animator,
                                            const std::string& instanceId)
 {
-    GraphLayout& layout = ctx.graphLayouts[instanceId];
-    auto& positions = layout.nodePositions;
-    constexpr float START_Y = 80.0f;
-
-    // 遷移の深さを列にする共通実装を使う。
-    // WHY: 以前はここだけ「4 列の単純グリッド」で、ステートの並びが遷移の構造を
-    //      一切反映していなかった。同じ Auto Layout という操作なのに VFX とは
-    //      結果の質が違う状態で、共通アルゴリズム自体は既にあるのに未使用だった。
-    std::vector<int> nodeIds;
-    std::vector<GraphLayoutEdge> edges;
-    std::unordered_map<std::string, int> indexOfState;
-    for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
-        // ComputeGraphLayout は 1 以上の id を要求する (0 は「未解決」の意味を持つ)。
-        indexOfState[animator.states[static_cast<std::size_t>(index)].name] = index + 1;
-        nodeIds.push_back(index + 1);
-    }
-    for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
-        const auto& state = animator.states[static_cast<std::size_t>(index)];
-        for (const auto& transition : state.transitions) {
-            const auto target = indexOfState.find(transition.toStateName);
-            if (target != indexOfState.end()) edges.push_back({ index + 1, target->second });
-        }
-    }
-    // 既定ステートを根にする。入次数 0 に任せると、どこからも遷移して来ない
-    // 孤立ステートまで 1 列目へ並び、開始点が読めなくなる。
-    std::vector<int> roots;
-    if (const auto found = indexOfState.find(animator.defaultStateName);
-        found != indexOfState.end())
-        roots.push_back(found->second);
-
-    GraphLayoutOptions options;
-    options.rowStep = 220.0f;
-    options.originY = START_Y;
-    const auto computed = roots.empty() ? ComputeGraphLayout(nodeIds, edges, options)
-                                        : ComputeGraphLayout(nodeIds, edges, roots, options);
-    for (int index = 0; index < static_cast<int>(animator.states.size()); ++index) {
-        const auto found = computed.find(index + 1);
-        if (found == computed.end()) continue;
-        positions[animator.states[static_cast<std::size_t>(index)].name] = found->second;
-    }
-    layout.entryPosition = ImVec2(-220.0f, START_Y);
-    layout.anyStatePosition = ImVec2(-220.0f, START_Y + options.rowStep);
+    // 整列そのものは共有実装 (AnimatorGraphOps) が持つ。
+    // WHY: ここに書いたままだと AI 側の animation.auto_layout が別実装になり、
+    //      間隔がわずかに違うだけで「AI が整列したグラフを Editor で整列し直すと
+    //      座標が動く」= 差分に意味のない座標変更が毎回混ざる状態になる。
+    AutoLayoutAnimatorStates(ctx.graphLayouts[instanceId], animator);
     MarkDirty(ctx);
 }
 
