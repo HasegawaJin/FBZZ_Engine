@@ -80,6 +80,16 @@ public:
         return slots[h.id - 1u].asset.get();
     }
 
+    // ハンドルを保ったままスロットの中身だけを差し替える。
+    // WHY gen を進めないか: 差し替えの目的は「同じアセットの新しい版」を配ることなので、
+    //     既に配ったハンドルは生きたままでなければならない。gen を進めると、Scene /
+    //     Component が持つハンドルが一斉に死んで参照切れとして現れる。
+    bool Replace(AssetHandle<T> h, std::unique_ptr<T> asset_) {
+        if (!IsLive(h) || !asset_) return false;
+        slots[h.id - 1u].asset = std::move(asset_);
+        return true;
+    }
+
     void Free(AssetHandle<T> h) {
         if (!IsLive(h)) return;
         const uint32_t idx = h.id - 1u;
@@ -114,6 +124,23 @@ public:
     static void UnloadAll();
     static void FlushFailed();
     static int  GetFlushGeneration();
+
+    /// 指定ファイルを参照しているキャッシュ済みアセットを、ハンドルを保ったまま再取り込みする。
+    /// @param absPath 監視イベントが返す絶対パス
+    /// @return 差し替えた件数。0 ならこのファイルはどのストアにも載っていない
+    ///
+    /// 取り込みに失敗した場合は既存の中身を残す。書き込み途中のファイルを掴んで
+    /// 動いていたアセットを壊さないため。
+    static int ReloadPath(const std::string& absPath);
+
+    /// アセットの中身が変わるたびに進む世代番号。
+    /// クリップのコピーやマスクのように、ストアの中身から派生キャッシュを作る側が
+    /// 「作り直すべきか」を 1 つの整数比較で判断するために使う。
+    static int GetAssetGeneration();
+
+    /// ストアを通さず直読みしているアセット (.mask 等) を差し替えたときに、
+    /// 派生キャッシュへ「作り直せ」と伝えるための明示的な世代更新。
+    static void BumpAssetGeneration();
 
     [[nodiscard]] static std::string ResolveAssetPath(const std::string& path);
 
@@ -210,6 +237,8 @@ private:
     static T* GetFromStore(AssetHandle<T> h);
     template<typename T>
     static void UnloadFromStore(const std::string& relativePath);
+    template<typename T>
+    static int ReloadFromStore(const std::string& absPath);
     static renderer::ResourceHandle<renderer::MaterialAssetTag>
         AllocMaterialSlot(std::unique_ptr<MaterialAsset>);
     static bool IsMaterialLive(renderer::ResourceHandle<renderer::MaterialAssetTag>);

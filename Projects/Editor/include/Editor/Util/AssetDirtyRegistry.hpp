@@ -35,6 +35,12 @@ public:
     static bool HasAny();
     static const std::vector<DirtyAsset>& GetAll();
 
+    // 1 件だけ保存する。未登録 (= dirty でない) なら false。
+    // WHY: 「今開いている Animator Controller だけ保存する」を、パネルの Save ボタンと
+    //      同じ saveFunc を通して行うため。別経路で書き出すと、レイアウト情報の付与や
+    //      保存後のシーン側 Animator への反映といった手順が片方だけ抜ける。
+    static bool Save(const std::string& absPath);
+
     // 全エントリを保存する。失敗件数を返す。
     static int SaveAll();
 

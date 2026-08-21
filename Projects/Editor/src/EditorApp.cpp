@@ -47,6 +47,7 @@
 #include "Tools/WaterTool.hpp"
 #include "Tools/DetailTool.hpp"
 #include "Tools/FoliageTool.hpp"
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Asset/VFXGraphAsset.hpp>
@@ -874,12 +875,12 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     InitScriptDll();
 
     // WHY: PrefabSerializer は Editor プロジェクトにあり Engine から直接呼べないため、
-    //      Script::SetInstantiateFn で実装を注入する。ScriptSceneProxy::Instantiate が
+    //      Script::SetPrefabInstantiationCallback で実装を注入する。ScriptSceneProxy::Instantiate が
     //      ここを経由して PrefabSerializer::Instantiate を呼ぶ。
     //      PrefabRef::path は Assets 起点の相対パス ("Assets/Foo.prefab") で保存されるため、
     //      ToProjectAssetDiskPath でプロジェクトルートを補完して絶対パスへ変換してから渡す。
     const std::string capturedRoot = projectRoot;
-    scene::Script::SetInstantiateFn([capturedRoot](scene::Scene& s, const std::string& path,
+    scene::Script::SetPrefabInstantiationCallback([capturedRoot](scene::Scene& s, const std::string& path,
                                                    std::vector<scene::EntityID>& roots) {
         const std::string diskPath = ToProjectAssetDiskPath(capturedRoot, path);
         return PrefabSerializer::Instantiate(s, diskPath, roots);
@@ -1066,6 +1067,7 @@ void EditorApp::BeginFrame()
         //      パネルの中に埋めるとレイアウト次第で見えなくなり、
         //      「今アセットを直している」という一番外さしてはいけない前提が伝わらない。
         DrawPrefabEditBar(m_ctx);
+        DrawSceneReloadBar(m_ctx);
         DrawBuildNotificationBar(m_ctx);
 
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
@@ -1585,6 +1587,18 @@ void EditorApp::OnUpdate(float dt)
     //      途中でやると、その後のパネルが破棄済みの GameObject を掴むため、
     //      フレーム先頭のこの位置でだけ処理する。
     ProcessPrefabEditRequests();
+
+    // WHY 同じ位置で処理するか: アセットの中身を差し替えると、その版を読むパネルと
+    //      既に読み終えたパネルが同じフレームで食い違う。パネル描画に入る前に済ませる。
+    ProcessAssetDiskReloads();
+    // guid → パスの索引をディスクへ追従させる。変化が無いフレームは何もしない。
+    // WHY エディターだけで書くか: 索引は人と外部ツールが guid を引くための道具で、
+    //     製品ビルドには要らない。読み取り専用の配置先へ書きにいかせない。
+    asset::AssetDatabase::FlushIndexFile();
+    // WHY アセットより後か: シーンを開き直すと、その中で参照されるアセットを
+    //      新しい版で読み直せる。逆順だと「開き直した直後だけ古いアセットを掴む」
+    //      1 フレームができる。
+    ProcessSceneDiskReload();
 
     if (m_aiPipeServer && m_aiPipeServer->IsRunning() && m_aiDispatcher) {
         m_aiDispatcher->SetSceneViewportRT(m_sceneViewportRT);

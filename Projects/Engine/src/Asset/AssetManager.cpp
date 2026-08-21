@@ -235,6 +235,9 @@ bool                       AssetManager::S_init() noexcept { return s_initialize
 const std::string&         AssetManager::S_base() noexcept { return s_basePath; }
 renderer::ResourceManager* AssetManager::S_res()  noexcept { return s_resources; }
 static int                 s_flushGeneration             = 0;
+// 中身が変わるたびに進む。失敗キャッシュの掃除 (FlushFailed) と
+// ファイル変更による差し替え (ReloadPath) の両方で進める。
+static int                 s_assetGeneration             = 0;
 
 std::unordered_map<std::string, std::unique_ptr<Model>>
     AssetManager::s_models;
@@ -318,7 +321,7 @@ static bool IsExtractableBaked(const std::string& key)
 //
 // 扱う 2 形:
 //   "<dir>/Foo/Foo.fzasset"            → Library/Baked/<guid>/Foo.fzasset
-//   "<dir>/Foo/anims/Foo@Idle.anim"    → Library/Baked/<guid>/anims/Foo@Idle.anim
+//   "<dir>/Foo/anims/Idle.anim"        → Library/Baked/<guid>/anims/Idle.anim
 //
 // パッケージ規約 (Foo/ の隣に原本 Foo.fbx) から fbx を特定し、その guid でキャッシュを引く。
 // fbx が存在しない / basePath が "Assets/" で終わらない場合は空を返す (呼び出し側がフォールバック)。
@@ -401,8 +404,8 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
     // WHY: 全ロードがこの一点を通るため、ここに分岐を置くだけで
     //      .mat / .scene / コンポーネントの GUID 参照がエンジン全体で有効になる。
     if (AssetDatabase::IsGuidRef(key)) {
-        std::string p = AssetDatabase::PathFromGuid(
-            key.substr(AssetDatabase::kGuidPrefix.size()));
+        // GuidFromRef が併記されたパスヒントとサブアセット接尾辞を落とす。
+        std::string p = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(key));
         if (p.empty())
             FBZZ_LOG_ERROR("AssetManager: unresolved guid reference [%s]", key.c_str());
         return p;
@@ -745,9 +748,117 @@ void AssetManager::FlushFailed()
     for (auto it = s_materials.begin(); it != s_materials.end(); )
         it = it->second.IsValid() ? ++it : s_materials.erase(it);
     ++s_flushGeneration;
+    ++s_assetGeneration;
 }
 
 int AssetManager::GetFlushGeneration() { return s_flushGeneration; }
+int  AssetManager::GetAssetGeneration()  { return s_assetGeneration; }
+void AssetManager::BumpAssetGeneration() { ++s_assetGeneration; }
+
+// 監視イベントの絶対パスと、キャッシュキーを解決した実パスを同じ土俵で比べる。
+//
+// WHY 素の == で足りないか: キャッシュキーは "guid:..." / "Assets/..." / 絶対パスが
+//     混在し、解決結果も区切り文字と大小がまちまちになる。文字列一致だけで判定すると、
+//     同じファイルなのに再読込されない取りこぼしが経路ごとに出る。
+static bool SameFilePathCI(const std::string& a, const std::string& b)
+{
+    if (a.size() != b.size()) return false;
+    const auto fold = [](char c) {
+        if (c == '\\') return '/';
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    };
+    for (size_t i = 0; i < a.size(); ++i)
+        if (fold(a[i]) != fold(b[i])) return false;
+    return true;
+}
+
+template<typename T>
+int AssetManager::ReloadFromStore(const std::string& absPath)
+{
+    AssetStore<T>& store = AssetStore<T>::Get();
+    if (!store.importer) return 0;
+
+    int reloaded = 0;
+    for (auto it = store.cache.begin(); it != store.cache.end(); ) {
+        // WHY 失敗した guid 参照を先に外すか: ResolvePath は解決できない guid に
+        //     対してエラーログを出す。ここはファイルが変わるたびに全キャッシュを
+        //     走査するので、触ると 1 回の保存でログが件数分あふれる。
+        //     参照が切れたままの項目の掃除は FlushFailed の役目。
+        if (!it->second.IsValid() && AssetDatabase::IsGuidRef(it->first)) { ++it; continue; }
+
+        const std::string resolved = ResolvePath(it->first, s_basePath);
+        if (!SameFilePathCI(resolved, absPath)) { ++it; continue; }
+
+        // 失敗として焼き付いている項目は、消しておけば次の Load が取り直す。
+        if (!it->second.IsValid()) {
+            it = store.cache.erase(it);
+            ++reloaded;
+            continue;
+        }
+
+        std::unique_ptr<T> fresh = store.importer->Import(resolved, s_resources);
+        if (!fresh) {
+            // 書き込み途中のファイルを掴んだ可能性がある。動いている中身を捨てない。
+            FBZZ_LOG_WARN("AssetManager: reload failed, keeping previous content [%s]",
+                          it->first.c_str());
+            ++it;
+            continue;
+        }
+        if (store.Replace(it->second, std::move(fresh))) ++reloaded;
+        ++it;
+    }
+    return reloaded;
+}
+
+int AssetManager::ReloadPath(const std::string& absPath)
+{
+    if (!s_initialized || absPath.empty()) return 0;
+    const std::string target = Normalize(absPath);
+
+    // WHY GPU 資源を持つ型を並べないか: TextureAsset / IblAsset は gpuHandle を素で持ち、
+    //     デストラクタで解放しない。差し替えると前の版の GPU テクスチャが解放されないまま
+    //     residual になる。画像・モデルは原本の自動再インポート経路が別にあるので、
+    //     ここでは「編集されたら中身がそのまま変わる」型だけを扱う。
+    int reloaded = 0;
+    reloaded += ReloadFromStore<AnimationClip>(target);
+    reloaded += ReloadFromStore<AnimatorControllerAsset>(target);
+    reloaded += ReloadFromStore<MaterialAsset>(target);
+    reloaded += ReloadFromStore<PhysicsMaterialAsset>(target);
+    reloaded += ReloadFromStore<TerrainAsset>(target);
+
+    // 旧 API の .mat は別のスロットプールに載る。レンダラーが参照しているのは
+    // こちらなので、新 API 側だけ差し替えても画面は古いままになる。
+    for (auto it = s_materials.begin(); it != s_materials.end(); ) {
+        if (!it->second.IsValid() && AssetDatabase::IsGuidRef(it->first)) { ++it; continue; }
+
+        const std::string resolved = ResolvePath(it->first, s_basePath);
+        if (!SameFilePathCI(resolved, target)) { ++it; continue; }
+        if (!it->second.IsValid()) {
+            it = s_materials.erase(it);
+            ++reloaded;
+            continue;
+        }
+        auto mat = std::make_unique<MaterialAsset>();
+        if (!LoadMaterialAssetFromFile(resolved, *mat)) {
+            FBZZ_LOG_WARN("AssetManager: material reload failed, keeping previous [%s]",
+                          it->first.c_str());
+            ++it;
+            continue;
+        }
+        if (IsMaterialLive(it->second)) {
+            s_materialSlots[it->second.id].asset = std::move(mat);
+            ++reloaded;
+        }
+        ++it;
+    }
+
+    if (reloaded > 0) {
+        ++s_assetGeneration;
+        FBZZ_LOG_INFO("AssetManager: reloaded %d asset(s) from [%s]",
+                      reloaded, target.c_str());
+    }
+    return reloaded;
+}
 
 // ── 旧 API: LoadModel ────────────────────────────────────────────────────
 
