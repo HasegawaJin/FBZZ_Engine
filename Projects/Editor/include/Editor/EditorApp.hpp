@@ -7,6 +7,7 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/ScriptDllLoader.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
@@ -137,6 +138,37 @@ private:
     void StopPlayMode();
     void TogglePlayMode();
     void RegisterDefaultHotkeys();
+
+    // ── Operator モデル (Docs/design/editor-operator-model.md) ───────────────
+    // メニュー・ホットキー・コマンドパレットは、いずれもここへ登録された操作の
+    // 投影として描かれる。実行可能条件 (poll) を 1 箇所に持つことで、
+    // 「メニューではグレーアウトなのにホットキーからは通る」を構造的に防ぐ。
+    void RegisterBuiltinOperators();
+    // パネル表示 / UI スケール / Prefab 編集モードの操作 (src/Op/PanelOperators.cpp)。
+    // m_panels を参照するため EditorApp のメンバー関数として登録する。
+    void RegisterPanelOperators();
+    // ウィンドウ名または View メニュー名 (大小無視の完全一致) でパネルを引く。
+    [[nodiscard]] IPanel* FindPanelByName(const std::string& name) const;
+    // panel.focus を「既に手元にあるパネルポインタ」から呼ぶ小さな包み。
+    // WHY: メニュー側は m_iblBakePanel のような具体ポインタを持っているので、
+    //      名前引きへ戻さずに済ませたい。しかし実体は operator を通す
+    //      (人が押した経路と AI の経路で同じ処理になる)。panel が null なら何もしない。
+    void InvokePanelFocus(IPanel* panel);
+    // 1 つの operator をメニュー項目として描く。
+    // 表示名・実行可否・ショートカット表示をすべてレジストリと HotkeyManager から引く。
+    // labelOverride は文脈で名前が変わる項目 (Prefab 編集中の "Save Prefab") 用。
+    bool MenuItemOp(const char* operatorId, const char* labelOverride = nullptr);
+    // 引数付きで呼ぶメニュー項目。ラジオ表示 (View Mode の 4 つ) と、
+    // 対象を指定するトグル (パネルの表示切替) がこれを使う。
+    // チェックマークは operator の checked を同じ args で評価した値になる。
+    bool MenuItemOpArgs(const char* operatorId, const OpArgs& args,
+                        const char* labelOverride = nullptr);
+    // 描画モード切り替えを operator へ渡す (ネイティブメニューの 4 項目が使う)。
+    void InvokeViewMode(const char* mode);
+    // 4 面が共有する実行文脈を組み立てる (生成箇所を 1 つに保つ)。
+    [[nodiscard]] OpContext MakeOpContext();
+    [[nodiscard]] bool      CanInvokeOperator(std::string_view id, const OpArgs& args = {});
+    OpResult                InvokeOperator(std::string_view id, const OpArgs& args = {});
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();
     void CacheSceneWriteTime();
@@ -237,6 +269,7 @@ private:
 
     UndoStack          m_undoStack;
     HotkeyManager      m_hotkeys;
+    OperatorRegistry   m_operators;
     ConsoleSink        m_consoleSink;
     EditorSettings     m_settings;
     SceneDirtyTracker  m_dirtyTracker;

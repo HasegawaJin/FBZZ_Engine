@@ -65,10 +65,28 @@ void HotkeyManager::ProcessInput()
 
 void HotkeyManager::Clear() { m_hotkeys.clear(); }
 
-void HotkeyManager::Rebind(const std::string& name, int imguiKey, bool ctrl, bool shift, bool alt)
+const Hotkey* HotkeyManager::FindByOperator(std::string_view operatorId) const
 {
+    for (const auto& hk : m_hotkeys)
+        if (!hk.operatorId.empty() && hk.operatorId == operatorId) return &hk;
+    return nullptr;
+}
+
+void HotkeyManager::Rebind(const std::string& key, int imguiKey, bool ctrl, bool shift, bool alt)
+{
+    // operatorId を優先し、見つからなければ表示名で引く (旧形式の設定ファイル互換)。
     for (auto& hk : m_hotkeys) {
-        if (hk.name != name) continue;
+        if (hk.operatorId.empty() || hk.operatorId != key) continue;
+        if (hk.infoOnly) return;
+        hk.imguiKey = imguiKey;
+        hk.ctrl     = ctrl;
+        hk.shift    = shift;
+        hk.alt      = alt;
+        return;
+    }
+
+    for (auto& hk : m_hotkeys) {
+        if (hk.name != key) continue;
         if (hk.infoOnly) return;   // 説明専用エントリは割り当てを持たない
         hk.imguiKey = imguiKey;
         hk.ctrl     = ctrl;
@@ -126,6 +144,7 @@ const char* HotkeyManager::CategoryLabel(HotkeyCategory category)
     case HotkeyCategory::Gizmo:     return "Gizmo";
     case HotkeyCategory::Play:      return "Play";
     case HotkeyCategory::Panels:    return "Panels";
+    case HotkeyCategory::Tools:     return "Tools";
     }
     return "Other";
 }

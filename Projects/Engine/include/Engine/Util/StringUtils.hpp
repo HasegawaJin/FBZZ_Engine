@@ -14,6 +14,11 @@ class StringUtils {
 public:
     static bool        Contains(const std::string& s, const std::string& sub);
     static bool        ContainsCI(const std::string& s, const std::string& sub);  // 大文字小文字無視
+    // 大文字小文字を無視した完全一致。
+    // WHY 部分一致と別に要るか: 名前で対象を 1 つ選ぶ用途 (パネル名・プリセット名) では
+    //     部分一致だと "Console" が "Build Output Console" にも当たり、
+    //     指したつもりの無い対象を操作してしまう。
+    static bool        EqualsCI(const std::string& a, const std::string& b);
     static std::string ToLower(const std::string& s);
     static std::string ToUpper(const std::string& s);
     static bool        StartsWith(const std::string& s, const std::string& prefix);

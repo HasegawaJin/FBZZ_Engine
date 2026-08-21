@@ -51,7 +51,7 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
             HotkeyCategory::File,      HotkeyCategory::Edit,
             HotkeyCategory::Selection, HotkeyCategory::Viewport,
             HotkeyCategory::Gizmo,     HotkeyCategory::Play,
-            HotkeyCategory::Panels,
+            HotkeyCategory::Panels,    HotkeyCategory::Tools,
         };
 
         const auto& hotkeys = ctx.hotkeyManager->GetHotkeys();

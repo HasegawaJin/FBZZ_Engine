@@ -3,6 +3,7 @@
 // シーン + アセット横断検索パネルの実装
 #include <Editor/Panels/SearchEverythingPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetSearch.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -85,20 +86,14 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
             if (!headerDrawn) { ImGui::SeparatorText("Assets"); headerDrawn = true; }
 
             ImGui::PushID(path.c_str());
+            // 開き方の振り分けは asset.open operator が持つ。
+            // WHY: 同じ拡張子分岐がここ・コマンドパレット・AssetBrowser のダブルクリックへ
+            //      写されており、.behaviortree はこの 2 つから開けない (分岐が抜けている)
+            //      状態だった。写しではなく 1 つの実体を呼ぶ。
             if (ImGui::Selectable(name.c_str())) {
-                const std::string& ext = hit.entry->extension;
-                if (ext == ".scene") {
-                    if (ctx.requestOpenScene) ctx.requestOpenScene(path);
-                } else if (ext == ".animcontroller") {
-                    ctx.selectedAssetPath = path;
-                    if (ctx.openAnimationGraph) ctx.openAnimationGraph(path);
-                    ctx.requestOpenAnimationGraph = true;
-                } else if (ext == ".vfx") {
-                    ctx.selectedAssetPath = path;
-                    ctx.requestOpenVFXEditor = true;
-                } else {
-                    ctx.selectedAssetPath = path; // Inspector にアセットを表示
-                }
+                OpArgs args;
+                args.Set("path", path);
+                InvokeOperator(ctx, "asset.open", args);
             }
             // 相対パスを添えて、同名ファイルをその場で区別できるようにする。
             ImGui::SameLine();

@@ -2515,14 +2515,14 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             }
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
-    } else if (ext == ".animcontroller") {
-        // 開くドキュメントを明示的に渡してから窓を出す (.behaviortree と同じ扱い)。
-        if (ctx.openAnimationGraph) ctx.openAnimationGraph(path);
-        ctx.requestOpenAnimationGraph = true;
-    } else if (ext == ".vfx") {
-        ctx.requestOpenVFXEditor = true;
-    } else if (ext == ".behaviortree") {
-        ctx.requestOpenBehaviorTree = true;
+    } else if (ext == ".animcontroller" || ext == ".vfx" || ext == ".behaviortree") {
+        // ドキュメント面へ渡す振り分けは asset.open operator が持つ。
+        // WHY 写さないか: 同じ分岐がコマンドパレットと SearchEverything にもあり、
+        //      そちらは .behaviortree を落としていた (このパネルからしか開けなかった)。
+        //      対応拡張子を足したときに全経路へ同時に効く形にしておく。
+        OpArgs args;
+        args.Set("path", path);
+        InvokeOperator(ctx, "asset.open", args);
     }
 }
 

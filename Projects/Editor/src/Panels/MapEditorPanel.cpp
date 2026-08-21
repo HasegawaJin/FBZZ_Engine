@@ -3,6 +3,7 @@
 // Map Editing Mode のツール選択・設定パネル実装
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include "MapToolCommon.hpp"
 #include <Engine/Renderer/Camera.hpp>
@@ -239,8 +240,11 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         //      その場で入れるボタンを置き、モードへの導線をパネル内で完結させる。
         ImGui::TextDisabled("Map Editing Mode is not active.");
         ImGui::Spacing();
-        if (ctx.activeScene && ImGui::Button("Enter Map Editing Mode", { -1.0f, 0.0f }))
-            ctx.requestMapEditingModeToggle = true;
+        // 実行可否と実体は operator が持つ。ここでフラグを直に立てると、
+        // メニュー / ツールバーが従っている条件 (Play 中は不可) を素通りする。
+        if (CanInvokeOperator(ctx, "tools.map_editing_mode")
+            && ImGui::Button("Enter Map Editing Mode", { -1.0f, 0.0f }))
+            InvokeOperator(ctx, "tools.map_editing_mode");
         if (!ctx.activeScene)
             ImGui::TextDisabled("Open a scene first.");
         return;
@@ -254,7 +258,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP EDITING MODE");
     ImGui::SameLine(ImGui::GetContentRegionMax().x - 68.0f);
     if (ImGui::SmallButton("Exit Mode"))
-        ctx.requestMapEditingModeToggle = true;
+        InvokeOperator(ctx, "tools.map_editing_mode");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Return to normal editor layout");
     ImGui::Separator();

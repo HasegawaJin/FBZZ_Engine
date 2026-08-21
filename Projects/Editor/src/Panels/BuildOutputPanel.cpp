@@ -3,6 +3,7 @@
 #include <Editor/Panels/BuildOutputPanel.hpp>
 
 #include <Editor/EditorContext.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/SourceOpen.hpp>
 
@@ -96,11 +97,15 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     const float rightX = ImGui::GetWindowWidth() - btnGroupW;
     if (rightX > ImGui::GetCursorPosX()) ImGui::SameLine(rightX);
 
-    // Rebuild は既存のスクリプトリロード経路を再利用する。
-    const bool busy = console->IsBuilding();
-    if (busy) ImGui::BeginDisabled();
-    if (ImGui::Button("Rebuild")) ctx.requestScriptReload = true;
-    if (busy) ImGui::EndDisabled();
+    // Rebuild は script.reload operator を通す。
+    // WHY 直接 requestScriptReload を立てないか: その operator は「コンパイル中は
+    //     開始できない」条件 (poll) を持っており、フラグを直に立てるとその条件を
+    //     素通りする。console->IsBuilding() だけを見ていると、HLSL リロードや
+    //     ホットリロード監視が走らせたビルドの最中でも押せてしまう。
+    const bool canRebuild = CanInvokeOperator(ctx, "script.reload") && !console->IsBuilding();
+    if (!canRebuild) ImGui::BeginDisabled();
+    if (ImGui::Button("Rebuild")) InvokeOperator(ctx, "script.reload");
+    if (!canRebuild) ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::Checkbox("Errors only", &m_errorsOnly);
     ImGui::SameLine();
