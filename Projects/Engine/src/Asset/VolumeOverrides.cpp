@@ -385,18 +385,31 @@ void FogOverride::Reflect(IReflector& r)
 void VolumetricLightOverride::Apply(renderer::VolumeSettings& target, float weight) const
 {
     auto& v = target.volumetricLight;
-    v.enabled    = BlendBool(v.enabled, true, weight);
-    v.scattering = BlendFloat(v.scattering, scattering,  weight);
-    v.intensity  = BlendFloat(v.intensity,  intensity,   weight);
-    v.maxDist    = BlendFloat(v.maxDist,    maxDistance, weight);
-    v.steps      = BlendInt(v.steps, steps, weight);
+    v.enabled       = BlendBool(v.enabled, true, weight);
+    v.scattering    = BlendFloat(v.scattering,    scattering,    weight);
+    v.intensity     = BlendFloat(v.intensity,     intensity,     weight);
+    v.minDist       = BlendFloat(v.minDist,       minDistance,   weight);
+    v.maxDist       = BlendFloat(v.maxDist,       maxDistance,   weight);
+    v.edgeFade      = BlendFloat(v.edgeFade,      edgeFade,      weight);
+    v.density       = BlendFloat(v.density,       density,       weight);
+    v.heightFalloff = BlendFloat(v.heightFalloff, heightFalloff, weight);
+    v.heightStart   = BlendFloat(v.heightStart,   heightStart,   weight);
+    BlendColor3(v.tint, tint, weight, v.tint);
+    v.steps         = BlendInt(v.steps, steps, weight);
 }
 
 void VolumetricLightOverride::Reflect(IReflector& r)
 {
     Range(r, "scattering",  scattering,  0.0f, 1.0f);
     Range(r, "intensity",   intensity,   0.0f, 8.0f);
-    Range(r, "maxDistance", maxDistance, 1.0f, 200.0f);
+    Color3(r, "tint", tint);
+    Range(r, "minDistance", minDistance, 0.0f, 500.0f);
+    // 屋外の光芒は雲の切れ間から地面まで伸びるため、200 では手前の空気しか積分できない。
+    Range(r, "maxDistance", maxDistance, 1.0f, 4000.0f);
+    Range(r, "edgeFade",    edgeFade,    0.0f, 1.0f);
+    Range(r, "density",     density,     0.0f, 0.2f);
+    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f);
+    Range(r, "heightStart",   heightStart, -500.0f, 500.0f);
     Integer(r, "steps", steps, 4, 128);
 }
 

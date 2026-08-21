@@ -737,7 +737,7 @@ void RenderSystem(Scene& scene,
     static auto outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
     static auto atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
     static auto decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
-    static auto volumetricCloudCB = resources.CreateConstantBuffer(80);
+    static auto volumetricCloudCB = resources.CreateConstantBuffer(176);
     // パーティクル自己影: 光源側の密度 RT と、光源行列を入れる専用 frame CB。
     // WHY: RenderPassHandles はフレームごとに作り直される値型なので、
     //      パス側で遅延生成すると毎フレーム新しい RT を作って漏らす。ここで静的に持つ。
@@ -961,7 +961,7 @@ void RenderSystem(Scene& scene,
         outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
         atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
         decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
-        volumetricCloudCB = resources.CreateConstantBuffer(80);
+        volumetricCloudCB = resources.CreateConstantBuffer(176);
         particleSelfShadowRT = resources.CreateRenderTarget(
             RenderPassHandles::kSelfShadowResolution, RenderPassHandles::kSelfShadowResolution, 1);
         particleSelfShadowFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
@@ -1194,7 +1194,8 @@ void RenderSystem(Scene& scene,
         // 雲シャドウは昼夜サイクルとは独立に常に反映する。
         skyCloudShadowStrength = sky.cloudShadowStrength;
         skyCloudShadowCoverage = sky.cloudShadowCoverage;
-        skyCloudShadowScale    = sky.cloudShadowScale;
+        // Component は「まだら 1 周期の大きさ [m]」。シェーダーは world→UV スケールを要る。
+        skyCloudShadowScale    = 1.0f / (std::max)(sky.cloudShadowSize, 1.0f);
         skyCloudShadowSpeed    = sky.cloudShadowSpeed;
 
         if (sky.dayNightEnabled) {
@@ -1773,6 +1774,14 @@ void RenderSystem(Scene& scene,
         agData.volScattering         = rs.volumetricLight.scattering;
         agData.volSteps              = rs.volumetricLight.steps;
         agData.volMaxDist            = rs.volumetricLight.maxDist;
+        agData.volMinDist            = rs.volumetricLight.minDist;
+        agData.volDensity            = rs.volumetricLight.density;
+        agData.volHeightFalloff      = rs.volumetricLight.heightFalloff;
+        agData.volHeightStart        = rs.volumetricLight.heightStart;
+        agData.volTintR              = rs.volumetricLight.tint[0];
+        agData.volTintG              = rs.volumetricLight.tint[1];
+        agData.volTintB              = rs.volumetricLight.tint[2];
+        agData.volEdgeFade           = rs.volumetricLight.edgeFade;
         agData.taaFeedback           = rs.taa.feedback;
         agData.motionBlurStrength    = rs.motionBlur.enabled ? rs.motionBlur.strength : 0.0f;
         agData.motionBlurSamples     = rs.motionBlur.samples;
@@ -2082,7 +2091,6 @@ void RenderSystem(Scene& scene,
         });
     }
 
-    pipeline.AddPass<DebugCollidersPass>();
     pipeline.AddPass<ConstraintDebugPass>();
     pipeline.AddPass<AnimatorDebugPass>();
     pipeline.AddPass<GridDebugPass>();
@@ -2139,6 +2147,13 @@ void RenderSystem(Scene& scene,
         }
         renderer::DebugDraw::Flush();
     });
+
+    // コライダーは Script の Gizmo より後に描く。
+    // WHY: デバッグ線はすべて深度オフの 1px ラインなので、Gizmo とコライダーが同じ形を
+    //      同じ位置に出すと、どちらのピクセルが残るかがサブピクセルの被り方で決まり、
+    //      カメラが動くたびにちらついていた。コライダー側を破線にして最後に描けば、
+    //      隙間から Gizmo が見えて両方とも読める (DebugCollidersPass の DASH_* を参照)。
+    pipeline.AddPass<DebugCollidersPass>();
 
     pipeline.AddPass<NavMeshDebugPass>();
     pipeline.AddPass<DecalDebugPass>();

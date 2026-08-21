@@ -21,14 +21,21 @@ namespace fbzz::scene {
 
 namespace {
 
+// Assets/Shaders/Rendering/CloudVolume.hlsli の VolumetricCloudConstants と一致させること。
 struct VolumetricCloudCB {
     math::Vector4 cloudLayer;
     math::Vector4 cloudNoise;
     math::Vector4 cloudWind;
     math::Vector4 cloudLighting;
     math::Vector4 cloudAlbedo;
+    math::Vector4 cloudWeather;
+    math::Vector4 cloudShading;
+    math::Vector4 cloudProfile;
+    math::Vector4 cloudRange;
+    math::Vector4 cloudSunTint;
+    math::Vector4 cloudAmbTint;
 };
-static_assert(sizeof(VolumetricCloudCB) == 80, "VolumetricCloudCB layout mismatch");
+static_assert(sizeof(VolumetricCloudCB) == 176, "VolumetricCloudCB layout mismatch");
 
 VolumetricCloudComponent* FindActiveCloud(RenderPassContext& ctx)
 {
@@ -42,14 +49,20 @@ VolumetricCloudComponent* FindActiveCloud(RenderPassContext& ctx)
 
 } // namespace
 
-void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
+bool UpdateVolumetricCloudConstants(RenderPassContext& ctx)
 {
+    if (!ctx.handles.volumetricCloudCB.IsValid())
+        return false;
+
     auto* cloud = FindActiveCloud(ctx);
-    if (!cloud || !ctx.handles.volumetricCloudShader.IsValid()
-        || !ctx.handles.cloudUpscaleShader.IsValid()
-        || !ctx.handles.volumetricCloudPremultipliedPSO.IsValid()
-        || !ctx.handles.volumetricCloudCB.IsValid())
-        return;
+    if (!cloud) {
+        // 有効な雲が無いフレームでも CB を既知の値にしておく。
+        // WHY: 体積光パスは前フレームの残骸を読んで、存在しない雲の影を光芒へ落としうる。
+        //      lightShaftStrength = 0 がシェーダー側の無効化スイッチになっている。
+        VolumetricCloudCB empty{};
+        ctx.resources.Update(ctx.handles.volumetricCloudCB, &empty, sizeof(empty));
+        return false;
+    }
 
     // WindZone があればシーングローバル風で雲を流す (XZ 平面へ射影)。
     // WHY: 草・パーティクルと雲の流れる向きを 1 コンポーネントで揃えるため。
@@ -65,6 +78,80 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
         windSpeed = cloud->windSpeed * windZone.strength;
     }
     const float topHeight = cloud->bottomHeight + (std::max)(cloud->thickness, 1.0f);
+
+    VolumetricCloudCB cb{};
+    cb.cloudLayer = {
+        cloud->bottomHeight,
+        topHeight,
+        (std::max)(cloud->density, 0.0f),
+        math::Clamp01(cloud->coverage)
+    };
+    // Inspector は「大きさ [m]」で持ち、シェーダーが要る world→noise スケールへここで直す。
+    const float cloudSize  = math::Clamp(cloud->cloudSize, 50.0f, 100000.0f);
+    const float detailSize = math::Clamp(cloud->detailSize, 1.0f, cloudSize);
+    cb.cloudNoise = {
+        1.0f / cloudSize,
+        cloudSize / detailSize, // シェーダー内で 1/cloudSize と掛けて 1/detailSize になる
+        Time::time,
+        (std::max)(cloud->maxDistance, 100.0f)
+    };
+    cb.cloudWind = {
+        wind.x,
+        windSpeed,
+        wind.y,
+        static_cast<float>(cloud->stepCount < 8 ? 8 : (cloud->stepCount > 96 ? 96 : cloud->stepCount))
+    };
+    cb.cloudLighting = {
+        (std::max)(cloud->lightAbsorption, 0.0f),
+        (std::max)(cloud->ambientStrength, 0.0f),
+        (std::max)(cloud->silverLining, 0.0f),
+        math::Clamp01(cloud->lightShaftStrength)
+    };
+    cb.cloudAlbedo = {
+        cloud->albedo.x, cloud->albedo.y, cloud->albedo.z,
+        math::Clamp01(cloud->ambientGradient)
+    };
+    cb.cloudWeather = {
+        1.0f / math::Clamp(cloud->weatherSize, 100.0f, 1000000.0f),
+        math::Clamp01(cloud->weatherAmount),
+        math::Clamp01(cloud->detailStrength),
+        (std::max)(cloud->evolutionSpeed, 0.0f)
+    };
+    cb.cloudShading = {
+        math::Clamp(cloud->extinction, 0.001f, 0.5f),
+        (std::max)(cloud->sunIntensity, 0.0f),
+        math::Clamp01(cloud->powderStrength),
+        math::Clamp01(cloud->multiScatter)
+    };
+    cb.cloudProfile = {
+        math::Clamp(cloud->bottomSoftness, 0.01f, 0.9f),
+        math::Clamp(cloud->topSoftness, 0.01f, 0.9f),
+        math::Clamp(cloud->anisotropy, 0.0f, 0.95f),
+        static_cast<float>(cloud->lightStepCount < 1 ? 1
+                         : (cloud->lightStepCount > 8 ? 8 : cloud->lightStepCount))
+    };
+    const float maxDistance = (std::max)(cloud->maxDistance, 100.0f);
+    cb.cloudRange = {
+        math::Clamp(cloud->minDistance, 0.0f, maxDistance),
+        (std::max)(cloud->fadeDistance, 1.0f),
+        math::Clamp01(cloud->horizonFade),
+        0.0f
+    };
+    cb.cloudSunTint = { cloud->sunTint.x, cloud->sunTint.y, cloud->sunTint.z, 0.0f };
+    cb.cloudAmbTint = { cloud->ambientTint.x, cloud->ambientTint.y, cloud->ambientTint.z, 0.0f };
+    ctx.resources.Update(ctx.handles.volumetricCloudCB, &cb, sizeof(cb));
+    return true;
+}
+
+void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
+{
+    if (!UpdateVolumetricCloudConstants(ctx)
+        || !ctx.handles.volumetricCloudShader.IsValid()
+        || !ctx.handles.cloudUpscaleShader.IsValid()
+        || !ctx.handles.volumetricCloudPremultipliedPSO.IsValid())
+        return;
+    const VolumetricCloudComponent* cloud = FindActiveCloud(ctx);
+    if (!cloud) return;
 
     // WHAT: レイ終端判定に使う depth は専用 RT へコピーしてから SRV として読む。
     // WHY: Forward では hdrRT を出力先 RTV/DSV として使うため、同じ depth を t7 で同時に読むと DX11 の競合になる。
@@ -99,39 +186,10 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
         ctx.renderer.Submit(depthDC, ctx.resources);
     }
 
-    VolumetricCloudCB cb{};
-    cb.cloudLayer = {
-        cloud->bottomHeight,
-        topHeight,
-        (std::max)(cloud->density, 0.0f),
-        math::Clamp01(cloud->coverage)
-    };
-    cb.cloudNoise = {
-        (std::max)(cloud->noiseScale, 0.00001f),
-        (std::max)(cloud->detailScale, 1.0f),
-        Time::time,
-        (std::max)(cloud->maxDistance, 100.0f)
-    };
-    cb.cloudWind = {
-        wind.x,
-        windSpeed,
-        wind.y,
-        static_cast<float>(cloud->stepCount < 8 ? 8 : (cloud->stepCount > 96 ? 96 : cloud->stepCount))
-    };
-    cb.cloudLighting = {
-        (std::max)(cloud->lightAbsorption, 0.0f),
-        math::Clamp01(cloud->ambientStrength),
-        (std::max)(cloud->silverLining, 0.0f),
-        0.0f
-    };
-    cb.cloudAlbedo = { cloud->albedo.x, cloud->albedo.y, cloud->albedo.z, 0.0f };
-    ctx.resources.Update(ctx.handles.volumetricCloudCB, &cb, sizeof(cb));
-
     // 雲のレンダー解像度。0=フル解像度(くっきり), 1=ハーフ(高速・描画ピクセル 1/4)。
-    // 既定はフル解像度。重い場合だけ 1 に上げて性能を稼ぐ (見た目はぼやける)。
     // オフスクリーン RT(RGBA16F) に scatter.rgb + alpha を描き、後段でフル解像度へアップスケール合成する。
     // フル解像度時は 1:1 サンプル(ピクセル中心)になるため無損失。
-    static const uint32_t kCloudResShift = 0;
+    const uint32_t kCloudResShift = cloud->halfResolution ? 1u : 0u;
     static renderer::ResourceHandle<renderer::RenderTargetTag> s_cloudRT;
     static uint32_t s_cloudW = 0, s_cloudH = 0;
     static uint64_t s_cloudResetVer = 0;

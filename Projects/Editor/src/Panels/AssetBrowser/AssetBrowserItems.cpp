@@ -829,18 +829,24 @@ struct ThumbnailTerrainCB {
     math::Vector4 layerAutoSlope[4];
 };
 
+// Assets/Shaders/Water/Water.hlsl の WaterCB と一致させる
+// (実体は WaterRenderPass.cpp の WaterCB。レイアウトを変えたら両方直すこと)。
 struct ThumbnailWaterCB {
     math::Matrix4 worldMatrix;
     math::Matrix4 wvpMatrix;
     math::Vector4 shallowColorDepth;
     math::Vector4 deepColorDepth;
     math::Vector4 surfaceParams;
-    math::Vector4 normalMap1Params;
-    math::Vector4 normalMap2Params;
+    math::Vector4 normalParams;
+    math::Vector4 timeParams;
     math::Vector4 foamParams;
     math::Vector4 refractionFlowParams;
     math::Vector4 waveDir[4];
     math::Vector4 waveParams[4];
+    math::Vector4 detailParams;
+    math::Vector4 sssParams;
+    math::Vector4 reflectParams;
+    math::Vector4 flowParams;
 };
 
 struct ThumbnailSkinningCB {
@@ -1056,20 +1062,31 @@ static ThumbnailWaterCB BuildThumbnailWaterCB(
         MaterialParamFloat(asset, "fresnelBias", 0.02f),
         MaterialParamFloat(asset, "fresnelPower", 5.0f)
     };
-    cb.normalMap1Params = { 0.015f, 0.010f, MaterialParamFloat(asset, "normalMap1Tiling", 3.0f), MaterialParamFloat(asset, "normalStrength", 0.75f) };
-    cb.normalMap2Params = { -0.010f, 0.015f, MaterialParamFloat(asset, "normalMap2Tiling", 5.0f), 0.35f };
+    cb.normalParams = { 0.0f, 0.0f, 0.0f, MaterialParamFloat(asset, "normalStrength", 0.75f) };
+    cb.timeParams   = { 0.0f, 0.0f, 0.0f, 0.35f };
     cb.foamParams = {
         MaterialParamFloat(asset, "foamThreshold", 0.3f),
         MaterialParamFloat(asset, "foamFade", 0.5f),
         MaterialParamFloat(asset, "foamStrength", 0.6f),
-        MaterialParamFloat(asset, "foamTiling", 5.0f)
+        MaterialParamFloat(asset, "foamNoiseScale", 0.5f)
     };
     cb.refractionFlowParams = {
         MaterialParamFloat(asset, "refractionStrength", 0.02f),
         MaterialParamFloat(asset, "flowSpeed", 0.3f),
-        MaterialParamFloat(asset, "flowTiling", 1.0f),
+        0.0f,
         0.0f
     };
+    cb.detailParams = {
+        MaterialParamFloat(asset, "detailScale", 0.35f),
+        MaterialParamFloat(asset, "detailSpeed", 0.6f),
+        MaterialParamFloat(asset, "detailStrength", 1.0f),
+        MaterialParamFloat(asset, "smoothness", 0.92f)
+    };
+    const math::Vector3 sss = MaterialParamFloat3(asset, "sssColor", { 0.12f, 0.50f, 0.46f });
+    cb.sssParams = { sss.x, sss.y, sss.z, MaterialParamFloat(asset, "sssStrength", 0.6f) };
+    // サムネイルは IBL キューブを持たないので、空反射はフラット色へフォールバックさせる。
+    cb.reflectParams = { 0.0f, 0.0f, 0.0f, 0.35f };
+    cb.flowParams    = { 1.0f, 0.0f, 0.0f, 0.0f };
     return cb;
 }
 

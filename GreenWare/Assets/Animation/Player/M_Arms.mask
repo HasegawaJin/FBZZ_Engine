@@ -2,17 +2,17 @@
 default_include = false
 name = 'M_Arms'
 skeleton_source = 'Assets/Models/Player/Player.fbx'
-skeleton_source_signature = ''
+skeleton_source_signature = '134317682568018340:3750300'
 version = 1
 
 [[entries]]
-blend_depth = 1
-bone = 'UpperArm_L'
+blend_depth = 0
+bone = 'RootNode/MiniBot_Armature/Root/Pelvis/Chest/UpperArm_L'
 include_children = true
 weight = 1.0
 
 [[entries]]
-blend_depth = 1
-bone = 'UpperArm_R'
+blend_depth = 0
+bone = 'RootNode/MiniBot_Armature/Root/Pelvis/Chest/UpperArm_R'
 include_children = true
 weight = 1.0

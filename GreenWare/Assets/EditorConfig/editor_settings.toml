@@ -8,13 +8,13 @@ enabled = true
 interval_sec = 300
 
 [camera]
-last_pos_x = 0.0
-last_pos_y = 3.0
-last_pos_z = 0.0
-last_rot_w = 0.7294952273368835
-last_rot_x = 0.5422497987747192
-last_rot_y = -0.33458584547042847
-last_rot_z = 0.24870498478412628
+last_pos_x = 1103.0003662109375
+last_pos_y = 399.9403076171875
+last_pos_z = -0.00013778731226921082
+last_rot_w = 0.7071040272712708
+last_rot_x = -0.004221030976623297
+last_rot_y = 0.7070844173431396
+last_rot_z = 0.0042209140956401825
 sensitivity = 0.15000000596046448
 speed = 5.0
 
@@ -312,6 +312,10 @@ k = 183359732
 v = true
 
 [[inspector_sections.states]]
+k = 189838190
+v = false
+
+[[inspector_sections.states]]
 k = 190711641
 v = true
 
@@ -353,7 +357,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 295295110
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 304844679
@@ -362,6 +366,10 @@ v = true
 [[inspector_sections.states]]
 k = 309989070
 v = true
+
+[[inspector_sections.states]]
+k = 312693804
+v = false
 
 [[inspector_sections.states]]
 k = 339340743
@@ -398,6 +406,10 @@ v = true
 [[inspector_sections.states]]
 k = 416648165
 v = true
+
+[[inspector_sections.states]]
+k = 429110101
+v = false
 
 [[inspector_sections.states]]
 k = 452243271
@@ -457,7 +469,11 @@ v = true
 
 [[inspector_sections.states]]
 k = 515468364
-v = false
+v = true
+
+[[inspector_sections.states]]
+k = 517965584
+v = true
 
 [[inspector_sections.states]]
 k = 532824265
@@ -641,7 +657,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 1246269066
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 1255741952
@@ -716,8 +732,16 @@ k = 1489946796
 v = true
 
 [[inspector_sections.states]]
+k = 1490813710
+v = true
+
+[[inspector_sections.states]]
 k = 1521708312
 v = true
+
+[[inspector_sections.states]]
+k = 1530564993
+v = false
 
 [[inspector_sections.states]]
 k = 1534009782
@@ -852,12 +876,20 @@ k = 1903205277
 v = true
 
 [[inspector_sections.states]]
+k = 1905480156
+v = false
+
+[[inspector_sections.states]]
+k = 1929963461
+v = true
+
+[[inspector_sections.states]]
 k = 1974403200
 v = true
 
 [[inspector_sections.states]]
 k = 1980011298
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 1981452864
@@ -909,7 +941,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2129324169
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 2134828511
@@ -989,7 +1021,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 2386972961
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 2393849167
@@ -1021,7 +1053,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2487732506
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 2513269623
@@ -1044,6 +1076,10 @@ k = 2579468636
 v = true
 
 [[inspector_sections.states]]
+k = 2608487124
+v = false
+
+[[inspector_sections.states]]
 k = 2608755643
 v = false
 
@@ -1054,6 +1090,10 @@ v = true
 [[inspector_sections.states]]
 k = 2626913488
 v = true
+
+[[inspector_sections.states]]
+k = 2635441815
+v = false
 
 [[inspector_sections.states]]
 k = 2678910068
@@ -1089,6 +1129,10 @@ v = true
 
 [[inspector_sections.states]]
 k = 2745019404
+v = true
+
+[[inspector_sections.states]]
+k = 2793610192
 v = true
 
 [[inspector_sections.states]]
@@ -1181,7 +1225,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 3053228904
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 3056363251
@@ -1349,7 +1393,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 3507276798
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 3508219393
@@ -1456,6 +1500,10 @@ k = 3954395121
 v = true
 
 [[inspector_sections.states]]
+k = 3955307184
+v = false
+
+[[inspector_sections.states]]
 k = 3956767971
 v = true
 
@@ -1485,6 +1533,10 @@ v = true
 
 [[inspector_sections.states]]
 k = 4066932478
+v = true
+
+[[inspector_sections.states]]
+k = 4081936864
 v = true
 
 [[inspector_sections.states]]
@@ -1560,8 +1612,8 @@ ai_command_bus = true
 hot_reload = true
 
 [scene]
-last_path = 'Assets/Scenes/Main.scene'
-recent = [ 'Assets/Scenes/Main.scene' ]
+last_path = 'Assets/Scenes/Result.scene'
+recent = [ 'Assets/Scenes/Result.scene', 'Assets/Scenes/Title.scene', 'Assets/Scenes/Main.scene' ]
 
 [snap]
 enabled = true
@@ -1591,7 +1643,7 @@ grid_size = 1.0
 show_grid = false
 show_light_range = true
 show_skeleton = false
-show_stats = true
+show_stats = false
 show_vfx_gizmos = false
 
 [[camera_bookmarks]]

@@ -4,16 +4,20 @@
 // WHAT: imnodes で State ノードと Transition リンクを描画し、AnimatorComponent を直接更新する。
 #include <Editor/Panels/AnimationGraphPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
+#include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/GraphEditor/AnimatorGraphOps.hpp>
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
 #include <Editor/GraphLayout.hpp>
+#include <Editor/Util/AnimatorMaskAudit.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -22,6 +26,7 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -398,6 +403,161 @@ ImVec4 StateModeTextColor(scene::AnimationStateMode mode)
     case scene::AnimationStateMode::BlendTree2D: return ImVec4(0.78f, 0.58f, 1.00f, 1.0f);
     }
     return ImVec4(0.75f, 0.75f, 0.75f, 1.0f);
+}
+
+// ステートノードの論理幅。ImNodes はノードの幅を「本体で一番広い項目」で決めるため、
+// クリップの絶対パスをそのまま流すとノード 1 個が画面幅を超える。ここを唯一の基準にし、
+// 収まらない文字列は省略してツールチップへ逃がす。
+constexpr float STATE_NODE_WIDTH = 178.0f;
+
+// ノード本体の実効テキスト幅 (スクリーンピクセル)。CalcTextSize はズーム後の
+// ピクセルを返すので、論理幅にも同じズームを掛けて同じ空間で比較する。
+float NodeTextBudget(float zoom)
+{
+    constexpr float PADDING = 18.0f;
+    return (std::max)((STATE_NODE_WIDTH - PADDING) * (std::max)(zoom, 0.05f), 24.0f);
+}
+
+// 収まらない分だけ末尾を省略する。ImGui::TextUnformatted と違い改行も折り返しもしない。
+// WHY 折り返しにしないか: ImNodes は折り返し幅を知らないため、TextWrapped でも
+//     ノードは長い方の行幅まで広がる。省略しないと幅は縮まらない。
+std::string ElideToWidth(const std::string& text, float budget)
+{
+    if (text.empty() || ImGui::CalcTextSize(text.c_str()).x <= budget) return text;
+    const float ellipsisWidth = ImGui::CalcTextSize("...").x;
+    std::size_t fit = 0;
+    for (std::size_t i = 1; i <= text.size(); ++i) {
+        // UTF-8 の途中で切ると豆腐になる。次のバイトが継続バイトなら文字の途中なので、
+        // 幅の判定も打ち切りもここでは行わない (次の文字境界まで進める)。
+        if (i < text.size() && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80) continue;
+        if (ImGui::CalcTextSize(text.c_str(), text.c_str() + i).x + ellipsisWidth > budget)
+            break;
+        fit = i;
+    }
+    return text.substr(0, fit) + "...";
+}
+
+void TextElided(const std::string& text, float budget)
+{
+    ImGui::TextUnformatted(ElideToWidth(text, budget).c_str());
+}
+
+void TextElidedDisabled(const std::string& text, float budget)
+{
+    ImGui::TextDisabled("%s", ElideToWidth(text, budget).c_str());
+}
+
+// 合成ビューが使うスケルトン。
+// WHY 3 経路あるか: .animcontroller 単体を開いているときは GameObject が無い。
+//     マスクは作成元 FBX を覚えているので、それを最後の頼りにする。これが無いと
+//     「シーンに Player を置いてからでないとマスクを検証できない」になる。
+const asset::Skeleton* ResolveCompositionSkeleton(EditorContext& ctx,
+                                                  const scene::AnimatorComponent& animator)
+{
+    const auto skeletonOfObject = [](scene::GameObject* object) -> const asset::Skeleton* {
+        if (!object) return nullptr;
+        auto* smr = object->GetComponent<scene::SkinnedMeshRenderer>();
+        if (!smr) {
+            for (int i = 0, n = object->GetChildCount(); i < n && !smr; ++i)
+                if (scene::GameObject* child = object->GetChild(i))
+                    smr = child->GetComponent<scene::SkinnedMeshRenderer>();
+        }
+        if (!smr) return nullptr;
+        if (!smr->model && !smr->modelPath.empty())
+            smr->model = asset::AssetManager::LoadModel(smr->modelPath);
+        return smr->model ? smr->model->skeleton.get() : nullptr;
+    };
+
+    if (const asset::Skeleton* fromSelection = skeletonOfObject(ctx.GetSelectedGO()))
+        return fromSelection;
+
+    const auto skeletonOfMask = [](const std::string& maskPath) -> const asset::Skeleton* {
+        if (maskPath.empty()) return nullptr;
+        asset::AvatarMaskAsset mask;
+        if (!asset::LoadAvatarMaskAsset(asset::AssetManager::ResolveAssetPath(maskPath), mask))
+            return nullptr;
+        if (mask.skeletonSourcePath.empty()) return nullptr;
+        const auto model = asset::AssetManager::LoadModel(mask.skeletonSourcePath);
+        return model ? model->skeleton.get() : nullptr;
+    };
+
+    if (const asset::Skeleton* fromBase = skeletonOfMask(animator.baseLayerMask.path))
+        return fromBase;
+    for (const auto& layer : animator.layers)
+        if (const asset::Skeleton* fromLayer = skeletonOfMask(layer.mask.path))
+            return fromLayer;
+    return nullptr;
+}
+
+// バーの内訳を数字で読む用。Additive は取り分を持たないので倍率として別に並べる。
+std::string BuildCompositionTooltip(const std::vector<maskaudit::LayerInfo>& layers,
+                                    const maskaudit::BoneContribution& contribution)
+{
+    char line[128];
+    std::snprintf(line, sizeof(line), "Base  %.0f%%", contribution.baseShare * 100.0f);
+    std::string tooltip = line;
+    for (std::size_t i = 0; i < layers.size(); ++i) {
+        if (layers[i].additive) {
+            if (contribution.additiveGain[i] <= 0.001f) continue;
+            std::snprintf(line, sizeof(line), "\n%s  +%.2fx (additive)",
+                          layers[i].name.c_str(), contribution.additiveGain[i]);
+        } else {
+            if (contribution.share[i] <= 0.001f) continue;
+            std::snprintf(line, sizeof(line), "\n%s  %.0f%%",
+                          layers[i].name.c_str(), contribution.share[i] * 100.0f);
+        }
+        tooltip += line;
+    }
+    return tooltip;
+}
+
+// 絶対パスからファイル名だけを残す。
+// WHY: Library/Baked 配下の .anim は "Library/Baked/<32桁ハッシュ>/anims/Walk.anim" で、
+//      途中のハッシュは読み手に何も伝えない。全文はツールチップに残す。
+std::string SourceFileName(const std::string& sourcePath)
+{
+    if (sourcePath.empty()) return {};
+    const std::size_t slash = sourcePath.find_last_of("/\\");
+    return slash == std::string::npos ? sourcePath : sourcePath.substr(slash + 1);
+}
+
+// ノード本体から外した情報の置き場。ホバーしたときだけ全部出す。
+std::string BuildStateTooltip(const scene::AnimationState& state)
+{
+    std::string tooltip = state.name.empty() ? "(Unnamed)" : state.name;
+    tooltip += "\n";
+    tooltip += StateModeName(state.mode);
+
+    switch (state.mode) {
+    case scene::AnimationStateMode::Clip:
+        tooltip += "\nClip: ";
+        tooltip += state.clipName.empty() ? "(none)" : state.clipName;
+        tooltip += "\nSource: ";
+        tooltip += state.sourcePath.empty() ? "(none)" : state.sourcePath;
+        break;
+    case scene::AnimationStateMode::BlendTree1D:
+        tooltip += "\nParam: ";
+        tooltip += state.blendTree1D.paramName.empty() ? "<none>" : state.blendTree1D.paramName;
+        tooltip += "\n" + std::to_string(state.blendTree1D.motions.size())
+                 + " motions (double-click to open)";
+        break;
+    case scene::AnimationStateMode::BlendTree2D:
+        tooltip += "\nParams: ";
+        tooltip += (state.blendTree2D.paramX.empty() ? "<none>" : state.blendTree2D.paramX);
+        tooltip += " / ";
+        tooltip += (state.blendTree2D.paramY.empty() ? "<none>" : state.blendTree2D.paramY);
+        tooltip += "\n" + std::to_string(state.blendTree2D.motions.size())
+                 + " motions (double-click to open)";
+        break;
+    }
+
+    char meta[96];
+    std::snprintf(meta, sizeof(meta), "\n%s | Speed %.2f | IK %.2f | %d transition%s",
+                  state.loop ? "LOOP" : "ONCE", state.speed, state.ikWeight,
+                  static_cast<int>(state.transitions.size()),
+                  state.transitions.size() == 1 ? "" : "s");
+    tooltip += meta;
+    return tooltip;
 }
 
 const char* ConditionOpSymbol(scene::ConditionOp op)
@@ -1410,43 +1570,70 @@ void AnimationGraphPanel::DrawNodeCanvas(
                                 IM_COL32(132, 210, 255, 255), GraphPinShape::CircleFilled });
         node.outputs.push_back({ OutputPinId(i), "OUT", IM_COL32(255, 156, 72, 255),
                                  IM_COL32(255, 202, 118, 255), GraphPinShape::CircleFilled });
-        node.tooltip = state->name;
+        node.minWidth = STATE_NODE_WIDTH;
+        // 本文から外した情報 (絶対パス・全パラメーター) はここへ集約する。
+        node.tooltip = BuildStateTooltip(*state);
         node.titleFontScale = 1.05f;
-        node.drawTitle = [state, &animator]() {
-            ImGui::TextUnformatted(state->name.empty() ? "(Unnamed)" : state->name.c_str());
-            if (state->name == animator.currentStateName) {
-                ImGui::SameLine();
-                ImGui::TextColored({ 0.45f, 1.0f, 0.62f, 1.0f }, "[Current]");
-            } else if (state->name == animator.defaultStateName
-                       || (animator.defaultStateName.empty() && state == &animator.states.front())) {
-                ImGui::SameLine();
-                ImGui::TextColored({ 1.0f, 0.76f, 0.28f, 1.0f }, "[Default]");
+        node.drawTitle = [this, state, &animator]() {
+            const bool current = state->name == animator.currentStateName;
+            const bool isDefault = !current
+                && (state->name == animator.defaultStateName
+                    || (animator.defaultStateName.empty() && state == &animator.states.front()));
+            // バッジのぶんだけ名前の取り分を削る。名前が長くてもノードは広がらない。
+            const char* badge = current ? "  \xe2\x97\x8f" : (isDefault ? "  \xe2\x96\xb6" : "");
+            const float budget = NodeTextBudget(m_canvasZoom)
+                - (badge[0] != '\0' ? ImGui::CalcTextSize(badge).x : 0.0f);
+            TextElided(state->name.empty() ? "(Unnamed)" : state->name, budget);
+            if (current) {
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextColored({ 0.45f, 1.0f, 0.62f, 1.0f }, "%s", badge);
+            } else if (isDefault) {
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextColored({ 1.0f, 0.76f, 0.28f, 1.0f }, "%s", badge);
             }
         };
         node.drawBody = [this, state, &animator]() {
-            ImGui::TextColored(StateModeTextColor(state->mode), "%s", StateModeName(state->mode));
-            ImGui::Separator();
+            const float budget = NodeTextBudget(m_canvasZoom);
             switch (state->mode) {
             case scene::AnimationStateMode::Clip:
-                ImGui::TextWrapped("%s", state->clipName.empty() ? "No clip assigned" : state->clipName.c_str());
-                ImGui::TextDisabled("%s", state->sourcePath.empty() ? "No source" : state->sourcePath.c_str());
+                // Clip Name 未設定でも Source だけは入っていることが多い (FBX に 1 テイク)。
+                // "(no clip)" と出すと本当に未接続なのか区別できないので、実体名へ落とす。
+                TextElided(!state->clipName.empty()
+                    ? state->clipName
+                    : (state->sourcePath.empty()
+                        ? std::string("(no clip)") : SourceFileName(state->sourcePath)),
+                    budget);
                 break;
             case scene::AnimationStateMode::BlendTree1D:
-                ImGui::Text("Param: %s", state->blendTree1D.paramName.empty() ? "<none>" : state->blendTree1D.paramName.c_str());
-                ImGui::TextDisabled("%d motions | Double-click to open", static_cast<int>(state->blendTree1D.motions.size()));
+                TextElided(state->blendTree1D.paramName.empty()
+                    ? "Blend Tree 1D" : ("Blend Tree  " + state->blendTree1D.paramName), budget);
                 break;
             case scene::AnimationStateMode::BlendTree2D:
-                ImGui::Text("Parameters: %s / %s",
-                    state->blendTree2D.paramX.empty() ? "<none>" : state->blendTree2D.paramX.c_str(),
-                    state->blendTree2D.paramY.empty() ? "<none>" : state->blendTree2D.paramY.c_str());
-                ImGui::TextDisabled("%d motions | Double-click to open", static_cast<int>(state->blendTree2D.motions.size()));
+                TextElided(state->blendTree2D.paramX.empty() && state->blendTree2D.paramY.empty()
+                    ? "Blend Tree 2D"
+                    : ("Blend Tree  " + state->blendTree2D.paramX + " / " + state->blendTree2D.paramY),
+                    budget);
                 break;
             }
-            ImGui::Spacing();
-            ImGui::TextDisabled("%s | Speed %.2f | IK %.2f", state->loop ? "LOOP" : "ONCE", state->speed, state->ikWeight);
-            ImGui::TextDisabled("%d transition%s", static_cast<int>(state->transitions.size()), state->transitions.size() == 1 ? "" : "s");
+
+            // 1 行に畳む。ノードで知りたいのは「ループするか」「等速か」「遷移が有るか」
+            // の 3 つで、正確な数値は Inspector 側が持つ。
+            std::string meta = state->loop ? "loop" : "once";
+            if (std::abs(state->speed - 1.0f) > 0.001f) {
+                char speedText[32];
+                std::snprintf(speedText, sizeof(speedText), "  %.2gx", state->speed);
+                meta += speedText;
+            }
+            const int transitionCount = static_cast<int>(state->transitions.size());
+            if (transitionCount > 0) {
+                char transitionText[32];
+                std::snprintf(transitionText, sizeof(transitionText), "  \xe2\x86\x92%d", transitionCount);
+                meta += transitionText;
+            }
+            TextElidedDisabled(meta, budget);
+
             if (state->name == animator.currentStateName)
-                ImGui::ProgressBar(animator.GetNormalizedTime(), { -1.0f, 5.0f }, "");
+                ImGui::ProgressBar(animator.GetNormalizedTime(), { -1.0f, 4.0f }, "");
         };
         view.nodes.push_back(std::move(node));
     }
@@ -2542,7 +2729,190 @@ void AnimationGraphPanel::DrawLayerSelector(
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("このレイヤーが効くボーンを決める .mask アセット");
     }
+
+    ImGui::SameLine();
+    if (ImGui::SmallButton(m_showComposition ? "Composition v" : "Composition >"))
+        m_showComposition = !m_showComposition;
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("全レイヤーを重ねた後、ボーンごとに誰が何 %% 持っているかを出す");
+
+    DrawLayerComposition(ctx, animator);
     ImGui::Separator();
+}
+
+// レイヤーの色。積み上げバーとオーナー表示で同じ色を使う。
+// WHY 固定パレットにするか: レイヤーは 2〜5 本しかなく、色が毎フレーム変わると
+//     「どの帯がどのレイヤーか」を目で追えない。並び順で決め打つ。
+static ImU32 CompositionLayerColor(std::size_t index, bool additive)
+{
+    static constexpr ImU32 OVERRIDE_COLORS[] = {
+        IM_COL32(104, 186, 255, 255), IM_COL32(126, 226, 158, 255),
+        IM_COL32(246, 186, 92, 255),  IM_COL32(214, 140, 255, 255),
+        IM_COL32(255, 138, 138, 255),
+    };
+    static constexpr ImU32 ADDITIVE_COLORS[] = {
+        IM_COL32(92, 150, 200, 255),  IM_COL32(100, 178, 128, 255),
+        IM_COL32(196, 150, 78, 255),  IM_COL32(170, 116, 200, 255),
+        IM_COL32(200, 112, 112, 255),
+    };
+    const auto& palette = additive ? ADDITIVE_COLORS : OVERRIDE_COLORS;
+    constexpr std::size_t count = sizeof(OVERRIDE_COLORS) / sizeof(OVERRIDE_COLORS[0]);
+    return palette[index % count];
+}
+
+void AnimationGraphPanel::DrawLayerComposition(
+    EditorContext& ctx, scene::AnimatorComponent& animator)
+{
+    if (!m_showComposition) return;
+
+    const asset::Skeleton* skeleton = ResolveCompositionSkeleton(ctx, animator);
+    if (!skeleton || skeleton->nodes.empty()) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+            "スケルトンを解決できません。SkinnedMeshRenderer を持つ GameObject を選ぶか、"
+            ".mask の Skeleton Source を設定してください。");
+        return;
+    }
+
+    // マスクの読み込みはここで行われる (編集中は AnimatorSystem が読まないため)。
+    const std::vector<maskaudit::LayerInfo> layers = maskaudit::CollectLayers(animator);
+    if (layers.empty()) {
+        ImGui::TextDisabled("レイヤーがありません。Base Layer が全身を 100%% 動かします。");
+        return;
+    }
+
+    const std::vector<maskaudit::Issue> issues = maskaudit::Audit(*skeleton, layers);
+
+    // ── 検証結果 ──────────────────────────────────────────────────────────
+    int warningCount = 0;
+    for (const auto& issue : issues)
+        if (issue.severity == maskaudit::Severity::Warning) ++warningCount;
+
+    if (issues.empty()) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Success),
+                           "レイヤー合成の問題は見つかりませんでした。");
+    } else {
+        char header[96];
+        std::snprintf(header, sizeof(header), "Issues  %d warning / %d info###mask_issues",
+                      warningCount, static_cast<int>(issues.size()) - warningCount);
+        if (ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen)) {
+            for (const auto& issue : issues) {
+                const bool warning = issue.severity == maskaudit::Severity::Warning;
+                ImGui::TextColored(
+                    EditorTheme::Color(warning ? ThemeColor::Warning : ThemeColor::TextMuted),
+                    "%s", warning ? "[!]" : "[i]");
+                ImGui::SameLine();
+                ImGui::TextWrapped("%s : %s", issue.layerName.c_str(), issue.message.c_str());
+            }
+        }
+    }
+
+    // ── 凡例 ──────────────────────────────────────────────────────────────
+    // 名前をクリックすると、そのレイヤーのマスクを 3D プレビューへ送る。
+    ImDrawList* legendList = ImGui::GetWindowDrawList();
+    const auto legendSwatch = [&](ImU32 color, const char* label, const std::string& maskPath) {
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        const float height = ImGui::GetTextLineHeight();
+        legendList->AddRectFilled(pos, { pos.x + height, pos.y + height }, color, 2.0f);
+        ImGui::Dummy({ height, height });
+        ImGui::SameLine(0.0f, 4.0f);
+        if (maskPath.empty()) {
+            ImGui::TextDisabled("%s", label);
+        } else {
+            if (ImGui::SmallButton(label))
+                RequestAnimationMaskPreview(maskPath);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("Animation Mask Preview でこのレイヤーのマスクを見る\n%s",
+                                  maskPath.c_str());
+        }
+        ImGui::SameLine(0.0f, 12.0f);
+    };
+    legendSwatch(IM_COL32(96, 100, 112, 255), "(base)", {});
+    for (std::size_t i = 0; i < layers.size(); ++i) {
+        if (layers[i].additive) continue;
+        // レイヤー名が空でもボタン ID が衝突しないように添字で分ける。
+        ImGui::PushID(static_cast<int>(i));
+        legendSwatch(CompositionLayerColor(i, false),
+                     layers[i].name.empty() ? "(unnamed)" : layers[i].name.c_str(),
+                     layers[i].maskPath);
+        ImGui::PopID();
+    }
+    ImGui::NewLine();
+
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputTextWithHint("##composition_filter", "Filter bones",
+                             m_compositionFilter, sizeof(m_compositionFilter));
+    ImGui::SameLine();
+    ImGui::Checkbox("Base が残る骨だけ", &m_compositionIssuesOnly);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("どのレイヤーにも 100%% 所有されていないボーンだけを出す");
+
+    const std::string filter = util::StringUtils::ToLower(m_compositionFilter);
+
+    // ── ボーンごとの持ち分 ────────────────────────────────────────────────
+    if (ImGui::BeginTable("##composition", 4,
+            ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV,
+            ImVec2(0.0f, 220.0f))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Bone", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+        ImGui::TableSetupColumn("Composition", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Base", ImGuiTableColumnFlags_WidthFixed, 52.0f);
+        ImGui::TableSetupColumn("Owner", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+        ImGui::TableHeadersRow();
+
+        for (int i = 0; i < static_cast<int>(skeleton->nodes.size()); ++i) {
+            const auto& node = skeleton->nodes[static_cast<std::size_t>(i)];
+            const std::string path = asset::BuildSkeletonNodePath(*skeleton, i);
+            const maskaudit::BoneContribution contribution =
+                maskaudit::Evaluate(layers, path, node.name);
+
+            if (m_compositionIssuesOnly && contribution.baseShare <= 0.05f) continue;
+            if (!filter.empty() &&
+                util::StringUtils::ToLower(node.name).find(filter) == std::string::npos)
+                continue;
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            // 階層の深さぶんだけ字下げして、どこの骨かを読めるようにする。
+            const int depth = static_cast<int>(std::count(path.begin(), path.end(), '/'));
+            ImGui::Dummy({ static_cast<float>(std::min(depth, 8)) * 8.0f, 0.0f });
+            ImGui::SameLine(0.0f, 0.0f);
+            ImGui::TextUnformatted(node.name.c_str());
+
+            ImGui::TableNextColumn();
+            const ImVec2 barPos = ImGui::GetCursorScreenPos();
+            const float barWidth = (std::max)(ImGui::GetContentRegionAvail().x - 4.0f, 24.0f);
+            const float barHeight = ImGui::GetTextLineHeight();
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            float cursorX = barPos.x;
+            const auto segment = [&](float ratio, ImU32 color) {
+                if (ratio <= 0.001f) return;
+                const float width = barWidth * ratio;
+                drawList->AddRectFilled({ cursorX, barPos.y },
+                                        { cursorX + width, barPos.y + barHeight }, color);
+                cursorX += width;
+            };
+            segment(contribution.baseShare, IM_COL32(96, 100, 112, 255));
+            for (std::size_t li = 0; li < layers.size(); ++li)
+                segment(contribution.share[li], CompositionLayerColor(li, false));
+            drawList->AddRect(barPos, { barPos.x + barWidth, barPos.y + barHeight },
+                              IM_COL32(24, 26, 32, 180));
+            ImGui::Dummy({ barWidth, barHeight });
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", BuildCompositionTooltip(layers, contribution).c_str());
+
+            ImGui::TableNextColumn();
+            // Base が残っているほど強く出す。ここが上半身で 0 でなければ設定が効いていない。
+            ImGui::TextColored(contribution.baseShare > 0.05f
+                    ? EditorTheme::Color(ThemeColor::Warning)
+                    : EditorTheme::Color(ThemeColor::TextMuted),
+                "%3.0f%%", contribution.baseShare * 100.0f);
+
+            ImGui::TableNextColumn();
+            if (contribution.owner < 0) ImGui::TextDisabled("(base)");
+            else ImGui::TextUnformatted(layers[static_cast<std::size_t>(contribution.owner)].name.c_str());
+        }
+        ImGui::EndTable();
+    }
 }
 
 void AnimationGraphPanel::DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator)

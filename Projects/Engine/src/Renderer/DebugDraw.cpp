@@ -8,6 +8,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Math/MathUtils.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <vector>
@@ -32,6 +33,9 @@ struct DebugCamCB {
 constexpr uint32_t MAX_DEBUG_VERTICES = 65536;
 constexpr int      CIRCLE_SEGMENTS    = 24;
 constexpr float    PI                 = 3.14159265358979f;
+// 破線 1 周期のうち実線が占める割合。空きが狭すぎると下の線が見えず、
+// 広すぎると破線側の形が読めなくなる。
+constexpr float    DASH_DUTY          = 0.55f;
 
 } // namespace
 
@@ -240,6 +244,36 @@ void DebugDraw::LineDepthTested(IRenderer& /*r*/,
 {
     assert(s_renderer && "DebugDraw::BeginFrame must be called first");
     AddSegmentDepthTested(from, to, color);
+}
+
+void DebugDraw::LineDashed(IRenderer& /*r*/,
+                           const math::Vector3& from, const math::Vector3& to,
+                           const math::Vector4& color,
+                           float dashLength, int maxDashes)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const math::Vector3 delta = to - from;
+    const float length = delta.Length();
+    if (length <= math::EPSILON || dashLength <= 0.0f || maxDashes <= 1) {
+        AddSegment(from, to, color);
+        return;
+    }
+
+    // 実線 + 空きで 1 周期。周期数はワールド長から決め、上限で頭打ちにする。
+    const int period = std::clamp(
+        static_cast<int>(std::lround(length / (dashLength * (1.0f / DASH_DUTY)))),
+        1, maxDashes);
+    const float step = 1.0f / static_cast<float>(period);
+    for (int i = 0; i < period; ++i) {
+        const float t0 = step * static_cast<float>(i);
+        AddSegment(from + delta * t0, from + delta * (t0 + step * DASH_DUTY), color);
+    }
+}
+
+size_t DebugDraw::DashedLineMaxVertices(int maxDashes)
+{
+    return static_cast<size_t>((std::max)(maxDashes, 1)) * 2u;
 }
 
 void DebugDraw::Box(IRenderer& /*r*/,

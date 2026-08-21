@@ -86,11 +86,16 @@ public:
 
 private:
     void TryFire(Polarity polarity);
-    // 実際に極性を乗せてクールダウンを消費する。
-    void ApplyToTarget(Polarity polarity, GameObject& targetObject,
-                       PolarityTargetComponent& target);
-    void PlayFireFeedback(Polarity polarity, const PolarityResult& result,
-                          const Vector3& targetPos);
+    // 1 発ぶんの発砲。クールダウンの消費と、撃った側の見た目・音がここに揃う。
+    // WHY 極性の付与と分けるか: 発砲は「引き金を引いた」という事実で、極性が乗るかどうかは
+    //     当たった先が帯電できるかの話でしかない。同じ関数に入れると、対象が居ない場面で
+    //     引き金ごと無かったことになる。
+    void Discharge(Polarity polarity, const Vector3& impactPoint);
+    // 実際に極性を乗せる。呼ぶ前に Discharge() が済んでいること。
+    void ApplyToTarget(Polarity polarity, PolarityTargetComponent& target);
+    void PlayImpactFeedback(const PolarityResult& result);
+    // 対象が居ないときの着弾点。トレーサーが向く先でしかない。
+    [[nodiscard]] Vector3 MissPoint(Polarity polarity, float range) const;
     [[nodiscard]] float CooldownSeconds() const;
     [[nodiscard]] Vector3 MuzzlePosition(Polarity polarity) const;
     // 銃 GameObject と、その上の WeaponAnimatorComponent を引く。
@@ -182,22 +187,22 @@ inline void PolarityGunComponent::TryFire(Polarity polarity)
 
     GameObject* targetObject = aim->CurrentTarget();
     auto* target = aim->CurrentPolarityTarget();
-    if (!targetObject || !target) {
-        if (!sfxEmpty.empty()) audio.PlayOneShot(sfxEmpty);
-        return;
-    }
 
-    // 対象が居て撃てる。ここから先は必ずクールダウンを消費する。
-    // 柱へ置いた場合も同じだけ消費する (7.6 の「敵を狙うか柱に置くかの選択」)。
-    ApplyToTarget(polarity, *targetObject, *target);
+    // 対象が居なくても引き金は引ける。ここから先は必ずクールダウンを消費する。
+    // 柱へ置いた場合も、宙へ撃った場合も同じだけ消費する
+    // (7.6 の「敵を狙うか柱に置くか」は撃てる回数の取り合いとして成立させる)。
+    // WHY 空撃ち音で握り潰さないか: 「撃てなかった」と「当たる相手が居なかった」が
+    //     同じ反応になり、入力が死んでいるようにしか見えない。撃った事実は必ず返す。
+    Discharge(polarity, targetObject
+        ? targetObject->transform.worldPosition
+        : MissPoint(polarity, aim->maxRange));
+
+    if (!target) return;
+    ApplyToTarget(polarity, *target);
 }
 
-inline void PolarityGunComponent::ApplyToTarget(Polarity polarity,
-                                                GameObject& targetObject,
-                                                PolarityTargetComponent& target)
+inline void PolarityGunComponent::Discharge(Polarity polarity, const Vector3& impactPoint)
 {
-    const PolarityResult result = target.Apply(polarity);
-
     CooldownTimer& timer = (polarity == Polarity::Plus) ? m_plus : m_minus;
     timer.Trigger(CooldownSeconds());
 
@@ -208,15 +213,22 @@ inline void PolarityGunComponent::ApplyToTarget(Polarity polarity,
         ? m_controllerOverride : scene.GetScript<PlayerControllerComponent>())
         player->PlayFireAnimation(polarity == Polarity::Plus);
 
-    PlayFireFeedback(polarity, result, targetObject.transform.worldPosition);
-}
-
-inline void PolarityGunComponent::PlayFireFeedback(Polarity polarity,
-                                                   const PolarityResult& result,
-                                                   const Vector3& targetPos)
-{
     if (!sfxFire.empty()) audio.PlayOneShot(sfxFire);
 
+    if (drawDebugTracer) {
+        debug.DrawLine(MuzzlePosition(polarity), impactPoint,
+                       PolarityColor(polarity), 0.15f);
+    }
+}
+
+inline void PolarityGunComponent::ApplyToTarget(Polarity polarity,
+                                                PolarityTargetComponent& target)
+{
+    PlayImpactFeedback(target.Apply(polarity));
+}
+
+inline void PolarityGunComponent::PlayImpactFeedback(const PolarityResult& result)
+{
     // 12.4 は「中和・延長した瞬間にも明確なフィードバックを返す」を仕様として要求する。
     // 同じ音で済ませると、狙って中和したのか事故だったのかが耳で判別できない。
     switch (result.change) {
@@ -228,11 +240,22 @@ inline void PolarityGunComponent::PlayFireFeedback(Polarity polarity,
         if (!sfxHit.empty()) audio.PlayOneShot(sfxHit);
         break;
     }
+}
 
-    if (drawDebugTracer) {
-        debug.DrawLine(MuzzlePosition(polarity), targetPos,
-                       PolarityColor(polarity), 0.15f);
-    }
+inline Vector3 PolarityGunComponent::MissPoint(Polarity polarity, float range) const
+{
+    const Vector3 origin = MuzzlePosition(polarity);
+
+    // 銃口の姿勢をそのまま伸ばす。対象が居ない以上、腕のポーズが示す向きが唯一の答え。
+    if (auto* weapon = WeaponAnim(polarity); weapon && weapon->HasMuzzleSocket())
+        return origin + weapon->MuzzleRotation() * Vector3::FORWARD * range;
+
+    // ソケット未解決の銃でもトレーサーの向きは要る。TPS なので視線はカメラから引く
+    // (transform.forward はモデルの 180 度オフセットを含むため使えない)。
+    if (auto* camera = scene.GetMainCameraObject())
+        return origin + camera->transform.forward * range;
+
+    return origin;
 }
 
 inline GameObject* PolarityGunComponent::WeaponObject(Polarity polarity) const

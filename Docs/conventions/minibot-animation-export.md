@@ -279,8 +279,21 @@ struct AnimationLayer {
 
 | 名前 | ルート | blendDepth | 用途 |
 |---|---|---:|---|
-| `M_UpperBody` | `Chest` | 2 | 胴〜頭〜腕。Chest の継ぎ目を2階層で立ち上げる |
-| `M_Arms` | `UpperArm_L` / `UpperArm_R` | 1 | 発砲リコイル用 |
+| `M_UpperBody` | `Chest` | 0 | 胴〜頭〜腕を Override レイヤーが完全に所有する |
+| `M_Arms` | `UpperArm_L` / `UpperArm_R` | 0 | 発砲リコイル用 |
+
+> ⚠️ **blendDepth は「指定したボーン自身」から立ち上がる。**
+> `AvatarMaskRampedWeight()` は `weight × (depth+1)/(blendDepth+1)` なので、
+> `Chest` に `weight 1.0 / blendDepth 2` を指定すると **`Chest` 自身は 0.33** にしかならず、
+> Override レイヤーは胴体を乗っ取れない (Base Layer が 67% 残る)。
+> MiniBot の階層は `Pelvis → Chest → UpperArm_L/R` なので、
+> 以前の推奨値 (blendDepth 2) では上腕まで 0.67 で、上半身が走行モーションのまま出ていた。
+>
+> 継ぎ目を柔らかくしたい場合は、**マスクに含める範囲を 1 段だけ下 (`Pelvis`) へ広げて
+> そこに低い weight を明示する**。ランプで起点を薄めると、乗っ取りたいボーンが最弱になる。
+>
+> 実効値は Inspector の Advanced Rules の **Ramp 列**、レイヤーを重ねた結果は
+> Animation Graph の **Composition** ビュー (Base の残存率) で確認できる。
 
 ---
 

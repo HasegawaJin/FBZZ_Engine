@@ -12,6 +12,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>
+#include <Editor/Util/AnimatorMaskAudit.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -2017,6 +2018,34 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
                     ImGui::TableNextColumn();
                     ImGui::TextColored(nodeColor, "%s", ruleName(state));
+                    // 同じ骨に複数エントリが当たると、勝つのは specificity が最大の 1 件だけ。
+                    // 残りは一度も効かないまま .mask に残り続けるため、ここで見えるようにする。
+                    if (const auto matches =
+                            asset::MatchAvatarMaskEntries(s_mask, path, node.name);
+                        matches.size() > 1) {
+                        ImGui::SameLine(0.0f, 6.0f);
+                        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                                           "x%d", static_cast<int>(matches.size()));
+                        if (ImGui::IsItemHovered()) {
+                            std::string tooltip = std::to_string(matches.size())
+                                + " 件のエントリが一致します (上が勝ち):";
+                            for (std::size_t m = 0; m < matches.size(); ++m) {
+                                const auto& match = matches[m];
+                                const auto& matched =
+                                    s_mask.entries[static_cast<size_t>(match.entryIndex)];
+                                char line[320];
+                                std::snprintf(line, sizeof(line),
+                                    "\n%s %s  w %.2f depth %d  → %.2f",
+                                    m == 0 ? "->" : "  ",
+                                    matched.bonePath.c_str(), matched.weight,
+                                    matched.blendDepth, match.weight);
+                                tooltip += line;
+                            }
+                            if (matches.size() > 1)
+                                tooltip += "\n\n勝たないエントリは一度も効きません。";
+                            ImGui::SetTooltip("%s", tooltip.c_str());
+                        }
+                    }
                     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                         ImGui::SetDragDropPayload("FBZZ_MASK_BONE_PATH",
                                                   path.c_str(), path.size() + 1);
@@ -2035,6 +2064,15 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     SetAnimationMaskPreviewSelection(path);
                 }
             };
+
+            // 1 本も拾えていないマスクは、レイヤーへ割り当てても何も動かさない。
+            // 「設定はしてあるのに効かない」は画面から判別できないので、ここで名指しする。
+            if (!s_mask.entries.empty() && !s_mask.defaultInclude &&
+                maskaudit::CountMaskedBones(*maskSkeleton, s_mask) == 0) {
+                ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger),
+                    "このマスクはスケルトンのどのボーンにも一致しません。"
+                    "割り当てたレイヤーは何も動かしません (ボーン名/パスを確認)。");
+            }
 
             ImGui::TextColored(EditorTheme::Color(ThemeColor::Success), "✓ Include");
             ImGui::SameLine();
@@ -2058,13 +2096,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         ImGui::SeparatorText("Advanced Rules");
         int removeEntry = -1;
-        if (ImGui::BeginTable("##mask_advanced_rules", 5,
+        if (ImGui::BeginTable("##mask_advanced_rules", 6,
                               ImGuiTableFlags_BordersInnerV |
                               ImGuiTableFlags_SizingStretchProp |
                               ImGuiTableFlags_NoSavedSettings)) {
             ImGui::TableSetupColumn("Bone", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("Weight", ImGuiTableColumnFlags_WidthFixed, 104.0f);
             ImGui::TableSetupColumn("Depth", ImGuiTableColumnFlags_WidthFixed, 94.0f);
+            ImGui::TableSetupColumn("Ramp", ImGuiTableColumnFlags_WidthFixed, 150.0f);
             ImGui::TableSetupColumn("Children", ImGuiTableColumnFlags_WidthFixed, 78.0f);
             ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, 28.0f);
             ImGui::TableHeadersRow();
@@ -2097,7 +2136,45 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                     ImGui::SetTooltip(
                         "0 なら配下一律。1 以上でこのボーンから下へ段階的に weight を立ち上げ、\n"
-                        "上半身/下半身の境界でポーズが折れるのを防ぎます。");
+                        "上半身/下半身の境界でポーズが折れるのを防ぎます。\n"
+                        "ランプは「指定したボーン自身」から始まるため、depth を上げるほど\n"
+                        "起点の骨は weight に届かなくなります (右の Ramp 列が実効値)。");
+                }
+
+                // ── ランプの実効値 ──────────────────────────────────────────
+                // WHY 表示するか: RampedWeight は weight×(depth+1)/(blendDepth+1) で、
+                //     「Chest に weight 1.0 / depth 2 を入れたら Chest は 0.33」になる。
+                //     この数字がどこにも出ていなかったため、上半身レイヤーが 67% ベースの
+                //     ままだったことに誰も気付けなかった。編集した場所へそのまま出す。
+                ImGui::TableNextColumn();
+                {
+                    const std::vector<float> ramp =
+                        maskaudit::BlendDepthRamp(entry.weight, entry.blendDepth);
+                    std::string rampText;
+                    for (std::size_t r = 0; r < ramp.size(); ++r) {
+                        char value[16];
+                        std::snprintf(value, sizeof(value), "%.2f", ramp[r]);
+                        if (r > 0) rampText += " > ";
+                        rampText += value;
+                    }
+                    const bool rootFallsShort =
+                        !ramp.empty() && ramp.front() < entry.weight - 0.001f;
+                    ImGui::TextColored(rootFallsShort
+                            ? EditorTheme::Color(ThemeColor::Warning)
+                            : EditorTheme::Color(ThemeColor::TextMuted),
+                        "%s", rampText.c_str());
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                        if (rootFallsShort) {
+                            ImGui::SetTooltip(
+                                "起点の %s は %.2f までしか効きません "
+                                "(Base Layer が %.0f%% 残ります)。\n"
+                                "weight どおりに効かせたいなら depth を 0 にしてください。",
+                                entry.bonePath.empty() ? "(bone)" : entry.bonePath.c_str(),
+                                ramp.front(), (1.0f - ramp.front()) * 100.0f);
+                        } else {
+                            ImGui::SetTooltip("起点から順に、この実効ウェイトで効きます。");
+                        }
+                    }
                 }
 
                 ImGui::TableNextColumn();

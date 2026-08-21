@@ -33,6 +33,11 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx);
 // Volumetric Cloud — 深度で遮蔽しながら雲層をレイマーチし、HDR へ合成する。
 void ExecuteVolumetricCloudPass(RenderPassContext& ctx);
 
+// 雲パラメータ CB (b2) を現在のシーンから更新し、有効な雲があれば true を返す。
+// WHY: 体積光パスも同じ密度場を引いて雲の切れ間の光芒を作るため、雲パス実行の有無に
+//      依らず CB の内容が保証されている必要がある。
+bool UpdateVolumetricCloudConstants(RenderPassContext& ctx);
+
 // Contact Shadows — スクリーンスペースで小物直下の接触影を高精度に生成する。
 void ExecuteContactShadowsPass(RenderPassContext& ctx);
 

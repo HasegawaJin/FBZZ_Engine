@@ -1,2 +1,21 @@
+[editor]
+format_version = 2
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Canvas' ]
+    instance_id = 'a3000001-0000-0000-0000-000000000001'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a3000001-0000-0000-0000-000000000002'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image', 'UI Button', 'UI Text', 'Script:SceneManagerScript' ]
+    instance_id = 'a3000001-0000-0000-0000-000000000005'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text', 'Script:ResultPresenterComponent' ]
+    instance_id = 'a3000001-0000-0000-0000-000000000003'
+
 [meta]
 guid = '7642084d66804976a8072cdb731aa256'

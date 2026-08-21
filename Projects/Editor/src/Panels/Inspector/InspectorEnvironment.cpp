@@ -39,7 +39,8 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Cloud Shadow");
             widgets::RangeField("Cloud Shadow Strength", sr.cloudShadowStrength, 0.0f, 1.0f);
             widgets::RangeField("Cloud Shadow Coverage", sr.cloudShadowCoverage, 0.0f, 1.0f);
-            ImGui::DragFloat("Cloud Shadow Scale", &sr.cloudShadowScale, 0.0001f, 0.0001f, 1.0f, "%.5f");
+            // 中身は world→ノイズ UV スケールだが、Inspector では「まだら 1 周期の大きさ」で扱う。
+            ImGui::DragFloat("Cloud Shadow Size", &sr.cloudShadowSize, 1.0f, 1.0f, 10000.0f, "%.0f m");
             ImGui::DragFloat("Cloud Shadow Speed", &sr.cloudShadowSpeed, 0.01f, 0.0f, 10.0f);
         });
 
@@ -72,20 +73,115 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     DrawComponentSection<scene::VolumetricCloudComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volumetric Cloud",
         [](scene::VolumetricCloudComponent& cloud, EditorContext&) {
+            // DragFloat 直後に付ける説明。RangeField はウィジェット側が tooltip 引数を持つ。
+            auto tip = [](const char* text) {
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", text);
+            };
+
+            ImGui::SeparatorText("Layer");
             ImGui::DragFloat("Bottom Height", &cloud.bottomHeight, 5.0f, -10000.0f, 10000.0f);
             ImGui::DragFloat("Thickness", &cloud.thickness, 5.0f, 1.0f, 5000.0f);
             widgets::RangeField("Coverage", cloud.coverage, 0.0f, 1.0f);
             ImGui::DragFloat("Density", &cloud.density, 0.01f, 0.0f, 8.0f);
-            ImGui::DragFloat("Noise Scale", &cloud.noiseScale, 0.0001f, 0.00001f, 0.02f, "%.5f");
-            ImGui::DragFloat("Detail Scale", &cloud.detailScale, 0.05f, 1.0f, 16.0f);
+
+            ImGui::SeparatorText("Shape");
+            // すべて「ワールド単位の大きさ」で編集する。
+            // WHY: 中身は world→ノイズ座標のスケール (逆数) だが、そのまま出すと
+            //      0.000063 のような読めない値をドラッグすることになり、
+            //      「雲をどれくらいの大きさにしたいか」と数字が結びつかない。
+            ImGui::DragFloat("Cloud Size", &cloud.cloudSize, 5.0f, 50.0f, 100000.0f, "%.0f m");
+            tip(
+                "雲塊 1 周期の大きさ。大きいほど雄大な雲になります。\n"
+                "Shape ノイズはタイラブルな 3D テクスチャなので、\n"
+                "この距離ごとにまったく同じ雲が並びます。小さくすると\n"
+                "雲は細かくなりますが、繰り返しが視界内で目立ちます。");
+            ImGui::DragFloat("Weather Size", &cloud.weatherSize, 25.0f, 100.0f, 1000000.0f, "%.0f m");
+            tip(
+                "晴れ間と厚い塊が入れ替わる周期。Cloud Size の 5〜10 倍にしてください。\n"
+                "Shape のタイル周期と十分ずらすことで、同じ雲が格子状に\n"
+                "並んで見える繰り返しを視覚的に解きます。");
+            widgets::RangeField("Weather Amount", cloud.weatherAmount, 0.0f, 1.0f, "%.2f",
+                "雲量ムラの強さ。0 で空一面が同じ雲量になり (旧挙動)、\n"
+                "タイリングがそのまま見えます。上げるほど晴れ間と\n"
+                "厚い塊の差が大きくなります。");
+            ImGui::DragFloat("Detail Size", &cloud.detailSize, 1.0f, 1.0f, cloud.cloudSize, "%.0f m");
+            tip("雲の縁を侵食する細部ノイズの大きさ。Cloud Size より小さくします。");
+            widgets::RangeField("Detail Strength", cloud.detailStrength, 0.0f, 1.0f, "%.2f",
+                "高周波ノイズで雲の縁を侵食する量。上げるとちぎれた綿状になります。");
+            widgets::RangeField("Bottom Softness", cloud.bottomSoftness, 0.01f, 0.9f, "%.2f",
+                "雲底の丸み。小さいほど平らな底になります。");
+            widgets::RangeField("Top Softness", cloud.topSoftness, 0.01f, 0.9f, "%.2f",
+                "雲頂の散り方。大きいほど上へふわりと消えます。");
+            ImGui::DragFloat("Evolution Speed", &cloud.evolutionSpeed, 0.05f, 0.0f, 20.0f);
+            tip("流れとは別に、雲の形そのものが変化する速さ。0 で形が固定されます。");
+
+            ImGui::SeparatorText("Wind");
             ImGui::DragFloat("Wind Speed", &cloud.windSpeed, 0.5f, 0.0f, 300.0f);
             DragVec2("Wind Direction", cloud.windDirection, 0.01f, -1.0f, 1.0f);
+
+            ImGui::SeparatorText("Lighting");
+            ImGui::DragFloat("Sun Intensity", &cloud.sunIntensity, 0.05f, 0.0f, 20.0f);
+            tip(
+                "太陽散乱の倍率。雲が暗くて見えないときはまずここを上げます。\n"
+                "空の明るさ (Sky Renderer の Sky Day Brightness) に対する相対値です。");
+            ImGui::DragFloat("Extinction", &cloud.extinction, 0.001f, 0.001f, 0.5f, "%.4f");
+            tip(
+                "密度 → 消散係数のスケール。上げるほど不透明で締まった雲、\n"
+                "下げるほど薄く光を通す雲になります。Density と合わせて詰めます。");
             ImGui::DragFloat("Light Absorption", &cloud.lightAbsorption, 0.01f, 0.0f, 8.0f);
-            widgets::RangeField("Ambient Strength", cloud.ambientStrength, 0.0f, 1.0f);
+            tip("雲内部のセルフシャドウの濃さ。大きいほど陰影が強く暗い雲になります。");
+            ImGui::DragFloat("Ambient Strength", &cloud.ambientStrength, 0.01f, 0.0f, 4.0f);
+            tip("空から回り込む間接光の強さ。影側が黒く潰れるときに上げます。");
+            widgets::RangeField("Ambient Gradient", cloud.ambientGradient, 0.0f, 1.0f, "%.2f",
+                "雲底に届く間接光の割合。間接光は雲の天面から入るので、\n"
+                "0 にすると底が真っ黒に、1 にすると上下均一になります。");
+            widgets::RangeField("Multi Scatter", cloud.multiScatter, 0.0f, 1.0f, "%.2f",
+                "多重散乱オクターブの寄与。0 だと単散乱のみで雲の内側が\n"
+                "真っ黒に落ちます。上げるほど内部まで光が回ります。");
+            widgets::RangeField("Powder Strength", cloud.powderStrength, 0.0f, 1.0f, "%.2f",
+                "Beer-Powder。太陽側の縁を暗く落として立体感を出します。");
+            widgets::RangeField("Anisotropy", cloud.anisotropy, 0.0f, 0.95f, "%.2f",
+                "位相関数の前方散乱の鋭さ。上げるほど太陽の周りだけが強く光ります。");
             ImGui::DragFloat("Silver Lining", &cloud.silverLining, 0.01f, 0.0f, 4.0f);
+
+            ImGui::SeparatorText("Color");
             widgets::ColorEdit3("Albedo", cloud.albedo);
+            tip("雲そのものの色。ふつうは白のままにします。");
+            widgets::ColorEdit3("Sun Tint", cloud.sunTint);
+            tip("太陽に照らされた側へ掛ける色。夕焼けの雲を暖色へ寄せるときに使います。");
+            widgets::ColorEdit3("Ambient Tint", cloud.ambientTint);
+            tip("影側 (空からの間接光) へ掛ける色。空の色に合わせると雲が空になじみます。");
+
+            ImGui::SeparatorText("Range");
+            ImGui::DragFloat("Min Distance", &cloud.minDistance, 1.0f, 0.0f, cloud.maxDistance, "%.0f m");
+            tip("この距離までは雲を出しません。");
+            ImGui::DragFloat("Fade Distance", &cloud.fadeDistance, 1.0f, 1.0f, 5000.0f, "%.0f m");
+            tip("Min Distance からこの距離をかけて雲を濃くしていきます。\n"
+                "カメラが雲層の高さまで上がると視線が雲の内部から始まり、\n"
+                "手前が濃すぎて画面が真っ白になります。ここを広げると\n"
+                "雲の中を通り抜けられるようになります。");
+            widgets::RangeField("Horizon Fade", cloud.horizonFade, 0.0f, 1.0f, "%.2f",
+                "水平線ぎわのフェード幅 (Max Distance に対する割合)。\n"
+                "視線を水平へ倒すと雲層に入る距離が伸び、Max Distance を\n"
+                "越えた瞬間に雲が消えます。その直前まで不透明なので、\n"
+                "地平線に硬い切れ目が出ます。ここを広げると溶けます。");
+            ImGui::DragFloat("Max Distance", &cloud.maxDistance, 50.0f, 100.0f, 50000.0f, "%.0f m");
+
+            ImGui::SeparatorText("Light Shafts");
+            widgets::RangeField("Light Shaft Strength", cloud.lightShaftStrength, 0.0f, 1.0f, "%.2f",
+                "雲の切れ間から差す光の線 (ゴッドレイ) の濃さ。\n"
+                "体積光パスがこの雲の密度を直接引いて光芒を遮ります。\n"
+                "Post Process Volume の Volumetric Light を有効にし、\n"
+                "Max Distance を光芒を伸ばしたい距離まで上げてください。\n"
+                "0 で遮蔽をやめ、光芒は一様な靄に戻ります。");
+
+            ImGui::SeparatorText("Quality");
             ImGui::SliderInt("Step Count", &cloud.stepCount, 8, 96);
-            ImGui::DragFloat("Max Distance", &cloud.maxDistance, 50.0f, 100.0f, 50000.0f);
+            ImGui::SliderInt("Light Step Count", &cloud.lightStepCount, 1, 8);
+            tip("太陽方向セルフシャドウのステップ数。上げると陰影が正確になりますが重くなります。");
+            ImGui::Checkbox("Half Resolution", &cloud.halfResolution);
+            tip("半解像度でレイマーチしてから拡大合成します。\n"
+                "描画ピクセルが 1/4 になる代わりに輪郭が甘くなります。");
         });
 
     DrawComponentSection<scene::DecalComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Decal",

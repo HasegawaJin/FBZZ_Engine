@@ -2,11 +2,11 @@
 default_include = false
 name = 'M_UpperBody'
 skeleton_source = 'Assets/Models/Player/Player.fbx'
-skeleton_source_signature = ''
+skeleton_source_signature = '134317682568018340:3750300'
 version = 1
 
 [[entries]]
-blend_depth = 2
-bone = 'Chest'
+blend_depth = 0
+bone = 'RootNode/MiniBot_Armature/Root/Pelvis/Chest'
 include_children = true
 weight = 1.0

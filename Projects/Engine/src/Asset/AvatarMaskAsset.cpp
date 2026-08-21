@@ -79,14 +79,13 @@ bool MatchEntry(const AvatarMaskEntry& entry,
     return false;
 }
 
-// blendDepth に沿って深さ depth のウェイトを求める。
-// depth = 0 で weight/(blendDepth+1)、depth >= blendDepth で weight に到達する。
-float RampedWeight(const AvatarMaskEntry& entry, int depth)
+// 1 エントリぶんの優先度。深く (具体的に) 指定されたエントリほど強い。
+// WHY 関数にするか: EvaluateAvatarMaskWeight と MatchAvatarMaskEntries が同じ順序で
+//     勝者を選ばないと、Editor が「効いている」と表示したエントリと実際に効くエントリが
+//     食い違う。順位付けの規則は 1 箇所にしか置かない。
+int EntrySpecificity(const AvatarMaskEntry& entry, int depth)
 {
-    if (entry.blendDepth <= 0) return entry.weight;
-    const float t = static_cast<float>(std::min(depth + 1, entry.blendDepth + 1)) /
-                    static_cast<float>(entry.blendDepth + 1);
-    return entry.weight * t;
+    return PathDepth(entry.bonePath) * 1000 - depth;
 }
 
 // 体パーツごとのボーン名トークン。小文字部分一致で判定する。
@@ -192,6 +191,14 @@ void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
     mask.entries = std::move(compressed);
 }
 
+float AvatarMaskRampedWeight(const AvatarMaskEntry& entry, int depth)
+{
+    if (entry.blendDepth <= 0) return entry.weight;
+    const float t = static_cast<float>(std::min(depth + 1, entry.blendDepth + 1)) /
+                    static_cast<float>(entry.blendDepth + 1);
+    return entry.weight * t;
+}
+
 float EvaluateAvatarMaskWeight(
     const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName)
 {
@@ -200,13 +207,15 @@ float EvaluateAvatarMaskWeight(
 
     // より具体的な (bonePath が深い) エントリを優先する。
     // WHY: 「腕全体を 0 → 手だけ 1」のような上書きを、記述順に依存させないため。
+    // NOTE: 毎フレーム × ボーン数で呼ばれる。MatchAvatarMaskEntries と規則は共有するが、
+    //       ここでは配列を作らず最良の 1 件だけを走査で選ぶ。
     const AvatarMaskEntry* best = nullptr;
     int bestSpecificity = -1;
     int bestDepth = 0;
     for (const auto& entry : mask.entries) {
         int depth = 0;
         if (!MatchEntry(entry, bonePath, boneName, depth)) continue;
-        const int specificity = PathDepth(entry.bonePath) * 1000 - depth;
+        const int specificity = EntrySpecificity(entry, depth);
         if (specificity > bestSpecificity) {
             bestSpecificity = specificity;
             best = &entry;
@@ -214,7 +223,29 @@ float EvaluateAvatarMaskWeight(
         }
     }
     if (!best) return fallback;
-    return std::clamp(RampedWeight(*best, bestDepth), 0.0f, 1.0f);
+    return std::clamp(AvatarMaskRampedWeight(*best, bestDepth), 0.0f, 1.0f);
+}
+
+std::vector<AvatarMaskMatch> MatchAvatarMaskEntries(
+    const AvatarMaskAsset& mask, std::string_view bonePath, std::string_view boneName)
+{
+    std::vector<AvatarMaskMatch> matches;
+    for (int i = 0; i < static_cast<int>(mask.entries.size()); ++i) {
+        const AvatarMaskEntry& entry = mask.entries[static_cast<size_t>(i)];
+        int depth = 0;
+        if (!MatchEntry(entry, bonePath, boneName, depth)) continue;
+        matches.push_back(AvatarMaskMatch{
+            i, depth,
+            std::clamp(AvatarMaskRampedWeight(entry, depth), 0.0f, 1.0f),
+            EntrySpecificity(entry, depth) });
+    }
+    // 同点は先に書かれた方を勝ちにする。Evaluate 側が「より大きいときだけ差し替える」
+    // 走査になっているため、安定ソートでないと勝者の表示がずれる。
+    std::stable_sort(matches.begin(), matches.end(),
+        [](const AvatarMaskMatch& a, const AvatarMaskMatch& b) {
+            return a.specificity > b.specificity;
+        });
+    return matches;
 }
 
 const char* HumanoidBodyPartName(HumanoidBodyPart part)

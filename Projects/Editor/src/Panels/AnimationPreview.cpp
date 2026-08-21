@@ -489,6 +489,15 @@ struct MaskPreviewState {
 };
 
 MaskPreviewState s_maskPreview;
+
+// パネルの外から「この .mask を見せろ」と指定された 1 ショット。
+struct MaskPreviewRequest {
+    bool        pending = false;
+    std::string maskPath;
+    std::string modelPath;
+};
+MaskPreviewRequest s_maskPreviewRequest;
+
 constexpr int PREVIEW_RT_SIZE = 512;
 
 ImTextureID ToImTextureID(void* ptr)
@@ -1169,10 +1178,58 @@ std::string MaskPathForMesh(const asset::Model& model, size_t meshIndex)
         model, model.FindNodeForMesh(static_cast<uint32_t>(meshIndex)));
 }
 
+// スキニングパレット (skeleton.bones) の 1 本ごとのマスクウェイト。
+// WHY 表を作るか: メッシュ 1 枚ぶんの平均を出すのに全頂点 × 4 影響を舐めるため、
+//      ボーンパスの組み立てをその内側でやると文字列生成が頂点数ぶん走る。
+std::vector<float> BuildBoneMaskWeights(const asset::Skeleton& skeleton,
+                                        const asset::AvatarMaskAsset& mask)
+{
+    std::vector<float> weights(skeleton.bones.size(), 0.0f);
+    for (size_t b = 0; b < skeleton.bones.size(); ++b) {
+        const asset::Bone& bone = skeleton.bones[b];
+        const std::string path = bone.nodeIndex >= 0
+            ? asset::BuildSkeletonNodePath(skeleton, bone.nodeIndex) : bone.name;
+        weights[b] = asset::EvaluateAvatarMaskWeight(mask, path, bone.name);
+    }
+    return weights;
+}
+
+// スキンメッシュ 1 枚の代表マスクウェイト。頂点ごとの影響ボーンで加重平均する。
+//
+// WHY メッシュノードで評価しないか (これが「全部赤」の原因だった):
+//   スキンメッシュのノード ("P_ArmorGrey" 等) はアーマチュアの外側に置かれる。
+//   そこでマスクを引くと default_include=false のマスクは必ず 0 を返し、
+//   どの .mask を開いても全メッシュが weight 0 = 赤で描かれていた。
+//   スキンメッシュが「どのくらいこのレイヤーに動かされるか」は、その頂点を
+//   動かすボーンのマスクウェイトでしか決まらない。
+float SkinnedMaskWeight(const renderer::Mesh& mesh, const std::vector<float>& boneWeights)
+{
+    double total = 0.0;
+    double influenceSum = 0.0;
+    for (const auto& vertex : mesh.cpuSkinnedVertices) {
+        for (int i = 0; i < 4; ++i) {
+            const float influence = vertex.boneWeights[i];
+            if (influence <= 0.0f) continue;
+            const uint32_t bone = vertex.boneIndices[i];
+            if (bone >= boneWeights.size()) continue;
+            total += static_cast<double>(influence) * boneWeights[bone];
+            influenceSum += influence;
+        }
+    }
+    return influenceSum > 0.0 ? static_cast<float>(total / influenceSum) : 0.0f;
+}
+
 float MaskWeightForMesh(const asset::Model& model,
                         size_t meshIndex,
-                        const asset::AvatarMaskAsset& mask)
+                        const asset::AvatarMaskAsset& mask,
+                        const std::vector<float>& boneMaskWeights)
 {
+    const renderer::Mesh* mesh =
+        meshIndex < model.meshes.size() ? model.meshes[meshIndex].get() : nullptr;
+    if (mesh && mesh->isSkinned && !mesh->cpuSkinnedVertices.empty() && !boneMaskWeights.empty())
+        return SkinnedMaskWeight(*mesh, boneMaskWeights);
+
+    // 非スキンメッシュ (小物・アタッチメント) は、そのノード自身の位置で決まる。
     const int nodeIndex = model.FindNodeForMesh(static_cast<uint32_t>(meshIndex));
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size()))
         return mask.defaultInclude ? 1.0f : 0.0f;
@@ -1534,6 +1591,12 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
     const bool maskColorMode = s_maskPreview.active && s_maskPreview.loaded;
+    // スキンメッシュの着色に使うボーン別ウェイト。描画は RenderPreviewFrame が
+    // キャッシュミスのときだけ呼ぶので、ここで組んでもフレームごとには走らない。
+    const std::vector<float> boneMaskWeights =
+        (maskColorMode && model->skeleton)
+            ? BuildBoneMaskWeights(*model->skeleton, s_maskPreview.mask)
+            : std::vector<float>{};
 
     const auto previewWorldForMesh = [&](size_t meshIndex,
                                          const renderer::Mesh& mesh) {
@@ -1616,7 +1679,8 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
             // マスクプレビューでは元材質よりも「どの部位が効くか」の判読性を優先し、
             // メッシュを担当ノードの実効ウェイト色で描く。
             PreviewMaterialCB materialData{};
-            const float weight = MaskWeightForMesh(*model, i, s_maskPreview.mask);
+            const float weight =
+                MaskWeightForMesh(*model, i, s_maskPreview.mask, boneMaskWeights);
             ImVec4 color = MaskWeightColor(weight);
             const int meshNodeIndex = model->FindNodeForMesh(static_cast<uint32_t>(i));
             const bool selectedMesh = meshNodeIndex >= 0
@@ -2534,11 +2598,36 @@ bool DrawAnimationMaskPreviewWidget(EditorContext& ctx,
     return result;
 }
 
+void RequestAnimationMaskPreview(std::string_view maskPath, std::string_view modelPath)
+{
+    if (maskPath.empty()) return;
+    s_maskPreviewRequest.maskPath = std::string(maskPath);
+    s_maskPreviewRequest.modelPath = std::string(modelPath);
+    s_maskPreviewRequest.pending = true;
+}
+
 void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
 {
     static std::string modelPath;
     static std::string maskPath;
     static std::string lastSelectedAsset;
+
+    // 外部からの指定は選択追従より強い。押した本人が「今これを見たい」と言っている。
+    if (s_maskPreviewRequest.pending) {
+        s_maskPreviewRequest.pending = false;
+        maskPath = NormalizeAssetPath(s_maskPreviewRequest.maskPath);
+        lastSelectedAsset = maskPath;
+        if (!s_maskPreviewRequest.modelPath.empty()) {
+            modelPath = NormalizeAssetPath(s_maskPreviewRequest.modelPath);
+        } else {
+            asset::AvatarMaskAsset requested;
+            const std::string resolved = asset::AssetManager::ResolveAssetPath(maskPath);
+            if (asset::LoadAvatarMaskAsset(resolved.empty() ? maskPath : resolved, requested) &&
+                !requested.skeletonSourcePath.empty())
+                modelPath = requested.skeletonSourcePath;
+        }
+        ClearAnimationMaskPreviewSelection();
+    }
 
     const std::string selected = NormalizeAssetPath(ctx.selectedAssetPath);
     const std::string selectedExt = util::StringUtils::ToLower(
@@ -2560,7 +2649,9 @@ void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
     }
 
     ImGui::TextColored(ImVec4(0.55f, 0.80f, 1.0f, 1.0f), "Animation Mask Preview");
-    ImGui::TextDisabled("FBX mesh is colored by effective mask weight.");
+    // スキンメッシュは「そのメッシュのノード」ではなく「頂点を動かすボーン」で色が決まる。
+    // メッシュノードで引くと、マスク対象がアーマチュアの外にあるため常に 0 になっていた。
+    ImGui::TextDisabled("Skinned mesh is colored by the mask weight of the bones that skin it.");
     widgets::AssetPathField("FBX", modelPath, ".fbx,.fzasset,.asset", ctx.projectRoot);
     widgets::AssetPathField("Mask", maskPath, ".mask,.maskpreset", ctx.projectRoot);
     ImGui::TextColored(ImVec4(0.90f, 0.20f, 0.20f, 1.0f), "0.0 Excluded");

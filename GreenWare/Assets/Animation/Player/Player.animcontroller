@@ -1,12 +1,12 @@
-baseLayerMaskPath = 'guid:328750624304cb9808548b4930d0e50a'
+baseLayerMaskPath = 'guid:328750624304cb9808548b4930d0e50a|Assets/Animation/Player/Player_Base.mask'
 defaultStateName = 'Locomotion'
 version = 6
 
 [editorLayout]
-anyStateX = -260.0
-anyStateY = 260.0
-entryX = -260.0
-entryY = 80.0
+anyStateX = -195.55563354492188
+anyStateY = 197.7777862548828
+entryX = -124.44451904296875
+entryY = 720.0
 
     [[editorLayout.blendTreeMotions]]
     motionIndex = 0
@@ -28,13 +28,13 @@ entryY = 80.0
 
     [[editorLayout.nodes]]
     stateName = 'Player_Land'
-    x = 309.969970703125
-    y = 267.4251708984375
+    x = 338.0685119628906
+    y = 264.6153564453125
 
     [[editorLayout.nodes]]
     stateName = 'Locomotion'
-    x = 317.76446533203125
-    y = 796.61328125
+    x = 781.6378784179688
+    y = 777.8892822265625
 
     [[editorLayout.nodes]]
     stateName = 'Player_JumpUp'
@@ -43,8 +43,8 @@ entryY = 80.0
 
     [[editorLayout.nodes]]
     stateName = 'Hit_Heavy'
-    x = 709.1117553710938
-    y = 648.4064331054688
+    x = 769.6307373046875
+    y = 372.74713134765625
 
     [[editorLayout.nodes]]
     stateName = 'Player_FallIdle'
@@ -58,23 +58,23 @@ entryY = 80.0
 
     [[editorLayout.nodes]]
     stateName = 'WeaponIdle'
-    x = 1115.7142333984375
-    y = 554.2063598632812
+    x = 618.3109130859375
+    y = 631.1854248046875
 
     [[editorLayout.nodes]]
     stateName = 'DrawPistols'
-    x = 408.7788391113281
-    y = -84.28016662597656
+    x = 55.7131233215332
+    y = -13.667048454284668
 
     [[editorLayout.nodes]]
     stateName = 'Aim_Idle'
-    x = 506.7460632324219
-    y = 179.20635986328125
+    x = -10.395427703857422
+    y = 210.78746032714844
 
     [[editorLayout.nodes]]
     stateName = 'HolsterPistols'
-    x = 124.00263977050781
-    y = 471.68109130859375
+    x = -31.3918514251709
+    y = 434.82568359375
 
 [[anyStateTransitions]]
 exitTime = 1.0
@@ -120,7 +120,7 @@ transitionDuration = 0.05999999865889549
 [[layers]]
 defaultStateName = 'WeaponIdle'
 enabled = true
-maskPath = 'guid:e646144a041865c0439591c32d9b33d4'
+maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
 mode = 0
 name = 'UpperBody'
 retargetMappings = []
@@ -189,7 +189,7 @@ weight = 1.0
     loop = false
     mode = 0
     name = 'DrawPistols'
-    sourcePath = 'guid:4af74e0ad663da8509e1458ab331b6d7'
+    sourcePath = 'guid:4af74e0ad663da8509e1458ab331b6d7|Library/Baked/7b3fbd0cd23773dabb85aa76e51a2d82/anims/Draw_Pistols.anim'
     speed = 1.0
 
         [layers.states.blendTree1D]
@@ -219,7 +219,7 @@ weight = 1.0
     loop = true
     mode = 0
     name = 'Aim_Idle'
-    sourcePath = 'guid:064d1b54e65cdc6b2015bda5085c985d'
+    sourcePath = 'guid:064d1b54e65cdc6b2015bda5085c985d|Library/Baked/b1170cad83b764b2489c881c86a70b99/anims/Aim_Idle.anim'
     speed = 1.0
     transitions = []
 
@@ -242,7 +242,7 @@ weight = 1.0
     loop = false
     mode = 0
     name = 'HolsterPistols'
-    sourcePath = 'guid:5cd3e3ff25689b0d80613e9cef8352b7'
+    sourcePath = 'guid:5cd3e3ff25689b0d80613e9cef8352b7|Library/Baked/560ea18cf4ad9a4d8ef664a6e47c9706/anims/Holster_Pistols.anim'
     speed = 1.0
 
         [layers.states.blendTree1D]
@@ -269,7 +269,7 @@ weight = 1.0
 anyStateTransitions = []
 defaultStateName = 'AimOffset'
 enabled = true
-maskPath = 'guid:e646144a041865c0439591c32d9b33d4'
+maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
 mode = 1
 name = 'Aim'
 retargetMappings = []
@@ -277,7 +277,7 @@ weight = 1.0
 
     [layers.additiveReference]
     clipName = 'Aim_CC'
-    sourcePath = 'guid:2f94d611352a50ac60ca2d6b8b0a653e'
+    sourcePath = 'guid:2f94d611352a50ac60ca2d6b8b0a653e|Library/Baked/71130474175b633ec726cf12cba77d2a/anims/Aim_CC.anim'
     time = 0.0
 
     [layers.slot]
@@ -312,7 +312,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = -1.0
             posY = 1.0
-            sourcePath = 'guid:8732867fd5108954323172928a255506'
+            sourcePath = 'guid:8732867fd5108954323172928a255506|Library/Baked/9f493feadda10e0f5f85ccae960a6c00/anims/Aim_LU.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -322,7 +322,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 1.0
-            sourcePath = 'guid:cdd12c786685c9aafa8147e5c99f35fc'
+            sourcePath = 'guid:cdd12c786685c9aafa8147e5c99f35fc|Library/Baked/8594381abfbe64637525a5ebe4d221d3/anims/Aim_CU.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -332,7 +332,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 1.0
             posY = 1.0
-            sourcePath = 'guid:37751cb721c411ec4eaf46fea4f0fb5e'
+            sourcePath = 'guid:37751cb721c411ec4eaf46fea4f0fb5e|Library/Baked/0d649124cd06073fa4778315698b8047/anims/Aim_RU.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -342,7 +342,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = -1.0
             posY = 0.0
-            sourcePath = 'guid:9edaaa2b8c705398ec5ca8ffdd1b2d52'
+            sourcePath = 'guid:9edaaa2b8c705398ec5ca8ffdd1b2d52|Library/Baked/f70075820242edca0acb854dc8184468/anims/Aim_LC.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -352,7 +352,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:2f94d611352a50ac60ca2d6b8b0a653e'
+            sourcePath = 'guid:2f94d611352a50ac60ca2d6b8b0a653e|Library/Baked/71130474175b633ec726cf12cba77d2a/anims/Aim_CC.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -362,7 +362,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 1.0
             posY = 0.0
-            sourcePath = 'guid:b6070512f7a56f018df1198d661259b7'
+            sourcePath = 'guid:b6070512f7a56f018df1198d661259b7|Library/Baked/e7183d5993d4df93fef3abc8fd3b19d1/anims/Aim_RC.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -372,7 +372,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = -1.0
             posY = -1.0
-            sourcePath = 'guid:9ad63674206ab9693c8244535fa7724b'
+            sourcePath = 'guid:9ad63674206ab9693c8244535fa7724b|Library/Baked/af0b6cdf188726aad7c680bfb2993a45/anims/Aim_LD.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -382,7 +382,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = -1.0
-            sourcePath = 'guid:d264d6cfba81e5c56581ba362891532b'
+            sourcePath = 'guid:d264d6cfba81e5c56581ba362891532b|Library/Baked/9147f8861faa4b43eb48f725d0032aea/anims/Aim_CD.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -392,7 +392,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 1.0
             posY = -1.0
-            sourcePath = 'guid:20b1ff0852c99d0cca081501a630714a'
+            sourcePath = 'guid:20b1ff0852c99d0cca081501a630714a|Library/Baked/dc451d880b9834b7c93c91f70f60a25c/anims/Aim_RD.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -400,7 +400,7 @@ weight = 1.0
 anyStateTransitions = []
 defaultStateName = 'AimSway'
 enabled = true
-maskPath = 'guid:e646144a041865c0439591c32d9b33d4'
+maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
 mode = 1
 name = 'Add_AimSway'
 retargetMappings = []
@@ -408,7 +408,7 @@ weight = 1.0
 
     [layers.additiveReference]
     clipName = 'Pose_AimUpper'
-    sourcePath = 'guid:bb61e445aa4c7ecb813d64ecf7cd9795'
+    sourcePath = 'guid:bb61e445aa4c7ecb813d64ecf7cd9795|Library/Baked/e32e34d813b2041918c6a71ce7e1bec6/anims/Pose_AimUpper.anim'
     time = 0.0
 
     [layers.slot]
@@ -437,7 +437,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:f91894c8abc53fc7ff5cc6acb4ae2189'
+            sourcePath = 'guid:f91894c8abc53fc7ff5cc6acb4ae2189|Library/Baked/7d084ccef27b7b482287e2aad6f6c5ef/anims/Pose_AimUpper_Idle.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -447,7 +447,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:fc5cc849c67eed078626be178ba45db1'
+            sourcePath = 'guid:fc5cc849c67eed078626be178ba45db1|Library/Baked/976ca069d5e01fc2cc36d2aee6b9ff00/anims/Pose_AimUpper_Walk.anim'
             speed = 1.0
             threshold = 0.15000000596046448
 
@@ -457,7 +457,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:80c71ffe191939e2bfe7958ed5582ebc'
+            sourcePath = 'guid:80c71ffe191939e2bfe7958ed5582ebc|Library/Baked/3e811fe4d4694cc5de9c14fd19a29a25/anims/Pose_AimUpper_Run.anim'
             speed = 1.0
             threshold = 0.3799999952316284
 
@@ -489,7 +489,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:bb61e445aa4c7ecb813d64ecf7cd9795'
+            sourcePath = 'guid:bb61e445aa4c7ecb813d64ecf7cd9795|Library/Baked/e32e34d813b2041918c6a71ce7e1bec6/anims/Pose_AimUpper.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -503,7 +503,7 @@ weight = 1.0
 anyStateTransitions = []
 defaultStateName = 'HitSlot'
 enabled = true
-maskPath = 'guid:e646144a041865c0439591c32d9b33d4'
+maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
 mode = 1
 name = 'Add_Hit'
 retargetMappings = []
@@ -511,7 +511,7 @@ weight = 1.0
 
     [layers.additiveReference]
     clipName = 'Idle'
-    sourcePath = 'guid:f6689ee1d3df6224c22143e77f83e99a'
+    sourcePath = 'guid:f6689ee1d3df6224c22143e77f83e99a|Library/Baked/53992e9f203a644e714cca00230a6cab/anims/Idle.anim'
     time = 0.0
 
     [layers.slot]
@@ -563,7 +563,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:399f84087c05a267c373d75c4a778b11'
+            sourcePath = 'guid:399f84087c05a267c373d75c4a778b11|Library/Baked/1773fde5854e4830e224dc5e578f8b93/anims/Hit_F.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -573,7 +573,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:01fafcb8984d5cbd39ea8356d8cf89a3'
+            sourcePath = 'guid:01fafcb8984d5cbd39ea8356d8cf89a3|Library/Baked/869de2af5392d53d1827a13fde040878/anims/Hit_B.anim'
             speed = 1.0
             threshold = 1.0
 
@@ -583,7 +583,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:33ea81f585397ed02e4c409a276fa3be'
+            sourcePath = 'guid:33ea81f585397ed02e4c409a276fa3be|Library/Baked/2854381f8270955d5e3452e4fb09d3bf/anims/Hit_L.anim'
             speed = 1.0
             threshold = 2.0
 
@@ -593,7 +593,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:a866d65c0d4817ca1754067e93fdaf58'
+            sourcePath = 'guid:a866d65c0d4817ca1754067e93fdaf58|Library/Baked/893268a56e798c4d6382d976d5447641/anims/Hit_R.anim'
             speed = 1.0
             threshold = 3.0
 
@@ -607,7 +607,7 @@ weight = 1.0
 anyStateTransitions = []
 defaultStateName = 'FireSlot'
 enabled = true
-maskPath = 'guid:3e580ab75da1e770c6901b590996c446'
+maskPath = 'guid:3e580ab75da1e770c6901b590996c446|Assets/Animation/Player/M_Arms.mask'
 mode = 1
 name = 'Add_Fire'
 retargetMappings = []
@@ -615,7 +615,7 @@ weight = 1.0
 
     [layers.additiveReference]
     clipName = 'Pose_FireZero'
-    sourcePath = 'guid:95ee4808dfee3ba5dacb8d45cf1f00f3'
+    sourcePath = 'guid:95ee4808dfee3ba5dacb8d45cf1f00f3|Library/Baked/9758dfab2642f470536582d036806fb2/anims/Pose_FireZero.anim'
     time = 0.0
 
     [layers.slot]
@@ -667,7 +667,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:bd25df58d95f4297f208069c014514f5'
+            sourcePath = 'guid:bd25df58d95f4297f208069c014514f5|Library/Baked/57dc1feaaa919480addc187f8797d482/anims/Fire_Pistol_L.anim'
             speed = 1.0
             threshold = 0.0
 
@@ -677,7 +677,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:48b26f14e4c8e89df23b7012356ea83f'
+            sourcePath = 'guid:48b26f14e4c8e89df23b7012356ea83f|Library/Baked/ddfbf771594ff72e7182484d3d0d0afe/anims/Fire_Pistol_R.anim'
             speed = 1.0
             threshold = 1.0
 
@@ -687,7 +687,7 @@ weight = 1.0
             ikWeight = 1.0
             posX = 0.0
             posY = 0.0
-            sourcePath = 'guid:95ee4808dfee3ba5dacb8d45cf1f00f3'
+            sourcePath = 'guid:95ee4808dfee3ba5dacb8d45cf1f00f3|Library/Baked/9758dfab2642f470536582d036806fb2/anims/Pose_FireZero.anim'
             speed = 1.0
             threshold = 2.0
 
@@ -782,7 +782,7 @@ transitions = []
         ikWeight = 1.0
         posX = 0.0
         posY = 0.0
-        sourcePath = 'guid:f6689ee1d3df6224c22143e77f83e99a'
+        sourcePath = 'guid:f6689ee1d3df6224c22143e77f83e99a|Library/Baked/53992e9f203a644e714cca00230a6cab/anims/Idle.anim'
         speed = 1.0
         threshold = 0.0
 
@@ -792,7 +792,7 @@ transitions = []
         ikWeight = 1.0
         posX = 0.0
         posY = 0.0
-        sourcePath = 'guid:58e563008174aa1f67e6a0ce332a9869'
+        sourcePath = 'guid:58e563008174aa1f67e6a0ce332a9869|Library/Baked/bd9603dd72da663ce93340c61dc017b7/anims/Walk.anim'
         speed = 1.0
         threshold = 0.15000000596046448
 
@@ -802,7 +802,7 @@ transitions = []
         ikWeight = 1.0
         posX = 0.0
         posY = 0.0
-        sourcePath = 'guid:369aaaa277078d08d2512ad9e608701a'
+        sourcePath = 'guid:369aaaa277078d08d2512ad9e608701a|Library/Baked/3a48dd956489169cdef746fd739836e0/anims/Run.anim'
         speed = 1.0
         threshold = 0.3799999952316284
 
@@ -819,7 +819,7 @@ ikWeight = 1.0
 loop = false
 mode = 0
 name = 'Player_JumpUp'
-sourcePath = 'guid:12d93b9fd6b3acf2a7aefaa4aacc2130'
+sourcePath = 'guid:12d93b9fd6b3acf2a7aefaa4aacc2130|Library/Baked/fe1168e497beb8bfb7de559e594b6b86/anims/JumpUp.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -853,7 +853,7 @@ ikWeight = 1.0
 loop = true
 mode = 0
 name = 'Player_FallIdle'
-sourcePath = 'guid:f3e8f1a78e435f9ba59111e23516a1ed'
+sourcePath = 'guid:f3e8f1a78e435f9ba59111e23516a1ed|Library/Baked/74f29b51acba81e88101e9645013ab0c/anims/FallIdle.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -887,7 +887,7 @@ ikWeight = 1.0
 loop = false
 mode = 0
 name = 'Player_Land'
-sourcePath = 'guid:62dc00731466745c65d36fc8919531d2'
+sourcePath = 'guid:62dc00731466745c65d36fc8919531d2|Library/Baked/9679356bf2ec9ed54e59504aa9ab8ebb/anims/Land.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -917,7 +917,7 @@ ikWeight = 0.0
 loop = false
 mode = 0
 name = 'Dodge_Roll'
-sourcePath = 'guid:544ca929fc1ea483d7dd92d3eb90e5a1'
+sourcePath = 'guid:544ca929fc1ea483d7dd92d3eb90e5a1|Library/Baked/1e9e95050ca4b2f844fc43866cb68907/anims/Dodge_Roll.anim'
 speed = 1.0
 
     [states.blendTree1D]
@@ -947,7 +947,7 @@ ikWeight = 1.0
 loop = false
 mode = 0
 name = 'Hit_Heavy'
-sourcePath = 'guid:c169090d98a98d2cc85dc1d870104b56'
+sourcePath = 'guid:c169090d98a98d2cc85dc1d870104b56|Library/Baked/d0aeff5dcb528d368b496f6ede6961c5/anims/Hit_Heavy.anim'
 speed = 1.0
 transitions = []
 
