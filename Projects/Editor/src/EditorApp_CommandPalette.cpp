@@ -76,7 +76,11 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         return;
 
     // ── コマンド一覧を毎フレーム構築する ─────────────────────────────────────
-    // WHY: Undo ラベルやパネル表示状態など動的な要素を含むため、開いている間に作り直す。
+    // WHY: 候補にはパネル表示状態や検索クエリ由来の動的な要素が混ざるため、
+    //      開いている間に作り直す。ただし「操作」そのものは OperatorRegistry が
+    //      正本で、ここではそれを列挙するだけ (以前はメニュー・ホットキーと
+    //      同じ操作をこのファイルへ 3 度目に手書きしており、実行可否の式が
+    //      面ごとにずれていた)。Docs/design/editor-operator-model.md
     struct Command {
         std::string           category;
         std::string           label;
@@ -89,9 +93,6 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         cmds.push_back({ cat, std::move(label), std::move(fn), enabled });
     };
 
-    const bool hasScene = ctx.activeScene != nullptr;
-    const bool inEditor = ctx.playMode && ctx.playMode->IsInEditor();
-
     // クエリが空のときは Recent Scenes を先頭に提示し、素早い再オープンを可能にする。
     if (m_commandPaletteQuery[0] == '\0') {
         for (const std::string& sp : m_settings.recentScenes) {
@@ -101,34 +102,73 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         }
     }
 
-    // File
-    add("File", "New Scene", [this] { RequestNewScene(); });
-    add("File", "Open Scene...", [this] { RequestOpenSceneFromDialog(); }, hasScene);
-    add("File", "Save Scene", [this] { SaveScene(); }, hasScene);
-    add("File", "Save Scene As...", [this] { SaveSceneAsDialog(); }, hasScene);
-    add("File", "Save All Assets", [] { AssetDirtyRegistry::SaveAll(); });
-    // Edit
-    add("Edit", "Undo", [this] { m_undoStack.Undo(); }, m_undoStack.CanUndo());
-    add("Edit", "Redo", [this] { m_undoStack.Redo(); }, m_undoStack.CanRedo());
-    // Play
-    add("Play", inEditor ? "Play" : "Stop", [this] { TogglePlayMode(); }, hasScene);
-    add("Play", "Reload Scripts", [&ctx] { ctx.requestScriptReload = true; });
-    // Tools / Windows
-    add("Tools", "Map Editing Mode", [&ctx] { ctx.requestMapEditingModeToggle = true; }, hasScene && inEditor);
-    add("Tools", "Build Settings...", [&ctx] { ctx.requestOpenBuildSettings = true; });
-    add("Tools", "Project Settings...", [&ctx] { ctx.requestOpenProjectSettings = true; });
-    add("Tools", "Analysis", [&ctx] { ctx.requestOpenAnalysis = true; });
-    add("Tools", "Terrain Tool", [&ctx] { ctx.showTerrainTool = true; });
-    add("Tools", "Water Tool", [&ctx] { ctx.showWaterTool = true; });
-    add("Tools", "Detail Tool", [&ctx] { ctx.showDetailTool = true; });
-    add("Tools", "Foliage Tool", [&ctx] { ctx.showFoliageTool = true; });
+    // ── 登録済みの操作 ──────────────────────────────────────────────────────
+    // 表示名・分類・実行可否・実体はすべてレジストリ側にある。
+    // ここに操作を書き足すことはない (足すなら BuiltinOperators.cpp へ)。
+    {
+        const OpContext opContext = MakeOpContext();
+        // パレットは引数を渡せないので、poll も引数なしで評価する。
+        // 対象を引数で指定する操作は「選択中のもの」を暗黙の対象として判定される。
+        const OpArgs noArgs;
+        for (const EditorOperator& op : m_operators.All()) {
+            // Query は状態を読むだけで、パレットから実行する意味がない (AI 用)。
+            if (op.kind == OpKind::Query) continue;
+
+            // 必須引数を持つ操作は、値を決めずに並べても押した瞬間 BAD_ARG になる。
+            // WHY 例外を 1 つ設けるか: 必須引数が 1 つで、取りうる値が宣言されている
+            //     (enumValues) 排他選択は、値ごとに 1 行へ展開すれば普通の操作として扱える。
+            //     View Mode の 4 つはこれに当たり、以前は「押せるのに必ず失敗する
+            //     1 行」としてパレットに並んでいた。
+            const std::vector<OpParam>& params = op.params;
+            const bool singleEnumParam =
+                params.size() >= 1 && params[0].required && !params[0].enumValues.empty()
+                && std::none_of(params.begin() + 1, params.end(),
+                                [](const OpParam& p) { return p.required; });
+
+            if (singleEnumParam) {
+                const std::string id        = op.id;
+                const std::string paramName = params[0].name;
+                for (const std::string& value : params[0].enumValues) {
+                    OpArgs args;
+                    args.Set(paramName, value);
+                    const bool enabled = !op.poll || op.poll(opContext, args);
+                    add(op.category.c_str(), op.label + ": " + value,
+                        [this, id, paramName, value] {
+                            OpArgs invokeArgs;
+                            invokeArgs.Set(paramName, value);
+                            InvokeOperator(id, invokeArgs);
+                        },
+                        enabled);
+                }
+                continue;
+            }
+
+            const bool hasRequiredParam = std::any_of(
+                params.begin(), params.end(), [](const OpParam& p) { return p.required; });
+            if (hasRequiredParam) continue;
+
+            const std::string id = op.id;
+            add(op.category.c_str(), op.label,
+                [this, id] { InvokeOperator(id); },
+                !op.poll || op.poll(opContext, noArgs));
+        }
+    }
+
     // Windows: 各パネルの表示トグル
+    // WHY レジストリを列挙するのとは別に並べるか: 対象がパネルごとに変わる
+    //     引数付きの操作なので、1 行では「どのパネルか」を指定できない。
+    //     一覧の出所は m_panels のままで、実行だけを panel.set_visible へ通す
+    //     (人がここから閉じたときと AI が閉じたときで実体が同じになる)。
     for (auto& panel : m_panels) {
         if (!panel->ShowInViewMenu()) continue;
-        IPanel* pp = panel.get();
-        const bool visible = pp->visible;
+        const bool        visible   = panel->visible;
+        const std::string panelName = panel->GetWindowName();
         std::string label = std::string(visible ? "Hide: " : "Show: ") + panel->GetViewMenuName();
-        add("Window", std::move(label), [pp] { pp->visible = !pp->visible; });
+        add("Window", std::move(label), [this, panelName] {
+            OpArgs args;
+            args.Set("panel", panelName);
+            InvokeOperator("panel.set_visible", args);
+        });
     }
 
     // ── 検索欄 ───────────────────────────────────────────────────────────────
@@ -148,27 +188,21 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     // ── Go to Anything: クエリ入力時のみアセット / GameObject を動的に候補追加する ──
     // WHY: 空クエリで全アセット/全オブジェクトを並べると膨大になるため、絞り込み時だけ列挙する。
     if (!query.empty()) {
-        // アセット (ファイル名の部分一致)。シーンは開く、それ以外は選択して Inspector に表示。
+        // アセット (ファイル名の部分一致)。開き方の振り分けは asset.open が持つ。
+        // WHY 拡張子の分岐をここに書かないか: 同じ振り分けが AssetBrowser の
+        //     ダブルクリック・SearchEverything・ここの 3 箇所へ写されており、
+        //     .behaviortree はこのパレットからだけ開けない (分岐が抜けている) 状態だった。
+        //     operator へ寄せれば、対応拡張子を足したときに全経路へ同時に効く。
         int assetHits = 0;
         for (const std::string& path : m_paletteAssetPaths) {
             if (assetHits >= 50) break; // 候補が溢れないよう上限を設ける
             const std::string name = util::FileSystem::GetFilename(path);
             if (!util::StringUtils::ContainsCI(name, query)) continue;
             ++assetHits;
-            const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
-            add("Asset", name, [this, path, ext, &ctx] {
-                if (ext == ".scene") {
-                    RequestOpenScenePath(path);
-                } else if (ext == ".animcontroller") {
-                    ctx.selectedAssetPath = path;
-                    if (ctx.openAnimationGraph) ctx.openAnimationGraph(path);
-                    ctx.requestOpenAnimationGraph = true;
-                } else if (ext == ".vfx") {
-                    ctx.selectedAssetPath = path;
-                    ctx.requestOpenVFXEditor = true;
-                } else {
-                    ctx.selectedAssetPath = path; // Inspector にアセットを表示
-                }
+            add("Asset", name, [this, path] {
+                OpArgs args;
+                args.Set("path", path);
+                InvokeOperator("asset.open", args);
             });
         }
         // GameObject (名前の部分一致)。選択してビューをフォーカスする。

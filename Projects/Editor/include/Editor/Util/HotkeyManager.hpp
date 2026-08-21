@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::editor {
@@ -51,10 +52,22 @@ enum class HotkeyCategory {
     Gizmo,
     Play,
     Panels,
+    // Operator の "Tools" / "Render" カテゴリ (Build Settings、デバッグ表示など)。
+    // WHY 足したか: 対応する分類が無いと HotkeyCategoryFromOperator が Edit へ
+    //     倒すため、F1 の一覧で Build Settings が Edit 節に並ぶ。
+    Tools,
 };
 
 struct Hotkey {
     std::string    name;
+
+    // 対応する Operator の id ("scene.new")。Operator 経由で登録されたものだけが持つ。
+    // WHY: リバインドの保存鍵をこちらへ移すため。従来は表示名 (name) を鍵にしていたので、
+    //      ラベルを "Open Scene" から "Open Scene..." のように変えるだけで、
+    //      保存済みのリバインドが誰にも一致しなくなり黙って既定へ戻っていた。
+    //      id は表示名と独立して安定する。
+    std::string    operatorId;
+
     int            imguiKey = 0;
     bool           ctrl     = false;
     bool           shift    = false;
@@ -100,9 +113,18 @@ public:
 
     const std::vector<Hotkey>& GetHotkeys() const { return m_hotkeys; }
 
+    // operator id に割り当てられているホットキーを返す (無ければ nullptr)。
+    // WHY: メニュー右側のショートカット表示を実際の割り当てから引くため。
+    //      以前は "Ctrl+S" のような固定文字列だったので、リバインドすると
+    //      メニューの表示だけが古いキーのまま嘘になっていた。
+    [[nodiscard]] const Hotkey* FindByOperator(std::string_view operatorId) const;
+
     // 既存ホットキーのキーバインドだけを変更する (コールバックは保持)。
-    // name が見つからない、または説明専用エントリの場合は何もしない。
-    void Rebind(const std::string& name, int imguiKey, bool ctrl, bool shift, bool alt);
+    // key には operatorId か表示名 (name) のどちらを渡してもよい。
+    // WHY: 保存済み設定の鍵を表示名から operatorId へ移行する途中で、
+    //      古い設定ファイル (表示名で保存されている) も読めるようにしておく。
+    // 一致するものが無い、または説明専用エントリの場合は何もしない。
+    void Rebind(const std::string& key, int imguiKey, bool ctrl, bool shift, bool alt);
 
     // 現在このホットキーが発火しうるか (scope と enabled の両方を満たすか)。
     // 一覧の淡色表示に使う。

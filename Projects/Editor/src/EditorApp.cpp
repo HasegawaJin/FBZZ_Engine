@@ -430,6 +430,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     imguiRenderer.ImGuiInit(m_hwnd);
 
     m_ctx.hotkeyManager = &m_hotkeys;
+    m_ctx.operators     = &m_operators;
     m_ctx.undoStack   = &m_undoStack;
     m_ctx.buildConsole = &m_buildConsole;
     m_ctx.playMode    = &m_playMode;
@@ -564,8 +565,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         panel->OnInit(m_ctx);
     }
 
+    // 操作の登録が先。ホットキーは operator id へキーを割り当てるだけなので、
+    // レジストリが空だと 1 つも解決できない。
+    RegisterBuiltinOperators();
     RegisterDefaultHotkeys();
-    // 保存済みのオーバーライドを適用する
+    // 保存済みのオーバーライドを適用する (鍵は operator id、旧形式は表示名)
     for (const auto& ov : m_settings.hotkeyOverrides)
         m_hotkeys.Rebind(ov.name, ov.key, ov.ctrl, ov.shift, ov.alt);
 
@@ -681,7 +685,9 @@ void EditorApp::Shutdown()
         // 説明専用エントリ (マウス操作など) は割り当てを持たないので保存しない。
         if (hk.infoOnly) continue;
         EditorSettings::HotkeyOverride ov;
-        ov.name  = hk.name;
+        // 鍵は operator id を優先する。表示名を鍵にしていると、ラベルを変えた瞬間に
+        // 保存済みのリバインドが誰にも一致せず黙って既定へ戻ってしまう。
+        ov.name  = hk.operatorId.empty() ? hk.name : hk.operatorId;
         ov.key   = hk.imguiKey;
         ov.ctrl  = hk.ctrl;
         ov.shift = hk.shift;

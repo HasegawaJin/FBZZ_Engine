@@ -8,6 +8,7 @@
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/Util/ObjectPresets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptObjectFactory.hpp>
@@ -423,11 +424,15 @@ void DrawHierarchyNode(EditorContext& ctx,
             // Enter またはフォーカス喪失で確定する
             const std::string newName = rename.buffer;
             if (!newName.empty() && newName != go.name) {
-                const scene::EntityID rid = id;
-                ExecuteSceneEditWithUndo(ctx, "Rename GameObject", [&ctx, rid, newName]() {
-                    if (auto* g = ctx.activeScene->GetGameObject(rid))
-                        g->name = newName;
-                });
+                // WHY operator 経由か (Step 4): ここは ExecuteSceneEditWithUndo を
+                //   使っており、**名前を 1 つ変えるためにシーン全体を 2 回 TOML
+                //   シリアライズ**していた。AI 側 (node.rename) は最初から対象だけを
+                //   戻す軽いコマンドを持っていたため、同じ操作の Undo の重さが
+                //   経路によって違っていた。実体を 1 本にして軽い方へ揃える。
+                OpArgs args;
+                args.Set("node", go.instanceId);
+                args.Set("name", newName);
+                InvokeOperator(ctx, "node.rename", args);
             }
             rename.id = scene::EntityID{};
         }
@@ -820,39 +825,31 @@ void DrawHierarchyNode(EditorContext& ctx,
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Copy", "Ctrl+C"))
-            CopySelectedToClipboard(ctx);
-        if (ImGui::MenuItem("Paste", "Ctrl+V", false, HasGameObjectClipboard()))
-            deferred = [&ctx]() { PasteClipboardWithUndo(ctx); };
-        if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false, HasGameObjectClipboard()))
-            deferred = [&ctx, id]() { PasteClipboardWithUndo(ctx, id); };
+        // WHY operator 経由か (Step 4): 同じ Copy / Paste がホットキー・コマンドパレット・
+        //   AI からも呼ばれる。ここでヘルパーを直接叩くと実行可否の判定 (クリップボードの
+        //   有無・Play 中かどうか) がこのファイルにも書かれ、面ごとに条件がずれていく。
+        //   Docs/design/editor-operator-model.md
+        if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
+            InvokeOperator(ctx, "edit.copy");
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
+            deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste"); };
+        if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false,
+                            CanInvokeOperator(ctx, "edit.paste_as_child")))
+            deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste_as_child"); };
         ImGui::Separator();
-        if (ImGui::MenuItem("Duplicate")) {
-            if (multiSelected) {
-                const std::vector<scene::EntityID> toDup = ctx.selectedEntities;
-                deferred = [&ctx, toDup]() {
-                    std::vector<scene::EntityID> newIds;
-                    for (auto eid : toDup) {
-                        auto* src = ctx.activeScene->GetGameObject(eid);
-                        const scene::EntityID parentId = src && src->GetParent()
-                            ? src->GetParent()->GetID() : scene::EntityID{};
-                        const scene::EntityID newId =
-                            DuplicateHierarchyRecursive(ctx, eid, parentId, true);
-                        if (newId != scene::EntityID::INVALID)
-                            newIds.push_back(newId);
-                    }
-                    if (!newIds.empty()) ctx.selectedEntities = newIds;
-                };
-            } else {
-                const scene::EntityID parentId =
-                    go.GetParent() ? go.GetParent()->GetID() : scene::EntityID{};
-                deferred = [&ctx, id, parentId]() {
-                    const scene::EntityID newId =
-                        DuplicateHierarchyRecursive(ctx, id, parentId, true);
-                    if (newId != scene::EntityID::INVALID)
-                        ctx.selectedEntities = { newId };
-                };
-            }
+        // WHY operator 経由か (不具合修正 / Step 4): 複数選択時の複製ループは
+        //   DuplicateSelectedWithUndo の本体と 1 文字違わず同じで、違いは
+        //   ExecuteSceneEditWithUndo で包んでいるかどうかだけだった。つまり
+        //   **メニューからの複製は Undo に載っていなかった** (Ctrl+D は載る)。
+        //   単一選択の枝も、対象を選択へ寄せてから同じ operator を呼べば揃う。
+        if (ImGui::MenuItem("Duplicate", nullptr, false,
+                            CanInvokeOperator(ctx, "edit.duplicate"))) {
+            const std::vector<scene::EntityID> toDup =
+                multiSelected ? ctx.selectedEntities : std::vector<scene::EntityID>{ id };
+            deferred = [&ctx, toDup]() {
+                ctx.selectedEntities = toDup;
+                InvokeOperator(ctx, "edit.duplicate");
+            };
         }
         if (multiSelected) {
             if (ImGui::MenuItem("Group Selection")) {
@@ -912,15 +909,11 @@ void DrawHierarchyNode(EditorContext& ctx,
             if (ImGui::MenuItem("Apply to Prefab")) {
                 deferred = [&ctx, id]() {
                     if (!ctx.activeScene) return;
-                    auto* target = ctx.activeScene->GetGameObject(id);
-                    if (!target) return;
-                    const std::string prefabPath = target->prefabAssetPath;
-                    if (!PrefabSerializer::Apply(*ctx.activeScene, id, ctx.projectRoot)) return;
-                    // WHY: アセットを書き戻しただけでは配置済みの他インスタンスが
-                    //      古い定義のまま残る。Inspector の Apply と挙動を揃える。
-                    //      各インスタンスの個別調整 (override) は保持される。
-                    const int updated = PrefabSerializer::PropagateToInstances(
-                        *ctx.activeScene, prefabPath, id, ctx.projectRoot);
+                    // Apply と伝播は 1 つの操作として閉じてある。
+                    // 各インスタンスの個別調整 (override) は保持される。
+                    const int updated = PrefabSerializer::ApplyAndPropagate(
+                        *ctx.activeScene, id, ctx.projectRoot);
+                    if (updated < 0) return;
                     if (updated > 0) {
                         // 作り直しで EntityID が変わるため選択は捨てる。
                         ctx.selectedEntities.clear();
@@ -976,10 +969,13 @@ void DrawHierarchyNode(EditorContext& ctx,
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Delete")) {
-            const std::vector<scene::EntityID> toDelete = ctx.selectedEntities;
-            deferred = [&ctx, toDelete]() { DestroySelected(ctx, toDelete); };
-        }
+        // WHY operator 経由か (不具合修正 / Step 4): ここは DestroySelected を直接
+        //   呼んでおり、**Undo に載っていなかった**。同じ削除でも Delete キー経由は
+        //   DeleteSelectedWithUndo を通るため取り消せる、という食い違いがあった。
+        //   実装を 1 本にすればこの差は構造的に生まれない。
+        if (ImGui::MenuItem("Delete", nullptr, false,
+                            CanInvokeOperator(ctx, "edit.delete_selected")))
+            deferred = [&ctx]() { InvokeOperator(ctx, "edit.delete_selected"); };
         ImGui::EndPopup();
     }
 
@@ -1131,11 +1127,11 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 } else if (confirmed || ImGui::IsItemDeactivated()) {
                     const std::string newName = m_renameBuffer;
                     if (!newName.empty() && newName != go.name) {
-                        const scene::EntityID rid = id;
-                        ExecuteSceneEditWithUndo(ctx, "Rename GameObject", [&ctx, rid, newName]() {
-                            if (auto* g = ctx.activeScene->GetGameObject(rid))
-                                g->name = newName;
-                        });
+                        // 検索結果側のリネームも同じ operator を通す (上の解説を参照)。
+                        OpArgs args;
+                        args.Set("node", go.instanceId);
+                        args.Set("name", newName);
+                        InvokeOperator(ctx, "node.rename", args);
                     }
                     m_renamingId = {};
                 }
@@ -1158,24 +1154,27 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                                     selected,
                                     ctx.PrimarySelected() == id);
             if (ImGui::BeginPopupContextItem()) {
+                // ここでこのノードだけを選択状態にしてから operator を呼ぶ。
+                // 選択を対象にする操作 (Copy / Delete) の対象が、右クリックした
+                // ノードと一致することを保証する。
                 ctx.selectedEntities = { id };
-                if (ImGui::MenuItem("Copy", "Ctrl+C"))
-                    CopySelectedToClipboard(ctx);
-                if (ImGui::MenuItem("Paste", "Ctrl+V", false, HasGameObjectClipboard()))
-                    deferred = [&ctx]() { PasteClipboardWithUndo(ctx); };
-                if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false, HasGameObjectClipboard()))
-                    deferred = [&ctx, id]() { PasteClipboardWithUndo(ctx, id); };
+                if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
+                    InvokeOperator(ctx, "edit.copy");
+                if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
+                    deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste"); };
+                if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false,
+                                    CanInvokeOperator(ctx, "edit.paste_as_child")))
+                    deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste_as_child"); };
                 ImGui::Separator();
                 if (ImGui::MenuItem("Save As Prefab"))
                     SaveSelectedAsPrefab(ctx, go.name);
                 ImGui::Separator();
-                if (ImGui::MenuItem("Delete")) {
-                    deferred = [&ctx, id]() {
-                        ctx.activeScene->DestroyGameObject(id);
-                        RemoveSelection(ctx, id);
-                        PruneSelection(ctx);
-                    };
-                }
+                // WHY operator 経由か (不具合修正 / Step 4): ここは DestroyGameObject を
+                //   直接呼んでおり、**Undo に載っていなかった**。検索結果から消したときだけ
+                //   取り消せない、という気づきにくい差になっていた。
+                if (ImGui::MenuItem("Delete", nullptr, false,
+                                    CanInvokeOperator(ctx, "edit.delete_selected")))
+                    deferred = [&ctx]() { InvokeOperator(ctx, "edit.delete_selected"); };
                 ImGui::EndPopup();
             }
             ImGui::PopID();
@@ -1306,14 +1305,12 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     if (ImGui::BeginPopupContextWindow("##scene_ctx",
             ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
-        if (ImGui::MenuItem("Select All", "Ctrl+A")) {
-            ctx.selectedEntities.clear();
-            for (auto& go : ctx.activeScene->GameObjects())
-                if (!ctx.IsLocked(go.GetID()))
-                    ctx.selectedEntities.push_back(go.GetID());
-        }
-        if (ImGui::MenuItem("Paste", "Ctrl+V", false, HasGameObjectClipboard()))
-            deferred = [&ctx]() { PasteClipboardWithUndo(ctx); };
+        // Select All はロック済みノードを除く規則を持つ。ここに書き写すと
+        // Ctrl+A (ホットキー) の実装と 2 箇所になるため operator を呼ぶ。
+        if (ImGui::MenuItem("Select All", "Ctrl+A", false, CanInvokeOperator(ctx, "select.all")))
+            InvokeOperator(ctx, "select.all");
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
+            deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste"); };
         ImGui::Separator();
 
         // 選択があればその子として生成する。生成先が一目で分かるよう親名を出し、

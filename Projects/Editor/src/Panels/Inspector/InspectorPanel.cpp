@@ -108,7 +108,6 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     // Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
     // ロック先が破棄 / 削除されていた場合は自動解除する。
     // ------------------------------------------------------------------
-    scene::GameObject* selectedGo = ctx.GetSelectedGO();
     scene::GameObject* go = nullptr;
     const bool hasSelectedAsset = !ctx.selectedAssetPath.empty();
     std::string assetPathToInspect = ctx.selectedAssetPath;
@@ -125,24 +124,16 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     } else if (assetLocked) {
         assetPathToInspect = m_inspectedAssetPath;
     } else {
-        go = selectedGo;
+        const auto selection = ctx.ResolveInspectorSelection();
+        if (selection.type == EditorContext::InspectorSelection::Type::AnimationGraphAsset) {
+            assetPathToInspect.clear();
+        } else if (selection.type == EditorContext::InspectorSelection::Type::AnimationGraphEntity ||
+                   selection.type == EditorContext::InspectorSelection::Type::Entity) {
+            go = selection.gameObject;
+        } else if (selection.type == EditorContext::InspectorSelection::Type::Asset) {
+            assetPathToInspect = selection.assetPath;
+        }
     }
-
-    // Animation Graph の Node 選択は、Asset Browser で参照 .anim を選んだ瞬間も維持する。
-    // WHY: Node Inspector より先に Asset Inspector へ分岐すると、Node を作成してから
-    //      .anim を D&D したフレームに Inspector が .anim の情報画面へ切り替わり、
-    //      名前や Node 設定を編集できなくなる。Graph の選択を明示的な優先対象にする。
-    const bool graphSelectionActive =
-        ctx.animationGraphSelection.type != EditorContext::AnimationGraphSelection::Type::None;
-    const bool graphSelectionForScene =
-        graphSelectionActive && go != nullptr &&
-        ctx.animationGraphSelection.entityId == go->GetID();
-    const bool graphSelectionForController =
-        graphSelectionActive && ctx.animationControllerEditor != nullptr &&
-        !ctx.animationControllerEditorPath.empty() &&
-        ctx.animationGraphSelection.assetPath == ctx.animationControllerEditorPath;
-    if (graphSelectionForScene || graphSelectionForController)
-        assetPathToInspect.clear();
 
     // --- Play 中の編集警告バナー ---
     // WHY: Play 中の Inspector 編集は Stop 時のスナップショット復元で巻き戻る。
@@ -226,6 +217,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::Spacing();
 
+    const auto resolvedSelection = ctx.ResolveInspectorSelection();
+
     // アセット選択中、または Asset Inspector ロック中 → アセットインスペクターへ
     if ((!m_locked || assetLocked) && !assetPathToInspect.empty()) {
         FBZZ_PROFILE_SCOPE("Inspector::Asset");
@@ -233,9 +226,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    // Controller アセットを開いた状態では GameObject が無くても Node Inspector を表示する。
-    // Asset Browser の選択が参照 .anim へ移っても、開いている Controller の選択を優先する。
-    if (!go && graphSelectionForController) {
+    // Controller アセットの Graph 選択は、Hierarchy の Entity 選択より優先する。
+    if ((!m_locked || assetLocked) &&
+        resolvedSelection.type == EditorContext::InspectorSelection::Type::AnimationGraphAsset) {
         if (DrawAnimationGraphAssetInspector(ctx)) {
             ImGui::SeparatorText("Preview");
             DrawAnimationPreviewWidget(ctx, 240.0f);
@@ -244,7 +237,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     // 複数選択中 (ロックなし) は Multi-select Inspector を表示
-    if (!m_locked && ctx.selectedEntities.size() > 1 && ctx.activeScene) {
+    if (!m_locked &&
+        resolvedSelection.type == EditorContext::InspectorSelection::Type::MultiEntity &&
+        ctx.activeScene) {
         DrawMultiSelectInspector(ctx, ctx.selectedEntities);
         return;
     }
@@ -336,11 +331,13 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
         ImGui::SameLine();
         if (ImGui::SmallButton("Apply")) {
-            if (PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot)) {
-                // WHY: アセットを書き換えただけでは、既に配置済みの他インスタンスは
-                //      古い定義のまま残る。プレファブの意味を成すよう、その場で揃える。
-                const int updated = PrefabSerializer::PropagateToInstances(
-                    *ctx.activeScene, go->prefabAssetPath, go->GetID(), ctx.projectRoot);
+            // WHY ApplyAndPropagate か: アセットを書き換えただけでは、既に配置済みの
+            //     他インスタンスは古い定義のまま残る。Apply と伝播を 1 つの操作として
+            //     閉じてあるので、呼び忘れが起きる場所が無い
+            //     (実際 AI の prefab.apply だけが伝播を呼んでいなかった)。
+            const int updated = PrefabSerializer::ApplyAndPropagate(
+                *ctx.activeScene, go->GetID(), ctx.projectRoot);
+            if (updated >= 0) {
                 ctx.requestAssetBrowserRefresh = true;
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
                 FBZZ_LOG_INFO("Prefab applied: %s (%d other instance(s) updated)",
@@ -495,9 +492,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("Apply All to Prefab")) {
-                        if (PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot)) {
-                            const int updated = PrefabSerializer::PropagateToInstances(
-                                *ctx.activeScene, go->prefabAssetPath, go->GetID(), ctx.projectRoot);
+                        const int updated = PrefabSerializer::ApplyAndPropagate(
+                            *ctx.activeScene, go->GetID(), ctx.projectRoot);
+                        if (updated >= 0) {
                             ctx.requestAssetBrowserRefresh = true;
                             if (ctx.markSceneDirty) ctx.markSceneDirty();
                             cache.guid.clear();
@@ -544,6 +541,25 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     //      スクロールしても頭の 1 ブロックだけ性格が違うと分かるようにする。
     const widgets::ComponentBodyScope headerCard = widgets::BeginCard();
     ImGui::Spacing();
+
+    // Unity と同じく、GameObject 自体の有効状態を名前欄の左で切り替える。
+    // WHY activeSelf か: 親が無効でも Inspector からは子自身の保存値を編集できる必要があり、
+    //      activeInHierarchy を直接表示すると親の状態を誤って上書きしてしまう。
+    {
+        bool active = go->activeSelf();
+        if (ImGui::Checkbox("##game_object_active", &active)) {
+            const bool before = go->activeSelf();
+            go->SetActive(active);
+            PushGameObjectPropertyCommand(
+                ctx, go->GetID(), "Toggle GameObject",
+                before, active,
+                [](scene::GameObject& target, bool value) { target.SetActive(value); });
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", active ? "Enabled - uncheck to disable this GameObject"
+                                             : "Disabled - check to enable this GameObject");
+        ImGui::SameLine();
+    }
 
     char nameBuf[256];
     std::snprintf(nameBuf, sizeof(nameBuf), "%s", go->name.c_str());

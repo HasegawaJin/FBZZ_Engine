@@ -2,6 +2,7 @@
 // InspectorCore.cpp | fbzz::editor
 // Transform / Script の Inspector 描画
 #include "InspectorCore.hpp"
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptSnapshot.hpp>
@@ -271,15 +272,12 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
     if (!TransformEquals(before, after) && ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
-// ── Transform の値クリップボード (オブジェクト間コピー/ペースト用) ─────────────
-// WHY: 「A の Transform を B にそのまま移す」は頻出操作。プロセス内で 1 つ保持すれば足りる。
-struct TransformClipboard {
-    bool             has = false;
-    math::Vector3    position{};
-    math::Quaternion rotation{};
-    math::Vector3    scale{ 1.0f, 1.0f, 1.0f };
-};
-TransformClipboard& TransformClip() { static TransformClipboard c; return c; }
+// NOTE: Transform の値クリップボードは EditorContext::transformClipboard にある。
+//       以前はこの翻訳単位の関数内 static だったため、AI (transform.copy /
+//       transform.paste operator) から同じ器を触れなかった。別々に持つと
+//       「人がコピーしたものを AI が貼れない」だけでなく、同じ操作名で中身が違う
+//       という最も追いにくい食い違いになる。
+//       コピー/貼り付け/リセットの実体は Editor/Op/InspectorOperators.cpp。
 
 // Transform をメニュー操作で書き換えた際の Undo コマンドを積む (連続ドラッグ用の TrackTransformEdit とは別経路)。
 //
@@ -334,33 +332,32 @@ bool& UniformScaleLock() { static bool locked = false; return locked; }
 }
 
 // Transform ヘッダーの Copy / Paste / Reset メニュー (⋯ ボタン / ヘッダー右クリック)。
+//
+// WHY 自前で値を書き換えないか (Operator モデル Step 4):
+//   以前はここが Transform の代入と Undo コマンドの生成を直接持っていた。
+//   同じ操作を AI・コマンドパレットからも呼べるようにした結果、実装が 2 つになり、
+//   「Inspector から貼ったときと AI から貼ったときで Undo ラベルが違う」
+//   「片方だけ markSceneDirty を忘れる」といった食い違いが起きうる状態だった。
+//   このメニューは operator の消費者に徹する — 実体は 1 つだけになる。
+//   Docs/design/editor-operator-model.md
 void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 {
     if (!ImGui::BeginPopup("##transform_hdr_ctx")) return;
-    auto& t = go.transform;
-    TransformClipboard& clip = TransformClip();
 
-    if (ImGui::MenuItem("Copy Transform")) {
-        clip.position = t.position;
-        clip.rotation = t.rotation;
-        clip.scale    = t.scale;
-        clip.has      = true;
-    }
-    if (ImGui::MenuItem("Paste Transform", nullptr, false, clip.has)) {
-        const scene::Transform before = t;
-        t.position = clip.position;
-        t.rotation = clip.rotation;
-        t.scale    = clip.scale;
-        PushTransformSnapshotUndo(go, ctx, before, "Paste Transform");
-    }
+    // 対象は「今 Inspector が映しているノード」。選択と一致しない場合があるため明示する。
+    OpArgs args;
+    args.Set("node", go.instanceId);
+
+    const auto item = [&ctx, &args](const char* operatorId, const char* label) {
+        const bool enabled = CanInvokeOperator(ctx, operatorId, args);
+        if (ImGui::MenuItem(label, nullptr, false, enabled))
+            InvokeOperator(ctx, operatorId, args);
+    };
+
+    item("transform.copy", "Copy Transform");
+    item("transform.paste", "Paste Transform");
     ImGui::Separator();
-    if (ImGui::MenuItem("Reset Transform")) {
-        const scene::Transform before = t;
-        t.position = math::Vector3::ZERO;
-        t.rotation = math::Quaternion::Identity();
-        t.scale    = { 1.0f, 1.0f, 1.0f };
-        PushTransformSnapshotUndo(go, ctx, before, "Reset Transform");
-    }
+    item("transform.reset", "Reset Transform");
     ImGui::EndPopup();
 }
 
@@ -609,16 +606,22 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
 
     // ⋯ メニューの Move Up / Move Down。1 つ隣へずらすだけならメニューの方が確実で、
     // カードを畳んでいない縦長の Inspector ではドラッグの移動距離が大きくなる。
+    //
+    // WHY operator 経由か (Step 4): 端に居るかどうかの判定 (hasPrev / hasNext) を
+    //   ここで書くと、同じ判定が operator の poll にもあり 2 箇所になる。
+    //   poll は引数を見られるので、「このカードをこの方向へ動かせるか」まで
+    //   operator 側 1 箇所で答えられる。淡色表示もその答えをそのまま使う。
     const auto drawMoveMenuItems = [&]() {
-        const std::vector<std::string>& order =
-            ctx.editorSceneState.GetComponentOrder(go->instanceId);
-        const auto at = std::find(order.begin(), order.end(), orderKey);
-        const bool hasPrev = at != order.end() && at != order.begin();
-        const bool hasNext = at != order.end() && std::next(at) != order.end();
-        if (ImGui::MenuItem("Move Up", nullptr, false, hasPrev))
-            MoveInspectorComponentWithUndo(*go, ctx, orderKey, *std::prev(at), false);
-        if (ImGui::MenuItem("Move Down", nullptr, false, hasNext))
-            MoveInspectorComponentWithUndo(*go, ctx, orderKey, *std::next(at), true);
+        OpArgs args;
+        args.Set("node", go->instanceId);
+        args.Set("component", orderKey);
+        const auto item = [&ctx, &args](const char* operatorId, const char* label) {
+            const bool enabled = CanInvokeOperator(ctx, operatorId, args);
+            if (ImGui::MenuItem(label, nullptr, false, enabled))
+                InvokeOperator(ctx, operatorId, args);
+        };
+        item("component.move_up", "Move Up");
+        item("component.move_down", "Move Down");
     };
 
     ImGui::PushID(i);

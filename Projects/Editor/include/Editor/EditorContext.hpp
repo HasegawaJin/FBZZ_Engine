@@ -22,7 +22,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; class ProjectRuntime; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; class BuildConsole; class ConsoleSink; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; }
 
 namespace fbzz::editor {
 
@@ -165,6 +165,70 @@ struct EditorContext {
         auto sel = PrimarySelected();
         if (!sel.IsValid() || !activeScene) return nullptr;
         return activeScene->GetGameObject(sel);
+    }
+
+    // Inspector が表示する対象を、各パネルのローカル判定ではなくここで解決する。
+    // WHY: Hierarchy / Asset Browser / Animation Graph がそれぞれ別の優先順位を持つと、
+    //      Graph を選択しても古い Hierarchy 選択へ戻るなど、表示対象と編集対象が食い違う。
+    struct InspectorSelection {
+        enum class Type {
+            None,
+            Entity,
+            MultiEntity,
+            Asset,
+            AnimationGraphEntity,
+            AnimationGraphAsset
+        };
+
+        Type              type = Type::None;
+        scene::GameObject* gameObject = nullptr; // 非所有。activeScene が所有する。
+        std::string        assetPath;
+    };
+
+    InspectorSelection ResolveInspectorSelection() const
+    {
+        const bool graphSelected =
+            animationGraphSelection.type != AnimationGraphSelection::Type::None;
+        if (graphSelected) {
+            // Graph の Scene 選択は Hierarchy の現在選択より優先する。
+            if (activeScene && animationGraphSelection.entityId.IsValid()) {
+                if (auto* gameObject = activeScene->GetGameObject(animationGraphSelection.entityId)) {
+                    InspectorSelection result;
+                    result.type = InspectorSelection::Type::AnimationGraphEntity;
+                    result.gameObject = gameObject;
+                    return result;
+                }
+            }
+
+            // Asset Graph は Hierarchy に Entity が残っていても、開いている Controller を優先する。
+            if (animationControllerEditor && !animationControllerEditorPath.empty() &&
+                animationGraphSelection.assetPath == animationControllerEditorPath) {
+                InspectorSelection result;
+                result.type = InspectorSelection::Type::AnimationGraphAsset;
+                result.assetPath = animationControllerEditorPath;
+                return result;
+            }
+        }
+
+        // Graph の選択が無い、または無効になった場合だけ通常の選択へフォールバックする。
+        if (!selectedAssetPath.empty()) {
+            InspectorSelection result;
+            result.type = InspectorSelection::Type::Asset;
+            result.assetPath = selectedAssetPath;
+            return result;
+        }
+        if (selectedEntities.size() > 1) {
+            InspectorSelection result;
+            result.type = InspectorSelection::Type::MultiEntity;
+            return result;
+        }
+        if (auto* gameObject = GetSelectedGO()) {
+            InspectorSelection result;
+            result.type = InspectorSelection::Type::Entity;
+            result.gameObject = gameObject;
+            return result;
+        }
+        return {};
     }
 
     // カメラ操作設定 (EditorSettings からロードされ、main.cpp が DebugCamera へ適用する)
@@ -365,6 +429,20 @@ struct EditorContext {
     //      アセットとシーンの内容が静かに食い違う。外部エディタや別セッションからの
     //      変更も含めて追従させるには、ファイルの変化そのものを拾う必要がある。
     std::vector<std::string> pendingPrefabReloads;
+
+    // ディスク上で書き換わったアセット (.mat / .anim / .animcontroller / .mask /
+    // .fzdata / .physmat / .terrain) の絶対パス。積むのは AssetBrowser のファイル監視、
+    // 消費するのは EditorApp。
+    // WHY 積んでから処理するか: 監視イベントはパネル描画の途中で届く。その場で
+    //      AssetManager のキャッシュを差し替えると、同じフレームで既にアセットを
+    //      読み終えたパネルと、これから読むパネルが別の版を見ることになる。
+    std::vector<std::string> pendingAssetReloads;
+
+    // ディスク上で書き換わった .scene の絶対パス。
+    // WHY アセットと分けるか: シーンの再読込は EntityID も選択も Undo 履歴も作り直す。
+    //      「中身を差し替えるだけ」のアセットとは失敗したときの被害が桁違いなので、
+    //      未保存判定・Play 判定を通す別経路に置く。
+    std::vector<std::string> pendingSceneReloads;
     // 独立VFXEditorの File > Open からホスト側のネイティブダイアログを要求する。
     std::function<void()> requestOpenVFXAssetDialog;
     bool requestScriptReload         = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
@@ -396,9 +474,26 @@ struct EditorContext {
     //      value は非表示前の activeSelf: Play/Save 時に一時解除してこの値を復元する。
     std::unordered_map<std::string, bool> editorHiddenGuids;
 
+    // Inspector の Transform ヘッダーメニュー (Copy / Paste) と
+    // AI の transform.copy / transform.paste が共有するクリップボード。
+    // WHY: 以前は InspectorCore.cpp の関数内 static だったため、AI 側から
+    //      「人がコピーした Transform を貼る」ことも、その逆もできなかった。
+    //      別々に持つと、同じ操作名なのに中身が違うという最も追いにくい食い違いになる。
+    struct TransformClipboard {
+        bool             has = false;
+        math::Vector3    position{};
+        math::Quaternion rotation{};
+        math::Vector3    scale{ 1.0f, 1.0f, 1.0f };
+    };
+    TransformClipboard transformClipboard;
+
     // Util (非所有)
     HotkeyManager*      hotkeyManager = nullptr;
     UndoStack*          undoStack   = nullptr;
+    // エディター操作の登録簿 (EditorApp 所有)。メニュー・ホットキー・パレットに加え、
+    // AI Command Bus の editor.op.list / editor.op.invoke がここを読む。
+    // WHY: AI 専用の実装経路を作らないための唯一の入口。Docs/design/editor-operator-model.md
+    OperatorRegistry*   operators   = nullptr;
     // ログ集約シンク (EditorApp 所有)。AI の console.logs クエリが履歴を読む。
     ConsoleSink*        consoleSink = nullptr;
     // AI 連携のライブ状態と制御口。Panel は EditorApp の所有物へ直接依存せず、この窓口だけを使う。
@@ -410,6 +505,13 @@ struct EditorContext {
     std::function<void(const std::string&)> openSpriteEditor;
     // .behaviortree を BehaviorTreePanel へ渡す (同じくパネル実体は公開しない)。
     std::function<void(const std::string&)> openBehaviorTree;
+    // BehaviorTreePanel が開いているドキュメント (パネルが毎フレーム公開する)。
+    // Operator の poll が「今この操作ができるか」を判定するのに使う。
+    std::string behaviorTreeEditorPath;
+    // 整列要求 (ワンショット)。パネルが消費して AutoLayout を実行する。
+    // WHY 要求経由か: 整列は Undo スタックを通す必要があり、それを持つのはパネル。
+    //     外から木の中身だけ書き換えると整列前へ戻せなくなる。
+    bool requestBehaviorTreeAutoLayout = false;
     // .animcontroller を AnimationGraphPanel へ渡す。
     // WHY 要求経路を分けるか: 以前 Animation Graph は selectedAssetPath に追従していたため、
     //     Asset Browser で別ファイルをクリックしただけで編集対象が入れ替わり、
