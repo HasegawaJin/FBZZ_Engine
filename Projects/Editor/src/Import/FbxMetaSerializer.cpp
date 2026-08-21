@@ -322,4 +322,25 @@ bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxIm
     return WriteRoot(metaPath, root);
 }
 
+FbxMetaSerializer::CacheInfo FbxMetaSerializer::LoadCacheInfo(const std::string& fbxAbsPath)
+{
+    CacheInfo info;
+    const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
+    const toml::table* cache = root["cache"].as_table();
+    if (!cache) return info;
+    info.sourceHash   = (*cache)["source_hash"].value_or(std::string{});
+    info.settingsHash = (*cache)["settings_hash"].value_or(std::string{});
+    return info;
+}
+
+std::string FbxMetaSerializer::SourceHash(const std::string& fbxAbsPath)
+{
+    return ComputeSourceHash(fbxAbsPath);
+}
+
+std::string FbxMetaSerializer::SettingsHash(const FbxImportOptions& options)
+{
+    return ComputeSettingsHash(options);
+}
+
 } // namespace fbzz::editor

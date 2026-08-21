@@ -2,6 +2,8 @@
 // AssetBrowserItems.cpp | fbzz::editor
 // AssetBrowser のフォルダツリーとファイルアイコン描画
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -2346,16 +2348,10 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         const ImVec2 bsz = ImGui::CalcTextSize("!");
         dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f }, IM_COL32(255, 255, 255, 255), "!");
     }
-    // ↻ バッジ: .asset は存在するが元ファイルが新しい (再インポートが必要)
-    if (!e.isDir && IsImportableRaw(e.ext) && m_outdatedPaths.count(e.path) > 0) {
-        const float r  = sz * 0.15f;
-        const float cx = origin.x + sz - r;
-        const float cy = origin.y + r;
-        dl->AddCircleFilled({ cx, cy }, r, IM_COL32(220, 130, 20, 230));
-        const ImVec2 bsz = ImGui::CalcTextSize("\xe2\x86\xbb");
-        dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f },
-                    IM_COL32(255, 255, 255, 255), "\xe2\x86\xbb");
-    }
+    // ↻ バッジ (再インポートが必要) はここにあった。
+    // WHY 消したか: 原本や import 設定の変更はウォッチャーが拾って自動で焼き直すので、
+    //     「古い」状態は人が見て対処する対象ではなくなった。焼き直しの最中は
+    //     EditorTaskOverlay が出るため、そこで進行は分かる。
     // 橙ドット: 未保存変更があるアセット
     if (!e.isDir && AssetDirtyRegistry::IsDirty(e.path)) {
         const float r  = sz * 0.10f;
@@ -2804,20 +2800,20 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     }
 
     if (!e.isDir && IsImportableRaw(e.ext)) {
-        const bool outdated = m_outdatedPaths.count(e.path) > 0;
-        if (outdated) {
-            if (ImGui::MenuItem("\xe2\x86\xbb Re-import")) {
-                m_pendingImports.push_back({ e.path, {} });
-                m_outdatedPaths.erase(e.path);
-                m_importAllRequested = true;
-            }
-        } else {
-            if (ImGui::MenuItem("Import")) {
-                bool found = false;
-                for (const auto& p : m_pendingImports)
-                    if (p.path == e.path) { found = true; break; }
-                if (!found)
-                    m_pendingImports.push_back({ e.path, {} });
+        // 原本と設定の変更はウォッチャーが自動で焼き直すので、ここは
+        // 「変更が無いのに作り直したい」ときの手動経路として残す。
+        // ラベルの出し分けは m_outdatedPaths ではなく「既に入っているか」で決める。
+        // WHY: 自動化した今、古い印はキュー投入から完了までの一瞬しか立たない。
+        //      それをラベルの根拠にすると、ほぼ常に Re-import が Import に見える。
+        const bool imported = IsAlreadyImported(e.path);
+        if (ImGui::MenuItem(imported ? "\xe2\x86\xbb Re-import" : "Import")) {
+            // 自動経路と同じ「処理中」の印で二重投入を防ぐ (完了時に取り除かれる)。
+            if (m_outdatedPaths.insert(e.path).second) {
+                // 保存済み設定を読み直してから積む。既定の options で押し流すと、
+                // 選択メッシュ・クリップ範囲・Loop Time が黙って初期値へ戻る。
+                FbxImportOptions options{};
+                (void)FbxMetaSerializer::LoadOptions(e.path, options);
+                m_pendingImports.push_back({ e.path, std::move(options) });
                 m_importAllRequested = true;
             }
         }

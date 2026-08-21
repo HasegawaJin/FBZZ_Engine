@@ -13,6 +13,7 @@
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <future>
@@ -103,7 +104,6 @@ private:
     void               ResetAssetPreviewCache(const std::string& path);
 
     void DrawFbxContents(EditorContext& ctx);
-    void DrawPendingImportBar(EditorContext& ctx);
     void DrawBreadcrumb(EditorContext& ctx);
     void DrawSaveModifiedDialog();
     void InvalidateTreeCache(const std::string& dirPath);
@@ -152,6 +152,21 @@ private:
     void TryQueuePendingImport(const std::string& relPath);
     // dirAbsPath 以下を再帰スキャンして未変換ファイルをキューに積む
     void ScanAndQueueUnimported(const std::string& dirAbsPath);
+    // 既存モデルが原本またはインポータ版より古い場合、保存済み設定で自動再インポートする。
+    void QueueAutomaticReimport(const std::string& absPath);
+
+    // ファイル変更通知を「再インポート候補」として受け取る (絶対パス。.meta なら原本へ読み替える)。
+    // WHY 即 QueueAutomaticReimport しないか: DCC の書き出しは 1 回の保存で Added / Modified を
+    //     何度も撒き、しかも通知が来た時点ではまだ書き込み途中のことがある。その瞬間に
+    //     Assimp を走らせると壊れたファイルを読んで失敗する。静かになるまで待ってから 1 回流す。
+    void NotifyAssetTouched(const std::string& absPath);
+    // 猶予を過ぎた候補を実際のインポートキューへ移す。毎フレーム OnBeforeBegin から呼ぶ。
+    void FlushScheduledReimports();
+
+    // 再インポート候補と、その「最後に変更通知を受け取った時刻」。
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_scheduledReimports;
+    // 通知が途切れてから実際に流すまでの猶予。書き出しの分割保存をまたげる程度に取る。
+    static constexpr std::chrono::milliseconds kAutoReimportQuietTime{ 700 };
     // ── エクスプローラーからの外部ファイル D&D 取り込み ─────────────────────
     // WHY: ドロップ位置のフォルダへ入れるには、フォルダの矩形が分かる描画フェーズで
     //      当たり判定する必要がある。そのためコピーは即時ではなく OnRenderContent 末尾へ遅延する。
@@ -443,12 +458,17 @@ private:
     void DrawImportSettingsModal(EditorContext& ctx);
 
     [[nodiscard]] static bool IsAlreadyImported(const std::string& absPath);
-    // .asset は存在するが、元ファイルのタイムスタンプがより新しい場合 true
+    // 生成物はあるが、原本・import 設定・インポータ版のどれかが焼いた時と違う場合 true。
+    // 比較は .meta の [cache] に記録した fingerprint で行う (mtime 比較ではない)。
     [[nodiscard]] static bool IsOutdated(const std::string& absPath);
 
-    // 再インポートが必要な (元ファイルが新しい) パスのセット
-    // WHY: ScanAndQueueUnimported で一度だけ算出し、DrawEntry でバッジ表示に使う。
+    // 自動再インポートのキューへ入れた原本のパス。import 完了で取り除く。
+    // WHY 残すか: 焼き直し中に同じ原本をもう一度積まないための重複除け。
     std::unordered_set<std::string> m_outdatedPaths;
+    // 今ワーカーが焼いている原本のパス。完了時に m_outdatedPaths から外すために持つ。
+    // WHY 成功パスだけで消さないか: 失敗した原本の印が残り続けると、原本を直して
+    //     保存し直しても「処理中」と見なされて二度と再試行されなくなる。
+    std::vector<std::string> m_inFlightImports;
 
     // ポップアップ内から Import をトリガーするためのフラグ
     // WHY: BeginPopupContextItem 内で直接インポートを呼ぶと

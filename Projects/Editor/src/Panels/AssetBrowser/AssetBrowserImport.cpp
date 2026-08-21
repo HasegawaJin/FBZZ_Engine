@@ -37,6 +37,19 @@ namespace {
 
 // ── Import Preset ヘルパー ────────────────────────────────────────────────────
 
+// 中身を差し替えるだけで反映できるアセットか。
+//
+// WHY 原本 (.fbx / .png) を含めないか: あちらは再インポートで生成物を焼き直す経路
+//     (NotifyAssetTouched) が別にあり、GPU 資源の作り直しも伴う。ここはキャッシュ済みの
+//     値を入れ替えるだけで済む、軽くて失敗しても巻き戻せる対象に限る。
+bool IsHotReloadableAsset(const std::string& absPath)
+{
+    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
+    return ext == ".mat"   || ext == ".anim"   || ext == ".animcontroller" ||
+           ext == ".mask"  || ext == ".fzdata" || ext == ".physmat"        ||
+           ext == ".terrain";
+}
+
 const char* SourceDccLabel(FbxSourceDcc value)
 {
     switch (value) {
@@ -252,14 +265,30 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
         < FbxMetaSerializer::kModelImporterVersion)
         return true;
 
+    // 原本と設定の fingerprint を、前回 import 成功時に .meta へ焼いた値と突き合わせる。
+    //
+    // WHY mtime 比較をやめたか:
+    //   import は「生成物を書く → 原本の .meta を書く」順で走るため、成功直後は必ず
+    //   meta の mtime > 生成物の mtime になる。旧実装はこれを「古い」と読んでいたので、
+    //   一度 import したモデルは永久に再インポート対象のままだった。結果として
+    //   起動のたびに全 FBX が焼き直され、↻ バッジも消えなかった。
+    //   fingerprint なら「原本が変わったか」「設定が変わったか」だけを見るので、
+    //   .meta を書き直す手順そのものが判定に混ざらない。
+    //   Inspector やテキストエディタで .meta の import 設定を触った場合も
+    //   settings_hash が動くため、同じ 1 本の判定で拾える。
+    const FbxMetaSerializer::CacheInfo cache = FbxMetaSerializer::LoadCacheInfo(absPath);
+    if (!cache.sourceHash.empty() && !cache.settingsHash.empty()) {
+        FbxImportOptions options{};
+        (void)FbxMetaSerializer::LoadOptions(absPath, options);
+        return cache.sourceHash   != FbxMetaSerializer::SourceHash(absPath)
+            || cache.settingsHash != FbxMetaSerializer::SettingsHash(options);
+    }
+
+    // fingerprint 未記録の古い .meta / .meta 自体が無いケースは mtime へフォールバックする。
+    // 一度再インポートが走れば [cache] が書かれ、以降は上の経路に乗る。
     std::error_code ec;
     const auto srcTime   = fs::last_write_time(p,         ec); if (ec) return false;
     const auto assetTime = fs::last_write_time(modelFile,  ec); if (ec) return false;
-    const fs::path metaFile = util::FileSystem::PathFromUtf8(FbxMetaSerializer::MetaPathForSource(absPath));
-    if (util::FileSystem::Exists(metaFile)) {
-        const auto metaTime = fs::last_write_time(metaFile, ec);
-        if (!ec && metaTime > assetTime) return true;
-    }
     return srcTime > assetTime;
 }
 
@@ -305,9 +334,76 @@ void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
         m_pendingConfirmImports.push_back(absPath);
 }
 
+void AssetBrowserPanel::QueueAutomaticReimport(const std::string& absPath)
+{
+    const std::string ext = util::StringUtils::ToLower(
+        util::FileSystem::GetExtension(absPath));
+    if (!IsImportableRaw(ext) || IsExcludedByPattern(absPath) ||
+        !IsAlreadyImported(absPath) || !IsOutdated(absPath))
+        return;
+
+    // 既にキュー投入済み、または焼き直し中なら二重に積まない。
+    // WHY m_pendingImports を見るだけでは足りないか: インポート開始時にキューは
+    //     ワーカースレッドへ move されて空になるため、走行中の重複判定に使えない。
+    //     完了時に取り除かれる m_outdatedPaths を「処理中」の印として兼用する。
+    if (!m_outdatedPaths.insert(absPath).second)
+        return;
+
+    // 元の .meta に保存された選択メッシュ・クリップ範囲を維持し、
+    // インポータ更新だけを適用する。設定が壊れている場合は既定値で復旧する。
+    FbxImportOptions options{};
+    (void)FbxMetaSerializer::LoadOptions(absPath, options);
+    m_pendingImports.push_back({ absPath, std::move(options) });
+    m_importAllRequested = true;
+}
+
+void AssetBrowserPanel::NotifyAssetTouched(const std::string& absPath)
+{
+    std::string source = absPath;
+
+    // "<原本>.meta" への変更は原本の import 設定変更。原本側へ読み替えて判定に回す。
+    // WHY: Inspector の Import Settings も、テキストエディタでの直接編集も、
+    //      最終的に書き換わるのは .meta だけ。ここを拾わないと「設定を変えたのに
+    //      生成物が変わらない」ので、結局 Reimport を手で押す運用に戻ってしまう。
+    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(source));
+    if (ext == ".meta")
+        source = source.substr(0, source.size() - 5);
+
+    const std::string sourceExt = util::StringUtils::ToLower(
+        util::FileSystem::GetExtension(source));
+    if (!IsImportableRaw(sourceExt))    return;
+    if (IsExcludedByPattern(source))    return;
+    // まだ一度も import していない原本は「新規」であり、設定を確認させる経路が別にある。
+    if (!IsAlreadyImported(source))     return;
+
+    m_scheduledReimports[source] = std::chrono::steady_clock::now();
+}
+
+void AssetBrowserPanel::FlushScheduledReimports()
+{
+    if (m_scheduledReimports.empty()) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = m_scheduledReimports.begin(); it != m_scheduledReimports.end(); ) {
+        if (now - it->second < kAutoReimportQuietTime) {
+            ++it;
+            continue;
+        }
+        // 待っている間に消された / 別名になったファイルは黙って落とす。
+        if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(it->first))) {
+            // 実際に作り直しが要るかは QueueAutomaticReimport の IsOutdated が決める。
+            // 保存し直しただけで中身が同じなら source_hash が変わるので焼き直す。
+            QueueAutomaticReimport(it->first);
+        }
+        it = m_scheduledReimports.erase(it);
+    }
+}
+
 void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
 {
-    m_outdatedPaths.clear();
+    // WHY ここで m_outdatedPaths を空にしないか: この集合は「バッジ表示用の再計算結果」
+    //     から「キュー投入済み / 焼き直し中の印」へ役割が変わった。マウント追加でも
+    //     呼ばれるため、走行中のバッチの印まで消すと同じ原本を二重に積んでしまう。
     for (const auto& path : util::FileSystem::ListFilesRecursive(util::FileSystem::PathFromUtf8(dirAbsPath)))
     {
         const std::string absPath = util::FileSystem::PathToUtf8(path);
@@ -318,8 +414,10 @@ void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
         if (IsExcludedByPattern(absPath)) continue;
 
         if (IsAlreadyImported(absPath)) {
-            if (IsOutdated(absPath))
-                m_outdatedPaths.insert(absPath);
+            // インポータ版更新や原本更新で既存モデルが古くなった場合は、
+            // ユーザー確認を挟まず保存済み設定のまま再インポートする。
+            // WHY: targetPath のような派生データの修正を、全 FBX 手動操作へしないため。
+            QueueAutomaticReimport(absPath);
             continue;
         }
 
@@ -437,32 +535,12 @@ void AssetBrowserPanel::CopyExternalFilesInto(
 
 // ─── インポートバッジバー ─────────────────────────────────────────────────────
 
-void AssetBrowserPanel::DrawPendingImportBar(EditorContext&)
-{
-    // 初回スキャンで積まれた m_pendingImports のみ表示（ウォッチャー経由は Import Settings 経由）
-    if (m_pendingImports.empty()) return;
-
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, EditorTheme::Color(ThemeColor::SurfaceRaised));
-    ImGui::BeginChild("##pending_bar", { 0.0f, 36.0f }, false);
-
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f);
-
-    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
-    ImGui::Text("  ! 未変換ファイル %zu 件", m_pendingImports.size());
-    ImGui::PopStyleColor();
-
-    ImGui::SameLine();
-
-    if (ImGui::SmallButton("Import All"))
-        m_importAllRequested = true;
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Dismiss"))
-        m_pendingImports.clear();
-
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-    ImGui::Separator();
-}
+// 「! 未変換ファイル N 件 / Import All / Dismiss」の警告バーはここにあった。
+// WHY 消したか: m_pendingImports に積まれるのは、自動再インポートと明示的な Import
+//     メニューだけになった。どちらも積まれた次のフレームに走り出すので、バーが
+//     出るのは実質「今インポート中」の一瞬だけ。人が押す必要のない Import All と、
+//     自動処理を握り潰すだけの Dismiss を、警告色で常設する理由が無くなった。
+//     未インポートの新規ファイルは従来どおり Import Settings の確認へ流れる。
 
 // ─── インポートキュー処理 ─────────────────────────────────────────────────────
 // WHY: OnRenderContent はウィンドウが collapsed のとき呼ばれないため
@@ -544,6 +622,18 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
                 (void)asset::AssetDatabase::GuidFromPath(absPath);
         }
 
+        // 追加・更新・リネームのどれで届いても、インポート済みの原本 (と その .meta) は
+        // 自動再インポートの候補として拾う。実際に焼き直すかは fingerprint が決める。
+        //
+        // WHY 3 種すべて見るか: 「上書き保存」が必ず Modified で届くとは限らない。
+        //   DCC やエクスプローラーはテンポラリへ書いてから置き換える実装が多く、その場合は
+        //   Added / Renamed になる。Modified だけを見ていたので、書き出し方によっては
+        //   変更が黙って無視され、結局 Reimport を手で押す運用が残っていた。
+        if (ev.type == AssetFileWatcher::EventType::Added    ||
+            ev.type == AssetFileWatcher::EventType::Modified ||
+            ev.type == AssetFileWatcher::EventType::Renamed)
+            NotifyAssetTouched(absPath);
+
         // .prefab の内容が変わったら、シーンに置いてあるインスタンスへ反映させる。
         // WHY: アセットを直したのに配置済みの実体が古いままだと、シーンとアセットの
         //      内容が黙って食い違う。反映の実行は EditorApp 側 (シーンを作り直すため
@@ -555,6 +645,28 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         {
             ctx.pendingPrefabReloads.push_back(absPath);
         }
+
+        // 手書き / 外部ツール / AI が直したアセットを、実行中のキャッシュへ反映させる。
+        // WHY .prefab と分けるか: プレファブはシーン内の実体を作り直す必要があり、
+        //      こちらは AssetManager の中身を差し替えるだけで済む。処理の重さも
+        //      失敗したときの影響範囲も違うので、同じキューに混ぜない。
+        if ((ev.type == AssetFileWatcher::EventType::Modified ||
+             ev.type == AssetFileWatcher::EventType::Added    ||
+             ev.type == AssetFileWatcher::EventType::Renamed) &&
+            IsHotReloadableAsset(absPath))
+        {
+            ctx.pendingAssetReloads.push_back(absPath);
+        }
+
+        // 開いているシーンがディスク上で書き換わった場合。判断 (未保存か / Play 中か)
+        // は EditorApp 側でやるので、ここでは候補として渡すだけにする。
+        if ((ev.type == AssetFileWatcher::EventType::Modified ||
+             ev.type == AssetFileWatcher::EventType::Added    ||
+             ev.type == AssetFileWatcher::EventType::Renamed) &&
+            util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath)) == ".scene")
+        {
+            ctx.pendingSceneReloads.push_back(absPath);
+        }
     }
 
     if (needsDirectoryRefresh) {
@@ -563,6 +675,10 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             m_currentPath = m_rootPath;
         RefreshDirectory();
     }
+
+    // 書き込みが落ち着いた候補をインポートキューへ流す。ここから先は
+    // 手動 Import と同じ経路なので、進捗はいつもの EditorTaskOverlay に出る。
+    FlushScheduledReimports();
 
     // ── スレッド完了チェック ──────────────────────────────────────────────
     if (m_importThreadDone.load()) {
@@ -580,9 +696,24 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             asset::AssetManager::Unload<asset::ModelAsset>(path);
             ResetAssetPreviewCache(path);
         }
+        // 成否にかかわらず「処理中」の印を外す。失敗したものを外さないと、
+        // 原本を直して保存し直しても処理中と見なされ、二度と再試行されない。
+        // 失敗した原本は .meta の fingerprint が更新されていないので、
+        // 次に触られた時点で改めて再インポート候補になる。
+        for (const std::string& path : m_inFlightImports)
+            m_outdatedPaths.erase(path);
+        const size_t attempted = m_inFlightImports.size();
+        m_inFlightImports.clear();
         if (!completedImports.empty()) {
             Toast::Success(std::to_string(completedImports.size()) +
                            (completedImports.size() == 1 ? " model imported" : " models imported"));
+        }
+        // 失敗は必ず見せる。自動化した以上、黙って落ちると「保存したのに反映されない」
+        // としか見えず、原因を追う手掛かりがどこにも残らない。
+        if (attempted > completedImports.size()) {
+            const size_t failed = attempted - completedImports.size();
+            Toast::Error(std::to_string(failed) +
+                         (failed == 1 ? " model failed to import" : " models failed to import"));
         }
         RefreshDirectory();
         return;
@@ -622,6 +753,13 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
     EditorTaskOverlay::SetProgress(0.0f);
 
     auto imports = std::move(m_pendingImports);
+    m_pendingImports.clear(); // move 後の状態に依存しない (以降このフレームでも積まれ得る)
+
+    // このバッチで焼く原本を控える。完了時にここを見て「処理中」の印を外す。
+    m_inFlightImports.clear();
+    m_inFlightImports.reserve(imports.size());
+    for (const auto& imp : imports)
+        m_inFlightImports.push_back(imp.path);
 
     m_importFuture = fbzz::TaskSystem::Submit([this, imports = std::move(imports)]() mutable {
         for (const auto& imp : imports) {

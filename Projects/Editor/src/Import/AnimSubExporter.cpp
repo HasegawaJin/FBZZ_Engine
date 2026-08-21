@@ -220,6 +220,40 @@ std::string SanitizeClipName(const std::string& name, uint32_t index)
     return out;
 }
 
+// aiNode の実階層から、AnimationClip と Skeleton が共有する正規パスを構築する。
+// WHY: nodeName だけでは同名ノードを区別できず、追加レイヤーの対象解決が失敗する。
+//      canonical 名も併用し、DCC の namespace / Assimp 補助 suffix を吸収する。
+std::string NormalizeAnimationNodeName(std::string_view value)
+{
+    std::string normalized(value);
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    return normalized;
+}
+
+bool FindAnimationNodePath(const aiNode* node,
+                           std::string_view requestedName,
+                           std::string& outPath)
+{
+    if (!node) return false;
+
+    const std::string nodeName = NormalizeAnimationNodeName(node->mName.C_Str());
+    const std::string normalizedRequested = NormalizeAnimationNodeName(requestedName);
+    const bool matches = nodeName == normalizedRequested ||
+        asset::CanonicalNodeName(nodeName) == asset::CanonicalNodeName(normalizedRequested);
+    if (matches) {
+        outPath = nodeName;
+        return true;
+    }
+
+    for (uint32_t i = 0; i < node->mNumChildren; ++i) {
+        std::string childPath;
+        if (!FindAnimationNodePath(node->mChildren[i], requestedName, childPath)) continue;
+        outPath = nodeName.empty() ? childPath : nodeName + "/" + childPath;
+        return true;
+    }
+    return false;
+}
+
 // ルートモーションノードの候補を段階付きで集める。
 //
 // WHY: 旧実装は "rootmotion" / "root_motion" の完全一致だけを見ており、Mixamo の
@@ -312,7 +346,23 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         const std::string requestedClipName = clipOptions.outputName.empty()
             ? animName : clipOptions.outputName;
         const std::string clipName = SanitizeClipName(requestedClipName, ai);
-        std::string clipStem = ctx.baseName + "@" + clipName;
+        // 出力ファイル名はクリップ名そのものにする (Idle.anim であって Idle@Idle.anim ではない)。
+        //
+        // WHY 原本名を前置しないか: .anim は Library/Baked/<fbx-guid>/anims/ 配下へ出るため、
+        //     ディレクトリが原本 FBX ごとに分かれている。別 FBX 間でファイル名が衝突しようが
+        //     なく、接頭辞は「1 クリップ 1 FBX」運用だと Idle@Idle のように同じ語を 2 度
+        //     書くだけのノイズになっていた。アセットブラウザでも読みづらい。
+        //
+        // WHY 同名衝突を心配しなくてよいか: 同一 FBX 内に同名クリップが複数ある場合は、
+        //     直下の usedClipStems が _1 / _2 を付けて従来どおり回避する。前置をやめても
+        //     衝突回避の責務はそちらに残っている。
+        //
+        // NOTE: クリップの内部名 (FzAnimHeader::name) は元から clipName で @ を含まない。
+        //       ここで変わるのはファイル名だけ。.animcontroller が参照するのは抽出済みの
+        //       Assets/Animation/*.anim (独自の .meta GUID を持つ) なので、そちらは無傷。
+        //       Library/Baked を直接指す参照だけは導出 GUID が変わるため、再インポート後に
+        //       貼り直しが要る。
+        std::string clipStem = clipName;
         uint32_t& sameNameCount = usedClipStems[clipStem];
         if (sameNameCount > 0)
             clipStem += "_" + std::to_string(sameNameCount);
@@ -508,6 +558,10 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
             FzAnimTrackHeaderV3 th{};
             const size_t nlen = std::min(nodeName.size(), sizeof(th.nodeName)-1);
             std::memcpy(th.nodeName, nodeName.data(), nlen);
+            std::string targetPath;
+            (void)FindAnimationNodePath(scene->mRootNode, nodeName, targetPath);
+            const size_t pathLength = std::min(targetPath.size(), sizeof(th.targetPath)-1);
+            std::memcpy(th.targetPath, targetPath.data(), pathLength);
             th.interp = 1;
             th.positionCount = static_cast<uint32_t>(positionKeys.size());
             th.rotationCount = static_cast<uint32_t>(rotationKeys.size());
