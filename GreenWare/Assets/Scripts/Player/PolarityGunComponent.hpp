@@ -237,10 +237,12 @@ inline void PolarityGunComponent::PlayFireFeedback(Polarity polarity,
 
 inline GameObject* PolarityGunComponent::WeaponObject(Polarity polarity) const
 {
+    const HandSide hand = HandOf(polarity);
     const auto& reference = (polarity == Polarity::Plus) ? weaponPlus : weaponMinus;
-    if (GameObject* object = reference.Get())
+    // 参照先が本当にその手の銃かを名前で確かめる (理由は WeaponSockets.hpp の IsWeaponObject)。
+    if (GameObject* object = reference.Get(); IsWeaponObject(object, hand))
         return object;
-    return scene.Find(WeaponObjectName(HandOf(polarity)));
+    return scene.Find(WeaponObjectName(hand));
 }
 
 inline WeaponAnimatorComponent* PolarityGunComponent::WeaponAnim(Polarity polarity) const

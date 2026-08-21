@@ -112,6 +112,19 @@ enum class HandSide : int { Left = 2, Right = 1 };
     return hand == HandSide::Right ? kWeaponObjectR : kWeaponObjectL;
 }
 
+// Inspector でアサインした GameObject 参照が、本当にその手の銃を指しているか。
+//
+// WHY 名前で裏を取るか:
+//   Ref<GameObject> / EntityRef はシーン内の「並び順の番号」で保存される。GameObject を
+//   1 つ増減させると以降の番号が全部ずれるが、ずれた参照は無効にはならず、
+//   *別のオブジェクトを指したまま有効* になる。無効化されるなら気付けるのに対し、
+//   これは「銃として敵を掴む」ような形で静かに壊れる。名前が食い違ったら参照を捨て、
+//   名前引きへ落とす方が、間違ったまま動き続けるより早く原因に辿り着ける。
+[[nodiscard]] inline bool IsWeaponObject(const fbzz::scene::GameObject* object, HandSide hand)
+{
+    return object != nullptr && object->name == WeaponObjectName(hand);
+}
+
 // ── 武器クリップ名 ──────────────────────────────────────────────────────────
 // 1 クリップ 1 FBX の運用に合わせ、パスではなくクリップ名だけを持つ。
 // 実際の .fbx パスは各スクリプトの FBZZ_FIELD_FILE で指定する。
