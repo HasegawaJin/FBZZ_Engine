@@ -667,6 +667,25 @@ int PrefabSerializer::CountInstances(scene::Scene& scene,
     return count;
 }
 
+int PrefabSerializer::ApplyAndPropagate(scene::Scene& scene,
+                                        scene::EntityID rootEntity,
+                                        const std::string& projectRoot,
+                                        bool preserveOverrides)
+{
+    // 伝播先を決めるためにアセットパスを先に控える。
+    // Apply の途中でインスタンスが差し替わることは無いが、Propagate は
+    // 「パス」で対象を探すので、GameObject を跨いで参照を持ち回らない。
+    const scene::GameObject* root = scene.GetGameObject(rootEntity);
+    if (root == nullptr || root->prefabAssetPath.empty()) return -1;
+    const std::string assetPath = root->prefabAssetPath;
+
+    if (!Apply(scene, rootEntity, projectRoot)) return -1;
+
+    // Apply の元になったインスタンスは既にアセットと同一なので除外する
+    // (作り直すと選択とフォーカスが飛ぶ)。
+    return PropagateToInstances(scene, assetPath, rootEntity, projectRoot, preserveOverrides);
+}
+
 int PrefabSerializer::PropagateToInstances(scene::Scene& scene,
                                            const std::string& prefabAssetPath,
                                            scene::EntityID exceptRoot,

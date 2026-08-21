@@ -25,10 +25,12 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/Layer.hpp>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include <Windows.h>
@@ -193,6 +195,24 @@ private:
     void ProcessPrefabEditRequests();
     // ディスク上で書き換わった .prefab をシーン内のインスタンスへ反映する。
     void ProcessPrefabDiskReloads();
+    // ディスク上で書き換わったアセットを、実行中のキャッシュへ読み直す。
+    void ProcessAssetDiskReloads();
+
+    // ── 開いているシーンとディスクの食い違いを扱う ───────────────────────────
+    // WHY: AI・外部エディタ・git がシーンファイルを直接書く前提に立つと、
+    //      「読み込んだ後にファイルが変わったか」を知らないまま保存する経路が
+    //      そのまま他人の編集を踏み潰す事故になる。読み込み・保存の両方で
+    //      同じタイムスタンプを見て判断する。
+    void ProcessSceneDiskReload();
+    void DrawSceneReloadBar(EditorContext& ctx);
+    // 現在のシーンパスの更新時刻を控える。開いた直後と保存直後に呼ぶ。
+    void CaptureSceneDiskStamp();
+    // 控えた時刻とディスクの現在値が食い違うか (= 自分以外が書いたか)。
+    [[nodiscard]] bool IsSceneStaleOnDisk() const;
+    // ディスクから読み直す。未保存の変更は失われる。
+    bool ReloadSceneFromDisk();
+    // 読み直したシーンファイルの中で、解決できない guid 参照を Console へ報告する。
+    void ReportUnresolvedSceneRefs(const std::string& path) const;
     void EnterPrefabEditMode(const std::string& assetRelPath);
     bool SavePrefabEdit();
     void ExitPrefabEditMode(bool save);
@@ -283,6 +303,26 @@ private:
     FILETIME                                 m_lastSceneWriteTime = {};
     // HLSL ソースツリーの内容フィンガープリント。前回値との差分でホットリロードを判定する。
     std::uint64_t                            m_hlslSourceFingerprint = 0;
+
+    // ディスク変更を検知したアセットの、最後に通知が来た時刻。
+    // WHY 即座に読み直さないか: 1 回の保存で通知は複数回届き、しかも途中の状態を
+    //      掴むことがある。静かになるまで待ってから 1 回だけ読み直す。
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+                 m_pendingAssetReloadAt;
+
+    // 現在のシーンを読み込んだ / 保存した時点のファイル更新時刻。
+    // 自分の書き込みで上がった時刻もここへ入れるので、これと食い違う = 他人が書いた。
+    std::filesystem::file_time_type m_sceneDiskStamp{};
+    bool m_sceneDiskStampValid = false;
+    // 外部からの書き換えを検知した状態。通知バーがこれを見る。
+    bool m_sceneDiskChanged    = false;
+    // 検知した時刻。書き込み途中のファイルを開き直さないよう、少し置いてから動く。
+    std::chrono::steady_clock::time_point m_sceneDiskChangedAt{};
+    // 上書き確認モーダルの要求。SaveScene が立て、次フレームの先頭で開く。
+    // WHY 直接開かないか: SaveScene は ModalDialog の onSave コールバックからも呼ばれる。
+    //      そこで ModalDialog::Open* を呼ぶと、実行中の std::function ごと state が
+    //      作り直されて未定義動作になる。開くのは必ずモーダル描画の外から行う。
+    bool m_staleSaveConfirmPending = false;
 
     // オートセーブ / クラッシュ復旧の状態。
     float        m_autoSaveTimer = 0.0f;          // 前回オートセーブからの経過秒

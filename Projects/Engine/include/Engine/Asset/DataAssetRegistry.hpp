@@ -46,6 +46,14 @@ public:
     //      参照側 (スクリプト・Inspector) がいる。アドレスは維持し中身だけ差し替える。
     static bool RestoreSnapshot(const std::string& path, const std::string& snapshot);
 
+    // 指定ファイルを参照しているキャッシュ済み実体を、ディスクから読み直す。
+    // @param absPath ファイル監視が返す絶対パス
+    // @return 読み直した件数。0 ならこのファイルはキャッシュに載っていない
+    //
+    // WHY 実体を作り直さないか: RestoreSnapshot と同じ理由で、Asset<T>::Get() が返した
+    //      ポインタを保持している参照側がいる。型が変わっていない限りアドレスは維持する。
+    static int ReloadFile(const std::string& absPath);
+
     // DLL ホットリロード時にキャッシュを破棄する。
     // WHY: キャッシュした DataAsset の仮想デストラクタは DLL コード内にあるため、
     //      FreeLibrary 前にここで破棄しておかないとリロード後にアクセス違反になる。

@@ -389,6 +389,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_ctx.editorHiddenGuids.clear();
     RebuildEditorUIFromScene();
     CaptureCleanScene();
+    CaptureSceneDiskStamp();
     AddRecentScene(path);
     Toast::Info("Opened: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
@@ -409,6 +410,14 @@ bool EditorApp::SaveScene()
     if (m_ctx.InPrefabEditMode()) return SavePrefabEdit();
     if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog();
 
+    // 読み込んだ後に他人 (AI・外部エディタ・git) がファイルを書いていたら、黙って
+    // 踏まない。Ctrl+S は反射で押される操作なので、ここで止めないと相手の編集が
+    // 一度も画面に出ないまま消える。
+    if (IsSceneStaleOnDisk()) {
+        m_staleSaveConfirmPending = true;
+        return false;
+    }
+
     RemoveEditorHiding();
     const bool ok = SceneIO::Save(*m_ctx.activeScene, m_settings.lastScenePath);
     RestoreEditorHiding();
@@ -420,6 +429,7 @@ bool EditorApp::SaveScene()
 
     m_ctx.currentScenePath = m_settings.lastScenePath;
     CaptureCleanScene();
+    CaptureSceneDiskStamp();
     AddRecentScene(m_settings.lastScenePath);
     Toast::Success("Saved: " + util::FileSystem::GetFilename(m_settings.lastScenePath));
     FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
@@ -444,6 +454,20 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath)
     if (!m_ctx.activeScene || requestedPath.empty()) return false;
     const std::string path = WithFbzzExtension(requestedPath);
 
+    // 別名保存は衝突しない。同じファイルを上書きするときだけ、読み込み後に他人が
+    // 書いていないかを見る。
+    // WHY ここではモーダルを出さないか: この関数は AI (Command Bus の scene.save) も
+    //     通る。人のクリック待ちにするとバスの drain が止まり、次の要求も詰まる。
+    //     黙って踏むよりは失敗を返し、呼び出し側に選ばせる。
+    if (util::FileSystem::SamePathText(path, m_ctx.currentScenePath) && IsSceneStaleOnDisk()) {
+        FBZZ_LOG_ERROR("Save refused: %s changed on disk after it was opened. "
+                       "Reload it, or save through Ctrl+S to choose which version wins.",
+                       util::FileSystem::GetFilename(path).c_str());
+        Toast::Error("Save refused: " + util::FileSystem::GetFilename(path) +
+                     " changed on disk");
+        return false;
+    }
+
     RemoveEditorHiding();
     const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
     RestoreEditorHiding();
@@ -456,6 +480,7 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath)
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
     CaptureCleanScene();
+    CaptureSceneDiskStamp();
     AddRecentScene(path);
     Toast::Success("Saved: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());

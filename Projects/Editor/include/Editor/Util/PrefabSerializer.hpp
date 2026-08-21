@@ -48,6 +48,22 @@ public:
     static bool Apply(const scene::Scene& scene, scene::EntityID rootEntity,
                       const std::string& projectRoot = "");
 
+    // ApplyAndPropagate: Apply したうえで、同じ .prefab の他インスタンスも新定義へ揃える。
+    //
+    // WHY 別関数にするか (不具合修正):
+    //   Apply 単体はアセットファイルを書き換えるだけで、既に配置済みの他インスタンスは
+    //   古い定義のまま残る。それを避けるため UI 側は Apply の直後に必ず
+    //   PropagateToInstances を呼んでいたが、**AI の prefab.apply だけが呼んでいなかった**。
+    //   同じ「Apply」なのに、人が押すと 100 個の実体へ反映され、AI が実行すると
+    //   ファイルだけ変わって画面は何も変わらない、という食い違いになっていた。
+    //   2 つを 1 つの操作として閉じてしまえば、呼び忘れが起きる場所が無くなる。
+    //
+    // 戻り値: 更新した他インスタンス数。Apply 自体に失敗したときは -1。
+    // (0 と -1 を分けるのは「他に実体が無かった」と「書き戻せなかった」が別物のため)
+    static int ApplyAndPropagate(scene::Scene& scene, scene::EntityID rootEntity,
+                                 const std::string& projectRoot = "",
+                                 bool preserveOverrides = true);
+
     // Revert: インスタンスをプレファブアセットの状態に戻す。
     // WHY: インスタンスへの変更を破棄して元の定義に揃える "Revert" に相当する。
     //      旧 GO 階層を Destroy し、同じ Transform/parent 位置に再インスタンス化する。

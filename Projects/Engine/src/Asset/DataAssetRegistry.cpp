@@ -18,6 +18,7 @@
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <toml++/toml.hpp>
+#include <cctype>
 #include <cstddef>
 #include <memory>
 #include <sstream>
@@ -366,6 +367,57 @@ bool DataAssetRegistry::RestoreSnapshot(const std::string& path, const std::stri
     TomlReadReflector reader(result.table());
     it->second.asset->Reflect(reader);
     return true;
+}
+
+int DataAssetRegistry::ReloadFile(const std::string& absPath)
+{
+    if (absPath.empty()) return 0;
+
+    // キャッシュキーは "Assets/..." 相対と guid 参照が混在する。監視イベントは絶対パス
+    // なので、キーを解決してから区切り文字と大小を無視して突き合わせる。
+    const auto samePath = [](const std::string& a, const std::string& b) {
+        if (a.size() != b.size()) return false;
+        const auto fold = [](char c) {
+            if (c == '\\') return '/';
+            return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        };
+        for (size_t i = 0; i < a.size(); ++i)
+            if (fold(a[i]) != fold(b[i])) return false;
+        return true;
+    };
+
+    int reloaded = 0;
+    for (auto& [key, entry] : Cache()) {
+        const std::string resolved = AssetManager::ResolveAssetPath(key);
+        if (!samePath(resolved, absPath)) continue;
+
+        std::string text;
+        if (!util::FileSystem::ReadText(resolved, text)) continue;
+
+        auto parsed = toml::parse(text);
+        if (!parsed) {
+            // 書き込み途中を掴んだ可能性がある。動いている値は残す。
+            FBZZ_LOG_WARN("DataAssetRegistry: reload failed, keeping previous -> %s", key.c_str());
+            continue;
+        }
+        const toml::table& table = parsed.table();
+        const std::string typeName = table["type"].value_or(std::string{});
+
+        // 型が同じなら実体は作り直さず、フィールドだけ上書きする。
+        if (entry.asset && !typeName.empty() && entry.typeName == typeName) {
+            TomlReadReflector reader(table);
+            entry.asset->Reflect(reader);
+            ++reloaded;
+            continue;
+        }
+
+        // 型が変わった / 前回のロードに失敗していた場合だけ実体を差し替える。
+        CacheEntry fresh = LoadFromDisk(key);
+        if (!fresh.asset) continue;
+        entry = std::move(fresh);
+        ++reloaded;
+    }
+    return reloaded;
 }
 
 std::string DataAssetRegistry::TypeOf(const std::string& path)
