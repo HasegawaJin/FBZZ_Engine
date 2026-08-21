@@ -311,9 +311,6 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     // パンくずリスト
     DrawBreadcrumb(ctx);
 
-    // 未変換ファイルがあれば警告バーを表示
-    DrawPendingImportBar(ctx);
-
     // ── ツールバー: 検索(伸縮) | Type / Sort | Save / Create / Refresh / View | 件数 ──
     // WHY: 旧実装は検索欄を固定 -470px で予約していたが、フォントサイズ変更でズレるため、
     //      右側コントロール群の幅を実測して検索欄を動的に伸縮させ、どの DPI/フォントでも揃える。

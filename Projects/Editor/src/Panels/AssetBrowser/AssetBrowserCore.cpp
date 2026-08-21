@@ -167,6 +167,8 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
     m_pendingNavigate.clear();
     m_mounts.clear();
     m_pendingImports.clear();
+    // 旧プロジェクトのパスを持ち越さない。監視先が変わった時点で待機中の候補は無効。
+    m_scheduledReimports.clear();
     m_watcher.Start(m_rootPath);
     RefreshDirectory();
     ScanAndQueueUnimported(m_rootPath);
