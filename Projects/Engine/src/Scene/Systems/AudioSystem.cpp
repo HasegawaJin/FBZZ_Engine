@@ -42,7 +42,8 @@ void AudioSystem::Update(SystemContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<AudioListenerComponent>()) {
         const auto* candidate = ctx.scene.GetComponent<AudioListenerComponent>(id);
         const auto* go = ctx.scene.GetGameObject(id);
-        if (!candidate || !candidate->enabled || !go || candidate->priority <= bestPriority) continue;
+        if (!candidate || !candidate->enabled || !go || !go->activeInHierarchy()
+            || candidate->priority <= bestPriority) continue;
         listener = candidate;
         listenerTransform = &go->transform;
         bestPriority = candidate->priority;
@@ -138,7 +139,7 @@ void AudioSystem::Update(SystemContext& ctx)
             source.m_isPlaying = false;
         }
 
-        if (!source.enabled) {
+        if (!source.enabled || !sourceObject->activeInHierarchy()) {
             audioManager.StopVoice(source.m_voiceId);
             source.m_voiceId = 0;
             source.m_isPlaying = false;

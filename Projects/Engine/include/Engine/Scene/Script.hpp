@@ -971,29 +971,39 @@ public:
     void QueueRenderPass(UserRenderPassDesc desc) const;
     const renderer::ShaderDescriptor* GetShaderDescriptor(std::string_view shaderPath) const;
 
-    // ScriptSystem 専用
+    // Engine の実行時コールバック共通経路
     void SetContext(Scene* scene, GameObject* gameObject);
-    void SyncEnabledState();
+    // 複合 Script が内部モジュールへ同じ Scene / GameObject コンテキストを渡す。
+    // WHY 公開するか: PlayerComponent のような 1 コンポーネント構成でも、責務別クラスを
+    // ファイル分割したまま既存の Script proxy と EntityRef を再利用できる。
+    void AdoptContext(const Script& owner) { SetContext(owner.m_scene, owner.m_gameObject); }
+    // GameObject の階層有効状態も含めた実効 enabled を更新し、OnEnable / OnDisable を通知する。
+    // WHY: Script 自身の enabled だけを見ると、GameObject を無効化してもコールバックが動き続ける。
+    void SynchronizeEnabledState(bool gameObjectActive = true);
     // Script 内の空参照によるアクセス違反を Editor プロセスへ伝播させない共通入口。
     // WHY: C++ の nullptr 参照は例外ではなく、通常の try/catch では保護できない。
     //      すべての実行時コールバックをここへ通し、問題の Script だけを停止する。
-    bool InvokeNoArg(void (Script::*callback)(), const char* callbackName);
-    bool InvokeCollision(void (Script::*callback)(const CollisionInfo&),
+    bool ExecuteCallback(void (Script::*callback)(), const char* callbackName);
+    bool ExecuteCallback(void (Script::*callback)(const CollisionInfo&),
                          const CollisionInfo& info,
                          const char* callbackName);
-    bool InvokeAnimationEvent(const AnimationEventInfo& info);
-    bool InvokeAnimatorMove(const RootMotionInfo& info);
-    bool InvokeSetupRenderPasses(RenderPipeline& pipeline, RenderPassContext& context);
-    bool InvokeFunction(const std::function<void()>& function, const char* callbackName);
-    bool InvokeCoroutineStep(Coroutine& coroutine);
-    void TickInvokes(float dt);
-    void TickFrameDelays();
-    void TickCoroutines();
+    bool ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&),
+                         const AnimationEventInfo& info);
+    bool ExecuteCallback(void (Script::*callback)(const RootMotionInfo&),
+                         const RootMotionInfo& info);
+    bool ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&),
+                         RenderPipeline& pipeline,
+                         RenderPassContext& context);
+    bool ExecuteCallback(const std::function<void()>& function, const char* callbackName);
+    bool ResumeCoroutine(Coroutine& coroutine);
+    void UpdateInvocations(float dt);
+    void UpdateFrameDelays();
+    void UpdateCoroutines();
     static void SetPhysicsWorld(physics::World* world);
 
     using PrefabInstantiateFn = std::function<bool(Scene&, const std::string&, std::vector<EntityID>&)>;
-    static void SetInstantiateFn(PrefabInstantiateFn fn);
-    static bool InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots);
+    static void SetPrefabInstantiationCallback(PrefabInstantiateFn fn);
+    static bool InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots);
 
 protected:
     renderer::PostProcessSettings& GetRuntimePostProcessSettings();

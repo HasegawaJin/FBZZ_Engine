@@ -29,7 +29,7 @@ void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*ca
     for (auto& entry : scriptComp->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, &go);
-        entry.script->InvokeNoArg(callback, "NavMesh sensor callback");
+        entry.script->ExecuteCallback(callback, "NavMesh sensor callback");
     }
 }
 
@@ -50,7 +50,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
     for (EntityID eid : scene.GetEntities<NavMeshSensorComponent>()) {
         auto* sensor = scene.GetComponent<NavMeshSensorComponent>(eid);
         auto* go     = scene.GetGameObject(eid);
-        if (!sensor || !go || !sensor->enabled) continue;
+        if (!sensor || !go || !go->activeInHierarchy() || !sensor->enabled) continue;
 
         // ── Behavior Tree との共存 ──────────────────────────────────────────
         // BT を持つエンティティでは autoChase を無視する。

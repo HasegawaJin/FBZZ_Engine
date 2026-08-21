@@ -175,7 +175,7 @@ void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*ca
     for (auto& entry : scriptComp->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, &go);
-        entry.script->InvokeNoArg(callback, "navigation callback");
+        entry.script->ExecuteCallback(callback, "navigation callback");
     }
 }
 
@@ -226,7 +226,9 @@ void NavigationSystem::Update(SystemContext& ctx)
     float minCellSize = 1.0f;
     for (EntityID veid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto* v = scene.GetComponent<NavMeshSurfaceComponent>(veid);
-        if (!v || !v->enabled || !v->navMesh.IsValid()) continue;
+        auto* surfaceGo = scene.GetGameObject(veid);
+        if (!v || !surfaceGo || !surfaceGo->activeInHierarchy()
+            || !v->enabled || !v->navMesh.IsValid()) continue;
         if (!surfaceMap.count(v->agentTypeId)) {
             surfaceMap[v->agentTypeId] = v;
             minCellSize = std::min(minCellSize, v->cellSize);
@@ -242,14 +244,14 @@ void NavigationSystem::Update(SystemContext& ctx)
     for (EntityID id : agentEntities) {
         auto* a = scene.GetComponent<NavMeshAgentComponent>(id);
         auto* g = scene.GetGameObject(id);
-        if (!a || !g || !a->enabled) continue;
+        if (!a || !g || !g->activeInHierarchy() || !a->enabled) continue;
         avoidanceBuckets[BucketKeyFor(g->transform.worldPosition, bucketSize)].push_back(id);
     }
 
     for (EntityID eid : agentEntities) {
         auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid);
         auto* go    = scene.GetGameObject(eid);
-        if (!agent || !go || !agent->enabled) continue;
+        if (!agent || !go || !go->activeInHierarchy() || !agent->enabled) continue;
 
         // この Agent が使う NavMeshSurface を agentTypeId で引く。
         // 対応する Surface がなければスキップ (agentTypeId の Surface をまだ置いていない場合等)。

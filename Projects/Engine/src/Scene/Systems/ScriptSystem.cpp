@@ -37,11 +37,18 @@ void ScriptSystem::Update(SystemContext& ctx)
             if (!s) continue;
 
             s->SetContext(&scene, go);
-            s->SyncEnabledState();
+            const bool gameObjectActive = go->activeInHierarchy();
+            s->SynchronizeEnabledState(gameObjectActive);
+
+            // WHY: 見た目だけを消して Script を実行すると、非表示のオブジェクトが
+            //      Transform / 物理 / スコアなどを裏で更新し続ける。Unity の activeInHierarchy
+            //      と同じく、無効な階層ではライフサイクルと毎フレーム処理を止める。
+            if (!gameObjectActive)
+                continue;
 
             if (!sc->scripts[i].m_awoken) {
                 FBZZ_LOG_DEBUG("ScriptSystem: OnAwake  [%s]", s->GetTypeName());
-                s->InvokeNoArg(&Script::OnAwake, "OnAwake");
+                s->ExecuteCallback(&Script::OnAwake, "OnAwake");
                 sc->scripts[i].m_awoken = true;
             }
 
@@ -58,15 +65,15 @@ void ScriptSystem::Update(SystemContext& ctx)
                                    FormatScriptRequirementIssue(issue).c_str());
 
                 FBZZ_LOG_DEBUG("ScriptSystem: OnStart  [%s]", s->GetTypeName());
-                s->InvokeNoArg(&Script::OnStart, "OnStart");
+                s->ExecuteCallback(&Script::OnStart, "OnStart");
                 sc->scripts[i].m_started = true;
             }
 
             if (s->enabled) {
-                s->TickFrameDelays();
-                s->TickInvokes(dt);
-                s->TickCoroutines();
-                s->InvokeNoArg(&Script::OnUpdate, "OnUpdate");
+                s->UpdateFrameDelays();
+                s->UpdateInvocations(dt);
+                s->UpdateCoroutines();
+                s->ExecuteCallback(&Script::OnUpdate, "OnUpdate");
             }
         }
     }
@@ -93,6 +100,7 @@ void FixedScriptSystem::Update(SystemContext& ctx)
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
         if (!sc || !go) continue;
+        if (!go->activeInHierarchy()) continue;
 
         // ScriptSystem と同じ理由で添字ループ + 生ポインタを使う
         // (OnFixedUpdate 内の AddScript による vector 再確保に耐えるため)。
@@ -108,7 +116,7 @@ void FixedScriptSystem::Update(SystemContext& ctx)
 
             s->SetContext(&scene, go);
             if (s->enabled)
-                s->InvokeNoArg(&Script::OnFixedUpdate, "OnFixedUpdate");
+                s->ExecuteCallback(&Script::OnFixedUpdate, "OnFixedUpdate");
         }
     }
 }
@@ -122,14 +130,15 @@ void LateScriptSystem::Update(SystemContext& ctx)
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
         if (!sc || !go) continue;
+        const bool gameObjectActive = go->activeInHierarchy();
 
         for (auto& entry : sc->scripts) {
             if (!entry.script) continue;
 
             entry.script->SetContext(&scene, go);
-            entry.script->SyncEnabledState();
-            if (entry.script->enabled)
-                entry.script->InvokeNoArg(&Script::OnLateUpdate, "OnLateUpdate");
+            entry.script->SynchronizeEnabledState(gameObjectActive);
+            if (gameObjectActive && entry.script->enabled)
+                entry.script->ExecuteCallback(&Script::OnLateUpdate, "OnLateUpdate");
         }
     }
 }

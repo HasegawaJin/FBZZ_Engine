@@ -2030,7 +2030,7 @@ void RenderSystem(Scene& scene,
             if (!entry.script || !entry.script->enabled)
                 continue;
             entry.script->SetContext(&scene, go);
-            entry.script->InvokeSetupRenderPasses(pipeline, passCtx);
+            entry.script->ExecuteCallback(&Script::OnSetupRenderPasses, pipeline, passCtx);
         }
     }
 
@@ -2106,7 +2106,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled) continue;
                 entry.script->SetContext(&scene, go);
                 entry.script->gizmo.renderer = &passCtx.renderer;
-                entry.script->InvokeNoArg(&Script::OnDrawGizmos, "OnDrawGizmos");
+                entry.script->ExecuteCallback(&Script::OnDrawGizmos, "OnDrawGizmos");
                 entry.script->gizmo.renderer = nullptr;
             }
         }
@@ -2311,7 +2311,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled)
                     continue;
                 entry.script->SetContext(&scene, go);
-                entry.script->InvokeNoArg(&Script::OnPreRender, "OnPreRender");
+                entry.script->ExecuteCallback(&Script::OnPreRender, "OnPreRender");
             }
         }
     }
@@ -2352,7 +2352,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled)
                     continue;
                 entry.script->SetContext(&scene, go);
-                entry.script->InvokeNoArg(&Script::OnPostRender, "OnPostRender");
+                entry.script->ExecuteCallback(&Script::OnPostRender, "OnPostRender");
             }
         }
     }

@@ -76,7 +76,9 @@ void NavMeshPatrolSystem::Update(SystemContext& ctx)
     for (EntityID eid : scene.GetEntities<NavMeshPatrolComponent>()) {
         auto* patrol = scene.GetComponent<NavMeshPatrolComponent>(eid);
         auto* agent  = scene.GetComponent<NavMeshAgentComponent>(eid);
-        if (!patrol || !agent || !patrol->enabled || !agent->enabled) continue;
+        auto* go     = scene.GetGameObject(eid);
+        if (!patrol || !agent || !go || !go->activeInHierarchy()
+            || !patrol->enabled || !agent->enabled) continue;
         if (patrol->waypoints.empty()) continue;
         if (patrol->currentIndex >= patrol->waypoints.size()) patrol->currentIndex = 0;
 

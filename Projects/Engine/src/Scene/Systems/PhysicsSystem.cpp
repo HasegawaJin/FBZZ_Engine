@@ -225,7 +225,7 @@ void SyncColliderComponents(Scene& scene,
     for (EntityID id : scene.GetEntities<T>()) {
         GameObject* go = scene.GetGameObject(id);
         T* col = scene.GetComponent<T>(id);
-        if (!go || !col || !col->enabled) continue;
+        if (!go || !go->activeInHierarchy() || !col || !col->enabled) continue;
 
         // 構築 → 形状同期 → 姿勢反映は ColliderSync に集約。
         // 同じ手順をコライダー可視化 (DebugCollidersPass) も使うため、両者の見え方が一致する。
@@ -293,7 +293,7 @@ void DispatchToScript(Scene& scene,
     for (auto& entry : scriptComponent->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, self.gameObject);
-        entry.script->InvokeCollision(callback, info, "collision callback");
+        entry.script->ExecuteCallback(callback, info, "collision callback");
     }
 }
 
@@ -377,7 +377,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
             GameObject* go = scene.GetGameObject(id);
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
-            if (!go || !rb || !rb->enabled || !rb->rigidBody) continue;
+            if (!go || !go->activeInHierarchy() || !rb || !rb->enabled || !rb->rigidBody) continue;
 
             // WHY: BodyHandle は Component 側へ永続化される runtime state。
             //      SceneView の structured binding に依存せず、Component 実体へ直接書き戻す。
@@ -420,7 +420,9 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::ApplyDensityMass");
         for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
-            if (!rb || rb->massMode != MassMode::FromDensity || !rb->rigidBody) continue;
+            GameObject* go = scene.GetGameObject(id);
+            if (!go || !go->activeInHierarchy() || !rb ||
+                rb->massMode != MassMode::FromDensity || !rb->rigidBody) continue;
             // コライダーが 1 つも付いていない (= 体積 0) 剛体を質量 0 にすると
             // invMass が無限大になり、わずかな接触で吹き飛ぶ。下限で守る。
             constexpr float MIN_MASS = 0.001f;
@@ -446,7 +448,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
             GameObject* go = scene.GetGameObject(id);
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
-            if (!go || !rb || !rb->enabled || !rb->rigidBody) continue;
+            if (!go || !go->activeInHierarchy() || !rb || !rb->enabled || !rb->rigidBody) continue;
             const math::Vector3 position = rb->rigidBody->GetPosition();
             const math::Quaternion rotation = rb->rigidBody->GetRotation();
             rb->CommitPhysicsPose(position, rotation);

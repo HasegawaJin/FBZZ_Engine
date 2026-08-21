@@ -23,9 +23,12 @@ namespace fbzz::scene {
 physics::World*    Script::s_physicsWorld  = nullptr;
 Script::PrefabInstantiateFn Script::s_instantiateFn;
 
-void Script::SetInstantiateFn(PrefabInstantiateFn fn) { s_instantiateFn = std::move(fn); }
+void Script::SetPrefabInstantiationCallback(PrefabInstantiateFn fn)
+{
+    s_instantiateFn = std::move(fn);
+}
 
-bool Script::InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
+bool Script::InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
 {
     if (!s_instantiateFn) return false;
     return s_instantiateFn(scene, path, roots);
@@ -49,7 +52,7 @@ namespace {
 // Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
 // WHY: 空の Ref<T> を誤って operator-> で使った場合、MSVC はアクセス違反を SEH として通知する。
 //      C++ 例外ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
-void MarkScriptRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
+void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
 {
     script.enabled = false;
     FBZZ_LOG_ERROR("Script '%s' disabled after an invalid reference/access violation in %s().",
@@ -58,7 +61,7 @@ void MarkScriptRuntimeFault(fbzz::scene::Script& script, const char* callbackNam
 
 } // namespace
 
-bool Script::InvokeNoArg(void (Script::*callback)(), const char* callbackName)
+bool Script::ExecuteCallback(void (Script::*callback)(), const char* callbackName)
 {
     if (!callback || m_runtimeFaulted) return false;
 #if defined(_MSC_VER)
@@ -67,7 +70,7 @@ bool Script::InvokeNoArg(void (Script::*callback)(), const char* callbackName)
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         m_runtimeFaulted = true;
-        MarkScriptRuntimeFault(*this, callbackName);
+        HandleRuntimeFault(*this, callbackName);
         return false;
     }
 #else
@@ -76,7 +79,7 @@ bool Script::InvokeNoArg(void (Script::*callback)(), const char* callbackName)
 #endif
 }
 
-bool Script::InvokeCollision(void (Script::*callback)(const CollisionInfo&),
+bool Script::ExecuteCallback(void (Script::*callback)(const CollisionInfo&),
                              const CollisionInfo& info,
                              const char* callbackName)
 {
@@ -87,7 +90,7 @@ bool Script::InvokeCollision(void (Script::*callback)(const CollisionInfo&),
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         m_runtimeFaulted = true;
-        MarkScriptRuntimeFault(*this, callbackName);
+        HandleRuntimeFault(*this, callbackName);
         return false;
     }
 #else
@@ -96,61 +99,65 @@ bool Script::InvokeCollision(void (Script::*callback)(const CollisionInfo&),
 #endif
 }
 
-bool Script::InvokeAnimationEvent(const AnimationEventInfo& info)
+bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&),
+                             const AnimationEventInfo& info)
 {
-    if (m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted) return false;
 #if defined(_MSC_VER)
     __try {
-        OnAnimationEvent(info);
+        (this->*callback)(info);
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         m_runtimeFaulted = true;
-        MarkScriptRuntimeFault(*this, "OnAnimationEvent");
+        HandleRuntimeFault(*this, "OnAnimationEvent");
         return false;
     }
 #else
-    OnAnimationEvent(info);
+    (this->*callback)(info);
     return true;
 #endif
 }
 
-bool Script::InvokeAnimatorMove(const RootMotionInfo& info)
+bool Script::ExecuteCallback(void (Script::*callback)(const RootMotionInfo&),
+                             const RootMotionInfo& info)
 {
-    if (m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted) return false;
 #if defined(_MSC_VER)
     __try {
-        OnAnimatorMove(info);
+        (this->*callback)(info);
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         m_runtimeFaulted = true;
-        MarkScriptRuntimeFault(*this, "OnAnimatorMove");
+        HandleRuntimeFault(*this, "OnAnimatorMove");
         return false;
     }
 #else
-    OnAnimatorMove(info);
+    (this->*callback)(info);
     return true;
 #endif
 }
 
-bool Script::InvokeSetupRenderPasses(RenderPipeline& pipeline, RenderPassContext& context)
+bool Script::ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&),
+                             RenderPipeline& pipeline,
+                             RenderPassContext& context)
 {
-    if (m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted) return false;
 #if defined(_MSC_VER)
     __try {
-        OnSetupRenderPasses(pipeline, context);
+        (this->*callback)(pipeline, context);
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         m_runtimeFaulted = true;
-        MarkScriptRuntimeFault(*this, "OnSetupRenderPasses");
+        HandleRuntimeFault(*this, "OnSetupRenderPasses");
         return false;
     }
 #else
-    OnSetupRenderPasses(pipeline, context);
+    (this->*callback)(pipeline, context);
     return true;
 #endif
 }
 
-bool Script::InvokeFunction(const std::function<void()>& function, const char* callbackName)
+bool Script::ExecuteCallback(const std::function<void()>& function, const char* callbackName)
 {
     if (!function || m_runtimeFaulted) return false;
 #if defined(_MSC_VER)
@@ -159,7 +166,7 @@ bool Script::InvokeFunction(const std::function<void()>& function, const char* c
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         m_runtimeFaulted = true;
-        MarkScriptRuntimeFault(*this, callbackName);
+        HandleRuntimeFault(*this, callbackName);
         return false;
     }
 #else
@@ -168,7 +175,7 @@ bool Script::InvokeFunction(const std::function<void()>& function, const char* c
 #endif
 }
 
-bool Script::InvokeCoroutineStep(Coroutine& coroutine)
+bool Script::ResumeCoroutine(Coroutine& coroutine)
 {
     if (m_runtimeFaulted) return false;
 #if defined(_MSC_VER)
@@ -177,7 +184,7 @@ bool Script::InvokeCoroutineStep(Coroutine& coroutine)
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         m_runtimeFaulted = true;
-        MarkScriptRuntimeFault(*this, "Coroutine");
+        HandleRuntimeFault(*this, "Coroutine step");
         return false;
     }
 #else
@@ -186,23 +193,25 @@ bool Script::InvokeCoroutineStep(Coroutine& coroutine)
 #endif
 }
 
-void Script::SyncEnabledState()
+void Script::SynchronizeEnabledState(bool gameObjectActive)
 {
     // WHY: enabled は public 互換性を維持するため setter 化しない。
-    //      その代わり ScriptSystem の同期点で前回値と比較し、変化した瞬間だけ通知する。
+    //      その代わり ScriptSystem の同期点で GameObject の有効状態と合わせて比較し、
+    //      変化した瞬間だけ通知する。
+    const bool effectiveEnabled = enabled && gameObjectActive;
     if (!m_enableStateInitialized) {
-        m_lastEnabled = enabled;
+        m_lastEnabled = effectiveEnabled;
         m_enableStateInitialized = true;
-        if (enabled) InvokeNoArg(&Script::OnEnable, "OnEnable");
+        if (effectiveEnabled) ExecuteCallback(&Script::OnEnable, "OnEnable");
         return;
     }
 
-    if (m_lastEnabled == enabled) return;
-    m_lastEnabled = enabled;
-    if (enabled)
-        InvokeNoArg(&Script::OnEnable, "OnEnable");
+    if (m_lastEnabled == effectiveEnabled) return;
+    m_lastEnabled = effectiveEnabled;
+    if (effectiveEnabled)
+        ExecuteCallback(&Script::OnEnable, "OnEnable");
     else
-        InvokeNoArg(&Script::OnDisable, "OnDisable");
+        ExecuteCallback(&Script::OnDisable, "OnDisable");
 }
 
 
@@ -250,7 +259,7 @@ void Script::CancelInvoke(InvokeHandle handle)
         if (e.id == handle.id) { e.canceled = true; return; }
 }
 
-void Script::TickInvokes(float dt)
+void Script::UpdateInvocations(float dt)
 {
     if (m_invokes.empty()) return;
 
@@ -271,7 +280,7 @@ void Script::TickInvokes(float dt)
 
         // WHAT: callback 内から Invoke / CancelInvoke が呼ばれてもよい。
         //      fn はコピーしてから呼び、vector の再配置や canceled 更新の影響を受けないようにする。
-        if (fn && !InvokeFunction(fn, "Invoke callback"))
+        if (fn && !ExecuteCallback(fn, "deferred callback"))
             break;
     }
     m_isTickingInvokes = false;
@@ -291,7 +300,7 @@ void Script::FrameDelay(uint32_t n, std::function<void()> fn)
     m_frameDelays.push_back(std::move(entry));
 }
 
-void Script::TickFrameDelays()
+void Script::UpdateFrameDelays()
 {
     if (m_frameDelays.empty()) return;
 
@@ -306,7 +315,7 @@ void Script::TickFrameDelays()
             m_frameDelays.push_back(std::move(entry));
             continue;
         }
-        if (entry.fn && !InvokeFunction(entry.fn, "FrameDelay callback"))
+        if (entry.fn && !ExecuteCallback(entry.fn, "FrameDelay callback"))
             break;
     }
 }
@@ -327,7 +336,7 @@ void Script::StopAllCoroutines()
     m_pendingCoroutines.clear();
 }
 
-void Script::TickCoroutines()
+void Script::UpdateCoroutines()
 {
     if (m_coroutines.empty() && m_pendingCoroutines.empty()) return;
 
@@ -335,7 +344,7 @@ void Script::TickCoroutines()
     // WHY: 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回り、
     //      m_coroutines は本ループ中に再確保されない。
     for (size_t i = 0; i < m_coroutines.size(); ++i)
-        if (!InvokeCoroutineStep(m_coroutines[i]))
+        if (!ResumeCoroutine(m_coroutines[i]))
             break;
     m_isTickingCoroutines = false;
 
