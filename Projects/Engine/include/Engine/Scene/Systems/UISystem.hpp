@@ -10,8 +10,10 @@
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Matrix4.hpp>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace fbzz {
 namespace renderer {
@@ -45,9 +47,23 @@ struct UISystemContext {
     renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
     renderer::ResourceHandle<renderer::PipelineStateTag>  worldPso;
     renderer::ResourceHandle<renderer::TextureTag>        whiteTexture;
-    renderer::ResourceHandle<renderer::BufferTag>         imageVB;
-    renderer::ResourceHandle<renderer::BufferTag>         textVB;
     std::unordered_map<std::string, renderer::FontAtlas>  fontAtlasCache;
+
+    // WHY DrawCall ごとに別の頂点バッファを配るか:
+    //   DX12 は DrawCall をコマンドリストへ *記録* するだけで、GPU が実行するのは
+    //   フレーム末尾。1 本の頂点バッファを Draw のたびに上書きすると、実行時には
+    //   記録済みの全 Draw が「最後に書かれた頂点」を読む = UI 要素が全部同じ矩形で
+    //   描かれる。定数バッファは Update ごとに Upload Arena のスライスを切るため無事で、
+    //   頂点バッファだけが共有実体のまま残っていた。
+    //   DX11 は即時描画なので 1 本でも成立していたが、記録型を前提に両バックエンドを
+    //   同じ経路へ揃える。バッファは使い回すので、確保はウォームアップ中だけ起きる。
+    std::vector<renderer::ResourceHandle<renderer::BufferTag>> imageVertexBuffers;
+    std::vector<renderer::ResourceHandle<renderer::BufferTag>> textVertexBuffers;
+    std::size_t imageVertexCursor = 0;
+    std::size_t textVertexCursor  = 0;
+    // カーソルを戻すのはフレームが変わったときだけ。同じフレーム内で 1 つの Context が
+    // 複数回描く場合 (Scene と Canvas Editor) も、記録済み Draw と実体の 1 対 1 を保つ。
+    std::uint64_t lastResetFrame = ~std::uint64_t{ 0 };
 };
 
 // UIText.fontPath が空のときに使用するデフォルトフォントアトラスのベースパス (拡張子なし) を設定する。
