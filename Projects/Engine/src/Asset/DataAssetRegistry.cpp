@@ -20,6 +20,7 @@
 #include <toml++/toml.hpp>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <sstream>
 #include <unordered_map>
@@ -220,6 +221,10 @@ private:
 struct CacheEntry {
     std::unique_ptr<DataAsset> asset;
     std::string typeName;
+
+    // ロードを試みた時点の型登録の世代。asset == nullptr のときだけ意味を持ち、
+    // 「同じ登録状態なら結果も変わらない」判定に使う (Resolve の再試行条件)。
+    std::uint64_t factoryEpoch = 0;
 };
 
 std::unordered_map<std::string, CacheEntry>& Cache()
@@ -231,36 +236,40 @@ std::unordered_map<std::string, CacheEntry>& Cache()
 // .fzdata をパースして型生成 + フィールド読み込みを行う。失敗時 nullptr。
 CacheEntry LoadFromDisk(const std::string& path)
 {
+    // 失敗して返すエントリにも世代を刻む。Resolve はこの値を見て
+    // 「型登録が変わったのでもう一度試す価値がある」かを判断する。
+    CacheEntry failed{ nullptr, {}, DataAssetFactory::RegistrationEpoch() };
+
     const std::string absPath = AssetManager::ResolveAssetPath(path);
     std::string text;
     if (!util::FileSystem::ReadText(absPath, text)) {
         FBZZ_LOG_WARN("DataAssetRegistry: file not found -> %s", path.c_str());
-        return {};
+        return failed;
     }
 
     // toml++ は例外無効ビルド (TOML_EXCEPTIONS=0) のため parse_result を真偽で判定する。
     auto result = toml::parse(text);
     if (!result) {
         FBZZ_LOG_ERROR("DataAssetRegistry: TOML parse failed -> %s", path.c_str());
-        return {};
+        return failed;
     }
     const toml::table& table = result.table();
 
     const std::string typeName = table["type"].value_or(std::string{});
     if (typeName.empty()) {
         FBZZ_LOG_ERROR("DataAssetRegistry: missing 'type' key -> %s", path.c_str());
-        return {};
+        return failed;
     }
 
     std::unique_ptr<DataAsset> asset = DataAssetFactory::Create(typeName);
     if (!asset) {
         FBZZ_LOG_WARN("DataAssetRegistry: type '%s' not registered -> %s", typeName.c_str(), path.c_str());
-        return {};
+        return failed;
     }
 
     TomlReadReflector reader(table);
     asset->Reflect(reader);
-    return { std::move(asset), typeName };
+    return { std::move(asset), typeName, DataAssetFactory::RegistrationEpoch() };
 }
 
 // DataAsset を toml::table へ書き出し (type キー + 全フィールド)。
@@ -277,8 +286,23 @@ bool WriteTableToDisk(const std::string& path, const toml::table& table)
 {
     std::ostringstream oss;
     oss << table;
+
+    // 参照が guid 形式のままここへ来て索引が引けないと、絶対パスが空になる。
+    // 黙って書き損じると「編集したのに保存されていない」に化けるので必ず報告する。
     const std::string absPath = AssetManager::ResolveAssetPath(path);
-    return util::FileSystem::WriteText(absPath, oss.str());
+    if (absPath.empty()) {
+        FBZZ_LOG_ERROR("DataAssetRegistry: cannot resolve save path -> %s", path.c_str());
+        return false;
+    }
+
+    // WHY アトミック版か: .fzdata は Inspector のウィジェットを離すたびに自動保存される。
+    //      通常の上書きだと切り詰め済みの状態が一瞬でも露出し、そこで落ちる・掴まれると
+    //      壊れたファイルが原本として残る。置き換え方式なら旧版か新版のどちらかになる。
+    if (!util::FileSystem::WriteTextAtomic(absPath, oss.str())) {
+        FBZZ_LOG_ERROR("DataAssetRegistry: save failed -> %s", absPath.c_str());
+        return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -289,12 +313,22 @@ DataAsset* DataAssetRegistry::Resolve(const std::string& path)
     const std::string key = NormalizeKey(path);
 
     auto& cache = Cache();
-    if (auto it = cache.find(key); it != cache.end())
+    if (auto it = cache.find(key); it != cache.end()) {
+        if (it->second.asset) return it->second.asset.get();
+
+        // 失敗 (nullptr) もキャッシュして毎フレームのディスクアクセス・ログ連打を防ぐ。
+        // ただし型登録が変わっていれば結果が変わりうるので、そのときだけ引き直す。
+        // WHY: 型が登録される前に一度 Resolve されただけで参照が永久に死ぬのを防ぐ。
+        //      DLL ロード順やホットリロードの過渡状態で普通に起こる。
+        if (it->second.factoryEpoch == DataAssetFactory::RegistrationEpoch())
+            return nullptr;
+
+        it->second = LoadFromDisk(key);
         return it->second.asset.get();
+    }
 
     CacheEntry entry = LoadFromDisk(key);
     DataAsset* ptr = entry.asset.get();
-    // 失敗 (nullptr) もキャッシュして毎フレームのディスクアクセス・ログ連打を防ぐ。
     cache.emplace(key, std::move(entry));
     return ptr;
 }
@@ -329,7 +363,8 @@ bool DataAssetRegistry::Create(const std::string& path, const std::string& typeN
     if (!WriteTableToDisk(key, table)) return false;
 
     // 生成直後の実体をそのままキャッシュへ載せる (次の Resolve でディスク再読込しない)。
-    Cache().insert_or_assign(key, CacheEntry{ std::move(asset), typeName });
+    Cache().insert_or_assign(
+        key, CacheEntry{ std::move(asset), typeName, DataAssetFactory::RegistrationEpoch() });
     return true;
 }
 

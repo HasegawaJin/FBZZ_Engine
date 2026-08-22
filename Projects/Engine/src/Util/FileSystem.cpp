@@ -301,6 +301,35 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
     std::ofstream f(widePath);
     if (!f.is_open()) return false;
     f << text;
+    // WHY close() してから見るか: ストリームは破棄時にまとめて書き出すため、
+    //     ここで閉じるまで書き込み失敗 (ディスク満杯・共有違反) は現れない。
+    //     以前は無条件に true を返しており、中身が欠けたまま「保存できた」と
+    //     報告していた。
+    f.close();
+    return f.good();
+}
+
+bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& text)
+{
+    const std::filesystem::path target = PathFromUtf8(path);
+    if (target.empty()) return false;
+
+    // 同一フォルダに置く。別ボリュームだと rename がコピーになり、置き換えの原子性が崩れる。
+    const std::filesystem::path temp =
+        target.parent_path() / ("." + PathToUtf8(target.filename()) + ".tmp");
+
+    if (!WriteText(temp, text)) {
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
+
+    if (!Rename(temp, target)) {
+        // 置き換えに失敗しても原本は無傷。書きかけを残さないよう掃除して失敗を返す。
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
     return true;
 }
 
@@ -370,7 +399,8 @@ bool FileSystem::WriteText(const std::filesystem::path& path, const std::string&
     std::ofstream f(path, std::ios::binary);
     if (!f.is_open()) return false;
     f << text;
-    return true;
+    f.close();
+    return f.good();
 }
 
 std::filesystem::path FileSystem::PathFromUtf8(const std::string& path)

@@ -116,9 +116,14 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
     FBZZ_LOG_DEBUG("ScriptDllLoader: script event bus & prefab pool cleared");
 
     // DataAsset も DLL コード内に仮想デストラクタ/ファクトリを持つため、FreeLibrary 前に
-    // 共有キャッシュを破棄し型登録をクリアする。次回 Resolve でディスクから遅延再ロードされる。
+    // 共有キャッシュを破棄し DLL 由来の型登録を外す。次回 Resolve でディスクから遅延再ロードされる。
+    //
+    // WHY 全消しにしないか: Engine 組み込みの型 (PostProcessProfile 等) は Engine の
+    //     静的初期化でしか登録されず、DLL を読み直しても再登録されない。以前は
+    //     一緒に消していたため、スクリプトを 1 回ホットリロードすると .fzdata が
+    //     「型が未登録」で読めなくなり、エディターを再起動するまで直らなかった。
     asset::DataAssetRegistry::ClearCache();
-    asset::DataAssetFactory::UnregisterAll();
+    asset::DataAssetFactory::UnregisterScriptTypes();
     FBZZ_LOG_DEBUG("ScriptDllLoader: DataAsset cache cleared & factory unregistered");
 
     FreeLibrary(m_hDll);

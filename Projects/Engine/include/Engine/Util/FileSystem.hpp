@@ -77,6 +77,18 @@ public:
     // WHY: const char* パスは std::string / std::filesystem::path の両方へ変換可能なので、
     //      kSnapshotPath のような定数文字列は string 版へ明示的に転送する。
     static bool WriteText(const char* path, const std::string& text) { return WriteText(std::string(path), text); }
+
+    /// 同一フォルダのテンポラリへ書いてから置き換える。成功なら「完全な新版」、
+    /// 失敗なら「無傷の旧版」のどちらかだけが残り、途中まで書けたファイルは残らない。
+    ///
+    /// WHY 通常の WriteText と分けるか: ofstream は開いた瞬間に切り詰めるため、
+    ///     書き込み中にクラッシュ・共有違反が起きると中身が欠けたファイルが残る。
+    ///     オートセーブのように高頻度で上書きする経路では、原本を壊す事故になる。
+    ///
+    /// NOTE: テンポラリ名はドット始まり + .tmp。Asset Browser はドット始まりを隠し
+    ///       (ShouldDisplayEntry)、AssetDatabase は .tmp に .meta を発行しない
+    ///       (ShouldHaveMeta) ため、監視下の Assets/ に置いても GUID は動かない。
+    static bool WriteTextAtomic(const std::string& path, const std::string& text);
     // 逐次バイナリ書き込み用の ofstream を開く。
     // WHY: メッシュ等は構造体を順に write するため、所有する stream は呼び出し側へ返す。
     static std::ofstream OpenBinaryWriter(const std::filesystem::path& path);
