@@ -95,8 +95,9 @@ bool DrawVFXPreviewWidget(EditorContext& ctx,
     drawList->AddText(ImVec2(origin.x + 10.0f, max.y - ImGui::GetTextLineHeight() - 7.0f),
                       IM_COL32(130, 138, 150, 255), "Graph timeline");
 
+    // 起動失敗は Launch 内で FBZZ_LOG_ERROR 済みのため、ここでは戻り値を見ない。
     if (ImGui::Button("Open VFX Editor"))
-        VFXEditorLauncher::Launch(ctx.projectRoot, path);
+        (void)VFXEditorLauncher::Launch(ctx.projectRoot, path);
     ImGui::SameLine();
     ImGui::TextDisabled("Live particle preview is hosted by FBZZVFXEditor.exe");
     return true;

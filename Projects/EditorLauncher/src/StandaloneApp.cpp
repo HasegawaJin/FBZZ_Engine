@@ -83,10 +83,14 @@ bool StandaloneApp::OnInit()
         scriptsDllPath = util::FileSystem::GetExecutableDirectory() / L"SandboxScripts.dll";
     }
     if (std::filesystem::exists(scriptsDllPath)) {
-        m_scriptDll.Load(scriptsDllPath);
-        FBZZ_LOG_INFO("StandaloneApp: scripts DLL loaded: %ls (%d types)",
-            scriptsDllPath.wstring().c_str(),
-            static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+        if (m_scriptDll.Load(scriptsDllPath)) {
+            FBZZ_LOG_INFO("StandaloneApp: scripts DLL loaded: %ls (%d types)",
+                scriptsDllPath.wstring().c_str(),
+                static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+        } else {
+            FBZZ_LOG_ERROR("StandaloneApp: scripts DLL load failed: %ls — no scripts will run",
+                scriptsDllPath.wstring().c_str());
+        }
     } else {
         FBZZ_LOG_WARN("StandaloneApp: scripts DLL not found: %ls — no scripts will run",
             scriptsDllPath.wstring().c_str());
