@@ -6,7 +6,8 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Canvas'
-parent = ''
+parent = ''
+
 parentInstanceId = ''
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -33,7 +34,8 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000002'
 layer = 0
 name = 'Background'
-parent = 'Canvas'
+parent = 'Canvas'
+
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -55,7 +57,8 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000003'
 layer = 0
 name = 'LoadingText'
-parent = 'Canvas'
+parent = 'Canvas'
+
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -78,7 +81,8 @@ active = true
 instanceId = 'a2000001-0000-0000-0000-000000000004'
 layer = 0
 name = 'LoadController'
-parent = 'Canvas'
+parent = 'Canvas'
+
 parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 tag = 'Untagged'
@@ -93,7 +97,10 @@ tag = 'Untagged'
     type = 'SceneManagerScript'
 
         [gameobjects.ScriptComponents.fields]
-        'Auto Delay' = 1.5
-        'Auto Transition' = true
-        'Target Scene' = ''
-        'Via Scene' = ''
+        autoDelay = 1.5
+        autoTransition = true
+        fadeDuration = 0.5
+        fadeEnabled = true
+        targetScene = ''
+        triggerAction = ''
+        viaScene = ''

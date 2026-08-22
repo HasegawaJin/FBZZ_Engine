@@ -13,7 +13,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.581952
+    aspectRatio = 1.882562
     cullDistanceSpherical = true
     cullingBoundsPadding = 0.0
     cullingMask = 4294967295
@@ -28,8 +28,8 @@ tag = 'MainCamera'
     smallObjectScreenHeight = 0.0
 
     [gameobjects.transform]
-    position = [ 3.957511, 1.834551, 3.238959 ]
-    rotation = [ 0.0, 0.963631, 0.0, -0.267237 ]
+    position = [ -8.545555, 5.855114, 3.775358 ]
+    rotation = [ -0.244763, 0.750799, -0.478312, -0.384201 ]
     scale = [ 1.000003, 1.0, 1.000003 ]
 
     [[gameobjects.ScriptComponents]]
@@ -40,14 +40,22 @@ tag = 'MainCamera'
         distance = 4.0
         followSpeed = 10.0
         height = 2.2
+        loosenedFollowSpeed = 2.0
+        loosenedVerticalFollowSpeed = 1.4
         maxPitch = 65.0
+        maxSlackOffset = 2.2
         minPitch = -20.0
         mouseOrbit = true
         mouseSensitivity = 0.2
+        padInvertY = false
+        padLookDeadZone = 0.18
+        padLookExponent = 2.0
+        padLookSpeed = 200.0
+        padOrbit = true
         pitch = 65.0
-        shakeFrequency = 32.0
         targetTag = 'Player'
-        yaw = 210.999817
+        verticalFollowSpeed = 10.0
+        yaw = 234.199692
 
 [[gameobjects]]
 active = true
@@ -61,9 +69,13 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    castShadows = true
     color = [ 1.0, 1.0, 1.0 ]
     enabled = true
     intensity = 1.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowStrength = 0.0
     type = 'Directional'
 
     [gameobjects.transform]
@@ -101,23 +113,29 @@ tag = 'Untagged'
     specularScale = 0.4
 
     [gameobjects.SkyRenderer]
-    atmosphereRadius = 6471.0
+    atmosphereRadius = 6400.0
     cloudShadowCoverage = 0.361702
     cloudShadowSize = 10000.0
     cloudShadowSpeed = 1.0
     cloudShadowStrength = 0.0
+    dayAltitude = 12.0
     dayColor = [ 1.0, 0.98, 0.95 ]
-    dayIntensity = 9.13
+    dayIntensity = 1.0
     dayNightEnabled = true
     enabled = true
     mieG = 0.76
-    mieScattering = 0.0021
+    mieScattering = 0.02
+    nightAltitude = 8.0
     nightColor = [ 0.1, 0.15, 0.3 ]
-    nightIntensity = 0.45
-    planetRadius = 6371.0
+    nightIntensity = 1.0
+    planetRadius = 6400.0
     rayleighScattering = [ 0.0058, 0.014, 0.0331 ]
-    sunIntensity = 30.1
+    skyDayBrightness = 1.5
+    skyNightBrightness = 0.1
+    skyScatterIntensity = 22.0
+    skySunsetBrightness = 1.0
     sunsetColor = [ 1.0, 0.5, 0.2 ]
+    sunsetIntensity = 2.0
 
     [gameobjects.SunMoonRenderer]
     enabled = true
@@ -125,8 +143,8 @@ tag = 'Untagged'
     moonColor = [ 0.85, 0.9, 1.0 ]
     moonEnabled = true
     moonSize = 1.0
+    sunDiskIntensity = 20.0
     sunEnabled = true
-    sunIntensity = 20.0
 
     [gameobjects.VolumetricCloudComponent]
     albedo = [ 1.0, 0.991489, 0.974468 ]
@@ -134,10 +152,10 @@ tag = 'Untagged'
     ambientStrength = 0.28
     ambientTint = [ 1.0, 1.0, 1.0 ]
     anisotropy = 0.35
-    bottomHeight = 695.0
+    bottomHeight = 700.0
     bottomSoftness = 0.307568
-    cloudSize = 4220.0
-    coverage = 0.443769
+    cloudSize = 2645.0
+    coverage = 0.42279
     density = 0.68
     detailSize = 604.0
     detailStrength = 0.832827
@@ -158,9 +176,9 @@ tag = 'Untagged'
     stepCount = 48
     sunIntensity = 1.5
     sunTint = [ 1.0, 1.0, 1.0 ]
-    thickness = 1160.0
+    thickness = 1280.0
     topSoftness = 0.350851
-    weatherAmount = 1.0
+    weatherAmount = 0.178322
     weatherSize = 2200.0
     windDirection = [ 1.0, 0.25 ]
     windSpeed = 66.5
@@ -337,9 +355,6 @@ tag = 'Untagged'
         restitution = 0.3
         restitutionCombine = 2
         staticFriction = 0.6
-
-        [gameobjects.MeshColliderComponent.shape]
-        type = 'TriangleMesh'
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1055,32 +1070,6 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'd4a5a493-22b2-42f9-a5ae-3c15068c4a86'
-layer = 0
-name = 'COL_Arena_Rubble'
-parent = 'Boss_Arena_Map'
-parentInstanceId = '65ec547e-b105-4e0a-abde-95ebeff9afb2'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
-
-    [gameobjects.MeshRenderer]
-    castShadows = true
-    enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:31|Assets/Models/Map/Boss_Arena_Map.fbx'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
 instanceId = '86c37a9f-bced-4660-b712-4af6fd78d330'
 layer = 0
 name = 'COL_Arena_Wall.001'
@@ -1093,10 +1082,27 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:32|Assets/Models/Map/Boss_Arena_Map.fbx'
+    physicsMaterial = ''
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
 
     [gameobjects.MeshRenderer]
-    castShadows = true
+    castShadows = false
     enabled = true
     mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:32|Assets/Models/Map/Boss_Arena_Map.fbx'
 
@@ -1896,7 +1902,7 @@ tag = 'Enemy'
         type = 'Sphere'
 
     [gameobjects.transform]
-    position = [ -5.108775, 0.48932, 0.520188 ]
+    position = [ -5.108775, 1.0, 0.520188 ]
     rotation = [ 0.0, 0.853097, 0.0, 0.521753 ]
     scale = [ 2.0, 2.0, 2.0 ]
 
@@ -2031,7 +2037,7 @@ tag = 'Enemy'
         type = 'Sphere'
 
     [gameobjects.transform]
-    position = [ 1.549831, 0.48932, 3.145711 ]
+    position = [ 1.549831, 1.0, 3.145711 ]
     rotation = [ 0.0, 0.969216, 0.0, 0.246212 ]
     scale = [ 2.0, 2.0, 2.0 ]
 
@@ -2110,9 +2116,25 @@ tag = 'Enemy'
 active = true
 instanceId = 'f4000001-0000-0000-0000-000000000001'
 layer = 0
-name = 'GameplayManager'
+name = 'Manager'
 parent = ''
 parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000021'
+layer = 0
+name = 'PolarityField'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
@@ -2132,27 +2154,280 @@ tag = 'Untagged'
         debugChargedCount = 0
         debugLinkCount = 0
         drawDebugLinks = true
-        hitstopScale = 0.05
-        hitstopSeconds = 0.09
         maxLinks = 8
-        sfxImpact = ''
-        shakeAmplitude = 0.35
-        shakeDuration = 0.25
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000012'
+layer = 0
+name = 'GameFlow'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
     type = 'GameFlowComponent'
 
         [gameobjects.ScriptComponents.fields]
-        debugElapsed = 1.025221
-        debugEnemies = 2
-        debugKills = 0
+        debugElapsed = 9.978995
+        debugEnemies = 0
         endDelay = 0.8
         enemyTextName = 'HUD_Enemies'
-        gunTextName = 'HUD_Guns'
-        healthTextName = 'HUD_Health'
         objectiveTextName = 'HUD_Objective'
         resultScene = 'Result'
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000013'
+layer = 0
+name = 'TimeManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'TimeManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugScale = 1.0
+        debugSource = 'Normal'
+        defaultBlendSeconds = 0.12
+        minScale = 0.0
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000014'
+layer = 0
+name = 'HitstopManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'HitstopManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugRemaining = 0.0
+        maxSeconds = 0.09
+        minSeconds = 0.02
+        timeScale = 0.05
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000015'
+layer = 0
+name = 'CombatManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'CombatManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugAnchorImpacts = 0
+        debugDamageToEnemies = 0
+        debugDamageToPlayer = 0
+        debugEnemyImpacts = 0
+        debugKills = 0
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000016'
+layer = 0
+name = 'CameraShakeManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'CameraShakeManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugActive = 0
+        debugAmplitude = 0.0
+        defaultAmplitude = 0.35
+        defaultDuration = 0.25
+        defaultFrequency = 32.0
+        maxAmplitude = 0.9
+        maxShakes = 8
+        verticalRatio = 0.65
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000017'
+layer = 0
+name = 'RumbleManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'RumbleManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugHigh = 0.0
+        debugLow = 0.0
+        defaultDuration = 0.18
+        defaultHigh = 0.3
+        defaultLow = 0.55
+        enabledOnStart = true
+        masterScale = 1.0
+        maxRequests = 8
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000018'
+layer = 0
+name = 'ScreenEffectManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = false
+    type = 'ScreenEffectManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        aberrationAmount = 0.008
+        debugDistortion = 0.0
+        debugFade = 0.0
+        debugFlash = 0.0
+        defaultFlashColor = [ 1.0, 0.25, 0.2, 1.0 ]
+        defaultFlashSeconds = 0.22
+        defaultFlashStrength = 0.45
+        vignetteIntensity = 0.0
+        vignetteSmoothness = 0.0
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000019'
+layer = 0
+name = 'ImpactFeedbackManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ImpactFeedbackManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        anchorDistort = 0.5
+        anchorFlash = 0.0
+        anchorHitstop = 1.0
+        anchorRumble = 1.0
+        anchorSfx = ''
+        anchorShake = 1.35
+        debugLast = 'PlayerLand'
+        distortSeconds = 0.3
+        hurtDistort = 0.8
+        hurtFlash = 1.0
+        hurtHitstop = 0.35
+        hurtRumble = 0.9
+        hurtSfx = ''
+        hurtShake = 0.7
+        impactDistort = 0.35
+        impactFlash = 0.0
+        impactHitstop = 1.0
+        impactRumble = 1.0
+        impactSfx = ''
+        impactShake = 1.0
+        landDistort = 0.0
+        landFlash = 0.0
+        landHitstop = 0.0
+        landRumble = 0.4
+        landSfx = ''
+        landShake = 0.45
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-00000000001a'
+layer = 0
+name = 'CameraFollowManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'CameraFollowManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugActive = 0
+        debugHorizontal = 0.0
+        debugVertical = 0.000631
+        maxRequests = 8
+        recoverSpeed = 4.0
 
 [[gameobjects]]
 active = true
@@ -2237,7 +2512,7 @@ tag = 'Untagged'
     submeshIndices = [ 0, 1, 2, 3, 4, 5, 6 ]
 
     [gameobjects.SocketAttachmentComponent]
-    blendDuration = 0.0
+    blendDuration = 0.16
     enabled = true
     followPosition = true
     followRotation = true
@@ -2246,12 +2521,12 @@ tag = 'Untagged'
     positionOffset = [ 0.0, 0.0, 0.0 ]
     rotationOffsetDegrees = [ 0.0, 0.0, 0.0 ]
     scaleMultiplier = [ 1.0, 1.0, 1.0 ]
-    socketName = 'SOCKET_Holster_R'
+    socketName = 'SOCKET_Hand_R'
     target = ''
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ -0.975295, -0.191863, -0.103386 ]
+    rotation = [ 0.706536, 0.028408, -0.706536, 0.028408 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
@@ -2860,6 +3135,20 @@ tag = 'Player'
         boolValue = false
         floatValue = 0.0
         intValue = 0
+        name = 'MoveX'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'MoveY'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
         name = 'VerticalSpeed'
         type = 0
 
@@ -2917,7 +3206,7 @@ tag = 'Player'
         clipName = ''
         ikWeight = 1.0
         loop = true
-        mode = 1
+        mode = 2
         name = 'Locomotion'
         sourcePath = ''
         speed = 1.0
@@ -2925,10 +3214,18 @@ tag = 'Player'
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
             dampTime = 0.08
+            motions = []
             paramName = 'Speed'
             syncNormalizedTime = true
 
-                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.08
+            paramX = 'MoveX'
+            paramY = 'MoveY'
+            syncNormalizedTime = true
+            type = 1
+
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
                 clipIndex = -1
                 clipName = 'Idle'
                 ikWeight = 1.0
@@ -2938,31 +3235,85 @@ tag = 'Player'
                 speed = 1.0
                 threshold = 0.0
 
-                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
                 clipIndex = -1
-                clipName = 'Walk'
+                clipName = 'Walk_F'
                 ikWeight = 1.0
                 posX = 0.0
-                posY = 0.0
-                sourcePath = 'guid:58e563008174aa1f67e6a0ce332a9869|Library/Baked/bd9603dd72da663ce93340c61dc017b7/anims/Walk.anim'
+                posY = 0.5
+                sourcePath = 'guid:ab27f6267c8886082073b5f48b87e8b6|Library/Baked/52ef952d850298ab77ea279946f66464/anims/Walk_F.anim'
                 speed = 1.0
-                threshold = 0.15
+                threshold = 0.0
 
-                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
                 clipIndex = -1
-                clipName = 'Run'
+                clipName = 'Walk_B'
                 ikWeight = 1.0
                 posX = 0.0
-                posY = 0.0
-                sourcePath = 'guid:369aaaa277078d08d2512ad9e608701a|Library/Baked/3a48dd956489169cdef746fd739836e0/anims/Run.anim'
+                posY = -0.5
+                sourcePath = 'guid:1ba2d9cf04b6114d85d18b6bd6050353|Library/Baked/a677bbab2208b40862d24aa31560cd1b/anims/Walk_B.anim'
                 speed = 1.0
-                threshold = 0.38
+                threshold = 0.0
 
-            [gameobjects.AnimatorComponent.states.blendTree2D]
-            motions = []
-            paramX = ''
-            paramY = ''
-            type = 0
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
+                clipIndex = -1
+                clipName = 'Walk_R'
+                ikWeight = 1.0
+                posX = 0.5
+                posY = 0.0
+                sourcePath = 'guid:a86333ab1f809853dd93e96a62180e71|Library/Baked/8ab8c24a1da5f9e7818ffb8c8bad4177/anims/Walk_R.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
+                clipIndex = -1
+                clipName = 'Walk_L'
+                ikWeight = 1.0
+                posX = -0.5
+                posY = 0.0
+                sourcePath = 'guid:7010e332351e6f807fdf15741faa1722|Library/Baked/c5a33d03b160a95e09a0ace8b23dcf15/anims/Walk_L.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
+                clipIndex = -1
+                clipName = 'Run_F'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 1.0
+                sourcePath = 'guid:374aba0695e29f08c0ac1f2501bd23f2|Library/Baked/a51ed839eeee7e6f7294fc85cb240f89/anims/Run_F.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
+                clipIndex = -1
+                clipName = 'Run_B'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = -1.0
+                sourcePath = 'guid:ea2ccc1bb593d78c08ff4a4d24a7917e|Library/Baked/be92190d0e4d237b13d2d6abebac07bd/anims/Run_B.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
+                clipIndex = -1
+                clipName = 'Run_R'
+                ikWeight = 1.0
+                posX = 1.0
+                posY = 0.0
+                sourcePath = 'guid:3438594d3bed76c9d127cdf3320eeaf7|Library/Baked/af8e14d74d73a54869138103080a90f2/anims/Run_R.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree2D.motions]]
+                clipIndex = -1
+                clipName = 'Run_L'
+                ikWeight = 1.0
+                posX = -1.0
+                posY = 0.0
+                sourcePath = 'guid:545a225aec992dbf81ac7d68ee3c8cd5|Library/Baked/7e73cc2186a163fc5b4657ef3b02782d/anims/Run_L.anim'
+                speed = 1.0
+                threshold = 0.0
 
         [[gameobjects.AnimatorComponent.states]]
         clipIndex = -1
@@ -2981,9 +3332,11 @@ tag = 'Player'
             syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
             motions = []
             paramX = ''
             paramY = ''
+            syncNormalizedTime = false
             type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
@@ -3015,9 +3368,11 @@ tag = 'Player'
             syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
             motions = []
             paramX = ''
             paramY = ''
+            syncNormalizedTime = false
             type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
@@ -3049,9 +3404,11 @@ tag = 'Player'
             syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
             motions = []
             paramX = ''
             paramY = ''
+            syncNormalizedTime = false
             type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
@@ -3079,9 +3436,11 @@ tag = 'Player'
             syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
             motions = []
             paramX = ''
             paramY = ''
+            syncNormalizedTime = false
             type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
@@ -3110,9 +3469,11 @@ tag = 'Player'
             syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
             motions = []
             paramX = ''
             paramY = ''
+            syncNormalizedTime = false
             type = 0
 
     [gameobjects.CapsuleColliderComponent]
@@ -3136,17 +3497,61 @@ tag = 'Player'
 
     [gameobjects.CharacterControllerComponent]
     enabled = true
-    fallVelThreshold = -0.5
+    fallVelThreshold = -0.40875
     groundContactGrace = 0.12
-    groundVelThreshold = 0.3
-    groundedVelSnap = 0.35
+    groundVelThreshold = 0.2725
+    groundedVelSnap = 0.2725
     groundingMode = 0
-    intentionalJumpMaxTime = 1.0
+    intentionalJumpMaxTime = 1.471787
     isGrounded = true
-    jumpGroundIgnoreTime = 0.12
-    jumpMinAirTime = 0.2
-    ledgeFallThreshold = -1.0
+    jumpGroundIgnoreTime = 0.110384
+    jumpMinAirTime = 0.147179
+    ledgeFallThreshold = -0.68125
     minGroundNormalY = 0.5
+
+    [gameobjects.IKSolverComponent]
+    enabled = true
+
+        [[gameobjects.IKSolverComponent.chains]]
+        adjustHip = true
+        autoPole = false
+        autoPoleLocalDirection = [ 0.0, 0.0, 0.0 ]
+        boneNames = [ 'Head' ]
+        correctionDeadZone = 0.025
+        enabled = true
+        footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
+        footSurfaceOffset = 0.05
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
+        hipBoneName = 'Hips'
+        lookAtAxis = [ 0.0, 0.0, -1.0 ]
+        lookAtClampAngle = 55.0
+        lookAtSpeed = 18.0
+        lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
+        maxCorrection = 0.12
+        maxExtension = 0.98
+        minBendAngleDegrees = 0.0
+        order = 100
+        poleGuid = ''
+        poleName = ''
+        rayDownRatio = 1.2
+        rayUpRatio = 0.5
+        smoothTime = 0.1
+        softness = 0.05
+        spineAutoWeight = false
+        spineFlatWeight = 0.05
+        spineSlopeRampMeters = 0.1
+        targetGuid = 'a6bd64f7-276e-40c9-bc1f-36e19ca10e09'
+        targetName = 'HeadLookTarget_5bed1fe3-9726-4ee4-89f7-21d16f75f426'
+        targetOffset = [ 0.0, 0.0, 0.0 ]
+        type = 2
+        useAnimatorIKWeight = true
+        weight = 0.85
 
     [gameobjects.RigidBodyComponent]
     allowSleeping = true
@@ -3156,7 +3561,7 @@ tag = 'Player'
     charge = 0.0
     enabled = true
     freezePosition = [ 0.0, 0.0, 0.0 ]
-    freezeRotation = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 1.0, 1.0, 1.0 ]
     gravitationalMass = 1.0
     gravityScale = 1.0
     isGravitationalSource = false
@@ -3169,8 +3574,8 @@ tag = 'Player'
     velocity = [ 0.0, 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    position = [ -9.916632, 0.029881, 2.786494 ]
+    rotation = [ 0.0, 0.671515, 0.0, 0.740991 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
@@ -3179,73 +3584,130 @@ tag = 'Player'
 
         [gameobjects.ScriptComponents.fields]
         aimLayerName = 'Aim'
+        aimOriginBoneName = 'Chest'
+        aimPitchDownDegrees = 34.0
+        aimPitchUpDegrees = 39.0
+        aimResponse = 14.0
         aimSwayLayerName = 'Add_AimSway'
-        coneDegrees = 18.0
-        debugHealth = 0
+        aimTurnDeadzoneDegrees = 30.0
+        aimYawRangeDegrees = 45.0
+        airCameraSlack = 0.85
+        autoResolveAxis = true
+        autoTuneGrounding = true
+        beamMaterial = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
+        clampDegrees = 55.0
+        coreBrightness = 2.4
+        coreWidth = 0.09
+        cornerRatio = 0.34
+        debugAxes = 'look(0,0,-1) up(0,1,0)'
+        debugBeamTarget = ''
+        debugContactCount = 0
+        debugHealth = 5
+        debugJumpSpeed = 5.775292
+        debugLiveCount = 24
         debugTargetName = ''
-        distanceWeight = 6.0
+        debugTimeToApex = 0.588715
+        debugWeight = 0.85
+        debugWorldGravity = 9.81
+        decalMaterial = 'guid:bf9036c7ac224c139309643817a0b7bf|Assets/Materials/Decal/DecalScorch.mat'
+        depth = 0.35
+        dodgeCameraSlack = 0.7
+        dotSize = 3.0
+        drawDebugAim = false
+        drawDebugBeam = false
         drawDebugLine = false
-        drawDebugTracer = false
         drawDuration = 0.9
         drawSocketGizmos = true
         drawStateName = 'DrawPistols'
         drawTransferDelay = 0.3
-        fallbackToRaycast = true
+        emitSpread = 7.0
+        fadeSpeed = 9.0
+        fadeTime = 1.2
+        fallbackBodySize = 1.6
         fireLayerGain = 2.0
         fireLayerName = 'Add_Fire'
         fireLeftClipFile = 'guid:bd25df58d95f4297f208069c014514f5|Library/Baked/57dc1feaaa919480addc187f8797d482/anims/Fire_Pistol_L.anim'
         fireLeftClipName = 'Fire_Pistol_L'
         fireRightClipFile = 'guid:48b26f14e4c8e89df23b7012356ea83f|Library/Baked/ddfbf771594ff72e7182484d3d0d0afe/anims/Fire_Pistol_R.anim'
         fireRightClipName = 'Fire_Pistol_R'
+        gap = 9.0
+        glowBrightness = 1.0
+        glowOpacity = 0.35
+        glowWidth = 0.34
         gripSocketName = 'SOCKET_Grip'
+        headBoneName = 'Head'
+        headWeight = 0.85
         hitFrontClipFile = 'guid:399f84087c05a267c373d75c4a778b11|Library/Baked/1773fde5854e4830e224dc5e578f8b93/anims/Hit_F.anim'
         hitFrontClipName = 'Hit_F'
         hitLayerName = 'Add_Hit'
         holsterDuration = 0.9
         holsterStateName = 'HolsterPistols'
         holsterTransferDelay = 0.45
-        hurtShakeAmplitude = 0.25
-        hurtShakeDuration = 0.25
-        keyBackward = 'S'
-        keyDodge = 'Shift'
-        keyDraw = 'G'
-        keyForward = 'W'
-        keyHolster = 'H'
-        keyJump = 'Space'
-        keyLeft = 'A'
-        keyMinus = 'Q'
-        keyPlus = 'E'
-        keyRight = 'D'
-        maxRange = 40.0
+        holsteredAlpha = 0.0
+        idleColor = [ 0.2, 1.0, 0.45, 0.85 ]
+        landFeedbackSpeed = 12.0
+        lifetime = 3.5
+        lineWidth = 0.06
+        lockScale = 1.9
+        lockSeconds = 0.16
+        lookAxisOverride = [ 0.0, 0.0, 1.0 ]
+        lookWhenHolstered = true
+        markerColor = [ 0.2, 1.0, 0.45, 1.0 ]
+        maxCount = 24
+        minInterval = 0.04
+        minSize = 0.6
         modelYawOffsetDegrees = 180.0
+        moveCameraSlack = 0.45
         muzzleLeft = ''
         muzzleRight = ''
+        padding = 0.25
         paramAimPitch = 'AimPitch'
         paramAimYaw = 'AimYaw'
         paramDodgeTrigger = 'Dodge'
         paramIsGrounded = 'IsGrounded'
         paramJumpTrigger = 'Jump'
+        paramMoveX = 'MoveX'
+        paramMoveY = 'MoveY'
         paramSpeed = 'Speed'
         paramVerticalSpeed = 'VerticalSpeed'
         polarityTuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        pulseDepth = 0.06
+        pulseHz = 1.4
+        response = 18.0
+        rimIntensity = 1.1
         rotateToMoveDirection = true
+        sfxBeamStart = ''
         sfxDeath = ''
         sfxEmpty = ''
-        sfxFire = ''
-        sfxHit = ''
         sfxHurt = ''
         sfxNeutralize = ''
-        stickyBonus = 4.0
+        sfxPaint = ''
+        showPolarity = true
+        size = 0.55
+        spacing = 0.3
+        spreadResponse = 16.0
+        spriteSize = 48.0
+        stopOnGeometry = true
+        tickLength = 13.0
+        tickThickness = 2.5
+        tintByPolarity = true
         transferBlendDuration = 0.16
         tuning = 'guid:079a5e380ed2ea9c207fe6941e5e28fe|Assets/Data/PlayerTuning.fzdata'
+        turnToAim = true
+        upAxisOverride = [ 0.0, 1.0, 0.0 ]
         useCameraForward = true
         useFootIK = true
-        useMouseButtons = true
+        useTargetPolarityColor = true
         weaponLayerName = 'UpperBody'
         weaponLeft = ''
         weaponMinus = ''
         weaponPlus = ''
         weaponRight = ''
+        weightResponse = 6.0
+
+            [gameobjects.ScriptComponents.fields.crosshairSprite]
+            guid = ''
+            path = ''
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -3256,6 +3718,40 @@ tag = 'Player'
         fullColor = [ 0.16, 0.89, 0.77, 1.0 ]
         healthBackground = 'f4000002-0000-0000-0000-000000000002'
         healthFill = 'f4000002-0000-0000-0000-000000000003'
+        healthLabel = 'f4000002-0000-0000-0000-000000000004'
+        healthValue = 'f4000002-0000-0000-0000-000000000005'
+        labelBrightness = 0.72
+        lowHealthPulseDepth = 0.28
+        lowHealthPulseHz = 2.6
+        lowHealthThreshold = 0.35
+        materialColorParam = 'fillColor'
+        materialFillParam = 'fillRatio'
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PolarityGunHudComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
+        backgroundTint = 0.12
+        batteryMaterial = 'guid:b2d726280adfb8191609a881c8708919|Assets/Materials/UI/UIBattery.mat'
+        chargingBrightness = 0.3
+        holsterFadeSpeed = 9.0
+        holsteredAlpha = 0.0
+        leftBackground = 'f4000002-0000-0000-0000-000000000006'
+        leftFill = 'f4000002-0000-0000-0000-000000000007'
+        leftLabel = 'f4000002-0000-0000-0000-000000000008'
+        materialColorParam = 'fillColor'
+        materialDepletedParam = 'depleted'
+        materialFillParam = 'fillRatio'
+        materialFromRightParam = 'fillFromRight'
+        readyFlashBoost = 0.9
+        readyFlashSeconds = 0.22
+        readyPulseDepth = 0.12
+        readyPulseHz = 1.1
+        rightBackground = 'f4000002-0000-0000-0000-000000000009'
+        rightFill = 'f4000002-0000-0000-0000-00000000000a'
+        rightLabel = 'f4000002-0000-0000-0000-00000000000b'
 
 [[gameobjects]]
 active = true
@@ -3554,7 +4050,7 @@ tag = 'Untagged'
         [gameobjects.ScriptComponents.fields]
         closedDuration = 0.09
         debugState = 'Open'
-        debugTimer = 0.0
+        debugTimer = 1.123875
         doubleBlinkGap = 0.11
         doubleBlinkPercent = 25
         eyeRenderer = ''
@@ -3563,11 +4059,11 @@ tag = 'Untagged'
 
             [gameobjects.ScriptComponents.fields.closedSprite]
             guid = '7f90c4e045b524d2bd76c6774c4b29a5'
-            path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::6389c2a4-4ed2-427c-900c-f1716118284d|Assets/Sprites/T_VisorEyes.png'
+            path = 'Assets/Sprites/T_VisorEyes.png::sprite::6389c2a4-4ed2-427c-900c-f1716118284d'
 
             [gameobjects.ScriptComponents.fields.openSprite]
             guid = '7f90c4e045b524d2bd76c6774c4b29a5'
-            path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b|Assets/Sprites/T_VisorEyes.png'
+            path = 'Assets/Sprites/T_VisorEyes.png::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b'
 
 [[gameobjects]]
 active = true
@@ -5356,7 +5852,7 @@ tag = 'Untagged'
     submeshIndices = [ 0, 1, 2, 3, 4, 5, 6 ]
 
     [gameobjects.SocketAttachmentComponent]
-    blendDuration = 0.0
+    blendDuration = 0.16
     enabled = true
     followPosition = true
     followRotation = true
@@ -5365,12 +5861,12 @@ tag = 'Untagged'
     positionOffset = [ 0.0, 0.0, 0.0 ]
     rotationOffsetDegrees = [ 0.0, 0.0, 0.0 ]
     scaleMultiplier = [ 1.0, 1.0, 1.0 ]
-    socketName = 'SOCKET_Holster_L'
+    socketName = 'SOCKET_Hand_L'
     target = ''
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.976155, -0.181913, -0.085582 ]
+    rotation = [ -0.706536, 0.028408, -0.706536, -0.028408 ]
     scale = [ 0.999999, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
@@ -5875,11 +6371,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
     color = [ 0.02, 0.02, 0.03, 0.78 ]
     enabled = true
     fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
     fillOrigin = 0
     imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
     sortOrder = 0
     texturePath = ''
     uvMax = [ 1.0, 1.0 ]
@@ -5902,12 +6405,19 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
     color = [ 0.16, 0.89, 0.77, 1.0 ]
     enabled = true
     fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    sortOrder = 1
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
     texturePath = ''
     uvMax = [ 1.0, 1.0 ]
     uvMin = [ 0.0, 0.0 ]
@@ -5916,3 +6426,319 @@ tag = 'Untagged'
     position = [ 68.0, 994.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 412.0, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000004'
+layer = 0
+name = 'HUD_HealthLabel'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.1152, 0.6408, 0.5544, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 28.0
+    letterSpacing = 6.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    sortOrder = 0
+    text = 'HP'
+
+    [gameobjects.transform]
+    position = [ 64.0, 950.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 43.438599, 28.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000005'
+layer = 0
+name = 'HUD_HealthValue'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.16, 0.89, 0.77, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 28.0
+    letterSpacing = 4.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    sortOrder = 0
+    text = '5 / 5'
+
+    [gameobjects.transform]
+    position = [ 124.0, 950.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 68.14035, 28.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000006'
+layer = 0
+name = 'HUD_GunLeftBackground'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 0.0296, 0.0596, 0.1464, 0.78 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 660.0, 990.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 280.0, 26.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000007'
+layer = 0
+name = 'HUD_GunLeftFill'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 0.102647, 0.359265, 1.026472, 1.0 ]
+    enabled = true
+    fillAmount = 0.866794
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 664.0, 994.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 272.0, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000008'
+layer = 0
+name = 'HUD_GunLeftLabel'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.102647, 0.359265, 1.026472, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 30.0
+    letterSpacing = 4.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    sortOrder = 0
+    text = '-'
+
+    [gameobjects.transform]
+    position = [ 660.0, 950.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 10.842106, 30.000002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000009'
+layer = 0
+name = 'HUD_GunRightBackground'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 0.1376, 0.032, 0.0432, 0.78 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 980.0, 990.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 280.0, 26.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-00000000000a'
+layer = 0
+name = 'HUD_GunRightFill'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.026472, 0.123177, 0.143706, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 984.0, 994.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 272.0, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-00000000000b'
+layer = 0
+name = 'HUD_GunRightLabel'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 1.026472, 0.123177, 0.143706, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 30.0
+    letterSpacing = 4.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    sortOrder = 0
+    text = '+'
+
+    [gameobjects.transform]
+    position = [ 1236.0, 950.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 18.210526, 30.000002, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-00000000000c'
+layer = 0
+name = 'HUD_Objective'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.62, 0.66, 0.72, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 26.0
+    letterSpacing = 5.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    sortOrder = 0
+    text = 'RED +  BLUE -  COLLIDE ENEMIES'
+
+    [gameobjects.transform]
+    position = [ 64.0, 56.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 475.684235, 26.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-00000000000d'
+layer = 0
+name = 'HUD_Enemies'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.95, 0.96, 0.98, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 44.0
+    letterSpacing = 5.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    sortOrder = 0
+    text = 'ENEMIES 0'
+
+    [gameobjects.transform]
+    position = [ 64.0, 92.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 228.719269, 44.0, 1.0 ]

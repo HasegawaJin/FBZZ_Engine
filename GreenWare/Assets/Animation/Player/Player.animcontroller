@@ -708,6 +708,20 @@ type = 0
 boolValue = false
 floatValue = 0.0
 intValue = 0
+name = 'MoveX'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'MoveY'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
 name = 'VerticalSpeed'
 type = 0
 
@@ -765,7 +779,7 @@ clipIndex = -1
 clipName = ''
 ikWeight = 1.0
 loop = true
-mode = 1
+mode = 2
 name = 'Locomotion'
 sourcePath = ''
 speed = 1.0
@@ -773,10 +787,18 @@ transitions = []
 
     [states.blendTree1D]
     dampTime = 0.07999999821186066
+    motions = []
     paramName = 'Speed'
     syncNormalizedTime = true
 
-        [[states.blendTree1D.motions]]
+    [states.blendTree2D]
+    dampTime = 0.07999999821186066
+    paramX = 'MoveX'
+    paramY = 'MoveY'
+    syncNormalizedTime = true
+    type = 1
+
+        [[states.blendTree2D.motions]]
         clipIndex = -1
         clipName = 'Idle'
         ikWeight = 1.0
@@ -786,31 +808,85 @@ transitions = []
         speed = 1.0
         threshold = 0.0
 
-        [[states.blendTree1D.motions]]
+        [[states.blendTree2D.motions]]
         clipIndex = -1
-        clipName = 'Walk'
+        clipName = 'Walk_F'
         ikWeight = 1.0
         posX = 0.0
-        posY = 0.0
-        sourcePath = 'guid:58e563008174aa1f67e6a0ce332a9869|Library/Baked/bd9603dd72da663ce93340c61dc017b7/anims/Walk.anim'
+        posY = 0.5
+        sourcePath = 'guid:ab27f6267c8886082073b5f48b87e8b6|Library/Baked/52ef952d850298ab77ea279946f66464/anims/Walk_F.anim'
         speed = 1.0
-        threshold = 0.15000000596046448
+        threshold = 0.0
 
-        [[states.blendTree1D.motions]]
+        [[states.blendTree2D.motions]]
         clipIndex = -1
-        clipName = 'Run'
+        clipName = 'Walk_B'
         ikWeight = 1.0
         posX = 0.0
-        posY = 0.0
-        sourcePath = 'guid:369aaaa277078d08d2512ad9e608701a|Library/Baked/3a48dd956489169cdef746fd739836e0/anims/Run.anim'
+        posY = -0.5
+        sourcePath = 'guid:1ba2d9cf04b6114d85d18b6bd6050353|Library/Baked/a677bbab2208b40862d24aa31560cd1b/anims/Walk_B.anim'
         speed = 1.0
-        threshold = 0.3799999952316284
+        threshold = 0.0
 
-    [states.blendTree2D]
-    motions = []
-    paramX = ''
-    paramY = ''
-    type = 0
+        [[states.blendTree2D.motions]]
+        clipIndex = -1
+        clipName = 'Walk_R'
+        ikWeight = 1.0
+        posX = 0.5
+        posY = 0.0
+        sourcePath = 'guid:a86333ab1f809853dd93e96a62180e71|Library/Baked/8ab8c24a1da5f9e7818ffb8c8bad4177/anims/Walk_R.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree2D.motions]]
+        clipIndex = -1
+        clipName = 'Walk_L'
+        ikWeight = 1.0
+        posX = -0.5
+        posY = 0.0
+        sourcePath = 'guid:7010e332351e6f807fdf15741faa1722|Library/Baked/c5a33d03b160a95e09a0ace8b23dcf15/anims/Walk_L.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree2D.motions]]
+        clipIndex = -1
+        clipName = 'Run_F'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 1.0
+        sourcePath = 'guid:374aba0695e29f08c0ac1f2501bd23f2|Library/Baked/a51ed839eeee7e6f7294fc85cb240f89/anims/Run_F.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree2D.motions]]
+        clipIndex = -1
+        clipName = 'Run_B'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = -1.0
+        sourcePath = 'guid:ea2ccc1bb593d78c08ff4a4d24a7917e|Library/Baked/be92190d0e4d237b13d2d6abebac07bd/anims/Run_B.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree2D.motions]]
+        clipIndex = -1
+        clipName = 'Run_R'
+        ikWeight = 1.0
+        posX = 1.0
+        posY = 0.0
+        sourcePath = 'guid:3438594d3bed76c9d127cdf3320eeaf7|Library/Baked/af8e14d74d73a54869138103080a90f2/anims/Run_R.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree2D.motions]]
+        clipIndex = -1
+        clipName = 'Run_L'
+        ikWeight = 1.0
+        posX = -1.0
+        posY = 0.0
+        sourcePath = 'guid:545a225aec992dbf81ac7d68ee3c8cd5|Library/Baked/7e73cc2186a163fc5b4657ef3b02782d/anims/Run_L.anim'
+        speed = 1.0
+        threshold = 0.0
 
 [[states]]
 clipIndex = -1

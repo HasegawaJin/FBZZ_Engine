@@ -2,12 +2,16 @@
 format_version = 2
 
     [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material', 'Animator', 'Script:WeaponAnimatorComponent', 'Socket Attachment' ]
-    instance_id = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-00000000000c'
 
     [[editor.game_objects]]
     component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Environment Light', 'Atmospheric Scattering', 'Volumetric Cloud' ]
     instance_id = 'a32b8f80-b125-4507-8ca5-9902943a2913'
+
+    [[editor.game_objects]]
+    component_order = [ 'Skinned Mesh Renderer', 'Material', 'Animator', 'Script:WeaponAnimatorComponent', 'Socket Attachment' ]
+    instance_id = '2fb92689-1046-4903-aaac-84de8a3c8c0c'
 
     [[editor.game_objects]]
     component_order = [ 'Camera', 'Script:TpsCameraComponent' ]
@@ -15,19 +19,19 @@ format_version = 2
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '85dfb354-3483-4b03-b795-408927f9fb0d'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+    instance_id = '7f00224e-d247-49c8-b664-12b03be16d72'
 
     [[editor.game_objects]]
     component_order = [ 'Bone' ]
     instance_id = 'ca3d81e1-b113-493a-8388-1bcd557b1b07'
 
     [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+
+    [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '7f00224e-d247-49c8-b664-12b03be16d72'
+    instance_id = '85dfb354-3483-4b03-b795-408927f9fb0d'
 
     [[editor.game_objects]]
     component_order = [
@@ -36,7 +40,9 @@ format_version = 2
         'Script:PlayerComponent',
         'Capsule Collider',
         'Character Controller',
-        'Script:PlayerHealthBarComponent'
+        'Script:PlayerHealthBarComponent',
+        'Script:PolarityGunHudComponent',
+        'IK Solver'
     ]
     instance_id = '5bed1fe3-9726-4ee4-89f7-21d16f75f426'
 
@@ -77,7 +83,7 @@ format_version = 2
     instance_id = '29f249cf-bc13-44e7-a403-cc15ee729734'
 
     [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
     instance_id = '86c37a9f-bced-4660-b712-4af6fd78d330'
 
     [[editor.game_objects]]
@@ -87,10 +93,6 @@ format_version = 2
     [[editor.game_objects]]
     component_order = [ 'Skinned Mesh Renderer', 'Material', 'Script:EyeBlinkComponent' ]
     instance_id = '7a454cea-12a9-46ef-aefa-c84393950a9e'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'd4a5a493-22b2-42f9-a5ae-3c15068c4a86'
 
     [[editor.game_objects]]
     component_order = [ 'Bone' ]
@@ -107,6 +109,10 @@ format_version = 2
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
     instance_id = 'd5093642-ddbd-48e8-b240-4296a712de81'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000004'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
@@ -153,8 +159,23 @@ format_version = 2
     instance_id = 'f4000001-0000-0000-0000-000000000010'
 
     [[editor.game_objects]]
-    component_order = [ 'Script:PolarityFieldComponent', 'Script:GameFlowComponent' ]
+    component_order = [
+        'Script:PolarityFieldComponent',
+        'Script:GameFlowComponent',
+        'Script:TimeManagerComponent',
+        'Script:HitstopManagerComponent',
+        'Script:CombatManagerComponent',
+        'Script:CameraShakeManagerComponent',
+        'Script:RumbleManagerComponent',
+        'Script:ScreenEffectManagerComponent',
+        'Script:ImpactFeedbackManagerComponent',
+        'Script:CameraFollowManagerComponent'
+    ]
     instance_id = 'f4000001-0000-0000-0000-000000000001'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-00000000000b'
 
     [[editor.game_objects]]
     component_order = [ 'Bone' ]
@@ -163,6 +184,10 @@ format_version = 2
     [[editor.game_objects]]
     component_order = [ 'Skinned Mesh Renderer', 'Material', 'Animator', 'Socket Attachment', 'Script:WeaponAnimatorComponent' ]
     instance_id = '690a2cb8-dd61-452c-b990-c7a748f32156'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-00000000000a'
 
     [[editor.game_objects]]
     component_order = [ 'Bone' ]
@@ -181,12 +206,48 @@ format_version = 2
     instance_id = 'c78c0472-5f54-4141-bab5-8ba9191a5c64'
 
     [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000005'
+
+    [[editor.game_objects]]
     component_order = [ 'Bone' ]
     instance_id = '3dd5df67-6baa-4244-b9fb-b80b9bed694f'
 
     [[editor.game_objects]]
     component_order = [ 'Bone' ]
     instance_id = '08e36db0-bd74-4f1c-a8b9-c4fa8766d226'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Canvas' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000001'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000002'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000003'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000006'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000007'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000008'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000009'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-00000000000d'
 
 [meta]
 guid = '843910ed23be057b3f1044f8b2a275d4'
