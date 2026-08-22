@@ -112,8 +112,9 @@ tag = 'Untagged'
         autoTransition = false
         fadeDuration = 0.5
         fadeEnabled = true
-        targetScene = ''
-        viaScene = ''
+        targetScene = 'Main'
+        triggerAction = 'Submit'
+        viaScene = 'Load'
 
 [[gameobjects]]
 active = true
@@ -169,7 +170,8 @@ tag = 'Untagged'
         autoTransition = false
         fadeDuration = 0.5
         fadeEnabled = true
-        targetScene = ''
+        targetScene = 'Title'
+        triggerAction = 'Cancel'
         viaScene = ''
 
 [[gameobjects]]

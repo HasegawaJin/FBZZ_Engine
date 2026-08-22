@@ -2,13 +2,8 @@ type = 'PostProcessProfile'
 
 [[overrides]]
 active = true
-intensity = 1.0057142972946167
+intensity = 1.0
 type = 'SSAO'
-
-[[overrides]]
-active = true
-feedback = 0.8999999761581421
-type = 'TAA'
 
 [[overrides]]
 active = true
@@ -28,10 +23,22 @@ density = 0.0
 edgeFade = 1.0
 heightFalloff = 0.058056872338056564
 heightStart = 500.0
-intensity = 0.09478673338890076
-maxDistance = 1488.7796630859375
+intensity = 8.0
+maxDistance = 778.2704467773438
 minDistance = 500.0
-scattering = 0.14218010008335114
+scattering = 0.0
 steps = 4
 tint = [ 1.0, 1.0, 1.0 ]
 type = 'VolumetricLight'
+
+[[overrides]]
+active = false
+distortion = 1.0
+ghostCount = 1
+haloWidth = 0.20000000298023224
+intensity = 0.20000000298023224
+type = 'LensFlare'
+
+[[overrides]]
+active = true
+type = 'FXAA'

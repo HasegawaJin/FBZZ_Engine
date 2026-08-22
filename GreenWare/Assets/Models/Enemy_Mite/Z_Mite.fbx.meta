@@ -2,11 +2,11 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '18f10c26b1ca5223'
-source_hash = 'ca3a2fba041de969'
+settings_hash = '20e207f794e49f8b'
+source_hash = '862bc1eafb67e5fc'
 
 [meta]
-guid = 'bd9603dd72da663ce93340c61dc017b7'
+guid = '608aa85dccdd4c0e0e080276c27e5666'
 
 [model]
 clips = []
@@ -19,7 +19,15 @@ importer_version = 4
 normal_map_convention = 'DirectX'
 root_motion_node = ''
 selected_animations = []
-selected_meshes = []
+selected_meshes = [
+    'Mite_ArmorGrey',
+    'Mite_CoreGlow',
+    'Mite_EyeSprite',
+    'Mite_MetalDark',
+    'Mite_PanelLine',
+    'Mite_RingGlow',
+    'Mite_Visor'
+]
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
