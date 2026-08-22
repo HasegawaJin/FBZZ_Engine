@@ -164,6 +164,7 @@ GameObject* FindGameObjectByCollider(Scene* scene, const physics::Collider* coll
         if (matches(go.GetComponent<BoxColliderComponent>())) return &go;
         if (matches(go.GetComponent<SphereColliderComponent>())) return &go;
         if (matches(go.GetComponent<CapsuleColliderComponent>())) return &go;
+        if (matches(go.GetComponent<CylinderColliderComponent>())) return &go;
         if (matches(go.GetComponent<MeshColliderComponent>())) return &go;
         if (matches(go.GetComponent<ConvexHullColliderComponent>())) return &go;
     }
@@ -722,6 +723,7 @@ ColliderComponent* SelfAnyCollider(const Script* script)
     if (auto* c = script->GetComponent<AabbColliderComponent>()) return c;
     if (auto* c = script->GetComponent<SphereColliderComponent>()) return c;
     if (auto* c = script->GetComponent<CapsuleColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<CylinderColliderComponent>()) return c;
     if (auto* c = script->GetComponent<MeshColliderComponent>()) return c;
     if (auto* c = script->GetComponent<ConvexHullColliderComponent>()) return c;
     if (auto* c = script->GetComponent<TerrainColliderComponent>()) return c;
@@ -762,6 +764,13 @@ void ScriptColliderProxy::SetCapsule(float radius, float halfHeight) const
     if (!script || !script->m_gameObject) return;
     if (auto* c = script->m_gameObject->GetComponent<CapsuleColliderComponent>())
         c->SetCapsule(radius, halfHeight);
+}
+
+void ScriptColliderProxy::SetCylinder(float radius, float halfHeight) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<CylinderColliderComponent>())
+        c->SetCylinder(radius, halfHeight);
 }
 
 void ScriptColliderProxy::SetMesh(std::string_view meshPath, int meshIndex) const

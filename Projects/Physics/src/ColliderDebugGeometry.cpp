@@ -6,6 +6,7 @@
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
@@ -193,6 +194,30 @@ namespace
         return out;
     }
 
+    ColliderDebugGeometry BuildCylinderGeometry(const CylinderCollider& cylinder)
+    {
+        ColliderDebugGeometry out;
+        const math::Vector3 top = cylinder.GetSegmentEnd();
+        const math::Vector3 bottom = cylinder.GetSegmentStart();
+        const math::Vector3 axis = top - bottom;
+        if (axis.LengthSq() < 1e-6f)
+            return BuildAABBGeometry(cylinder);
+
+        math::Vector3 x;
+        math::Vector3 y;
+        math::Vector3 z;
+        BuildBasis(axis, x, y, z);
+
+        AddCircle(out, top, x, z, cylinder.m_radius);
+        AddCircle(out, bottom, x, z, cylinder.m_radius);
+
+        AddLine(out, top + x * cylinder.m_radius, bottom + x * cylinder.m_radius);
+        AddLine(out, top - x * cylinder.m_radius, bottom - x * cylinder.m_radius);
+        AddLine(out, top + z * cylinder.m_radius, bottom + z * cylinder.m_radius);
+        AddLine(out, top - z * cylinder.m_radius, bottom - z * cylinder.m_radius);
+        return out;
+    }
+
     ColliderDebugGeometry BuildTriangleMeshGeometry(const TriangleMeshCollider& mesh)
     {
         ColliderDebugGeometry out;
@@ -305,6 +330,8 @@ ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider)
         return BuildOBBGeometry(static_cast<const OBBCollider&>(collider));
     case ColliderType::CAPSULE:
         return BuildCapsuleGeometry(static_cast<const CapsuleCollider&>(collider));
+    case ColliderType::CYLINDER:
+        return BuildCylinderGeometry(static_cast<const CylinderCollider&>(collider));
     case ColliderType::TRIANGLE_MESH:
         return BuildTriangleMeshGeometry(static_cast<const TriangleMeshCollider&>(collider));
     case ColliderType::CONVEX_HULL:

@@ -6,6 +6,7 @@
 #include <Physics/AABBCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <algorithm>
 
 namespace fbzz::physics {
@@ -269,6 +270,20 @@ void RigidBody::RecomputeInertia()
         const auto* capsule = static_cast<const CapsuleCollider*>(m_inertiaCollider);
         const float r = capsule->m_radius;
         const float h = capsule->m_halfHeight * 2.0f;
+        const float ixz = (m * (3.0f * r * r + h * h)) / 12.0f;
+        const float iy = 0.5f * m * r * r;
+        m_invInertiaDiag = {
+            ixz == 0.0f ? 0.0f : 1.0f / ixz,
+            iy == 0.0f ? 0.0f : 1.0f / iy,
+            ixz == 0.0f ? 0.0f : 1.0f / ixz
+        };
+    }
+    else if (type == ColliderType::CYLINDER)
+    {
+        // 中実円柱: 軸周り 1/2 m r²、軸に垂直な 2 軸は 1/12 m (3r² + h²)。
+        const auto* cylinder = static_cast<const CylinderCollider*>(m_inertiaCollider);
+        const float r = cylinder->m_radius;
+        const float h = cylinder->m_halfHeight * 2.0f;
         const float ixz = (m * (3.0f * r * r + h * h)) / 12.0f;
         const float iy = 0.5f * m * r * r;
         m_invInertiaDiag = {

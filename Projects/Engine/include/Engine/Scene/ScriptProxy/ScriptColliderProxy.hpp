@@ -20,6 +20,7 @@ struct ScriptColliderProxy {
     void SetBoxSize(const math::Vector3& size) const;
     void SetSphereRadius(float radius) const;
     void SetCapsule(float radius, float halfHeight) const;
+    void SetCylinder(float radius, float halfHeight) const;
     void SetMesh(std::string_view meshPath, int meshIndex = 0) const;
 
     // ── 物理マテリアル ────────────────────────────────────────────────────

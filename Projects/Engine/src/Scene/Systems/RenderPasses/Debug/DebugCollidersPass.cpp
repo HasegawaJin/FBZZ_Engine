@@ -100,6 +100,7 @@ void DebugCollidersPass::Execute(RenderPassContext& ctx)
     DrawCollidersOfType<BoxColliderComponent>(ctx, kColor);
     DrawCollidersOfType<SphereColliderComponent>(ctx, kColor);
     DrawCollidersOfType<CapsuleColliderComponent>(ctx, kColor);
+    DrawCollidersOfType<CylinderColliderComponent>(ctx, kColor);
     DrawCollidersOfType<MeshColliderComponent>(ctx, kColor);
     DrawCollidersOfType<ConvexHullColliderComponent>(ctx, kColor);
     // TerrainCollider は従来この一覧から漏れており、地形の当たり判定だけ

@@ -128,16 +128,25 @@ void HaltKeepingTarget(NavMeshAgentComponent& agent)
     agent.state = NavMeshAgentState::IDLE;
 }
 
-// GO に付いているコライダーの底面から GO 原点までの Y オフセットを返す。
+// GO に付いているコライダーの底面から GO 原点までの Y オフセット (ワールド)。
 // snapToNavMesh でエージェントの足元を NavMesh 面に合わせるために使う。
+//
+// WHY worldScale を掛けるか: Inspector の寸法はスケールを掛ける前の値で、
+//     実際の当たり判定は ColliderSync がスケールを掛けたもの。掛けずに使うと
+//     スケール 2 のキャラクターが床へ半分めり込む。
 static float ColliderFloorOffset(GameObject& go)
 {
+    const math::Vector3& s = go.transform.worldScale;
+    const float sx = std::abs(s.x), sy = std::abs(s.y), sz = std::abs(s.z);
+
     if (const auto* cap = go.GetComponent<scene::CapsuleColliderComponent>())
-        return cap->halfHeight + cap->radius - cap->center.y;
+        return cap->halfHeight * sy + cap->radius * std::max(sx, sz) - cap->center.y * sy;
+    if (const auto* cyl = go.GetComponent<scene::CylinderColliderComponent>())
+        return (cyl->halfHeight - cyl->center.y) * sy;
     if (const auto* box = go.GetComponent<scene::BoxColliderComponent>())
-        return box->size.y * 0.5f - box->center.y;
+        return (box->size.y * 0.5f - box->center.y) * sy;
     if (const auto* sph = go.GetComponent<scene::SphereColliderComponent>())
-        return sph->radius - sph->center.y;
+        return sph->radius * std::max({ sx, sy, sz }) - sph->center.y * sy;
     return 0.0f;
 }
 

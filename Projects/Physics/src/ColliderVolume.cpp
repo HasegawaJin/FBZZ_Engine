@@ -5,6 +5,7 @@
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -33,6 +34,9 @@ namespace fbzz::physics
                    position.y >= aabb.min.y && position.y <= aabb.max.y &&
                    position.z >= aabb.min.z && position.z <= aabb.max.z;
         }
+
+        if (m_collider->GetType() == ColliderType::CYLINDER)
+            return static_cast<const CylinderCollider*>(m_collider)->Contains(position);
 
         // Capsule は線分上の最近傍点との距離で内外を判定する。
         const auto* capsule = static_cast<const CapsuleCollider*>(m_collider);

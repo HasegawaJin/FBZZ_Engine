@@ -110,6 +110,14 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
     SyncColliderPreview(go, col);
 }
 
+void DrawCylinderCollider(scene::CylinderColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
+{
+    DrawColliderCommon(col, go, projectRoot);
+    ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
+    ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
+    SyncColliderPreview(go, col);
+}
+
 void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col, go, projectRoot);
@@ -268,6 +276,11 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawComponentSection<scene::CapsuleColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Capsule Collider",
         [go](scene::CapsuleColliderComponent& col, EditorContext& ctx2) {
             DrawCapsuleCollider(col, *go, ctx2.projectRoot);
+        });
+
+    DrawComponentSection<scene::CylinderColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Cylinder Collider",
+        [go](scene::CylinderColliderComponent& col, EditorContext& ctx2) {
+            DrawCylinderCollider(col, *go, ctx2.projectRoot);
         });
 
     DrawComponentSectionCustom<scene::MeshColliderComponent, MeshColliderValue>(

@@ -73,6 +73,9 @@ void AttachFittedCollider(scene::GameObject& go, PrimitiveKind kind)
     case PrimitiveKind::Capsule:
         go.AddComponent<scene::CapsuleColliderComponent>(colliderfit::MakeFittedCapsuleCollider(go));
         break;
+    case PrimitiveKind::Cylinder:
+        go.AddComponent<scene::CylinderColliderComponent>(colliderfit::MakeFittedCylinderCollider(go));
+        break;
     default:
         go.AddComponent<scene::BoxColliderComponent>(colliderfit::MakeFittedBoxCollider(go));
         break;
@@ -593,7 +596,7 @@ constexpr ObjectPreset kPresets[] = {
     { "3d.sphere",   "3D Object", "Sphere",   "MeshRenderer(sphere) + Lit マテリアル + Sphere Collider", &MakeSphere },
     { "3d.plane",    "3D Object", "Plane",    "MeshRenderer(plane) + Lit マテリアル + Box Collider", &MakePlane },
     { "3d.quad",     "3D Object", "Quad",     "MeshRenderer(quad) + Lit マテリアル + Box Collider + カメラを向くスクリプト", &MakeQuad },
-    { "3d.cylinder", "3D Object", "Cylinder", "MeshRenderer(cylinder) + Lit マテリアル + Box Collider", &MakeCylinder },
+    { "3d.cylinder", "3D Object", "Cylinder", "MeshRenderer(cylinder) + Lit マテリアル + Cylinder Collider", &MakeCylinder },
     { "3d.cone",     "3D Object", "Cone",     "MeshRenderer(cone) + Lit マテリアル + Box Collider", &MakeCone },
     { "3d.torus",    "3D Object", "Torus",    "MeshRenderer(torus) + Lit マテリアル + Box Collider", &MakeTorus },
     { "3d.capsule",  "3D Object", "Capsule",  "MeshRenderer(capsule) + Lit マテリアル + Capsule Collider", &MakeCapsule },

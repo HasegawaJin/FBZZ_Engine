@@ -228,7 +228,8 @@ using ComponentRegistry = std::tuple<
     FBZZ_COMPONENT(AudioMixerSendComponent, Audio, "Audio Mixer Send"),
     // WHY 末尾か: ComponentRegistry の順序は Scene の SoA tuple 順と
     //      Script DLL ABI に影響する。既存順を崩さず末尾へ追加する。
-    FBZZ_COMPONENT(BehaviorTreeComponent, Navigation, "Behavior Tree")
+    FBZZ_COMPONENT(BehaviorTreeComponent, Navigation, "Behavior Tree"),
+    FBZZ_CUSTOM_COMPONENT(CylinderColliderComponent, Physics, "Cylinder Collider")
 >;
 
 template<typename Registry>

@@ -532,7 +532,8 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 std::fabs(t.scale.y - t.scale.z) > 0.001f;
             const bool radialCollider =
                 go->GetComponent<scene::SphereColliderComponent>() ||
-                go->GetComponent<scene::CapsuleColliderComponent>();
+                go->GetComponent<scene::CapsuleColliderComponent>() ||
+                go->GetComponent<scene::CylinderColliderComponent>();
             if (nonUniform && radialCollider) {
                 ImGui::Spacing();
                 ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));

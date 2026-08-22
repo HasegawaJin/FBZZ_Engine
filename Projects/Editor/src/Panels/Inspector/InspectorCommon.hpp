@@ -288,6 +288,7 @@ FBZZ_COMPONENT_UNDO_REFLECTS(BoxColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(CapsuleColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(CharacterControllerComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(ConvexHullColliderComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(CylinderColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(DecalComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(EnvironmentLightComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(LightComponent)
@@ -1380,6 +1381,14 @@ inline scene::CapsuleColliderComponent CreateCapsuleCollider(float radius = 0.5f
     collider.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
     return collider;
 }
+inline scene::CylinderColliderComponent CreateCylinderCollider(float radius = 0.5f, float halfHeight = 1.0f)
+{
+    scene::CylinderColliderComponent collider;
+    collider.radius = radius;
+    collider.halfHeight = halfHeight;
+    collider.collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
+    return collider;
+}
 // SyncColliderPreview — Inspector で形状を編集した直後に physics::Collider へ反映する。
 // WHY: 以前はここに独自の姿勢反映コピーがあり、しかも world ではなくローカルの
 //      position / rotation を使っていたため、親を持つオブジェクトでは Inspector の
@@ -1387,7 +1396,7 @@ inline scene::CapsuleColliderComponent CreateCapsuleCollider(float radius = 0.5f
 template<typename T>
 void SyncColliderPreview(scene::GameObject& go, T& col)
 {
-    scene::SyncColliderShape(col);
+    scene::SyncColliderShape(col, go.transform.worldScale);
     if (!col.collider) return;
 
     bool useTransformScale = true;
@@ -1566,6 +1575,8 @@ void AddRegisteredComponent(scene::GameObject& go)
         go.AddComponent<T>(colliderfit::MakeFittedSphereCollider(go));
     } else if constexpr (std::is_same_v<T, scene::CapsuleColliderComponent>) {
         go.AddComponent<T>(colliderfit::MakeFittedCapsuleCollider(go));
+    } else if constexpr (std::is_same_v<T, scene::CylinderColliderComponent>) {
+        go.AddComponent<T>(colliderfit::MakeFittedCylinderCollider(go));
     } else if constexpr (std::is_same_v<T, scene::MeshColliderComponent>) {
         T collider;
         auto mesh = SourceMeshFromGameObject(go, collider.meshPath, collider.meshIndex);
