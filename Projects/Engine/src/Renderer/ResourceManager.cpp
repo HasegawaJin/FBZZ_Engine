@@ -31,7 +31,7 @@ std::string TextureCacheKey(std::string_view path)
     std::string spriteName;
     // Sprite参照はGPU上では親Textureを共有する。サブアセット名をキャッシュキーへ
     // 含めると同じ画像を重複ロードするため、ここで親パスへ正規化する。
-    asset::ParseSpriteReference(path, key, spriteName);
+    (void)asset::ParseSpriteReference(path, key, spriteName);
     std::replace(key.begin(), key.end(), '\\', '/');
     return key;
 }

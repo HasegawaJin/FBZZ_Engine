@@ -326,7 +326,7 @@ bool TexDescSerializer::ResolveSourcePath(
 
     std::string inputPath;
     std::string spriteName;
-    ParseSpriteReference(texturePath, inputPath, spriteName);
+    (void)ParseSpriteReference(texturePath, inputPath, spriteName);
     std::string extension = util::FileSystem::GetExtension(inputPath);
     std::transform(extension.begin(), extension.end(), extension.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
