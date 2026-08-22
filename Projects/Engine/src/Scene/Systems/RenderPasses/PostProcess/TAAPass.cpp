@@ -33,6 +33,14 @@ void ExecuteTAAPass(RenderPassContext& ctx)
     // WHAT: 書き込み先の history バッファを RT としてセット
     r.SetRenderTarget(historyWrite, resources);
 
+    // TAA.hlsl は近傍 3x3 の variance clipping に b5 の texelSize を使う。
+    // WHY: 束縛しないと DX12 は未指定スロットを null CBV で埋めるため texelSize が 0 になり、
+    //      近傍 8 点が全て自分自身になって clip 範囲が潰れ、履歴が毎フレーム現フレーム色へ
+    //      丸められる = TAA が何もしなくなる。DX11 は直前の Composite の束縛が残るため
+    //      たまたま動いていた。
+    const PostProcCB taaData = MakeScreenPostProcCB(ctx.width, ctx.height);
+    resources.Update(h.postprocCB, &taaData, sizeof(PostProcCB));
+
     // WHAT: 現フレーム LDR (t5) + 前フレーム履歴 (t21=TEX_TAA_HISTORY) を入力に
     //       variance clipping でゴーストを抑制しながら taaFeedback で重み付けブレンド。
     // WHY: TAA は Composite (トーンマップ後) の LDR 出力に対して適用する。
@@ -42,8 +50,9 @@ void ExecuteTAAPass(RenderPassContext& ctx)
     taaDC.shader          = h.taaShader;
     taaDC.pipelineState   = h.taaPSO;
     taaDC.vertexCount     = 3;    // フルスクリーントライアングル
-    taaDC.constantBuffers[0] = h.frameCB;            // b0: CameraConstants (jitter, inv matrices)
-    taaDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: taaFeedback, taaJitterX/Y, prevViewProjection
+    taaDC.constantBuffers[0] = h.frameCB;            // b0: CameraConstants (inv matrices)
+    taaDC.constantBuffers[5] = h.postprocCB;         // b5: texelSize (近傍サンプル幅)
+    taaDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: taaFeedback, prevViewProjection
     taaDC.textures[5]        = resources.GetColorTexture(h.ldrRT, 0);   // t5: 現フレーム LDR (Composite 出力)
     taaDC.textures[21]       = resources.GetColorTexture(historyRead, 0); // t21: TEX_TAA_HISTORY (前フレーム)
     r.Submit(taaDC, resources);

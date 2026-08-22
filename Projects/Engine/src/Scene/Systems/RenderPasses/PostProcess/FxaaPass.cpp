@@ -16,6 +16,12 @@ void ExecuteFxaaPass(RenderPassContext& ctx)
     {
         ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
 
+        // FXAA.hlsl はサンプル間隔を b5 の texelSize だけで決める。
+        // WHY: 直前に b5 を書いたのが Composite か CustomPostProcess かでたまたま正しい値が
+        //      残っていただけで、チェーンの構成が変われば静かに壊れる。自前で入れる。
+        const PostProcCB fxaaData = MakeScreenPostProcCB(ctx.width, ctx.height);
+        ctx.resources.Update(h.postprocCB, &fxaaData, sizeof(PostProcCB));
+
         renderer::DrawCall fxaaDC;
         fxaaDC.shader = h.fxaaShader;
         fxaaDC.pipelineState = h.postprocPSO;
@@ -38,6 +44,9 @@ void ExecuteTAABlitPass(RenderPassContext& ctx)
     if (!h.fxaaShader.IsValid() || !h.fxaaInput.IsValid()) return;
 
     ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
+
+    const PostProcCB blitData = MakeScreenPostProcCB(ctx.width, ctx.height);
+    ctx.resources.Update(h.postprocCB, &blitData, sizeof(PostProcCB));
 
     renderer::DrawCall blitDC;
     blitDC.shader             = h.fxaaShader;

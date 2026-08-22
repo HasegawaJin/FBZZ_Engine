@@ -6,6 +6,7 @@
 //      GTAO (Horizon-Based AO) はスライスごとに水平線角度を積分するため、物理的に正確な AO が得られる。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
 
 namespace fbzz::scene {
@@ -23,7 +24,14 @@ void ExecuteGTAOPass(RenderPassContext& ctx)
         !h.gbufferRT.IsValid())
         return;
 
-    // CB は advancedGraphicsCB (b8) から読む — 呼び出し元が毎フレーム更新済み
+    // GTAO は b8 のパラメータに加え、b5 の texelSize/screenSize でホライゾンの UV オフセットを、
+    // time でスライス位相のディザを決める。
+    // WHY: b5 を更新するパスはこれより後 (SSAO / DeferredLighting / Composite) にしかない。
+    //      束縛だけして更新しないと前フレームの残りを読むことになり、初回フレームは 0 のまま
+    //      = UV オフセットが消えて AO が真っ白になる。自前で入れて他パスに依存しない。
+    PostProcCB gtaoData = MakeScreenPostProcCB(ctx.width, ctx.height);
+    gtaoData.time = Time::time;
+    resources.Update(h.postprocCB, &gtaoData, sizeof(PostProcCB));
 
     // --- GTAO RAW パス ---
     // WHAT: GBuffer1 (法線) と深度から Horizon-Based AO を計算し、UAV_GTAO_RAW (u6) に出力する。

@@ -25,6 +25,9 @@ void ExecuteBloomPass(RenderPassContext& ctx)
         halfData.screenSize[1] = static_cast<float>(ctx.height);
         halfData.bloomThreshold = rs.postProcess.bloom.threshold;
         halfData.bloomSoftKnee = rs.postProcess.bloom.softKnee;
+        // BloomDownsample は bloomIntensity <= 0 を「Bloom 無効」と見なして出力をゼロ埋めする。
+        // 合成側の強度は Composite が別途 b5 に載せるため、ここでは有効フラグとしてのみ使う。
+        halfData.bloomIntensity = rs.postProcess.bloom.intensity;
         resources.Update(h.postprocCB, &halfData, sizeof(PostProcCB));
 
         renderer::ComputeCall bloomDownDC;
