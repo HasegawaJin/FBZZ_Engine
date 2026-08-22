@@ -1315,6 +1315,10 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 lcTbl.insert("innerCone", (double)lc->innerCone);
                 lcTbl.insert("outerCone", (double)lc->outerCone);
             }
+            lcTbl.insert("castShadows",    lc->castShadows);
+            lcTbl.insert("shadowBias",     (double)lc->shadowBias);
+            lcTbl.insert("shadowStrength", (double)lc->shadowStrength);
+            lcTbl.insert("shadowDistance", (double)lc->shadowDistance);
             goTbl.insert("LightComponent", std::move(lcTbl));
         }
 
@@ -1597,6 +1601,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("minVertexDist",      (double)trail->minVertexDist);
             trailTbl.insert("widthStart",         (double)trail->widthStart);
             trailTbl.insert("widthEnd",           (double)trail->widthEnd);
+            trailTbl.insert("beamMode",           trail->beamMode);
+            trailTbl.insert("beamStart",          Vec3ToArr(trail->beamStart));
+            trailTbl.insert("beamEnd",            Vec3ToArr(trail->beamEnd));
             trailTbl.insert("widthEasing",        (int64_t)static_cast<int>(trail->widthEasing));
             trailTbl.insert("colorStart",         Vec4ToArr(trail->colorStart));
             trailTbl.insert("colorEnd",           Vec4ToArr(trail->colorEnd));
@@ -2211,8 +2218,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* tgc = go.GetComponent<TerrainGridComponent>()) {
             tgc->SyncInstanceIds(scene);
             toml::table tbl;
+            tbl.insert("enabled",    tgc->enabled);
             tbl.insert("cellCountX", (int64_t)tgc->cellCountX);
             tbl.insert("cellCountZ", (int64_t)tgc->cellCountZ);
+            tbl.insert("defaultColumns",   (int64_t)tgc->defaultColumns);
+            tbl.insert("defaultRows",      (int64_t)tgc->defaultRows);
+            tbl.insert("defaultCellSize",  (double)tgc->defaultCellSize);
+            tbl.insert("defaultChunkSize", (int64_t)tgc->defaultChunkSize);
             toml::array cellArr;
             for (const auto& guid : tgc->cellInstanceIds)
                 cellArr.push_back(guid);
@@ -2331,13 +2343,19 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             volTbl.insert("maxSlopeAngleDeg",  static_cast<double>(surface->maxSlopeAngleDeg));
             volTbl.insert("agentRadius",       static_cast<double>(surface->agentRadius));
             volTbl.insert("agentHeight",       static_cast<double>(surface->agentHeight));
+            volTbl.insert("agentTypeId",       static_cast<int64_t>(surface->agentTypeId));
+            toml::array areaCostArr;
+            for (float cost : surface->areaCosts)
+                areaCostArr.push_back(static_cast<double>(cost));
+            volTbl.insert("areaCosts", std::move(areaCostArr));
             goTbl.insert("NavMeshSurfaceComponent", std::move(volTbl));
         }
 
         if (auto* modifier = go.GetComponent<NavMeshModifierComponent>()) {
             toml::table modTbl;
-            modTbl.insert("enabled", modifier->enabled);
-            modTbl.insert("mode",    static_cast<int64_t>(static_cast<uint8_t>(modifier->mode)));
+            modTbl.insert("enabled",  modifier->enabled);
+            modTbl.insert("mode",     static_cast<int64_t>(static_cast<uint8_t>(modifier->mode)));
+            modTbl.insert("areaType", static_cast<int64_t>(modifier->areaType));
             goTbl.insert("NavMeshModifierComponent", std::move(modTbl));
         }
 
@@ -2351,6 +2369,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             agentTbl.insert("angularSpeedDeg",  static_cast<double>(agent->angularSpeedDeg));
             agentTbl.insert("stoppingDistance", static_cast<double>(agent->stoppingDistance));
             agentTbl.insert("avoidancePriority", static_cast<int64_t>(agent->avoidancePriority));
+            agentTbl.insert("agentTypeId",      static_cast<int64_t>(agent->agentTypeId));
+            agentTbl.insert("snapToNavMesh",    agent->snapToNavMesh);
+            agentTbl.insert("updatePosition",   agent->updatePosition);
+            agentTbl.insert("updateRotation",   agent->updateRotation);
+            agentTbl.insert("autoBraking",      agent->autoBraking);
+            agentTbl.insert("areaMask",         static_cast<int64_t>(agent->areaMask));
             goTbl.insert("NavMeshAgentComponent", std::move(agentTbl));
         }
 
@@ -2379,6 +2403,14 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             for (const auto& wp : patrol->waypoints)
                 wpArr.push_back(Vec3ToArr(wp));
             patrolTbl.insert("waypoints", std::move(wpArr));
+            toml::array waitArr;
+            for (float wait : patrol->waypointWaitTimes)
+                waitArr.push_back(static_cast<double>(wait));
+            patrolTbl.insert("waypointWaitTimes", std::move(waitArr));
+            toml::array speedArr;
+            for (float speed : patrol->waypointSpeeds)
+                speedArr.push_back(static_cast<double>(speed));
+            patrolTbl.insert("waypointSpeeds", std::move(speedArr));
             goTbl.insert("NavMeshPatrolComponent", std::move(patrolTbl));
         }
 
@@ -2392,6 +2424,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             sensorTbl.insert("useLineOfSight",     sensor->useLineOfSight);
             sensorTbl.insert("autoChase",          sensor->autoChase);
             sensorTbl.insert("chaseRepathInterval", static_cast<double>(sensor->chaseRepathInterval));
+            sensorTbl.insert("memoryTime",         static_cast<double>(sensor->memoryTime));
+            sensorTbl.insert("scanInterval",       static_cast<double>(sensor->scanInterval));
+            sensorTbl.insert("heightThreshold",    static_cast<double>(sensor->heightThreshold));
             goTbl.insert("NavMeshSensorComponent", std::move(sensorTbl));
         }
 
@@ -2451,15 +2486,25 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 std::unique_ptr<Scene> SceneSerializer::Load(
     const std::string& path, renderer::ResourceManager& resources)
 {
+    // WHY assert しないか: シーンファイルが無い / 壊れているのはデータ側の事故で、
+    //     プログラムの不変条件が破れたわけではない。assert は Debug ビルドで
+    //     プロセスごと abort させるため、UI ボタンで壊れたシーンへ遷移しただけで
+    //     エディタが落ちる。データの誤りは必ずログにして、呼び出し側へ nullptr で返す。
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) {
-        assert(false && "SceneSerializer::Load — file not found");
+        FBZZ_LOG_ERROR("SceneSerializer: scene file not found [%s]", path.c_str());
         return nullptr;
     }
 
     auto result = toml::parse(text);
     if (!result) {
-        assert(false && "SceneSerializer::Load — TOML parse error");
+        // 行と列まで出す。壊れたシーンは目視で原因を探すのが難しい。
+        const auto& err = result.error();
+        FBZZ_LOG_ERROR("SceneSerializer: TOML parse error in [%s]\n  line %u, column %u: %s",
+                       path.c_str(),
+                       static_cast<unsigned>(err.source().begin.line),
+                       static_cast<unsigned>(err.source().begin.column),
+                       std::string(err.description()).c_str());
         return nullptr;
     }
     auto& doc = result.table();
@@ -2580,6 +2625,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             lc.range     = (float)(*lcTbl)["range"].value_or(10.0);
             lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
             lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
+            lc.castShadows    = (*lcTbl)["castShadows"].value_or(true);
+            lc.shadowBias     = (float)(*lcTbl)["shadowBias"].value_or(1.0);
+            lc.shadowStrength = (float)(*lcTbl)["shadowStrength"].value_or(1.0);
+            lc.shadowDistance = (float)(*lcTbl)["shadowDistance"].value_or(0.0);
             go.AddComponent<LightComponent>(lc);
         }
 
@@ -2883,6 +2932,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
             trail.widthStart     = (float)(*trailTbl)["widthStart"].value_or(0.20);
             trail.widthEnd       = (float)(*trailTbl)["widthEnd"].value_or(0.02);
+            trail.beamMode       = (*trailTbl)["beamMode"].value_or(false);
+            trail.beamStart      = ArrToVec3((*trailTbl)["beamStart"].as_array(), math::Vector3::ZERO);
+            trail.beamEnd        = ArrToVec3((*trailTbl)["beamEnd"].as_array(), { 0.0f, 0.0f, 5.0f });
             int widthEasing = (int)(*trailTbl)["widthEasing"].value_or((int64_t)0);
             widthEasing = widthEasing < 0 ? 0 : (widthEasing > 3 ? 3 : widthEasing);
             trail.widthEasing = static_cast<TrailWidthEasing>(widthEasing);
@@ -3522,8 +3574,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // TerrainGridComponent — cells は全 GO ロード後に ResolveFromScene() で解決する
         if (auto* tgcTbl = (*goTbl)["TerrainGridComponent"].as_table()) {
             TerrainGridComponent tgc;
+            tgc.enabled    = (*tgcTbl)["enabled"].value_or(true);
             tgc.cellCountX = (int)(*tgcTbl)["cellCountX"].value_or((int64_t)4);
             tgc.cellCountZ = (int)(*tgcTbl)["cellCountZ"].value_or((int64_t)4);
+            tgc.defaultColumns   = (int)(*tgcTbl)["defaultColumns"].value_or((int64_t)65);
+            tgc.defaultRows      = (int)(*tgcTbl)["defaultRows"].value_or((int64_t)65);
+            tgc.defaultCellSize  = (float)(*tgcTbl)["defaultCellSize"].value_or(2.0);
+            tgc.defaultChunkSize = (int)(*tgcTbl)["defaultChunkSize"].value_or((int64_t)32);
             if (const auto* cellArr = (*tgcTbl)["cells"].as_array()) {
                 for (const auto& node : *cellArr)
                     tgc.cellInstanceIds.push_back(node.value_or(std::string{}));
@@ -3685,6 +3742,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 surface.agentHeight      = static_cast<float>((*surfTbl)["agentHeight"].value_or(2.0));
                 surface.collectObjects   = static_cast<NavMeshCollectObjects>(
                     static_cast<uint8_t>((*surfTbl)["collectObjects"].value_or(int64_t{0})));
+                surface.agentTypeId      = static_cast<int>((*surfTbl)["agentTypeId"].value_or(int64_t{0}));
+                if (auto* costArr = (*surfTbl)["areaCosts"].as_array()) {
+                    const size_t count = (std::min)(costArr->size(), std::size(surface.areaCosts));
+                    for (size_t i = 0; i < count; ++i) {
+                        const float cost = static_cast<float>((*costArr)[i].value_or(1.0));
+                        surface.areaCosts[i] = cost < 1.0f ? 1.0f : cost;
+                    }
+                }
                 surface.needsBake        = true;
                 go.AddComponent<NavMeshSurfaceComponent>(std::move(surface));
             }
@@ -3698,6 +3763,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 modifier.enabled = (*modTbl)["enabled"].value_or(true);
                 modifier.mode    = static_cast<NavMeshModifierMode>(
                     static_cast<uint8_t>((*modTbl)["mode"].value_or(int64_t{0})));
+                modifier.areaType = static_cast<int>((*modTbl)["areaType"].value_or(int64_t{0}));
                 go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
             }
         }
@@ -3711,6 +3777,12 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             agent.angularSpeedDeg  = static_cast<float>((*agentTbl)["angularSpeedDeg"].value_or(360.0));
             agent.stoppingDistance = static_cast<float>((*agentTbl)["stoppingDistance"].value_or(0.1));
             agent.avoidancePriority = static_cast<int>((*agentTbl)["avoidancePriority"].value_or(int64_t{0}));
+            agent.agentTypeId      = static_cast<int>((*agentTbl)["agentTypeId"].value_or(int64_t{0}));
+            agent.snapToNavMesh    = (*agentTbl)["snapToNavMesh"].value_or(false);
+            agent.updatePosition   = (*agentTbl)["updatePosition"].value_or(true);
+            agent.updateRotation   = (*agentTbl)["updateRotation"].value_or(true);
+            agent.autoBraking      = (*agentTbl)["autoBraking"].value_or(true);
+            agent.areaMask         = static_cast<int>((*agentTbl)["areaMask"].value_or(int64_t{-1}));
             go.AddComponent<NavMeshAgentComponent>(std::move(agent));
         }
 
@@ -3737,6 +3809,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 for (auto& wpNode : *wpArr)
                     patrol.waypoints.push_back(ArrToVec3(wpNode.as_array(), math::Vector3::ZERO));
             }
+            if (auto* waitArr = (*patrolTbl)["waypointWaitTimes"].as_array()) {
+                for (auto& waitNode : *waitArr)
+                    patrol.waypointWaitTimes.push_back(static_cast<float>(waitNode.value_or(0.0)));
+            }
+            if (auto* speedArr = (*patrolTbl)["waypointSpeeds"].as_array()) {
+                for (auto& speedNode : *speedArr)
+                    patrol.waypointSpeeds.push_back(static_cast<float>(speedNode.value_or(0.0)));
+            }
             go.AddComponent<NavMeshPatrolComponent>(std::move(patrol));
         }
 
@@ -3749,6 +3829,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sensor.useLineOfSight      = (*sensorTbl)["useLineOfSight"].value_or(true);
             sensor.autoChase           = (*sensorTbl)["autoChase"].value_or(true);
             sensor.chaseRepathInterval = static_cast<float>((*sensorTbl)["chaseRepathInterval"].value_or(0.4));
+            sensor.memoryTime          = static_cast<float>((*sensorTbl)["memoryTime"].value_or(0.0));
+            sensor.scanInterval        = static_cast<float>((*sensorTbl)["scanInterval"].value_or(0.0));
+            sensor.heightThreshold     = static_cast<float>((*sensorTbl)["heightThreshold"].value_or(0.0));
             go.AddComponent<NavMeshSensorComponent>(std::move(sensor));
         }
 
@@ -4041,6 +4124,10 @@ bool SceneSerializer::AppendObjects(
             lc.range     = (float)(*lcTbl)["range"].value_or(10.0);
             lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
             lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
+            lc.castShadows    = (*lcTbl)["castShadows"].value_or(true);
+            lc.shadowBias     = (float)(*lcTbl)["shadowBias"].value_or(1.0);
+            lc.shadowStrength = (float)(*lcTbl)["shadowStrength"].value_or(1.0);
+            lc.shadowDistance = (float)(*lcTbl)["shadowDistance"].value_or(0.0);
             go.AddComponent<LightComponent>(lc);
         }
 
