@@ -95,4 +95,6 @@ void PostProcessProfile::Reflect(scene::IReflector& r)
 
 } // namespace fbzz::asset
 
-FBZZ_REGISTER_DATA_ASSET(::fbzz::asset::PostProcessProfile);
+// 組み込み登録。ここは Engine の静的初期化でプロセス起動時に 1 回しか走らないため、
+// スクリプト DLL のアンロードで消される側に置くと二度と復活しない。
+FBZZ_REGISTER_BUILTIN_DATA_ASSET(::fbzz::asset::PostProcessProfile);
