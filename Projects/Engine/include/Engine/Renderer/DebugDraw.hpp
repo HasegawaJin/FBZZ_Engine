@@ -25,7 +25,9 @@ public:
     // フレーム先頭で呼ぶ。リソースを遅延初期化し、カメラ VP 行列を設定する
     static void BeginFrame(IRenderer& r, ResourceManager& resources, const math::Matrix4& viewProjection);
     // フレーム末尾で呼ぶ。蓄積した頂点を一括 Submit し、バッチをクリアする。
-    // Submit は即時実行のため、1 フレーム内で複数回呼んでも安全 (溢れそうな時の中間 Flush 用)。
+    // 1 フレーム内で何度呼んでもよい (パスごとの描画・溢れそうな時の中間 Flush 用)。
+    // Flush ごとに別の頂点バッファを貸し出すため、後の Flush が先に記録した Draw の
+    // 頂点を上書きすることはない (DX12 は Submit が記録でしかなく、この保証がないと壊れる)。
     static void Flush();
 
     // 深度なし線分バッチの現在の頂点数と上限。
