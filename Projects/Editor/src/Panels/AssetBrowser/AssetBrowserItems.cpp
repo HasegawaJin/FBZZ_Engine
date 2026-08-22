@@ -263,7 +263,7 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".animctrl", nullptr },                              { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
-    { { ".ttf", ".otf", nullptr },                             { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
+    { { ".ttf", ".ttc", ".otf", nullptr },                     { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
     { { ".fnt", nullptr },                                     { 0.50f, 0.20f, 0.75f, 1.0f }, "FNT"     },
     { { ".txt", ".md", ".rst", nullptr },                      { 0.55f, 0.55f, 0.55f, 1.0f }, "TEXT"    },
     { { ".py", ".lua", ".cs", nullptr },                       { 0.20f, 0.70f, 0.55f, 1.0f }, "SCRIPT"  },
@@ -423,8 +423,13 @@ static ThumbnailShaderFlavor DetectMaterialThumbnailFlavor(const asset::Material
     // WHY: Particle / Trail 用 .mat は MeshRenderer と頂点入力・定数バッファが違うため、
     //      AssetBrowser の球メッシュ preview に流すと不正な IA レイアウトでクラッシュし得る。
     //      mesh_type / render_path を .mat の信頼元として扱い、shader path だけの推測を避ける。
+    // UI 用 .mat も同じ理由で弾く。UI パスは b0 を UIConstants として使うため、
+    // 球メッシュのプレビューでは ortho 行列の位置にカメラ行列が入り、頂点が飛ぶ。
+    // Decal 用 .mat は頂点入力そのものを持たない (SV_VertexID でフルスクリーン三角形)。
     if (asset.renderPath == asset::RenderPath::Particle ||
-        asset.renderPath == asset::RenderPath::Trail) {
+        asset.renderPath == asset::RenderPath::Trail ||
+        asset.renderPath == asset::RenderPath::UI ||
+        asset.renderPath == asset::RenderPath::Decal) {
         return ThumbnailShaderFlavor::Unsupported;
     }
     if (asset.meshType == asset::MeshType::Skinned) {
@@ -3195,9 +3200,9 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
         if (e.isMount)
             ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", e.path.c_str());
         else if (e.ext == ".fnt")
-            ImGui::SetTooltip("%s\n\nFont atlas metadata\nDrag and drop onto UI Text Font Path to assign it", e.path.c_str());
-        else if (e.ext == ".ttf" || e.ext == ".otf")
-            ImGui::SetTooltip("%s\n\nTTF font\nConvert it to a PNG + FNT atlas with gen_font_atlas.py before use", e.path.c_str());
+            ImGui::SetTooltip("%s\n\nStatic font atlas metadata\nDrag and drop onto UI Text Font Path to assign it", e.path.c_str());
+        else if (e.ext == ".ttf" || e.ext == ".ttc" || e.ext == ".otf")
+            ImGui::SetTooltip("%s\n\nFont file\nDrag and drop onto UI Text Font Path to assign it\nGlyphs are rasterized at runtime as they are used", e.path.c_str());
         else
             ImGui::SetTooltip("%s", e.path.c_str());
     }

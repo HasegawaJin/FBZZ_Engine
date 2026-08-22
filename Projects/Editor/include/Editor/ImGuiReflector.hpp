@@ -79,7 +79,7 @@ struct ImGuiReflector : scene::IReflector {
     static const char* AssetFilterFor(const char* name)
     {
         if (std::strcmp(name, "texturePath") == 0) return widgets::kTextureAssetFilter;
-        if (std::strcmp(name, "fontPath") == 0)    return ".png,.fnt";
+        if (std::strcmp(name, "fontPath") == 0)    return ".png,.fnt,.ttf,.ttc,.otf";
         if (std::strcmp(name, "materialPath") == 0) return ".mat";
         if (std::strcmp(name, "meshPath") == 0 || std::strcmp(name, "modelPath") == 0)
             return ".fbx,.fzmodel";
@@ -268,9 +268,17 @@ struct ImGuiReflector : scene::IReflector {
             const bool assetChanged = widgets::AssetPathField("##v", v, filter, m_projectRoot);
             m_changed |= assetChanged;
             if (assetChanged && std::strcmp(PersistentKey(name), "fontPath") == 0) {
+                // WHY 静的アトラスだけ拡張子を落とすか: .fnt と PNG は 2 枚組で、
+                //     FontAtlas はその共通のベースパスを受け取る。一方 .ttf/.ttc/.otf は
+                //     動的モードでパスが実体そのものを指すため、落とすと参照が壊れる。
                 std::filesystem::path path = util::FileSystem::PathFromUtf8(v);
-                path.replace_extension();
-                v = util::FileSystem::PathToUtf8(path);
+                std::string ext = path.extension().string();
+                for (char& c : ext)
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (ext == ".png" || ext == ".fnt") {
+                    path.replace_extension();
+                    v = util::FileSystem::PathToUtf8(path);
+                }
             }
         } else {
             if (CurrentFieldHint() == FieldHint::Tag && m_tagListProvider) {
