@@ -13,8 +13,9 @@
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
 #include <Scripts/Data/PlayerTuning.hpp>
-#include <Scripts/Camera/TpsCameraComponent.hpp>
+#include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <functional>
 
@@ -36,9 +37,8 @@ public:
     FBZZ_GROUP("Feedback")
     FBZZ_FIELD_FILE(sfxHurt, "", "SFX Hurt", ".wav,.ogg")
     FBZZ_FIELD_FILE(sfxDeath, "", "SFX Death", ".wav,.ogg")
-    // 被弾時のカメラシェイク。12 章の演出方針に合わせ、強さは 1 箇所で持つ。
-    FBZZ_FIELD_RANGE(float, hurtShakeAmplitude, 0.25f, "Hurt Shake", 0.0f, 2.0f)
-    FBZZ_FIELD_RANGE(float, hurtShakeDuration,  0.25f, "Hurt Shake Duration", 0.0f, 2.0f)
+    // 被弾時の揺れ・振動・画面効果は ImpactFeedbackManagerComponent の Player Hurt が持つ。
+    // 12 章の「強さは 1 箇所で持つ」方針を、被弾以外の出来事も含めた形へ広げたもの。
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "Health")
@@ -114,11 +114,12 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
     debugHealth = m_health;
     m_invulnerable = tuning->hitInvulnerable;
 
-    if (hurtShakeAmplitude > 0.0f) {
-        if (GameObject* camera = scene.GetMainCameraObject()) {
-            if (auto* tps = scene.GetScript<TpsCameraComponent>(camera))
-                tps->StartShake(hurtShakeAmplitude, hurtShakeDuration);
-        }
+    // 揺れ・振動・画面の赤は ImpactFeedbackManagerComponent が配分を持つ。
+    // ここは「被弾した」と「どれくらい深手か」だけを渡す。
+    if (auto* feedback = ImpactFeedbackManagerComponent::Instance()) {
+        // 残り体力が少ないほど強く返す。同じ 1 ダメージでも、後がない一撃の方が重い。
+        const float remaining = Normalized();
+        feedback->Play(FeedbackEvent::PlayerHurt, Lerp(1.0f, 0.55f, remaining));
     }
 
     if (!IsAlive()) {

@@ -20,10 +20,12 @@
 #pragma once
 
 #include <Engine/Scene/Components/PresentationComponents.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/BodyBounds.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
 #include <algorithm>
 #include <cmath>
@@ -128,6 +130,11 @@ private:
     void TickFlying(float dt);
     // 相手から自分へ向く水平単位ベクトル。離れる向きと飛ぶ向きの符号違いで共有する。
     [[nodiscard]] Vector3 AwayFromPartner(const GameObject& partner) const;
+    // 「接触した」とみなす中心間距離。両者のコライダー半径 (スケール込み) から出す。
+    [[nodiscard]] float ContactDistanceTo(GameObject& partner) const;
+    // 1 体ぶんの水平方向の当たり半径。取れなければ 0。
+    // WHY 非 const 参照か: GameObject::GetComponent<T>() が非 const にしか無い。
+    [[nodiscard]] static float ContactRadiusOf(GameObject& object);
     // 溜め中だけ重力を弱める。抜けるときは必ず元へ戻す。
     void BeginFloat();
     void EndFloat();
@@ -280,6 +287,19 @@ inline void PolarityBodyComponent::OnFixedUpdate()
     }
 }
 
+inline float PolarityBodyComponent::ContactRadiusOf(GameObject& object)
+{
+    return bodybounds::RadiusWorld(object);
+}
+
+inline float PolarityBodyComponent::ContactDistanceTo(GameObject& partner) const
+{
+    GameObject* self = scene.Self();
+    const float sum = (self ? ContactRadiusOf(*self) : 0.0f) + ContactRadiusOf(partner);
+    // 少し余裕を持たせてトンネルを防ぐ。コライダーが取れない構成でも 0 で止まらないよう下限を置く。
+    return std::max(sum * 1.1f, 0.5f);
+}
+
 inline Vector3 PolarityBodyComponent::AwayFromPartner(const GameObject& partner) const
 {
     Vector3 away = transform.worldPosition - partner.transform.worldPosition;
@@ -374,9 +394,10 @@ inline void PolarityBodyComponent::TickFlying(float dt)
     // 物理イベントは高速移動・接触解決の順序によって、相手の中心へ到達したフレームを
     // 取りこぼす場合がある。相手がリンク先であることは既に確定しているため、
     // コライダー同士の接触に相当する距離へ入ったら同じ Impact 経路へ送る。
-    // WHY 1.1m か: Main.scene の敵 SphereCollider は半径 0.5m、Transform scale 2.0
-    //     なので中心間距離 1.0m が接触目安になる。少し余裕を持たせてトンネルを防ぐ。
-    constexpr float CONTACT_DISTANCE = 1.1f;
+    // WHY 固定値をやめたか: 以前は「半径 0.5 × scale 2 → 中心間 1.0m」と決め打ちしていたが、
+    //     これはコライダーが Transform スケールを掛けていなかった頃の値。今はスケールが
+    //     効くので、敵の大きさを変えるたびにここの定数がずれる。実寸から出す。
+    const float CONTACT_DISTANCE = ContactDistanceTo(*partner);
     if (distance <= CONTACT_DISTANCE) {
         RegisterImpact(*partner, LinkPoint(), -direction, m_flightSpeed, 0.0f);
         return;

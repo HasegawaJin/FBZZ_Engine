@@ -20,8 +20,12 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PlayerTuning.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
+#include <Scripts/Player/AimMarkerComponent.hpp>
+#include <Scripts/Player/BeamScorchComponent.hpp>
+#include <Scripts/Player/CrosshairComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
+#include <Scripts/Player/PlayerHeadLookComponent.hpp>
 #include <Scripts/Player/PlayerHealthComponent.hpp>
 #include <Scripts/Player/PolarityGunComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
@@ -51,16 +55,24 @@ public:
     [[nodiscard]] bool TakeDamage(int amount) { return m_health.TakeDamage(amount); }
     void Heal(int amount) { m_health.Heal(amount); }
     void ResetHealth() { m_health.ResetHealth(); }
-    [[nodiscard]] float ChargeOf(Polarity polarity) const { return m_gun.ChargeOf(polarity); }
-    [[nodiscard]] bool CanFire(Polarity polarity) const { return m_gun.CanFire(polarity); }
+    // 6.3 の照射バッテリー。左右で独立した 2 本を HUD がそのまま 2 本のゲージに出す。
+    [[nodiscard]] float BatteryOf(Polarity polarity) const { return m_gun.BatteryOf(polarity); }
+    [[nodiscard]] bool CanEmit(Polarity polarity) const { return m_gun.CanEmit(polarity); }
+    [[nodiscard]] bool IsEmitting(Polarity polarity) const { return m_gun.IsEmitting(polarity); }
     void SetOnDeath(std::function<void()> callback) { m_health.onDeath = std::move(callback); }
 
-    // 銃を構えているか。UI と発砲判定が「今撃てるか」を知るための唯一の窓口。
+    // 銃を構えているか。UI と照射判定が「今撃てるか」を知るための唯一の窓口。
     [[nodiscard]] bool AreWeaponsDrawn() const { return m_weaponRig.IsDrawn(); }
+    // 今ビームの手前に居る相手。カメラ演出や UI が同じ 1 体を見るための窓口。
+    [[nodiscard]] GameObject* CurrentTarget() const { return m_aim.CurrentTarget(); }
 
     void OnStart() override;
     void OnUpdate() override;
+    void OnLateUpdate() override;
     void OnFixedUpdate() override;
+    // 内部モジュールが作ったランタイム GameObject (照準枠・ビーム) はルートに置かれる。
+    // Player と一緒には消えないため、ここから畳ませる。
+    void OnDestroy() override;
     // 内部モジュールのギズモは自動では呼ばれないため、ここから中継する。
     void OnDrawGizmos() override { m_weaponRig.OnDrawGizmos(); }
 
@@ -77,6 +89,16 @@ private:
     // 銃の付け替えには波及しない (逆も同じ)。
     WeaponRigComponent       m_weaponRig;
     PlayerAimComponent       m_aim;
+    // 視線は狙いの姿勢から分ける。頭は銃を持たないので、コーンの配分にも
+    // 発砲判定にも関わらない。首の速さを触っても腕の追従には波及しない。
+    PlayerHeadLookComponent  m_headLook;
+    // 対象の表示はエイムの選定から分ける。枠の見た目を触っても選び方には波及しない。
+    AimMarkerComponent       m_aimMarker;
+    // 画面中央の照準。枠が「線に入った 1 体」を指すのに対し、こちらは
+    // 「これから線を引く 1 点」を指す。役割が違うので別モジュールにする。
+    CrosshairComponent       m_crosshair;
+    // 地形へ残る焼け跡。跡の見た目を触っても照射の作りには波及しない。
+    BeamScorchComponent      m_scorch;
     PlayerHealthComponent    m_health;
     PolarityGunComponent     m_gun;
 };
@@ -92,6 +114,10 @@ inline void PlayerComponent::Reflect(::fbzz::scene::IReflector& r_)
     m_controller.Reflect(r_);
     m_weaponRig.Reflect(r_);
     m_aim.Reflect(r_);
+    m_headLook.Reflect(r_);
+    m_aimMarker.Reflect(r_);
+    m_crosshair.Reflect(r_);
+    m_scorch.Reflect(r_);
     m_health.Reflect(r_);
     m_gun.Reflect(r_);
 }
@@ -101,17 +127,35 @@ inline void PlayerComponent::BindModules()
     m_controller.AdoptContext(*this);
     m_weaponRig.AdoptContext(*this);
     m_aim.AdoptContext(*this);
+    m_headLook.AdoptContext(*this);
+    m_aimMarker.AdoptContext(*this);
+    m_crosshair.AdoptContext(*this);
+    m_scorch.AdoptContext(*this);
     m_health.AdoptContext(*this);
     m_gun.AdoptContext(*this);
 
     m_controller.tuning.ref = tuning.ref;
     m_health.tuning.ref = tuning.ref;
+    // 照準は 6.2 のビーム半径と射程で線を引く。銃と同じアセットを見せないと、
+    // 触れて見えた敵と塗れる敵がずれる。
+    m_aim.tuning.ref = polarityTuning.ref;
     m_gun.tuning.ref = polarityTuning.ref;
     m_controller.SetAimComponent(&m_aim);
     m_controller.SetWeaponRig(&m_weaponRig);
     m_health.SetController(&m_controller);
     m_gun.SetAimComponent(&m_aim);
     m_gun.SetController(&m_controller);
+    // 収納中に撃てないようにするため、銃の出し入れの状態を見せる。
+    m_gun.SetWeaponRig(&m_weaponRig);
+    m_aimMarker.SetAimComponent(&m_aim);
+    m_crosshair.SetAimComponent(&m_aim);
+    m_crosshair.SetGun(&m_gun);
+    m_crosshair.SetWeaponRig(&m_weaponRig);
+    m_scorch.SetAimComponent(&m_aim);
+    m_scorch.SetGun(&m_gun);
+    m_headLook.SetAimComponent(&m_aim);
+    m_headLook.SetController(&m_controller);
+    m_headLook.SetWeaponRig(&m_weaponRig);
 }
 
 inline bool PlayerComponent::HasRequiredAssets() const
@@ -137,6 +181,10 @@ inline void PlayerComponent::OnStart()
     // 銃の追従設定はコントローラーの後。銃が腰へスナップしてから最初の描画が走る。
     m_weaponRig.OnStart();
     m_aim.OnStart();
+    m_headLook.OnStart();
+    m_aimMarker.OnStart();
+    m_crosshair.OnStart();
+    m_scorch.OnStart();
     m_health.OnStart();
     m_gun.OnStart();
 }
@@ -154,19 +202,58 @@ inline void PlayerComponent::OnUpdate()
             module.ExecuteCallback(&Script::OnUpdate, module.GetTypeName());
     };
 
-    updateModule(m_aim);
     updateModule(m_controller);
     // コントローラーが同じフレームで受けた抜く / 収める要求を、その場で進める。
     // 先に回すと要求が 1 フレーム寝てしまい、押した感触が鈍る。
     updateModule(m_weaponRig);
+    // 視線は「今フレームに抜いたか」まで確定してから決める。銃を抜いた瞬間の
+    // フレームで首だけ 1 フレーム遅れると、構えと視線の立ち上がりがずれる。
+    updateModule(m_headLook);
     updateModule(m_health);
-    updateModule(m_gun);
+}
+
+// WHY 照準まわりを丸ごと Late に置くか:
+//   照準・レーザー・枠は「カメラが今どこを向いているか」から引かれる。カメラの向きは
+//   TpsCameraComponent が Script フェーズで確定させるが、同じフェーズの中では
+//   スクリプトの実行順が決まっていない。Script で読むと前フレームの向きを掴むことがあり、
+//   マウスを振ったフレームだけレーザーがクロスヘアから外れる。
+//   フェーズを 1 つ下げれば「カメラの向きは確定済み」が順序に依らず保証される。
+//
+//   枠だけは対象の座標も要る。対象は物理と CharacterController で動くため、
+//   Script フェーズで読むと半歩遅れて付いてくるのが、動きの速い相手ほどはっきり見える。
+inline void PlayerComponent::OnLateUpdate()
+{
+    if (!enabled)
+        return;
+    const auto lateUpdateModule = [](Script& module) {
+        if (module.enabled)
+            module.ExecuteCallback(&Script::OnLateUpdate, module.GetTypeName());
+    };
+
+    // 線を先に引き、それを銃・枠・照準の 3 者が読む。順番を崩すと、触れて見えた敵と
+    // 極性が乗る敵がずれる (6.5 が「事故が続くとストレスになる」と書いている食い違い)。
+    lateUpdateModule(m_aim);
+    lateUpdateModule(m_gun);
+    lateUpdateModule(m_aimMarker);
+    lateUpdateModule(m_crosshair);
+    // 跡は「今フレーム照射したか」と「線が地形に届いたか」の両方が要る。
+    // 銃と照準の後に回して、同じフレームの結果だけを見る。
+    lateUpdateModule(m_scorch);
 }
 
 inline void PlayerComponent::OnFixedUpdate()
 {
     if (enabled && m_controller.enabled)
         m_controller.ExecuteCallback(&Script::OnFixedUpdate, m_controller.GetTypeName());
+}
+
+inline void PlayerComponent::OnDestroy()
+{
+    m_aimMarker.OnDestroy();
+    m_crosshair.OnDestroy();
+    m_scorch.OnDestroy();
+    m_headLook.OnDestroy();
+    m_gun.OnDestroy();
 }
 
 } // namespace sandbox

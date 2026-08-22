@@ -1,13 +1,20 @@
-// FBZZ Engine
-// GameFlowComponent.hpp | sandbox
-// 衝突ダメージ、敵全滅、プレイヤー死亡、HUD とリザルト遷移を統括する
+/// @file GameFlowComponent.hpp
+/// @brief 敵全滅・プレイヤー死亡・HUD・リザルト遷移といったゲーム進行を統括する
+/// @author Hasegawa Jin
+/// @date 2026-08-22
+///
+/// WHY 戦闘の解決を持たないか:
+///   衝突をダメージへ変換するのは CombatManagerComponent の担当。ダメージ式は 18.2 が
+///   未決で何度も触るのに対し、ここが持つ「いつリザルトへ行くか」はほとんど変わらない。
+///   同居させると、片方を触るたびにもう片方を読む必要が出る。
+///   戦果 (撃破数・衝突回数) は取得用の API で受け取り、リザルトへ渡すだけにする。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
-#include <Scripts/Combat/EnemyHealthComponent.hpp>
+#include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Game/GameResultState.hpp>
 #include <Scripts/Player/PlayerComponent.hpp>
-#include <Scripts/Polarity/PolarityFieldComponent.hpp>
+#include <Scripts/Utils/ManagerWatch.hpp>
 #include <algorithm>
 #include <string>
 
@@ -24,35 +31,43 @@ public:
     FBZZ_FIELD(std::string, resultScene, "Result", "Result Scene")
     FBZZ_FIELD_RANGE(float, endDelay, 0.8f, "End Delay", 0.0f, 5.0f)
 
+    // WHY 体力と銃の表示を持たないか:
+    //   体力は PlayerHealthBarComponent、銃のクールダウンは PolarityGunHudComponent が
+    //   バーとして出している。同じ値を進行側でも文字にすると、片方の書式や色を変えた
+    //   ときにもう片方だけが取り残される。ここが出すのは進行 (残り敵数と目的) だけ。
     FBZZ_GROUP("HUD Names")
-    FBZZ_FIELD(std::string, healthTextName, "HUD_Health", "Health Text")
     FBZZ_FIELD(std::string, enemyTextName, "HUD_Enemies", "Enemy Text")
-    FBZZ_FIELD(std::string, gunTextName, "HUD_Guns", "Gun Text")
     FBZZ_FIELD(std::string, objectiveTextName, "HUD_Objective", "Objective Text")
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugEnemies, 0, "Enemies")
-    FBZZ_FIELD_READ_ONLY(int, debugKills, 0, "Kills")
     FBZZ_FIELD_READ_ONLY(float, debugElapsed, 0.0f, "Elapsed")
 
     void OnStart() override;
     void OnUpdate() override;
 
 private:
-    void ResolveImpact(const PolarityImpact& impact);
     void BeginEnd(bool victory);
     void RefreshHud(int enemiesAlive);
     [[nodiscard]] int CountEnemies() const;
 
+    // WHY 保持せず毎回引くか: マネージャーは別の子オブジェクトに居るので、
+    //     どちらの OnStart が先に走るかはシーンの並び次第になる。開始時に 1 度
+    //     掴んで持ち続けると、並び順を変えただけで戦果が丸ごと 0 になる。
+    [[nodiscard]] CombatManagerComponent* Combat() const
+    {
+        return CombatManagerComponent::Instance();
+    }
+
     PlayerComponent* m_player = nullptr;
+    // 「戦闘が居ない」の報告口。最初のフレームだけ空なのは並び順の都合なので、
+    // 猶予を過ぎても見つからないときだけ出す (ManagerWatch.hpp)。
+    ManagerWatch m_combatWatch;
     bool m_sawEnemy = false;
     bool m_ending = false;
     bool m_victory = false;
     float m_endRemaining = 0.0f;
     float m_elapsed = 0.0f;
-    int m_kills = 0;
-    int m_enemyImpacts = 0;
-    int m_anchorImpacts = 0;
 };
 
 FBZZ_REFLECT(GameFlowComponent)
@@ -60,14 +75,14 @@ FBZZ_REFLECT(GameFlowComponent)
 inline void GameFlowComponent::OnStart()
 {
     m_elapsed = 0.0f;
-    m_kills = 0;
-    m_enemyImpacts = 0;
-    m_anchorImpacts = 0;
     m_ending = false;
-    m_sawEnemy = CountEnemies() > 0;
 
-    if (auto* field = scene.GetScript<PolarityFieldComponent>())
-        field->onImpact = [this](const PolarityImpact& impact) { ResolveImpact(impact); };
+    m_combatWatch.Reset();
+    // WHY ここで敵を数えないか: CombatManagerComponent の OnStart がこのスクリプトより
+    //     後ろに並んでいると Instance() がまだ空で、CountEnemies() は必ず 0 を返す。
+    //     「開始時に敵が居たか」を 0 で確定させると、実際には敵が居るのに
+    //     居なかったことになる。数えるのは OnUpdate に任せる (下で毎フレーム更新する)。
+    m_sawEnemy = false;
 
     if (GameObject* player = scene.FindWithTag("Player")) {
         m_player = scene.GetScript<PlayerComponent>(player);
@@ -81,27 +96,9 @@ inline void GameFlowComponent::OnStart()
 
 inline int GameFlowComponent::CountEnemies() const
 {
-    int count = 0;
-    for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>()) {
-        const auto* health = scene.GetScript<EnemyHealthComponent>(object);
-        if (object && object->activeInHierarchy() && health && health->IsAlive()) ++count;
-    }
-    return count;
-}
-
-inline void GameFlowComponent::ResolveImpact(const PolarityImpact& impact)
-{
-    if (impact.struckIsAnchor) ++m_anchorImpacts;
-    else ++m_enemyImpacts;
-
-    if (auto* mover = scene.GetScript<EnemyHealthComponent>(impact.mover))
-        if (mover->TakeImpact(impact)) ++m_kills;
-
-    if (!impact.struckIsAnchor && impact.struck != impact.mover) {
-        if (auto* struck = scene.GetScript<EnemyHealthComponent>(impact.struck))
-            if (struck->TakeImpact(impact)) ++m_kills;
-    }
-    debugKills = m_kills;
+    // 数える規則は戦闘側の知識なので委譲する。未設定でも進行が止まらないよう 0 を返す。
+    auto* combat = Combat();
+    return combat ? combat->CountEnemiesAlive() : 0;
 }
 
 inline void GameFlowComponent::BeginEnd(bool victory)
@@ -114,18 +111,8 @@ inline void GameFlowComponent::BeginEnd(bool victory)
 
 inline void GameFlowComponent::RefreshHud(int enemiesAlive)
 {
-    if (GameObject* text = scene.Find(healthTextName)) {
-        const int health = m_player ? m_player->Current() : 0;
-        const int maxHealth = m_player ? m_player->MaxHealth() : 0;
-        ui.SetText(text, "HP " + std::to_string(health) + " / " + std::to_string(maxHealth));
-    }
     if (GameObject* text = scene.Find(enemyTextName))
         ui.SetText(text, "ENEMIES " + std::to_string(enemiesAlive));
-    if (GameObject* text = scene.Find(gunTextName)) {
-        const int plus = m_player ? static_cast<int>(m_player->ChargeOf(Polarity::Plus) * 100.0f) : 0;
-        const int minus = m_player ? static_cast<int>(m_player->ChargeOf(Polarity::Minus) * 100.0f) : 0;
-        ui.SetText(text, "+ " + std::to_string(plus) + "%    - " + std::to_string(minus) + "%");
-    }
     if (GameObject* text = scene.Find(objectiveTextName))
         ui.SetText(text, m_ending ? (m_victory ? "AREA CLEAR" : "SYSTEM DOWN")
                                   : "RED +  BLUE -  COLLIDE ENEMIES");
@@ -133,6 +120,17 @@ inline void GameFlowComponent::RefreshHud(int enemiesAlive)
 
 inline void GameFlowComponent::OnUpdate()
 {
+    // 戦闘が居ないと敵は永遠に減らず、勝利条件が来ない。1 度だけ名指しで止める。
+    // WHY 初回フレームで判定しないか: ScriptSystem は GameObject ごとに
+    //     OnAwake → OnStart → OnUpdate をまとめて回す。CombatManager がこのスクリプトより
+    //     後ろに並んでいると、最初の OnUpdate の時点ではまだ OnStart が走っておらず
+    //     Instance() が空になる。そこで確定させると、正しく置いてあるシーンでも
+    //     毎回このエラーが出る (実際そうなっていた)。猶予は ManagerWatch が持つ。
+    if (m_combatWatch.ShouldReport(Combat() != nullptr)) {
+        debug.LogError("GameFlowComponent found no CombatManagerComponent in the scene "
+                       "(no damage is applied and the wave never clears).");
+    }
+
     if (!m_ending) m_elapsed += Time::deltaTime;
     debugElapsed = m_elapsed;
 
@@ -146,11 +144,12 @@ inline void GameFlowComponent::OnUpdate()
     m_endRemaining -= Time::deltaTime;
     if (m_endRemaining > 0.0f) return;
 
+    const auto* combat = Combat();
     GameResultState::victory = m_victory;
     GameResultState::clearSeconds = m_elapsed;
-    GameResultState::defeatedEnemies = m_kills;
-    GameResultState::enemyImpacts = m_enemyImpacts;
-    GameResultState::anchorImpacts = m_anchorImpacts;
+    GameResultState::defeatedEnemies = combat ? combat->Kills() : 0;
+    GameResultState::enemyImpacts = combat ? combat->EnemyImpacts() : 0;
+    GameResultState::anchorImpacts = combat ? combat->AnchorImpacts() : 0;
     scene.LoadScene(resultScene);
 }
 
