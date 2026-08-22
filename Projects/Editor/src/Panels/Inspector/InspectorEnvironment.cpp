@@ -12,7 +12,10 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Atmosphere");
             widgets::DragVec3("Rayleigh", sr.rayleighScattering, 0.0001f, 0.0f, 1.0f);
             ImGui::DragFloat("Mie Scattering", &sr.mieScattering, 0.0001f, 0.0f, 1.0f);
-            ImGui::DragFloat("Sun Intensity", &sr.sunIntensity, 0.1f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Sky Scatter Intensity", &sr.skyScatterIntensity, 0.1f, 0.0f, 1000.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("大気散乱そのものの明るさ。太陽ディスクの明るさは\n"
+                                  "Sun Moon Renderer の Sun Disk Intensity です。");
             ImGui::DragFloat("Planet Radius", &sr.planetRadius, 1.0f, 1.0f, 100000.0f);
             ImGui::DragFloat("Atmosphere Radius", &sr.atmosphereRadius, 1.0f, 1.0f, 100000.0f);
             widgets::RangeField("Mie G", sr.mieG, -0.99f, 0.99f);
@@ -20,19 +23,40 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Day Night");
             ImGui::Checkbox("Day Night Enabled", &sr.dayNightEnabled);
             if (sr.dayNightEnabled) {
+                // 誰が何を決めているのかをここで明示する。
+                // WHY: 有効な間 Light コンポーネントの Color / Intensity はここが上書きするため、
+                //      向きだけがライト側に残ることを知らないと「ライトが効かない」と映る。
+                ImGui::TextDisabled("太陽の向きは Directional Light の Transform。\n"
+                                    "有効な間、そのライトの Color / Intensity はここが決めます。");
+
+                ImGui::DragFloat("Day Altitude", &sr.dayAltitude, 0.5f, 0.1f, 90.0f, "%.1f\xc2\xb0");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽がこの高度まで昇ると完全な昼になります。\n"
+                                      "地平線 (0°) からここまでが夕方の帯です。");
+                ImGui::DragFloat("Night Altitude", &sr.nightAltitude, 0.5f, 0.1f, 90.0f, "-%.1f\xc2\xb0");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽が地平線からこの角度だけ沈むと完全な夜になります。\n"
+                                      "地平線 (0°) からここまでが薄明の帯です。");
+
                 widgets::ColorEdit3("Day Color", sr.dayColor);
                 widgets::ColorEdit3("Sunset Color", sr.sunsetColor);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽高度がちょうど 0° のときの色。\n"
+                                      "夕方を作るには Directional Light を水平へ向けます。");
                 widgets::ColorEdit3("Night Color", sr.nightColor);
+
                 // 太陽光の強さ = 地表のライティング。
                 // 1.0 で「白い拡散面が albedo そのままの明るさ」になる単位
                 // (Lighting.hlsli の LIGHT_UNIT_SCALE)。
                 ImGui::DragFloat("Day Intensity", &sr.dayIntensity, 0.01f, 0.0f, 20.0f);
+                ImGui::DragFloat("Sunset Intensity", &sr.sunsetIntensity, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Night Intensity", &sr.nightIntensity, 0.01f, 0.0f, 5.0f);
 
                 // 空の見た目の明るさ = Skydome / 太陽ディスク / ボリューメトリック雲・
-                // 光芒 / エアリアルパースに掛かる係数 (Sun Intensity への乗数)。
+                // 光芒 / エアリアルパースに掛かる係数 (Sky Scatter Intensity への乗数)。
                 // 上の太陽光と別軸なので、太陽だけ強めても空は白飛びしない。
                 ImGui::DragFloat("Sky Day Brightness", &sr.skyDayBrightness, 0.01f, 0.0f, 20.0f);
+                ImGui::DragFloat("Sky Sunset Brightness", &sr.skySunsetBrightness, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Sky Night Brightness", &sr.skyNightBrightness, 0.01f, 0.0f, 5.0f);
             }
 
@@ -59,7 +83,10 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Sun");
             ImGui::Checkbox("Sun Enabled", &smr.sunEnabled);
             if (smr.sunEnabled) {
-                ImGui::DragFloat("Sun Intensity", &smr.sunIntensity, 0.1f, 0.0f, 1000.0f);
+                ImGui::DragFloat("Sun Disk Intensity", &smr.sunDiskIntensity, 0.1f, 0.0f, 1000.0f);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("太陽ディスクの明るさ。空そのものの明るさは\n"
+                                      "Sky Renderer の Sky Scatter Intensity です。");
             }
 
             ImGui::SeparatorText("Moon");

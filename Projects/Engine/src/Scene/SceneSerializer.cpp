@@ -1787,17 +1787,23 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table srTbl;
             srTbl.insert("rayleighScattering", Vec3ToArr(sr->rayleighScattering));
             srTbl.insert("mieScattering",      (double)sr->mieScattering);
-            srTbl.insert("sunIntensity",       (double)sr->sunIntensity);
+            srTbl.insert("skyScatterIntensity",(double)sr->skyScatterIntensity);
             srTbl.insert("planetRadius",       (double)sr->planetRadius);
             srTbl.insert("atmosphereRadius",   (double)sr->atmosphereRadius);
             srTbl.insert("mieG",               (double)sr->mieG);
             srTbl.insert("enabled",            sr->enabled);
             srTbl.insert("dayNightEnabled",    sr->dayNightEnabled);
+            srTbl.insert("dayAltitude",        (double)sr->dayAltitude);
+            srTbl.insert("nightAltitude",      (double)sr->nightAltitude);
             srTbl.insert("dayColor",           Vec3ToArr(sr->dayColor));
             srTbl.insert("sunsetColor",        Vec3ToArr(sr->sunsetColor));
             srTbl.insert("nightColor",         Vec3ToArr(sr->nightColor));
             srTbl.insert("dayIntensity",       (double)sr->dayIntensity);
+            srTbl.insert("sunsetIntensity",    (double)sr->sunsetIntensity);
             srTbl.insert("nightIntensity",     (double)sr->nightIntensity);
+            srTbl.insert("skyDayBrightness",   (double)sr->skyDayBrightness);
+            srTbl.insert("skySunsetBrightness",(double)sr->skySunsetBrightness);
+            srTbl.insert("skyNightBrightness", (double)sr->skyNightBrightness);
             srTbl.insert("cloudShadowStrength",(double)sr->cloudShadowStrength);
             srTbl.insert("cloudShadowCoverage",(double)sr->cloudShadowCoverage);
             srTbl.insert("cloudShadowSize",    (double)sr->cloudShadowSize);
@@ -1810,7 +1816,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table smrTbl;
             smrTbl.insert("enabled",        smr->enabled);
             smrTbl.insert("sunEnabled",     smr->sunEnabled);
-            smrTbl.insert("sunIntensity",   (double)smr->sunIntensity);
+            smrTbl.insert("sunDiskIntensity", (double)smr->sunDiskIntensity);
             smrTbl.insert("moonEnabled",    smr->moonEnabled);
             smrTbl.insert("moonSize",       (double)smr->moonSize);
             smrTbl.insert("moonBrightness", (double)smr->moonBrightness);
@@ -3123,17 +3129,27 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sr.rayleighScattering = ArrToVec3((*srTbl)["rayleighScattering"].as_array(),
                                               { 5.8e-3f, 13.5e-3f, 33.1e-3f });
             sr.mieScattering = (float)(*srTbl)["mieScattering"].value_or(21.0e-4);
-            sr.sunIntensity  = (float)(*srTbl)["sunIntensity"].value_or(20.0);
+            // 旧キー sunIntensity は「大気散乱の明るさ」だった。太陽ディスク側 (SunMoonRenderer)
+            // と同名で紛らわしかったため役割の読める名前へ移行する。
+            sr.skyScatterIntensity = (float)(*srTbl)["sunIntensity"].value_or((double)sr.skyScatterIntensity);
+            sr.skyScatterIntensity = (float)(*srTbl)["skyScatterIntensity"].value_or((double)sr.skyScatterIntensity);
             sr.planetRadius  = (float)(*srTbl)["planetRadius"].value_or(6371.0);
             sr.atmosphereRadius = (float)(*srTbl)["atmosphereRadius"].value_or(6471.0);
             sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
             sr.enabled       = (*srTbl)["enabled"].value_or(true);
             sr.dayNightEnabled = (*srTbl)["dayNightEnabled"].value_or(false);
-            sr.dayColor      = ArrToVec3((*srTbl)["dayColor"].as_array(), { 1.0f, 0.98f, 0.95f });
-            sr.sunsetColor   = ArrToVec3((*srTbl)["sunsetColor"].as_array(), { 1.0f, 0.5f, 0.2f });
-            sr.nightColor    = ArrToVec3((*srTbl)["nightColor"].as_array(), { 0.1f, 0.15f, 0.3f });
-            sr.dayIntensity  = (float)(*srTbl)["dayIntensity"].value_or(1.5);
-            sr.nightIntensity = (float)(*srTbl)["nightIntensity"].value_or(0.1);
+            // 既定値はコンポーネント側の 1 箇所だけが持つ (sr は既定構築済み)。
+            sr.dayAltitude   = (float)(*srTbl)["dayAltitude"].value_or((double)sr.dayAltitude);
+            sr.nightAltitude = (float)(*srTbl)["nightAltitude"].value_or((double)sr.nightAltitude);
+            sr.dayColor      = ArrToVec3((*srTbl)["dayColor"].as_array(), sr.dayColor);
+            sr.sunsetColor   = ArrToVec3((*srTbl)["sunsetColor"].as_array(), sr.sunsetColor);
+            sr.nightColor    = ArrToVec3((*srTbl)["nightColor"].as_array(), sr.nightColor);
+            sr.dayIntensity    = (float)(*srTbl)["dayIntensity"].value_or((double)sr.dayIntensity);
+            sr.sunsetIntensity = (float)(*srTbl)["sunsetIntensity"].value_or((double)sr.sunsetIntensity);
+            sr.nightIntensity  = (float)(*srTbl)["nightIntensity"].value_or((double)sr.nightIntensity);
+            sr.skyDayBrightness    = (float)(*srTbl)["skyDayBrightness"].value_or((double)sr.skyDayBrightness);
+            sr.skySunsetBrightness = (float)(*srTbl)["skySunsetBrightness"].value_or((double)sr.skySunsetBrightness);
+            sr.skyNightBrightness  = (float)(*srTbl)["skyNightBrightness"].value_or((double)sr.skyNightBrightness);
             sr.cloudShadowStrength = (float)(*srTbl)["cloudShadowStrength"].value_or(0.0);
             sr.cloudShadowCoverage = (float)(*srTbl)["cloudShadowCoverage"].value_or(0.5);
             // 旧シーンは world→ノイズのスケールで保存されている。大きさ [m] へ読み替える。
@@ -3149,7 +3165,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             SunMoonRenderer smr{};
             smr.enabled        = (*smrTbl)["enabled"].value_or(true);
             smr.sunEnabled     = (*smrTbl)["sunEnabled"].value_or(true);
-            smr.sunIntensity   = (float)(*smrTbl)["sunIntensity"].value_or(20.0);
+            // 旧キー sunIntensity は太陽ディスクの明るさ。SkyRenderer 側の同名キーと区別する。
+            smr.sunDiskIntensity = (float)(*smrTbl)["sunIntensity"].value_or((double)smr.sunDiskIntensity);
+            smr.sunDiskIntensity = (float)(*smrTbl)["sunDiskIntensity"].value_or((double)smr.sunDiskIntensity);
             smr.moonEnabled    = (*smrTbl)["moonEnabled"].value_or(false);
             smr.moonSize       = (float)(*smrTbl)["moonSize"].value_or(1.0);
             smr.moonBrightness = (float)(*smrTbl)["moonBrightness"].value_or(0.6);

@@ -1202,7 +1202,7 @@ void RenderSystem(Scene& scene,
 
     // ── 昼夜の色・強度カーブ (Phase B) ─────────────────────────────────────────────
     // WHY: 太陽の「向き」は DirectionalLight の transform を唯一のソースとする (ここで lightDir は上書きしない)。
-    //      SkyRenderer.dayNightEnabled のときは、その光源の「仰角 (太陽の高さ)」から色・強度の昼夜遷移だけを駆動する。
+    //      SkyRenderer.dayNightEnabled のときは、その光源の「太陽高度」から色・強度の昼夜遷移だけを駆動する。
     //      → DirectionalLight を回すと 太陽ディスク(SunMoon)・空・月(アンチ太陽)・空連動 IBL・ライティングが一緒に動く。
     //      時刻アニメをしたい場合はスクリプトでライトの向きを回す。
     // 雲シャドウ params (Phase C) も SkyRenderer から読む。passCtx へ後で転送する。
@@ -1220,30 +1220,42 @@ void RenderSystem(Scene& scene,
         skyCloudShadowSpeed    = sky.cloudShadowSpeed;
 
         if (sky.dayNightEnabled) {
-        // 太陽方向 (toward sun) = -lightDir。その仰角 elev=y で 夜→昼→薄明(夕焼け) を補間する。
-        math::Vector3 sunToSun =
-            math::Vector3{ -lightData.lightDir.x, -lightData.lightDir.y, -lightData.lightDir.z }.Normalized();
+            // 太陽方向 (toward sun) = -lightDir。その高度 [度] を軸に 夜 ↔ 夕方 ↔ 昼 を補間する。
+            // WHY 高度 0° を夕方のキーに置くか: 「ライトを水平に向ける = 夕方」が直感どおりに
+            //     なり、昼側と夜側それぞれ独立した帯幅で抜けられる。旧実装は夕焼けの重みに
+            //     昼の重みを掛けていたため、夕焼けが最も濃いはずの地平線上で重みが 0.17 まで
+            //     落ち、sunsetColor がどう振っても 3 割以上乗らず夕方を作れなかった。
+            const math::Vector3 sunToSun =
+                math::Vector3{ -lightData.lightDir.x, -lightData.lightDir.y, -lightData.lightDir.z }.Normalized();
 
-        auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
-        auto lerp3   = [](const math::Vector3& a, const math::Vector3& b, float t) {
-            return math::Vector3{ a.x + (b.x - a.x) * t,
-                                  a.y + (b.y - a.y) * t,
-                                  a.z + (b.z - a.z) * t };
-        };
-        const float elev       = sunToSun.y;                                  // -1(真下)..1(真上)
-        const float dayMix     = clamp01((elev + 0.05f) / 0.30f);             // 地平線少し上で昼へ
-        const float horizonMix = clamp01(1.0f - std::fabs(elev) / 0.25f) * dayMix; // 日の出/日没の暖色
+            auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+            auto lerp1   = [](float a, float b, float t) { return a + (b - a) * t; };
+            auto lerp3   = [](const math::Vector3& a, const math::Vector3& b, float t) {
+                return math::Vector3{ a.x + (b.x - a.x) * t,
+                                      a.y + (b.y - a.y) * t,
+                                      a.z + (b.z - a.z) * t };
+            };
 
-        math::Vector3 col = lerp3(sky.nightColor, sky.dayColor, dayMix);
-        col = lerp3(col, sky.sunsetColor, horizonMix);
-        lightData.lightColor     = col;
-        lightData.lightIntensity = sky.nightIntensity + (sky.dayIntensity - sky.nightIntensity) * dayMix;
-        // 空の明るさは太陽光の強さとは別軸で補間する (Skydome / SunMoon / 雲 / 光芒 /
-        // エアリアルパースが参照)。分離前は lightIntensity を共用していたため、太陽を
-        // 強くすると空まで白飛びしていた。詳細は SkyRenderer::skyDayBrightness を参照。
-        lightData.skyDimmer      = sky.skyNightBrightness
-                                 + (sky.skyDayBrightness - sky.skyNightBrightness) * dayMix;
-        } // if (sky.dayNightEnabled)
+            constexpr float kRadToDeg = 57.29577951f;
+            const float sinAlt      = (std::max)(-1.0f, (std::min)(1.0f, sunToSun.y));
+            const float altitudeDeg = std::asin(sinAlt) * kRadToDeg;
+
+            const bool  above = altitudeDeg >= 0.0f;
+            const float span  = above ? (std::max)(sky.dayAltitude,   0.1f)
+                                      : (std::max)(sky.nightAltitude, 0.1f);
+            float t = clamp01(std::fabs(altitudeDeg) / span);
+            t = t * t * (3.0f - 2.0f * t); // smoothstep: 帯の端で色・明るさが折れないようにする
+
+            lightData.lightColor     = lerp3(sky.sunsetColor,
+                                             above ? sky.dayColor : sky.nightColor, t);
+            lightData.lightIntensity = lerp1(sky.sunsetIntensity,
+                                             above ? sky.dayIntensity : sky.nightIntensity, t);
+            // 空の明るさは太陽光の強さとは別軸で補間する (Skydome / SunMoon / 雲 / 光芒 /
+            // エアリアルパースが参照)。分離前は lightIntensity を共用していたため、太陽を
+            // 強くすると空まで白飛びしていた。詳細は SkyRenderer::skyDayBrightness を参照。
+            lightData.skyDimmer      = lerp1(sky.skySunsetBrightness,
+                                             above ? sky.skyDayBrightness : sky.skyNightBrightness, t);
+        }
         break;
     }
 

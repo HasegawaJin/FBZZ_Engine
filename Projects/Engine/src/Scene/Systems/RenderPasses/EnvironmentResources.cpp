@@ -19,7 +19,7 @@ bool EnvironmentResources::SkySignature::AtmosphereApproxEquals(const SkySignatu
 
     return approxVec(rayleigh, o.rayleigh)
         && approx(mieScattering, o.mieScattering)
-        && approx(sunIntensity, o.sunIntensity)
+        && approx(skyScatterIntensity, o.skyScatterIntensity)
         && approx(mieG, o.mieG)
         && approx(planetRadius, o.planetRadius)
         && approx(atmosphereRadius, o.atmosphereRadius);

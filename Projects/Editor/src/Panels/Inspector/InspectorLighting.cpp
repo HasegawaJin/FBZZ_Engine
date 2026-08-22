@@ -8,8 +8,18 @@ namespace fbzz::editor {
 void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     DrawComponentSection<scene::LightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light",
-        [go](scene::LightComponent& lc, EditorContext&) {
-            DrawLightFields(*go, lc);
+        [go](scene::LightComponent& lc, EditorContext& c) {
+            // 昼夜カーブは先頭の有効な SkyRenderer が持つ (RenderSystem の採用規則と同じ)。
+            bool dayNightDriven = false;
+            if (c.activeScene) {
+                for (auto& other : c.activeScene->GameObjects()) {
+                    auto* sky = other.GetComponent<scene::SkyRenderer>();
+                    if (!sky || !sky->enabled) continue;
+                    dayNightDriven = sky->dayNightEnabled;
+                    break;
+                }
+            }
+            DrawLightFields(*go, lc, dayNightDriven);
         });
 
     DrawComponentSection<scene::CameraComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Camera",

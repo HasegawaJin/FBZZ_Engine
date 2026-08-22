@@ -3939,7 +3939,8 @@ float ScriptEnvironmentProxy::GetFogDensity() const
 
 void ScriptEnvironmentProxy::SetSunIntensity(float intensity) const
 {
-    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->sunIntensity = intensity;
+    // 対象は大気散乱の明るさ。太陽ディスクは ScriptSunMoonProxy::SetSun が持つ。
+    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->skyScatterIntensity = intensity;
 }
 void ScriptEnvironmentProxy::SetMieScattering(float mie) const
 {
@@ -3952,7 +3953,7 @@ void ScriptEnvironmentProxy::SetMieG(float g) const
 float ScriptEnvironmentProxy::GetSunIntensity() const
 {
     auto* c = FindFirstInScene<SkyRenderer>(script->m_scene);
-    return c ? c->sunIntensity : 0.0f;
+    return c ? c->skyScatterIntensity : 0.0f;
 }
 
 // ---------------------------------------------------------------------------
@@ -4210,7 +4211,7 @@ void ScriptSunMoonProxy::SetSun(bool enabled, float intensity) const
 {
     if (auto* sunMoon = SelfComponent<SunMoonRenderer>(script)) {
         sunMoon->sunEnabled = enabled;
-        sunMoon->sunIntensity = (std::max)(intensity, 0.0f);
+        sunMoon->sunDiskIntensity = (std::max)(intensity, 0.0f);
     }
 }
 void ScriptSunMoonProxy::SetMoon(bool enabled, float size, float brightness,

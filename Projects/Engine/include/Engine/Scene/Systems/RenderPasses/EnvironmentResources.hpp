@@ -33,7 +33,7 @@ public:
         math::Vector3 sunDirection     = {0.0f, -1.0f, 0.0f}; // 太陽の進行方向 (正規化, 真下=正午相当)
         math::Vector3 rayleigh         = math::Vector3::ZERO;  // Rayleigh 散乱係数
         float         mieScattering    = 0.0f;
-        float         sunIntensity     = 0.0f;
+        float         skyScatterIntensity = 0.0f;
         float         mieG             = 0.0f;
         float         planetRadius     = 0.0f;
         float         atmosphereRadius = 0.0f;
