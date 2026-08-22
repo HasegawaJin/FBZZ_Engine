@@ -104,6 +104,11 @@ struct VFXAudioSettings {
 };
 
 struct VFXDecalSettings {
+    // .mat (render_path = "decal") への参照。空なら下のテクスチャと色で組み込み描画。
+    // WHY テクスチャと別に持つか: 弾痕は「1 枚貼って薄める」用途が圧倒的多数で、
+    //      .mat を必須にすると弾痕を 1 種類足すたびにアセットが 1 つ増える。
+    //      マテリアルは組み込みでは描けない絵を作りたいときの上乗せにする。
+    std::string materialPath;
     std::string albedoPath;
     std::string normalPath;
     std::string emissivePath;

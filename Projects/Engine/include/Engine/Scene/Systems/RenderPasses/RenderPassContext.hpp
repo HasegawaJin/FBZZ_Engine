@@ -465,31 +465,60 @@ struct DetailGrassCB {
 };
 static_assert(sizeof(DetailGrassCB) == 48, "DetailGrassCB size mismatch");
 
-// DecalConstants (b2) — HLSL の DecalConstants cbuffer と完全に一致させること。
+// デカールの受信レイヤーフィルタが有効であることを示す DecalCB::flags のビット。
+inline constexpr uint32_t kDecalFlagReceiverFilter = 1u;
+
+// DecalConstants (b10) — Material/Decal/DecalCommon.hlsli と完全に一致させること。
+//
+// WHY b2 ではないか: b2 は cbuffer 名 "MaterialConstants" として .mat の
+//   リフレクション対象になる。デカールの投影データをそこへ置くと、デカールだけ
+//   マテリアルを持てない例外になる (Assets/Shaders/Common/Binding.hlsli 参照)。
 struct DecalCB {
     math::Matrix4 invDecalWorld;
-    float         albedo[4];
-    float         emissiveColor[3];
-    float         emissiveScale;
-    float         normalStrength;
-    float         alpha;
-    uint32_t      textureMask;
-    float         _pad;
     math::Vector3 decalTangent;
-    float         _pad1;
+    float         _pad0 = 0.0f;
     math::Vector3 decalBitangent;
-    float         _pad2;
+    float         _pad1 = 0.0f;
     math::Vector3 decalNormal;
-    float         _pad3;
+    float         _pad2 = 0.0f;
+    float         alpha = 1.0f;
     // 角度フェード。受け面の法線が投影軸から傾くほどデカールを薄くする。
     // WHY: OBB 投影は投影軸に対して斜めな面へ当てると、テクスチャが引き伸ばされて
     //      長い筋になる。着弾痕や血痕が壁の角をまたいだ瞬間に「伸びた汚れ」として
     //      露見する、デカールで最も目立つ破綻がこれ。
     //      角度で薄めれば、破綻する範囲がそのまま消える。
-    float         angleFadeStrength = 1.0f; // 0 = フェードなし (従来の挙動)
-    float         angleFadeCos = 0.34f;     // この cos より寝た面では完全に消える (既定 70 度)
-    float         _pad4[2] = { 0.0f, 0.0f };
+    float         angleFadeStrength = 1.0f; // 0 = フェードなし
+    float         angleFadeCos      = 0.34f; // この cos より寝た面では完全に消える (既定 70 度)
+    uint32_t      flags             = 0;
+    uint32_t      receiverLayerMask = ~0u;
+    float         _pad3[3] = { 0.0f, 0.0f, 0.0f };
 };
+static_assert(sizeof(DecalCB) == 144, "DecalCB size mismatch");
+
+// 組み込み Decal.hlsl の MaterialConstants (b2)。
+// .mat を割り当てていない DecalComponent へは DecalPass がこの形で値を流す。
+// LAYOUT: Assets/Shaders/Material/Decal/Decal.hlsl と完全に一致させること。
+struct DecalMaterialCB {
+    float    albedoTint[4]    = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float    emissiveColor[3] = { 1.0f, 1.0f, 1.0f };
+    float    emissiveScale    = 0.0f;
+    float    uvTiling[2]      = { 1.0f, 1.0f };
+    float    uvOffset[2]      = { 0.0f, 0.0f };
+    float    normalStrength   = 1.0f;
+    // Material::Upload と同じ規則: bit i = テクスチャスロット i が有効。
+    // bit0=albedo(t0) bit1=normal(t1) bit3=emissive(t3)
+    uint32_t textureMask      = 0;
+    float    _pad[2]          = { 0.0f, 0.0f };
+};
+static_assert(sizeof(DecalMaterialCB) == 64, "DecalMaterialCB size mismatch");
+
+// 受信レイヤーバッファを描くドローの b10。DecalMask(.Skinned).hlsl と一致させること。
+struct DecalReceiverCB {
+    // レイヤー番号 + 1。0 はクリア値 (未描画) と衝突するため使わない。
+    float layerEncoded = 0.0f;
+    float _pad[3]      = { 0.0f, 0.0f, 0.0f };
+};
+static_assert(sizeof(DecalReceiverCB) == 16, "DecalReceiverCB size mismatch");
 
 struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
@@ -537,12 +566,18 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
 
     renderer::ResourceHandle<renderer::RenderTargetTag>   decalDepthRT;
+    // 可視サーフェスのレイヤー番号 + 1 を持つ受信バッファ。レイヤーフィルタを持つ
+    // デカールが 1 つでもある フレームだけ描く。
     renderer::ResourceHandle<renderer::RenderTargetTag>   decalMaskRT;
     renderer::ResourceHandle<renderer::ShaderTag>         decalShader;
     renderer::ResourceHandle<renderer::ShaderTag>         decalMaskShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         decalMaskSkinnedShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  decalPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  decalMaskPSO;
     renderer::ResourceHandle<renderer::ConstantBufferTag> decalCB;
+    // 組み込みシェーダー用の b2。.mat を持つデカールは Material 側の cbuffer を使う。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> decalMaterialCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> decalReceiverCB;
 
     renderer::ResourceHandle<renderer::ShaderTag>         shadowShader;
     renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;

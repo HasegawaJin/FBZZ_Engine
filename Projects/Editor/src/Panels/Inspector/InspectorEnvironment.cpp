@@ -214,6 +214,17 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
     DrawComponentSection<scene::DecalComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Decal",
         [](scene::DecalComponent& dc, EditorContext& ctx) {
 
+            ImGui::SeparatorText("Material");
+            widgets::AssetPathField("Material (.mat)", dc.materialPath, ".mat", ctx.projectRoot);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("render_path = \"decal\" の .mat だけが使えます。\n"
+                                  "空欄のときは下のテクスチャと色で組み込みシェーダーが描きます。");
+
+            // .mat を割り当てると下の値はシェーダーへ渡らない。編集できたままだと
+            // 「色を変えたのに絵が変わらない」原因が Inspector から読めなくなる。
+            const bool usesMaterial = !dc.materialPath.empty();
+            ImGui::BeginDisabled(usesMaterial);
+
             ImGui::SeparatorText("Textures");
             widgets::AssetPathField("Albedo (t0)", dc.albedoTexPath,
                                     widgets::kTextureAssetFilter, ctx.projectRoot);
@@ -225,6 +236,8 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Surface");
             ImGui::ColorEdit4("Albedo Color",     dc.albedoColor);
             widgets::RangeField("Normal Strength", dc.normalStrength, 0.0f, 2.0f);
+
+            ImGui::EndDisabled();
 
             ImGui::SeparatorText("Angle Fade");
             // 説明は RangeField へ渡す (行はゲージ / 数値 / ラベルの複数アイテムで構成されるため、
@@ -246,6 +259,9 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::DragFloat("Fade Time (s)", &dc.fadeTime, 0.05f, 0.0f, 60.0f);
             ImGui::BeginDisabled();
             ImGui::DragFloat("Age (s)", &dc.age, 0.0f, 0.0f, 0.0f, "%.2f s");
+            // VFX のフェードカーブとスクリプトが書くランタイム倍率。保存はされない。
+            // 表示しておかないと「薄いのに設定はどこも薄くない」の理由が読めない。
+            ImGui::DragFloat("Opacity", &dc.opacity, 0.0f, 0.0f, 0.0f, "%.2f");
             ImGui::EndDisabled();
 
             ImGui::SeparatorText("Receiver Layer Mask");

@@ -4015,6 +4015,82 @@ void ScriptDecalProxy::SetEmissiveTexture(std::string_view path) const
 {
     if (auto* d = SelfDecal(script)) d->emissiveTexPath = std::string(path);
 }
+void ScriptDecalProxy::SetOpacity(float opacity) const
+{
+    if (auto* d = SelfDecal(script)) d->opacity = std::clamp(opacity, 0.0f, 1.0f);
+}
+void ScriptDecalProxy::SetAngleFade(float strength, float limitDegrees) const
+{
+    auto* d = SelfDecal(script);
+    if (!d) return;
+    d->angleFadeStrength = std::clamp(strength, 0.0f, 1.0f);
+    d->angleFadeDegrees  = std::clamp(limitDegrees, 0.0f, 89.0f);
+}
+void ScriptDecalProxy::SetReceiverLayerMask(uint32_t mask) const
+{
+    if (auto* d = SelfDecal(script)) d->receiverLayerMask = mask;
+}
+void ScriptDecalProxy::SetMaterial(std::string_view materialPath) const
+{
+    auto* d = SelfDecal(script);
+    if (!d) return;
+    std::string next(materialPath);
+    if (d->materialPath == next) return;
+    d->materialPath = std::move(next);
+    // 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
+    // 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
+    d->materialParamOverrides.clear();
+    d->materialTextureOverrides.clear();
+}
+
+namespace {
+// AssignUIMaterialOverride と同じ理由で assign を使う (毎フレーム呼ばれる Setter)。
+void AssignDecalMaterialOverride(DecalComponent& decal, std::string_view param,
+                                 const float* values, std::size_t count)
+{
+    auto& target = decal.materialParamOverrides[std::string(param)];
+    target.assign(values, values + count);
+}
+} // namespace
+
+void ScriptDecalProxy::SetMaterialFloat(std::string_view param, float value) const
+{
+    if (auto* d = SelfDecal(script)) AssignDecalMaterialOverride(*d, param, &value, 1);
+}
+void ScriptDecalProxy::SetMaterialVector2(std::string_view param, float x, float y) const
+{
+    const float values[2] = { x, y };
+    if (auto* d = SelfDecal(script)) AssignDecalMaterialOverride(*d, param, values, 2);
+}
+void ScriptDecalProxy::SetMaterialVector4(std::string_view param, const math::Vector4& value) const
+{
+    const float values[4] = { value.x, value.y, value.z, value.w };
+    if (auto* d = SelfDecal(script)) AssignDecalMaterialOverride(*d, param, values, 4);
+}
+void ScriptDecalProxy::SetMaterialColor(std::string_view param, const math::Vector4& color) const
+{
+    SetMaterialVector4(param, color);
+}
+void ScriptDecalProxy::SetMaterialTexture(std::string_view slot, std::string_view texturePath) const
+{
+    if (auto* d = SelfDecal(script))
+        d->materialTextureOverrides[std::string(slot)].assign(texturePath.data(), texturePath.size());
+}
+void ScriptDecalProxy::ClearMaterialOverride(std::string_view param) const
+{
+    auto* d = SelfDecal(script);
+    if (!d) return;
+    const std::string key(param);
+    d->materialParamOverrides.erase(key);
+    d->materialTextureOverrides.erase(key);
+}
+void ScriptDecalProxy::ClearMaterialOverrides() const
+{
+    auto* d = SelfDecal(script);
+    if (!d) return;
+    d->materialParamOverrides.clear();
+    d->materialTextureOverrides.clear();
+}
 
 // ---------------------------------------------------------------------------
 // ScriptVolumeProxy

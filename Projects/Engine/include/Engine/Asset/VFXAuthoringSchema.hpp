@@ -261,6 +261,7 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
 {
     using T = VFXDecalSettings; using reflection::MakeProperty; using reflection::PropertyType;
     static const detail::StaticTypeSchema schema("VFXDecalSettings", {
+        MakeProperty<T, std::string, &T::materialPath>("materialPath", PropertyType::AssetRef, "Material", "Decal", true),
         MakeProperty<T, std::string, &T::albedoPath>("albedoPath", PropertyType::AssetRef, "Albedo", "Decal", true),
         MakeProperty<T, std::string, &T::normalPath>("normalPath", PropertyType::AssetRef, "Normal", "Decal", true),
         MakeProperty<T, std::string, &T::emissivePath>("emissivePath", PropertyType::AssetRef, "Emissive", "Decal", true),

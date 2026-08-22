@@ -766,14 +766,31 @@ void PresentationSystem::Update(SystemContext& ctx)
         if (!projector->materialPath.empty()
             && projector->runtimeLoadedMaterialPath != projector->materialPath
             && asset::LoadMaterialAssetFromFile(projector->materialPath, materialAsset)) {
-            if (auto it = materialAsset.textures.find("albedo"); it != materialAsset.textures.end())
-                decal->albedoTexPath = it->second;
-            if (auto it = materialAsset.textures.find("normal"); it != materialAsset.textures.end())
-                decal->normalTexPath = it->second;
-            if (auto it = materialAsset.textures.find("emissive"); it != materialAsset.textures.end())
-                decal->emissiveTexPath = it->second;
+            // WHY 用途で分岐するか: render_path = "decal" の .mat はシェーダーごと
+            //     DecalComponent へ渡せる。それ以外はメッシュ用シェーダーを指しており
+            //     デカールパスでは描けないので、従来どおりテクスチャだけ抜いて
+            //     組み込み描画へ載せる (既存の Projector 設定を壊さないため)。
+            if (materialAsset.renderPath == asset::RenderPath::Decal) {
+                decal->materialPath = projector->materialPath;
+            } else {
+                decal->materialPath.clear();
+                if (auto it = materialAsset.textures.find("albedo"); it != materialAsset.textures.end())
+                    decal->albedoTexPath = it->second;
+                if (auto it = materialAsset.textures.find("normal"); it != materialAsset.textures.end())
+                    decal->normalTexPath = it->second;
+                if (auto it = materialAsset.textures.find("emissive"); it != materialAsset.textures.end())
+                    decal->emissiveTexPath = it->second;
+            }
             projector->runtimeLoadedMaterialPath = projector->materialPath;
+        } else if (projector->materialPath.empty() && !projector->runtimeLoadedMaterialPath.empty()) {
+            // 割り当てを外したら .mat も外す。残すとテクスチャを消しても材質が描き続ける。
+            projector->runtimeLoadedMaterialPath.clear();
+            decal->materialPath.clear();
         }
+        // .mat 経路では albedoColor が効かないので、投影の濃さは opacity へ回す。
+        // 組み込み経路は albedoColor[3] が担うため 1.0 のままにする (二重掛けを避ける)。
+        decal->opacity = decal->materialPath.empty()
+            ? 1.0f : std::clamp(projector->color.w, 0.0f, 1.0f);
         if (projector->shape == ProjectorShape::Perspective) {
             const float depth = (std::max)(projector->farClip - projector->nearClip, 0.001f);
             const float radius = std::tan(projector->fieldOfView * DEG_TO_RAD * 0.5f)
