@@ -265,10 +265,20 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         ImGui::Checkbox("Light Range", &ctx.showLightRange);
         ImGui::Checkbox("VFX Gizmos", &ctx.showVFXGizmos);
         ImGui::Checkbox("Colliders",   &ctx.projectSettings.render.showColliders);
+        ImGui::Checkbox("UI Rects",    &ctx.projectSettings.render.showUIRects);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("UI 要素の当たり判定矩形とピボットを Canvas 上へ重ねます。");
         ImGui::Checkbox("NavMesh",     &ctx.projectSettings.render.showNavMesh);
         ImGui::Checkbox("AI Sensors",  &ctx.projectSettings.render.showNavSensors);
         ImGui::Checkbox("Skeleton",    &ctx.showSkeleton);
         ImGui::Checkbox("Stats",       &ctx.showStats);
+        ImGui::Separator();
+        ImGui::Checkbox("Occlusion Culling", &ctx.sceneViewOcclusionCulling);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Scene View で CPU オクルージョンカリングを効かせます。\n"
+                              "既定は無効です。遮蔽者はメッシュ実体ではなくバウンディング球の\n"
+                              "近似なので、有効にすると見えているものが消える場合があります。\n"
+                              "「消えた原因がカリングか」を切り分けるときに入れ切りしてください。");
         ImGui::Separator();
         ImGui::Checkbox("Surface snap aligns to normal", &ctx.surfaceSnapAlignToNormal);
         if (ImGui::IsItemHovered())

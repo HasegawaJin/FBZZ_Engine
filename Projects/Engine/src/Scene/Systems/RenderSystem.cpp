@@ -2367,6 +2367,9 @@ void RenderSystem(Scene& scene,
                 const float uiHeight = uiOptions->viewportHeight > 0.0f
                     ? uiOptions->viewportHeight
                     : static_cast<float>(sHdrH);
+                // デバッグ表示の可否は RenderSettings が持つ。UISystem は設定の
+                // 所有者を知らない自由関数なので、知っている側が毎フレーム入れる。
+                uiOptions->context->showRects = passCtx.settings.showUIRects;
                 UISystem(scene,
                          renderer,
                          resources,

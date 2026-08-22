@@ -748,6 +748,7 @@ void EditorApp::Shutdown()
 
     // Debug メニュー - レンダリングオーバーレイ
     m_settings.showColliders        = m_ctx.projectSettings.render.showColliders;
+    m_settings.showUIRects          = m_ctx.projectSettings.render.showUIRects;
     m_settings.showTerrainCollision = m_ctx.projectSettings.render.showTerrainCollision;
     m_settings.showDecalBounds      = m_ctx.projectSettings.render.showDecalBounds;
     m_settings.showNavMesh          = m_ctx.projectSettings.render.showNavMesh;
@@ -870,6 +871,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     // WHY: Debug メニューのレンダリング設定はエディター個人設定であり projectSettings より優先する。
     //      projectSettings.Load() の後に上書きすることでプロジェクト共有値に左右されない。
     m_ctx.projectSettings.render.showColliders        = m_settings.showColliders;
+    m_ctx.projectSettings.render.showUIRects          = m_settings.showUIRects;
     m_ctx.projectSettings.render.showTerrainCollision = m_settings.showTerrainCollision;
     m_ctx.projectSettings.render.showDecalBounds      = m_settings.showDecalBounds;
     m_ctx.projectSettings.render.showNavMesh          = m_settings.showNavMesh;

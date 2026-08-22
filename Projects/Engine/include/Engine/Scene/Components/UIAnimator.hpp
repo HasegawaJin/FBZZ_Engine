@@ -124,8 +124,8 @@ struct UIAnimator {
         static constexpr const char* kEasingLabels[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
 
         r.Group("Color Tween");
-        r.Field("colorFrom",        colorTween.from);
-        r.Field("colorTo",          colorTween.to);
+        r.ColorField("colorFrom",        colorTween.from);
+        r.ColorField("colorTo",          colorTween.to);
         r.FloatRange("colorDuration", colorTween.duration, 0.01f, 60.0f);
         int colorEasing = static_cast<int>(colorTween.easing);
         r.Enum("colorEasing", colorEasing, kEasingLabels);

@@ -154,6 +154,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
     // Debug メニュー - レンダリングオーバーレイ
     if (auto v = tbl["debug"]["show_colliders"].value<bool>())         showColliders        = *v;
+    if (auto v = tbl["debug"]["show_ui_rects"].value<bool>())          showUIRects          = *v;
     if (auto v = tbl["debug"]["show_terrain_collision"].value<bool>()) showTerrainCollision = *v;
     if (auto v = tbl["debug"]["show_decal_bounds"].value<bool>())      showDecalBounds      = *v;
     if (auto v = tbl["debug"]["show_navmesh"].value<bool>())           showNavMesh          = *v;
@@ -342,6 +343,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     // Debug メニュー - レンダリングオーバーレイ
     toml::table debugTbl;
     debugTbl.insert("show_colliders",         showColliders);
+    debugTbl.insert("show_ui_rects",          showUIRects);
     debugTbl.insert("show_terrain_collision", showTerrainCollision);
     debugTbl.insert("show_decal_bounds",      showDecalBounds);
     debugTbl.insert("show_navmesh",           showNavMesh);

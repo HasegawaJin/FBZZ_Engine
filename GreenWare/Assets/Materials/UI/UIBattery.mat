@@ -1,0 +1,26 @@
+version = 1
+name = 'UIBattery'
+shader = "Assets/Shaders/UI/Material/UIBattery.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+fillColor = [ 1.0, 1.0, 1.0, 1.0 ]
+trackColor = [ 0.05, 0.06, 0.08, 0.7 ]
+shellColor = [ 0.72, 0.76, 0.82, 0.9 ]
+cornerRadius = [ 4.0, 4.0, 4.0, 4.0 ]
+fillRatio = [ 1.0 ]
+fillFromRight = [ 0.0 ]
+shellThickness = [ 2.0 ]
+bodyInset = [ 2.0 ]
+terminalWidth = [ 8.0 ]
+terminalHeight = [ 0.45 ]
+cellCount = [ 8.0 ]
+cellGap = [ 3.0 ]
+headGlowWidth = [ 10.0 ]
+headGlowGain = [ 0.9 ]
+depleted = [ 0.0 ]

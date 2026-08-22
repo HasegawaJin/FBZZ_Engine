@@ -17,7 +17,6 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -622,28 +621,30 @@ void PresentationSystem::Update(SystemContext& ctx)
         if (!go || !sprite)
             continue;
         std::string texturePath = sprite->spritePath;
-        std::string spriteName;
         math::Vector2 uvMin = math::Vector2::ZERO;
         math::Vector2 uvMax = math::Vector2::ONE;
-        if (asset::ParseSpriteReference(sprite->spritePath, texturePath, spriteName)) {
-            const auto textureHandle = resources.LoadTexture(texturePath);
+        if (!sprite->spritePath.empty()) {
+            const auto textureHandle = resources.LoadTexture(sprite->spritePath);
             const renderer::ITexture* texture = resources.Get(textureHandle);
-            asset::TextureAsset textureAsset;
-            asset::TexDescSerializer serializer;
-            const std::string metaPath =
-                asset::AssetManager::ResolveAssetPath(texturePath + ".meta");
-            if (texture && serializer.Load(metaPath, textureAsset)) {
-                if (const asset::SpriteRect* rect =
-                    asset::FindSprite(textureAsset.settings, spriteName)) {
-                    const float width = static_cast<float>(texture->GetWidth());
-                    const float height = static_cast<float>(texture->GetHeight());
-                    if (width > 0.0f && height > 0.0f) {
-                        uvMin = { static_cast<float>(rect->x) / width,
-                                  static_cast<float>(rect->y) / height };
-                        uvMax = { static_cast<float>(rect->x + rect->width) / width,
-                                  static_cast<float>(rect->y + rect->height) / height };
-                    }
-                }
+            const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
+                sprite->spritePath,
+                texture ? static_cast<float>(texture->GetWidth())  : 0.0f,
+                texture ? static_cast<float>(texture->GetHeight()) : 0.0f);
+            texturePath = resolved.texturePath;
+
+            if (resolved.resolved) {
+                uvMin = resolved.uvMin;
+                uvMax = resolved.uvMax;
+            } else if (!resolved.isSpriteReference && sprite->drawMode == SpriteDrawMode::Tiled) {
+                uvMax = sprite->size;
+            }
+
+            // 素材が持つ寸法と基準点をそのまま採る。1 単位 = pixelsPerUnit ピクセル。
+            if (sprite->useSpriteNativeSize && resolved.pixelsPerUnit > 0.0f
+                && resolved.sizePixels.x > 0.0f && resolved.sizePixels.y > 0.0f) {
+                sprite->size = { resolved.sizePixels.x / resolved.pixelsPerUnit,
+                                 resolved.sizePixels.y / resolved.pixelsPerUnit };
+                sprite->pivot = resolved.pivot;
             }
         } else if (sprite->drawMode == SpriteDrawMode::Tiled) {
             uvMax = sprite->size;

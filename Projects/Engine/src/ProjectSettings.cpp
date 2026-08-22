@@ -223,6 +223,7 @@ bool ProjectSettings::Load(const std::string& path)
 
         // ── デバッグ表示 ──────────────────────────────────────────
         render.showColliders        = (*renderTbl)["showColliders"].value_or(render.showColliders);
+        render.showUIRects          = (*renderTbl)["showUIRects"].value_or(render.showUIRects);
         render.showDecalBounds      = (*renderTbl)["showDecalBounds"].value_or(render.showDecalBounds);
         render.showSelectionOutline = (*renderTbl)["showSelectionOutline"].value_or(render.showSelectionOutline);
         render.passViewerEnabled    = (*renderTbl)["passViewerEnabled"].value_or(render.passViewerEnabled);
@@ -346,6 +347,7 @@ bool ProjectSettings::Save(const std::string& path) const
 
     // ── デバッグ表示 ────────────────────────────────────────────────────────
     renderTbl.insert("showColliders",        render.showColliders);
+    renderTbl.insert("showUIRects",          render.showUIRects);
     renderTbl.insert("showDecalBounds",      render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("passViewerEnabled",    render.passViewerEnabled);
