@@ -33,7 +33,8 @@ public:
         if (!resource) return ResourceHandle<Tag>::Null();
 
         // WHY: ResourcePool は GPU リソースの実所有者なので、ここで追跡すれば各呼び出し元へ侵襲せず解放漏れを見つけられる。
-        m_debug.TrackShared(resource, core::MemoryTag::RENDERER, debugName, file, line);
+        // WHY: 追跡枠が尽きても (MAX_DEBUG_ALLOCATIONS) プールの機能自体は成立するため戻り値は捨てる。
+        static_cast<void>(m_debug.TrackShared(resource, core::MemoryTag::RENDERER, debugName, file, line));
 
         uint32_t id = 0;
         if (!m_freeList.empty()) {
@@ -75,8 +76,9 @@ public:
     {
         if (!IsLive(handle) || !resource) return;
         Slot& slot = m_slots[handle.id];
-        m_debug.Untrack(slot.resource.get());
-        m_debug.TrackShared(resource, core::MemoryTag::RENDERER, "ShaderReload", __FILE__, __LINE__);
+        static_cast<void>(m_debug.Untrack(slot.resource.get()));
+        static_cast<void>(
+            m_debug.TrackShared(resource, core::MemoryTag::RENDERER, "ShaderReload", __FILE__, __LINE__));
         slot.resource = std::move(resource);
     }
 
@@ -85,7 +87,7 @@ public:
         if (!IsLive(handle)) return;
 
         Slot& slot = m_slots[handle.id];
-        m_debug.Untrack(slot.resource.get());
+        static_cast<void>(m_debug.Untrack(slot.resource.get()));
         slot.resource.reset();
         slot.occupied = false;
         // generation を進めて、同じ id を再利用しても古いハンドルが IsLive を通過しないようにする。
@@ -115,7 +117,7 @@ public:
         for (uint32_t id = 0; id < static_cast<uint32_t>(m_slots.size()); ++id) {
             Slot& slot = m_slots[id];
             if (slot.occupied) {
-                m_debug.Untrack(slot.resource.get());
+                static_cast<void>(m_debug.Untrack(slot.resource.get()));
                 slot.resource.reset();
                 slot.occupied = false;
                 slot.gen = (slot.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : slot.gen + 1u;
