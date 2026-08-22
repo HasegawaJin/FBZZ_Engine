@@ -31,8 +31,11 @@ public:
     void RegisterFromFile(const std::string& name, const std::string& path,
                           renderer::ResourceManager& resources);
 
-    // 次フレームの先頭でシーンを切り替える
-    void LoadScene(const std::string& name);
+    // 次フレームの先頭でシーンを切り替える。
+    // 未登録の名前なら要求を受け付けず false を返す (エラーはログへ)。
+    // WHY 戻り値を返すか: 遷移はフェードアウトの後に呼ばれることが多く、失敗を
+    //     黙って捨てると「暗転したまま何も起きない」という最も気付きにくい形で止まる。
+    bool LoadScene(const std::string& name);
 
     // 外部所有シーンをバインドする。null を渡すと LoadScene で作成した m_active を使用する
     void SetScene(Scene* scene);

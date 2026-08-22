@@ -2585,10 +2585,10 @@ size_t ScriptSceneProxy::PooledCount(const std::string& prefabPath) const
     return PrefabPool::AvailableCount(*script->m_scene, prefabPath);
 }
 
-void ScriptSceneProxy::LoadScene(std::string_view name) const
+bool ScriptSceneProxy::LoadScene(std::string_view name) const
 {
-    if (auto* mgr = ScriptRuntime::GetCurrent().sceneManager)
-        mgr->LoadScene(std::string(name));
+    auto* mgr = ScriptRuntime::GetCurrent().sceneManager;
+    return mgr && mgr->LoadScene(std::string(name));
 }
 
 std::string ScriptSceneProxy::GetSceneName() const
