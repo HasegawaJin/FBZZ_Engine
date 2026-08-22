@@ -182,6 +182,8 @@ std::string ResolveMaterialPreviewShaderPath(const asset::MaterialAsset& materia
     const bool unsupportedGeometry =
         material.renderPath == asset::RenderPath::Particle ||
         material.renderPath == asset::RenderPath::Trail ||
+        material.renderPath == asset::RenderPath::UI ||
+        material.renderPath == asset::RenderPath::Decal ||
         lower.find("/terrain/") != std::string::npos ||
         lower.find("/water/") != std::string::npos;
     return unsupportedGeometry
@@ -191,8 +193,12 @@ std::string ResolveMaterialPreviewShaderPath(const asset::MaterialAsset& materia
 
 MaterialPreviewFlavor DetectMaterialPreviewFlavor(const asset::MaterialAsset& material)
 {
+    // UI マテリアルは矩形と ortho 前提、Decal は深度からの投影前提。
+    // どちらも球メッシュのプレビューでは成立しない。
     if (material.renderPath == asset::RenderPath::Particle ||
-        material.renderPath == asset::RenderPath::Trail)
+        material.renderPath == asset::RenderPath::Trail ||
+        material.renderPath == asset::RenderPath::UI ||
+        material.renderPath == asset::RenderPath::Decal)
         return MaterialPreviewFlavor::Unsupported;
     if (material.meshType == asset::MeshType::Skinned)
         return MaterialPreviewFlavor::Skinned;

@@ -471,6 +471,8 @@ const char* RenderPathName(RenderPath path)
     switch (path) {
     case RenderPath::Particle: return "particle";
     case RenderPath::Trail:    return "trail";
+    case RenderPath::UI:       return "ui";
+    case RenderPath::Decal:    return "decal";
     case RenderPath::Auto:
     default:                   return "auto";
     }

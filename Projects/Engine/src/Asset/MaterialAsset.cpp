@@ -70,6 +70,8 @@ RenderPath RenderPathFromString(std::string_view value)
     if (value == "auto" || value == "Auto") return RenderPath::Auto;
     if (value == "particle" || value == "Particle") return RenderPath::Particle;
     if (value == "trail" || value == "Trail") return RenderPath::Trail;
+    if (value == "ui" || value == "UI") return RenderPath::UI;
+    if (value == "decal" || value == "Decal") return RenderPath::Decal;
     return RenderPath::Auto;
 }
 
@@ -78,6 +80,8 @@ const char* RenderPathToString(RenderPath rp)
     switch (rp) {
     case RenderPath::Particle: return "particle";
     case RenderPath::Trail:    return "trail";
+    case RenderPath::UI:       return "ui";
+    case RenderPath::Decal:    return "decal";
     case RenderPath::Auto:
     default:                   return "auto";
     }
