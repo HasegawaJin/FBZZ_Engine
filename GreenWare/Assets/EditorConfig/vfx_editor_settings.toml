@@ -1,0 +1,24 @@
+[editing]
+autoConnectNewNodes = true
+liveEdit = true
+timelineSnap = true
+timelineSnapStep = 0.05000000074505806
+
+[previewActor]
+attachToBone = false
+bone = ''
+clip = ''
+controller = ''
+material = ''
+model = ''
+state = ''
+syncToVFX = true
+
+[view]
+graphGrid = true
+graphZoom = 0.44999998807907104
+miniMap = true
+overdrawIncludeModels = false
+previewFloorGrid = false
+previewVFXGizmos = false
+timeline = true
