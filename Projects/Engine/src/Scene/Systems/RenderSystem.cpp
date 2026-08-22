@@ -2232,11 +2232,12 @@ void RenderSystem(Scene& scene,
             ExecuteVolumetricLightPass(passCtx);
         });
     }
-    // LensFlare PS — bloomHalf を光源ソースとして ADDITIVE に HDR に合成する。
-    // WHY: bloomHalf は既に輝度抽出済みで hdrRT とは別リソースなので SRV/RTV 競合しない。
-    //      Bloom の前に配置することでフレアも Bloom に乗る。
+    // LensFlare PS — 輝度抽出した光源を ADDITIVE に HDR に合成する。
+    // WHY: Bloom の前に置くことでフレアも Bloom に乗る。ただしその順序では bloomHalf に
+    //      今フレームの輝点がまだ無いため、パス自身が bloomHalf へ輝度抽出を焼いてから読む
+    //      (Bloom として宣言しているのはこの書き込み)。hdrRT とは別リソースなので競合しない。
     if (rs.lensFlare.enabled) {
-        pipeline.AddRawPass("LensFlare", { "HDR" }, { "HDR" }, [&]() {
+        pipeline.AddRawPass("LensFlare", { "HDR" }, { "HDR", "Bloom" }, [&]() {
             ExecuteLensFlarePass(passCtx);
         });
     }

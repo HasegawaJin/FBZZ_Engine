@@ -1,109 +1,95 @@
-// FBZZ Engine
-// PostProcess/Flare/LensFlare.hlsl | PostProcess
-// スクリーンスペース Lens Flare — HDR バッファの輝点から
-// ゴーストとハローを生成し加算合成する
-//
-// アルゴリズム概要:
-//   1. lensFlareIntensity <= 0 なら float4(0,0,0,0) を返して早期終了
-//   2. フレアベクトル = 0.5 - uv（スクリーン中心から外へ向かうベクトル）
-//   3. ghostCount 個のゴーストをフレアベクトル上に均等配置
-//      - 輝度 > threshold のピクセルのみゴーストとして加算
-//   4. スクリーン中心からの距離でハロー（薄い円形グロー）を加算
-//   5. 全て加算合成用 (alpha=0) で返す → 呼び出し側が additive blend する
-//
-// 入力バインディング:
-//   t5  = HDR カラーバッファ  (TEX_GBUFFER0)
-//   b5  = PostProcConstants
-//   b8  = AdvancedGraphicsConstants
+/// @file LensFlare.hlsl
+/// @brief スクリーンスペースレンズフレア (ゴースト + ハロー) を加算合成する PS
+/// @author Hasegawa Jin
+/// @date 2026/06/23
+///
+/// 入力バインディング:
+///   t5  = 輝度抽出済みハーフ解像度カラー (TEX_GBUFFER0)
+///   b5  = PostProcConstants (screenSize)
+///   b8  = AdvancedGraphicsConstants (lensFlare*)
 
 #include "Common/Constants.hlsli"
 #include "Common/Fullscreen.hlsli"
 #include "Platform/Backend.hlsli"
 
-Texture2D    texHDR      : register(TEX_GBUFFER0); // HDR カラー入力
+Texture2D    texBright   : register(TEX_GBUFFER0);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
-// ─── フルスクリーントライアングル ───────────────────────────────────────────────
+// 画面隅に近い光源ほど寄与を落とす指数。実レンズでも軸外の光ほどフレアが弱い。
+// WHY: 画面外の光源は拾えない (スクリーンスペースの限界) ので、端に届く前に寄与を
+//      ほぼ 0 にしないと光源がフレームを跨ぐ瞬間にフレアがパッと消える。逆に大きすぎると
+//      画面中央付近の光源でしかフレアが出なくなる。3 前後がその折り合い。
+static const float FALLOFF_POWER = 3.0f;
+
+// ゴーストの色づき。前段ほど暖色、後段ほど寒色に寄せると光学系のコーティング差らしく見える。
+static const float3 GHOST_TINT_NEAR = float3(1.00f, 0.85f, 0.60f);
+static const float3 GHOST_TINT_FAR  = float3(0.55f, 0.75f, 1.00f);
+static const float3 HALO_TINT       = float3(0.75f, 0.85f, 1.00f);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
     return FBZZMakeFullscreenVertex(id);
 }
 
-// ─── ユーティリティ ──────────────────────────────────────────────────────────────
-
-// 輝度計算 (BT.601 係数)
-float Luminance(float3 c) { return dot(c, float3(0.299f, 0.587f, 0.114f)); }
-
-// ゴースト形状の減衰: 中心からの距離でフォールオフ
-// WHY: ゴーストの端をぼかすことで不自然な矩形クリップを防ぐ
-float GhostFalloff(float2 ghostUV)
+// 画面中心からの距離を「隅で 1.0」に正規化する。
+// WHY: UV 空間のまま測ると 16:9 では横が詰まり、ハローのリングが楕円に潰れる。
+float NormalizedCenterDistance(float2 uv, float2 aspect)
 {
-    float2 centered = ghostUV - 0.5f;
-    float  dist     = length(centered) * 2.0f; // [0, √2] → 1.0 付近で境界
-    return saturate(1.0f - dist * dist);
+    return length((uv - 0.5f) * aspect) / length(0.5f * aspect);
 }
 
-// ─── ピクセルシェーダー ─────────────────────────────────────────────────────────
+float3 SampleFlareSource(float2 uv, float2 aspect)
+{
+    // 画面外には光源が無い。clamp サンプラーの端引き伸ばしを持ち込ませない。
+    if (any(uv < 0.0f) || any(uv > 1.0f))
+        return float3(0.0f, 0.0f, 0.0f);
+
+    // 分岐内なので SampleLevel — Sample は非一様フローで微分が未定義になる。
+    float3 source = texBright.SampleLevel(sampDefault, uv, 0).rgb;
+    return source * pow(saturate(1.0f - NormalizedCenterDistance(uv, aspect)), FALLOFF_POWER);
+}
 
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
-    // レンズフレアが無効なら黒透明を返す（加算合成時に影響なし）
     if (lensFlareIntensity <= 0.0f)
         return float4(0.0f, 0.0f, 0.0f, 0.0f);
 
-    float2 uv = p.uv;
+    const float2 uv     = p.uv;
+    const float2 aspect = float2(max(screenSize.x, 1.0f) / max(screenSize.y, 1.0f), 1.0f);
+    const int    ghostCount = clamp(lensFlareGhostCount, 1, 16);
+    const float  spreadBase = max(lensFlareDistort, 0.0f);
 
-    // フレアベクトル: スクリーン中心 (0.5, 0.5) から現ピクセルへ向かうベクトル
-    // WHY: 光源とは逆方向にゴーストが連なる光学現象を再現する
-    float2 flareVec = 0.5f - uv;
+    float3 result = float3(0.0f, 0.0f, 0.0f);
 
-    // 輝度しきい値: HDR バッファの明るいピクセルのみフレアを発生させる
-    static const float GHOST_THRESHOLD = 1.0f; // HDR 輝度しきい値（> 1.0 が輝点）
-
-    // ── ゴーストの積算 ───────────────────────────────────────────────────────────
-    float3 ghostAccum = float3(0.0f, 0.0f, 0.0f);
-    int    ghostCount = clamp(lensFlareGhostCount, 1, 8);
-
+    // ゴースト: 光源を画面中心で点対称に写した位置に、倍率を変えた縮小像として並べる。
+    // WHY: 実レンズのゴーストは絞りを挟んだ反対側に連なる。中心対称にせず光源側へ
+    //      ずらすだけだと光源自身を足し直すことになり、フレアではなく滲みにしか見えない。
     for (int i = 0; i < ghostCount; ++i)
     {
-        // ゴーストを 0 番から ghostCount-1 番まで均等配置
-        // lensFlareDistort でゴースト間隔をスケール
-        float  t       = float(i) / float(ghostCount);
-        float2 ghostUV = uv + flareVec * t * lensFlareDistort;
-
-        // UV が画面外なら除外
-        if (any(ghostUV < 0.0f) || any(ghostUV > 1.0f))
+        float spread = spreadBase * (1.0f - float(i) / float(ghostCount));
+        if (spread <= 1e-4f)
             continue;
 
-        float3 sample    = texHDR.Sample(sampDefault, ghostUV).rgb;
-        float  luminance = Luminance(sample);
+        float2 sampleUV = 0.5f - (uv - 0.5f) / spread;
+        float3 tint     = lerp(GHOST_TINT_NEAR, GHOST_TINT_FAR,
+                               float(i) / float(max(ghostCount - 1, 1)));
+        result += SampleFlareSource(sampleUV, aspect) * tint;
+    }
 
-        // 輝度しきい値を超えた輝点のみゴーストに寄与させる
-        if (luminance > GHOST_THRESHOLD)
+    // ハロー: 対称像から中心方向へ haloWidth だけずらした点を拾うことで、
+    //         光源を囲むリングになる。
+    if (lensFlareHaloWidth > 0.0f)
+    {
+        float2 mirrorUV = 1.0f - uv;
+        float2 toCenter = (0.5f - mirrorUV) * aspect;
+        float  len      = length(toCenter);
+        if (len > 1e-5f)
         {
-            // 輝点のカラーを中心からのフォールオフ込みで加算
-            float  falloff = GhostFalloff(ghostUV);
-            float  weight  = saturate((luminance - GHOST_THRESHOLD) / GHOST_THRESHOLD);
-            ghostAccum    += sample * weight * falloff;
+            float2 haloVec = (toCenter / len) * lensFlareHaloWidth / aspect;
+            result += SampleFlareSource(mirrorUV + haloVec, aspect) * HALO_TINT;
         }
     }
 
-    // ── ハロー (Halo): スクリーン中心からの距離で薄い円形グロー ─────────────────
-    // WHY: レンズ内で散乱した光が円形に広がる現象を再現する
-    float  distFromCenter = length(uv - 0.5f);
-    float  haloRadius     = lensFlareHaloWidth * 0.5f; // 中心からのリング半径
-    float  haloWidth      = max(lensFlareHaloWidth * 0.1f, 0.01f);
-    float  haloFactor     = saturate(1.0f - abs(distFromCenter - haloRadius) / haloWidth);
-    haloFactor = pow(haloFactor, 3.0f); // シャープなリング形状
-
-    // ハローはスクリーン全体の平均的な明るさに比例させる（固定カラー）
-    float3 haloColor = float3(0.8f, 0.85f, 1.0f) * haloFactor; // 青白いグロー
-
-    // ── 最終合成 ─────────────────────────────────────────────────────────────────
-    float3 result = (ghostAccum + haloColor) * lensFlareIntensity;
-
-    // alpha = 0 で返す: 呼び出し側は Additive Blend (SrcBlend=ONE, DestBlend=ONE) を使う
-    // WHY: ゴーストは光の加算なので乗算合成は不適切。アルファブレンドでなく加算合成が自然
-    return float4(result, 0.0f);
+    // alpha = 0: 呼び出し側は ADDITIVE ブレンドなので RGB だけを寄与させる。
+    return float4(result * lensFlareIntensity, 0.0f);
 }
