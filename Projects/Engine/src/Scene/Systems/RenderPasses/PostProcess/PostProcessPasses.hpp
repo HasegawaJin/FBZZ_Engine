@@ -53,6 +53,7 @@ void ExecuteTAABlitPass(RenderPassContext& ctx);
 void ExecuteMotionBlurPass(RenderPassContext& ctx);
 
 // Lens Flare — スクリーンスペースレンズフレア。加算合成で HDR バッファに合成する。
+// 光源抽出のため bloomHalf を作業バッファとして上書きする (Bloom より前に走る前提)。
 void ExecuteLensFlarePass(RenderPassContext& ctx);
 
 } // namespace fbzz::scene
