@@ -780,6 +780,16 @@ const VFXFixHint* FindVFXFixHint(std::string_view code)
         { "EMPTY_SUBGRAPH", false,
           "vfx_node_set_field(schemaPath=\"subGraph.graphPath\") で .vfx を指定するか、"
           "vfx_node_remove でノードごと削除する。", "" },
+        { "EMPTY_PARTICLE_MATERIAL", false,
+          "vfx_node_set_field(schemaPath=\"particle.materialPath\") で .mat を指定する。"
+          "手持ちの .mat は Assets/Materials/Particles/ にある (asset_list で一覧できる)。",
+          "未設定は既定の ParticleFallback.mat (加算の丸い光) で描かれる。絵は出るので"
+          "壊れて見えないが、意図した素材・ブレンドは一切効いていない。" },
+        { "MATERIAL_PATH_NOT_MAT", false,
+          "materialPath には .mat だけを入れる。テクスチャを使いたい場合は、その画像を"
+          "albedo に持つ .mat を用意してから指定する。",
+          "ParticleEmitter はテクスチャを直接持てない。.png を materialPath に入れると"
+          "マテリアル解決に失敗し、未設定と同じ 1x1 白になる。" },
         { "SHEARED_SPRITE", true,
           "vfx_repair(fixSprites=true) で sizeAxisScale を等方 [1,1,1] へ戻す。"
           "縦長にしたい場合は代わりに回転 (angularVelocity / rotationCurve) を 0 にする。",
@@ -940,9 +950,12 @@ Outcome DoVFXLint(editor::EditorContext& ctx, const JsonValue& payload)
             checkAsset(node.audio.clipPath, "clip", node.id);
             break;
         case asset::VFXNodeType::Decal:
+            checkAsset(node.decal.materialPath, "material", node.id);
             checkAsset(node.decal.albedoPath, "albedo", node.id);
-            if (node.decal.albedoPath.empty())
-                addIssue("warning", "EMPTY_DECAL", "Decal に albedo がありません", node.id);
+            // .mat を割り当てた Decal は albedo を使わない。両方空のときだけ「絵が無い」。
+            if (node.decal.albedoPath.empty() && node.decal.materialPath.empty())
+                addIssue("warning", "EMPTY_DECAL",
+                         "Decal に albedo も material もありません", node.id);
             break;
         case asset::VFXNodeType::Mesh:
             checkAsset(node.mesh.meshPath, "mesh", node.id);
@@ -1789,6 +1802,12 @@ Outcome DoVFXGuide()
           "既定 (1.0 / 70 度) のままなら、壁と床の角をまたいだ部分が自動的に消える。",
           "OBB 投影は投影軸に対して斜めな面へ当てるとテクスチャが引き伸ばされ、"
           "「伸びた汚れ」として露見する。角度で薄めれば破綻する範囲がそのまま消える。", "" },
+        { "expression",
+          "Decal に decal.materialPath を入れるのは、テクスチャ 1 枚では作れない絵が要るときだけ。"
+          "入れる .mat は render_path = \"decal\" 必須で、入れた瞬間 albedoPath / color / "
+          "normalStrength / emissiveScale は効かなくなる (fadeTime と angleFade は両方で効く)。",
+          "デカール用 .mat は b2 を MaterialConstants として使う契約で、メッシュ用の .mat を"
+          "割り当てると頂点入力の無いパスに載って何も出ない。用途宣言で弾いている。", "" },
         { "diagnosis",
           "ノードが画に出ないときは、画像を睨む前に vfx.runtime で実行状態を見る。"
           "active=false かつ waitingForEvent=true なら OnCollision / OnDeath 待ちで、"
@@ -5099,6 +5118,8 @@ Outcome DoAnimationBlendTree(editor::EditorContext& ctx, const JsonValue& payloa
         result.Set("blendType",
             JsonValue(tree.type == scene::BlendTree2DType::SimpleDirectional
                 ? "simpleDirectional" : "freeformCartesian"));
+        result.Set("dampTime", JsonValue(tree.dampTime));
+        result.Set("syncNormalizedTime", JsonValue(tree.syncNormalizedTime));
         for (const auto& motion : tree.motions) motions.Push(motionToJson(motion, true));
     }
     result.Set("motions", std::move(motions));
@@ -6405,6 +6426,7 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
                 repairPath(node.trail.materialPath);
                 repairPath(node.trail.meshPath);
                 repairPath(node.audio.clipPath);
+                repairPath(node.decal.materialPath);
                 repairPath(node.decal.albedoPath);
                 repairPath(node.mesh.materialPath);
                 if (node.mesh.meshPath.rfind("primitive:", 0) != 0) repairPath(node.mesh.meshPath);
