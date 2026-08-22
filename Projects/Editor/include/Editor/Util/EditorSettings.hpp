@@ -35,6 +35,8 @@ struct EditorSettings {
     bool  showVFXGizmos       = false;
     bool  showSkeleton        = false;
     bool  showStats           = true;  // Game Viewport の Stats オーバーレイ
+    // Scene View のオクルージョンカリング。誤カリングの切り分け用なので既定は off。
+    bool  sceneViewOcclusionCulling = false;
 
     // --- スナップ ---------------------------------------------------------
     bool  snapEnabled         = false;

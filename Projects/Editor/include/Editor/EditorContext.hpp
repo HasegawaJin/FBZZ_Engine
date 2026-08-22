@@ -372,6 +372,12 @@ struct EditorContext {
     VFXAiPreviewCamera vfxAiPreviewCamera;
     bool showLightRange  = true;
     bool showSkeleton    = false;
+    // Scene View で CPU ソフトウェアオクルージョンカリングを効かせるか。
+    // WHY: Scene View はデバッグカメラで描くため CameraComponent の設定が効かず、
+    //      ここを持たないと「編集ビューで落とすかどうか」を選ぶ手段が一切無い。
+    //      既定は無効 (編集中は見えているものが見えることを優先する)。効きは
+    //      Viewport の Stats オーバーレイの Occlusion 行で確認できる。
+    bool sceneViewOcclusionCulling = false;
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
     bool showTerrainTool = false; // Terrain Tool ウィンドウを表示する
     bool showWaterTool   = false; // Water Tool ウィンドウを表示する
