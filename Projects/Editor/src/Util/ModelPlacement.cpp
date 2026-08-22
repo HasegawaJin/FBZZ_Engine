@@ -408,14 +408,19 @@ std::string ResolveOrImportFbxModel(const std::string& fbxAssetPath)
     const std::string outputDir = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(fbxAbs).parent_path() / stem);
     FbxImportOptions options{};
-    FbxMetaSerializer::LoadOptions(fbxAbs, options);
+    // .meta を持たない新規 FBX は既定オプションでインポートするため、読み込み失敗は正常系。
+    (void)FbxMetaSerializer::LoadOptions(fbxAbs, options);
     FBZZ_LOG_INFO("ResolveOrImportFbxModel: auto-importing [%s]", fbxAssetPath.c_str());
     if (!FbxImportTool::Import(fbxAbs, outputDir, fbxAbs, options)) {
         FBZZ_LOG_ERROR("ResolveOrImportFbxModel: import failed [%s]", fbxAssetPath.c_str());
         return {};
     }
-    FbxMetaSerializer::SaveOptions(fbxAbs, options);
-    FbxMetaSerializer::SaveCacheInfo(fbxAbs, options);
+    // 片方が失敗しても他方は書き切る。fingerprint だけ古いと次回の再インポート判定が狂うため。
+    const bool optionsSaved = FbxMetaSerializer::SaveOptions(fbxAbs, options);
+    const bool cacheSaved   = FbxMetaSerializer::SaveCacheInfo(fbxAbs, options);
+    if (!optionsSaved || !cacheSaved) {
+        FBZZ_LOG_WARN("ResolveOrImportFbxModel: .meta の更新に失敗 [%s]", fbxAssetPath.c_str());
+    }
 
     // 過去のロード失敗が Null キャッシュされていると新規 fzasset が引けないため掃除する。
     asset::AssetManager::FlushFailed();
