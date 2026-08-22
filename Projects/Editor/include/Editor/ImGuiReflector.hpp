@@ -1042,22 +1042,49 @@ struct ImGuiReflector : scene::IReflector {
     // Inspector のグループ見出し。FBZZ_GROUP("Label") から r_.Group() 経由で呼ばれる。
     // WHY: IReflector::Group の既定実装は no-op のため、ここで override しないと
     //      FBZZ_GROUP の見出しが Inspector に一切描画されない (旧 Header() は未接続のままだった)。
+    //
+    // 見た目は「▾ ラベル ───────」の 1 行だけ。
+    // WHY CollapsingHeader をやめたか: あれは枠付き (Framed) の TreeNode で、行高が
+    //     FramePadding 2 つぶん増えるうえ全幅の塗りバーを持つ。コンポーネントカードの
+    //     ヘッダーと同じ重さに見えるので、グループを 3〜4 個持つスクリプトでは
+    //     見出しと区切り線だけで Inspector が埋まり、肝心の値が読み取りづらかった。
+    //     枠なし TreeNode + ラベル右へ伸ばす罫線に落とすと、行高はテキスト 1 行ぶんで済み、
+    //     罫線が区切り線を兼ねるので Separator も要らなくなる。
+    // 折りたたみ状態は ImGui が ID (ラベル) ごとに記憶する。閉じている間は後続フィールドを
+    // m_groupOpen で描画スキップする。
     void Group(const char* label) override
     {
-        ImGui::Spacing();
-        // シンプルな見出し: CollapsingHeader の塗りつぶしバーを消し「▸ ラベル」+ 薄い区切り線だけにする。
-        // WHY: 既定の CollapsingHeader は全幅の塗りバーで重い。Header 系の色を透過にして
-        //      矢印とラベルのみを残し、ホバー時だけ淡く反応させることで軽い見た目にする。
-        // 折りたたみは維持 (閉じている間は後続フィールドの描画を省く / m_groupOpen)。状態は ImGui が記憶する。
-        ImGui::PushStyleColor(ImGuiCol_Header,        EditorTheme::Color(ThemeColor::AccentSoft));
+        // 入れ子オブジェクトが閉じているときは、その中の見出しも出さない。
+        if (InsideCollapsedObject()) {
+            m_groupOpen = false;
+            return;
+        }
+
+        // 上だけ少し空ける。下は詰めて、見出しと配下のフィールドが 1 かたまりに見えるようにする。
+        ImGui::Dummy({ 0.0f, ImGui::GetStyle().ItemSpacing.y });
+
+        ImGui::PushStyleColor(ImGuiCol_Header,        IM_COL32(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_HeaderHovered, EditorTheme::Color(ThemeColor::SurfaceHover));
-        ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::Color(ThemeColor::AccentActive));
-        m_groupOpen = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen);
-        ImGui::PopStyleColor(3);
-        // 見出し直下に薄い区切り線を引き、塗りバー無しでもグループの開始が分かるようにする。
-        ImGui::PushStyleColor(ImGuiCol_Separator, EditorTheme::Color(ThemeColor::Border));
-        ImGui::Separator();
-        ImGui::PopStyleColor();
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::Color(ThemeColor::SurfaceHover));
+        ImGui::PushStyleColor(ImGuiCol_Text,          EditorTheme::Color(ThemeColor::TextMuted));
+        m_groupOpen = ImGui::TreeNodeEx(label,
+                                        ImGuiTreeNodeFlags_DefaultOpen |
+                                        ImGuiTreeNodeFlags_NoTreePushOnOpen |
+                                        ImGuiTreeNodeFlags_SpanAvailWidth);
+        ImGui::PopStyleColor(4);
+
+        // ラベルの右端から行末まで細い罫線を引く。
+        // SpanAvailWidth の行矩形は全幅なので、ラベル終端は「矢印ぶんの字下げ + 文字幅」で出す。
+        const ImVec2 rowMin = ImGui::GetItemRectMin();
+        const ImVec2 rowMax = ImGui::GetItemRectMax();
+        const float  ruleY  = (rowMin.y + rowMax.y) * 0.5f;
+        const float  ruleX  = rowMin.x + ImGui::GetTreeNodeToLabelSpacing()
+                            + ImGui::CalcTextSize(label).x
+                            + ImGui::GetStyle().ItemInnerSpacing.x * 2.0f;
+        if (ruleX < rowMax.x) {
+            ImGui::GetWindowDrawList()->AddLine({ ruleX, ruleY }, { rowMax.x, ruleY },
+                                                EditorTheme::ColorU32(ThemeColor::Border));
+        }
     }
 
     void Field(const char* name, input::KeyCode& v) override
@@ -1173,6 +1200,17 @@ private:
 
     std::vector<ObjectScope> m_objectScopes;
     std::vector<ListScope>   m_listScopes;
+
+    // 今いる位置が「閉じた入れ子オブジェクトの中」か。
+    // WHY: m_groupOpen だけでは、同じオブジェクト内の前のグループが閉じているのか、
+    //      オブジェクトごと閉じているのかを区別できない。前者では次のグループ見出しを
+    //      描かなければならず、後者では描いてはいけない。
+    [[nodiscard]] bool InsideCollapsedObject() const
+    {
+        if (m_objectScopes.empty()) return false;
+        const ObjectScope& scope = m_objectScopes.back();
+        return !scope.visible || !scope.open;
+    }
 
     // Win32 VK コード → 表示名
     static const char* KeyCodeName(int vk)
