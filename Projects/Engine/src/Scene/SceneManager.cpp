@@ -26,6 +26,7 @@
 #include "Engine/Scene/Systems/VFXGraphSystem.hpp"
 #include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <string>
 #include <cassert>
@@ -111,10 +112,19 @@ void SceneManager::RegisterFromFile(const std::string& name, const std::string& 
     });
 }
 
-void SceneManager::LoadScene(const std::string& name)
+bool SceneManager::LoadScene(const std::string& name)
 {
-    assert(m_factories.count(name) && "Scene is not registered");
+    // WHY assert しないか: 遷移先の名前はシーンやスクリプトが持つデータで、
+    //     綴り間違いも「まだ作っていないシーン」もありうる。assert だと
+    //     UI ボタンを 1 回押しただけでエディタが abort する。
+    //     要求を拒否して false を返し、呼び出し側が演出を巻き戻せるようにする。
+    if (!m_factories.count(name)) {
+        FBZZ_LOG_ERROR("SceneManager: scene '%s' is not registered. "
+                       "Check the name and that Assets/Scenes contains it.", name.c_str());
+        return false;
+    }
     m_pendingLoad = name;
+    return true;
 }
 
 void SceneManager::SetScene(Scene* scene)
@@ -178,14 +188,19 @@ void SceneManager::Update(float dt, physics::World& world)
         FBZZ_PROFILE_SCOPE("SceneManager::LoadPendingScene");
         // Factory 完了までは現在の Scene を保持し、ロード失敗で実行対象を失わないようにする。
         auto factoryIt = m_factories.find(m_pendingLoad);
-        assert(factoryIt != m_factories.end() && "Pending scene is not registered");
         if (factoryIt == m_factories.end()) {
+            FBZZ_LOG_ERROR("SceneManager: pending scene '%s' is no longer registered.",
+                           m_pendingLoad.c_str());
             m_pendingLoad.clear();
             return;
         }
 
+        // ロードに失敗しても現在の Scene は保持したまま続ける。ここで実行対象を
+        // 失うと、遷移できなかっただけのはずが「以降なにも動かない」に化ける。
         std::unique_ptr<Scene> nextScene = factoryIt->second();
         if (!nextScene) {
+            FBZZ_LOG_ERROR("SceneManager: failed to load scene '%s'. Staying in the current scene.",
+                           m_pendingLoad.c_str());
             m_pendingLoad.clear();
             return;
         }

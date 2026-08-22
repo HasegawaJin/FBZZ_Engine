@@ -41,7 +41,8 @@ struct ScriptSceneProxy {
     template<typename T> T& RequireComponent() const;
     bool IsActiveAndEnabled() const;
     bool isActiveAndEnabled() const { return IsActiveAndEnabled(); }
-    void LoadScene(std::string_view name) const;
+    // 遷移要求。未登録のシーン名なら false を返す (演出を巻き戻す判断に使う)。
+    bool LoadScene(std::string_view name) const;
     std::string GetSceneName() const;
     float GetTerrainHeightAt(const math::Vector3& worldPos) const;
     math::Vector3 GetTerrainNormalAt(const math::Vector3& worldPos) const;
