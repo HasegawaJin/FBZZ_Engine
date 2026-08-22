@@ -117,8 +117,8 @@ struct TrailComponent {
         r.Field("widthEasing", widthEasingValue);
         widthEasingValue = widthEasingValue < 0 ? 0 : (widthEasingValue > 3 ? 3 : widthEasingValue);
         widthEasing = static_cast<TrailWidthEasing>(widthEasingValue);
-        r.Field("colorStart", colorStart);
-        r.Field("colorEnd", colorEnd);
+        r.ColorField("colorStart", colorStart);
+        r.ColorField("colorEnd", colorEnd);
 
         int alignmentValue = static_cast<int>(alignment);
         r.Field("alignment", alignmentValue);

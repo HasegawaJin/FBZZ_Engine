@@ -46,7 +46,7 @@ struct AtmosphericScatteringComponent {
 
         r.Field("fogDensity", fogDensity);
         r.Field("fogFar",     fogFar);
-        r.Field("fogColor",   fogColor);
+        r.ColorField("fogColor",   fogColor);
     }
 };
 

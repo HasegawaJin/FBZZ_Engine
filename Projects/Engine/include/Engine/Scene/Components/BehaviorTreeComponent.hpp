@@ -61,11 +61,13 @@ struct BehaviorTreeComponent {
         r.BeginField("treePath", "Tree");
         r.SetFileExtensions(".behaviortree");
         r.Field("treePath", treePath);
+        r.EndField();
 
         r.BeginField("tickRate", "Tick Rate");
         r.FloatRange("tickRate", tickRate, 0.0f, 1.0f);
         r.Tooltip("評価間隔 [s]。0 で毎フレーム。\n"
                   "個体ごとに位相をずらすため、同時スポーンでも評価が集中しません。");
+        r.EndField();
 
         r.Field("startPaused", startPaused);
     }

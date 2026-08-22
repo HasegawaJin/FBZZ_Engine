@@ -124,8 +124,8 @@ struct MeshTrailComponent {
         r.Field("sampleInterval", sampleInterval);
         r.Field("minVertexDist", minVertexDist);
         r.Field("maxSamples", maxSamples);
-        r.Field("colorStart", colorStart);
-        r.Field("colorEnd", colorEnd);
+        r.ColorField("colorStart", colorStart);
+        r.ColorField("colorEnd", colorEnd);
         r.Field("doubleSided", doubleSided);
         r.Field("clearOnDisable", clearOnDisable);
         r.Field("materialPath", materialPath);
