@@ -1,6 +1,6 @@
 // FBZZ Engine
 // Collider.hpp | fbzz::physics
-// コライダー形状の定義 (Sphere / AABB / Capsule / Mesh / ConvexHull)
+// コライダー形状の定義 (Sphere / AABB / OBB / Capsule / Cylinder / Mesh / ConvexHull / HeightField)
 #pragma once
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
@@ -18,7 +18,7 @@ namespace fbzz::physics
         math::Vector3 Extents() const { return (max - min) * 0.5f; }
     };
 
-    enum class ColliderType { SPHERE, AABB, OBB, CAPSULE, TRIANGLE_MESH, CONVEX_HULL, HEIGHT_FIELD };
+    enum class ColliderType { SPHERE, AABB, OBB, CAPSULE, CYLINDER, TRIANGLE_MESH, CONVEX_HULL, HEIGHT_FIELD };
 
     // World は Collider を所有しない。Scene 側の ColliderComponent が共有所有し、World は参照して使う。
     class Collider {

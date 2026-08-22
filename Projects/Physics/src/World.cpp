@@ -6,6 +6,7 @@
 #include <Physics/AABBCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
@@ -175,6 +176,69 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
 }
 
 // -----------------------------------------------------------------
+// Ray vs Cylinder (側面 + 上下の円板)
+// WHAT: 軸方向成分を抜いて 2D のレイ vs 円に帰着させ側面の交点を求め、
+//       軸に垂直な 2 枚の円板は平面交点が半径内かで判定して最も手前を返す
+// -----------------------------------------------------------------
+static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
+                        const CylinderCollider& cyl,
+                        float& tOut, Vector3& normalOut)
+{
+    const Vector3 center = cyl.GetCenter();
+    const Vector3 axis   = cyl.GetAxis();
+    const float   r      = cyl.m_radius;
+    const float   h      = cyl.m_halfHeight;
+
+    const Vector3 oc      = o - center;
+    const float   dAxial  = Vector3::Dot(d, axis);
+    const float   ocAxial = Vector3::Dot(oc, axis);
+    const Vector3 dPerp   = d  - axis * dAxial;
+    const Vector3 ocPerp  = oc - axis * ocAxial;
+
+    float   bestT = maxDist + 1.0f;
+    Vector3 bestN;
+
+    // 側面: 無限円柱との交点のうち、円板の間に収まるものだけ採用する
+    const float a = Vector3::Dot(dPerp, dPerp);
+    if (a > 1e-8f) {
+        const float b    = 2.0f * Vector3::Dot(dPerp, ocPerp);
+        const float c    = Vector3::Dot(ocPerp, ocPerp) - r * r;
+        const float disc = b * b - 4.0f * a * c;
+        if (disc >= 0.0f) {
+            const float sqrtDisc = std::sqrt(disc);
+            // a > 0 なので 2 根は昇順。手前から見て最初に条件を満たしたものが最近点。
+            const float roots[2] = { (-b - sqrtDisc) / (2.0f * a),
+                                     (-b + sqrtDisc) / (2.0f * a) };
+            for (const float t : roots) {
+                if (t < 0.0f || t >= bestT) continue;
+                const float axial = ocAxial + dAxial * t;
+                if (std::abs(axial) > h) continue;
+                bestT = t;
+                bestN = (o + d * t - (center + axis * axial)).Normalized();
+                break;
+            }
+        }
+    }
+
+    // 上下の円板
+    if (std::abs(dAxial) > 1e-8f) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            const float capAxial = h * static_cast<float>(sign);
+            const float t = (capAxial - ocAxial) / dAxial;
+            if (t < 0.0f || t >= bestT) continue;
+            if ((o + d * t - (center + axis * capAxial)).LengthSq() > r * r) continue;
+            bestT = t;
+            bestN = axis * static_cast<float>(sign);
+        }
+    }
+
+    if (bestT > maxDist) return false;
+    tOut = bestT;
+    normalOut = bestN;
+    return true;
+}
+
+// -----------------------------------------------------------------
 // Ray vs Triangle (Möller–Trumbore)
 // 戻り値: ヒットした t (負なら miss)
 // -----------------------------------------------------------------
@@ -289,6 +353,10 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
         const auto* cap = static_cast<const CapsuleCollider*>(inst.collider);
         return RayCapsule(o, d, maxDist, *cap, tOut, normalOut);
     }
+    case ColliderType::CYLINDER: {
+        const auto* cyl = static_cast<const CylinderCollider*>(inst.collider);
+        return RayCylinder(o, d, maxDist, *cyl, tOut, normalOut);
+    }
     case ColliderType::TRIANGLE_MESH: {
         const auto* mesh = static_cast<const TriangleMeshCollider*>(inst.collider);
         return RayTriangleMesh(o, d, maxDist, *mesh, tOut, normalOut);
@@ -370,6 +438,11 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
         const float dist2 = (center - closest).LengthSq();
         const float r = radius + cap->m_radius;
         return dist2 <= r * r;
+    }
+    case ColliderType::CYLINDER: {
+        const auto* cyl = static_cast<const CylinderCollider*>(inst.collider);
+        const Vector3 closest = cyl->ClosestPoint(center);
+        return (center - closest).LengthSq() <= radius * radius;
     }
     default:
         return false;
@@ -1053,7 +1126,7 @@ namespace fbzz::physics
         //         Sphere       → 半径を加算
         //         AABB/OBB     → AABB を各辺方向へ radius だけ広げる
         //         Capsule      → カプセル半径を加算
-        //         Mesh/Convex  → AABB 近似
+        //         Cylinder/Mesh/Convex → AABB 近似
 
         const math::Vector3 d = direction.Normalized();
         float     bestT = maxDistance + 1.0f;

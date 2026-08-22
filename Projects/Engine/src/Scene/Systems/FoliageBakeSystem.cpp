@@ -194,15 +194,11 @@ void FoliageBakeSystem::Update(SystemContext& ctx)
 
                 // OBB コライダー
                 if (species.colliderEnabled) {
-                    // size は full extents (PhysicsSystem の SyncColliderShape が size*0.5 を halfExtents に渡す)
-                    // スタンプスケール s を事前乗算する。OBBCollider は worldScale を自動適用しないため。
+                    // size / center はどちらも unscaled ローカル空間。スタンプスケール s は
+                    // root.transform に入っており、SyncColliderShape と ColliderWorldCenter が
+                    // worldScale として掛ける。ここで事前乗算すると二重に掛かる。
                     BoxColliderComponent box;
-                    box.size = {
-                        dims.halfExtents.x * 2.0f * s,
-                        dims.halfExtents.y * 2.0f * s,
-                        dims.halfExtents.z * 2.0f * s,
-                    };
-                    // center は unscaled ローカル空間 (ColliderWorldCenter が worldScale を掛ける)
+                    box.size    = dims.halfExtents * 2.0f;
                     box.center  = { 0.0f, dims.centerY, 0.0f };
                     box.collider = std::make_unique<physics::OBBCollider>(box.size * 0.5f);
                     root.AddComponent<BoxColliderComponent>(std::move(box));

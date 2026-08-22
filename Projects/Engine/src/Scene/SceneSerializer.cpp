@@ -193,19 +193,6 @@ math::Quaternion ArrToQuat(const toml::array* arr)
     };
 }
 
-const char* ColliderTypeToString(physics::ColliderType type)
-{
-    switch (type) {
-    case physics::ColliderType::SPHERE:  return "Sphere";
-    case physics::ColliderType::AABB:    return "AABB";
-    case physics::ColliderType::OBB:     return "OBB";
-    case physics::ColliderType::CAPSULE: return "Capsule";
-    case physics::ColliderType::TRIANGLE_MESH: return "TriangleMesh";
-    case physics::ColliderType::CONVEX_HULL:   return "ConvexHull";
-    }
-    return "AABB";
-}
-
 toml::table SerializeCollider(const ColliderComponent& col)
 {
     toml::table colTbl;
@@ -229,27 +216,12 @@ toml::table SerializeCollider(const ColliderComponent& col)
     matTbl.insert("frictionCombine",    (int64_t)col.material.frictionCombine);
     colTbl.insert("material", std::move(matTbl));
 
-    if (col.collider) {
-        toml::table shapeTbl;
-        const auto type = col.collider->GetType();
-        shapeTbl.insert("type", ColliderTypeToString(type));
-        if (type == physics::ColliderType::SPHERE) {
-            auto* sphere = static_cast<physics::SphereCollider*>(col.collider.get());
-            shapeTbl.insert("radius", (double)sphere->m_radius);
-        } else if (type == physics::ColliderType::AABB) {
-            auto* box = static_cast<physics::AABBCollider*>(col.collider.get());
-            shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
-        } else if (type == physics::ColliderType::OBB) {
-            auto* box = static_cast<physics::OBBCollider*>(col.collider.get());
-            shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
-        } else if (type == physics::ColliderType::CAPSULE) {
-            auto* capsule = static_cast<physics::CapsuleCollider*>(col.collider.get());
-            shapeTbl.insert("radius",     (double)capsule->m_radius);
-            shapeTbl.insert("halfHeight", (double)capsule->m_halfHeight);
-        }
-        colTbl.insert("shape", std::move(shapeTbl));
-    }
-
+    // WHY ここで shape を書かないか:
+    //   physics::Collider の寸法は SyncColliderShape が Transform の worldScale を
+    //   焼き込んだ「ワールド寸法」で、コンポーネントの size / radius は焼く前の値。
+    //   ここから書き出すと保存のたびにスケールが 1 段ずつ掛かって太り続ける。
+    //   shape は寸法を持つ型 (Box / Sphere / Capsule / AABB) の呼び出し側が、
+    //   コンポーネントのフィールドから書く。
     return colTbl;
 }
 
@@ -356,6 +328,20 @@ void ReadCapsuleCollider(const toml::table& colTbl, CapsuleColliderComponent& co
     col.radius = radius;
     col.halfHeight = halfHeight;
     col.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
+}
+
+void ReadCylinderCollider(const toml::table& colTbl, CylinderColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    float radius = 0.5f;
+    float halfHeight = 1.0f;
+    if (auto* shapeTbl = colTbl["shape"].as_table()) {
+        radius = (float)(*shapeTbl)["radius"].value_or(0.5);
+        halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
+    }
+    col.radius = radius;
+    col.halfHeight = halfHeight;
+    col.collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
 }
 
 void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
@@ -1683,6 +1669,16 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("CapsuleColliderComponent", std::move(colTbl));
         }
 
+        if (auto* col = go.GetComponent<CylinderColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            toml::table shapeTbl;
+            shapeTbl.insert("type", "Cylinder");
+            shapeTbl.insert("radius", (double)col->radius);
+            shapeTbl.insert("halfHeight", (double)col->halfHeight);
+            colTbl.insert_or_assign("shape", std::move(shapeTbl));
+            goTbl.insert("CylinderColliderComponent", std::move(colTbl));
+        }
+
         if (auto* col = go.GetComponent<MeshColliderComponent>()) {
             toml::table colTbl = SerializeCollider(*col);
             colTbl.insert("meshPath", col->meshPath);
@@ -2955,6 +2951,12 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             CapsuleColliderComponent col{};
             ReadCapsuleCollider(*colTbl, col);
             go.AddComponent<CapsuleColliderComponent>(std::move(col));
+        }
+
+        if (auto* colTbl = (*goTbl)["CylinderColliderComponent"].as_table()) {
+            CylinderColliderComponent col{};
+            ReadCylinderCollider(*colTbl, col);
+            go.AddComponent<CylinderColliderComponent>(std::move(col));
         }
 
         if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
@@ -4286,6 +4288,11 @@ bool SceneSerializer::AppendObjects(
             CapsuleColliderComponent col{};
             ReadCapsuleCollider(*colTbl, col);
             go.AddComponent<CapsuleColliderComponent>(std::move(col));
+        }
+        if (auto* colTbl = (*goTbl)["CylinderColliderComponent"].as_table()) {
+            CylinderColliderComponent col{};
+            ReadCylinderCollider(*colTbl, col);
+            go.AddComponent<CylinderColliderComponent>(std::move(col));
         }
         if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
             MeshColliderComponent col{};

@@ -97,6 +97,8 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                                 float colliderOffset = 0.0f;
                                 if (const auto* cap = go->GetComponent<scene::CapsuleColliderComponent>())
                                     colliderOffset = cap->halfHeight + cap->radius - cap->center.y;
+                                else if (const auto* cyl = go->GetComponent<scene::CylinderColliderComponent>())
+                                    colliderOffset = cyl->halfHeight - cyl->center.y;
                                 else if (const auto* box = go->GetComponent<scene::BoxColliderComponent>())
                                     colliderOffset = box->size.y * 0.5f - box->center.y;
                                 else if (const auto* sph = go->GetComponent<scene::SphereColliderComponent>())

@@ -366,6 +366,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         scene.GetEntities<BoxColliderComponent>().size() +
         scene.GetEntities<SphereColliderComponent>().size() +
         scene.GetEntities<CapsuleColliderComponent>().size() +
+        scene.GetEntities<CylinderColliderComponent>().size() +
         scene.GetEntities<MeshColliderComponent>().size() +
         scene.GetEntities<ConvexHullColliderComponent>().size() +
         scene.GetEntities<TerrainColliderComponent>().size());
@@ -410,6 +411,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         SyncColliderComponents<BoxColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<SphereColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<CapsuleColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<CylinderColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<MeshColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<ConvexHullColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<TerrainColliderComponent>(scene, world, colliderOwners, dt);

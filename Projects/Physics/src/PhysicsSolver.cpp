@@ -716,6 +716,9 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::CAPSULE)
                         hit = TestCapsuleConvex(
                             *static_cast<CapsuleCollider*>(dynInst.collider), hull, cp);
+                    else if (dynType == ColliderType::CYLINDER)
+                        hit = TestCylinderConvex(
+                            *static_cast<CylinderCollider*>(dynInst.collider), hull, cp);
 
                     if (hit && swapped)
                         cp.normal = -cp.normal;
@@ -749,6 +752,9 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::OBB)
                         hit = TestOBBTriangleMesh(
                             *static_cast<OBBCollider*>(dynInst.collider), mesh, cp);
+                    else if (dynType == ColliderType::CYLINDER)
+                        hit = TestCylinderTriangleMesh(
+                            *static_cast<CylinderCollider*>(dynInst.collider), mesh, cp);
 
                     // スワップした場合は法線を反転 (normal は dyn → mesh 方向)
                     if (hit && swapped)
@@ -788,6 +794,45 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::CONVEX_HULL)
                         hit = TestConvexHullHeightField(
                             *static_cast<ConvexHullCollider*>(dynInst.collider), hf, cp);
+                    else if (dynType == ColliderType::CYLINDER)
+                        hit = TestCylinderHeightField(
+                            *static_cast<CylinderCollider*>(dynInst.collider), hf, cp);
+
+                    if (hit && swapped)
+                        cp.normal = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::CYLINDER || tB == ColliderType::CYLINDER)
+            {
+                // ConvexHull / TriangleMesh / HeightField との組は上の分岐が先に拾う。
+                // ここへ来るのは基本形状同士の組だけ。
+                if (tA == ColliderType::CYLINDER && tB == ColliderType::CYLINDER)
+                {
+                    hit = TestCylinderCylinder(
+                        *static_cast<CylinderCollider*>(pair.colliderA->collider),
+                        *static_cast<CylinderCollider*>(pair.colliderB->collider), cp);
+                }
+                else
+                {
+                    // CYLINDER を常に B 側に正規化する
+                    const bool swapped = (tA == ColliderType::CYLINDER);
+                    const ColliderInstance& dynInst = *(swapped ? pair.colliderB : pair.colliderA);
+                    const ColliderInstance& cylInst = *(swapped ? pair.colliderA : pair.colliderB);
+                    const ColliderType dynType = dynInst.collider->GetType();
+                    const auto& cylinder = *static_cast<CylinderCollider*>(cylInst.collider);
+
+                    if (dynType == ColliderType::SPHERE)
+                        hit = TestSphereCylinder(
+                            *static_cast<SphereCollider*>(dynInst.collider), cylinder, cp);
+                    else if (dynType == ColliderType::AABB)
+                        hit = TestAABBCylinder(
+                            *static_cast<AABBCollider*>(dynInst.collider), cylinder, cp);
+                    else if (dynType == ColliderType::OBB)
+                        hit = TestOBBCylinder(
+                            *static_cast<OBBCollider*>(dynInst.collider), cylinder, cp);
+                    else if (dynType == ColliderType::CAPSULE)
+                        hit = TestCapsuleCylinder(
+                            *static_cast<CapsuleCollider*>(dynInst.collider), cylinder, cp);
 
                     if (hit && swapped)
                         cp.normal = -cp.normal;
@@ -1948,6 +1993,92 @@ namespace fbzz::physics
                                &hull, ConvexHullCollider::SupportFnImpl, out);
     }
 
+    // ------------------------------------------------------ Cylinder テスト関数
+
+    bool PhysicsSolver::TestSphereCylinder(const SphereCollider& s,
+                                            const CylinderCollider& c,
+                                            ContactPoint& out)
+    {
+        const math::Vector3 center  = s.GetAABB().Center();
+        const math::Vector3 closest = c.ClosestPoint(center);
+        const math::Vector3 diff    = center - closest;
+        const float         distSq  = diff.LengthSq();
+        if (distSq >= s.m_radius * s.m_radius) return false;
+
+        const float dist = std::sqrt(distSq);
+        if (dist < 1e-6f)
+        {
+            // 球中心が円柱の内部にあり方向が決まらない。側面と円板のうち脱出が浅い方へ押し出す。
+            const math::Vector3 delta     = center - c.GetCenter();
+            const float         axial     = math::Vector3::Dot(delta, c.GetAxis());
+            const math::Vector3 radial    = delta - c.GetAxis() * axial;
+            const float         radialLen = radial.Length();
+
+            const float sideDistance = c.m_radius - radialLen;
+            const float capDistance  = c.m_halfHeight - std::abs(axial);
+
+            // 中心軸上に完全に乗ると側面方向が定まらないため、その場合は必ず円板側へ逃がす。
+            if (radialLen > 1e-6f && sideDistance <= capDistance)
+            {
+                out.normal = radial * (1.0f / radialLen);
+                out.depth  = s.m_radius + sideDistance;
+            }
+            else
+            {
+                out.normal = c.GetAxis() * (axial >= 0.0f ? 1.0f : -1.0f);
+                out.depth  = s.m_radius + capDistance;
+            }
+        }
+        else
+        {
+            out.normal = diff * (1.0f / dist);
+            out.depth  = s.m_radius - dist;
+        }
+
+        out.point = closest;
+        return true;
+    }
+
+    bool PhysicsSolver::TestAABBCylinder(const AABBCollider& b,
+                                          const CylinderCollider& c,
+                                          ContactPoint& out)
+    {
+        return GJKEPAToContact(&b, SupportAABB,
+                               &c, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestOBBCylinder(const OBBCollider& b,
+                                         const CylinderCollider& c,
+                                         ContactPoint& out)
+    {
+        return GJKEPAToContact(&b, SupportOBB,
+                               &c, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestCapsuleCylinder(const CapsuleCollider& a,
+                                             const CylinderCollider& c,
+                                             ContactPoint& out)
+    {
+        return GJKEPAToContact(&a, SupportCapsule,
+                               &c, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestCylinderCylinder(const CylinderCollider& a,
+                                              const CylinderCollider& b,
+                                              ContactPoint& out)
+    {
+        return GJKEPAToContact(&a, CylinderCollider::SupportFnImpl,
+                               &b, CylinderCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestCylinderConvex(const CylinderCollider& c,
+                                            const ConvexHullCollider& hull,
+                                            ContactPoint& out)
+    {
+        return GJKEPAToContact(&c,    CylinderCollider::SupportFnImpl,
+                               &hull, ConvexHullCollider::SupportFnImpl, out);
+    }
+
     bool PhysicsSolver::TestSphereTriangleMesh(const SphereCollider& s,
                                                 const TriangleMeshCollider& mesh,
                                                 ContactPoint& out)
@@ -2123,6 +2254,30 @@ namespace fbzz::physics
         return found;
     }
 
+    bool PhysicsSolver::TestCylinderTriangleMesh(const CylinderCollider& c,
+                                                  const TriangleMeshCollider& mesh,
+                                                  ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+
+        mesh.GetBVH().Query(c.GetAABB(), [&](const Triangle& tri)
+        {
+            ContactPoint cp;
+            if (GJKEPAToContact(&c, CylinderCollider::SupportFnImpl,
+                                &tri, SupportTriangle, cp) && cp.depth > maxDepth)
+            {
+                maxDepth = cp.depth;
+                best = cp;
+                found = true;
+            }
+        });
+
+        if (found) out = best;
+        return found;
+    }
+
     // ─── HeightFieldCollider 用テスト関数 ───────────────────────────────────────
     // WHY: HeightFieldCollider は内部 BVH を持ち TriangleMeshCollider と同一アルゴリズムで
     //      衝突判定できる。型が異なるだけで実装は BVH Query に委譲する点で同一。
@@ -2222,6 +2377,24 @@ namespace fbzz::physics
         hf.GetBVH().Query(hull.GetAABB(), [&](const Triangle& tri) {
             ContactPoint cp;
             if (GJKEPAToContact(&hull, ConvexHullCollider::SupportFnImpl,
+                                &tri, SupportTriangle, cp) && cp.depth > maxDepth) {
+                maxDepth = cp.depth; best = cp; found = true;
+            }
+        });
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestCylinderHeightField(const CylinderCollider& c,
+                                                 const HeightFieldCollider& hf,
+                                                 ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+        hf.GetBVH().Query(c.GetAABB(), [&](const Triangle& tri) {
+            ContactPoint cp;
+            if (GJKEPAToContact(&c, CylinderCollider::SupportFnImpl,
                                 &tri, SupportTriangle, cp) && cp.depth > maxDepth) {
                 maxDepth = cp.depth; best = cp; found = true;
             }

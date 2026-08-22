@@ -103,6 +103,7 @@ bool TryGetObstacle(Scene& scene, EntityID eid, const GameObject& go, Obstacle& 
 
     ColliderComponent* col = scene.GetComponent<SphereColliderComponent>(eid);
     if (!col) col = scene.GetComponent<CapsuleColliderComponent>(eid);
+    if (!col) col = scene.GetComponent<CylinderColliderComponent>(eid);
     if (!col) col = scene.GetComponent<AabbColliderComponent>(eid);
     if (!col) col = scene.GetComponent<MeshColliderComponent>(eid);
     if (!col) col = scene.GetComponent<ConvexHullColliderComponent>(eid);

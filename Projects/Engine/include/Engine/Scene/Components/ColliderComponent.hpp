@@ -11,6 +11,7 @@
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/Collider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
+#include <Physics/CylinderCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/SphereCollider.hpp>
@@ -181,6 +182,29 @@ struct CapsuleColliderComponent : public ColliderComponent {
         radius = newRadius;
         halfHeight = newHalfHeight;
         collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
+    }
+};
+
+// 天面と底面が平らな円柱。カプセルと違い縁が鋭いので、平面上に立てても倒れない。
+struct CylinderColliderComponent : public ColliderComponent {
+    float radius     = 0.5f;
+    float halfHeight = 1.0f;
+
+    CylinderColliderComponent() { collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); }
+    CylinderColliderComponent(const CylinderColliderComponent& o) : ColliderComponent(o), radius(o.radius), halfHeight(o.halfHeight)
+        { collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); }
+    CylinderColliderComponent& operator=(const CylinderColliderComponent& o)
+        { ColliderComponent::operator=(o); radius = o.radius; halfHeight = o.halfHeight; collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight); return *this; }
+    CylinderColliderComponent(CylinderColliderComponent&&)            = default;
+    CylinderColliderComponent& operator=(CylinderColliderComponent&&) = default;
+
+    const char* GetTypeName() const { return "Cylinder Collider"; }
+    void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("radius", radius); r.Field("halfHeight", halfHeight); }
+    void SetCylinder(float newRadius, float newHalfHeight)
+    {
+        radius = newRadius;
+        halfHeight = newHalfHeight;
+        collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
     }
 };
 
