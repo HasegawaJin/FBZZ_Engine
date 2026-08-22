@@ -1,28 +1,31 @@
-// FBZZ Engine
-// FontAtlas.cpp | fbzz::renderer
-// BMFont テキスト形式 / 旧独自形式の .fnt パースとページテクスチャのロード
-//
-// 対応する 2 形式:
-//
-// (1) AngelCode BMFont テキスト形式 — 新しい正の形式
-//     info face="Roboto" size=48 ... padding=4,4,4,4
-//     common lineHeight=57 base=45 scaleW=512 scaleH=1024 pages=1
-//     page id=0 file="Roboto_0.png"
-//     chars count=95
-//     char id=65 x=112 y=60 width=33 height=35 xoffset=-1 yoffset=10 xadvance=31 page=0
-//     kernings count=1
-//     kerning first=65 second=86 amount=-2
-//     fbzz distanceField=sdf spread=4        ← FBZZ 拡張 (BMFont は未知タグを無視する)
-//
-// (2) gen_font_atlas.py が吐く旧独自形式 — 互換のために読み続ける
-//     line_height <px>
-//     base        <px>
-//     cell_w      <px>
-//     glyph <ascii_code> <u0> <v0> <u1> <v1> <advance>
-//
-// WHY (2 形式併存): 既存フォントは生成元 TTF がリポジトリに無く焼き直せないため、
-//      旧形式を切ると Title / Result / Load シーンの文字が全滅する。
-//      旧形式は「均一セルの BMFont」に正規化して読み込み、以降の描画パスを 1 本化する。
+/// @file FontAtlas.cpp
+/// @brief BMFont テキスト形式 / 旧独自形式の .fnt パースとページテクスチャのロード
+/// @author Hasegawa Jin
+/// @date 2026-06-02
+///
+/// 対応する 2 形式:
+///
+/// (1) AngelCode BMFont テキスト形式 — 新しい正の形式
+///     info face="Roboto" size=48 ... padding=4,4,4,4
+///     common lineHeight=57 base=45 scaleW=512 scaleH=1024 pages=1
+///     page id=0 file="Roboto_0.png"
+///     chars count=95
+///     char id=65 x=112 y=60 width=33 height=35 xoffset=-1 yoffset=10 xadvance=31 page=0
+///     kernings count=1
+///     kerning first=65 second=86 amount=-2
+///
+/// (2) gen_font_atlas.py が吐く旧独自形式 — 互換のために読み続ける
+///     line_height <px>
+///     base        <px>
+///     cell_w      <px>
+///     glyph <ascii_code> <u0> <v0> <u1> <v1> <advance>
+///
+/// WHY (2 形式併存): 既存フォントは生成元 TTF がリポジトリに無く焼き直せないため、
+///      旧形式を切ると Title / Result / Load シーンの文字が全滅する。
+///      旧形式は「均一セルの BMFont」に正規化して読み込み、以降の描画パスを 1 本化する。
+///
+/// WHY (画素がカバレッジか距離場かを .fnt に書かせないか): UIText.hlsl の 1px AA 式が
+///      両方をそのまま扱えるため、宣言させても描画側に分岐先が無い。FontAtlas.hpp 参照。
 #include <Engine/Renderer/FontAtlas.hpp>
 #include <Engine/Renderer/DynamicFontSource.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -276,16 +279,6 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
             }
             if (amount != 0.0f)
                 m_kernings[MakeKerningKey(first, second)] = amount;
-        } else if (tag == "fbzz") {
-            // FBZZ 拡張行。距離場の種別を宣言する。
-            std::string_view key, value;
-            while (NextAttribute(line, offset, key, value)) {
-                if (key == "distanceField") {
-                    if      (value == "sdf")  m_distanceField = FontDistanceField::SDF;
-                    else if (value == "msdf") m_distanceField = FontDistanceField::MSDF;
-                    else                      m_distanceField = FontDistanceField::NONE;
-                }
-            }
         }
     }
 
@@ -385,7 +378,6 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
 
     // 旧 UISystem は未登録グリフに cellW * 0.5 を送っていた。その挙動を保つ。
     m_fallbackAdvance = cellW * 0.5f;
-    m_distanceField   = FontDistanceField::NONE;
     return true;
 }
 
@@ -400,8 +392,6 @@ bool FontAtlas::LoadDynamic(const std::string& fontPath)
     m_lineHeight      = source->GetLineHeight();
     m_base            = source->GetBase();
     m_fallbackAdvance = source->GetFallbackAdvance();
-    // stbtt_GetCodepointSDF で焼くため、アトラスの中身は距離場になる。
-    m_distanceField   = FontDistanceField::SDF;
     m_dynamic         = std::move(source);
 
     // この時点ではまだグリフもテクスチャも無い。最初の PrepareText で作られる。

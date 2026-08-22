@@ -1,21 +1,28 @@
-// FBZZ Engine
-// FontAtlas.hpp | fbzz::renderer
-// BMFont 互換フォントアトラスのロードとグリフメトリクス管理
-//
-// WHY: 旧実装は「全グリフが同じセル幅を占める」独自 .fnt 形式しか読めず、
-//      per-glyph の矩形・オフセットもカーニングも持てなかった。ASCII 128 エントリの
-//      生配列だったため日本語も入らない。AngelCode BMFont のテキスト形式へ移行し、
-//      BMFont / Hiero / msdf-atlas-gen / TextMeshPro が共通で吐ける事実上の標準に乗る。
-//
-// WHY (旧形式の互換維持): 既存の Roboto / Cinzel / BungeeOutline は生成元の TTF が
-//      リポジトリに無く、アトラスを焼き直せない。先頭トークンで形式を自動判別し、
-//      旧形式は「全グリフが xOffset=0 / yOffset=0 / width=cellW / height=lineHeight を
-//      持つ BMFont」として読み込むことで、描画結果を 1px も変えずに新パスへ統合する。
-//
-// 使い方:
-//   FontAtlas atlas;
-//   atlas.Load("Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght", resources);
-//   const FontGlyph* g = atlas.GetGlyph(U'あ');
+/// @file FontAtlas.hpp
+/// @brief BMFont 互換フォントアトラスのロードとグリフメトリクス管理
+/// @author Hasegawa Jin
+/// @date 2026-06-02
+///
+/// WHY: 旧実装は「全グリフが同じセル幅を占める」独自 .fnt 形式しか読めず、
+///      per-glyph の矩形・オフセットもカーニングも持てなかった。ASCII 128 エントリの
+///      生配列だったため日本語も入らない。AngelCode BMFont のテキスト形式へ移行し、
+///      BMFont / Hiero / msdf-atlas-gen / TextMeshPro が共通で吐ける事実上の標準に乗る。
+///
+/// WHY (旧形式の互換維持): 既存の Roboto / Cinzel / BungeeOutline は生成元の TTF が
+///      リポジトリに無く、アトラスを焼き直せない。先頭トークンで形式を自動判別し、
+///      旧形式は「全グリフが xOffset=0 / yOffset=0 / width=cellW / height=lineHeight を
+///      持つ BMFont」として読み込むことで、描画結果を 1px も変えずに新パスへ統合する。
+///
+/// WHY (画素の意味を公開しないか): 静的アトラスはカバレッジ、動的アトラスは SDF を
+///      持つが、UIText.hlsl の `saturate((v - 0.5) / fwidth(v) + 0.5)` が両方の 1px AA
+///      式としてそのまま成立するため、描画側に区別が要らない (SDF は onedge_value=128
+///      が UNORM で 0.502 になり、式の 0.5 判定と一致する)。MSDF を入れる日が来たら
+///      「中央値を取る」サンプリングごと設計する話になり、種別フラグだけでは足りない。
+///
+/// 使い方:
+///   FontAtlas atlas;
+///   atlas.Load("Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght", resources);
+///   const FontGlyph* g = atlas.GetGlyph(U'あ');
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <cstddef>
@@ -30,15 +37,6 @@ namespace fbzz::renderer {
 
 class ResourceManager;
 class DynamicFontSource;
-
-// アトラスが保持する画素の意味。シェーダー側の縁処理の切り替えに使う。
-// WHY: 同じ .fnt 形式で「カバレッジ」「単一チャンネル SDF」「MSDF」を運べるようにし、
-//      外部ツールで焼いた距離場アトラスをそのまま差し込めるようにする。
-enum class FontDistanceField {
-    NONE,   // カバレッジ (0=グリフ外, 1=グリフ内)。アンチエイリアス済みビットマップ
-    SDF,    // 単一チャンネル符号付き距離場。0.5 が輪郭
-    MSDF,   // マルチチャンネル距離場。RGB の中央値が距離
-};
 
 // 1 グリフのアトラス上の位置と配置メトリクス。
 // 長さの単位はすべて「アトラス生成時のピクセル」。
@@ -120,9 +118,6 @@ public:
     // ページ数 (1 以上)。
     [[nodiscard]] std::size_t GetPageCount() const { return m_pages.size(); }
 
-    // アトラス画素の意味 (カバレッジ / SDF / MSDF)。
-    [[nodiscard]] FontDistanceField GetDistanceField() const { return m_distanceField; }
-
 private:
     // BMFont テキスト形式をパースする。成功したら true。
     bool ParseBMFont(const std::string& fntText,
@@ -155,8 +150,6 @@ private:
     float m_lineHeight      = 0.0f;
     float m_base            = 0.0f;
     float m_fallbackAdvance = 0.0f;
-
-    FontDistanceField m_distanceField = FontDistanceField::NONE;
 };
 
 } // namespace fbzz::renderer
