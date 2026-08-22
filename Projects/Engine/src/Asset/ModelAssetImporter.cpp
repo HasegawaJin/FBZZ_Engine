@@ -255,6 +255,8 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
                                li, si, smHdr.indexCount, absPath.c_str());
                 return nullptr;
             }
+            // ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
+            mesh->ComputeBoundsExtents();
             if (resources)
                 mesh->indexBuffer = resources->CreateIndexBuffer(
                     mesh->cpuIndices.data(), smHdr.indexCount);

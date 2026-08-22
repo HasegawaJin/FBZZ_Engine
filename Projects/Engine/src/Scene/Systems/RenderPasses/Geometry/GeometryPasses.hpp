@@ -262,6 +262,17 @@ struct WorldBounds {
 // メッシュのローカルバウンディング球をワールド空間に変換する。
 // boundsRadius が 0 のメッシュ (ComputeBounds 未実行) は半径 0 を返す。
 // padding はワールド単位で半径へ加算する余白 (カメラの Culling Bounds Padding)。
+// このメッシュを SW オクルージョンカリングの遮蔽者として使ってよいか。
+//
+// WHY: OcclusionCuller はバウンディング球の投影円に内接する正方形へ「球の背面深度」を焼く。
+//      これは「球の内側は概ねメッシュで埋まっている」という前提に立っている。
+//      床タイル・壁パネル・板ポリ・フェンスのように球に対して実体が薄い形では前提が崩れ、
+//      実際には何も無い空間まで遮蔽者として主張してしまう (見えているものが消える)。
+//      判定材料は AABB の最小半径成分と球半径の比。立方体で 0.577、球で 1.0、
+//      10x10x0.2 の板で 0.014 になるので、この比だけで薄い形を弾ける。
+// NOTE: 弾かれた物も「遮蔽される側」としては通常どおり判定される (描画は落ちる)。
+[[nodiscard]] bool IsReliableOccluder(const renderer::Mesh& mesh);
+
 WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
                                float padding = 0.0f);
 

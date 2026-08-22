@@ -50,7 +50,8 @@ bool OcclusionCuller::ProjectPoint(const math::Vector3& worldPos,
     return true;
 }
 
-bool OcclusionCuller::TestAndRaster(const math::Vector3& worldCenter, float worldRadius)
+bool OcclusionCuller::TestAndRaster(const math::Vector3& worldCenter, float worldRadius,
+                                    bool registerAsOccluder)
 {
     // バウンディング球の半径が 0 の場合はカリング未対応メッシュ → 描画する
     if (worldRadius <= 0.0f) return true;
@@ -108,6 +109,10 @@ bool OcclusionCuller::TestAndRaster(const math::Vector3& worldCenter, float worl
     }
 
     if (isOccluded) return false; // 完全隠蔽確定
+
+    // 球で近似してよい形だけを遮蔽者にする。薄い形はここで打ち切り、
+    // 「隠される側」としてだけ扱う (判定はもう終わっているので可視で返す)。
+    if (!registerAsOccluder) return true;
 
     // ── オクルーダー登録 ──────────────────────────────────────────────────────
     // 可視だったので、この球を「以降のオブジェクトを遮るもの」として深度バッファへ焼く。

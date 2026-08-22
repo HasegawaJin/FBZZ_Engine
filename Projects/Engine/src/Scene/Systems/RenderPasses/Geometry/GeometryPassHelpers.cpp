@@ -526,6 +526,19 @@ void UpdateShadowConstants(RenderPassContext& ctx)
     ctx.resources.Update(ctx.handles.shadowCB, &data, sizeof(ShadowConstantsCB));
 }
 
+bool IsReliableOccluder(const renderer::Mesh& mesh)
+{
+    if (mesh.boundsRadius <= 0.0f) return false;
+
+    // 立方体で 0.577、球で 1.0。板・壁・棒はこれを大きく下回る。
+    // 0.40 は「立方体は通し、厚み比 1:4 を超える扁平は落とす」あたりの線。
+    constexpr float kMinFillRatio = 0.40f;
+    const float minExtent = std::min({ mesh.boundsExtents.x,
+                                       mesh.boundsExtents.y,
+                                       mesh.boundsExtents.z });
+    return minExtent / mesh.boundsRadius >= kMinFillRatio;
+}
+
 WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, float padding)
 {
     const math::Matrix4 world = tf.GetWorldMatrix();

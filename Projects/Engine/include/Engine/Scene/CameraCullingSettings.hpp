@@ -21,7 +21,16 @@ struct CameraCullingSettings {
     // バウンディング球の視錐台テストを行うか。false ならフラスタムカリングをしない。
     bool  frustumCulling       = true;
     // CPU ソフトウェアオクルージョンカリングを行うか。
-    bool  occlusionCulling     = true;
+    //
+    // WHY 既定を false にするか: 遮蔽者はバウンディング球の内接正方形として焼かれるため、
+    //     床タイル・壁パネル・板ポリのような「球に対して実体が薄い」メッシュは、
+    //     実際には何も無い空間まで「手前に不透明面がある」と主張してしまう。
+    //     ゲームカメラは CameraComponent で明示的に有効化する前提とし、
+    //     編集ビュー (Scene View / 各種プレビュー) のように設定を持たない呼び出しでは
+    //     「見えているものが見える」ことを優先する。
+    //     効きの薄さも根拠のひとつで、Terrain / Foliage は GBuffer パスより後に描かれるため
+    //     そもそも遮蔽者に登録されない (ワールド最大の遮蔽者が不参加のまま)。
+    bool  occlusionCulling     = false;
     // 全バウンディング球へ加算するワールド単位の余白 [m]。負値は呼び出し側で 0 に丸める。
     float cullingBoundsPadding = 0.0f;
 

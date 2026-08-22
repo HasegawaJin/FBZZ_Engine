@@ -35,7 +35,10 @@ struct CameraComponent {
     // CPU ソフトウェアオクルージョンカリング (OcclusionCuller) の有無。
     // NOTE: 遮蔽者はメッシュ実体ではなくバウンディング球の近似なので、
     //       保守的側 (落としすぎない側) に倒してある。数値は Analysis パネルで確認できる。
-    bool  occlusionCulling = true;
+    // WHY 既定が false か: 球に対して実体が薄いメッシュ (床タイル・壁パネル・板ポリ) は
+    //     遮蔽者として過大申告になり、見えているものを消す。効く形状が揃っているシーンで
+    //     明示的に有効化する機能として扱う。CameraCullingSettings の既定と揃えてある。
+    bool  occlusionCulling = false;
 
     // 全バウンディング球へ加算するワールド単位の余白 [m]。
     // WHY: スキンドメッシュの球はバインドポーズから作るため、大きく腕を振る / 武器を

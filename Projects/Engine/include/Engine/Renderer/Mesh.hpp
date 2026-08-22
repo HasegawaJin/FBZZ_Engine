@@ -53,10 +53,22 @@ struct Mesh {
     // WHY: 球テストは AABB テストより分岐が少なく、ワールド変換も中心点変換+スケール乗算だけで済む。
     math::Vector3 boundsCenter  = {};
     float         boundsRadius  = 0.0f;
+    // ローカル AABB の半分の大きさ (boundsCenter からの各軸の伸び)。
+    // WHY 球と別に持つか: 球はカリング判定には十分だが、「この形は球で近似してよいか」を
+    //     判定できない。板ポリと立方体は同じ半径の球になり得るのに、遮蔽者としての
+    //     信頼度は正反対 (OcclusionCuller::TestAndRaster の内接正方形の前提が崩れる)。
+    //     最小の半径成分と boundsRadius の比が、その判定材料になる。
+    math::Vector3 boundsExtents = {};
 
-    // CPU 頂点配列からバウンディング球を計算する。
+    // CPU 頂点配列からバウンディング球と AABB を計算する。
     // メッシュ生成後・GPU アップロード前に一度だけ呼ぶ想定。
     void ComputeBounds();
+
+    // boundsExtents だけを CPU 頂点配列から埋める (球には触れない)。
+    // WHY: .mesh / .fzasset は球だけをヘッダーに持つため、そちらから読んだメッシュは
+    //      AABB を知らないまま「薄い形」と区別がつかなくなる。フォーマットを変えずに
+    //      補うため、頂点を読み終えた直後にこれだけを走らせる。
+    void ComputeBoundsExtents();
 };
 
 } // namespace fbzz::renderer
