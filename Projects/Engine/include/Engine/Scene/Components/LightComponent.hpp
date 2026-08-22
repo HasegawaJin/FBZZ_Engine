@@ -46,7 +46,7 @@ struct LightComponent {
         if (typeValue > 2) typeValue = 2;
         type = static_cast<Type>(typeValue);
         r.Field("enabled", enabled);
-        r.Field("color", color);
+        r.ColorField("color", color);
         r.Field("intensity", intensity);
         r.Field("range", range);
         r.Field("innerCone", innerCone);

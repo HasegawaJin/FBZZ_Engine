@@ -58,6 +58,7 @@ struct PostProcessVolumeComponent {
         // シリアライズ時は path 文字列として保存され、GuidRefCodec が guid: へ変換する。
         r.BeginField("profile", "Profile");
         r.Field("profile", profile.ref);
+        r.EndField();
         r.Field("isGlobal",        isGlobal);
         r.Field("priority",        priority);
         r.FloatRange("blendWeight", blendWeight, 0.0f, 1.0f);
