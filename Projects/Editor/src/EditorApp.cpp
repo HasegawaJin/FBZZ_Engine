@@ -655,6 +655,7 @@ void EditorApp::Shutdown()
     m_settings.showVFXGizmos      = m_ctx.showVFXGizmos;
     m_settings.showSkeleton       = m_ctx.showSkeleton;
     m_settings.showStats          = m_ctx.showStats;
+    m_settings.sceneViewOcclusionCulling = m_ctx.sceneViewOcclusionCulling;
     m_settings.hotReloadEnabled   = m_ctx.hotReloadEnabled;
     m_settings.aiCommandBusEnabled = m_ctx.aiCommandBusEnabled;
     m_settings.showTerrainTool    = m_ctx.showTerrainTool;
@@ -796,6 +797,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_ctx.showVFXGizmos      = m_settings.showVFXGizmos;
         m_ctx.showSkeleton       = m_settings.showSkeleton;
         m_ctx.showStats          = m_settings.showStats;
+        m_ctx.sceneViewOcclusionCulling = m_settings.sceneViewOcclusionCulling;
         m_ctx.hotReloadEnabled   = m_settings.hotReloadEnabled;
         m_ctx.aiCommandBusEnabled = m_settings.aiCommandBusEnabled;
         m_ctx.showTerrainTool    = m_settings.showTerrainTool;
@@ -1951,7 +1953,10 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         // WHY: Unity と同様、Occlusion Culling を切ったゲームカメラの都合で
         //      編集用ビューの見え方が変わると、何を編集しているのか分からなくなる。
         //      cullingMask を Everything にしているのと同じ理由。
-        const scene::CameraCullingSettings sceneViewCulling{};
+        // オクルージョンだけは編集側から切り替えられるようにしてある。既定は無効で、
+        // 「見えているのに消える」を疑ったときに Debug メニューから入れて比較する。
+        scene::CameraCullingSettings sceneViewCulling{};
+        sceneViewCulling.occlusionCulling = m_ctx.sceneViewOcclusionCulling;
         scene::RenderSystem(*sceneViewScene, *m_renderer, *m_resources,
                             m_debugCamera.camera, sceneRT, &sceneRenderSettings,
                         fbzz::Layer::Everything, &uiOptions, &m_runtime.GetPhysicsWorld(),
@@ -2052,10 +2057,16 @@ void EditorApp::RenderVFXPreview()
     }
     scene::RenderSystemUIOptions uiOptions{};
     uiOptions.enabled = false;
+    // Scene View と同じ理由でカリング設定を明示する。
+    // WHY: 省略すると ResolveGameCullingSettings がプレビュー World の
+    //      メインカメラを探しに行く。今は見つからず既定へ落ちているだけで、
+    //      プレビューへカメラを 1 個置いた瞬間にゲーム側の maxDrawDistance などが
+    //      効き始め、「エフェクトが途中から消える」理由が辿れなくなる。
+    const scene::CameraCullingSettings previewCulling{};
     scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
                         previewCamera, m_vfxPreviewRT, &settings,
                         fbzz::Layer::Everything, &uiOptions,
-                        &m_vfxPreviewPhysicsWorld);
+                        &m_vfxPreviewPhysicsWorld, &previewCulling);
     if (!aiVfxPreviewActive)
         m_vfxEditorPanel->Session().preview.overdrawReadbackRequested = false;
 }

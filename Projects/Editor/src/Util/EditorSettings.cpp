@@ -41,6 +41,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["view"]["show_vfx_gizmos"].value<bool>()) showVFXGizmos = *v;
     if (auto v = tbl["view"]["show_skeleton"].value<bool>())  showSkeleton  = *v;
     if (auto v = tbl["view"]["show_stats"].value<bool>())     showStats = *v;
+    if (auto v = tbl["view"]["scene_view_occlusion_culling"].value<bool>())
+        sceneViewOcclusionCulling = *v;
 
     // スナップ
     if (auto v = tbl["snap"]["enabled"].value<bool>())   snapEnabled = *v;
@@ -226,6 +228,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     viewTbl.insert("show_vfx_gizmos", showVFXGizmos);
     viewTbl.insert("show_skeleton",    showSkeleton);
     viewTbl.insert("show_stats",       showStats);
+    viewTbl.insert("scene_view_occlusion_culling", sceneViewOcclusionCulling);
 
     // スナップ
     toml::table snapTbl;

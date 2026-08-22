@@ -474,6 +474,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         MenuItemOp("render.show_nav_sensors",       "AI Sensors");
         MenuItemOp("render.show_decal_bounds",      "Decal Bounds");
         ImGui::Separator();
+        // --- Culling ---
+        // Scene View はデバッグカメラで描くため CameraComponent の設定が届かない。
+        // 「消えた原因がカリングか」を切り分ける唯一の口なので Debug 側へ出す。
+        MenuItemOp("render.scene_view_occlusion_culling", "Scene View Occlusion Culling");
+        ImGui::Separator();
         // --- Tools ---
         MenuItemOp("debug.hot_reload", "Hot Reload");
         ImGui::Separator();

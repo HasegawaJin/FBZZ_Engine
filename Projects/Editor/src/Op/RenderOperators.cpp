@@ -119,6 +119,16 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "Game Viewport へ FPS / draw call のオーバーレイを出す。",
         &EditorContext::showStats));
 
+    registry.Register(MakeContextToggle(
+        "render.scene_view_occlusion_culling", "Scene View Occlusion Culling",
+        "Scene View で CPU オクルージョンカリングを効かせる。既定は OFF。"
+        "遮蔽者はメッシュ実体ではなくバウンディング球の近似なので、"
+        "有効にすると見えているものが消えることがある。"
+        "「消えた原因がカリングか」を切り分けるときに入れ切りする。"
+        "Scene View はデバッグカメラで描くため CameraComponent の設定は効かず、"
+        "編集ビューでの有効・無効はここでしか切り替えられない。",
+        &EditorContext::sceneViewOcclusionCulling));
+
     // WHY Render カテゴリに置かないか: 描画ではなくスクリプト DLL の監視。
     //     AI が Play 前に自動リロードを止めたい場面 (途中でシーンが再構築されると
     //     掴んでいた NodeId が無効になる) があるので、切り替え手段を出す。
