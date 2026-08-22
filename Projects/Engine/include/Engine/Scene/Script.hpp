@@ -252,6 +252,72 @@ struct IReflector {
             value.value->Reflect(*this);
     }
 
+    // 色として編集させる Vector3 / Vector4。Inspector はカラーピッカーを出す。
+    //
+    // WHY ヘルパーを用意するか: 色はヒントを立てないと数値 4 つのドラッグになり、
+    //     RGB を目で合わせるのが現実的でなくなる。ヒントは BeginField でリセットされるため
+    //     「BeginField → SetFieldHint → Field」の 3 手が必要で、コンポーネント側で毎回
+    //     書くと 1 箇所抜けただけで数値入力へ戻る。保存キーは name のままなので、
+    //     r.Field から差し替えてもシーンのデータは変わらない。
+    //
+    // WHY 仮想関数にしないか: スクリプト DLL は vtable インデックスで仮想呼び出しする。
+    //     既存の並びを崩さないよう、既存の仮想関数だけで組み立てられるものは非仮想で足す。
+    // BeginField で立てた保存キー・表示条件・ヒントを既定へ戻す。
+    //
+    // WHY 明示的に戻す必要があるか:
+    //   BeginField の状態は「次の BeginField まで」残る。戻し忘れると、続く素の
+    //   Field(...) が前のフィールドの保存キーを引き継ぐ。TOML は同じキーへの
+    //   二重挿入を黙って捨てるため、以降のフィールドが *エラーも警告もなく*
+    //   保存されなくなり、読み込み側は前のフィールドの値を自分の型で読もうとする。
+    //   BeginField を直に呼んだら、最後の Field の後に必ずこれを呼ぶこと。
+    void EndField() { BeginField(nullptr, nullptr); }
+
+    void ColorField(const char* name, math::Vector3& v)
+    {
+        BeginField(name, name);
+        SetFieldHint(FieldHint::Color);
+        Field(name, v);
+        EndField();
+    }
+    void ColorField(const char* name, math::Vector4& v)
+    {
+        BeginField(name, name);
+        SetFieldHint(FieldHint::Color);
+        Field(name, v);
+        EndField();
+    }
+
+    // 条件を満たすときだけ Inspector に出すフィールド。保存は条件によらず常に行う。
+    //
+    // WHY 保存まで止めないか: 表示条件は「今この値が効くか」でしかない。効かない間の値を
+    //     捨てると、モードを一時的に戻して確認しただけで設定が消える。
+    //
+    // WHY 説明文まで受け取るか: Tooltip は「直前に描いた項目」に付く。出さなかった
+    //     フィールドの説明をそのまま呼ぶと、1 つ前の項目に別物の説明が出る。
+    template<typename T>
+    void FieldIf(const char* name, T& v, bool visible, const char* tooltip = nullptr)
+    {
+        BeginField(name, name);
+        SetFieldVisible(visible);
+        Field(name, v);
+        if (visible && tooltip) Tooltip(tooltip);
+        EndField();
+    }
+
+    // アセットパス欄。Inspector は extensions で絞ったピッカーとドロップ先を出す。
+    //
+    // WHY 名前規約 (xxxPath) に頼らないか: 同じ種類のアセットを 1 つのコンポーネントが
+    //     4 つ持つ (ボタンの状態別スプライト等) と、規約に合う名前は 1 つしか作れない。
+    void FileField(const char* name, std::string& v, const char* extensions,
+                   const char* tooltip = nullptr)
+    {
+        BeginField(name, name);
+        SetFileExtensions(extensions);
+        Field(name, v);
+        if (tooltip) Tooltip(tooltip);
+        EndField();
+    }
+
     // 付加情報付き (デフォルトは Field へフォールバック)
     virtual void FloatRange(const char* name, float& v, float min, float max)  { Field(name, v); }
     virtual void IntRange(const char* name, int& v, int min, int max)          { Field(name, v); }
