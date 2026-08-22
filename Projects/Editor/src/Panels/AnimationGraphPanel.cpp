@@ -1131,6 +1131,20 @@ void DrawBlendTreeEditor(EditorContext& ctx,
             state.blendTree2D.type = static_cast<scene::BlendTree2DType>(type);
             MarkDirty(ctx);
         }
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::DragFloat(
+                "Damp Time##2D", &state.blendTree2D.dampTime,
+                0.01f, 0.0f, 2.0f, "%.2f s"))
+            MarkDirty(ctx);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Smooths both axes. 0 makes direction changes snap.");
+        if (ImGui::Checkbox(
+                "Sync Normalized Time##2D", &state.blendTree2D.syncNormalizedTime))
+            MarkDirty(ctx);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Share one 0..1 phase across motions.\n"
+                "Needed when rings of different clip lengths overlap (walk vs run).");
 
         const ImVec2 previewSize(
             std::clamp(ImGui::GetContentRegionAvail().x, 220.0f, 420.0f),

@@ -1479,8 +1479,9 @@ std::vector<WeightedMotion> Compute2DWeights(const AnimatorComponent& animator,
     std::vector<WeightedMotion> result;
     if (tree.motions.empty()) return result;
 
-    float px = animator.GetFloat(tree.paramX);
-    float py = animator.GetFloat(tree.paramY);
+    const bool damped = tree.dampTime > math::EPSILON && tree.dampedValueInitialized;
+    float px = damped ? tree.dampedX : animator.GetFloat(tree.paramX);
+    float py = damped ? tree.dampedY : animator.GetFloat(tree.paramY);
     std::vector<const BlendTreeMotion*> motions;
     motions.reserve(tree.motions.size());
     for (const auto& motion : tree.motions) motions.push_back(&motion);
@@ -1584,12 +1585,17 @@ std::vector<WeightedClip> BuildStateClips(const AnimatorComponent& animator,
         const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
         const float duration = static_cast<float>(clip->GetDurationSeconds());
         float motionTime = stateTime * weighted.motion->speed;
-        if (state.mode == AnimationStateMode::BlendTree1D &&
-            state.blendTree1D.syncNormalizedTime &&
-            state.blendTree1D.normalizedPhaseInitialized) {
+        const bool sync1D = state.mode == AnimationStateMode::BlendTree1D &&
+                            state.blendTree1D.syncNormalizedTime &&
+                            state.blendTree1D.normalizedPhaseInitialized;
+        const bool sync2D = state.mode == AnimationStateMode::BlendTree2D &&
+                            state.blendTree2D.syncNormalizedTime &&
+                            state.blendTree2D.normalizedPhaseInitialized;
+        if (sync1D || sync2D) {
             // WHY: Motionごとの秒数で個別Wrapすると、Weight 0から復帰したWalkが別位相で現れる。
             //      同じ0..1位相を各Clip長へ写像し、Idle/Walk/Runの足運びを連続させる。
-            motionTime = state.blendTree1D.normalizedPhase * duration;
+            motionTime = (sync1D ? state.blendTree1D.normalizedPhase
+                                 : state.blendTree2D.normalizedPhase) * duration;
         } else {
             motionTime = state.loop
                 ? WrapTime(motionTime, duration)
@@ -1913,6 +1919,8 @@ bool TryStartTransitionScoped(AnimatorComponent& animator,
         if (auto* targetState = FindMutableStateIn(scope.states, tr.toStateName)) {
             targetState->blendTree1D.normalizedPhase = 0.0f;
             targetState->blendTree1D.normalizedPhaseInitialized = false;
+            targetState->blendTree2D.normalizedPhase = 0.0f;
+            targetState->blendTree2D.normalizedPhaseInitialized = false;
         }
         // 正規化指定は遷移元ステートの Length を基準に実秒へ変換する。
         // WHY: クリップを差し替えても同じ割合の Motion Blend を維持できる。
@@ -1931,38 +1939,56 @@ bool TryStartTransitionScoped(AnimatorComponent& animator,
     return false;
 }
 
-// 1D BlendTree の入力値を時定数ベースで平滑化する。
+// BlendTree の入力値を時定数ベースで平滑化する (1D は 1 本、2D は 2 軸とも)。
 // WHY: Script が Speed を 0 / 4 / 7.2 と離散的に設定しても、姿勢 Weight は連続変化させる。
-void UpdateBlendTree1DDampingIn(AnimatorComponent& animator,
-                                std::vector<AnimationState>& states,
-                                float dt)
+//      2D では移動方向が入力を離した瞬間に不連続へ飛ぶため、同じ平滑化が要る。
+void UpdateBlendTreeDampingIn(AnimatorComponent& animator,
+                              std::vector<AnimationState>& states,
+                              float dt)
 {
     if (!animator.playing) return;
-    for (auto& state : states) {
-        if (state.mode != AnimationStateMode::BlendTree1D) continue;
-        auto& tree = state.blendTree1D;
-        const float target = animator.GetFloat(tree.paramName);
-        if (!tree.dampedValueInitialized || tree.dampTime <= math::EPSILON) {
-            tree.dampedValue = target;
-            tree.dampedValueInitialized = true;
-            continue;
-        }
+
+    // 1 本ぶんの指数補間。1D の値と 2D の各軸で式を分けない。
+    const auto damp = [dt](float current, float target, float dampTime) {
         const float alpha =
-            1.0f - std::exp(
-                -(std::max)(dt, 0.0f) / (std::max)(tree.dampTime, 1e-4f));
-        tree.dampedValue += (target - tree.dampedValue) * std::clamp(alpha, 0.0f, 1.0f);
+            1.0f - std::exp(-(std::max)(dt, 0.0f) / (std::max)(dampTime, 1e-4f));
+        float value = current + (target - current) * std::clamp(alpha, 0.0f, 1.0f);
         // 指数補間は理論上目標へ到達しないため、近傍で確定して不要な2Clip評価を終了する。
         // WHY: 極小WeightのClipも全ボーンをサンプリングすると、定常時のCPU負荷が倍増する。
-        const float snapEpsilon =
-            (std::max)(0.001f, std::abs(target) * 0.001f);
-        if (std::abs(target - tree.dampedValue) <= snapEpsilon)
-            tree.dampedValue = target;
+        const float snapEpsilon = (std::max)(0.001f, std::abs(target) * 0.001f);
+        if (std::abs(target - value) <= snapEpsilon) value = target;
+        return value;
+    };
+
+    for (auto& state : states) {
+        if (state.mode == AnimationStateMode::BlendTree1D) {
+            auto& tree = state.blendTree1D;
+            const float target = animator.GetFloat(tree.paramName);
+            if (!tree.dampedValueInitialized || tree.dampTime <= math::EPSILON) {
+                tree.dampedValue = target;
+                tree.dampedValueInitialized = true;
+                continue;
+            }
+            tree.dampedValue = damp(tree.dampedValue, target, tree.dampTime);
+        } else if (state.mode == AnimationStateMode::BlendTree2D) {
+            auto& tree = state.blendTree2D;
+            const float targetX = animator.GetFloat(tree.paramX);
+            const float targetY = animator.GetFloat(tree.paramY);
+            if (!tree.dampedValueInitialized || tree.dampTime <= math::EPSILON) {
+                tree.dampedX = targetX;
+                tree.dampedY = targetY;
+                tree.dampedValueInitialized = true;
+                continue;
+            }
+            tree.dampedX = damp(tree.dampedX, targetX, tree.dampTime);
+            tree.dampedY = damp(tree.dampedY, targetY, tree.dampTime);
+        }
     }
 }
 
-void UpdateBlendTree1DDamping(AnimatorComponent& animator, float dt)
+void UpdateBlendTreeDamping(AnimatorComponent& animator, float dt)
 {
-    UpdateBlendTree1DDampingIn(animator, animator.states, dt);
+    UpdateBlendTreeDampingIn(animator, animator.states, dt);
 }
 
 // 現在のBlend Weightからサイクル周波数を補間し、共通の正規化位相を積分する。
@@ -1973,8 +1999,12 @@ void AdvanceBlendTreePhase(AnimatorComponent& animator,
                            float stateTime,
                            float dt)
 {
-    if (!animator.playing || state.mode != AnimationStateMode::BlendTree1D ||
-        !state.blendTree1D.syncNormalizedTime) return;
+    if (!animator.playing) return;
+    const bool is1D = state.mode == AnimationStateMode::BlendTree1D &&
+                      state.blendTree1D.syncNormalizedTime;
+    const bool is2D = state.mode == AnimationStateMode::BlendTree2D &&
+                      state.blendTree2D.syncNormalizedTime;
+    if (!is1D && !is2D) return;
 
     float cycleFrequency = 0.0f;
     float validWeight = 0.0f;
@@ -1990,21 +2020,25 @@ void AdvanceBlendTreePhase(AnimatorComponent& animator,
     if (validWeight <= math::EPSILON) return;
     cycleFrequency /= validWeight;
 
-    auto& tree = state.blendTree1D;
-    if (!tree.normalizedPhaseInitialized) {
-        tree.normalizedPhase = state.loop
+    // 位相の置き場だけが 1D / 2D で違う。進め方は同じ。
+    float& phase = is1D ? state.blendTree1D.normalizedPhase
+                        : state.blendTree2D.normalizedPhase;
+    bool&  initialized = is1D ? state.blendTree1D.normalizedPhaseInitialized
+                              : state.blendTree2D.normalizedPhaseInitialized;
+    if (!initialized) {
+        phase = state.loop
             ? stateTime * cycleFrequency -
                 std::floor(stateTime * cycleFrequency)
             : math::Clamp01(stateTime * cycleFrequency);
-        tree.normalizedPhaseInitialized = true;
+        initialized = true;
         return;
     }
 
-    tree.normalizedPhase += dt * state.speed * animator.speed * cycleFrequency;
+    phase += dt * state.speed * animator.speed * cycleFrequency;
     if (state.loop) {
-        tree.normalizedPhase -= std::floor(tree.normalizedPhase);
+        phase -= std::floor(phase);
     } else {
-        tree.normalizedPhase = math::Clamp01(tree.normalizedPhase);
+        phase = math::Clamp01(phase);
     }
 }
 
@@ -2320,7 +2354,7 @@ static const asset::AnimationClip* ResolveStateMachineEffectClip(AnimatorCompone
 static const asset::AnimationClip* AdvanceStateMachineAnimator(AnimatorComponent& animator, float dt)
 {
     InitStateMachine(animator);
-    UpdateBlendTree1DDamping(animator, dt);
+    UpdateBlendTreeDamping(animator, dt);
     UpdateStateMachine(animator, dt);
     if (auto* state = FindMutableState(animator, animator.currentStateName))
         AdvanceBlendTreePhase(animator, *state, animator.stateTime, dt);
@@ -2636,7 +2670,7 @@ static std::vector<WeightedClip> BuildLayerStateClips(
     // 新形式: レイヤー専用のステートマシンを 1 フレーム進める。
     StateMachineScope scope = LayerScope(layer);
     InitStateMachineScoped(scope);
-    UpdateBlendTree1DDampingIn(animator, layer.states, dt);
+    UpdateBlendTreeDampingIn(animator, layer.states, dt);
     UpdateStateMachineScoped(animator, scope, dt);
 
     if (auto* currentState = FindMutableStateIn(layer.states, scope.currentStateName))
@@ -2779,7 +2813,7 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
                                         float dt)
 {
     InitStateMachine(animator);
-    UpdateBlendTree1DDamping(animator, dt);
+    UpdateBlendTreeDamping(animator, dt);
     UpdateStateMachine(animator, dt);
     if (auto* currentState = FindMutableState(animator, animator.currentStateName))
         AdvanceBlendTreePhase(animator, *currentState, animator.stateTime, dt);
