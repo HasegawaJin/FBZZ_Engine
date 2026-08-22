@@ -381,14 +381,15 @@ void UpdateRippleState(WaterRippleState& state, float dt, renderer::ResourceMana
     state.dirty = false;
 }
 
+// viewProjection は TAA ジッター込みで渡す。カメラから組み直すとジッターが落ちる。
 WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* mat,
-                     const Transform& transform, const renderer::Camera& camera, float time,
+                     const Transform& transform, const math::Matrix4& viewProjection, float time,
                      float skyReflection)
 {
     WaterCB cb{};
     const math::Matrix4 world = transform.GetWorldMatrix();
     cb.worldMatrix = world;
-    cb.wvpMatrix = camera.GetViewProjection() * world;
+    cb.wvpMatrix = viewProjection * world;
 
     const auto shallowColor = WGetF3(mat, "shallowColor", { 0.20f, 0.60f, 0.70f });
     const auto deepColor    = WGetF3(mat, "deepColor",    { 0.00f, 0.10f, 0.30f });
@@ -683,7 +684,15 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         });
     }
 
+    // カリング錐台はジッター無しのまま。半ピクセルのために可視判定を揺らす意味がない。
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+
+    // 描画用の行列だけ TAA ジッターを乗せる。乗せないと水面だけ AA が効かず、
+    // b0 経由で描く不透明物とサブピクセルずれた深度になって TAA の再投影が濁る。
+    const math::Matrix4 jitteredProj =
+        MakeJitteredProjection(camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    const math::Matrix4 jitteredVP = jitteredProj * camera.GetViewMatrix();
+
     bool hasVisibleWater = false;
     for (auto [water, transform] : scene.View<WaterComponent, Transform>()) {
         if (!water.enabled) continue;
@@ -817,12 +826,11 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         };
         static_assert(sizeof(CameraCB) == 288, "CameraCB size mismatch");
 
-        const math::Matrix4 vp = camera.GetViewProjection();
         CameraCB camData{};
         camData.view = camera.GetViewMatrix();
-        camData.projection = camera.GetProjectionMatrix();
-        camData.viewProjection = vp;
-        camData.invViewProjection = math::Matrix4::Inverse(vp);
+        camData.projection = jitteredProj;
+        camData.viewProjection = jitteredVP;
+        camData.invViewProjection = math::Matrix4::Inverse(jitteredVP);
         camData.cameraPos = camera.m_position;
         camData.nearZ = camera.m_near;
         camData.farZ = camera.m_far;
@@ -892,7 +900,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         // WHY: DX12 の未バインドスロットは Texture2D の null ディスクリプタなので、
         //      TextureCube 宣言のまま参照させない。0 を渡してシェーダー側の分岐を閉じる。
         const bool hasSkyCube = ctx.handles.iblPrefilter.IsValid();
-        const WaterCB cb = BuildWaterCB(water, mat, transform, camera, elapsedTime,
+        const WaterCB cb = BuildWaterCB(water, mat, transform, jitteredVP, elapsedTime,
                                         hasSkyCube ? 1.0f : 0.0f);
         resources.Update(waterCBH, &cb, sizeof(cb));
 

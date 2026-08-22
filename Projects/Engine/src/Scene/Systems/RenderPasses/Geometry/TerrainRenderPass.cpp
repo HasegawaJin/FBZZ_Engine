@@ -647,14 +647,18 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
     renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
+    // TAA ジッターを地形にも乗せる。乗せないと地形だけ AA されないうえ、b0 経由で描く
+    // 他の不透明物とサブピクセル単位でずれた深度になり、TAA の再投影が濁る。
+    const math::Matrix4 jitteredProj =
+        MakeJitteredProjection(camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    const math::Matrix4 jitteredVP = jitteredProj * camera.GetViewMatrix();
+
     {
-        const math::Matrix4 vp  = camera.GetViewProjection();
-        const math::Matrix4 ivp = math::Matrix4::Inverse(vp);
         TerrainCameraFrameCB camData{};
         camData.view              = camera.GetViewMatrix();
-        camData.projection        = camera.GetProjectionMatrix();
-        camData.viewProjection    = vp;
-        camData.invViewProjection = ivp;
+        camData.projection        = jitteredProj;
+        camData.viewProjection    = jitteredVP;
+        camData.invViewProjection = math::Matrix4::Inverse(jitteredVP);
         camData.cameraPos         = camera.m_position;
         camData.nearZ             = camera.m_near;
         camData.farZ              = camera.m_far;
@@ -786,7 +790,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                                       ? g_cbParamCache.at(eid.index)
                                       : TerrainObjectCB{};
         terrainCBData.worldMatrix = world;
-        terrainCBData.wvpMatrix   = camera.GetViewProjection() * world;
+        terrainCBData.wvpMatrix   = jitteredVP * world;
 
         // WHY: TerrainObjectCB は全チャンクで同一内容のため、チャンクごとに Update するのは無駄。
         resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));

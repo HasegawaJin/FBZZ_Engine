@@ -182,9 +182,28 @@ struct ViewRenderTargets {
     renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
     math::Matrix4 prevViewProjection    = math::Matrix4::Identity();
     math::Matrix4 invPrevViewProjection = math::Matrix4::Identity();
+    // TAA ジッター列の現在位置。ビュー別に持たないと SceneView と GameView が
+    // 同じ番号を取り合って、どちらもサンプル点が飛び飛びになる。
+    uint32_t taaFrameIndex = 0;
     uint32_t width = 0;
     uint32_t height = 0;
 };
+
+// Halton 列 (基数 base) の index 番目。
+// WHY: TAA のサンプル点は「少ない枚数でもピクセル内に偏りなく散る」必要がある。
+//      乱数だと数フレームでは固まりが出るが、Halton は低食い違い量列なので均等に埋まる。
+float HaltonRadicalInverse(uint32_t index, uint32_t base)
+{
+    const float invBase = 1.0f / static_cast<float>(base);
+    float result   = 0.0f;
+    float fraction = invBase;
+    while (index > 0u) {
+        result   += static_cast<float>(index % base) * fraction;
+        index    /= base;
+        fraction *= invBase;
+    }
+    return result;
+}
 
 // Resize 前のネイティブリソースを ResourceManager から確実に解放する。
 void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceManager& resources)
@@ -218,10 +237,12 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     auto savedCB         = targets.advancedGraphicsCB;
     auto savedPrevVP     = targets.prevViewProjection;
     auto savedPrevInvVP  = targets.invPrevViewProjection;
+    auto savedTaaIndex   = targets.taaFrameIndex;
     targets = {};
     targets.advancedGraphicsCB  = savedCB;
     targets.prevViewProjection    = savedPrevVP;
     targets.invPrevViewProjection = savedPrevInvVP;
+    targets.taaFrameIndex         = savedTaaIndex;
 }
 
 void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
@@ -1639,6 +1660,22 @@ void RenderSystem(Scene& scene,
     passCtx.cullCameraForward = camera.GetForward();
     passCtx.width                   = sHdrW;
     passCtx.height                  = sHdrH;
+    // TAA サブピクセルジッター。8 フレーム周期の Halton(2,3) をピクセル内 ±0.5 に写す。
+    // WHY 8 か: 短いほど収束が速く、長いほど品質が上がる。8 は TAA の標準的な折衷で、
+    //      taaFeedback 0.9 (履歴 90%) なら数フレームでほぼ収束する。
+    // NOTE: TAA が無効なフレームは 0 のまま。ジッターだけ残すと画面全体が揺れて見える。
+    if (rs.IsTaaActive() && sHdrW > 0u && sHdrH > 0u) {
+        constexpr uint32_t kTaaJitterPeriod = 8u;
+        const uint32_t sampleIndex = viewTargets.taaFrameIndex % kTaaJitterPeriod + 1u;
+        const float offsetPxX = HaltonRadicalInverse(sampleIndex, 2u) - 0.5f;
+        const float offsetPxY = HaltonRadicalInverse(sampleIndex, 3u) - 0.5f;
+        // ピクセル → NDC。NDC の Y は上向きなので符号を反転する。
+        passCtx.taaJitterNdcX =  2.0f * offsetPxX / static_cast<float>(sHdrW);
+        passCtx.taaJitterNdcY = -2.0f * offsetPxY / static_cast<float>(sHdrH);
+        ++viewTargets.taaFrameIndex;
+    } else {
+        viewTargets.taaFrameIndex = 0u;
+    }
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
     passCtx.lightData               = lightData;
     passCtx.lightVP                 = lightVP;
@@ -1783,6 +1820,8 @@ void RenderSystem(Scene& scene,
         agData.volTintB              = rs.volumetricLight.tint[2];
         agData.volEdgeFade           = rs.volumetricLight.edgeFade;
         agData.taaFeedback           = rs.taa.feedback;
+        agData.taaJitterX            = passCtx.taaJitterNdcX;
+        agData.taaJitterY            = passCtx.taaJitterNdcY;
         agData.motionBlurStrength    = rs.motionBlur.enabled ? rs.motionBlur.strength : 0.0f;
         agData.motionBlurSamples     = rs.motionBlur.samples;
         agData.screenWidth           = static_cast<float>(sHdrW);
@@ -1809,6 +1848,11 @@ void RenderSystem(Scene& scene,
         agData.prevViewProjection    = viewTargets.prevViewProjection;
         agData.invPrevViewProjection = viewTargets.invPrevViewProjection;
         resources.Update(advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
+        // ここはジッターを載せない (GetViewProjection() のまま) こと。
+        // WHY: TAA はジッター込みの invViewProjection でワールド座標を復元し、この行列で
+        //      前フレームへ再投影する。両方にジッターを載せると、ジッター差分がそのまま
+        //      「動き」として現れて履歴が毎フレームずれ、収束せずに滲む。履歴バッファは
+        //      ピクセル中心で収束した絵なので、引く座標もピクセル中心でなければならない。
         viewTargets.prevViewProjection    = camera.GetViewProjection();
         viewTargets.invPrevViewProjection = math::Matrix4::Inverse(camera.GetViewProjection());
     } // end AdvancedGraphicsCB update
