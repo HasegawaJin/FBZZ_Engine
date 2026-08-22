@@ -16,11 +16,17 @@ namespace fbzz::asset {
 //      "auto"     → 通常の材質。Forward / Deferred はプロジェクト設定に従う。
 //      "particle" → ParticleEmitter 専用。ParticlePass が albedo テクスチャと blendMode を参照する。
 //      "trail"    → TrailComponent / MeshTrailComponent 専用。TrailRenderPass が albedo テクスチャを参照する。
+//      "ui"       → UIImage 専用。UI パスは b0 を UIConstants として使い、カメラもライトも
+//                   束縛しない。同じ .mat をメッシュへ割り当てると b0 の中身が別物になるため、
+//                   宣言で弾けるようにしておく (Assets/Shaders/UI/UICommon.hlsli 参照)。
+//      "decal"    → DecalComponent 専用。頂点入力を持たず、深度から復元した面へ投影する。
+//                   メッシュ用の .mat を割り当てると頂点が来ないまま描くことになるため、
+//                   UI と同じ理由で宣言で弾く (Assets/Shaders/Material/Decal/DecalCommon.hlsli 参照)。
 //
 // WHY Forward / Deferred をここへ持たないか:
 //      描画経路は RenderSettings::pipeline がプロジェクト全体で決める責務であり、
 //      Material ごとに上書きすると同じシーン内でライティング・GBuffer の前提が混在する。
-enum class RenderPath { Auto, Particle, Trail };
+enum class RenderPath { Auto, Particle, Trail, UI, Decal };
 
 // fzmat の mesh_type フィールドが取れる値。
 // WHY: Surface シェーダー判定をパス文字列検索から fzmat 宣言へ移し、

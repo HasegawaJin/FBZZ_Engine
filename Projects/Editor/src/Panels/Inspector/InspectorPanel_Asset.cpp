@@ -172,12 +172,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             materialDirty |= ImGui::DragInt  ("Render Queue", &mat.renderQueue, 1.0f, 0, 5000);
             {
                 // 通常の Forward / Deferred はプロジェクト設定で決まる。
-                // ここでは専用レンダーパス (Particle / Trail) の用途だけを指定する。
+                // ここでは専用レンダーパスの用途だけを指定する。
+                // LAYOUT: asset::RenderPath と同じ並びにすること。欠けた用途は
+                //         Combo を触った瞬間に別の値へ化ける。
                 static constexpr const char* kMaterialUsageNames[] = {
-                    "Auto", "Particle", "Trail" };
+                    "Auto", "Particle", "Trail", "UI", "Decal" };
                 int usageIndex = static_cast<int>(mat.renderPath);
-                if (ImGui::Combo("Material Usage", &usageIndex,
-                                 kMaterialUsageNames, 3)) {
+                if (ImGui::Combo("Material Usage", &usageIndex, kMaterialUsageNames,
+                                 IM_ARRAYSIZE(kMaterialUsageNames))) {
                     mat.renderPath = static_cast<asset::RenderPath>(usageIndex);
                     materialDirty = true;
                 }
