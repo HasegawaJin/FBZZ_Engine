@@ -26,6 +26,11 @@ void ExecuteSelectionOutlinePass(RenderPassContext& ctx)
     outlineData.width = rs.outlineWidth;
     resources.Update(h.outlineCB, &outlineData, sizeof(OutlineCB));
 
+    // SelectionOutline.hlsl はマスク探索の 1 タップ幅を b5 の texelSize で決める。
+    // WHY: 直前に b5 を書いたパス頼みだと、ポストプロセスチェーンの構成次第で輪郭幅が変わる。
+    const PostProcCB outlinePostData = MakeScreenPostProcCB(ctx.width, ctx.height);
+    resources.Update(h.postprocCB, &outlinePostData, sizeof(PostProcCB));
+
     r.SetRenderTarget(rs.postProcess.fxaaEnabled ? h.outlineRT : ctx.outputRT, resources);
 
     renderer::DrawCall outlineDC;

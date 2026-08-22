@@ -384,6 +384,22 @@ struct PostProcCB {
     float _causticsPad;
 };
 
+/// 画面サイズ由来のフィールドだけを埋めた PostProcCB を返す。
+/// @note b5 は全ポストプロセスで共有され、各パスが構造体ごと上書きする。texelSize/screenSize を
+///       入れ忘れたパスは前パス (あるいは前フレーム) の残りを読んで静かに壊れるので、
+///       b5 を使うパスは必ずここを起点にしてから固有フィールドを足すこと。
+inline PostProcCB MakeScreenPostProcCB(uint32_t width, uint32_t height)
+{
+    const float w = static_cast<float>(width  != 0u ? width  : 1u);
+    const float h = static_cast<float>(height != 0u ? height : 1u);
+    PostProcCB data{};
+    data.texelSize[0]  = 1.0f / w;
+    data.texelSize[1]  = 1.0f / h;
+    data.screenSize[0] = w;
+    data.screenSize[1] = h;
+    return data;
+}
+
 struct OutlineCB {
     math::Vector4 color;
     float         width;
