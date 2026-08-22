@@ -109,7 +109,22 @@ struct BlendTree2D {
     std::string                  paramX;
     std::string                  paramY;
     BlendTree2DType              type = BlendTree2DType::SimpleDirectional;
+    // パラメーターの急変を時間補間する。1D と同じ意味・同じ時定数の扱い。
+    // WHY 2D にも要るか: 移動方向は入力を離した瞬間に不連続へ飛ぶ。生値のままだと
+    //     前進から後退へ切り返した 1 フレームで前後のクリップが入れ替わり、脚が跳ねる。
+    float                        dampTime = 0.0f;
+    // 全Motionを同じ正規化位相で評価し、Weightが再上昇したClipの位相ジャンプを防ぐ。
+    // WHY 2D にも要るか: 歩きと走りのように長さの違う輪を重ねると、ブレンド中に
+    //     両者の位相がずれて足が滑る。方向 4 本だけなら長さが揃うので不要だが、
+    //     速さの輪を足した瞬間に 1D と同じ問題が出る。
+    bool                         syncNormalizedTime = false;
     std::vector<BlendTreeMotion> motions;
+    // ランタイム専用。Controller / Scene には保存しない。
+    float                        dampedX = 0.0f;
+    float                        dampedY = 0.0f;
+    bool                         dampedValueInitialized = false;
+    float                        normalizedPhase = 0.0f;
+    bool                         normalizedPhaseInitialized = false;
 };
 
 // AnimationState が単一クリップと BlendTree のどれを評価するかを表す。

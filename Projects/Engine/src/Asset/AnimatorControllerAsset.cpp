@@ -198,6 +198,8 @@ toml::table WriteState(const scene::AnimationState& state)
     blendTree2D.insert("paramX", state.blendTree2D.paramX);
     blendTree2D.insert("paramY", state.blendTree2D.paramY);
     blendTree2D.insert("type", static_cast<int64_t>(state.blendTree2D.type));
+    blendTree2D.insert("dampTime", static_cast<double>(state.blendTree2D.dampTime));
+    blendTree2D.insert("syncNormalizedTime", state.blendTree2D.syncNormalizedTime);
     toml::array motions2D;
     for (const auto& motion : state.blendTree2D.motions)
         motions2D.push_back(WriteMotion(motion));
@@ -241,6 +243,10 @@ scene::AnimationState ReadState(const toml::table& stateTable)
         state.blendTree2D.paramY = (*blend2D)["paramY"].value_or(std::string{});
         state.blendTree2D.type = static_cast<scene::BlendTree2DType>(
             (*blend2D)["type"].value_or(int64_t{0}));
+        state.blendTree2D.dampTime =
+            static_cast<float>((*blend2D)["dampTime"].value_or(0.0));
+        state.blendTree2D.syncNormalizedTime =
+            (*blend2D)["syncNormalizedTime"].value_or(false);
         if (const auto* motions = (*blend2D)["motions"].as_array())
             for (const auto& motionElement : *motions)
                 if (const auto* motionTable = motionElement.as_table())

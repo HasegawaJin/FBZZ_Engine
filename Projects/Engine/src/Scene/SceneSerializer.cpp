@@ -1990,6 +1990,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 blend2DTbl.insert("paramX", st.blendTree2D.paramX);
                 blend2DTbl.insert("paramY", st.blendTree2D.paramY);
                 blend2DTbl.insert("type",   (int64_t)st.blendTree2D.type);
+                blend2DTbl.insert("dampTime", (double)st.blendTree2D.dampTime);
+                blend2DTbl.insert("syncNormalizedTime", st.blendTree2D.syncNormalizedTime);
                 toml::array motions2D;
                 for (const auto& motion : st.blendTree2D.motions) {
                     toml::table motionTbl;
@@ -3302,6 +3304,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         st.blendTree2D.type = blendType >= 0 && blendType <= 1
                             ? static_cast<BlendTree2DType>(blendType)
                             : BlendTree2DType::SimpleDirectional;
+                        st.blendTree2D.dampTime =
+                            (float)(*blend2DTbl)["dampTime"].value_or(0.0);
+                        st.blendTree2D.syncNormalizedTime =
+                            (*blend2DTbl)["syncNormalizedTime"].value_or(false);
                         readMotions((*blend2DTbl)["motions"].as_array(),
                                     st.blendTree2D.motions);
                     }
