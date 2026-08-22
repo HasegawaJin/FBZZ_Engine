@@ -34,7 +34,7 @@ void ExecuteSkyPass(RenderPassContext& ctx)
         atmData.mieScattering         = sky->mieScattering;
         atmData.planetRadius          = sky->planetRadius;
         atmData.atmosphereRadius      = sky->atmosphereRadius;
-        atmData.sunIntensity          = sky->sunIntensity;
+        atmData.sunIntensity          = sky->skyScatterIntensity;
         atmData.mieG                  = sky->mieG;
         resources.Update(h.atmosphereCB, &atmData, sizeof(AtmosphereCB));
 
@@ -66,7 +66,7 @@ void ExecuteSunMoonPass(RenderPassContext& ctx)
         if (!sunMoon || !sunMoon->enabled) continue;
 
         AtmosphereCB atmData{};
-        atmData.sunIntensity          = sunMoon->sunEnabled ? sunMoon->sunIntensity : 0.0f;
+        atmData.sunIntensity          = sunMoon->sunEnabled ? sunMoon->sunDiskIntensity : 0.0f;
         atmData.moonEnabled           = sunMoon->moonEnabled ? 1.0f : 0.0f;
         atmData.moonSize              = sunMoon->moonSize;
         atmData.moonBrightness        = sunMoon->moonBrightness;

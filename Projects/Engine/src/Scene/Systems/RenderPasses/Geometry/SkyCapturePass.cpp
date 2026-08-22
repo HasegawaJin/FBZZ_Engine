@@ -60,7 +60,7 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
         sig.sunDirection     = ctx.lightData.lightDir.Normalized();
         sig.rayleigh         = sky->rayleighScattering;
         sig.mieScattering    = sky->mieScattering;
-        sig.sunIntensity     = sky->sunIntensity;
+        sig.skyScatterIntensity = sky->skyScatterIntensity;
         sig.mieG             = sky->mieG;
         sig.planetRadius     = sky->planetRadius;
         sig.atmosphereRadius = sky->atmosphereRadius;
@@ -86,7 +86,7 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
     atmData.mieScattering         = sky->mieScattering;
     atmData.planetRadius          = sky->planetRadius;
     atmData.atmosphereRadius      = sky->atmosphereRadius;
-    atmData.sunIntensity          = sky->sunIntensity;
+    atmData.sunIntensity          = sky->skyScatterIntensity;
     atmData.mieG                  = sky->mieG;
     resources.Update(h.atmosphereCB, &atmData, sizeof(AtmosphereCB));
 

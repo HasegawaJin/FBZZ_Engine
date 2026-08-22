@@ -171,7 +171,7 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
     atmosphere.mieScattering = sky->mieScattering;
     atmosphere.planetRadius = sky->planetRadius;
     atmosphere.atmosphereRadius = sky->atmosphereRadius;
-    atmosphere.sunIntensity = sky->sunIntensity;
+    atmosphere.sunIntensity = sky->skyScatterIntensity;
     atmosphere.mieG = sky->mieG;
     resources.Update(h.atmosphereCB, &atmosphere, sizeof(atmosphere));
 

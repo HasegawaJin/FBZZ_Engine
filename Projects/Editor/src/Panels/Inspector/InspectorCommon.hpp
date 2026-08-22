@@ -1293,15 +1293,26 @@ void DrawComponentSectionCustom(
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
-inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
+// dayNightDriven — SkyRenderer の昼夜カーブがこのライトの色/強度を上書きしている状態。
+// WHY 引数で受けるか: 上書きは RenderSystem が毎フレーム行うので、Inspector の値を編集しても
+//     画面は変わらない。無効化して出典を書かないと「ライトが壊れている」と読めてしまう。
+inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
+                            bool dayNightDriven = false)
 {
     static constexpr const char* kTypeNames[] = { "Directional", "Point", "Spot" };
     int typeIdx = static_cast<int>(lc.type);
     if (ImGui::Combo("Type", &typeIdx, kTypeNames, 3))
         lc.type = static_cast<scene::LightComponent::Type>(typeIdx);
 
+    const bool drivenBySky = dayNightDriven && lc.type == scene::LightComponent::Type::Directional;
+    ImGui::BeginDisabled(drivenBySky);
     widgets::ColorEdit3("Color", lc.color);
     ImGui::DragFloat("Intensity", &lc.intensity, 0.05f, 0.0f, 200.0f);
+    ImGui::EndDisabled();
+    if (drivenBySky) {
+        ImGui::TextColored({ 1.0f, 0.75f, 0.35f, 1.0f },
+                           "Sky Renderer の Day Night が上書き中 (向きはこのライトのまま)");
+    }
 
     if (lc.type != scene::LightComponent::Type::Directional) {
         float pos[3] = {
