@@ -13,6 +13,7 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/ParticleEditWidgets.hpp>
 #include <Editor/Util/ParticleEmitterModules.hpp>
+#include <Editor/Util/ParticleMaterialFactory.hpp>
 #include <Editor/Util/SchemaInspector.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/ProceduralVFXTextures.hpp>
@@ -105,6 +106,17 @@ bool ApplyParticleSchemaValue(scene::ParticleEmitter& particle,
 bool VFXGraphInspector::DrawMaterialAnalysis(scene::ParticleEmitter& particle)
 {
     const std::string& target = particle.materialPath;
+    // 未設定は「解析できない」ではなく「既定マテリアルで描かれる」という結果が確定している。
+    // 黙って何も出さないと、意図した素材が効いていないことに気付けない。
+    if (target.empty()) {
+        m_analyzedMaterialPath.clear();
+        m_analyzedTexturePath.clear();
+        ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
+            "Material 未設定: ParticleFallback.mat (加算の丸い光) で描かれます");
+        ImGui::TextDisabled("上の Material 欄へ .mat か .png をドロップしてください。");
+        return false;
+    }
+
     if (m_analyzedMaterialPath != target) {
         m_analyzedMaterialPath = target;
         m_materialAnalysis = asset::AnalyzeMaterial(asset::AssetManager::ResolveAssetPath(target));
@@ -115,10 +127,13 @@ bool VFXGraphInspector::DrawMaterialAnalysis(scene::ParticleEmitter& particle)
         return false;
     }
 
-    if (!ImGui::CollapsingHeader("Material Analysis")) {
+    // .mat 本体の所見と、その albedo テクスチャの中身の所見は別物。
+    // 前者を畳んでも後者は出す (alphaSource の取り違えは後者でしか見つからない)。
+    const bool materialOpen = ImGui::CollapsingHeader("Material Analysis");
+    if (!materialOpen) {
         ImGui::SameLine();
         ImGui::TextDisabled("%s", m_materialAnalysis.message.c_str());
-        return false;
+        return DrawTextureAnalysis(particle, m_materialAnalysis.albedoTexturePath);
     }
 
     ImGui::Indent();
@@ -167,16 +182,14 @@ bool VFXGraphInspector::DrawMaterialAnalysis(scene::ParticleEmitter& particle)
         }
     }
     ImGui::Unindent();
+    changed |= DrawTextureAnalysis(particle, m_materialAnalysis.albedoTexturePath);
     return changed;
 }
 
-bool VFXGraphInspector::DrawTextureAnalysis(scene::ParticleEmitter& particle)
+bool VFXGraphInspector::DrawTextureAnalysis(scene::ParticleEmitter& particle,
+                                            const std::string& texturePath)
 {
-    // .mat が割り当てられていれば、描画に使われるのは .mat 側のテクスチャとブレンド設定。
-    // そちらを解析しないと、実際には描かれない画像について推奨を出すことになる。
-    if (!particle.materialPath.empty()) return DrawMaterialAnalysis(particle);
-
-    const std::string& target = particle.materialPath;
+    const std::string& target = texturePath;
     if (target.empty()) {
         m_analyzedTexturePath.clear();
         return false;
@@ -731,11 +744,14 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
     if (node->type == asset::VFXNodeType::Particle) {
         // Scene Inspectorと同じUnity風モジュールスタックを使い、Graph側でも全機能を編集する。
         ImGui::TextDisabled("Quick Asset Drop");
-        changed |= AssetPathField("Material##VFXQuickParticle", node->particle.materialPath, kMaterialExts);
+        changed |= ParticleMaterialField("Material##VFXQuickParticle",
+                                         node->particle.materialPath,
+                                         node->particle.blendMode, ctx.projectRoot);
         changed |= AssetPathField("Mesh Shape##VFXQuickParticle", node->particle.meshShapePath, kMeshExts);
-        // 割り当てたテクスチャの解析。AI が読むのと同じ AnalyzeTexture を通すことで、
-        // 「人が見る面」と「AI が読む面」が一致し続ける (別実装にすると必ずドリフトする)。
-        changed |= DrawTextureAnalysis(node->particle);
+        // 割り当てた .mat と、その albedo テクスチャの解析。AI が読むのと同じ
+        // AnalyzeMaterial / AnalyzeTexture を通すことで、「人が見る面」と
+        // 「AI が読む面」が一致し続ける (別実装にすると必ずドリフトする)。
+        changed |= DrawMaterialAnalysis(node->particle);
         ImGui::Separator();
         EditorContext assetContext = ctx;
         assetContext.markSceneDirty = [this]() { m_session.document.dirty = true; };
@@ -747,8 +763,10 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
                || node->type == asset::VFXNodeType::MeshTrail) {
         if (node->type == asset::VFXNodeType::MeshTrail)
             changed |= AssetPathField("Mesh", node->trail.meshPath, kMeshExts);
-        changed |= AssetPathField("Material", node->trail.materialPath, ".mat");
-        changed |= AssetPathField("Material", node->trail.materialPath, kMaterialExts);
+        // Trail は粒子ではないが素材の出どころは同じ .mat。加算を既定にして
+        // テクスチャドロップも受ける (軌跡は発光として置かれることがほとんど)。
+        changed |= ParticleMaterialField("Material", node->trail.materialPath,
+                                         scene::ParticleBlendMode::Additive, ctx.projectRoot);
         changed |= ImGui::ColorEdit4("Start Color", &node->trail.colorStart.x);
         changed |= ImGui::ColorEdit4("End Color", &node->trail.colorEnd.x);
         changed |= ImGui::DragFloat("Trail Lifetime", &node->trail.lifetime, 0.01f, 0.01f, 3600.0f);
@@ -786,19 +804,41 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
         changed |= ImGui::SliderFloat("Spatial Blend", &node->audio.spatialBlend, 0.0f, 1.0f);
         changed |= ImGui::Checkbox("Loop Audio", &node->audio.loop);
     } else if (node->type == asset::VFXNodeType::Decal) {
+        changed |= AssetPathField("Material", node->decal.materialPath, kMaterialExts);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("render_path = \"decal\" の .mat だけが使えます。\n"
+                              "空欄のときは下のテクスチャと色で組み込みシェーダーが描きます。");
+
+        // .mat を割り当てると下の値はシェーダーへ届かない。編集できたままだと
+        // 「色を変えたのに絵が変わらない」原因がノードから読めなくなる。
+        const bool decalUsesMaterial = !node->decal.materialPath.empty();
+        ImGui::BeginDisabled(decalUsesMaterial);
         changed |= AssetPathField("Albedo", node->decal.albedoPath, kTextureExts);
         changed |= AssetPathField("Normal", node->decal.normalPath, kTextureExts);
         changed |= AssetPathField("Emissive", node->decal.emissivePath, kTextureExts);
         changed |= ImGui::ColorEdit4("Color", &node->decal.color.x);
         changed |= ImGui::DragFloat("Normal Strength", &node->decal.normalStrength, 0.01f, 0.0f, 8.0f);
         changed |= ImGui::DragFloat("Emissive Scale", &node->decal.emissiveScale, 0.01f, 0.0f, 10000.0f);
+        ImGui::EndDisabled();
+        if (decalUsesMaterial)
+            ImGui::TextDisabled("見た目は .mat が持ちます。Fade / Angle Fade は両方で効きます。");
+
         changed |= ImGui::DragFloat("Fade Time", &node->decal.fadeTime, 0.01f, 0.0f, 3600.0f);
         changed |= ImGui::Checkbox("Use Fade Curve", &node->decal.useFadeCurve);
         if (node->decal.useFadeCurve) {
             changed |= widgets::CurveEditor("Opacity", node->decal.fadeCurve, 1.0f);
-            ImGui::TextDisabled("Color の alpha と Emissive Scale の両方に掛かります。"
-                                "終盤で急に落とすと焼け跡が「しばらく残って消える」動きになります。");
+            ImGui::TextDisabled("%s終盤で急に落とすと焼け跡が「しばらく残って消える」動きになります。",
+                                decalUsesMaterial ? "デカール全体の不透明度に掛かります。"
+                                                  : "不透明度と Emissive Scale の両方に掛かります。");
         }
+        changed |= ImGui::SliderFloat("Angle Fade", &node->decal.angleFadeStrength, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("受け面が投影軸から傾くほど薄くします (0 で無効)。\n"
+                              "OBB 投影は斜めな面へ当てるとテクスチャが引き伸ばされ、長い筋になります。\n"
+                              "着弾痕が壁と床の角をまたいだ瞬間に「伸びた汚れ」として露見する、\n"
+                              "デカールで最も目立つ破綻がこれです。");
+        changed |= ImGui::SliderFloat("Angle Fade Limit", &node->decal.angleFadeDegrees,
+                                      0.0f, 89.0f, "%.0f\xc2\xb0");
         if (ImGui::TreeNode("Procedural Impact Decal Generator")) {
             // 関数ローカルstaticならグローバル状態を増やさず、ノード切替後も設定を保持できる。
             static ProceduralImpactDecalUiState procedural;
@@ -819,6 +859,9 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
                 procedural.status = result.message;
                 procedural.statusIsError = !result.success;
                 if (result.success) {
+                    // 生成物は組み込み経路のテクスチャ 3 枚。.mat が付いたままだと
+                    // 生成したのに絵が変わらないため、明示的に組み込みへ戻す。
+                    node->decal.materialPath.clear();
                     node->decal.albedoPath = NormalizeAssetPath(result.albedoPath);
                     node->decal.normalPath = NormalizeAssetPath(result.normalPath);
                     node->decal.emissivePath = NormalizeAssetPath(result.emissivePath);

@@ -648,4 +648,44 @@ math::Vector3 ComputeCameraFacingRibbonNormal(
         ? normal.Normalized() : math::Vector3::RIGHT;
 }
 
+bool IsEffectTextureSrgb(const std::string& texturePath)
+{
+    // 1x1 白フォールバックなど参照が無い場合。1.0 はどちらの空間でも 1.0 なので変換しない。
+    if (texturePath.empty()) return false;
+
+    // 毎フレーム呼ばれる経路 (Trail) があるため結果を持つ。.meta の更新時刻で無効化して、
+    // エディターで再インポートしたときに古い判定が残らないようにする。
+    struct CachedSrgb {
+        std::filesystem::file_time_type metaWriteTime{};
+        bool srgb = true;
+        bool resolved = false;
+    };
+    static std::unordered_map<std::string, CachedSrgb> s_cache;
+
+    const std::string resolved = asset::AssetManager::ResolveAssetPath(texturePath);
+    std::string sourcePath;
+    if (!asset::TexDescSerializer::ResolveSourcePath(resolved, sourcePath)) return true;
+    const std::string metaPath = sourcePath + ".meta";
+    std::error_code ec;
+    const auto metaWriteTime = std::filesystem::last_write_time(metaPath, ec);
+
+    CachedSrgb& cached = s_cache[texturePath];
+    if (cached.resolved && cached.metaWriteTime == metaWriteTime) return cached.srgb;
+    cached.resolved = true;
+    cached.metaWriteTime = metaWriteTime;
+
+    asset::TextureAsset described;
+    const asset::TexDescSerializer serializer;
+    if (!ec && serializer.Load(metaPath, described)) {
+        cached.srgb = described.settings.srgb;
+        return cached.srgb;
+    }
+    // サイドカーが無い素材はインポーターと同じ推定に従う (色テクスチャ = sRGB)。
+    const auto slash = sourcePath.find_last_of("/\\");
+    const std::string filename =
+        slash == std::string::npos ? sourcePath : sourcePath.substr(slash + 1);
+    cached.srgb = asset::DefaultSettingsForType(asset::GuessTextureType(filename)).srgb;
+    return cached.srgb;
+}
+
 } // namespace fbzz::scene

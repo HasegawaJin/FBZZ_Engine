@@ -1017,22 +1017,13 @@ void RenderSystem(Scene& scene,
         decalMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
     }
 
-    // パーティクルバッファ (最大描画数分を事前確保)
-    static renderer::ResourceHandle<renderer::BufferTag> particleVB;
+    // パーティクルのクワッド用インデックスバッファ (最大描画数分を事前確保)。
+    // 頂点側は共有せず、描画時に DynamicVertexBufferPool から 1 エミッターぶんずつ借りる。
     static renderer::ResourceHandle<renderer::BufferTag> particleIB;
     static uint64_t sParticleResetVersion = 0;
     if (sParticleResetVersion != resources.GetResetVersion()) {
-        particleVB = {};
         particleIB = {};
         sParticleResetVersion = resources.GetResetVersion();
-    }
-    constexpr uint32_t kMaxParticleVertices = static_cast<uint32_t>(kMaxParticleDraw) * 4u;
-    if (!particleVB.IsValid())
-    {
-        particleVB = resources.CreateVertexBuffer(
-            nullptr,
-            kMaxParticleVertices * static_cast<uint32_t>(sizeof(ParticleVertex)),
-            static_cast<uint32_t>(sizeof(ParticleVertex)));
     }
     if (!particleIB.IsValid())
     {
@@ -1559,7 +1550,6 @@ void RenderSystem(Scene& scene,
     passHandles.particlePSO          = particlePSO;
     passHandles.particleAlphaPSO     = particleAlphaPSO;
     passHandles.particlePremultipliedPSO = particlePremultipliedPSO;
-    passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
     passHandles.particleGpuSimCS     = particleGpuSimCS;
     passHandles.particleGpuSortKeysCS  = particleGpuSortKeysCS;

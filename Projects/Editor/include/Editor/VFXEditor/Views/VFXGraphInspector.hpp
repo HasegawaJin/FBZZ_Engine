@@ -36,8 +36,13 @@ private:
     //      これまで中身を知る手段が目視しか無く、アルファが機能していない素材や
     //      事前乗算素材を取り違えたまま気付けなかった。AI が使うのと同じ解析を
     //      同じ画面へ出すことで、人も同じ根拠で判断できるようにする。
+    // NOTE: 解析対象は .mat の albedo であって Emitter ではない。ParticleEmitter は
+    //       テクスチャを直接持たないため、対象パスは呼び出し側 (DrawMaterialAnalysis) が
+    //       解決して渡す。以前はここで particle.materialPath を読み直しており、
+    //       .mat が入っていれば必ず早期 return する = 解析が一切出ない状態だった。
     // @return 設定を適用して .vfx が変わったか
-    bool DrawTextureAnalysis(scene::ParticleEmitter& particle);
+    bool DrawTextureAnalysis(scene::ParticleEmitter& particle,
+                             const std::string& texturePath);
 
     // .mat が割り当てられているときの解析。描画に使われるのは .mat 側の
     // テクスチャとブレンド設定なので、Texture フィールドを見ても実物と一致しない。

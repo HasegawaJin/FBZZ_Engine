@@ -53,6 +53,8 @@ sizeCurvePower = 2.8
 lifetime = 0.09
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
+# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
+materialPath = "Assets/Materials/Particles/Muzzle03_Additive.mat"
 # ヒットフラッシュ: 6 粒子のみ
 blendMode = 0
 sortMode = 0
@@ -96,6 +98,7 @@ emitVelocity = [0.0, 0.0, 9.0]
 velocitySpread = 8.0
 velocityDamping = 3.5
 gravity = [0.0, -9.0, 0.0]
+materialPath = "Assets/Materials/Particles/Spark06_Additive.mat"
 # 放射火花
 blendMode = 0
 renderMode = 1
@@ -151,6 +154,7 @@ sizeCurvePower = 0.3
 lifetime = 0.22
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Twirl02_Alpha.mat"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -201,6 +205,7 @@ velocityDamping = 4.0
 gravity = [0.0, -0.4, 0.0]
 angularVelocityMin = 0.0   # 潰した形を Dust Shape で公開しているため回転側を捨てる
 angularVelocityMax = 0.0
+materialPath = "Assets/Materials/Particles/Smoke01_Premultiplied.mat"
 # 土煙
 blendMode = 2
 sortMode = 1
@@ -255,6 +260,7 @@ velocitySpread = 3.4
 gravity = [0.0, -16.0, 0.0]
 angularVelocityMin = -10.0
 angularVelocityMax = 10.0
+materialPath = "Assets/Materials/Particles/Dirt01_Premultiplied.mat"
 # 破片
 blendMode = 2
 sortMode = 1

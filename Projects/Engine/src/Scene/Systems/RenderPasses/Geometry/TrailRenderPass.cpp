@@ -9,6 +9,7 @@
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/RenderState.hpp>
 #include <Engine/Renderer/SamplerMode.hpp>
+#include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -442,11 +443,13 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
         resources.Update(trail->vertexBuffer, vertices.data(), uploadBytes);
 
         TrailCB cb{};
-        cb.colorStart = trail->colorStart;
-        cb.colorEnd = trail->colorEnd;
+        // オーサリング値 (sRGB) → リニア。素材のリニア化はシェーダー側が行う。
+        cb.colorStart = ParticleSrgbToLinear(trail->colorStart);
+        cb.colorEnd = ParticleSrgbToLinear(trail->colorEnd);
         cb.uvScrollSpeed = trail->uvScrollSpeed;
         cb.uvTiling = trail->uvTiling;
         cb.time = currentTime;
+        cb.flags = IsEffectTextureSrgb(trail->loadedTexturePath) ? kTrailFlagSrgbTexture : 0u;
         resources.Update(trail->trailCB, &cb, sizeof(cb));
 
         renderer::DrawCall dc;

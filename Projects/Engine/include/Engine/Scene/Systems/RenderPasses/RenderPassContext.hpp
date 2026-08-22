@@ -608,7 +608,9 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleAlphaPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particlePremultipliedPSO;
-    renderer::ResourceHandle<renderer::BufferTag>         particleVB;
+    // 頂点バッファは共有しない。エミッターごとに DynamicVertexBufferPool から借りる
+    // (共有 1 本だと DX12 で 2 個目以降の Update が 1 個目の Draw を壊す)。
+    // インデックスは全エミッター共通のクワッド列で、生成後は書き換えないので共有してよい。
     renderer::ResourceHandle<renderer::BufferTag>         particleIB;
 
     // GPU パーティクル

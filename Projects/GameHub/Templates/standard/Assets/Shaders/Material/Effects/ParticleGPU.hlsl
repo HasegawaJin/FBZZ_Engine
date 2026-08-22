@@ -50,6 +50,8 @@ StructuredBuffer<GpuParticle> gParticles : register(SB_GPU_PARTICLES);
 //      (リングバッファの位置が動くとスポーンとシミュレーションが破綻する)。
 StructuredBuffer<uint2>       gSortedParticles : register(SB_GPU_SORT);
 Texture2D                     gTex       : register(TEX_ALBEDO);
+// 歪みベクトル専用ノーマルマップ (CPU 経路 Particle.hlsl と同じスロット・同じ扱い)。
+Texture2D                     gDistortionTex : register(TEX_NORMAL);
 Texture2D                     gSceneDepth: register(TEX_DEPTH);
 Texture2D                     gSceneColor: register(t5);
 // 自己影の光源側密度 (R=Σα, G=Σα·深度)。CPU 経路と同じ t9 を使う。
@@ -90,6 +92,12 @@ cbuffer ParticleRenderConstants : register(CB_MATERIAL)
     uint  gGpuSortEnabled;
     // 自己影の消衰係数。0 で無効。
     float gSelfShadowStrength;
+    // 以降は CPU 経路 Particle.hlsl と同じ並び。GeometryPasses.hpp の ParticleRenderCB が正本。
+    float gSmokeWrap;
+    float gSmokeTransmission;
+    float4 gTintColor;
+    float gSmokeBackScatterPower;
+    float gDistortionChromatic;
     float gParticlePad1;
     float gParticlePad2;
 };
@@ -293,7 +301,8 @@ float4 PSMain(PsIn p) : SV_Target0
             float extinction = density * gVolumetricDensity * stepLength;
             float stepTransmittance = exp(-extinction);
             float3 inScatter = (ambientColor
-                + lightColor * (phase * lightTransmittance * mapShadow)) * p.color.rgb;
+                + lightColor * (phase * lightTransmittance * mapShadow))
+                * p.color.rgb * gTintColor.rgb;
             scattered += transmittance * (1.0f - stepTransmittance) * inScatter;
             transmittance *= stepTransmittance;
             if (transmittance < 0.01f) break;
@@ -310,8 +319,8 @@ float4 PSMain(PsIn p) : SV_Target0
         return float4(scattered * gEmissiveScale, volAlpha);
     }
 
-    // 素材の作り (アルファ付き / 黒背景 / 白背景 / R マスク) を吸収してから使う。
-    float4 tex = ResolveParticleTexel(gTex.Sample(gSampler, p.uv), gEffectsFlags);
+    // 素材の作り (アルファ付き / 黒背景 / 白背景 / R マスク) を吸収し、RGB をリニアへ揃える。
+    float4 tex = ResolveParticleAlbedo(gTex.Sample(gSampler, p.uv), gEffectsFlags);
     if (gSoftParticles != 0)
     {
         float sceneDepth = gSceneDepth.Load(int3(int2(p.svPos.xy), 0)).r;
@@ -319,7 +328,8 @@ float4 PSMain(PsIn p) : SV_Target0
         float particleLinear = LinearizeDepth(p.svPos.z, nearZ, farZ);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
-    float4 result = tex * float4(p.color.rgb, p.color.a * fade);
+    // 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。
+    float4 result = tex * float4(p.color.rgb * gTintColor.rgb, p.color.a * fade * gTintColor.a);
 
     // 受け影 (CPU 経路 Particle.hlsl と同じ扱い。ビルボードは法線を持たないため
     // 法線バイアスは無効化する)。
@@ -338,10 +348,15 @@ float4 PSMain(PsIn p) : SV_Target0
 
     if ((gEffectsFlags & FBZZ_PFX_SIX_WAY) != 0u)
     {
+        // 巻き込み拡散 + 前方散乱 (CPU 経路 Particle.hlsl と同じ式)。
         float2 normalXY = p.localUv * 2.0f - 1.0f;
         float3 normal = normalize(float3(normalXY, sqrt(saturate(1.0f - dot(normalXY, normalXY)))));
-        float diffuse = saturate(dot(normal, normalize(-lightDir)));
-        float3 lit = ambientColor + lightColor * diffuse * shadow;
+        float3 lightDirection = normalize(-lightDir);
+        float3 viewDir = normalize(cameraPos - p.worldPos);
+        float diffuse = ParticleWrappedDiffuse(dot(normal, lightDirection), saturate(gSmokeWrap));
+        float back = ParticleBackScatter(viewDir, lightDirection,
+                                         gSmokeBackScatterPower, gSmokeTransmission);
+        float3 lit = ambientColor + lightColor * ((diffuse + back) * shadow);
         result.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
     }
     else
@@ -352,8 +367,17 @@ float4 PSMain(PsIn p) : SV_Target0
     if ((gEffectsFlags & FBZZ_PFX_DISTORTION) != 0u)
     {
         float2 screenUv = p.svPos.xy / max(float2(gScreenWidth, gScreenHeight), float2(1.0f, 1.0f));
-        float2 offset = (tex.rg * 2.0f - 1.0f) * gDistortionStrength;
-        result = float4(gSceneColor.Sample(gSampler, saturate(screenUv + offset)).rgb, result.a);
+        // 専用マップがあればそちらを向きに使う (CPU 経路と同じ扱い)。
+        float2 vector2 = (gEffectsFlags & FBZZ_PFX_DISTORTION_MAP) != 0u
+            ? gDistortionTex.Sample(gSampler, p.uv).rg
+            : tex.rg;
+        float2 offset = (vector2 * 2.0f - 1.0f) * gDistortionStrength;
+        float2 dispersion = offset * gDistortionChromatic;
+        float3 refracted;
+        refracted.r = gSceneColor.Sample(gSampler, saturate(screenUv + offset + dispersion)).r;
+        refracted.g = gSceneColor.Sample(gSampler, saturate(screenUv + offset)).g;
+        refracted.b = gSceneColor.Sample(gSampler, saturate(screenUv + offset - dispersion)).b;
+        result = float4(refracted, result.a);
     }
     // 事前乗算アルファは SrcBlend=ONE なので RGB が「そのまま」出力される。
     // 他のブレンドはブレンド側が src.a を掛けてくれるため RGB は素のままでよいが、

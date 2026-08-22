@@ -282,6 +282,23 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient)
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Step は「炎から煙へ切り替わる瞬間」のような硬い変化に使う");
         ImGui::SameLine();
+        {
+            static const char* kSpaces[] = { "Gamma", "Linear", "OkLab" };
+            int space = static_cast<int>(gradient.colorSpace);
+            ImGui::SetNextItemWidth(90.0f);
+            if (ImGui::Combo("##gradient_space", &space, kSpaces, IM_ARRAYSIZE(kSpaces))) {
+                gradient.colorSpace = static_cast<scene::ParticleColorSpace>(space);
+                changed = true;
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "キー間をどの色空間で混ぜるか\n"
+                    "Gamma: ピッカー上の見た目どおり (従来)\n"
+                    "Linear: 光として正しく足し合わさる。白熱→橙→暗赤の中間が濁らない\n"
+                    "OkLab: 明度と色相が知覚的に等間隔。色相を大きく回す魔法系向け");
+            }
+        }
+        ImGui::SameLine();
         ImGui::TextDisabled("%u/%u keys", gradient.keyCount,
                             static_cast<unsigned>(gradient.keys.size()));
         ImGui::SameLine();

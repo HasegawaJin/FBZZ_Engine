@@ -128,7 +128,9 @@ struct VFXGraphComponent {
         r.Field("variant", variant);
         serializedParameterOverrides = asset::SerializeVFXOverrides(parameterOverrides);
         r.Field("parameterOverrides", serializedParameterOverrides);
-        asset::DeserializeVFXOverrides(serializedParameterOverrides, parameterOverrides);
+        // 読み込み方向では文字列が正、書き出し方向では直前の Serialize 結果が戻るだけ。
+        // どちらの失敗も override 無しとして続行するため戻り値は見ない。
+        (void)asset::DeserializeVFXOverrides(serializedParameterOverrides, parameterOverrides);
     }
 
     void Restart()

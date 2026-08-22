@@ -85,7 +85,13 @@ struct VFXRecipeBuildOptions {
     bool includeCameraShake = false;
     // ロール -> 実在するテクスチャのプロジェクト相対パス。
     // 埋まっていないロールの層はテクスチャ未設定で作る (置いてから割り当てられる)。
+    // NOTE: ここはテクスチャを受け取り、層ごとのブレンドに合わせた .mat を
+    //       EnsureParticleMaterial が用意する。ParticleEmitter はテクスチャを
+    //       直接持てないため、テクスチャパスをそのまま materialPath へ入れてはならない。
     std::unordered_map<std::string, std::string> roleTextures;
+    // .mat の生成先を決めるためのプロジェクトルート。空だと .mat を作れないので、
+    // その場合は素材未設定のまま生成する (グラフ構造だけは正しく組み上がる)。
+    std::string projectRoot;
     // 生成物の名前。空なら recipe 名。
     std::string graphName;
 };

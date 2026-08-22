@@ -236,6 +236,7 @@ void AddAudio(GameObject& gameObject, const asset::VFXGraphNode& node)
 void AddDecal(GameObject& gameObject, const asset::VFXGraphNode& node)
 {
     DecalComponent decal;
+    decal.materialPath = node.decal.materialPath;
     decal.albedoTexPath = node.decal.albedoPath;
     decal.normalTexPath = node.decal.normalPath;
     decal.emissiveTexPath = node.decal.emissivePath;
@@ -559,8 +560,14 @@ void ApplyNodeEnvelope(Scene& scene, const VFXRuntimeNodeState& state,
     if (node.type == asset::VFXNodeType::Decal) {
         if (auto* decal = gameObject->GetComponent<DecalComponent>()) {
             const float fade = std::clamp(node.decal.fadeCurve.Evaluate(normalized), 0.0f, 1.0f);
-            decal->albedoColor[3] = node.decal.color.w * fade;
-            decal->emissiveScale = node.decal.emissiveScale * fade;
+            // WHY albedoColor ではなく opacity か: albedoColor は組み込み経路の値で、
+            //     .mat を割り当てた瞬間にシェーダーへ届かなくなる。カーブで作った減り方が
+            //     マテリアルの有無で消えては困るので、投影側の倍率へ掛ける。
+            decal->opacity = fade;
+            // エミッシブは組み込み経路のパラメータ。.mat 経路では材質が持つので触らない
+            // (合成時に alpha が掛かるため、光り方も opacity に従って落ちる)。
+            if (decal->materialPath.empty())
+                decal->emissiveScale = node.decal.emissiveScale * fade;
         }
         return;
     }
@@ -828,12 +835,19 @@ void ApplyRuntimeNodeSettings(Scene& scene, const VFXRuntimeNodeState& state,
         }
     } else if (node.type == asset::VFXNodeType::Decal) {
         if (auto* decal = object->GetComponent<DecalComponent>()) {
+            decal->materialPath = node.decal.materialPath;
             decal->albedoTexPath = node.decal.albedoPath; decal->normalTexPath = node.decal.normalPath;
             decal->emissiveTexPath = node.decal.emissivePath;
             decal->albedoColor[0] = node.decal.color.x; decal->albedoColor[1] = node.decal.color.y;
             decal->albedoColor[2] = node.decal.color.z; decal->albedoColor[3] = node.decal.color.w;
             decal->normalStrength = node.decal.normalStrength; decal->emissiveScale = node.decal.emissiveScale;
             decal->fadeTime = node.decal.fadeTime;
+            decal->angleFadeStrength = node.decal.angleFadeStrength;
+            decal->angleFadeDegrees = node.decal.angleFadeDegrees;
+            // WHY ここで戻すか: opacity を書くのはカーブ駆動の更新だけで、カーブを
+            //     切った瞬間に更新自体が止まる。最後にカーブが返した値のまま固まり、
+            //     VFX エディタで Use Fade Curve を外すとデカールが薄いまま残る。
+            if (!node.decal.useFadeCurve) decal->opacity = 1.0f;
         }
     } else if (node.type == asset::VFXNodeType::SubGraph) {
         if (auto* graph = object->GetComponent<VFXGraphComponent>(); graph && graph->graphPath != node.subGraph.graphPath) {

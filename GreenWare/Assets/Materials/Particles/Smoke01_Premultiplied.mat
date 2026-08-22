@@ -1,0 +1,21 @@
+# FBZZ Engine
+# Smoke01_Premultiplied.mat
+# 着弾の土煙。
+# WHY: ParticlePass は materialPath から albedo テクスチャと blend_mode だけを読む
+#      (shader / params は使わない)。素材 1 枚につき 1 マテリアルを置くことで、
+#      複数の Emitter から同じ素材設定を共有できる。
+# 素材: Assets/Textures/Particles/smoke_01.png
+version = 1
+shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
+blend_mode = "Premultiplied"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:5bcf2c4afd17403c8b3a099a2e92c736"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]

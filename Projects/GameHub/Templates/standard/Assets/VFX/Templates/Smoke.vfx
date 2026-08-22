@@ -66,6 +66,8 @@ velocityDamping = 0.5
 gravity = [0.0, 0.6, 0.0]
 angularVelocityMin = -0.7
 angularVelocityMax = 0.7
+# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
+materialPath = "Assets/Materials/Particles/Smoke04_Premultiplied.mat"
 # 下層の煙
 blendMode = 2
 sortMode = 1
@@ -127,6 +129,7 @@ velocityDamping = 0.3
 gravity = [0.0, 0.35, 0.0]
 angularVelocityMin = -0.4
 angularVelocityMax = 0.4
+materialPath = "Assets/Materials/Particles/Smoke08_Premultiplied.mat"
 # 本体の煙
 blendMode = 2
 sortMode = 1
@@ -183,6 +186,7 @@ emitVelocity = [0.0, 0.7, 0.0]
 velocitySpread = 0.35
 velocityDamping = 0.2
 gravity = [0.0, 0.15, 0.0]
+materialPath = "Assets/Materials/Particles/Smoke10_Premultiplied.mat"
 # 上層のたなびき
 blendMode = 2
 sortMode = 1
@@ -234,6 +238,7 @@ lifetimeRandom = 0.7
 emitVelocity = [0.0, 1.8, 0.0]
 velocitySpread = 0.3
 gravity = [0.0, 0.5, 0.0]
+materialPath = "Assets/Materials/Particles/Smoke02_Alpha.mat"
 blendMode = 1
 sortMode = 1
 distortion = true

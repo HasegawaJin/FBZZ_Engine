@@ -31,6 +31,15 @@ maxAudioVoices = 1
 #
 # velocitySpread は 3 軸へ等方に効く (旧実装は X/Z のみで、上向きの炎は全粒子が
 # 同速に揃ってしまっていた)。縦のばらつきはこれと lifetimeRandom で作る。
+#
+# 色について:
+#  ここの colorGradient は sRGB (カラーピッカー上の値) で書く。RGB は 1 を超えてよく、
+#  リニアへの変換は描画直前に 1 回だけ行われる。値を直接いじる前に、
+#  Blackbody モジュール (blackbodyEnabled + temperatureCurve) を検討すること。
+#  炎の色はすす粒子の黒体放射で決まり、輝度は T^4 に比例する。温度で書けば
+#  「白熱した芯 + 彩度の高い橙の縁」が自動的に出る (RGB を手で置くと、芯を明るく
+#  するほど縁まで白んでしまい、この対比は作れない)。
+#  焚き火なら 1900K → 1100K あたりが実測域。
 # ------------------------------------------------------------------------------
 
 [[nodes]]
@@ -77,6 +86,8 @@ gravity = [0.0, 0.0, 0.0]
 # 縦に伸ばす層なので回転させない (回すとせん断される)。
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
+# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
+materialPath = "Assets/Materials/Particles/Flame03_Additive.mat"
 # 芯炎: 260 粒子が重なるので単体は控えめに。光量は Light ノードが担う
 blendMode = 0
 sortMode = 0
@@ -132,6 +143,7 @@ velocityDamping = 1.35
 gravity = [0.0, 0.0, 0.0]
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
+materialPath = "Assets/Materials/Particles/Flame05_Premultiplied.mat"
 # WHY: 炎が「物体」に見えるには不透明な芯が要る。全部加算だと背景が透けて
 #      光の靄になり、輪郭が消える。body は Premultiplied、hot core だけ加算にする。
 # 外炎: 素材が事前乗算相当なので Premultiplied。Alpha だと縁が汚れる
@@ -186,6 +198,7 @@ lifetimeRandom = 0.5
 emitVelocity = [0.0, 1.0, 0.0]
 velocitySpread = 0.3
 gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Smoke03_Alpha.mat"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -234,6 +247,7 @@ velocityDamping = 0.35
 # 火の粉だけは下向き重力を持つ。上がりっぱなしだと「立ち上る点」にしか見えず、
 # 上昇風の外へ抜けて落ちる粒があることで初めて熱気の境界が見える。
 gravity = [0.0, -0.6, 0.0]
+materialPath = "Assets/Materials/Particles/Spark01_Additive.mat"
 # 火の粉: 小さく数も少ないので強めでよい
 blendMode = 0
 emissiveScale = 3.5
@@ -291,14 +305,20 @@ gravity = [0.0, 0.0, 0.0]
 angularVelocityMin = -0.4
 angularVelocityMax = 0.4
 sizeAxisScale = [1.0, 1.0, 1.0]
+materialPath = "Assets/Materials/Particles/Smoke09_Premultiplied.mat"
 # 煤煙: 背景を隠す本体。Premultiplied で二重暗化を避ける
 blendMode = 2
 sortMode = 1
 sixWayLighting = true
-# WHY: lightingStrength は shader 側で saturate される。1.0 を超えると煙の色が
-#      完全に (ambient + N·L) へ置き換わり、暗いプレビュー環境では真っ黒になる。
-#      0.6 前後に留めて、元の煤色を残したまま炎の光を拾わせる。
-lightingStrength = 0.6
+# 素の N·L は「不透明な球」の陰影で、光を透かす煙には合わない。
+# smokeWrap で陰側へ光を回り込ませ、smokeTransmission で前方散乱 (逆光透過) を出す。
+# WHY: この 2 つが無いと、炎が煙の向こうにあっても煙は暗いままで、
+#      lightingStrength を上げるほど真っ黒に潰れるだけだった。
+lightingStrength = 0.85
+smokeWrap = 0.65
+# 焚き火の煙は炎に近く、下から強く照らされる。透過を強めに入れて底面を光らせる。
+smokeTransmission = 1.1
+smokeBackScatterPower = 3.0
 softParticles = true
 softParticleFadeDistance = 0.5
 noiseStrength = 0.6
@@ -337,7 +357,7 @@ intensity = 4.2
 range = 7.0
 # 光量をノード寿命に沿って揺らす。定数の明るさだと炎が動いていても
 # 周囲の陰影が固まったままで「絵に貼った炎」に見える。
-# ParticleCurve は最大4キーなので、その範囲でゆっくりした呼吸を作り、
+# キーは 4 点だけ使ってゆっくりした呼吸を作り、
 # ループ端 (1.0) を先頭 (0.0) と同値にして継ぎ目が飛ばないようにしている。
 useIntensityCurve = true
 intensityCurve = [[0.0, 0.86], [0.33, 1.0], [0.68, 0.76], [1.0, 0.86]]

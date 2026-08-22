@@ -151,7 +151,9 @@ std::string VFXNodeThumbnailAsset(const asset::VFXGraphNode& node)
     case asset::VFXNodeType::MeshTrail:
         return node.trail.materialPath;
     case asset::VFXNodeType::Decal:
-        return node.decal.albedoPath;
+        // .mat があるなら見た目はそちらが持つ。albedo は組み込み経路の値。
+        return node.decal.materialPath.empty()
+            ? node.decal.albedoPath : node.decal.materialPath;
     case asset::VFXNodeType::Mesh:
         return node.mesh.materialPath;
     case asset::VFXNodeType::AnimatedMesh:
@@ -256,7 +258,10 @@ void DrawVFXNodeSummary(const asset::VFXGraphNode& node)
                             node.audio.loop ? "  loop" : "");
         break;
     case asset::VFXNodeType::Decal:
-        assetLine("Albedo", node.decal.albedoPath);
+        if (node.decal.materialPath.empty())
+            assetLine("Albedo", node.decal.albedoPath);
+        else
+            assetLine("Material", node.decal.materialPath);
         ImGui::TextDisabled("fade %.2fs", node.decal.fadeTime);
         break;
     case asset::VFXNodeType::SubGraph:

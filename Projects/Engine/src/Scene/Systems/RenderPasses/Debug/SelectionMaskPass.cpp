@@ -7,6 +7,7 @@
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
+#include <Engine/Renderer/DynamicVertexBufferPool.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -54,6 +55,12 @@ math::Vector3 ParticleWorldVector(const Transform& transform, const math::Vector
     return transform.worldRotation * localVector;
 }
 
+// エミッター 1 個ぶんのマスク頂点を貸し出すプール。
+// WHY 共有バッファを使わないか: 複数のエミッターを同時選択すると Update → Submit が
+//     エミッターの数だけ並ぶ。DX12 では後の Update が先に記録した Draw の中身まで
+//     差し替えてしまう (詳細は DynamicVertexBufferPool.hpp)。
+renderer::DynamicVertexBufferPool g_selectionMaskParticlePool;
+
 // 選択されたParticleEmitterの現在形状を、テクスチャAlpha込みでSelection Maskへ描く。
 // WHY: GameObjectのBounds矩形では炎・煙の透明部分まで囲まれ、Unity型のシルエット輪郭にならない。
 void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderPassContext& ctx)
@@ -61,7 +68,7 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
     auto& h = ctx.handles;
     if (!emitter.enabled || emitter.particles.empty() || !emitter.texture.IsValid()
         || !emitter.renderCB.IsValid() || !h.selectionMaskParticleShader.IsValid()
-        || !h.particleVB.IsValid() || !h.particleIB.IsValid()
+        || !h.particleIB.IsValid()
         || !h.selectionMaskPSO.IsValid() || !emitter.meshParticlePath.empty()) {
         return;
     }
@@ -143,10 +150,13 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
     }
     if (quadCount == 0) return;
 
-    ctx.resources.Update(h.particleVB, vertices.data(),
+    const auto vertexBuffer = g_selectionMaskParticlePool.Acquire(
+        ctx.resources, vertices.size(), static_cast<std::uint32_t>(sizeof(ParticleVertex)));
+    if (!vertexBuffer.IsValid()) return;
+    ctx.resources.Update(vertexBuffer, vertices.data(),
                          static_cast<std::uint32_t>(vertices.size() * sizeof(ParticleVertex)));
     renderer::DrawCall draw;
-    draw.vertexBuffer = h.particleVB;
+    draw.vertexBuffer = vertexBuffer;
     draw.indexBuffer = h.particleIB;
     draw.indexCount = static_cast<std::uint32_t>(quadCount * 6);
     draw.shader = h.selectionMaskParticleShader;
