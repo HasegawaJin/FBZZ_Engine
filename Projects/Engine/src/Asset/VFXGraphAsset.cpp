@@ -239,6 +239,7 @@ toml::table WriteNode(const VFXGraphNode& node)
     table.insert("audio", std::move(audio));
 
     toml::table decal;
+    decal.insert("materialPath", node.decal.materialPath);
     decal.insert("albedoPath", node.decal.albedoPath);
     decal.insert("normalPath", node.decal.normalPath);
     decal.insert("emissivePath", node.decal.emissivePath);
@@ -376,6 +377,7 @@ VFXGraphNode ReadNode(const toml::table& table)
         node.audio.loop = (*value)["loop"].value_or(false);
     }
     if (const auto* value = table["decal"].as_table()) {
+        node.decal.materialPath = (*value)["materialPath"].value_or(std::string{});
         node.decal.albedoPath = (*value)["albedoPath"].value_or(std::string{});
         node.decal.normalPath = (*value)["normalPath"].value_or(std::string{});
         node.decal.emissivePath = (*value)["emissivePath"].value_or(std::string{});
@@ -532,6 +534,7 @@ std::vector<std::string> CollectVFXGraphDependencies(const VFXGraphAsset& asset)
         add(node.trail.meshPath);
         add(node.trail.materialPath);
         add(node.audio.clipPath);
+        add(node.decal.materialPath);
         add(node.decal.albedoPath);
         add(node.decal.normalPath);
         add(node.decal.emissivePath);
@@ -995,6 +998,49 @@ std::vector<VFXGraphWarning> CollectVFXGraphWarnings(const VFXGraphAsset& asset,
             add(nodeId, "MISSING_ASSET",
                 name + ": " + label + " が見つかりません -> " + reference);
     };
+    // 素材の「無い」「.mat ではない」を、参照切れとは別に検出する。
+    // WHY: 未設定は既定マテリアルへ、.mat でない参照は 1x1 白テクスチャへ落ちる。
+    //      どちらも「意図した素材が効いていないのに絵は出る」ため最も気付きにくく、
+    //      しかも checkAsset は素通りする (空は未使用扱い、.png は実在する)。
+    //      この 2 つは実際に .vfx を全滅させた失敗モードなので、名指しで出す。
+    const auto checkParticleMaterial = [&](int nodeId, const std::string& name,
+                                           const std::string& reference) {
+        if (reference.empty()) {
+            add(nodeId, "EMPTY_PARTICLE_MATERIAL",
+                name + ": Material が未設定です。既定の ParticleFallback.mat "
+                "(加算の丸い光) で描かれます");
+            return;
+        }
+        if (!reference.starts_with("guid:")
+            && !(reference.size() >= 4
+                 && reference.compare(reference.size() - 4, 4, ".mat") == 0))
+            add(nodeId, "MATERIAL_PATH_NOT_MAT",
+                name + ": Material に .mat 以外が入っています -> " + reference
+                + " (テクスチャは .mat の albedo へ入れてください)");
+    };
+    // Decal の Material は任意。未設定は「組み込み描画」という正当な指定なので黙って通し、
+    // 「設定してあるのに .mat でない」だけを出す。
+    // WHY: .mat 以外を入れると DecalPass が警告して組み込みへ落とすため、
+    //      絵は出るのに指定した素材が効かない、という同じ気付きにくさが起きる。
+    const auto checkDecalMaterial = [&](int nodeId, const std::string& name,
+                                        const std::string& reference) {
+        if (reference.empty()) return;
+        if (!reference.starts_with("guid:")
+            && !(reference.size() >= 4
+                 && reference.compare(reference.size() - 4, 4, ".mat") == 0))
+            add(nodeId, "MATERIAL_PATH_NOT_MAT",
+                name + ": Decal Material に .mat 以外が入っています -> " + reference
+                + " (テクスチャは Albedo へ入れてください)");
+    };
+    for (const auto& node : asset.nodes) {
+        if (node.type == VFXNodeType::Particle)
+            checkParticleMaterial(node.id, node.name, node.particle.materialPath);
+        else if (node.type == VFXNodeType::Trail || node.type == VFXNodeType::MeshTrail)
+            checkParticleMaterial(node.id, node.name, node.trail.materialPath);
+        else if (node.type == VFXNodeType::Decal)
+            checkDecalMaterial(node.id, node.name, node.decal.materialPath);
+    }
+
     if (checkAssetReferences) for (const auto& node : asset.nodes) {
         if (node.type == VFXNodeType::Particle) {
             checkAsset(node.id, node.name, "Material", node.particle.materialPath);
@@ -1003,6 +1049,8 @@ std::vector<VFXGraphWarning> CollectVFXGraphWarnings(const VFXGraphAsset& asset,
             checkAsset(node.id, node.name, "Motion Vector", node.particle.motionVectorTexturePath);
         } else if (node.type == VFXNodeType::Trail || node.type == VFXNodeType::MeshTrail) {
             checkAsset(node.id, node.name, "Material", node.trail.materialPath);
+        } else if (node.type == VFXNodeType::Decal) {
+            checkAsset(node.id, node.name, "Material", node.decal.materialPath);
         } else if (node.type == VFXNodeType::SubGraph) {
             checkAsset(node.id, node.name, "Sub Graph", node.subGraph.graphPath);
         } else if (node.type == VFXNodeType::AnimatedMesh) {

@@ -704,6 +704,7 @@ void RenderSystem(Scene& scene,
 
     static auto decalShader     = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
     static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
+    static auto decalMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMaskSkinned.hlsl");
 
     static auto particleShader      = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
     static auto particleGpuSimCS   = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
@@ -758,6 +759,8 @@ void RenderSystem(Scene& scene,
     static auto outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
     static auto atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
     static auto decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
+    static auto decalMaterialCB = resources.CreateConstantBuffer(sizeof(DecalMaterialCB));
+    static auto decalReceiverCB = resources.CreateConstantBuffer(sizeof(DecalReceiverCB));
     static auto volumetricCloudCB = resources.CreateConstantBuffer(176);
     // パーティクル自己影: 光源側の密度 RT と、光源行列を入れる専用 frame CB。
     // WHY: RenderPassHandles はフレームごとに作り直される値型なので、
@@ -920,6 +923,9 @@ void RenderSystem(Scene& scene,
         clusterCullCS = resources.LoadShader("Assets/Shaders/Pipeline/Clustered/ClusterLightCull.cs.hlsl");
         decalShader = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
         decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
+        decalMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMaskSkinned.hlsl");
+        // .mat の解決結果はシェーダー・テクスチャ・cbuffer のハンドルを持つ。
+        ReleaseDecalMaterialCache();
         particleShader     = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
         particleGpuSimCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
         particleGpuShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
@@ -982,6 +988,8 @@ void RenderSystem(Scene& scene,
         outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
         atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
         decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
+        decalMaterialCB = resources.CreateConstantBuffer(sizeof(DecalMaterialCB));
+        decalReceiverCB = resources.CreateConstantBuffer(sizeof(DecalReceiverCB));
         volumetricCloudCB = resources.CreateConstantBuffer(176);
         particleSelfShadowRT = resources.CreateRenderTarget(
             RenderPassHandles::kSelfShadowResolution, RenderPassHandles::kSelfShadowResolution, 1);
@@ -1521,9 +1529,12 @@ void RenderSystem(Scene& scene,
     passHandles.decalMaskRT       = decalMaskRT;
     passHandles.decalShader       = decalShader;
     passHandles.decalMaskShader   = decalMaskShader;
+    passHandles.decalMaskSkinnedShader = decalMaskSkinnedShader;
     passHandles.decalPSO          = decalPSO;
     passHandles.decalMaskPSO      = decalMaskPso;
     passHandles.decalCB           = decalCB;
+    passHandles.decalMaterialCB   = decalMaterialCB;
+    passHandles.decalReceiverCB   = decalReceiverCB;
     // ── ジオメトリ用ハンドル ──────────────────────────────────────────────────
     passHandles.shadowShader         = shadowShader;
     passHandles.shadowSkinnedShader  = skinnedShadowShader;

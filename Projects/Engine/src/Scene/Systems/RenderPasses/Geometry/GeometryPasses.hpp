@@ -200,6 +200,9 @@ void ExecuteParticlePass                   (RenderPassContext& ctx);
 //      ctx.settings.particleOverdrawView が true のときだけ Particle パスの直後に走る。
 void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
+// .mat のパスをキーにした解決済みマテリアルのキャッシュを破棄する。
+// シーン切り替えやリソースリセットの際に呼ぶこと。
+void ReleaseDecalMaterialCache             ();
 
 // ---- ヘルパー宣言 (定義は GeometryPassHelpers.cpp) -------------------------
 

@@ -1278,6 +1278,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* decal = go.GetComponent<DecalComponent>()) {
             toml::table decalTbl;
             decalTbl.insert("enabled",           decal->enabled);
+            decalTbl.insert("material",          decal->materialPath);
             decalTbl.insert("albedoTex",         decal->albedoTexPath);
             decalTbl.insert("normalTex",         decal->normalTexPath);
             decalTbl.insert("emissiveTex",       decal->emissiveTexPath);
@@ -1288,6 +1289,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 decal->albedoColor[3]
             }));
             decalTbl.insert("normalStrength",    (double)decal->normalStrength);
+            decalTbl.insert("angleFadeStrength", (double)decal->angleFadeStrength);
+            decalTbl.insert("angleFadeDegrees",  (double)decal->angleFadeDegrees);
             decalTbl.insert("emissiveColor",     Vec3ToArr({
                 decal->emissiveColor[0],
                 decal->emissiveColor[1],
@@ -2587,6 +2590,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* decalTbl = (*goTbl)["DecalComponent"].as_table()) {
             DecalComponent decal{};
             decal.enabled         = (*decalTbl)["enabled"].value_or(true);
+            decal.materialPath    = (*decalTbl)["material"].value_or(std::string{});
             decal.albedoTexPath   = (*decalTbl)["albedoTex"].value_or(std::string{});
             decal.normalTexPath   = (*decalTbl)["normalTex"].value_or(std::string{});
             decal.emissiveTexPath = (*decalTbl)["emissiveTex"].value_or(std::string{});
@@ -2600,6 +2604,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             decal.albedoColor[3] = albedo.w;
 
             decal.normalStrength = (float)(*decalTbl)["normalStrength"].value_or(1.0);
+            decal.angleFadeStrength = (float)(*decalTbl)["angleFadeStrength"].value_or(1.0);
+            decal.angleFadeDegrees  = (float)(*decalTbl)["angleFadeDegrees"].value_or(70.0);
 
             const math::Vector3 emissive = ArrToVec3(
                 (*decalTbl)["emissiveColor"].as_array(),
