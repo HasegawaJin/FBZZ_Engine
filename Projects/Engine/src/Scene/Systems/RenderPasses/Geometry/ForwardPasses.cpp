@@ -87,14 +87,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     renderer.SetRenderTarget(h.hdrRT, resources);
     renderer.Clear(kHdrClearColor);
 
-    PerFrameCB frameData{};
-    frameData.view              = cam.GetViewMatrix();
-    frameData.projection        = cam.GetProjectionMatrix();
-    frameData.viewProjection    = cam.GetViewProjection();
-    frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
-    frameData.cameraPos         = cam.m_position;
-    frameData.nearZ             = cam.m_near;
-    frameData.farZ              = cam.m_far;
+    const PerFrameCB frameData = MakeCameraFrameCB(cam, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 

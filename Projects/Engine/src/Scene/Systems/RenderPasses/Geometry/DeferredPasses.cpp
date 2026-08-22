@@ -94,14 +94,8 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     renderer.SetRenderTarget(h.gbufferRT, resources);
     renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
-    PerFrameCB frameData{};
-    frameData.view              = ctx.camera.GetViewMatrix();
-    frameData.projection        = ctx.camera.GetProjectionMatrix();
-    frameData.viewProjection    = ctx.camera.GetViewProjection();
-    frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
-    frameData.cameraPos         = ctx.camera.m_position;
-    frameData.nearZ             = ctx.camera.m_near;
-    frameData.farZ              = ctx.camera.m_far;
+    const PerFrameCB frameData =
+        MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 

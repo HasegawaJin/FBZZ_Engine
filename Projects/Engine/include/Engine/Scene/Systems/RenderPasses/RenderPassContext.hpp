@@ -164,6 +164,49 @@ struct PerFrameCB {
     float         _pad[3];
 };
 
+/// TAA サブピクセルジッターを織り込んだ射影行列を返す。
+/// @param jitterNdcX,jitterNdcY NDC 単位のジッター量。TAA 非有効時は 0 を渡す。
+/// @note ジッターはラスタライズする行列にだけ乗せる。カリング用の錐台には載せないこと
+///       (半ピクセルのために可視判定を揺らす意味がない)。
+inline math::Matrix4 MakeJitteredProjection(const renderer::Camera& camera,
+                                            float jitterNdcX, float jitterNdcY)
+{
+    math::Matrix4 projection = camera.GetProjectionMatrix();
+    // 列ベクトル規約 (clip = P * viewPos) なので、m[0][2] / m[1][2] に足すと
+    // clip.xy += jitter * clip.w となり、深度に依らない一定のピクセルずれになる。
+    projection.m[0][2] += jitterNdcX;
+    projection.m[1][2] += jitterNdcY;
+    return projection;
+}
+
+/// ジッター込みの ViewProjection。b0 を使わず自前で行列を組むパス用。
+inline math::Matrix4 MakeJitteredViewProjection(const renderer::Camera& camera,
+                                                float jitterNdcX, float jitterNdcY)
+{
+    return MakeJitteredProjection(camera, jitterNdcX, jitterNdcY) * camera.GetViewMatrix();
+}
+
+/// カメラと TAA サブピクセルジッターから b0 (PerFrameCB) を組む。
+/// @note invViewProjection をジッター込みの viewProjection から作るのは、深度バッファを
+///       焼いた射影と揃えないと復元したワールド座標がずれるため。逆に再投影先の
+///       prevViewProjection 側はジッターを載せない — 履歴バッファはピクセル中心で
+///       収束した絵なので、そこへはピクセル中心座標で引く必要がある。
+inline PerFrameCB MakeCameraFrameCB(const renderer::Camera& camera,
+                                    float jitterNdcX, float jitterNdcY)
+{
+    const math::Matrix4 projection = MakeJitteredProjection(camera, jitterNdcX, jitterNdcY);
+
+    PerFrameCB frameData{};
+    frameData.view              = camera.GetViewMatrix();
+    frameData.projection        = projection;
+    frameData.viewProjection    = projection * frameData.view;
+    frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
+    frameData.cameraPos         = camera.m_position;
+    frameData.nearZ             = camera.m_near;
+    frameData.farZ              = camera.m_far;
+    return frameData;
+}
+
 struct PerObjectCB {
     math::Matrix4 world;
     math::Matrix4 worldInvTranspose;
@@ -723,6 +766,13 @@ struct RenderPassContext {
     uint32_t width = 0;
     uint32_t height = 0;
     bool selectionOutlineEnabled = false;
+
+    // TAA サブピクセルジッター (NDC 単位)。TAA が無効なフレームは 0。
+    // WHY: TAA はフレームごとにサンプル点をピクセル内でずらして初めてサブピクセル情報が
+    //      集まる。ジッターが無いと再投影とブレンドをするだけで、静止カメラでは同じ絵に
+    //      収束してアンチエイリアスにならない。b0 を組む各パスが MakeCameraFrameCB へ渡す。
+    float taaJitterNdcX = 0.0f;
+    float taaJitterNdcY = 0.0f;
 
     renderer::LightConstantsCB lightData;
 
