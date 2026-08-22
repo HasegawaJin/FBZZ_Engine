@@ -1,14 +1,15 @@
-// FBZZ Engine
-// PolarityTargetComponent.hpp | sandbox
-// 極性を帯びられる対象。敵・柱・壁の全てに付ける。
-//
-// WHY プレイヤー側ではないのにここにあるか:
-//   銃が撃つ先がこれである。これが無いと「撃っても何も起きない」ため、
-//   企画書 12.1 が最優先とした命中の手応えを一度も確認できない。
-//   引力 (7.3) と衝突 (7.4) は次フェーズで、ここには状態と見た目までを入れる。
-//
-// WHY プレイヤーには付けないか:
-//   5 章「プレイヤー自身は極性を持たない」。引力は敵同士・敵と障害物の間でのみ発生する。
+/// @file PolarityTargetComponent.hpp
+/// @brief 極性を帯びられる対象。9 章の「極を持てるのは敵と撃破コアだけ」に該当するものへ付ける
+/// @author Hasegawa Jin
+/// @date 2026-08-22
+///
+/// WHY プレイヤー側ではないのにここにあるか:
+///   極性レーザーが照らす先がこれである。これが無いと「なぞっても何も起きない」ため、
+///   企画書 12.1 が最優先とした命中の手応えを一度も確認できない。
+///   6.5 のプレビュー (塗り進捗・中和の警告) も、発光を書いているここが受け持つ。
+///
+/// WHY プレイヤーには付けないか:
+///   5 章「プレイヤー自身は極性を持たない」。引力は敵同士・敵と障害物の間でのみ発生する。
 #pragma once
 
 #include <Scripts/Data/PolarityTuning.hpp>
@@ -65,14 +66,32 @@ public:
     [[nodiscard]] Polarity Current() const { return m_polarity; }
     [[nodiscard]] bool  IsCharged() const { return m_polarity != Polarity::None; }
     [[nodiscard]] float RemainingSeconds() const { return m_remaining; }
-    // 極性弾が命中した直後の短い硬直。敵 AI はこの間だけ移動・攻撃を止める。
+    // 極性照射を浴びた直後の短い硬直。敵 AI はこの間だけ移動・攻撃を止める。
     [[nodiscard]] bool IsHitReacting() const { return m_hitReactRemaining > 0.0f; }
     // 1 = 付与直後 / 0 = 切れる直前。明滅速度と濃さの両方がこれで決まる。
     [[nodiscard]] float RemainingNormalized() const;
     // 7.2 の種別ごとの基準持続時間。
     [[nodiscard]] float BaseDuration() const;
 
-    // 極性弾が当たったときに銃から呼ばれる。7 章のルール 3 行を適用する。
+    // 今 incoming を塗り切ると中和になるか。6.5 が「塗る前に見える」ことを
+    // 必須にしているため、照射側が触れた瞬間に警告を出せるようここで判定する。
+    [[nodiscard]] bool WouldNeutralize(Polarity incoming) const;
+
+    // ── なぞり塗り (6.1 / 6.2) ──────────────────────────────────────────
+    // ビームが触れている間、毎フレーム呼ぶ。接触が Paint Seconds に達したフレームだけ
+    // 極性を適用して true を返し、outResult に何が起きたかを入れる。
+    //
+    // WHY 進捗を対象側で持つか: 6.5 のプレビューは「この敵がどこまで塗れたか」の
+    //     表示で、発光を書いているのはこのスクリプトである。照射側で持つと、
+    //     見た目を出すために進捗を毎フレーム押し戻すことになり、2 本の銃と
+    //     対象の対応表を照射側が抱えることになる。塗られる側が自分の進捗を持つ。
+    bool Paint(Polarity incoming, float dt, PolarityResult& outResult);
+
+    // 6.5 のプレビュー表示用。進捗 0 のときは塗られていない。
+    [[nodiscard]] float    PaintProgress() const { return m_paintProgress; }
+    [[nodiscard]] Polarity PaintPolarity() const { return m_paintPolarity; }
+
+    // タップの一瞬の点付与 (6.2) と、7 章のルール 3 行の適用口。
     // 戻り値の change を見て、呼び出し側が延長 / 中和のフィードバックを出し分ける。
     PolarityResult Apply(Polarity incoming);
 
@@ -84,12 +103,25 @@ public:
 
 private:
     void ApplyVisual();
+    // 塗り進捗を捨てる。塗り切った / 中断した / 極が変わった、のいずれでも呼ぶ。
+    void ResetPaint();
+    [[nodiscard]] float PaintSeconds() const;
 
     Polarity m_polarity  = Polarity::None;
     float    m_remaining = 0.0f;
     // 現在の帯電が始まったときの基準持続時間。延長の上限計算に使う。
     float    m_chargeBase = 0.0f;
     float    m_hitReactRemaining = 0.0f;
+
+    // なぞり塗りの進捗 0..1 と、それを塗っている極。
+    Polarity m_paintPolarity = Polarity::None;
+    float    m_paintProgress = 0.0f;
+    // 今フレーム照射に触れられたか。OnUpdate が読んだ直後に倒す。
+    //
+    // WHY フラグで持つか: 照射側と対象側はどちらも Script フェーズで回り、順序は
+    //     決まっていない。「触られていなければ戻す」を触られた事実で判定すれば、
+    //     どちらが先に回っても 1 フレームずれるだけで結果は変わらない。
+    bool     m_paintedThisFrame = false;
 };
 
 FBZZ_REFLECT(PolarityTargetComponent)
@@ -120,10 +152,56 @@ inline float PolarityTargetComponent::RemainingNormalized() const
     return Clamp01(m_remaining / m_chargeBase);
 }
 
+inline bool PolarityTargetComponent::WouldNeutralize(Polarity incoming) const
+{
+    return ResolvePolarity(m_polarity, incoming).change == PolarityChange::Neutralized;
+}
+
+inline float PolarityTargetComponent::PaintSeconds() const
+{
+    return Max(tuning->paintSeconds, 0.0f);
+}
+
+inline void PolarityTargetComponent::ResetPaint()
+{
+    m_paintPolarity    = Polarity::None;
+    m_paintProgress    = 0.0f;
+    m_paintedThisFrame = false;
+}
+
+inline bool PolarityTargetComponent::Paint(Polarity incoming, float dt,
+                                           PolarityResult& outResult)
+{
+    if (incoming == Polarity::None || dt <= 0.0f) return false;
+
+    // 逆の極でなぞられ始めたら進捗は最初からやり直す。片方の銃で半分塗った途中に
+    // もう片方が触れたとき、進捗を共有すると「触れていない方の極が乗る」が起きる。
+    if (m_paintPolarity != incoming) {
+        m_paintPolarity = incoming;
+        m_paintProgress = 0.0f;
+    }
+    m_paintedThisFrame = true;
+
+    const float seconds = PaintSeconds();
+    // 塗り時間 0 は「触れた瞬間に付く」。割り算を避けるためだけの分岐ではなく、
+    // 18.0 の数値検討でここを 0 にして試す場面が実際にある。
+    m_paintProgress = seconds > 0.0f ? Clamp01(m_paintProgress + dt / seconds) : 1.0f;
+    if (m_paintProgress < 1.0f) {
+        ApplyVisual();
+        return false;
+    }
+
+    outResult = Apply(incoming);
+    return true;
+}
+
 inline PolarityResult PolarityTargetComponent::Apply(Polarity incoming)
 {
     const PolarityResult result = ResolvePolarity(m_polarity, incoming);
     m_hitReactRemaining = tuning->hitReactSeconds;
+    // 塗り切った / タップで乗せた時点でプレビューの役目は終わる。残すと
+    // 適用後の色の上に「これから塗る色」が重なって、どちらが結果か読めなくなる。
+    ResetPaint();
 
     switch (result.change) {
     case PolarityChange::Applied:
@@ -172,19 +250,40 @@ inline void PolarityTargetComponent::OnStart()
     }
     // 開始時は必ず無極。前回 Play の状態が見た目に残らないようにする。
     m_hitReactRemaining = 0.0f;
+    ResetPaint();
     ClearPolarity();
 }
 
 inline void PolarityTargetComponent::OnUpdate()
 {
-    m_hitReactRemaining = Max(0.0f, m_hitReactRemaining - Time::deltaTime);
+    const float dt = Time::deltaTime;
+    m_hitReactRemaining = Max(0.0f, m_hitReactRemaining - dt);
+
+    // 6.2「素早く振ると塗り残す」。触れていないフレームは進捗を戻す。
+    bool previewFaded = false;
+    if (m_paintedThisFrame) {
+        m_paintedThisFrame = false;
+    } else if (m_paintProgress > 0.0f) {
+        const float seconds = PaintSeconds();
+        const float decay = seconds > 0.0f ? dt / seconds * Max(tuning->paintDecayScale, 0.0f)
+                                           : 1.0f;
+        m_paintProgress = Max(0.0f, m_paintProgress - decay);
+        if (m_paintProgress <= 0.0f) {
+            m_paintPolarity = Polarity::None;
+            previewFaded    = true;
+        }
+    }
 
     if (m_polarity == Polarity::None) {
         debugRemaining = 0.0f;
+        // 無極でもプレビューは出る (6.5 の「アウトラインが満ちていく」)。
+        // ただし塗られてもいない対象まで毎フレーム MaterialInstance を叩くと、
+        // 盤面の全対象ぶんの無駄書きになる。プレビューが動いたときだけ書く。
+        if (m_paintProgress > 0.0f || previewFaded) ApplyVisual();
         return;
     }
 
-    m_remaining -= Time::deltaTime;
+    m_remaining -= dt;
     if (m_remaining <= 0.0f) {
         ClearPolarity();
         debugRemaining = 0.0f;
@@ -200,14 +299,6 @@ inline void PolarityTargetComponent::ApplyVisual()
     const MaterialInstance instance = material.Instance(static_cast<uint32_t>(emissiveSlot));
     if (!instance.IsValid()) return;
 
-    const Vector4 color = PolarityColor(m_polarity);
-    instance.SetVector3(kEmissiveColorId, { color.x, color.y, color.z });
-
-    if (m_polarity == Polarity::None) {
-        instance.SetFloat(kEmissiveScaleId, 0.0f);
-        return;
-    }
-
     // 12.4 は残り時間の可視化を「演出ではなく仕様」と書いている。
     //   - 残りが減るほど明滅が速くなる
     //   - 切れる直前に色が薄くなる
@@ -221,8 +312,32 @@ inline void PolarityTargetComponent::ApplyVisual()
     const float phase = std::sin(Time::time * hz * TWO_PI) * 0.5f + 0.5f;
     const float pulse = Lerp(1.0f - Clamp01(depth), 1.0f, phase);
 
-    instance.SetFloat(kEmissiveScaleId,
-                      kEmissiveBase * FadeFromRemaining(remaining) * pulse);
+    Vector4 color = PolarityColor(m_polarity);
+    float   scale = m_polarity == Polarity::None
+        ? 0.0f
+        : kEmissiveBase * FadeFromRemaining(remaining) * pulse;
+
+    // 6.5「照射中はビームに触れている敵へリアルタイムでプレビューを出す」。
+    // 事故が続くとストレスになる、と名指しされている表示なので、塗り終わってから
+    // ではなく塗っている最中に、これから何になるかを見せる。
+    if (m_paintProgress > 0.0f && m_paintPolarity != Polarity::None) {
+        const float fill = Clamp01(m_paintProgress);
+        if (WouldNeutralize(m_paintPolarity)) {
+            // 逆極 = 中和。極の色へ寄せると「上書きされる」に見えるため、
+            // どちらの極でもない警告色へ倒し、速い明滅で異常であることを出す。
+            const float alarm = std::sin(Time::time * 12.0f * TWO_PI) * 0.5f + 0.5f;
+            color = kColorWarning;
+            scale = Max(scale, kEmissiveBase * Lerp(0.4f, 1.6f, alarm) * fill);
+        } else {
+            // 無極 → 付与 / 同極 → 延長。どちらも「これから乗る極の色が満ちていく」。
+            const Vector4 target = PolarityColor(m_paintPolarity);
+            color = color + (target - color) * fill;
+            scale = Max(scale, kEmissiveBase * fill);
+        }
+    }
+
+    instance.SetVector3(kEmissiveColorId, { color.x, color.y, color.z });
+    instance.SetFloat(kEmissiveScaleId, scale);
 }
 
 } // namespace sandbox

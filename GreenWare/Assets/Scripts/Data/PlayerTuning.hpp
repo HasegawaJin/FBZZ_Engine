@@ -22,9 +22,27 @@ public:
     FBZZ_FIELD_RANGE(float, groundDecel, 22.0f, "Ground Decel", 1.0f, 100.0f)
     FBZZ_FIELD_RANGE(float, airAccel,     3.0f, "Air Accel",     0.0f,  50.0f)
     FBZZ_FIELD_RANGE(float, turnSpeed,   14.0f, "Turn Speed",   0.1f, 30.0f)
-    // CharacterController::JumpAtVelocity へ渡す上向き初速 (m/s)。
-    // 質量に依存しないため、RigidBody の密度を変えても跳躍感を維持できる。
-    FBZZ_FIELD_RANGE(float, jumpSpeed,   7.0f,  "Jump Speed",   0.1f, 30.0f)
+
+    FBZZ_GROUP("Jump")
+    // WHY 初速ではなく到達点で持つか:
+    //   重力は ProjectSettings の [physics] gravity が正本で、世界の全剛体が共有する。
+    //   跳躍を初速で持つと、重力を触るたびに跳べる高さが黙って変わり、
+    //   「どこまで跳べるか」というレベルデザインの前提が数値の外で崩れる。
+    //   到達点で持てば初速は重力から導かれ (v0 = sqrt(2gh))、重力を強くしても
+    //   高さは保たれたまま滞空だけが縮む。重力は手触りの、到達点は設計の調整値になる。
+    //   到達までの秒数は t = v0/g で決まる結果なので、ここには置かない。
+    FBZZ_FIELD_RANGE(float, jumpApexHeight, 1.7f, "Apex Height", 0.2f, 8.0f)
+    FBZZ_TOOLTIP("キーを押し続けたときの最高到達点 (m)。キャラの背丈と比べて決める。"
+                 "滞空の長さは ProjectSettings の重力で決まる")
+    // WHY 落ちを速くするか: 上りと下りが同じ加速度だと、放物線の頂点が長く感じられて
+    //     「浮いている」と読まれる。落ちだけ強くすると、頂点が尖って重さが出る。
+    //     これは世界の重力に対する倍率なので、重力を触っても比は保たれる。
+    FBZZ_FIELD_RANGE(float, fallGravityMultiplier, 1.8f, "Fall Gravity x", 1.0f, 5.0f)
+    FBZZ_TOOLTIP("下降中の重力倍率。上げるほど頂点で粘らず落ちる")
+    // WHY 離したら重くするか: 押しっぱなしと軽く叩くで高さが変わらないと、跳躍が
+    //     1 種類の動作になる。段差を越えるだけの小さい跳びが操作で作れるようにする。
+    FBZZ_FIELD_RANGE(float, lowJumpGravityMultiplier, 2.6f, "Low Jump Gravity x", 1.0f, 8.0f)
+    FBZZ_TOOLTIP("上昇中にジャンプキーを離している間の重力倍率。1 で高さ固定の跳躍になる")
 
     FBZZ_GROUP("Dodge")
     // 回避は移動アクションとしてのみ実装する。ジャスト回避の判定・無敵・報酬は

@@ -74,6 +74,7 @@ shadowResolution = 2048
 showColliders = true
 showDecalBounds = false
 showSelectionOutline = true
+showUIRects = false
 viewMode = 0
 
 [runtime]

@@ -35,6 +35,10 @@ inline constexpr fbzz::math::Vector4 kColorMinus  { 0.10f, 0.35f, 1.00f, 1.0f };
 inline constexpr fbzz::math::Vector4 kColorPlayer { 0.20f, 1.00f, 0.45f, 1.0f }; // プレイヤー 緑
 // 無極は無彩色。12.2 の「帯電していない状態 = 無彩色の金属」に対応する。
 inline constexpr fbzz::math::Vector4 kColorNeutral{ 0.55f, 0.57f, 0.60f, 1.0f };
+// 6.5 の「中和される相手に出す警告色」。赤 (＋) と青 (−) のどちらとも取り違えない
+// 色でなければ、警告そのものが極性の表示に見えてしまう。12.2 が空けている
+// 残りの領域は黄なので、そこへ置く。
+inline constexpr fbzz::math::Vector4 kColorWarning{ 1.00f, 0.82f, 0.10f, 1.0f };
 
 // 帯電中の基準発光強度。白飛びさせないため 1.0 より低く始める。
 inline constexpr float kEmissiveBase = 0.65f;

@@ -18,15 +18,12 @@
 //   貪欲に組み、既に組まれた対象は次のリンクに参加させない。
 #pragma once
 
-#include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraRigComponents.hpp>
-// WHY Scene.hpp まで要るか: カメラシェイクだけは自分以外の GameObject
-//     (メインカメラ) のコンポーネントを触る必要があり、
-//     GameObject::GetComponent<T>() の実体は Scene.hpp の末尾にある。
+// WHY Scene.hpp まで要るか: FindObjectsOfType / GetScript の実体が Scene.hpp の末尾にある。
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
-#include <Scripts/Camera/TpsCameraComponent.hpp>
+#include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
@@ -41,8 +38,6 @@ namespace sandbox {
 
 class PolarityFieldComponent : public Script {
     FBZZ_SCRIPT(PolarityFieldComponent)
-
-    FBZZ_OPTIONAL_COMPONENT(AudioSourceComponent)
 
 public:
     FBZZ_REQUIRED_ASSET(PolarityTuning, tuning, "Tuning")
@@ -65,17 +60,9 @@ public:
     FBZZ_FIELD(bool, consumePolarityOnImpact, true, "Consume On Impact")
     FBZZ_TOOLTIP("衝突した瞬間、飛んだ側の極性を消す。アンカー側は保持したまま")
 
-    FBZZ_GROUP("Impact Feel (12.6 / 17)")
     // 17 章「最も重要なのは、機能数ではなくギュンッ・ドンッの気持ちよさ」。
-    // ヒットストップは衝突速度に比例させる (12.6)。弱い接触まで止めると全体が重くなる。
-    FBZZ_FIELD_RANGE(float, hitstopSeconds, 0.09f, "Hitstop", 0.0f, 0.5f)
-    FBZZ_TOOLTIP("最大のヒットストップ長。実際の長さは衝突速度に比例して縮む")
-    FBZZ_FIELD_RANGE(float, hitstopScale, 0.05f, "Hitstop Time Scale", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("停止中のタイムスケール。0 で完全停止")
-    FBZZ_FIELD_RANGE(float, shakeAmplitude, 0.35f, "Shake", 0.0f, 2.0f)
-    FBZZ_FIELD_RANGE(float, shakeDuration,  0.25f, "Shake Duration", 0.0f, 2.0f)
-    FBZZ_FIELD_FILE(sfxImpact, "", "SFX Impact", ".wav,.ogg")
-    FBZZ_TOOLTIP("12.6 の「強い効果音」。衝突は本作で唯一のダメージ源なので最も強い音にする")
+    // 止め方・揺らし方・鳴らし方は ImpactFeedbackManagerComponent が一括で持つ。
+    // ここは「何が起きたか」と「どれくらい強い当たりだったか」を渡すだけ。
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD(bool, drawDebugLinks, false, "Draw Debug Links")
@@ -92,6 +79,12 @@ public:
     //   ところまでを担当し、その結果をどう扱うかは購読側が決める。
     std::function<void(const PolarityImpact&)> onImpact;
 
+    // WHY 単体参照を持つか: 盤面の引力はシーンに 1 つしか無い。購読したい側
+    //     (CombatManagerComponent) が同じ GameObject に居ることを前提にすると、
+    //     マネージャーを別オブジェクトへ分けた瞬間に購読が黙って外れ、
+    //     ダメージだけが入らなくなる。置き場所に依存しない窓口を持たせる。
+    [[nodiscard]] static PolarityFieldComponent* Instance() { return s_instance; }
+
     void OnStart()     override;
     void OnUpdate()    override;
     // WHY 衝突の回収を OnLateUpdate に置くか:
@@ -99,9 +92,11 @@ public:
     //   後に走る。OnUpdate で回収すると必ず 1 フレーム遅れて演出が出る。
     //   物理より後に走る LateUpdate なら、ぶつかったフレームでヒットストップがかかる。
     void OnLateUpdate() override;
-    void OnDestroy()    override;
+    void OnDestroy()    override { if (s_instance == this) s_instance = nullptr; }
 
 private:
+    static inline PolarityFieldComponent* s_instance = nullptr;
+
     // 盤面上の 1 対象。毎フレーム作り直す。
     struct Candidate {
         GameObject*              object  = nullptr;
@@ -123,7 +118,6 @@ private:
     void CollectCandidates();
     void BuildLinks();
     void ResolveImpacts();
-    void TickHitstop();
     void ApplyImpactFeel(const PolarityImpact& impact);
     // 既に飛んでいる相手との組み合わせか (継続中のリンクを途中で乗り換えさせない)。
     [[nodiscard]] bool IsOngoingLink(const Candidate& a, const Candidate& b) const;
@@ -134,11 +128,7 @@ private:
     std::vector<Candidate>      m_candidates;
     std::vector<PairCandidate>  m_pairs;
     std::vector<PolarityImpact> m_impacts;
-
-    // ヒットストップは Time::deltaTime を止めるため、復帰の計測には
-    // 必ず unscaled 側を使う。ここを間違えると二度と時間が戻らない。
-    float m_hitstopRemaining = 0.0f;
-    float m_savedTimeScale   = 1.0f;
+    bool                        m_warnedNoFeedback = false;
 };
 
 FBZZ_REFLECT(PolarityFieldComponent)
@@ -147,46 +137,28 @@ FBZZ_REFLECT(PolarityFieldComponent)
 
 inline void PolarityFieldComponent::OnStart()
 {
+    s_instance = this;
     if (!tuning) {
         debug.LogError("PolarityFieldComponent requires PolarityTuning.fzdata.");
         enabled = false;
         return;
     }
-    m_hitstopRemaining = 0.0f;
-    m_savedTimeScale   = 1.0f;
-
     // 2 体居ると盤面の解釈が二重になり、リンクが毎フレーム奪い合いになる。
     if (scene.FindObjectsOfType<PolarityFieldComponent>().size() > 1)
         debug.LogError("PolarityFieldComponent must exist exactly once in the scene.");
-}
 
-inline void PolarityFieldComponent::OnDestroy()
-{
-    // 停止中にシーンが切り替わると、次のシーンが止まったまま始まる。
-    if (m_hitstopRemaining > 0.0f)
-        time.SetTimeScale(m_savedTimeScale);
+    m_warnedNoFeedback = false;
 }
 
 inline void PolarityFieldComponent::OnUpdate()
 {
-    TickHitstop();
     // 停止中は盤面も止める。組み替えても物理が進まないので意味が無いうえ、
     // 止まっている間に相手が変わると復帰した瞬間に別方向へ飛んで見える。
-    if (m_hitstopRemaining > 0.0f) return;
+    if (auto* hitstop = HitstopManagerComponent::Instance(); hitstop && hitstop->IsActive())
+        return;
 
     CollectCandidates();
     BuildLinks();
-}
-
-inline void PolarityFieldComponent::TickHitstop()
-{
-    if (m_hitstopRemaining <= 0.0f) return;
-
-    m_hitstopRemaining -= time.UnscaledDeltaTime();
-    if (m_hitstopRemaining > 0.0f) return;
-
-    m_hitstopRemaining = 0.0f;
-    time.SetTimeScale(m_savedTimeScale);
 }
 
 inline void PolarityFieldComponent::CollectCandidates()
@@ -356,24 +328,21 @@ inline void PolarityFieldComponent::ApplyImpactFeel(const PolarityImpact& impact
     const float reference = Max(MinImpactSpeed() * 2.0f, EPSILON);
     const float ratio     = Clamp01(impact.speed / reference);
 
-    if (!sfxImpact.empty()) audio.PlayOneShot(sfxImpact);
-
-    const float stopSeconds = hitstopSeconds * ratio;
-    if (stopSeconds > 0.0f) {
-        // 既に停止中なら元のスケールを上書きしない。上書きすると停止中の値 (0.05 等) を
-        // 「元の速度」として覚えてしまい、復帰後もスローのままになる。
-        if (m_hitstopRemaining <= 0.0f) m_savedTimeScale = time.GetTimeScale();
-        m_hitstopRemaining = Max(m_hitstopRemaining, stopSeconds);
-        time.SetTimeScale(hitstopScale);
+    // 止め方も揺らし方も鳴らし方も ImpactFeedbackManagerComponent が持つ。
+    // ここが渡すのは「何が起きたか」と「どれくらい強い当たりか」の 2 つだけ。
+    //
+    // WHY OnStart で有無を確かめないか: マネージャーの OnStart がこのスクリプトより後に
+    //     走る並びもありうる。スクリプトの並び順に依存した警告は、順番を入れ替えただけで
+    //     嘘になる。実際に必要になった瞬間に確かめる。
+    if (auto* feedback = ImpactFeedbackManagerComponent::Instance()) {
+        feedback->Play(impact.struckIsAnchor ? FeedbackEvent::AnchorImpact
+                                             : FeedbackEvent::EnemyImpact,
+                       ratio);
+    } else if (!m_warnedNoFeedback) {
+        m_warnedNoFeedback = true;
+        debug.LogWarning("PolarityFieldComponent: no ImpactFeedbackManagerComponent in the scene. "
+                         "Impacts land without hitstop, shake or rumble.");
     }
-
-    // 追従スクリプト自身へ揺れを渡す。別コンポーネントが Transform を後書きすると
-    // 実行順で揺れが消えるため、最終カメラ位置を決める場所へ合成する。
-    if (shakeAmplitude <= 0.0f) return;
-    GameObject* cameraObject = scene.GetMainCameraObject();
-    if (!cameraObject) return;
-    if (auto* camera = scene.GetScript<TpsCameraComponent>(cameraObject))
-        camera->StartShake(shakeAmplitude * ratio, shakeDuration);
 }
 
 inline void PolarityFieldComponent::OnLateUpdate()

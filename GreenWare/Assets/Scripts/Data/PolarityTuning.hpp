@@ -1,18 +1,19 @@
-// FBZZ Engine
-// PolarityTuning.hpp | sandbox
-// 極性システムの調整値をまとめた共有データアセット (.fzdata)。
-//
-// WHY DataAsset にするか (企画書 7.7 が理由):
-//   7.7 は次を「調整項目ではなく破ってはいけない設計上の制約」と書いている。
-//
-//       敵の極性持続時間 ＞ クールダウン × 2 ＋ 狙いを定める時間
-//
-//   銃のクールダウンが PolarityGunComponent に、持続時間が敵と柱それぞれの
-//   スクリプトに散っていると、この不等式を目視で確かめる方法が無くなる。破った瞬間に
-//   起きるのは「2 体目を撃つ前に 1 体目の極性が切れる」= ゲームが成立しない状態で、
-//   しかもクラッシュしないので原因に辿り着きにくい。
-//   1 枚のアセットに並べれば Inspector を開くだけで検算でき、値を変えれば全参照先に
-//   一度に効く。18.1 / 18.2 が未決である以上、ここは何十回も触ることになる。
+/// @file PolarityTuning.hpp
+/// @brief 極性システムの調整値をまとめた共有データアセット (.fzdata)
+/// @author Hasegawa Jin
+/// @date 2026-08-22
+///
+/// WHY DataAsset にするか (企画書 7.7 が理由):
+///   7.7 は次を「調整項目ではなく破ってはいけない設計上の制約」と書いている。
+///
+///       敵の極性持続時間 ＞ 1 本の線を引き切る時間 ＋ 起爆までの間
+///
+///   照射バッテリーが PolarityGunComponent に、持続時間が敵それぞれの
+///   スクリプトに散っていると、この不等式を目視で確かめる方法が無くなる。破った瞬間に
+///   起きるのは「線を引き終える前に最初に塗った敵の極が切れる」= ゲームが成立しない
+///   状態で、しかもクラッシュしないので原因に辿り着きにくい。
+///   1 枚のアセットに並べれば Inspector を開くだけで検算でき、値を変えれば全参照先に
+///   一度に効く。18.0 / 18.1 / 18.2 が未決である以上、ここは何十回も触ることになる。
 #pragma once
 
 #include <Engine/Asset/DataAsset.hpp>
@@ -22,16 +23,42 @@ namespace sandbox {
 class PolarityTuning : public fbzz::DataAsset {
     FBZZ_DATA_ASSET(PolarityTuning)
 public:
-    FBZZ_GROUP("Gun")
-    // 各銃のクールダウン (秒)。左右で独立に消費する。
-    // 柱への設置でも同じだけ消費する (7.6)。
-    FBZZ_FIELD_RANGE(float, gunCooldown, 1.2f, "Gun Cooldown", 0.1f, 5.0f)
-    FBZZ_TOOLTIP("左右それぞれのクールダウン。7.7 の制約: 最短の持続時間 > これ x 2 + 狙う時間")
-    FBZZ_FIELD_RANGE(float, gunRange, 40.0f, "Gun Range", 5.0f, 120.0f)
+    FBZZ_GROUP("Emitter (6)")
+    // 6.2 の仕様表がそのままここに並ぶ。18.0 が「ここが決まらないと手触りが
+    // 決まらない」と名指ししている最優先の未決値なので、まとめて 1 箇所に置く。
+    FBZZ_FIELD_RANGE(float, beamRange, 40.0f, "Beam Range", 5.0f, 120.0f)
+    FBZZ_TOOLTIP("照射が届く距離 (m)。線上の敵は貫通して全員が判定に乗る")
+    FBZZ_FIELD_RANGE(float, beamRadius, 0.6f, "Beam Radius", 0.05f, 3.0f)
+    FBZZ_TOOLTIP("6.4 でロックオンを廃した代わりのエイム補助。太いほど楽になるが、"
+                 "線を意図して引く感覚が薄れる")
+    FBZZ_FIELD_RANGE(float, paintSeconds, 0.15f, "Paint Seconds", 0.02f, 1.0f)
+    FBZZ_TOOLTIP("1 体あたりの塗り時間。長いほど『丁寧になぞる』ゲームになり、"
+                 "短いほど大味になる。素早く振ると塗り残す")
+    // WHY 塗り残しを即座に捨てないか: ビームの縁を掠めた 1 フレームの取りこぼしで
+    //     進捗が全部消えると、原因がプレイヤーには「たまに塗れない」としか見えない。
+    //     塗るのと同じ速さで戻すことで、往復してなぞれば追いつく形に収める。
+    FBZZ_FIELD_RANGE(float, paintDecayScale, 1.0f, "Paint Decay", 0.0f, 8.0f)
+    FBZZ_TOOLTIP("ビームが外れたときに塗り進捗が戻る速さ (塗り速度に対する倍率)。0 で戻さない")
+    FBZZ_FIELD_RANGE(float, tapSeconds, 0.18f, "Tap Seconds", 0.02f, 0.6f)
+    FBZZ_TOOLTIP("これ以下で離すとタップ = 一瞬の点付与 (起爆)。"
+                 "長押しはなぞり塗りになる (6.2 の『同じボタンが二役』)")
 
-    // ダメージが無い弾でも命中したと分かる短い硬直。敵 AI だけを止め、物理は止めない。
+    // ダメージが無い照射でも命中したと分かる短い硬直。敵 AI だけを止め、物理は止めない。
     FBZZ_FIELD_RANGE(float, hitReactSeconds, 0.08f, "Hit React", 0.0f, 0.5f)
     FBZZ_TOOLTIP("極性付与時の短い硬直。12.1 の『命中時にビクッとする』ための時間")
+
+    FBZZ_GROUP("Battery (6.3)")
+    // 6.3「時間が資源になる」。塗れる体数の天井をここで決める。
+    // 塗り放題にすると「全部＋にして最後に−」が毎回の正解になり、思考が消える。
+    FBZZ_FIELD_RANGE(float, batterySeconds, 2.0f, "Battery Seconds", 0.2f, 10.0f)
+    FBZZ_TOOLTIP("連続照射できる時間。左右で独立。7.7 の制約: 最短の持続時間 > これ + 起爆までの間")
+    FBZZ_FIELD_RANGE(float, batteryRefillSeconds, 2.5f, "Refill Seconds", 0.1f, 10.0f)
+    FBZZ_TOOLTIP("空から全快までの時間。非照射時にだけ回復する")
+    // WHY 空になったら一定量まで再点火させないか: 空のまま押しっぱなしにすると
+    //     「1 フレーム回復 → 1 フレーム照射」で毎フレーム点滅し、線も引けないまま
+    //     バッテリーだけが空で張り付く。撃てる状態と撃てない状態を明確に分ける。
+    FBZZ_FIELD_RANGE(float, batteryRearmRatio, 0.25f, "Rearm Ratio", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("空にした後、この割合まで回復するまで再点火できない。0 で即座に撃ち直せる")
 
     FBZZ_GROUP("Duration")
     // 重い対象ほど長く帯電する。撃つ順番という思考はこの差だけから生まれる。
@@ -109,11 +136,15 @@ public:
 
     // 7.7 の不等式を満たしているか。満たさないとゲームが成立しないため、
     // 呼び出し側 (PolarityGunComponent::OnStart) が Play 開始時に検算してログへ出す。
-    // aimSeconds は「狙いを定める時間」の見積もり。
+    //
+    // WHY 線を引き切る時間をバッテリーで代表させるか: なぞり付与では「何体塗ったか」
+    //     ではなく「何秒照射したか」が線の長さになる。バッテリーを使い切るまで
+    //     照射し続けたときが最悪ケースなので、それより持続が長ければ必ず成立する。
+    // detonateSeconds は「線を引き終えてから起爆点へ振り向くまで」の見積もり。
     [[nodiscard]] bool SatisfiesTimingConstraint(float shortestDuration,
-                                                 float aimSeconds) const
+                                                 float detonateSeconds) const
     {
-        return shortestDuration > gunCooldown * 2.0f + aimSeconds;
+        return shortestDuration > batterySeconds + detonateSeconds;
     }
 
     // 最も短い持続時間。制約の検算に使う (ここが破れたら他は全部通る)。

@@ -7,6 +7,8 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Game/CameraFollowManagerComponent.hpp>
+#include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <cmath>
 #include <string>
 
@@ -34,27 +36,71 @@ public:
     FBZZ_FIELD_RANGE(float, maxPitch,          65.0f, "Max Pitch",         0.0f, 90.0f)
     FBZZ_FIELD_RANGE(float, mouseSensitivity,   0.2f, "Mouse Sensitivity", 0.01f, 5.0f)
     FBZZ_FIELD(bool,  mouseOrbit,              true,  "Mouse Orbit")
-    FBZZ_FIELD_RANGE(float, followSpeed,       10.0f, "Follow Speed",      0.0f, 50.0f)
 
-    FBZZ_GROUP("Shake")
-    FBZZ_FIELD_RANGE(float, shakeFrequency, 32.0f, "Shake Frequency", 1.0f, 80.0f)
+    FBZZ_GROUP("Gamepad")
+    // WHY LookX / LookY (アクション層) を使わないか:
+    //   マウス Delta は「1 フレームに何ピクセル動いたか」、スティックは「-1..1 の倒し量」で
+    //   単位が違う。1 本の感度で両方を扱うと、マウスに合わせればスティックが動かず、
+    //   スティックに合わせればマウスが暴れる。デバイスごとに感度を持たせるしかない。
+    FBZZ_FIELD(bool, padOrbit, true, "Pad Orbit")
+    FBZZ_FIELD_RANGE(float, padLookSpeed, 200.0f, "Pad Look Speed", 10.0f, 720.0f)
+    FBZZ_TOOLTIP("スティックを最大まで倒したときの旋回速度 (度/秒)")
+    FBZZ_FIELD_RANGE(float, padLookDeadZone, 0.18f, "Pad Dead Zone", 0.0f, 0.6f)
+    FBZZ_TOOLTIP("この倒し量までは無入力として捨てる。スティックの中央のがたつきを吸収する")
+    // WHY 曲線を掛けるか: 倒し量をそのまま速度にすると、狙いを微調整したい小さな
+    //     倒しでも一気に振れてしまう。手前を鈍く、奥を速くすると両立する。
+    FBZZ_FIELD_RANGE(float, padLookExponent, 2.0f, "Pad Response Curve", 1.0f, 4.0f)
+    FBZZ_TOOLTIP("1 で線形。大きいほど中央付近が鈍くなり、細かい狙いを合わせやすくなる")
+    FBZZ_FIELD(bool, padInvertY, false, "Pad Invert Y")
 
-    // 衝突・被弾側から同じ TPS カメラへ揺れを要求する。強い要求は弱い揺れを上書きする。
-    void StartShake(float amplitude, float duration);
+    FBZZ_GROUP("Follow")
+    // WHY 縦と横を分けるか: 跳躍で見せたいのは縦の変位だけで、横まで一緒に緩めると
+    //     旋回に付いてこなくなって酔う。回避で見せたいのはその逆。
+    //     1 本の速さしか無いと、どちらかを諦めることになる。
+    FBZZ_FIELD_RANGE(float, followSpeed,         10.0f, "Follow Speed",     0.0f, 50.0f)
+    FBZZ_FIELD_RANGE(float, verticalFollowSpeed, 10.0f, "Vertical Follow",  0.0f, 50.0f)
 
+    FBZZ_GROUP("Follow Slack")
+    // たるみ 1.0 のときに使う追従速度。CameraFollowManagerComponent が 0..1 を配る。
+    // 追い付く速さそのものなので、絶対値で持つほうが調整しやすい (倍率だと
+    // 指数の肩に乗るため、0.03 のような直感の効かない数字になる)。
+    FBZZ_FIELD_RANGE(float, loosenedFollowSpeed,         2.0f, "Loosened Follow",    0.0f, 20.0f)
+    FBZZ_TOOLTIP("横に最大まで緩んだときの追従速度。低いほど画面内で大きく流れる")
+    FBZZ_FIELD_RANGE(float, loosenedVerticalFollowSpeed, 1.4f, "Loosened Vertical",  0.0f, 20.0f)
+    FBZZ_TOOLTIP("縦に最大まで緩んだときの追従速度。跳んだ高さが画面内の変位になる")
+    FBZZ_FIELD_RANGE(float, maxSlackOffset, 2.2f, "Max Slack Offset", 0.0f, 10.0f)
+    FBZZ_TOOLTIP("緩みで許す注視点からのずれ (m)。長い落下で対象が画面外へ出るのを防ぐ")
+
+    // WHY 揺れを持たないか: 揺れの生成と合成は CameraShakeManagerComponent の担当。
+    //     ここは合成済みのオフセットを受け取って最終位置へ足すだけにする。
+    //     こうしておくと、追従の作りを変えても揺れの調整はやり直しにならない。
+
+    // WHY 向きと位置でフェーズを分けるか:
+    //   照準・レーザー・上半身のエイム姿勢は、すべて「カメラが今どこを向いているか」から
+    //   引かれる。向きを LateScript で決めると、それらが読めるのは次のフレームになり、
+    //   マウスを素早く振ったときにレーザーだけがクロスヘアから遅れて付いてくる。
+    //   向きはマウス入力だけで決まり物理を待つ必要が無いので、Script フェーズで先に確定させる。
+    //   位置は物理適用後のプレイヤー座標が要るため、これまでどおり LateScript で追う。
     void OnStart() override;
+    void OnUpdate() override;
     void OnLateUpdate() override;
 
 private:
+    /// yaw / pitch から今フレームの向きを組む。OnUpdate と OnLateUpdate が同じ式を使う。
+    [[nodiscard]] Quaternion CurrentRotation() const;
+    /// 右スティックの倒し量を、デッドゾーンと曲線を通した -1..1 へ落とす。
+    /// 無入力なら (0,0)。
+    [[nodiscard]] Vector2 PadLookAxis() const;
+    /// たるみ 0..1 を、密着側と最も緩い側の追従速度の間へ落とす。
+    [[nodiscard]] static float BlendFollowSpeed(float tight, float loose, float slack01);
+    /// 追従速度と dt から今フレームの補間率を出す。
+    [[nodiscard]] static float FollowRate(float followSpeed, float dt);
     void FindTarget();
     // 生ポインタを保持すると、対象が破棄された次のフレームに解放済みメモリを読む。
     // EntityRef は generation まで Scene 側で検証するため、対象消滅を nullptr として扱える。
     EntityRef   m_target;
     bool        m_hasCameraPosition = false;
     Vector3     m_unshakenPosition = Vector3::ZERO;
-    float       m_shakeAmplitude = 0.0f;
-    float       m_shakeDuration = 0.0f;
-    float       m_shakeRemaining = 0.0f;
 };
 
 FBZZ_REFLECT(TpsCameraComponent)
@@ -65,19 +111,58 @@ inline void TpsCameraComponent::OnStart()
     FindTarget();
     m_hasCameraPosition = false;
     m_unshakenPosition = Vector3::ZERO;
-    m_shakeAmplitude = 0.0f;
-    m_shakeDuration = 0.0f;
-    m_shakeRemaining = 0.0f;
 }
 
-inline void TpsCameraComponent::StartShake(float amplitude, float duration)
+inline Quaternion TpsCameraComponent::CurrentRotation() const
 {
-    if (amplitude <= 0.0f || duration <= 0.0f) return;
-    if (amplitude >= m_shakeAmplitude || m_shakeRemaining <= 0.0f) {
-        m_shakeAmplitude = amplitude;
-        m_shakeDuration = duration;
+    const Quaternion yawRot   = Quaternion::FromAxisAngle(Vector3::UP,    ToRad(yaw));
+    const Quaternion pitchRot = Quaternion::FromAxisAngle(Vector3::RIGHT, ToRad(pitch));
+    return (yawRot * pitchRot).Normalized();
+}
+
+inline Vector2 TpsCameraComponent::PadLookAxis() const
+{
+    const Vector2 raw{ input.GetPadAxis(GamepadAxis::RIGHT_STICK_X),
+                       input.GetPadAxis(GamepadAxis::RIGHT_STICK_Y) };
+
+    // WHY 軸ごとではなく半径でデッドゾーンを切るか: 軸ごとに切ると正方形の
+    //     不感帯になり、斜めに倒したときの実効感度が方向によって変わる。
+    const float magnitude = raw.Length();
+    const float dead      = Clamp01(padLookDeadZone);
+    if (magnitude <= dead) return Vector2::ZERO;
+
+    // 不感帯の外側を 0..1 へ引き直す。境界を跨いだ瞬間に速度が飛ばない。
+    const float normalized = Clamp01((magnitude - dead) / Max(1.0f - dead, EPSILON));
+    const float curved     = Pow(normalized, Max(padLookExponent, 1.0f));
+    return raw * (curved / magnitude);
+}
+
+inline void TpsCameraComponent::OnUpdate()
+{
+    if (!transform) return;
+
+    if (mouseOrbit) {
+        const Vector2 delta = input.GetMouseDelta();
+        yaw   += delta.x * mouseSensitivity;
+        pitch  = Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);
     }
-    m_shakeRemaining = Max(m_shakeRemaining, duration);
+
+    if (padOrbit) {
+        // WHY 実時間で積むか: マウスは移動量そのものなのでヒットストップ中も動く。
+        //     スティックだけスケール後の dt で積むと、止めが掛かった瞬間に
+        //     視点だけ操作を受け付けなくなり、デバイスで挙動が食い違う。
+        const float dt  = Max(Time::unscaledDeltaTime, 0.0f);
+        const Vector2 stick = PadLookAxis();
+        // スティックの Y は上倒しが +1。画面の上を向くのは pitch が減る方向。
+        const float pitchSign = padInvertY ? 1.0f : -1.0f;
+        yaw   += stick.x * padLookSpeed * dt;
+        pitch  = Clamp(pitch + stick.y * pitchSign * padLookSpeed * dt, minPitch, maxPitch);
+    }
+
+    // 向きだけを先に置く。同じフレームの LateScript で照準がこれを読む。
+    // 位置はまだ前フレームのものだが、視線の起点が数 cm ずれても 40m 先の
+    // 到達点は同じだけしか動かない。画面上のクロスヘアと合うかを決めるのは向きの方。
+    transform.rotation = CurrentRotation();
 }
 
 inline void TpsCameraComponent::OnLateUpdate()
@@ -90,48 +175,63 @@ inline void TpsCameraComponent::OnLateUpdate()
     }
     if (!target) return;
 
-    if (mouseOrbit) {
-        const Vector2 delta = input.GetMouseDelta();
-        yaw   += delta.x * mouseSensitivity;
-        pitch  = Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);
-    }
-
-    const Quaternion yawRot   = Quaternion::FromAxisAngle(Vector3::UP,    ToRad(yaw));
-    const Quaternion pitchRot = Quaternion::FromAxisAngle(Vector3::RIGHT, ToRad(pitch));
-    const Quaternion rotation = (yawRot * pitchRot).Normalized();
+    // 向きは OnUpdate で確定済み。ここで入力を読み直すと 1 フレームに 2 回転する。
+    const Quaternion rotation = CurrentRotation();
     const Vector3 focus = target->transform.worldPosition + Vector3::UP * height;
     const Vector3 targetCamPos = focus - (rotation * Vector3::FORWARD) * distance;
 
     // WHY: 指数補間で dt に依存した補間率を計算。初回のみスナップして位置ずれを防ぐ。
-    const float safeDt          = Max(Time::deltaTime, 0.0f);
-    const float safeFollowSpeed = Max(followSpeed, 0.0f);
-    const float followT = safeFollowSpeed <= EPSILON
-        ? 1.0f
-        : Clamp01(1.0f - Pow(0.001f, safeDt * safeFollowSpeed));
-    Vector3 camPos = m_hasCameraPosition
-        ? Vector3::Lerp(m_unshakenPosition, targetCamPos, followT)
-        : targetCamPos;
+    const float safeDt = Max(Time::deltaTime, 0.0f);
+
+    // 緩めたい要求が無ければ、たるみは 0 のまま = 従来どおりの密着追従になる。
+    float horizontalSlack = 0.0f;
+    float verticalSlack   = 0.0f;
+    if (auto* follow = CameraFollowManagerComponent::Instance()) {
+        horizontalSlack = follow->HorizontalSlack();
+        verticalSlack   = follow->VerticalSlack();
+    }
+    const float horizontalRate = FollowRate(
+        BlendFollowSpeed(followSpeed, loosenedFollowSpeed, horizontalSlack), safeDt);
+    const float verticalRate = FollowRate(
+        BlendFollowSpeed(verticalFollowSpeed, loosenedVerticalFollowSpeed, verticalSlack), safeDt);
+
+    Vector3 camPos = targetCamPos;
+    if (m_hasCameraPosition) {
+        // 軸ごとに別の率で寄せる。1 本の Lerp では縦だけ遅らせられない。
+        camPos.x = Lerp(m_unshakenPosition.x, targetCamPos.x, horizontalRate);
+        camPos.z = Lerp(m_unshakenPosition.z, targetCamPos.z, horizontalRate);
+        camPos.y = Lerp(m_unshakenPosition.y, targetCamPos.y, verticalRate);
+
+        // WHY 上限を設けるか: 緩みは「追い付かない」であって「置き去りにする」ではない。
+        //     落下が長いと縦の遅れが積み上がり、対象が画面から出てしまう。
+        //     ずれの向きは保ったまま長さだけ抑える。
+        const Vector3 slackOffset = camPos - targetCamPos;
+        const float slackDistance = slackOffset.Length();
+        const float limit         = Max(maxSlackOffset, 0.0f);
+        if (slackDistance > limit && slackDistance > EPSILON)
+            camPos = targetCamPos + slackOffset * (limit / slackDistance);
+    }
     // 前フレームの揺れを追従補間へ戻さない。戻すとランダムオフセットが積分されてカメラが漂う。
     m_unshakenPosition = camPos;
 
-    // ヒットストップ中も揺れを進めるため unscaled 時間を使う。停止中に完全静止すると
-    // 「ドンッ」の最初のフレームが無反応に見え、停止解除後に遅れて揺れてしまう。
-    if (m_shakeRemaining > 0.0f && m_shakeDuration > EPSILON) {
-        const float strength = Clamp01(m_shakeRemaining / m_shakeDuration);
-        const float phase = Time::unscaledTime * shakeFrequency;
-        const Vector3 localOffset{
-            std::sin(phase * 1.17f),
-            std::cos(phase * 1.73f) * 0.65f,
-            0.0f
-        };
-        camPos += rotation * localOffset * (m_shakeAmplitude * strength * strength);
-        m_shakeRemaining = Max(0.0f, m_shakeRemaining - time.UnscaledDeltaTime());
-        if (m_shakeRemaining <= 0.0f) m_shakeAmplitude = 0.0f;
-    }
+    // 合成済みの揺れをカメラのローカル軸へ乗せる。生成も減衰もマネージャー側の仕事。
+    if (auto* shake = CameraShakeManagerComponent::Instance())
+        camPos += rotation * shake->CurrentOffset();
 
     transform.position      = camPos;
     transform.rotation      = rotation;
     m_hasCameraPosition     = true;
+}
+
+inline float TpsCameraComponent::BlendFollowSpeed(float tight, float loose, float slack01)
+{
+    return Lerp(Max(tight, 0.0f), Max(loose, 0.0f), Clamp01(slack01));
+}
+
+inline float TpsCameraComponent::FollowRate(float followSpeed, float dt)
+{
+    // 0.001 は「1/followSpeed 秒でここまで残る」の意味。速さを秒に読み替えられる。
+    return followSpeed <= EPSILON ? 1.0f : Clamp01(1.0f - Pow(0.001f, dt * followSpeed));
 }
 
 inline void TpsCameraComponent::FindTarget()

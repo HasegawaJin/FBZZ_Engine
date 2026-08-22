@@ -23,6 +23,7 @@
 
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
+#include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
 #include <string>
@@ -51,6 +52,17 @@ public:
     // フェードの有効/無効とフェードイン・アウト各々の長さ (秒)
     FBZZ_FIELD(bool,  fadeEnabled,    true,  "Fade Enabled")
     FBZZ_FIELD(float, fadeDuration,   0.5f,  "Fade Duration")
+    // ボタンモードで、クリックの代わりにこのアクションでも遷移させる。
+    //
+    // WHY フォーカス移動ではなくボタンごとに割り当てるか:
+    //   UIButton はマウス座標で判定するため、パッドだけでは 1 つも押せない。
+    //   本作のメニューはタイトルに 1 つ、リザルトに 2 つしかないので、
+    //   カーソル移動と選択状態を作り込むより「A で再挑戦 / B でタイトル」と
+    //   ボタンへ直接割り当てる方が、実装も操作も短くなる。
+    //   空欄ならこれまでどおりクリックのみ。
+    FBZZ_FIELD(std::string, triggerAction, "", "Trigger Action")
+    FBZZ_TOOLTIP("ProjectSettings/Input.inputactions のアクション名。"
+                 "Submit / Cancel を割り当てるとパッドとキーボードで押せるようになる")
 
     // シーンをまたいで「次シーンはフェードインで開始」を伝達する静的変数群。
     // WHY: LoadScene でシーンが切り替わると現スクリプトも破棄されるため、
@@ -109,10 +121,11 @@ inline void SceneManagerScript::OnUpdate()
         if (m_fadeAlpha <= 0.0f) {
             m_fadeAlpha = 0.0f;
             m_fadeState = FadeState::Idle;
-            postprocess.Clear();
-        } else {
-            ApplyFade();
         }
+        // WHY 0 でも ApplyFade を通すか: マネージャーが居るシーンでは postprocess を
+        //     直接クリアしてはいけない。他の画面効果まで巻き添えで消える。
+        //     解除の判断も含めて書き手へ一本化する。
+        ApplyFade();
         return;
     }
 
@@ -142,13 +155,27 @@ inline void SceneManagerScript::OnUpdate()
         return;
     }
 
-    if (!m_btn || !m_btn->onClick) return;
+    const bool clicked   = m_btn && m_btn->onClick;
+    const bool triggered = !triggerAction.empty() && input.GetActionDown(triggerAction);
+    if (!clicked && !triggered) return;
+
     m_fired = true;
     BeginFadeOut();
 }
 
 inline void SceneManagerScript::ApplyFade()
 {
+    // WHY マネージャーがあればそちらへ渡すか:
+    //   ランタイムの PostProcessSettings は「まるごと差し替える」器なので、
+    //   フェードと被弾フラッシュが別々に書くとどちらかが必ず消える。
+    //   ScreenEffectManagerComponent を置いたシーンでは書き手をそちらへ一本化する。
+    if (auto* screen = ScreenEffectManagerComponent::Instance()) {
+        if (m_fadeAlpha > 0.0f) screen->SetFade(m_fadeAlpha);
+        else                    screen->ClearFade();
+        return;
+    }
+
+    // マネージャーを置いていないシーン向けの直接書き込み。
     // 既存のランタイム PostProcess 設定を引き継ぎ、screenFadeAlpha だけ上書きする。
     // WHY: ブルームや被写界深度など他のエフェクトを消さずにフェードだけを重ねるため。
     fbzz::renderer::PostProcessSettings pp =
@@ -174,12 +201,27 @@ inline void SceneManagerScript::BeginFadeOut()
 
 inline void SceneManagerScript::ExecuteLoad()
 {
-    if (!viaScene.empty()) {
-        // 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
-        s_next = targetScene;
-        scene.LoadScene(viaScene);
+    // 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
+    const std::string destination = viaScene.empty() ? targetScene : viaScene;
+    if (!viaScene.empty()) s_next = targetScene;
+
+    if (scene.LoadScene(destination)) return;
+
+    // WHY 失敗をここで拾うか: 遷移はフェードアウトの後に呼ばれる。要求が通らなかった場合、
+    //     暗転したまま何も起きない画面が残り、操作も効かないので原因が読めない。
+    //     入力の受付を戻し、暗転していたなら明転させてから、理由をログへ出す。
+    debug.LogError("SceneManagerScript: could not switch to scene '" + destination
+                   + "'. Staying here (the SceneManager error above has the reason).");
+    s_next.clear();
+    s_fadeIn = false;
+    m_fired  = false;
+
+    // 暗転済みのときだけ明転させる。フェード無しの経路で入れると余計な暗転が 1 回挟まる。
+    if (m_fadeAlpha > 0.0f) {
+        m_fadeState = FadeState::FadeIn;
     } else {
-        scene.LoadScene(targetScene);
+        m_fadeState = FadeState::Idle;
+        ApplyFade();
     }
 }
 

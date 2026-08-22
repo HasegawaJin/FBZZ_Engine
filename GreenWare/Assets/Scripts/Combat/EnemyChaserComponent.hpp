@@ -6,7 +6,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
-#include <Scripts/Player/PlayerComponent.hpp>
+#include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <algorithm>
@@ -50,6 +50,7 @@ private:
 
     EntityRef m_player;
     float m_attackRemaining = 0.0f;
+    bool  m_warnedNoCombat = false;
 };
 
 FBZZ_REFLECT(EnemyChaserComponent)
@@ -150,10 +151,23 @@ inline void EnemyChaserComponent::OnCollisionStay(const CollisionInfo& info)
     if (!player || info.other != player || m_attackRemaining > 0.0f || IsMovementLocked())
         return;
 
-    if (auto* playerComponent = scene.GetScript<PlayerComponent>(player)) {
-        if (playerComponent->TakeDamage(std::max(attackDamage, 1)))
-            m_attackRemaining = std::max(attackCooldown, 0.05f);
+    // WHY プレイヤーを直接叩かないか: 極性衝突のダメージは CombatManagerComponent を
+    //     通っているのに、接触攻撃だけが PlayerComponent::TakeDamage() を直接呼んでいた。
+    //     経路が 2 本あると、被ダメージの集計も無敵時間の扱いも片方にしか乗らない。
+    //     ここは「殴った」と伝えるだけにして、何点入るかの適用と記録は 1 箇所に集める。
+    auto* combat = CombatManagerComponent::Instance();
+    if (!combat) {
+        if (!m_warnedNoCombat) {
+            m_warnedNoCombat = true;
+            // 黙って直接叩くと経路が 2 本に戻る。落ちていることを見えるようにする。
+            debug.LogError("EnemyChaserComponent found no CombatManagerComponent in the scene. "
+                           "Contact attacks deal no damage.");
+        }
+        return;
     }
+
+    if (combat->DamagePlayer(player, std::max(attackDamage, 1)))
+        m_attackRemaining = std::max(attackCooldown, 0.05f);
 }
 
 } // namespace sandbox

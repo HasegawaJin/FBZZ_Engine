@@ -15,15 +15,14 @@
 ///   シーンに残るのはこのスクリプト 1 行だけで、寸法の出所も 1 箇所に閉じる。
 #pragma once
 
-#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
+#include <Scripts/Utils/BodyBounds.hpp>
 #include <algorithm>
-#include <cmath>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -84,9 +83,9 @@ private:
     static constexpr const char* kFillName       = "HealthBar_Fill";
 
     // 体の上端の高さ。コライダーから測り、Transform のスケールを掛けたワールド値。
-    [[nodiscard]] float BodyTopWorld(const GameObject& owner) const;
+    [[nodiscard]] float BodyTopWorld(GameObject& owner) const;
     // バー中心を置くワールド座標。
-    [[nodiscard]] Vector3 AnchorPoint(const GameObject& owner) const;
+    [[nodiscard]] Vector3 AnchorPoint(GameObject& owner) const;
     // このスクリプトが持つバーの Canvas 名。敵ごとに一意にする。
     [[nodiscard]] std::string CanvasName(const GameObject& owner) const;
 
@@ -207,21 +206,12 @@ inline void EnemyHealthBarComponent::Build(GameObject& owner)
     m_fill       = EntityRef{ fillObject.GetID() };
 }
 
-inline float EnemyHealthBarComponent::BodyTopWorld(const GameObject& owner) const
+inline float EnemyHealthBarComponent::BodyTopWorld(GameObject& owner) const
 {
-    // コライダーの寸法は Transform のスケールが掛かる前の値。ワールドの高さへ直す。
-    float top = fallbackBodyHeight;
-    if (const auto* sphere = scene.GetComponent<SphereColliderComponent>())
-        top = sphere->center.y + sphere->radius;
-    else if (const auto* capsule = scene.GetComponent<CapsuleColliderComponent>())
-        top = capsule->center.y + capsule->halfHeight + capsule->radius;
-    else if (const auto* box = scene.GetComponent<BoxColliderComponent>())
-        top = box->center.y + box->size.y * 0.5f;
-
-    return top * std::abs(owner.transform.worldScale.y);
+    return bodybounds::TopWorld(owner, fallbackBodyHeight);
 }
 
-inline Vector3 EnemyHealthBarComponent::AnchorPoint(const GameObject& owner) const
+inline Vector3 EnemyHealthBarComponent::AnchorPoint(GameObject& owner) const
 {
     Vector3 anchor = owner.transform.worldPosition;
     anchor.y += BodyTopWorld(owner) + headroom;
