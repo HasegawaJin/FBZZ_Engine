@@ -2349,6 +2349,11 @@ void ScriptUIProxy::SetText(std::string_view text) const
     if (auto* t = SelfComponent<UIText>(script)) t->text = std::string(text);
 }
 
+void ScriptUIProxy::SetTextColor(const math::Vector4& color) const
+{
+    if (auto* t = SelfComponent<UIText>(script)) t->color = color;
+}
+
 void ScriptUIProxy::SetCanvasSortOrder(int order) const
 {
     if (auto* canvas = SelfComponent<UICanvas>(script)) canvas->sortOrder = order;
@@ -2361,6 +2366,11 @@ void ScriptUIProxy::SetImageSpriteRect(float x, float y, float w, float h, float
         img->uvMin = uvMin;
         img->uvMax = uvMax;
     }
+}
+
+void ScriptUIProxy::SetImageTexture(std::string_view path) const
+{
+    if (auto* img = SelfComponent<UIImage>(script)) img->texturePath = std::string(path);
 }
 
 void ScriptUIProxy::SetImageFillAmount(float amount) const
@@ -2380,14 +2390,123 @@ void ScriptUIProxy::SetImageFillAmount(GameObject* go, float amount) const
         img->fillAmount = std::clamp(amount, 0.0f, 1.0f);
 }
 
+void ScriptUIProxy::SetImageTexture(GameObject* go, std::string_view path) const
+{
+    if (auto* img = ObjectComponent<UIImage>(go)) img->texturePath = std::string(path);
+}
+
 void ScriptUIProxy::SetText(GameObject* go, std::string_view text) const
 {
     if (auto* t = ObjectComponent<UIText>(go)) t->text = std::string(text);
 }
 
+void ScriptUIProxy::SetTextColor(GameObject* go, const math::Vector4& color) const
+{
+    if (auto* t = ObjectComponent<UIText>(go)) t->color = color;
+}
+
 void ScriptUIProxy::SetImageEnabled(GameObject* go, bool enabled) const
 {
     if (auto* image = ObjectComponent<UIImage>(go)) image->enabled = enabled;
+}
+
+void ScriptUIProxy::SetTextEnabled(GameObject* go, bool enabled) const
+{
+    if (auto* t = ObjectComponent<UIText>(go)) t->enabled = enabled;
+}
+
+void ScriptUIProxy::SetMaterial(GameObject* go, std::string_view materialPath) const
+{
+    auto* image = ObjectComponent<UIImage>(go);
+    if (!image) return;
+    const std::string next(materialPath);
+    if (image->materialPath == next) return;
+    image->materialPath = next;
+    // 別のマテリアルへ移ると、前のシェーダーに合わせた上書きは意味を失う。
+    // 残すと「効かない上書き」が黙って積まれ、綴り間違いと区別が付かなくなる。
+    image->materialParamOverrides.clear();
+    image->materialTextureOverrides.clear();
+}
+
+namespace {
+
+// 上書きを「その場で」書き換える。
+// WHY 代入ではなく assign か: これらの Setter は要素ごとに毎フレーム呼ばれる。
+//     `map[key] = {値...}` は初期化子リストから毎回 vector を作って move するので、
+//     1 要素 3 パラメータ × 20 要素 × 60fps ぶんの確保と解放が定常的に走る。
+//     既にあるエントリの容量へ書き戻せば、2 フレーム目以降の確保は 0 になる。
+//     キー側の std::string は短い変数名なら SSO に収まりヒープを触らない。
+void AssignUIMaterialOverride(UIImage& image, std::string_view param,
+                              const float* values, std::size_t count)
+{
+    auto& target = image.materialParamOverrides[std::string(param)];
+    target.assign(values, values + count);
+}
+
+} // namespace
+
+void ScriptUIProxy::SetMaterialFloat(GameObject* go, std::string_view param, float value) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go))
+        AssignUIMaterialOverride(*image, param, &value, 1);
+}
+
+void ScriptUIProxy::SetMaterialVector2(GameObject* go, std::string_view param,
+                                       float x, float y) const
+{
+    const float values[2] = { x, y };
+    if (auto* image = ObjectComponent<UIImage>(go))
+        AssignUIMaterialOverride(*image, param, values, 2);
+}
+
+void ScriptUIProxy::SetMaterialVector4(GameObject* go, std::string_view param,
+                                       const math::Vector4& value) const
+{
+    const float values[4] = { value.x, value.y, value.z, value.w };
+    if (auto* image = ObjectComponent<UIImage>(go))
+        AssignUIMaterialOverride(*image, param, values, 4);
+}
+
+void ScriptUIProxy::SetMaterialColor(GameObject* go, std::string_view param,
+                                     const math::Vector4& color) const
+{
+    SetMaterialVector4(go, param, color);
+}
+
+void ScriptUIProxy::SetMaterialTexture(GameObject* go, std::string_view slot,
+                                       std::string_view texturePath) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go)) {
+        // 値側も assign で容量を使い回す。テクスチャパスは SSO に収まらない長さになる。
+        image->materialTextureOverrides[std::string(slot)].assign(
+            texturePath.data(), texturePath.size());
+    }
+}
+
+void ScriptUIProxy::ClearMaterialOverride(GameObject* go, std::string_view param) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go)) {
+        const std::string key(param);
+        image->materialParamOverrides.erase(key);
+        image->materialTextureOverrides.erase(key);
+    }
+}
+
+void ScriptUIProxy::ClearMaterialOverrides(GameObject* go) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go)) {
+        image->materialParamOverrides.clear();
+        image->materialTextureOverrides.clear();
+    }
+}
+
+bool ScriptUIProxy::HasMaterialOverride(GameObject* go, std::string_view param) const
+{
+    const auto* image = ObjectComponent<UIImage>(go);
+    if (!image) return false;
+    const std::string key(param);
+    return image->materialParamOverrides.count(key) > 0
+        || image->materialTextureOverrides.count(key) > 0;
 }
 
 void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vector4& to, float duration) const

@@ -7,7 +7,11 @@
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptSnapshot.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Renderer/ITexture.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <algorithm>
 #include <cfloat>
 #include <charconv>
@@ -214,6 +218,41 @@ bool DrawScriptRequirementBanner(scene::GameObject& go,
     return added;
 }
 
+// UIImage の原寸 = 元画像の 1 ピクセルが画面の 1 ピクセルになる大きさ。
+//
+// WHY 素材の pixelsPerUnit と multiplier を両方掛けるか:
+//     Sliced / Tiled は Border とタイルを「元画像のピクセル数 ÷ multiplier」で描く。
+//     原寸も同じ換算にしておかないと、原寸に合わせた矩形なのに 9-slice の角だけ
+//     大きさが合わない、という食い違いが起きる。
+bool ResolveUIImageNativeSize(const scene::UIImage& image, EditorContext& ctx,
+                              math::Vector2& outSize)
+{
+    // 今 Viewport に出ている絵に合わせる。ボタンの状態差し替え中はそちらが正。
+    const std::string& source = image.EffectiveTexturePath();
+    if (source.empty() || ctx.resources == nullptr) return false;
+
+    std::string texturePath;
+    std::string spriteId;
+    (void)asset::ParseSpriteReference(source, texturePath, spriteId);
+    const auto handle =
+        ctx.resources->LoadTexture(asset::AssetManager::ResolveAssetPath(texturePath));
+    const renderer::ITexture* texture = handle.IsValid() ? ctx.resources->Get(handle) : nullptr;
+    if (texture == nullptr) return false;
+
+    const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
+        source,
+        static_cast<float>(texture->GetWidth()),
+        static_cast<float>(texture->GetHeight()));
+    if (resolved.sizePixels.x <= 0.0f || resolved.sizePixels.y <= 0.0f) return false;
+
+    const float pixelsPerUnit = resolved.pixelsPerUnit > 0.0f
+        ? resolved.pixelsPerUnit : scene::kUIReferencePixelsPerUnit;
+    const float scale =
+        (scene::kUIReferencePixelsPerUnit / pixelsPerUnit) * image.UnitScale();
+    outSize = { resolved.sizePixels.x * scale, resolved.sizePixels.y * scale };
+    return true;
+}
+
 bool TransformEquals(const scene::Transform& lhs, const scene::Transform& rhs)
 {
     return lhs.position.x == rhs.position.x &&
@@ -412,7 +451,7 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 t.rotation = widgets::EulerDegToQuat({ euler.x, euler.y, rotZ });
             TrackTransformEdit(*go, ctx, "Change Rotation");
 
-            if (go->GetComponent<scene::UIImage>()) {
+            if (auto* uiImage = go->GetComponent<scene::UIImage>()) {
                 ImGui::Text("Size");
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(itemW);
@@ -422,6 +461,25 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 ImGui::SetNextItemWidth(itemW);
                 ImGui::DragFloat("##sh", &t.scale.y, 1.0f, 1.0f, 0.0f, "H %.0f");
                 TrackTransformEdit(*go, ctx, "Change Height");
+
+                // 絵を貼った直後にまずやりたいのは「元の絵の比率に戻す」で、
+                // それを手計算させないための 1 手。解決できないうちは押させない。
+                math::Vector2 nativeSize{};
+                const bool hasNativeSize =
+                    ResolveUIImageNativeSize(*uiImage, ctx, nativeSize);
+                ImGui::BeginDisabled(!hasNativeSize);
+                if (ImGui::SmallButton("Set Native Size")) {
+                    const scene::Transform before = t;
+                    t.scale.x = nativeSize.x;
+                    t.scale.y = nativeSize.y;
+                    PushTransformSnapshotUndo(*go, ctx, before, "Set Native Size");
+                }
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip(hasNativeSize
+                        ? "元画像の 1 ピクセルが画面の 1 ピクセルになる大きさへ合わせます"
+                        : "テクスチャが未設定か、まだ読み込まれていません");
+                }
             }
         } else {
             // ラベルを左・値を右にそろえ、成分は軸色付き (X 赤 / Y 緑 / Z 青) にする。

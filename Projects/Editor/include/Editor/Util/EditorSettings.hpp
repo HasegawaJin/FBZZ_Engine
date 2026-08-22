@@ -77,6 +77,10 @@ struct EditorSettings {
     bool showDecalBounds      = false;
     bool showNavMesh          = true;
     bool showNavSensors       = false;
+    // UI 要素の矩形とピボットを Canvas 上へ重ねる。
+    // WHY: 「見えているのに押せない」「思った場所に出ない」の切り分けが、
+    //      これが無いと勘になる。当たり判定に使っている矩形そのものを出す。
+    bool showUIRects          = false;
     int  viewMode             = 0; // 0=Lit, 1=Unlit, 2=WireframeLit, 3=WireframeUnlit
 
 

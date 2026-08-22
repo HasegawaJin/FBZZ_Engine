@@ -613,6 +613,8 @@ void ProjectSettingsPanel::DrawRenderDebug(renderer::RenderSettings& render)
     ImGui::Checkbox("NavMesh",           &render.showNavMesh);
     ImGui::Checkbox("AI Sensors",        &render.showNavSensors);
     ImGui::SameLine();
+    ImGui::Checkbox("UI Rects",          &render.showUIRects);
+    ImGui::SameLine();
     ImGui::Checkbox("Decal Bounds",      &render.showDecalBounds);
     ImGui::SameLine();
     ImGui::Checkbox("Selection Outline", &render.showSelectionOutline);

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // TextureAsset.cpp | fbzz::asset
 #include <Engine/Asset/TextureAsset.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 #include <algorithm>
 #include <cctype>
 #include <string_view>
@@ -169,6 +171,45 @@ const SpriteRect* FindSprite(
             return !sprite.id.empty() && sprite.id == spriteId;
         });
     return found != settings.sprites.end() ? &*found : nullptr;
+}
+
+ResolvedSprite ResolveSpriteReference(
+    std::string_view reference, float textureWidth, float textureHeight)
+{
+    ResolvedSprite result;
+    result.isSpriteReference =
+        ParseSpriteReference(reference, result.texturePath, result.spriteId);
+
+    const bool hasTextureSize = textureWidth > 0.0f && textureHeight > 0.0f;
+    // Sprite でない画像の「切り抜き」は画像そのもの。ここを埋めておけば、
+    // 呼ぶ側は Sprite かどうかで分岐せずに原寸やタイル寸法を出せる。
+    if (hasTextureSize) result.sizePixels = { textureWidth, textureHeight };
+    if (!result.isSpriteReference || !hasTextureSize) return result;
+
+    TextureAsset textureAsset;
+    const TexDescSerializer serializer;
+    const std::string metaPath =
+        AssetManager::ResolveAssetPath(result.texturePath + ".meta");
+    if (!serializer.Load(metaPath, textureAsset)) return result;
+
+    const SpriteRect* sprite = FindSprite(textureAsset.settings, result.spriteId);
+    if (sprite == nullptr) return result;
+
+    // 幅 / 高さ 0 は「画像全体」を意味する (SpriteRect のコメント参照)。
+    const float spriteWidth  = sprite->width  > 0 ? static_cast<float>(sprite->width)  : textureWidth;
+    const float spriteHeight = sprite->height > 0 ? static_cast<float>(sprite->height) : textureHeight;
+
+    result.uvMin = { static_cast<float>(sprite->x) / textureWidth,
+                     static_cast<float>(sprite->y) / textureHeight };
+    result.uvMax = { (static_cast<float>(sprite->x) + spriteWidth)  / textureWidth,
+                     (static_cast<float>(sprite->y) + spriteHeight) / textureHeight };
+    result.border = { sprite->borderLeft, sprite->borderTop,
+                      sprite->borderRight, sprite->borderBottom };
+    result.sizePixels    = { spriteWidth, spriteHeight };
+    result.pivot         = { sprite->pivotX, sprite->pivotY };
+    result.pixelsPerUnit = textureAsset.settings.pixelsPerUnit;
+    result.resolved      = true;
+    return result;
 }
 
 } // namespace fbzz::asset

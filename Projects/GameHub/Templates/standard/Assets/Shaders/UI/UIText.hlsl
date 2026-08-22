@@ -1,61 +1,51 @@
-// FBZZ Engine
-// UIText.hlsl | UI
-// フォントアトラス (カバレッジ) テキストシェーダー
-//
-// アトラスの中身:
-//   gen_font_atlas.py が Pillow で TTF をグレースケール描画した「カバレッジ」テクスチャ。
-//   .r = 0.0 (グリフ外) 〜 1.0 (グリフ内) で、縁はアンチエイリアスされた約 1 テクセル幅の傾斜。
-//   SDF (符号付き距離場) ではないので、距離場前提のしきい値処理をしてはいけない。
-cbuffer UIConstants : register(b0)
-{
-    float4x4 g_Ortho;
-    float4   g_Color;
-    float4   g_UVRect;
-};
+/// @file UIText.hlsl
+/// @brief フォントアトラスのテキストシェーダー
+/// @author Hasegawa Jin
+/// @date 2026-05-23
+///
+/// アトラスの中身は 2 種類あるが、PSMain の 1 式が両方を扱う。
+///   静的 (.fnt)           … カバレッジ。0.0 (グリフ外) 〜 1.0 (グリフ内)、縁は約 1 テクセル幅の傾斜
+///   動的 (.ttf を直接指定) … 単一チャンネル SDF。stb_truetype の onedge_value=128 が UNORM で 0.502
+/// どちらも「.r の 0.5 が輪郭」で一致するため、種別で分岐する必要がない。
+/// MSDF (RGB の中央値が距離) だけはこの式で扱えない。入れるなら別シェーダーになる。
+#include "UI/UICommon.hlsli"
 
-Texture2D    g_Texture : register(t0);
-SamplerState g_Sampler : register(s5);
-
-struct VSIn
+// WHY 共通の UIVertexMain を使わないか:
+//   テキストの頂点バッファはグリフごとにアトラス UV を直接持っている。
+//   矩形 1 枚を 0..1 で張るスプライトと違い、ここで g_UVRect を掛けると
+//   グリフ位置が二重に写像されて別の文字を拾う。
+UIPixelInput VSMain(UIVertexInput input)
 {
-    float2 pos : POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-struct PSIn
-{
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-PSIn VSMain(VSIn input)
-{
-    PSIn output;
-    output.pos = mul(float4(input.pos, 0.0f, 1.0f), g_Ortho);
-    output.uv  = input.uv;
+    UIPixelInput output;
+    output.pos     = mul(float4(input.pos, 0.0f, 1.0f), g_Ortho);
+    output.uv      = input.uv;
+    output.localUv = input.uv;
     return output;
 }
 
-float4 PSMain(PSIn input) : SV_TARGET
+float4 PSMain(UIPixelInput input) : SV_TARGET
 {
-    // アトラスの .r をカバレッジとして読む (バイリニア補間済み)。
-    float coverage = g_Texture.Sample(g_Sampler, input.uv).r;
+    // 0.5 を輪郭とする場 (カバレッジまたは SDF) を読む。バイリニア補間済み。
+    float field = g_Texture.Sample(g_Sampler, input.uv).r;
 
-    // WHY: 旧実装は smoothstep(0.35, 0.65, coverage) を掛けていた。これは coverage を
-    //      SDF と誤認した処理で、生成時に作られた 1 テクセル幅の AA 傾斜を 30% 幅へ圧縮し、
+    // WHY: 旧実装は smoothstep(0.35, 0.65, ...) を掛けていた。カバレッジしか無かった当時に
+    //      それを SDF と誤認した処理で、生成時に作られた 1 テクセル幅の AA 傾斜を 30% 幅へ圧縮し、
     //      拡大表示 (アトラス 48px に対し fontSize 84 等) では傾斜がサブピクセル未満に潰れて
     //      ほぼ二値化 → 縁が階段状 (ジャギー) になっていた。
     //
     //      代わりに傾斜を「画面 1 ピクセル幅」へ正規化し直す。
-    //      fwidth(coverage) は隣接ピクセル間のカバレッジ変化量なので、
-    //      (coverage - 0.5) / fwidth(coverage) は縁からの符号付き距離をピクセル単位で表す。
+    //      fwidth(field) は隣接ピクセル間の変化量なので、(field - 0.5) / fwidth(field) は
+    //      縁からの符号付き距離をピクセル単位で表す。
     //      これに 0.5 を足して saturate すると、拡大時は縁が締まり (ボケない)、
     //      縮小時は自動的に広くなって滑らかに減衰する ─ 常に 1px 幅の AA が得られる。
     //
+    //      この式が距離場にもそのまま効くことが、動的 SDF アトラスを分岐無しで
+    //      同居させられている理由でもある。
+    //
     //      max() の下限はグリフ内部/外部の平坦部 (fwidth == 0) でのゼロ除算を防ぐためのもの。
     //      平坦部では商が ±巨大値になり、saturate で正しく 1.0 / 0.0 に落ちる。
-    float width = max(fwidth(coverage), 1e-4f);
-    float alpha = saturate((coverage - 0.5f) / width + 0.5f);
+    float width = max(fwidth(field), 1e-4f);
+    float alpha = saturate((field - 0.5f) / width + 0.5f);
 
     // 完全透明なピクセルは破棄してブレンド/オーバードローを減らす。
     // fwidth は clip より前に評価済みなので、破棄が微分に影響することはない。

@@ -25,6 +25,15 @@ struct SpriteRendererComponent {
     math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector2 size = { 1.0f, 1.0f };
     math::Vector2 pivot = { 0.5f, 0.5f };
+    // size と pivot を Sprite の .meta から取る (Pixels Per Unit と Pivot)。
+    //
+    // WHY 既定を false にするか: 既存シーンの size / pivot は手で決めた値で、
+    //     素材由来の値へ勝手に置き換えると全部の見た目が変わる。
+    //
+    // WHY 常時追従にするか (1 回きりのボタンにしないか):
+    //     Sprite Editor で Pivot を直したら、その絵を使っている全オブジェクトが
+    //     直ってほしい。1 回きりだと「どれを押し直したか」を人が覚えることになる。
+    bool useSpriteNativeSize = false;
     SpriteDrawMode drawMode = SpriteDrawMode::Simple;
     int sortingLayer = 0;
     int orderInLayer = 0;
@@ -40,9 +49,11 @@ struct SpriteRendererComponent {
         r.Field("enabled", enabled);
         r.Field("spritePath", spritePath);
         r.Field("materialPath", materialPath);
-        r.Field("color", color);
-        r.Field("size", size);
-        r.Field("pivot", pivot);
+        r.ColorField("color", color);
+        r.Field("useSpriteNativeSize", useSpriteNativeSize);
+        r.Tooltip("Sprite の Pixels Per Unit と Pivot から size / pivot を毎フレーム求めます");
+        r.FieldIf("size", size, !useSpriteNativeSize);
+        r.FieldIf("pivot", pivot, !useSpriteNativeSize);
         int mode = static_cast<int>(drawMode);
         static constexpr const char* MODES[] = { "Simple", "Sliced", "Tiled" };
         r.Enum("drawMode", mode, MODES);
@@ -95,8 +106,8 @@ struct LineRendererComponent {
         r.Field("enabled", enabled);
         r.ListField("points", points);
         r.Field("materialPath", materialPath);
-        r.Field("startColor", startColor);
-        r.Field("endColor", endColor);
+        r.ColorField("startColor", startColor);
+        r.ColorField("endColor", endColor);
         r.Field("startWidth", startWidth);
         r.Field("endWidth", endWidth);
         int value = static_cast<int>(space);
@@ -134,6 +145,9 @@ enum class ProjectorShape : int { Box = 0, Perspective = 1 };
 struct ProjectorComponent {
     bool enabled = true;
     ProjectorShape shape = ProjectorShape::Box;
+    // render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡る。
+    // それ以外の .mat は albedo / normal / emissive のテクスチャだけを抜き出して
+    // 組み込みデカール描画へ載せる (旧来の Projector 設定を壊さないため)。
     std::string materialPath;
     math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
     float fieldOfView = 45.0f;
@@ -151,7 +165,9 @@ struct ProjectorComponent {
         r.Enum("shape", value, SHAPES);
         shape = static_cast<ProjectorShape>(value < 0 || value > 1 ? 0 : value);
         r.Field("materialPath", materialPath);
-        r.Field("color", color);
+        r.Tooltip("投影するマテリアル (.mat)。render_path = \"decal\" ならシェーダーごと使い、"
+                  "それ以外は albedo / normal / emissive のテクスチャだけを取り出します");
+        r.ColorField("color", color);
         r.FloatRange("fieldOfView", fieldOfView, 1.0f, 179.0f);
         r.Field("nearClip", nearClip);
         r.Field("farClip", farClip);

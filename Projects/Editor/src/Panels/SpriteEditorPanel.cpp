@@ -67,7 +67,9 @@ void InvalidateSpriteUsers(EditorContext& ctx, const std::string& editedTextureP
     for (auto [image] : ctx.activeScene->View<scene::UIImage>()) {
         std::string texturePath;
         std::string spriteToken;
-        (void)asset::ParseSpriteReference(image.texturePath, texturePath, spriteToken);
+        // 状態別スプライトで差し替え中なら、今描いている絵のほうを見る。
+        (void)asset::ParseSpriteReference(
+            image.EffectiveTexturePath(), texturePath, spriteToken);
         const std::filesystem::path resolvedTexture = util::FileSystem::PathFromUtf8(
             asset::AssetManager::ResolveAssetPath(texturePath)).lexically_normal();
         std::error_code pathError;

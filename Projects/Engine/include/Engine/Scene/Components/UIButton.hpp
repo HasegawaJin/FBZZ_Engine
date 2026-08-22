@@ -6,6 +6,7 @@
 #pragma once
 #include <Math/Vector4.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <string>
 
 namespace fbzz::scene {
 
@@ -15,11 +16,32 @@ enum class UIButtonState {
     PRESSED
 };
 
+// 状態別スプライト欄が受け付ける拡張子 (ImageImporter が読める画像)。
+inline constexpr const char* kSpriteFieldExtensions =
+    ".fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp";
+
 struct UIButton {
     math::Vector4 normalColor   = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector4 hoverColor    = { 0.85f, 0.85f, 0.85f, 1.0f };
     math::Vector4 pressedColor  = { 0.7f, 0.7f, 0.7f, 1.0f };
     math::Vector4 disabledColor = { 0.5f, 0.5f, 0.5f, 0.5f };
+
+    // 状態ごとの絵。同じ GameObject の UIImage.texturePath を差し替える。
+    // Sprite サブアセット参照 ("<画像>.png::sprite::<id>") も入れられる。
+    //
+    // WHY 色の明暗と別に要るか:
+    //   押した / 触れたを明るさだけで伝えられるのは、元の絵が中間の明るさで、
+    //   かつ形が変わらない場合に限られる。枠が光る・アイコンが変わるといった
+    //   絵そのものが違うボタンは、色の相対変換ではどうやっても作れない。
+    //
+    // WHY 空欄を「変えない」にするか:
+    //   4 つ全部を必ず用意させると、押下だけ差し替えたいボタンでも同じ絵を
+    //   3 回指定することになる。空欄は UIImage に元から入っている絵のまま。
+    std::string normalSprite;
+    std::string hoveredSprite;
+    std::string pressedSprite;
+    std::string disabledSprite;
+
     bool isInteractable = true;
     bool enabled = true;
 
@@ -41,10 +63,15 @@ struct UIButton {
     {
         r.Field("enabled",        enabled);
         r.Field("isInteractable", isInteractable);
-        r.Field("normalColor",    normalColor);
-        r.Field("hoverColor",     hoverColor);
-        r.Field("pressedColor",   pressedColor);
-        r.Field("disabledColor",  disabledColor);
+        r.ColorField("normalColor",    normalColor);
+        r.ColorField("hoverColor",     hoverColor);
+        r.ColorField("pressedColor",   pressedColor);
+        r.ColorField("disabledColor",  disabledColor);
+        r.FileField("normalSprite",   normalSprite,   kSpriteFieldExtensions,
+                    "状態ごとに UIImage の絵を差し替えます。空欄なら差し替えません");
+        r.FileField("hoveredSprite",  hoveredSprite,  kSpriteFieldExtensions);
+        r.FileField("pressedSprite",  pressedSprite,  kSpriteFieldExtensions);
+        r.FileField("disabledSprite", disabledSprite, kSpriteFieldExtensions);
         static constexpr const char* kStateLabels[] = { "Normal", "Hovered", "Pressed" };
         const int stateIndex = static_cast<int>(state);
         r.Readonly("state", isInteractable && stateIndex >= 0 && stateIndex < 3

@@ -4,6 +4,8 @@
 // .tex TOML descriptor または .png/.dds/.tga 直参照を統一型で扱う。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Math/Vector2.hpp>
+#include <Math/Vector4.hpp>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -81,6 +83,30 @@ struct TextureImportSettings {
     std::string_view reference, std::string& outTexturePath, std::string& outSpriteName);
 [[nodiscard]] const SpriteRect* FindSprite(
     const TextureImportSettings& settings, std::string_view spriteId);
+
+// テクスチャ参照 1 件を、描く側が必要とする数値へ解決した結果。
+//
+// WHY 型にまとめるか:
+//   「参照を割って .meta を読み、矩形を UV へ直す」までを UISystem・SpriteRenderer・
+//   Inspector がそれぞれ書いており、幅 0 の Single Sprite が画像全体を指す規則のような
+//   細部が写し違いで散っていた。解決の正解を 1 箇所に置き、呼ぶ側は結果だけを見る。
+struct ResolvedSprite {
+    std::string   texturePath;                  ///< 元画像パス (Sprite 参照でなければ入力そのまま)
+    std::string   spriteId;                     ///< Sprite 参照のときだけ非空
+    math::Vector2 uvMin      = { 0.0f, 0.0f };
+    math::Vector2 uvMax      = { 1.0f, 1.0f };
+    math::Vector4 border     = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< 9-slice の余白 L,T,R,B (ピクセル)
+    math::Vector2 sizePixels = { 0.0f, 0.0f };  ///< 切り抜きのピクセル寸法 (未解決なら 0)
+    math::Vector2 pivot      = { 0.5f, 0.5f };
+    float pixelsPerUnit      = 100.0f;
+    bool  isSpriteReference  = false;           ///< 入力が "::sprite::" 形式だった
+    bool  resolved           = false;           ///< .meta から矩形を取り出せた
+};
+
+/// @param textureWidth  元画像の実ピクセル幅。0 以下だと UV へ直せないため矩形は解決しない。
+/// @param textureHeight 同・高さ。
+[[nodiscard]] ResolvedSprite ResolveSpriteReference(
+    std::string_view reference, float textureWidth, float textureHeight);
 
 struct TextureAsset {
     // .tex なら source フィールドが指す画像パス、直参照なら自身のパス

@@ -299,7 +299,7 @@ void* ResolveAssetThumbnail(const std::string& relativePath,
     void* textureId = nullptr;
     std::string texturePath;
     std::string spriteName;
-    asset::ParseSpriteReference(relativePath, texturePath, spriteName);
+    (void)asset::ParseSpriteReference(relativePath, texturePath, spriteName);
     const std::string extension =
         util::StringUtils::ToLower(util::FileSystem::GetExtension(texturePath));
     if (IsImageExt(extension)) {
@@ -333,7 +333,7 @@ bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
                             static_cast<size_t>(p->DataSize) - 1));
             std::string texturePath;
             std::string spriteName;
-            asset::ParseSpriteReference(candidate, texturePath, spriteName);
+            (void)asset::ParseSpriteReference(candidate, texturePath, spriteName);
             const std::string extension = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(texturePath));
             const std::vector<std::string> allowed = SplitFilterExts(filterExts);

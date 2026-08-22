@@ -52,10 +52,17 @@ struct ScriptUIProxy {
     void SetButtonInteractable(GameObject* go, bool v) const;
     void SetImageColor(const math::Vector4& color) const;
     void SetText(std::string_view text) const;
+    // UIText の色。SetImageColor は UIImage しか触らないため、文字だけを
+    // 状態に応じて明滅させたい HUD には別の入口が要る。
+    void SetTextColor(const math::Vector4& color) const;
     void SetCanvasSortOrder(int order) const;
     // スプライトシートのピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW,texH) で正規化し
     // UIImage の uvMin / uvMax へ書き込む。
     void SetImageSpriteRect(float x, float y, float w, float h, float texW, float texH) const;
+    /// UIImage の絵を差し替える。画像パスのほか、Sprite サブアセット参照
+    /// ("Assets/UI/Atlas.png::sprite::<id>") をそのまま渡せる。
+    /// 切り出し矩形・9-slice の余白・タイル寸法は .meta から自動で解決される。
+    void SetImageTexture(std::string_view path) const;
     // 自 GO の UIImage 塗り潰し量 [0,1] を設定する (体力ゲージ等)。
     void SetImageFillAmount(float amount) const;
 
@@ -64,8 +71,43 @@ struct ScriptUIProxy {
     // スクリプトが保持する GameObject* を直接指定して UI を更新する。
     void SetImageColor(GameObject* go, const math::Vector4& color) const;
     void SetImageFillAmount(GameObject* go, float amount) const;
+    void SetImageTexture(GameObject* go, std::string_view path) const;
     void SetText(GameObject* go, std::string_view text) const;
+    void SetTextColor(GameObject* go, const math::Vector4& color) const;
     void SetImageEnabled(GameObject* go, bool enabled) const;
+    void SetTextEnabled(GameObject* go, bool enabled) const;
+
+    // ── UI マテリアル (UIImage.materialPath) ────────────────────────────────
+    //
+    // WHY 「自分」版を持たないか:
+    //   UI 要素 1 つ 1 つにスクリプトを付ける構成にすると、HUD が 20 要素あれば
+    //   20 個の Script インスタンスが毎フレーム回る。実際の使い方は
+    //   「1 つの HUD スクリプトが複数の要素を指して値を流す」なので、
+    //   対象を引数で受ける形だけを出す。
+    //
+    // WHY 共有 .mat ではなく要素ごとの上書きになるか:
+    //   .mat は参照する全要素が共有する実体で、そこへ書くと 1 本のゲージを
+    //   動かしたつもりが同じ .mat の全ゲージへ波及する。ここで設定した値は
+    //   その UIImage の描画にだけ乗り、シーンにも保存されない。
+    //
+    // param 名はシェーダーの MaterialConstants に宣言した変数名そのまま。
+    // 綴りが違っても失敗しない (存在しない変数は無視される) ので、
+    // 効かないときはまずシェーダーの変数名と突き合わせること。
+    void SetMaterial(GameObject* go, std::string_view materialPath) const;
+    void SetMaterialFloat(GameObject* go, std::string_view param, float value) const;
+    void SetMaterialVector2(GameObject* go, std::string_view param, float x, float y) const;
+    void SetMaterialVector4(GameObject* go, std::string_view param,
+                            const math::Vector4& value) const;
+    void SetMaterialColor(GameObject* go, std::string_view param,
+                          const math::Vector4& color) const;
+    /// スロット名は "albedo" / "normal" / "tex5" 等 (.mat の [textures] と同じ)。
+    void SetMaterialTexture(GameObject* go, std::string_view slot,
+                            std::string_view texturePath) const;
+    /// 1 つだけ共有 .mat の値へ戻す。
+    void ClearMaterialOverride(GameObject* go, std::string_view param) const;
+    /// この要素の上書きを全て捨て、共有 .mat そのままの見た目へ戻す。
+    void ClearMaterialOverrides(GameObject* go) const;
+    [[nodiscard]] bool HasMaterialOverride(GameObject* go, std::string_view param) const;
 };
 
 } // namespace fbzz::scene
