@@ -423,8 +423,11 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
                     { particle.size * emitter->sizeAxisScale.x,
                       particle.size * emitter->sizeAxisScale.y,
                       particle.size * emitter->sizeAxisScale.z });
-                trail->colorStart = particle.color;
-                trail->colorEnd = particle.color;
+                // Particle::color はリニア、MeshTrail の色はオーサリング空間 (sRGB) と
+                // 規約が違う。境界のここで戻して、MeshTrail 側の扱いは一切変えない。
+                const math::Vector4 authored = ParticleLinearToSrgb(particle.color);
+                trail->colorStart = authored;
+                trail->colorEnd = authored;
                 DrawStaticMeshSample(*trail, sample, *mesh, ctx, currentTime);
             }
             trail->colorStart = savedStart;

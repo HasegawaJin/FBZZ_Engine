@@ -21,7 +21,7 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve,
 
 // グラデーションエディタ。カラーバー + 下部のキーマーカーで編集する。
 //   マーカーをドラッグで時刻変更、クリックで選択して色編集、
-//   バーをダブルクリックでキー追加 (最大4)、マーカーを右クリックで削除 (最小2)。
+//   バーをダブルクリックでキー追加 (最大 kMaxParticleCurveKeys)、マーカーを右クリックで削除 (最小2)。
 // @return true if gradient was changed
 bool GradientEditor(const char* label, scene::ParticleGradient& gradient);
 

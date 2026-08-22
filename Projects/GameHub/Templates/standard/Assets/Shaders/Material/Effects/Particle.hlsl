@@ -14,6 +14,8 @@
 #include "Rendering/Shadow.hlsli"
 
 Texture2D    gParticleTex : register(TEX_ALBEDO);
+// 歪みベクトル専用ノーマルマップ。gEffectsFlags の FBZZ_PFX_DISTORTION_MAP で有効判定する。
+Texture2D    gDistortionTex : register(TEX_NORMAL);
 Texture2D    gSceneDepth  : register(TEX_DEPTH);
 Texture2D    gSceneColor  : register(t5);
 Texture2D    gMotionVectors : register(t6);
@@ -56,6 +58,14 @@ cbuffer ParticleRenderConstants : register(CB_MATERIAL)
     uint  gGpuSortEnabled;
     // 自己影の消衰係数。0 で無効。密度バッファ (t9) は Particle パスが用意する。
     float gSelfShadowStrength;
+    // 煙の散乱 (FBZZ_PFX_SIX_WAY 有効時)。巻き込み拡散と逆光透過。
+    float gSmokeWrap;
+    float gSmokeTransmission;
+    // float4 はレジスタを跨げないため、ここまでで 16 バイト境界 (offset 96) に揃えてある。
+    // 順序を入れ替えると C++ の ParticleRenderCB と黙ってずれる。
+    float4 gTintColor;             // .mat の [params] albedo (リニア済み)
+    float gSmokeBackScatterPower;
+    float gDistortionChromatic;    // 歪みの色収差量 [画面 UV]
     float gParticlePad1;
     float gParticlePad2;
 };
@@ -243,7 +253,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
             float extinction = density * gVolumetricDensity * stepLength;
             float stepTransmittance = exp(-extinction);
             float3 inScatter = (ambientColor
-                + lightColor * (phase * lightTransmittance * mapShadow)) * p.color.rgb;
+                + lightColor * (phase * lightTransmittance * mapShadow))
+                * p.color.rgb * gTintColor.rgb;
             // エネルギー保存に沿った積分 (解析的な 1 ステップ積分)
             scattered += transmittance * (1.0f - stepTransmittance) * inScatter;
             transmittance *= stepTransmittance;
@@ -269,11 +280,12 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         currentUv += motion * (p.spriteBlend * gMotionVectorStrength);
         nextUv -= motion * ((1.0f - p.spriteBlend) * gMotionVectorStrength);
     }
-    // アルファの取り出し方を素材に合わせて解決してから 2 コマを混ぜる。
+    // アルファの取り出し方を素材に合わせて解決し、RGB をリニアへ揃えてから 2 コマを混ぜる。
     // WHY: 先に lerp してから輝度を取ると、コマ境界で「合成後の輝度」を
     //      マスクにすることになり、コマの重なった部分だけ濃く出てしまう。
-    float4 tex = lerp(ResolveParticleTexel(gParticleTex.Sample(gSampler, currentUv), gEffectsFlags),
-                      ResolveParticleTexel(gParticleTex.Sample(gSampler, nextUv), gEffectsFlags),
+    //      リニア化も混合前に済ませる (混合はリニア空間で行うのが正しい)。
+    float4 tex = lerp(ResolveParticleAlbedo(gParticleTex.Sample(gSampler, currentUv), gEffectsFlags),
+                      ResolveParticleAlbedo(gParticleTex.Sample(gSampler, nextUv), gEffectsFlags),
                       saturate(p.spriteBlend));
     if (gSoftParticles != 0)
     {
@@ -282,7 +294,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
-    float4 result = tex * float4(p.color.rgb, p.color.a * fade);
+    // 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。
+    float4 result = tex * float4(p.color.rgb * gTintColor.rgb, p.color.a * fade * gTintColor.a);
 
     // 受け影。ビルボードには本物の法線が無いので、法線依存のバイアス項には
     // ライト方向をそのまま渡して法線バイアスを実質無効化する
@@ -305,12 +318,18 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
 
     if ((gEffectsFlags & FBZZ_PFX_SIX_WAY) != 0u)
     {
+        // ビルボードには本物の法線が無いため、スプライト面を球とみなした疑似法線を作る。
         float2 normalXY = p.localUv * 2.0f - 1.0f;
         float3 normal = normalize(float3(normalXY, sqrt(saturate(1.0f - dot(normalXY, normalXY)))));
-        float diffuse = saturate(dot(normal, normalize(-lightDir)));
-        // six-way lit smoke では影は直接光成分だけに掛け、環境光は残す
-        // (影の中の煙が真っ黒に潰れず、環境光で形が見える)。
-        float3 lit = ambientColor + lightColor * diffuse * shadow;
+        float3 lightDirection = normalize(-lightDir);
+        float3 viewDir = normalize(cameraPos - p.worldPos);
+        // 巻き込み拡散 + 前方散乱。素の N·L だけでは煙が「不透明な球」に見え、
+        // 背後の光を透かさないので炎の手前の煙が暗いまま残る。
+        float diffuse = ParticleWrappedDiffuse(dot(normal, lightDirection), saturate(gSmokeWrap));
+        float back = ParticleBackScatter(viewDir, lightDirection,
+                                         gSmokeBackScatterPower, gSmokeTransmission);
+        // 影は直接光成分だけに掛け、環境光は残す (影の中の煙が真っ黒に潰れない)。
+        float3 lit = ambientColor + lightColor * ((diffuse + back) * shadow);
         result.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
     }
     else
@@ -323,8 +342,21 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     if ((gEffectsFlags & FBZZ_PFX_DISTORTION) != 0u)
     {
         float2 screenUv = p.svPosition.xy / max(float2(gScreenWidth, gScreenHeight), float2(1.0f, 1.0f));
-        float2 offset = (tex.rg * 2.0f - 1.0f) * gDistortionStrength;
-        float3 refracted = gSceneColor.Sample(gSampler, saturate(screenUv + offset)).rgb;
+        // 歪みベクトルは専用マップ優先。無い場合だけ従来どおり albedo の RG を流用する。
+        // WHY: albedo の RG を向きとして使うと、素材を差し替えただけで曲がる向きが変わる。
+        // NOTE: 専用マップはリニア化しない (色ではなく [-1,1] のベクトルなので、
+        //       ガンマを掛けると向きが歪む)。
+        float2 vector2 = (gEffectsFlags & FBZZ_PFX_DISTORTION_MAP) != 0u
+            ? gDistortionTex.Sample(gSampler, currentUv).rg
+            : tex.rg;
+        float2 offset = (vector2 * 2.0f - 1.0f) * gDistortionStrength;
+        // 色収差: 屈折率の波長依存を、RGB を歪み方向へずらして表す。
+        // 衝撃波の縁が単色で滑るのを防ぎ、圧縮された空気の density 差が見えるようになる。
+        float2 dispersion = offset * gDistortionChromatic;
+        float3 refracted;
+        refracted.r = gSceneColor.Sample(gSampler, saturate(screenUv + offset + dispersion)).r;
+        refracted.g = gSceneColor.Sample(gSampler, saturate(screenUv + offset)).g;
+        refracted.b = gSceneColor.Sample(gSampler, saturate(screenUv + offset - dispersion)).b;
         result = float4(refracted, result.a);
     }
     // 事前乗算アルファは SrcBlend=ONE なので RGB が「そのまま」出力される。

@@ -3,6 +3,7 @@
 // 層構成 (recipe) の表と、そこからのグラフ生成
 #include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
 
+#include <Editor/Util/ParticleMaterialFactory.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <algorithm>
 #include <cmath>
@@ -229,6 +230,16 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
         const auto it = options.roleTextures.find(role);
         return it == options.roleTextures.end() ? std::string{} : it->second;
     };
+    // ロールのテクスチャを、その層のブレンドで描ける .mat へ変換する。
+    // WHY: ParticleEmitter / Trail は materialPath しか持てない。ここでテクスチャを
+    //      そのまま入れると .mat として解決できず、1x1 白テクスチャで描かれてしまう
+    //      (「Recipe から作ると必ず白い四角になる」の原因はこれだった)。
+    const auto materialFor = [&options, &textureFor](const char* role, int blendMode) -> std::string {
+        const std::string texture = textureFor(role);
+        if (texture.empty() || options.projectRoot.empty()) return {};
+        return EnsureParticleMaterial(options.projectRoot, texture,
+                                      static_cast<scene::ParticleBlendMode>(blendMode));
+    };
 
     for (const VFXRecipeLayer& layer : recipe.layerSpecs) {
         asset::VFXGraphNode node;
@@ -260,7 +271,7 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
             emitter.velocitySpread = layer.velocitySpread * scale;
             emitter.gravity = { 0.0f, layer.gravityY * scale, 0.0f };
             emitter.emitVelocity = { 0.0f, 0.0f, 0.0f };
-            emitter.materialPath = textureFor(layer.assetRole);
+            emitter.materialPath = materialFor(layer.assetRole, layer.blendMode);
             emitter.blendMode = static_cast<scene::ParticleBlendMode>(layer.blendMode);
             emitter.sortMode = static_cast<scene::ParticleSortMode>(layer.sortMode);
             emitter.emissiveScale = layer.emissiveScale;
@@ -281,7 +292,7 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
                 emitter.emitRate = layer.emitRate * countScale;
             }
         } else if (layer.nodeType == VFXNodeType::Trail) {
-            node.trail.materialPath = textureFor(layer.assetRole);
+            node.trail.materialPath = materialFor(layer.assetRole, layer.blendMode);
             node.trail.beamMode = true;
             node.trail.beamStart = { 0.0f, 0.0f, 0.0f };
             node.trail.beamEnd = { 0.0f, 0.0f, 12.0f * scale };

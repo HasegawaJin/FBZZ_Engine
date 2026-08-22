@@ -77,6 +77,8 @@ gravity = [0.0, 0.0, 0.0]
 # 縦に伸ばす層なので回転させない (回すとせん断される)。
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
+# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
+materialPath = "Assets/Materials/Particles/Flame03_Additive.mat"
 # 芯炎: 260 粒子が重なるので単体は控えめに。光量は Light ノードが担う
 blendMode = 0
 sortMode = 0
@@ -132,6 +134,7 @@ velocityDamping = 1.35
 gravity = [0.0, 0.0, 0.0]
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
+materialPath = "Assets/Materials/Particles/Flame05_Premultiplied.mat"
 # WHY: 炎が「物体」に見えるには不透明な芯が要る。全部加算だと背景が透けて
 #      光の靄になり、輪郭が消える。body は Premultiplied、hot core だけ加算にする。
 # 外炎: 素材が事前乗算相当なので Premultiplied。Alpha だと縁が汚れる
@@ -186,6 +189,7 @@ lifetimeRandom = 0.5
 emitVelocity = [0.0, 1.0, 0.0]
 velocitySpread = 0.3
 gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Smoke03_Alpha.mat"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -234,6 +238,7 @@ velocityDamping = 0.35
 # 火の粉だけは下向き重力を持つ。上がりっぱなしだと「立ち上る点」にしか見えず、
 # 上昇風の外へ抜けて落ちる粒があることで初めて熱気の境界が見える。
 gravity = [0.0, -0.6, 0.0]
+materialPath = "Assets/Materials/Particles/Spark01_Additive.mat"
 # 火の粉: 小さく数も少ないので強めでよい
 blendMode = 0
 emissiveScale = 3.5
@@ -291,6 +296,7 @@ gravity = [0.0, 0.0, 0.0]
 angularVelocityMin = -0.4
 angularVelocityMax = 0.4
 sizeAxisScale = [1.0, 1.0, 1.0]
+materialPath = "Assets/Materials/Particles/Smoke09_Premultiplied.mat"
 # 煤煙: 背景を隠す本体。Premultiplied で二重暗化を避ける
 blendMode = 2
 sortMode = 1

@@ -9,6 +9,7 @@
 //   u2  = RWStructuredBuffer<GpuParticle> (パーティクルプール DEFAULT)
 
 #include "Common/Binding.hlsli"
+#include "Common/Color.hlsli"
 #include "Rendering/ParticleNoise.hlsli"
 
 // ---------- 構造体 --------------------------------------------------------
@@ -37,7 +38,8 @@ struct GpuSpawnEntry
     float3 velocity;
     float  size;
     float4 colorStart;
-    float4 colorEnd;
+    // 粒子ごとの色ゆらぎ倍率 (xyz)。w は未使用。
+    float4 colorScale;
     float4 uvRect;
     float  rotation;
     float  angularVelocity;
@@ -298,6 +300,60 @@ float EvaluateCurve8(float4 keys01, float4 keys23, float4 keys45, float4 keys67,
     return keys[last].y;
 }
 
+// ---------- グラデーションの色空間 -----------------------------------------
+// 式は ParticleEmitter.hpp の ParticleGradient::MixKeys / ParticleColorSpace.hpp と
+// 完全に一致させること。ずれると同じ .vfx が CPU/GPU で違う色になる。
+
+float3 SignedCbrt3(float3 v)
+{
+    return sign(v) * pow(abs(v), 1.0f / 3.0f);
+}
+
+float3 LinearToOklab(float3 c)
+{
+    float3 lms = float3(
+        0.4122214708f * c.r + 0.5363325363f * c.g + 0.0514459929f * c.b,
+        0.2119034982f * c.r + 0.6806995451f * c.g + 0.1073969566f * c.b,
+        0.0883024619f * c.r + 0.2817188376f * c.g + 0.6299787005f * c.b);
+    float3 m = SignedCbrt3(lms);
+    return float3(
+        0.2104542553f * m.x + 0.7936177850f * m.y - 0.0040720468f * m.z,
+        1.9779984951f * m.x - 2.4285922050f * m.y + 0.4505937099f * m.z,
+        0.0259040371f * m.x + 0.7827717662f * m.y - 0.8086757660f * m.z);
+}
+
+float3 OklabToLinear(float3 lab)
+{
+    float3 m = float3(
+        lab.x + 0.3963377774f * lab.y + 0.2158037573f * lab.z,
+        lab.x - 0.1055613458f * lab.y - 0.0638541728f * lab.z,
+        lab.x - 0.0894841775f * lab.y - 1.2914855480f * lab.z);
+    float3 lms = m * m * m;
+    return float3(
+         4.0767416621f * lms.x - 3.3077115913f * lms.y + 0.2309699292f * lms.z,
+        -1.2684380046f * lms.x + 2.6097574011f * lms.y - 0.3413193965f * lms.z,
+        -0.0041960863f * lms.x - 0.7034186147f * lms.y + 1.7076147010f * lms.z);
+}
+
+// 2 キーをオーサリング空間 (sRGB) で受け取り、指定空間で混ぜて sRGB のまま返す。
+// アルファは常に線形補間 (不透明度は光量ではないため色空間の対象外)。
+float4 MixGradientKeys(float4 a, float4 b, float alpha, float space)
+{
+    float w = lerp(a.a, b.a, alpha);
+    if (space > 1.5f)   // Oklab
+    {
+        float3 oa = LinearToOklab(SRGBToLinear(a.rgb));
+        float3 ob = LinearToOklab(SRGBToLinear(b.rgb));
+        return float4(LinearToSRGB(OklabToLinear(lerp(oa, ob, alpha))), w);
+    }
+    if (space > 0.5f)   // Linear
+    {
+        return float4(LinearToSRGB(lerp(SRGBToLinear(a.rgb), SRGBToLinear(b.rgb), alpha)), w);
+    }
+    return float4(lerp(a.rgb, b.rgb, alpha), w);   // Gamma
+}
+
+// 戻り値はリニア。粒子バッファへ書く色は常にリニアで、描画側は変換しない。
 float4 EvaluateGradient8(float t)
 {
     float times[8] = {
@@ -309,17 +365,19 @@ float4 EvaluateGradient8(float t)
         gGradientColors47[0], gGradientColors47[1], gGradientColors47[2], gGradientColors47[3]
     };
     uint last = (uint)clamp(gGradientMeta.x, 1.0f, 8.0f) - 1u;
-    if (t <= times[0]) return colors[0];
+    float space = gGradientMeta.z;
+    if (t <= times[0]) return SRGBToLinear(colors[0]);
     for (uint i = 1; i < 8; ++i)
     {
         if (i > last) break;
         if (t <= times[i])
         {
             float alpha = saturate((t - times[i - 1]) / max(times[i] - times[i - 1], 1.0e-4f));
-            return lerp(colors[i - 1], colors[i], ApplyCurveInterpolation(alpha, gGradientMeta.y));
+            alpha = ApplyCurveInterpolation(alpha, gGradientMeta.y);
+            return SRGBToLinear(MixGradientKeys(colors[i - 1], colors[i], alpha, space));
         }
     }
-    return colors[last];
+    return SRGBToLinear(colors[last]);
 }
 
 // ---------- カーネル -------------------------------------------------------
@@ -349,13 +407,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         p.angularVelocity = s.angularVelocity;
         p.spriteSeed      = s.spriteSeed;
         p.uvRect          = s.uvRect;
-        // CPU が配ったゆらぎ済み色と、CB の基準色との比を倍率として取り出す。
-        // WHY: GpuSpawnEntry を太らせずに済み、CPU 側は既存の colorStart 書き込みだけで完結する。
-        //      基準色が 0 のチャンネルは何を掛けても 0 なので、倍率は 1 にしておけばよい。
-        p.colorScale = float3(
-            gColorStart.r > 1.0e-5f ? s.colorStart.r / gColorStart.r : 1.0f,
-            gColorStart.g > 1.0e-5f ? s.colorStart.g / gColorStart.g : 1.0f,
-            gColorStart.b > 1.0e-5f ? s.colorStart.b / gColorStart.b : 1.0f);
+        // 色ゆらぎ倍率は CPU が求めた値をそのまま受け取る。
+        // WHY: 旧実装は colorStart と CB の基準色の「比」から復元していたが、
+        //      グラデーション使用時は色が基準色と無関係になるため復元が成立せず、
+        //      GPU だけゆらぎが化けていた。CPU/GPU で必ず同じ値を使う。
+        p.colorScale = s.colorScale.rgb;
         p.colorScalePad = 0.0f;
     }
     else
@@ -433,9 +489,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // 寿命 t [0, 1] で色・サイズ補間 (CPU の colorCurvePower / sizeCurvePower と一致)
     float t = saturate(p.age / p.lifetime);
+    // 粒子バッファへ書く色は常にリニア。描画シェーダーは頂点カラーを変換しない。
     p.color = gCurveFlags.z > 0.5f
         ? EvaluateGradient8(t)
-        : lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower));
+        : SRGBToLinear(lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower)));
     // 粒子ごとの色ゆらぎを掛け直す (alpha はフェード制御なので触らない)。
     p.color.rgb *= p.colorScale;
     float sizeT = gCurveFlags.x > 0.5f

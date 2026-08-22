@@ -31,6 +31,19 @@ enum class ParticleSortMode : uint8_t {
     BackToFront = 1,
 };
 
+// グラデーションのキー間をどの色空間で混ぜるか。
+// WHY: どの空間で混ぜるかは「正解が 1 つに決まらない」種類の選択で、用途で使い分かれる。
+//      Gamma はカラーピッカー上の見た目どおりに繋がるが、白熱 → 橙 → 暗赤のような
+//      彩度の高いランプでは中間が濁る。Linear は光として正しく足し合わさる代わりに
+//      中間が明るく寄る。Oklab は明度と色相が知覚的に等間隔で動くため、
+//      魔法エフェクトのような色相を大きく回すランプで破綻しない。
+// 値は Assets/Shaders/Rendering/ParticleCommon.hlsli の FBZZ_PGRAD_* と一致させること。
+enum class ParticleColorSpace : uint8_t {
+    Gamma  = 0, // オーサリング値をそのまま線形補間 (従来の挙動)
+    Linear = 1, // リニア空間で補間
+    Oklab  = 2, // 知覚的に等間隔な OkLab で補間
+};
+
 enum class ParticleSimulationMode : uint8_t {
     Cpu = 0,
     Gpu = 1,

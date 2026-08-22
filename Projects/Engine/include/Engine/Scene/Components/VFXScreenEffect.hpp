@@ -34,7 +34,7 @@ struct VFXScreenEffect {
     {
         r.Field("enabled", enabled);
         r.Field("weight", weight);
-        r.Field("flashColor", flashColor);
+        r.ColorField("flashColor", flashColor);
         r.Field("flashIntensity", flashIntensity);
         r.Field("bloomBoost", bloomBoost);
         r.Field("chromaticAberration", chromaticAberration);

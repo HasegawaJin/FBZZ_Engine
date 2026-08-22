@@ -54,6 +54,12 @@ cbuffer ParticleRenderConstants : register(CB_MATERIAL)
     float gVolumetricNoiseScale;
     uint  gGpuSortEnabled;
     float gSelfShadowStrength;
+    // 以降は読まないが、b2 のレイアウトは GeometryPasses.hpp の ParticleRenderCB が正本。
+    float gSmokeWrap;
+    float gSmokeTransmission;
+    float4 gTintColor;
+    float gSmokeBackScatterPower;
+    float gDistortionChromatic;
     float gParticlePad1;
     float gParticlePad2;
 };

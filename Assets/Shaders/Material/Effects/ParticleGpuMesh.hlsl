@@ -69,6 +69,11 @@ cbuffer ParticleRenderConstants : register(CB_MATERIAL)
     float gVolumetricNoiseScale;
     uint  gGpuSortEnabled;
     float gSelfShadowStrength;
+    float gSmokeWrap;
+    float gSmokeTransmission;
+    float4 gTintColor;
+    float gSmokeBackScatterPower;
+    float gDistortionChromatic;
     float gParticlePad1;
     float gParticlePad2;
 };
@@ -131,10 +136,10 @@ MeshParticlePSIn VSMain(VSInput v, uint instanceId : SV_InstanceID)
 float4 PSMain(MeshParticlePSIn input) : SV_Target0
 {
     float4 texel = gTex.Sample(gSampler, input.uv);
-    // アルファの取り出し方はビルボード経路と同じ規約 (effectsFlags bit8-10) に従う。
-    // ここがずれると、同じ素材が billboard と mesh で違う抜き方をされる。
-    float4 resolved = ResolveParticleTexel(texel, gEffectsFlags);
-    float4 color = resolved * input.color;
+    // アルファの取り出し方と色空間はビルボード経路と同じ規約に従う。
+    // ここがずれると、同じ素材が billboard と mesh で違う抜き方・違う色で出る。
+    float4 resolved = ResolveParticleAlbedo(texel, gEffectsFlags);
+    float4 color = resolved * input.color * gTintColor;
 
     // 破片の立体感を出すための最小限のライティング。半球状の環境光を法線で振るだけで、
     // 影も IBL も通さない (パーティクルは大量に出るためピクセルコストを増やさない)。

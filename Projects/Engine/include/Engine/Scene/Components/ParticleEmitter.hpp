@@ -5,6 +5,7 @@
 // 描画リソースの所有は Renderer 側に分ける。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
@@ -48,7 +49,12 @@ struct GpuSpawnEntry {
     math::Vector3 velocity;        // 12B
     float         size;            // 4B
     math::Vector4 colorStart;      // 16B
-    math::Vector4 colorEnd;        // 16B
+    // 粒子ごとの色ゆらぎ倍率 (xyz)。w は未使用。
+    // WHY: 旧実装は CS 側で colorStart / CB の基準色の「比」から倍率を復元していた。
+    //      基準色が黒に近いチャンネルでは比が数値的に暴れ、グラデーション使用時は
+    //      そもそも基準色と無関係な色になるため復元が成立しなかった。
+    //      CPU が求めた倍率をそのまま渡せば CPU 経路と必ず一致する。
+    math::Vector4 colorScale;      // 16B
     math::Vector4 uvRect;          // 16B
     float         rotation;        // 4B
     float         angularVelocity; // 4B
@@ -78,6 +84,10 @@ struct Particle {
     float         spriteSeed = 0.0f;
     math::Vector4 startColor = { 1, 1, 1, 1 };
     math::Vector4 endColor = { 1, 1, 1, 0 };
+    // 発生時に配る色ゆらぎ倍率。毎フレーム作り直す色へ掛け直すため保持する。
+    // WHY: グラデーション使用時は color が毎フレーム上書きされるので、
+    //      スポーン時に色そのものへ焼き込むとゆらぎが翌フレームに消える。
+    math::Vector3 colorScale = { 1.0f, 1.0f, 1.0f };
     math::Vector4 uvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
     math::Vector4 nextUvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
     float spriteBlend = 0.0f;
@@ -93,6 +103,7 @@ struct Particle {
 struct ParticleCurveKey {
     float time = 0.0f;
     float value = 0.0f;
+    bool operator==(const ParticleCurveKey&) const = default;
 };
 
 // カーブ / グラデーションのキー上限。
@@ -149,10 +160,22 @@ struct ParticleCurve {
 struct ParticleGradientKey {
     float time = 0.0f;
     math::Vector4 color = { 1, 1, 1, 1 };
+    bool operator==(const ParticleGradientKey& other) const
+    {
+        return time == other.time
+            && color.x == other.color.x && color.y == other.color.y
+            && color.z == other.color.z && color.w == other.color.w;
+    }
 };
 
 // ParticleGradient — GPU転送可能な色Gradient。キー上限はカーブと共通。
 // Step 補間は「炎から煙へ切り替わる瞬間」のような硬い変化を作るのに使う。
+//
+// 色空間の規約 (エンジン全体で 1 つ):
+//   キーの RGB は「カラーピッカーに表示される値」= sRGB でオーサリングする。
+//   RGB は 1 を超えてよい (HDR)。シェーダーへ渡る直前に一度だけリニアへ変換する。
+//   CPU 経路は EvaluateLinear、GPU 経路は ParticleGpuSim.cs.hlsl の EvaluateGradient8 が
+//   同じ順序 (補間 → リニア化) で処理する。片方だけ変えると CPU/GPU で色が食い違う。
 struct ParticleGradient {
     std::array<ParticleGradientKey, kMaxParticleCurveKeys> keys{{
         {0.0f, {1, 1, 1, 1}}, {1.0f, {1, 1, 1, 0}},
@@ -162,7 +185,10 @@ struct ParticleGradient {
     }};
     uint32_t keyCount = 2;
     ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear;
+    ParticleColorSpace colorSpace = ParticleColorSpace::Gamma;
 
+    // オーサリング空間 (sRGB) で評価する。Editor のプレビュー帯やカラーピッカーは
+    // こちらを使う (ImGui は sRGB 値を受け取る前提のため)。
     math::Vector4 Evaluate(float time) const
     {
         const uint32_t count = keyCount < 1 ? 1 : (keyCount > keys.size() ? static_cast<uint32_t>(keys.size()) : keyCount);
@@ -172,13 +198,46 @@ struct ParticleGradient {
                 const float span = (std::max)(keys[index].time - keys[index - 1].time, 0.0001f);
                 float alpha = (std::max)(0.0f, (std::min)(1.0f, (time - keys[index - 1].time) / span));
                 alpha = ApplyCurveInterpolation(alpha, interpolation);
-                const math::Vector4& a = keys[index - 1].color;
-                const math::Vector4& b = keys[index].color;
-                return { a.x + (b.x - a.x) * alpha, a.y + (b.y - a.y) * alpha,
-                         a.z + (b.z - a.z) * alpha, a.w + (b.w - a.w) * alpha };
+                return MixKeys(keys[index - 1].color, keys[index].color, alpha);
             }
         }
         return keys[count - 1].color;
+    }
+
+    // 描画へ渡すリニア色。シミュレーションが粒子へ書くのは常にこちら。
+    math::Vector4 EvaluateLinear(float time) const
+    {
+        return ParticleSrgbToLinear(Evaluate(time));
+    }
+
+    // 2 キーを colorSpace に従って混ぜる。アルファは常に線形 (不透明度は光量ではないため)。
+    math::Vector4 MixKeys(const math::Vector4& a, const math::Vector4& b, float alpha) const
+    {
+        const float w = a.w + (b.w - a.w) * alpha;
+        switch (colorSpace) {
+        case ParticleColorSpace::Linear: {
+            const math::Vector4 la = ParticleSrgbToLinear(a);
+            const math::Vector4 lb = ParticleSrgbToLinear(b);
+            const math::Vector4 mixed = { la.x + (lb.x - la.x) * alpha,
+                                          la.y + (lb.y - la.y) * alpha,
+                                          la.z + (lb.z - la.z) * alpha, w };
+            return ParticleLinearToSrgb(mixed);
+        }
+        case ParticleColorSpace::Oklab: {
+            const math::Vector4 la = ParticleSrgbToLinear(a);
+            const math::Vector4 lb = ParticleSrgbToLinear(b);
+            const math::Vector3 oa = ParticleLinearToOklab({ la.x, la.y, la.z });
+            const math::Vector3 ob = ParticleLinearToOklab({ lb.x, lb.y, lb.z });
+            const math::Vector3 om = { oa.x + (ob.x - oa.x) * alpha,
+                                       oa.y + (ob.y - oa.y) * alpha,
+                                       oa.z + (ob.z - oa.z) * alpha };
+            const math::Vector3 back = ParticleOklabToLinear(om);
+            return ParticleLinearToSrgb({ back.x, back.y, back.z, w });
+        }
+        default:
+            return { a.x + (b.x - a.x) * alpha, a.y + (b.y - a.y) * alpha,
+                     a.z + (b.z - a.z) * alpha, w };
+        }
     }
 };
 
@@ -199,6 +258,14 @@ struct MeshShapeVertex {
     float boneWeights[4] = {};
     bool skinned = false;
 };
+
+// materialPath 未設定の Emitter が使う既定 .mat。
+// WHY: 未設定は 1x1 白テクスチャへ落ちるが、白は alpha=1 なので粒子が「色付きの
+//      不透明な四角」として描かれる。素材の付け忘れが最も分かりにくい形で現れるうえ、
+//      柔らかい既定さえあれば置いた瞬間から煙にも光にも見える。加算の丸い光を既定にする。
+// NOTE: これが無いプロジェクトでは従来どおり白へ落ちる (存在しなくても壊れない)。
+inline constexpr const char* PARTICLE_FALLBACK_MATERIAL =
+    "Assets/Materials/Particles/ParticleFallback.mat";
 
 struct ParticleEmitter {
     math::Vector3 emitPosition   = {};
@@ -272,6 +339,7 @@ struct ParticleEmitter {
 
     // .mat アセットへの参照。albedo テクスチャ・blendMode を .mat から解決する。
     // WHY: シェーダー・テクスチャ・ブレンドを .mat に集約し複数エミッター間で共有できるようにする。
+    // NOTE: 空のときは PARTICLE_FALLBACK_MATERIAL が使われる (白い矩形にはならない)。
     std::string materialPath;
     // 空でない場合はbillboardの代わりに静的Meshを各CPU粒子のTRSで描画する。
     std::string meshParticlePath;
@@ -311,6 +379,24 @@ struct ParticleEmitter {
     ParticleCurve velocityCurve;
     bool useColorGradient = false;
     ParticleGradient colorGradient;
+
+    // ── 黒体放射 (色温度オーサリング) ──
+    // 有効にすると colorGradient の RGB を温度カーブから毎フレーム作り直す
+    // (アルファはグラデーション側の値をそのまま使う)。
+    // WHY: 炎・爆発の色は「すす粒子の温度による黒体放射」で決まり、任意の RGB を
+    //      並べても炎に見えない。さらに輻射輝度は T^4 に比例するため、根元と先端の差は
+    //      色差ではなく数倍〜十数倍の輝度差として出る。RGB を手で置く限り
+    //      「白熱した芯 + 彩度の高い橙の縁」は作れない (芯を明るくすると縁まで白む)。
+    bool  blackbodyEnabled = false;
+    // 寿命 [0,1] → 色温度 [K]。既定は焚き火の実測域 (根元 1900K → 先端 1100K)。
+    // WHY: ParticleCurve の既定キーは 0→1 で、そのまま温度として使うと 1K = 真っ黒になる。
+    //      有効化した瞬間に炎らしい値が出ないと、機能があること自体に気付けない。
+    ParticleCurve temperatureCurve{
+        {{ {0.0f, 1900.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f},
+           {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f}, {1.0f, 1100.0f} }},
+        2, ParticleCurveInterpolation::Linear };
+    float blackbodyReferenceTemperature = 1800.0f; // ここで intensity 倍の明るさになる
+    float blackbodyIntensity = 1.0f;
     // 角速度に掛ける時間倍率。定数の angularVelocity だけでは
     // 「勢いよく回り始めて減速する」火の粉・破片の動きが作れない。
     bool useRotationCurve = false;
@@ -387,8 +473,25 @@ struct ParticleEmitter {
     // Heat hazeは不透明シーンcopyを背景として屈折し、lit smokeはbillboard疑似法線で照明応答する。
     bool distortion = false;
     float distortionStrength = 0.015f;
+    // 歪みベクトル専用のノーマルマップ。空なら従来どおり albedo の RG を流用する。
+    // WHY: albedo の RG を歪みベクトルとして使うと、素材を差し替えただけで屈折の向きが
+    //      意味不明に変わる。衝撃波・陽炎は「どちらへ曲げるか」が絵の要なので、
+    //      色とは独立した専用マップを持てないと調整が成立しない。
+    std::string distortionTexturePath;
+    // 色収差量 [画面 UV]。RGB を歪み方向へずらして屈折の分散を出す。0 で無効。
+    float distortionChromatic = 0.0f;
     bool sixWayLighting = false;
     float lightingStrength = 1.0f;
+    // ── 煙の散乱 (sixWayLighting 有効時) ──
+    // WHY: 素の N·L は「不透明な球」の陰影で、光を透かす媒質には合わない。
+    //      煙・雲が背後の光で縁から光るのは前方散乱 (Mie 散乱の位相関数が前方に尖る) が
+    //      原因で、この項が無いと炎が煙の向こうにあっても煙は暗いままになる。
+    // 巻き込み拡散 [0,1]。大きいほど陰側へ光が回り込み、明暗の境界が消える。
+    float smokeWrap = 0.5f;
+    // 逆光透過の強さ。0 で無効 (従来の見た目)。
+    float smokeTransmission = 0.0f;
+    // 前方散乱の鋭さ。大きいほど光源の真後ろだけが強く光る。
+    float smokeBackScatterPower = 4.0f;
     float emissiveScale = 1.0f;
     // 影を受けるか。既定は無効 (発光エフェクトは影の中でも光るのが自然なため)。
     // WHY: 煙・埃のような非発光の粒子は、影の中で暗くならないと背景から浮いて見える。
@@ -441,7 +544,27 @@ struct ParticleEmitter {
     std::string           loadedTexturePath;
     renderer::ResourceHandle<renderer::TextureTag> motionVectorTexture;
     std::string           loadedMotionVectorTexturePath;
+    renderer::ResourceHandle<renderer::TextureTag> distortionTexture;
+    std::string           loadedDistortionTexturePath;
     std::string           loadedMaterialPath; // materialPath の変更検出用。シーン保存対象外。
+    // albedo テクスチャが sRGB でエンコードされているか (.meta の srgb)。
+    // WHY: 手描き素材は sRGB、ProceduralVFXTextures が焼くものはリニア。
+    //      一律にリニア化すると後者が暗く沈む。素材ごとの実際の値に従う。
+    bool                  textureIsSrgb = true;
+    // .mat の [params] albedo。リニアへ変換済み。
+    math::Vector4         materialTint = { 1.0f, 1.0f, 1.0f, 1.0f };
+    // 黒体放射を焼き込んだ後の実効グラデーション。blackbodyEnabled が false なら
+    // colorGradient のコピー。シミュレーションと GPU 定数バッファはこちらだけを見る。
+    ParticleGradient      runtimeGradient;
+    // RefreshRuntimeGradient の再計算判定に使う入力の写し。シーン保存対象外。
+    bool                                                       runtimeGradientValid = false;
+    bool                                                       runtimeGradientBlackbody = false;
+    float                                                      runtimeGradientReference = 0.0f;
+    float                                                      runtimeGradientIntensity = 0.0f;
+    std::array<ParticleGradientKey, kMaxParticleCurveKeys>     runtimeGradientSourceKeys{};
+    uint32_t                                                   runtimeGradientSourceCount = 0;
+    std::array<ParticleCurveKey, kMaxParticleCurveKeys>        runtimeGradientTemperatureKeys{};
+    uint32_t                                                   runtimeGradientTemperatureCount = 0;
 
     // GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuParticleBuffer; // RWStructuredBuffer: CS が更新
@@ -454,9 +577,11 @@ struct ParticleEmitter {
     // 連続リボン (trailRibbon)。帯の頂点は毎フレーム CPU で作り直す。
     // WHY: 履歴点はビルボード用にしか持っていないため、帯の形は粒子の運動から
     //      その場で組み立てるしかない (GPU シミュレーションでは履歴を持てないので CPU 限定)。
-    renderer::ResourceHandle<renderer::BufferTag>           trailRibbonVB;
+    // 頂点バッファはここに持たず、描画側の DynamicVertexBufferPool から借りる。
+    // WHY: 帯はカメラへ正対させるので形がビューごとに変わる。エディタは 1 フレームで
+    //      Scene View と Game View を続けて描くため、エミッターに 1 本持たせると
+    //      DX12 では後のビューの形が先のビューの Draw まで書き替えてしまう。
     renderer::ResourceHandle<renderer::ConstantBufferTag>   trailRibbonCB;
-    uint32_t trailRibbonVertexCapacity = 0;
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSortBuffer;     // RWStructuredBuffer<uint2>
     renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuSortCB;         // bitonic の (k, j) を段ごとに更新
     uint32_t gpuSortCapacity = 0;   // gpuSortBuffer の要素数 (2 のべき乗、maxParticles 以上)
@@ -500,6 +625,46 @@ struct ParticleEmitter {
     // randomSeed から決定論的にその時刻まで再シミュレートする。負値 = 要求なし。
     float    editorScrubTime      = -1.0f;
 
+    /// runtimeGradient を作り直す。入力が変わっていなければ何もしないので、どこから呼んでもよい。
+    /// @note 黒体モードでは各キーの時刻で温度カーブを引き、色温度 → リニア RGB → オーサリング空間
+    ///       (sRGB) へ戻して格納する。オーサリング空間で持つのは、CPU 経路も GPU 経路も
+    ///       「補間 → リニア化」という同じ順序を通すため。ここだけ別空間にすると片方が破綻する。
+    void RefreshRuntimeGradient()
+    {
+        // 黒体の焼き込みはキー 1 点あたり可視域 81 サンプルの積分になる。粒子ごとの
+        // 更新から間接的に呼ばれても潰れないよう、入力が変わったときだけ作り直す。
+        if (runtimeGradientValid
+            && !blackbodyEnabled == !runtimeGradientBlackbody
+            && runtimeGradientReference == blackbodyReferenceTemperature
+            && runtimeGradientIntensity == blackbodyIntensity
+            && runtimeGradientSourceKeys == colorGradient.keys
+            && runtimeGradientSourceCount == colorGradient.keyCount
+            && runtimeGradientTemperatureKeys == temperatureCurve.keys
+            && runtimeGradientTemperatureCount == temperatureCurve.keyCount) {
+            return;
+        }
+        runtimeGradientValid = true;
+        runtimeGradientBlackbody = blackbodyEnabled;
+        runtimeGradientReference = blackbodyReferenceTemperature;
+        runtimeGradientIntensity = blackbodyIntensity;
+        runtimeGradientSourceKeys = colorGradient.keys;
+        runtimeGradientSourceCount = colorGradient.keyCount;
+        runtimeGradientTemperatureKeys = temperatureCurve.keys;
+        runtimeGradientTemperatureCount = temperatureCurve.keyCount;
+
+        runtimeGradient = colorGradient;
+        if (!blackbodyEnabled) return;
+        const uint32_t count = (std::min)(runtimeGradient.keyCount,
+                                          static_cast<uint32_t>(runtimeGradient.keys.size()));
+        for (uint32_t index = 0; index < count; ++index) {
+            const float kelvin = temperatureCurve.Evaluate(runtimeGradient.keys[index].time);
+            const math::Vector3 linear = ParticleBlackbodyLinear(
+                kelvin, blackbodyReferenceTemperature, blackbodyIntensity);
+            runtimeGradient.keys[index].color = ParticleLinearToSrgb(
+                { linear.x, linear.y, linear.z, runtimeGradient.keys[index].color.w });
+        }
+    }
+
     // 実効プレビュー速度。エディターからの書き込みが 2 フレーム以上途絶えていたら 1.0 に戻す。
     // WHY: ゲーム実行時 (エディターなし) は書き込みが存在しないため常に 1.0 になり、影響しない。
     float GetEditorTimeScale(uint64_t currentFrame) const
@@ -525,6 +690,9 @@ struct ParticleEmitter {
         randomState            = randomSeed != 0 ? randomSeed : 1;
         particles.clear();
         gpuClearPending        = true;
+        // ロード直後やスクラブ開始時に、再生が 1 フレームも進まないまま粒子色を
+        // 引かれることがある。実効グラデーションを先に用意しておく。
+        RefreshRuntimeGradient();
     }
 
     // Inspector / Script / Operator が共有する再生制御。
@@ -572,8 +740,8 @@ struct ParticleEmitter {
         r.Field("emitPosition", emitPosition);
         r.Field("emitVelocity", emitVelocity);
         r.Field("velocitySpread", velocitySpread);
-        r.Field("colorStart", colorStart);
-        r.Field("colorEnd", colorEnd);
+        r.ColorField("colorStart", colorStart);
+        r.ColorField("colorEnd", colorEnd);
         r.Field("sizeStart", sizeStart);
         r.Field("sizeEnd", sizeEnd);
         r.Field("lifetime", lifetime);
@@ -674,9 +842,21 @@ struct ParticleEmitter {
         r.Field("softParticleFadeDistance", softParticleFadeDistance);
         r.Field("distortion", distortion);
         r.Field("distortionStrength", distortionStrength);
+        r.Field("distortionTexturePath", distortionTexturePath);
+        r.Field("distortionChromatic", distortionChromatic);
         r.Field("sixWayLighting", sixWayLighting);
         r.Field("lightingStrength", lightingStrength);
+        r.Field("smokeWrap", smokeWrap);
+        r.Field("smokeTransmission", smokeTransmission);
+        r.Field("smokeBackScatterPower", smokeBackScatterPower);
         r.Field("emissiveScale", emissiveScale);
+        r.Field("blackbodyEnabled", blackbodyEnabled);
+        r.Field("blackbodyReferenceTemperature", blackbodyReferenceTemperature);
+        r.Field("blackbodyIntensity", blackbodyIntensity);
+        int gradientColorSpaceValue = static_cast<int>(colorGradient.colorSpace);
+        r.Field("gradientColorSpace", gradientColorSpaceValue);
+        colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+            gradientColorSpaceValue < 0 ? 0 : (gradientColorSpaceValue > 2 ? 2 : gradientColorSpaceValue));
         r.Field("cullingEnabled", cullingEnabled);
         r.Field("cullingBoundsPadding", cullingBoundsPadding);
         r.Field("lodEnabled", lodEnabled);

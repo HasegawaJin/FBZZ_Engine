@@ -53,6 +53,8 @@ sizeCurvePower = 2.8
 lifetime = 0.09
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
+# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
+materialPath = "Assets/Materials/Particles/Muzzle03_Additive.mat"
 # ヒットフラッシュ: 6 粒子のみ
 blendMode = 0
 sortMode = 0
@@ -96,6 +98,7 @@ emitVelocity = [0.0, 0.0, 9.0]
 velocitySpread = 8.0
 velocityDamping = 3.5
 gravity = [0.0, -9.0, 0.0]
+materialPath = "Assets/Materials/Particles/Spark06_Additive.mat"
 # 放射火花
 blendMode = 0
 renderMode = 1
@@ -151,10 +154,12 @@ sizeCurvePower = 0.3
 lifetime = 0.22
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Twirl02_Alpha.mat"
 blendMode = 1
 sortMode = 1
 distortion = true
 distortionStrength = 0.09
+distortionChromatic = 0.4
 softParticles = true
 softParticleFadeDistance = 0.5
 emissiveScale = 0.0
@@ -201,11 +206,16 @@ velocityDamping = 4.0
 gravity = [0.0, -0.4, 0.0]
 angularVelocityMin = 0.0   # 潰した形を Dust Shape で公開しているため回転側を捨てる
 angularVelocityMax = 0.0
+materialPath = "Assets/Materials/Particles/Smoke01_Premultiplied.mat"
 # 土煙
 blendMode = 2
 sortMode = 1
 sixWayLighting = true
-lightingStrength = 0.65
+# 土煙は粒が大きく散乱が弱い。透過は控えめにして、巻き込みで陰側の黒潰れだけ避ける。
+lightingStrength = 0.85
+smokeWrap = 0.55
+smokeTransmission = 0.5
+smokeBackScatterPower = 6.0
 softParticles = true
 softParticleFadeDistance = 0.4
 # 粉塵は最奥。火花より手前に来ると当たった瞬間が煙で埋まる。
@@ -255,6 +265,7 @@ velocitySpread = 3.4
 gravity = [0.0, -16.0, 0.0]
 angularVelocityMin = -10.0
 angularVelocityMax = 10.0
+materialPath = "Assets/Materials/Particles/Dirt01_Premultiplied.mat"
 # 破片
 blendMode = 2
 sortMode = 1

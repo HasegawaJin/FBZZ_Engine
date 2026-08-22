@@ -48,6 +48,13 @@ cbuffer ParticleRenderConstants : register(CB_MATERIAL)
     // ParticleRenderCB のレイアウトを 1 バイトもずらさないよう必ず宣言を揃える。
     uint  gGpuSortEnabled;
     float gSelfShadowStrength;
+    // 以降は読まないが、b2 のレイアウトは GeometryPasses.hpp の ParticleRenderCB が正本。
+    // 宣言を短いままにすると、後から先頭側へフィールドが増えたときに黙ってずれる。
+    float gSmokeWrap;
+    float gSmokeTransmission;
+    float4 gTintColor;
+    float gSmokeBackScatterPower;
+    float gDistortionChromatic;
     float gParticlePad1;
     float gParticlePad2;
 };

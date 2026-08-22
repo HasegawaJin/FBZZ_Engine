@@ -53,6 +53,8 @@ sizeCurvePower = 2.4
 lifetime = 0.14
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
+# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
+materialPath = "Assets/Materials/Particles/Flare01_Additive.mat"
 # 閃光: 8 粒子だけなので強くてよい。ここが白飛びの主役ではない
 blendMode = 0
 sortMode = 0
@@ -95,6 +97,7 @@ velocityDamping = 3.2
 gravity = [0.0, -1.2, 0.0]
 angularVelocityMin = -2.5
 angularVelocityMax = 2.5
+materialPath = "Assets/Materials/Particles/Fire02_Additive.mat"
 # 火球: 900 粒子。旧 6.0 では重なった瞬間に白飽和していた
 blendMode = 0
 sortMode = 0
@@ -150,6 +153,7 @@ sizeCurvePower = 0.35
 lifetime = 0.45
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Twirl01_Alpha.mat"
 blendMode = 1
 sortMode = 1
 distortion = true
@@ -196,6 +200,7 @@ lifetimeRandom = 0.6
 velocitySpread = 14.0
 velocityDamping = 1.1
 gravity = [0.0, -16.0, 0.0]
+materialPath = "Assets/Materials/Particles/Spark04_Additive.mat"
 # 火花
 blendMode = 0
 renderMode = 1
@@ -251,6 +256,7 @@ velocitySpread = 5.5
 gravity = [0.0, -18.0, 0.0]
 angularVelocityMin = -8.0
 angularVelocityMax = 8.0
+materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
 # 破片: 不透明な小片。Premultiplied
 blendMode = 2
 sortMode = 1
@@ -298,6 +304,7 @@ velocityDamping = 0.5
 gravity = [0.0, 0.55, 0.0]
 angularVelocityMin = -0.6
 angularVelocityMax = 0.6
+materialPath = "Assets/Materials/Particles/Smoke07_Premultiplied.mat"
 # 煙柱: 背景を隠す本体
 blendMode = 2
 sortMode = 1
@@ -354,6 +361,7 @@ emitVelocity = [0.0, 1.4, 0.0]
 velocitySpread = 1.2
 velocityDamping = 0.6
 gravity = [0.0, 0.8, 0.0]
+materialPath = "Assets/Materials/Particles/Spark01_Additive.mat"
 # 残り火
 blendMode = 0
 emissiveScale = 3.0

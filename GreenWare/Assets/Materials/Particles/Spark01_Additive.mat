@@ -1,0 +1,21 @@
+# FBZZ Engine
+# Spark01_Additive.mat
+# 火の粉・残り火。
+# WHY: ParticlePass は materialPath から albedo テクスチャと blend_mode だけを読む
+#      (shader / params は使わない)。素材 1 枚につき 1 マテリアルを置くことで、
+#      複数の Emitter から同じ素材設定を共有できる。
+# 素材: Assets/Textures/Particles/spark_01.png
+version = 1
+shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:b5990416201f4c57815dca8e3edc2063"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]

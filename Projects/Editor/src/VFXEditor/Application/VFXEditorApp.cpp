@@ -444,8 +444,11 @@ void VFXEditorApp::RenderPreview()
     settings.outlineColor[3] = 1.0f;
     scene::RenderSystemUIOptions uiOptions{};
     uiOptions.enabled = false;
+    // プレビュー World のカメラ設定を拾わせない (埋め込み版 EditorApp と同じ規則)。
+    const scene::CameraCullingSettings previewCulling{};
     scene::RenderSystem(*m_previewScene, *m_renderer, *m_resources, camera, m_previewRT,
-                        &settings, fbzz::Layer::Everything, &uiOptions, &m_previewPhysicsWorld);
+                        &settings, fbzz::Layer::Everything, &uiOptions, &m_previewPhysicsWorld,
+                        &previewCulling);
     // 同期readbackを毎フレーム行わない。次の計測はDebugメニューから明示要求する。
     m_panel.Session().preview.overdrawReadbackRequested = false;
 }
@@ -483,8 +486,10 @@ void VFXEditorApp::RenderAiPreview()
     settings.showSelectionOutline = false;
     scene::RenderSystemUIOptions uiOptions{};
     uiOptions.enabled = false;
+    const scene::CameraCullingSettings captureCulling{};
     scene::RenderSystem(*m_aiPreviewScene, *m_renderer, *m_resources, camera, m_aiPreviewRT,
-                        &settings, fbzz::Layer::Everything, &uiOptions, &m_aiPreviewPhysicsWorld);
+                        &settings, fbzz::Layer::Everything, &uiOptions, &m_aiPreviewPhysicsWorld,
+                        &captureCulling);
 }
 
 } // namespace fbzz::editor

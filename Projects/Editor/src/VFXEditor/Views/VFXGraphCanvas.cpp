@@ -152,7 +152,15 @@ void VFXGraphCanvas::AddNodeFromAsset(const std::string& sourcePath)
              || EndsWithInsensitive(path, ".jpeg") || EndsWithInsensitive(path, ".dds")
              || EndsWithInsensitive(path, ".tga") || EndsWithInsensitive(path, ".tex"))
         type = asset::VFXNodeType::Decal;
-    else if (!EndsWithInsensitive(path, ".mat")) {
+    else if (EndsWithInsensitive(path, ".mat")) {
+        // .mat は用途を自己申告している。Particle 決め打ちで作ると、デカール材質を
+        // 落とした人は「頂点が来ないパスに載って何も出ない」ノードを手で作り直すことになる。
+        const auto handle = asset::AssetManager::LoadMaterial(path);
+        const auto* material = handle.IsValid() ? asset::AssetManager::GetMaterial(handle) : nullptr;
+        if (material != nullptr && material->renderPath == asset::RenderPath::Decal)
+            type = asset::VFXNodeType::Decal;
+    }
+    else {
         m_session.document.error = "このアセット形式はVFXノードへ変換できません: " + path;
         return;
     }
@@ -167,7 +175,10 @@ void VFXGraphCanvas::AddNodeFromAsset(const std::string& sourcePath)
         if (EndsWithInsensitive(path, ".fbx")) node->animatedMesh.modelPath = path;
         else node->animatedMesh.controllerPath = path;
     }
-    else if (type == asset::VFXNodeType::Decal) node->decal.albedoPath = path;
+    else if (type == asset::VFXNodeType::Decal) {
+        if (EndsWithInsensitive(path, ".mat")) node->decal.materialPath = path;
+        else node->decal.albedoPath = path;
+    }
     else node->particle.materialPath = path;
     node->name = path.substr(path.find_last_of("/\\") + 1);
     m_session.preview.restartRequested = true;

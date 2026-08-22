@@ -23,6 +23,8 @@
 #include <Editor/VFXEditor/Document/VFXGraphOps.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/ParticleMaterialFactory.hpp>
+#include <Editor/Util/Toast.hpp>
 #include <toml++/toml.hpp>
 #include <sstream>
 
@@ -443,12 +445,26 @@ void VFXEditorSession::CreatePreviewEmitterFromAsset(EditorContext& ctx, const s
     if (ctx.activeScene->IsValid(parentId))
         if (auto* parent = ctx.activeScene->GetGameObject(parentId)) gameObject.SetParent(*parent);
     auto& emitter = gameObject.AddComponent<scene::ParticleEmitter>();
-    if (EndsWithInsensitive(path, ".mat")) emitter.materialPath = path;
-    else if (EndsWithInsensitive(path, ".mesh") || EndsWithInsensitive(path, ".fbx")
-             || EndsWithInsensitive(path, ".obj")) emitter.meshShapePath = path;
-    else {
-        // 描画テクスチャは ParticleEmitter へ直接保持せず、.mat の albedo スロットで指定する。
-        // テクスチャ単体のドロップはマテリアル作成後に割り当てる。
+    if (EndsWithInsensitive(path, ".mat")) {
+        emitter.materialPath = path;
+    } else if (EndsWithInsensitive(path, ".mesh") || EndsWithInsensitive(path, ".fbx")
+               || EndsWithInsensitive(path, ".obj")) {
+        emitter.meshShapePath = path;
+    } else if (IsTextureAssetPath(path)) {
+        // ParticleEmitter はテクスチャを直接持てないので、その場で .mat へ包む。
+        // WHY: 以前はここが空実装で、.png を落とすと「Emitter だけ生えて素材は付かず、
+        //      警告も出ない」状態だった。手持ちの素材が 1 枚も使えない原因のひとつ。
+        std::string error;
+        emitter.materialPath =
+            EnsureParticleMaterial(ctx.projectRoot, path, emitter.blendMode, &error);
+        if (emitter.materialPath.empty())
+            Toast::Error("Material を作れませんでした: " + error);
+        else
+            Toast::Success(util::FileSystem::GetFilename(path) + " -> "
+                           + util::FileSystem::GetFilename(emitter.materialPath));
+    } else {
+        Toast::Warning("Particle に使えないアセットです: "
+                       + util::FileSystem::GetFilename(path));
     }
     ctx.selectedEntities = { gameObject.GetID() };
     preview.selectedEntity = gameObject.GetID();

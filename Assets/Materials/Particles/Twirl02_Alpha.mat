@@ -1,0 +1,21 @@
+# FBZZ Engine
+# Twirl02_Alpha.mat
+# 着弾の屈折マスク。
+# WHY: ParticlePass は materialPath から albedo テクスチャと blend_mode だけを読む
+#      (shader / params は使わない)。素材 1 枚につき 1 マテリアルを置くことで、
+#      複数の Emitter から同じ素材設定を共有できる。
+# 素材: Assets/Textures/Particles/twirl_02.png
+version = 1
+shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:34729f66bf254ef3a9d7cb690b8bdcde"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]

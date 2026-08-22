@@ -1940,6 +1940,9 @@ void VFXEditorPanel::DrawRecipeWizardDialog(EditorContext& ctx)
     ImGui::Spacing();
     widgets::SectionHeader("素材");
     ImGui::TextDisabled("Asset Browser からドロップするか、パスを直接入力してください。");
+    // 何が起きるかを先に言う。.mat が勝手に増えると「知らないアセットがある」になる。
+    ImGui::TextDisabled("落としたテクスチャは層のブレンドに合わせた .mat へ変換され、");
+    ImGui::TextDisabled("Assets/Materials/Particles/ に置かれます (同名があれば再利用)。");
     for (const std::string& role : CollectRecipeRoles(recipe)) {
         if (std::none_of(m_recipeRoleTextures.begin(), m_recipeRoleTextures.end(),
                 [&role](const std::pair<std::string, std::string>& item) { return item.first == role; }))
@@ -1972,6 +1975,7 @@ void VFXEditorPanel::DrawRecipeWizardDialog(EditorContext& ctx)
         options.includeCameraShake = m_recipeShake;
         for (const auto& [role, path] : m_recipeRoleTextures)
             if (!path.empty()) options.roleTextures[role] = path;
+        options.projectRoot = ctx.projectRoot;
         const std::string stem =
             std::filesystem::path(m_session.document.path).stem().generic_string();
         options.graphName = stem.empty() ? std::string(recipe.name) : stem;

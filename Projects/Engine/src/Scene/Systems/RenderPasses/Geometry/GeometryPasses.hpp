@@ -72,6 +72,10 @@ inline constexpr std::uint32_t kParticleFxReceiveShadow = 8u;
 inline constexpr std::uint32_t kParticleFxVolumetric    = 16u;
 // 事前乗算アルファ。PS がソフトパーティクルの fade を RGB へも掛けるために使う。
 inline constexpr std::uint32_t kParticleFxPremultiplied = 32u;
+// albedo テクスチャが sRGB エンコード。PS が SRGBToLinear を掛ける。
+inline constexpr std::uint32_t kParticleFxSrgbTexture   = 64u;
+// 歪み専用ノーマルマップ (t1) がバインドされている。
+inline constexpr std::uint32_t kParticleFxDistortionMap = 128u;
 // アルファの取り出し方は bit8-10 の 3 ビットに ParticleAlphaSource を格納する。
 // 値は Rendering/Mask.hlsli の FBZZ_MASK_* と共通 (全マテリアルで同じ語彙を使う)。
 inline constexpr std::uint32_t kParticleAlphaShift = 8u;
@@ -119,12 +123,20 @@ struct ParticleRenderCB {
     // WHY: 受け影は「他の物体が落とす影」しか扱えない。粒子群が自分へ落とす影が無いと
     //      厚みのある煙・雲は光の当たり方が一様になり、平坦な塊に見える。
     float selfShadowStrength = 0.0f;
-    // cbuffer は 16 バイト境界で切り上がる。C++ 側と HLSL 側で同じ埋めを明示し、
-    // 後から末尾へ足したときにレイアウトが黙ってずれるのを防ぐ。
+    // ── 煙の散乱 (effectsFlags bit1 有効時) ──
+    // WHY: 素の N·L は不透明な球の陰影で、光を透かす媒質には合わない。
+    //      巻き込み拡散で陰側の黒潰れを避け、前方散乱で逆光時に縁が光るようにする。
+    float smokeWrap = 0.5f;
+    float smokeTransmission = 0.0f;
+    // HLSL の cbuffer では float4 が 16 バイト境界を跨げない。ここまでで offset 96 に
+    // 揃えてあるので、この 2 つを動かすとシェーダー側と黙ってずれる。
+    math::Vector4 tintColor = { 1.0f, 1.0f, 1.0f, 1.0f }; // .mat の albedo (リニア済み)
+    float smokeBackScatterPower = 4.0f;
+    float distortionChromatic = 0.0f;
     float pad1 = 0.0f;
     float pad2 = 0.0f;
 };
-static_assert(sizeof(ParticleRenderCB) == 96);
+static_assert(sizeof(ParticleRenderCB) == 128);
 
 // GPU パーティクルのソート用 CB (b0)。
 // LAYOUT: Rendering/ParticleSortCommon.hlsli の GpuParticleSortCB と一致させること。
@@ -152,15 +164,26 @@ struct TrailVertex {
 static_assert(sizeof(TrailVertex) == 24, "TrailVertex layout mismatch");
 
 // TrailCB — TrailConstants (cbuffer b2) の C++ ミラー。
+// NOTE: colorStart / colorEnd はリニアで入れること。オーサリング値 (sRGB) のまま渡すと
+//       HDR バッファへ sRGB 値を書くことになり、ACES を通した後で色が淡く飛ぶ。
 struct TrailCB {
     math::Vector4 colorStart;
     math::Vector4 colorEnd;
     float uvScrollSpeed = 0.0f;
     float uvTiling = 1.0f;
     float time = 0.0f;
-    float _pad = 0.0f;
+    // bit0 = テクスチャが sRGB エンコード (シェーダー側でリニア化する)。
+    std::uint32_t flags = 0;
 };
+// Trail.hlsl の gTrailFlags と一致させること。
+inline constexpr std::uint32_t kTrailFlagSrgbTexture = 1u;
 static_assert(sizeof(TrailCB) == 48, "TrailCB layout mismatch");
+
+// テクスチャが sRGB でエンコードされているかを .meta から引く。
+// WHY: このエンジンは _SRGB フォーマットの SRV を作らず、「シェーダーが自分で SRGBToLinear
+//      する」規約で統一されている。そのためシェーダーは素材が sRGB かどうかを知る必要がある。
+//      手描き素材は sRGB だが ProceduralVFXTextures はリニアで焼くため一律には決められない。
+[[nodiscard]] bool IsEffectTextureSrgb(const std::string& texturePath);
 
 // リボン 1 点ぶんの法線 (帯の幅方向)。カメラへ正対する向きを返す。
 // WHY: 帯は板なので、幅方向を進行方向とカメラ方向の両方に直交させないと

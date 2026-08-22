@@ -7,6 +7,7 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/ParticleEditWidgets.hpp>
+#include <Editor/Util/ParticleMaterialFactory.hpp>
 #include <Engine/Asset/FlipbookMotionVectors.hpp>
 #include <Engine/Asset/ProceduralVFXTextures.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
@@ -37,7 +38,6 @@ struct ProceduralFlipbookUiState {
     float noiseScale = 4.0f;
     float warpStrength = 0.65f;
     bool generateMotionVectors = false;
-    bool clearMaterialOverride = true;
     std::string status;
     bool statusIsError = false;
 };
@@ -374,9 +374,48 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
     if (BeginModule("Color over Lifetime", &pe.useColorGradient, /*defaultOpen=*/false, changed)) {
         if (pe.useColorGradient) {
             changed |= widgets::GradientEditor("Color Gradient", pe.colorGradient);
+            if (pe.blackbodyEnabled)
+                ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
+                    "Blackbody 有効: RGB は色温度から作られ、ここでの RGB は使われません (アルファのみ有効)");
         } else {
             changed |= ImGui::DragFloat("Color Curve Power", &pe.colorCurvePower, 0.01f, 0.01f, 10.0f);
             ImGui::TextDisabled("Start/End color blend. Enable the checkbox for a gradient.");
+        }
+        EndModule();
+    }
+
+    if (BeginModule("Blackbody (Temperature)", &pe.blackbodyEnabled, /*defaultOpen=*/false, changed)) {
+        if (pe.blackbodyEnabled) {
+            if (!pe.useColorGradient)
+                ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
+                    "Color over Lifetime を有効にしてください (アルファはグラデーション側が持ちます)");
+            changed |= widgets::CurveEditor("Temperature (K)", pe.temperatureCurve, 3000.0f);
+            ImGui::TextDisabled("炎 1000-1600K / 溶鉄 1800K / 爆轟閃光 3000K+ / 落雷 20000K");
+            changed |= ImGui::DragFloat("Reference (K)", &pe.blackbodyReferenceTemperature,
+                                        10.0f, 500.0f, 12000.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("この温度で Intensity どおりの明るさになります。\n"
+                                  "輝度は T^4 に比例するので、これより高い部分は HDR で白熱し、\n"
+                                  "低い部分は彩度を保ったまま暗く沈みます。");
+            changed |= ImGui::DragFloat("Intensity", &pe.blackbodyIntensity, 0.01f, 0.0f, 100.0f);
+            // 実際に焼き込まれる色を出す。数値だけでは温度と見た目が結び付かない。
+            pe.RefreshRuntimeGradient();
+            ImGui::TextDisabled("Baked");
+            ImGui::SameLine();
+            for (uint32_t i = 0; i < pe.runtimeGradient.keyCount; ++i) {
+                if (i > 0) ImGui::SameLine();
+                const auto& color = pe.runtimeGradient.keys[i].color;
+                ImGui::ColorButton("##baked",
+                    ImVec4(color.x, color.y, color.z, 1.0f),
+                    ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop,
+                    ImVec2(28.0f, 16.0f));
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("t=%.2f  %.0fK  rgb(%.2f, %.2f, %.2f)",
+                        pe.runtimeGradient.keys[i].time,
+                        pe.temperatureCurve.Evaluate(pe.runtimeGradient.keys[i].time),
+                        color.x, color.y, color.z);
+                }
+            }
         }
         EndModule();
     }
@@ -595,12 +634,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             ImGui::EndDisabled();
             if (distortionPreset)
                 ImGui::TextDisabled("DistortionはRG自体が変位なのでMotion Vectorを生成しません。");
-            if (!pe.materialPath.empty()) {
-                ImGui::Checkbox("Replace .mat Texture", &procedural.clearMaterialOverride);
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip(".matはTexture欄より優先されます。ONなら生成物を見える状態にするため"
-                                      "Material参照を解除します。");
-            }
+            ImGui::TextDisabled("生成物はプリセットに対応するブレンドの .mat へ包んで割り当てます\n"
+                                "(Assets/Materials/Particles/)。現在の Material 参照は置き換わります。");
 
             if (ImGui::Button("Generate & Assign", { -1.0f, 0.0f })) {
                 asset::ProceduralFlipbookSettings settings;
@@ -616,11 +651,6 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                 procedural.status = result.message;
                 procedural.statusIsError = !result.success;
                 if (result.success) {
-                    if (procedural.clearMaterialOverride && !pe.materialPath.empty()) {
-                        pe.materialPath.clear();
-                        pe.loadedMaterialPath.clear();
-                    }
-                    // 生成物は .mat の albedo へ割り当てる。Emitter に直接テクスチャは保持しない。
                     pe.texture = {};
                     pe.loadedTexturePath.clear();
                     pe.spriteColumns = settings.columns;
@@ -668,6 +698,22 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                             }
                         }
                     }
+
+                    // 生成した PNG を .mat へ包んで割り当てる。ここを省くと Emitter は
+                    // テクスチャを持てないまま 1x1 白で描かれ、「生成したのに何も出ない」になる。
+                    // blendMode は .mat が正になるため、上で決めた値をそのまま焼き込む。
+                    std::string materialError;
+                    const std::string generatedMaterial = EnsureParticleMaterial(
+                        ctx.projectRoot, NormalizeAssetPath(result.albedoPath),
+                        pe.blendMode, &materialError);
+                    if (generatedMaterial.empty()) {
+                        procedural.status += "\nMaterial 生成失敗: " + materialError;
+                        procedural.statusIsError = true;
+                    } else {
+                        pe.materialPath = generatedMaterial;
+                        pe.loadedMaterialPath.clear();
+                        procedural.status += "\n割り当て: " + generatedMaterial;
+                    }
                     changed = true;
                 }
             }
@@ -677,9 +723,6 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                 else
                     ImGui::TextWrapped("%s", procedural.status.c_str());
             }
-            if (!pe.materialPath.empty() && !procedural.clearMaterialOverride)
-                ImGui::TextColored({ 1.0f, 0.72f, 0.35f, 1.0f },
-                    ".matが設定中です。生成TextureよりMaterial側Albedoが優先されます。");
             ImGui::TreePop();
         }
 
@@ -796,12 +839,17 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                               "同値のときはカメラから遠い順に描画されます。");
 
         // .mat 参照。変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
-        if (widgets::AssetPathField("Material (.mat)", pe.materialPath, ".mat", ctx.projectRoot)) {
+        // テクスチャを直接落とした場合は現在の Blend Mode で .mat を用意して差し替える。
+        if (ParticleMaterialField("Material", pe.materialPath, pe.blendMode, ctx.projectRoot)) {
             pe.loadedMaterialPath.clear();
             pe.texture = {};
             pe.loadedTexturePath.clear();
             changed = true;
         }
+        ImGui::TextDisabled(".png/.tga/.dds もドロップできます (現在の Blend Mode で .mat を作成)");
+        if (pe.materialPath.empty())
+            ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
+                "Material 未設定: ParticleFallback.mat (加算の丸い光) で描かれます");
         changed |= widgets::AssetPathField("Mesh Particle (optional)", pe.meshParticlePath,
                                            ".fbx,.obj,.mesh,.fzasset", ctx.projectRoot);
         if (!pe.meshParticlePath.empty())
@@ -811,8 +859,19 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             changed |= ImGui::DragFloat("Soft Fade Distance", &pe.softParticleFadeDistance, 0.01f, 0.001f, 100.0f);
         changed |= ImGui::DragFloat("HDR Emissive", &pe.emissiveScale, 0.01f, 0.0f, 100.0f);
         changed |= ImGui::Checkbox("Distortion / Heat Haze", &pe.distortion);
-        if (pe.distortion)
+        if (pe.distortion) {
             changed |= ImGui::DragFloat("Distortion Strength", &pe.distortionStrength, 0.001f, 0.0f, 0.25f, "%.4f");
+            changed |= widgets::AssetPathField("Distortion Map (optional)", pe.distortionTexturePath,
+                                               ".png,.tga,.dds", ctx.projectRoot);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("歪みの向きを決める RG マップです。\n"
+                                  "未設定なら albedo の RG を流用しますが、\n"
+                                  "その場合は素材を差し替えると曲がる向きも変わります。");
+            changed |= ImGui::DragFloat("Chromatic Aberration", &pe.distortionChromatic, 0.01f, 0.0f, 4.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("屈折率の波長依存を RGB のずれで表します。\n"
+                                  "衝撃波の縁が単色で滑るのを防ぎます。");
+        }
         if (ImGui::Checkbox("Six-way Lit Smoke", &pe.sixWayLighting)) {
             // 役割が重複するため排他にする (両方掛けると二重に陰影が付いて濁る)。
             if (pe.sixWayLighting) pe.volumetric = false;
@@ -824,6 +883,17 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             changed |= ImGui::SliderFloat("Lighting Strength", &pe.lightingStrength, 0.0f, 1.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("0 = 元の色そのまま / 1 = 完全にライティングで置換");
+            changed |= ImGui::SliderFloat("Smoke Wrap", &pe.smokeWrap, 0.0f, 1.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("陰側への光の回り込みです。\n"
+                                  "0 だと不透明な球の陰影になり、明暗の境界が硬く黒く落ちます。");
+            changed |= ImGui::DragFloat("Smoke Transmission", &pe.smokeTransmission, 0.01f, 0.0f, 8.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("逆光透過 (前方散乱) の強さです。\n"
+                                  "光源が煙の向こうにあるとき、縁が光って厚みが見えます。\n"
+                                  "0 だと炎が煙の背後にあっても煙は暗いままです。");
+            if (pe.smokeTransmission > 0.0f)
+                changed |= ImGui::DragFloat("Back Scatter Power", &pe.smokeBackScatterPower, 0.1f, 0.1f, 64.0f);
         }
         if (ImGui::Checkbox("Volumetric Smoke", &pe.volumetric)) {
             if (pe.volumetric) pe.sixWayLighting = false;

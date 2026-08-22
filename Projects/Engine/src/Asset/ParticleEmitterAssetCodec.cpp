@@ -96,10 +96,19 @@ scene::ParticleCurveInterpolation ReadInterpolation(const toml::node_view<const 
         std::clamp(mode, 0, static_cast<int>(scene::ParticleCurveInterpolation::Smooth)));
 }
 
+// キー配列を取り出す。2 つの表記を両方受け付ける。
+//   テーブル形式: curve = { interp = 0, keys = [[t, v], ...] }   ← Editor が書き出す形
+//   配列形式:     curve = [[t, v], ...]                          ← .scene と手書きアセットの形
+// WHY: 書き出しはテーブル形式だが、読み込みがテーブル形式しか受け付けていなかった。
+//      手書きの .vfx (Assets/VFX/Templates/*) は .scene と同じ配列形式で書かれており、
+//      colorGradient も dragCurve も丸ごと無視されて既定値のままロードされていた。
+//      既定のグラデーションは「白 → 透明」なので、テンプレートの炎も煙も魔法も
+//      すべて白い粒子として描かれる。テンプレートの色が出ない主因がこれ。
+//      配列形式を受け付ければ既存アセットは一切書き換えずに直る。
 const toml::array* CurveKeyArray(const toml::node_view<const toml::node>& value)
 {
     if (const auto* table = value.as_table()) return (*table)["keys"].as_array();
-    return nullptr;
+    return value.as_array();
 }
 
 } // namespace
@@ -140,6 +149,7 @@ toml::table SerializeParticleGradient(const scene::ParticleGradient& gradient)
     }
     toml::table table;
     table.insert("interp", static_cast<std::int64_t>(gradient.interpolation));
+    table.insert("space", static_cast<std::int64_t>(gradient.colorSpace));
     table.insert("keys", std::move(array));
     return table;
 }
@@ -150,8 +160,14 @@ void DeserializeParticleGradient(const toml::table& table, const char* key,
     const auto value = table[key];
     const auto* array = CurveKeyArray(value);
     if (array == nullptr || array->empty()) return;
-    if (const auto* asTable = value.as_table())
+    if (const auto* asTable = value.as_table()) {
         outGradient.interpolation = ReadInterpolation((*asTable)["interp"]);
+        // 未記載の既存アセットは Gamma (従来の挙動) のまま読む。
+        const int space = static_cast<int>((*asTable)["space"].value_or<std::int64_t>(
+            static_cast<std::int64_t>(scene::ParticleColorSpace::Gamma)));
+        outGradient.colorSpace = static_cast<scene::ParticleColorSpace>(
+            std::clamp(space, 0, static_cast<int>(scene::ParticleColorSpace::Oklab)));
+    }
     outGradient.keyCount =
         static_cast<std::uint32_t>((std::min)(array->size(), outGradient.keys.size()));
     for (std::uint32_t index = 0; index < outGradient.keyCount; ++index) {
@@ -214,7 +230,12 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     FBZZ_VFX_FLOAT(selfShadowStrength);
     FBZZ_VFX_BOOL(softParticles); FBZZ_VFX_FLOAT(softParticleFadeDistance);
     FBZZ_VFX_BOOL(distortion); FBZZ_VFX_FLOAT(distortionStrength); FBZZ_VFX_BOOL(sixWayLighting);
+    FBZZ_VFX_STRING(distortionTexturePath); FBZZ_VFX_FLOAT(distortionChromatic);
     FBZZ_VFX_FLOAT(lightingStrength); FBZZ_VFX_FLOAT(emissiveScale);
+    FBZZ_VFX_FLOAT(smokeWrap); FBZZ_VFX_FLOAT(smokeTransmission);
+    FBZZ_VFX_FLOAT(smokeBackScatterPower);
+    FBZZ_VFX_BOOL(blackbodyEnabled); FBZZ_VFX_FLOAT(blackbodyReferenceTemperature);
+    FBZZ_VFX_FLOAT(blackbodyIntensity);
     FBZZ_VFX_BOOL(receiveShadows); FBZZ_VFX_FLOAT(shadowStrength);
     FBZZ_VFX_BOOL(volumetric); FBZZ_VFX_INT(volumetricSteps);
     FBZZ_VFX_FLOAT(volumetricDensity); FBZZ_VFX_FLOAT(volumetricAnisotropy);
@@ -235,6 +256,7 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     WriteCurve(table, "velocityCurve", emitter.velocityCurve);
     WriteCurve(table, "rotationCurve", emitter.rotationCurve);
     WriteCurve(table, "dragCurve", emitter.dragCurve);
+    WriteCurve(table, "temperatureCurve", emitter.temperatureCurve);
     table.insert("colorGradient", SerializeParticleGradient(emitter.colorGradient));
     toml::array bursts;
     for (const auto& burst : emitter.bursts) {
@@ -307,7 +329,12 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(selfShadowStrength);
     FBZZ_VFX_BOOL(softParticles); FBZZ_VFX_FLOAT(softParticleFadeDistance);
     FBZZ_VFX_BOOL(distortion); FBZZ_VFX_FLOAT(distortionStrength); FBZZ_VFX_BOOL(sixWayLighting);
+    FBZZ_VFX_STRING(distortionTexturePath); FBZZ_VFX_FLOAT(distortionChromatic);
     FBZZ_VFX_FLOAT(lightingStrength); FBZZ_VFX_FLOAT(emissiveScale);
+    FBZZ_VFX_FLOAT(smokeWrap); FBZZ_VFX_FLOAT(smokeTransmission);
+    FBZZ_VFX_FLOAT(smokeBackScatterPower);
+    FBZZ_VFX_BOOL(blackbodyEnabled); FBZZ_VFX_FLOAT(blackbodyReferenceTemperature);
+    FBZZ_VFX_FLOAT(blackbodyIntensity);
     FBZZ_VFX_BOOL(receiveShadows); FBZZ_VFX_FLOAT(shadowStrength);
     FBZZ_VFX_BOOL(volumetric); FBZZ_VFX_INT(volumetricSteps);
     FBZZ_VFX_FLOAT(volumetricDensity); FBZZ_VFX_FLOAT(volumetricAnisotropy);
@@ -328,6 +355,7 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     ReadCurve(table, "velocityCurve", emitter.velocityCurve);
     ReadCurve(table, "rotationCurve", emitter.rotationCurve);
     ReadCurve(table, "dragCurve", emitter.dragCurve);
+    ReadCurve(table, "temperatureCurve", emitter.temperatureCurve);
     DeserializeParticleGradient(table, "colorGradient", emitter.colorGradient);
     emitter.bursts.clear();
     if (const auto* bursts = table["bursts"].as_array()) {

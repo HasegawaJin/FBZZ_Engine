@@ -153,12 +153,23 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
         MakeProperty<P, float, &P::softParticleFadeDistance>("softParticleFadeDistance", PropertyType::Float, "Soft Fade", "Renderer", true),
         MakeProperty<P, bool, &P::distortion>("distortion", PropertyType::Bool, "Distortion", "Renderer", true),
         MakeProperty<P, float, &P::distortionStrength>("distortionStrength", PropertyType::Float, "Distortion Strength", "Renderer", true, detail::Range(0, 0.25f)),
+        MakeProperty<P, std::string, &P::distortionTexturePath>("distortionTexturePath", PropertyType::AssetRef, "Distortion Map", "Renderer", true),
+        MakeProperty<P, float, &P::distortionChromatic>("distortionChromatic", PropertyType::Float, "Chromatic Aberration", "Renderer", true, detail::Range(0, 4)),
         MakeProperty<P, bool, &P::sixWayLighting>("sixWayLighting", PropertyType::Bool, "Six-way Lit Smoke", "Renderer", true),
         // WHY: Particle.hlsl は lerp(1, lit, saturate(gLightingStrength)) で使うため 1.0 超は
         //      「元の色を完全に (ambient + N·L) へ置換」の意味しか持たない。暗い環境では
         //      煙が真っ黒に潰れるだけなので、レンジ自体を効果のある範囲へ絞る。
         MakeProperty<P, float, &P::lightingStrength>("lightingStrength", PropertyType::Float, "Lighting Strength", "Renderer", true, detail::Range(0, 1)),
+        // 煙の散乱。巻き込み拡散で陰側の黒潰れを避け、前方散乱で逆光時に縁が光る。
+        MakeProperty<P, float, &P::smokeWrap>("smokeWrap", PropertyType::Float, "Smoke Wrap", "Renderer", true, detail::Range(0, 1)),
+        MakeProperty<P, float, &P::smokeTransmission>("smokeTransmission", PropertyType::Float, "Smoke Transmission", "Renderer", true, detail::Range(0, 8)),
+        MakeProperty<P, float, &P::smokeBackScatterPower>("smokeBackScatterPower", PropertyType::Float, "Back Scatter Power", "Renderer", true, detail::Range(0.1f, 64)),
         MakeProperty<P, float, &P::emissiveScale>("emissiveScale", PropertyType::Float, "HDR Emissive", "Renderer", true, detail::Range(0, 100)),
+        // 黒体放射。色温度から炎・爆発の色と輝度 (T^4) を作る。
+        MakeProperty<P, bool, &P::blackbodyEnabled>("blackbodyEnabled", PropertyType::Bool, "Blackbody", "Blackbody", true),
+        MakeProperty<P, scene::ParticleCurve, &P::temperatureCurve>("temperatureCurve", PropertyType::Curve, "Temperature (K)", "Blackbody", true, detail::Range(500, 12000)),
+        MakeProperty<P, float, &P::blackbodyReferenceTemperature>("blackbodyReferenceTemperature", PropertyType::Float, "Reference (K)", "Blackbody", true, detail::Range(500, 12000)),
+        MakeProperty<P, float, &P::blackbodyIntensity>("blackbodyIntensity", PropertyType::Float, "Blackbody Intensity", "Blackbody", true, detail::Range(0, 100)),
         MakeProperty<P, bool, &P::receiveShadows>("receiveShadows", PropertyType::Bool, "Receive Shadows", "Renderer", true),
         MakeProperty<P, float, &P::shadowStrength>("shadowStrength", PropertyType::Float, "Shadow Strength", "Renderer", true, detail::Range(0, 1)),
         MakeProperty<P, bool, &P::volumetric>("volumetric", PropertyType::Bool, "Volumetric Smoke", "Volumetric", true),

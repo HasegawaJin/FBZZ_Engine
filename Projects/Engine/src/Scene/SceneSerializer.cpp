@@ -61,6 +61,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector2.hpp>
@@ -1459,114 +1460,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // ParticleEmitter
+        // WHY コーデックへ委譲するか: 同じ内容の表を手書きで二重管理していたため、
+        //     trail / volumetric / orbital / motionVector など 30 以上の項目が
+        //     .vfx 側にだけ追加され、シーン直置きの Emitter では保存対象から漏れていた。
+        //     Play のスナップショット往復でそれらが既定値へ戻る原因になっていた。
         if (auto* pe = go.GetComponent<ParticleEmitter>()) {
-            toml::table peTbl;
-            peTbl.insert("emitPosition",   Vec3ToArr(pe->emitPosition));
-            peTbl.insert("emitVelocity",   Vec3ToArr(pe->emitVelocity));
-            peTbl.insert("velocitySpread", (double)pe->velocitySpread);
-            peTbl.insert("colorStart",     Vec4ToArr(pe->colorStart));
-            peTbl.insert("colorEnd",       Vec4ToArr(pe->colorEnd));
-            peTbl.insert("sizeStart",      (double)pe->sizeStart);
-            peTbl.insert("sizeEnd",        (double)pe->sizeEnd);
-            peTbl.insert("lifetime",       (double)pe->lifetime);
-            peTbl.insert("emitRate",       (double)pe->emitRate);
-            peTbl.insert("maxParticles",   (int64_t)pe->maxParticles);
-            peTbl.insert("gravity",        Vec3ToArr(pe->gravity));
-            peTbl.insert("randomSeed",     (int64_t)pe->randomSeed);
-            peTbl.insert("playing",        pe->playing);
-            peTbl.insert("loop",           pe->loop);
-            peTbl.insert("duration",       (double)pe->duration);
-            peTbl.insert("startDelay",     (double)pe->startDelay);
-            peTbl.insert("clearOnStop",    pe->clearOnStop);
-            peTbl.insert("shape",          (int64_t)static_cast<int>(pe->shape));
-            peTbl.insert("sphereRadius",   (double)pe->sphereRadius);
-            peTbl.insert("coneAngleDegrees", (double)pe->coneAngleDegrees);
-            peTbl.insert("coneRadius",     (double)pe->coneRadius);
-            peTbl.insert("boxExtents",     Vec3ToArr(pe->boxExtents));
-            peTbl.insert("meshShapePath",  pe->meshShapePath);
-            peTbl.insert("meshShapeIndex", (int64_t)pe->meshShapeIndex);
-            peTbl.insert("meshShapeScale", (double)pe->meshShapeScale);
-            peTbl.insert("meshShapeFollowSkinnedAnimation", pe->meshShapeFollowSkinnedAnimation);
-            peTbl.insert("blendMode",      (int64_t)static_cast<int>(pe->blendMode));
-            peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
-            peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
-            peTbl.insert("materialPath",   pe->materialPath);
-            peTbl.insert("spriteColumns",  (int64_t)pe->spriteColumns);
-            peTbl.insert("spriteRows",     (int64_t)pe->spriteRows);
-            peTbl.insert("spriteStartFrame", (int64_t)pe->spriteStartFrame);
-            peTbl.insert("spriteEndFrame", (int64_t)pe->spriteEndFrame);
-            peTbl.insert("sizeCurvePower", (double)pe->sizeCurvePower);
-            peTbl.insert("colorCurvePower", (double)pe->colorCurvePower);
-            peTbl.insert("velocityDamping", (double)pe->velocityDamping);
-            peTbl.insert("angularVelocityMin", (double)pe->angularVelocityMin);
-            peTbl.insert("angularVelocityMax", (double)pe->angularVelocityMax);
-            peTbl.insert("noiseStrength",  (double)pe->noiseStrength);
-            peTbl.insert("noiseFrequency", (double)pe->noiseFrequency);
-            peTbl.insert("noiseSpeed",     (double)pe->noiseSpeed);
-            peTbl.insert("receiveForceFields", pe->receiveForceFields);
-            peTbl.insert("lifetimeRandom", (double)pe->lifetimeRandom);
-            peTbl.insert("simulationSpace", (int64_t)pe->simulationSpace);
-            peTbl.insert("renderMode", (int64_t)pe->renderMode);
-            peTbl.insert("stretchedVelocityScale", (double)pe->stretchedVelocityScale);
-            peTbl.insert("stretchedLengthScale", (double)pe->stretchedLengthScale);
-            peTbl.insert("collisionMode", (int64_t)pe->collisionMode);
-            peTbl.insert("collisionResponse", (int64_t)pe->collisionResponse);
-            peTbl.insert("collisionRadius", (double)pe->collisionRadius);
-            peTbl.insert("collisionBounciness", (double)pe->collisionBounciness);
-            peTbl.insert("collisionDamping", (double)pe->collisionDamping);
-            peTbl.insert("collisionPlaneY", (double)pe->collisionPlaneY);
-            peTbl.insert("flipbookMode", (int64_t)pe->flipbookMode);
-            peTbl.insert("flipbookFramesPerSecond", (double)pe->flipbookFramesPerSecond);
-            peTbl.insert("flipbookFrameBlending", pe->flipbookFrameBlending);
-            peTbl.insert("useSizeCurve", pe->useSizeCurve);
-            peTbl.insert("useVelocityCurve", pe->useVelocityCurve);
-            peTbl.insert("useColorGradient", pe->useColorGradient);
-            peTbl.insert("rateOverDistance", (double)pe->rateOverDistance);
-            peTbl.insert("prewarm", pe->prewarm);
-            peTbl.insert("birthSubEmitter", pe->birthSubEmitter);
-            peTbl.insert("deathSubEmitter", pe->deathSubEmitter);
-            peTbl.insert("collisionSubEmitter", pe->collisionSubEmitter);
-            peTbl.insert("subEmitterBurstCount", (int64_t)pe->subEmitterBurstCount);
-            peTbl.insert("softParticles", pe->softParticles);
-            peTbl.insert("softParticleFadeDistance", (double)pe->softParticleFadeDistance);
-            peTbl.insert("cullingEnabled", pe->cullingEnabled);
-            peTbl.insert("cullingBoundsPadding", (double)pe->cullingBoundsPadding);
-            peTbl.insert("lodEnabled", pe->lodEnabled);
-            peTbl.insert("lodNearDistance", (double)pe->lodNearDistance);
-            peTbl.insert("lodFarDistance", (double)pe->lodFarDistance);
-            peTbl.insert("lodNearRateScale", (double)pe->lodNearRateScale);
-            peTbl.insert("lodFarRateScale", (double)pe->lodFarRateScale);
-            peTbl.insert("screenCoverageThreshold", (double)pe->screenCoverageThreshold);
-            peTbl.insert("pauseWhenCulled", pe->pauseWhenCulled);
-
-            auto curveToArray = [](const ParticleCurve& curve) {
-                toml::array array;
-                for (uint32_t index = 0; index < curve.keyCount && index < curve.keys.size(); ++index)
-                    array.push_back(toml::array{ (double)curve.keys[index].time, (double)curve.keys[index].value });
-                return array;
-            };
-            peTbl.insert("sizeCurve", curveToArray(pe->sizeCurve));
-            peTbl.insert("velocityCurve", curveToArray(pe->velocityCurve));
-            toml::array gradient;
-            for (uint32_t index = 0; index < pe->colorGradient.keyCount && index < pe->colorGradient.keys.size(); ++index) {
-                const auto& key = pe->colorGradient.keys[index];
-                gradient.push_back(toml::array{ (double)key.time, (double)key.color.x,
-                    (double)key.color.y, (double)key.color.z, (double)key.color.w });
-            }
-            peTbl.insert("colorGradient", std::move(gradient));
-            toml::array bursts;
-            for (const ParticleBurst& burst : pe->bursts) {
-                toml::table burstTable;
-                burstTable.insert("time", (double)burst.time);
-                burstTable.insert("count", (int64_t)burst.count);
-                burstTable.insert("cycles", (int64_t)burst.cycles);
-                burstTable.insert("interval", (double)burst.interval);
-                burstTable.insert("probability", (double)burst.probability);
-                bursts.push_back(std::move(burstTable));
-            }
-            peTbl.insert("bursts", std::move(bursts));
-            peTbl.insert("enabled",        pe->enabled);
-            goTbl.insert("ParticleEmitter", std::move(peTbl));
+            goTbl.insert("ParticleEmitter", asset::SerializeParticleEmitterSettings(*pe));
         }
 
         // ParticleForceField
@@ -2768,144 +2667,28 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             vfx.variant             = (*vfxTbl)["variant"].value_or(std::string{});
             vfx.serializedParameterOverrides =
                 (*vfxTbl)["parameterOverrides"].value_or(std::string{});
-            asset::DeserializeVFXOverrides(vfx.serializedParameterOverrides,
-                                           vfx.parameterOverrides);
+            if (!asset::DeserializeVFXOverrides(vfx.serializedParameterOverrides,
+                                                vfx.parameterOverrides)) {
+                FBZZ_LOG_WARN("VFXGraph parameterOverrides の復元に失敗: %s",
+                              vfx.graphPath.c_str());
+            }
             go.AddComponent<VFXGraphComponent>(std::move(vfx));
         }
 
         // ParticleEmitter
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
             ParticleEmitter pe{};
-            pe.emitPosition   = ArrToVec3((*peTbl)["emitPosition"].as_array());
-            pe.emitVelocity   = ArrToVec3((*peTbl)["emitVelocity"].as_array(),
-                                          { 0.0f, 4.0f, 0.0f });
-            pe.velocitySpread = (float)(*peTbl)["velocitySpread"].value_or(1.5);
-            pe.colorStart     = ArrToVec4((*peTbl)["colorStart"].as_array(),
-                                          { 1.0f, 0.7f, 0.2f, 1.0f });
-            pe.colorEnd       = ArrToVec4((*peTbl)["colorEnd"].as_array(),
-                                          { 1.0f, 0.1f, 0.0f, 0.0f });
-            pe.sizeStart      = (float)(*peTbl)["sizeStart"].value_or(0.4);
-            pe.sizeEnd        = (float)(*peTbl)["sizeEnd"].value_or(0.05);
-            pe.lifetime       = (float)(*peTbl)["lifetime"].value_or(2.0);
-            pe.emitRate       = (float)(*peTbl)["emitRate"].value_or(30.0);
-            pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
-            pe.gravity        = ArrToVec3((*peTbl)["gravity"].as_array(), { 0.0f, -5.0f, 0.0f });
-            const int64_t randomSeed = (*peTbl)["randomSeed"].value_or((int64_t)1);
-            pe.randomSeed     = static_cast<uint32_t>(randomSeed < 1 ? 1 : randomSeed);
-            pe.randomState    = pe.randomSeed;
-            pe.playing        = (*peTbl)["playing"].value_or(true);
-            pe.loop           = (*peTbl)["loop"].value_or(true);
-            pe.duration       = (float)(*peTbl)["duration"].value_or(5.0);
-            pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
-            pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
-            int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
-            shape = shape < 0 ? 0 : (shape > 4 ? 4 : shape);
-            pe.shape          = static_cast<ParticleEmitterShape>(shape);
-            pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
-            pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
-            pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
-            pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
-            pe.meshShapePath  = (*peTbl)["meshShapePath"].value_or(std::string{});
-            pe.meshShapeIndex = (int)(*peTbl)["meshShapeIndex"].value_or((int64_t)-1);
-            pe.meshShapeScale = (float)(*peTbl)["meshShapeScale"].value_or(1.0);
-            pe.meshShapeFollowSkinnedAnimation =
-                (*peTbl)["meshShapeFollowSkinnedAnimation"].value_or(false);
-            int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
-            blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
-            pe.blendMode      = static_cast<ParticleBlendMode>(blend);
-            int sort = (int)(*peTbl)["sortMode"].value_or((int64_t)0);
-            sort = sort < 0 ? 0 : (sort > 1 ? 1 : sort);
-            pe.sortMode       = static_cast<ParticleSortMode>(sort);
-            int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
-            sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
-            pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
-            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
-            pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
-            pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
-            pe.spriteEndFrame = (int)(*peTbl)["spriteEndFrame"].value_or((int64_t)0);
-            pe.sizeCurvePower = (float)(*peTbl)["sizeCurvePower"].value_or(1.0);
-            pe.colorCurvePower = (float)(*peTbl)["colorCurvePower"].value_or(1.0);
-            pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
-            pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
-            pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
-            pe.noiseStrength  = (float)(*peTbl)["noiseStrength"].value_or(0.0);
-            pe.noiseFrequency = (float)(*peTbl)["noiseFrequency"].value_or(0.5);
-            pe.noiseSpeed     = (float)(*peTbl)["noiseSpeed"].value_or(1.0);
-            pe.receiveForceFields = (*peTbl)["receiveForceFields"].value_or(true);
-            pe.lifetimeRandom = (float)(*peTbl)["lifetimeRandom"].value_or(0.0);
-            pe.simulationSpace = static_cast<ParticleSimulationSpace>(std::clamp((int)(*peTbl)["simulationSpace"].value_or((int64_t)0), 0, 1));
-            pe.renderMode = static_cast<ParticleRenderMode>(std::clamp((int)(*peTbl)["renderMode"].value_or((int64_t)0), 0, 3));
-            pe.stretchedVelocityScale = (float)(*peTbl)["stretchedVelocityScale"].value_or(0.1);
-            pe.stretchedLengthScale = (float)(*peTbl)["stretchedLengthScale"].value_or(1.0);
-            pe.collisionMode = static_cast<ParticleCollisionMode>(std::clamp((int)(*peTbl)["collisionMode"].value_or((int64_t)0), 0, 2));
-            pe.collisionResponse = static_cast<ParticleCollisionResponse>(std::clamp((int)(*peTbl)["collisionResponse"].value_or((int64_t)0), 0, 2));
-            pe.collisionRadius = (float)(*peTbl)["collisionRadius"].value_or(0.05);
-            pe.collisionBounciness = (float)(*peTbl)["collisionBounciness"].value_or(0.5);
-            pe.collisionDamping = (float)(*peTbl)["collisionDamping"].value_or(0.0);
-            pe.collisionPlaneY = (float)(*peTbl)["collisionPlaneY"].value_or(0.0);
-            pe.flipbookMode = static_cast<ParticleFlipbookMode>(std::clamp((int)(*peTbl)["flipbookMode"].value_or((int64_t)0), 0, 3));
-            pe.flipbookFramesPerSecond = (float)(*peTbl)["flipbookFramesPerSecond"].value_or(24.0);
-            pe.flipbookFrameBlending = (*peTbl)["flipbookFrameBlending"].value_or(false);
-            pe.useSizeCurve = (*peTbl)["useSizeCurve"].value_or(false);
-            pe.useVelocityCurve = (*peTbl)["useVelocityCurve"].value_or(false);
-            pe.useColorGradient = (*peTbl)["useColorGradient"].value_or(false);
-            pe.rateOverDistance = (float)(*peTbl)["rateOverDistance"].value_or(0.0);
-            pe.prewarm = (*peTbl)["prewarm"].value_or(false);
-            pe.birthSubEmitter = (*peTbl)["birthSubEmitter"].value_or(std::string{});
-            pe.deathSubEmitter = (*peTbl)["deathSubEmitter"].value_or(std::string{});
-            pe.collisionSubEmitter = (*peTbl)["collisionSubEmitter"].value_or(std::string{});
-            pe.subEmitterBurstCount = (int)(*peTbl)["subEmitterBurstCount"].value_or((int64_t)1);
-            pe.softParticles = (*peTbl)["softParticles"].value_or(false);
-            pe.softParticleFadeDistance = (float)(*peTbl)["softParticleFadeDistance"].value_or(0.5);
-            pe.cullingEnabled = (*peTbl)["cullingEnabled"].value_or(true);
-            pe.cullingBoundsPadding = (float)(*peTbl)["cullingBoundsPadding"].value_or(0.25);
-            pe.lodEnabled = (*peTbl)["lodEnabled"].value_or(true);
-            pe.lodNearDistance = (float)(*peTbl)["lodNearDistance"].value_or(12.0);
-            pe.lodFarDistance = (float)(*peTbl)["lodFarDistance"].value_or(40.0);
-            pe.lodNearRateScale = (float)(*peTbl)["lodNearRateScale"].value_or(1.0);
-            pe.lodFarRateScale = (float)(*peTbl)["lodFarRateScale"].value_or(0.25);
-            pe.screenCoverageThreshold = (float)(*peTbl)["screenCoverageThreshold"].value_or(0.0);
-            pe.pauseWhenCulled = (*peTbl)["pauseWhenCulled"].value_or(false);
-            auto loadCurve = [&](const char* name, ParticleCurve& curve) {
-                if (auto* array = (*peTbl)[name].as_array()) {
-                    curve.keyCount = static_cast<uint32_t>((std::min)(array->size(), curve.keys.size()));
-                    for (uint32_t index = 0; index < curve.keyCount; ++index) {
-                        if (auto* key = (*array)[index].as_array(); key && key->size() >= 2) {
-                            curve.keys[index].time = (float)(*key)[0].value_or(0.0);
-                            curve.keys[index].value = (float)(*key)[1].value_or(0.0);
-                        }
-                    }
-                }
-            };
-            loadCurve("sizeCurve", pe.sizeCurve);
-            loadCurve("velocityCurve", pe.velocityCurve);
-            if (auto* gradient = (*peTbl)["colorGradient"].as_array()) {
-                pe.colorGradient.keyCount = static_cast<uint32_t>((std::min)(gradient->size(), pe.colorGradient.keys.size()));
-                for (uint32_t index = 0; index < pe.colorGradient.keyCount; ++index) {
-                    if (auto* key = (*gradient)[index].as_array(); key && key->size() >= 5) {
-                        pe.colorGradient.keys[index].time = (float)(*key)[0].value_or(0.0);
-                        pe.colorGradient.keys[index].color = {
-                            (float)(*key)[1].value_or(1.0), (float)(*key)[2].value_or(1.0),
-                            (float)(*key)[3].value_or(1.0), (float)(*key)[4].value_or(1.0) };
-                    }
-                }
+            asset::DeserializeParticleEmitterSettings(*peTbl, pe);
+            // 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
+            // colorGradient.space が無い場合だけ、こちらを正として反映する。
+            if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
+                pe.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+                    std::clamp(static_cast<int>(*legacySpace), 0,
+                               static_cast<int>(ParticleColorSpace::Oklab)));
             }
-            if (auto* bursts = (*peTbl)["bursts"].as_array()) {
-                for (auto&& burstNode : *bursts) {
-                    auto* burstTable = burstNode.as_table();
-                    if (!burstTable) continue;
-                    ParticleBurst burst;
-                    burst.time = (float)(*burstTable)["time"].value_or(0.0);
-                    burst.count = (int)(*burstTable)["count"].value_or((int64_t)10);
-                    burst.cycles = (int)(*burstTable)["cycles"].value_or((int64_t)1);
-                    burst.interval = (float)(*burstTable)["interval"].value_or(0.1);
-                    burst.probability = (float)(*burstTable)["probability"].value_or(1.0);
-                    pe.bursts.push_back(burst);
-                }
-            }
-            pe.enabled        = (*peTbl)["enabled"].value_or(true);
-            go.AddComponent<ParticleEmitter>(pe);
+            // ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
+            pe.playing = (*peTbl)["playing"].value_or(true);
+            go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
         // ParticleForceField
@@ -4226,140 +4009,27 @@ bool SceneSerializer::AppendObjects(
             vfx.variant             = (*vfxTbl)["variant"].value_or(std::string{});
             vfx.serializedParameterOverrides =
                 (*vfxTbl)["parameterOverrides"].value_or(std::string{});
-            asset::DeserializeVFXOverrides(vfx.serializedParameterOverrides,
-                                           vfx.parameterOverrides);
+            if (!asset::DeserializeVFXOverrides(vfx.serializedParameterOverrides,
+                                                vfx.parameterOverrides)) {
+                FBZZ_LOG_WARN("VFXGraph parameterOverrides の復元に失敗: %s",
+                              vfx.graphPath.c_str());
+            }
             go.AddComponent<VFXGraphComponent>(std::move(vfx));
         }
 
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
             ParticleEmitter pe{};
-            pe.emitPosition   = ArrToVec3((*peTbl)["emitPosition"].as_array());
-            pe.emitVelocity   = ArrToVec3((*peTbl)["emitVelocity"].as_array(), { 0.0f, 4.0f, 0.0f });
-            pe.velocitySpread = (float)(*peTbl)["velocitySpread"].value_or(1.5);
-            pe.colorStart     = ArrToVec4((*peTbl)["colorStart"].as_array(), { 1.0f, 0.7f, 0.2f, 1.0f });
-            pe.colorEnd       = ArrToVec4((*peTbl)["colorEnd"].as_array(),   { 1.0f, 0.1f, 0.0f, 0.0f });
-            pe.sizeStart      = (float)(*peTbl)["sizeStart"].value_or(0.4);
-            pe.sizeEnd        = (float)(*peTbl)["sizeEnd"].value_or(0.05);
-            pe.lifetime       = (float)(*peTbl)["lifetime"].value_or(2.0);
-            pe.emitRate       = (float)(*peTbl)["emitRate"].value_or(30.0);
-            pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
-            pe.gravity        = ArrToVec3((*peTbl)["gravity"].as_array(), { 0.0f, -5.0f, 0.0f });
-            const int64_t randomSeed = (*peTbl)["randomSeed"].value_or((int64_t)1);
-            pe.randomSeed     = static_cast<uint32_t>(randomSeed < 1 ? 1 : randomSeed);
-            pe.randomState    = pe.randomSeed;
-            pe.playing        = (*peTbl)["playing"].value_or(true);
-            pe.loop           = (*peTbl)["loop"].value_or(true);
-            pe.duration       = (float)(*peTbl)["duration"].value_or(5.0);
-            pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
-            pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
-            int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
-            shape = shape < 0 ? 0 : (shape > 4 ? 4 : shape);
-            pe.shape          = static_cast<ParticleEmitterShape>(shape);
-            pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
-            pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
-            pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
-            pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
-            pe.meshShapePath  = (*peTbl)["meshShapePath"].value_or(std::string{});
-            pe.meshShapeIndex = (int)(*peTbl)["meshShapeIndex"].value_or((int64_t)-1);
-            pe.meshShapeScale = (float)(*peTbl)["meshShapeScale"].value_or(1.0);
-            pe.meshShapeFollowSkinnedAnimation =
-                (*peTbl)["meshShapeFollowSkinnedAnimation"].value_or(false);
-            int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
-            blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
-            pe.blendMode      = static_cast<ParticleBlendMode>(blend);
-            int sort = (int)(*peTbl)["sortMode"].value_or((int64_t)0);
-            sort = sort < 0 ? 0 : (sort > 1 ? 1 : sort);
-            pe.sortMode       = static_cast<ParticleSortMode>(sort);
-            int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
-            sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
-            pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
-            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
-            pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
-            pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
-            pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
-            pe.spriteEndFrame = (int)(*peTbl)["spriteEndFrame"].value_or((int64_t)0);
-            pe.sizeCurvePower = (float)(*peTbl)["sizeCurvePower"].value_or(1.0);
-            pe.colorCurvePower = (float)(*peTbl)["colorCurvePower"].value_or(1.0);
-            pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
-            pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
-            pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
-            pe.noiseStrength  = (float)(*peTbl)["noiseStrength"].value_or(0.0);
-            pe.noiseFrequency = (float)(*peTbl)["noiseFrequency"].value_or(0.5);
-            pe.noiseSpeed     = (float)(*peTbl)["noiseSpeed"].value_or(1.0);
-            pe.receiveForceFields = (*peTbl)["receiveForceFields"].value_or(true);
-            pe.lifetimeRandom = (float)(*peTbl)["lifetimeRandom"].value_or(0.0);
-            pe.simulationSpace = static_cast<ParticleSimulationSpace>(std::clamp((int)(*peTbl)["simulationSpace"].value_or((int64_t)0), 0, 1));
-            pe.renderMode = static_cast<ParticleRenderMode>(std::clamp((int)(*peTbl)["renderMode"].value_or((int64_t)0), 0, 3));
-            pe.stretchedVelocityScale = (float)(*peTbl)["stretchedVelocityScale"].value_or(0.1);
-            pe.stretchedLengthScale = (float)(*peTbl)["stretchedLengthScale"].value_or(1.0);
-            pe.collisionMode = static_cast<ParticleCollisionMode>(std::clamp((int)(*peTbl)["collisionMode"].value_or((int64_t)0), 0, 2));
-            pe.collisionResponse = static_cast<ParticleCollisionResponse>(std::clamp((int)(*peTbl)["collisionResponse"].value_or((int64_t)0), 0, 2));
-            pe.collisionRadius = (float)(*peTbl)["collisionRadius"].value_or(0.05);
-            pe.collisionBounciness = (float)(*peTbl)["collisionBounciness"].value_or(0.5);
-            pe.collisionDamping = (float)(*peTbl)["collisionDamping"].value_or(0.0);
-            pe.collisionPlaneY = (float)(*peTbl)["collisionPlaneY"].value_or(0.0);
-            pe.flipbookMode = static_cast<ParticleFlipbookMode>(std::clamp((int)(*peTbl)["flipbookMode"].value_or((int64_t)0), 0, 3));
-            pe.flipbookFramesPerSecond = (float)(*peTbl)["flipbookFramesPerSecond"].value_or(24.0);
-            pe.flipbookFrameBlending = (*peTbl)["flipbookFrameBlending"].value_or(false);
-            pe.useSizeCurve = (*peTbl)["useSizeCurve"].value_or(false);
-            pe.useVelocityCurve = (*peTbl)["useVelocityCurve"].value_or(false);
-            pe.useColorGradient = (*peTbl)["useColorGradient"].value_or(false);
-            pe.rateOverDistance = (float)(*peTbl)["rateOverDistance"].value_or(0.0);
-            pe.prewarm = (*peTbl)["prewarm"].value_or(false);
-            pe.birthSubEmitter = (*peTbl)["birthSubEmitter"].value_or(std::string{});
-            pe.deathSubEmitter = (*peTbl)["deathSubEmitter"].value_or(std::string{});
-            pe.collisionSubEmitter = (*peTbl)["collisionSubEmitter"].value_or(std::string{});
-            pe.subEmitterBurstCount = (int)(*peTbl)["subEmitterBurstCount"].value_or((int64_t)1);
-            pe.softParticles = (*peTbl)["softParticles"].value_or(false);
-            pe.softParticleFadeDistance = (float)(*peTbl)["softParticleFadeDistance"].value_or(0.5);
-            pe.cullingEnabled = (*peTbl)["cullingEnabled"].value_or(true);
-            pe.cullingBoundsPadding = (float)(*peTbl)["cullingBoundsPadding"].value_or(0.25);
-            pe.lodEnabled = (*peTbl)["lodEnabled"].value_or(true);
-            pe.lodNearDistance = (float)(*peTbl)["lodNearDistance"].value_or(12.0);
-            pe.lodFarDistance = (float)(*peTbl)["lodFarDistance"].value_or(40.0);
-            pe.lodNearRateScale = (float)(*peTbl)["lodNearRateScale"].value_or(1.0);
-            pe.lodFarRateScale = (float)(*peTbl)["lodFarRateScale"].value_or(0.25);
-            pe.screenCoverageThreshold = (float)(*peTbl)["screenCoverageThreshold"].value_or(0.0);
-            pe.pauseWhenCulled = (*peTbl)["pauseWhenCulled"].value_or(false);
-            auto loadCurve = [&](const char* name, ParticleCurve& curve) {
-                if (auto* array = (*peTbl)[name].as_array()) {
-                    curve.keyCount = static_cast<uint32_t>((std::min)(array->size(), curve.keys.size()));
-                    for (uint32_t index = 0; index < curve.keyCount; ++index) {
-                        if (auto* key = (*array)[index].as_array(); key && key->size() >= 2) {
-                            curve.keys[index].time = (float)(*key)[0].value_or(0.0);
-                            curve.keys[index].value = (float)(*key)[1].value_or(0.0);
-                        }
-                    }
-                }
-            };
-            loadCurve("sizeCurve", pe.sizeCurve);
-            loadCurve("velocityCurve", pe.velocityCurve);
-            if (auto* gradient = (*peTbl)["colorGradient"].as_array()) {
-                pe.colorGradient.keyCount = static_cast<uint32_t>((std::min)(gradient->size(), pe.colorGradient.keys.size()));
-                for (uint32_t index = 0; index < pe.colorGradient.keyCount; ++index) {
-                    if (auto* key = (*gradient)[index].as_array(); key && key->size() >= 5) {
-                        pe.colorGradient.keys[index].time = (float)(*key)[0].value_or(0.0);
-                        pe.colorGradient.keys[index].color = {
-                            (float)(*key)[1].value_or(1.0), (float)(*key)[2].value_or(1.0),
-                            (float)(*key)[3].value_or(1.0), (float)(*key)[4].value_or(1.0) };
-                    }
-                }
+            asset::DeserializeParticleEmitterSettings(*peTbl, pe);
+            // 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
+            // colorGradient.space が無い場合だけ、こちらを正として反映する。
+            if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
+                pe.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+                    std::clamp(static_cast<int>(*legacySpace), 0,
+                               static_cast<int>(ParticleColorSpace::Oklab)));
             }
-            if (auto* bursts = (*peTbl)["bursts"].as_array()) {
-                for (auto&& burstNode : *bursts) {
-                    auto* burstTable = burstNode.as_table();
-                    if (!burstTable) continue;
-                    ParticleBurst burst;
-                    burst.time = (float)(*burstTable)["time"].value_or(0.0);
-                    burst.count = (int)(*burstTable)["count"].value_or((int64_t)10);
-                    burst.cycles = (int)(*burstTable)["cycles"].value_or((int64_t)1);
-                    burst.interval = (float)(*burstTable)["interval"].value_or(0.1);
-                    burst.probability = (float)(*burstTable)["probability"].value_or(1.0);
-                    pe.bursts.push_back(burst);
-                }
-            }
-            pe.enabled        = (*peTbl)["enabled"].value_or(true);
-            go.AddComponent<ParticleEmitter>(pe);
+            // ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
+            pe.playing = (*peTbl)["playing"].value_or(true);
+            go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
         if (auto* ffTbl = (*goTbl)["ParticleForceField"].as_table()) {
