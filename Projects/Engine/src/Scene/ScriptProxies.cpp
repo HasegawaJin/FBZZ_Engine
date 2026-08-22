@@ -596,6 +596,12 @@ void ScriptPhysicsProxy::SetGravityScale(float scale) const
     if (auto* rb = SelfRigidBody(script)) rb->m_gravityScale = scale;
 }
 
+math::Vector3 ScriptPhysicsProxy::GetWorldGravity() const
+{
+    if (!Script::s_physicsWorld) return { 0.0f, -9.81f, 0.0f };
+    return Script::s_physicsWorld->GetGravity();
+}
+
 void ScriptPhysicsProxy::SetVelocity(const math::Vector3& v) const
 {
     if (auto* rb = SelfRigidBody(script)) rb->SetVelocity(v);

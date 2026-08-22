@@ -38,6 +38,10 @@ struct ScriptPhysicsProxy {
     // 1 = 通常 / 0 = 無重力 / 負値 = 反重力。浮かせる演出の間だけ下げて、終わったら戻す。
     [[nodiscard]] float GetGravityScale() const;
     void SetGravityScale(float scale) const;
+    // World が全剛体へ与えている重力加速度 (m/s^2)。
+    // SetGravityScale は「これに対する倍率」なので、跳躍高さのように m/s^2 で
+    // 決めた値を倍率へ直すには基準となるこの大きさが要る。
+    [[nodiscard]] math::Vector3 GetWorldGravity() const;
     void SetVelocity(const math::Vector3& v) const;
     math::Vector3 GetVelocity() const;
     void SetVelocity(GameObject* go, const math::Vector3& v) const;
