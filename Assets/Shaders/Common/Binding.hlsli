@@ -14,6 +14,32 @@
 #define CB_SKINNING     b7  // SkinningConstants per-animated draw
 #define CB_ATMOSPHERE   b6  // AtmosphereConstants per-frame (Skydome のみ)
 
+// ---- UI (UISystem / UI マテリアル) -----------------------------------
+// UI パスは b0 を CameraConstants ではなく UIConstants として使う。
+// WHY 専用スロットへ逃がさないか:
+//   UI の描画に view / projection は要らない。矩形は Canvas 空間で組み立て、
+//   ortho 1 本で clip 空間へ送る。カメラ行列を束縛しないパスで b0 を空けておく
+//   意味が無く、逆に UI だけ離れた番号を使うと DrawCall の埋め方が UI だけ
+//   例外になる。代わりに UI シェーダーは Constants.hlsli を include しない、
+//   という制約を UICommon.hlsli の #error で機械的に守らせる。
+#define CB_UI           b0  // UIConstants per-draw (ortho / color / uvRect / rect)
+                            // マテリアルパラメータは CB_MATERIAL (b2) を使う。
+                            // 名前も MaterialConstants に揃えること — シェーダー
+                            // リフレクションは cbuffer 名で探すため、名前を変えると
+                            // .mat の params と Inspector が丸ごと効かなくなる。
+
+// ---- Decal (DecalPass) -----------------------------------------------
+// 投影ボリューム・角度フェード・受信レイヤーはエンジンが毎ドロー埋める。
+//
+// WHY b2 に置かないか:
+//   シェーダーリフレクションは cbuffer 名 "MaterialConstants" を探す
+//   (DX11Shader/DX12Shader::BuildDescriptor)。デカール定数をそこへ置くと
+//   .mat の params を 1 つも束縛できず、デカールだけマテリアルを持てない
+//   例外になる。b2 は材質へ明け渡し、エンジン側は空きスロットへ逃がす。
+#define CB_DECAL        b10 // DecalConstants per-decal
+                            // デカール材質のパラメータは CB_MATERIAL (b2)。
+                            // 契約は Material/Decal/DecalCommon.hlsli が持つ。
+
 // ---- Texture (マテリアル, per-draw) ----------------------------------
 #define TEX_ALBEDO          t0
 #define TEX_NORMAL          t1
@@ -30,7 +56,11 @@
 #define TEX_BLOOM       t10
 #define TEX_ENV_CUBE    t11  // Skybox キューブマップ / IBL
 #define TEX_ENV_EQUIRECT t12 // Skydome 等緯度テクスチャ
-#define TEX_DECAL_MASK   t13 // デカール受信除外マスク (bit3 有効時のみバインド)
+// 各ピクセルの可視サーフェスが属するレイヤー番号 + 1 を格納する。0 = 未描画。
+// WHY 0 を「未描画」に使うか: レイヤー 0 (Default) が有効な番号なので、クリア値と
+//     区別が付かないと地形やフォリッジのように受信バッファへ描かないジオメトリが
+//     すべて Default 扱いになる。+1 しておけば「不明なら受信させる」に倒せる。
+#define TEX_DECAL_MASK   t13 // デカール受信レイヤーバッファ (レイヤーフィルタ使用時のみ)
 // パーティクル自己影の光源側密度バッファ (R=Σα, G=Σα·深度)。
 // SSAO と同じ t9 を時分割で使う。パーティクル描画は SSAO を読まないため衝突しない。
 #define TEX_PARTICLE_DENSITY t9
@@ -66,6 +96,12 @@
 #define SAMPLER_LINEAR_CLAMP s2   // Linear clamp (IBL BRDF LUT / 3D LUT 用)
 #define SAMPLER_POINT_CLAMP  s3   // Point clamp  (TAA 再投影ルックアップ用)
 #define SAMPLER_WRAP_LINEAR  s4   // Linear wrap  (ボリューメトリック雲のタイラブル 3D ノイズ用)
+// s5〜s8 は DX12PsoCache::MakeStaticSamplers() が静的サンプラーとして常時焼いている。
+// 定義がここに無いと「どのフィルタが来るか」がバックエンドのコードを読まないと分からない。
+#define SAMPLER_UI           s5   // Linear clamp (UI スプライト / テキスト)
+#define SAMPLER_UI_POINT     s6   // Point  clamp (ドット絵 UI / 拡大時に補間させたくない図版)
+#define SAMPLER_LINEAR_CLAMP2 s7  // Linear clamp (予備)
+#define SAMPLER_WRAP_ANISO4  s8   // Aniso x4 wrap (予備)
 
 // ---- Advanced Graphics (IBL / SSR / TAA / GTAO 等) ----
 #define CB_ADVANCED_GRAPHICS b8
