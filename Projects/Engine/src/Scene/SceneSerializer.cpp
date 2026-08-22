@@ -2644,7 +2644,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);
             // 既定値は「これまでの挙動」= 両方有効・余白なし。旧シーンを読んでも絵は変わらない。
             cc.frustumCulling   = (*ccTbl)["frustumCulling"].value_or(true);
-            cc.occlusionCulling = (*ccTbl)["occlusionCulling"].value_or(true);
+            // 既定はコンポーネント側と揃える (未記載の古いシーンも無効で読む)。
+            cc.occlusionCulling = (*ccTbl)["occlusionCulling"].value_or(false);
             cc.cullingBoundsPadding = (float)(*ccTbl)["cullingBoundsPadding"].value_or(0.0);
             cc.maxDrawDistance = (float)(*ccTbl)["maxDrawDistance"].value_or(0.0);
             cc.cullDistanceSpherical = (*ccTbl)["cullDistanceSpherical"].value_or(true);

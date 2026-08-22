@@ -301,7 +301,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (useOcclusion) {
             const auto bounds =
                 ComputeWorldBounds(go.transform, *mr->mesh, ctx.cullingBoundsPadding);
-            if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
+            if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius,
+                                                    IsReliableOccluder(*mr->mesh))) {
                 ++ctx.statsOcclusionCulled;
                 continue;
             }

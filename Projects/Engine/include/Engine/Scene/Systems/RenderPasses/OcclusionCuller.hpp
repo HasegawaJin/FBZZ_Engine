@@ -27,7 +27,14 @@ public:
     void Reset(const renderer::Camera& cam);
 
     // TestAndRaster — バウンディング球を可視判定し、可視ならオクルーダーとして登録する。
-    bool TestAndRaster(const math::Vector3& worldCenter, float worldRadius);
+    //
+    // registerAsOccluder=false のときは判定だけを行い、深度バッファへは焼かない。
+    // WHY: 遮蔽者としての登録は「球の内側は概ねメッシュで埋まっている」という前提に立つ。
+    //      板ポリ・壁パネルのような薄い形はこの前提を満たさず、実体の無い空間まで
+    //      遮蔽を主張して「見えているのに消える」を生む。前提を満たすかの判断は
+    //      メッシュ形状を知っている呼び出し側 (IsReliableOccluder) が行う。
+    bool TestAndRaster(const math::Vector3& worldCenter, float worldRadius,
+                       bool registerAsOccluder = true);
 
 private:
     float m_depth[kWidth * kHeight];

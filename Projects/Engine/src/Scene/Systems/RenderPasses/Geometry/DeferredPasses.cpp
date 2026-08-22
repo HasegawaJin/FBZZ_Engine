@@ -177,7 +177,8 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         for (auto it = queue.begin(); it != queue.end(); ++it) {
             const auto bounds =
                 ComputeWorldBounds(it->go->transform, *it->mr->mesh, ctx.cullingBoundsPadding);
-            if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
+            if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius,
+                                                    IsReliableOccluder(*it->mr->mesh))) {
                 ++ctx.statsOcclusionCulled;
                 continue;
             }
