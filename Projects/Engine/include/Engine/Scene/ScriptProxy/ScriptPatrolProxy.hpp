@@ -28,6 +28,10 @@ struct ScriptPatrolProxy {
     bool SetWaypoint(size_t index, const math::Vector3& position) const;
     void Restart(size_t startIndex = 0) const;
     [[nodiscard]] int GetCurrentIndex() const;
+    [[nodiscard]] bool IsEnabled() const;
+    [[nodiscard]] size_t GetWaypointCount() const;
+    // index が範囲外なら false を返し、position は変更しない。
+    [[nodiscard]] bool GetWaypoint(size_t index, math::Vector3& position) const;
 };
 
 } // namespace fbzz::scene

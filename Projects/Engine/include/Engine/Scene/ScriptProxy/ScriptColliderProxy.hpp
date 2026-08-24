@@ -17,6 +17,13 @@ struct ScriptColliderProxy {
     void SetEnabled(bool enabled) const;
     void SetTrigger(bool trigger) const;
     void SetCenter(const math::Vector3& center) const;
+
+    // コライダーが付いていなければ IsEnabled / IsTrigger は false、GetCenter は原点。
+    [[nodiscard]] bool          HasCollider() const;
+    [[nodiscard]] bool          IsEnabled() const;
+    [[nodiscard]] bool          IsTrigger() const;
+    [[nodiscard]] math::Vector3 GetCenter() const;
+
     void SetBoxSize(const math::Vector3& size) const;
     void SetSphereRadius(float radius) const;
     void SetCapsule(float radius, float halfHeight) const;

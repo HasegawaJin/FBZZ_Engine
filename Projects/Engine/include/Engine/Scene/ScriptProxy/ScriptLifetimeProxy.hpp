@@ -16,6 +16,10 @@ struct ScriptLifetimeProxy {
     float GetRemaining() const;
 
     void SetEnabled(bool enabled) const;
+    bool IsEnabled() const;
+    // LifetimeComponent 自体が付いているか。付いていない GO では GetRemaining() が
+    // 0 を返すため、「寿命 0」と「寿命を持たない」を区別するのに要る。
+    bool HasLifetime() const;
 
     // remaining を 0 にして次フレームで即座に GO を破棄させる。
     void Kill() const;

@@ -46,6 +46,7 @@ struct ScriptCharacterProxy {
     void UseAutomaticGrounding() const;
 
     void SetEnabled(bool enabled) const;
+    bool IsEnabled() const;
 };
 
 } // namespace fbzz::scene

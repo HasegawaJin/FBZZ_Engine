@@ -29,6 +29,12 @@ struct ScriptVolumeProxy {
     void SetDuration(float seconds) const;
     // elapsed を 0 にリセットして有効期間タイマーを巻き戻す。
     void ResetElapsed() const;
+
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetTimeScale() const;
+    [[nodiscard]] float GetDuration() const;
+    // 有効化からの経過秒。duration が負 (無限) でも増え続ける。
+    [[nodiscard]] float GetElapsed() const;
 };
 
 } // namespace fbzz::scene

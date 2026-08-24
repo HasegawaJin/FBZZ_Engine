@@ -137,18 +137,29 @@ struct ScriptMaterialProxy {
     bool SetVector4(std::string_view param, const math::Vector4& value) const;
     bool SetTexture(std::string_view slot, std::string_view texturePath) const;
     float GetFloat(std::string_view param) const;
+    int GetInt(std::string_view param) const;
     math::Vector3 GetVector3(std::string_view param) const;
+    math::Vector4 GetVector4(std::string_view param) const;
     // コンポーネント全体の有効/無効。
     bool SetEnabled(bool enabled) const;
+    [[nodiscard]] bool IsEnabled() const;
     // submesh (スロット) 単位の表示切替。
     // WHY: SkinnedMeshRenderer が 1 GameObject = モデル全体を描くようになったため、
     //      「装備の一部だけ隠す」といった操作はスロット番号で行う。
     bool SetSlotVisible(uint32_t slot, bool visible) const;
+    [[nodiscard]] bool IsSlotVisible(uint32_t slot) const;
     // 指定 submesh だけを表示する。slot < 0 で全 submesh を表示。
     bool SetOnlyVisibleSlot(int slot) const;
     bool SetBlendMode(MaterialBlendMode blendMode) const;
     bool SetDoubleSided(bool doubleSided) const;
     bool SetRenderQueue(int32_t renderQueue) const;
+    // 上書きが無ければ共有 .mat の値を返す (実際に描画へ使われる値)。
+    [[nodiscard]] bool    IsDoubleSided() const;
+    [[nodiscard]] int32_t GetRenderQueue() const;
+    // 割り当てられている共有 .mat のパス。未割り当てなら空文字列。
+    [[nodiscard]] std::string GetSharedMaterialPath(uint32_t slot = 0) const;
+    // MaterialComponent が持つ submesh スロット数。
+    [[nodiscard]] uint32_t GetSlotCount() const;
 
     void QueueRenderPass(UserRenderPassDesc desc) const;
 };

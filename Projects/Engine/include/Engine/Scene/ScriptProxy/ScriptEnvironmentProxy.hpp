@@ -36,6 +36,16 @@ struct ScriptEnvironmentProxy {
     float GetSunIntensity()  const;
     float GetFogDensity()    const;
     bool  IsFogEnabled()     const;
+
+    // 対応するコンポーネントがシーンに無ければ既定値 (0 / false / 黒) を返す。
+    bool          IsIBLEnabled()        const;
+    float         GetIBLIntensity()     const;
+    float         GetIBLDiffuseScale()  const;
+    float         GetIBLSpecularScale() const;
+    math::Vector3 GetFogColor()         const;
+    float         GetFogFar()           const;
+    float         GetMieScattering()    const;
+    float         GetMieG()             const;
 };
 
 } // namespace fbzz::scene

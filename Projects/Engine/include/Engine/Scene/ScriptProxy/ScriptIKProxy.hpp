@@ -17,6 +17,9 @@ struct ScriptIKProxy {
 
     // ターゲット名でチェーンを探して有効/無効を切り替える。
     void SetChainEnabled(std::string_view targetName, bool enabled) const;
+    // 名前が一致するチェーンが無ければ false。
+    bool IsChainEnabled(std::string_view targetName) const;
+    bool HasChain(std::string_view targetName) const;
     // 全チェーンの有効/無効をまとめて切り替える。
     void SetAllEnabled(bool enabled) const;
 
@@ -30,6 +33,7 @@ struct ScriptIKProxy {
 
     // IKSolverComponent 自体の有効/無効。
     void SetEnabled(bool enabled) const;
+    bool IsEnabled() const;
 };
 
 } // namespace fbzz::scene
