@@ -130,6 +130,9 @@ struct CharacterControllerComponent {
     void RegisterGroundContact(const CollisionInfo& info)
     {
         if (!enabled || groundingMode == CharacterGroundingMode::ForcedAirborne) return;
+        // 縮退した接触法線は「どちらが上か」を持たない。接地とも壁とも判定できないので、
+        // 猶予タイマーに任せてこのフレームは無視する。
+        if (info.contactNormal.LengthSq() < math::EPSILON * math::EPSILON) return;
         const math::Vector3 contactNormal = info.contactNormal.Normalized();
         if (contactNormal.y < minGroundNormalY)
         {

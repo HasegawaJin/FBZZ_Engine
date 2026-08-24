@@ -667,9 +667,11 @@ void UpdateMorphVertexBuffers(SkinnedMeshRenderer& smr,
                     vertices[i].tangent += target.tangentDeltas[i] * weight;
                 }
             }
+            // 接線を持たないモデルや、デルタが元の向きを打ち消した頂点はゼロになる。
+            // 描けない値ではあるが読み込めてしまうデータなので、既定の軸へ逃がす。
             for (auto& vertex : vertices) {
-                vertex.normal = vertex.normal.Normalized();
-                vertex.tangent = vertex.tangent.Normalized();
+                vertex.normal = vertex.normal.NormalizedOr(math::Vector3::UP);
+                vertex.tangent = vertex.tangent.NormalizedOr(math::Vector3::RIGHT);
             }
             auto& buffer = smr.morphVertexBuffers[meshIndex];
             if (!buffer.IsValid())
@@ -693,8 +695,8 @@ void UpdateMorphVertexBuffers(SkinnedMeshRenderer& smr,
                 }
             }
             for (auto& vertex : vertices) {
-                vertex.normal = vertex.normal.Normalized();
-                vertex.tangent = vertex.tangent.Normalized();
+                vertex.normal = vertex.normal.NormalizedOr(math::Vector3::UP);
+                vertex.tangent = vertex.tangent.NormalizedOr(math::Vector3::RIGHT);
             }
             auto& buffer = smr.morphVertexBuffers[meshIndex];
             if (!buffer.IsValid())
