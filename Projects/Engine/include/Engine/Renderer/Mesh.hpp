@@ -42,6 +42,15 @@ struct Mesh {
     ResourceHandle<BufferTag> indexBuffer;
     uint32_t vertexCount = 0;
     uint32_t indexCount  = 0;
+    // 確保済みの要素数。vertexCount / indexCount は «今描く数» で、こちらは «入る数»。
+    //
+    // WHY 分けて持つか: 毎フレーム CPU で組み直すメッシュ (Sprite / LineRenderer の帯) は、
+    //     頂点数が増減するたびにバッファを作り直すと GPU リソースの生成と解放が
+    //     毎フレーム走る。容量に収まっている間は Update で中身だけ差し替えたい。
+    //     静的メッシュは 1 度確保したきりなので、既定の 0 のままでも実害はない
+    //     (最初の書き込みで容量が入る)。
+    uint32_t vertexCapacity = 0;
+    uint32_t indexCapacity  = 0;
     bool isSkinned = false;
     std::vector<Vertex>        cpuVertices;
     std::vector<SkinnedVertex> cpuSkinnedVertices;

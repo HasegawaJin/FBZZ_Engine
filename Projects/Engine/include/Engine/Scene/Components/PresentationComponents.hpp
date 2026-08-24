@@ -11,10 +11,38 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <memory>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace fbzz::scene {
+
+/// CPU で組み直すメッシュを 2 枚持ち、書くたびに入れ替える置き場。
+/// PresentationSystem が Sprite / Line の帯を焼くのに使う (シーンへは保存しない)。
+///
+/// WHY 1 枚を使い回さないか (DX12 でだけ壊れる):
+///   DX12Buffer::Update は永続 Map した Upload ヒープへの memcpy でしかない。
+///   DX12Context::BeginFrame が待つのは FRAME_COUNT (=2) フレーム前のフェンスなので、
+///   1 枚しか持たないと «GPU が 1 つ前のフレームで読んでいる最中の頂点» を上書きする。
+///   2 枚を交互に使えば、今書く側が最後に描かれたのは 2 フレーム前 = 待ち済みになる。
+///   DX11 は MAP_WRITE_DISCARD がバッファをリネームするため 1 枚でも無害で、
+///   バックエンドを DX12 へ切り替えたときだけ帯がちらつく形で出る。
+///
+/// WHY 毎フレーム作り直さないか (これが本題):
+///   以前は «Release して CreateBuffer し直す» ことで «GPU が読み終わるまで生かす» を
+///   実現していた。DX12 の Release は遅延解放なので正しくはあるが、線 1 本につき
+///   GPU リソース操作が毎フレーム 4 回走る。タイトル画面の電極 61 本で
+///   毎フレーム 122 回の生成 + 122 回の解放になり、それだけで 15ms 掛かっていた。
+struct DoubleBufferedMesh {
+    std::shared_ptr<renderer::Mesh> slots[2];
+    /// 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
+    std::size_t signature = 0;
+    /// 今 slots のどちらを描いているか。
+    std::uint32_t current = 0;
+
+    [[nodiscard]] renderer::Mesh* Current() const { return slots[current].get(); }
+    [[nodiscard]] bool HasMesh() const { return static_cast<bool>(slots[current]); }
+};
 
 enum class SpriteDrawMode : int { Simple = 0, Sliced = 1, Tiled = 2 };
 
@@ -40,8 +68,7 @@ struct SpriteRendererComponent {
     bool flipX = false;
     bool flipY = false;
     bool receiveLighting = false;
-    std::shared_ptr<renderer::Mesh> runtimeMesh;
-    std::size_t runtimeSignature = 0;
+    DoubleBufferedMesh runtimeMesh;
 
     const char* GetTypeName() const { return "Sprite Renderer"; }
     void Reflect(IReflector& r)
@@ -97,8 +124,7 @@ struct LineRendererComponent {
     bool billboard = true;
     int sortingLayer = 0;
     int orderInLayer = 0;
-    std::shared_ptr<renderer::Mesh> runtimeMesh;
-    std::size_t runtimeSignature = 0;
+    DoubleBufferedMesh runtimeMesh;
 
     const char* GetTypeName() const { return "Line Renderer"; }
     void Reflect(IReflector& r)

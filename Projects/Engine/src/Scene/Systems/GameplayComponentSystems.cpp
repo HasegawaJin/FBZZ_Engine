@@ -570,22 +570,51 @@ void PresentationSystem::Update(SystemContext& ctx)
         return;
     renderer::ResourceManager& resources = *ctx.resources;
     GameObject* mainCamera = FindMainCamera(ctx.scene);
-    const auto uploadMesh = [&](std::shared_ptr<renderer::Mesh>& mesh,
+    // 2 枚を交互に使い、確保済みの容量に収まる限り中身だけ差し替える。
+    // 作り直しに戻る条件と、なぜ 1 枚では駄目かは DoubleBufferedMesh のヘッダーを参照。
+    //
+    // WHY 容量を 2 の冪で取るか:
+    //   線の頂点数は BuildPath が逆極へ届いた時点で打ち切られるぶん毎フレーム増減する。
+    //   ぴったり確保すると 1 頂点増えただけで «毎フレーム作り直し» へ逆戻りする。
+    const auto uploadMesh = [&](DoubleBufferedMesh& target,
                                 std::vector<renderer::Vertex> vertices,
                                 std::vector<uint32_t> indices) {
-        if (mesh) {
-            resources.Release(mesh->vertexBuffer);
-            resources.Release(mesh->indexBuffer);
+        target.current ^= 1u;
+        std::shared_ptr<renderer::Mesh>& slot = target.slots[target.current];
+        if (!slot) slot = std::make_shared<renderer::Mesh>();
+        renderer::Mesh& mesh = *slot;
+
+        mesh.cpuVertices = std::move(vertices);
+        mesh.cpuIndices  = std::move(indices);
+        mesh.vertexCount = static_cast<uint32_t>(mesh.cpuVertices.size());
+        mesh.indexCount  = static_cast<uint32_t>(mesh.cpuIndices.size());
+        mesh.ComputeBounds();
+
+        const auto capacityFor = [](uint32_t needed) {
+            uint32_t capacity = 256;
+            while (capacity < needed) capacity *= 2;
+            return capacity;
+        };
+
+        if (!mesh.vertexBuffer.IsValid() || mesh.vertexCapacity < mesh.vertexCount) {
+            if (mesh.vertexBuffer.IsValid()) resources.Release(mesh.vertexBuffer);
+            mesh.vertexCapacity = capacityFor(mesh.vertexCount);
+            mesh.vertexBuffer   = resources.CreateVertexBuffer(
+                nullptr, static_cast<size_t>(mesh.vertexCapacity) * sizeof(renderer::Vertex),
+                sizeof(renderer::Vertex));
         }
-        mesh = std::make_shared<renderer::Mesh>();
-        mesh->cpuVertices = std::move(vertices);
-        mesh->cpuIndices = std::move(indices);
-        mesh->vertexCount = static_cast<uint32_t>(mesh->cpuVertices.size());
-        mesh->indexCount = static_cast<uint32_t>(mesh->cpuIndices.size());
-        mesh->ComputeBounds();
-        mesh->vertexBuffer = resources.CreateVertexBuffer(mesh->cpuVertices.data(),
-            mesh->cpuVertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
-        mesh->indexBuffer = resources.CreateIndexBuffer(mesh->cpuIndices.data(), mesh->indexCount);
+        if (!mesh.indexBuffer.IsValid() || mesh.indexCapacity < mesh.indexCount) {
+            if (mesh.indexBuffer.IsValid()) resources.Release(mesh.indexBuffer);
+            mesh.indexCapacity = capacityFor(mesh.indexCount);
+            mesh.indexBuffer   = resources.CreateIndexBuffer(nullptr, mesh.indexCapacity);
+        }
+
+        if (mesh.vertexCount > 0)
+            resources.Update(mesh.vertexBuffer, mesh.cpuVertices.data(),
+                             static_cast<size_t>(mesh.vertexCount) * sizeof(renderer::Vertex));
+        if (mesh.indexCount > 0)
+            resources.Update(mesh.indexBuffer, mesh.cpuIndices.data(),
+                             static_cast<size_t>(mesh.indexCount) * sizeof(uint32_t));
     };
     const auto applyMaterial = [](GameObject& go, const std::string& path,
                                   const math::Vector4& color, const std::string& texture,
@@ -598,8 +627,19 @@ void PresentationSystem::Update(SystemContext& ctx)
         material->paramOverrides["albedo"] = { color.x, color.y, color.z, color.w };
         if (!texture.empty())
             material->textureOverrides["albedo"] = texture;
-        material->hasBlendModeOverride = true;
-        material->blendModeOverride = renderer::BlendMode::ALPHA_BLEND;
+        // WHY 合成方法だけ上書きしないか:
+        //   以前はここで毎フレーム ALPHA_BLEND を焼き付けていた。結果、.mat に
+        //   blend_mode = "Additive" と書いても通らず、線とスプライトだけ «見た目の正本が
+        //   .mat ではない» という状態になっていた。パーティクルで同じ壊れ方を潰したのと
+        //   同じ理由 (ParticleMaterialSettings.hpp のヘッダー) で、合成は .mat へ返す。
+        //   ここで false へ倒しもしないのは、ScriptMaterialProxy::SetBlendMode で
+        //   明示的に指定した側を毎フレーム剥がさないため。
+        //
+        // WHY 両面と描画キューは上書きし続けるか:
+        //   どちらも «.mat には決めようがない» 値である。帯のメッシュは毎フレーム
+        //   カメラ向きから組み直すため巻き順が裏返りうるので、片面にすると見る角度で
+        //   消える。描画キューは sortingLayer / orderInLayer をキューへ写す仕組みそのもので、
+        //   .mat に書かせると同じ .mat を共有する線が全部同じ順序になる。
         material->hasDoubleSidedOverride = true;
         material->doubleSidedOverride = true;
         material->hasRenderQueueOverride = true;
@@ -655,7 +695,7 @@ void PresentationSystem::Update(SystemContext& ctx)
         signature ^= static_cast<std::size_t>(sprite->flipX) << 5;
         signature ^= static_cast<std::size_t>(sprite->flipY) << 6;
         signature ^= std::hash<float>{}(uvMin.x + uvMin.y * 7.0f + uvMax.x * 31.0f + uvMax.y * 127.0f);
-        if (!sprite->runtimeMesh || sprite->runtimeSignature != signature) {
+        if (!sprite->runtimeMesh.HasMesh() || sprite->runtimeMesh.signature != signature) {
             const float left = -sprite->pivot.x * sprite->size.x;
             const float top = (1.0f - sprite->pivot.y) * sprite->size.y;
             const float right = left + sprite->size.x;
@@ -672,12 +712,12 @@ void PresentationSystem::Update(SystemContext& ctx)
                 {{right, bottom, 0.0f}, normal, tangent, {u1, v1}},
                 {{left, bottom, 0.0f}, normal, tangent, {u0, v1}}
             }, {0, 1, 2, 0, 2, 3});
-            sprite->runtimeSignature = signature;
+            sprite->runtimeMesh.signature = signature;
         }
         auto* meshRenderer = go->GetComponent<MeshRenderer>();
         if (!meshRenderer)
             meshRenderer = &go->AddComponent<MeshRenderer>();
-        meshRenderer->mesh = sprite->runtimeMesh.get();
+        meshRenderer->mesh = sprite->runtimeMesh.Current();
         meshRenderer->enabled = sprite->enabled;
         applyMaterial(*go, sprite->materialPath, sprite->color, texturePath,
             inheritedSort(*go) + sprite->sortingLayer * 1000 + sprite->orderInLayer);
@@ -700,7 +740,8 @@ void PresentationSystem::Update(SystemContext& ctx)
             signature ^= std::hash<float>{}(mainCamera->transform.worldPosition.x
                 + mainCamera->transform.worldPosition.y * 31.0f
                 + mainCamera->transform.worldPosition.z * 997.0f);
-        if ((!line->runtimeMesh || line->runtimeSignature != signature) && line->points.size() >= 2) {
+        if ((!line->runtimeMesh.HasMesh() || line->runtimeMesh.signature != signature)
+            && line->points.size() >= 2) {
             std::vector<renderer::Vertex> vertices;
             std::vector<uint32_t> indices;
             const size_t segmentCount = line->loop ? line->points.size() : line->points.size() - 1;
@@ -713,13 +754,19 @@ void PresentationSystem::Update(SystemContext& ctx)
                     b = DivideSafe(go->transform.worldRotation.Inverse()
                         * (b - go->transform.worldPosition), go->transform.worldScale);
                 }
+                // 同じ点が 2 つ並んだ区間は面積 0 で描くものが無い。方向も作れないので飛ばす。
+                // 頂点は区間ごとに独立しているため、抜けても残りの帯は繋がったままになる。
+                if ((b - a).LengthSq() < 0.000001f) continue;
                 const math::Vector3 direction = (b - a).Normalized();
                 math::Vector3 viewDirection = math::Vector3::FORWARD;
                 if (line->billboard && mainCamera) {
                     const math::Vector3 cameraLocal = DivideSafe(go->transform.worldRotation.Inverse()
                         * (mainCamera->transform.worldPosition - go->transform.worldPosition),
                         go->transform.worldScale);
-                    viewDirection = (cameraLocal - (a + b) * 0.5f).Normalized();
+                    // カメラが区間の中点に重なると向きが決まらない。板の面は side 側で
+                    // 作り直されるので、既定の前方を入れておけば絵は崩れない。
+                    viewDirection = (cameraLocal - (a + b) * 0.5f)
+                        .NormalizedOr(math::Vector3::FORWARD);
                 }
                 math::Vector3 side = math::Vector3::Cross(direction, viewDirection);
                 if (side.LengthSq() < 0.000001f)
@@ -737,12 +784,12 @@ void PresentationSystem::Update(SystemContext& ctx)
                 indices.insert(indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
             }
             uploadMesh(line->runtimeMesh, std::move(vertices), std::move(indices));
-            line->runtimeSignature = signature;
+            line->runtimeMesh.signature = signature;
         }
         auto* meshRenderer = go->GetComponent<MeshRenderer>();
         if (!meshRenderer)
             meshRenderer = &go->AddComponent<MeshRenderer>();
-        meshRenderer->mesh = line->runtimeMesh.get();
+        meshRenderer->mesh = line->runtimeMesh.Current();
         meshRenderer->enabled = line->enabled && line->points.size() >= 2;
         applyMaterial(*go, line->materialPath, line->startColor, "",
             inheritedSort(*go) + line->sortingLayer * 1000 + line->orderInLayer);
