@@ -6,6 +6,7 @@
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -86,6 +87,43 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs)
 //   Unity の OS ごみ箱行きと同じ扱いで、実体は .fbzz/Trash/<日時>/ に残し続ける
 //   (自動削除しない)。復元はエクスプローラーで戻すだけで済む。
 // @return ごみ箱へ移せた項目数
+// 削除したアセットを「もう無いもの」として各所へ知らせる。
+//
+// WHY 消すだけでは足りないか: ResourceManager のテクスチャキャッシュはパス一致で
+//     即返すため、ファイルを消してもエディタを再起動するまで古い絵が出続ける。
+//     「消したのに映っている」は参照切れより質が悪く、消したつもりのアセットを
+//     配布物へ持ち込む。GUID 索引にも残るので、参照側は壊れた参照だと気付けない。
+// NOTE: フォルダを渡された場合も配下ごと外れる (OnAssetRemoved / EvictTexture の
+//       どちらも前方一致で配下を処理する)。
+void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
+{
+    // GUID 索引から外す。以後この参照は「解決できない guid」になり、
+    // 読み込み側が壊れた参照として扱えるようになる。
+    asset::AssetDatabase::OnAssetRemoved(absPath);
+
+    // キャッシュのキーは Assets/ 起点の相対パス。projectRoot 分を落として合わせる。
+    std::string relative = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(absPath));
+    std::replace(relative.begin(), relative.end(), '\\', '/');
+    std::string root = ctx.projectRoot;
+    std::replace(root.begin(), root.end(), '\\', '/');
+    if (!root.empty() && relative.rfind(root, 0) == 0) {
+        relative.erase(0, root.size());
+        while (!relative.empty() && relative.front() == '/') relative.erase(0, 1);
+    }
+    if (relative.empty()) return;
+
+    if (auto* resources = renderer::ResourceManager::Active()) {
+        if (const std::size_t evicted = resources->EvictTexture(relative); evicted > 0) {
+            FBZZ_LOG_INFO("AssetBrowser: evicted %zu cached texture(s) under [%s]",
+                          evicted, relative.c_str());
+        }
+    }
+
+    // .mat はテクスチャ参照を抱えたまま別ストアに載っている。パス一致で外す。
+    const std::string lowerExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(relative));
+    if (lowerExt == ".mat") asset::AssetManager::UnloadMaterial(relative);
+}
+
 std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ctx)
 {
     if (paths.empty()) return 0;
@@ -120,6 +158,8 @@ std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ct
             util::FileSystem::Rename(util::FileSystem::PathFromUtf8(metaPath),
                                      util::FileSystem::PathFromUtf8(dest + ".meta"));
         }
+
+        ForgetDeletedAsset(paths[i], ctx);
     }
 
     if (moved > 0) {
@@ -263,6 +303,8 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".animctrl", nullptr },                              { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
+    // 手続き効果音の定義。録音素材と並ぶので、同系色のまま明度を上げて区別する。
+    { { ".synth", nullptr },                                    { 0.90f, 0.35f, 0.70f, 1.0f }, "SYNTH"   },
     { { ".ttf", ".ttc", ".otf", nullptr },                     { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
     { { ".fnt", nullptr },                                     { 0.50f, 0.20f, 0.75f, 1.0f }, "FNT"     },
     { { ".txt", ".md", ".rst", nullptr },                      { 0.55f, 0.55f, 0.55f, 1.0f }, "TEXT"    },
@@ -1358,6 +1400,34 @@ static void DrawRenderTargetThumbnail(
                                         IM_COL32(235, 240, 245, 230), badge);
 }
 
+// ─── プレビュー失敗の再試行 ─────────────────────────────────────────────────
+// 素材を一括で入れた直後の失敗は、素材が壊れているのではなく「まだ書き込みが
+// 終わっていない」「まだインポートが走っていない」だけのことがほとんどで、
+// 数百 ms 後には成功する。1 回の失敗で打ち切ると再起動するまで直らないため、
+// 間隔を空けて有限回だけ焼き直す。無限に再試行しないのは、本当に壊れた素材で
+// 毎フレーム Assimp / WIC を走らせないため。
+constexpr uint32_t kPreviewMaxRetries    = 10;
+constexpr double   kPreviewRetryInterval = 0.5;
+
+template<typename T>
+static bool CanAttemptPreview(const T& p) {
+    if (!p.failed) return true;
+    return p.retry.count < kPreviewMaxRetries && ImGui::GetTime() >= p.retry.nextTime;
+}
+
+template<typename T>
+static void MarkPreviewFailed(T& p) {
+    p.failed = true;
+    p.retry.nextTime = ImGui::GetTime() + kPreviewRetryInterval;
+    ++p.retry.count;
+}
+
+template<typename T>
+static void MarkPreviewSucceeded(T& p) {
+    p.failed = false;
+    p.retry  = {};
+}
+
 template<typename T>
 static void EnsureThumbnailRT(T& t, EditorContext& ctx) {
     if (!t.thumbnailRT.IsValid()) {
@@ -1648,12 +1718,12 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
     if ((IsTextureExt(e.ext) || e.isSpriteSubAsset) && ctx.resources && ctx.imguiRenderer) {
         const std::string& texturePath = e.isSpriteSubAsset ? e.sourceAssetPath : e.path;
         TexturePreview& preview = m_texturePreviews[texturePath];
-        if (!preview.handle.IsValid() && !preview.failed && !preview.queued) {
+        if (!preview.handle.IsValid() && !preview.queued && CanAttemptPreview(preview)) {
             preview.queued = true;
             m_texLoadQueue.push_back(texturePath);
         }
 
-        if (!preview.failed) {
+        if (preview.handle.IsValid()) {
             void* rawID = ctx.imguiRenderer->GetImTextureID(preview.handle, *ctx.resources);
             if (rawID) {
                 SpritePreview& spritePreview = m_spritePreviews[texturePath];
@@ -1698,11 +1768,15 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.lastWriteTime = currentWriteTime;
             preview.handle = {};
             preview.width = preview.height = 0;
-            preview.failed = false;
+            MarkPreviewSucceeded(preview); // 中身が変わったので失敗と再試行回数をやり直す
         }
-        if (!preview.handle.IsValid() && !preview.failed) {
+        if (!preview.handle.IsValid() && CanAttemptPreview(preview)) {
+            // 前回の失敗は AssetManager の cache にも焼き付いている。掃除しないと
+            // 再試行が同じ null を返すだけで、何度やっても復帰しない。
+            if (preview.retry.count > 0) asset::AssetManager::FlushFailed();
             preview.handle = asset::AssetManager::Load<asset::TextureAsset>(e.path);
             if (preview.handle.IsValid()) {
+                MarkPreviewSucceeded(preview);
                 if (const auto* ta = asset::AssetManager::Get(preview.handle)) {
                     if (const auto* tex = ctx.resources->Get(ta->gpuHandle)) {
                         preview.width  = tex->GetWidth();
@@ -1710,10 +1784,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     }
                 }
             } else {
-                preview.failed = true;
+                MarkPreviewFailed(preview);
             }
         }
-        if (!preview.failed && preview.handle.IsValid()) {
+        if (preview.handle.IsValid()) {
             if (const auto* ta = asset::AssetManager::Get(preview.handle)) {
                 void* rawID = ctx.imguiRenderer->GetImTextureID(ta->gpuHandle, *ctx.resources);
                 if (rawID) {
@@ -1727,9 +1801,13 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
     if (e.ext == ".mat") {
         MaterialPreview& preview = m_materialPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
-        if (!preview.loaded || currentWriteTime != preview.lastWriteTime) {
+        // 3 つ目の条件は「取り込み直後にまだ書き終わっていなかった .mat」の救済。
+        // 更新時刻はコピー完了時点で確定してしまうため、mtime 監視だけでは拾えない。
+        if (!preview.loaded || currentWriteTime != preview.lastWriteTime ||
+            (preview.failed && CanAttemptPreview(preview))) {
             preview.asset = {};
-            preview.failed = !asset::LoadMaterialAssetFromFile(e.path, preview.asset);
+            if (asset::LoadMaterialAssetFromFile(e.path, preview.asset)) MarkPreviewSucceeded(preview);
+            else                                                         MarkPreviewFailed(preview);
             preview.loaded = true;
             preview.lastWriteTime = currentWriteTime;
             ResetMaterialPreviewGpuState(preview, m_resources);
@@ -1747,7 +1825,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 if (const auto* live = asset::AssetManager::GetMaterial(
                         asset::AssetManager::LoadMaterial(relPath))) {
                     preview.asset  = *live;
-                    preview.failed = false;
+                    MarkPreviewSucceeded(preview);
                     preview.loaded = true;
                     // ここでは GPU リソースを捨てない。RebuildMaterialThumbnailGpuData が
                     // シェーダー変更を検知して張り替え、テクスチャと定数バッファは毎回更新するため、
@@ -1871,18 +1949,20 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.lastWriteTime = currentWriteTime;
             preview.handle = {};
             preview.thumbnailRendered = false;
-            preview.failed = false;
+            MarkPreviewSucceeded(preview);
         }
         EnsureThumbnailRT(preview, ctx);
-        if (!preview.handle.IsValid() && !preview.failed) {
+        if (!preview.handle.IsValid() && CanAttemptPreview(preview)) {
             FBZZ_LOG_INFO("AssetBrowserItems: Load<ModelAsset> [%s]", previewModelPath.c_str());
             // WHY: インポート直後やファイル監視直後は、生成前に一度 Load して Null が
             //      AssetManager にキャッシュされることがある。サムネイル再試行時は失敗 cache を掃除する。
             asset::AssetManager::FlushFailed();
             preview.handle = asset::AssetManager::Load<asset::ModelAsset>(previewModelPath);
-            if (!preview.handle.IsValid()) {
+            if (preview.handle.IsValid()) {
+                MarkPreviewSucceeded(preview);
+            } else {
                 FBZZ_LOG_ERROR("AssetBrowserItems: ModelAsset load failed [%s]", previewModelPath.c_str());
-                preview.failed = true;
+                MarkPreviewFailed(preview);
             }
         }
         // マテリアルスロットを初回ロード (materials/slotName.mat -> per-slot MaterialPreview)
@@ -1901,7 +1981,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
             }
         }
-        if (!preview.thumbnailRendered && !preview.failed && preview.thumbnailRT.IsValid()) {
+        if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid() && CanAttemptPreview(preview)) {
             const asset::ModelAsset* m = asset::AssetManager::Get(preview.handle);
             if (m && !m->lods.empty() && !m->lods[0].submeshes.empty()) {
                 // 全サブメッシュの AABB から共通カメラを計算 (Unity 同様すべてのメッシュが写る)
@@ -1966,7 +2046,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     if (ok) { preview.thumbnailRendered = true; firstDraw = false; }
                 }
             }
-            if (!preview.thumbnailRendered) preview.failed = true;
+            if (preview.thumbnailRendered) MarkPreviewSucceeded(preview);
+            else                           MarkPreviewFailed(preview);
         }
         if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "FBX")) return;
     }
@@ -1985,15 +2066,16 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 preview.lastWriteTime    = parentWriteTime;
                 preview.handle           = {};
                 preview.thumbnailRendered = false;
-                preview.failed           = false;
+                MarkPreviewSucceeded(preview);
             }
             EnsureThumbnailRT(preview, ctx);
-            if (!preview.handle.IsValid() && !preview.failed) {
+            if (!preview.handle.IsValid() && CanAttemptPreview(preview)) {
                 asset::AssetManager::FlushFailed();
                 preview.handle = asset::AssetManager::Load<asset::ModelAsset>(parentPath);
-                if (!preview.handle.IsValid()) preview.failed = true;
+                if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
+                else                          MarkPreviewFailed(preview);
             }
-            if (!preview.thumbnailRendered && !preview.failed && preview.thumbnailRT.IsValid()) {
+            if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid() && CanAttemptPreview(preview)) {
                 const asset::ModelAsset* m = asset::AssetManager::Get(preview.handle);
                 if (m && !m->lods.empty() && submeshIdx < m->lods[0].submeshes.size() &&
                     m->lods[0].submeshes[submeshIdx].mesh) {
@@ -2019,7 +2101,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         renderer::ResourceHandle<renderer::TextureTag>{},
                         { 0.74f, 0.78f, 0.84f, 1.0f });
                 }
-                if (!preview.thumbnailRendered) preview.failed = true;
+                if (preview.thumbnailRendered) MarkPreviewSucceeded(preview);
+                else                           MarkPreviewFailed(preview);
             }
             if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "MESH")) return;
         }
@@ -2032,21 +2115,24 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.lastWriteTime = currentWriteTime;
             preview.model = nullptr;
             preview.thumbnailRendered = false;
-            preview.failed = false;
+            MarkPreviewSucceeded(preview);
         }
         EnsureThumbnailRT(preview, ctx);
-        if (!preview.model && !preview.failed)
+        const bool meshRetryAllowed = CanAttemptPreview(preview);
+        if (!preview.model && meshRetryAllowed)
             preview.model = asset::AssetManager::LoadModel(e.path);
-        if (!preview.thumbnailRendered && !preview.failed && preview.thumbnailRT.IsValid() &&
-            preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
-            preview.thumbnailRendered = RenderMeshThumbnail(
-                *ctx.renderer,
-                *ctx.resources,
-                *preview.model->meshes.front(),
-                preview.thumbnailRT,
-                renderer::ResourceHandle<renderer::TextureTag>{},
-                { 0.74f, 0.78f, 0.84f, 1.0f });
-            preview.failed = !preview.thumbnailRendered;
+        if (!preview.thumbnailRendered && meshRetryAllowed && preview.thumbnailRT.IsValid()) {
+            if (preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
+                preview.thumbnailRendered = RenderMeshThumbnail(
+                    *ctx.renderer,
+                    *ctx.resources,
+                    *preview.model->meshes.front(),
+                    preview.thumbnailRT,
+                    renderer::ResourceHandle<renderer::TextureTag>{},
+                    { 0.74f, 0.78f, 0.84f, 1.0f });
+            }
+            if (preview.thumbnailRendered) MarkPreviewSucceeded(preview);
+            else                           MarkPreviewFailed(preview);
         }
         const char* badge = (e.ext == ".asset") ? "ASSET" : "MESH";
         if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, badge)) return;
@@ -2093,7 +2179,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     }
                 }
             }
-            if (preview.hasMesh && !preview.failed) {
+            if (preview.hasMesh && CanAttemptPreview(preview)) {
                 EnsureThumbnailRT(preview, ctx);
                 if (!preview.model) {
                     std::string absPath = preview.meshPath;
@@ -2101,15 +2187,17 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         absPath = ctx.projectRoot + "/" + absPath;
                     preview.model = asset::AssetManager::LoadModel(absPath);
                 }
-                if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid() &&
-                    preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
-                    preview.thumbnailRendered = RenderMeshThumbnail(
-                        *ctx.renderer, *ctx.resources,
-                        *preview.model->meshes.front(),
-                        preview.thumbnailRT,
-                        renderer::ResourceHandle<renderer::TextureTag>{},
-                        { 0.35f, 0.82f, 0.95f, 1.0f });
-                    preview.failed = !preview.thumbnailRendered;
+                if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
+                    if (preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
+                        preview.thumbnailRendered = RenderMeshThumbnail(
+                            *ctx.renderer, *ctx.resources,
+                            *preview.model->meshes.front(),
+                            preview.thumbnailRT,
+                            renderer::ResourceHandle<renderer::TextureTag>{},
+                            { 0.35f, 0.82f, 0.95f, 1.0f });
+                    }
+                    if (preview.thumbnailRendered) MarkPreviewSucceeded(preview);
+                    else                           MarkPreviewFailed(preview);
                 }
                 if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "PREFAB")) return;
             }
@@ -2223,7 +2311,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     }
                 }
             }
-            if (preview.hasMaterial && !preview.mat.failed) {
+            if (preview.hasMaterial && CanAttemptPreview(preview.mat)) {
                 EnsureThumbnailRT(preview.mat, ctx);
                 if (!preview.mat.thumbnailRendered) {
                     if (!s_tr.materialSphere)
@@ -2240,7 +2328,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                             &preview.mat.textures,
                             ThumbnailShaderFlavor::Terrain,
                             &preview.mat.asset);
-                        preview.mat.failed = !preview.mat.thumbnailRendered;
+                        if (preview.mat.thumbnailRendered) MarkPreviewSucceeded(preview.mat);
+                        else                               MarkPreviewFailed(preview.mat);
                     }
                 }
                 if (DrawThumbnailIfReady(preview.mat, origin, sz, ctx, hovered, "TERRAIN")) return;
@@ -2285,15 +2374,19 @@ void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
         auto it = m_texturePreviews.find(path);
         if (it == m_texturePreviews.end()) continue;
         TexturePreview& preview = it->second;
-        if (preview.handle.IsValid() || preview.failed) continue;
+        // キューから出した時点で「積んである」印を落とす。ここで戻さないと、
+        // 再試行に回すべきエントリが二度と積み直されない。
+        preview.queued = false;
+        if (preview.handle.IsValid()) continue;
         preview.handle = ctx.resources->LoadTexture(ToTextureLoadPath(path, ctx));
         if (preview.handle.IsValid()) {
+            MarkPreviewSucceeded(preview);
             if (auto* texture = ctx.resources->Get(preview.handle)) {
                 preview.width  = texture->GetWidth();
                 preview.height = texture->GetHeight();
             }
         } else {
-            preview.failed = true;
+            MarkPreviewFailed(preview);
         }
     }
 }
@@ -2353,6 +2446,71 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
         }
     }
     m_texDescPreviews.erase(path);
+}
+
+void AssetBrowserPanel::ClearAllAssetPreviews()
+{
+    auto releaseAll = [&](auto& map) {
+        if (m_resources) {
+            for (auto it = map.begin(); it != map.end(); ++it) {
+                auto& preview = it->second;
+                if constexpr (requires { preview.thumbnailRT; }) {
+                    if (preview.thumbnailRT.IsValid())
+                        m_resources->Release(preview.thumbnailRT);
+                    if constexpr (requires { preview.materialCB; }) {
+                        if (preview.materialCB.IsValid())
+                            m_resources->Release(preview.materialCB);
+                    }
+                    if constexpr (requires { preview.slotMaterials; }) {
+                        for (auto& slot : preview.slotMaterials)
+                            if (slot.materialCB.IsValid())
+                                m_resources->Release(slot.materialCB);
+                    }
+                } else if constexpr (requires { preview.mat.thumbnailRT; }) {
+                    if (preview.mat.thumbnailRT.IsValid())
+                        m_resources->Release(preview.mat.thumbnailRT);
+                    if (preview.mat.materialCB.IsValid())
+                        m_resources->Release(preview.mat.materialCB);
+                }
+            }
+        }
+        map.clear();
+    };
+    releaseAll(m_materialPreviews);
+    releaseAll(m_meshPreviews);
+    releaseAll(m_prefabPreviews);
+    releaseAll(m_terrainPreviews);
+    releaseAll(m_modelAssetPreviews);
+    // 以下は ResourceManager 側のキャッシュを共有するだけで、自前の GPU リソースを持たない。
+    m_texturePreviews.clear();
+    m_texDescPreviews.clear();
+    m_spritePreviews.clear();
+    m_texLoadQueue.clear();
+}
+
+void AssetBrowserPanel::ResyncAfterWatcherOverflow()
+{
+    m_treeCache.clear();
+    m_assetSubItemsCache.clear();
+    ClearAllAssetPreviews();
+
+    // 取りこぼした Added の分だけ .meta / guid が発行されていない。
+    // GuidFromPath は .meta を持つべき拡張子だけを対象に、無ければ発行して索引へ入れる
+    // (FBX は Import まで原本の .meta を作らないため除く)。
+    for (const std::filesystem::path& p :
+         util::FileSystem::ListFilesRecursive(util::FileSystem::PathFromUtf8(m_rootPath))) {
+        const std::string absPath = util::FileSystem::NormalizePathSeparators(
+            util::FileSystem::PathToUtf8(p));
+        const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
+        if (ext == ".meta" || ext == ".fbx") continue;
+        (void)asset::AssetDatabase::GuidFromPath(absPath);
+    }
+
+    AssetSearch::Rebuild();
+    if (!util::FileSystem::IsDirectory(m_currentPath))
+        m_currentPath = m_rootPath;
+    RefreshDirectory();
+    ScanAndQueueUnimported(m_rootPath);
 }
 
 // ── DrawEntry サブメソッド ──────────────────────────────────────────────────────
@@ -2537,7 +2695,8 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             }
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
-    } else if (ext == ".animcontroller" || ext == ".vfx" || ext == ".behaviortree") {
+    } else if (ext == ".animcontroller" || ext == ".vfx" || ext == ".behaviortree"
+               || ext == ".synth") {
         // ドキュメント面へ渡す振り分けは asset.open operator が持つ。
         // WHY 写さないか: 同じ分岐がコマンドパレットと SearchEverything にもあり、
         //      そちらは .behaviortree を落としていた (このパネルからしか開けなかった)。
