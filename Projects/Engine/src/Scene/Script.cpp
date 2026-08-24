@@ -21,6 +21,7 @@
 namespace fbzz::scene {
 
 physics::World*    Script::s_physicsWorld  = nullptr;
+bool               Script::s_inPlayMode    = false;
 Script::PrefabInstantiateFn Script::s_instantiateFn;
 
 void Script::SetPrefabInstantiationCallback(PrefabInstantiateFn fn)
@@ -377,6 +378,31 @@ void Script::CancelEventSubscriptions()
 void Script::SetPhysicsWorld(physics::World* world)
 {
     s_physicsWorld = world;
+}
+
+void Script::SetInPlayMode(bool inPlayMode)
+{
+    s_inPlayMode = inPlayMode;
+}
+
+bool Script::IsInPlayMode()
+{
+    return s_inPlayMode;
+}
+
+void Script::ResetLifecycleState()
+{
+    CancelInvoke();
+    StopAllCoroutines();
+    CancelEventSubscriptions();
+    // 次の OnEnable を「初回」として扱わせる。モードをまたぐ直前に OnDisable を
+    // 出し終えているため、ここを残すと新しいモードの最初の OnEnable が落ちる。
+    m_enableStateInitialized = false;
+    m_lastEnabled            = true;
+    // 障害ラッチは畳んだライフサイクルのもの。次の OnAwake からやり直す。
+    // NOTE: 障害時に落とされた enabled はここでは戻さない。ユーザーが自分で切った
+    //       のか障害で落ちたのかを区別できず、切ったつもりの Script が復活するため。
+    m_runtimeFaulted = false;
 }
 
 // ── シーン操作ショートハンド ────────────────────────────────────────────────

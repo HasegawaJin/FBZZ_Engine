@@ -27,6 +27,7 @@ public:
         SurfaceVSPS,     // Material/Custom/ に VS+PS ペアを生成 (一般マテリアル用)
         PostProcessVSPS, // PostProcess/Custom/ に VS+PS ペアを生成 (フルスクリーン用)
         ComputeCS,       // PostProcess/Custom/ に CS を生成
+        ParticlePS,      // Material/Custom/ に PS を生成 (ParticleEmitter 用)
     };
 
     // 生成するヘッダの種類。

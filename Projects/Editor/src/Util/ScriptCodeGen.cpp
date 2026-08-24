@@ -143,7 +143,13 @@ std::vector<ScriptRegistration> CollectRegistrations(const std::string& scriptsD
                 const size_t end = line.find(')', begin);
                 if (end == std::string::npos) break;
 
-                const std::string className = Trim(std::string_view(line).substr(begin, end - begin));
+                std::string_view raw = std::string_view(line).substr(begin, end - begin);
+                // 2 引数マクロ (FBZZ_SCRIPT_DERIVED / FBZZ_SCRIPT_BASE) は
+                // "T, Base" の並びなので、先頭の引数だけを型名として採る。
+                if (const size_t comma = raw.find(','); comma != std::string_view::npos)
+                    raw = raw.substr(0, comma);
+
+                const std::string className = Trim(raw);
                 if (!className.empty()) {
                     registrations.push_back({
                         currentNamespace.empty() ? "sandbox" : currentNamespace,
@@ -358,6 +364,59 @@ std::string BuildSurfaceHlslTemplate(const std::string& name)
     return ss.str();
 }
 
+// ParticleEmitter 用の PS テンプレートを生成する。
+// WHY VS を書かせないか: パーティクルはビルボード展開と 29 個の定数が定型で、
+//     写経すると 1 つ間違えただけで «出ない / 形が崩れる» としか分からない。
+//     ParticleMaterial.hlsli が VSMain まで供給するので、雛形は PSMain だけにする。
+std::string BuildParticleHlslTemplate(const std::string& name)
+{
+    std::ostringstream ss;
+    ss << "// FBZZ Engine\n";
+    ss << "// Material/Custom/" << name << ".hlsl | Particle\n";
+    ss << "// " << name << " カスタムパーティクルシェーダー\n";
+    ss << "//\n";
+    ss << "// 使い方:\n";
+    ss << "//   1. .mat を作り render_path = \"particle\" と shader = このファイル を書く\n";
+    ss << "//      (render_path が particle でないとエンジンはこのシェーダーを採用しない)\n";
+    ss << "//   2. ParticleEmitter の Material にその .mat を割り当てる\n";
+    ss << "//   3. 下の MaterialConstants に足した変数は .mat の [params] と\n";
+    ss << "//      **名前** で結ばれる (宣言順は無関係)\n";
+    ss << "//\n";
+    ss << "// GPU シミュレーション (simulationMode = Gpu) のエミッターへ差す場合は、\n";
+    ss << "// include より前に #define FBZZ_PARTICLE_GPU を足すこと。\n";
+    ss << "// 自前で VSMain を書く場合は #define FBZZ_PARTICLE_CUSTOM_VS を足す。\n";
+    ss << "//\n";
+    ss << "// 使えるテクスチャは t0 (.mat の [textures] albedo) と t2/t3/t4。\n";
+    ss << "// t1 / t5〜t9 はパーティクルパスが占有している。\n";
+    ss << "\n";
+    ss << "#include \"Material/Effects/ParticleMaterial.hlsli\"\n";
+    ss << "\n";
+    ss << "cbuffer MaterialConstants : register(CB_MATERIAL)\n";
+    ss << "{\n";
+    ss << "    float4 tintColor;   // .mat: params.tintColor = [1.0, 1.0, 1.0, 1.0]\n";
+    ss << "    float  softness;    // .mat: params.softness  = 2.0\n";
+    ss << "};\n";
+    ss << "\n";
+    ss << "// VSMain は ParticleMaterial.hlsli が供給する。\n";
+    ss << "float4 PSMain(ParticlePSIn p) : SV_Target0\n";
+    ss << "{\n";
+    ss << "    // localUv はクワッド内の [0,1]。中心を原点にした半径で形を作る。\n";
+    ss << "    float r = length(p.localUv - 0.5f) * 2.0f;\n";
+    ss << "    if (r >= 1.0f) discard;\n";
+    ss << "\n";
+    ss << "    float shape = pow(saturate(1.0f - r), max(softness, 0.01f));\n";
+    ss << "\n";
+    ss << "    // p.color は粒子の色 (グラデーション適用済み)。alpha は寿命フェード。\n";
+    ss << "    // 出力は非事前乗算 — RGB を自分で alpha 倍しない (ブレンドが掛ける)。\n";
+    ss << "    // TODO: エフェクトをここに追加する\n";
+    ss << "    float3 rgb   = p.color.rgb * tintColor.rgb * max(gEmissiveScale, 0.0f);\n";
+    ss << "    float  alpha = shape * p.color.a * tintColor.a;\n";
+    ss << "    clip(alpha - 0.003f);\n";
+    ss << "    return float4(rgb, alpha);\n";
+    ss << "}\n";
+    return ss.str();
+}
+
 // PostProcess フルスクリーン VS+PS テンプレートを生成する
 std::string BuildPostProcessHlslTemplate(const std::string& name)
 {
@@ -493,18 +552,54 @@ bool ScriptCodeGen::SyncScriptRegistry(const std::string& scriptsDir,
     if (scriptsDir.empty()) return false;
 
     // スクリプトとデータアセットを別々に収集する (同じヘッダ群を別トークンで走査)。
-    const auto scripts    = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT(");
-    const auto dataAssets = CollectRegistrations(scriptsDir, "FBZZ_DATA_ASSET(");
+    //
+    // WHY 4 トークンに分かれるか:
+    //   FBZZ_SCRIPT           … Script を直接継承する通常のスクリプト。登録する。
+    //   FBZZ_SCRIPT_DERIVED   … 他のスクリプトを継承したスクリプト。これも登録する。
+    //   FBZZ_SCRIPT_BASE      … 共有基底。GameObject へ付けるものではないので登録しない。
+    //   FBZZ_SCRIPT_INTERFACE … 横断インターフェース。Script ですらないので登録しない。
+    //
+    //   後ろ 2 つを登録すると make_unique<T>() が要求される。純粋仮想を持つ基底や
+    //   インターフェースではコンパイルが通らず、通ったとしても Add Component の
+    //   一覧に「基底そのもの」が出てしまう。ヘッダの include だけは要る (派生の定義に要る)。
+    //
+    // NOTE: "FBZZ_SCRIPT(" は FBZZ_SCRIPT_DERIVED( などには一致しない
+    //       (直後が '_' で '(' ではない) ため、4 者は互いに混ざらない。
+    auto scripts              = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT(");
+    const auto derivedScripts = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT_DERIVED(");
+    const auto baseScripts    = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT_BASE(");
+    const auto interfaces     = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT_INTERFACE(");
+    const auto dataAssets     = CollectRegistrations(scriptsDir, "FBZZ_DATA_ASSET(");
+
+    // 登録対象は 直接派生 + 継承派生。ScriptList.inl の並びを安定させるため、
+    // 連結後に CollectRegistrations と同じ規則で並べ直す。
+    scripts.insert(scripts.end(), derivedScripts.begin(), derivedScripts.end());
+    std::sort(scripts.begin(), scripts.end(),
+        [](const ScriptRegistration& a, const ScriptRegistration& b) {
+            if (a.headerName != b.headerName) return a.headerName < b.headerName;
+            if (a.namespaceName != b.namespaceName) return a.namespaceName < b.namespaceName;
+            return a.className < b.className;
+        });
+    scripts.erase(std::unique(scripts.begin(), scripts.end(),
+        [](const ScriptRegistration& a, const ScriptRegistration& b) {
+            return a.namespaceName == b.namespaceName &&
+                   a.className == b.className &&
+                   a.headerName == b.headerName;
+        }), scripts.end());
 
     bool ok = true;
 
-    // include ブロックは「スクリプト or データアセットを宣言する全ヘッダ」の和集合。
-    // WHY: DataAsset 専用ヘッダ (FBZZ_SCRIPT を持たない) も DLL/EXE の TU に取り込む必要があるため、
-    //      両者のヘッダをマージし、重複を排除してから #include 行を作る。
+    // include ブロックは「スクリプト or 基底 or インターフェース or データアセットを
+    // 宣言する全ヘッダ」の和集合。
+    // WHY: DataAsset 専用ヘッダ (FBZZ_SCRIPT を持たない)・共有基底・インターフェースの
+    //      ヘッダも DLL/EXE の TU に取り込む必要があるため、すべてのヘッダをマージし、
+    //      重複を排除してから #include 行を作る。登録はしないが定義には要る。
     std::vector<std::string> headers;
-    headers.reserve(scripts.size() + dataAssets.size());
-    for (const auto& reg : scripts)    headers.push_back(reg.headerName);
-    for (const auto& reg : dataAssets) headers.push_back(reg.headerName);
+    headers.reserve(scripts.size() + baseScripts.size() + interfaces.size() + dataAssets.size());
+    for (const auto& reg : scripts)     headers.push_back(reg.headerName);
+    for (const auto& reg : baseScripts) headers.push_back(reg.headerName);
+    for (const auto& reg : interfaces)  headers.push_back(reg.headerName);
+    for (const auto& reg : dataAssets)  headers.push_back(reg.headerName);
     std::sort(headers.begin(), headers.end());
     headers.erase(std::unique(headers.begin(), headers.end()), headers.end());
 
@@ -579,6 +674,11 @@ std::string ScriptCodeGen::CreateHlsl(const std::string& name,
         subDir   = hlslDir + "/Material/Custom";
         fileName = name + ".hlsl";
         content  = BuildSurfaceHlslTemplate(name);
+        break;
+    case HlslKind::ParticlePS:
+        subDir   = hlslDir + "/Material/Custom";
+        fileName = name + ".hlsl";
+        content  = BuildParticleHlslTemplate(name);
         break;
     case HlslKind::PostProcessVSPS:
         subDir   = hlslDir + "/PostProcess/Custom";

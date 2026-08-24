@@ -262,6 +262,11 @@ bool ScriptDllLoader::ValidateAbi() const
         FBZZ_LOG_WARN("  ComponentList count:     host=%llu  dll=%llu",
             static_cast<unsigned long long>(host.componentCount),
             static_cast<unsigned long long>(dll.componentCount));
+    if (host.componentLayoutHash != dll.componentLayoutHash)
+        FBZZ_LOG_WARN("  ComponentList layout:    host=%llu  dll=%llu"
+                      "  (コンポーネントのフィールド追加/並べ替え)",
+            static_cast<unsigned long long>(host.componentLayoutHash),
+            static_cast<unsigned long long>(dll.componentLayoutHash));
     if (host.msvcVersion != dll.msvcVersion)
         FBZZ_LOG_WARN("  _MSC_VER:                host=%llu  dll=%llu",
             static_cast<unsigned long long>(host.msvcVersion),

@@ -6,6 +6,9 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ParticleEditWidgets.hpp>  // カーブ / グラデーションのキャンバス編集
+#include <Engine/Audio/AudioManager.hpp>
+#include <Engine/Core/Application.hpp>
 #include <Engine/Input/KeyCode.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
@@ -84,7 +87,7 @@ struct ImGuiReflector : scene::IReflector {
         if (std::strcmp(name, "meshPath") == 0 || std::strcmp(name, "modelPath") == 0)
             return ".fbx,.fzmodel";
         if (std::strcmp(name, "controllerPath") == 0) return ".animcontroller";
-        if (std::strcmp(name, "clipPath") == 0) return ".wav,.ogg,.mp3";
+        if (std::strcmp(name, "clipPath") == 0) return widgets::kAudioClipAssetFilter;
         return nullptr;
     }
 
@@ -98,7 +101,10 @@ struct ImGuiReflector : scene::IReflector {
         ImGui::PushStyleColor(ImGuiCol_HeaderHovered, EditorTheme::Color(ThemeColor::SurfaceHover));
         ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::Color(ThemeColor::AccentSoft));
         ImGui::PushStyleColor(ImGuiCol_Text,          EditorTheme::Color(ThemeColor::TextMuted));
-        const bool open = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen);
+        // AllowOverlap: 見出しの上へ重ねた ▲▼✕ (構造体配列の要素操作) がクリックを拾えるようにする。
+        // これが無いと見出しが先に HoveredId を取り、重ねたボタンは押しても反応しない。
+        const bool open = ImGui::CollapsingHeader(
+            label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
         ImGui::PopStyleColor(4);
         return open;
     }
@@ -281,6 +287,24 @@ struct ImGuiReflector : scene::IReflector {
                 }
             }
         } else {
+            // ミキサーバス名は ProjectSettings に定義された集合から選ばせる。
+            // WHY 自由入力にしないか: 未知の名前は Master へ落ちるだけでエラーに
+            //     ならないため、綴りミスが「なぜか音量設定が効かない」形でしか出ない。
+            if (CurrentFieldHint() == FieldHint::AudioBus) {
+                if (ImGui::BeginCombo("##v", v.empty() ? "(Master)" : v.c_str())) {
+                    if (auto* manager = core::Application::Get().GetAudioManager()) {
+                        for (const audio::BusDesc& bus : manager->BusLayout()) {
+                            if (ImGui::Selectable(bus.name.c_str(), bus.name == v)) {
+                                v = bus.name;
+                                m_changed = true;
+                            }
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                EndRow();
+                return;
+            }
             if (CurrentFieldHint() == FieldHint::Tag && m_tagListProvider) {
                 if (ImGui::BeginCombo("##v", v.empty() ? "(None)" : v.c_str())) {
                     for (const std::string& tag : m_tagListProvider()) {
@@ -539,7 +563,7 @@ struct ImGuiReflector : scene::IReflector {
         case scene::ScriptAssetType::Material:      return ".mat";
         case scene::ScriptAssetType::Texture:       return ".png,.jpg,.jpeg,.tga,.dds,.hdr,.exr,.bmp";
         case scene::ScriptAssetType::Sprite:        return ".png,.jpg,.jpeg,.tga,.dds,.bmp";
-        case scene::ScriptAssetType::AudioClip:     return ".wav,.mp3,.ogg,.flac";
+        case scene::ScriptAssetType::AudioClip:     return widgets::kAudioClipAssetFilter;
         case scene::ScriptAssetType::AnimationClip: return ".anim";
         case scene::ScriptAssetType::Scene:         return ".scene";
         case scene::ScriptAssetType::Shader:        return ".hlsl,.hlsli";
@@ -869,15 +893,28 @@ struct ImGuiReflector : scene::IReflector {
             std::snprintf(label, sizeof(label), "[%zu]", index);
             scope.open = SubHeader(label);
 
-            // 削除ボタンは折りたたみ状態に関わらず出す。
-            // WHY: 閉じた要素を消したい場合に、わざわざ開かせるのは不便。
-            // ✕ は参照スロットのクリアと同じ自前グリフで描き、素の "x" 文字をやめる。
+            // ▲▼✕ は折りたたみ状態に関わらず出す。
+            // WHY: 閉じた要素を消したい / 並べ替えたい場合に、わざわざ開かせるのは不便。
+            // WHY 単純配列と同じ部品を使うか: 以前ここだけ ✕ しか無く、順序が意味を持つ
+            //     配列 (ウェーブ・コンボ段・ウェイポイント) を作り直すしかなかった。
             if (!m_listScopes.empty() && m_listScopes.back().editable) {
+                ListScope& list = m_listScopes.back();
+                // 見出し行の右端へ寄せる。SubHeader は全幅を占めるため、SameLine 任せだと
+                // ボタンが行の外へ出る。直前アイテム (= 見出し) の右端から幅ぶん戻して置く。
+                const float toolbarWidth = widgets::ListRowToolbarWidth(true);
+                const float headerRight = ImGui::GetItemRectMax().x;
                 ImGui::SameLine();
-                if (widgets::ListRemoveButton()) {
-                    m_listScopes.back().removeIndex = index;
+                ImGui::SetCursorScreenPos({ headerRight - toolbarWidth,
+                                            ImGui::GetCursorScreenPos().y });
+
+                const widgets::ListRowButtons buttons = widgets::ListRowToolbar(
+                    static_cast<int>(index), static_cast<int>(list.count),
+                    /*removable=*/true, /*sameLine=*/false);
+                if (buttons.moveUp)   { list.moveFrom = index; list.moveTo = index - 1; }
+                if (buttons.moveDown) { list.moveFrom = index; list.moveTo = index + 1; }
+                if (buttons.remove)   list.removeIndex = index;
+                if (buttons.moveUp || buttons.moveDown || buttons.remove)
                     m_changed = true;
-                }
             }
             if (scope.open) ImGui::Indent();
         }
@@ -910,7 +947,26 @@ struct ImGuiReflector : scene::IReflector {
             ImGui::PopID();
         }
         m_groupOpen = scope.previousGroupOpen;
+
+        // 並び替え要求は直後の ObjectListMove で 1 回だけ引き取らせる。
+        // 削除が同時に起きたフレームでは並び替えを捨てる: 呼び出し側は先に erase するため、
+        // 残した index はもう別の要素を指している。
+        m_pendingMove = {};
+        if (scope.removeIndex == NO_REMOVE && scope.moveFrom != NO_REMOVE) {
+            m_pendingMove.valid = true;
+            m_pendingMove.from  = scope.moveFrom;
+            m_pendingMove.to    = scope.moveTo;
+        }
         return scope.removeIndex;
+    }
+
+    bool ObjectListMove(std::size_t& from, std::size_t& to) override
+    {
+        if (!m_pendingMove.valid) return false;
+        from = m_pendingMove.from;
+        to   = m_pendingMove.to;
+        m_pendingMove = {};
+        return true;
     }
     void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override
     {
@@ -950,6 +1006,76 @@ struct ImGuiReflector : scene::IReflector {
     {
         if (m_groupOpen)
             ImGui::Dummy({ 0.0f, (std::max)(0.0f, height) });
+    }
+
+    // 編集できない計算値 (FBZZ_COMPUTED / r.Readonly)。
+    //
+    // WHY override が要るか: IReflector 側の既定は no-op で、ここで受けなければ
+    //     宣言されたフィールドが Inspector に「一切出ない」。UIButton の state や
+    //     CameraRig の elapsed のように、出ている前提で書かれた項目が黙って消えていた。
+    // 値カラムへ淡色テキストで置く。入力ウィジェットを無効化して見せる手もあるが、
+    // 枠があると「押せば編集できそう」に見えるので、テキストのまま出す。
+    void Readonly(const char* name, const std::string& v) override
+    {
+        if (!BeginRow(name)) return;
+        ImGui::TextDisabled("%s", v.c_str());
+        EndRow();
+    }
+    void Readonly(const char* name, float v) override
+    {
+        if (!BeginRow(name)) return;
+        ImGui::TextDisabled("%.3f", v);
+        EndRow();
+    }
+    void Readonly(const char* name, int v) override
+    {
+        if (!BeginRow(name)) return;
+        ImGui::TextDisabled("%d", v);
+        EndRow();
+    }
+
+    // カーブ / グラデーションは 1 行に収まらないキャンバス型のウィジェットで、
+    // ラベルと補間モードの選択を自前で描く。プロパティ行には乗せず、そのまま流す。
+    void Field(const char* name, scene::ParticleCurve& v) override
+    {
+        if (!m_groupOpen || !FieldVisible()) return;
+        const bool disabled = !FieldEnabled();
+        if (disabled) ImGui::BeginDisabled();
+        m_changed |= widgets::CurveEditor(HumanizeName(name).c_str(), v,
+                                          HasFieldMax() ? FieldMax() : 1.0f);
+        if (disabled) ImGui::EndDisabled();
+    }
+
+    void Field(const char* name, scene::ParticleGradient& v) override
+    {
+        if (!m_groupOpen || !FieldVisible()) return;
+        const bool disabled = !FieldEnabled();
+        if (disabled) ImGui::BeginDisabled();
+        m_changed |= widgets::GradientEditor(HumanizeName(name).c_str(), v);
+        if (disabled) ImGui::EndDisabled();
+    }
+
+    // アクションボタン (FBZZ_BUTTON)。ラベル列は空けて、値カラムの幅いっぱいに置く。
+    // WHY 押下で m_changed を立てるか: 呼ばれる関数はほぼ必ずスクリプトの状態を書き換える。
+    //     立てないと Undo スナップショットが取られず、シーンも未保存扱いにならない。
+    void Button(const char* label, ActionCallback action, void* userData) override
+    {
+        if (!m_groupOpen || !FieldVisible() || !action) return;
+
+        ImGui::PushID(PersistentKey(label));
+        const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
+        const bool disabled = !FieldEnabled();
+        if (disabled) ImGui::BeginDisabled();
+
+        ImGui::SetCursorPosX(ValueColumnX());
+        if (ImGui::Button(label, { -FLT_MIN, 0.0f })) {
+            action(userData);
+            m_changed = true;
+        }
+
+        if (disabled) ImGui::EndDisabled();
+        widgets::EndPropertyRow(row);
+        ImGui::PopID();
     }
 
     // ── ヒント付きフィールド ─────────────────────────────────────────────────
@@ -1196,10 +1322,21 @@ private:
         bool        editable    = false;  // + / x ボタンを出すか
         std::size_t count       = 0;
         std::size_t removeIndex = scene::IReflector::NO_REMOVE;
+        std::size_t moveFrom    = scene::IReflector::NO_REMOVE;
+        std::size_t moveTo      = scene::IReflector::NO_REMOVE;
+    };
+
+    // EndObjectList で確定し、直後の ObjectListMove が引き取るまでの一時置き場。
+    // 入れ子の配列でも、EndObjectList → ObjectListMove は必ず隣り合って呼ばれるため 1 枠で足りる。
+    struct PendingMove {
+        bool        valid = false;
+        std::size_t from  = 0;
+        std::size_t to    = 0;
     };
 
     std::vector<ObjectScope> m_objectScopes;
     std::vector<ListScope>   m_listScopes;
+    PendingMove              m_pendingMove;
 
     // 今いる位置が「閉じた入れ子オブジェクトの中」か。
     // WHY: m_groupOpen だけでは、同じオブジェクト内の前のグループが閉じているのか、
