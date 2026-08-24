@@ -291,7 +291,7 @@ void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)
     // hdrRT をクリア (カラー・深度 1.0 にリセット) してから GBuffer 深度を転写する。
     // この深度は Sky (DEPTH_SKY) と DeferredSkinnedForward (DEPTH_ON) が参照する。
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.Clear(kHdrClearColor);
+    ClearForCamera(renderer, ctx.camera);
 
     if (!h.depthCopyShader.IsValid() || !h.gbufferRT.IsValid()) return;
 

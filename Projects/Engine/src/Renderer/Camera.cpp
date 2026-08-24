@@ -35,8 +35,9 @@ math::Vector3 Camera::GetUp() const {
 }
 
 void Camera::LookAt(const math::Vector3& target) {
-    math::Vector3 forward = (target - m_position).Normalized();
-    m_rotation = math::Quaternion::LookRotation(forward);
+    math::Vector3 forward = target - m_position;
+    if (forward.LengthSq() < 1e-6f) return;
+    m_rotation = math::Quaternion::LookRotation(forward.Normalized());
 }
 
 } // namespace fbzz::renderer
