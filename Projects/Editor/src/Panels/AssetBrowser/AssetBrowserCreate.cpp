@@ -10,6 +10,8 @@
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/Asset/SynthAsset.hpp>
+#include <Engine/Audio/Synth.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 #include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
 #include <filesystem>
@@ -441,6 +443,36 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
     }
 
     // ── Data Asset (純共有 ScriptableObject) ──────────────────────
+    // プリセットを選んで .synth を生成する。
+    // WHY プリセットから作らせるか: 空の SynthSpec は無音に近く、そこから耳で
+    //     目的の音へ辿り着くのは現実的でない。「Laser」から始めれば調整で済む。
+    if (ImGui::BeginMenu("Synth Clip")) {
+        for (int i = 0; i < static_cast<int>(audio::SynthPreset::Count); ++i) {
+            const auto preset = static_cast<audio::SynthPreset>(i);
+            const char* presetName = audio::PresetToString(preset);
+            if (!ImGui::MenuItem(presetName)) continue;
+
+            std::string newPath = m_currentPath + "/" + presetName + ".synth";
+            int suffix = 1;
+            while (util::FileSystem::Exists(newPath))
+                newPath = m_currentPath + "/" + presetName + " " +
+                    std::to_string(suffix++) + ".synth";
+
+            asset::SynthAsset synth;
+            synth.spec       = audio::MakePreset(preset);
+            synth.presetName = presetName;
+
+            if (!asset::SaveSynthAssetToFile(newPath, synth)) {
+                FBZZ_LOG_ERROR("Synth Clip creation failed: %s", newPath.c_str());
+                continue;
+            }
+            NotifyAssetCreated(newPath);
+            RefreshDirectory();
+            BeginRenameForPath(newPath, &ctx);
+        }
+        ImGui::EndMenu();
+    }
+
     // 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。
     // WHY: ファイル内容は "type = ..." の 1 行だけにしておき、フィールドの既定値は
     //      Inspector の初回 Resolve 時に型のフィールド初期化子から補完する。これにより
@@ -569,8 +601,9 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 if (!projHlslDir.empty() && projHlslDir != resolvedHlslDir)
                     ScriptCodeGen::CreateHlsl(name, projHlslDir, kind);
                 NotifyAssetCreated(path);
-                const std::string destDir =
-                    (kind == ScriptCodeGen::HlslKind::SurfaceVSPS)
+                const bool underMaterial = (kind == ScriptCodeGen::HlslKind::SurfaceVSPS
+                                         || kind == ScriptCodeGen::HlslKind::ParticlePS);
+                const std::string destDir = underMaterial
                         ? (projHlslDir + "/Material/Custom")
                         : (projHlslDir + "/PostProcess/Custom");
                 m_pendingNavigate = destDir;
@@ -583,6 +616,11 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             ModalDialog::OpenInput("New Surface Shader", "MyMaterial",
                 makeHlslCallback(ScriptCodeGen::HlslKind::SurfaceVSPS),
                 "Generated under Material/Custom/");
+        }
+        if (ImGui::MenuItem("Particle Shader (PS)")) {
+            ModalDialog::OpenInput("New Particle Shader", "MyParticle",
+                makeHlslCallback(ScriptCodeGen::HlslKind::ParticlePS),
+                "Generated under Material/Custom/ (assign via a .mat with render_path = \"particle\")");
         }
         if (ImGui::MenuItem("PostProcess Shader (VS+PS)")) {
             ModalDialog::OpenInput("New PostProcess Shader", "MyPostEffect",

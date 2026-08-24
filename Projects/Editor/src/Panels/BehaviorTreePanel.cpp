@@ -819,7 +819,8 @@ void BehaviorTreePanel::DrawInspector()
         if (ImGui::Checkbox("Wait For Animation", &node->waitForAnimation)) m_dirty = true;
         break;
     case fbzz::ai::BTNodeType::PlayAudio:
-        if (widgets::AssetPathField("Sound", node->soundPath, ".wav,.ogg,.mp3", m_projectRoot)) m_dirty = true;
+        if (widgets::AssetPathField("Sound", node->soundPath,
+                                    widgets::kAudioClipAssetFilter, m_projectRoot)) m_dirty = true;
         if (ImGui::DragFloat("Volume", &node->volume, 0.01f, 0.0f, 2.0f)) m_dirty = true;
         break;
     case fbzz::ai::BTNodeType::RunScript:

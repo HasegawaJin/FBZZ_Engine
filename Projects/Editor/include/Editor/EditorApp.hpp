@@ -52,6 +52,7 @@ class ConsolePanel;
 class AnalysisPanel;
 class MapEditorPanel;
 class IblBakePanel;
+class NavigationPanel;
 class AiSettingsPanel;
 class TerrainTool;
 class WaterTool;
@@ -149,6 +150,12 @@ private:
     void RegisterPanelOperators();
     // ウィンドウ名または View メニュー名 (大小無視の完全一致) でパネルを引く。
     [[nodiscard]] IPanel* FindPanelByName(const std::string& name) const;
+
+    // 通常 Workspace でのパネル開閉状態を EditorSettings へ採る / 戻す。
+    // WHY 専用経路か: Map Mode と Play Maximized は visible を一時的に潰すため、
+    //     そのまま保存すると「次に開いたらパネルが 1 枚しか無い」状態が焼き付く。
+    void CaptureNormalPanelVisibility();
+    void RestorePanelVisibility();
     // panel.focus を「既に手元にあるパネルポインタ」から呼ぶ小さな包み。
     // WHY: メニュー側は m_iblBakePanel のような具体ポインタを持っているので、
     //      名前引きへ戻さずに済ませたい。しかし実体は operator を通す
@@ -202,6 +209,14 @@ private:
     bool SaveScenePath(const std::string& requestedPath); // 保存の実体 (ダイアログ / AI 共通)
     void RemoveEditorHiding();   // Play/Save 前に editor-only 非表示を一時解除
     void RestoreEditorHiding();  // Play 復元/Save 後に editor-only 非表示を再適用
+
+    // Hierarchy の非表示 / ロックを Scene サイドカー (<scene>.meta) と往復させる。
+    // WHY ctx が正本のままか: 非表示とロックはセッション中ずっと書き換わる。
+    //     EditorSceneState を常時同期させると、Undo や Play の内部スナップショット
+    //     (SceneIO::Serialize) が走るたびに巻き添えで書き戻ることになる。
+    //     ユーザーが「開く」「保存する」と言った瞬間だけ、明示的に橋渡しする。
+    void CaptureEditorViewStateToSceneMeta();
+    void ApplyEditorViewStateFromSceneMeta();
 
     // 最近開いた/保存したシーンを先頭へ積む (EditorSettings::recentScenes を更新)。
     void AddRecentScene(const std::string& path);
@@ -282,7 +297,18 @@ private:
     PlayModeController              m_playMode;
     // Play→Stop 時の再ベイクを避けるため、Play 開始前にベイク済み NavMesh をキャッシュする。
     // key = GameObject::instanceId
-    std::unordered_map<std::string, scene::NavMesh> m_navMeshPlayCache;
+    // WHY 診断データまで持つか: 統計とソースハッシュを戻さないと、Stop した瞬間に
+    //     Navigation パネルが「ベイク後にソースが変わった」と言い出す (何も変えていないのに)。
+    struct NavMeshPlayCacheEntry {
+        scene::NavMesh              navMesh;
+        scene::NavMeshBakeStats     stats;
+        scene::NavMeshBakeDebugGrid debug;
+        uint64_t                    sourceHash = 0;
+    };
+    std::unordered_map<std::string, NavMeshPlayCacheEntry> m_navMeshPlayCache;
+    // Play 開始時の描画設定。Play 中のスクリプトが graphics プロキシで画質や明るさを
+    // 変えても、Stop でここへ戻して編集側とプロジェクト設定を汚さない。
+    renderer::RenderSettings m_renderSettingsPlaySnapshot;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
     std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
     std::unique_ptr<DetailTool>     m_detailTool;  // DetailTool も同じ pimpl パターン
@@ -405,6 +431,7 @@ private:
     AnalysisPanel*                           m_analysisPanel          = nullptr;
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
     IblBakePanel*                            m_iblBakePanel           = nullptr;
+    NavigationPanel*                         m_navigationPanel        = nullptr;
     AiSettingsPanel*                         m_aiSettingsPanel        = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;

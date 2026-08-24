@@ -2,6 +2,7 @@
 // AssetBrowserCore.cpp | fbzz::editor
 // AssetBrowser のルート、マウント、ディレクトリ走査
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
@@ -157,6 +158,45 @@ void AssetBrowserPanel::OnInit(EditorContext& ctx)
         m_watcher.Start(m_rootPath);
         ScanAndQueueUnimported(m_rootPath);
     }
+}
+
+void AssetBrowserPanel::OnLoadSettings(const EditorSettings& settings)
+{
+    // WHY OnInit ではなくここか (不具合修正): OnInit は projectRoot が決まる前に走るため、
+    //     そこで読める EditorContext はまだ既定値のまま。アイコンサイズとツリー幅は
+    //     保存だけされて復元されず、毎起動で 84 / 180 に戻っていた。
+    m_iconSize  = std::clamp(settings.assetBrowserIconSize, 56.0f, 132.0f);
+    m_treeWidth = std::clamp(settings.assetBrowserTreeWidth, 140.0f, 420.0f);
+
+    m_viewMode   = static_cast<ViewMode>(std::clamp(settings.assetBrowserViewMode, 0, 1));
+    m_sortMode   = static_cast<SortMode>(std::clamp(settings.assetBrowserSortMode, 0, 3));
+    m_typeFilter = static_cast<TypeFilter>(
+        std::clamp(settings.assetBrowserTypeFilter,
+                   0, static_cast<int>(TypeFilter::Asset)));
+    m_searchAllFolders = settings.assetBrowserSearchAllFolders;
+
+    // 前回のフォルダは「今のプロジェクトの中に実在する」ときだけ復元する。
+    // プロジェクトを開き直した直後は SetRootPath がルートへ戻した状態なので、
+    // 解決できない保存値は黙って捨ててルート表示のままにする。
+    const std::string folder =
+        util::FileSystem::NormalizePathSeparators(settings.assetBrowserCurrentFolder);
+    if (!folder.empty() && !m_rootPath.empty()
+        && folder.rfind(m_rootPath, 0) == 0
+        && util::FileSystem::Exists(folder)) {
+        m_currentPath = folder;
+        RefreshDirectory();
+    }
+}
+
+void AssetBrowserPanel::OnSaveSettings(EditorSettings& settings) const
+{
+    settings.assetBrowserIconSize  = m_iconSize;
+    settings.assetBrowserTreeWidth = m_treeWidth;
+    settings.assetBrowserViewMode   = static_cast<int>(m_viewMode);
+    settings.assetBrowserSortMode   = static_cast<int>(m_sortMode);
+    settings.assetBrowserTypeFilter = static_cast<int>(m_typeFilter);
+    settings.assetBrowserSearchAllFolders = m_searchAllFolders;
+    settings.assetBrowserCurrentFolder    = m_currentPath;
 }
 
 void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
@@ -373,7 +413,15 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_prefabPreviews);
     evictStaleEntries(m_terrainPreviews);
     evictStaleEntries(m_spritePreviews);
+
+    // キューを空にしたら「積んである」印も落とす。
+    // WHY: 印を残したまま待ち行列だけ捨てると、そのテクスチャは二度と積み直されず
+    //      サムネイルが永久に出ない。素材を一括で入れた直後はファイル監視が
+    //      毎フレーム RefreshDirectory を呼ぶため、3 件/フレームの読み込みが
+    //      追いつく前にほぼ全部がこの状態に落ちる (再起動するまで直らなかった原因)。
     m_texLoadQueue.clear();
+    for (auto& entry : m_texturePreviews)
+        if (!entry.second.handle.IsValid()) entry.second.queued = false;
     const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
     for (const auto& p : util::FileSystem::ListAll(currentPath)) {
         const std::filesystem::path fsPath = util::FileSystem::PathFromUtf8(p);

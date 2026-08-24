@@ -39,6 +39,9 @@ public:
     void SetActive(bool active) { m_active = active; }
     [[nodiscard]] bool IsActive() const { return m_active; }
 
+    void SetEraseRadius(float radius) { m_eraseRadius = radius; }
+    [[nodiscard]] float GetEraseRadius() const { return m_eraseRadius; }
+
 private:
     bool RaycastTerrain(scene::Scene& scene,
                         const renderer::Camera& camera,

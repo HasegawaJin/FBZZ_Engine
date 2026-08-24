@@ -330,6 +330,9 @@ void EditorApp::NewScene()
     m_ctx.selectedEntities.clear();
     m_ctx.graphLayouts.clear();
     m_ctx.editorHiddenGuids.clear();
+    // ロックは EntityID で覚えている。新しいシーンは同じ番号を配り直すので、
+    // 残したままだと「まだ何も触っていないのに選べないオブジェクト」ができる。
+    m_ctx.lockedEntities.clear();
     m_ctx.editorSceneState.Clear();
     RebuildEditorUIFromScene();
     m_settings.lastScenePath.clear();
@@ -386,7 +389,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
     m_ctx.selectedEntities.clear();
-    m_ctx.editorHiddenGuids.clear();
+    ApplyEditorViewStateFromSceneMeta();
     RebuildEditorUIFromScene();
     CaptureCleanScene();
     CaptureSceneDiskStamp();
@@ -418,6 +421,7 @@ bool EditorApp::SaveScene()
         return false;
     }
 
+    CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
     const bool ok = SceneIO::Save(*m_ctx.activeScene, m_settings.lastScenePath);
     RestoreEditorHiding();
@@ -468,6 +472,7 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath)
         return false;
     }
 
+    CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
     const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
     RestoreEditorHiding();
@@ -572,6 +577,7 @@ void EditorApp::TickAutoSave(float dt)
     util::FileSystem::EnsureDirectory(AutoSaveDir());
 
     // 本保存 (SaveScene) とは別の中間ファイルへ書き出す。dirty 状態や lastScenePath は変えない。
+    CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
     const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
     RestoreEditorHiding();
@@ -603,7 +609,7 @@ void EditorApp::ProcessCrashRecovery()
                 scene::FlushWorldTransforms(*m_ctx.activeScene);
                 m_undoStack.Clear();
                 m_ctx.selectedEntities.clear();
-                m_ctx.editorHiddenGuids.clear();
+                ApplyEditorViewStateFromSceneMeta();
                 RebuildEditorUIFromScene();
                 // 復旧直後は未保存状態にして、ユーザーに保存を促す。
                 m_dirtyTracker.MarkDirty();
@@ -667,6 +673,7 @@ void EditorApp::CheckHotReload()
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
             m_ctx.selectedEntities.clear();
+            ApplyEditorViewStateFromSceneMeta();
             RebuildEditorUIFromScene();
             CaptureCleanScene();
             FBZZ_LOG_INFO("Hot reloaded: %s", m_settings.lastScenePath.c_str());
@@ -1375,6 +1382,48 @@ void EditorApp::RestoreEditorHiding()
         if (auto* go = m_ctx.activeScene->FindByGuid(guid))
             go->SetActive(false);
     }
+}
+
+void EditorApp::CaptureEditorViewStateToSceneMeta()
+{
+    EditorSceneState::InstanceIds hidden;
+    hidden.reserve(m_ctx.editorHiddenGuids.size());
+    for (const auto& [guid, wasActive] : m_ctx.editorHiddenGuids) {
+        (void)wasActive;
+        hidden.push_back(guid);
+    }
+    // 保存順が毎回変わると .meta の差分が無意味に膨らむ (unordered_map の走査順は不定)。
+    std::sort(hidden.begin(), hidden.end());
+    m_ctx.editorSceneState.SetHiddenObjects(std::move(hidden));
+
+    EditorSceneState::InstanceIds locked;
+    if (m_ctx.activeScene) {
+        locked.reserve(m_ctx.lockedEntities.size());
+        for (const scene::EntityID id : m_ctx.lockedEntities)
+            if (const auto* go = m_ctx.activeScene->GetGameObject(id))
+                locked.push_back(go->instanceId);
+        std::sort(locked.begin(), locked.end());
+    }
+    m_ctx.editorSceneState.SetLockedObjects(std::move(locked));
+}
+
+void EditorApp::ApplyEditorViewStateFromSceneMeta()
+{
+    m_ctx.editorHiddenGuids.clear();
+    m_ctx.lockedEntities.clear();
+    if (!m_ctx.activeScene) return;
+
+    // .scene には非表示を解除した状態の activeSelf が入っている (Save 前に
+    // RemoveEditorHiding が戻す)。つまり「隠す前の値」はいま読んだ値そのもの。
+    for (const std::string& guid : m_ctx.editorSceneState.GetHiddenObjects()) {
+        auto* go = m_ctx.activeScene->FindByGuid(guid);
+        if (!go) continue;
+        m_ctx.editorHiddenGuids[guid] = go->activeSelf();
+        go->SetActive(false);
+    }
+    for (const std::string& guid : m_ctx.editorSceneState.GetLockedObjects())
+        if (const auto* go = m_ctx.activeScene->FindByGuid(guid))
+            m_ctx.lockedEntities.push_back(go->GetID());
 }
 
 } // namespace fbzz::editor

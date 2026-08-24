@@ -1,14 +1,19 @@
-// FBZZ Engine
-// ImGuiWidgets.hpp | fbzz::editor
-// プロジェクト固有の ImGui カスタムウィジェット集
+/// @file    ImGuiWidgets.hpp
+/// @brief   パネル間で共有する ImGui カスタムウィジェット集。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+
 #pragma once
 #include <imgui.h>
 #include <algorithm>
+#include <Engine/Scene/ScriptAssetRef.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <string_view>
 #include <functional>
@@ -22,6 +27,11 @@ namespace fbzz::editor::widgets {
 // WHY: 呼び出し側ごとの列挙漏れにより、読み込める画像がピッカーに表示されない状態を防ぐ。
 inline constexpr const char* kTextureAssetFilter =
     ".fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp,.hdr,.exr";
+
+// 音声クリップ選択欄の共通フィルター。
+// 正本は Engine 側 (scene::kAudioClipExtensions) — スクリプトの FBZZ_FIELD_AUDIO と
+// Editor のピッカーが同じ集合を指す必要があるため、Editor 側では別定義せず参照する。
+inline constexpr const char* kAudioClipAssetFilter = scene::kAudioClipExtensions;
 
 // std::string を直接編集する InputText。
 // WHY ここに置くか: 元は VFXEditorUiCommon にあり、VFX 以外のパネルが使うには
@@ -45,6 +55,47 @@ inline bool ColorEdit4(const char* label, math::Vector4& color) {
         return true;
     }
     return false;
+}
+
+/// 力場チャンネル (32bit マスク) の編集欄。ParticleForceField と ParticleEmitter が共有する。
+/// @return 値が変わったら true。
+///
+/// WHY ポップアップに畳むか: 既定は全ビット ON で、大半のエミッターは一度も触らない。
+///     32 個のチェックボックスを常時並べると、触らない設定が他のモジュールを画面外へ押し出す。
+inline bool ForceFieldChannelMask(const char* label, std::uint32_t& mask)
+{
+    bool changed = false;
+    char preview[16];
+    if (mask == 0xFFFFFFFFu)    std::snprintf(preview, sizeof(preview), "All");
+    else if (mask == 0u)        std::snprintf(preview, sizeof(preview), "None");
+    else                        std::snprintf(preview, sizeof(preview), "0x%08X", mask);
+
+    ImGui::PushID(label);
+    if (ImGui::Button(preview, ImVec2(ImGui::CalcItemWidth(), 0.0f)))
+        ImGui::OpenPopup("##channels");
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::TextUnformatted(label);
+    if (ImGui::BeginPopup("##channels")) {
+        if (ImGui::SmallButton("All"))  { mask = 0xFFFFFFFFu; changed = true; }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("None")) { mask = 0u; changed = true; }
+        ImGui::Separator();
+        for (int bit = 0; bit < 32; ++bit) {
+            if (bit % 8 != 0) ImGui::SameLine();
+            ImGui::PushID(bit);
+            bool on = (mask & (1u << bit)) != 0u;
+            char name[4];
+            std::snprintf(name, sizeof(name), "%d", bit);
+            if (ImGui::Checkbox(name, &on)) {
+                mask = on ? (mask | (1u << bit)) : (mask & ~(1u << bit));
+                changed = true;
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
+    return changed;
 }
 
 // アセットのサムネイル用テクスチャ ID を解決する。画像なら本体、.mat なら albedo を返す。
@@ -312,7 +363,10 @@ struct ListRowButtons {
 //     起きなかった (`SmallButton("^") && index > 0` で結果だけ捨てていた)。
 //     押せるのに動かないボタンは、壊れているのか仕様なのかを操作でしか確かめられない。
 // @param removable false なら ✕ を出さない (FBZZ_FIXED_LIST)
-ListRowButtons ListRowToolbar(int index, int count, bool removable);
+// @param sameLine  false なら先頭の SameLine を省き、呼び出し側が置いたカーソル位置から描く。
+//                  WHY: 構造体配列の要素見出しでは、全幅の見出し行の「右端」へ寄せたい。
+//                  SameLine は直前アイテムの右端へカーソルを戻すため、先に位置を決めても打ち消される。
+ListRowButtons ListRowToolbar(int index, int count, bool removable, bool sameLine = true);
 
 // ListRowToolbar が占める横幅。値ウィジェットの幅を決めるのに使う。
 [[nodiscard]] float ListRowToolbarWidth(bool removable);

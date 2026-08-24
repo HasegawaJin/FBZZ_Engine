@@ -10,6 +10,7 @@
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Panels/AiSettingsPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
+#include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
@@ -207,6 +208,7 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t TOGGLE_MAP       = 501;
     constexpr uint16_t OPEN_BUILD       = 502;
     constexpr uint16_t OPEN_IBL         = 503;
+    constexpr uint16_t OPEN_NAVIGATION  = 504;
     constexpr uint16_t OPEN_AI_SETTINGS = 600;
     constexpr uint16_t PANEL_BASE       = 1000;
 
@@ -274,7 +276,8 @@ void EditorApp::InstallNativeMenuBar()
     menus.push_back(submenu("Tools", {
         command("VFX Editor...", OPEN_VFX), command("Map Editing Mode", TOGGLE_MAP),
         submenu("Terrain & Map", std::move(terrainTools)),
-        command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL)
+        command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL),
+        command("Navigation...", OPEN_NAVIGATION)
     }));
     menus.push_back(submenu("AI", { command("AI Settings...", OPEN_AI_SETTINGS) }));
 
@@ -336,6 +339,7 @@ void EditorApp::InstallNativeMenuBar()
         // パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
         // operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
+        case OPEN_NAVIGATION:  InvokePanelFocus(m_navigationPanel); break;
         case OPEN_AI_SETTINGS: InvokePanelFocus(m_aiSettingsPanel); break;
         case 510: InvokeOperator("tools.terrain"); break;
         case 511: InvokeOperator("tools.water"); break;
@@ -471,6 +475,19 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         MenuItemOp("render.show_colliders",         "Colliders");
         MenuItemOp("render.show_terrain_collision", "Terrain Collision");
         MenuItemOp("render.show_navmesh",           "NavMesh");
+        if (ImGui::BeginMenu("NavMesh Draw Mode")) {
+            const auto navModeItem = [this](const char* mode, const char* label) {
+                OpArgs args;
+                args.Set("mode", std::string(mode));
+                MenuItemOpArgs("render.set_navmesh_draw_mode", args, label);
+            };
+            navModeItem("solid",       "Solid");
+            navModeItem("transparent", "Transparent");
+            navModeItem("areas",       "Areas");
+            navModeItem("portals",     "Portals");
+            navModeItem("voxels",      "Voxels");
+            ImGui::EndMenu();
+        }
         MenuItemOp("render.show_nav_sensors",       "AI Sensors");
         MenuItemOp("render.show_decal_bounds",      "Decal Bounds");
         ImGui::Separator();
@@ -524,6 +541,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         //     二重管理へ戻る。名前を引数で渡す 1 つの操作で足りる。
         if (m_iblBakePanel && ImGui::MenuItem("IBL Baker..."))
             InvokePanelFocus(m_iblBakePanel);
+        if (m_navigationPanel && ImGui::MenuItem("Navigation..."))
+            InvokePanelFocus(m_navigationPanel);
         ImGui::EndMenu();
     }
 
@@ -822,8 +841,16 @@ void EditorApp::StartPlayMode()
     for (scene::EntityID eid : m_ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
         auto* surf = m_ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
         auto* go   = m_ctx.activeScene->GetGameObject(eid);
-        if (surf && go && surf->navMesh.IsValid())
-            m_navMeshPlayCache[go->instanceId] = surf->navMesh;
+        if (!surf || !go || !surf->navMesh.IsValid()) continue;
+        NavMeshPlayCacheEntry entry;
+        entry.navMesh    = surf->navMesh;
+        entry.stats      = surf->bakeStats;
+        entry.sourceHash = surf->bakedSourceHash;
+        // ボクセル格子は Scene View の Voxels 表示専用で、Play 中は表示自体が抑止される。
+        // 数 MB を二重に抱えないよう、預けている間は Surface から外す。
+        entry.debug      = std::move(surf->bakeDebug);
+        surf->bakeDebug  = {};
+        m_navMeshPlayCache[go->instanceId] = std::move(entry);
     }
     // WHY: ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。
     //      エディタは共通ProjectRuntimeのSceneManagerをUpdateするため、Play開始時に
@@ -833,6 +860,12 @@ void EditorApp::StartPlayMode()
         static_cast<uint32_t>(m_ctx.gameViewportWidth),
         static_cast<uint32_t>(m_ctx.gameViewportHeight)
     );
+    // graphics プロキシの書き換え先を Play 中だけ開ける。
+    // WHY スナップショットを取るか: 実体は ProjectSettings::render で、EditorApp は
+    //     終了時にこれを ProjectSettings.toml へ保存する。Play 中にスクリプトが
+    //     画質を落としただけで、プロジェクトの既定値がそのまま書き換わってしまう。
+    m_renderSettingsPlaySnapshot = m_ctx.projectSettings.render;
+    core::Application::Get().SetActiveRenderSettings(&m_ctx.projectSettings.render);
     m_playMode.Play(*m_ctx.activeScene);
     if (m_playMode.IsPlaying() && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
         m_ctx.requestGameViewportFocus = true;
@@ -843,6 +876,14 @@ void EditorApp::StopPlayMode()
     if (!m_ctx.activeScene || m_playMode.IsInEditor())
         return;
     scene::ScriptRuntime::Override(nullptr);
+    // Play 中のスクリプトが変えた画質・明るさを編集側へ持ち込まない。
+    // 選択状態だけは編集の続きなので、復元から外して現在のものを残す。
+    core::Application::Get().SetActiveRenderSettings(nullptr);
+    {
+        auto selection = std::move(m_ctx.projectSettings.render.selectedObjects);
+        m_ctx.projectSettings.render = m_renderSettingsPlaySnapshot;
+        m_ctx.projectSettings.render.selectedObjects = std::move(selection);
+    }
     // AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
     // PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
     if (auto* audioManager = core::Application::Get().GetAudioManager())
@@ -1076,8 +1117,8 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.RegisterInfo("Vertex snap",     "Hold V + drag",  Cat::Gizmo, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Surface snap",    "Ctrl + Shift + drag", Cat::Gizmo, Scope::SceneViewport);
 
-    // NOTE: 保存済みリバインドの適用は呼び出し側 (EditorApp::Init) が
-    //       この直後に行う。既定値を全部積んだ後でないと Rebind が対象を引けないため。
+    // NOTE: 保存済みリバインドの適用は EditorApp::OpenProject が行う (設定を読むのがそこ)。
+    //       Rebind は既定値を全部積んだ後でないと対象を引けないので、順序はここより後。
 
     // scope の判定は EditorContext のフォーカス状態から答える。
     // WHY: パネルは自分の描画中にしか自身のフォーカスを知れないため、

@@ -5,6 +5,8 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Audio/AudioManager.hpp>
+#include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Gamepad.hpp>
@@ -150,7 +152,7 @@ void ProjectSettingsPanel::DrawSection(EditorContext& ctx)
     auto& settings = ctx.projectSettings;
     switch (m_currentSection) {
     case Section::Application:   DrawApplication(settings); break;
-    case Section::Graphics:      DrawGraphics(settings.render); break;
+    case Section::Graphics:      DrawGraphics(ctx, settings.render); break;
     case Section::Physics:       DrawPhysics(settings); break;
     case Section::Input:         DrawInput(ctx); break;
     case Section::Audio:         DrawAudio(settings); break;
@@ -407,7 +409,7 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
     ImGui::DragInt("Height", &settings.screen.height, 1.0f, 1, 4320);
 }
 
-void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
+void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render)
 {
     ImGui::TextUnformatted("Graphics");
     ImGui::Separator();
@@ -419,6 +421,9 @@ void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
     if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
         DrawRenderCore(render);
 
+    if (ImGui::CollapsingHeader("User Settings (preview)"))
+        DrawRenderUserSettings(ctx, render);
+
     if (ImGui::CollapsingHeader("Debug"))
         DrawRenderDebug(render);
 
@@ -426,6 +431,43 @@ void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
     ImGui::TextDisabled(
         "ポストプロセス / 高度グラフィクスは Post Process Volume で設定します。\n"
         "Hierarchy に Post Process Volume を追加し、Post Process Profile (.fzdata) を割り当ててください。");
+}
+
+// WHY 保存されない項目をここへ出すか:
+//     明るさと描画スケールは Option 画面がプレイヤー設定として持つ値で、
+//     プロジェクト設定には保存しない。ただし「効きを目で確かめる」手段が
+//     Play + スクリプトしか無いと、調整のたびに再生し直すことになる。
+//     保存されないことを明記したうえで、確認用のつまみだけ置く。
+void ProjectSettingsPanel::DrawRenderUserSettings(EditorContext& ctx,
+                                                  renderer::RenderSettings& render)
+{
+    ImGui::Indent();
+    ImGui::TextDisabled("Option 画面がプレイヤー設定として持つ値。ここでの変更は保存されません。");
+    ImGui::Spacing();
+
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::SliderFloat("Brightness", &render.userBrightness, 0.1f, 4.0f, "%.2f");
+
+    // WHY 描画スケールだけ直接書かないか: 値が変わるたびに中間 RT を作り直すため、
+    //     ドラッグ中ずっと 16 枚の再確保が走る。手を離した時点で 1 度だけ反映する。
+    if (!m_renderScaleDragging) m_renderScaleDraft = render.renderScale;
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::SliderFloat("Render Scale", &m_renderScaleDraft,
+                       renderer::kMinRenderScale, renderer::kMaxRenderScale, "%.2f");
+    m_renderScaleDragging = ImGui::IsItemActive();
+    if (ImGui::IsItemDeactivatedAfterEdit()) render.renderScale = m_renderScaleDraft;
+
+    // ドラッグ中は反映前の draft で予告する (何ピクセルになるかを見ながら決められる)。
+    uint32_t internalWidth = 0, internalHeight = 0;
+    renderer::ResolveRenderResolution(
+        static_cast<uint32_t>(std::max(ctx.viewportWidth, 1.0f)),
+        static_cast<uint32_t>(std::max(ctx.viewportHeight, 1.0f)),
+        m_renderScaleDraft, internalWidth, internalHeight);
+    ImGui::TextDisabled("Scene View: %.0fx%.0f -> %ux%u",
+                        ctx.viewportWidth, ctx.viewportHeight,
+                        internalWidth, internalHeight);
+
+    ImGui::Unindent();
 }
 
 void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
@@ -989,8 +1031,112 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     ImGui::TextUnformatted("Audio");
     ImGui::Separator();
 
-    ImGui::SliderFloat("BGM Volume", &settings.audio.bgmVolume, 0.0f, 1.0f);
-    ImGui::SliderFloat("SE Volume", &settings.audio.seVolume, 0.0f, 1.0f);
+    bool dirty = ImGui::SliderFloat("Master Volume", &settings.audio.masterVolume, 0.0f, 1.0f);
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Mixer Buses");
+    ImGui::TextDisabled("AudioSource の Bus Name と、スクリプトの audio.SetBusVolume() が"
+                        " ここで定義した名前を指す");
+
+    auto& buses = settings.audio.buses;
+    if (buses.empty()) {
+        buses = audio::DefaultBusLayout();
+        dirty = true;
+    }
+
+    int removeIndex = -1;
+    for (size_t i = 0; i < buses.size(); ++i) {
+        audio::BusDesc& bus = buses[i];
+        const bool isMaster = bus.name == audio::kMasterBusName;
+        ImGui::PushID(static_cast<int>(i));
+
+        char nameBuffer[64];
+        std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", bus.name.c_str());
+        ImGui::SetNextItemWidth(140.0f);
+        if (isMaster) {
+            ImGui::BeginDisabled();
+            ImGui::InputText("##name", nameBuffer, sizeof(nameBuffer));
+            ImGui::EndDisabled();
+        } else if (ImGui::InputText("##name", nameBuffer, sizeof(nameBuffer))) {
+            bus.name = nameBuffer;
+            dirty = true;
+        }
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        char parentBuffer[64];
+        std::snprintf(parentBuffer, sizeof(parentBuffer), "%s", bus.parent.c_str());
+        if (isMaster) {
+            ImGui::BeginDisabled();
+            ImGui::InputTextWithHint("##parent", "(output)", parentBuffer, sizeof(parentBuffer));
+            ImGui::EndDisabled();
+        } else if (ImGui::InputTextWithHint("##parent", "Master",
+                                            parentBuffer, sizeof(parentBuffer))) {
+            bus.parent = parentBuffer;
+            dirty = true;
+        }
+
+        // Master の音量は上の Master Volume が正本なので、ここでは触らせない。
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        if (isMaster) {
+            ImGui::BeginDisabled();
+            float shown = settings.audio.masterVolume;
+            ImGui::SliderFloat("##volume", &shown, 0.0f, 1.0f);
+            ImGui::EndDisabled();
+        } else {
+            dirty |= ImGui::SliderFloat("##volume", &bus.volume, 0.0f, 1.0f);
+        }
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        dirty |= ImGui::SliderFloat("##lowpass", &bus.lowPassCutoff, 0.0f, 1.0f, "LPF %.2f");
+
+        if (!isMaster) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("-")) removeIndex = static_cast<int>(i);
+        }
+        ImGui::PopID();
+    }
+
+    // 削除ボタンは Master 以外にしか出さないので、添字は素直に使える。
+    if (removeIndex >= 0) {
+        buses.erase(buses.begin() + removeIndex);
+        dirty = true;
+    }
+
+    if (ImGui::Button("Add Bus")) {
+        audio::BusDesc desc;
+        desc.name   = "Bus " + std::to_string(buses.size());
+        desc.parent = audio::kMasterBusName;
+        buses.push_back(std::move(desc));
+        dirty = true;
+    }
+
+    // WHY 即座に反映するか: 音量調整はスライダーを動かしながら耳で合わせる作業で、
+    //     保存してから確かめる形にすると往復が成立しない。
+    //     ただしバス構成の作り直しは再生中の音を止めるため、名前や親の変更では
+    //     グラフを組み直さず、音量とフィルターだけを送る。
+    if (dirty) {
+        if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+            const std::vector<audio::BusDesc> layout = settings.audio.BuildBusLayout();
+            const bool sameGraph =
+                layout.size() == audioManager->BusLayout().size() &&
+                std::equal(layout.begin(), layout.end(), audioManager->BusLayout().begin(),
+                           [](const audio::BusDesc& a, const audio::BusDesc& b) {
+                               return a.name == b.name && a.parent == b.parent;
+                           });
+            if (sameGraph) {
+                for (const audio::BusDesc& desc : layout) {
+                    audioManager->SetBusVolume(desc.name, desc.volume);
+                    audioManager->SetBusLowPass(desc.name, desc.lowPassCutoff);
+                }
+            } else {
+                audioManager->ApplyBusLayout(layout);
+            }
+        }
+        ++m_editGeneration;
+    }
 }
 
 void ProjectSettingsPanel::DrawTagsAndLayers(ProjectSettings& settings)

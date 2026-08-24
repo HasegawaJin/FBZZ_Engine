@@ -14,7 +14,7 @@ class ProjectSettingsPanel final : public IPanel {
 public:
     // サイドバーの項目。
     // WHY 統合したか: 以前は 10 項目あり、うち Screen (2 フィールド) /
-    //      Audio (2 スライダー) / Physics (3 フィールド) のように
+    //      Audio (音量スライダーのみ) / Physics (3 フィールド) のように
     //      「1 画面に数行しかない項目」が並んで一覧性を落としていた。
     //      同じ関心事どうしをまとめ、各項目の中を折りたたみで整理する方が探しやすい。
     enum class Section {
@@ -44,8 +44,10 @@ private:
     // WHY 分けるか: 旧 Render は「描画設定 (Pipeline/Shadow)」と
     //      「エディタのデバッグ表示 (Collider/NavMesh/Pass Viewer)」が
     //      同じ画面に混ざっており、目的の項目を探しにくかった。
-    void DrawGraphics(renderer::RenderSettings& render);
+    void DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render);
     void DrawRenderCore(renderer::RenderSettings& render);   // Pipeline / Shadow / ViewMode
+    // 明るさ・描画スケール。Option 画面が持つ値なので保存されない (確認用)。
+    void DrawRenderUserSettings(EditorContext& ctx, renderer::RenderSettings& render);
     void DrawRenderDebug(renderer::RenderSettings& render);  // デバッグ表示・アウトライン
 
     void DrawPhysics(ProjectSettings& settings);
@@ -66,6 +68,10 @@ private:
     Section m_currentSection = Section::Application;
     char m_newTag[64] = {};
     std::uint64_t m_editGeneration = 0;
+    // 描画スケールはドラッグ中に反映すると中間 RT の再確保が走り続けるため、
+    // 手を離すまで draft に溜める。
+    float m_renderScaleDraft = 1.0f;
+    bool  m_renderScaleDragging = false;
 };
 
 } // namespace fbzz::editor

@@ -47,7 +47,7 @@ bool IsHotReloadableAsset(const std::string& absPath)
     const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
     return ext == ".mat"   || ext == ".anim"   || ext == ".animcontroller" ||
            ext == ".mask"  || ext == ".fzdata" || ext == ".physmat"        ||
-           ext == ".terrain";
+           ext == ".synth" || ext == ".terrain";
 }
 
 const char* SourceDccLabel(FbxSourceDcc value)
@@ -561,6 +561,13 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
     bool needsDirectoryRefresh = false;
     const std::vector<AssetFileWatcher::FileEvent> watcherEvents = m_watcher.Poll();
 
+    // 素材を一度に大量投入すると OS の通知バッファが溢れ、その回の変更が丸ごと捨てられる。
+    // 個別イベントに追従する処理は全て空振りするので、ここだけは総取っ替えで作り直す。
+    if (m_watcher.ConsumeOverflow()) {
+        ResyncAfterWatcherOverflow();
+        Toast::Info("Asset Browser resynced (file notifications overflowed)");
+    }
+
     // 共通アセット索引へ同じイベントを流し、検索結果を実ファイルに追従させる。
     // WHY ここで流すか: AssetBrowser が唯一の AssetFileWatcher 所有者であり、
     //     Poll() はイベントを消費してキューを空にする。ここを通さないと
@@ -577,6 +584,20 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             ? std::string{}
             : util::FileSystem::PathToUtf8(
                 (watcherRoot / util::FileSystem::PathFromUtf8(ev.oldPath)).lexically_normal());
+
+        // 中身が変わったアセットのサムネイルは作り直させる。
+        // WHY: プレビューは「まだ書き込み途中」「まだインポートされていない」を失敗として
+        //      抱え込む。素材を一括で入れた直後は必ずその状態を通るので、書き終わりの
+        //      通知でキャッシュを捨てないと、直ったこと自体に気付けずアイコンのまま残る。
+        {
+            const std::string touched = util::FileSystem::NormalizePathSeparators(absPath);
+            ResetAssetPreviewCache(touched);
+            // "<原本>.meta" の更新は原本の見た目 (Sprite 切り抜き / インポート設定) に効く。
+            if (util::StringUtils::ToLower(util::FileSystem::GetExtension(touched)) == ".meta")
+                ResetAssetPreviewCache(touched.substr(0, touched.size() - 5));
+            if (!oldAbsPath.empty())
+                ResetAssetPreviewCache(util::FileSystem::NormalizePathSeparators(oldAbsPath));
+        }
 
         if (ev.type == AssetFileWatcher::EventType::Added   ||
             ev.type == AssetFileWatcher::EventType::Removed ||

@@ -18,13 +18,17 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -51,6 +55,43 @@ IPanel* EditorApp::FindPanelByName(const std::string& name) const
     for (const auto& panel : m_panels)
         if (util::StringUtils::EqualsCI(panel->GetViewMenuName(), name)) return panel.get();
     return nullptr;
+}
+
+void EditorApp::CaptureNormalPanelVisibility()
+{
+    // Map Mode / Play Maximized 中は panel->visible がその一時レイアウト用に潰されている。
+    // 入る前に控えたスナップショットがあるなら、そちらが「通常の開閉状態」。
+    const std::vector<bool>* snapshot = nullptr;
+    if (m_playViewportLayoutActive && m_playPanelVisibility.size() == m_panels.size())
+        snapshot = &m_playPanelVisibility;
+    else if (m_ctx.mapEditingMode && m_normalPanelVisibility.size() == m_panels.size())
+        snapshot = &m_normalPanelVisibility;
+
+    m_settings.panelVisibility.clear();
+    for (std::size_t index = 0; index < m_panels.size(); ++index) {
+        const IPanel& panel = *m_panels[index];
+        // View > Panels に出ないパネル (Build Settings / IBL Bake / Map Editor) は
+        // 開閉が操作や編集モードに従属する。復元すると自分で開いた覚えの無い窓が出る。
+        if (!panel.ShowInViewMenu()) continue;
+        const bool open = snapshot ? (*snapshot)[index] : panel.visible;
+        m_settings.panelVisibility.emplace_back(panel.GetWindowName(), open);
+    }
+}
+
+void EditorApp::RestorePanelVisibility()
+{
+    if (m_settings.panelVisibility.empty()) return;
+
+    for (auto& panel : m_panels) {
+        if (!panel->ShowInViewMenu()) continue;
+        const std::string name = panel->GetWindowName();
+        const auto it = std::find_if(
+            m_settings.panelVisibility.begin(), m_settings.panelVisibility.end(),
+            [&name](const auto& entry) { return entry.first == name; });
+        // 保存に無いパネル (このバージョンで増えたもの) は既定の表示のままにする。
+        if (it != m_settings.panelVisibility.end())
+            panel->visible = it->second;
+    }
 }
 
 void EditorApp::InvokePanelFocus(IPanel* panel)

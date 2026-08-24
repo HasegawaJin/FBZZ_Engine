@@ -46,7 +46,7 @@ std::vector<std::string> AssetBrowserPanel::TypeFilterExtensions() const
                                          ".py", ".lua", ".cs" };
     case TypeFilter::Texture:   return { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga",
                                          ".fnt", ".ttf", ".ttc", ".otf" };
-    case TypeFilter::Audio:     return { ".wav", ".mp3", ".ogg", ".flac" };
+    case TypeFilter::Audio:     return { ".wav", ".mp3", ".ogg", ".flac", ".synth" };
     case TypeFilter::Mesh:      return { ".fbx", ".obj", ".gltf", ".glb", ".mesh" };
     case TypeFilter::Shader:    return { ".hlsl", ".hlsli" };
     case TypeFilter::Prefab:    return { ".prefab" };
@@ -662,8 +662,8 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
                                    || e.ext == ".dds" || e.ext == ".bmp" || e.ext == ".tga"
                                    || e.ext == ".fnt" || e.ext == ".ttf" || e.ext == ".ttc"
                                    || e.ext == ".otf";
-    case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
-                                   || e.ext == ".flac";
+    case TypeFilter::Audio:    return e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg"
+                                   || e.ext == ".flac" || e.ext == ".synth";
     case TypeFilter::Mesh:      return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
                                      || e.ext == ".glb"    || e.ext == ".mesh";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";

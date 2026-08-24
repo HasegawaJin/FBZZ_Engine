@@ -27,14 +27,15 @@ ImportCategory CategoryForExtension(std::string_view lowerExt)
     if (lowerExt == ".dds")
         return ImportCategory::TexturePrebaked;
 
-    if (lowerExt == ".wav" || lowerExt == ".mp3" || lowerExt == ".ogg")
+    if (lowerExt == ".wav" || lowerExt == ".mp3" || lowerExt == ".ogg" ||
+        lowerExt == ".flac")
         return ImportCategory::Audio;
 
     if (lowerExt == ".mat" || lowerExt == ".scene" || lowerExt == ".prefab" ||
         lowerExt == ".anim" || lowerExt == ".animcontroller" || lowerExt == ".animctrl" ||
         lowerExt == ".mask" ||
         lowerExt == ".terrain" || lowerExt == ".fzdata" || lowerExt == ".fnt" ||
-        lowerExt == ".physmat" ||
+        lowerExt == ".physmat" || lowerExt == ".synth" ||
         lowerExt == ".ibl" || lowerExt == ".hlsl" || lowerExt == ".vfx")
         return ImportCategory::Native;
 
