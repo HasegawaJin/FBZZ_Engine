@@ -82,9 +82,9 @@ void SetNodeActive(Scene& scene, VFXRuntimeNodeState& state, bool active)
         }
     } else {
         if (auto* emitter = gameObject->GetComponent<ParticleEmitter>()) {
-            emitter->playing = false;
-            emitter->particles.clear();
-            emitter->gpuClearPending = true;
+            emitter->settings.playing = false;
+            emitter->runtime.particles.clear();
+            emitter->runtime.gpuClearPending = true;
         }
         if (auto* audio = gameObject->GetComponent<AudioSourceComponent>()) {
             audio->m_pendingPlay = false;
@@ -158,12 +158,13 @@ void AddParticle(GameObject& gameObject, const asset::VFXGraphNode& node)
 {
     // authoring設定を丸ごと複製し、Graphの時間制御だけを上書きする。
     // WHY: モジュール追加時にランタイム生成コードへ転記を足す運用は保存漏れを再発させるため。
-    ParticleEmitter emitter = node.particle;
-    emitter.duration = node.duration;
-    emitter.loop = false;
-    emitter.startDelay = 0.0f;
-    emitter.enabled = true;
-    emitter.playing = true;
+    ParticleEmitter emitter;
+    emitter.settings = node.particle;
+    emitter.settings.duration = node.duration;
+    emitter.settings.loop = false;
+    emitter.settings.startDelay = 0.0f;
+    emitter.settings.enabled = true;
+    emitter.settings.playing = true;
     emitter.ResetPlayback();
     gameObject.AddComponent<ParticleEmitter>(std::move(emitter));
     if (!node.particle.meshParticlePath.empty()) {
@@ -440,8 +441,8 @@ void ApplyPlaybackScale(Scene& scene, VFXRuntimeNodeState& state,
     GameObject* gameObject = scene.GetGameObject(state.entity);
     if (gameObject == nullptr) return;
     if (auto* emitter = gameObject->GetComponent<ParticleEmitter>()) {
-        emitter->editorTimeScale = scale;
-        emitter->editorTimeScaleFrame = Time::frameCount;
+        emitter->runtime.editorTimeScale = scale;
+        emitter->runtime.editorTimeScaleFrame = Time::frameCount;
     }
     if (auto* graph = gameObject->GetComponent<VFXGraphComponent>()) {
         graph->speed = scale;
@@ -662,8 +663,8 @@ void ConsumeRuntimeEvents(Scene& scene, VFXGraphComponent& component)
             const ParticleEmitter* emitter = sourceObject != nullptr
                 ? sourceObject->GetComponent<ParticleEmitter>() : nullptr;
             fired = emitter != nullptr
-                && (collisionEvent ? emitter->collisionCountThisFrame
-                                   : emitter->deathCountThisFrame) > 0;
+                && (collisionEvent ? emitter->runtime.collisionCountThisFrame
+                                   : emitter->runtime.deathCountThisFrame) > 0;
         } else if (animationEvent) {
             const AnimatorComponent* animator = sourceObject != nullptr
                 ? sourceObject->GetComponent<AnimatorComponent>() : nullptr;
@@ -808,7 +809,7 @@ void ApplyRuntimeNodeSettings(Scene& scene, const VFXRuntimeNodeState& state,
             reflection::ResolvedProperty targetProperty;
             const std::string_view leaf = schemaPath.substr(9);
             if (reflection::ResolveProperty(asset::GetParticleEmitterSchema(), &node.particle, leaf, sourceProperty)
-                && reflection::ResolveProperty(asset::GetParticleEmitterSchema(), emitter, leaf, targetProperty)
+                && reflection::ResolveProperty(asset::GetParticleEmitterSchema(), &emitter->settings, leaf, targetProperty)
                 && sourceProperty.property != nullptr && targetProperty.property != nullptr)
                 targetProperty.property->set(targetProperty.owner, sourceProperty.property->get(sourceProperty.constOwner));
         }
@@ -953,15 +954,16 @@ void ApplyAuthoredNodeSettingsLive(Scene& scene, const VFXRuntimeNodeState& stat
             // オーサリング項目の一覧はアセットcodecが単一の信頼元。ここを介して写すことで、
             // ランタイム状態 (particles / GPUハンドル / playTime 等) には一切触れずに済み、
             // モジュールを増やしてもこの関数を書き換えなくてよい。
-            const float keepDuration = emitter->duration;
-            const bool keepLoop = emitter->loop;
-            asset::DeserializeParticleEmitterSettings(
-                asset::SerializeParticleEmitterSettings(node.particle), *emitter);
+            const float keepDuration = emitter->settings.duration;
+            const bool keepLoop = emitter->settings.loop;
+            // 型が分かれたので «設定だけ写す» が 1 行で書ける。
+            // 以前はこの操作を表す型が無く、TOML へ書き出して即読み戻していた。
+            emitter->settings = node.particle;
             // グラフ側の時間制御は AddParticle と同じ規則を維持する。
-            emitter->duration = node.duration > 0.0f ? node.duration : keepDuration;
-            emitter->loop = keepLoop;
-            emitter->startDelay = 0.0f;
-            emitter->enabled = true;
+            emitter->settings.duration = node.duration > 0.0f ? node.duration : keepDuration;
+            emitter->settings.loop = keepLoop;
+            emitter->settings.startDelay = 0.0f;
+            emitter->settings.enabled = true;
             // テクスチャ/マテリアルは差分検出で再ロードされるため、ここでは触らない。
         }
         return;
@@ -1302,7 +1304,7 @@ bool InitializeGraph(Scene& scene, GameObject& owner, VFXGraphComponent& compone
             //      owner に固定して防ぐ。同時に、以前は UUID 込みの名前と一致しようがなく
             //      グラフ内の SubEmitter 参照が黙って無反応だった問題も解消する。
             if (auto* emitter = generated.GetComponent<ParticleEmitter>())
-                emitter->subEmitterScopeRoot = owner.GetID();
+                emitter->settings.subEmitterScopeRoot = owner.GetID();
             break;
         case asset::VFXNodeType::Trail: AddTrail(generated, node, false); break;
         case asset::VFXNodeType::MeshTrail: AddTrail(generated, node, true); break;
@@ -1443,7 +1445,7 @@ void VFXGraphSystem::Update(SystemContext& ctx)
                     SetNodeActive(ctx.scene, node, true);
                     if (GameObject* object = ctx.scene.GetGameObject(node.entity)) {
                         if (auto* emitter = object->GetComponent<ParticleEmitter>())
-                            emitter->editorScrubTime = (std::max)(targetTime - node.startTime, 0.0f);
+                            emitter->runtime.editorScrubTime = (std::max)(targetTime - node.startTime, 0.0f);
                         if (auto* graph = object->GetComponent<VFXGraphComponent>()) {
                             graph->editorScrubTime = (std::max)(targetTime - node.startTime, 0.0f);
                             graph->Pause();

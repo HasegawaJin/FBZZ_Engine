@@ -7,6 +7,7 @@
 // NOTE: ImGui に依存するのはこの View 層だけ。Document / Services からは参照しない。
 #pragma once
 
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/VFXEditor/Document/VFXGraphOps.hpp>
 #include <Engine/Asset/VFXGraphAsset.hpp>
 #include <imgui.h>
@@ -36,7 +37,7 @@ constexpr const char* kTimelineWindow  = "Timeline###VFXTimeline";
 constexpr const char* kTextureExts  = ".png,.jpg,.jpeg,.tga,.dds,.bmp";
 constexpr const char* kMaterialExts = ".mat";
 constexpr const char* kMeshExts     = ".fbx,.obj,.mesh,.gltf,.glb";
-constexpr const char* kAudioExts    = ".wav,.ogg,.mp3";
+constexpr const char* kAudioExts    = widgets::kAudioClipAssetFilter;
 constexpr const char* kVfxExts      = ".vfx";
 constexpr const char* kAnimatorControllerExts = ".animcontroller,.animctrl";
 

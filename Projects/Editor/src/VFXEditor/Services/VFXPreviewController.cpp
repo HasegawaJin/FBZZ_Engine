@@ -69,7 +69,7 @@ std::vector<scene::EntityID> VFXPreviewController::BuildEffectGroup(EditorContex
                 stack.push_back(child->GetID());
         if (emitter) {
             const std::string* refs[] = {
-                &emitter->birthSubEmitter, &emitter->deathSubEmitter, &emitter->collisionSubEmitter
+                &emitter->settings.birthSubEmitter, &emitter->settings.deathSubEmitter, &emitter->settings.collisionSubEmitter
             };
             for (const std::string* name : refs) {
                 if (name->empty()) continue;
@@ -102,7 +102,7 @@ void VFXPreviewController::RequestScrub(EditorContext& ctx,
     // グループ全体へ同じ「エフェクト時刻」を要求することで、SubEmitter 連鎖もまとめて巻き戻す。
     for (const scene::EntityID id : group)
         if (auto* emitter = ctx.activeScene->GetComponent<scene::ParticleEmitter>(id))
-            emitter->editorScrubTime = (std::max)(targetTime, 0.0f);
+            emitter->runtime.editorScrubTime = (std::max)(targetTime, 0.0f);
 }
 
 bool VFXPreviewController::LoadPreviewAsset(EditorContext& ctx, const std::string& path,

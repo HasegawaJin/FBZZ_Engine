@@ -421,8 +421,8 @@ void VFXEditorPanel::OnRenderContent(EditorContext& ctx)
     if (!inPlayMode) {
         for (const scene::EntityID id : group) {
             if (auto* emitter = previewCtx.activeScene->GetComponent<scene::ParticleEmitter>(id)) {
-                emitter->editorTimeScale      = m_session.preview.paused ? 0.0f : (std::max)(m_session.preview.speed, 0.0f);
-                emitter->editorTimeScaleFrame = Time::frameCount;
+                emitter->runtime.editorTimeScale      = m_session.preview.paused ? 0.0f : (std::max)(m_session.preview.speed, 0.0f);
+                emitter->runtime.editorTimeScaleFrame = Time::frameCount;
             }
         }
     }
@@ -461,7 +461,7 @@ void VFXEditorPanel::OnRenderContent(EditorContext& ctx)
 
     if (ImGui::Begin(kInspectorWindow)) {
         if (root) {
-            if (DrawParticleEmitterModules(*root, previewCtx)) {
+            if (DrawParticleEmitterModules(root->settings, previewCtx, root)) {
                 // Preview Worldは保存対象外。変更結果は即時プレビューだけへ反映する。
             }
         } else {
@@ -565,9 +565,9 @@ void VFXEditorPanel::DrawHierarchy(EditorContext& ctx)
     for (const scene::EntityID id : ctx.activeScene->GetEntities<scene::ParticleEmitter>()) {
         const auto* emitter = ctx.activeScene->GetComponent<scene::ParticleEmitter>(id);
         if (!emitter) continue;
-        if (!emitter->birthSubEmitter.empty())     referencedNames.push_back(emitter->birthSubEmitter);
-        if (!emitter->deathSubEmitter.empty())     referencedNames.push_back(emitter->deathSubEmitter);
-        if (!emitter->collisionSubEmitter.empty()) referencedNames.push_back(emitter->collisionSubEmitter);
+        if (!emitter->settings.birthSubEmitter.empty())     referencedNames.push_back(emitter->settings.birthSubEmitter);
+        if (!emitter->settings.deathSubEmitter.empty())     referencedNames.push_back(emitter->settings.deathSubEmitter);
+        if (!emitter->settings.collisionSubEmitter.empty()) referencedNames.push_back(emitter->settings.collisionSubEmitter);
     }
 
     bool anyRoot = false;
@@ -643,9 +643,9 @@ void VFXEditorPanel::DrawEmitterNode(EditorContext& ctx, scene::EntityID id, int
     struct SubRef { const char* eventName; scene::EntityID id; };
     std::vector<SubRef> subRefs;
     const std::pair<const char*, const std::string*> refs[] = {
-        { "Birth", &emitter->birthSubEmitter },
-        { "Death", &emitter->deathSubEmitter },
-        { "Collision", &emitter->collisionSubEmitter },
+        { "Birth", &emitter->settings.birthSubEmitter },
+        { "Death", &emitter->settings.deathSubEmitter },
+        { "Collision", &emitter->settings.collisionSubEmitter },
     };
     for (const auto& [eventName, name] : refs) {
         if (name->empty()) continue;
@@ -665,8 +665,8 @@ void VFXEditorPanel::DrawEmitterNode(EditorContext& ctx, scene::EntityID id, int
     char label[160];
     std::snprintf(label, sizeof(label), "%s  (%d)%s",
                   go->name.c_str(),
-                  static_cast<int>(emitter->particles.size()),
-                  emitter->playing ? "" : "  [stopped]");
+                  static_cast<int>(emitter->runtime.particles.size()),
+                  emitter->settings.playing ? "" : "  [stopped]");
     ImGui::PushID(static_cast<int>(id.index));
     const bool open = ImGui::TreeNodeEx(label, flags);
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen())
@@ -2185,9 +2185,9 @@ void VFXEditorPanel::DrawGraphToolbar(EditorContext& ctx)
                 if (!runtimeNode.entity.IsValid()) continue;
                 const auto* emitter = ctx.vfxPreviewScene->GetComponent<scene::ParticleEmitter>(runtimeNode.entity);
                 if (emitter == nullptr) continue;
-                liveParticles += emitter->simulationMode == scene::ParticleSimulationMode::Gpu
-                    ? emitter->visibleParticleCount : static_cast<int>(emitter->particles.size());
-                visibleParticles += emitter->visibleParticleCount;
+                liveParticles += emitter->settings.simulationMode == scene::ParticleSimulationMode::Gpu
+                    ? emitter->runtime.visibleParticleCount : static_cast<int>(emitter->runtime.particles.size());
+                visibleParticles += emitter->runtime.visibleParticleCount;
             }
             ImGui::TextDisabled("Runtime  active %d/%d   particles %d   visible %d",
                                 activeNodes, static_cast<int>(instance->runtimeNodes.size()),

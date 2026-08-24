@@ -81,30 +81,30 @@ void DrawEmitterShapes(RenderPassContext& ctx)
 
     for (auto& object : ctx.scene.GameObjects()) {
         const auto* emitter = object.GetComponent<ParticleEmitter>();
-        if (emitter == nullptr || !emitter->enabled) continue;
+        if (emitter == nullptr || !emitter->settings.enabled) continue;
         // 発生原点は Transform に emitPosition を足した位置。エミッターを親へぶら下げる
         // 構成 (VFX Graph のノード) では、この差分が見えないと「なぜここから出るのか」が掴めない。
         const math::Vector3 origin = object.transform.worldPosition
-            + object.transform.worldRotation * emitter->emitPosition;
+            + object.transform.worldRotation * emitter->settings.emitPosition;
 
-        switch (emitter->shape) {
+        switch (emitter->settings.shape) {
         case ParticleEmitterShape::Sphere:
             renderer::DebugDraw::Sphere(ctx.renderer, origin,
-                                        (std::max)(emitter->sphereRadius, 0.001f), kShapeColor);
+                                        (std::max)(emitter->settings.sphereRadius, 0.001f), kShapeColor);
             break;
         case ParticleEmitterShape::Cone: {
             // SpawnParticle は +Y をコーン軸に取る。ギズモも同じ軸で描かないと、
             // 傾けたエミッターで見た目と実際の噴出方向がずれる。
             const math::Vector3 axis = object.transform.worldRotation * math::Vector3{ 0.0f, 1.0f, 0.0f };
             constexpr float kDeg2Rad = 3.14159265f / 180.0f;
-            const float height = (std::max)(emitter->coneRadius, 0.5f);
-            const float baseRadius = emitter->coneRadius
-                + std::tan((std::max)(emitter->coneAngleDegrees, 0.0f) * kDeg2Rad) * height;
+            const float height = (std::max)(emitter->settings.coneRadius, 0.5f);
+            const float baseRadius = emitter->settings.coneRadius
+                + std::tan((std::max)(emitter->settings.coneAngleDegrees, 0.0f) * kDeg2Rad) * height;
             renderer::DebugDraw::Cone(ctx.renderer, origin, axis, height, baseRadius, kShapeColor);
             break;
         }
         case ParticleEmitterShape::Box:
-            renderer::DebugDraw::Box(ctx.renderer, origin, emitter->boxExtents,
+            renderer::DebugDraw::Box(ctx.renderer, origin, emitter->settings.boxExtents,
                                      object.transform.worldRotation, kShapeColor);
             break;
         case ParticleEmitterShape::Point:
@@ -118,7 +118,7 @@ void DrawEmitterShapes(RenderPassContext& ctx)
 
         // 初速の向きと大きさ。上昇力を emitVelocity と gravity と力場のどこで作っているのかが
         // 分からなくなるのが VFX で最も多い事故なので、初速だけは常に見えるようにする。
-        const math::Vector3 velocity = object.transform.worldRotation * emitter->emitVelocity;
+        const math::Vector3 velocity = object.transform.worldRotation * emitter->settings.emitVelocity;
         const float speed = velocity.Length();
         if (speed <= 1.0e-4f) continue;
         // 1 秒後の到達点を矢印の先端にする (「秒速いくつか」がそのまま長さで読める)。

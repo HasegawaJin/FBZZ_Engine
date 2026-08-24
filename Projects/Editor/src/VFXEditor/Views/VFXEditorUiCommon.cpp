@@ -13,8 +13,10 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/ParticleEditWidgets.hpp>
 #include <Editor/Util/ParticleEmitterModules.hpp>
+#include <Editor/Util/ParticleMaterialFactory.hpp>
 #include <Editor/Util/SchemaInspector.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/ProceduralVFXTextures.hpp>
 #include <Engine/Asset/VFXAuthoringSchema.hpp>
 #include <Engine/Asset/VFXGraphAsset.hpp>
@@ -210,12 +212,15 @@ void DrawVFXNodeSummary(const asset::VFXGraphNode& node)
             // GPU バッジは「要求」ではなく「実際に GPU で回るか」で出す。
             // WHY: 縮退したノードに GPU と書いてあると、グラフを見ただけでは
             //      どこで性能を取り逃しているのか永久に判らない。
-            const auto gpuFallback = scene::GetParticleGpuFallbackReason(node.particle);
+            // 見た目の機能は .mat の [particle] にあるため、ノードが指す素材から読む。
+            const asset::ParticleMaterialSettings* look =
+                ResolveParticleMaterialSettings(node.particle.materialPath);
+            const auto gpuFallback = scene::GetParticleGpuFallbackReason(node.particle, look);
             const std::pair<bool, const char*> badges[] = {
-                { node.particle.distortion, "DISTORT" },
-                { node.particle.sixWayLighting, "6WAY" },
-                { node.particle.motionVectorFlipbook, "MV" },
-                { node.particle.softParticles, "SOFT" },
+                { look != nullptr && look->distortion, "DISTORT" },
+                { look != nullptr && look->sixWayLighting, "6WAY" },
+                { look != nullptr && look->motionVectorFlipbook, "MV" },
+                { look != nullptr && look->softParticles, "SOFT" },
                 { gpuFallback == scene::ParticleGpuFallbackReason::None, "GPU" },
             };
             bool first = true;

@@ -268,7 +268,10 @@ struct VFXGraphNode {
     int parentNodeId = -1;
     // WHY: シーン用ParticleEmitterと同じauthoring型を使い、VFX Graphだけ機能差や保存漏れが
     //      生じる二重実装を避ける。GPUハンドル等のランタイム値はアセットcodecが除外する。
-    scene::ParticleEmitter particle;
+    // オーサリングの塊。GameObject に依存しないので設定型をそのまま持つ。
+    // WHY コンポーネント型を持たないか: ランタイム状態 (粒子列・GPU ハンドル) を
+    //      アセットのノードが抱えても意味が無く、コピーのたびに運ぶだけになる。
+    scene::ParticleEmitterSettings particle;
     VFXTrailSettings trail;
     VFXLightSettings light;
     VFXAudioSettings audio;
