@@ -1,2 +1,87 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ElectricMinusParticleComponent' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000008'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000013'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Canvas' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000001'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000002'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000003'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000006'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button', 'UI Text' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000015'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000007'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000004'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000009'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image', 'UI Button' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000010'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000017'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:TitleMenuComponent' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000018'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ElectricMinusParticleComponent' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000019'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image', 'UI Button' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000012'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ElectricMinusParticleComponent' ]
+    instance_id = '83f19a9d-7bc3-4c7a-bae1-34305a98db89'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ElectricPlusParticleComponent' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000022'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:ElectricMinusParticleComponent' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000023'
+
+    [[editor.game_objects]]
+    component_order = [ 'Post Process Volume' ]
+    instance_id = '3b7692b4-2d69-408d-a293-fe10adb0c5c5'
+
+    [[editor.game_objects]]
+    component_order = [ 'Camera', 'Audio Listener' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000021'
+
 [meta]
 guid = '32b164641e684ec1a7b325764a8b75d3'

@@ -1,0 +1,4139 @@
+{
+ "canvas": {
+  "w": 1920,
+  "h": 1080
+ },
+ "note": "x はテキストの基準辺（align=right なら右端）、baseline_y はベースラインのY。letter_spacing_px は1文字ごとの追加送り（最後の文字のあとにも入る点に注意）",
+ "faces": [
+  {
+   "family": "DejaVu Sans",
+   "weight": "400",
+   "used": 82
+  },
+  {
+   "family": "Noto Sans CJK JP",
+   "weight": "400",
+   "used": 70
+  },
+  {
+   "family": "DejaVu Sans Mono",
+   "weight": "400",
+   "used": 54
+  },
+  {
+   "family": "DejaVu Sans Mono",
+   "weight": "700",
+   "used": 15
+  },
+  {
+   "family": "DejaVu Sans",
+   "weight": "200",
+   "used": 5
+  },
+  {
+   "family": "DejaVu Sans",
+   "weight": "700",
+   "used": 1
+  }
+ ],
+ "screens": {
+  "TITLE": [
+   {
+    "id": "Label_Version",
+    "text": "PROTOTYPE 0.1",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 11.5,
+    "letter_spacing_px": 4.6,
+    "color": "rgba(87, 85, 81, 0.55)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 101,
+    "ink": [
+     132,
+     92,
+     150,
+     12
+    ]
+   },
+   {
+    "id": "Logo_Word",
+    "text": "GreenWare",
+    "font": "DejaVu Sans",
+    "weight": "700",
+    "size_px": 122,
+    "letter_spacing_px": 6.71,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 455,
+    "ink": [
+     132,
+     354,
+     834,
+     120
+    ]
+   },
+   {
+    "id": "Menu_START",
+    "text": "START",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 30,
+    "letter_spacing_px": 7.8,
+    "color": "rgb(118, 116, 112)",
+    "align": "left",
+    "x": 154,
+    "baseline_y": 682,
+    "ink": [
+     154,
+     657,
+     132,
+     30
+    ]
+   },
+   {
+    "id": "Menu_RECORDS",
+    "text": "RECORDS",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 30,
+    "letter_spacing_px": 7.8,
+    "color": "rgb(118, 116, 112)",
+    "align": "left",
+    "x": 154,
+    "baseline_y": 739,
+    "ink": [
+     154,
+     714,
+     202,
+     30
+    ]
+   },
+   {
+    "id": "Menu_OPTIONS",
+    "text": "OPTIONS",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 30,
+    "letter_spacing_px": 7.8,
+    "color": "rgb(118, 116, 112)",
+    "align": "left",
+    "x": 154,
+    "baseline_y": 796,
+    "ink": [
+     154,
+     771,
+     189,
+     30
+    ]
+   },
+   {
+    "id": "Menu_EXIT",
+    "text": "EXIT",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 30,
+    "letter_spacing_px": 7.8,
+    "color": "rgb(118, 116, 112)",
+    "align": "left",
+    "x": 154,
+    "baseline_y": 853,
+    "ink": [
+     154,
+     828,
+     98,
+     30
+    ]
+   },
+   {
+    "id": "Law_Icon",
+    "text": "＋－",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 965.5,
+    "ink": [
+     132,
+     955,
+     126,
+     21
+    ]
+   },
+   {
+    "id": "Law_Text",
+    "text": "異なる極は引き合い、ぶつかって壊れる",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 15,
+    "letter_spacing_px": 3.3,
+    "color": "rgb(142, 139, 133)",
+    "align": "left",
+    "x": 274,
+    "baseline_y": 972,
+    "ink": [
+     274,
+     958,
+     329,
+     15
+    ]
+   }
+  ],
+  "INPUT_KBM": [
+   {
+    "id": "Label_Version",
+    "text": "PROTOTYPE 0.1",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 11.5,
+    "letter_spacing_px": 4.6,
+    "color": "rgba(87, 85, 81, 0.55)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 103,
+    "ink": [
+     132,
+     92,
+     150,
+     14
+    ]
+   },
+   {
+    "id": "Head_Word",
+    "text": "OPTIONS",
+    "font": "DejaVu Sans",
+    "weight": "200",
+    "size_px": 60,
+    "letter_spacing_px": 14.4,
+    "color": "rgb(239, 236, 231)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 249,
+    "ink": [
+     132,
+     198,
+     369,
+     60
+    ]
+   },
+   {
+    "id": "Nav_INPUT",
+    "text": "INPUT",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 425,
+    "ink": [
+     151,
+     409,
+     80,
+     19
+    ]
+   },
+   {
+    "id": "Nav_GAME",
+    "text": "GAME",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 478,
+    "ink": [
+     151,
+     462,
+     74,
+     19
+    ]
+   },
+   {
+    "id": "Nav_VIDEO",
+    "text": "VIDEO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 531,
+    "ink": [
+     151,
+     515,
+     83,
+     19
+    ]
+   },
+   {
+    "id": "Nav_AUDIO",
+    "text": "AUDIO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 584,
+    "ink": [
+     151,
+     568,
+     85,
+     19
+    ]
+   },
+   {
+    "id": "Row_device",
+    "text": "入力デバイス\n自動判別\n\nマウス＆キーボード",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 422.5,
+    "ink": [
+     452,
+     392,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_device",
+    "text": "入力デバイス",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 431,
+    "ink": [
+     452,
+     413,
+     125,
+     19
+    ]
+   },
+   {
+    "id": "Sub_device",
+    "text": "自動判別",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 13,
+    "letter_spacing_px": 2.08,
+    "color": "rgb(108, 106, 102)",
+    "align": "left",
+    "x": 594.8,
+    "baseline_y": 431,
+    "ink": [
+     595,
+     419,
+     60,
+     13
+    ]
+   },
+   {
+    "id": "Value_device",
+    "text": "マウス＆キーボード",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 431,
+    "ink": [
+     964,
+     413,
+     188,
+     19
+    ]
+   },
+   {
+    "id": "Row_mouseSens",
+    "text": "マウス感度\n\n2.40",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 484.5,
+    "ink": [
+     452,
+     454,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_mouseSens",
+    "text": "マウス感度",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 493,
+    "ink": [
+     452,
+     475,
+     105,
+     19
+    ]
+   },
+   {
+    "id": "Num_mouseSens",
+    "text": "2.40",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(255, 255, 255)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 491,
+    "ink": [
+     1100,
+     475,
+     52,
+     19
+    ]
+   },
+   {
+    "id": "Ctrl_Title",
+    "text": "CONTROLS",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 4.48,
+    "color": "rgb(142, 139, 133)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 431,
+    "ink": [
+     1268,
+     419,
+     103,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_move",
+    "text": "移動W  A  S  D",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_move",
+    "text": "移動",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_move",
+    "text": "W  A  S  D",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1723.1,
+    "baseline_y": 468,
+    "ink": [
+     1723,
+     456,
+     65,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_cam",
+    "text": "カメラマウス",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_cam",
+    "text": "カメラ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     48,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_cam",
+    "text": "マウス",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1743.5,
+    "baseline_y": 512,
+    "ink": [
+     1743,
+     500,
+     45,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_lgun",
+    "text": "左銃を照射左クリック 長押し\n－",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_lgun",
+    "text": "左銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_lgun",
+    "text": "左クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 556,
+    "ink": [
+     1638,
+     544,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_m",
+    "text": "－",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(99, 164, 255)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 556,
+    "ink": [
+     1774,
+     544,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_rgun",
+    "text": "右銃を照射右クリック 長押し\n＋",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_rgun",
+    "text": "右銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_rgun",
+    "text": "右クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 600,
+    "ink": [
+     1638,
+     588,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_p",
+    "text": "＋",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(255, 106, 92)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 600,
+    "ink": [
+     1774,
+     588,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_fire",
+    "text": "起爆同じボタンをタップ",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_fire",
+    "text": "起爆",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_fire",
+    "text": "同じボタンをタップ",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1654.4,
+    "baseline_y": 644,
+    "ink": [
+     1654,
+     632,
+     134,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_dodge",
+    "text": "回避Space",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_dodge",
+    "text": "回避",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_dodge",
+    "text": "Space",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1741.7,
+    "baseline_y": 688,
+    "ink": [
+     1742,
+     676,
+     46,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_pause",
+    "text": "ポーズEsc",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_pause",
+    "text": "ポーズ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     47,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_pause",
+    "text": "Esc",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1760.2,
+    "baseline_y": 732,
+    "ink": [
+     1760,
+     720,
+     28,
+     14
+    ]
+   }
+  ],
+  "INPUT_PAD": [
+   {
+    "id": "Label_Version",
+    "text": "PROTOTYPE 0.1",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 11.5,
+    "letter_spacing_px": 4.6,
+    "color": "rgba(87, 85, 81, 0.55)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 103,
+    "ink": [
+     132,
+     92,
+     150,
+     14
+    ]
+   },
+   {
+    "id": "Head_Word",
+    "text": "OPTIONS",
+    "font": "DejaVu Sans",
+    "weight": "200",
+    "size_px": 60,
+    "letter_spacing_px": 14.4,
+    "color": "rgb(239, 236, 231)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 249,
+    "ink": [
+     132,
+     198,
+     369,
+     60
+    ]
+   },
+   {
+    "id": "Nav_INPUT",
+    "text": "INPUT",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 425,
+    "ink": [
+     151,
+     409,
+     80,
+     19
+    ]
+   },
+   {
+    "id": "Nav_GAME",
+    "text": "GAME",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 478,
+    "ink": [
+     151,
+     462,
+     74,
+     19
+    ]
+   },
+   {
+    "id": "Nav_VIDEO",
+    "text": "VIDEO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 531,
+    "ink": [
+     151,
+     515,
+     83,
+     19
+    ]
+   },
+   {
+    "id": "Nav_AUDIO",
+    "text": "AUDIO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 584,
+    "ink": [
+     151,
+     568,
+     85,
+     19
+    ]
+   },
+   {
+    "id": "Row_device",
+    "text": "入力デバイス\n自動判別\n\nコントローラー",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 422.5,
+    "ink": [
+     452,
+     392,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_device",
+    "text": "入力デバイス",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 431,
+    "ink": [
+     452,
+     413,
+     125,
+     19
+    ]
+   },
+   {
+    "id": "Sub_device",
+    "text": "自動判別",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 13,
+    "letter_spacing_px": 2.08,
+    "color": "rgb(108, 106, 102)",
+    "align": "left",
+    "x": 594.8,
+    "baseline_y": 431,
+    "ink": [
+     595,
+     419,
+     60,
+     13
+    ]
+   },
+   {
+    "id": "Value_device_pad",
+    "text": "コントローラー",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 431,
+    "ink": [
+     1006,
+     413,
+     146,
+     19
+    ]
+   },
+   {
+    "id": "Row_stickSens",
+    "text": "スティック感度\n\n3.10",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 484.5,
+    "ink": [
+     452,
+     454,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_stickSens",
+    "text": "スティック感度",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 493,
+    "ink": [
+     452,
+     475,
+     145,
+     19
+    ]
+   },
+   {
+    "id": "Num_stickSens",
+    "text": "3.10",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(255, 255, 255)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 491,
+    "ink": [
+     1100,
+     475,
+     52,
+     19
+    ]
+   },
+   {
+    "id": "Row_curve",
+    "text": "応答カーブ\n\n標準",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 546.5,
+    "ink": [
+     452,
+     516,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_curve",
+    "text": "応答カーブ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 555,
+    "ink": [
+     452,
+     537,
+     103,
+     19
+    ]
+   },
+   {
+    "id": "Value_curve",
+    "text": "標準",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 555,
+    "ink": [
+     1110,
+     537,
+     42,
+     19
+    ]
+   },
+   {
+    "id": "Row_deadzone",
+    "text": "デッドゾーン\n\n8%",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 608.5,
+    "ink": [
+     452,
+     578,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_deadzone",
+    "text": "デッドゾーン",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 617,
+    "ink": [
+     452,
+     599,
+     124,
+     19
+    ]
+   },
+   {
+    "id": "Num_deadzone",
+    "text": "8%",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 615,
+    "ink": [
+     1126,
+     599,
+     26,
+     19
+    ]
+   },
+   {
+    "id": "Row_vibration",
+    "text": "振動\n\n70%",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 670.5,
+    "ink": [
+     452,
+     640,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_vibration",
+    "text": "振動",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 679,
+    "ink": [
+     452,
+     661,
+     42,
+     19
+    ]
+   },
+   {
+    "id": "Num_vibration",
+    "text": "70%",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 677,
+    "ink": [
+     1113,
+     661,
+     39,
+     19
+    ]
+   },
+   {
+    "id": "Ctrl_Title",
+    "text": "CONTROLS",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 4.48,
+    "color": "rgb(142, 139, 133)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 431,
+    "ink": [
+     1268,
+     419,
+     103,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_move",
+    "text": "移動左スティック",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_move",
+    "text": "移動",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_PAD_move",
+    "text": "左スティック",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1699,
+    "baseline_y": 468,
+    "ink": [
+     1699,
+     456,
+     89,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_cam",
+    "text": "カメラ右スティック",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_cam",
+    "text": "カメラ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     48,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_PAD_cam",
+    "text": "右スティック",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1699,
+    "baseline_y": 512,
+    "ink": [
+     1699,
+     500,
+     89,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_lgun",
+    "text": "左銃を照射LT 長押し\n－",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_lgun",
+    "text": "左銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_PAD_lgun",
+    "text": "LT 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1693.7,
+    "baseline_y": 556,
+    "ink": [
+     1694,
+     544,
+     72,
+     14
+    ]
+   },
+   {
+    "id": "Sym_m",
+    "text": "－",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(99, 164, 255)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 556,
+    "ink": [
+     1774,
+     544,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_rgun",
+    "text": "右銃を照射RT 長押し\n＋",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_rgun",
+    "text": "右銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_PAD_rgun",
+    "text": "RT 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1693.7,
+    "baseline_y": 600,
+    "ink": [
+     1694,
+     588,
+     72,
+     14
+    ]
+   },
+   {
+    "id": "Sym_p",
+    "text": "＋",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(255, 106, 92)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 600,
+    "ink": [
+     1774,
+     588,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_fire",
+    "text": "起爆同じトリガーをタップ",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_fire",
+    "text": "起爆",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_PAD_fire",
+    "text": "同じトリガーをタップ",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1639.6,
+    "baseline_y": 644,
+    "ink": [
+     1640,
+     632,
+     148,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_dodge",
+    "text": "回避A",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_dodge",
+    "text": "回避",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_PAD_dodge",
+    "text": "A",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1778.7,
+    "baseline_y": 688,
+    "ink": [
+     1779,
+     676,
+     9,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_pause",
+    "text": "ポーズStart",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_pause",
+    "text": "ポーズ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     47,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_PAD_pause",
+    "text": "Start",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1741.7,
+    "baseline_y": 732,
+    "ink": [
+     1742,
+     720,
+     46,
+     14
+    ]
+   }
+  ],
+  "GAME": [
+   {
+    "id": "Label_Version",
+    "text": "PROTOTYPE 0.1",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 11.5,
+    "letter_spacing_px": 4.6,
+    "color": "rgba(87, 85, 81, 0.55)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 103,
+    "ink": [
+     132,
+     92,
+     150,
+     14
+    ]
+   },
+   {
+    "id": "Head_Word",
+    "text": "OPTIONS",
+    "font": "DejaVu Sans",
+    "weight": "200",
+    "size_px": 60,
+    "letter_spacing_px": 14.4,
+    "color": "rgb(239, 236, 231)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 249,
+    "ink": [
+     132,
+     198,
+     369,
+     60
+    ]
+   },
+   {
+    "id": "Nav_INPUT",
+    "text": "INPUT",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 425,
+    "ink": [
+     151,
+     409,
+     80,
+     19
+    ]
+   },
+   {
+    "id": "Nav_GAME",
+    "text": "GAME",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 478,
+    "ink": [
+     151,
+     462,
+     74,
+     19
+    ]
+   },
+   {
+    "id": "Nav_VIDEO",
+    "text": "VIDEO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 531,
+    "ink": [
+     151,
+     515,
+     83,
+     19
+    ]
+   },
+   {
+    "id": "Nav_AUDIO",
+    "text": "AUDIO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 584,
+    "ink": [
+     151,
+     568,
+     85,
+     19
+    ]
+   },
+   {
+    "id": "Row_fov",
+    "text": "視野角\n\n74°",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 422.5,
+    "ink": [
+     452,
+     392,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_fov",
+    "text": "視野角",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 431,
+    "ink": [
+     452,
+     413,
+     63,
+     19
+    ]
+   },
+   {
+    "id": "Num_fov",
+    "text": "74°",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(255, 255, 255)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 429,
+    "ink": [
+     1113,
+     413,
+     39,
+     19
+    ]
+   },
+   {
+    "id": "Row_shake",
+    "text": "カメラ揺れ\n\n70%",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 484.5,
+    "ink": [
+     452,
+     454,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_shake",
+    "text": "カメラ揺れ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 493,
+    "ink": [
+     452,
+     475,
+     105,
+     19
+    ]
+   },
+   {
+    "id": "Num_shake",
+    "text": "70%",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 491,
+    "ink": [
+     1113,
+     475,
+     39,
+     19
+    ]
+   },
+   {
+    "id": "Row_hitstop",
+    "text": "ヒットストップ\n\n100%",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 546.5,
+    "ink": [
+     452,
+     516,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_hitstop",
+    "text": "ヒットストップ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 555,
+    "ink": [
+     452,
+     537,
+     146,
+     19
+    ]
+   },
+   {
+    "id": "Num_hitstop",
+    "text": "100%",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 553,
+    "ink": [
+     1100,
+     537,
+     52,
+     19
+    ]
+   },
+   {
+    "id": "Row_fovBurst",
+    "text": "起爆時のFOV変化\n74° → 82°\n\nON",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 608.5,
+    "ink": [
+     452,
+     578,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_fovBurst",
+    "text": "起爆時のFOV変化",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 617,
+    "ink": [
+     452,
+     599,
+     166,
+     19
+    ]
+   },
+   {
+    "id": "Sub_fovBurst",
+    "text": "74° → 82°",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 13,
+    "letter_spacing_px": 2.08,
+    "color": "rgb(108, 106, 102)",
+    "align": "left",
+    "x": 636.2,
+    "baseline_y": 617,
+    "ink": [
+     636,
+     605,
+     76,
+     13
+    ]
+   },
+   {
+    "id": "Value_fovBurst",
+    "text": "ON",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 617,
+    "ink": [
+     1120,
+     599,
+     32,
+     19
+    ]
+   },
+   {
+    "id": "Row_chain",
+    "text": "チェイン表示\n\nON",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 670.5,
+    "ink": [
+     452,
+     640,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_chain",
+    "text": "チェイン表示",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 679,
+    "ink": [
+     452,
+     661,
+     125,
+     19
+    ]
+   },
+   {
+    "id": "Value_chain",
+    "text": "ON",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 679,
+    "ink": [
+     1120,
+     661,
+     32,
+     19
+    ]
+   },
+   {
+    "id": "Ctrl_Title",
+    "text": "CONTROLS",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 4.48,
+    "color": "rgb(142, 139, 133)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 431,
+    "ink": [
+     1268,
+     419,
+     103,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_move",
+    "text": "移動W  A  S  D",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_move",
+    "text": "移動",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_move",
+    "text": "W  A  S  D",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1723.1,
+    "baseline_y": 468,
+    "ink": [
+     1723,
+     456,
+     65,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_cam",
+    "text": "カメラマウス",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_cam",
+    "text": "カメラ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     48,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_cam",
+    "text": "マウス",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1743.5,
+    "baseline_y": 512,
+    "ink": [
+     1743,
+     500,
+     45,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_lgun",
+    "text": "左銃を照射左クリック 長押し\n－",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_lgun",
+    "text": "左銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_lgun",
+    "text": "左クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 556,
+    "ink": [
+     1638,
+     544,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_m",
+    "text": "－",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(99, 164, 255)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 556,
+    "ink": [
+     1774,
+     544,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_rgun",
+    "text": "右銃を照射右クリック 長押し\n＋",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_rgun",
+    "text": "右銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_rgun",
+    "text": "右クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 600,
+    "ink": [
+     1638,
+     588,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_p",
+    "text": "＋",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(255, 106, 92)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 600,
+    "ink": [
+     1774,
+     588,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_fire",
+    "text": "起爆同じボタンをタップ",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_fire",
+    "text": "起爆",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_fire",
+    "text": "同じボタンをタップ",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1654.4,
+    "baseline_y": 644,
+    "ink": [
+     1654,
+     632,
+     134,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_dodge",
+    "text": "回避Space",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_dodge",
+    "text": "回避",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_dodge",
+    "text": "Space",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1741.7,
+    "baseline_y": 688,
+    "ink": [
+     1742,
+     676,
+     46,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_pause",
+    "text": "ポーズEsc",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_pause",
+    "text": "ポーズ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     47,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_pause",
+    "text": "Esc",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1760.2,
+    "baseline_y": 732,
+    "ink": [
+     1760,
+     720,
+     28,
+     14
+    ]
+   }
+  ],
+  "VIDEO": [
+   {
+    "id": "Label_Version",
+    "text": "PROTOTYPE 0.1",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 11.5,
+    "letter_spacing_px": 4.6,
+    "color": "rgba(87, 85, 81, 0.55)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 103,
+    "ink": [
+     132,
+     92,
+     150,
+     14
+    ]
+   },
+   {
+    "id": "Head_Word",
+    "text": "OPTIONS",
+    "font": "DejaVu Sans",
+    "weight": "200",
+    "size_px": 60,
+    "letter_spacing_px": 14.4,
+    "color": "rgb(239, 236, 231)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 249,
+    "ink": [
+     132,
+     198,
+     369,
+     60
+    ]
+   },
+   {
+    "id": "Nav_INPUT",
+    "text": "INPUT",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 425,
+    "ink": [
+     151,
+     409,
+     80,
+     19
+    ]
+   },
+   {
+    "id": "Nav_GAME",
+    "text": "GAME",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 478,
+    "ink": [
+     151,
+     462,
+     74,
+     19
+    ]
+   },
+   {
+    "id": "Nav_VIDEO",
+    "text": "VIDEO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 531,
+    "ink": [
+     151,
+     515,
+     83,
+     19
+    ]
+   },
+   {
+    "id": "Nav_AUDIO",
+    "text": "AUDIO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 584,
+    "ink": [
+     151,
+     568,
+     85,
+     19
+    ]
+   },
+   {
+    "id": "Row_displayMode",
+    "text": "表示モード\n\nフルスクリーン",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 422.5,
+    "ink": [
+     452,
+     392,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_displayMode",
+    "text": "表示モード",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 431,
+    "ink": [
+     452,
+     413,
+     105,
+     19
+    ]
+   },
+   {
+    "id": "Value_displayMode",
+    "text": "フルスクリーン",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 431,
+    "ink": [
+     1007,
+     413,
+     145,
+     19
+    ]
+   },
+   {
+    "id": "Row_resolution",
+    "text": "解像度\n\n1920 × 1080",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 484.5,
+    "ink": [
+     452,
+     454,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_resolution",
+    "text": "解像度",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 493,
+    "ink": [
+     452,
+     475,
+     63,
+     19
+    ]
+   },
+   {
+    "id": "Value_resolution",
+    "text": "1920 × 1080",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 493,
+    "ink": [
+     1019,
+     475,
+     133,
+     19
+    ]
+   },
+   {
+    "id": "Row_vsync",
+    "text": "垂直同期\n\nON",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 546.5,
+    "ink": [
+     452,
+     516,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_vsync",
+    "text": "垂直同期",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 555,
+    "ink": [
+     452,
+     537,
+     84,
+     19
+    ]
+   },
+   {
+    "id": "Value_vsync",
+    "text": "ON",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 555,
+    "ink": [
+     1120,
+     537,
+     32,
+     19
+    ]
+   },
+   {
+    "id": "Row_fpsCap",
+    "text": "フレーム上限\n\n144",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 608.5,
+    "ink": [
+     452,
+     578,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_fpsCap",
+    "text": "フレーム上限",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 617,
+    "ink": [
+     452,
+     599,
+     125,
+     19
+    ]
+   },
+   {
+    "id": "Value_fpsCap",
+    "text": "144",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 617,
+    "ink": [
+     1115,
+     599,
+     37,
+     19
+    ]
+   },
+   {
+    "id": "Row_brightness",
+    "text": "明るさ\n\n1.00",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 670.5,
+    "ink": [
+     452,
+     640,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_brightness",
+    "text": "明るさ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 679,
+    "ink": [
+     452,
+     661,
+     63,
+     19
+    ]
+   },
+   {
+    "id": "Num_brightness",
+    "text": "1.00",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(255, 255, 255)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 677,
+    "ink": [
+     1100,
+     661,
+     52,
+     19
+    ]
+   },
+   {
+    "id": "Row_bloom",
+    "text": "発光の強さ\n\n60%",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 732.5,
+    "ink": [
+     452,
+     702,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_bloom",
+    "text": "発光の強さ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 741,
+    "ink": [
+     452,
+     723,
+     105,
+     19
+    ]
+   },
+   {
+    "id": "Num_bloom",
+    "text": "60%",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 739,
+    "ink": [
+     1113,
+     723,
+     39,
+     19
+    ]
+   },
+   {
+    "id": "Ctrl_Title",
+    "text": "CONTROLS",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 4.48,
+    "color": "rgb(142, 139, 133)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 431,
+    "ink": [
+     1268,
+     419,
+     103,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_move",
+    "text": "移動W  A  S  D",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_move",
+    "text": "移動",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_move",
+    "text": "W  A  S  D",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1723.1,
+    "baseline_y": 468,
+    "ink": [
+     1723,
+     456,
+     65,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_cam",
+    "text": "カメラマウス",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_cam",
+    "text": "カメラ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     48,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_cam",
+    "text": "マウス",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1743.5,
+    "baseline_y": 512,
+    "ink": [
+     1743,
+     500,
+     45,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_lgun",
+    "text": "左銃を照射左クリック 長押し\n－",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_lgun",
+    "text": "左銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_lgun",
+    "text": "左クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 556,
+    "ink": [
+     1638,
+     544,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_m",
+    "text": "－",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(99, 164, 255)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 556,
+    "ink": [
+     1774,
+     544,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_rgun",
+    "text": "右銃を照射右クリック 長押し\n＋",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_rgun",
+    "text": "右銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_rgun",
+    "text": "右クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 600,
+    "ink": [
+     1638,
+     588,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_p",
+    "text": "＋",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(255, 106, 92)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 600,
+    "ink": [
+     1774,
+     588,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_fire",
+    "text": "起爆同じボタンをタップ",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_fire",
+    "text": "起爆",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_fire",
+    "text": "同じボタンをタップ",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1654.4,
+    "baseline_y": 644,
+    "ink": [
+     1654,
+     632,
+     134,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_dodge",
+    "text": "回避Space",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_dodge",
+    "text": "回避",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_dodge",
+    "text": "Space",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1741.7,
+    "baseline_y": 688,
+    "ink": [
+     1742,
+     676,
+     46,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_pause",
+    "text": "ポーズEsc",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_pause",
+    "text": "ポーズ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     47,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_pause",
+    "text": "Esc",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1760.2,
+    "baseline_y": 732,
+    "ink": [
+     1760,
+     720,
+     28,
+     14
+    ]
+   }
+  ],
+  "AUDIO": [
+   {
+    "id": "Label_Version",
+    "text": "PROTOTYPE 0.1",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 11.5,
+    "letter_spacing_px": 4.6,
+    "color": "rgba(87, 85, 81, 0.55)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 103,
+    "ink": [
+     132,
+     92,
+     150,
+     14
+    ]
+   },
+   {
+    "id": "Head_Word",
+    "text": "OPTIONS",
+    "font": "DejaVu Sans",
+    "weight": "200",
+    "size_px": 60,
+    "letter_spacing_px": 14.4,
+    "color": "rgb(239, 236, 231)",
+    "align": "left",
+    "x": 132,
+    "baseline_y": 249,
+    "ink": [
+     132,
+     198,
+     369,
+     60
+    ]
+   },
+   {
+    "id": "Nav_INPUT",
+    "text": "INPUT",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 425,
+    "ink": [
+     151,
+     409,
+     80,
+     19
+    ]
+   },
+   {
+    "id": "Nav_GAME",
+    "text": "GAME",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 478,
+    "ink": [
+     151,
+     462,
+     74,
+     19
+    ]
+   },
+   {
+    "id": "Nav_VIDEO",
+    "text": "VIDEO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(111, 109, 104)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 531,
+    "ink": [
+     151,
+     515,
+     83,
+     19
+    ]
+   },
+   {
+    "id": "Nav_AUDIO",
+    "text": "AUDIO",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 4.56,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 151,
+    "baseline_y": 584,
+    "ink": [
+     151,
+     568,
+     85,
+     19
+    ]
+   },
+   {
+    "id": "Row_master",
+    "text": "マスター\n\n80",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 422.5,
+    "ink": [
+     452,
+     392,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_master",
+    "text": "マスター",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 431,
+    "ink": [
+     452,
+     413,
+     84,
+     19
+    ]
+   },
+   {
+    "id": "Num_master",
+    "text": "80",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 429,
+    "ink": [
+     1126,
+     413,
+     26,
+     19
+    ]
+   },
+   {
+    "id": "Row_sfx",
+    "text": "効果音\n\n90",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 484.5,
+    "ink": [
+     452,
+     454,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_sfx",
+    "text": "効果音",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(255, 255, 255)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 493,
+    "ink": [
+     452,
+     475,
+     63,
+     19
+    ]
+   },
+   {
+    "id": "Num_sfx",
+    "text": "90",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(255, 255, 255)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 491,
+    "ink": [
+     1126,
+     475,
+     26,
+     19
+    ]
+   },
+   {
+    "id": "Row_bgm",
+    "text": "BGM\n\n60",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 546.5,
+    "ink": [
+     452,
+     516,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_bgm",
+    "text": "BGM",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 555,
+    "ink": [
+     452,
+     537,
+     47,
+     19
+    ]
+   },
+   {
+    "id": "Num_bgm",
+    "text": "60",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 553,
+    "ink": [
+     1126,
+     537,
+     26,
+     19
+    ]
+   },
+   {
+    "id": "Row_ui",
+    "text": "UI音\n\n70",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(242, 240, 236)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 608.5,
+    "ink": [
+     452,
+     578,
+     700,
+     62
+    ]
+   },
+   {
+    "id": "Label_ui",
+    "text": "UI音",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.9,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 452,
+    "baseline_y": 617,
+    "ink": [
+     452,
+     599,
+     44,
+     19
+    ]
+   },
+   {
+    "id": "Num_ui",
+    "text": "70",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 19,
+    "letter_spacing_px": 1.52,
+    "color": "rgb(222, 219, 213)",
+    "align": "right",
+    "x": 1152,
+    "baseline_y": 615,
+    "ink": [
+     1126,
+     599,
+     26,
+     19
+    ]
+   },
+   {
+    "id": "Ctrl_Title",
+    "text": "CONTROLS",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 4.48,
+    "color": "rgb(142, 139, 133)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 431,
+    "ink": [
+     1268,
+     419,
+     103,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_move",
+    "text": "移動W  A  S  D",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_move",
+    "text": "移動",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 468,
+    "ink": [
+     1268,
+     455,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_move",
+    "text": "W  A  S  D",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1723.1,
+    "baseline_y": 468,
+    "ink": [
+     1723,
+     456,
+     65,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_cam",
+    "text": "カメラマウス",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_cam",
+    "text": "カメラ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 512,
+    "ink": [
+     1268,
+     499,
+     48,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_cam",
+    "text": "マウス",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1743.5,
+    "baseline_y": 512,
+    "ink": [
+     1743,
+     500,
+     45,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_lgun",
+    "text": "左銃を照射左クリック 長押し\n－",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_lgun",
+    "text": "左銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 556,
+    "ink": [
+     1268,
+     543,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_lgun",
+    "text": "左クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 556,
+    "ink": [
+     1638,
+     544,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_m",
+    "text": "－",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(99, 164, 255)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 556,
+    "ink": [
+     1774,
+     544,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_rgun",
+    "text": "右銃を照射右クリック 長押し\n＋",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_rgun",
+    "text": "右銃を照射",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 600,
+    "ink": [
+     1268,
+     587,
+     80,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_rgun",
+    "text": "右クリック 長押し",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1638,
+    "baseline_y": 600,
+    "ink": [
+     1638,
+     588,
+     128,
+     14
+    ]
+   },
+   {
+    "id": "Sym_p",
+    "text": "＋",
+    "font": "DejaVu Sans Mono",
+    "weight": "700",
+    "size_px": 14,
+    "letter_spacing_px": 0,
+    "color": "rgb(255, 106, 92)",
+    "align": "left",
+    "x": 1774,
+    "baseline_y": 600,
+    "ink": [
+     1774,
+     588,
+     14,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_fire",
+    "text": "起爆同じボタンをタップ",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_fire",
+    "text": "起爆",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 644,
+    "ink": [
+     1268,
+     631,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_fire",
+    "text": "同じボタンをタップ",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1654.4,
+    "baseline_y": 644,
+    "ink": [
+     1654,
+     632,
+     134,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_dodge",
+    "text": "回避Space",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_dodge",
+    "text": "回避",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 688,
+    "ink": [
+     1268,
+     675,
+     32,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_dodge",
+    "text": "Space",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1741.7,
+    "baseline_y": 688,
+    "ink": [
+     1742,
+     676,
+     46,
+     14
+    ]
+   },
+   {
+    "id": "CtrlRow_pause",
+    "text": "ポーズEsc",
+    "font": "DejaVu Sans",
+    "weight": "400",
+    "size_px": 16,
+    "letter_spacing_px": 0,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     520,
+     44
+    ]
+   },
+   {
+    "id": "CtrlL_pause",
+    "text": "ポーズ",
+    "font": "Noto Sans CJK JP",
+    "weight": "400",
+    "size_px": 14.5,
+    "letter_spacing_px": 1.45,
+    "color": "rgb(169, 166, 160)",
+    "align": "left",
+    "x": 1268,
+    "baseline_y": 732,
+    "ink": [
+     1268,
+     719,
+     47,
+     15
+    ]
+   },
+   {
+    "id": "CtrlR_KBM_pause",
+    "text": "Esc",
+    "font": "DejaVu Sans Mono",
+    "weight": "400",
+    "size_px": 14,
+    "letter_spacing_px": 0.84,
+    "color": "rgb(222, 219, 213)",
+    "align": "left",
+    "x": 1760.2,
+    "baseline_y": 732,
+    "ink": [
+     1760,
+     720,
+     28,
+     14
+    ]
+   }
+  ]
+ }
+}

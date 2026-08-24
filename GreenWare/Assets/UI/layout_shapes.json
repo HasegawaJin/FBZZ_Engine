@@ -1,0 +1,1742 @@
+{
+ "canvas": {
+  "w": 1920,
+  "h": 1080
+ },
+ "pad": 48,
+ "note": "PNGは上下左右に pad px の余白を含む。anchor はPNGの左上を置く位置",
+ "title": {
+  "background": "#08090c → #0e1116 → #060709 (vertical)",
+  "parts": {
+   "Logo_Mark": {
+    "png": "Logo_Mark.png",
+    "anchor": [
+     84,
+     248
+    ],
+    "size": [
+     78,
+     32
+    ]
+   },
+   "Logo_Word": {
+    "png": "Logo_Word.png",
+    "anchor": [
+     84,
+     306
+    ],
+    "size": [
+     834,
+     120
+    ]
+   },
+   "Logo_Rule": {
+    "png": "Logo_Rule.png",
+    "anchor": [
+     84,
+     447
+    ],
+    "size": [
+     690,
+     3
+    ]
+   },
+   "Law_Icon": {
+    "png": "Law_Icon.png",
+    "anchor": [
+     83,
+     906
+    ],
+    "size": [
+     126,
+     21
+    ]
+   }
+  },
+  "menu_rows": [
+   {
+    "label": "START",
+    "bar": {
+     "png": "Menu_Bar_dim.png",
+     "anchor": [
+      83,
+      610
+     ]
+    }
+   },
+   {
+    "label": "RECORDS",
+    "bar": {
+     "png": "Menu_Bar_dim.png",
+     "anchor": [
+      83,
+      667
+     ]
+    }
+   },
+   {
+    "label": "OPTIONS",
+    "bar": {
+     "png": "Menu_Bar_dim.png",
+     "anchor": [
+      83,
+      724
+     ]
+    }
+   },
+   {
+    "label": "EXIT",
+    "bar": {
+     "png": "Menu_Bar_dim.png",
+     "anchor": [
+      83,
+      781
+     ]
+    }
+   }
+  ]
+ },
+ "options": {
+  "background": "linear-gradient(180deg,#08090c 0%,#0e1116 52%,#060709 100%)",
+  "states": {
+   "INPUT_KBM": {
+    "section": "INPUT",
+    "focus_row": 1,
+    "focus_key": "mouseSens",
+    "parts": {
+     "Head_Mark": {
+      "png": "Head_Mark.png",
+      "anchor": [
+       100,
+       124
+      ],
+      "size": [
+       56,
+       22
+      ]
+     },
+     "Head_Rule": {
+      "png": "Head_Rule.png",
+      "anchor": [
+       100,
+       246
+      ],
+      "size": [
+       430,
+       2
+      ]
+     },
+     "NavBar_INPUT": {
+      "png": "NavBar_on.png",
+      "anchor": [
+       99,
+       377
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_GAME": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       430
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_VIDEO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       483
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_AUDIO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       536
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "Row_device": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       360
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 453,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_mouseSens": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       422
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 515,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Focus_mouseSens": {
+      "png": "Focus_bar.png",
+      "anchor": [
+       395,
+       442
+      ],
+      "size": [
+       3,
+       22
+      ]
+     },
+     "Track_mouseSens": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       451
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.42,
+      "fill_png": "Track_fill_on.png"
+     },
+     "Knob_mouseSens": {
+      "png": "Knob_on.png",
+      "anchor": [
+       843,
+       445
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Ctrl_Rule": {
+      "png": "Ctrl_Rule.png",
+      "anchor": [
+       1236,
+       360
+      ],
+      "size": [
+       520,
+       1
+      ]
+     },
+     "CtrlRow_move": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       423
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 498,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_cam": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       467
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 542,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_lgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       511
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 586,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_m": {
+      "png": "Sym_m.png",
+      "anchor": [
+       1742,
+       510
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_rgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       555
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 630,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_p": {
+      "png": "Sym_p.png",
+      "anchor": [
+       1742,
+       554
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_fire": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       599
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 674,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_dodge": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       643
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 718,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_pause": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       687
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 762,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     }
+    }
+   },
+   "INPUT_PAD": {
+    "section": "INPUT",
+    "focus_row": 1,
+    "focus_key": "stickSens",
+    "parts": {
+     "Head_Mark": {
+      "png": "Head_Mark.png",
+      "anchor": [
+       100,
+       124
+      ],
+      "size": [
+       56,
+       22
+      ]
+     },
+     "Head_Rule": {
+      "png": "Head_Rule.png",
+      "anchor": [
+       100,
+       246
+      ],
+      "size": [
+       430,
+       2
+      ]
+     },
+     "NavBar_INPUT": {
+      "png": "NavBar_on.png",
+      "anchor": [
+       99,
+       377
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_GAME": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       430
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_VIDEO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       483
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_AUDIO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       536
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "Row_device": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       360
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 453,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_stickSens": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       422
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 515,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Focus_stickSens": {
+      "png": "Focus_bar.png",
+      "anchor": [
+       395,
+       442
+      ],
+      "size": [
+       3,
+       22
+      ]
+     },
+     "Track_stickSens": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       451
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.55,
+      "fill_png": "Track_fill_on.png"
+     },
+     "Knob_stickSens": {
+      "png": "Knob_on.png",
+      "anchor": [
+       873,
+       445
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_curve": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       484
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 577,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_deadzone": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       546
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 639,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_deadzone": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       575
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.16,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_deadzone": {
+      "png": "Knob.png",
+      "anchor": [
+       785,
+       571
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_vibration": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       608
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 701,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_vibration": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       637
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.7,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_vibration": {
+      "png": "Knob.png",
+      "anchor": [
+       910,
+       633
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Ctrl_Rule": {
+      "png": "Ctrl_Rule.png",
+      "anchor": [
+       1236,
+       360
+      ],
+      "size": [
+       520,
+       1
+      ]
+     },
+     "CtrlRow_move": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       423
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 498,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_cam": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       467
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 542,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_lgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       511
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 586,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_m": {
+      "png": "Sym_m.png",
+      "anchor": [
+       1742,
+       510
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_rgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       555
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 630,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_p": {
+      "png": "Sym_p.png",
+      "anchor": [
+       1742,
+       554
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_fire": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       599
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 674,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_dodge": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       643
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 718,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_pause": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       687
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 762,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     }
+    }
+   },
+   "GAME": {
+    "section": "GAME",
+    "focus_row": 0,
+    "focus_key": "fov",
+    "parts": {
+     "Head_Mark": {
+      "png": "Head_Mark.png",
+      "anchor": [
+       100,
+       124
+      ],
+      "size": [
+       56,
+       22
+      ]
+     },
+     "Head_Rule": {
+      "png": "Head_Rule.png",
+      "anchor": [
+       100,
+       246
+      ],
+      "size": [
+       430,
+       2
+      ]
+     },
+     "NavBar_INPUT": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       377
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_GAME": {
+      "png": "NavBar_on.png",
+      "anchor": [
+       99,
+       430
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_VIDEO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       483
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_AUDIO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       536
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "Row_fov": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       360
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 453,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Focus_fov": {
+      "png": "Focus_bar.png",
+      "anchor": [
+       395,
+       380
+      ],
+      "size": [
+       3,
+       22
+      ]
+     },
+     "Track_fov": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       389
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.5,
+      "fill_png": "Track_fill_on.png"
+     },
+     "Knob_fov": {
+      "png": "Knob_on.png",
+      "anchor": [
+       862,
+       383
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_shake": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       422
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 515,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_shake": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       451
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.7,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_shake": {
+      "png": "Knob.png",
+      "anchor": [
+       910,
+       447
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_hitstop": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       484
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 577,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_hitstop": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       513
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 1.0,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_hitstop": {
+      "png": "Knob.png",
+      "anchor": [
+       979,
+       509
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_fovBurst": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       546
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 639,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_chain": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       608
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 701,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Ctrl_Rule": {
+      "png": "Ctrl_Rule.png",
+      "anchor": [
+       1236,
+       360
+      ],
+      "size": [
+       520,
+       1
+      ]
+     },
+     "CtrlRow_move": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       423
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 498,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_cam": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       467
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 542,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_lgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       511
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 586,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_m": {
+      "png": "Sym_m.png",
+      "anchor": [
+       1742,
+       510
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_rgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       555
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 630,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_p": {
+      "png": "Sym_p.png",
+      "anchor": [
+       1742,
+       554
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_fire": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       599
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 674,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_dodge": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       643
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 718,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_pause": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       687
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 762,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     }
+    }
+   },
+   "VIDEO": {
+    "section": "VIDEO",
+    "focus_row": 4,
+    "focus_key": "brightness",
+    "parts": {
+     "Head_Mark": {
+      "png": "Head_Mark.png",
+      "anchor": [
+       100,
+       124
+      ],
+      "size": [
+       56,
+       22
+      ]
+     },
+     "Head_Rule": {
+      "png": "Head_Rule.png",
+      "anchor": [
+       100,
+       246
+      ],
+      "size": [
+       430,
+       2
+      ]
+     },
+     "NavBar_INPUT": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       377
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_GAME": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       430
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_VIDEO": {
+      "png": "NavBar_on.png",
+      "anchor": [
+       99,
+       483
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_AUDIO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       536
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "Row_displayMode": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       360
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 453,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_resolution": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       422
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 515,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_vsync": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       484
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 577,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_fpsCap": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       546
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 639,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Row_brightness": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       608
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 701,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Focus_brightness": {
+      "png": "Focus_bar.png",
+      "anchor": [
+       395,
+       628
+      ],
+      "size": [
+       3,
+       22
+      ]
+     },
+     "Track_brightness": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       637
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.5,
+      "fill_png": "Track_fill_on.png"
+     },
+     "Knob_brightness": {
+      "png": "Knob_on.png",
+      "anchor": [
+       862,
+       631
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_bloom": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       670
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 763,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_bloom": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       699
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.6,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_bloom": {
+      "png": "Knob.png",
+      "anchor": [
+       887,
+       695
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Ctrl_Rule": {
+      "png": "Ctrl_Rule.png",
+      "anchor": [
+       1236,
+       360
+      ],
+      "size": [
+       520,
+       1
+      ]
+     },
+     "CtrlRow_move": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       423
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 498,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_cam": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       467
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 542,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_lgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       511
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 586,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_m": {
+      "png": "Sym_m.png",
+      "anchor": [
+       1742,
+       510
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_rgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       555
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 630,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_p": {
+      "png": "Sym_p.png",
+      "anchor": [
+       1742,
+       554
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_fire": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       599
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 674,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_dodge": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       643
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 718,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_pause": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       687
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 762,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     }
+    }
+   },
+   "AUDIO": {
+    "section": "AUDIO",
+    "focus_row": 1,
+    "focus_key": "sfx",
+    "parts": {
+     "Head_Mark": {
+      "png": "Head_Mark.png",
+      "anchor": [
+       100,
+       124
+      ],
+      "size": [
+       56,
+       22
+      ]
+     },
+     "Head_Rule": {
+      "png": "Head_Rule.png",
+      "anchor": [
+       100,
+       246
+      ],
+      "size": [
+       430,
+       2
+      ]
+     },
+     "NavBar_INPUT": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       377
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_GAME": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       430
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_VIDEO": {
+      "png": "NavBar_dim.png",
+      "anchor": [
+       99,
+       483
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "NavBar_AUDIO": {
+      "png": "NavBar_on.png",
+      "anchor": [
+       99,
+       536
+      ],
+      "size": [
+       3,
+       19
+      ]
+     },
+     "Row_master": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       360
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 453,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_master": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       389
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.8,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_master": {
+      "png": "Knob.png",
+      "anchor": [
+       933,
+       385
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_sfx": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       422
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 515,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Focus_sfx": {
+      "png": "Focus_bar.png",
+      "anchor": [
+       395,
+       442
+      ],
+      "size": [
+       3,
+       22
+      ]
+     },
+     "Track_sfx": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       451
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.9,
+      "fill_png": "Track_fill_on.png"
+     },
+     "Knob_sfx": {
+      "png": "Knob_on.png",
+      "anchor": [
+       954,
+       445
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_bgm": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       484
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 577,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_bgm": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       513
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.6,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_bgm": {
+      "png": "Knob.png",
+      "anchor": [
+       887,
+       509
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Row_ui": {
+      "png": "Divider.png",
+      "anchor": [
+       420,
+       546
+      ],
+      "size": [
+       700,
+       62
+      ],
+      "divider_y": 639,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Track_ui": {
+      "png": "Track.png",
+      "anchor": [
+       750,
+       575
+      ],
+      "size": [
+       230,
+       3
+      ],
+      "fill_ratio": 0.7,
+      "fill_png": "Track_fill.png"
+     },
+     "Knob_ui": {
+      "png": "Knob.png",
+      "anchor": [
+       910,
+       571
+      ],
+      "size": [
+       3,
+       11
+      ]
+     },
+     "Ctrl_Rule": {
+      "png": "Ctrl_Rule.png",
+      "anchor": [
+       1236,
+       360
+      ],
+      "size": [
+       520,
+       1
+      ]
+     },
+     "CtrlRow_move": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       423
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 498,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_cam": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       467
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 542,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_lgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       511
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 586,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_m": {
+      "png": "Sym_m.png",
+      "anchor": [
+       1742,
+       510
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_rgun": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       555
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 630,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "Sym_p": {
+      "png": "Sym_p.png",
+      "anchor": [
+       1742,
+       554
+      ],
+      "size": [
+       14,
+       14
+      ]
+     },
+     "CtrlRow_fire": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       599
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 674,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_dodge": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       643
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 718,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     },
+     "CtrlRow_pause": {
+      "png": "CtrlRow_div.png",
+      "anchor": [
+       1236,
+       687
+      ],
+      "size": [
+       520,
+       44
+      ],
+      "divider_y": 762,
+      "note": "anchorは行の枠。区切り線は divider_y に置く"
+     }
+    }
+   }
+  }
+ }
+}

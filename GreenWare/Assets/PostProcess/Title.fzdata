@@ -1,0 +1,8 @@
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+intensity = 1.0
+softKnee = 1.0
+threshold = 0.2800000011920929
+type = 'Bloom'
