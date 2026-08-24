@@ -1,0 +1,25 @@
+# FBZZ Engine
+# FX_GlowCore_Additive.mat
+# 素材: Assets/VFX/Textures/T_Glow_Core.png
+# 芯が締まった点光源。着弾フラッシュとマズルグローの «いちばん明るい 1 枚»。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:cd2da090e69d5a52f31b2efe45cada74"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+# 芯だけが 1 を超える。企画書 12.2 の「彩度の高い色を抑えた強度で」を守れるのは、
+# 明るい画素の面積が狭いこの素材だけ。面積の広い層でこの倍率を使うと白飛びする。
+emissive_scale = 2.6
+soft_particles = true
+soft_particle_fade_distance = 0.35

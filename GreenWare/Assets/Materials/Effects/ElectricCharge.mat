@@ -1,0 +1,34 @@
+# FBZZ Engine
+# ElectricCharge.mat
+# 無極の電荷パーティクル。chargeSign = 0 なので記号を持たず、丸い芯だけで光る。
+# PolarityTypes.hpp の Polarity::None (帯電していない状態) に対応する。
+# ＋ / − を出したいときは ElectricChargePlus.mat / ElectricChargeMinus.mat を使う。
+version = 1
+name = 'ElectricCharge'
+shader = 'guid:897d170056c44c83b4245255e6bcc2fb|Assets/Shaders/Material/Effects/ElectricCharge.hlsl'
+blend_mode = 'Additive'
+double_sided = true
+render_path = 'particle'
+render_queue = 3000
+mesh_type = 'surface'
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+chargeSign = 0.0
+signScale = 0.68
+signWeight = 0.24
+signGlow = 3.2
+
+[particle]
+emissive_scale = 1.4
+lighting_strength = 0.0
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

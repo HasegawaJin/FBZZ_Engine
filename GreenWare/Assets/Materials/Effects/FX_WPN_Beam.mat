@@ -1,0 +1,42 @@
+# FBZZ Engine
+# FX_WPN_Beam.mat
+# 極性エミッターの照射ビーム。PolarityGunComponent が LineRenderer へ差して使う。
+# 素材: Assets/VFX/Textures/T_Beam_Stripe.png (X 方向シームレス。必須)
+#
+# WHY 事前乗算か: 芯は背景を隠して光り、縁は加算グローとして素通しにするため。
+#      詳細は Assets/Shaders/Material/Effects/Beam.hlsl のヘッダー。
+#      LineRenderer が blend_mode を握り潰さなくなったので、ここの指定が実際に効く。
+#
+# ここに書く値は「スクリプトが何も送らなかったときに成立する絵」の既定値。
+# albedo は LineRenderer が startColor から、それ以外は PolarityGunComponent が
+# 毎フレーム上書きする (帯電の乱れは残量と命中で動くため、静的な値では成立しない)。
+version = 1
+name = 'FX_WPN_Beam'
+shader = 'Assets/Shaders/Material/Effects/Beam.hlsl'
+blend_mode = 'Premultiplied'
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[textures]
+albedo = "guid:a359f1c0b98e9f5f2481834e44ae12eb"
+
+[params]
+albedo = [ 1.0, 0.12, 0.14, 1.0 ]
+coreWidth = 0.34
+edgeFalloff = 2.4
+coreBoost = 2.0
+intensity = 1.0
+tiling = 6.0
+scroll = 0.0
+muzzleFade = 0.04
+tipFade = 0.08
+phase = 0.0
+arcAmp = 0.35
+arcFreq = 9.0
+crackle = 0.45
+flicker = 0.25
+beadDensity = 4.0
+beadFalloff = 12.0

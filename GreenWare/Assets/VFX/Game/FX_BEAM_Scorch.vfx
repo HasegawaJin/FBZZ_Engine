@@ -1,0 +1,289 @@
+version = 5
+name = "FX_BEAM_Scorch"
+description = "極性レーザーが地形を焼いた点 (企画書 6.2 / 12.1)。跡が «残る» だけでなく «燻り続ける» ことで、線がどこを通ったかを時間の情報として残す。"
+tags = ["greenware", "beam", "surface", "lingering"]
+requiredRoles = ["core", "body", "sparks"]
+thumbnailTime = 0.08
+maxParticles = 96
+maxLights = 0
+maxAudioVoices = 0
+
+# ------------------------------------------------------------------------------
+# FX_BEAM_Scorch — なぞりが地形へ触れた 1 点。BeamScorchComponent が焦げデカールを
+# 置くのと同じ間隔・同じ点で鳴らす。
+#
+# WHY 一瞬の火花ではなく «一定時間» 出し続けるか (6.2 / 12.1):
+#   6.2 は「対象は敵のみ。地形には極性が乗らない」と決めている。壁をなぞっている間、
+#   盤面の状態は何も変わらない。ここで返せるのは «焼いた» という事実だけで、それが
+#   一瞬で消えると、線がどこを通ったのかが 1 フレームぶんしか残らない。
+#   1〜2 秒燻らせると、なぞった軌跡が «まだ熱い点の列» として画面に残り、
+#   「どこを通したか」「どこを外したか」が結果として読める。
+#
+# WHY 火花と煙に極性色を乗せないか (12.2 / VFX/Game/README.md):
+#   赤青は «誰が帯電しているか» の表示専用に空けてある。地形は極性を帯びないので、
+#   ここが赤や青に光ると «壁が帯電した» と読めてしまう。熱の色 (橙〜白) だけで出す。
+#   極性色を乗せてよいのは «撃った側の電気» である Sear Arc の 1 層だけ。
+#
+# WHY 光源を置かないか:
+#   なぞりは 0.30m 間隔で連続して置かれる (BeamScorchComponent の spacing)。
+#   1 点につき 1 灯を立てると、壁を 1 回なぞるだけで数十灯が同じ面を照らし、
+#   12.2 が守ろうとしている赤青の対比がその場所だけ飛ぶ。熱は加算の板で出す。
+#
+# 呼び出し側は «面の法線を向く回転» を渡すこと (VfxManagerComponent::PlayBeamScorch)。
+# Cone はローカル +Z へ吹くので、渡し忘れると火花が常に +Z へ飛び、壁でも床でも
+# 同じ方向へ散る。
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# --- 0.00s: 焼けた点から跳ね続ける火の粉 --------------------------------------
+# バーストではなく emitRate で出す。バーストにすると «1 回弾けて終わり» になり、
+# «焼き続けている» にならない。duration が燻る時間そのものになる。
+[[nodes]]
+id = 2
+type = 2
+name = "Ember Spray"
+duration = 1.25
+editorX = 260.0
+editorY = -80.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.25
+loop = false
+emitRate = 26.0
+maxParticles = 48
+shape = 2
+coneAngleDegrees = 62.0
+coneRadius = 0.05
+sizeStart = 0.085
+sizeEnd = 0.008
+sizeCurvePower = 1.6
+lifetime = 0.55
+lifetimeRandom = 0.55
+emitVelocity = [0.0, 0.0, 2.1]
+velocitySpread = 1.0
+velocityDamping = 2.4
+gravity = [0.0, -6.5, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.18
+stretchedLengthScale = 2.6
+sortMode = 0
+renderPriority = 55
+colorVariation = 0.18
+colorStart = [1.0, 0.62, 0.22, 1.0]
+colorEnd = [0.35, 0.05, 0.0, 0.0]
+
+# --- 0.00s: 焼けた点そのもの。橙から黒へ冷める ---------------------------------
+[[nodes]]
+id = 3
+type = 2
+name = "Sear Glow"
+duration = 0.95
+editorX = 260.0
+editorY = 180.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.95
+loop = false
+emitRate = 0.0
+maxParticles = 2
+shape = 0
+sizeStart = 0.42
+sizeEnd = 0.05
+sizeCurvePower = 1.7
+lifetime = 0.85
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowSoft_Additive.mat"
+renderMode = 0
+sortMode = 0
+renderPriority = 52
+colorStart = [1.0, 0.52, 0.16, 1.0]
+colorEnd = [0.14, 0.02, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.05s〜: 面から立ちのぼる細い煙 -------------------------------------------
+# WHY 火花より長く残すか: 火花は «今焼いている» の表示で、煙は «さっき焼いた» の表示。
+#     煙の方が長いから、なぞり終えた後に軌跡が線として見える。
+[[nodes]]
+id = 4
+type = 2
+name = "Scorch Smoke"
+duration = 1.80
+editorX = 560.0
+editorY = -80.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.80
+loop = false
+emitRate = 8.0
+maxParticles = 20
+shape = 2
+coneAngleDegrees = 26.0
+coneRadius = 0.04
+sizeStart = 0.10
+sizeEnd = 0.70
+sizeCurvePower = 0.7
+lifetime = 1.40
+lifetimeRandom = 0.45
+emitVelocity = [0.0, 0.0, 0.5]
+velocitySpread = 0.16
+velocityDamping = 0.9
+gravity = [0.0, 0.4, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -18.0
+angularVelocityMax = 18.0
+renderPriority = 40
+colorVariation = 0.08
+colorStart = [0.17, 0.16, 0.16, 0.45]
+colorEnd = [0.10, 0.10, 0.10, 0.0]
+
+# --- 0.00s: 撃った側の電気が面で弾ける。ここだけ極性色 --------------------------
+[[nodes]]
+id = 5
+type = 2
+name = "Sear Arc"
+duration = 0.22
+editorX = 560.0
+editorY = 180.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.22
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 1
+sphereRadius = 0.12
+sizeStart = 0.40
+sizeEnd = 0.04
+sizeCurvePower = 1.8
+lifetime = 0.13
+lifetimeRandom = 0.45
+velocitySpread = 0.45
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ArcNoise_Additive.mat"
+renderMode = 0
+sortMode = 0
+angularVelocityMin = -22.0
+angularVelocityMax = 22.0
+renderPriority = 58
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 4, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 0.05
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.0
+
+[[groups]]
+id = 1
+title = "Burn (0.00s)"
+note = "焼いている最中。ここを長くすると «燻る» から «燃えている» へ変わり、地形が可燃物に見える。"
+x = 230.0
+y = -130.0
+width = 290.0
+height = 470.0
+color = [0.86, 0.48, 0.18, 0.14]
+
+[[groups]]
+id = 2
+title = "After"
+note = "焼いた後。煙だけが残る。なぞりの軌跡はこの層の寿命で読める。"
+x = 530.0
+y = -130.0
+width = 290.0
+height = 470.0
+color = [0.44, 0.44, 0.48, 0.14]
+
+# ── 公開パラメーター ──────────────────────────────────────────────────────────
+# 既定は «無彩色 / 標準の強さ»。実行時は BeamScorchComponent が照射中の極を差し込む。
+
+[[parameters]]
+name = "Polarity Color"
+type = 3
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 3
+color = [1.0, 1.0, 1.0, 1.0]
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 5
+schemaPath = "particle.colorStart"
+
+# 火の粉の量。なぞる速さで «削れている量» が変わって見えるように、呼び出し側が振る。
+# WHY 上限を 60 で止めるか: これ以上は 1 点あたりの加算枚数が増えるだけで、
+#     0.30m 間隔で連なると壁全体が白へ抜ける (README「加算の枚数を数える」)。
+[[parameters]]
+name = "Ember Rate"
+type = 0
+minimum = 0.0
+maximum = 60.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 26.0
+[[bindings]]
+paramName = "Ember Rate"
+nodeId = 2
+schemaPath = "particle.emitRate"
+
+# 焼け跡の広さ。デカールの Size に合わせると、光っている範囲と焦げの範囲が一致する。
+[[parameters]]
+name = "Sear Size"
+type = 0
+minimum = 0.05
+maximum = 2.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.42
+[[bindings]]
+paramName = "Sear Size"
+nodeId = 3
+schemaPath = "particle.sizeStart"

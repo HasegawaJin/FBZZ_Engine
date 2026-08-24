@@ -1,0 +1,379 @@
+version = 5
+name = "FX_POL_Charge"
+description = "極性が乗った瞬間 (企画書 12.1 / 12.3)。極性弾にダメージが無いぶん、«塗れた» はこの 0.5 秒が全部背負う。"
+tags = ["greenware", "polarity", "hit", "short"]
+requiredRoles = ["core", "sparks"]
+thumbnailTime = 0.06
+maxParticles = 120
+maxLights = 1
+maxAudioVoices = 0
+
+# ------------------------------------------------------------------------------
+# FX_POL_Charge — なぞりで 1 体を塗り切った / タップで点付与した瞬間。
+#
+# WHY 短く小さいか:
+#   なぞりは 1 回のジェスチャーで 3〜5 体を塗る操作 (6.1)。1 体ぶんが派手だと、
+#   線を引き終える頃には画面が同じ絵で埋まって «何体塗れたか» が数えられなくなる。
+#   ここは «1 体につき 1 回、確かに乗った» を返すだけの層に留める。
+#
+# WHY 記号 (＋ / −) を出すか:
+#   12.3 の「頭上または身体に記号表示」。色だけに頼ると、赤と青の判別が
+#   色覚特性・遠距離・ブルームのいずれでも落ちる。形でも読めるようにする。
+#   ＋ / − の差し替えは Symbol Material パラメーターが受け持つので、
+#   グラフは極ごとに 2 本に割らない。
+#
+# WHY 中和をここに入れないか:
+#   12.4 は中和のフィードバックを «仕様» として別扱いにしている。同じ絵で返すと、
+#   狙って中和したのか事故だったのかが区別できない。中和は FX_POL_Neutralize.vfx。
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# --- 0.00s: 乗った瞬間の芯 ----------------------------------------------------
+[[nodes]]
+id = 2
+type = 2
+name = "Charge Flash"
+duration = 0.14
+editorX = 260.0
+editorY = -60.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.14
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 0
+sizeStart = 1.5
+sizeEnd = 0.15
+sizeCurvePower = 2.4
+lifetime = 0.09
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 70
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.00s: 帯電が体を包む輪 --------------------------------------------------
+[[nodes]]
+id = 3
+type = 2
+name = "Charge Ring"
+duration = 0.36
+editorX = 260.0
+editorY = 150.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.36
+loop = false
+emitRate = 0.0
+maxParticles = 3
+shape = 0
+sizeStart = 0.4
+sizeEnd = 2.8
+sizeCurvePower = 0.35
+lifetime = 0.28
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_RingGrad_Additive.mat"
+# WHY 水平ビルボードにしないか: 衝突の衝撃波と違って «床を走る波» ではなく
+#     «体を包む殻» なので、どの角度から見ても輪として読めるカメラ正対にする。
+renderMode = 0
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 55
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.00s: 電弧。«帯電した» ことを形で言う ------------------------------------
+[[nodes]]
+id = 4
+type = 2
+name = "Arc Halo"
+duration = 0.34
+editorX = 560.0
+editorY = -60.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.34
+loop = false
+emitRate = 0.0
+maxParticles = 16
+shape = 1
+sphereRadius = 0.5
+sizeStart = 1.0
+sizeEnd = 0.2
+sizeCurvePower = 1.8
+lifetime = 0.18
+lifetimeRandom = 0.5
+velocitySpread = 1.0
+velocityDamping = 4.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ArcNoise_Additive.mat"
+sortMode = 0
+angularVelocityMin = -12.0
+angularVelocityMax = 12.0
+renderPriority = 58
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 8, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.01s: 粒。極の色を体のまわりに残す --------------------------------------
+[[nodes]]
+id = 5
+type = 2
+name = "Charge Motes"
+duration = 0.80
+editorX = 560.0
+editorY = 200.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.80
+loop = false
+emitRate = 0.0
+maxParticles = 48
+shape = 1
+sphereRadius = 0.35
+sizeStart = 0.28
+sizeEnd = 0.02
+lifetime = 0.55
+lifetimeRandom = 0.4
+velocitySpread = 1.6
+velocityDamping = 3.2
+gravity = [0.0, 0.4, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowSoft_Additive.mat"
+sortMode = 0
+# 外へ散らしつつ縦軸で回す。まっすぐ散ると «爆ぜた» に見えて、帯電の «纏った» にならない。
+radialVelocity = 1.4
+orbitalVelocity = 3.0
+orbitalAxis = [0.0, 1.0, 0.0]
+renderPriority = 50
+colorVariation = 0.1
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 22, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.03s: 頭上の記号。＋ / − は Symbol Material で差し替える -----------------
+[[nodes]]
+id = 6
+type = 2
+name = "Symbol Pop"
+duration = 0.70
+editorX = 860.0
+editorY = -60.0
+position = [0.0, 1.4, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.70
+loop = false
+emitRate = 0.0
+maxParticles = 2
+shape = 0
+# 大きく出して読める大きさへ落ち着かせる。小さく出して大きくすると «飛んできた» に見える。
+sizeStart = 1.1
+sizeEnd = 0.62
+sizeCurvePower = 0.4
+lifetime = 0.55
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SymPlus_Additive.mat"
+sortMode = 0
+# 記号は立っていないと読めない。回転を明示的に止める。
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 80
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 光源。周りの無彩色の装甲を極の色で一瞬染める ----------------------------
+[[nodes]]
+id = 7
+type = 5
+name = "Charge Light"
+duration = 0.28
+editorX = 860.0
+editorY = 200.0
+position = [0.0, 0.5, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.light]
+color = [1.0, 1.0, 1.0]
+# 12.2 の «発光を強くしすぎると赤と青の区別が消える»。届けばよいので低く抑える。
+intensity = 6.0
+range = 4.0
+useIntensityCurve = true
+intensityCurve = [[0.0, 1.0], [0.2, 0.6], [1.0, 0.0]]
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.01
+[[links]]
+from = 1
+to = 6
+trigger = 1
+delay = 0.03
+[[links]]
+from = 1
+to = 7
+trigger = 1
+delay = 0.0
+
+[[groups]]
+id = 1
+title = "Impact (0.00s)"
+note = "12.1 が «1 週目から入れる» と名指しした層。ここを削ると開始 1 分で投げられる。"
+x = 230.0
+y = -110.0
+width = 290.0
+height = 480.0
+color = [0.86, 0.62, 0.24, 0.16]
+
+[[groups]]
+id = 2
+title = "Charge Halo"
+note = "帯電を «纏った» に見せる層。散らしすぎると爆発と区別が付かなくなる。"
+x = 530.0
+y = -110.0
+width = 290.0
+height = 480.0
+color = [0.36, 0.56, 0.78, 0.14]
+
+[[groups]]
+id = 3
+title = "Readout"
+note = "記号と光。色覚に頼らずに極が読めるのはこの 2 つだけ。"
+x = 830.0
+y = -110.0
+width = 290.0
+height = 480.0
+color = [0.44, 0.44, 0.48, 0.14]
+
+# ── 公開パラメーター ──────────────────────────────────────────────────────────
+
+[[parameters]]
+name = "Polarity Color"
+type = 3
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 3
+color = [1.0, 1.0, 1.0, 1.0]
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 2
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 3
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 4
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 5
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 6
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 7
+schemaPath = "light.color"
+
+# ＋ / − の記号。極ごとにグラフを 2 本に割らないための差し替え口。
+[[parameters]]
+name = "Symbol Material"
+type = 5
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 5
+asset = "Assets/Materials/Effects/FX_SymPlus_Additive.mat"
+[[bindings]]
+paramName = "Symbol Material"
+nodeId = 6
+schemaPath = "particle.materialPath"
+
+# 記号を出す高さ。敵の背丈が Mite / Serpent / Roller で違うので、呼び出し側が合わせる。
+[[parameters]]
+name = "Symbol Offset"
+type = 4
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 4
+vector3 = [0.0, 1.4, 0.0]
+[[bindings]]
+paramName = "Symbol Offset"
+nodeId = 6
+schemaPath = "localPosition"
+
+# 体の太さに合わせて輪を広げる。大型敵で輪が体に埋まるときに上げる。
+[[parameters]]
+name = "Halo Size"
+type = 0
+minimum = 0.5
+maximum = 8.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 2.8
+[[bindings]]
+paramName = "Halo Size"
+nodeId = 3
+schemaPath = "particle.sizeEnd"
