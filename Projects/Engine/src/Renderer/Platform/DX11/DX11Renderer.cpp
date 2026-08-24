@@ -212,8 +212,11 @@ void DX11Renderer::EndFrame()
 {
     // FPS limiting is handled by Time::targetFps.
     FBZZ_PROFILE_SCOPE("DX11Renderer::Present");
-    // 対応環境では tearing を許可し、Present 内の DWM 同期待ちを発生させない。
-    m_swapChain->Present(0, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0u);
+    // VSync 無効時は対応環境で tearing を許可し、Present 内の DWM 同期待ちを発生させない。
+    // 有効時は SyncInterval=1 にし、tearing フラグは落とす (併用は DXGI が拒否する)。
+    const UINT syncInterval = m_vsync ? 1u : 0u;
+    const UINT presentFlags = (!m_vsync && m_allowTearing) ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+    m_swapChain->Present(syncInterval, presentFlags);
 }
 
 void DX11Renderer::Clear(const math::Vector4& color)
