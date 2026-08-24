@@ -3,6 +3,7 @@
 // Standaloneプロジェクト共通のゲーム更新・描画モジュール実装
 #include <Engine/Scene/StandaloneProjectModule.hpp>
 
+#include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -21,7 +22,7 @@ StandaloneProjectModule::StandaloneProjectModule(renderer::IRenderer& renderer,
                                                  renderer::ResourceManager& resources,
                                                  std::filesystem::path projectRoot,
                                                  std::filesystem::path startSceneFile,
-                                                 const ProjectSettings& settings)
+                                                 ProjectSettings& settings)
     : m_renderer(renderer)
     , m_resources(resources)
     , m_projectRoot(std::move(projectRoot))
@@ -38,6 +39,12 @@ bool StandaloneProjectModule::OnInit()
     auto& app = core::Application::Get();
     // GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
+    if (auto* audioManager = app.GetAudioManager())
+        audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
+    // graphics プロキシが触る描画設定の実体を登録する。配布ゲームでは
+    // ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
+    // ファイルへ戻ることはない。
+    app.SetActiveRenderSettings(&m_settings.render);
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
     return true;

@@ -43,6 +43,15 @@ void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx = nul
                                                        const renderer::Camera& editorFallback,
                                                        float aspectRatio);
 
+/// シーン内のメイン CameraComponent の背景色を返す。見つからなければ既定色を返す。
+///
+/// WHY エディタの Scene View がこれを引くか:
+///   Scene View はデバッグカメラの視点なのでカリング設定は持ち込まない (見え方が
+///   ゲームカメラの都合で変わると何を編集しているのか分からなくなるため) が、
+///   背景色は «何が存在するか» ではなく «シーンがどう見えるか» そのもので、
+///   編集中に本番と違う色が出ていると背景に合わせた色設計ができない。
+[[nodiscard]] math::Vector4 ResolveGameBackgroundColor(Scene& scene);
+
 /// シーン内のメイン CameraComponent の cullingMask を返す。見つからなければ Layer::Everything を返す。
 [[nodiscard]] fbzz::LayerMask ResolveGameCullingMask(Scene& scene);
 

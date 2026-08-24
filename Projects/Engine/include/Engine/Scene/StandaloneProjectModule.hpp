@@ -22,11 +22,16 @@ namespace fbzz::scene {
 class StandaloneProjectModule final : public core::IModule {
 public:
     /// プロジェクトのAssetsルートと開始シーンを使ってStandalone実行を構成する。
+    ///
+    /// WHY settings が非 const か: `graphics` プロキシ (Option 画面) が実行中に
+    ///     `settings.render` を書き換えるため、その実体を可変で握る必要がある。
+    ///     配布ゲームでは ProjectSettings をファイルへ書き戻さないので、
+    ///     書き換えはプロセスが生きている間だけ効く。
     StandaloneProjectModule(renderer::IRenderer& renderer,
                             renderer::ResourceManager& resources,
                             std::filesystem::path projectRoot,
                             std::filesystem::path startSceneFile,
-                            const ProjectSettings& settings);
+                            ProjectSettings& settings);
 
     [[nodiscard]] bool OnInit() override;
     void OnUpdate(float dt) override;
@@ -39,7 +44,7 @@ private:
     renderer::ResourceManager& m_resources;
     std::filesystem::path      m_projectRoot;
     std::filesystem::path      m_startSceneFile;
-    const ProjectSettings&     m_settings;
+    ProjectSettings&           m_settings;
     ProjectRuntime             m_runtime;
 };
 

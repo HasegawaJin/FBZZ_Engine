@@ -49,12 +49,14 @@ void ProjectRuntime::LoadScene(const std::filesystem::path& sceneFile)
 void ProjectRuntime::Update(float dt,
                             const ProjectSettings& settings,
                             bool simulating,
-                            bool singleStep)
+                            bool singleStep,
+                            bool playing)
 {
     // WHAT: Moduleごとの差異を許さず、Physics設定→Simulation状態→Schedulerの順に固定する。
     ApplyPhysicsSettings(m_physicsWorld, settings);
     m_sceneManager.SetPhysicsHz(settings.physics.hz);
     m_sceneManager.SetSimulating(simulating);
+    m_sceneManager.SetPlaying(playing);
     m_sceneManager.SetSingleStep(singleStep);
     Script::SetPhysicsWorld(simulating ? &m_physicsWorld : nullptr);
     m_sceneManager.Update(dt, m_physicsWorld);
@@ -101,6 +103,7 @@ void ProjectRuntime::Shutdown()
         ScriptRuntime::Override(nullptr);
     }
     m_sceneManager.SetSimulating(false);
+    m_sceneManager.SetPlaying(false);
 }
 
 } // namespace fbzz::scene

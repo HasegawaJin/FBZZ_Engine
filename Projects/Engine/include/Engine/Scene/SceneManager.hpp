@@ -49,6 +49,9 @@ public:
 
     // false のとき EditorOnly System のみ実行する (エディタ停止中)
     void SetSimulating(bool simulating);
+    // Play セッションが続いているか。Pause 中も true のまま (simulating だけ false になる)。
+    // 呼ばない場合は simulating と同じ扱いになる (Standalone / プレビュー用途)。
+    void SetPlaying(bool playing);
 
     // AudioSystem に渡す AudioManager を設定する（null を渡すと AudioSystem はスキップ）
     void SetAudioManager(audio::AudioManager* audioManager);
@@ -79,6 +82,7 @@ private:
     std::string                                   m_pendingLoad;
     Scene*                                        m_externalScene  = nullptr;
     bool                                          m_simulating     = true;
+    bool                                          m_playing        = false;
     audio::AudioManager*                          m_audioManager   = nullptr;
 
     SystemScheduler m_scheduler;
