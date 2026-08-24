@@ -109,12 +109,10 @@ struct TextureAnalysis {
 
 // ── マテリアル解析 ──
 //
-// WHY: ParticleEmitter に materialPath があると、ParticlePass は .mat の blendMode で
-//      emitter.blendMode を**上書きする** (materialPath を描画設定の単一の信頼元にするため)。
-//      つまり .mat を割り当てた瞬間、Inspector や AI が設定した blendMode は無視される。
-//      これは仕様として正しいが、設定側からは「変更したのに効かない」としか見えない。
-    //      さらにテクスチャは .mat の albedo スロットで一元管理するため、
-    //      テクスチャ単体の解析だけでは推奨が実際の描画と噛み合わない。
+// WHY: パーティクルの «見た目» — ブレンド・アルファの取り出し方・フリップブック・歪み・
+//      煙・自己影 — は .mat (blend_mode と [particle]) が唯一の正本で、ParticleEmitter は
+//      «いつどこに出すか» しか持たない。さらにテクスチャも .mat の albedo スロットで
+//      一元管理するため、テクスチャ単体の解析だけでは推奨が実際の描画と噛み合わない。
 //      .mat まで読んで初めて「この素材をこの設定で描くと何が起きるか」が言える。
 
 // .mat とその albedo テクスチャを併せて見た結果。
