@@ -128,8 +128,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     // result = lerp(result, float3(param1, param2, param3), edge);
 
     // ---- 例 6: スキャンライン --------------------------------------------
-    // const float line = 0.5f + 0.5f * sin((p.uv.y * screenSize.y + time * 60.0f) * 3.14159f);
-    // result *= lerp(1.0f, line, saturate(param0));
+    // NOTE: line / point / sample / triangle は HLSL の補間モディファイア。変数名にすると DXC が弾く。
+    // const float scan = 0.5f + 0.5f * sin((p.uv.y * screenSize.y + time * 60.0f) * 3.14159f);
+    // result *= lerp(1.0f, scan, saturate(param0));
 
     // ---- 例 7: 時間アニメーション (pulse glow) ---------------------------
     // const float pulse = 0.5f + 0.5f * sin(time * param0 * 6.283f);
