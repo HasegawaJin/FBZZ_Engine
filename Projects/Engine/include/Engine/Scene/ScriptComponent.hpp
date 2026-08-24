@@ -32,6 +32,11 @@ struct ScriptEntry {
     std::shared_ptr<SerializedScriptData> serialized;
     bool m_awoken = false;
     bool m_started = false;
+    // OnAwake を通したとき Play 中だったか (FBZZ_EXECUTE_ALWAYS 用)。
+    // WHY: Play の開始・停止では Script インスタンスが作り直されないため、編集中に
+    //      立てた m_awoken / m_started がそのまま残り、Play を押しても OnStart が
+    //      二度と呼ばれない。初期化したモードを覚えておき、食い違ったら張り直す。
+    bool m_lifecyclePlayMode = false;
 };
 
 struct ScriptComponent {

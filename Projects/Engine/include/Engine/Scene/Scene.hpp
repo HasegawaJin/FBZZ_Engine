@@ -248,34 +248,11 @@ private:
         if (arr.Has(id)) arr.Remove(id);
     }
 
+    // ScriptComponent はコピー不可 (Script は unique_ptr 所有) のため、この fold からは
+    // 落ちる。実体の作り直しとフィールド値の複製は CopyScriptComponentFrom が担う。
     template<typename T>
     static void CopyIfHas(ComponentArray<T>& arr, EntityID src, EntityID dst) {
-        if constexpr (std::is_same_v<T, ScriptComponent>) {
-            if (!arr.Has(src) || arr.Has(dst)) return;
-
-            const auto& srcComponent = arr.Get(src);
-            ScriptComponent dstComponent{};
-            for (const auto& srcEntry : srcComponent.scripts) {
-                ScriptEntry& dstEntry = dstComponent.scripts.emplace_back();
-                if (srcEntry.serialized) {
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>(*srcEntry.serialized);
-                    dstEntry.script = ScriptFactory::Create(dstEntry.serialized->type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = dstEntry.serialized->enabled;
-                } else if (srcEntry.script) {
-                    const std::string type = srcEntry.script->GetTypeName();
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>();
-                    dstEntry.serialized->type = type;
-                    dstEntry.serialized->enabled = srcEntry.script->enabled;
-                    dstEntry.script = ScriptFactory::Create(type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = srcEntry.script->enabled;
-                }
-            }
-
-            if (!dstComponent.scripts.empty())
-                arr.Add(dst, std::move(dstComponent));
-        } else if constexpr (std::is_copy_constructible_v<T>) {
+        if constexpr (std::is_copy_constructible_v<T>) {
             if (arr.Has(src) && !arr.Has(dst)) arr.Add(dst, arr.Get(src));
         }
     }
@@ -283,35 +260,12 @@ private:
     template<typename T>
     static void CopyFromOtherIfHas(const ComponentArray<T>& srcArr, ComponentArray<T>& dstArr,
                                    EntityID src, EntityID dst) {
-        if constexpr (std::is_same_v<T, ScriptComponent>) {
-            if (!srcArr.Has(src) || dstArr.Has(dst)) return;
-
-            const auto& srcComponent = srcArr.Get(src);
-            ScriptComponent dstComponent{};
-            for (const auto& srcEntry : srcComponent.scripts) {
-                ScriptEntry& dstEntry = dstComponent.scripts.emplace_back();
-                if (srcEntry.serialized) {
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>(*srcEntry.serialized);
-                    dstEntry.script = ScriptFactory::Create(dstEntry.serialized->type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = dstEntry.serialized->enabled;
-                } else if (srcEntry.script) {
-                    const std::string type = srcEntry.script->GetTypeName();
-                    dstEntry.serialized = std::make_shared<SerializedScriptData>();
-                    dstEntry.serialized->type = type;
-                    dstEntry.serialized->enabled = srcEntry.script->enabled;
-                    dstEntry.script = ScriptFactory::Create(type);
-                    if (dstEntry.script)
-                        dstEntry.script->enabled = srcEntry.script->enabled;
-                }
-            }
-
-            if (!dstComponent.scripts.empty())
-                dstArr.Add(dst, std::move(dstComponent));
-        } else if constexpr (std::is_copy_constructible_v<T>) {
+        if constexpr (std::is_copy_constructible_v<T>) {
             if (srcArr.Has(src) && !dstArr.Has(dst)) dstArr.Add(dst, srcArr.Get(src));
         }
     }
+
+    void CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst);
 
     template<typename... Ts> friend class SceneView;
     friend class GameObject;
@@ -517,8 +471,12 @@ T* GameObject::GetScript() {
     if (!sc) return nullptr;
     for (auto& entry : sc->scripts) {
         if (!entry.script) continue;
-        if (std::string_view(entry.script->GetTypeName()) == T::TYPE_NAME)
-            return static_cast<T*>(entry.script.get());
+        // WHY 名前一致ではなく FbzzAsType か: 基底型やインターフェースで引けるようにするため。
+        //     MiteComponent が付いた GameObject を GetScript<EnemyAiBase>() でも
+        //     GetScript<IDamageable>() でも拾える。返るのは調整済みの番地なので、
+        //     多重継承していても正しい部分オブジェクトを指す (Script::FbzzAsType)。
+        if (void* found = entry.script->FbzzAsType(T::TYPE_NAME))
+            return static_cast<T*>(found);
     }
     return nullptr;
 }
@@ -554,7 +512,11 @@ std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
     if (!script || !script->m_scene) return {};
     // Script 派生型は ECS に登録されていないため GameObject を全走査して GetScript<T>() で探す。
     // Component 型は Scene::FindObjectsOfType<T>() (ECS) に委譲する。
-    if constexpr (std::is_base_of_v<Script, T>) {
+    //
+    // WHY is_base_of<Script, T> で判定しないか: 横断インターフェース
+    //     (FBZZ_SCRIPT_INTERFACE) は Script を継承しないため、それだと ECS 側へ
+    //     落ちてコンパイルが通らない。「FbzzAsType で引ける型か」で振り分ける。
+    if constexpr (detail::kIsScriptQueryable<T>) {
         std::vector<GameObject*> result;
         for (auto& go : script->m_scene->GameObjects())
             if (go.template GetScript<T>())

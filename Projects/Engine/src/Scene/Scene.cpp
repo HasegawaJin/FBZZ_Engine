@@ -4,6 +4,7 @@
 // EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
 // フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Core/Time.hpp"
@@ -86,11 +87,22 @@ void Scene::DestroyImmediate(EntityID id) {
         }
     }
 
-    // Script の後処理
-    if (auto* sc = GetComponent<ScriptComponent>(id))
-        for (auto& entry : sc->scripts)
+    // Script の後処理。
+    // WHY 添字ループか (不具合修正): OnDestroy から AddScript / Create が呼ばれると
+    //     ScriptComponent 配列も sc->scripts も再確保される。範囲 for が握る参照は
+    //     そこで無効になるため、毎回 id と添字から引き直す。
+    //     FBZZ_EXECUTE_ALWAYS の導入で編集中も m_started が立つようになり、
+    //     エディタ上の削除でもこの経路を通るようになった。
+    if (auto* sc = GetComponent<ScriptComponent>(id)) {
+        const size_t initialCount = sc->scripts.size();
+        for (size_t i = 0; i < initialCount; ++i) {
+            sc = GetComponent<ScriptComponent>(id);
+            if (!sc || i >= sc->scripts.size()) break;
+            ScriptEntry& entry = sc->scripts[i];
             if (entry.script && entry.m_started)
                 entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
+        }
+    }
 
     // Component 削除
     RemoveAllComponents(id);
@@ -443,6 +455,7 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
         (..., CopyIfHas(arrs, src, dst));
     }, m_arrays);
 
+    CopyScriptComponentFrom(*this, src, dst);
 }
 
 void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst)
@@ -452,6 +465,20 @@ void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst
             (..., CopyFromOtherIfHas(srcArrs, dstArrs, src, dst));
         }, m_arrays);
     }, srcScene.m_arrays);
+
+    CopyScriptComponentFrom(srcScene, src, dst);
+}
+
+void Scene::CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst)
+{
+    const auto& srcArr = srcScene.GetArray<ScriptComponent>();
+    auto&       dstArr = GetArray<ScriptComponent>();
+    if (!srcArr.Has(src) || dstArr.Has(dst)) return;
+
+    ScriptComponent cloned =
+        CloneScriptComponent(srcArr.Get(src), &srcScene, this, GetGameObject(dst));
+    if (!cloned.scripts.empty())
+        dstArr.Add(dst, std::move(cloned));
 }
 
 void Scene::FixupOwnership()

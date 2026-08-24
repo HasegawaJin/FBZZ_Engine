@@ -214,6 +214,26 @@ public:
     {
         Put(name); m_out += std::to_string(static_cast<int>(v));
     }
+    void Field(const char* name, scene::ParticleCurve& v) override
+    {
+        Put(name);
+        m_out += std::to_string(static_cast<int>(v.interpolation));
+        m_out += '|';
+        for (uint32_t i = 0; i < v.keyCount && i < v.keys.size(); ++i)
+            Nums({ v.keys[i].time, v.keys[i].value });
+    }
+    void Field(const char* name, scene::ParticleGradient& v) override
+    {
+        Put(name);
+        m_out += std::to_string(static_cast<int>(v.interpolation));
+        m_out += ':';
+        m_out += std::to_string(static_cast<int>(v.colorSpace));
+        m_out += '|';
+        for (uint32_t i = 0; i < v.keyCount && i < v.keys.size(); ++i) {
+            const math::Vector4& c = v.keys[i].color;
+            Nums({ v.keys[i].time, c.x, c.y, c.z, c.w });
+        }
+    }
     void ListField(const char* name, std::vector<float>& values) override        { Put(name); for (float x : values)  { m_out += std::to_string(x); m_out += ','; } }
     void ListField(const char* name, std::vector<int>& values) override          { Put(name); for (int x : values)    { m_out += std::to_string(x); m_out += ','; } }
     void ListField(const char* name, std::vector<bool>& values) override         { Put(name); for (bool x : values)   { m_out += (x ? '1' : '0'); } }
@@ -299,7 +319,13 @@ FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshModifierComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshOffMeshLinkComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSensorComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSurfaceComponent)
-FBZZ_COMPONENT_UNDO_REFLECTS(ParticleEmitter)
+// ParticleEmitter は意図的にここへ載せない。
+// WHY: 保存は ParticleEmitterAssetCodec が担っており、Reflect() は編集可能な状態の
+//      一部しか覆っていない (Trail / Collision / Volumetric / Distortion / Blackbody /
+//      各カーブ / bursts / orbital など)。宣言すると digest が一致してしまい、
+//      それらを編集しても Undo に積まれず markSceneDirty も呼ばれない
+//      = «編集したのに保存されず黙って消える» になる。
+//      Reflect() が codec と一致したら (別タスク) ここへ戻すこと。
 FBZZ_COMPONENT_UNDO_REFLECTS(ParticleForceField)
 FBZZ_COMPONENT_UNDO_REFLECTS(PostProcessVolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(ReflectionProbeComponent)
@@ -813,6 +839,29 @@ inline ImU32 ComponentAccent()
     return accent;
 }
 
+// コンポーネントの「有効フラグ」の置き場を吸収する。
+//
+// WHY 2 か所を見るか:
+//   大半のコンポーネントは直下に bool enabled を持つが、オーサリング値とランタイム状態を
+//   分けた型 (ParticleEmitter) は settings.enabled に置く。ヘッダーのチェックボックスが
+//   直下しか見ないと、分離した瞬間に «Inspector から無効化も再有効化もできない» になり、
+//   スクリプトが false にして保存したシーンは TOML を手で直すまで復帰できなくなる。
+template<typename T>
+[[nodiscard]] constexpr bool ComponentHasEnabled()
+{
+    return requires(T& value) { static_cast<bool&>(value.enabled); }
+        || requires(T& value) { static_cast<bool&>(value.settings.enabled); };
+}
+
+template<typename T>
+[[nodiscard]] inline bool& ComponentEnabledFlag(T& value)
+{
+    if constexpr (requires { static_cast<bool&>(value.enabled); })
+        return value.enabled;
+    else
+        return value.settings.enabled;
+}
+
 // 既存のカテゴリ別 Inspector を一度収集し、GameObject が持つ順序で再生するための一時バッファ。
 // WHY: 専用 Inspector 関数を一つへ統合すると、既存の Component 固有 UI と Undo 実装を
 //      大規模に書き換える必要がある。描画要求だけを遅延させれば、既存の責務を保ったまま
@@ -953,15 +1002,16 @@ void DrawComponentSection(scene::GameObject* go,
 
     // WHY: BoneComponent のような構造上常に有効な補助 Component は enabled を持たない。
     //      共通 Inspector を利用できるよう、bool enabled がある型だけ有効チェックを描画する。
-    constexpr bool hasEnabled = requires(T& value) {
-        static_cast<bool&>(value.enabled);
-    };
+    // NOTE: ParticleEmitter のようにオーサリング値を settings へ分離した型は、直下ではなく
+    //       settings.enabled に持つ。ComponentEnabledFlag が両方の置き場を吸収する
+    //       (分離したとたんに «Inspector から無効化できない» になるのを防ぐ)。
+    constexpr bool hasEnabled = ComponentHasEnabled<T>();
     if constexpr (hasEnabled) {
         T beforeEnabled{};
         if (CanRecordEditorUndo(ctx))
             beforeEnabled = *comp;
         header = widgets::ComponentHeader(
-            label, accent, &comp->enabled, true,
+            label, accent, &ComponentEnabledFlag(*comp), true,
             MakeComponentReorderTarget(go, ctx, label));
         if (header.enabledChanged) {
             PushComponentValueCommand(
@@ -983,9 +1033,9 @@ void DrawComponentSection(scene::GameObject* go,
         if (ImGui::MenuItem("Reset")) {
             const T before = *comp;
             if constexpr (hasEnabled) {
-                const bool wasEnabled = comp->enabled;
+                const bool wasEnabled = ComponentEnabledFlag(*comp);
                 *comp = T{};
-                comp->enabled = wasEnabled;
+                ComponentEnabledFlag(*comp) = wasEnabled;
             } else {
                 *comp = T{};
             }
@@ -1004,9 +1054,9 @@ void DrawComponentSection(scene::GameObject* go,
         {
             const T before = *comp;
             if constexpr (hasEnabled) {
-                const bool wasEnabled = comp->enabled;
+                const bool wasEnabled = ComponentEnabledFlag(*comp);
                 *comp = std::any_cast<T>(compClipboard);
-                comp->enabled = wasEnabled;
+                ComponentEnabledFlag(*comp) = wasEnabled;
             } else {
                 *comp = std::any_cast<T>(compClipboard);
             }

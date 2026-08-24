@@ -7,8 +7,10 @@
 #include "Scene.hpp"
 #include "Script.hpp"
 #include "ScriptComponent.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <tuple>
+#include <utility>
 
 #ifndef FBZZ_ENGINE_VERSION_MAJOR
 #define FBZZ_ENGINE_VERSION_MAJOR 0
@@ -50,6 +52,14 @@ struct ScriptDllAbiInfo {
     uint64_t sizeofScene;
     uint64_t sizeofScriptComponent;
     uint64_t componentCount;      // tuple_size_v<ComponentList>
+    // ComponentList 全型の sizeof / alignof を畳み込んだハッシュ。
+    // WHY componentCount と別に要るか (不具合修正): コンポーネントの「個数」は
+    //     Transform や AudioSourceComponent にフィールドを 1 つ足しても変わらない。
+    //     一方でコンポーネント配列の添字計算は sizeof に直接依存し、その計算は
+    //     Script DLL 側でもテンプレートとして実体化される。個数しか見ていないと、
+    //     片側だけ再ビルドされた状態が署名を通過し、以後すべてのコンポーネント
+    //     アクセスが別のオフセットを指したまま黙って動く (メモリ破壊)。
+    uint64_t componentLayoutHash;
     uint64_t msvcVersion;         // _MSC_VER (0 = 非 MSVC)
     uint64_t msvcFullVersion;     // _MSC_FULL_VER (0 = 非 MSVC)
     uint64_t iteratorDebugLevel;  // _ITERATOR_DEBUG_LEVEL (0 = 未定義)
@@ -69,7 +79,9 @@ struct ScriptDllAbiInfo {
 //   3: BeginObject / EndObject / BeginObjectList / BeginObjectElement /
 //      EndObjectElement / EndObjectList を IReflector 末尾へ追加
 //      (入れ子オブジェクトと構造体配列のリフレクション対応)
-constexpr uint64_t kReflectionAbiVersion = 3;
+//   4: Field(ParticleCurve&) / Field(ParticleGradient&) / Button / ObjectListMove を
+//      IReflector 末尾へ追加 (カーブ・グラデーション・アクションボタン・構造体配列の並び替え)
+constexpr uint64_t kReflectionAbiVersion = 4;
 
 // Script 仮想関数テーブルの世代。
 // WHY: kReflectionAbiVersion と同じ問題が Script 本体にもある。OnUpdate / OnCollisionEnter /
@@ -91,7 +103,28 @@ constexpr uint64_t kReflectionAbiVersion = 3;
 //      (FBZZ_REQUIRE_COMPONENT による必須コンポーネント宣言)
 //   4: CollisionInfo 末尾へ relativeVelocity / approachSpeed / impactImpulse を追加
 //      (衝突の強さ。仮想関数の並びは 3 から変わっていない)
-constexpr uint64_t kScriptVtableAbiVersion = 4;
+//   5: OptionalComponents の直後へ ExecuteInEditMode を追加
+//      (FBZZ_EXECUTE_ALWAYS による編集中実行の宣言)
+constexpr uint64_t kScriptVtableAbiVersion = 5;
+
+namespace detail {
+
+// ComponentList の各型の sizeof / alignof を順に畳み込む。
+// 並び順も含めて効くので、型の入れ替えでもハッシュが変わる。
+template <std::size_t... I>
+[[nodiscard]] constexpr uint64_t HashComponentLayout(std::index_sequence<I...>)
+{
+    constexpr uint64_t FNV_OFFSET = 14695981039346656037ull;
+    constexpr uint64_t FNV_PRIME  = 1099511628211ull;
+
+    uint64_t hash = FNV_OFFSET;
+    const auto mix = [&hash](uint64_t v) constexpr { hash ^= v; hash *= FNV_PRIME; };
+    (..., (mix(sizeof(std::tuple_element_t<I, ComponentList>)),
+           mix(alignof(std::tuple_element_t<I, ComponentList>))));
+    return hash;
+}
+
+} // namespace detail
 
 [[nodiscard]] constexpr ScriptDllAbiInfo GetScriptDllAbiInfo()
 {
@@ -103,6 +136,8 @@ constexpr uint64_t kScriptVtableAbiVersion = 4;
     info.sizeofScene           = sizeof(Scene);
     info.sizeofScriptComponent = sizeof(ScriptComponent);
     info.componentCount        = std::tuple_size_v<ComponentList>;
+    info.componentLayoutHash   = detail::HashComponentLayout(
+        std::make_index_sequence<std::tuple_size_v<ComponentList>>{});
 #if defined(_MSC_VER)
     info.msvcVersion = _MSC_VER;
     info.msvcFullVersion = _MSC_FULL_VER;
@@ -125,6 +160,7 @@ constexpr uint64_t kScriptVtableAbiVersion = 4;
     mix(info.sizeofScene);
     mix(info.sizeofScriptComponent);
     mix(info.componentCount);
+    mix(info.componentLayoutHash);
     mix(info.msvcVersion);
     mix(info.msvcFullVersion);
     mix(info.iteratorDebugLevel);

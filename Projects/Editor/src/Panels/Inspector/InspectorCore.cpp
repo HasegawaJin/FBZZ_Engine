@@ -706,6 +706,18 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 const widgets::ComponentBodyScope body =
                     widgets::BeginComponentBody(hdr, kScriptAccent);
                 ImGui::Spacing();
+                // FBZZ_EXECUTE_ALWAYS の宣言はスクリプト側にしか無く、Inspector からは
+                // 「今シーンが勝手に書き換わっている」ことの説明が付かない。カード上で名指しする。
+                if (entry.script->ExecuteInEditMode()) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Info));
+                    ImGui::TextUnformatted("Runs in Edit Mode");
+                    ImGui::PopStyleColor();
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip(
+                            "FBZZ_EXECUTE_ALWAYS: this script updates while editing, not just in Play.\n"
+                            "Values it writes become part of the scene and are saved with it.");
+                    ImGui::Spacing();
+                }
                 // 不足している必須コンポーネントはフィールドより先に出す。
                 // WHY 先頭か: 値をいじっても直らない類の問題なので、パラメーター調整に
                 //      入る前に目に入る位置へ置く。
@@ -747,8 +759,11 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                             if (!target) return false;
                             auto* sc = target->GetComponent<scene::ScriptComponent>();
                             if (!sc) return false;
+                            // WHY 名前一致ではなく IsA か: FBZZ_REF(EnemyAiBase, ...) の
+                            //     スロットへ MiteComponent を持つ GO を落とせるようにするため。
+                            //     基底型で受ける参照は継承鎖のどこで一致してもよい。
                             for (const auto& entry : sc->scripts)
-                                if (entry.script && std::string(entry.script->GetTypeName()) == typeName)
+                                if (entry.script && entry.script->IsA(typeName))
                                     return true;
                             return false;
                         };

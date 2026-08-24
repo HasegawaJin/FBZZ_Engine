@@ -319,6 +319,30 @@ class EnemyComponent : public Script {
 
 ---
 
+## 編集中も実行するスクリプト (`FBZZ_EXECUTE_ALWAYS`)
+
+Script は既定では Play 中しか動かない (`ScriptSystem` が `ctx.simulating` で選別する)。HUD の配色やレイアウトのように**見た目を組み立てるスクリプト**は、Play を押さずにビューポートで確かめたい。クラス本体で宣言する。
+
+```cpp
+class PolarityGunHudComponent : public Script {
+    FBZZ_SCRIPT(PolarityGunHudComponent)
+    FBZZ_EXECUTE_ALWAYS()
+```
+
+**編集中に呼ばれるもの** — `OnAwake` / `OnStart` / `OnEnable` / `OnDisable` / `OnUpdate` / `OnLateUpdate` / `OnDestroy`、`Invoke` と Coroutine。
+
+**呼ばれないもの** — `OnFixedUpdate` と衝突・トリガー系。`PhysicsSystem` は `RunMode::SimOnly` のままで、編集中に力を加えても積分する相手が居ない。`physics` プロキシも編集中は World が外れている。
+
+**Play をまたぐとライフサイクルは張り直される。** Play の開始・停止では Script インスタンスが作り直されないため、編集中に立った `m_awoken` / `m_started` をそのまま持ち込むと Play で `OnStart` が二度と呼ばれない。モードが切り替わった瞬間に `OnDisable → OnDestroy` まで通してから `OnAwake → OnStart` をやり直す (`ScriptSystem::CollapseLifecycleAcrossModes`)。編集中に積んだ状態は Play へ持ち越さない。
+
+**編集中の書き込みはシーンの中身になる。** Unity の `[ExecuteAlways]` と同じで、書いた値はそのままシーンに残り、保存すれば `.fbzz` へ入る。副作用として未保存マークも立つ。**ゲーム進行を持つ状態 (体力・スコア・座標) を触るスクリプトには付けないこと。** 付けてよいのは、シーンの値から見た目を導出するだけで、二度走らせても同じ結果になるもの。
+
+**モードの分岐は `app.IsPlaying()` / `app.IsEditMode()`。** 編集中は入力・物理・音が動いていないため、それらを触る処理はこれで囲う。
+
+> ABI 注記: `ExecuteInEditMode()` は `Script` の仮想関数列の末尾にある。仮想関数を足すときは末尾へ置き、`ScriptDllAbi.hpp` の `kScriptVtableAbiVersion` を必ずインクリメントすること。
+
+---
+
 ## 禁止パターン
 
 | パターン | 理由 |
