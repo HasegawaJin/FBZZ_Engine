@@ -51,3 +51,5 @@
 #include <Engine/Scene/ScriptProxy/ScriptEventProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptRandomProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTweenProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptDisplayProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptGraphicsProxy.hpp>

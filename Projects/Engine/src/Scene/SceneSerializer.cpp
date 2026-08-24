@@ -5,6 +5,7 @@
 // ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
+#include <Engine/Util/TomlReflector.hpp>
 #include <cstddef>
 #include <vector>
 #include <Physics/Layer.hpp>
@@ -75,6 +76,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
@@ -116,83 +119,15 @@ void NormalizeTomlFloats(toml::node& node)
     }
 }
 
-toml::array Vec3ToArr(const math::Vector3& v)
-{
-    toml::array a;
-    a.push_back((double)v.x);
-    a.push_back((double)v.y);
-    a.push_back((double)v.z);
-    return a;
-}
-
-toml::array Vec2ToArr(const math::Vector2& v)
-{
-    toml::array a;
-    a.push_back((double)v.x);
-    a.push_back((double)v.y);
-    return a;
-}
-
-toml::array Vec4ToArr(const math::Vector4& v)
-{
-    toml::array a;
-    a.push_back((double)v.x);
-    a.push_back((double)v.y);
-    a.push_back((double)v.z);
-    a.push_back((double)v.w);
-    return a;
-}
-
-toml::array QuatToArr(const math::Quaternion& q)
-{
-    toml::array a;
-    a.push_back((double)q.x);
-    a.push_back((double)q.y);
-    a.push_back((double)q.z);
-    a.push_back((double)q.w);
-    return a;
-}
-
-math::Vector2 ArrToVec2(const toml::array* arr, math::Vector2 def = {})
-{
-    if (!arr || arr->size() < 2) return def;
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0)
-    };
-}
-
-math::Vector3 ArrToVec3(const toml::array* arr, math::Vector3 def = {})
-{
-    if (!arr || arr->size() < 3) return def;
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0),
-        (float)(*arr)[2].value_or(0.0)
-    };
-}
-
-math::Vector4 ArrToVec4(const toml::array* arr, math::Vector4 def = {})
-{
-    if (!arr || arr->size() < 4) return def;
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0),
-        (float)(*arr)[2].value_or(0.0),
-        (float)(*arr)[3].value_or(0.0)
-    };
-}
-
-math::Quaternion ArrToQuat(const toml::array* arr)
-{
-    if (!arr || arr->size() < 4) return { 0.0f, 0.0f, 0.0f, 1.0f };
-    return {
-        (float)(*arr)[0].value_or(0.0),
-        (float)(*arr)[1].value_or(0.0),
-        (float)(*arr)[2].value_or(0.0),
-        (float)(*arr)[3].value_or(1.0)
-    };
-}
+// 値型 ⇔ TOML 配列の変換は util 共通版を使う (Engine/Util/TomlReflector.hpp)。
+using util::ArrToQuat;
+using util::ArrToVec2;
+using util::ArrToVec3;
+using util::ArrToVec4;
+using util::QuatToArr;
+using util::Vec2ToArr;
+using util::Vec3ToArr;
+using util::Vec4ToArr;
 
 toml::table SerializeCollider(const ColliderComponent& col)
 {
@@ -479,11 +414,32 @@ toml::table TomlTableFromString(const std::string& text);
 //     「別のオブジェクトに解決される」形で出るため、ロード中だけ作って捨てる方が安全。
 class GuidIndex {
 public:
-    explicit GuidIndex(Scene& scene)
+    /// @param reportDuplicates 同じ instanceId が 2 つ以上あったらエラーとして出すか。
+    ///   重複はシーンファイルの性質なので、報告はファイルを読んだ経路 1 回で足りる。
+    ///   ロード後に索引を作り直す場面 (複製など) で出し直すと、同じ 1 件が操作のたびに
+    ///   並ぶだけで、新しいことは何も判らない。
+    explicit GuidIndex(Scene& scene, bool reportDuplicates = true)
     {
         for (GameObject& go : scene.GameObjects()) {
-            if (!go.instanceId.empty())
-                m_objects.emplace(go.instanceId, &go);
+            if (go.instanceId.empty()) continue;
+
+            // WHY 重複を名指しで止めるか: emplace は先勝ちで、後から来た同 id を黙って
+            //     捨てる。その GameObject は id で辿れなくなり、その id への参照は
+            //     すべて先頭のオブジェクトへ解決される。これは下の SceneWriteReflector が
+            //     「永続化に UUID だけを使う」理由として挙げている壊れ方そのもので、
+            //     一意であることを前提に組んである以上、破れたら黙って進んではいけない。
+            //
+            // WHY 新しい id を振って直さないか: 参照は既に先頭のオブジェクトを指しており、
+            //     id を振り直しても元の意図は戻らない。読み込みの副作用でシーンの中身を
+            //     書き換えると、その状態がそのまま保存されて事故が固定される。
+            //     直し方を決められるのは人だけなので、両方の名前を出すところまでを持つ。
+            const auto [it, inserted] = m_objects.emplace(go.instanceId, &go);
+            if (!inserted && reportDuplicates) {
+                FBZZ_LOG_ERROR("SceneSerializer: duplicate instanceId %s "
+                               "('%s' and '%s'). Every reference to it resolves to '%s'.",
+                               go.instanceId.c_str(), it->second->name.c_str(),
+                               go.name.c_str(), it->second->name.c_str());
+            }
         }
     }
 
@@ -497,38 +453,35 @@ private:
     std::unordered_map<std::string, GameObject*> m_objects;
 };
 
-// 書き込み先をスタックで持つ。
-// WHY スタックが要るか: BeginObject / BeginObjectElement は「現在の書き込み先」を
-//      一時的に子テーブルへ差し替える。ネストは任意の深さになりうるため、
-//      復帰先を LIFO で覚えておく必要がある。
-class TomlWriteReflector : public IReflector {
+// GameObject 参照とアセット参照を Scene の文脈で解決する書き込みリフレクタ。
+// 値型・リスト・入れ子スコープは util::TomlWriteReflector が受け持つ。
+class SceneWriteReflector : public util::TomlWriteReflector {
 public:
     // WHY Scene が要るか: GameObject 参照は EntityID (= シーン内の並び順の番号) ではなく
     //     GameObject::instanceId で保存する。番号は GameObject を 1 つ増減させただけで
     //     以降が全部ずれるうえ、ずれた参照は無効にならず *別のオブジェクトを指したまま
     //     有効* になる。壊れても気付けない参照になるため、永続化には UUID だけを使う。
     //     EntityID → instanceId の変換に Scene が要る。
-    explicit TomlWriteReflector(toml::table& table, const Scene* scene = nullptr)
-        : m_scene(scene)
+    //
+    // WHY 先勝ちで挿入するか: 従来の保存結果と一致させるため。同じキーへ二重に
+    //     書いた場合 (BeginField の戻し忘れ) は、後から来た値が黙って捨てられる。
+    explicit SceneWriteReflector(toml::table& table, const Scene* scene = nullptr)
+        : util::TomlWriteReflector(table, /*overwriteDuplicates=*/false)
+        , m_scene(scene)
     {
-        m_stack.push_back(&table);
     }
 
-    void Field(const char* name, float& v) override { Current().insert(PersistentKey(name), (double)v); }
-    void Field(const char* name, int& v) override { Current().insert(PersistentKey(name), (int64_t)v); }
-    void Field(const char* name, bool& v) override { Current().insert(PersistentKey(name), v); }
-    void Field(const char* name, math::Vector2& v) override { Current().insert(PersistentKey(name), Vec2ToArr(v)); }
-    void Field(const char* name, math::Vector3& v) override { Current().insert(PersistentKey(name), Vec3ToArr(v)); }
-    void Field(const char* name, math::Vector4& v) override { Current().insert(PersistentKey(name), Vec4ToArr(v)); }
-    void Field(const char* name, std::string& v) override { Current().insert(PersistentKey(name), v); }
-    void Field(const char* name, math::Quaternion& v) override { Current().insert(PersistentKey(name), QuatToArr(v)); }
+    // 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
+    using util::TomlWriteReflector::Field;
+    using util::TomlWriteReflector::ListField;
+
     void Field(const char* name, EntityID& v) override
     {
-        Current().insert(PersistentKey(name), GuidOfEntity(v));
+        Put(name, GuidOfEntity(v));
     }
     void Field(const char* name, input::KeyCode& v) override
     {
-        Current().insert(PersistentKey(name), std::string(KeyCodeToString(v)));
+        Put(name, std::string(KeyCodeToString(v)));
     }
     void AssetField(const char* name,
                     ScriptAssetReference& v,
@@ -539,55 +492,13 @@ public:
         toml::table assetRef;
         assetRef.insert("guid", v.guid);
         assetRef.insert("path", v.path);
-        Current().insert(PersistentKey(name), std::move(assetRef));
-    }
-    void ListField(const char* name, std::vector<float>& values) override
-    {
-        toml::array array;
-        for (const float value : values) array.push_back(static_cast<double>(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<int>& values) override
-    {
-        toml::array array;
-        for (const int value : values) array.push_back(static_cast<int64_t>(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<bool>& values) override
-    {
-        toml::array array;
-        for (const bool value : values) array.push_back(value);
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<std::string>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(value);
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<math::Vector2>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(Vec2ToArr(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<math::Vector3>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(Vec3ToArr(value));
-        Current().insert(PersistentKey(name), std::move(array));
-    }
-    void ListField(const char* name, std::vector<math::Vector4>& values) override
-    {
-        toml::array array;
-        for (const auto& value : values) array.push_back(Vec4ToArr(value));
-        Current().insert(PersistentKey(name), std::move(array));
+        Put(name, std::move(assetRef));
     }
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         toml::array array;
         for (const auto& value : values) array.push_back(GuidOfEntity(value.id));
-        Current().insert(PersistentKey(name), std::move(array));
+        Put(name, std::move(array));
     }
     void AssetListField(const char* name,
                         std::vector<ScriptAssetReference>& values,
@@ -602,78 +513,25 @@ public:
             assetRef.insert("path", value.path);
             array.push_back(std::move(assetRef));
         }
-        Current().insert(PersistentKey(name), std::move(array));
+        Put(name, std::move(array));
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
-    // WHY override を消したか: 従来は子リフレクタを作って入れ子テーブルを組んでいたが、
-    //      BeginObject / EndObject が同じことを行うため、二重実装になる。
-    //      一本化することで「入れ子の作り方」が 1 箇所に集約される。
-
-    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
-    void BeginObject(const char* name) override
-    {
-        // 親へ空テーブルを先に挿入し、その実体を書き込み先として積む。
-        // WHY 先に挿入するか: 構築し終えてから move で挿入する方式だと、
-        //      構築中に子のアドレスを保持できずスタックに積めない。
-        auto [iterator, inserted] =
-            Current().insert_or_assign(PersistentKey(name), toml::table{});
-        toml::table* child = iterator->second.as_table();
-        m_stack.push_back(child ? child : &Current());
-    }
-
-    void EndObject() override
-    {
-        // ルート (最初の 1 枚) は決して pop しない。
-        if (m_stack.size() > 1) m_stack.pop_back();
-    }
-
-    // ── 構造体配列 ───────────────────────────────────────────────────────────
-    std::size_t BeginObjectList(const char* name, std::size_t count) override
-    {
-        auto [iterator, inserted] =
-            Current().insert_or_assign(PersistentKey(name), toml::array{});
-        m_listStack.push_back(iterator->second.as_array());
-        return count;   // 書き込みは要素数を変えない
-    }
-
-    void BeginObjectElement(std::size_t index) override
-    {
-        (void)index;
-        toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
-        if (!array) { m_stack.push_back(&Current()); return; }
-
-        array->push_back(toml::table{});
-        toml::table* element = array->back().as_table();
-        m_stack.push_back(element ? element : &Current());
-    }
-
-    void EndObjectElement() override { EndObject(); }
-
-    std::size_t EndObjectList() override
-    {
-        if (!m_listStack.empty()) m_listStack.pop_back();
-        return NO_REMOVE;   // 永続化は要素を削除しない
-    }
-
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
         toml::table reference;
         reference.insert("type", value.type);
         toml::table fields;
         if (value.value) {
-            TomlWriteReflector child(fields, m_scene);
+            SceneWriteReflector child(fields, m_scene);
             value.value->Reflect(child);
             value.preservedFieldsToml = TomlTableToString(fields);
         } else if (!value.preservedFieldsToml.empty()) {
             fields = TomlTableFromString(value.preservedFieldsToml);
         }
         reference.insert("fields", std::move(fields));
-        Current().insert(PersistentKey(name), std::move(reference));
+        Put(name, std::move(reference));
     }
 
 private:
-    toml::table& Current() { return *m_stack.back(); }
-
     // 解決できない参照は空文字列。読み込み側は空を「未設定」として扱う。
     [[nodiscard]] std::string GuidOfEntity(EntityID id) const
     {
@@ -683,67 +541,23 @@ private:
     }
 
     const Scene* m_scene = nullptr;
-    std::vector<toml::table*> m_stack;
-    std::vector<toml::array*> m_listStack;
 };
 
-// 読み込み元をスタックで持つ。書き込み側と対称。
-// 対応するテーブルが存在しない入れ子は nullptr を積み、中のフィールドは
-// 既定値のまま残す (部分的に古いシーンでも壊れない)。
-class TomlReadReflector : public IReflector {
+// 書き込み側と対称の読み込みリフレクタ。値型は util::TomlReadReflector が読み、
+// ここは GameObject 参照とアセット参照だけを Scene の文脈で解決する。
+class SceneReadReflector : public util::TomlReadReflector {
 public:
     // guids が null の場合、GameObject 参照は解決されず無効のまま残る。
     // 参照先がまだ生成されていない Pass 1 では正常な状態で、あとの解決パスが埋め直す。
-    explicit TomlReadReflector(const toml::table& table, const GuidIndex* guids = nullptr)
-        : m_guids(guids)
+    explicit SceneReadReflector(const toml::table& table, const GuidIndex* guids = nullptr)
+        : util::TomlReadReflector(table)
+        , m_guids(guids)
     {
-        m_stack.push_back(&table);
     }
 
-    void Field(const char* name, float& v) override
-    {
-        if (const toml::node* node = FindNode(name))
-            v = static_cast<float>(node->value_or(static_cast<double>(v)));
-    }
-
-    void Field(const char* name, int& v) override
-    {
-        if (const toml::node* node = FindNode(name))
-            v = static_cast<int>(node->value_or(static_cast<int64_t>(v)));
-    }
-
-    void Field(const char* name, bool& v) override
-    {
-        if (const toml::node* node = FindNode(name))
-            v = node->value_or(v);
-    }
-
-    void Field(const char* name, math::Vector3& v) override
-    {
-        v = ArrToVec3(FindArray(name), v);
-    }
-
-    void Field(const char* name, math::Vector2& v) override
-    {
-        v = ArrToVec2(FindArray(name), v);
-    }
-
-    void Field(const char* name, math::Vector4& v) override
-    {
-        v = ArrToVec4(FindArray(name), v);
-    }
-
-    void Field(const char* name, std::string& v) override
-    {
-        if (const toml::node* node = FindNode(name))
-            v = node->value_or(v);
-    }
-
-    void Field(const char* name, math::Quaternion& v) override
-    {
-        if (const auto* arr = FindArray(name))
-            v = ArrToQuat(arr);
-    }
+    // 基底の値型オーバーロードを派生スコープへ引き上げる (名前隠蔽の回避)。
+    using util::TomlReadReflector::Field;
+    using util::TomlReadReflector::ListField;
 
     void Field(const char* name, EntityID& v) override
     {
@@ -757,6 +571,7 @@ public:
         const std::string s = node ? node->value_or(std::string{}) : std::string{};
         if (!s.empty()) v = KeyCodeFromString(s);
     }
+
     void AssetField(const char* name,
                     ScriptAssetReference& v,
                     ScriptAssetType) override
@@ -768,69 +583,7 @@ public:
             v.path = (*assetRef)["path"].value_or(std::string{});
         }
     }
-    void ListField(const char* name, std::vector<float>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(static_cast<float>(node.value_or(0.0)));
-    }
-    void ListField(const char* name, std::vector<int>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(static_cast<int>(node.value_or(int64_t{0})));
-    }
-    void ListField(const char* name, std::vector<bool>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(node.value_or(false));
-    }
-    void ListField(const char* name, std::vector<std::string>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(node.value_or(std::string{}));
-    }
-    void ListField(const char* name, std::vector<math::Vector2>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(ArrToVec2(node.as_array(), {}));
-    }
-    void ListField(const char* name, std::vector<math::Vector3>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(ArrToVec3(node.as_array(), {}));
-    }
-    void ListField(const char* name, std::vector<math::Vector4>& values) override
-    {
-        const toml::array* array = FindArray(name);
-        if (!array) return;
-        values.clear();
-        values.reserve(array->size());
-        for (const auto& node : *array)
-            values.push_back(ArrToVec4(node.as_array(), {}));
-    }
+
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         const toml::array* array = FindArray(name);
@@ -840,6 +593,7 @@ public:
         for (const auto& node : *array)
             values.push_back(EntityRef{ EntityFromGuid(node) });
     }
+
     void AssetListField(const char* name,
                         std::vector<ScriptAssetReference>& values,
                         ScriptAssetType) override
@@ -857,49 +611,6 @@ public:
             values.push_back(std::move(value));
         }
     }
-    // ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
-
-    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
-    void BeginObject(const char* name) override
-    {
-        const toml::node* node = FindNode(name);
-        // 見つからなければ nullptr を積む。以降の Field は読み込み元が無いため
-        // 何もせず、呼び出し側の既定値がそのまま残る (欠損スコープ)。
-        // WHY 早期 return しないか: スコープ対は必ず EndObject と釣り合う必要がある。
-        //      積まずに抜けると EndObject でスタックが破綻する。
-        m_stack.push_back(node ? node->as_table() : nullptr);
-    }
-
-    void EndObject() override
-    {
-        if (m_stack.size() > 1) m_stack.pop_back();
-    }
-
-    // ── 構造体配列 ───────────────────────────────────────────────────────────
-    std::size_t BeginObjectList(const char* name, std::size_t count) override
-    {
-        (void)count;
-        const toml::array* array = FindArray(name);
-        m_listStack.push_back(array);
-        // 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
-        // 配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
-        return array ? array->size() : 0u;
-    }
-
-    void BeginObjectElement(std::size_t index) override
-    {
-        const toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
-        if (!array || index >= array->size()) { m_stack.push_back(nullptr); return; }
-        m_stack.push_back(array->at(index).as_table());
-    }
-
-    void EndObjectElement() override { EndObject(); }
-
-    std::size_t EndObjectList() override
-    {
-        if (!m_listStack.empty()) m_listStack.pop_back();
-        return NO_REMOVE;
-    }
 
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
@@ -911,7 +622,7 @@ public:
         value.preservedFieldsToml = fields ? TomlTableToString(*fields) : std::string{};
         value.value = ScriptSerializableFactory::Create(value.type);
         if (value.value && fields) {
-            TomlReadReflector child(*fields, m_guids);
+            SceneReadReflector child(*fields, m_guids);
             value.value->Reflect(child);
         }
     }
@@ -927,28 +638,6 @@ protected:
     }
 
     const GuidIndex* m_guids = nullptr;
-
-    [[nodiscard]] const toml::table* Current() const { return m_stack.back(); }
-
-    [[nodiscard]] const toml::node* FindNode(const char* fallback) const
-    {
-        const toml::table* table = Current();
-        if (!table) return nullptr;   // 欠損スコープの内側
-
-        if (const toml::node* node = table->get(PersistentKey(fallback)))
-            return node;
-        return nullptr;
-    }
-
-    [[nodiscard]] const toml::array* FindArray(const char* fallback) const
-    {
-        const toml::node* node = FindNode(fallback);
-        return node ? node->as_array() : nullptr;
-    }
-
-private:
-    std::vector<const toml::table*> m_stack;
-    std::vector<const toml::array*> m_listStack;
 };
 
 // GameObject 参照だけを解決し直す読み込みリフレクタ。
@@ -963,9 +652,9 @@ private:
 //
 // 値フィールドを無効化しているのは、この 2 度目が「解決のためだけのパス」であることを
 // 型で示すため。値まで読み直しても結果は同じだが、意図が読めなくなる。
-class EntityRefResolveReflector : public TomlReadReflector {
+class EntityRefResolveReflector : public SceneReadReflector {
 public:
-    using TomlReadReflector::TomlReadReflector;
+    using SceneReadReflector::SceneReadReflector;
 
     void Field(const char*, float&) override {}
     void Field(const char*, int&) override {}
@@ -1013,7 +702,7 @@ void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable, cons
                       && requires(T& component, IReflector& reflector) { component.Reflect(reflector); }) {
             if (T* component = go.GetComponent<T>()) {
                 toml::table componentTable;
-                TomlWriteReflector reflector(componentTable, scene);
+                SceneWriteReflector reflector(componentTable, scene);
                 component->Reflect(reflector);
                 gameObjectTable.insert(Registration::serializedName, std::move(componentTable));
             }
@@ -1030,7 +719,7 @@ void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
             if (const toml::table* componentTable =
                     gameObjectTable[Registration::serializedName].as_table()) {
                 T component{};
-                TomlReadReflector reflector(*componentTable);
+                SceneReadReflector reflector(*componentTable);
                 component.Reflect(reflector);
                 go.AddComponent<T>(std::move(component));
             }
@@ -1196,6 +885,65 @@ std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std
 } // namespace
 
 // -----------------------------------------------------------------------
+// ScriptComponent の複製
+// -----------------------------------------------------------------------
+ScriptComponent CloneScriptComponent(const ScriptComponent& src,
+                                     const Scene* srcScene,
+                                     Scene* dstScene,
+                                     GameObject* dstOwner)
+{
+    // WHY エントリ単位で作らないか: GuidIndex の構築は GameObject 数に比例する。
+    //     Script ごとに作ると階層複製で GameObject 数 × Script 数になる。
+    // 重複 id の報告は切る。複製先はロード済みのシーンで、重複があるならそのとき出ている。
+    std::optional<GuidIndex> guids;
+    if (dstScene) guids.emplace(*dstScene, false);
+
+    ScriptComponent dst{};
+    for (const auto& srcEntry : src.scripts) {
+        std::string type;
+        bool        enabled = true;
+        std::string fieldsToml;
+
+        if (srcEntry.script) {
+            Script& script = *srcEntry.script;
+            script.OnBeforeSerialize();
+
+            toml::table fields;
+            SceneWriteReflector writer(fields, srcScene);
+            script.Reflect(writer);
+
+            type       = script.GetTypeName();
+            enabled    = script.enabled;
+            fieldsToml = TomlTableToString(fields);
+        } else if (srcEntry.serialized) {
+            // DLL 未登録で実体が無い Script。保持している値をそのまま引き継ぐ。
+            type       = srcEntry.serialized->type;
+            enabled    = srcEntry.serialized->enabled;
+            fieldsToml = srcEntry.serialized->fieldsToml;
+        }
+        if (type.empty()) continue;
+
+        ScriptEntry& dstEntry = dst.scripts.emplace_back();
+        dstEntry.serialized = std::make_shared<SerializedScriptData>();
+        dstEntry.serialized->type       = type;
+        dstEntry.serialized->enabled    = enabled;
+        dstEntry.serialized->fieldsToml = fieldsToml;
+
+        dstEntry.script = ScriptFactory::Create(type);
+        if (!dstEntry.script) continue;
+
+        dstEntry.script->SetContext(dstScene, dstOwner);
+        dstEntry.script->enabled = enabled;
+
+        const toml::table fields = TomlTableFromString(fieldsToml);
+        SceneReadReflector reader(fields, guids ? &*guids : nullptr);
+        dstEntry.script->Reflect(reader);
+        dstEntry.script->OnAfterDeserialize();
+    }
+    return dst;
+}
+
+// -----------------------------------------------------------------------
 // Save
 // -----------------------------------------------------------------------
 bool SceneSerializer::Save(Scene& scene, const std::string& path)
@@ -1342,6 +1090,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ccTbl.insert("maxDrawDistance", (double)cc->maxDrawDistance);
             ccTbl.insert("cullDistanceSpherical", cc->cullDistanceSpherical);
             ccTbl.insert("smallObjectScreenHeight", (double)cc->smallObjectScreenHeight);
+            ccTbl.insert("backgroundColor", Vec4ToArr(cc->backgroundColor));
+            ccTbl.insert("clearMode", (int64_t)cc->clearMode);
             // レイヤー別距離は「1 つでも設定されているとき」だけ 32 要素の配列を書く。
             // WHY: 既定 (全 0) のカメラすべてに 32 個のゼロが並ぶと、シーンの差分が読めなくなる。
             {
@@ -1465,7 +1215,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         //     .vfx 側にだけ追加され、シーン直置きの Emitter では保存対象から漏れていた。
         //     Play のスナップショット往復でそれらが既定値へ戻る原因になっていた。
         if (auto* pe = go.GetComponent<ParticleEmitter>()) {
-            goTbl.insert("ParticleEmitter", asset::SerializeParticleEmitterSettings(*pe));
+            goTbl.insert("ParticleEmitter", asset::SerializeParticleEmitterSettings(pe->settings));
         }
 
         // ParticleForceField
@@ -1479,6 +1229,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ffTbl.insert("direction",      Vec3ToArr(ff->direction));
             ffTbl.insert("noiseFrequency", (double)ff->noiseFrequency);
             ffTbl.insert("noiseSpeed",     (double)ff->noiseSpeed);
+            ffTbl.insert("channels",       (int64_t)ff->channels);
             goTbl.insert("ParticleForceField", std::move(ffTbl));
         }
 
@@ -2251,6 +2002,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             volTbl.insert("maxSlopeAngleDeg",  static_cast<double>(surface->maxSlopeAngleDeg));
             volTbl.insert("agentRadius",       static_cast<double>(surface->agentRadius));
             volTbl.insert("agentHeight",       static_cast<double>(surface->agentHeight));
+            volTbl.insert("maxClimb",          static_cast<double>(surface->maxClimb));
             volTbl.insert("agentTypeId",       static_cast<int64_t>(surface->agentTypeId));
             toml::array areaCostArr;
             for (float cost : surface->areaCosts)
@@ -2347,7 +2099,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 if (entry.script) {
                     entry.script->SetContext(&scene, &go);
                     entry.script->OnBeforeSerialize();
-                    TomlWriteReflector reflector(fieldsTbl, &scene);
+                    SceneWriteReflector reflector(fieldsTbl, &scene);
                     entry.script->Reflect(reflector);
                     const std::string type = entry.script->GetTypeName();
                     const bool enabled = entry.script->enabled;
@@ -2561,6 +2313,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.maxDrawDistance = (float)(*ccTbl)["maxDrawDistance"].value_or(0.0);
             cc.cullDistanceSpherical = (*ccTbl)["cullDistanceSpherical"].value_or(true);
             cc.smallObjectScreenHeight = (float)(*ccTbl)["smallObjectScreenHeight"].value_or(0.0);
+            // 未記載の旧シーンはこれまでの背景色のまま読む (絵が変わらない)。
+            cc.backgroundColor = ArrToVec4((*ccTbl)["backgroundColor"].as_array(),
+                                           renderer::kDefaultBackgroundColor);
+            {
+                int clearMode = (int)(*ccTbl)["clearMode"].value_or((int64_t)0);
+                clearMode = clearMode < 0 ? 0 : (clearMode > 1 ? 1 : clearMode);
+                cc.clearMode = static_cast<renderer::CameraClearMode>(clearMode);
+            }
             // 要素数が足りない / 多い旧データでも壊れないよう、書ける範囲だけ読む。
             if (const auto* layerArr = (*ccTbl)["layerCullDistances"].as_array()) {
                 const size_t count =
@@ -2678,16 +2438,19 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // ParticleEmitter
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
             ParticleEmitter pe{};
-            asset::DeserializeParticleEmitterSettings(*peTbl, pe);
+            asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
+            // 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
+            // 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
+            pe.ResetPlayback();
             // 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
             // colorGradient.space が無い場合だけ、こちらを正として反映する。
             if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
-                pe.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+                pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
                     std::clamp(static_cast<int>(*legacySpace), 0,
                                static_cast<int>(ParticleColorSpace::Oklab)));
             }
             // ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
-            pe.playing = (*peTbl)["playing"].value_or(true);
+            pe.settings.playing = (*peTbl)["playing"].value_or(true);
             go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
@@ -2704,6 +2467,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
             ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
             ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
+            // 旧シーンにキーが無ければ全チャンネル。マスクを知らない資産の挙動を変えない。
+            ff.channels     = static_cast<uint32_t>(
+                (*ffTbl)["channels"].value_or((int64_t)0xFFFFFFFF));
             go.AddComponent<ParticleForceField>(ff);
         }
 
@@ -3548,6 +3314,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 surface.maxSlopeAngleDeg = static_cast<float>((*surfTbl)["maxSlopeAngleDeg"].value_or(45.0));
                 surface.agentRadius      = static_cast<float>((*surfTbl)["agentRadius"].value_or(0.4));
                 surface.agentHeight      = static_cast<float>((*surfTbl)["agentHeight"].value_or(2.0));
+                // WHY 既定を 0 にしないか: maxClimb が無かった頃のシーンは「段差を無視して
+                //     繋がる」NavMesh を持っている。0 で読むとその状態が固定され、
+                //     Inspector にも 0 と出るので設定として正しく見えてしまう。
+                surface.maxClimb         = static_cast<float>((*surfTbl)["maxClimb"].value_or(0.4));
                 surface.collectObjects   = static_cast<NavMeshCollectObjects>(
                     static_cast<uint8_t>((*surfTbl)["collectObjects"].value_or(int64_t{0})));
                 surface.agentTypeId      = static_cast<int>((*surfTbl)["agentTypeId"].value_or(int64_t{0}));
@@ -3666,7 +3436,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 script->SetContext(scene.get(), &go);
                 script->enabled = enabled;
                 if (auto* fieldsTbl = scTbl["fields"].as_table()) {
-                    TomlReadReflector reflector(*fieldsTbl);
+                    SceneReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
                 pendingDeserializedScripts.push_back(script.get());
@@ -4019,16 +3789,19 @@ bool SceneSerializer::AppendObjects(
 
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
             ParticleEmitter pe{};
-            asset::DeserializeParticleEmitterSettings(*peTbl, pe);
+            asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
+            // 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
+            // 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
+            pe.ResetPlayback();
             // 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
             // colorGradient.space が無い場合だけ、こちらを正として反映する。
             if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
-                pe.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+                pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
                     std::clamp(static_cast<int>(*legacySpace), 0,
                                static_cast<int>(ParticleColorSpace::Oklab)));
             }
             // ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
-            pe.playing = (*peTbl)["playing"].value_or(true);
+            pe.settings.playing = (*peTbl)["playing"].value_or(true);
             go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
@@ -4044,6 +3817,9 @@ bool SceneSerializer::AppendObjects(
             ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
             ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
             ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
+            // 旧シーンにキーが無ければ全チャンネル。マスクを知らない資産の挙動を変えない。
+            ff.channels     = static_cast<uint32_t>(
+                (*ffTbl)["channels"].value_or((int64_t)0xFFFFFFFF));
             go.AddComponent<ParticleForceField>(ff);
         }
 
@@ -4158,7 +3934,7 @@ bool SceneSerializer::AppendObjects(
                 script->SetContext(&scene, &go);
                 script->enabled = enabled;
                 if (auto* fieldsTbl = scTbl["fields"].as_table()) {
-                    TomlReadReflector reflector(*fieldsTbl);
+                    SceneReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
                 pendingDeserializedScripts.push_back(script.get());

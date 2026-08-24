@@ -172,6 +172,24 @@ enum class ViewMode : uint8_t {
     WireframeUnlit  = 3,
 };
 
+// NavMesh オーバーレイの描き方。showNavMesh が true のときだけ効く。
+// WHY モードを分けるか: 1 枚の絵に全部載せると、cellSize が小さいシーンでは
+//     ポリゴン境界の線だけで画面が埋まり、肝心の「穴の位置」が読めなくなる。
+//     Recast Demo と同じく、何を確かめたいかで描くものを切り替える。
+enum class NavMeshDrawMode : uint8_t {
+    // 歩行可能面を不透明寄りに塗り、外周のエッジだけを強調する。形と穴を読む既定値。
+    Solid       = 0,
+    // 同じ塗りを薄くして地形を透かす。NavMesh と地面のズレを見るとき。
+    Transparent = 1,
+    // areaType ごとに色を変える。NavMesh Modifier の塗り分けが効いているかを見るとき。
+    Areas       = 2,
+    // 隣接ポリゴン間の Portal を描く。経路が繋がらない原因が接続かを見るとき。
+    Portals     = 3,
+    // ベイクのセル判定 (歩行可 / 急斜面 / 段差 / 障害物 / 半径不足) をそのまま描く。
+    // 「なぜここに面が張られないか」を追うとき。ベイク時の格子が残っている場合のみ。
+    Voxels      = 4,
+};
+
 // ShadowSettings — シャドウマップ品質の一元管理。
 // WHY: 解像度と PCF 半径はシャドウの精細度と GPU コストのトレードオフ。
 //      シーン単位で調整できるよう RenderSettings に持たせる。
@@ -380,6 +398,11 @@ struct RenderSettings {
     bool showDecalBounds      = false;
     bool showNavMesh          = true;
     bool showNavSensors       = false;
+    NavMeshDrawMode navMeshDrawMode = NavMeshDrawMode::Solid;
+    // NavMesh オーバーレイを描くカメラからの距離 [m]。0 以下で無制限。
+    // WHY 既定で切るか: 遠景の細かいポリゴンが画面を線で埋め、手前の形と穴が読めなくなる。
+    //     デバッグ描画のバッチも余計に分割される。
+    float navMeshDrawDistance = 120.0f;
     bool showSkeleton         = false;
     bool showGrid             = false;
     bool showLightRange       = false;
@@ -417,6 +440,34 @@ struct RenderSettings {
     bool IsUnlit()     const { return viewMode == ViewMode::Unlit        || viewMode == ViewMode::WireframeUnlit; }
 
     PostProcessSettings postProcess;
+
+    // ユーザー設定レイヤー (Option 画面の「明るさ」)。Composite が画面フェードの
+    // 直前に 1 度だけ掛ける。1.0 で無加工、0.5〜2.0 を想定。
+    //
+    // WHY postProcess の中に置かないか: ApplyVolumeSettings が postProcess を丸ごと
+    //     差し替えるため、中に置くと PostProcessVolume へ入った瞬間にプレイヤーの
+    //     設定が消える。アーティストのオーサリングとユーザー設定は別レイヤーに保つ。
+    // WHY exposure を使い回さないか: exposure は絵作りのパラメーターで、
+    //     プロファイルやボリュームが自由に上書きしてよい値。兼用すると
+    //     「暗いシーンへ入ったら明るさ設定が効かなくなる」ことになる。
+    float userBrightness = 1.0f;
+
+    // 描画スケール (Option 画面の「描画解像度」)。内部の描画解像度だけを倍率で変え、
+    // 出力先 (ウィンドウ / ビューポート RT) は元の寸法のまま保つ。
+    // GPU コストは面積比で効くので 0.7 でおよそ半分になる。1.0 で等倍。
+    //
+    // WHY 解像度そのものを下げるのと分けるか: フルスクリーンのまま内部だけ軽くしたい
+    //     場面があるため。ウィンドウ解像度を落とすと画面自体が小さくなる。
+    // NOTE: UI は全ポストプロセスの後に出力先へ直接描くため、この倍率の影響を受けない。
+    // NOTE: 値が変わると中間 RT を作り直す。連続スライダーから毎フレーム書くと
+    //       再確保が走り続けるので、UI 側は離散値か「離した時だけ反映」にすること。
+    float renderScale = 1.0f;
+
+    // 発光の強さ (Option 画面の「発光の強さ」)。bloom.intensity へ掛ける倍率。
+    // WHY postProcess.bloom.intensity を直接動かさないか: userBrightness と同じ理由で、
+    //     ApplyVolumeSettings が postProcess を丸ごと差し替えるため、
+    //     PostProcessVolume へ入った瞬間にプレイヤーの設定が消える。
+    float userBloomScale = 1.0f;
 
     // 高度グラフィクス設定 — 追加コストが大きい機能はここでまとめて制御する。
     IBLSettings              ibl;
@@ -484,5 +535,64 @@ struct RenderSettings {
         return !ibl.irradiancePath.empty() && !ibl.prefilterPath.empty();
     }
 };
+
+/// @name 描画スケール
+///@{
+/// renderScale として意味を持つ範囲。これを超える値は丸められる。
+/// 上限 2.0 はスーパーサンプリング用。面積が 4 倍になり VRAM も 4 倍要る。
+inline constexpr float kMinRenderScale = 0.5f;
+inline constexpr float kMaxRenderScale = 2.0f;
+
+/// 縮小してもここより小さくはしない。ポストプロセスが破綻して
+/// 「軽くはなったが何も見えない」状態を避けるための床。
+inline constexpr uint32_t kMinRenderWidth  = 640u;
+inline constexpr uint32_t kMinRenderHeight = 360u;
+
+/// 出力寸法と倍率から内部描画解像度を決める。
+///
+/// WHY 関数に切り出すか: RenderTarget の生成側とビューポート計算側で同じ値を
+///     出す必要があり、丸めが 1 ピクセルずれるだけでポストプロセスの UV が
+///     半テクセルずれる。丸め規則を 1 か所に閉じる。
+/// NOTE: 元の寸法が床より小さい場合は元の寸法をそのまま使う。小さなビューポートで
+///       床が勝ってしまい、縮小のつもりが拡大になるのを防ぐ。
+inline void ResolveRenderResolution(uint32_t nativeWidth, uint32_t nativeHeight, float scale,
+                                    uint32_t& outWidth, uint32_t& outHeight)
+{
+    const float clamped = (scale < kMinRenderScale) ? kMinRenderScale
+                        : (scale > kMaxRenderScale) ? kMaxRenderScale
+                                                    : scale;
+    const auto apply = [clamped](uint32_t native, uint32_t minimum) -> uint32_t {
+        if (native == 0u) return 0u;
+        const float scaled = static_cast<float>(native) * clamped + 0.5f;
+        const uint32_t value = static_cast<uint32_t>(scaled);
+        const uint32_t floorValue = native < minimum ? native : minimum;
+        return value < floorValue ? floorValue : value;
+    };
+    outWidth  = apply(nativeWidth,  kMinRenderWidth);
+    outHeight = apply(nativeHeight, kMinRenderHeight);
+}
+///@}
+
+// Option 画面の「画質」。1 つのつまみで重い機能をまとめて切り替える。
+enum class QualityPreset : uint8_t {
+    Low = 0,
+    Medium,
+    High,
+    Ultra,
+};
+
+// preset に対応する影・AA・AO・反射・体積光の構成を settings へ流し込む。
+// アセット参照 (IBL の cubemap パス) と絵作りのパラメーター (bloom の強度、
+// color grading) には触れない。
+//
+// WHY プリセットの中身を Engine 側に置くか: ゲーム側に散らすと、エンジンへ機能を
+//     足したときに既存タイトルのプリセットが古いまま取り残される。
+// WHY 個別 setter も残すか: プリセットは出発点でしかなく、「High から影だけ落とす」
+//     のような組み合わせをプレイヤーに許すのが普通。プリセット適用後に上書きできる。
+void ApplyQualityPreset(RenderSettings& settings, QualityPreset preset);
+
+// settings の構成が どのプリセットと一致するかを引き当てる。一致しなければ
+// 直近の (= より軽い側の) プリセットを返す。Option 画面の初期表示に使う。
+[[nodiscard]] QualityPreset DetectQualityPreset(const RenderSettings& settings);
 
 } // namespace fbzz::renderer

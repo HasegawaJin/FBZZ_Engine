@@ -19,6 +19,7 @@
 #include "Engine/Profiler/Profiler.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RendererFactory.hpp"
+#include "Engine/Util/SaveStore.hpp"
 
 namespace fbzz::core {
 
@@ -54,6 +55,15 @@ const wchar_t* BackendTitleTag(renderer::RendererBackend backend)
 Application& Application::Get() {
     static Application instance;
     return instance;
+}
+
+// WHY 既定パスを Application が決めるか: ゲーム側がパスを設定し忘れても
+//     セーブと設定が同じファイルへ落ちない状態を最初から保証するため。
+//     ゲームは SetPath / SetSlot で好きな場所へ差し替えてよい。
+Application::Application()
+    : m_saveStore(std::make_unique<util::SaveStore>("Saves/save0.toml"))
+    , m_configStore(std::make_unique<util::SaveStore>("Config/settings.toml"))
+{
 }
 
 Application::~Application() = default;
@@ -155,6 +165,9 @@ bool Application::Init(const Window::Config& windowConfig,
 }
 
 void Application::Shutdown() {
+    // 描画設定の実体を持っているのは Module 側 (ProjectSettings)。Application より先に
+    // 消えることがあるので、参照はここで必ず切っておく。
+    m_activeRenderSettings = nullptr;
     // SceneManagerはAudioManagerをraw pointerで参照するため、音響より先に参照とSceneを破棄する。
     if (m_sceneManager) m_sceneManager->SetAudioManager(nullptr);
     m_sceneManager.reset();
@@ -274,6 +287,12 @@ void Application::Run(IModule& module) {
         const float dt = Time::deltaTime;
         module.OnUpdate(dt);
         module.OnLateUpdate(dt);
+
+        // WHY AudioSystem ではなくここで回すか: AudioSystem は SimOnly のため Edit モードでは
+        //     走らない。生成クリップの回収を任せると、Editor のプレビュー再生ぶんが
+        //     Play を開始するまで解放されない。
+        if (m_audioManager) m_audioManager->Update();
+
         module.OnRender();
 
         profiler::Profiler::EndFrame();

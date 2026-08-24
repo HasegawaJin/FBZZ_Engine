@@ -79,9 +79,17 @@ template<typename T> using Asset = asset::Asset<T>;
 // ── ユーザー向けマクロ ───────────────────────────────────────────────────────
 
 // クラス先頭に置く。Reflect() 連鎖の土台・型名・仮想 override を生成する。
-// WHY: FBZZ_SCRIPT は Script を一切参照せず、「GetTypeName() const / Reflect(IReflector&) を持つ基底」
-//      に対して機能する汎用マクロのため、DataAsset でもそのまま流用できる (DRY)。別名で意図を明示する。
-#define FBZZ_DATA_ASSET(T) FBZZ_SCRIPT(T)
+//
+// WHY FBZZ_SCRIPT ではなく FBZZ_REFLECT_CORE_ を使うか:
+//   以前は FBZZ_SCRIPT をそのまま流用していた (当時は Script を一切参照しない
+//   汎用マクロだったため)。スクリプトに継承を入れた際、FBZZ_SCRIPT は型鎖を辿る
+//   FbzzAsType を持つようになり、その中で Script を名指しする。DataAsset は Script を
+//   継承しないので、流用を続けるとここでコンパイルが通らない。
+//   Script に依存しない土台の部分だけを共有し、終端は自前で置く。
+#define FBZZ_DATA_ASSET(T)                                                      \
+    FBZZ_REFLECT_CORE_(T)                                                       \
+    void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
+                       ::fbzz::scene::IReflector&) {}
 
 // 参照側スクリプトのフィールド宣言。Inspector に .fzdata ドラッグ&ドロップスロットを出す。
 // 既定値は不要 (空参照)。Reflect では内包する DataAssetRef を対象にする。
