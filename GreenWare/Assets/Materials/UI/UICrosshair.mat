@@ -1,0 +1,21 @@
+version = 1
+name = 'UICrosshair'
+shader = "Assets/Shaders/UI/Material/UICrosshair.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+tickColor = [ 0.2, 1.0, 0.45, 0.85 ]
+outlineColor = [ 0.01, 0.03, 0.02, 0.85 ]
+gap = [ 9.0 ]
+tickLength = [ 13.0 ]
+tickThickness = [ 2.5 ]
+tickRoundness = [ 1.0 ]
+dotSize = [ 3.0 ]
+spread = [ 0.0 ]
+outlineWidth = [ 1.0 ]
+spriteMode = [ 0.0 ]
