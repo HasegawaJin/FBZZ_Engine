@@ -27,8 +27,25 @@ struct MaterialComponent;
 struct ReflectionProbeComponent;
 struct SkinnedMeshRenderer;
 
-// HDR レンダーターゲットのクリアカラー。Forward / Deferred 両パスで共有する。
-inline constexpr math::Vector4 kHdrClearColor = { 0.005f, 0.005f, 0.02f, 1.0f };
+// 背景色とクリア方法は CameraComponent が持ち、renderer::Camera 経由で各パスへ届く。
+// 既定値は renderer::kDefaultBackgroundColor が正本。ここに定数を置くと、
+// カメラ設定を無視して塗る経路が生まれるため置かない。
+
+// 描画開始時の hdrRT 初期化。clearMode の判断はこの 1 関数に閉じる。
+//
+// WHY 関数にするか: Forward と Deferred が同じ判断を別々に書くと、片方だけ
+//     新しいモードに追従し損ねて «描画パスによって背景が違う» という、
+//     どちらが正しいのか分からない壊れ方をする。
+inline void ClearForCamera(renderer::IRenderer& renderer, const renderer::Camera& camera)
+{
+    if (camera.m_clearMode == renderer::CameraClearMode::DepthOnly) {
+        // カラーは前に描かれたものを残し、深度だけリセットする。
+        // IRenderer::Clear は色と深度を両方消すため、ここでは使えない。
+        renderer.ClearDepth();
+        return;
+    }
+    renderer.Clear(camera.m_backgroundColor);
+}
 
 // Forward 系ピクセルシェーダーへクラスタライトの共通リソースを束縛する。
 // WHY: DX11 は PSSetShaderResources、DX12 はピクセル SRV テーブルへ別々に渡す必要があるが、
@@ -81,7 +98,15 @@ inline constexpr std::uint32_t kParticleFxDistortionMap = 128u;
 inline constexpr std::uint32_t kParticleAlphaShift = 8u;
 inline constexpr std::uint32_t kParticleAlphaMask  = 7u;
 
-// Particle描画専用CB (b2)。CPU/GPUシェーダーで同じRenderer設定を使う。
+// ParticleRenderCB を束縛する DrawCall::constantBuffers のスロット。
+// LAYOUT: Assets/Shaders/Common/Binding.hlsli の CB_PARTICLE と一致させること。
+//
+// WHY b2 ではないか: シェーダーリフレクションは cbuffer 名 "MaterialConstants" を b2 に
+//     探すため、そこをエンジン定数で占有するとパーティクルだけ .mat の [params] を
+//     1 つも束縛できない。b2 は材質へ明け渡す (Decal の CB_DECAL と同じ判断)。
+inline constexpr std::size_t kParticleConstantSlot = 11;
+
+// Particle描画専用CB (b11)。CPU/GPUシェーダーで同じRenderer設定を使う。
 struct ParticleRenderCB {
     uint32_t renderMode = 0;
     float stretchedVelocityScale = 0.1f;

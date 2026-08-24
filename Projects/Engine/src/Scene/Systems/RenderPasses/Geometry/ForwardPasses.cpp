@@ -85,7 +85,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     const auto& cam = ctx.camera;
 
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.Clear(kHdrClearColor);
+    ClearForCamera(renderer, cam);
 
     const PerFrameCB frameData = MakeCameraFrameCB(cam, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));

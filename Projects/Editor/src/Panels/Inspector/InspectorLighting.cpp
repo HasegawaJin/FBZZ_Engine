@@ -28,6 +28,32 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             ImGui::DragFloat("FOV", &cc.fovY, 0.5f, 1.0f, 170.0f);
             ImGui::DragFloat("Near", &cc.nearZ, 0.001f, 0.001f, 10.0f);
             ImGui::DragFloat("Far", &cc.farZ, 1.0f, 1.0f, 10000.0f);
+
+            const char* clearItems[] = { "Solid Color", "Depth Only" };
+            int clearMode = static_cast<int>(cc.clearMode);
+            if (ImGui::Combo("Clear", &clearMode, clearItems, 2))
+                cc.clearMode = static_cast<renderer::CameraClearMode>(clearMode);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Solid Color: fill with Background, reset depth.\n"
+                    "Depth Only: keep whatever color is already there, reset depth only.\n"
+                    "  For drawing ON TOP of an earlier camera (e.g. a first-person weapon\n"
+                    "  that must never clip into walls).\n"
+                    "  WARNING: this engine renders one camera per view, so a lone camera\n"
+                    "  set to Depth Only will show last frame's image smeared.");
+            }
+
+            ImGui::BeginDisabled(cc.clearMode != renderer::CameraClearMode::SolidColor);
+            widgets::ColorEdit4("Background", cc.backgroundColor);
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Color left where nothing is drawn (the HDR target clear value).\n"
+                    "Hidden by the sky in scenes that render one.\n"
+                    "HDR: values above 1 are allowed and will feed bloom.\n"
+                    "Unused when Clear is Depth Only.");
+            }
+
             ImGui::SeparatorText("Culling");
 
             const char* maskLabel = cc.cullingMask == fbzz::Layer::Everything ? "Everything"

@@ -1,12 +1,14 @@
-// FBZZ Engine
-// CameraComponent.hpp | fbzz::scene
-// カメラパラメータを持つコンポーネント
-// 位置と回転は GameObject の Transform を正とし、この型は投影設定を持つ。
-// RenderSystem が Camera へ変換して描画に使う。
+/// @file    CameraComponent.hpp
+/// @brief   カメラの投影・カリング・背景色。位置と回転は Transform が正本。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+
 #pragma once
 #include <Physics/Layer.hpp>
+#include <Engine/Renderer/Camera.hpp>
 #include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/Vector4.hpp>
 
 namespace fbzz::scene {
 
@@ -20,6 +22,21 @@ struct CameraComponent {
     bool  isMain  = true;
     bool  enabled = true;
     fbzz::LayerMask cullingMask = fbzz::Layer::Everything;
+
+    // 何も描かれていない画素に残る色 (HDR ターゲットのクリア値)。
+    // 空を描くシーンでは空が上書きするため見えない。RGB は 1 を超えてよい。
+    //
+    // WHY RenderSettings ではなくカメラが持つか:
+    //   背景はレンズの向こうに何があるかであって、プロジェクト共通の画質設定ではない。
+    //   タイトルは黒、ゲーム本編は空、リプレイ用サブカメラは単色、のように
+    //   同じプロジェクト内で View ごとに変えたい種類の値なので、cullingMask と
+    //   同じ粒度 (= このカメラで何をどう描くか) に置く。
+    math::Vector4 backgroundColor = renderer::kDefaultBackgroundColor;
+
+    // 描き始めにバッファをどう初期化するか。詳細は renderer::CameraClearMode。
+    // DepthOnly は「前に描かれた絵の上に重ねる」ためのモードで、重ねる相手が
+    // 居ないカメラに指定すると前フレームの絵が残る。
+    renderer::CameraClearMode clearMode = renderer::CameraClearMode::SolidColor;
 
     // ---- カリング設定 ----
     // WHY ここに置くか: フラスタム / オクルージョンの可否は「このカメラで何を描くか」の
@@ -81,6 +98,12 @@ struct CameraComponent {
         r.Field("maxDrawDistance", maxDrawDistance);
         r.Field("cullDistanceSpherical", cullDistanceSpherical);
         r.Field("smallObjectScreenHeight", smallObjectScreenHeight);
+        int clearModeValue = static_cast<int>(clearMode);
+        static constexpr const char* CLEAR_MODES[] = { "Solid Color", "Depth Only" };
+        r.Enum("clearMode", clearModeValue, CLEAR_MODES);
+        clearMode = static_cast<renderer::CameraClearMode>(
+            clearModeValue < 0 || clearModeValue > 1 ? 0 : clearModeValue);
+        r.ColorField("backgroundColor", backgroundColor);
         // layerCullDistances は固定長配列で IReflector に対応する Field が無い。
         // 永続化は SceneSerializer が配列として書き出す。
     }
