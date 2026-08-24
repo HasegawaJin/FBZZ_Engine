@@ -4,7 +4,7 @@
 #pragma once
 #include <imgui.h>
 
-namespace fbzz::editor { struct EditorContext; }
+namespace fbzz::editor { struct EditorContext; struct EditorSettings; }
 
 namespace fbzz::editor {
 
@@ -23,6 +23,14 @@ public:
     virtual const char* GetMenuCategory() const { return nullptr; }
     virtual void OnInit(EditorContext& ctx) { (void)ctx; }
     virtual void OnShutdown() {}
+
+    // パネル固有の設定を editor_settings.toml と往復させるフック。
+    // OnLoadSettings はプロジェクトを開いた直後 (設定ロード後)、
+    // OnSaveSettings は終了時 (設定保存前) に EditorApp が呼ぶ。
+    // WHY: OnInit は projectRoot が決まる前に走るため、そこで EditorContext を読んでも
+    //      まだ既定値しか入っていない。パネルが「前回の状態」を受け取れる唯一の点がここ。
+    virtual void OnLoadSettings(const EditorSettings& settings) { (void)settings; }
+    virtual void OnSaveSettings(EditorSettings& settings) const { (void)settings; }
 
     // テンプレートメソッド。フック呼び出し順序:
     //  OnBeforeBegin  → ImGui::Begin → OnAfterBegin → OnRenderContent → ImGui::End → OnAfterEnd

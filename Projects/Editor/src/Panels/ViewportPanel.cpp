@@ -269,6 +269,23 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("UI 要素の当たり判定矩形とピボットを Canvas 上へ重ねます。");
         ImGui::Checkbox("NavMesh",     &ctx.projectSettings.render.showNavMesh);
+        // WHY ここに描き方まで出すか: 「NavMesh を出したが真っ青で何も読めない」が
+        //     オーバーレイを点けた直後の既定の体験だった。出す/出さないの隣に
+        //     何を出すかを置けば、点けた流れのまま Areas / Voxels へ移れる。
+        if (ctx.projectSettings.render.showNavMesh) {
+            static constexpr const char* kNavModes[] = {
+                "Solid", "Transparent", "Areas", "Portals", "Voxels" };
+            int navMode = static_cast<int>(ctx.projectSettings.render.navMeshDrawMode);
+            ImGui::Indent();
+            ImGui::SetNextItemWidth(130.0f);
+            if (ImGui::Combo("##navmesh_draw_mode", &navMode, kNavModes, 5))
+                ctx.projectSettings.render.navMeshDrawMode =
+                    static_cast<renderer::NavMeshDrawMode>(navMode);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Solid: 面と外周 / Areas: areaType 塗り分け /\n"
+                                  "Portals: ポリゴンの接続 / Voxels: ベイクのセル判定");
+            ImGui::Unindent();
+        }
         ImGui::Checkbox("AI Sensors",  &ctx.projectSettings.render.showNavSensors);
         ImGui::Checkbox("Skeleton",    &ctx.showSkeleton);
         ImGui::Checkbox("Stats",       &ctx.showStats);
@@ -769,100 +786,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     else if (isGameView && ctx.playMode && ctx.playMode->IsPaused())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(255, 180, 50, 220), 0.0f, 0, 3.0f);
 
-    if (isGameView && ctx.showStats) {
-        int entityCount = 0;
-        int meshCount = 0;
-        if (ctx.activeScene) {
-            for ([[maybe_unused]] auto& go : ctx.activeScene->GameObjects()) ++entityCount;
-            meshCount = static_cast<int>(ctx.activeScene->GetEntities<scene::MeshRenderer>().size());
-        }
-        const auto& rs = renderer::RenderDebugOverlay::GetLastSnapshot().renderStats;
-
-        // 左下に配置 (タブバー・ツールバーと重ならないよう上マージンを考慮)
-        // WHY: 右上は ImGuizmo のビューキューブと重なりやすく、
-        //      左下はほぼ空きスペースになるため視認性が高い。
-        ImVec2 winPos  = ImGui::GetWindowPos();
-        ImVec2 winSize = ImGui::GetWindowSize();
-        constexpr float kMargin = 10.0f;
-        ImGui::SetNextWindowPos(
-            { winPos.x + kMargin, winPos.y + winSize.y - kMargin },
-            ImGuiCond_Always,
-            { 0.0f, 1.0f }); // pivot: 左下
-        ImGui::SetNextWindowBgAlpha(0.60f);
-        constexpr ImGuiWindowFlags kOverlayFlags =
-            ImGuiWindowFlags_NoDecoration |
-            ImGuiWindowFlags_NoNav |
-            ImGuiWindowFlags_NoMove |
-            ImGuiWindowFlags_NoSavedSettings |
-            ImGuiWindowFlags_NoDocking |
-            ImGuiWindowFlags_NoInputs |
-            ImGuiWindowFlags_NoFocusOnAppearing;
-        if (ImGui::Begin("##vp_stats", nullptr, kOverlayFlags)) {
-            // ── 基本情報 ───────────────────────────────────────────────────────
-            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Game ---");
-            ImGui::Text("FPS        %.1f (%.2f ms)",
-                        ImGui::GetIO().Framerate,
-                        1000.0f / ImGui::GetIO().Framerate);
-            ImGui::Text("Entities   %d", entityCount);
-            ImGui::Text("Meshes     %d", meshCount);
-
-            // ── 描画統計 ───────────────────────────────────────────────────────
-            ImGui::Spacing();
-            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Render ---");
-            ImGui::Text("Draw Calls %d", rs.drawCalls);
-
-            // 頂点数・三角形数をカンマ区切りで読みやすく表示する
-            // (snprintf で手動フォーマット。printf の %'d はクロスプラットフォームで動作しないため)
-            char vtxBuf[32], triBuf[32], skinVtxBuf[32];
-            auto fmtK = [](char* buf, uint64_t n) {
-                if (n >= 1000000)      std::snprintf(buf, 32, "%.1fM", n / 1000000.0f);
-                else if (n >= 1000)    std::snprintf(buf, 32, "%.1fK", n / 1000.0f);
-                else                   std::snprintf(buf, 32, "%llu", static_cast<unsigned long long>(n));
-            };
-            fmtK(vtxBuf, rs.vertexCount);
-            fmtK(triBuf, rs.triangleCount);
-            fmtK(skinVtxBuf, rs.skinningVertexCount);
-            ImGui::Text("Vertices   %s", vtxBuf);
-            ImGui::Text("Triangles  %s", triBuf);
-            ImGui::Text("Skinning   %s (%u dispatches)", skinVtxBuf, rs.skinningDispatchCount);
-
-            // シャドウマップは光源視点でジオメトリを描き直す別コストなので内訳として出す。
-            char shadowTriBuf[32];
-            fmtK(shadowTriBuf, rs.shadowTriangleCount);
-            ImGui::Text("Shadow     %d dc / %s tri", rs.shadowDrawCalls, shadowTriBuf);
-
-            // ── カリング統計 ───────────────────────────────────────────────────
-            ImGui::Spacing();
-            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Culling ---");
-            ImGui::Text("Total      %d", rs.totalObjects);
-
-            // カリング済み数を割合付きで表示する
-            const float total = static_cast<float>(rs.totalObjects > 0 ? rs.totalObjects : 1);
-            ImGui::Text("Frustum    %d (%.0f%%)",
-                        rs.frustumCulled,
-                        rs.frustumCulled / total * 100.0f);
-            ImGui::Text("Occlusion  %d (%.0f%%)",
-                        rs.occlusionCulled,
-                        rs.occlusionCulled / total * 100.0f);
-            ImGui::Text("Distance   %d (%.0f%%)",
-                        rs.distanceCulled,
-                        rs.distanceCulled / total * 100.0f);
-            ImGui::Text("Small Obj  %d (%.0f%%)",
-                        rs.smallObjectCulled,
-                        rs.smallObjectCulled / total * 100.0f);
-
-            // 合計カリング率を色付きで表示 (50% 以上は緑、30% 未満は赤)
-            const int totalCulled = rs.frustumCulled + rs.occlusionCulled
-                                  + rs.distanceCulled + rs.smallObjectCulled;
-            const float cullRate  = totalCulled / total * 100.0f;
-            ImVec4 rateColor = cullRate >= 50.0f
-                ? ImVec4{ 0.4f, 1.0f, 0.4f, 1.0f }
-                : (cullRate >= 30.0f ? ImVec4{ 1.0f, 1.0f, 0.4f, 1.0f }
-                                     : ImVec4{ 1.0f, 0.5f, 0.4f, 1.0f });
-            ImGui::TextColored(rateColor, "Rate       %.0f%%", cullRate);
-        }
-        ImGui::End();
-    }
+    if (isGameView && ctx.showStats)
+        DrawStatsOverlay(ctx);
 
 }
 

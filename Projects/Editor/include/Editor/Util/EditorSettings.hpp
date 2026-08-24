@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fbzz::editor {
@@ -37,6 +38,8 @@ struct EditorSettings {
     bool  showStats           = true;  // Game Viewport の Stats オーバーレイ
     // Scene View のオクルージョンカリング。誤カリングの切り分け用なので既定は off。
     bool  sceneViewOcclusionCulling = false;
+    // Ctrl+Shift ドラッグ (面スナップ) で接地面の法線へ姿勢を合わせるか。
+    bool  surfaceSnapAlignToNormal  = false;
 
     // --- スナップ ---------------------------------------------------------
     bool  snapEnabled         = false;
@@ -69,6 +72,11 @@ struct EditorSettings {
     // --- Map Mode フィルター ----------------------------------------------
     bool        mapHierarchyFilter = true;
     bool        mapInspectorFilter = true;
+    // EditorContext::MapTool の整数値。0=TerrainSculpt … 5=Grid
+    int         mapActiveTool      = 0;
+
+    // --- Hierarchy --------------------------------------------------------
+    bool        showGeneratedObjects = false;
 
     // --- Debug メニュー - レンダリングオーバーレイ ---------------------------
     // WHY: int で保存し renderer::ViewMode へキャストする (enum を TOML に直接書くと変換が複雑)
@@ -77,6 +85,9 @@ struct EditorSettings {
     bool showDecalBounds      = false;
     bool showNavMesh          = true;
     bool showNavSensors       = false;
+    // 0=Solid, 1=Transparent, 2=Areas, 3=Portals, 4=Voxels (renderer::NavMeshDrawMode)
+    int   navMeshDrawMode     = 0;
+    float navMeshDrawDistance = 120.0f;
     // UI 要素の矩形とピボットを Canvas 上へ重ねる。
     // WHY: 「見えているのに押せない」「思った場所に出ない」の切り分けが、
     //      これが無いと勘になる。当たり判定に使っている矩形そのものを出す。
@@ -99,6 +110,9 @@ struct EditorSettings {
     int      detailLayerIndex     = 0;
     bool     detailShowChunkBounds = false;
     bool     detailShowCounts      = false;
+
+    // --- FoliageTool ブラシ設定 ------------------------------------------
+    float    foliageEraseRadius    = 4.0f;
 
     // --- シーン -----------------------------------------------------------
     // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後に無効になる。
@@ -147,6 +161,30 @@ struct EditorSettings {
     float                    assetBrowserIconSize = 84.0f;
     float                    assetBrowserTreeWidth = 180.0f;
     std::vector<std::string> assetBrowserBookmarks;
+    int                      assetBrowserViewMode   = 0; // 0=Grid, 1=List
+    int                      assetBrowserSortMode   = 0; // 0=NameAsc, 1=NameDesc, 2=Type, 3=Modified
+    int                      assetBrowserTypeFilter = 0; // 0=All (AssetBrowserPanel::TypeFilter)
+    bool                     assetBrowserSearchAllFolders = false;
+    // 前回いたフォルダ。lastScenePath と同じく projectRoot 相対で持つ。
+    std::string              assetBrowserCurrentFolder;
+
+    // --- Console ----------------------------------------------------------
+    // WHY: ログレベルの絞り込みは「今追っている問題」に紐づく。毎起動で全部 ON に
+    //      戻ると、追跡中のエラーがまた INFO の洪水に埋もれるところからやり直しになる。
+    bool consoleShowDebug   = false;
+    bool consoleShowInfo    = true;
+    bool consoleShowWarn    = true;
+    bool consoleShowError   = true;
+    bool consoleAutoScroll  = true;
+    bool consoleCollapse    = false;
+    bool consoleClearOnPlay = false;
+    bool consoleShowDetail  = true;
+
+    // --- パネル表示状態 ----------------------------------------------------
+    // ウィンドウ名 → 開いているか。View > Panels に出るパネルだけを対象にする。
+    // WHY: ImGui の .ini はウィンドウの位置・サイズ・ドック先しか覚えず、
+    //      「閉じた」という状態は持たない。閉じたパネルが毎起動で開き直る。
+    std::vector<std::pair<std::string, bool>> panelVisibility;
 
     // --- Inspector セクション折り畳み状態 -----------------------------------
     // ImGui の CollapsingHeader が使う ImGuiID (uint32) と open フラグのペアを保存する。

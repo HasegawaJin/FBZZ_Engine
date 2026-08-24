@@ -69,6 +69,27 @@ void ReadComponentOrders(const toml::array& objectArray,
     }
 }
 
+toml::array ToIdArray(const EditorSceneState::InstanceIds& ids)
+{
+    toml::array array;
+    for (const std::string& id : ids)
+        if (!id.empty()) array.push_back(id);
+    return array;
+}
+
+EditorSceneState::InstanceIds ReadIdArray(const toml::node_view<const toml::node>& node)
+{
+    EditorSceneState::InstanceIds ids;
+    if (const auto* array = node.as_array()) {
+        ids.reserve(array->size());
+        for (const auto& element : *array) {
+            std::string id = element.value_or(std::string{});
+            if (!id.empty()) ids.push_back(std::move(id));
+        }
+    }
+    return ids;
+}
+
 } // namespace
 
 std::string EditorSerializer::MetadataPath(const std::string& scenePath)
@@ -97,6 +118,8 @@ bool EditorSerializer::Save(const EditorSceneState& state, const std::string& sc
     toml::table editorTable;
     editorTable.insert("format_version", 2);
     editorTable.insert("game_objects", std::move(objectArray));
+    editorTable.insert("hidden_objects", ToIdArray(state.GetHiddenObjects()));
+    editorTable.insert("locked_objects", ToIdArray(state.GetLockedObjects()));
 
     const std::string path = MetadataPath(scenePath);
     if (!util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(path))) {
@@ -137,6 +160,8 @@ bool EditorSerializer::Load(EditorSceneState& state, const std::string& scenePat
         if (const auto* editorTable = result.table()[kEditorTable].as_table()) {
             if (const auto* objectArray = (*editorTable)["game_objects"].as_array())
                 ReadComponentOrders(*objectArray, "instance_id", "component_order", state);
+            state.SetHiddenObjects(ReadIdArray((*editorTable)["hidden_objects"]));
+            state.SetLockedObjects(ReadIdArray((*editorTable)["locked_objects"]));
             return true;
         }
         // 旧 (v1): サイドカーのトップレベルに直接書いていた形式。

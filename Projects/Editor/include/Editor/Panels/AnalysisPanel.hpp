@@ -21,8 +21,8 @@ protected:
 private:
     void DrawProfiler();
     void DrawMemory(EditorContext& ctx);
-    // DrawCall / ポリゴン数・GPU パスタイミングを表示するレンダリング統計タブ。
-    void DrawRendering();
+    // フレーム時間・DrawCall / ポリゴン数・GPU パスタイミングを表示するレンダリング統計タブ。
+    void DrawRendering(EditorContext& ctx);
 };
 
 } // namespace fbzz::editor
