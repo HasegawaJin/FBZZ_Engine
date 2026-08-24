@@ -28,11 +28,18 @@ namespace fbzz::renderer {
 
 namespace {
 
-// アトラス 1 ページの一辺 (px)。R8 なので 2048x2048 で 4MB。
+// アトラス 1 ページの一辺の上限 (px)。R8 なので 2048x2048 で 4MB。
 // WHY: 日本語の常用漢字 (約 2,100 字) を 48px SDF + パディングで焼くと
 //      1 ページにはやや足りない。足りなくなったらページを増やす設計にしてあるため、
 //      初期確保を無駄に大きくせず、この値から始める。
-constexpr int   ATLAS_SIZE = 2048;
+constexpr int   ATLAS_SIZE_MAX = 2048;
+constexpr int   ATLAS_SIZE_MIN = 512;
+
+// 一辺に並べるグリフの目安数。ページの一辺はラスタライズ解像度からこれで決める。
+// WHY 解像度に追従させるか: 同じフォントを解像度別に焼き分けるようになったため、
+//      一辺を固定にすると小さく焼いたアトラスまで 4MB を占める。1 ページあたりの
+//      収容字数を揃えたまま、実体だけを解像度なりの大きさにする。
+constexpr int   ATLAS_GLYPHS_PER_SIDE = 32;
 
 // SDF の広がり (px)。輪郭からこの距離までが 0〜255 にマップされる。
 // WHY: 大きいほど太い縁取りやシャドウを距離場から作れるが、グリフ 1 個の占有面積が
@@ -61,6 +68,15 @@ constexpr float SDF_PIXEL_DIST_SCALE =
 //   lineHeight はクリップには使われず「拡大率と改行の送り量」の基準でしかないため、
 //   描画が欠けることはない。
 constexpr float LINE_HEIGHT_PER_EM = 1.2f;
+
+// ラスタライズ解像度からページの一辺を決める。DX12 のリージョン転送が行頭を
+// 256B 境界で扱うため、一辺も 256 の倍数へ丸める。
+int ResolveAtlasSize(float pixelHeight)
+{
+    const int cell    = static_cast<int>(pixelHeight) + 2 * SDF_PADDING;
+    const int desired = ((cell * ATLAS_GLYPHS_PER_SIDE + 255) / 256) * 256;
+    return std::clamp(desired, ATLAS_SIZE_MIN, ATLAS_SIZE_MAX);
+}
 
 } // namespace
 
@@ -107,6 +123,7 @@ struct DynamicFontSource::Impl {
     float lineHeight = 0.0f;
     float base       = 0.0f;   // 行の上端からベースラインまで
     float fallbackAdvance = 0.0f;
+    int   atlasSize  = ATLAS_SIZE_MAX;   // ページ 1 枚の一辺 (px)。Load で解像度から決める
 
     std::vector<std::unique_ptr<Page>> pages;
 
@@ -115,9 +132,9 @@ struct DynamicFontSource::Impl {
     Page& AppendPage()
     {
         auto page = std::make_unique<Page>();
-        page->pixels.assign(static_cast<std::size_t>(ATLAS_SIZE) * ATLAS_SIZE, 0u);
-        page->nodes.resize(ATLAS_SIZE);
-        stbrp_init_target(&page->packer, ATLAS_SIZE, ATLAS_SIZE,
+        page->pixels.assign(static_cast<std::size_t>(atlasSize) * atlasSize, 0u);
+        page->nodes.resize(atlasSize);
+        stbrp_init_target(&page->packer, atlasSize, atlasSize,
                           page->nodes.data(), static_cast<int>(page->nodes.size()));
         pages.push_back(std::move(page));
         return *pages.back();
@@ -157,7 +174,8 @@ bool DynamicFontSource::Load(const std::string& fontPath, float pixelHeight)
     //   同じ数値を渡しても両者で字の大きさが 2 割ほどずれる。
     //   em 基準に揃えることで、静的フォントと動的フォントを同じ fontSize で並べても
     //   線の太さと字面の印象が一致する。
-    m_impl->scale = stbtt_ScaleForMappingEmToPixels(&m_impl->font, pixelHeight);
+    m_impl->scale     = stbtt_ScaleForMappingEmToPixels(&m_impl->font, pixelHeight);
+    m_impl->atlasSize = ResolveAtlasSize(pixelHeight);
 
     int ascent = 0, descent = 0, lineGap = 0;
     stbtt_GetFontVMetrics(&m_impl->font, &ascent, &descent, &lineGap);
@@ -240,10 +258,10 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
             if (rect.was_packed) { target = page.get(); break; }
         }
         if (!target) {
-            if (width > ATLAS_SIZE || height > ATLAS_SIZE) {
+            if (width > m_impl->atlasSize || height > m_impl->atlasSize) {
                 // 1 ページに収まらない巨大グリフ。ラスタライズ解像度の設定ミス。
                 FBZZ_LOG_ERROR("DynamicFontSource: グリフ U+%04X (%dx%d) がアトラス %d を超えています",
-                               static_cast<unsigned>(code), width, height, ATLAS_SIZE);
+                               static_cast<unsigned>(code), width, height, m_impl->atlasSize);
                 stbtt_FreeSDF(sdf, nullptr);
                 glyphTable[code] = glyph;   // 空グリフとして登録し、毎フレームの再試行を防ぐ
                 addedAny = true;
@@ -268,7 +286,7 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
         const auto destY = static_cast<std::uint32_t>(rect.y);
         for (int row = 0; row < height; ++row) {
             std::memcpy(target->pixels.data()
-                            + (static_cast<std::size_t>(destY) + row) * ATLAS_SIZE + destX,
+                            + (static_cast<std::size_t>(destY) + row) * m_impl->atlasSize + destX,
                         sdf + static_cast<std::size_t>(row) * width,
                         static_cast<std::size_t>(width));
         }
@@ -281,11 +299,11 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
         for (std::size_t i = 0; i < m_impl->pages.size(); ++i)
             if (m_impl->pages[i].get() == target) { pageIndex = static_cast<int>(i); break; }
 
-        constexpr float ATLAS_SIZE_F = static_cast<float>(ATLAS_SIZE);
-        glyph.u0 = static_cast<float>(destX) / ATLAS_SIZE_F;
-        glyph.v0 = static_cast<float>(destY) / ATLAS_SIZE_F;
-        glyph.u1 = static_cast<float>(destX + width)  / ATLAS_SIZE_F;
-        glyph.v1 = static_cast<float>(destY + height) / ATLAS_SIZE_F;
+        const float atlasSizeF = static_cast<float>(m_impl->atlasSize);
+        glyph.u0 = static_cast<float>(destX) / atlasSizeF;
+        glyph.v0 = static_cast<float>(destY) / atlasSizeF;
+        glyph.u1 = static_cast<float>(destX + width)  / atlasSizeF;
+        glyph.v1 = static_cast<float>(destY + height) / atlasSizeF;
         glyph.width   = static_cast<float>(width);
         glyph.height  = static_cast<float>(height);
         // stbtt の xoff/yoff はベースライン原点からの相対値 (yoff は上方向が負)。
@@ -304,8 +322,8 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
     for (std::size_t i = 0; i < m_impl->pages.size(); ++i) {
         Impl::Page& page = *m_impl->pages[i];
         if (!page.texture.IsValid()) {
-            page.texture = resources.CreateDynamicTexture(
-                ATLAS_SIZE, ATLAS_SIZE, DynamicTextureFormat::R8);
+            const auto side = static_cast<std::uint32_t>(m_impl->atlasSize);
+            page.texture = resources.CreateDynamicTexture(side, side, DynamicTextureFormat::R8);
             if (!page.texture.IsValid()) {
                 FBZZ_LOG_ERROR("DynamicFontSource: 動的テクスチャを生成できません "
                                "(バックエンドが未対応の可能性)");
@@ -329,8 +347,9 @@ bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codeP
         // CPU バッファはアトラス全面なので、矩形の左上画素を先頭として
         // 行ピッチにアトラス幅をそのまま渡せば部分矩形を転送できる。
         const std::uint8_t* origin =
-            page.pixels.data() + static_cast<std::size_t>(page.dirtyY0) * ATLAS_SIZE + page.dirtyX0;
-        texture->UpdateRegion(page.dirtyX0, page.dirtyY0, w, h, origin, ATLAS_SIZE);
+            page.pixels.data() + static_cast<std::size_t>(page.dirtyY0) * m_impl->atlasSize + page.dirtyX0;
+        texture->UpdateRegion(page.dirtyX0, page.dirtyY0, w, h, origin,
+                              static_cast<std::uint32_t>(m_impl->atlasSize));
         page.dirty = false;
     }
 

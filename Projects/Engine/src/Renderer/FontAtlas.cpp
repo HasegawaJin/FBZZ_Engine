@@ -138,8 +138,26 @@ bool LooksLikeBMFont(const std::string& fntText)
     return false;
 }
 
-// 拡張子 (小文字化済み) が TrueType/OpenType のものかどうか。
-bool IsFontFileExtension(const std::string& path)
+// 動的アトラスへ焼く解像度の段 (em px)。
+//
+// WHY 48 を含むか: 既存の静的アトラスが 48px 生成であり、fontSize は行高さ基準で
+//      正規化されるため、この段に載る指定では静的フォントと動的フォントで線の太さの
+//      印象が揃う。実質すべての既定サイズ (fontSize 36〜48) が等倍でここへ落ちる。
+// WHY 段の間隔をこの粗さにするか: 段が細かいほど「要求どおりの解像度」に近づくが、
+//      アトラスの実体はその数だけ増える。1 段の差は最大 1.5 倍で、SDF の縮小耐性
+//      (padding 4px ぶん) に十分収まる。
+constexpr float RASTER_PIXEL_HEIGHT_STEPS[] = {
+    24.0f, 32.0f, 48.0f, 64.0f, 96.0f, 128.0f, 192.0f, 256.0f
+};
+
+} // namespace
+
+FontAtlas::FontAtlas()                                  = default;
+FontAtlas::~FontAtlas()                                 = default;
+FontAtlas::FontAtlas(FontAtlas&&) noexcept              = default;
+FontAtlas& FontAtlas::operator=(FontAtlas&&) noexcept   = default;
+
+bool FontAtlas::IsDynamicFontPath(const std::string& path)
 {
     const std::size_t dot = path.find_last_of('.');
     if (dot == std::string::npos) return false;
@@ -150,26 +168,23 @@ bool IsFontFileExtension(const std::string& path)
     return ext == ".ttf" || ext == ".ttc" || ext == ".otf";
 }
 
-// 動的アトラスへ焼くときのラスタライズ解像度 (px)。
-// WHY: 既存の静的アトラスが 48px 生成であり、fontSize は行高さ基準で正規化されるため、
-//      同じ 48px にしておくと静的フォントと動的フォントで線の太さの印象が揃う。
-//      SDF なので表示サイズを上げても品質はこの値に縛られない。
-constexpr float DYNAMIC_RASTER_PIXEL_HEIGHT = 48.0f;
+float FontAtlas::ResolveRasterPixelHeight(float desiredPixelHeight)
+{
+    float largest = RASTER_PIXEL_HEIGHT_STEPS[0];
+    for (const float step : RASTER_PIXEL_HEIGHT_STEPS) {
+        largest = step;
+        if (desiredPixelHeight <= step) return step;
+    }
+    return largest;
+}
 
-} // namespace
-
-FontAtlas::FontAtlas()                                  = default;
-FontAtlas::~FontAtlas()                                 = default;
-FontAtlas::FontAtlas(FontAtlas&&) noexcept              = default;
-FontAtlas& FontAtlas::operator=(FontAtlas&&) noexcept   = default;
-
-bool FontAtlas::Load(const std::string& path, ResourceManager& resources)
+bool FontAtlas::Load(const std::string& path, ResourceManager& resources, float rasterPixelHeight)
 {
     // TTF/TTC/OTF を直接指定された場合は動的モード。
     // WHY: 日本語フォントは字種が多く静的アトラスに載せきれないため、
     //      「.ttf を fontPath に書けばそのまま出る」導線を用意する。
-    if (IsFontFileExtension(path))
-        return LoadDynamic(path);
+    if (IsDynamicFontPath(path))
+        return LoadDynamic(path, rasterPixelHeight);
 
     const std::string basePath = path;
     const std::string fntPath  = basePath + ".fnt";
@@ -381,10 +396,10 @@ bool FontAtlas::ParseLegacy(const std::string& fntText,
     return true;
 }
 
-bool FontAtlas::LoadDynamic(const std::string& fontPath)
+bool FontAtlas::LoadDynamic(const std::string& fontPath, float rasterPixelHeight)
 {
     auto source = std::make_unique<DynamicFontSource>();
-    if (!source->Load(fontPath, DYNAMIC_RASTER_PIXEL_HEIGHT)) {
+    if (!source->Load(fontPath, rasterPixelHeight)) {
         FBZZ_LOG_ERROR("FontAtlas: 動的フォントを開けません: %s", fontPath.c_str());
         return false;
     }

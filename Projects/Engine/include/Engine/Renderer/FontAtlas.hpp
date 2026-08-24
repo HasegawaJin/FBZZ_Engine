@@ -19,9 +19,17 @@
 ///      が UNORM で 0.502 になり、式の 0.5 判定と一致する)。MSDF を入れる日が来たら
 ///      「中央値を取る」サンプリングごと設計する話になり、種別フラグだけでは足りない。
 ///
+/// WHY (焼く解像度を呼び出し側が決めるか): SDF は拡大には強いが、縮小には強くない。
+///      距離が padding px で飽和するため、実画面 1px がアトラスの数テクセルに相当する
+///      ところまで縮めると、字画の内側と外側の区別が付かなくなって字が潰れる。
+///      Editor の Game ビューのように「1920x1080 の Canvas を数百 px の枠へ入れる」場面が
+///      まさにそれで、固定 48px で焼いていると文字だけが崩れる。実際に出る大きさを
+///      知っているのは UISystem だけなので、そこから解像度を受け取って焼く。
+///
 /// 使い方:
 ///   FontAtlas atlas;
-///   atlas.Load("Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght", resources);
+///   atlas.Load("Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght", resources,
+///              FontAtlas::ResolveRasterPixelHeight(48.0f));
 ///   const FontGlyph* g = atlas.GetGlyph(U'あ');
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -63,7 +71,7 @@ struct FontGlyph {
 };
 
 // フォントアトラスのロードと参照。
-// UISystem がこのクラスをパス文字列をキーにキャッシュし、重複ロードを防ぐ。
+// UISystem が「パス + 焼いた解像度」をキーにキャッシュし、重複ロードを防ぐ。
 class FontAtlas {
 public:
     FontAtlas();
@@ -80,7 +88,21 @@ public:
     //   それ以外                   → 静的モード。path + ".fnt" (+ PNG) を読む。
     //
     // 失敗しても例外は投げない。IsValid() で成否を確認すること。
-    bool Load(const std::string& path, ResourceManager& resources);
+    //
+    // rasterPixelHeight は動的モードで焼くときの em サイズ (px)。静的モードでは無視される。
+    // ResolveRasterPixelHeight() を通した値を渡すこと。
+    bool Load(const std::string& path, ResourceManager& resources, float rasterPixelHeight);
+
+    // 拡張子が動的モード (TrueType/OpenType) のものかどうか。
+    // WHY 公開するか: 「同じフォントを解像度別に焼き分けるか」は呼び出し側の
+    //     キャッシュキーの問題であり、動的モードでしか意味を持たない。
+    [[nodiscard]] static bool IsDynamicFontPath(const std::string& path);
+
+    // 欲しい解像度を、実際に焼く段階の値へ丸める。
+    //
+    // WHY 丸めるか: 要求どおりの px で焼くと、ビューポートを 1px 動かすたびに別の
+    //     アトラスが生まれる。段にしておけば、リサイズ中も同じ実体を使い回せる。
+    [[nodiscard]] static float ResolveRasterPixelHeight(float desiredPixelHeight);
 
     // テキストに含まれるグリフのうち、まだアトラスに無いものを焼いて GPU へ反映する。
     // 静的モードでは何もしない。UISystem がレイアウト前に 1 度だけ呼ぶ。
@@ -130,7 +152,7 @@ private:
                      ResourceManager&   resources);
 
     // TTF/TTC/OTF を動的モードで開く。成功したら true。
-    bool LoadDynamic(const std::string& fontPath);
+    bool LoadDynamic(const std::string& fontPath, float rasterPixelHeight);
 
     // カーニング表のキー: 上位 32bit に前の文字、下位 32bit に次の文字を詰める。
     // WHY: pair<char32_t,char32_t> + 自作ハッシュより、64bit 整数キーの方が

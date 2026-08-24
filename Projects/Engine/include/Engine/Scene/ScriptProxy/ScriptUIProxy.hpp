@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Math/Vector4.hpp>
+#include <string>
 #include <string_view>
 
 namespace fbzz::scene {
@@ -56,6 +57,32 @@ struct ScriptUIProxy {
     // 状態に応じて明滅させたい HUD には別の入口が要る。
     void SetTextColor(const math::Vector4& color) const;
     void SetCanvasSortOrder(int order) const;
+
+    /// 直近のフレームで UI が解決したマウス位置 (Canvas 空間、原点は左上)。
+    ///
+    /// WHY input.GetMousePosition() で足りないか: あちらはビューポート内のピクセルで、
+    ///     Canvas Scaler や renderMode を通していない。要素の矩形と直接比べられるのは
+    ///     こちらだけ。スライダーのドラッグのように「掴んだ位置」を要素の座標系で
+    ///     測る操作で使う。
+    /// NOTE: シーンで最初に見つかった Canvas の値。UI が 1 度も回っていなければ (0,0)。
+    ///       ポインターを差し替えていても、ここは常に OS のマウスを返す
+    ///       (カーソルを動かす側が生の値を要るため)。
+    [[nodiscard]] math::Vector2 GetCanvasMousePosition() const;
+
+    /// @name ゲーム内カーソル
+    /// UI の当たり判定に使う座標と押下状態を、OS のマウスから差し替える。
+    ///
+    /// WHY これだけで足りるか: UIButton / UISlider / UIToggle の判定は
+    ///     「Canvas 空間の座標 1 つと押下状態」しか見ていない。入口を差し替えれば、
+    ///     マウスとパッドの両対応をウィジェット側に 1 行も書かずに済む。
+    /// NOTE: **毎フレーム呼ぶこと。** 1 フレーム途切れると OS のマウスへ戻る。
+    ///       置きっぱなしにできる作りだと、カーソルを持つ側が消えた後 (シーン遷移や
+    ///       Play 停止) に古い座標が残り、UI が触れない状態の原因が追えなくなる。
+    ///@{
+    void SetPointer(const math::Vector2& canvasPosition, bool pressed) const;
+    void ClearPointer() const;
+    [[nodiscard]] bool IsPointerOverridden() const;
+    ///@}
     // スプライトシートのピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW,texH) で正規化し
     // UIImage の uvMin / uvMax へ書き込む。
     void SetImageSpriteRect(float x, float y, float w, float h, float texW, float texH) const;
@@ -76,6 +103,23 @@ struct ScriptUIProxy {
     void SetTextColor(GameObject* go, const math::Vector4& color) const;
     void SetImageEnabled(GameObject* go, bool enabled) const;
     void SetTextEnabled(GameObject* go, bool enabled) const;
+
+    // 現在値の読み取り。ゲージを「今の値から目標値へ」補間する、点滅の基準色を
+    // オーサリング値のまま使う、といった演出は、Script 側に控えを持たずここから読む。
+    // 対象コンポーネントが無い場合は 0 / 白 / 空文字列 / false を返す。
+    [[nodiscard]] float         GetImageFillAmount() const;
+    [[nodiscard]] math::Vector4 GetImageColor() const;
+    [[nodiscard]] std::string   GetText() const;
+    [[nodiscard]] math::Vector4 GetTextColor() const;
+    [[nodiscard]] bool          IsImageEnabled() const;
+    [[nodiscard]] bool          IsTextEnabled() const;
+
+    [[nodiscard]] float         GetImageFillAmount(GameObject* go) const;
+    [[nodiscard]] math::Vector4 GetImageColor(GameObject* go) const;
+    [[nodiscard]] std::string   GetText(GameObject* go) const;
+    [[nodiscard]] math::Vector4 GetTextColor(GameObject* go) const;
+    [[nodiscard]] bool          IsImageEnabled(GameObject* go) const;
+    [[nodiscard]] bool          IsTextEnabled(GameObject* go) const;
 
     // ── UI マテリアル (UIImage.materialPath) ────────────────────────────────
     //
