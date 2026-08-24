@@ -101,6 +101,23 @@ void Profiler::EndSample()
     s_currentFrameRecords.push_back(record);
 }
 
+void Profiler::PushSample(const ProfilerMarker& marker, double elapsedMs)
+{
+    if (!s_enabled) {
+        return;
+    }
+
+    ProfileRecord record;
+    record.name       = marker.name;
+    record.category   = marker.category;
+    record.elapsedMs  = elapsedMs;
+    record.frameIndex = s_currentFrameIndex;
+    // 積む時点のスタック深さ。並列バッチを回している側のスコープの子として並ぶ。
+    record.depth      = static_cast<uint32_t>(s_stack.size());
+    record.color      = marker.color;
+    s_currentFrameRecords.push_back(record);
+}
+
 void Profiler::PushMarker(const ProfilerMarker& marker)
 {
     if (!s_enabled) {

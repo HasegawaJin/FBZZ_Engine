@@ -3,6 +3,7 @@
 // Profiler と MemoryDebug を ImGui で表示する診断パネル実装
 #include <Editor/Panels/AnalysisPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/FrameTimeGraph.hpp>
 
 #include <Engine/Core/Memory/MemorySystem.hpp>
 #include <Engine/Profiler/Profiler.hpp>
@@ -401,7 +402,7 @@ void AnalysisPanel::OnRenderContent(EditorContext& ctx)
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Rendering")) {
-            DrawRendering();
+            DrawRendering(ctx);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
@@ -772,11 +773,33 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
     }
 }
 
-void AnalysisPanel::DrawRendering()
+void AnalysisPanel::DrawRendering(EditorContext& ctx)
 {
     const renderer::RenderDebugOverlay::Snapshot& snap =
         renderer::RenderDebugOverlay::GetLastSnapshot();
     const renderer::RenderDebugOverlay::RenderStats& stats = snap.renderStats;
+
+    // ── フレーム時間 ───────────────────────────────────────────────────────
+    // WHY: 内訳の数字はこの下の表と GPU パスに揃っているが、「今フレームが予算に
+    //      収まっているか」だけはビューポートの Stats HUD でしか見られなかった。
+    //      ドッキングした状態でパス内訳と並べて追えるよう、HUD と同じ部品をここへ置く。
+    //      履歴は widgets 側で 1 本に共有しているので、HUD とグラフの中身は一致する。
+    const int   targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
+    const float targetMs  = 1000.0f / static_cast<float>(targetFps);
+    const float fontH     = ImGui::GetFontSize();
+
+    widgets::FrameTimeHero(targetMs, fontH * 12.0f);
+
+    char budgetText[64];
+    std::snprintf(budgetText, sizeof(budgetText), "budget %.1f ms  (%d fps)", targetMs, targetFps);
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x
+                         - ImGui::CalcTextSize(budgetText).x);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + fontH * 0.9f); // 大きい数字の下端へ揃える
+    ImGui::TextDisabled("%s", budgetText);
+
+    widgets::FrameTimeGraph(targetMs, fontH * 3.0f);
+    ImGui::Spacing();
 
     // Sample GPU pass history
     s_renderHistory.elapsed += ImGui::GetIO().DeltaTime;

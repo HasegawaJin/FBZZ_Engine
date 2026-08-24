@@ -34,6 +34,9 @@ public:
     // WHY: バッチが満杯になると以降の Line() は黙って捨てられる。大量のラインを出すパス
     //      (コライダー可視化・NavMesh 等) が「溢れる前に Flush する」判断をするために公開する。
     [[nodiscard]] static size_t PendingLineVertices();
+    // 塗りつぶし三角形バッチの現在の頂点数。線分とは別枠で溢れるため、FilledPolygon を
+    // 大量に積むパス (NavMesh の面・ボクセル) はこちらも見て中間 Flush を判断する。
+    [[nodiscard]] static size_t PendingTriangleVertices();
     [[nodiscard]] static size_t MaxBatchVertices();
 
     static void Line(IRenderer& r, const math::Vector3& from, const math::Vector3& to,

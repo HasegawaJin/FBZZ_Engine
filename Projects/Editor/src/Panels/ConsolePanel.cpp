@@ -4,6 +4,7 @@
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SourceOpen.hpp>
 #include <Engine/Core/ILogSink.hpp>
@@ -11,8 +12,10 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <unordered_map>
+#include <utility>
 
 namespace fbzz::editor {
 
@@ -55,6 +58,30 @@ void ConsolePanel::OnShutdown()
     core::Logger::RemoveSink(&m_sink);
 }
 
+void ConsolePanel::OnLoadSettings(const EditorSettings& settings)
+{
+    m_showDebug   = settings.consoleShowDebug;
+    m_showInfo    = settings.consoleShowInfo;
+    m_showWarn    = settings.consoleShowWarn;
+    m_showError   = settings.consoleShowError;
+    m_autoScroll  = settings.consoleAutoScroll;
+    m_collapse    = settings.consoleCollapse;
+    m_clearOnPlay = settings.consoleClearOnPlay;
+    m_showDetail  = settings.consoleShowDetail;
+}
+
+void ConsolePanel::OnSaveSettings(EditorSettings& settings) const
+{
+    settings.consoleShowDebug   = m_showDebug;
+    settings.consoleShowInfo    = m_showInfo;
+    settings.consoleShowWarn    = m_showWarn;
+    settings.consoleShowError   = m_showError;
+    settings.consoleAutoScroll  = m_autoScroll;
+    settings.consoleCollapse    = m_collapse;
+    settings.consoleClearOnPlay = m_clearOnPlay;
+    settings.consoleShowDetail  = m_showDetail;
+}
+
 bool ConsolePanel::FiltersChanged() const
 {
     return m_cachedShowDebug != m_showDebug
@@ -68,6 +95,9 @@ bool ConsolePanel::FiltersChanged() const
 void ConsolePanel::RebuildRows()
 {
     const std::string filter(m_filterBuf.data());
+    // GetEntries()[i] の通し番号は oldest + i。リングバッファから押し出された行は
+    // ここより小さい番号になるので、選択から落とす判定にも使える。
+    const std::uint64_t oldest = m_sink.GetOldestSequence();
 
     m_rows.clear();
     m_visibleLogText.clear();
@@ -110,7 +140,7 @@ void ConsolePanel::RebuildRows()
             collapseIndex.emplace(std::move(key), m_rows.size());
         }
 
-        m_rows.push_back(Row{ i, 1, entry.level });
+        m_rows.push_back(Row{ i, oldest + i, 1, entry.level });
         m_visibleLogText += entry.message;
         m_visibleLogText += '\n';
     }
@@ -123,8 +153,72 @@ void ConsolePanel::RebuildRows()
     m_cachedShowError = m_showError;
     m_cachedCollapse  = m_collapse;
 
-    if (m_selectedRow >= static_cast<int>(m_rows.size()))
-        m_selectedRow = -1;
+    // WHY フィルタで消えた行を選択から外さないか: レベルトグルを切り替えて戻したときに
+    //      選択が生き残っていてほしい。捨てるのは実体がバッファから消えた行だけにする。
+    std::erase_if(m_selection, [oldest](std::uint64_t sequence) { return sequence < oldest; });
+    if (m_anchorSequence < oldest) m_anchorSequence = 0;
+    if (m_detailSequence < oldest) m_detailSequence = 0;
+}
+
+int ConsolePanel::RowIndexOf(std::uint64_t sequence) const
+{
+    if (sequence == 0) return -1;
+    for (std::size_t i = 0; i < m_rows.size(); ++i) {
+        if (m_rows[i].sequence == sequence) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+void ConsolePanel::SelectRange(int fromRow, int toRow, bool additive)
+{
+    if (!additive) m_selection.clear();
+    if (m_rows.empty()) return;
+    if (fromRow > toRow) std::swap(fromRow, toRow);
+    fromRow = std::max(fromRow, 0);
+    toRow   = std::min(toRow, static_cast<int>(m_rows.size()) - 1);
+    for (int row = fromRow; row <= toRow; ++row)
+        m_selection.insert(m_rows[static_cast<std::size_t>(row)].sequence);
+}
+
+void ConsolePanel::ApplyRowClick(int row)
+{
+    const ImGuiIO& io = ImGui::GetIO();
+    const std::uint64_t sequence = m_rows[static_cast<std::size_t>(row)].sequence;
+    const int anchor = RowIndexOf(m_anchorSequence);
+
+    if (io.KeyShift && anchor >= 0) {
+        // WHY 起点を動かさないか: 動かすと Shift クリックのたびに範囲が「そこから」に
+        //     なり、行き過ぎたぶんを戻して選び直せない。起点は素のクリックだけが決める。
+        SelectRange(anchor, row, io.KeyCtrl);
+    } else if (io.KeyCtrl) {
+        if (!m_selection.insert(sequence).second) m_selection.erase(sequence);
+        m_anchorSequence = sequence;
+    } else {
+        m_selection.clear();
+        m_selection.insert(sequence);
+        m_anchorSequence = sequence;
+    }
+    m_detailSequence = sequence;
+}
+
+std::string ConsolePanel::SelectedText() const
+{
+    const auto& entries = m_sink.GetEntries();
+    std::string text;
+    // m_rows の順で拾う。選択は集合なので、そのまま回すと画面と並びが変わる。
+    for (const Row& row : m_rows) {
+        if (!m_selection.contains(row.sequence)) continue;
+        if (row.entryIndex >= entries.size()) continue;
+        text += entries[row.entryIndex].message;
+        text += '\n';
+    }
+    return text;
+}
+
+void ConsolePanel::CopySelection() const
+{
+    const std::string text = SelectedText();
+    if (!text.empty()) ImGui::SetClipboardText(text.c_str());
 }
 
 void ConsolePanel::JumpToSource(EditorContext& ctx, const std::string& message)
@@ -151,11 +245,13 @@ void ConsolePanel::JumpToSource(EditorContext& ctx, const std::string& message)
 void ConsolePanel::DrawDetailPane(EditorContext& ctx)
 {
     const auto& entries = m_sink.GetEntries();
-    if (m_selectedRow < 0 || m_selectedRow >= static_cast<int>(m_rows.size())) {
-        ImGui::TextDisabled("Select a log line to see the full message.");
+    const int detailRow = RowIndexOf(m_detailSequence);
+    if (detailRow < 0) {
+        ImGui::TextDisabled("Select a log line to see the full message. "
+                            "Shift+click for a range, Ctrl+C to copy.");
         return;
     }
-    const std::size_t entryIndex = m_rows[static_cast<std::size_t>(m_selectedRow)].entryIndex;
+    const std::size_t entryIndex = m_rows[static_cast<std::size_t>(detailRow)].entryIndex;
     if (entryIndex >= entries.size()) {
         ImGui::TextDisabled("This entry has been discarded from the ring buffer.");
         return;
@@ -196,7 +292,9 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     const bool inEditor = (ctx.playMode == nullptr) || ctx.playMode->IsInEditor();
     if (m_clearOnPlay && m_wasInEditor && !inEditor) {
         m_sink.Clear();
-        m_selectedRow = -1;
+        m_selection.clear();
+        m_anchorSequence = 0;
+        m_detailSequence = 0;
     }
     m_wasInEditor = inEditor;
 
@@ -228,11 +326,27 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     ImGui::Checkbox("Clear on Play", &m_clearOnPlay); ImGui::SameLine();
     ImGui::Checkbox("Auto Scroll", &m_autoScroll);    ImGui::SameLine();
     ImGui::Checkbox("Details", &m_showDetail);        ImGui::SameLine();
+
+    const int selectedCount = static_cast<int>(m_selection.size());
+    ImGui::BeginDisabled(selectedCount == 0);
+    // "###" 以降が ID。件数で表示は変わっても ID は動かさない
+    // (ラベルがそのまま ID だと、件数が変わった瞬間に別ボタン扱いになる)。
+    char copyLabel[64];
+    std::snprintf(copyLabel, sizeof(copyLabel), "Copy Selected (%d)###console_copy_selected",
+                  selectedCount);
+    const bool copySelectedRequested = ImGui::Button(copyLabel);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Click a line, Shift+click (or drag) for a range, Ctrl+click to add.\n"
+                          "Ctrl+A selects every visible line, Ctrl+C copies the selection.");
+    ImGui::SameLine();
     const bool copyVisibleRequested = ImGui::Button("Copy Visible");
     ImGui::SameLine();
     if (ImGui::Button("Clear")) {
         m_sink.Clear();
-        m_selectedRow = -1;
+        m_selection.clear();
+        m_anchorSequence = 0;
+        m_detailSequence = 0;
     }
     ImGui::Separator();
 
@@ -243,6 +357,8 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     if (logChanged || FiltersChanged())
         RebuildRows();
 
+    if (copySelectedRequested)
+        CopySelection();
     if (copyVisibleRequested)
         ImGui::SetClipboardText(m_visibleLogText.c_str());
 
@@ -281,9 +397,41 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
                 //      ログ (シェーダー診断など) で以降が表示されなくなる。行の当たり判定は
                 //      ID だけの Selectable に任せ、本文は自前で重ね描きする。
                 const ImVec2 textPos = ImGui::GetCursorScreenPos();
-                if (ImGui::Selectable("##row", m_selectedRow == row,
+                if (ImGui::Selectable("##row", m_selection.contains(r.sequence),
                                       ImGuiSelectableFlags_AllowDoubleClick))
-                    m_selectedRow = row;
+                    ApplyRowClick(row);
+
+                // WHY 押した瞬間に起点を取るか: Selectable が true を返すのは離した時なので、
+                //     そこまで待つとドラッグの開始行が分からず、なぞって範囲を作れない。
+                const ImGuiIO& io = ImGui::GetIO();
+                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+                    && !io.KeyShift && !io.KeyCtrl)
+                    m_anchorSequence = r.sequence;
+
+                // 押したままなぞって範囲を伸ばす。飛ばした行も起点からの範囲で埋まるため、
+                // クリッパーが間引いた行が選択から抜け落ちることはない。
+                // WHY AllowWhenBlockedByActiveItem が要るか: ドラッグ中は押した行が
+                //     ActiveId を握っており、素の IsItemHovered は他の行で false を返す。
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
+                    && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                    const int anchor = RowIndexOf(m_anchorSequence);
+                    if (anchor >= 0) {
+                        SelectRange(anchor, row, false);
+                        m_detailSequence = r.sequence;
+                    }
+                }
+
+                // 右クリックは選択外の行なら選び直す。選択内ならまとめて扱いたいので触らない。
+                // WHY ポップアップの中で選択を触らないか: 中身は開いている間ずっと毎フレーム
+                //     走るため、そこで選び直すと複数選択が毎フレーム 1 行へ潰れる。
+                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                    if (!m_selection.contains(r.sequence)) {
+                        m_selection.clear();
+                        m_selection.insert(r.sequence);
+                        m_anchorSequence = r.sequence;
+                    }
+                    m_detailSequence = r.sequence;
+                }
 
                 const std::string label = FirstLineOf(entry.message);
                 ImGui::GetWindowDrawList()->AddText(
@@ -292,7 +440,7 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
                     label.c_str(), label.c_str() + label.size());
 
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                    m_selectedRow = row;
+                    m_detailSequence = r.sequence;
                     JumpToSource(ctx, entry.message);
                 }
 
@@ -312,11 +460,22 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
                 }
 
                 if (ImGui::BeginPopupContextItem("##log_ctx")) {
-                    m_selectedRow = row;
-                    if (ImGui::MenuItem("Copy"))
+                    char copySelectedLabel[64];
+                    std::snprintf(copySelectedLabel, sizeof(copySelectedLabel),
+                                  "Copy Selected (%d)###ctx_copy_selected",
+                                  static_cast<int>(m_selection.size()));
+                    if (ImGui::MenuItem(copySelectedLabel, "Ctrl+C", false, !m_selection.empty()))
+                        CopySelection();
+                    if (ImGui::MenuItem("Copy This Line"))
                         ImGui::SetClipboardText(entry.message.c_str());
                     if (ImGui::MenuItem("Copy All Visible"))
                         ImGui::SetClipboardText(m_visibleLogText.c_str());
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Select All", "Ctrl+A", false, !m_rows.empty()))
+                        SelectRange(0, static_cast<int>(m_rows.size()) - 1, false);
+                    if (ImGui::MenuItem("Deselect All", nullptr, false, !m_selection.empty()))
+                        m_selection.clear();
+                    ImGui::Separator();
                     std::string f; int ln = 0; std::size_t off = 0;
                     const bool hasLoc = ParseLogLocationPrefix(entry.message, f, ln, off);
                     if (ImGui::MenuItem("Open Source", nullptr, false, hasLoc))
@@ -328,6 +487,24 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
             }
         }
         clipper.End();
+    }
+
+    // Ctrl+C / Ctrl+A は Console にフォーカスがある間だけ拾う。
+    // WHY 自前で見るか: HotkeyManager の edit.copy / select.all は Scene View と
+    //     Hierarchy のスコープに閉じており、Console では発火しない。取り合いにならない。
+    // WHY WantTextInput で降りるか: 検索欄を編集中の Ctrl+C は入力欄のコピーであって
+    //     ログのコピーではない。文字入力を待っているフレームは横取りしない。
+    // WHY Shortcut() ではなく素の IsKeyPressed か: Shortcut のルーティングは
+    //     「今の子ウィンドウが focused か」で決まるため、ツールバーを触った直後の
+    //     ように一覧側へフォーカスが入っていないフレームで黙って落ちる。
+    //     フォーカス判定はここで明示しているので、キーはそのまま見れば足りる。
+    const ImGuiIO& shortcutIo = ImGui::GetIO();
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+        && !shortcutIo.WantTextInput && shortcutIo.KeyCtrl) {
+        if (ImGui::IsKeyPressed(ImGuiKey_C, false))
+            CopySelection();
+        if (ImGui::IsKeyPressed(ImGuiKey_A, false) && !m_rows.empty())
+            SelectRange(0, static_cast<int>(m_rows.size()) - 1, false);
     }
 
     // Auto Scroll: 最下部に居るときだけ追従する。
