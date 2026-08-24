@@ -17,6 +17,25 @@ namespace fbzz::renderer {
         SOLID_FRONT_CULL, // 選択アウトライン用
     };
 
+    // ブレンド方程式の唯一の正本。DX11PipelineState / DX12PsoCache は「ここに書いてある式を
+    // それぞれの API 語彙へ翻訳するだけ」であって、片方だけ別の式を選んではならない。
+    //
+    //   OPAQUE_BLEND  : ブレンドなし
+    //   ALPHA_BLEND   : rgb = src.rgb * src.a + dst.rgb * (1 - src.a)
+    //   ADDITIVE      : rgb = src.rgb * src.a + dst.rgb
+    //   PREMULTIPLIED : rgb = src.rgb         + dst.rgb * (1 - src.a)
+    //   アルファは 3 モード共通で a = src.a + dst.a * (1 - src.a)
+    //
+    // WHY ADDITIVE が src.a を «掛ける» 側か (ONE ではない):
+    //   同じピクセルシェーダーが blendMode の指定だけで 3 モードに差し替わる
+    //   (Particle.hlsl と particlePSO / particleAlphaPSO / particlePremultipliedPSO)。
+    //   出力を非事前乗算に統一しておかないと、1 本の PS が 3 モードで正しく描けない。
+    //   事前乗算した値を出したいシェーダーのための口が PREMULTIPLIED で、
+    //   ADDITIVE を ONE にするとその 2 つが区別できなくなる。
+    // NOTE: 2026-08-24 まで DX12 だけ ADDITIVE の SrcBlend が ONE になっていた。
+    //       出力アルファがブレンド方程式から消えるため、加算パーティクルが寿命フェードを
+    //       失って重なり枚数ぶん明るくなり続ける (白飛び) 一方、alpha=0 を返していた
+    //       LensFlare は DX11 でだけ完全に消えていた。式を 1 つに揃えて両方を閉じる。
     enum class BlendMode {
         OPAQUE_BLEND, // 不透明 (デフォルト)
         ALPHA_BLEND, // アルファブレンド (半透明)

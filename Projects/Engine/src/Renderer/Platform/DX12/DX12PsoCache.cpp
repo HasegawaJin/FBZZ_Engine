@@ -226,11 +226,14 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
         blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         if (state.blend != BlendMode::OPAQUE_BLEND) {
             blend.BlendEnable = TRUE;
+            // 方程式は RenderState.hpp の BlendMode が正本。ここはその翻訳でしかない。
             // PREMULTIPLIED は src.rgb に alpha が乗った値なので SrcBlend=ONE、
             // 背景側は (1-src.a) で残す (DX11 側の同名ケースと同じ方程式)。
             switch (state.blend) {
             case BlendMode::ADDITIVE:
-                blend.SrcBlend  = D3D12_BLEND_ONE;
+                // SrcBlend は ONE ではない。ONE にすると出力アルファがブレンド方程式から
+                // 消え、非事前乗算で書かれた PS (Particle.hlsl 等) が寿命フェードを失う。
+                blend.SrcBlend  = D3D12_BLEND_SRC_ALPHA;
                 blend.DestBlend = D3D12_BLEND_ONE;
                 break;
             case BlendMode::PREMULTIPLIED:
