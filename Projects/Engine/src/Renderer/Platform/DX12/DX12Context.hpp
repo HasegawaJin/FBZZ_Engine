@@ -69,6 +69,11 @@ public:
     uint32_t GetDynamicSrvCapacity() const { return DYNAMIC_DESCRIPTORS_PER_FRAME; }
     bool IsFrameOpen() const { return m_frameOpen; }
 
+    // Present の垂直同期。既定は無効 (フレームレート制御は Time::targetFps)。
+    // 有効時は SyncInterval=1 にし、tearing フラグは落とす (併用は DXGI が拒否する)。
+    void SetVSync(bool enabled) { m_vsync = enabled; }
+    bool GetVSync() const { return m_vsync; }
+
     // ---- 共有コマンドリストのパイプライン状態の世代 ----
     // WHY: フレーム用コマンドリストは DX12Renderer 以外 (ImGui / IblBaker) も記録に使い、
     //      そこでルートシグネチャ・PSO・ディスクリプタヒープを勝手に差し替える。
@@ -145,6 +150,7 @@ private:
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_allowTearing = false;
+    bool m_vsync = false;
     bool m_frameOpen = false;
     uint64_t m_pipelineStateGeneration = 0;
     bool m_suspended = false;

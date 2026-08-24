@@ -589,6 +589,16 @@ void DX12Renderer::Resize(uint32_t width, uint32_t height)
     m_context.Resize(width, height);
 }
 
+void DX12Renderer::SetVSync(bool enabled)
+{
+    m_context.SetVSync(enabled);
+}
+
+bool DX12Renderer::GetVSync() const
+{
+    return m_context.GetVSync();
+}
+
 void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, ResourceManager& resources)
 {
     if (!m_context.IsFrameOpen()) return;

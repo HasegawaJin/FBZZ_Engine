@@ -38,6 +38,8 @@ public:
     void BeginComputeBatch() override;
     void EndComputeBatch() override;
     void Resize(uint32_t width, uint32_t height) override;
+    void SetVSync(bool enabled) override;
+    [[nodiscard]] bool GetVSync() const override;
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
     void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
     void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
