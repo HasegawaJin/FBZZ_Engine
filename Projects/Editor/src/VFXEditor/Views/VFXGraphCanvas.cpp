@@ -140,8 +140,9 @@ void VFXGraphCanvas::AddNodeFromAsset(const std::string& sourcePath)
     const std::string path = NormalizeAssetPath(sourcePath);
     asset::VFXNodeType type = asset::VFXNodeType::Particle;
     if (EndsWithInsensitive(path, ".vfx")) type = asset::VFXNodeType::SubGraph;
-    else if (EndsWithInsensitive(path, ".wav") || EndsWithInsensitive(path, ".ogg")
-             || EndsWithInsensitive(path, ".mp3")) type = asset::VFXNodeType::Audio;
+    else if (EndsWithInsensitive(path, ".wav")  || EndsWithInsensitive(path, ".ogg")
+             || EndsWithInsensitive(path, ".mp3")  || EndsWithInsensitive(path, ".flac")
+             || EndsWithInsensitive(path, ".synth")) type = asset::VFXNodeType::Audio;
     else if (EndsWithInsensitive(path, ".fbx")) type = asset::VFXNodeType::AnimatedMesh;
     else if (EndsWithInsensitive(path, ".mesh") || EndsWithInsensitive(path, ".obj"))
         type = asset::VFXNodeType::MeshTrail;

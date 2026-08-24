@@ -62,7 +62,7 @@ namespace {
 // WHY: 推奨値は AI と Editor で同じものを使うため、AI 側の表現 (JSON) をそのまま持っている。
 //      Editor 側だけ別表現にすると、同じ推奨に 2 つの適用経路ができてドリフトする。
 //      対応する型は解析が実際に返す bool / int / float だけで足りる。
-bool ApplyParticleSchemaValue(scene::ParticleEmitter& particle,
+bool ApplyParticleSchemaValue(scene::ParticleEmitterSettings& particle,
                               const std::string& schemaPath, const std::string& value)
 {
     // schemaPath は "particle." 始まりで返る (AI の vfx.node.setField と揃えてあるため)。
@@ -103,7 +103,7 @@ bool ApplyParticleSchemaValue(scene::ParticleEmitter& particle,
 
 } // namespace
 
-bool VFXGraphInspector::DrawMaterialAnalysis(scene::ParticleEmitter& particle)
+bool VFXGraphInspector::DrawMaterialAnalysis(scene::ParticleEmitterSettings& particle)
 {
     const std::string& target = particle.materialPath;
     // 未設定は「解析できない」ではなく「既定マテリアルで描かれる」という結果が確定している。
@@ -186,7 +186,7 @@ bool VFXGraphInspector::DrawMaterialAnalysis(scene::ParticleEmitter& particle)
     return changed;
 }
 
-bool VFXGraphInspector::DrawTextureAnalysis(scene::ParticleEmitter& particle,
+bool VFXGraphInspector::DrawTextureAnalysis(scene::ParticleEmitterSettings& particle,
                                             const std::string& texturePath)
 {
     const std::string& target = texturePath;
@@ -745,8 +745,7 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
         // Scene Inspectorと同じUnity風モジュールスタックを使い、Graph側でも全機能を編集する。
         ImGui::TextDisabled("Quick Asset Drop");
         changed |= ParticleMaterialField("Material##VFXQuickParticle",
-                                         node->particle.materialPath,
-                                         node->particle.blendMode, ctx.projectRoot);
+                                         node->particle.materialPath, ctx.projectRoot);
         changed |= AssetPathField("Mesh Shape##VFXQuickParticle", node->particle.meshShapePath, kMeshExts);
         // 割り当てた .mat と、その albedo テクスチャの解析。AI が読むのと同じ
         // AnalyzeMaterial / AnalyzeTexture を通すことで、「人が見る面」と
@@ -765,8 +764,7 @@ void VFXGraphInspector::Draw(EditorContext& ctx)
             changed |= AssetPathField("Mesh", node->trail.meshPath, kMeshExts);
         // Trail は粒子ではないが素材の出どころは同じ .mat。加算を既定にして
         // テクスチャドロップも受ける (軌跡は発光として置かれることがほとんど)。
-        changed |= ParticleMaterialField("Material", node->trail.materialPath,
-                                         scene::ParticleBlendMode::Additive, ctx.projectRoot);
+        changed |= ParticleMaterialField("Material", node->trail.materialPath, ctx.projectRoot);
         changed |= ImGui::ColorEdit4("Start Color", &node->trail.colorStart.x);
         changed |= ImGui::ColorEdit4("End Color", &node->trail.colorEnd.x);
         changed |= ImGui::DragFloat("Trail Lifetime", &node->trail.lifetime, 0.01f, 0.01f, 3600.0f);

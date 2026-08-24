@@ -60,7 +60,7 @@ void VFXTimelineView::DrawTransport(EditorContext& ctx,
     const bool hasEffect = root != nullptr;
     ImGui::BeginDisabled(!hasEffect);
 
-    const bool isPlaying = hasEffect && root->playing && !m_session.preview.paused;
+    const bool isPlaying = hasEffect && root->settings.playing && !m_session.preview.paused;
     if (ImGui::Button(isPlaying ? "Pause" : "Play", { 64.0f, 0.0f })) {
         if (isPlaying) {
             m_session.preview.paused = true;
@@ -69,7 +69,7 @@ void VFXTimelineView::DrawTransport(EditorContext& ctx,
             if (ctx.activeScene)
                 for (const scene::EntityID id : group)
                     if (auto* emitter = ctx.activeScene->GetComponent<scene::ParticleEmitter>(id))
-                        emitter->playing = true;
+                        emitter->settings.playing = true;
         }
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -87,19 +87,19 @@ void VFXTimelineView::DrawTransport(EditorContext& ctx,
         // 放出だけ止め、既存粒子は寿命で消える (Unity の Stop 相当)
         for (const scene::EntityID id : group)
             if (auto* emitter = ctx.activeScene->GetComponent<scene::ParticleEmitter>(id))
-                emitter->playing = false;
+                emitter->settings.playing = false;
     }
     ImGui::SameLine();
     if (ImGui::Button("Step") && hasEffect) {
         // 一時停止のまま 1/60s だけ進める。決定論スクラブなので何度押しても再現する。
-        m_session.preview.RequestScrub(ctx, group, root->playTime + kScrubStep);
+        m_session.preview.RequestScrub(ctx, group, root->runtime.playTime + kScrubStep);
         m_session.preview.paused = true;
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Advance one frame (1/60s) while paused");
     ImGui::SameLine();
     if (ImGui::Button("Burst") && hasEffect)
-        root->burstPending += 10;
+        root->runtime.burstPending += 10;
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(110.0f);
@@ -113,7 +113,7 @@ void VFXTimelineView::DrawTransport(EditorContext& ctx,
 
     if (hasEffect) {
         ImGui::SameLine();
-        ImGui::Text("  %.2fs / %.2fs", root->playTime, root->duration);
+        ImGui::Text("  %.2fs / %.2fs", root->runtime.playTime, root->settings.duration);
     }
     ImGui::EndDisabled();
 
@@ -362,8 +362,8 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
                                   scene::ParticleEmitter* root)
 {
     // 横軸スパン: duration。0 (無限再生) のときは lifetime を目安に表示だけ行う
-    const bool  continuous = root->duration <= 0.0f;
-    const float span = continuous ? (std::max)(root->lifetime, 1.0f) : root->duration;
+    const bool  continuous = root->settings.duration <= 0.0f;
+    const float span = continuous ? (std::max)(root->settings.lifetime, 1.0f) : root->settings.duration;
 
     const float  width = (std::max)(ImGui::GetContentRegionAvail().x, 160.0f);
     ImGui::InvisibleButton("##vfx_timeline", ImVec2(width, kTimelineH));
@@ -400,11 +400,11 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
     draw->AddRect(rectMin, rectMax, IM_COL32(70, 76, 90, 255), 3.0f);
 
     // ループ / 遅延の注記
-    if (root->loop)
+    if (root->settings.loop)
         draw->AddText({ rectMax.x - 44.0f, rectMin.y + 2.0f }, IM_COL32(120, 200, 160, 255), "loop");
-    if (root->startDelay > 0.0f) {
+    if (root->settings.startDelay > 0.0f) {
         char delayText[32];
-        std::snprintf(delayText, sizeof(delayText), "delay %.2fs", root->startDelay);
+        std::snprintf(delayText, sizeof(delayText), "delay %.2fs", root->settings.startDelay);
         draw->AddText({ rectMin.x + 4.0f, rectMin.y + 2.0f }, IM_COL32(230, 180, 90, 255), delayText);
     }
 
@@ -415,8 +415,8 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
 
     // ── Burst マーカー (下段の菱形。ドラッグで時刻変更 / 右クリックで詳細編集) ──
     int hoveredBurst = -1;
-    for (size_t i = 0; i < root->bursts.size(); ++i) {
-        const float x = timeToX(root->bursts[i].time);
+    for (size_t i = 0; i < root->settings.bursts.size(); ++i) {
+        const float x = timeToX(root->settings.bursts[i].time);
         const ImVec2 c(x, markerCenter);
         const bool hot = hovered
             && std::fabs(mouse.x - c.x) <= kBurstMarkerR + 3.0f
@@ -430,18 +430,18 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
                       IM_COL32(30, 34, 44, 255), 1.0f);
         if (hot)
             ImGui::SetTooltip("Burst: %d particles @ %.2fs (x%d)\nDrag: move / Right-click: edit",
-                              root->bursts[i].count, root->bursts[i].time,
-                              (std::max)(root->bursts[i].cycles, 1));
+                              root->settings.bursts[i].count, root->settings.bursts[i].time,
+                              (std::max)(root->settings.bursts[i].cycles, 1));
     }
 
     // マーカーのドラッグ
     if (hovered && hoveredBurst >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         storage->SetInt(burstDragId, hoveredBurst);
     const int burstDrag = storage->GetInt(burstDragId, -1);
-    if (burstDrag >= 0 && burstDrag < static_cast<int>(root->bursts.size())
+    if (burstDrag >= 0 && burstDrag < static_cast<int>(root->settings.bursts.size())
         && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        root->bursts[static_cast<size_t>(burstDrag)].time = xToTime(mouse.x);
-        ImGui::SetTooltip("%.2fs", root->bursts[static_cast<size_t>(burstDrag)].time);
+        root->settings.bursts[static_cast<size_t>(burstDrag)].time = xToTime(mouse.x);
+        ImGui::SetTooltip("%.2fs", root->settings.bursts[static_cast<size_t>(burstDrag)].time);
     }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && burstDrag >= 0) {
         storage->SetInt(burstDragId, -1);
@@ -455,8 +455,8 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
     }
     if (ImGui::BeginPopup("##vfx_burst_popup")) {
         const int editIndex = storage->GetInt(burstEditId, -1);
-        if (editIndex >= 0 && editIndex < static_cast<int>(root->bursts.size())) {
-            auto& burst = root->bursts[static_cast<size_t>(editIndex)];
+        if (editIndex >= 0 && editIndex < static_cast<int>(root->settings.bursts.size())) {
+            auto& burst = root->settings.bursts[static_cast<size_t>(editIndex)];
             bool burstChanged = false;
             ImGui::TextDisabled("Burst %d", editIndex + 1);
             burstChanged |= ImGui::DragFloat("Time", &burst.time, 0.01f, 0.0f, span);
@@ -466,7 +466,7 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
             burstChanged |= ImGui::DragFloat("Probability", &burst.probability, 0.01f, 0.0f, 1.0f);
             ImGui::Separator();
             if (ImGui::MenuItem("Delete Burst")) {
-                root->bursts.erase(root->bursts.begin() + editIndex);
+                root->settings.bursts.erase(root->settings.bursts.begin() + editIndex);
                 burstChanged = true;
                 ImGui::CloseCurrentPopup();
             }
@@ -483,7 +483,7 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
         && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         scene::ParticleBurst burst;
         burst.time = xToTime(mouse.x);
-        root->bursts.push_back(burst);
+        root->settings.bursts.push_back(burst);
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     }
 
@@ -509,7 +509,7 @@ void VFXTimelineView::DrawEmitterTimeline(EditorContext& ctx,
 
     // 再生ヘッド描画は最後 (マーカーの上に重ねる)
     {
-        const float x = timeToX(root->playTime);
+        const float x = timeToX(root->runtime.playTime);
         draw->AddLine({ x, rectMin.y }, { x, rectMax.y }, IM_COL32(120, 200, 255, 255), 2.0f);
         draw->AddTriangleFilled({ x - 5.0f, rectMin.y }, { x + 5.0f, rectMin.y },
                                 { x, rectMin.y + 7.0f }, IM_COL32(120, 200, 255, 255));
@@ -529,12 +529,13 @@ void VFXTimelineView::DrawStats(EditorContext& ctx,
     if (ctx.activeScene) {
         for (const scene::EntityID id : group) {
             if (const auto* emitter = ctx.activeScene->GetComponent<scene::ParticleEmitter>(id)) {
-                const bool onGpu = scene::CanUseGpuSimulation(*emitter);
+                const bool onGpu =
+                    scene::CanUseGpuSimulation(emitter->settings, &emitter->runtime.material);
                 totalParticles += onGpu
-                    ? emitter->visibleParticleCount
-                    : static_cast<int>(emitter->particles.size());
-                totalVisible += emitter->visibleParticleCount;
-                if (!onGpu && emitter->simulationMode == scene::ParticleSimulationMode::Gpu)
+                    ? emitter->runtime.visibleParticleCount
+                    : static_cast<int>(emitter->runtime.particles.size());
+                totalVisible += emitter->runtime.visibleParticleCount;
+                if (!onGpu && emitter->settings.simulationMode == scene::ParticleSimulationMode::Gpu)
                     ++gpuFallbackCount;
             }
         }
@@ -542,17 +543,18 @@ void VFXTimelineView::DrawStats(EditorContext& ctx,
     // 表示するのは「要求」ではなく「実際に走っている経路」。
     // WHY: simulationMode = Gpu にしても条件を 1 つ外すと黙って CPU へ落ちる。
     //      要求値を出していると、担当者は縮退したまま粒子数だけ増やし続けることになる。
-    const auto rootFallback = scene::GetParticleGpuFallbackReason(*root);
+    const auto rootFallback =
+        scene::GetParticleGpuFallbackReason(root->settings, &root->runtime.material);
     const bool rootOnGpu = rootFallback == scene::ParticleGpuFallbackReason::None;
     ImGui::TextDisabled("Emitters: %d   Particles: %d (visible %d)   Root: %s / %s%s",
                         static_cast<int>(group.size()),
                         totalParticles, totalVisible,
                         rootOnGpu ? "GPU" : "CPU",
-                        root->simulationSpace == scene::ParticleSimulationSpace::Local ? "Local" : "World",
-                        root->isCulledThisFrame ? "   [CULLED]" : "");
+                        root->settings.simulationSpace == scene::ParticleSimulationSpace::Local ? "Local" : "World",
+                        root->runtime.isCulledThisFrame ? "   [CULLED]" : "");
 
     // GPU を要求したのに縮退しているなら、原因の設定名まで出す。
-    if (root->simulationMode == scene::ParticleSimulationMode::Gpu && !rootOnGpu) {
+    if (root->settings.simulationMode == scene::ParticleSimulationMode::Gpu && !rootOnGpu) {
         ImGui::SameLine();
         ImGui::TextColored({ 1.0f, 0.65f, 0.3f, 1.0f }, "   [GPU→CPU: %s]",
                            scene::ParticleGpuFallbackFieldName(rootFallback));

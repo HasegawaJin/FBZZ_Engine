@@ -32,6 +32,10 @@ struct ScriptVFXProxy {
     [[nodiscard]] bool IsPlaying() const;
     [[nodiscard]] float GetTime() const;
     [[nodiscard]] float GetDuration() const;
+    [[nodiscard]] float GetSpeed() const;
+    [[nodiscard]] bool GetFloat(std::string_view name, float& value) const;
+    [[nodiscard]] bool GetInt(std::string_view name, int& value) const;
+    [[nodiscard]] bool GetBool(std::string_view name, bool& value) const;
 };
 
 } // namespace fbzz::scene

@@ -530,7 +530,6 @@ std::vector<std::string> CollectVFXGraphDependencies(const VFXGraphAsset& asset)
         add(node.particle.materialPath);
         add(node.particle.meshShapePath);
         add(node.particle.meshParticlePath);
-        add(node.particle.motionVectorTexturePath);
         add(node.trail.meshPath);
         add(node.trail.materialPath);
         add(node.audio.clipPath);
@@ -1046,7 +1045,6 @@ std::vector<VFXGraphWarning> CollectVFXGraphWarnings(const VFXGraphAsset& asset,
             checkAsset(node.id, node.name, "Material", node.particle.materialPath);
             checkAsset(node.id, node.name, "Mesh Shape", node.particle.meshShapePath);
             checkAsset(node.id, node.name, "Mesh Particle", node.particle.meshParticlePath);
-            checkAsset(node.id, node.name, "Motion Vector", node.particle.motionVectorTexturePath);
         } else if (node.type == VFXNodeType::Trail || node.type == VFXNodeType::MeshTrail) {
             checkAsset(node.id, node.name, "Material", node.trail.materialPath);
         } else if (node.type == VFXNodeType::Decal) {
@@ -1094,19 +1092,6 @@ std::vector<VFXGraphWarning> CollectVFXGraphWarnings(const VFXGraphAsset& asset,
             add(node.id, "SHEARED_SPRITE",
                 node.name + ": 回転 (Angular Velocity / Rotation Curve) と非等方 Size Axis Scale "
                             "を同時に使うとスプライトがせん断されます。どちらか一方にしてください");
-
-        // saturate されるため 1.0 超はすべて同じ挙動 (= 元の色を捨てる) になる。
-        if (p.sixWayLighting && p.lightingStrength > 1.0f)
-            add(node.id, "LIGHTING_SATURATED",
-                node.name + ": Lighting Strength が 1.0 を超えています "
-                            "(シェーダー側で 1.0 に丸められ、暗い環境では煙が黒く潰れます)");
-
-        // 半透明の重なりは描画順で結果が変わる。加算は順序非依存なので対象外。
-        if (p.blendMode != scene::ParticleBlendMode::Additive
-            && p.sortMode == scene::ParticleSortMode::None && p.maxParticles > 1)
-            add(node.id, "ALPHA_NO_SORT",
-                node.name + ": Alpha / Premultiplied ブレンドで Sort Mode が None です "
-                            "(粒子の前後関係がフレームごとに入れ替わります)");
     }
 
     // bind 済み leaf は生成時に必ず公開パラメーターの値で上書きされる。

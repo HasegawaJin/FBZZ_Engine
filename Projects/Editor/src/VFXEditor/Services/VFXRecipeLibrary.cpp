@@ -252,7 +252,7 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
         layoutY += 190.0f;
 
         if (layer.nodeType == VFXNodeType::Particle) {
-            scene::ParticleEmitter& emitter = node.particle;
+            scene::ParticleEmitterSettings& emitter = node.particle;
             // テンプレートと同じ理由で、複数 Emitter が 1 つの演出 Bounds を作るため
             // Emitter 単位のカリングと距離 LOD は切っておく。
             emitter.cullingEnabled = false;
@@ -271,15 +271,13 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
             emitter.velocitySpread = layer.velocitySpread * scale;
             emitter.gravity = { 0.0f, layer.gravityY * scale, 0.0f };
             emitter.emitVelocity = { 0.0f, 0.0f, 0.0f };
+            // 見た目 (ブレンド・発光・ソフト・six-way・歪み) は materialFor が選ぶ .mat が持つ。
+            // WHY ここで書かないか: レシピが .mat を上書きすると、同じ素材を使う既存の
+            //     エフェクトまで巻き添えで変わる。レシピは «どの素材を使うか» までを決め、
+            //     素材そのものの調整は Material の Inspector に任せる。
             emitter.materialPath = materialFor(layer.assetRole, layer.blendMode);
-            emitter.blendMode = static_cast<scene::ParticleBlendMode>(layer.blendMode);
             emitter.sortMode = static_cast<scene::ParticleSortMode>(layer.sortMode);
-            emitter.emissiveScale = layer.emissiveScale;
             emitter.renderPriority = layer.renderPriority;
-            emitter.softParticles = layer.softParticles;
-            emitter.sixWayLighting = layer.sixWayLighting;
-            emitter.distortion = layer.distortion;
-            if (layer.distortion) emitter.distortionStrength = 0.07f;
             // 同じ色の粒が数百枚重なると塗りつぶしにしか見えないので、
             // 発光層以外は必ず粒ごとの色温度差を入れておく。
             emitter.colorVariation = layer.emissiveScale > 3.0f ? 0.10f : 0.18f;
@@ -371,22 +369,33 @@ asset::VFXGraphAsset BuildGraphFromRecipe(const VFXRecipe& recipe,
         graph.parameters.push_back(std::move(parameter));
         graph.bindings.push_back({ name, nodeId, path });
     };
-    // 芯の強さ (発光層のうち最も手前のもの) と、body の量 (最奥の層)。
+    // 芯 (最も手前の層) と body (最奥の層)。
+    // WHY 描画順で選ぶか: 発光やブレンドは .mat 側へ移り、ノードからは見えない。
+    //     レシピは renderPriority を 煙(奥) → 本体 → 芯(手前) の順で振っているので、
+    //     «どの層が主役か» はその並びから判る。
     int coreNodeId = -1;
     int bodyNodeId = -1;
     int corePriority = -1;
+    int bodyPriority = 0;
     for (const auto& node : graph.nodes) {
         if (node.type != VFXNodeType::Particle) continue;
-        if (node.particle.emissiveScale > 1.5f && node.particle.renderPriority > corePriority) {
+        if (coreNodeId < 0 || node.particle.renderPriority > corePriority) {
             corePriority = node.particle.renderPriority;
             coreNodeId = node.id;
         }
-        if (bodyNodeId < 0 && node.particle.blendMode != scene::ParticleBlendMode::Additive)
+        if (bodyNodeId < 0 || node.particle.renderPriority < bodyPriority) {
+            bodyPriority = node.particle.renderPriority;
             bodyNodeId = node.id;
+        }
     }
-    if (coreNodeId > 0) addFloatParameter("Intensity", 3.0f, 0.0f, 8.0f, coreNodeId,
-                                          "particle.emissiveScale");
-    if (bodyNodeId > 0) {
+    if (coreNodeId > 0) {
+        const asset::VFXGraphNode* core = nullptr;
+        for (const auto& node : graph.nodes) if (node.id == coreNodeId) core = &node;
+        if (core != nullptr)
+            addFloatParameter("Core Size", core->particle.sizeStart, 0.0f,
+                              core->particle.sizeStart * 3.0f, coreNodeId, "particle.sizeStart");
+    }
+    if (bodyNodeId > 0 && bodyNodeId != coreNodeId) {
         const asset::VFXGraphNode* body = nullptr;
         for (const auto& node : graph.nodes) if (node.id == bodyNodeId) body = &node;
         if (body != nullptr && body->particle.emitRate > 0.0f)

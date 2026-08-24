@@ -34,7 +34,6 @@ inline reflection::RangeHint Range(float minimum, float maximum) {
 // ScriptParticleProxy.hpp の enum 定義と順序・個数を一致させること。
 inline constexpr std::string_view kShapeNames[] = {
     "Point", "Sphere", "Cone", "Box", "Mesh Surface" };
-inline constexpr std::string_view kBlendModeNames[] = { "Additive", "Alpha", "Premultiplied" };
 inline constexpr std::string_view kSortModeNames[] = { "None", "Back To Front" };
 inline constexpr std::string_view kSimulationModeNames[] = { "CPU", "GPU" };
 inline constexpr std::string_view kSimulationSpaceNames[] = { "World", "Local" };
@@ -42,12 +41,6 @@ inline constexpr std::string_view kRenderModeNames[] = {
     "Billboard", "Stretched Billboard", "Horizontal Billboard", "Vertical Billboard" };
 inline constexpr std::string_view kCollisionModeNames[] = { "None", "Physics", "Plane", "Depth" };
 inline constexpr std::string_view kCollisionResponseNames[] = { "Bounce", "Kill", "Stop" };
-// Rendering/Mask.hlsli の FBZZ_MASK_* と同じ並び。
-inline constexpr std::string_view kAlphaSourceNames[] = {
-    "Texture Alpha", "Luminance (black = clear)", "Inverted Luminance (white = clear)",
-    "Red Channel", "Green Channel", "Blue Channel", "Inverted Alpha" };
-inline constexpr std::string_view kFlipbookModeNames[] = {
-    "Lifetime", "Frames Per Second", "Random Frame", "Ping Pong" };
 
 } // namespace detail
 
@@ -70,7 +63,11 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
 
 [[nodiscard]] inline const reflection::ITypeSchema& GetParticleEmitterSchema()
 {
-    using P = scene::ParticleEmitter;
+    // WHY Settings 側を指すか: このスキーマはオーサリング項目の一覧で、
+    //      ランタイム状態は対象外。型を分けたので «塊» の方を直接指せる。
+    // NOTE: 見た目 (ブレンド・フリップブック・歪み・煙・自己影・明るさ) は .mat の
+    //       [particle] へ移った。ここには無いので particle.* の schemaPath でも届かない。
+    using P = scene::ParticleEmitterSettings;
     using reflection::MakeArrayProperty;
     using reflection::MakeEnumProperty;
     using reflection::MakeIntProperty;
@@ -104,23 +101,12 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
         MakeEnumProperty<P, scene::ParticleSimulationMode, &P::simulationMode, 1>("simulationMode", "Simulation", "Renderer", detail::kSimulationModeNames),
         MakeEnumProperty<P, scene::ParticleSimulationSpace, &P::simulationSpace, 1>("simulationSpace", "Simulation Space", "Renderer", detail::kSimulationSpaceNames),
         MakeEnumProperty<P, scene::ParticleRenderMode, &P::renderMode, 3>("renderMode", "Render Mode", "Renderer", detail::kRenderModeNames),
-        MakeEnumProperty<P, scene::ParticleBlendMode, &P::blendMode, 2>("blendMode", "Blend Mode", "Renderer", detail::kBlendModeNames),
         MakeIntProperty<P, int, &P::renderPriority>("renderPriority", "Render Priority", "Renderer", true, detail::Range(-1000, 1000)),
         MakeEnumProperty<P, scene::ParticleSortMode, &P::sortMode, 1>("sortMode", "Sort Mode", "Renderer", detail::kSortModeNames),
-        MakeEnumProperty<P, scene::ParticleAlphaSource, &P::alphaSource, 6>("alphaSource", "Alpha Source", "Renderer", detail::kAlphaSourceNames),
         MakeProperty<P, float, &P::stretchedVelocityScale>("stretchedVelocityScale", PropertyType::Float, "Velocity Scale", "Renderer", true),
         MakeProperty<P, float, &P::stretchedLengthScale>("stretchedLengthScale", PropertyType::Float, "Length Scale", "Renderer", true),
         MakeProperty<P, std::string, &P::materialPath>("materialPath", PropertyType::AssetRef, "Material", "Renderer", true),
         MakeProperty<P, std::string, &P::meshParticlePath>("meshParticlePath", PropertyType::AssetRef, "Mesh Particle", "Renderer", true),
-        MakeProperty<P, int, &P::spriteColumns>("spriteColumns", PropertyType::Int, "Columns", "Flipbook", true, detail::Range(1, 256)),
-        MakeProperty<P, int, &P::spriteRows>("spriteRows", PropertyType::Int, "Rows", "Flipbook", true, detail::Range(1, 256)),
-        MakeProperty<P, float, &P::flipbookFramesPerSecond>("flipbookFramesPerSecond", PropertyType::Float, "FPS", "Flipbook", true),
-        MakeProperty<P, bool, &P::flipbookFrameBlending>("flipbookFrameBlending", PropertyType::Bool, "Frame Blending", "Flipbook", true),
-        MakeProperty<P, bool, &P::spriteRandomStartFrame>("spriteRandomStartFrame", PropertyType::Bool, "Random Start Frame", "Flipbook", true),
-        MakeProperty<P, bool, &P::spriteRandomRow>("spriteRandomRow", PropertyType::Bool, "Random Row", "Flipbook", true),
-        MakeProperty<P, bool, &P::motionVectorFlipbook>("motionVectorFlipbook", PropertyType::Bool, "Motion Vector Blend", "Flipbook", true),
-        MakeProperty<P, std::string, &P::motionVectorTexturePath>("motionVectorTexturePath", PropertyType::AssetRef, "Motion Vector Atlas", "Flipbook", true),
-        MakeProperty<P, float, &P::motionVectorStrength>("motionVectorStrength", PropertyType::Float, "Motion Strength", "Flipbook", true, detail::Range(0, 8)),
         MakeProperty<P, float, &P::velocityDamping>("velocityDamping", PropertyType::Float, "Velocity Damping", "Forces", true),
         MakeProperty<P, float, &P::angularVelocityMin>("angularVelocityMin", PropertyType::Float, "Angular Min", "Rotation", true),
         MakeProperty<P, float, &P::angularVelocityMax>("angularVelocityMax", PropertyType::Float, "Angular Max", "Rotation", true),
@@ -148,35 +134,11 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
         MakeProperty<P, math::Vector4, &P::trailColorTint>("trailColorTint", PropertyType::Color, "Trail Tint", "Trail", true),
         MakeProperty<P, bool, &P::trailRibbon>("trailRibbon", PropertyType::Bool, "Continuous Ribbon", "Trail", true),
         MakeProperty<P, float, &P::trailRibbonWidth>("trailRibbonWidth", PropertyType::Float, "Ribbon Width", "Trail", true, detail::Range(0, 20)),
-        MakeProperty<P, float, &P::selfShadowStrength>("selfShadowStrength", PropertyType::Float, "Self Shadow", "Renderer", true, detail::Range(0, 8)),
-        MakeProperty<P, bool, &P::softParticles>("softParticles", PropertyType::Bool, "Soft Particles", "Renderer", true),
-        MakeProperty<P, float, &P::softParticleFadeDistance>("softParticleFadeDistance", PropertyType::Float, "Soft Fade", "Renderer", true),
-        MakeProperty<P, bool, &P::distortion>("distortion", PropertyType::Bool, "Distortion", "Renderer", true),
-        MakeProperty<P, float, &P::distortionStrength>("distortionStrength", PropertyType::Float, "Distortion Strength", "Renderer", true, detail::Range(0, 0.25f)),
-        MakeProperty<P, std::string, &P::distortionTexturePath>("distortionTexturePath", PropertyType::AssetRef, "Distortion Map", "Renderer", true),
-        MakeProperty<P, float, &P::distortionChromatic>("distortionChromatic", PropertyType::Float, "Chromatic Aberration", "Renderer", true, detail::Range(0, 4)),
-        MakeProperty<P, bool, &P::sixWayLighting>("sixWayLighting", PropertyType::Bool, "Six-way Lit Smoke", "Renderer", true),
-        // WHY: Particle.hlsl は lerp(1, lit, saturate(gLightingStrength)) で使うため 1.0 超は
-        //      「元の色を完全に (ambient + N·L) へ置換」の意味しか持たない。暗い環境では
-        //      煙が真っ黒に潰れるだけなので、レンジ自体を効果のある範囲へ絞る。
-        MakeProperty<P, float, &P::lightingStrength>("lightingStrength", PropertyType::Float, "Lighting Strength", "Renderer", true, detail::Range(0, 1)),
-        // 煙の散乱。巻き込み拡散で陰側の黒潰れを避け、前方散乱で逆光時に縁が光る。
-        MakeProperty<P, float, &P::smokeWrap>("smokeWrap", PropertyType::Float, "Smoke Wrap", "Renderer", true, detail::Range(0, 1)),
-        MakeProperty<P, float, &P::smokeTransmission>("smokeTransmission", PropertyType::Float, "Smoke Transmission", "Renderer", true, detail::Range(0, 8)),
-        MakeProperty<P, float, &P::smokeBackScatterPower>("smokeBackScatterPower", PropertyType::Float, "Back Scatter Power", "Renderer", true, detail::Range(0.1f, 64)),
-        MakeProperty<P, float, &P::emissiveScale>("emissiveScale", PropertyType::Float, "HDR Emissive", "Renderer", true, detail::Range(0, 100)),
         // 黒体放射。色温度から炎・爆発の色と輝度 (T^4) を作る。
         MakeProperty<P, bool, &P::blackbodyEnabled>("blackbodyEnabled", PropertyType::Bool, "Blackbody", "Blackbody", true),
         MakeProperty<P, scene::ParticleCurve, &P::temperatureCurve>("temperatureCurve", PropertyType::Curve, "Temperature (K)", "Blackbody", true, detail::Range(500, 12000)),
         MakeProperty<P, float, &P::blackbodyReferenceTemperature>("blackbodyReferenceTemperature", PropertyType::Float, "Reference (K)", "Blackbody", true, detail::Range(500, 12000)),
         MakeProperty<P, float, &P::blackbodyIntensity>("blackbodyIntensity", PropertyType::Float, "Blackbody Intensity", "Blackbody", true, detail::Range(0, 100)),
-        MakeProperty<P, bool, &P::receiveShadows>("receiveShadows", PropertyType::Bool, "Receive Shadows", "Renderer", true),
-        MakeProperty<P, float, &P::shadowStrength>("shadowStrength", PropertyType::Float, "Shadow Strength", "Renderer", true, detail::Range(0, 1)),
-        MakeProperty<P, bool, &P::volumetric>("volumetric", PropertyType::Bool, "Volumetric Smoke", "Volumetric", true),
-        MakeIntProperty<P, int, &P::volumetricSteps>("volumetricSteps", "Steps", "Volumetric", true, detail::Range(1, 64)),
-        MakeProperty<P, float, &P::volumetricDensity>("volumetricDensity", PropertyType::Float, "Density", "Volumetric", true, detail::Range(0, 20)),
-        MakeProperty<P, float, &P::volumetricAnisotropy>("volumetricAnisotropy", PropertyType::Float, "Anisotropy", "Volumetric", true, detail::Range(-0.95f, 0.95f)),
-        MakeProperty<P, float, &P::volumetricNoiseScale>("volumetricNoiseScale", PropertyType::Float, "Noise Scale", "Volumetric", true, detail::Range(0, 32)),
         MakeProperty<P, bool, &P::lodEnabled>("lodEnabled", PropertyType::Bool, "LOD", "LOD", true),
         MakeProperty<P, float, &P::lodNearDistance>("lodNearDistance", PropertyType::Float, "Near Distance", "LOD", true),
         MakeProperty<P, float, &P::lodFarDistance>("lodFarDistance", PropertyType::Float, "Far Distance", "LOD", true),
@@ -193,10 +155,6 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
         MakeIntProperty<P, std::uint32_t, &P::randomSeed>("randomSeed", "Random Seed", "Main", true, detail::Range(1, 2147483647)),
         MakeIntProperty<P, int, &P::meshShapeIndex>("meshShapeIndex", "Mesh Submesh Index", "Shape", true, detail::Range(-1, 4096)),
         MakeProperty<P, bool, &P::meshShapeFollowSkinnedAnimation>("meshShapeFollowSkinnedAnimation", PropertyType::Bool, "Follow Skinned Animation", "Shape", true),
-
-        MakeEnumProperty<P, scene::ParticleFlipbookMode, &P::flipbookMode, 3>("flipbookMode", "Flipbook Mode", "Flipbook", detail::kFlipbookModeNames),
-        MakeIntProperty<P, int, &P::spriteStartFrame>("spriteStartFrame", "Start Frame", "Flipbook", true, detail::Range(0, 65536)),
-        MakeIntProperty<P, int, &P::spriteEndFrame>("spriteEndFrame", "End Frame", "Flipbook", true, detail::Range(0, 65536)),
 
         MakeEnumProperty<P, scene::ParticleCollisionMode, &P::collisionMode, 3>("collisionMode", "Collision Mode", "Collision", detail::kCollisionModeNames),
         MakeEnumProperty<P, scene::ParticleCollisionResponse, &P::collisionResponse, 2>("collisionResponse", "Collision Response", "Collision", detail::kCollisionResponseNames),
@@ -405,7 +363,7 @@ inline constexpr std::string_view kFlipbookModeNames[] = {
         MakeProperty<N, std::string, &N::attachBone>("attachBone", PropertyType::String, "Attach Bone / Socket", "Transform", true),
         // 空間の親 (-1 = owner 直下)。実行の因果を表す link とは独立した木。
         MakeProperty<N, int, &N::parentNodeId>("parentNodeId", PropertyType::Int, "Parent Node", "Transform", true),
-        MakeStructProperty<N, scene::ParticleEmitter, &N::particle>("particle", "Particle", "Node", GetParticleEmitterSchema()),
+        MakeStructProperty<N, scene::ParticleEmitterSettings, &N::particle>("particle", "Particle", "Node", GetParticleEmitterSchema()),
         MakeStructProperty<N, VFXTrailSettings, &N::trail>("trail", "Trail", "Node", GetVFXTrailSchema()),
         MakeStructProperty<N, VFXLightSettings, &N::light>("light", "Light", "Node", GetVFXLightSchema()),
         MakeStructProperty<N, VFXAudioSettings, &N::audio>("audio", "Audio", "Node", GetVFXAudioSchema()),

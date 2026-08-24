@@ -9,7 +9,11 @@
 #include <Engine/Asset/TextureAnalysis.hpp>
 #include <string>
 
-namespace fbzz::scene { struct ParticleEmitter; }
+namespace fbzz::scene {
+struct ParticleEmitter;
+// VFX グラフのノードが持つのは «設定の塊» で、GameObject に付いた実体ではない。
+struct ParticleEmitterSettings;
+}
 
 namespace fbzz::editor {
 
@@ -41,7 +45,7 @@ private:
     //       解決して渡す。以前はここで particle.materialPath を読み直しており、
     //       .mat が入っていれば必ず早期 return する = 解析が一切出ない状態だった。
     // @return 設定を適用して .vfx が変わったか
-    bool DrawTextureAnalysis(scene::ParticleEmitter& particle,
+    bool DrawTextureAnalysis(scene::ParticleEmitterSettings& particle,
                              const std::string& texturePath);
 
     // .mat が割り当てられているときの解析。描画に使われるのは .mat 側の
@@ -49,7 +53,7 @@ private:
     // WHY: materialPath を設定した Emitter では blendMode が実行時に .mat から
     //      上書きされる。それを知らずに Emitter 側の blendMode を触ると、
     //      変えても絵が変わらないまま原因を探すことになる。最初に警告として出す。
-    bool DrawMaterialAnalysis(scene::ParticleEmitter& particle);
+    bool DrawMaterialAnalysis(scene::ParticleEmitterSettings& particle);
 
     // 解析は数十 ms かかるためフレームごとには回さない。対象パスが変わったときだけ更新する。
     std::string m_analyzedTexturePath;
