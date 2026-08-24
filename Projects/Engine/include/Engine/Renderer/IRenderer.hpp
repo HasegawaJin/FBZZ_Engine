@@ -72,6 +72,14 @@ public:
     virtual uint32_t GetWidth() const = 0;
     virtual uint32_t GetHeight() const = 0;
 
+    // Present の垂直同期。既定は無効。
+    // WHY 既定を無効にするか: フレームレート制御は Time::targetFps に任せ、DXGI の
+    //     表示周期待ちを描画同期へ混ぜない (待ちが Present の中に隠れると、
+    //     プロファイラ上で描画コストと区別できなくなる)。
+    // NOTE: 有効にすると tearing 許可フラグは自動的に落ちる (併用は DXGI が拒否する)。
+    virtual void SetVSync(bool /*enabled*/) {}
+    [[nodiscard]] virtual bool GetVSync() const { return false; }
+
     virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
     virtual void ClearDepth(float depth = 1.0f) = 0;
 

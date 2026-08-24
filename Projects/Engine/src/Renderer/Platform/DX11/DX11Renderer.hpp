@@ -47,6 +47,9 @@ public:
     // Present the swap chain. Frame pacing is controlled by Time.
     void EndFrame() override;
 
+    void SetVSync(bool enabled) override { m_vsync = enabled; }
+    [[nodiscard]] bool GetVSync() const override { return m_vsync; }
+
     // RTV と DSV を指定色でクリアする (現在バインド中の RT に対して動作する)
     void Clear(const math::Vector4& color) override;
 
@@ -193,6 +196,8 @@ private:
 
     // VSync 無効時に DWM の表示周期待ちを避けられるかを Init() で検出する。
     bool m_allowTearing = false;
+    // Option 画面から切り替える垂直同期。既定は無効 (Time::targetFps で制御する)。
+    bool m_vsync = false;
 
     // --- Init 内部ヘルパー ---
     bool CreateRenderTargetView();
