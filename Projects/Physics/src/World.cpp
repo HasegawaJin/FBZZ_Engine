@@ -838,12 +838,14 @@ namespace fbzz::physics
         for (auto& cp : m_contacts)
         {
             if (cp.isTrigger) continue;
+            // 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
+            // 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
             math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
             if (t0.LengthSq() < 1e-6f)
                 t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
-            t0            = t0.Normalized();
+            t0            = t0.NormalizedOr(math::Vector3::RIGHT);
             cp.tangent[0] = t0;
-            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).Normalized();
+            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).NormalizedOr(math::Vector3::FORWARD);
         }
 
         if (doWarmStart)
@@ -1063,6 +1065,9 @@ namespace fbzz::physics
                         RaycastHit&          hit,
                         ColliderFilter        filter) const
     {
+        // 向きの無いレイは何にも当たらない。スクリプトから 0 ベクトルが来るのは
+        // 「対象と重なっている」等で普通に起きるため、当たり無しとして返す。
+        if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
         float   bestT = maxDistance + 1.0f;
         RaycastHit bestHit;
@@ -1091,6 +1096,7 @@ namespace fbzz::physics
                                                       float                maxDistance,
                                                       ColliderFilter        filter) const
     {
+        if (direction.LengthSq() < 1e-12f) return {};
         const math::Vector3 d = direction.Normalized();
         std::vector<RaycastHit> results;
 
@@ -1128,6 +1134,7 @@ namespace fbzz::physics
         //         Capsule      → カプセル半径を加算
         //         Cylinder/Mesh/Convex → AABB 近似
 
+        if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
         float     bestT = maxDistance + 1.0f;
         RaycastHit bestHit;

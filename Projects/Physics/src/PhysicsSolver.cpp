@@ -873,12 +873,14 @@ namespace fbzz::physics
             if (cp.isTrigger) continue;
 
             // normal に対して垂直な 2 軸を Gram-Schmidt で構築
+            // 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
+            // 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
             math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
             if (t0.LengthSq() < 1e-6f)
                 t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
-            t0           = t0.Normalized();
+            t0           = t0.NormalizedOr(math::Vector3::RIGHT);
             cp.tangent[0] = t0;
-            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).Normalized();
+            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).NormalizedOr(math::Vector3::FORWARD);
         }
 
         if (contacts.size() == 1)
