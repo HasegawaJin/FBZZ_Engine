@@ -58,6 +58,17 @@ public:
     // 同名ファイルを上書きした際、既存ハンドルを維持したまま GPU テクスチャを差し替える。
     // WHY: IBL ベイク後もパスキャッシュが古い DDS を返し続けるため、明示的な再ロードが必要。
     ResourceHandle<TextureTag> ReloadTexture(std::string_view path);
+
+    // path (またはそのフォルダ配下) のテクスチャをキャッシュから外し、GPU 実体を解放する。
+    //
+    // WHY 必要か: LoadTexture はパスキャッシュに当たった時点で即返すため、ファイルを
+    //     消してもエディタを再起動するまで古い絵が出続ける。「消したのに映っている」は
+    //     参照切れより質の悪い症状で、消したつもりのアセットを配布物へ持ち込む。
+    // NOTE: 既に配られたハンドルは無効になる。参照側は次のフレームで解決し直す前提
+    //       (UIImage / MaterialComponent は loadedTexturePath を見て再解決する)。
+    // @param path Assets/ 起点の相対パス。フォルダを渡すと配下をまとめて外す。
+    // @ret 外したエントリ数。
+    std::size_t EvictTexture(std::string_view path);
     ResourceHandle<TextureTag> CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height);
     // CPU生成したRGBA8ボリュームから3D Textureを作る。Color LUTなどに使用する。
     ResourceHandle<TextureTag> CreateTexture3D(

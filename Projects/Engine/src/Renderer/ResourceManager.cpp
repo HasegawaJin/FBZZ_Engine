@@ -169,6 +169,28 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
     return it->second;
 }
 
+std::size_t ResourceManager::EvictTexture(std::string_view path)
+{
+    const std::string key = TextureCacheKey(path);
+    if (key.empty()) return 0;
+
+    // フォルダを渡された場合に配下ごと外す。末尾に '/' を付けて前方一致させることで、
+    // "Assets/UI/Title" が "Assets/UI/TitleOld/..." を巻き込まないようにする。
+    const std::string prefix = key + "/";
+
+    std::size_t evicted = 0;
+    for (auto it = m_textureCache.begin(); it != m_textureCache.end(); ) {
+        if (it->first == key || it->first.rfind(prefix, 0) == 0) {
+            m_textures.Remove(it->second);
+            it = m_textureCache.erase(it);
+            ++evicted;
+        } else {
+            ++it;
+        }
+    }
+    return evicted;
+}
+
 ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height)
 {
     auto texture = m_renderer.CreateNativeTextureFromData(rgba, width, height);
