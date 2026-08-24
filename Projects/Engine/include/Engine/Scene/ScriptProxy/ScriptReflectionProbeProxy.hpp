@@ -27,6 +27,10 @@ struct ScriptReflectionProbeProxy {
 
     // 静的環境マップを差し替える (.dds)。
     void SetCubemap(std::string_view path) const;
+
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetIntensity() const;
+    [[nodiscard]] float GetInfluenceRadius() const;
 };
 
 } // namespace fbzz::scene

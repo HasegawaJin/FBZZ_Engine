@@ -34,6 +34,10 @@ struct ScriptPhysicsProxy {
     float GetMass() const;
     void SetMass(float mass) const;
     void SetStatic(bool isStatic) const;
+    [[nodiscard]] bool IsStatic() const;
+    // 睡眠中の剛体は積分も衝突解決も行わない。力を加えても動かないため、
+    // 「押しても反応しない」の原因切り分けに要る。
+    [[nodiscard]] bool IsSleeping() const;
     // 剛体ごとの重力倍率。World の重力ベクトルは共有したまま、この個体だけ効きを変える。
     // 1 = 通常 / 0 = 無重力 / 負値 = 反重力。浮かせる演出の間だけ下げて、終わったら戻す。
     [[nodiscard]] float GetGravityScale() const;

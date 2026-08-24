@@ -5,6 +5,7 @@
 
 #include <Math/Vector2.hpp>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace fbzz::input {
@@ -18,6 +19,20 @@ namespace fbzz::scene {
 class Script;
 
 enum class MouseBtn : int { Left = 0, Right = 1, Middle = 2 };
+
+/// スクリプトから見た 1 件のバインド。
+///
+/// WHY input::InputBinding をそのまま渡さないか: あちらは std::vector を持つ型の一部で、
+///     スクリプト DLL とエンジンでアロケーターが分かれた瞬間に壊れる。キーコンフィグの
+///     保存と表示に要るのは「どの種類の入力の何番か」だけなので、値だけを写す。
+struct ScriptInputBinding {
+    /// input::BindingSource と同じ並び。0:Key 1:MouseButton 2:GamepadButton
+    /// 3:GamepadAxis 4:MouseAxis。範囲外は「バインドが無い」を表す -1。
+    int      source = -1;
+    uint32_t code   = 0;
+
+    [[nodiscard]] bool IsValid() const { return source >= 0; }
+};
 
 struct ScriptInputProxy {
     Script* script = nullptr;
@@ -61,6 +76,29 @@ struct ScriptInputProxy {
     void SetVibration(float lowFrequency, float highFrequency,
                       float durationSeconds, int pad = -1) const;
     void StopVibration(int pad = -1) const;
+
+    // ── キーコンフィグ ────────────────────────────────────────────────────
+    // アクション 1 つが持つバインドの列を、添字で読み書きする。
+    //
+    // WHY 保存まで面倒を見ないか: バインドの保存先はゲームの config であって
+    //     ProjectSettings/Input.inputactions ではない。あちらはオーサリング時の既定で、
+    //     製品版では読み取り専用に置かれうる。エンジンは「今の割り当て」を出し入れ
+    //     できるようにするところまでを持ち、どこへ残すかはゲームが決める。
+    [[nodiscard]] int GetActionBindingCount(std::string_view action) const;
+    /// 添字が範囲外なら IsValid() == false のバインドを返す。
+    [[nodiscard]] ScriptInputBinding GetActionBinding(std::string_view action, int index) const;
+    /// 添字が範囲外なら末尾へ追加する。アクションが無ければ false。
+    bool SetActionBinding(std::string_view action, int index, ScriptInputBinding binding) const;
+    /// "Space" / "Pad0:A" のような表示用の文字列。無ければ空。
+    [[nodiscard]] std::string DescribeActionBinding(std::string_view action, int index) const;
+
+    // 次に押された物理入力を index 番目のバインドへ記録する。
+    // 1 フレームで完結しないため、開始・完了確認・取消に分かれる。
+    void BeginRebindAction(std::string_view action, int index) const;
+    [[nodiscard]] bool IsRebinding() const;
+    /// リバインドが完了したフレームで 1 度だけ true。読むと消費される。
+    bool ConsumeRebindCompleted() const;
+    void CancelRebind() const;
 };
 
 } // namespace fbzz::scene

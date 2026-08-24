@@ -61,6 +61,17 @@ struct ScriptDecalProxy {
 
     void ClearMaterialOverride (std::string_view param) const;
     void ClearMaterialOverrides() const;
+
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetOpacity() const;
+    [[nodiscard]] float GetLifetime() const;
+    [[nodiscard]] float GetFadeTime() const;
+    /// DecalPass が加算している経過秒。lifetime < 0 (永続) でも増え続ける。
+    [[nodiscard]] float GetAge() const;
+    /// ライフタイムフェードと SetOpacity() を掛けた値 [0, 1]。
+    /// アルベドのアルファと .mat の tint は含まない。
+    /// 弾痕の消え際に合わせて音や光を落とす、といった用途で使う。
+    [[nodiscard]] float GetEffectiveOpacity() const;
 };
 
 } // namespace fbzz::scene

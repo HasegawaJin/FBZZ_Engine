@@ -4,6 +4,7 @@
 // MeshRenderer と SkinnedMeshRenderer のどちらが付いていても同一 API で有効/無効を切り替えられる。
 #pragma once
 
+#include <string>
 #include <string_view>
 
 namespace fbzz::scene {
@@ -27,11 +28,15 @@ struct ScriptMeshProxy {
 
     // --- MeshRenderer 専用 ---
     // "primitive:cube" / "models/foo.fbx:0" 形式のパスを設定し meshDirty を立てる。
-    void SetMeshPath(std::string_view path) const;
+    void        SetMeshPath(std::string_view path) const;
+    // MeshRenderer が無ければ空文字列。
+    std::string GetMeshPath() const;
 
     // --- SkinnedMeshRenderer 専用 ---
     // modelPath を変更する。変更後は RenderSystem が再ロードする。
-    void SetModelPath(std::string_view path) const;
+    void        SetModelPath(std::string_view path) const;
+    // SkinnedMeshRenderer が無ければ空文字列。
+    std::string GetModelPath() const;
 };
 
 } // namespace fbzz::scene
