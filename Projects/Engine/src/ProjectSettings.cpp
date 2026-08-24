@@ -16,6 +16,22 @@
 
 namespace fbzz {
 
+std::vector<audio::BusDesc> AudioSettings::BuildBusLayout() const
+{
+    std::vector<audio::BusDesc> layout =
+        buses.empty() ? audio::DefaultBusLayout() : buses;
+    // Master の音量はここで masterVolume に一本化する。
+    // WHY バス側の値を使わないか: 設定 UI は Master を「全体音量」として 1 本の
+    //     スライダーで見せる。両方に書ける状態にすると、どちらが効くか読めなくなる。
+    for (audio::BusDesc& desc : layout) {
+        if (desc.name == audio::kMasterBusName) {
+            desc.volume = masterVolume;
+            break;
+        }
+    }
+    return layout;
+}
+
 namespace {
 
 double RoundTomlFloat(double value)
@@ -243,12 +259,39 @@ bool ProjectSettings::Load(const std::string& path)
     }
 
     if (auto* audioTbl = tbl["audio"].as_table()) {
-        audio.bgmVolume = (float)(*audioTbl)["bgmVolume"].value_or((double)audio.bgmVolume);
-        audio.seVolume  = (float)(*audioTbl)["seVolume"].value_or((double)audio.seVolume);
-        if (audio.bgmVolume < 0.0f) audio.bgmVolume = 0.0f;
-        if (audio.bgmVolume > 1.0f) audio.bgmVolume = 1.0f;
-        if (audio.seVolume  < 0.0f) audio.seVolume  = 0.0f;
-        if (audio.seVolume  > 1.0f) audio.seVolume  = 1.0f;
+        const auto unitRange = [](double v) {
+            return (float)(v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v));
+        };
+        audio.masterVolume = unitRange((*audioTbl)["masterVolume"]
+                                           .value_or((double)audio.masterVolume));
+
+        std::vector<audio::BusDesc> buses;
+        if (auto* busArray = (*audioTbl)["bus"].as_array()) {
+            for (const auto& node : *busArray) {
+                const auto* busTbl = node.as_table();
+                if (!busTbl) continue;
+                audio::BusDesc desc;
+                desc.name = (*busTbl)["name"].value_or(std::string{});
+                if (desc.name.empty()) continue;
+                desc.parent        = (*busTbl)["parent"].value_or(std::string{});
+                desc.volume        = unitRange((*busTbl)["volume"].value_or(1.0));
+                desc.lowPassCutoff = unitRange((*busTbl)["lowPassCutoff"].value_or(1.0));
+                buses.push_back(std::move(desc));
+            }
+        }
+
+        if (buses.empty()) {
+            // 旧形式 (bgmVolume / seVolume の 2 スライダー) からの移行。
+            // WHY 既定構成へ写すか: 旧設定を捨てると、更新しただけで音量が 1.0 へ戻る。
+            buses = audio::DefaultBusLayout();
+            const float bgm = unitRange((*audioTbl)["bgmVolume"].value_or(1.0));
+            const float se  = unitRange((*audioTbl)["seVolume"].value_or(1.0));
+            for (audio::BusDesc& desc : buses) {
+                if (desc.name == "BGM") desc.volume = bgm;
+                if (desc.name == "SE")  desc.volume = se;
+            }
+        }
+        audio.buses = std::move(buses);
     }
 
     if (auto* screenTbl = tbl["screen"].as_table()) {
@@ -361,8 +404,20 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("outlineColor", std::move(outlineColorArr));
 
     toml::table audioTbl;
-    audioTbl.insert("bgmVolume", (double)audio.bgmVolume);
-    audioTbl.insert("seVolume",  (double)audio.seVolume);
+    audioTbl.insert("masterVolume", (double)audio.masterVolume);
+    {
+        toml::array busArray;
+        for (const audio::BusDesc& desc : audio.buses) {
+            toml::table busTbl;
+            busTbl.insert("name", desc.name);
+            if (!desc.parent.empty()) busTbl.insert("parent", desc.parent);
+            busTbl.insert("volume", (double)desc.volume);
+            if (desc.lowPassCutoff < 1.0f)
+                busTbl.insert("lowPassCutoff", (double)desc.lowPassCutoff);
+            busArray.push_back(std::move(busTbl));
+        }
+        audioTbl.insert("bus", std::move(busArray));
+    }
 
     toml::table screenTbl;
     screenTbl.insert("width",  (int64_t)screen.width);
