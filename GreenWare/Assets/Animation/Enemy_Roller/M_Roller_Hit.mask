@@ -1,0 +1,12 @@
+[mask]
+default_include = false
+name = 'M_Roller_Hit'
+skeleton_source = 'Assets/Models/Enemy_Roller/Z_Roller.fbx'
+skeleton_source_signature = '134318882720702912:241292'
+version = 1
+
+[[entries]]
+blend_depth = 1
+bone = 'RootNode/Roller_Armature/Root/Frame'
+include_children = true
+weight = 1.0
