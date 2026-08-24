@@ -321,8 +321,14 @@ private:
         auto* source = m_scene.GetComponent<AudioSourceComponent>(ctx.self);
         if (!source || params.text.empty()) return ai::BTStatus::Failure;
 
-        source->m_oneShotPath    = params.text;
-        source->m_pendingOneShot = true;
+        if (source->m_pendingOneShots.size() >= AudioSourceComponent::MAX_PENDING_ONE_SHOTS)
+            return ai::BTStatus::Failure;
+
+        AudioSourceComponent::OneShotRequest request;
+        request.path        = params.text;
+        // ノードの volume は今まで参照されていなかった。one-shot が倍率を持てるようになったので繋ぐ。
+        request.volumeScale = params.volume < 0.0f ? 0.0f : params.volume;
+        source->m_pendingOneShots.push_back(std::move(request));
         return ai::BTStatus::Success;
     }
 
