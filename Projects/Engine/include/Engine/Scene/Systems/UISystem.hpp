@@ -96,12 +96,23 @@ struct UISystemContext {
     std::string defaultFontPath =
         "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
 
+    // 今処理している Canvas の「Canvas 1px あたりの実画面ピクセル数」。
+    // フォントを焼く解像度をこれで決める (fontSize はあくまで Canvas 空間の値なので、
+    // これを掛けないと Editor の小さな Game ビューで字だけが潰れる)。
+    //
+    // WHY 引数ではなくここに置くか: 使うのはテキストの計測と描画の 2 箇所だけだが、
+    //     そこへ届けるには Canvas から降りる再帰を全段引き回すことになる。
+    //     Canvas に入るたびに書き、その Canvas を抜けるまで変わらない値。
+    float textPixelScale = 1.0f;
+
     renderer::ResourceHandle<renderer::ShaderTag>         shader;
     renderer::ResourceHandle<renderer::ShaderTag>         textShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> constants;
     renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
     renderer::ResourceHandle<renderer::PipelineStateTag>  worldPso;
     renderer::ResourceHandle<renderer::TextureTag>        whiteTexture;
+    // キーは「フォントのパス + 焼いた解像度」。同じフォントでも表示サイズが違えば
+    // 別実体になる (FontAtlas.hpp の WHY を参照)。
     std::unordered_map<std::string, renderer::FontAtlas>  fontAtlasCache;
     // .mat のパスで引く。1 フレームに何度も同じマテリアルが出てくるうえ、
     // 解決はシェーダーのロードとリフレクションを伴うので毎回やる値段ではない。

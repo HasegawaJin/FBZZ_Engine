@@ -10,6 +10,7 @@
 #include "Engine/Scene/Components/UIImage.hpp"
 #include "Engine/Scene/Components/UIButton.hpp"
 #include "Engine/Scene/Components/UIText.hpp"
+#include "Engine/Scene/UIPointer.hpp"
 #include "Engine/Scene/Components/UILayoutGroup.hpp"
 #include "Engine/Scene/Components/UIControls.hpp"
 #include "Engine/Input/Input.hpp"
@@ -479,6 +480,23 @@ void ResolveScreenSpaceCanvasArea(const UICanvas& canvas,
     }
     visibleCanvasW = (std::max)(1.0f, canvas.canvasWidth);
     visibleCanvasH = (std::max)(1.0f, canvas.canvasHeight);
+}
+
+// Canvas 1px が実画面で何 px になるか。フォントを焼く解像度がこれで決まる。
+//
+// WHY Canvas Scaler の倍率をそのまま使わないか: ConstantPixelSize では倍率が常に 1 だが、
+//     1920x1080 の Canvas を 900px 幅のビューポートへ映せば実際には 0.47 倍で出る。
+//     「見えている Canvas 領域」と viewport の比を取れば、両方のモードを同じ式で扱える。
+// WHY WorldSpace を 1 に固定するか: 実寸がカメラとの距離で毎フレーム変わり、
+//     グリフを焼き直し続けることになる。
+float ResolveCanvasPixelScale(const UICanvas& canvas, float viewportWidth, float viewportHeight)
+{
+    if (canvas.renderMode == UIRenderMode::WorldSpace) return 1.0f;
+
+    float visibleW = 1.0f, visibleH = 1.0f;
+    ResolveScreenSpaceCanvasArea(canvas, viewportWidth, viewportHeight, visibleW, visibleH);
+    return (std::max)((std::max)(1.0f, viewportWidth)  / visibleW,
+                      (std::max)(1.0f, viewportHeight) / visibleH);
 }
 
 CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
@@ -1223,13 +1241,8 @@ std::string ResolveFontBasePath(const std::string& basePath)
     if (basePath.empty()) return basePath;
 
     // .ttf / .otf / .ttc は動的モードで、パスがそのまま実体を指す。
-    const std::size_t dot = basePath.find_last_of('.');
-    if (dot != std::string::npos) {
-        std::string ext = basePath.substr(dot);
-        for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (ext == ".ttf" || ext == ".ttc" || ext == ".otf")
-            return asset::AssetManager::ResolveAssetPath(basePath);
-    }
+    if (renderer::FontAtlas::IsDynamicFontPath(basePath))
+        return asset::AssetManager::ResolveAssetPath(basePath);
 
     const std::string fntExt = ".fnt";
     const std::string resolved = asset::AssetManager::ResolveAssetPath(basePath + fntExt);
@@ -1238,19 +1251,33 @@ std::string ResolveFontBasePath(const std::string& basePath)
     return basePath;
 }
 
+// このテキストを実画面で何 px の em として焼けばよいか。
+// fontSize は Canvas 空間の行高さなので、Canvas → 実画面の倍率を掛けて実寸へ直す。
+float ResolveTextRasterPixelHeight(const UIText& text, const UISystemContext& ctx)
+{
+    return renderer::FontAtlas::ResolveRasterPixelHeight(text.fontSize * ctx.textPixelScale);
+}
+
 renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
+                                        float rasterPixelHeight,
                                         UISystemContext& ctx,
                                         renderer::ResourceManager& resources)
 {
+    // 静的アトラスは焼く解像度を持たない (PNG が決め打ち) ので、解像度をキーへ混ぜると
+    // 同じ PNG を段の数だけ読み込むだけになる。動的モードのときだけ分ける。
+    const std::string key = renderer::FontAtlas::IsDynamicFontPath(basePath)
+        ? basePath + '@' + std::to_string(static_cast<int>(rasterPixelHeight))
+        : basePath;
+
     // キャッシュは指定されたパスで引く。解決結果でキーを作ると、同じ指定が
     // プロジェクト側と共有側で二重にロードされうる。
-    auto it = ctx.fontAtlasCache.find(basePath);
+    auto it = ctx.fontAtlasCache.find(key);
     if (it != ctx.fontAtlasCache.end())
         return it->second;
 
-    renderer::FontAtlas& atlas = ctx.fontAtlasCache[basePath];
+    renderer::FontAtlas& atlas = ctx.fontAtlasCache[key];
     const std::string resolved = ResolveFontBasePath(basePath);
-    if (!atlas.Load(resolved, resources)) {
+    if (!atlas.Load(resolved, resources, rasterPixelHeight)) {
         FBZZ_LOG_ERROR("UISystem: failed to load FontAtlas [%s]\n  resolved: %s",
                        basePath.c_str(), resolved.c_str());
     }
@@ -1352,7 +1379,8 @@ math::Vector2 ComputeTextLogicalSize(const UIText& text,
                                      renderer::ResourceManager& resources)
 {
     const std::string& path = text.fontPath.empty() ? ctx.defaultFontPath : text.fontPath;
-    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(path, ctx, resources);
+    renderer::FontAtlas& atlas =
+        GetOrLoadFontAtlas(path, ResolveTextRasterPixelHeight(text, ctx), ctx, resources);
     if (!atlas.IsValid()) return {};
 
     // 動的フォントでは、この文字列に必要なグリフをここで焼く。
@@ -1401,10 +1429,18 @@ void UpdateTextSizesRecursive(GameObject& go,
 
 void UITextSizeSystem(const std::vector<CanvasEntry>& canvases,
                       UISystemContext& ctx,
-                      renderer::ResourceManager& resources)
+                      renderer::ResourceManager& resources,
+                      float viewportWidth,
+                      float viewportHeight)
 {
-    for (const CanvasEntry& entry : canvases)
+    for (const CanvasEntry& entry : canvases) {
+        // 描画と同じ解像度のアトラスを引く。行幅は送り幅の比で決まるので、段が
+        // 違っても寸法は変わらないが、計測側が別のアトラスを触ると同じ字を
+        // 2 つの実体へ焼くことになる。
+        ctx.textPixelScale =
+            ResolveCanvasPixelScale(*entry.canvas, viewportWidth, viewportHeight);
         UpdateTextSizesRecursive(*entry.go, ctx, resources);
+    }
 }
 
 // ── テキスト描画（マルチドロー対応）─────────────────────────────────────────
@@ -1418,7 +1454,8 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
                          math::Vector2 position,
                          const math::Vector2& parentSize)
 {
-    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(text.fontPath, ctx, resources);
+    renderer::FontAtlas& atlas =
+        GetOrLoadFontAtlas(text.fontPath, ResolveTextRasterPixelHeight(text, ctx), ctx, resources);
     if (!atlas.IsValid()) return;
 
     // 描画経路からも焼いておく。
@@ -1954,7 +1991,15 @@ void ResolveImageTexture(UIImage& image, renderer::ResourceManager& resources)
         image.resolvedSizePixels = {};
         return;
     }
-    if (source == image.loadedTexturePath) return;
+    // 同じパスでも、解決済みだったテクスチャがキャッシュから外れていたら取り直す。
+    // WHY: AssetBrowser の削除は ResourceManager のテクスチャキャッシュを空にする。
+    //      パス一致だけで打ち切ると、消えたテクスチャのハンドルを握ったままになり、
+    //      「消したのに絵が残る」か「無言で消える」のどちらかになって原因が辿れない。
+    // NOTE: 解決できなかった参照 (無効ハンドル) は待っても変わらないので再試行しない。
+    //       毎フレーム LoadTexture を呼んでログを溢れさせないため。
+    if (source == image.loadedTexturePath &&
+        (!image.texture.IsValid() || resources.Get(image.texture) != nullptr))
+        return;
 
     std::string texturePath;
     std::string spriteId;
@@ -2220,8 +2265,13 @@ void UIEventSystem(const std::vector<CanvasEntry>& canvases,
             // ここを 0 のままにするとアンカーが常に左上へ潰れる。
             UITransform2D canvasRoot{};
             canvasRoot.parentSize = { entry.canvas->canvasWidth, entry.canvas->canvasHeight };
-            inputConsumed |= ProcessUIEventsRecursive(*entry.go, ctx, canvasRoot, canvasPx,
-                                                      mousePressed, !inputConsumed, false);
+            const math::Vector2 pointerPx =
+                UIPointer::IsActive() ? UIPointer::Position() : canvasPx;
+            const bool pointerPressed =
+                UIPointer::IsActive() ? UIPointer::Pressed() : mousePressed;
+            entry.canvas->resolvedMousePosition = canvasPx;
+            inputConsumed |= ProcessUIEventsRecursive(*entry.go, ctx, canvasRoot, pointerPx,
+                                                      pointerPressed, !inputConsumed, false);
             continue;
         }
 
@@ -2237,8 +2287,25 @@ void UIEventSystem(const std::vector<CanvasEntry>& canvases,
 
         UITransform2D canvasRoot{};
         canvasRoot.parentSize = { entry.canvas->canvasWidth, entry.canvas->canvasHeight };
-        inputConsumed |= ProcessUIEventsRecursive(*entry.go, ctx, canvasRoot, mouseInCanvas,
-                                                  mousePressed, !inputConsumed, false);
+        // ゲーム内カーソルがあればそちらを唯一のポインターとして使う。
+        // WHY ここで差し替えるか: UIButton / UISlider の判定は「Canvas 空間の座標 1 つと
+        //     押下状態」だけで決まる。入口を 1 つに絞れば、マウスとパッドの両対応を
+        //     ウィジェット側に一切書かずに済む (UIPointer.hpp)。
+        const math::Vector2 pointer =
+            UIPointer::IsActive() ? UIPointer::Position() : mouseInCanvas;
+        const bool pointerPressed =
+            UIPointer::IsActive() ? UIPointer::Pressed() : mousePressed;
+
+        // ここへ残すのは常に「OS のマウスを Canvas 空間へ直した値」。
+        // WHY ポインター差し替え後の値を入れないか: カーソルを動かす側が
+        //     生のマウス位置を必要とする。差し替え後の値を返すと自分の出力を
+        //     読み直すことになり、マウスで動かせなくなる。
+        // WHY 同じ式をスクリプト側で書き直させないか: renderMode / Canvas Scaler /
+        //     viewport 寸法の 3 つで決まるため、Editor の Game ビューのように
+        //     viewport ≠ ウィンドウの場面でだけ静かにずれる。
+        entry.canvas->resolvedMousePosition = mouseInCanvas;
+        inputConsumed |= ProcessUIEventsRecursive(*entry.go, ctx, canvasRoot, pointer,
+                                                  pointerPressed, !inputConsumed, false);
     }
 }
 
@@ -2265,6 +2332,8 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
             viewportWidth, viewportHeight,
             rawMouseInViewport, viewProjection,
             cameraWorldPos, cameraWorldRot, ctx, targetView);
+        ctx.textPixelScale =
+            ResolveCanvasPixelScale(*entry.canvas, viewportWidth, viewportHeight);
         UITransform2D canvasRoot{};
         canvasRoot.parentSize = { entry.canvas->canvasWidth, entry.canvas->canvasHeight };
         RenderCanvasRecursive(*entry.go, canvasRoot, renderer, resources, ctx,
@@ -2323,7 +2392,7 @@ void UISystem(Scene& scene,
     std::vector<CanvasEntry> canvases;
     CollectCanvases(scene, canvases);
 
-    UITextSizeSystem(canvases, ctx, resources);
+    UITextSizeSystem(canvases, ctx, resources, viewportWidth, viewportHeight);
     UILayoutSystem(canvases, ctx, viewportWidth, viewportHeight);
     // WHY: Editorは同じSceneをScene / Game / Canvas Editorへ1フレーム中に複数回描画する。
     //      各ViewportでUIButtonのlastMouseStateやonClickを更新すると、後続の描画パスが

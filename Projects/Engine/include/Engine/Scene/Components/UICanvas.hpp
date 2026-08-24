@@ -39,6 +39,16 @@ struct UICanvas {
     bool         faceCamera   = false;
     bool         enabled      = true;
 
+    // 直近のフレームで UISystem が解決したマウス位置 (Canvas 空間、左上原点)。
+    //
+    // WHY コンポーネントに置くか: スクリーン → Canvas の変換は renderMode と
+    //     Canvas Scaler と viewport 寸法で決まり、UISystem の中だけが全部を知っている。
+    //     スクリプトが同じ式を書き直すと、Editor の Game ビューのように
+    //     viewport ≠ ウィンドウの場面でだけ静かにずれる。
+    // NOTE: 実行時の値でシーンへは保存しない (Reflect に出さない)。
+    //       UISystem が回る前は 0。ドラッグ操作 (スライダー等) が読む。
+    math::Vector2 resolvedMousePosition = {};
+
     const char* GetTypeName() const { return "UICanvas"; }
     void Reflect(IReflector& r)
     {
