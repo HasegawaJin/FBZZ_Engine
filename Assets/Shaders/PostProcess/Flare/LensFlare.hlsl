@@ -90,6 +90,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
         }
     }
 
-    // alpha = 0: 呼び出し側は ADDITIVE ブレンドなので RGB だけを寄与させる。
-    return float4(result * lensFlareIntensity, 0.0f);
+    // alpha = 1: 呼び出し側は ADDITIVE (rgb = src.rgb * src.a + dst.rgb) なので、
+    // src.a はフレアそのものの寄与率になる。0 を返すと 1 画素も足されない。
+    return float4(result * lensFlareIntensity, 1.0f);
 }
