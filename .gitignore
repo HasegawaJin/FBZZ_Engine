@@ -84,6 +84,14 @@ Thumbs.db
 **/Assets/**/*.ogg
 # .meta は追跡する: AssetDatabase の GUID を保持するため (Unity と同じ)。
 # クローン先で GUID が再発行されると guid: 参照が全て切れるので必ずコミットする。
+#
+# 例外: GameHub のテンプレートだけは .meta を持たない。
+# WHY: テンプレートは «内容» を配るもので、guid (そのプロジェクト内の識別子) は配れない。
+#      新規プロジェクトでは .meta が作り直されて guid が変わるため、テンプレートに
+#      guid を残すと参照が全て切れる (実際 Player.animcontroller が一度そうなった)。
+#      テンプレート内の参照は素のパスで持ち、初回保存でそのプロジェクトの guid へ
+#      再エンコードさせる。.meta 自体は AssetDatabase が起動時に自動生成する。
+Projects/GameHub/Templates/**/*.meta
 **/Assets/**/*.mesh
 **/Assets/**/*.fzasset
 **/Assets/**/*.skel
