@@ -24,6 +24,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
+#include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
@@ -52,6 +53,13 @@ struct PolarityImpact {
     float impulse = 0.0f;
     // ぶつけた先が固定アンカーだったか (7.5 の「敵 ↔ 柱・壁」)。
     bool struckIsAnchor = false;
+    // 飛んだ側が使い切った極。
+    //
+    // WHY 記録に含めるか: 盤面は衝突を回収するときに極を消してから演出へ流すため
+    //     (PolarityFieldComponent::ResolveImpacts の consumePolarityOnImpact)、
+    //     演出側が対象へ問い合わせても必ず無極が返る。12.6 の爆発を «どちらの極が
+    //     ぶつかったか» の色で出せるよう、衝突した瞬間の極をここへ写して運ぶ。
+    Polarity moverPolarity = Polarity::None;
 };
 
 // 7.3 の 3 段階に、衝突後の硬直 (7.4) を足した 4 状態。
@@ -108,6 +116,24 @@ public:
     [[nodiscard]] bool IsAvailableForLink() const { return !IsStunned(); }
     // 今どれへ引かれているか。盤面が「継続中のリンクを乗り換えさせない」判定に使う。
     [[nodiscard]] EntityID PartnerId() const { return m_partner.id; }
+    // 線と飛行の基準点。原点が足元にあるモデルでも胴体の高さを狙う。
+    //
+    // WHY 盤面へ公開するか: 12.5 の放電は «対» の持ち物なので張るのは盤面側だが、
+    //     端点の高さを決めているのはこちら (linkHeightOffset)。盤面が独自に高さを
+    //     決めると、同じ 2 体を結ぶ線と放電が別の高さから出る。
+    [[nodiscard]] Vector3 LinkPoint() const;
+    // 溜めの進み [0,1]。0 = 溜め始め / 1 = 撃ち出し直前。溜め以外では 0。
+    //
+    // WHY 演出のために公開するか: 7.3 ① の «引き絞られている» は、絵の強さが
+    //     進行度に比例して初めて «来ると分かる予兆» になる。段階 (PullPhase) だけ
+    //     渡すと、演出側は溜めのどこに居るかを自前で数え直すことになる。
+    [[nodiscard]] float WindupProgress() const
+    {
+        if (m_phase != PullPhase::Windup) return 0.0f;
+        return Clamp01(1.0f - m_timer / Max(WindupSeconds(), EPSILON));
+    }
+    // 撃ち出されて相手へ突っ込んでいる最中か。放電を «張り詰めた» 側へ振るのに使う。
+    [[nodiscard]] bool IsFlying() const { return m_phase == PullPhase::Flying; }
 
     // 今フレームに起きた衝突。盤面が回収したら ConsumeImpact() で空にする。
     [[nodiscard]] bool HasImpact() const { return m_hasImpact; }
@@ -145,8 +171,6 @@ private:
     void EndFlight(PullPhase next);
 
     [[nodiscard]] GameObject* Partner() const { return m_partner.Resolve(scene); }
-    // 線と飛行の基準点。原点が足元にあるモデルでも胴体の高さを狙う。
-    [[nodiscard]] Vector3 LinkPoint() const;
 
     [[nodiscard]] float WindupSeconds()   const { return tuning->windupSeconds; }
     [[nodiscard]] float WindupGravity()   const { return tuning->windupGravityScale; }
@@ -356,6 +380,16 @@ inline void PolarityBodyComponent::TickWindup(float dt)
     const float travelSeconds = std::max(ImpactSeconds(), 0.02f) * closingFactor;
     m_flightSpeed = std::max(distance / travelSeconds, AttractSpeed());
 
+    // 17 章が「最も重要」とした «ギュンッ» の頭。
+    // WHY 飛んでいる間ではなくこの 1 フレームだけ出すか: 7.3 は撃ち出しを漸進させず
+    //     1 ステップで最高速へ乗せると決めている。加速の «途中» が無いので、速さは
+    //     動いている本体からは読めない。読めるのは出発点に何が残ったかだけ。
+    if (auto* vfx = VfxManagerComponent::Instance()) {
+        const auto* target = scene.GetScript<PolarityTargetComponent>();
+        vfx->PlayLaunch(LinkPoint(), toPartner.NormalizedOr(Vector3::FORWARD),
+                        target ? target->Current() : Polarity::None, m_flightSpeed);
+    }
+
     // 撃ち出しからは自前の等速直進なので、重力は元へ戻しておく。
     EndFloat();
     m_phase = PullPhase::Flying;
@@ -445,6 +479,9 @@ inline void PolarityBodyComponent::RegisterImpact(GameObject& other,
 
     const auto* struckTarget = scene.GetScript<PolarityTargetComponent>(&other);
     m_impact.struckIsAnchor = struckTarget ? struckTarget->isAnchor : true;
+
+    const auto* selfTarget = scene.GetScript<PolarityTargetComponent>();
+    m_impact.moverPolarity = selfTarget ? selfTarget->Current() : Polarity::None;
     m_hasImpact = true;
     EndFlight(PullPhase::Recovering);
 
@@ -513,11 +550,27 @@ inline void PolarityBodyComponent::UpdateLinkLine()
     Vector3 partnerPoint = partner->transform.worldPosition;
     partnerPoint.y += linkHeightOffset;
 
+    // 7.3 ① の「引き絞られる」を線の張りで見せる。溜めが進むほど太く明るく、
+    // 脈も速くなる。飛んでいる間は逆に細く落として、線が «力» から «軌跡» へ
+    // 変わったことを絵で切り替える。
+    //
+    // WHY 明滅を線の «明るさ» でやるか: 太さだけを振ると近距離で画面を覆い、
+    //     アルファだけを振ると背景の明るさで消える。HDR の RGB ならどちらも起きず、
+    //     そのままブルームが拾って «電圧が上がった» に見える。
+    const float charge = IsFlying() ? 1.0f : WindupProgress();
+    const float pulse  = 0.78f + 0.22f * std::sin(Time::time * Lerp(9.0f, 34.0f, charge));
+    const float glow   = Lerp(0.9f, 2.6f, charge) * pulse;
+    const float width  = linkWidth * Lerp(0.6f, 1.35f, charge) * (IsFlying() ? 0.55f : 1.0f);
+
+    const Vector4 fromColor = PolarityColor(self->Current());
+    const Vector4 toColor   = PolarityColor(otherTarget->Current());
+
     gameplay.SetLineEnabled(true);
     gameplay.SetLine(LinkPoint(), partnerPoint, true);
     // 自分の極から相手の極へのグラデーション。どちらへ飛んでいるかが線の色で読める。
-    gameplay.SetLineColors(PolarityColor(self->Current()), PolarityColor(otherTarget->Current()));
-    gameplay.SetLineWidth(linkWidth, linkWidth);
+    gameplay.SetLineColors({ fromColor.x * glow, fromColor.y * glow, fromColor.z * glow, 1.0f },
+                           { toColor.x   * glow, toColor.y   * glow, toColor.z   * glow, 1.0f });
+    gameplay.SetLineWidth(width, width);
 }
 
 } // namespace sandbox

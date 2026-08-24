@@ -6,6 +6,7 @@
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Game/GameResultState.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <cmath>
 #include <string>
 
@@ -30,6 +31,13 @@ public:
         value += "\nENEMY COLLISIONS " + std::to_string(GameResultState::enemyImpacts);
         value += "\nANCHOR SLAMS " + std::to_string(GameResultState::anchorImpacts);
         ui.SetText(value);
+
+        // NOTE: 素材には Rank_S / A / B / C も入っているが、ランクを決める規則が
+        //       まだどこにも無い (戦績は表示しているだけ)。ここで式を作ると
+        //       評価基準をスクリプトが勝手に決めることになるので、
+        //       ランク音は規則が決まってから se::RankBank() で繋ぐ。
+        se::EnsureSource(scene, "UI");
+        se::Play(audio, se::kUiResult);
     }
 };
 

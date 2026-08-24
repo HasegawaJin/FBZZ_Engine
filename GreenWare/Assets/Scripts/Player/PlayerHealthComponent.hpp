@@ -17,6 +17,7 @@
 #include <Scripts/Data/PlayerTuning.hpp>
 #include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <functional>
 
 using namespace fbzz::scene;
@@ -35,8 +36,8 @@ public:
     fbzz::Asset<PlayerTuning> tuning{};
 
     FBZZ_GROUP("Feedback")
-    FBZZ_FIELD_FILE(sfxHurt, "", "SFX Hurt", ".wav,.ogg")
-    FBZZ_FIELD_FILE(sfxDeath, "", "SFX Death", ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(sfxHurt, "", "SFX Hurt")
+    FBZZ_FIELD_AUDIO(sfxDeath, "", "SFX Death")
     // 被弾時の揺れ・振動・画面効果は ImpactFeedbackManagerComponent の Player Hurt が持つ。
     // 12 章の「強さは 1 箇所で持つ」方針を、被弾以外の出来事も含めた形へ広げたもの。
 
@@ -91,6 +92,7 @@ inline float PlayerHealthComponent::Normalized() const
 inline void PlayerHealthComponent::OnStart()
 {
     ResetHealth();
+    se::EnsureSource(scene);
 }
 
 inline void PlayerHealthComponent::ResetHealth()
@@ -123,11 +125,15 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
     }
 
     if (!IsAlive()) {
-        if (!sfxDeath.empty()) audio.PlayOneShot(sfxDeath);
+        se::Play(audio, sfxDeath, se::kPlayerDeath);
         if (onDeath) onDeath();
         return true;
     }
 
+    // WHY 被弾音だけカタログの既定を持たないか: 1 つ上で ImpactFeedbackManager へ
+    //     PlayerHurt を渡しており、被弾の SE はあちらの配分表が鳴らす。ここにも既定を
+    //     置くと、1 回の被弾で同じ音が 2 つ重なって音量だけが倍になる。
+    //     Inspector で明示的に指定されたときだけ、重ねる音として鳴らす。
     if (!sfxHurt.empty()) audio.PlayOneShot(sfxHurt);
     if (auto* controller = m_controllerOverride
         ? m_controllerOverride : scene.GetScript<PlayerControllerComponent>())

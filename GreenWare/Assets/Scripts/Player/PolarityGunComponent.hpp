@@ -34,26 +34,40 @@
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/CharacterEvent.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
+#include <Scripts/Game/CameraFollowManagerComponent.hpp>
+#include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Player/WeaponAnimatorComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/ElectricArc.hpp>
 #include <Scripts/Utils/EmitterBattery.hpp>
 #include <Scripts/Utils/InputActions.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
 using fbzz::Time;
 
 namespace sandbox {
+
+// 充填音を鳴らす閾値。Refill は cap へ漸近するので、厳密な一致では鳴らないことがある。
+inline constexpr float kBatteryFullRatio = 0.999f;
 
 class PolarityGunComponent : public Script {
     FBZZ_SCRIPT(PolarityGunComponent)
@@ -87,18 +101,19 @@ public:
     FBZZ_GROUP("Feedback (12.1)")
     // 12.1 は「4 週目の調整項目ではなく 1 週目から入れる」と名指ししている。
     // 極性にダメージが無い以上、塗った手応えが無いと開始 1 分で投げられる。
-    FBZZ_FIELD_FILE(sfxBeamStart,  "", "SFX Beam Start",  ".wav,.ogg")
-    FBZZ_FIELD_FILE(sfxPaint,      "", "SFX Paint",       ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(sfxBeamStart,  "", "SFX Beam Start")
+    FBZZ_FIELD_AUDIO(sfxPaint,      "", "SFX Paint")
     FBZZ_TOOLTIP("1 体を塗り切った瞬間。なぞりのリズムはこの音で数える")
-    FBZZ_FIELD_FILE(sfxNeutralize, "", "SFX Neutralize",  ".wav,.ogg")
-    FBZZ_FIELD_FILE(sfxEmpty,      "", "SFX Empty",       ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(sfxNeutralize, "", "SFX Neutralize")
+    FBZZ_FIELD_AUDIO(sfxEmpty,      "", "SFX Empty")
     FBZZ_TOOLTIP("バッテリーが尽きた瞬間と、空のまま撃とうとしたときの音")
 
     FBZZ_GROUP("Beam")
-    FBZZ_FIELD_FILE(beamMaterial, "Assets/Materials/Fallback/VFXMeshFallback.mat",
+    FBZZ_FIELD_FILE(beamMaterial, "Assets/Materials/Effects/FX_WPN_Beam.mat",
                     "Beam Material", ".mat")
-    FBZZ_TOOLTIP("ビームに割り当てる .mat。極の色は albedo へ毎フレーム上書きされるため、"
-                 "Unlit・両面のものを指す。既定は VFX 用のフォールバック")
+    FBZZ_TOOLTIP("ビームに割り当てる .mat。極の色は albedo へ毎フレーム上書きされる。"
+                 "既定は事前乗算の Beam.hlsl。断面と流れの値を持たない .mat を差した場合、"
+                 "下の Shape / Flow は黙って無視される (帯電の乱れも同じく無視される)")
     // 12.3「ビームは細い芯 ＋ 淡いグローの 2 層」。芯だけだと線が硬く、
     // グローだけだとどこが中心か読めない。当たり判定の太さとは無関係の見た目の値。
     FBZZ_FIELD_RANGE(float, coreWidth, 0.09f, "Core Width", 0.01f, 1.0f)
@@ -109,7 +124,75 @@ public:
     FBZZ_FIELD_RANGE(float, coreBrightness, 2.4f, "Core Brightness", 0.1f, 8.0f)
     FBZZ_FIELD_RANGE(float, glowBrightness, 1.0f, "Glow Brightness", 0.1f, 8.0f)
     FBZZ_FIELD_RANGE(float, glowOpacity, 0.35f, "Glow Opacity", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("グロー層の不透明度。芯を透かして見せるため 1 未満にする")
+    FBZZ_TOOLTIP("グロー層が背景を隠す量。0 に近いほど純粋な加算グローになる")
+
+    FBZZ_GROUP("Beam Shape")
+    // WHY 太さ (Core Width) と別に持つか: 上の 2 つは «帯を何メートルで組むか»、
+    //     ここは «その帯の中で芯がどこまでか»。帯を太くしても芯の割合は変えたくない
+    //     (太くした分だけ芯まで太ると、ただの明るい板になる)。
+    FBZZ_FIELD_RANGE(float, coreSharpness, 0.45f, "Core Sharpness", 0.01f, 1.0f)
+    FBZZ_TOOLTIP("芯層の断面で、芯が帯の半幅の何割を占めるか")
+    FBZZ_FIELD_RANGE(float, glowSoftness, 3.2f, "Glow Softness", 0.5f, 8.0f)
+    FBZZ_TOOLTIP("グロー層の縁の減衰指数。大きいほど中心へ寄って細く見える")
+    FBZZ_FIELD_RANGE(float, muzzleFade, 0.04f, "Muzzle Fade", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("銃口側の立ち上がり。0 だと帯の四角い切り口が発射口から生えて見える")
+    FBZZ_FIELD_RANGE(float, tipFade, 0.08f, "Tip Fade", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("着弾側の先細り。当たった点は着弾エフェクトが担うので線は手前で譲る")
+
+    FBZZ_GROUP("Beam Flow")
+    // 6.1 の「なぞって塗る」は線を引く操作なので、線が流れていないと
+    // 「当てている最中」なのか「止まっている」のかが絵から読めない。
+    FBZZ_FIELD_RANGE(float, stripeDensity, 1.2f, "Stripe Density", 0.0f, 8.0f)
+    FBZZ_TOOLTIP("素材を 1m あたり何回繰り返すか。0 で 1 枚を全長へ引き伸ばす")
+    FBZZ_FIELD_RANGE(float, scrollSpeed, 3.0f, "Scroll Speed", -20.0f, 20.0f)
+    FBZZ_TOOLTIP("模様が流れる速さ [周/秒]。負で銃口へ向かって流れる")
+
+    FBZZ_GROUP("Beam Crackle")
+    // WHY 帯の «中» を暴れさせるか: 折れ線にすると当たり判定 (PolarityBeam の線分) と
+    //     芯の位置が食い違い、6.4 が守ろうとしている «見た目どおりに当たる» が崩れる。
+    //     蛇行も途切れも断面の中で作れば、判定は直線のまま絵だけが生きる。
+    //     詳細は Beam.hlsl のヘッダー。
+    FBZZ_FIELD_RANGE(float, crackle, 0.45f, "Crackle", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("芯の途切れ。0 で滑らかな線、1 で焼き切れかけたフィラメント")
+    FBZZ_FIELD_RANGE(float, snake, 0.35f, "Snake", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("芯が帯の中で蛇行する幅。銃口側は自動で絞られ、着弾側ほど大きく振れる")
+    FBZZ_FIELD_RANGE(float, snakeFrequency, 9.0f, "Snake Frequency", 0.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, flicker, 0.22f, "Flicker", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("帯全体の明滅の深さ")
+    FBZZ_FIELD_RANGE(float, chargeBeads, 4.0f, "Charge Beads", 0.0f, 24.0f)
+    FBZZ_TOOLTIP("銃口から着弾点へ流れる電荷の粒の数。0 で出さない")
+    FBZZ_FIELD_RANGE(float, churnRate, 9.0f, "Churn Rate", 0.0f, 40.0f)
+    FBZZ_TOOLTIP("乱れが組み替わる速さ。上げるほど «高い電圧» に見える")
+    // 6.3 の「時間が資源」を絵でも読ませる。ゲージを見なくても線が荒れてくる。
+    FBZZ_FIELD_RANGE(float, lowBatteryUnrest, 0.5f, "Low Battery Unrest", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("バッテリーが減るほど乱れを増やす量。0 で残量に関わらず同じ線")
+    // 12.1 の「当たっている手応え」。塗れているフレームだけ線が張る。
+    FBZZ_FIELD_RANGE(float, contactBoost, 0.7f, "Contact Boost", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("線上に対象が居るあいだ、明るさと放電を増す量")
+
+    FBZZ_GROUP("Beam Arc")
+    // 帯の «外» を走る放電。断面の乱れだけでは «明るい線» の域を出ないので、
+    // 帯からはみ出す筋を重ねて «電気が漏れている» ところまで持っていく。
+    // 12.5 の敵どうしを結ぶエネルギーラインと同じ ElectricArcBundle で組む
+    // (同じ «電気» が銃から出ているように見せるため、実装を分けない)。
+    FBZZ_FIELD(bool, drawArc, true, "Draw Arc")
+    FBZZ_FIELD_RANGE_INT(int, arcStrands, 3, "Arc Strands", 1, 6)
+    FBZZ_FIELD_RANGE(float, arcAmplitude, 0.45f, "Arc Amplitude", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("10m 先を撃ったときに放電が帯から外れる幅 [m]。"
+                 "実際の振れ幅は線の長さに比例する (遠いほど画面上で小さくなるため)")
+    FBZZ_FIELD_RANGE(float, arcWidth, 0.05f, "Arc Width", 0.005f, 0.5f)
+    FBZZ_FIELD_RANGE(float, arcRate, 28.0f, "Arc Rate", 1.0f, 60.0f)
+    FBZZ_TOOLTIP("放電が組み替わる頻度 [Hz]。上げすぎると雑音の帯になる")
+    FBZZ_FIELD_RANGE(float, arcIntensity, 1.6f, "Arc Intensity", 0.0f, 8.0f)
+    // 帯へ «戻ってこない» 枝。稲妻が稲妻に見えるのは、本線から外れて途中で
+    // 消える筋があるからで、本線を何本束ねてもこれは出ない。
+    FBZZ_FIELD_RANGE_INT(int, forkCount, 2, "Forks", 0, 4)
+    FBZZ_TOOLTIP("線の途中から外れて消える枝の本数。0 で出さない")
+    FBZZ_FIELD_RANGE(float, forkLength, 0.9f, "Fork Length", 0.1f, 4.0f)
+    FBZZ_TOOLTIP("枝が本線から離れる長さ [m]")
+    FBZZ_FIELD(bool, drawImpactArc, true, "Draw Impact Arc")
+    FBZZ_TOOLTIP("着弾点で這う放電。地形に当たっているときだけ出る")
+    FBZZ_FIELD_RANGE(float, impactArcRadius, 0.55f, "Impact Arc Radius", 0.05f, 3.0f)
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD(bool, drawDebugBeam, false, "Draw Debug Beam")
@@ -141,6 +224,13 @@ private:
         /// 12.3 の 2 層。芯とグローで GameObject を分ける。
         EntityRef core;
         EntityRef glow;
+        /// 帯の外を走る放電と、着弾点で這う放電。
+        ElectricArcBundle arc;
+        ElectricArcBundle impactArc;
+        /// 本線から外れて消える枝。1 本ごとに根元と行き先が違うので束を分ける。
+        std::vector<ElectricArcBundle> forks;
+        /// 線上に対象が居た直後を 1 として減衰する。命中の «張り» を絵へ乗せる。
+        float contactPulse = 0.0f;
         /// 押している間の経過秒。tapSeconds 以下で離せばタップ = 起爆 (6.2)。
         float heldSeconds = 0.0f;
         bool  held        = false;
@@ -150,6 +240,10 @@ private:
         bool  pressEmitted = false;
         /// 空になった瞬間だけ音を出すための立ち上がり検出。
         bool  wasDepleted = false;
+        /// 満タンに戻った瞬間だけ音を出すための立ち上がり検出。
+        bool  wasFull = true;
+        /// 照射ループ音を銃へ流しているか。切り替えたフレームだけ銃へ伝える。
+        bool  loopPlaying = false;
         /// 今ビームを出しているか。消すのは状態が変わったフレームだけでよい。
         bool  beamVisible = false;
     };
@@ -163,10 +257,17 @@ private:
     /// 照射 1 フレームぶん。線に触れている対象すべてを塗る (6.2 の貫通)。
     /// contactSeconds はバッテリーから実際に引けた秒数。尽きかけたフレームは
     /// dt より短くなるので、残量がそのまま塗れた量になる。
-    void Sweep(Emitter& emitter, float contactSeconds);
+    void Sweep(Emitter& emitter, float contactSeconds, float dt);
     /// タップの一瞬の点付与 = 起爆 (6.2 / 7.9)。
     void Detonate(Emitter& emitter);
-    void PlayPaintFeedback(const PolarityResult& result);
+    /// emitted は今その音を出した側の極。塗り結果と極の両方で音を選ぶ。
+    void PlayPaintFeedback(const PolarityResult& result, Polarity emitted);
+    /// 照射中だけ鳴るループ音を、状態が変わったフレームだけ銃へ伝える。
+    ///
+    /// WHY プレイヤーではなく銃で鳴らすか: ループは主 voice を 1 本占有するため、
+    ///     左右同時に照射するとプレイヤーの AudioSource 1 つには載らない。
+    ///     銃はもともと左右に 1 つずつあるので、そこが正しい持ち主になる。
+    void UpdateBeamLoop(Emitter& emitter);
 
     [[nodiscard]] bool InputHeld(Polarity polarity) const;
     /// 銃が手にあって、抜き / 収めも終わっているか。
@@ -179,15 +280,44 @@ private:
     [[nodiscard]] PlayerAimComponent* Aim() const;
 
     // ── ビームの見た目 ──────────────────────────────────────────────────
+    /// 今フレームの «帯電の激しさ»。残量・命中・調整値を 1 度だけ束ねる。
+    ///
+    /// WHY 束ねるか: 芯・グロー・放電の 3 か所が同じ量を必要とする。各所で組むと、
+    ///     残量の効き方を変えたときに 1 か所だけ直し忘れて «芯だけ荒れる» が起きる。
+    struct Unrest {
+        float crackle = 0.0f;
+        float snake   = 0.0f;
+        float flicker = 0.0f;
+        float beads   = 0.0f;
+        /// 明るさと放電の強さの倍率。命中しているあいだ 1 を超える。
+        float energy  = 1.0f;
+    };
+
     void BuildBeam(Emitter& emitter);
-    /// 銃口から照準の先までへ 2 層の線を張る。
-    void ShowBeam(Emitter& emitter, const Vector3& from, const Vector3& to);
+    /// 銃口から照準の先までへ 2 層の線と放電を張る。
+    void ShowBeam(Emitter& emitter, const Vector3& from, const Vector3& to, float dt);
     void HideBeam(Emitter& emitter);
     void ReleaseBeam(Emitter& emitter);
     [[nodiscard]] GameObject* BuildBeamPart(const std::string& name, int order);
+    [[nodiscard]] Unrest UnrestOf(const Emitter& emitter) const;
     /// 1 層ぶんの線を今フレームの両端・太さ・色へ合わせる。
     void PlaceBeamLayer(const EntityRef& ref, const Vector3& from, const Vector3& to,
-                        float width, const Vector4& color);
+                        float width, const Vector4& color, bool isCore, const Unrest& unrest);
+    /// 断面と流れを .mat のシェーダーへ送る。
+    ///
+    /// WHY 共有 .mat ではなく MaterialInstance へ書くか: 左右のビームは同じ .mat を
+    ///     指しているので、共有アセットへ書くと ＋ の値が − のビームにも乗る。
+    ///     長さから決まる tiling は左右で必ず違うため、per-instance でなければ成立しない。
+    void PushBeamMaterial(const EntityRef& ref, bool isCore, float length,
+                          const Unrest& unrest);
+    /// 帯に沿って走る放電を今フレームの両端へ張り直す。
+    void UpdateBeamArc(Emitter& emitter, const Vector3& from, const Vector3& to,
+                       const Unrest& unrest, float dt);
+    /// 本線から外れて消える枝を張り直す。
+    void UpdateForks(Emitter& emitter, const Vector3& from, const Vector3& to,
+                     const Unrest& unrest, float dt);
+    /// 着弾点で這う放電。地形に当たっているあいだだけ出す。
+    void UpdateImpactArc(Emitter& emitter, const Unrest& unrest, float dt);
     [[nodiscard]] std::string BeamName(Polarity polarity, const char* layer) const;
 
     // ── 銃 ──────────────────────────────────────────────────────────────
@@ -258,6 +388,8 @@ inline void PolarityGunComponent::OnStart()
     m_minus.polarity = Polarity::Minus;
     m_plus.battery.Reset(tuning->batterySeconds);
     m_minus.battery.Reset(tuning->batterySeconds);
+    // 空撃ち・尽きた音はプレイヤー本人の位置で鳴る。減衰を掛ける相手が自分自身なので 2D。
+    se::EnsureSource(scene);
 
     BuildBeam(m_plus);
     BuildBeam(m_minus);
@@ -319,6 +451,9 @@ inline void PolarityGunComponent::TickEmitter(Emitter& emitter, float dt)
         // 立ち上がり検出も追従させる。ここを止めると、収納中に満タンへ戻ったのに
         // 抜いた瞬間だけ「尽きた音」が鳴る。
         emitter.wasDepleted = emitter.battery.depleted;
+        emitter.wasFull     = emitter.battery.Ratio(tuning->batterySeconds) >= kBatteryFullRatio;
+        // 収めた瞬間に照射が切れる。ループを止めないと畳んだ銃が鳴り続ける。
+        UpdateBeamLoop(emitter);
         HideBeam(emitter);
         return;
     }
@@ -335,19 +470,28 @@ inline void PolarityGunComponent::TickEmitter(Emitter& emitter, float dt)
     if (pressed) {
         emitter.pressEmitted = false;
         if (emitter.battery.CanEmit()) {
-            if (!sfxBeamStart.empty()) audio.PlayOneShot(sfxBeamStart);
+            // 12.2 が「赤と青を耳でも区別する」を求めているので、点火音は極ごとに分ける。
+            se::Play(audio, sfxBeamStart, se::BeamStart(emitter.polarity));
             // 銃側にも点火を伝える。スライドが動く代わりに発射口が開く。
             if (auto* weapon = WeaponAnim(emitter.polarity)) weapon->PlayFire();
             if (auto* player = m_controllerOverride
                 ? m_controllerOverride : scene.GetScript<PlayerControllerComponent>())
                 player->PlayFireAnimation(emitter.polarity == Polarity::Plus);
+            // WHY 空撃ちでは知らせないか: 出来事としての「攻撃を出した」は線が出たときだけ。
+            //     バッテリー切れの空撃ちまで含めると、撃てない間じゅう攻撃の顔になる。
+            if (auto* combat = CombatManagerComponent::Instance())
+                combat->Notify(scene.Self(), CharacterEvent::Attack);
         } else {
             // 空撃ちにも音を返す。無反応だと「入力が拾われていない」のか
             // 「バッテリーが空」なのか区別できず、6.3 のリズムを覚えられない。
-            if (!sfxEmpty.empty()) audio.PlayOneShot(sfxEmpty);
+            se::Play(audio, sfxEmpty, se::BatteryEmpty(emitter.polarity));
             if (auto* weapon = WeaponAnim(emitter.polarity)) weapon->PlayDry();
         }
     }
+
+    // 命中の «張り» は照射をやめた後も一瞬だけ残す。フレーム単位で立ち下げると、
+    // 縁を掠めた 1 フレームの取りこぼしのたびに線の明るさが痙攣する。
+    emitter.contactPulse = Max(emitter.contactPulse - dt * 5.0f, 0.0f);
 
     if (held) {
         // 6.3「非照射時に回復」。押している間は回復しないので、消費できた秒数が
@@ -356,7 +500,7 @@ inline void PolarityGunComponent::TickEmitter(Emitter& emitter, float dt)
         if (spent > 0.0f) {
             emitter.emitting     = true;
             emitter.pressEmitted = true;
-            Sweep(emitter, spent);
+            Sweep(emitter, spent, dt);
         } else {
             HideBeam(emitter);
         }
@@ -366,10 +510,18 @@ inline void PolarityGunComponent::TickEmitter(Emitter& emitter, float dt)
         HideBeam(emitter);
     }
 
+    UpdateBeamLoop(emitter);
+
     // 尽きた瞬間だけ鳴らす。空の間ずっと鳴らすと、音が状態ではなく背景になる。
-    if (emitter.battery.depleted && !emitter.wasDepleted && !sfxEmpty.empty())
-        audio.PlayOneShot(sfxEmpty);
+    if (emitter.battery.depleted && !emitter.wasDepleted)
+        se::Play(audio, sfxEmpty, se::BatteryEmpty(emitter.polarity));
     emitter.wasDepleted = emitter.battery.depleted;
+
+    // 満タンに戻った瞬間。6.3 は「時間が資源」だと言っているので、次の 1 本を
+    // 引き切れるようになったことは、ゲージを見ていなくても分かる必要がある。
+    const bool full = emitter.battery.Ratio(tuning->batterySeconds) >= kBatteryFullRatio;
+    if (full && !emitter.wasFull) se::Play(audio, se::BatteryFull(emitter.polarity));
+    emitter.wasFull = full;
 
     // タップは塗り時間に届かなくても点付与を確定させる (6.2)。
     // WHY 長押しの塗りと重ねて構わないか: 塗り切っていれば 7 章のルール 2 で
@@ -377,7 +529,7 @@ inline void PolarityGunComponent::TickEmitter(Emitter& emitter, float dt)
     if (tapped && emitter.pressEmitted) Detonate(emitter);
 }
 
-inline void PolarityGunComponent::Sweep(Emitter& emitter, float contactSeconds)
+inline void PolarityGunComponent::Sweep(Emitter& emitter, float contactSeconds, float dt)
 {
     auto* aim = Aim();
     if (!aim || !aim->HasAim()) {
@@ -392,13 +544,17 @@ inline void PolarityGunComponent::Sweep(Emitter& emitter, float contactSeconds)
         return;
     }
 
-    ShowBeam(emitter, MuzzlePosition(emitter.polarity), aim->AimPoint());
+    // 塗る前に立てる。線の «張り» は塗り切ったかどうかではなく、対象が線上に
+    // 居るかどうかで決まる (塗り切った後も当て続けている間は張っていてほしい)。
+    if (!aim->Contacts().empty()) emitter.contactPulse = 1.0f;
+
+    ShowBeam(emitter, MuzzlePosition(emitter.polarity), aim->AimPoint(), dt);
 
     // 6.2「貫通する。線上の敵すべてに判定が乗る」。手前で止めない。
     for (const BeamContact& contact : aim->Contacts()) {
         PolarityResult result{};
         if (contact.target->Paint(emitter.polarity, contactSeconds, result))
-            PlayPaintFeedback(result);
+            PlayPaintFeedback(result, emitter.polarity);
     }
 }
 
@@ -411,21 +567,58 @@ inline void PolarityGunComponent::Detonate(Emitter& emitter)
     auto* target = aim->CurrentPolarityTarget();
     if (!target) return;
 
-    PlayPaintFeedback(target->Apply(emitter.polarity));
+    // 起爆は「なぞり」ではなく 1 手の操作なので、塗り確定音とは別に打点の音を返す。
+    // これが無いと、7.9 の温存 → 起爆が長押しの一部に聞こえてしまう。
+    se::Play(audio, se::Tap(emitter.polarity));
+
+    // 画角を一瞬だけ広げる。7.9 の起爆はプレイヤーが仕込んだ結果が動き出す瞬間で、
+    // 音と塗り色だけでは「今それが起きた」ことが線の見た目に埋もれる。
+    // WHY カメラ揺れを使わないか: 揺れは受けた衝撃の表現で、盤面が動き出すのは
+    //     こちらが仕掛けた側の出来事。広がる画角の方が「解き放った」に近い。
+    if (auto* follow = CameraFollowManagerComponent::Instance())
+        follow->PunchFov(1.0f);
+
+    PlayPaintFeedback(target->Apply(emitter.polarity), emitter.polarity);
 }
 
-inline void PolarityGunComponent::PlayPaintFeedback(const PolarityResult& result)
+inline void PolarityGunComponent::PlayPaintFeedback(const PolarityResult& result,
+                                                    Polarity emitted)
 {
     // 12.4 は「中和・延長した瞬間にも明確なフィードバックを返す」を仕様として要求する。
     // 同じ音で済ませると、狙って中和したのか事故だったのかが耳で判別できない。
+    //
+    // WHY 付与と延長も分けるか: 素材が Paint_Confirm と Paint_Extend で別に入っている。
+    //     7 章のルールでは延長は「既に持っている極を伸ばした」= 新しく塗れてはいない。
+    //     同じ音にすると、なぞりで拾えたつもりの 1 体が実は延長だったことに気付けない。
     switch (result.change) {
     case PolarityChange::Neutralized:
-        if (!sfxNeutralize.empty()) audio.PlayOneShot(sfxNeutralize);
+        se::Play(audio, sfxNeutralize, se::kNeutralize);
         break;
     case PolarityChange::Applied:
-    case PolarityChange::Extended:
-        if (!sfxPaint.empty()) audio.PlayOneShot(sfxPaint);
+        se::Play(audio, sfxPaint, se::PaintConfirm(emitted));
         break;
+    case PolarityChange::Extended:
+        // 上書きが空なら延長専用の音へ。Inspector で指定されていればそれを優先する。
+        se::Play(audio, sfxPaint, se::kPaintExtend);
+        break;
+    }
+}
+
+inline void PolarityGunComponent::UpdateBeamLoop(Emitter& emitter)
+{
+    if (emitter.emitting == emitter.loopPlaying) return;
+    emitter.loopPlaying = emitter.emitting;
+
+    auto* weapon = WeaponAnim(emitter.polarity);
+    if (!weapon) return;
+
+    if (emitter.loopPlaying) {
+        weapon->SetBeamLoop(se::BeamLoop(emitter.polarity).First());
+    } else {
+        weapon->SetBeamLoop({});
+        // 止めた瞬間の減衰音。ループが無音になるだけだと、照射をやめたのか
+        // バッテリーが尽きたのか耳で区別できない。
+        se::Play(audio, se::BeamEnd(emitter.polarity));
     }
 }
 
@@ -448,6 +641,10 @@ inline void PolarityGunComponent::BuildBeam(Emitter& emitter)
     emitter.glow = glowWidth > 0.0f
         ? EntityRef{ BuildBeamPart(BeamName(emitter.polarity, "Glow"), 0)->GetID() }
         : EntityRef{};
+    // 放電の筋も BeamName と同じ «持ち主 + 極» の鍵で拾い直させる。鍵が無いと
+    // DLL リロードのたびに筋が増え、2 人目のプレイヤーが 1 人目の筋を奪う。
+    emitter.arc.SetKey(BeamName(emitter.polarity, "Arc"));
+    emitter.impactArc.SetKey(BeamName(emitter.polarity, "Tip"));
     emitter.beamVisible = true; // 直後の HideBeam に確実に畳ませる
     HideBeam(emitter);
 }
@@ -483,9 +680,284 @@ inline GameObject* PolarityGunComponent::BuildBeamPart(const std::string& name, 
     return existing;
 }
 
+// Beam.hlsl の MaterialConstants に対応する名前。.mat の [params] のキーであると同時に、
+// HLSL の cbuffer メンバー名でもある (MaterialInstance はシェーダーリフレクションで検証する)。
+inline constexpr MaterialPropertyId kBeamCoreWidthId  { "coreWidth" };
+inline constexpr MaterialPropertyId kBeamEdgeFalloffId{ "edgeFalloff" };
+inline constexpr MaterialPropertyId kBeamCoreBoostId  { "coreBoost" };
+inline constexpr MaterialPropertyId kBeamTilingId     { "tiling" };
+inline constexpr MaterialPropertyId kBeamScrollId     { "scroll" };
+inline constexpr MaterialPropertyId kBeamMuzzleFadeId { "muzzleFade" };
+inline constexpr MaterialPropertyId kBeamTipFadeId    { "tipFade" };
+
+inline constexpr MaterialPropertyId kBeamPhaseId    { "phase" };
+inline constexpr MaterialPropertyId kBeamArcAmpId   { "arcAmp" };
+inline constexpr MaterialPropertyId kBeamArcFreqId  { "arcFreq" };
+inline constexpr MaterialPropertyId kBeamCrackleId  { "crackle" };
+inline constexpr MaterialPropertyId kBeamFlickerId  { "flicker" };
+inline constexpr MaterialPropertyId kBeamBeadsId    { "beadDensity" };
+inline constexpr MaterialPropertyId kBeamBeadFallId { "beadFalloff" };
+
+// 芯層の断面。Inspector へ出していないのは、この 2 つを触ると «芯とグローの 2 層» という
+// 12.3 の構成そのものが崩れるため (芯を鈍らせるとグロー層と区別が付かなくなる)。
+// 線の太さと明るさは Beam / Beam Shape グループの側で振れる。
+inline constexpr float kBeamCoreEdgeFalloff = 2.0f;
+inline constexpr float kBeamCoreBoost       = 2.2f;
+inline constexpr float kBeamBeadFalloff     = 12.0f;
+
+// 位相と模様の送りを巻き取る周期。シェーダーの frac(sin(x * 12.9898)) は x が
+// 大きくなるほど精度を失い、放置すると乱れが縞へ潰れる (ElectricArc と同じ理由)。
+//
+// WHY 整数で巻くか: scroll は素材の uv と粒の位相へそのまま足される。どちらも
+//     周期 1 で繰り返すので、整数で巻き戻せば絵は 1 ドットも動かない。
+inline constexpr float kBeamPhaseWrap  = 128.0f;
+inline constexpr float kBeamScrollWrap = 1024.0f;
+
+inline PolarityGunComponent::Unrest
+PolarityGunComponent::UnrestOf(const Emitter& emitter) const
+{
+    // 残量が減るほど荒れる。1 = 満タン / 0 = 空。
+    const float drained = 1.0f - Clamp01(emitter.battery.Ratio(tuning->batterySeconds));
+    const float unrest  = drained * Clamp01(lowBatteryUnrest);
+    const float contact = Clamp01(emitter.contactPulse);
+
+    Unrest out;
+    // WHY 命中でも荒れを増やすか: 明るさだけを上げると «ビームが太くなった» に見えて、
+    //     何かに当たったのか自分が動いたのか区別が付かない。乱れが増えれば、
+    //     線の向こうで «噛んでいる» ことが線そのものから読める。
+    out.crackle = Clamp01(crackle + unrest * 0.45f + contact * 0.15f);
+    out.snake   = Clamp01(snake   + unrest * 0.35f + contact * 0.20f);
+    out.flicker = Clamp01(flicker + unrest * 0.55f);
+    out.beads   = Max(chargeBeads, 0.0f);
+    out.energy  = 1.0f + Max(contactBoost, 0.0f) * contact;
+    return out;
+}
+
+inline void PolarityGunComponent::PushBeamMaterial(const EntityRef& ref, bool isCore,
+                                                   float length, const Unrest& unrest)
+{
+    GameObject* object = ref.Resolve(scene);
+    if (!object) return;
+
+    const MaterialInstance instance = material.Instance(EntityRef{ object->GetID() });
+    // WHY HasProperty で先に門を閉めるか: MaterialComponent を張るのは LineRenderer 側
+    //     (Phase::LateUpdate) なので、照射を始めた最初の 1 フレームはまだ存在しない。
+    //     Set 系は空振りのたびに警告を出すため、そのまま呼ぶと Console が埋まる。
+    //     Beam.hlsl 以外の .mat を差した場合もここで静かに止まる。
+    if (!instance.HasProperty(kBeamCoreWidthId)) return;
+
+    // 芯層は «芯のある断面»、グロー層は «芯を持たない裾» にする。同じ形を 2 枚重ねると
+    // 太さが変わるだけで、12.3 が言う 2 層の役割分担にならない。
+    instance.SetFloat(kBeamCoreWidthId,   isCore ? coreSharpness : 0.0f);
+    instance.SetFloat(kBeamEdgeFalloffId, isCore ? kBeamCoreEdgeFalloff : glowSoftness);
+    instance.SetFloat(kBeamCoreBoostId,   isCore ? kBeamCoreBoost : 0.0f);
+
+    // 模様の密度は長さから決める。uv.x は常に [0,1] なので、タイルしないと
+    // 近くを撃つほど模様が間延びし、同じビームが距離で別物に見える。
+    instance.SetFloat(kBeamTilingId, Max(length, 0.0f) * Max(stripeDensity, 0.0f));
+    // WHY 位相を自前で積まないか: Time::time はヒットストップで止まる。止まった画面で
+    //     ビームだけ流れ続けると、時間が止まったことの方が嘘に見える。
+    instance.SetFloat(kBeamScrollId, std::fmod(-Time::time * scrollSpeed, kBeamScrollWrap));
+    instance.SetFloat(kBeamMuzzleFadeId, muzzleFade);
+    instance.SetFloat(kBeamTipFadeId,    tipFade);
+
+    // 帯電の乱れは別に門を構える。Beam.hlsl 由来ではない .mat (断面だけ同じ自作
+    // シェーダー) を差した場合、ここを通すと «毎フレーム × 2 層 × 7 項目» の
+    // «そんなプロパティは無い» で Console が埋まる。
+    if (!instance.HasProperty(kBeamPhaseId)) return;
+
+    // グロー層は «淡い裾» なので、同じ量で振ると画面全体が明滅する。
+    // 芯が暴れて裾がゆっくり呼吸する、という差が «芯とグローの 2 層» を保つ。
+    const float layer = isCore ? 1.0f : 0.35f;
+    instance.SetFloat(kBeamPhaseId,   std::fmod(Time::time * Max(churnRate, 0.0f),
+                                                kBeamPhaseWrap));
+    instance.SetFloat(kBeamArcAmpId,  unrest.snake * layer);
+    instance.SetFloat(kBeamArcFreqId, Max(snakeFrequency, 0.0f));
+    instance.SetFloat(kBeamCrackleId, unrest.crackle * layer);
+    instance.SetFloat(kBeamFlickerId, unrest.flicker * layer);
+    // 粒は芯だけに流す。裾にも流すと «光の玉が 2 重に走る» ので数が読めなくなる。
+    instance.SetFloat(kBeamBeadsId,    isCore ? unrest.beads : 0.0f);
+    instance.SetFloat(kBeamBeadFallId, kBeamBeadFalloff);
+}
+
+inline void PolarityGunComponent::UpdateBeamArc(Emitter& emitter, const Vector3& from,
+                                                const Vector3& to, const Unrest& unrest,
+                                                float dt)
+{
+    if (!drawArc || arcStrands <= 0) {
+        emitter.arc.Extinguish(*this);
+        return;
+    }
+
+    const float   length = (to - from).Length();
+    const Vector4 rail   = PolarityColor(emitter.polarity);
+
+    ElectricArcStyle style;
+    style.strandCount = arcStrands;
+    // 折れ点は長さから決める。40m の線を 24 点で折ると 1 区間 1.7m の «稲妻» になり、
+    // 近距離と遠距離で放電の細かさが別物に見える。
+    style.segments    = static_cast<int>(Clamp(length * 2.0f, 10.0f, 48.0f));
+    // WHY 振れ幅を長さに «比例» させるか:
+    //   放電が電気に見えるかは «線の長さに対して何割はみ出すか» で決まる。固定幅にすると、
+    //   12.5 のエネルギーライン (敵どうしは 5m で 0.5m = 1 割) と同じ値でも、40m 先を
+    //   撃ったビームでは 1% しか外れず «少しぼやけた直線» にしかならない。
+    //   10m を基準にして比例させれば、どの距離でも同じ «電気» に見える。
+    style.amplitude   = Max(arcAmplitude, 0.0f) * Clamp(length / 10.0f, 0.35f, 3.0f)
+                      * (0.7f + 0.3f * unrest.energy);
+    // 銃口は押さえが効き、着弾側で暴れる。Beam.hlsl の蛇行と同じ配分に揃える。
+    style.taperBias   = 0.75f;
+    style.width       = Max(arcWidth, 0.001f);
+    style.strikeRate  = Max(arcRate, 1.0f);
+    // 距離で消さない。6.2 の射程 (40m) まで届く線なので、ここで減衰させると
+    // 遠くを撃ったときだけ放電が消えて «別の武器» に見える。
+    style.strikeRange = 0.0f;
+    // 芯 (order 1) の上へ。放電が帯に隠れると重ねた意味が無い。
+    style.orderInLayer = 2;
+
+    style.intensity   = Max(arcIntensity, 0.0f) * unrest.energy;
+    style.breakup     = Clamp01(0.35f + unrest.crackle * 0.5f);
+    style.travel      = 9.0f;
+    style.coreTint    = 0.6f;
+    style.beadDensity = unrest.beads * 0.5f;
+    style.fromColor   = rail;
+    style.toColor     = rail;
+
+    emitter.arc.Update(*this, from, to, style, dt);
+}
+
+inline void PolarityGunComponent::UpdateForks(Emitter& emitter, const Vector3& from,
+                                              const Vector3& to, const Unrest& unrest,
+                                              float dt)
+{
+    // math::Clamp は float 版しか無い。本数を float 経由で丸めると境界で 1 本ぶれる。
+    const int wanted = drawArc ? std::clamp(forkCount, 0, 4) : 0;
+
+    // 減らしたぶんは畳む。消灯だけだと Inspector で 0 にしても筋が残り続ける。
+    while (static_cast<int>(emitter.forks.size()) > wanted) {
+        emitter.forks.back().Detach(*this);
+        emitter.forks.pop_back();
+    }
+    if (wanted <= 0) return;
+
+    const Vector3 delta  = to - from;
+    const float   length = delta.Length();
+    if (length <= EPSILON) return;
+    const Vector3 axis = delta * (1.0f / length);
+
+    // 軸に垂直な 2 軸。軸が真上に近いときだけ基準を前方へ倒す (外積が縮退するため)。
+    const Vector3 reference = Abs(axis.y) > 0.9f ? Vector3::FORWARD : Vector3::UP;
+    const Vector3 side = Vector3::Cross(axis, reference).Normalized();
+    const Vector3 up   = Vector3::Cross(side, axis);
+
+    const Vector4 rail   = PolarityColor(emitter.polarity);
+    const uint32_t stem  = emitter.polarity == Polarity::Plus ? 17u : 8191u;
+
+    for (int i = 0; i < wanted; ++i) {
+        const auto slot = static_cast<std::size_t>(i);
+        if (slot >= emitter.forks.size()) {
+            emitter.forks.emplace_back();
+            emitter.forks.back().SetKey(BeamName(emitter.polarity, "Fork")
+                                        + "_" + std::to_string(slot));
+        }
+
+        const uint32_t seed = stem + static_cast<uint32_t>(i) * 7919u;
+        // 根元は線の上を «滑る»。毎フレーム別の位置へ飛ぶと、枝ではなく
+        // «線のまわりで点滅する棒» に見える。
+        const float where = 0.15f + 0.75f * (ArcNoise(seed, Time::time * 1.7f) * 0.5f + 0.5f);
+        const Vector3 root = from + delta * where;
+
+        // 行き先は根元から外へ。線に沿う成分を少し混ぜて、進行方向へ寝かせる
+        // (垂直に生やすと «線から生えたトゲ» になり、電気に見えない)。
+        const float spin = Time::time * 4.3f + static_cast<float>(i) * 2.4f;
+        const Vector3 outward = (side * std::cos(spin) + up * std::sin(spin)).Normalized();
+        const float   reach   = Max(forkLength, 0.0f)
+                              * (0.45f + 0.55f * (ArcNoise(seed + 31u, Time::time * 3.1f)
+                                                  * 0.5f + 0.5f));
+        const Vector3 tip = root + (outward * 0.85f + axis * 0.35f) * reach;
+
+        ElectricArcStyle style;
+        style.strandCount = 1;
+        style.segments    = 10;
+        style.amplitude   = reach * 0.35f;
+        // 根元は本線に刺さっていてほしいので、暴れるのは先端側。
+        style.taperBias   = 0.7f;
+        style.width       = Max(arcWidth, 0.001f) * 0.7f;
+        // 本線より速く組み替える。枝は «一瞬走って消える» ものなので、本線と同じ
+        // 頻度だと «常時生えている» ように見える。
+        style.strikeRate  = Max(arcRate, 1.0f) * 1.6f;
+        style.strikeRange = 0.0f;
+        style.orderInLayer = 2;
+        style.intensity   = Max(arcIntensity, 0.0f) * 0.75f * unrest.energy;
+        style.breakup     = 0.8f;
+        style.travel      = 14.0f;
+        style.coreTint    = 0.7f;
+        style.fromColor   = rail;
+        style.toColor     = rail;
+
+        emitter.forks[slot].Update(*this, root, tip, style, dt);
+    }
+}
+
+inline void PolarityGunComponent::UpdateImpactArc(Emitter& emitter, const Unrest& unrest,
+                                                  float dt)
+{
+    auto* aim = Aim();
+    // 敵に当たっている間は出さない。敵は動き続けるので、体の «表面» に沿わせられず
+    // 放電が体を突き抜ける。敵側の反応は 12.4 の明滅と付与の演出が既に持っている。
+    if (!drawImpactArc || !aim || !aim->HitGeometry()) {
+        emitter.impactArc.Extinguish(*this);
+        return;
+    }
+
+    const Vector3 point  = aim->AimPoint();
+    const Vector3 normal = aim->SurfaceNormal().NormalizedOr(Vector3::UP);
+    // 面に沿う 2 軸。法線が真上に近いときだけ基準を前方へ倒す (外積が縮退するため)。
+    const Vector3 reference = Abs(normal.y) > 0.9f ? Vector3::FORWARD : Vector3::UP;
+    const Vector3 tangent   = Vector3::Cross(normal, reference).Normalized();
+    const Vector3 bitangent = Vector3::Cross(normal, tangent);
+
+    // 這う先を «ゆっくり回しながら伸び縮みさせる»。毎フレーム別の方向へ飛ばすと
+    // 放電ではなく点滅する星に見える。回転と長さを連続にすると、面の上を
+    // 探るように這う。極ごとに位相をずらして左右の放電を別物にする。
+    const bool     plus  = emitter.polarity == Polarity::Plus;
+    const uint32_t seed  = plus ? 1u : 977u;
+    const float    spin  = Time::time * 6.7f + (plus ? 0.0f : 2.1f);
+    const float    wave  = ArcNoise(seed, Time::time * 5.0f) * 0.5f + 0.5f; // [0,1]
+    const float    reach = 0.45f + 0.55f * wave;
+    const Vector3 spoke = (tangent * std::cos(spin) + bitangent * std::sin(spin))
+                        * (Max(impactArcRadius, 0.0f) * reach);
+    // 面から少しだけ浮かせる。真上に置くと Z ファイトで放電が縞に割れる。
+    const Vector3 lift = normal * 0.04f;
+
+    const Vector4 rail = PolarityColor(emitter.polarity);
+
+    ElectricArcStyle style;
+    style.strandCount  = 2;
+    style.segments     = 12;
+    style.amplitude    = Max(impactArcRadius, 0.0f) * 0.35f;
+    // 着弾点は «根» なので振れを 0 に保ち、逃げていく先で暴れさせる。
+    style.taperBias    = 0.85f;
+    style.width        = Max(arcWidth, 0.001f) * 0.8f;
+    style.strikeRate   = Max(arcRate, 1.0f) * 1.4f;
+    style.strikeRange  = 0.0f;
+    style.orderInLayer = 2;
+    style.intensity    = Max(arcIntensity, 0.0f) * 1.2f * unrest.energy;
+    style.breakup      = 0.7f;
+    style.travel       = 12.0f;
+    style.coreTint     = 0.5f;
+    style.fromColor    = rail;
+    style.toColor      = rail;
+    // 帯の放電より芯を落ち着かせる。着弾点は爆発の «核» ではなく «焦げる» 側なので、
+    // ここまで白熱させると当たった点が線より明るくなり、線の先が読めなくなる。
+    style.coreColor    = { 5.0f, 4.6f, 4.4f, 1.0f };
+
+    emitter.impactArc.Update(*this, point + lift, point + spoke + lift, style, dt);
+}
+
 inline void PolarityGunComponent::PlaceBeamLayer(const EntityRef& ref, const Vector3& from,
                                                  const Vector3& to, float width,
-                                                 const Vector4& color)
+                                                 const Vector4& color, bool isCore,
+                                                 const Unrest& unrest)
 {
     GameObject* object = ref.Resolve(scene);
     if (!object) return;
@@ -504,10 +976,12 @@ inline void PolarityGunComponent::PlaceBeamLayer(const EntityRef& ref, const Vec
     line->startColor = color;
     line->endColor   = color;
     line->enabled    = true;
+
+    PushBeamMaterial(ref, isCore, (to - from).Length(), unrest);
 }
 
 inline void PolarityGunComponent::ShowBeam(Emitter& emitter, const Vector3& from,
-                                           const Vector3& to)
+                                           const Vector3& to, float dt)
 {
     if ((to - from).LengthSq() <= EPSILON) {
         HideBeam(emitter);
@@ -515,14 +989,22 @@ inline void PolarityGunComponent::ShowBeam(Emitter& emitter, const Vector3& from
     }
     emitter.beamVisible = true;
 
-    const Vector4 base = PolarityColor(emitter.polarity);
+    const Unrest  unrest = UnrestOf(emitter);
+    const Vector4 base   = PolarityColor(emitter.polarity);
+    // 12.2 の «明るさより彩度» は保つ。命中で増やすのは倍率だけで、白は混ぜない。
+    const float   core   = coreBrightness * unrest.energy;
+    const float   halo   = glowBrightness * unrest.energy;
+
     PlaceBeamLayer(emitter.core, from, to, coreWidth,
-                   { base.x * coreBrightness, base.y * coreBrightness,
-                     base.z * coreBrightness, 1.0f });
+                   { base.x * core, base.y * core, base.z * core, 1.0f }, true, unrest);
     if (glowWidth > 0.0f)
         PlaceBeamLayer(emitter.glow, from, to, glowWidth,
-                       { base.x * glowBrightness, base.y * glowBrightness,
-                         base.z * glowBrightness, glowOpacity });
+                       { base.x * halo, base.y * halo, base.z * halo, glowOpacity },
+                       false, unrest);
+
+    UpdateBeamArc(emitter, from, to, unrest, dt);
+    UpdateForks(emitter, from, to, unrest, dt);
+    UpdateImpactArc(emitter, unrest, dt);
 
     if (drawDebugBeam)
         debug.DrawLine(from, to, base);
@@ -543,6 +1025,9 @@ inline void PolarityGunComponent::HideBeam(Emitter& emitter)
     };
     disable(emitter.core);
     disable(emitter.glow);
+    emitter.arc.Extinguish(*this);
+    emitter.impactArc.Extinguish(*this);
+    for (ElectricArcBundle& fork : emitter.forks) fork.Extinguish(*this);
 }
 
 inline void PolarityGunComponent::ReleaseBeam(Emitter& emitter)
@@ -550,6 +1035,10 @@ inline void PolarityGunComponent::ReleaseBeam(Emitter& emitter)
     // ルートに置いた以上、プレイヤーと一緒には消えない。持ち主が畳む。
     if (GameObject* core = emitter.core.Resolve(scene)) scene.Destroy(*core);
     if (GameObject* glow = emitter.glow.Resolve(scene)) scene.Destroy(*glow);
+    emitter.arc.Detach(*this);
+    emitter.impactArc.Detach(*this);
+    for (ElectricArcBundle& fork : emitter.forks) fork.Detach(*this);
+    emitter.forks.clear();
     emitter.core = {};
     emitter.glow = {};
 }

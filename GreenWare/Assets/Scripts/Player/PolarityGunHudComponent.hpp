@@ -18,6 +18,12 @@
 ///   ゲージの長さを読んでいる余裕はない。空にして再点火待ちの間だけ暗く沈め、
 ///   撃てるようになった瞬間に色が立って一度光る、という段差を足す。
 ///   「もう線を引き始めてよいか」を、視線を外さずに読めるようにするため。
+///
+/// WHY 編集中も動かすか (FBZZ_EXECUTE_ALWAYS):
+///   ゲージの見え方は位置と大きさだけでは決まらず、極の色・明るさ・電池の刻みが
+///   揃って初めて読める。Play を押さないと何も出ないと、配置を 1 mm 動かすたびに
+///   Play → 確認 → Stop を往復することになり、Stop でシーンが復元されるぶん
+///   「今見ている絵」と「保存される値」もずれる。編集中に完成形を出す。
 #pragma once
 
 #include <Engine/Scene/Components/UIImage.hpp>
@@ -38,6 +44,7 @@ namespace sandbox {
 
 class PolarityGunHudComponent : public Script {
     FBZZ_SCRIPT(PolarityGunHudComponent)
+    FBZZ_EXECUTE_ALWAYS()
 
 public:
     // 未設定なら名前で拾う。シーンを組み直しても既定の構成なら動く。
@@ -101,10 +108,44 @@ public:
     FBZZ_TOOLTIP("下地は極の色を薄く混ぜる。どちら側のゲージかが空でも読める")
     FBZZ_FIELD_RANGE(float, backgroundTint, 0.12f, "Polarity Tint", 0.0f, 1.0f)
 
+    // 編集中に流し込む値。Play では PlayerComponent が同じ場所へ入るので使われない。
+    //
+    // WHY PlayerComponent を読まないか: 編集中は PlayerComponent の初期化が走らず、
+    //     必須 fzdata を束ねる前の状態で残っている。その BatteryOf() は未設定の
+    //     tuning を辿るため、読んだ瞬間に落ちる。値の出所を編集中だけ差し替える。
+    FBZZ_GROUP("Edit Mode Preview")
+    FBZZ_FIELD_RANGE(float, previewCharge, 0.62f, "Charge", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("編集中に出す残量。満タンと空だけでなく途中も確かめられるよう既定は半端な値")
+    FBZZ_FIELD(bool, previewReady, true, "Ready")
+    FBZZ_TOOLTIP("撃てる状態として出す。切ると再点火待ちの沈んだ見え方になる")
+    FBZZ_FIELD(bool, previewEmitting, false, "Emitting")
+    FBZZ_FIELD(bool, previewDrawn, true, "Weapons Drawn")
+    FBZZ_TOOLTIP("切ると収納中の扱いになり、Holstered Alpha のとおり消える")
+    // WHY 既定で動かさないか: 呼吸や発光を編集中も回すと、ゲージが毎フレーム
+    //     別の色を書き込み、シーンが延々と変化し続ける (未保存マークが常時点灯する)。
+    //     止めておけば 1 度書いた後は同じ値に落ち着く。呼吸そのものを調整する
+    //     ときだけ入れる。
+    FBZZ_FIELD(bool, previewAnimate, false, "Animate")
+    FBZZ_TOOLTIP("編集中も立ち上がりの発光・呼吸・出し入れのフェードを動かす")
+
     void OnStart() override;
     void OnLateUpdate() override;
 
 private:
+    /// ゲージ 1 本を描くのに要る状態。Play は PlayerComponent、編集中は preview から作る。
+    ///
+    /// WHY PlayerComponent を直接渡さないか: 値の出所が 2 つになっても描き方は同じ。
+    ///     間に 1 枚挟むと、描画側は「どちらから来た値か」を一切知らずに済む。
+    struct SideState {
+        float charge   = 1.0f;
+        bool  ready    = true;
+        bool  emitting = false;
+        bool  drawn    = true;
+        /// 時間で動く要素 (立ち上がりの発光・呼吸・出し入れのフェード) を使わず、
+        /// 落ち着いた最終形だけを出す。
+        bool  settled  = false;
+    };
+
     /// 片側ぶんの参照。左右で同じ処理を 2 度書かないためにまとめる。
     struct Side {
         EntityRef fill;
@@ -128,7 +169,9 @@ private:
     void BindSide(Side& side, const Ref<GameObject>& fillRef, const char* fillName,
                   const Ref<GameObject>& backgroundRef, const char* backgroundName,
                   const Ref<GameObject>& labelRef, const char* labelName);
-    void RefreshSide(Side& side, Polarity polarity, const PlayerComponent& player, float dt);
+    [[nodiscard]] SideState StateOf(const PlayerComponent& player, Polarity polarity) const;
+    [[nodiscard]] SideState PreviewState() const;
+    void RefreshSide(Side& side, Polarity polarity, const SideState& state, float dt);
 
     Side m_left;
     Side m_right;
@@ -170,7 +213,9 @@ inline void PolarityGunHudComponent::BindSide(
 
 inline void PolarityGunHudComponent::OnStart()
 {
-    if (!scene.GetScript<PlayerComponent>()) {
+    // WHY 編集中は PlayerComponent が無くても続けるか: 出所が無いのは値だけで、
+    //     ゲージの組み立て自体は進められる。ここで抜けると編集中は何も出ないままになる。
+    if (app.IsPlaying() && !scene.GetScript<PlayerComponent>()) {
         debug.LogError("PolarityGunHudComponent requires PlayerComponent on the same object.");
         return;
     }
@@ -192,42 +237,70 @@ inline void PolarityGunHudComponent::OnStart()
     ui.SetText(m_right.label.Resolve(scene), PolaritySymbol(Polarity::Plus));
 }
 
+inline PolarityGunHudComponent::SideState
+PolarityGunHudComponent::StateOf(const PlayerComponent& player, Polarity polarity) const
+{
+    SideState state;
+    state.charge   = player.BatteryOf(polarity);
+    state.ready    = player.CanEmit(polarity);
+    state.emitting = player.IsEmitting(polarity);
+    state.drawn    = player.AreWeaponsDrawn();
+    return state;
+}
+
+inline PolarityGunHudComponent::SideState PolarityGunHudComponent::PreviewState() const
+{
+    SideState state;
+    state.charge   = previewCharge;
+    state.ready    = previewReady;
+    state.emitting = previewEmitting;
+    state.drawn    = previewDrawn;
+    state.settled  = !previewAnimate;
+    return state;
+}
+
 inline void PolarityGunHudComponent::RefreshSide(Side& side, Polarity polarity,
-                                                 const PlayerComponent& player, float dt)
+                                                 const SideState& state, float dt)
 {
     GameObject* fill = side.fill.Resolve(scene);
     if (!fill) return;
 
-    const float charge   = Clamp01(player.BatteryOf(polarity));
-    const bool  ready    = player.CanEmit(polarity);
-    const bool  emitting = player.IsEmitting(polarity);
-    const bool  drawn    = player.AreWeaponsDrawn();
+    const float charge = Clamp01(state.charge);
 
     // 光らせるのは立ち上がりだけ。撃てる間ずっと光らせると、光っていることが
     // 状態ではなく背景になり、次に撃てるようになった瞬間が見えなくなる。
-    if (ready && !side.wasReady)
-        side.flashRemaining = std::max(readyFlashSeconds, 0.0f);
-    side.wasReady = ready;
-    side.flashRemaining = std::max(0.0f, side.flashRemaining - dt);
+    if (state.settled) {
+        side.wasReady       = state.ready;
+        side.flashRemaining = 0.0f;
+    } else {
+        if (state.ready && !side.wasReady)
+            side.flashRemaining = std::max(readyFlashSeconds, 0.0f);
+        side.wasReady = state.ready;
+        side.flashRemaining = std::max(0.0f, side.flashRemaining - dt);
+    }
 
     // 撃てる間は明るく、空にして再点火を待つ間は暗い。残量そのものはゲージの
     // 長さが言うので、明るさは「今引き始められるか」の 1 点だけに使う。
-    float brightness = ready ? 1.0f : Lerp(Clamp01(chargingBrightness), 1.0f, charge);
+    float brightness = state.ready ? 1.0f : Lerp(Clamp01(chargingBrightness), 1.0f, charge);
     if (readyFlashSeconds > 0.0f && side.flashRemaining > 0.0f) {
         const float falloff = Clamp01(side.flashRemaining / readyFlashSeconds);
         brightness += readyFlashBoost * falloff * falloff;
     }
     // 照射中は呼吸を止める。減っていくゲージの上で明るさまで揺れると、
     // 残量が減っているのか呼吸で沈んだだけなのかが読めない。
-    if (ready && !emitting && readyPulseHz > 0.0f)
+    if (!state.settled && state.ready && !state.emitting && readyPulseHz > 0.0f)
         brightness += std::sin(Time::unscaledTime * readyPulseHz * TWO_PI) * readyPulseDepth;
     // 呼吸で下振れした分が負へ回ると色が反転する。下だけ止める (上は光らせたい)。
     brightness = Max(brightness, 0.0f);
 
     // 収納中は「暗い」ではなく「無い」。出す情報が無いので消す。
-    const float target = drawn ? 1.0f : Clamp01(holsteredAlpha);
-    const float fade = 1.0f - std::exp(-Max(holsterFadeSpeed, 0.0f) * dt);
-    side.presence += (target - side.presence) * fade;
+    const float target = state.drawn ? 1.0f : Clamp01(holsteredAlpha);
+    if (state.settled) {
+        side.presence = target;
+    } else {
+        const float fade = 1.0f - std::exp(-Max(holsterFadeSpeed, 0.0f) * dt);
+        side.presence += (target - side.presence) * fade;
+    }
     const float presence = Clamp01(side.presence);
 
     const Vector4 base = PolarityColor(polarity);
@@ -271,7 +344,7 @@ inline void PolarityGunHudComponent::RefreshSide(Side& side, Polarity polarity,
     // 「溜まっているのに撃てない」が読めないので、状態そのものを送る。
     if (!materialDepletedParam.empty())
         ui.SetMaterialFloat(fill, materialDepletedParam,
-                            (!ready && charge > 0.0f) ? 1.0f : 0.0f);
+                            (!state.ready && charge > 0.0f) ? 1.0f : 0.0f);
 
     // 下地も一緒に消す。溝だけ残ると「入るはずの物が入っていない」に見える。
     if (GameObject* background = side.background.Resolve(scene)) {
@@ -284,16 +357,25 @@ inline void PolarityGunHudComponent::RefreshSide(Side& side, Polarity polarity,
 
 inline void PolarityGunHudComponent::OnLateUpdate()
 {
+    // 光りと呼吸は実時間で進める。ヒットストップ中に固まると、止めが解けた瞬間に
+    // 撃てるようになったのか、止まっている間に満ちていたのかが分からなくなる。
+    const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
+
+    // 編集中は PlayerComponent へ一切触らない。初期化前の tuning を辿って落ちる。
+    if (app.IsEditMode()) {
+        const SideState preview = PreviewState();
+        RefreshSide(m_left, Polarity::Minus, preview, dt);
+        RefreshSide(m_right, Polarity::Plus, preview, dt);
+        return;
+    }
+
     const auto* player = scene.GetScript<PlayerComponent>();
     // WHY enabled を見るか: PlayerComponent は必須 fzdata が無いと自分を無効化する。
     //     その状態の BatteryOf() は未設定の tuning を辿るため、読んではいけない。
     if (!player || !player->enabled) return;
 
-    // 光りと呼吸は実時間で進める。ヒットストップ中に固まると、止めが解けた瞬間に
-    // 撃てるようになったのか、止まっている間に満ちていたのかが分からなくなる。
-    const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
-    RefreshSide(m_left, Polarity::Minus, *player, dt);
-    RefreshSide(m_right, Polarity::Plus, *player, dt);
+    RefreshSide(m_left, Polarity::Minus, StateOf(*player, Polarity::Minus), dt);
+    RefreshSide(m_right, Polarity::Plus, StateOf(*player, Polarity::Plus), dt);
 }
 
 } // namespace sandbox

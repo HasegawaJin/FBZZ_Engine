@@ -18,6 +18,7 @@
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/IDamageable.hpp>
 #include <Scripts/Data/PlayerTuning.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Player/AimMarkerComponent.hpp>
@@ -36,8 +37,8 @@ using namespace fbzz::scene;
 
 namespace sandbox {
 
-class PlayerComponent : public Script {
-    FBZZ_SCRIPT(PlayerComponent)
+class PlayerComponent : public Script, public IDamageable {
+    FBZZ_SCRIPT_DERIVED(PlayerComponent, Script, IDamageable)
 
     FBZZ_REQUIRE_COMPONENT(CharacterControllerComponent, RigidBodyComponent)
     FBZZ_OPTIONAL_COMPONENT(AnimatorComponent, IKSolverComponent, AudioSourceComponent)
@@ -47,10 +48,16 @@ public:
     FBZZ_REQUIRED_ASSET(PlayerTuning, tuning, "Player Tuning")
     FBZZ_REQUIRED_ASSET(PolarityTuning, polarityTuning, "Polarity Tuning")
 
+    // ── IDamageable ─────────────────────────────────────────────────────────
+    // 敵も樽もプレイヤーも同じ入口で殴れるようにする。CombatManager が
+    // 「誰に何点入れたか」を 1 本の経路で記録できるのはこれによる。
+    bool ApplyDamage(int amount) override { return m_health.TakeDamage(amount); }
+    [[nodiscard]] int  CurrentHealth() const override { return m_health.Current(); }
+    [[nodiscard]] int  MaxHealth()     const override { return m_health.MaxHealth(); }
+    [[nodiscard]] bool IsAlive()       const override { return m_health.IsAlive(); }
+
     // 外部システムは個別モジュールを探さず、Player の公開 API だけを使う。
     [[nodiscard]] int Current() const { return m_health.Current(); }
-    [[nodiscard]] int MaxHealth() const { return m_health.MaxHealth(); }
-    [[nodiscard]] bool IsAlive() const { return m_health.IsAlive(); }
     [[nodiscard]] float NormalizedHealth() const { return m_health.Normalized(); }
     [[nodiscard]] bool TakeDamage(int amount) { return m_health.TakeDamage(amount); }
     void Heal(int amount) { m_health.Heal(amount); }

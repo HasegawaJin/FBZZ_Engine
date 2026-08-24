@@ -17,6 +17,7 @@
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Game/GameSettingsComponent.hpp>
 #include <Scripts/Game/TimeManagerComponent.hpp>
 #include <algorithm>
 
@@ -86,6 +87,11 @@ inline void HitstopManagerComponent::Hit(float strength01)
 
 inline void HitstopManagerComponent::Request(float seconds, float scale)
 {
+    // Option の「ヒットストップ」。長さを縮める形で効かせる。
+    // WHY 深さ (scale) ではなく長さか: 深さを浅くすると「止まったのにすぐ動く」
+    //     半端な引っ掛かりになる。短くすれば 0 で完全に無くなり、途中の値も
+    //     「軽く止まる」として素直に読める。
+    seconds *= GameSettingsComponent::HitstopScale();
     if (seconds <= 0.0f) return;
 
     // 強い方の深さと長い方の残りを採る。足し合わせると弱い衝突の重なりで長時間止まる。

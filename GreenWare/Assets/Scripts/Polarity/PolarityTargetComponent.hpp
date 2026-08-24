@@ -15,7 +15,10 @@
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Game/VfxManagerComponent.hpp>
+#include <Scripts/Utils/GlowMaterial.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <cmath>
 
 using namespace fbzz::scene;
@@ -28,6 +31,12 @@ namespace sandbox {
 // WHY 秒数を直接持たせないか: 各インスタンスに秒数を書けるようにすると、
 //     同じノーマルスライムでも配置ごとに値がばらつき、7.7 の制約を
 //     PolarityTuning 側で検算できなくなる。種別だけを選ばせ、値は共有アセットから引く。
+// 残りがこの秒数を切ったら 1 度だけ予告音を鳴らす。
+// WHY 割合ではなく秒か: 種別で持続時間が違うので割合にすると、柱は 3 秒前・
+//     ノーマルは 0.8 秒前になり、同じ音が別の意味になる。「間に合うか」の感覚は
+//     残り秒数そのものなので、こちらを固定する。
+inline constexpr float kExpiryWarnSeconds = 1.0f;
+
 enum class PolarityClass : int {
     NormalSlime  = 0,
     ShooterSlime = 1,
@@ -40,14 +49,23 @@ class PolarityTargetComponent : public Script {
 
     // 発光色の駆動に MaterialInstance を使うため、スロットを持つ Material が要る。
     // 無いと極性が乗っても見た目が一切変わらず、12.4「残り時間の可視化は仕様」が崩れる。
-    FBZZ_REQUIRE_COMPONENT(MaterialComponent)
+    //
+    // WHY REQUIRE ではなく OPTIONAL か: emissiveTargets で子オブジェクトを指した場合、
+    //     Material は自分ではなくそちらに付く。マテリアル単位でメッシュを分けた敵
+    //     (Mite / Serpent / Roller) では制御スクリプトがルート・発光メッシュが子、という
+    //     構成が正しいのに、自分に必須と宣言すると Inspector が永久に不足を警告する。
+    //     解決できなかった場合は OnStart が実行時エラーとして報告する。
+    FBZZ_OPTIONAL_COMPONENT(MaterialComponent)
 
 public:
     FBZZ_REQUIRED_ASSET(PolarityTuning, tuning, "Tuning")
     FBZZ_TOOLTIP("持続時間と明滅の共有調整値。未割り当てでは動作を開始しない")
 
+    // 表示名に 8 章の敵名を併記する。列挙子はスライム時代の名前のままだが、
+    // 18.4 で敵 3 種が Mite / Serpent / Roller に確定しているので、Inspector で
+    // 「Serpent に Shooter Slime を選ぶ」という読み替えを毎回させない。
     FBZZ_FIELD_ENUM(PolarityClass, polarityClass, PolarityClass::NormalSlime, "Class",
-                    "Normal Slime", "Shooter Slime", "Heavy Slime", "Pillar")
+                    "Normal / Mite", "Shooter / Serpent", "Heavy / Roller", "Pillar / Core")
     FBZZ_TOOLTIP("7.2 の持続時間テーブルのどれを使うか")
 
     // 引力で動かない側 (7.3)。柱とヘビースライムが該当する。
@@ -58,6 +76,15 @@ public:
     // 発光を書き込む Material スロット。SkinnedMeshRenderer は 1 GameObject で
     // モデル全体を描くため、光らせたいサブメッシュを番号で指す。
     FBZZ_FIELD_RANGE_INT(int, emissiveSlot, 0, "Emissive Slot", 0, 15)
+
+    // 発光を書き込む GameObject。空なら自分自身の Material を使う (従来動作)。
+    //
+    // WHY 複数指定できるようにするか: 敵はマテリアル単位でメッシュを分けてあり、
+    //     コア (M_E_Core_*) とリング (M_E_Ring_*) が別の GameObject になっている。
+    //     8 章はこの 2 つが «同時に同じ色へ変わる» ことを極の読み取り記号としているので、
+    //     どちらか一方しか光らせられないと、12.2 の «色が意味を持つ» が半分しか成立しない。
+    FBZZ_REF_LIST_FIELD(GameObject, emissiveTargets, "Emissive Targets")
+    FBZZ_TOOLTIP("極性色を書き込む発光メッシュ。空なら自分自身。コアとリングを両方指定する")
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(float, debugRemaining, 0.0f, "Remaining")
@@ -103,6 +130,10 @@ public:
 
 private:
     void ApplyVisual();
+    /// 発光を書き込める Material が 1 つでも解決できるか。
+    [[nodiscard]] bool HasEmissiveTarget() const;
+    /// 極が «変わった» ときだけ単発 VFX を鳴らす。延長では何も出さない。
+    void PlayChangeVfx(const PolarityResult& result);
     // 塗り進捗を捨てる。塗り切った / 中断した / 極が変わった、のいずれでも呼ぶ。
     void ResetPaint();
     [[nodiscard]] float PaintSeconds() const;
@@ -116,6 +147,8 @@ private:
     // なぞり塗りの進捗 0..1 と、それを塗っている極。
     Polarity m_paintPolarity = Polarity::None;
     float    m_paintProgress = 0.0f;
+    // 切れる予告をこの帯電で 1 度だけ鳴らすためのラッチ。
+    bool     m_warnedExpiry = false;
     // 今フレーム照射に触れられたか。OnUpdate が読んだ直後に倒す。
     //
     // WHY フラグで持つか: 照射側と対象側はどちらも Script フェーズで回り、順序は
@@ -127,13 +160,6 @@ private:
 FBZZ_REFLECT(PolarityTargetComponent)
 
 // ── 実装 (inline) ─────────────────────────────────────────────────────────────
-
-// Material プロパティ名。AssetBrowser が生成する .mat テンプレートの
-// [params] セクションのキーと一致させる。
-// MaterialInstance は HLSL リフレクション上の変数名を検証するため camelCase を使う。
-// .mat 内の別名ではなくシェーダー変数へ合わせないと、警告だけ出て発光が更新されない。
-inline constexpr MaterialPropertyId kEmissiveColorId{ "emissiveColor" };
-inline constexpr MaterialPropertyId kEmissiveScaleId{ "emissiveScale" };
 
 inline float PolarityTargetComponent::BaseDuration() const
 {
@@ -203,11 +229,18 @@ inline PolarityResult PolarityTargetComponent::Apply(Polarity incoming)
     // 適用後の色の上に「これから塗る色」が重なって、どちらが結果か読めなくなる。
     ResetPaint();
 
+    // 残り時間が動くので、予告はこの帯電に対して 1 からやり直す。
+    m_warnedExpiry = false;
+
     switch (result.change) {
     case PolarityChange::Applied:
         m_polarity   = result.polarity;
         m_chargeBase = BaseDuration();
         m_remaining  = m_chargeBase;
+        // WHY 銃側の確定音と重ねるか: 銃の音は「塗れた」という手元の応答で、
+        //     こちらは「この個体が帯びた」という盤面の出来事。前者は 2D、後者は
+        //     その敵の位置から鳴るので、どこに乗ったかが定位で分かる。
+        se::Play(audio, se::kPolarityInfect);
         break;
 
     case PolarityChange::Extended: {
@@ -229,8 +262,29 @@ inline PolarityResult PolarityTargetComponent::Apply(Polarity incoming)
         break;
     }
 
+    PlayChangeVfx(result);
     ApplyVisual();
     return result;
+}
+
+// 12.1 の「着弾点から広がる帯電エフェクト」と、12.4 が仕様として要求する中和の反応。
+//
+// WHY 延長では何も出さないか:
+//   延長は既に帯びている極の残り時間が伸びただけで、盤面の構成は変わらない。付与と
+//   同じ絵を返すと、なぞりの途中で «また 1 体増えた» と読み違え、起爆したときの
+//   コンボ数が数えていたものと合わなくなる。延長の手応えは 12.4 の明滅と
+//   銃側の Paint_Extend が既に持っている。
+inline void PolarityTargetComponent::PlayChangeVfx(const PolarityResult& result)
+{
+    auto* vfx = VfxManagerComponent::Instance();
+    GameObject* self = scene.Self();
+    if (!vfx || !self) return;
+
+    switch (result.change) {
+    case PolarityChange::Applied:     vfx->PlayCharge(*self, result.polarity); break;
+    case PolarityChange::Neutralized: vfx->PlayNeutralize(*self);              break;
+    case PolarityChange::Extended:    break;
+    }
 }
 
 inline void PolarityTargetComponent::ClearPolarity()
@@ -250,8 +304,30 @@ inline void PolarityTargetComponent::OnStart()
     }
     // 開始時は必ず無極。前回 Play の状態が見た目に残らないようにする。
     m_hitReactRemaining = 0.0f;
+    m_warnedExpiry      = false;
     ResetPaint();
     ClearPolarity();
+
+    // 発光の書き込み先が 1 つも解決できないと、極が乗っても盤面の色は変わらない。
+    // 12.4 が可視化を «演出ではなく仕様» と書いている以上、黙って無反応にはしない。
+    if (!HasEmissiveTarget()) {
+        debug.LogError("PolarityTargetComponent has no material to drive. Add a "
+                       "MaterialComponent here, or assign Emissive Targets.");
+    }
+
+    // 極が切れる音は「その敵から」聞こえないと、盤面のどれが切れたのか分からない。
+    se::EnsureSource(scene, "SE", 1.0f);
+}
+
+inline bool PolarityTargetComponent::HasEmissiveTarget() const
+{
+    const uint32_t slot = static_cast<uint32_t>(emissiveSlot);
+    if (emissiveTargets.empty()) return material.Instance(slot).IsValid();
+
+    for (const auto& target : emissiveTargets)
+        if (target.IsAssigned() && material.Instance(target.ref, slot).IsValid())
+            return true;
+    return false;
 }
 
 inline void PolarityTargetComponent::OnUpdate()
@@ -285,9 +361,20 @@ inline void PolarityTargetComponent::OnUpdate()
 
     m_remaining -= dt;
     if (m_remaining <= 0.0f) {
+        // 12.4 の「残り時間の可視化は仕様」に耳の側から対応する。明滅は見ていないと
+        // 気付けないが、コンボの最中はプレイヤーは次の 1 体を見ている。
+        se::Play(audio, se::kPolarityExpire);
         ClearPolarity();
         debugRemaining = 0.0f;
+        m_warnedExpiry = false;
         return;
+    }
+
+    // 切れる直前の予告。ここを過ぎたら次の 1 体を塗るのは間に合わない、という
+    // 境目を音で 1 度だけ知らせる。毎フレーム鳴らすと明滅と同じで背景になる。
+    if (!m_warnedExpiry && m_remaining <= kExpiryWarnSeconds) {
+        m_warnedExpiry = true;
+        se::Play(audio, se::kPolarityExpireWarn);
     }
 
     debugRemaining = m_remaining;
@@ -296,9 +383,6 @@ inline void PolarityTargetComponent::OnUpdate()
 
 inline void PolarityTargetComponent::ApplyVisual()
 {
-    const MaterialInstance instance = material.Instance(static_cast<uint32_t>(emissiveSlot));
-    if (!instance.IsValid()) return;
-
     // 12.4 は残り時間の可視化を「演出ではなく仕様」と書いている。
     //   - 残りが減るほど明滅が速くなる
     //   - 切れる直前に色が薄くなる
@@ -336,8 +420,23 @@ inline void PolarityTargetComponent::ApplyVisual()
         }
     }
 
-    instance.SetVector3(kEmissiveColorId, { color.x, color.y, color.z });
-    instance.SetFloat(kEmissiveScaleId, scale);
+    const uint32_t slot = static_cast<uint32_t>(emissiveSlot);
+    const auto write = [&](const MaterialInstance& instance) {
+        if (!instance.IsValid()) return;
+        instance.SetVector3(kEmissiveColorId, { color.x, color.y, color.z });
+        instance.SetFloat(kEmissiveScaleId, scale);
+    };
+
+    if (emissiveTargets.empty()) {
+        write(material.Instance(slot));
+        return;
+    }
+    for (const auto& target : emissiveTargets) {
+        // 未アサインの枠は Instance が自分自身へ落ちる。空欄を 1 つ残しただけで
+        // ルート (発光しないメッシュ) が対象に混ざるのを防ぐ。
+        if (!target.IsAssigned()) continue;
+        write(material.Instance(target.ref, slot));
+    }
 }
 
 } // namespace sandbox

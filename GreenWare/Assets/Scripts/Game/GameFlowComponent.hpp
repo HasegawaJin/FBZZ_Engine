@@ -15,6 +15,7 @@
 #include <Scripts/Game/GameResultState.hpp>
 #include <Scripts/Player/PlayerComponent.hpp>
 #include <Scripts/Utils/ManagerWatch.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <string>
 
@@ -77,6 +78,10 @@ inline void GameFlowComponent::OnStart()
     m_elapsed = 0.0f;
     m_ending = false;
 
+    // 進行の音は画面の出来事であって空間の出来事ではないので UI バスの 2D。
+    se::EnsureSource(scene, "UI");
+    se::Play(audio, se::kUiWaveStart);
+
     m_combatWatch.Reset();
     // WHY ここで敵を数えないか: CombatManagerComponent の OnStart がこのスクリプトより
     //     後ろに並んでいると Instance() がまだ空で、CountEnemies() は必ず 0 を返す。
@@ -107,6 +112,10 @@ inline void GameFlowComponent::BeginEnd(bool victory)
     m_ending = true;
     m_victory = victory;
     m_endRemaining = std::max(endDelay, 0.0f);
+
+    // 決着はリザルト画面へ移る前に鳴らす。endDelay の間、画面には結果が出ているのに
+    // 音だけシーン遷移まで来ない、という間ができないようにする。
+    se::Play(audio, victory ? se::kUiGameClear : se::kUiGameOver);
 }
 
 inline void GameFlowComponent::RefreshHud(int enemiesAlive)
