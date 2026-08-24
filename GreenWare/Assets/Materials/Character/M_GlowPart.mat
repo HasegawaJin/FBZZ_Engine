@@ -1,0 +1,28 @@
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'skinned'
+render_path = 'auto'
+render_queue = 2000
+shader = 'guid:ebfbf654c19345a38d0829ec2fb46ed2'
+version = 1
+
+[params]
+albedo = [ 0.0549999997019768, 0.0599999986588955, 0.0649999976158142, 1.0 ]
+coreLevel = 1.0
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.0
+rimBoost = 1.6
+rimPower = 3.0
+shadeStrength = 0.60000002384185791
+uvOffset = [ 0.0, 0.0 ]
+uvTiling = [ 1.0, 1.0 ]
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

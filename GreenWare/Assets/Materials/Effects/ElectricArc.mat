@@ -1,0 +1,30 @@
+# FBZZ Engine
+# ElectricArc.mat
+# 電極間の放電リボン。ElectrodeRig が LineRenderer へ差して使う。
+# WHY: 形と明るさは毎フレーム per-instance の paramOverrides で振るため、
+#      ここに書く値は「スクリプトが何も送らなかったときに成立する絵」の既定値。
+#      albedo は LineRenderer が startColor から毎フレーム上書きする。
+version = 1
+name = 'ElectricArc'
+shader = 'Assets/Shaders/Material/Effects/ElectricArc.hlsl'
+blend_mode = 'Alpha'
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[params]
+albedo = [ 1.0, 0.16, 0.18, 1.0 ]
+coreColor = [ 4.0, 3.7, 3.5, 1.0 ]
+tipColor = [ 0.14, 0.42, 1.0, 1.0 ]
+coreWidth = 0.18
+glowFalloff = 2.6
+intensity = 1.0
+phase = 0.0
+breakup = 0.55
+erode = 0.0
+travel = 6.0
+coreTint = 0.45
+beadDensity = 0.0
+beadFalloff = 10.0

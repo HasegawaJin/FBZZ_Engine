@@ -1,0 +1,21 @@
+# FBZZ Engine
+# FX_SymMinus_Additive.mat
+# 素材: Assets/VFX/Textures/T_Sym_Minus.png
+# 対になる ＋ は FX_SymPlus_Additive.mat。設定は揃えてある (片方だけ触らないこと)。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:e9e00f9fece33245a5289047917386f2"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 1.6

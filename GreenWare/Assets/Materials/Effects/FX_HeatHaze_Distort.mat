@@ -1,0 +1,30 @@
+# FBZZ Engine
+# FX_HeatHaze_Distort.mat
+# 素材: Assets/VFX/Textures/T_Noise_Seamless.png (RGBA = 別周波数のノイズ)
+# 衝突の «空気が歪む» 層。
+#
+# WHY 明るさを一切足さない層を置くか:
+#   企画書 12.2 は発光を強くしすぎると赤と青の区別が消えると書いている。爆発の迫力を
+#   明るさで足すとその制約に正面からぶつかるので、輝度を増やさずに «何かが起きた» を
+#   出せる歪みへ回す。distortion は albedo の RG を屈折方向として読む。
+version = 1
+shader = ""
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:91ca9ace5930426f477263676c5a4de9"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+distortion = true
+distortion_strength = 0.022
+distortion_chromatic = 0.004
+soft_particles = true
+soft_particle_fade_distance = 0.5

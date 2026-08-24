@@ -1,0 +1,663 @@
+version = 5
+name = "FX_IMP_Explosion"
+description = "極性衝突の爆発 (企画書 12.6)。本作で唯一のダメージ源なので、盤面で最も派手な 1 発にする。極性色は Polarity Color から乗る。"
+tags = ["greenware", "impact", "polarity", "explosion"]
+requiredRoles = ["core", "body", "sparks"]
+# 立ち上がりの 0.10 秒で絵が決まる。既定の 25% (0.4 秒) では芯が終わっている。
+thumbnailTime = 0.10
+maxParticles = 2600
+maxLights = 1
+maxAudioVoices = 0
+
+# ------------------------------------------------------------------------------
+# FX_IMP_Explosion — 敵が敵 / 柱へ叩きつけられた瞬間。
+#
+# WHY 画面演出 (ScreenEffect / CameraShake / TimeScale) のノードを 1 つも置かないか:
+#   ヒットストップ・カメラ揺れ・振動・画面効果は ImpactFeedbackManagerComponent が
+#   1 箇所で配分している (12.6 の「多重衝突の処理」がそこに書いてある)。ここにも置くと、
+#   同じ 1 回の衝突に対して 2 系統が別々の強さで掛かり、集束で 5 体潰れたときに
+#   画面が壊れる。このグラフは «その場所に何が見えるか» だけを持つ。
+#
+# WHY 炎の橙ではなく極性色か:
+#   12.2 は赤 = ＋ / 青 = − / 無彩色 = 非帯電を全アセット共通の制約にしている。
+#   爆発だけ橙にすると、盤面で最も明るいものが極性の外側の色になり、
+#   「いま何極どうしがぶつかったか」が一瞬で読めなくなる。煙と破片だけ無彩色に残す。
+#
+# 層 (奥 → 手前):
+#   煙 → 爆風の外側 → 衝撃波リング → 電弧 → 爆風の芯 → スプラッシュ → 閃光 → 歪み
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# --- 0.00s: 閃光。1〜2 フレーム相当で消える -----------------------------------
+[[nodes]]
+id = 2
+type = 2
+name = "Flash Core"
+duration = 0.16
+editorX = 260.0
+editorY = -80.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# 複数 Emitter で 1 つの演出 Bounds を作るため、Emitter 単位のカリングと距離 LOD を使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 0.16
+loop = false
+emitRate = 0.0
+maxParticles = 8
+shape = 0
+sizeStart = 2.4
+sizeEnd = 0.2
+sizeCurvePower = 2.6
+lifetime = 0.11
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 70
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.00s: スプラッシュ。当たった «面» を見せる ------------------------------
+[[nodes]]
+id = 3
+type = 2
+name = "Splash"
+duration = 0.26
+editorX = 260.0
+editorY = 120.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.26
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 0
+sizeStart = 1.0
+sizeEnd = 3.6
+# 0.35 = 最初に一気に開いてから減速する。線形だと «風船が膨らむ» 動きになる。
+sizeCurvePower = 0.35
+lifetime = 0.20
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SplashImpact_Additive.mat"
+sortMode = 0
+angularVelocityMin = -6.0
+angularVelocityMax = 6.0
+renderPriority = 65
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.00s: 爆風の芯 (FlipFlop 前半 40 コマ) ----------------------------------
+[[nodes]]
+id = 4
+type = 2
+name = "Blast Core"
+duration = 0.55
+editorX = 260.0
+editorY = 330.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.55
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 1
+sphereRadius = 0.25
+sizeStart = 1.5
+sizeEnd = 3.4
+sizeCurvePower = 0.5
+lifetime = 0.42
+lifetimeRandom = 0.15
+velocitySpread = 1.2
+velocityDamping = 3.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ExplosionCore_Additive.mat"
+sortMode = 0
+angularVelocityMin = -2.0
+angularVelocityMax = 2.0
+renderPriority = 60
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.03, probability = 1.0 }]
+
+# --- 0.01s: 爆風の外側。膨らんで崩れる ----------------------------------------
+[[nodes]]
+id = 5
+type = 2
+name = "Blast Body"
+duration = 1.10
+editorX = 560.0
+editorY = -80.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.10
+loop = false
+emitRate = 0.0
+maxParticles = 12
+shape = 1
+sphereRadius = 0.55
+sizeStart = 1.8
+sizeEnd = 4.8
+sizeCurvePower = 0.6
+lifetime = 0.85
+lifetimeRandom = 0.3
+velocitySpread = 2.4
+velocityDamping = 2.6
+gravity = [0.0, 0.6, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ExplosionBody_Alpha.mat"
+# 半透明の板が重なるので奥から描かないと、手前の 1 枚が後ろの層を切り抜く。
+sortMode = 1
+angularVelocityMin = -1.4
+angularVelocityMax = 1.4
+renderPriority = 20
+colorVariation = 0.12
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.03, probability = 1.0 }]
+
+# --- 0.00s: 衝撃波リング。床へ寝かせて広がる ----------------------------------
+[[nodes]]
+id = 6
+type = 2
+name = "Shock Ring"
+duration = 0.45
+editorX = 560.0
+editorY = 160.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.45
+loop = false
+emitRate = 0.0
+maxParticles = 3
+shape = 0
+sizeStart = 0.6
+sizeEnd = 8.0
+sizeCurvePower = 0.3
+lifetime = 0.38
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_RingGrad_Additive.mat"
+# 水平ビルボード。衝撃波は «床を走る» ものなので、カメラへ正対させると輪ではなく円盤に見える。
+renderMode = 2
+sortMode = 0
+angularVelocityMin = 0.0
+angularVelocityMax = 0.0
+renderPriority = 55
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.00s: 電弧。帯電が抜ける瞬間を出す --------------------------------------
+[[nodes]]
+id = 7
+type = 2
+name = "Arc Snap"
+duration = 0.32
+editorX = 560.0
+editorY = 380.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.32
+loop = false
+emitRate = 0.0
+maxParticles = 24
+shape = 1
+sphereRadius = 0.7
+sizeStart = 1.6
+sizeEnd = 0.3
+sizeCurvePower = 1.6
+lifetime = 0.16
+lifetimeRandom = 0.5
+velocitySpread = 1.5
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_ArcNoise_Additive.mat"
+sortMode = 0
+# 折れの向きをばらす。素材の 4 コマだけでは «同じ形の複製» が見えてしまう。
+angularVelocityMin = -14.0
+angularVelocityMax = 14.0
+renderPriority = 58
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+bursts = [{ time = 0.0, count = 10, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.00s: 火花。床で跳ねて止まる --------------------------------------------
+[[nodes]]
+id = 8
+type = 2
+name = "Sparks"
+duration = 1.20
+editorX = 860.0
+editorY = -80.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 1.20
+loop = false
+emitRate = 0.0
+maxParticles = 260
+shape = 1
+sphereRadius = 0.15
+sizeStart = 0.22
+sizeEnd = 0.02
+lifetime = 0.65
+lifetimeRandom = 0.45
+velocitySpread = 11.0
+velocityDamping = 2.4
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+# 素材の頭と尾が横方向に決まっているので、速度方向へ寝かせないと尾が嘘になる。
+renderMode = 1
+stretchedVelocityScale = 0.14
+stretchedLengthScale = 2.6
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.02
+collisionBounciness = 0.35
+collisionDamping = 0.55
+renderPriority = 50
+# 尾を引かせて «どこから飛んだか» を読ませる。
+# NOTE: トレイルは位置履歴を使うため CPU シミュレーション限定 (simulationMode = 0)。
+simulationMode = 0
+trailEnabled = true
+trailPointCount = 5
+trailSampleInterval = 0.012
+trailWidthScale = 0.28
+trailAlphaScale = 0.22
+colorVariation = 0.15
+# WHY 火花だけ極性色を乗せないか: 金属片が熱を持って飛ぶ «物» で、帯電の表示ではない。
+#     ここまで極性色にすると、盤面の赤青が «誰が帯電しているか» を指さなくなる。
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.00, 0.94, 0.78, 1.0],
+  [0.35, 1.00, 0.66, 0.24, 1.0],
+  [1.0, 0.70, 0.18, 0.03, 0.0],
+]
+bursts = [{ time = 0.0, count = 70, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+# --- 0.05s: 粉塵。無彩色のまま残す --------------------------------------------
+[[nodes]]
+id = 9
+type = 2
+name = "Debris Smoke"
+duration = 2.20
+editorX = 860.0
+editorY = 190.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 2.20
+loop = false
+emitRate = 0.0
+maxParticles = 28
+shape = 1
+sphereRadius = 0.8
+sizeStart = 1.4
+sizeEnd = 4.2
+sizeCurvePower = 0.7
+lifetime = 1.5
+lifetimeRandom = 0.4
+velocitySpread = 1.8
+velocityDamping = 1.6
+gravity = [0.0, 0.35, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
+sortMode = 1
+angularVelocityMin = -0.9
+angularVelocityMax = 0.9
+# 最奥。火花より手前に来ると、当たった瞬間が煙で埋まる。
+renderPriority = 0
+colorVariation = 0.1
+# 12.2 の «無彩色» の側。極性色を乗せない唯一の理由がこれ。
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.58, 0.58, 0.60, 0.0],
+  [0.12, 0.50, 0.50, 0.53, 0.72],
+  [1.0, 0.42, 0.42, 0.45, 0.0],
+]
+bursts = [{ time = 0.0, count = 12, cycles = 1, interval = 0.03, probability = 1.0 }]
+
+# --- 0.00s: 歪み。明るさを足さずに «衝撃» を出す ------------------------------
+[[nodes]]
+id = 10
+type = 2
+name = "Heat Haze"
+duration = 0.40
+editorX = 860.0
+editorY = 420.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.40
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 0
+sizeStart = 1.2
+sizeEnd = 6.0
+sizeCurvePower = 0.3
+lifetime = 0.30
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_HeatHaze_Distort.mat"
+sortMode = 1
+angularVelocityMin = -3.0
+angularVelocityMax = 3.0
+# 歪みはシーンカラーを読むため必ず最後に描く。
+renderPriority = 100
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 1.0, 1.0, 1.0],
+  [0.4, 1.0, 1.0, 1.0, 0.55],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 光源。周りの無彩色の装甲を極の色で染める --------------------------------
+[[nodes]]
+id = 11
+type = 5
+name = "Blast Light"
+duration = 0.40
+editorX = 1160.0
+editorY = -80.0
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.light]
+color = [1.0, 0.85, 0.7]
+intensity = 22.0
+range = 9.0
+# 定数の明るさでは «0.4 秒つく電球» になる。弾けて即落ちる形にする。
+useIntensityCurve = true
+intensityCurve = [[0.0, 1.0], [0.12, 0.55], [1.0, 0.0]]
+
+# --- 力場。火花と煙を外へ押し出す --------------------------------------------
+[[nodes]]
+id = 12
+type = 9
+name = "Blast Push"
+duration = 0.25
+editorX = 1160.0
+editorY = 160.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 2
+strength = 20.0
+radius = 4.5
+falloffPower = 2.0
+
+# --- 床の跡 -------------------------------------------------------------------
+[[nodes]]
+id = 13
+type = 7
+name = "Ground Mark"
+duration = 4.0
+editorX = 1160.0
+editorY = 340.0
+# 衝突は宙で起きる。投影箱の中心を下げ、Y (投影の厚み) を伸ばして床まで届かせる。
+# WHY 回転を掛けないか: DecalPass はローカル +Y を投影軸として使う。無回転なら
+#     そのまま真下を向くので、床の跡は回転させないのが正しい。
+position = [0.0, -1.2, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [2.6, 3.2, 2.6]
+[nodes.decal]
+albedoPath = "Assets/VFX/Textures/T_Scorch_Decal.png"
+color = [0.14, 0.13, 0.13, 0.9]
+normalStrength = 0.0
+emissiveScale = 0.0
+fadeTime = 1.0
+# 濃いまま残ってから引く。線形だと置いた直後から薄まり «跡が残った» にならない。
+useFadeCurve = true
+fadeCurve = [[0.0, 1.0], [0.65, 0.95], [1.0, 0.0]]
+# 斜面で伸びた汚れに見えるのを防ぐ。
+angleFadeStrength = 1.0
+angleFadeDegrees = 70.0
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.01
+[[links]]
+from = 1
+to = 6
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 7
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 8
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 9
+trigger = 1
+delay = 0.05
+[[links]]
+from = 1
+to = 10
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 11
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 12
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 13
+trigger = 1
+delay = 0.03
+
+[[groups]]
+id = 1
+title = "First Frame (0.00s)"
+note = "衝突の «ドンッ» はここで決まる。寿命を伸ばすと途端に鈍くなる。"
+x = 230.0
+y = -130.0
+width = 290.0
+height = 640.0
+color = [0.86, 0.36, 0.30, 0.16]
+
+[[groups]]
+id = 2
+title = "Blast Volume"
+note = "極性色を乗せる層。明るいのは芯だけで、外側は色を保ったまま暗く落とす。"
+x = 530.0
+y = -130.0
+width = 290.0
+height = 640.0
+color = [0.62, 0.42, 0.30, 0.14]
+
+[[groups]]
+id = 3
+title = "Debris (無彩色)"
+note = "火花と煙は «物» なので極性色を乗せない。12.2 の色の意味を守る側。"
+x = 830.0
+y = -130.0
+width = 290.0
+height = 640.0
+color = [0.44, 0.44, 0.48, 0.14]
+
+[[groups]]
+id = 4
+title = "Light & Ground"
+note = "画面演出は ImpactFeedbackManagerComponent が持つ。ここへ足すと二重に掛かる。"
+x = 1130.0
+y = -130.0
+width = 290.0
+height = 560.0
+color = [0.36, 0.42, 0.62, 0.14]
+
+# ── 公開パラメーター ──────────────────────────────────────────────────────────
+# 既定はすべて «無彩色 / 標準の強さ»。エディタのプレビューが白で出るのは意図どおりで、
+# 実行時は VfxManagerComponent が衝突した極の色を Polarity Color へ差し込む。
+
+[[parameters]]
+name = "Polarity Color"
+type = 3
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 3
+color = [1.0, 1.0, 1.0, 1.0]
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 2
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 3
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 4
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 5
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 6
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 7
+schemaPath = "particle.colorStart"
+[[bindings]]
+paramName = "Polarity Color"
+nodeId = 11
+schemaPath = "light.color"
+
+# 衝突速度をそのまま火花の散り方へ流す。柱への叩きつけほど広がる。
+[[parameters]]
+name = "Spark Power"
+type = 0
+minimum = 2.0
+maximum = 26.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 11.0
+[[bindings]]
+paramName = "Spark Power"
+nodeId = 8
+schemaPath = "particle.velocitySpread"
+
+# 煙の最終的な大きさ。盤面が煙で埋まるときはここを下げる。
+[[parameters]]
+name = "Smoke Amount"
+type = 0
+minimum = 0.0
+maximum = 8.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 4.2
+[[bindings]]
+paramName = "Smoke Amount"
+nodeId = 9
+schemaPath = "particle.sizeEnd"
+
+# 床の跡。柱・壁への叩きつけだけ «ひび» へ差し替える (7.5 の敵↔柱・壁)。
+[[parameters]]
+name = "Ground Mark"
+type = 5
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 5
+asset = "Assets/VFX/Textures/T_Scorch_Decal.png"
+[[bindings]]
+paramName = "Ground Mark"
+nodeId = 13
+schemaPath = "decal.albedoPath"
+
+# 光の強さ。集束で複数体が同時に潰れるときは、後続を弱めて画面を守る。
+[[parameters]]
+name = "Blast Light"
+type = 0
+minimum = 0.0
+maximum = 60.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 22.0
+[[bindings]]
+paramName = "Blast Light"
+nodeId = 11
+schemaPath = "light.intensity"
