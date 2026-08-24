@@ -762,17 +762,17 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         go.transform.position = ev.worldPos;
 
         ParticleEmitter emitter;
-        emitter.enabled      = true;
-        emitter.emitRate     = 0.0f;
-        emitter.lifetime     = 1.2f;
-        emitter.sizeStart    = 0.10f + ev.intensity * 0.20f;
-        emitter.sizeEnd      = 0.0f;
-        emitter.colorStart   = { 0.75f, 0.93f, 1.0f, 0.9f };
-        emitter.colorEnd     = { 0.55f, 0.80f, 1.0f, 0.0f };
-        emitter.maxParticles = 24;
+        emitter.settings.enabled      = true;
+        emitter.settings.emitRate     = 0.0f;
+        emitter.settings.lifetime     = 1.2f;
+        emitter.settings.sizeStart    = 0.10f + ev.intensity * 0.20f;
+        emitter.settings.sizeEnd      = 0.0f;
+        emitter.settings.colorStart   = { 0.75f, 0.93f, 1.0f, 0.9f };
+        emitter.settings.colorEnd     = { 0.55f, 0.80f, 1.0f, 0.0f };
+        emitter.settings.maxParticles = 24;
 
         const int count = static_cast<int>(6.0f + ev.intensity * 14.0f);
-        emitter.particles.reserve(static_cast<size_t>(count));
+        emitter.runtime.particles.reserve(static_cast<size_t>(count));
         std::mt19937 rng{ std::random_device{}() };
         std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
         for (int i = 0; i < count; ++i) {
@@ -784,10 +784,10 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             const float hSpeed = dist01(rng) * ev.intensity * 2.0f + 0.2f;
             const float vSpeed = dist01(rng) * ev.intensity * 5.0f + 1.5f;
             p.velocity = { std::cos(angle) * hSpeed, vSpeed, std::sin(angle) * hSpeed };
-            p.color    = emitter.colorStart;
-            p.size     = emitter.sizeStart;
+            p.color    = emitter.settings.colorStart;
+            p.size     = emitter.settings.sizeStart;
             p.age      = 0.0f;
-            emitter.particles.push_back(std::move(p));
+            emitter.runtime.particles.push_back(std::move(p));
         }
 
         const EntityID id = go.GetID();
@@ -799,7 +799,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     auto splashIt = s_splashGos.begin();
     while (splashIt != s_splashGos.end()) {
         auto* em = scene.GetComponent<ParticleEmitter>(*splashIt);
-        if (!em || em->particles.empty()) {
+        if (!em || em->runtime.particles.empty()) {
             scene.DestroyGameObject(*splashIt);
             splashIt = s_splashGos.erase(splashIt);
         } else {
