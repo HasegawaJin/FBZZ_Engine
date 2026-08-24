@@ -66,6 +66,7 @@ void AssetFileWatcher::Stop()
     }
 
     m_readPending = false;
+    m_overflowed  = false;
     m_queue.clear();
     m_pendingRenameOld.clear();
 }
@@ -87,6 +88,7 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
         if (err == ERROR_NOTIFY_ENUM_DIR)
         {
             FBZZ_LOG_WARN("AssetFileWatcher: notification overflow — some events lost");
+            m_overflowed = true;
             ResetEvent(m_overlapped.hEvent);
             m_readPending = false;
             IssueNextRead();
@@ -96,6 +98,13 @@ std::vector<AssetFileWatcher::FileEvent> AssetFileWatcher::Poll()
         FBZZ_LOG_ERROR("AssetFileWatcher: GetOverlappedResult failed (%lu)", err);
         Stop();
         return {};
+    }
+
+    // 成功しても転送量 0 は「溜めきれずバッファを捨てた」合図 (ReadDirectoryChangesW の仕様)。
+    if (transferred == 0)
+    {
+        FBZZ_LOG_WARN("AssetFileWatcher: notification buffer discarded — some events lost");
+        m_overflowed = true;
     }
 
     ParseBuffer(transferred);

@@ -112,6 +112,10 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
                 if (ctx.openBehaviorTree) ctx.openBehaviorTree(path);
                 ctx.requestOpenBehaviorTree = true;
                 result.message = "Behavior Tree で開きます";
+            } else if (ext == ".synth") {
+                if (ctx.openSfxEditor) ctx.openSfxEditor(path);
+                ctx.requestOpenSfxEditor = true;
+                result.message = "SFX Editor で開きます";
             } else if (ext == ".vfx") {
                 // VFX Editor は独立プロセス。選択パスを渡してから起動要求を立てる。
                 ctx.selectedAssetPath    = path;

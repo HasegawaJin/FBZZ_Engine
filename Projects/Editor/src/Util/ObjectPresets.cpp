@@ -165,6 +165,10 @@ scene::GameObject* MakeCamera(EditorContext& ctx)
     auto& go = ctx.activeScene->CreateGameObject("Camera");
     go.transform.position = { 0.0f, 2.0f, -5.0f };
     go.AddComponent<scene::CameraComponent>();
+    // WHY Listener も付けるか: Listener が 1 つも無いシーンでは 3D 音の距離減衰が
+    //     まるごと効かないのに、エラーも警告も出ない。カメラは受聴点として最も
+    //     自然な既定で、複数あっても AudioListener::priority で選ばれる。
+    go.AddComponent<scene::AudioListenerComponent>();
     return &go;
 }
 
@@ -335,7 +339,8 @@ scene::GameObject* MakeNavMeshSurface(EditorContext& ctx)
     auto& go = ctx.activeScene->CreateGameObject("NavMesh Surface");
     // WHY needsBake を立てないか: NavMeshSurfaceComponent は「AddComponent 直後に自動ベイクが
     //      走ってエディタが固まるのを防ぐため」既定 false と決められている。置いた直後は
-    //      polygons が空なので、ベイクは navmesh_bake / Inspector から明示的に実行する。
+    //      polygons が空なので、ベイクは Tools > Navigation / Inspector / navmesh_bake から
+    //      明示的に実行する。
     go.AddComponent<scene::NavMeshSurfaceComponent>();
     return &go;
 }
@@ -627,7 +632,7 @@ constexpr ObjectPreset kPresets[] = {
     { "terrain.grid",    "Terrain", "Terrain Grid", "Terrain セルを並べて広い地形を作る親", &MakeTerrainGrid },
     { "terrain.water",   "Terrain", "Water",        "水面 (80m x 80m / 96x96 分割)", &MakeWater },
 
-    { "nav.surface",    "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは navmesh_bake で明示的に実行する", &MakeNavMeshSurface },
+    { "nav.surface",    "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは Tools > Navigation で明示的に実行する", &MakeNavMeshSurface },
     { "nav.agent",      "Navigation", "NavMesh Agent",    "Capsule メッシュ + NavMeshAgent。経路移動する実体", &MakeNavMeshAgent },
     { "nav.modifier",   "Navigation", "NavMesh Modifier", "Cube + Collider + NavMeshModifier。歩行可否とエリアコストを上書きする", &MakeNavMeshModifier },
     { "nav.offMeshLink", "Navigation", "Off-Mesh Link",   "離れた 2 点をつなぐジャンプ経路", &MakeOffMeshLink },

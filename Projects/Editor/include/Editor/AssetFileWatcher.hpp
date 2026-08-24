@@ -41,6 +41,12 @@ public:
     [[nodiscard]] bool        IsRunning()  const { return m_handle != INVALID_HANDLE_VALUE; }
     [[nodiscard]] std::string GetRootPath() const { return m_rootPath; }
 
+    // 通知バッファが溢れてイベントを取りこぼしたか。true なら 1 回だけ返して印を消す。
+    // WHY: 大量のファイルを一度に入れると OS 側の通知バッファが溢れ、その回の変更が
+    //      「全部」捨てられる。個々のイベントで追従する仕組みは全て空振りするので、
+    //      呼び出し側は一覧とキャッシュを丸ごと作り直す必要がある。
+    [[nodiscard]] bool ConsumeOverflow() { const bool o = m_overflowed; m_overflowed = false; return o; }
+
 private:
     // 次の ReadDirectoryChangesW を発行する
     void IssueNextRead();
@@ -61,6 +67,7 @@ private:
     // ペアを失わないため、ParseBuffer をまたいで一時保持する。
     std::string m_pendingRenameOld;
     bool m_readPending = false;
+    bool m_overflowed  = false;
 };
 
 } // namespace fbzz::editor

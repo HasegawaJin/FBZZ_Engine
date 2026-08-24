@@ -483,6 +483,7 @@ void EditorApp::RegisterBuiltinOperators()
     RegisterDocumentOperators(m_operators);
     RegisterTerrainOperators(m_operators);
     RegisterEffectOperators(m_operators);
+    RegisterSfxOperators(m_operators);
 }
 
 // 4 面 (メニュー / ホットキー / パレット / AI) が共有する実行文脈。

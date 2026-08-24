@@ -5,6 +5,7 @@
 #include <Editor/GraphLayout.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
+#include <Engine/Audio/SynthSpec.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Quaternion.hpp>
@@ -408,6 +409,7 @@ struct EditorContext {
     bool requestOpenAnimationGraph   = false; // .animcontroller ダブルクリック → AnimationGraphPanel を開く
     bool requestOpenVFXEditor        = false; // .vfx ダブルクリック → VFXEditorPanel を開く
     bool requestOpenBehaviorTree     = false; // .behaviortree ダブルクリック → BehaviorTreePanel を開く
+    bool requestOpenSfxEditor        = false; // .synth ダブルクリック → SfxEditorPanel を開く
 
     // Inspector 等のアセット参照欄 → AssetBrowser: 参照先を一覧上で選択させる要求 (one-shot)。
     // WHY: Unity の Object Field と同じく、参照を辿る動線が無いと「この .mat はどのファイルか」を
@@ -437,7 +439,7 @@ struct EditorContext {
     std::vector<std::string> pendingPrefabReloads;
 
     // ディスク上で書き換わったアセット (.mat / .anim / .animcontroller / .mask /
-    // .fzdata / .physmat / .terrain) の絶対パス。積むのは AssetBrowser のファイル監視、
+    // .fzdata / .physmat / .synth / .terrain) の絶対パス。積むのは AssetBrowser のファイル監視、
     // 消費するのは EditorApp。
     // WHY 積んでから処理するか: 監視イベントはパネル描画の途中で届く。その場で
     //      AssetManager のキャッシュを差し替えると、同じフレームで既にアセットを
@@ -511,6 +513,20 @@ struct EditorContext {
     std::function<void(const std::string&)> openSpriteEditor;
     // .behaviortree を BehaviorTreePanel へ渡す (同じくパネル実体は公開しない)。
     std::function<void(const std::string&)> openBehaviorTree;
+    // .synth を SfxEditorPanel へ渡す。
+    std::function<void(const std::string&)> openSfxEditor;
+
+    // SFX Editor が編集中の手続き効果音。
+    //
+    // WHY パネルではなく context に置くか: sfx.* Operator を人 (パレット / パネル) と
+    //     AI の両方が呼ぶ。パネルが実体を抱えて Operator が要求を積む形にすると、
+    //     AI が set_param の直後に inspect を呼んだとき、パネルがまだ要求を
+    //     消費していないので 1 フレーム古い値が返る。読み書きが同じ場所を指すよう、
+    //     編集中の状態そのものをここへ置き、パネルはこれを描く面に徹する。
+    std::string      sfxEditorPath;            // 空 = 未保存の下書き
+    audio::SynthSpec sfxEditorSpec;
+    std::string      sfxEditorPresetName;      // 由来プリセット名 (空 = 手編集)
+    bool             sfxEditorDirty = false;
     // BehaviorTreePanel が開いているドキュメント (パネルが毎フレーム公開する)。
     // Operator の poll が「今この操作ができるか」を判定するのに使う。
     std::string behaviorTreeEditorPath;

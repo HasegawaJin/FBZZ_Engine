@@ -40,7 +40,8 @@ void EditorApp::RefreshPaletteAssetIndex()
         ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr",
         ".hlsl", ".hlsli", ".hpp", ".cpp", ".h", ".cs", ".lua",
         ".anim", ".animcontroller", ".vfx", ".skel",
-        ".wav", ".mp3", ".ogg", ".terrain", ".asset", ".fzdata", ".physmat",
+        ".wav", ".mp3", ".ogg", ".flac", ".synth",
+        ".terrain", ".asset", ".fzdata", ".physmat",
     };
     for (const auto& p : util::FileSystem::ListFilesRecursive(assetsDir)) {
         const std::string ext = util::StringUtils::ToLower(

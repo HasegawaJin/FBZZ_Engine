@@ -1535,12 +1535,12 @@ float ListRowToolbarWidth(bool removable)
          * static_cast<float>(count);
 }
 
-ListRowButtons ListRowToolbar(int index, int count, bool removable)
+ListRowButtons ListRowToolbar(int index, int count, bool removable, bool sameLine)
 {
     ListRowButtons result;
     const ImGuiStyle& style = ImGui::GetStyle();
 
-    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    if (sameLine) ImGui::SameLine(0.0f, style.ItemSpacing.x);
     result.moveUp = ListGlyphButton("##up", ListGlyph::Up, index > 0, "Move up");
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     result.moveDown = ListGlyphButton("##down", ListGlyph::Down, index + 1 < count, "Move down");

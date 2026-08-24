@@ -70,7 +70,12 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
     // ── 編集中シーンを退避 ───────────────────────────────────────────────────
     // WHY: ここで保存を強制せず「メモリ上に退避」するのは、未保存の作業を捨てさせない
     //      ため。閉じたときにそのまま元の状態 (dirty も含めて) へ戻る。
+    // WHY 非表示を外してから採るか: スナップショットへ入れるのは「隠す前の activeSelf」。
+    //     隠したままの false を焼くと、シーンへ戻ったとき表示へ戻す手立てが無くなる。
+    CaptureEditorViewStateToSceneMeta();
+    RemoveEditorHiding();
     m_prefabEditStashedScene     = SceneIO::Serialize(*m_ctx.activeScene);
+    RestoreEditorHiding();
     if (m_prefabEditStashedScene.empty()) {
         FBZZ_LOG_ERROR("Prefab edit: failed to snapshot the current scene");
         return;
@@ -95,6 +100,7 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
         // 開けなかったので退避したシーンを戻す。
         SceneIO::Deserialize(*m_ctx.activeScene, m_prefabEditStashedScene);
         m_prefabEditStashedScene.clear();
+        ApplyEditorViewStateFromSceneMeta();
         RebuildEditorUIFromScene();
         return;
     }
@@ -164,6 +170,8 @@ void EditorApp::ExitPrefabEditMode(bool save)
 
     m_ctx.currentScenePath = m_prefabEditStashedScenePath;
     m_ctx.sceneDirty       = m_prefabEditStashedDirty;
+    // 編集に入るとき退避した非表示 / ロックをシーンごと戻す。
+    ApplyEditorViewStateFromSceneMeta();
 
     // 選択は EntityID ではなく GUID で戻す (再構築で ID が変わるため)。
     for (const std::string& guid : m_prefabEditStashedSelection)

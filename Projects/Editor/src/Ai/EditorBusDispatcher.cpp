@@ -16,6 +16,8 @@
 #include <Editor/Util/ConsoleSink.hpp>
 // Add Object プリセットは Hierarchy メニューと同じ登録表を共有する。
 #include <Editor/Util/ObjectPresets.hpp>
+// パーティクルの見た目は .mat 側にあるため、診断は素材を解決してから答える。
+#include <Editor/Util/ParticleMaterialFactory.hpp>
 // Terrain ブラシは対話ツール (TerrainTool) と同じカーネルを叩く。
 #include <Tools/TerrainBrush.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
@@ -28,6 +30,8 @@
 #include <Editor/VFXEditor/Document/VFXGraphEditOps.hpp>
 #include <Editor/VFXEditor/Document/VFXGraphOps.hpp>
 #include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
+#include <Engine/Audio/AudioManager.hpp>
+#include <Engine/Core/Application.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
 #include <Engine/AI/BehaviorTreeTypes.hpp>
@@ -68,6 +72,7 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Systems/NavMeshBakeSystem.hpp>
 #include <Engine/Scene/Systems/NavMeshQuery.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
@@ -794,10 +799,6 @@ const VFXFixHint* FindVFXFixHint(std::string_view code)
           "vfx_repair(fixSprites=true) で sizeAxisScale を等方 [1,1,1] へ戻す。"
           "縦長にしたい場合は代わりに回転 (angularVelocity / rotationCurve) を 0 にする。",
           "どちらを捨てるかは見た目の意図次第。炎の舌なら非等方、破片なら回転を残す。" },
-        { "LIGHTING_SATURATED", true,
-          "vfx_repair(fixLighting=true) で particle.lightingStrength を 0.8 へ落とす。", "" },
-        { "ALPHA_NO_SORT", true,
-          "vfx_repair(fixSorting=true) で particle.sortMode を 1 (BackToFront) にする。", "" },
         { "MESH_NO_FADE", true,
           "vfx_repair(fixMeshFade=true) で mesh.colorEnd の RGB を 0 にする。",
           "加算ブレンドでは RGB が 0 になって初めて消える。alpha だけ 0 にしても残る。" },
@@ -929,7 +930,8 @@ Outcome DoVFXLint(editor::EditorContext& ctx, const JsonValue& payload)
             // WHY: 10 万粒子を狙って Gpu を指定したのに per-particle Trail を付けたせいで
             //      CPU で回っていた、という事故が起きるが、それが今までどこにも出ていなかった。
             //      静的解析で判る条件ばかりなので、実行する前にここで名指しする。
-            if (const auto reason = scene::GetParticleGpuFallbackReason(node.particle);
+            if (const auto reason = scene::GetParticleGpuFallbackReason(
+                    node.particle, ResolveParticleMaterialSettings(node.particle.materialPath));
                 reason != scene::ParticleGpuFallbackReason::None
                 && reason != scene::ParticleGpuFallbackReason::NotRequested) {
                 addIssue("warning", "GPU_FALLBACK",
@@ -1279,7 +1281,8 @@ Outcome DoVFXGraphInspect(const JsonValue& payload)
         if (node.type == asset::VFXNodeType::Particle) {
             item.Set("maxParticles", JsonValue(node.particle.maxParticles));
             // 「要求」と「実際に走る経路」を分けて返す。同じ値だと縮退に気づけない。
-            const auto gpuFallback = scene::GetParticleGpuFallbackReason(node.particle);
+            const auto gpuFallback = scene::GetParticleGpuFallbackReason(
+                node.particle, ResolveParticleMaterialSettings(node.particle.materialPath));
             item.Set("simulation", JsonValue(node.particle.simulationMode == scene::ParticleSimulationMode::Gpu
                 ? "GPU" : "CPU"));
             item.Set("effectiveSimulation",
@@ -1684,9 +1687,9 @@ Outcome DoVFXGuide()
           "全レイヤーを加算にすると数十枚の重なりが白飽和し、輪郭の無い光の玉になる。"
           "物体として見えるには背景を隠す不透明な body が要る。", "" },
         { "blending",
-          "Alpha / Premultiplied のエミッターは必ず sortMode=1 (BackToFront)。",
-          "半透明の重なりは描画順で結果が変わり、None だとフレームごとにちらつく。",
-          "ALPHA_NO_SORT" },
+          "Alpha / Premultiplied の .mat を使うエミッターは必ず sortMode=1 (BackToFront)。",
+          "半透明の重なりは描画順で結果が変わり、None だとフレームごとにちらつく。"
+          "ブレンドは .mat の blend_mode が決めるので、素材を差し替えたら sortMode も見直す。", "" },
         { "motion",
           "上向きの加速度は emitVelocity・gravity・ForceField のうち 1 つだけが持つ。"
           "推奨は ForceField (Wind) に集約し、各エミッターの gravity は 0。",
@@ -1708,9 +1711,9 @@ Outcome DoVFXGuide()
           "colorGradient のアルファは 0 で始まり 0 で終える (中間にピークを置く)。",
           "端が 0 でないと粒子が発生・消滅する瞬間にポップして、板ポリの出入りが見える。", "" },
         { "lighting",
-          "sixWayLighting を使う場合 lightingStrength は 1.0 以下 (推奨 0.5〜0.8)。",
+          ".mat の sixWayLighting を使う場合 lightingStrength は 1.0 以下 (推奨 0.5〜0.8)。",
           "シェーダー側で saturate されるため 1.0 超は「元の色を捨てて ambient+N·L で塗る」"
-          "意味しか持たず、暗い環境で煙が黒く潰れる。", "LIGHTING_SATURATED" },
+          "意味しか持たず、暗い環境で煙が黒く潰れる。", "" },
         { "layering",
           "renderPriority は 煙(0) < 炎本体(20) < 芯(30) < 火の粉(40) < 歪み(100) の順。",
           "歪み (distortion) は背景を屈折させるため必ず最後。煙が炎より手前に来ると"
@@ -1785,7 +1788,7 @@ Outcome DoVFXGuide()
           "「線に見えるまで点を細かく打つ」のは細い軌跡までしか通用しない。"
           "帯が主役の表現では、履歴点をポリラインとみなして 1 枚の面を張るしかない。", "" },
         { "expression",
-          "厚みのある煙・雲には particle.selfShadowStrength を入れる。"
+          "厚みのある煙・雲には .mat の selfShadowStrength を入れる。"
           "受け影 (receiveShadows) は他の物体が落とす影しか扱わないため、"
           "これが無いと粒子をいくら重ねても光の当たり方が一様で平坦な塊に見える。",
           "自己影は光源側の密度から減衰させる近似で、CPU 頂点バッファを要求するため"
@@ -2999,8 +3002,9 @@ Outcome DoVFXTextureAnalyze(editor::EditorContext& ctx, const JsonValue& payload
     }
     result.Set("recommendations", std::move(recommendations));
     result.Set("hint", JsonValue(std::string(
-        "recommendations は観測から機械的に決まる設定です。value は JSON 表記なので "
-        "vfx_node_set_field の value へそのまま渡せます。"
+        "recommendations は観測から機械的に決まる設定です。schemaPath が particle.* のものは "
+        "vfx_node_set_field へそのまま渡せます。material.* のものは素材の性質なので "
+        ".mat 側 (blend_mode / [particle]) を編集してください (Inspector の Material に UI があります)。"
         "flipbookCandidates が空でなければアトラス素材で、先頭が最有力の候補です。"
         "層構成のどこへ置くかは classification (glow=発光する芯 / smoke=背景を隠す body / "
         "spark=火の粉 / flipbook=アニメーション素材) を vfx_guide の recipe と突き合わせてください。")));
@@ -3116,10 +3120,9 @@ Outcome DoShaderCompileDiagnostics()
 
 // vfx.materialAnalyze — .mat とその albedo テクスチャを併せて見る。
 //
-// WHY: ParticleEmitter に materialPath があると、ParticlePass は .mat の blend_mode で
-//      emitter.blendMode を上書きする。つまり .mat を割り当てた時点で、Inspector や AI が
-//      設定した blendMode は実行時に使われない。テクスチャ単体の解析だけを見ていると
-//      「推奨どおり Additive にしたのに Alpha で描かれる」という噛み合わなさが起きる。
+// WHY: パーティクルの見た目は .mat の blend_mode と [particle] が唯一の正本で、
+//      ParticleEmitter 側には無い。テクスチャ単体の解析だけを見ていると
+//      「素材はこう見えるはず」と「実際にどう描かれるか」が噛み合わない。
 //      .mat まで読んで初めて「この素材をこの設定で描くと何が起きるか」が言える。
 Outcome DoVFXMaterialAnalyze(editor::EditorContext& ctx, const JsonValue& payload)
 {
@@ -3204,10 +3207,10 @@ Outcome DoVFXMaterialAnalyze(editor::EditorContext& ctx, const JsonValue& payloa
     result.Set("recommendations", std::move(recommendations));
     result.Set("hint", JsonValue(std::string(
         "findings は .mat 自体を直すべき問題です (blend_mode / render_path / albedo 未設定)。"
-        "recommendations は .mat では表現できず Emitter 側にしか無い設定 (alphaSource / sprite / sortMode) で、"
-        "vfx_node_set_field へそのまま渡せます。"
-        "materialPath を設定した Emitter では blendMode が .mat から上書きされるため、"
-        "ブレンドを変えたい場合は Emitter ではなく .mat を編集してください。")));
+        "recommendations のうち material.* は .mat の [particle] へ、particle.* (sortMode など) は "
+        "vfx_node_set_field で Emitter へ適用します。"
+        "見た目 (ブレンド・アルファ・フリップブック・歪み・煙・影) は .mat が唯一の正本で、"
+        "Emitter 側には設定そのものが存在しません。")));
     return Outcome::Ok(std::move(result));
 }
 
@@ -3530,8 +3533,9 @@ Outcome DoVFXRuntime(editor::EditorContext& ctx)
         GameObject* instance = state.entity.IsValid()
             ? ctx.vfxPreviewScene->GetGameObject(state.entity) : nullptr;
         if (auto* emitter = instance != nullptr ? instance->GetComponent<scene::ParticleEmitter>() : nullptr) {
-            const auto reason = scene::GetParticleGpuFallbackReason(*emitter);
-            const bool requestedGpu = emitter->simulationMode == scene::ParticleSimulationMode::Gpu;
+            const auto reason = scene::GetParticleGpuFallbackReason(emitter->settings,
+                                                                   &emitter->runtime.material);
+            const bool requestedGpu = emitter->settings.simulationMode == scene::ParticleSimulationMode::Gpu;
             const bool effectiveGpu = reason == scene::ParticleGpuFallbackReason::None;
             JsonValue simulation = JsonValue::MakeObject();
             simulation.Set("requested", JsonValue(requestedGpu ? "Gpu" : "Cpu"));
@@ -3545,12 +3549,12 @@ Outcome DoVFXRuntime(editor::EditorContext& ctx)
             }
             item.Set("simulation", std::move(simulation));
             const int alive = effectiveGpu
-                ? emitter->visibleParticleCount : static_cast<int>(emitter->particles.size());
+                ? emitter->runtime.visibleParticleCount : static_cast<int>(emitter->runtime.particles.size());
             item.Set("particleCount", JsonValue(alive));
-            item.Set("visibleParticleCount", JsonValue(emitter->visibleParticleCount));
-            item.Set("culled", JsonValue(emitter->isCulledThisFrame));
+            item.Set("visibleParticleCount", JsonValue(emitter->runtime.visibleParticleCount));
+            item.Set("culled", JsonValue(emitter->runtime.isCulledThisFrame));
             totalParticles += alive;
-            totalVisibleParticles += emitter->visibleParticleCount;
+            totalVisibleParticles += emitter->runtime.visibleParticleCount;
         }
         nodes.Push(std::move(item));
     }
@@ -6306,10 +6310,6 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
         //      逆に「何を出すか」のような設計判断が要るものはここに入れない。
         const bool fixSprites = payload.Find("fixSprites") == nullptr
             || payload.Find("fixSprites")->AsBool();
-        const bool fixLighting = payload.Find("fixLighting") == nullptr
-            || payload.Find("fixLighting")->AsBool();
-        const bool fixSorting = payload.Find("fixSorting") == nullptr
-            || payload.Find("fixSorting")->AsBool();
         const bool fixMeshFade = payload.Find("fixMeshFade") == nullptr
             || payload.Find("fixMeshFade")->AsBool();
         const bool fixParents = payload.Find("fixParents") == nullptr
@@ -6326,14 +6326,9 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
                 if (fixSprites && spins
                     && (particle.sizeAxisScale.x != particle.sizeAxisScale.y))
                     particle.sizeAxisScale = { 1.0f, 1.0f, 1.0f };
-                // LIGHTING_SATURATED — 1.0 超はシェーダー側で丸められ、意味を持たない。
-                if (fixLighting && particle.sixWayLighting && particle.lightingStrength > 1.0f)
-                    particle.lightingStrength = 0.8f;
-                // ALPHA_NO_SORT — 半透明の重なりは描画順で結果が変わる。
-                if (fixSorting && particle.blendMode != scene::ParticleBlendMode::Additive
-                    && particle.sortMode == scene::ParticleSortMode::None
-                    && particle.maxParticles > 1)
-                    particle.sortMode = scene::ParticleSortMode::BackToFront;
+                // NOTE: 旧 fixLighting / fixSorting はここに無い。lightingStrength も
+                //       ブレンドも .mat の [particle] / blend_mode が正本になったため、
+                //       .vfx を書き換えても直せない (素材側の修復として作り直すこと)。
             }
             // MESH_NO_FADE — 加算ブレンドは RGB が 0 になって初めて消える。
             if (fixMeshFade && node.type == asset::VFXNodeType::Mesh) {
@@ -6621,9 +6616,11 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
             node.particle.lodFarRateScale = (std::min)(node.particle.lodFarRateScale, 0.35f);
             // GPU へ載せられるものは載せる。載らない設定を持つノードは触らない
             // (ここで無理に Gpu を立てると、黙って CPU へ縮退したまま「GPU 化した」と読める)。
-            scene::ParticleEmitter candidate = node.particle;
+            scene::ParticleEmitterSettings candidate = node.particle;
             candidate.simulationMode = scene::ParticleSimulationMode::Gpu;
-            if (!eventSources.contains(node.id) && scene::CanUseGpuSimulation(candidate))
+            if (!eventSources.contains(node.id)
+                && scene::CanUseGpuSimulation(
+                    candidate, ResolveParticleMaterialSettings(node.particle.materialPath)))
                 node.particle.simulationMode = scene::ParticleSimulationMode::Gpu;
         }
         newGraph.maxParticles = cutParticles
@@ -7266,6 +7263,7 @@ JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponen
     entry.Set("maxSlopeAngleDeg", JsonValue(surface.maxSlopeAngleDeg));
     entry.Set("agentRadius", JsonValue(surface.agentRadius));
     entry.Set("agentHeight", JsonValue(surface.agentHeight));
+    entry.Set("maxClimb", JsonValue(surface.maxClimb));
     const char* stateName = "idle";
     if (surface.bakeState == scene::NavMeshBakeState::Baking)    stateName = "baking";
     else if (surface.bakeState == scene::NavMeshBakeState::Done) stateName = "done";
@@ -7274,6 +7272,24 @@ JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponen
     entry.Set("needsBake", JsonValue(surface.needsBake));
     entry.Set("polygonCount", JsonValue(static_cast<int>(surface.navMesh.polygons.size())));
     entry.Set("offMeshLinkCount", JsonValue(static_cast<int>(surface.navMesh.offMeshLinks.size())));
+    // ベイクが「終わったが空だった」ときの理由と、セル判定の内訳。
+    // WHY: polygonCount=0 だけでは、傾斜・障害物・エージェント半径のどれで落ちたのかが
+    //      画を撮っても数値を読んでも分からず、AI は設定を総当たりするしかなかった。
+    if (!surface.bakeStats.failReason.empty())
+        entry.Set("failReason", JsonValue(surface.bakeStats.failReason));
+    if (surface.bakeStats.cellsX > 0) {
+        JsonValue bakeInfo = JsonValue::MakeObject();
+        bakeInfo.Set("seconds",     JsonValue(surface.bakeStats.bakeSeconds));
+        bakeInfo.Set("cellsX",      JsonValue(surface.bakeStats.cellsX));
+        bakeInfo.Set("cellsZ",      JsonValue(surface.bakeStats.cellsZ));
+        bakeInfo.Set("walkable",    JsonValue(surface.bakeStats.walkableCells));
+        bakeInfo.Set("tooSteep",    JsonValue(surface.bakeStats.steepCells));
+        bakeInfo.Set("tooHighStep", JsonValue(surface.bakeStats.stepCells));
+        bakeInfo.Set("obstructed",  JsonValue(surface.bakeStats.obstructedCells));
+        bakeInfo.Set("eroded",      JsonValue(surface.bakeStats.erodedCells));
+        bakeInfo.Set("areaSquareMeters", JsonValue(surface.bakeStats.areaSquareMeters));
+        entry.Set("bake", std::move(bakeInfo));
+    }
     // 歩ける範囲そのもの。AI が「どこを目的地に選べるか」を知る唯一の手掛かりになる。
     if (!surface.navMesh.polygons.empty()) {
         math::Vector3 boundsMin{ 1e30f, 1e30f, 1e30f };
@@ -7315,7 +7331,15 @@ Outcome DoNavMeshState(editor::EditorContext& ctx, const JsonValue& payload)
         auto* surface = activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
         if (go == nullptr || surface == nullptr) continue;
         if (!filterId.empty() && go->instanceId != filterId) continue;
-        surfaces.Push(NavMeshSurfaceJson(*go, *surface));
+        JsonValue entry = NavMeshSurfaceJson(*go, *surface);
+        // ベイク後に地形や Modifier が動いていれば、この NavMesh はもう現状と合っていない。
+        // WHY ここで出すか: 古い NavMesh でも navmesh_find_path は成功を返すので、
+        //      「壁を通り抜ける経路」を得たあとでしか気付けなかった。
+        if (surface->navMesh.IsValid()) {
+            const uint64_t current = scene::HashNavMeshBakeSources(*activeScene, eid);
+            entry.Set("stale", JsonValue(current != surface->bakedSourceHash));
+        }
+        surfaces.Push(std::move(entry));
     }
 
     // Agent 側も併せて返す。「経路が引けない」の原因が Surface 側か Agent 設定側かは、
@@ -7645,11 +7669,28 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
         listeners.Push(std::move(entry));
     }
 
+    // AudioSource の busName が指せる名前の一覧。
+    // WHY 返すか: fields に busName が出ても、有効な名前が分からなければ AI は
+    //     綴りを推測するしかない。未知の名前は Master へ落ちるため、間違えても
+    //     エラーにならず「なぜか音量設定が効かない」形でしか現れない。
+    JsonValue buses = JsonValue::MakeArray();
+    if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+        for (const audio::BusDesc& desc : audioManager->BusLayout()) {
+            JsonValue entry = JsonValue::MakeObject();
+            entry.Set("name", JsonValue(desc.name));
+            entry.Set("parent", JsonValue(desc.parent));
+            entry.Set("volume", JsonValue(desc.volume));
+            entry.Set("lowPassCutoff", JsonValue(desc.lowPassCutoff));
+            buses.Push(std::move(entry));
+        }
+    }
+
     JsonValue result = JsonValue::MakeObject();
     result.Set("sourceCount", JsonValue(static_cast<int>(sources.AsArray().size())));
     result.Set("sources", std::move(sources));
     result.Set("listenerCount", JsonValue(static_cast<int>(listeners.AsArray().size())));
     result.Set("listeners", std::move(listeners));
+    result.Set("buses", std::move(buses));
     // 3D 減衰は Listener が無いと成立しない。「音が聞こえない」の最頻出原因なので明示する。
     if (listeners.AsArray().empty())
         result.Set("warning", JsonValue("AudioListener がシーンにありません (3D 音の距離減衰が効きません)"));

@@ -57,6 +57,12 @@ void RegisterTerrainOperators(OperatorRegistry& registry);
 // (パネルが開いていることを前提にした操作を、自分で前提を満たせない)。
 void RegisterDocumentOperators(OperatorRegistry& registry);
 
+// 手続き効果音 (.synth) の生成・調整・プレビュー・保存。
+// WHY 読み取り (sfx.inspect) まで Operator にするか: AI は音を聴けないため、
+//     パラメーターを動かした結果を数値で読み返せないと反復オーサリングが成立しない。
+//     Query として登録簿へ載せれば editor.op.query からそのまま引ける。
+void RegisterSfxOperators(OperatorRegistry& registry);
+
 // ParticleEmitter / VFXGraphComponent の再生制御。
 // Inspector の再生ボタンと同じコンポーネント API を使い、AI からも Play / Stop /
 // Restart / Clear / Burst / Trigger を一つの操作入口で呼べるようにする。

@@ -36,6 +36,8 @@ public:
     explicit AssetBrowserPanel(const std::string& rootPath);
     const char* GetWindowName() const override { return "Asset Browser"; }
     void OnInit(EditorContext& ctx) override;
+    void OnLoadSettings(const EditorSettings& settings) override;
+    void OnSaveSettings(EditorSettings& settings) const override;
     void SetRootPath(const std::string& rootPath);
 
 private:
@@ -102,6 +104,12 @@ private:
     static void        DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false);
     void               DrawAssetPreviewIconAt(ImVec2 origin, float sz, const Entry& e, EditorContext& ctx, bool hovered);
     void               ResetAssetPreviewCache(const std::string& path);
+    // 全プレビューの GPU リソースを解放して捨てる (次の描画で作り直される)。
+    void               ClearAllAssetPreviews();
+    // ファイル監視がイベントを取りこぼした後、一覧・プレビュー・索引を丸ごと作り直す。
+    // WHY: 個々のイベントに追従する仕組みは、そのイベント自体が失われると全て空振りする。
+    //      「エンジンを再起動すれば直る」状態を、再起動せずに作るための復旧経路。
+    void               ResyncAfterWatcherOverflow();
 
     void DrawFbxContents(EditorContext& ctx);
     void DrawBreadcrumb(EditorContext& ctx);
@@ -310,10 +318,20 @@ private:
     std::string    m_selectedFbxPath;
     asset::Model*  m_selectedModel = nullptr;
 
+    // 失敗を恒久化させないための再試行状態。
+    // WHY: 一括で素材を入れた直後は「まだ書き込み途中」「まだインポートされていない」
+    //      という理由でプレビューの生成が失敗する。1 回の失敗で確定させると、
+    //      素材が正常になってもサムネイルは出ないままで、エンジンを再起動するしか
+    //      直す方法がなくなる。間隔を空けて有限回だけ焼き直しに挑戦する。
+    struct PreviewRetry {
+        uint32_t count = 0;
+        double   nextTime = 0.0; // ImGui::GetTime() 基準
+    };
     struct ThumbnailBase {
         renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
         bool thumbnailRendered = false;
         bool failed = false;
+        PreviewRetry retry;
     };
     struct TexturePreview {
         renderer::ResourceHandle<renderer::TextureTag> handle;
@@ -321,6 +339,7 @@ private:
         uint32_t height = 0;
         bool failed = false;
         bool queued = false;
+        PreviewRetry retry;
     };
     struct MaterialPreview : ThumbnailBase {
         asset::MaterialAsset asset;
@@ -369,6 +388,7 @@ private:
         uint32_t height = 0;
         std::filesystem::file_time_type lastWriteTime{};
         bool failed = false;
+        PreviewRetry retry;
     };
     // 画像の .meta から Sprite 切り抜き情報を保持し、グリッド描画中の再解析を避ける。
     struct SpritePreview {

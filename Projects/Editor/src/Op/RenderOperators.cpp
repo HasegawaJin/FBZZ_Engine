@@ -15,6 +15,8 @@
 
 #include <Editor/EditorContext.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 
 #include <string>
 #include <utility>
@@ -225,6 +227,82 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         op.checked = [toViewMode](const OpContext& c, const OpArgs& args) {
             if (!args.Has("mode")) return false;
             return c.ctx.projectSettings.render.viewMode == toViewMode(args.GetString("mode"));
+        };
+        registry.Register(std::move(op));
+    }
+
+    // NavMesh オーバーレイの描き方。show_navmesh が「出す/出さない」だけを持ち、
+    // 「何を出すか」がどこにも無かったため、穴の位置も areaType の塗り分けも
+    // 同じ 1 枚の青い面からは読み取れなかった。
+    {
+        EditorOperator op;
+        op.id       = "render.set_navmesh_draw_mode";
+        op.label    = "Set NavMesh Draw Mode";
+        op.category = "Render";
+        op.desc     = "NavMesh オーバーレイの描き方を切り替える。"
+                      "areas は NavMesh Modifier の areaType 塗り分けを、"
+                      "portals はポリゴン同士の接続を、"
+                      "voxels はベイクのセル判定 (急斜面 / 段差 / 障害物 / 半径不足) を出す。"
+                      "navmesh_find_path が found=false のとき、経路が通らない理由を絵で分ける。";
+        op.kind     = OpKind::Action;
+
+        OpParam modeParam;
+        modeParam.name       = "mode";
+        modeParam.type       = OpParamType::String;
+        modeParam.desc       = "描き方";
+        modeParam.enumValues = { "solid", "transparent", "areas", "portals", "voxels" };
+        op.params = { modeParam };
+
+        const auto toDrawMode = [](const std::string& mode) {
+            if (mode == "transparent") return renderer::NavMeshDrawMode::Transparent;
+            if (mode == "areas")       return renderer::NavMeshDrawMode::Areas;
+            if (mode == "portals")     return renderer::NavMeshDrawMode::Portals;
+            if (mode == "voxels")      return renderer::NavMeshDrawMode::Voxels;
+            return renderer::NavMeshDrawMode::Solid;
+        };
+        op.exec = [toDrawMode](OpContext& c, const OpArgs& args) -> OpResult {
+            c.ctx.projectSettings.render.navMeshDrawMode = toDrawMode(args.GetString("mode"));
+            // 描き方だけ変えても表示が消えていれば何も起きないので、同時に点ける。
+            c.ctx.projectSettings.render.showNavMesh = true;
+            return OpResult::Ok();
+        };
+        op.checked = [toDrawMode](const OpContext& c, const OpArgs& args) {
+            if (!args.Has("mode")) return false;
+            return c.ctx.projectSettings.render.navMeshDrawMode == toDrawMode(args.GetString("mode"));
+        };
+        registry.Register(std::move(op));
+    }
+
+    // WHY Render グループに置くか: NavMesh のベイクは描画ではないが、登録先を分けるには
+    //     専用グループを 1 つ増やして EditorApp の登録列にも 1 行足す必要があり、
+    //     操作 1 つのために二重管理を作ることになる。debug.hot_reload と同じ扱いで
+    //     category だけ Tools に寄せる。
+    {
+        EditorOperator op;
+        op.id       = "navmesh.bake_all";
+        op.label    = "Bake All NavMesh";
+        op.category = "Tools";
+        op.desc     = "シーン内の有効な NavMesh Surface をすべて再ベイクする。"
+                      "地形を彫った後・コライダーを動かした後は、古い NavMesh のまま経路が引かれる。"
+                      "ベイクはバックグラウンドで走るため、この操作の完了は開始の完了でしかない。";
+        op.kind     = OpKind::Action;
+        op.poll = [](const OpContext& c, const OpArgs&) { return c.ctx.activeScene != nullptr; };
+        op.exec = [](OpContext& c, const OpArgs&) -> OpResult {
+            scene::Scene* activeScene = c.ctx.activeScene;
+            if (!activeScene) return OpResult::Err("NO_SCENE", "シーンが開かれていません");
+            int queued = 0;
+            for (scene::EntityID eid : activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+                auto* surface = activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+                if (!surface || !surface->enabled) continue;
+                surface->needsBake = true;
+                ++queued;
+            }
+            if (queued == 0)
+                return OpResult::Err("NO_NAVMESH_SURFACE",
+                                     "有効な NavMesh Surface がシーンにありません");
+            OpResult result;
+            result.message = std::to_string(queued) + " 個の Surface のベイクを開始しました";
+            return result;
         };
         registry.Register(std::move(op));
     }
