@@ -46,6 +46,8 @@ renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio)
         result.m_fovY     = cam->fovY;
         result.m_near     = cam->nearZ;
         result.m_far      = cam->farZ;
+        result.m_backgroundColor = cam->backgroundColor;
+        result.m_clearMode       = cam->clearMode;
         // WHY: viewport から決まる実効 aspect を Component に戻し、Script の座標変換と描画カメラを一致させる。
         cam->aspectRatio  = aspectRatio;
         result.m_aspect   = cam->aspectRatio;
@@ -74,12 +76,24 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
         camera.m_fovY     = cam->fovY;
         camera.m_near     = cam->nearZ;
         camera.m_far      = cam->farZ;
+        camera.m_backgroundColor = cam->backgroundColor;
+        camera.m_clearMode       = cam->clearMode;
         cam->aspectRatio  = aspectRatio;
         camera.m_aspect   = cam->aspectRatio;
         break;
     }
 
     return camera;
+}
+
+math::Vector4 ResolveGameBackgroundColor(Scene& scene)
+{
+    for (auto& go : scene.GameObjects()) {
+        auto* cam = go.GetComponent<CameraComponent>();
+        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
+        return cam->backgroundColor;
+    }
+    return renderer::kDefaultBackgroundColor;
 }
 
 fbzz::LayerMask ResolveGameCullingMask(Scene& scene)

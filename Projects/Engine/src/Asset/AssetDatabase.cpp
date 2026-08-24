@@ -184,8 +184,9 @@ bool AssetDatabase::ShouldHaveMeta(std::string_view lowerExt)
         ".behaviortree", ".vfx",
         // シェーダーソース (.mat から参照される)
         ".hlsl",
-        // オーディオ
-        ".mp3", ".wav", ".ogg",
+        // オーディオ。.synth は手続き効果音の定義で、他のクリップと同じく
+        // clipPath から参照されるため同じ扱いにする (Docs/design/audio-system.md)。
+        ".mp3", ".wav", ".ogg", ".flac", ".synth",
     };
     for (const auto e : kExts)
         if (lowerExt == e) return true;

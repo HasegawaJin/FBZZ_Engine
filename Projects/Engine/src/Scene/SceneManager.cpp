@@ -165,6 +165,11 @@ void SceneManager::SetSimulating(bool simulating)
         m_scheduler.ResetAccumulator();
 }
 
+void SceneManager::SetPlaying(bool playing)
+{
+    m_playing = playing;
+}
+
 void SceneManager::SetAudioManager(audio::AudioManager* audioManager)
 {
     m_audioManager = audioManager;
@@ -214,7 +219,7 @@ void SceneManager::Update(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
-    m_scheduler.Update({ *scene, world, nullptr, m_audioManager, dt, 0.0f, m_simulating });
+    m_scheduler.Update({ *scene, world, nullptr, m_audioManager, dt, 0.0f, m_simulating, m_playing });
 }
 
 void SceneManager::LateUpdate(float dt, physics::World& world)
@@ -224,7 +229,7 @@ void SceneManager::LateUpdate(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
-    m_scheduler.LateUpdate({ *scene, world, renderer::ResourceManager::Active(), m_audioManager, dt, 0.0f, m_simulating });
+    m_scheduler.LateUpdate({ *scene, world, renderer::ResourceManager::Active(), m_audioManager, dt, 0.0f, m_simulating, m_playing });
 }
 
 Scene* SceneManager::GetActive()
