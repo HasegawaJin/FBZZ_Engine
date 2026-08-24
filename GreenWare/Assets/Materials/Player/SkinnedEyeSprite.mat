@@ -17,7 +17,7 @@ uvOffset = [ 0.0, 0.0 ]
 uvTiling = [ 1.0, 1.0 ]
 
 [textures]
-albedo = 'Assets/Sprite/T_VisorEyes.png::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b'
+albedo = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b|Assets/Sprites/Player/T_VisorEyes.png'
 ao = ''
 emissive = ''
 metallic = ''
