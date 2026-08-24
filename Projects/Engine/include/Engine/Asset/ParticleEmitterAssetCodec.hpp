@@ -6,7 +6,7 @@
 #include <toml++/toml.hpp>
 
 namespace fbzz::scene {
-struct ParticleEmitter;
+struct ParticleEmitterSettings;
 struct ParticleCurve;
 struct ParticleGradient;
 }
@@ -28,10 +28,12 @@ void DeserializeParticleGradient(const toml::table& table, const char* key,
                                  scene::ParticleGradient& outGradient);
 
 // Sceneと.vfxの双方が同じ設定schemaを使えるよう、ランタイム状態を除いて書き出す。
-[[nodiscard]] toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitter);
+[[nodiscard]] toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSettings& emitter);
 
 // 未知フィールドを無視し、欠落フィールドは outEmitter の初期値を維持する。
+// NOTE: ランタイム状態には触れない (この型が持っていない)。コンポーネントへ流し込んだ場合は、
+//       呼び出し側が ParticleEmitter::ResetPlayback() を呼んで再生状態を初期化すること。
 void DeserializeParticleEmitterSettings(const toml::table& table,
-                                        scene::ParticleEmitter& outEmitter);
+                                        scene::ParticleEmitterSettings& outEmitter);
 
 } // namespace fbzz::asset

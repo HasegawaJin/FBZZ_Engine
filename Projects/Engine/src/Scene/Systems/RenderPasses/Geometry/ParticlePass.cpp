@@ -1,6 +1,8 @@
-// FBZZ Engine
-// RenderPasses/ParticlePass.cpp | fbzz::scene
-// パーティクル更新 (CPU) と描画
+/// @file    ParticlePass.cpp
+/// @brief   パーティクルの CPU シミュレーション・GPU ディスパッチ・描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+
 #include "GeometryPasses.hpp"
 #include <Engine/Scene/Systems/ParticleOverdrawStats.hpp>
 #include <Engine/Scene/Systems/ParticleSimulationRuntime.hpp>
@@ -13,7 +15,10 @@
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
+#include "Engine/Asset/MaterialParamBinding.hpp"
+#include "Engine/Renderer/ShaderDescriptor.hpp"
 #include "Engine/Asset/Model.hpp"
+#include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/ComputeCall.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
@@ -25,6 +30,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene {
@@ -147,7 +155,16 @@ struct ActiveForceField {
     float                  falloffPower;
     float                  noiseFrequency;
     float                  noiseSpeed;
+    uint32_t               channels;  // ParticleEmitter::forceFieldChannels と AND を取る
 };
+
+// 力場がこのエミッターに作用するか。
+// WHY 収集ではなく適用時に絞るか: 収集はパス先頭の 1 回だけで全エミッターが共有する。
+//     エミッターごとに収集し直すと O(エミッター数×オブジェクト数) に戻ってしまう。
+bool AffectsEmitter(const ActiveForceField& field, uint32_t emitterChannels)
+{
+    return (field.channels & emitterChannels) != 0u;
+}
 
 // シーンから有効な ParticleForceField を収集しワールド空間へ解決する。
 // WHY: エミッターごとに全 GameObject を走査すると O(エミッター数×オブジェクト数) に
@@ -172,6 +189,7 @@ std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMa
         f.falloffPower   = (std::max)(ff->falloffPower, 0.001f);
         f.noiseFrequency = (std::max)(ff->noiseFrequency, 0.0001f);
         f.noiseSpeed     = ff->noiseSpeed;
+        f.channels       = ff->channels;
         fields.push_back(f);
     }
 
@@ -189,6 +207,7 @@ std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMa
         wind.falloffPower   = 1.0f;
         wind.noiseFrequency = 0.5f;
         wind.noiseSpeed     = 1.0f;
+        wind.channels       = 0xFFFFFFFFu; // 環境風はチャンネルで除外させない
         fields.push_back(wind);
     }
     if (windZone.active && windZone.turbulence > 0.0f) {
@@ -201,6 +220,7 @@ std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMa
         turb.falloffPower   = 1.0f;
         turb.noiseFrequency = 0.5f;
         turb.noiseSpeed     = windZone.pulseFrequency;
+        turb.channels       = 0xFFFFFFFFu;
         fields.push_back(turb);
     }
     return fields;
@@ -213,11 +233,13 @@ std::vector<ActiveForceField> GatherForceFields(RenderPassContext& ctx)
 
 // 力場を粒子速度へ適用する。式は ParticleGpuSim.cs.hlsl の ApplyForceFields と一致させること。
 void ApplyForceFields(const std::vector<ActiveForceField>& fields,
+                      uint32_t             emitterChannels,
                       const math::Vector3& position,
                       math::Vector3&       velocity,
                       float dt, float time)
 {
     for (const auto& f : fields) {
+        if (!AffectsEmitter(f, emitterChannels)) continue;
         const math::Vector3 toParticle = position - f.position;
         float influence = 1.0f;
         if (f.radius > 0.0f) {
@@ -264,10 +286,10 @@ void ApplyEmitterNoise(const ParticleEmitter& emitter,
                        math::Vector3&         velocity,
                        float dt, float time)
 {
-    if (emitter.noiseStrength <= 0.0f) return;
+    if (emitter.settings.noiseStrength <= 0.0f) return;
     velocity = velocity + CurlNoise(TurbulenceSamplePoint(
-        position, emitter.noiseFrequency, emitter.noiseSpeed, time))
-        * (emitter.noiseStrength * dt);
+        position, emitter.settings.noiseFrequency, emitter.settings.noiseSpeed, time))
+        * (emitter.settings.noiseStrength * dt);
 }
 
 // 周回 (orbital) と放射 (radial) の加速度を速度へ加える。
@@ -284,7 +306,7 @@ void ApplyOrbitalVelocity(const ParticleEmitter& emitter,
                           math::Vector3&         velocity,
                           float dt)
 {
-    if (emitter.orbitalVelocity == 0.0f && emitter.radialVelocity == 0.0f) return;
+    if (emitter.settings.orbitalVelocity == 0.0f && emitter.settings.radialVelocity == 0.0f) return;
 
     const math::Vector3 offset = position - origin;
     const float distance = offset.Length();
@@ -292,19 +314,19 @@ void ApplyOrbitalVelocity(const ParticleEmitter& emitter,
     if (distance < 1.0e-5f) return;
     const math::Vector3 radialDirection = offset * (1.0f / distance);
 
-    if (emitter.radialVelocity != 0.0f)
-        velocity = velocity + radialDirection * (emitter.radialVelocity * dt);
+    if (emitter.settings.radialVelocity != 0.0f)
+        velocity = velocity + radialDirection * (emitter.settings.radialVelocity * dt);
 
-    if (emitter.orbitalVelocity != 0.0f) {
-        const float axisLength = emitter.orbitalAxis.Length();
+    if (emitter.settings.orbitalVelocity != 0.0f) {
+        const float axisLength = emitter.settings.orbitalAxis.Length();
         if (axisLength > 1.0e-5f) {
-            const math::Vector3 axis = emitter.orbitalAxis * (1.0f / axisLength);
+            const math::Vector3 axis = emitter.settings.orbitalAxis * (1.0f / axisLength);
             // 接線 = axis × radial。軸と平行な粒子では長さ 0 になるので正規化前に確認する。
             const math::Vector3 tangent = math::Vector3::Cross(axis, radialDirection);
             const float tangentLength = tangent.Length();
             if (tangentLength > 1.0e-5f) {
                 velocity = velocity
-                    + tangent * (1.0f / tangentLength) * (emitter.orbitalVelocity * dt);
+                    + tangent * (1.0f / tangentLength) * (emitter.settings.orbitalVelocity * dt);
             }
         }
     }
@@ -315,14 +337,14 @@ void ApplyOrbitalVelocity(const ParticleEmitter& emitter,
 // 素直なシフトにする (描画側が「新しい順」を仮定でき、読み手が追いやすい)。
 void AppendParticleTrailPoint(const ParticleEmitter& emitter, Particle& particle, float dt)
 {
-    if (!emitter.trailEnabled) {
+    if (!emitter.settings.trailEnabled) {
         particle.trailCount = 0;
         return;
     }
-    const int capacity = std::clamp(emitter.trailPointCount, 1, kMaxParticleTrailPoints);
+    const int capacity = std::clamp(emitter.settings.trailPointCount, 1, kMaxParticleTrailPoints);
     particle.trailSampleTimer += dt;
     // 間隔 0 を許すと 1 フレームに何度も積んで履歴が一瞬で埋まるため下限を切る。
-    const float interval = (std::max)(emitter.trailSampleInterval, 0.001f);
+    const float interval = (std::max)(emitter.settings.trailSampleInterval, 0.001f);
     if (particle.trailSampleTimer < interval) return;
     particle.trailSampleTimer = 0.0f;
 
@@ -338,11 +360,11 @@ uint32_t NextParticleRandom(ParticleEmitter& emitter)
 {
     // WHAT: Numerical Recipes 系 LCG。軽量で、エミッターごとの seed から決定的な乱数列を作る。
     // WHY: std::rand() はグローバル状態のため、複数エミッターや再生順序で結果が変わりやすい。
-    if (emitter.randomState == 0) {
-        emitter.randomState = emitter.randomSeed != 0 ? emitter.randomSeed : 1;
+    if (emitter.runtime.randomState == 0) {
+        emitter.runtime.randomState = emitter.settings.randomSeed != 0 ? emitter.settings.randomSeed : 1;
     }
-    emitter.randomState = emitter.randomState * 1664525u + 1013904223u;
-    return emitter.randomState;
+    emitter.runtime.randomState = emitter.runtime.randomState * 1664525u + 1013904223u;
+    return emitter.runtime.randomState;
 }
 
 float RandomSigned01(ParticleEmitter& emitter)
@@ -367,7 +389,7 @@ float Random01(ParticleEmitter& emitter)
 // CPU/GPU どちらのスポーン経路からも同じ乱数列で呼ぶため、結果は決定論的に一致する。
 math::Vector3 NextColorVariation(ParticleEmitter& emitter)
 {
-    const float variation = Clamp01(emitter.colorVariation);
+    const float variation = Clamp01(emitter.settings.colorVariation);
     if (variation <= 0.0f) return { 1.0f, 1.0f, 1.0f };
     const auto jitter = [&emitter, variation]() {
         return (std::max)(0.0f, 1.0f + RandomSigned01(emitter) * variation);
@@ -385,10 +407,10 @@ math::Vector3 NextColorVariation(ParticleEmitter& emitter)
 math::Vector4 EvaluateParticleColorLinear(const ParticleEmitter& emitter,
                                           const Particle& particle, float normalizedAge)
 {
-    math::Vector4 color = emitter.useColorGradient
-        ? emitter.runtimeGradient.EvaluateLinear(normalizedAge)
+    math::Vector4 color = emitter.settings.useColorGradient
+        ? emitter.runtime.runtimeGradient.EvaluateLinear(normalizedAge)
         : ParticleSrgbToLinear(LerpVec4(particle.startColor, particle.endColor,
-                                        std::pow(normalizedAge, emitter.colorCurvePower)));
+                                        std::pow(normalizedAge, emitter.settings.colorCurvePower)));
     color.x *= particle.colorScale.x;
     color.y *= particle.colorScale.y;
     color.z *= particle.colorScale.z;
@@ -423,18 +445,18 @@ math::Vector4 SpriteRectForFrame(int frame, int columns, int rows)
 SpriteFrameState ComputeSpriteFrameState(const ParticleEmitter& emitter, float normalizedAge,
                                          float ageSeconds = 0.0f, float spriteSeed = 0.0f)
 {
-    const int columns = (std::max)(emitter.spriteColumns, 1);
-    const int rows = (std::max)(emitter.spriteRows, 1);
+    const int columns = (std::max)(emitter.runtime.material.spriteColumns, 1);
+    const int rows = (std::max)(emitter.runtime.material.spriteRows, 1);
     const int frameCount = columns * rows;
-    int startFrame = std::clamp(emitter.spriteStartFrame, 0, frameCount - 1);
+    int startFrame = std::clamp(emitter.runtime.material.spriteStartFrame, 0, frameCount - 1);
     int endFrame = std::clamp(
-        emitter.spriteEndFrame > 0 ? emitter.spriteEndFrame : frameCount - 1,
+        emitter.runtime.material.spriteEndFrame > 0 ? emitter.runtime.material.spriteEndFrame : frameCount - 1,
         startFrame,
         frameCount - 1);
     // Random Row: アトラスの各行を「1 本のアニメーションのバリエーション」として扱い、
     // 粒子ごとに 1 行を選んでその中だけで再生する。1 枚のアトラスで見た目の異なる
     // 煙・爆炎を混ぜられる (AAA のアトラスはこの構成が標準)。
-    if (emitter.spriteRandomRow && rows > 1) {
+    if (emitter.runtime.material.spriteRandomRow && rows > 1) {
         const int row = std::clamp(
             static_cast<int>(Clamp01(spriteSeed) * static_cast<float>(rows)), 0, rows - 1);
         startFrame = row * columns;
@@ -443,10 +465,10 @@ SpriteFrameState ComputeSpriteFrameState(const ParticleEmitter& emitter, float n
     const int span = (std::max)(endFrame - startFrame, 0);
     float framePosition = 0.0f;
     bool wrapNext = false;
-    switch (emitter.flipbookMode) {
+    switch (emitter.runtime.material.flipbookMode) {
     case ParticleFlipbookMode::FramesPerSecond:
         framePosition = span > 0
-            ? std::fmod(ageSeconds * (std::max)(emitter.flipbookFramesPerSecond, 0.0f), static_cast<float>(span + 1))
+            ? std::fmod(ageSeconds * (std::max)(emitter.runtime.material.flipbookFramesPerSecond, 0.0f), static_cast<float>(span + 1))
             : 0.0f;
         wrapNext = true;
         break;
@@ -456,7 +478,7 @@ SpriteFrameState ComputeSpriteFrameState(const ParticleEmitter& emitter, float n
     case ParticleFlipbookMode::PingPong: {
         const float cycleLength = static_cast<float>((std::max)(span * 2, 1));
         const float cycleFrame = std::fmod(
-            ageSeconds * (std::max)(emitter.flipbookFramesPerSecond, 0.0f), cycleLength);
+            ageSeconds * (std::max)(emitter.runtime.material.flipbookFramesPerSecond, 0.0f), cycleLength);
         framePosition = cycleFrame <= static_cast<float>(span)
             ? cycleFrame : static_cast<float>(span * 2) - cycleFrame;
         break;
@@ -469,8 +491,8 @@ SpriteFrameState ComputeSpriteFrameState(const ParticleEmitter& emitter, float n
     // Random Start Frame: 再生位相を粒子ごとにずらす。
     // これが無いと同時に湧いた煙が全部同じコマで回り、群れが一枚の板に見えてしまう。
     // RandomFrame モードは元々コマ自体がランダムなので位相ずらしは適用しない。
-    if (emitter.spriteRandomStartFrame && span > 0
-        && emitter.flipbookMode != ParticleFlipbookMode::RandomFrame) {
+    if (emitter.runtime.material.spriteRandomStartFrame && span > 0
+        && emitter.runtime.material.flipbookMode != ParticleFlipbookMode::RandomFrame) {
         // 行選択と同じ seed をそのまま使うと「行と位相」が相関して不自然な規則性が出るため、
         // 適当な係数でずらしてから小数部を取り、独立した第 2 の乱数として扱う。
         const float phaseSeed = Clamp01(spriteSeed) * 7.13f + 0.37f;
@@ -486,7 +508,7 @@ SpriteFrameState ComputeSpriteFrameState(const ParticleEmitter& emitter, float n
     SpriteFrameState state;
     state.currentRect = SpriteRectForFrame(startFrame + relativeFrame, columns, rows);
     state.nextRect = SpriteRectForFrame(startFrame + nextRelativeFrame, columns, rows);
-    state.blend = emitter.flipbookFrameBlending && emitter.flipbookMode != ParticleFlipbookMode::RandomFrame
+    state.blend = emitter.runtime.material.flipbookFrameBlending && emitter.runtime.material.flipbookMode != ParticleFlipbookMode::RandomFrame
         ? framePosition - std::floor(framePosition) : 0.0f;
     return state;
 }
@@ -543,22 +565,22 @@ const AnimatorComponent* FindParticleAnimator(GameObject& object)
 // WHY: AssetManagerのModel所有権を侵さず、スポーンごとのモデル走査も避ける。
 void EnsureMeshShapePoints(ParticleEmitter& emitter)
 {
-    if (emitter.loadedMeshShapePath == emitter.meshShapePath
-        && emitter.loadedMeshShapeIndex == emitter.meshShapeIndex)
+    if (emitter.runtime.loadedMeshShapePath == emitter.settings.meshShapePath
+        && emitter.runtime.loadedMeshShapeIndex == emitter.settings.meshShapeIndex)
         return;
 
-    emitter.meshShapeVertices.clear();
-    emitter.loadedMeshShapePath = emitter.meshShapePath;
-    emitter.loadedMeshShapeIndex = emitter.meshShapeIndex;
-    if (emitter.meshShapePath.empty()) return;
+    emitter.runtime.meshShapeVertices.clear();
+    emitter.runtime.loadedMeshShapePath = emitter.settings.meshShapePath;
+    emitter.runtime.loadedMeshShapeIndex = emitter.settings.meshShapeIndex;
+    if (emitter.settings.meshShapePath.empty()) return;
 
-    const asset::Model* model = asset::AssetManager::LoadModel(emitter.meshShapePath);
+    const asset::Model* model = asset::AssetManager::LoadModel(emitter.settings.meshShapePath);
     if (!model) return;
 
     auto appendMesh = [&](const renderer::Mesh& mesh) {
         if (!mesh.cpuSkinnedVertices.empty()) {
-            emitter.meshShapeVertices.reserve(
-                emitter.meshShapeVertices.size() + mesh.cpuSkinnedVertices.size());
+            emitter.runtime.meshShapeVertices.reserve(
+                emitter.runtime.meshShapeVertices.size() + mesh.cpuSkinnedVertices.size());
             for (const renderer::SkinnedVertex& vertex : mesh.cpuSkinnedVertices) {
                 MeshShapeVertex cached{};
                 cached.position = vertex.position;
@@ -567,21 +589,21 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
                     cached.boneIndices[influence] = vertex.boneIndices[influence];
                     cached.boneWeights[influence] = vertex.boneWeights[influence];
                 }
-                emitter.meshShapeVertices.push_back(cached);
+                emitter.runtime.meshShapeVertices.push_back(cached);
             }
         } else {
-            emitter.meshShapeVertices.reserve(
-                emitter.meshShapeVertices.size() + mesh.cpuVertices.size());
+            emitter.runtime.meshShapeVertices.reserve(
+                emitter.runtime.meshShapeVertices.size() + mesh.cpuVertices.size());
             for (const renderer::Vertex& vertex : mesh.cpuVertices) {
                 MeshShapeVertex cached{};
                 cached.position = vertex.position;
-                emitter.meshShapeVertices.push_back(cached);
+                emitter.runtime.meshShapeVertices.push_back(cached);
             }
         }
     };
 
-    if (emitter.meshShapeIndex >= 0) {
-        const size_t meshIndex = static_cast<size_t>(emitter.meshShapeIndex);
+    if (emitter.settings.meshShapeIndex >= 0) {
+        const size_t meshIndex = static_cast<size_t>(emitter.settings.meshShapeIndex);
         if (meshIndex < model->meshes.size() && model->meshes[meshIndex])
             appendMesh(*model->meshes[meshIndex]);
         return;
@@ -596,17 +618,17 @@ bool SampleMeshShapePoint(ParticleEmitter& emitter, const AnimatorComponent* ani
                           math::Vector3& outPoint)
 {
     EnsureMeshShapePoints(emitter);
-    if (emitter.meshShapeVertices.empty()) return false;
-    const size_t lastIndex = emitter.meshShapeVertices.size() - 1;
+    if (emitter.runtime.meshShapeVertices.empty()) return false;
+    const size_t lastIndex = emitter.runtime.meshShapeVertices.size() - 1;
     const size_t index = (std::min)(
-        static_cast<size_t>(Random01(emitter) * static_cast<float>(emitter.meshShapeVertices.size())),
+        static_cast<size_t>(Random01(emitter) * static_cast<float>(emitter.runtime.meshShapeVertices.size())),
         lastIndex);
-    const MeshShapeVertex& vertex = emitter.meshShapeVertices[index];
+    const MeshShapeVertex& vertex = emitter.runtime.meshShapeVertices[index];
     outPoint = vertex.position;
 
     // WHAT: GPUスキニングと同じ4ウェイト線形ブレンドをCPU側の発生点にだけ適用する。
     // WHY: 粒子本体はGPUシミュレーションのまま、読み戻しなしで現在のSkinnedAnimationへ追従できる。
-    if (emitter.meshShapeFollowSkinnedAnimation && vertex.skinned && animator
+    if (emitter.settings.meshShapeFollowSkinnedAnimation && vertex.skinned && animator
         && !animator->boneMatrices.empty()) {
         math::Vector3 skinnedPoint = math::Vector3::ZERO;
         float totalWeight = 0.0f;
@@ -623,8 +645,99 @@ bool SampleMeshShapePoint(ParticleEmitter& emitter, const AnimatorComponent* ani
         if (totalWeight > 0.0001f)
             outPoint = skinnedPoint * (1.0f / totalWeight);
     }
-    outPoint = outPoint * emitter.meshShapeScale;
+    outPoint = outPoint * emitter.settings.meshShapeScale;
     return true;
+}
+
+// 同じ .mat の設定ミスを毎フレーム記録するとログが埋まって他の警告が読めなくなる。
+std::unordered_set<std::string> g_warnedParticleMaterials;
+
+bool WarnParticleMaterialOnce(const std::string& path)
+{
+    return g_warnedParticleMaterials.insert(path).second;
+}
+
+// カスタムシェーダーが宣言した MaterialConstants (b2) 1 本ぶんの解決結果。
+//
+// WHY .mat 単位でキャッシュするか: 解決にはシェーダーのロードとリフレクションが要る。
+//     同じ .mat を 20 個のエミッターが共有していても、名前引きと Upload は 1 回で足りる。
+// WHY 値で持つか (shared_ptr にしないか): 下のキャッシュの要素としてしか存在しない。
+//     unordered_map はノード単位で確保するので rehash しても要素のアドレスは動かない。
+struct ParticleMaterialBinding {
+    renderer::ShaderDescriptor                            descriptor;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> paramsCB;
+    std::vector<uint8_t>                                  paramData;
+    // paramsCB を確保したときのサイズ。シェーダーのホットリロードで MaterialConstants の
+    // 大きさが変わったら作り直す必要がある (古い容量のまま書くと末尾が落ちる)。
+    uint32_t                                              paramsCBSize = 0;
+    // このパス呼び出しで既に値を適用したか。.mat の編集を絵へ出しつつ、
+    // 同じ .mat を共有するエミッターぶん解決をやり直さないための通番。
+    uint64_t                                              resolvedPass = 0;
+    bool                                                  resolvedOk   = false;
+};
+
+std::unordered_map<std::string, ParticleMaterialBinding> g_particleMaterials;
+// ExecuteParticlePass の呼び出し通番。0 は「未解決」を表すため 1 から始める。
+uint64_t                                                 g_particlePassSerial = 0;
+
+// .mat の [params] をカスタムシェーダーの MaterialConstants へ束縛し、b2 へ流す定数バッファを返す。
+// 組み込みシェーダー (MaterialConstants を宣言しない) では無効ハンドルを返す。
+//
+// 束縛規則そのものは asset::MaterialParamBinding が持つ — メッシュ / UI / デカールと同じ経路。
+renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialParams(
+    renderer::ResourceManager& resources,
+    const std::string& materialPath,
+    const asset::MaterialAsset& material,
+    renderer::ResourceHandle<renderer::ShaderTag> shader)
+{
+    if (!shader.IsValid()) return {};
+
+    ParticleMaterialBinding& binding = g_particleMaterials[materialPath];
+    if (binding.resolvedPass == g_particlePassSerial)
+        return binding.resolvedOk ? binding.paramsCB : renderer::ResourceHandle<renderer::ConstantBufferTag>{};
+    binding.resolvedPass = g_particlePassSerial;
+    binding.resolvedOk   = false;
+
+    // 記述子は値で持つ。シェーダーはホットリロードで差し替わりうるので、
+    // ポインタで持つと解決時の中身と食い違う瞬間ができる。
+    binding.descriptor = {};
+    if (auto* compiled = resources.Get(shader))
+        binding.descriptor = compiled->GetDescriptor();
+    // MaterialConstants を宣言していないシェーダーは cbufferSize が 0 (= IsValid() が false)。
+    // その場合 b2 は何も束縛しない — 組み込み Particle.hlsl がこれに当たる。
+    if (!binding.descriptor.IsValid()) return {};
+
+    binding.paramData.assign(binding.descriptor.cbufferSize, uint8_t{ 0 });
+    asset::InitDefaultMaterialParams(binding.descriptor, binding.paramData);
+    asset::ApplyMaterialAssetParams(material, binding.descriptor, binding.paramData);
+
+    if (binding.paramsCB.IsValid() && binding.paramsCBSize != binding.descriptor.cbufferSize) {
+        resources.Release(binding.paramsCB);
+        binding.paramsCB = {};
+    }
+    if (!binding.paramsCB.IsValid()) {
+        binding.paramsCB = resources.CreateConstantBuffer(binding.descriptor.cbufferSize);
+        binding.paramsCBSize = binding.descriptor.cbufferSize;
+    }
+    if (!binding.paramsCB.IsValid()) return {};
+    resources.Update(binding.paramsCB, binding.paramData.data(),
+                     static_cast<uint32_t>(binding.paramData.size()));
+
+    binding.resolvedOk = true;
+    return binding.paramsCB;
+}
+
+// .mat の blend_mode をパーティクルの合成モードへ。
+// WHY 変換が要るか: RenderState.hpp の BlendMode は Opaque も持つが、パーティクルは
+//     半透明前提で PSO が 3 種類しか無い。Opaque が来たら加算へ倒す
+//     (.mat の作り間違いで «板が並ぶ» より、光って見える方が原因に気付きやすい)。
+ParticleBlendMode ParticleBlendFromMaterial(renderer::BlendMode blend)
+{
+    switch (blend) {
+    case renderer::BlendMode::ALPHA_BLEND:   return ParticleBlendMode::Alpha;
+    case renderer::BlendMode::PREMULTIPLIED: return ParticleBlendMode::Premultiplied;
+    default:                                 return ParticleBlendMode::Additive;
+    }
 }
 
 renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
@@ -643,43 +756,59 @@ renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
     return resources.CreateTexture(white, 1, 1);
 }
 
+
+// .mat の [textures] から 1 スロット引く。未設定なら空文字列。
+const std::string& ParticleMaterialTexture(const asset::MaterialAsset& material, const char* slot)
+{
+    static const std::string kEmpty;
+    const auto it = material.textures.find(slot);
+    return (it != material.textures.end()) ? it->second : kEmpty;
+}
+
 void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& resources)
 {
-    if (emitter.motionVectorFlipbook && !emitter.motionVectorTexturePath.empty()
-        && (!emitter.motionVectorTexture.IsValid()
-            || emitter.loadedMotionVectorTexturePath != emitter.motionVectorTexturePath)) {
-        emitter.motionVectorTexture = LoadParticleTextureOrWhite(resources, emitter.motionVectorTexturePath);
-        emitter.loadedMotionVectorTexturePath = emitter.motionVectorTexturePath;
-    }
-    if (emitter.loadedDistortionTexturePath != emitter.distortionTexturePath) {
-        emitter.distortionTexture = emitter.distortionTexturePath.empty()
-            ? renderer::ResourceHandle<renderer::TextureTag>::Null()
-            : LoadParticleTextureOrWhite(resources, emitter.distortionTexturePath);
-        emitter.loadedDistortionTexturePath = emitter.distortionTexturePath;
-    }
-    // materialPath が設定されている場合: .mat の albedo テクスチャと blendMode を優先する。
-    // WHY: materialPath が単一の描画設定の信頼元になることで、複数エミッターで同じ .mat を共有できる。
+    // 見た目のテクスチャは 3 枚とも .mat の [textures] から来る。
+    //   albedo = 素材 / normal = 歪みベクトル専用マップ / tex5 = Motion Vector アトラス
+    // WHY: 以前は albedo だけ .mat で、歪みと MV はコンポーネントのパス文字列だった。
+    //      «素材を差し替えたのに歪みだけ前のまま» が起きるうえ、.mat を共有しても
+    //      その 2 枚だけエミッターごとに貼り直すことになっていた。
     //
     // 未設定なら既定 .mat へ落とす。1x1 白は alpha=1 なので、そのまま描くと
     // 粒子が「不透明な四角」になり、素材の付け忘れが最も分かりにくい形で表に出る。
     // NOTE: 既定 .mat が無いプロジェクトでは LoadMaterial が失敗し、従来どおり白へ落ちる。
-    const bool usingFallback = emitter.materialPath.empty();
+    const bool usingFallback = emitter.settings.materialPath.empty();
     const std::string resolvedMaterial =
-        usingFallback ? std::string(PARTICLE_FALLBACK_MATERIAL) : emitter.materialPath;
+        usingFallback ? std::string(PARTICLE_FALLBACK_MATERIAL) : emitter.settings.materialPath;
     {
-        const bool matChanged = (emitter.loadedMaterialPath != resolvedMaterial);
+        const bool matChanged = (emitter.runtime.loadedMaterialPath != resolvedMaterial);
         if (matChanged) {
-            emitter.loadedMaterialPath = resolvedMaterial;
-            emitter.loadedTexturePath.clear(); // .mat の変更でテクスチャも再ロードさせる
+            emitter.runtime.loadedMaterialPath = resolvedMaterial;
+            emitter.runtime.loadedTexturePath.clear(); // .mat の変更でテクスチャも再ロードさせる
         }
         const auto matHandle = asset::AssetManager::LoadMaterial(resolvedMaterial);
         if (const auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
-            const auto it = mat->textures.find("albedo");
-            const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
-            if (!emitter.texture.IsValid() || emitter.loadedTexturePath != resolvedTex) {
-                emitter.texture = LoadParticleTextureOrWhite(resources, resolvedTex);
-                emitter.loadedTexturePath = resolvedTex;
-                emitter.textureIsSrgb = IsEffectTextureSrgb(resolvedTex);
+            const std::string& resolvedTex = ParticleMaterialTexture(*mat, "albedo");
+            if (!emitter.runtime.texture.IsValid() || emitter.runtime.loadedTexturePath != resolvedTex) {
+                emitter.runtime.texture = LoadParticleTextureOrWhite(resources, resolvedTex);
+                emitter.runtime.loadedTexturePath = resolvedTex;
+                emitter.runtime.textureIsSrgb = IsEffectTextureSrgb(resolvedTex);
+            }
+            // 歪みベクトル専用マップ (normal)。未設定なら無効ハンドルのままにして、
+            // シェーダー側は effectsFlags を見て albedo の RG へ縮退する。
+            const std::string& distortionTex = ParticleMaterialTexture(*mat, "normal");
+            if (emitter.runtime.loadedDistortionTexturePath != distortionTex) {
+                emitter.runtime.distortionTexture = distortionTex.empty()
+                    ? renderer::ResourceHandle<renderer::TextureTag>::Null()
+                    : LoadParticleTextureOrWhite(resources, distortionTex);
+                emitter.runtime.loadedDistortionTexturePath = distortionTex;
+            }
+            // Motion Vector アトラス (tex5)。
+            const std::string& motionTex = ParticleMaterialTexture(*mat, "tex5");
+            if (emitter.runtime.loadedMotionVectorTexturePath != motionTex) {
+                emitter.runtime.motionVectorTexture = motionTex.empty()
+                    ? renderer::ResourceHandle<renderer::TextureTag>::Null()
+                    : LoadParticleTextureOrWhite(resources, motionTex);
+                emitter.runtime.loadedMotionVectorTexturePath = motionTex;
             }
             // .mat の [params] albedo を色調整として引き継ぐ。
             // WHY: materialPath を「描画設定の単一の信頼元」と定義しておきながら、
@@ -694,30 +823,73 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
                 if (values.size() > 2) tint.z = values[2];
                 if (values.size() > 3) tint.w = values[3];
             }
-            emitter.materialTint = ParticleSrgbToLinear(tint);
-            // blendMode を .mat から上書きする。
-            // WHY: materialPath が描画設定の単一の信頼元であるため、Inspector の blendMode より優先する。
-            // ただし既定 .mat は担当者が選んだものではないので、ブレンドまでは奪わない
-            // (奪うと「未設定にした瞬間に Alpha 指定が加算へ化ける」ことになる)。
-            if (!usingFallback) {
-                switch (mat->blendMode) {
-                case renderer::BlendMode::ALPHA_BLEND:
-                    emitter.blendMode = ParticleBlendMode::Alpha; break;
-                case renderer::BlendMode::PREMULTIPLIED:
-                    emitter.blendMode = ParticleBlendMode::Premultiplied; break;
-                default:
-                    emitter.blendMode = ParticleBlendMode::Additive; break;
+            emitter.runtime.materialTint = ParticleSrgbToLinear(tint);
+
+            // .mat が shader を指定していれば描画シェーダーを差し替える。
+            // WHY 既定 .mat では見ないか: フォールバックは担当者が選んだものではないので、
+            //     未設定にした瞬間に描画そのものが化けるのは避ける (blendMode と同じ判断)。
+            //
+            // WHY render_path を要求するか:
+            //   パーティクルの頂点は ParticleVertex (92B) で、b2 には ParticleRenderConstants が
+            //   来る。メッシュ用シェーダーはどちらも別物として読むため、割り当てると
+            //   «クラッシュせず静かに壊れた絵» になる。原因が絵から辿れない種類の事故なので
+            //   宣言で弾く。UI (UISystem) / Decal (DecalPass) と同じ判断。
+            const bool declaredForParticles = (mat->renderPath == asset::RenderPath::Particle);
+            if (!usingFallback && !declaredForParticles && !mat->shaderPath.empty()
+                && WarnParticleMaterialOnce(resolvedMaterial)) {
+                FBZZ_LOG_WARN("Particle material '%s' declares shader '%s' but is not declared for "
+                              "particles (render_path must be \"particle\") -> ignoring the shader "
+                              "and drawing with the built-in particle shader.",
+                              resolvedMaterial.c_str(), mat->shaderPath.c_str());
+            }
+            const std::string shaderPath =
+                (usingFallback || !declaredForParticles) ? std::string{} : mat->shaderPath;
+            if (emitter.runtime.loadedShaderPath != shaderPath) {
+                emitter.runtime.loadedShaderPath = shaderPath;
+                emitter.runtime.customShader = shaderPath.empty()
+                    ? renderer::ResourceHandle<renderer::ShaderTag>{}
+                    : resources.LoadShader(shaderPath);
+                // WHY 失敗を明示するか: ここで黙って組み込みへ落ちると、テクスチャを
+                //     持たない .mat では 1x1 白が貼られて «白い四角» が並ぶ。
+                //     手続きシェーダーの素材ほどテクスチャを持たないため、
+                //     一番起きやすい失敗が一番原因の分かりにくい絵になる。
+                if (!shaderPath.empty() && !emitter.runtime.customShader.IsValid()) {
+                    FBZZ_LOG_WARN("Particle material '%s' references shader '%s' but it failed to "
+                                  "load (not compiled?). Falling back to the built-in particle "
+                                  "shader; a material without an albedo texture will draw as "
+                                  "white quads.",
+                                  resolvedMaterial.c_str(), shaderPath.c_str());
                 }
             }
+            // カスタムシェーダーが MaterialConstants を宣言していれば .mat の [params] を流す。
+            // WHY 毎フレーム引き直すか: .mat を編集した結果をエディタで即座に絵へ出すため。
+            //     解決自体は .mat 単位で 1 パス 1 回に畳んである。
+            emitter.runtime.materialParamsCB = ResolveParticleMaterialParams(
+                resources, resolvedMaterial, *mat, emitter.runtime.customShader);
+            // 見た目一式を .mat から «読む»。settings へは書き戻さない。
+            // WHY: settings はシーン保存対象なので、描画パスが書き込むと
+            //      «触っていないのに保存内容が変わる» / «Inspector で変えても戻る» が起きる。
+            //      以前 blendMode だけこれをやっていて、両方の症状が出ていた。
+            emitter.runtime.material      = mat->particle;
+            emitter.runtime.resolvedBlend = ParticleBlendFromMaterial(mat->blendMode);
+            // アトラス分割は 0 だと UV 矩形が発散する。.mat は手書きできるのでここで丸める。
+            emitter.runtime.material.spriteColumns =
+                (std::max)(emitter.runtime.material.spriteColumns, 1);
+            emitter.runtime.material.spriteRows =
+                (std::max)(emitter.runtime.material.spriteRows, 1);
             return;
         }
     }
 
-    if (!emitter.texture.IsValid()) {
-        emitter.texture = LoadParticleTextureOrWhite(resources, {});
-        emitter.loadedTexturePath.clear();
+    // .mat を解決できなかった。1x1 白 + 既定の見た目で描き続ける
+    // (エフェクトが丸ごと消えるより、素材が付いていないと分かる方がよい)。
+    emitter.runtime.material      = asset::ParticleMaterialSettings{};
+    emitter.runtime.resolvedBlend = ParticleBlendMode::Additive;
+    if (!emitter.runtime.texture.IsValid()) {
+        emitter.runtime.texture = LoadParticleTextureOrWhite(resources, {});
+        emitter.runtime.loadedTexturePath.clear();
         // 1x1 白フォールバック。リニアでも sRGB でも 1.0 は 1.0 なので変換しない。
-        emitter.textureIsSrgb = false;
+        emitter.runtime.textureIsSrgb = false;
     }
 }
 
@@ -727,7 +899,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
 //      ソート無効の絵が出る。判定材料をシェーダーの有無だけにして 1 か所へ寄せる。
 bool ShouldSortGpuParticles(const ParticleEmitter& emitter, const RenderPassHandles& handles)
 {
-    return emitter.sortMode != ParticleSortMode::None
+    return emitter.settings.sortMode != ParticleSortMode::None
         && handles.particleGpuSortKeysCS.IsValid()
         && handles.particleGpuSortStepCS.IsValid()
         && handles.particleGpuSortLocalCS.IsValid();
@@ -740,57 +912,57 @@ void UpdateParticleRenderConstants(ParticleEmitter& emitter,
                                    std::uint32_t screenHeight,
                                    bool gpuSortEnabled = false)
 {
-    if (!emitter.renderCB.IsValid())
-        emitter.renderCB = resources.CreateConstantBuffer(sizeof(ParticleRenderCB));
+    if (!emitter.runtime.renderCB.IsValid())
+        emitter.runtime.renderCB = resources.CreateConstantBuffer(sizeof(ParticleRenderCB));
     ParticleRenderCB cb{};
-    cb.renderMode = static_cast<uint32_t>(emitter.renderMode);
-    cb.stretchedVelocityScale = (std::max)(emitter.stretchedVelocityScale, 0.0f);
-    cb.stretchedLengthScale = (std::max)(emitter.stretchedLengthScale, 0.0f);
-    cb.softParticleFadeDistance = (std::max)(emitter.softParticleFadeDistance, 0.001f);
-    cb.softParticles = emitter.softParticles ? 1u : 0u;
+    cb.renderMode = static_cast<uint32_t>(emitter.settings.renderMode);
+    cb.stretchedVelocityScale = (std::max)(emitter.settings.stretchedVelocityScale, 0.0f);
+    cb.stretchedLengthScale = (std::max)(emitter.settings.stretchedLengthScale, 0.0f);
+    cb.softParticleFadeDistance = (std::max)(emitter.runtime.material.softParticleFadeDistance, 0.001f);
+    cb.softParticles = emitter.runtime.material.softParticles ? 1u : 0u;
     cb.maxParticles = static_cast<uint32_t>((std::max)(maxParticles, 0));
     // ビット割り当ては Rendering/ParticleCommon.hlsli の FBZZ_PFX_* / FBZZ_PALPHA_* と一致させること。
-    cb.effectsFlags = (emitter.distortion ? kParticleFxDistortion : 0u)
-        | (emitter.sixWayLighting ? kParticleFxSixWay : 0u)
-        | (emitter.motionVectorFlipbook && emitter.motionVectorTexture.IsValid()
+    cb.effectsFlags = (emitter.runtime.material.distortion ? kParticleFxDistortion : 0u)
+        | (emitter.runtime.material.sixWayLighting ? kParticleFxSixWay : 0u)
+        | (emitter.runtime.material.motionVectorFlipbook && emitter.runtime.motionVectorTexture.IsValid()
                ? kParticleFxMotionVector : 0u)
-        | (emitter.receiveShadows ? kParticleFxReceiveShadow : 0u)
-        | (emitter.volumetric ? kParticleFxVolumetric : 0u)
-        | (emitter.blendMode == ParticleBlendMode::Premultiplied
+        | (emitter.runtime.material.receiveShadows ? kParticleFxReceiveShadow : 0u)
+        | (emitter.runtime.material.volumetric ? kParticleFxVolumetric : 0u)
+        | (emitter.runtime.resolvedBlend == ParticleBlendMode::Premultiplied
                ? kParticleFxPremultiplied : 0u)
-        | (emitter.textureIsSrgb ? kParticleFxSrgbTexture : 0u)
-        | (emitter.distortionTexture.IsValid() ? kParticleFxDistortionMap : 0u)
-        | ((static_cast<std::uint32_t>(emitter.alphaSource) & kParticleAlphaMask)
+        | (emitter.runtime.textureIsSrgb ? kParticleFxSrgbTexture : 0u)
+        | (emitter.runtime.distortionTexture.IsValid() ? kParticleFxDistortionMap : 0u)
+        | ((static_cast<std::uint32_t>(emitter.runtime.material.alphaSource) & kParticleAlphaMask)
                << kParticleAlphaShift);
-    cb.distortionStrength = (std::max)(emitter.distortionStrength, 0.0f);
-    cb.distortionChromatic = (std::max)(emitter.distortionChromatic, 0.0f);
-    cb.lightingStrength = (std::max)(emitter.lightingStrength, 0.0f);
-    cb.smokeWrap = std::clamp(emitter.smokeWrap, 0.0f, 1.0f);
-    cb.smokeTransmission = (std::max)(emitter.smokeTransmission, 0.0f);
+    cb.distortionStrength = (std::max)(emitter.runtime.material.distortionStrength, 0.0f);
+    cb.distortionChromatic = (std::max)(emitter.runtime.material.distortionChromatic, 0.0f);
+    cb.lightingStrength = (std::max)(emitter.runtime.material.lightingStrength, 0.0f);
+    cb.smokeWrap = std::clamp(emitter.runtime.material.smokeWrap, 0.0f, 1.0f);
+    cb.smokeTransmission = (std::max)(emitter.runtime.material.smokeTransmission, 0.0f);
     // 0 以下だと pow が発散する。シェーダー側でも下限を切るが、値の意味をここで固定する。
-    cb.smokeBackScatterPower = (std::max)(emitter.smokeBackScatterPower, 0.1f);
-    cb.tintColor = emitter.materialTint;
-    cb.emissiveScale = (std::max)(emitter.emissiveScale, 0.0f);
-    cb.motionVectorStrength = (std::max)(emitter.motionVectorStrength, 0.0f);
+    cb.smokeBackScatterPower = (std::max)(emitter.runtime.material.smokeBackScatterPower, 0.1f);
+    cb.tintColor = emitter.runtime.materialTint;
+    cb.emissiveScale = (std::max)(emitter.runtime.material.emissiveScale, 0.0f);
+    cb.motionVectorStrength = (std::max)(emitter.runtime.material.motionVectorStrength, 0.0f);
     // 歪みの画面UV算出に使う。0 だとUVが右下隅へ張り付いて屈折が出ない。
     cb.screenWidth = static_cast<float>((std::max)(screenWidth, 1u));
     cb.screenHeight = static_cast<float>((std::max)(screenHeight, 1u));
     // 0 以下だと粒子が潰れて一切見えなくなるため、下限で切って「消える」事故を防ぐ。
-    cb.sizeAxisScaleX = (std::max)(emitter.sizeAxisScale.x, 0.0001f);
-    cb.sizeAxisScaleY = (std::max)(emitter.sizeAxisScale.y, 0.0001f);
-    cb.shadowStrength = std::clamp(emitter.shadowStrength, 0.0f, 1.0f);
+    cb.sizeAxisScaleX = (std::max)(emitter.settings.sizeAxisScale.x, 0.0001f);
+    cb.sizeAxisScaleY = (std::max)(emitter.settings.sizeAxisScale.y, 0.0001f);
+    cb.shadowStrength = std::clamp(emitter.runtime.material.shadowStrength, 0.0f, 1.0f);
     // ステップ数はピクセルあたりのループ回数に直結する。上限を切って
     // 設定ミスで GPU が張り付くのを防ぐ。
-    cb.volumetricSteps = static_cast<std::uint32_t>(std::clamp(emitter.volumetricSteps, 1, 64));
-    cb.volumetricDensity = (std::max)(emitter.volumetricDensity, 0.0f);
+    cb.volumetricSteps = static_cast<std::uint32_t>(std::clamp(emitter.runtime.material.volumetricSteps, 1, 64));
+    cb.volumetricDensity = (std::max)(emitter.runtime.material.volumetricDensity, 0.0f);
     // g = ±1 は位相関数が発散するため内側へ寄せる。
-    cb.volumetricAnisotropy = std::clamp(emitter.volumetricAnisotropy, -0.95f, 0.95f);
-    cb.volumetricNoiseScale = (std::max)(emitter.volumetricNoiseScale, 0.0f);
+    cb.volumetricAnisotropy = std::clamp(emitter.runtime.material.volumetricAnisotropy, -0.95f, 0.95f);
+    cb.volumetricNoiseScale = (std::max)(emitter.runtime.material.volumetricNoiseScale, 0.0f);
     // GPU 経路の VS がソート済み index (t15) を経由するかどうか。CPU 経路では常に 0。
     cb.gpuSortEnabled = gpuSortEnabled ? 1u : 0u;
     // 自己影。密度バッファ (t9) が無いフレームでも 0 なら参照しないので安全。
-    cb.selfShadowStrength = (std::max)(emitter.selfShadowStrength, 0.0f);
-    resources.Update(emitter.renderCB, &cb, sizeof(cb));
+    cb.selfShadowStrength = (std::max)(emitter.runtime.material.selfShadowStrength, 0.0f);
+    resources.Update(emitter.runtime.renderCB, &cb, sizeof(cb));
 }
 
 // 自己影用の密度 RT を、このパスで最初に使うときだけクリアして光源行列を流し込む。
@@ -870,7 +1042,7 @@ void AccumulateParticleSelfShadowDensity(const ParticleEmitter& emitter, int qua
     auto& resources = ctx.resources;
     auto& renderer = ctx.renderer;
     auto& h = ctx.handles;
-    if (quadCount <= 0 || !emitter.texture.IsValid()
+    if (quadCount <= 0 || !emitter.runtime.texture.IsValid()
         || !vertexBuffer.IsValid() || !h.particleIB.IsValid() || !h.particlePSO.IsValid())
         return;
 
@@ -883,8 +1055,8 @@ void AccumulateParticleSelfShadowDensity(const ParticleEmitter& emitter, int qua
     // ADDITIVE + DEPTH_READ。光源側 RT に深度は無いので比較も書き込みも起きない。
     dc.pipelineState = h.particlePSO;
     dc.constantBuffers[0] = h.particleSelfShadowFrameCB;
-    dc.constantBuffers[2] = emitter.renderCB;
-    dc.textures[0]  = emitter.texture;
+    dc.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
+    dc.textures[0]  = emitter.runtime.texture;
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     renderer.Submit(dc, resources);
     // 本番描画へ戻す。呼び出し側が続けて HDR RT へ描くため、ここで必ず張り直す。
@@ -906,9 +1078,9 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
 {
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
-    if (!h.trailShader.IsValid() || !h.trailPSO.IsValid() || !emitter.texture.IsValid()) return;
+    if (!h.trailShader.IsValid() || !h.trailPSO.IsValid() || !emitter.runtime.texture.IsValid()) return;
 
-    const int historyPoints = std::clamp(emitter.trailPointCount, 1, kMaxParticleTrailPoints);
+    const int historyPoints = std::clamp(emitter.settings.trailPointCount, 1, kMaxParticleTrailPoints);
     // 帯 1 本 = 本体 + 履歴点。線分は historyPoints 本で、各線分が 6 頂点。
     const int segmentsPerParticle = historyPoints;
     // 帯は粒子 1 つあたり数十頂点になる。上限を切らないと、粒子数を上げた瞬間に
@@ -919,11 +1091,11 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
 
     const std::uint32_t neededVertices =
         static_cast<std::uint32_t>(ribbonParticles) * static_cast<std::uint32_t>(segmentsPerParticle) * 6u;
-    if (!emitter.trailRibbonCB.IsValid())
-        emitter.trailRibbonCB = resources.CreateConstantBuffer(sizeof(TrailCB));
-    if (!emitter.trailRibbonCB.IsValid()) return;
+    if (!emitter.runtime.trailRibbonCB.IsValid())
+        emitter.runtime.trailRibbonCB = resources.CreateConstantBuffer(sizeof(TrailCB));
+    if (!emitter.runtime.trailRibbonCB.IsValid()) return;
 
-    const bool localSpace = emitter.simulationSpace == ParticleSimulationSpace::Local;
+    const bool localSpace = emitter.settings.simulationSpace == ParticleSimulationSpace::Local;
     const math::Vector3 cameraPos = ctx.camera.m_position;
 
     static std::vector<TrailVertex> vertices;
@@ -934,7 +1106,7 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
     static std::vector<math::Vector3> normals;
 
     for (int index = 0; index < ribbonParticles; ++index) {
-        const Particle& particle = emitter.particles[static_cast<std::size_t>(index)];
+        const Particle& particle = emitter.runtime.particles[static_cast<std::size_t>(index)];
         const int used = (std::min)(static_cast<int>(particle.trailCount), historyPoints);
         // 線分を張るには最低 2 点要る。履歴が溜まる前の粒子は帯を持たない。
         if (used < 1) continue;
@@ -978,8 +1150,8 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
         }
 
         // 幅。trailRibbonWidth が 0 以下なら粒子サイズを流用する。
-        const float baseWidth = emitter.trailRibbonWidth > 0.0f
-            ? emitter.trailRibbonWidth : particle.size;
+        const float baseWidth = emitter.settings.trailRibbonWidth > 0.0f
+            ? emitter.settings.trailRibbonWidth : particle.size;
         const float tailDenominator = static_cast<float>(polyline.size() - 1u);
         for (std::size_t segment = 0; segment + 1u < polyline.size(); ++segment) {
             // age は 1 = 粒子本体側 (新しい) / 0 = 尾の先端 (古い)。Trail.hlsl が
@@ -987,9 +1159,9 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
             const float age0 = 1.0f - static_cast<float>(segment) / tailDenominator;
             const float age1 = 1.0f - static_cast<float>(segment + 1u) / tailDenominator;
             const float half0 = baseWidth
-                * math::Lerp(emitter.trailWidthScale, 1.0f, age0) * 0.5f;
+                * math::Lerp(emitter.settings.trailWidthScale, 1.0f, age0) * 0.5f;
             const float half1 = baseWidth
-                * math::Lerp(emitter.trailWidthScale, 1.0f, age1) * 0.5f;
+                * math::Lerp(emitter.settings.trailWidthScale, 1.0f, age1) * 0.5f;
             const float u0 = static_cast<float>(segment) / tailDenominator;
             const float u1 = static_cast<float>(segment + 1u) / tailDenominator;
 
@@ -1006,19 +1178,19 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
     TrailCB cb{};
     // 帯の根元 (粒子本体側) は本体と同じ色、先端は tint とフェードを掛けた色。
     // 色調整はオーサリング空間で掛けてから一度だけリニアへ落とす (ビルボードと同じ順序)。
-    cb.colorStart = ParticleSrgbToLinear(emitter.colorStart);
+    cb.colorStart = ParticleSrgbToLinear(emitter.settings.colorStart);
     cb.colorEnd = ParticleSrgbToLinear({
-        emitter.colorEnd.x * emitter.trailColorTint.x,
-        emitter.colorEnd.y * emitter.trailColorTint.y,
-        emitter.colorEnd.z * emitter.trailColorTint.z,
-        emitter.colorEnd.w * emitter.trailColorTint.w * emitter.trailAlphaScale,
+        emitter.settings.colorEnd.x * emitter.settings.trailColorTint.x,
+        emitter.settings.colorEnd.y * emitter.settings.trailColorTint.y,
+        emitter.settings.colorEnd.z * emitter.settings.trailColorTint.z,
+        emitter.settings.colorEnd.w * emitter.settings.trailColorTint.w * emitter.settings.trailAlphaScale,
     });
     cb.uvTiling = 1.0f;
-    cb.flags = emitter.textureIsSrgb ? kTrailFlagSrgbTexture : 0u;
+    cb.flags = emitter.runtime.textureIsSrgb ? kTrailFlagSrgbTexture : 0u;
     const auto ribbonVB = g_trailRibbonVertexPool.Acquire(
         resources, vertices.size(), static_cast<std::uint32_t>(sizeof(TrailVertex)));
     if (!ribbonVB.IsValid()) return;
-    resources.Update(emitter.trailRibbonCB, &cb, sizeof(cb));
+    resources.Update(emitter.runtime.trailRibbonCB, &cb, sizeof(cb));
     resources.Update(ribbonVB, vertices.data(), vertices.size() * sizeof(TrailVertex));
 
     renderer::DrawCall dc;
@@ -1028,8 +1200,8 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
     dc.pipelineState = h.trailPSO;
     dc.layer        = renderer::RenderLayer::TRANSPARENT_LAYER;
     dc.constantBuffers[0] = h.frameCB;
-    dc.constantBuffers[2] = emitter.trailRibbonCB;
-    dc.textures[0]  = emitter.texture;
+    dc.constantBuffers[2] = emitter.runtime.trailRibbonCB;
+    dc.textures[0]  = emitter.runtime.texture;
     ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     SubmitCounted(ctx, dc);
 }
@@ -1044,8 +1216,8 @@ renderer::ResourceHandle<renderer::PipelineStateTag> SelectParticlePSO(
     renderer::ResourceHandle<renderer::PipelineStateTag> alphaPSO,
     renderer::ResourceHandle<renderer::PipelineStateTag> premultipliedPSO)
 {
-    if (emitter.distortion) return alphaPSO;
-    switch (emitter.blendMode) {
+    if (emitter.runtime.material.distortion) return alphaPSO;
+    switch (emitter.runtime.resolvedBlend) {
     case ParticleBlendMode::Alpha:         return alphaPSO;
     case ParticleBlendMode::Premultiplied: return premultipliedPSO;
     case ParticleBlendMode::Additive:
@@ -1065,7 +1237,7 @@ GameObject* FindInSubtree(GameObject& root, const std::string& objectName)
 }
 
 // SubEmitterへイベント数分のBurstを積む。参照切れはVFXの縮退として無視する。
-// emitter.subEmitterScopeRoot が有効なら、その GameObject 配下だけを名前で探す。
+// emitter.settings.subEmitterScopeRoot が有効なら、その GameObject 配下だけを名前で探す。
 // WHY: VFX Graph が生成する実体はノード名そのものを名乗るため、同じ .vfx を 2 箇所へ置くと
 //      シーン全体の名前引きでは隣のインスタンスを掴む。エフェクト内へ閉じることで、
 //      「片方を撃つともう片方から煙が出る」種類の取り違えが起きなくなる。
@@ -1074,13 +1246,13 @@ void QueueSubEmitter(Scene& scene, const ParticleEmitter& emitter,
 {
     if (objectName.empty() || count <= 0) return;
     GameObject* target = nullptr;
-    if (GameObject* scopeRoot = scene.GetGameObject(emitter.subEmitterScopeRoot))
+    if (GameObject* scopeRoot = scene.GetGameObject(emitter.settings.subEmitterScopeRoot))
         target = FindInSubtree(*scopeRoot, objectName);
     else
         target = scene.Find(objectName); // シーン上の手置き Emitter は従来どおり全体から引く
     if (target == nullptr) return;
     if (auto* targetEmitter = target->GetComponent<ParticleEmitter>())
-        targetEmitter->burstPending += count;
+        targetEmitter->runtime.burstPending += count;
 }
 
 // Particle 1個のPhysics/Plane衝突を解決し、Kill応答ならtrueを返す。
@@ -1093,21 +1265,21 @@ bool ResolveParticleCollision(ParticleEmitter& emitter, Particle& particle,
     math::Vector3 hitPoint = nextPosition;
     math::Vector3 hitNormal = math::Vector3::UP;
 
-    if (emitter.collisionMode == ParticleCollisionMode::Plane) {
-        if (nextPosition.y - emitter.collisionRadius <= emitter.collisionPlaneY) {
+    if (emitter.settings.collisionMode == ParticleCollisionMode::Plane) {
+        if (nextPosition.y - emitter.settings.collisionRadius <= emitter.settings.collisionPlaneY) {
             collided = true;
-            hitPoint = { nextPosition.x, emitter.collisionPlaneY + emitter.collisionRadius, nextPosition.z };
+            hitPoint = { nextPosition.x, emitter.settings.collisionPlaneY + emitter.settings.collisionRadius, nextPosition.z };
         }
-    } else if (emitter.collisionMode == ParticleCollisionMode::Physics && world) {
+    } else if (emitter.settings.collisionMode == ParticleCollisionMode::Physics && world) {
         const math::Vector3 travel = nextPosition - particle.position;
         const float distance = travel.Length();
         if (distance > 1.0e-5f) {
             const math::Vector3 direction = travel * (1.0f / distance);
             collided = world->SphereCast(particle.position,
-                                         (std::max)(emitter.collisionRadius, 0.0f),
+                                         (std::max)(emitter.settings.collisionRadius, 0.0f),
                                          direction, distance, hit);
             if (collided) {
-                hitPoint = hit.point + hit.normal * emitter.collisionRadius;
+                hitPoint = hit.point + hit.normal * emitter.settings.collisionRadius;
                 hitNormal = hit.normal;
             }
         }
@@ -1118,22 +1290,22 @@ bool ResolveParticleCollision(ParticleEmitter& emitter, Particle& particle,
         return false;
     }
 
-    ++emitter.collisionCountThisFrame;
-    QueueSubEmitter(scene, emitter, emitter.collisionSubEmitter, emitter.subEmitterBurstCount);
-    if (emitter.collisionResponse == ParticleCollisionResponse::Kill)
+    ++emitter.runtime.collisionCountThisFrame;
+    QueueSubEmitter(scene, emitter, emitter.settings.collisionSubEmitter, emitter.settings.subEmitterBurstCount);
+    if (emitter.settings.collisionResponse == ParticleCollisionResponse::Kill)
         return true;
 
     particle.position = hitPoint;
-    if (emitter.collisionResponse == ParticleCollisionResponse::Stop) {
+    if (emitter.settings.collisionResponse == ParticleCollisionResponse::Stop) {
         particle.velocity = math::Vector3::ZERO;
         return false;
     }
 
     const float normalVelocity = math::Vector3::Dot(particle.velocity, hitNormal);
     particle.velocity = (particle.velocity - hitNormal * (2.0f * normalVelocity))
-        * Clamp01(emitter.collisionBounciness);
+        * Clamp01(emitter.settings.collisionBounciness);
     particle.velocity = particle.velocity
-        * (std::max)(0.0f, 1.0f - emitter.collisionDamping);
+        * (std::max)(0.0f, 1.0f - emitter.settings.collisionDamping);
     return false;
 }
 
@@ -1141,30 +1313,30 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
                    const AnimatorComponent* animator, float initialAge = 0.0f)
 {
     Particle p;
-    const bool localSpace = emitter.simulationSpace == ParticleSimulationSpace::Local;
+    const bool localSpace = emitter.settings.simulationSpace == ParticleSimulationSpace::Local;
     const auto transformPoint = [&](const math::Vector3& value) {
         return localSpace ? value : TransformEmitterPoint(transform, value);
     };
     const auto transformVector = [&](const math::Vector3& value) {
         return localSpace ? value : TransformEmitterVector(transform, value);
     };
-    p.position = transformPoint(emitter.emitPosition);
+    p.position = transformPoint(emitter.settings.emitPosition);
     math::Vector3 shapeVelocity = math::Vector3::ZERO;
 
-    switch (emitter.shape) {
+    switch (emitter.settings.shape) {
     case ParticleEmitterShape::Sphere: {
         const math::Vector3 dir = RandomUnitVector(emitter);
-        const float radius = (std::max)(emitter.sphereRadius, 0.0f) * std::cbrt(Random01(emitter));
+        const float radius = (std::max)(emitter.settings.sphereRadius, 0.0f) * std::cbrt(Random01(emitter));
         p.position = p.position + transformVector(dir * radius);
-        shapeVelocity = transformVector(dir * emitter.velocitySpread);
+        shapeVelocity = transformVector(dir * emitter.settings.velocitySpread);
         break;
     }
     case ParticleEmitterShape::Cone: {
         constexpr float DEG_TO_RAD = 3.14159265358979323846f / 180.0f;
-        const float angle = (std::max)(emitter.coneAngleDegrees, 0.0f) * DEG_TO_RAD;
+        const float angle = (std::max)(emitter.settings.coneAngleDegrees, 0.0f) * DEG_TO_RAD;
         const float theta = Random01(emitter) * angle;
         const float phi = Random01(emitter) * 3.14159265358979323846f * 2.0f;
-        const float radius = (std::max)(emitter.coneRadius, 0.0f) * std::sqrt(Random01(emitter));
+        const float radius = (std::max)(emitter.settings.coneRadius, 0.0f) * std::sqrt(Random01(emitter));
         const math::Vector3 localOffset = {
             std::cos(phi) * radius,
             0.0f,
@@ -1172,18 +1344,18 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
         };
         p.position = p.position + transformVector(localOffset);
         const math::Vector3 localShapeVelocity = {
-            std::sin(theta) * std::cos(phi) * emitter.velocitySpread,
-            std::cos(theta) * emitter.velocitySpread,
-            std::sin(theta) * std::sin(phi) * emitter.velocitySpread
+            std::sin(theta) * std::cos(phi) * emitter.settings.velocitySpread,
+            std::cos(theta) * emitter.settings.velocitySpread,
+            std::sin(theta) * std::sin(phi) * emitter.settings.velocitySpread
         };
         shapeVelocity = transformVector(localShapeVelocity);
         break;
     }
     case ParticleEmitterShape::Box: {
         const math::Vector3 localOffset = {
-            RandomSigned01(emitter) * emitter.boxExtents.x,
-            RandomSigned01(emitter) * emitter.boxExtents.y,
-            RandomSigned01(emitter) * emitter.boxExtents.z
+            RandomSigned01(emitter) * emitter.settings.boxExtents.x,
+            RandomSigned01(emitter) * emitter.settings.boxExtents.y,
+            RandomSigned01(emitter) * emitter.settings.boxExtents.z
         };
         p.position = p.position + transformVector(localOffset);
         break;
@@ -1191,7 +1363,7 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     case ParticleEmitterShape::MeshSurface: {
         math::Vector3 meshPoint;
         if (SampleMeshShapePoint(emitter, animator, meshPoint))
-            p.position = transformPoint(emitter.emitPosition + meshPoint);
+            p.position = transformPoint(emitter.settings.emitPosition + meshPoint);
         break;
     }
     case ParticleEmitterShape::Point:
@@ -1205,48 +1377,48 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     //      なっていた。Sphere/Cone 形状は shapeVelocity 側で別途方向を持つので、
     //      ここは純粋に「initial velocity の揺らぎ」だけを担当する。
     //      GPU 経路 (BuildGpuSpawnEntry) と必ず同じ式・同じ乱数消費順にすること。
-    const float rx = RandomSigned01(emitter) * emitter.velocitySpread;
-    const float ry = RandomSigned01(emitter) * emitter.velocitySpread;
-    const float rz = RandomSigned01(emitter) * emitter.velocitySpread;
+    const float rx = RandomSigned01(emitter) * emitter.settings.velocitySpread;
+    const float ry = RandomSigned01(emitter) * emitter.settings.velocitySpread;
+    const float rz = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const math::Vector3 localVelocity = {
-        emitter.emitVelocity.x + rx,
-        emitter.emitVelocity.y + ry,
-        emitter.emitVelocity.z + rz
+        emitter.settings.emitVelocity.x + rx,
+        emitter.settings.emitVelocity.y + ry,
+        emitter.settings.emitVelocity.z + rz
     };
     p.velocity = transformVector(localVelocity);
     p.velocity = p.velocity + shapeVelocity;
     // エミッターの移動を初速へ引き継ぐ。移動する剣・ロケットの火花が置き去りにならない。
     // Local space シミュレーションでは粒子座標がエミッター基準で、親の移動は
     // 描画時の変換で既に反映されるため、ここで足すと二重に効く。World のときだけ加算する。
-    if (emitter.inheritVelocity != 0.0f
-        && emitter.simulationSpace == ParticleSimulationSpace::World) {
-        p.velocity = p.velocity + emitter.emitterVelocity * Clamp01(emitter.inheritVelocity);
+    if (emitter.settings.inheritVelocity != 0.0f
+        && emitter.settings.simulationSpace == ParticleSimulationSpace::World) {
+        p.velocity = p.velocity + emitter.runtime.emitterVelocity * Clamp01(emitter.settings.inheritVelocity);
     }
-    p.color = emitter.colorStart;
-    p.size  = emitter.sizeStart;
+    p.color = emitter.settings.colorStart;
+    p.size  = emitter.settings.sizeStart;
     p.age   = 0.0f;
     p.rotation = Random01(emitter) * 3.14159265358979323846f * 2.0f;
-    p.angularVelocity = emitter.angularVelocityMin
-        + (emitter.angularVelocityMax - emitter.angularVelocityMin) * Random01(emitter);
+    p.angularVelocity = emitter.settings.angularVelocityMin
+        + (emitter.settings.angularVelocityMax - emitter.settings.angularVelocityMin) * Random01(emitter);
     p.spriteSeed = Random01(emitter);
-    p.lifetime = (std::max)(0.001f, emitter.lifetime * (1.0f + RandomSigned01(emitter) * Clamp01(emitter.lifetimeRandom)));
-    p.startSize = emitter.sizeStart;
-    p.endSize = emitter.sizeEnd;
-    p.startColor = emitter.colorStart;
-    p.endColor = emitter.colorEnd;
+    p.lifetime = (std::max)(0.001f, emitter.settings.lifetime * (1.0f + RandomSigned01(emitter) * Clamp01(emitter.settings.lifetimeRandom)));
+    p.startSize = emitter.settings.sizeStart;
+    p.endSize = emitter.settings.sizeEnd;
+    p.startColor = emitter.settings.colorStart;
+    p.endColor = emitter.settings.colorEnd;
     p.colorScale = NextColorVariation(emitter);
     p.color = EvaluateParticleColorLinear(emitter, p, 0.0f);
     p.age = (std::max)(0.0f, (std::min)(initialAge, p.lifetime * 0.999f));
     if (p.age > 0.0f) {
         // Prewarmは開始時点の寿命分布を作る。逐次更新を避け、重力下の解析解で初期状態を近似する。
-        p.position = p.position + p.velocity * p.age + emitter.gravity * (0.5f * p.age * p.age);
-        p.velocity = p.velocity + emitter.gravity * p.age;
+        p.position = p.position + p.velocity * p.age + emitter.settings.gravity * (0.5f * p.age * p.age);
+        p.velocity = p.velocity + emitter.settings.gravity * p.age;
         p.rotation += p.angularVelocity * p.age;
         const float normalizedAge = Clamp01(p.age / p.lifetime);
         p.color = EvaluateParticleColorLinear(emitter, p, normalizedAge);
-        const float sizeT = emitter.useSizeCurve
-            ? Clamp01(emitter.sizeCurve.Evaluate(normalizedAge))
-            : std::pow(normalizedAge, emitter.sizeCurvePower);
+        const float sizeT = emitter.settings.useSizeCurve
+            ? Clamp01(emitter.settings.sizeCurve.Evaluate(normalizedAge))
+            : std::pow(normalizedAge, emitter.settings.sizeCurvePower);
         p.size = p.startSize + (p.endSize - p.startSize) * sizeT;
     }
     const SpriteFrameState sprite = ComputeSpriteFrameState(
@@ -1254,38 +1426,38 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     p.uvRect = sprite.currentRect;
     p.nextUvRect = sprite.nextRect;
     p.spriteBlend = sprite.blend;
-    emitter.particles.push_back(std::move(p));
+    emitter.runtime.particles.push_back(std::move(p));
 }
 
 void ClearEmitterRuntime(ParticleEmitter& emitter)
 {
-    emitter.particles.clear();
-    emitter.emitAccum = 0.0f;
-    emitter.prewarmSpawnPending = 0;
-    emitter.burstPending = 0;
+    emitter.runtime.particles.clear();
+    emitter.runtime.emitAccum = 0.0f;
+    emitter.runtime.prewarmSpawnPending = 0;
+    emitter.runtime.burstPending = 0;
 }
 
 // CPU の SpawnParticle と同じ Shape/Spread ロジックで GpuSpawnEntry を初期化する
 void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transform& tf,
                        const AnimatorComponent* animator)
 {
-    s.position = TransformEmitterPoint(tf, emitter.emitPosition);
+    s.position = TransformEmitterPoint(tf, emitter.settings.emitPosition);
     math::Vector3 shapeVelocity = math::Vector3::ZERO;
 
-    switch (emitter.shape) {
+    switch (emitter.settings.shape) {
     case ParticleEmitterShape::Sphere: {
         const math::Vector3 dir = RandomUnitVector(emitter);
-        const float radius = (std::max)(emitter.sphereRadius, 0.0f) * std::cbrt(Random01(emitter));
+        const float radius = (std::max)(emitter.settings.sphereRadius, 0.0f) * std::cbrt(Random01(emitter));
         s.position = s.position + TransformEmitterVector(tf, dir * radius);
-        shapeVelocity = TransformEmitterVector(tf, dir * emitter.velocitySpread);
+        shapeVelocity = TransformEmitterVector(tf, dir * emitter.settings.velocitySpread);
         break;
     }
     case ParticleEmitterShape::Cone: {
         constexpr float DEG_TO_RAD = 3.14159265358979323846f / 180.0f;
-        const float angle = (std::max)(emitter.coneAngleDegrees, 0.0f) * DEG_TO_RAD;
+        const float angle = (std::max)(emitter.settings.coneAngleDegrees, 0.0f) * DEG_TO_RAD;
         const float theta = Random01(emitter) * angle;
         const float phi   = Random01(emitter) * 3.14159265358979323846f * 2.0f;
-        const float radius = (std::max)(emitter.coneRadius, 0.0f) * std::sqrt(Random01(emitter));
+        const float radius = (std::max)(emitter.settings.coneRadius, 0.0f) * std::sqrt(Random01(emitter));
         const math::Vector3 localOffset = {
             std::cos(phi) * radius,
             0.0f,
@@ -1293,18 +1465,18 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
         };
         s.position = s.position + TransformEmitterVector(tf, localOffset);
         const math::Vector3 localShapeVelocity = {
-            std::sin(theta) * std::cos(phi) * emitter.velocitySpread,
-            std::cos(theta) * emitter.velocitySpread,
-            std::sin(theta) * std::sin(phi) * emitter.velocitySpread
+            std::sin(theta) * std::cos(phi) * emitter.settings.velocitySpread,
+            std::cos(theta) * emitter.settings.velocitySpread,
+            std::sin(theta) * std::sin(phi) * emitter.settings.velocitySpread
         };
         shapeVelocity = TransformEmitterVector(tf, localShapeVelocity);
         break;
     }
     case ParticleEmitterShape::Box: {
         const math::Vector3 localOffset = {
-            RandomSigned01(emitter) * emitter.boxExtents.x,
-            RandomSigned01(emitter) * emitter.boxExtents.y,
-            RandomSigned01(emitter) * emitter.boxExtents.z
+            RandomSigned01(emitter) * emitter.settings.boxExtents.x,
+            RandomSigned01(emitter) * emitter.settings.boxExtents.y,
+            RandomSigned01(emitter) * emitter.settings.boxExtents.z
         };
         s.position = s.position + TransformEmitterVector(tf, localOffset);
         break;
@@ -1312,7 +1484,7 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
     case ParticleEmitterShape::MeshSurface: {
         math::Vector3 meshPoint;
         if (SampleMeshShapePoint(emitter, animator, meshPoint))
-            s.position = TransformEmitterPoint(tf, emitter.emitPosition + meshPoint);
+            s.position = TransformEmitterPoint(tf, emitter.settings.emitPosition + meshPoint);
         break;
     }
     default:
@@ -1321,26 +1493,26 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
 
     // SpawnParticle と同一の 3 軸等方ジッター。乱数の消費順まで揃えないと
     // CPU/GPU を切り替えただけで見た目が変わってしまう。
-    const float rx = RandomSigned01(emitter) * emitter.velocitySpread;
-    const float ry = RandomSigned01(emitter) * emitter.velocitySpread;
-    const float rz = RandomSigned01(emitter) * emitter.velocitySpread;
+    const float rx = RandomSigned01(emitter) * emitter.settings.velocitySpread;
+    const float ry = RandomSigned01(emitter) * emitter.settings.velocitySpread;
+    const float rz = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const math::Vector3 localVelocity = {
-        emitter.emitVelocity.x + rx,
-        emitter.emitVelocity.y + ry,
-        emitter.emitVelocity.z + rz
+        emitter.settings.emitVelocity.x + rx,
+        emitter.settings.emitVelocity.y + ry,
+        emitter.settings.emitVelocity.z + rz
     };
     s.velocity        = TransformEmitterVector(tf, localVelocity);
     s.velocity        = s.velocity + shapeVelocity;
     // inheritVelocity は CPU 経路 (SpawnParticle) と同じ条件・同じ式でここに足す。
     // CS 側の変更は不要で、GpuSpawnEntry.velocity に加算済みの値が入る。
-    if (emitter.inheritVelocity != 0.0f
-        && emitter.simulationSpace == ParticleSimulationSpace::World) {
-        s.velocity = s.velocity + emitter.emitterVelocity * Clamp01(emitter.inheritVelocity);
+    if (emitter.settings.inheritVelocity != 0.0f
+        && emitter.settings.simulationSpace == ParticleSimulationSpace::World) {
+        s.velocity = s.velocity + emitter.runtime.emitterVelocity * Clamp01(emitter.settings.inheritVelocity);
     }
-    s.lifetime        = (std::max)(0.001f, emitter.lifetime
-        * (1.0f + RandomSigned01(emitter) * Clamp01(emitter.lifetimeRandom)));
-    s.size            = emitter.sizeStart;
-    s.colorStart      = emitter.colorStart;
+    s.lifetime        = (std::max)(0.001f, emitter.settings.lifetime
+        * (1.0f + RandomSigned01(emitter) * Clamp01(emitter.settings.lifetimeRandom)));
+    s.size            = emitter.settings.sizeStart;
+    s.colorStart      = emitter.settings.colorStart;
     // 乱数列上の位置は従来の ApplyColorVariation 呼び出しと同じに保つ
     // (動かすと同じ seed から出る粒子の並びが変わる)。
     const math::Vector3 variation = NextColorVariation(emitter);
@@ -1348,8 +1520,8 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
     s.spriteSeed      = Random01(emitter);
     s.uvRect          = ComputeSpriteRect(emitter, 0.0f, 0.0f, s.spriteSeed);
     s.rotation        = Random01(emitter) * 6.28318530717958647692f;
-    s.angularVelocity = emitter.angularVelocityMin
-        + (emitter.angularVelocityMax - emitter.angularVelocityMin) * Random01(emitter);
+    s.angularVelocity = emitter.settings.angularVelocityMin
+        + (emitter.settings.angularVelocityMax - emitter.settings.angularVelocityMin) * Random01(emitter);
 }
 
 // GPU パーティクル: バッファ初期化・スポーン・CS Dispatch・DrawInstanced
@@ -1370,69 +1542,69 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
 
     if (!h.particleGpuSimCS.IsValid() || !h.particleGpuShader.IsValid()) return;
 
-    const int maxP = (std::max)(emitter.maxParticles, 1);
+    const int maxP = (std::max)(emitter.settings.maxParticles, 1);
 
     // Clear要求・容量変更時は全スロットを死亡状態で再生成する。
     // WHY: RWStructuredBufferはCPU vectorのclearでは消えず、容量増加後のDispatchは範囲外アクセスになるため。
-    if (emitter.gpuClearPending || (emitter.gpuInitialized && emitter.gpuCapacity != static_cast<uint32_t>(maxP))) {
-        emitter.gpuInitialized = false;
-        emitter.gpuParticleBuffer = {};
-        emitter.gpuSpawnBuffer = {};
-        emitter.gpuEmitterCB = {};
-        emitter.gpuWriteHead = 0;
-        emitter.gpuSpawnCount = 0;
-        emitter.gpuCapacity = 0;
-        emitter.gpuClearPending = false;
+    if (emitter.runtime.gpuClearPending || (emitter.runtime.gpuInitialized && emitter.runtime.gpuCapacity != static_cast<uint32_t>(maxP))) {
+        emitter.runtime.gpuInitialized = false;
+        emitter.runtime.gpuParticleBuffer = {};
+        emitter.runtime.gpuSpawnBuffer = {};
+        emitter.runtime.gpuEmitterCB = {};
+        emitter.runtime.gpuWriteHead = 0;
+        emitter.runtime.gpuSpawnCount = 0;
+        emitter.runtime.gpuCapacity = 0;
+        emitter.runtime.gpuClearPending = false;
         // ソート表は粒子プールの index を持つので、プールを作り直したら必ず捨てる。
-        emitter.gpuSortBuffer = {};
-        emitter.gpuSortCB = {};
-        emitter.gpuSortCapacity = 0;
+        emitter.runtime.gpuSortBuffer = {};
+        emitter.runtime.gpuSortCB = {};
+        emitter.runtime.gpuSortCapacity = 0;
     }
 
     // デバイスリセット (Play Mode 移行など) 後は古いハンドルが無効になるため再初期化する
     const uint64_t currentResetVersion = resources.GetResetVersion();
-    if (emitter.gpuInitialized && emitter.gpuResetVersion != currentResetVersion)
+    if (emitter.runtime.gpuInitialized && emitter.runtime.gpuResetVersion != currentResetVersion)
     {
-        emitter.gpuInitialized  = false;
-        emitter.gpuParticleBuffer = {};
-        emitter.gpuSpawnBuffer    = {};
-        emitter.gpuEmitterCB      = {};
-        emitter.gpuWriteHead      = 0;
-        emitter.gpuSpawnCount     = 0;
+        emitter.runtime.gpuInitialized  = false;
+        emitter.runtime.gpuParticleBuffer = {};
+        emitter.runtime.gpuSpawnBuffer    = {};
+        emitter.runtime.gpuEmitterCB      = {};
+        emitter.runtime.gpuWriteHead      = 0;
+        emitter.runtime.gpuSpawnCount     = 0;
         // デバイスリセット後は古いハンドルが全て無効。ソート表も作り直す。
-        emitter.gpuSortBuffer     = {};
-        emitter.gpuSortCB         = {};
-        emitter.gpuSortCapacity   = 0;
+        emitter.runtime.gpuSortBuffer     = {};
+        emitter.runtime.gpuSortCB         = {};
+        emitter.runtime.gpuSortCapacity   = 0;
     }
 
     // バッファ未作成なら初期化 (要素ゼロで確保し CS が age>=lifetime で無視する)
-    if (!emitter.gpuInitialized)
+    if (!emitter.runtime.gpuInitialized)
     {
         std::vector<GpuParticle> init(static_cast<size_t>(maxP));
         for (auto& p : init) p.age = p.lifetime = 1.0f; // 全粒子を「死亡済み」で初期化
-        emitter.gpuParticleBuffer = resources.CreateRWStructuredBuffer(
+        emitter.runtime.gpuParticleBuffer = resources.CreateRWStructuredBuffer(
             init.data(), static_cast<uint32_t>(maxP), sizeof(GpuParticle));
 
-        emitter.gpuSpawnBuffer = resources.CreateStructuredBuffer(
+        emitter.runtime.gpuSpawnBuffer = resources.CreateStructuredBuffer(
             nullptr, static_cast<uint32_t>(maxP), sizeof(GpuSpawnEntry));
 
-        emitter.gpuEmitterCB = resources.CreateConstantBuffer(sizeof(GpuParticleEmitterCB));
-        emitter.gpuWriteHead     = 0;
-        emitter.gpuSpawnCount    = 0;
-        emitter.gpuResetVersion  = resources.GetResetVersion();
-        emitter.gpuCapacity      = static_cast<uint32_t>(maxP);
-        emitter.gpuInitialized   = true;
+        emitter.runtime.gpuEmitterCB = resources.CreateConstantBuffer(sizeof(GpuParticleEmitterCB));
+        emitter.runtime.gpuWriteHead     = 0;
+        emitter.runtime.gpuSpawnCount    = 0;
+        emitter.runtime.gpuResetVersion  = resources.GetResetVersion();
+        emitter.runtime.gpuCapacity      = static_cast<uint32_t>(maxP);
+        emitter.runtime.gpuInitialized   = true;
     }
 
-    const bool simulateThisFrame = emitter.lastGpuSimulationFrame != Time::frameCount;
+    const bool simulateThisFrame = emitter.runtime.lastGpuSimulationFrame != Time::frameCount;
     if (simulateThisFrame) {
-        emitter.lastGpuSimulationFrame = Time::frameCount;
+        emitter.runtime.lastGpuSimulationFrame = Time::frameCount;
     // 今フレームのスポーンエントリを構築
     std::vector<GpuSpawnEntry> spawns;
-    if (canEmit || emitter.burstPending > 0)
+    if (canEmit || emitter.runtime.burstPending > 0)
     {
-        const int burstCount = (std::max)(emitter.burstPending, 0);
-        emitter.burstPending = 0;
+        const int burstCount = (std::max)(emitter.runtime.burstPending, 0);
+        emitter.runtime.burstPending = 0;
         for (int i = 0; i < burstCount && static_cast<int>(spawns.size()) < maxP; ++i)
         {
             GpuSpawnEntry s;
@@ -1441,10 +1613,12 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         }
         if (canEmit)
         {
-            emitter.emitAccum += emitter.emitRate * dt;
-            while (emitter.emitAccum >= 1.0f && static_cast<int>(spawns.size()) < maxP)
+            // lodRateScale は CPU 経路と同じく発生レートへ掛ける。掛け忘れると
+            // 遠距離のエミッターが GPU のときだけ間引かれない。
+            emitter.runtime.emitAccum += emitter.settings.emitRate * emitter.runtime.lodRateScale * dt;
+            while (emitter.runtime.emitAccum >= 1.0f && static_cast<int>(spawns.size()) < maxP)
             {
-                emitter.emitAccum -= 1.0f;
+                emitter.runtime.emitAccum -= 1.0f;
                 GpuSpawnEntry s;
                 InitGpuSpawnEntry(s, emitter, tf, animator);
                 spawns.push_back(s);
@@ -1453,38 +1627,38 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     }
     else
     {
-        emitter.emitAccum = 0.0f;
+        emitter.runtime.emitAccum = 0.0f;
     }
 
-    emitter.gpuSpawnCount = static_cast<uint32_t>(spawns.size());
+    emitter.runtime.gpuSpawnCount = static_cast<uint32_t>(spawns.size());
 
     // スポーンバッファを CPU → GPU 転送
-    if (emitter.gpuSpawnCount > 0)
-        resources.Update(emitter.gpuSpawnBuffer, spawns.data(),
-                         emitter.gpuSpawnCount * sizeof(GpuSpawnEntry));
+    if (emitter.runtime.gpuSpawnCount > 0)
+        resources.Update(emitter.runtime.gpuSpawnBuffer, spawns.data(),
+                         emitter.runtime.gpuSpawnCount * sizeof(GpuSpawnEntry));
 
     // CS 用定数バッファ更新
     GpuParticleEmitterCB cb{};
-    cb.emitterPos      = TransformEmitterPoint(tf, emitter.emitPosition);
+    cb.emitterPos      = TransformEmitterPoint(tf, emitter.settings.emitPosition);
     cb.deltaTime       = dt;
-    cb.gravity         = emitter.gravity;
+    cb.gravity         = emitter.settings.gravity;
     cb.maxParticles    = static_cast<uint32_t>(maxP);
-    cb.colorStart      = emitter.colorStart;
-    cb.colorEnd        = emitter.colorEnd;
-    cb.spawnCount      = emitter.gpuSpawnCount;
-    cb.spawnOffset     = emitter.gpuWriteHead;
-    cb.colorCurvePower = emitter.colorCurvePower;
-    cb.velocityDamping = emitter.velocityDamping;
-    cb.sizeStart       = emitter.sizeStart;
-    cb.sizeEnd         = emitter.sizeEnd;
-    cb.sizeCurvePower  = emitter.sizeCurvePower;
+    cb.colorStart      = emitter.settings.colorStart;
+    cb.colorEnd        = emitter.settings.colorEnd;
+    cb.spawnCount      = emitter.runtime.gpuSpawnCount;
+    cb.spawnOffset     = emitter.runtime.gpuWriteHead;
+    cb.colorCurvePower = emitter.settings.colorCurvePower;
+    cb.velocityDamping = emitter.settings.velocityDamping;
+    cb.sizeStart       = emitter.settings.sizeStart;
+    cb.sizeEnd         = emitter.settings.sizeEnd;
+    cb.sizeCurvePower  = emitter.settings.sizeCurvePower;
     {
-        const int cols       = (std::max)(emitter.spriteColumns, 1);
-        const int rows       = (std::max)(emitter.spriteRows, 1);
+        const int cols       = (std::max)(emitter.runtime.material.spriteColumns, 1);
+        const int rows       = (std::max)(emitter.runtime.material.spriteRows, 1);
         const int frameCount = cols * rows;
-        const int startFrame = std::clamp(emitter.spriteStartFrame, 0, frameCount - 1);
+        const int startFrame = std::clamp(emitter.runtime.material.spriteStartFrame, 0, frameCount - 1);
         const int endFrame   = std::clamp(
-            emitter.spriteEndFrame > 0 ? emitter.spriteEndFrame : frameCount - 1,
+            emitter.runtime.material.spriteEndFrame > 0 ? emitter.runtime.material.spriteEndFrame : frameCount - 1,
             startFrame, frameCount - 1);
         cb.spriteColumns    = static_cast<uint32_t>(cols);
         cb.spriteRows       = static_cast<uint32_t>(rows);
@@ -1493,27 +1667,34 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     }
     // ノイズモジュール + 力場 (CPU シミュレーションと同じ式を CS 側で適用する)
     cb.time           = time;
-    cb.noiseStrength  = (std::max)(emitter.noiseStrength, 0.0f);
-    cb.noiseFrequency = (std::max)(emitter.noiseFrequency, 0.0001f);
-    cb.noiseSpeed     = emitter.noiseSpeed;
-    const int fieldCount = emitter.receiveForceFields
-        ? (std::min)(static_cast<int>(forceFields.size()), kMaxGpuForceFields)
-        : 0;
-    cb.forceFieldCount = static_cast<uint32_t>(fieldCount);
-    cb.flipbookMode = static_cast<uint32_t>(emitter.flipbookMode);
-    cb.flipbookFramesPerSecond = (std::max)(emitter.flipbookFramesPerSecond, 0.0f);
-    for (int i = 0; i < fieldCount; ++i) {
-        const ActiveForceField& f = forceFields[static_cast<size_t>(i)];
-        cb.forceFields[i].posRadius   = { f.position.x, f.position.y, f.position.z, f.radius };
-        cb.forceFields[i].dirStrength = { f.direction.x, f.direction.y, f.direction.z, f.strength };
-        cb.forceFields[i].params      = { static_cast<float>(f.type), f.falloffPower,
-                                          f.noiseFrequency, f.noiseSpeed };
+    cb.noiseStrength  = (std::max)(emitter.settings.noiseStrength, 0.0f);
+    cb.noiseFrequency = (std::max)(emitter.settings.noiseFrequency, 0.0001f);
+    cb.noiseSpeed     = emitter.settings.noiseSpeed;
+    cb.flipbookMode = static_cast<uint32_t>(emitter.runtime.material.flipbookMode);
+    cb.flipbookFramesPerSecond = (std::max)(emitter.runtime.material.flipbookFramesPerSecond, 0.0f);
+    // 定数バッファはエミッター単位で詰め直すため、チャンネルの判定はここで済ませて
+    // 作用する力場だけを送る。CS 側はマスクを知らないまま届いた分を全部適用すればよく、
+    // GpuForceField のレイアウトも HLSL も変えずに済む。
+    int fieldCount = 0;
+    if (emitter.settings.receiveForceFields) {
+        for (const ActiveForceField& f : forceFields) {
+            if (fieldCount >= kMaxGpuForceFields) break;
+            if (!AffectsEmitter(f, emitter.settings.forceFieldChannels)) continue;
+            cb.forceFields[fieldCount].posRadius =
+                { f.position.x, f.position.y, f.position.z, f.radius };
+            cb.forceFields[fieldCount].dirStrength =
+                { f.direction.x, f.direction.y, f.direction.z, f.strength };
+            cb.forceFields[fieldCount].params =
+                { static_cast<float>(f.type), f.falloffPower, f.noiseFrequency, f.noiseSpeed };
+            ++fieldCount;
+        }
     }
+    cb.forceFieldCount = static_cast<uint32_t>(fieldCount);
     cb.curveFlags = {
-        emitter.useSizeCurve ? 1.0f : 0.0f,
-        emitter.useVelocityCurve ? 1.0f : 0.0f,
-        emitter.useColorGradient ? 1.0f : 0.0f,
-        emitter.flipbookFrameBlending ? 1.0f : 0.0f
+        emitter.settings.useSizeCurve ? 1.0f : 0.0f,
+        emitter.settings.useVelocityCurve ? 1.0f : 0.0f,
+        emitter.settings.useColorGradient ? 1.0f : 0.0f,
+        emitter.runtime.material.flipbookFrameBlending ? 1.0f : 0.0f
     };
     // カーブは float4 1 本へ 2 キー (time,value) ずつ詰める。有効キー数を超えた分は
     // 最終キーで埋め、GPU 側が余分な区間を踏んでも CPU の Evaluate と同じ値になるようにする。
@@ -1530,16 +1711,16 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         return static_cast<float>(
             (std::max)(1u, (std::min)(curve.keyCount, kMaxParticleCurveKeys)));
     };
-    cb.sizeCurveKeys01 = packCurve(emitter.sizeCurve, 0);
-    cb.sizeCurveKeys23 = packCurve(emitter.sizeCurve, 2);
-    cb.sizeCurveKeys45 = packCurve(emitter.sizeCurve, 4);
-    cb.sizeCurveKeys67 = packCurve(emitter.sizeCurve, 6);
-    cb.velocityCurveKeys01 = packCurve(emitter.velocityCurve, 0);
-    cb.velocityCurveKeys23 = packCurve(emitter.velocityCurve, 2);
-    cb.velocityCurveKeys45 = packCurve(emitter.velocityCurve, 4);
-    cb.velocityCurveKeys67 = packCurve(emitter.velocityCurve, 6);
+    cb.sizeCurveKeys01 = packCurve(emitter.settings.sizeCurve, 0);
+    cb.sizeCurveKeys23 = packCurve(emitter.settings.sizeCurve, 2);
+    cb.sizeCurveKeys45 = packCurve(emitter.settings.sizeCurve, 4);
+    cb.sizeCurveKeys67 = packCurve(emitter.settings.sizeCurve, 6);
+    cb.velocityCurveKeys01 = packCurve(emitter.settings.velocityCurve, 0);
+    cb.velocityCurveKeys23 = packCurve(emitter.settings.velocityCurve, 2);
+    cb.velocityCurveKeys45 = packCurve(emitter.settings.velocityCurve, 4);
+    cb.velocityCurveKeys67 = packCurve(emitter.settings.velocityCurve, 6);
     // 黒体モードを焼き込んだ実効グラデーションを渡す。CPU 経路も同じ runtimeGradient を見る。
-    const auto& gradient = emitter.runtimeGradient;
+    const auto& gradient = emitter.runtime.runtimeGradient;
     const size_t lastGradientKey = static_cast<size_t>(
         (std::max)(1u, (std::min)(gradient.keyCount, kMaxParticleCurveKeys)) - 1u);
     const auto gradientTime = [&](size_t index) {
@@ -1561,59 +1742,59 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     cb.viewProjection = MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     cb.screenWidth = static_cast<float>(ctx.width);
     cb.screenHeight = static_cast<float>(ctx.height);
-    cb.depthThickness = (std::max)(0.001f, emitter.collisionRadius * 0.002f);
-    cb.depthBounciness = std::clamp(emitter.collisionBounciness, 0.0f, 1.0f);
-    cb.depthCollision = emitter.collisionMode == ParticleCollisionMode::Depth ? 1u : 0u;
-    cb.depthResponse = static_cast<std::uint32_t>(emitter.collisionResponse);
-    cb.depthDamping = std::clamp(emitter.collisionDamping, 0.0f, 1.0f);
+    cb.depthThickness = (std::max)(0.001f, emitter.settings.collisionRadius * 0.002f);
+    cb.depthBounciness = std::clamp(emitter.settings.collisionBounciness, 0.0f, 1.0f);
+    cb.depthCollision = emitter.settings.collisionMode == ParticleCollisionMode::Depth ? 1u : 0u;
+    cb.depthResponse = static_cast<std::uint32_t>(emitter.settings.collisionResponse);
+    cb.depthDamping = std::clamp(emitter.settings.collisionDamping, 0.0f, 1.0f);
     // ── over-lifetime モジュール (回転カーブ / drag カーブ / 周回・放射) ──
     cb.curveFlags2 = {
-        emitter.useRotationCurve ? 1.0f : 0.0f,
-        emitter.useDragCurve ? 1.0f : 0.0f,
+        emitter.settings.useRotationCurve ? 1.0f : 0.0f,
+        emitter.settings.useDragCurve ? 1.0f : 0.0f,
         0.0f, 0.0f
     };
-    cb.rotationCurveKeys01 = packCurve(emitter.rotationCurve, 0);
-    cb.rotationCurveKeys23 = packCurve(emitter.rotationCurve, 2);
-    cb.rotationCurveKeys45 = packCurve(emitter.rotationCurve, 4);
-    cb.rotationCurveKeys67 = packCurve(emitter.rotationCurve, 6);
-    cb.dragCurveKeys01 = packCurve(emitter.dragCurve, 0);
-    cb.dragCurveKeys23 = packCurve(emitter.dragCurve, 2);
-    cb.dragCurveKeys45 = packCurve(emitter.dragCurve, 4);
-    cb.dragCurveKeys67 = packCurve(emitter.dragCurve, 6);
+    cb.rotationCurveKeys01 = packCurve(emitter.settings.rotationCurve, 0);
+    cb.rotationCurveKeys23 = packCurve(emitter.settings.rotationCurve, 2);
+    cb.rotationCurveKeys45 = packCurve(emitter.settings.rotationCurve, 4);
+    cb.rotationCurveKeys67 = packCurve(emitter.settings.rotationCurve, 6);
+    cb.dragCurveKeys01 = packCurve(emitter.settings.dragCurve, 0);
+    cb.dragCurveKeys23 = packCurve(emitter.settings.dragCurve, 2);
+    cb.dragCurveKeys45 = packCurve(emitter.settings.dragCurve, 4);
+    cb.dragCurveKeys67 = packCurve(emitter.settings.dragCurve, 6);
     // 4 本のカーブの有効キー数と補間モード。GPU 側はこれを見て CPU と同じ区間を選ぶ。
     cb.curveKeyCounts = {
-        curveKeyCount(emitter.sizeCurve), curveKeyCount(emitter.velocityCurve),
-        curveKeyCount(emitter.rotationCurve), curveKeyCount(emitter.dragCurve)
+        curveKeyCount(emitter.settings.sizeCurve), curveKeyCount(emitter.settings.velocityCurve),
+        curveKeyCount(emitter.settings.rotationCurve), curveKeyCount(emitter.settings.dragCurve)
     };
     cb.curveModes = {
-        static_cast<float>(emitter.sizeCurve.interpolation),
-        static_cast<float>(emitter.velocityCurve.interpolation),
-        static_cast<float>(emitter.rotationCurve.interpolation),
-        static_cast<float>(emitter.dragCurve.interpolation)
+        static_cast<float>(emitter.settings.sizeCurve.interpolation),
+        static_cast<float>(emitter.settings.velocityCurve.interpolation),
+        static_cast<float>(emitter.settings.rotationCurve.interpolation),
+        static_cast<float>(emitter.settings.dragCurve.interpolation)
     };
     // 軸は CPU 側で正規化して渡す。CS 側で毎粒子 normalize するより安く、
     // 長さ 0 の軸を「周回なし」へ縮退させる判定も 1 か所で済む。
-    const float orbitalAxisLength = emitter.orbitalAxis.Length();
+    const float orbitalAxisLength = emitter.settings.orbitalAxis.Length();
     cb.orbitalAxis = orbitalAxisLength > 1.0e-5f
-        ? emitter.orbitalAxis * (1.0f / orbitalAxisLength)
+        ? emitter.settings.orbitalAxis * (1.0f / orbitalAxisLength)
         : math::Vector3{ 0.0f, 1.0f, 0.0f };
-    cb.orbitalVelocity = orbitalAxisLength > 1.0e-5f ? emitter.orbitalVelocity : 0.0f;
-    cb.radialVelocity = emitter.radialVelocity;
-    cb.spriteRandomFlags = (emitter.spriteRandomStartFrame ? 1u : 0u)
-        | (emitter.spriteRandomRow ? 2u : 0u);
-    resources.Update(emitter.gpuEmitterCB, &cb, sizeof(cb));
+    cb.orbitalVelocity = orbitalAxisLength > 1.0e-5f ? emitter.settings.orbitalVelocity : 0.0f;
+    cb.radialVelocity = emitter.settings.radialVelocity;
+    cb.spriteRandomFlags = (emitter.runtime.material.spriteRandomStartFrame ? 1u : 0u)
+        | (emitter.runtime.material.spriteRandomRow ? 2u : 0u);
+    resources.Update(emitter.runtime.gpuEmitterCB, &cb, sizeof(cb));
 
     // リングバッファヘッドを進める
-    emitter.gpuWriteHead = (emitter.gpuWriteHead + emitter.gpuSpawnCount)
+    emitter.runtime.gpuWriteHead = (emitter.runtime.gpuWriteHead + emitter.runtime.gpuSpawnCount)
                            % static_cast<uint32_t>(maxP);
 
     // Dispatch CS
     renderer::ComputeCall cc;
     cc.shader        = h.particleGpuSimCS;
-    cc.constantBuffers[0] = emitter.gpuEmitterCB;
-    cc.srvBuffers[1] = emitter.gpuSpawnBuffer;   // t15
+    cc.constantBuffers[0] = emitter.runtime.gpuEmitterCB;
+    cc.srvBuffers[1] = emitter.runtime.gpuSpawnBuffer;   // t15
     cc.srvInputs[7] = resources.GetDepthTexture(h.decalDepthRT);
-    cc.uavBuffers[0] = emitter.gpuParticleBuffer; // u2
+    cc.uavBuffers[0] = emitter.runtime.gpuParticleBuffer; // u2
     cc.dispatchX = (static_cast<uint32_t>(maxP) + 63u) / 64u;
     cc.dispatchY = 1;
     cc.dispatchZ = 1;
@@ -1642,22 +1823,22 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         std::uint32_t padded = kParticleSortBlock;
         while (padded < static_cast<std::uint32_t>(maxP)) padded <<= 1;
 
-        if (!emitter.gpuSortBuffer.IsValid() || emitter.gpuSortCapacity != padded) {
-            if (emitter.gpuSortBuffer.IsValid()) resources.Release(emitter.gpuSortBuffer);
+        if (!emitter.runtime.gpuSortBuffer.IsValid() || emitter.runtime.gpuSortCapacity != padded) {
+            if (emitter.runtime.gpuSortBuffer.IsValid()) resources.Release(emitter.runtime.gpuSortBuffer);
             // 1 要素 = uint2 (key, particleIndex)。
-            emitter.gpuSortBuffer = resources.CreateRWStructuredBuffer(
+            emitter.runtime.gpuSortBuffer = resources.CreateRWStructuredBuffer(
                 nullptr, padded, static_cast<std::uint32_t>(sizeof(std::uint32_t) * 2u));
-            emitter.gpuSortCapacity = padded;
+            emitter.runtime.gpuSortCapacity = padded;
         }
-        if (!emitter.gpuSortCB.IsValid())
-            emitter.gpuSortCB = resources.CreateConstantBuffer(sizeof(GpuParticleSortCB));
+        if (!emitter.runtime.gpuSortCB.IsValid())
+            emitter.runtime.gpuSortCB = resources.CreateConstantBuffer(sizeof(GpuParticleSortCB));
 
-        if (emitter.gpuSortBuffer.IsValid() && emitter.gpuSortCB.IsValid()) {
+        if (emitter.runtime.gpuSortBuffer.IsValid() && emitter.runtime.gpuSortCB.IsValid()) {
             GpuParticleSortCB sortCb{};
             sortCb.cameraPos   = ctx.camera.m_position;
             sortCb.aliveCount  = static_cast<std::uint32_t>(maxP);
             sortCb.paddedCount = padded;
-            sortCb.backToFront = emitter.sortMode == ParticleSortMode::BackToFront ? 1u : 0u;
+            sortCb.backToFront = emitter.settings.sortMode == ParticleSortMode::BackToFront ? 1u : 0u;
             const std::uint32_t groups = padded / kParticleSortBlock;
 
             const auto dispatchSortStage =
@@ -1665,14 +1846,14 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
                     std::uint32_t stageK, std::uint32_t stageJ, bool bindParticles) {
                     sortCb.stageK = stageK;
                     sortCb.stageJ = stageJ;
-                    resources.Update(emitter.gpuSortCB, &sortCb, sizeof(sortCb));
+                    resources.Update(emitter.runtime.gpuSortCB, &sortCb, sizeof(sortCb));
                     renderer::ComputeCall call;
                     call.shader = shader;
-                    call.constantBuffers[0] = emitter.gpuSortCB;
+                    call.constantBuffers[0] = emitter.runtime.gpuSortCB;
                     // 粒子プールは SRV (t14) で読むだけ。ソート結果は別バッファ (u3) なので、
                     // 同一リソースを SRV と UAV へ同時バインドするハザードにはならない。
-                    if (bindParticles) call.srvBuffers[0] = emitter.gpuParticleBuffer;
-                    call.uavBuffers[1] = emitter.gpuSortBuffer; // u3 = UAV_GPU_SORT
+                    if (bindParticles) call.srvBuffers[0] = emitter.runtime.gpuParticleBuffer;
+                    call.uavBuffers[1] = emitter.runtime.gpuSortBuffer; // u3 = UAV_GPU_SORT
                     call.dispatchX = groups;
                     renderer.Dispatch(call, resources);
                 };
@@ -1691,19 +1872,19 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
             }
             renderer.SetRenderTarget(h.hdrRT, resources);
         }
-    } else if (emitter.gpuSortBuffer.IsValid()) {
+    } else if (emitter.runtime.gpuSortBuffer.IsValid()) {
         // ソートを切ったら確保も解放する。VS 側は renderCB の gpuSortEnabled で判断するので、
         // ここを残したままだと「無効なのにバッファだけ生き続ける」状態になる。
-        resources.Release(emitter.gpuSortBuffer);
-        emitter.gpuSortBuffer = {};
-        emitter.gpuSortCapacity = 0;
+        resources.Release(emitter.runtime.gpuSortBuffer);
+        emitter.runtime.gpuSortBuffer = {};
+        emitter.runtime.gpuSortCapacity = 0;
     }
 
     // renderCB は「ソートする」と言っているのにバッファが無い状態では描かない。
     // WHY: VS はソート有効なら必ず t15 を引く。未バインドの SRV は 0 を返すため、
     //      全インスタンスが粒子 0 番を指す明らかに誤った絵になる。
     //      誤った絵を出すより、その 1 フレームを落とすほうが原因を追いやすい。
-    if (wantSort && !emitter.gpuSortBuffer.IsValid()) return;
+    if (wantSort && !emitter.runtime.gpuSortBuffer.IsValid()) return;
 
     // ---- メッシュパーティクル (インスタンス描画) ------------------------------
     //
@@ -1711,7 +1892,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     //      GPU シミュレーションでは CPU 側に粒子配列が無いため描きようがなかった。
     //      粒子データは既に StructuredBuffer にあるので、maxParticles 個の
     //      インスタンス描画 1 本へ畳める。破片・瓦礫を大量に出す前提はこれで満たせる。
-    if (!emitter.meshParticlePath.empty()) {
+    if (!emitter.settings.meshParticlePath.empty()) {
         if (meshParticleRenderer == nullptr || !h.particleGpuMeshShader.IsValid()
             || !h.meshTrailPSO.IsValid())
             return;
@@ -1731,44 +1912,51 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         meshDc.pipelineState = h.meshTrailPSO;
         meshDc.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
         meshDc.constantBuffers[0] = h.frameCB;
-        meshDc.constantBuffers[2] = emitter.renderCB;
-        meshDc.textures[0]  = emitter.texture;
-        meshDc.vsBuffers[0] = emitter.gpuParticleBuffer; // t14
-        meshDc.vsBuffers[1] = emitter.gpuSortBuffer;     // t15 (ソート無効時は無効ハンドル)
+        meshDc.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
+        meshDc.textures[0]  = emitter.runtime.texture;
+        meshDc.vsBuffers[0] = emitter.runtime.gpuParticleBuffer; // t14
+        meshDc.vsBuffers[1] = emitter.runtime.gpuSortBuffer;     // t15 (ソート無効時は無効ハンドル)
         meshDc.instanceCount = static_cast<uint32_t>(maxP);
         renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
         SubmitCounted(ctx, meshDc);
         return;
     }
 
-    // SV_VertexID ベース描画: 頂点バッファなし、VS が StructuredBuffer<GpuParticle> を t14 で読む
-    // シェーダーは加算/アルファの 2 種しかないため、Premultiplied はアルファ側の
-    // シェーダーを使い、ブレンド方程式だけ PSO で切り替える (出力は同じで合成だけが違う)。
-    const bool alphaBlend = emitter.blendMode != ParticleBlendMode::Additive || emitter.distortion;
-    const auto gpuShader = alphaBlend
-        ? h.particleGpuAlphaShader : h.particleGpuShader;
+    // SV_VertexID ベース描画: 頂点バッファなし、VS が StructuredBuffer<GpuParticle> を t14 で読む。
+    //
+    // .mat がシェーダーを指していれば CPU 経路と同じようにそれで描く。
+    // WHY: 以前ここは組み込み固定で customShader を見ておらず、simulationMode を Gpu に
+    //      した瞬間にカスタムシェーダーが無言で消えていた。
+    // NOTE: GPU 経路は頂点バッファを持たないため、差すシェーダーは
+    //       `#define FBZZ_PARTICLE_GPU` 付きで ParticleMaterial.hlsli を include して
+    //       いる必要がある (CPU 用に書いたものを差すと頂点入力が来ず何も出ない)。
+    const auto gpuShader = emitter.runtime.customShader.IsValid()
+        ? emitter.runtime.customShader
+        : h.particleGpuShader;
     const auto gpuPSO = SelectParticlePSO(emitter, h.particleGpuPSO, h.particleGpuAlphaPSO,
                                           h.particleGpuPremultipliedPSO);
-    if (!gpuShader.IsValid() || !gpuPSO.IsValid() || !emitter.texture.IsValid())
+    if (!gpuShader.IsValid() || !gpuPSO.IsValid() || !emitter.runtime.texture.IsValid())
         return;
 
     renderer::DrawCall dc;
     dc.shader        = gpuShader;
     dc.pipelineState = gpuPSO;
     dc.constantBuffers[0] = h.frameCB;
-    dc.constantBuffers[2] = emitter.renderCB;
-    dc.textures[0]        = emitter.texture;
-    dc.textures[1]        = emitter.distortionTexture; // t1: 歪み専用マップ (未設定なら無効)
+    dc.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
+    // b2: カスタムシェーダーの MaterialConstants (.mat の [params])。組み込みでは無効ハンドル。
+    dc.constantBuffers[2] = emitter.runtime.materialParamsCB;
+    dc.textures[0]        = emitter.runtime.texture;
+    dc.textures[1]        = emitter.runtime.distortionTexture; // t1: 歪み専用マップ (未設定なら無効)
     dc.textures[5]        = sceneColor;
-    dc.textures[6]        = emitter.motionVectorTexture;
+    dc.textures[6]        = emitter.runtime.motionVectorTexture;
     dc.textures[7]        = resources.GetDepthTexture(h.decalDepthRT);
     // 受け影: CPU 経路と同じ b4 / t8 / サンプラー 1 を使う。
     dc.constantBuffers[4] = h.shadowCB;
     dc.textures[8]        = resources.GetDepthTexture(h.shadowMapRT);
-    dc.vsBuffers[0]       = emitter.gpuParticleBuffer; // t14: StructuredBuffer<GpuParticle>
+    dc.vsBuffers[0]       = emitter.runtime.gpuParticleBuffer; // t14: StructuredBuffer<GpuParticle>
     // t15: ソート済み (key, index)。無効時は何もバインドしない
     // (VS は renderCB の gpuSortEnabled が 0 なら参照しない)。
-    dc.vsBuffers[1]       = emitter.gpuSortBuffer;
+    dc.vsBuffers[1]       = emitter.runtime.gpuSortBuffer;
     dc.vertexCount        = static_cast<uint32_t>(maxP) * 6u;
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
@@ -1782,23 +1970,23 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
 void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
 {
     // WHAT: 現在の粒子位置とサイズから球Boundsを再計算する。粒子がない間は将来位置を予測して保守的に保持する。
-    math::Vector3 center = TransformEmitterPoint(tf, emitter.emitPosition);
-    float radius = (std::max)(emitter.sizeStart, emitter.sizeEnd) + emitter.cullingBoundsPadding;
-    if (!emitter.particles.empty()) {
-        center = emitter.simulationSpace == ParticleSimulationSpace::Local
-            ? TransformEmitterPoint(tf, emitter.particles.front().position)
-            : emitter.particles.front().position;
-        for (const Particle& particle : emitter.particles) {
-            const math::Vector3 position = emitter.simulationSpace == ParticleSimulationSpace::Local
+    math::Vector3 center = TransformEmitterPoint(tf, emitter.settings.emitPosition);
+    float radius = (std::max)(emitter.settings.sizeStart, emitter.settings.sizeEnd) + emitter.settings.cullingBoundsPadding;
+    if (!emitter.runtime.particles.empty()) {
+        center = emitter.settings.simulationSpace == ParticleSimulationSpace::Local
+            ? TransformEmitterPoint(tf, emitter.runtime.particles.front().position)
+            : emitter.runtime.particles.front().position;
+        for (const Particle& particle : emitter.runtime.particles) {
+            const math::Vector3 position = emitter.settings.simulationSpace == ParticleSimulationSpace::Local
                 ? TransformEmitterPoint(tf, particle.position) : particle.position;
             radius = (std::max)(radius, (position - center).Length()
-                + particle.size + emitter.cullingBoundsPadding);
+                + particle.size + emitter.settings.cullingBoundsPadding);
         }
     } else {
-        radius += emitter.emitVelocity.Length() * emitter.lifetime;
+        radius += emitter.settings.emitVelocity.Length() * emitter.settings.lifetime;
     }
-    emitter.boundsCenter = center;
-    emitter.boundsRadius = (std::max)(radius, 0.01f);
+    emitter.runtime.boundsCenter = center;
+    emitter.runtime.boundsRadius = (std::max)(radius, 0.01f);
 }
 
 // world は null 可 (Collision は ResolveParticleCollision 側でポインタとして扱う)。
@@ -1809,73 +1997,89 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
                         const std::vector<ActiveForceField>& forceFields,
                         const physics::World* world, Scene& scene)
 {
-    emitter.lastCpuSimulationFrame = Time::frameCount;
-    emitter.collisionCountThisFrame = 0;
-    emitter.deathCountThisFrame = 0;
-    const int particleCapacity = (std::max)(emitter.maxParticles, 0);
-    const bool canEmit = emitter.emitThisFrame;
-    if (canEmit || emitter.burstPending > 0) {
-        const int burstCount = (std::max)(emitter.burstPending, 0);
+    emitter.runtime.lastCpuSimulationFrame = Time::frameCount;
+    emitter.runtime.collisionCountThisFrame = 0;
+    emitter.runtime.deathCountThisFrame = 0;
+    const int particleCapacity = (std::max)(emitter.settings.maxParticles, 0);
+    const bool canEmit = emitter.runtime.emitThisFrame;
+    if (canEmit || emitter.runtime.burstPending > 0) {
+        const int burstCount = (std::max)(emitter.runtime.burstPending, 0);
         for (int index = 0; index < burstCount
-             && static_cast<int>(emitter.particles.size()) < particleCapacity; ++index) {
-            const float warmAge = emitter.prewarmSpawnPending > 0
+             && static_cast<int>(emitter.runtime.particles.size()) < particleCapacity; ++index) {
+            const float warmAge = emitter.runtime.prewarmSpawnPending > 0
                 ? Random01(emitter) * (std::min)(
-                    emitter.duration > 0.0f ? emitter.duration : emitter.lifetime,
-                    emitter.lifetime)
+                    emitter.settings.duration > 0.0f ? emitter.settings.duration : emitter.settings.lifetime,
+                    emitter.settings.lifetime)
                 : 0.0f;
             SpawnParticle(emitter, tf, animator, warmAge);
-            if (emitter.prewarmSpawnPending > 0) --emitter.prewarmSpawnPending;
-            QueueSubEmitter(scene, emitter, emitter.birthSubEmitter, emitter.subEmitterBurstCount);
+            if (emitter.runtime.prewarmSpawnPending > 0) --emitter.runtime.prewarmSpawnPending;
+            QueueSubEmitter(scene, emitter, emitter.settings.birthSubEmitter, emitter.settings.subEmitterBurstCount);
         }
-        emitter.burstPending = 0;
+        emitter.runtime.burstPending = 0;
 
-        if (static_cast<int>(emitter.particles.size()) >= particleCapacity) {
-            emitter.emitAccum = 0.0f;
+        if (static_cast<int>(emitter.runtime.particles.size()) >= particleCapacity) {
+            emitter.runtime.emitAccum = 0.0f;
         } else if (canEmit) {
-            emitter.emitAccum += emitter.emitRate * emitter.lodRateScale * dt;
+            emitter.runtime.emitAccum += emitter.settings.emitRate * emitter.runtime.lodRateScale * dt;
         }
-        while (emitter.emitAccum >= 1.0f
-               && static_cast<int>(emitter.particles.size()) < particleCapacity) {
-            emitter.emitAccum -= 1.0f;
+        while (emitter.runtime.emitAccum >= 1.0f
+               && static_cast<int>(emitter.runtime.particles.size()) < particleCapacity) {
+            emitter.runtime.emitAccum -= 1.0f;
             SpawnParticle(emitter, tf, animator);
-            QueueSubEmitter(scene, emitter, emitter.birthSubEmitter, emitter.subEmitterBurstCount);
+            QueueSubEmitter(scene, emitter, emitter.settings.birthSubEmitter, emitter.settings.subEmitterBurstCount);
         }
-        if (static_cast<int>(emitter.particles.size()) >= particleCapacity)
-            emitter.emitAccum = 0.0f;
+        if (static_cast<int>(emitter.runtime.particles.size()) >= particleCapacity)
+            emitter.runtime.emitAccum = 0.0f;
     } else {
-        emitter.emitAccum = 0.0f;
-        emitter.burstPending = 0;
+        emitter.runtime.emitAccum = 0.0f;
+        emitter.runtime.burstPending = 0;
     }
 
-    for (auto it = emitter.particles.begin(); it != emitter.particles.end();) {
+    // 周回・放射の回転中心。粒子位置と同じ空間へ揃えるため、ここで一度だけ解決する
+    // (粒子ごとに変換すると同じ計算を粒子数ぶん繰り返すことになる)。
+    const math::Vector3 orbitalOrigin =
+        emitter.settings.simulationSpace == ParticleSimulationSpace::Local
+            ? emitter.settings.emitPosition
+            : TransformEmitterPoint(tf, emitter.settings.emitPosition);
+
+    for (auto it = emitter.runtime.particles.begin(); it != emitter.runtime.particles.end();) {
         it->age += dt;
         if (it->age >= it->lifetime) {
-            ++emitter.deathCountThisFrame;
-            QueueSubEmitter(scene, emitter, emitter.deathSubEmitter, emitter.subEmitterBurstCount);
-            it = emitter.particles.erase(it);
+            ++emitter.runtime.deathCountThisFrame;
+            QueueSubEmitter(scene, emitter, emitter.settings.deathSubEmitter, emitter.settings.subEmitterBurstCount);
+            it = emitter.runtime.particles.erase(it);
             continue;
         }
         const float normalizedAge = Clamp01(it->age / (std::max)(it->lifetime, 0.001f));
-        it->velocity = (it->velocity + emitter.gravity * dt)
-            * (std::max)(0.0f, 1.0f - emitter.velocityDamping * dt);
-        if (emitter.simulationSpace == ParticleSimulationSpace::Local) {
+        it->velocity = it->velocity + emitter.settings.gravity * dt;
+        // 周回・放射。式は ParticleGpuSim.cs.hlsl の ApplyOrbitalVelocity と一致させること。
+        // 回転中心は粒子位置と同じ空間で渡す (Local はローカル原点、World はワールド変換後)。
+        ApplyOrbitalVelocity(emitter, orbitalOrigin, it->position, it->velocity, dt);
+        // drag カーブは既存の velocityDamping に対する時間倍率として掛ける。
+        const float dragScale = emitter.settings.useDragCurve
+            ? (std::max)(emitter.settings.dragCurve.Evaluate(normalizedAge), 0.0f) : 1.0f;
+        it->velocity = it->velocity
+            * (std::max)(0.0f, 1.0f - emitter.settings.velocityDamping * dragScale * dt);
+        if (emitter.settings.simulationSpace == ParticleSimulationSpace::Local) {
             math::Vector3 worldPosition = TransformEmitterPoint(tf, it->position);
             math::Vector3 worldVelocity = TransformEmitterVector(tf, it->velocity);
-            if (emitter.receiveForceFields)
-                ApplyForceFields(forceFields, worldPosition, worldVelocity, dt, time);
+            if (emitter.settings.receiveForceFields)
+                ApplyForceFields(forceFields, emitter.settings.forceFieldChannels,
+                                 worldPosition, worldVelocity, dt, time);
             ApplyEmitterNoise(emitter, worldPosition, worldVelocity, dt, time);
             it->velocity = InverseTransformEmitterVector(tf, worldVelocity);
         } else {
-            if (emitter.receiveForceFields)
-                ApplyForceFields(forceFields, it->position, it->velocity, dt, time);
+            if (emitter.settings.receiveForceFields)
+                ApplyForceFields(forceFields, emitter.settings.forceFieldChannels,
+                                 it->position, it->velocity, dt, time);
             ApplyEmitterNoise(emitter, it->position, it->velocity, dt, time);
         }
-        const float velocityScale = emitter.useVelocityCurve
-            ? (std::max)(emitter.velocityCurve.Evaluate(normalizedAge), 0.0f) : 1.0f;
+        const float velocityScale = emitter.settings.useVelocityCurve
+            ? (std::max)(emitter.settings.velocityCurve.Evaluate(normalizedAge), 0.0f) : 1.0f;
         const math::Vector3 nextPosition = it->position + it->velocity * (dt * velocityScale);
         bool killedByCollision = false;
-        if (emitter.simulationSpace == ParticleSimulationSpace::Local
-            && emitter.collisionMode != ParticleCollisionMode::None) {
+        if (emitter.settings.simulationSpace == ParticleSimulationSpace::Local
+            && emitter.settings.collisionMode != ParticleCollisionMode::None) {
             Particle worldParticle = *it;
             worldParticle.position = TransformEmitterPoint(tf, it->position);
             worldParticle.velocity = TransformEmitterVector(tf, it->velocity);
@@ -1887,20 +2091,24 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             killedByCollision = ResolveParticleCollision(emitter, *it, nextPosition, world, scene);
         }
         if (killedByCollision) {
-            it = emitter.particles.erase(it);
+            it = emitter.runtime.particles.erase(it);
             continue;
         }
-        it->rotation += it->angularVelocity * dt;
+        // 回転カーブは角速度への時間倍率。勢いよく回り始めて減速する破片が作れる。
+        it->rotation += it->angularVelocity * dt
+            * (emitter.settings.useRotationCurve
+                   ? emitter.settings.rotationCurve.Evaluate(normalizedAge) : 1.0f);
         const SpriteFrameState sprite = ComputeSpriteFrameState(
             emitter, normalizedAge, it->age, it->spriteSeed);
         it->uvRect = sprite.currentRect;
         it->nextUvRect = sprite.nextRect;
         it->spriteBlend = sprite.blend;
         it->color = EvaluateParticleColorLinear(emitter, *it, normalizedAge);
-        const float sizeT = emitter.useSizeCurve
-            ? Clamp01(emitter.sizeCurve.Evaluate(normalizedAge))
-            : std::pow(normalizedAge, emitter.sizeCurvePower);
+        const float sizeT = emitter.settings.useSizeCurve
+            ? Clamp01(emitter.settings.sizeCurve.Evaluate(normalizedAge))
+            : std::pow(normalizedAge, emitter.settings.sizeCurvePower);
         it->size = it->startSize + (it->endSize - it->startSize) * sizeT;
+        AppendParticleTrailPoint(emitter, *it, dt);
         ++it;
     }
     UpdateParticleBounds(emitter, tf);
@@ -1911,77 +2119,81 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
 //     描画ループの途中に埋めたままだと、可視でないと 1 行も進まず、画面外へ振って戻すたびに
 //     エフェクトが止まったところから再開してしまう。
 // NOTE: 1 フレームに 2 度呼ばれても進まない (lastPlaybackFrame で自衛する)。
+// NOTE: 通常は ParticleSimulationSystem (LateUpdate) が先に同じ 1 フレーム分を進めるため、
+//       ここは早期 return するだけになる。パスだけが動く経路 (システム未登録) のための
+//       予備であって «もう一つの実装» ではない。ParticleSimulationSystem::Update の
+//       再生ロジックと必ず同じ振る舞いに保つこと。
 [[nodiscard]] bool AdvanceEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, float dt)
 {
-    if (emitter.lastPlaybackFrame == Time::frameCount) return emitter.emitThisFrame;
-    emitter.lastPlaybackFrame = Time::frameCount;
+    if (emitter.runtime.lastPlaybackFrame == Time::frameCount) return emitter.runtime.emitThisFrame;
+    emitter.runtime.lastPlaybackFrame = Time::frameCount;
     // 黒体モードの焼き込みはここで 1 フレームに 1 回だけ行う。CPU 更新も GPU 定数バッファも
     // この後の runtimeGradient を読むため、両経路の色が原理的にずれない。
     emitter.RefreshRuntimeGradient();
 
-    bool canEmit = emitter.playing;
-    if (canEmit && emitter.delayTime < emitter.startDelay) {
-        emitter.delayTime += dt;
+    bool canEmit = emitter.settings.playing;
+    if (canEmit && emitter.runtime.delayTime < emitter.settings.startDelay) {
+        emitter.runtime.delayTime += dt;
         canEmit = false;
     }
-    if (canEmit && emitter.duration > 0.0f) {
-        emitter.playTime += dt;
-        if (emitter.playTime >= emitter.duration) {
-            if (emitter.loop) {
-                emitter.playTime = 0.0f;
-                emitter.delayTime = 0.0f;
-                emitter.burstCyclesFired.clear();
-                canEmit = false;
-            } else {
-                emitter.playing = false;
-                canEmit = false;
-                if (emitter.clearOnStop) {
-                    ClearEmitterRuntime(emitter);
-                    emitter.gpuClearPending = true;
-                }
+    // duration の有無に関わらず進める (playTime は «再生開始からの経過»)。
+    // 止めると duration = 0 のエミッターで時刻指定 Burst が永久に発火しない。
+    if (canEmit) emitter.runtime.playTime += dt;
+    if (canEmit && emitter.settings.duration > 0.0f
+        && emitter.runtime.playTime >= emitter.settings.duration) {
+        if (emitter.settings.loop) {
+            emitter.runtime.playTime = 0.0f;
+            emitter.runtime.delayTime = 0.0f;
+            emitter.runtime.burstCyclesFired.clear();
+        } else {
+            emitter.settings.playing = false;
+            canEmit = false;
+            if (emitter.settings.clearOnStop) {
+                ClearEmitterRuntime(emitter);
+                emitter.runtime.gpuClearPending = true;
             }
         }
     }
-    emitter.emitThisFrame = canEmit;
+    emitter.runtime.emitThisFrame = canEmit;
 
     // 距離Emission: Emitterのワールド移動量を粒子数へ変換する。
-    const math::Vector3 emitterWorldPosition = TransformEmitterPoint(tf, emitter.emitPosition);
-    if (emitter.hasLastEmitterPosition && canEmit && emitter.rateOverDistance > 0.0f) {
-        emitter.distanceEmitAccum += (emitterWorldPosition - emitter.lastEmitterPosition).Length()
-            * emitter.rateOverDistance;
-        const int distanceCount = static_cast<int>(emitter.distanceEmitAccum);
+    const math::Vector3 emitterWorldPosition = TransformEmitterPoint(tf, emitter.settings.emitPosition);
+    if (emitter.runtime.hasLastEmitterPosition && canEmit && emitter.settings.rateOverDistance > 0.0f) {
+        emitter.runtime.distanceEmitAccum += (emitterWorldPosition - emitter.runtime.lastEmitterPosition).Length()
+            * emitter.settings.rateOverDistance;
+        const int distanceCount = static_cast<int>(emitter.runtime.distanceEmitAccum);
         if (distanceCount > 0) {
-            emitter.burstPending += distanceCount;
-            emitter.distanceEmitAccum -= static_cast<float>(distanceCount);
+            emitter.runtime.burstPending += distanceCount;
+            emitter.runtime.distanceEmitAccum -= static_cast<float>(distanceCount);
         }
     }
-    emitter.lastEmitterPosition = emitterWorldPosition;
-    emitter.hasLastEmitterPosition = true;
+    emitter.runtime.lastEmitterPosition = emitterWorldPosition;
+    emitter.runtime.hasLastEmitterPosition = true;
 
     // 時刻指定Burst。loop時はplayTimeの巻き戻しでcycle状態もリセットされる。
-    if (emitter.burstCyclesFired.size() != emitter.bursts.size())
-        emitter.burstCyclesFired.assign(emitter.bursts.size(), 0);
-    for (size_t burstIndex = 0; burstIndex < emitter.bursts.size(); ++burstIndex) {
-        const ParticleBurst& burst = emitter.bursts[burstIndex];
-        int& fired = emitter.burstCyclesFired[burstIndex];
+    if (emitter.runtime.burstCyclesFired.size() != emitter.settings.bursts.size())
+        emitter.runtime.burstCyclesFired.assign(emitter.settings.bursts.size(), 0);
+    for (size_t burstIndex = 0; burstIndex < emitter.settings.bursts.size(); ++burstIndex) {
+        const ParticleBurst& burst = emitter.settings.bursts[burstIndex];
+        int& fired = emitter.runtime.burstCyclesFired[burstIndex];
         const int cycles = (std::max)(burst.cycles, 1);
         while (fired < cycles
-               && emitter.playTime >= burst.time + burst.interval * static_cast<float>(fired)) {
+               && emitter.runtime.playTime >= burst.time + burst.interval * static_cast<float>(fired)) {
             if (Random01(emitter) <= Clamp01(burst.probability))
-                emitter.burstPending += (std::max)(burst.count, 0);
+                emitter.runtime.burstPending += (std::max)(burst.count, 0);
             ++fired;
         }
     }
 
     // Prewarmは初回描画前に定常個数を投入する。GPU readbackを避けるため履歴位置は近似する。
-    if (emitter.prewarm && emitter.loop && !emitter.prewarmed) {
-        const float warmDuration = emitter.duration > 0.0f ? emitter.duration : emitter.lifetime;
-        const int warmCount = static_cast<int>((std::max)(emitter.emitRate, 0.0f)
+    if (emitter.settings.prewarm && emitter.settings.loop && !emitter.runtime.prewarmed) {
+        const float warmDuration = emitter.settings.duration > 0.0f ? emitter.settings.duration : emitter.settings.lifetime;
+        const int warmCount = static_cast<int>((std::max)(emitter.settings.emitRate, 0.0f)
             * (std::max)(warmDuration, 0.0f));
-        const int clampedWarmCount = (std::min)(warmCount, (std::max)(emitter.maxParticles, 0));
-        emitter.burstPending += clampedWarmCount;
-        emitter.prewarmSpawnPending += clampedWarmCount;
-        emitter.prewarmed = true;
+        const int clampedWarmCount = (std::min)(warmCount, (std::max)(emitter.settings.maxParticles, 0));
+        emitter.runtime.burstPending += clampedWarmCount;
+        emitter.runtime.prewarmSpawnPending += clampedWarmCount;
+        emitter.runtime.prewarmed = true;
     }
     return canEmit;
 }
@@ -1995,11 +2207,16 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
         auto* emitter = scene.GetComponent<ParticleEmitter>(id);
         GameObject* gameObject = scene.GetGameObject(id);
         if (!emitter || !gameObject || !gameObject->activeInHierarchy()
-            || !emitter->enabled || CanUseGpuSimulation(*emitter)) continue;
+            || !emitter->settings.enabled
+            || CanUseGpuSimulation(emitter->settings, &emitter->runtime.material)) continue;
         // GPU指定を一時的にCPUへ縮退した場合、制約解除後に古いGPU粒子が復活しないよう履歴を破棄する。
-        if (emitter->simulationMode == ParticleSimulationMode::Gpu)
-            emitter->gpuClearPending = true;
-        if (emitter->lastCpuSimulationFrame == Time::frameCount) continue;
+        if (emitter->settings.simulationMode == ParticleSimulationMode::Gpu)
+            emitter->runtime.gpuClearPending = true;
+        // WHY ここでも見るか: 再生 (発生) 側は ParticleSimulationSystem が止めているが、
+        //     粒子の更新はこちらなので、見ないと «発生は止まるのに既存の粒子は動き続ける»
+        //     という中途半端な «一時停止» になる。
+        if (emitter->settings.pauseWhenCulled && emitter->runtime.isCulledThisFrame) continue;
+        if (emitter->runtime.lastCpuSimulationFrame == Time::frameCount) continue;
         const auto* animator = FindParticleAnimator(*gameObject);
         // VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) をエミッター単位で dt へ注入する。
         const float scaledDt = deltaTime * emitter->GetEditorTimeScale(Time::frameCount);
@@ -2016,8 +2233,8 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
     emitter.ResetPlayback();
 
     // GPU 粒子は CS 側バッファの履歴を任意時刻へ巻き戻せないため、リスタートのみで返す。
-    if (CanUseGpuSimulation(emitter)) {
-        emitter.prewarmed = true; // 直後の Prewarm 一括投入でスクラブ結果が壊れないようにする
+    if (CanUseGpuSimulation(emitter.settings, &emitter.runtime.material)) {
+        emitter.runtime.prewarmed = true; // 直後の Prewarm 一括投入でスクラブ結果が壊れないようにする
         return;
     }
 
@@ -2036,40 +2253,40 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
         // 再生状態 (delay / duration / loop / Burst) を 1 ステップ進める。
         // WHY: ParticleSimulationSystem::Update の再生規則をステップ単位で再現しないと、
         //      Burst の発火タイミングやループ巻き戻しがリアルタイム再生とずれてしまう。
-        bool canEmit = emitter.playing;
-        if (canEmit && emitter.delayTime < emitter.startDelay) {
-            emitter.delayTime += step;
+        bool canEmit = emitter.settings.playing;
+        if (canEmit && emitter.runtime.delayTime < emitter.settings.startDelay) {
+            emitter.runtime.delayTime += step;
             canEmit = false;
         }
-        if (canEmit && emitter.duration > 0.0f) {
-            emitter.playTime += step;
-            if (emitter.playTime >= emitter.duration) {
-                if (emitter.loop) {
-                    emitter.playTime = 0.0f;
-                    emitter.delayTime = 0.0f;
-                    emitter.burstCyclesFired.clear();
+        if (canEmit && emitter.settings.duration > 0.0f) {
+            emitter.runtime.playTime += step;
+            if (emitter.runtime.playTime >= emitter.settings.duration) {
+                if (emitter.settings.loop) {
+                    emitter.runtime.playTime = 0.0f;
+                    emitter.runtime.delayTime = 0.0f;
+                    emitter.runtime.burstCyclesFired.clear();
                 } else {
-                    emitter.playing = false;
+                    emitter.settings.playing = false;
                     canEmit = false;
-                    if (emitter.clearOnStop) {
-                        emitter.particles.clear();
-                        emitter.gpuClearPending = true;
+                    if (emitter.settings.clearOnStop) {
+                        emitter.runtime.particles.clear();
+                        emitter.runtime.gpuClearPending = true;
                     }
                 }
             }
         }
-        emitter.emitThisFrame = canEmit;
+        emitter.runtime.emitThisFrame = canEmit;
 
-        if (emitter.burstCyclesFired.size() != emitter.bursts.size())
-            emitter.burstCyclesFired.assign(emitter.bursts.size(), 0);
-        for (size_t index = 0; index < emitter.bursts.size(); ++index) {
-            const ParticleBurst& burst = emitter.bursts[index];
-            int& fired = emitter.burstCyclesFired[index];
+        if (emitter.runtime.burstCyclesFired.size() != emitter.settings.bursts.size())
+            emitter.runtime.burstCyclesFired.assign(emitter.settings.bursts.size(), 0);
+        for (size_t index = 0; index < emitter.settings.bursts.size(); ++index) {
+            const ParticleBurst& burst = emitter.settings.bursts[index];
+            int& fired = emitter.runtime.burstCyclesFired[index];
             const int cycles = (std::max)(burst.cycles, 1);
             while (fired < cycles
-                   && emitter.playTime >= burst.time + burst.interval * static_cast<float>(fired)) {
+                   && emitter.runtime.playTime >= burst.time + burst.interval * static_cast<float>(fired)) {
                 if (Random01(emitter) <= Clamp01(burst.probability))
-                    emitter.burstPending += (std::max)(burst.count, 0);
+                    emitter.runtime.burstPending += (std::max)(burst.count, 0);
                 ++fired;
             }
         }
@@ -2080,9 +2297,9 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
     }
 
     // スクラブ後に Prewarm の一括投入や同フレームの通常再生が重なって状態を壊さないようにする。
-    emitter.prewarmed              = true;
-    emitter.lastPlaybackFrame      = Time::frameCount;
-    emitter.lastCpuSimulationFrame = Time::frameCount;
+    emitter.runtime.prewarmed              = true;
+    emitter.runtime.lastPlaybackFrame      = Time::frameCount;
+    emitter.runtime.lastCpuSimulationFrame = Time::frameCount;
 }
 
 void ExecuteParticlePass(RenderPassContext& ctx)
@@ -2095,6 +2312,11 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     // 早期 return より前に捨てるのが要点で、描かなかったフレームに前フレームの
     // エミッターポインタが残ると、破棄済みオブジェクトを Overdraw パスが触りうる。
     g_particleDrawRecords.clear();
+
+    // .mat の [params] 解決をこのパスで 1 回だけやり直すための通番。
+    // 進めることで «.mat を編集したら次のフレームで絵に出る» を保ちつつ、
+    // 同じ .mat を共有するエミッターぶん名前引きと Upload を繰り返さない。
+    ++g_particlePassSerial;
 
     if (!h.particleShader.IsValid() || !h.particleIB.IsValid()) return;
 
@@ -2117,7 +2339,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     const bool needsSceneColor = std::any_of(ctx.scene.GameObjects().begin(), ctx.scene.GameObjects().end(),
         [](GameObject& object) {
             const auto* emitter = object.GetComponent<ParticleEmitter>();
-            return emitter != nullptr && emitter->enabled && emitter->distortion;
+            return emitter != nullptr && emitter->settings.enabled && emitter->runtime.material.distortion;
         });
     // 現在の HDR を退避 RT へコピーし、そのテクスチャを返す。失敗時は無効ハンドル。
     const auto captureSceneColor = [&]() -> renderer::ResourceHandle<renderer::TextureTag> {
@@ -2162,15 +2384,15 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     for (auto& candidate : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(candidate, ctx.cullingMask)) continue;
         auto* candidateEmitter = candidate.GetComponent<ParticleEmitter>();
-        if (candidateEmitter == nullptr || !candidateEmitter->enabled) continue;
+        if (candidateEmitter == nullptr || !candidateEmitter->settings.enabled) continue;
         sortedEmitters.push_back(&candidate);
     }
     const math::Vector3 cameraPosition = ctx.camera.m_position;
     // GetComponent は非 const 版しかないため、比較関数も非 const ポインタで受ける。
     std::stable_sort(sortedEmitters.begin(), sortedEmitters.end(),
         [cameraPosition](GameObject* a, GameObject* b) {
-            const int priorityA = a->GetComponent<ParticleEmitter>()->renderPriority;
-            const int priorityB = b->GetComponent<ParticleEmitter>()->renderPriority;
+            const int priorityA = a->GetComponent<ParticleEmitter>()->settings.renderPriority;
+            const int priorityB = b->GetComponent<ParticleEmitter>()->settings.renderPriority;
             if (priorityA != priorityB) return priorityA < priorityB;
             const math::Vector3 deltaA = a->transform.worldPosition - cameraPosition;
             const math::Vector3 deltaB = b->transform.worldPosition - cameraPosition;
@@ -2187,57 +2409,55 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         // VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速)。ゲーム実行時は常に 1.0。
         const float dtEmitter = dt * emitter->GetEditorTimeScale(Time::frameCount);
 
-        emitter->duration = (std::max)(emitter->duration, 0.0f);
-        emitter->startDelay = (std::max)(emitter->startDelay, 0.0f);
-        emitter->spriteColumns = (std::max)(emitter->spriteColumns, 1);
-        emitter->spriteRows = (std::max)(emitter->spriteRows, 1);
-        emitter->sizeCurvePower = (std::max)(emitter->sizeCurvePower, 0.001f);
-        emitter->colorCurvePower = (std::max)(emitter->colorCurvePower, 0.001f);
-        emitter->velocityDamping = (std::max)(emitter->velocityDamping, 0.0f);
+        emitter->settings.duration = (std::max)(emitter->settings.duration, 0.0f);
+        emitter->settings.startDelay = (std::max)(emitter->settings.startDelay, 0.0f);
+        emitter->settings.sizeCurvePower = (std::max)(emitter->settings.sizeCurvePower, 0.001f);
+        emitter->settings.colorCurvePower = (std::max)(emitter->settings.colorCurvePower, 0.001f);
+        emitter->settings.velocityDamping = (std::max)(emitter->settings.velocityDamping, 0.0f);
         UpdateParticleBounds(*emitter, tf);
-        const float cameraDistance = (emitter->boundsCenter - ctx.camera.m_position).Length();
-        const float coverage = emitter->boundsRadius / (std::max)(cameraDistance, 0.001f);
+        const float cameraDistance = (emitter->runtime.boundsCenter - ctx.camera.m_position).Length();
+        const float coverage = emitter->runtime.boundsRadius / (std::max)(cameraDistance, 0.001f);
         const bool frustumVisible = !ctx.cameraFrustum
-            || ctx.cameraFrustum->IntersectsSphere(emitter->boundsCenter, emitter->boundsRadius);
-        const bool coverageVisible = emitter->screenCoverageThreshold <= 0.0f
-            || coverage >= emitter->screenCoverageThreshold;
-        emitter->isCulledThisFrame = emitter->cullingEnabled && (!frustumVisible || !coverageVisible);
-        if (emitter->isCulledThisFrame) {
+            || ctx.cameraFrustum->IntersectsSphere(emitter->runtime.boundsCenter, emitter->runtime.boundsRadius);
+        const bool coverageVisible = emitter->settings.screenCoverageThreshold <= 0.0f
+            || coverage >= emitter->settings.screenCoverageThreshold;
+        emitter->runtime.isCulledThisFrame = emitter->settings.cullingEnabled && (!frustumVisible || !coverageVisible);
+        if (emitter->runtime.isCulledThisFrame) {
             ++ctx.statsParticleCulled;
-            emitter->visibleParticleCount = 0;
+            emitter->runtime.visibleParticleCount = 0;
             // pauseWhenCulled が false なら「描かないだけ」で時間は進める。
             // WHY: 以前は両分岐とも continue で、このフラグは何の意味も持っていなかった。
             //      Play 中は ParticleSimulationSystem が別に回るので露見しないが、
             //      エディター (非 Play) ではこのパスがシミュレーションの実体そのものなので、
             //      カメラを画面外へ振った瞬間にエフェクトが凍り、戻すと止まった粒子が残っていた。
-            if (!emitter->pauseWhenCulled) {
+            if (!emitter->settings.pauseWhenCulled) {
                 (void)AdvanceEmitterPlayback(*emitter, tf, dtEmitter);
-                if (!CanUseGpuSimulation(*emitter)
-                    && emitter->lastCpuSimulationFrame != Time::frameCount)
+                if (!CanUseGpuSimulation(emitter->settings, &emitter->runtime.material)
+                    && emitter->runtime.lastCpuSimulationFrame != Time::frameCount)
                     SimulateCpuEmitter(*emitter, tf, animator, dtEmitter, time,
                                        forceFields, ctx.physicsWorld, ctx.scene);
             }
             continue;
         }
-        if (emitter->lodEnabled && emitter->lodFarDistance > emitter->lodNearDistance) {
-            const float alpha = Clamp01((cameraDistance - emitter->lodNearDistance)
-                / (emitter->lodFarDistance - emitter->lodNearDistance));
-            emitter->lodRateScale = emitter->lodNearRateScale
-                + (emitter->lodFarRateScale - emitter->lodNearRateScale) * alpha;
+        if (emitter->settings.lodEnabled && emitter->settings.lodFarDistance > emitter->settings.lodNearDistance) {
+            const float alpha = Clamp01((cameraDistance - emitter->settings.lodNearDistance)
+                / (emitter->settings.lodFarDistance - emitter->settings.lodNearDistance));
+            emitter->runtime.lodRateScale = emitter->settings.lodNearRateScale
+                + (emitter->settings.lodFarRateScale - emitter->settings.lodNearRateScale) * alpha;
         } else {
-            emitter->lodRateScale = 1.0f;
+            emitter->runtime.lodRateScale = 1.0f;
         }
         EnsureParticleTexture(*emitter, resources);
         // Physics Query、Local Space、厳密な透過ソートはCPU側で解決し、見た目の正しさを優先する。
-        const bool isGpuMode = CanUseGpuSimulation(*emitter);
+        const bool isGpuMode = CanUseGpuSimulation(emitter->settings, &emitter->runtime.material);
 
         const bool canEmit = AdvanceEmitterPlayback(*emitter, tf, dtEmitter);
 
         // GPU モードは CPU スポーン/更新をスキップして GPU パスへ
         if (isGpuMode) {
-            const int requested = (std::max)(emitter->maxParticles, 0);
+            const int requested = (std::max)(emitter->settings.maxParticles, 0);
             const int drawLimit = particleBudget > 0 ? (std::min)(requested, particleBudget) : requested;
-            emitter->visibleParticleCount = drawLimit;
+            emitter->runtime.visibleParticleCount = drawLimit;
             if (particleBudget > 0) particleBudget -= drawLimit;
             if (requested > drawLimit) ++ctx.statsParticleBudgetDropped;
             if (drawLimit <= 0) continue;
@@ -2246,163 +2466,44 @@ void ExecuteParticlePass(RenderPassContext& ctx)
                                           ShouldSortGpuParticles(*emitter, ctx.handles));
             ctx.statsParticleVisible += drawLimit;
             // CPU 経路と同じ理由でここでも取り直す (歪みの前後関係を保つ)。
-            if (emitter->distortion && needsSceneColor) particleSceneColor = captureSceneColor();
+            if (emitter->runtime.material.distortion && needsSceneColor) particleSceneColor = captureSceneColor();
             // メッシュパーティクルは同じ GameObject の MeshRenderer が形状を持つ
             // (VFXGraphSystem が meshParticlePath から生成する)。GPU 経路はこれをインスタンス描画する。
-            const MeshRenderer* meshParticleRenderer = emitter->meshParticlePath.empty()
+            const MeshRenderer* meshParticleRenderer = emitter->settings.meshParticlePath.empty()
                 ? nullptr : go.GetComponent<MeshRenderer>();
             TickGpuEmitter(*emitter, tf, animator, dtEmitter, time, canEmit, forceFields,
                            particleSceneColor, meshParticleRenderer, ctx);
             continue;
         }
 
-        const bool simulateCpuThisFrame = emitter->lastCpuSimulationFrame != Time::frameCount;
-        if (simulateCpuThisFrame) {
-        emitter->lastCpuSimulationFrame = Time::frameCount;
-        emitter->collisionCountThisFrame = 0;
-        emitter->deathCountThisFrame = 0;
-        // パーティクル生成
-        const int particleCapacity = (std::max)(emitter->maxParticles, 0);
-        const bool hasBurst = emitter->burstPending > 0;
-        if (canEmit || hasBurst) {
-            const int burstCount = (std::max)(emitter->burstPending, 0);
-            for (int i = 0; i < burstCount && static_cast<int>(emitter->particles.size()) < particleCapacity; ++i)
-            {
-                const float warmAge = emitter->prewarmSpawnPending > 0
-                    ? Random01(*emitter) * (std::min)(
-                        emitter->duration > 0.0f ? emitter->duration : emitter->lifetime,
-                        emitter->lifetime)
-                    : 0.0f;
-                SpawnParticle(*emitter, tf, animator, warmAge);
-                if (emitter->prewarmSpawnPending > 0) --emitter->prewarmSpawnPending;
-                QueueSubEmitter(ctx.scene, *emitter, emitter->birthSubEmitter, emitter->subEmitterBurstCount);
-            }
-            emitter->burstPending = 0;
+        // シミュレーションはここでは行わない。ParticleSimulationSystem (LateUpdate) が
+        // 描画より前に SimulateCpuEmitter で 1 フレーム分を進め終えている。
+        //
+        // WHY 描画パスに複製を置かないか:
+        //   以前はここに «機能の多い方» の CPU シミュレーションが丸ごと置かれていたが、
+        //   ParticleSimulationSystem が RunMode::Always で先に走って
+        //   lastCpuSimulationFrame を立てるため一度も実行されず、Orbital / Radial /
+        //   Drag カーブ / Rotation カーブ / per-particle Trail が
+        //   «実装済みなのに効かない» 状態になっていた。実装は SimulateCpuEmitter に集約する。
 
-            const int currentCount = static_cast<int>(emitter->particles.size());
-            if (currentCount >= particleCapacity) {
-                // WHY: 満杯中に emitAccum を積み続けると、寿命切れ直後に未放出分がまとめて出て不自然になる。
-                //      生成できなかった分は破棄し、次フレーム以降の通常レートに戻す。
-                emitter->emitAccum = 0.0f;
-            } else if (canEmit) {
-                emitter->emitAccum += emitter->emitRate * emitter->lodRateScale * dtEmitter;
-            }
-            while (emitter->emitAccum >= 1.0f
-                   && static_cast<int>(emitter->particles.size()) < particleCapacity)
-            {
-                emitter->emitAccum -= 1.0f;
-                SpawnParticle(*emitter, tf, animator);
-                QueueSubEmitter(ctx.scene, *emitter, emitter->birthSubEmitter, emitter->subEmitterBurstCount);
-            }
-            if (static_cast<int>(emitter->particles.size()) >= particleCapacity) {
-                // WHY: 生成ループの途中で上限に達した場合も、残った未放出分を次フレームへ持ち越さない。
-                emitter->emitAccum = 0.0f;
-            }
-        } else {
-            emitter->emitAccum = 0.0f;
-            emitter->burstPending = 0;
-        }
-
-        // 周回・放射の回転中心。粒子位置と同じ空間へ揃えるため、ここで一度だけ解決する
-        // (粒子ごとに変換すると同じ計算を粒子数ぶん繰り返すことになる)。
-        const math::Vector3 orbitalOrigin =
-            emitter->simulationSpace == ParticleSimulationSpace::Local
-                ? emitter->emitPosition
-                : TransformEmitterPoint(tf, emitter->emitPosition);
-
-        // パーティクル更新・寿命切れを削除
-        for (auto it = emitter->particles.begin(); it != emitter->particles.end(); ) {
-            it->age += dtEmitter;
-            if (it->age >= it->lifetime) {
-                ++emitter->deathCountThisFrame;
-                QueueSubEmitter(ctx.scene, *emitter, emitter->deathSubEmitter, emitter->subEmitterBurstCount);
-                it = emitter->particles.erase(it);
-                continue;
-            }
-            float t = Clamp01(it->age / (std::max)(it->lifetime, 0.001f));
-            it->velocity.x += emitter->gravity.x * dtEmitter;
-            it->velocity.y += emitter->gravity.y * dtEmitter;
-            it->velocity.z += emitter->gravity.z * dtEmitter;
-            // 周回・放射。式は ParticleGpuSim.cs.hlsl の ApplyOrbitalVelocity と一致させること。
-            // 回転中心は粒子位置と同じ空間で渡す (Local はローカル原点、World はワールド変換後)。
-            ApplyOrbitalVelocity(*emitter, orbitalOrigin, it->position, it->velocity, dtEmitter);
-            // drag カーブは既存の velocityDamping に対する時間倍率として掛ける。
-            const float dragScale = emitter->useDragCurve
-                ? (std::max)(emitter->dragCurve.Evaluate(t), 0.0f) : 1.0f;
-            const float damping =
-                (std::max)(0.0f, 1.0f - emitter->velocityDamping * dragScale * dtEmitter);
-            it->velocity = it->velocity * damping;
-            // ベクトルフィールド: シーンの力場 + エミッター固有ノイズを速度へ加算
-            if (emitter->simulationSpace == ParticleSimulationSpace::Local) {
-                math::Vector3 worldPosition = TransformEmitterPoint(tf, it->position);
-                math::Vector3 worldVelocity = TransformEmitterVector(tf, it->velocity);
-                if (emitter->receiveForceFields)
-                    ApplyForceFields(forceFields, worldPosition, worldVelocity, dtEmitter, time);
-                ApplyEmitterNoise(*emitter, worldPosition, worldVelocity, dtEmitter, time);
-                it->velocity = InverseTransformEmitterVector(tf, worldVelocity);
-            } else {
-                if (emitter->receiveForceFields)
-                    ApplyForceFields(forceFields, it->position, it->velocity, dtEmitter, time);
-                ApplyEmitterNoise(*emitter, it->position, it->velocity, dtEmitter, time);
-            }
-            // GPU CS と同じ半陽的Euler順序: 加速度・減衰・力場を速度へ反映してから位置を進める。
-            const float velocityScale = emitter->useVelocityCurve
-                ? (std::max)(emitter->velocityCurve.Evaluate(t), 0.0f) : 1.0f;
-            const math::Vector3 nextPosition = it->position + it->velocity * (dtEmitter * velocityScale);
-            bool killedByCollision = false;
-            if (emitter->simulationSpace == ParticleSimulationSpace::Local
-                && emitter->collisionMode != ParticleCollisionMode::None) {
-                Particle worldParticle = *it;
-                worldParticle.position = TransformEmitterPoint(tf, it->position);
-                worldParticle.velocity = TransformEmitterVector(tf, it->velocity);
-                killedByCollision = ResolveParticleCollision(
-                    *emitter, worldParticle, TransformEmitterPoint(tf, nextPosition),
-                    ctx.physicsWorld, ctx.scene);
-                it->position = InverseTransformEmitterPoint(tf, worldParticle.position);
-                it->velocity = InverseTransformEmitterVector(tf, worldParticle.velocity);
-            } else {
-                killedByCollision = ResolveParticleCollision(
-                    *emitter, *it, nextPosition, ctx.physicsWorld, ctx.scene);
-            }
-            if (killedByCollision) {
-                it = emitter->particles.erase(it);
-                continue;
-            }
-            // 回転カーブは角速度への時間倍率。勢いよく回り始めて減速する破片が作れる。
-            it->rotation += it->angularVelocity * dtEmitter
-                * (emitter->useRotationCurve ? emitter->rotationCurve.Evaluate(t) : 1.0f);
-            const SpriteFrameState sprite = ComputeSpriteFrameState(*emitter, t, it->age, it->spriteSeed);
-            it->uvRect = sprite.currentRect;
-            it->nextUvRect = sprite.nextRect;
-            it->spriteBlend = sprite.blend;
-            it->color = EvaluateParticleColorLinear(*emitter, *it, t);
-            const float sizeT = emitter->useSizeCurve
-                ? Clamp01(emitter->sizeCurve.Evaluate(t))
-                : std::pow(t, emitter->sizeCurvePower);
-            it->size = it->startSize + (it->endSize - it->startSize) * sizeT;
-            AppendParticleTrailPoint(*emitter, *it, dtEmitter);
-            ++it;
-        }
-        }
-
-        const int available = static_cast<int>(emitter->particles.size());
+        const int available = static_cast<int>(emitter->runtime.particles.size());
         const int countBudget = particleBudget > 0 ? (std::min)(available, particleBudget) : available;
         const int count = std::min(countBudget, kMaxParticleDraw);
-        emitter->visibleParticleCount = count;
+        emitter->runtime.visibleParticleCount = count;
         if (particleBudget > 0) particleBudget -= count;
         if (available > count) ++ctx.statsParticleBudgetDropped;
         ctx.statsParticleVisible += count;
         if (count == 0) continue;
         // MeshTrail passが同じCPU粒子列を静的Meshとして描く。billboardとの二重描画を避ける。
-        if (!emitter->meshParticlePath.empty()) continue;
+        if (!emitter->settings.meshParticlePath.empty()) continue;
         UpdateParticleRenderConstants(*emitter, resources, count, ctx.width, ctx.height);
-        if (emitter->sortMode == ParticleSortMode::BackToFront) {
+        if (emitter->settings.sortMode == ParticleSortMode::BackToFront) {
             const math::Vector3 cameraPos = ctx.camera.m_position;
-            std::sort(emitter->particles.begin(), emitter->particles.end(),
+            std::sort(emitter->runtime.particles.begin(), emitter->runtime.particles.end(),
                 [cameraPos, &tf, emitter](const Particle& a, const Particle& b) {
-                    const math::Vector3 aPosition = emitter->simulationSpace == ParticleSimulationSpace::Local
+                    const math::Vector3 aPosition = emitter->settings.simulationSpace == ParticleSimulationSpace::Local
                         ? TransformEmitterPoint(tf, a.position) : a.position;
-                    const math::Vector3 bPosition = emitter->simulationSpace == ParticleSimulationSpace::Local
+                    const math::Vector3 bPosition = emitter->settings.simulationSpace == ParticleSimulationSpace::Local
                         ? TransformEmitterPoint(tf, b.position) : b.position;
                     const math::Vector3 da = aPosition - cameraPos;
                     const math::Vector3 db = bPosition - cameraPos;
@@ -2451,14 +2552,14 @@ void ExecuteParticlePass(RenderPassContext& ctx)
             ++quadCount;
         };
 
-        const bool localSpace = emitter->simulationSpace == ParticleSimulationSpace::Local;
+        const bool localSpace = emitter->settings.simulationSpace == ParticleSimulationSpace::Local;
         // 連続リボン指定なら、尾はビルボードではなく帯として別 DrawCall で描く。
         // ここで 0 にしておかないと、帯とビルボードの二重描画になる。
-        const bool ribbonTrail = emitter->trailEnabled && emitter->trailRibbon;
-        const int trailPoints = (emitter->trailEnabled && !ribbonTrail)
-            ? std::clamp(emitter->trailPointCount, 1, kMaxParticleTrailPoints) : 0;
+        const bool ribbonTrail = emitter->settings.trailEnabled && emitter->settings.trailRibbon;
+        const int trailPoints = (emitter->settings.trailEnabled && !ribbonTrail)
+            ? std::clamp(emitter->settings.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
         for (int i = 0; i < count; ++i) {
-            const auto& p = emitter->particles[i];
+            const auto& p = emitter->runtime.particles[i];
             const math::Vector3 renderPosition = localSpace
                 ? TransformEmitterPoint(tf, p.position) : p.position;
             const math::Vector3 renderVelocity = localSpace
@@ -2475,18 +2576,18 @@ void ExecuteParticlePass(RenderPassContext& ctx)
                 const math::Vector3 trailPosition = localSpace
                     ? TransformEmitterPoint(tf, p.trailPoints[static_cast<std::size_t>(t)])
                     : p.trailPoints[static_cast<std::size_t>(t)];
-                const float widthLerp = emitter->trailWidthScale
-                    + (1.0f - emitter->trailWidthScale) * fade;
-                const float alphaLerp = emitter->trailAlphaScale
-                    + (1.0f - emitter->trailAlphaScale) * fade;
+                const float widthLerp = emitter->settings.trailWidthScale
+                    + (1.0f - emitter->settings.trailWidthScale) * fade;
+                const float alphaLerp = emitter->settings.trailAlphaScale
+                    + (1.0f - emitter->settings.trailAlphaScale) * fade;
                 // p.color はリニア、tint はオーサリング値 (sRGB)。tint をリニアへ揃えてから
                 // 掛ける。揃えないと、同じ tint がビルボード尾とリボン尾で違う色になる。
-                const math::Vector4 tint = ParticleSrgbToLinear(emitter->trailColorTint);
+                const math::Vector4 tint = ParticleSrgbToLinear(emitter->settings.trailColorTint);
                 const math::Vector4 trailColor = {
                     p.color.x * tint.x,
                     p.color.y * tint.y,
                     p.color.z * tint.z,
-                    p.color.w * emitter->trailColorTint.w * alphaLerp
+                    p.color.w * emitter->settings.trailColorTint.w * alphaLerp
                 };
                 emitQuad(trailPosition, renderVelocity, p.size * widthLerp, p.rotation,
                          trailColor, p);
@@ -2495,7 +2596,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
 
         const auto particlePSO = SelectParticlePSO(*emitter, h.particlePSO, h.particleAlphaPSO,
                                                    h.particlePremultipliedPSO);
-        if (!particlePSO.IsValid() || !emitter->texture.IsValid())
+        if (!particlePSO.IsValid() || !emitter->runtime.texture.IsValid())
             continue;
 
         // 頂点はエミッターごとに別バッファへ載せる (共有 1 本だと DX12 で先の Draw が壊れる)。
@@ -2508,12 +2609,12 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         // 歪みを使うエミッターは、その直前までに描いた絵を屈折させる。
         // 退避を取り直さないと「パーティクルを 1 つも描いていない背景」を屈折し続け、
         // 歪みを重ねたときの前後関係が完全に失われる。
-        if (emitter->distortion && needsSceneColor) particleSceneColor = captureSceneColor();
+        if (emitter->runtime.material.distortion && needsSceneColor) particleSceneColor = captureSceneColor();
 
         // 自己影: このエミッターの密度を光源側 RT へ積む。頂点バッファに今の形が
         // 乗っている間しか測れないので、本番描画の直前に行う。
         bool selfShadowReady = false;
-        if (emitter->selfShadowStrength > 0.0f
+        if (emitter->runtime.material.selfShadowStrength > 0.0f
             && PrepareParticleSelfShadowTarget(ctx, selfShadowClearedThisPass)) {
             AccumulateParticleSelfShadowDensity(*emitter, quadCount, particleVB, ctx);
             selfShadowReady = true;
@@ -2524,20 +2625,24 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         dc.indexBuffer        = h.particleIB;
         // 粒子本体 + トレイルの合計クワッド数。count のままだと尾が描かれない。
         dc.indexCount         = static_cast<uint32_t>(quadCount * 6);
-        dc.shader             = h.particleShader;
+        // .mat がシェーダーを指していればそれで描く。未指定・ロード失敗なら組み込みへ落ちる。
+        dc.shader             = emitter->runtime.customShader.IsValid() ? emitter->runtime.customShader
+                                                                : h.particleShader;
         dc.pipelineState      = particlePSO;
         dc.constantBuffers[0] = h.frameCB;
-        dc.constantBuffers[2] = emitter->renderCB;
+        dc.constantBuffers[kParticleConstantSlot] = emitter->runtime.renderCB;
+        // b2: カスタムシェーダーの MaterialConstants (.mat の [params])。組み込みでは無効ハンドル。
+        dc.constantBuffers[2] = emitter->runtime.materialParamsCB;
         // 受け影は Surface マテリアルと同じ b4 (ShadowConstants) / t8 (シャドウマップ) を使う。
         // シェーダー側は常に宣言しているため、有効/無効に関わらずバインドしておく
         // (未バインドの SRV を読むと環境によっては未定義値になる)。
         dc.constantBuffers[4] = h.shadowCB;
-        dc.textures[0]        = emitter->texture;
+        dc.textures[0]        = emitter->runtime.texture;
         // t1: 歪み専用ノーマルマップ。未設定なら無効ハンドルのままで、
         // PS は effectsFlags を見て albedo の RG へ縮退する。
-        dc.textures[1]        = emitter->distortionTexture;
+        dc.textures[1]        = emitter->runtime.distortionTexture;
         dc.textures[5]        = particleSceneColor;
-        dc.textures[6]        = emitter->motionVectorTexture;
+        dc.textures[6]        = emitter->runtime.motionVectorTexture;
         dc.textures[7]        = resources.GetDepthTexture(h.decalDepthRT);
         dc.textures[8]        = resources.GetDepthTexture(h.shadowMapRT);
         // t9: 自己影の密度。有効でないときは何もバインドしない
@@ -2611,8 +2716,8 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
         dc.shader             = countShader;
         dc.pipelineState      = h.particlePSO;   // ADDITIVE + DEPTH_READ
         dc.constantBuffers[0] = h.frameCB;
-        dc.constantBuffers[2] = record.emitter->renderCB;
-        dc.textures[0]        = record.emitter->texture;
+        dc.constantBuffers[kParticleConstantSlot] = record.emitter->runtime.renderCB;
+        dc.textures[0]        = record.emitter->runtime.texture;
         renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
         renderer.Submit(dc, resources);
     }

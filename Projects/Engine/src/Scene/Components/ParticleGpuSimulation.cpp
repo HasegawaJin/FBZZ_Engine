@@ -7,7 +7,8 @@
 
 namespace fbzz::scene {
 
-ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitter& emitter)
+ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitterSettings& emitter,
+                                                      const asset::ParticleMaterialSettings* material)
 {
     if (emitter.simulationMode != ParticleSimulationMode::Gpu)
         return ParticleGpuFallbackReason::NotRequested;
@@ -29,23 +30,24 @@ ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitter& em
     //       GPU 経路でもメッシュパーティクルを出せるようになったため。
     if (emitter.prewarm)
         return ParticleGpuFallbackReason::Prewarm;
-    if (emitter.flipbookFrameBlending)
+    if (material != nullptr && material->flipbookFrameBlending)
         return ParticleGpuFallbackReason::FlipbookFrameBlending;
-    if (emitter.motionVectorFlipbook)
+    if (material != nullptr && material->motionVectorFlipbook)
         return ParticleGpuFallbackReason::MotionVectorFlipbook;
     if (!emitter.birthSubEmitter.empty() || !emitter.deathSubEmitter.empty()
         || !emitter.collisionSubEmitter.empty())
         return ParticleGpuFallbackReason::SubEmitter;
     // 自己影の密度パスは CPU が組んだ頂点バッファを光源視点で描き直す方式のため、
     // GPU 経路 (頂点バッファを持たない) では測れない。
-    if (emitter.selfShadowStrength > 0.0f)
+    if (material != nullptr && material->selfShadowStrength > 0.0f)
         return ParticleGpuFallbackReason::SelfShadow;
     return ParticleGpuFallbackReason::None;
 }
 
-bool CanUseGpuSimulation(const ParticleEmitter& emitter)
+bool CanUseGpuSimulation(const ParticleEmitterSettings& emitter,
+                         const asset::ParticleMaterialSettings* material)
 {
-    return GetParticleGpuFallbackReason(emitter) == ParticleGpuFallbackReason::None;
+    return GetParticleGpuFallbackReason(emitter, material) == ParticleGpuFallbackReason::None;
 }
 
 const char* ParticleGpuFallbackFieldName(ParticleGpuFallbackReason reason)
@@ -84,10 +86,10 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
         return "prewarm のため CPU で実行されます。"
                "「最初から定常状態で存在する」表現は GPU の逐次積分では作れません。";
     case ParticleGpuFallbackReason::FlipbookFrameBlending:
-        return "flipbookFrameBlending のため CPU で実行されます。"
+        return ".mat の flipbookFrameBlending のため CPU で実行されます。"
                "コマ数が十分あれば補間を切っても目立ちません。";
     case ParticleGpuFallbackReason::MotionVectorFlipbook:
-        return "motionVectorFlipbook のため CPU で実行されます。";
+        return ".mat の motionVectorFlipbook のため CPU で実行されます。";
     case ParticleGpuFallbackReason::Trail:
         return "trailEnabled のため CPU で実行されます。"
                "GPU 側の粒子は位置履歴を持てません。"
@@ -96,7 +98,7 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
         return "birth / death / collision SubEmitter が設定されているため CPU で実行されます。"
                "発火判定は CPU 側にしかありません。";
     case ParticleGpuFallbackReason::SelfShadow:
-        return "selfShadowStrength > 0 のため CPU で実行されます。"
+        return ".mat の selfShadowStrength > 0 のため CPU で実行されます。"
                "自己影は CPU が組んだ頂点バッファを光源視点で描き直して密度を測るため、"
                "頂点バッファを持たない GPU 経路では測れません。"
                "厚みより粒子数が要る場面では selfShadowStrength を 0 にしてください。";

@@ -11,63 +11,12 @@
 //   ADDITIVE の SrcBlend は SRC_ALPHA なので、A=1 にすることで RGB がそのまま積算される
 //   (Debug/ParticleOverdraw.hlsl と同じ理由)。
 
-#include "Common/Binding.hlsli"
-#define FBZZ_MATERIAL_CONSTANTS
-#include "Common/Constants.hlsli"
-#include "Platform/Backend.hlsli"
+// ParticleCommon.hlsli を最初に include する (b11 の cbuffer / ParticleVSIn /
+// ParticlePSIn / ParticleBillboardVS を供給し、b2 を材質へ空ける)。
 #include "Rendering/ParticleCommon.hlsli"
 
 Texture2D    gParticleTex : register(TEX_ALBEDO);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);
-
-// LAYOUT: GeometryPasses.hpp の ParticleRenderCB が正本。読まない項目も宣言を落とさない。
-cbuffer ParticleRenderConstants : register(CB_MATERIAL)
-{
-    uint  gRenderMode;
-    float gStretchedVelocityScale;
-    float gStretchedLengthScale;
-    float gSoftParticleFadeDistance;
-    uint  gSoftParticles;
-    uint  gMaxParticles;
-    uint  gEffectsFlags;
-    float gDistortionStrength;
-    float gLightingStrength;
-    float gEmissiveScale;
-    float gMotionVectorStrength;
-    float gScreenWidth;
-    float gScreenHeight;
-    float gSizeAxisScaleX;
-    float gSizeAxisScaleY;
-    float gShadowStrength;
-    uint  gVolumetricSteps;
-    float gVolumetricDensity;
-    float gVolumetricAnisotropy;
-    float gVolumetricNoiseScale;
-    uint  gGpuSortEnabled;
-    float gSelfShadowStrength;
-    // 以降は読まないが、b2 のレイアウトは GeometryPasses.hpp の ParticleRenderCB が正本。
-    float gSmokeWrap;
-    float gSmokeTransmission;
-    float4 gTintColor;
-    float gSmokeBackScatterPower;
-    float gDistortionChromatic;
-    float gParticlePad1;
-    float gParticlePad2;
-};
-
-// LAYOUT: Particle.hlsl の ParticleVSIn と一致させること (同じ頂点バッファを読む)。
-struct ParticleVSIn
-{
-    float3 center : POSITION;
-    float2 uv     : TEXCOORD0;
-    float4 color  : COLOR;
-    float  size   : TEXCOORD1;
-    float  rotation : TEXCOORD2;
-    float4 uvRect   : TEXCOORD3;
-    float3 velocity : TEXCOORD4;
-    float4 nextUvRect : TEXCOORD5;
-    float spriteBlend : TEXCOORD6;
-};
 
 struct DensityPSIn
 {
@@ -80,22 +29,16 @@ struct DensityPSIn
 
 DensityPSIn VSMain(ParticleVSIn v)
 {
-    // 光源の view 行列の列 0/1 = 光源から見た右/上。ビルボードが光源へ正対する。
-    float3 right = float3(view[0][0], view[1][0], view[2][0]);
-    float3 up    = float3(view[0][1], view[1][1], view[2][1]);
-
-    float2 corner = v.uv * 2.0f - 1.0f;
-    float  s = sin(v.rotation);
-    float  c = cos(v.rotation);
-    corner = float2(corner.x * c - corner.y * s, corner.x * s + corner.y * c);
-    float3 worldPos = v.center
-                    + right * corner.x * v.size * 0.5f * gSizeAxisScaleX
-                    + up    * corner.y * v.size * 0.5f * gSizeAxisScaleY;
+    // b0 に光源の行列が入っているので、共有のビルボード展開がそのまま光源へ正対する。
+    // WHY 共有するか: 密度は «実際に描かれる形» を測らないと影の位置がずれる。
+    //     以前はここだけ gRenderMode を見ない簡易版で、速度ストレッチした粒子の
+    //     自己影だけが本体と違う形になっていた。
+    ParticlePSIn billboard = ParticleBillboardVS(v);
 
     DensityPSIn o;
-    o.svPosition = mul(float4(worldPos, 1.0f), viewProjection);
-    o.uv         = lerp(v.uvRect.xy, v.uvRect.zw, v.uv);
-    o.localUv    = v.uv;
+    o.svPosition = billboard.svPosition;
+    o.uv         = billboard.uv;
+    o.localUv    = billboard.localUv;
     o.alpha      = v.color.a;
     // 平行投影なので w=1。NDC z がそのまま [0,1] の光源側深度になる。
     o.lightDepth = o.svPosition.z;
