@@ -1,21 +1,21 @@
 # FBZZ Engine
 # ParticleFallback.mat
 # ParticleEmitter の materialPath 未設定時に使う既定。
-# WHY: ParticlePass は materialPath から albedo テクスチャと blend_mode だけを読む
-#      (shader / params は使わない)。素材 1 枚につき 1 マテリアルを置くことで、
-#      複数の Emitter から同じ素材設定を共有できる。
+# WHY: 素材 1 枚につき 1 マテリアルを置くことで、複数の Emitter から
+#      同じ素材設定を共有できる。
+# shader を空にしてあるのは «組み込み Particle.hlsl で描く» の意味。
 # 素材: Assets/Textures/Particles/light_01.png
 version = 1
-shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
+shader = ""
 blend_mode = "Additive"
 double_sided = true
 depth_write = false
 render_queue = 3000
-render_path = "auto"
+render_path = "particle"
 mesh_type = "surface"
 
 [textures]
-albedo = "guid:b139eecfb2b1446db4ef4a0d7a0028ad"
+albedo = "Assets/Textures/Particles/light_01.png"
 
 [params]
 albedo = [1.0, 1.0, 1.0, 1.0]

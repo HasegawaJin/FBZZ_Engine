@@ -146,7 +146,9 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  colorFilterIntensity;
     float  _qualityPad0;
     float3 colorFilter;
-    float  _qualityPad1;
+    // Option の「明るさ」。float3 colorFilter の 4 成分目にあたる空きスロットを流用するため、
+    // cbuffer のレイアウトは変わらない。1.0 で無加工。Composite だけが読む。
+    float  userBrightness;
     // 画面フェード — Composite パスの最終出力に適用する。
     float3 screenFadeColor;
     float  screenFadeAlpha;

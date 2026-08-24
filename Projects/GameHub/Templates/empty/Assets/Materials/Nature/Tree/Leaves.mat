@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'any'
 render_path = 'auto'
 render_queue = 2000
-shader = 'guid:73d100e5a351425aaf52953c23425438'
+shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
 version = 1
 
 [params]

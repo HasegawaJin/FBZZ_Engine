@@ -1,21 +1,25 @@
 # FBZZ Engine
 # Magic05_Additive.mat
 # 解放時の魔力爆発。
-# WHY: ParticlePass は materialPath から albedo テクスチャと blend_mode だけを読む
-#      (shader / params は使わない)。素材 1 枚につき 1 マテリアルを置くことで、
-#      複数の Emitter から同じ素材設定を共有できる。
+# WHY: 素材 1 枚につき 1 マテリアルを置くことで、複数の Emitter から
+#      同じ素材設定を共有できる。
+# shader を空にしてあるのは «組み込み Particle.hlsl で描く» の意味。
 # 素材: Assets/Textures/Particles/magic_05.png
 version = 1
-shader = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7"
+shader = ""
 blend_mode = "Additive"
 double_sided = true
 depth_write = false
 render_queue = 3000
-render_path = "auto"
+render_path = "particle"
 mesh_type = "surface"
 
 [textures]
-albedo = "guid:e02832ddf7a54ab3aa13a23c1a58d32e"
+albedo = "Assets/Textures/Particles/magic_05.png"
 
 [params]
 albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 3.0
+soft_particles = true

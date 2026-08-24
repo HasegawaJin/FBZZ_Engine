@@ -338,6 +338,7 @@ public:
             m_physicsWorld = fbzz::physics::World{};
             fbzz::scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
             sceneManager.SetSimulating(false);
+            sceneManager.SetPlaying(false);
         }
 
         if (!playMode->IsPlaying())
@@ -351,6 +352,9 @@ public:
         fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
         fbzz::scene::ApplyPhysicsSettings(m_physicsWorld, settings);
         sceneManager.SetSimulating(playMode->IsPlaying() || m_stepFrame);
+        // Pause 中も Play セッションは続いている。simulating と同じ値を渡すと、
+        // ScriptSystem が Pause を編集モードと読んでライフサイクルを畳む。
+        sceneManager.SetPlaying(!playMode->IsInEditor());
         sceneManager.SetPhysicsHz(settings.physics.hz);
         sceneManager.SetSingleStep(m_stepFrame);
         sceneManager.Update(simulationDt, m_physicsWorld);

@@ -5,7 +5,7 @@
 // 用途:
 //   キャラクターの目だけを別 submesh に分けて、そこへ表情スプライトを貼る。
 //   スプライトの差し替え (瞬き・表情) はスクリプト側が t0 の albedo を
-//   GameObject 単位で上書きして行う (Scripts/Player/EyeBlinkComponent.hpp 参照)。
+//   GameObject 単位で上書きして行う (ゲーム側スクリプトの役目)。
 //   atlas 内の 1 コマを指した Sprite 参照なら、uvTiling / uvOffset へその矩形が
 //   自動合成される (GeometryPassHelpers::ApplyAlbedoSpriteUv)。
 //

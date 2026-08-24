@@ -53,15 +53,10 @@ sizeCurvePower = 2.8
 lifetime = 0.09
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
 materialPath = "Assets/Materials/Particles/Muzzle03_Additive.mat"
-# ヒットフラッシュ: 6 粒子のみ
-blendMode = 0
 sortMode = 0
-emissiveScale = 4.5
 angularVelocityMin = 0.0   # 横に伸ばしたフラッシュなので回さない (回すとせん断される)
 angularVelocityMax = 0.0
-softParticles = true
 # 着弾の芯は最前面。粉塵に隠れると当たった瞬間が読めなくなる。
 renderPriority = 60
 # 着弾フラッシュは面に沿って平たく潰れる。丸いままだと球が置かれたように見える。
@@ -99,8 +94,6 @@ velocitySpread = 8.0
 velocityDamping = 3.5
 gravity = [0.0, -9.0, 0.0]
 materialPath = "Assets/Materials/Particles/Spark06_Additive.mat"
-# 放射火花
-blendMode = 0
 renderMode = 1
 stretchedVelocityScale = 0.16
 stretchedLengthScale = 3.0
@@ -109,7 +102,6 @@ collisionResponse = 0
 collisionRadius = 0.02
 collisionBounciness = 0.3
 collisionDamping = 0.5
-emissiveScale = 3.5
 renderPriority = 50
 # 尾を引かせて放射の速度感を出す。ヒット表現では「どこから飛んだか」が読めることが効く。
 # NOTE: トレイルは位置履歴を使うため CPU シミュレーション限定 (simulationMode = 0)。
@@ -155,13 +147,7 @@ lifetime = 0.22
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Particles/Twirl02_Alpha.mat"
-blendMode = 1
 sortMode = 1
-distortion = true
-distortionStrength = 0.09
-softParticles = true
-softParticleFadeDistance = 0.5
-emissiveScale = 0.0
 # 歪みはシーンカラーを読むため必ず最後に描く。
 renderPriority = 100
 useColorGradient = true
@@ -206,18 +192,9 @@ gravity = [0.0, -0.4, 0.0]
 angularVelocityMin = 0.0   # 潰した形を Dust Shape で公開しているため回転側を捨てる
 angularVelocityMax = 0.0
 materialPath = "Assets/Materials/Particles/Smoke01_Premultiplied.mat"
-# 土煙
-blendMode = 2
 sortMode = 1
-sixWayLighting = true
-lightingStrength = 0.65
-softParticles = true
-softParticleFadeDistance = 0.4
 # 粉塵は最奥。火花より手前に来ると当たった瞬間が煙で埋まる。
 renderPriority = 0
-# 粉塵は非発光。影を受けないと着弾地点だけが明るく浮く。
-receiveShadows = true
-shadowStrength = 0.9
 colorVariation = 0.15
 # 着弾面に沿って低く広がる。等方だと球が湧いたように見える。
 sizeAxisScale = [1.4, 0.7, 1.0]
@@ -261,17 +238,12 @@ gravity = [0.0, -16.0, 0.0]
 angularVelocityMin = -10.0
 angularVelocityMax = 10.0
 materialPath = "Assets/Materials/Particles/Dirt01_Premultiplied.mat"
-# 破片
-blendMode = 2
 sortMode = 1
 collisionMode = 3
 collisionResponse = 2
 collisionRadius = 0.03
 collisionDamping = 0.85
-softParticles = true
 renderPriority = 30
-receiveShadows = true
-shadowStrength = 0.9
 colorVariation = 0.25
 bursts = [{ time = 0.0, count = 45, cycles = 1, interval = 0.02, probability = 1.0 }]
 
@@ -515,21 +487,6 @@ nodeId = 3
 schemaPath = "particle.velocitySpread"
 
 [[parameters]]
-name = "Shock Distortion"
-type = 0
-minimum = 0.0
-maximum = 0.25
-hasRange = true
-[parameters.default]
-source = 0
-constantType = 0
-float = 0.09
-[[bindings]]
-paramName = "Shock Distortion"
-nodeId = 4
-schemaPath = "particle.distortionStrength"
-
-[[parameters]]
 name = "Dust Amount"
 type = 0
 minimum = 0.0
@@ -577,26 +534,6 @@ int = 5
 paramName = "Spark Trail"
 nodeId = 3
 schemaPath = "particle.trailPointCount"
-
-# 粉塵・破片が影を受ける強さ。
-[[parameters]]
-name = "Shadow Response"
-type = 0
-minimum = 0.0
-maximum = 1.0
-hasRange = true
-[parameters.default]
-source = 0
-constantType = 0
-float = 0.9
-[[bindings]]
-paramName = "Shadow Response"
-nodeId = 5
-schemaPath = "particle.shadowStrength"
-[[bindings]]
-paramName = "Shadow Response"
-nodeId = 6
-schemaPath = "particle.shadowStrength"
 
 # 粉塵の広がり方。Y を下げるほど地面を這い、上げるほど巻き上がる。
 [[parameters]]
