@@ -3,8 +3,31 @@ renderer = 'dx12'
 targetFps = 0
 
 [audio]
-bgmVolume = 1.0
-seVolume = 1.0
+masterVolume = 1.0
+
+    [[audio.bus]]
+    name = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'BGM'
+    parent = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'SE'
+    parent = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'UI'
+    parent = 'Master'
+    volume = 1.0
+
+    [[audio.bus]]
+    name = 'Voice'
+    parent = 'Master'
+    volume = 1.0
 
 [layers]
 names = [
@@ -61,15 +84,15 @@ outlineWidth = 0.045
 particleBudget = 20000
 particleBudgetEnabled = true
 passViewerEnabled = false
-pcssEnabled = true
+pcssEnabled = false
 pcssLightRadius = 3.0
 pipeline = 'Forward+'
 shadow = true
 shadowAutoFitDistance = 60.0
 shadowCascadeBlend = 0.1
-shadowCascadeCount = 1
+shadowCascadeCount = 4
 shadowCascadeSplitLambda = 0.75
-shadowPcfRadius = 0
+shadowPcfRadius = 2
 shadowResolution = 2048
 showColliders = true
 showDecalBounds = false

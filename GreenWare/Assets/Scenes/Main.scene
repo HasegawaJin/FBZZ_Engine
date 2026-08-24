@@ -12,14 +12,21 @@ prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'MainCamera'
 
+    [gameobjects.AudioListenerComponent]
+    enabled = true
+    priority = 0
+    volume = 1.0
+
     [gameobjects.CameraComponent]
-    aspectRatio = 1.882562
+    aspectRatio = 1.77758
+    backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
+    clearMode = 0
     cullDistanceSpherical = true
     cullingBoundsPadding = 0.0
     cullingMask = 4294967295
     enabled = true
     farZ = 1000.0
-    fovY = 60.0
+    fovY = 74.0
     frustumCulling = true
     isMain = true
     maxDrawDistance = 0.0
@@ -28,8 +35,8 @@ tag = 'MainCamera'
     smallObjectScreenHeight = 0.0
 
     [gameobjects.transform]
-    position = [ -8.545555, 5.855114, 3.775358 ]
-    rotation = [ -0.244763, 0.750799, -0.478312, -0.384201 ]
+    position = [ -5.826562, 4.5823, 3.507684 ]
+    rotation = [ -0.099695, 0.756775, -0.118812, -0.635009 ]
     scale = [ 1.000003, 1.0, 1.000003 ]
 
     [[gameobjects.ScriptComponents]]
@@ -37,9 +44,9 @@ tag = 'MainCamera'
     type = 'TpsCameraComponent'
 
         [gameobjects.ScriptComponents.fields]
-        distance = 4.0
+        distance = 4.363077
         followSpeed = 10.0
-        height = 2.2
+        height = 3.215384
         loosenedFollowSpeed = 2.0
         loosenedVerticalFollowSpeed = 1.4
         maxPitch = 65.0
@@ -48,14 +55,12 @@ tag = 'MainCamera'
         mouseOrbit = true
         mouseSensitivity = 0.2
         padInvertY = false
-        padLookDeadZone = 0.18
-        padLookExponent = 2.0
         padLookSpeed = 200.0
         padOrbit = true
-        pitch = 65.0
+        pitch = 17.844999
         targetTag = 'Player'
         verticalFollowSpeed = 10.0
-        yaw = 234.199692
+        yaw = 260.0
 
 [[gameobjects]]
 active = true
@@ -80,7 +85,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 9.098, 24.136452, 0.004797 ]
-    rotation = [ 0.133689, -0.471605, 0.868589, 0.072587 ]
+    rotation = [ -0.119053, 0.61527, -0.7735, -0.094699 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2150,10 +2155,17 @@ tag = 'Untagged'
 
         [gameobjects.ScriptComponents.fields]
         Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        arcAmplitude = 0.5
+        arcIntensity = 1.6
+        arcRangeScale = 1.5
+        arcRate = 24.0
+        arcStrands = 2
+        arcWidth = 0.08
         consumePolarityOnImpact = true
         debugChargedCount = 0
         debugLinkCount = 0
         drawDebugLinks = true
+        drawLinkArcs = true
         maxLinks = 8
 
 [[gameobjects]]
@@ -2257,7 +2269,10 @@ tag = 'Untagged'
     type = 'CombatManagerComponent'
 
         [gameobjects.ScriptComponents.fields]
+        chainSeconds = 2.2
         debugAnchorImpacts = 0
+        debugBestChain = 0
+        debugChain = 0
         debugDamageToEnemies = 0
         debugDamageToPlayer = 0
         debugEnemyImpacts = 0
@@ -2404,6 +2419,52 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'f4000001-0000-0000-0000-000000000022'
+layer = 0
+name = 'VfxManager'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'VfxManagerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        blastLightMax = 30.0
+        blastLightMin = 11.0
+        debugLast = ''
+        debugSlots = 0
+        lightFalloffCount = 3
+        slotsPerEffect = 8
+        sparkPowerMax = 20.0
+        sparkPowerMin = 5.0
+
+            [gameobjects.ScriptComponents.fields.chargeVfx]
+            guid = 'f822f852a22fabfdeb4be1748f5dbf9a'
+            path = 'guid:f822f852a22fabfdeb4be1748f5dbf9a|Assets/VFX/Game/FX_POL_Charge.vfx'
+
+            [gameobjects.ScriptComponents.fields.impactVfx]
+            guid = 'a3ef2f1462a18ca75a7ccf1e1a8896e5'
+            path = 'guid:a3ef2f1462a18ca75a7ccf1e1a8896e5|Assets/VFX/Game/FX_IMP_Explosion.vfx'
+
+            [gameobjects.ScriptComponents.fields.launchVfx]
+            guid = 'ad046f891e08741cd1bcd6e89fd5e5fc'
+            path = 'guid:ad046f891e08741cd1bcd6e89fd5e5fc|Assets/VFX/Game/FX_ATR_Launch.vfx'
+
+            [gameobjects.ScriptComponents.fields.neutralizeVfx]
+            guid = 'c568c0aae024618e9af6adcd83c32059'
+            path = 'guid:c568c0aae024618e9af6adcd83c32059|Assets/VFX/Game/FX_POL_Neutralize.vfx'
+
+[[gameobjects]]
+active = true
 instanceId = 'f4000001-0000-0000-0000-00000000001a'
 layer = 0
 name = 'CameraFollowManager'
@@ -2423,11 +2484,69 @@ tag = 'Untagged'
     type = 'CameraFollowManagerComponent'
 
         [gameobjects.ScriptComponents.fields]
+        burstAttack = 0.05
+        burstDegrees = 7.0
+        burstRelease = 0.35
         debugActive = 0
+        debugFovOffset = 0.0
         debugHorizontal = 0.0
         debugVertical = 0.000631
         maxRequests = 8
         recoverSpeed = 4.0
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000031'
+layer = 0
+name = 'ChainDisplay'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ChainDisplayComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        color = [ 1.0, 0.92, 0.62, 1.0 ]
+        countText = 'f4000002-0000-0000-0000-000000000030'
+        debugShown = 0
+        fadeBelow = 0.35
+        minimumChain = 2
+        popBoost = 0.6
+        popSeconds = 0.14
+        prefix = 'CHAIN '
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-000000000030'
+layer = 0
+name = 'GameSettings'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'GameSettingsComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugQuality = '-'
+        debugResolution = '-'
 
 [[gameobjects]]
 active = true
@@ -3592,13 +3711,24 @@ tag = 'Player'
         aimTurnDeadzoneDegrees = 30.0
         aimYawRangeDegrees = 45.0
         airCameraSlack = 0.85
+        arcAmplitude = 0.16
+        arcIntensity = 1.4
+        arcRate = 28.0
+        arcStrands = 2
+        arcWidth = 0.05
         autoResolveAxis = true
         autoTuneGrounding = true
         beamMaterial = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
+        chargeBeads = 4.0
+        churnRate = 9.0
         clampDegrees = 55.0
+        contactBoost = 0.7
         coreBrightness = 2.4
+        coreSharpness = 0.45
         coreWidth = 0.09
         cornerRatio = 0.34
+        crackle = 0.45
+        crosshairMaterial = 'guid:9a3f27c6b1d84e05a7c93f61d2b840ae|Assets/Materials/UI/UICrosshair.mat'
         debugAxes = 'look(0,0,-1) up(0,1,0)'
         debugBeamTarget = ''
         debugContactCount = 0
@@ -3613,10 +3743,12 @@ tag = 'Player'
         depth = 0.35
         dodgeCameraSlack = 0.7
         dotSize = 3.0
+        drawArc = true
         drawDebugAim = false
         drawDebugBeam = false
         drawDebugLine = false
         drawDuration = 0.9
+        drawImpactArc = true
         drawSocketGizmos = true
         drawStateName = 'DrawPistols'
         drawTransferDelay = 0.3
@@ -3630,9 +3762,11 @@ tag = 'Player'
         fireLeftClipName = 'Fire_Pistol_L'
         fireRightClipFile = 'guid:48b26f14e4c8e89df23b7012356ea83f|Library/Baked/ddfbf771594ff72e7182484d3d0d0afe/anims/Fire_Pistol_R.anim'
         fireRightClipName = 'Fire_Pistol_R'
+        flicker = 0.22
         gap = 9.0
         glowBrightness = 1.0
         glowOpacity = 0.35
+        glowSoftness = 3.2
         glowWidth = 0.34
         gripSocketName = 'SOCKET_Grip'
         headBoneName = 'Head'
@@ -3645,6 +3779,7 @@ tag = 'Player'
         holsterTransferDelay = 0.45
         holsteredAlpha = 0.0
         idleColor = [ 0.2, 1.0, 0.45, 0.85 ]
+        impactArcRadius = 0.55
         landFeedbackSpeed = 12.0
         lifetime = 3.5
         lineWidth = 0.06
@@ -3652,14 +3787,18 @@ tag = 'Player'
         lockSeconds = 0.16
         lookAxisOverride = [ 0.0, 0.0, 1.0 ]
         lookWhenHolstered = true
+        lowBatteryUnrest = 0.5
         markerColor = [ 0.2, 1.0, 0.45, 1.0 ]
         maxCount = 24
         minInterval = 0.04
         minSize = 0.6
         modelYawOffsetDegrees = 180.0
         moveCameraSlack = 0.45
+        muzzleFade = 0.04
         muzzleLeft = ''
         muzzleRight = ''
+        outlineColor = [ 0.01, 0.03, 0.02, 0.85 ]
+        outlineWidth = 1.5
         padding = 0.25
         paramAimPitch = 'AimPitch'
         paramAimYaw = 'AimYaw'
@@ -3676,6 +3815,8 @@ tag = 'Player'
         response = 18.0
         rimIntensity = 1.1
         rotateToMoveDirection = true
+        runSpeedThreshold = 4.0
+        scrollSpeed = 3.0
         sfxBeamStart = ''
         sfxDeath = ''
         sfxEmpty = ''
@@ -3684,13 +3825,20 @@ tag = 'Player'
         sfxPaint = ''
         showPolarity = true
         size = 0.55
+        snake = 0.35
+        snakeFrequency = 9.0
         spacing = 0.3
         spreadResponse = 16.0
         spriteSize = 48.0
         stopOnGeometry = true
+        strideRun = 1.35
+        strideWalk = 0.75
+        stripeDensity = 1.2
         tickLength = 13.0
+        tickRoundness = 1.0
         tickThickness = 2.5
         tintByPolarity = true
+        tipFade = 0.08
         transferBlendDuration = 0.16
         tuning = 'guid:079a5e380ed2ea9c207fe6941e5e28fe|Assets/Data/PlayerTuning.fzdata'
         turnToAim = true
@@ -3745,6 +3893,11 @@ tag = 'Player'
         materialDepletedParam = 'depleted'
         materialFillParam = 'fillRatio'
         materialFromRightParam = 'fillFromRight'
+        previewAnimate = false
+        previewCharge = 0.62
+        previewDrawn = true
+        previewEmitting = false
+        previewReady = true
         readyFlashBoost = 0.9
         readyFlashSeconds = 0.22
         readyPulseDepth = 0.12
@@ -3882,7 +4035,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:fda776f8b5e13cd41f342dff99c1ced2|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_GlowGreen.mat'
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -3898,6 +4051,18 @@ tag = 'Untagged'
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'GlowPartComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        emissiveSlot = 0
+        glowColor = [ 0.2, 1.0, 0.45, 1.0 ]
+        glowTarget = ''
+        intensity = 0.65
+        pulseDepth = 0.12
+        pulseHz = 0.35
+
 [[gameobjects]]
 active = true
 instanceId = '92309dd0-a052-4ad5-9ab2-779f69455711'
@@ -3911,7 +4076,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:2caae78b321f33b464c2acf871226716|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_GlowGreenSoft.mat'
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -3926,6 +4091,18 @@ tag = 'Untagged'
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'GlowPartComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        emissiveSlot = 0
+        glowColor = [ 0.2, 1.0, 0.45, 1.0 ]
+        glowTarget = ''
+        intensity = 0.38
+        pulseDepth = 0.18
+        pulseHz = 0.35
 
 [[gameobjects]]
 active = true
@@ -4027,7 +4204,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:30fdc47cf5330707059b6c28e0f93e3d|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_VisorDark.mat'
+    material = 'guid:a11724f3ac7b41e7a303bef98b2f2faa|Assets/Materials/Player/SkinnedEyeSprite.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -4045,25 +4222,25 @@ tag = 'Untagged'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
-    type = 'EyeBlinkComponent'
+    type = 'EyeSpriteComponent'
 
         [gameobjects.ScriptComponents.fields]
         closedDuration = 0.09
-        debugState = 'Open'
+        debugFace = 'Idle'
         debugTimer = 1.123875
         doubleBlinkGap = 0.11
         doubleBlinkPercent = 25
-        eyeRenderer = ''
+        eyeRenderer = '7a454cea-12a9-46ef-aefa-c84393950a9e'
         intervalMax = 2.0
         intervalMin = 1.0
 
-            [gameobjects.ScriptComponents.fields.closedSprite]
+            [gameobjects.ScriptComponents.fields.blinkSprite]
             guid = '7f90c4e045b524d2bd76c6774c4b29a5'
-            path = 'Assets/Sprites/T_VisorEyes.png::sprite::6389c2a4-4ed2-427c-900c-f1716118284d'
+            path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::6389c2a4-4ed2-427c-900c-f1716118284d|Assets/Sprites/Player/T_VisorEyes.png'
 
-            [gameobjects.ScriptComponents.fields.openSprite]
+            [gameobjects.ScriptComponents.fields.idleSprite]
             guid = '7f90c4e045b524d2bd76c6774c4b29a5'
-            path = 'Assets/Sprites/T_VisorEyes.png::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b'
+            path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b|Assets/Sprites/Player/T_VisorEyes.png'
 
 [[gameobjects]]
 active = true
@@ -6535,14 +6712,14 @@ tag = 'Untagged'
     [gameobjects.UIImage]
     anchor = [ 0.0, 0.0 ]
     border = [ 0.0, 0.0, 0.0, 0.0 ]
-    color = [ 0.102647, 0.359265, 1.026472, 1.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
     enabled = true
-    fillAmount = 0.866794
+    fillAmount = 1.0
     fillClockwise = true
     fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    materialPath = ''
+    materialPath = 'guid:b2d726280adfb8191609a881c8708919|Assets/Materials/UI/UIBattery.mat'
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
     sortOrder = 0
@@ -6569,7 +6746,7 @@ tag = 'Untagged'
     [gameobjects.UIText]
     align = 0
     anchor = [ 0.0, 0.0 ]
-    color = [ 0.102647, 0.359265, 1.026472, 1.0 ]
+    color = [ 0.1, 0.35, 1.0, 1.0 ]
     enabled = true
     fontPath = ''
     fontSize = 30.0
@@ -6633,14 +6810,14 @@ tag = 'Untagged'
     [gameobjects.UIImage]
     anchor = [ 0.0, 0.0 ]
     border = [ 0.0, 0.0, 0.0, 0.0 ]
-    color = [ 1.026472, 0.123177, 0.143706, 1.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
     enabled = true
     fillAmount = 1.0
     fillClockwise = true
     fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    materialPath = ''
+    materialPath = 'guid:b2d726280adfb8191609a881c8708919|Assets/Materials/UI/UIBattery.mat'
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
     sortOrder = 0
@@ -6667,7 +6844,7 @@ tag = 'Untagged'
     [gameobjects.UIText]
     align = 0
     anchor = [ 0.0, 0.0 ]
-    color = [ 1.026472, 0.123177, 0.143706, 1.0 ]
+    color = [ 1.0, 0.12, 0.14, 1.0 ]
     enabled = true
     fontPath = ''
     fontSize = 30.0
@@ -6742,3 +6919,3231 @@ tag = 'Untagged'
     position = [ 64.0, 92.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 228.719269, 44.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '01e2a29b-1ddb-4d68-a3ef-60488ac43e8a'
+layer = 0
+name = 'HUD_Crosshair'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'CrosshairComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        crosshairMaterial = 'guid:9a3f27c6b1d84e05a7c93f61d2b840ae|Assets/Materials/UI/UICrosshair.mat'
+        dotSize = 3.0
+        emitSpread = 7.0
+        fadeSpeed = 9.0
+        gap = 9.0
+        holsteredAlpha = 0.0
+        idleColor = [ 0.2, 1.0, 0.45, 0.85 ]
+        outlineColor = [ 0.01, 0.03, 0.02, 0.85 ]
+        outlineWidth = 1.0
+        showPolarity = true
+        spreadResponse = 16.0
+        spriteSize = 48.0
+        tickLength = 13.0
+        tickRoundness = 1.0
+        tickThickness = 2.5
+
+            [gameobjects.ScriptComponents.fields.crosshairSprite]
+            guid = ''
+            path = ''
+
+[[gameobjects]]
+active = false
+instanceId = 'f4000002-0000-0000-0000-000000000030'
+layer = 0
+name = 'HUD_Chain'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 1
+    anchor = [ 0.0, 0.0 ]
+    color = [ 1.0, 0.92, 0.62, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 44.0
+    letterSpacing = 4.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.5, 0.0 ]
+    sortOrder = 0
+    text = 'CHAIN 2'
+
+    [gameobjects.transform]
+    position = [ 960.0, 404.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 180.0, 44.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+layer = 0
+name = 'Enemy_Serpent'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Enemy'
+
+    [gameobjects.AnimatorComponent]
+    baseLayerMaskPath = ''
+    controllerPath = 'guid:24bc04ddd9fa4a579cc41e054a04713d|Assets/Animation/Enemy_Serpent/Enemy_Serpent.animcontroller'
+    defaultStateName = 'Locomotion'
+    enabled = true
+    playing = true
+    rootMotionApplyRotation = 0
+    rootMotionApplyXZ = 0
+    rootMotionApplyY = 0
+    rootMotionMode = 0
+    rootMotionNodeName = ''
+    rootMotionPoseMode = 0
+    rootMotionPositionScale = 1.0
+    rootMotionRotationScale = 1.0
+    rootMotionSource = 0
+    rootMotionTarget = ''
+    speed = 1.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Death'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Attack'
+        transitionDuration = 0.1
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Attack'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:035314d8cbc043f4bfea45306676c8e8|Assets/Animation/Enemy_Serpent/M_Serpent_Hit.mask'
+        mode = 1
+        name = 'Add_Hit'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Scene'
+            sourcePath = 'guid:72b6e6590fc02b364e8882e16e561a11|Assets/Animation/Enemy_Serpent/Idle.anim'
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Speed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Attack'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Hit'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'IsDead'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = ''
+        ikWeight = 1.0
+        loop = true
+        mode = 1
+        name = 'Locomotion'
+        sourcePath = ''
+        speed = 1.0
+        transitions = []
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.12
+            paramName = 'Speed'
+            syncNormalizedTime = false
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Scene'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:72b6e6590fc02b364e8882e16e561a11|Assets/Animation/Enemy_Serpent/Idle.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Scene'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:43e4965965f0e93b3ff997429da42306|Assets/Animation/Enemy_Serpent/Move.anim'
+                speed = 1.0
+                threshold = 3.2
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Attack'
+        sourcePath = 'guid:c4981d09350c4b4dfc2f430a09cf23f0|Assets/Animation/Enemy_Serpent/Attack.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 0.9
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.18
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Death'
+        sourcePath = 'guid:e1028ca2850ebd7e566cb6d186b43f14|Assets/Animation/Enemy_Serpent/Death.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsDead'
+                threshold = 0.0
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = false
+    angularDrag = 0.3
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.85
+    charge = 0.0
+    enabled = true
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 1.0, 1.0, 1.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 1.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.1
+    mass = 3.0
+    massMode = 0
+    useCCD = true
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.SphereColliderComponent]
+    center = [ 0.0, 0.55, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.SphereColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.25
+        frictionCombine = 1
+        restitution = 0.2
+        restitutionCombine = 2
+        staticFriction = 0.3
+
+        [gameobjects.SphereColliderComponent.shape]
+        radius = 0.85
+        type = 'Sphere'
+
+    [gameobjects.transform]
+    position = [ 15.169794, 0.0, -3.403436 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PolarityTargetComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        debugRemaining = 0.0
+        emissiveSlot = 0
+        emissiveTargets = [ 'f6e44f45-3264-417c-beab-2055730974ab', '0ae685bc-9d89-4e60-939c-803017a18eac' ]
+        isAnchor = false
+        polarityClass = 1
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PolarityBodyComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        debugPartner = ''
+        debugPhase = 'Idle'
+        drawDebugFlight = false
+        drawLink = false
+        linkHeightOffset = 0.55
+        linkWidth = 0.12
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        anchorDamageMultiplier = 1.0
+        baseImpactDamage = 55
+        debugHealth = 100
+        destroyDelay = 1.6
+        maxHealth = 100
+        sfxDeath = ''
+        sfxHit = ''
+        speedDamageScale = 0.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemySerpentComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        attackCooldown = 2.0
+        attackDamage = 1
+        attackDuration = 1.5
+        attackHitRange = 3.6
+        attackHitTime = 0.65
+        attackRange = 3.0
+        conduct = true
+        conductInterval = 0.3
+        conductMaxPerTick = 3
+        conductRadius = 2.6
+        debugConducted = 0
+        debugState = 'Idle'
+        moveSpeed = 3.4
+        playerTag = 'Player'
+        turnSpeed = 7.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
+        barHeight = 0.14
+        barWidth = 1.2
+        borderWidth = 0.02
+        debugAnchorHeight = 0.0
+        drainColor = [ 1.0, 0.95, 0.75, 1.0 ]
+        drainHold = 0.18
+        drainSpeed = 0.9
+        drawAnchor = false
+        emptyColor = [ 0.85, 0.35, 0.2, 1.0 ]
+        fallbackBodyHeight = 1.0
+        fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
+        headroom = 0.35
+        hideWhenFull = false
+
+[[gameobjects]]
+active = true
+instanceId = 'b8cab87b-8b40-4666-a913-ad68273dada2'
+layer = 0
+name = 'Serpent_ArmorGrey'
+parent = 'Enemy_Serpent'
+parentInstanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:849471e850f6a3c6fd48be3def59c274|Library/Baked/d00bde97291b770b97c62870ba0e24aa/materials/M_E_ArmorGrey.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d00bde97291b770b97c62870ba0e24aa|Assets/Models/Enemy_Serpent/Z_Serpent.fbx'
+    skeletonRootGuid = '016ad2eb-153b-47da-8506-3d892346ab4f'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f6e44f45-3264-417c-beab-2055730974ab'
+layer = 0
+name = 'Serpent_CoreGlow'
+parent = 'Enemy_Serpent'
+parentInstanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d00bde97291b770b97c62870ba0e24aa|Assets/Models/Enemy_Serpent/Z_Serpent.fbx'
+    skeletonRootGuid = '016ad2eb-153b-47da-8506-3d892346ab4f'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 1 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'bb86f3e1-8014-4611-8e59-04f83e6625c1'
+layer = 0
+name = 'Serpent_EyeSprite'
+parent = 'Enemy_Serpent'
+parentInstanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e7056061c66d0ff6806e945ad94486b8|Library/Baked/d00bde97291b770b97c62870ba0e24aa/materials/M_E_EyeSprite.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d00bde97291b770b97c62870ba0e24aa|Assets/Models/Enemy_Serpent/Z_Serpent.fbx'
+    skeletonRootGuid = '016ad2eb-153b-47da-8506-3d892346ab4f'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 2 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c3856bc9-eaa0-4ec3-a942-7d899b209acf'
+layer = 0
+name = 'Serpent_MetalDark'
+parent = 'Enemy_Serpent'
+parentInstanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:818d72748884a765212441109249c3d7|Library/Baked/d00bde97291b770b97c62870ba0e24aa/materials/M_E_MetalDark.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d00bde97291b770b97c62870ba0e24aa|Assets/Models/Enemy_Serpent/Z_Serpent.fbx'
+    skeletonRootGuid = '016ad2eb-153b-47da-8506-3d892346ab4f'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 3 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0ae685bc-9d89-4e60-939c-803017a18eac'
+layer = 0
+name = 'Serpent_RingGlow'
+parent = 'Enemy_Serpent'
+parentInstanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d00bde97291b770b97c62870ba0e24aa|Assets/Models/Enemy_Serpent/Z_Serpent.fbx'
+    skeletonRootGuid = '016ad2eb-153b-47da-8506-3d892346ab4f'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 4 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7014ecfd-69c0-4f40-a27c-c1a7729a116c'
+layer = 0
+name = 'Serpent_Visor'
+parent = 'Enemy_Serpent'
+parentInstanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:29eee61b18f4a07d8dac071a67d89a3f|Library/Baked/d00bde97291b770b97c62870ba0e24aa/materials/M_E_Visor.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d00bde97291b770b97c62870ba0e24aa|Assets/Models/Enemy_Serpent/Z_Serpent.fbx'
+    skeletonRootGuid = '016ad2eb-153b-47da-8506-3d892346ab4f'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 5 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+layer = 0
+name = 'RootNode'
+parent = 'Enemy_Serpent'
+parentInstanceId = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'RootNode'
+    generated = true
+    nodeIndex = 0
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '721e7076-c170-462a-8064-96212d2b1ee5'
+layer = 0
+name = 'Serpent_Armature'
+parent = 'RootNode'
+parentInstanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Serpent_Armature'
+    generated = true
+    nodeIndex = 1
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd6bee63f-046f-4a58-85cf-657029951abe'
+layer = 0
+name = 'Root_Motion'
+parent = 'Serpent_Armature'
+parentInstanceId = '721e7076-c170-462a-8064-96212d2b1ee5'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Root_Motion'
+    generated = true
+    nodeIndex = 2
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c3924ad9-3c42-425f-afb9-f284ed8bc519'
+layer = 0
+name = 'Root'
+parent = 'Serpent_Armature'
+parentInstanceId = '721e7076-c170-462a-8064-96212d2b1ee5'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 0
+    boneName = 'Root'
+    generated = true
+    nodeIndex = 3
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.048056 ]
+    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '04a680f1-057c-43bc-97f9-278bd02d7d19'
+layer = 0
+name = 'Body_09'
+parent = 'Root'
+parentInstanceId = 'c3924ad9-3c42-425f-afb9-f284ed8bc519'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 1
+    boneName = 'Body_09'
+    generated = true
+    nodeIndex = 4
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.265, -1.89 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0177a179-ae98-47f3-8e50-5998c73b52e5'
+layer = 0
+name = 'Body_08'
+parent = 'Body_09'
+parentInstanceId = '04a680f1-057c-43bc-97f9-278bd02d7d19'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 2
+    boneName = 'Body_08'
+    generated = true
+    nodeIndex = 5
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '84cdf06e-9638-4db2-acd8-d8272058d764'
+layer = 0
+name = 'Body_07'
+parent = 'Body_08'
+parentInstanceId = '0177a179-ae98-47f3-8e50-5998c73b52e5'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 3
+    boneName = 'Body_07'
+    generated = true
+    nodeIndex = 6
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ebd9f782-17f9-4e98-8a76-c604b0c79488'
+layer = 0
+name = 'Body_06'
+parent = 'Body_07'
+parentInstanceId = '84cdf06e-9638-4db2-acd8-d8272058d764'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 4
+    boneName = 'Body_06'
+    generated = true
+    nodeIndex = 7
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8816222f-66d9-4a39-b7b7-16e03b3f7d53'
+layer = 0
+name = 'Body_05'
+parent = 'Body_06'
+parentInstanceId = 'ebd9f782-17f9-4e98-8a76-c604b0c79488'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 5
+    boneName = 'Body_05'
+    generated = true
+    nodeIndex = 8
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1309bed0-1ecf-479c-a32e-e654837479ba'
+layer = 0
+name = 'Body_04'
+parent = 'Body_05'
+parentInstanceId = '8816222f-66d9-4a39-b7b7-16e03b3f7d53'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 6
+    boneName = 'Body_04'
+    generated = true
+    nodeIndex = 9
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3bc90807-4443-45b1-8fed-ef17c83be1df'
+layer = 0
+name = 'Body_03'
+parent = 'Body_04'
+parentInstanceId = '1309bed0-1ecf-479c-a32e-e654837479ba'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 7
+    boneName = 'Body_03'
+    generated = true
+    nodeIndex = 10
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd7ea97dc-8196-4a99-8074-a9a0eb41b847'
+layer = 0
+name = 'Body_02'
+parent = 'Body_03'
+parentInstanceId = '3bc90807-4443-45b1-8fed-ef17c83be1df'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 8
+    boneName = 'Body_02'
+    generated = true
+    nodeIndex = 11
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2688e6f6-6681-4247-9dab-5a40acae1c04'
+layer = 0
+name = 'Body_01'
+parent = 'Body_02'
+parentInstanceId = 'd7ea97dc-8196-4a99-8074-a9a0eb41b847'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 9
+    boneName = 'Body_01'
+    generated = true
+    nodeIndex = 12
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e3f9dae0-6b21-48d6-bcc3-0a55706455eb'
+layer = 0
+name = 'Head'
+parent = 'Body_01'
+parentInstanceId = '2688e6f6-6681-4247-9dab-5a40acae1c04'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 10
+    boneName = 'Head'
+    generated = true
+    nodeIndex = 13
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '13b5ceb6-2d6a-497b-8c3f-efb35c537cf2'
+layer = 0
+name = 'Jaw'
+parent = 'Head'
+parentInstanceId = 'e3f9dae0-6b21-48d6-bcc3-0a55706455eb'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 11
+    boneName = 'Jaw'
+    generated = true
+    nodeIndex = 14
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.24, 0.09 ]
+    rotation = [ 0.08248, 0.0, 0.0, 0.996593 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f16adc35-c9b8-4f7f-b3db-bafa0aa6743e'
+layer = 0
+name = 'Prong_R'
+parent = 'Head'
+parentInstanceId = 'e3f9dae0-6b21-48d6-bcc3-0a55706455eb'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 12
+    boneName = 'Prong_R'
+    generated = true
+    nodeIndex = 15
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.15, 0.4, -0.15 ]
+    rotation = [ -0.175537, 0.0, -0.142624, 0.974087 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '850133bb-b1d3-4001-b9eb-e782d0f458ae'
+layer = 0
+name = 'Prong_L'
+parent = 'Head'
+parentInstanceId = 'e3f9dae0-6b21-48d6-bcc3-0a55706455eb'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 13
+    boneName = 'Prong_L'
+    generated = true
+    nodeIndex = 16
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ -0.15, 0.4, -0.15 ]
+    rotation = [ -0.175537, 0.0, 0.142624, 0.974087 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b5ae3825-5fbe-4b82-98e9-fd771ef4fe01'
+layer = 0
+name = 'Serpent_ArmorGrey'
+parent = 'RootNode'
+parentInstanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Serpent_ArmorGrey'
+    generated = true
+    nodeIndex = 17
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'afa2913f-a9ea-4426-a4ef-27e14cd6ca74'
+layer = 0
+name = 'Serpent_CoreGlow'
+parent = 'RootNode'
+parentInstanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Serpent_CoreGlow'
+    generated = true
+    nodeIndex = 18
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1e77ae76-1ea3-4875-a325-5ea2b0c7df8e'
+layer = 0
+name = 'Serpent_EyeSprite'
+parent = 'RootNode'
+parentInstanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Serpent_EyeSprite'
+    generated = true
+    nodeIndex = 19
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '404e37e5-de87-46a1-89fc-c363892ae764'
+layer = 0
+name = 'Serpent_MetalDark'
+parent = 'RootNode'
+parentInstanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Serpent_MetalDark'
+    generated = true
+    nodeIndex = 20
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '58cc8d84-cb22-4117-b7af-e88713a7adca'
+layer = 0
+name = 'Serpent_RingGlow'
+parent = 'RootNode'
+parentInstanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Serpent_RingGlow'
+    generated = true
+    nodeIndex = 21
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5de9c7e7-031c-4520-93c0-25057fd04fdc'
+layer = 0
+name = 'Serpent_Visor'
+parent = 'RootNode'
+parentInstanceId = '016ad2eb-153b-47da-8506-3d892346ab4f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Serpent_Visor'
+    generated = true
+    nodeIndex = 22
+    skinnedMeshOwner = 'Enemy_Serpent'
+    skinnedMeshOwnerGuid = '65171ff8-2f56-46ae-9757-f3157aa2ad12'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+layer = 0
+name = 'Enemy_Mite'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Enemy'
+
+    [gameobjects.AnimatorComponent]
+    baseLayerMaskPath = ''
+    controllerPath = 'guid:f5c6a5c8ef464e90b64b1d98bca12948|Assets/Animation/Enemy_Mite/Enemy_Mite.animcontroller'
+    defaultStateName = 'Locomotion'
+    enabled = true
+    playing = true
+    rootMotionApplyRotation = 0
+    rootMotionApplyXZ = 0
+    rootMotionApplyY = 0
+    rootMotionMode = 0
+    rootMotionNodeName = ''
+    rootMotionPoseMode = 0
+    rootMotionPositionScale = 1.0
+    rootMotionRotationScale = 1.0
+    rootMotionSource = 0
+    rootMotionTarget = ''
+    speed = 1.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Death'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Attack'
+        transitionDuration = 0.1
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Attack'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:3a32d08a119c4ce5a320e2307431245c|Assets/Animation/Enemy_Mite/M_Mite_Hit.mask'
+        mode = 1
+        name = 'Add_Hit'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Scene'
+            sourcePath = 'guid:7f24b3677bf7f472cb31eaf33c9d8742|Assets/Animation/Enemy_Mite/Idle.anim'
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Speed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Attack'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Hit'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'IsDead'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = ''
+        ikWeight = 1.0
+        loop = true
+        mode = 1
+        name = 'Locomotion'
+        sourcePath = ''
+        speed = 1.0
+        transitions = []
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.12
+            paramName = 'Speed'
+            syncNormalizedTime = false
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Scene'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:7f24b3677bf7f472cb31eaf33c9d8742|Assets/Animation/Enemy_Mite/Idle.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Scene'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:608aa3b3408b44c79fbd6b59222f1ad6|Assets/Animation/Enemy_Mite/Move.anim'
+                speed = 1.0
+                threshold = 3.2
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Attack'
+        sourcePath = 'guid:800aa6b86f9ab167173cae91fd76b3d2|Assets/Animation/Enemy_Mite/Attack.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 0.9
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.18
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Death'
+        sourcePath = 'guid:eb1904314408f354f3e60f7f9aca01ec|Assets/Animation/Enemy_Mite/Death.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsDead'
+                threshold = 0.0
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = false
+    angularDrag = 0.3
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.55
+    charge = 0.0
+    enabled = true
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 1.0, 1.0, 1.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 0.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.1
+    mass = 1.0
+    massMode = 0
+    useCCD = true
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.SphereColliderComponent]
+    center = [ 0.0, 0.58, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.SphereColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.25
+        frictionCombine = 1
+        restitution = 0.2
+        restitutionCombine = 2
+        staticFriction = 0.3
+
+        [gameobjects.SphereColliderComponent.shape]
+        radius = 0.55
+        type = 'Sphere'
+
+    [gameobjects.transform]
+    position = [ 12.648939, 0.0, -3.949569 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PolarityTargetComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        debugRemaining = 0.0
+        emissiveSlot = 0
+        emissiveTargets = [ 'a7c675e4-2f6c-4608-9bfa-2f5670b16a69', '3844734d-2de4-4b93-b889-6539b060630f' ]
+        isAnchor = false
+        polarityClass = 0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PolarityBodyComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        debugPartner = ''
+        debugPhase = 'Idle'
+        drawDebugFlight = false
+        drawLink = false
+        linkHeightOffset = 0.6
+        linkWidth = 0.12
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        anchorDamageMultiplier = 1.0
+        baseImpactDamage = 100
+        debugHealth = 100
+        destroyDelay = 1.6
+        maxHealth = 100
+        sfxDeath = ''
+        sfxHit = ''
+        speedDamageScale = 0.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyMiteComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        attackCooldown = 1.6
+        attackDamage = 1
+        attackDuration = 1.5
+        attackHitRange = 2.6
+        attackHitTime = 0.55
+        attackRange = 2.0
+        bobAmplitude = 0.12
+        bobHz = 0.55
+        debugState = 'Idle'
+        groundProbe = 12.0
+        hoverHeight = 1.05
+        hoverMaxSpeed = 4.0
+        hoverStiffness = 5.0
+        moveSpeed = 4.2
+        playerTag = 'Player'
+        turnSpeed = 12.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
+        barHeight = 0.14
+        barWidth = 1.0
+        borderWidth = 0.02
+        debugAnchorHeight = 0.0
+        drainColor = [ 1.0, 0.95, 0.75, 1.0 ]
+        drainHold = 0.18
+        drainSpeed = 0.9
+        drawAnchor = false
+        emptyColor = [ 0.85, 0.35, 0.2, 1.0 ]
+        fallbackBodyHeight = 1.16
+        fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
+        headroom = 0.35
+        hideWhenFull = false
+
+[[gameobjects]]
+active = true
+instanceId = 'c5da145c-5804-4b1e-896d-1f2d87869302'
+layer = 0
+name = 'Mite_ArmorGrey'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:39b05bc9a9d890d4303beb51f75fabae|Library/Baked/608aa85dccdd4c0e0e080276c27e5666/materials/M_E_ArmorGrey.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:608aa85dccdd4c0e0e080276c27e5666|Assets/Models/Enemy_Mite/Z_Mite.fbx'
+    skeletonRootGuid = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a7c675e4-2f6c-4608-9bfa-2f5670b16a69'
+layer = 0
+name = 'Mite_CoreGlow'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:608aa85dccdd4c0e0e080276c27e5666|Assets/Models/Enemy_Mite/Z_Mite.fbx'
+    skeletonRootGuid = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 1 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '44525796-5a75-41d4-bc7b-228d08a4b377'
+layer = 0
+name = 'Mite_EyeSprite'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:0d4be020b354f098fb9df39e6b8b8a4e|Library/Baked/608aa85dccdd4c0e0e080276c27e5666/materials/M_E_EyeSprite.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:608aa85dccdd4c0e0e080276c27e5666|Assets/Models/Enemy_Mite/Z_Mite.fbx'
+    skeletonRootGuid = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 2 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2ed48537-5998-4f8a-8bba-8ca8bafd1518'
+layer = 0
+name = 'Mite_MetalDark'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:b0aade9761e6be37e5ba714a6e7732ad|Library/Baked/608aa85dccdd4c0e0e080276c27e5666/materials/M_E_MetalDark.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:608aa85dccdd4c0e0e080276c27e5666|Assets/Models/Enemy_Mite/Z_Mite.fbx'
+    skeletonRootGuid = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 3 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '202de54f-edc7-431b-840f-451148c883ad'
+layer = 0
+name = 'Mite_PanelLine'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:21588f2e6ae7ab508ed486e99f6d1ede|Library/Baked/608aa85dccdd4c0e0e080276c27e5666/materials/M_E_PanelLine.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:608aa85dccdd4c0e0e080276c27e5666|Assets/Models/Enemy_Mite/Z_Mite.fbx'
+    skeletonRootGuid = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 4 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3844734d-2de4-4b93-b889-6539b060630f'
+layer = 0
+name = 'Mite_RingGlow'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:608aa85dccdd4c0e0e080276c27e5666|Assets/Models/Enemy_Mite/Z_Mite.fbx'
+    skeletonRootGuid = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 5 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '13bdb6e6-cd34-4835-8262-03ab312a03ed'
+layer = 0
+name = 'Mite_Visor'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:31d0f1164e5ace5f495fa769becce5d5|Library/Baked/608aa85dccdd4c0e0e080276c27e5666/materials/M_E_Visor.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:608aa85dccdd4c0e0e080276c27e5666|Assets/Models/Enemy_Mite/Z_Mite.fbx'
+    skeletonRootGuid = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 6 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+layer = 0
+name = 'RootNode'
+parent = 'Enemy_Mite'
+parentInstanceId = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'RootNode'
+    generated = true
+    nodeIndex = 0
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '11358fe3-e020-4057-9dfd-70cecf304ddc'
+layer = 0
+name = 'Mite_Armature'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_Armature'
+    generated = true
+    nodeIndex = 1
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd439bf3d-afe0-4f43-a99b-d66e4591d92b'
+layer = 0
+name = 'Root_Motion'
+parent = 'Mite_Armature'
+parentInstanceId = '11358fe3-e020-4057-9dfd-70cecf304ddc'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Root_Motion'
+    generated = true
+    nodeIndex = 2
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e8065117-1510-4dd0-a64c-fbf618d1b09b'
+layer = 0
+name = 'Root'
+parent = 'Mite_Armature'
+parentInstanceId = '11358fe3-e020-4057-9dfd-70cecf304ddc'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 0
+    boneName = 'Root'
+    generated = true
+    nodeIndex = 3
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6aa9a064-c962-469f-a75b-8c3a3ccd2546'
+layer = 0
+name = 'Body'
+parent = 'Root'
+parentInstanceId = 'e8065117-1510-4dd0-a64c-fbf618d1b09b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 1
+    boneName = 'Body'
+    generated = true
+    nodeIndex = 4
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.62, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5565f4a8-044a-4805-a962-45f46c4dca82'
+layer = 0
+name = 'Ring'
+parent = 'Body'
+parentInstanceId = '6aa9a064-c962-469f-a75b-8c3a3ccd2546'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 2
+    boneName = 'Ring'
+    generated = true
+    nodeIndex = 5
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '217b56a5-8108-46ba-9cb4-71599ebd229e'
+layer = 0
+name = 'Pod_0'
+parent = 'Ring'
+parentInstanceId = '5565f4a8-044a-4805-a962-45f46c4dca82'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 3
+    boneName = 'Pod_0'
+    generated = true
+    nodeIndex = 6
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.388909, 0.08, 0.388909 ]
+    rotation = [ 0.653282, 0.270598, -0.270598, 0.653281 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8d85b5c0-5677-47f1-a54a-f5d977c08e54'
+layer = 0
+name = 'Pod_1'
+parent = 'Ring'
+parentInstanceId = '5565f4a8-044a-4805-a962-45f46c4dca82'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 4
+    boneName = 'Pod_1'
+    generated = true
+    nodeIndex = 7
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ -0.388909, 0.08, 0.388909 ]
+    rotation = [ 0.653282, -0.270598, 0.270598, 0.653281 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ab748d5b-1975-4e02-9a2d-8ad61323e58f'
+layer = 0
+name = 'Pod_2'
+parent = 'Ring'
+parentInstanceId = '5565f4a8-044a-4805-a962-45f46c4dca82'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 5
+    boneName = 'Pod_2'
+    generated = true
+    nodeIndex = 8
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ -0.388909, 0.08, -0.388909 ]
+    rotation = [ -0.270598, 0.653282, -0.653281, -0.270598 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2396b68c-aaad-4fed-a0f6-ece719ed34e0'
+layer = 0
+name = 'Pod_3'
+parent = 'Ring'
+parentInstanceId = '5565f4a8-044a-4805-a962-45f46c4dca82'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 6
+    boneName = 'Pod_3'
+    generated = true
+    nodeIndex = 9
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.388909, 0.08, -0.388909 ]
+    rotation = [ 0.270598, 0.653282, -0.653281, 0.270598 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c172654a-36f8-4fd6-ae56-f22fefe10716'
+layer = 0
+name = 'Head'
+parent = 'Body'
+parentInstanceId = '6aa9a064-c962-469f-a75b-8c3a3ccd2546'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 7
+    boneName = 'Head'
+    generated = true
+    nodeIndex = 10
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.23, 0.16 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2b984a2f-0c3d-42bb-8b69-01e3e79529f7'
+layer = 0
+name = 'Arm_R'
+parent = 'Body'
+parentInstanceId = '6aa9a064-c962-469f-a75b-8c3a3ccd2546'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 8
+    boneName = 'Arm_R'
+    generated = true
+    nodeIndex = 11
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.215, 0.03, 0.14 ]
+    rotation = [ 0.865536, 0.147388, -0.147388, 0.455414 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd4ffff64-bee7-4c18-af0e-83229d22497f'
+layer = 0
+name = 'Fore_R'
+parent = 'Arm_R'
+parentInstanceId = '2b984a2f-0c3d-42bb-8b69-01e3e79529f7'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 9
+    boneName = 'Fore_R'
+    generated = true
+    nodeIndex = 12
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.295339, 0.0 ]
+    rotation = [ -0.027654, 0.101576, 0.347038, 0.931924 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '246af16b-3e0c-4274-8604-657f1ea8a5d1'
+layer = 0
+name = 'Claw_R'
+parent = 'Fore_R'
+parentInstanceId = 'd4ffff64-bee7-4c18-af0e-83229d22497f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 10
+    boneName = 'Claw_R'
+    generated = true
+    nodeIndex = 13
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.19799, 0.0 ]
+    rotation = [ -0.009593, -0.021614, -0.083131, 0.996258 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7e2292a8-5c95-44c4-8ea2-e872444663af'
+layer = 0
+name = 'Arm_L'
+parent = 'Body'
+parentInstanceId = '6aa9a064-c962-469f-a75b-8c3a3ccd2546'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 11
+    boneName = 'Arm_L'
+    generated = true
+    nodeIndex = 14
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ -0.215, 0.03, 0.14 ]
+    rotation = [ 0.865536, -0.147388, 0.147388, 0.455414 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a6486343-5e91-4d25-b7b4-519a921ba481'
+layer = 0
+name = 'Fore_L'
+parent = 'Arm_L'
+parentInstanceId = '7e2292a8-5c95-44c4-8ea2-e872444663af'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 12
+    boneName = 'Fore_L'
+    generated = true
+    nodeIndex = 15
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.295339, 0.0 ]
+    rotation = [ -0.027654, -0.101576, -0.347038, 0.931924 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ed20db45-ba0d-4044-b164-8f0fc01c7b00'
+layer = 0
+name = 'Claw_L'
+parent = 'Fore_L'
+parentInstanceId = 'a6486343-5e91-4d25-b7b4-519a921ba481'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 13
+    boneName = 'Claw_L'
+    generated = true
+    nodeIndex = 16
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.19799, 0.0 ]
+    rotation = [ -0.009593, 0.021614, 0.083131, 0.996258 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'edc031de-bed3-48c2-9cc6-9066806d07d1'
+layer = 0
+name = 'Mite_ArmorGrey'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_ArmorGrey'
+    generated = true
+    nodeIndex = 17
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c6feab87-57b7-472d-b2dd-e9a0160d4f35'
+layer = 0
+name = 'Mite_CoreGlow'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_CoreGlow'
+    generated = true
+    nodeIndex = 18
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd96cc929-d736-4990-8165-02dd3935177e'
+layer = 0
+name = 'Mite_EyeSprite'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_EyeSprite'
+    generated = true
+    nodeIndex = 19
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '593a77c2-329b-45f0-a378-6dca68348c73'
+layer = 0
+name = 'Mite_MetalDark'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_MetalDark'
+    generated = true
+    nodeIndex = 20
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e8e31fb0-7012-4408-98d0-e6498b6d70a2'
+layer = 0
+name = 'Mite_PanelLine'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_PanelLine'
+    generated = true
+    nodeIndex = 21
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7c8e554b-43dc-4b56-a9cd-9097cacd3980'
+layer = 0
+name = 'Mite_RingGlow'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_RingGlow'
+    generated = true
+    nodeIndex = 22
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '94c34503-c474-47f2-9909-e7ff6db71133'
+layer = 0
+name = 'Mite_Visor'
+parent = 'RootNode'
+parentInstanceId = '1c067480-9445-4f14-8013-4f07e31d7b7d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Mite_Visor'
+    generated = true
+    nodeIndex = 23
+    skinnedMeshOwner = 'Enemy_Mite'
+    skinnedMeshOwnerGuid = '1f9148d2-4929-48d0-a4c0-a49b4e1332a6'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+layer = 0
+name = 'Enemy_Roller'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Enemy'
+
+    [gameobjects.AnimatorComponent]
+    baseLayerMaskPath = ''
+    controllerPath = 'guid:4da206b660d745a586872e251c616642|Assets/Animation/Enemy_Roller/Enemy_Roller.animcontroller'
+    defaultStateName = 'Locomotion'
+    enabled = true
+    playing = true
+    rootMotionApplyRotation = 0
+    rootMotionApplyXZ = 0
+    rootMotionApplyY = 0
+    rootMotionMode = 0
+    rootMotionNodeName = ''
+    rootMotionPoseMode = 0
+    rootMotionPositionScale = 1.0
+    rootMotionRotationScale = 1.0
+    rootMotionSource = 0
+    rootMotionTarget = ''
+    speed = 1.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Death'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Attack'
+        transitionDuration = 0.1
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Attack'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:80dc7ca127684fc181e0eef3ff1c2f15|Assets/Animation/Enemy_Roller/M_Roller_Hit.mask'
+        mode = 1
+        name = 'Add_Hit'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Scene'
+            sourcePath = 'guid:fb4e24e350e7ae29609e50d1afe37752|Assets/Animation/Enemy_Roller/Idle.anim'
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Speed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Attack'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Hit'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'IsDead'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = ''
+        ikWeight = 1.0
+        loop = true
+        mode = 1
+        name = 'Locomotion'
+        sourcePath = ''
+        speed = 1.0
+        transitions = []
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.12
+            paramName = 'Speed'
+            syncNormalizedTime = false
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Scene'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:fb4e24e350e7ae29609e50d1afe37752|Assets/Animation/Enemy_Roller/Idle.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Scene'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:8b3e3b741b30f3d0bf6b83a323767fd6|Assets/Animation/Enemy_Roller/Move.anim'
+                speed = 1.0
+                threshold = 3.2
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Attack'
+        sourcePath = 'guid:bb193fbc3f6038392962fae0d33f9923|Assets/Animation/Enemy_Roller/Attack.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 0.9
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.18
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Death'
+        sourcePath = 'guid:2df51128486890d9eccfe385acf22b11|Assets/Animation/Enemy_Roller/Death.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsDead'
+                threshold = 0.0
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = false
+    angularDrag = 0.3
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.72
+    charge = 0.0
+    enabled = true
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 1.0, 1.0, 1.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 1.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.1
+    mass = 12.0
+    massMode = 0
+    useCCD = true
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.SphereColliderComponent]
+    center = [ 0.0, 0.72, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.SphereColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.25
+        frictionCombine = 1
+        restitution = 0.2
+        restitutionCombine = 2
+        staticFriction = 0.3
+
+        [gameobjects.SphereColliderComponent.shape]
+        radius = 0.72
+        type = 'Sphere'
+
+    [gameobjects.transform]
+    position = [ 10.97632, 0.0, -2.793142 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PolarityTargetComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        debugRemaining = 0.0
+        emissiveSlot = 0
+        emissiveTargets = [ '5faff149-dfed-4038-a7cd-c2ae2d43eecf', 'cc81eded-0a2e-439a-b87a-3ef81cd851a9' ]
+        isAnchor = true
+        polarityClass = 2
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        anchorDamageMultiplier = 1.0
+        baseImpactDamage = 55
+        debugHealth = 100
+        destroyDelay = 1.6
+        maxHealth = 100
+        sfxDeath = ''
+        sfxHit = ''
+        speedDamageScale = 0.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyRollerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        attackCooldown = 3.0
+        attackDamage = 2
+        chargeRange = 9.0
+        chargeSeconds = 0.75
+        chargeSpeed = 11.0
+        debugState = 'Idle'
+        hitRadius = 1.6
+        keepDistance = 2.2
+        moveSpeed = 3.0
+        playerTag = 'Player'
+        recoverSeconds = 0.3
+        telegraphSeconds = 0.45
+        turnSpeed = 5.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
+        barHeight = 0.16
+        barWidth = 1.2
+        borderWidth = 0.02
+        debugAnchorHeight = 0.0
+        drainColor = [ 1.0, 0.95, 0.75, 1.0 ]
+        drainHold = 0.18
+        drainSpeed = 0.9
+        drawAnchor = false
+        emptyColor = [ 0.85, 0.35, 0.2, 1.0 ]
+        fallbackBodyHeight = 1.78
+        fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
+        headroom = 0.35
+        hideWhenFull = false
+
+[[gameobjects]]
+active = true
+instanceId = 'bb915426-bd42-4b3a-806e-e7039e7384c0'
+layer = 0
+name = 'Roller_ArmorGrey'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:ba9dfc08bb8c997f606e99e7a9b3dcb1|Library/Baked/d43c3261c0f5df4307b665df027b3e6d/materials/M_E_ArmorGrey.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5faff149-dfed-4038-a7cd-c2ae2d43eecf'
+layer = 0
+name = 'Roller_CoreGlow'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 1 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '073afdeb-c5c4-459f-a30c-5cdd024dd763'
+layer = 0
+name = 'Roller_EyeSprite'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:f97e29907143aa33c4aaeeedd6865889|Library/Baked/d43c3261c0f5df4307b665df027b3e6d/materials/M_E_EyeSprite.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 2 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8fd2076b-6ec3-4433-93d6-5aa3d3906931'
+layer = 0
+name = 'Roller_Hazard'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:ed9613b39d1cfc190fa8f3e6ef379c6b|Library/Baked/d43c3261c0f5df4307b665df027b3e6d/materials/M_E_Hazard.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 3 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '51e99f4b-d252-4d2c-b300-d68d71ea2490'
+layer = 0
+name = 'Roller_MetalDark'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:794f73f0c3f92a2851a88130fefd8a5e|Library/Baked/d43c3261c0f5df4307b665df027b3e6d/materials/M_E_MetalDark.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 4 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cdd80d60-9d89-42e4-85c9-dc40601fac87'
+layer = 0
+name = 'Roller_PanelLine'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:61464faefd747617965e7aeae9aa9f8d|Library/Baked/d43c3261c0f5df4307b665df027b3e6d/materials/M_E_PanelLine.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 5 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cc81eded-0a2e-439a-b87a-3ef81cd851a9'
+layer = 0
+name = 'Roller_RingGlow'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 6 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8aa9d62e-e946-407a-8b00-d357128c0573'
+layer = 0
+name = 'Roller_Visor'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:ae94ce34d4334bf8378cfea66d794a96|Library/Baked/d43c3261c0f5df4307b665df027b3e6d/materials/M_E_Visor.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:d43c3261c0f5df4307b665df027b3e6d|Assets/Models/Enemy_Roller/Z_Roller.fbx'
+    skeletonRootGuid = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 7 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+layer = 0
+name = 'RootNode'
+parent = 'Enemy_Roller'
+parentInstanceId = '74cd3d56-84e3-4420-889b-f51345717a3d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'RootNode'
+    generated = true
+    nodeIndex = 0
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f5b4bae5-859e-4850-b6e9-31a18b5ef867'
+layer = 0
+name = 'Roller_Armature'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_Armature'
+    generated = true
+    nodeIndex = 1
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3dcd498b-e1fe-43bd-88c2-945ef0a0d14c'
+layer = 0
+name = 'Root_Motion'
+parent = 'Roller_Armature'
+parentInstanceId = 'f5b4bae5-859e-4850-b6e9-31a18b5ef867'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Root_Motion'
+    generated = true
+    nodeIndex = 2
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '79a86c06-c345-435b-b7ee-6f321c696f3e'
+layer = 0
+name = 'Root'
+parent = 'Roller_Armature'
+parentInstanceId = 'f5b4bae5-859e-4850-b6e9-31a18b5ef867'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 0
+    boneName = 'Root'
+    generated = true
+    nodeIndex = 3
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.002764 ]
+    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2327436b-011e-4be9-8e33-fe89c867cae1'
+layer = 0
+name = 'Frame'
+parent = 'Root'
+parentInstanceId = '79a86c06-c345-435b-b7ee-6f321c696f3e'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 1
+    boneName = 'Frame'
+    generated = true
+    nodeIndex = 4
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.74, -0.3 ]
+    rotation = [ 0.064118, 0.0, 0.0, 0.997942 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'df2a647b-830a-4e5d-9af5-70252f18ee52'
+layer = 0
+name = 'Head'
+parent = 'Frame'
+parentInstanceId = '2327436b-011e-4be9-8e33-fe89c867cae1'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 2
+    boneName = 'Head'
+    generated = true
+    nodeIndex = 5
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.860927, 0.030073 ]
+    rotation = [ 0.660314, 0.0, 0.0, 0.75099 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7585b00f-841e-444a-913c-d1ec71e35d28'
+layer = 0
+name = 'Roll_R'
+parent = 'Frame'
+parentInstanceId = '2327436b-011e-4be9-8e33-fe89c867cae1'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 3
+    boneName = 'Roll_R'
+    generated = true
+    nodeIndex = 6
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.43, -0.612343, -0.525962 ]
+    rotation = [ 0.466913, 0.466912, -0.53103, 0.53103 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '833647f8-9457-4b9e-88a5-bb27d5ccde61'
+layer = 0
+name = 'Roll_L'
+parent = 'Frame'
+parentInstanceId = '2327436b-011e-4be9-8e33-fe89c867cae1'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 4
+    boneName = 'Roll_L'
+    generated = true
+    nodeIndex = 7
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ -0.43, -0.612343, -0.525962 ]
+    rotation = [ 0.466913, -0.466912, 0.53103, 0.53103 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e9efdc45-7573-4f50-bdd6-3a16084503c3'
+layer = 0
+name = 'Wheel'
+parent = 'Root'
+parentInstanceId = '79a86c06-c345-435b-b7ee-6f321c696f3e'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 5
+    boneName = 'Wheel'
+    generated = true
+    nodeIndex = 8
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.74, 0.0 ]
+    rotation = [ -0.5, -0.5, 0.5, -0.5 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '341a93ba-8369-4879-afb4-caf055212edf'
+layer = 0
+name = 'Core'
+parent = 'Root'
+parentInstanceId = '79a86c06-c345-435b-b7ee-6f321c696f3e'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 6
+    boneName = 'Core'
+    generated = true
+    nodeIndex = 9
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.74, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a6cd7376-0e38-4ad7-b5e3-3a96a7fef020'
+layer = 0
+name = 'Roller_ArmorGrey'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_ArmorGrey'
+    generated = true
+    nodeIndex = 10
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '22faf3f1-8855-4603-9ac3-8e386c76aa71'
+layer = 0
+name = 'Roller_CoreGlow'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_CoreGlow'
+    generated = true
+    nodeIndex = 11
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f8d82474-ced2-417f-8148-ea1a8d425a1e'
+layer = 0
+name = 'Roller_EyeSprite'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_EyeSprite'
+    generated = true
+    nodeIndex = 12
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1022b844-f042-47bb-84d3-35408e4f836b'
+layer = 0
+name = 'Roller_Hazard'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_Hazard'
+    generated = true
+    nodeIndex = 13
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '71b00573-f1a9-451b-8644-fa3498a4eca6'
+layer = 0
+name = 'Roller_MetalDark'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_MetalDark'
+    generated = true
+    nodeIndex = 14
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '02782098-59d2-4b76-9d35-b21d9dc1f413'
+layer = 0
+name = 'Roller_PanelLine'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_PanelLine'
+    generated = true
+    nodeIndex = 15
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ac2ad9fc-9863-498a-9de5-d17b5d013ac3'
+layer = 0
+name = 'Roller_RingGlow'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_RingGlow'
+    generated = true
+    nodeIndex = 16
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1a7c6334-c96b-4dcb-8452-e1ee05b06922'
+layer = 0
+name = 'Roller_Visor'
+parent = 'RootNode'
+parentInstanceId = '5d81f7be-dd65-4a46-bde1-a3c4edc6fa9c'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Roller_Visor'
+    generated = true
+    nodeIndex = 17
+    skinnedMeshOwner = 'Enemy_Roller'
+    skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
