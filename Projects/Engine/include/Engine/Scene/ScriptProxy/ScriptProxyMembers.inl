@@ -63,3 +63,7 @@ FBZZ_PROXY_MEMBER(ScriptSaveProxy,          save)
 FBZZ_PROXY_MEMBER(ScriptEventProxy,         events)
 FBZZ_PROXY_MEMBER(ScriptRandomProxy,        random)
 FBZZ_PROXY_MEMBER(ScriptTweenProxy,         tween)
+// 環境設定 (Option)。save と同じ API で、保存先だけが別ファイル。
+FBZZ_PROXY_MEMBER(ScriptConfigProxy,        config)
+FBZZ_PROXY_MEMBER(ScriptDisplayProxy,       display)
+FBZZ_PROXY_MEMBER(ScriptGraphicsProxy,      graphics)

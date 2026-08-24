@@ -13,7 +13,26 @@ namespace fbzz::renderer { class ResourceManager; }
 namespace fbzz::scene {
 
 class Scene;
+class GameObject;
 struct EntityID;
+struct ScriptComponent;
+
+// ScriptComponent を Script 実体ごと複製する (Duplicate / Copy&Paste / Prefab 展開用)。
+// フィールド値は .fbzz 保存と同じリフレクタを往復させるため、値型・入れ子型・
+// GameObject 参照・アセット参照が保存・復元とまったく同じ規則で引き継がれる。
+//
+// WHY 複製がシリアライザ側にあるか: Script のフィールドは Reflect() 経由でしか
+//     触れず、その解釈 (参照の guid 化、アセット参照、入れ子スコープ) は
+//     SceneWriteReflector / SceneReadReflector が唯一の実装。複製だけ別経路にすると
+//     片方に足したフィールドがもう片方で黙って落ちる。
+//
+// NOTE: GameObject 参照は複製元が指していた GameObject をそのまま指す。
+//       階層ごと複製しても階層内部への参照は張り替わらない (値コピーされる
+//       通常 Component の EntityID と同じ挙動)。
+ScriptComponent CloneScriptComponent(const ScriptComponent& src,
+                                     const Scene* srcScene,
+                                     Scene* dstScene,
+                                     GameObject* dstOwner);
 
 class SceneSerializer {
 public:

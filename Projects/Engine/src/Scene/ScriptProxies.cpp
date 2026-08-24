@@ -3,15 +3,20 @@
 // Script Proxy 群の転送処理
 // Script 本体を肥大化させず、Component / System ごとの便利 API をここで具体化する。
 #include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
 #include <limits>
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/SynthAsset.hpp>
+#include <Engine/Audio/AudioManager.hpp>
+#include <Engine/Audio/Synth.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Cursor.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
+#include <Engine/Scene/UIPointer.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
@@ -30,7 +35,7 @@
 #include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Util/Easing.hpp>
 #include <Engine/Util/Random.hpp>
-#include <Engine/Util/SaveData.hpp>
+#include <Engine/Util/SaveStore.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
@@ -43,6 +48,7 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/Components/ParticleForceField.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
@@ -83,6 +89,7 @@
 #include <cstdint>
 #include <cmath>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace fbzz::scene {
@@ -127,6 +134,8 @@ renderer::Camera BuildCameraFromComponent(const GameObject* gameObject, const Ca
     camera.m_aspect   = component->aspectRatio;
     camera.m_near     = component->nearZ;
     camera.m_far      = component->farZ;
+    camera.m_backgroundColor = component->backgroundColor;
+    camera.m_clearMode       = component->clearMode;
     return camera;
 }
 
@@ -378,6 +387,9 @@ void ScriptTransformProxy::Translate(const math::Vector3& v) const
 void ScriptTransformProxy::Rotate(const math::Vector3& axis, float deg) const
 {
     if (auto* t = Get()) {
+        // 軸が潰れていたら回しようがない。スクリプトの引数ミスでエディターごと
+        // 落とさないよう、何もしないで返す。
+        if (axis.LengthSq() < math::EPSILON * math::EPSILON) return;
         const auto delta = math::Quaternion::FromAxisAngle(axis.Normalized(), deg * DEG_TO_RAD);
         t->rotation = (delta * t->rotation).Normalized();
     }
@@ -397,7 +409,10 @@ float ScriptTransformProxy::DistanceTo(const GameObject& other) const
 math::Vector3 ScriptTransformProxy::DirectionTo(const GameObject& other) const
 {
     const auto* t = Get();
-    return t ? (other.transform.worldPosition - t->worldPosition).Normalized() : math::Vector3::ZERO;
+    // 相手と重なっている間は向きが無い。距離 0 は追跡や射撃で普通に通る状態なので、
+    // 「方向なし」を表す ZERO をそのまま返す (呼び出し側は既に 0 判定を持っている)。
+    return t ? (other.transform.worldPosition - t->worldPosition).NormalizedOr(math::Vector3::ZERO)
+             : math::Vector3::ZERO;
 }
 
 bool ScriptInputProxy::GetKey(input::KeyCode key) const { return input::Input::KeyHeld(key); }
@@ -485,6 +500,74 @@ void ScriptInputProxy::StopVibration(int pad) const
     input::Gamepad::StopVibration(ResolveScriptPad(pad));
 }
 
+// ── キーコンフィグ ───────────────────────────────────────────────────────────
+
+int ScriptInputProxy::GetActionBindingCount(std::string_view action) const
+{
+    const auto* found = input::InputActionMap::FindAction(action);
+    return found ? static_cast<int>(found->bindings.size()) : 0;
+}
+
+ScriptInputBinding ScriptInputProxy::GetActionBinding(std::string_view action, int index) const
+{
+    const auto* found = input::InputActionMap::FindAction(action);
+    if (!found || index < 0 || index >= static_cast<int>(found->bindings.size())) return {};
+
+    const input::InputBinding& binding = found->bindings[static_cast<size_t>(index)];
+    return { static_cast<int>(binding.source), binding.code };
+}
+
+bool ScriptInputProxy::SetActionBinding(std::string_view action, int index,
+                                        ScriptInputBinding binding) const
+{
+    auto* found = input::InputActionMap::FindAction(action);
+    if (!found || !binding.IsValid()) return false;
+
+    // scale / padIndex / buttonThreshold は既存のバインドのものを引き継ぐ。
+    // WHY: トリガーを閾値 0.5 のボタンとして扱う設定などは、割り当てを差し替えても
+    //      そのまま効いていてほしい。値まで初期化すると、リバインドした軸だけ
+    //      感度と不感帯が既定へ戻る。
+    if (index >= 0 && index < static_cast<int>(found->bindings.size())) {
+        input::InputBinding& slot = found->bindings[static_cast<size_t>(index)];
+        slot.source = static_cast<input::BindingSource>(binding.source);
+        slot.code   = binding.code;
+        return true;
+    }
+
+    input::InputBinding added{};
+    added.source = static_cast<input::BindingSource>(binding.source);
+    added.code   = binding.code;
+    found->bindings.push_back(added);
+    return true;
+}
+
+std::string ScriptInputProxy::DescribeActionBinding(std::string_view action, int index) const
+{
+    const auto* found = input::InputActionMap::FindAction(action);
+    if (!found || index < 0 || index >= static_cast<int>(found->bindings.size())) return {};
+    return input::InputActionMap::DescribeBinding(found->bindings[static_cast<size_t>(index)]);
+}
+
+void ScriptInputProxy::BeginRebindAction(std::string_view action, int index) const
+{
+    input::InputActionMap::BeginRebindAction(action, index);
+}
+
+bool ScriptInputProxy::IsRebinding() const
+{
+    return input::InputActionMap::IsRebinding();
+}
+
+bool ScriptInputProxy::ConsumeRebindCompleted() const
+{
+    return input::InputActionMap::ConsumeRebindCompleted();
+}
+
+void ScriptInputProxy::CancelRebind() const
+{
+    input::InputActionMap::CancelRebind();
+}
+
 void ScriptCursorProxy::SetVisible(bool visible) const
 {
     core::Cursor::SetVisible(visible);
@@ -528,6 +611,16 @@ uint32_t ScriptApplicationProxy::GetWindowWidth() const
 uint32_t ScriptApplicationProxy::GetWindowHeight() const
 {
     return core::Application::Get().GetWindowHeight();
+}
+
+bool ScriptApplicationProxy::IsPlaying() const
+{
+    return Script::IsInPlayMode();
+}
+
+bool ScriptApplicationProxy::IsEditMode() const
+{
+    return !Script::IsInPlayMode();
 }
 
 float ScriptTimeProxy::DeltaTime() const { return fbzz::Time::deltaTime; }
@@ -584,6 +677,18 @@ void ScriptPhysicsProxy::SetStatic(bool isStatic) const
         rb->m_isStatic = isStatic;
         rb->SetMass(rb->GetMass());
     }
+}
+
+bool ScriptPhysicsProxy::IsStatic() const
+{
+    const auto* rb = SelfRigidBody(script);
+    return rb && rb->IsStatic();
+}
+
+bool ScriptPhysicsProxy::IsSleeping() const
+{
+    const auto* rb = SelfRigidBody(script);
+    return rb && rb->IsSleeping();
 }
 
 float ScriptPhysicsProxy::GetGravityScale() const
@@ -746,6 +851,29 @@ void ScriptColliderProxy::SetCenter(const math::Vector3& center) const
     if (auto* c = SelfAnyCollider(script)) c->SetCenter(center);
 }
 
+bool ScriptColliderProxy::HasCollider() const
+{
+    return SelfAnyCollider(script) != nullptr;
+}
+
+bool ScriptColliderProxy::IsEnabled() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c && c->enabled;
+}
+
+bool ScriptColliderProxy::IsTrigger() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c && c->isTrigger;
+}
+
+math::Vector3 ScriptColliderProxy::GetCenter() const
+{
+    const auto* c = SelfAnyCollider(script);
+    return c ? c->center : math::Vector3::ZERO;
+}
+
 void ScriptColliderProxy::SetBoxSize(const math::Vector3& size) const
 {
     if (!script || !script->m_gameObject) return;
@@ -860,43 +988,146 @@ bool ScriptColliderProxy::ApplyPhysicsMaterialPreset(std::string_view presetName
     return true;
 }
 
+namespace {
+
+audio::AudioManager* ActiveAudioManager()
+{
+    return core::Application::Get().GetAudioManager();
+}
+
+bool LoadSynthSpecFromPath(std::string_view path, audio::SynthSpec& out)
+{
+    if (path.empty()) return false;
+    const std::string requested(path);
+    const std::string resolved = asset::AssetManager::ResolveAssetPath(requested);
+    asset::SynthAsset synth;
+    if (!asset::LoadSynthAssetFromFile(resolved.empty() ? requested : resolved, synth))
+        return false;
+    out = synth.spec;
+    return true;
+}
+
+// 手続きクリップの再生要求は「フィールドが参照を 1 つ握る」規約で動く。
+// 同じフレームに 2 回積まれたら、置き換えられる側の参照をここで返す。
+void HandOffPendingClip(audio::AudioManager& manager, uint32_t& slot, uint32_t clip)
+{
+    if (slot != 0) manager.ReleaseClip(slot);
+    slot = clip;
+}
+
+// AudioSource が無い GameObject で音声 API を呼んだことを一度だけ報告する。
+//
+// WHY 必要か: プロキシは対象コンポーネントが無ければ黙って何もしない。音声は
+//     「鳴らない」以外の症状が出ないため、AudioSource の付け忘れが最後まで
+//     気付かれない (実際 GreenWare は 9 箇所の PlayOneShot がすべて no-op のまま
+//     書かれていた)。FBZZ_OPTIONAL_COMPONENT 宣言では赤帯も出ない。
+//
+// WHY 一度だけか: OnUpdate から呼ばれると毎フレーム出て Console が埋まる。
+//     (オブジェクト名, API 名) で重複を落とし、同じ組み合わせは二度言わない。
+void WarnMissingAudioSource(const Script* script, const char* api)
+{
+    static std::unordered_set<std::string> reported;
+    // NOTE: m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
+    //       直接は引けないため、公開されている scene プロキシ経由で取り出す。
+    const GameObject* go = script ? script->scene.Self() : nullptr;
+    std::string key = go ? go->name : std::string("<no object>");
+    key += '/';
+    key += api;
+    if (!reported.insert(key).second) return;
+    FBZZ_LOG_WARN("audio.%s: '%s' に AudioSourceComponent がありません — この呼び出しは無視されます",
+                  api, go ? go->name.c_str() : "<no object>");
+}
+
+// 書き込み系の音声 API 用。見つからなければ警告してから nullptr を返す。
+AudioSourceComponent* SelfAudioSource(const Script* script, const char* api)
+{
+    auto* source = SelfComponent<AudioSourceComponent>(script);
+    if (!source) WarnMissingAudioSource(script, api);
+    return source;
+}
+
+// one-shot 要求を積む。上限を超えたぶんは捨て、握っていた参照を返す。
+void PushOneShot(AudioSourceComponent& source, AudioSourceComponent::OneShotRequest request)
+{
+    if (source.m_pendingOneShots.size() >= AudioSourceComponent::MAX_PENDING_ONE_SHOTS) {
+        if (request.clipId != 0) {
+            if (auto* manager = core::Application::Get().GetAudioManager())
+                manager->ReleaseClip(request.clipId);
+        }
+        return;
+    }
+    source.m_pendingOneShots.push_back(std::move(request));
+}
+
+} // namespace
+
+void ScriptAudioProxy::Play() const
+{
+    auto* audio = SelfAudioSource(script, "Play");
+    if (!audio) return;
+    if (audio->clipPath.empty()) {
+        FBZZ_LOG_WARN("audio.Play(): Clip Path が未設定です (Inspector で指定するか "
+                      "Play(path) を使ってください)");
+        return;
+    }
+    audio->enabled        = true;
+    audio->m_pendingPlay  = true;
+    audio->m_pendingStop  = false;
+    audio->m_pendingPause = false;
+}
+
 void ScriptAudioProxy::Play(std::string_view clipPath) const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->clipPath       = std::string(clipPath);
-        audio->enabled        = true;
-        audio->m_pendingPlay  = true;
-        audio->m_pendingStop  = false;
-        audio->m_pendingPause = false;
-    }
+    auto* audio = SelfAudioSource(script, "Play");
+    if (!audio) return;
+    audio->clipPath       = std::string(clipPath);
+    audio->enabled        = true;
+    audio->m_pendingPlay  = true;
+    audio->m_pendingStop  = false;
+    audio->m_pendingPause = false;
+}
+
+void ScriptAudioProxy::Play(const AudioClipRef& clip) const
+{
+    Play(clip.ResolvePath());
 }
 
 void ScriptAudioProxy::Stop() const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->m_pendingStop  = true;
-        audio->m_pendingPlay  = false;
-        audio->m_pendingPause = false;
-    }
+    auto* audio = SelfAudioSource(script, "Stop");
+    if (!audio) return;
+    audio->m_pendingStop   = true;
+    audio->m_pendingPlay   = false;
+    audio->m_pendingPause  = false;
+    audio->m_pendingResume = false;
 }
 
 void ScriptAudioProxy::Pause() const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->m_pendingPause = true;
-        audio->m_pendingPlay  = false;
-    }
+    auto* audio = SelfAudioSource(script, "Pause");
+    if (!audio) return;
+    audio->m_pendingPause  = true;
+    audio->m_pendingPlay   = false;
+    audio->m_pendingResume = false;
+}
+
+void ScriptAudioProxy::Resume() const
+{
+    auto* audio = SelfAudioSource(script, "Resume");
+    if (!audio) return;
+    audio->m_pendingResume = true;
+    audio->m_pendingPause  = false;
 }
 
 void ScriptAudioProxy::SetVolume(float v) const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
+    if (auto* audio = SelfAudioSource(script, "SetVolume"))
         audio->volume = std::clamp(v, 0.0f, 1.0f);
 }
 
 void ScriptAudioProxy::SetLoop(bool loop) const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
+    if (auto* audio = SelfAudioSource(script, "SetLoop"))
         audio->loop = loop;
 }
 
@@ -914,31 +1145,263 @@ float ScriptAudioProxy::GetVolume() const
 
 void ScriptAudioProxy::SetPitch(float pitch) const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
+    if (auto* audio = SelfAudioSource(script, "SetPitch"))
         audio->pitch = std::clamp(pitch, 0.01f, 4.0f);
+}
+
+float ScriptAudioProxy::GetPitch() const
+{
+    const auto* audio = SelfComponent<AudioSourceComponent>(script);
+    return audio ? audio->pitch : 1.0f;
+}
+
+bool ScriptAudioProxy::GetLoop() const
+{
+    const auto* audio = SelfComponent<AudioSourceComponent>(script);
+    return audio && audio->loop;
+}
+
+bool ScriptAudioProxy::IsPaused() const
+{
+    const auto* audio = SelfComponent<AudioSourceComponent>(script);
+    return audio && audio->m_isPaused;
 }
 
 void ScriptAudioProxy::SetSpatialBlend(float blend) const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
+    if (auto* audio = SelfAudioSource(script, "SetSpatialBlend"))
         audio->spatialBlend = std::clamp(blend, 0.0f, 1.0f);
+}
+
+float ScriptAudioProxy::GetSpatialBlend() const
+{
+    const auto* audio = SelfComponent<AudioSourceComponent>(script);
+    return audio ? audio->spatialBlend : 0.0f;
 }
 
 void ScriptAudioProxy::Set3DDistances(float minDistance, float maxDistance, float rolloff) const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
+    if (auto* audio = SelfAudioSource(script, "Set3DDistances")) {
         audio->minDistance = (std::max)(minDistance, 0.0f);
         audio->maxDistance = (std::max)(maxDistance, audio->minDistance + 0.001f);
         audio->rolloffFactor = (std::max)(rolloff, 0.01f);
     }
 }
 
-void ScriptAudioProxy::PlayOneShot(std::string_view clipPath) const
+void ScriptAudioProxy::PlayOneShot(std::string_view clipPath, float volumeScale) const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->m_oneShotPath   = std::string(clipPath);
-        audio->m_pendingOneShot = true;
+    auto* audio = SelfAudioSource(script, "PlayOneShot");
+    if (!audio || clipPath.empty()) return;
+    AudioSourceComponent::OneShotRequest request;
+    request.path        = std::string(clipPath);
+    request.volumeScale = (std::max)(volumeScale, 0.0f);
+    PushOneShot(*audio, std::move(request));
+}
+
+void ScriptAudioProxy::PlayOneShot(const AudioClipRef& clip, float volumeScale) const
+{
+    PlayOneShot(clip.ResolvePath(), volumeScale);
+}
+
+audio::SynthSpec ScriptAudioProxy::MakeSpec(audio::SynthPreset preset, uint32_t seed) const
+{
+    return audio::MakePreset(preset, seed);
+}
+
+audio::SynthSpec ScriptAudioProxy::MutateSpec(const audio::SynthSpec& base,
+                                              float amount, uint32_t seed) const
+{
+    return audio::Mutate(base, amount, seed);
+}
+
+bool ScriptAudioProxy::LoadSpec(const AudioClipRef& synthAsset, audio::SynthSpec& out) const
+{
+    return LoadSynthSpecFromPath(synthAsset.ResolvePath(), out);
+}
+
+bool ScriptAudioProxy::LoadSpec(std::string_view synthAssetPath, audio::SynthSpec& out) const
+{
+    return LoadSynthSpecFromPath(synthAssetPath, out);
+}
+
+SynthClip ScriptAudioProxy::Synthesize(const audio::SynthSpec& spec) const
+{
+    auto* manager = ActiveAudioManager();
+    return manager ? SynthClip{ manager->AcquireGeneratedClip(spec) } : SynthClip{};
+}
+
+SynthClip ScriptAudioProxy::Synthesize(audio::SynthPreset preset, uint32_t seed) const
+{
+    return Synthesize(audio::MakePreset(preset, seed));
+}
+
+void ScriptAudioProxy::ReleaseClip(SynthClip clip) const
+{
+    if (auto* manager = ActiveAudioManager()) manager->ReleaseClip(clip.id);
+}
+
+void ScriptAudioProxy::PlayClip(SynthClip clip) const
+{
+    auto* manager = ActiveAudioManager();
+    auto* audio   = SelfAudioSource(script, "PlayClip");
+    if (!manager || !audio || !clip.IsValid()) return;
+    // 要求が参照を 1 つ握る。AudioSystem が再生後に手放す。
+    manager->AddClipRef(clip.id);
+    AudioSourceComponent::OneShotRequest request;
+    request.clipId = clip.id;
+    PushOneShot(*audio, std::move(request));
+}
+
+void ScriptAudioProxy::PlayClipAsSource(SynthClip clip) const
+{
+    auto* manager = ActiveAudioManager();
+    auto* audio   = SelfAudioSource(script, "PlayClipAsSource");
+    if (!manager || !audio || !clip.IsValid()) return;
+    manager->AddClipRef(clip.id);
+    HandOffPendingClip(*manager, audio->m_pendingClipId, clip.id);
+    audio->enabled        = true;
+    audio->m_pendingStop  = false;
+    audio->m_pendingPause = false;
+}
+
+void ScriptAudioProxy::PlaySynth(const audio::SynthSpec& spec) const
+{
+    auto* manager = ActiveAudioManager();
+    auto* audio   = SelfAudioSource(script, "PlaySynth");
+    if (!manager || !audio) return;
+    // AcquireGeneratedClip が返す参照をそのまま要求へ譲る。
+    const uint32_t clip = manager->AcquireGeneratedClip(spec);
+    if (clip == 0) return;
+    AudioSourceComponent::OneShotRequest request;
+    request.clipId = clip;
+    PushOneShot(*audio, std::move(request));
+}
+
+void ScriptAudioProxy::PlaySynth(audio::SynthPreset preset, uint32_t seed) const
+{
+    PlaySynth(audio::MakePreset(preset, seed));
+}
+
+void ScriptAudioProxy::PlaySynth2D(const audio::SynthSpec& spec, std::string_view bus) const
+{
+    auto* manager = ActiveAudioManager();
+    if (!manager) return;
+    const uint32_t clip = manager->AcquireGeneratedClip(spec);
+    if (clip == 0) return;
+    (void)manager->PlayClipVoice(clip, false, manager->FindBus(bus));
+    // 再生中は voice 側が実体を押さえる。ここでの参照はもう要らない。
+    manager->ReleaseClip(clip);
+}
+
+void ScriptAudioProxy::PlayClip2D(SynthClip clip, std::string_view bus) const
+{
+    auto* manager = ActiveAudioManager();
+    if (!manager || !clip.IsValid()) return;
+    (void)manager->PlayClipVoice(clip.id, false, manager->FindBus(bus));
+}
+
+void ScriptAudioProxy::PlayAtPoint(std::string_view clipPath, const math::Vector3& position,
+                                   float volume) const
+{
+    auto* manager = ActiveAudioManager();
+    if (!manager || clipPath.empty()) return;
+
+    audio::AudioManager::PositionalRequest request;
+    request.path   = std::string(clipPath);
+    request.volume = (std::max)(volume, 0.0f);
+    request.x = position.x; request.y = position.y; request.z = position.z;
+    // 自 GameObject に AudioSource があれば、その 3D 設定を引き継ぐ。
+    // WHY: 「同じ銃の弾着音」を発生源の減衰カーブと揃えたい場合が普通なので、
+    //      設定が手元にあるなら流用する。無ければ既定値で鳴る。
+    if (const auto* source = SelfComponent<AudioSourceComponent>(script)) {
+        request.minDistance = source->minDistance;
+        request.maxDistance = source->maxDistance;
+        request.rolloff     = source->rolloffFactor;
+        request.bus         = manager->FindBus(source->busName);
+    } else {
+        request.bus = manager->FindBus("SE");
     }
+    manager->QueuePositional(std::move(request));
+}
+
+void ScriptAudioProxy::PlayAtPoint(const AudioClipRef& clip, const math::Vector3& position,
+                                   float volume) const
+{
+    PlayAtPoint(clip.ResolvePath(), position, volume);
+}
+
+void ScriptAudioProxy::PlayClipAtPoint(SynthClip clip, const math::Vector3& position,
+                                       float volume) const
+{
+    auto* manager = ActiveAudioManager();
+    if (!manager || !clip.IsValid()) return;
+
+    manager->AddClipRef(clip.id);
+    audio::AudioManager::PositionalRequest request;
+    request.clip   = clip.id;
+    request.volume = (std::max)(volume, 0.0f);
+    request.x = position.x; request.y = position.y; request.z = position.z;
+    if (const auto* source = SelfComponent<AudioSourceComponent>(script)) {
+        request.minDistance = source->minDistance;
+        request.maxDistance = source->maxDistance;
+        request.rolloff     = source->rolloffFactor;
+        request.bus         = manager->FindBus(source->busName);
+    } else {
+        request.bus = manager->FindBus("SE");
+    }
+    manager->QueuePositional(std::move(request));
+}
+
+void ScriptAudioProxy::PlayBGM(std::string_view clipPath, bool loop) const
+{
+    if (auto* manager = ActiveAudioManager())
+        manager->PlayBGM(std::string(clipPath), loop);
+}
+
+void ScriptAudioProxy::PlayBGM(const AudioClipRef& clip, bool loop) const
+{
+    PlayBGM(clip.ResolvePath(), loop);
+}
+
+void ScriptAudioProxy::StopBGM() const
+{
+    if (auto* manager = ActiveAudioManager()) manager->StopBGM();
+}
+
+bool ScriptAudioProxy::IsBGMPlaying() const
+{
+    const auto* manager = ActiveAudioManager();
+    return manager && manager->IsBGMPlaying();
+}
+
+void ScriptAudioProxy::SetBus(std::string_view bus) const
+{
+    if (auto* audio = SelfAudioSource(script, "SetBus"))
+        audio->busName = std::string(bus);
+}
+
+std::string_view ScriptAudioProxy::GetBus() const
+{
+    // 参照先は AudioSourceComponent が所有する文字列。呼び出し側が SetBus を
+    // 挟まない限り有効で、コピーを返さずに済む。
+    const auto* audio = SelfComponent<AudioSourceComponent>(script);
+    return audio ? std::string_view(audio->busName) : std::string_view{};
+}
+
+void ScriptAudioProxy::SetBusVolume(std::string_view bus, float volume) const
+{
+    if (auto* manager = ActiveAudioManager()) manager->SetBusVolume(bus, volume);
+}
+
+float ScriptAudioProxy::GetBusVolume(std::string_view bus) const
+{
+    auto* manager = ActiveAudioManager();
+    return manager ? manager->GetBusVolume(bus) : 0.0f;
+}
+
+void ScriptAudioProxy::SetBusLowPass(std::string_view bus, float normalizedCutoff) const
+{
+    if (auto* manager = ActiveAudioManager()) manager->SetBusLowPass(bus, normalizedCutoff);
 }
 
 void ScriptLightProxy::SetColor(const math::Vector3& color) const
@@ -977,6 +1440,48 @@ void ScriptLightProxy::SetEnabled(bool enabled) const
     if (auto* l = SelfComponent<LightComponent>(script)) l->enabled = enabled;
 }
 
+math::Vector3 ScriptLightProxy::GetColor() const
+{
+    const auto* l = SelfComponent<LightComponent>(script);
+    return l ? l->color : math::Vector3::ONE;
+}
+
+LightType ScriptLightProxy::GetType() const
+{
+    const auto* l = SelfComponent<LightComponent>(script);
+    return l ? static_cast<LightType>(static_cast<int>(l->type)) : LightType::Directional;
+}
+
+float ScriptLightProxy::GetIntensity() const
+{
+    const auto* l = SelfComponent<LightComponent>(script);
+    return l ? l->intensity : 0.0f;
+}
+
+float ScriptLightProxy::GetRange() const
+{
+    const auto* l = SelfComponent<LightComponent>(script);
+    return l ? l->range : 0.0f;
+}
+
+float ScriptLightProxy::GetInnerCone() const
+{
+    const auto* l = SelfComponent<LightComponent>(script);
+    return l ? l->innerCone : 0.0f;
+}
+
+float ScriptLightProxy::GetOuterCone() const
+{
+    const auto* l = SelfComponent<LightComponent>(script);
+    return l ? l->outerCone : 0.0f;
+}
+
+bool ScriptLightProxy::IsEnabled() const
+{
+    const auto* l = SelfComponent<LightComponent>(script);
+    return l && l->enabled;
+}
+
 void ScriptCameraProxy::SetAsMain() const
 {
     if (!script || !script->m_scene || !script->m_gameObject) return;
@@ -1009,6 +1514,16 @@ void ScriptCameraProxy::SetNearFar(float nearZ, float farZ) const
 void ScriptCameraProxy::SetCullingMask(fbzz::LayerMask mask) const
 {
     if (auto* cam = SelfComponent<CameraComponent>(script)) cam->cullingMask = mask;
+}
+
+void ScriptCameraProxy::SetBackgroundColor(const math::Vector4& color) const
+{
+    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->backgroundColor = color;
+}
+
+void ScriptCameraProxy::SetClearMode(renderer::CameraClearMode mode) const
+{
+    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->clearMode = mode;
 }
 
 math::Vector3 ScriptCameraProxy::WorldToScreenPoint(const math::Vector3& worldPos) const
@@ -1073,6 +1588,36 @@ float ScriptCameraProxy::GetFarZ() const
 {
     const auto* cam = SelfComponent<CameraComponent>(script);
     return cam ? cam->farZ : 1000.0f;
+}
+
+float ScriptCameraProxy::GetAspectRatio() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam ? cam->aspectRatio : 16.0f / 9.0f;
+}
+
+fbzz::LayerMask ScriptCameraProxy::GetCullingMask() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam ? cam->cullingMask : fbzz::Layer::Everything;
+}
+
+math::Vector4 ScriptCameraProxy::GetBackgroundColor() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam ? cam->backgroundColor : renderer::kDefaultBackgroundColor;
+}
+
+renderer::CameraClearMode ScriptCameraProxy::GetClearMode() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam ? cam->clearMode : renderer::CameraClearMode::SolidColor;
+}
+
+bool ScriptCameraProxy::IsMain() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam && cam->isMain;
 }
 
 bool ScriptCameraProxy::IsVisible(const math::Vector3& worldPos) const
@@ -1629,10 +2174,24 @@ float ScriptMaterialProxy::GetFloat(std::string_view param) const
     return value;
 }
 
+int ScriptMaterialProxy::GetInt(std::string_view param) const
+{
+    int value = 0;
+    (void)Instance().TryGetInt(MaterialPropertyId(param), value);
+    return value;
+}
+
 math::Vector3 ScriptMaterialProxy::GetVector3(std::string_view param) const
 {
     math::Vector3 value;
     (void)Instance().TryGetVector3(MaterialPropertyId(param), value);
+    return value;
+}
+
+math::Vector4 ScriptMaterialProxy::GetVector4(std::string_view param) const
+{
+    math::Vector4 value;
+    (void)Instance().TryGetVector4(MaterialPropertyId(param), value);
     return value;
 }
 
@@ -1646,12 +2205,50 @@ bool ScriptMaterialProxy::SetEnabled(bool enabled) const
     return true;
 }
 
+bool ScriptMaterialProxy::IsEnabled() const
+{
+    const MaterialComponent* material = Instance().ResolveOwner(false);
+    return material && material->enabled;
+}
+
 bool ScriptMaterialProxy::SetSlotVisible(uint32_t slot, bool visible) const
 {
     auto* material = static_cast<MaterialSlot*>(Instance(slot).ResolveComponent(true));
     if (!material) return false;
     material->visible = visible;
     return true;
+}
+
+bool ScriptMaterialProxy::IsSlotVisible(uint32_t slot) const
+{
+    // ensure = false。存在しないスロットを問い合わせただけで作らない。
+    const auto* material = static_cast<const MaterialSlot*>(Instance(slot).ResolveComponent(false));
+    return material && material->visible;
+}
+
+std::string ScriptMaterialProxy::GetSharedMaterialPath(uint32_t slot) const
+{
+    const auto* material = static_cast<const MaterialSlot*>(Instance(slot).ResolveComponent(false));
+    return material ? material->materialPath : std::string{};
+}
+
+uint32_t ScriptMaterialProxy::GetSlotCount() const
+{
+    const MaterialComponent* material = Instance().ResolveOwner(false);
+    // スロット 0 は MaterialComponent 自身が兼ねるので extraSlots + 1。
+    return material ? static_cast<uint32_t>(material->extraSlots.size() + 1) : 0u;
+}
+
+bool ScriptMaterialProxy::IsDoubleSided() const
+{
+    const auto* material = static_cast<const MaterialSlot*>(Instance().ResolveComponent(false));
+    return material && material->IsDoubleSided();
+}
+
+int32_t ScriptMaterialProxy::GetRenderQueue() const
+{
+    const auto* material = static_cast<const MaterialSlot*>(Instance().ResolveComponent(false));
+    return material ? material->GetRenderQueue() : renderer::RenderQueue::GEOMETRY;
 }
 
 bool ScriptMaterialProxy::SetOnlyVisibleSlot(int slot) const
@@ -1684,27 +2281,27 @@ void ScriptMaterialProxy::QueueRenderPass(UserRenderPassDesc desc) const
 
 void ScriptParticleProxy::SetEmitRate(float rate) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitRate = rate;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.emitRate = rate;
 }
 
 void ScriptParticleProxy::SetEmitPosition(const math::Vector3& position) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitPosition = position;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.emitPosition = position;
 }
 
 void ScriptParticleProxy::SetEmitVelocity(const math::Vector3& velocity) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitVelocity = velocity;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.emitVelocity = velocity;
 }
 
 void ScriptParticleProxy::SetVelocitySpread(float spread) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->velocitySpread = (std::max)(spread, 0.0f);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.velocitySpread = (std::max)(spread, 0.0f);
 }
 
 void ScriptParticleProxy::SetEnabled(bool enabled) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->enabled = enabled;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.enabled = enabled;
 }
 
 void ScriptParticleProxy::Play(bool restart) const
@@ -1729,38 +2326,38 @@ void ScriptParticleProxy::Clear() const
 
 void ScriptParticleProxy::SetGravity(const math::Vector3& gravity) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->gravity = gravity;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.gravity = gravity;
 }
 
 void ScriptParticleProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->colorStart = start;
-        p->colorEnd = end;
+        p->settings.colorStart = start;
+        p->settings.colorEnd = end;
     }
 }
 
 void ScriptParticleProxy::SetSize(float start, float end) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->sizeStart = (std::max)(start, 0.0f);
-        p->sizeEnd = (std::max)(end, 0.0f);
+        p->settings.sizeStart = (std::max)(start, 0.0f);
+        p->settings.sizeEnd = (std::max)(end, 0.0f);
     }
 }
 
 void ScriptParticleProxy::SetLifetime(float seconds) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->lifetime = (std::max)(seconds, 0.01f);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.lifetime = (std::max)(seconds, 0.01f);
 }
 
 void ScriptParticleProxy::SetMaxParticles(int maxParticles) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         const int clamped = (std::max)(maxParticles, 1);
-        if (p->maxParticles != clamped) {
-            p->maxParticles = clamped;
-            p->gpuInitialized = false;
-            p->gpuCapacity = 0;
+        if (p->settings.maxParticles != clamped) {
+            p->settings.maxParticles = clamped;
+            p->runtime.gpuInitialized = false;
+            p->runtime.gpuCapacity = 0;
         }
     }
 }
@@ -1768,39 +2365,39 @@ void ScriptParticleProxy::SetMaxParticles(int maxParticles) const
 void ScriptParticleProxy::SetPlayback(bool loop, float duration, bool clearOnStop) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->loop = loop;
-        p->duration = (std::max)(duration, 0.0f);
-        p->clearOnStop = clearOnStop;
+        p->settings.loop = loop;
+        p->settings.duration = (std::max)(duration, 0.0f);
+        p->settings.clearOnStop = clearOnStop;
     }
 }
 
 void ScriptParticleProxy::SetShape(ParticleEmitterShape shape) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->shape = shape;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.shape = shape;
 }
 
 void ScriptParticleProxy::SetSphereShape(float radius) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->shape = ParticleEmitterShape::Sphere;
-        p->sphereRadius = (std::max)(radius, 0.0f);
+        p->settings.shape = ParticleEmitterShape::Sphere;
+        p->settings.sphereRadius = (std::max)(radius, 0.0f);
     }
 }
 
 void ScriptParticleProxy::SetConeShape(float radius, float angleDegrees) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->shape = ParticleEmitterShape::Cone;
-        p->coneRadius = (std::max)(radius, 0.0f);
-        p->coneAngleDegrees = (std::max)(angleDegrees, 0.0f);
+        p->settings.shape = ParticleEmitterShape::Cone;
+        p->settings.coneRadius = (std::max)(radius, 0.0f);
+        p->settings.coneAngleDegrees = (std::max)(angleDegrees, 0.0f);
     }
 }
 
 void ScriptParticleProxy::SetBoxShape(const math::Vector3& extents) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->shape = ParticleEmitterShape::Box;
-        p->boxExtents = {
+        p->settings.shape = ParticleEmitterShape::Box;
+        p->settings.boxExtents = {
             (std::max)(extents.x, 0.0f),
             (std::max)(extents.y, 0.0f),
             (std::max)(extents.z, 0.0f)
@@ -1812,50 +2409,45 @@ void ScriptParticleProxy::SetMeshShape(std::string_view modelPath, int meshIndex
                                        bool followSkinnedAnimation) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->shape = ParticleEmitterShape::MeshSurface;
-        p->meshShapePath = std::string(modelPath);
-        p->meshShapeIndex = meshIndex;
-        p->meshShapeScale = (std::max)(scale, 0.0001f);
-        p->meshShapeFollowSkinnedAnimation = followSkinnedAnimation;
+        p->settings.shape = ParticleEmitterShape::MeshSurface;
+        p->settings.meshShapePath = std::string(modelPath);
+        p->settings.meshShapeIndex = meshIndex;
+        p->settings.meshShapeScale = (std::max)(scale, 0.0001f);
+        p->settings.meshShapeFollowSkinnedAnimation = followSkinnedAnimation;
         // パス・サブメッシュ変更時は次のスポーンでFBX頂点を再構築する。
-        p->loadedMeshShapePath.clear();
-        p->loadedMeshShapeIndex = -2;
-        p->meshShapeVertices.clear();
+        p->runtime.loadedMeshShapePath.clear();
+        p->runtime.loadedMeshShapeIndex = -2;
+        p->runtime.meshShapeVertices.clear();
     }
-}
-
-void ScriptParticleProxy::SetBlendMode(ParticleBlendMode blendMode) const
-{
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->blendMode = blendMode;
 }
 
 void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->sortMode = sortMode;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.sortMode = sortMode;
 }
 
 void ScriptParticleProxy::SetSimulationMode(ParticleSimulationMode simulationMode) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        if (p->simulationMode != simulationMode) p->gpuClearPending = true;
-        p->simulationMode = simulationMode;
+        if (p->settings.simulationMode != simulationMode) p->runtime.gpuClearPending = true;
+        p->settings.simulationMode = simulationMode;
     }
 }
 
 void ScriptParticleProxy::SetSimulationSpace(ParticleSimulationSpace space) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->simulationSpace = space;
+        p->settings.simulationSpace = space;
         if (space == ParticleSimulationSpace::Local)
-            p->simulationMode = ParticleSimulationMode::Cpu;
+            p->settings.simulationMode = ParticleSimulationMode::Cpu;
     }
 }
 
 void ScriptParticleProxy::SetRenderMode(ParticleRenderMode mode, float stretchScale) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->renderMode = mode;
-        p->stretchedVelocityScale = (std::max)(stretchScale, 0.0f);
+        p->settings.renderMode = mode;
+        p->settings.stretchedVelocityScale = (std::max)(stretchScale, 0.0f);
     }
 }
 
@@ -1864,50 +2456,34 @@ void ScriptParticleProxy::SetCollision(ParticleCollisionMode mode,
                                        float radius, float bounciness) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->collisionMode = mode;
-        p->collisionResponse = response;
-        p->collisionRadius = (std::max)(radius, 0.0f);
-        p->collisionBounciness = (std::max)(0.0f, (std::min)(bounciness, 1.0f));
+        p->settings.collisionMode = mode;
+        p->settings.collisionResponse = response;
+        p->settings.collisionRadius = (std::max)(radius, 0.0f);
+        p->settings.collisionBounciness = (std::max)(0.0f, (std::min)(bounciness, 1.0f));
         if (mode == ParticleCollisionMode::Physics)
-            p->simulationMode = ParticleSimulationMode::Cpu;
+            p->settings.simulationMode = ParticleSimulationMode::Cpu;
     }
 }
 
 int ScriptParticleProxy::GetCollisionCount() const
 {
     if (const auto* p = SelfComponent<ParticleEmitter>(script))
-        return p->collisionCountThisFrame;
+        return p->runtime.collisionCountThisFrame;
     return 0;
 }
 
 void ScriptParticleProxy::SetRateOverDistance(float particlesPerMeter) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script))
-        p->rateOverDistance = (std::max)(particlesPerMeter, 0.0f);
+        p->settings.rateOverDistance = (std::max)(particlesPerMeter, 0.0f);
 }
 
 void ScriptParticleProxy::SetPrewarm(bool enabled) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->prewarm = enabled;
-        p->prewarmed = false;
-        p->prewarmSpawnPending = 0;
-    }
-}
-
-void ScriptParticleProxy::SetSoftParticles(bool enabled, float fadeDistance) const
-{
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->softParticles = enabled;
-        p->softParticleFadeDistance = (std::max)(fadeDistance, 0.001f);
-    }
-}
-
-void ScriptParticleProxy::SetFlipbookMode(ParticleFlipbookMode mode, float framesPerSecond) const
-{
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->flipbookMode = mode;
-        p->flipbookFramesPerSecond = (std::max)(framesPerSecond, 0.0f);
+        p->settings.prewarm = enabled;
+        p->runtime.prewarmed = false;
+        p->runtime.prewarmSpawnPending = 0;
     }
 }
 
@@ -1917,38 +2493,122 @@ void ScriptParticleProxy::SetSubEmitters(std::string_view birthEmitter,
                                          int burstCount) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->birthSubEmitter = std::string(birthEmitter);
-        p->deathSubEmitter = std::string(deathEmitter);
-        p->collisionSubEmitter = std::string(collisionEmitter);
-        p->subEmitterBurstCount = (std::max)(burstCount, 1);
+        p->settings.birthSubEmitter = std::string(birthEmitter);
+        p->settings.deathSubEmitter = std::string(deathEmitter);
+        p->settings.collisionSubEmitter = std::string(collisionEmitter);
+        p->settings.subEmitterBurstCount = (std::max)(burstCount, 1);
     }
 }
 
 void ScriptParticleProxy::SetVelocityDamping(float damping) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->velocityDamping = (std::max)(damping, 0.0f);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.velocityDamping = (std::max)(damping, 0.0f);
 }
 
 void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->angularVelocityMin = minValue;
-        p->angularVelocityMax = maxValue;
+        p->settings.angularVelocityMin = minValue;
+        p->settings.angularVelocityMax = maxValue;
     }
 }
 
 void ScriptParticleProxy::SetNoise(float strength, float frequency, float speed) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->noiseStrength  = (std::max)(strength, 0.0f);
-        p->noiseFrequency = (std::max)(frequency, 0.0001f);
-        p->noiseSpeed     = speed;
+        p->settings.noiseStrength  = (std::max)(strength, 0.0f);
+        p->settings.noiseFrequency = (std::max)(frequency, 0.0001f);
+        p->settings.noiseSpeed     = speed;
     }
 }
 
 void ScriptParticleProxy::SetReceiveForceFields(bool receive) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->receiveForceFields = receive;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.receiveForceFields = receive;
+}
+
+void ScriptParticleProxy::SetForceFieldChannels(uint32_t channels) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.forceFieldChannels = channels;
+}
+
+bool ScriptParticleProxy::IsEnabled() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p && p->settings.enabled;
+}
+
+bool ScriptParticleProxy::IsPlaying() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p && p->settings.playing;
+}
+
+int ScriptParticleProxy::GetParticleCount() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p ? static_cast<int>(p->runtime.particles.size()) : 0;
+}
+
+float ScriptParticleProxy::GetEmitRate() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p ? p->settings.emitRate : 0.0f;
+}
+
+int ScriptParticleProxy::GetMaxParticles() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p ? p->settings.maxParticles : 0;
+}
+
+float ScriptParticleProxy::GetLifetime() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p ? p->settings.lifetime : 0.0f;
+}
+
+uint32_t ScriptParticleProxy::GetForceFieldChannels() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p ? p->settings.forceFieldChannels : 0u;
+}
+
+float ScriptParticleProxy::GetPlayTime() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p ? p->runtime.playTime : 0.0f;
+}
+
+ParticleSimulationMode ScriptParticleProxy::GetSimulationMode() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    return p ? p->settings.simulationMode : ParticleSimulationMode::Cpu;
+}
+
+ParticleGpuFallbackReason ScriptParticleProxy::GetGpuFallbackReason() const
+{
+    const auto* p = SelfComponent<ParticleEmitter>(script);
+    if (!p) return ParticleGpuFallbackReason::NotRequested;
+    // ParticlePass と同じ引数で呼ぶ。runtime.material を渡さないと .mat 由来の 3 条件
+    // (フリップブック補間・モーションベクター・自己影) が判定から抜け、
+    // 実際は CPU で回っているのに「GPU で回る」と答えてしまう。
+    return GetParticleGpuFallbackReason(p->settings, &p->runtime.material);
+}
+
+bool ScriptParticleProxy::IsGpuSimulated() const
+{
+    return GetGpuFallbackReason() == ParticleGpuFallbackReason::None;
+}
+
+const char* ScriptParticleProxy::GetGpuFallbackField() const
+{
+    return ParticleGpuFallbackFieldName(GetGpuFallbackReason());
+}
+
+const char* ScriptParticleProxy::GetGpuFallbackDescription() const
+{
+    return ParticleGpuFallbackDescription(GetGpuFallbackReason());
 }
 
 void ScriptVFXProxy::Play(bool restart) const
@@ -2050,6 +2710,49 @@ float ScriptVFXProxy::GetDuration() const
     const auto* graph = SelfComponent<VFXGraphComponent>(script);
     return graph != nullptr ? graph->graphDuration : 0.0f;
 }
+
+float ScriptVFXProxy::GetSpeed() const
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    return graph != nullptr ? graph->speed : 1.0f;
+}
+
+namespace {
+// 実効値は resolvedParameters (graph の default に override を解決済み) にある。
+// グラフ未ロード時はまだ空なので、その場合だけ自分が積んだ override を見る。
+const asset::VFXConstant* FindVFXConstant(const Script* script, std::string_view name)
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    if (graph == nullptr || name.empty()) return nullptr;
+    const auto match = [name](const asset::VFXParamOverride& item) { return item.paramName == name; };
+    auto iterator = std::find_if(graph->resolvedParameters.begin(),
+                                 graph->resolvedParameters.end(), match);
+    if (iterator == graph->resolvedParameters.end()) {
+        iterator = std::find_if(graph->parameterOverrides.begin(),
+                                graph->parameterOverrides.end(), match);
+        if (iterator == graph->parameterOverrides.end()) return nullptr;
+    }
+    return std::get_if<asset::VFXConstant>(&iterator->value.source);
+}
+
+template<typename T>
+bool ReadVFXConstant(const Script* script, std::string_view name, T& value)
+{
+    const asset::VFXConstant* constant = FindVFXConstant(script, name);
+    if (constant == nullptr) return false;
+    const T* typed = std::get_if<T>(constant);
+    if (typed == nullptr) return false;
+    value = *typed;
+    return true;
+}
+} // namespace
+
+bool ScriptVFXProxy::GetFloat(std::string_view name, float& value) const
+{ return ReadVFXConstant(script, name, value); }
+bool ScriptVFXProxy::GetInt(std::string_view name, int& value) const
+{ return ReadVFXConstant(script, name, value); }
+bool ScriptVFXProxy::GetBool(std::string_view name, bool& value) const
+{ return ReadVFXConstant(script, name, value); }
 
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
 {
@@ -2166,6 +2869,24 @@ void ScriptTrailProxy::ClearAttachBone() const
     }
 }
 
+bool ScriptTrailProxy::IsEnabled() const
+{
+    const auto* t = SelfComponent<TrailComponent>(script);
+    return t && t->enabled;
+}
+
+float ScriptTrailProxy::GetDuration() const
+{
+    const auto* t = SelfComponent<TrailComponent>(script);
+    return t ? t->duration : 0.0f;
+}
+
+int ScriptTrailProxy::GetPointCount() const
+{
+    const auto* t = SelfComponent<TrailComponent>(script);
+    return t ? t->ringCount : 0;
+}
+
 void ScriptMeshTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
@@ -2230,6 +2951,24 @@ void ScriptMeshTrailProxy::ClearExcludedMeshIndices() const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script))
         t->excludedMeshIndices.clear();
+}
+
+bool ScriptMeshTrailProxy::IsEnabled() const
+{
+    const auto* t = SelfComponent<MeshTrailComponent>(script);
+    return t && t->enabled;
+}
+
+float ScriptMeshTrailProxy::GetDuration() const
+{
+    const auto* t = SelfComponent<MeshTrailComponent>(script);
+    return t ? t->duration : 0.0f;
+}
+
+int ScriptMeshTrailProxy::GetSampleCount() const
+{
+    const auto* t = SelfComponent<MeshTrailComponent>(script);
+    return t ? t->sampleCount : 0;
 }
 
 // ── UIButton 入力の取得 ──────────────────────────────────────────────────────
@@ -2359,6 +3098,31 @@ void ScriptUIProxy::SetCanvasSortOrder(int order) const
     if (auto* canvas = SelfComponent<UICanvas>(script)) canvas->sortOrder = order;
 }
 
+void ScriptUIProxy::SetPointer(const math::Vector2& canvasPosition, bool pressed) const
+{
+    UIPointer::Set(canvasPosition, pressed);
+}
+
+void ScriptUIProxy::ClearPointer() const
+{
+    UIPointer::Clear();
+}
+
+bool ScriptUIProxy::IsPointerOverridden() const
+{
+    return UIPointer::IsActive();
+}
+
+math::Vector2 ScriptUIProxy::GetCanvasMousePosition() const
+{
+    // 自 GO が Canvas ならそれを、そうでなければシーンの最初の Canvas を使う。
+    if (auto* self = SelfComponent<UICanvas>(script)) return self->resolvedMousePosition;
+    const ScriptSceneProxy sceneProxy{ script };
+    if (GameObject* go = sceneProxy.FindObjectOfType<UICanvas>())
+        if (auto* canvas = ObjectComponent<UICanvas>(go)) return canvas->resolvedMousePosition;
+    return {};
+}
+
 void ScriptUIProxy::SetImageSpriteRect(float x, float y, float w, float h, float texW, float texH) const
 {
     if (auto* img = SelfComponent<UIImage>(script)) {
@@ -2413,6 +3177,78 @@ void ScriptUIProxy::SetImageEnabled(GameObject* go, bool enabled) const
 void ScriptUIProxy::SetTextEnabled(GameObject* go, bool enabled) const
 {
     if (auto* t = ObjectComponent<UIText>(go)) t->enabled = enabled;
+}
+
+float ScriptUIProxy::GetImageFillAmount() const
+{
+    const auto* img = SelfComponent<UIImage>(script);
+    return img ? img->fillAmount : 0.0f;
+}
+
+math::Vector4 ScriptUIProxy::GetImageColor() const
+{
+    const auto* img = SelfComponent<UIImage>(script);
+    return img ? img->color : math::Vector4{ 1.0f, 1.0f, 1.0f, 1.0f };
+}
+
+std::string ScriptUIProxy::GetText() const
+{
+    const auto* t = SelfComponent<UIText>(script);
+    return t ? t->text : std::string{};
+}
+
+math::Vector4 ScriptUIProxy::GetTextColor() const
+{
+    const auto* t = SelfComponent<UIText>(script);
+    return t ? t->color : math::Vector4{ 1.0f, 1.0f, 1.0f, 1.0f };
+}
+
+bool ScriptUIProxy::IsImageEnabled() const
+{
+    const auto* img = SelfComponent<UIImage>(script);
+    return img && img->enabled;
+}
+
+bool ScriptUIProxy::IsTextEnabled() const
+{
+    const auto* t = SelfComponent<UIText>(script);
+    return t && t->enabled;
+}
+
+float ScriptUIProxy::GetImageFillAmount(GameObject* go) const
+{
+    const auto* img = ObjectComponent<UIImage>(go);
+    return img ? img->fillAmount : 0.0f;
+}
+
+math::Vector4 ScriptUIProxy::GetImageColor(GameObject* go) const
+{
+    const auto* img = ObjectComponent<UIImage>(go);
+    return img ? img->color : math::Vector4{ 1.0f, 1.0f, 1.0f, 1.0f };
+}
+
+std::string ScriptUIProxy::GetText(GameObject* go) const
+{
+    const auto* t = ObjectComponent<UIText>(go);
+    return t ? t->text : std::string{};
+}
+
+math::Vector4 ScriptUIProxy::GetTextColor(GameObject* go) const
+{
+    const auto* t = ObjectComponent<UIText>(go);
+    return t ? t->color : math::Vector4{ 1.0f, 1.0f, 1.0f, 1.0f };
+}
+
+bool ScriptUIProxy::IsImageEnabled(GameObject* go) const
+{
+    const auto* img = ObjectComponent<UIImage>(go);
+    return img && img->enabled;
+}
+
+bool ScriptUIProxy::IsTextEnabled(GameObject* go) const
+{
+    const auto* t = ObjectComponent<UIText>(go);
+    return t && t->enabled;
 }
 
 void ScriptUIProxy::SetMaterial(GameObject* go, std::string_view materialPath) const
@@ -2901,6 +3737,12 @@ std::string ScriptAnimatorProxy::GetCurrentState() const
     return a ? a->currentStateName : std::string{};
 }
 
+std::string ScriptAnimatorProxy::GetCurrentState(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->currentStateName : std::string{};
+}
+
 std::string ScriptAnimatorProxy::GetBlendToState() const
 {
     const auto* a = SelfComponent<AnimatorComponent>(script);
@@ -2930,6 +3772,12 @@ void ScriptAnimatorProxy::SetSpeed(float speed) const
     if (auto* a = SelfComponent<AnimatorComponent>(script)) a->speed = speed;
 }
 
+float ScriptAnimatorProxy::GetSpeed() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->speed : 1.0f;
+}
+
 void ScriptAnimatorProxy::Play(std::string_view stateName) const
 {
     if (auto* a = SelfComponent<AnimatorComponent>(script)) {
@@ -2943,6 +3791,23 @@ void ScriptAnimatorProxy::Play(std::string_view stateName) const
 void ScriptAnimatorProxy::SetSpeed(GameObject* go, float speed) const
 {
     if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->speed = speed;
+}
+
+float ScriptAnimatorProxy::GetSpeed(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->speed : 1.0f;
+}
+
+void ScriptAnimatorProxy::SetPlaying(bool playing) const
+{
+    if (auto* a = SelfComponent<AnimatorComponent>(script)) a->playing = playing;
+}
+
+bool ScriptAnimatorProxy::IsPlaying() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a && a->playing;
 }
 
 void ScriptAnimatorProxy::Play(GameObject* go, std::string_view stateName) const
@@ -3010,6 +3875,14 @@ void ScriptAnimatorProxy::SetLayerMask(
     layer->mask.path = std::string(maskPath);
     // ロード済みキャッシュを落とし、次フレームの AnimatorSystem に読み直させる。
     layer->mask.Invalidate();
+}
+
+std::string ScriptAnimatorProxy::GetLayerMask(std::string_view layerName) const
+{
+    auto* animator = SelfComponent<AnimatorComponent>(script);
+    if (!animator) return {};
+    const AnimationLayer* layer = animator->FindLayer(layerName);
+    return layer ? layer->mask.path : std::string{};
 }
 
 void ScriptAnimatorProxy::PlaySlot(std::string_view layerName,
@@ -3130,10 +4003,28 @@ void ScriptAnimatorProxy::SetRootMotionPositionScale(float scale) const
         animator->rootMotion.positionScale = scale;
 }
 
+float ScriptAnimatorProxy::GetRootMotionPositionScale() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotion.positionScale : 1.0f;
+}
+
 void ScriptAnimatorProxy::SetRootMotionRotationScale(float scale) const
 {
     if (auto* animator = SelfComponent<AnimatorComponent>(script))
         animator->rootMotion.rotationScale = scale;
+}
+
+float ScriptAnimatorProxy::GetRootMotionRotationScale() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotion.rotationScale : 1.0f;
+}
+
+std::string ScriptAnimatorProxy::GetRootMotionNodeName() const
+{
+    const auto* animator = SelfComponent<AnimatorComponent>(script);
+    return animator ? animator->rootMotion.nodeName : std::string{};
 }
 
 void ScriptAnimatorProxy::SetRootMotionNodeName(std::string_view nodeName) const
@@ -3544,9 +4435,39 @@ void ScriptNavigationProxy::SetSpeed(float speed) const
     if (auto* agent = SelfNavAgent(script)) agent->maxSpeed = speed > 0.0f ? speed : 0.0f;
 }
 
+float ScriptNavigationProxy::GetSpeed() const
+{
+    const auto* agent = SelfNavAgent(script);
+    return agent ? agent->maxSpeed : 0.0f;
+}
+
 void ScriptNavigationProxy::SetAngularSpeed(float degPerSec) const
 {
     if (auto* agent = SelfNavAgent(script)) agent->angularSpeedDeg = degPerSec >= 0.0f ? degPerSec : 0.0f;
+}
+
+float ScriptNavigationProxy::GetAngularSpeed() const
+{
+    const auto* agent = SelfNavAgent(script);
+    return agent ? agent->angularSpeedDeg : 0.0f;
+}
+
+math::Vector3 ScriptNavigationProxy::GetDestination() const
+{
+    const auto* agent = SelfNavAgent(script);
+    return agent && agent->hasDestination ? agent->destination : math::Vector3::ZERO;
+}
+
+float ScriptNavigationProxy::GetStoppingDistance() const
+{
+    const auto* agent = SelfNavAgent(script);
+    return agent ? agent->stoppingDistance : 0.0f;
+}
+
+void ScriptNavigationProxy::SetStoppingDistance(float distance) const
+{
+    if (auto* agent = SelfNavAgent(script))
+        agent->stoppingDistance = distance > 0.0f ? distance : 0.0f;
 }
 
 int ScriptNavigationProxy::GetAreaMask() const
@@ -3693,6 +4614,12 @@ void ScriptCharacterProxy::SetEnabled(bool enabled) const
     if (auto* cc = SelfCharacter(script)) cc->enabled = enabled;
 }
 
+bool ScriptCharacterProxy::IsEnabled() const
+{
+    const auto* cc = SelfCharacter(script);
+    return cc && cc->enabled;
+}
+
 // ---------------------------------------------------------------------------
 // ScriptMeshProxy
 // ---------------------------------------------------------------------------
@@ -3741,11 +4668,25 @@ void ScriptMeshProxy::SetMeshPath(std::string_view path) const
         mr->meshPath = std::string(path);
 }
 
+std::string ScriptMeshProxy::GetMeshPath() const
+{
+    if (!script || !script->m_gameObject) return {};
+    const auto* mr = script->m_gameObject->GetComponent<MeshRenderer>();
+    return mr ? mr->meshPath : std::string{};
+}
+
 void ScriptMeshProxy::SetModelPath(std::string_view path) const
 {
     if (!script || !script->m_gameObject) return;
     if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
         smr->modelPath = std::string(path);
+}
+
+std::string ScriptMeshProxy::GetModelPath() const
+{
+    if (!script || !script->m_gameObject) return {};
+    const auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>();
+    return smr ? smr->modelPath : std::string{};
 }
 
 // ---------------------------------------------------------------------------
@@ -3769,6 +4710,17 @@ IKChain* FindChainByTarget(IKSolverComponent* ik, std::string_view targetName)
 void ScriptIKProxy::SetChainEnabled(std::string_view targetName, bool enabled) const
 {
     if (auto* c = FindChainByTarget(SelfIK(script), targetName)) c->enabled = enabled;
+}
+
+bool ScriptIKProxy::IsChainEnabled(std::string_view targetName) const
+{
+    const auto* c = FindChainByTarget(SelfIK(script), targetName);
+    return c && c->enabled;
+}
+
+bool ScriptIKProxy::HasChain(std::string_view targetName) const
+{
+    return FindChainByTarget(SelfIK(script), targetName) != nullptr;
 }
 
 void ScriptIKProxy::SetAllEnabled(bool enabled) const
@@ -3804,6 +4756,12 @@ void ScriptIKProxy::SetChainTarget(std::string_view targetName, const GameObject
 void ScriptIKProxy::SetEnabled(bool enabled) const
 {
     if (auto* ik = SelfIK(script)) ik->enabled = enabled;
+}
+
+bool ScriptIKProxy::IsEnabled() const
+{
+    const auto* ik = SelfIK(script);
+    return ik && ik->enabled;
 }
 
 // ---------------------------------------------------------------------------
@@ -4074,6 +5032,48 @@ float ScriptEnvironmentProxy::GetSunIntensity() const
     auto* c = FindFirstInScene<SkyRenderer>(script->m_scene);
     return c ? c->skyScatterIntensity : 0.0f;
 }
+float ScriptEnvironmentProxy::GetMieScattering() const
+{
+    auto* c = FindFirstInScene<SkyRenderer>(script->m_scene);
+    return c ? c->mieScattering : 0.0f;
+}
+float ScriptEnvironmentProxy::GetMieG() const
+{
+    auto* c = FindFirstInScene<SkyRenderer>(script->m_scene);
+    return c ? c->mieG : 0.0f;
+}
+
+bool ScriptEnvironmentProxy::IsIBLEnabled() const
+{
+    auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene);
+    return c && c->enabled;
+}
+float ScriptEnvironmentProxy::GetIBLIntensity() const
+{
+    auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene);
+    return c ? c->intensity : 0.0f;
+}
+float ScriptEnvironmentProxy::GetIBLDiffuseScale() const
+{
+    auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene);
+    return c ? c->diffuseScale : 0.0f;
+}
+float ScriptEnvironmentProxy::GetIBLSpecularScale() const
+{
+    auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene);
+    return c ? c->specularScale : 0.0f;
+}
+
+math::Vector3 ScriptEnvironmentProxy::GetFogColor() const
+{
+    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
+    return c ? c->fogColor : math::Vector3::ZERO;
+}
+float ScriptEnvironmentProxy::GetFogFar() const
+{
+    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
+    return c ? c->fogFar : 0.0f;
+}
 
 // ---------------------------------------------------------------------------
 // ScriptDecalProxy
@@ -4137,6 +5137,42 @@ void ScriptDecalProxy::SetEmissiveTexture(std::string_view path) const
 void ScriptDecalProxy::SetOpacity(float opacity) const
 {
     if (auto* d = SelfDecal(script)) d->opacity = std::clamp(opacity, 0.0f, 1.0f);
+}
+bool ScriptDecalProxy::IsEnabled() const
+{
+    const auto* d = SelfDecal(script);
+    return d && d->enabled;
+}
+float ScriptDecalProxy::GetOpacity() const
+{
+    const auto* d = SelfDecal(script);
+    return d ? d->opacity : 0.0f;
+}
+float ScriptDecalProxy::GetLifetime() const
+{
+    const auto* d = SelfDecal(script);
+    return d ? d->lifetime : -1.0f;
+}
+float ScriptDecalProxy::GetFadeTime() const
+{
+    const auto* d = SelfDecal(script);
+    return d ? d->fadeTime : 0.0f;
+}
+float ScriptDecalProxy::GetAge() const
+{
+    const auto* d = SelfDecal(script);
+    return d ? d->age : 0.0f;
+}
+float ScriptDecalProxy::GetEffectiveOpacity() const
+{
+    const auto* d = SelfDecal(script);
+    if (!d) return 0.0f;
+    // DecalPass のライフタイムフェードと同じ式。片方だけ変えると
+    // 「見た目は消えているのに Script は 1.0 を読む」というズレになる。
+    float fade = 1.0f;
+    if (d->lifetime >= 0.0f && d->fadeTime > 0.0f)
+        fade = (std::min)(1.0f, (d->lifetime - d->age) / d->fadeTime);
+    return std::clamp(fade, 0.0f, 1.0f) * std::clamp(d->opacity, 0.0f, 1.0f);
 }
 void ScriptDecalProxy::SetAngleFade(float strength, float limitDegrees) const
 {
@@ -4253,6 +5289,26 @@ void ScriptVolumeProxy::ResetElapsed() const
 {
     if (auto* v = SelfVolume(script)) v->elapsed = 0.0f;
 }
+bool ScriptVolumeProxy::IsEnabled() const
+{
+    const auto* v = SelfVolume(script);
+    return v && v->enabled;
+}
+float ScriptVolumeProxy::GetTimeScale() const
+{
+    const auto* v = SelfVolume(script);
+    return v ? v->timeScale : 1.0f;
+}
+float ScriptVolumeProxy::GetDuration() const
+{
+    const auto* v = SelfVolume(script);
+    return v ? v->duration : -1.0f;
+}
+float ScriptVolumeProxy::GetElapsed() const
+{
+    const auto* v = SelfVolume(script);
+    return v ? v->elapsed : 0.0f;
+}
 
 // ---------------------------------------------------------------------------
 // ScriptReflectionProbeProxy
@@ -4288,6 +5344,21 @@ void ScriptReflectionProbeProxy::SetCubemap(std::string_view path) const
 {
     if (auto* rp = SelfReflectionProbe(script)) rp->cubemapPath = std::string(path);
 }
+bool ScriptReflectionProbeProxy::IsEnabled() const
+{
+    const auto* rp = SelfReflectionProbe(script);
+    return rp && rp->enabled;
+}
+float ScriptReflectionProbeProxy::GetIntensity() const
+{
+    const auto* rp = SelfReflectionProbe(script);
+    return rp ? rp->intensity : 0.0f;
+}
+float ScriptReflectionProbeProxy::GetInfluenceRadius() const
+{
+    const auto* rp = SelfReflectionProbe(script);
+    return rp ? rp->influenceRadius : 0.0f;
+}
 
 // ---------------------------------------------------------------------------
 // ScriptLifetimeProxy
@@ -4311,6 +5382,15 @@ float ScriptLifetimeProxy::GetRemaining() const
 void ScriptLifetimeProxy::SetEnabled(bool enabled) const
 {
     if (auto* lc = SelfLifetime(script)) lc->enabled = enabled;
+}
+bool ScriptLifetimeProxy::IsEnabled() const
+{
+    const auto* lc = SelfLifetime(script);
+    return lc && lc->enabled;
+}
+bool ScriptLifetimeProxy::HasLifetime() const
+{
+    return SelfLifetime(script) != nullptr;
 }
 void ScriptLifetimeProxy::Kill() const
 {
@@ -4351,6 +5431,36 @@ void ScriptParticleForceFieldProxy::SetTurbulence(float frequency, float speed) 
         field->noiseFrequency = (std::max)(frequency, 0.0f);
         field->noiseSpeed = speed;
     }
+}
+void ScriptParticleForceFieldProxy::SetChannels(uint32_t channels) const
+{
+    if (auto* field = SelfComponent<ParticleForceField>(script)) field->channels = channels;
+}
+bool ScriptParticleForceFieldProxy::IsEnabled() const
+{
+    const auto* field = SelfComponent<ParticleForceField>(script);
+    return field && field->enabled;
+}
+float ScriptParticleForceFieldProxy::GetStrength() const
+{
+    const auto* field = SelfComponent<ParticleForceField>(script);
+    return field ? field->strength : 0.0f;
+}
+float ScriptParticleForceFieldProxy::GetRadius() const
+{
+    const auto* field = SelfComponent<ParticleForceField>(script);
+    return field ? field->radius : 0.0f;
+}
+ScriptParticleForceFieldType ScriptParticleForceFieldProxy::GetType() const
+{
+    const auto* field = SelfComponent<ParticleForceField>(script);
+    return field ? static_cast<ScriptParticleForceFieldType>(static_cast<int>(field->fieldType))
+                 : ScriptParticleForceFieldType::WIND;
+}
+uint32_t ScriptParticleForceFieldProxy::GetChannels() const
+{
+    const auto* field = SelfComponent<ParticleForceField>(script);
+    return field ? field->channels : 0u;
 }
 
 // ScriptCloudProxy
@@ -4531,6 +5641,23 @@ int ScriptPatrolProxy::GetCurrentIndex() const
     const auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
     return patrol ? static_cast<int>(patrol->currentIndex) : -1;
 }
+bool ScriptPatrolProxy::IsEnabled() const
+{
+    const auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
+    return patrol && patrol->enabled;
+}
+size_t ScriptPatrolProxy::GetWaypointCount() const
+{
+    const auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
+    return patrol ? patrol->waypoints.size() : 0u;
+}
+bool ScriptPatrolProxy::GetWaypoint(size_t index, math::Vector3& position) const
+{
+    const auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
+    if (!patrol || index >= patrol->waypoints.size()) return false;
+    position = patrol->waypoints[index];
+    return true;
+}
 
 // ScriptWindProxy
 void ScriptWindProxy::SetEnabled(bool enabled) const
@@ -4560,7 +5687,8 @@ bool ScriptGameplayProxy::SetSprite(std::string_view assetPath) const
     if (!component)
         return false;
     component->spritePath = std::string(assetPath);
-    component->runtimeSignature = 0;
+    // 署名を潰して PresentationSystem に組み直させる。
+    component->runtimeMesh.signature = 0;
     return true;
 }
 
@@ -4756,117 +5884,434 @@ bool ScriptGameplayProxy::SetAudioMixerSend(std::string_view busName, float leve
     return true;
 }
 
-// ── ScriptSaveProxy ─────────────────────────────────────────────────────────
-// util::SaveData へそのまま転送する。スクリプトに Engine 実装を include させないための層。
+// ── ScriptStoreProxyBase (save / config) ────────────────────────────────────
+// util::SaveStore へそのまま転送する。スクリプトに Engine 実装を include させないための層。
+// save と config の違いは Store() が返すストアだけなので、実装はここ 1 つに閉じる。
 
-void ScriptSaveProxy::SetSlot(std::string_view path) const
+namespace {
+
+util::SaveStore& StoreOf(SaveStoreKind kind)
 {
-    util::SaveData::SetSlotPath(std::string(path));
+    auto& app = core::Application::Get();
+    return kind == SaveStoreKind::Config ? app.GetConfigStore() : app.GetSaveStore();
 }
 
-std::string ScriptSaveProxy::GetSlot() const
+} // namespace
+
+void ScriptStoreProxyBase::SetPath(std::string_view path) const
 {
-    return util::SaveData::GetSlotPath();
+    StoreOf(kind).SetPath(std::string(path));
 }
 
-void ScriptSaveProxy::SetBool(std::string_view key, bool value) const
+std::string ScriptStoreProxyBase::GetPath() const
 {
-    util::SaveData::SetBool(key, value);
+    return StoreOf(kind).GetPath();
 }
 
-void ScriptSaveProxy::SetInt(std::string_view key, int value) const
+bool ScriptStoreProxyBase::Write(std::string_view key, IScriptSerializable& object) const
 {
-    util::SaveData::SetInt(key, value);
+    return StoreOf(kind).Write(key, object);
 }
 
-void ScriptSaveProxy::SetFloat(std::string_view key, float value) const
+bool ScriptStoreProxyBase::Read(std::string_view key, IScriptSerializable& object) const
 {
-    util::SaveData::SetFloat(key, value);
+    return StoreOf(kind).Read(key, object);
 }
 
-void ScriptSaveProxy::SetString(std::string_view key, std::string_view value) const
+void ScriptStoreProxyBase::SetBool(std::string_view key, bool value) const
 {
-    util::SaveData::SetString(key, value);
+    StoreOf(kind).SetBool(key, value);
 }
 
-void ScriptSaveProxy::SetVector2(std::string_view key, const math::Vector2& value) const
+void ScriptStoreProxyBase::SetInt(std::string_view key, int value) const
 {
-    util::SaveData::SetVector2(key, value);
+    StoreOf(kind).SetInt(key, value);
 }
 
-void ScriptSaveProxy::SetVector3(std::string_view key, const math::Vector3& value) const
+void ScriptStoreProxyBase::SetFloat(std::string_view key, float value) const
 {
-    util::SaveData::SetVector3(key, value);
+    StoreOf(kind).SetFloat(key, value);
 }
 
-void ScriptSaveProxy::SetVector4(std::string_view key, const math::Vector4& value) const
+void ScriptStoreProxyBase::SetString(std::string_view key, std::string_view value) const
 {
-    util::SaveData::SetVector4(key, value);
+    StoreOf(kind).SetString(key, value);
 }
 
-bool ScriptSaveProxy::GetBool(std::string_view key, bool defaultValue) const
+void ScriptStoreProxyBase::SetVector2(std::string_view key, const math::Vector2& value) const
 {
-    return util::SaveData::GetBool(key, defaultValue);
+    StoreOf(kind).SetVector2(key, value);
 }
 
-int ScriptSaveProxy::GetInt(std::string_view key, int defaultValue) const
+void ScriptStoreProxyBase::SetVector3(std::string_view key, const math::Vector3& value) const
 {
-    return util::SaveData::GetInt(key, defaultValue);
+    StoreOf(kind).SetVector3(key, value);
 }
 
-float ScriptSaveProxy::GetFloat(std::string_view key, float defaultValue) const
+void ScriptStoreProxyBase::SetVector4(std::string_view key, const math::Vector4& value) const
 {
-    return util::SaveData::GetFloat(key, defaultValue);
+    StoreOf(kind).SetVector4(key, value);
 }
 
-std::string ScriptSaveProxy::GetString(std::string_view key, std::string_view defaultValue) const
+bool ScriptStoreProxyBase::GetBool(std::string_view key, bool defaultValue) const
 {
-    return util::SaveData::GetString(key, defaultValue);
+    return StoreOf(kind).GetBool(key, defaultValue);
 }
 
-math::Vector2 ScriptSaveProxy::GetVector2(std::string_view key, const math::Vector2& defaultValue) const
+int ScriptStoreProxyBase::GetInt(std::string_view key, int defaultValue) const
 {
-    return util::SaveData::GetVector2(key, defaultValue);
+    return StoreOf(kind).GetInt(key, defaultValue);
 }
 
-math::Vector3 ScriptSaveProxy::GetVector3(std::string_view key, const math::Vector3& defaultValue) const
+float ScriptStoreProxyBase::GetFloat(std::string_view key, float defaultValue) const
 {
-    return util::SaveData::GetVector3(key, defaultValue);
+    return StoreOf(kind).GetFloat(key, defaultValue);
 }
 
-math::Vector4 ScriptSaveProxy::GetVector4(std::string_view key, const math::Vector4& defaultValue) const
+std::string ScriptStoreProxyBase::GetString(std::string_view key, std::string_view defaultValue) const
 {
-    return util::SaveData::GetVector4(key, defaultValue);
+    return StoreOf(kind).GetString(key, defaultValue);
 }
 
-bool ScriptSaveProxy::Has(std::string_view key) const
+math::Vector2 ScriptStoreProxyBase::GetVector2(std::string_view key, const math::Vector2& defaultValue) const
 {
-    return util::SaveData::Has(key);
+    return StoreOf(kind).GetVector2(key, defaultValue);
 }
 
-void ScriptSaveProxy::Remove(std::string_view key) const
+math::Vector3 ScriptStoreProxyBase::GetVector3(std::string_view key, const math::Vector3& defaultValue) const
 {
-    util::SaveData::Remove(key);
+    return StoreOf(kind).GetVector3(key, defaultValue);
 }
 
-void ScriptSaveProxy::Clear() const
+math::Vector4 ScriptStoreProxyBase::GetVector4(std::string_view key, const math::Vector4& defaultValue) const
 {
-    util::SaveData::Clear();
+    return StoreOf(kind).GetVector4(key, defaultValue);
 }
 
-bool ScriptSaveProxy::Save() const
+bool ScriptStoreProxyBase::Has(std::string_view key) const
 {
-    return util::SaveData::Save();
+    return StoreOf(kind).Has(key);
 }
 
-bool ScriptSaveProxy::Load() const
+void ScriptStoreProxyBase::Remove(std::string_view key) const
 {
-    return util::SaveData::Load();
+    StoreOf(kind).Remove(key);
 }
 
-bool ScriptSaveProxy::IsDirty() const
+void ScriptStoreProxyBase::Clear() const
 {
-    return util::SaveData::IsDirty();
+    StoreOf(kind).Clear();
+}
+
+bool ScriptStoreProxyBase::Save() const
+{
+    return StoreOf(kind).Save();
+}
+
+bool ScriptStoreProxyBase::Load() const
+{
+    return StoreOf(kind).Load();
+}
+
+bool ScriptStoreProxyBase::IsDirty() const
+{
+    return StoreOf(kind).IsDirty();
+}
+
+// ── ScriptDisplayProxy ──────────────────────────────────────────────────────
+
+namespace {
+
+// Editor ホスト中に game 側が要求したフルスクリーン状態。窓へは反映せず、
+// IsFullscreen() の答えだけ一致させる。
+//
+// WHY 覚えるところまでやるか: 握り潰すだけだと Option 画面のチェックが押した直後に
+//     跳ね返り、「Editor では設定 UI が壊れている」ように見える。ゲーム側のコードは
+//     Standalone と 1 行も変えずに済むのが望ましい。
+// NOTE: 解像度側に同じ受け皿を用意しないのは、読み戻す API が GetWidth()/GetHeight()
+//       = 「実際に描いている面の寸法」であり、要求値を返すと嘘になるため。
+bool s_editorRequestedFullscreen = false;
+
+bool IsEditorHostedWindow()
+{
+    return core::Application::Get().IsEditorHosted();
+}
+
+} // namespace
+
+void ScriptDisplayProxy::SetFullscreen(bool enabled) const
+{
+    if (IsEditorHostedWindow()) {
+        s_editorRequestedFullscreen = enabled;
+        return;
+    }
+    core::Application::Get().GetWindow().SetWindowMode(
+        enabled ? core::WindowMode::BorderlessFullscreen : core::WindowMode::Windowed);
+}
+
+bool ScriptDisplayProxy::IsFullscreen() const
+{
+    if (IsEditorHostedWindow()) return s_editorRequestedFullscreen;
+    return core::Application::Get().GetWindow().GetWindowMode()
+        == core::WindowMode::BorderlessFullscreen;
+}
+
+void ScriptDisplayProxy::SetResolution(uint32_t width, uint32_t height) const
+{
+    if (IsEditorHostedWindow()) return;
+    core::Application::Get().GetWindow().SetClientSize(width, height);
+}
+
+uint32_t ScriptDisplayProxy::GetWidth() const
+{
+    return core::Application::Get().GetWindowWidth();
+}
+
+uint32_t ScriptDisplayProxy::GetHeight() const
+{
+    return core::Application::Get().GetWindowHeight();
+}
+
+DisplayResolution ScriptDisplayProxy::GetMonitorSize() const
+{
+    DisplayResolution size;
+    core::Application::Get().GetWindow().GetMonitorSize(size.width, size.height);
+    return size;
+}
+
+std::vector<DisplayResolution> ScriptDisplayProxy::EnumResolutions() const
+{
+    const auto modes = core::Application::Get().GetWindow().EnumerateResolutions();
+    std::vector<DisplayResolution> out;
+    out.reserve(modes.size());
+    for (const auto& [width, height] : modes) out.push_back(DisplayResolution{ width, height });
+    return out;
+}
+
+void ScriptDisplayProxy::SetVSync(bool enabled) const
+{
+    core::Application::Get().GetRenderer().SetVSync(enabled);
+}
+
+bool ScriptDisplayProxy::GetVSync() const
+{
+    return core::Application::Get().GetRenderer().GetVSync();
+}
+
+// ── ScriptGraphicsProxy ─────────────────────────────────────────────────────
+// 触る先は「実行中の RenderSettings」。Editor では Play 中しか登録されないので、
+// 編集中に呼ばれた場合は静かに何もしない (ProjectSettings.toml を汚さないため)。
+
+namespace {
+
+renderer::RenderSettings* ActiveRenderSettings()
+{
+    return core::Application::Get().GetActiveRenderSettings();
+}
+
+// getter 用。未登録でも既定値を返せるよう、読み取りは静的な既定インスタンスへ落とす。
+const renderer::RenderSettings& RenderSettingsForRead()
+{
+    static const renderer::RenderSettings s_defaults{};
+    const renderer::RenderSettings* active = ActiveRenderSettings();
+    return active ? *active : s_defaults;
+}
+
+} // namespace
+
+void ScriptGraphicsProxy::SetBrightness(float value) const
+{
+    if (auto* settings = ActiveRenderSettings())
+        settings->userBrightness = std::clamp(value, 0.1f, 4.0f);
+}
+
+float ScriptGraphicsProxy::GetBrightness() const
+{
+    return RenderSettingsForRead().userBrightness;
+}
+
+void ScriptGraphicsProxy::SetBloomScale(float value) const
+{
+    if (auto* settings = ActiveRenderSettings())
+        settings->userBloomScale = std::clamp(value, 0.0f, 2.0f);
+}
+
+float ScriptGraphicsProxy::GetBloomScale() const
+{
+    return RenderSettingsForRead().userBloomScale;
+}
+
+void ScriptGraphicsProxy::SetRenderScale(float scale) const
+{
+    if (auto* settings = ActiveRenderSettings()) {
+        settings->renderScale =
+            std::clamp(scale, renderer::kMinRenderScale, renderer::kMaxRenderScale);
+    }
+}
+
+float ScriptGraphicsProxy::GetRenderScale() const
+{
+    return RenderSettingsForRead().renderScale;
+}
+
+uint32_t ScriptGraphicsProxy::GetRenderWidth() const
+{
+    uint32_t width = 0, height = 0;
+    auto& app = core::Application::Get();
+    renderer::ResolveRenderResolution(app.GetWindowWidth(), app.GetWindowHeight(),
+                                      RenderSettingsForRead().renderScale, width, height);
+    return width;
+}
+
+uint32_t ScriptGraphicsProxy::GetRenderHeight() const
+{
+    uint32_t width = 0, height = 0;
+    auto& app = core::Application::Get();
+    renderer::ResolveRenderResolution(app.GetWindowWidth(), app.GetWindowHeight(),
+                                      RenderSettingsForRead().renderScale, width, height);
+    return height;
+}
+
+void ScriptGraphicsProxy::SetQualityPreset(renderer::QualityPreset preset) const
+{
+    if (auto* settings = ActiveRenderSettings())
+        renderer::ApplyQualityPreset(*settings, preset);
+}
+
+renderer::QualityPreset ScriptGraphicsProxy::GetQualityPreset() const
+{
+    return renderer::DetectQualityPreset(RenderSettingsForRead());
+}
+
+void ScriptGraphicsProxy::SetShadowsEnabled(bool enabled) const
+{
+    if (auto* settings = ActiveRenderSettings()) settings->shadowEnabled = enabled;
+}
+
+bool ScriptGraphicsProxy::GetShadowsEnabled() const
+{
+    return RenderSettingsForRead().shadowEnabled;
+}
+
+void ScriptGraphicsProxy::SetShadowResolution(uint32_t resolution) const
+{
+    if (auto* settings = ActiveRenderSettings())
+        settings->shadow.mapResolution = std::clamp(resolution, 512u, 8192u);
+}
+
+uint32_t ScriptGraphicsProxy::GetShadowResolution() const
+{
+    return RenderSettingsForRead().shadow.mapResolution;
+}
+
+void ScriptGraphicsProxy::SetShadowCascades(int count) const
+{
+    if (auto* settings = ActiveRenderSettings())
+        settings->shadow.cascadeCount = std::clamp(count, 1, 4);
+}
+
+int ScriptGraphicsProxy::GetShadowCascades() const
+{
+    return RenderSettingsForRead().shadow.cascadeCount;
+}
+
+void ScriptGraphicsProxy::SetSSR(bool enabled) const
+{
+    if (auto* settings = ActiveRenderSettings()) settings->ssr.enabled = enabled;
+}
+
+bool ScriptGraphicsProxy::GetSSR() const { return RenderSettingsForRead().ssr.enabled; }
+
+void ScriptGraphicsProxy::SetGTAO(bool enabled) const
+{
+    auto* settings = ActiveRenderSettings();
+    if (!settings) return;
+    settings->gtao.enabled = enabled;
+    // GTAO と SSAO は同じスロット。立てた側を残すため、先に相手を落としてから正規化する。
+    if (enabled) settings->postProcess.ambientOcclusion.enabled = false;
+    (void)settings->NormalizeExclusivePipelineSlots();
+}
+
+bool ScriptGraphicsProxy::GetGTAO() const { return RenderSettingsForRead().gtao.enabled; }
+
+void ScriptGraphicsProxy::SetSSAO(bool enabled) const
+{
+    auto* settings = ActiveRenderSettings();
+    if (!settings) return;
+    settings->postProcess.ambientOcclusion.enabled = enabled;
+    if (enabled) settings->gtao.enabled = false;
+    (void)settings->NormalizeExclusivePipelineSlots();
+}
+
+bool ScriptGraphicsProxy::GetSSAO() const
+{
+    return RenderSettingsForRead().postProcess.ambientOcclusion.enabled;
+}
+
+void ScriptGraphicsProxy::SetTAA(bool enabled) const
+{
+    auto* settings = ActiveRenderSettings();
+    if (!settings) return;
+    settings->taa.enabled = enabled;
+    if (enabled) settings->postProcess.fxaaEnabled = false;
+    (void)settings->NormalizeExclusivePipelineSlots();
+}
+
+bool ScriptGraphicsProxy::GetTAA() const { return RenderSettingsForRead().taa.enabled; }
+
+void ScriptGraphicsProxy::SetFXAA(bool enabled) const
+{
+    auto* settings = ActiveRenderSettings();
+    if (!settings) return;
+    settings->postProcess.fxaaEnabled = enabled;
+    if (enabled) settings->taa.enabled = false;
+    (void)settings->NormalizeExclusivePipelineSlots();
+}
+
+bool ScriptGraphicsProxy::GetFXAA() const
+{
+    return RenderSettingsForRead().postProcess.fxaaEnabled;
+}
+
+void ScriptGraphicsProxy::SetBloom(bool enabled) const
+{
+    if (auto* settings = ActiveRenderSettings())
+        settings->postProcess.bloom.enabled = enabled;
+}
+
+bool ScriptGraphicsProxy::GetBloom() const
+{
+    return RenderSettingsForRead().postProcess.bloom.enabled;
+}
+
+void ScriptGraphicsProxy::SetMotionBlur(bool enabled) const
+{
+    if (auto* settings = ActiveRenderSettings()) settings->motionBlur.enabled = enabled;
+}
+
+bool ScriptGraphicsProxy::GetMotionBlur() const
+{
+    return RenderSettingsForRead().motionBlur.enabled;
+}
+
+void ScriptGraphicsProxy::SetVolumetricLight(bool enabled) const
+{
+    if (auto* settings = ActiveRenderSettings()) settings->volumetricLight.enabled = enabled;
+}
+
+bool ScriptGraphicsProxy::GetVolumetricLight() const
+{
+    return RenderSettingsForRead().volumetricLight.enabled;
+}
+
+void ScriptGraphicsProxy::SetContactShadow(bool enabled) const
+{
+    if (auto* settings = ActiveRenderSettings()) settings->contactShadow.enabled = enabled;
+}
+
+bool ScriptGraphicsProxy::GetContactShadow() const
+{
+    return RenderSettingsForRead().contactShadow.enabled;
 }
 
 // ── ScriptEventProxy ────────────────────────────────────────────────────────
@@ -4926,7 +6371,7 @@ math::Vector3 ScriptRandomProxy::OnUnitSphere() const
 
 math::Vector3 ScriptRandomProxy::ConeDirection(const math::Vector3& axis, float maxAngleDeg) const
 {
-    const math::Vector3 forward = axis.Normalized();
+    const math::Vector3 forward = axis.NormalizedOr(math::Vector3::FORWARD);
     if (maxAngleDeg <= 0.0f) return forward;
 
     // 円錐内の一様サンプリング。cos を一様に引くことで、頂点付近に偏らせない。
