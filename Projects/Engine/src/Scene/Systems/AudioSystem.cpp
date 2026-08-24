@@ -68,30 +68,42 @@ void AudioSystem::Update(SystemContext& ctx)
         }
     }
 
+    // 位置と 3D 設定から減衰とパンを出す。AudioSource を持つ音源と、
+    // 位置だけ指定された使い捨て再生 (PlayAtPoint) の両方がここを通る。
+    const auto spatialize = [&](const math::Vector3& worldPosition, float spatialBlend,
+                                float minDistanceIn, float maxDistanceIn, float rolloffIn,
+                                float& outAttenuation, float& outPan) {
+        outAttenuation = 1.0f;
+        outPan = 0.0f;
+        if (!listener || !listenerTransform || spatialBlend <= 0.0f) return;
+
+        const math::Vector3 offset = worldPosition - listenerTransform->worldPosition;
+        const float distance = offset.Length();
+        const float minDistance = (std::max)(minDistanceIn, 0.0f);
+        const float maxDistance = (std::max)(maxDistanceIn, minDistance + 0.001f);
+        const float normalized = (std::max)(0.0f, (std::min)(
+            (distance - minDistance) / (maxDistance - minDistance), 1.0f));
+        const float rolloff = (std::max)(rolloffIn, 0.01f);
+        const float distanceGain = std::pow(1.0f - normalized, rolloff);
+        const float blend = (std::max)(0.0f, (std::min)(spatialBlend, 1.0f));
+        outAttenuation = (1.0f - blend) + blend * distanceGain;
+
+        if (distance > 0.0001f)
+            outPan = math::Vector3::Dot(offset / distance, listenerTransform->Right()) * blend;
+    };
+
     const auto applyVoiceParameters = [&](uint32_t voiceId,
                                           const AudioSourceComponent& source,
                                           const Transform& sourceTransform,
-                                          GameObject* sourceObject) {
+                                          GameObject* sourceObject,
+                                          float volumeScale = 1.0f) {
         if (voiceId == 0) return;
 
         float attenuation = 1.0f;
         float pan = 0.0f;
-        if (listener && listenerTransform && source.spatialBlend > 0.0f) {
-            const math::Vector3 offset = sourceTransform.worldPosition - listenerTransform->worldPosition;
-            const float distance = offset.Length();
-            const float minDistance = (std::max)(source.minDistance, 0.0f);
-            const float maxDistance = (std::max)(source.maxDistance, minDistance + 0.001f);
-            const float normalized = (std::max)(0.0f, (std::min)(
-                (distance - minDistance) / (maxDistance - minDistance), 1.0f));
-            const float rolloff = (std::max)(source.rolloffFactor, 0.01f);
-            const float distanceGain = std::pow(1.0f - normalized, rolloff);
-            const float blend = (std::max)(0.0f, (std::min)(source.spatialBlend, 1.0f));
-            attenuation = (1.0f - blend) + blend * distanceGain;
-
-            if (distance > 0.0001f) {
-                pan = math::Vector3::Dot(offset / distance, listenerTransform->Right()) * blend;
-            }
-        }
+        spatialize(sourceTransform.worldPosition, source.spatialBlend,
+                   source.minDistance, source.maxDistance, source.rolloffFactor,
+                   attenuation, pan);
 
         float effectGain = 1.0f;
         float lowPass = 1.0f - zoneWet * (1.0f - zoneHighFrequency);
@@ -121,7 +133,8 @@ void AudioSystem::Update(SystemContext& ctx)
         }
         const float listenerVolume = listener ? (std::max)(listener->volume, 0.0f) : 1.0f;
         audioManager.SetVoiceVolume(
-            voiceId, (std::max)(source.volume, 0.0f) * attenuation * listenerVolume * effectGain);
+            voiceId, (std::max)(source.volume, 0.0f) * (std::max)(volumeScale, 0.0f)
+                         * attenuation * listenerVolume * effectGain);
         audioManager.SetVoicePitch(voiceId, (std::max)(source.pitch, 0.01f));
         audioManager.SetVoicePan(voiceId, pan);
         audioManager.SetVoiceLowPass(voiceId, lowPass);
@@ -156,37 +169,82 @@ void AudioSystem::Update(SystemContext& ctx)
             source.m_pendingPause = false;
         }
 
-        // Pause は再開位置を保持しない。既存 API の意味を維持し、Resume 相当の Play で先頭から再生する。
+        // voice は破棄せず止めるだけなので、Resume で続きから鳴る。
         if (source.m_pendingPause) {
-            if (source.m_isPlaying) {
-                audioManager.StopVoice(source.m_voiceId);
-                source.m_voiceId = 0;
+            if (source.m_isPlaying && source.m_voiceId != 0) {
+                audioManager.PauseVoice(source.m_voiceId);
                 source.m_isPlaying = false;
                 source.m_isPaused = true;
             }
             source.m_pendingPause = false;
         }
 
+        if (source.m_pendingResume) {
+            if (source.m_isPaused && source.m_voiceId != 0) {
+                audioManager.ResumeVoice(source.m_voiceId);
+                source.m_isPaused = false;
+                source.m_isPlaying = true;
+            }
+            source.m_pendingResume = false;
+        }
+
+        const audio::BusIndex bus = audioManager.FindBus(source.busName);
+
+        // 生成クリップの要求は clipPath より優先する。要求フィールドが参照を 1 つ
+        // 握っているので、voice を起こしたあとに必ず手放す (起動失敗時も同じ)。
         const bool playOnAwake = source.playOnAwake && !source.m_played;
-        if ((source.m_pendingPlay || playOnAwake) && !source.clipPath.empty()) {
+        if (source.m_pendingClipId != 0) {
             source.m_played = true;
             source.m_pendingPlay = false;
             source.m_isPaused = false;
             audioManager.StopVoice(source.m_voiceId);
-            source.m_voiceId = audioManager.PlayVoice(source.clipPath, source.loop);
+            source.m_voiceId = audioManager.PlayClipVoice(source.m_pendingClipId, source.loop, bus);
+            source.m_isPlaying = source.m_voiceId != 0;
+            audioManager.ReleaseClip(source.m_pendingClipId);
+            source.m_pendingClipId = 0;
+        } else if ((source.m_pendingPlay || playOnAwake) && !source.clipPath.empty()) {
+            source.m_played = true;
+            source.m_pendingPlay = false;
+            source.m_isPaused = false;
+            audioManager.StopVoice(source.m_voiceId);
+            source.m_voiceId = audioManager.PlayVoice(source.clipPath, source.loop, bus);
             source.m_isPlaying = source.m_voiceId != 0;
         }
 
-        if (source.m_pendingOneShot) {
-            source.m_pendingOneShot = false;
-            if (!source.m_oneShotPath.empty()) {
-                const uint32_t oneShot = audioManager.PlayVoice(source.m_oneShotPath, false);
-                applyVoiceParameters(oneShot, source, transform, sourceObject);
-            }
-            source.m_oneShotPath.clear();
+        for (const auto& request : source.m_pendingOneShots) {
+            const uint32_t oneShot = request.clipId != 0
+                ? audioManager.PlayClipVoice(request.clipId, false, bus)
+                : audioManager.PlayVoice(request.path, false, bus);
+            applyVoiceParameters(oneShot, source, transform, sourceObject, request.volumeScale);
+            // 要求が握っていた参照を返す。再生中は voice 側が実体を押さえる。
+            if (request.clipId != 0) audioManager.ReleaseClip(request.clipId);
         }
+        source.m_pendingOneShots.clear();
 
         applyVoiceParameters(source.m_voiceId, source, transform, sourceObject);
+    }
+
+    // AudioSource を持たない使い捨て再生 (PlayAtPoint)。
+    // 減衰とパンはここで一度だけ焼き込む。短い効果音が前提なので、
+    // 鳴っている間に受聴点が動いても音像は追従しない。
+    for (auto& request : audioManager.TakePositional()) {
+        const uint32_t voiceId = request.clip != 0
+            ? audioManager.PlayClipVoice(request.clip, false, request.bus)
+            : audioManager.PlayVoice(request.path, false, request.bus);
+        if (request.clip != 0) audioManager.ReleaseClip(request.clip);
+        if (voiceId == 0) continue;
+
+        float attenuation = 1.0f;
+        float pan = 0.0f;
+        spatialize({ request.x, request.y, request.z }, 1.0f,
+                   request.minDistance, request.maxDistance, request.rolloff,
+                   attenuation, pan);
+
+        const float listenerVolume = listener ? (std::max)(listener->volume, 0.0f) : 1.0f;
+        audioManager.SetVoiceVolume(
+            voiceId, (std::max)(request.volume, 0.0f) * attenuation * listenerVolume);
+        audioManager.SetVoicePan(voiceId, pan);
+        audioManager.SetVoiceLowPass(voiceId, 1.0f - zoneWet * (1.0f - zoneHighFrequency));
     }
 }
 

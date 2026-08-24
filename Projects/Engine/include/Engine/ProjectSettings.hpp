@@ -6,6 +6,7 @@
 #pragma once
 #include <array>
 #include <Math/Vector3.hpp>
+#include <Engine/Audio/AudioBus.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/RendererBackend.hpp>
 #include <string>
@@ -20,8 +21,15 @@ struct PhysicsSettings {
 };
 
 struct AudioSettings {
-    float bgmVolume = 1.0f;
-    float seVolume  = 1.0f;
+    float masterVolume = 1.0f;
+
+    /// ミキサーバス構成。先頭は必ず Master (AudioManager 側で正規化される)。
+    /// 旧形式の bgmVolume / seVolume を持つ設定ファイルは、読み込み時に
+    /// 既定構成の BGM / SE バスの音量へ移行する。
+    std::vector<audio::BusDesc> buses = audio::DefaultBusLayout();
+
+    /// masterVolume を反映した、AudioManager::ApplyBusLayout へ渡す構成。
+    [[nodiscard]] std::vector<audio::BusDesc> BuildBusLayout() const;
 };
 
 struct ScreenSettings {
