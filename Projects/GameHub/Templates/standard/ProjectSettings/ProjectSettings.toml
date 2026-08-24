@@ -3,8 +3,32 @@ renderer = "dx12"
 targetFps = 144
 
 [audio]
-bgmVolume = 1.0
-seVolume = 1.0
+masterVolume = 1.0
+
+# AudioSource の Bus Name と、スクリプトの audio.SetBusVolume() が指す先。
+[[audio.bus]]
+name = 'Master'
+volume = 1.0
+
+[[audio.bus]]
+name = 'BGM'
+parent = 'Master'
+volume = 1.0
+
+[[audio.bus]]
+name = 'SE'
+parent = 'Master'
+volume = 1.0
+
+[[audio.bus]]
+name = 'UI'
+parent = 'Master'
+volume = 1.0
+
+[[audio.bus]]
+name = 'Voice'
+parent = 'Master'
+volume = 1.0
 
 [layers]
 names = [

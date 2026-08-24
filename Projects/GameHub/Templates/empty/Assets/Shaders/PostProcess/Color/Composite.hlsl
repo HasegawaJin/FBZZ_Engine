@@ -240,6 +240,10 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
         ldr = lerp(ldr, lutColor, saturate(lutBlend));
     }
 
+    // ユーザー設定の明るさはフェードより先に掛ける。
+    // WHY 順序が要るか: 逆にするとフェードアウトの黒が明るさで持ち上がり、暗転しきらない。
+    ldr *= max(userBrightness, 0.0f);
+
     // 画面フェード — 全エフェクト適用後の最終合成として上書きする。
     // WHY: UI・ポストプロセス含む全レイヤーをひとつの lerp でカバーし、シーン遷移時のフラッシュを防ぐ。
     if (screenFadeAlpha > 0.0f)

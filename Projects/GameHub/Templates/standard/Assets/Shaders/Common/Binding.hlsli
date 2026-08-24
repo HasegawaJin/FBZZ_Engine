@@ -40,6 +40,18 @@
                             // デカール材質のパラメータは CB_MATERIAL (b2)。
                             // 契約は Material/Decal/DecalCommon.hlsli が持つ。
 
+// ---- Particle (ParticlePass) -----------------------------------------
+// ビルボードの展開方法・フリップブック・歪み・煙・自己影といった、エンジンが
+// エミッターごとに決める値。材質側からは読み取り専用。
+//
+// WHY b2 に置かないか:
+//   CB_DECAL とまったく同じ理由。リフレクションは cbuffer 名 "MaterialConstants" を
+//   b2 に探すため、ここを占有するとパーティクル材質だけ .mat の [params] を
+//   1 つも持てない例外になる。b2 は材質へ明け渡し、エンジン側は空きスロットへ逃がす。
+#define CB_PARTICLE     b11 // ParticleRenderConstants per-emitter
+                            // パーティクル材質のパラメータは CB_MATERIAL (b2)。
+                            // 契約は Material/Effects/ParticleMaterial.hlsli が持つ。
+
 // ---- Texture (マテリアル, per-draw) ----------------------------------
 #define TEX_ALBEDO          t0
 #define TEX_NORMAL          t1

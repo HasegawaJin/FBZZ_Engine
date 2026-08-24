@@ -53,14 +53,8 @@ sizeCurvePower = 2.4
 lifetime = 0.14
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
 materialPath = "Assets/Materials/Particles/Flare01_Additive.mat"
-# 閃光: 8 粒子だけなので強くてよい。ここが白飛びの主役ではない
-blendMode = 0
 sortMode = 0
-emissiveScale = 5.0
-softParticles = true
-softParticleFadeDistance = 0.6
 simulationSpace = 0
 # 芯は最前面。ここが煙や破片に隠れると爆発の「頭」が消える。
 renderPriority = 60
@@ -98,12 +92,7 @@ gravity = [0.0, -1.2, 0.0]
 angularVelocityMin = -2.5
 angularVelocityMax = 2.5
 materialPath = "Assets/Materials/Particles/Fire02_Additive.mat"
-# 火球: 900 粒子。旧 6.0 では重なった瞬間に白飽和していた
-blendMode = 0
 sortMode = 0
-emissiveScale = 2.0
-softParticles = true
-softParticleFadeDistance = 0.5
 noiseStrength = 1.6
 noiseFrequency = 1.1
 noiseSpeed = 1.4
@@ -126,7 +115,6 @@ bursts = [{ time = 0.0, count = 170, cycles = 1, interval = 0.02, probability = 
 
 # --- 0.01s: 衝撃波の熱歪み。シーンカラーを屈折させる --------------------------
 # WHY: 爆発が「空気を殴る」感触は輝度ではなく背景の歪みで出る。
-#      distortion=true のパーティクルはテクスチャの RG を UV オフセットとして
 #      シーンカラーをサンプルするため、専用のメッシュもシェーダーも要らない。
 [[nodes]]
 id = 4
@@ -154,13 +142,7 @@ lifetime = 0.45
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Particles/Twirl01_Alpha.mat"
-blendMode = 1
 sortMode = 1
-distortion = true
-distortionStrength = 0.075
-softParticles = true
-softParticleFadeDistance = 0.8
-emissiveScale = 0.0
 # 歪みはシーンカラーを読むため必ず最後。火球より先に描くと、
 # まだ描かれていない火球を屈折させることになり衝撃波が背景だけを歪ませる。
 renderPriority = 100
@@ -201,8 +183,6 @@ velocitySpread = 14.0
 velocityDamping = 1.1
 gravity = [0.0, -16.0, 0.0]
 materialPath = "Assets/Materials/Particles/Spark04_Additive.mat"
-# 火花
-blendMode = 0
 renderMode = 1
 stretchedVelocityScale = 0.12
 stretchedLengthScale = 2.2
@@ -211,7 +191,6 @@ collisionResponse = 0
 collisionRadius = 0.03
 collisionBounciness = 0.35
 collisionDamping = 0.35
-emissiveScale = 3.5
 # 火の粉は最前面。小さく明るいので煙に隠れると存在が消える。
 renderPriority = 70
 # 粒ごとに尾を引かせる。飛散の軌跡が読めるようになり速度感が跳ね上がる。
@@ -257,18 +236,12 @@ gravity = [0.0, -18.0, 0.0]
 angularVelocityMin = -8.0
 angularVelocityMax = 8.0
 materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
-# 破片: 不透明な小片。Premultiplied
-blendMode = 2
 sortMode = 1
 collisionMode = 3
 collisionResponse = 2
 collisionRadius = 0.06
 collisionDamping = 0.8
-softParticles = true
 renderPriority = 40
-# 土塊は非発光。影を受けないと爆発の明るさの中で浮いて見える。
-receiveShadows = true
-shadowStrength = 0.85
 colorVariation = 0.22
 bursts = [{ time = 0.0, count = 90, cycles = 1, interval = 0.03, probability = 1.0 }]
 
@@ -305,20 +278,12 @@ gravity = [0.0, 0.55, 0.0]
 angularVelocityMin = -0.6
 angularVelocityMax = 0.6
 materialPath = "Assets/Materials/Particles/Smoke07_Premultiplied.mat"
-# 煙柱: 背景を隠す本体
-blendMode = 2
 sortMode = 1
-sixWayLighting = true
-lightingStrength = 0.70
-softParticles = true
-softParticleFadeDistance = 0.7
 noiseStrength = 1.1
 noiseFrequency = 0.5
 noiseSpeed = 0.35
 # 煙柱は最奥。火球より手前に来ると爆発の明るさが濁る。
 renderPriority = 0
-receiveShadows = true
-shadowStrength = 0.85
 colorVariation = 0.12
 sizeAxisScale = [1.0, 1.0, 1.0]   # 渦を巻く煙柱なので回転を残し、横伸ばしを捨てる
 useDragCurve = true
@@ -362,9 +327,6 @@ velocitySpread = 1.2
 velocityDamping = 0.6
 gravity = [0.0, 0.8, 0.0]
 materialPath = "Assets/Materials/Particles/Spark01_Additive.mat"
-# 残り火
-blendMode = 0
-emissiveScale = 3.0
 noiseStrength = 0.9
 noiseFrequency = 0.8
 noiseSpeed = 0.6
@@ -675,21 +637,6 @@ nodeId = 3
 schemaPath = "particle.sizeStart"
 
 [[parameters]]
-name = "Heat Distortion"
-type = 0
-minimum = 0.0
-maximum = 0.25
-hasRange = true
-[parameters.default]
-source = 0
-constantType = 0
-float = 0.075
-[[bindings]]
-paramName = "Heat Distortion"
-nodeId = 4
-schemaPath = "particle.distortionStrength"
-
-[[parameters]]
 name = "Smokiness"
 type = 0
 minimum = 0.0
@@ -703,21 +650,6 @@ float = 42.0
 paramName = "Smokiness"
 nodeId = 7
 schemaPath = "particle.emitRate"
-
-[[parameters]]
-name = "Ember Heat"
-type = 0
-minimum = 0.0
-maximum = 8.0
-hasRange = true
-[parameters.default]
-source = 0
-constantType = 0
-float = 3.0
-[[bindings]]
-paramName = "Ember Heat"
-nodeId = 8
-schemaPath = "particle.emissiveScale"
 
 # 火の粉の尾の長さ。0 に近づけると点の飛散、大きくすると流星のような軌跡になる。
 [[parameters]]
@@ -734,26 +666,6 @@ int = 7
 paramName = "Spark Trail"
 nodeId = 5
 schemaPath = "particle.trailPointCount"
-
-# 煙・破片が影を受ける強さ。屋外の強い日差しでは 1.0 まで上げると地面に馴染む。
-[[parameters]]
-name = "Shadow Response"
-type = 0
-minimum = 0.0
-maximum = 1.0
-hasRange = true
-[parameters.default]
-source = 0
-constantType = 0
-float = 0.85
-[[bindings]]
-paramName = "Shadow Response"
-nodeId = 7
-schemaPath = "particle.shadowStrength"
-[[bindings]]
-paramName = "Shadow Response"
-nodeId = 6
-schemaPath = "particle.shadowStrength"
 
 # 火球の色ばらつき。0 で単色、上げるほど内部に色温度差が出て体積感が増す。
 [[parameters]]
