@@ -30,6 +30,12 @@ Vector3 Vector3::Normalized() const {
     return *this / len;
 }
 
+Vector3 Vector3::NormalizedOr(const Vector3& fallback) const {
+    float len = Length();
+    if (NearlyZero(len)) return fallback;
+    return *this / len;
+}
+
 float Vector3::Dot(const Vector3& a, const Vector3& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }

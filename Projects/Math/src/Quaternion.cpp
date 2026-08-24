@@ -34,6 +34,9 @@ Quaternion Quaternion::FromEuler(const Vector3& eulerRad) {
 }
 
 Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
+    // 「向く先が自分と同じ位置」は呼び出し側で普通に起きる (追従対象へ重なった、
+    // 速度が 0 になった等)。基底を作れないので回さないだけにし、assert で止めない。
+    if (NearlyZero(forward.LengthSq())) return Identity();
     Vector3 f = forward.Normalized();
     // forward と up が平行なとき (縮退ケース) は代替 up を使う
     // RIGHT も平行なら FORWARD を使う (forward が RIGHT 方向のとき)

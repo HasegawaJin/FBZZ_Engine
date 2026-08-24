@@ -23,7 +23,11 @@ struct Vector3 {
 
     float   Length()     const;
     float   LengthSq()   const;
+    /// 長さ 0 は契約違反として assert する。呼ぶ側が非ゼロを保証できる場合だけ使う。
     Vector3 Normalized() const;
+    /// 長さ 0 なら fallback を返す。退化した入力が正常系に含まれうる箇所 (接触法線・
+    /// 進行方向・視線ベクトル) はこちらを使い、assert で実行を止めない。
+    Vector3 NormalizedOr(const Vector3& fallback) const;
 
     static float   Dot(const Vector3& a, const Vector3& b);
     static Vector3 Cross(const Vector3& a, const Vector3& b);
