@@ -15,8 +15,7 @@ namespace fbzz::renderer {
 
 namespace {
 
-// VSync は常時無効。Present の第 1 引数を 0 に固定し、対応環境では tearing も許可する。
-// WHY: フレームレート制御は Application 側の targetFps に任せ、DXGI の表示周期待ちを描画同期に混ぜない。
+// 遮蔽検知の Present-test は実 Present を行わないため、常に同期無しで投げる。
 constexpr UINT kPresentSyncIntervalNoVsync = 0;
 
 bool CheckResult(HRESULT result, const char* operation)
@@ -173,7 +172,8 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     BOOL tearing = FALSE;
     m_allowTearing = SUCCEEDED(m_factory->CheckFeatureSupport(
         DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing, sizeof(tearing))) && tearing;
-    FBZZ_LOG_INFO("DX12Context: Present VSync=OFF / tearing=%s", m_allowTearing ? "ON" : "OFF");
+    FBZZ_LOG_INFO("DX12Context: Present VSync=%s / tearing=%s",
+                  m_vsync ? "ON" : "OFF", m_allowTearing ? "ON" : "OFF");
     return true;
 }
 
@@ -383,8 +383,9 @@ void DX12Context::EndFrame()
     const uint64_t fenceValue = m_nextFenceValue++;
     m_commandQueue->Signal(m_fence.Get(), fenceValue);
     m_frames[m_frameIndex].fenceValue = fenceValue;
-    const HRESULT presentResult = m_swapChain->Present(
-        kPresentSyncIntervalNoVsync, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
+    const UINT syncInterval = m_vsync ? 1u : 0u;
+    const UINT presentFlags = (!m_vsync && m_allowTearing) ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+    const HRESULT presentResult = m_swapChain->Present(syncInterval, presentFlags);
     if (presentResult == DXGI_STATUS_OCCLUDED) {
         // 遮蔽開始。次フレームは BeginFrame の Present-test 復帰待ちへ回す (エラーではない)。
         m_occluded = true;
