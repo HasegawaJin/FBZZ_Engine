@@ -3,6 +3,7 @@
 // ParticleEmitterの全authoringモジュールを欠落なくTOMLへ保存・復元する
 #include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
@@ -183,7 +184,7 @@ void DeserializeParticleGradient(const toml::table& table, const char* key,
     }
 }
 
-toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitter)
+toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSettings& emitter)
 {
     toml::table table;
 #define FBZZ_VFX_FLOAT(name) table.insert(#name, emitter.name)
@@ -204,17 +205,13 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     FBZZ_VFX_FLOAT(startDelay); FBZZ_VFX_BOOL(clearOnStop); FBZZ_VFX_INT(shape);
     FBZZ_VFX_FLOAT(sphereRadius); FBZZ_VFX_FLOAT(coneAngleDegrees); FBZZ_VFX_FLOAT(coneRadius);
     FBZZ_VFX_STRING(meshShapePath); FBZZ_VFX_INT(meshShapeIndex); FBZZ_VFX_FLOAT(meshShapeScale);
-    FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation); FBZZ_VFX_INT(blendMode); FBZZ_VFX_INT(sortMode);
+    FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation); FBZZ_VFX_INT(sortMode);
     FBZZ_VFX_INT(simulationMode); FBZZ_VFX_INT(simulationSpace); FBZZ_VFX_INT(renderMode);
-    FBZZ_VFX_INT(alphaSource);
     FBZZ_VFX_FLOAT(stretchedVelocityScale); FBZZ_VFX_FLOAT(stretchedLengthScale);
     FBZZ_VFX_INT(renderPriority);
     FBZZ_VFX_INT(collisionMode); FBZZ_VFX_INT(collisionResponse); FBZZ_VFX_FLOAT(collisionRadius);
     FBZZ_VFX_FLOAT(collisionBounciness); FBZZ_VFX_FLOAT(collisionDamping); FBZZ_VFX_FLOAT(collisionPlaneY);
-    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath); FBZZ_VFX_INT(spriteColumns);
-    FBZZ_VFX_INT(spriteRows); FBZZ_VFX_INT(spriteStartFrame); FBZZ_VFX_INT(spriteEndFrame);
-    FBZZ_VFX_INT(flipbookMode); FBZZ_VFX_FLOAT(flipbookFramesPerSecond); FBZZ_VFX_BOOL(flipbookFrameBlending);
-    FBZZ_VFX_BOOL(motionVectorFlipbook); FBZZ_VFX_STRING(motionVectorTexturePath); FBZZ_VFX_FLOAT(motionVectorStrength);
+    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath);
     FBZZ_VFX_FLOAT(colorVariation);
     FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
@@ -227,19 +224,8 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     FBZZ_VFX_FLOAT(trailSampleInterval); FBZZ_VFX_FLOAT(trailWidthScale);
     FBZZ_VFX_FLOAT(trailAlphaScale);
     FBZZ_VFX_BOOL(trailRibbon); FBZZ_VFX_FLOAT(trailRibbonWidth);
-    FBZZ_VFX_FLOAT(selfShadowStrength);
-    FBZZ_VFX_BOOL(softParticles); FBZZ_VFX_FLOAT(softParticleFadeDistance);
-    FBZZ_VFX_BOOL(distortion); FBZZ_VFX_FLOAT(distortionStrength); FBZZ_VFX_BOOL(sixWayLighting);
-    FBZZ_VFX_STRING(distortionTexturePath); FBZZ_VFX_FLOAT(distortionChromatic);
-    FBZZ_VFX_FLOAT(lightingStrength); FBZZ_VFX_FLOAT(emissiveScale);
-    FBZZ_VFX_FLOAT(smokeWrap); FBZZ_VFX_FLOAT(smokeTransmission);
-    FBZZ_VFX_FLOAT(smokeBackScatterPower);
     FBZZ_VFX_BOOL(blackbodyEnabled); FBZZ_VFX_FLOAT(blackbodyReferenceTemperature);
     FBZZ_VFX_FLOAT(blackbodyIntensity);
-    FBZZ_VFX_BOOL(receiveShadows); FBZZ_VFX_FLOAT(shadowStrength);
-    FBZZ_VFX_BOOL(volumetric); FBZZ_VFX_INT(volumetricSteps);
-    FBZZ_VFX_FLOAT(volumetricDensity); FBZZ_VFX_FLOAT(volumetricAnisotropy);
-    FBZZ_VFX_FLOAT(volumetricNoiseScale);
     FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
     FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
     FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
@@ -250,6 +236,8 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
 #undef FBZZ_VFX_BOOL
 #undef FBZZ_VFX_STRING
 
+    // FBZZ_VFX_INT は int を経由するため 0xFFFFFFFF が符号付きで潰れる。マスクは別に書く。
+    table.insert("forceFieldChannels", static_cast<std::int64_t>(emitter.forceFieldChannels));
     table.insert("orbitalAxis", WriteVector3(emitter.orbitalAxis));
     table.insert("trailColorTint", WriteVector4(emitter.trailColorTint));
     WriteCurve(table, "sizeCurve", emitter.sizeCurve);
@@ -272,9 +260,42 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     return table;
 }
 
-void DeserializeParticleEmitterSettings(const toml::table& table,
-                                        scene::ParticleEmitter& emitter)
+// 見た目の設定は .mat の [particle] へ移った (2026-08-24)。
+// 旧いシーン / .vfx にはまだキーが残っているので、黙って捨てずに一度だけ知らせる。
+//
+// WHY 自動で .mat へ書き込まないか: 読み込みの副作用でアセットを書き換えると、
+//     «開いただけでプロジェクトが変わる» ことになる。しかも 1 つの .mat を複数の
+//     エミッターが共有していると、どのエミッターの値を採用すべきか決められない。
+//     どこに何が残っているかだけ示して、移す判断は担当者に任せる。
+void WarnLegacyParticleLookKeys(const toml::table& table)
 {
+    static constexpr const char* kLegacyKeys[] = {
+        "blendMode", "alphaSource", "spriteColumns", "spriteRows", "spriteStartFrame",
+        "spriteEndFrame", "flipbookMode", "flipbookFramesPerSecond", "flipbookFrameBlending",
+        "spriteRandomStartFrame", "spriteRandomRow", "motionVectorFlipbook",
+        "motionVectorTexturePath", "motionVectorStrength", "softParticles",
+        "softParticleFadeDistance", "distortion", "distortionStrength", "distortionChromatic",
+        "distortionTexturePath", "sixWayLighting", "lightingStrength", "smokeWrap",
+        "smokeTransmission", "smokeBackScatterPower", "volumetric", "volumetricSteps",
+        "volumetricDensity", "volumetricAnisotropy", "volumetricNoiseScale",
+        "receiveShadows", "shadowStrength", "selfShadowStrength", "emissiveScale",
+    };
+    std::string found;
+    for (const char* key : kLegacyKeys) {
+        if (!table.contains(key)) continue;
+        if (!found.empty()) found += ", ";
+        found += key;
+    }
+    if (found.empty()) return;
+    FBZZ_LOG_WARN("ParticleEmitter: これらの見た目設定は .mat の [particle] へ移りました。"
+                  "値は読み込まれません — materialPath の .mat 側で設定し直してください: %s",
+                  found.c_str());
+}
+
+void DeserializeParticleEmitterSettings(const toml::table& table,
+                                        scene::ParticleEmitterSettings& emitter)
+{
+    WarnLegacyParticleLookKeys(table);
 #define FBZZ_VFX_FLOAT(name) emitter.name = ReadFloat(table, #name, emitter.name)
 #define FBZZ_VFX_INT(name) emitter.name = ReadInt(table, #name, emitter.name)
 #define FBZZ_VFX_BOOL(name) emitter.name = table[#name].value_or(emitter.name)
@@ -296,24 +317,17 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(sphereRadius); FBZZ_VFX_FLOAT(coneAngleDegrees); FBZZ_VFX_FLOAT(coneRadius);
     FBZZ_VFX_STRING(meshShapePath); FBZZ_VFX_INT(meshShapeIndex); FBZZ_VFX_FLOAT(meshShapeScale);
     FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation);
-    emitter.blendMode = ReadEnum(table, "blendMode", emitter.blendMode, 2);
     emitter.sortMode = ReadEnum(table, "sortMode", emitter.sortMode, 1);
     emitter.simulationMode = ReadEnum(table, "simulationMode", emitter.simulationMode, 1);
     emitter.simulationSpace = ReadEnum(table, "simulationSpace", emitter.simulationSpace, 1);
     emitter.renderMode = ReadEnum(table, "renderMode", emitter.renderMode, 3);
-    emitter.alphaSource = ReadEnum(table, "alphaSource", emitter.alphaSource, 6);
     FBZZ_VFX_FLOAT(stretchedVelocityScale); FBZZ_VFX_FLOAT(stretchedLengthScale);
     FBZZ_VFX_INT(renderPriority);
     emitter.collisionMode = ReadEnum(table, "collisionMode", emitter.collisionMode, 3);
     emitter.collisionResponse = ReadEnum(table, "collisionResponse", emitter.collisionResponse, 2);
     FBZZ_VFX_FLOAT(collisionRadius); FBZZ_VFX_FLOAT(collisionBounciness);
     FBZZ_VFX_FLOAT(collisionDamping); FBZZ_VFX_FLOAT(collisionPlaneY);
-    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath); FBZZ_VFX_INT(spriteColumns);
-    FBZZ_VFX_INT(spriteRows); FBZZ_VFX_INT(spriteStartFrame); FBZZ_VFX_INT(spriteEndFrame);
-    emitter.flipbookMode = ReadEnum(table, "flipbookMode", emitter.flipbookMode, 3);
-    FBZZ_VFX_FLOAT(flipbookFramesPerSecond); FBZZ_VFX_BOOL(flipbookFrameBlending);
-    FBZZ_VFX_BOOL(spriteRandomStartFrame); FBZZ_VFX_BOOL(spriteRandomRow);
-    FBZZ_VFX_BOOL(motionVectorFlipbook); FBZZ_VFX_STRING(motionVectorTexturePath); FBZZ_VFX_FLOAT(motionVectorStrength);
+    FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath);
     FBZZ_VFX_FLOAT(colorVariation);
     FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
@@ -326,19 +340,8 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(trailSampleInterval); FBZZ_VFX_FLOAT(trailWidthScale);
     FBZZ_VFX_FLOAT(trailAlphaScale);
     FBZZ_VFX_BOOL(trailRibbon); FBZZ_VFX_FLOAT(trailRibbonWidth);
-    FBZZ_VFX_FLOAT(selfShadowStrength);
-    FBZZ_VFX_BOOL(softParticles); FBZZ_VFX_FLOAT(softParticleFadeDistance);
-    FBZZ_VFX_BOOL(distortion); FBZZ_VFX_FLOAT(distortionStrength); FBZZ_VFX_BOOL(sixWayLighting);
-    FBZZ_VFX_STRING(distortionTexturePath); FBZZ_VFX_FLOAT(distortionChromatic);
-    FBZZ_VFX_FLOAT(lightingStrength); FBZZ_VFX_FLOAT(emissiveScale);
-    FBZZ_VFX_FLOAT(smokeWrap); FBZZ_VFX_FLOAT(smokeTransmission);
-    FBZZ_VFX_FLOAT(smokeBackScatterPower);
     FBZZ_VFX_BOOL(blackbodyEnabled); FBZZ_VFX_FLOAT(blackbodyReferenceTemperature);
     FBZZ_VFX_FLOAT(blackbodyIntensity);
-    FBZZ_VFX_BOOL(receiveShadows); FBZZ_VFX_FLOAT(shadowStrength);
-    FBZZ_VFX_BOOL(volumetric); FBZZ_VFX_INT(volumetricSteps);
-    FBZZ_VFX_FLOAT(volumetricDensity); FBZZ_VFX_FLOAT(volumetricAnisotropy);
-    FBZZ_VFX_FLOAT(volumetricNoiseScale);
     FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
     FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
     FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
@@ -349,6 +352,9 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
 #undef FBZZ_VFX_BOOL
 #undef FBZZ_VFX_STRING
 
+    emitter.forceFieldChannels = static_cast<std::uint32_t>(
+        table["forceFieldChannels"].value_or(
+            static_cast<std::int64_t>(emitter.forceFieldChannels)));
     emitter.orbitalAxis = ReadVector3(table["orbitalAxis"], emitter.orbitalAxis);
     emitter.trailColorTint = ReadVector4(table["trailColorTint"], emitter.trailColorTint);
     ReadCurve(table, "sizeCurve", emitter.sizeCurve);
@@ -371,9 +377,8 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
             emitter.bursts.push_back(burst);
         }
     }
-    // アセットから復元した時点ではGPU/CPU双方のランタイム状態を必ず初期状態へ戻す。
-    emitter.randomState = emitter.randomSeed;
-    emitter.ResetPlayback();
+    // ランタイム状態はここでは触れない (この型が持っていない)。
+    // コンポーネントへ流し込んだ呼び出し側が ResetPlayback() で初期化する。
 }
 
 } // namespace fbzz::asset

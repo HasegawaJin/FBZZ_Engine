@@ -86,14 +86,8 @@ gravity = [0.0, 0.0, 0.0]
 # 縦に伸ばす層なので回転させない (回すとせん断される)。
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
-# 素材とブレンドは .mat が単一の信頼元。ここの blendMode は .mat の値で毎フレーム上書きされる。
 materialPath = "Assets/Materials/Particles/Flame03_Additive.mat"
-# 芯炎: 260 粒子が重なるので単体は控えめに。光量は Light ノードが担う
-blendMode = 0
 sortMode = 0
-emissiveScale = 1.8
-softParticles = true
-softParticleFadeDistance = 0.3
 noiseStrength = 0.7
 noiseFrequency = 2.2
 noiseSpeed = 2.4
@@ -144,15 +138,8 @@ gravity = [0.0, 0.0, 0.0]
 angularVelocityMin = 0.0
 angularVelocityMax = 0.0
 materialPath = "Assets/Materials/Particles/Flame05_Premultiplied.mat"
-# WHY: 炎が「物体」に見えるには不透明な芯が要る。全部加算だと背景が透けて
-#      光の靄になり、輪郭が消える。body は Premultiplied、hot core だけ加算にする。
-# 外炎: 素材が事前乗算相当なので Premultiplied。Alpha だと縁が汚れる
-blendMode = 2
 # Premultiplied は粒子の前後関係で結果が変わるため、必ず距離ソートする。
 sortMode = 1
-emissiveScale = 1.0
-softParticles = true
-softParticleFadeDistance = 0.35
 noiseStrength = 1.0
 noiseFrequency = 1.5
 noiseSpeed = 1.8
@@ -199,13 +186,7 @@ emitVelocity = [0.0, 1.0, 0.0]
 velocitySpread = 0.3
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Particles/Smoke03_Alpha.mat"
-blendMode = 1
 sortMode = 1
-distortion = true
-distortionStrength = 0.022
-softParticles = true
-softParticleFadeDistance = 0.5
-emissiveScale = 0.0
 # 陽炎は背景 (炎を含む) を屈折させるため、必ず全レイヤーの後に描く。
 renderPriority = 100
 # 陽炎は「うっすら」が正解。alpha を上げすぎると屈折像が板として見えてしまう。
@@ -248,9 +229,6 @@ velocityDamping = 0.35
 # 上昇風の外へ抜けて落ちる粒があることで初めて熱気の境界が見える。
 gravity = [0.0, -0.6, 0.0]
 materialPath = "Assets/Materials/Particles/Spark01_Additive.mat"
-# 火の粉: 小さく数も少ないので強めでよい
-blendMode = 0
-emissiveScale = 3.5
 noiseStrength = 1.4
 noiseFrequency = 1.6
 noiseSpeed = 1.4
@@ -306,29 +284,12 @@ angularVelocityMin = -0.4
 angularVelocityMax = 0.4
 sizeAxisScale = [1.0, 1.0, 1.0]
 materialPath = "Assets/Materials/Particles/Smoke09_Premultiplied.mat"
-# 煤煙: 背景を隠す本体。Premultiplied で二重暗化を避ける
-blendMode = 2
 sortMode = 1
-sixWayLighting = true
-# 素の N·L は「不透明な球」の陰影で、光を透かす煙には合わない。
-# smokeWrap で陰側へ光を回り込ませ、smokeTransmission で前方散乱 (逆光透過) を出す。
-# WHY: この 2 つが無いと、炎が煙の向こうにあっても煙は暗いままで、
-#      lightingStrength を上げるほど真っ黒に潰れるだけだった。
-lightingStrength = 0.85
-smokeWrap = 0.65
-# 焚き火の煙は炎に近く、下から強く照らされる。透過を強めに入れて底面を光らせる。
-smokeTransmission = 1.1
-smokeBackScatterPower = 3.0
-softParticles = true
-softParticleFadeDistance = 0.5
 noiseStrength = 0.6
 noiseFrequency = 0.5
 noiseSpeed = 0.4
 # 煙は最奥。炎の芯より手前に来ると、光っているはずの炎が濁る。
 renderPriority = 0
-# 煙は影を受けて初めて背景へ埋まる。炎自身の光は six-way lighting が担当する。
-receiveShadows = true
-shadowStrength = 0.7
 colorVariation = 0.10
 useDragCurve = true
 dragCurve = [[0.0, 0.4], [1.0, 1.6]]
@@ -511,21 +472,6 @@ float = 0.6
 paramName = "Flame Height"
 nodeId = 2
 schemaPath = "particle.lifetime"
-
-[[parameters]]
-name = "Heat Haze"
-type = 0
-minimum = 0.0
-maximum = 0.12
-hasRange = true
-[parameters.default]
-source = 0
-constantType = 0
-float = 0.022
-[[bindings]]
-paramName = "Heat Haze"
-nodeId = 4
-schemaPath = "particle.distortionStrength"
 
 # 空気の乱れ。Emitter 固有ノイズではなく Updraft 力場を駆動するので、
 # 炎・煙・火の粉が同時に同じ揺れ方をする。

@@ -1,6 +1,8 @@
-// FBZZ Engine
-// ScriptParticleForceFieldProxy.hpp | fbzz::scene
-// Script から ParticleForceField を安全に操作するプロキシ
+/// @file    ScriptParticleForceFieldProxy.hpp
+/// @brief   Script から ParticleForceField (ベクトルフィールド) を操作するプロキシ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+
 #pragma once
 
 #include <Math/Vector3.hpp>
@@ -28,6 +30,17 @@ struct ScriptParticleForceFieldProxy {
     void SetRadius(float radius, float falloffPower = 2.0f) const;
     void SetDirection(const math::Vector3& direction) const;
     void SetTurbulence(float frequency, float speed) const;
+
+    /// この力場を受け取るエミッターを絞る。ParticleEmitter 側の
+    /// ScriptParticleProxy::SetForceFieldChannels と 1 ビットでも重なった相手にだけ作用する。
+    /// 既定は全ビット ON (シーン内の全エミッターへ一律に効く)。
+    void SetChannels(uint32_t channels) const;
+
+    [[nodiscard]] bool  IsEnabled() const;
+    [[nodiscard]] float GetStrength() const;
+    [[nodiscard]] float GetRadius() const;
+    [[nodiscard]] ScriptParticleForceFieldType GetType() const;
+    [[nodiscard]] uint32_t GetChannels() const;
 };
 
 } // namespace fbzz::scene

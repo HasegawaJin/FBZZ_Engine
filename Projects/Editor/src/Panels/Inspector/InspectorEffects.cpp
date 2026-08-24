@@ -1,6 +1,8 @@
-// FBZZ Engine
-// InspectorEffects.cpp | fbzz::editor
-// Effect 系 Component の Inspector 描画
+/// @file    InspectorEffects.cpp
+/// @brief   VFX / パーティクル / 力場 / トレイル系コンポーネントの Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
+
 #include "InspectorEffects.hpp"
 
 #include <Editor/Util/ParticleEmitterModules.hpp>
@@ -58,7 +60,10 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     //      Undo は DrawComponentSection の ActiveID 追跡がそのまま効く。
     DrawComponentSection<scene::ParticleEmitter>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Emitter",
         [](scene::ParticleEmitter& pe, EditorContext& ctx) {
-            DrawParticleEmitterModules(pe, ctx);
+            // 戻り値は「どれか 1 つでも変わった」。捨てるとモジュール側の編集が
+            // シーンの dirty マークへ伝わらず、保存し忘れて消える。
+            if (DrawParticleEmitterModules(pe.settings, ctx, &pe) && ctx.markSceneDirty)
+                ctx.markSceneDirty();
         });
 
     DrawComponentSection<scene::VFXGraphComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "VFX Graph",
@@ -130,6 +135,9 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 ImGui::DragFloat("Noise Frequency", &ff.noiseFrequency, 0.01f, 0.001f, 100.0f);
                 ImGui::DragFloat("Noise Speed", &ff.noiseSpeed, 0.01f, -100.0f, 100.0f);
             }
+            widgets::ForceFieldChannelMask("Channels", ff.channels);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Only emitters sharing a bit with this mask receive this field.");
         });
 
     DrawComponentSection<scene::TrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Trail",

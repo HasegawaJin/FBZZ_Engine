@@ -2,6 +2,7 @@
 // MaterialAsset.hpp | fbzz::asset
 // .mat マテリアルアセットのランタイム表現と TOML 入出力 API
 #pragma once
+#include <Engine/Asset/ParticleMaterialSettings.hpp>
 #include <Engine/Renderer/RenderLayer.hpp>
 #include <Engine/Renderer/RenderState.hpp>
 #include <cstdint>
@@ -61,6 +62,11 @@ struct MaterialAsset {
 
     // シェーダーコンパイル時 define 一覧（例: "USE_NORMAL_MAP", "USE_AO"）
     std::vector<std::string> keywords;
+
+    // [particle] テーブル。render_path = "particle" のときだけ意味を持つ。
+    // WHY ここに置くか: パーティクルの見た目 (ブレンド以外) の正本。
+    //      詳細と «なぜ [params] ではないか» は ParticleMaterialSettings.hpp を参照。
+    ParticleMaterialSettings particle;
 };
 
 // TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。

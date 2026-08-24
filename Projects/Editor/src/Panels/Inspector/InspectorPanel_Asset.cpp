@@ -17,11 +17,15 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
+#include <Editor/Util/ParticleMaterialInspector.hpp>
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Audio/AudioManager.hpp>
+#include <Engine/Audio/Synth.hpp>
+#include <Engine/Core/Application.hpp>
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
@@ -33,6 +37,7 @@
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
+#include <Engine/Asset/SynthAsset.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
@@ -284,6 +289,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 drawParam(name, values);
             }
         }
+
+        // パーティクルの «見た目» はこの .mat が正本。ParticleEmitter からは編集できない。
+        if (mat.renderPath == asset::RenderPath::Particle)
+            materialDirty |= DrawParticleMaterialInspector(mat, ctx.projectRoot);
 
         // AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
         if (materialDirty)
@@ -2557,6 +2566,171 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SameLine();
         ImGui::TextDisabled(s_fzdataDirty && s_fzdataDirtyPath == relPath
                             ? "Saving on release..." : "Auto-saved");
+    } else if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".flac") {
+        // 録音素材の試聴。
+        // WHY Inspector に置くか: これまで音声アセットは選んでも何も出ず、
+        //     どんな音かはゲームを走らせるまで分からなかった。テクスチャに
+        //     プレビューがあって音だけ無いのは、探す手間が桁違いに変わる。
+        static std::string        s_audioPath;
+        static std::vector<float> s_audioWave;
+        static uint32_t           s_audioVoice = 0;
+        static bool               s_audioLoop  = false;
+        static bool               s_audioDecoded = false;
+        static float              s_audioSeconds = 0.0f;
+        static std::string        s_audioFormat;
+
+        const std::string relPath = NormalizeAssetPath(absPath);
+        auto* manager = core::Application::Get().GetAudioManager();
+
+        if (s_audioPath != absPath) {
+            // 別のアセットへ移ったら試聴も止める。裏で鳴り続けると、どのファイルの
+            // 音を聞いているのか分からなくなる。
+            if (manager && s_audioVoice != 0) manager->StopVoice(s_audioVoice);
+            s_audioVoice = 0;
+            s_audioPath  = absPath;
+            s_audioWave.clear();
+            s_audioDecoded = false;
+            s_audioSeconds = 0.0f;
+            s_audioFormat.clear();
+        }
+
+        std::error_code sizeError;
+        const auto fileBytes =
+            std::filesystem::file_size(util::FileSystem::PathFromUtf8(absPath), sizeError);
+        const uintmax_t sizeOnDisk = sizeError ? 0 : fileBytes;
+        ImGui::Text("File: %.1f KB", static_cast<double>(sizeOnDisk) / 1024.0);
+
+        // WHY 大きいファイルを自動で開かないか: デコード結果は AudioManager の
+        //     キャッシュに載り、Shutdown まで解放されない。数分の BGM を並べた
+        //     フォルダをクリックして回るだけで数百 MB 積み上がる。
+        constexpr uintmax_t kAutoDecodeLimit = 2u * 1024u * 1024u;
+        const bool wantDecode = s_audioDecoded || sizeOnDisk <= kAutoDecodeLimit;
+
+        if (!manager) {
+            ImGui::TextDisabled("オーディオデバイスが初期化されていません");
+        } else {
+            if (!s_audioDecoded && !wantDecode) {
+                if (ImGui::Button("Load Preview"))
+                    s_audioDecoded = true;   // 次のフレームで復号する
+                ImGui::SameLine();
+                ImGui::TextDisabled("(2 MB 超のためクリックで読み込み)");
+            }
+
+            if (wantDecode && s_audioWave.empty()) {
+                const auto clip = manager->AcquireClip(relPath);
+                audio::AudioManager::ClipInfo info;
+                if (clip != 0 && manager->DescribeClip(clip, info)) {
+                    s_audioDecoded = true;
+                    s_audioSeconds = info.durationSeconds;
+
+                    char formatText[96];
+                    std::snprintf(formatText, sizeof(formatText), "%u Hz  %u ch  %u bit",
+                                  info.fmt.sampleRate, info.fmt.channels, info.fmt.bitsPerSample);
+                    s_audioFormat = formatText;
+
+                    // 16bit 以外は波形描画を諦める (再生はできる)。
+                    if (info.fmt.bitsPerSample == 16 && info.fmt.channels > 0) {
+                        const size_t frames =
+                            info.bytes / (2u * static_cast<size_t>(info.fmt.channels));
+                        const size_t buckets = (std::min)(static_cast<size_t>(512), frames);
+                        s_audioWave.assign((std::max)(buckets, static_cast<size_t>(1)), 0.0f);
+                        const size_t stride = static_cast<size_t>(info.fmt.channels) * 2u;
+                        for (size_t i = 0; i < buckets; ++i) {
+                            const size_t begin = i * frames / buckets;
+                            const size_t end = (std::max)(begin + 1, (i + 1) * frames / buckets);
+                            int peak = 0;
+                            int peakMagnitude = 0;
+                            for (size_t f = begin; f < end && f < frames; ++f) {
+                                // 先頭チャンネルのみ。左右差より「どこで鳴っているか」が知りたい。
+                                const size_t at = f * stride;
+                                const auto lo = static_cast<uint16_t>(info.pcm[at]);
+                                const auto hi = static_cast<uint16_t>(info.pcm[at + 1]);
+                                const int value = static_cast<int16_t>(
+                                    static_cast<uint16_t>(lo | (hi << 8)));
+                                const int magnitude = value < 0 ? -value : value;
+                                if (magnitude > peakMagnitude) {
+                                    peakMagnitude = magnitude;
+                                    peak = value;
+                                }
+                            }
+                            s_audioWave[i] = static_cast<float>(peak) / 32768.0f;
+                        }
+                    }
+                } else if (wantDecode) {
+                    ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "デコードできません");
+                }
+            }
+
+            if (s_audioDecoded) {
+                ImGui::Text("%s  /  %.2f s", s_audioFormat.c_str(), s_audioSeconds);
+                if (!s_audioWave.empty()) {
+                    ImGui::PlotLines("##audiowave", s_audioWave.data(),
+                                     static_cast<int>(s_audioWave.size()), 0, nullptr,
+                                     -1.0f, 1.0f, ImVec2(-1.0f, 60.0f));
+                }
+
+                const bool playing = s_audioVoice != 0 && manager->IsVoicePlaying(s_audioVoice);
+                if (!playing) s_audioVoice = 0;
+
+                if (ImGui::Button(playing ? "Stop" : "Play")) {
+                    if (playing) {
+                        manager->StopVoice(s_audioVoice);
+                        s_audioVoice = 0;
+                    } else {
+                        s_audioVoice = manager->PlayVoice(relPath, s_audioLoop,
+                                                          manager->FindBus("UI"));
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Checkbox("Loop", &s_audioLoop) && s_audioVoice != 0) {
+                    // ループ指定は voice 生成時にしか渡せないため、鳴らし直す。
+                    manager->StopVoice(s_audioVoice);
+                    s_audioVoice = manager->PlayVoice(relPath, s_audioLoop,
+                                                      manager->FindBus("UI"));
+                }
+            }
+        }
+    } else if (ext == ".synth") {
+        // WHY ここでは編集させないか: SFX Editor が同じファイルの内容をメモリに持って
+        //     編集する。両方から書けるようにすると、片方の未保存の変更をもう片方が
+        //     黙って上書きする。ここは「今どんな音か」を確かめ、必要なら編集面へ
+        //     移るための面に絞る。
+        static std::string       s_synthPath;
+        static asset::SynthAsset s_synth;
+        static bool              s_synthValid = false;
+        if (s_synthPath != absPath) {
+            s_synthPath  = absPath;
+            s_synthValid = asset::LoadSynthAssetFromFile(absPath, s_synth);
+        }
+        if (!s_synthValid) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .synth");
+            return;
+        }
+
+        const audio::SynthSpec& spec = s_synth.spec;
+        ImGui::Text("Preset : %s",
+                    s_synth.presetName.empty() ? "(custom)" : s_synth.presetName.c_str());
+        ImGui::Text("Wave   : %s", audio::WaveToString(spec.wave));
+        ImGui::Text("Length : %.3f s", spec.attack + spec.sustain + spec.decay);
+        ImGui::Text("Pitch  : %.0f Hz (slide %+.2f oct/s)", spec.startFrequency, spec.slide);
+        ImGui::Separator();
+
+        if (ImGui::Button("Play")) {
+            if (auto* manager = core::Application::Get().GetAudioManager()) {
+                const auto clip = manager->AcquireGeneratedClip(spec);
+                if (clip != 0) {
+                    (void)manager->PlayClipVoice(clip, false, manager->FindBus("UI"));
+                    manager->ReleaseClip(clip);
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Open in SFX Editor")) {
+            ctx.selectedAssetPath    = absPath;
+            ctx.requestOpenSfxEditor = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reload")) s_synthPath.clear();
     } else if (ext == ".physmat") {
         // ── PhysicsMaterial (共有物理マテリアル) ──────────────────────────
         // WHY AssetManager 上の実体を直接編集するか:

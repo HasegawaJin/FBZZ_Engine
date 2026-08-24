@@ -1,8 +1,8 @@
-// FBZZ Engine
-// ParticleForceField.hpp | fbzz::scene
-// パーティクル力場コンポーネント (ベクトルフィールド)
-// シーン内の ParticleEmitter 粒子へ風・吸引・渦・乱流などの力を加える。
-// ParticlePass が毎フレーム全力場を収集し、CPU/GPU 両方のシミュレーションで同じ式を適用する。
+/// @file    ParticleForceField.hpp
+/// @brief   パーティクルへ風・吸引・渦・乱流を加えるベクトルフィールド。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <cstdint>
@@ -42,6 +42,15 @@ struct ParticleForceField {
     float noiseFrequency = 0.5f;
     float noiseSpeed = 1.0f;
 
+    /// この力場を受け取るエミッターを選ぶビットマスク。
+    /// ParticleEmitter::forceFieldChannels と 1 ビットでも重なったエミッターにだけ作用する。
+    ///
+    /// WHY: 力場は本来シーン全体へ一律に効く。それだけでは「＋の粒子は−の電極へ引かれるが
+    ///      ＋の電極には反発する」のように、同じ空間に住む粒子を別々の場で動かす表現が作れない。
+    ///      Attract を 1 つ置いた瞬間に全エミッターの粒子が同じ 1 点へ collapse してしまう。
+    ///      既定は全ビット ON なので、マスクを触らない既存シーンの挙動は変わらない。
+    uint32_t channels = 0xFFFFFFFFu;
+
     const char* GetTypeName() const { return "Particle Force Field"; }
     void Reflect(IReflector& r)
     {
@@ -56,6 +65,10 @@ struct ParticleForceField {
         r.Field("direction", direction);
         r.Field("noiseFrequency", noiseFrequency);
         r.Field("noiseSpeed", noiseSpeed);
+        // IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
+        int channelsValue = static_cast<int>(channels);
+        r.Field("channels", channelsValue);
+        channels = static_cast<uint32_t>(channelsValue);
     }
 };
 

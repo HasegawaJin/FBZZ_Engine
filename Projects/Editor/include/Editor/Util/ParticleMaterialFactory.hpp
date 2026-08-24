@@ -24,16 +24,30 @@ namespace fbzz::editor {
 ///
 /// @param projectRoot  プロジェクトルート (EditorContext::projectRoot)
 /// @param texturePath  Assets 起点 / 絶対パスどちらでもよいテクスチャ参照
-/// @param blend        .mat へ焼くブレンド。ParticlePass はここを Emitter より優先する
+/// @param blend        .mat へ焼くブレンド。既定は加算 (ParticleFallback.mat と同じ)。
+///                     WHY 既定を持つか: ブレンドは .mat 側の値が唯一の正本になったため、
+///                     «これから作る .mat» の初期値を呼び出し側が持っていないことがある。
+///                     作った後は Material の Inspector で変更する。
 /// @param outError     失敗理由 (任意)
 /// @return Assets 起点の .mat パス。失敗時は空文字列
-[[nodiscard]] std::string EnsureParticleMaterial(const std::string& projectRoot,
-                                                 const std::string& texturePath,
-                                                 scene::ParticleBlendMode blend,
-                                                 std::string* outError = nullptr);
+[[nodiscard]] std::string EnsureParticleMaterial(
+    const std::string& projectRoot,
+    const std::string& texturePath,
+    scene::ParticleBlendMode blend = scene::ParticleBlendMode::Additive,
+    std::string* outError = nullptr);
 
 /// パスがテクスチャ拡張子か。D&D の受け口が「.mat か .png か」を分けるのに使う。
 [[nodiscard]] bool IsTextureAssetPath(const std::string& path);
+
+/// materialPath が指す .mat の [particle]。未設定・ロード失敗なら nullptr。
+///
+/// WHY: 見た目が .mat へ移ったことで、«GPU に載るか»・«どの機能が効いているか» を
+///      答えるには素材まで読む必要がある。Inspector / VFX グラフ / AI バスが
+///      それぞれ解決を書くと、同じ問いに別の答えを返すようになる。
+/// @note 戻り値は AssetManager のキャッシュを指す。次のロードまでの寿命しか無いので、
+///       その場で読むだけにして保持しないこと。
+[[nodiscard]] const asset::ParticleMaterialSettings* ResolveParticleMaterialSettings(
+    const std::string& materialPath);
 
 /// Particle / Trail の Material 欄。
 ///
@@ -46,7 +60,8 @@ namespace fbzz::editor {
 ///                            既存 .mat を選んだ場合は使われない。
 /// @return true if materialPath was changed
 bool ParticleMaterialField(const char* label, std::string& materialPath,
-                           scene::ParticleBlendMode blendForNewMaterial,
-                           const std::string& projectRoot);
+                           const std::string& projectRoot,
+                           scene::ParticleBlendMode blendForNewMaterial
+                               = scene::ParticleBlendMode::Additive);
 
 } // namespace fbzz::editor

@@ -3,12 +3,10 @@
 // CPU パーティクル用ビルボードシェーダー
 // PSO: SOLID_NOCULL + ADDITIVE/ALPHA_BLEND + DEPTH_READ
 
-#include "Common/Binding.hlsli"
-#define FBZZ_MATERIAL_CONSTANTS
-#include "Common/Constants.hlsli"
-#include "Common/Space.hlsli"
-#include "Platform/Backend.hlsli"
+// ParticleCommon.hlsli を最初に include する (b11 の cbuffer / ParticleVSIn /
+// ParticlePSIn / ParticleBillboardVS を供給し、b2 を材質へ空ける)。
 #include "Rendering/ParticleCommon.hlsli"
+#include "Common/Space.hlsli"
 #include "Rendering/ParticleNoise.hlsli"
 #include "Rendering/ParticleSelfShadow.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -26,163 +24,10 @@ Texture2D<float>       gShadowMap  : register(TEX_SHADOW);
 SamplerState           gSampler    : register(SAMPLER_DEFAULT);
 SamplerComparisonState gSampShadow : register(SAMPLER_SHADOW);
 
-cbuffer ParticleRenderConstants : register(CB_MATERIAL)
-{
-    uint  gRenderMode;
-    float gStretchedVelocityScale;
-    float gStretchedLengthScale;
-    float gSoftParticleFadeDistance;
-    uint  gSoftParticles;
-    uint  gMaxParticles;
-    uint  gEffectsFlags;
-    float gDistortionStrength;
-    float gLightingStrength;
-    float gEmissiveScale;
-    float gMotionVectorStrength;
-    // 描画先の解像度。PostProcConstants の screenSize はパーティクル描画では
-    // バインドされないため、歪みの画面UVはこちらを使う。
-    float gScreenWidth;
-    float gScreenHeight;
-    // ビルボードの軸ごとサイズ倍率 (縦に伸びる炎・平たい衝撃波などの非等方形状用)
-    float gSizeAxisScaleX;
-    float gSizeAxisScaleY;
-    // 受け影の強さ [0,1]。0 で無効 (影サンプリング自体をスキップ)。
-    float gShadowStrength;
-    // ボリュメトリック煙 (gEffectsFlags bit4)
-    uint  gVolumetricSteps;
-    float gVolumetricDensity;
-    float gVolumetricAnisotropy;
-    float gVolumetricNoiseScale;
-    // GPU 経路 (ParticleGPU.hlsl) 専用。CPU 経路では読まないが、同じ b2 を共有するため
-    // ParticleRenderCB のレイアウトを 1 バイトもずらさないよう必ず宣言を揃える。
-    uint  gGpuSortEnabled;
-    // 自己影の消衰係数。0 で無効。密度バッファ (t9) は Particle パスが用意する。
-    float gSelfShadowStrength;
-    // 煙の散乱 (FBZZ_PFX_SIX_WAY 有効時)。巻き込み拡散と逆光透過。
-    float gSmokeWrap;
-    float gSmokeTransmission;
-    // float4 はレジスタを跨げないため、ここまでで 16 バイト境界 (offset 96) に揃えてある。
-    // 順序を入れ替えると C++ の ParticleRenderCB と黙ってずれる。
-    float4 gTintColor;             // .mat の [params] albedo (リニア済み)
-    float gSmokeBackScatterPower;
-    float gDistortionChromatic;    // 歪みの色収差量 [画面 UV]
-    float gParticlePad1;
-    float gParticlePad2;
-};
-
-struct ParticleVSIn
-{
-    float3 center : POSITION;   // ワールド空間パーティクル中心
-    float2 uv     : TEXCOORD0;  // クワッドコーナー UV [0,1]
-    float4 color  : COLOR;      // RGBA (alpha = フェード乗数)
-    float  size   : TEXCOORD1;  // ビルボードの一辺サイズ (ワールド単位)
-    float  rotation : TEXCOORD2;
-    float4 uvRect   : TEXCOORD3; // xy=min, zw=max
-    float3 velocity : TEXCOORD4;
-    float4 nextUvRect : TEXCOORD5;
-    float spriteBlend : TEXCOORD6;
-};
-
-struct ParticlePSIn
-{
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-    float2 localUv    : TEXCOORD1;
-    float2 nextUv     : TEXCOORD2;
-    float spriteBlend : TEXCOORD3;
-    // 受け影のシャドウマップ投影に使うワールド座標。
-    float3 worldPos   : TEXCOORD4;
-    // ボリュメトリック煙のレイマーチ用: 粒子中心と半径 (ワールド単位)。
-    float3 center     : TEXCOORD5;
-    float  radius     : TEXCOORD6;
-    float4 color      : COLOR;
-};
-
-// ---------- ボリュメトリック煙 -------------------------------------------
-// ビルボードの矩形内で、粒子中心の球状密度場をレイマーチする。
-// WHY: 板ポリゴンにテクスチャを貼るだけでは、カメラが回り込んだときに
-//      「紙が回った」ように見える。視線方向へ積分すると厚みが出て、
-//      逆光での前方散乱 (縁が光る) も表現できる。
-//      専用パスを増やさず PS 内で完結させることで、既存の VB/PSO/ブレンド・
-//      ソート・受け影の仕組みをそのまま流用している。
-
-// Henyey-Greenstein 位相関数。g>0 で前方散乱が強くなる。
-float HenyeyGreenstein(float cosTheta, float g)
-{
-    float gg = g * g;
-    float denom = 1.0f + gg - 2.0f * g * cosTheta;
-    return (1.0f - gg) / (4.0f * 3.14159265f * max(pow(abs(denom), 1.5f), 1.0e-4f));
-}
-
-// 球内の密度。中心ほど濃く、外周でゼロへ落ちる。ノイズで塊感を与える。
-float VolumetricDensityAt(float3 samplePos, float3 center, float radius)
-{
-    float3 offset = (samplePos - center) / max(radius, 1.0e-4f);
-    float  r = length(offset);
-    if (r >= 1.0f) return 0.0f;
-    // 外周へ向かって滑らかに 0 へ。二乗で中心に密度を寄せる。
-    float falloff = 1.0f - r;
-    falloff *= falloff;
-    // ノイズはワールド座標基準。粒子が動いても模様が張り付いて見えないよう
-    // 中心からの相対位置ではなくワールド位置でサンプルする。
-    float noise = FbmNoise3D(samplePos * gVolumetricNoiseScale, 3);
-    return saturate(falloff * (0.6f + 0.8f * noise));
-}
-
-ParticlePSIn VSMain(ParticleVSIn v)
-{
-    // row-major view 行列の列 0, 1 = カメラ空間 X / Y 軸のワールド向き
-    float3 right = float3(view[0][0], view[1][0], view[2][0]);
-    float3 up    = float3(view[0][1], view[1][1], view[2][1]);
-    float lengthScale = 1.0f;
-    if (gRenderMode == 1)
-    {
-        float speed = length(v.velocity);
-        if (speed > 1.0e-4f)
-        {
-            up = v.velocity / speed;
-            float3 viewDir = normalize(cameraPos - v.center);
-            right = normalize(cross(up, viewDir));
-            lengthScale = max(gStretchedLengthScale + speed * gStretchedVelocityScale, 0.0f);
-        }
-    }
-    else if (gRenderMode == 2)
-    {
-        right = float3(1.0f, 0.0f, 0.0f);
-        up = float3(0.0f, 0.0f, 1.0f);
-    }
-    else if (gRenderMode == 3)
-    {
-        up = float3(0.0f, 1.0f, 0.0f);
-        float3 viewDir = normalize(cameraPos - v.center);
-        right = normalize(cross(up, viewDir));
-    }
-
-    // UV [0,1] → corner オフセット [-1, +1]
-    float2 corner   = v.uv * 2.0f - 1.0f;
-    float  s = sin(v.rotation);
-    float  c = cos(v.rotation);
-    corner = float2(corner.x * c - corner.y * s, corner.x * s + corner.y * c);
-    // 軸ごとの倍率は回転の後に掛ける。先に掛けると回転で縦横比が混ざり、
-    // 「回しても細長いまま」という直感的な挙動にならない。
-    float3 worldPos = v.center
-                    + right * corner.x * v.size * 0.5f * gSizeAxisScaleX
-                    + up    * corner.y * v.size * 0.5f * gSizeAxisScaleY * lengthScale;
-
-    ParticlePSIn o;
-    o.svPosition = mul(float4(worldPos, 1.0f), viewProjection);
-    o.uv         = lerp(v.uvRect.xy, v.uvRect.zw, v.uv);
-    o.localUv    = v.uv;
-    o.nextUv     = lerp(v.nextUvRect.xy, v.nextUvRect.zw, v.uv);
-    o.spriteBlend = v.spriteBlend;
-    o.worldPos   = worldPos;
-    o.center     = v.center;
-    // 非等方スケールが掛かっていても球として扱うため、大きい方の半径を使う
-    // (小さい方に合わせると縁が矩形からはみ出して切れて見える)。
-    o.radius     = v.size * 0.5f * max(gSizeAxisScaleX, gSizeAxisScaleY);
-    o.color      = v.color;
-    return o;
-}
+// ビルボード展開は Rendering/ParticleCommon.hlsli が持つ。
+// WHY: 自己影・オーバードロー計測・選択マスクも同じ形を描かないと意味を持たないため、
+//      式を 1 か所に置いて 4 つのパスで共有する。
+ParticlePSIn VSMain(ParticleVSIn v) { return ParticleBillboardVS(v); }
 
 float4 PSMain(ParticlePSIn p) : SV_Target0
 {
@@ -269,8 +114,13 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
             float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
             alpha *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
         }
-        // 散乱光は既に alpha で重み付けされているため、事前乗算アルファとして出す。
-        return float4(scattered * gEmissiveScale, alpha);
+        // 散乱光は積分の時点で alpha (= 1 - transmittance) の重みを含んだ «事前乗算» の値。
+        // PREMULTIPLIED 以外のブレンドはブレンド側がもう一度 src.a を掛けるため、
+        // ここで割り戻して非事前乗算へ揃える (方程式は RenderState.hpp の BlendMode)。
+        float3 volumeRgb = scattered * gEmissiveScale;
+        if ((gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) == 0u)
+            volumeRgb /= max(alpha, 1.0e-4f);
+        return float4(volumeRgb, alpha);
     }
     float2 currentUv = p.uv;
     float2 nextUv = p.nextUv;

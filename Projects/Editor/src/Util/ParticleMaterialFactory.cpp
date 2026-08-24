@@ -9,6 +9,7 @@
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
 #include <algorithm>
@@ -20,11 +21,6 @@ namespace {
 
 // Particle 用 .mat の置き場。テンプレートが同梱している 25 枚もここにある。
 constexpr const char* kParticleMaterialDir = "Assets/Materials/Particles";
-
-// Assets/Shaders/Material/Surface/Unlit.hlsl。
-// WHY: ParticlePass は専用シェーダーで描くため .mat の shader は描画に使われないが、
-//      空だとマテリアル解決自体が失敗して albedo も blend も読めなくなる。
-constexpr const char* kUnlitShaderGuid = "guid:0c0bb0a5d2c448cd8138e19e9358e5a7";
 
 constexpr std::array<const char*, 5> kTextureExtensions = {
     ".png", ".tga", ".dds", ".jpg", ".jpeg"
@@ -132,17 +128,18 @@ std::string EnsureParticleMaterial(const std::string& projectRoot,
     body += "# FBZZ Engine\n";
     body += "# " + materialName + "\n";
     body += "# Particle 用に自動生成されたマテリアル。\n";
-    body += "# WHY: ParticlePass は materialPath から albedo テクスチャと blend_mode だけを読む\n";
-    body += "#      (shader / params は使わない)。素材 1 枚につき 1 マテリアルを置くことで、\n";
-    body += "#      複数の Emitter から同じ素材設定を共有できる。\n";
+    body += "# WHY: 素材 1 枚につき 1 マテリアルを置くことで、複数の Emitter から\n";
+    body += "#      同じ素材設定を共有できる。\n";
+    body += "# shader を空にしてあるのは «組み込み Particle.hlsl で描く» の意味。\n";
+    body += "# 手続きシェーダーを使うときだけ shader を書く (要 render_path = \"particle\")。\n";
     body += "# 素材: " + assetTexture + "\n";
     body += "version = 1\n";
-    body += "shader = \"" + std::string(kUnlitShaderGuid) + "\"\n";
+    body += "shader = \"\"\n";
     body += "blend_mode = \"" + std::string(BlendModeName(blend)) + "\"\n";
     body += "double_sided = true\n";
     body += "depth_write = false\n";
     body += "render_queue = 3000\n";
-    body += "render_path = \"auto\"\n";
+    body += "render_path = \"particle\"\n";
     body += "mesh_type = \"surface\"\n";
     body += "\n[textures]\n";
     body += "albedo = \"" + textureRef + "\"\n";
@@ -161,9 +158,18 @@ std::string EnsureParticleMaterial(const std::string& projectRoot,
     return assetMaterial;
 }
 
+const asset::ParticleMaterialSettings* ResolveParticleMaterialSettings(
+    const std::string& materialPath)
+{
+    if (materialPath.empty()) return nullptr;
+    const auto handle = asset::AssetManager::LoadMaterial(materialPath);
+    const auto* material = asset::AssetManager::GetMaterial(handle);
+    return material != nullptr ? &material->particle : nullptr;
+}
+
 bool ParticleMaterialField(const char* label, std::string& materialPath,
-                           scene::ParticleBlendMode blendForNewMaterial,
-                           const std::string& projectRoot)
+                           const std::string& projectRoot,
+                           scene::ParticleBlendMode blendForNewMaterial)
 {
     // 手入力・ピッカー・D&D のすべてでテクスチャを許す。ここを .mat だけに絞ると
     // 「Asset Browser から .png を掴んでも受け付けない」状態へ戻る。
