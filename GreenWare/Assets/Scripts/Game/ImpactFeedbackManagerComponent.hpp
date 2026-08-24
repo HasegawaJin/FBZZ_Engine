@@ -22,6 +22,7 @@
 #include <Scripts/Game/HitstopManagerComponent.hpp>
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <string>
 
@@ -37,6 +38,26 @@ enum class FeedbackEvent {
     PlayerHurt,    // プレイヤーの被弾
     PlayerLand,    // プレイヤーの着地
 };
+
+// 一番弱い出来事でもこれだけは鳴らす。0 まで落とすと、軽い接触が「起きなかったこと」
+// になり、当たったのに無反応という一番紛らわしい状態になる。
+inline constexpr float kMinImpactVolume = 0.45f;
+
+// 出来事の種類と強さから、鳴らす変奏の束を選ぶ。
+//
+// WHY 種類ごとの配分表 (Mix) に持たせないか: Mix は Inspector の数値をそのまま束ねた
+//     ものなので、強さで分岐する余地が無い。素材が 3 段で入っている衝突だけは
+//     強さが選択に効くため、束の選択は別の関数にしてある。
+[[nodiscard]] inline const se::Bank& BankFor(FeedbackEvent event, float strength01)
+{
+    switch (event) {
+    case FeedbackEvent::AnchorImpact: return se::kImpactWall;
+    case FeedbackEvent::PlayerHurt:   return se::kPlayerDamaged;
+    case FeedbackEvent::PlayerLand:   return se::kPlayerLanding;
+    case FeedbackEvent::EnemyImpact:  break;
+    }
+    return se::ImpactByStrength(strength01);
+}
 
 class ImpactFeedbackManagerComponent : public Script {
     FBZZ_SCRIPT(ImpactFeedbackManagerComponent)
@@ -54,7 +75,7 @@ public:
     FBZZ_FIELD_RANGE(float, impactRumble,  1.0f, "Rumble",  0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, impactFlash,   0.0f, "Flash",   0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, impactDistort, 0.35f, "Distortion", 0.0f, 1.0f)
-    FBZZ_FIELD_FILE(impactSfx, "", "SFX", ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(impactSfx, "", "SFX")
 
     FBZZ_GROUP("Anchor Impact")
     FBZZ_FIELD_RANGE(float, anchorHitstop, 1.0f, "Hitstop", 0.0f, 1.0f)
@@ -63,7 +84,7 @@ public:
     FBZZ_FIELD_RANGE(float, anchorRumble,  1.0f, "Rumble",  0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, anchorFlash,   0.0f, "Flash",   0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, anchorDistort, 0.5f, "Distortion", 0.0f, 1.0f)
-    FBZZ_FIELD_FILE(anchorSfx, "", "SFX", ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(anchorSfx, "", "SFX")
 
     FBZZ_GROUP("Player Hurt")
     FBZZ_FIELD_RANGE(float, hurtHitstop, 0.35f, "Hitstop", 0.0f, 1.0f)
@@ -72,7 +93,7 @@ public:
     FBZZ_FIELD_RANGE(float, hurtRumble,  0.9f, "Rumble",  0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, hurtFlash,   1.0f, "Flash",   0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, hurtDistort, 0.8f, "Distortion", 0.0f, 1.0f)
-    FBZZ_FIELD_FILE(hurtSfx, "", "SFX", ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(hurtSfx, "", "SFX")
 
     // WHY 着地に止めも赤も割り当てないか: 着地は自分の操作の結末であって、
     //     受けた出来事ではない。画面を止めると自分の移動を邪魔されたことになり、
@@ -83,7 +104,7 @@ public:
     FBZZ_FIELD_RANGE(float, landRumble,  0.4f, "Rumble",  0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, landFlash,   0.0f, "Flash",   0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, landDistort, 0.0f, "Distortion", 0.0f, 1.0f)
-    FBZZ_FIELD_FILE(landSfx, "", "SFX", ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(landSfx, "", "SFX")
 
     FBZZ_GROUP("Shared")
     FBZZ_FIELD_RANGE(float, distortSeconds, 0.3f, "Distortion Seconds", 0.0f, 2.0f)
@@ -124,6 +145,9 @@ inline void ImpactFeedbackManagerComponent::OnStart()
                          "The most recently started one takes over.");
     }
     s_instance = this;
+    // 手触りをまとめて鳴らす立場なので、音も 1 箇所から出す。
+    // 出来事は画面の中心で起きたものとして扱うため 2D (距離で薄くならない)。
+    se::EnsureSource(scene);
 }
 
 inline ImpactFeedbackManagerComponent::Mix
@@ -170,7 +194,11 @@ inline void ImpactFeedbackManagerComponent::Play(FeedbackEvent event, float stre
         if (mix.distort > 0.0f) screen->Distort(strength * mix.distort, distortSeconds);
     }
 
-    if (mix.sfx && !mix.sfx->empty()) audio.PlayOneShot(*mix.sfx);
+    // 音量も強さに乗せる。段が 3 つしかないので、段の中の差は倍率で埋める。
+    // WHY 段だけに任せないか: 0.34 と 0.66 は同じ Mid の音になるが、出来事としては
+    //     倍近く違う。段の切り替えだけだと、しきい値をまたぐ瞬間だけ急に重くなる。
+    const float volume = Lerp(kMinImpactVolume, 1.0f, strength);
+    se::Play(audio, *mix.sfx, BankFor(event, strength), volume);
 }
 
 } // namespace sandbox

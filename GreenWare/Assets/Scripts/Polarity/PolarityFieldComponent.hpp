@@ -24,17 +24,26 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
+#include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/BodyBounds.hpp>
+#include <Scripts/Utils/ElectricArc.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
 #include <algorithm>
+#include <cstddef>
 #include <functional>
+#include <string>
 #include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
+using fbzz::Time;
 
 namespace sandbox {
+
+// コライダーが測れない対象の全高。Mite 相当の大きさ (VfxManagerComponent と同じ前提)。
+inline constexpr float kArcFallbackHeight = 1.2f;
 
 class PolarityFieldComponent : public Script {
     FBZZ_SCRIPT(PolarityFieldComponent)
@@ -64,6 +73,29 @@ public:
     // 止め方・揺らし方・鳴らし方は ImpactFeedbackManagerComponent が一括で持つ。
     // ここは「何が起きたか」と「どれくらい強い当たりだったか」を渡すだけ。
 
+    FBZZ_GROUP("Link Arc (12.5)")
+    // WHY 放電を盤面が張るか:
+    //   12.5 のエネルギーラインは «対» の持ち物で、どちらか一方の敵に持たせると、
+    //   A も B も自分の放電を張って同じ 2 点に 2 束が重なる。見た目は «明るさだけ
+    //   倍の 1 本» になり、本数を増やした意味が消えたうえに負荷だけ倍になる。
+    //   誰と誰が組んでいるかを知っているのはここだけなので、ここが 1 本だけ張る。
+    //
+    //   直線のエネルギーライン (PolarityBodyComponent の Link Line) は残す。
+    //   放電は形が毎回変わるので «どこへ引かれているか» を読ませる役には立たない。
+    //   読ませる線と、力が溜まっていることを見せる放電は別の仕事をしている。
+    FBZZ_FIELD(bool, drawLinkArcs, true, "Draw Link Arcs")
+    FBZZ_FIELD_RANGE_INT(int, arcStrands, 2, "Arc Strands", 1, 6)
+    FBZZ_TOOLTIP("1 リンクあたりの筋の本数。上限 (Max Links) を掛けた数だけ線が増える")
+    FBZZ_FIELD_RANGE(float, arcAmplitude, 0.5f, "Arc Amplitude", 0.0f, 3.0f)
+    FBZZ_TOOLTIP("放電が直線から外れる幅 [m]。離れているほど自動で大きく振れる")
+    FBZZ_FIELD_RANGE(float, arcWidth, 0.08f, "Arc Width", 0.005f, 0.5f)
+    FBZZ_FIELD_RANGE(float, arcRate, 24.0f, "Arc Rate", 1.0f, 60.0f)
+    FBZZ_TOOLTIP("撃ち出し直前の組み替え頻度 [Hz]。溜め始めはこれより緩やかに走る")
+    FBZZ_FIELD_RANGE(float, arcIntensity, 1.6f, "Arc Intensity", 0.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, arcRangeScale, 1.5f, "Arc Range", 0.2f, 3.0f)
+    FBZZ_TOOLTIP("作用半径の何倍で放電が消えるか。近づくほど明るくなる = 溜まって見える。"
+                 "1.0 を下回ると、組めたばかりの遠い組で放電が出ない")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD(bool, drawDebugLinks, false, "Draw Debug Links")
     FBZZ_FIELD_READ_ONLY(int, debugLinkCount, 0, "Active Links")
@@ -87,12 +119,21 @@ public:
 
     void OnStart()     override;
     void OnUpdate()    override;
+    // 盤面を止めた瞬間に放電も消す。OnUpdate が止まるだけだと、最後のフレームの
+    // 放電が «誰とも組んでいない 2 点» の間に張り付いたまま残る。
+    void OnDisable()   override { for (ElectricArcBundle& arc : m_linkArcs) arc.Extinguish(*this); }
     // WHY 衝突の回収を OnLateUpdate に置くか:
     //   OnCollisionEnter は物理ステップの中で呼ばれ、Phase::Physics は Phase::Script の
     //   後に走る。OnUpdate で回収すると必ず 1 フレーム遅れて演出が出る。
     //   物理より後に走る LateUpdate なら、ぶつかったフレームでヒットストップがかかる。
     void OnLateUpdate() override;
-    void OnDestroy()    override { if (s_instance == this) s_instance = nullptr; }
+    void OnDestroy()    override
+    {
+        // 放電の筋はルートに置いた GameObject なので、盤面と一緒には消えない。
+        for (ElectricArcBundle& arc : m_linkArcs) arc.Detach(*this);
+        m_linkArcs.clear();
+        if (s_instance == this) s_instance = nullptr;
+    }
 
 private:
     static inline PolarityFieldComponent* s_instance = nullptr;
@@ -116,9 +157,21 @@ private:
     };
 
     void CollectCandidates();
-    void BuildLinks();
+    void BuildLinks(float dt);
+    /// 1 リンクぶんの放電を今フレームの両端・強さへ張り直す。
+    void DriveLinkArc(std::size_t slot, const Candidate& a, const Candidate& b, float dt);
+    /// 今フレーム使わなかった束を消灯する。
+    ///
+    /// WHY 破棄しないか: リンクは 1 秒に何度も入れ替わる。そのたびに筋の GameObject を
+    ///     作り直すと、シーンの GameObject 数が戦闘の激しさに合わせて上下し、
+    ///     EntityID を握っている側の参照が揺さぶられる。枠は寝かせて使い回す。
+    void ExtinguishArcsFrom(std::size_t used);
+    /// 放電の端点。動く側は本人の LinkPoint、動かない側 (柱・壁) は胴体の中心。
+    [[nodiscard]] Vector3 ArcPointOf(const Candidate& candidate) const;
     void ResolveImpacts();
     void ApplyImpactFeel(const PolarityImpact& impact);
+    /// 12.6 の「衝突速度に比例」。最低速度の 2 倍で最大になる 0..1。
+    [[nodiscard]] float ImpactStrength(const PolarityImpact& impact) const;
     // 既に飛んでいる相手との組み合わせか (継続中のリンクを途中で乗り換えさせない)。
     [[nodiscard]] bool IsOngoingLink(const Candidate& a, const Candidate& b) const;
 
@@ -128,6 +181,8 @@ private:
     std::vector<Candidate>      m_candidates;
     std::vector<PairCandidate>  m_pairs;
     std::vector<PolarityImpact> m_impacts;
+    /// 成立中のリンク 1 本につき 1 束。使わなくなった枠は消灯して寝かせる。
+    std::vector<ElectricArcBundle> m_linkArcs;
     bool                        m_warnedNoFeedback = false;
 };
 
@@ -154,11 +209,12 @@ inline void PolarityFieldComponent::OnUpdate()
 {
     // 停止中は盤面も止める。組み替えても物理が進まないので意味が無いうえ、
     // 止まっている間に相手が変わると復帰した瞬間に別方向へ飛んで見える。
+    // 放電も同じフレームで固まるので、止まった画面で線だけが走り続けることもない。
     if (auto* hitstop = HitstopManagerComponent::Instance(); hitstop && hitstop->IsActive())
         return;
 
     CollectCandidates();
-    BuildLinks();
+    BuildLinks(Max(Time::deltaTime, 0.0f));
 }
 
 inline void PolarityFieldComponent::CollectCandidates()
@@ -200,7 +256,71 @@ inline bool PolarityFieldComponent::IsOngoingLink(const Candidate& a, const Cand
     return false;
 }
 
-inline void PolarityFieldComponent::BuildLinks()
+inline Vector3 PolarityFieldComponent::ArcPointOf(const Candidate& candidate) const
+{
+    // 動く側は本人が高さを決めている。線と放電が別の高さから出ると、同じ 2 体を
+    // 結んでいるのに «2 本の別の関係» に見える。
+    if (candidate.body) return candidate.body->LinkPoint();
+    // 柱・壁は原点が足元にあり、全高もまちまち。実寸の中心から出す。決め打ちの高さだと、
+    // 8m の柱では足元から、1m の岩では頭上から放電が出る。
+    return candidate.object ? bodybounds::CenterWorld(*candidate.object, kArcFallbackHeight)
+                            : candidate.position;
+}
+
+inline void PolarityFieldComponent::DriveLinkArc(std::size_t slot, const Candidate& a,
+                                                 const Candidate& b, float dt)
+{
+    // 枠ごとに違う鍵。同じ鍵だと 2 本目の束が 1 本目の筋を掴み、リンクが
+    // 何本あっても放電は 1 本ぶんしか出なくなる。
+    while (slot >= m_linkArcs.size()) {
+        m_linkArcs.emplace_back();
+        m_linkArcs.back().SetKey("PolarityLink" + std::to_string(m_linkArcs.size() - 1));
+    }
+
+    // 溜めの進みがそのまま «電圧»。飛んでいる間は張り切った状態で固定する。
+    // WHY 動く側から取るか: 7.3 の溜めを持っているのは動く側だけで、柱は何も数えていない。
+    //     両方が動く組では «より進んでいる方» を採る (同じ溜めを共有しているので、
+    //     片方が 1 フレーム先行しているだけ)。
+    float charge = 0.0f;
+    if (a.body) charge = Max(charge, a.body->IsFlying() ? 1.0f : a.body->WindupProgress());
+    if (b.body) charge = Max(charge, b.body->IsFlying() ? 1.0f : b.body->WindupProgress());
+
+    const Vector3 from     = ArcPointOf(a);
+    const Vector3 to       = ArcPointOf(b);
+    const float   distance = (to - from).Length();
+
+    ElectricArcStyle style;
+    style.strandCount = arcStrands;
+    // 折れ点は距離から決める。10m を 24 点で折ると 1 区間 0.4m の «稲妻» になるが、
+    // 密着寸前の 1m でも同じ点数だと、計算だけ増えて見た目は直線に戻る。
+    style.segments    = static_cast<int>(Clamp(distance * 3.0f, 8.0f, 40.0f));
+    style.amplitude   = Max(arcAmplitude, 0.0f) * Clamp(distance / 5.0f, 0.5f, 2.0f);
+    style.width       = Max(arcWidth, 0.001f);
+    // 溜め始めは緩やかに、撃ち出し直前ほど速く走らせる。頻度そのものが «張り詰め» になる。
+    style.strikeRate  = Lerp(9.0f, Max(arcRate, 1.0f), charge);
+    // 近づくほど明るい。7.3 ③ の突進はここが自動で最大へ寄り、衝突の瞬間が最も強く光る。
+    style.strikeRange = AttractionRadius() * Max(arcRangeScale, 0.01f);
+    style.intensity   = Max(arcIntensity, 0.0f) * (0.55f + 0.85f * charge);
+    style.breakup     = Lerp(0.65f, 0.35f, charge); // 溜め中は途切れ、張り切ると繋がる
+    style.travel      = Lerp(4.0f, 14.0f, charge);
+    style.coreTint    = 0.5f;
+    // 電荷が «流れ始めた» ことを粒で見せる。溜めの序盤は出さない。
+    style.beadDensity = charge > 0.35f ? Lerp(0.0f, 4.0f, charge) : 0.0f;
+
+    // 色の対応は PolarityTypes が唯一の正本。ここで赤青を書き直さない。
+    style.fromColor = PolarityColor(a.target->Current());
+    style.toColor   = PolarityColor(b.target->Current());
+
+    m_linkArcs[slot].Update(*this, from, to, style, dt);
+}
+
+inline void PolarityFieldComponent::ExtinguishArcsFrom(std::size_t used)
+{
+    for (std::size_t i = used; i < m_linkArcs.size(); ++i)
+        m_linkArcs[i].Extinguish(*this);
+}
+
+inline void PolarityFieldComponent::BuildLinks(float dt)
 {
     m_pairs.clear();
 
@@ -264,9 +384,19 @@ inline void PolarityFieldComponent::BuildLinks()
         if (a.movable) a.body->BeginPull(*b.object, !b.movable);
         if (b.movable) b.body->BeginPull(*a.object, !a.movable);
 
+        // WHY BeginPull の «後» に張るか: 放電の強さは溜めの進み (WindupProgress) から
+        //     取る。先に張ると、リンクが成立した最初のフレームだけ «溜めていないのに
+        //     放電が出ている» 状態になり、予兆が 1 フレーム前倒しで漏れる。
+        if (drawLinkArcs)
+            DriveLinkArc(static_cast<std::size_t>(linkCount - 1), a, b, dt);
+
         if (drawDebugLinks)
             debug.DrawLine(a.position, b.position, PolarityColor(a.target->Current()));
     }
+
+    // 今フレーム張らなかった枠を消灯する。リンクが減った場合も、Inspector で
+    // drawLinkArcs を切った場合も、残っている放電はすべてここで消える。
+    ExtinguishArcsFrom(drawLinkArcs ? static_cast<std::size_t>(linkCount) : std::size_t{ 0 });
 
     // 組めなかった対象の引力を解除する。極性が切れた・相手が倒された・
     // 別のより近い組に相手を取られた、のいずれもここを通る。
@@ -314,19 +444,36 @@ inline void PolarityFieldComponent::ResolveImpacts()
         if (duplicate) continue;
 
         if (onImpact) onImpact(impact);
+
+        // WHY 爆発だけは 1 件に絞らないか:
+        //   ヒットストップやカメラ揺れは «画面» に掛かるので、重ねた分だけ壊れる。
+        //   一方で爆発は «盤面のその場所» で起きる出来事で、集束で 3 体が別々の
+        //   場所で潰れたなら 3 つ見えないと、何体巻き込んだのかが絵から読めない。
+        //   12.6 が求める「コンボが大きいほど絵が派手になる」はここでしか出せない。
+        //   同時発火で画面が白く飛ばないための減衰は VfxManagerComponent が持つ。
+        if (auto* vfx = VfxManagerComponent::Instance()) {
+            vfx->PlayImpact(impact.point, impact.moverPolarity,
+                            ImpactStrength(impact), impact.struckIsAnchor);
+        }
+
         if (!strongest || impact.speed > strongest->speed) strongest = &impact;
     }
 
-    // 演出は同フレーム最大の 1 件だけに絞る。複数を足し合わせると、
+    // 画面の反応は同フレーム最大の 1 件だけに絞る。複数を足し合わせると、
     // 弱い衝突が重なっただけで画面が長時間止まる。
     if (strongest) ApplyImpactFeel(*strongest);
 }
 
+inline float PolarityFieldComponent::ImpactStrength(const PolarityImpact& impact) const
+{
+    const float reference = Max(MinImpactSpeed() * 2.0f, EPSILON);
+    return Clamp01(impact.speed / reference);
+}
+
 inline void PolarityFieldComponent::ApplyImpactFeel(const PolarityImpact& impact)
 {
-    // 12.6「強いヒットストップ (衝突速度に比例)」。最低速度の 2 倍で最大になる曲線にする。
-    const float reference = Max(MinImpactSpeed() * 2.0f, EPSILON);
-    const float ratio     = Clamp01(impact.speed / reference);
+    // 12.6「強いヒットストップ (衝突速度に比例)」。
+    const float ratio = ImpactStrength(impact);
 
     // 止め方も揺らし方も鳴らし方も ImpactFeedbackManagerComponent が持つ。
     // ここが渡すのは「何が起きたか」と「どれくらい強い当たりか」の 2 つだけ。

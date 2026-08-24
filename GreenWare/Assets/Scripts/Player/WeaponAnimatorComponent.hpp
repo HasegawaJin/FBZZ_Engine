@@ -25,9 +25,11 @@
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
 #include <string>
+#include <string_view>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -74,9 +76,9 @@ public:
     //     GameObject 配列が再確保され、保持している GameObject* が無効化される。
     FBZZ_FIELD_REF(PrefabRef, muzzleFlashPrefab, "Muzzle Flash Prefab")
     FBZZ_FIELD_REF(PrefabRef, shellPrefab,       "Shell Casing Prefab")
-    FBZZ_FIELD_FILE(sfxFire,  "", "SFX Fire",  ".wav,.ogg")
-    FBZZ_FIELD_FILE(sfxShell, "", "SFX Shell", ".wav,.ogg")
-    FBZZ_FIELD_FILE(sfxDry,   "", "SFX Dry",   ".wav,.ogg")
+    FBZZ_FIELD_AUDIO(sfxFire,  "", "SFX Fire")
+    FBZZ_FIELD_AUDIO(sfxShell, "", "SFX Shell")
+    FBZZ_FIELD_AUDIO(sfxDry,   "", "SFX Dry")
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD(bool, drawSockets, false, "Draw Sockets")
@@ -93,6 +95,18 @@ public:
     bool PlayDeploy();
     bool PlayFold();
     [[nodiscard]] bool IsFolded() const { return m_folded; }
+
+    /// 照射中だけ鳴らし続けるループ音。空文字で停止する。
+    ///
+    /// WHY 銃が持つか: ループは AudioSource の主 voice を 1 本占有する。左右で同時に
+    ///     照射できる以上、プレイヤーの AudioSource 1 つには 2 本載せられない。
+    ///     銃は左右に 1 つずつあるので、ここが 1 音 1 ソースの関係を満たす唯一の場所。
+    ///     このスクリプトの他の音 (発砲・薬莢・空撃ち) はすべて one-shot なので、
+    ///     主 voice はループ専用として空けてある。
+    ///
+    /// WHY 極性ではなくパスを受け取るか: この銃が ＋ か − かはゲームルールの話で、
+    ///     ここに持たせると PolarityGunComponent と二重管理になる (ファイル冒頭の方針)。
+    void SetBeamLoop(std::string_view clipPath);
 
     // 弾道・エフェクトの発生点。ソケットが解決できなければ銃自身の原点を返す。
     [[nodiscard]] Vector3    MuzzlePosition() const;
@@ -121,6 +135,8 @@ private:
     // 収納形態か。Fold 再生の完了を待って保持ポーズへ移すためのステート。
     bool        m_folded = false;
     bool        m_waitingFoldEnd = false;
+    // 今流しているループ音のパス。同じものを 2 度 Play し直すと頭から鳴り直す。
+    std::string m_beamLoopPath;
 
     // 発砲演出の進行。撃ってからの経過秒と、もう出したかのフラグ。
     // WHY 1 本のタイマーで持つか: マズル → 薬莢の 2 フレーム差はこの銃の性格そのもので、
@@ -137,6 +153,24 @@ FBZZ_REFLECT(WeaponAnimatorComponent)
 inline void WeaponAnimatorComponent::OnStart()
 {
     ResolveSockets();
+    // 銃口の位置から鳴らす。左右の撃ち分けが定位で分かるよう 3D にする。
+    se::EnsureSource(scene, "SE", 1.0f);
+    // Play をまたいで前回のループ状態が残らないようにする。AudioSource は
+    // Play/Stop で作り直されるが、このメンバーは DLL リロードでも 0 に戻る保証がない。
+    m_beamLoopPath.clear();
+}
+
+inline void WeaponAnimatorComponent::SetBeamLoop(std::string_view clipPath)
+{
+    if (clipPath == m_beamLoopPath) return;
+    m_beamLoopPath = std::string(clipPath);
+
+    if (m_beamLoopPath.empty()) {
+        audio.Stop();
+        return;
+    }
+    audio.SetLoop(true);
+    audio.Play(m_beamLoopPath);
 }
 
 inline void WeaponAnimatorComponent::ResolveSockets()
@@ -182,7 +216,7 @@ inline bool WeaponAnimatorComponent::PlayFire()
 inline bool WeaponAnimatorComponent::PlayDry()
 {
     // 空撃ちは 1F 目のクリックだけ。遅延させる意味がないのでその場で鳴らす。
-    if (!sfxDry.empty()) audio.PlayOneShot(sfxDry);
+    se::Play(audio, sfxDry, se::kWarnNeutral);
     return PlayClip(dryClipFile, dryClipName, fireFadeIn, fireFadeOut);
 }
 
@@ -193,6 +227,7 @@ inline bool WeaponAnimatorComponent::PlayReload()
 
 inline bool WeaponAnimatorComponent::PlayDeploy()
 {
+    se::Play(audio, se::kPlayerWeaponDeploy);
     m_folded = false;
     m_waitingFoldEnd = false;
     // 展開は Slot を止めてから流す。畳んだ保持ポーズが残っていると混ざる。
@@ -202,6 +237,10 @@ inline bool WeaponAnimatorComponent::PlayDeploy()
 
 inline bool WeaponAnimatorComponent::PlayFold()
 {
+    // 畳む前にループを切る。銃が畳まれてから照射音だけが残ると、
+    // 「まだ撃てるのか」が耳と目で食い違う。
+    SetBeamLoop({});
+    se::Play(audio, se::kPlayerWeaponStow);
     if (!PlayClip(foldClipFile, foldClipName, 0.0f, 0.0f))
         return false;
     // Fold は「畳み終わった形」で止まっていてほしいが、Slot は終端でフェードアウトして
@@ -239,6 +278,8 @@ inline void WeaponAnimatorComponent::OnUpdate()
 
 inline void WeaponAnimatorComponent::SpawnMuzzleFlash()
 {
+    // 素材の側に「発砲」に当たる単発音は無い (照射なので Beam_Start が担う)。
+    // Inspector で指定されたときだけ鳴らし、既定では点火音を二重に鳴らさない。
     if (!sfxFire.empty()) audio.PlayOneShot(sfxFire);
     if (!muzzleFlashPrefab.path.empty())
         scene.Spawn(muzzleFlashPrefab, MuzzlePosition(), MuzzleRotation());

@@ -17,6 +17,7 @@
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Game/GameSettingsComponent.hpp>
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -103,6 +104,10 @@ inline void CameraShakeManagerComponent::Shake(float strength01)
 
 inline void CameraShakeManagerComponent::Shake(float amplitude, float frequency, float duration)
 {
+    // Option の「カメラ揺れ」。WHY 1 引数版ではなくここで掛けるか: 形まで指定する版も
+    //     同じ揺れなので、設定を 0 にしたのに一部の演出だけ揺れる状態を作らない。
+    //     ここは全ての要求が必ず通る 1 本道。
+    amplitude *= GameSettingsComponent::ShakeScale();
     if (amplitude <= 0.0f || duration <= 0.0f) return;
 
     if (static_cast<int>(m_shakes.size()) >= std::max(maxShakes, 1)) {

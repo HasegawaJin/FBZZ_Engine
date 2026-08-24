@@ -23,6 +23,7 @@
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
 #include <Scripts/Utils/InputActions.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
 #include <cmath>
@@ -136,6 +137,20 @@ public:
     FBZZ_FIELD_RANGE(float, landFeedbackSpeed, 12.0f, "Land Feedback At", 0.0f, 60.0f)
     FBZZ_TOOLTIP("この落下速度 (m/s) で着地の反応が最大になる。0 で着地演出を切る")
 
+    // WHY アニメーションイベントではなく距離で鳴らすか:
+    //   足接地のタイミングはクリップが持っているので、本来は Event Track が正しい。
+    //   ただし WeaponAnimatorComponent が同じ理由で書いているとおり、インポート後の
+    //   .anim にイベントは 1 つも入っておらず、入っていないときの挙動が「無音」なので
+    //   壊れていても気付けない。歩いた距離で刻めば、クリップの状態に依存しない。
+    //   Event Track を打った時点でこちらを切ればよい (strideRun を 0 にする)。
+    FBZZ_GROUP("Footsteps")
+    FBZZ_FIELD_RANGE(float, strideWalk, 0.75f, "Walk Stride (m)", 0.0f, 4.0f)
+    FBZZ_TOOLTIP("この距離だけ進むごとに歩き足音を 1 回鳴らす。0 で歩きの足音を切る")
+    FBZZ_FIELD_RANGE(float, strideRun, 1.35f, "Run Stride (m)", 0.0f, 4.0f)
+    FBZZ_TOOLTIP("走りの歩幅。0 で足音そのものを切る")
+    FBZZ_FIELD_RANGE(float, runSpeedThreshold, 4.0f, "Run At (m/s)", 0.1f, 20.0f)
+    FBZZ_TOOLTIP("この水平速度を超えたら走りの足音・歩幅へ切り替える")
+
     FBZZ_GROUP("Player Fire Animation")
     // 発砲リコイルは銃のスライドとは別に Player の Add_Fire へ加算する。
     FBZZ_FIELD(std::string, fireLayerName, "Add_Fire", "Fire Layer")
@@ -192,6 +207,8 @@ private:
     void RequestCameraSlack(const CharacterControllerComponent& cc, float planarSpeed);
     // 空中から接地へ変わった瞬間を掴み、落下速度の分だけ手触りを鳴らす。
     void TickLanding(const CharacterControllerComponent& cc, const RigidBody& phy);
+    // 接地して進んだ距離を積み、歩幅ぶん進むごとに足音を 1 回鳴らす。
+    void TickFootsteps(const CharacterControllerComponent& cc, float planarSpeed);
     // コーンを超えたヨーを体の旋回で吸収する。ポーズだけでは ±45 度しか向けない。
     void TickAimTurn(RigidBody& phy, float dt);
     void UpdateSlopeLean(IKSolverComponent& ik, CharacterControllerComponent* cc,
@@ -246,6 +263,8 @@ private:
     float   m_dodgeRemaining = 0.0f;
     float   m_dodgeCooldown  = 0.0f;
     Vector3 m_dodgeDirection = Vector3::ZERO;
+    // 足音を鳴らしてから接地して進んだ距離 [m]。
+    float   m_stepDistance   = 0.0f;
     // 可変フレームで採取した入力を、次の固定ステップで一度だけ物理へ適用する。
     Vector3 m_moveDirection = Vector3::ZERO;
     // スティックの倒し量 0..1。キーボードは押していれば常に 1。
@@ -294,6 +313,10 @@ inline void PlayerControllerComponent::OnStart()
     m_jumpHeld       = false;
     m_wasGrounded    = true;
     m_peakFallSpeed  = 0.0f;
+    m_stepDistance   = 0.0f;
+
+    // 足音・回避音の出どころ。プレイヤー本人なので減衰を掛けずに 2D で鳴らす。
+    se::EnsureSource(scene);
 
     if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
         TuneGrounding(*cc);
@@ -362,6 +385,7 @@ inline void PlayerControllerComponent::OnUpdate()
     if (cc && phy) {
         RequestCameraSlack(*cc, planarSpeed);
         TickLanding(*cc, *phy);
+        TickFootsteps(*cc, planarSpeed);
     }
 
     // 重力と到達点から導かれる値を Inspector へ返す。ProjectSettings を触ったとき、
@@ -413,6 +437,34 @@ inline void PlayerControllerComponent::TickLanding(const CharacterControllerComp
     }
     m_wasGrounded   = true;
     m_peakFallSpeed = 0.0f;
+}
+
+inline void PlayerControllerComponent::TickFootsteps(const CharacterControllerComponent& cc,
+                                                     float planarSpeed)
+{
+    // 空中と回避中は足が地面を蹴っていない。回避には専用の音があるので、
+    // ここで足音まで鳴らすと 1 回の回避で 2 種類の音が重なる。
+    if (!cc.isGrounded || IsDodging() || planarSpeed <= EPSILON) {
+        // 止まっている間に貯めた距離は捨てる。残すと、止まって歩き出した 1 歩目が
+        // 歩幅を待たずに鳴り、歩き始めだけリズムが崩れる。
+        m_stepDistance = 0.0f;
+        return;
+    }
+
+    const bool  running = planarSpeed >= runSpeedThreshold;
+    const float stride  = running ? strideRun : strideWalk;
+    if (stride <= 0.0f) {
+        m_stepDistance = 0.0f;
+        return;
+    }
+
+    m_stepDistance += planarSpeed * Time::deltaTime;
+    if (m_stepDistance < stride) return;
+
+    // 剰余で戻す。引き切ると、1 フレームで歩幅を大きく超えたとき (低フレームレートや
+    // 回避の直後) に余りが積み残り、次の 1 歩が早まる。
+    m_stepDistance = std::fmod(m_stepDistance, stride);
+    se::Play(audio, running ? se::kPlayerFootstepRun : se::kPlayerFootstepWalk);
 }
 
 inline void PlayerControllerComponent::UpdateLocomotionParameters()
@@ -723,11 +775,17 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
         // DodgeCooldown - DodgeDuration になる。
         m_dodgeCooldown  = DodgeCooldown();
         animator.SetTrigger(paramDodgeTrigger);
+        se::Play(audio, se::kPlayerDodge);
         // 開始フレームからそのまま下の速度上書きへ進む。
         // ここで return すると 1 フレームだけ慣性で滑り、出だしが鈍る。
     } else {
         m_dodgeRemaining = std::max(0.0f, m_dodgeRemaining - dt);
-        if (m_dodgeRemaining <= 0.0f) return;  // 今フレームで終了
+        if (m_dodgeRemaining <= 0.0f) {
+            // 終わり際の踏ん張り。開始音だけだと、回避がいつ終わって
+            // 次の入力を受け付けるのかが耳から分からない。
+            se::Play(audio, se::kPlayerDodgeEnd);
+            return;  // 今フレームで終了
+        }
     }
 
     // 回避中は水平速度を上書きし続ける。

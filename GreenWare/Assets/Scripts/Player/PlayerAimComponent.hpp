@@ -23,7 +23,9 @@
 
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/CharacterEvent.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
+#include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
 #include <Scripts/Utils/PolarityBeam.hpp>
@@ -112,6 +114,8 @@ private:
     [[nodiscard]] GeometryHit ResolveGeometry(const Vector3& eyePos,
                                               const Vector3& eyeForward) const;
     void GatherContacts(const Vector3& eyePos, const Vector3& eyeForward, float length);
+    /// 線に入った 1 体が入れ替わったら、その瞬間だけ知らせる。
+    void ReportTargetChange();
 
     [[nodiscard]] float BeamRadius() const { return tuning ? tuning->beamRadius : 0.6f; }
     [[nodiscard]] float BeamRange()  const { return tuning ? tuning->beamRange  : 40.0f; }
@@ -123,6 +127,9 @@ private:
 
     // 毎フレーム作り直すが、確保済みの容量は使い回す。
     std::vector<BeamContact> m_contacts;
+
+    // 前フレームに指していた 1 体。変わり目を見るためだけに持つ。
+    EntityID m_lastTarget{};
 };
 
 FBZZ_REFLECT(PlayerAimComponent)
@@ -146,7 +153,23 @@ inline void PlayerAimComponent::OnStart()
                          "6.2 defaults (radius 0.6m / range 40m). Attach it through "
                          "PlayerComponent so the shared asset drives the beam.");
     m_contacts.clear();
-    m_hasAim = false;
+    m_hasAim     = false;
+    m_lastTarget = EntityID{};
+}
+
+inline void PlayerAimComponent::ReportTargetChange()
+{
+    GameObject*    target   = CurrentTarget();
+    const EntityID targetId = target ? target->GetID() : EntityID{};
+    if (targetId == m_lastTarget) return;
+    m_lastTarget = targetId;
+
+    // WHY 毎フレームではなく変わり目だけか: 線は動かしている間ずっと誰かに触れる。
+    //     そのつど流すと «見つけた» 顔が貼り付き、外した瞬間も読めなくなる。
+    if (auto* combat = CombatManagerComponent::Instance()) {
+        combat->Notify(scene.Self(),
+                       target ? CharacterEvent::Spotted : CharacterEvent::Recovered);
+    }
 }
 
 inline bool PlayerAimComponent::ResolveEye(Vector3& outPosition, Vector3& outForward) const
@@ -206,6 +229,7 @@ inline void PlayerAimComponent::OnLateUpdate()
 
     debugContactCount = static_cast<int>(m_contacts.size());
     if (GameObject* target = CurrentTarget()) debugBeamTarget = target->name;
+    ReportTargetChange();
 
     if (drawDebugAim) {
         debug.DrawLine(eyePos, m_aimPoint, kColorPlayer);

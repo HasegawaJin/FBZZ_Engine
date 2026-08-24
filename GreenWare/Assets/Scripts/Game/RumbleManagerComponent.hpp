@@ -17,6 +17,7 @@
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Game/GameSettingsComponent.hpp>
 #include <algorithm>
 #include <vector>
 
@@ -107,6 +108,14 @@ inline void RumbleManagerComponent::Rumble(float strength01)
 inline void RumbleManagerComponent::Rumble(float low, float high, float duration)
 {
     if (!m_enabled || duration <= 0.0f) return;
+
+    // Option の「振動」。両モーターへ等しく掛ける。
+    // WHY masterScale と別に持つか: masterScale は作り手が全体の重さを決める値で、
+    //     こちらは遊ぶ人が下げる値。同じ変数にすると、プレイヤーが 50% にした状態が
+    //     作り手の調整値として保存され、次に触ったときの基準が判らなくなる。
+    const float player = GameSettingsComponent::VibrationScale();
+    low  *= player;
+    high *= player;
     if (low <= 0.0f && high <= 0.0f) return;
 
     if (static_cast<int>(m_requests.size()) >= std::max(maxRequests, 1)) {

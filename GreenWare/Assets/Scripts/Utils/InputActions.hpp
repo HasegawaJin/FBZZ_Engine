@@ -42,4 +42,34 @@ inline constexpr const char* kDrawWeapons    = "DrawWeapons";
 inline constexpr const char* kHolsterWeapons = "HolsterWeapons";
 inline constexpr const char* kToggleWeapons  = "ToggleWeapons";
 
+// ── メニュー ─────────────────────────────────────────────────────────────────
+inline constexpr const char* kPause  = "Pause";
+inline constexpr const char* kSubmit = "Submit";
+inline constexpr const char* kCancel = "Cancel";
+
+/// OPTIONS 画面の CONTROLS に並ぶ 1 行。
+///
+/// WHY 行と割り当ての対応をここに置くか:
+///   行 ID (Options.scene の CtrlDiv_<key> / CtrlR_<機器>_<key>) と論理名の対応は、
+///   画面のレイアウトではなく「その行が何の操作か」という入力側の知識。UI 側に置くと、
+///   行を足すたびに画面のコードとアクション表の両方を突き合わせることになる。
+///
+/// action が空の行は差し替えられない。軸 (移動・視点) は 1 行に 4 つのキーが乗って
+/// いて「この行のキー」が 1 つに定まらず、起爆は照射と同じボタンのタップなので
+/// 独立した割り当てを持たない。
+struct ControlRow {
+    const char* key;
+    const char* action;
+};
+
+inline constexpr ControlRow kControlRows[] = {
+    { "move",  "" },
+    { "cam",   "" },
+    { "lgun",  kEmitMinus },
+    { "rgun",  kEmitPlus },
+    { "fire",  "" },
+    { "dodge", kDodge },
+    { "pause", kPause },
+};
+
 } // namespace sandbox::actions

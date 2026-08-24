@@ -22,6 +22,7 @@
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Game/GameSettingsComponent.hpp>
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -43,10 +44,22 @@ public:
     FBZZ_FIELD_RANGE_INT(int, maxRequests, 8, "Max Requests", 1, 32)
     FBZZ_TOOLTIP("同時に保持する要求の本数。超えたら最も弱いものから捨てる")
 
+    // WHY 画角の張り出しもここが持つか: 「その瞬間だけ画面の見え方を広げて衝撃を伝える」
+    //     という点で、たるみとまったく同じ役割の値になる。カメラは合成済みの数字を
+    //     読むだけ、要求する側は追従の作りを知らなくてよい、という形を崩さない。
+    FBZZ_GROUP("FOV Burst")
+    FBZZ_FIELD_RANGE(float, burstDegrees, 7.0f, "Burst Degrees", 0.0f, 30.0f)
+    FBZZ_TOOLTIP("強さ 1.0 の要求で広がる画角 (度)")
+    FBZZ_FIELD_RANGE(float, burstAttack, 0.05f, "Attack", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("広がりきるまでの時間。0 にすると 1 フレームで飛ぶ")
+    FBZZ_FIELD_RANGE(float, burstRelease, 0.35f, "Release", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("元の画角へ戻るまでの時間。長いほど余韻が残る")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugActive, 0, "Active Requests")
     FBZZ_FIELD_READ_ONLY(float, debugHorizontal, 0.0f, "Horizontal Slack")
     FBZZ_FIELD_READ_ONLY(float, debugVertical, 0.0f, "Vertical Slack")
+    FBZZ_FIELD_READ_ONLY(float, debugFovOffset, 0.0f, "FOV Offset")
 
     [[nodiscard]] static CameraFollowManagerComponent* Instance() { return s_instance; }
 
@@ -55,9 +68,14 @@ public:
     /// そうすると条件が消えた時点から自然に戻り始め、解除の呼び出しが要らない。
     void Loosen(float horizontal01, float vertical01, float duration);
 
+    /// 画角を一瞬広げる (起爆などの手応え)。Option で切られていれば何もしない。
+    void PunchFov(float strength01);
+
     /// カメラが毎フレーム読む合成済みのたるみ (0..1)。
     [[nodiscard]] float HorizontalSlack() const { return m_horizontal; }
     [[nodiscard]] float VerticalSlack() const { return m_vertical; }
+    /// カメラが毎フレーム基準の画角へ足す度数。
+    [[nodiscard]] float FovOffset() const { return m_fovOffset; }
 
     void OnStart() override;
     void OnLateUpdate() override;
@@ -75,6 +93,12 @@ private:
     std::vector<Request_> m_requests;
     float m_horizontal = 0.0f;
     float m_vertical   = 0.0f;
+
+    /// 今フレームカメラへ渡す画角の足し込み。
+    float m_fovOffset = 0.0f;
+    /// 立ち上がり中の目標。attack を過ぎたらここから release で 0 へ落ちる。
+    float m_fovTarget = 0.0f;
+    float m_fovAttackRemaining = 0.0f;
 };
 
 FBZZ_REFLECT(CameraFollowManagerComponent)
@@ -89,6 +113,25 @@ inline void CameraFollowManagerComponent::OnStart()
     m_requests.clear();
     m_horizontal = 0.0f;
     m_vertical   = 0.0f;
+    m_fovOffset  = 0.0f;
+    m_fovTarget  = 0.0f;
+    m_fovAttackRemaining = 0.0f;
+}
+
+inline void CameraFollowManagerComponent::PunchFov(float strength01)
+{
+    if (!GameSettingsComponent::GameOrDefault().fovBurst) return;
+
+    const float amount = Clamp01(strength01) * std::max(burstDegrees, 0.0f);
+    if (amount <= 0.0f) return;
+
+    // 強い方を採る。足すと連発で画角が開ききり、何が起きても同じ絵になる。
+    m_fovTarget = std::max(m_fovTarget, amount);
+    m_fovAttackRemaining = std::max(burstAttack, 0.0f);
+
+    // 立ち上がり 0 は「1 フレームで飛ぶ」の意味。残り時間が 0 のままだと
+    // 次の更新がいきなり戻し始めるので、ここで開いておく。
+    if (m_fovAttackRemaining <= 0.0f) m_fovOffset = m_fovTarget;
 }
 
 inline void CameraFollowManagerComponent::Loosen(float horizontal01, float vertical01,
@@ -144,9 +187,26 @@ inline void CameraFollowManagerComponent::OnLateUpdate()
     m_horizontal = approach(m_horizontal, targetHorizontal);
     m_vertical   = approach(m_vertical, targetVertical);
 
+    // 画角は「素早く広がってゆっくり戻る」。たるみと同じ非対称で、
+    // 立ち上がりを逃さず、戻りでカメラが飛んで見えないようにする。
+    if (m_fovAttackRemaining > 0.0f) {
+        m_fovAttackRemaining = std::max(0.0f, m_fovAttackRemaining - dt);
+        const float rate = burstAttack <= EPSILON ? 1.0f
+                                                  : Clamp01(dt / std::max(burstAttack, EPSILON));
+        m_fovOffset += (m_fovTarget - m_fovOffset) * rate;
+    } else {
+        m_fovTarget = 0.0f;
+        const float release = burstRelease <= EPSILON
+            ? 1.0f
+            : 1.0f - std::exp(-dt / std::max(burstRelease, EPSILON));
+        m_fovOffset += (0.0f - m_fovOffset) * release;
+        if (m_fovOffset < 0.01f) m_fovOffset = 0.0f;
+    }
+
     debugActive     = static_cast<int>(m_requests.size());
     debugHorizontal = m_horizontal;
     debugVertical   = m_vertical;
+    debugFovOffset  = m_fovOffset;
 }
 
 } // namespace sandbox

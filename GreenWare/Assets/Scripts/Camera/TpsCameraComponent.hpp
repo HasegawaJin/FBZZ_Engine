@@ -5,10 +5,13 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Game/CameraFollowManagerComponent.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
+#include <Scripts/Game/GameSettingsComponent.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <cmath>
 #include <string>
 
@@ -21,6 +24,7 @@ namespace sandbox {
 
 class TpsCameraComponent : public Script {
     FBZZ_SCRIPT(TpsCameraComponent)
+    FBZZ_EXECUTE_ALWAYS()
 
     // このスクリプトは「カメラの Transform を毎フレーム決める」ことしかしない。
     // Camera の無い GameObject に付けると、何も映らないまま座標だけが動き続ける。
@@ -35,6 +39,7 @@ public:
     FBZZ_FIELD_RANGE(float, minPitch,         -20.0f, "Min Pitch",       -90.0f,  0.0f)
     FBZZ_FIELD_RANGE(float, maxPitch,          65.0f, "Max Pitch",         0.0f, 90.0f)
     FBZZ_FIELD_RANGE(float, mouseSensitivity,   0.2f, "Mouse Sensitivity", 0.01f, 5.0f)
+    FBZZ_TOOLTIP("Option の「マウス感度」が既定値のときの旋回量。設定はこれに掛かる")
     FBZZ_FIELD(bool,  mouseOrbit,              true,  "Mouse Orbit")
 
     FBZZ_GROUP("Gamepad")
@@ -42,15 +47,12 @@ public:
     //   マウス Delta は「1 フレームに何ピクセル動いたか」、スティックは「-1..1 の倒し量」で
     //   単位が違う。1 本の感度で両方を扱うと、マウスに合わせればスティックが動かず、
     //   スティックに合わせればマウスが暴れる。デバイスごとに感度を持たせるしかない。
+    //
+    // 不感帯と応答カーブは Option (GameSettingsComponent の InputConfig) が持つ。
+    // 遊ぶ人が合わせる値で、作り手が決める値ではない。
     FBZZ_FIELD(bool, padOrbit, true, "Pad Orbit")
     FBZZ_FIELD_RANGE(float, padLookSpeed, 200.0f, "Pad Look Speed", 10.0f, 720.0f)
-    FBZZ_TOOLTIP("スティックを最大まで倒したときの旋回速度 (度/秒)")
-    FBZZ_FIELD_RANGE(float, padLookDeadZone, 0.18f, "Pad Dead Zone", 0.0f, 0.6f)
-    FBZZ_TOOLTIP("この倒し量までは無入力として捨てる。スティックの中央のがたつきを吸収する")
-    // WHY 曲線を掛けるか: 倒し量をそのまま速度にすると、狙いを微調整したい小さな
-    //     倒しでも一気に振れてしまう。手前を鈍く、奥を速くすると両立する。
-    FBZZ_FIELD_RANGE(float, padLookExponent, 2.0f, "Pad Response Curve", 1.0f, 4.0f)
-    FBZZ_TOOLTIP("1 で線形。大きいほど中央付近が鈍くなり、細かい狙いを合わせやすくなる")
+    FBZZ_TOOLTIP("Option の「スティック感度」が既定値のときの旋回速度 (度/秒)")
     FBZZ_FIELD(bool, padInvertY, false, "Pad Invert Y")
 
     FBZZ_GROUP("Follow")
@@ -111,6 +113,14 @@ inline void TpsCameraComponent::OnStart()
     FindTarget();
     m_hasCameraPosition = false;
     m_unshakenPosition = Vector3::ZERO;
+
+    // 受聴点をカメラへ置く。TPS なのでプレイヤーではなくカメラが「聞いている場所」で、
+    // 敵の左右も画面の見え方と一致する。
+    //
+    // WHY ここで足すか: Listener がシーンに 1 つも無いと AudioSystem は距離減衰の
+    //     基準を持てず、3D 音源が丸ごと鳴らない。しかも警告は出ないので、
+    //     症状は「敵の音だけ無音」という形でしか現れない。
+    se::EnsureListener(scene);
 }
 
 inline Quaternion TpsCameraComponent::CurrentRotation() const
@@ -127,13 +137,18 @@ inline Vector2 TpsCameraComponent::PadLookAxis() const
 
     // WHY 軸ごとではなく半径でデッドゾーンを切るか: 軸ごとに切ると正方形の
     //     不感帯になり、斜めに倒したときの実効感度が方向によって変わる。
+    //
+    // 不感帯と曲線は Option の値で置き換える。倍率で掛けないのは、どちらも
+    // 「どこから効き始めるか」「どんな効き方か」という形そのものだからで、
+    // Inspector 側の値と混ぜると設定を見ても実際の効きが判らなくなる。
+    const InputConfig& settings = GameSettingsComponent::InputOrDefault();
     const float magnitude = raw.Length();
-    const float dead      = Clamp01(padLookDeadZone);
+    const float dead      = Clamp01(settings.deadzone);
     if (magnitude <= dead) return Vector2::ZERO;
 
     // 不感帯の外側を 0..1 へ引き直す。境界を跨いだ瞬間に速度が飛ばない。
     const float normalized = Clamp01((magnitude - dead) / Max(1.0f - dead, EPSILON));
-    const float curved     = Pow(normalized, Max(padLookExponent, 1.0f));
+    const float curved     = Pow(normalized, Max(CurveExponent(settings.curve), 1.0f));
     return raw * (curved / magnitude);
 }
 
@@ -141,10 +156,15 @@ inline void TpsCameraComponent::OnUpdate()
 {
     if (!transform) return;
 
-    if (mouseOrbit) {
+    // WHY 編集中を除くか: Input はエディタでも更新され続けているため、囲まないと
+    //     ビューポート上でマウスを動かしただけで yaw / pitch が積まれ、その値が
+    //     シーンの中身になる。編集中の向きは Inspector に置いた値が正本。
+    if (mouseOrbit && app.IsPlaying()) {
+        // Option の感度は「既定を 1.0 とした倍率」に直してから掛ける。
+        const float sensitivity = mouseSensitivity * GameSettingsComponent::MouseSensScale();
         const Vector2 delta = input.GetMouseDelta();
-        yaw   += delta.x * mouseSensitivity;
-        pitch  = Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);
+        yaw   += delta.x * sensitivity;
+        pitch  = Clamp(pitch + delta.y * sensitivity, minPitch, maxPitch);
     }
 
     if (padOrbit) {
@@ -152,11 +172,12 @@ inline void TpsCameraComponent::OnUpdate()
         //     スティックだけスケール後の dt で積むと、止めが掛かった瞬間に
         //     視点だけ操作を受け付けなくなり、デバイスで挙動が食い違う。
         const float dt  = Max(Time::unscaledDeltaTime, 0.0f);
+        const float speed = padLookSpeed * GameSettingsComponent::StickSensScale();
         const Vector2 stick = PadLookAxis();
         // スティックの Y は上倒しが +1。画面の上を向くのは pitch が減る方向。
         const float pitchSign = padInvertY ? 1.0f : -1.0f;
-        yaw   += stick.x * padLookSpeed * dt;
-        pitch  = Clamp(pitch + stick.y * pitchSign * padLookSpeed * dt, minPitch, maxPitch);
+        yaw   += stick.x * speed * dt;
+        pitch  = Clamp(pitch + stick.y * pitchSign * speed * dt, minPitch, maxPitch);
     }
 
     // 向きだけを先に置く。同じフレームの LateScript で照準がこれを読む。
@@ -186,10 +207,18 @@ inline void TpsCameraComponent::OnLateUpdate()
     // 緩めたい要求が無ければ、たるみは 0 のまま = 従来どおりの密着追従になる。
     float horizontalSlack = 0.0f;
     float verticalSlack   = 0.0f;
+    float fovOffset       = 0.0f;
     if (auto* follow = CameraFollowManagerComponent::Instance()) {
         horizontalSlack = follow->HorizontalSlack();
         verticalSlack   = follow->VerticalSlack();
+        fovOffset       = follow->FovOffset();
     }
+
+    // 画角は Option の「視野角」が基準で、起爆の張り出しをそこへ足す。
+    // WHY 毎フレーム書くか: 基準そのものが設定変更で動く。1 度だけ書くと、
+    //     Option で視野角を変えても遊びに戻るまで反映されない。
+    if (auto* camera = scene.GetComponent<CameraComponent>())
+        camera->fovY = GameSettingsComponent::GameOrDefault().fov + fovOffset;
     const float horizontalRate = FollowRate(
         BlendFollowSpeed(followSpeed, loosenedFollowSpeed, horizontalSlack), safeDt);
     const float verticalRate = FollowRate(

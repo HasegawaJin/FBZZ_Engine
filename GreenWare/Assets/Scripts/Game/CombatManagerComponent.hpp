@@ -30,8 +30,10 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/CharacterEvent.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
-#include <Scripts/Player/PlayerComponent.hpp>
+#include <Scripts/Combat/EyeSpriteComponent.hpp>
+#include <Scripts/Combat/IDamageable.hpp>
 #include <Scripts/Polarity/PolarityFieldComponent.hpp>
 #include <Scripts/Utils/ManagerWatch.hpp>
 #include <algorithm>
@@ -45,12 +47,24 @@ class CombatManagerComponent : public Script {
     FBZZ_SCRIPT(CombatManagerComponent)
 
 public:
+    // WHY チェインの長さをここが持つか: 「1 回の仕掛けがどれだけ連鎖したか」は
+    //     衝突を数えることそのもので、既にこのスクリプトが数えている戦果の一種。
+    //     表示側に持たせると、HUD を消しただけで数え方まで消える。
+    FBZZ_GROUP("Chain")
+    FBZZ_FIELD_RANGE(float, chainSeconds, 2.2f, "Chain Window", 0.2f, 10.0f)
+    FBZZ_TOOLTIP("次の衝突がこの秒数以内なら同じチェインとして数える")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugKills, 0, "Kills")
     FBZZ_FIELD_READ_ONLY(int, debugEnemyImpacts, 0, "Enemy Impacts")
     FBZZ_FIELD_READ_ONLY(int, debugAnchorImpacts, 0, "Anchor Impacts")
     FBZZ_FIELD_READ_ONLY(int, debugDamageToEnemies, 0, "Damage Dealt")
     FBZZ_FIELD_READ_ONLY(int, debugDamageToPlayer, 0, "Damage Taken")
+    FBZZ_FIELD_READ_ONLY(int, debugChain, 0, "Chain")
+    FBZZ_FIELD_READ_ONLY(int, debugBestChain, 0, "Best Chain")
+    FBZZ_FIELD_READ_ONLY(int, debugFaces, 0, "Faces")
+    FBZZ_TOOLTIP("出来事を受け取れる目の数。想定より少なければ、そのキャラクターに "
+                 "EyeSpriteComponent が付いていない")
 
     /// 誰から呼ばれるかは決まっていない (敵 AI・罠・盤面)。置き場所に依存しない窓口を持つ。
     [[nodiscard]] static CombatManagerComponent* Instance() { return s_instance; }
@@ -61,6 +75,17 @@ public:
     [[nodiscard]] int DamageDealt() const { return m_damageToEnemies; }
     [[nodiscard]] int DamageTaken() const { return m_damageToPlayer; }
 
+    /// 続いている連鎖の長さ。途切れると 0 に戻る。
+    [[nodiscard]] int ChainCount() const { return m_chain; }
+    /// このプレイでの最長。リザルトで使う。
+    [[nodiscard]] int BestChain() const { return m_bestChain; }
+    /// 連鎖が途切れるまでの残り (1 → 直後 / 0 → 途切れた)。表示の減衰に使う。
+    [[nodiscard]] float ChainRemaining01() const
+    {
+        return chainSeconds <= 0.0f ? 0.0f
+                                    : std::clamp(m_chainRemaining / chainSeconds, 0.0f, 1.0f);
+    }
+
     /// 生存している敵の数。全滅判定は進行側が持つが、数える規則は戦闘側の知識。
     [[nodiscard]] int CountEnemiesAlive() const;
 
@@ -70,6 +95,18 @@ public:
     /// プレイヤーへのダメージ。敵の接触攻撃など、盤面を経由しない経路はここを通す。
     /// 実際に減ったら true。無敵時間などで弾かれた場合は false。
     bool DamagePlayer(GameObject* player, int amount);
+
+    /// character の身に起きたことを、そのキャラクターの反応へ配る。
+    ///
+    /// 被弾と撃破はここが自分で流すので、外から呼ぶのは「見つけた」「攻撃を出した」など
+    /// ダメージを伴わない出来事だけでよい。
+    ///
+    /// WHY 反応先を呼び出し元に選ばせないか:
+    ///   同じ «倒れた» に対して、表情・アニメーション・HUD・ボイスがそれぞれ反応する。
+    ///   呼び出し元が反応先を名指しすると、反応を 1 つ足すたびに敵 AI とプレイヤーの
+    ///   両方を触ることになり、片方だけ足し忘れた種類の敵ができる。
+    ///   誰に何が起きたかを言うのは呼び出し元、どこへ配るかを決めるのはここ。
+    void Notify(GameObject* character, CharacterEvent event) const;
 
     void OnStart() override;
     void OnUpdate() override;
@@ -94,6 +131,10 @@ private:
     int m_anchorImpacts = 0;
     int m_damageToEnemies = 0;
     int m_damageToPlayer = 0;
+
+    int   m_chain = 0;
+    int   m_bestChain = 0;
+    float m_chainRemaining = 0.0f;
 };
 
 FBZZ_REFLECT(CombatManagerComponent)
@@ -111,6 +152,9 @@ inline void CombatManagerComponent::OnStart()
     m_anchorImpacts = 0;
     m_damageToEnemies = 0;
     m_damageToPlayer = 0;
+    m_chain = 0;
+    m_bestChain = 0;
+    m_chainRemaining = 0.0f;
     m_subscribed = false;
     m_fieldWatch.Reset();
 
@@ -134,6 +178,18 @@ inline void CombatManagerComponent::EnsureSubscribed()
 inline void CombatManagerComponent::OnUpdate()
 {
     EnsureSubscribed();
+    debugFaces = EyeSpriteComponent::RegisteredCount();
+
+    // WHY 実時間で数えるか: 連鎖の途中は必ずヒットストップが掛かる。縮んだ時間で
+    //     数えると、派手に決まった連鎖ほど猶予が伸びて別物の判定になる。
+    if (m_chainRemaining > 0.0f) {
+        m_chainRemaining -= std::max(time.UnscaledDeltaTime(), 0.0f);
+        if (m_chainRemaining <= 0.0f) {
+            m_chainRemaining = 0.0f;
+            m_chain = 0;
+            debugChain = 0;
+        }
+    }
 
     // 盤面がシーンに 1 つも無いなら、極性衝突のダメージは永久に入らない。
     // 黙って進むと「当てても減らない」だけが残るので、1 度だけ名指しで止める。
@@ -143,6 +199,15 @@ inline void CombatManagerComponent::OnUpdate()
         debug.LogError("CombatManagerComponent found no PolarityFieldComponent in the scene. "
                        "Polarity impacts will never deal damage.");
     }
+}
+
+inline void CombatManagerComponent::Notify(GameObject* character, CharacterEvent event) const
+{
+    if (!character) return;
+
+    // 反応を持たないキャラクターは黙って素通りさせる。目を付けていないだけで
+    // 敵が 1 種類まるごと «壊れている» ように見えてはいけない。
+    if (auto* eyes = EyeSpriteComponent::For(character)) eyes->React(event);
 }
 
 inline int CombatManagerComponent::CountEnemiesAlive() const
@@ -157,16 +222,20 @@ inline int CombatManagerComponent::CountEnemiesAlive() const
 
 inline bool CombatManagerComponent::DamagePlayer(GameObject* player, int amount)
 {
-    auto* component = scene.GetScript<PlayerComponent>(player);
-    if (!component) return false;
+    // WHY PlayerComponent ではなく IDamageable で引くか: 「殴られる側」であることだけが
+    //     ここでの関心で、それがプレイヤーかどうかは知らなくてよい。将来プレイヤーが
+    //     乗り物に乗る / 分身を出すといった構成になっても、この関数は変わらない。
+    auto* target = scene.GetScript<IDamageable>(player);
+    if (!target) return false;
 
-    const int damage = std::max(amount, 1);
-    const int before = component->Current();
-    if (!component->TakeDamage(damage)) return false;
+    const int before = target->CurrentHealth();
+    if (!target->ApplyDamage(std::max(amount, 1))) return false;
 
     // 無敵時間で弾かれた分を数えないよう、実際に減った量だけを積む。
-    m_damageToPlayer += std::max(before - component->Current(), 0);
+    m_damageToPlayer += std::max(before - target->CurrentHealth(), 0);
     debugDamageToPlayer = m_damageToPlayer;
+
+    Notify(player, target->IsAlive() ? CharacterEvent::Hurt : CharacterEvent::Defeated);
     return true;
 }
 
@@ -179,6 +248,8 @@ inline void CombatManagerComponent::DamageEnemy(GameObject* target, const Polari
     const bool defeated = health->TakeImpact(impact);
     m_damageToEnemies += std::max(before - health->Current(), 0);
     debugDamageToEnemies = m_damageToEnemies;
+
+    Notify(target, defeated ? CharacterEvent::Defeated : CharacterEvent::Hurt);
     if (!defeated) return;
 
     ++m_kills;
@@ -196,10 +267,21 @@ inline void CombatManagerComponent::ResolveImpact(const PolarityImpact& impact)
         debugEnemyImpacts = m_enemyImpacts;
     }
 
+    // 猶予の中に次が来れば同じ連鎖。1 回の仕掛けから何手続いたかを数える。
+    ++m_chain;
+    m_chainRemaining = std::max(chainSeconds, 0.0f);
+    m_bestChain      = std::max(m_bestChain, m_chain);
+    debugChain       = m_chain;
+    debugBestChain   = m_bestChain;
+
     DamageEnemy(impact.mover, impact);
 
-    // 柱・壁は動かないので受け手にならない。正面衝突で mover == struck になる経路も弾く。
-    if (!impact.struckIsAnchor && impact.struck != impact.mover)
+    // WHY 受け手がアンカーでも減らすか: 7.6 で柱を廃した後、動かない側に残ったのは
+    //     «重すぎて飛ばない敵» (Roller) と撃破コアだけになった。10.1 は Roller を
+    //     「衝突 2 回で撃破」と決めているので、的であることはダメージを切る理由にならない。
+    //     地形は EnemyHealthComponent を持たないため、DamageEnemy が自然に空振りする。
+    //     正面衝突で mover == struck になる経路だけは弾く。
+    if (impact.struck != impact.mover)
         DamageEnemy(impact.struck, impact);
 }
 
