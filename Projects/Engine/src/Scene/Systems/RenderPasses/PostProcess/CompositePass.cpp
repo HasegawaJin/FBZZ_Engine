@@ -12,6 +12,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Util/Mathf.hpp>
+#include <algorithm>
 #include <cmath>
 
 namespace fbzz::scene {
@@ -117,7 +118,9 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.screenSize[1] = static_cast<float>(ctx.height);
     postData.exposure = pp.exposure;
     postData.time = Time::time;
-    postData.bloomIntensity = pp.bloom.enabled ? pp.bloom.intensity : 0.0f;
+    // ユーザー設定の発光量はボリューム合成の影響を受けない rs から掛ける。
+    postData.bloomIntensity =
+        (pp.bloom.enabled ? pp.bloom.intensity : 0.0f) * (std::max)(rs.userBloomScale, 0.0f);
     postData.fogDensity = pp.fog.enabled ? pp.fog.density : 0.0f;
     postData.fogFar = pp.fog.farDistance;
     postData.fogColor[0] = pp.fog.color[0];
@@ -159,6 +162,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.colorFilter[0] = pp.imageQuality.colorFilter[0];
     postData.colorFilter[1] = pp.imageQuality.colorFilter[1];
     postData.colorFilter[2] = pp.imageQuality.colorFilter[2];
+    // ユーザー設定の明るさ。ボリューム合成の影響を受けない rs から直に読む。
+    postData.userBrightness     = rs.userBrightness;
     postData.screenFadeAlpha    = pp.screenFadeAlpha;
     postData.screenFadeColor[0] = pp.screenFadeColor[0];
     postData.screenFadeColor[1] = pp.screenFadeColor[1];

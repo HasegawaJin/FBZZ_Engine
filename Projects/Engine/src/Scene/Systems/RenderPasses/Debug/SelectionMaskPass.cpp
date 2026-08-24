@@ -66,17 +66,17 @@ renderer::DynamicVertexBufferPool g_selectionMaskParticlePool;
 void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderPassContext& ctx)
 {
     auto& h = ctx.handles;
-    if (!emitter.enabled || emitter.particles.empty() || !emitter.texture.IsValid()
-        || !emitter.renderCB.IsValid() || !h.selectionMaskParticleShader.IsValid()
+    if (!emitter.settings.enabled || emitter.runtime.particles.empty() || !emitter.runtime.texture.IsValid()
+        || !emitter.runtime.renderCB.IsValid() || !h.selectionMaskParticleShader.IsValid()
         || !h.particleIB.IsValid()
-        || !h.selectionMaskPSO.IsValid() || !emitter.meshParticlePath.empty()) {
+        || !h.selectionMaskPSO.IsValid() || !emitter.settings.meshParticlePath.empty()) {
         return;
     }
 
     constexpr float uv[4][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } };
     std::vector<ParticleVertex> vertices;
     const int particleCount = (std::min)(
-        static_cast<int>(emitter.particles.size()), kMaxParticleDraw);
+        static_cast<int>(emitter.runtime.particles.size()), kMaxParticleDraw);
     vertices.reserve(static_cast<std::size_t>(particleCount) * 4);
     int quadCount = 0;
 
@@ -114,12 +114,12 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
         ++quadCount;
     };
 
-    const bool localSpace = emitter.simulationSpace == ParticleSimulationSpace::Local;
-    const bool billboardTrails = emitter.trailEnabled && !emitter.trailRibbon;
+    const bool localSpace = emitter.settings.simulationSpace == ParticleSimulationSpace::Local;
+    const bool billboardTrails = emitter.settings.trailEnabled && !emitter.settings.trailRibbon;
     const int trailPoints = billboardTrails
-        ? std::clamp(emitter.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
+        ? std::clamp(emitter.settings.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
     for (int index = 0; index < particleCount; ++index) {
-        const Particle& particle = emitter.particles[static_cast<std::size_t>(index)];
+        const Particle& particle = emitter.runtime.particles[static_cast<std::size_t>(index)];
         const math::Vector3 position = localSpace
             ? ParticleWorldPoint(go.transform, particle.position) : particle.position;
         const math::Vector3 velocity = localSpace
@@ -134,15 +134,15 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
                 ? ParticleWorldPoint(go.transform,
                     particle.trailPoints[static_cast<std::size_t>(trail)])
                 : particle.trailPoints[static_cast<std::size_t>(trail)];
-            const float width = emitter.trailWidthScale
-                + (1.0f - emitter.trailWidthScale) * fade;
-            const float alpha = emitter.trailAlphaScale
-                + (1.0f - emitter.trailAlphaScale) * fade;
+            const float width = emitter.settings.trailWidthScale
+                + (1.0f - emitter.settings.trailWidthScale) * fade;
+            const float alpha = emitter.settings.trailAlphaScale
+                + (1.0f - emitter.settings.trailAlphaScale) * fade;
             const math::Vector4 trailColor = {
-                particle.color.x * emitter.trailColorTint.x,
-                particle.color.y * emitter.trailColorTint.y,
-                particle.color.z * emitter.trailColorTint.z,
-                particle.color.w * emitter.trailColorTint.w * alpha
+                particle.color.x * emitter.settings.trailColorTint.x,
+                particle.color.y * emitter.settings.trailColorTint.y,
+                particle.color.z * emitter.settings.trailColorTint.z,
+                particle.color.w * emitter.settings.trailColorTint.w * alpha
             };
             emitQuad(trailPosition, velocity, particle.size * width, particle.rotation,
                      trailColor, particle);
@@ -162,8 +162,8 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
     draw.shader = h.selectionMaskParticleShader;
     draw.pipelineState = h.selectionMaskPSO;
     draw.constantBuffers[0] = h.frameCB;
-    draw.constantBuffers[2] = emitter.renderCB;
-    draw.textures[0] = emitter.texture;
+    draw.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
+    draw.textures[0] = emitter.runtime.texture;
     ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     ctx.renderer.Submit(draw, ctx.resources);
 }
@@ -172,24 +172,25 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
 void DrawGpuParticleSelectionMask(ParticleEmitter& emitter, RenderPassContext& ctx)
 {
     auto& h = ctx.handles;
-    if (!CanUseGpuSimulation(emitter) || !emitter.gpuParticleBuffer.IsValid()
-        || !emitter.texture.IsValid() || !emitter.renderCB.IsValid()
+    if (!CanUseGpuSimulation(emitter.settings, &emitter.runtime.material)
+        || !emitter.runtime.gpuParticleBuffer.IsValid()
+        || !emitter.runtime.texture.IsValid() || !emitter.runtime.renderCB.IsValid()
         || !h.selectionMaskParticleGpuShader.IsValid() || !h.selectionMaskPSO.IsValid()
-        || !emitter.meshParticlePath.empty()) {
+        || !emitter.settings.meshParticlePath.empty()) {
         return;
     }
 
-    const int maximumParticles = (std::max)(emitter.maxParticles, 0);
+    const int maximumParticles = (std::max)(emitter.settings.maxParticles, 0);
     if (maximumParticles == 0) return;
     renderer::DrawCall draw;
     draw.shader = h.selectionMaskParticleGpuShader;
     draw.pipelineState = h.selectionMaskPSO;
     draw.vertexCount = static_cast<std::uint32_t>(maximumParticles) * 6u;
     draw.constantBuffers[0] = h.frameCB;
-    draw.constantBuffers[2] = emitter.renderCB;
-    draw.textures[0] = emitter.texture;
-    draw.vsBuffers[0] = emitter.gpuParticleBuffer;
-    draw.vsBuffers[1] = emitter.gpuSortBuffer;
+    draw.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
+    draw.textures[0] = emitter.runtime.texture;
+    draw.vsBuffers[0] = emitter.runtime.gpuParticleBuffer;
+    draw.vsBuffers[1] = emitter.runtime.gpuSortBuffer;
     ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     ctx.renderer.Submit(draw, ctx.resources);
 }

@@ -1080,11 +1080,26 @@ void RenderSystem(Scene& scene,
         viewTargets.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
     auto& advancedGraphicsCB = viewTargets.advancedGraphicsCB;
 
+    // 出力先の実寸。UI と最終合成はこの寸法で描く (描画スケールの影響を受けない)。
+    uint32_t nativeW = 0;
+    uint32_t nativeH = 0;
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::ResizeRenderTargets");
         const auto* output = resources.Get(outputRT);
-        uint32_t curW = output ? output->GetWidth()  : renderer.GetWidth();
-        uint32_t curH = output ? output->GetHeight() : renderer.GetHeight();
+        nativeW = output ? output->GetWidth()  : renderer.GetWidth();
+        nativeH = output ? output->GetHeight() : renderer.GetHeight();
+        if (nativeW == 0 || nativeH == 0) return;
+
+        // 内部描画解像度。ここだけで倍率を掛ければ、下の中間 RT もパスの
+        // ビューポートも texelSize も追従する (passCtx.width = sHdrW)。
+        //
+        // WHY アップスケールのパスが要らないか: ポストプロセスはどれも
+        //     フルスクリーン三角形の再サンプルで、SetRenderTarget が
+        //     ビューポートを RT 全体へ戻す。小さい hdrRT を実寸の outputRT へ
+        //     描いた時点で linear サンプラーが引き伸ばす。
+        uint32_t curW = 0;
+        uint32_t curH = 0;
+        renderer::ResolveRenderResolution(nativeW, nativeH, rs.renderScale, curW, curH);
         if (curW == 0 || curH == 0) return;
         if (!hdrRT.IsValid() || sHdrW != curW || sHdrH != curH)
         {
@@ -1560,7 +1575,6 @@ void RenderSystem(Scene& scene,
     passHandles.particleSelfShadowRT      = particleSelfShadowRT;
     passHandles.particleSelfShadowFrameCB = particleSelfShadowFrameCB;
     passHandles.particleGpuShader    = particleGpuShader;
-    passHandles.particleGpuAlphaShader = particleGpuShader; // 同一シェーダー、PSO で合成モードを切り替える
     passHandles.particleGpuPSO       = particleGpuPSO;
     passHandles.particleGpuAlphaPSO  = particleGpuAlphaPSO;
     passHandles.particleGpuPremultipliedPSO = particleGpuPremultipliedPSO;
@@ -1877,7 +1891,8 @@ void RenderSystem(Scene& scene,
     pipeline.BeginBuild();
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
-    pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true,  false });
+    // Output だけは出力先そのものなので実寸で申告する (中間 RT は内部解像度)。
+    pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, nativeW, nativeH, 0, true,  false });
     pipeline.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, 0, false, false });
     pipeline.DeclareResource("HDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     pipeline.DeclareResource("LDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
@@ -2351,12 +2366,16 @@ void RenderSystem(Scene& scene,
                 //      明示的に outputRT をバインドすることで、Game / Scene / UI Viewport の
                 //      いずれでも同じ順序と同じ RT に描画できる。
                 renderer.SetRenderTarget(outputRT, resources);
+                // WHY 内部解像度 (sHdrW) ではなく出力実寸で採るか: UI はポストプロセスの
+                //     後に outputRT へ直接描くので、描画スケールの影響を受けない。
+                //     sHdrW を使うと renderScale < 1 のときレイアウトだけが縮み、
+                //     UI が画面の左上に寄る。
                 const float uiWidth = uiOptions->viewportWidth > 0.0f
                     ? uiOptions->viewportWidth
-                    : static_cast<float>(sHdrW);
+                    : static_cast<float>(nativeW);
                 const float uiHeight = uiOptions->viewportHeight > 0.0f
                     ? uiOptions->viewportHeight
-                    : static_cast<float>(sHdrH);
+                    : static_cast<float>(nativeH);
                 // デバッグ表示の可否は RenderSettings が持つ。UISystem は設定の
                 // 所有者を知らない自由関数なので、知っている側が毎フレーム入れる。
                 uiOptions->context->showRects = passCtx.settings.showUIRects;

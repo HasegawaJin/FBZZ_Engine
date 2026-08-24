@@ -395,17 +395,17 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
 
         EnsureComponentResources(*trail, resources);
         if (auto* emitter = go.GetComponent<ParticleEmitter>();
-            emitter != nullptr && !emitter->meshParticlePath.empty()) {
+            emitter != nullptr && !emitter->settings.meshParticlePath.empty()) {
             auto* mesh = go.GetComponent<MeshRenderer>();
             if (mesh == nullptr) continue;
             const math::Vector4 savedStart = trail->colorStart;
             const math::Vector4 savedEnd = trail->colorEnd;
-            const std::size_t particleCount = (std::min)(emitter->particles.size(),
-                static_cast<std::size_t>((std::max)(emitter->visibleParticleCount, 0)));
+            const std::size_t particleCount = (std::min)(emitter->runtime.particles.size(),
+                static_cast<std::size_t>((std::max)(emitter->runtime.visibleParticleCount, 0)));
             for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
-                const Particle& particle = emitter->particles[particleIndex];
+                const Particle& particle = emitter->runtime.particles[particleIndex];
                 math::Vector3 position = particle.position;
-                if (emitter->simulationSpace == ParticleSimulationSpace::Local) {
+                if (emitter->settings.simulationSpace == ParticleSimulationSpace::Local) {
                     const math::Vector3 scaled{
         position.x * go.transform.worldScale.x,
         position.y * go.transform.worldScale.y,
@@ -420,9 +420,9 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
                 // sizeAxisScale の z も反映する (billboard 経路は xy のみ)。
                 sample.world = math::Matrix4::TRS(position,
                     math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, particle.rotation),
-                    { particle.size * emitter->sizeAxisScale.x,
-                      particle.size * emitter->sizeAxisScale.y,
-                      particle.size * emitter->sizeAxisScale.z });
+                    { particle.size * emitter->settings.sizeAxisScale.x,
+                      particle.size * emitter->settings.sizeAxisScale.y,
+                      particle.size * emitter->settings.sizeAxisScale.z });
                 // Particle::color はリニア、MeshTrail の色はオーサリング空間 (sRGB) と
                 // 規約が違う。境界のここで戻して、MeshTrail 側の扱いは一切変えない。
                 const math::Vector4 authored = ParticleLinearToSrgb(particle.color);

@@ -407,7 +407,12 @@ struct PostProcCB {
     float colorFilterIntensity;
     float _qualityPad0;
     float colorFilter[3];
-    float _qualityPad1;
+    // Option の「明るさ」。float3 colorFilter の 4 成分目にあたる空きスロットを使うため、
+    // cbuffer のレイアウトは変わらない。1.0 で無加工。
+    // NOTE: PostProcCB は zero-init して使う場所があり、そこでは 0 (= 真っ黒) になる。
+    //       Composite 以外のシェーダーはこの値を読まないので実害は無いが、
+    //       別のパスで読むなら必ず明示的に埋めること。
+    float userBrightness;
     // 画面フェード — Composite パスの最終出力に適用する。alpha=0 で通常, 1 で全面フェード色。
     float screenFadeColor[3];
     float screenFadeAlpha;
@@ -632,8 +637,8 @@ struct RenderPassHandles {
     // WHY: 自己影が拾うのは「煙の内部で光がどれだけ減るか」という低周波の情報で、
     //      輪郭の鮮鋭さは要らない。シャドウマップより粗くしてフィルレートを抑える。
     static constexpr std::uint32_t kSelfShadowResolution = 512u;
-    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuShader;  // VS+PS: billboard 描画 (加算合成)
-    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuAlphaShader; // VS+PS: billboard 描画 (アルファ合成)
+    // VS+PS: billboard 描画。合成モードは PSO 側だけで切り替えるためシェーダーは 1 本。
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuAlphaPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPremultipliedPSO;
