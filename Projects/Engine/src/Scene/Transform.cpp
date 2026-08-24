@@ -35,9 +35,11 @@ void Transform::Rotate(const math::Vector3& eulerDegrees, bool worldSpace) {
 }
 
 void Transform::LookAt(const math::Vector3& worldTarget) {
-    math::Vector3 dir = (worldTarget - worldPosition).Normalized();
+    // 正規化の前に見る。旧実装は正規化してから長さを見ていたため、判定は常に 1 で
+    // 素通りし、対象が自分と同じ位置のとき Normalized() の assert で落ちていた。
+    math::Vector3 dir = worldTarget - worldPosition;
     if (dir.LengthSq() < 1e-6f) return;
-    math::Quaternion worldLook = math::Quaternion::LookRotation(dir);
+    math::Quaternion worldLook = math::Quaternion::LookRotation(dir.Normalized());
     math::Quaternion parentRot = worldRotation * rotation.Inverse();
     rotation = parentRot.Inverse() * worldLook;
 }
