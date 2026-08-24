@@ -1319,9 +1319,12 @@ function RegisterQueryTools(server, bus) {
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'environment.inspect' }))));
     server.registerTool('audio_inspect', {
-        description: 'AudioSource の設定 (clipPath / volume / spatialBlend / 距離減衰) と再生状態、AudioListener の一覧を返します。'
+        description: 'AudioSource の設定 (clipPath / volume / spatialBlend / 距離減衰 / busName) と再生状態、'
+            + 'AudioListener の一覧、ミキサーバスの構成を返します。'
             + 'runtime.playing は保存対象ではないため component 照会には出ません — 鳴っているかはここでしか確認できません。'
-            + 'AudioListener が 0 件なら 3D 音の距離減衰は効きません (warning に出ます)。',
+            + 'AudioListener が 0 件なら 3D 音の距離減衰は効きません (warning に出ます)。'
+            + 'busName に指定できるのは buses[].name にある名前だけで、未知の名前は黙って Master へ落ちます。'
+            + '手続き効果音 (.synth) の作成・調整は sfx.* Operator (editor_op_invoke / editor_op_query) 側です。',
         inputSchema: { id: NodeIdSchema.optional() },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({
