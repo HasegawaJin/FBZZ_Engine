@@ -45,9 +45,17 @@ struct ScriptNavigationProxy {
     math::Vector3 GetVelocity() const;
 
     // 最大移動速度を動的に変更する。
-    void SetSpeed(float speed) const;
+    void  SetSpeed(float speed) const;
+    float GetSpeed() const;
     // 旋回速度 [deg/s] を動的に変更する。
-    void SetAngularSpeed(float degPerSec) const;
+    void  SetAngularSpeed(float degPerSec) const;
+    float GetAngularSpeed() const;
+    // 現在の目的地。SetTarget() による追跡中は追跡先の最新パス目標になる。
+    // 目的地を持たないときは自身の現在位置ではなく Vector3::ZERO を返す (HasPath() で判別する)。
+    math::Vector3 GetDestination() const;
+    // 到達と見なす最終ウェイポイントからの距離 [m]。
+    float GetStoppingDistance() const;
+    void  SetStoppingDistance(float distance) const;
 
     // 通過可能なエリアタイプのビットマスク (-1 = すべて)。
     int  GetAreaMask() const;

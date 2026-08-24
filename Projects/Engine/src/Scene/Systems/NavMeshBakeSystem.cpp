@@ -1,6 +1,7 @@
-// FBZZ Engine
-// NavMeshBakeSystem.cpp | fbzz::scene
-// NavMeshSurfaceComponent の needsBake フラグが true のときに NavMesh を再構築するシステム。
+/// @file    NavMeshBakeSystem.cpp
+/// @brief   ボクセル化 → 侵食 → 凸ポリゴン合成による NavMesh ベイクの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 //
 // collectObjects == ThisObject:
 //   NavMeshSurface が付いている GO 自身の TerrainComponent だけをベイクソースにする。
@@ -9,11 +10,12 @@
 // collectObjects == Volume:
 //   NavMeshSurface GO の worldPosition を中心とする size ボックス内だけを対象にする。
 //
-// パイプライン:
-//   1. Voxelize           — バウンド範囲を cellSize 格子に分割し、傾斜と障害物から歩行可否を判定
-//   2. Triangulate         — 各歩行可能セルを対角線で 2 個の三角形に分割
-//   3. Hertel-Mehlhorn 凸合成 — 隣接ポリゴンを凸性を保ったまま貪欲にマージ
-//   4. Polygon Mesh        — 生存ポリゴンを詰めて NavMeshPolygon 配列を構築し Portal を張る
+// パイプライン (Recast の rcConfig に対応させてある):
+//   1. Voxelize            — バウンド範囲を cellSize 格子に分割し、傾斜・段差・障害物から歩行可否を判定
+//   2. Erode               — agentRadius ぶん歩行可能面を内側へ削る (rcErodeWalkableArea 相当)
+//   3. Triangulate         — 各歩行可能セルを対角線で 2 個の三角形に分割
+//   4. Hertel-Mehlhorn 凸合成 — 隣接ポリゴンを凸性を保ったまま貪欲にマージ
+//   5. Polygon Mesh        — 生存ポリゴンを詰めて NavMeshPolygon 配列を構築し Portal を張る
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
@@ -32,8 +34,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <future>
 #include <limits>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -254,7 +258,9 @@ struct BakeInput {
     math::Vector3               volumeSize{};
     float                       cellSize         = 1.0f;
     float                       maxSlopeAngleDeg = 45.0f;
+    float                       agentRadius      = 0.4f;
     float                       agentHeight      = 2.0f;
+    float                       maxClimb         = 0.4f;
     std::vector<TerrainBakeData> terrains;
     std::vector<WalkableSurface> walkableSurfs;
     std::vector<Obstacle>        obstacles;
@@ -359,19 +365,27 @@ static void ParallelFor(int count, Fn fn)
 // BakeInput のコピーだけを使い、シーンのいかなるポインタにも触れない純粋な計算関数。
 // std::async で任意のスレッドから呼ばれる。
 
-static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = nullptr)
+static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = nullptr)
 {
+    const auto startTime = std::chrono::steady_clock::now();
     const auto setProgress = [&](float v) {
         if (progress) progress->store(v, std::memory_order_relaxed);
     };
     setProgress(0.02f);
+
+    NavMeshBakeResult result;
+    const auto fail = [&result](std::string reason) -> NavMeshBakeResult {
+        result.stats.failReason = std::move(reason);
+        return std::move(result);
+    };
 
     const auto& terrains     = inp.terrains;
     const auto& walkableSurfs = inp.walkableSurfs;
     const auto& obstacles    = inp.obstacles;
 
     if (terrains.empty() && walkableSurfs.empty())
-        return {};
+        return fail("ベイクソースがありません。Terrain を持つ GameObject へ NavMesh Surface を"
+                    "付けるか、床に Walkable の NavMesh Modifier を置いてください");
 
     const float cellSize = std::max(0.1f, inp.cellSize);
     math::Vector3 boundsMin, boundsMax;
@@ -388,7 +402,9 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
             ab.Expand(surf.center - surf.halfExtents);
             ab.Expand(surf.center + surf.halfExtents);
         }
-        if (!ab.valid) return {};
+        if (!ab.valid)
+            return fail("ベイクソースの範囲が求まりませんでした。Terrain の解像度と "
+                        "NavMesh Modifier の大きさを確認してください");
         constexpr float kXZMargin = 0.5f;
         boundsMin = { ab.mn.x - kXZMargin, ab.mn.y - 1.0f,                       ab.mn.z - kXZMargin };
         boundsMax = { ab.mx.x + kXZMargin, ab.mx.y + inp.agentHeight + 1.0f, ab.mx.z + kXZMargin };
@@ -401,7 +417,16 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
     const int gridD      = std::max(1, static_cast<int>((boundsMax.z - boundsMin.z) / cellSize));
     const int cornerCols = gridW + 1;
 
+    // WHY 上限を切るか: セル 1 個につき WorkPoly を 2 個確保するので、Cell Size を 0.1 に
+    //     しただけで数 GB を要求してエディタごと落ちる。落ちる前に理由を返す。
+    constexpr int64_t kMaxBakeCells = 4000000;
+    if (static_cast<int64_t>(gridW) * gridD > kMaxBakeCells)
+        return fail("格子が大きすぎます (" + std::to_string(gridW) + " x " + std::to_string(gridD) +
+                    " セル)。Cell Size を上げるか、Volume でベイク範囲を絞ってください");
+
     std::vector<float> cornerHeight(static_cast<size_t>(cornerCols) * (gridD + 1), kNoSurface);
+    // Walkable modifier に持ち上げられた角。段差判定を「箱の縁をまたぐセル」だけに絞るのに使う。
+    std::vector<uint8_t> cornerRaised(cornerHeight.size(), 0);
     ParallelFor(gridD + 1, [&](int cz) {
         for (int cx = 0; cx <= gridW; ++cx) {
             const float wx = boundsMin.x + cx * cellSize;
@@ -411,34 +436,49 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
                 cornerHeight[static_cast<size_t>(cz) * cornerCols + cx] = h;
         }
     });
-    setProgress(0.25f);
+    setProgress(0.20f);
     ParallelFor(gridD + 1, [&](int cz) {
         for (int cx = 0; cx <= gridW; ++cx) {
             const float wx = boundsMin.x + cx * cellSize;
             const float wz = boundsMin.z + cz * cellSize;
-            float& h = cornerHeight[static_cast<size_t>(cz) * cornerCols + cx];
+            const size_t ci = static_cast<size_t>(cz) * cornerCols + cx;
+            float& h = cornerHeight[ci];
             for (const auto& surf : walkableSurfs) {
-                if (surf.ContainsXZ(wx, wz)) { const float topY = surf.TopY(); if (topY > h) h = topY; }
+                if (!surf.ContainsXZ(wx, wz)) continue;
+                const float topY = surf.TopY();
+                if (topY > h) { h = topY; cornerRaised[ci] = 1; }
             }
         }
     });
-    setProgress(0.35f);
+    setProgress(0.30f);
 
     auto CornerH   = [&](int cx, int cz) { return cornerHeight[static_cast<size_t>(cz) * cornerCols + cx]; };
     auto CornerPos = [&](int cx, int cz) {
         return math::Vector3{ boundsMin.x + cx * cellSize, CornerH(cx, cz), boundsMin.z + cz * cellSize };
     };
 
-    std::vector<uint8_t> walkable(static_cast<size_t>(gridW) * gridD, 0);
+    constexpr uint8_t kWalkable = static_cast<uint8_t>(NavMeshBakeCell::Walkable);
+    std::vector<uint8_t> cellState(static_cast<size_t>(gridW) * gridD,
+                                   static_cast<uint8_t>(NavMeshBakeCell::NoSurface));
     const float maxSlopeCos = std::cos(inp.maxSlopeAngleDeg * (kPi / 180.0f));
+    const float maxClimb    = std::max(0.0f, inp.maxClimb);
 
     ParallelFor(gridD, [&](int iz) {
         for (int ix = 0; ix < gridW; ++ix) {
-            if (CornerH(ix,   iz  ) <= kNoSurface + 1.0f &&
-                CornerH(ix+1, iz  ) <= kNoSurface + 1.0f &&
-                CornerH(ix+1, iz+1) <= kNoSurface + 1.0f &&
-                CornerH(ix,   iz+1) <= kNoSurface + 1.0f)
-                continue;
+            float cornerMin = 1e30f, cornerMax = -1e30f, cornerSum = 0.0f;
+            int   cornerCount = 0;
+            bool  anyRaised   = false;
+            for (int dz = 0; dz <= 1; ++dz) for (int dx = 0; dx <= 1; ++dx) {
+                const size_t ci = static_cast<size_t>(iz + dz) * cornerCols + (ix + dx);
+                const float  h  = cornerHeight[ci];
+                if (h <= kNoSurface + 1.0f) continue;
+                cornerMin  = std::min(cornerMin, h);
+                cornerMax  = std::max(cornerMax, h);
+                cornerSum += h;
+                ++cornerCount;
+                if (cornerRaised[ci]) anyRaised = true;
+            }
+            if (cornerCount == 0) continue;
 
             const float worldX = boundsMin.x + (ix + 0.5f) * cellSize;
             const float worldZ = boundsMin.z + (iz + 0.5f) * cellSize;
@@ -448,35 +488,45 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
                 if (surf.ContainsXZ(worldX, worldZ)) { cellFlat = true; break; }
             }
 
-            bool cellWalkable;
+            NavMeshBakeCell state = NavMeshBakeCell::NoSurface;
             if (cellFlat) {
-                cellWalkable = true;
+                state = NavMeshBakeCell::Walkable;
             } else {
-                cellWalkable = false;
                 for (const auto& td : terrains) {
                     if (SampleTerrainHeight(td, worldX, worldZ) <= kNoSurface + 1.0f) continue;
                     const math::Vector3 n = td.GetNormalAt(worldX - td.origin.x, worldZ - td.origin.z);
-                    cellWalkable = (math::Vector3::Dot(n, math::Vector3::UP) >= maxSlopeCos);
+                    state = (math::Vector3::Dot(n, math::Vector3::UP) >= maxSlopeCos)
+                          ? NavMeshBakeCell::Walkable
+                          : NavMeshBakeCell::TooSteep;
                     break;
                 }
             }
 
-            if (cellWalkable && !obstacles.empty()) {
-                const float cH = (CornerH(ix,iz)+CornerH(ix+1,iz)+CornerH(ix+1,iz+1)+CornerH(ix,iz+1))*0.25f;
-                const math::Vector3 wp = { worldX, cH, worldZ };
+            // WHY 段差判定を Walkable modifier の縁だけに掛けるか: 連続した Terrain では
+            //     隣り合うセルが同じ角を共有するので段差そのものが生まれず、坂の登れなさは
+            //     maxSlopeAngleDeg が受け持っている。全セルへ掛けると同じ性質を 2 つの設定が
+            //     別々の値で決めることになり、45 度を許可したはずの坂が maxClimb で先に落ちる。
+            if (state == NavMeshBakeCell::Walkable && anyRaised && maxClimb > 0.0f
+             && cornerMax - cornerMin > maxClimb)
+                state = NavMeshBakeCell::TooHighStep;
+
+            if (state == NavMeshBakeCell::Walkable && !obstacles.empty()) {
+                // WHY 有効な角だけで平均するか: 面の縁では kNoSurface (-1e30) が混ざり、
+                //     4 で割った高さが -2.5e29 になって障害物判定が常に外れていた。
+                const math::Vector3 wp = { worldX, cornerSum / static_cast<float>(cornerCount), worldZ };
                 for (const auto& obs : obstacles) {
-                    if (PointInObstacle(wp, obs)) { cellWalkable = false; break; }
+                    if (PointInObstacle(wp, obs)) { state = NavMeshBakeCell::Obstructed; break; }
                 }
             }
 
-            walkable[static_cast<size_t>(iz) * gridW + ix] = cellWalkable ? 1 : 0;
+            cellState[static_cast<size_t>(iz) * gridW + ix] = static_cast<uint8_t>(state);
         }
     });
-    setProgress(0.50f);
+    setProgress(0.42f);
 
     for (int iz = 0; iz < gridD; ++iz) {
         for (int ix = 0; ix < gridW; ++ix) {
-            if (!walkable[static_cast<size_t>(iz) * gridW + ix]) continue;
+            if (cellState[static_cast<size_t>(iz) * gridW + ix] != kWalkable) continue;
             float sum = 0.0f; int cnt = 0;
             for (int dz = 0; dz <= 1; ++dz) for (int dx = 0; dx <= 1; ++dx) {
                 const float h = CornerH(ix + dx, iz + dz);
@@ -490,12 +540,83 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
             }
         }
     }
+    setProgress(0.48f);
 
+    // ── Erode (Recast の rcErodeWalkableArea 相当) ───────────────────────────
+    // 非歩行セルからのチャンファー距離場を作り、agentRadius に満たないセルを落とす。
+    // 距離の単位は 1 セル = 2 で、直交 2 / 斜め 3 (Recast と同じ整数近似)。
+    const uint16_t erodeThreshold =
+        static_cast<uint16_t>((std::max(0.0f, inp.agentRadius) / cellSize) * 2.0f);
+    if (erodeThreshold > 0) {
+        constexpr uint16_t kFar = 0xFFFF;
+        std::vector<uint16_t> dist(cellState.size(), kFar);
+
+        // WHY 格子の外を歩行可能扱いにするか: ThisObject では外周 1 マスぶんが NoSurface なので
+        //     面の縁は正しく削れる。一方 Volume では箱が地形の途中を切っているだけなので、
+        //     境界から削ると存在しない壁ぞいの隙間が空く。
+        const auto seedNeighbor = [&](int x, int z) {
+            if (x < 0 || x >= gridW || z < 0 || z >= gridD) return false;
+            return cellState[static_cast<size_t>(z) * gridW + x] != kWalkable;
+        };
+        for (int z = 0; z < gridD; ++z) {
+            for (int x = 0; x < gridW; ++x) {
+                const size_t i = static_cast<size_t>(z) * gridW + x;
+                if (cellState[i] != kWalkable) { dist[i] = 0; continue; }
+                if (seedNeighbor(x - 1, z) || seedNeighbor(x + 1, z)
+                 || seedNeighbor(x, z - 1) || seedNeighbor(x, z + 1))
+                    dist[i] = 0;
+            }
+        }
+
+        const auto relax = [&](size_t self, int nx, int nz, int cost) {
+            if (nx < 0 || nx >= gridW || nz < 0 || nz >= gridD) return;
+            const int nd = dist[static_cast<size_t>(nz) * gridW + nx] + cost;
+            if (nd < dist[self]) dist[self] = static_cast<uint16_t>(nd);
+        };
+        for (int z = 0; z < gridD; ++z) for (int x = 0; x < gridW; ++x) {
+            const size_t i = static_cast<size_t>(z) * gridW + x;
+            relax(i, x - 1, z, 2); relax(i, x - 1, z - 1, 3);
+            relax(i, x, z - 1, 2); relax(i, x + 1, z - 1, 3);
+        }
+        for (int z = gridD - 1; z >= 0; --z) for (int x = gridW - 1; x >= 0; --x) {
+            const size_t i = static_cast<size_t>(z) * gridW + x;
+            relax(i, x + 1, z, 2); relax(i, x + 1, z + 1, 3);
+            relax(i, x, z + 1, 2); relax(i, x - 1, z + 1, 3);
+        }
+
+        for (size_t i = 0; i < cellState.size(); ++i) {
+            if (cellState[i] == kWalkable && dist[i] < erodeThreshold)
+                cellState[i] = static_cast<uint8_t>(NavMeshBakeCell::Eroded);
+        }
+    }
     setProgress(0.55f);
+
+    result.stats.cellsX    = gridW;
+    result.stats.cellsZ    = gridD;
+    result.stats.boundsMin = boundsMin;
+    result.stats.boundsMax = boundsMax;
+    for (uint8_t s : cellState) {
+        switch (static_cast<NavMeshBakeCell>(s)) {
+        case NavMeshBakeCell::Walkable:    ++result.stats.walkableCells;   break;
+        case NavMeshBakeCell::TooSteep:    ++result.stats.steepCells;      break;
+        case NavMeshBakeCell::TooHighStep: ++result.stats.stepCells;       break;
+        case NavMeshBakeCell::Obstructed:  ++result.stats.obstructedCells; break;
+        case NavMeshBakeCell::Eroded:      ++result.stats.erodedCells;     break;
+        default: break;
+        }
+    }
+    if (static_cast<int64_t>(gridW) * gridD <= NavMeshBakeDebugGrid::kMaxDebugCells) {
+        result.debug.columns       = gridW;
+        result.debug.rows          = gridD;
+        result.debug.cellSize      = cellSize;
+        result.debug.origin        = boundsMin;
+        result.debug.cells         = cellState;
+        result.debug.cornerHeights = cornerHeight;
+    }
 
     auto CellWalkable = [&](int x, int z) {
         return x >= 0 && x < gridW && z >= 0 && z < gridD
-            && walkable[static_cast<size_t>(z) * gridW + x] != 0;
+            && cellState[static_cast<size_t>(z) * gridW + x] == kWalkable;
     };
 
     std::vector<WorkPoly> polys(static_cast<size_t>(gridW) * gridD * 2);
@@ -595,10 +716,134 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
         }
     }
 
-    NavMesh result;
-    result.polygons = std::move(finalPolys);
+    result.navMesh.polygons   = std::move(finalPolys);
+    result.stats.polygonCount = static_cast<int>(result.navMesh.polygons.size());
+    for (const auto& poly : result.navMesh.polygons) {
+        float twiceArea = 0.0f;
+        const size_t n = poly.vertices.size();
+        for (size_t i = 0; i < n; ++i) {
+            const math::Vector3& a = poly.vertices[i];
+            const math::Vector3& b = poly.vertices[(i + 1) % n];
+            twiceArea += a.x * b.z - b.x * a.z;
+        }
+        result.stats.areaSquareMeters += std::abs(twiceArea) * 0.5f;
+    }
+
+    if (result.navMesh.polygons.empty()) {
+        result.stats.failReason =
+            "歩行可能なセルが残りませんでした。Max Slope を上げる / Agent Radius を下げる / "
+            "NotWalkable の NavMesh Modifier がベイク範囲を覆っていないか確認してください";
+    }
+
+    result.stats.bakeSeconds = std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - startTime).count();
     setProgress(0.98f);
     return result;
+}
+
+// ── ベイクソースのハッシュ ─────────────────────────────────────────────────
+
+namespace {
+
+constexpr uint64_t kFnvOffset = 1469598103934665603ull;
+constexpr uint64_t kFnvPrime  = 1099511628211ull;
+
+// FNV-1a を 8 byte ずつ回したもの。求めるのは「前回のベイク以降に変わったか」だけなので、
+// 暗号強度ではなく Terrain の heightData 数 MB を数百 µs で畳めることを優先する。
+void HashBytes(uint64_t& h, const void* data, size_t size)
+{
+    const auto* p = static_cast<const unsigned char*>(data);
+    size_t i = 0;
+    for (; i + 8 <= size; i += 8) {
+        uint64_t chunk = 0;
+        std::memcpy(&chunk, p + i, 8);
+        h = (h ^ chunk) * kFnvPrime;
+    }
+    for (; i < size; ++i)
+        h = (h ^ p[i]) * kFnvPrime;
+}
+
+template <class T>
+void HashValue(uint64_t& h, const T& v) { HashBytes(h, &v, sizeof(T)); }
+
+void HashTransform(uint64_t& h, const GameObject& go)
+{
+    HashValue(h, go.transform.worldPosition);
+    HashValue(h, go.transform.worldRotation);
+    HashValue(h, go.transform.worldScale);
+}
+
+} // namespace
+
+uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
+{
+    auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(surfaceId);
+    auto* go      = scene.GetGameObject(surfaceId);
+    if (!surface || !go) return 0;
+
+    uint64_t h = kFnvOffset;
+    HashValue(h, surface->collectObjects);
+    HashValue(h, surface->size);
+    HashValue(h, surface->cellSize);
+    HashValue(h, surface->maxSlopeAngleDeg);
+    HashValue(h, surface->agentRadius);
+    HashValue(h, surface->agentHeight);
+    HashValue(h, surface->maxClimb);
+    HashValue(h, surface->agentTypeId);
+    HashTransform(h, *go);
+
+    const auto hashTerrain = [&h](const TerrainComponent& t, const GameObject& terrainGo) {
+        HashValue(h, t.columns);
+        HashValue(h, t.rows);
+        HashValue(h, t.cellSize);
+        HashValue(h, t.maxHeight);
+        HashValue(h, terrainGo.transform.worldPosition);
+        if (!t.heightData.empty())
+            HashBytes(h, t.heightData.data(), t.heightData.size() * sizeof(float));
+    };
+
+    if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
+        if (auto* t = scene.GetComponent<TerrainComponent>(surfaceId)) hashTerrain(*t, *go);
+    } else {
+        for (EntityID teid : scene.GetEntities<TerrainComponent>()) {
+            auto* t  = scene.GetComponent<TerrainComponent>(teid);
+            auto* tg = scene.GetGameObject(teid);
+            if (t && tg) hashTerrain(*t, *tg);
+        }
+    }
+
+    // WHY 種類ごとに書き並べるか: 「ベイクが古い」の判定はここが拾い漏らすと成立しない。
+    //     ベイクソースを増やしたら、この関数にも同じものを足すこと。
+    for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
+        auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
+        auto* modGo = scene.GetGameObject(meid);
+        if (!mod || !modGo) continue;
+        HashValue(h, mod->enabled);
+        HashValue(h, mod->mode);
+        HashValue(h, mod->areaType);
+        HashTransform(h, *modGo);
+        if (auto* box = scene.GetComponent<BoxColliderComponent>(meid)) {
+            HashValue(h, box->enabled);
+            HashValue(h, box->center);
+            HashValue(h, box->size);
+        }
+        if (auto* aabb = scene.GetComponent<AabbColliderComponent>(meid)) {
+            HashValue(h, aabb->enabled);
+            HashValue(h, aabb->center);
+            HashValue(h, aabb->size);
+        }
+    }
+
+    for (EntityID leid : scene.GetEntities<NavMeshOffMeshLinkComponent>()) {
+        auto* link = scene.GetComponent<NavMeshOffMeshLinkComponent>(leid);
+        if (!link) continue;
+        HashValue(h, link->startPoint);
+        HashValue(h, link->endPoint);
+        HashValue(h, link->activated);
+        HashValue(h, link->bidirectional);
+        HashValue(h, link->agentTypeMask);
+    }
+    return h;
 }
 
 // ── NavMeshBakeSystem ─────────────────────────────────────────────────────
@@ -632,7 +877,10 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
         if (it->second.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
 
         if (surface) {
-            surface->navMesh      = it->second.future.get();
+            NavMeshBakeResult baked = it->second.future.get();
+            surface->navMesh      = std::move(baked.navMesh);
+            surface->bakeStats    = std::move(baked.stats);
+            surface->bakeDebug    = std::move(baked.debug);
             surface->bakeState    = NavMeshBakeState::Done;
             surface->bakeProgress = 1.0f;
 
@@ -697,10 +945,13 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
         if (!surface || !go || !surface->needsBake) continue;
         if (m_jobs.count(eid.index)) continue; // 既に実行中
 
-        surface->needsBake    = false;
-        surface->bakeState    = NavMeshBakeState::Baking;
-        surface->bakeProgress = 0.0f;
+        surface->needsBake      = false;
+        surface->bakeState      = NavMeshBakeState::Baking;
+        surface->bakeProgress   = 0.0f;
         surface->navMesh.polygons.clear();
+        surface->bakeStats      = {};
+        surface->bakeDebug      = {};
+        surface->bakedSourceHash = HashNavMeshBakeSources(scene, eid);
 
         // シーンデータをコピーして BakeInput を構築する
         BakeInput input;
@@ -709,7 +960,9 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
         input.volumeSize       = surface->size;
         input.cellSize         = surface->cellSize;
         input.maxSlopeAngleDeg = surface->maxSlopeAngleDeg;
+        input.agentRadius      = surface->agentRadius;
         input.agentHeight      = surface->agentHeight;
+        input.maxClimb         = surface->maxClimb;
 
         if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
             if (auto* t = scene.GetComponent<TerrainComponent>(eid)) {

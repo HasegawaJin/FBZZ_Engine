@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorNavigation.cpp | fbzz::editor
-// NavMesh 系 Component (Surface / Modifier / Agent) の Inspector 描画
+/// @file    InspectorNavigation.cpp
+/// @brief   NavMesh 系 Component (Surface / Modifier / Agent / Patrol / Link / Sensor) の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 #include "InspectorNavigation.hpp"
 
 namespace fbzz::editor {
@@ -20,8 +21,13 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             ImGui::DragInt("Agent Type ID", &surface.agentTypeId, 1, 0, 31);
             ImGui::DragFloat("Cell Size", &surface.cellSize, 0.05f, 0.1f, 10.0f);
             ImGui::DragFloat("Max Slope (deg)", &surface.maxSlopeAngleDeg, 0.5f, 0.0f, 89.0f);
-            ImGui::DragFloat("Agent Radius", &surface.agentRadius, 0.05f, 0.05f, 5.0f);
+            ImGui::DragFloat("Agent Radius", &surface.agentRadius, 0.05f, 0.0f, 5.0f);
+            ImGui::SetItemTooltip("歩行可能面をこの幅だけ内側へ削ります (Recast の walkableRadius)。\n"
+                                  "Cell Size の半分未満だと 1 セルも削られず、設定が効きません。");
             ImGui::DragFloat("Agent Height", &surface.agentHeight, 0.05f, 0.1f, 10.0f);
+            ImGui::DragFloat("Max Climb", &surface.maxClimb, 0.02f, 0.0f, 5.0f);
+            ImGui::SetItemTooltip("Walkable Modifier の縁でこの高さを超える段差があるセルを歩行不可にします\n"
+                                  "(Recast の walkableClimb)。0 にすると台の上と地面が地続きになります。");
 
             ImGui::Spacing();
             if (ImGui::TreeNode("Area Costs")) {
@@ -53,9 +59,20 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                 std::snprintf(progressLabel, sizeof(progressLabel), "Baking... %d%%",
                     static_cast<int>(surface.bakeProgress * 100.0f));
                 ImGui::ProgressBar(surface.bakeProgress, ImVec2(-1.0f, 0.0f), progressLabel);
+            } else if (surface.bakeStats.cellsX > 0) {
+                ImGui::TextDisabled("%d polygons / %.2f s",
+                    surface.bakeStats.polygonCount, surface.bakeStats.bakeSeconds);
             } else {
                 ImGui::TextDisabled("%zu polygons", surface.navMesh.polygons.size());
             }
+
+            if (!surface.bakeStats.failReason.empty()) {
+                ImGui::PushTextWrapPos(0.0f);
+                widgets::ColoredText(surface.bakeStats.failReason.c_str(),
+                                     ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f });
+                ImGui::PopTextWrapPos();
+            }
+            ImGui::TextDisabled("一覧・一括ベイク・診断は Tools > Navigation...");
         });
 
     DrawComponentSection<scene::NavMeshModifierComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "NavMesh Modifier",
