@@ -6,6 +6,7 @@
 //      これにより Profiler::BeginFrame/EndFrame・MemorySystem・
 //      Input::Update・PollEvents などフレーム境界処理がエンジン側で統一される。
 #include "StandaloneApp.hpp"
+#include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -44,7 +45,7 @@ StandaloneApp::StandaloneApp(renderer::IRenderer& renderer,
                              renderer::IImGuiRenderer& imguiRenderer,
                              renderer::ResourceManager& resources,
                              const LaunchProject& project,
-                             const ProjectSettings& settings)
+                             ProjectSettings& settings)
     : m_renderer(renderer)
     , m_imguiRenderer(imguiRenderer)
     , m_resources(resources)
@@ -102,6 +103,10 @@ bool StandaloneApp::OnInit()
     auto& app = core::Application::Get();
     // StandaloneのProjectRuntimeにもApplication所有のAudioManagerを共有する。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
+    if (auto* audioManager = app.GetAudioManager())
+        audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
+    // graphics プロキシが触る描画設定の実体を登録する (配布ゲームでは書き戻さない)。
+    app.SetActiveRenderSettings(&m_settings.render);
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
 
