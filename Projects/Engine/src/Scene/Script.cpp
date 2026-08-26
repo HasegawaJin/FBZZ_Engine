@@ -184,6 +184,9 @@ bool Script::ResumeCoroutine(Coroutine& coroutine)
         coroutine.Step();
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // WHY 破棄せず手放すか: 巻き戻したフレームは中断点に居らず、以降 done() も
+        //     destroy() も呼べない。畳もうとすると障害を握った意味がなくなる。
+        coroutine.Release();
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, "Coroutine step");
         return false;
@@ -333,8 +336,14 @@ void Script::StartCoroutine(Coroutine co)
 
 void Script::StopAllCoroutines()
 {
-    m_coroutines.clear();
     m_pendingCoroutines.clear();
+    // WHY 遅延させるか: コルーチンの中から呼ばれると、今 resume している
+    //     ハンドル自身を破棄することになる。ループを抜けてから畳む。
+    if (m_isTickingCoroutines) {
+        m_stopAllCoroutinesRequested = true;
+        return;
+    }
+    m_coroutines.clear();
 }
 
 void Script::UpdateCoroutines()
@@ -344,10 +353,19 @@ void Script::UpdateCoroutines()
     m_isTickingCoroutines = true;
     // WHY: 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回り、
     //      m_coroutines は本ループ中に再確保されない。
-    for (size_t i = 0; i < m_coroutines.size(); ++i)
-        if (!ResumeCoroutine(m_coroutines[i]))
-            break;
+    for (size_t i = 0; i < m_coroutines.size(); ++i) {
+        if (!ResumeCoroutine(m_coroutines[i])) break;
+        if (m_stopAllCoroutinesRequested) break;
+    }
     m_isTickingCoroutines = false;
+
+    // 再開したコルーチンは次の中断点まで進んで戻っているため、ここでなら安全に畳める。
+    if (m_stopAllCoroutinesRequested) {
+        m_stopAllCoroutinesRequested = false;
+        m_coroutines.clear();
+        m_pendingCoroutines.clear();
+        return;
+    }
 
     // 完了したコルーチンを除去する。
     m_coroutines.erase(
