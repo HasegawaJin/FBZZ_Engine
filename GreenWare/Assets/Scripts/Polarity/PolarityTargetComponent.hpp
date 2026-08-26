@@ -73,6 +73,21 @@ public:
     FBZZ_FIELD(bool, isAnchor, false, "Is Anchor")
     FBZZ_TOOLTIP("true なら引力で動かない。柱とヘビースライムに立てる")
 
+    // 8 章「ボスには極性を付与できない。代わりに、ボスが数秒ごとに自分の極を切り替える」。
+    //
+    // WHY 盤面から外さず «塗れないだけ» にするか:
+    //   ボスは引力の相手として盤面に居なければならない (逆極の雑魚を吸い寄せる側)。
+    //   PolarityFieldComponent が候補を集める入口はこのスクリプトだけなので、外すと
+    //   «ボスへ雑魚をぶつける» という唯一の攻略法そのものが成立しなくなる。
+    //   居るけれど塗れない、という状態をここで表す。
+    //
+    // WHY 4 つの振る舞いを 1 つのフラグに束ねるか:
+    //   「この極は自分で決める」と言った時点で、外から塗れないこと・時間で切れないこと・
+    //   見た目を持ち主が描くことは同じ 1 つの決定から出てくる。別々のフラグにすると、
+    //   片方だけ立てた «塗れないのに勝手に切れる» ボスが作れてしまう。
+    FBZZ_FIELD(bool, selfDriven, false, "Self Driven")
+    FBZZ_TOOLTIP("true なら銃で塗れず、時間でも切れない。極も発光も持ち主のスクリプトが決める")
+
     // 発光を書き込む Material スロット。SkinnedMeshRenderer は 1 GameObject で
     // モデル全体を描くため、光らせたいサブメッシュを番号で指す。
     FBZZ_FIELD_RANGE_INT(int, emissiveSlot, 0, "Emissive Slot", 0, 15)
@@ -124,6 +139,11 @@ public:
 
     // 中和以外で強制的に落とす場合 (衝突で倒れた・Wave リセット等)。
     void ClearPolarity();
+
+    /// selfDriven の対象の極を、持ち主のスクリプトが直接決める。
+    /// WHY 発光を書かないか: selfDriven は «見た目も持ち主が描く» を含む。ここで描くと、
+    ///     切替予兆の明滅 (8 章) と残り時間の明滅 (12.4) が同じ材質へ二重に書き込まれる。
+    void SetPolarity(Polarity polarity);
 
     void OnStart()  override;
     void OnUpdate() override;
@@ -180,6 +200,9 @@ inline float PolarityTargetComponent::RemainingNormalized() const
 
 inline bool PolarityTargetComponent::WouldNeutralize(Polarity incoming) const
 {
+    // 塗れない相手に «中和になる» と警告を出すと、6.5 のプレビューが
+    // 「撃つと損をする」と読ませてしまう。実際には何も起きない。
+    if (selfDriven) return false;
     return ResolvePolarity(m_polarity, incoming).change == PolarityChange::Neutralized;
 }
 
@@ -198,6 +221,7 @@ inline void PolarityTargetComponent::ResetPaint()
 inline bool PolarityTargetComponent::Paint(Polarity incoming, float dt,
                                            PolarityResult& outResult)
 {
+    if (selfDriven) return false;
     if (incoming == Polarity::None || dt <= 0.0f) return false;
 
     // 逆の極でなぞられ始めたら進捗は最初からやり直す。片方の銃で半分塗った途中に
@@ -223,6 +247,10 @@ inline bool PolarityTargetComponent::Paint(Polarity incoming, float dt,
 
 inline PolarityResult PolarityTargetComponent::Apply(Polarity incoming)
 {
+    // 8 章の「ボスには極性を付与できない」。タップの点付与もここを通るので、
+    // 入口 1 箇所で断る。何も起きなかったことを Extended (無変化) として返す。
+    if (selfDriven) return { m_polarity, PolarityChange::Extended };
+
     const PolarityResult result = ResolvePolarity(m_polarity, incoming);
     m_hitReactRemaining = tuning->hitReactSeconds;
     // 塗り切った / タップで乗せた時点でプレビューの役目は終わる。残すと
@@ -295,6 +323,15 @@ inline void PolarityTargetComponent::ClearPolarity()
     ApplyVisual();
 }
 
+inline void PolarityTargetComponent::SetPolarity(Polarity polarity)
+{
+    m_polarity = polarity;
+    // 残り時間は持たない。selfDriven の極は «切り替わる» のであって «切れる» ことがなく、
+    // 12.4 の残り時間の明滅もここでは意味を持たない。
+    m_remaining  = 0.0f;
+    m_chargeBase = 0.0f;
+}
+
 inline void PolarityTargetComponent::OnStart()
 {
     if (!tuning) {
@@ -310,7 +347,8 @@ inline void PolarityTargetComponent::OnStart()
 
     // 発光の書き込み先が 1 つも解決できないと、極が乗っても盤面の色は変わらない。
     // 12.4 が可視化を «演出ではなく仕様» と書いている以上、黙って無反応にはしない。
-    if (!HasEmissiveTarget()) {
+    // selfDriven は発光を持ち主が描くので、こちらに書き込み先が無いのが正しい構成。
+    if (!selfDriven && !HasEmissiveTarget()) {
         debug.LogError("PolarityTargetComponent has no material to drive. Add a "
                        "MaterialComponent here, or assign Emissive Targets.");
     }
@@ -334,6 +372,13 @@ inline void PolarityTargetComponent::OnUpdate()
 {
     const float dt = Time::deltaTime;
     m_hitReactRemaining = Max(0.0f, m_hitReactRemaining - dt);
+
+    // 塗られることも切れることもない対象は、ここで見るものが何も無い。
+    // 発光は持ち主が毎フレーム描いているので、こちらが上書きしてはいけない。
+    if (selfDriven) {
+        debugRemaining = 0.0f;
+        return;
+    }
 
     // 6.2「素早く振ると塗り残す」。触れていないフレームは進捗を戻す。
     bool previewFaded = false;

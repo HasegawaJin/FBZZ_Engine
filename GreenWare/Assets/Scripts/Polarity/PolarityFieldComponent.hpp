@@ -24,6 +24,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
+#include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
@@ -96,10 +97,32 @@ public:
     FBZZ_TOOLTIP("作用半径の何倍で放電が消えるか。近づくほど明るくなる = 溜まって見える。"
                  "1.0 を下回ると、組めたばかりの遠い組で放電が出ない")
 
+    // 7.9 の集束を画面へ渡す。ScreenEffectManagerComponent が起点へ画面を引き込む。
+    //
+    // WHY 起爆 (PolarityGunComponent::Detonate) ではなくここから出すか:
+    //   タップした «つもり» と、実際に何体が動き出したかは別。外した / 中和した
+    //   タップでも画面が渦を巻くと、手応えが操作の結果を表さなくなる。誰が誰へ
+    //   引かれ始めたかを知っているのは盤面だけなので、巻き込んだ数もここでしか出せない。
+    //
+    // NOTE: 動く側は 1 本しかリンクを持てない (BuildLinks の WHY)。したがって
+    //       «多対 1» が成立するのは相手がアンカーのときだけで、渦もその場合に出る。
+    FBZZ_GROUP("Implode (7.9)")
+    FBZZ_FIELD(bool, screenImplode, true, "Screen Implode")
+    FBZZ_FIELD_RANGE_INT(int, implodeMinBodies, 2, "Min Bodies", 2, 16)
+    FBZZ_TOOLTIP("渦を出す最小の巻き込み数。1 にすると普通の 1 対 1 でも毎回出て、"
+                 "集束が «特別な一手» でなくなる")
+    FBZZ_FIELD_RANGE_INT(int, implodeFullBodies, 5, "Full Bodies", 2, 16)
+    FBZZ_TOOLTIP("渦が最大になる巻き込み数。10.8 の «5 体以上で 3 点» に合わせてある")
+    FBZZ_FIELD_RANGE(float, implodeMinStrength, 0.45f, "Min Strength", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("最小の巻き込み数で出る強さ。ここから Full Bodies で 1.0 まで伸びる")
+    FBZZ_FIELD_RANGE(float, implodeSeconds, 0.30f, "Seconds", 0.05f, 2.0f)
+    FBZZ_TOOLTIP("渦が続く長さ。12.6 の «タイムスケール 0.85 を 0.3 秒» に揃えてある")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD(bool, drawDebugLinks, false, "Draw Debug Links")
     FBZZ_FIELD_READ_ONLY(int, debugLinkCount, 0, "Active Links")
     FBZZ_FIELD_READ_ONLY(int, debugChargedCount, 0, "Charged Targets")
+    FBZZ_FIELD_READ_ONLY(int, debugConvergeCount, 0, "Last Converge")
 
     // 衝突の通知。衝突は本作で唯一のダメージ源 (7.4) なので、ダメージ処理は
     // 2 週目にここへ繋ぐ。
@@ -156,8 +179,16 @@ private:
         float priority = 0.0f;
     };
 
+    /// 1 つの的へ «今フレーム新しく» 引かれ始めた数。
+    struct ConvergeCount {
+        EntityID partner{};
+        int      count = 0;
+    };
+
     void CollectCandidates();
     void BuildLinks(float dt);
+    /// 多対 1 の集束を見つけて画面へ渡す。BuildLinks の直後に 1 回だけ呼ぶ。
+    void DetectConvergence();
     /// 1 リンクぶんの放電を今フレームの両端・強さへ張り直す。
     void DriveLinkArc(std::size_t slot, const Candidate& a, const Candidate& b, float dt);
     /// 今フレーム使わなかった束を消灯する。
@@ -183,6 +214,10 @@ private:
     std::vector<PolarityImpact> m_impacts;
     /// 成立中のリンク 1 本につき 1 束。使わなくなった枠は消灯して寝かせる。
     std::vector<ElectricArcBundle> m_linkArcs;
+    /// 前フレームに引かれていた対象。«今» 始まった引力だけを拾うための差分。
+    std::vector<EntityID>       m_pulledLast;
+    std::vector<EntityID>       m_pulledNow;
+    std::vector<ConvergeCount>  m_converge;
     bool                        m_warnedNoFeedback = false;
 };
 
@@ -202,6 +237,7 @@ inline void PolarityFieldComponent::OnStart()
     if (scene.FindObjectsOfType<PolarityFieldComponent>().size() > 1)
         debug.LogError("PolarityFieldComponent must exist exactly once in the scene.");
 
+    m_pulledLast.clear();
     m_warnedNoFeedback = false;
 }
 
@@ -215,6 +251,7 @@ inline void PolarityFieldComponent::OnUpdate()
 
     CollectCandidates();
     BuildLinks(Max(Time::deltaTime, 0.0f));
+    DetectConvergence();
 }
 
 inline void PolarityFieldComponent::CollectCandidates()
@@ -406,6 +443,61 @@ inline void PolarityFieldComponent::BuildLinks(float dt)
     }
 
     debugLinkCount = linkCount;
+}
+
+inline void PolarityFieldComponent::DetectConvergence()
+{
+    // WHY «今フレーム始まった» だけを数えるか:
+    //   引かれている状態は溜め (0.1〜0.2 秒) と飛行のあいだ続く。状態をそのまま
+    //   数えると、同じ 1 回の集束を飛んでいる間じゅう毎フレーム報告することになり、
+    //   渦が掛かりっぱなしになる。始まりは差分でしか取れない。
+    m_pulledNow.clear();
+    m_converge.clear();
+
+    for (const Candidate& candidate : m_candidates) {
+        if (!candidate.object || !candidate.body || !candidate.body->IsBeingPulled()) continue;
+
+        const EntityID id = candidate.object->GetID();
+        m_pulledNow.push_back(id);
+        if (std::find(m_pulledLast.begin(), m_pulledLast.end(), id) != m_pulledLast.end())
+            continue;
+
+        const EntityID partner = candidate.body->PartnerId();
+        auto it = std::find_if(m_converge.begin(), m_converge.end(),
+                               [partner](const ConvergeCount& entry) {
+                                   return entry.partner == partner;
+                               });
+        if (it != m_converge.end()) ++it->count;
+        else                        m_converge.push_back({ partner, 1 });
+    }
+    m_pulledLast.swap(m_pulledNow);
+
+    // 同じフレームに 2 つの集束が起きても、渦は 1 つしか置けない (起点が 1 点しか
+    // 無いため)。大きい方を採り、小さい方は爆発と音の側で拾わせる。
+    const ConvergeCount* biggest = nullptr;
+    for (const ConvergeCount& entry : m_converge)
+        if (!biggest || entry.count > biggest->count) biggest = &entry;
+
+    if (!biggest) return;
+    debugConvergeCount = biggest->count;
+
+    if (!screenImplode || biggest->count < implodeMinBodies) return;
+
+    GameObject* focus = scene.GetGameObject(biggest->partner);
+    if (!focus) return;
+
+    auto* screen = ScreenEffectManagerComponent::Instance();
+    if (!screen) return;
+
+    const int   span = std::max(implodeFullBodies - implodeMinBodies, 1);
+    const float ramp = static_cast<float>(biggest->count - implodeMinBodies)
+                     / static_cast<float>(span);
+    const float strength = Lerp(Clamp01(implodeMinStrength), 1.0f, Clamp01(ramp));
+
+    // 起点は放電が集まる点と同じ高さにする。足元を中心にすると、渦だけが地面へ
+    // 落ちて «線は胸で交わっているのに画面は足元へ吸われる» という二重の中心になる。
+    screen->Implode(bodybounds::CenterWorld(*focus, kArcFallbackHeight),
+                    strength, implodeSeconds);
 }
 
 inline void PolarityFieldComponent::ResolveImpacts()

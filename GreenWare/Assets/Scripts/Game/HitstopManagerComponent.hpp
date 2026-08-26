@@ -52,6 +52,18 @@ public:
 
     [[nodiscard]] bool IsActive() const { return m_remaining > 0.0f; }
 
+    // 今かかっている止めの重さ 0..1。止まっていなければ 0。
+    //
+    // WHY 深さではなく長さで測るか: Hit() が強さから動かすのは長さだけで、深さ
+    //     (timeScale) は 1 つの値を全員で共有している。深さを返すと、軽い接触も
+    //     全力の激突も同じ数字になる。
+    //
+    // WHY 公開するか: 止めに重ねる画面効果 (ScreenEffectManagerComponent の Freeze)
+    //     は、止めと «同じ重さ» でなければならない。最低の 0.02 秒 = 60fps で
+    //     1 フレームの止めに全力の絵を出すと、当たりではなく描画のちらつきに見える。
+    //     受け取る側が長さから逆算すると、Hit() の対応表をもう 1 つ持つことになる。
+    [[nodiscard]] float Weight01() const;
+
     void OnStart() override;
     void OnUpdate() override;
     void OnDestroy() override { Cancel(); if (s_instance == this) s_instance = nullptr; }
@@ -61,6 +73,9 @@ private:
 
     float m_remaining    = 0.0f;
     float m_scale        = 1.0f;
+    // 今の止めが «始まったときの» 長さ。残りだけでは重さが測れない
+    // (解除の直前はどんな止めでも残り 0 になる)。
+    float m_seconds      = 0.0f;
     bool  m_warnedNoTime = false;
 };
 
@@ -75,7 +90,24 @@ inline void HitstopManagerComponent::OnStart()
     s_instance     = this;
     m_remaining    = 0.0f;
     m_scale        = 1.0f;
+    m_seconds      = 0.0f;
     m_warnedNoTime = false;
+}
+
+inline float HitstopManagerComponent::Weight01() const
+{
+    if (m_remaining <= 0.0f) return 0.0f;
+    // Hit() が minSeconds〜maxSeconds へ写した長さを、そのまま逆に読む。
+    // Request() を直接叩いた場合はこの範囲の外へ出るので、両端で止める。
+    //
+    // WHY Option の倍率を掛け戻すか: m_seconds は倍率を掛けた «後» の長さ。素の
+    //     範囲と比べると、止めを弱める設定にしただけで全部の当たりが軽い判定になり、
+    //     «どれくらい強い当たりだったか» が設定で変わってしまう。
+    const float optionScale = std::max(GameSettingsComponent::HitstopScale(), EPSILON);
+    const float low  = std::max(minSeconds, 0.0f) * optionScale;
+    const float high = std::max(maxSeconds, 0.0f) * optionScale;
+    if (high - low <= EPSILON) return 1.0f;
+    return Clamp01((m_seconds - low) / (high - low));
 }
 
 inline void HitstopManagerComponent::Hit(float strength01)
@@ -97,6 +129,9 @@ inline void HitstopManagerComponent::Request(float seconds, float scale)
     // 強い方の深さと長い方の残りを採る。足し合わせると弱い衝突の重なりで長時間止まる。
     m_remaining = std::max(m_remaining, seconds);
     m_scale     = std::min(m_scale, Clamp01(scale));
+    // 重さも «長い方» に揃える。残りと別々に選ぶと、重ねた瞬間に長さと重さが
+    // 食い違い、Weight01() が 1 本の止めを表さなくなる。
+    m_seconds   = std::max(m_seconds, seconds);
 
     // WHY OnStart で有無を確かめないか: スクリプトの並び順によっては TimeManager の
     //     OnStart が後になる。並び順に依存した警告は、順番を入れ替えただけで嘘になる。
@@ -113,6 +148,7 @@ inline void HitstopManagerComponent::Cancel()
 {
     m_remaining    = 0.0f;
     m_scale        = 1.0f;
+    m_seconds      = 0.0f;
     debugRemaining = 0.0f;
     if (auto* timeManager = TimeManagerComponent::Instance())
         timeManager->ClearOverride();

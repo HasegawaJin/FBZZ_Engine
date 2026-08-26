@@ -69,6 +69,15 @@ public:
     ///   3D 側がカーソルの絵から静かにずれる。
     [[nodiscard]] static bool WorldPointAtDepth(Script& script, float depth, Vector3& outWorld);
 
+    /// カーソルが指している画面点。左上 (0,0) 〜 右下 (1,1) の正規化座標。
+    /// 「画面のどの領域を指しているか」で挙動を変えたい側が使う (電極の追従領域など)。
+    ///
+    /// WHY canvasWidth で割った値を各所で作らないか:
+    ///   割る相手は canvasWidth ではなく «見えている Canvas の範囲» で、これは
+    ///   Canvas Scaler と viewport の比で決まる (WorldPointAtDepth の WHY を参照)。
+    ///   呼ぶ側がそれぞれ割ると、16:9 以外の窓でだけ判定が静かにずれる。
+    [[nodiscard]] static bool NormalizedPoint(Script& script, Vector2& outNormalized);
+
     /// メインカメラ。解決結果を控えるので、毎フレーム呼んでも全 GameObject を舐め直さない。
     /// 奥行きを自分で決める側 (3D 側) が WorldPointAtDepth と同じカメラを見るための窓口。
     [[nodiscard]] static GameObject* MainCameraObject(Script& script);
@@ -267,7 +276,7 @@ inline UICanvas* GameCursorComponent::ResolveCanvas(Script& script)
     return found ? found->GetComponent<UICanvas>() : nullptr;
 }
 
-inline bool GameCursorComponent::WorldPointAtDepth(Script& script, float depth, Vector3& outWorld)
+inline bool GameCursorComponent::NormalizedPoint(Script& script, Vector2& outNormalized)
 {
     if (!s_live) return false;
 
@@ -284,11 +293,25 @@ inline bool GameCursorComponent::WorldPointAtDepth(Script& script, float depth, 
     if (const UICanvas* canvas = ResolveCanvas(script))
         visible = VisibleCanvasSize(*canvas, aspect);
 
-    const float ndcX = (s_position.x / visible.x) * 2.0f - 1.0f;
-    const float ndcY = 1.0f - (s_position.y / visible.y) * 2.0f;
+    outNormalized = { s_position.x / visible.x, s_position.y / visible.y };
+    return true;
+}
+
+inline bool GameCursorComponent::WorldPointAtDepth(Script& script, float depth, Vector3& outWorld)
+{
+    Vector2 normalized{};
+    if (!NormalizedPoint(script, normalized)) return false;
+
+    // NormalizedPoint が通った時点でカメラは居る。控えが効くので引き直しても走査は起きない。
+    GameObject* cameraObject = MainCameraObject(script);
+    const auto* camera = cameraObject ? cameraObject->GetComponent<CameraComponent>() : nullptr;
+    if (!camera) return false;
+
+    const float ndcX = normalized.x * 2.0f - 1.0f;
+    const float ndcY = 1.0f - normalized.y * 2.0f;
 
     const float halfHeight = std::tan(ToRad(camera->fovY) * 0.5f) * depth;
-    const float halfWidth  = halfHeight * aspect;
+    const float halfWidth  = halfHeight * (std::max)(camera->aspectRatio, 0.0001f);
 
     const Transform& view = cameraObject->transform;
     outWorld = view.worldPosition
