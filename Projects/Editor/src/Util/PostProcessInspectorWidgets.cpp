@@ -18,6 +18,8 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/VolumeOverride.hpp>
+#include <Engine/Renderer/PipelineDiagnostics.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
 #include <imgui.h>
 #include <algorithm>
 #include <cctype>
@@ -230,7 +232,8 @@ int ResolveDropDestination(int dragged, int target, bool insertAfter)
 // ── オーバーライドカード ────────────────────────────────────────────────
 CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
                             ImGuiReflector& reflector, bool& changed,
-                            CardDragResult& drag)
+                            CardDragResult& drag,
+                            const renderer::RenderSettings* renderSettings)
 {
     CardAction action = CardAction::None;
 
@@ -278,8 +281,34 @@ CardAction DrawOverrideCard(VolumeOverride& entry, int index, int count,
         ImGui::EndPopup();
     }
 
+    // 現在のパイプラインでは効かない効果に、その旨と直し方を出す。
+    //
+    // WHY 折りたたんでいても出すか: 効かないことに気づけるのが目的なので、
+    //     カードを開かないと見えないのでは意味がない。ヘッダーの直下へ出す。
+    // NOTE: entry.active が false のときは黙る。ユーザーが自分で切っているものに
+    //       「効きません」と言っても、直すべきことは何も無い。
+    const char* inertReason =
+        (renderSettings && entry.active && entry.GetTypeName())
+            ? renderer::DescribeInertOverride(*renderSettings, entry.GetTypeName())
+            : nullptr;
+    if (inertReason) {
+        ImGui::Indent();
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                           "このパイプラインでは効きません");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s\n→ Project Settings > Rendering > Pipeline", inertReason);
+        ImGui::Unindent();
+    }
+
     if (header.open) {
         const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
+
+        if (inertReason) {
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s", inertReason);
+            ImGui::TextDisabled("Project Settings > Rendering > Pipeline を "
+                                "Deferred / Deferred+ にすると有効になります");
+            ImGui::Spacing();
+        }
 
         // 無効化中は本文をグレーアウトする。値は見えるが、効いていないことが分かる。
         ImGui::BeginDisabled(!entry.active);
@@ -321,7 +350,8 @@ void DrawEmptyState()
 } // namespace
 
 PostProcessInspectorResult DrawVolumeOverrideListInspector(
-    asset::PostProcessProfile& profile, ImGuiReflector& reflector)
+    asset::PostProcessProfile& profile, ImGuiReflector& reflector,
+    const renderer::RenderSettings* renderSettings)
 {
     PostProcessInspectorResult result;
 
@@ -370,7 +400,8 @@ PostProcessInspectorResult DrawVolumeOverrideListInspector(
         VolumeOverride* entry = profile.overrides[static_cast<std::size_t>(i)].get();
         if (!entry) continue;
 
-        switch (DrawOverrideCard(*entry, i, count, reflector, result.changed, drag)) {
+        switch (DrawOverrideCard(*entry, i, count, reflector, result.changed, drag,
+                                 renderSettings)) {
         case CardAction::Remove:   removeIndex = i; break;
         case CardAction::MoveUp:   swapIndex   = i - 1; break;
         case CardAction::MoveDown: swapIndex   = i; break;

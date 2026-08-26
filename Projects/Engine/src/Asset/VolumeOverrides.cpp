@@ -413,6 +413,63 @@ void VolumetricLightOverride::Reflect(IReflector& r)
     Integer(r, "steps", steps, 4, 128);
 }
 
+void FroxelFogOverride::Apply(renderer::VolumeSettings& target, float weight) const
+{
+    auto& f = target.froxelFog;
+    f.enabled       = BlendBool(f.enabled, true, weight);
+    f.density       = BlendFloat(f.density,       density,       weight);
+    f.anisotropy    = BlendFloat(f.anisotropy,    anisotropy,    weight);
+    f.heightFalloff = BlendFloat(f.heightFalloff, heightFalloff, weight);
+    f.heightStart   = BlendFloat(f.heightStart,   heightStart,   weight);
+    f.nearDistance  = BlendFloat(f.nearDistance,  nearDistance,  weight);
+    f.farDistance   = BlendFloat(f.farDistance,   farDistance,   weight);
+    f.ambient       = BlendFloat(f.ambient,       ambient,       weight);
+    BlendColor3(f.albedo,   albedo,   weight, f.albedo);
+    BlendColor3(f.emissive, emissive, weight, f.emissive);
+    // グリッド寸法はブレンドしない (再確保が走るため)。RenderSettings の既定を使う。
+}
+
+void FroxelFogOverride::Reflect(IReflector& r)
+{
+    Range(r, "density",       density,       0.0f, 0.5f);
+    Color3(r, "albedo",   albedo);
+    Color3(r, "emissive", emissive);
+    Range(r, "anisotropy",    anisotropy,   -0.95f, 0.95f);
+    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f);
+    Range(r, "heightStart",   heightStart,  -500.0f, 500.0f);
+    Range(r, "nearDistance",  nearDistance,  0.01f, 10.0f);
+    Range(r, "farDistance",   farDistance,   1.0f, 500.0f);
+    Range(r, "ambient",       ambient,       0.0f, 4.0f);
+}
+
+void AutoExposureOverride::Apply(renderer::VolumeSettings& target, float weight) const
+{
+    auto& a = target.autoExposure;
+    a.enabled       = BlendBool(a.enabled, true, weight);
+    a.minEV         = BlendFloat(a.minEV,         minEV,         weight);
+    a.maxEV         = BlendFloat(a.maxEV,         maxEV,         weight);
+    a.lowPercent    = BlendFloat(a.lowPercent,    lowPercent,    weight);
+    a.highPercent   = BlendFloat(a.highPercent,   highPercent,   weight);
+    a.speedUp       = BlendFloat(a.speedUp,       speedUp,       weight);
+    a.speedDown     = BlendFloat(a.speedDown,     speedDown,     weight);
+    a.compensation  = BlendFloat(a.compensation,  compensation,  weight);
+    a.minExposureEV = BlendFloat(a.minExposureEV, minExposureEV, weight);
+    a.maxExposureEV = BlendFloat(a.maxExposureEV, maxExposureEV, weight);
+}
+
+void AutoExposureOverride::Reflect(IReflector& r)
+{
+    Range(r, "minEV",         minEV,        -16.0f, 0.0f);
+    Range(r, "maxEV",         maxEV,          0.0f, 20.0f);
+    Range(r, "lowPercent",    lowPercent,     0.0f, 0.95f);
+    Range(r, "highPercent",   highPercent,    0.05f, 1.0f);
+    Range(r, "speedUp",       speedUp,        0.0f, 20.0f);
+    Range(r, "speedDown",     speedDown,      0.0f, 20.0f);
+    Range(r, "compensation",  compensation,  -5.0f, 5.0f);
+    Range(r, "minExposureEV", minExposureEV, -16.0f, 0.0f);
+    Range(r, "maxExposureEV", maxExposureEV,   0.0f, 16.0f);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 影・反射
 // ═══════════════════════════════════════════════════════════════════════════
@@ -562,6 +619,8 @@ FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::LensFlareOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::MotionBlurOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::FogOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::VolumetricLightOverride)
+FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::FroxelFogOverride)
+FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::AutoExposureOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::SsrOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::ContactShadowOverride)
 FBZZ_REGISTER_VOLUME_OVERRIDE(::fbzz::asset::SepiaOverride)

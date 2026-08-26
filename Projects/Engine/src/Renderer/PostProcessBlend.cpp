@@ -31,6 +31,19 @@ void ApplyVolumeSettings(const VolumeSettings& volume, RenderSettings& out)
     out.taa              = volume.taa;
     out.motionBlur       = volume.motionBlur;
     out.volumetricLight  = volume.volumetricLight;
+    // グリッド寸法だけは RenderSettings 側の値を残す。
+    // WHY: Volume 側は寸法を持たない (ブレンドすると解像度が毎フレーム変わり、
+    //      ボリュームの再確保が走る)。中身だけ差し替えて寸法は据え置く。
+    {
+        const uint32_t gx = out.froxelFog.gridX;
+        const uint32_t gy = out.froxelFog.gridY;
+        const uint32_t gz = out.froxelFog.gridZ;
+        out.froxelFog       = volume.froxelFog;
+        out.froxelFog.gridX = gx;
+        out.froxelFog.gridY = gy;
+        out.froxelFog.gridZ = gz;
+    }
+    out.autoExposure     = volume.autoExposure;
     out.lensFlare        = volume.lensFlare;
     out.lutColorGrading  = volume.lutColorGrading;
 
