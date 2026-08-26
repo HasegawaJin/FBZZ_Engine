@@ -561,6 +561,18 @@ T* ScriptSceneProxy::GetComponent() const
 }
 
 template<typename T>
+T* ScriptSceneProxy::GetComponent(GameObject& go) const
+{
+    return go.GetComponent<T>();
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetComponent(GameObject* go) const
+{
+    return go ? go->GetComponent<T>() : nullptr;
+}
+
+template<typename T>
 T& ScriptSceneProxy::GetOrAddComponent() const
 {
     assert(script && script->m_gameObject && "Script context is not set");

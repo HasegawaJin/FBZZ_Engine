@@ -9,7 +9,8 @@ namespace fbzz::scene {
 
 class Script;
 
-enum class LightType { Directional, Point, Spot };
+// LightComponent::Type と値を一致させること。DLL 境界を越えるので順序の変更は不可。
+enum class LightType { Directional, Point, Spot, Area, Sphere, Tube };
 
 struct ScriptLightProxy {
     Script* script = nullptr;

@@ -40,7 +40,6 @@
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
-#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -53,7 +52,6 @@
 #include <Engine/Scene/Components/ParticleForceField.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
-#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <Engine/Scene/Components/WindZoneComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
@@ -72,6 +70,7 @@
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/MotionWarpComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
@@ -2232,6 +2231,13 @@ std::string ScriptMaterialProxy::GetSharedMaterialPath(uint32_t slot) const
     return material ? material->materialPath : std::string{};
 }
 
+std::string ScriptMaterialProxy::GetSharedMaterialPath(EntityRef target, uint32_t slot) const
+{
+    const auto* material =
+        static_cast<const MaterialSlot*>(Instance(target, slot).ResolveComponent(false));
+    return material ? material->materialPath : std::string{};
+}
+
 uint32_t ScriptMaterialProxy::GetSlotCount() const
 {
     const MaterialComponent* material = Instance().ResolveOwner(false);
@@ -2406,7 +2412,7 @@ void ScriptParticleProxy::SetBoxShape(const math::Vector3& extents) const
 }
 
 void ScriptParticleProxy::SetMeshShape(std::string_view modelPath, int meshIndex, float scale,
-                                       bool followSkinnedAnimation) const
+                                       bool followSkinnedAnimation, float normalVelocity) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         p->settings.shape = ParticleEmitterShape::MeshSurface;
@@ -2414,11 +2420,19 @@ void ScriptParticleProxy::SetMeshShape(std::string_view modelPath, int meshIndex
         p->settings.meshShapeIndex = meshIndex;
         p->settings.meshShapeScale = (std::max)(scale, 0.0001f);
         p->settings.meshShapeFollowSkinnedAnimation = followSkinnedAnimation;
+        p->settings.meshShapeNormalVelocity = normalVelocity;
         // パス・サブメッシュ変更時は次のスポーンでFBX頂点を再構築する。
         p->runtime.loadedMeshShapePath.clear();
         p->runtime.loadedMeshShapeIndex = -2;
         p->runtime.meshShapeVertices.clear();
+        p->runtime.meshShapeTriangles.clear();
     }
+}
+
+void ScriptParticleProxy::SetMeshShapeNormalVelocity(float normalVelocity) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script))
+        p->settings.meshShapeNormalVelocity = normalVelocity;
 }
 
 void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
@@ -4913,41 +4927,6 @@ void ScriptTerrainProxy::RequestRebuild() const
     }
 }
 
-void ScriptFoliageProxy::SetEnabled(bool enabled) const
-{
-    if (auto* foliage = SelfComponent<FoliageComponent>(script)) foliage->SetEnabled(enabled);
-}
-
-void ScriptFoliageProxy::RequestBake(bool rebuildChildren) const
-{
-    if (auto* foliage = SelfComponent<FoliageComponent>(script)) foliage->RequestBake(rebuildChildren);
-}
-
-bool ScriptFoliageProxy::AddStamp(size_t speciesIndex, const math::Vector3& localPosition,
-                                  float rotationY, float scale) const
-{
-    auto* foliage = SelfComponent<FoliageComponent>(script);
-    return foliage && foliage->AddStamp(speciesIndex, localPosition, rotationY, scale);
-}
-
-bool ScriptFoliageProxy::ClearStamps(size_t speciesIndex) const
-{
-    auto* foliage = SelfComponent<FoliageComponent>(script);
-    return foliage && foliage->ClearStamps(speciesIndex);
-}
-
-bool ScriptFoliageProxy::SetDensity(size_t speciesIndex, float densityPer100SquareMeters) const
-{
-    auto* foliage = SelfComponent<FoliageComponent>(script);
-    return foliage && foliage->SetDensity(speciesIndex, densityPer100SquareMeters);
-}
-
-bool ScriptFoliageProxy::SetDrawDistance(size_t speciesIndex, float distance) const
-{
-    auto* foliage = SelfComponent<FoliageComponent>(script);
-    return foliage && foliage->SetDrawDistance(speciesIndex, distance);
-}
-
 // ScriptEnvironmentProxy
 // ---------------------------------------------------------------------------
 namespace {
@@ -5360,6 +5339,83 @@ float ScriptReflectionProbeProxy::GetInfluenceRadius() const
     return rp ? rp->influenceRadius : 0.0f;
 }
 
+namespace {
+MotionWarpComponent* SelfMotionWarp(const Script* script)
+{
+    return SelfComponent<MotionWarpComponent>(script);
+}
+} // namespace
+
+void ScriptMotionWarpProxy::WarpTo(const math::Vector3& position, float duration) const
+{
+    auto* warp = SelfMotionWarp(script);
+    if (!warp || duration <= 0.0f) return;
+    warp->target.active       = true;
+    warp->target.position     = position;
+    warp->target.warpPosition = true;
+    warp->target.warpRotation = false;
+    warp->target.duration     = duration;
+    warp->target.remaining    = duration;
+    ++warp->runtimeWarpCount;
+}
+
+void ScriptMotionWarpProxy::WarpToPose(const math::Vector3& position,
+                                       const math::Quaternion& rotation,
+                                       float duration) const
+{
+    auto* warp = SelfMotionWarp(script);
+    if (!warp || duration <= 0.0f) return;
+    warp->target.active       = true;
+    warp->target.position     = position;
+    warp->target.rotation     = rotation.Normalized();
+    warp->target.warpPosition = true;
+    warp->target.warpRotation = true;
+    warp->target.duration     = duration;
+    warp->target.remaining    = duration;
+    ++warp->runtimeWarpCount;
+}
+
+void ScriptMotionWarpProxy::SetAxisWeight(const math::Vector3& weight) const
+{
+    if (auto* warp = SelfMotionWarp(script)) warp->target.positionAxisWeight = weight;
+}
+
+void ScriptMotionWarpProxy::SetMaxSpeed(float metersPerSecond) const
+{
+    if (auto* warp = SelfMotionWarp(script)) warp->target.maxSpeed = metersPerSecond;
+}
+
+void ScriptMotionWarpProxy::Cancel() const
+{
+    if (auto* warp = SelfMotionWarp(script)) {
+        warp->target.active    = false;
+        warp->target.remaining = 0.0f;
+    }
+}
+
+void ScriptMotionWarpProxy::SetEnabled(bool enabled) const
+{
+    if (auto* warp = SelfMotionWarp(script)) warp->enabled = enabled;
+}
+
+bool ScriptMotionWarpProxy::IsWarping() const
+{
+    const auto* warp = SelfMotionWarp(script);
+    return warp && warp->enabled && warp->target.active;
+}
+
+float ScriptMotionWarpProxy::GetRemainingTime() const
+{
+    const auto* warp = SelfMotionWarp(script);
+    return warp && warp->target.active ? warp->target.remaining : 0.0f;
+}
+
+float ScriptMotionWarpProxy::GetRemainingDistance() const
+{
+    const auto* warp = SelfMotionWarp(script);
+    return warp ? warp->runtimeRemainingDistance : 0.0f;
+}
+
 // ---------------------------------------------------------------------------
 // ScriptLifetimeProxy
 // ---------------------------------------------------------------------------
@@ -5528,57 +5584,6 @@ void ScriptSunMoonProxy::SetMoon(bool enabled, float size, float brightness,
         sunMoon->moonBrightness = (std::max)(brightness, 0.0f);
         sunMoon->moonColor = color;
     }
-}
-
-// ScriptTerrainDetailProxy
-void ScriptTerrainDetailProxy::SetEnabled(bool enabled) const
-{
-    if (auto* detail = SelfComponent<TerrainDetailComponent>(script)) detail->enabled = enabled;
-}
-int ScriptTerrainDetailProxy::GetLayerCount() const
-{
-    const auto* detail = SelfComponent<TerrainDetailComponent>(script);
-    return detail ? static_cast<int>(detail->layers.size()) : 0;
-}
-bool ScriptTerrainDetailProxy::SetDensity(size_t layerIndex, float density) const
-{
-    auto* detail = SelfComponent<TerrainDetailComponent>(script);
-    if (!detail || layerIndex >= detail->layers.size()) return false;
-    detail->layers[layerIndex].density = (std::max)(density, 0.0f);
-    detail->needsBake = true;
-    return true;
-}
-bool ScriptTerrainDetailProxy::SetScaleRange(size_t layerIndex, float minScale, float maxScale) const
-{
-    auto* detail = SelfComponent<TerrainDetailComponent>(script);
-    if (!detail || layerIndex >= detail->layers.size()) return false;
-    minScale = (std::max)(minScale, 0.001f);
-    detail->layers[layerIndex].minScale = minScale;
-    detail->layers[layerIndex].maxScale = (std::max)(maxScale, minScale);
-    detail->needsBake = true;
-    return true;
-}
-bool ScriptTerrainDetailProxy::SetDrawDistance(size_t layerIndex, float fadeStartDistance,
-                                                float drawDistance) const
-{
-    auto* detail = SelfComponent<TerrainDetailComponent>(script);
-    if (!detail || layerIndex >= detail->layers.size()) return false;
-    drawDistance = (std::max)(drawDistance, 0.0f);
-    detail->layers[layerIndex].drawDistance = drawDistance;
-    detail->layers[layerIndex].fadeStartDist = (std::max)(0.0f, (std::min)(fadeStartDistance, drawDistance));
-    return true;
-}
-bool ScriptTerrainDetailProxy::SetWind(size_t layerIndex, float strength, float frequency) const
-{
-    auto* detail = SelfComponent<TerrainDetailComponent>(script);
-    if (!detail || layerIndex >= detail->layers.size()) return false;
-    detail->layers[layerIndex].windStrength = strength;
-    detail->layers[layerIndex].windFrequency = (std::max)(frequency, 0.0f);
-    return true;
-}
-void ScriptTerrainDetailProxy::RequestBake() const
-{
-    if (auto* detail = SelfComponent<TerrainDetailComponent>(script)) detail->needsBake = true;
 }
 
 // ScriptPatrolProxy
