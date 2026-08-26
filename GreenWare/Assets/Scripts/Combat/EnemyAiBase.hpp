@@ -19,14 +19,18 @@
 
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
 #include <Scripts/Combat/CharacterEvent.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/LoopVoice.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <string_view>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -73,18 +77,39 @@ public:
     FBZZ_GROUP("Target")
     FBZZ_FIELD(std::string, playerTag, "Player", "Player Tag")
 
+    // WHY 移動音を «その体が出し続けている音» として持つか:
+    //   3 種は速さも間合いも近く、姿を見ないと区別が付かない。ホバーの唸り・鱗の擦れ・
+    //   車輪の転がりが鳴っていれば、背後や画面外の 1 体が何なのかを見る前に決められる。
+    FBZZ_GROUP("Voice")
+    FBZZ_FIELD_AUDIO(sfxMoveLoop, "", "SFX Move Loop")
+    FBZZ_TOOLTIP("空なら機種ごとの既定クリップ。1 体だけ違う音にしたいときに指定する")
+    FBZZ_FIELD_RANGE(float, moveVoiceVolume, 0.55f, "Move Volume", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, moveVoicePitch, 0.18f, "Move Pitch Range", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("止まっているときと全速のときで音の高さをこれだけ振る。0 で一定")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(std::string, debugState, "Idle", "State")
     FBZZ_FIELD_READ_ONLY(int, debugSpotted, 0, "Spotted")
 
-    void OnStart()  final;
-    void OnUpdate() final;
+    void OnStart()   final;
+    void OnUpdate()  final;
+    // 無効化でループが鳴りっぱなしになるのを防ぐ。派生に閉じ忘れさせない。
+    void OnDisable() final { m_moveVoice.Stop(*this); OnEnemyDisable(); }
 
 protected:
     /// 派生の初期化。基底の初期化が済んだ後に呼ばれる。
     virtual void OnEnemyStart() {}
     /// 派生の毎フレーム処理。クールダウンの消化と標的の取り直しが済んだ後に呼ばれる。
     virtual void OnEnemyUpdate() {}
+    /// 派生の後始末。出しっぱなしの演出を消す場所。
+    virtual void OnEnemyDisable() {}
+
+    /// 移動中ずっと鳴らす音。nullptr なら鳴らさない (Animator と同じで、無い構成も許す)。
+    [[nodiscard]] virtual const se::Bank* MoveVoiceBank() const { return nullptr; }
+    /// 撃破音。nullptr なら共通の敵バンクが鳴る。
+    [[nodiscard]] virtual const se::Bank* DestroyVoiceBank() const { return nullptr; }
+    /// 移動音を «全開» と見なす速さ [m/s]。突進のように moveSpeed を超える機種は上書きする。
+    [[nodiscard]] virtual float VoiceSpeedReference() const { return moveSpeed; }
 
     /// 現在の標的。見失っていれば nullptr。
     [[nodiscard]] GameObject* Player() const { return m_player.Resolve(scene); }
@@ -146,10 +171,13 @@ protected:
 private:
     void RefreshPlayer();
     /// Speed / Hit / IsDead を毎フレーム流す。Attack だけは派生が振り始めに送る。
-    void DriveAnimator();
+    void DriveAnimator(float speed);
+    /// 移動音を速さへ追従させる。倒れていれば止める。
+    void DriveMoveVoice(float speed);
     /// 索敵範囲の出入りを見て、変わった瞬間だけ知らせる。
     void UpdateAwareness();
 
+    se::LoopVoice m_moveVoice;
     bool  m_warnedNoCombat  = false;
     bool  m_wasHitReacting  = false;
     bool  m_spotted         = false;
@@ -166,6 +194,16 @@ inline void EnemyAiBase::OnStart()
     m_spotted         = false;
     debugSpotted      = 0;
     RefreshPlayer();
+
+    // 一発ものはここから、鳴り続ける移動音は専用の子から出る (LoopVoice のヘッダー)。
+    se::EnsureSource(scene, "SE", 1.0f);
+    // 鍵は個体ごとに一意でなければならない。名前は «Enemy_Mite» のように機種で
+    // 揃っていることが多く、それだけでは同じ子を 2 体で奪い合う。
+    const GameObject* self = scene.Self();
+    m_moveVoice.SetKey("Move" + std::to_string(self ? self->GetID().index : 0u));
+
+    if (auto* health = scene.GetScript<EnemyHealthComponent>())
+        health->SetDestroyVoice(DestroyVoiceBank());
 
     // 極性を持てない敵は盤面のルールから外れる。7 章の衝突が一切起きないので、
     // 「なぜかこの個体だけ倒せない」という形でしか症状が出ない。
@@ -191,7 +229,14 @@ inline void EnemyAiBase::OnUpdate()
     m_attackRemaining = std::max(0.0f, m_attackRemaining - Time::deltaTime);
     RefreshPlayer();
     UpdateAwareness();
-    DriveAnimator();
+
+    // 引かれている / 弾かれている間の速度は PolarityBody のもので、この敵が自分で
+    // 出した速さではない。そのまま流すと、飛ばされている 2 体が空中で全力疾走する。
+    const Vector3 velocity = IsPolarityDriven() ? Vector3::ZERO : physics.GetVelocity();
+    const float   speed    = Vector3{ velocity.x, 0.0f, velocity.z }.Length();
+
+    DriveAnimator(speed);
+    DriveMoveVoice(speed);
     OnEnemyUpdate();
 }
 
@@ -235,13 +280,9 @@ inline void EnemyAiBase::UpdateAwareness()
 
 // Animator を持たない敵 (プリミティブのノーマルスライム) では proxy が全部空振りする。
 // 派生ごとに «Animator が居るなら» と書き分けるより、無条件に流して黙って落とさせる方が短い。
-inline void EnemyAiBase::DriveAnimator()
+inline void EnemyAiBase::DriveAnimator(float speed)
 {
-    // 引かれている / 弾かれている間の速度は PolarityBody のもので、この敵が自分で
-    // 出した速さではない。そのまま流すと、飛ばされている 2 体が空中で全力疾走する。
-    const Vector3 velocity = IsPolarityDriven() ? Vector3::ZERO : physics.GetVelocity();
-    animator.SetFloat(enemyanim::kSpeed,
-                      Vector3{ velocity.x, 0.0f, velocity.z }.Length());
+    animator.SetFloat(enemyanim::kSpeed, speed);
 
     // 塗られた瞬間の 1 フレームだけ加算レイヤーへ送る。IsHitReacting は数フレーム
     // true が続くので、立ち上がりを見ないと同じ被弾で何度も撃ち直すことになる。
@@ -252,6 +293,27 @@ inline void EnemyAiBase::DriveAnimator()
 
     if (const auto* health = scene.GetScript<EnemyHealthComponent>())
         animator.SetBool(enemyanim::kIsDead, !health->IsAlive());
+}
+
+inline void EnemyAiBase::DriveMoveVoice(float speed)
+{
+    if (!IsAlive()) {
+        m_moveVoice.Stop(*this);
+        return;
+    }
+
+    std::string_view path = sfxMoveLoop;
+    if (path.empty()) {
+        // 変奏は選ばない。ループは掛け直すたびに別のクリップへ変わってはいけない。
+        if (const se::Bank* bank = MoveVoiceBank()) path = bank->First();
+    }
+
+    const float speed01 = Clamp01(speed / std::max(VoiceSpeedReference(), 0.01f));
+    // 止まっていても «そこに居る» ことは鳴らし続ける。無音まで落とすと、
+    // 待ち構えている個体が耳から消えて、振り向いた瞬間に湧いたように見える。
+    m_moveVoice.Update(*this, path,
+                       moveVoiceVolume * Lerp(0.45f, 1.0f, speed01),
+                       Lerp(1.0f - moveVoicePitch, 1.0f + moveVoicePitch, speed01));
 }
 
 inline bool EnemyAiBase::IsAlive() const

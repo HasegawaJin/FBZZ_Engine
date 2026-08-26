@@ -1,0 +1,27 @@
+# GreenWare
+# M_GlowPart_Dissolve.mat
+# 撃破ディゾルブ用。無傷 (dissolveAmount = 0) のあいだは元の M_GlowPart と同じ絵になる。
+# 差し替えは EnemyDeathVfxComponent が撃破の瞬間に行い、dissolveAmount だけを 0 -> 1 へ動かす。
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'skinned'
+name = 'M_GlowPart_Dissolve'
+render_path = 'auto'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedEnemyDissolve.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.055, 0.06, 0.065, 1.0 ]
+metallic = 0.0
+roughness = 0.35
+# 0 = 無傷。スクリプトがここだけを動かす。
+dissolveAmount = 0.0
+# 先に消える向き (ローカル空間)。既定は足元から。
+dissolveAxis = [ 0.0, -1.0, 0.0 ]
+dissolveRange = 1.6
+# 0 = 全身同時に穴が開く / 1 = 端から順に食われる。
+dissolveSweep = 0.55
+dissolveNoiseScale = 7.0
+dissolveEdgeWidth = 0.12
+dissolveEdgeColor = [ 0.8, 1.0, 0.88 ]
+dissolveEdgeIntensity = 11.0

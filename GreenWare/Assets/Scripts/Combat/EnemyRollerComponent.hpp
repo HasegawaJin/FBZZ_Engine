@@ -18,11 +18,24 @@
 ///   7.2 の持続 12 秒は「先に極を置いておける」ための値で、Roller はそれ自体が
 ///   集束の中心になる。動かない側は PolarityBodyComponent を «付けないこと» で宣言する
 ///   (PolarityBodyComponent の設計意図)。このスクリプトは動かないことを前提に書く。
+///
+/// WHY 壁に刺さったら余計に硬直させるか:
+///   直進しか出来ない突進は «横へ抜ければ避けられる» が売りなのに、避けた結果が
+///   「壁の前で 0.3 秒止まって向き直る」だけだと、避けても避けなくても盤面が変わらない。
+///   避けさせた先に壁があることをプレイヤーが利用できて初めて、8 章が言う «位置の
+///   読み合い» になる。避けた側の報酬は、壁へ突き刺さった重量級が起き上がるまでの間。
 #pragma once
 
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
 #include <Scripts/Combat/EnemyAiBase.hpp>
+#include <Scripts/Game/CameraShakeManagerComponent.hpp>
+#include <Scripts/Game/VfxManagerComponent.hpp>
+#include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/BodyBounds.hpp>
+#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -53,10 +66,26 @@ public:
     FBZZ_FIELD_RANGE(float, hitRadius, 1.6f, "Hit Radius", 0.2f, 8.0f)
     FBZZ_TOOLTIP("突進中にこの距離まで近づいたら轢いたことにする")
 
+    FBZZ_GROUP("Slam")
+    FBZZ_FIELD_RANGE(float, slamSpeedRatio, 0.35f, "Blocked Ratio", 0.05f, 1.0f)
+    FBZZ_TOOLTIP("1 ステップで進むはずの距離のこの割合しか動けなければ «刺さった» と見なす")
+    FBZZ_FIELD_RANGE(float, slamRecoverScale, 2.4f, "Recover Scale", 1.0f, 6.0f)
+    FBZZ_TOOLTIP("壁に刺さった後の硬直を Recover の何倍にするか。避けた側の取り分")
+    FBZZ_FIELD_RANGE(float, slamShake, 0.6f, "Shake", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, slamShakeRange, 16.0f, "Shake Range", 1.0f, 60.0f)
+    FBZZ_TOOLTIP("この距離まで離れると揺れが 0 になる。画面外の激突で手元を揺らさない")
+
     void OnFixedUpdate() override;
 
 protected:
     void OnEnemyStart() override;
+
+    [[nodiscard]] const se::Bank* MoveVoiceBank()    const override
+    { return &se::kRollerRollLoop; }
+    [[nodiscard]] const se::Bank* DestroyVoiceBank() const override
+    { return &se::kRollerDestroy; }
+    /// 転がりの «全開» は突進の速さ。追跡速度を基準にすると、突進中ずっと振り切れる。
+    [[nodiscard]] float VoiceSpeedReference() const override { return chargeSpeed; }
 
 private:
     /// 突進の 3 段階。Chase 以外は途中で中断しない。
@@ -66,6 +95,9 @@ private:
     void TickCharge(float dt);
     void TickRecover(float dt);
     void BeginTelegraph();
+    void BeginCharge();
+    /// 進めなくなった突進を打ち切り、激突として鳴らす。
+    void Slam();
     void Chase(float dt);
 
     Phase   m_phase      = Phase::Chase;
@@ -73,6 +105,11 @@ private:
     /// 踏み込んだ瞬間に固定した突進方向。以後は変えない。
     Vector3 m_chargeDir  = Vector3::ZERO;
     bool    m_chargeHit  = false;
+    /// 前の固定ステップの位置。突進が «進めているか» はここの差でしか分からない。
+    Vector3 m_lastPosition = Vector3::ZERO;
+    int     m_chargeSteps  = 0;
+    /// 今の硬直が激突によるものか。調整中に «長い方の隙» を見分けるために出す。
+    bool    m_slammed      = false;
 };
 
 FBZZ_REFLECT(EnemyRollerComponent)
@@ -84,10 +121,13 @@ inline void EnemyRollerComponent::OnEnemyStart()
     // 物理に転がされると進行方向と車輪の向きが食い違う。
     physics.SetFreezeRotation(true, true, true);
 
-    m_phase     = Phase::Chase;
-    m_timer     = 0.0f;
-    m_chargeDir = Vector3::ZERO;
-    m_chargeHit = false;
+    m_phase        = Phase::Chase;
+    m_timer        = 0.0f;
+    m_chargeDir    = Vector3::ZERO;
+    m_chargeHit    = false;
+    m_chargeSteps  = 0;
+    m_slammed      = false;
+    m_lastPosition = transform.worldPosition;
 }
 
 inline void EnemyRollerComponent::OnFixedUpdate()
@@ -97,6 +137,7 @@ inline void EnemyRollerComponent::OnFixedUpdate()
     if (!IsAlive()) {
         debugState = "Dead";
         m_phase    = Phase::Chase;
+        m_slammed  = false;
         StopHorizontal();
         return;
     }
@@ -168,6 +209,18 @@ inline void EnemyRollerComponent::BeginTelegraph()
     // 間合いに居るかぎり即座に構え直す、という張り付きにならない。
     BeginAttackCooldown();
     animator.SetTrigger(enemyanim::kAttack);
+    // 踏ん張って地面を噛む音。予兆は «止まった» という絵だけでは弱く、
+    // 視線が別の敵へ向いている間はまず伝わらない。
+    se::Play(audio, se::kRollerAnchor);
+}
+
+inline void EnemyRollerComponent::BeginCharge()
+{
+    m_phase        = Phase::Charge;
+    m_timer        = std::max(chargeSeconds, 0.05f);
+    m_chargeSteps  = 0;
+    m_lastPosition = transform.worldPosition;
+    se::Play(audio, se::kRollerCharge);
 }
 
 inline void EnemyRollerComponent::TickTelegraph(float dt)
@@ -193,13 +246,29 @@ inline void EnemyRollerComponent::TickTelegraph(float dt)
         return;
     }
 
-    m_phase = Phase::Charge;
-    m_timer = std::max(chargeSeconds, 0.05f);
+    BeginCharge();
 }
 
 inline void EnemyRollerComponent::TickCharge(float dt)
 {
     debugState = "Charge";
+
+    // WHY 進んだ距離で見るか (速度ではなく): 壁へ押し当てている間もこちらは毎ステップ
+    //     速度を書き続けるので、GetVelocity は «出したい速さ» を返しうる。実際に
+    //     体が動いたかどうかは位置の差にしか出ない。
+    const Vector3 position = transform.worldPosition;
+    Vector3       moved    = position - m_lastPosition;
+    moved.y        = 0.0f;
+    m_lastPosition = position;
+    ++m_chargeSteps;
+
+    // 最初の数ステップは «構えていた場所からの差» でしかなく、まだ動けていなくて当然。
+    const float expected = std::max(chargeSpeed, 0.0f) * dt;
+    if (m_chargeSteps >= 3 && expected > EPSILON &&
+        moved.Length() < expected * Clamp01(slamSpeedRatio)) {
+        Slam();
+        return;
+    }
 
     Vector3 velocity = physics.GetVelocity();
     velocity.x = m_chargeDir.x * std::max(chargeSpeed, 0.0f);
@@ -227,16 +296,51 @@ inline void EnemyRollerComponent::TickCharge(float dt)
     m_timer = std::max(recoverSeconds, 0.0f);
 }
 
+inline void EnemyRollerComponent::Slam()
+{
+    debugState = "Slam";
+    StopHorizontal();
+    m_phase   = Phase::Recover;
+    m_slammed = true;
+    m_timer   = std::max(recoverSeconds, 0.0f) * std::max(slamRecoverScale, 1.0f);
+
+    // どこへ当たったかは取らない。轢く判定と同じで «止まった» ことさえ伝わればよく、
+    // 面を取りに行くと壁・柱・他の敵で経路が分かれる。体の前面で鳴らす。
+    GameObject*   self  = scene.Self();
+    const Vector3 point = (self ? bodybounds::CenterWorld(*self, 1.0f)
+                                : transform.worldPosition) + m_chargeDir * hitRadius;
+    se::PlayAt(audio, se::kImpactWall, point);
+
+    Polarity polarity = Polarity::None;
+    if (const auto* target = scene.GetScript<PolarityTargetComponent>())
+        polarity = target->Current();
+    if (auto* vfx = VfxManagerComponent::Instance())
+        vfx->PlayImpact(point, polarity, 1.0f, true);
+
+    // WHY 手触りマネージャーを通さないか: あちらの配分にはヒットストップが入っている。
+    //     これはプレイヤーが «避けきった» 瞬間なので、そこで操作を止めると
+    //     せっかく作った隙の頭を自分で削ることになる。揺れだけを直に鳴らす。
+    if (auto* shake = CameraShakeManagerComponent::Instance()) {
+        float proximity = 1.0f;
+        if (const GameObject* player = Player()) {
+            const float distance = (player->transform.worldPosition - point).Length();
+            proximity = Clamp01(1.0f - distance / std::max(slamShakeRange, 1.0f));
+        }
+        shake->Shake(std::max(slamShake, 0.0f) * proximity);
+    }
+}
+
 inline void EnemyRollerComponent::TickRecover(float dt)
 {
-    debugState = "Recover";
+    debugState = m_slammed ? "Slam Recover" : "Recover";
     StopHorizontal();
 
     m_timer -= dt;
     if (m_timer > 0.0f) return;
 
-    m_phase = Phase::Chase;
-    m_timer = 0.0f;
+    m_phase   = Phase::Chase;
+    m_timer   = 0.0f;
+    m_slammed = false;
 }
 
 } // namespace sandbox

@@ -20,16 +20,27 @@
 ///   1 つのコライダーで、実際の «触れている» とは形が違う。物理接触に厳密に合わせると、
 ///   見た目は絡んでいるのに伝染しないフレームが出る。半径を露出させ、どこまでを接触と
 ///   見なすかを調整値として持つ。
+///
+/// WHY 移した先へ放電を残すか:
+///   帯電そのものは受け取った側が光って知らせる (PolarityTarget) が、それだけでは
+///   «自分が撃っていない敵がいつの間にか光っている» としか読めない。この敵が
+///   «移した» ことは、線が繋がっている絵でしか伝わらない。1 発で盤面が広がるのが
+///   Serpent の役どころなので、広がった経路が見えないと役ごと伝わらない。
 #pragma once
 
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
 #include <Scripts/Combat/EnemyAiBase.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
+#include <Scripts/Utils/ElectricArc.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -49,6 +60,8 @@ public:
     FBZZ_FIELD_RANGE(float, attackHitTime, 0.65f, "Hit Time", 0.0f, 6.0f)
     FBZZ_TOOLTIP("振り始めから牙が届くまでの秒数")
     FBZZ_FIELD_RANGE(float, attackHitRange, 3.6f, "Hit Range", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, lungeSpeed, 1.6f, "Lunge Speed", 0.0f, 10.0f)
+    FBZZ_TOOLTIP("牙が届くまで前へ詰める速さ。0 にするとその場で振り切る")
 
     FBZZ_GROUP("Conduction")
     FBZZ_FIELD(bool, conduct, true, "Conduct Polarity")
@@ -59,25 +72,48 @@ public:
     FBZZ_TOOLTIP("伝染を試す間隔。短いほど絡んだ瞬間に移るが、盤面を毎フレーム走査する")
     FBZZ_FIELD_RANGE_INT(int, conductMaxPerTick, 3, "Max Per Tick", 1, 16)
     FBZZ_TOOLTIP("1 回の伝染で帯電させる上限。群れの中で一斉に全員が光るのを防ぐ")
+    FBZZ_FIELD_RANGE(float, conductArcSeconds, 0.4f, "Arc Seconds", 0.05f, 2.0f)
+    FBZZ_TOOLTIP("移した相手との間に放電を残す時間。極がどこへ渡ったかを見せる")
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugConducted, 0, "Conducted")
 
     void OnFixedUpdate() override;
+    /// 放電の子オブジェクトごと片付ける。倒れた後に筋だけが空中へ残らないように。
+    void OnDestroy() override;
 
 protected:
     void OnEnemyStart() override;
     void OnEnemyUpdate() override;
+    void OnEnemyDisable() override;
+
+    [[nodiscard]] const se::Bank* MoveVoiceBank()    const override
+    { return &se::kSerpentCrawlLoop; }
+    [[nodiscard]] const se::Bank* DestroyVoiceBank() const override
+    { return &se::kSerpentDestroy; }
 
 private:
+    /// 移した先 1 体ぶんの放電。時間で消えるので、消えた後も枠は使い回す。
+    struct ConductLink {
+        EntityRef         target;
+        float             remaining = 0.0f;
+        Polarity          polarity  = Polarity::None;
+        ElectricArcBundle arc;
+    };
+
     void TickAttack(float dt);
     /// 自分の極を周囲の無極の敵へ移す。移した体数を返す。
     int  Conduct();
+    /// 移した相手へ放電を張る。枠が足りなければ最も古い 1 本を張り替える。
+    void BeginConductArc(GameObject& target, Polarity polarity);
+    /// 張ってある放電を 1 フレーム進め、時間切れの分を消す。
+    void UpdateConductArcs(float dt);
 
     float m_attackTimer    = 0.0f;
     bool  m_attackLanded   = false;
     float m_conductTimer   = 0.0f;
     int   m_conductedTotal = 0;
+    std::vector<ConductLink> m_links;
 };
 
 FBZZ_REFLECT(EnemySerpentComponent)
@@ -100,6 +136,10 @@ inline void EnemySerpentComponent::OnEnemyStart()
 //   固定ステップに置くと、ステップが 1 フレームに複数回走る負荷時に伝染だけが倍速になる。
 inline void EnemySerpentComponent::OnEnemyUpdate()
 {
+    // 放電は倒れた後も残り時間ぶんは走らせる。移した瞬間に撃破されたときだけ
+    // 線が出ないのは、プレイヤーから見ると «移らなかった» と区別が付かない。
+    UpdateConductArcs(Time::deltaTime);
+
     if (!conduct || !IsAlive()) return;
 
     m_conductTimer -= Time::deltaTime;
@@ -108,6 +148,20 @@ inline void EnemySerpentComponent::OnEnemyUpdate()
 
     m_conductedTotal += Conduct();
     debugConducted = m_conductedTotal;
+}
+
+inline void EnemySerpentComponent::OnEnemyDisable()
+{
+    for (ConductLink& link : m_links) {
+        link.remaining = 0.0f;
+        link.arc.Extinguish(*this);
+    }
+}
+
+inline void EnemySerpentComponent::OnDestroy()
+{
+    for (ConductLink& link : m_links) link.arc.Detach(*this);
+    m_links.clear();
 }
 
 inline int EnemySerpentComponent::Conduct()
@@ -131,9 +185,72 @@ inline int EnemySerpentComponent::Conduct()
         if (!target || target->Current() != Polarity::None) continue;
 
         (void)target->Apply(mine);
+        BeginConductArc(*other, mine);
         ++moved;
     }
     return moved;
+}
+
+inline void EnemySerpentComponent::BeginConductArc(GameObject& target, Polarity polarity)
+{
+    const GameObject* self  = scene.Self();
+    const auto        index = self ? self->GetID().index : 0u;
+
+    // 枠は 1 回の伝染で張れる本数まで。減らしても畳まないのは、鳴っている最中の
+    // 1 本を «設定を下げた瞬間に» 消さないため。余った枠は使われないだけで済む。
+    while (static_cast<int>(m_links.size()) < std::clamp(conductMaxPerTick, 1, 16)) {
+        ConductLink link;
+        // 鍵は個体と枠で一意にする。取り違えると 2 本の放電が同じ筋を奪い合う。
+        link.arc.SetKey("Serpent" + std::to_string(index) + "_"
+                        + std::to_string(m_links.size()));
+        m_links.push_back(std::move(link));
+    }
+    if (m_links.empty()) return;
+
+    ConductLink* slot = &m_links.front();
+    for (ConductLink& link : m_links)
+        if (link.remaining < slot->remaining) slot = &link;
+
+    slot->target    = EntityRef{ target.GetID() };
+    slot->remaining = std::max(conductArcSeconds, 0.05f);
+    slot->polarity  = polarity;
+}
+
+inline void EnemySerpentComponent::UpdateConductArcs(float dt)
+{
+    GameObject* selfObject = scene.Self();
+
+    for (ConductLink& link : m_links) {
+        if (link.remaining <= 0.0f) continue;
+        link.remaining -= dt;
+
+        GameObject* target = link.target.Resolve(scene);
+        if (!selfObject || !target || link.remaining <= 0.0f) {
+            link.remaining = 0.0f;
+            link.arc.Extinguish(*this);
+            continue;
+        }
+
+        const float fade = Clamp01(link.remaining / std::max(conductArcSeconds, 0.05f));
+
+        ElectricArcStyle style;
+        style.strandCount = 2;
+        style.segments    = 14;
+        style.amplitude   = 0.26f;
+        style.width       = 0.07f;
+        style.strikeRate  = 30.0f;
+        // 距離で消さない。伝染は触れている相手にしか起きないので «届かなかった放電»
+        // というものが無い。消えるのは時間だけで決める。
+        style.strikeRange = 0.0f;
+        style.intensity   = 2.4f * fade;
+        style.coreTint    = 0.7f;
+        // 両端とも同じ極。渡した先が何色になったのかを線そのものが名乗る。
+        style.fromColor   = PolarityColor(link.polarity);
+        style.toColor     = style.fromColor;
+
+        link.arc.Update(*this, bodybounds::CenterWorld(*selfObject, 1.0f),
+                        bodybounds::CenterWorld(*target, 1.0f), style, dt);
+    }
 }
 
 inline void EnemySerpentComponent::OnFixedUpdate()
@@ -196,6 +313,8 @@ inline void EnemySerpentComponent::OnFixedUpdate()
         m_attackLanded = false;
         BeginAttackCooldown();
         animator.SetTrigger(enemyanim::kAttack);
+        // 鎌首をもたげる音。牙が届くのは attackHitTime 後なので、ここは «来る» の予告。
+        se::Play(audio, se::kSerpentRear);
         return;
     }
 
@@ -209,7 +328,6 @@ inline void EnemySerpentComponent::OnFixedUpdate()
 inline void EnemySerpentComponent::TickAttack(float dt)
 {
     debugState = "Bite";
-    StopHorizontal();
 
     const float total   = std::max(attackDuration, 0.05f);
     const float elapsed = total - m_attackTimer;
@@ -220,10 +338,24 @@ inline void EnemySerpentComponent::TickAttack(float dt)
         Vector3 toPlayer = player->transform.worldPosition - transform.worldPosition;
         toPlayer.y = 0.0f;
         FaceDirection(toPlayer, dt);
+
+        // 牙が届くまでは鎌首を伸ばしながら詰める。1.5 秒をその場で振り切る攻撃は、
+        // 1 歩下がられた時点で «当たらないのに硬直だけ長い» になり、間合いの
+        // 読み合いが «近づかない» の一手に潰れる。届いた後は伸び切って止まる。
+        const Vector3 forward  = toPlayer.NormalizedOr(Vector3::ZERO);
+        Vector3       velocity = physics.GetVelocity();
+        velocity.x = forward.x * std::max(lungeSpeed, 0.0f);
+        velocity.z = forward.z * std::max(lungeSpeed, 0.0f);
+        physics.SetVelocity(velocity);
+    } else {
+        StopHorizontal();
     }
 
     if (!m_attackLanded && elapsed >= attackHitTime) {
         m_attackLanded = true;
+        // 避けられていても顎は閉じる。当たったときだけ鳴らすと «空振り» が無音になり、
+        // 何が起きて助かったのかが分からない。
+        se::Play(audio, se::kSerpentBite);
         if (player) {
             Vector3 toPlayer = player->transform.worldPosition - transform.worldPosition;
             toPlayer.y = 0.0f;

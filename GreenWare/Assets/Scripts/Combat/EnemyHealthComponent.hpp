@@ -5,6 +5,7 @@
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/EnemyDeathVfxComponent.hpp>
 #include <Scripts/Combat/IDamageable.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
@@ -62,13 +63,27 @@ public:
 
     // true はこの呼び出しで死亡したことを表す。Wave/リザルト側が撃破数を重複加算しないために使う。
     bool TakeImpact(const PolarityImpact& impact);
+
+    /// 撃破音を機種ごとの束へ差し替える。AI が起動時に自分の束を預ける。
+    ///
+    /// WHY Inspector の欄で足りないか: sfxDeath は 1 本しか持てないので、変奏が
+    ///     3 つある機種では毎回同じ音になる。かといってここが EnemyAiBase を知ると、
+    ///     AI が EnemyHealth を見ている今の向きと合わせて include が輪になる。
+    ///     «束を預ける» 向きだけにすれば、知る側は AI の 1 方向で済む。
+    void SetDestroyVoice(const se::Bank* bank) { m_destroyVoice = bank; }
     void ResetHealth();
     void OnStart() override
     {
         ResetHealth();
         // 敵は盤面のあちこちに居る。どの方向で何が起きたかが分かる必要があるので 3D。
         se::EnsureSource(scene, "SE", 1.0f);
-        if (!scene.GetScript<PolarityBodyComponent>())
+
+        // アンカーは «引かれない側» なので PolarityBodyComponent を持たないのが正しい構成
+        // (PolarityBodyComponent の設計意図。Roller とボスが該当する)。無条件に要求すると、
+        // 正しく組んだ的が毎回エラーを出し、本当に足りていない敵の警告が埋もれる。
+        const auto* target = scene.GetScript<PolarityTargetComponent>();
+        const bool  anchor = target && target->isAnchor;
+        if (!anchor && !scene.GetScript<PolarityBodyComponent>())
             debug.LogError("EnemyHealthComponent requires PolarityBodyComponent on the same object.");
     }
 
@@ -78,6 +93,8 @@ private:
     bool Deal(int damage);
 
     int m_health = 0;
+    /// AI が預けた機種ごとの撃破音。預かる前 (と DLL リロード直後) は共通の束を使う。
+    const se::Bank* m_destroyVoice = nullptr;
 };
 
 FBZZ_REFLECT(EnemyHealthComponent)
@@ -121,8 +138,19 @@ inline bool EnemyHealthComponent::Deal(int damage)
     //     自分の AudioSource で鳴らすと、撃破音が鳴り終わる前に音源ごと消えて
     //     途中で切れる。撃破は「そこで起きたこと」なので、場所に残す。
     if (!sfxDeath.empty()) audio.PlayAtPoint(sfxDeath, transform.worldPosition);
-    else                   se::PlayAt(audio, se::kEnemyDestroy, transform.worldPosition);
-    scene.DestroySelf(std::max(destroyDelay, 0.0f));
+    else                   se::PlayAt(audio, m_destroyVoice ? *m_destroyVoice : se::kEnemyDestroy,
+                                      transform.worldPosition);
+
+    // 撃破の «見え» はここでは作らない。演出が付いていればそれに任せる。
+    // WHY 消えるまでの時間を演出に合わせるか: 粒はエミッターが持っているので、
+    //     GameObject を先に畳むと、まだ空中に居る粒までその瞬間に消える。
+    //     destroyDelay は «最低でもこれだけは残す» の意味になる。
+    float delay = std::max(destroyDelay, 0.0f);
+    if (auto* deathVfx = scene.GetScript<EnemyDeathVfxComponent>()) {
+        deathVfx->Begin();
+        delay = std::max(delay, deathVfx->TotalSeconds());
+    }
+    scene.DestroySelf(delay);
     return true;
 }
 
