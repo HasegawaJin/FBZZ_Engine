@@ -190,6 +190,38 @@ class VolumetricLightOverride final : public VolumeOverride {
     int   steps       = 32;
 };
 
+// FroxelFogOverride — 視錐台を 3D グリッドへ切って焼く体積フォグ。
+// VolumetricLight と違い、点光源・スポット・面光源も霧へ映り込む。
+// NOTE: グリッド寸法だけは Volume でブレンドしない。解像度が変わるとボリュームの
+//       再確保が走るため、プロファイル間の遷移中に毎フレーム作り直すことになる。
+//       寸法は RenderSettings の既定 (160x90x64) を使う。
+class FroxelFogOverride final : public VolumeOverride {
+    FBZZ_VOLUME_OVERRIDE_BODY(FroxelFogOverride, "FroxelFog", "Froxel Fog", Atmosphere)
+    float density       = 0.02f;
+    float albedo[3]     = { 1.0f, 1.0f, 1.0f };
+    float emissive[3]   = { 0.0f, 0.0f, 0.0f };
+    float anisotropy    = 0.4f;
+    float heightFalloff = 0.0f;
+    float heightStart   = 0.0f;
+    float nearDistance  = 0.1f;
+    float farDistance   = 64.0f;
+    float ambient       = 1.0f;
+};
+
+// AutoExposureOverride — 画面の明るさから露出を自動で決める (眼の順応)。
+class AutoExposureOverride final : public VolumeOverride {
+    FBZZ_VOLUME_OVERRIDE_BODY(AutoExposureOverride, "AutoExposure", "Auto Exposure", Exposure)
+    float minEV         = -6.0f;
+    float maxEV         = 14.0f;
+    float lowPercent    = 0.45f;
+    float highPercent   = 0.95f;
+    float speedUp       = 3.0f;
+    float speedDown     = 1.0f;
+    float compensation  = 0.0f;
+    float minExposureEV = -8.0f;
+    float maxExposureEV =  8.0f;
+};
+
 // ── 影・反射 (いずれも Deferred Pipeline 専用) ──────────────────────────
 class SsrOverride final : public VolumeOverride {
     FBZZ_VOLUME_OVERRIDE_BODY(SsrOverride, "SSR", "Screen Space Reflections", Shadowing)

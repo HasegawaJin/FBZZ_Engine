@@ -8,6 +8,7 @@
 #include <string>
 
 namespace fbzz::asset { class PostProcessProfile; }
+namespace fbzz::renderer { struct RenderSettings; }
 
 namespace fbzz::editor {
 
@@ -26,7 +27,12 @@ struct PostProcessInspectorResult {
 //     効果ごとに専用の描画関数を書くと、効果を 1 つ足すたびに Engine 側と
 //     Editor 側の 2 か所を触ることになる。Reflect() が既にレンジとカラーヒントを
 //     持っているので、それを唯一の情報源にすれば追加作業は Engine 側だけで閉じる。
+// @param renderSettings 現在のレンダー設定。渡すと「このパイプラインでは効かない」
+//                       オーバーライドにその旨を出す。nullptr なら警告を出さない。
+// WHY 任意引数か: このウィジェットは .fzdata の編集 UI で、レンダー設定を持たない
+//     文脈 (アセット単体のプレビュー等) からも呼べる形を保っておきたい。
 PostProcessInspectorResult DrawVolumeOverrideListInspector(
-    asset::PostProcessProfile& profile, ImGuiReflector& reflector);
+    asset::PostProcessProfile& profile, ImGuiReflector& reflector,
+    const renderer::RenderSettings* renderSettings = nullptr);
 
 } // namespace fbzz::editor

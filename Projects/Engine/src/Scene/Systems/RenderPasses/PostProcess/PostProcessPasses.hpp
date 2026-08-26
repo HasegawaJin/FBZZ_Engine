@@ -29,6 +29,14 @@ void ExecuteSSRPass(RenderPassContext& ctx);
 
 // Volumetric Lighting — レイマーチで体積光（ゴッドレイ・光柱）を生成する。
 void ExecuteVolumetricLightPass(RenderPassContext& ctx);
+// フロクセル ボリューメトリック フォグ。視錐台の 3D グリッドへ霧を焼いて Z 積分する。
+// Shadow より後、Composite より前に走らせること (シャドウマップを読む)。
+void ExecuteFroxelFogPass(RenderPassContext& ctx);
+// 自動露出 (眼の順応)。HDR が出揃ってから Composite より前に走らせること。
+// 結果は handles.exposureResult に残り、Composite が t29 で読む。
+void ExecuteAutoExposurePass(RenderPassContext& ctx);
+// 次のフレームで順応を飛ばして即座に露出を合わせる。シーン切り替えやカット割りで呼ぶ。
+void RequestAutoExposureReset();
 
 // Volumetric Cloud — 深度で遮蔽しながら雲層をレイマーチし、HDR へ合成する。
 void ExecuteVolumetricCloudPass(RenderPassContext& ctx);

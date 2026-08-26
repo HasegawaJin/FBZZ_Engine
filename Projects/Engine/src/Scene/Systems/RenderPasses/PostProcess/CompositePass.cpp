@@ -7,7 +7,6 @@
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
@@ -179,10 +178,6 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     }
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
-    r.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
-    // Procedural Texture3D LUTはテクセル間を三線形補間し、端ではClampする。
-    r.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
-
     renderer::DrawCall compositeDC;
     compositeDC.shader = h.compositeShader;
     compositeDC.pipelineState = h.postprocPSO;
@@ -194,6 +189,20 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     compositeDC.constantBuffers[5] = h.postprocCB;
     compositeDC.constantBuffers[6] = h.atmosphereCB;
     compositeDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: ssrIntensity, volLightIntensity, lutBlend 等
+    // t29: 自動露出が求めた順応済み平均輝度 (1 要素)。
+    // WHY 有効なときだけ束縛するか: Composite.hlsl は autoExposureKey <= 0 で
+    //     読みに行かない。未束縛のまま読むと 0 が返って露出が発散する。
+    if (rs.autoExposure.enabled && h.exposureResult.IsValid())
+        compositeDC.psBuffers[0] = h.exposureResult;
+    // b13 + t23: フロクセル霧。
+    // WHY 無効でも b13 を束縛するか: 有効 / 無効の判断は CB の froxelGridZ が持つ。
+    //     FroxelFogPass が切ったときに 0 を書き戻すので、ここは常に最新を渡せばよい。
+    //     束縛を止めると DX11 では前フレームの値が残り、切った瞬間に画面が黒く落ちる。
+    if (h.froxelFogCB.IsValid()) {
+        compositeDC.constantBuffers[13] = h.froxelFogCB;
+        if (h.froxelIntegrated.IsValid())
+            compositeDC.textures[23] = h.froxelIntegrated;
+    }
     // MotionBlur が有効な場合、CS が生成した blurred HDR を hdrRT の代わりに t5 に束縛する。
     // WHY: MotionBlurPass が motionBlurResult に完全なブラー済み HDR を書いているため、
     //      Composite はそれを HDR ソースとして読めばよい。Composite.hlsl の変更は不要。
