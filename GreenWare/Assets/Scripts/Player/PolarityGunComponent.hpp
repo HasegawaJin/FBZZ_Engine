@@ -24,13 +24,16 @@
 ///   シーンの GameObject 数が入力に合わせて上下する。左右 2 本ぶんを OnStart で
 ///   確保しておけば、戦闘中は「寝ているビームを起こして伸ばす」だけになる。
 ///
-/// WHY 円柱メッシュではなく LineRendererComponent か:
-///   MeshRenderer::mesh を meshPath から解決しているのは SceneSerializer だけで、
-///   ランタイムに meshPath を書いても mesh は nullptr のまま = 一切描画されない。
-///   LineRendererComponent なら PresentationSystem (Phase::LateUpdate) が
-///   points から毎フレーム メッシュを作って MeshRenderer へ挿してくれる。
-///   Script フェーズで両端を書けば同じフレームの描画に乗る。
-///   ビルボードなので、どの角度から見ても線の太さが変わらないという利点もある。
+/// WHY 帯そのものはここが描かないか:
+///   照射に必要なのは «押されているか / 何秒引けるか / 誰が線上に居るか» で、
+///   «帯の頂点をどう曲げるか» はそのどれでもない。両方をここへ置いていた間、
+///   このファイルは «撃つ規則» と «光り方» が交互に並ぶ読みにくい状態になっていた。
+///   帯は BeamTrailRendererComponent が持ち、ここは BeamTrailStyle を組んで渡すだけ。
+///
+///   帯の実体はビルボードのリボンで、どの角度から見ても太さが変わらない。
+///   円柱メッシュにしないのは、MeshRenderer::mesh を meshPath から解決しているのが
+///   SceneSerializer だけで、ランタイムに meshPath を書いても mesh は nullptr のまま
+///   = 一切描画されないため。
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -42,11 +45,13 @@
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Game/CameraFollowManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
+#include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Player/WeaponAnimatorComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/BeamTrailRendererComponent.hpp>
 #include <Scripts/Utils/ElectricArc.hpp>
 #include <Scripts/Utils/EmitterBattery.hpp>
 #include <Scripts/Utils/InputActions.hpp>
@@ -107,6 +112,21 @@ public:
     FBZZ_FIELD_AUDIO(sfxNeutralize, "", "SFX Neutralize")
     FBZZ_FIELD_AUDIO(sfxEmpty,      "", "SFX Empty")
     FBZZ_TOOLTIP("バッテリーが尽きた瞬間と、空のまま撃とうとしたときの音")
+    // WHY 点火«だけ» に画面効果を割り当てるか: 長押し照射は出っぱなしなので、線そのものは
+    //     «今まさに撃った» を伝えられない。押した 1 瞬に画面が反応して初めて、
+    //     押し始めが出来事になる。照射中ずっと掛けると、それは «状態» の表示になり、
+    //     押した手応えは消える (掛けっぱなしにしたければ SetSustainedDistortion がある)。
+    FBZZ_FIELD_RANGE(float, ignitionSurge, 1.0f, "Ignition Surge", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("点火した瞬間、画面の縁を極の色で走らせる強さ。0 で出さない。"
+                 "濃さと歪みの配分は ScreenEffectManager の Surge が持つ")
+    FBZZ_FIELD_RANGE(float, ignitionSurgeSeconds, 0.16f, "Ignition Surge Seconds", 0.0f, 1.0f)
+    // WHY 起爆 (7.9) と同じ器を使ってよいか: 画角の張り出しは «こちらが解き放った» を
+    //     表す語で、点火も起爆もその側の出来事なので語彙は同じでよい。役割は量で分ける。
+    //     PunchFov は最大値で合成するため、点火の小さな張り出しは起爆の大きな張り出しを
+    //     潰さない。逆に点火を 1.0 まで上げると、起爆の一手が «いつもの絵» に埋もれる。
+    FBZZ_FIELD_RANGE(float, ignitionFovPunch, 0.35f, "Ignition FOV Punch", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("点火した瞬間に画角を張り出す強さ。起爆は 1.0 なので、それより小さく保つ。"
+                 "広がる度数と立ち上がり / 戻りは CameraFollowManager の FOV Burst が持つ")
 
     FBZZ_GROUP("Beam")
     FBZZ_FIELD_FILE(beamMaterial, "Assets/Materials/Effects/FX_WPN_Beam.mat",
@@ -169,6 +189,29 @@ public:
     // 12.1 の「当たっている手応え」。塗れているフレームだけ線が張る。
     FBZZ_FIELD_RANGE(float, contactBoost, 0.7f, "Contact Boost", 0.0f, 2.0f)
     FBZZ_TOOLTIP("線上に対象が居るあいだ、明るさと放電を増す量")
+
+    FBZZ_GROUP("Beam Wobble")
+    // WHY 断面の蛇行 (Snake) と別に持つか:
+    //   Snake は «帯の中で芯がどこを通るか» で、帯の輪郭そのものは直線のまま。どれだけ
+    //   強く振っても «硬い板の上で光が泳いでいる» にしかならない。ここは帯の頂点を
+    //   動かすので、シルエットごとうねる。2 つは «中の電流» と «管そのもの» の違いで、
+    //   どちらか一方だけだと «中身のない管» か «動かない管» になる。
+    //   実際に頂点を曲げるのは BeamTrailRendererComponent。
+    FBZZ_FIELD_RANGE(float, wobble, 0.10f, "Wobble", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("10m 先を撃ったときに帯そのものが振れる幅 [m]。0 で直線に戻る。"
+                 "実際の振れ幅は線の長さに比例する (遠いほど画面上で小さくなるため)")
+    FBZZ_FIELD_RANGE(float, wobbleFrequency, 3.0f, "Wobble Frequency", 0.0f, 12.0f)
+    FBZZ_TOOLTIP("帯 1 本あたりの波の数。上げすぎると «震え» になって線に見えなくなる")
+    FBZZ_FIELD_RANGE(float, wobbleTravel, 1.6f, "Wobble Travel", -8.0f, 8.0f)
+    FBZZ_TOOLTIP("波が銃口から着弾点へ抜ける速さ [周/秒]。負で銃口へ向かって戻る。"
+                 "0 にすると形が固まり «たわんだ棒» に見える")
+    FBZZ_FIELD_RANGE(float, wobbleBias, 0.68f, "Wobble Bias", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("振れが最大になる位置。両端は必ず 0 なので、銃口と着弾点は動かない "
+                 "(見た目どおりに当たるという 6.4 の前提を崩さない)")
+    FBZZ_FIELD_RANGE(float, wobbleGlow, 0.55f, "Wobble Glow Follow", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("裾が芯の揺れをどれだけ追うか。1 で 2 層が一緒に泳ぐ")
+    FBZZ_FIELD_RANGE(float, wobbleSegments, 2.0f, "Wobble Segments / m", 0.5f, 6.0f)
+    FBZZ_TOOLTIP("1m あたりの折れ点数。少ないと波が «角» に割れる")
 
     FBZZ_GROUP("Beam Arc")
     // 帯の «外» を走る放電。断面の乱れだけでは «明るい線» の域を出ないので、
@@ -291,6 +334,9 @@ private:
         float beads   = 0.0f;
         /// 明るさと放電の強さの倍率。命中しているあいだ 1 を超える。
         float energy  = 1.0f;
+        /// 命中の «張り» そのもの [0,1]。energy と違い調整値が乗っていないので、
+        /// 明るさではなく «出来事» として使う側 (帯を走るリングと端の閃光) が読む。
+        float surge   = 0.0f;
     };
 
     void BuildBeam(Emitter& emitter);
@@ -298,18 +344,17 @@ private:
     void ShowBeam(Emitter& emitter, const Vector3& from, const Vector3& to, float dt);
     void HideBeam(Emitter& emitter);
     void ReleaseBeam(Emitter& emitter);
-    [[nodiscard]] GameObject* BuildBeamPart(const std::string& name, int order);
+    [[nodiscard]] GameObject* BuildBeamPart(const std::string& name);
     [[nodiscard]] Unrest UnrestOf(const Emitter& emitter) const;
-    /// 1 層ぶんの線を今フレームの両端・太さ・色へ合わせる。
-    void PlaceBeamLayer(const EntityRef& ref, const Vector3& from, const Vector3& to,
-                        float width, const Vector4& color, bool isCore, const Unrest& unrest);
-    /// 断面と流れを .mat のシェーダーへ送る。
+    /// 1 層ぶんの «どんな線か»。帯をどう曲げるかは受け取った側が決める。
     ///
-    /// WHY 共有 .mat ではなく MaterialInstance へ書くか: 左右のビームは同じ .mat を
-    ///     指しているので、共有アセットへ書くと ＋ の値が − のビームにも乗る。
+    /// WHY 共有 .mat ではなく per-instance へ流すことを前提にするか: 左右のビームは
+    ///     同じ .mat を指しているので、共有アセットへ書くと ＋ の値が − のビームにも乗る。
     ///     長さから決まる tiling は左右で必ず違うため、per-instance でなければ成立しない。
-    void PushBeamMaterial(const EntityRef& ref, bool isCore, float length,
-                          const Unrest& unrest);
+    [[nodiscard]] BeamTrailStyle StyleOf(const Emitter& emitter, bool isCore,
+                                         const Unrest& unrest) const;
+    /// 帯を描く側。まだ OnStart を抜けていなければ nullptr。
+    [[nodiscard]] BeamTrailRendererComponent* TrailOf(const EntityRef& ref) const;
     /// 帯に沿って走る放電を今フレームの両端へ張り直す。
     void UpdateBeamArc(Emitter& emitter, const Vector3& from, const Vector3& to,
                        const Unrest& unrest, float dt);
@@ -472,6 +517,17 @@ inline void PolarityGunComponent::TickEmitter(Emitter& emitter, float dt)
         if (emitter.battery.CanEmit()) {
             // 12.2 が「赤と青を耳でも区別する」を求めているので、点火音は極ごとに分ける。
             se::Play(audio, sfxBeamStart, se::BeamStart(emitter.polarity));
+            // 画面の縁を極の色で走らせる。耳と銃のモーションだけだと、点火が
+            // «自分の手元» で完結して盤面の側では何も起きていないように見える。
+            // WHY 被弾の Flash を流用しないか: あれは画面全体を塗る器なので、＋ (赤) を
+            //     撃つたびに被弾と同じ絵が出る。縁だけを明るくする Surge と役割を分ける。
+            if (auto* screen = ScreenEffectManagerComponent::Instance())
+                screen->Surge(PolarityColor(emitter.polarity), ignitionSurge,
+                              ignitionSurgeSeconds);
+            // 画角も一緒に張り出す。縁の光だけだと «画面の表面» で起きたことになり、
+            // 銃から出たエネルギーが盤面を押した感じにならない。
+            if (auto* follow = CameraFollowManagerComponent::Instance())
+                follow->PunchFov(ignitionFovPunch);
             // 銃側にも点火を伝える。スライドが動く代わりに発射口が開く。
             if (auto* weapon = WeaponAnim(emitter.polarity)) weapon->PlayFire();
             if (auto* player = m_controllerOverride
@@ -635,11 +691,9 @@ inline std::string PolarityGunComponent::BeamName(Polarity polarity, const char*
 
 inline void PolarityGunComponent::BuildBeam(Emitter& emitter)
 {
-    // 芯を後ろ (order 1) に置いてグロー (order 0) の上へ重ねる。順番が逆だと
-    // 淡い層が芯を覆い、どこが線の中心なのか読めなくなる。
-    emitter.core = EntityRef{ BuildBeamPart(BeamName(emitter.polarity, "Core"), 1)->GetID() };
+    emitter.core = EntityRef{ BuildBeamPart(BeamName(emitter.polarity, "Core"))->GetID() };
     emitter.glow = glowWidth > 0.0f
-        ? EntityRef{ BuildBeamPart(BeamName(emitter.polarity, "Glow"), 0)->GetID() }
+        ? EntityRef{ BuildBeamPart(BeamName(emitter.polarity, "Glow"))->GetID() }
         : EntityRef{};
     // 放電の筋も BeamName と同じ «持ち主 + 極» の鍵で拾い直させる。鍵が無いと
     // DLL リロードのたびに筋が増え、2 人目のプレイヤーが 1 人目の筋を奪う。
@@ -649,7 +703,7 @@ inline void PolarityGunComponent::BuildBeam(Emitter& emitter)
     HideBeam(emitter);
 }
 
-inline GameObject* PolarityGunComponent::BuildBeamPart(const std::string& name, int order)
+inline GameObject* PolarityGunComponent::BuildBeamPart(const std::string& name)
 {
     // WHY 先に拾い直すか: スクリプト DLL をリロードするとこの Script は作り直され、
     //     EntityRef は空に戻る。一方 ビームの GameObject は Scene 側に残っているため、
@@ -660,43 +714,19 @@ inline GameObject* PolarityGunComponent::BuildBeamPart(const std::string& name, 
         //     引き継ぎ、ワールド座標で指定した両端がそのぶん歪む。ルートへ原点で置く。
         GameObject& object = scene.Create(name);
         object.runtimeGenerated = true;
-        object.AddComponent<LineRendererComponent>();
         existing = &object;
     }
 
-    // 拾い直した個体にも毎回入れ直す。Inspector で太さや色を触った直後に
-    // Play し直しても反映されないと、調整のたびにビームを消して回ることになる。
-    auto* line = existing->GetComponent<LineRendererComponent>();
-    if (!line) return existing;
-
-    line->materialPath = beamMaterial;
-    // ワールド座標で両端を指定する。線の GameObject を動かす必要が無くなり、
-    // 位置がマズルと照準だけで決まる。
-    line->space     = LineSpace::World;
-    line->billboard = true;
-    line->loop      = false;
-    // 12.6 のエフェクトや UI と競合しない帯に置く。
-    line->orderInLayer = order;
+    // 帯の形と .mat は BeamTrailRendererComponent が毎フレーム入れ直す。ここは
+    // «誰が描く帯なのか» を決めるところまでで、線の設定は持たない。
+    //
+    // WHY GetScript してから足すか: 拾い直した個体には前回のコンポーネントが
+    //     残っている。無条件に足すと、リロードのたびに同じ帯を 2 つ 3 つと
+    //     描く Script が積み上がる。
+    if (!scene.GetScript<BeamTrailRendererComponent>(existing))
+        existing->AddScript<BeamTrailRendererComponent>();
     return existing;
 }
-
-// Beam.hlsl の MaterialConstants に対応する名前。.mat の [params] のキーであると同時に、
-// HLSL の cbuffer メンバー名でもある (MaterialInstance はシェーダーリフレクションで検証する)。
-inline constexpr MaterialPropertyId kBeamCoreWidthId  { "coreWidth" };
-inline constexpr MaterialPropertyId kBeamEdgeFalloffId{ "edgeFalloff" };
-inline constexpr MaterialPropertyId kBeamCoreBoostId  { "coreBoost" };
-inline constexpr MaterialPropertyId kBeamTilingId     { "tiling" };
-inline constexpr MaterialPropertyId kBeamScrollId     { "scroll" };
-inline constexpr MaterialPropertyId kBeamMuzzleFadeId { "muzzleFade" };
-inline constexpr MaterialPropertyId kBeamTipFadeId    { "tipFade" };
-
-inline constexpr MaterialPropertyId kBeamPhaseId    { "phase" };
-inline constexpr MaterialPropertyId kBeamArcAmpId   { "arcAmp" };
-inline constexpr MaterialPropertyId kBeamArcFreqId  { "arcFreq" };
-inline constexpr MaterialPropertyId kBeamCrackleId  { "crackle" };
-inline constexpr MaterialPropertyId kBeamFlickerId  { "flicker" };
-inline constexpr MaterialPropertyId kBeamBeadsId    { "beadDensity" };
-inline constexpr MaterialPropertyId kBeamBeadFallId { "beadFalloff" };
 
 // 芯層の断面。Inspector へ出していないのは、この 2 つを触ると «芯とグローの 2 層» という
 // 12.3 の構成そのものが崩れるため (芯を鈍らせるとグロー層と区別が付かなくなる)。
@@ -730,54 +760,69 @@ PolarityGunComponent::UnrestOf(const Emitter& emitter) const
     out.flicker = Clamp01(flicker + unrest * 0.55f);
     out.beads   = Max(chargeBeads, 0.0f);
     out.energy  = 1.0f + Max(contactBoost, 0.0f) * contact;
+    out.surge   = contact;
     return out;
 }
 
-inline void PolarityGunComponent::PushBeamMaterial(const EntityRef& ref, bool isCore,
-                                                   float length, const Unrest& unrest)
+inline BeamTrailStyle PolarityGunComponent::StyleOf(const Emitter& emitter, bool isCore,
+                                                   const Unrest& unrest) const
 {
-    GameObject* object = ref.Resolve(scene);
-    if (!object) return;
-
-    const MaterialInstance instance = material.Instance(EntityRef{ object->GetID() });
-    // WHY HasProperty で先に門を閉めるか: MaterialComponent を張るのは LineRenderer 側
-    //     (Phase::LateUpdate) なので、照射を始めた最初の 1 フレームはまだ存在しない。
-    //     Set 系は空振りのたびに警告を出すため、そのまま呼ぶと Console が埋まる。
-    //     Beam.hlsl 以外の .mat を差した場合もここで静かに止まる。
-    if (!instance.HasProperty(kBeamCoreWidthId)) return;
-
-    // 芯層は «芯のある断面»、グロー層は «芯を持たない裾» にする。同じ形を 2 枚重ねると
-    // 太さが変わるだけで、12.3 が言う 2 層の役割分担にならない。
-    instance.SetFloat(kBeamCoreWidthId,   isCore ? coreSharpness : 0.0f);
-    instance.SetFloat(kBeamEdgeFalloffId, isCore ? kBeamCoreEdgeFalloff : glowSoftness);
-    instance.SetFloat(kBeamCoreBoostId,   isCore ? kBeamCoreBoost : 0.0f);
-
-    // 模様の密度は長さから決める。uv.x は常に [0,1] なので、タイルしないと
-    // 近くを撃つほど模様が間延びし、同じビームが距離で別物に見える。
-    instance.SetFloat(kBeamTilingId, Max(length, 0.0f) * Max(stripeDensity, 0.0f));
-    // WHY 位相を自前で積まないか: Time::time はヒットストップで止まる。止まった画面で
-    //     ビームだけ流れ続けると、時間が止まったことの方が嘘に見える。
-    instance.SetFloat(kBeamScrollId, std::fmod(-Time::time * scrollSpeed, kBeamScrollWrap));
-    instance.SetFloat(kBeamMuzzleFadeId, muzzleFade);
-    instance.SetFloat(kBeamTipFadeId,    tipFade);
-
-    // 帯電の乱れは別に門を構える。Beam.hlsl 由来ではない .mat (断面だけ同じ自作
-    // シェーダー) を差した場合、ここを通すと «毎フレーム × 2 層 × 7 項目» の
-    // «そんなプロパティは無い» で Console が埋まる。
-    if (!instance.HasProperty(kBeamPhaseId)) return;
-
+    const Vector4 base = PolarityColor(emitter.polarity);
+    // 12.2 の «明るさより彩度» は保つ。命中で増やすのは倍率だけで、白は混ぜない。
+    const float brightness = (isCore ? coreBrightness : glowBrightness) * unrest.energy;
     // グロー層は «淡い裾» なので、同じ量で振ると画面全体が明滅する。
     // 芯が暴れて裾がゆっくり呼吸する、という差が «芯とグローの 2 層» を保つ。
     const float layer = isCore ? 1.0f : 0.35f;
-    instance.SetFloat(kBeamPhaseId,   std::fmod(Time::time * Max(churnRate, 0.0f),
-                                                kBeamPhaseWrap));
-    instance.SetFloat(kBeamArcAmpId,  unrest.snake * layer);
-    instance.SetFloat(kBeamArcFreqId, Max(snakeFrequency, 0.0f));
-    instance.SetFloat(kBeamCrackleId, unrest.crackle * layer);
-    instance.SetFloat(kBeamFlickerId, unrest.flicker * layer);
-    // 粒は芯だけに流す。裾にも流すと «光の玉が 2 重に走る» ので数が読めなくなる。
-    instance.SetFloat(kBeamBeadsId,    isCore ? unrest.beads : 0.0f);
-    instance.SetFloat(kBeamBeadFallId, kBeamBeadFalloff);
+
+    BeamTrailStyle style;
+    style.materialPath = beamMaterial;
+    style.isCore       = isCore;
+    // 芯を後ろ (order 1) に置いてグロー (order 0) の上へ重ねる。順番が逆だと
+    // 淡い層が芯を覆い、どこが線の中心なのか読めなくなる。
+    style.orderInLayer = isCore ? 1 : 0;
+    style.width        = isCore ? coreWidth : glowWidth;
+    style.color        = { base.x * brightness, base.y * brightness, base.z * brightness,
+                           isCore ? 1.0f : glowOpacity };
+
+    // 左右で違う形にする。同じ鍵だと 2 本のビームが完全に同じうねり方をして、
+    // «1 本を鏡写しにした絵» に見える。芯と裾には同じ鍵を渡す (同じ波を共有させる)。
+    style.seed             = emitter.polarity == Polarity::Plus ? 17u : 8191u;
+    // 残量が減るほど帯そのものが暴れる。6.3 の «時間が資源» をゲージを見ずに読ませる。
+    style.wobble           = Max(wobble, 0.0f) * (1.0f + unrest.crackle * 0.4f);
+    style.wobbleScale      = isCore ? 1.0f : Clamp01(wobbleGlow);
+    style.wobbleFrequency  = Max(wobbleFrequency, 0.0f);
+    style.wobbleTravel     = wobbleTravel;
+    style.wobbleBias       = Clamp01(wobbleBias);
+    style.segmentsPerMeter = Max(wobbleSegments, 0.1f);
+
+    style.coreWidth   = coreSharpness;
+    style.edgeFalloff = isCore ? kBeamCoreEdgeFalloff : glowSoftness;
+    style.coreBoost   = kBeamCoreBoost;
+    style.tiling      = Max(stripeDensity, 0.0f);
+    // WHY 位相を自前で積まないか: Time::time はヒットストップで止まる。止まった画面で
+    //     ビームだけ流れ続けると、時間が止まったことの方が嘘に見える。
+    style.scroll      = std::fmod(-Time::time * scrollSpeed, kBeamScrollWrap);
+    style.muzzleFade  = muzzleFade;
+    style.tipFade     = tipFade;
+    style.phase       = std::fmod(Time::time * Max(churnRate, 0.0f), kBeamPhaseWrap);
+    style.arcAmp      = unrest.snake * layer;
+    style.arcFreq     = Max(snakeFrequency, 0.0f);
+    style.crackle     = unrest.crackle * layer;
+    style.flicker     = unrest.flicker * layer;
+    style.beadDensity = unrest.beads;
+    style.beadFalloff = kBeamBeadFalloff;
+    style.surge       = unrest.surge;
+    return style;
+}
+
+inline BeamTrailRendererComponent* PolarityGunComponent::TrailOf(const EntityRef& ref) const
+{
+    GameObject* object = ref.Resolve(scene);
+    if (!object) return nullptr;
+    auto* trail = scene.GetScript<BeamTrailRendererComponent>(object);
+    // 実行時に足した Script は、ScriptSystem が SetContext を通すまでプロキシが
+    // 繋がっていない。張らせるのは OnStart を抜けてからにする。
+    return (trail && trail->IsReady()) ? trail : nullptr;
 }
 
 inline void PolarityGunComponent::UpdateBeamArc(Emitter& emitter, const Vector3& from,
@@ -954,32 +999,6 @@ inline void PolarityGunComponent::UpdateImpactArc(Emitter& emitter, const Unrest
     emitter.impactArc.Update(*this, point + lift, point + spoke + lift, style, dt);
 }
 
-inline void PolarityGunComponent::PlaceBeamLayer(const EntityRef& ref, const Vector3& from,
-                                                 const Vector3& to, float width,
-                                                 const Vector4& color, bool isCore,
-                                                 const Unrest& unrest)
-{
-    GameObject* object = ref.Resolve(scene);
-    if (!object) return;
-
-    auto* line = object->GetComponent<LineRendererComponent>();
-    if (!line) return;
-
-    // 2 点しか使わないので、確保済みの領域へ書き戻して毎フレームの再確保を避ける。
-    line->points.resize(2);
-    line->points[0] = from;
-    line->points[1] = to;
-    line->startWidth = width;
-    line->endWidth   = width;
-    // 描画に効くのは startColor だけ (PresentationSystem がこれを albedo へ流す)。
-    // endColor も揃えておかないと、Inspector で見たときに嘘の情報になる。
-    line->startColor = color;
-    line->endColor   = color;
-    line->enabled    = true;
-
-    PushBeamMaterial(ref, isCore, (to - from).Length(), unrest);
-}
-
 inline void PolarityGunComponent::ShowBeam(Emitter& emitter, const Vector3& from,
                                            const Vector3& to, float dt)
 {
@@ -989,25 +1008,24 @@ inline void PolarityGunComponent::ShowBeam(Emitter& emitter, const Vector3& from
     }
     emitter.beamVisible = true;
 
-    const Unrest  unrest = UnrestOf(emitter);
-    const Vector4 base   = PolarityColor(emitter.polarity);
-    // 12.2 の «明るさより彩度» は保つ。命中で増やすのは倍率だけで、白は混ぜない。
-    const float   core   = coreBrightness * unrest.energy;
-    const float   halo   = glowBrightness * unrest.energy;
+    const Unrest unrest = UnrestOf(emitter);
 
-    PlaceBeamLayer(emitter.core, from, to, coreWidth,
-                   { base.x * core, base.y * core, base.z * core, 1.0f }, true, unrest);
+    // 帯をどう曲げるかは BeamTrailRendererComponent が持つ。ここは «どんな線か» を
+    // 組んで渡すだけで、点列も .mat への流し込みも向こう側の仕事。
+    if (auto* core = TrailOf(emitter.core))
+        core->Show(from, to, StyleOf(emitter, true, unrest));
     if (glowWidth > 0.0f)
-        PlaceBeamLayer(emitter.glow, from, to, glowWidth,
-                       { base.x * halo, base.y * halo, base.z * halo, glowOpacity },
-                       false, unrest);
+        if (auto* glow = TrailOf(emitter.glow))
+            glow->Show(from, to, StyleOf(emitter, false, unrest));
 
     UpdateBeamArc(emitter, from, to, unrest, dt);
     UpdateForks(emitter, from, to, unrest, dt);
     UpdateImpactArc(emitter, unrest, dt);
 
+    // WHY 判定線をデバッグで «別に» 引くか: 帯は頂点ごとに振れているので、塗る相手を
+    //     決めている直線とは形が違う。重ねて初めて «どれだけ外れているか» が見える。
     if (drawDebugBeam)
-        debug.DrawLine(from, to, base);
+        debug.DrawLine(from, to, PolarityColor(emitter.polarity));
 }
 
 inline void PolarityGunComponent::HideBeam(Emitter& emitter)
@@ -1015,16 +1033,8 @@ inline void PolarityGunComponent::HideBeam(Emitter& emitter)
     if (!emitter.beamVisible) return;
     emitter.beamVisible = false;
 
-    // WHY SetActive ではなく enabled か: PresentationSystem は GameObject の有効・無効を
-    //     見ずに全 LineRendererComponent を回す。enabled を落とすと同じ関数の中で
-    //     MeshRenderer まで無効にしてくれるので、消し方が 1 箇所に閉じる。
-    const auto disable = [this](const EntityRef& ref) {
-        if (GameObject* object = ref.Resolve(scene))
-            if (auto* line = object->GetComponent<LineRendererComponent>())
-                line->enabled = false;
-    };
-    disable(emitter.core);
-    disable(emitter.glow);
+    if (auto* core = TrailOf(emitter.core)) core->Hide();
+    if (auto* glow = TrailOf(emitter.glow)) glow->Hide();
     emitter.arc.Extinguish(*this);
     emitter.impactArc.Extinguish(*this);
     for (ElectricArcBundle& fork : emitter.forks) fork.Extinguish(*this);

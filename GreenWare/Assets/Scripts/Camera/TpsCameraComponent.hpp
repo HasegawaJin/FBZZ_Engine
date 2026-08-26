@@ -8,6 +8,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Camera/CameraLook.hpp>
 #include <Scripts/Game/CameraFollowManagerComponent.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/GameSettingsComponent.hpp>
@@ -43,13 +44,8 @@ public:
     FBZZ_FIELD(bool,  mouseOrbit,              true,  "Mouse Orbit")
 
     FBZZ_GROUP("Gamepad")
-    // WHY LookX / LookY (アクション層) を使わないか:
-    //   マウス Delta は「1 フレームに何ピクセル動いたか」、スティックは「-1..1 の倒し量」で
-    //   単位が違う。1 本の感度で両方を扱うと、マウスに合わせればスティックが動かず、
-    //   スティックに合わせればマウスが暴れる。デバイスごとに感度を持たせるしかない。
-    //
-    // 不感帯と応答カーブは Option (GameSettingsComponent の InputConfig) が持つ。
-    // 遊ぶ人が合わせる値で、作り手が決める値ではない。
+    // デバイスごとに感度を分ける理由と、不感帯・応答カーブを Option (InputConfig) が
+    // 持つ理由は CameraLook.hpp に書いてある。FPS と同じ式でなければならない部分。
     FBZZ_FIELD(bool, padOrbit, true, "Pad Orbit")
     FBZZ_FIELD_RANGE(float, padLookSpeed, 200.0f, "Pad Look Speed", 10.0f, 720.0f)
     FBZZ_TOOLTIP("Option の「スティック感度」が既定値のときの旋回速度 (度/秒)")
@@ -90,9 +86,6 @@ public:
 private:
     /// yaw / pitch から今フレームの向きを組む。OnUpdate と OnLateUpdate が同じ式を使う。
     [[nodiscard]] Quaternion CurrentRotation() const;
-    /// 右スティックの倒し量を、デッドゾーンと曲線を通した -1..1 へ落とす。
-    /// 無入力なら (0,0)。
-    [[nodiscard]] Vector2 PadLookAxis() const;
     /// たるみ 0..1 を、密着側と最も緩い側の追従速度の間へ落とす。
     [[nodiscard]] static float BlendFollowSpeed(float tight, float loose, float slack01);
     /// 追従速度と dt から今フレームの補間率を出す。
@@ -130,28 +123,6 @@ inline Quaternion TpsCameraComponent::CurrentRotation() const
     return (yawRot * pitchRot).Normalized();
 }
 
-inline Vector2 TpsCameraComponent::PadLookAxis() const
-{
-    const Vector2 raw{ input.GetPadAxis(GamepadAxis::RIGHT_STICK_X),
-                       input.GetPadAxis(GamepadAxis::RIGHT_STICK_Y) };
-
-    // WHY 軸ごとではなく半径でデッドゾーンを切るか: 軸ごとに切ると正方形の
-    //     不感帯になり、斜めに倒したときの実効感度が方向によって変わる。
-    //
-    // 不感帯と曲線は Option の値で置き換える。倍率で掛けないのは、どちらも
-    // 「どこから効き始めるか」「どんな効き方か」という形そのものだからで、
-    // Inspector 側の値と混ぜると設定を見ても実際の効きが判らなくなる。
-    const InputConfig& settings = GameSettingsComponent::InputOrDefault();
-    const float magnitude = raw.Length();
-    const float dead      = Clamp01(settings.deadzone);
-    if (magnitude <= dead) return Vector2::ZERO;
-
-    // 不感帯の外側を 0..1 へ引き直す。境界を跨いだ瞬間に速度が飛ばない。
-    const float normalized = Clamp01((magnitude - dead) / Max(1.0f - dead, EPSILON));
-    const float curved     = Pow(normalized, Max(CurveExponent(settings.curve), 1.0f));
-    return raw * (curved / magnitude);
-}
-
 inline void TpsCameraComponent::OnUpdate()
 {
     if (!transform) return;
@@ -160,20 +131,18 @@ inline void TpsCameraComponent::OnUpdate()
     //     ビューポート上でマウスを動かしただけで yaw / pitch が積まれ、その値が
     //     シーンの中身になる。編集中の向きは Inspector に置いた値が正本。
     if (mouseOrbit && app.IsPlaying()) {
-        // Option の感度は「既定を 1.0 とした倍率」に直してから掛ける。
-        const float sensitivity = mouseSensitivity * GameSettingsComponent::MouseSensScale();
-        const Vector2 delta = input.GetMouseDelta();
-        yaw   += delta.x * sensitivity;
-        pitch  = Clamp(pitch + delta.y * sensitivity, minPitch, maxPitch);
+        const Vector2 delta = cameralook::MouseDelta(input, mouseSensitivity);
+        yaw   += delta.x;
+        pitch  = Clamp(pitch + delta.y, minPitch, maxPitch);
     }
 
     if (padOrbit) {
         // WHY 実時間で積むか: マウスは移動量そのものなのでヒットストップ中も動く。
         //     スティックだけスケール後の dt で積むと、止めが掛かった瞬間に
         //     視点だけ操作を受け付けなくなり、デバイスで挙動が食い違う。
-        const float dt  = Max(Time::unscaledDeltaTime, 0.0f);
-        const float speed = padLookSpeed * GameSettingsComponent::StickSensScale();
-        const Vector2 stick = PadLookAxis();
+        const float dt    = Max(Time::unscaledDeltaTime, 0.0f);
+        const float speed = cameralook::PadLookSpeed(padLookSpeed);
+        const Vector2 stick = cameralook::PadAxis(input);
         // スティックの Y は上倒しが +1。画面の上を向くのは pitch が減る方向。
         const float pitchSign = padInvertY ? 1.0f : -1.0f;
         yaw   += stick.x * speed * dt;

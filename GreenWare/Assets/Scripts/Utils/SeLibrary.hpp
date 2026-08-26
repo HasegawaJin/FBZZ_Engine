@@ -343,6 +343,68 @@ inline Bank kEnemyCoreLoop   { kEnemyCoreLoopPaths };
 inline Bank kEnemyCoreExpire { kEnemyCoreExpirePaths };
 
 
+// ── Mite / Serpent / Roller ────────────────────────────────────
+// WHY 共通の敵バンクと分けるか:
+//   Spawn / Flinch は «敵という種類» の音で、3 種のどれが鳴らしても同じでよい。
+//   移動の定常音と攻撃だけは機種を聞き分ける手がかりになるので、姿が見える前に
+//   «何が来ているか» が耳で決まる。撃破音も分けて、倒れたのがどれかを目で追わずに済ませる。
+inline constexpr std::string_view kMiteHoverLoopPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_MITE_Hover_Loop.wav" };
+inline constexpr std::string_view kMiteAttackPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_MITE_Attack_01.wav",
+    "Assets/Sound/SE/Enemy/SE_MITE_Attack_02.wav",
+    "Assets/Sound/SE/Enemy/SE_MITE_Attack_03.wav",
+};
+inline constexpr std::string_view kMiteDestroyPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_MITE_Destroy_01.wav",
+    "Assets/Sound/SE/Enemy/SE_MITE_Destroy_02.wav",
+    "Assets/Sound/SE/Enemy/SE_MITE_Destroy_03.wav",
+};
+
+inline constexpr std::string_view kSerpentCrawlLoopPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_SERP_Crawl_Loop.wav" };
+inline constexpr std::string_view kSerpentRearPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_SERP_Rear_01.wav",
+    "Assets/Sound/SE/Enemy/SE_SERP_Rear_02.wav",
+};
+inline constexpr std::string_view kSerpentBitePaths[] = {
+    "Assets/Sound/SE/Enemy/SE_SERP_Bite_01.wav",
+    "Assets/Sound/SE/Enemy/SE_SERP_Bite_02.wav",
+    "Assets/Sound/SE/Enemy/SE_SERP_Bite_03.wav",
+};
+inline constexpr std::string_view kSerpentDestroyPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_SERP_Destroy_01.wav",
+    "Assets/Sound/SE/Enemy/SE_SERP_Destroy_02.wav",
+};
+
+inline constexpr std::string_view kRollerRollLoopPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_ROLL_Roll_Loop.wav" };
+inline constexpr std::string_view kRollerAnchorPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_ROLL_Anchor_01.wav",
+    "Assets/Sound/SE/Enemy/SE_ROLL_Anchor_02.wav",
+};
+inline constexpr std::string_view kRollerChargePaths[] = {
+    "Assets/Sound/SE/Enemy/SE_ROLL_Charge_01.wav",
+    "Assets/Sound/SE/Enemy/SE_ROLL_Charge_02.wav",
+};
+inline constexpr std::string_view kRollerDestroyPaths[] = {
+    "Assets/Sound/SE/Enemy/SE_ROLL_Destroy_01.wav",
+    "Assets/Sound/SE/Enemy/SE_ROLL_Destroy_02.wav",
+};
+
+inline Bank kMiteHoverLoop    { kMiteHoverLoopPaths };
+inline Bank kMiteAttack       { kMiteAttackPaths };
+inline Bank kMiteDestroy      { kMiteDestroyPaths };
+inline Bank kSerpentCrawlLoop { kSerpentCrawlLoopPaths };
+inline Bank kSerpentRear      { kSerpentRearPaths };
+inline Bank kSerpentBite      { kSerpentBitePaths };
+inline Bank kSerpentDestroy   { kSerpentDestroyPaths };
+inline Bank kRollerRollLoop   { kRollerRollLoopPaths };
+inline Bank kRollerAnchor     { kRollerAnchorPaths };
+inline Bank kRollerCharge     { kRollerChargePaths };
+inline Bank kRollerDestroy    { kRollerDestroyPaths };
+
+
 // ── Polarity ────────────────────────────────────────────────────────────────
 inline constexpr std::string_view kPolarityInfectPaths[] = {
     "Assets/Sound/SE/Polarity/SE_POL_Infect_01.wav",
