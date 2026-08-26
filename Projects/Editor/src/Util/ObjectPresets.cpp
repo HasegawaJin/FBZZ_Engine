@@ -5,6 +5,7 @@
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ColliderFit.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 // 全コンポーネント型の登録表。個別 include を並べるより、追加時に漏れが出ない。
 #include <Engine/Scene/ComponentRegistry.hpp>
@@ -276,6 +277,58 @@ scene::GameObject* MakeWindZone(EditorContext& ctx)
     auto& go = ctx.activeScene->CreateGameObject("Wind Zone");
     go.AddComponent<scene::WindZoneComponent>();
     return &go;
+}
+
+// 天候ルート + 雨エミッター。
+// WHY 1 個の導線にまとめるか: 濡れだけ置いても «雨が降っていないのに地面が濡れている»
+//      絵にしかならず、雨だけ置いても路面が乾いたままで嘘に見える。両方揃って天候になる。
+//      雨量は WeatherComponent.rainIntensity が正本で、子のエミッターは
+//      WeatherSystem が毎フレーム駆動する。
+scene::GameObject* MakeWeather(EditorContext& ctx)
+{
+    auto& weatherGo = ctx.activeScene->CreateGameObject("Weather");
+    weatherGo.AddComponent<scene::WeatherComponent>();
+    const scene::EntityID weatherId = weatherGo.GetID();
+
+    auto& rainGo = ctx.activeScene->CreateGameObject("Rain");
+
+    scene::ParticleEmitter rain;
+    auto& s = rain.settings;
+    s.shape      = scene::ParticleEmitterShape::Box;
+    // 頭上に広く薄い板を張り、そこから落とす。厚みを持たせると降り始めの高さが
+    // 粒ごとにばらつき、地面へ届くタイミングが揃わない。
+    s.boxExtents   = { 20.0f, 0.5f, 20.0f };
+    s.emitPosition = { 0.0f, 12.0f, 0.0f };
+    s.emitVelocity = { 0.0f, -14.0f, 0.0f };
+    s.velocitySpread = 0.6f;
+    s.gravity        = { 0.0f, -9.0f, 0.0f };
+    s.lifetime       = 1.6f;
+    s.lifetimeRandom = 0.2f;
+    // 発生量は WeatherSystem が rainIntensity から毎フレーム上書きする。
+    // ここは «雨量 0 で置かれる» 初期状態に合わせておく。
+    s.emitRate     = 0.0f;
+    s.maxParticles = 8000;
+    s.sizeStart    = 0.05f;
+    s.sizeEnd      = 0.05f;
+    // 速度方向へ伸ばす。この renderMode でないと RainDrop.hlsl は縦棒しか描けない。
+    s.renderMode              = scene::ParticleRenderMode::StretchedBillboard;
+    s.stretchedLengthScale    = 0.6f;
+    s.stretchedVelocityScale  = 0.06f;
+    // World 空間。Local だと親を動かした瞬間に降っている粒ごと平行移動する。
+    s.simulationSpace = scene::ParticleSimulationSpace::World;
+    s.colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
+    s.colorEnd   = { 1.0f, 1.0f, 1.0f, 1.0f };
+    s.materialPath = "Assets/Materials/Particles/Rain_Alpha.mat";
+    s.loop = true;
+    rainGo.AddComponent<scene::ParticleEmitter>(std::move(rain));
+
+    const scene::EntityID rainId = rainGo.GetID();
+    // CreateGameObject でコンテナが再確保され得るので、参照は取り直す。
+    if (auto* parent = ctx.activeScene->GetGameObject(weatherId))
+        if (auto* child = ctx.activeScene->GetGameObject(rainId))
+            child->SetParent(parent);
+
+    return ctx.activeScene->GetGameObject(weatherId);
 }
 
 // 空・太陽・大気・IBL をまとめた 1 個の環境ルート。
@@ -627,6 +680,7 @@ constexpr ObjectPreset kPresets[] = {
     { "env.postProcess",      "Environment", "Post Process Volume",    "ルック設定 (Post Process Profile を割り当てて使う)", &MakePostProcessVolume },
     { "env.reflectionProbe",  "Environment", "Reflection Probe",       "反射プローブ。周囲をキューブマップへ焼く", &MakeReflectionProbe },
     { "env.windZone",         "Environment", "Wind Zone",              "風。植生とパーティクルを揺らす", &MakeWindZone },
+    { "env.weather",          "Environment", "Weather",                "天候。雨量と路面の濡れ (雨エミッターを子に持つ)", &MakeWeather },
 
     { "terrain.terrain", "Terrain", "Terrain",      "平坦な地形 (65x65) + Terrain Collider + 既定レイヤーマテリアル", &MakeTerrain },
     { "terrain.grid",    "Terrain", "Terrain Grid", "Terrain セルを並べて広い地形を作る親", &MakeTerrainGrid },
@@ -700,7 +754,7 @@ scene::GameObject* CreateObjectFromPreset(EditorContext& ctx, std::string_view i
             if (auto* child = ctx.activeScene->GetGameObject(createdId)) child->SetParent(parentObject);
         }
     }
-    ctx.selectedEntities = { createdId };
+    SelectEntity(ctx, createdId);
     return ctx.activeScene->GetGameObject(createdId);
 }
 

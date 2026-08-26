@@ -11,7 +11,9 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Gamepad.hpp>
 #include <Engine/Input/InputActionMap.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Renderer/PipelineDiagnostics.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -493,6 +495,30 @@ void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
         ImGui::EndCombo();
     }
     render.pipeline = static_cast<renderer::RenderingPipeline>(pipelineIdx);
+
+    // 「有効にしてあるのに、このパイプラインでは無視される設定」をその場で出す。
+    //
+    // WHY パイプラインの真下か: 原因は Pipeline の選択そのものなので、
+    //     効かない設定の側 (Post Process Volume) だけに出しても直し方が分からない。
+    //     選んだ直後に「これとこれが無効になります」と見えるのが一番短い導線になる。
+    if (const auto inert = renderer::CollectInertSettings(render); !inert.empty())
+    {
+        ImGui::Spacing();
+        const ImVec4 warn = EditorTheme::Color(ThemeColor::Warning);
+        ImGui::TextColored(warn, "Warning: このパイプラインで無効になる設定が %d 件あります",
+                           static_cast<int>(inert.size()));
+        ImGui::Indent();
+        for (const renderer::InertSetting& issue : inert)
+        {
+            ImGui::TextColored(warn, "%s", issue.label);
+            ImGui::Indent();
+            ImGui::TextDisabled("%s", issue.reason);
+            if (issue.remedy) ImGui::TextDisabled("→ %s", issue.remedy);
+            ImGui::Unindent();
+        }
+        ImGui::Unindent();
+        ImGui::Spacing();
+    }
 
     const bool clusteredPipeline = render.pipeline == renderer::RenderingPipeline::ForwardPlus
                                 || render.pipeline == renderer::RenderingPipeline::DeferredPlus;
