@@ -761,6 +761,16 @@ struct ThumbnailRenderer {
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+    // Spot / Point シャドウ (b12) の無効化用。中身は 0 のまま使う。
+    // 定数バッファの束縛はドローをまたいで残るが SRV は毎回クリアされるので、
+    // シーン描画の b12 が残るとアトラス未束縛のまま「完全な影」を引いて黒くなる。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
+    // ライト供給モード (b9) の無効化用。中身は 0 = FBZZ_LIGHT_MODE_LEGACY のまま使う。
+    // WHY 要るか: シーン描画は Forward でも LINEAR (統合配列) を使うようになった。
+    //     b9 の束縛はドローをまたいで残る一方、ライト配列 (t29) は毎回クリアされるので、
+    //     そのままだとプレビューが「本数は残っているのに中身が全部ゼロ」を読み、
+    //     ライトが一つも当たらなくなる。0 を渡してレガシー経路 (b3) へ倒す。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> clusterCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> terrainObjectCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> waterObjectCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
@@ -874,6 +884,9 @@ struct ThumbnailTerrainCB {
     math::Vector4 layerTextureFlags;
     math::Vector4 layerAutoHeight[4];
     math::Vector4 layerAutoSlope[4];
+    // TerrainRenderPass.cpp の TerrainObjectCB と一致させること。
+    // サムネイルは常に乾いた状態で焼く (0 のまま渡す)。
+    math::Vector4 weather;
 };
 
 // Assets/Shaders/Water/Water.hlsl の WaterCB と一致させる
@@ -1162,6 +1175,17 @@ static bool EnsureThumbnailGpuResources(renderer::ResourceManager& resources,
         tr.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
     if (!tr.shadowCB.IsValid())
         tr.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
+    if (!tr.punctualShadowCB.IsValid()) {
+        tr.punctualShadowCB =
+            resources.CreateConstantBuffer(sizeof(scene::PunctualShadowConstantsCB));
+        const scene::PunctualShadowConstantsCB emptyPunctual{};
+        resources.Update(tr.punctualShadowCB, &emptyPunctual, sizeof(emptyPunctual));
+    }
+    if (!tr.clusterCB.IsValid()) {
+        tr.clusterCB = resources.CreateConstantBuffer(sizeof(scene::ClusterConstantsCB));
+        const scene::ClusterConstantsCB legacyCluster{};  // clusterLightMode = 0 = LEGACY
+        resources.Update(tr.clusterCB, &legacyCluster, sizeof(legacyCluster));
+    }
 
     return tr.pso.IsValid() && tr.frameCB.IsValid() && tr.objectCB.IsValid() &&
            (!requireFallbackMaterial || tr.materialCB.IsValid()) && tr.lightCB.IsValid() && tr.shadowCB.IsValid();
@@ -1323,9 +1347,6 @@ static bool RenderMeshThumbnail(
         renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
         renderer.ClearDepth();
     }
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_ANISOTROPIC);
 
     renderer::DrawCall dc;
     dc.vertexBuffer = mesh.vertexBuffer;
@@ -1339,6 +1360,8 @@ static bool RenderMeshThumbnail(
     dc.constantBuffers[2] = (useMaterialOverride && materialCB.IsValid()) ? materialCB : s_tr.materialCB;
     dc.constantBuffers[3] = s_tr.lightCB;
     dc.constantBuffers[4] = s_tr.shadowCB;
+    dc.constantBuffers[12] = s_tr.punctualShadowCB;
+    dc.constantBuffers[9] = s_tr.clusterCB;
     if (flavor == ThumbnailShaderFlavor::Skinned)
         dc.constantBuffers[7] = s_tr.skinningCB;
     if (useMaterialOverride && materialTextures) {
@@ -1494,7 +1517,7 @@ void AssetBrowserPanel::FinalizePendingAssetMove(EditorContext& ctx)
     }
 
     if (util::FileSystem::SamePathText(ctx.selectedAssetPath, srcAbs))
-        ctx.selectedAssetPath.clear();
+        ClearAssetSelection(ctx);
     ResetAssetPreviewCache(srcAbs);
     InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
     InvalidateTreeCache(request.targetDir);
@@ -2592,7 +2615,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
     if (ctrl) {
         if (m_selectedPaths.count(e.path)) m_selectedPaths.erase(e.path);
         else                                m_selectedPaths.insert(e.path);
-        ctx.selectedAssetPath = e.path;
+        SelectAsset(ctx, e.path);
         m_lastClickedPath     = e.path;
         m_pendingRenamePath.clear();
     } else if (shift && !m_lastClickedPath.empty()) {
@@ -2607,7 +2630,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
                 m_selectedPaths.insert(entry.path);
             }
         }
-        ctx.selectedAssetPath = e.path;
+        SelectAsset(ctx, e.path);
         m_pendingRenamePath.clear();
     } else {
         // 選択済み & 単体選択状態での再クリック → 遅延リネーム (Unity スタイル)
@@ -2618,7 +2641,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
             m_pendingRenameTimer = static_cast<float>(ImGui::GetTime());
         } else {
             m_selectedPaths.clear();
-            ctx.selectedAssetPath = e.path;
+            SelectAsset(ctx, e.path);
             m_lastClickedPath     = e.path;
             m_pendingRenamePath.clear();
             // FBX コンテンツ更新をクリック時に実施 (ホバーから移行)
@@ -2654,7 +2677,7 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
         if (ctx.requestOpenScene) {
             ctx.requestOpenScene(path);
         } else if (SceneIO::Load(*ctx.activeScene, path)) {
-            ctx.selectedEntities.clear();
+            ClearEntitySelection(ctx);
             if (ctx.undoStack) ctx.undoStack->Clear();
             if (ctx.markSceneDirty) ctx.markSceneDirty();
             FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
@@ -2674,7 +2697,7 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             : std::string{};
         std::vector<scene::EntityID> roots;
         if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots)) {
-            ctx.selectedEntities = roots;
+            SelectEntities(ctx, roots);
             const std::string after = canRecordUndo
                 ? SceneIO::Serialize(*ctx.activeScene)
                 : std::string{};
@@ -2684,7 +2707,7 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
                 const auto markDirty = ctx.markSceneDirty;
                 auto restore = [scene, context, markDirty](const std::string& snapshot) {
                     if (SceneIO::Deserialize(*scene, snapshot)) {
-                        context->selectedEntities.clear();
+                        ClearEntitySelection(*context);
                         if (markDirty) markDirty();
                     }
                 };
@@ -2756,11 +2779,11 @@ void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
     // 貼り付けた項目をそのまま選択状態にする (Unity と同じく直後にリネーム/移動しやすくする)。
     m_selectedPaths.clear();
     if (pastedPaths.size() == 1) {
-        ctx.selectedAssetPath = pastedPaths.front();
+        SelectAsset(ctx, pastedPaths.front());
         m_lastClickedPath     = pastedPaths.front();
     } else if (pastedPaths.size() > 1) {
         m_selectedPaths.insert(pastedPaths.begin(), pastedPaths.end());
-        ctx.selectedAssetPath = pastedPaths.front();
+        SelectAsset(ctx, pastedPaths.front());
     }
 
     // 取り出しが起きたことは必ず伝える。黙って独立アセットが増えると、
@@ -2949,7 +2972,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                 m_pendingNavigate = util::FileSystem::GetDirectory(extracted);
                 m_selectedPaths.clear();
                 m_lastClickedPath     = extracted;
-                ctx.selectedAssetPath = extracted;
+                SelectAsset(ctx, extracted);
                 RefreshDirectory();
             }
             ImGui::CloseCurrentPopup();

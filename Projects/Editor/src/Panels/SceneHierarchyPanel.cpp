@@ -12,6 +12,7 @@
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptObjectFactory.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/SelectionVisuals.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -24,9 +25,7 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
-#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
@@ -106,8 +105,8 @@ void SetParentWithUndo(EditorContext& ctx,
 }
 
 // GameObject 生成テンプレートは Editor/Util/ObjectPresets.hpp へ移動 (AI の preset.create と共有するため)
-// RemoveSelection / PruneSelection / DestroySelected / DuplicateHierarchyRecursive は
-// SceneEditUtils.hpp へ移動 (Scene Viewport の Delete / Ctrl+D と共有するため)
+// DestroySelected / DuplicateHierarchyRecursive は SceneEditUtils.hpp、
+// 選択そのものの操作は Selection.hpp へ移動 (Scene Viewport の Delete / Ctrl+D と共有するため)
 
 // Create の既定の親を決める。選択中のオブジェクトがあればその子として生成する (Unity 互換)。
 //
@@ -196,7 +195,7 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
                                         root->SetParent(parent);
                             }
                         }
-                        ctx.selectedEntities = roots;
+                        SelectEntities(ctx, roots);
                     });
                 };
             }
@@ -378,13 +377,20 @@ struct InlineRenameState {
     bool&            focusPending;
 };
 
+// ツリーを「開いて見せる」ための状態一式 (パネルメンバーへの参照)
+struct HierarchyRevealState {
+    scene::EntityID&              pendingExpand; // SetParent 直後に開くノード
+    std::vector<scene::EntityID>& openChain;     // 他の面から選ばれた対象の祖先
+    scene::EntityID&              scrollTo;      // 行までスクロールする対象
+};
+
 void DrawHierarchyNode(EditorContext& ctx,
                        scene::GameObject& go,
                        size_t rootIndex,          // roots 配列内のインデックス（Order メニュー用, root のみ有効）
                        size_t rootCount,
                        std::vector<scene::EntityID>& visited,
                        std::function<void()>& deferred,
-                       scene::EntityID* pendingExpand,
+                       HierarchyRevealState reveal,
                        scene::EntityID& lastClicked,
                        scene::EntityID& pendingClick,
                        bool& hierarchyDragStarted,
@@ -393,6 +399,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                        const std::vector<scene::EntityID>& prevVisible,
                        InlineRenameState rename)
 {
+    scene::EntityID* const pendingExpand = &reveal.pendingExpand;
     const scene::EntityID id = go.GetID();
     if (ContainsEntity(visited, id)) return;
     // ランタイム生成物は既定で描かない。visited へは入れて、第2ループが
@@ -467,6 +474,10 @@ void DrawHierarchyNode(EditorContext& ctx,
         ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         *pendingExpand = scene::EntityID{};
     }
+    // 他の面で選ばれた対象までの祖先を開く。開いた状態は StateStorage に残るので、
+    // 要求はこのフレームの描画が終わった時点で捨ててよい (畳み直しを妨げない)。
+    if (ContainsEntity(reveal.openChain, id))
+        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
 
     // エディタ専用非表示はシアン（runtime 非アクティブより優先）、非アクティブはグレー、
     // ロック中はオレンジ、プレファブインスタンスは水色
@@ -495,6 +506,12 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool   nodeHoveredForMenu =
         ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
     hierarchyNodeHovered = hierarchyNodeHovered || nodeHovered;
+
+    // 祖先を開いた結果この行が現れたので、そこまでスクロールする。
+    if (reveal.scrollTo == id) {
+        ImGui::SetScrollHereY(0.5f);
+        reveal.scrollTo = scene::EntityID{};
+    }
 
     // 隠している生成物の件数バッジ。「Hierarchy に出ていない = 存在しない」ではないことを示す。
     // WHY: VFX を再生すると裏では十数個の GameObject が動いている。行が増えないのは
@@ -635,7 +652,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                 auto* target  = ctx.activeScene->GetGameObject(id);
                 if (dragged && target) {
                     SetParentWithUndo(ctx, draggedId, id, "Reparent GameObject");
-                    ctx.selectedEntities = { draggedId };
+                    SelectEntity(ctx, draggedId, SelectionReveal::Skip);
                     if (pendingExpand) *pendingExpand = id;  // 次フレームで親を open
                 }
             };
@@ -650,7 +667,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                     if (modelPath.empty()) return;
                     const scene::EntityID rootId = SpawnModelAssetHierarchy(ctx, modelPath, nullptr, id);
                     if (rootId == scene::EntityID::INVALID) return;
-                    ctx.selectedEntities = { rootId };
+                    SelectEntity(ctx, rootId, SelectionReveal::Skip);
                     if (pendingExpand) *pendingExpand = id;
                     if (ctx.markSceneDirty) ctx.markSceneDirty();
                 };
@@ -664,7 +681,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                             auto* parent = ctx.activeScene->GetGameObject(id);
                             if (root && parent) root->SetParent(parent);
                         }
-                        ctx.selectedEntities = roots;
+                        SelectEntities(ctx, roots, SelectionReveal::Skip);
                     });
                     if (pendingExpand) *pendingExpand = id;
                 };
@@ -678,7 +695,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                     if (!mc) mc = &go->AddComponent<scene::MaterialComponent>();
                     mc->materialPath = assetPath;
                     mc->materialAsset = {};  // 次フレームの SyncMaterial に新パスを再解決させる
-                    ctx.selectedEntities = { id };
+                    SelectEntity(ctx, id, SelectionReveal::Skip);
                     if (ctx.markSceneDirty) ctx.markSceneDirty();
                 };
             }
@@ -724,7 +741,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                         // 一旦末尾へ送って index 計算を単純化する
                         dragged->SetSiblingIndex(1 << 30);
                         dragged->SetSiblingIndex(anchor->GetSiblingIndex() + 1);
-                        ctx.selectedEntities = { draggedId };
+                        SelectEntity(ctx, draggedId, SelectionReveal::Skip);
                         if (ctx.markSceneDirty) ctx.markSceneDirty();
                     };
                 }
@@ -735,27 +752,24 @@ void DrawHierarchyNode(EditorContext& ctx,
 
     if (pendingClick == id && ImGui::IsMouseReleased(ImGuiMouseButton_Left)
         && nodeHovered && !hierarchyDragStarted) {
-        ctx.selectedAssetPath.clear();
         const bool shiftHeld = ImGui::GetIO().KeyShift;
         const bool ctrlHeld  = ImGui::GetIO().KeyCtrl;
+        // ここでの選択は既に見えている行なので、見せに行く要求は出さない (Skip)。
         if (shiftHeld && lastClicked.IsValid()) {
             // Shift+クリック: prevVisible の順番で lastClicked〜id の範囲を選択
             auto it1 = std::find(prevVisible.begin(), prevVisible.end(), lastClicked);
             auto it2 = std::find(prevVisible.begin(), prevVisible.end(), id);
             if (it1 != prevVisible.end() && it2 != prevVisible.end()) {
-                if (!ctrlHeld) ctx.selectedEntities.clear();
+                std::vector<scene::EntityID> range =
+                    ctrlHeld ? ctx.selectedEntities : std::vector<scene::EntityID>{};
                 if (it1 > it2) std::swap(it1, it2);
                 for (auto it = it1; it <= it2; ++it)
-                    if (!ContainsEntity(ctx.selectedEntities, *it))
-                        ctx.selectedEntities.push_back(*it);
+                    if (!ContainsEntity(range, *it)) range.push_back(*it);
+                SelectEntities(ctx, std::move(range), SelectionReveal::Skip);
             }
         } else {
-            if (!ctrlHeld) ctx.selectedEntities.clear();
-            auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);
-            if (it != ctx.selectedEntities.end())
-                ctx.selectedEntities.erase(it);
-            else
-                ctx.selectedEntities.push_back(id);
+            if (ctrlHeld) ToggleSelection(ctx, id, SelectionReveal::Skip);
+            else          SelectEntity(ctx, id, SelectionReveal::Skip);
             lastClicked = id;
         }
         pendingClick = {};
@@ -776,7 +790,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                 ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
                 != ctx.selectedEntities.end();
             if (!alreadySelected || ctx.selectedEntities.size() == 1)
-                ctx.selectedEntities = { id };
+                SelectEntity(ctx, id, SelectionReveal::Skip);
         }
         const bool multiSelected = ctx.selectedEntities.size() > 1;
 
@@ -860,7 +874,7 @@ void DrawHierarchyNode(EditorContext& ctx,
             const std::vector<scene::EntityID> toDup =
                 multiSelected ? ctx.selectedEntities : std::vector<scene::EntityID>{ id };
             deferred = [&ctx, toDup]() {
-                ctx.selectedEntities = toDup;
+                SelectEntities(ctx, toDup, SelectionReveal::Skip);
                 InvokeOperator(ctx, "edit.duplicate");
             };
         }
@@ -906,7 +920,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                                 if (markDirty) markDirty();
                             }));
                     }
-                    ctx.selectedEntities = { groupId };
+                    SelectEntity(ctx, groupId, SelectionReveal::Skip);
                 };
             }
         }
@@ -929,7 +943,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                     if (updated < 0) return;
                     if (updated > 0) {
                         // 作り直しで EntityID が変わるため選択は捨てる。
-                        ctx.selectedEntities.clear();
+                        ClearEntitySelection(ctx);
                         if (ctx.markSceneDirty) ctx.markSceneDirty();
                     }
                     ctx.requestAssetBrowserRefresh = true;
@@ -944,7 +958,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                     ExecuteSceneEditWithUndo(ctx, "Revert Prefab", [&ctx, id]() {
                         std::vector<scene::EntityID> newRoots;
                         if (PrefabSerializer::Revert(*ctx.activeScene, id, newRoots, ctx.projectRoot))
-                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                     });
                 };
             }
@@ -996,7 +1010,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         if (opened) {
             for (int i = 0; i < go.GetChildCount(); ++i) {
                 if (auto* child = go.GetChild(i))
-                    DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, pendingExpand,
+                    DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, reveal,
                                       lastClicked, pendingClick, hierarchyDragStarted,
                                       hierarchyNodeHovered, outVisible, prevVisible, rename);
             }
@@ -1031,12 +1045,38 @@ void SceneHierarchyPanel::PublishFocusAndHandleRequests(EditorContext& ctx)
     m_renameFocusPending = true;
 }
 
+void SceneHierarchyPanel::ConsumeRevealRequest(EditorContext& ctx)
+{
+    if (!ctx.hierarchyRevealTarget.IsValid() || !ctx.activeScene) return;
+
+    const scene::EntityID target = ctx.hierarchyRevealTarget;
+    ctx.hierarchyRevealTarget = scene::EntityID{};
+
+    auto* go = ctx.activeScene->GetGameObject(target);
+    if (!go) return;
+
+    // 検索フィルタ中はツリーそのものが出ていない。対象がヒットしないフィルタなら、
+    // 開いても見えないままなので外す。
+    if (m_searchFilter[0] != '\0' && !util::StringUtils::ContainsCI(go->name, m_searchFilter))
+        m_searchFilter[0] = '\0';
+
+    // ランタイム生成物は既定で行が出ない。それを選んだのなら表示を開ける。
+    if (go->runtimeGenerated) ctx.showGeneratedObjects = true;
+
+    m_revealOpenChain.clear();
+    for (auto* parent = go->GetParent(); parent; parent = parent->GetParent())
+        m_revealOpenChain.push_back(parent->GetID());
+    m_revealScrollTo = target;
+}
+
 void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 {
     if (!ctx.activeScene) {
         ImGui::TextDisabled("No active scene");
         return;
     }
+
+    ConsumeRevealRequest(ctx);
 
     // ドラッグ開始後の選択保留を、マウス操作が終わったアイドルフレームで解放する。
     // MouseReleased のフレームではまだドロップ判定が残っているため、ここでは消さない。
@@ -1057,16 +1097,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SameLine();
         ImGui::Checkbox("Map Objects Only", &ctx.mapHierarchyFilter);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Show only Terrain Grid, Terrain, Water, Detail, Foliage and their children\nUncheck to browse all objects in Map Mode");
-    }
-
-    // FoliageBakeSystem が新規子 GO を生成したら親ノードを自動展開する
-    for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::FoliageComponent>()) {
-        auto* fc = ctx.activeScene->GetComponent<scene::FoliageComponent>(eid);
-        if (fc && fc->needsHierarchyExpand) {
-            m_pendingExpand = eid;
-            fc->needsHierarchyExpand = false;
-        }
+            ImGui::SetTooltip("Show only Terrain Grid, Terrain, Water and their children\nUncheck to browse all objects in Map Mode");
     }
 
     // --- 検索バー ---
@@ -1083,7 +1114,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Checkbox("Generated", &ctx.showGeneratedObjects);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("Show objects created at runtime by systems\n"
-                              "(VFX Graph nodes, foliage bake, water splash).\n"
+                              "(VFX Graph nodes, water splash).\n"
                               "These are never saved into the scene.");
     }
 
@@ -1111,14 +1142,11 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 const bool isMapObject =
                     go.GetComponent<scene::TerrainGridComponent>()
                     || go.GetComponent<scene::TerrainComponent>()
-                    || go.GetComponent<scene::WaterComponent>()
-                    || go.GetComponent<scene::TerrainDetailComponent>()
-                    || go.GetComponent<scene::FoliageComponent>();
+                    || go.GetComponent<scene::WaterComponent>();
                 auto* parentGO = go.GetParent();
-                const bool isFoliageChild = parentGO
-                    && (parentGO->GetComponent<scene::FoliageComponent>()
-                        || parentGO->GetComponent<scene::TerrainComponent>());
-                if (!isMapObject && !isFoliageChild)
+                const bool isMapChild = parentGO
+                    && parentGO->GetComponent<scene::TerrainComponent>();
+                if (!isMapObject && !isMapChild)
                     continue;
             }
             const scene::EntityID id = go.GetID();
@@ -1154,13 +1182,15 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
             ui::PushHierarchySelectionColors();
             if (ImGui::Selectable(go.name.c_str(), selected)) {
-                if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
-                if (selected)
-                    RemoveSelection(ctx, id);
-                else
-                    ctx.selectedEntities.push_back(id);
+                if (ImGui::GetIO().KeyCtrl) ToggleSelection(ctx, id, SelectionReveal::Skip);
+                else                        SelectEntity(ctx, id, SelectionReveal::Skip);
             }
             ui::PopHierarchySelectionColors();
+            // 他の面から来た「見せに行く」要求は、検索中でも一致していれば行まで運ぶ。
+            if (m_revealScrollTo == id) {
+                ImGui::SetScrollHereY(0.5f);
+                m_revealScrollTo = {};
+            }
             ui::DrawSelectionAccent(ImGui::GetWindowDrawList(),
                                     ImGui::GetItemRectMin(),
                                     ImGui::GetItemRectMax(),
@@ -1170,7 +1200,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 // ここでこのノードだけを選択状態にしてから operator を呼ぶ。
                 // 選択を対象にする操作 (Copy / Delete) の対象が、右クリックした
                 // ノードと一致することを保証する。
-                ctx.selectedEntities = { id };
+                SelectEntity(ctx, id, SelectionReveal::Skip);
                 if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
                     InvokeOperator(ctx, "edit.copy");
                 if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
@@ -1193,14 +1223,17 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             ImGui::PopID();
         }
 
+        m_revealOpenChain.clear();
+        m_revealScrollTo = {};
+
         PublishFocusAndHandleRequests(ctx);
         if (deferred)
             ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
         return;
     }
 
-    // Map Mode: TerrainGrid/Terrain/Water/Detail/Foliage のルート GO のみをツリー表示。
-    // WHY: フラットリストでは stamp 子 GO が親から切り離されて見えるため、
+    // Map Mode: TerrainGrid/Terrain/Water のルート GO のみをツリー表示。
+    // WHY: フラットリストでは子 GO が親から切り離されて見えるため、
     //      ツリー表示にして子 GO を Terrain ノード下に自然に見せる。
     if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
         std::function<void()> deferred;
@@ -1214,15 +1247,16 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             if (!go) continue;
             if (!go->GetComponent<scene::TerrainGridComponent>()
                 && !go->GetComponent<scene::TerrainComponent>()
-                && !go->GetComponent<scene::WaterComponent>()
-                && !go->GetComponent<scene::TerrainDetailComponent>()
-                && !go->GetComponent<scene::FoliageComponent>())
+                && !go->GetComponent<scene::WaterComponent>())
                 continue;
-            DrawHierarchyNode(ctx, *go, 0, rootCount, visited, deferred, &m_pendingExpand,
+            DrawHierarchyNode(ctx, *go, 0, rootCount, visited, deferred,
+                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo },
                 m_lastClickedEntity, m_pendingClickEntity, m_hierarchyDragStarted,
                 hierarchyNodeHovered, mapVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
         }
+        m_revealOpenChain.clear();
+        m_revealScrollTo = {};
 
         PublishFocusAndHandleRequests(ctx);
         if (deferred)
@@ -1251,7 +1285,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     const size_t rootCount = roots.size();
     for (size_t i = 0; i < roots.size(); ++i)
         if (roots[i]) DrawHierarchyNode(ctx, *roots[i], i, rootCount, visited, deferred,
-            &m_pendingExpand, m_lastClickedEntity, m_pendingClickEntity,
+            HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo },
+            m_lastClickedEntity, m_pendingClickEntity,
             m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
             InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
 
@@ -1260,10 +1295,16 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (!ContainsEntity(visited, go.GetID()) && go.GetParent() == nullptr)
             DrawHierarchyNode(ctx, go, 0, 0, visited, deferred,
-                &m_pendingExpand, m_lastClickedEntity, m_pendingClickEntity,
+                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo },
+                m_lastClickedEntity, m_pendingClickEntity,
                 m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
     }
+
+    // 見せに行く要求はこのフレームで果たした。開いた状態は ImGui 側に残るため、
+    // 保持し続けると畳み直せないノードができる。
+    m_revealOpenChain.clear();
+    m_revealScrollTo = {};
 
     m_visibleOrder = std::move(outVisible);
 
@@ -1277,7 +1318,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             deferred = [&ctx, draggedId]() {
                 if (auto* dragged = ctx.activeScene->GetGameObject(draggedId)) {
                     dragged->ClearParent();
-                    ctx.selectedEntities = { draggedId };
+                    SelectEntity(ctx, draggedId, SelectionReveal::Skip);
                 }
             };
         }
@@ -1291,7 +1332,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                     if (modelPath.empty()) return;
                     const scene::EntityID rootId = SpawnModelAssetHierarchy(ctx, modelPath);
                     if (rootId != scene::EntityID::INVALID) {
-                        ctx.selectedEntities = { rootId };
+                        SelectEntity(ctx, rootId, SelectionReveal::Skip);
                         if (ctx.markSceneDirty) ctx.markSceneDirty();
                     }
                 };
@@ -1300,7 +1341,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                     ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, assetPath]() {
                         std::vector<scene::EntityID> roots;
                         if (PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
-                            ctx.selectedEntities = roots;
+                            SelectEntities(ctx, roots, SelectionReveal::Skip);
                     });
                 };
             }
@@ -1312,7 +1353,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsWindowHovered() &&
         !ImGui::IsAnyItemHovered()) {
-        ctx.selectedEntities.clear();
+        ClearEntitySelection(ctx);
         m_lastClickedEntity = {};
     }
 

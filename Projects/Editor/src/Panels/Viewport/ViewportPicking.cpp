@@ -54,7 +54,7 @@ bool InstantiatePrefabAsset(EditorContext& ctx, const std::string& assetPath)
     if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
         return false;
 
-    ctx.selectedEntities = roots;
+    SelectEntities(ctx, roots);
     return true;
 }
 
@@ -75,7 +75,7 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
     if (!modelPath.empty()) {
         const scene::EntityID root = SpawnModelAssetHierarchy(ctx, modelPath, &position);
         if (root == scene::EntityID::INVALID) return false;
-        ctx.selectedEntities = { root };
+        SelectEntity(ctx, root);
         return true;
     }
 
@@ -527,22 +527,13 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     const scene::EntityID best = RaycastEntityAtMouse(ctx, viewportMin);
 
     if (best.IsValid() && !ctx.IsLocked(best)) {
-        auto& sel = ctx.selectedEntities;
-        const auto it = std::find(sel.begin(), sel.end(), best);
-        if (ImGui::GetIO().KeyCtrl) {
-            // Ctrl+クリック: 未選択なら追加、選択済みなら解除 (Unity 互換のトグル)
-            if (it != sel.end())
-                sel.erase(it);
-            else
-                sel.push_back(best);
-        } else {
-            sel.clear();
-            sel.push_back(best);
-        }
+        // Ctrl+クリック: 未選択なら追加、選択済みなら解除 (Unity 互換のトグル)
+        if (ImGui::GetIO().KeyCtrl) ToggleSelection(ctx, best);
+        else                        SelectEntity(ctx, best);
         return true;
     }
 
-    if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
+    if (!ImGui::GetIO().KeyCtrl) ClearEntitySelection(ctx);
     return false;
 }
 
@@ -558,8 +549,8 @@ void RectSelectEntities(EditorContext& ctx,
     const ImVec2 rectMax = { (std::max)(rectA.x, rectB.x), (std::max)(rectA.y, rectB.y) };
 
     // Ctrl なしは置き換え、Ctrl ありは追加 (Unity の矩形選択と同じ)
-    if (!ImGui::GetIO().KeyCtrl)
-        ctx.selectedEntities.clear();
+    std::vector<scene::EntityID> picked;
+    if (ImGui::GetIO().KeyCtrl) picked = ctx.selectedEntities;
 
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (!go.activeInHierarchy()) continue;
@@ -570,10 +561,13 @@ void RectSelectEntities(EditorContext& ctx,
         if (!WorldToScreen(go.transform.position, ctx, vpMin, vpSize, sp)) continue;
         if (sp.x < rectMin.x || sp.x > rectMax.x || sp.y < rectMin.y || sp.y > rectMax.y) continue;
 
-        if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
-            == ctx.selectedEntities.end())
-            ctx.selectedEntities.push_back(id);
+        if (std::find(picked.begin(), picked.end(), id) == picked.end())
+            picked.push_back(id);
     }
+
+    // 矩形選択は「今見えている範囲を囲った」操作なので、Hierarchy を先頭要素へ
+    // 飛ばさない (数十件を選んだ直後にツリーが跳ねる方が邪魔になる)。
+    SelectEntities(ctx, std::move(picked), SelectionReveal::Skip);
 }
 
 } // namespace fbzz::editor

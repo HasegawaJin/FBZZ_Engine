@@ -60,6 +60,17 @@ bool CanEditAnimationGraph(const EditorContext& ctx)
     return ctx.playMode == nullptr || ctx.playMode->IsInEditor();
 }
 
+// このパネルが Inspector の表示対象を主張してよいか (パネルのウィンドウ内で呼ぶこと)。
+//
+// WHY 描くたびに公開しないか: 公開はローカル選択を ctx へ写す操作で、以前は描画のたびに
+//   無条件に走っていた。そのため Viewport や Hierarchy で GameObject を選び直しても
+//   次のフレームでグラフの選択に上書きされ、Inspector がステートを映したまま動かなかった。
+//   「最後に触った面が勝つ」に揃えるため、フォーカスを持っている間だけ主張する。
+bool CanPublishSelection()
+{
+    return ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+}
+
 constexpr float SIDEBAR_WIDTH = 260.0f;
 // WHY: 大きなステートマシンを一望するには Unity 同等の広いズームレンジが必要。
 constexpr float MIN_CANVAS_ZOOM = 0.30f;
@@ -2415,33 +2426,35 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndChild();
         ImGui::EndDisabled();
 
-        auto& selection = ctx.animationGraphSelection;
-        selection.Clear();
-        selection.assetPath = docPath;
-        // BlendTree を開いている間は、Motion ノードの選択を State 選択より優先して公開する。
-        // WHY: m_selectedMotion はキャンバス内では更新されていたが、従来はここで捨てられ、
-        //      Inspector が親 State のままになっていた。
-        if (m_openBlendTreeState >= 0 && m_selectedMotion >= 0) {
-            selection.type = EditorContext::AnimationGraphSelection::Type::BlendTreeMotion;
-            selection.stateIndex = m_openBlendTreeState;
-            selection.motionIndex = m_selectedMotion;
-        } else if (m_selectedLink.fromStateIndex == -2) {
-            selection.type = EditorContext::AnimationGraphSelection::Type::AnyStateTransition;
-            selection.transitionIndex = m_selectedLink.transitionIndex;
-        } else if (m_selectedLink.fromStateIndex >= 0) {
-            selection.type = EditorContext::AnimationGraphSelection::Type::Transition;
-            selection.stateIndex = m_selectedLink.fromStateIndex;
-            selection.transitionIndex = m_selectedLink.transitionIndex;
-        } else if (m_selectedNode >= 0) {
-            selection.type = EditorContext::AnimationGraphSelection::Type::State;
-            selection.stateIndex = m_selectedNode;
-        } else if (m_selectedAnyState) {
-            selection.type = EditorContext::AnimationGraphSelection::Type::AnyState;
+        if (CanPublishSelection()) {
+            auto& selection = ctx.animationGraphSelection;
+            selection.Clear();
+            selection.assetPath = docPath;
+            // BlendTree を開いている間は、Motion ノードの選択を State 選択より優先して公開する。
+            // WHY: m_selectedMotion はキャンバス内では更新されていたが、従来はここで捨てられ、
+            //      Inspector が親 State のままになっていた。
+            if (m_openBlendTreeState >= 0 && m_selectedMotion >= 0) {
+                selection.type = EditorContext::AnimationGraphSelection::Type::BlendTreeMotion;
+                selection.stateIndex = m_openBlendTreeState;
+                selection.motionIndex = m_selectedMotion;
+            } else if (m_selectedLink.fromStateIndex == -2) {
+                selection.type = EditorContext::AnimationGraphSelection::Type::AnyStateTransition;
+                selection.transitionIndex = m_selectedLink.transitionIndex;
+            } else if (m_selectedLink.fromStateIndex >= 0) {
+                selection.type = EditorContext::AnimationGraphSelection::Type::Transition;
+                selection.stateIndex = m_selectedLink.fromStateIndex;
+                selection.transitionIndex = m_selectedLink.transitionIndex;
+            } else if (m_selectedNode >= 0) {
+                selection.type = EditorContext::AnimationGraphSelection::Type::State;
+                selection.stateIndex = m_selectedNode;
+            } else if (m_selectedAnyState) {
+                selection.type = EditorContext::AnimationGraphSelection::Type::AnyState;
+            }
+            // どのレイヤーのグラフに対する選択かを Inspector へ伝える。
+            selection.layerName = m_editingLayer;
+            // 複数選択中は「何個掴んでいるか」を Inspector 側でも出せるようにする。
+            selection.selectedCount = static_cast<int>(m_selectedStateNames.size());
         }
-        // どのレイヤーのグラフに対する選択かを Inspector へ伝える。
-        selection.layerName = m_editingLayer;
-        // 複数選択中は「何個掴んでいるか」を Inspector 側でも出せるようにする。
-        selection.selectedCount = static_cast<int>(m_selectedStateNames.size());
 
         // Undo 比較の前にレイヤーグラフを元へ戻す。
         // WHY: 差し替えたままスナップショットを比較すると、Base Layer とレイヤーの
@@ -2541,8 +2554,10 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndGroup();
     ImGui::EndChild();
     ImGui::EndDisabled();
-    PublishSelection(ctx, *go);
-    ctx.animationGraphSelection.layerName = m_editingLayer;
+    if (CanPublishSelection()) {
+        PublishSelection(ctx, *go);
+        ctx.animationGraphSelection.layerName = m_editingLayer;
+    }
 
     // Undo 比較の前にレイヤーグラフを元へ戻す。
     layerScope.Restore();
@@ -3476,6 +3491,12 @@ static void DrawTransitionEditor(EditorContext& ctx,
         transition.conditions.push_back(std::move(condition));
         MarkDirty(ctx);
     }
+}
+
+void AnimationGraphPanel::OnAfterEnd(EditorContext& ctx)
+{
+    if (!WasContentRendered() || !visible)
+        ctx.animationGraphSelection.Clear();
 }
 
 void AnimationGraphPanel::PublishSelection(EditorContext& ctx,

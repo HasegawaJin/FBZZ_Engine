@@ -10,6 +10,7 @@
 #include <Panels/Inspector/InspectorCommon.hpp>
 
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
@@ -73,7 +74,7 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx,
             go.SetParent(parentGo);
     }
 
-    ctx.selectedEntities = { go.GetID() };
+    SelectEntity(ctx, go.GetID());
     return &go;
 }
 

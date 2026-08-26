@@ -12,6 +12,7 @@
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -327,7 +328,7 @@ void EditorApp::NewScene()
     if (!m_ctx.activeScene) return;
     m_ctx.activeScene->Clear();
     m_undoStack.Clear();
-    m_ctx.selectedEntities.clear();
+    ClearEntitySelection(m_ctx);
     m_ctx.graphLayouts.clear();
     m_ctx.editorHiddenGuids.clear();
     // ロックは EntityID で覚えている。新しいシーンは同じ番号を配り直すので、
@@ -388,7 +389,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_undoStack.Clear();
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
-    m_ctx.selectedEntities.clear();
+    ClearEntitySelection(m_ctx);
     ApplyEditorViewStateFromSceneMeta();
     RebuildEditorUIFromScene();
     CaptureCleanScene();
@@ -608,7 +609,7 @@ void EditorApp::ProcessCrashRecovery()
             if (SceneIO::Load(*m_ctx.activeScene, autosavePath)) {
                 scene::FlushWorldTransforms(*m_ctx.activeScene);
                 m_undoStack.Clear();
-                m_ctx.selectedEntities.clear();
+                ClearEntitySelection(m_ctx);
                 ApplyEditorViewStateFromSceneMeta();
                 RebuildEditorUIFromScene();
                 // 復旧直後は未保存状態にして、ユーザーに保存を促す。
@@ -672,7 +673,7 @@ void EditorApp::CheckHotReload()
         if (!SceneIO::Load(*m_ctx.activeScene, m_settings.lastScenePath))
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
-            m_ctx.selectedEntities.clear();
+            ClearEntitySelection(m_ctx);
             ApplyEditorViewStateFromSceneMeta();
             RebuildEditorUIFromScene();
             CaptureCleanScene();
@@ -1173,16 +1174,17 @@ void EditorApp::TickScriptCompile()
         }
 
         if (m_ctx.activeScene && m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)) {
-            m_ctx.selectedEntities.clear();
+            std::vector<scene::EntityID> restored;
             for (const auto& guid : savedGuids) {
                 if (auto* go = scene::GameObject::FindByGuid(guid))
-                    m_ctx.selectedEntities.push_back(go->GetID());
+                    restored.push_back(go->GetID());
             }
+            SelectEntities(m_ctx, std::move(restored), SelectionReveal::Skip);
             SetHotReloadState(EditorContext::HotReloadState::Done, "Scripts: hot reload complete");
             m_ctx.hotReloadProgress = 1.0f;
             m_ctx.hotReloadDoneTimer = 3.0f;
         } else {
-            m_ctx.selectedEntities.clear();
+            ClearEntitySelection(m_ctx);
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: reload failed");
             m_ctx.hotReloadDoneTimer = 5.0f;
         }

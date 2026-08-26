@@ -3,6 +3,7 @@
 // 選択アセットへの参照元を一覧表示する依存関係ビューパネル
 #include <Editor/Panels/DependencyViewPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
@@ -104,7 +105,7 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
         ImGui::PushID(ref.c_str());
         if (ImGui::Selectable(label.c_str())) {
             // Asset Browser を参照先フォルダへ移動するよう要求する
-            ctx.selectedAssetPath = ref;
+            SelectAsset(ctx, ref);
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("%s", ref.c_str());

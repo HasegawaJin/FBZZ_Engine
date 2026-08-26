@@ -750,22 +750,26 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                             std::sort(tags.begin(), tags.end());
                             return tags;
                         };
-                    // 型付き参照 (FBZZ_REF<T>) の型チェック: 対象 GO が typeName の Script を持つか。
-                    // typeName が空 (任意 GameObject) なら常に true。
+                    // 型付き参照 (FBZZ_REF<T>) の型チェック: 対象 GO が typeName の
+                    // Script かコンポーネントを持つか。typeName が空 (任意 GameObject) なら常に true。
+                    // ドロップ検証とピッカーの絞り込みが同じ 1 本を使う。
                     reflector.m_refTypeValidator =
                         [scene = ctx.activeScene](scene::EntityID id, const char* typeName) -> bool {
                             if (!typeName || !typeName[0]) return true;
                             auto* target = scene->GetGameObject(id);
                             if (!target) return false;
-                            auto* sc = target->GetComponent<scene::ScriptComponent>();
-                            if (!sc) return false;
-                            // WHY 名前一致ではなく IsA か: FBZZ_REF(EnemyAiBase, ...) の
-                            //     スロットへ MiteComponent を持つ GO を落とせるようにするため。
-                            //     基底型で受ける参照は継承鎖のどこで一致してもよい。
-                            for (const auto& entry : sc->scripts)
-                                if (entry.script && entry.script->IsA(typeName))
-                                    return true;
-                            return false;
+                            if (auto* sc = target->GetComponent<scene::ScriptComponent>()) {
+                                // WHY 名前一致ではなく IsA か: FBZZ_REF(EnemyAiBase, ...) の
+                                //     スロットへ MiteComponent を持つ GO を落とせるようにするため。
+                                //     基底型で受ける参照は継承鎖のどこで一致してもよい。
+                                for (const auto& entry : sc->scripts)
+                                    if (entry.script && entry.script->IsA(typeName))
+                                        return true;
+                            }
+                            // コンポーネント参照 (FBZZ_REF(LightComponent, ...) 等)。
+                            // 突き合わせるのは ComponentRegistry の serializedName で、
+                            // これは登録マクロの #Type — FBZZ_REF に書いた型名と同じ文字列になる。
+                            return HasRegisteredComponentByName(*target, typeName);
                         };
                 }
                 // WHY: どのスクリプトが編集対象になったかは、その Reflect() の描画中に

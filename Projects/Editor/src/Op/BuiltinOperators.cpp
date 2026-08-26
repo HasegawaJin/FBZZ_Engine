@@ -21,6 +21,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
@@ -29,6 +30,7 @@
 
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -231,10 +233,12 @@ void EditorApp::RegisterBuiltinOperators()
         "ロックされていない全 GameObject を選択する。",
         OpKind::Action,
         [](OpContext& c, const OpArgs&) {
-            c.ctx.selectedEntities.clear();
+            std::vector<scene::EntityID> all;
             for (auto& go : c.ctx.activeScene->GameObjects())
                 if (!c.ctx.IsLocked(go.GetID()))
-                    c.ctx.selectedEntities.push_back(go.GetID());
+                    all.push_back(go.GetID());
+            // 全選択で Hierarchy を先頭へ飛ばさない (どこを見ていたか分からなくなる)。
+            SelectEntities(c.ctx, std::move(all), SelectionReveal::Skip);
             return OpResult::Ok();
         },
         canEditScene);
@@ -243,7 +247,7 @@ void EditorApp::RegisterBuiltinOperators()
         "選択を解除する。",
         OpKind::Action,
         [](OpContext& c, const OpArgs&) {
-            c.ctx.selectedEntities.clear();
+            ClearEntitySelection(c.ctx);
             return OpResult::Ok();
         },
         hasSelection);
@@ -439,10 +443,6 @@ void EditorApp::RegisterBuiltinOperators()
         "地形編集ツールウィンドウの表示。", &EditorContext::showTerrainTool);
     addWindowToggle("tools.water", "Water Tool",
         "水面編集ツールウィンドウの表示。", &EditorContext::showWaterTool);
-    addWindowToggle("tools.detail", "Detail Tool",
-        "ディテール配置ツールウィンドウの表示。", &EditorContext::showDetailTool);
-    addWindowToggle("tools.foliage", "Foliage Tool",
-        "植生配置ツールウィンドウの表示。", &EditorContext::showFoliageTool);
 
     // ── Panels ──────────────────────────────────────────────────────────────
     add("panel.command_palette", "Command Palette", "Panels",

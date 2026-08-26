@@ -8,6 +8,7 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <imgui.h>
 #include <string>
@@ -138,7 +139,7 @@ void EditorApp::NavigateSelectionHistory(int dir)
         const scene::EntityID id = m_selectionHistory[idx];
         if (m_ctx.activeScene->GetGameObject(id)) {
             m_selectionHistoryIndex = idx;
-            m_ctx.selectedEntities  = { id };
+            SelectEntity(m_ctx, id);
             m_selectionNavigating   = true; // この選択は履歴へ再記録しない
             m_lastRecordedSelection = id;
             return;

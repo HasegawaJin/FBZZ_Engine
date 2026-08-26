@@ -23,7 +23,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; class ProjectRuntime; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; }
 
 namespace fbzz::editor {
 
@@ -153,7 +153,17 @@ struct EditorContext {
     bool animationControllerDirty = false;
 
     // 選択状態 (Multi-select 対応)
+    // 直接書き換えず Editor/Util/Selection.hpp の SelectEntity / SelectEntities 等を使う。
+    // WHY: 選択にはアセット選択との排他と Hierarchy への反映が付いて回る。
+    //      ここへ直接代入すると、その後始末をした面としない面が混在する。
     std::vector<scene::EntityID> selectedEntities;
+
+    // Hierarchy 以外の面 (Scene View / 検索 / Map / AI) が選んだ対象を、
+    // ツリー上で見えるようにする要求。SceneHierarchyPanel が消費して
+    // 畳まれた祖先を開き、その行までスクロールする。
+    // WHY: 親が畳まれていると、Viewport でクリックした子は Hierarchy に 1 行も現れない。
+    //      「何を選んだのか」を確かめる場所が無くなるため、発生源に関わらず見せに行く。
+    scene::EntityID hierarchyRevealTarget = scene::EntityID::INVALID;
     scene::EntityID PrimarySelected() const
     {
         return selectedEntities.empty() ? scene::EntityID{} : selectedEntities.front();
@@ -276,12 +286,10 @@ struct EditorContext {
         TerrainSculpt,
         TerrainPaint,
         Water,
-        Detail,
-        Foliage,
         Grid
     };
     MapTool mapActiveTool = MapTool::TerrainSculpt;
-    bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water/Detail/Foliage だけ表示
+    bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water だけ表示
     bool  mapInspectorFilter = true; // Map Mode 中に Map 関連 Component だけ表示
     // システムが実行時に生成した GameObject (GameObject::runtimeGenerated) を Hierarchy へ出すか。
     // WHY: VFX Graph は 1 エフェクトにつきノード数ぶんの GameObject を作る。爆発を 5 箇所へ
@@ -382,8 +390,6 @@ struct EditorContext {
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
     bool showTerrainTool = false; // Terrain Tool ウィンドウを表示する
     bool showWaterTool   = false; // Water Tool ウィンドウを表示する
-    bool showDetailTool  = false; // Detail Tool ウィンドウを表示する
-    bool showFoliageTool = false; // Foliage Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
 
     // スクリプト DLL / HLSL ホットリロード状態 (StatusBar が表示する)
@@ -454,6 +460,11 @@ struct EditorContext {
     // 独立VFXEditorの File > Open からホスト側のネイティブダイアログを要求する。
     std::function<void()> requestOpenVFXAssetDialog;
     bool requestScriptReload         = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
+
+    // パネルが書き換えた EditorSettings を今すぐ editor_settings.toml へ書き出す要求。
+    // WHY: 通常の回収は Shutdown 一括だが、ビルド構成のように「次の起動まで待てない」
+    //      設定がある。エディターを強制終了しても直前の編集が残るようにする。
+    bool requestEditorSettingsSave   = false;
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
@@ -542,8 +553,6 @@ struct EditorContext {
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
     WaterTool*          waterTool   = nullptr; // EditorApp が所有、ViewportPanel が使用
-    DetailTool*         detailTool  = nullptr; // EditorApp が所有、ViewportPanel が使用
-    FoliageTool*        foliageTool = nullptr; // EditorApp が所有、ViewportPanel が使用
     // Inspector セクション折り畳み状態 (EditorSettings ↔ ImGui StateStorage の中継)
     std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
     // 現在の Scene に紐づく Editor 専用メタデータ。Scene 本体には保存しない。
