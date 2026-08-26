@@ -8,8 +8,6 @@
 #include <Editor/EditorContext.hpp>
 #include "../Tools/TerrainTool.hpp"
 #include "../Tools/WaterTool.hpp"
-#include "../Tools/DetailTool.hpp"
-#include "../Tools/FoliageTool.hpp"
 
 namespace fbzz::editor {
 
@@ -25,9 +23,7 @@ inline constexpr MapToolDef kMapToolDefs[] = {
     { EditorContext::MapTool::TerrainSculpt, "Sculpt",  "1", "Raise / lower / smooth terrain height with a brush\nShift+drag: Smooth, Ctrl+drag: Lower, [ ]: brush size" },
     { EditorContext::MapTool::TerrainPaint,  "Paint",   "2", "Paint splatmap texture layers onto the terrain" },
     { EditorContext::MapTool::Water,         "Water",   "3", "Place and configure water volumes" },
-    { EditorContext::MapTool::Detail,        "Detail",  "4", "Scatter detail meshes (grass, rocks) across terrain" },
-    { EditorContext::MapTool::Foliage,       "Foliage", "5", "Paint foliage instances (trees, bushes) onto terrain" },
-    { EditorContext::MapTool::Grid,          "Grid",    "6", "Manage terrain grid layout and cell assignment" },
+    { EditorContext::MapTool::Grid,          "Grid",    "4", "Manage terrain grid layout and cell assignment" },
 };
 
 // ツールを切り替え、各ツールのアクティブ状態を同期する。
@@ -46,10 +42,6 @@ inline void ActivateMapTool(EditorContext& ctx, EditorContext::MapTool tool)
     }
     if (ctx.waterTool)
         ctx.waterTool->SetActive(tool == EditorContext::MapTool::Water);
-    if (ctx.detailTool)
-        ctx.detailTool->SetActive(tool == EditorContext::MapTool::Detail);
-    if (ctx.foliageTool)
-        ctx.foliageTool->SetActive(tool == EditorContext::MapTool::Foliage);
 }
 
 } // namespace fbzz::editor

@@ -34,7 +34,7 @@ public:
     std::string prefabSourceId;
     int layer = 0;
 
-    // システムが実行時に作った GO (VFX Graph のノード実体・Foliage bake・Water splash 等)。
+    // システムが実行時に作った GO (VFX Graph のノード実体・Water splash 等)。
     // WHY: これまでは名前を "__" で始めるという規約でシリアライズ除外を表現していたが、
     //      規約だと「見せる名前」と「保存するか」が同じ文字列に相乗りしてしまい、
     //      表示名を読みやすくした瞬間に保存対象へ戻るという壊れ方をする。

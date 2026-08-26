@@ -141,7 +141,6 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('preset_catalog'), true);
         assert.equal(names.includes('terrain_inspect'), true);
         assert.equal(names.includes('terrain_sample'), true);
-        assert.equal(names.includes('foliage_inspect'), true);
         assert.equal(names.includes('navmesh_get_state'), true);
         assert.equal(names.includes('navmesh_find_path'), true);
         assert.equal(names.includes('navmesh_sample'), true);
@@ -165,7 +164,6 @@ test('read mode は Query と capture だけを公開する', async () => {
         assert.equal(names.includes('scene_save'), false);
         assert.equal(names.includes('terrain_sculpt'), false);
         assert.equal(names.includes('terrain_paint'), false);
-        assert.equal(names.includes('foliage_scatter'), false);
         assert.equal(names.includes('navmesh_bake'), false);
         assert.equal(names.includes('audio_control'), false);
         assert.equal(names.includes('build_run'), false);
@@ -1201,13 +1199,11 @@ test('入力・マテリアル・アニメーション操作は専用Commandへ�
 test('ワールドオーサリングの照会は引数の少ない Query 面へ写像する', async () => {
     const harness = await CreateHarness('read');
     try {
-        const id = '44444444-4444-4444-8444-444444444444';
         await harness.client.callTool({ name: 'scene_list', arguments: {} });
         await harness.client.callTool({ name: 'preset_catalog', arguments: {} });
         await harness.client.callTool({ name: 'terrain_inspect', arguments: {} });
         // [x, z] の 2 要素で問い合わせられることを固定する。高さを問うのに y は要らないため。
         await harness.client.callTool({ name: 'terrain_sample', arguments: { points: [[10, 20], [1, 2, 3]] } });
-        await harness.client.callTool({ name: 'foliage_inspect', arguments: { id } });
         await harness.client.callTool({ name: 'navmesh_get_state', arguments: {} });
         await harness.client.callTool({ name: 'navmesh_find_path', arguments: { from: [0, 0, 0], to: [10, 0, 10] } });
         await harness.client.callTool({ name: 'navmesh_sample', arguments: { points: [[1, 2, 3]] } });
@@ -1220,7 +1216,6 @@ test('ワールドオーサリングの照会は引数の少ない Query 面へ�
             { t: 'preset.catalog' },
             { t: 'terrain.inspect' },
             { t: 'terrain.sample', points: [[10, 20], [1, 2, 3]] },
-            { t: 'foliage.inspect', id },
             { t: 'navmesh.state' },
             { t: 'navmesh.path', from: [0, 0, 0], to: [10, 0, 10] },
             { t: 'navmesh.sample', points: [[1, 2, 3]] },
@@ -1234,7 +1229,7 @@ test('ワールドオーサリングの照会は引数の少ない Query 面へ�
         await harness.close();
     }
 });
-test('地形・植生・NavMesh・シーン入出力は Undo 単位の Command へ写像する', async () => {
+test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
         const terrainId = '55555555-5555-4555-8555-555555555555';
@@ -1258,11 +1253,6 @@ test('地形・植生・NavMesh・シーン入出力は Undo 単位の Command �
             name: 'terrain_set_layer_material',
             arguments: { id: terrainId, layer: 1, material: 'Assets/Materials/Grass.mat' },
         });
-        await harness.client.callTool({
-            name: 'foliage_scatter',
-            arguments: { id: terrainId, species: 0, position: [5, 0, 5], count: 20, seed: 7 },
-        });
-        await harness.client.callTool({ name: 'foliage_clear', arguments: { id: terrainId, species: 0 } });
         await harness.client.callTool({ name: 'navmesh_bake', arguments: {} });
         await harness.client.callTool({ name: 'audio_control', arguments: { id: terrainId, action: 'play' } });
         await harness.client.callTool({ name: 'scene_save', arguments: {} });
@@ -1277,8 +1267,6 @@ test('地形・植生・NavMesh・シーン入出力は Undo 単位の Command �
             { command: { t: 'terrain.sculpt', position: [5, 0, 5], op: 'flatten', radius: 8, strength: 0.05, falloff: 'smooth', iterations: 20, targetHeight: 2 }, dryRun: false },
             { command: { t: 'terrain.paint', position: [5, 0, 5], layer: 1, radius: 4, strength: 0.5, falloff: 'smooth', iterations: 1 }, dryRun: false },
             { command: { t: 'terrain.setLayerMaterial', id: terrainId, layer: 1, material: 'Assets/Materials/Grass.mat' }, dryRun: false },
-            { command: { t: 'foliage.scatter', id: terrainId, species: 0, position: [5, 0, 5], radius: 5, count: 20, maxSlopeDegrees: 40, seed: 7 }, dryRun: false },
-            { command: { t: 'foliage.clear', id: terrainId, species: 0 }, dryRun: false },
             { command: { t: 'navmesh.bake' }, dryRun: false },
             { command: { t: 'audio.control', id: terrainId, action: 'play' }, dryRun: false },
             { command: { t: 'scene.save' }, dryRun: false },

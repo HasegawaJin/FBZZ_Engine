@@ -10,8 +10,6 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
@@ -113,19 +111,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     const bool  reloading = (hrs == EditorContext::HotReloadState::Reloading);
     const bool  completed = (hrs == EditorContext::HotReloadState::Done && ctx.hotReloadProgress >= 1.0f);
 
-    bool detailBaking = false;
-    if (!compiling && !reloading && ctx.activeScene) {
-        for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::TerrainDetailComponent>()) {
-            auto* tdc     = ctx.activeScene->GetComponent<scene::TerrainDetailComponent>(eid);
-            auto* terrain = ctx.activeScene->GetComponent<scene::TerrainComponent>(eid);
-            if (tdc && terrain && tdc->enabled && !tdc->layers.empty()
-                && terrain->enabled && !terrain->heightData.empty() && tdc->needsBake) {
-                detailBaking = true;
-                break;
-            }
-        }
-    }
-    const bool showProgress = compiling || reloading || completed || detailBaking;
+    const bool showProgress = compiling || reloading || completed;
 
     // 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
     // ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
@@ -312,12 +298,11 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         }
     }
 
-    // ── ホットリロード / Detail Bake 状態（右端）─────────────────────
+    // ── ホットリロード状態（右端）─────────────────────────────────────
     {
         const float rightX = windowW - pbW - 4.0f;
         const float pbH    = barH - 4.0f;
         const float pbY    = (barH - pbH) * 0.5f;
-        const float t      = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
 
         // WHY: SameLine を挟まないと右端の内容が次の行 = バーの外へ落ちる。
         //      行を保つことで、テキストは AlignTextToFramePadding の基準線に乗ったままになる。
@@ -335,8 +320,12 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             ImGui::SetCursorPosY(pbY);
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
             ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
+            // 進捗が取れないときは掃引アニメーションで「動いている」ことだけ示す。
+            // WHY ここで作るか: 以前は Detail Bake のバーと共用していて外側に置いていたが、
+            //     そちらが無くなったので、唯一の使い手であるこのブロックへ寄せる。
             const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
-            const float progress    = hasProgress ? ctx.hotReloadProgress : t;
+            const float sweep       = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
+            const float progress    = hasProgress ? ctx.hotReloadProgress : sweep;
             // コンパイル中は現在コンパイル対象のファイル名を重畳し、擬似進捗を実感のある表示にする。
             const char* curFile = (compiling && ctx.buildConsole && !ctx.buildConsole->CurrentFile().empty())
                                       ? ctx.buildConsole->CurrentFile().c_str() : nullptr;
@@ -351,13 +340,6 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             // クリックで Build Output を開けるようにする。
             if (ImGui::IsItemClicked()) ctx.requestOpenBuildOutput = true;
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to open Build Output");
-            ImGui::PopStyleColor(2);
-        } else if (detailBaking) {
-            if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);
-            ImGui::SetCursorPosY(pbY);
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, EditorTheme::Color(ThemeColor::Success));
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
-            ImGui::ProgressBar(t, { pbW, pbH }, "Baking Detail...");
             ImGui::PopStyleColor(2);
         } else if (reloadText) {
             const float rx = windowW - rightW;

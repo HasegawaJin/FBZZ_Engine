@@ -191,7 +191,6 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
         points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
         id: NodeIdSchema.optional(),
     }).strict(),
-    z.object({ t: z.literal('foliage.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('navmesh.state'), id: NodeIdSchema.optional() }).strict(),
     z.object({
         t: z.literal('navmesh.path'),
@@ -704,23 +703,6 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         id: NodeIdSchema,
         layer: z.number().int().min(0).max(3),
         material: z.string().max(512),
-    }).strict(),
-    z.object({
-        t: z.literal('foliage.scatter'),
-        id: NodeIdSchema,
-        species: z.number().int().min(0).max(63),
-        position: Vec3Schema,
-        radius: z.number().finite().gt(0).max(500).optional(),
-        count: z.number().int().min(1).max(500).optional(),
-        maxSlopeDegrees: z.number().finite().min(0).max(90).optional(),
-        seed: z.number().int().min(1).optional(),
-    }).strict(),
-    z.object({
-        t: z.literal('foliage.clear'),
-        id: NodeIdSchema,
-        species: z.number().int().min(0).max(63),
-        position: Vec3Schema.optional(),
-        radius: z.number().finite().gt(0).max(500).optional(),
     }).strict(),
     z.object({ t: z.literal('navmesh.bake'), id: NodeIdSchema.optional() }).strict(),
     z.object({

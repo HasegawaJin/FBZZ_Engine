@@ -243,9 +243,6 @@ export type EditorQuery = {
     points: Array<number[]>;
     id?: string | undefined;
 } | {
-    t: 'foliage.inspect';
-    id?: string | undefined;
-} | {
     t: 'navmesh.state';
     id?: string | undefined;
 } | {
@@ -838,21 +835,6 @@ export type EditorCommand = {
     id: string;
     layer: number;
     material: string;
-} | {
-    t: 'foliage.scatter';
-    id: string;
-    species: number;
-    position: [number, number, number];
-    radius?: number | undefined;
-    count?: number | undefined;
-    maxSlopeDegrees?: number | undefined;
-    seed?: number | undefined;
-} | {
-    t: 'foliage.clear';
-    id: string;
-    species: number;
-    position?: [number, number, number] | undefined;
-    radius?: number | undefined;
 } | {
     t: 'navmesh.bake';
     id?: string | undefined;
