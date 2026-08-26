@@ -372,6 +372,16 @@ struct PreviewGpu {
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+    // Spot / Point シャドウ (b12) の無効化用。中身は 0 のまま使う。
+    // 定数バッファの束縛はドローをまたいで残るが SRV は毎回クリアされるので、
+    // シーン描画の b12 が残るとアトラス未束縛のまま「完全な影」を引いて黒くなる。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
+    // ライト供給モード (b9) の無効化用。中身は 0 = FBZZ_LIGHT_MODE_LEGACY のまま使う。
+    // WHY 要るか: シーン描画は Forward でも LINEAR (統合配列) を使うようになった。
+    //     b9 の束縛はドローをまたいで残る一方、ライト配列 (t29) は毎回クリアされるので、
+    //     そのままだとプレビューが「本数は残っているのに中身が全部ゼロ」を読み、
+    //     ライトが一つも当たらなくなる。0 を渡してレガシー経路 (b3) へ倒す。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> clusterCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
     renderer::ResourceHandle<renderer::RenderTargetTag>   renderTarget;
 };
@@ -1079,6 +1089,19 @@ bool EnsurePreviewGpu(renderer::ResourceManager& resources)
         s_gpu.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
     if (!s_gpu.shadowCB.IsValid())
         s_gpu.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
+    if (!s_gpu.punctualShadowCB.IsValid()) {
+        s_gpu.punctualShadowCB =
+            resources.CreateConstantBuffer(sizeof(scene::PunctualShadowConstantsCB));
+        const scene::PunctualShadowConstantsCB emptyPunctual{};
+        resources.Update(s_gpu.punctualShadowCB, &emptyPunctual, sizeof(emptyPunctual));
+    }
+
+    if (!s_gpu.clusterCB.IsValid()) {
+        s_gpu.clusterCB = resources.CreateConstantBuffer(sizeof(scene::ClusterConstantsCB));
+        const scene::ClusterConstantsCB legacyCluster{};  // clusterLightMode = 0 = LEGACY
+        resources.Update(s_gpu.clusterCB, &legacyCluster, sizeof(legacyCluster));
+    }
+
     if (!s_gpu.skinningCB.IsValid())
         s_gpu.skinningCB = resources.CreateConstantBuffer(sizeof(PreviewSkinningCB));
     if (!s_gpu.renderTarget.IsValid())
@@ -1588,8 +1611,6 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     renderer.SetRenderTarget(s_gpu.renderTarget, resources);
     renderer.Clear({ 0.09f, 0.10f, 0.12f, 1.0f });
     renderer.ClearDepth();
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
     const bool maskColorMode = s_maskPreview.active && s_maskPreview.loaded;
     // スキンメッシュの着色に使うボーン別ウェイト。描画は RenderPreviewFrame が
     // キャッシュミスのときだけ呼ぶので、ここで組んでもフレームごとには走らない。
@@ -1672,6 +1693,8 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         dc.constantBuffers[1] = s_gpu.objectCB;
         dc.constantBuffers[3] = s_gpu.lightCB;
         dc.constantBuffers[4] = s_gpu.shadowCB;
+    dc.constantBuffers[12] = s_gpu.punctualShadowCB;
+    dc.constantBuffers[9] = s_gpu.clusterCB;
         if (mesh->isSkinned)
             dc.constantBuffers[7] = s_gpu.skinningCB;
 
