@@ -20,6 +20,7 @@
 #include "InspectorUI.hpp"
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
@@ -357,7 +358,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::SmallButton("Revert")) {
             std::vector<scene::EntityID> newRoots;
             if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(), newRoots, ctx.projectRoot)) {
-                if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
                 return; // 古い GO を描画し続けないよう早期リターン
             }
@@ -377,7 +378,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 for (auto& candidate : ctx.activeScene->GameObjects())
                     if (candidate.prefabAssetPath == prefabPath)
                         instances.push_back(candidate.GetID());
-                if (!instances.empty()) ctx.selectedEntities = instances;
+                if (!instances.empty()) SelectEntities(ctx, instances, SelectionReveal::Skip);
                 return; // 選択が複数になったので、この後の単体 Inspector は描かない
             }
             if (ImGui::IsItemHovered())
@@ -482,7 +483,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                         std::vector<scene::EntityID> newRoots;
                         if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
                                                      newRoots, ctx.projectRoot)) {
-                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                             if (ctx.markSceneDirty) ctx.markSceneDirty();
                             cache.valid = false;
                             cache.guid.clear();
@@ -513,7 +514,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                         std::vector<scene::EntityID> newRoots;
                         if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
                                                      newRoots, ctx.projectRoot, &kept)) {
-                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                             if (ctx.markSceneDirty) ctx.markSceneDirty();
                             cache.guid.clear();
                             ImGui::EndPopup();
@@ -668,8 +669,6 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         const bool hasMapComponent =
             go->GetComponent<scene::TerrainComponent>()
             || go->GetComponent<scene::WaterComponent>()
-            || go->GetComponent<scene::TerrainDetailComponent>()
-            || go->GetComponent<scene::FoliageComponent>()
             || go->GetComponent<scene::TerrainGridComponent>();
         if (!hasMapComponent) {
             ImGui::TextDisabled("No Map component on this GameObject.");

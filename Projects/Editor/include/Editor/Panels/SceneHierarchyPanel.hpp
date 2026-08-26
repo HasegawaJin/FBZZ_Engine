@@ -25,8 +25,15 @@ private:
     //      リネームだけは編集バッファとフォーカス制御がこのパネル内にあるため残す。
     void PublishFocusAndHandleRequests(EditorContext& ctx);
 
+    // 他の面 (Scene View / 検索 / Map / AI) が選んだ対象を、このツリー上で見えるようにする。
+    // EditorContext::hierarchyRevealTarget を消費し、祖先チェーンとスクロール対象を決める。
+    void ConsumeRevealRequest(EditorContext& ctx);
+
     // SetParent 成功後、次フレームで強制 open するノードの EntityID
     scene::EntityID m_pendingExpand;
+
+    std::vector<scene::EntityID> m_revealOpenChain; // 強制 open する祖先 (描画後に空にする)
+    scene::EntityID              m_revealScrollTo;  // 行までスクロールする対象
     scene::EntityID m_lastClickedEntity;               // Shift+クリック範囲選択のアンカー
     scene::EntityID m_pendingClickEntity;              // ドラッグにならなかったクリックの保留
     bool            m_hierarchyDragStarted = false;    // 今フレームをまたいでドラッグ中か

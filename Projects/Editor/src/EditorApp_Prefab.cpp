@@ -21,6 +21,7 @@
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -89,7 +90,7 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
 
     // ── プレファブだけの状態にする ───────────────────────────────────────────
     m_ctx.activeScene->Clear();
-    m_ctx.selectedEntities.clear();
+    ClearEntitySelection(m_ctx);
     m_ctx.lockedEntities.clear();
     m_ctx.editorHiddenGuids.clear();
     m_undoStack.Clear();
@@ -120,7 +121,7 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
     m_ctx.prefabEditDirty = false;
     m_prefabEditSaved     = false;
     m_prefabEditDiskPath  = diskPath;
-    m_ctx.selectedEntities = { roots.front() };
+    SelectEntity(m_ctx, roots.front());
 
     RebuildEditorUIFromScene();
     UpdateWindowTitle();
@@ -159,7 +160,7 @@ void EditorApp::ExitPrefabEditMode(bool save)
 
     // ── 退避していたシーンを戻す ─────────────────────────────────────────────
     m_ctx.activeScene->Clear();
-    m_ctx.selectedEntities.clear();
+    ClearEntitySelection(m_ctx);
     m_undoStack.Clear();
 
     if (!m_prefabEditStashedScene.empty() &&
@@ -174,9 +175,13 @@ void EditorApp::ExitPrefabEditMode(bool save)
     ApplyEditorViewStateFromSceneMeta();
 
     // 選択は EntityID ではなく GUID で戻す (再構築で ID が変わるため)。
-    for (const std::string& guid : m_prefabEditStashedSelection)
-        if (auto* go = m_ctx.activeScene->FindByGuid(guid))
-            m_ctx.selectedEntities.push_back(go->GetID());
+    {
+        std::vector<scene::EntityID> restored;
+        for (const std::string& guid : m_prefabEditStashedSelection)
+            if (auto* go = m_ctx.activeScene->FindByGuid(guid))
+                restored.push_back(go->GetID());
+        SelectEntities(m_ctx, std::move(restored), SelectionReveal::Skip);
+    }
 
     m_ctx.prefabEditPath.clear();
     m_ctx.prefabEditDirty = false;
@@ -231,7 +236,7 @@ void EditorApp::ProcessPrefabDiskReloads()
             *m_ctx.activeScene, relPath, scene::EntityID{}, m_ctx.projectRoot);
         if (updated > 0) {
             // WHY: 作り直しで EntityID が変わるため、古い ID を掴んだままの選択は捨てる。
-            m_ctx.selectedEntities.clear();
+            ClearEntitySelection(m_ctx);
             MarkSceneDirty();
             FBZZ_LOG_INFO("Prefab changed on disk: %s (%d instance(s) updated)",
                           relPath.c_str(), updated);

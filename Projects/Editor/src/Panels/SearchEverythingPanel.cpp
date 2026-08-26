@@ -5,6 +5,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -63,7 +64,7 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
             for (scene::GameObject* go : hits) {
                 ImGui::PushID(go);
                 if (ImGui::Selectable(go->name.c_str())) {
-                    ctx.selectedEntities       = { go->GetID() };
+                    SelectEntity(ctx, go->GetID());
                     ctx.focusTargetPosition    = go->transform.worldPosition;
                     ctx.focusTargetRadius      = 0.0f;
                     ctx.requestFocusOnSelected = true;

@@ -1323,7 +1323,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextDisabled("%s", util::FileSystem::GetFilename(texDescPath).c_str());
             ImGui::Spacing();
             if (ImGui::Button("Open .meta Inspector"))
-                ctx.selectedAssetPath = texDescPath;
+                SelectAsset(ctx, texDescPath);
             static std::string s_cachedSpriteMetaPath;
             static std::filesystem::file_time_type s_cachedSpriteMetaTime{};
             static bool s_cachedIsSprite = false;
@@ -1360,7 +1360,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 newAsset.settings   = asset::DefaultSettingsForType(guessedType);
                 asset::TexDescSerializer ser;
                 if (ser.Save(newAsset, texDescPath)) {
-                    ctx.selectedAssetPath     = texDescPath;
+                    SelectAsset(ctx, texDescPath);
                     ctx.requestAssetBrowserRefresh = true;
                 }
             }
@@ -2457,8 +2457,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             //     追加・削除・並べ替え・一時無効化という配列固有の操作が要る。
             //     汎用のフィールド列挙ではそれらを表現できない。
             //     編集対象は Registry の共有実体そのものなので、変更は全参照へ即反映される。
+            // レンダー設定を渡すと「このパイプラインでは効かない」効果に警告が出る。
             const PostProcessInspectorResult inspectorResult =
-                DrawVolumeOverrideListInspector(*profile, reflector);
+                DrawVolumeOverrideListInspector(*profile, reflector,
+                                                &ctx.projectSettings.render);
             editedByCustomUi = inspectorResult.changed;
         } else {
             // Inspector の共通リフレクタでフィールドを描画する (スクリプトと同じ UI)。
@@ -2726,7 +2728,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
         ImGui::SameLine();
         if (ImGui::Button("Open in SFX Editor")) {
-            ctx.selectedAssetPath    = absPath;
+            SelectAsset(ctx, absPath);
             ctx.requestOpenSfxEditor = true;
         }
         ImGui::SameLine();

@@ -65,7 +65,7 @@ void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContex
     m_selectedPaths.clear();
 
     if (ctx && !util::FileSystem::IsDirectory(path))
-        ctx->selectedAssetPath = path;
+        SelectAsset(*ctx, path);
 
     // 編集させるのは拡張子より前だけ。拡張子は m_renameExtension に退避して固定表示する。
     //

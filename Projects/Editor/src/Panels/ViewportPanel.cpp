@@ -6,6 +6,7 @@
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <iterator>
 
 namespace fbzz::editor {
 
@@ -71,12 +72,12 @@ bool HandleMapToolHotkeys(EditorContext& ctx)
 {
     if (!ctx.mapEditingMode) return false;
     if (ImGui::GetIO().WantTextInput) return false;
-    static const ImGuiKey kNumKeys[6] = {
-        ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6
-    };
+    // WHY 定数 6 を持たないか: ツールの増減で数字キーの本数だけが取り残されると、
+    //     減らしたときは kMapToolDefs の範囲外を読む。割り当ては定義表から導出する。
     bool consumed = false;
-    for (int i = 0; i < 6; ++i) {
-        if (ImGui::IsKeyPressed(kNumKeys[i], false)) {
+    for (size_t i = 0; i < std::size(kMapToolDefs); ++i) {
+        const ImGuiKey key = static_cast<ImGuiKey>(ImGuiKey_1 + static_cast<int>(i));
+        if (ImGui::IsKeyPressed(key, false)) {
             ActivateMapTool(ctx, kMapToolDefs[i].tool);
             consumed = true;
         }
@@ -492,9 +493,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                               || IsOrientationGizmoHovered() || IsOrientationGizmoActive();
     const bool anyToolActive =
         (ctx.terrainTool && ctx.terrainTool->IsActive()) ||
-        (ctx.waterTool   && ctx.waterTool->IsActive())   ||
-        (ctx.detailTool  && ctx.detailTool->IsActive())  ||
-        (ctx.foliageTool && ctx.foliageTool->IsActive());
+        (ctx.waterTool   && ctx.waterTool->IsActive());
     // 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。
     // WHY: これらは同じ左ドラッグを使うため、選択・矩形選択・ギズモより先に処理して
     //      「掴んでいる」間は他の解釈をさせない。
@@ -712,9 +711,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     if (isSceneView && ctx.terrainTool && ctx.activeScene
         && !(ctx.playMode && !ctx.playMode->IsInEditor()))
     {
-        const bool vpHovered = ImGui::IsWindowHovered()
-            && !(ctx.detailTool && ctx.detailTool->IsActive())
-            && !(ctx.foliageTool && ctx.foliageTool->IsActive());
+        const bool vpHovered = ImGui::IsWindowHovered();
         ctx.terrainTool->Update(
             *ctx.activeScene,
             *ctx.editorCamera,
@@ -744,40 +741,6 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                 ctx.projectRoot,
                 ctx.markSceneDirty,
                 ctx.undoStack);
-    }
-
-    // ── DetailTool: 密度マップペイント + チャンク可視化 ────────────────────
-    if (isSceneView && ctx.detailTool && ctx.activeScene
-        && !(ctx.playMode && !ctx.playMode->IsInEditor()))
-    {
-        const bool vpHovered = ImGui::IsWindowHovered()
-            && !(ctx.foliageTool && ctx.foliageTool->IsActive());
-        ctx.detailTool->Update(
-            *ctx.activeScene,
-            *ctx.editorCamera,
-            vpHovered,
-            viewportMin,
-            size,
-            ctx.markSceneDirty,
-            ctx.undoStack);
-        if (ctx.showDetailTool && !ctx.mapEditingMode)
-            ctx.detailTool->OnEditorGUI(*ctx.activeScene, ctx.markSceneDirty);
-    }
-
-    if (isSceneView && ctx.foliageTool && ctx.activeScene
-        && !(ctx.playMode && !ctx.playMode->IsInEditor()))
-    {
-        const bool vpHovered = ImGui::IsWindowHovered();
-        ctx.foliageTool->Update(
-            *ctx.activeScene,
-            *ctx.editorCamera,
-            vpHovered,
-            viewportMin,
-            size,
-            ctx.markSceneDirty,
-            ctx.undoStack);
-        if (ctx.showFoliageTool && !ctx.mapEditingMode)
-            ctx.foliageTool->OnEditorGUI(*ctx.activeScene, ctx.markSceneDirty);
     }
 
     // Show play/pause state with a viewport border.

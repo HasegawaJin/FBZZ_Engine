@@ -5,6 +5,7 @@
 #include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -232,7 +233,7 @@ void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
             ImGui::EndDisabled();
             ImGui::SameLine();
             if (ImGui::Button("Select")) {
-                ctx.selectedEntities.assign(1, eid);
+                SelectEntity(ctx, eid);
                 ctx.requestFocusOnSelected = true;
             }
             ImGui::SameLine();

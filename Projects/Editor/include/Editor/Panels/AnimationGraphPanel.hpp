@@ -36,6 +36,11 @@ public:
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
+    // 中身を描かなかったフレーム (閉じている / 非アクティブなタブ) では、
+    // ここが公開した選択を取り下げる。
+    // WHY: 公開した選択は Inspector の表示対象を最優先で決める。パネルが見えていないのに
+    //      残っていると、他の面で何を選んでも Inspector が古いステートを映したままになる。
+    void OnAfterEnd(EditorContext& ctx) override;
 
 private:
     // グラフ上のノード種別。

@@ -9,6 +9,7 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -216,7 +217,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
                 const scene::EntityID id = go.GetID();
                 const math::Vector3   wp = go.transform.worldPosition;
                 add("Object", go.name, [id, wp, &ctx] {
-                    ctx.selectedEntities       = { id };
+                    SelectEntity(ctx, id);
                     ctx.focusTargetPosition    = wp;
                     ctx.focusTargetRadius      = 0.0f;   // バウンズ不明時は既定距離フォーカス
                     ctx.requestFocusOnSelected = true;

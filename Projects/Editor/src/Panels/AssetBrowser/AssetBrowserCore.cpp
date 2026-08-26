@@ -307,7 +307,7 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
     //   同じドックノードに居るだけで参照を辿れなくなっていた。
     //   上の 2 つの early return (ファイル欠落 / ルート外) でも同じ形で選択が消えていた。
     if (selectForInspector)
-        ctx.selectedEntities.clear();
+        ClearEntitySelection(ctx);
 }
 
 void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)

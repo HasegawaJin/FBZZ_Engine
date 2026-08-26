@@ -23,6 +23,7 @@
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
@@ -65,7 +66,6 @@
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/BehaviorTreeComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
-#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
@@ -6746,7 +6746,7 @@ std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
 //        budget が引き上げられたことも AI へ伝わらない。次の手で存在しない名前を
 //        指してしまうため、黙って起きる変更は必ず応答へ載せる。
 // ═════════════════════════════════════════════════════════════════════════════
-// ワールドオーサリング (Scene 入出力 / Terrain / Foliage / NavMesh / Environment / Audio / UI / Build)
+// ワールドオーサリング (Scene 入出力 / Terrain / NavMesh / Environment / Audio / UI / Build)
 //
 // WHY このまとまりが必要か:
 //   ここまでの Query/Command は「シーンに置いたオブジェクトとそのコンポーネント」を扱う。
@@ -7038,7 +7038,7 @@ std::vector<TerrainHit> CollectTerrainsUnderBrush(scene::Scene& activeScene,
     return hits;
 }
 
-// 指定ワールド点の高さ・法線・レイヤー重みを返す。Foliage を置く前の下見や、
+// 指定ワールド点の高さ・法線・レイヤー重みを返す。オブジェクトを置く前の下見や、
 // sculpt 後に「本当に平らになったか」を数値で確かめるのに使う。
 Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
 {
@@ -7081,7 +7081,7 @@ Outcome DoTerrainSample(editor::EditorContext& ctx, const JsonValue& payload)
         sample.Set("worldHeight", JsonValue(ToTerrainWorld(hit.go->transform,
             { hit.local.x, localHeight, hit.local.z }).y));
         sample.Set("normal", VectorToJson(localNormal));
-        // 斜度は Foliage / NavMesh の歩行可否と直結するので、法線から算出して添える。
+        // 斜度は NavMesh の歩行可否と直結するので、法線から算出して添える。
         sample.Set("slopeDegrees", JsonValue(math::ToDeg(std::acos(
             std::clamp(localNormal.y, -1.0f, 1.0f)))));
         const size_t expected = static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows);
@@ -7156,91 +7156,6 @@ std::unique_ptr<ICommand> MakeTerrainEditCommand(scene::Scene* activeScene,
     };
     auto beforeShared = std::make_shared<std::vector<TerrainSnapshot>>(std::move(before));
     auto afterShared  = std::make_shared<std::vector<TerrainSnapshot>>(std::move(after));
-    return std::make_unique<LambdaCommand>(label,
-        [apply, afterShared]()  { apply(*afterShared); },
-        [apply, beforeShared]() { apply(*beforeShared); });
-}
-
-// ── Foliage ─────────────────────────────────────────────────────────────────
-
-Outcome DoFoliageInspect(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    scene::Scene* activeScene = ctx.activeScene;
-    if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
-    const std::string filterId = StringField(payload, "id");
-
-    JsonValue nodes = JsonValue::MakeArray();
-    for (scene::EntityID eid : activeScene->GetEntities<scene::FoliageComponent>()) {
-        GameObject* go = activeScene->GetGameObject(eid);
-        auto* foliage = activeScene->GetComponent<scene::FoliageComponent>(eid);
-        if (go == nullptr || foliage == nullptr) continue;
-        if (!filterId.empty() && go->instanceId != filterId) continue;
-
-        JsonValue entry = JsonValue::MakeObject();
-        entry.Set("id", JsonValue(go->instanceId));
-        entry.Set("name", JsonValue(go->name));
-        entry.Set("enabled", JsonValue(foliage->enabled));
-        // この GO に Terrain が同居しているか。stamp のローカル座標はその Terrain の空間。
-        entry.Set("hasTerrain", JsonValue(go->GetComponent<scene::TerrainComponent>() != nullptr));
-        JsonValue speciesArray = JsonValue::MakeArray();
-        for (size_t i = 0; i < foliage->species.size(); ++i) {
-            const scene::FoliageSpecies& species = foliage->species[i];
-            JsonValue item = JsonValue::MakeObject();
-            item.Set("index", JsonValue(static_cast<int>(i)));
-            item.Set("modelPath", JsonValue(species.modelPath));
-            item.Set("placementMode", JsonValue(
-                species.placementMode == scene::FoliagePlacementMode::STAMP ? "stamp" : "procedural"));
-            item.Set("stampCount", JsonValue(static_cast<int>(species.stamps.size())));
-            item.Set("densityPer100SquareMeters", JsonValue(species.densityPer100SquareMeters));
-            item.Set("minScale", JsonValue(species.minScale));
-            item.Set("maxScale", JsonValue(species.maxScale));
-            item.Set("drawDistance", JsonValue(species.drawDistance));
-            item.Set("seed", JsonValue(static_cast<int>(species.seed)));
-            item.Set("randomYRotation", JsonValue(species.randomYRotation));
-            item.Set("colliderEnabled", JsonValue(species.colliderEnabled));
-            // 実際に描かれている本数。stampCount と食い違うときは未 Bake か Terrain 外へ置いた印。
-            if (i < foliage->caches.size())
-                item.Set("bakedInstances", JsonValue(static_cast<int>(foliage->caches[i].instances.size())));
-            JsonValue materials = JsonValue::MakeArray();
-            for (const std::string& materialPath : species.subMeshMaterialPaths)
-                materials.Push(JsonValue(materialPath));
-            item.Set("subMeshMaterials", std::move(materials));
-            speciesArray.Push(std::move(item));
-        }
-        entry.Set("species", std::move(speciesArray));
-        entry.Set("needsBake", JsonValue(foliage->needsBake));
-        nodes.Push(std::move(entry));
-    }
-
-    if (!filterId.empty() && nodes.AsArray().empty())
-        return Outcome::Err("NOT_PRESENT", "FoliageComponent を持つノードが見つかりません: " + filterId);
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("count", JsonValue(static_cast<int>(nodes.AsArray().size())));
-    result.Set("nodes", std::move(nodes));
-    return Outcome::Ok(std::move(result));
-}
-
-// Foliage の Undo も species 配列の丸ごと復元で行う (stamp は個体ごとの ID を持たないため)。
-std::unique_ptr<ICommand> MakeFoliageEditCommand(scene::Scene* activeScene,
-                                                 const char* label,
-                                                 std::string instanceId,
-                                                 std::vector<scene::FoliageSpecies> before,
-                                                 std::vector<scene::FoliageSpecies> after,
-                                                 std::function<void()> markDirty)
-{
-    auto apply = [activeScene, instanceId, markDirty](const std::vector<scene::FoliageSpecies>& values) {
-        GameObject* target = activeScene->FindByGuid(instanceId);
-        if (target == nullptr) return;
-        auto* foliage = target->GetComponent<scene::FoliageComponent>();
-        if (foliage == nullptr) return;
-        foliage->species = values;
-        // 子 GO (コライダー付き stamp 実体) まで作り直す。stamp の増減はここを通らないと画に出ない。
-        foliage->RequestBake(true);
-        if (markDirty) markDirty();
-    };
-    auto beforeShared = std::make_shared<std::vector<scene::FoliageSpecies>>(std::move(before));
-    auto afterShared  = std::make_shared<std::vector<scene::FoliageSpecies>>(std::move(after));
     return std::make_unique<LambdaCommand>(label,
         [apply, afterShared]()  { apply(*afterShared); },
         [apply, beforeShared]() { apply(*beforeShared); });
@@ -8286,125 +8201,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
             });
     }
 
-    // ── Foliage: 散布 / 消去 ────────────────────────────────────────────────
-    if (type == "foliage.scatter" || type == "foliage.clear") {
-        const std::string id = StringField(payload, "id");
-        GameObject* go = scene->FindByGuid(id);
-        if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
-        auto* foliage = go->GetComponent<scene::FoliageComponent>();
-        if (foliage == nullptr) { err = Outcome::Err("NOT_PRESENT", "FoliageComponent が装着されていません"); return nullptr; }
-        const JsonValue* speciesValue = payload.Find("species");
-        if (speciesValue == nullptr || !speciesValue->IsNumber()) { err = Outcome::Err("BAD_ARG", "species (index) が必要です"); return nullptr; }
-        const int speciesIndex = speciesValue->AsInt();
-        if (speciesIndex < 0 || speciesIndex >= static_cast<int>(foliage->species.size())) {
-            err = Outcome::Err("BAD_ARG", "species index が範囲外です (foliage_inspect で確認してください)"); return nullptr;
-        }
-        // stamp のローカル座標は「同じ GO にある Terrain」の空間。Terrain が無ければ置けない。
-        auto* terrain = go->GetComponent<scene::TerrainComponent>();
-        if (terrain == nullptr) {
-            err = Outcome::Err("NO_TERRAIN", "同じノードに TerrainComponent がありません (stamp は Terrain ローカル座標で持つため)");
-            return nullptr;
-        }
-
-        std::vector<scene::FoliageSpecies> before = foliage->species;
-        std::vector<scene::FoliageSpecies> after = before;
-        scene::FoliageSpecies& target = after[static_cast<size_t>(speciesIndex)];
-        int changed = 0;
-
-        if (type == "foliage.clear") {
-            math::Vector3 center;
-            const bool hasCenter = ReadVec3(payload, "position", center);
-            float radius = 0.0f;
-            if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
-                radius = static_cast<float>(v->AsNumber());
-            if (!hasCenter || radius <= 0.0f) {
-                changed = static_cast<int>(target.stamps.size());
-                target.stamps.clear();
-            } else {
-                const math::Vector3 localCenter = ToTerrainLocal(go->transform, center);
-                const size_t sizeBefore = target.stamps.size();
-                std::erase_if(target.stamps, [&](const scene::FoliageStamp& stamp) {
-                    const float dx = stamp.localPosition.x - localCenter.x;
-                    const float dz = stamp.localPosition.z - localCenter.z;
-                    return (dx * dx + dz * dz) <= radius * radius;
-                });
-                changed = static_cast<int>(sizeBefore - target.stamps.size());
-            }
-            if (changed == 0) { err = Outcome::Err("NO_CHANGE", "消去対象の stamp がありません"); return nullptr; }
-        } else {
-            math::Vector3 center;
-            if (!ReadVec3(payload, "position", center)) { err = Outcome::Err("BAD_ARG", "position ([x,y,z] ワールド座標) が必要です"); return nullptr; }
-            float radius = 5.0f;
-            if (const JsonValue* v = payload.Find("radius"); v != nullptr && v->IsNumber())
-                radius = static_cast<float>(v->AsNumber());
-            if (!(radius > 0.0f) || radius > 500.0f) { err = Outcome::Err("BAD_ARG", "radius は 0 より大きく 500 以下です"); return nullptr; }
-            int count = 10;
-            if (const JsonValue* v = payload.Find("count"); v != nullptr && v->IsNumber())
-                count = std::clamp(v->AsInt(), 1, 500);
-            // 斜面に木を生やさないための上限。既定 40 度は maxSlopeAngleDeg の既定と揃える。
-            float maxSlopeDeg = 40.0f;
-            if (const JsonValue* v = payload.Find("maxSlopeDegrees"); v != nullptr && v->IsNumber())
-                maxSlopeDeg = std::clamp(static_cast<float>(v->AsNumber()), 0.0f, 90.0f);
-            // seed を受けるのは、同じ要求から必ず同じ配置が出るようにするため。
-            // 乱数を隠すと「もう一度」で違う絵になり、AI が結果を比較できない。
-            std::uint32_t random = 1u;
-            if (const JsonValue* v = payload.Find("seed"); v != nullptr && v->IsNumber())
-                random = static_cast<std::uint32_t>(v->AsInt());
-            if (random == 0u) random = 1u;
-            auto nextRandom = [&random]() {
-                // xorshift32。外部依存を増やさずに決定論を保つ。
-                random ^= random << 13; random ^= random >> 17; random ^= random << 5;
-                return static_cast<float>(random & 0xFFFFFFu) / static_cast<float>(0x1000000u);
-            };
-
-            const math::Vector3 localCenter = ToTerrainLocal(go->transform, center);
-            const float localWidth = static_cast<float>(terrain->columns - 1) * terrain->cellSize;
-            const float localDepth = static_cast<float>(terrain->rows - 1) * terrain->cellSize;
-            int rejectedSlope = 0;
-            int rejectedBounds = 0;
-            for (int i = 0; i < count; ++i) {
-                // 円内一様分布 (sqrt を掛けないと中心に寄る)。
-                const float angle = nextRandom() * 6.2831853f;
-                const float distance = std::sqrt(nextRandom()) * radius;
-                const float x = localCenter.x + std::cos(angle) * distance;
-                const float z = localCenter.z + std::sin(angle) * distance;
-                if (x < 0.0f || x > localWidth || z < 0.0f || z > localDepth) { ++rejectedBounds; continue; }
-                const math::Vector3 normal = terrain->GetNormalAt(x, z);
-                const float slope = math::ToDeg(std::acos(std::clamp(normal.y, -1.0f, 1.0f)));
-                if (slope > maxSlopeDeg) { ++rejectedSlope; continue; }
-                const float height = terrain->GetHeightAt(x, z);
-                const float scale = target.minScale
-                    + nextRandom() * std::max(0.0f, target.maxScale - target.minScale);
-                const float rotationY = target.randomYRotation ? nextRandom() * 6.2831853f : 0.0f;
-                target.stamps.push_back({ math::Vector3{ x, height, z }, rotationY, std::max(scale, 0.0001f) });
-                ++changed;
-            }
-            // 置けなかった理由を返さないと、AI は「count を増やす」以外の直し方を選べない。
-            if (detailSink != nullptr) {
-                detailSink->Set("placed", JsonValue(changed));
-                detailSink->Set("rejectedSlope", JsonValue(rejectedSlope));
-                detailSink->Set("rejectedOutOfBounds", JsonValue(rejectedBounds));
-            }
-            if (changed == 0) {
-                err = Outcome::Err("NO_PLACEMENT",
-                    "1 本も配置できませんでした (斜度超過 " + std::to_string(rejectedSlope)
-                    + " / 範囲外 " + std::to_string(rejectedBounds) + ")");
-                return nullptr;
-            }
-            // 手動配置に切り替える。PROCEDURAL のままだと stamps は描画に使われない。
-            target.placementMode = scene::FoliagePlacementMode::STAMP;
-        }
-
-        if (detailSink != nullptr) {
-            detailSink->Set("species", JsonValue(speciesIndex));
-            detailSink->Set("stampCount", JsonValue(static_cast<int>(target.stamps.size())));
-            detailSink->Set("changed", JsonValue(changed));
-        }
-        return MakeFoliageEditCommand(scene,
-            type == "foliage.clear" ? "AI: Clear Foliage" : "AI: Scatter Foliage",
-            go->instanceId, std::move(before), std::move(after), markDirty);
-    }
-
     // ── NavMesh: 再ベイク要求 ──────────────────────────────────────────────
     // 地形を彫った直後の NavMesh は古い形のままで、その状態で経路を引くと
     // 「壁を通り抜ける経路」が返る。sculpt の後は必ずこれを通す運用にする。
@@ -8593,7 +8389,7 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
                 else duplicate->instanceId = *duplicateGuid;
                 if (!requestedName.empty()) duplicate->name = requestedName;
                 if (createdSink) *createdSink = duplicate->instanceId;
-                context->selectedEntities = { duplicateId };
+                editor::SelectEntity(*context, duplicateId);
                 markDirty();
             },
             [context, scene, duplicateGuid, previousSelection, markDirty]() {
@@ -8602,7 +8398,7 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
                         scene->DestroyGameObject(duplicate->GetID());
                     }
                 }
-                context->selectedEntities = *previousSelection;
+                editor::SelectEntities(*context, *previousSelection, editor::SelectionReveal::Skip);
                 editor::PruneSelection(*context);
                 markDirty();
             });
@@ -9966,7 +9762,8 @@ Outcome DoCommand(editor::EditorContext& ctx, const std::string& type, const Jso
             result.Set("missing", JsonValue(missing));
             return Outcome::Ok(std::move(result));
         }
-        ctx.selectedEntities = std::move(resolved);
+        // AI が選んだものは人が確かめる対象なので、畳まれた親を開いてでも Hierarchy に出す。
+        editor::SelectEntities(ctx, std::move(resolved));
         JsonValue result = JsonValue::MakeObject();
         result.Set("selected", JsonValue(static_cast<int>(ctx.selectedEntities.size())));
         result.Set("missing", JsonValue(missing));
@@ -10107,7 +9904,7 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             if (activeScene == nullptr) { outcome = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); }
             else {
                 // includeGenerated: システムが実行時に作った GO (VFX Graph のノード実体、
-                // Foliage bake、Water splash) をツリーへ含めるか。既定は含めない。
+                // Water splash) をツリーへ含めるか。既定は含めない。
                 // WHY: 爆発を 5 箇所に置いて再生すれば、それだけで数十ノードが増える。
                 //      AI は「編集できるオブジェクト」を探してツリーを読むが、生成物は
                 //      編集しても保存されない (SceneSerializer が捨てる) ため、
@@ -10289,8 +10086,6 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             outcome = DoTerrainInspect(m_context, payload);
         } else if (type == "terrain.sample") {
             outcome = DoTerrainSample(m_context, payload);
-        } else if (type == "foliage.inspect") {
-            outcome = DoFoliageInspect(m_context, payload);
         } else if (type == "navmesh.state") {
             outcome = DoNavMeshState(m_context, payload);
         } else if (type == "navmesh.path") {

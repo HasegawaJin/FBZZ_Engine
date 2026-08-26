@@ -92,7 +92,7 @@ std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
     const auto markDirty = ctx.markSceneDirty;
     auto restore = [scene, context, markDirty](const std::string& snapshot) {
         if (SceneIO::Deserialize(*scene, snapshot)) {
-            context->selectedEntities.clear();
+            ClearEntitySelection(*context);
             context->activeUICanvas = {};
             if (markDirty) markDirty();
         }
@@ -111,20 +111,6 @@ void ExecuteSceneEditWithUndo(EditorContext& ctx,
     auto command = MakeSceneEditCommand(ctx, description, edit);
     if (command && ctx.undoStack != nullptr)
         ctx.undoStack->Push(std::move(command));
-}
-
-void RemoveSelection(EditorContext& ctx, scene::EntityID id)
-{
-    auto& selected = ctx.selectedEntities;
-    selected.erase(std::remove(selected.begin(), selected.end(), id), selected.end());
-}
-
-void PruneSelection(EditorContext& ctx)
-{
-    auto& selected = ctx.selectedEntities;
-    selected.erase(std::remove_if(selected.begin(), selected.end(),
-        [&ctx](scene::EntityID id) { return !ctx.activeScene->IsValid(id); }),
-        selected.end());
 }
 
 void DestroySelected(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
@@ -186,7 +172,7 @@ std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
             if (newId != scene::EntityID::INVALID)
                 newIds.push_back(newId);
         }
-        if (!newIds.empty()) ctx.selectedEntities = newIds;
+        if (!newIds.empty()) SelectEntities(ctx, newIds);
     });
 }
 
@@ -277,7 +263,7 @@ std::unique_ptr<ICommand> MakePasteClipboardCommand(EditorContext& ctx, scene::E
         }
 
         if (!pastedIds.empty())
-            ctx.selectedEntities = pastedIds;
+            SelectEntities(ctx, pastedIds);
     });
 }
 

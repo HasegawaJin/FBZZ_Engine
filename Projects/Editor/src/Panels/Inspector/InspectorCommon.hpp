@@ -13,6 +13,7 @@
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -48,6 +49,7 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -56,12 +58,10 @@
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 // ComponentUndoCompare の特化で参照する。
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/VFXGraphComponent.hpp>
-#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
@@ -74,6 +74,7 @@
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/ScriptValidation.hpp>
+#include <Engine/Renderer/ColorTemperature.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ShaderDescriptor.hpp>
@@ -480,29 +481,8 @@ struct ComponentUndoCompare<scene::TerrainComponent> {
 };
 
 // ── 以下は Reflect に載らない vector<struct> を持つが、その中身は専用ツール
-//    (Foliage / Detail ブラシ、IK チェーン編集、Terrain Grid の生成) が編集し、
-//    それぞれが自前の Undo を持つ。要素数だけを見て、追加・削除は取りこぼさない。
-//    WHY 中身まで比較しないか: 要素が数千件になりうる (植生インスタンス・詳細レイヤー)。
-//        1 操作ごとに全走査すると Inspector の応答が落ちる。
-template<>
-struct ComponentUndoCompare<scene::FoliageComponent> {
-    static bool UserValuesEqual(scene::FoliageComponent& a, scene::FoliageComponent& b)
-    {
-        return a.species.size() == b.species.size()
-            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
-    }
-};
-
-template<>
-struct ComponentUndoCompare<scene::TerrainDetailComponent> {
-    static bool UserValuesEqual(scene::TerrainDetailComponent& a,
-                                scene::TerrainDetailComponent& b)
-    {
-        return a.layers.size() == b.layers.size()
-            && CaptureComponentDigest(a) == CaptureComponentDigest(b);
-    }
-};
-
+//    (IK チェーン編集、Terrain Grid の生成) が編集し、それぞれが自前の Undo を持つ。
+//    要素数だけを見て、追加・削除は取りこぼさない。
 template<>
 struct ComponentUndoCompare<scene::IKSolverComponent> {
     static bool UserValuesEqual(scene::IKSolverComponent& a, scene::IKSolverComponent& b)
@@ -1347,17 +1327,50 @@ void DrawComponentSectionCustom(
 // WHY 引数で受けるか: 上書きは RenderSystem が毎フレーム行うので、Inspector の値を編集しても
 //     画面は変わらない。無効化して出典を書かないと「ライトが壊れている」と読めてしまう。
 inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
-                            bool dayNightDriven = false)
+                            bool dayNightDriven = false,
+                            const std::string& projectRoot = {})
 {
-    static constexpr const char* kTypeNames[] = { "Directional", "Point", "Spot" };
+    static constexpr const char* kTypeNames[] = {
+        "Directional", "Point", "Spot", "Area (Rect)", "Sphere", "Tube" };
     int typeIdx = static_cast<int>(lc.type);
-    if (ImGui::Combo("Type", &typeIdx, kTypeNames, 3))
+    if (ImGui::Combo("Type", &typeIdx, kTypeNames, IM_ARRAYSIZE(kTypeNames)))
         lc.type = static_cast<scene::LightComponent::Type>(typeIdx);
 
     const bool drivenBySky = dayNightDriven && lc.type == scene::LightComponent::Type::Directional;
     ImGui::BeginDisabled(drivenBySky);
-    widgets::ColorEdit3("Color", lc.color);
-    ImGui::DragFloat("Intensity", &lc.intensity, 0.05f, 0.0f, 200.0f);
+    ImGui::Checkbox("Use Color Temperature", &lc.useColorTemperature);
+    if (lc.useColorTemperature) {
+        ImGui::DragFloat("Temperature", &lc.colorTemperature, 25.0f, 1000.0f, 15000.0f, "%.0f K");
+        // 温度から作った色をそのまま見せる。数値だけでは何色になるか分からない。
+        const math::Vector3 preview = renderer::ColorFromTemperature(lc.colorTemperature);
+        ImGui::ColorButton("##tempPreview",
+                           ImVec4(preview.x, preview.y, preview.z, 1.0f),
+                           ImGuiColorEditFlags_NoTooltip, ImVec2(0.0f, 0.0f));
+        ImGui::SameLine();
+        ImGui::TextDisabled("1900=ろうそく 2700=白熱灯 4000=蛍光灯 6500=昼光 10000=日陰");
+    } else {
+        widgets::ColorEdit3("Color", lc.color);
+    }
+    // Area は上限 200 では足りない。単位が「面の輝度」で、小さなパネルほど
+    // 大きな値が要るため (LightComponent.hpp の intensity の説明を参照)。
+    const bool isArea = (lc.type == scene::LightComponent::Type::Area);
+    ImGui::DragFloat("Intensity", &lc.intensity, isArea ? 1.0f : 0.05f,
+                     0.0f, isArea ? 2000.0f : 200.0f);
+    // タイプごとに単位が違うことを、値を触る場所で明示する。
+    // WHY: Point の感覚のまま Area へ 10 を入れると albedo x 0.04 でほぼ見えず、
+    //      「実装が壊れている」と読み違える。実際に一度そうなった。
+    ImGui::SameLine();
+    switch (lc.type) {
+    case scene::LightComponent::Type::Directional:
+        ImGui::TextDisabled("放射照度 (1.0 = albedo そのまま)"); break;
+    case scene::LightComponent::Type::Area:
+        ImGui::TextColored({ 1.0f, 0.80f, 0.40f, 1.0f },
+                           "面の輝度。1/d^2 は掛からない — 天井照明なら 100〜200");
+        break;
+    default:
+        ImGui::TextDisabled("1m 地点の明るさ (1/d^2 減衰)。明るい屋外なら 15〜30");
+        break;
+    }
     ImGui::EndDisabled();
     if (drivenBySky) {
         ImGui::TextColored({ 1.0f, 0.75f, 0.35f, 1.0f },
@@ -1380,23 +1393,61 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         ImGui::DragFloat("Outer Cone", &lc.outerCone, 0.5f, 0.0f, 89.0f);
     }
 
-    if (lc.type != scene::LightComponent::Type::Point) {
+    if (lc.type == scene::LightComponent::Type::Area) {
+        ImGui::DragFloat("Width",  &lc.areaWidth,  0.05f, 0.01f, 100.0f, "%.2f m");
+        ImGui::DragFloat("Height", &lc.areaHeight, 0.05f, 0.01f, 100.0f, "%.2f m");
+        ImGui::Checkbox("Two Sided", &lc.areaTwoSided);
+        ImGui::TextDisabled("面の向きは Transform の Forward。板の裏は Two Sided で照らす");
+    }
+
+    // 発光体の大きさ。Area だけは幅と高さがその役割なので出さない。
+    if (lc.type != scene::LightComponent::Type::Directional &&
+        lc.type != scene::LightComponent::Type::Area) {
+        ImGui::DragFloat("Source Radius", &lc.sourceRadius, 0.005f, 0.0f, 10.0f, "%.3f m");
+        if (lc.type == scene::LightComponent::Type::Tube) {
+            ImGui::DragFloat("Source Length", &lc.sourceLength, 0.05f, 0.0f, 50.0f, "%.2f m");
+            ImGui::TextDisabled("管の軸は Transform の Right");
+        } else if (lc.sourceRadius <= 0.0f) {
+            ImGui::TextDisabled("0 = 厳密な点光源。上げるとハイライトと影の縁が柔らかくなる");
+        }
+    }
+
+    if (lc.type != scene::LightComponent::Type::Point &&
+        lc.type != scene::LightComponent::Type::Sphere) {
         auto fwd = go.transform.forward;
         float dir[3] = { fwd.x, fwd.y, fwd.z };
         ImGui::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
     }
 
-    if (lc.type == scene::LightComponent::Type::Directional) {
+    // 大きさを持つ光源は解析的に評価するので遮蔽を扱えない。影の欄そのものを出さない。
+    if (lc.type != scene::LightComponent::Type::Area &&
+        lc.type != scene::LightComponent::Type::Sphere &&
+        lc.type != scene::LightComponent::Type::Tube) {
         ImGui::Separator();
         ImGui::SeparatorText("Shadow");
         ImGui::Checkbox("Cast Shadows", &lc.castShadows);
         if (lc.castShadows) {
             ImGui::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
             ImGui::DragFloat("Shadow Bias",     &lc.shadowBias,     0.05f, 0.1f, 10.0f);
-            // 0 のとき "Auto" 表示。シーン全体の AABB から自動フィット。
-            const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Auto" : "%.1f m";
-            ImGui::DragFloat("Shadow Distance", &lc.shadowDistance, 5.0f, 0.0f, 2000.0f, distFmt);
+            if (lc.type == scene::LightComponent::Type::Directional) {
+                // 0 のとき "Auto" 表示。シーン全体の AABB から自動フィット。
+                const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Auto" : "%.1f m";
+                ImGui::DragFloat("Shadow Distance", &lc.shadowDistance, 5.0f, 0.0f, 2000.0f, distFmt);
+            } else {
+                ImGui::DragFloat("Shadow Near Plane", &lc.shadowNearPlane,
+                                 0.01f, 0.01f, 10.0f, "%.2f m");
+                ImGui::TextDisabled(
+                    "アトラスのタイルは 16 枚。Spot が 1 枚、Point が 6 枚を使う");
+            }
         }
+    }
+
+    if (lc.type == scene::LightComponent::Type::Spot) {
+        ImGui::Separator();
+        ImGui::SeparatorText("Cookie");
+        widgets::AssetPathField("Cookie", lc.cookiePath, ".png,.jpg,.dds,.tga", projectRoot);
+        if (!lc.cookiePath.empty())
+            ImGui::DragFloat("Cookie Rotation", &lc.cookieRotation, 1.0f, -180.0f, 180.0f, "%.0f deg");
     }
 }
 inline scene::MeshRenderer CreateDefaultMeshRenderer()
@@ -1770,6 +1821,22 @@ inline bool AddRegisteredComponentByName(scene::GameObject& go, std::string_view
         handled = true;
     });
     return handled;
+}
+
+// 型名で「そのコンポーネントを持っているか」を答える。FBZZ_REF(LightComponent, ...) の
+// ドロップ検証とピッカー絞り込みが使う。
+//
+// WHY 内部型 (addable = false) も対象にするか: 参照するだけなら手で足せる必要はない。
+//     Bone のようにエンジンが張るコンポーネントを指したい場面はある。
+inline bool HasRegisteredComponentByName(scene::GameObject& go, std::string_view typeName)
+{
+    bool found = false;
+    scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if (found) return;
+        if (typeName != Registration::serializedName) return;
+        found = go.GetComponent<T>() != nullptr;
+    });
+    return found;
 }
 
 // 不足している必須コンポーネントをまとめて追加し、この操作で増えた型だけを戻す

@@ -7,6 +7,7 @@
 //      Undo の挙動が食い違うため、ここに一本化する。
 #pragma once
 
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
@@ -43,11 +44,7 @@ void ExecuteSceneEditWithUndo(EditorContext& ctx,
                               const char* description,
                               const std::function<void()>& edit);
 
-// 選択リストから 1 件取り除く
-void RemoveSelection(EditorContext& ctx, scene::EntityID id);
-
-// 無効化された EntityID を選択リストから掃除する
-void PruneSelection(EditorContext& ctx);
+// RemoveSelection / PruneSelection は Editor/Util/Selection.hpp へ移動 (選択の変更は 1 箇所に集約)
 
 // ids の GameObject を破棄して選択リストを整理する (Undo は呼び出し側で包む)
 void DestroySelected(EditorContext& ctx, const std::vector<scene::EntityID>& ids);

@@ -26,6 +26,7 @@
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
@@ -118,7 +119,7 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
                 result.message = "SFX Editor で開きます";
             } else if (ext == ".vfx") {
                 // VFX Editor は独立プロセス。選択パスを渡してから起動要求を立てる。
-                ctx.selectedAssetPath    = path;
+                SelectAsset(ctx, path);
                 ctx.requestOpenVFXEditor = true;
                 result.message = "VFX Editor で開きます";
             } else if (ext == ".prefab") {
@@ -127,7 +128,7 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
                                      "prefab_instantiate (シーンへ配置) を使います");
             } else {
                 // 既定は Inspector の表示対象にする (.mat / .physmat / テクスチャなど)。
-                ctx.selectedAssetPath = path;
+                SelectAsset(ctx, path);
                 result.message = "Inspector に表示します";
             }
             return result;
