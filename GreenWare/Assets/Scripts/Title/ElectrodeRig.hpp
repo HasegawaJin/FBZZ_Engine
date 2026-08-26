@@ -118,6 +118,13 @@ struct ElectrodeTuning {
     bool  followCursor   = false;
     /// カーソルへの食いつき [rad/s]。臨界減衰なので、上げても行き過ぎない。
     float followResponse = 12.0f;
+    /// カーソルがこの位置より右にあるときだけ追従する。画面幅の割合 (0 = 画面全体 / 0.5 = 右半分)。
+    ///
+    /// WHY 追従できる領域を絞れるようにするか:
+    ///   タイトルのメニューは画面の左に置いてある。カーソルがどこへ行っても極が付いてくると、
+    ///   項目を選びに行くたびに粒子と放電が文字の上へ乗って読めなくなる。追従を «文字の無い側»
+    ///   に閉じれば、掴んで遊べることとメニューが読めることが両立する。
+    float followMinX     = 0.0f;
 
     /// 極の間に走る放電。＋極の rig だけが引き受ける。
     ElectricArcStyle arc;
@@ -173,12 +180,23 @@ private:
     void ConfigureEmitter(ParticleEmitterSettings& emitter, const ElectrodeTuning& tuning) const;
     void ApplyFields(const Script& owner, const ElectrodeTuning& tuning) const;
     /// カーソルの指す画面点を、この電極が置かれた奥行きの平面へ起こす。
-    [[nodiscard]] bool CursorTarget(Script& owner, Vector3& outTarget) const;
+    /// 追従が切ってあるか followMinX の領域から外れている間は false を返し、
+    /// 呼び出し側を «定位置へ戻すばね» の側へ倒す。
+    [[nodiscard]] bool CursorTarget(Script& owner, const ElectrodeTuning& tuning,
+                                    Vector3& outTarget);
     void Integrate(Script& owner, const ElectrodeTuning& tuning, float dt);
     void UpdateArcs(Script& owner, const ElectrodeTuning& tuning, float dt);
     void UpdateCharge(Script& owner, const ElectrodeTuning& tuning, float dt);
     /// Gpu を要求したのに CPU で回っているときだけ、理由を 1 回言う。
     void WarnGpuFallbackOnce(Script& owner);
+
+    /// 追従に «入る» ときと «抜ける» ときのしきい値の差 (画面幅の割合)。
+    ///
+    /// WHY 必要か:
+    ///   境界にカーソルを置いたまま手が 1px 揺れると、行き先が «カーソル» と «定位置» の
+    ///   間で毎フレーム入れ替わり、極が細かく震える。両者は遠いので、力の向きが毎フレーム
+    ///   反転する。入りと出をずらせば、境界をまたぐ 1 回だけで切り替わる。
+    static constexpr float kFollowHysteresis = 0.02f;
 
     static inline std::vector<ElectrodeRig*> s_rigs;
 
@@ -195,6 +213,8 @@ private:
     EntityID      m_swirlId  = EntityID::INVALID;
     /// GPU 縮退をもう言ったか。CPU へ戻った瞬間に 1 回だけ言うための掛け金。
     bool          m_gpuFallbackWarned = false;
+    /// いまカーソルに掴まれているか。followMinX のヒステリシスに使う。
+    bool          m_following         = false;
     /// シーンで置かれた位置。m_home と違い周回で動かないので、カーソル追従の奥行きに使う。
     Vector3 m_anchor   = Vector3::ZERO;
     Vector3 m_home     = Vector3::ZERO;
@@ -450,8 +470,23 @@ inline void ElectrodeRig::ApplyFields(const Script& owner, const ElectrodeTuning
     }
 }
 
-inline bool ElectrodeRig::CursorTarget(Script& owner, Vector3& outTarget) const
+inline bool ElectrodeRig::CursorTarget(Script& owner, const ElectrodeTuning& tuning,
+                                       Vector3& outTarget)
 {
+    Vector2 normalized{};
+    if (!tuning.followCursor || !GameCursorComponent::NormalizedPoint(owner, normalized)) {
+        m_following = false;
+        return false;
+    }
+
+    // 入るときは followMinX、抜けるときはその手前で判定する (kFollowHysteresis の WHY)。
+    // 先に前フレームの値でしきい値を決めてから倒す。m_following は «このフレーム実際に
+    // 掴まれたか» を意味するので、以降の失敗経路でも立てたままにしない。
+    const float threshold = m_following ? tuning.followMinX - kFollowHysteresis
+                                        : tuning.followMinX;
+    m_following = false;
+    if (normalized.x < threshold) return false;
+
     // 控え付きの解決を使う。scene.GetMainCameraObject() を直接呼ぶと、電極 1 本ごとに
     // 全 GameObject の走査が 1 回増える (WorldPointAtDepth の中でもう 1 回引くため)。
     GameObject* cameraObject = GameCursorComponent::MainCameraObject(owner);
@@ -461,7 +496,9 @@ inline bool ElectrodeRig::CursorTarget(Script& owner, Vector3& outTarget) const
     const float   depth    = Vector3::Dot(toAnchor, cameraObject->transform.forward);
     if (depth <= EPSILON) return false;   // カメラの背後に置かれている
 
-    return GameCursorComponent::WorldPointAtDepth(owner, depth, outTarget);
+    if (!GameCursorComponent::WorldPointAtDepth(owner, depth, outTarget)) return false;
+    m_following = true;
+    return true;
 }
 
 inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning, float dt)
@@ -475,7 +512,7 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
     //   決める。coupling は足したままにしてある。ずれは ω^2 で割った分しかなく画面には
     //   出ないので、相手の極に引かれて «重い» 感じだけが残る。
     Vector3 cursor = Vector3::ZERO;
-    const bool onCursor = tuning.followCursor && CursorTarget(owner, cursor);
+    const bool onCursor = CursorTarget(owner, tuning, cursor);
 
     Vector3 force;
     if (onCursor) {
