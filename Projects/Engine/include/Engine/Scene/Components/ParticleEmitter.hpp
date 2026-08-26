@@ -115,9 +115,23 @@ struct ParticleBurst {
 // WHY: AssetManager 所有の Model を参照し続けず、スポーン時は必要な頂点情報だけを高速に抽選する。
 struct MeshShapeVertex {
     math::Vector3 position;
+    math::Vector3 normal;
     uint32_t boneIndices[4] = {};
     float boneWeights[4] = {};
     bool skinned = false;
+};
+
+// MeshShapeTriangle — MeshSurface の面積重み抽選 1 枚ぶん。頂点は meshShapeVertices への添字。
+//
+// WHY 三角形を持つか: 頂点をそのまま一様抽選すると、粒子は «頂点密度» に比例して湧く。
+//     顔や関節だけポリゴンが細かいモデルでは、そこからしか粒が出ないように見える。
+//     面積に比例させ、さらに三角形内部を重心座標で取れば、低ポリでも表面が埋まる。
+// WHY バインドポーズ面積で重み付けるか: スキニングで面積は多少伸縮するが、抽選の «比率»
+//     はほとんど変わらない。毎スポーンで全三角形の面積を測り直す価値はない。
+struct MeshShapeTriangle {
+    uint32_t indices[3] = {};
+    // 先頭からこの三角形までの面積の総和。1 回の乱数を二分探索で引くための累積分布。
+    float    cumulativeArea = 0.0f;
 };
 
 // materialPath 未設定の Emitter が使う既定 .mat。
@@ -249,8 +263,11 @@ struct ParticleRuntime {
     float distanceEmitAccum = 0.0f;
     std::vector<int> burstCyclesFired;
 
-    // MeshSurface Shapeのランタイムキャッシュ。位置と4ボーンウェイトだけを複製する。
-    std::vector<MeshShapeVertex> meshShapeVertices;
+    // MeshSurface Shapeのランタイムキャッシュ。位置・法線と4ボーンウェイトだけを複製する。
+    std::vector<MeshShapeVertex>   meshShapeVertices;
+    // 面積の累積分布付き三角形列。インデックスを持たないメッシュでは空のままで、
+    // その場合は頂点の一様抽選へ縮退する。
+    std::vector<MeshShapeTriangle> meshShapeTriangles;
     std::string loadedMeshShapePath;
     int         loadedMeshShapeIndex = -2;
 
@@ -341,6 +358,12 @@ struct ParticleEmitterSettings {
     float       meshShapeScale = 1.0f;
     // 同じ GameObject の AnimatorComponent が持つ現在のボーン行列で発生点を変形する。
     bool        meshShapeFollowSkinnedAnimation = false;
+    // 表面法線方向へ与える初速 [m/s]。0 なら従来どおり emitVelocity だけで飛ぶ。
+    // WHY: Sphere / Cone は形状そのものが方向を持つのに、MeshSurface だけは «形に沿って
+    //      湧くが全部同じ向きに飛ぶ» しか作れなかった。表面から «にじみ出る» 崩壊や
+    //      被膜が剥がれる表現は、法線が初速に入って初めて成立する。
+    //      負値を許すのは、逆に «表面へ吸い込む» 収束エフェクトを同じ設定で作れるため。
+    float       meshShapeNormalVelocity = 0.0f;
 
     ParticleSortMode  sortMode  = ParticleSortMode::None;
     // エミッター間の描画順。小さいほど先に描かれる (＝奥に見える)。
@@ -540,6 +563,7 @@ struct ParticleEmitterSettings {
         r.Field("meshShapeIndex", meshShapeIndex);
         r.Field("meshShapeScale", meshShapeScale);
         r.Field("meshShapeFollowSkinnedAnimation", meshShapeFollowSkinnedAnimation);
+        r.Field("meshShapeNormalVelocity", meshShapeNormalVelocity);
 
         int sortValue = static_cast<int>(sortMode);
         r.Field("sortMode", sortValue);

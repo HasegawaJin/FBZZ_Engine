@@ -613,7 +613,7 @@ void VFXGraphCanvas::DrawAddNodeMenu()
         { asset::VFXNodeType::ScreenEffect, "Screen flash / chromatic aberration" },
         { asset::VFXNodeType::CameraShake, "Camera shake for impact feel" },
         { asset::VFXNodeType::TimeScale, "Hit stop / slow motion" },
-        { asset::VFXNodeType::Wind, "Wind zone for foliage, water and cloth" },
+        { asset::VFXNodeType::Wind, "Wind zone for particles, water and cloth" },
         { asset::VFXNodeType::Delay, "Timing only" },
         { asset::VFXNodeType::SubGraph, "Nested .vfx" },
         { asset::VFXNodeType::Reroute, "Wire bend point (no effect on timing)" },
