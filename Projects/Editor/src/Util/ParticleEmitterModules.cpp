@@ -328,11 +328,13 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                 runtime.loadedMeshShapePath.clear();
                 runtime.loadedMeshShapeIndex = -2;
                 runtime.meshShapeVertices.clear();
+                runtime.meshShapeTriangles.clear();
                 changed = true;
             }
             if (ImGui::DragInt("Shape Mesh Index", &pe.meshShapeIndex, 1, -1, 1024)) {
                 runtime.loadedMeshShapeIndex = -2;
                 runtime.meshShapeVertices.clear();
+                runtime.meshShapeTriangles.clear();
                 changed = true;
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -341,6 +343,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             changed |= ImGui::Checkbox("Follow Skinned Animation", &pe.meshShapeFollowSkinnedAnimation);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("Uses the Animator on this GameObject to deform particle spawn points");
+            changed |= ImGui::DragFloat("Normal Velocity", &pe.meshShapeNormalVelocity, 0.01f, -100.0f, 100.0f);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("Initial speed along the surface normal (m/s). Negative pulls inward");
         }
 
         ImGui::SeparatorText("Initial Velocity");

@@ -155,6 +155,7 @@ inline constexpr std::string_view kCollisionResponseNames[] = { "Bounce", "Kill"
         MakeIntProperty<P, std::uint32_t, &P::randomSeed>("randomSeed", "Random Seed", "Main", true, detail::Range(1, 2147483647)),
         MakeIntProperty<P, int, &P::meshShapeIndex>("meshShapeIndex", "Mesh Submesh Index", "Shape", true, detail::Range(-1, 4096)),
         MakeProperty<P, bool, &P::meshShapeFollowSkinnedAnimation>("meshShapeFollowSkinnedAnimation", PropertyType::Bool, "Follow Skinned Animation", "Shape", true),
+        MakeProperty<P, float, &P::meshShapeNormalVelocity>("meshShapeNormalVelocity", PropertyType::Float, "Normal Velocity", "Shape", true, detail::Range(-100, 100)),
 
         MakeEnumProperty<P, scene::ParticleCollisionMode, &P::collisionMode, 3>("collisionMode", "Collision Mode", "Collision", detail::kCollisionModeNames),
         MakeEnumProperty<P, scene::ParticleCollisionResponse, &P::collisionResponse, 2>("collisionResponse", "Collision Response", "Collision", detail::kCollisionResponseNames),

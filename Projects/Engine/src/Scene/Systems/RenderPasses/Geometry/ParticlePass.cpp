@@ -570,6 +570,7 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
         return;
 
     emitter.runtime.meshShapeVertices.clear();
+    emitter.runtime.meshShapeTriangles.clear();
     emitter.runtime.loadedMeshShapePath = emitter.settings.meshShapePath;
     emitter.runtime.loadedMeshShapeIndex = emitter.settings.meshShapeIndex;
     if (emitter.settings.meshShapePath.empty()) return;
@@ -578,12 +579,16 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
     if (!model) return;
 
     auto appendMesh = [&](const renderer::Mesh& mesh) {
+        // サブメッシュを 1 本の頂点列へ連結するので、三角形の添字はこの分だけずらす。
+        const uint32_t vertexBase = static_cast<uint32_t>(emitter.runtime.meshShapeVertices.size());
+
         if (!mesh.cpuSkinnedVertices.empty()) {
             emitter.runtime.meshShapeVertices.reserve(
                 emitter.runtime.meshShapeVertices.size() + mesh.cpuSkinnedVertices.size());
             for (const renderer::SkinnedVertex& vertex : mesh.cpuSkinnedVertices) {
                 MeshShapeVertex cached{};
                 cached.position = vertex.position;
+                cached.normal = vertex.normal;
                 cached.skinned = true;
                 for (int influence = 0; influence < 4; ++influence) {
                     cached.boneIndices[influence] = vertex.boneIndices[influence];
@@ -597,8 +602,27 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
             for (const renderer::Vertex& vertex : mesh.cpuVertices) {
                 MeshShapeVertex cached{};
                 cached.position = vertex.position;
+                cached.normal = vertex.normal;
                 emitter.runtime.meshShapeVertices.push_back(cached);
             }
+        }
+
+        const uint32_t appended =
+            static_cast<uint32_t>(emitter.runtime.meshShapeVertices.size()) - vertexBase;
+        if (appended == 0 || mesh.cpuIndices.size() < 3) return;
+
+        emitter.runtime.meshShapeTriangles.reserve(
+            emitter.runtime.meshShapeTriangles.size() + mesh.cpuIndices.size() / 3);
+        for (size_t i = 0; i + 2 < mesh.cpuIndices.size(); i += 3) {
+            MeshShapeTriangle triangle{};
+            bool inRange = true;
+            for (int corner = 0; corner < 3; ++corner) {
+                const uint32_t localIndex = mesh.cpuIndices[i + corner];
+                if (localIndex >= appended) { inRange = false; break; }
+                triangle.indices[corner] = vertexBase + localIndex;
+            }
+            // 壊れたインデックス 1 本で形状全体を捨てるより、その面だけ落として続ける。
+            if (inRange) emitter.runtime.meshShapeTriangles.push_back(triangle);
         }
     };
 
@@ -606,45 +630,119 @@ void EnsureMeshShapePoints(ParticleEmitter& emitter)
         const size_t meshIndex = static_cast<size_t>(emitter.settings.meshShapeIndex);
         if (meshIndex < model->meshes.size() && model->meshes[meshIndex])
             appendMesh(*model->meshes[meshIndex]);
-        return;
+    } else {
+        for (const auto& mesh : model->meshes) {
+            if (mesh) appendMesh(*mesh);
+        }
     }
 
-    for (const auto& mesh : model->meshes) {
-        if (mesh) appendMesh(*mesh);
+    float totalArea = 0.0f;
+    for (MeshShapeTriangle& triangle : emitter.runtime.meshShapeTriangles) {
+        const math::Vector3& a = emitter.runtime.meshShapeVertices[triangle.indices[0]].position;
+        const math::Vector3& b = emitter.runtime.meshShapeVertices[triangle.indices[1]].position;
+        const math::Vector3& c = emitter.runtime.meshShapeVertices[triangle.indices[2]].position;
+        totalArea += math::Vector3::Cross(b - a, c - a).Length() * 0.5f;
+        triangle.cumulativeArea = totalArea;
     }
+    // 面積が実質ゼロ (退化三角形しかない) なら面積抽選は成立しない。頂点一様抽選へ落とす。
+    if (totalArea <= 1.0e-12f) emitter.runtime.meshShapeTriangles.clear();
+}
+
+// 面積の累積分布を 1 回の乱数で引く。三角形が無いときは呼ばない。
+const MeshShapeTriangle& PickMeshShapeTriangle(ParticleEmitter& emitter)
+{
+    const std::vector<MeshShapeTriangle>& triangles = emitter.runtime.meshShapeTriangles;
+    const float target = Random01(emitter) * triangles.back().cumulativeArea;
+    const auto found = std::lower_bound(
+        triangles.begin(), triangles.end(), target,
+        [](const MeshShapeTriangle& triangle, float value) { return triangle.cumulativeArea < value; });
+    return found == triangles.end() ? triangles.back() : *found;
+}
+
+// WHAT: GPUスキニングと同じ4ウェイト線形ブレンドをCPU側の発生点にだけ適用する。
+// WHY: 粒子本体はGPUシミュレーションのまま、読み戻しなしで現在のSkinnedAnimationへ追従できる。
+// WHY 法線を w=0 で流すか: 逆転置行列は Animator が持っていない。ボーン行列は回転と平行移動が
+//     主なので、平行移動だけ落とせば向きは十分合う (一様でないボーンスケールを掛けたモデルだけ
+//     ずれるが、スキンメッシュでそれを使うことはまず無い)。
+void SkinMeshShapeVertex(const MeshShapeVertex& vertex, const AnimatorComponent& animator,
+                         math::Vector3& outPosition, math::Vector3& outNormal)
+{
+    math::Vector3 position = math::Vector3::ZERO;
+    math::Vector3 normal = math::Vector3::ZERO;
+    float totalWeight = 0.0f;
+    for (int influence = 0; influence < 4; ++influence) {
+        const float weight = vertex.boneWeights[influence];
+        const size_t boneIndex = static_cast<size_t>(vertex.boneIndices[influence]);
+        if (weight <= 0.0f || boneIndex >= animator.boneMatrices.size()) continue;
+        const math::Matrix4& bone = animator.boneMatrices[boneIndex];
+        const math::Vector4 skinnedPosition =
+            bone * math::Vector4{ vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
+        const math::Vector4 skinnedNormal =
+            bone * math::Vector4{ vertex.normal.x, vertex.normal.y, vertex.normal.z, 0.0f };
+        position = position
+            + math::Vector3{ skinnedPosition.x, skinnedPosition.y, skinnedPosition.z } * weight;
+        normal = normal
+            + math::Vector3{ skinnedNormal.x, skinnedNormal.y, skinnedNormal.z } * weight;
+        totalWeight += weight;
+    }
+    if (totalWeight <= 0.0001f) {
+        outPosition = vertex.position;
+        outNormal = vertex.normal;
+        return;
+    }
+    outPosition = position * (1.0f / totalWeight);
+    outNormal = normal * (1.0f / totalWeight);
 }
 
 bool SampleMeshShapePoint(ParticleEmitter& emitter, const AnimatorComponent* animator,
-                          math::Vector3& outPoint)
+                          math::Vector3& outPoint, math::Vector3& outNormal)
 {
     EnsureMeshShapePoints(emitter);
     if (emitter.runtime.meshShapeVertices.empty()) return false;
-    const size_t lastIndex = emitter.runtime.meshShapeVertices.size() - 1;
-    const size_t index = (std::min)(
-        static_cast<size_t>(Random01(emitter) * static_cast<float>(emitter.runtime.meshShapeVertices.size())),
-        lastIndex);
-    const MeshShapeVertex& vertex = emitter.runtime.meshShapeVertices[index];
-    outPoint = vertex.position;
 
-    // WHAT: GPUスキニングと同じ4ウェイト線形ブレンドをCPU側の発生点にだけ適用する。
-    // WHY: 粒子本体はGPUシミュレーションのまま、読み戻しなしで現在のSkinnedAnimationへ追従できる。
-    if (emitter.settings.meshShapeFollowSkinnedAnimation && vertex.skinned && animator
-        && !animator->boneMatrices.empty()) {
-        math::Vector3 skinnedPoint = math::Vector3::ZERO;
-        float totalWeight = 0.0f;
-        for (int influence = 0; influence < 4; ++influence) {
-            const float weight = vertex.boneWeights[influence];
-            const size_t boneIndex = static_cast<size_t>(vertex.boneIndices[influence]);
-            if (weight <= 0.0f || boneIndex >= animator->boneMatrices.size()) continue;
-            const math::Vector4 transformed = animator->boneMatrices[boneIndex]
-                * math::Vector4{ vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
-            skinnedPoint = skinnedPoint
-                + math::Vector3{ transformed.x, transformed.y, transformed.z } * weight;
-            totalWeight += weight;
+    const bool skin = emitter.settings.meshShapeFollowSkinnedAnimation
+        && animator != nullptr && !animator->boneMatrices.empty();
+    const auto resolveVertex = [&](const MeshShapeVertex& vertex,
+                                   math::Vector3& position, math::Vector3& normal) {
+        if (skin && vertex.skinned) {
+            SkinMeshShapeVertex(vertex, *animator, position, normal);
+            return;
         }
-        if (totalWeight > 0.0001f)
-            outPoint = skinnedPoint * (1.0f / totalWeight);
+        position = vertex.position;
+        normal = vertex.normal;
+    };
+
+    if (!emitter.runtime.meshShapeTriangles.empty()) {
+        const MeshShapeTriangle& triangle = PickMeshShapeTriangle(emitter);
+        // 三角形内部の一様分布。(u, v) が外側へ出たら折り返す — sqrt を使う定番より
+        // 分岐 1 つ分安く、乱数の消費が 2 回で固定される。
+        float u = Random01(emitter);
+        float v = Random01(emitter);
+        if (u + v > 1.0f) {
+            u = 1.0f - u;
+            v = 1.0f - v;
+        }
+        const float w = 1.0f - u - v;
+
+        math::Vector3 position0, position1, position2;
+        math::Vector3 normal0, normal1, normal2;
+        resolveVertex(emitter.runtime.meshShapeVertices[triangle.indices[0]], position0, normal0);
+        resolveVertex(emitter.runtime.meshShapeVertices[triangle.indices[1]], position1, normal1);
+        resolveVertex(emitter.runtime.meshShapeVertices[triangle.indices[2]], position2, normal2);
+        outPoint = position0 * w + position1 * u + position2 * v;
+        outNormal = (normal0 * w + normal1 * u + normal2 * v).NormalizedOr(math::Vector3::UP);
+    } else {
+        // インデックスを持たないメッシュは面を組めない。従来どおり頂点を一様に引く。
+        const size_t lastIndex = emitter.runtime.meshShapeVertices.size() - 1;
+        const size_t index = (std::min)(
+            static_cast<size_t>(Random01(emitter) * static_cast<float>(emitter.runtime.meshShapeVertices.size())),
+            lastIndex);
+        resolveVertex(emitter.runtime.meshShapeVertices[index], outPoint, outNormal);
+        outNormal = outNormal.NormalizedOr(math::Vector3::UP);
     }
+
+    // meshShapeScale は位置にだけ掛ける。法線は向きしか表さないので、
+    // ここで掛けると負のスケール指定で «内向き» に反転してしまう。
     outPoint = outPoint * emitter.settings.meshShapeScale;
     return true;
 }
@@ -1057,7 +1155,6 @@ void AccumulateParticleSelfShadowDensity(const ParticleEmitter& emitter, int qua
     dc.constantBuffers[0] = h.particleSelfShadowFrameCB;
     dc.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
     dc.textures[0]  = emitter.runtime.texture;
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     renderer.Submit(dc, resources);
     // 本番描画へ戻す。呼び出し側が続けて HDR RT へ描くため、ここで必ず張り直す。
     renderer.SetRenderTarget(h.hdrRT, resources);
@@ -1202,7 +1299,6 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
     dc.constantBuffers[0] = h.frameCB;
     dc.constantBuffers[2] = emitter.runtime.trailRibbonCB;
     dc.textures[0]  = emitter.runtime.texture;
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     SubmitCounted(ctx, dc);
 }
 
@@ -1362,8 +1458,11 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     }
     case ParticleEmitterShape::MeshSurface: {
         math::Vector3 meshPoint;
-        if (SampleMeshShapePoint(emitter, animator, meshPoint))
+        math::Vector3 meshNormal;
+        if (SampleMeshShapePoint(emitter, animator, meshPoint, meshNormal)) {
             p.position = transformPoint(emitter.settings.emitPosition + meshPoint);
+            shapeVelocity = transformVector(meshNormal * emitter.settings.meshShapeNormalVelocity);
+        }
         break;
     }
     case ParticleEmitterShape::Point:
@@ -1483,8 +1582,12 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
     }
     case ParticleEmitterShape::MeshSurface: {
         math::Vector3 meshPoint;
-        if (SampleMeshShapePoint(emitter, animator, meshPoint))
+        math::Vector3 meshNormal;
+        if (SampleMeshShapePoint(emitter, animator, meshPoint, meshNormal)) {
             s.position = TransformEmitterPoint(tf, emitter.settings.emitPosition + meshPoint);
+            shapeVelocity = TransformEmitterVector(
+                tf, meshNormal * emitter.settings.meshShapeNormalVelocity);
+        }
         break;
     }
     default:
@@ -1792,7 +1895,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     renderer::ComputeCall cc;
     cc.shader        = h.particleGpuSimCS;
     cc.constantBuffers[0] = emitter.runtime.gpuEmitterCB;
-    cc.srvBuffers[1] = emitter.runtime.gpuSpawnBuffer;   // t15
+    cc.srvBuffers[15] = emitter.runtime.gpuSpawnBuffer;  // t15
     cc.srvInputs[7] = resources.GetDepthTexture(h.decalDepthRT);
     cc.uavBuffers[0] = emitter.runtime.gpuParticleBuffer; // u2
     cc.dispatchX = (static_cast<uint32_t>(maxP) + 63u) / 64u;
@@ -1852,7 +1955,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
                     call.constantBuffers[0] = emitter.runtime.gpuSortCB;
                     // 粒子プールは SRV (t14) で読むだけ。ソート結果は別バッファ (u3) なので、
                     // 同一リソースを SRV と UAV へ同時バインドするハザードにはならない。
-                    if (bindParticles) call.srvBuffers[0] = emitter.runtime.gpuParticleBuffer;
+                    if (bindParticles) call.srvBuffers[14] = emitter.runtime.gpuParticleBuffer;
                     call.uavBuffers[1] = emitter.runtime.gpuSortBuffer; // u3 = UAV_GPU_SORT
                     call.dispatchX = groups;
                     renderer.Dispatch(call, resources);
@@ -1917,7 +2020,6 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         meshDc.vsBuffers[0] = emitter.runtime.gpuParticleBuffer; // t14
         meshDc.vsBuffers[1] = emitter.runtime.gpuSortBuffer;     // t15 (ソート無効時は無効ハンドル)
         meshDc.instanceCount = static_cast<uint32_t>(maxP);
-        renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
         SubmitCounted(ctx, meshDc);
         return;
     }
@@ -1958,8 +2060,6 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     // (VS は renderCB の gpuSortEnabled が 0 なら参照しない)。
     dc.vsBuffers[1]       = emitter.runtime.gpuSortBuffer;
     dc.vertexCount        = static_cast<uint32_t>(maxP) * 6u;
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
     SubmitCounted(ctx, dc);
 }
 
@@ -2649,8 +2749,6 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         // (シェーダーは selfShadowStrength が 0 なら参照しない)。
         if (selfShadowReady)
             dc.textures[9] = resources.GetColorTexture(h.particleSelfShadowRT, 0);
-        renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
-        renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
         SubmitCounted(ctx, dc);
         g_particleDrawRecords.push_back({ emitter, particleVB, quadCount });
 
@@ -2718,7 +2816,6 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[kParticleConstantSlot] = record.emitter->runtime.renderCB;
         dc.textures[0]        = record.emitter->runtime.texture;
-        renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
         renderer.Submit(dc, resources);
     }
 

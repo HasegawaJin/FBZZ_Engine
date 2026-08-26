@@ -205,7 +205,8 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     FBZZ_VFX_FLOAT(startDelay); FBZZ_VFX_BOOL(clearOnStop); FBZZ_VFX_INT(shape);
     FBZZ_VFX_FLOAT(sphereRadius); FBZZ_VFX_FLOAT(coneAngleDegrees); FBZZ_VFX_FLOAT(coneRadius);
     FBZZ_VFX_STRING(meshShapePath); FBZZ_VFX_INT(meshShapeIndex); FBZZ_VFX_FLOAT(meshShapeScale);
-    FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation); FBZZ_VFX_INT(sortMode);
+    FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation); FBZZ_VFX_FLOAT(meshShapeNormalVelocity);
+    FBZZ_VFX_INT(sortMode);
     FBZZ_VFX_INT(simulationMode); FBZZ_VFX_INT(simulationSpace); FBZZ_VFX_INT(renderMode);
     FBZZ_VFX_FLOAT(stretchedVelocityScale); FBZZ_VFX_FLOAT(stretchedLengthScale);
     FBZZ_VFX_INT(renderPriority);
@@ -316,7 +317,7 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     emitter.shape = ReadEnum(table, "shape", emitter.shape, 4);
     FBZZ_VFX_FLOAT(sphereRadius); FBZZ_VFX_FLOAT(coneAngleDegrees); FBZZ_VFX_FLOAT(coneRadius);
     FBZZ_VFX_STRING(meshShapePath); FBZZ_VFX_INT(meshShapeIndex); FBZZ_VFX_FLOAT(meshShapeScale);
-    FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation);
+    FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation); FBZZ_VFX_FLOAT(meshShapeNormalVelocity);
     emitter.sortMode = ReadEnum(table, "sortMode", emitter.sortMode, 1);
     emitter.simulationMode = ReadEnum(table, "simulationMode", emitter.simulationMode, 1);
     emitter.simulationSpace = ReadEnum(table, "simulationSpace", emitter.simulationSpace, 1);
