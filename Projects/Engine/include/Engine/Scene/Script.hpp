@@ -481,15 +481,27 @@ struct RootMotionInfo {
 };
 
 // FBZZ_REF(T, ...) が RefField へ渡す型名を解決する。
-// GameObject 参照は「任意の GameObject 可」を意味する空文字、Script 派生参照は T::TYPE_NAME を返す。
+//   GameObject        … 「任意の GameObject 可」を意味する空文字
+//   Script 派生       … T::TYPE_NAME (基底型で受けると継承鎖のどこで一致してもよい)
+//   登録コンポーネント … declaredName (= FBZZ_REF に書いた型名そのもの)
 // WHY: Inspector はこの型名でドロップを検証し、フィルタ付きピッカーを出す (型不一致アサインを防ぐ)。
+//
+// WHY コンポーネントだけマクロから名前を貰うか:
+//   コンポーネントは Script と違って TYPE_NAME を持たない。名前の正本は
+//   ComponentRegistry の serializedName で、その中身は登録マクロの #Type、つまり
+//   C++ の型名そのもの。FBZZ_REF は #Type を手元に持っているので、Script.hpp から
+//   ComponentRegistry.hpp (コンポーネント 60 個ぶんの include) を引かずに同じ文字列が作れる。
+//   名前空間付きで書かれた場合だけ食い違うので、素の型名で書くこと。
 template<typename T>
-constexpr const char* RefTypeNameOf()
+constexpr const char* RefTypeNameOf(const char* declaredName)
 {
+    (void)declaredName;  // GameObject / Script 参照では使わない
     if constexpr (std::is_same_v<T, GameObject>)
         return "";
-    else
+    else if constexpr (std::is_base_of_v<Script, T>)
         return T::TYPE_NAME;
+    else
+        return declaredName;
 }
 
 // ── InvokeHandle ─────────────────────────────────────────────────────────────
@@ -1117,12 +1129,20 @@ struct ComponentCompleteness {
 // 型安全オブジェクト参照フィールド。Inspector にドラッグ&ドロップスロットを出す。
 // Ref<T> は { this } で所有 Script を受け取り、Name.Get() / if (Name) で解決する。
 // シリアライズは内包する EntityRef (= EntityID) を対象にする。
+//
+// T に取れるもの:
+//   GameObject        … 任意の GameObject
+//   Script 派生       … その型 (または基底型) のスクリプトを持つ GameObject
+//   登録コンポーネント … そのコンポーネントを持つ GameObject
+//     FBZZ_REF(LightComponent, targetLight, "Light")
+//     ...
+//     if (targetLight) targetLight->intensity = 3.0f;
 #define FBZZ_REF(Type, Name, Display)                                           \
     ::fbzz::scene::Ref<Type> Name { this };                                     \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
         r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
         r_.RefField(FBZZ_DISP_(Display, Name), Name.ref,                        \
-            ::fbzz::scene::RefTypeNameOf<Type>());                              \
+            ::fbzz::scene::RefTypeNameOf<Type>(#Type));                         \
     })
 
 // 型安全オブジェクト参照の可変長リスト。ウェイポイント列・砲塔の候補ターゲット・
@@ -1144,7 +1164,7 @@ struct ComponentCompleteness {
         for (const auto& _fbzz_item : Name)                                     \
             _fbzz_refIds.push_back(_fbzz_item.ref);                             \
         r_.RefListField(FBZZ_DISP_(Display, Name), _fbzz_refIds,                \
-            ::fbzz::scene::RefTypeNameOf<Type>());                              \
+            ::fbzz::scene::RefTypeNameOf<Type>(#Type));                         \
         Name.resize(_fbzz_refIds.size());                                       \
         for (::std::size_t _fbzz_i = 0; _fbzz_i < _fbzz_refIds.size(); ++_fbzz_i) { \
             Name[_fbzz_i].ref   = _fbzz_refIds[_fbzz_i];                        \
@@ -1333,8 +1353,9 @@ public:
     void CancelEventSubscriptions();
 
     // コルーチン (Coroutine.hpp)。WaitForSeconds 等を co_await して時間軸処理を直線的に書く。
-    // 注意: コルーチン内から StopAllCoroutines() を呼ばないこと (実行中ハンドルの自己破棄になる)。
     void StartCoroutine(Coroutine co);
+    // コルーチン内から呼んでもよい。その場合は実行中のハンドルを自己破棄しないよう、
+    // ティックを抜けてから実際に畳む。
     void StopAllCoroutines();
 
     // QueueRenderPass / GetShaderDescriptor
@@ -1412,7 +1433,6 @@ private:
     friend struct ScriptParticleForceFieldProxy;
     friend struct ScriptCloudProxy;
     friend struct ScriptSunMoonProxy;
-    friend struct ScriptTerrainDetailProxy;
     friend struct ScriptPatrolProxy;
     friend struct ScriptWindProxy;
     friend struct ScriptTrailProxy;
@@ -1429,11 +1449,11 @@ private:
     friend struct ScriptIKProxy;
     friend struct ScriptWaterProxy;
     friend struct ScriptTerrainProxy;
-    friend struct ScriptFoliageProxy;
     friend struct ScriptEnvironmentProxy;
     friend struct ScriptDecalProxy;
     friend struct ScriptVolumeProxy;
     friend struct ScriptReflectionProbeProxy;
+    friend struct ScriptMotionWarpProxy;
     friend struct ScriptLifetimeProxy;
     friend struct ScriptSaveProxy;
     friend struct ScriptEventProxy;
@@ -1464,6 +1484,7 @@ private:
     std::vector<Coroutine> m_coroutines;
     std::vector<Coroutine> m_pendingCoroutines;
     bool m_isTickingCoroutines = false;
+    bool m_stopAllCoroutinesRequested = false;
     bool m_enableStateInitialized = false;
     bool m_lastEnabled = true;
     bool m_isTickingInvokes = false;
@@ -1490,9 +1511,13 @@ inline T* Ref<T>::Get() const
     if (!go) return nullptr;
     if constexpr (std::is_same_v<T, GameObject>)
         return go;
-    else
+    else if constexpr (std::is_base_of_v<Script, T>)
         // T が Script 派生のとき、その GameObject 上の T スクリプトを取得する。
         return owner->scene.template GetScript<T>(go);
+    else
+        // それ以外はコンポーネント。GameObject を完全型にしないで済むよう
+        // プロキシ経由で引く (Script.hpp は GameObject.hpp を include していない)。
+        return owner->scene.template GetComponent<T>(go);
 }
 
 } // namespace fbzz::scene

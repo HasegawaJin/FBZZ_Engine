@@ -131,8 +131,12 @@ struct ScriptParticleProxy {
     void SetConeShape(float radius, float angleDegrees) const;
     void SetBoxShape(const math::Vector3& extents) const;
     // FBX / Modelの頂点群からParticle形状を生成する。followSkinnedAnimation=trueなら同じGOのAnimator姿勢に追従する。
+    // normalVelocity は表面法線方向へ与える初速 [m/s]。負値は表面へ向かう収束になる。
     void SetMeshShape(std::string_view modelPath, int meshIndex = -1, float scale = 1.0f,
-                      bool followSkinnedAnimation = false) const;
+                      bool followSkinnedAnimation = false, float normalVelocity = 0.0f) const;
+    /// 法線初速だけを差し替える。崩壊の進行に合わせて «にじむ» から «噴き出す» へ
+    /// 変えるなど、形状を組み直さずに勢いだけ動かしたいときに使う。
+    void SetMeshShapeNormalVelocity(float normalVelocity) const;
     // NOTE: ブレンド・フリップブック・ソフトパーティクルなど «見た目» は .mat の
     //       [particle] が正本になったため、エミッター側からは触れない。
     void SetSortMode(ParticleSortMode sortMode) const;

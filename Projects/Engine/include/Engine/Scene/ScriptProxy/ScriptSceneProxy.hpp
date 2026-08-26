@@ -37,6 +37,11 @@ struct ScriptSceneProxy {
     // EntityID から直接 Script を取得する。Inspector でアサインした参照に使う。
     template<typename T> T* GetScript(EntityID id) const;
     template<typename T> T* GetComponent() const;
+    // 別 GameObject のコンポーネント。GetScript の GameObject 版と対になる。
+    // WHY 要るか: 部位ごとに GameObject が分かれた構成では «自分の» コンポーネントだけ
+    //      引けても足りない。Ref<T> がコンポーネント型を解決するのにも使う。
+    template<typename T> T* GetComponent(GameObject& go) const;
+    template<typename T> T* GetComponent(GameObject* go) const;  // nullptr 安全なポインタ版
     template<typename T> T& GetOrAddComponent() const;
     template<typename T> T& RequireComponent() const;
     bool IsActiveAndEnabled() const;

@@ -355,7 +355,7 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    // 型付きオブジェクト参照 (FBZZ_REF)。typeName の Script を持つ GO のみ受理する。
+    // 型付きオブジェクト参照 (FBZZ_REF)。typeName の Script かコンポーネントを持つ GO のみ受理する。
     void RefField(const char* name, scene::EntityRef& v, const char* typeName) override
     {
         if (!BeginRow(name)) return;
@@ -368,7 +368,8 @@ struct ImGuiReflector : scene::IReflector {
     // オブジェクト参照スロット本体 (BeginRow 済みの値カラムに描く)。
     //   [参照ボタン(右いっぱい)] [◎ピッカー] [×クリア]
     //   typeName == ""  : 任意 GameObject 可
-    //   typeName != ""  : その Script 型を持つ GO のみ受理 (ドロップ検証 + ピッカー絞り込み + 不一致を赤表示)
+    //   typeName != ""  : その Script 型 / コンポーネント型を持つ GO のみ受理
+    //                     (ドロップ検証 + ピッカー絞り込み + 不一致を赤表示)
     void DrawObjectRefSlot(scene::EntityID& v, const char* typeName)
     {
         const bool typed = typeName && typeName[0] != '\0';
@@ -448,7 +449,7 @@ struct ImGuiReflector : scene::IReflector {
                 }
             }
             if (shown == 0)
-                ImGui::TextDisabled("%s", typed ? "No GameObject has that script."
+                ImGui::TextDisabled("%s", typed ? "No GameObject has that script or component."
                                                 : "No GameObject matches.");
             ImGui::EndPopup();
         }

@@ -158,6 +158,12 @@ struct ScriptMaterialProxy {
     [[nodiscard]] int32_t GetRenderQueue() const;
     // 割り当てられている共有 .mat のパス。未割り当てなら空文字列。
     [[nodiscard]] std::string GetSharedMaterialPath(uint32_t slot = 0) const;
+    // 別 GameObject のスロットに割り当てられている共有 .mat のパス。
+    // WHY: 部位ごとに GameObject が分かれたキャラクターでは、親のスクリプトが
+    //      «今どの材質で描かれているか» を見て差し替え先を決める必要がある。
+    //      Instance / SetSharedMaterial には EntityRef 版があるのに、読み取りだけ
+    //      自分自身に限られていた。
+    [[nodiscard]] std::string GetSharedMaterialPath(EntityRef target, uint32_t slot) const;
     // MaterialComponent が持つ submesh スロット数。
     [[nodiscard]] uint32_t GetSlotCount() const;
 
