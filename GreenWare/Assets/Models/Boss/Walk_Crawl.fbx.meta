@@ -2,14 +2,13 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '18f10c26b1ca5223'
-source_hash = 'da1298555e43fa2d'
+settings_hash = '509927807eb9d923'
+source_hash = 'ffe0fd9d2e6bca34'
 
 [meta]
-guid = '62ca50b0c6282b65f2dd1f61bb7bb99e'
+guid = '5c93c79d168a882bcb143675fb9e61b1'
 
 [model]
-clips = []
 default_compression = 'Auto'
 generate_normals = true
 generate_tangents = true
@@ -18,8 +17,15 @@ importer = 'ModelImporter'
 importer_version = 4
 normal_map_convention = 'DirectX'
 root_motion_node = ''
-selected_animations = []
+selected_animations = [ 'Walk_Crawl' ]
 selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
+
+    [[model.clips]]
+    end_frame = 39.0
+    loop = true
+    name = 'Walk_Crawl'
+    output_name = ''
+    start_frame = 0.0

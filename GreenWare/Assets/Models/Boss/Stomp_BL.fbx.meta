@@ -2,11 +2,11 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '18f10c26b1ca5223'
-source_hash = '8e49c530b569e269'
+settings_hash = '7f3d8df0a9993840'
+source_hash = 'd52118ee644cbfc0'
 
 [meta]
-guid = 'a12ede0d67fd42fa055dce3302b2468c'
+guid = 'dacceeae15a178959bb88349fa2c6ece'
 
 [model]
 clips = []
@@ -18,7 +18,7 @@ importer = 'ModelImporter'
 importer_version = 4
 normal_map_convention = 'DirectX'
 root_motion_node = ''
-selected_animations = []
+selected_animations = [ 'Stomp_BL' ]
 selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0

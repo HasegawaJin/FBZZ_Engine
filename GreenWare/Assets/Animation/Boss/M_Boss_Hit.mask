@@ -1,0 +1,12 @@
+[mask]
+default_include = false
+name = 'M_Boss_Hit'
+skeleton_source = 'Assets/Models/Boss/Boss.fbx'
+skeleton_source_signature = ''
+version = 1
+
+[[entries]]
+blend_depth = 1
+bone = 'RootNode/Boss_Armature/Root/Body'
+include_children = true
+weight = 1.0

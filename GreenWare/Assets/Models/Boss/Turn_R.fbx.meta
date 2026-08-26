@@ -2,14 +2,13 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '18f10c26b1ca5223'
-source_hash = '36515baa39ea2767'
+settings_hash = '36e503bb1ae35ded'
+source_hash = '95e556d03d751805'
 
 [meta]
-guid = '89099ea1a03a4c84d77d14b93ab0fc5a'
+guid = '4d16ffe991993011161f45b274aed783'
 
 [model]
-clips = []
 default_compression = 'Auto'
 generate_normals = true
 generate_tangents = true
@@ -18,8 +17,15 @@ importer = 'ModelImporter'
 importer_version = 4
 normal_map_convention = 'DirectX'
 root_motion_node = ''
-selected_animations = []
+selected_animations = [ 'Turn_R' ]
 selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
+
+    [[model.clips]]
+    end_frame = 39.0
+    loop = true
+    name = 'Turn_R'
+    output_name = ''
+    start_frame = 0.0

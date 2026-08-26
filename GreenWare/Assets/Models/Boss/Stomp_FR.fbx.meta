@@ -3,10 +3,10 @@ file_format_version = 1
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
 settings_hash = '18f10c26b1ca5223'
-source_hash = 'aa35654277c2da8b'
+source_hash = '4647dc2a62b66713'
 
 [meta]
-guid = '7f7ccc3dd5e6f5d65dcc22d2f63dfb60'
+guid = '383e9d382e29dc7b818f0a403586968b'
 
 [model]
 clips = []
