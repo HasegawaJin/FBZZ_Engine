@@ -1804,12 +1804,33 @@ namespace fbzz::physics
 
     namespace
     {
+        // GJK が渡してくる探索方向は «長さ 0 になりうる»。
+        //
+        // WHY 呼び出し側で保証できないか:
+        //   探索方向は 2 形状のミンコフスキー差から毎反復で作られる。中心が一致した
+        //   球どうし、完全に入れ子になったカプセル、単体が退化した瞬間 — どれも
+        //   «方向が定まらない» が正常な途中経過として現れる。GJK の側から見ると
+        //   «どこでもいいから表面の 1 点» が返ればよく、そこで止める理由が無い。
+        //
+        // WHY 固定の向きへ倒すか:
+        //   サポート関数は全域で定義されていなければならない (部分関数だと単体が
+        //   組めない)。方向が無いときにどの点を返すかは結果に影響しないので、
+        //   毎回同じ点を返して反復が振動しないようにする。
+        //
+        // NOTE: Vector3::Normalized() は長さ 0 で assert する契約 (ゲーム側で
+        //       退化した入力を握り潰さないため)。ここは «退化が正常系» の側なので
+        //       NormalizedOr を使う。
+        math::Vector3 SupportDirection(const math::Vector3& dir)
+        {
+            return dir.NormalizedOr(math::Vector3::UP);
+        }
+
         // 各形状の GJK サポート関数
         math::Vector3 SupportSphere(const void* shape, const math::Vector3& dir)
         {
             const auto* s = static_cast<const SphereCollider*>(shape);
             const math::Vector3 center = s->GetAABB().Center();
-            return center + dir.Normalized() * s->m_radius;
+            return center + SupportDirection(dir) * s->m_radius;
         }
 
         math::Vector3 SupportAABB(const void* shape, const math::Vector3& dir)
@@ -1835,7 +1856,7 @@ namespace fbzz::physics
             // セグメント上で dir と最も内積が大きい点 + radius
             const math::Vector3 best = (math::Vector3::Dot(s, dir) >= math::Vector3::Dot(e, dir))
                                         ? s : e;
-            return best + dir.Normalized() * c->m_radius;
+            return best + SupportDirection(dir) * c->m_radius;
         }
 
         math::Vector3 SupportTriangle(const void* shape, const math::Vector3& dir)
