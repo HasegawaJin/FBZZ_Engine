@@ -111,6 +111,20 @@ struct SortingGroupComponent {
 
 enum class LineSpace : int { Local = 0, World = 1 };
 
+/// 点列を «どんな断面で» 押し出すか。
+///
+/// WHY 筒を足すか:
+///   Ribbon は区間ごとに板を 1 枚張ってカメラへ向ける。線としては十分だが、
+///   «太さのあるもの» — レーザーの筒、パイプ、ケーブル — を通すと必ず紙に見える。
+///   軸に沿って視線が寄ったところで板が画面上で潰れるうえ、床へ突き刺さる端が
+///   板の切り口として出るため、地形との交差が «刺さっている» に見えない。
+///   実体のある筒なら輪郭も深度もジオメトリが持つので、どちらも起きない。
+///
+/// WHY 板を残すか:
+///   軌跡・放電・UI の線は «常にこちらを向いている» ことが読みやすさそのもので、
+///   筒にすると細い線ほど画面上で消える。用途が違うので置き換えではなく選択にする。
+enum class LineShape : int { Ribbon = 0, Tube = 1 };
+
 struct LineRendererComponent {
     bool enabled = true;
     std::vector<math::Vector3> points;
@@ -121,7 +135,11 @@ struct LineRendererComponent {
     float endWidth = 0.05f;
     LineSpace space = LineSpace::Local;
     bool loop = false;
+    /// Ribbon のときだけ意味を持つ。Tube は形が視点に依存しない。
     bool billboard = true;
+    LineShape shape = LineShape::Ribbon;
+    /// Tube の円周分割数。小さいと角が見え、大きくしても遠目には変わらない。
+    int radialSegments = 8;
     int sortingLayer = 0;
     int orderInLayer = 0;
     DoubleBufferedMesh runtimeMesh;
@@ -142,6 +160,11 @@ struct LineRendererComponent {
         space = static_cast<LineSpace>(value < 0 || value > 1 ? 0 : value);
         r.Field("loop", loop);
         r.Field("billboard", billboard);
+        int shapeValue = static_cast<int>(shape);
+        static constexpr const char* SHAPES[] = { "Ribbon", "Tube" };
+        r.Enum("shape", shapeValue, SHAPES);
+        shape = static_cast<LineShape>(shapeValue < 0 || shapeValue > 1 ? 0 : shapeValue);
+        r.Field("radialSegments", radialSegments);
         r.Field("sortingLayer", sortingLayer);
         r.Field("orderInLayer", orderInLayer);
     }
