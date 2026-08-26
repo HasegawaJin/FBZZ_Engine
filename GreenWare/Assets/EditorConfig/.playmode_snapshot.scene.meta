@@ -1,14 +1,14 @@
 [editor]
 format_version = 2
-hidden_objects = []
+hidden_objects = [ 'a1000001-0000-0000-0000-000000000030' ]
 locked_objects = []
 
     [[editor.game_objects]]
-    component_order = [ 'UI Image' ]
+    component_order = [ 'UI Text' ]
     instance_id = 'a1000001-0000-0000-0000-000000000013'
 
     [[editor.game_objects]]
-    component_order = [ 'Script:ElectricMinusParticleComponent' ]
+    component_order = [ 'UI Button' ]
     instance_id = 'a1000001-0000-0000-0000-000000000008'
 
     [[editor.game_objects]]
@@ -24,7 +24,7 @@ locked_objects = []
     instance_id = 'a1000001-0000-0000-0000-000000000003'
 
     [[editor.game_objects]]
-    component_order = [ 'UI Button', 'UI Text' ]
+    component_order = [ 'UI Image' ]
     instance_id = 'a1000001-0000-0000-0000-000000000015'
 
     [[editor.game_objects]]
@@ -56,11 +56,11 @@ locked_objects = []
     instance_id = 'a1000001-0000-0000-0000-000000000018'
 
     [[editor.game_objects]]
-    component_order = [ 'Script:ElectricMinusParticleComponent' ]
+    component_order = [ 'UI Image', 'Script:GameCursorComponent' ]
     instance_id = 'a1000001-0000-0000-0000-000000000019'
 
     [[editor.game_objects]]
-    component_order = [ 'UI Image', 'UI Button' ]
+    component_order = [ 'UI Image' ]
     instance_id = 'a1000001-0000-0000-0000-000000000012'
 
     [[editor.game_objects]]
@@ -68,7 +68,7 @@ locked_objects = []
     instance_id = '83f19a9d-7bc3-4c7a-bae1-34305a98db89'
 
     [[editor.game_objects]]
-    component_order = [ 'Script:ElectricPlusParticleComponent' ]
+    component_order = [ 'Script:ElectricPlusParticleComponent', 'Particle Emitter' ]
     instance_id = 'a1000001-0000-0000-0000-000000000022'
 
     [[editor.game_objects]]
@@ -82,6 +82,22 @@ locked_objects = []
     [[editor.game_objects]]
     component_order = [ 'Camera', 'Audio Listener' ]
     instance_id = 'a1000001-0000-0000-0000-000000000021'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Script:TitleFieldGridComponent' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000030'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000014'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000016'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000011'
 
 [meta]
 guid = '41b4ab9efd567d60740f1428f21d51b5'

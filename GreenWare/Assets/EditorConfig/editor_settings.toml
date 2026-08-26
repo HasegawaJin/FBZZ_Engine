@@ -1,10 +1,10 @@
 [asset_browser]
 bookmarks = []
-current_folder = 'Assets'
+current_folder = 'Assets/Scenes'
 icon_size = 72.0
 search_all_folders = false
 sort_mode = 0
-tree_width = 180.0
+tree_width = 218.0
 type_filter = 0
 view_mode = 0
 
@@ -12,10 +12,37 @@ view_mode = 0
 enabled = true
 interval_sec = 300
 
+[build]
+development = true
+output_dir = 'Builds/Development'
+product_name = 'Test'
+strip_editor_assets = true
+version = '1.0.0'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Load.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Main.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Options.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Result.scene'
+
+    [[build.scenes]]
+    enabled = true
+    path = 'Assets/Scenes/Title.scene'
+
 [camera]
-last_pos_x = 15.540257453918457
-last_pos_y = 6.086760997772217
-last_pos_z = -9.362944602966309
+last_pos_x = 11.081121444702148
+last_pos_y = 10.19031810760498
+last_pos_z = -18.21024513244629
 last_rot_w = 1.0
 last_rot_x = 0.0
 last_rot_y = 0.0
@@ -36,24 +63,13 @@ show_warn = true
 [debug]
 navmesh_draw_distance = 120.0
 navmesh_draw_mode = 0
-show_colliders = true
+show_colliders = false
 show_decal_bounds = false
 show_nav_sensors = false
 show_navmesh = true
 show_terrain_collision = false
 show_ui_rects = false
 view_mode = 0
-
-[detail_tool]
-brush_radius = 6.0
-brush_strength = 0.6000000238418579
-layer_index = 0
-mode = 0
-show_chunk_bounds = false
-show_counts = false
-
-[foliage_tool]
-erase_radius = 4.0
 
 [game_view]
 aspect = 6
@@ -316,6 +332,10 @@ k = 98363633
 v = true
 
 [[inspector_sections.states]]
+k = 113029683
+v = false
+
+[[inspector_sections.states]]
 k = 128848887
 v = false
 
@@ -373,7 +393,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 244167004
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 246734880
@@ -398,6 +418,10 @@ v = true
 [[inspector_sections.states]]
 k = 269991865
 v = true
+
+[[inspector_sections.states]]
+k = 281168557
+v = false
 
 [[inspector_sections.states]]
 k = 295295110
@@ -429,7 +453,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 361012331
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 378886244
@@ -460,6 +484,10 @@ k = 418995722
 v = false
 
 [[inspector_sections.states]]
+k = 425552647
+v = true
+
+[[inspector_sections.states]]
 k = 429110101
 v = false
 
@@ -470,6 +498,10 @@ v = false
 [[inspector_sections.states]]
 k = 453076758
 v = true
+
+[[inspector_sections.states]]
+k = 458617769
+v = false
 
 [[inspector_sections.states]]
 k = 465768719
@@ -540,8 +572,16 @@ k = 539451672
 v = true
 
 [[inspector_sections.states]]
+k = 559432861
+v = false
+
+[[inspector_sections.states]]
 k = 582215711
 v = true
+
+[[inspector_sections.states]]
+k = 614988986
+v = false
 
 [[inspector_sections.states]]
 k = 620626574
@@ -572,6 +612,10 @@ k = 652415056
 v = true
 
 [[inspector_sections.states]]
+k = 659718028
+v = false
+
+[[inspector_sections.states]]
 k = 684948636
 v = true
 
@@ -589,7 +633,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 718924822
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 738561339
@@ -654,6 +698,10 @@ v = false
 [[inspector_sections.states]]
 k = 899852225
 v = true
+
+[[inspector_sections.states]]
+k = 900504272
+v = false
 
 [[inspector_sections.states]]
 k = 915751037
@@ -788,6 +836,10 @@ k = 1326618241
 v = true
 
 [[inspector_sections.states]]
+k = 1345042288
+v = false
+
+[[inspector_sections.states]]
 k = 1348673838
 v = true
 
@@ -813,6 +865,10 @@ v = true
 
 [[inspector_sections.states]]
 k = 1423561169
+v = false
+
+[[inspector_sections.states]]
+k = 1426052006
 v = false
 
 [[inspector_sections.states]]
@@ -844,7 +900,15 @@ k = 1490813710
 v = false
 
 [[inspector_sections.states]]
+k = 1493740009
+v = false
+
+[[inspector_sections.states]]
 k = 1519051802
+v = false
+
+[[inspector_sections.states]]
+k = 1521048711
 v = false
 
 [[inspector_sections.states]]
@@ -945,7 +1009,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 1762556217
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 1765257048
@@ -1021,6 +1085,10 @@ v = false
 
 [[inspector_sections.states]]
 k = 1929963461
+v = true
+
+[[inspector_sections.states]]
+k = 1937061014
 v = false
 
 [[inspector_sections.states]]
@@ -1053,7 +1121,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2007673567
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 2008625634
@@ -1069,7 +1137,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 2027583054
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 2027782896
@@ -1114,6 +1182,10 @@ v = true
 [[inspector_sections.states]]
 k = 2144209677
 v = true
+
+[[inspector_sections.states]]
+k = 2175004608
+v = false
 
 [[inspector_sections.states]]
 k = 2178017959
@@ -1225,7 +1297,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2454876637
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 2474006275
@@ -1246,6 +1318,10 @@ v = false
 [[inspector_sections.states]]
 k = 2542959644
 v = true
+
+[[inspector_sections.states]]
+k = 2543639071
+v = false
 
 [[inspector_sections.states]]
 k = 2545364213
@@ -1273,7 +1349,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2608755643
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 2608775197
@@ -1377,7 +1453,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2935615967
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 2936622285
@@ -1508,6 +1584,10 @@ k = 3237627098
 v = true
 
 [[inspector_sections.states]]
+k = 3244458010
+v = false
+
+[[inspector_sections.states]]
 k = 3249321626
 v = true
 
@@ -1540,6 +1620,10 @@ k = 3328245526
 v = true
 
 [[inspector_sections.states]]
+k = 3355927145
+v = false
+
+[[inspector_sections.states]]
 k = 3357470736
 v = true
 
@@ -1553,7 +1637,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 3391704998
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 3400703613
@@ -1594,6 +1678,10 @@ v = true
 [[inspector_sections.states]]
 k = 3464379767
 v = true
+
+[[inspector_sections.states]]
+k = 3471554859
+v = false
 
 [[inspector_sections.states]]
 k = 3472503500
@@ -1705,7 +1793,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 3764139602
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 3797721482
@@ -1801,7 +1889,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 4081936864
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 4098032912
@@ -1873,6 +1961,10 @@ v = true
 
 [[inspector_sections.states]]
 k = 4275561706
+v = false
+
+[[inspector_sections.states]]
+k = 4277609705
 v = false
 
 [[inspector_sections.states]]
@@ -1976,9 +2068,10 @@ open = false
 last_path = 'Assets/Scenes/Title.scene'
 recent = [
     'Assets/Scenes/Title.scene',
-    'Assets/Scenes/Options.scene',
     'Assets/Scenes/Main.scene',
-    'Assets/Scenes/Result.scene'
+    'Assets/Scenes/Result.scene',
+    'Assets/Scenes/Load.scene',
+    'Assets/Scenes/Options.scene'
 ]
 
 [snap]
@@ -1995,8 +2088,6 @@ paint_layer = 0
 sculpt_mode = 0
 
 [tools]
-show_detail = false
-show_foliage = false
 show_terrain = false
 show_water = false
 
@@ -2008,7 +2099,7 @@ scale = 1.0
 grid_size = 1.0
 scene_view_occlusion_culling = false
 show_grid = false
-show_light_range = true
+show_light_range = false
 show_skeleton = false
 show_stats = true
 show_vfx_gizmos = false

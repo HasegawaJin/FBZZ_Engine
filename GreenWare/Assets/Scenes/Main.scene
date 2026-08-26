@@ -18,7 +18,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.77758
+    aspectRatio = 1.777156
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -35,18 +35,18 @@ tag = 'MainCamera'
     smallObjectScreenHeight = 0.0
 
     [gameobjects.transform]
-    position = [ -5.826562, 4.5823, 3.507684 ]
-    rotation = [ -0.099695, 0.756775, -0.118812, -0.635009 ]
+    position = [ -9.916632, 1.729881, 2.886494 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.000003, 1.0, 1.000003 ]
 
     [[gameobjects.ScriptComponents]]
-    enabled = true
+    enabled = false
     type = 'TpsCameraComponent'
 
         [gameobjects.ScriptComponents.fields]
-        distance = 4.363077
+        distance = 2.395582
         followSpeed = 10.0
-        height = 3.215384
+        height = 1.927711
         loosenedFollowSpeed = 2.0
         loosenedVerticalFollowSpeed = 1.4
         maxPitch = 65.0
@@ -62,6 +62,31 @@ tag = 'MainCamera'
         verticalFollowSpeed = 10.0
         yaw = 260.0
 
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'FpsCameraComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bobAmplitude = 0.045
+        bobDistance = 3.0
+        bobResponse = 8.0
+        bobSway = 0.03
+        eyeForward = 0.1
+        eyeHeight = 1.7
+        hideBody = true
+        maxPitch = 85.0
+        minPitch = -85.0
+        mouseOrbit = true
+        mouseSensitivity = 0.2
+        padInvertY = false
+        padLookSpeed = 200.0
+        padOrbit = true
+        pitch = 0.0
+        snapDistance = 1.5
+        targetTag = 'Player'
+        verticalFollowSpeed = 20.0
+        yaw = 0.0
+
 [[gameobjects]]
 active = true
 instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
@@ -76,16 +101,19 @@ tag = 'Untagged'
     [gameobjects.LightComponent]
     castShadows = true
     color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
     enabled = true
     intensity = 1.0
     shadowBias = 1.0
     shadowDistance = 0.0
-    shadowStrength = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
     type = 'Directional'
+    useColorTemperature = true
 
     [gameobjects.transform]
     position = [ 9.098, 24.136452, 0.004797 ]
-    rotation = [ -0.119053, 0.61527, -0.7735, -0.094699 ]
+    rotation = [ 0.078349, -0.847191, 0.509044, 0.130394 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -154,23 +182,23 @@ tag = 'Untagged'
     [gameobjects.VolumetricCloudComponent]
     albedo = [ 1.0, 0.991489, 0.974468 ]
     ambientGradient = 0.0
-    ambientStrength = 0.28
+    ambientStrength = 4.0
     ambientTint = [ 1.0, 1.0, 1.0 ]
     anisotropy = 0.35
     bottomHeight = 700.0
     bottomSoftness = 0.307568
-    cloudSize = 2645.0
-    coverage = 0.42279
-    density = 0.68
+    cloudSize = 1490.0
+    coverage = 0.271111
+    density = 0.3
     detailSize = 604.0
     detailStrength = 0.832827
     enabled = true
     evolutionSpeed = 2.0
-    extinction = 0.03
+    extinction = 0.056
     fadeDistance = 492.0
     halfResolution = true
     horizonFade = 0.25
-    lightAbsorption = 1.91
+    lightAbsorption = 1.74
     lightShaftStrength = 1.0
     lightStepCount = 2
     maxDistance = 5100.0
@@ -179,12 +207,12 @@ tag = 'Untagged'
     powderStrength = 0.7
     silverLining = 0.42
     stepCount = 48
-    sunIntensity = 1.5
+    sunIntensity = 10.8
     sunTint = [ 1.0, 1.0, 1.0 ]
-    thickness = 1280.0
+    thickness = 1760.0
     topSoftness = 0.350851
-    weatherAmount = 0.178322
-    weatherSize = 2200.0
+    weatherAmount = 0.169433
+    weatherSize = 2350.0
     windDirection = [ 1.0, 0.25 ]
     windSpeed = 66.5
 
@@ -502,7 +530,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = '184ddf7c-542e-4299-89a2-d1bb9342642d'
 layer = 0
 name = 'ARENA_Roof'
@@ -547,32 +575,6 @@ tag = 'Untagged'
     castShadows = true
     enabled = true
     mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:10|Assets/Models/Map/Boss_Arena_Map.fbx'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = '9f5f88ba-0891-40a4-8620-6601733c07f8'
-layer = 0
-name = 'ARENA_Rubble'
-parent = 'Boss_Arena_Map'
-parentInstanceId = '65ec547e-b105-4e0a-abde-95ebeff9afb2'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
-    visible = true
-
-    [gameobjects.MeshRenderer]
-    castShadows = true
-    enabled = true
-    mesh = 'guid:329c7a7f6784b08a34f592a1345b04ab:11|Assets/Models/Map/Boss_Arena_Map.fbx'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -1022,7 +1024,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = '8ca59d74-58f9-4f67-b891-172d654a1510'
 layer = 0
 name = 'ARENA_Floor.001'
@@ -1035,7 +1037,7 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1048,7 +1050,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = 'df7d18a2-e623-42ee-8e1e-243810e4811c'
 layer = 0
 name = 'ARENA_Roof.001'
@@ -1130,7 +1132,24 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:33|Assets/Models/Map/Boss_Arena_Map.fbx'
+    physicsMaterial = ''
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1156,7 +1175,24 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:34|Assets/Models/Map/Boss_Arena_Map.fbx'
+    physicsMaterial = ''
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1182,7 +1218,24 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:35|Assets/Models/Map/Boss_Arena_Map.fbx'
+    physicsMaterial = ''
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1208,7 +1261,24 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:36|Assets/Models/Map/Boss_Arena_Map.fbx'
+    physicsMaterial = ''
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1260,7 +1330,24 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:38|Assets/Models/Map/Boss_Arena_Map.fbx'
+    physicsMaterial = ''
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1286,7 +1373,24 @@ tag = 'Untagged'
     [gameobjects.MaterialComponent]
     enabled = true
     material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
-    visible = true
+    visible = false
+
+    [gameobjects.MeshColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    meshIndex = 0
+    meshPath = 'guid:329c7a7f6784b08a34f592a1345b04ab:39|Assets/Models/Map/Boss_Arena_Map.fbx'
+    physicsMaterial = ''
+    useTransformScale = true
+
+        [gameobjects.MeshColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
 
     [gameobjects.MeshRenderer]
     castShadows = true
@@ -1794,331 +1898,6 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'f4000001-0000-0000-0000-000000000020'
-layer = 0
-name = 'PolarityPillar_A'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'PolarityAnchor'
-
-    [gameobjects.BoxColliderComponent]
-    center = [ 0.0, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = false
-    physicsMaterial = ''
-
-        [gameobjects.BoxColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.4
-        frictionCombine = 1
-        restitution = 0.3
-        restitutionCombine = 2
-        staticFriction = 0.6
-
-        [gameobjects.BoxColliderComponent.shape]
-        halfExtents = [ 0.5, 0.5, 0.5 ]
-        type = 'OBB'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
-    visible = true
-
-    [gameobjects.MeshRenderer]
-    castShadows = true
-    enabled = true
-    mesh = 'primitive:cylinder'
-
-    [gameobjects.transform]
-    position = [ -5.0, 2.5, -7.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 2.0, 5.0, 2.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PolarityTargetComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
-        debugRemaining = 0.0
-        emissiveSlot = 0
-        isAnchor = true
-        polarityClass = 3
-
-[[gameobjects]]
-active = true
-instanceId = 'f4000001-0000-0000-0000-000000000010'
-layer = 0
-name = 'Enemy_Normal_A'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Enemy'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
-    visible = true
-
-    [gameobjects.MeshRenderer]
-    castShadows = true
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.RigidBodyComponent]
-    allowSleeping = false
-    angularDrag = 0.3
-    angularVelocity = [ 0.0, 0.0, 0.0 ]
-    ccdRadius = 0.65
-    charge = 0.0
-    enabled = true
-    freezePosition = [ 0.0, 0.0, 0.0 ]
-    freezeRotation = [ 1.0, 1.0, 1.0 ]
-    gravitationalMass = 1.0
-    gravityScale = 1.0
-    isGravitationalSource = false
-    isStatic = false
-    linearDrag = 0.1
-    mass = 1.0
-    massMode = 0
-    useCCD = true
-    useGravity = true
-    velocity = [ 2.792212, -1.1e-05, -1.403941 ]
-
-    [gameobjects.SphereColliderComponent]
-    center = [ 0.0, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = false
-    physicsMaterial = ''
-
-        [gameobjects.SphereColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.25
-        frictionCombine = 1
-        restitution = 0.2
-        restitutionCombine = 2
-        staticFriction = 0.3
-
-        [gameobjects.SphereColliderComponent.shape]
-        radius = 0.5
-        type = 'Sphere'
-
-    [gameobjects.transform]
-    position = [ -5.108775, 1.0, 0.520188 ]
-    rotation = [ 0.0, 0.853097, 0.0, 0.521753 ]
-    scale = [ 2.0, 2.0, 2.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PolarityTargetComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
-        debugRemaining = 0.0
-        emissiveSlot = 0
-        isAnchor = false
-        polarityClass = 0
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PolarityBodyComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
-        debugPartner = ''
-        debugPhase = 'Idle'
-        drawDebugFlight = false
-        drawLink = false
-        linkHeightOffset = 0.0
-        linkWidth = 0.12
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'EnemyHealthComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        anchorDamageMultiplier = 1.0
-        baseImpactDamage = 40
-        debugHealth = 100
-        destroyDelay = 0.05
-        maxHealth = 100
-        sfxDeath = ''
-        sfxHit = ''
-        speedDamageScale = 0.0
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'EnemyChaserComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        attackCooldown = 1.0
-        attackDamage = 1
-        debugState = 'Chasing'
-        moveSpeed = 3.2
-        playerTag = 'Player'
-        stopDistance = 1.35
-        turnSpeed = 10.0
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'EnemyHealthBarComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
-        barHeight = 0.16
-        barWidth = 1.2
-        borderWidth = 0.02
-        debugAnchorHeight = 0.0
-        drainColor = [ 1.0, 0.95, 0.75, 1.0 ]
-        drainHold = 0.18
-        drainSpeed = 0.9
-        drawAnchor = false
-        emptyColor = [ 0.85, 0.35, 0.2, 1.0 ]
-        fallbackBodyHeight = 1.0
-        fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
-        headroom = 0.35
-        hideWhenFull = false
-
-[[gameobjects]]
-active = true
-instanceId = 'f4000001-0000-0000-0000-000000000011'
-layer = 0
-name = 'Enemy_Normal_B'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Enemy'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
-    visible = true
-
-    [gameobjects.MeshRenderer]
-    castShadows = true
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.RigidBodyComponent]
-    allowSleeping = false
-    angularDrag = 0.3
-    angularVelocity = [ 0.0, 0.0, 0.0 ]
-    ccdRadius = 0.65
-    charge = 0.0
-    enabled = true
-    freezePosition = [ 0.0, 0.0, 0.0 ]
-    freezeRotation = [ 1.0, 1.0, 1.0 ]
-    gravitationalMass = 1.0
-    gravityScale = 1.0
-    isGravitationalSource = false
-    isStatic = false
-    linearDrag = 0.1
-    mass = 1.0
-    massMode = 0
-    useCCD = true
-    useGravity = true
-    velocity = [ 1.472813, -1.8e-05, -2.755895 ]
-
-    [gameobjects.SphereColliderComponent]
-    center = [ 0.0, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = false
-    physicsMaterial = ''
-
-        [gameobjects.SphereColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.25
-        frictionCombine = 1
-        restitution = 0.2
-        restitutionCombine = 2
-        staticFriction = 0.3
-
-        [gameobjects.SphereColliderComponent.shape]
-        radius = 0.5
-        type = 'Sphere'
-
-    [gameobjects.transform]
-    position = [ 1.549831, 1.0, 3.145711 ]
-    rotation = [ 0.0, 0.969216, 0.0, 0.246212 ]
-    scale = [ 2.0, 2.0, 2.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PolarityTargetComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
-        debugRemaining = 0.0
-        emissiveSlot = 0
-        isAnchor = false
-        polarityClass = 0
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PolarityBodyComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
-        debugPartner = ''
-        debugPhase = 'Idle'
-        drawDebugFlight = false
-        drawLink = false
-        linkHeightOffset = 0.0
-        linkWidth = 0.12
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'EnemyHealthComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        anchorDamageMultiplier = 1.0
-        baseImpactDamage = 40
-        debugHealth = 100
-        destroyDelay = 0.05
-        maxHealth = 100
-        sfxDeath = ''
-        sfxHit = ''
-        speedDamageScale = 0.0
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'EnemyChaserComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        attackCooldown = 1.0
-        attackDamage = 1
-        debugState = 'Chasing'
-        moveSpeed = 3.2
-        playerTag = 'Player'
-        stopDistance = 1.35
-        turnSpeed = 10.0
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'EnemyHealthBarComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        backgroundColor = [ 0.02, 0.02, 0.03, 0.78 ]
-        barHeight = 0.16
-        barWidth = 1.2
-        borderWidth = 0.02
-        debugAnchorHeight = 0.0
-        drainColor = [ 1.0, 0.95, 0.75, 1.0 ]
-        drainHold = 0.18
-        drainSpeed = 0.9
-        drawAnchor = false
-        emptyColor = [ 0.85, 0.35, 0.2, 1.0 ]
-        fallbackBodyHeight = 1.0
-        fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
-        headroom = 0.35
-        hideWhenFull = false
-
-[[gameobjects]]
-active = true
 instanceId = 'f4000001-0000-0000-0000-000000000001'
 layer = 0
 name = 'Manager'
@@ -2276,6 +2055,7 @@ tag = 'Untagged'
         debugDamageToEnemies = 0
         debugDamageToPlayer = 0
         debugEnemyImpacts = 0
+        debugFaces = 0
         debugKills = 0
 
 [[gameobjects]]
@@ -2363,9 +2143,14 @@ tag = 'Untagged'
         debugDistortion = 0.0
         debugFade = 0.0
         debugFlash = 0.0
+        debugSurge = 0.0
         defaultFlashColor = [ 1.0, 0.25, 0.2, 1.0 ]
         defaultFlashSeconds = 0.22
         defaultFlashStrength = 0.45
+        surgeAberration = 0.014
+        surgePull = 0.04
+        surgeRim = 0.55
+        surgeRimSmoothness = 0.8
         vignetteIntensity = 0.0
         vignetteSmoothness = 0.0
 
@@ -2442,10 +2227,15 @@ tag = 'Untagged'
         blastLightMin = 11.0
         debugLast = ''
         debugSlots = 0
+        emberRate = 26.0
         lightFalloffCount = 3
         slotsPerEffect = 8
         sparkPowerMax = 20.0
         sparkPowerMin = 5.0
+
+            [gameobjects.ScriptComponents.fields.beamScorchVfx]
+            guid = ''
+            path = ''
 
             [gameobjects.ScriptComponents.fields.chargeVfx]
             guid = 'f822f852a22fabfdeb4be1748f5dbf9a'
@@ -3718,11 +3508,13 @@ tag = 'Player'
         arcWidth = 0.05
         autoResolveAxis = true
         autoTuneGrounding = true
-        beamMaterial = 'guid:92227fa32d994467a8093bd9e3ab6911|Assets/Materials/Surface/PBR.mat'
+        beamMaterial = 'guid:cfcdbaaa4a520a1011b7add1bb215466|Assets/Materials/Effects/FX_WPN_Beam.mat'
+        burnInSeconds = 0.14
         chargeBeads = 4.0
         churnRate = 9.0
         clampDegrees = 55.0
         contactBoost = 0.7
+        coolSeconds = 1.1
         coreBrightness = 2.4
         coreSharpness = 0.45
         coreWidth = 0.09
@@ -3749,9 +3541,10 @@ tag = 'Player'
         drawDebugLine = false
         drawDuration = 0.9
         drawImpactArc = true
-        drawSocketGizmos = true
+        drawSocketGizmos = false
         drawStateName = 'DrawPistols'
         drawTransferDelay = 0.3
+        emberSpacingScale = 1.6
         emitSpread = 7.0
         fadeSpeed = 9.0
         fadeTime = 1.2
@@ -3763,6 +3556,8 @@ tag = 'Player'
         fireRightClipFile = 'guid:48b26f14e4c8e89df23b7012356ea83f|Library/Baked/ddfbf771594ff72e7182484d3d0d0afe/anims/Fire_Pistol_R.anim'
         fireRightClipName = 'Fire_Pistol_R'
         flicker = 0.22
+        forkCount = 2
+        forkLength = 0.9
         gap = 9.0
         glowBrightness = 1.0
         glowOpacity = 0.35
@@ -3779,6 +3574,9 @@ tag = 'Player'
         holsterTransferDelay = 0.45
         holsteredAlpha = 0.0
         idleColor = [ 0.2, 1.0, 0.45, 0.85 ]
+        ignitionFovPunch = 0.35
+        ignitionSurge = 1.0
+        ignitionSurgeSeconds = 0.16
         impactArcRadius = 0.55
         landFeedbackSpeed = 12.0
         lifetime = 3.5
@@ -3809,6 +3607,7 @@ tag = 'Player'
         paramMoveY = 'MoveY'
         paramSpeed = 'Speed'
         paramVerticalSpeed = 'VerticalSpeed'
+        playEmbers = true
         polarityTuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
         pulseDepth = 0.06
         pulseHz = 1.4
@@ -3830,6 +3629,7 @@ tag = 'Player'
         spacing = 0.3
         spreadResponse = 16.0
         spriteSize = 48.0
+        startCoverage = 0.35
         stopOnGeometry = true
         strideRun = 1.35
         strideWalk = 0.75
@@ -3852,6 +3652,12 @@ tag = 'Player'
         weaponPlus = ''
         weaponRight = ''
         weightResponse = 6.0
+        wobble = 0.1
+        wobbleBias = 0.68
+        wobbleFrequency = 3.0
+        wobbleGlow = 0.55
+        wobbleSegments = 6.0
+        wobbleTravel = 1.6
 
             [gameobjects.ScriptComponents.fields.crosshairSprite]
             guid = ''
@@ -3919,7 +3725,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:0d301a9552ac64a1f3303c2f9630dc97|Library/Baked/316de8c22c0b4fe9763dfffb7f26a9b1/materials/M_AccentGreen.mat'
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -3934,6 +3740,16 @@ tag = 'Untagged'
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'GlowPartComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        emissiveSlot = 0
+        glowColor = [ 0.2, 1.0, 0.45, 1.0 ]
+        glowTarget = ''
+        intensity = 0.65
 
 [[gameobjects]]
 active = true
@@ -4060,8 +3876,6 @@ tag = 'Untagged'
         glowColor = [ 0.2, 1.0, 0.45, 1.0 ]
         glowTarget = ''
         intensity = 0.65
-        pulseDepth = 0.12
-        pulseHz = 0.35
 
 [[gameobjects]]
 active = true
@@ -4101,8 +3915,6 @@ tag = 'Untagged'
         glowColor = [ 0.2, 1.0, 0.45, 1.0 ]
         glowTarget = ''
         intensity = 0.38
-        pulseDepth = 0.18
-        pulseHz = 0.35
 
 [[gameobjects]]
 active = true
@@ -4225,22 +4037,42 @@ tag = 'Untagged'
     type = 'EyeSpriteComponent'
 
         [gameobjects.ScriptComponents.fields]
+        attackHold = 0.3
         closedDuration = 0.09
         debugFace = 'Idle'
+        debugOwner = ''
         debugTimer = 1.123875
         doubleBlinkGap = 0.11
         doubleBlinkPercent = 25
         eyeRenderer = '7a454cea-12a9-46ef-aefa-c84393950a9e'
+        hurtHold = 0.55
         intervalMax = 2.0
         intervalMin = 1.0
+        spottedHold = 0.8
+
+            [gameobjects.ScriptComponents.fields.attackSprite]
+            guid = ''
+            path = ''
 
             [gameobjects.ScriptComponents.fields.blinkSprite]
             guid = '7f90c4e045b524d2bd76c6774c4b29a5'
             path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::6389c2a4-4ed2-427c-900c-f1716118284d|Assets/Sprites/Player/T_VisorEyes.png'
 
+            [gameobjects.ScriptComponents.fields.deadSprite]
+            guid = ''
+            path = ''
+
+            [gameobjects.ScriptComponents.fields.hurtSprite]
+            guid = ''
+            path = ''
+
             [gameobjects.ScriptComponents.fields.idleSprite]
             guid = '7f90c4e045b524d2bd76c6774c4b29a5'
             path = 'guid:7f90c4e045b524d2bd76c6774c4b29a5::sprite::f9a14c0c-7a58-4f40-a5eb-b9f87597c68b|Assets/Sprites/Player/T_VisorEyes.png'
+
+            [gameobjects.ScriptComponents.fields.spottedSprite]
+            guid = ''
+            path = ''
 
 [[gameobjects]]
 active = true
@@ -6942,13 +6774,13 @@ tag = 'Untagged'
 
         [gameobjects.ScriptComponents.fields]
         crosshairMaterial = 'guid:9a3f27c6b1d84e05a7c93f61d2b840ae|Assets/Materials/UI/UICrosshair.mat'
-        dotSize = 3.0
+        dotSize = 20.0
         emitSpread = 7.0
         fadeSpeed = 9.0
         gap = 9.0
-        holsteredAlpha = 0.0
+        holsteredAlpha = 1.0
         idleColor = [ 0.2, 1.0, 0.45, 0.85 ]
-        outlineColor = [ 0.01, 0.03, 0.02, 0.85 ]
+        outlineColor = [ 1.0, 0.945098, 0.019608, 0.85098 ]
         outlineWidth = 1.0
         showPolarity = true
         spreadResponse = 16.0
@@ -6958,8 +6790,8 @@ tag = 'Untagged'
         tickThickness = 2.5
 
             [gameobjects.ScriptComponents.fields.crosshairSprite]
-            guid = ''
-            path = ''
+            guid = '23ccec1f7774adcf0a7be0acfeee7f2a'
+            path = 'guid:23ccec1f7774adcf0a7be0acfeee7f2a|Assets/VFX/Textures/T_Sym_Cross.png'
 
 [[gameobjects]]
 active = false
@@ -6989,7 +6821,7 @@ tag = 'Untagged'
     [gameobjects.transform]
     position = [ 960.0, 404.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 180.0, 44.0, 1.0 ]
+    scale = [ 168.491211, 44.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -7256,6 +7088,7 @@ tag = 'Enemy'
         emissiveTargets = [ 'f6e44f45-3264-417c-beab-2055730974ab', '0ae685bc-9d89-4e60-939c-803017a18eac' ]
         isAnchor = false
         polarityClass = 1
+        selfDriven = false
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -7300,9 +7133,12 @@ tag = 'Enemy'
         conductMaxPerTick = 3
         conductRadius = 2.6
         debugConducted = 0
+        debugSpotted = 0
         debugState = 'Idle'
         moveSpeed = 3.4
         playerTag = 'Player'
+        spotDistance = 14.0
+        spotRelease = 4.0
         turnSpeed = 7.0
 
     [[gameobjects.ScriptComponents]]
@@ -7324,6 +7160,37 @@ tag = 'Enemy'
         fullColor = [ 0.3, 0.92, 0.4, 1.0 ]
         headroom = 0.35
         hideWhenFull = false
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyDeathVfxComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        burstCount = 240
+        colorEnd = [ 0.05, 0.26, 0.19, 0.0 ]
+        colorStart = [ 0.52, 1.0, 0.72, 1.0 ]
+        damping = 3.4
+        debugBodyParts = 0
+        debugDissolveFolder = ''
+        debugDissolveParts = 0
+        debugModel = ''
+        dissolveFolder = ''
+        emitRate = 380.0
+        emitSeconds = 0.55
+        fadeDelay = 0.22
+        fadeSeconds = 0.6
+        moteLifetime = 1.4
+        moteLifetimeRandom = 0.45
+        normalVelocity = 0.65
+        riseAcceleration = 2.3
+        sizeEnd = 0.01
+        sizeStart = 0.085
+        spread = 0.3
+        turbulence = 0.85
+
+            [gameobjects.ScriptComponents.fields.moteMaterial]
+            guid = ''
+            path = ''
 
 [[gameobjects]]
 active = true
@@ -7412,6 +7279,48 @@ tag = 'Untagged'
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EyeSpriteComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        attackHold = 0.3
+        closedDuration = 0.09
+        debugFace = 'Idle'
+        debugOwner = ''
+        debugTimer = 0.0
+        doubleBlinkGap = 0.11
+        doubleBlinkPercent = 25
+        eyeRenderer = 'bb86f3e1-8014-4611-8e59-04f83e6625c1'
+        hurtHold = 0.55
+        intervalMax = 6.0
+        intervalMin = 2.8
+        spottedHold = 0.8
+
+            [gameobjects.ScriptComponents.fields.attackSprite]
+            guid = ''
+            path = ''
+
+            [gameobjects.ScriptComponents.fields.blinkSprite]
+            guid = ''
+            path = ''
+
+            [gameobjects.ScriptComponents.fields.deadSprite]
+            guid = ''
+            path = ''
+
+            [gameobjects.ScriptComponents.fields.hurtSprite]
+            guid = ''
+            path = ''
+
+            [gameobjects.ScriptComponents.fields.idleSprite]
+            guid = ''
+            path = ''
+
+            [gameobjects.ScriptComponents.fields.spottedSprite]
+            guid = ''
+            path = ''
+
 [[gameobjects]]
 active = true
 instanceId = 'c3856bc9-eaa0-4ec3-a942-7d899b209acf'
@@ -7498,6 +7407,48 @@ tag = 'Untagged'
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EyeSpriteComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        attackHold = 0.3
+        closedDuration = 0.09
+        debugFace = 'Idle'
+        debugOwner = ''
+        debugTimer = 0.0
+        doubleBlinkGap = 0.11
+        doubleBlinkPercent = 25
+        eyeRenderer = 'bb86f3e1-8014-4611-8e59-04f83e6625c1'
+        hurtHold = 0.55
+        intervalMax = 6.0
+        intervalMin = 2.8
+        spottedHold = 0.8
+
+            [gameobjects.ScriptComponents.fields.attackSprite]
+            guid = 'b5e2c8d153822a83b58613ee57c32606'
+            path = 'guid:b5e2c8d153822a83b58613ee57c32606::sprite::9c369d28-4a18-4794-8e41-d006388e2f6d|Assets/Sprites/Enemies/T_ZakoEyes.png'
+
+            [gameobjects.ScriptComponents.fields.blinkSprite]
+            guid = 'b5e2c8d153822a83b58613ee57c32606'
+            path = 'guid:b5e2c8d153822a83b58613ee57c32606::sprite::6fc55114-f519-40ad-b120-35f284e1a11f|Assets/Sprites/Enemies/T_ZakoEyes.png'
+
+            [gameobjects.ScriptComponents.fields.deadSprite]
+            guid = 'b5e2c8d153822a83b58613ee57c32606'
+            path = 'guid:b5e2c8d153822a83b58613ee57c32606::sprite::2dccd331-7d78-45d4-bd6c-71ddf4583d82|Assets/Sprites/Enemies/T_ZakoEyes.png'
+
+            [gameobjects.ScriptComponents.fields.hurtSprite]
+            guid = 'b5e2c8d153822a83b58613ee57c32606'
+            path = 'guid:b5e2c8d153822a83b58613ee57c32606::sprite::0c40cb20-2cc2-4b86-87c3-bc2dacd4c62d|Assets/Sprites/Enemies/T_ZakoEyes.png'
+
+            [gameobjects.ScriptComponents.fields.idleSprite]
+            guid = 'b5e2c8d153822a83b58613ee57c32606'
+            path = 'guid:b5e2c8d153822a83b58613ee57c32606::sprite::64c7e41a-aa90-40d9-95be-599d3787cef2|Assets/Sprites/Enemies/T_ZakoEyes.png'
+
+            [gameobjects.ScriptComponents.fields.spottedSprite]
+            guid = 'b5e2c8d153822a83b58613ee57c32606'
+            path = 'guid:b5e2c8d153822a83b58613ee57c32606::sprite::b16fc390-7906-4b51-bb46-10c2113c722c|Assets/Sprites/Enemies/T_ZakoEyes.png'
 
 [[gameobjects]]
 active = true
@@ -8316,6 +8267,7 @@ tag = 'Enemy'
         emissiveTargets = [ 'a7c675e4-2f6c-4608-9bfa-2f5670b16a69', '3844734d-2de4-4b93-b889-6539b060630f' ]
         isAnchor = false
         polarityClass = 0
+        selfDriven = false
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -8346,6 +8298,37 @@ tag = 'Enemy'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
+    type = 'EnemyDeathVfxComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        burstCount = 240
+        colorEnd = [ 0.05, 0.26, 0.19, 0.0 ]
+        colorStart = [ 0.52, 1.0, 0.72, 1.0 ]
+        damping = 3.4
+        debugBodyParts = 0
+        debugDissolveFolder = ''
+        debugDissolveParts = 0
+        debugModel = ''
+        dissolveFolder = ''
+        emitRate = 380.0
+        emitSeconds = 0.55
+        fadeDelay = 0.22
+        fadeSeconds = 0.6
+        moteLifetime = 1.4
+        moteLifetimeRandom = 0.45
+        normalVelocity = 0.65
+        riseAcceleration = 2.3
+        sizeEnd = 0.01
+        sizeStart = 0.085
+        spread = 0.3
+        turbulence = 0.85
+
+            [gameobjects.ScriptComponents.fields.moteMaterial]
+            guid = ''
+            path = ''
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
     type = 'EnemyMiteComponent'
 
         [gameobjects.ScriptComponents.fields]
@@ -8357,6 +8340,7 @@ tag = 'Enemy'
         attackRange = 2.0
         bobAmplitude = 0.12
         bobHz = 0.55
+        debugSpotted = 0
         debugState = 'Idle'
         groundProbe = 12.0
         hoverHeight = 1.05
@@ -8364,6 +8348,8 @@ tag = 'Enemy'
         hoverStiffness = 5.0
         moveSpeed = 4.2
         playerTag = 'Player'
+        spotDistance = 14.0
+        spotRelease = 4.0
         turnSpeed = 12.0
 
     [[gameobjects.ScriptComponents]]
@@ -9430,6 +9416,7 @@ tag = 'Enemy'
         emissiveTargets = [ '5faff149-dfed-4038-a7cd-c2ae2d43eecf', 'cc81eded-0a2e-439a-b87a-3ef81cd851a9' ]
         isAnchor = true
         polarityClass = 2
+        selfDriven = false
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -9447,6 +9434,37 @@ tag = 'Enemy'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
+    type = 'EnemyDeathVfxComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        burstCount = 240
+        colorEnd = [ 0.05, 0.26, 0.19, 0.0 ]
+        colorStart = [ 0.52, 1.0, 0.72, 1.0 ]
+        damping = 3.4
+        debugBodyParts = 0
+        debugDissolveFolder = ''
+        debugDissolveParts = 0
+        debugModel = ''
+        dissolveFolder = ''
+        emitRate = 380.0
+        emitSeconds = 0.55
+        fadeDelay = 0.22
+        fadeSeconds = 0.6
+        moteLifetime = 1.4
+        moteLifetimeRandom = 0.45
+        normalVelocity = 0.65
+        riseAcceleration = 2.3
+        sizeEnd = 0.01
+        sizeStart = 0.085
+        spread = 0.3
+        turbulence = 0.85
+
+            [gameobjects.ScriptComponents.fields.moteMaterial]
+            guid = ''
+            path = ''
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
     type = 'EnemyRollerComponent'
 
         [gameobjects.ScriptComponents.fields]
@@ -9455,12 +9473,15 @@ tag = 'Enemy'
         chargeRange = 9.0
         chargeSeconds = 0.75
         chargeSpeed = 11.0
+        debugSpotted = 0
         debugState = 'Idle'
         hitRadius = 1.6
         keepDistance = 2.2
         moveSpeed = 3.0
         playerTag = 'Player'
         recoverSeconds = 0.3
+        spotDistance = 14.0
+        spotRelease = 4.0
         telegraphSeconds = 0.45
         turnSpeed = 5.0
 
@@ -10142,6 +10163,4397 @@ tag = 'Untagged'
     nodeIndex = 17
     skinnedMeshOwner = 'Enemy_Roller'
     skinnedMeshOwnerGuid = '74cd3d56-84e3-4420-889b-f51345717a3d'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+layer = 0
+name = 'ArenaLights'
+parent = 'Enviorment'
+parentInstanceId = '214cc015-9228-4d2f-ad2d-1987b53ac061'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+layer = 0
+name = 'CorridorLights'
+parent = 'Enviorment'
+parentInstanceId = '214cc015-9228-4d2f-ad2d-1987b53ac061'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '04994144-94a3-46a0-830b-20751f6448f8'
+layer = 0
+name = 'TubeLower_00'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 0.0, 7.2, 38.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8040d2e1-0b8c-4635-88a7-845762e5b0aa'
+layer = 0
+name = 'TubeLower_01'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 19.25, 7.2, 33.341976 ]
+    rotation = [ 0.0, 0.258819, 0.0, 0.965926 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e3483fa4-2044-4fb9-9d3a-138099d8d311'
+layer = 0
+name = 'TubeLower_02'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 33.341976, 7.2, 19.25 ]
+    rotation = [ 0.0, 0.5, 0.0, 0.866025 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e8551522-343b-4d42-85d7-a05f360f2d8d'
+layer = 0
+name = 'TubeLower_03'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 38.5, 7.2, 0.0 ]
+    rotation = [ 0.0, 0.707107, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '67d150ac-5a00-4ab0-ad68-9284f1889999'
+layer = 0
+name = 'TubeLower_04'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 33.341976, 7.2, -19.25 ]
+    rotation = [ 0.0, 0.866025, 0.0, 0.5 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '84ae07dd-7290-4c8d-a3b2-9dd3ebb626d8'
+layer = 0
+name = 'TubeLower_05'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 19.25, 7.2, -33.341976 ]
+    rotation = [ 0.0, 0.965926, 0.0, 0.258819 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2c34ba1a-f70f-4274-9715-34a593964683'
+layer = 0
+name = 'TubeLower_06'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 0.0, 7.2, -38.5 ]
+    rotation = [ 0.0, 1.0, 0.0, 0.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1bf3c463-6bd6-4fa2-90c9-586e045a603b'
+layer = 0
+name = 'TubeLower_07'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -19.25, 7.2, -33.341976 ]
+    rotation = [ 0.0, 0.965926, 0.0, -0.258819 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b2367fc7-7a8b-4c43-981d-db68d2080f4e'
+layer = 0
+name = 'TubeLower_08'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -33.341976, 7.2, -19.25 ]
+    rotation = [ 0.0, 0.866025, 0.0, -0.5 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b4947e35-0df6-4619-8e92-6570102eed8d'
+layer = 0
+name = 'TubeLower_09'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -38.5, 7.2, 0.0 ]
+    rotation = [ 0.0, 0.707107, 0.0, -0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '32ac81fb-04be-42c1-9b53-4ed119674c8f'
+layer = 0
+name = 'TubeLower_10'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -33.341976, 7.2, 19.25 ]
+    rotation = [ 0.0, 0.5, 0.0, -0.866025 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '008b242b-1c43-4ede-87bd-79dd75d25427'
+layer = 0
+name = 'TubeLower_11'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 28.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -19.25, 7.2, 33.341976 ]
+    rotation = [ 0.0, 0.258819, 0.0, -0.965926 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd7f2b49a-b0dc-498e-bd22-bf6a030e95fc'
+layer = 0
+name = 'TubeUpper_00'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 0.0, 20.5, 38.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b7416107-f9b2-4aaa-b911-759af36c3e42'
+layer = 0
+name = 'TubeUpper_01'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 19.25, 20.5, 33.341976 ]
+    rotation = [ 0.0, 0.258819, 0.0, 0.965926 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a905debc-f44c-4f37-be41-816141d6650b'
+layer = 0
+name = 'TubeUpper_02'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 33.341976, 20.5, 19.25 ]
+    rotation = [ 0.0, 0.5, 0.0, 0.866025 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f6d02dbe-2fca-46c9-8026-1f6a3d8f576a'
+layer = 0
+name = 'TubeUpper_03'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 38.5, 20.5, 0.0 ]
+    rotation = [ 0.0, 0.707107, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '413fafc7-a1d3-4e05-8dbb-3e3c7cb02a27'
+layer = 0
+name = 'TubeUpper_04'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 33.341976, 20.5, -19.25 ]
+    rotation = [ 0.0, 0.866025, 0.0, 0.5 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e6cff7b3-37ce-4722-8bb7-e3912fb5574a'
+layer = 0
+name = 'TubeUpper_05'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 19.25, 20.5, -33.341976 ]
+    rotation = [ 0.0, 0.965926, 0.0, 0.258819 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8d5d397b-8c1f-4aef-a7d9-e4a9afd0154c'
+layer = 0
+name = 'TubeUpper_06'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 0.0, 20.5, -38.5 ]
+    rotation = [ 0.0, 1.0, 0.0, 0.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '960e304d-6973-4976-9504-50e4ba779008'
+layer = 0
+name = 'TubeUpper_07'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -19.25, 20.5, -33.341976 ]
+    rotation = [ 0.0, 0.965926, 0.0, -0.258819 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9962b1c0-c730-4b9f-9288-632f33198ea2'
+layer = 0
+name = 'TubeUpper_08'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -33.341976, 20.5, -19.25 ]
+    rotation = [ 0.0, 0.866025, 0.0, -0.5 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7032e9aa-f205-4ef9-9ebc-f89c8f4dfbfd'
+layer = 0
+name = 'TubeUpper_09'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -38.5, 20.5, 0.0 ]
+    rotation = [ 0.0, 0.707107, 0.0, -0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'fe86e3c4-a6cc-4932-bf17-e366453d1fd9'
+layer = 0
+name = 'TubeUpper_10'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -33.341976, 20.5, 19.25 ]
+    rotation = [ 0.0, 0.5, 0.0, -0.866025 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e0098525-83c7-4f93-97b0-413e693611fd'
+layer = 0
+name = 'TubeUpper_11'
+parent = 'ArenaLights'
+parentInstanceId = '93f3ecae-8ee4-44ca-ae3e-6372768dcbff'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 16.0
+    range = 30.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    sourceLength = 19.0
+    sourceRadius = 0.15
+    type = 'Tube'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -19.25, 20.5, 33.341976 ]
+    rotation = [ 0.0, -0.258819, 0.0, 0.965926 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '54f24825-b534-458b-bcfd-e84192f4e242'
+layer = 0
+name = 'CeilPanel_00'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 1.0, 7.96, -41.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '00c8c317-d13b-44ef-b7e6-c106a3a17c7c'
+layer = 0
+name = 'CeilPanel_01'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -32.0, 11.96, -167.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '549a644e-0d3a-4730-b7b9-bc80495c1340'
+layer = 0
+name = 'CeilPanel_02'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.6
+    areaTwoSided = false
+    areaWidth = 1.2
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -30.0, 11.96, -153.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8d1afe6e-c5db-477b-a01f-c827446750bc'
+layer = 0
+name = 'CeilPanel_03'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -35.0, 11.96, -137.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6a83b308-b4f9-4fb7-b915-3a961dac76dc'
+layer = 0
+name = 'CeilPanel_04'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -23.0, 11.96, -137.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3ee9b220-394e-4e22-9c02-80f8dfe6bd5b'
+layer = 0
+name = 'CeilPanel_05'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.6
+    areaTwoSided = false
+    areaWidth = 1.2
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -30.0, 11.96, -121.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '822bb5e3-67c3-49dc-a2a3-9cb2950ed603'
+layer = 0
+name = 'CeilPanel_06'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -36.0, 11.96, -104.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '32707530-a6c6-4f83-bc8d-3130863dd2da'
+layer = 0
+name = 'CeilPanel_07'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -24.0, 11.96, -104.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '70631ccc-2ced-4b59-99a4-b2a534f2a2e8'
+layer = 0
+name = 'CeilPanel_08'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.6
+    areaTwoSided = false
+    areaWidth = 1.2
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -30.0, 11.96, -87.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'af504a2c-5ba8-4f62-9752-1d03733baeec'
+layer = 0
+name = 'CeilPanel_09'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -42.0, 11.96, -70.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f7948eee-023d-44ac-8853-79e87c20591d'
+layer = 0
+name = 'CeilPanel_10'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -30.0, 11.96, -70.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c8a50f54-9fd5-4ada-b1e3-fface1fedd13'
+layer = 0
+name = 'CeilPanel_11'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -18.0, 11.96, -70.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f1443c55-e99a-414c-a38b-11d140b92528'
+layer = 0
+name = 'CeilPanel_12'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -6.0, 11.96, -70.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd362da01-646b-45b3-98f5-d767377b486b'
+layer = 0
+name = 'CeilPanel_13'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.6
+    areaTwoSided = false
+    areaWidth = 1.2
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ 4.0, 11.96, -60.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2af8339a-50d5-4b73-8924-5877d4c8297b'
+layer = 0
+name = 'CeilPanel_14'
+parent = 'CorridorLights'
+parentInstanceId = '2c3d442b-ebe3-4934-a9cc-f4075e84ab12'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.2
+    areaTwoSided = false
+    areaWidth = 1.6
+    castShadows = false
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    enabled = true
+    intensity = 140.0
+    range = 25.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 0.0
+    type = 'Area'
+    useColorTemperature = true
+
+    [gameobjects.transform]
+    position = [ -4.0, 14.96, -49.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+layer = 0
+name = 'Boss'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Enemy'
+
+    [gameobjects.AnimatorComponent]
+    baseLayerMaskPath = ''
+    controllerPath = 'guid:8e0142d4e78e322fa141d94c8064bd52|Assets/Animation/Boss/Boss.animcontroller'
+    defaultStateName = 'Locomotion'
+    enabled = true
+    playing = true
+    rootMotionApplyRotation = 0
+    rootMotionApplyXZ = 0
+    rootMotionApplyY = 0
+    rootMotionMode = 0
+    rootMotionNodeName = ''
+    rootMotionPoseMode = 0
+    rootMotionPositionScale = 1.0
+    rootMotionRotationScale = 1.0
+    rootMotionSource = 0
+    rootMotionTarget = ''
+    speed = 1.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Death'
+        transitionDuration = 0.15
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'CrashStun'
+        transitionDuration = 0.1
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Crash'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'JumpUp'
+        transitionDuration = 0.06
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Jump'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Stomp_FR'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Stomp'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 2
+            paramName = 'StompLeg'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Stomp_FL'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Stomp'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 2
+            paramName = 'StompLeg'
+            threshold = 1.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Stomp_BR'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Stomp'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 2
+            paramName = 'StompLeg'
+            threshold = 2.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Stomp_BL'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Stomp'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 2
+            paramName = 'StompLeg'
+            threshold = 3.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'ChargeWindup'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Charge'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'BeamStart'
+        transitionDuration = 0.12
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Beam'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'MagneticPulse'
+        transitionDuration = 0.08
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Pulse'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsDead'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:b8d7d974f80e65fd5b74f9d9e9c687f1|Assets/Animation/Boss/M_Boss_Aim.mask'
+        mode = 0
+        name = 'Aim'
+        retargetMappings = []
+        weight = 0.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = ''
+            sourcePath = ''
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:56bc6ec161ab69a5ff91c8263e916d23|Assets/Animation/Boss/M_Boss_Hit.mask'
+        mode = 1
+        name = 'Add_Hit'
+        retargetMappings = []
+        weight = 1.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = 'Idle'
+            sourcePath = 'guid:1a9b2ffbaccf5bee0bbb5092e14fe82c|Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Speed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Turn'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'StompLeg'
+        type = 1
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Stomp'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Jump'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = true
+        floatValue = 0.0
+        intValue = 0
+        name = 'Grounded'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Pulse'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Charge'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Charging'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Crash'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Beam'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Beaming'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Hit'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'IsDead'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = ''
+        ikWeight = 1.0
+        loop = true
+        mode = 1
+        name = 'Locomotion'
+        sourcePath = ''
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.18
+            paramName = 'Speed'
+            syncNormalizedTime = false
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Idle'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:1a9b2ffbaccf5bee0bbb5092e14fe82c|Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Walk_Crawl'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'guid:652fe0d20639e2afbbcca6df06e89ea5|Library/Baked/5c93c79d168a882bcb143675fb9e61b1/anims/Walk_Crawl.anim'
+                speed = 1.0
+                threshold = 2.0
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'TurnLeft'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'Turn'
+                threshold = 0.5
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'Speed'
+                threshold = 0.4
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsDead'
+                threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'TurnRight'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'Turn'
+                threshold = -0.5
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'Speed'
+                threshold = 0.4
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsDead'
+                threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Turn_L'
+        ikWeight = 1.0
+        loop = true
+        mode = 0
+        name = 'TurnLeft'
+        sourcePath = 'guid:efcb0b100a2db9968c010570acfad920|Library/Baked/95bc59f38a2626a5fd4523e9c2ff6c4c/anims/Turn_L.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'Turn'
+                threshold = 0.4
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'Speed'
+                threshold = 0.6
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Turn_R'
+        ikWeight = 1.0
+        loop = true
+        mode = 0
+        name = 'TurnRight'
+        sourcePath = 'guid:f0e2bba122d748504db82e0e4f6dde02|Library/Baked/4d16ffe991993011161f45b274aed783/anims/Turn_R.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'Turn'
+                threshold = -0.4
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'Speed'
+                threshold = 0.6
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'JumpUp'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'JumpUp'
+        sourcePath = 'guid:3a15fa0aa30ce9912b22bb858a6b09b7|Library/Baked/d7ba8d545f632ef6eb7f44465d90fbf0/anims/JumpUp.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'FallIdle'
+            transitionDuration = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'FallIdle'
+        ikWeight = 1.0
+        loop = true
+        mode = 0
+        name = 'FallIdle'
+        sourcePath = 'guid:0b584a43fc98f73d997400a1125cac4f|Library/Baked/67445413f5d2429460f20f85134a2f28/anims/FallIdle.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Land'
+            transitionDuration = 0.0
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 4
+                paramName = 'Grounded'
+                threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Land'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Land'
+        sourcePath = 'guid:708ef6fe0c81f15f31abc9c2a7050c31|Library/Baked/c70dc16ed9f58786e101ce91b35e119e/anims/Land.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Stomp_FR'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Stomp_FR'
+        sourcePath = 'guid:44feba4d164917a2a7bb043d0ded6758|Library/Baked/383e9d382e29dc7b818f0a403586968b/anims/Stomp_FR.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Stomp_FL'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Stomp_FL'
+        sourcePath = 'guid:3a0df9102e087664fb3ff8ffb441045a|Library/Baked/9298a95e02e96f9c0ee9cb4087453ac9/anims/Stomp_FL.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Stomp_BR'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Stomp_BR'
+        sourcePath = 'guid:96655b438f41a03bd736e1dee313ea29|Library/Baked/ffcfe3a2d79b929f35e98d66ae46d9a3/anims/Stomp_BR.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Stomp_BL'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Stomp_BL'
+        sourcePath = 'guid:11c91906c811e13c22523b7f673229be|Library/Baked/dacceeae15a178959bb88349fa2c6ece/anims/Stomp_BL.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Magnetic_Pulse'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'MagneticPulse'
+        sourcePath = 'guid:2eee86cea0dc35b38ce8e5de944b1635|Library/Baked/faa51d40c8d488e641bb58b07d88d4b8/anims/Magnetic_Pulse.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.08
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Charge_Windup'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'ChargeWindup'
+        sourcePath = 'guid:8d0cc7fa4aa6822620d11997dac38344|Library/Baked/c2cdcb877d7170b3fee42bf2841bcca1/anims/Charge_Windup.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'ChargeRun'
+            transitionDuration = 0.1
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Charge_Run'
+        ikWeight = 1.0
+        loop = true
+        mode = 0
+        name = 'ChargeRun'
+        sourcePath = 'guid:1042ccdf8953874592e44faa9944b723|Library/Baked/eb043aa096b8efae111e826f43ddeaa3/anims/Charge_Run.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.25
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'Charging'
+                threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Crash_Stun'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'CrashStun'
+        sourcePath = 'guid:2ee50ebd2a934092be22b54bc4bacaa8|Library/Baked/f790b35dcbc90fdd77cf0123af92776f/anims/Crash_Stun.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.15
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Beam_Start'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'BeamStart'
+        sourcePath = 'guid:4befc974168e7b23ebe7a22b05c5e1d5|Library/Baked/0031f917ee493e64da421e66ccf45f69/anims/Beam_Start.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'BeamLoop'
+            transitionDuration = 0.06
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Beam_Loop'
+        ikWeight = 1.0
+        loop = true
+        mode = 0
+        name = 'BeamLoop'
+        sourcePath = 'guid:d5f6a2ab4a77bcd8605d046944b71412|Library/Baked/29ae10dffaa9073bece66868a45b6022/anims/Beam_Loop.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'BeamEnd'
+            transitionDuration = 0.08
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'Beaming'
+                threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Beam_End'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'BeamEnd'
+        sourcePath = 'guid:36cd2ea8a2778bc4c1c4231783aff9e2|Library/Baked/608c8e0aaf442cbe3c00770ac772c6a3/anims/Beam_End.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'Death'
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Death'
+        sourcePath = 'guid:8f50e47345faf1c8c80b68826cd77f92|Library/Baked/c7e29924650f95ab69ecb684beb5d2dd/anims/Death.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            dampTime = 0.0
+            motions = []
+            paramX = ''
+            paramY = ''
+            syncNormalizedTime = false
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Locomotion'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsDead'
+                threshold = 0.0
+
+    [gameobjects.CapsuleColliderComponent]
+    center = [ 0.0, 3.3, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.CapsuleColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.25
+        frictionCombine = 1
+        restitution = 0.1
+        restitutionCombine = 2
+        staticFriction = 0.3
+
+        [gameobjects.CapsuleColliderComponent.shape]
+        halfHeight = 1.7
+        radius = 1.6
+        type = 'Capsule'
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = false
+    angularDrag = 0.3
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 2.2
+    charge = 0.0
+    enabled = true
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 1.0, 1.0, 1.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 1.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.1
+    mass = 400.0
+    massMode = 0
+    useCCD = true
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossAnimatorComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        aimFadeIn = 0.25
+        aimFadeOut = 0.35
+        aimLayerName = 'Aim'
+        aimWeight = 1.0
+        autoDriveLocomotion = true
+        debugSpeed = 0.0
+        debugState = ''
+        debugTurn = 0.0
+        motionDamping = 8.0
+        previewAirTime = 1.6
+        previewHoldTime = 2.5
+        previewMotion = 0
+        turnFullRate = 45.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PolarityTargetComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        debugRemaining = 0.0
+        emissiveSlot = 0
+        emissiveTargets = []
+        isAnchor = true
+        polarityClass = 3
+        selfDriven = true
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'EnemyHealthComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        anchorDamageMultiplier = 1.0
+        baseImpactDamage = 100
+        debugHealth = 800
+        destroyDelay = 4.0
+        maxHealth = 800
+        sfxDeath = ''
+        sfxHit = ''
+        speedDamageScale = 0.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossPolarityCoreComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bossName = 'POLARITY CORE'
+        debugPhase = 1
+        debugPolarity = ''
+        debugSwitchIn = 0.0
+        emissiveScale = 0.65
+        emissiveSlot = 0
+        emissiveTargets = [ '7aee1d68-01f3-4b52-bdbc-dab66117e46b', 'ca90aca0-6b41-4c90-b1fd-25f2136b5aa0' ]
+        phase1SwitchSeconds = 6.0
+        phase2HealthRatio = 0.5
+        phase2SwitchSeconds = 4.0
+        startPolarity = 1
+        switchWarnSeconds = 1.0
+        warnBlinkDepth = 0.85
+        warnBlinkHz = 7.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossHitboxRigComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        coreRadius = 0.55
+        debugHitboxes = 0
+        debugMissingBones = 0
+        headRadius = 0.7
+        legRadius = 0.38
+        radiusScale = 1.0
+        rearRadius = 0.95
+        torsoRadius = 1.9
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossBeamComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        apertureArcReach = 1.7
+        apertureArcs = 3
+        apertureBone = 'Muzzle'
+        arcBow = 1.1
+        arcIntensity = 2.0
+        arcRate = 26.0
+        arcStrands = 2
+        arcWidth = 0.085
+        beamArcs = 3
+        apertureFallbackHeight = 3.6
+        beamMaterial = 'guid:fb07176e2b58b2a1a45f3a2e216c1ac4|Assets/Materials/Effects/FX_BOSS_Beam.mat'
+        chargeTime = 1.0
+        churnRate = 1.4
+        contactLight = true
+        coreWidth = 0.62
+        damage = 1
+        debugCharge = 0.0
+        debugLength = 0.0
+        dischargeTime = 0.8
+        drawDebugHit = false
+        glowWidth = 1.9
+        groundArcReach = 4.5
+        groundArcs = 5
+        playerCenterHeight = 1.25
+        traceRange = 30.0
+        hitRadius = 1.15
+        intensity = 1.6
+        tubeSegments = 12
+        lightIntensity = 24.0
+        lightRange = 9.0
+        playerRadius = 0.45
+        playerTag = 'Player'
+        scorchRate = 16.0
+        scorchSize = 1.6
+        scrollSpeed = 2.2
+        tickInterval = 0.35
+        wobble = 0.05
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossAiComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        attackInterval = 3.0
+        beamEndTime = 0.8
+        beamLength = 20.0
+        beamMinRange = 8.0
+        beamNearReach = 5.0
+        beamRiseHeight = 3.2
+        beamStartTime = 1.0
+        beamSweepSpeed = 22.0
+        beamSweepTime = 3.5
+        chargeDamage = 3
+        chargeHitRadius = 3.0
+        chargeMaxSeconds = 3.0
+        chargeMinRange = 18.0
+        chargeSpeed = 5.0
+        chargeWindupTime = 1.5
+        crashSelfDamage = 200
+        crashStunTime = 5.0
+        debugAct = 'Idle'
+        debugDistance = 0.0
+        drawDebugRanges = false
+        jumpAirTime = 1.4
+        jumpArcHeight = 6.0
+        jumpDamage = 3
+        jumpHitRadius = 5.0
+        jumpMaxTravel = 16.0
+        jumpMinRange = 6.0
+        jumpTakeoffTime = 1.07
+        keepDistance = 4.0
+        landContactTime = 0.7
+        landStaggerFrom = 0.87
+        landTotalTime = 2.6
+        patrolSpeed = 2.4
+        playerTag = 'Player'
+        pulseDamage = 1
+        pulseHitTime = 0.85
+        pulseKnockback = 9.0
+        pulseRadius = 22.0
+        pulseTotalTime = 2.0
+        stompDamage = 2
+        stompHitTime = 0.8
+        stompMaxRange = 6.0
+        stompRadius = 3.2
+        stompReach = 4.6
+        stompStaggerFrom = 1.17
+        stompTotalTime = 2.0
+        turnSpeed = 45.0
+        wallProbe = 4.0
+
+[[gameobjects]]
+active = true
+instanceId = '22e2238c-950e-473d-82b7-f9ff488c29f2'
+layer = 0
+name = 'E_ArmorGrey'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:5d433a9a8f8bdb7616d1c02de938b8c4|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:e8da5d90da0a35029a4c9df66fd79cdb|Assets/Models/Boss/Boss.fbx'
+    skeletonRootGuid = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7aee1d68-01f3-4b52-bdbc-dab66117e46b'
+layer = 0
+name = 'E_CoreGlow'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:e8da5d90da0a35029a4c9df66fd79cdb|Assets/Models/Boss/Boss.fbx'
+    skeletonRootGuid = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 1 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a9fabcc7-68f0-4ff3-9777-a53435a51435'
+layer = 0
+name = 'E_Hazard'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:34be4a2037886476be472e404597014c|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Hazard.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:e8da5d90da0a35029a4c9df66fd79cdb|Assets/Models/Boss/Boss.fbx'
+    skeletonRootGuid = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 2 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b1840a3b-b5e7-4a58-bb94-c50a9ec98a42'
+layer = 0
+name = 'E_MetalDark'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:c7774ca84c412115893562e3f88156e7|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:e8da5d90da0a35029a4c9df66fd79cdb|Assets/Models/Boss/Boss.fbx'
+    skeletonRootGuid = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 3 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4c5263f0-eb3a-4648-b43d-bcd222bfd96e'
+layer = 0
+name = 'E_PanelLine'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:96f064558669b78664057a76d4a12ee0|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:e8da5d90da0a35029a4c9df66fd79cdb|Assets/Models/Boss/Boss.fbx'
+    skeletonRootGuid = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 4 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ca90aca0-6b41-4c90-b1fd-25f2136b5aa0'
+layer = 0
+name = 'E_RingGlow'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:60a6ef2da2de44a0a37a2778dadff19a|Assets/Materials/Character/M_GlowPart.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:e8da5d90da0a35029a4c9df66fd79cdb|Assets/Models/Boss/Boss.fbx'
+    skeletonRootGuid = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 5 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '65e40ccf-6080-4fde-92f1-6d3733a10ac1'
+layer = 0
+name = 'E_Stencil'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:6a32e2aa19acfd7254bdb642a69b5298|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil.mat'
+    visible = true
+
+    [gameobjects.SkinnedMeshRenderer]
+    castShadows = true
+    enabled = true
+    modelPath = 'guid:e8da5d90da0a35029a4c9df66fd79cdb|Assets/Models/Boss/Boss.fbx'
+    skeletonRootGuid = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+    skeletonRootName = 'RootNode'
+    submeshIndices = [ 6 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+layer = 0
+name = 'RootNode'
+parent = 'Boss'
+parentInstanceId = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'RootNode'
+    generated = true
+    nodeIndex = 0
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6367891d-8762-4420-8b00-531c1ec15297'
+layer = 0
+name = 'Boss_Armature'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Boss_Armature'
+    generated = true
+    nodeIndex = 1
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '602b84d0-471b-4abe-b605-b1553eaa21e2'
+layer = 0
+name = 'Root_Motion'
+parent = 'Boss_Armature'
+parentInstanceId = '6367891d-8762-4420-8b00-531c1ec15297'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Root_Motion'
+    generated = true
+    nodeIndex = 2
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1ddad3d-12a1-4817-ba02-c79115c50c25'
+layer = 0
+name = 'Root'
+parent = 'Boss_Armature'
+parentInstanceId = '6367891d-8762-4420-8b00-531c1ec15297'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 0
+    boneName = 'Root'
+    generated = true
+    nodeIndex = 3
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+layer = 0
+name = 'Body'
+parent = 'Root'
+parentInstanceId = 'a1ddad3d-12a1-4817-ba02-c79115c50c25'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 1
+    boneName = 'Body'
+    generated = true
+    nodeIndex = 4
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.400052, -4.483629 ]
+    rotation = [ 0.001536, 0.0, 0.0, 0.999999 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '52d1efaa-5f33-4047-aeec-eda916bfea5f'
+layer = 0
+name = 'Head'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 2
+    boneName = 'Head'
+    generated = true
+    nodeIndex = 5
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 2.4, -0.66 ]
+    rotation = [ 0.025401, 0.0, 0.0, 0.999677 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5e6fb967-2593-4300-a835-92f4489d1ef4'
+layer = 0
+name = 'Rear'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 3
+    boneName = 'Rear'
+    generated = true
+    nodeIndex = 6
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, -1.15, -0.98 ]
+    rotation = [ 0.988288, 0.0, 0.0, 0.152601 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '235652b8-e12c-4b49-9c23-bdc86e10df00'
+layer = 0
+name = 'Ring'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 4
+    boneName = 'Ring'
+    generated = true
+    nodeIndex = 7
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.4, 0.18 ]
+    rotation = [ 3.8e-05, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7514c520-b958-44c8-8505-621feaa68851'
+layer = 0
+name = 'Core'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 5
+    boneName = 'Core'
+    generated = true
+    nodeIndex = 8
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.4, 0.30312 ]
+    rotation = [ 0.711095, 0.0, 0.0, 0.703096 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '597891f4-00bd-4964-90df-50ff55624b27'
+layer = 0
+name = 'Muzzle'
+parent = 'Core'
+parentInstanceId = '7514c520-b958-44c8-8505-621feaa68851'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 6
+    boneName = 'Muzzle'
+    generated = true
+    nodeIndex = 9
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.44, 0.0 ]
+    rotation = [ -0.006545, 0.0, 0.0, 0.999979 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ac5694b9-2a9f-4906-8c58-7ac2ba6bc382'
+layer = 0
+name = 'Yaw_FR'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 7
+    boneName = 'Yaw_FR'
+    generated = true
+    nodeIndex = 10
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 2.28, 3.42, -0.199999 ]
+    rotation = [ 0.70692, 0.00027, -0.000255, 0.707294 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2878b370-c779-4470-b488-94de3cd99ca4'
+layer = 0
+name = 'Thigh_FR'
+parent = 'Yaw_FR'
+parentInstanceId = 'ac5694b9-2a9f-4906-8c58-7ac2ba6bc382'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 8
+    boneName = 'Thigh_FR'
+    generated = true
+    nodeIndex = 11
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.48, 0.0 ]
+    rotation = [ 0.779262, 0.355387, 0.355476, -0.374282 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '91771b47-72ee-4bff-9539-bc42d9dbb0a7'
+layer = 0
+name = 'Shin_FR'
+parent = 'Thigh_FR'
+parentInstanceId = '2878b370-c779-4470-b488-94de3cd99ca4'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 9
+    boneName = 'Shin_FR'
+    generated = true
+    nodeIndex = 12
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.509173, -1e-06 ]
+    rotation = [ 0.675896, 0.347688, 0.204104, 0.616944 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5ef737c6-55f9-4931-998b-190be5cad092'
+layer = 0
+name = 'Hock_FR'
+parent = 'Shin_FR'
+parentInstanceId = '91771b47-72ee-4bff-9539-bc42d9dbb0a7'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 10
+    boneName = 'Hock_FR'
+    generated = true
+    nodeIndex = 13
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -1e-06, 2.685276, 1e-06 ]
+    rotation = [ 0.270572, 0.349855, 0.398598, 0.803438 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0c02ab72-bdbd-42a9-a271-0c4fc592db9a'
+layer = 0
+name = 'Foot_FR'
+parent = 'Hock_FR'
+parentInstanceId = '5ef737c6-55f9-4931-998b-190be5cad092'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 11
+    boneName = 'Foot_FR'
+    generated = true
+    nodeIndex = 14
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 1e-06, 2.309416, 0.0 ]
+    rotation = [ -0.11037, -0.219925, -0.225232, 0.94272 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '588b8f3e-1c2b-43e8-a39a-285259009859'
+layer = 0
+name = 'Toe1A_FR'
+parent = 'Foot_FR'
+parentInstanceId = '0c02ab72-bdbd-42a9-a271-0c4fc592db9a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 12
+    boneName = 'Toe1A_FR'
+    generated = true
+    nodeIndex = 15
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.099635, 0.28, -0.00853 ]
+    rotation = [ -0.414932, -0.466985, -0.466986, 0.625844 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '19ecbb95-51d5-42b7-bfe1-a09c2291a17d'
+layer = 0
+name = 'Toe1B_FR'
+parent = 'Toe1A_FR'
+parentInstanceId = '588b8f3e-1c2b-43e8-a39a-285259009859'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 13
+    boneName = 'Toe1B_FR'
+    generated = true
+    nodeIndex = 16
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016254, -0.015213, -0.003094, 0.999747 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c5fe60a8-6714-4f1f-ac49-9e1d660091b3'
+layer = 0
+name = 'Toe2A_FR'
+parent = 'Foot_FR'
+parentInstanceId = '0c02ab72-bdbd-42a9-a271-0c4fc592db9a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 14
+    boneName = 'Toe2A_FR'
+    generated = true
+    nodeIndex = 17
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.07071, 0.28, -0.070711 ]
+    rotation = [ -0.576995, -0.266592, -0.266592, 0.724524 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f3ffe6ec-904d-44f3-b9d5-9a37218111ac'
+layer = 0
+name = 'Toe2B_FR'
+parent = 'Toe2A_FR'
+parentInstanceId = 'c5fe60a8-6714-4f1f-ac49-9e1d660091b3'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 15
+    boneName = 'Toe2B_FR'
+    generated = true
+    nodeIndex = 18
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.468721, 0.0 ]
+    rotation = [ -0.012342, -0.005161, -0.000929, 0.99991 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8ad78842-13c8-4307-85b9-8b2e230dc510'
+layer = 0
+name = 'Toe3A_FR'
+parent = 'Foot_FR'
+parentInstanceId = '0c02ab72-bdbd-42a9-a271-0c4fc592db9a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 16
+    boneName = 'Toe3A_FR'
+    generated = true
+    nodeIndex = 19
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.008529, 0.28, -0.099636 ]
+    rotation = [ -0.623992, -0.029628, -0.029628, 0.780307 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e380dfb8-776e-4bae-8233-3dcda9c42df2'
+layer = 0
+name = 'Toe3B_FR'
+parent = 'Toe3A_FR'
+parentInstanceId = '8ad78842-13c8-4307-85b9-8b2e230dc510'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 17
+    boneName = 'Toe3B_FR'
+    generated = true
+    nodeIndex = 20
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016545, -0.000714, -0.000146, 0.999863 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'dd70c1f4-12a7-4462-99b6-0d6d3834f1e9'
+layer = 0
+name = 'HeelA_FR'
+parent = 'Foot_FR'
+parentInstanceId = '0c02ab72-bdbd-42a9-a271-0c4fc592db9a'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 18
+    boneName = 'HeelA_FR'
+    generated = true
+    nodeIndex = 21
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.070711, 0.28, 0.070711 ]
+    rotation = [ -0.048507, 0.605053, 0.605053, 0.515238 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'bc0ddc27-0e9a-4850-8d5e-22f755efc466'
+layer = 0
+name = 'HeelB_FR'
+parent = 'HeelA_FR'
+parentInstanceId = 'dd70c1f4-12a7-4462-99b6-0d6d3834f1e9'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 19
+    boneName = 'HeelB_FR'
+    generated = true
+    nodeIndex = 22
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.342053, 0.0 ]
+    rotation = [ -0.020312, 0.054402, 0.013047, 0.998227 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5c67f9cf-5ff2-45b2-8bcd-85bf4b2cd8e4'
+layer = 0
+name = 'Yaw_FL'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 20
+    boneName = 'Yaw_FL'
+    generated = true
+    nodeIndex = 23
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -2.28, 3.42, -0.199999 ]
+    rotation = [ 0.707006, 0.000151, -0.000187, 0.707207 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2732e37b-7cf5-42eb-968b-1aa9de4dad18'
+layer = 0
+name = 'Thigh_FL'
+parent = 'Yaw_FL'
+parentInstanceId = '5c67f9cf-5ff2-45b2-8bcd-85bf4b2cd8e4'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 21
+    boneName = 'Thigh_FL'
+    generated = true
+    nodeIndex = 24
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.48, 0.0 ]
+    rotation = [ 0.779262, -0.355387, -0.355476, -0.374282 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c017716b-7c02-435e-81a7-4ad82853b84b'
+layer = 0
+name = 'Shin_FL'
+parent = 'Thigh_FL'
+parentInstanceId = '2732e37b-7cf5-42eb-968b-1aa9de4dad18'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 22
+    boneName = 'Shin_FL'
+    generated = true
+    nodeIndex = 25
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.509172, 0.0 ]
+    rotation = [ 0.675896, -0.347688, -0.204104, 0.616944 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2e4b7e1b-11f1-4429-a5f0-83dcc77ca839'
+layer = 0
+name = 'Hock_FL'
+parent = 'Shin_FL'
+parentInstanceId = 'c017716b-7c02-435e-81a7-4ad82853b84b'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 23
+    boneName = 'Hock_FL'
+    generated = true
+    nodeIndex = 26
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 2e-06, 2.685276, 1e-06 ]
+    rotation = [ 0.270572, -0.349855, -0.398598, 0.803438 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5df03ec9-a1a4-43b4-955d-a498eea1dbaa'
+layer = 0
+name = 'Foot_FL'
+parent = 'Hock_FL'
+parentInstanceId = '2e4b7e1b-11f1-4429-a5f0-83dcc77ca839'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 24
+    boneName = 'Foot_FL'
+    generated = true
+    nodeIndex = 27
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -1e-06, 2.309416, 0.0 ]
+    rotation = [ -0.11037, 0.219925, 0.225232, 0.94272 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1514ac5d-1315-4273-a11d-3e32d484f121'
+layer = 0
+name = 'Toe1A_FL'
+parent = 'Foot_FL'
+parentInstanceId = '5df03ec9-a1a4-43b4-955d-a498eea1dbaa'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 25
+    boneName = 'Toe1A_FL'
+    generated = true
+    nodeIndex = 28
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.008529, 0.28, -0.099635 ]
+    rotation = [ -0.623992, 0.029628, 0.029628, 0.780306 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9190572d-26ee-460a-a61b-9bd5a13b6c09'
+layer = 0
+name = 'Toe1B_FL'
+parent = 'Toe1A_FL'
+parentInstanceId = '1514ac5d-1315-4273-a11d-3e32d484f121'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 26
+    boneName = 'Toe1B_FL'
+    generated = true
+    nodeIndex = 29
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016545, 0.000714, 0.000146, 0.999863 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1992b115-0b9a-4e54-9aaa-a5c0aa76dd3e'
+layer = 0
+name = 'Toe2A_FL'
+parent = 'Foot_FL'
+parentInstanceId = '5df03ec9-a1a4-43b4-955d-a498eea1dbaa'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 27
+    boneName = 'Toe2A_FL'
+    generated = true
+    nodeIndex = 30
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.070711, 0.28, -0.070711 ]
+    rotation = [ -0.576995, 0.266592, 0.266592, 0.724524 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '589985ff-75a9-492e-a322-f34c1b2a604d'
+layer = 0
+name = 'Toe2B_FL'
+parent = 'Toe2A_FL'
+parentInstanceId = '1992b115-0b9a-4e54-9aaa-a5c0aa76dd3e'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 28
+    boneName = 'Toe2B_FL'
+    generated = true
+    nodeIndex = 31
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.468722, 0.0 ]
+    rotation = [ -0.012342, 0.005161, 0.000929, 0.99991 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f3eee6ed-0df4-484b-84e2-9a4364f5e56f'
+layer = 0
+name = 'Toe3A_FL'
+parent = 'Foot_FL'
+parentInstanceId = '5df03ec9-a1a4-43b4-955d-a498eea1dbaa'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 29
+    boneName = 'Toe3A_FL'
+    generated = true
+    nodeIndex = 32
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.099635, 0.28, -0.008529 ]
+    rotation = [ -0.414932, 0.466986, 0.466986, 0.625844 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e9532d92-f3db-44e8-b1d8-8f558c6c9717'
+layer = 0
+name = 'Toe3B_FL'
+parent = 'Toe3A_FL'
+parentInstanceId = 'f3eee6ed-0df4-484b-84e2-9a4364f5e56f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 30
+    boneName = 'Toe3B_FL'
+    generated = true
+    nodeIndex = 33
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016254, 0.015213, 0.003094, 0.999747 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7578089e-886b-4e6b-afe9-03d8b7338372'
+layer = 0
+name = 'HeelA_FL'
+parent = 'Foot_FL'
+parentInstanceId = '5df03ec9-a1a4-43b4-955d-a498eea1dbaa'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 31
+    boneName = 'HeelA_FL'
+    generated = true
+    nodeIndex = 34
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.070711, 0.28, 0.070711 ]
+    rotation = [ -0.048507, -0.605052, -0.605053, 0.515238 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd5a79103-9daf-4ac7-b9da-daa2eb4bba0e'
+layer = 0
+name = 'HeelB_FL'
+parent = 'HeelA_FL'
+parentInstanceId = '7578089e-886b-4e6b-afe9-03d8b7338372'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 32
+    boneName = 'HeelB_FL'
+    generated = true
+    nodeIndex = 35
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.342053, 0.0 ]
+    rotation = [ -0.020312, -0.054402, -0.013047, 0.998227 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b07f7b54-2bbb-4729-9c8d-d5003a1e1f20'
+layer = 0
+name = 'Yaw_BR'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 33
+    boneName = 'Yaw_BR'
+    generated = true
+    nodeIndex = 36
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 2.28, -2.62, -0.2 ]
+    rotation = [ 0.706944, -7.4e-05, 0.000106, 0.70727 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '88ce7583-899b-4462-b536-9d2ecfd38dc8'
+layer = 0
+name = 'Thigh_BR'
+parent = 'Yaw_BR'
+parentInstanceId = 'b07f7b54-2bbb-4729-9c8d-d5003a1e1f20'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 34
+    boneName = 'Thigh_BR'
+    generated = true
+    nodeIndex = 37
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.480001, 1e-06 ]
+    rotation = [ 0.693025, 0.502712, 0.501452, -0.124671 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd42ce3db-8dd1-4be0-b9ff-3820b8b6d9d0'
+layer = 0
+name = 'Shin_BR'
+parent = 'Thigh_BR'
+parentInstanceId = '88ce7583-899b-4462-b536-9d2ecfd38dc8'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 35
+    boneName = 'Shin_BR'
+    generated = true
+    nodeIndex = 38
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.509171, 1e-06 ]
+    rotation = [ 0.664906, 0.647808, 0.243387, 0.281083 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '282b8a06-c5d6-41c0-b5d8-a694fbffe68f'
+layer = 0
+name = 'Hock_BR'
+parent = 'Shin_BR'
+parentInstanceId = 'd42ce3db-8dd1-4be0-b9ff-3820b8b6d9d0'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 36
+    boneName = 'Hock_BR'
+    generated = true
+    nodeIndex = 39
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 2e-06, 2.685276, 1e-06 ]
+    rotation = [ -0.264875, 0.339253, 0.395379, 0.811434 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '02c649d7-81cf-457b-aca6-31f7549781d1'
+layer = 0
+name = 'Foot_BR'
+parent = 'Hock_BR'
+parentInstanceId = '282b8a06-c5d6-41c0-b5d8-a694fbffe68f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 37
+    boneName = 'Foot_BR'
+    generated = true
+    nodeIndex = 40
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 2.309416, 0.0 ]
+    rotation = [ 0.18759, -0.160907, -0.161551, 0.955416 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8e7d0552-b6bb-4242-b59b-3797768a2cfa'
+layer = 0
+name = 'Toe1A_BR'
+parent = 'Foot_BR'
+parentInstanceId = '02c649d7-81cf-457b-aca6-31f7549781d1'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 38
+    boneName = 'Toe1A_BR'
+    generated = true
+    nodeIndex = 41
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.00853, 0.28, 0.099636 ]
+    rotation = [ 0.572972, -0.248892, -0.248891, 0.740141 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2d54a79e-4d7c-421a-8c9b-f88f1b5aa128'
+layer = 0
+name = 'Toe1B_BR'
+parent = 'Toe1A_BR'
+parentInstanceId = '8e7d0552-b6bb-4242-b59b-3797768a2cfa'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 39
+    boneName = 'Toe1B_BR'
+    generated = true
+    nodeIndex = 42
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ 0.01162, -0.057918, -0.011779, 0.998184 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f756f591-9b12-4497-9f09-cc4d042ef43d'
+layer = 0
+name = 'Toe2A_BR'
+parent = 'Foot_BR'
+parentInstanceId = '02c649d7-81cf-457b-aca6-31f7549781d1'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 40
+    boneName = 'Toe2A_BR'
+    generated = true
+    nodeIndex = 43
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.070711, 0.28, 0.070711 ]
+    rotation = [ 0.103069, 0.627193, 0.627193, -0.45015 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '766ce04c-ea55-45c9-9054-98a56ea0eda9'
+layer = 0
+name = 'Toe2B_BR'
+parent = 'Toe2A_BR'
+parentInstanceId = 'f756f591-9b12-4497-9f09-cc4d042ef43d'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 41
+    boneName = 'Toe2B_BR'
+    generated = true
+    nodeIndex = 44
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.468721, 0.0 ]
+    rotation = [ -0.011246, -0.028743, -0.005169, 0.99951 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '27fd54a3-f3bf-4f59-a9f0-b0d866d5c1ac'
+layer = 0
+name = 'Toe3A_BR'
+parent = 'Foot_BR'
+parentInstanceId = '02c649d7-81cf-457b-aca6-31f7549781d1'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 42
+    boneName = 'Toe3A_BR'
+    generated = true
+    nodeIndex = 45
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.099636, 0.28, 0.00853 ]
+    rotation = [ -0.364116, -0.507606, -0.507606, 0.593374 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd3df90a9-afcb-4fd4-b494-699f7c99fc84'
+layer = 0
+name = 'Toe3B_BR'
+parent = 'Toe3A_BR'
+parentInstanceId = '27fd54a3-f3bf-4f59-a9f0-b0d866d5c1ac'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 43
+    boneName = 'Toe3B_BR'
+    generated = true
+    nodeIndex = 46
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016136, -0.017985, -0.003658, 0.999701 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '71179ff2-5bcb-4cbc-8c55-ce573f70e252'
+layer = 0
+name = 'HeelA_BR'
+parent = 'Foot_BR'
+parentInstanceId = '02c649d7-81cf-457b-aca6-31f7549781d1'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 44
+    boneName = 'HeelA_BR'
+    generated = true
+    nodeIndex = 47
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.07071, 0.28, -0.070711 ]
+    rotation = [ -0.547063, 0.262989, 0.262989, 0.74993 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'aef10e72-178b-44cf-b9c8-783e7ead56d9'
+layer = 0
+name = 'HeelB_BR'
+parent = 'HeelA_BR'
+parentInstanceId = '71179ff2-5bcb-4cbc-8c55-ce573f70e252'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 45
+    boneName = 'HeelB_BR'
+    generated = true
+    nodeIndex = 48
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.342052, 0.0 ]
+    rotation = [ -0.024019, 0.01012, 0.002427, 0.999657 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3fa2866a-4f52-4676-bba8-7fccc6c34439'
+layer = 0
+name = 'Yaw_BL'
+parent = 'Body'
+parentInstanceId = '906b8f65-8f35-44a9-83e0-1c6f8db2a057'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 46
+    boneName = 'Yaw_BL'
+    generated = true
+    nodeIndex = 49
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -2.28, -2.62, -0.2 ]
+    rotation = [ 0.706862, 0.00044, -0.000321, 0.707351 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e7218eb9-8660-405d-a58a-a37cfe594526'
+layer = 0
+name = 'Thigh_BL'
+parent = 'Yaw_BL'
+parentInstanceId = '3fa2866a-4f52-4676-bba8-7fccc6c34439'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 47
+    boneName = 'Thigh_BL'
+    generated = true
+    nodeIndex = 50
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.480001, 1e-06 ]
+    rotation = [ 0.693025, -0.502712, -0.501452, -0.124671 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '98ed56ae-bfe0-4499-bbd6-bc6042042a29'
+layer = 0
+name = 'Shin_BL'
+parent = 'Thigh_BL'
+parentInstanceId = 'e7218eb9-8660-405d-a58a-a37cfe594526'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 48
+    boneName = 'Shin_BL'
+    generated = true
+    nodeIndex = 51
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.509172, 0.0 ]
+    rotation = [ 0.664906, -0.647808, -0.243387, 0.281083 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cf61103f-9e7e-491e-8b97-e34addf3c454'
+layer = 0
+name = 'Hock_BL'
+parent = 'Shin_BL'
+parentInstanceId = '98ed56ae-bfe0-4499-bbd6-bc6042042a29'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 49
+    boneName = 'Hock_BL'
+    generated = true
+    nodeIndex = 52
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -1e-06, 2.685275, 1e-06 ]
+    rotation = [ -0.264875, -0.339253, -0.395379, 0.811434 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2b952a8-0c57-4894-afa6-2ae7c52fe7db'
+layer = 0
+name = 'Foot_BL'
+parent = 'Hock_BL'
+parentInstanceId = 'cf61103f-9e7e-491e-8b97-e34addf3c454'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 50
+    boneName = 'Foot_BL'
+    generated = true
+    nodeIndex = 53
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 2.309416, 0.0 ]
+    rotation = [ 0.18759, 0.160907, 0.161551, 0.955416 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f2c2ea49-5fba-43ab-965e-df4a4b58fb06'
+layer = 0
+name = 'Toe1A_BL'
+parent = 'Foot_BL'
+parentInstanceId = 'a2b952a8-0c57-4894-afa6-2ae7c52fe7db'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 51
+    boneName = 'Toe1A_BL'
+    generated = true
+    nodeIndex = 54
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.099636, 0.28, 0.00853 ]
+    rotation = [ -0.364116, 0.507606, 0.507606, 0.593374 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '04021034-326c-4998-a110-5deb1db634d0'
+layer = 0
+name = 'Toe1B_BL'
+parent = 'Toe1A_BL'
+parentInstanceId = 'f2c2ea49-5fba-43ab-965e-df4a4b58fb06'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 52
+    boneName = 'Toe1B_BL'
+    generated = true
+    nodeIndex = 55
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016136, 0.017985, 0.003658, 0.999701 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8c73e6ef-6c71-4e21-9a14-babdf83bce5f'
+layer = 0
+name = 'Toe2A_BL'
+parent = 'Foot_BL'
+parentInstanceId = 'a2b952a8-0c57-4894-afa6-2ae7c52fe7db'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 53
+    boneName = 'Toe2A_BL'
+    generated = true
+    nodeIndex = 56
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.070711, 0.28, 0.070711 ]
+    rotation = [ -0.103068, 0.627193, 0.627193, 0.45015 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '52ef6a1b-806b-4bc9-bfee-908b61e99442'
+layer = 0
+name = 'Toe2B_BL'
+parent = 'Toe2A_BL'
+parentInstanceId = '8c73e6ef-6c71-4e21-9a14-babdf83bce5f'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 54
+    boneName = 'Toe2B_BL'
+    generated = true
+    nodeIndex = 57
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.468722, 0.0 ]
+    rotation = [ -0.011246, 0.028743, 0.005169, 0.99951 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0aef375d-759c-4d9d-955a-096061bbe2cd'
+layer = 0
+name = 'Toe3A_BL'
+parent = 'Foot_BL'
+parentInstanceId = 'a2b952a8-0c57-4894-afa6-2ae7c52fe7db'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 55
+    boneName = 'Toe3A_BL'
+    generated = true
+    nodeIndex = 58
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ -0.00853, 0.28, 0.099636 ]
+    rotation = [ 0.572972, 0.248892, 0.248891, 0.740141 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b425ae81-b72c-44e4-b48d-e605a12ea0f9'
+layer = 0
+name = 'Toe3B_BL'
+parent = 'Toe3A_BL'
+parentInstanceId = '0aef375d-759c-4d9d-955a-096061bbe2cd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 56
+    boneName = 'Toe3B_BL'
+    generated = true
+    nodeIndex = 59
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ 0.01162, 0.057918, 0.011779, 0.998184 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5bd9e272-e692-45d7-ad20-771c5510a8ef'
+layer = 0
+name = 'HeelA_BL'
+parent = 'Foot_BL'
+parentInstanceId = 'a2b952a8-0c57-4894-afa6-2ae7c52fe7db'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 57
+    boneName = 'HeelA_BL'
+    generated = true
+    nodeIndex = 60
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.070711, 0.28, -0.07071 ]
+    rotation = [ -0.547063, -0.262989, -0.262989, 0.74993 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4f3fc89e-a4ef-4320-9cd9-ec477216378d'
+layer = 0
+name = 'HeelB_BL'
+parent = 'HeelA_BL'
+parentInstanceId = '5bd9e272-e692-45d7-ad20-771c5510a8ef'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 58
+    boneName = 'HeelB_BL'
+    generated = true
+    nodeIndex = 61
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.342053, 0.0 ]
+    rotation = [ -0.024019, -0.01012, -0.002427, 0.999657 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'de794c48-a12a-40ef-bca4-3872c880d19d'
+layer = 0
+name = 'E_ArmorGrey'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'E_ArmorGrey'
+    generated = true
+    nodeIndex = 62
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '06a4a6bb-f2ee-4d44-8ed2-1e6a2ee895fb'
+layer = 0
+name = 'E_CoreGlow'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'E_CoreGlow'
+    generated = true
+    nodeIndex = 63
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8f3a1d54-07cc-48f1-a524-b2f585c90f22'
+layer = 0
+name = 'E_Hazard'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'E_Hazard'
+    generated = true
+    nodeIndex = 64
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '08e4ac7f-7456-41b4-bcb1-ac9215a8b133'
+layer = 0
+name = 'E_MetalDark'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'E_MetalDark'
+    generated = true
+    nodeIndex = 65
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c32a2b0a-a42a-4eee-bff1-315dadef0bbc'
+layer = 0
+name = 'E_PanelLine'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'E_PanelLine'
+    generated = true
+    nodeIndex = 66
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e0866eea-bbf5-4499-a92a-06aa259ef1de'
+layer = 0
+name = 'E_RingGlow'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'E_RingGlow'
+    generated = true
+    nodeIndex = 67
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '15c93291-ae84-4da0-b0c0-d43ebf0493c6'
+layer = 0
+name = 'E_Stencil'
+parent = 'RootNode'
+parentInstanceId = '7a7c4b1d-3203-481e-9c1f-2f420d39ac67'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'E_Stencil'
+    generated = true
+    nodeIndex = 68
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '08a59705-069e-4dde-b674-80bd7f3a5cc9'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
