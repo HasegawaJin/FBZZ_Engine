@@ -2,14 +2,13 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '18f10c26b1ca5223'
-source_hash = '33c53e3ea9e38d32'
+settings_hash = 'aedf89d0912274fe'
+source_hash = '555a986e0c0bf635'
 
 [meta]
-guid = '809328aac0bf66f3757166f1ca9bbe1b'
+guid = '7115162fc1db1ce0d3d7f099bcaf0d8b'
 
 [model]
-clips = []
 default_compression = 'Auto'
 generate_normals = true
 generate_tangents = true
@@ -23,3 +22,10 @@ selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
+
+    [[model.clips]]
+    end_frame = 59.0
+    loop = true
+    name = 'Idle'
+    output_name = ''
+    start_frame = 0.0

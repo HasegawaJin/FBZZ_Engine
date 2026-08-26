@@ -2,14 +2,13 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '18f10c26b1ca5223'
-source_hash = 'f87bb95e0634bfe3'
+settings_hash = '4a4d6e7f127a703d'
+source_hash = '9074142420098e3f'
 
 [meta]
-guid = '18430655ce08e17da4c461d2d78f41de'
+guid = '29ae10dffaa9073bece66868a45b6022'
 
 [model]
-clips = []
 default_compression = 'Auto'
 generate_normals = true
 generate_tangents = true
@@ -23,3 +22,10 @@ selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
+
+    [[model.clips]]
+    end_frame = 29.0
+    loop = true
+    name = 'Beam_Loop'
+    output_name = ''
+    start_frame = 0.0
