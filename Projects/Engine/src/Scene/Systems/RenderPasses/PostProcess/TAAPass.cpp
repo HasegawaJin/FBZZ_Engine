@@ -55,6 +55,10 @@ void ExecuteTAAPass(RenderPassContext& ctx)
     taaDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: taaFeedback, prevViewProjection
     taaDC.textures[5]        = resources.GetColorTexture(h.ldrRT, 0);   // t5: 現フレーム LDR (Composite 出力)
     taaDC.textures[21]       = resources.GetColorTexture(historyRead, 0); // t21: TEX_TAA_HISTORY (前フレーム)
+    // t26: モーションベクター。VelocityPass が動かなかったフレームは無効ハンドルのままで、
+    //      シェーダー側は B=0 を読んで従来の深度再投影へフォールバックする。
+    if (h.velocityRT.IsValid())
+        taaDC.textures[26]   = resources.GetColorTexture(h.velocityRT, 0);
     r.Submit(taaDC, resources);
 
     // フレーム終了後に ping-pong フラグを反転
