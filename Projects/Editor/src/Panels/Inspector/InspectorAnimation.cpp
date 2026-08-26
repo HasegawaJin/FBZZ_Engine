@@ -322,6 +322,154 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
     }
 }
 
+// 揺れものは「根ボーンを 1 つ指す」だけで枝全体が対象になるため、IK のような
+// ボーン名リストを持たない。編集項目もチェーンあたり数個で済む。
+void DrawSpringBoneInspector(scene::GameObject* go,
+                             EditorContext& ctx,
+                             std::any& m_componentClipboard,
+                             const std::type_info*& m_componentClipboardType)
+{
+    DrawComponentSection<scene::SpringBoneComponent>(
+        go, ctx, m_componentClipboard, m_componentClipboardType, "Spring Bone",
+        [](scene::SpringBoneComponent& spring, EditorContext&) {
+            ImGui::Checkbox("Simulate In Editor", &spring.simulateInEditor);
+            ImGui::DragFloat("Teleport Reset", &spring.teleportResetDistance,
+                             0.05f, 0.0f, 100.0f, "%.2f m");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("この距離を超えて 1 フレームで移動したら慣性を捨てる");
+
+            ImGui::SeparatorText("Chains");
+            int removeChain = -1;
+            for (int ci = 0; ci < static_cast<int>(spring.chains.size()); ++ci) {
+                auto& chain = spring.chains[static_cast<size_t>(ci)];
+                ImGui::PushID(ci);
+
+                char header[64];
+                std::snprintf(header, sizeof(header), "##springchain%d", ci);
+                const float removeW = ImGui::CalcTextSize("Remove").x +
+                                      ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float checkboxW = ImGui::GetFrameHeight();
+
+                const bool open = ImGui::TreeNodeEx(
+                    header, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap,
+                    "Chain %d  (%s)", ci,
+                    chain.rootBoneName.empty() ? "no root" : chain.rootBoneName.c_str());
+
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::Checkbox("##en", &chain.enabled);
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+                if (ImGui::SmallButton("Remove")) removeChain = ci;
+                ImGui::PopStyleColor(3);
+
+                if (open) {
+                    if (!chain.enabled)
+                        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+
+                    char rootName[128];
+                    std::snprintf(rootName, sizeof(rootName), "%s", chain.rootBoneName.c_str());
+                    if (ImGui::InputText("Root Bone", rootName, sizeof(rootName))) {
+                        chain.rootBoneName = rootName;
+                        chain.nodes.clear();
+                        chain.builtSkeleton = nullptr;
+                    }
+                    if (ImGui::DragInt("Max Depth", &chain.maxDepth, 1.0f, 0, 32))
+                        chain.nodes.clear();
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("0 = 葉まで揺らす");
+
+                    ImGui::DragFloat("Stiffness", &chain.stiffness, 0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Damping",   &chain.damping,   0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Weight",    &chain.weight,    0.01f, 0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Gravity",   &chain.gravityPower,
+                                     0.05f, 0.0f, 50.0f, "%.2f m/s2");
+                    widgets::DragVec3("Gravity Dir", chain.gravityDirection, 0.01f, -1.0f, 1.0f);
+                    ImGui::DragFloat("Collision Radius", &chain.radius,
+                                     0.001f, 0.0f, 1.0f, "%.3f m");
+                    ImGui::DragFloat("Limit Angle", &chain.limitAngle,
+                                     1.0f, 0.0f, 180.0f, "%.1f deg");
+                    if (ImGui::DragFloat("Leaf Tail Length", &chain.leafTailLength,
+                                         0.001f, 0.001f, 1.0f, "%.3f m"))
+                        chain.nodes.clear();
+
+                    ImGui::TextDisabled("Simulated Bones: %d",
+                                        static_cast<int>(chain.nodes.size()));
+
+                    if (!chain.enabled) ImGui::PopStyleVar();
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+                ImGui::Spacing();
+            }
+            if (removeChain >= 0)
+                spring.chains.erase(spring.chains.begin() + removeChain);
+            if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f }))
+                spring.chains.push_back(scene::SpringBoneChain{});
+
+            ImGui::SeparatorText("Colliders");
+            int removeCollider = -1;
+            for (int di = 0; di < static_cast<int>(spring.colliders.size()); ++di) {
+                auto& collider = spring.colliders[static_cast<size_t>(di)];
+                ImGui::PushID(1000 + di);
+
+                char header[64];
+                std::snprintf(header, sizeof(header), "##springcol%d", di);
+                const float removeW = ImGui::CalcTextSize("Remove").x +
+                                      ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float checkboxW = ImGui::GetFrameHeight();
+
+                const bool open = ImGui::TreeNodeEx(
+                    header, ImGuiTreeNodeFlags_AllowOverlap, "Collider %d  (%s)", di,
+                    collider.boneName.empty() ? "root" : collider.boneName.c_str());
+
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::Checkbox("##en", &collider.enabled);
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button,        EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorTheme::Color(ThemeColor::Danger));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  EditorTheme::Color(ThemeColor::AccentActive));
+                if (ImGui::SmallButton("Remove")) removeCollider = di;
+                ImGui::PopStyleColor(3);
+
+                if (open) {
+                    char boneName[128];
+                    std::snprintf(boneName, sizeof(boneName), "%s", collider.boneName.c_str());
+                    if (ImGui::InputText("Bone", boneName, sizeof(boneName)))
+                        collider.boneName = boneName;
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("空欄でオーナー Transform 基準");
+
+                    const char* shapeNames[] = { "Sphere", "Capsule" };
+                    int shape = static_cast<int>(collider.shape);
+                    if (ImGui::Combo("Shape", &shape, shapeNames, 2))
+                        collider.shape = static_cast<scene::SpringBoneColliderShape>(shape);
+
+                    widgets::DragVec3("Offset", collider.offset, 0.005f, -10.0f, 10.0f);
+                    if (collider.shape == scene::SpringBoneColliderShape::Capsule)
+                        widgets::DragVec3("Tail Offset", collider.tailOffset,
+                                          0.005f, -10.0f, 10.0f);
+                    ImGui::DragFloat("Radius", &collider.radius, 0.005f, 0.001f, 5.0f, "%.3f m");
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+            if (removeCollider >= 0)
+                spring.colliders.erase(spring.colliders.begin() + removeCollider);
+            if (ImGui::Button("+ Add Collider", { -1.0f, 0.0f }))
+                spring.colliders.push_back(scene::SpringBoneCollider{});
+
+            ImGui::SeparatorText("Runtime Diagnostics");
+            ImGui::Text("Updates: %llu",
+                        static_cast<unsigned long long>(spring.runtimeUpdateCount));
+            ImGui::Text("Simulated Bones: %d", spring.runtimeSimulatedBoneCount);
+            ImGui::Text("Active Colliders: %d", spring.runtimeActiveColliderCount);
+        });
+}
+
 } // namespace
 
 void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
@@ -362,7 +510,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     if (asset::SaveAnimatorControllerAsset(path, controller)) {
                         anim.controllerPath = NormalizeAssetPath(path);
                         anim.loadedControllerPath = anim.controllerPath;
-                        ctx.selectedAssetPath = path;
+                        SelectAsset(ctx, path);
                         ctx.requestAssetBrowserRefresh = true;
                         if (ctx.markSceneDirty) ctx.markSceneDirty();
                     }
@@ -777,6 +925,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
         });
 
+    DrawSpringBoneInspector(go, ctx, m_componentClipboard, m_componentClipboardType);
 }
 
 

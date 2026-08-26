@@ -392,6 +392,24 @@ struct AnimatorComponent {
     std::vector<math::Matrix4> nodeGlobalTransforms;
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningBuffer;
 
+    // 前フレームの確定ボーンパレット。VelocityPass が「前フレームの頂点位置」を
+    // VS で組み直すために使う (b2 = CB_PREV_SKINNING へ束縛する)。
+    //
+    // WHY skinnedVertexBuffers の ping-pong にしないか:
+    //   コンピュートスキニングの出力は GPU 書き込み頂点バッファ (BufferTag) で、
+    //   VS から SRV として読める保証がない。DrawCall::vsBuffers は
+    //   StructuredBufferTag しか受け付けないため、前フレームの頂点を頂点入力として
+    //   持ち込む経路が存在しない。パレットを 2 本渡して VS で 2 回スキニングする方が
+    //   バックエンドの制約に触れずに済む。
+    //
+    // WHY フレーム末ではなく次フレーム頭でスナップショットするか:
+    //   boneMatrices の最終書き込み者は AnimatorSystem ではなく SpringBoneSystem。
+    //   AnimatorSystem が上書きする直前に取れば、それが「前フレームの最終ポーズ」になる。
+    std::vector<math::Matrix4> prevBoneMatrices;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> prevSkinningBuffer;
+    // prevBoneMatrices が有効か。初回フレームは前フレームが存在しないので速度 0 にする。
+    bool prevBoneMatricesValid = false;
+
     // ── ステートマシン定義（シリアライズ対象）──────────────────────────────
     std::string                    defaultStateName; // 初期ステート名。空なら states[0]
     std::vector<AnimationState>    states;

@@ -8,6 +8,7 @@
 #include "Components/ParticleEmitter.hpp"
 #include "Components/ParticleForceField.hpp"
 #include "Components/WindZoneComponent.hpp"
+#include "Components/WeatherComponent.hpp"
 #include "Components/ColliderComponent.hpp"
 #include "Components/RigidBodyComponent.hpp"
 #include "Components/VolumeComponent.hpp"
@@ -33,11 +34,11 @@
 #include "Components/AtmosphericScatteringComponent.hpp"
 #include "Components/PostProcessVolumeComponent.hpp"
 #include "Components/IKSolverComponent.hpp"
+#include "Components/SpringBoneComponent.hpp"
+#include "Components/MotionWarpComponent.hpp"
 #include "Components/CharacterControllerComponent.hpp"
 #include "Components/TerrainComponent.hpp"
 #include "Components/TerrainGridComponent.hpp"
-#include "Components/TerrainDetailComponent.hpp"
-#include "Components/FoliageComponent.hpp"
 #include "Components/WaterComponent.hpp"
 #include "Components/VolumetricCloudComponent.hpp"
 #include "Components/TrailComponent.hpp"
@@ -181,8 +182,6 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(CharacterControllerComponent, Physics, "Character Controller"),
     FBZZ_CUSTOM_COMPONENT(TerrainComponent, Terrain, "Terrain"),
     FBZZ_CUSTOM_COMPONENT(TerrainGridComponent, Terrain, "Terrain Grid"),
-    FBZZ_CUSTOM_COMPONENT(TerrainDetailComponent, Terrain, "Terrain Detail"),
-    FBZZ_CUSTOM_COMPONENT(FoliageComponent, Terrain, "Foliage"),
     FBZZ_CUSTOM_COMPONENT(WaterComponent, Terrain, "Water"),
     FBZZ_CUSTOM_COMPONENT(VolumetricCloudComponent, Environment, "Volumetric Cloud"),
     FBZZ_CUSTOM_COMPONENT(TrailComponent, Effects, "Trail"),
@@ -229,7 +228,11 @@ using ComponentRegistry = std::tuple<
     // WHY 末尾か: ComponentRegistry の順序は Scene の SoA tuple 順と
     //      Script DLL ABI に影響する。既存順を崩さず末尾へ追加する。
     FBZZ_COMPONENT(BehaviorTreeComponent, Navigation, "Behavior Tree"),
-    FBZZ_CUSTOM_COMPONENT(CylinderColliderComponent, Physics, "Cylinder Collider")
+    FBZZ_CUSTOM_COMPONENT(CylinderColliderComponent, Physics, "Cylinder Collider"),
+    FBZZ_CUSTOM_COMPONENT(SpringBoneComponent, Animation, "Spring Bone"),
+    // 寄せ先はスクリプトが毎回入れ替えるランタイム値で、保存する設定は enabled だけ。
+    FBZZ_COMPONENT(MotionWarpComponent, Animation, "Motion Warp"),
+    FBZZ_COMPONENT(WeatherComponent, Environment, "Weather")
 >;
 
 template<typename Registry>
