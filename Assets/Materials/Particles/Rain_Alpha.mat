@@ -1,0 +1,31 @@
+# FBZZ Engine
+# Rain_Alpha.mat
+# 雨粒。RainDrop.hlsl が矩形を手続きで筋に削るのでテクスチャは持たない。
+# ParticleEmitter は renderMode = StretchedBillboard で使うこと。
+# Billboard のままだと «速度方向» が無いので、ただの縦棒が空中に並ぶ。
+version = 1
+name = 'Rain'
+shader = 'Assets/Shaders/Material/Effects/RainDrop.hlsl'
+blend_mode = 'Alpha'
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = 'particle'
+mesh_type = 'surface'
+
+[params]
+# 空の色を拾うので、白よりわずかに青へ寄せる。
+albedo = [ 0.78, 0.85, 1.0, 1.0 ]
+coreSharpness = 3.0
+headSize = 0.18
+tailFalloff = 1.6
+opacity = 0.55
+
+[particle]
+# 雨は自分では光らない。空と同じ明るさの中に居てほしいので受光側に寄せる。
+emissive_scale = 0.0
+lighting_strength = 0.0
+soft_particles = true
+
+[textures]
+albedo = ''
