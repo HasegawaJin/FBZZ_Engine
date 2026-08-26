@@ -7,6 +7,7 @@
 //      ProjectSettings はゲームランタイムに影響する設定であり、
 //      EditorSettings はエディター操作の快適性に関するユーザー個人設定のため分離している。
 #pragma once
+#include <Editor/BuildSettings.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <array>
 #include <cstdint>
@@ -66,8 +67,6 @@ struct EditorSettings {
     // --- ツールウィンドウ表示 ---------------------------------------------
     bool        showTerrainTool  = false;
     bool        showWaterTool    = false;
-    bool        showDetailTool   = false;
-    bool        showFoliageTool  = false;
 
     // --- Map Mode フィルター ----------------------------------------------
     bool        mapHierarchyFilter = true;
@@ -103,17 +102,6 @@ struct EditorSettings {
     int      terrainSculptMode    = 0;       // SculptMode::Raise
     uint32_t terrainPaintLayer    = 0;
 
-    // --- DetailTool ブラシ設定 -------------------------------------------
-    float    detailBrushRadius    = 6.0f;
-    float    detailBrushStrength  = 0.6f;
-    int      detailMode           = 0;       // Mode::Paint
-    int      detailLayerIndex     = 0;
-    bool     detailShowChunkBounds = false;
-    bool     detailShowCounts      = false;
-
-    // --- FoliageTool ブラシ設定 ------------------------------------------
-    float    foliageEraseRadius    = 4.0f;
-
     // --- シーン -----------------------------------------------------------
     // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後に無効になる。
     //      Load/Save 時に projectRoot との相対パスへ変換している。
@@ -140,6 +128,12 @@ struct EditorSettings {
 
     // --- Import デフォルト設定 ------------------------------------------------
     FbxImportOptions         defaultImportOptions;
+
+    // --- Build Settings ---------------------------------------------------
+    // WHY ここに置くか: 配布ビルドの構成 (シーン一覧・出力先・製品名) は
+    //     プロジェクトルートに専用ファイルを増やすほどの独立性がない。
+    //     エディターが覚えている他の状態と同じ 1 ファイルに集約する。
+    BuildSettings            build;
 
     // --- ホットキーオーバーライド -------------------------------------------
     struct HotkeyOverride {

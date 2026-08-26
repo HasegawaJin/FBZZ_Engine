@@ -56,8 +56,6 @@ class NavigationPanel;
 class AiSettingsPanel;
 class TerrainTool;
 class WaterTool;
-class DetailTool;
-class FoliageTool;
 
 class EditorApp final : public core::IModule {
 public:
@@ -150,6 +148,11 @@ private:
     void RegisterPanelOperators();
     // ウィンドウ名または View メニュー名 (大小無視の完全一致) でパネルを引く。
     [[nodiscard]] IPanel* FindPanelByName(const std::string& name) const;
+
+    // パネル側の設定を回収して editor_settings.toml へ即時書き出す。
+    // WHY Shutdown と別にあるか: ビルド構成のように、エディターが落ちても
+    //     残っていてほしい設定がある。Shutdown 側はここに加えてカメラ等も回収する。
+    void PersistEditorSettings();
 
     // 通常 Workspace でのパネル開閉状態を EditorSettings へ採る / 戻す。
     // WHY 専用経路か: Map Mode と Play Maximized は visible を一時的に潰すため、
@@ -311,8 +314,6 @@ private:
     renderer::RenderSettings m_renderSettingsPlaySnapshot;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
     std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
-    std::unique_ptr<DetailTool>     m_detailTool;  // DetailTool も同じ pimpl パターン
-    std::unique_ptr<FoliageTool>    m_foliageTool; // FoliageTool も同じ pimpl パターン
     std::string                     m_normalLayoutIni;
     const char*                     m_normalIniFilename = nullptr;
     std::string                     m_imguiIniPath;   // io.IniFilename が指すパス (文字列寿命を保持)
@@ -325,8 +326,6 @@ private:
     bool                            m_terrainToolWasActive = false;
     int                             m_terrainToolModeBeforeMap = 0;
     bool                            m_waterToolWasActive = false;
-    bool                            m_detailToolWasActive = false;
-    bool                            m_foliageToolWasActive = false;
 
     // ビルドコンソール: Script / HLSL コンパイルの出力・診断・履歴を集約する。
     // WHY: m_ctx.buildConsole がこれを指し、Build Output パネル・StatusBar・通知バーが共有する。

@@ -13,7 +13,11 @@ namespace fbzz::editor {
 bool EditorSettings::Load(const std::string& path, const std::string& projectRoot)
 {
     std::string text;
-    if (!util::FileSystem::ReadText(path, text)) return false;
+    if (!util::FileSystem::ReadText(path, text)) {
+        // 設定ファイルがまだ無いプロジェクトでも、旧 BuildSettings.toml だけは引き継ぐ。
+        BuildSettings::LoadLegacyFile(projectRoot, build);
+        return false;
+    }
 
     // TOML_EXCEPTIONS=0 なので parse_result で受ける
     auto result = toml::parse(text);
@@ -68,8 +72,6 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     // ツールウィンドウ
     if (auto v = tbl["tools"]["show_terrain"].value<bool>()) showTerrainTool = *v;
     if (auto v = tbl["tools"]["show_water"].value<bool>())   showWaterTool   = *v;
-    if (auto v = tbl["tools"]["show_detail"].value<bool>())  showDetailTool  = *v;
-    if (auto v = tbl["tools"]["show_foliage"].value<bool>()) showFoliageTool = *v;
 
     // Map Mode フィルター
     if (auto v = tbl["map_mode"]["hierarchy_filter"].value<bool>()) mapHierarchyFilter = *v;
@@ -85,17 +87,6 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["terrain_tool"]["brush_falloff"].value<int64_t>()) terrainBrushFalloff  = static_cast<int>(*v);
     if (auto v = tbl["terrain_tool"]["sculpt_mode"].value<int64_t>())   terrainSculptMode    = static_cast<int>(*v);
     if (auto v = tbl["terrain_tool"]["paint_layer"].value<int64_t>())   terrainPaintLayer    = static_cast<uint32_t>(*v);
-
-    // DetailTool ブラシ設定
-    if (auto v = tbl["detail_tool"]["brush_radius"].value<float>())      detailBrushRadius    = *v;
-    if (auto v = tbl["detail_tool"]["brush_strength"].value<float>())    detailBrushStrength  = *v;
-    if (auto v = tbl["detail_tool"]["mode"].value<int64_t>())            detailMode           = static_cast<int>(*v);
-    if (auto v = tbl["detail_tool"]["layer_index"].value<int64_t>())     detailLayerIndex     = static_cast<int>(*v);
-    if (auto v = tbl["detail_tool"]["show_chunk_bounds"].value<bool>())  detailShowChunkBounds = *v;
-    if (auto v = tbl["detail_tool"]["show_counts"].value<bool>())        detailShowCounts      = *v;
-
-    // FoliageTool ブラシ設定
-    if (auto v = tbl["foliage_tool"]["erase_radius"].value<float>())     foliageEraseRadius    = *v;
 
     // Camera Bookmarks
     if (auto* arr = tbl["camera_bookmarks"].as_array()) {
@@ -244,6 +235,30 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["autosave"]["enabled"].value<bool>())       autoSaveEnabled     = *v;
     if (auto v = tbl["autosave"]["interval_sec"].value<int64_t>()) autoSaveIntervalSec = static_cast<int>(*v);
 
+    // Build Settings
+    if (auto* buildTbl = tbl["build"].as_table()) {
+        build.productName       = (*buildTbl)["product_name"].value_or(build.productName);
+        build.version           = (*buildTbl)["version"].value_or(build.version);
+        build.outputDirectory   = (*buildTbl)["output_dir"].value_or(build.outputDirectory);
+        build.developmentBuild  = (*buildTbl)["development"].value_or(build.developmentBuild);
+        build.stripEditorAssets = (*buildTbl)["strip_editor_assets"].value_or(build.stripEditorAssets);
+
+        build.scenes.clear();
+        if (auto* scenesArr = (*buildTbl)["scenes"].as_array()) {
+            for (auto& elem : *scenesArr) {
+                auto* entryTbl = elem.as_table();
+                if (!entryTbl) continue;
+                SceneEntry entry;
+                entry.path    = (*entryTbl)["path"].value_or(std::string{});
+                entry.enabled = (*entryTbl)["enabled"].value_or(true);
+                if (!entry.path.empty()) build.scenes.push_back(std::move(entry));
+            }
+        }
+    } else {
+        // 旧 <projectRoot>/BuildSettings.toml を一度だけ引き継ぐ。
+        BuildSettings::LoadLegacyFile(projectRoot, build);
+    }
+
     return true;
 }
 
@@ -299,8 +314,6 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table toolsTbl;
     toolsTbl.insert("show_terrain", showTerrainTool);
     toolsTbl.insert("show_water",   showWaterTool);
-    toolsTbl.insert("show_detail",  showDetailTool);
-    toolsTbl.insert("show_foliage", showFoliageTool);
 
     // Map Mode フィルター
     toml::table mapModeTbl;
@@ -319,19 +332,6 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     terrainToolTbl.insert("brush_falloff",  static_cast<int64_t>(terrainBrushFalloff));
     terrainToolTbl.insert("sculpt_mode",    static_cast<int64_t>(terrainSculptMode));
     terrainToolTbl.insert("paint_layer",    static_cast<int64_t>(terrainPaintLayer));
-
-    // DetailTool ブラシ設定
-    toml::table detailToolTbl;
-    detailToolTbl.insert("brush_radius",      detailBrushRadius);
-    detailToolTbl.insert("brush_strength",    detailBrushStrength);
-    detailToolTbl.insert("mode",              static_cast<int64_t>(detailMode));
-    detailToolTbl.insert("layer_index",       static_cast<int64_t>(detailLayerIndex));
-    detailToolTbl.insert("show_chunk_bounds", detailShowChunkBounds);
-    detailToolTbl.insert("show_counts",       detailShowCounts);
-
-    // FoliageTool ブラシ設定
-    toml::table foliageToolTbl;
-    foliageToolTbl.insert("erase_radius", foliageEraseRadius);
 
     // Camera Bookmarks
     toml::array camBkArr;
@@ -455,6 +455,24 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     importTbl.insert("generate_tex_descriptors", defaultImportOptions.generateTexDescriptors);
     importTbl.insert("default_compression",      static_cast<int64_t>(defaultImportOptions.defaultCompression));
 
+    // Build Settings
+    toml::table buildTbl;
+    buildTbl.insert("product_name",        build.productName);
+    buildTbl.insert("version",             build.version);
+    buildTbl.insert("output_dir",          build.outputDirectory);
+    buildTbl.insert("development",         build.developmentBuild);
+    buildTbl.insert("strip_editor_assets", build.stripEditorAssets);
+    {
+        toml::array scenesArr;
+        for (const auto& scene : build.scenes) {
+            toml::table entry;
+            entry.insert("path",    scene.path);
+            entry.insert("enabled", scene.enabled);
+            scenesArr.push_back(std::move(entry));
+        }
+        buildTbl.insert("scenes", std::move(scenesArr));
+    }
+
     // UI スケール
     toml::table uiTbl;
     uiTbl.insert("scale", editorUiScale);
@@ -472,8 +490,6 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     root.insert("map_mode",           std::move(mapModeTbl));
     root.insert("hierarchy",          std::move(hierarchyTbl));
     root.insert("terrain_tool",       std::move(terrainToolTbl));
-    root.insert("detail_tool",        std::move(detailToolTbl));
-    root.insert("foliage_tool",       std::move(foliageToolTbl));
     root.insert("camera_bookmarks",   std::move(camBkArr));
     root.insert("hotkeys",            std::move(hkTbl));
     root.insert("import",             std::move(importTbl));
@@ -484,6 +500,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     root.insert("scene",              std::move(sceneTbl));
     root.insert("autosave",           std::move(autosaveTbl));
     root.insert("debug",              std::move(debugTbl));
+    root.insert("build",              std::move(buildTbl));
 
     std::ostringstream ss;
     ss << root;
