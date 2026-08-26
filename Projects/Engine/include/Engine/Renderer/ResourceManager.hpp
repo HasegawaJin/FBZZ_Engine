@@ -87,6 +87,10 @@ public:
     // TextureTag を DrawCall.textures[] へ束縛して行う。未対応バックエンドでは Null を返す。
     ResourceHandle<RenderTargetTag> CreateCubemapRenderTarget(uint32_t size, uint32_t mipCount = 1);
     ResourceHandle<TextureTag> CreateComputeTexture(uint32_t width, uint32_t height);
+    // CS が RWTexture3D として書き、後段が Texture3D として読むボリューム (フロクセル霧)。
+    // 未対応バックエンドでは Null ハンドルが返る。呼び出し側は機能ごと落とすこと。
+    ResourceHandle<TextureTag> CreateComputeTexture3D(
+        uint32_t width, uint32_t height, uint32_t depth);
     // CPU から矩形単位で書き換えられるテクスチャ (ゼロクリア済み) を作る。
     // 更新は Get(handle)->UpdateRegion(...) で行う。フォントの動的アトラスが使う。
     // 未対応バックエンドでは Null ハンドルが返る。

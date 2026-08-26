@@ -18,11 +18,20 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float3   _camPad;
 };
 
+// b1 の 2 枠目を別の意味で使いたいシェーダーは、#include より前に
+// FBZZ_OBJECT_CONSTANTS を定義して自前で宣言する (MaterialConstants と同じ規約)。
+// Velocity パスは法線を扱わないので worldInvTranspose の枠へ prevWorld を入れている。
+#ifndef FBZZ_OBJECT_CONSTANTS
 cbuffer ObjectConstants : register(CB_OBJECT)
 {
     float4x4 world;
     float4x4 worldInvTranspose;
+    // x = LOD ディザのしきい値 (Rendering/LodDither.hlsli が解釈する)。
+    // WHY 0 が「無効」か: この枠を書かないパスが既定値のまま素通りできるようにするため。
+    //     1 を無効値にすると、書き忘れたパスの絵が黙って消える。
+    float4   objectParams;
 };
+#endif // FBZZ_OBJECT_CONSTANTS
 
 // シェーダーごとに独自の MaterialConstants を宣言したい場合は
 // #include より前に #define FBZZ_MATERIAL_CONSTANTS を定義する。
@@ -164,6 +173,10 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  causticsWaveFreq;
     float  causticsWaveSpeed;
     float  _causticsPad;
+    // Bloom のミップ連鎖 — texelSize は書き込み先、こちらは読み込み元。
+    float2 bloomSrcTexel;
+    float  bloomApplyThreshold; // 1 = 輝度閾値を掛ける (連鎖の 1 段目だけ)
+    float  bloomAdditive;       // 1 = 書き込み先へ加算、0 = 上書き
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)
@@ -183,90 +196,10 @@ cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)
     float  _moonPad1;
 };
 
-// AdvancedGraphicsConstants — IBL・SSR・TAA・GTAO・Contact Shadow 等の詳細グラフィクス設定。
-// WHY: PostProcConstants は既存ポストプロセス設定で埋まっているため、
-//      新規グラフィクス機能を独立した CB にまとめて管理しやすくする。
-// LAYOUT: 全フィールドは 16-byte アライメントを維持し、DX11 CB パッキング規則に従う。
-cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
-{
-    // IBL (Image-Based Lighting)
-    float  iblIntensity;        // 全体スケール
-    float  iblDiffuseScale;     // 拡散 IBL スケール
-    float  iblSpecularScale;    // 鏡面 IBL スケール
-    int    iblMaxMipLevel;      // prefilter キューブマップの最大 mip レベル
-
-    // SSR (Screen Space Reflections)
-    float  ssrMaxDistance;      // 最大レイ距離
-    float  ssrThickness;        // 深度交差判定厚み
-    int    ssrSteps;            // レイマーチステップ数
-    float  ssrIntensity;        // HDR への合成強度
-
-    // Volumetric Lighting
-    float  volLightIntensity;   // 光柱の明るさ
-    float  volScattering;       // 散乱係数 g (Henyey-Greenstein)
-    int    volSteps;            // レイマーチステップ数
-    float  volMaxDist;          // レイマーチ最大距離
-
-    // TAA (Temporal Anti-Aliasing)
-    float  taaFeedback;         // 前フレームブレンド比 (0=無効, 0.9=標準)
-    float  taaJitterX;          // 現フレーム Halton ジッター X
-    float  taaJitterY;          // 現フレーム Halton ジッター Y
-    float  _taaPad;
-
-    // Motion Blur
-    // screenWidth/screenHeight: b5 (PostProcConstants) が CS にバインドされないため
-    //   MotionBlur CS の境界チェック・UV 計算用に CB_ADVANCED_GRAPHICS へ収録する
-    float  motionBlurStrength;  // シャッター角度換算の強度
-    int    motionBlurSamples;   // サンプル数
-    float  screenWidth;         // レンダーターゲット幅 (CS スレッド境界チェック用)
-    float  screenHeight;        // レンダーターゲット高さ (CS スレッド境界チェック用)
-
-    // GTAO (Ground Truth Ambient Occlusion — Horizon-Based AO)
-    float  gtaoIntensity;       // AO 強度
-    float  gtaoRadius;          // サンプリング半径 (world space)
-    int    gtaoSlices;          // 積分スライス数
-    int    gtaoStepsPerSlice;   // スライスあたりステップ数
-
-    // Contact Shadows
-    float  contactShadowStrength;
-    float  contactShadowRayLen; // レイ長さ (world space)
-    int    contactShadowSteps;
-    float  contactShadowThick;  // 深度比較用厚み
-
-    // Lens Flare
-    float  lensFlareIntensity;
-    int    lensFlareGhostCount;
-    float  lensFlareHaloWidth;
-    float  lensFlareDistort;
-
-    // PCSS (Percentage Closer Soft Shadows)
-    float  pcssLightRadius;     // ライト半径 (world space) — 大きいほどソフト
-    int    pcssEnabled;         // 0=PCF, 1=PCSS
-    float  _pcssPad0;
-    float  _pcssPad1;
-
-    // LUT Color Grading
-    float  lutBlend;            // LUT とオリジナル色のブレンド比
-    float  _lutPad0;
-    float  _lutPad1;
-    float  _lutPad2;
-
-    // Reprojection 行列 (TAA / Motion Blur 共用)
-    float4x4 prevViewProjection;
-    float4x4 invPrevViewProjection;
-
-    // Volumetric Lighting (拡張分)
-    float  volMinDist;          // 積分を始める距離
-    float  volDensity;          // 大気の消散係数 (0 で減衰なし)
-    float  volHeightFalloff;    // 高度による密度減衰 [1/m] (0 で無効)
-    float  volHeightStart;      // 減衰の基準高度 [world Y]
-    float3 volTint;             // 光芒に掛ける色
-    float  volEdgeFade;         // volMaxDist 手前のフェード幅 (割合)
-};
-// Shadow.hlsli が b8 宣言の有無を判定するためのガード。
-// WHY: Terrain 等 b8 を宣言しないシェーダーでは pcssEnabled/pcssLightRadius が
-//      未定義になりコンパイルエラーになる。本 define でフォールバックを切り替える。
-#define HAVE_ADVANCED_GRAPHICS_CB 1
+// AdvancedGraphicsConstants (b8) — 定義は Common/AdvancedGraphicsConstants.hlsli が持つ。
+// WHY: Terrain / Water も同じ cbuffer を読む必要があり、手書きの部分コピーは
+//      末尾へのフィールド追加に追従できなかった。定義は 1 か所に集約する。
+#include "Common/AdvancedGraphicsConstants.hlsli"
 
 #define MAX_SKINNING_BONES 128
 cbuffer SkinningConstants : register(CB_SKINNING)

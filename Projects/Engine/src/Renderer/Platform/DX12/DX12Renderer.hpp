@@ -44,7 +44,6 @@ public:
     void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
     void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
                              uint32_t mip, ResourceManager& resources) override;
-    void SetSampler(uint32_t slot, SamplerMode mode) override;
     bool BakeSkyLight(ResourceHandle<RenderTargetTag>, ResourceManager&, uint32_t, uint32_t,
                       uint32_t, uint32_t, std::unique_ptr<ITexture>&,
                       std::unique_ptr<ITexture>&) override;
@@ -84,6 +83,7 @@ private:
     std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget&) override;
     std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override;
+    std::unique_ptr<ITexture> CreateNativeComputeTexture3D(uint32_t, uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeDynamicTexture(uint32_t width, uint32_t height,
                                                          DynamicTextureFormat format) override;
     std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t, uint32_t) override;

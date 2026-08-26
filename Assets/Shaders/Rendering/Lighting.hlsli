@@ -9,6 +9,10 @@
 
 #include "Rendering/BRDF.hlsli"
 #include "Rendering/IBL.hlsli"
+// 画面空間 AO / 接触影の受け口。Forward のマテリアルがここから引く。
+// WHY Lighting.hlsli から include するか: 対象は「ライティングを持つ全マテリアル」で、
+//     それはこのファイルを include しているシェーダーとちょうど一致する。
+#include "Rendering/ScreenSpaceShading.hlsli"
 
 // 環境光スケール: ambientColor は LightConstants cbuffer から来るグローバル変数。
 // Lit モード: ambientColor = (0.08, 0.08, 0.08)  Unlit モード: ambientColor = (1, 1, 1)
@@ -27,7 +31,7 @@
 // そのままの明るさになる」単位を意味するよう揃える。拡散と鏡面へ等しく掛かるため
 // Cook-Torrance のエネルギー配分 (diffuse/specular 比) は変わらない。
 //
-// この単位は Anisotropic / Subsurface / Foliage / Custom など INV_PI を使わない
+// この単位は Anisotropic / Subsurface / Custom など INV_PI を使わない
 // 既存シェーダーの慣習と一致する。つまり本補正はエンジン全体のスケール統一でもある。
 // (Toon は非物理モデルで元から同じ単位のため、あえて補正しない)
 // -------------------------------------------------------------------------

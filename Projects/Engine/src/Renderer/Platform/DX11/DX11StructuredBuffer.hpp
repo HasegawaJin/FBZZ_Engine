@@ -6,8 +6,8 @@
 //
 // WHY: StructuredBuffer<T> は HLSL 側で InstanceID から直接インデックスできるため、
 //      IASetVertexBuffers のインスタンスストリームより HLSL の記述が直感的になる。
-//      また stride が 16 バイト境界に制限されないため、DetailInstance (20 bytes) のような
-//      非整合な構造体も扱える。
+//      また stride が 16 バイト境界に制限されないため、20 バイトのような非整合な
+//      構造体も扱える。
 // WHY readWrite=true: D3D11 では DYNAMIC バッファは UAV 不可のため、CS 書き込みが必要な場合は
 //      DEFAULT + UpdateSubresource で CPU から初期データを供給する設計にする。
 #pragma once

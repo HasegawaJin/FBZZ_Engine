@@ -470,20 +470,22 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     if (!srvTable) return;
     auto srvDestination = srvTable.cpu;
     for (uint32_t slot = 0; slot < 32; ++slot) {
-        D3D12_CPU_DESCRIPTOR_HANDLE source = m_context.GetNullPixelSrv(slot);
+        // 何も束縛されなかったときの null は、そのレジスタの宣言に合わせて選ぶ。
+        // StructuredBuffer のスロットへ Texture2D の null を差すと読み値が未定義になる。
+        D3D12_CPU_DESCRIPTOR_HANDLE source = IsComputeStructuredBufferSlot(slot)
+            ? m_context.GetNullBufferSrv(slot)
+            : m_context.GetNullPixelSrv(slot);
         if (auto* textureBase = resources.Get(call.srvInputs[slot])) {
             auto* texture = static_cast<DX12Texture*>(textureBase);
             m_stateTracker.QueueTransition(texture->GetResource(),
                                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             source = texture->GetSrvCpu();
         }
-        if (slot >= 14 && slot <= 15) {
-            if (auto* bufferBase = resources.Get(call.srvBuffers[slot - 14])) {
-                auto* buffer = static_cast<DX12StructuredBuffer*>(bufferBase);
-                m_stateTracker.QueueTransition(buffer->GetResource(),
-                                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                source = buffer->GetSrv();
-            }
+        if (auto* bufferBase = resources.Get(call.srvBuffers[slot])) {
+            auto* buffer = static_cast<DX12StructuredBuffer*>(bufferBase);
+            m_stateTracker.QueueTransition(buffer->GetResource(),
+                                           D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            source = buffer->GetSrv();
         }
         m_context.GetDevice()->CopyDescriptorsSimple(
             1, srvDestination, source, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -683,7 +685,6 @@ void DX12Renderer::SetRenderTargetFace(
     m_context.GetCommandList()->RSSetViewports(1, &viewport);
     m_context.GetCommandList()->RSSetScissorRects(1, &scissor);
 }
-void DX12Renderer::SetSampler(uint32_t, SamplerMode) {}
 
 bool DX12Renderer::BakeSkyLight(
     ResourceHandle<RenderTargetTag> handle, ResourceManager& resources,
@@ -861,6 +862,14 @@ std::unique_ptr<ITexture> DX12Renderer::CreateNativeComputeTexture(uint32_t widt
 {
     auto texture = std::make_unique<DX12Texture>();
     if (!texture->InitForCompute(&m_context, &m_stateTracker, width, height)) return nullptr;
+    return texture;
+}
+
+std::unique_ptr<ITexture> DX12Renderer::CreateNativeComputeTexture3D(
+    uint32_t width, uint32_t height, uint32_t depth)
+{
+    auto texture = std::make_unique<DX12Texture>();
+    if (!texture->InitForCompute3D(&m_context, &m_stateTracker, width, height, depth)) return nullptr;
     return texture;
 }
 

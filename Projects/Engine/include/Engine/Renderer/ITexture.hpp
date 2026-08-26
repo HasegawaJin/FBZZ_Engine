@@ -27,6 +27,11 @@ namespace fbzz::renderer
         virtual std::uint32_t GetWidth() const = 0;
         virtual std::uint32_t GetHeight() const = 0;
 
+        // 3D テクスチャの奥行き。2D では 1 を返す。
+        // WHY 既定実装を置くか: 奥行きを持つのはフロクセルボリュームのような
+        //     一部の生成テクスチャだけで、全実装に強制する意味がない。
+        virtual std::uint32_t GetDepth() const { return 1u; }
+
         // テクスチャ内の矩形領域を CPU 側のピクセルで差し替える。
         //
         // pixels      : 更新元のピクセル先頭 (更新矩形の左上に対応する画素)

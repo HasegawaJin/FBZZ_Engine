@@ -292,6 +292,75 @@ bool DX12Texture::InitForCompute(
     return true;
 }
 
+bool DX12Texture::InitForCompute3D(
+    DX12Context* context, DX12StateTracker* tracker,
+    uint32_t width, uint32_t height, uint32_t depth)
+{
+    if (!context || !tracker || width == 0 || height == 0 || depth == 0) return false;
+    m_context = context;
+
+    // Typed UAV Store の対応は機種依存。2D 版と同じ順で試し、どちらも駄目なら諦める。
+    m_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    const auto supportsTypedStore = [&](DXGI_FORMAT format) {
+        D3D12_FEATURE_DATA_FORMAT_SUPPORT support{ format };
+        return SUCCEEDED(context->GetDevice()->CheckFeatureSupport(
+                   D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support)))
+            && (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE) != 0;
+    };
+    if (!supportsTypedStore(m_format)) {
+        m_format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        if (!supportsTypedStore(m_format)) {
+            FBZZ_LOG_ERROR("DX12Texture: 3D Compute 用 Typed UAV Store 対応フォーマットがありません");
+            return false;
+        }
+    }
+
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension        = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+    desc.Width            = width;
+    desc.Height           = height;
+    desc.DepthOrArraySize = static_cast<UINT16>(depth);
+    desc.MipLevels        = 1;
+    desc.Format           = m_format;
+    desc.SampleDesc.Count = 1;
+    desc.Flags            = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    if (FAILED(context->GetDevice()->CreateCommittedResource(
+            &heap, D3D12_HEAP_FLAG_NONE, &desc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&m_resource)))) {
+        FBZZ_LOG_ERROR("DX12Texture: 3D Compute テクスチャ生成失敗 (%ux%ux%u)", width, height, depth);
+        return false;
+    }
+
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    heapDesc.NumDescriptors = 2;
+    if (FAILED(context->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvHeap))))
+        return false;
+    m_descriptorIncrement = context->GetDevice()->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Format                  = m_format;
+    srv.ViewDimension           = D3D12_SRV_DIMENSION_TEXTURE3D;
+    srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv.Texture3D.MipLevels     = 1;
+    context->GetDevice()->CreateShaderResourceView(m_resource.Get(), &srv, GetSrvCpu());
+
+    // UAV は 2D 版と同じ理由で既定ビュー (リソース記述から生成) を使う。
+    // GetUavCpu() が存在フラグを見るので、生成呼び出しより前に立てる。
+    m_hasUav = true;
+    context->GetDevice()->CreateUnorderedAccessView(
+        m_resource.Get(), nullptr, nullptr, GetUavCpu());
+
+    m_width  = width;
+    m_height = height;
+    m_depth  = depth;
+    RegisterState(tracker, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    return true;
+}
+
 D3D12_CPU_DESCRIPTOR_HANDLE DX12Texture::GetSrvCpu() const
 {
     return m_srvHeap ? m_srvHeap->GetCPUDescriptorHandleForHeapStart() : D3D12_CPU_DESCRIPTOR_HANDLE{};

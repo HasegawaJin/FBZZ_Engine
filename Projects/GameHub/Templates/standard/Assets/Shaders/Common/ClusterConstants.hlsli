@@ -21,8 +21,16 @@
 #define FBZZ_CLUSTER_COUNT  (FBZZ_CLUSTER_GRID_X * FBZZ_CLUSTER_GRID_Y * FBZZ_CLUSTER_GRID_Z)
 
 // 1 クラスタが保持できるライト数の上限。あふれた分はライト番号の昇順で切り捨てる。
-// WHY 昇順で切るか: どのフレームでも同じライトが残るため、チラつかず再現もする。
-#define FBZZ_MAX_LIGHTS_PER_CLUSTER 32
+// WHY 昇順で切るか: 同じ顔ぶれが重なっている限り毎フレーム同じライトが残る。
+//
+// WHY 64 か: 32 では足りないシーンが実際に出た。屋内アリーナに range が部屋と同程度の
+//     管ライトを数十本吊ると、ほぼ全クラスタが全ライトと重なる。上限に当たると番号の
+//     大きいライトが黙って消え、しかもクラスタごとに重なる本数が 32 をまたぐ場所では
+//     カメラの動きに合わせてライトが出入りする (点滅して見える)。
+//     ループ回数は実際のライト本数で決まるので、上限を上げても本数の少ないシーンの
+//     コストは変わらない。増えるのはインデックスバッファだけ (13824 クラスタ ×
+//     (64+1) × 4B = 3.6MB、32 のときの倍)。
+#define FBZZ_MAX_LIGHTS_PER_CLUSTER 64
 
 // クラスタ 1 個分の uint 数。先頭がライト数、続けてライト番号が並ぶ。
 // WHY offset テーブルを持たないか: 1 スレッド = 1 クラスタで書くとカウンタがスレッド内に
@@ -36,6 +44,14 @@
 // PunctualLight::type
 #define FBZZ_LIGHT_TYPE_POINT 0
 #define FBZZ_LIGHT_TYPE_SPOT  1
+// 矩形の面光源。position が面の中心、direction が面の法線、tangent / bitangent が
+// 面内の軸で、halfWidth / halfHeight がその半寸法。LTC で解析的に積分する。
+#define FBZZ_LIGHT_TYPE_AREA  2
+// 球の光源。position が中心、halfWidth が半径。
+#define FBZZ_LIGHT_TYPE_SPHERE 3
+// カプセルの光源 (蛍光灯・ネオン管)。position が中心、tangent が軸、
+// halfWidth が半径、halfHeight が軸方向の半長。
+#define FBZZ_LIGHT_TYPE_TUBE   4
 
 // ---- ライト供給モード -----------------------------------------------------
 // WHY 3 状態にするか: cbuffer が束縛されていないパスでは中身が全ゼロで読まれる。
@@ -46,16 +62,32 @@
 #define FBZZ_LIGHT_MODE_LINEAR    1  // StructuredBuffer を全数走査 (カリング無効・検証用)
 #define FBZZ_LIGHT_MODE_CLUSTERED 2  // クラスタが持つライトだけ走査
 
-// ---- ライト 1 本 (64 bytes) -----------------------------------------------
+// ---- ライト 1 本 (96 bytes) -----------------------------------------------
 // WHY 点光源とスポットを 1 つの型へ統合するか: インデックス空間が 1 本になり、
 //     カリング CS のループも PS のループも 1 重で済む (従来は 2 重ループだった)。
 //     点光源では direction / innerCos / outerCos を使わない。
+//
+// shadowIndex / cookieIndex は「アトラスの何番目のスロットか」。-1 で無効。
+// WHY ライト側に持たせるか: 影と Cookie を持てるライトは全体のごく一部なので、
+//     全ライトぶんの行列を配るのではなく、持っているものだけが番号でスロットを指す。
+//     PunctualShadowConstants (b12) 側の配列長がライト数と独立になり、
+//     ライトを 256 本置いても影を持つのは 16 本まで、という運用ができる。
+//
+// tangent / bitangent / halfWidth / halfHeight は「大きさを持つ光源」が使う。
+//   AREA   : tangent/bitangent = 面内の軸, halfWidth/halfHeight = 半寸法
+//   SPHERE : halfWidth = 半径
+//   TUBE   : tangent = 軸, halfWidth = 半径, halfHeight = 軸方向の半長
+//   POINT / SPOT : halfWidth = 光源半径 (影のにじみ幅とハイライトの広がりにだけ効く)
+// WHY 使わない型でも枠を持つか: 型ごとに構造体を分けるとインデックス空間が再び割れ、
+//     クラスタカリングの CS と PS のループが型の数だけ増える。統合を保つ方を採る。
 struct PunctualLight
 {
     float3 position;   float range;
     float3 color;      float intensity;
     float3 direction;  float innerCos;   // Spot のみ
-    float  outerCos;   uint  type;       float2 _lightPad;
+    float  outerCos;   uint  type;       int shadowIndex;  int cookieIndex;
+    float3 tangent;    float halfWidth;  // Area のみ
+    float3 bitangent;  float halfHeight; // Area のみ
 };
 
 // ---- 定数 (b9) ------------------------------------------------------------
