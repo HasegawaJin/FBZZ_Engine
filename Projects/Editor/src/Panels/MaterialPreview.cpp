@@ -61,6 +61,18 @@ struct MaterialPreviewGpu {
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+    // Spot / Point シャドウ (b12) の無効化用。中身は 0 のまま使う。
+    // WHY プレビューでも要るか: 定数バッファは DrawCall をまたいで束縛が残るが、
+    //     テクスチャ SRV はドローごとにクリアされる。b12 だけシーン描画のものが
+    //     残ると、punctualShadowCount > 0 のままアトラス (t28) が未束縛になり、
+    //     比較サンプルが 0 (= 完全な影) を返してプレビューが黒く潰れる。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
+    // ライト供給モード (b9) の無効化用。中身は 0 = FBZZ_LIGHT_MODE_LEGACY のまま使う。
+    // WHY 要るか: シーン描画は Forward でも LINEAR (統合配列) を使うようになった。
+    //     b9 の束縛はドローをまたいで残る一方、ライト配列 (t29) は毎回クリアされるので、
+    //     そのままだとプレビューが「本数は残っているのに中身が全部ゼロ」を読み、
+    //     ライトが一つも当たらなくなる。0 を渡してレガシー経路 (b3) へ倒す。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> clusterCB;
     renderer::ResourceHandle<renderer::RenderTargetTag>   renderTarget;
     renderer::Mesh* sphere = nullptr;
     renderer::Mesh* skinnedSphere = nullptr;
@@ -355,6 +367,20 @@ bool EnsureMaterialPreviewGpu(EditorContext& ctx, const asset::MaterialAsset& ma
         s_materialPreviewGpu.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
     if (!s_materialPreviewGpu.shadowCB.IsValid())
         s_materialPreviewGpu.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
+    if (!s_materialPreviewGpu.punctualShadowCB.IsValid()) {
+        s_materialPreviewGpu.punctualShadowCB =
+            resources.CreateConstantBuffer(sizeof(scene::PunctualShadowConstantsCB));
+        const scene::PunctualShadowConstantsCB emptyPunctual{};
+        resources.Update(s_materialPreviewGpu.punctualShadowCB, &emptyPunctual,
+                         sizeof(emptyPunctual));
+    }
+
+    if (!s_materialPreviewGpu.clusterCB.IsValid()) {
+        s_materialPreviewGpu.clusterCB = resources.CreateConstantBuffer(sizeof(scene::ClusterConstantsCB));
+        const scene::ClusterConstantsCB legacyCluster{};  // clusterLightMode = 0 = LEGACY
+        resources.Update(s_materialPreviewGpu.clusterCB, &legacyCluster, sizeof(legacyCluster));
+    }
+
     if (!s_materialPreviewGpu.renderTarget.IsValid())
         s_materialPreviewGpu.renderTarget = resources.CreateRenderTarget(PREVIEW_RT_SIZE, PREVIEW_RT_SIZE);
     auto* shader = resources.Get(s_materialPreviewGpu.shader);
@@ -506,9 +532,6 @@ bool RenderMaterialPreviewFrame(EditorContext& ctx,
     renderer.SetRenderTarget(s_materialPreviewGpu.renderTarget, resources);
     renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
     renderer.ClearDepth();
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_ANISOTROPIC);
 
     renderer::DrawCall drawCall;
     drawCall.vertexBuffer = previewMesh->vertexBuffer;
@@ -522,6 +545,8 @@ bool RenderMaterialPreviewFrame(EditorContext& ctx,
     drawCall.constantBuffers[2] = s_materialPreviewGpu.materialCB;
     drawCall.constantBuffers[3] = s_materialPreviewGpu.lightCB;
     drawCall.constantBuffers[4] = s_materialPreviewGpu.shadowCB;
+    drawCall.constantBuffers[12] = s_materialPreviewGpu.punctualShadowCB;
+    drawCall.constantBuffers[9] = s_materialPreviewGpu.clusterCB;
     if (flavor == MaterialPreviewFlavor::Skinned)
         drawCall.constantBuffers[7] = s_materialPreviewGpu.skinningCB;
     for (size_t i = 0; i < s_materialPreviewGpu.textures.size(); ++i)
