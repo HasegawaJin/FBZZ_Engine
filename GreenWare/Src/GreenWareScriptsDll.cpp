@@ -25,15 +25,23 @@
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+#include "Scripts/Camera/FpsCameraComponent.hpp"
 #include "Scripts/Camera/TpsCameraComponent.hpp"
+#include "Scripts/Combat/BossAiComponent.hpp"
+#include "Scripts/Combat/BossAnimatorComponent.hpp"
+#include "Scripts/Combat/BossBeamComponent.hpp"
+#include "Scripts/Combat/BossHitboxRigComponent.hpp"
+#include "Scripts/Combat/BossPolarityCoreComponent.hpp"
 #include "Scripts/Combat/EnemyAiBase.hpp"
 #include "Scripts/Combat/EnemyChaserComponent.hpp"
+#include "Scripts/Combat/EnemyDeathVfxComponent.hpp"
 #include "Scripts/Combat/EnemyHealthBarComponent.hpp"
 #include "Scripts/Combat/EnemyHealthComponent.hpp"
 #include "Scripts/Combat/EnemyMiteComponent.hpp"
 #include "Scripts/Combat/EnemyRollerComponent.hpp"
 #include "Scripts/Combat/EnemySerpentComponent.hpp"
 #include "Scripts/Combat/EyeSpriteComponent.hpp"
+#include "Scripts/Combat/IBoss.hpp"
 #include "Scripts/Combat/IDamageable.hpp"
 #include "Scripts/Data/PlayerTuning.hpp"
 #include "Scripts/Data/PolarityTuning.hpp"
@@ -70,7 +78,9 @@
 #include "Scripts/Title/ElectricMinusParticleComponent.hpp"
 #include "Scripts/Title/ElectricPlusParticleComponent.hpp"
 #include "Scripts/Title/OptionsScreenComponent.hpp"
+#include "Scripts/Title/TitleFieldGridComponent.hpp"
 #include "Scripts/Title/TitleMenuComponent.hpp"
+#include "Scripts/Utils/BeamTrailRendererComponent.hpp"
 #include "Scripts/Utils/GameCursorComponent.hpp"
 #include "Scripts/Utils/GlowPartComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END

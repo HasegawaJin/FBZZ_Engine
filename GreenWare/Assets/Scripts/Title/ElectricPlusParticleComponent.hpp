@@ -125,6 +125,10 @@ public:
     FBZZ_FIELD_RANGE(float, followResponse, 12.0f, "Follow Response", 0.1f, 40.0f)
     FBZZ_TOOLTIP("カーソルへの食いつき [rad/s]。臨界減衰なので上げても行き過ぎない。"
                  "小さいほど重く遅れて付いてくる")
+    FBZZ_FIELD_RANGE(float, followMinX, 0.0f, "Follow From X", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("カーソルがこの位置より右にあるときだけ追従する。画面幅の割合で、"
+                 "0 = 画面全体 / 0.5 = 右半分。左に置いたメニューの上へ極が乗るのを防ぐ。"
+                 "領域から外れている間は Home Spring で定位置へ戻る")
 
     void OnStart()   override { m_rig.Attach(*this, Polarity::Plus, Tuning()); }
     void OnUpdate()  override { m_rig.Tick(*this, Tuning(), time.UnscaledDeltaTime()); }
@@ -185,6 +189,7 @@ private:
 
         tuning.followCursor   = followCursor;
         tuning.followResponse = followResponse;
+        tuning.followMinX     = followMinX;
         return tuning;
     }
 

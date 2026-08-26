@@ -1,0 +1,66 @@
+# FBZZ Engine
+# FieldGrid.mat
+# タイトル背景の磁場グリッド。Title.scene の FieldGrid (巨大な球) が着る。
+#
+# WHY 不透明か:
+#   GreenWare は Forward+ (ProjectSettings の pipeline) なので、不透明マテリアルも
+#   自分のシェーダーで描かれる。Deferred へ切り替えると不透明は GBuffer.hlsl で
+#   描き直されてこのシェーダーが素通りされるため、そのときは blend_mode を
+#   Alpha へ落として ForwardTransparent へ回すこと。
+#
+# WHY double_sided か:
+#   カメラは球の内側に居る。片面だと «外から見た面» しか出ず、画面に何も映らない。
+#
+# 電極の位置・時間・極性色は TitleFieldGridComponent が毎フレーム上書きする。
+# ここに書く値は「スクリプトが何も送らなかったときに成立する絵」の既定値。
+version = 1
+name = 'FieldGrid'
+shader = 'Assets/Shaders/Material/Background/FieldGrid.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+depth_write = true
+render_queue = 1000
+render_path = 'auto'
+mesh_type = 'surface'
+
+[params]
+# 12.2 の注記どおり、背景は無彩色。Title.fzdata のブルーム閾値 0.28 より下に置いて、
+# にじむのは電極だけにする。
+gridColor = [ 0.085, 0.095, 0.115, 1.0 ]
+majorColor = [ 0.20, 0.215, 0.245, 1.0 ]
+horizonColor = [ 0.055, 0.062, 0.078, 1.0 ]
+zenithColor = [ 0.004, 0.005, 0.008, 1.0 ]
+# PolarityTypes::kColorPlus / kColorMinus と同じ値。正本はあちらで、
+# スクリプトが毎フレーム送り直す。
+plusColor = [ 1.0, 0.12, 0.14, 1.0 ]
+minusColor = [ 0.10, 0.35, 1.0, 1.0 ]
+
+cellSize = 2.0
+majorEvery = 5.0
+lineWidth = 1.1
+majorWidth = 1.8
+
+groundHeight = 0.0
+fadeStart = 25.0
+fadeEnd = 90.0
+horizonThickness = 0.045
+
+warpRadius = 4.5
+warpStrength = 1.6
+heightFalloff = 3.0
+poolRadius = 2.2
+
+poolStrength = 0.55
+ringSpacing = 3.5
+ringSpeed = 2.2
+ringSharpness = 14.0
+
+ringStrength = 0.30
+phase = 0.0
+intensity = 1.0
+dither = 0.004
+
+electrode0 = [ 0.0, 0.0, 0.0, 0.0 ]
+electrode1 = [ 0.0, 0.0, 0.0, 0.0 ]
+electrode2 = [ 0.0, 0.0, 0.0, 0.0 ]
+electrode3 = [ 0.0, 0.0, 0.0, 0.0 ]

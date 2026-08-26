@@ -13,8 +13,15 @@
 // ScriptCodeGen は Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンして、この範囲を自動同期する。
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+FBZZ_SCRIPT_ENTRY(sandbox, FpsCameraComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, TpsCameraComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, BossAiComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, BossAnimatorComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, BossBeamComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, BossHitboxRigComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, BossPolarityCoreComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, EnemyChaserComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, EnemyDeathVfxComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, EnemyHealthBarComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, EnemyHealthComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, EnemyMiteComponent)
@@ -54,7 +61,9 @@ FBZZ_SCRIPT_ENTRY(sandbox, SceneManagerScript)
 FBZZ_SCRIPT_ENTRY(sandbox, ElectricMinusParticleComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, ElectricPlusParticleComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, OptionsScreenComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, TitleFieldGridComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, TitleMenuComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, BeamTrailRendererComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, GameCursorComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, GlowPartComponent)
 // @@FBZZ_SCRIPT_ENTRIES_END
