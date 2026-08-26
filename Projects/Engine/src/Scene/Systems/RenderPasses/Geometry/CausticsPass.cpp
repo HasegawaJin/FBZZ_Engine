@@ -8,7 +8,6 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
@@ -199,7 +198,6 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     }
 
     ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
 
     renderer::DrawCall dc;
     dc.shader = ctx.handles.causticsShader;

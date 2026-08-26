@@ -10,7 +10,7 @@
 #include "Common/Fullscreen.hlsli"
 
 Texture2D<float4> g_cloudHalf : register(t0);
-SamplerState      sampLinear  : register(SAMPLER_DEFAULT); // s0: CLAMP_LINEAR
+SamplerState      sampLinear  : register(SAMPLER_LINEAR_CLAMP); // 全画面フェッチ (s0 は DX12 では WRAP)
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {

@@ -9,7 +9,6 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -365,7 +364,6 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
         return;
 
     ctx.renderer.SetRenderTarget(h.hdrRT, resources);
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
 
     const float currentTime = Time::time;
 

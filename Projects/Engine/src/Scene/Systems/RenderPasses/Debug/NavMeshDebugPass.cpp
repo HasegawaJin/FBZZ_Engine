@@ -312,7 +312,9 @@ void NavMeshDebugPass::Execute(RenderPassContext& ctx)
         for (EntityID eid : ctx.scene.GetEntities<NavMeshSurfaceComponent>()) {
             auto* surface = ctx.scene.GetComponent<NavMeshSurfaceComponent>(eid);
             auto* go      = ctx.scene.GetGameObject(eid);
-            if (!surface || !go) continue;
+            // 非アクティブな GO は NavigationSystem がベイクからも経路探索からも外す。
+            // 描画だけ残すと、実際には歩けない面が歩けるように見える。
+            if (!surface || !go || !go->activeInHierarchy()) continue;
 
             if (surface->needsBake || !surface->navMesh.IsValid()) {
                 DrawSurfacePlaceholder(ctx, eid, *surface, *go);
@@ -341,7 +343,7 @@ void NavMeshDebugPass::Execute(RenderPassContext& ctx)
         for (EntityID eid : ctx.scene.GetEntities<NavMeshAgentComponent>()) {
             auto* agent = ctx.scene.GetComponent<NavMeshAgentComponent>(eid);
             auto* go    = ctx.scene.GetGameObject(eid);
-            if (!agent || !go) continue;
+            if (!agent || !go || !go->activeInHierarchy()) continue;
             if (agent->isStuck)
                 renderer::DebugDraw::Sphere(ctx.renderer,
                     go->transform.worldPosition + math::Vector3::UP * 1.5f, 0.15f, kStuckColor);
@@ -357,7 +359,9 @@ void NavMeshDebugPass::Execute(RenderPassContext& ctx)
         const math::Vector4 patrolColor = { kPathColor.x, kPathColor.y, kPathColor.z, 0.5f };
         for (EntityID eid : ctx.scene.GetEntities<NavMeshPatrolComponent>()) {
             auto* patrol = ctx.scene.GetComponent<NavMeshPatrolComponent>(eid);
-            if (!patrol || patrol->waypoints.size() < 2) continue;
+            auto* go     = ctx.scene.GetGameObject(eid);
+            if (!patrol || !go || !go->activeInHierarchy()) continue;
+            if (patrol->waypoints.size() < 2) continue;
             const size_t count = patrol->mode == NavMeshPatrolComponent::Mode::LOOP
                 ? patrol->waypoints.size() : patrol->waypoints.size() - 1;
             for (size_t i = 0; i < count; ++i) {
@@ -373,7 +377,7 @@ void NavMeshDebugPass::Execute(RenderPassContext& ctx)
         for (EntityID eid : ctx.scene.GetEntities<NavMeshSensorComponent>()) {
             auto* sensor = ctx.scene.GetComponent<NavMeshSensorComponent>(eid);
             auto* go     = ctx.scene.GetGameObject(eid);
-            if (!sensor || !go || !sensor->enabled) continue;
+            if (!sensor || !go || !sensor->enabled || !go->activeInHierarchy()) continue;
             const math::Vector4& color = sensor->targetVisible ? kDangerColor : kSafeColor;
             DrawVisionFan(ctx.renderer, go->transform.worldPosition, go->transform.forward,
                          sensor->viewAngleDeg, sensor->viewDistance, color);

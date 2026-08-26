@@ -13,6 +13,7 @@
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/WindZoneComponent.hpp"
+#include "Engine/Scene/Components/WeatherComponent.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/ITexture.hpp"
@@ -421,6 +422,73 @@ void UpdateShadowConstants(RenderPassContext& ctx)
     ctx.resources.Update(ctx.handles.shadowCB, &data, sizeof(ShadowConstantsCB));
 }
 
+void UpdatePunctualShadowConstants(RenderPassContext& ctx)
+{
+    if (!ctx.handles.punctualShadowCB.IsValid()) return;
+
+    const auto& rs = ctx.settings;
+    PunctualShadowConstantsCB data{};
+
+    // 全スロットが 1 枚のアトラスを共有するので、テクセルサイズはアトラス全体基準。
+    // タイル内 UV → アトラス UV への写像は HLSL 側 (punctualShadowRect) が行う。
+    const float texel =
+        1.0f / static_cast<float>((std::max)(ctx.punctualShadowResolution, 1u));
+    data.punctualShadowTexel[0] = texel;
+    data.punctualShadowTexel[1] = texel;
+    data.punctualShadowPcf      = std::clamp(rs.shadow.punctualPcfRadius, 0, 3);
+
+    // 未使用スロットは 0 のまま残す。HLSL 側は punctualShadowCount までしか見ない。
+    const int count = std::clamp(ctx.punctualShadowViewCount, 0, kMaxPunctualShadows);
+    data.punctualShadowCount = count;
+    for (int i = 0; i < count; ++i) {
+        const PunctualShadowView& view = ctx.punctualShadowViews[i];
+        data.punctualShadowVP[i]     = view.viewProjection;
+        data.punctualShadowRect[i]   = view.atlasRect;
+        data.punctualShadowParams[i] =
+            { view.biasNDC, view.shadowStrength, view.penumbraTexels, 0.0f };
+    }
+
+    data.lightCookieTexel[0] = 1.0f / static_cast<float>(kLightCookieAtlasWidth);
+    data.lightCookieTexel[1] = 1.0f / static_cast<float>(kLightCookieAtlasHeight);
+    const int cookieCount = std::clamp(ctx.lightCookieViewCount, 0, kMaxLightCookies);
+    data.lightCookieCount = cookieCount;
+    for (int i = 0; i < cookieCount; ++i) {
+        data.lightCookieVP[i]   = ctx.lightCookieViews[i].viewProjection;
+        data.lightCookieRect[i] = ctx.lightCookieViews[i].atlasRect;
+    }
+
+    // レガシー経路の「大きさを持つ光源」。b3 に型が無いので実体ごと載せる。
+    // レイアウトは PunctualShadowConstants.hlsli のコメントと FBZZ_PunctualAt が正本。
+    const int shapedCount = std::clamp(ctx.legacyShapedLightCount, 0, kMaxLegacyShapedLights);
+    data.legacyShapedLightCount = shapedCount;
+    for (int i = 0; i < shapedCount; ++i) {
+        const PunctualLightGPU& a = ctx.legacyShapedLights[i];
+        math::Vector4* dst = &data.legacyShapedLight[i * kLegacyShapedLightStride];
+        dst[0] = { a.position,  a.range };
+        dst[1] = { a.color,     a.intensity };
+        dst[2] = { a.direction, 0.0f };
+        dst[3] = { a.tangent,   a.halfWidth };
+        dst[4] = { a.bitangent, a.halfHeight };
+        // y は両面フラグ。PunctualLightGPU では outerCos の枠に載せてある。
+        dst[5] = { static_cast<float>(a.type), a.outerCos, 0.0f, 0.0f };
+    }
+
+    // レガシー経路のスロット番号と光源半径。「無し」は -1 (ctx 側の既定値がそう)。
+    // WHY 0 埋めで済ませられないか: 0 は「スロット 0」という有効な番号なので、
+    //     影を持たないライトが他のライトのシャドウマップを引いてしまう。
+    for (int i = 0; i < kMaxLegacyPunctualLights; ++i) {
+        data.legacyPunctualSlots[i] = {
+            static_cast<float>(ctx.legacyShadowSlots[i]),
+            static_cast<float>(ctx.legacyCookieSlots[i]),
+            ctx.legacySourceRadius[i],
+            0.0f
+        };
+    }
+
+    ctx.resources.Update(ctx.handles.punctualShadowCB, &data,
+                         sizeof(PunctualShadowConstantsCB));
+}
+
 bool IsReliableOccluder(const renderer::Mesh& mesh)
 {
     if (mesh.boundsRadius <= 0.0f) return false;
@@ -628,6 +696,21 @@ ActiveWindZone FindActiveWindZone(Scene& scene)
         result.pulseFrequency = (std::max)(wind->pulseFrequency, 0.0f);
         break; // シーンに 1 つ想定。複数ある場合は最初の有効な 1 つを使う
 
+    }
+    return result;
+}
+
+ActiveWeather FindActiveWeather(Scene& scene)
+{
+    ActiveWeather result;
+    for (auto& go : scene.GameObjects()) {
+        if (!go.activeInHierarchy()) continue;
+        const auto* weather = go.GetComponent<WeatherComponent>();
+        if (!weather || !weather->enabled) continue;
+        result.wetness      = std::clamp(weather->wetness, 0.0f, 1.0f);
+        result.darkening    = std::clamp(weather->darkening, 0.0f, 1.0f);
+        result.puddleAmount = std::clamp(weather->puddleAmount, 0.0f, 1.0f);
+        break; // シーンに 1 つ想定。WindZone と同じ扱い
     }
     return result;
 }

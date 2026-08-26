@@ -47,14 +47,56 @@ inline void ClearForCamera(renderer::IRenderer& renderer, const renderer::Camera
     renderer.Clear(camera.m_backgroundColor);
 }
 
-// Forward 系ピクセルシェーダーへクラスタライトの共通リソースを束縛する。
+// マテリアルを前方描画するピクセルシェーダーへ、共通のシェーディング資源を束縛する。
+//   - ライトの供給元 (b9 / t29) … Legacy 以外のすべて。t30 は Clustered のときだけ
+//   - Spot / Point のシャドウアトラスと Cookie (b12 / t28 / t31) … 供給経路によらず常に
+//   - 画面空間 AO と接触影 (t23 / t24) … GBuffer が用意できているときだけ
+//
 // WHY: DX11 は PSSetShaderResources、DX12 はピクセル SRV テーブルへ別々に渡す必要があるが、
 //      DrawCall に詰める契約は共通なので、各描画パスでの束縛漏れをこの関数で防ぐ。
-//      Legacy では未束縛の b9 を 0 (= Legacy) として扱うため、従来パスの互換性も保つ。
-inline void BindClusterLighting(renderer::DrawCall& drawCall, const RenderPassContext& ctx)
+//
+// NOTE: Forward / Deferred は Linear、Forward+ / Deferred+ は Clustered。どちらも
+//       同じ t29 を読むので絵は一致し、違うのはクラスタで絞るかどうかだけ。
+//       Legacy へ落ちるのは統合配列を用意できない経路だけで、そこは b3 を読む。
+//
+// WHY シャドウ側を Legacy 早期 return より前に置くか: Legacy 経路でも Spot / Point の
+//      影と Cookie は効かせたい (スロット番号は b12 の legacyPunctualSlots から引く)。
+//      ここで一緒に返すと、影が供給モード次第で消えるという追いにくい挙動になる。
+// WHY forceLinearLights が要るか: クラスタリストはメインカメラの視錐台に対して 1 回だけ
+//      作られる。別の視点から描くパスがそれを引くと、タイル座標も Z スライスも対応が
+//      取れず、画面のまったく別の場所のライトを拾う。そうしたパスは統合配列を全数走査する
+//      Linear へ落とす (カリングは効かないが、顔ぶれは必ず正しい)。
+inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const RenderPassContext& ctx,
+                                        bool forceLinearLights = false)
 {
+    // t23 / t24: 画面空間 AO と接触影。
+    // WHY マテリアル側で読むか: Deferred では DeferredLighting が全画面でまとめて
+    //     適用できるが、Forward には合流点が無い。各マテリアルが自分の画素で引く。
+    // WHY Deferred でも束縛するか: Deferred の中の Forward 描画 (半透明・エフェクト・
+    //     スキンド) は DeferredLighting を通らないので、そこでも同じ遮蔽が要る。
+    //     DeferredLighting 本体は自前で t9 / t24 を宣言していて共有ヘッダーを
+    //     コンパイル時に外しているため、二重適用にはならない。
+    if (ctx.screenAoTexture.IsValid())
+        drawCall.textures[23] = ctx.screenAoTexture;
+    if (ctx.screenContactShadowTexture.IsValid())
+        drawCall.textures[24] = ctx.screenContactShadowTexture;
+
+    if (ctx.handles.punctualShadowCB.IsValid()) {
+        drawCall.constantBuffers[12] = ctx.handles.punctualShadowCB;   // b12
+        drawCall.textures[28] =
+            ctx.resources.GetDepthTexture(ctx.handles.punctualShadowRT); // t28
+        drawCall.textures[31] =
+            ctx.resources.GetColorTexture(ctx.handles.lightCookieRT, 0); // t31
+    }
+
     if (ctx.clusterLightMode == ClusterLightMode::Legacy)
         return;
+
+    if (forceLinearLights) {
+        drawCall.constantBuffers[9] = ctx.handles.clusterLinearCB;
+        drawCall.psBuffers[0]       = ctx.handles.punctualLightBuffer;
+        return;  // t30 は束縛しない。Linear では読まれない
+    }
 
     drawCall.constantBuffers[9] = ctx.handles.clusterCB;
     drawCall.psBuffers[0]       = ctx.handles.punctualLightBuffer;
@@ -228,6 +270,11 @@ void ReleaseSkinningComputeCaches          ();
 // 論理リソースには乗らない (SkinningCompute と同じ扱い)。
 void ExecuteClusterLightCullPass           (RenderPassContext& ctx);
 void ExecuteShadowPass                     (RenderPassContext& ctx);
+// ライト Cookie のアトラス焼き。Shadow より前でも後でもよいが、Cookie を読む
+// ライティングパスより前に 1 回だけ走らせること。内容が変わったフレームだけ描く。
+void ExecuteLightCookiePass                (RenderPassContext& ctx);
+// スロットごとの「前回焼いた内容」を破棄する。シーン切り替えやリソースリセットで呼ぶこと。
+void ReleaseLightCookieCache               ();
 void ExecuteForwardPasses                  (RenderPassContext& ctx);
 void ExecuteGBufferPass                    (RenderPassContext& ctx);
 void ExecuteDeferredDepthCopyPass          (RenderPassContext& ctx);
@@ -248,6 +295,9 @@ void ExecuteParticlePass                   (RenderPassContext& ctx);
 //      ctx.settings.particleOverdrawView が true のときだけ Particle パスの直後に走る。
 void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
+// 不透明ジオメトリのモーションベクターを velocityRT へ描く。TAA / MotionBlur が
+// 「カメラの動き」しか知らない状態を解消する。両方が無効なら実行しなくてよい。
+void ExecuteVelocityPass                   (RenderPassContext& ctx);
 // .mat のパスをキーにした解決済みマテリアルのキャッシュを破棄する。
 // シーン切り替えやリソースリセットの際に呼ぶこと。
 void ReleaseDecalMaterialCache             ();
@@ -259,6 +309,13 @@ void ReleaseDecalMaterialCache             ();
 //      フィールドが増えるたびに片方だけ直し忘れるリスクがあった。埋める場所を 1 か所にする。
 //      HLSL 側の定義も Assets/Shaders/Common/ShadowConstants.hlsli の 1 か所に集約してある。
 void UpdateShadowConstants(RenderPassContext& ctx);
+
+// UpdatePunctualShadowConstants — PunctualShadowConstants (b12) を組み立てて
+// handles.punctualShadowCB へ書き込む。Spot / Point の行列・アトラス矩形・バイアス。
+// WHY b4 と分けるか: あちらは 464 バイト固定で Terrain / Water まで同じレイアウトを
+//     読む。Spot / Point はまだ対応パスを増やしている途中なので、束縛していない
+//     パスが 0 埋め (= 影なし) で素通りできる別スロットに置く。
+void UpdatePunctualShadowConstants(RenderPassContext& ctx);
 // 主スロット (submesh 0) を同期する。単一マテリアルのオブジェクト向け。
 renderer::Material* SyncMaterial(
     MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback = false);
@@ -301,6 +358,17 @@ struct ActiveWindZone {
 // シーンから最初の有効な WindZoneComponent を探し、ワールド空間へ解決する。
 // WHY: 草・雲・パーティクルが同じ風を参照するための単一の入口。毎フレーム軽量な走査で済む。
 ActiveWindZone FindActiveWindZone(Scene& scene);
+
+// シーングローバル天候 (WeatherComponent) の解決結果。既定は「乾いている」。
+// b8 を宣言できないシェーダー (Terrain) へ値を手渡すために使う。b8 を持つシェーダーは
+// RenderSystem が AdvancedGraphicsCB へ書いた値をそのまま読む。
+struct ActiveWeather {
+    float wetness      = 0.0f;
+    float darkening    = 0.0f;
+    float puddleAmount = 0.0f;
+};
+
+ActiveWeather FindActiveWeather(Scene& scene);
 
 // ── カリング ヘルパー ────────────────────────────────────────────────────────
 

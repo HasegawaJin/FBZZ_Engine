@@ -8,7 +8,6 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/RenderState.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
@@ -382,7 +381,6 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
         return;
 
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
 
     const float currentTime = Time::time;
     std::vector<TrailVertex> vertices;

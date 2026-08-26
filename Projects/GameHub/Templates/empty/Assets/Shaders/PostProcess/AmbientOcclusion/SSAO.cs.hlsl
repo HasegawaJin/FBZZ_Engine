@@ -12,7 +12,8 @@
 
 Texture2D    texGBuffer1 : register(TEX_GBUFFER1);  // normal(RGB) + metallic(A)
 Texture2D    texDepth    : register(TEX_DEPTH);
-SamplerState sampDefault : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 RWTexture2D<float4> outputSSAO : register(UAV_OUTPUT);
 

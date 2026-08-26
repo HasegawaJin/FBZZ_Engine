@@ -68,13 +68,16 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // NOTE: スキンドメッシュは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外)。
+    //       画面空間 AO / 接触影を引くと、キャラの画素で「背景の遮蔽」を読んでしまうので使わない。
+    //       これは Deferred でも同じ (キャラは DeferredLighting を通らない) ため、差は生じない。
     float3 result = Lighting_BlinnPhong(N, V, L, col, roughness,
                                         lightColor, lightIntensity, shadow);
 
     // 点光源 / スポットライト — 走査元は clusterLightMode が決める
     // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
-        result += Lighting_BlinnPhong_Direct(N, V, ps.L, col, roughness,
+        result += Lighting_BlinnPhong_Direct(N, V, ps.L, col, saturate(roughness + ps.roughnessBias),
             ps.color, ps.intensity);
     FBZZ_PUNCTUAL_END
 

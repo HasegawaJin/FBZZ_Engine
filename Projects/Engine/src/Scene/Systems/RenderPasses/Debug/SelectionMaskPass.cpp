@@ -164,7 +164,6 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
     draw.constantBuffers[0] = h.frameCB;
     draw.constantBuffers[kParticleConstantSlot] = emitter.runtime.renderCB;
     draw.textures[0] = emitter.runtime.texture;
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     ctx.renderer.Submit(draw, ctx.resources);
 }
 
@@ -191,7 +190,6 @@ void DrawGpuParticleSelectionMask(ParticleEmitter& emitter, RenderPassContext& c
     draw.textures[0] = emitter.runtime.texture;
     draw.vsBuffers[0] = emitter.runtime.gpuParticleBuffer;
     draw.vsBuffers[1] = emitter.runtime.gpuSortBuffer;
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
     ctx.renderer.Submit(draw, ctx.resources);
 }
 

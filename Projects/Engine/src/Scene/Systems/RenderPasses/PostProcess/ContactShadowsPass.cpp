@@ -32,8 +32,12 @@ void ExecuteContactShadowsPass(RenderPassContext& ctx)
     csDC.constantBuffers[0] = h.frameCB;            // b0: CameraConstants (projection, invProjection)
     csDC.constantBuffers[3] = h.lightCB;            // b3: LightConstants (lightDir in view space)
     csDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: contactShadowStrength/rayLen/steps/thick
+    // t7: Depth。GBuffer の深度が書けているならそちらを読む。
+    // WHY isDeferred ではなく gbufferDepthReady か: Forward + GBuffer プリパスでは
+    //     isDeferred が false のまま GBuffer の深度だけが揃っている。isDeferred で
+    //     判定すると hdrRT を読みに行き、そこはまだ本描画前で空 (接触影が全面に出る)。
     csDC.srvInputs[7]       = resources.GetDepthTexture(
-        ctx.isDeferred ? h.gbufferRT : h.hdrRT);    // t7: Depth
+        ctx.gbufferDepthReady ? h.gbufferRT : h.hdrRT);
     csDC.uavOutputs[3]      = h.contactShadowResult; // u3: UAV_CONTACT_SHADOW (UAV_SSR スロットを時分割で再利用)
     csDC.dispatchX          = (ctx.width  / 2 + 7) / 8;
     csDC.dispatchY          = (ctx.height / 2 + 7) / 8;

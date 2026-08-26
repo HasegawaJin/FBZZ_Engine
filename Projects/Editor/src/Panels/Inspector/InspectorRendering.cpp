@@ -129,6 +129,9 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
         [](scene::LODGroupComponent& group, EditorContext& ctx) {
             ImGui::DragFloat("Size", &group.size, 0.05f, 0.001f, 100000.0f);
             ImGui::Checkbox("Cull Below Last LOD", &group.cullBelowLastLevel);
+            ImGui::DragFloat("Fade Duration", &group.fadeDuration, 0.01f, 0.0f, 2.0f, "%.2f s");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("LOD を入れ替えるときのディザクロスフェード時間。0 で即差し替え");
 
             int removeLevel = -1;
             for (size_t levelIndex = 0; levelIndex < group.levels.size(); ++levelIndex) {

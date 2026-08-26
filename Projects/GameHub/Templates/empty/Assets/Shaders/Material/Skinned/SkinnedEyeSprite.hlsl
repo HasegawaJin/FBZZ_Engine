@@ -114,6 +114,9 @@ float4 PSMain(PSInput p) : SV_Target0
     float shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                  lightViewProjection, shadowMapTexelSize,
                                  shadowBias, N, L);
+    // NOTE: スキンドメッシュは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外)。
+    //       画面空間 AO / 接触影を引くと、キャラの画素で「背景の遮蔽」を読んでしまうので使わない。
+    //       これは Deferred でも同じ (キャラは DeferredLighting を通らない) ため、差は生じない。
 
     // ハーフランバート。目は球面に近い形状なので素の N·L だと縁が黒く落ち、
     // 白目と背景の境界が潰れて表情が読めなくなる。

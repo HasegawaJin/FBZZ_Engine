@@ -17,7 +17,9 @@
 namespace fbzz::scene {
 namespace {
 
-void SetRendererVisible(Scene& scene, LODRendererReference& reference, bool visible)
+// dither: Rendering/LodDither.hlsli のしきい値。0 = 遷移なし、>0 = 出現中、<0 = 退場中。
+void SetRendererVisible(Scene& scene, LODRendererReference& reference, bool visible,
+                        float dither = 0.0f)
 {
     if (!scene.IsValid(reference.entity) && !reference.instanceId.empty()) {
         if (GameObject* resolved = scene.FindByGuid(reference.instanceId)) {
@@ -25,8 +27,14 @@ void SetRendererVisible(Scene& scene, LODRendererReference& reference, bool visi
         }
     }
     if (!scene.IsValid(reference.entity)) return;
-    if (auto* mesh = scene.GetComponent<MeshRenderer>(reference.entity)) mesh->lodVisible = visible;
-    if (auto* skinned = scene.GetComponent<SkinnedMeshRenderer>(reference.entity)) skinned->lodVisible = visible;
+    if (auto* mesh = scene.GetComponent<MeshRenderer>(reference.entity)) {
+        mesh->lodVisible = visible;
+        mesh->lodDither  = dither;
+    }
+    if (auto* skinned = scene.GetComponent<SkinnedMeshRenderer>(reference.entity)) {
+        skinned->lodVisible = visible;
+        skinned->lodDither  = dither;
+    }
 }
 
 } // namespace
@@ -47,9 +55,15 @@ void LODSystem::Update(SystemContext& ctx)
 {
     // WHY: LODGroup が削除・無効化された直後も、前フレームの非表示状態を Renderer に残さない。
     for (EntityID id : ctx.scene.GetEntities<MeshRenderer>())
-        if (auto* renderer = ctx.scene.GetComponent<MeshRenderer>(id)) renderer->lodVisible = true;
+        if (auto* renderer = ctx.scene.GetComponent<MeshRenderer>(id)) {
+            renderer->lodVisible = true;
+            renderer->lodDither  = 0.0f;
+        }
     for (EntityID id : ctx.scene.GetEntities<SkinnedMeshRenderer>())
-        if (auto* renderer = ctx.scene.GetComponent<SkinnedMeshRenderer>(id)) renderer->lodVisible = true;
+        if (auto* renderer = ctx.scene.GetComponent<SkinnedMeshRenderer>(id)) {
+            renderer->lodVisible = true;
+            renderer->lodDither  = 0.0f;
+        }
 
     const CameraComponent* camera = nullptr;
     const Transform* cameraTransform = nullptr;
@@ -77,6 +91,9 @@ void LODSystem::Update(SystemContext& ctx)
             for (auto& level : group->levels)
                 for (auto& renderer : level.renderers)
                     SetRendererVisible(ctx.scene, renderer, true);
+            group->activeLevel = -1;
+            group->fadingLevel = -1;
+            group->fadeElapsed = 0.0f;
             continue;
         }
 
@@ -101,9 +118,40 @@ void LODSystem::Update(SystemContext& ctx)
         if (selected == group->levels.size() && !group->cullBelowLastLevel)
             selected = group->levels.size() - 1;
 
+        // selected == levels.size() は「最後のレベルより遠い = カリング」を意味する。
+        // 遷移状態も同じ番号で持ち、-1 は「まだ一度も決まっていない」だけに使う。
+        const int selectedLevel = static_cast<int>(selected);
+
+        if (group->activeLevel != selectedLevel) {
+            // 遷移中にさらに切り替わったら、退場中だったレベルは即座に消す。
+            // WHY: 3 レベルを同時にディザすると市松が噛み合わず穴が開く。
+            //      速く動くカメラでは 1 段飛ばしが普通に起きる。
+            group->fadingLevel = (group->activeLevel >= 0) ? group->activeLevel : -1;
+            group->activeLevel = selectedLevel;
+            group->fadeElapsed = 0.0f;
+        }
+
+        const float fadeDuration = (std::max)(group->fadeDuration, 0.0f);
+        float fadeT = 1.0f;
+        if (group->fadingLevel >= 0 && fadeDuration > 0.0f) {
+            group->fadeElapsed += ctx.dt;
+            fadeT = (std::min)(group->fadeElapsed / fadeDuration, 1.0f);
+        }
+        if (fadeT >= 1.0f)
+            group->fadingLevel = -1;
+
+        const bool fading = group->fadingLevel >= 0;
+
         if (selected < group->levels.size()) {
+            // 出現中は正のしきい値。遷移していなければ 0 (全画素)。
+            const float dither = fading ? fadeT : 0.0f;
             for (auto& renderer : group->levels[selected].renderers)
-                SetRendererVisible(ctx.scene, renderer, true);
+                SetRendererVisible(ctx.scene, renderer, true, dither);
+        }
+        if (fading && static_cast<size_t>(group->fadingLevel) < group->levels.size()) {
+            // 退場中は負のしきい値。出現側と判定の向きが逆になり、2 つで画面が埋まる。
+            for (auto& renderer : group->levels[group->fadingLevel].renderers)
+                SetRendererVisible(ctx.scene, renderer, true, -fadeT);
         }
     }
 }

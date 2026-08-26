@@ -77,6 +77,9 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
+    ao *= FBZZ_ScreenAO(p.svPosition.xy);
 
     // ラップ拡散: roughness が高いほど光が影側に回り込む。
     // wrap=0 で通常 Lambert、wrap=1 で半球全体がほぼ均等に照らされる。

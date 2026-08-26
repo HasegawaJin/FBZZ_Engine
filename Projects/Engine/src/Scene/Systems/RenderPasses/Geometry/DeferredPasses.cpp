@@ -14,7 +14,6 @@
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/IShader.hpp"
-#include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
 #include <array>
@@ -100,9 +99,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 
     UpdateShadowConstants(ctx);
-
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+    UpdatePunctualShadowConstants(ctx);
 
     if (!h.gbufferShader.IsValid()) { FBZZ_LOG_WARN("GBuffer shader is invalid!"); return; }
 
@@ -262,6 +259,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = mr->lodDither;
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
@@ -313,14 +311,6 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
 
     // Sky 色・深度を保持したまま上書きするため SetRenderTarget のみ (Clear しない)。
     renderer.SetRenderTarget(h.hdrRT, resources);
-    // s0 は IBL Cubemap 用。画面外Wrapを避け、キューブ面間はハードウェア補間させる。
-    renderer.SetSampler(0, renderer::SamplerMode::CLAMP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    // s2: BRDF LUT は UV が [0,1] をはみ出さないよう Linear Clamp でサンプリングする
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
-    // s3: Depth/GBuffer はテクセル中心を厳密に読み、隣接マテリアル値の混入を防ぐ。
-    renderer.SetSampler(3, renderer::SamplerMode::CLAMP_POINT);
-
     // AO 入力の選択: GTAO が有効ならそれを、無ければ SSAO を DeferredLighting の AO として供給する。
     // WHY: GTAO は SSAO の高品質な代替。DeferredLighting は AO テクスチャ (TEX_SSAO=t9) を
     //      ssaoIntensity>0 のとき乗算する 1 経路設計なので、GTAO もこの共通経路に流し込む。
@@ -365,6 +355,13 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
         if (ctx.clusterLightMode == ClusterLightMode::Clustered)
             dc.psBuffers[1]   = h.clusterIndexBuffer;   // t30
     }
+    // b12 + t28 + t31: Spot / Point のシャドウと Cookie。
+    // 供給経路 (Legacy / Clustered) によらず束縛する。
+    if (h.punctualShadowCB.IsValid()) {
+        dc.constantBuffers[12] = h.punctualShadowCB;
+        dc.textures[28]        = resources.GetDepthTexture(h.punctualShadowRT);
+        dc.textures[31]        = resources.GetColorTexture(h.lightCookieRT, 0);
+    }
     dc.textures[5]        = resources.GetColorTexture(h.gbufferRT, 0);  // TEX_GBUFFER0
     dc.textures[6]        = resources.GetColorTexture(h.gbufferRT, 1);  // TEX_GBUFFER1
     dc.textures[7]        = resources.GetDepthTexture(h.gbufferRT);     // TEX_DEPTH
@@ -393,10 +390,6 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
     // hdrRT の深度には DeferredDepthCopy で転写した GBuffer 深度が入っているため
     // 静的ジオメトリとの正しいオクルージョンが保たれる。
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
-
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
 
     std::vector<TransparentEntry> transparentQueue;
@@ -420,6 +413,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = smr->lodDither;
 
         const auto skinCB = (anim && anim->skinningBuffer.IsValid())
             ? anim->skinningBuffer : h.bindPoseSkinningCB;
@@ -471,7 +465,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             dc.constantBuffers[7] = skinCB;
-            BindClusterLighting(dc, ctx);
+            BindForwardShadingResources(dc, ctx);
             for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
                 if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -510,10 +504,6 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
     // WHY: GBuffer はアルファブレンドを扱えないため、透明 Static Mesh は
     //      Deferred ライティング後に別途フォワードで描画する必要がある。
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
-
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
 
     std::vector<TransparentEntry> transparentQueue;
@@ -538,6 +528,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = mr->lodDither;
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = mr->mesh->vertexBuffer;
@@ -554,7 +545,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[8] = h.advancedGraphicsCB;
-        BindClusterLighting(dc, ctx);
+        BindForwardShadingResources(dc, ctx);
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
@@ -593,6 +584,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = mr->lodDither;
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
@@ -610,7 +602,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[8] = h.advancedGraphicsCB;
-        BindClusterLighting(dc, ctx);
+        BindForwardShadingResources(dc, ctx);
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;

@@ -8,7 +8,8 @@
 #include "Platform/Backend.hlsli"
 
 Texture2D    texLDR     : register(TEX_GBUFFER0);
-SamplerState sampLinear : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 static const float FXAA_SPAN_MAX   = 8.0f;
 static const float FXAA_REDUCE_MUL = 1.0f / 8.0f;

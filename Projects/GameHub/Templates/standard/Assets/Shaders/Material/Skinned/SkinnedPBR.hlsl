@@ -10,6 +10,9 @@
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Rendering/SpecularAA.hlsli"
+#include "Rendering/Wetness.hlsli"
+#include "Rendering/LodDither.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
@@ -73,6 +76,8 @@ PSInput VSMain(SkinnedVSInput v)
 
 float4 PSMain(PSInput p) : SV_Target0
 {
+    ApplyLodDither(p.svPosition.xy, objectParams.x);
+
     float2 uv = p.uv * uvTiling + uvOffset;
 
     float4 rawAlbedo = (textureMask & (1u << 0))
@@ -101,6 +106,11 @@ float4 PSMain(PSInput p) : SV_Target0
 
     met   = saturate(met);
     rough = max(saturate(rough), 0.045f);
+    // 濡れは素材の値なので法線分散のフィルタより先に掛ける (GBuffer.hlsl と同順)。
+    const WetSurface wet = ApplyWetness(col, rough, N);
+    col   = wet.albedo;
+    rough = max(wet.roughness, 0.045f);
+    rough = FilterSpecularRoughness(N, rough);
     const float3 tangent = SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f));
     float3 T = SafeNormalize(tangent - N * dot(N, tangent),
                              abs(N.y) < 0.99f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f));
@@ -115,6 +125,9 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = SafeNormalize(-lightDir, N);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // NOTE: スキンドメッシュは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外)。
+    //       画面空間 AO / 接触影を引くと、キャラの画素で「背景の遮蔽」を読んでしまうので使わない。
+    //       これは Deferred でも同じ (キャラは DeferredLighting を通らない) ため、差は生じない。
     float3 result = iblIntensity > 0.0f
         ? Lighting_PBR_IBL_Advanced(N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
@@ -129,7 +142,7 @@ float4 PSMain(PSInput p) : SV_Target0
     // 点光源 / スポットライト — 走査元は clusterLightMode が決める
     // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
-        result += Lighting_PBR_Advanced(N, V, ps.L, T, B, col, met, rough,
+        result += Lighting_PBR_Advanced(N, V, ps.L, T, B, col, met, saturate(rough + ps.roughnessBias),
             clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
             ps.color, ps.intensity, 1.0f);
     FBZZ_PUNCTUAL_END

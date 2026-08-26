@@ -6,6 +6,7 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/Matrix4.hpp>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -18,6 +19,8 @@ struct SkinnedMeshRenderer {
     bool enabled = true;
     // LODSystem 専用のランタイム可視性。Scene には保存しない。
     bool lodVisible = true;
+    // LOD クロスフェード中のディザしきい値 (MeshRenderer::lodDither と同じ意味)。
+    float lodDither = 0.0f;
     // シャドウマップへ影を落とすか (MeshRenderer::castShadows と同じ意味)。
     bool castShadows = true;
     std::string modelPath;
@@ -102,6 +105,14 @@ struct SkinnedMeshRenderer {
     // 同フレームの別ビューでも同じパス統計を表示できるよう、実際に処理した仕事量を保持する。
     uint64_t gpuSkinningVertexCount = 0;
     uint32_t gpuSkinningDispatchCount = 0;
+
+    // VelocityPass だけが読み書きする。シーンへは保存しない。
+    // ボーンの動きは AnimatorComponent::prevBoneMatrices が持つので、ここが持つのは
+    // キャラクター自身の移動・回転ぶんだけ。2 枚持つ理由は MeshRenderer と同じ
+    // (Scene View と Game View が同じフレームで 2 回描く)。
+    math::Matrix4 prevWorldMatrix     = math::Matrix4::Identity();
+    math::Matrix4 worldMatrixSnapshot = math::Matrix4::Identity();
+    uint64_t      prevWorldFrame      = (std::numeric_limits<uint64_t>::max)();
 
     // GPU スキニング済みなら変形済み頂点バッファを、そうでなければ無効ハンドルを返す。
     // NOTE: ResolveVertexBuffer と混同しないこと。あちらは「VS でスキニングする入力」を返す。
