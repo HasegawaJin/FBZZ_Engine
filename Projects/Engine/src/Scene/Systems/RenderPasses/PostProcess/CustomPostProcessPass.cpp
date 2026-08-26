@@ -5,7 +5,6 @@
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 
 namespace fbzz::scene {
 
@@ -29,7 +28,6 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
     r.SetRenderTarget(needsIntermediate ? h.customPostProcessRT[outputIndex] : ctx.outputRT, resources);
-    r.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
 
     PostProcCB postData{};
     postData.texelSize[0] = 1.0f / static_cast<float>(ctx.width);

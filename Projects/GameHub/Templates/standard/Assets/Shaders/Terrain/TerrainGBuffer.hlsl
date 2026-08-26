@@ -11,6 +11,8 @@
 //   SV_Target1 (RGBA16F): RGB=worldNormal*0.5+0.5, A=metallic
 #include "Common/Binding.hlsli"
 #include "Common/Color.hlsli"
+#include "Rendering/SpecularAA.hlsli"
+#include "Rendering/Wetness.hlsli"
 
 cbuffer TerrainCB : register(CB_OBJECT)
 {
@@ -22,6 +24,7 @@ cbuffer TerrainCB : register(CB_OBJECT)
     float4   layerTextureFlags;     // xyzw = AO/Roughness texture exists per layer
     float4   layerAutoHeight[4];    // x=minHeight, y=maxHeight, z=fade, w=enabled
     float4   layerAutoSlope[4];     // x=minSlope, y=maxSlope, z=fade, w=strength
+    float4   weather;               // x=wetness, y=darkening, z=puddleAmount
 };
 
 // テクスチャ・サンプラーは Terrain.hlsl と同一スロット (C++ TerrainRenderPass のバインドと一致)。
@@ -29,8 +32,12 @@ Texture2D    g_splatmap     : register(t0);
 Texture2D    g_diffuse[4]   : register(t1);  // t1..t4
 Texture2D    g_normal[4]    : register(t5);  // t5..t8
 Texture2D    g_aoRoughness[4] : register(t9); // t9..t12 (R=AO, G=Roughness)
-SamplerState g_sampler      : register(s0);  // Wrap Anisotropic (タイリング)
-SamplerState g_samplerClamp : register(s2);  // Clamp Linear (スプラットマップ)
+// 地形レイヤーはワールド座標でタイリングするので wrap。異方性は x4。
+// WHY x16 の s0 を使わないか: 地形は画面を広く覆い、レイヤーごとに 3 枚を引くので
+//     x16 のコストが枚数ぶん乗る。x4 で見た目はほぼ変わらず約 1/3 のコストで済む。
+SamplerState g_sampler      : register(SAMPLER_WRAP_ANISO4);
+// スプラットマップは地形 1 枚に 1:1 で貼るので clamp。
+SamplerState g_samplerClamp : register(SAMPLER_LINEAR_CLAMP);
 
 struct TerrainVSInput
 {
@@ -177,6 +184,16 @@ GBufferOut PSMain(TerrainPSInput p)
     //      Roughness を上げる（= マテリアル側で調整可能）。IBL 全体の鏡面量は iblSpecularScale で別途調整できる。
     const float kTerrainMinRoughness = 0.6f;
     float terrainRoughness = max(saturate(roughness), kTerrainMinRoughness);
+
+    // 天候。地形は b8 を宣言できないので TerrainCB から値を手渡す。
+    const WetSurface wet = ApplyWetness(albedo, terrainRoughness, N,
+                                        weather.x, weather.y, weather.z);
+    albedo           = wet.albedo;
+    terrainRoughness = wet.roughness;
+
+    // kTerrainNormalBoost で XY を 3 倍した法線は遠景で 1 ピクセルあたりの振れが大きく、
+    // 太陽の反射がタイル模様に明滅する。増幅した分はここで粗さへ返す。
+    terrainRoughness = FilterSpecularRoughness(N, terrainRoughness);
 
     GBufferOut o;
     o.albedoRoughness = float4(albedo, terrainRoughness);

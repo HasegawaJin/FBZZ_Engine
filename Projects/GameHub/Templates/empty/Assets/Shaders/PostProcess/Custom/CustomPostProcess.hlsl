@@ -8,7 +8,8 @@
 #include "Common/Color.hlsli"
 
 Texture2D    texInput   : register(TEX_GBUFFER0);
-SamplerState sampLinear : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {

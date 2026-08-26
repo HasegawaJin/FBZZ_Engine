@@ -82,7 +82,10 @@ void DrawCollidersOfType(RenderPassContext& ctx, const math::Vector4& color)
     for (EntityID id : ctx.scene.GetEntities<T>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         T* col = ctx.scene.GetComponent<T>(id);
-        if (!go || !col) continue;
+        // WHY activeInHierarchy まで見るか: PhysicsSystem は非アクティブな GO の
+        //     Collider を同期対象から外す。可視化だけ描いてしまうと、当たり判定が
+        //     生きていない場所にワイヤーが残り「消したはずの壁に当たる」と誤読される。
+        if (!go || !col || !go->activeInHierarchy()) continue;
         DrawCollider(ctx.scene, *go, *col, ctx.renderer, color);
     }
 }

@@ -7,7 +7,6 @@
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 
 namespace fbzz::scene {
 
@@ -38,7 +37,7 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     volDC.constantBuffers[3] = h.lightCB;             // b3: LightConstants (lightDir, lightColor)
     volDC.constantBuffers[4] = h.shadowCB;            // b4: ShadowConstants (lightVP, bias)
     volDC.constantBuffers[8] = h.advancedGraphicsCB;  // b8: volSteps, volScattering, volMaxDist
-    // t7: シーン深度。レイ終端に使うため、Terrain/Detail/Foliage を含む完全な不透明深度が要る。
+    // t7: シーン深度。レイ終端に使うため、Terrain を含む完全な不透明深度が要る。
     // WHY: それらは Deferred でも hdrRT の depth へ描かれる。GBuffer depth には地形が無いため、
     //      そこを読むとゴッドレイが地形を貫通して手前に漏れる（雲と同じ不具合）。常に hdrRT を読む。
     volDC.srvInputs[7]       = resources.GetDepthTexture(h.hdrRT);
@@ -49,8 +48,6 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     volDC.dispatchX          = (ctx.width  + 7) / 8;
     volDC.dispatchY          = (ctx.height + 7) / 8;
     volDC.dispatchZ          = 1;
-    // s4: タイラブルな 3D ノイズを無限に並べるため wrap 必須 (DX12 は静的サンプラー)。
-    r.SetSampler(4, renderer::SamplerMode::WRAP_BILINEAR);
     r.Dispatch(volDC, resources);
 }
 

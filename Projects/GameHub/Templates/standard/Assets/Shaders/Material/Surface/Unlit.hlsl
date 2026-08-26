@@ -36,12 +36,21 @@ UnlitPSInput VSMain(VSInput v)
     return o;
 }
 
+// WHY テクスチャを «置き換え» ではなく «乗算» するか:
+//   以前はテクスチャが束縛されている間 albedo を丸ごと捨てていた。SpriteRenderer と
+//   LineRenderer は色を albedo へ毎フレーム書き込む経路なので (GameplayComponentSystems の
+//   applyMaterial)、テクスチャを差した瞬間に色指定が黙って効かなくなっていた。
+//
+// WHY アルファを 1 で固定しないか:
+//   RenderState.hpp の契約は «PS は非事前乗算の色とアルファを出し、合成は BlendMode が
+//   決める»。1 を返すと ALPHA_BLEND では常に不透明、ADDITIVE では src.a を掛ける式から
+//   フェードが消える。透過 PNG のスプライトも、線の不透明度も、この 1 行で死んでいた。
 float4 PSMain(UnlitPSInput p) : SV_Target0
 {
-    float3 color = (textureMask & 1u)
-        ? texAlbedo.Sample(sampDefault, p.uv).rgb
-        : albedo.rgb;
-    return float4(color, 1.0f);
+    float4 color = albedo;
+    if (textureMask & 1u)
+        color *= texAlbedo.Sample(sampDefault, p.uv);
+    return color;
 }
 
 #endif // UNLIT_HLSL

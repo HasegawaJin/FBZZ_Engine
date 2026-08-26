@@ -35,7 +35,6 @@
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
-#include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector2.hpp>
@@ -145,8 +144,12 @@ struct TerrainObjectCB {
     math::Vector4 layerTextureFlags;
     math::Vector4 layerAutoHeight[4];
     math::Vector4 layerAutoSlope[4];
+    // 天候 (x=wetness, y=darkening, z=puddleAmount)。
+    // WHY b8 から読まないか: 地形シェーダーは b1 を TerrainCB として使うため
+    //     AdvancedGraphicsConstants を宣言できない。値はここで手渡す。
+    math::Vector4 weather;
 };
-static_assert(sizeof(TerrainObjectCB) == 416, "TerrainObjectCB size mismatch");
+static_assert(sizeof(TerrainObjectCB) == 432, "TerrainObjectCB size mismatch");
 
 static std::unordered_map<uint32_t, TerrainObjectCB> g_cbParamCache;
 
@@ -548,7 +551,10 @@ std::vector<renderer::RenderGraph::ResourceAccess> TerrainRenderPass::DeclareAcc
     // Forward では従来どおり HDR へ直接ライティング結果を描く。
     if (ctx.isDeferred)
         return { { "GBuffer", U::ReadWrite } };
-    return { { "ShadowMap", U::Read }, { "HDR", U::ReadWrite } };
+    return { { "ShadowMap",        U::Read },
+             { "PunctualShadowMap", U::Read },
+             { "LightCookieAtlas",  U::Read },
+             { "HDR",              U::ReadWrite } };
 }
 
 void TerrainRenderPass::Execute(RenderPassContext& ctx)
@@ -643,9 +649,6 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         });
     }
 
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC_4X);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     // TAA ジッターを地形にも乗せる。乗せないと地形だけ AA されないうえ、b0 経由で描く
     // 他の不透明物とサブピクセル単位でずれた深度になり、TAA の再投影が濁る。
@@ -673,6 +676,9 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         if (!gridEntities.empty())
             terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
     }
+
+    // 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
+    const ActiveWeather weather = FindActiveWeather(scene);
 
     for (auto [terrain, transform] : scene.View<TerrainComponent, Transform>()) {
         if (!terrain.enabled || terrain.heightData.empty()) continue;
@@ -791,6 +797,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                                       : TerrainObjectCB{};
         terrainCBData.worldMatrix = world;
         terrainCBData.wvpMatrix   = jitteredVP * world;
+        // 天候はフレームごとに動くので、レイヤーパラメータのキャッシュには載せない。
+        terrainCBData.weather = { weather.wetness, weather.darkening, weather.puddleAmount, 0.0f };
 
         // WHY: TerrainObjectCB は全チャンクで同一内容のため、チャンクごとに Update するのは無駄。
         resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
@@ -842,7 +850,9 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 call.constantBuffers[1] = terrainCBH;
                 call.constantBuffers[3] = lightCB;
                 call.constantBuffers[4] = shadowCB;
-                BindClusterLighting(call, ctx);
+                // b8: 画面空間 AO / 接触影の強度。Forward の地形がこれを読む。
+                call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
+                BindForwardShadingResources(call, ctx);
 
                 call.textures[0]  = textures.splatmap;
                 call.textures[1]  = textures.diffuse[0];

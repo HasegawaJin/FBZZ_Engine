@@ -94,6 +94,8 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = SurfaceSafeNormalize(-lightDir, float3(0.0f, 1.0f, 0.0f));
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
 
     // Blinn-Phong ライティング
     float3 V        = SurfaceSafeNormalize(cameraPos - p.worldPos, N);

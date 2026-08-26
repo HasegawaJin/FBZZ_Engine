@@ -12,7 +12,7 @@
 #include "Platform/Backend.hlsli"
 
 Texture2D<float> g_depth : register(TEX_DEPTH);
-SamplerState sampDefault : register(SAMPLER_DEFAULT); // s0: depth (clamp)
+SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP); // 深度の全画面フェッチ (s0 は DX12 では WRAP)
 
 static const float kEmptyStep = 2.0f; // 空白領域でのステップ倍率 (empty-space skip)
 

@@ -64,7 +64,8 @@
 
 // 入力テクスチャ — t5 は RenderSystem が自動バインドする LDR カラーバッファ
 Texture2D    texInput   : register(TEX_GBUFFER0);
-SamplerState sampLinear : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState sampLinear : register(SAMPLER_LINEAR_CLAMP);
 
 // ── 頂点シェーダー ─────────────────────────────────────────────────────────
 // WHY: 三頂点だけで画面全体を覆う fullscreen triangle を生成する。

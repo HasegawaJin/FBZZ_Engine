@@ -48,6 +48,7 @@ bool HasDirection(ParticleForceFieldType type)
 void DrawForceFields(RenderPassContext& ctx)
 {
     for (auto& object : ctx.scene.GameObjects()) {
+        if (!object.activeInHierarchy()) continue;
         const auto* field = object.GetComponent<ParticleForceField>();
         if (field == nullptr || !field->enabled) continue;
         // radius <= 0 はシーン全体へ減衰なしに効く設定。描くべき境界が存在しないので、
@@ -80,6 +81,7 @@ void DrawEmitterShapes(RenderPassContext& ctx)
     constexpr math::Vector4 kVelocityColor = { 1.00f, 0.72f, 0.30f, 1.0f };
 
     for (auto& object : ctx.scene.GameObjects()) {
+        if (!object.activeInHierarchy()) continue;
         const auto* emitter = object.GetComponent<ParticleEmitter>();
         if (emitter == nullptr || !emitter->settings.enabled) continue;
         // 発生原点は Transform に emitPosition を足した位置。エミッターを親へぶら下げる

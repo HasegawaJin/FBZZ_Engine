@@ -13,7 +13,9 @@
 #include "Platform/Backend.hlsli"
 
 Texture2D    texBright   : register(TEX_GBUFFER0);
-SamplerState sampDefault : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須。ゴーストは uv を画面中心へ反転させて引くため、
+// s0 (DX12 では WRAP) だと画面外へ出たゴーストが反対側の端から出てくる。
+SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 // 画面隅に近い光源ほど寄与を落とす指数。実レンズでも軸外の光ほどフレアが弱い。
 // WHY: 画面外の光源は拾えない (スクリーンスペースの限界) ので、端に届く前に寄与を

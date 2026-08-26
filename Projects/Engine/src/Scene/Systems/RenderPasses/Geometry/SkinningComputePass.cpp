@@ -345,8 +345,8 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             renderer::ComputeCall call;
             call.shader             = h.skinningComputeCS;
             call.constantBuffers[0] = h.skinningCB;
-            call.srvBuffers[0]      = srcVertices;   // t14: 入力頂点
-            call.srvBuffers[1]      = bonePalette;   // t15: ボーンパレット
+            call.srvBuffers[14]     = srcVertices;   // t14: 入力頂点
+            call.srvBuffers[15]     = bonePalette;   // t15: ボーンパレット
             call.uavVertexBuffer    = outBuffer;     // u4:  出力頂点
             call.dispatchX          = (vertexCount + kSkinningGroupSize - 1) / kSkinningGroupSize;
             call.dispatchY          = 1;

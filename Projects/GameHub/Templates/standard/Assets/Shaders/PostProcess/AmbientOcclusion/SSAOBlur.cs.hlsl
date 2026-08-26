@@ -8,7 +8,8 @@
 #include "Platform/Backend.hlsli"
 
 Texture2D          texSSAO     : register(TEX_SSAO);
-SamplerState       sampDefault : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState       sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 RWTexture2D<float4> outputBlur : register(UAV_OUTPUT);
 

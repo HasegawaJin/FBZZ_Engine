@@ -10,7 +10,6 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -155,7 +154,7 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
 
     // WHAT: レイ終端判定に使う depth は専用 RT へコピーしてから SRV として読む。
     // WHY: Forward では hdrRT を出力先 RTV/DSV として使うため、同じ depth を t7 で同時に読むと DX11 の競合になる。
-    //      また Terrain / Detail / Foliage は Deferred/Forward どちらでも DeferredDepthCopy 後に hdrRT の
+    //      また Terrain は Deferred/Forward どちらでも DeferredDepthCopy 後に hdrRT の
     //      depth へ描かれる。GBuffer depth には地形が含まれないため、そこを読むと雲が地形を貫通して
     //      手前に描かれてしまう。常に hdrRT の depth（全不透明を含む）を終端判定に使う。
     static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
@@ -212,9 +211,6 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     //    SetRenderTarget が RT サイズへビューポートを自動調整するため解像度に依らず同じ UV で走る。
     ctx.renderer.SetRenderTarget(s_cloudRT, ctx.resources);
     ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);   // s0: depth (clamp)
-    // s4: 3D ノイズ用 WRAP サンプラ。タイラブルボリュームを無限に並べるため繰り返し必須。
-    ctx.renderer.SetSampler(4, renderer::SamplerMode::WRAP_BILINEAR);
 
     renderer::DrawCall dc;
     dc.shader = ctx.handles.volumetricCloudShader;
@@ -231,7 +227,6 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     // 2) フル解像度 HDR へアップスケールし ALPHA_BLEND 合成する。
     //    フル解像度時(kCloudResShift=0)は 1:1 サンプルで無損失、ハーフ時はバイリニア拡大。
     ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
-    ctx.renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
 
     renderer::DrawCall up;
     up.shader = ctx.handles.cloudUpscaleShader;

@@ -23,7 +23,6 @@
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
-#include "Engine/Renderer/SamplerMode.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Math/Frustum.hpp>
@@ -584,8 +583,10 @@ std::vector<renderer::RenderGraph::ResourceAccess> WaterRenderPass::DeclareAcces
     const RenderPassContext&) const
 {
     return {
-        { "HDR",       renderer::RenderGraph::ResourceUsage::ReadWrite },
-        { "ShadowMap", renderer::RenderGraph::ResourceUsage::Read }
+        { "HDR",                renderer::RenderGraph::ResourceUsage::ReadWrite },
+        { "ShadowMap",          renderer::RenderGraph::ResourceUsage::Read },
+        { "PunctualShadowMap",  renderer::RenderGraph::ResourceUsage::Read },
+        { "LightCookieAtlas",   renderer::RenderGraph::ResourceUsage::Read }
     };
 }
 
@@ -728,7 +729,6 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         s_sceneColorH = ctx.height;
     }
     renderer.SetRenderTarget(s_sceneColorRT, resources);
-    renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
     if (copyColorShader.IsValid()) {
         renderer::DrawCall copyDC;
         copyDC.shader = copyColorShader;
@@ -807,10 +807,6 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         }
     }
 
-    // スロットの意味は Binding.hlsli の SAMPLER_* に揃える (s1=比較, s2=clamp linear)。
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     {
         struct CameraCB {
@@ -948,7 +944,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             call.constantBuffers[3] = lightCB;
             call.constantBuffers[4] = shadowCB;
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
-            BindClusterLighting(call, ctx);
+            BindForwardShadingResources(call, ctx);
             call.textures[3]  = textures.foamMask;
             call.textures[5]  = depthTex;
             call.textures[6]  = colorTex;

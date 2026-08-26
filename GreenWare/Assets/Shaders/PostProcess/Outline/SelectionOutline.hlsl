@@ -10,7 +10,8 @@ Texture2D          texLDR            : register(TEX_GBUFFER0);
 Texture2D          texSelectionMask  : register(TEX_GBUFFER1);
 Texture2D<float>   texSceneDepth     : register(TEX_DEPTH);
 Texture2D<float>   texSelectionDepth : register(TEX_SHADOW);
-SamplerState       sampLinear        : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須 (s0 は DX12 では WRAP)。
+SamplerState       sampLinear        : register(SAMPLER_LINEAR_CLAMP);
 
 cbuffer OutlineConstants : register(CB_MATERIAL)
 {

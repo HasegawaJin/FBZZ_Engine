@@ -22,7 +22,6 @@
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
-#include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
 #include <vector>
@@ -92,10 +91,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 
     UpdateShadowConstants(ctx);
-
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
-    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
-    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
+    UpdatePunctualShadowConstants(ctx);
 
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
 
@@ -138,6 +134,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             PerObjectCB objData{};
             objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+            objData.objectParams.x    = mr->lodDither;
 
             renderer::DrawCall dc;
             dc.vertexBuffer       = mr->mesh->vertexBuffer;
@@ -154,7 +151,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
-            BindClusterLighting(dc, ctx);
+            BindForwardShadingResources(dc, ctx);
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -218,6 +215,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
             objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+            objData.objectParams.x    = smr->lodDither;
             const auto skinCB = ResolveSkinningCB(
                 anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
                 smr->model, h.bindPoseSkinningCB);
@@ -238,7 +236,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             dc.constantBuffers[7] = skinCB;
-            BindClusterLighting(dc, ctx);
+            BindForwardShadingResources(dc, ctx);
             for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
                 if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
             dc.textures[8] = shadowDepthTex;
@@ -305,6 +303,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = mr->lodDither;
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         renderer::DrawCall dc;
@@ -322,7 +321,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[8] = h.advancedGraphicsCB;
-        BindClusterLighting(dc, ctx);
+        BindForwardShadingResources(dc, ctx);
         for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
@@ -364,6 +363,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         // スキンドメッシュは Socket / Bone Transform と同じ物理ワールドを描画する。
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(objData.world);
+        objData.objectParams.x    = smr->lodDither;
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
         const auto skinCB = ResolveSkinningCB(
@@ -385,7 +385,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
         dc.constantBuffers[7] = skinCB;
-        BindClusterLighting(dc, ctx);
+        BindForwardShadingResources(dc, ctx);
         for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
             if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
         dc.textures[8] = shadowDepthTex;

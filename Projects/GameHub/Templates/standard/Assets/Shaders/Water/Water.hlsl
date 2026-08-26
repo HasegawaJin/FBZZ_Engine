@@ -53,17 +53,10 @@ cbuffer CameraConstants : register(CB_CAMERA)
 
 // Water は半透明 Forward 描画で GBuffer に法線を書かないため、通常の SSR Compute の
 // 反射元にはなれない。共通設定だけを受け取り、水面 PS 内でコピー済み深度を追跡する。
-cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
-{
-    float  iblIntensity;
-    float  iblDiffuseScale;
-    float  iblSpecularScale;
-    int    iblMaxMipLevel;
-    float  ssrMaxDistance;
-    float  ssrThickness;
-    int    ssrSteps;
-    float  ssrIntensity;
-};
+// AdvancedGraphicsConstants (b8) — 定義は Common/AdvancedGraphicsConstants.hlsli が持つ。
+// WHY 手書きの部分コピーをやめたか: 先頭 8 フィールドだけを写していたため、
+//     末尾へ足したフィールド (画面空間 AO / 接触影) が Water からは読めなかった。
+#include "Common/AdvancedGraphicsConstants.hlsli"
 
 // WaterCB は C++ の WaterCB と 16 byte 単位で同期する。
 // WHAT: Vector4 パックにして、HLSL/C++ 間の暗黙パディング差をなくす。
@@ -426,6 +419,8 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     // WHY: 完全な黒影にすると水面下の屈折色まで不自然に消えるため、shadow は「太陽光の弱まり」として扱う。
     float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
         lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
     color *= lerp(0.72f, 1.0f, shadow);
 
     // 太陽のきらめき。smoothness から指数を決め、Blinn-Phong の正規化係数を上限付きで掛ける。

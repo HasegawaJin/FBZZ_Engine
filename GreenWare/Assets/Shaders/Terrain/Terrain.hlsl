@@ -65,6 +65,7 @@ cbuffer TerrainCB : register(CB_OBJECT)
     float4   layerTextureFlags;     // xyzw = AO/Roughness texture exists per layer
     float4   layerAutoHeight[4];    // x=minHeight, y=maxHeight, z=fade, w=enabled
     float4   layerAutoSlope[4];     // x=minSlope, y=maxSlope, z=fade, w=strength
+    float4   weather;               // x=wetness, y=darkening, z=puddleAmount
 };
 
 #define MAX_POINT_LIGHTS 8
@@ -91,12 +92,17 @@ cbuffer LightConstants : register(CB_LIGHT)
     float          _ambientPad;
 };
 
+// AdvancedGraphicsConstants (b8) — IBL / 画面空間 AO / 接触影。定義は共有ヘッダーが持つ。
+// WHY 地形にも要るか: SSAO / GTAO / 接触影を Forward でも効かせるため、
+//     地形マテリアルが自分の画素で結果を引く。強度は b8 が運ぶ。
+#include "Common/AdvancedGraphicsConstants.hlsli"
 // ShadowConstants (b4) — カスケード配列を含むためレイアウトは 1 か所で定義する。
 #include "Common/ShadowConstants.hlsli"
 
 // WHY: LightConstants の ambientColor グローバルを参照するため cbuffer 宣言の後に include する。
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+#include "Rendering/Wetness.hlsli"
 
 // ============================================================================
 // テクスチャ・サンプラー宣言 (Phase 4)
@@ -121,9 +127,14 @@ Texture2D    g_diffuse[4]    : register(t1); // t1, t2, t3, t4
 Texture2D    g_normal[4]     : register(t5); // t5, t6, t7, t8
 Texture2D    g_aoRoughness[4] : register(t9); // R=AO, G=Roughness
 Texture2D<float> g_shadowMap : register(t13);
-SamplerState g_sampler       : register(s0); // Wrap Anisotropic
-SamplerComparisonState g_shadowSampler : register(s1);
-SamplerState g_samplerClamp  : register(s2); // Clamp Linear
+// 地形レイヤーはワールド座標でタイリングするので wrap。異方性は x4。
+// WHY x16 の s0 を使わないか: 地形は画面を広く覆い、レイヤーごとに diffuse / normal /
+//     aoRoughness の 3 枚を引く。x16 のコストがそのまま枚数ぶん乗る。地面は視線に対して
+//     浅い角度で伸びるため異方性は効くが、x4 で見た目はほぼ変わらず約 1/3 のコストで済む。
+SamplerState g_sampler       : register(SAMPLER_WRAP_ANISO4);
+SamplerComparisonState g_shadowSampler : register(SAMPLER_SHADOW);
+// スプラットマップは地形 1 枚に 1:1 で貼るので clamp。端で繰り返すと対岸が滲む。
+SamplerState g_samplerClamp  : register(SAMPLER_LINEAR_CLAMP);
 
 // ============================================================================
 // 頂点入力・補間構造体
@@ -289,8 +300,18 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
 
     float3 N = normalize(blendedN);
 
+    // 天候。Deferred の TerrainGBuffer.hlsl と同じ値・同じ順序で掛ける。
+    const WetSurface wet = ApplyWetness(albedo, roughness, N,
+                                        weather.x, weather.y, weather.z);
+    albedo    = wet.albedo;
+    roughness = wet.roughness;
+
     float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
         lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
+    // 地形のレイヤー AO と画面空間 AO は別物 (材質の凹凸 と 形状同士の遮蔽) なので掛け合わせる。
+    ao *= FBZZ_ScreenAO(p.svPosition.xy);
 
     // AO は間接光（環境光）成分のみを遮蔽する物理的に正しい扱いにする。
     // WHY: 以前は最終結果全体に AO を乗算しており、直射日光やポイントライトまで
@@ -304,7 +325,7 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
         result += Lighting_BlinnPhong_Direct(
-            N, V, ps.L, albedo, roughness,
+            N, V, ps.L, albedo, saturate(roughness + ps.roughnessBias),
             ps.color, ps.intensity);
     FBZZ_PUNCTUAL_END
 

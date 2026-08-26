@@ -135,6 +135,18 @@ void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
         for (size_t i = 0; i < gpuMaterial->textures.size() && i < 8; ++i)
             if (gpuMaterial->textures[i].IsValid()) draw.textures[i] = gpuMaterial->textures[i];
         draw.textures[8] = resources.GetDepthTexture(h.shadowMapRT);
+        // 点光源まわり (b9 / t29 / t30 / b12 / t28 / t31) をまとめて束縛する。
+        //
+        // WHY プローブ捕捉でも要るか: ここで描くのは通常のマテリアルシェーダーで、
+        //     定数バッファの束縛は直前のパスのものが残る一方、テクスチャ SRV は
+        //     ドローごとにクリアされる。片方だけ生きている状態になると、
+        //     シャドウなら「深度 0 = 完全な影」で捕捉結果が真っ黒になり、
+        //     ライト配列なら「本数は残っているのに中身が全部ゼロ」で点光源が消える。
+        //
+        // WHY Linear を強制するか: ここはキューブ面ごとにプローブ位置から描いており、
+        //     メインカメラの視錐台に対して作られたクラスタリストとは対応が取れない。
+        //     そのまま引くと、画面の別の場所のライトが焼き込まれる。
+        BindForwardShadingResources(draw, ctx, /*forceLinearLights=*/true);
         ctx.renderer.Submit(draw, resources);
     }
 }
