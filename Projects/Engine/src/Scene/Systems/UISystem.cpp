@@ -31,7 +31,6 @@
 #include "Math/Vector4.hpp"
 #include "Math/Ray.hpp"
 #include "Math/Plane.hpp"
-#include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Util/Utf8.hpp"
@@ -2321,7 +2320,6 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
                     const math::Matrix4& viewProjection,
                     UIRenderTargetView targetView)
 {
-    renderer.SetSampler(5, renderer::SamplerMode::CLAMP_LINEAR);
 
     for (const CanvasEntry& entry : canvases) {
         if (!ShouldRenderCanvas(*entry.canvas, targetView))
