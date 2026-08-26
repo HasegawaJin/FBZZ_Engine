@@ -45,7 +45,7 @@ void RegisterRenderOperators(OperatorRegistry& registry);
 // 経路によって違っていた。
 void RegisterNodeOperators(OperatorRegistry& registry);
 
-// Terrain / Foliage のデータ編集操作。
+// Terrain のデータ編集操作。
 // Terrain のリサイズは heightData / splatData を同時に整合させる必要があり、
 // columns / rows の直接書き換えを AI から許すと描画・物理の前提を壊すため、
 // TerrainComponent::Resize() とスナップショット Undo を 1 つの操作へ集約する。

@@ -143,7 +143,6 @@ export type EditorQuery =
     // 地形のグリッド・レイヤー・高さ統計。生の heightData は返さない (点は terrain.sample)。
     | { t: 'terrain.inspect'; id?: string | undefined }
     | { t: 'terrain.sample'; points: Array<number[]>; id?: string | undefined }
-    | { t: 'foliage.inspect'; id?: string | undefined }
     // NavMesh: Surface の設定・ベイク状態と Agent の実行状態を並べて返す。
     | { t: 'navmesh.state'; id?: string | undefined }
     // Agent が実際に使う A* + Funnel で経路を引く。歩けるかどうかの唯一の確実な検証手段。
@@ -312,7 +311,6 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
         points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
         id: NodeIdSchema.optional(),
     }).strict(),
-    z.object({ t: z.literal('foliage.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('navmesh.state'), id: NodeIdSchema.optional() }).strict(),
     z.object({
         t: z.literal('navmesh.path'),
@@ -471,9 +469,6 @@ export type EditorCommand =
         radius?: number | undefined; strength?: number | undefined; falloff?: 'linear' | 'smooth' | 'gaussian' | undefined;
         iterations?: number | undefined; id?: string | undefined }
     | { t: 'terrain.setLayerMaterial'; id: string; layer: number; material: string }
-    | { t: 'foliage.scatter'; id: string; species: number; position: [number, number, number];
-        radius?: number | undefined; count?: number | undefined; maxSlopeDegrees?: number | undefined; seed?: number | undefined }
-    | { t: 'foliage.clear'; id: string; species: number; position?: [number, number, number] | undefined; radius?: number | undefined }
     // ベイクは非同期。完了は navmesh.state の bakeState で確認する。
     | { t: 'navmesh.bake'; id?: string | undefined }
     | { t: 'audio.control'; id: string; action: 'play' | 'stop' | 'pause' | 'resume' }
@@ -968,23 +963,6 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             id: NodeIdSchema,
             layer: z.number().int().min(0).max(3),
             material: z.string().max(512),
-        }).strict(),
-        z.object({
-            t: z.literal('foliage.scatter'),
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63),
-            position: Vec3Schema,
-            radius: z.number().finite().gt(0).max(500).optional(),
-            count: z.number().int().min(1).max(500).optional(),
-            maxSlopeDegrees: z.number().finite().min(0).max(90).optional(),
-            seed: z.number().int().min(1).optional(),
-        }).strict(),
-        z.object({
-            t: z.literal('foliage.clear'),
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63),
-            position: Vec3Schema.optional(),
-            radius: z.number().finite().gt(0).max(500).optional(),
         }).strict(),
         z.object({ t: z.literal('navmesh.bake'), id: NodeIdSchema.optional() }).strict(),
         z.object({

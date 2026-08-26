@@ -20,8 +20,8 @@ public:
 // Phase ごとのタグサブクラス（メタデータだけ異なる、実装は TransformSystem から継承）
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Editor 停止中のみ動作。FoliageBake/NavMeshBake が Transform を読む前に行列を更新する。
-// WHY: Sim モードでは Physics 書き戻し後の Transform を翌フレーム先頭の Foliage/NavMesh が
+// Editor 停止中のみ動作。NavMeshBake が Transform を読む前に行列を更新する。
+// WHY: Sim モードでは Physics 書き戻し後の Transform を翌フレーム先頭の NavMesh が
 //      使うため Transform は PreScript より後に走る。Editor モードは Physics がないため
 //      先頭で明示的に更新が必要。
 class TransformEditorPreview final : public TransformSystem {

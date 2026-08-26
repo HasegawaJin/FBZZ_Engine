@@ -301,7 +301,7 @@ function RegisterQueryTools(server, bus) {
     }));
     server.registerTool('scene_get_tree', {
         description: '現在のシーン階層を取得します。副作用はありません。'
-            + '既定ではシステムが実行時に生成したオブジェクト(VFX Graphのノード実体、foliage bake、'
+            + '既定ではシステムが実行時に生成したオブジェクト(VFX Graphのノード実体、'
             + 'water splash)を除外します。これらは編集してもシーンへ保存されないため、'
             + '編集対象を探す用途では常に除外したままで構いません。'
             + '除外した件数は親ノードの hiddenGeneratedChildren に出ます。'
@@ -1241,7 +1241,7 @@ function RegisterQueryTools(server, bus) {
         description: '指定ワールド座標の地形高さ・法線・斜度・4レイヤーの重みを返します。'
             + 'points は [x,y,z] でも [x,z] でも構いません (高さを問う用途で y は使いません)。'
             + 'terrain_sculpt の前後で同じ点を測れば、狙った量だけ動いたかを画像ではなく数値で確認できます。'
-            + 'slopeDegrees は Foliage を置けるか / NavMesh が歩行可能と判定するかに直結します。',
+            + 'slopeDegrees は NavMesh が歩行可能と判定するかに直結します。',
         inputSchema: {
             points: z.array(z.array(z.number().finite()).min(2).max(3)).min(1).max(256),
             id: NodeIdSchema.optional().describe('特定 Terrain に限定する場合'),
@@ -1250,19 +1250,13 @@ function RegisterQueryTools(server, bus) {
     }, ({ points, id }) => Safely(async () => TextResult(await bus.Query({
         t: 'terrain.sample', points, ...(id === undefined ? {} : { id }),
     }))));
-    server.registerTool('foliage_inspect', {
-        description: 'Foliage の Species 一覧 (モデル・配置モード・密度・スケール範囲・stamp 数) を返します。'
-            + 'bakedInstances は実際に描かれている本数で、stampCount と食い違うときは未 Bake か Terrain 外へ置いた印です。'
-            + 'foliage_scatter の species は、ここで返る index を指定します。',
-        inputSchema: { id: NodeIdSchema.optional() },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ id }) => Safely(async () => TextResult(await bus.Query({
-        t: 'foliage.inspect', ...(id === undefined ? {} : { id }),
-    }))));
     server.registerTool('navmesh_get_state', {
         description: 'NavMesh Surface のベイク設定・状態・ポリゴン数・歩行可能範囲(bounds)と、Agent の実行状態を返します。'
             + '「敵が来ない」の切り分けはここから始めます — Surface と Agent の agentTypeId が食い違っていれば経路は絶対に引けません。'
-            + 'bakeState=done かつ polygonCount>0 でなければ navmesh_find_path は失敗します。',
+            + 'bakeState=done かつ polygonCount>0 でなければ navmesh_find_path は失敗します。'
+            + 'stale=true はベイク後に地形か Modifier か設定が変わった状態で、経路は引けても現状と合っていません (navmesh_bake が必要)。'
+            + 'polygonCount=0 のときは failReason に、bake.{tooSteep,tooHighStep,obstructed,eroded} にはセル判定の内訳が入るので、'
+            + 'Max Slope / Max Climb / Agent Radius / NotWalkable Modifier のどれで落ちたのかを総当たりせずに特定できます。',
         inputSchema: { id: NodeIdSchema.optional() },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({
@@ -2780,41 +2774,6 @@ function RegisterCommandTools(server, bus, permission) {
         },
         annotations: writeAnnotations,
     }, ({ id, layer, material }) => run({ t: 'terrain.setLayerMaterial', id, layer, material }));
-    server.registerTool('foliage_scatter', {
-        description: '指定した円内へ植生 (Species) を散布します。地形の高さへ吸着し、斜度が maxSlopeDegrees を超える場所は避けます。'
-            + 'id は FoliageComponent と TerrainComponent の両方を持つノードです'
-            + '(stamp は Terrain ローカル座標で保存するため、Terrain が同居していないと置けません)。'
-            + 'seed を指定すると同じ要求から必ず同じ配置になります — 指定しないと「もう一度」で別の絵になり、結果を比較できません。'
-            + '1 本も置けなかった場合は斜度超過と範囲外の内訳をエラーに含めるので、radius か maxSlopeDegrees のどちらを直すか判断できます。'
-            + '配置モードは STAMP へ切り替わります (PROCEDURAL のままだと stamps は描画に使われません)。',
-        inputSchema: {
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63).describe('foliage_inspect が返す species index'),
-            position: Vec3Schema.describe('散布円の中心 (ワールド座標)'),
-            radius: z.number().finite().gt(0).max(500).default(5),
-            count: z.number().int().min(1).max(500).default(10),
-            maxSlopeDegrees: z.number().finite().min(0).max(90).default(40),
-            seed: z.number().int().min(1).optional().describe('決定論的な配置にする乱数種'),
-        },
-        annotations: writeAnnotations,
-    }, ({ id, species, position, radius, count, maxSlopeDegrees, seed }) => run({
-        t: 'foliage.scatter', id, species, position, radius, count, maxSlopeDegrees,
-        ...(seed === undefined ? {} : { seed }),
-    }));
-    server.registerTool('foliage_clear', {
-        description: '植生の stamp を削除します。position と radius を指定するとその円内だけ、省略するとその Species の全 stamp を消します。',
-        inputSchema: {
-            id: NodeIdSchema,
-            species: z.number().int().min(0).max(63),
-            position: Vec3Schema.optional(),
-            radius: z.number().finite().gt(0).max(500).optional(),
-        },
-        annotations: writeAnnotations,
-    }, ({ id, species, position, radius }) => run({
-        t: 'foliage.clear', id, species,
-        ...(position === undefined ? {} : { position }),
-        ...(radius === undefined ? {} : { radius }),
-    }));
     server.registerTool('navmesh_bake', {
         description: 'NavMesh Surface の再ベイクを要求します。id 省略で有効な全 Surface が対象です。'
             + 'terrain_sculpt やコライダーの追加/削除の後は必ず実行してください — 古い NavMesh のまま経路を引くと'

@@ -236,8 +236,6 @@ void EditorApp::InstallNativeMenuBar()
     MenuList terrainTools;
     terrainTools.push_back(command("Terrain Tool", 510));
     terrainTools.push_back(command("Water Tool", 511));
-    terrainTools.push_back(command("Detail Tool", 512));
-    terrainTools.push_back(command("Foliage Tool", 513));
 
     MenuList menus;
     menus.push_back(submenu("File", {
@@ -343,8 +341,6 @@ void EditorApp::InstallNativeMenuBar()
         case OPEN_AI_SETTINGS: InvokePanelFocus(m_aiSettingsPanel); break;
         case 510: InvokeOperator("tools.terrain"); break;
         case 511: InvokeOperator("tools.water"); break;
-        case 512: InvokeOperator("tools.detail"); break;
-        case 513: InvokeOperator("tools.foliage"); break;
         default: return false;
         }
         return true;
@@ -529,8 +525,6 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         if (ImGui::BeginMenu("Terrain & Map")) {
             MenuItemOp("tools.terrain");
             MenuItemOp("tools.water");
-            MenuItemOp("tools.detail");
-            MenuItemOp("tools.foliage");
             ImGui::EndMenu();
         }
         MenuItemOp("tools.build_settings");
@@ -601,7 +595,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         else if (ctx.mapEditingMode)
             ImGui::SetTooltip("Exit Map Editing Mode — restores normal editor layout");
         else
-            ImGui::SetTooltip("Enter Map Editing Mode\nTerrain / Water / Detail / Foliage tools in a focused layout");
+            ImGui::SetTooltip("Enter Map Editing Mode\nTerrain / Water tools in a focused layout");
     }
 
     const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;

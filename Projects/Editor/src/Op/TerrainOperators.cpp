@@ -1,13 +1,11 @@
 // FBZZ Engine
 // TerrainOperators.cpp | fbzz::editor
-// Terrain / Foliage データ編集の Operator
+// Terrain データ編集の Operator
 //
 // WHY: Terrain の columns / rows は heightData と splatData のサイズと一体であり、
 //      数値だけを変更すると TerrainRenderPass と PhysicsSystem が不整合な配列を読む。
 //      Inspector は TerrainComponent::Resize() を通して安全に変更しているため、
 //      AI からも同じ入口を使い、変更前後の TerrainComponent を丸ごと Undo へ保持する。
-//      Foliage の円内削除は既存の foliage.clear が同じスナップショット方式で実装済みなので、
-//      このファイルでは別実装を増やさず、Operator 化の対象を Resize に限定する。
 //      Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 

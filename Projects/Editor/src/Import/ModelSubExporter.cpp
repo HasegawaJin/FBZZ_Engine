@@ -1,7 +1,7 @@
 // FBZZ Engine
 // ModelSubExporter.cpp | fbzz::editor
 // FBX → .fzasset (FZMD) + 代表 .mesh バイナリを生成する。
-// .fzasset はパッケージ展開用、.mesh は Detail / Foliage / MeshRenderer から直接参照する代表メッシュ。
+// .fzasset はパッケージ展開用、.mesh は MeshRenderer から直接参照する代表メッシュ。
 #include <Editor/Import/ModelSubExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>

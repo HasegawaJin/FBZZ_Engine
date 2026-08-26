@@ -154,8 +154,6 @@ RenderGraph ベースの Deferred + Forward ハイブリッド。IBL / PCSS / GT
 | `PostProcessVolumeComponent` | ローカルポストプロセスボリューム (ブレンド範囲指定) |
 | `TerrainComponent` | ハイトマップに基づくテレイン描画 |
 | `TerrainGridComponent` | テレイングリッド管理 |
-| `TerrainDetailComponent` | 草・小物の詳細オブジェクト散布 |
-| `FoliageComponent` | フォリッジ (木・草) インスタンス管理 |
 | `WaterComponent` | リアルタイム水面描画 |
 | `DecalComponent` | デカール投影 |
 | `TrailComponent` | モーション軌跡トレイル |
@@ -188,8 +186,6 @@ RenderGraph ベースの Deferred + Forward ハイブリッド。IBL / PCSS / GT
 | `NavMeshBakeSystem` | NavMesh のランタイムベイク |
 | `NavMeshPatrolSystem` | 巡回 AI の更新 |
 | `NavMeshSensorSystem` | 感知センサーの判定 |
-| `FoliageBakeSystem` | フォリッジのプロシージャル配置ベイク |
-| `FoliageCullSystem` | GPU フラスタムカリングによるフォリッジ描画絞り込み |
 | `LifetimeSystem` | 期限切れ GameObject の自動破棄 |
 
 ---
@@ -246,7 +242,7 @@ RenderGraph ベースの **Deferred + Forward ハイブリッド**。パス間�
 | PostProcess — フレア | LensFlare |
 | PostProcess — カラー | Composite (ToneMap + Color Grading) / CopyColor |
 | PostProcess — カスタム | CustomPostProcess / CustomPostProcessTemplate |
-| 地形 | Terrain / Detail / DetailGrass / Foliage |
+| 地形 | Terrain |
 | 水面 | Water / Caustics |
 | UI | UISprite / UIText |
 | 共通ライブラリ | Atmosphere / BRDF / Cloud / Fog / IBL / Lighting / PostProcess / Shadow / ToneMap |
@@ -292,8 +288,6 @@ RenderGraph ベースの **Deferred + Forward ハイブリッド**。パス間�
 | システム | 概要 |
 |---------|------|
 | テレイン | ハイトマップ読み込み・表示・`HeightFieldCollider` で物理コライダー自動生成 |
-| Detail | 草・小物オブジェクトをテレイン面に散布 |
-| フォリッジ | 木などのインスタンスを GPU インスタンシングで大量描画・GPU フラスタムカリング |
 | 水面 | ノーマルアニメーション + 焦散エフェクト + SSR 反射 |
 
 ### スクリプティングシステム
@@ -341,8 +335,6 @@ RenderGraph ベースの **Deferred + Forward ハイブリッド**。パス間�
 | エディターツール | 概要 |
 |----------------|------|
 | TerrainTool | ハイトマップ・テクスチャ・法線のペイント |
-| FoliageTool | フォリッジインスタンスの散布・消去 |
-| DetailTool | 草・小物の詳細散布 |
 | WaterTool | 水面領域の定義とパラメーター調整 |
 
 | ユーティリティ | 概要 |
@@ -499,13 +491,12 @@ graph LR
     AN["AnimatorSystem\nボーン行列"]
     IK["IKSystem\n逆運動学"]
     NV["NavigationSystem\nエージェント追跡"]
-    FC["FoliageCullSystem\nGPU フラスタムカリング"]
     RS["RenderSystem\n描画コール生成"]
     AU["AudioSystem\n3D 音源更新"]
     UI["UISystem\nレイアウト・描画"]
     SC["ScriptSystem\nOnUpdate 呼び出し"]
 
-    IN --> TR --> PH --> AN --> IK --> NV --> FC --> RS --> AU --> UI --> SC
+    IN --> TR --> PH --> AN --> IK --> NV --> RS --> AU --> UI --> SC
 ```
 
 ---
