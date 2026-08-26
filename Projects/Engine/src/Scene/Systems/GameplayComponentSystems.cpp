@@ -733,14 +733,95 @@ void PresentationSystem::Update(SystemContext& ctx)
             signature ^= std::hash<float>{}(point.x + point.y * 31.0f + point.z * 997.0f);
         signature ^= std::hash<float>{}(line->startWidth) ^ (std::hash<float>{}(line->endWidth) << 1);
         signature ^= static_cast<std::size_t>(line->loop) << 4;
+        signature ^= static_cast<std::size_t>(line->shape) << 6;
+        signature ^= static_cast<std::size_t>(line->radialSegments) << 8;
         if (line->space == LineSpace::World)
             signature ^= std::hash<float>{}(go->transform.worldPosition.x
                 + go->transform.worldPosition.y * 31.0f + go->transform.worldPosition.z * 997.0f);
-        if (line->billboard && mainCamera)
+        // WHY 筒ではカメラを鍵に混ぜないか: 形が視点に依存しないため、混ぜるとカメラが
+        //     動いた «だけ» で毎フレーム焼き直すことになる。板は向きを作り直すので要る。
+        if (line->shape == LineShape::Ribbon && line->billboard && mainCamera)
             signature ^= std::hash<float>{}(mainCamera->transform.worldPosition.x
                 + mainCamera->transform.worldPosition.y * 31.0f
                 + mainCamera->transform.worldPosition.z * 997.0f);
         if ((!line->runtimeMesh.HasMesh() || line->runtimeMesh.signature != signature)
+            && line->points.size() >= 2 && line->shape == LineShape::Tube) {
+            // ── 筒 ────────────────────────────────────────────────────────────
+            // 点ごとに円環を 1 枚置き、隣の環と繋いで押し出す。
+            //
+            // WHY 平行移動フレームで組むか (毎回 UP から作り直さないか):
+            //   環の基準ベクトルを毎回 UP との外積で作ると、線が真上を向いた区間で
+            //   基準が反転し、そこだけ筒が 180 度ねじれる。前の環の基準を «軸へ
+            //   直交するよう倒し直す» だけにすれば、経路が曲がってもねじれが増えない。
+            std::vector<renderer::Vertex> vertices;
+            std::vector<uint32_t> indices;
+            const int  radial = std::clamp(line->radialSegments, 3, 32);
+            const size_t ringCount = line->points.size();
+            const size_t spanCount = line->loop ? ringCount : ringCount - 1;
+
+            // 経路をローカルへ落とす。板側と同じ規則。
+            std::vector<math::Vector3> path;
+            path.reserve(ringCount);
+            for (const math::Vector3& point : line->points) {
+                path.push_back(line->space == LineSpace::World
+                    ? DivideSafe(go->transform.worldRotation.Inverse()
+                        * (point - go->transform.worldPosition), go->transform.worldScale)
+                    : point);
+            }
+
+            // 最初の基準。軸が真上に近いときだけ前方へ倒す (外積が縮退するため)。
+            math::Vector3 firstAxis =
+                (path.size() > 1 ? (path[1] - path[0]) : math::Vector3::FORWARD)
+                    .NormalizedOr(math::Vector3::FORWARD);
+            math::Vector3 reference = std::fabs(firstAxis.y) > 0.9f
+                ? math::Vector3::FORWARD : math::Vector3::UP;
+            math::Vector3 normalRef =
+                math::Vector3::Cross(firstAxis, reference).NormalizedOr(math::Vector3::RIGHT);
+
+            for (size_t ring = 0; ring < ringCount; ++ring) {
+                // 環の軸は前後の区間の平均。折れ点で筒が角張らない。
+                const math::Vector3 back = ring > 0 ? (path[ring] - path[ring - 1])
+                                                    : math::Vector3::ZERO;
+                const math::Vector3 forward = ring + 1 < ringCount ? (path[ring + 1] - path[ring])
+                                                                   : math::Vector3::ZERO;
+                const math::Vector3 axis = (back + forward).NormalizedOr(firstAxis);
+
+                // 前の基準を新しい軸へ直交させる (平行移動フレーム)。
+                normalRef = (normalRef - axis * math::Vector3::Dot(normalRef, axis))
+                                .NormalizedOr(normalRef);
+                const math::Vector3 binormal =
+                    math::Vector3::Cross(axis, normalRef).NormalizedOr(math::Vector3::UP);
+
+                const float t = ringCount > 1
+                    ? static_cast<float>(ring) / static_cast<float>(ringCount - 1) : 0.0f;
+                const float w = (line->startWidth + (line->endWidth - line->startWidth) * t) * 0.5f;
+
+                for (int step = 0; step <= radial; ++step) {
+                    // 継ぎ目のため最後の 1 本を重ねる (uv が 1 で閉じる)。
+                    const float angle = static_cast<float>(step) / static_cast<float>(radial)
+                                      * 6.28318530718f;
+                    const math::Vector3 outward =
+                        normalRef * std::cos(angle) + binormal * std::sin(angle);
+                    vertices.push_back({ path[ring] + outward * w, outward, axis,
+                                         { t, static_cast<float>(step) / static_cast<float>(radial) } });
+                }
+            }
+
+            const uint32_t stride = static_cast<uint32_t>(radial) + 1u;
+            for (size_t span = 0; span < spanCount; ++span) {
+                const uint32_t a = static_cast<uint32_t>(span) * stride;
+                const uint32_t b = static_cast<uint32_t>((span + 1) % ringCount) * stride;
+                for (int step = 0; step < radial; ++step) {
+                    const uint32_t i0 = a + static_cast<uint32_t>(step);
+                    const uint32_t i1 = a + static_cast<uint32_t>(step) + 1u;
+                    const uint32_t j0 = b + static_cast<uint32_t>(step);
+                    const uint32_t j1 = b + static_cast<uint32_t>(step) + 1u;
+                    indices.insert(indices.end(), { i0, j0, j1, i0, j1, i1 });
+                }
+            }
+            uploadMesh(line->runtimeMesh, std::move(vertices), std::move(indices));
+            line->runtimeMesh.signature = signature;
+        } else if ((!line->runtimeMesh.HasMesh() || line->runtimeMesh.signature != signature)
             && line->points.size() >= 2) {
             std::vector<renderer::Vertex> vertices;
             std::vector<uint32_t> indices;
