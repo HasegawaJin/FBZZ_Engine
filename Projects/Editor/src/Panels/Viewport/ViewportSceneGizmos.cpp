@@ -296,6 +296,9 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
                                icon.screenPos.y + std::sinf(ang) * (kR + kRay) };
             icon.dl->AddLine(a, b, col, 1.5f);
         }
+        // NOTE: 範囲・形状のワイヤーはここでは描かない。Overlay の "Light Range" に
+        //       繋がった LightRangeDebugPass (Engine 側の DebugDraw) が担当する。
+        //       両方で描くと二重線になり、チェックボックスも片方にしか効かない。
         if (active && light->enabled && light->type == scene::LightComponent::Type::Directional)
             DrawDirectionLine(ctx, icon.dl, go.transform.position, go.transform.forward,
                               2.5f, vpMin, vpSize, col);

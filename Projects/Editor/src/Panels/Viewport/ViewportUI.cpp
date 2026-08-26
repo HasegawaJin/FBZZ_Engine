@@ -364,9 +364,11 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
         }
     }
 
-    if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
-    if (best.IsValid()) {
-        ctx.selectedEntities.push_back(best);
+    if (!best.IsValid()) {
+        if (!ImGui::GetIO().KeyCtrl) ClearEntitySelection(ctx);
+    } else {
+        if (ImGui::GetIO().KeyCtrl) AddToSelection(ctx, best);
+        else                        SelectEntity(ctx, best);
         if (scene::GameObject* picked = ctx.activeScene->GetGameObject(best)) {
             scene::GameObject* current = picked;
             while (current) {
