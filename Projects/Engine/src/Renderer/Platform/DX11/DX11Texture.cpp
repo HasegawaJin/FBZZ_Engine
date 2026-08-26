@@ -180,6 +180,42 @@ bool DX11Texture::InitForCompute(ID3D11Device* device, uint32_t width, uint32_t 
     return true;
 }
 
+bool DX11Texture::InitForCompute3D(ID3D11Device* device,
+                                   uint32_t width, uint32_t height, uint32_t depth)
+{
+    if (!device || width == 0 || height == 0 || depth == 0) return false;
+
+    m_width  = width;
+    m_height = height;
+    m_depth  = depth;
+
+    D3D11_TEXTURE3D_DESC desc = {};
+    desc.Width     = width;
+    desc.Height    = height;
+    desc.Depth     = depth;
+    desc.MipLevels = 1;
+    desc.Format    = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    desc.Usage     = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture3D> tex;
+    HRESULT hr = device->CreateTexture3D(&desc, nullptr, tex.GetAddressOf());
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("InitForCompute3D: CreateTexture3D failed 0x%08X", (unsigned)hr);
+        return false;
+    }
+
+    // 既定ビューで足りる。単一 Mip の Texture3D なので、記述子を手で組むと
+    // リソース記述との食い違いをデバッグレイヤーに拾われるだけで得がない。
+    hr = device->CreateShaderResourceView(tex.Get(), nullptr, m_srv.GetAddressOf());
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute3D: SRV creation failed 0x%08X", (unsigned)hr); return false; }
+
+    hr = device->CreateUnorderedAccessView(tex.Get(), nullptr, m_uav.GetAddressOf());
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute3D: UAV creation failed 0x%08X", (unsigned)hr); return false; }
+
+    return true;
+}
+
 bool DX11Texture::InitDynamic(ID3D11Device* device, ID3D11DeviceContext* context,
                               uint32_t width, uint32_t height, DynamicTextureFormat format)
 {

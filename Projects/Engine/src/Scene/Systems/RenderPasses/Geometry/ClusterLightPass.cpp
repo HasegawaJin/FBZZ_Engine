@@ -34,7 +34,7 @@ void ExecuteClusterLightCullPass(RenderPassContext& ctx)
     cc.shader             = h.clusterCullCS;
     cc.constantBuffers[0] = h.frameCB;    // b0: view / projection (クラスタ AABB の逆投影に使う)
     cc.constantBuffers[9] = h.clusterCB;  // b9: グリッド係数 / ライト本数
-    cc.srvBuffers[0]      = h.punctualLightBuffer;  // t14: StructuredBuffer<PunctualLight>
+    cc.srvBuffers[14]     = h.punctualLightBuffer;  // t14: StructuredBuffer<PunctualLight>
     cc.uavBuffers[0]      = h.clusterIndexBuffer;   // u2 : RWStructuredBuffer<uint>
 
     // 1 スレッド = 1 クラスタ。ClusterLightCull.cs.hlsl の numthreads と一致させること。

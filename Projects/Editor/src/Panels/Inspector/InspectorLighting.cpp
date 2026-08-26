@@ -19,7 +19,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     break;
                 }
             }
-            DrawLightFields(*go, lc, dayNightDriven);
+            DrawLightFields(*go, lc, dayNightDriven, c.projectRoot);
         });
 
     DrawComponentSection<scene::CameraComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Camera",

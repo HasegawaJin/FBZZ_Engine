@@ -28,6 +28,9 @@ public:
     bool InitCubeFromResource(DX12Context* context, ID3D12Resource* resource, DXGI_FORMAT srvFormat,
                               uint32_t size, uint32_t mipCount);
     bool InitForCompute(DX12Context* context, DX12StateTracker* tracker, uint32_t width, uint32_t height);
+    // RGBA16F の 3D テクスチャを SRV + UAV 両用で作る (フロクセルボリューム用)。
+    bool InitForCompute3D(DX12Context* context, DX12StateTracker* tracker,
+                          uint32_t width, uint32_t height, uint32_t depth);
     // CPU から矩形単位で書き換えられるテクスチャ (フォントの動的アトラス用)。
     // DEFAULT ヒープにゼロ初期化して作り、PIXEL_SHADER_RESOURCE 状態で待機する。
     bool InitDynamic(DX12Context* context, DX12StateTracker* tracker,
@@ -35,6 +38,7 @@ public:
     void RegisterState(DX12StateTracker* tracker, D3D12_RESOURCE_STATES state);
     uint32_t GetWidth() const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
+    uint32_t GetDepth() const override { return m_depth; }
 
     bool UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                       const void* pixels, uint32_t srcRowPitch) override;
@@ -63,6 +67,8 @@ private:
     DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
+    // 3D テクスチャの奥行き。2D では 1 のまま。
+    uint32_t m_depth = 1;
 };
 
 } // namespace fbzz::renderer

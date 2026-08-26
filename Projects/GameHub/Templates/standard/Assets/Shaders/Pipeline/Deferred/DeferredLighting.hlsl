@@ -7,6 +7,10 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
+// 画面空間 AO / 接触影はこのパスが自前で持っている (t9 / t24 を直接宣言)。
+// 共有ヘッダー側の宣言と二重にならないよう外す。
+#define FBZZ_NO_SCREEN_SHADING 1
+
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -126,7 +130,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     // 走査元 (b3 の固定長配列 / StructuredBuffer / クラスタリスト) は
     // ClusteredLights.hlsli が clusterLightMode で切り替える。
     FBZZ_PUNCTUAL_BEGIN(worldPos, p.svPosition.xy, N)
-        result += Lighting_PBR_Direct(N, V, ps.L, col, met, rough, ps.color, ps.intensity);
+        result += Lighting_PBR_Direct(N, V, ps.L, col, met, saturate(rough + ps.roughnessBias), ps.color, ps.intensity);
     FBZZ_PUNCTUAL_END
 
     // カスケード可視化 (デバッグ)。無効時は白を返すので通常描画には影響しない。

@@ -210,6 +210,9 @@ inline PerFrameCB MakeCameraFrameCB(const renderer::Camera& camera,
 struct PerObjectCB {
     math::Matrix4 world;
     math::Matrix4 worldInvTranspose;
+    // x = LOD ディザのしきい値。既定 0 は「遷移していない」= 全画素を描く。
+    // LAYOUT: Constants.hlsli の ObjectConstants と一致させること。
+    math::Vector4 objectParams;
 };
 
 // ── クラスタライトカリング (Forward+ / Deferred+) ────────────────────────────
@@ -225,7 +228,9 @@ inline constexpr uint32_t kClusterGridZ = 24;
 inline constexpr uint32_t kClusterCount = kClusterGridX * kClusterGridY * kClusterGridZ;
 
 // 1 クラスタが保持できるライト数。あふれた分はライト番号の昇順で切り捨てる (決定的)。
-inline constexpr uint32_t kMaxLightsPerCluster = 32;
+// WHY 64 か: 屋内に range が部屋と同程度のライトを数十本置くと 32 では足りず、番号の
+//      大きいライトが黙って消える。境界では出入りが点滅に見える。詳細は HLSL 側の comment。
+inline constexpr uint32_t kMaxLightsPerCluster = 64;
 // クラスタ 1 個分の uint 数。先頭がライト数、続けてライト番号が並ぶ。
 inline constexpr uint32_t kClusterStride = kMaxLightsPerCluster + 1;
 // 点光源 + スポットを統合した配列の上限 (従来は点 8 / スポット 4 だった)。
@@ -240,16 +245,191 @@ enum class ClusterLightMode : uint32_t {
     Clustered = 2, // クラスタが持つライトだけ走査
 };
 
-// 点光源とスポットを統合した 1 本ぶん (64 bytes)。
+// PunctualLightGPU::type。ClusterConstants.hlsli の FBZZ_LIGHT_TYPE_* と一致させること。
+enum class PunctualLightType : uint32_t {
+    Point = 0,
+    Spot  = 1,
+    // 矩形の面光源。position が面の中心、direction が面の法線、tangent / bitangent が
+    // 面内の軸で、halfWidth / halfHeight がその半寸法。
+    Area  = 2,
+    // 球の光源。position が中心、halfWidth が半径。
+    Sphere = 3,
+    // カプセルの光源 (蛍光灯・ネオン管)。tangent が軸、halfWidth が半径、
+    // halfHeight が軸方向の半長。
+    Tube   = 4,
+};
+
+// 点光源 / スポット / 面光源を統合した 1 本ぶん (96 bytes)。
 // WHY 統合するか: インデックス空間が 1 本になり、カリング CS も PS も 1 重ループで済む。
+//
+// shadowIndex / cookieIndex は punctualShadowVP / lightCookieVP の何番目を指すか。-1 で無効。
+// WHY 番号で参照するか: 影や Cookie を持てるライトは全体のごく一部なので、全ライトぶんの
+//     行列を配るのではなく、持っているものだけがスロットを指す。おかげでライトを 256 本
+//     置いても、影を持つのは 16 本まで、という配分が定数バッファを太らせずに成立する。
 struct PunctualLightGPU {
     math::Vector3 position;  float    range;
     math::Vector3 color;     float    intensity;
     math::Vector3 direction; float    innerCos;   // Spot のみ
-    float         outerCos;  uint32_t type;       float _lightPad[2];
+    float         outerCos;  uint32_t type;       int32_t shadowIndex = -1;
+                                                  int32_t cookieIndex = -1;
+    math::Vector3 tangent;   float    halfWidth;  // Area のみ
+    math::Vector3 bitangent; float    halfHeight; // Area のみ
 };
-static_assert(sizeof(PunctualLightGPU) == 64,
-    "PunctualLightGPU must match PunctualLight in Common/ClusterConstants.hlsli (64 bytes)");
+static_assert(sizeof(PunctualLightGPU) == 96,
+    "PunctualLightGPU must match PunctualLight in Common/ClusterConstants.hlsli (96 bytes)");
+
+// シャドウを持てる Spot / Point の合計タイル数。Spot は 1 枚、Point はキューブ 6 面。
+// LAYOUT: PunctualShadowConstants.hlsli の FBZZ_MAX_PUNCTUAL_SHADOWS と一致させること。
+inline constexpr int kMaxPunctualShadows = 16;
+// Cookie アトラスのタイル数。FBZZ_MAX_LIGHT_COOKIES と一致させること。
+inline constexpr int kMaxLightCookies = 8;
+// Cookie アトラスの寸法。4 列 x 2 行 = kMaxLightCookies タイル。
+// WHY 正方形にしないか: 8 タイルをちょうど埋める比が 4:2 なので、2048x2048 にすると
+//     半分が未使用のまま常駐する。Cookie は毎フレーム焼き直すものではないが、
+//     使われないメモリを 4MB 抱える理由もない。
+inline constexpr uint32_t kLightCookieTileSize    = 512u;
+inline constexpr uint32_t kLightCookieAtlasCols   = 4u;
+inline constexpr uint32_t kLightCookieAtlasRows   = 2u;
+inline constexpr uint32_t kLightCookieAtlasWidth  = kLightCookieTileSize * kLightCookieAtlasCols;
+inline constexpr uint32_t kLightCookieAtlasHeight = kLightCookieTileSize * kLightCookieAtlasRows;
+static_assert(kLightCookieAtlasCols * kLightCookieAtlasRows
+                  == static_cast<uint32_t>(kMaxLightCookies),
+              "cookie atlas tiling must cover exactly kMaxLightCookies tiles");
+// レガシー経路 (b3) が運べるライト数 = 点 8 + スポット 4。
+// LAYOUT: Common/Constants.hlsli の MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS と一致させること。
+inline constexpr int kMaxLegacyPunctualLights = 12;
+// legacyPunctualSlots 内でスポットが始まる位置。
+inline constexpr int kLegacySpotSlotBase = 8;
+// レガシー経路 (b3) が型を運べない「大きさを持つ光源」(Area / Sphere / Tube) を
+// b12 側へ載せる本数。
+// LAYOUT: PunctualShadowConstants.hlsli の FBZZ_MAX_LEGACY_SHAPED_LIGHTS と一致させること。
+inline constexpr int kMaxLegacyShapedLights = 4;
+// 1 本が占める float4 の数。レイアウトは PunctualShadowConstants.hlsli が正本。
+//   [0] position/range [1] color/intensity [2] direction/予備
+//   [3] tangent/halfWidth [4] bitangent/halfHeight [5] type/両面/予備
+inline constexpr int kLegacyShapedLightStride = 6;
+
+// PunctualShadowConstantsCB — HLSL の PunctualShadowConstants (b12) と 1 対 1 で対応する。
+// LAYOUT: Assets/Shaders/Common/PunctualShadowConstants.hlsli と完全に一致させること。
+struct PunctualShadowConstantsCB {
+    math::Matrix4 punctualShadowVP[kMaxPunctualShadows];
+    math::Vector4 punctualShadowRect[kMaxPunctualShadows];
+    // x = NDC 深度バイアス, y = 影の濃さ [0,1], zw = 予備。
+    math::Vector4 punctualShadowParams[kMaxPunctualShadows];
+
+    math::Matrix4 lightCookieVP[kMaxLightCookies];
+    math::Vector4 lightCookieRect[kMaxLightCookies];
+
+    // レガシー経路 (b3 の固定長配列) 用のスロット番号。x = shadowIndex, y = cookieIndex。
+    //   [0..7]  → LightConstantsCB::pointLights[0..7]
+    //   [8..11] → LightConstantsCB::spotLights[0..3]
+    // WHY b3 へ足さないか: LightConstants の HLSL 定義は Constants / Decal / Terrain /
+    //     Water の 4 か所へ手書きで複製されている。1 つ漏らすとそのシェーダーだけ
+    //     全ライトが別オフセットを読む。番号だけをこちらへ逃がせば b3 は不変。
+    math::Vector4 legacyPunctualSlots[kMaxLegacyPunctualLights];
+
+    // レガシー経路用の「大きさを持つ光源」の実体。1 本あたり kLegacyShapedLightStride レジスタ。
+    // WHY 番号ではなく実体を載せるか: 影 / Cookie と違い、b3 には Area / Sphere / Tube の
+    //     「型」そのものが無い。既定のパイプラインが Forward (= b3 経路) なので、
+    //     ここを通さないと Forward+ でしか光らない。
+    math::Vector4 legacyShapedLight[kMaxLegacyShapedLights * kLegacyShapedLightStride];
+
+    float         punctualShadowTexel[2];
+    int32_t       punctualShadowCount = 0;
+    int32_t       punctualShadowPcf   = 1;
+
+    float         lightCookieTexel[2];
+    int32_t       lightCookieCount       = 0;
+    int32_t       legacyShapedLightCount = 0;
+
+    math::Vector4 _punctualShadowPad0{};
+};
+static_assert(sizeof(PunctualShadowConstantsCB) == 2800,
+    "PunctualShadowConstantsCB must match PunctualShadowConstants in "
+    "Common/PunctualShadowConstants.hlsli (2800 bytes)");
+
+// FroxelFogCB — FroxelFogConstants.hlsli の FroxelFogConstants (b13) と一致させること。
+struct FroxelFogCB {
+    math::Matrix4 invViewProj;
+
+    math::Vector3 cameraPos;  float nearDistance = 0.1f;
+    math::Vector3 albedo;     float farDistance  = 64.0f;
+    math::Vector3 emissive;   float density      = 0.02f;
+
+    float    anisotropy    = 0.4f;
+    float    heightFalloff = 0.0f;
+    float    heightStart   = 0.0f;
+    // スライス内のサンプル位置ずらし [0,1)。グリッドが粗いことによる
+    // 「霧の中の板」をフレーム間のちらつきへ散らすためのディザ。
+    // 単独で使うとちらつきがそのまま残る。必ず historyBlend の蓄積と対で使う。
+    float    jitter        = 0.0f;
+
+    uint32_t gridX = 0;
+    uint32_t gridY = 0;
+    uint32_t gridZ = 0;
+    float    ambient = 1.0f;
+
+    // 前フレームのビュー射影。フロクセルのワールド座標を前フレームのグリッドへ
+    // 投影し直して履歴を引くのに使う (カメラが動いても履歴が付いてくる)。
+    math::Matrix4 prevViewProj;
+    // 今フレームの寄与率。0 で履歴のみ、1 で蓄積なし (= 生のちらつき)。
+    float    historyBlend = 1.0f;
+    // 履歴が使えないフレーム (初回 / 解像度変更 / 霧の再有効化) の印。
+    uint32_t historyValid = 0;
+    float    _pad[2]      = { 0.0f, 0.0f };
+};
+static_assert(sizeof(FroxelFogCB) == 224,
+    "FroxelFogCB must match FroxelFogConstants in Common/FroxelFogConstants.hlsli (224 bytes)");
+
+// フロクセル霧がフレームをまたいで持ち越す状態。実体はビュー単位で確保する。
+//
+// WHY ビュー別に持つか: フロクセルのグリッドはカメラの視錐台に貼り付いている。
+//     SceneView と GameView が 1 組を共有すると、(1) 互いの散乱ボリュームを毎フレーム
+//     上書きし合い、(2) 相手のカメラ行列で履歴を引き直すことになる。結果、霧が
+//     視界の中でとぎれとぎれに明滅する。prevViewProjection を ViewRenderTargets へ
+//     分けたのとまったく同じ理由で、こちらも分ける必要がある。
+struct FroxelFogViewState {
+    // 履歴の引き直しに使う前フレームのビュー射影。
+    math::Matrix4 prevViewProjection = math::Matrix4::Identity();
+    // 前フレームのグリッド寸法。変わったフレームは履歴を捨てる (0 は「無効」の印)。
+    uint32_t      grid[3]     = { 0u, 0u, 0u };
+    // スライス内サンプル位置のディザ列の位置。
+    uint32_t      jitterIndex = 0u;
+    // 散乱ボリューム 2 枚のどちらへ書くか。毎フレーム反転する。
+    bool          ping        = false;
+};
+
+// 自動露出のヒストグラムのビン数。
+// LAYOUT: PostProcess/Color/ExposureCommon.hlsli の FBZZ_EXPOSURE_BINS と一致させること。
+inline constexpr uint32_t kExposureHistogramBins = 256;
+
+// AutoExposureCB — ExposureCommon.hlsli の AutoExposureConstants (b2) と一致させること。
+struct AutoExposureCB {
+    float    minEV        = -6.0f;
+    float    evRange      = 20.0f;
+    float    lowPercent   = 0.45f;
+    float    highPercent  = 0.95f;
+
+    float    speedUp      = 3.0f;
+    float    speedDown    = 1.0f;
+    float    deltaTime    = 0.0f;
+    float    compensation = 0.0f;
+
+    float    minEVClamp   = -8.0f;
+    float    maxEVClamp   =  8.0f;
+    // 1 = 順応を飛ばして即座に合わせる。初回フレームとシーン切り替えで立てる。
+    uint32_t reset        = 1;
+    float    _pad0        = 0.0f;
+};
+static_assert(sizeof(AutoExposureCB) == 48, "AutoExposureCB size mismatch");
+
+// CookieBlitCB — CookieBlit.hlsl の CookieBlitConstants (b2) と一致させること。
+struct CookieBlitCB {
+    float    cookieRotation = 0.0f;  // [rad]
+    uint32_t cookieSrgb     = 0;     // 1 = 元テクスチャが sRGB エンコード
+    float    _cookiePad[2]  = { 0.0f, 0.0f };
+};
+static_assert(sizeof(CookieBlitCB) == 16, "CookieBlitCB size mismatch");
 
 struct ClusterConstantsCB {
     // 1 クラスタが覆う画面上のピクセル数 = screenSize / (GridX, GridY)。
@@ -344,17 +524,34 @@ struct AdvancedGraphicsCB {
     float lensFlareIntensity; int   lensFlareGhostCount; float lensFlareHaloWidth; float lensFlareDistort;
     // PCSS
     float pcssLightRadius;    int   pcssEnabled;         float _pcssPad0;          float _pcssPad1;
-    // LUT
-    float lutBlend;           float _lutPad0;            float _lutPad1;           float _lutPad2;
+    // LUT / 天候 (weather* は LUT ブロックの空き 3 枠を流用。Constants.hlsli 側も同じ)
+    float lutBlend;           float weatherWetness;      float weatherDarkening;   float weatherPuddle;
     // Reprojection 行列 (TAA / Motion Blur 共用)
     math::Matrix4 prevViewProjection;
     math::Matrix4 invPrevViewProjection;
     // Volumetric Lighting (拡張分)
     float volMinDist;         float volDensity;          float volHeightFalloff;   float volHeightStart;
     float volTintR;           float volTintG;            float volTintB;           float volEdgeFade;
+    // 自動露出。autoExposureKey <= 0 で無効 (Composite が b5 の exposure をそのまま使う)。
+    float autoExposureKey = 0.0f;
+    float autoExposureCompensation = 0.0f;
+    float autoExposureMinEV = -8.0f;
+    float autoExposureMaxEV =  8.0f;
+    // Forward のマテリアルが画面空間 AO / 接触影をどれだけ受けるか。0 で引かない。
+    // Deferred では DeferredLighting が適用するので 0 を入れる (二重適用の防止)。
+    float screenAoStrength = 0.0f;
+    float screenContactShadowStrength = 0.0f;
+    // バッファ解像度 / 描画解像度。AO と接触影は半解像度で焼かれるので 0.5。
+    float screenAoScale = 1.0f;
+    float screenContactShadowScale = 1.0f;
 };
-static_assert(sizeof(AdvancedGraphicsCB) == 320,
-    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in Constants.hlsli (320 bytes)");
+static_assert(sizeof(AdvancedGraphicsCB) == 352,
+    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in Constants.hlsli (352 bytes)");
+
+/// Bloom のミップ連鎖の段数。連鎖の 1 段目が半解像度で、以降 1/2 ずつ。
+/// 1080p で 5 段なら最小段は 33px 相当 = 全解像度で半径およそ 100px のにじみになる。
+/// 増やすほど広がるが、画面全体がぼんやりする方向へ倒れる。
+inline constexpr uint32_t kBloomMipCount = 5;
 
 struct PostProcCB {
     float texelSize[2];
@@ -430,6 +627,15 @@ struct PostProcCB {
     float causticsWaveFreq;
     float causticsWaveSpeed;
     float _causticsPad;
+    // Bloom のミップ連鎖。texelSize は「書き込み先」のテクセルサイズで、
+    // こちらは「読み込み元」。段ごとに寸法が違うので両方要る。
+    float bloomSrcTexel[2];
+    // 輝度閾値を掛ける段 (1 = 掛ける)。連鎖の 1 段目だけ 1 にする。
+    // WHY 毎段掛けないか: 段を降りるたびに閾値を引くと、暗い段から順に消えていき
+    //     広がりが出ない。閾値は「何を光らせるか」の選別であって、ぼかしの一部ではない。
+    float bloomApplyThreshold;
+    // 1 = 書き込み先へ加算 (アップサンプルの途中段)、0 = 上書き。
+    float bloomAdditive;
 };
 
 /// 画面サイズ由来のフィールドだけを埋めた PostProcCB を返す。
@@ -453,22 +659,6 @@ struct OutlineCB {
     float         width;
     float         _pad[3];
 };
-
-// DetailGrassCB (b2) — DetailGrass.hlsl の DetailGrassCB cbuffer と完全に一致させること。
-// 48 bytes, 16-byte aligned
-struct DetailGrassCB {
-    float    windDir[3];    // 正規化風向き (XZ 平面)
-    float    gTime;         // 累積時間
-    float    windStrength;  // グローバル風速
-    float    windFrequency; // sin 周波数
-    float    bladeHeight;   // ブレード高さ [m]
-    float    bladeWidth;    // ブレード根元幅 [m]
-    int32_t  bladeSegments; // 分割数
-    float    alphaCutoff;   // アルファテスト閾値
-    int32_t  hasAlbedoTex;  // 1 = テクスチャあり
-    float    _pad;
-};
-static_assert(sizeof(DetailGrassCB) == 48, "DetailGrassCB size mismatch");
 
 // デカールの受信レイヤーフィルタが有効であることを示す DecalCB::flags のビット。
 inline constexpr uint32_t kDecalFlagReceiverFilter = 1u;
@@ -534,7 +724,15 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
     renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
 
-    renderer::ResourceHandle<renderer::TextureTag> bloomHalf;
+    // Bloom のミップ連鎖と、各段の実寸。テクセルサイズを CB へ入れるのに要る。
+    // GetDimensions で引けなくはないが、書き込み先しか分からないため
+    // 「読み込み元のテクセルサイズ」は CPU 側から渡す必要がある。
+    renderer::ResourceHandle<renderer::TextureTag> bloomChain[kBloomMipCount];
+    // 足し戻しの書き先。読みながら書けないので、ダウンサンプル用とは別に持つ。
+    renderer::ResourceHandle<renderer::TextureTag> bloomUpChain[kBloomMipCount];
+    uint32_t bloomChainWidth[kBloomMipCount]  = {};
+    uint32_t bloomChainHeight[kBloomMipCount] = {};
+    renderer::ResourceHandle<renderer::TextureTag> bloomHalf;   // = bloomChain[0]
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
     renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
@@ -587,6 +785,50 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         shadowShader;
     renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+
+    // ---- モーションベクター ----
+    // RG = 現 UV - 前フレーム UV、B = 書き込み済みフラグ。TAA / MotionBlur が t26 で読む。
+    // WHY 専用 RT か: RGBA16F 1 枚ぶんの帯域を使うが、CreateRenderTarget に
+    //     フォーマット引数が無く RG16F を作れない。バックエンド改修を避けた結果の割り切り。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   velocityRT;
+    renderer::ResourceHandle<renderer::ShaderTag>         velocityShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         velocitySkinnedShader;
+
+    // ---- Spot / Point シャドウ ----
+    // Directional の CSM (shadowMapRT) とは別のアトラス。t28 へ束縛する。
+    // WHY 相乗りさせないか: CSM のタイル数はカメラ視錐台の分割で決まり、こちらは
+    //     シーンにある影付きライトの本数で決まる。同じ面積を奪い合わせると、
+    //     ライトを 1 つ置いただけで Directional の遠景カスケードが粗くなる。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   punctualShadowRT;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
+
+    // ---- ライト Cookie (投影テクスチャ) ----
+    // 複数の Cookie を 1 枚へ敷き詰めたアトラス。t31 へ束縛する。
+    // WHY アトラスか: Cookie を持つライトは 1 回のピクセルシェーダー呼び出しの中で
+    //     まとめて評価されるので、ライトごとにテクスチャを差し替えられない。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   lightCookieRT;
+    renderer::ResourceHandle<renderer::ShaderTag>         cookieBlitShader;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> cookieBlitCB;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  cookieBlitPSO;
+
+    // ---- 自動露出 (眼の順応) ----
+    // exposureHistogram は毎フレーム作り直す作業領域、exposureResult は
+    // 「順応済みの平均輝度」1 要素でフレームをまたいで生き続ける状態。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> exposureHistogram;
+    renderer::ResourceHandle<renderer::StructuredBufferTag> exposureResult;
+    renderer::ResourceHandle<renderer::ShaderTag>           exposureHistogramCS;
+    renderer::ResourceHandle<renderer::ShaderTag>           exposureAverageCS;
+    renderer::ResourceHandle<renderer::ConstantBufferTag>   exposureCB;
+
+    // ---- フロクセル ボリューメトリック フォグ ----
+    // froxelScatter は散乱と消散の生値、froxelIntegrated は Z 積分後の
+    // 「加算する光 (rgb) と背景の透過率 (a)」。Composite は後者だけを読む。
+    renderer::ResourceHandle<renderer::TextureTag>        froxelScatter;
+    renderer::ResourceHandle<renderer::TextureTag>        froxelScatterHistory;
+    renderer::ResourceHandle<renderer::TextureTag>        froxelIntegrated;
+    renderer::ResourceHandle<renderer::ShaderTag>         froxelInjectCS;
+    renderer::ResourceHandle<renderer::ShaderTag>         froxelIntegrateCS;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> froxelFogCB;
 
     // コンピュートスキニング — ボーン変形を 1 フレーム 1 回だけ計算して各パスで共有する。
     renderer::ResourceHandle<renderer::ShaderTag>         skinningComputeCS;
@@ -663,22 +905,13 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag>   clusterCB;
     renderer::ResourceHandle<renderer::ShaderTag>           clusterCullCS;
 
-    // Detail System (Terrain Detail — GPU Instancing)
-    renderer::ResourceHandle<renderer::ShaderTag>         detailMeshShader;
-    renderer::ResourceHandle<renderer::ShaderTag>         detailBillboardShader;
-    renderer::ResourceHandle<renderer::ShaderTag>         detailGrassShader;
-    // Deferred 用: GBuffer(MRT) へ書き出す変種（AO/接触影/SSR/PBR を地形・メッシュと同様に適用）。
-    renderer::ResourceHandle<renderer::ShaderTag>         detailGBufferShader;
-    renderer::ResourceHandle<renderer::ShaderTag>         detailGrassGBufferShader;
-    renderer::ResourceHandle<renderer::PipelineStateTag>  detailMeshPSO;    // SOLID + OPAQUE + DEPTH_ON
-    renderer::ResourceHandle<renderer::PipelineStateTag>  detailNoCullPSO;  // SOLID_NOCULL + OPAQUE + DEPTH_ON
-    renderer::ResourceHandle<renderer::ConstantBufferTag> detailGrassCB;    // b2: DetailGrassCB
-
-    // Foliage System (樹木・大型植生 — SubMesh Material + GPU Instancing)
-    renderer::ResourceHandle<renderer::ShaderTag>         foliageShader;
-    renderer::ResourceHandle<renderer::ShaderTag>         foliageGBufferShader; // Deferred 用 GBuffer 書き込み変種
-    renderer::ResourceHandle<renderer::PipelineStateTag>  foliagePSO;
-    renderer::ResourceHandle<renderer::PipelineStateTag>  foliageNoCullPSO;
+    // clusterCB と同じ内容で、供給モードだけ Linear に固定した版。
+    //
+    // WHY 別に持つか: クラスタリストはメインカメラの視錐台に対して 1 回だけ作られる。
+    //      別の視点から描くパス (リフレクションプローブの捕捉) がそのリストを引くと、
+    //      画面上のタイル座標も Z スライスも対応が取れず、まったく別の場所のライトを
+    //      拾ってしまう。そうしたパスは統合配列を全数走査する Linear へ落とす。
+    renderer::ResourceHandle<renderer::ConstantBufferTag>   clusterLinearCB;
 
     // ---- Advanced Graphics ----
 
@@ -768,6 +1001,54 @@ struct ShadowCascade {
     float         texelWorldSize = 0.0f;
 };
 
+// PunctualShadowView — Spot / Point シャドウアトラスのタイル 1 枚ぶんの描画情報。
+// RenderSystem が毎フレーム組み立て、ShadowPass がタイルへ描き、
+// GeometryPassHelpers が PunctualShadowConstantsCB へ転送する。
+//
+// WHY ShadowCascade と別の型にするか: 中身はよく似ているが、あちらは正射影で
+//     texelWorldSize からワールド距離が一意に決まるのに対し、こちらは透視投影で
+//     1 テクセルが覆う距離が深度によって変わる。同じ型に押し込むと
+//     「使ってよいフィールドが型からは分からない」構造になる。
+struct PunctualShadowView {
+    math::Matrix4 viewProjection;
+    // ライトビュー単体。caster を光源に近い順へ並べるための深度キー算出に使う。
+    math::Matrix4 view;
+    // ライト視点のワールド位置 (= ライトの位置)。
+    math::Vector3 eyePos;
+    // caster カリング用錐台 (viewProjection から抽出済み)。
+    math::Frustum frustum;
+    // アトラス上の位置。xy = UV オフセット, zw = UV スケール。
+    math::Vector4 atlasRect;
+    // アトラス上のピクセル矩形。ShadowPass が IRenderer::SetViewport へ渡す。
+    uint32_t      viewportX    = 0;
+    uint32_t      viewportY    = 0;
+    uint32_t      viewportSize = 0;
+    // 透視投影の深度レンジで正規化した NDC バイアスと影の濃さ。
+    float         biasNDC        = 0.0f;
+    float         shadowStrength = 1.0f;
+    // 光源半径ぶんの半影の広がり [テクセル]。0 で従来どおり硬い縁。
+    float         penumbraTexels = 0.0f;
+    // 1 テクセルが張る角度 [rad] = 2*tan(halfFov) / タイル一辺。
+    // WHY 角度で持つか: 透視投影では 1 テクセルの覆うワールド距離が深度に比例するので、
+    //     ShadowCascade の texelWorldSize のような固定値を持てない。角度なら深度に
+    //     依存しないので、caster の「半径 / 距離」と直接比べられる。
+    float         texelAngularSize = 0.0f;
+};
+
+// LightCookieView — Cookie アトラスのタイル 1 枚。
+// シャドウのスロットとは独立に割り当てる。影を落とさないライトにも Cookie は付けられる。
+struct LightCookieView {
+    math::Matrix4 viewProjection;
+    // アトラス上の位置。xy = UV オフセット, zw = UV スケール。
+    math::Vector4 atlasRect;
+    // アトラス上のピクセル矩形の左上。サイズは kLightCookieTileSize 固定。
+    uint32_t      viewportX = 0;
+    uint32_t      viewportY = 0;
+    // 焼き直しの要否を判定するキー。前フレームと同じならタイルをそのまま使う。
+    std::string   sourcePath;
+    float         rotationRad = 0.0f;
+};
+
 struct RenderPassContext {
     Scene& scene;
     renderer::IRenderer& renderer;
@@ -827,6 +1108,10 @@ struct RenderPassContext {
     ClusterLightMode              clusterLightMode = ClusterLightMode::Legacy;
     bool                          clusterDebugHeatmap = false;
 
+    // フロクセル霧のフレーム間状態。実体は描画中のビューが持つ。
+    // 霧を走らせないフレームは null のことがある。
+    FroxelFogViewState*           froxelFogState = nullptr;
+
     math::Matrix4               lightVP;
     // 影の光源視点。ビルボードを光源へ正対させる必要があるパス
     // (パーティクル自己影の密度積み) が lightVP の内訳を要求する。
@@ -836,6 +1121,17 @@ struct RenderPassContext {
     // WHY: RenderSettings の Forward/Deferred 名ではなく、各パスが GBuffer 入力を読めるかを判定する。
     bool                        isDeferred  = false;
     bool                        ssaoEnabled = false;
+    // GBuffer の深度が「この時点で書き終わっている」か。
+    // Deferred では常に true、Forward では GBuffer プリパスを走らせたときだけ true。
+    //
+    // WHY isDeferred と分けるか: isDeferred は「不透明を GBuffer でライティングするか」で、
+    //     こちらは「GBuffer の深度を読んでよいか」。Forward + プリパスでは前者が false、
+    //     後者が true になる。同一視すると接触影が hdrRT のまだ書かれていない深度を読む。
+    bool                        gbufferDepthReady = false;
+    // 前方描画のマテリアルへ渡す画面空間の遮蔽。無効ハンドルなら束縛しない。
+    // AO は GTAO / SSAO のうち実際に走った方が入る (シェーダーからは区別しない)。
+    renderer::ResourceHandle<renderer::TextureTag> screenAoTexture;
+    renderer::ResourceHandle<renderer::TextureTag> screenContactShadowTexture;
     // ライト正射影の深度範囲で正規化済みの NDC バイアス。
     // WHY: near=1, far=shadowRadius*2+40 のため固定 NDC 値はシーンスケール依存になる。
     //      RenderSystem 側で 0.005 / depthRange として渡すことで
@@ -848,6 +1144,43 @@ struct RenderPassContext {
     // (カスケード 0 がアトラス全面を占める) なので、パス側に分岐は要らない。
     ShadowCascade               shadowCascades[renderer::kMaxShadowCascades];
     int                         shadowCascadeCount = 1;
+
+    // ── Spot / Point シャドウ ────────────────────────────────────────────────
+    // 有効なのは先頭 punctualShadowViewCount 枚。Spot は 1 枚、Point は連続する
+    // 6 枚 (キューブ面) を占める。0 のとき ShadowPass はアトラスをクリアするだけで戻る。
+    PunctualShadowView          punctualShadowViews[kMaxPunctualShadows];
+    int                         punctualShadowViewCount = 0;
+    // アトラス全体の一辺 [px]。タイルサイズは これ / 4。
+    uint32_t                    punctualShadowResolution = 0;
+
+    // レガシーライト経路 (b3 の固定長配列) 用のスロット番号。-1 = 無し。
+    //   [0..7]  → lightData.pointLights[0..7]
+    //   [8..11] → lightData.spotLights[0..3]
+    // WHY 必要か: b3 経路のシェーダーは PunctualLightGPU を読まないので、
+    //     ライト構造体に埋めた shadowIndex / cookieIndex が届かない。既定パイプラインが
+    //     Forward (= b3 経路) である以上、ここを通さないと影が「Forward+ でだけ出る」
+    //     という、設定に埋もれた不具合になる。
+    // 既定値は必ず -1。集成体初期化で省略されると 0 埋めになり、0 は「スロット 0」という
+    // 有効な番号なので、影を持たないライトが他のライトの深度を引いてしまう。
+    int legacyShadowSlots[kMaxLegacyPunctualLights] =
+        { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+    int legacyCookieSlots[kMaxLegacyPunctualLights] =
+        { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+
+    // ── ライト Cookie ────────────────────────────────────────────────────────
+    // 有効なのは先頭 lightCookieViewCount 枚。LightCookiePass が焼き、
+    // GeometryPassHelpers が PunctualShadowConstantsCB へ転送する。
+    LightCookieView             lightCookieViews[kMaxLightCookies];
+    int                         lightCookieViewCount = 0;
+
+    // ── レガシー経路 (b3) 向けの「大きさを持つ光源」────────────────────────────
+    // punctualLights から Area / Sphere / Tube を先頭 kMaxLegacyShapedLights 本まで
+    // 写したもの。b3 はこれらの型を運べないため、b12 側へ実体ごと載せる。
+    PunctualLightGPU            legacyShapedLights[kMaxLegacyShapedLights];
+    int                         legacyShapedLightCount = 0;
+    // b3 の点光源 / スポットの光源半径 [m]。添字は legacyShadowSlots と同じ。
+    // WHY 別配列か: b3 の PointLightData は 32 バイトぴったりで 1 float も空きが無い。
+    float                       legacySourceRadius[kMaxLegacyPunctualLights] = {};
 
     // 雲シャドウ (Phase C) — RenderSystem が SkyRenderer から設定し、影パスが ShadowConstantsCB へ転送する。
     float                       cloudShadowStrength = 0.0f; // 0=無効

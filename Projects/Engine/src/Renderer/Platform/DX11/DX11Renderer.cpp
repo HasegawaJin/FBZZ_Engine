@@ -204,8 +204,41 @@ void DX11Renderer::BeginFrame()
     m_context->PSSetShaderResources(0, 16, kNullSRVs);
     m_context->CSSetShaderResources(0, 16, kNullSRVs);
 
+    BindStaticSamplers();
+
     m_currentRT = nullptr;
     m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), m_depthStencilView.Get());
+}
+
+// レジスタごとに意味を固定したサンプラーをフレーム頭で 1 回だけ張る。
+//
+// WHY パスごとに差し替えないか: DX12 は Root Signature へ焼き込む静的サンプラーなので
+//     1 レジスタに 1 つの意味しか持てない。DX11 だけ差し替えられるようにしておくと、
+//     同じシェーダーがバックエンドによって違う絵を出す。意味を固定して両者を揃える。
+// LAYOUT: DX12PsoCache.cpp の MakeStaticSamplers と、Assets/Shaders/Common/Binding.hlsli の
+//         SAMPLER_* に一致させること。3 か所のうち 1 つだけ変えると静かに壊れる。
+void DX11Renderer::BindStaticSamplers()
+{
+    // s6 はどのシェーダーも宣言していない予約枠。DX12 側と数を揃えるために埋めておく。
+    static constexpr SamplerMode kSlotModes[] = {
+        SamplerMode::WRAP_ANISOTROPIC,     // s0 SAMPLER_DEFAULT      : メッシュのタイリング
+        SamplerMode::BORDER_ZERO,          // s1 SAMPLER_SHADOW       : 比較サンプラー (PCF)
+        SamplerMode::CLAMP_LINEAR,         // s2 SAMPLER_LINEAR_CLAMP : 全画面フェッチ / LUT
+        SamplerMode::CLAMP_POINT,          // s3 SAMPLER_POINT_CLAMP  : TAA 再投影
+        SamplerMode::WRAP_BILINEAR,        // s4 SAMPLER_WRAP_LINEAR  : タイラブルな 3D ノイズ
+        SamplerMode::CLAMP_LINEAR,         // s5                      : UI / ライト Cookie
+        SamplerMode::CLAMP_POINT,          // s6                      : 予約
+        SamplerMode::BORDER_ZERO,          // s7 SAMPLER_SHADOW_PUNCTUAL : Spot / Point の比較
+        SamplerMode::WRAP_ANISOTROPIC_4X,  // s8                      : 地形ディフューズ
+    };
+    constexpr uint32_t kSlotCount = sizeof(kSlotModes) / sizeof(kSlotModes[0]);
+
+    ID3D11SamplerState* samplers[kSlotCount] = {};
+    for (uint32_t slot = 0; slot < kSlotCount; ++slot)
+        samplers[slot] = m_samplers[static_cast<uint32_t>(kSlotModes[slot])].Get();
+
+    m_context->PSSetSamplers(0, kSlotCount, samplers);
+    m_context->CSSetSamplers(0, kSlotCount, samplers);
 }
 
 void DX11Renderer::EndFrame()
@@ -417,6 +450,15 @@ std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t widt
     return tex;
 }
 
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture3D(
+    uint32_t width, uint32_t height, uint32_t depth)
+{
+    auto tex = std::make_unique<DX11Texture>();
+    if (!tex->InitForCompute3D(m_device.Get(), width, height, depth))
+        return nullptr;
+    return tex;
+}
+
 std::unique_ptr<ITexture> DX11Renderer::CreateNativeDynamicTexture(
     uint32_t width, uint32_t height, DynamicTextureFormat format)
 {
@@ -460,11 +502,10 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     auto* cs = static_cast<DX11Shader*>(shader);
     m_context->CSSetShader(cs->GetComputeShader(), nullptr, 0);
 
-    // WHY: HLSL 側の Compute Shader は SAMPLER_DEFAULT(s0) を使うパスがある。
-    //      DX11 は NULL Sampler でも既定動作にフォールバックするが、デバッグレイヤー警告を避けるため
-    //      ポストプロセスで最も一般的な clamp + linear を Dispatch ごとに明示する。
-    ID3D11SamplerState* defaultSampler = m_samplers[static_cast<uint32_t>(SamplerMode::CLAMP_LINEAR)].Get();
-    m_context->CSSetSamplers(0, 1, &defaultSampler);
+    // WHY BeginFrame で張ってあるのに張り直すか: DX11IblBaker のようにバックエンド内部で
+    //     CSSetSamplers を直接呼ぶ経路があり、そこを通ると s0 が別物のまま残る。
+    //     Dispatch ごとに戻しておけば、以降のパスがその影響を受けない。
+    BindStaticSamplers();
 
     // 定数バッファ (CS ステージ)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
@@ -484,13 +525,13 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         m_context->CSSetShaderResources(i, 1, &srv);
     }
 
-    // StructuredBuffer SRV (t14〜t15)
+    // StructuredBuffer SRV (添字 = レジスタ番号)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.srvBuffers.size()); ++i)
     {
         auto* sb = resources.Get(call.srvBuffers[i]);
         if (!sb) continue;
         ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
-        m_context->CSSetShaderResources(14 + i, 1, &srv);
+        m_context->CSSetShaderResources(i, 1, &srv);
     }
 
     // WHY: DX11 SM5.0 の CS UAV スロットは u0〜u7 の 8 本。
@@ -853,15 +894,6 @@ void DX11Renderer::SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint3
     m_context->RSSetViewports(1, &vp);
 }
 
-void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)
-{
-    // m_samplers のインデックスは SamplerMode の列挙値と一致させている (InitSamplers 参照)
-    uint32_t idx = static_cast<uint32_t>(mode);
-    ID3D11SamplerState* sampler = m_samplers[idx].Get();
-    m_context->PSSetSamplers(slot, 1, &sampler);
-    m_context->CSSetSamplers(slot, 1, &sampler);
-}
-
 // =============================================================================
 // Private helpers
 // =============================================================================
@@ -902,7 +934,7 @@ bool DX11Renderer::CreateDepthStencilView()
 void DX11Renderer::InitSamplers()
 {
     // SamplerMode の列挙値と配列インデックスを一致させる。
-    // SamplerMode::COUNT = 8 個を Init 時に一括生成してキャッシュする。
+    // SamplerMode::COUNT 個を Init 時に一括生成してキャッシュする。
     auto make = [&](D3D11_FILTER filter,
                     D3D11_TEXTURE_ADDRESS_MODE addr,
                     uint32_t maxAniso,

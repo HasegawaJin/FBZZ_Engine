@@ -41,6 +41,11 @@ public:
     // RGBA16F テクスチャを SRV + UAV 両用で生成する (Compute Shader の出力先として使用)
     bool InitForCompute(ID3D11Device* device, uint32_t width, uint32_t height);
 
+    // RGBA16F の 3D テクスチャを SRV + UAV 両用で生成する (フロクセルボリューム用)。
+    // GetDepth() で奥行きを取れる点だけが 2D 版との違い。
+    bool InitForCompute3D(ID3D11Device* device,
+                          uint32_t width, uint32_t height, uint32_t depth);
+
     // CPU から矩形単位で書き換えられるテクスチャを生成する (フォントの動的アトラス用)。
     // USAGE_DEFAULT + UpdateSubresource 方式。中身はゼロクリアして返す。
     //
@@ -53,6 +58,7 @@ public:
 
     uint32_t GetWidth()  const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
+    uint32_t GetDepth()  const override { return m_depth; }
 
     bool UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                       const void* pixels, uint32_t srcRowPitch) override;
@@ -75,6 +81,8 @@ private:
 
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
+    // 3D テクスチャの奥行き。2D では 1 のまま。
+    uint32_t m_depth  = 1;
 };
 
 } // namespace fbzz::renderer

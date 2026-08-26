@@ -99,7 +99,16 @@ public:
     virtual void SetRenderTargetFace(ResourceHandle<RenderTargetTag> /*rt*/, uint32_t /*face*/,
                                      uint32_t /*mip*/, ResourceManager& /*resources*/) {}
 
-    virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
+    // NOTE: かつてここに SetSampler(slot, mode) があったが削除した。
+    //       サンプラーはレジスタごとに意味を 1 つ固定する規約になっており、その正本は
+    //       Assets/Shaders/Common/Binding.hlsli の SAMPLER_* と、それに対応する
+    //       バックエンド側の固定テーブル (DX12 は Root Signature の静的サンプラー、
+    //       DX11 は BeginFrame でまとめて張る) の対。
+    // WHY 動的差し替えをやめたか: DX12 は静的サンプラーを Root Signature へ焼き込むため
+    //     1 レジスタに 1 つの意味しか持てず、SetSampler は実装できずに no-op だった。
+    //     呼び出し側は効いているつもりで書き続けるので、シェーダーのコメントと実挙動が
+    //     食い違ったまま誰も気づかない (全画面パスが s0 を使い、DX12 では WRAP のせいで
+    //     画面端が反対側へ回り込んでいた)。正本を 1 つにして構造的に防ぐ。
 
     // GPU プロファイリング。DX11Renderer のみ実装し、他バックエンドは no-op。
     // WHY: パスごとの GPU 実行時間を上位レイヤーから取得するために抽象化する。
@@ -179,6 +188,10 @@ private:
     // キューブマップ RT の TextureCube SRV を ITexture 化する (TextureTag として束縛可能にする)。
     virtual std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget& /*rt*/) { return nullptr; }
     virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
+    // CS が RWTexture3D として書き、後段が Texture3D として読むボリューム (フロクセル霧)。
+    // 未対応バックエンドは nullptr を返してよい。呼び出し側は機能そのものを落とすこと。
+    virtual std::unique_ptr<ITexture> CreateNativeComputeTexture3D(
+        uint32_t /*width*/, uint32_t /*height*/, uint32_t /*depth*/) { return nullptr; }
     // CPU から矩形単位で書き換えられるテクスチャ。ITexture::UpdateRegion と対で使う。
     // 中身は未初期化ではなくゼロクリアされた状態で返すこと。
     //

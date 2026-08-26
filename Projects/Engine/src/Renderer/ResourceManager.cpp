@@ -297,6 +297,18 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width,
     return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height), "ComputeTexture", __FILE__, __LINE__);
 }
 
+ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
+    uint32_t width, uint32_t height, uint32_t depth)
+{
+    auto texture = m_renderer.CreateNativeComputeTexture3D(width, height, depth);
+    if (!texture) {
+        FBZZ_LOG_WARN("CreateComputeTexture3D: backend does not support 3D compute textures (%ux%ux%u)",
+                      width, height, depth);
+        return ResourceHandle<TextureTag>::Null();
+    }
+    return m_textures.Insert(std::move(texture), "ComputeTexture3D", __FILE__, __LINE__);
+}
+
 ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
     uint32_t width, uint32_t height, DynamicTextureFormat format)
 {

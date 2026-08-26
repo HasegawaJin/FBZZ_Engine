@@ -11,9 +11,9 @@
 //   ファクトリー役を担い、それ以外の場所では DX11Renderer を知る必要がない。
 //
 //   サンプラー:
-//     Init() 時に SamplerMode::COUNT 種のサンプラーを事前生成し、
-//     SetSampler() で要求に応じてバインドする。
-//     毎フレーム生成/破棄するのではなくキャッシュ方式を採用する。
+//     Init() 時に SamplerMode::COUNT 種を事前生成しておき、BindStaticSamplers() が
+//     レジスタごとに意味を固定した並びを BeginFrame で 1 回だけ張る。
+//     パス単位の差し替えはしない (DX12 の静的サンプラーと意味を揃えるため)。
 #pragma once
 
 #include <d3d11.h>
@@ -74,7 +74,6 @@ public:
                              uint32_t mip, ResourceManager& resources) override;
 
     // スロット番号に対応するサンプラープリセットをバインドする
-    void SetSampler(uint32_t slot, SamplerMode mode) override;
 
     // GPU プロファイリング (D3D11_QUERY_TIMESTAMP_DISJOINT / D3D11_QUERY_TIMESTAMP)
     // QUERY_LATENCY フレーム遅延のリングバッファ方式で非同期計測する。
@@ -134,6 +133,8 @@ private:
     std::unique_ptr<IRenderTarget>   CreateNativeCubemapRenderTarget(uint32_t size, uint32_t mipCount) override;
     std::unique_ptr<ITexture>        CreateNativeCubeTextureFromRenderTarget(IRenderTarget& rt) override;
     std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>           CreateNativeComputeTexture3D(
+        uint32_t width, uint32_t height, uint32_t depth) override;
     std::unique_ptr<ITexture>           CreateNativeDynamicTexture(uint32_t width, uint32_t height,
                                                                    DynamicTextureFormat format) override;
     std::unique_ptr<IStructuredBuffer>  CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
@@ -203,6 +204,8 @@ private:
     bool CreateRenderTargetView();
     bool CreateDepthStencilView();
     void InitSamplers();
+    // レジスタごとに意味を固定したサンプラーを PS / CS へ張る。BeginFrame から 1 回。
+    void BindStaticSamplers();
 };
 
 } // namespace fbzz::renderer

@@ -232,6 +232,23 @@ struct ShadowSettings {
     // PCSS (Percentage Closer Soft Shadows) — 距離に応じてペナンブラが変化するソフトシャドウ。
     bool     pcssEnabled     = false;
     float    pcssLightRadius = 3.0f; // 仮想ライト半径 (world space): 大きいほどソフト
+
+    // ── Spot / Point シャドウ ────────────────────────────────────────────────
+    // Directional の CSM とは独立したアトラス。4x4 = 16 タイルへ分割する。
+    // WHY 別解像度にするか: 必要な精細さの根拠が違う。CSM は「カメラからの距離帯」で
+    //     決まるが、Spot / Point は range と円錐角だけで 1 タイルの覆う範囲が決まる。
+    //     既定 2048² なら 1 タイル 512² で、range 10m の Spot がおよそ 2cm/テクセル。
+    uint32_t punctualMapResolution = 2048u;
+    int      punctualPcfRadius     = 1;   // 0=ハード, 1=3x3, 2=5x5
+    // 影を落とす Point ライトの上限。1 個でキューブ 6 面 = 6 タイルを消費する。
+    // WHY 上限を切るか: Point の影は Spot の 6 倍の描画コストがかかる。無制限にすると、
+    //     ライトを置いた本数がそのままフレーム時間になる。既定 2 個で 12 タイルを使い、
+    //     残り 4 タイルが Spot へ回る。
+    int      maxShadowedPointLights = 2;
+    // カメラからこの距離を超えるライトは影を落とさない [m]。
+    // WHY: アトラスのタイルは 16 枚しかないので、遠くて画面に数ピクセルしか映らない
+    //      ライトへ 1 枚割り当てるより、手前のライトへ回す方が常に得。
+    float    punctualShadowDistance = 60.0f;
 };
 
 // IBLSettings — Image-Based Lighting による環境光。PBR の ambient を物理的に正確に置き換える。
@@ -275,6 +292,65 @@ struct VolumetricLightSettings {
     // maxDist 手前でフェードする幅 (割合 [0,1])。0 だと最遠部で光芒が硬く切れる。
     float edgeFade   = 0.2f;
     float tint[3]    = { 1.0f, 1.0f, 1.0f }; // 光芒に掛ける色
+};
+
+// FroxelFogSettings — 視錐台を 3D グリッドへ切って霧を焼く方式の体積フォグ。
+//
+// WHY VolumetricLightSettings と別に持つか: あちらは画面空間レイマーチで、
+//     1 画素ごとにカメラからシーンまでを毎フレーム積分し直す。解像度に比例して重く、
+//     Directional 1 本しか扱えない。フロクセルは粗い 3D グリッドへ一度焼くだけなので、
+//     コストが画面解像度から切り離され、点光源やスポットも霧に映り込む。
+//     両方同時に有効にもできるが、二重に霧が乗るので普通はどちらか一方を使う。
+struct FroxelFogSettings {
+    bool enabled = false;
+    // グリッド寸法。XY は画面を切るタイル数、Z は奥行きのスライス数。
+    // WHY 既定を 160x90x64 にするか: 16:9 に合わせた粗さで、1 タイルが 1080p の
+    //     12x12 画素ぶん。霧は低周波なのでこれで足り、RGBA16F 2 枚で約 14MB に収まる。
+    uint32_t gridX = 160;
+    uint32_t gridY = 90;
+    uint32_t gridZ = 64;
+    // グリッドが覆う奥行き [m]。これより奥は最終スライスの値がそのまま伸びる。
+    float nearDistance = 0.1f;
+    float farDistance  = 64.0f;
+    // 一様な消散係数 [1/m]。0.02 で 50m 先の背景が e^-1 まで霞む。
+    float density = 0.02f;
+    // 散乱アルベド。霧そのものの色。
+    float albedo[3] = { 1.0f, 1.0f, 1.0f };
+    // 自己発光。夜間のもやを完全な黒に落とさないための下駄。
+    float emissive[3] = { 0.0f, 0.0f, 0.0f };
+    // Henyey-Greenstein の g。正で前方散乱 (逆光で霧が光る)。
+    float anisotropy = 0.4f;
+    // 高度による密度減衰 [1/m]。0 で無効。地表付近ほど濃い霧になる。
+    float heightFalloff = 0.0f;
+    float heightStart   = 0.0f;
+    // 環境光が霧へ寄与する倍率。
+    float ambient = 1.0f;
+};
+
+// AutoExposureSettings — 画面の明るさから露出を自動で決める (眼の順応)。
+//
+// WHY 平均ではなくヒストグラムか: 画面内の輝度分布は数桁にわたるうえ、空や光源のような
+//     ごく一部の超高輝度が単純平均を支配してしまう。対数輝度のヒストグラムを作って
+//     上下のパーセンタイルを捨てれば、「見ている物」の明るさに露出が合う。
+struct AutoExposureSettings {
+    bool  enabled = false;
+    // ヒストグラムが覆う対数輝度の範囲 [EV]。この外の画素は端のビンへ丸める。
+    float minEV = -6.0f;
+    float maxEV = 14.0f;
+    // 露出計算から外す明るさの割合。lowPercent 未満と highPercent 超のビンを捨てる。
+    // WHY: 暗部の黒つぶれと光源のハイライトはどちらも「見ている物」ではない。
+    float lowPercent  = 0.45f;
+    float highPercent = 0.95f;
+    // 順応速度 [1/秒]。明るい方へ / 暗い方へで別々に持つ。
+    // WHY 非対称か: 実際の眼も明順応は速く暗順応は遅い。同じ速度にすると、
+    //      暗い場所へ入った瞬間に画面が白飛びして見え、体感と合わない。
+    float speedUp   = 3.0f;
+    float speedDown = 1.0f;
+    // 求まった露出への手動オフセット [EV]。絵作りの最終調整。
+    float compensation = 0.0f;
+    // 露出の下限 / 上限 [EV]。真っ暗な画面で露出が無限に上がるのを防ぐ。
+    float minExposureEV = -8.0f;
+    float maxExposureEV =  8.0f;
 };
 
 // TAASettings — テンポラルアンチエイリアシング。FXAA より大幅に高品質でサブピクセルを安定させる。
@@ -354,6 +430,10 @@ struct VolumeSettings {
     TAASettings             taa;
     MotionBlurSettings      motionBlur;
     VolumetricLightSettings volumetricLight;
+    // NOTE: グリッド寸法は Volume でブレンドしない。ApplyVolumeSettings が
+    //       RenderSettings 側の寸法を残す (解像度が変わるとボリュームの再確保が走る)。
+    FroxelFogSettings       froxelFog;
+    AutoExposureSettings    autoExposure;
     LensFlareSettings       lensFlare;
     LUTColorGradingSettings lutColorGrading;
 
@@ -473,6 +553,8 @@ struct RenderSettings {
     IBLSettings              ibl;
     SSRSettings              ssr;
     VolumetricLightSettings  volumetricLight;
+    FroxelFogSettings        froxelFog;
+    AutoExposureSettings     autoExposure;
     TAASettings              taa;
     MotionBlurSettings       motionBlur;
     GTAOSettings             gtao;
@@ -527,6 +609,21 @@ struct RenderSettings {
         return clustered.enabled
             && (pipeline == RenderingPipeline::ForwardPlus
              || pipeline == RenderingPipeline::DeferredPlus);
+    }
+
+    // 不透明物を GBuffer へ描くパイプラインか。
+    //
+    // WHY 単独の述語にするか: スクリーンスペース系 (SSAO / GTAO / SSR / 接触影) は
+    //     どれも GBuffer の法線を必要とする。この 1 つの条件が「有効にしても効かない」
+    //     機能の境界を決めているので、RenderSystem のパス登録と、UI の警告が
+    //     同じ関数を見るようにしておかないと、片方だけ更新されて
+    //     「警告が出ないのに効かない」「効くのに警告が出る」が起きる。
+    // NOTE: 実際に GBuffer 経路へ入れるかは RT とシェーダーの有無にも依存する。
+    //       RenderSystem 側でリソースの有無と AND を取ってから使うこと。
+    [[nodiscard]] bool UsesGBuffer() const
+    {
+        return pipeline == RenderingPipeline::Deferred
+            || pipeline == RenderingPipeline::DeferredPlus;
     }
 
     // IBL は irradiance と prefilter の両キューブマップが揃って初めて有効になる。

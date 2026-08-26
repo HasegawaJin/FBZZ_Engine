@@ -1,41 +1,99 @@
-// FBZZ Engine
-// LightComponent.hpp | fbzz::scene
-// ライト情報を持つコンポーネント
-// 方向と位置は Transform から取り、色や強度などの発光設定だけを持つ。
-// RenderSystem が LightSystem へ集約して GPU へ送る。
+/// @file LightComponent.hpp
+/// @brief ライトの発光設定を持つコンポーネント (方向と位置は Transform から取る)
+/// @author Hasegawa Jin
+/// @date 2025-06-12
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
+#include <string>
 
 namespace fbzz::scene {
 
 struct LightComponent {
-    enum class Type { Directional, Point, Spot };
+    enum class Type { Directional, Point, Spot, Area, Sphere, Tube };
 
     Type          type      = Type::Directional;
     math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
-    // intensity の単位 (Lighting.hlsli の LIGHT_UNIT_SCALE を参照):
-    //   1.0 = 完全拡散の白面へ正面から当てたとき albedo そのままの明るさになる強さ。
-    //   Directional / Point / Spot で単位は共通。
+    // 色を色温度から作る。true のとき color は無視され、colorTemperature が正本になる。
+    // WHY color を上書きせず別フラグにするか: 温度で決めた色を Inspector の color 欄へ
+    //     焼き戻すと、温度を動かすたびにオーサリング値が失われる。どちらが正本かを
+    //     フラグで持てば、温度モードを切っても元の色がそのまま戻る。
+    bool          useColorTemperature = false;
+    // 色温度 [K]。1900=ろうそく, 2700=白熱電球, 4000=白色蛍光灯,
+    // 5500=昼光, 6500=D65, 7500=曇天, 10000=晴天の日陰。
+    float         colorTemperature    = 6500.0f;
+    // intensity の単位 (Lighting.hlsli の LIGHT_UNIT_SCALE を参照)。
+    //
+    // ⚠ タイプによって意味が違う。同じ数値を入れ替えても同じ明るさにはならない。
+    //
+    //   Directional          … そのまま放射照度。1.0 で白い拡散面が albedo の明るさ。
+    //   Point / Spot / Sphere / Tube
+    //                        … 「1m 地点での明るさ」。シェーダーが 1/d^2 で減衰する
+    //                          (LightAttenuation)。10m 先の寄与は 1/100 になる。
+    //   Area (Rect)          … 面の**輝度 (radiance)**。減衰は形態係数
+    //                          (コサイン重み付き立体角 / 2π) が担い、1/d^2 は掛からない。
+    //                          面が半球を埋め尽くすとき albedo × intensity になる。
+    //
+    // WHY Area だけ桁が変わるか: 小さなパネルが遠くの点へ張る立体角は極めて小さい。
+    //     1.6 x 1.2m のパネルを 9m 先から見た形態係数は 0.0038 しかないため、
+    //     Point と同じ感覚で 10 を入れると albedo × 0.04 = ほぼ見えない。
+    //     天井照明として成立させるには 100〜200 が要る。逆に Point/Spot に 140 を
+    //     入れると近傍が完全に白飛びする。**タイプを変えたら必ず数値も入れ直すこと。**
     //
     //   既定 3.0 は、空由来の IBL 環境光 (概ね albedo × 1.5 相当) を明確に上回る
     //   Directional の基準値。旧既定 1.0 では環境光に埋もれて効果が見えなかった。
-    //
-    //   Point / Spot はシェーダーが物理的な 1/d^2 で減衰する (LightAttenuation) ため、
-    //   3.0 だと range = 10m のライトで 3m 地点の寄与は albedo × 0.33 程度。屋内や
-    //   夜間ならこれで十分だが、明るい屋外で存在感を出すには 15〜30 が目安になる。
-    //   これは逆二乗を持つ PBR エンジン全般に共通の運用。
+    //   Point / Spot で明るい屋外に存在感を出すなら 15〜30 が目安。
     float         intensity = 3.0f;
-    float         range     = 10.0f;    // Point / Spot のみ
+    float         range     = 10.0f;    // Directional 以外。Area では打ち切り距離のみ
     float         innerCone = 15.0f;    // Spot のみ (degrees)
     float         outerCone = 30.0f;    // Spot のみ (degrees)
     bool          enabled   = true;
 
-    // Shadow settings (Directional のみ有効)
+    // ---- 発光体の大きさ ----
+    // 点ではなく大きさを持つ光源として扱う半径 [m]。0 で厳密な点光源。
+    //   Sphere : この半径の球
+    //   Tube   : この半径 × sourceLength の長さを持つカプセル
+    //   Point / Spot : 影のにじみ幅とハイライトの広がりだけに効く (形状は点のまま)
+    //
+    // WHY 形状を持たない Point / Spot にも効かせるか: 現実の電球やスポットには必ず
+    //     大きさがあり、それが半影の幅とハイライトの大きさを決めている。0 のままだと
+    //     どんなに詰めても影の縁が硬く、ハイライトが点にしかならない。
+    float         sourceRadius = 0.0f;
+    // Tube の長さ [m]。両端に半球が付くカプセルとして扱う。
+    float         sourceLength = 1.0f;
+
+    // ---- 面光源 (Type::Area) ----
+    // 面の向きは Transform::Forward()、面内の軸は Right() / Up() を使う。
+    // WHY 半寸法でなく全寸法で持つか: Inspector に「窓の幅 2m」と入れたいのであって、
+    //     「半幅 1m」と入れたいわけではない。半分にするのは GPU へ渡す直前で行う。
+    float         areaWidth  = 1.0f;    // [m]
+    float         areaHeight = 1.0f;    // [m]
+    // 面の裏側を照らさない。板の裏に光が回り込むのを防ぐ。
+    bool          areaTwoSided = false;
+
+    // ---- 影 ----
+    // Directional はカスケードシャドウ (CSM)、Spot / Point は専用アトラスへ描く。
+    // Area は影を落とさない (LTC は解析積分なので遮蔽の概念を持たない)。
     bool  castShadows    = true;  // false のとき影を無効化 (shadowStrength=0 と等価)
     float shadowBias     = 1.0f;  // 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
     float shadowStrength = 1.0f;  // 影の濃さ: 0=影なし, 1=完全な影
-    float shadowDistance = 0.0f;  // 0=シーンに自動フィット, >0=正射影の半幅 [m]
+    float shadowDistance = 0.0f;  // Directional のみ: 0=シーンに自動フィット, >0=正射影の半幅 [m]
+    // Spot / Point の透視投影 near 面 [m]。
+    // WHY 露出させるか: near が小さいほど深度の分解能が near 側へ寄り、遠い側で
+    //     アクネが出る。逆に大きくするとライトのすぐ手前にある caster が near で
+    //     切り取られ、影が抜ける。ライトを壁や天井へ埋める使い方だと既定では
+    //     詰められないケースが出るため、シーンごとに触れる値として持つ。
+    float shadowNearPlane = 0.1f;
+
+    // ---- Cookie (投影テクスチャ) ----
+    // Spot のみ。ライトの円錐へ被せる白黒/カラーのマスクで、木漏れ日・窓枠・
+    // ロゴのゴボを作る。空文字で無効。
+    // NOTE: Point / Directional は未対応 (前者はキューブマップ、後者は
+    //       ワールド空間のタイリングという別の仕組みが要る)。
+    std::string cookiePath;
+    // Cookie の見かけの回転 [degrees]。ライト自身を回すと影の向きまで変わってしまうため、
+    // 模様だけを回す軸を別に持つ。
+    float cookieRotation = 0.0f;
 
     const char* GetTypeName() const { return "Light"; }
     void Reflect(IReflector& r)
@@ -43,21 +101,32 @@ struct LightComponent {
         int typeValue = static_cast<int>(type);
         r.Field("type", typeValue);
         if (typeValue < 0) typeValue = 0;
-        if (typeValue > 2) typeValue = 2;
+        if (typeValue > 5) typeValue = 5;
         type = static_cast<Type>(typeValue);
         r.Field("enabled", enabled);
         r.ColorField("color", color);
+        r.Field("useColorTemperature", useColorTemperature);
+        r.Field("colorTemperature",    colorTemperature);
         r.Field("intensity", intensity);
+        r.Field("sourceRadius", sourceRadius);
+        r.Field("sourceLength", sourceLength);
         r.Field("range", range);
         r.Field("innerCone", innerCone);
         r.Field("outerCone", outerCone);
+        r.Field("areaWidth",    areaWidth);
+        r.Field("areaHeight",   areaHeight);
+        r.Field("areaTwoSided", areaTwoSided);
         r.Field("castShadows",    castShadows);
         r.Field("shadowBias",     shadowBias);
         r.Field("shadowStrength", shadowStrength);
         r.Field("shadowDistance", shadowDistance);
+        r.Field("shadowNearPlane", shadowNearPlane);
+        r.Field("cookiePath",     cookiePath);
+        r.Field("cookieRotation", cookieRotation);
     }
-    // Directional / Spot の方向 → Transform::Forward()
-    // Point / Spot の位置      → Transform::position
+    // Directional / Spot / Area の方向 → Transform::Forward()
+    // Point / Spot / Area の位置      → Transform::position
+    // Area の面内軸                   → Transform::Right() / Up()
 };
 
 } // namespace fbzz::scene
