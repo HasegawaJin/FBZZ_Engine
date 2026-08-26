@@ -71,7 +71,7 @@ hz = 144
 substeps = 1
 
 [project]
-default_scene = 'Assets/Scenes/Main.scene'
+default_scene = 'Assets/Scenes/Title.scene'
 name = 'GreenWare'
 
 [render]
@@ -84,7 +84,7 @@ outlineWidth = 0.045
 particleBudget = 20000
 particleBudgetEnabled = true
 passViewerEnabled = false
-pcssEnabled = false
+pcssEnabled = true
 pcssLightRadius = 3.0
 pipeline = 'Forward+'
 shadow = true
@@ -93,15 +93,15 @@ shadowCascadeBlend = 0.1
 shadowCascadeCount = 4
 shadowCascadeSplitLambda = 0.75
 shadowPcfRadius = 2
-shadowResolution = 2048
-showColliders = true
+shadowResolution = 4096
+showColliders = false
 showDecalBounds = false
 showSelectionOutline = true
 showUIRects = false
 viewMode = 0
 
 [runtime]
-start_scene = 'Assets/Scenes/Main.scene'
+start_scene = 'Assets/Scenes/Title.scene'
 
 [screen]
 height = 1080
