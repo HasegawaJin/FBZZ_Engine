@@ -4,15 +4,20 @@
 // ベクトル方向にサンプルを積算してカメラ移動由来のブラーを再現する
 //
 // アルゴリズム概要:
-//   1. 現フレームの深度からワールド座標を復元
-//   2. prevViewProjection でそのワールド座標を前フレームクリップ空間に投影
-//   3. モーションベクトル = 現 UV - 前フレーム UV
-//   4. motionBlurStrength でスケールし、motionBlurSamples 点をサンプルして平均
+//   1. Velocity パスが書いたモーションベクターを引く (オブジェクトの動きを含む)
+//   2. 書かれていない画素 (空・未描画) は深度 + prevViewProjection の再投影で補う
+//   3. motionBlurStrength でスケールし、motionBlurSamples 点をサンプルして平均
+//
+// WHY 深度再投影だけでは足りないか:
+//   再投影で得られるのはカメラの動きだけ。カメラを止めて撮ると、目の前を走る
+//   キャラクターに一切ブラーがかからない。これは「カメラモーションブラー」であって
+//   オブジェクトモーションブラーではない。
 //
 // 入力バインディング:
-//   t5  = 入力カラー    (TEX_GBUFFER0)
-//   t7  = 深度バッファ  (TEX_DEPTH)
-//   u5  = 出力 UAV      (UAV_MOTION_BLUR)
+//   t5  = 入力カラー        (TEX_GBUFFER0)
+//   t7  = 深度バッファ      (TEX_DEPTH)
+//   t26 = モーションベクター (TEX_VELOCITY)
+//   u5  = 出力 UAV          (UAV_MOTION_BLUR)
 //   b0  = CameraConstants
 //   b8  = AdvancedGraphicsConstants (screenWidth/screenHeight を含む)
 //
@@ -26,10 +31,13 @@
 #include "Common/Space.hlsli"
 #include "Platform/Backend.hlsli"
 
-Texture2D        texColor : register(TEX_GBUFFER0); // 入力カラー（LDR/HDR）
-Texture2D<float> texDepth : register(TEX_DEPTH);    // 深度バッファ
+Texture2D        texColor    : register(TEX_GBUFFER0); // 入力カラー（LDR/HDR）
+Texture2D<float> texDepth    : register(TEX_DEPTH);    // 深度バッファ
+Texture2D        texVelocity : register(TEX_VELOCITY); // モーションベクター (RG=速度, B=有効)
 
-SamplerState sampDefault : register(SAMPLER_DEFAULT);
+// 全画面フェッチなので clamp 必須。速度方向へ uv を伸ばして引くので、
+// s0 (DX12 では WRAP) だと画面端のブラーが反対側の端を巻き込む。
+SamplerState sampDefault : register(SAMPLER_LINEAR_CLAMP);
 
 RWTexture2D<float4> OutputBlur : register(UAV_MOTION_BLUR); // モーションブラー出力
 
@@ -52,18 +60,26 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    // ── 深度からワールド座標を復元 ──────────────────────────────────────────────
-    float  ndcZ     = texDepth.SampleLevel(sampDefault, uv, 0).r;
-    float3 worldPos = ReconstructWorldPos(uv, ndcZ, invViewProjection);
+    // ── 前フレームからの移動量を求める ──────────────────────────────────────────
+    float2 frameMotion;
+    float3 velocity = texVelocity.SampleLevel(sampDefault, uv, 0).rgb;
+    if (velocity.z > 0.5f)
+    {
+        // Velocity パスが書いた画素。カメラとオブジェクトの動きが両方入っている。
+        frameMotion = velocity.xy;
+    }
+    else
+    {
+        // 空や未描画の画素。カメラの動きしか無いので深度再投影で足りる。
+        float  ndcZ     = texDepth.SampleLevel(sampDefault, uv, 0).r;
+        float3 worldPos = ReconstructWorldPos(uv, ndcZ, invViewProjection);
 
-    // ── 前フレームの UV を計算（再投影）────────────────────────────────────────
-    float4 prevClip = mul(float4(worldPos, 1.0f), prevViewProjection);
-    prevClip.xyz   /= prevClip.w;
-    float2 prevUV   = NdcToUv(prevClip.xy);
+        float4 prevClip = mul(float4(worldPos, 1.0f), prevViewProjection);
+        prevClip.xyz   /= prevClip.w;
+        frameMotion     = uv - NdcToUv(prevClip.xy);
+    }
 
-    // ── モーションベクトル（現 UV → 前フレーム UV の差分）────────────────────────
-    // WHAT: カメラが動いた分だけ UV がずれるので、その差分がブラー方向になる
-    float2 motionVec = (uv - prevUV) * motionBlurStrength;
+    float2 motionVec = frameMotion * motionBlurStrength;
 
     // ── モーションベクトルが極小の場合はブラーなし ─────────────────────────────
     float motionLen = length(motionVec);
