@@ -11,6 +11,7 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/MotionWarpComponent.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
@@ -1178,6 +1179,30 @@ void UploadBindPose(AnimatorComponent& animator,
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
+// SnapshotPreviousBonePalette — 現在の boneMatrices を「前フレーム」として確定させる。
+// AnimatorSystem がポーズを上書きする直前に 1 回だけ呼ぶこと。
+void SnapshotPreviousBonePalette(AnimatorComponent& animator,
+                                 renderer::ResourceManager& resources)
+{
+    if (animator.boneMatrices.empty() || !animator.prevSkinningBuffer.IsValid()) {
+        animator.prevBoneMatricesValid = false;
+        return;
+    }
+
+    animator.prevBoneMatrices = animator.boneMatrices;
+
+    SkinningCB cb{};
+    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
+        cb.boneMatrices[i] = math::Matrix4::Identity();
+    const size_t boneCount = (std::min)(animator.prevBoneMatrices.size(),
+                                        static_cast<size_t>(asset::MAX_SKINNING_BONES));
+    for (size_t i = 0; i < boneCount; ++i)
+        cb.boneMatrices[i] = animator.prevBoneMatrices[i];
+
+    resources.Update(animator.prevSkinningBuffer, &cb, sizeof(SkinningCB));
+    animator.prevBoneMatricesValid = true;
+}
+
 void LoadClips(AnimatorComponent& animator)
 {
     animator.clips.clear();
@@ -2223,6 +2248,72 @@ void RefreshWorldChain(GameObject& target, GameObject& owner)
     }
 }
 
+// Motion Warping — クリップが生む移動量へ「まだ足りないぶん」を上乗せし、
+// 指定時間の終わりにちょうど目標へ着かせる。
+//
+// WHY クリップを先読みして倍率を掛けないか:
+//   本来の Motion Warping は残り区間のルートモーション総量を先読みし、目標までの
+//   距離との比で倍率を求める。だが BlendTree と遷移で毎フレーム合成が変わる本実装
+//   (SampleClipRootMotion 参照) では「残り区間の総量」が確定しない。
+//   毎フレーム誤差の一定割合を配る形なら先読みが要らず、残り時間が 0 に近づくほど
+//   割合が 1 へ寄るので、最終フレームで必ず目標へ収束する。
+//
+// WHY 置き換えでなく上乗せか: 置き換えると区間中はクリップの緩急が消えて等速で滑る。
+//   上乗せなら踏み込みの加減速がそのまま残り、寄せた量だけが足される。
+//
+// 戻り値はワールド空間の補正量。呼び出し側が localDelta へも反映する。
+math::Vector3 ApplyMotionWarp(MotionWarpComponent& warp,
+                              const GameObject& target,
+                              const math::Vector3& predictedWorldPosition,
+                              math::Quaternion& localRotation,
+                              float dt)
+{
+    MotionWarpTarget& goal = warp.target;
+    warp.runtimeLastCorrection = math::Vector3::ZERO;
+    if (!warp.enabled || !goal.active || dt <= math::EPSILON) {
+        warp.runtimeRemainingDistance = 0.0f;
+        return math::Vector3::ZERO;
+    }
+
+    // 残り時間より dt が大きいフレームでは alpha が 1 になり、誤差を一括で詰める。
+    const float alpha = math::Clamp01(dt / std::max(goal.remaining, dt));
+
+    math::Vector3 correction = math::Vector3::ZERO;
+    if (goal.warpPosition) {
+        const math::Vector3 error = goal.position - predictedWorldPosition;
+        correction = {
+            error.x * math::Clamp01(goal.positionAxisWeight.x) * alpha,
+            error.y * math::Clamp01(goal.positionAxisWeight.y) * alpha,
+            error.z * math::Clamp01(goal.positionAxisWeight.z) * alpha,
+        };
+        if (goal.maxSpeed > 0.0f) {
+            const float limit  = goal.maxSpeed * dt;
+            const float length = correction.Length();
+            if (length > limit && length > math::EPSILON)
+                correction = correction * (limit / length);
+        }
+        warp.runtimeRemainingDistance = error.Length();
+    }
+
+    if (goal.warpRotation) {
+        const math::Quaternion predicted =
+            (target.transform.worldRotation * localRotation).Normalized();
+        const math::Quaternion error = (predicted.Inverse() * goal.rotation).Normalized();
+        localRotation = (localRotation *
+            math::Quaternion::Slerp(math::Quaternion::Identity(), error, alpha)).Normalized();
+    }
+
+    goal.remaining -= dt;
+    if (goal.remaining <= 0.0f) {
+        goal.active    = false;
+        goal.remaining = 0.0f;
+        warp.runtimeRemainingDistance = 0.0f;
+    }
+
+    warp.runtimeLastCorrection = correction;
+    return correction;
+}
+
 // 合成済みの delta を Animator の出力へ書き、mode に応じて適用する。
 // ポーズ評価より前に呼ぶこと (適用後のワールド行列でボーンを伝播させるため)。
 void ApplyRootMotionResult(AnimatorComponent& animator,
@@ -2242,13 +2333,24 @@ void ApplyRootMotionResult(AnimatorComponent& animator,
 
     GameObject& target = ResolveRootMotionTarget(owner, settings.targetPath);
 
-    const math::Vector3 localDelta = rawDelta.position * settings.positionScale;
-    const math::Quaternion localRotation = math::Quaternion::Slerp(
+    math::Vector3 localDelta = rawDelta.position * settings.positionScale;
+    math::Quaternion localRotation = math::Quaternion::Slerp(
         math::Quaternion::Identity(), rawDelta.rotation,
         std::clamp(settings.rotationScale, 0.0f, 1.0f)).Normalized();
 
     // ワールド空間の移動量。適用前の worldRotation を基準にする。
-    const math::Vector3 worldDelta = target.transform.worldRotation * localDelta;
+    math::Vector3 worldDelta = target.transform.worldRotation * localDelta;
+
+    // Motion Warping はクリップの移動量が出そろった後、適用の直前に上乗せする。
+    if (auto* warp = owner.GetComponent<MotionWarpComponent>()) {
+        const math::Vector3 correction = ApplyMotionWarp(
+            *warp, target, target.transform.worldPosition + worldDelta,
+            localRotation, dt);
+        if (correction.LengthSq() > 0.0f) {
+            worldDelta = worldDelta + correction;
+            localDelta = target.transform.worldRotation.Inverse() * worldDelta;
+        }
+    }
 
     animator.rootMotionDeltaPosition = localDelta;
     animator.rootMotionDeltaRotation = localRotation;
@@ -3015,6 +3117,12 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
         if (!animator->skinningBuffer.IsValid())
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
+        if (!animator->prevSkinningBuffer.IsValid())
+            animator->prevSkinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
+
+        // これから boneMatrices を上書きするので、その直前の値が「前フレームの最終ポーズ」。
+        // IKSystem と SpringBoneSystem の補正も含んだ確定値がここで手に入る。
+        SnapshotPreviousBonePalette(*animator, resources);
 
         // SMR が自 GO になければ子 GO を探す (sub-mesh 分割ヒエラルキー対応)。
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();

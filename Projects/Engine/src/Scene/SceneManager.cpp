@@ -7,8 +7,6 @@
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
-#include "Engine/Scene/Systems/FoliageBakeSystem.hpp"
-#include "Engine/Scene/Systems/FoliageCullSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
@@ -18,11 +16,13 @@
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
 #include "Engine/Scene/Systems/IKSystem.hpp"
+#include "Engine/Scene/Systems/SpringBoneSystem.hpp"
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
 #include "Engine/Scene/Systems/AudioSystem.hpp"
 #include "Engine/Scene/Systems/LODSystem.hpp"
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
 #include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
+#include "Engine/Scene/Systems/WeatherSystem.hpp"
 #include "Engine/Scene/Systems/VFXGraphSystem.hpp"
 #include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -45,9 +45,7 @@ void SceneManager::BuildScheduler()
 
     // PreScript
     m_scheduler.AddSystem<TransformEditorPreview>();
-    m_scheduler.AddSystem<FoliageBakeSystem>();
     m_scheduler.AddSystem<NavMeshBakeSystem>();
-    m_scheduler.AddSystem<FoliageCullSystem>();
 
     // Script
     m_scheduler.AddSystem<ScriptSystem>();
@@ -88,12 +86,16 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<LODSystem>();
     m_scheduler.AddSystem<AnimatorSystem>();
     m_scheduler.AddSystem<IKSystem>();
+    // 揺れものは IK が確定した姿勢を静止姿勢として読むので、必ず IK より後。
+    m_scheduler.AddSystem<SpringBoneSystem>();
     // DCC Bone姿勢をAnimator/IKが確定した後にSocket、Camera、表示補助を評価する。
     m_scheduler.AddSystem<ConstraintSystem>();
     m_scheduler.AddSystem<SplineSystem>();
     m_scheduler.AddSystem<CameraRigSystem>();
     m_scheduler.AddSystem<BillboardSystem>();
     m_scheduler.AddSystem<PresentationSystem>();
+    // 雨量はパーティクルの発生量を決めるので、シミュレーションより先 (OrderingHints で明示)。
+    m_scheduler.AddSystem<WeatherSystem>();
     m_scheduler.AddSystem<ParticleSimulationSystem>();
 
     m_scheduler.Build();
