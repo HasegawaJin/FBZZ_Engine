@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EnemyHealthComponent.hpp | sandbox
-// 極性衝突だけで減る敵 HP と死亡処理
+/// @file    EnemyHealthComponent.hpp
+/// @brief   極性衝突だけで減る敵 HP と死亡処理。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -62,7 +63,14 @@ public:
     }
 
     // true はこの呼び出しで死亡したことを表す。Wave/リザルト側が撃破数を重複加算しないために使う。
-    bool TakeImpact(const PolarityImpact& impact);
+    ///
+    /// @param chainMultiplier 連鎖の深さから来る倍率。既定 1.0 は «連鎖していない 1 発»。
+    ///
+    /// WHY 倍率を引数で受けるか: 何連鎖目かを知っているのは CombatManager だけで、
+    ///     敵 1 体は盤面の連鎖を見ていない。ここが数えに行くと、敵の耐久という
+    ///     この敵固有の話に «盤面の進行» が混ざる。量を決めるのは呼ぶ側、
+    ///     式を持つのはこちら、という今の分け方をそのまま保つ。
+    bool TakeImpact(const PolarityImpact& impact, float chainMultiplier = 1.0f);
 
     /// 撃破音を機種ごとの束へ差し替える。AI が起動時に自分の束を預ける。
     ///
@@ -71,6 +79,14 @@ public:
     ///     AI が EnemyHealth を見ている今の向きと合わせて include が輪になる。
     ///     «束を預ける» 向きだけにすれば、知る側は AI の 1 方向で済む。
     void SetDestroyVoice(const se::Bank* bank) { m_destroyVoice = bank; }
+
+    /// 被弾音を差し替える。撃破音と同じ «預ける» 向き。
+    ///
+    /// WHY 必要か: 共通の束 (kEnemyFlinch) は雑魚の装甲が鳴る音で、ボスに当てると
+    ///     «同じくらいのものに当たった» と読める。ボスは銃では削れず、HP が減るのは
+    ///     帯電した雑魚が装甲へ激突したときだけなので、その 1 撃の重さが伝わらないと
+    ///     «今の攻め方で合っているのか» が耳から判断できなくなる。
+    void SetFlinchVoice(const se::Bank* bank) { m_flinchVoice = bank; }
     void ResetHealth();
     void OnStart() override
     {
@@ -95,6 +111,7 @@ private:
     int m_health = 0;
     /// AI が預けた機種ごとの撃破音。預かる前 (と DLL リロード直後) は共通の束を使う。
     const se::Bank* m_destroyVoice = nullptr;
+    const se::Bank* m_flinchVoice  = nullptr;
 };
 
 FBZZ_REFLECT(EnemyHealthComponent)
@@ -112,7 +129,7 @@ inline bool EnemyHealthComponent::ApplyDamage(int amount)
     return true;
 }
 
-inline bool EnemyHealthComponent::TakeImpact(const PolarityImpact& impact)
+inline bool EnemyHealthComponent::TakeImpact(const PolarityImpact& impact, float chainMultiplier)
 {
     if (!IsAlive()) return false;
 
@@ -120,6 +137,10 @@ inline bool EnemyHealthComponent::TakeImpact(const PolarityImpact& impact)
     float damageValue = static_cast<float>(std::max(baseImpactDamage, 0)) + speedPart;
     if (impact.struckIsAnchor)
         damageValue *= std::max(anchorDamageMultiplier, 0.0f);
+    // 連鎖の深さは最後に掛ける。速さと柱倍率は «この 1 回の衝突» の性質で、
+    // 連鎖はそこへ至るまでの組み立ての長さ。順序を入れ替えても値は同じだが、
+    // 掛ける理由が別なので分けて書く。
+    damageValue *= std::max(chainMultiplier, 0.0f);
 
     return Deal(std::max(1, static_cast<int>(std::lround(damageValue))));
 }
@@ -130,7 +151,7 @@ inline bool EnemyHealthComponent::Deal(int damage)
     debugHealth = m_health;
 
     if (m_health > 0) {
-        se::Play(audio, sfxHit, se::kEnemyFlinch);
+        se::Play(audio, sfxHit, m_flinchVoice ? *m_flinchVoice : se::kEnemyFlinch);
         return false;
     }
 

@@ -1,7 +1,7 @@
-/// @file RumbleManagerComponent.hpp
-/// @brief ゲームパッドの振動要求を合成し、パッドへ渡す値を 1 本にまとめる
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    RumbleManagerComponent.hpp
+/// @brief   ゲームパッドの振動要求を合成し、パッドへ渡す値を 1 本にまとめる
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 直接 SetVibration を呼ばせないか:
 ///   パッドの振動は「今この強さ」という絶対値を書き込む API で、後から呼んだ側が
@@ -13,18 +13,42 @@
 ///   モーターの出力は 0..1 に飽和する。足し合わせるとすぐ 1 に張り付き、
 ///   強弱の差が消えて「常に最大で震えている」状態になる。最も強い要求を採る方が、
 ///   一撃の重さが残る。
+///
+/// WHY 持続振動を別の器で持つか:
+///   照射は押しているあいだ続く。長さの決まった要求を毎フレーム積むと、上限に達した
+///   ところで «最も弱いものを捨てる» が働き、同じ 1 本の照射が自分自身を押し出し始める。
+///   終わりの時刻が決まっていない振動は、寿命ではなく «今の強さ» で持つ。
+///
+/// WHY 距離による強弱をここが持たないか:
+///   «どこで起きたか» はカメラ揺れも同じ数で減衰させたい値で、振動だけのものではない。
+///   規約は Utils/ShockFalloff.hpp にあり、呼び出し元が 1 度だけ近さを出して、
+///   揺れと振動の両方へ同じ数を掛ける。ここは «届いた強さ» を混ぜるだけに留める。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Game/GameSettingsComponent.hpp>
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
 
 namespace sandbox {
+
+/// 持続振動の口。同時に鳴りうるものだけを並べる。
+///
+/// WHY 呼び出し元ごとに口を分けるか: 左右の照射は同時に走る。1 つの口を共有すると、
+///     後から書いた側が相手の強さを消し、両手で撃っているのに片手ぶんしか返らない。
+enum class RumbleChannel : int {
+    BeamPlus,    ///< ＋ (右) の照射
+    BeamMinus,   ///< − (左) の照射
+    BossBeam,    ///< ボスのコアビーム (点火から消灯まで 1 本)
+    BladeCharge, ///< 溜め斬りの «こらえている» 震え (押している間 1 本)
+    Count,
+};
 
 class RumbleManagerComponent : public Script {
     FBZZ_SCRIPT(RumbleManagerComponent)
@@ -53,6 +77,12 @@ public:
     void Rumble(float strength01);
     // 両モーターと長さを直接指定する版。
     void Rumble(float low, float high, float duration);
+
+    // 終わりの時刻が決まっていない振動。呼んだ強さがそのまま «今» として残り続けるので、
+    // 止めるのは呼び出し元の責任 (照射をやめた / 銃を畳んだ / 自分が消えた)。
+    void Sustain(RumbleChannel channel, float low, float high);
+    void StopSustain(RumbleChannel channel);
+
     void StopAll();
 
     void SetEnabled(bool value) { m_enabled = value; if (!value) StopAll(); }
@@ -70,9 +100,15 @@ private:
         float remaining = 0.0f;
     };
 
+    struct Level {
+        float low  = 0.0f;
+        float high = 0.0f;
+    };
+
     static inline RumbleManagerComponent* s_instance = nullptr;
 
     std::vector<Request> m_requests;
+    std::array<Level, static_cast<std::size_t>(RumbleChannel::Count)> m_sustain{};
     bool  m_enabled = true;
     bool  m_driving = false;
 };
@@ -87,6 +123,7 @@ inline void RumbleManagerComponent::OnStart()
     }
     s_instance = this;
     m_requests.clear();
+    m_sustain.fill({});
     m_enabled = enabledOnStart;
     m_driving = false;
 }
@@ -132,9 +169,25 @@ inline void RumbleManagerComponent::Rumble(float low, float high, float duration
     m_requests.push_back({ Clamp01(low), Clamp01(high), duration, duration });
 }
 
+inline void RumbleManagerComponent::Sustain(RumbleChannel channel, float low, float high)
+{
+    const auto slot = static_cast<std::size_t>(channel);
+    if (slot >= m_sustain.size()) return;
+    // WHY 切ってあるときに 0 を書くか (素通りしないか): 照射中に振動を切ると、
+    //     切る前の強さがそのまま残り、押している間ずっと震え続ける。
+    m_sustain[slot] = m_enabled ? Level{ Clamp01(low), Clamp01(high) } : Level{};
+}
+
+inline void RumbleManagerComponent::StopSustain(RumbleChannel channel)
+{
+    const auto slot = static_cast<std::size_t>(channel);
+    if (slot < m_sustain.size()) m_sustain[slot] = {};
+}
+
 inline void RumbleManagerComponent::StopAll()
 {
     m_requests.clear();
+    m_sustain.fill({});
     debugLow  = 0.0f;
     debugHigh = 0.0f;
     if (m_driving) {
@@ -162,6 +215,15 @@ inline void RumbleManagerComponent::OnUpdate()
         low  = std::max(low,  it->low  * falloff);
         high = std::max(high, it->high * falloff);
         ++it;
+    }
+
+    // WHY 遊ぶ人の倍率をここで掛けるか (Sustain の中ではなく): 持続振動は «今の強さ» を
+    //     置いておく器なので、押しっぱなしのまま Option を動かされうる。書き込み時に
+    //     掛けると、その 1 本の照射だけ古い倍率で震え続ける。
+    const float player = GameSettingsComponent::VibrationScale();
+    for (const Level& level : m_sustain) {
+        low  = std::max(low,  level.low  * player);
+        high = std::max(high, level.high * player);
     }
 
     low  *= Clamp01(masterScale);

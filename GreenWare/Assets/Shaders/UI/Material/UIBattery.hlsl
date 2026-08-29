@@ -113,8 +113,8 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
     shell.a *= UI_Border(sdShell, max(shellThickness, 0.0f));
 
     float4 result = UI_Over(shell, inner);
-    result.rgb *= g_Color.rgb;
-    result.a   *= g_Color.a;
+    result.rgb *= UITint(input).rgb;
+    result.a   *= UITint(input).a;
     result.rgb  = UI_Dither(result.rgb, input.pos.xy);
 
     clip(result.a - 0.002f);

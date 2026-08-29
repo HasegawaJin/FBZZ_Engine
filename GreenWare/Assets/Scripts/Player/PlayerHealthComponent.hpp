@@ -1,14 +1,15 @@
-// FBZZ Engine
-// PlayerHealthComponent.hpp | sandbox
-// プレイヤーの HP・被弾・死亡。
-//
-// WHY HP 制か:
-//   18.3「HP 制を採用する (数発耐える)。ミスが即死にならないため、5〜10 分の短い体験に合う」。
-//
-// WHY 回避に無敵時間を持たせないか:
-//   11 章と 19 章がジャスト回避 (判定・無敵・報酬) を本バージョンから明示的に外している。
-//   ここに置くのは被弾直後の短い無敵だけで、これは連続ヒットで一瞬に溶けるのを防ぐための
-//   ものであり、回避の報酬ではない。混同すると 19 章の判断を無効化してしまう。
+/// @file    PlayerHealthComponent.hpp
+/// @brief   プレイヤーの HP・被弾・死亡。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY HP 制か:
+/// 18.3「HP 制を採用する (数発耐える)。ミスが即死にならないため、5〜10 分の短い体験に合う」。
+///
+/// WHY 回避に無敵時間を持たせないか:
+/// 11 章と 19 章がジャスト回避 (判定・無敵・報酬) を本バージョンから明示的に外している。
+/// ここに置くのは被弾直後の短い無敵だけで、これは連続ヒットで一瞬に溶けるのを防ぐための
+/// ものであり、回避の報酬ではない。混同すると 19 章の判断を無効化してしまう。
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -79,7 +80,8 @@ FBZZ_REFLECT(PlayerHealthComponent)
 
 inline int PlayerHealthComponent::MaxHealth() const
 {
-    return tuning->maxHealth;
+    // 未割り当てを 0 で返す。OnStart が名指しで報告するので、ここは落とさないだけでよい。
+    return tuning ? tuning->maxHealth : 0;
 }
 
 inline float PlayerHealthComponent::Normalized() const
@@ -91,6 +93,14 @@ inline float PlayerHealthComponent::Normalized() const
 
 inline void PlayerHealthComponent::OnStart()
 {
+    // WHY ここだけ調整値を検算するか: 上限が 0 だと開始時点で «死んでいる» 扱いになり、
+    //     TakeDamage は無条件に false を返す。画面には «何をされても HP が減らない»
+    //     としか出ず、原因が被弾側にも敵側にも見えない。
+    if (!tuning || tuning->maxHealth <= 0) {
+        debug.LogError("PlayerHealthComponent has no usable PlayerTuning (Max Health must "
+                       "be 1 or more). The player can never take damage.");
+    }
+
     ResetHealth();
     se::EnsureSource(scene);
 }
@@ -114,7 +124,7 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
 
     m_health = m_health > amount ? m_health - amount : 0;
     debugHealth = m_health;
-    m_invulnerable = tuning->hitInvulnerable;
+    m_invulnerable = tuning ? tuning->hitInvulnerable : 0.0f;
 
     // 揺れ・振動・画面の赤は ImpactFeedbackManagerComponent が配分を持つ。
     // ここは「被弾した」と「どれくらい深手か」だけを渡す。

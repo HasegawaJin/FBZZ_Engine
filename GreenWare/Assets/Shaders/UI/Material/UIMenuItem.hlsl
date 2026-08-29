@@ -48,7 +48,7 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
     const float  alpha = core * lerp(dimColor.a, activeColor.a, t)
                        + halo * glowGain * t;
 
-    float4 result = float4(rgb, alpha) * g_Color;
+    float4 result = float4(rgb, alpha) * UITint(input);
     clip(result.a - 0.002f);
     return result;
 }

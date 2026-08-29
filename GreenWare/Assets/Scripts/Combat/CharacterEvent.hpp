@@ -1,7 +1,7 @@
-/// @file CharacterEvent.hpp
-/// @brief 戦闘のあいだに 1 体のキャラクターの身へ起きたこと
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    CharacterEvent.hpp
+/// @brief   戦闘のあいだに 1 体のキャラクターの身へ起きたこと
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY 出来事の側に名前を付けるか:
 ///   「見つけた」「攻撃を出した」「殴られた」「倒れた」は、伝える先 (表情・アニメーション・

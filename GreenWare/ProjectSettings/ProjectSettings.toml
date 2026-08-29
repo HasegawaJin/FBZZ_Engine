@@ -4,6 +4,7 @@ targetFps = 0
 
 [audio]
 masterVolume = 1.0
+voiceLimit = 48
 
     [[audio.bus]]
     name = 'Master'
@@ -101,7 +102,7 @@ showUIRects = false
 viewMode = 0
 
 [runtime]
-start_scene = 'Assets/Scenes/Title.scene'
+start_scene = 'Assets/Scenes/Main.scene'
 
 [screen]
 height = 1080

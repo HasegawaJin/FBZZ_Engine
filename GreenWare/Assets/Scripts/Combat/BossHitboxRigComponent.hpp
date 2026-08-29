@@ -1,7 +1,7 @@
-/// @file BossHitboxRigComponent.hpp
-/// @brief ボスの当たり判定をボーン階層から組み立てる。移動用コライダーとは別系統
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    BossHitboxRigComponent.hpp
+/// @brief   ボスの当たり判定をボーン階層から組み立てる。移動用コライダーとは別系統
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY 移動用と判定用を分けるか:
 ///   ルートのカプセルは «ボスが床に立ち、壁を抜けない» ための体で、形が雑でも困らない。
@@ -35,6 +35,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/BossAnimParams.hpp>
+#include <Scripts/Combat/BossPartPolarityComponent.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
 #include <cmath>
@@ -82,6 +83,14 @@ private:
         std::string from;
         std::string to;      // 空なら球
         float       radius = 0.3f;
+        /// 斬って極を乗せられる部位か。
+        ///
+        /// WHY 脚の «下» だけか: プレイヤーの射程は 2.6m でボスは全高 6m ある。
+        ///     Thigh は届かない高さにあるので、乗せられる的として置くと
+        ///     «狙っているのに乗らない» になる。届くのは膝から下だけ。
+        bool        chargeable = false;
+        /// 脚の接尾辞 ("_FR" など)。極を持てる部位だけが持つ。
+        std::string suffix;
     };
 
     void Build();
@@ -153,7 +162,7 @@ inline void BossHitboxRigComponent::Build()
         segments.push_back({ std::string("Shin") + suffix,  std::string("Hock") + suffix,
                              legRadius * scale });
         segments.push_back({ std::string("Hock") + suffix,  std::string("Foot") + suffix,
-                             legRadius * scale });
+                             legRadius * scale, true, suffix });
     }
 
     for (const Segment& segment : segments) {
@@ -235,6 +244,13 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
         auto& collider = hitbox.AddComponent<SphereColliderComponent>();
         collider.SetRadius(radius);
         collider.isTrigger = true;
+    }
+
+    // 極を持てる部位はここで宣言する。斬撃の扇は BossPartPolarityComponent を
+    // 名指しで探すので、付いていない部位は «斬っても何も乗らない» になる。
+    if (segment.chargeable) {
+        auto& part = hitbox.AddScript<BossPartPolarityComponent>();
+        part.legSuffix = segment.suffix;
     }
 
     return true;

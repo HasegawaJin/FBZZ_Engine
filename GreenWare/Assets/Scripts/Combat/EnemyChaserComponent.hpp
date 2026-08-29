@@ -1,7 +1,7 @@
-/// @file EnemyChaserComponent.hpp
-/// @brief プレイヤーへ接近して接触攻撃するノーマルスライム AI
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    EnemyChaserComponent.hpp
+/// @brief   プレイヤーへ接近して接触攻撃するノーマルスライム AI
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// 標的の取り直し・停止条件・接触ダメージの経路は EnemyAiBase が持つ。
 /// ここに残すのは「どう近づいてどこで止まるか」という、この敵に固有の動きだけ。

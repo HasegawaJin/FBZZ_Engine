@@ -1,7 +1,7 @@
-/// @file KeyIcons.hpp
-/// @brief 入力アイコン (Sprites/HUD) の Sprite 参照をまとめた表
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    KeyIcons.hpp
+/// @brief   入力アイコン (Sprites/HUD) の Sprite 参照をまとめた表
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// ⚠ このファイルは Tools の生成物。手で編集しないこと。
 ///   セル番号 → 意味の対応は目視で決めたもので、生成器 (gen_keyicons.js) が持っている。
@@ -93,7 +93,7 @@ inline constexpr const char* kDPad =
 
 /// ゲーム中のプロンプトで使う操作の種類。
 enum class Action {
-    MoveAxis, LookAxis, GunLeft, GunRight, Detonate, Dodge, Pause, Confirm, Cancel,
+    MoveAxis, LookAxis, GunLeft, GunRight, Dodge, PolarityDodge, Pause, Confirm, Cancel,
 };
 
 /// 入力機器に応じたアイコンを返す。該当が無ければ空文字列 (呼び出し側は文字で出す)。
@@ -107,8 +107,10 @@ enum class Action {
     case Action::LookAxis: return usingPad ? pad::kRS    : kbm::kMouse;
     case Action::GunLeft:  return usingPad ? pad::kLT    : kbm::kMouseLeft;
     case Action::GunRight: return usingPad ? pad::kRT    : kbm::kMouseRight;
-    case Action::Detonate: return {};                                     // 「同じボタン」なので絵にしない
     case Action::Dodge:    return usingPad ? pad::kA     : kbm::kSpace;
+    // 極性回避は «回避 + トリガー» の同時押し。2 枚並べる必要があるので、
+    // ここは代表として回避側だけを返し、トリガーは呼び出し側が GunLeft / GunRight で足す。
+    case Action::PolarityDodge: return usingPad ? pad::kA : kbm::kSpace;
     case Action::Pause:    return usingPad ? pad::kStart : kbm::kEsc;
     case Action::Confirm:  return usingPad ? pad::kA     : kbm::kEnter;
     case Action::Cancel:   return usingPad ? pad::kB     : kbm::kEsc;

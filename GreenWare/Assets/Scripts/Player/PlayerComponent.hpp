@@ -1,15 +1,16 @@
-// FBZZ Engine
-// PlayerComponent.hpp | sandbox
-// Player の実行入口。移動・エイム・体力・極性銃を 1 コンポーネントへ束ねる。
-//
-// WHY 1 コンポーネントにするか:
-//   各責務は PlayerControllerComponent / PlayerAimComponent / PlayerHealthComponent /
-//   PolarityGunComponent に分割したまま、シーンへは PlayerComponent だけをアタッチする。
-//   これにより Player の構成漏れを減らし、モジュール単位の実装・レビュー・差し替えやすさを残す。
-//
-// WHY fzdata を必須にするか:
-//   移動・HP・銃の成立値をコード側の既定値へフォールバックさせると、共有アセットを
-//   編集しても一部だけ別の値で動く。Play 開始時に 2 枚の参照を検査し、未設定なら動作を止める。
+/// @file    PlayerComponent.hpp
+/// @brief   Player の実行入口。移動・エイム・体力・双剣を 1 コンポーネントへ束ねる。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY 1 コンポーネントにするか:
+/// 各責務は PlayerControllerComponent / PlayerAimComponent / PlayerHealthComponent /
+/// PolarityBladeComponent に分割したまま、シーンへは PlayerComponent だけをアタッチする。
+/// これにより Player の構成漏れを減らし、モジュール単位の実装・レビュー・差し替えやすさを残す。
+///
+/// WHY fzdata を必須にするか:
+/// 移動・HP・銃の成立値をコード側の既定値へフォールバックさせると、共有アセットを
+/// 編集しても一部だけ別の値で動く。Play 開始時に 2 枚の参照を検査し、未設定なら動作を止める。
 #pragma once
 
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
@@ -22,14 +23,14 @@
 #include <Scripts/Data/PlayerTuning.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Player/AimMarkerComponent.hpp>
-#include <Scripts/Player/BeamScorchComponent.hpp>
-#include <Scripts/Player/CrosshairComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Player/PlayerHeadLookComponent.hpp>
 #include <Scripts/Player/PlayerHealthComponent.hpp>
-#include <Scripts/Player/PolarityGunComponent.hpp>
+#include <Scripts/Player/PlayerPolarityComponent.hpp>
+#include <Scripts/Player/PolarityBladeComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
+#include <Scripts/Vfx/SlashArcComponent.hpp>
 #include <functional>
 #include <utility>
 
@@ -62,15 +63,20 @@ public:
     [[nodiscard]] bool TakeDamage(int amount) { return m_health.TakeDamage(amount); }
     void Heal(int amount) { m_health.Heal(amount); }
     void ResetHealth() { m_health.ResetHealth(); }
-    // 6.3 の照射バッテリー。左右で独立した 2 本を HUD がそのまま 2 本のゲージに出す。
-    [[nodiscard]] float BatteryOf(Polarity polarity) const { return m_gun.BatteryOf(polarity); }
-    [[nodiscard]] bool CanEmit(Polarity polarity) const { return m_gun.CanEmit(polarity); }
-    [[nodiscard]] bool IsEmitting(Polarity polarity) const { return m_gun.IsEmitting(polarity); }
+    // ── 双剣と «自分の極» ───────────────────────────────────────────────────
+    [[nodiscard]] bool IsSwinging() const { return m_blades.IsSwinging(); }
+    [[nodiscard]] Polarity SwingPolarity() const { return m_blades.SwingPolarity(); }
+    /// 今その極を «自分に» 帯びているか。
+    [[nodiscard]] bool IsSelfCharged(Polarity polarity) const
+    { return m_polarity.IsChargedWith(polarity); }
+    /// 纏いの残り [0,1]。
+    [[nodiscard]] float SelfChargeRatio() const { return m_polarity.ChargeRatio(); }
+
     void SetOnDeath(std::function<void()> callback) { m_health.onDeath = std::move(callback); }
 
-    // 銃を構えているか。UI と照射判定が「今撃てるか」を知るための唯一の窓口。
+    // 武器を構えているか。UI が読む唯一の窓口。
     [[nodiscard]] bool AreWeaponsDrawn() const { return m_weaponRig.IsDrawn(); }
-    // 今ビームの手前に居る相手。カメラ演出や UI が同じ 1 体を見るための窓口。
+    // 今狙っている相手。カメラ演出・枠・剣が同じ 1 体を見るための窓口。
     [[nodiscard]] GameObject* CurrentTarget() const { return m_aim.CurrentTarget(); }
 
     void OnStart() override;
@@ -83,7 +89,6 @@ public:
     // 内部モジュールのギズモは自動では呼ばれないため、ここから中継する。
     void OnDrawGizmos() override { m_weaponRig.OnDrawGizmos(); }
 
-    void PlayFireAnimation(bool rightHand) { m_controller.PlayFireAnimation(rightHand); }
     void PlayHitAnimation() { m_controller.PlayHitAnimation(); }
 
 private:
@@ -101,13 +106,15 @@ private:
     PlayerHeadLookComponent  m_headLook;
     // 対象の表示はエイムの選定から分ける。枠の見た目を触っても選び方には波及しない。
     AimMarkerComponent       m_aimMarker;
-    // 画面中央の照準。枠が「線に入った 1 体」を指すのに対し、こちらは
-    // 「これから線を引く 1 点」を指す。役割が違うので別モジュールにする。
-    CrosshairComponent       m_crosshair;
-    // 地形へ残る焼け跡。跡の見た目を触っても照射の作りには波及しない。
-    BeamScorchComponent      m_scorch;
     PlayerHealthComponent    m_health;
-    PolarityGunComponent     m_gun;
+    // 極を «自分に» 使う側。«いつ帯びるか» は剣が決め、こちらは «帯びている間
+    // どう動くか» だけを持つ。
+    PlayerPolarityComponent  m_polarity;
+    // 双剣。極を乗せる唯一の入口で、振った瞬間に上の m_polarity を切り替える。
+    PolarityBladeComponent   m_blades;
+    // 刃が通った軌跡。剣の «判定» から分ける ─ 弧の見た目を触っても射程や発生には
+    // 波及しないし、軌跡を外しても «斬る → 極が乗る → 飛ぶ» の芯は全部成立する。
+    SlashArcComponent        m_slashArc;
 };
 
 // PlayerComponent 自身の fzdata 参照と、責務別モジュールの Inspector 項目を同じカードへ並べる。
@@ -123,10 +130,10 @@ inline void PlayerComponent::Reflect(::fbzz::scene::IReflector& r_)
     m_aim.Reflect(r_);
     m_headLook.Reflect(r_);
     m_aimMarker.Reflect(r_);
-    m_crosshair.Reflect(r_);
-    m_scorch.Reflect(r_);
     m_health.Reflect(r_);
-    m_gun.Reflect(r_);
+    m_polarity.Reflect(r_);
+    m_blades.Reflect(r_);
+    m_slashArc.Reflect(r_);
 }
 
 inline void PlayerComponent::BindModules()
@@ -136,33 +143,33 @@ inline void PlayerComponent::BindModules()
     m_aim.AdoptContext(*this);
     m_headLook.AdoptContext(*this);
     m_aimMarker.AdoptContext(*this);
-    m_crosshair.AdoptContext(*this);
-    m_scorch.AdoptContext(*this);
     m_health.AdoptContext(*this);
-    m_gun.AdoptContext(*this);
+    m_polarity.AdoptContext(*this);
+    m_blades.AdoptContext(*this);
+    m_slashArc.AdoptContext(*this);
 
     m_controller.tuning.ref = tuning.ref;
     m_health.tuning.ref = tuning.ref;
-    // 照準は 6.2 のビーム半径と射程で線を引く。銃と同じアセットを見せないと、
-    // 触れて見えた敵と塗れる敵がずれる。
+    m_polarity.tuning.ref = polarityTuning.ref;
+    // 照準は «誰を狙っているか» を決める。剣も枠も同じ 1 体を見ないと、
+    // 枠が付いている相手と斬れる相手がずれる。
     m_aim.tuning.ref = polarityTuning.ref;
-    m_gun.tuning.ref = polarityTuning.ref;
+    // 枠は «反発半径» の環も出す。半径の正本は共有アセット 1 枚に保つ。
+    m_aimMarker.tuning.ref = polarityTuning.ref;
     m_controller.SetAimComponent(&m_aim);
     m_controller.SetWeaponRig(&m_weaponRig);
     m_health.SetController(&m_controller);
-    m_gun.SetAimComponent(&m_aim);
-    m_gun.SetController(&m_controller);
-    // 収納中に撃てないようにするため、銃の出し入れの状態を見せる。
-    m_gun.SetWeaponRig(&m_weaponRig);
     m_aimMarker.SetAimComponent(&m_aim);
-    m_crosshair.SetAimComponent(&m_aim);
-    m_crosshair.SetGun(&m_gun);
-    m_crosshair.SetWeaponRig(&m_weaponRig);
-    m_scorch.SetAimComponent(&m_aim);
-    m_scorch.SetGun(&m_gun);
     m_headLook.SetAimComponent(&m_aim);
     m_headLook.SetController(&m_controller);
     m_headLook.SetWeaponRig(&m_weaponRig);
+
+    // 剣が «いつ極を帯びるか» を決め、纏う側はその結果を動きへ変える。
+    m_blades.tuning.ref = polarityTuning.ref;
+    m_blades.SetAimComponent(&m_aim);
+    m_blades.SetController(&m_controller);
+    m_blades.SetPolarity(&m_polarity);
+    m_blades.SetSlashArc(&m_slashArc);
 }
 
 inline bool PlayerComponent::HasRequiredAssets() const
@@ -190,10 +197,10 @@ inline void PlayerComponent::OnStart()
     m_aim.OnStart();
     m_headLook.OnStart();
     m_aimMarker.OnStart();
-    m_crosshair.OnStart();
-    m_scorch.OnStart();
     m_health.OnStart();
-    m_gun.OnStart();
+    m_polarity.OnStart();
+    m_blades.OnStart();
+    m_slashArc.OnStart();
 }
 
 inline void PlayerComponent::OnUpdate()
@@ -209,6 +216,17 @@ inline void PlayerComponent::OnUpdate()
             module.ExecuteCallback(&Script::OnUpdate, module.GetTypeName());
     };
 
+    // 剣 → 纏い → コントローラー、の順で回す。
+    //
+    // WHY この順か: 剣は振った «瞬間» に纏いを切り替える (Charge)。纏いを先に回すと、
+    //     振ったフレームの引力/斥力が 1 フレーム遅れて始まり、«斬った勢いで飛ぶ» の
+    //     勢いと移動が繋がらない。コントローラーは OnUpdate の頭で速度の要求を
+    //     取り込むので、両方より後でなければ要求が 1 フレーム寝る。
+    updateModule(m_blades);
+    // 軌跡は剣の直後。同じフレームに張られた弧へその場で progress を書けば、
+    // 判定が出た瞬間と光が走り出す瞬間が 1 フレームもずれない。
+    updateModule(m_slashArc);
+    updateModule(m_polarity);
     updateModule(m_controller);
     // コントローラーが同じフレームで受けた抜く / 収める要求を、その場で進める。
     // 先に回すと要求が 1 フレーム寝てしまい、押した感触が鈍る。
@@ -237,15 +255,10 @@ inline void PlayerComponent::OnLateUpdate()
             module.ExecuteCallback(&Script::OnLateUpdate, module.GetTypeName());
     };
 
-    // 線を先に引き、それを銃・枠・照準の 3 者が読む。順番を崩すと、触れて見えた敵と
-    // 極性が乗る敵がずれる (6.5 が「事故が続くとストレスになる」と書いている食い違い)。
+    // 誰を狙っているかを先に決め、それを枠が読む。順番を崩すと、枠が付いている相手と
+    // 斬れる相手が 1 フレームずれる。
     lateUpdateModule(m_aim);
-    lateUpdateModule(m_gun);
     lateUpdateModule(m_aimMarker);
-    lateUpdateModule(m_crosshair);
-    // 跡は「今フレーム照射したか」と「線が地形に届いたか」の両方が要る。
-    // 銃と照準の後に回して、同じフレームの結果だけを見る。
-    lateUpdateModule(m_scorch);
 }
 
 inline void PlayerComponent::OnFixedUpdate()
@@ -257,10 +270,10 @@ inline void PlayerComponent::OnFixedUpdate()
 inline void PlayerComponent::OnDestroy()
 {
     m_aimMarker.OnDestroy();
-    m_crosshair.OnDestroy();
-    m_scorch.OnDestroy();
     m_headLook.OnDestroy();
-    m_gun.OnDestroy();
+    m_slashArc.OnDestroy();
+    // 溜めの震え・唸り・パッドは «押している間» 続く。畳まずに消えると鳴りっぱなしになる。
+    m_blades.OnDestroy();
 }
 
 } // namespace sandbox

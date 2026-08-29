@@ -1,7 +1,7 @@
-/// @file PlayerHeadLookComponent.hpp
-/// @brief 照準の先へ頭だけを向け、狙いの連鎖に「視線」の段を足す
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    PlayerHeadLookComponent.hpp
+/// @brief   照準の先へ頭だけを向け、狙いの連鎖に「視線」の段を足す
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 胸ではなく頭だけを IK で回すか:
 ///   ヨー ±45 度のエイムコーンは 9 セルのポーズ側で Chest 30 度 / UpperArm 15 度に

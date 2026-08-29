@@ -15,6 +15,7 @@
 | `FX_ATR_Launch.vfx` | `PolarityBodyComponent::TickWindup` の撃ち出し | 7.3 ② / 17 |
 | `FX_IMP_Explosion.vfx` | `PolarityFieldComponent::ResolveImpacts` の 1 件ごと | 12.6 |
 | `FX_BEAM_Scorch.vfx` | `BeamScorchComponent::Place` の焼け跡ごと（間引きあり） | 6.2 / 12.1 |
+| `FX_PLR_RunDust.vfx` | `PlayerControllerComponent::TickFootsteps` の足音と同じ刻み | — |
 
 呼び出しは全部 `VfxManagerComponent`（シーンの `Manager/VfxManager`）を通る。
 枠（GameObject）は `.vfx` の種類ごとにリングで持ち回すので、鳴らす側は
@@ -57,6 +58,8 @@ GameObject を作らないこと。
 | Impact | `Spark Power` / `Blast Light` | 衝突速度（12.6「衝突速度に比例」） |
 | Impact | `Ground Mark` | 柱・壁への叩きつけだけ焦げ → ひび（7.5） |
 | Beam Scorch | `Ember Rate` / `Sear Size` | 火の粉の量と、光る範囲（デカールの Size に合わせる） |
+| Run Dust | `Dust Color` | 床の色。ここだけは極性色ではなくステージの色を入れる |
+| Run Dust | `Puff Size` / `Kick Speed` | 走行速度に比例。`VfxManager` の Run Dust が min/max を持つ |
 
 ## 調整するときの順番
 

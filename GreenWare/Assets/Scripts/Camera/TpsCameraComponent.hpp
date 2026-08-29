@@ -1,5 +1,7 @@
-// FBZZ Engine
-// TpsCameraComponent.hpp | sandbox
+/// @file    TpsCameraComponent.hpp
+/// @brief   プレイヤーを追う三人称カメラのスクリプト。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
@@ -183,7 +185,7 @@ inline void TpsCameraComponent::OnLateUpdate()
         fovOffset       = follow->FovOffset();
     }
 
-    // 画角は Option の「視野角」が基準で、起爆の張り出しをそこへ足す。
+    // 画角は Option の「視野角」が基準で、点火・集束の張り出しをそこへ足す。
     // WHY 毎フレーム書くか: 基準そのものが設定変更で動く。1 度だけ書くと、
     //     Option で視野角を変えても遊びに戻るまで反映されない。
     if (auto* camera = scene.GetComponent<CameraComponent>())

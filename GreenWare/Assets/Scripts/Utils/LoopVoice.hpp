@@ -34,6 +34,19 @@ public:
     /// 子オブジェクト名に使う識別子。持ち主ごとに一意でないと音源を奪い合う。
     void SetKey(std::string key) { m_key = std::move(key); }
 
+    /// 出力先と広がりを変える。既定は «盤面のどこかで鳴っている» 3D の SE。
+    ///
+    /// WHY 既定を 3D のままにするか: この声の使い道はほとんどが敵や機械の定常音で、
+    ///     どの方向で何が鳴っているかが聞き分けの手がかりになる。2D にしたいのは
+    ///     環境音のように «場所を持たない» ものだけなので、そちらを明示させる。
+    ///
+    /// 音源を作った後に呼んでも既に立っている声には効かない。Update() の前に 1 度呼ぶこと。
+    void SetOutput(std::string bus, float spatialBlend)
+    {
+        m_bus     = std::move(bus);
+        m_spatial = Clamp01(spatialBlend);
+    }
+
     /// 毎フレーム呼ぶ。path が空か volume が 0 なら止める。
     void Update(Script& owner, std::string_view path, float volume, float pitch = 1.0f);
 
@@ -44,6 +57,8 @@ private:
     [[nodiscard]] AudioSourceComponent* Acquire(Script& owner);
 
     std::string m_key     = "Loop";
+    std::string m_bus     = "SE";
+    float       m_spatial = 1.0f;
     EntityID    m_id      = EntityID::INVALID;
     bool        m_started = false;
 };
@@ -71,8 +86,8 @@ inline AudioSourceComponent* LoopVoice::Acquire(Script& owner)
     auto* source = object->GetComponent<AudioSourceComponent>();
     if (!source) {
         source = &object->AddComponent<AudioSourceComponent>();
-        source->busName      = "SE";
-        source->spatialBlend = 1.0f;
+        source->busName      = m_bus;
+        source->spatialBlend = m_spatial;
         source->playOnAwake  = false;
         source->loop         = true;
         // 既定の 50m は «盤面のどこに居ても全員ぶん鳴っている» になる。鳴り続ける音は

@@ -1,7 +1,7 @@
-/// @file ManagerWatch.hpp
-/// @brief マネージャーが見つからないことを、開始順に依存せず 1 度だけ報告する小さな状態
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    ManagerWatch.hpp
+/// @brief   マネージャーが見つからないことを、開始順に依存せず 1 度だけ報告する小さな状態
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// WHY 型にするか:
 ///   ScriptSystem は GameObject ごとに OnAwake → OnStart → OnUpdate をまとめて回す。

@@ -1,7 +1,7 @@
-/// @file EnemyMiteComponent.hpp
-/// @brief Enemy A「Mite」— 浮遊して詰め寄り、爪で殴るホバードローン (企画書 8)
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    EnemyMiteComponent.hpp
+/// @brief   Enemy A「Mite」— 浮遊して詰め寄り、爪で殴るホバードローン (企画書 8)
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY 重力を切って自前で高さを持つか:
 ///   8 章は Mite を「接地していないため、引力で最もよく飛ぶ」と定義している。重力を
@@ -54,13 +54,13 @@ public:
     FBZZ_TOOLTIP("地面を探す下向きレイの長さ。届かなければ今の高度を保つ")
 
     FBZZ_GROUP("Claw Attack")
-    FBZZ_FIELD_RANGE(float, attackRange, 2.0f, "Attack Range", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackRange, 2.6f, "Attack Range", 0.2f, 12.0f)
     FBZZ_TOOLTIP("この距離まで詰めたら足を止めて爪を振る")
     FBZZ_FIELD_RANGE(float, attackDuration, 1.5f, "Attack Duration", 0.1f, 6.0f)
     FBZZ_TOOLTIP("爪モーションの長さ。Attack.anim の尺 (1.5 秒) に合わせる")
     FBZZ_FIELD_RANGE(float, attackHitTime, 0.55f, "Hit Time", 0.0f, 6.0f)
     FBZZ_TOOLTIP("振り始めから当たり判定が出るまでの秒数")
-    FBZZ_FIELD_RANGE(float, attackHitRange, 2.6f, "Hit Range", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackHitRange, 3.2f, "Hit Range", 0.2f, 12.0f)
     FBZZ_TOOLTIP("当たり判定が出た瞬間にこの距離内なら当たる。Attack Range より少し広く取る")
 
     FBZZ_GROUP("Weave")
@@ -139,7 +139,10 @@ inline void EnemyMiteComponent::OnFixedUpdate()
 {
     const float dt = time.FixedDeltaTime();
 
-    if (IsPolarityDriven()) {
+    // 塗られて浮かされているだけの状態。足は盤面が持つが、爪はこちらが持ち続ける。
+    const bool held = IsHeldInPlace();
+
+    if (IsPolarityDriven() && !held) {
         // 引力・溜め・ノックバックの最中。高度補正まで掛けると «ギュンッ» が濁る。
         //
         // 振りかけの爪はここで捨てる。Animator 側は Attack ステートを exitTime で
@@ -161,16 +164,18 @@ inline void EnemyMiteComponent::OnFixedUpdate()
         return;
     }
 
-    ApplyHover();
+    // 待たされている間の高さは盤面が決めている (Armed Hold の上下動)。
+    // ここで高度補正を重ねると 2 つのばねが同じ y を取り合って震える。
+    if (!held) ApplyHover();
 
     if (m_attackTimer > 0.0f) {
         TickAttack(dt);
         return;
     }
 
-    if (IsMovementLocked()) {
+    if (held ? IsActionLocked() : IsMovementLocked()) {
         debugState = "Locked";
-        StopHorizontal();
+        if (!held) StopHorizontal();
         return;
     }
 
@@ -197,17 +202,19 @@ inline void EnemyMiteComponent::OnFixedUpdate()
         debugState = "Retreat";
         // 下がっている間も正面は外さない。背を向けて逃げると «諦めた» に見えるうえ、
         // 次の爪がどこから来るのかが読めなくなる。
-        Drive(direction * -std::max(retreatSpeed, 0.0f), direction, dt);
+        if (held) FaceWithLean(direction, Vector3::ZERO, dt);
+        else      Drive(direction * -std::max(retreatSpeed, 0.0f), direction, dt);
         return;
     }
 
     if (distanceSq <= attackRange * attackRange) {
         if (!AttackReady()) {
             debugState = "Circle";
-            Drive(Sideways(direction) * std::max(strafeSpeed, 0.0f), direction, dt);
+            if (held) FaceWithLean(direction, Vector3::ZERO, dt);
+            else      Drive(Sideways(direction) * std::max(strafeSpeed, 0.0f), direction, dt);
             return;
         }
-        StopHorizontal();
+        if (!held) StopHorizontal();
         FaceWithLean(direction, Vector3::ZERO, dt);
 
         debugState     = "Attack";
@@ -218,6 +225,13 @@ inline void EnemyMiteComponent::OnFixedUpdate()
         BeginAttackCooldown();
         animator.SetTrigger(enemyanim::kAttack);
         se::Play(audio, se::kMiteAttack);
+        return;
+    }
+
+    // 待たされている間は詰められない。正面だけ外さずに «届いたら殴る» を待つ。
+    if (held) {
+        debugState = "Armed";
+        FaceWithLean(direction, Vector3::ZERO, dt);
         return;
     }
 

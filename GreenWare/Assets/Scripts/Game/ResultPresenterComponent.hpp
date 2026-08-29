@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ResultPresenterComponent.hpp | sandbox
-// Result.scene の UIText に直前の勝敗と戦績を表示する
+/// @file    ResultPresenterComponent.hpp
+/// @brief   Result.scene の UIText に直前の勝敗と戦績を表示する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 #include <Engine/Scene/Components/UIText.hpp>
@@ -28,16 +29,32 @@ public:
         value += "\nTIME " + std::to_string(minutes) + ":" + (seconds < 10 ? "0" : "") +
                  std::to_string(seconds);
         value += "\nDESTROYED " + std::to_string(GameResultState::defeatedEnemies);
-        value += "\nENEMY COLLISIONS " + std::to_string(GameResultState::enemyImpacts);
-        value += "\nANCHOR SLAMS " + std::to_string(GameResultState::anchorImpacts);
+        // 引きと押しを別々に出す。ランクの 3 軸のうち 2 つがこれなので、
+        // «どちらが足りなかったか» が数字のまま読めないと次の 1 周へ繋がらない。
+        value += "\nBEST CHAIN " + std::to_string(GameResultState::bestChain);
+        value += "\nPUSH KILLS " + std::to_string(GameResultState::pushKills);
+
+        // WHY ランクを勝ったときだけ出すか: 負けたプレイに «C» と付けても、
+        //     何を直せばよいかは伝わらない。リトライした周も同じ理由で出さない
+        //     (Docs/game-flow.md「リトライ」)。
+        const bool showRank = GameResultState::RankAvailable();
+        if (showRank) value += "\n\nRANK " + std::string(GameResultState::RankLabel());
+
+        if (GameResultState::bestSeconds > 0.0f) {
+            const int best = static_cast<int>(std::round(GameResultState::bestSeconds));
+            value += "\nBEST " + std::to_string(best / 60) + ":" +
+                     (best % 60 < 10 ? "0" : "") + std::to_string(best % 60);
+        }
         ui.SetText(value);
 
-        // NOTE: 素材には Rank_S / A / B / C も入っているが、ランクを決める規則が
-        //       まだどこにも無い (戦績は表示しているだけ)。ここで式を作ると
-        //       評価基準をスクリプトが勝手に決めることになるので、
-        //       ランク音は規則が決まってから se::RankBank() で繋ぐ。
         se::EnsureSource(scene, "UI");
         se::Play(audio, se::kUiResult);
+        // ランク音は «評価が出た» ことの合図なので、出していないときは鳴らさない。
+        if (showRank) se::Play(audio, se::RankBank(GameResultState::RankLabel()[0]));
+
+        // 自己ベストは表示した «後» に更新する。先に更新すると、今回の記録が
+        // そのままベストとして併記され、更新できたかどうかが読めない。
+        GameResultState::CommitBest();
     }
 };
 

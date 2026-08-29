@@ -1,7 +1,7 @@
-/// @file TimeManagerComponent.hpp
-/// @brief ゲーム内時間の速さを 1 箇所で決める
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    TimeManagerComponent.hpp
+/// @brief   ゲーム内時間の速さを 1 箇所で決める
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 1 箇所に集めるか:
 ///   Time::timeScale は誰でも書けるグローバルな 1 変数で、書き手が 2 つになった瞬間に

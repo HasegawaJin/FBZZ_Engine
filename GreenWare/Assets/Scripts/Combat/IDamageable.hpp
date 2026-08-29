@@ -1,7 +1,7 @@
-/// @file IDamageable.hpp
-/// @brief ダメージを受け取れるものが実装する横断インターフェース
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    IDamageable.hpp
+/// @brief   ダメージを受け取れるものが実装する横断インターフェース
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// WHY 基底クラスではなくインターフェースか:
 ///   ダメージを受けるものは敵だけではない。プレイヤーも、将来置く破壊可能な障害物も

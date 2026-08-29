@@ -53,7 +53,7 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
     // 「同じ色の濃淡」を作るのに毎回 2 箇所直すことになる。
     float  gradient = UI_LinearGradient(input.localUv, gradientAngle);
     float  shade    = 1.0f + (gradient - 0.5f) * gradientStrength;
-    float4 fill     = fillColor * g_Color;
+    float4 fill     = fillColor * UITint(input);
     fill.rgb       *= shade;
     fill.a         *= UI_Coverage(distance);
     result          = UI_Over(fill, result);
@@ -61,7 +61,7 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
     if (borderWidth > 0.0f && borderColor.a > 0.0f)
     {
         float4 border = borderColor;
-        border.a *= UI_Border(distance, borderWidth) * g_Color.a;
+        border.a *= UI_Border(distance, borderWidth) * UITint(input).a;
         result = UI_Over(border, result);
     }
 

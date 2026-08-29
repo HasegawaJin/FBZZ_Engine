@@ -1,7 +1,7 @@
-/// @file CameraShakeManagerComponent.hpp
-/// @brief 複数のカメラ揺れを加算合成し、カメラへ渡すオフセットを 1 本にまとめる
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    CameraShakeManagerComponent.hpp
+/// @brief   複数のカメラ揺れを加算合成し、カメラへ渡すオフセットを 1 本にまとめる
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 加算にするか:
 ///   以前は TpsCameraComponent が「強い方が勝つ」1 本だけを持っていた。被弾と衝突が

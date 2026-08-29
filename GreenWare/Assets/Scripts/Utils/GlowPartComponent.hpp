@@ -1,7 +1,7 @@
-/// @file GlowPartComponent.hpp
-/// @brief 極性を持たない発光パーツへ固定色を流す。M_GlowPart を敵以外でも使うための駆動側
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    GlowPartComponent.hpp
+/// @brief   極性を持たない発光パーツへ固定色を流す。M_GlowPart を敵以外でも使うための駆動側
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 ///
 /// WHY 材質を分けずにスクリプトで色を書くか:
 ///   M_GlowPart は «光り方» を決める 1 枚で、色は GameObject 単位の override が決める、
@@ -53,6 +53,19 @@ public:
     FBZZ_TOOLTIP("発光メッシュを持つ GameObject。空なら自分自身")
     FBZZ_FIELD_RANGE_INT(int, emissiveSlot, 0, "Emissive Slot", 0, 15)
 
+    /// 今フレームだけ別の色で光らせる。極を纏っているプレイヤー
+    /// (PlayerPolarityComponent) が、緑をその極の色へ一時的に置き換えるのに使う。
+    ///
+    /// WHY 1 フレームで失効するか: «戻す» を別に呼ぶ作りにすると、解除の呼び忘れ 1 回で
+    ///     プレイヤーが赤いまま張り付く。押し続けている間だけ効いて、呼ばれなくなった
+    ///     時点が解除になる形にする (PlayerControllerComponent の移動倍率と同じ)。
+    void RequestColor(const Vector4& color, float overrideIntensity)
+    {
+        m_requestedColor     = color;
+        m_requestedIntensity = Max(overrideIntensity, 0.0f);
+        m_hasRequest         = true;
+    }
+
     void OnStart()  override;
     void OnUpdate() override;
 
@@ -62,6 +75,10 @@ private:
         // glowTarget 未アサインなら EntityRef が無効になり、Instance が自分自身へ落ちる。
         return material.Instance(glowTarget.ref, static_cast<uint32_t>(emissiveSlot));
     }
+
+    Vector4 m_requestedColor     = Vector4{ 0.0f, 0.0f, 0.0f, 1.0f };
+    float   m_requestedIntensity = 0.0f;
+    bool    m_hasRequest         = false;
 };
 
 FBZZ_REFLECT(GlowPartComponent)
@@ -77,11 +94,15 @@ inline void GlowPartComponent::OnStart()
 
 inline void GlowPartComponent::OnUpdate()
 {
+    const Vector4 color = m_hasRequest ? m_requestedColor : glowColor;
+    const float   scale = m_hasRequest ? m_requestedIntensity : Max(intensity, 0.0f);
+    m_hasRequest = false;
+
     const MaterialInstance instance = Target();
     if (!instance.IsValid()) return;
 
-    instance.SetVector3(kEmissiveColorId, { glowColor.x, glowColor.y, glowColor.z });
-    instance.SetFloat(kEmissiveScaleId, Max(intensity, 0.0f));
+    instance.SetVector3(kEmissiveColorId, { color.x, color.y, color.z });
+    instance.SetFloat(kEmissiveScaleId, scale);
 }
 
 } // namespace sandbox

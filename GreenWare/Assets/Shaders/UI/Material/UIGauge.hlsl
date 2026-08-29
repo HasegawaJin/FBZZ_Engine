@@ -46,7 +46,7 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
     float filled     = UI_Coverage(axisPixels);
 
     float4 track = trackColor;
-    float4 fill  = fillColor * g_Color;
+    float4 fill  = fillColor * UITint(input);
     float4 body  = lerp(track, fill, filled);
     body.a      *= UI_Coverage(distance);
 

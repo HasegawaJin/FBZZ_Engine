@@ -1,7 +1,7 @@
-/// @file EyeSpriteComponent.hpp
-/// @brief 目のスプライトを差し替えて、キャラクターの表情を戦闘の出来事へ追従させる
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    EyeSpriteComponent.hpp
+/// @brief   目のスプライトを差し替えて、キャラクターの表情を戦闘の出来事へ追従させる
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY ボーンやモーフではなくテクスチャ差し替えか:
 ///   目のまわりへ専用ボーンを入れると、アニメーションクリップすべてにまぶたのキーを打つ

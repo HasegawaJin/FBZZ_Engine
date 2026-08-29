@@ -1,22 +1,23 @@
-// FBZZ Engine
-// PolarityBodyComponent.hpp | sandbox
-// 引き寄せられる側の運動。企画書 7.3 の 3 段階 (溜め → 加速 → 直進 → 衝突) を実行する。
-//
-// WHY PolarityTargetComponent と分けるか:
-//   「極性を帯びられる」と「引力で動ける」は別の性質である。柱と壁は前者だけを持つ
-//   (7.3「動くのは軽い側だけ。ヘビースライムと柱は動かない」)。1 クラスにまとめると
-//   柱にも RigidBody を要求することになり、質量無限のアンカーという設計が崩れる。
-//   このスクリプトが付いていないこと自体が「動かない側」の宣言になる。
-//
-// WHY 引力を万有引力にしないか:
-//   7.3 が明示している。距離の二乗に反比例させると遠いと動かず近いと発散するため、
-//   17 章が最重要とした「ギュンッ」が絶対に出ない。ここでは物理法則ではなく、
-//   溜め → 一定速度の直進、という演出の手続きとして書く。
-//
-// WHY 誰とリンクするかをここで決めないか:
-//   相手選びは PolarityFieldComponent が盤面全体を見て 1 箇所で決める。ここで各自が
-//   最寄りを探すと、A は B を、B は C を見る、という食い違いが起きて引力が成立しない。
-//   このクラスは「指定された相手へ飛ぶ」ことだけに責任を持つ。
+/// @file    PolarityBodyComponent.hpp
+/// @brief   引き寄せられる側の運動。企画書 7.3 の 3 段階 (溜め → 加速 → 直進 → 衝突) を実行する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY PolarityTargetComponent と分けるか:
+/// 「極性を帯びられる」と「引力で動ける」は別の性質である。柱と壁は前者だけを持つ
+/// (7.3「動くのは軽い側だけ。ヘビースライムと柱は動かない」)。1 クラスにまとめると
+/// 柱にも RigidBody を要求することになり、質量無限のアンカーという設計が崩れる。
+/// このスクリプトが付いていないこと自体が「動かない側」の宣言になる。
+///
+/// WHY 引力を万有引力にしないか:
+/// 7.3 が明示している。距離の二乗に反比例させると遠いと動かず近いと発散するため、
+/// 17 章が最重要とした「ギュンッ」が絶対に出ない。ここでは物理法則ではなく、
+/// 溜め → 一定速度の直進、という演出の手続きとして書く。
+///
+/// WHY 誰とリンクするかをここで決めないか:
+/// 相手選びは PolarityFieldComponent が盤面全体を見て 1 箇所で決める。ここで各自が
+/// 最寄りを探すと、A は B を、B は C を見る、という食い違いが起きて引力が成立しない。
+/// このクラスは「指定された相手へ飛ぶ」ことだけに責任を持つ。
 #pragma once
 
 #include <Engine/Scene/Components/PresentationComponents.hpp>
@@ -27,7 +28,9 @@
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
+#include <Scripts/Utils/LoopVoice.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -51,8 +54,14 @@ struct PolarityImpact {
     // 法線方向の接近速度 (m/s)。12.6 の「衝突速度に比例」はこの値で計る。
     float speed   = 0.0f;
     float impulse = 0.0f;
-    // ぶつけた先が固定アンカーだったか (7.5 の「敵 ↔ 柱・壁」)。
+    // ぶつけた先が固定アンカーだったか (敵 ↔ 壁・地形)。
     bool struckIsAnchor = false;
+    // 引力ではなく反発で飛んだ結果の衝突か。
+    //
+    // WHY 記録するか: ランク評価は «押し込みで落とした数» を集束とは別の項目に置いている
+    //     (Docs/game-flow.md「評価とランク」)。どちらの手で倒したかを知っているのは
+    //     飛んだ本人だけで、受け取った側から後で見分ける方法が無い。
+    bool fromRepulse = false;
     // 飛んだ側が使い切った極。
     //
     // WHY 記録に含めるか: 盤面は衝突を回収するときに極を消してから演出へ流すため
@@ -63,11 +72,26 @@ struct PolarityImpact {
 };
 
 // 7.3 の 3 段階に、衝突後の硬直 (7.4) を足した 4 状態。
+//
+// Held / Thrown はコアアクション草案 (Docs/core-action-draft.md) の «掴んで投げる» 用。
+// WHY 別クラスに分けず同じ状態機械へ足すか:
+//   掴んで投げた対象がぶつかったときに «衝突ダメージ・ヒットストップ・爆発» へ乗る道は、
+//   PolarityImpact を積んで PolarityFieldComponent に回収させる 1 本しかない。別クラスに
+//   すると、その 1 本を丸ごと二重化することになる。運動の出どころが変わるだけなので、
+//   «誰がこの剛体の速度を決めているか» を表すこの enum に足すのが正しい。
 enum class PullPhase : int {
     Idle       = 0,
     Windup     = 1, // ① 溜め。重力を抜いて浮かせ、相手と逆へ離してから震わせる
     Flying     = 2, // ②③ 一定速度で直進する
     Recovering = 3, // 衝突後の短時間スタン
+    Held       = 4, // 掴まれている。掴んだ側が毎フレーム保持点を指定する
+    Thrown     = 5, // 投げ出された。弾道は物理に任せ、接触したら衝突として記録する
+    // 極を乗せられたが、まだ相手が決まっていない。重力を抜いてその場に浮いて待つ。
+    //
+    // WHY 待たせる «状態» を作るか: 塗った直後の敵がそのまま歩き回ると、なぞって
+    //     並べた «列» が次の瞬間には崩れていて、仕込むという行為が成立しない。
+    //     浮かせて止めれば、塗った瞬間の配置がそのまま集束までの盤面になる。
+    Armed      = 6,
 };
 
 class PolarityBodyComponent : public Script {
@@ -91,6 +115,20 @@ public:
     // 線が床を這うのを防ぐ。
     FBZZ_FIELD_RANGE(float, linkHeightOffset, 0.6f, "Link Height", 0.0f, 5.0f)
 
+    // 極を乗せられて相手待ちのあいだの浮き方。撃ち出し直前の «溜め» とは別物で、
+    // あちらが 0.45 秒なのに対しこちらは極が切れるまで続く。
+    FBZZ_GROUP("Armed Hover")
+    FBZZ_FIELD_RANGE(float, armedLiftSpeed, 2.2f, "Lift", 0.0f, 10.0f)
+    FBZZ_TOOLTIP("待ちに入った瞬間に上へ与える初速 [m/s]。地面から離れて «掴まれた» に見える高さ")
+    FBZZ_FIELD_RANGE(float, armedBobSpeed, 0.35f, "Bob Speed", 0.0f, 3.0f)
+    FBZZ_TOOLTIP("上下に漂う速さ [m/s]。0 でその高さに静止する")
+    FBZZ_FIELD_RANGE(float, armedBobHz, 0.45f, "Bob Hz", 0.05f, 4.0f)
+
+    FBZZ_GROUP("Audio")
+    FBZZ_FIELD_RANGE(float, travelVoiceVolume, 0.55f, "Travel Loop", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("飛んでいる間ずっと鳴る音の音量。0 で鳴らさない。"
+                 "連鎖では複数体が同時に飛ぶので、上げすぎると衝突音が埋もれる")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD(bool, drawDebugFlight, false, "Draw Debug Flight")
     FBZZ_FIELD_READ_ONLY(std::string, debugPhase,   "Idle", "Phase")
@@ -98,9 +136,51 @@ public:
 
     // ── 盤面 (PolarityFieldComponent) から呼ばれる入口 ──────────────────────
     // 同じ相手で連続して呼ばれても溜めをやり直さない (毎フレーム呼ばれる前提)。
+    /// 極を乗せられて «待ち» に入る。相手が決まったら BeginPull がそのまま上書きする。
+    /// 既に何かの制御下 (溜め・飛行・掴まれ・硬直) にあるときは何もしない。
+    void BeginArmed();
+    /// 待ちを解いて地面へ戻す。極が切れた / 中和された側から呼ぶ。
+    void EndArmed();
+    [[nodiscard]] bool IsArmed() const { return m_phase == PullPhase::Armed; }
+
     void BeginPull(GameObject& partner, bool partnerIsAnchor);
     // リンクが切れた (極性が切れた / 相手が消えた / 別の相手に取られた)。
     void CancelPull();
+
+    // ── 掴み (MagnetHandComponent から呼ばれる入口) ──────────────────────────
+    // 保持点へ向かって毎フレーム引き寄せる。BeginPull と同じく毎フレーム呼ばれる前提で、
+    // 初回の呼び出しが掴んだ瞬間になる。
+    //
+    // WHY 位置を直接書かずに速度で寄せるか: Transform を直接ずらすと物理同期に戻され、
+    //     掴んだ相手が保持点と元の位置の間で毎フレーム往復する。速度で寄せれば
+    //     ソルバーと喧嘩せず、壁や他の敵に当たれば素直に押し留まる。
+    void Hold(const Vector3& point, float followSeconds, float maxSpeed);
+    // 掴みを解いて自由落下へ戻す (振りほどかれた / 掴んだ側が消えた)。
+    void ReleaseHold();
+    // 投げ出す。以降は物理の弾道に任せ、接触したら衝突として記録する。
+    // polarity は着弾エフェクトの色に使う (投げた «手» の極)。
+    void BeginThrow(const Vector3& velocity, Polarity polarity);
+
+    // ── 反発 (PolarityFieldComponent から呼ばれる入口) ───────────────────────
+    /// 同極から弾き飛ばされる。溜めは無く、この 1 フレームで速度が乗る。
+    ///
+    /// WHY 投げ (Thrown) と同じ状態を使うか: どちらも «自前の等速直進ではなく物理の弾道で
+    ///     飛んでいて、当たった先で衝突として記録される» という同じ運動をしている。
+    ///     状態を分けると、衝突の記録・AI 停止・着地の畳み方を丸ごと二重に書くことになる。
+    ///
+    /// WHY 溜め・飛行・掴みの最中は無視するか: そちらは行き先が既に決まっている運動で、
+    ///     横から速度を書くと «引かれていたはずの敵が別の方向へ消える» が起きる。
+    ///     弾けるのは «待っているだけ» か «自由に動いている» 相手だけ。
+    /// @param fromField 盤面の反発として数えるか。ランク評価の «押し込み撃破» は
+    ///        これが立っている飛行の衝突だけを数える。斬撃のノックバックのように
+    ///        «押しではない» 経路は false を渡すこと (Docs/game-flow.md「評価とランク」)。
+    void ApplyRepulse(const Vector3& direction, float speed, float lift, float maxSeconds,
+                      bool fromField = true);
+    /// 今フレーム弾いてよい状態か。盤面が間隔 (repulseCooldown) と併せて確かめる。
+    [[nodiscard]] bool IsAvailableForRepulse() const
+    {
+        return m_phase == PullPhase::Idle || m_phase == PullPhase::Armed;
+    }
 
     // ── 参照する側の問い合わせ ───────────────────────────────────────────────
     // 7.3「引かれている間、敵 AI は停止する。抵抗させるとギュンッが濁る」。
@@ -111,9 +191,22 @@ public:
     }
     // 衝突後の硬直中 (7.4)。敵 AI はこの間も動かない。
     [[nodiscard]] bool IsStunned() const { return m_phase == PullPhase::Recovering; }
+    [[nodiscard]] bool IsHeld()    const { return m_phase == PullPhase::Held; }
+    [[nodiscard]] bool IsThrown()  const { return m_phase == PullPhase::Thrown; }
+    // この剛体の速度を極性システムが決めている最中か。敵 AI は自分で動くのをやめる。
+    [[nodiscard]] bool IsUnderControl() const { return m_phase != PullPhase::Idle; }
     // 盤面が新しいリンクの相手に選んでよいか。硬直中の対象を選ぶと、
     // ぶつかった相手と密着したまま組み直してその場で震え続ける。
-    [[nodiscard]] bool IsAvailableForLink() const { return !IsStunned(); }
+    //
+    // WHY 掴み中と投げ中も外すか: どちらもプレイヤーが速度を決めている最中で、
+    //     盤面が横から BeginPull を掛けると手の中の相手が引きちぎられて飛んでいく。
+    //     «掴んだものが勝手にどこかへ行く» は原因が画面から読めない壊れ方になる。
+    [[nodiscard]] bool IsAvailableForLink() const
+    {
+        return !IsStunned() && !IsHeld() && !IsThrown();
+    }
+    // 新しく掴んでよいか。既に誰かの手の中／飛行中／硬直中の相手は掴ませない。
+    [[nodiscard]] bool IsAvailableForGrab() const { return m_phase == PullPhase::Idle; }
     // 今どれへ引かれているか。盤面が「継続中のリンクを乗り換えさせない」判定に使う。
     [[nodiscard]] EntityID PartnerId() const { return m_partner.id; }
     // 線と飛行の基準点。原点が足元にあるモデルでも胴体の高さを狙う。
@@ -142,6 +235,8 @@ public:
 
     void OnStart() override;
     void OnUpdate() override;
+    // 無効化された体から飛行音が鳴り続けないようにする。
+    void OnDisable() override { m_travelVoice.Stop(*this); }
     // 溜めの途中で消える / リロードされる経路でも重力を戻す。
     void OnDestroy() override { EndFloat(); }
     // WHY 運動を OnFixedUpdate に置くか:
@@ -154,6 +249,8 @@ public:
 private:
     void TickWindup(float dt);
     void TickFlying(float dt);
+    void TickHeld(float dt);
+    void TickThrown(float dt);
     // 相手から自分へ向く水平単位ベクトル。離れる向きと飛ぶ向きの符号違いで共有する。
     [[nodiscard]] Vector3 AwayFromPartner(const GameObject& partner) const;
     // 「接触した」とみなす中心間距離。両者のコライダー半径 (スケール込み) から出す。
@@ -161,8 +258,9 @@ private:
     // 1 体ぶんの水平方向の当たり半径。取れなければ 0。
     // WHY 非 const 参照か: GameObject::GetComponent<T>() が非 const にしか無い。
     [[nodiscard]] static float ContactRadiusOf(GameObject& object);
-    // 溜め中だけ重力を弱める。抜けるときは必ず元へ戻す。
-    void BeginFloat();
+    // 重力を一時的に差し替える。抜けるときは必ず元へ戻す。
+    // 溜めは弱い重力 + 上向きの初速、掴みは完全な無重力で初速なし。
+    void BeginFloat(float gravityScale, float liftSpeed);
     void EndFloat();
     void RegisterImpact(GameObject& other, const Vector3& contactPoint,
                         const Vector3& contactNormal, float approachSpeed,
@@ -199,8 +297,31 @@ private:
     // 個々が震えているのではなく盤面全体が揺れているように見える。
     float m_jitterSeed = 0.0f;
 
+    // 掴まれている間の保持点。掴んだ側が毎フレーム上書きする。
+    Vector3 m_holdPoint    = Vector3::ZERO;
+    float   m_holdFollow   = 0.08f;
+    float   m_holdMaxSpeed = 30.0f;
+    // 投げた «手» の極。着弾エフェクトの色に使う。
+    // WHY 本人の極を読まないか: 掴んで投げた相手は無極のことが多く、そのまま流すと
+    //     爆発が全部灰色になって «誰が投げたか» が絵から消える。
+    Polarity m_thrownPolarity = Polarity::None;
+    // この 1 回の弾道を打ち切るまでの秒数。投げは maxFlightSeconds、反発は短い。
+    //
+    // WHY 反発だけ短いか: 反発は毎秒使う手なので、当たらなかった 1 回のために
+    //     3 秒も AI が止まると «押しただけで敵が固まる» 足止めになる。
+    float m_thrownCap = 0.0f;
+    // この弾道が反発によるものか。着地を衝突として数えないための区別。
+    bool  m_repelled  = false;
+    // その反発が «盤面の押し» だったか。斬撃のノックバックは同じ運動をするが、
+    // ランク評価の «押し込み撃破» には数えない。
+    bool  m_repelledByField = false;
+
     PolarityImpact m_impact;
     bool           m_hasImpact = false;
+
+    // WHY 主 voice で鳴らさないか: 飛行音は撃ち出しから着弾まで鳴り続ける。同じ口から
+    //     出すと、その音量が着弾音や被弾音にも掛かる (LoopVoice.hpp)。
+    se::LoopVoice m_travelVoice;
 };
 
 FBZZ_REFLECT(PolarityBodyComponent)
@@ -219,6 +340,9 @@ inline void PolarityBodyComponent::OnStart()
     m_hasImpact   = false;
     m_partner     = {};
     m_flightSpeed = 0.0f;
+    m_thrownPolarity = Polarity::None;
+    m_thrownCap   = tuning->maxFlightSeconds;
+    m_repelled    = false;
     // 溜めの途中でリロードされた場合に備え、重力を通常へ戻してから始める。
     m_floating          = true;
     m_savedGravityScale = 1.0f;
@@ -228,12 +352,43 @@ inline void PolarityBodyComponent::OnStart()
     // 手触りの調整で「今の値が良かったのか」を判断できなくなる。
     m_jitterSeed = static_cast<float>(scene.Self() ? scene.Self()->GetID().index : 0u) * 1.37f;
 
+    // 引力の音は «盤面のどれが動いたか» が方向で読める必要があるので 3D。
+    se::EnsureSource(scene, "SE", 1.0f);
+    // 持ち主ごとに一意でないと、同時に飛ぶ 2 体が同じ子音源を奪い合う。
+    m_travelVoice.SetKey("AttractTravel");
+    m_travelVoice.Stop(*this);
+
     if (!scene.GetScript<PolarityTargetComponent>()) {
         // 極性を帯びられない相手は盤面が候補に入れないため、引力が一度も発生しない。
         // 「付けたのに動かない」を無言で通さない。
         debug.LogError("PolarityBodyComponent requires PolarityTargetComponent "
                        "on the same object (attraction never triggers without it).");
     }
+}
+
+inline void PolarityBodyComponent::BeginArmed()
+{
+    // 既に誰かの制御下にあるなら触らない。溜めや飛行を «待ち» で上書きすると、
+    // 撃ち出された瞬間にその場へ引き戻される。
+    if (m_phase != PullPhase::Idle) return;
+
+    m_phase = PullPhase::Armed;
+    m_timer = 0.0f;
+
+    // WHY 溜め (WindupGravity 0.15) を流用しないか:
+    //   あちらは 0.45 秒で終わる «撃ち出す直前» の浮きで、0.15 倍でも落ち切る前に
+    //   飛んでいく。待ちは極が切れるまで数秒続くので、同じ値だと 1 度跳ねたあと
+    //   ただ地面へ落ちて座る。«ふわふわ浮いて待っている» にならない。
+    //   待ちは重力を完全に抜き、垂直速度をこちらで抑える。
+    BeginFloat(0.0f, armedLiftSpeed);
+}
+
+inline void PolarityBodyComponent::EndArmed()
+{
+    if (m_phase != PullPhase::Armed) return;
+    EndFloat();
+    m_phase = PullPhase::Idle;
+    m_timer = 0.0f;
 }
 
 inline void PolarityBodyComponent::BeginPull(GameObject& partner, bool partnerIsAnchor)
@@ -245,25 +400,34 @@ inline void PolarityBodyComponent::BeginPull(GameObject& partner, bool partnerIs
     if (m_partner.id == partner.GetID() && IsBeingPulled())
         return;
 
+    // 待ちから溜めへは «そのまま繋ぐ»。EndArmed を挟んで重力を戻すと、
+    // 相手が決まった 1 フレームだけ落下してから浮き直すことになる。
+    if (m_phase == PullPhase::Armed) m_phase = PullPhase::Idle;
+
     m_partner = EntityRef{ partner.GetID() };
     m_phase   = PullPhase::Windup;
     m_timer   = std::max(WindupSeconds(), 0.0f);
-    BeginFloat();
+    BeginFloat(WindupGravity(), WindupLift());
+
+    // リンクが «成立した» 瞬間。溜めは一度引き離してから撃ち出すので、見た目には
+    // 離れていく側から始まる。ここで音を置かないと、17 章の «ギュンッ» の前触れが
+    // «勝手に浮き上がった» としか読めなくなる。
+    se::Play(audio, se::kAttractConverge);
 }
 
 // 溜めの入口で重力を弱め、上向きの初速を一度だけ与える。
 // WHY 毎ステップ y 速度を書かないか: 書き続けると重力が積み上がらず、上がって止まるだけの
 //     直線運動になる。初速だけ与えて弱い重力に任せると、上がって落ちる弧を描く。
-inline void PolarityBodyComponent::BeginFloat()
+inline void PolarityBodyComponent::BeginFloat(float gravityScale, float liftSpeed)
 {
     if (m_floating) return;
     m_floating = true;
     m_savedGravityScale = physics.GetGravityScale();
-    physics.SetGravityScale(WindupGravity());
+    physics.SetGravityScale(gravityScale);
 
-    if (WindupLift() > 0.0f) {
+    if (liftSpeed > 0.0f) {
         Vector3 velocity = physics.GetVelocity();
-        velocity.y = WindupLift();
+        velocity.y = liftSpeed;
         physics.SetVelocity(velocity);
     }
 }
@@ -278,11 +442,93 @@ inline void PolarityBodyComponent::EndFloat()
 inline void PolarityBodyComponent::CancelPull()
 {
     if (m_phase == PullPhase::Recovering) return; // 硬直は最後まで通す
+    // 掴まれている / 投げられている間は盤面の管轄外。ここで解くと、盤面が候補を
+    // 組み替えたフレームに手の中の相手が落ちる。
+    if (m_phase == PullPhase::Held || m_phase == PullPhase::Thrown) return;
+    // 待ちも解かない。盤面は «組めなかった» 対象へ毎フレーム CancelPull を投げるので、
+    // ここで畳むと «解除 → 待ち直し» を毎フレーム繰り返すことになる。BeginFloat は
+    // 呼ばれるたびに上向きの初速を入れ直すため、浮くどころか上空へ飛んでいく。
+    // 待ちを終えるのは極が切れたときで、その判断は EndArmed の呼び出し側が持つ。
+    if (m_phase == PullPhase::Armed) return;
 
     EndFloat();
+    m_travelVoice.Stop(*this);
     m_partner = {};
     m_phase   = PullPhase::Idle;
     m_timer   = 0.0f;
+}
+
+inline void PolarityBodyComponent::Hold(const Vector3& point, float followSeconds,
+                                        float maxSpeed)
+{
+    m_holdPoint    = point;
+    m_holdFollow   = std::max(followSeconds, 0.01f);
+    m_holdMaxSpeed = std::max(maxSpeed, 0.0f);
+
+    if (m_phase == PullPhase::Held) return; // 掴み直しではない (毎フレーム呼ばれる)
+
+    // 溜めの途中を掴んだ場合、相手へのリンクを先に解いてから引き受ける。
+    m_partner     = {};
+    m_flightSpeed = 0.0f;
+    m_timer       = 0.0f;
+    m_phase       = PullPhase::Held;
+    // 手の中では完全な無重力にする。弱い重力を残すと、保持点へ寄る速度と
+    // 落下が釣り合った高さで止まり、狙った位置より必ず下にぶら下がる。
+    EndFloat();
+    BeginFloat(0.0f, 0.0f);
+}
+
+inline void PolarityBodyComponent::ReleaseHold()
+{
+    if (m_phase != PullPhase::Held) return;
+    EndFloat();
+    m_phase = PullPhase::Idle;
+    m_timer = 0.0f;
+}
+
+inline void PolarityBodyComponent::BeginThrow(const Vector3& velocity, Polarity polarity)
+{
+    // 掴んだままでも、床に転がっている相手 (押し出し) でも同じ入口を通す。
+    EndFloat();
+    m_partner        = {};
+    m_phase          = PullPhase::Thrown;
+    m_timer          = 0.0f;
+    m_thrownPolarity = polarity;
+    m_flightSpeed    = velocity.Length();
+    m_thrownCap      = MaxFlightSeconds();
+    m_repelled       = false;
+    physics.SetVelocity(velocity);
+}
+
+inline void PolarityBodyComponent::ApplyRepulse(const Vector3& direction, float speed,
+                                                float lift, float maxSeconds, bool fromField)
+{
+    if (!IsAvailableForRepulse()) return;
+
+    // 待ち (Armed) は重力を切って浮かせてある。戻さずに速度だけ書くと、
+    // 弾かれた相手が «無重力のまま横へ滑っていく» ことになる。
+    EndFloat();
+
+    Vector3 away = direction;
+    away.y = 0.0f;
+    // 真上から重なった 2 体は水平の向きが決まらない。震えの種から向きを作れば
+    // 個体ごとに散り、重なった山が一点へ潰れたまま残ることがない。
+    away = away.NormalizedOr({ std::cos(m_jitterSeed), 0.0f, std::sin(m_jitterSeed) });
+
+    Vector3 velocity = away * Max(speed, 0.0f);
+    // 上へ乗せるのは «弾けた» を絵にするため。水平だけだと床を滑るので、
+    // 同じ速度でも «押しのけられた» にしか見えない。
+    velocity.y = Max(lift, 0.0f);
+
+    m_partner        = {};
+    m_phase          = PullPhase::Thrown;
+    m_timer          = 0.0f;
+    m_thrownPolarity = Polarity::None; // 本人の極を使う (弾かれても極は残る)
+    m_flightSpeed    = velocity.Length();
+    m_thrownCap      = Max(maxSeconds, 0.1f);
+    m_repelled       = true;
+    m_repelledByField = fromField;
+    physics.SetVelocity(velocity);
 }
 
 inline Vector3 PolarityBodyComponent::LinkPoint() const
@@ -297,8 +543,28 @@ inline void PolarityBodyComponent::OnFixedUpdate()
     const float dt = time.FixedDeltaTime();
 
     switch (m_phase) {
+    case PullPhase::Armed: {
+        m_timer += dt;
+        // 水平は抜いて «その場» を保つ。抜かないと、塗られる直前まで走っていた
+        // 勢いで列から流れ出ていき、並べた配置が崩れる。
+        //
+        // 垂直はゆっくりした上下へ寄せる。重力を切ってあるので、放っておくと
+        // 浮き上がった高さで完全に静止して «止まった置物» になる。
+        // 個体ごとに位相をずらすのは、揃うと盤面全体が 1 枚の板に見えるため
+        // (m_jitterSeed は震えと共用の決定的な種)。
+        const float bob = std::sin(m_timer * armedBobHz * TWO_PI + m_jitterSeed) *
+                          armedBobSpeed;
+        Vector3 velocity = physics.GetVelocity();
+        velocity.x = 0.0f;
+        velocity.z = 0.0f;
+        velocity.y += (bob - velocity.y) * Clamp01(dt * 6.0f);
+        physics.SetVelocity(velocity);
+        break;
+    }
     case PullPhase::Windup:     TickWindup(dt); break;
     case PullPhase::Flying:     TickFlying(dt); break;
+    case PullPhase::Held:       TickHeld(dt);   break;
+    case PullPhase::Thrown:     TickThrown(dt); break;
     case PullPhase::Recovering:
         m_timer -= dt;
         if (m_timer <= 0.0f) {
@@ -394,6 +660,11 @@ inline void PolarityBodyComponent::TickWindup(float dt)
     EndFloat();
     m_phase = PullPhase::Flying;
     m_timer = 0.0f;
+
+    // 飛んでいる «あいだ» の音。撃ち出しの一発 (Launch) は VfxManager 側の絵と同じく
+    // 出発点に残る音で、こちらは動いている本体に付いていく。7.3 が加速を漸進させない
+    // と決めている以上、飛んでいる速さは絵からは読めない。近づいてくる音の方で読ませる。
+    m_travelVoice.Update(*this, se::kAttractTravelLoop.First(), travelVoiceVolume);
 }
 
 // ②③ 一定速度で最短距離を突っ切る (7.3)。重力も抗力も効かせない。
@@ -451,10 +722,46 @@ inline void PolarityBodyComponent::TickFlying(float dt)
         EndFlight(PullPhase::Recovering);
 }
 
+// 保持点へ寄せる。距離を追従時間で割った速度なので、遠いほど速く寄り、
+// 着いたところで自然に緩む (指数的な減衰と同じ形)。
+inline void PolarityBodyComponent::TickHeld(float)
+{
+    const Vector3 toHold  = m_holdPoint - LinkPoint();
+    const float   distance = toHold.Length();
+    if (distance <= EPSILON) {
+        physics.SetVelocity(Vector3::ZERO);
+        return;
+    }
+
+    float speed = distance / m_holdFollow;
+    if (m_holdMaxSpeed > 0.0f) speed = std::min(speed, m_holdMaxSpeed);
+    physics.SetVelocity((toHold / distance) * speed);
+}
+
+// 投げたあとは弾道を物理に任せる。速度を書き続けると重力が乗らず、
+// «放り投げた» ではなく «誘導弾» に見える。ここは打ち切りだけを数える。
+inline void PolarityBodyComponent::TickThrown(float dt)
+{
+    m_timer += dt;
+    if (m_timer < Max(m_thrownCap, EPSILON)) return;
+
+    // 何にも当たらないまま飛び切った。
+    //
+    // WHY 反発だけ硬直を挟まないか: 反発は毎秒使う手で、外すこと自体が普通に起きる。
+    //     そこに硬直を足すと «押しただけで敵が数秒固まる» 足止めになり、押しが
+    //     «位置を変える道具» から «弱いスタン» に化ける。押しにダメージも拘束も持たせない。
+    EndFlight(m_repelled ? PullPhase::Idle : PullPhase::Recovering);
+    m_thrownPolarity = Polarity::None;
+    m_repelled       = false;
+}
+
 inline void PolarityBodyComponent::EndFlight(PullPhase next)
 {
     // 溜めの途中で打ち切られる経路もここを通る。重力を戻し忘れると浮いたままになる。
     EndFloat();
+    // 飛行の終わりは «着いた» だけでなく «打ち切られた» 経路も通る。どちらでも
+    // 動いていない体から移動音が鳴り続けないよう、必ずここで畳む。
+    m_travelVoice.Stop(*this);
     m_partner     = {};
     m_phase       = next;
     m_flightSpeed = 0.0f;
@@ -479,10 +786,17 @@ inline void PolarityBodyComponent::RegisterImpact(GameObject& other,
 
     const auto* struckTarget = scene.GetScript<PolarityTargetComponent>(&other);
     m_impact.struckIsAnchor = struckTarget ? struckTarget->isAnchor : true;
+    m_impact.fromRepulse    = m_repelled && m_repelledByField;
 
+    // 投げられた相手は無極のことが多い。投げた手の極を優先して、爆発の色で
+    // «どちらの手で投げたか» が読めるようにする。
     const auto* selfTarget = scene.GetScript<PolarityTargetComponent>();
-    m_impact.moverPolarity = selfTarget ? selfTarget->Current() : Polarity::None;
+    m_impact.moverPolarity = m_thrownPolarity != Polarity::None
+                           ? m_thrownPolarity
+                           : (selfTarget ? selfTarget->Current() : Polarity::None);
     m_hasImpact = true;
+    m_thrownPolarity = Polarity::None;
+    m_repelled       = false;
     EndFlight(PullPhase::Recovering);
 
     if (KnockbackSpeed() > 0.0f && MinImpactSpeed() > 0.0f) {
@@ -493,6 +807,35 @@ inline void PolarityBodyComponent::RegisterImpact(GameObject& other,
 
 inline void PolarityBodyComponent::OnCollisionEnter(const CollisionInfo& info)
 {
+    // 投げられた相手・弾かれた相手は «狙った 1 体» を持たないので、
+    // 最低速度だけで衝突かどうかを選り分ける。
+    if (m_phase == PullPhase::Thrown) {
+        if (m_hasImpact || !info.other) return;
+        if (info.other->tag == "Player") return;
+
+        // 弾かれた相手が «落ちて着いただけ» の接触を衝突として数えない。
+        //
+        // WHY 反発だけ除くか: 反発は上へも乗せて弾く (repulseLift) ので、必ず最後に
+        //     着地する。それをダメージにすると «押せば必ず 1 発入る» ことになり、
+        //     «押しにダメージは無い。ダメージは飛んだ先でぶつかって入る» が崩れる。
+        //     投げ (掴んで叩きつける) は逆に地面へ叩きつけるのが目的なので除かない。
+        if (m_repelled) {
+            const Vector3 velocity = physics.GetVelocity();
+            const float horizontal = std::sqrt(velocity.x * velocity.x +
+                                               velocity.z * velocity.z);
+            if (horizontal < std::abs(velocity.y)) {
+                EndFlight(PullPhase::Idle);
+                m_repelled = false;
+                return;
+            }
+        }
+
+        if (info.approachSpeed < MinImpactSpeed()) return;
+        RegisterImpact(*info.other, info.contactPoint, info.contactNormal,
+                       info.approachSpeed, info.impactImpulse);
+        return;
+    }
+
     if (m_phase != PullPhase::Flying) return;
     if (m_hasImpact) return;
     if (!info.other) return;
@@ -523,6 +866,9 @@ inline void PolarityBodyComponent::OnUpdate()
     case PullPhase::Windup:     debugPhase = "Windup";     break;
     case PullPhase::Flying:     debugPhase = "Flying";     break;
     case PullPhase::Recovering: debugPhase = "Recovering"; break;
+    case PullPhase::Held:       debugPhase = "Held";       break;
+    case PullPhase::Thrown:     debugPhase = "Thrown";     break;
+    case PullPhase::Armed:      debugPhase = "Armed";      break;
     }
     GameObject* partner = Partner();
     debugPartner = partner ? partner->name : std::string{};

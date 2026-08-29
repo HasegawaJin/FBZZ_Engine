@@ -1,0 +1,34 @@
+# FBZZ Engine
+# FX_POL_Core_Plus.mat
+# 撃破コア (＋)。KillCoreComponent が ParticleEmitter.materialPath に差す。
+#
+# WHY ＋と−で .mat を分けるか: ParticlePass は材質を materialPath をキーに
+#   グローバルへ 1 つだけ持つため、GameObject ごとの override が届かない
+#   (PolarityCore.hlsl のヘッダー / ElectricChargeCommon.hlsli と同じ制約)。
+version = 1
+shader = "Assets/Shaders/Material/Effects/PolarityCore.hlsl"
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[params]
+# PolarityTypes.hpp の kColorPlus。色の正本はあちらなので、値を変えるときは両方直す。
+coreColor = [ 1.00, 0.12, 0.14, 1.0 ]
+chargeSign = 1.0
+coreSize = 0.26
+haloFalloff = 3.4
+ringRadius = 0.62
+ringWidth = 0.070
+signScale = 0.17
+signWeight = 0.045
+signFade = 1.8
+
+[particle]
+# 芯の面積が狭いので 1 を超えて焼ける。面積の広い層でこの倍率を使うと白飛びする
+# (企画書の «彩度の高い色を抑えた強度で» が守れるのは狭い芯だけ)。
+emissive_scale = 2.2
+soft_particles = true
+soft_particle_fade_distance = 0.30

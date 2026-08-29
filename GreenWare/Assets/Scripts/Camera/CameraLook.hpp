@@ -1,7 +1,7 @@
-/// @file CameraLook.hpp
-/// @brief 視点入力 (マウス / 右スティック) を Option の設定込みで旋回量へ直す
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    CameraLook.hpp
+/// @brief   視点入力 (マウス / 右スティック) を Option の設定込みで旋回量へ直す
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY カメラの外へ出すか:
 ///   TPS と FPS で違うのは「目をどこに置くか」だけで、視点の回り方は同じでなければ

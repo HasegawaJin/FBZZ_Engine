@@ -1,7 +1,7 @@
-/// @file BossAiComponent.hpp
-/// @brief Boss「ポラリティ・コア」の行動選択と当たり判定 (企画書 8 章 / 10.6)
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    BossAiComponent.hpp
+/// @brief   Boss「ポラリティ・コア」の行動選択と当たり判定 (企画書 8 章 / 10.6)
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY 攻撃を距離で選ぶか:
 ///   8 章が「距離で役割を分けることで、重複を避けつつ AI の選択を単純にする」と決めている。
@@ -25,13 +25,20 @@
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/BossAnimatorComponent.hpp>
+#include <Scripts/Combat/BossAudioComponent.hpp>
 #include <Scripts/Combat/BossBeamComponent.hpp>
+#include <Scripts/Combat/BossDeathVfxComponent.hpp>
 #include <Scripts/Combat/BossHitboxRigComponent.hpp>
 #include <Scripts/Combat/BossPolarityCoreComponent.hpp>
+#include <Scripts/Combat/BossShockwaveComponent.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
+#include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
+#include <Scripts/Game/RumbleManagerComponent.hpp>
+#include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/ShockFalloff.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -41,6 +48,11 @@ using namespace fbzz::math;
 using fbzz::Time;
 
 namespace sandbox {
+
+// 撃破の一撃の長さ。踏みつけや着地 (RumbleManager の Default Shape) より長いのは、
+// あちらが «受けた衝撃» で、こちらが幕引きだから。Inspector へ出していないのは、
+// 短くすると告知が衝撃の 1 つに紛れ、長くすると次の画面まで引きずるため。
+inline constexpr float kBossDeathSeconds = 0.55f;
 
 class BossAiComponent : public Script {
     FBZZ_SCRIPT(BossAiComponent)
@@ -98,7 +110,9 @@ public:
     FBZZ_FIELD_RANGE(float, landStaggerFrom, 0.87f, "Land Stagger", 0.0f, 8.0f)
     FBZZ_TOOLTIP("README: f26 が潰れ最下点。そこから立ち直るまでが反撃機会")
     FBZZ_FIELD_RANGE(float, jumpHitRadius, 5.0f, "Shock Radius", 0.5f, 20.0f)
-    FBZZ_TOOLTIP("着地の衝撃波。踏みつけより広いのが «大ジャンプ» の意味")
+    FBZZ_TOOLTIP("着地の直撃。踏みつけより広いのが «大ジャンプ» の意味。"
+                 "この外側は BossShockwaveComponent の円形衝撃波が担当する "
+                 "(直撃は跳んでも避けられない / 波は跳んで越える)")
     FBZZ_FIELD_RANGE_INT(int, jumpDamage, 3, "Damage", 0, 100)
 
     FBZZ_GROUP("Charge")
@@ -143,6 +157,33 @@ public:
     FBZZ_TOOLTIP("帯電中の雑魚を外向きへ弾く速さ。極性そのものは残す (8 章)")
     FBZZ_FIELD_RANGE_INT(int, pulseDamage, 1, "Damage", 0, 100)
 
+    // WHY 攻撃ごとの数値と別に «手触り» を並べるか:
+    //   ダメージと判定半径は «成立するか» を決める値で、揺れと振動は «伝わるか» を
+    //   決める値。同じグループに混ぜると、当たらないのを直したいときに手触りの数字が、
+    //   重さを足したいときにダメージの数字が目に入る。触る理由が違うものは並べない。
+    //
+    // WHY 揺れの «割合» を 1 つしか持たないか:
+    //   攻撃ごとに揺れと振動を独立に振れるようにすると、«踏みつけは画面が揺れるのに
+    //   手は静か / ジャンプは逆» という描き分けが作れてしまう。どちらも同じ 1 つの
+    //   衝撃を伝えているので、比は盤面で 1 つに保つ。強弱は攻撃ごとの値で付ける。
+    FBZZ_GROUP("Feedback")
+    FBZZ_FIELD_RANGE(float, stompRumble, 0.70f, "Stomp", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("踏みつけの接地。脚 1 本ぶんなので、跳んで全身で落ちるより軽い")
+    FBZZ_FIELD_RANGE(float, landRumble, 1.00f, "Jump Land", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("大ジャンプの着地。盤面で最も重い «落ちてきた» なので上限に置く")
+    FBZZ_FIELD_RANGE(float, crashRumble, 0.90f, "Crash", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("壁への自滅激突。プレイヤーが誘導して起こした結果なので大きく返す")
+    FBZZ_FIELD_RANGE(float, pulseRumble, 0.80f, "Pulse", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("磁力パルス。全域に届く攻撃なので減衰は Radius 側が決める")
+    FBZZ_FIELD_RANGE(float, deathRumble, 1.00f, "Death", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("撃破。距離では減らさない (盤面のどこに居ても «終わった» は届く)")
+    FBZZ_FIELD_RANGE(float, shakeRatio, 0.80f, "Shake Ratio", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("カメラ揺れを振動の何割で出すか。減衰は必ず振動と共有する")
+    FBZZ_FIELD_RANGE(float, feedbackRange, 26.0f, "Falloff Range", 1.0f, 80.0f)
+    FBZZ_TOOLTIP("衝撃の中心からこの距離まで離れると、揺れも振動も 0 になる")
+    FBZZ_FIELD_RANGE(float, feedbackNear, 3.0f, "Full Strength Within", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("この距離までは減衰させない。足元に落ちてきた一撃が薄まらないための床")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(std::string, debugAct, "Idle", "Act")
     FBZZ_FIELD_READ_ONLY(float, debugDistance, 0.0f, "Distance")
@@ -151,6 +192,19 @@ public:
     void OnStart() override;
     void OnFixedUpdate() override;
     void OnDrawGizmos() override;
+
+    /// 外から «倒す»。部位の極が引き合った結果 (BossPolarityRigComponent) を受ける。
+    ///
+    /// WHY 激突スタンへ流すか: «無防備・コア消灯・Boss_Crash» は突進を壁へ誘導した
+    ///     とき用に既にある。転倒に別の状態を足すと «倒れている» が 2 系統になり、
+    ///     復帰の後始末 (照射・重力・硬直の解除) を 2 箇所で持つことになる。
+    void Topple(float seconds, int selfDamage);
+
+    /// 巡回だけを止める。脚を IK で引いている間、接地した足を引きずらせないため。
+    ///
+    /// WHY 攻撃まで止めないか: 引き合いの 0.9 秒がまるごと «安全に眺める時間» になると、
+    ///     部位を塗る手順そのものにリスクが無くなる。足は止まっても手は出し続ける。
+    void SetRestrained(bool restrained) { m_restrained = restrained; }
 
 private:
     /// 今出している行動。Idle 以外は途中で選び直さない。
@@ -202,15 +256,29 @@ private:
     bool HitPlayer(int amount) const;
     /// 円内のプレイヤーを殴る。踏みつけ・パルスの衝撃波が共有する。
     bool HitPlayerInSphere(const Vector3& center, float radius, int amount) const;
+    /// 場所のある衝撃を «画面と手» の両方へ返す。減衰は 1 度だけ出して共有する。
+    /// @param range 0 以下なら feedbackRange を使う。
+    void PlayShock(const Vector3& center, float strength01, float range = 0.0f) const;
+    /// 撃破の告知。倒れた «状態» ではなく、倒れた «瞬間» に 1 度だけ通る。
+    void AnnounceDeath();
 
     [[nodiscard]] BossAnimatorComponent*      Anim() const;
     [[nodiscard]] BossPolarityCoreComponent*  Core() const;
     [[nodiscard]] BossBeamComponent*          Beam() const;
+    /// 着地の衝撃波。無い構成では大ジャンプが直撃だけになる (跳ぶ択が消えるだけで
+    /// 攻撃としては成立するので、必須にはしない)。
+    [[nodiscard]] BossShockwaveComponent*     Shock() const;
+    /// SE の入口。無い構成では音が出ないだけなので、Animator と違って必須にしない。
+    [[nodiscard]] BossAudioComponent*         Sfx()   const;
 
     EntityRef m_player;
     Act       m_act        = Act::Idle;
     float     m_timer      = 0.0f;
     float     m_cooldown   = 0.0f;
+    /// 今の無防備がどれだけ続くか。激突は crashStunTime、転倒は呼んだ側が決める。
+    float     m_stunSeconds = 0.0f;
+    /// 脚を引かれていて歩けない。BossPolarityRigComponent が毎フレーム申告する。
+    bool      m_restrained  = false;
     /// 今の行動でダメージ判定を出したか。1 回の振りで 1 回だけ当てる。
     bool      m_dealt      = false;
     /// 踏み込んだ瞬間に固定した突進方向。以後は変えない (8 章)。
@@ -227,6 +295,8 @@ private:
     int       m_beamStage  = 0;
     /// 「戦闘が居ない」を 1 度だけ言うためのラッチ。報告は const な当て所からも起きる。
     mutable bool m_warnedNoCombat = false;
+    /// 撃破の一撃を返したか。倒れた «状態» は毎フレーム来るので、出来事は 1 度だけ。
+    bool m_deathAnnounced = false;
 };
 
 FBZZ_REFLECT(BossAiComponent)
@@ -247,6 +317,16 @@ inline BossBeamComponent* BossAiComponent::Beam() const
     return scene.GetScript<BossBeamComponent>();
 }
 
+inline BossShockwaveComponent* BossAiComponent::Shock() const
+{
+    return scene.GetScript<BossShockwaveComponent>();
+}
+
+inline BossAudioComponent* BossAiComponent::Sfx() const
+{
+    return scene.GetScript<BossAudioComponent>();
+}
+
 inline void BossAiComponent::OnStart()
 {
     m_act      = Act::Idle;
@@ -256,6 +336,7 @@ inline void BossAiComponent::OnStart()
     m_landCued = false;
     m_beamStage = 0;
     m_warnedNoCombat = false;
+    m_deathAnnounced = false;
     RefreshPlayer();
 
     if (!Anim()) {
@@ -369,6 +450,49 @@ inline bool BossAiComponent::HitPlayerInSphere(const Vector3& center, float radi
     return HitPlayer(amount);
 }
 
+inline void BossAiComponent::PlayShock(const Vector3& center, float strength01,
+                                       float range) const
+{
+    const float strength = Clamp01(strength01);
+    if (strength <= 0.0f) return;
+
+    // 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
+    // 震える距離ができて «どこで起きたか» の答えが 2 つになる。
+    const float nearness = shock::NearnessTo(
+        Player(), center, range > 0.0f ? range : std::max(feedbackRange, 1.0f),
+        std::max(feedbackNear, 0.0f));
+    if (nearness <= 0.0f) return;
+
+    const float weight = strength * nearness;
+    if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(weight);
+    if (auto* shake = CameraShakeManagerComponent::Instance())
+        shake->Shake(weight * Clamp01(shakeRatio));
+}
+
+inline void BossAiComponent::AnnounceDeath()
+{
+    // 崩れていく «見え» は BossDeathVfxComponent が受け持つ。ここが出すのは告知だけで、
+    // 両者は同じ 1 フレームから始まって別々の速さで進む (告知は今すぐ / 崩壊は数秒)。
+    if (auto* death = scene.GetScript<BossDeathVfxComponent>()) death->Begin();
+
+    // WHY ここだけ距離で減らさないか: 撃破は盤面のどこかで «起きた衝撃» ではなく、
+    //     戦いが終わったという告知。距離を掛けると、遠くから丁寧に組み立てて倒した
+    //     勝ち方ほど何も返ってこない、という逆立ちが起きる。
+    const float strength = Clamp01(deathRumble);
+    if (strength <= 0.0f) return;
+
+    if (auto* pad = RumbleManagerComponent::Instance())
+        pad->Rumble(strength, strength, kBossDeathSeconds);
+    if (auto* shake = CameraShakeManagerComponent::Instance())
+        shake->Shake(strength * Clamp01(shakeRatio));
+
+    // WHY 白いフラッシュではなく集束か: 画面を塗る白は «こちらが受けた» を表す語で、
+    //     倒した瞬間に出すと被弾と読み違える。落ちたのはコアなので、そのコアへ画面ごと
+    //     引き込む方が «崩れた» に近い。起点をワールドで渡せば、倒れる胴体を追う。
+    if (auto* screen = ScreenEffectManagerComponent::Instance())
+        screen->Implode(transform.worldPosition, strength, kBossDeathSeconds);
+}
+
 inline void BossAiComponent::OnFixedUpdate()
 {
     const float dt = time.FixedDeltaTime();
@@ -378,6 +502,11 @@ inline void BossAiComponent::OnFixedUpdate()
         if (m_act != Act::Idle) EndAct();
         debugAct = "Dead";
         StopHorizontal();
+        // 倒れた «状態» は毎フレーム来る。告知は最初の 1 フレームだけ。
+        if (!m_deathAnnounced) {
+            m_deathAnnounced = true;
+            AnnounceDeath();
+        }
         // WHY ここで倒れさせるか: HP を持っているのは EnemyHealthComponent で、
         //     あちらは «敵が倒れたら消す» までしか知らない (ボスの Animator も
         //     BossAnimatorComponent も見えていない)。倒れた «見え» を出せるのは、
@@ -432,8 +561,11 @@ inline void BossAiComponent::TickIdle(float dt)
     if (m_cooldown <= 0.0f && SelectAttack()) return;
 
     // 間合いより遠ければ詰める。近ければ止まって «腹下へ潜る» 余地を残す。
-    if (distance > std::max(keepDistance, 0.0f)) MoveHorizontal(direction, patrolSpeed);
-    else                                         StopHorizontal();
+    // 脚を引かれている間は詰めない (接地した足を引きずるとスライドに見える)。
+    if (!m_restrained && distance > std::max(keepDistance, 0.0f))
+        MoveHorizontal(direction, patrolSpeed);
+    else
+        StopHorizontal();
 }
 
 inline bool BossAiComponent::SelectAttack()
@@ -581,6 +713,20 @@ inline void BossAiComponent::TickJumpAir(float dt)
     StopHorizontal();
     (void)HitPlayerInSphere(transform.worldPosition, jumpHitRadius, jumpDamage);
 
+    // 直撃の «外» を担当する円形衝撃波。ここから外は跳んで越える択になる。
+    //
+    // WHY 直撃と 2 段に分けるか: 直撃は «腹の下に居た» ことへの罰で、跳んでも避けられない。
+    //     1 つの判定で兼ねると、跳べば真下でも助かることになり、腹下へ潜る危険が消える。
+    //     波の側が «逃げた先にも届く» を、直撃の側が «近すぎる» を、それぞれ担当する。
+    if (auto* wave = Shock()) wave->Emit(transform.worldPosition);
+    if (auto* sfx  = Sfx())   sfx->JumpLand();
+
+    // WHY 判定半径 (jumpHitRadius) の外へも返すか: 衝撃波に «当たった» のと
+    //     «落ちてきたのが伝わった» のは別の出来事。届く範囲を判定と同じにすると、
+    //     避けきった瞬間だけ盤面が完全に無音になり、避けた手応えごと消える。
+    //     避けた側にも «すぐ横に落ちてきた» は必ず返す。
+    PlayShock(transform.worldPosition, landRumble);
+
     m_act = Act::JumpLand;
     // Land は既に landContactTime ぶん進んでいる。0 から数え直すと硬直が伸びる。
     m_timer = std::max(landContactTime, 0.0f);
@@ -612,6 +758,9 @@ inline void BossAiComponent::BeginStomp()
     debugAct   = "Stomp";
 
     if (auto* anim = Anim()) anim->Stomp(m_stompLeg);
+    // 60F の表は着弾時刻に合わせて音の側が伸縮させる。予備動作 → 無音 → 着弾の比が
+    // 崩れると、静止 0.13 秒の予兆が予兆として働かない。
+    if (auto* sfx = Sfx()) sfx->BeginStomp(stompHitTime);
 }
 
 inline void BossAiComponent::TickStomp(float dt)
@@ -623,7 +772,11 @@ inline void BossAiComponent::TickStomp(float dt)
     // README: f23 で接地、f25 が潰れ最下点。その間に 1 度だけ衝撃波を出す。
     if (!m_dealt && m_timer >= stompHitTime) {
         m_dealt = true;
-        (void)HitPlayerInSphere(StompPoint(m_stompLeg), stompRadius, stompDamage);
+        // 脚の «今» の位置で鳴らす。胴体中心にすると、背後の脚で踏まれたのに
+        // 手応えが前から来ることになり、どの脚が来たのか読めなくなる。
+        const Vector3 point = StompPoint(m_stompLeg);
+        (void)HitPlayerInSphere(point, stompRadius, stompDamage);
+        PlayShock(point, stompRumble);
     }
 
     // README: f35–46 は足が刺さったままの硬直。8 章の «反撃を取らせる» 区間。
@@ -640,6 +793,7 @@ inline void BossAiComponent::BeginCharge()
     debugAct = "Charge Windup";
 
     if (auto* anim = Anim()) anim->BeginCharge();
+    if (auto* sfx = Sfx())   sfx->BeginCharge();
 }
 
 inline void BossAiComponent::TickChargeWindup(float dt)
@@ -661,6 +815,8 @@ inline void BossAiComponent::TickChargeWindup(float dt)
     m_act   = Act::ChargeRun;
     m_timer = 0.0f;
     m_dealt = false;
+    // 走り出しからクロールのループへ。単発の足音はこの間だけ止まる (音の側で判断する)。
+    if (auto* sfx = Sfx()) sfx->ChargeRunning(true);
 }
 
 inline void BossAiComponent::TickChargeRun(float dt)
@@ -700,12 +856,19 @@ inline void BossAiComponent::TickChargeRun(float dt)
 
 inline void BossAiComponent::BeginCrash()
 {
-    m_act    = Act::CrashStun;
-    m_timer  = 0.0f;
-    debugAct = "Crash Stun";
+    m_act         = Act::CrashStun;
+    m_timer       = 0.0f;
+    m_stunSeconds = std::max(crashStunTime, 0.1f);
+    debugAct      = "Crash Stun";
     StopHorizontal();
 
     if (auto* anim = Anim()) anim->Crash();
+    // 激突とスタンは 1 続きの出来事。復帰音を明ける手前へ置けるよう、長さごと渡す。
+    if (auto* sfx = Sfx()) sfx->Crash(crashStunTime);
+
+    // 8 章の «避けて壁へ誘導する» が成立した瞬間。プレイヤーが仕掛けて起こした結果
+    // なので、踏みつけや着地と同じ «受けた衝撃» の語で返す。
+    PlayShock(transform.worldPosition, crashRumble);
 
     // 8 章の «大ダメージ»。15 章「敵を武器として使う」がボス自身にも適用される、
     // 唯一の «銃以外で削れる» 経路なので、盤面の衝突と同じ CombatManager ではなく
@@ -723,10 +886,38 @@ inline void BossAiComponent::BeginCrash()
 
 inline void BossAiComponent::TickCrashStun(float dt)
 {
-    debugAct = "Crash Stun";
     StopHorizontal();
     m_timer += dt;
-    if (m_timer >= crashStunTime) EndAct();
+    if (m_timer >= m_stunSeconds) EndAct();
+}
+
+inline void BossAiComponent::Topple(float seconds, int selfDamage)
+{
+    if (!IsAlive()) return;
+
+    // 出しかけの照射・突進・跳躍をここで畳む。状態だけ差し替えると、線が空に残り、
+    // 跳躍中なら重力を切ったまま «浮いて倒れている» ボスになる。
+    EndAct();
+
+    m_act         = Act::CrashStun;
+    m_timer       = 0.0f;
+    m_stunSeconds = std::max(seconds, 0.1f);
+    debugAct      = "Topple";
+    StopHorizontal();
+
+    if (auto* anim = Anim()) anim->Crash();
+    if (auto* sfx  = Sfx())  sfx->Crash(m_stunSeconds);
+
+    PlayShock(transform.worldPosition, crashRumble);
+
+    if (selfDamage > 0)
+        if (auto* health = scene.GetScript<EnemyHealthComponent>())
+            (void)health->ApplyDamage(selfDamage);
+
+    if (auto* core = Core()) {
+        core->SetStaggered(true);
+        core->SetCoreDark(true);
+    }
 }
 
 inline void BossAiComponent::BeginBeam()
@@ -737,6 +928,8 @@ inline void BossAiComponent::BeginBeam()
     debugAct    = "Beam";
 
     if (auto* anim = Anim()) anim->BeginBeam();
+    // 絞りが開いて充電し、最後にアークが飛ぶまでが構えの 1 本に入っている。
+    if (auto* sfx = Sfx()) sfx->BeginBeam();
     // 点火はここから始まる。構えの 1.0 秒をかけて針から本径まで太る (8 章の予兆)。
     if (auto* beam = Beam()) beam->SetFiring(true);
     // 狙いも同時に置く。次の FixedUpdate を待つと、点火の 1 フレーム目だけ
@@ -764,6 +957,12 @@ inline void BossAiComponent::TickBeam(float dt)
         if (m_timer >= beamStartTime) {
             m_beamStage = 1;
             m_timer     = 0.0f;
+            // 床を焼き続ける土台と、旋回して薙ぐ層を同時に立てる。薙ぎの側は
+            // 継ぎ目を横切る音だけなので、土台が無いと «線が横切っただけ» になる。
+            if (auto* sfx = Sfx()) {
+                sfx->BeamFiring(true);
+                sfx->BeamSweep();
+            }
         }
         return;
     }
@@ -783,6 +982,8 @@ inline void BossAiComponent::TickBeam(float dt)
             if (auto* anim = Anim())  anim->EndBeam();
             // 消灯もビームの側が時間をかけて処理する。ここは «止めた» とだけ言う。
             if (auto* beam = Beam()) beam->SetFiring(false);
+            // 芯が落ちて、焦げだけ残り、絞りが閉じる。土台もここで畳まれる。
+            if (auto* sfx = Sfx())   sfx->EndBeam();
         }
         return;
     }
@@ -828,6 +1029,9 @@ inline void BossAiComponent::BeginPulse()
     debugAct = "Pulse";
 
     if (auto* anim = Anim()) anim->Pulse();
+    // 切替そのものの音は BossAudioComponent が極の変化から自分で拾う。ここが言うのは
+    // «パルスを撃った» だけ。P1 では切替の音だけが鳴り、衝撃波は鳴らない。
+    if (auto* sfx = Sfx()) sfx->MagneticPulse();
 }
 
 inline void BossAiComponent::TickPulse(float dt)
@@ -840,6 +1044,10 @@ inline void BossAiComponent::TickPulse(float dt)
         m_dealt = true;
         const Vector3 center = transform.worldPosition;
         (void)HitPlayerInSphere(center, pulseRadius, pulseDamage);
+
+        // 減衰の外周をパルスの半径そのものに揃える。8 章が «全域» と決めている攻撃なので、
+        // 手触りの届く範囲だけ別に持つと «届いていないのに震える» 距離ができる。
+        PlayShock(center, pulseRumble, std::max(pulseRadius, 1.0f));
 
         // 8 章「帯電中の雑魚が外向きに弾き飛ばされる。極性そのものは残る」。
         // 引力を切ってから弾く。切らないと、次のフレームに盤面が同じリンクを
@@ -890,6 +1098,12 @@ inline void BossAiComponent::EndAct()
     }
     // 死亡や割り込みで照射の途中から抜けても、線が空に残らないようにする。
     if (auto* beam = Beam()) beam->SetFiring(false);
+    // 鳴り続ける層も同じ理由でここで畳む。線と違って «消え忘れ» が目に見えないので、
+    // 打ち切られた突進のクロールが盤面に残ったまま次の行動が始まりうる。
+    if (auto* sfx = Sfx()) {
+        sfx->ChargeRunning(false);
+        sfx->BeamFiring(false);
+    }
 }
 
 inline void BossAiComponent::OnDrawGizmos()

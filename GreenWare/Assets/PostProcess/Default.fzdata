@@ -7,9 +7,9 @@ type = 'SSAO'
 
 [[overrides]]
 active = true
-intensity = 0.04023175686597824
+intensity = 0.1149425283074379
 softKnee = 1.0
-threshold = 0.11206896603107452
+threshold = 2.1455938816070557
 type = 'Bloom'
 
 [[overrides]]

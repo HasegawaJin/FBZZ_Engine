@@ -1,19 +1,25 @@
-/// @file VfxManagerComponent.hpp
-/// @brief 単発 VFX を「借りて返す」枠へ載せ、極性の色と敵の寸法を差し込んでから鳴らす
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    VfxManagerComponent.hpp
+/// @brief   単発 VFX を「借りて返す」枠へ載せ、極性の色と敵の寸法を差し込んでから鳴らす
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY 1 箇所へ束ねるか:
-///   .vfx を鳴らしたい側 (銃・敵・盤面) は 3 つに散っている。各自が GameObject を作って
-///   VFXGraphComponent を足すと、「どの演出がどれだけ画面に出ているか」を誰も知らない
-///   状態になる。集束で 5 体同時に潰れる場面 (7.9) がある以上、同時発火の抑制は
-///   必ずどこかに要る。呼び出し側は「何が起きたか」だけを言い、枠の管理はここが持つ。
+///   .vfx を鳴らしたい側 (銃・敵・盤面) は 3 つに散っている。各自が prefab を置くと、
+///   「どの演出がどれだけ画面に出ているか」を誰も知らない状態になる。集束で 5 体同時に
+///   潰れる場面 (7.9) がある以上、同時発火の抑制は必ずどこかに要る。
+///   呼び出し側は「何が起きたか」だけを言い、枠の管理はここが持つ。
+///
+/// WHY 1 発ぶんの値をスクリプトのフィールドへ書くか (Docs/design/vfx-prefab.md §6):
+///   .vfx がプレファブになり、公開パラメーターは «ルートに載せたスクリプトの公開
+///   フィールド» になった。旧実装は文字列 (schemaPath) でノードのフィールドを指しており、
+///   綴りを間違えても保存も検証も通っていた。型が効く形にすると、光の強さを変えるつもりで
+///   パーティクルの色へ書く事故が構造上起こらなくなる。
 ///
 /// WHY GameObject を作り捨てにしないか:
 ///   演出は 1 秒に何度も出る。そのたびに Create / Destroy すると、シーンの GameObject 数が
 ///   戦闘の激しさに比例して上下し、EntityID を握っている側の参照が揺さぶられる。
 ///   .vfx の «種類ごと» にリングを持ち、寝ている枠を起こして使い回す。
-///   PolarityGunComponent がビームに対して取っているのと同じ形。
+///   PolarityRingComponent が環に対して取っているのと同じ形。
 ///
 /// WHY 種類ごとにリングを分けるか:
 ///   1 本のリングを共有すると、4 秒残る衝突の焦げ跡が、その間に 8 回鳴った付与の演出に
@@ -26,14 +32,21 @@
 ///   何が見えるか» だけを受け持ち、«画面がどう反応するか» には触らない。
 #pragma once
 
-#include <Engine/Scene/Components/VFXGraphComponent.hpp>
+#include <Engine/Scene/Components/VFXComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Vfx/BeamScorchVfxComponent.hpp>
+#include <Scripts/Vfx/ChargeVfxComponent.hpp>
+#include <Scripts/Vfx/ImpactVfxComponent.hpp>
+#include <Scripts/Vfx/LaunchVfxComponent.hpp>
+#include <Scripts/Vfx/NeutralizeVfxComponent.hpp>
+#include <Scripts/Vfx/RunDustVfxComponent.hpp>
 #include <algorithm>
 #include <cstdint>
 #include <string>
@@ -55,6 +68,7 @@ inline constexpr const char* kVfxNeutralizePath  = "Assets/VFX/Game/FX_POL_Neutr
 inline constexpr const char* kVfxLaunchPath      = "Assets/VFX/Game/FX_ATR_Launch.vfx";
 inline constexpr const char* kVfxImpactPath      = "Assets/VFX/Game/FX_IMP_Explosion.vfx";
 inline constexpr const char* kVfxBeamScorchPath  = "Assets/VFX/Game/FX_BEAM_Scorch.vfx";
+inline constexpr const char* kVfxRunDustPath     = "Assets/VFX/Game/FX_PLR_RunDust.vfx";
 
 // FX_POL_Charge の Symbol Material へ差し込む ＋ / − の記号 (12.3)。
 inline constexpr const char* kMatSymbolPlus  = "Assets/Materials/Effects/FX_SymPlus_Additive.mat";
@@ -83,6 +97,8 @@ public:
     FBZZ_TOOLTIP("衝突の爆発。未割り当てなら FX_IMP_Explosion.vfx を使う")
     FBZZ_ASSET_FIELD(VFXRef, beamScorchVfx, "Beam Scorch (6.2)")
     FBZZ_TOOLTIP("ビームが地形を焼いた点。未割り当てなら FX_BEAM_Scorch.vfx を使う")
+    FBZZ_ASSET_FIELD(VFXRef, runDustVfx, "Run Dust")
+    FBZZ_TOOLTIP("走っている足が着いた点。未割り当てなら FX_PLR_RunDust.vfx を使う")
 
     FBZZ_GROUP("Pool")
     FBZZ_FIELD_RANGE_INT(int, slotsPerEffect, 8, "Slots Per Effect", 1, 32)
@@ -103,6 +119,16 @@ public:
     // 強くすると線全体が壁を白く塗る。1 点は控えめにして、量で見せる。
     FBZZ_FIELD_RANGE(float, emberRate, 26.0f, "Ember Rate", 0.0f, 60.0f)
     FBZZ_TOOLTIP("焼けた点 1 つから出る火の粉の量 [個/秒]")
+
+    FBZZ_GROUP("Run Dust")
+    // 最高速では 1 秒に 7 回近く鳴る。1 発を強くすると足元が煙で埋まって
+    // プレイヤー自身が見えなくなるので、量ではなく «速さで変わる» ことで見せる。
+    FBZZ_FIELD_COLOR(runDustColor, (Vector4{ 0.66f, 0.63f, 0.58f, 0.4f }), "Dust Color")
+    FBZZ_TOOLTIP("床の色。極性色は乗せない (12.2)。アルファが煙の濃さ")
+    FBZZ_FIELD_RANGE(float, runDustKickMin, 1.0f, "Kick (walk pace)", 0.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, runDustKickMax, 2.6f, "Kick (top speed)", 0.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, runDustSizeMin, 0.45f, "Puff Size (walk pace)", 0.1f, 3.0f)
+    FBZZ_FIELD_RANGE(float, runDustSizeMax, 0.9f, "Puff Size (top speed)", 0.1f, 3.0f)
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugSlots, 0, "Live Slots")
@@ -127,14 +153,21 @@ public:
     ///     衝突の枠が押し出され、本当にぶつかった爆発が途中で消える。
     void PlayBeamScorch(const Vector3& point, const Vector3& normal, Polarity polarity,
                         float searSize);
+    /// 走っている足が床に着いた点。moveDirection は進んでいる向き、
+    /// strength01 は最高速に対する今の速さ。
+    ///
+    /// WHY 他の 5 つと違い «盤面の出来事» ではないのにここへ置くか:
+    ///     同時発火の抑制が要る理由は同じで、むしろ足元が最も頻繁に鳴る。呼ぶ側 (移動) に
+    ///     枠を持たせると、走っているあいだじゅう自前のリングを回すことになる。
+    void PlayRunDust(const Vector3& footPoint, const Vector3& moveDirection, float strength01);
 
     void OnStart()   override;
     void OnDestroy() override;
 
 private:
-    /// .vfx 1 種類ぶんの枠のリング。
+    /// .vfx 1 種類ぶんの枠のリング。枠の実体はその .vfx プレファブのインスタンス。
     struct Pool {
-        std::string graphPath;
+        std::string vfxPath;
         std::vector<EntityRef> slots;
         int next = 0;
     };
@@ -142,29 +175,20 @@ private:
     static inline VfxManagerComponent* s_instance = nullptr;
 
     [[nodiscard]] std::string PathOf(const VFXRef& reference, const char* fallback) const;
-    [[nodiscard]] Pool& PoolFor(const std::string& graphPath);
+    [[nodiscard]] Pool& PoolFor(const std::string& vfxPath);
     [[nodiscard]] GameObject* AcquireSlot(Pool& pool);
-    /// 枠を起こして頭から鳴らす。overrides はこの 1 発ぶんの差し込み。
-    void Emit(const std::string& graphPath, const Vector3& position,
-              const Quaternion& rotation,
-              std::vector<fbzz::asset::VFXParamOverride> overrides,
-              const char* debugName);
+    /// 枠を 1 つ確保し、位置と回転を合わせて返す。まだ鳴らさない。
+    ///
+    /// WHY 鳴らす前に返すか: 1 発ぶんの値 (極性の色・体の寸法・衝突の強さ) は
+    ///     呼び出し側にしか無く、種類ごとに型が違う。値を書き込んでから Restart する
+    ///     必要があるので、«確保» と «発火» を分ける。
+    [[nodiscard]] GameObject* Prepare(const std::string& vfxPath, const Vector3& position,
+                                      const Quaternion& rotation, const char* debugName);
+    /// 頭出しして鳴らす。Prepare で得た枠へ値を書いた後に呼ぶ。
+    static void Fire(GameObject& root);
     void ReleaseSlots();
     /// 同フレーム何発目か。12.6 の「それ以外は減衰させる」をここで数える。
     [[nodiscard]] int NextImpactIndexThisFrame();
-
-    // ── override の作り方 ────────────────────────────────────────────────
-    // WHY 小さな関数に包むか: VFXParamValue は variant を 2 段入れ子にした型で、
-    //     呼び出し側に書かせると 1 行が読めなくなるうえ、Vector4 を Vector3 の
-    //     パラメーターへ渡すような型の取り違えが黙って通る。
-    [[nodiscard]] static fbzz::asset::VFXParamOverride ColorParam(std::string_view name,
-                                                                  const Vector4& value);
-    [[nodiscard]] static fbzz::asset::VFXParamOverride FloatParam(std::string_view name,
-                                                                  float value);
-    [[nodiscard]] static fbzz::asset::VFXParamOverride Vector3Param(std::string_view name,
-                                                                    const Vector3& value);
-    [[nodiscard]] static fbzz::asset::VFXParamOverride AssetParam(std::string_view name,
-                                                                  std::string_view path);
 
     std::vector<Pool> m_pools;
     std::uint64_t m_impactFrame = 0;
@@ -174,30 +198,6 @@ private:
 FBZZ_REFLECT(VfxManagerComponent)
 
 // ── 実装 (inline) ─────────────────────────────────────────────────────────────
-
-inline fbzz::asset::VFXParamOverride
-VfxManagerComponent::ColorParam(std::string_view name, const Vector4& value)
-{
-    return { std::string(name), { fbzz::asset::VFXConstant{ value } } };
-}
-
-inline fbzz::asset::VFXParamOverride
-VfxManagerComponent::FloatParam(std::string_view name, float value)
-{
-    return { std::string(name), { fbzz::asset::VFXConstant{ value } } };
-}
-
-inline fbzz::asset::VFXParamOverride
-VfxManagerComponent::Vector3Param(std::string_view name, const Vector3& value)
-{
-    return { std::string(name), { fbzz::asset::VFXConstant{ value } } };
-}
-
-inline fbzz::asset::VFXParamOverride
-VfxManagerComponent::AssetParam(std::string_view name, std::string_view path)
-{
-    return { std::string(name), { fbzz::asset::VFXConstant{ std::string(path) } } };
-}
 
 inline void VfxManagerComponent::OnStart()
 {
@@ -239,13 +239,13 @@ inline std::string VfxManagerComponent::PathOf(const VFXRef& reference, const ch
     return path.empty() ? std::string(fallback) : path;
 }
 
-inline VfxManagerComponent::Pool& VfxManagerComponent::PoolFor(const std::string& graphPath)
+inline VfxManagerComponent::Pool& VfxManagerComponent::PoolFor(const std::string& vfxPath)
 {
     const auto found = std::find_if(m_pools.begin(), m_pools.end(),
-        [&](const Pool& pool) { return pool.graphPath == graphPath; });
+        [&](const Pool& pool) { return pool.vfxPath == vfxPath; });
     if (found != m_pools.end()) return *found;
 
-    m_pools.push_back(Pool{ graphPath, {}, 0 });
+    m_pools.push_back(Pool{ vfxPath, {}, 0 });
     return m_pools.back();
 }
 
@@ -259,25 +259,30 @@ inline GameObject* VfxManagerComponent::AcquireSlot(Pool& pool)
         // WHY 名前で拾い直すか: スクリプト DLL をリロードするとこの Script は作り直され、
         //     EntityRef は空に戻る。一方で枠の GameObject は Scene 側に残っているため、
         //     拾わずに作ると、リロードのたびに枠が capacity 個ずつ増えていく。
-        const std::size_t stemStart = pool.graphPath.find_last_of("/\\") + 1;
-        const std::size_t stemEnd   = pool.graphPath.find_last_of('.');
-        const std::string stem = pool.graphPath.substr(
+        const std::size_t stemStart = pool.vfxPath.find_last_of("/\\") + 1;
+        const std::size_t stemEnd   = pool.vfxPath.find_last_of('.');
+        const std::string stem = pool.vfxPath.substr(
             stemStart, stemEnd == std::string::npos ? std::string::npos : stemEnd - stemStart);
         const std::string name = "VFX_" + stem + "_" + std::to_string(pool.slots.size());
 
         GameObject* object = scene.Find(name);
         if (!object) {
-            GameObject& created = scene.Create(name);
-            created.runtimeGenerated = true;
-            object = &created;
+            // .vfx はプレファブなので «展開して置く» のが生成そのもの。
+            // scene.Spawn は PrefabPool 経由なので、2 度目以降はファイル読み込みを通らない。
+            object = scene.Spawn(pool.vfxPath, Vector3::ZERO, Quaternion::Identity());
+            if (!object) return nullptr;
+            object->name = name;
+            object->runtimeGenerated = true;
         }
-        // 拾い直した個体にも必ず入れ直す。同名の GameObject がシーンに居た場合でも、
-        // ここを通っていれば «枠だけあって鳴らない» にはならない。
-        auto* graph = object->GetComponent<VFXGraphComponent>();
-        if (!graph) graph = &object->AddComponent<VFXGraphComponent>();
-        // 起こされるまで鳴らない。playOnAwake のままだと、枠を作った瞬間に原点で 1 発鳴る。
-        graph->playOnAwake = false;
-        graph->loop        = false;
+
+        // WHY autoDestroy を降ろすか: 枠の寿命はこのマネージャーが持つ。
+        //     VFXSystem に畳ませると、鳴り終わった枠がプールへ返ってしまい、
+        //     こちらが握っている EntityRef が «別の演出として貸し出された実体» を指す。
+        if (auto* vfx = object->GetComponent<VFXComponent>()) {
+            vfx->autoDestroy = false;
+            vfx->playOnAwake = false;
+            vfx->loop        = false;
+        }
 
         pool.slots.push_back(EntityRef{ object->GetID() });
         ++debugSlots;
@@ -290,18 +295,15 @@ inline GameObject* VfxManagerComponent::AcquireSlot(Pool& pool)
     return slot.Resolve(scene);
 }
 
-inline void VfxManagerComponent::Emit(const std::string& graphPath, const Vector3& position,
-                                      const Quaternion& rotation,
-                                      std::vector<fbzz::asset::VFXParamOverride> overrides,
-                                      const char* debugName)
+inline GameObject* VfxManagerComponent::Prepare(const std::string& vfxPath,
+                                                const Vector3& position,
+                                                const Quaternion& rotation,
+                                                const char* debugName)
 {
-    if (!enabled || graphPath.empty()) return;
+    if (!enabled || vfxPath.empty()) return nullptr;
 
-    GameObject* object = AcquireSlot(PoolFor(graphPath));
-    if (!object) return;
-
-    auto* graph = object->GetComponent<VFXGraphComponent>();
-    if (!graph) return;
+    GameObject* object = AcquireSlot(PoolFor(vfxPath));
+    if (!object) return nullptr;
 
     // 枠はルートに置いてある (親が居ないのでローカル = ワールド)。
     // 親に付けると、持ち主が動いた瞬間に既に出ている粒ごと引きずられる。
@@ -309,17 +311,18 @@ inline void VfxManagerComponent::Emit(const std::string& graphPath, const Vector
     object->transform.worldPosition = position;
     object->transform.rotation      = rotation;
     object->transform.worldRotation = rotation;
-
-    graph->enabled   = true;
-    graph->graphPath = graphPath;
-    graph->speed     = 1.0f;
-    graph->parameterOverrides = std::move(overrides);
-    // WHY 毎回 reload を立てるか: パラメーターはノードを生成するときに 1 度だけ焼き込まれる
-    //     (ApplyVFXBindings)。Restart だけでは前の 1 発の色と大きさのまま鳴り直す。
-    graph->reloadRequested = true;
-    graph->Restart();
+    object->SetActive(true);
 
     debugLast = debugName;
+    return object;
+}
+
+inline void VfxManagerComponent::Fire(GameObject& root)
+{
+    // WHY 作り直しが要らなくなったか: 旧実装はパラメーターがノード生成時に 1 度だけ
+    //     焼き込まれる作りだったため、値を変えるには毎回 reload が必要だった。
+    //     いまは値の行き先が実体のコンポーネントそのものなので、書いて頭出しすれば済む。
+    if (auto* vfx = root.GetComponent<VFXComponent>()) vfx->Restart();
 }
 
 inline int VfxManagerComponent::NextImpactIndexThisFrame()
@@ -342,19 +345,21 @@ inline void VfxManagerComponent::PlayCharge(GameObject& target, Polarity polarit
     Vector3 center = target.transform.worldPosition;
     center.y += top * 0.5f;
 
-    std::vector<fbzz::asset::VFXParamOverride> overrides;
-    overrides.reserve(4);
-    overrides.push_back(ColorParam("Polarity Color", PolarityColor(polarity)));
-    overrides.push_back(AssetParam("Symbol Material",
-        polarity == Polarity::Plus ? kMatSymbolPlus : kMatSymbolMinus));
-    // 記号は頭の «上» に置く。体の中心を基準にしているので、上端までの残り半分に
-    // 余白を足した高さになる。めり込むと 12.3 の «記号で読める» が成立しない。
-    overrides.push_back(Vector3Param("Symbol Offset", { 0.0f, top * 0.5f + 0.55f, 0.0f }));
-    // 輪は体より一回り大きく。体に埋まると «包んだ» ではなく «光っただけ» に見える。
-    overrides.push_back(FloatParam("Halo Size", std::max(radius, 0.2f) * 3.2f));
+    GameObject* root = Prepare(PathOf(chargeVfx, kVfxChargePath), center,
+                               Quaternion::Identity(), "Charge");
+    if (!root) return;
 
-    Emit(PathOf(chargeVfx, kVfxChargePath), center, Quaternion::Identity(),
-         std::move(overrides), "Charge");
+    if (auto* params = root->GetScript<ChargeVfxComponent>()) {
+        params->polarityColor  = PolarityColor(polarity);
+        params->symbolMaterial = polarity == Polarity::Plus ? kMatSymbolPlus : kMatSymbolMinus;
+        // 記号は頭の «上» に置く。体の中心を基準にしているので、上端までの残り半分に
+        // 余白を足した高さになる。めり込むと 12.3 の «記号で読める» が成立しない。
+        params->symbolOffset = { 0.0f, top * 0.5f + 0.55f, 0.0f };
+        // 輪は体より一回り大きく。体に埋まると «包んだ» ではなく «光っただけ» に見える。
+        params->haloSize = std::max(radius, 0.2f) * 3.2f;
+        params->Apply();
+    }
+    Fire(*root);
 }
 
 inline void VfxManagerComponent::PlayNeutralize(GameObject& target)
@@ -366,14 +371,17 @@ inline void VfxManagerComponent::PlayNeutralize(GameObject& target)
     Vector3 center = target.transform.worldPosition;
     center.y += top * 0.5f;
 
-    std::vector<fbzz::asset::VFXParamOverride> overrides;
-    overrides.reserve(2);
-    overrides.push_back(Vector3Param("Symbol Offset", { 0.0f, top * 0.5f + 0.55f, 0.0f }));
-    // 体の外から吸い込ませる。内側から始めると «畳んだ» 動きが体に隠れる。
-    overrides.push_back(FloatParam("Collapse Radius", std::max(radius, 0.2f) * 1.8f));
+    GameObject* root = Prepare(PathOf(neutralizeVfx, kVfxNeutralizePath), center,
+                               Quaternion::Identity(), "Neutralize");
+    if (!root) return;
 
-    Emit(PathOf(neutralizeVfx, kVfxNeutralizePath), center, Quaternion::Identity(),
-         std::move(overrides), "Neutralize");
+    if (auto* params = root->GetScript<NeutralizeVfxComponent>()) {
+        params->symbolOffset = { 0.0f, top * 0.5f + 0.55f, 0.0f };
+        // 体の外から吸い込ませる。内側から始めると «畳んだ» 動きが体に隠れる。
+        params->collapseRadius = std::max(radius, 0.2f) * 1.8f;
+        params->Apply();
+    }
+    Fire(*root);
 }
 
 inline void VfxManagerComponent::PlayLaunch(const Vector3& origin, const Vector3& flightDirection,
@@ -387,16 +395,18 @@ inline void VfxManagerComponent::PlayLaunch(const Vector3& origin, const Vector3
     const Vector3 up = Abs(Vector3::Dot(wake, Vector3::UP)) > 0.99f
         ? Vector3::FORWARD : Vector3::UP;
 
-    std::vector<fbzz::asset::VFXParamOverride> overrides;
-    overrides.reserve(2);
-    overrides.push_back(ColorParam("Polarity Color", PolarityColor(polarity)));
-    // 7.3 は距離と impactSeconds から速度を逆算する。遠くから引かれた個体ほど速いので、
-    // 尾もそのぶん伸びる。等倍だと尾が本体を追い越して «前へ飛んだ» ように見える。
-    overrides.push_back(Vector3Param("Wake Velocity",
-        { 0.0f, 0.0f, std::clamp(speed * 0.5f, 2.0f, 22.0f) }));
+    GameObject* root = Prepare(PathOf(launchVfx, kVfxLaunchPath), origin,
+                               Quaternion::LookRotation(wake, up), "Launch");
+    if (!root) return;
 
-    Emit(PathOf(launchVfx, kVfxLaunchPath), origin, Quaternion::LookRotation(wake, up),
-         std::move(overrides), "Launch");
+    if (auto* params = root->GetScript<LaunchVfxComponent>()) {
+        params->polarityColor = PolarityColor(polarity);
+        // 7.3 は距離と impactSeconds から速度を逆算する。遠くから引かれた個体ほど速いので、
+        // 尾もそのぶん伸びる。等倍だと尾が本体を追い越して «前へ飛んだ» ように見える。
+        params->wakeSpeed = std::clamp(speed * 0.5f, 2.0f, 22.0f);
+        params->Apply();
+    }
+    Fire(*root);
 }
 
 inline void VfxManagerComponent::PlayImpact(const Vector3& point, Polarity polarity,
@@ -416,18 +426,20 @@ inline void VfxManagerComponent::PlayImpact(const Vector3& point, Polarity polar
     const float crowdFade = index < std::max(lightFalloffCount, 1)
         ? 1.0f : 1.0f / static_cast<float>(index - lightFalloffCount + 2);
 
-    std::vector<fbzz::asset::VFXParamOverride> overrides;
-    overrides.reserve(4);
-    // 無極で衝突する経路 (極を使い切った後の余韻・壁への流れ弾) では無彩色へ落ちる。
-    overrides.push_back(ColorParam("Polarity Color", PolarityColor(polarity)));
-    overrides.push_back(FloatParam("Spark Power", Lerp(sparkPowerMin, sparkPowerMax, strength)));
-    overrides.push_back(FloatParam("Blast Light",
-        Lerp(blastLightMin, blastLightMax, strength) * crowdFade));
-    // 7.5 の「敵 ↔ 柱・壁」は叩きつけなので、跡は焦げではなく «ひび» にする。
-    overrides.push_back(AssetParam("Ground Mark", againstAnchor ? kMarkCrack : kMarkScorch));
+    GameObject* root = Prepare(PathOf(impactVfx, kVfxImpactPath), point, Quaternion::Identity(),
+                               againstAnchor ? "AnchorImpact" : "EnemyImpact");
+    if (!root) return;
 
-    Emit(PathOf(impactVfx, kVfxImpactPath), point, Quaternion::Identity(),
-         std::move(overrides), againstAnchor ? "AnchorImpact" : "EnemyImpact");
+    if (auto* params = root->GetScript<ImpactVfxComponent>()) {
+        // 無極で衝突する経路 (極を使い切った後の余韻・壁への流れ弾) では無彩色へ落ちる。
+        params->polarityColor = PolarityColor(polarity);
+        params->sparkPower    = Lerp(sparkPowerMin, sparkPowerMax, strength);
+        params->blastLight    = Lerp(blastLightMin, blastLightMax, strength) * crowdFade;
+        // 7.5 の「敵 ↔ 柱・壁」は叩きつけなので、跡は焦げではなく «ひび» にする。
+        params->groundMark = againstAnchor ? kMarkCrack : kMarkScorch;
+        params->Apply();
+    }
+    Fire(*root);
 }
 
 inline void VfxManagerComponent::PlayBeamScorch(const Vector3& point, const Vector3& normal,
@@ -440,18 +452,46 @@ inline void VfxManagerComponent::PlayBeamScorch(const Vector3& point, const Vect
     const Vector3 up = Abs(Vector3::Dot(axis, Vector3::UP)) > 0.99f
         ? Vector3::FORWARD : Vector3::UP;
 
-    std::vector<fbzz::asset::VFXParamOverride> overrides;
-    overrides.reserve(3);
-    // 極性色が乗るのは電弧の層だけ (12.2 / VFX/Game/README.md)。火花と煙は熱の色のまま。
-    overrides.push_back(ColorParam("Polarity Color", PolarityColor(polarity)));
-    overrides.push_back(FloatParam("Ember Rate", std::max(emberRate, 0.0f)));
-    // 光る範囲を焦げの大きさへ合わせる。ずれると «焦げの外側が光っている» ように見える。
-    overrides.push_back(FloatParam("Sear Size", std::clamp(searSize, 0.05f, 2.0f)));
-
     // 面から少しだけ浮かせる。面上ちょうどに置くと、粒の半分が受け面へ潜って
     // 焼け跡が «欠けた円» になる。
-    Emit(PathOf(beamScorchVfx, kVfxBeamScorchPath), point + axis * 0.03f,
-         Quaternion::LookRotation(axis, up), std::move(overrides), "BeamScorch");
+    GameObject* root = Prepare(PathOf(beamScorchVfx, kVfxBeamScorchPath), point + axis * 0.03f,
+                               Quaternion::LookRotation(axis, up), "BeamScorch");
+    if (!root) return;
+
+    if (auto* params = root->GetScript<BeamScorchVfxComponent>()) {
+        // 極性色が乗るのは電弧の層だけ (12.2 / VFX/Game/README.md)。火花と煙は熱の色のまま。
+        params->polarityColor = PolarityColor(polarity);
+        params->emberRate     = std::max(emberRate, 0.0f);
+        // 光る範囲を焦げの大きさへ合わせる。ずれると «焦げの外側が光っている» ように見える。
+        params->searSize = std::clamp(searSize, 0.05f, 2.0f);
+        params->Apply();
+    }
+    Fire(*root);
+}
+
+inline void VfxManagerComponent::PlayRunDust(const Vector3& footPoint,
+                                             const Vector3& moveDirection, float strength01)
+{
+    const float strength = Clamp01(strength01);
+
+    // 土煙は «足が後ろへ掻いた» 側へ残る。層の Cone はローカル +Z へ吹くので、
+    // 進行方向の逆を向く回転を渡す。水平へ倒してから正規化するので、
+    // LookRotation の基底が上向きと平行になる経路は無い。
+    Vector3 wake = -moveDirection;
+    wake.y = 0.0f;
+    wake = wake.NormalizedOr(Vector3::FORWARD);
+
+    GameObject* root = Prepare(PathOf(runDustVfx, kVfxRunDustPath), footPoint,
+                               Quaternion::LookRotation(wake, Vector3::UP), "RunDust");
+    if (!root) return;
+
+    if (auto* params = root->GetScript<RunDustVfxComponent>()) {
+        params->dustColor = runDustColor;
+        params->kickSpeed = Lerp(runDustKickMin, runDustKickMax, strength);
+        params->puffSize  = Lerp(runDustSizeMin, runDustSizeMax, strength);
+        params->Apply();
+    }
+    Fire(*root);
 }
 
 } // namespace sandbox

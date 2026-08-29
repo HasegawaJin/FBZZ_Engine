@@ -1,0 +1,31 @@
+# FBZZ Engine
+# FX_POL_Core_Minus.mat
+# 撃破コア (−)。FX_POL_Core_Plus.mat と対で、違うのは色と符号だけ。
+#
+# WHY 2 枚に分けるか: PolarityCore.hlsl のヘッダーを参照。
+version = 1
+shader = "Assets/Shaders/Material/Effects/PolarityCore.hlsl"
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[params]
+# PolarityTypes.hpp の kColorMinus。
+coreColor = [ 0.10, 0.35, 1.00, 1.0 ]
+chargeSign = -1.0
+coreSize = 0.26
+haloFalloff = 3.4
+ringRadius = 0.62
+ringWidth = 0.070
+# − は腕が 1 本なので、＋と同じ長さだと «短い» に見える。少しだけ伸ばす。
+signScale = 0.20
+signWeight = 0.045
+signFade = 1.8
+
+[particle]
+emissive_scale = 2.2
+soft_particles = true
+soft_particle_fade_distance = 0.30

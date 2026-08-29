@@ -1,7 +1,18 @@
-/// @file EnemyRollerComponent.hpp
-/// @brief Enemy C「Roller」— 転がって突進する単輪ローラー (企画書 8)
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    EnemyRollerComponent.hpp
+/// @brief   Enemy C「Roller」— 転がって突進する単輪ローラー
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
+///
+/// WHY 反発で «転がり出す» か (引力では動かないのに):
+///   Docs/enemies.md は Roller に 2 つの役割を持たせている。静止しているあいだは
+///   集束の的、押されたら止まらない凶器。押した瞬間に的が的でなくなるので、
+///   «先に的として使うか、先に凶器として走らせるか» という順番の判断が生まれる。
+///   これが敵 3 種で唯一の «対処法の違い» で、Mite / Serpent が «飛ばされる» のに対し
+///   Roller だけは «向きが変わる» という違いになっている。
+///
+/// WHY 転がっている間だけリンクを止めるか:
+///   動いている的へ集束を張ると、仕込んだ列が «居なくなった場所» へ飛ぶ。
+///   的として使えないことは盤面へ申告する (PolarityTargetComponent::SetLinkSuspended)。
 ///
 /// WHY 突進を「予備動作 → 直進 → 硬直」の 3 段に割るか:
 ///   8 章は Roller を「重量級のため引力ではほとんど動かない」「他の敵を受け止める的」と
@@ -31,13 +42,16 @@
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/EnemyAiBase.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
+#include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/ShockFalloff.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -50,7 +64,7 @@ class EnemyRollerComponent : public EnemyAiBase {
 
 public:
     FBZZ_GROUP("Approach")
-    FBZZ_FIELD_RANGE(float, chargeRange, 9.0f, "Charge Range", 1.0f, 30.0f)
+    FBZZ_FIELD_RANGE(float, chargeRange, 13.0f, "Charge Range", 1.0f, 30.0f)
     FBZZ_TOOLTIP("この距離まで詰めたら突進を始める。遠すぎると当たらず、近すぎると避けられない")
     FBZZ_FIELD_RANGE(float, keepDistance, 2.2f, "Keep Distance", 0.0f, 10.0f)
     FBZZ_TOOLTIP("突進が空いていないときに保つ間合い。密着したまま押し続けない")
@@ -74,6 +88,22 @@ public:
     FBZZ_FIELD_RANGE(float, slamShake, 0.6f, "Shake", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, slamShakeRange, 16.0f, "Shake Range", 1.0f, 60.0f)
     FBZZ_TOOLTIP("この距離まで離れると揺れが 0 になる。画面外の激突で手元を揺らさない")
+    FBZZ_FIELD_RANGE(float, slamRumble, 0.7f, "Rumble", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("揺れと同じ距離減衰で回す。避けきった重さは画面より手の方が伝わる")
+
+    FBZZ_GROUP("Rolled (repulsion)")
+    // 同極に押されて転がり出したときの挙動。突進 (Charge) と違い、狙いも予兆も無い。
+    FBZZ_FIELD_RANGE(float, rolledSpeedScale, 0.75f, "Speed x", 0.1f, 3.0f)
+    FBZZ_TOOLTIP("反発の速さをそのまま初速にすると軽い敵と同じ勢いで飛ぶ。重量級らしく減らす")
+    FBZZ_FIELD_RANGE(float, rolledSeconds, 2.0f, "Roll Seconds", 0.2f, 8.0f)
+    FBZZ_TOOLTIP("転がり続ける時間の上限。長いほど «止まらない凶器» になるが、"
+                 "その間この 1 体は的として使えない")
+    FBZZ_FIELD_RANGE(float, rolledDrag, 3.2f, "Drag", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("減速の強さ [m/s²]。0 で時間切れまで同じ速さで走り続ける")
+    FBZZ_FIELD_RANGE(float, rolledStopSpeed, 2.0f, "Stop At (m/s)", 0.1f, 10.0f)
+    FBZZ_TOOLTIP("ここまで落ちたら止まったものとして的へ戻る")
+    FBZZ_FIELD_RANGE(float, rolledCrushSpeed, 5.0f, "Crush At (m/s)", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("この速さ以上で転がっている間だけ、触れた敵を轢く。0 で轢かない")
 
     void OnFixedUpdate() override;
 
@@ -88,14 +118,19 @@ protected:
     [[nodiscard]] float VoiceSpeedReference() const override { return chargeSpeed; }
 
 private:
-    /// 突進の 3 段階。Chase 以外は途中で中断しない。
-    enum class Phase : int { Chase = 0, Telegraph, Charge, Recover };
+    /// 突進の 3 段階 + 反発で転がされている状態。Chase 以外は途中で中断しない。
+    enum class Phase : int { Chase = 0, Telegraph, Charge, Recover, Rolled };
 
     void TickTelegraph(float dt);
     void TickCharge(float dt);
     void TickRecover(float dt);
+    void TickRolled(float dt);
     void BeginTelegraph();
     void BeginCharge();
+    /// 同極に押された。向きを変えてその方向へ転がり出す。
+    void BeginRolled(const Vector3& direction, float speed);
+    /// 転がっている最中に触れた相手を轢く。
+    void CrushAlongPath();
     /// 進めなくなった突進を打ち切り、激突として鳴らす。
     void Slam();
     void Chase(float dt);
@@ -110,6 +145,13 @@ private:
     int     m_chargeSteps  = 0;
     /// 今の硬直が激突によるものか。調整中に «長い方の隙» を見分けるために出す。
     bool    m_slammed      = false;
+
+    /// 反発で転がされている向き・速さ・残り時間。
+    Vector3 m_rollDir     = Vector3::ZERO;
+    float   m_rollSpeed   = 0.0f;
+    float   m_rollTimer   = 0.0f;
+    /// この転がりで既に轢いた相手。同じ 1 回で何度も殴らない。
+    std::vector<EntityID> m_crushed;
 };
 
 FBZZ_REFLECT(EnemyRollerComponent)
@@ -128,6 +170,19 @@ inline void EnemyRollerComponent::OnEnemyStart()
     m_chargeSteps  = 0;
     m_slammed      = false;
     m_lastPosition = transform.worldPosition;
+    m_rollDir      = Vector3::ZERO;
+    m_rollSpeed    = 0.0f;
+    m_rollTimer    = 0.0f;
+    m_crushed.clear();
+
+    // 弾かれ «方» を自分で引き受ける。盤面もプレイヤーもこの 1 本を通って来るので、
+    // «押されたらどうなるか» の定義がこの敵の中に 1 つだけ存在することになる。
+    if (auto* target = scene.GetScript<PolarityTargetComponent>()) {
+        target->onRepulse = [this](const Vector3& direction, float speed) {
+            BeginRolled(direction, speed);
+        };
+        target->SetLinkSuspended(false);
+    }
 }
 
 inline void EnemyRollerComponent::OnFixedUpdate()
@@ -146,13 +201,18 @@ inline void EnemyRollerComponent::OnFixedUpdate()
     case Phase::Telegraph: TickTelegraph(dt); return;
     case Phase::Charge:    TickCharge(dt);    return;
     case Phase::Recover:   TickRecover(dt);   return;
+    // WHY 転がりを «帯電で止まる» より先に見るか: 押されて転がっている最中は
+    //     帯電したままのことが多い。IsMovementLocked() を先に通すと、押した瞬間に
+    //     «アンカーだから止まる» が勝ち、Roller は 1m も動かない。
+    case Phase::Rolled:    TickRolled(dt);    return;
     case Phase::Chase:     break;
     }
 
-    // 突進の 3 段階に入る前だけ、被弾硬直や引力で止める。踏み込んだ後に止めると、
+    // 突進の 3 段階に入る前だけ、被弾硬直や帯電で止める。踏み込んだ後に止めると、
     // 予兆を出しておきながら何も来ないという最悪の読ませ方になる。
     if (IsMovementLocked()) {
-        debugState = "Locked";
+        // 帯電で止まっているのか被弾で止まっているのかは、調整中に外から見分けが付かない。
+        debugState = IsArmedAnchor() ? "Anchored" : "Locked";
         StopHorizontal();
         return;
     }
@@ -319,14 +379,150 @@ inline void EnemyRollerComponent::Slam()
 
     // WHY 手触りマネージャーを通さないか: あちらの配分にはヒットストップが入っている。
     //     これはプレイヤーが «避けきった» 瞬間なので、そこで操作を止めると
-    //     せっかく作った隙の頭を自分で削ることになる。揺れだけを直に鳴らす。
-    if (auto* shake = CameraShakeManagerComponent::Instance()) {
-        float proximity = 1.0f;
-        if (const GameObject* player = Player()) {
-            const float distance = (player->transform.worldPosition - point).Length();
-            proximity = Clamp01(1.0f - distance / std::max(slamShakeRange, 1.0f));
-        }
+    //     せっかく作った隙の頭を自分で削ることになる。揺れと振動だけを直に鳴らす。
+    const float proximity = shock::NearnessTo(Player(), point, std::max(slamShakeRange, 1.0f));
+    if (auto* shake = CameraShakeManagerComponent::Instance())
         shake->Shake(std::max(slamShake, 0.0f) * proximity);
+    // 減衰を揺れと共有する。別々に持たせると、画面は揺れないのに手だけ震える距離ができ、
+    // «どこで起きたか» が 2 つの答えを返す。
+    if (auto* pad = RumbleManagerComponent::Instance())
+        pad->Rumble(std::max(slamRumble, 0.0f) * proximity);
+}
+
+inline void EnemyRollerComponent::BeginRolled(const Vector3& direction, float speed)
+{
+    if (!IsAlive()) return;
+
+    Vector3 flat = direction;
+    flat.y = 0.0f;
+    if (flat.LengthSq() < EPSILON) return;
+
+    // WHY 突進の最中は押されないか: 突進は «直進しか出来ない代わりに、横へ抜ければ
+    //     必ず避けられる» という約束で成り立っている。途中で向きが変わると、
+    //     避けたはずのプレイヤーが理由の分からない被弾をする。
+    if (m_phase == Phase::Telegraph || m_phase == Phase::Charge) return;
+
+    m_phase     = Phase::Rolled;
+    m_rollDir   = flat.Normalized();
+    // 重量級なので、軽い敵と同じ勢いでは飛ばさない。速さの «違い» が質量の表現になる。
+    m_rollSpeed = std::max(speed, 0.0f) * std::max(rolledSpeedScale, 0.0f);
+    m_rollTimer = std::max(rolledSeconds, 0.0f);
+    m_slammed   = false;
+    m_chargeHit = false;
+    m_crushed.clear();
+    m_lastPosition = transform.worldPosition;
+    m_chargeSteps  = 0;
+
+    // 転がっている間は的にならない。押した瞬間に的が的でなくなる、が Roller 唯一の
+    // «順番の強制» で、それが成立するのはここで申告しているからになる。
+    if (auto* target = scene.GetScript<PolarityTargetComponent>())
+        target->SetLinkSuspended(true);
+
+    se::Play(audio, se::kRollerCharge);
+}
+
+inline void EnemyRollerComponent::TickRolled(float dt)
+{
+    debugState = "Rolled";
+
+    // 進行方向を向く。車輪ひとつの機体が横向きのまま滑ると «押された» に見えない。
+    FaceDirection(m_rollDir, dt);
+
+    // 突進と同じ «進めているか» の判定。壁へ押し込まれたらそこで激突として鳴らす。
+    const Vector3 position = transform.worldPosition;
+    Vector3       moved    = position - m_lastPosition;
+    moved.y        = 0.0f;
+    m_lastPosition = position;
+    ++m_chargeSteps;
+
+    const float expected = m_rollSpeed * dt;
+    if (m_chargeSteps >= 3 && expected > EPSILON &&
+        moved.Length() < expected * Clamp01(slamSpeedRatio)) {
+        m_chargeDir = m_rollDir;   // 激突の絵と音を出す向き
+        if (auto* target = scene.GetScript<PolarityTargetComponent>())
+            target->SetLinkSuspended(false);
+        Slam();
+        return;
+    }
+
+    CrushAlongPath();
+
+    Vector3 velocity = physics.GetVelocity();
+    velocity.x = m_rollDir.x * m_rollSpeed;
+    velocity.z = m_rollDir.z * m_rollSpeed;
+    physics.SetVelocity(velocity);
+
+    m_rollSpeed = std::max(m_rollSpeed - std::max(rolledDrag, 0.0f) * dt, 0.0f);
+    m_rollTimer -= dt;
+
+    if (m_rollTimer > 0.0f && m_rollSpeed > std::max(rolledStopSpeed, 0.0f)) return;
+
+    // 止まった。的へ戻る。
+    //
+    // WHY 硬直を挟まないか: 押しにはダメージも拘束も持たせない。ここで隙を作ると、
+    //     押すことが «弱いスタン» に化けて、位置を変える道具でなくなる。
+    StopHorizontal();
+    m_phase     = Phase::Chase;
+    m_rollSpeed = 0.0f;
+    m_rollTimer = 0.0f;
+    m_crushed.clear();
+    if (auto* target = scene.GetScript<PolarityTargetComponent>())
+        target->SetLinkSuspended(false);
+}
+
+// 転がっている最中に触れた相手を轢く。ダメージの経路は盤面の衝突と同じ 1 本を通す。
+inline void EnemyRollerComponent::CrushAlongPath()
+{
+    if (rolledCrushSpeed <= 0.0f || m_rollSpeed < rolledCrushSpeed) return;
+
+    auto* combat = CombatManagerComponent::Instance();
+    if (!combat) return;
+
+    GameObject*   self     = scene.Self();
+    const Vector3 position = transform.worldPosition;
+    const float   radiusSq = hitRadius * hitRadius;
+
+    // プレイヤーは轢くのではなく «接触攻撃» として殴る。ダメージ量も無敵時間の扱いも
+    // 敵の攻撃の側の規則で、衝突の規則とは別。
+    if (!m_chargeHit) {
+        if (GameObject* player = Player()) {
+            Vector3 toPlayer = player->transform.worldPosition - position;
+            toPlayer.y = 0.0f;
+            if (toPlayer.LengthSq() <= radiusSq) {
+                m_chargeHit = true;
+                (void)HitPlayer(player);
+            }
+        }
+    }
+
+    for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>()) {
+        if (!object || object == self || !object->activeInHierarchy()) continue;
+        const EntityID id = object->GetID();
+        if (std::find(m_crushed.begin(), m_crushed.end(), id) != m_crushed.end()) continue;
+
+        Vector3 delta = object->transform.worldPosition - position;
+        delta.y = 0.0f;
+        if (delta.LengthSq() > radiusSq) continue;
+
+        m_crushed.push_back(id);
+
+        // 轢いた側 (自分) は倒れない。転がる凶器はぶつけられた側だけを削る。
+        //
+        // WHY mover と struck に同じ相手を入れるか: CombatManager は «飛んだ側» と
+        //     «受け止めた側» の両方を削り、2 つが同じときだけ 1 回で済ませる
+        //     (正面衝突の二重計上を潰すための分岐)。自分を struck に置くと、
+        //     轢いた側の Roller まで自分の突進で削れてしまう。
+        PolarityImpact impact;
+        impact.mover  = object;
+        impact.struck = object;
+        impact.point  = object->transform.worldPosition;
+        impact.normal = delta.NormalizedOr(m_rollDir);
+        impact.speed  = m_rollSpeed;
+        // 受け止めたのは動かない側 (重量級の車輪)。手応えも «アンカーへの激突» に揃える。
+        impact.struckIsAnchor = true;
+        if (const auto* target = scene.GetScript<PolarityTargetComponent>())
+            impact.moverPolarity = target->Current();
+        combat->ReportImpact(impact);
     }
 }
 

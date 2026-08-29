@@ -1,24 +1,25 @@
-// FBZZ Engine
-// SceneManagerScript.hpp | sandbox
-// ボタンクリック / 自動タイマーによるシーン遷移ユーティリティスクリプト
-//
-// 使い方:
-//   [ボタン GO に付ける場合]
-//     targetScene : 遷移先シーン名
-//     viaScene    : 中継シーン名 (例: "Load")。空の場合は直接遷移。
-//
-//   [Load.scene のコントローラー GO に付ける場合]
-//     autoTransition = true
-//     autoDelay      = 遷移までの秒数 (フェードイン完了後にカウント開始)
-//     targetScene    は OnStart で s_next から自動セットされる。
-//
-// フェード動作:
-//   fadeEnabled=true のとき、遷移前に黒フェードアウト、遷移先シーンで黒フェードインを行う。
-//   fadeDuration でフェードイン/アウト各々の秒数を制御する。
-//   シーン間の状態受け渡しは s_fadeIn 静的変数で行う。
-//
-// WHY: シーンごとに個別コントローラーを作らず、1 スクリプトで全遷移パターンを賄う。
-//      ポストプロセスの screenFadeAlpha を使うことで UI に依存せず真の最終レイヤーでフェードできる。
+/// @file    SceneManagerScript.hpp
+/// @brief   ボタンクリック / 自動タイマーによるシーン遷移ユーティリティスクリプト。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// 使い方:
+/// [ボタン GO に付ける場合]
+/// targetScene : 遷移先シーン名
+/// viaScene    : 中継シーン名 (例: "Load")。空の場合は直接遷移。
+///
+/// [Load.scene のコントローラー GO に付ける場合]
+/// autoTransition = true
+/// autoDelay      = 遷移までの秒数 (フェードイン完了後にカウント開始)
+/// targetScene    は OnStart で s_next から自動セットされる。
+///
+/// フェード動作:
+/// fadeEnabled=true のとき、遷移前に黒フェードアウト、遷移先シーンで黒フェードインを行う。
+/// fadeDuration でフェードイン/アウト各々の秒数を制御する。
+/// シーン間の状態受け渡しは s_fadeIn 静的変数で行う。
+///
+/// WHY: シーンごとに個別コントローラーを作らず、1 スクリプトで全遷移パターンを賄う。
+/// ポストプロセスの screenFadeAlpha を使うことで UI に依存せず真の最終レイヤーでフェードできる。
 #pragma once
 
 #include <Engine/Renderer/RenderSettings.hpp>

@@ -1,7 +1,7 @@
-/// @file GlowMaterial.hpp
-/// @brief 発光パーツ材質 (M_GlowPart) への書き込み口。アタッチしないユーティリティ
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    GlowMaterial.hpp
+/// @brief   発光パーツ材質 (M_GlowPart) への書き込み口。アタッチしないユーティリティ
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 ///
 /// WHY 1 箇所に集めるか:
 ///   キャラクターの光る部位はすべて Assets/Materials/Character/M_GlowPart.mat を共有し、

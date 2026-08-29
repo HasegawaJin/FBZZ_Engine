@@ -1,21 +1,22 @@
-// FBZZ Engine
-// PolarityFieldComponent.hpp | sandbox
-// 盤面全体の引力を仕切る 1 体だけのスクリプト。シーンの管理用 GameObject に付ける。
-//
-// 担当は 2 つ。
-//   1. 誰と誰が引き合うかを毎フレーム決め直す (7.3 の引力条件)
-//   2. その結果起きた衝突を 1 箇所で解決する (7.4 / 12.6 / 17 章の手触り)
-//
-// WHY 各自に最寄りを探させないか:
-//   敵が自分で相手を選ぶと、A は B を、B は C を見る、という食い違いが起きる。
-//   引力は 2 者の関係なので、片方だけが引かれている状態は成立しない。
-//   企画書の「誰と誰を、どの順番で結びつけるか」を決めるのはプレイヤーであり、
-//   その結果の解釈は 1 箇所に閉じていないと、撃った結果が読めなくなる。
-//
-// WHY 1 対象につきリンクを 1 本に絞るか:
-//   軽い敵が 2 つのアンカーから同時に引かれると、間で引き裂かれて動きが濁る。
-//   17 章が最重要とした「ギュンッ」は方向が 1 つに決まって初めて出る。近い順に
-//   貪欲に組み、既に組まれた対象は次のリンクに参加させない。
+/// @file    PolarityFieldComponent.hpp
+/// @brief   盤面全体の引力を仕切る 1 体だけのスクリプト。シーンの管理用 GameObject に付ける。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// 担当は 2 つ。
+/// 1. 誰と誰が引き合うかを毎フレーム決め直す (7.3 の引力条件)
+/// 2. その結果起きた衝突を 1 箇所で解決する (7.4 / 12.6 / 17 章の手触り)
+///
+/// WHY 各自に最寄りを探させないか:
+/// 敵が自分で相手を選ぶと、A は B を、B は C を見る、という食い違いが起きる。
+/// 引力は 2 者の関係なので、片方だけが引かれている状態は成立しない。
+/// 企画書の「誰と誰を、どの順番で結びつけるか」を決めるのはプレイヤーであり、
+/// その結果の解釈は 1 箇所に閉じていないと、撃った結果が読めなくなる。
+///
+/// WHY 1 対象につきリンクを 1 本に絞るか:
+/// 軽い敵が 2 つのアンカーから同時に引かれると、間で引き裂かれて動きが濁る。
+/// 17 章が最重要とした「ギュンッ」は方向が 1 つに決まって初めて出る。近い順に
+/// 貪欲に組み、既に組まれた対象は次のリンクに参加させない。
 #pragma once
 
 #include <Engine/Scene/Components/CameraRigComponents.hpp>
@@ -23,16 +24,22 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
+#include <Scripts/Game/CameraFollowManagerComponent.hpp>
 #include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
+#include <Scripts/Polarity/PolarityRingComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
 #include <Scripts/Utils/ElectricArc.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
+#include <Scripts/Utils/ShockFalloff.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -52,6 +59,76 @@ class PolarityFieldComponent : public Script {
 public:
     FBZZ_REQUIRED_ASSET(PolarityTuning, tuning, "Tuning")
     FBZZ_TOOLTIP("作用半径・溜め・速度の共有調整値。未割り当てでは動作を開始しない")
+
+    // WHY «最後に塗った 1 体» を受け側にするか (企画書 7.9):
+    //   これが無いと、動ける個体は 1 本しかリンクを持てない (BuildLinks の WHY) ため、
+    //   ＋を 4 体並べて一を 1 体撃ち込んでも «いちばん近い 1 組» しか成立せず、残りは
+    //   置き去りになる。仕込んだ列がまとめて動く «7.9 の集束» は、相手がアンカー
+    //   (柱・Roller・ボス) のときにしか起きなかった。
+    //   受け側だけリンクの本数を数えないことにすれば、動ける雑魚 1 体でも «集束点»
+    //   として機能し、«並べる → 逆極を置く» がそのまま一手になる。
+    //
+    // WHY 受け側を «動かさない» か:
+    //   受け側も引かれると、集束点そのものが列の重心へ流れていく。仕込んだ位置と
+    //   ぶつかる位置がずれ、どこへ集まるのかを事前に読めなくなる。置いた所へ集める。
+    FBZZ_GROUP("Converge (7.9)")
+    FBZZ_FIELD(bool, chainConverge, true, "Chain Converge")
+    FBZZ_TOOLTIP("最後に極を乗せた 1 体を集束点にし、射程内の逆極すべてをそこへ集める。"
+                 "切ると従来どおり «近い順に 1 対 1» へ戻る")
+
+    // WHY 連鎖の «続き» を距離ではなく時間で許すか:
+    //   作用半径 (10m) は «その場に居合わせた 2 体» を組ませるための値で、静止した
+    //   盤面には正しい。だが連鎖は既に動き出した後の話で、次に繋がる相手が 10m 内に
+    //   居るかどうかは仕込みの巧拙とは関係のない «たまたま» になる。実際、丁寧に
+    //   並べても 2〜3 手で «近くに誰も居ない» で途切れ、長く繋ぐ動機が消えていた。
+    //   直前の衝突からの時間で許せば、途切れる条件が «間に合わなかった» になり、
+    //   プレイヤーが読んで伸ばせるものになる。
+    //
+    // WHY 窓の残りに比例させるか (点いている間ずっと最大ではなく):
+    //   binary だと窓が閉じる瞬間に届く距離が 26m から 10m へ落ち、最後の 1 手だけが
+    //   理由もなく繋がらない。残り時間に沿って縮めれば «伸ばすほど届かなくなる» という
+    //   手触りになり、どこで畳むかの判断がそのまま連鎖の長さの上限になる。
+    // WHY 相手の決まっていない帯電体を浮かせて止めるか:
+    //   ビームでなぞって «並べた» 直後、その敵が今までどおり歩き出すと、集束する頃には
+    //   列が崩れている。仕込みという行為そのものが成立しない。塗った瞬間の配置を
+    //   集束まで保たせるのがこの状態で、«並べた列へ逆極を撃ち込む» が
+    //   «並べてから撃ち込む» にまで広がる。
+    //
+    // NOTE: 入れると «塗る» が足止めを兼ねる。雑魚は塗られた時点で攻撃してこなくなるので、
+    //       戦闘の圧はその分だけ下がる。切れば従来どおり «塗られても向かってくる»。
+    FBZZ_GROUP("Armed Hold")
+    FBZZ_FIELD(bool, holdArmedBodies, true, "Hold Armed")
+    FBZZ_TOOLTIP("極を乗せられて相手がまだ居ない敵を、その場に浮かせて待たせる")
+
+    FBZZ_GROUP("Chain Reach")
+    FBZZ_FIELD_RANGE(float, chainRangeScale, 2.6f, "Chain Reach x", 1.0f, 8.0f)
+    FBZZ_TOOLTIP("連鎖が続いている間、作用半径をこの倍率まで広げる。"
+                 "1.0 で従来どおり «常に作用半径だけ»")
+    FBZZ_FIELD_READ_ONLY(float, debugChainWindow, 0.0f, "Chain Window")
+
+    /// 連鎖の残り (1 = 直前に衝突した / 0 = 途切れている)。
+    ///
+    /// WHY 盤面が数えず外から受け取るか: 連鎖を数えているのは CombatManagerComponent で、
+    ///     あちらは既にこのスクリプトを include している。こちらから引きに行くと
+    ///     include が輪になる。数える側から押してもらう。
+    void SetChainWindow(float remaining01) { m_chainWindow01 = Clamp01(remaining01); }
+
+    // 同極どうしの反発。本作の即応性はここが担う。
+    //
+    // WHY 引力と同じ «リンク» の器に乗せないか: 引力は 2 者の関係で、どちらが飛ぶか・
+    //     どこへ集まるかを盤面が 1 箇所で決めなければ濁る。反発はその場のインパルスで、
+    //     関係が続かない。枠を数える必要も、乗り換えを防ぐ必要も無い。同じ器に入れると
+    //     «関係を持たない出来事» のためにリンク枠 (Max Links) を食うことになる。
+    FBZZ_GROUP("Repulsion")
+    FBZZ_FIELD(bool, applyRepulsion, true, "Apply Repulsion")
+    FBZZ_TOOLTIP("同極どうしを弾く。切ると旧仕様 (同極は何も起きない) へ戻る。"
+                 "半径と速さは PolarityTuning が持つ")
+    FBZZ_FIELD_RANGE(float, repulseFlightSeconds, 1.0f, "Flight Seconds", 0.1f, 3.0f)
+    FBZZ_TOOLTIP("弾かれた対象が何にも当たらないまま飛べる秒数。"
+                 "長いと «押しただけで敵が止まる» 足止めになる")
+    FBZZ_FIELD(bool, repulseVfx, true, "Repulse VFX")
+    FBZZ_TOOLTIP("弾けた瞬間の放射と音。毎秒出る手なので、残らない絵にすること")
+    FBZZ_FIELD_READ_ONLY(int, debugRepulseCount, 0, "Repulses / frame")
 
     FBZZ_GROUP("Links")
     // 同時に成立させるリンクの上限。Wave で敵が増えたときに盤面が線だらけになるのを防ぐ。
@@ -99,13 +176,14 @@ public:
 
     // 7.9 の集束を画面へ渡す。ScreenEffectManagerComponent が起点へ画面を引き込む。
     //
-    // WHY 起爆 (PolarityGunComponent::Detonate) ではなくここから出すか:
-    //   タップした «つもり» と、実際に何体が動き出したかは別。外した / 中和した
-    //   タップでも画面が渦を巻くと、手応えが操作の結果を表さなくなる。誰が誰へ
-    //   引かれ始めたかを知っているのは盤面だけなので、巻き込んだ数もここでしか出せない。
+    // WHY 銃の側ではなくここから出すか:
+    //   撃った «つもり» と、実際に何体が動き出したかは別。外した / 中和した 1 発でも
+    //   画面が渦を巻くと、手応えが操作の結果を表さなくなる。誰が誰へ引かれ始めたかを
+    //   知っているのは盤面だけなので、巻き込んだ数もここでしか出せない。
     //
-    // NOTE: 動く側は 1 本しかリンクを持てない (BuildLinks の WHY)。したがって
-    //       «多対 1» が成立するのは相手がアンカーのときだけで、渦もその場合に出る。
+    // NOTE: 動く側は 1 本しかリンクを持てない (BuildLinks の WHY)。例外は Chain Converge
+    //       で選ばれた集束点で、そこだけは動ける雑魚でも受け側に回って何本でも受ける。
+    //       渦が出るのは «アンカー相手» か «集束点» のどちらかになる。
     FBZZ_GROUP("Implode (7.9)")
     FBZZ_FIELD(bool, screenImplode, true, "Screen Implode")
     FBZZ_FIELD_RANGE_INT(int, implodeMinBodies, 2, "Min Bodies", 2, 16)
@@ -170,6 +248,8 @@ private:
         bool                     movable = false;    // 引力で動けるか (7.3)
         bool                     pairable = false;   // 今フレーム引力の候補になれるか
         bool                     linked  = false;
+        /// 7.9 の集束点。動ける個体でも «受ける側» に回るので、リンクの本数を数えない。
+        bool                     isSink  = false;
     };
 
     struct PairCandidate {
@@ -186,6 +266,16 @@ private:
     };
 
     void CollectCandidates();
+    /// 同極どうしを弾く。CollectCandidates の直後、リンクを組む «前» に 1 回だけ呼ぶ。
+    ///
+    /// WHY 引力より先に走らせるか: 弾かれた対象はその瞬間から物理の弾道に乗るので、
+    ///     同じフレームに引力のリンクを張られると «押された直後に引き戻される» が起きる。
+    ///     先に弾いて pairable を降ろしておけば、その 1 フレームは押しだけが効く。
+    void ApplyRepulsion();
+    /// 1 体を弾く。弾けたら true。弾かれ方を本人が持っていればそちらへ渡す。
+    bool PushAway(Candidate& candidate, const Vector3& direction, float strength);
+    /// 集束点を 1 つ選ぶ。BuildLinks の «前» に 1 回だけ呼ぶ。
+    void PickSink();
     void BuildLinks(float dt);
     /// 多対 1 の集束を見つけて画面へ渡す。BuildLinks の直後に 1 回だけ呼ぶ。
     void DetectConvergence();
@@ -207,9 +297,12 @@ private:
     [[nodiscard]] bool IsOngoingLink(const Candidate& a, const Candidate& b) const;
 
     [[nodiscard]] float AttractionRadius() const { return tuning->attractionRadius; }
+    [[nodiscard]] float RepulsionRadius()  const { return tuning->repulsionRadius; }
     [[nodiscard]] float MinImpactSpeed()   const { return tuning->minImpactSpeed; }
 
     std::vector<Candidate>      m_candidates;
+    /// 連鎖の残り。CombatManagerComponent が毎フレーム押す (SetChainWindow)。
+    float m_chainWindow01 = 0.0f;
     std::vector<PairCandidate>  m_pairs;
     std::vector<PolarityImpact> m_impacts;
     /// 成立中のリンク 1 本につき 1 束。使わなくなった枠は消灯して寝かせる。
@@ -218,6 +311,8 @@ private:
     std::vector<EntityID>       m_pulledLast;
     std::vector<EntityID>       m_pulledNow;
     std::vector<ConvergeCount>  m_converge;
+    /// 反発の音を鳴らしたフレーム。同じフレームの 2 組目以降は鳴らさない。
+    std::uint64_t               m_repulseSfxFrame = 0;
     bool                        m_warnedNoFeedback = false;
 };
 
@@ -237,6 +332,17 @@ inline void PolarityFieldComponent::OnStart()
     if (scene.FindObjectsOfType<PolarityFieldComponent>().size() > 1)
         debug.LogError("PolarityFieldComponent must exist exactly once in the scene.");
 
+    // 反発の «バンッ» はここから鳴らす。どこで弾けたかが方向で分かる必要があるので 3D。
+    se::EnsureSource(scene, "SE", 1.0f);
+
+    // 制約① 反発半径 < 引力半径。破ると «固めると弾け、散らすと集まる» が成立せず、
+    // 同極を並べて 1 点へ集束させる手そのものが消える。クラッシュしないので明示する。
+    if (!tuning->SatisfiesRadiusConstraint()) {
+        debug.LogError("PolarityTuning breaks the radius constraint: Repulsion Radius "
+                       "must be smaller than Attraction Radius. Same-pole groups can "
+                       "never be assembled.");
+    }
+
     m_pulledLast.clear();
     m_warnedNoFeedback = false;
 }
@@ -250,6 +356,11 @@ inline void PolarityFieldComponent::OnUpdate()
         return;
 
     CollectCandidates();
+    // 押しが先、引きが後。順番の理由は ApplyRepulsion の宣言に書いてある。
+    ApplyRepulsion();
+    // 受け側を先に決めてからリンクを組む。組んだ後では «誰が埋まったか» が
+    // 既に確定していて、集束点だけ空けておくことができない。
+    PickSink();
     BuildLinks(Max(Time::deltaTime, 0.0f));
     DetectConvergence();
 }
@@ -277,11 +388,178 @@ inline void PolarityFieldComponent::CollectCandidates()
 
         // 衝突直後の硬直中は引力から外す。外さないと、ぶつかった相手と密着したまま
         // 再リンクし、その場で震え続ける。
+        // 転がっている Roller のように «今は的として使えない» と本人が申告している
+        // 相手も外す (PolarityTargetComponent::IsLinkSuspended)。
         const bool available = !candidate.body || candidate.body->IsAvailableForLink();
-        candidate.pairable   = target->IsCharged() && available;
+        candidate.pairable   = target->IsCharged() && available &&
+                               !target->IsLinkSuspended();
 
         m_candidates.push_back(candidate);
     }
+}
+
+// 同極どうしを弾く。溜めは無く、この 1 フレームで速度が乗る。
+//
+// WHY 全ペアを毎フレーム見てよいか: 盤面の同時出現上限は 8 体 + 撃破コアで、
+//     二重ループでも 100 組に届かない。空間分割を持ち込むと、盤面が «どれとどれが
+//     近いか» を 2 通りの方法で答えることになり、引力と反発で結果がずれる余地ができる。
+inline void PolarityFieldComponent::ApplyRepulsion()
+{
+    debugRepulseCount = 0;
+    if (!applyRepulsion) return;
+
+    const float radius = Max(RepulsionRadius(), 0.0f);
+    if (radius <= 0.0f) return;   // 反発を切っている構成 (旧仕様の挙動)
+
+    const float radiusSq = radius * radius;
+    const int   count    = static_cast<int>(m_candidates.size());
+
+    for (int i = 0; i < count; ++i) {
+        Candidate& a = m_candidates[i];
+        if (!a.target->IsCharged()) continue;
+
+        for (int j = i + 1; j < count; ++j) {
+            Candidate& b = m_candidates[j];
+            if (!b.target->IsCharged()) continue;
+            // 同極だけ。異極は引力の担当で、そちらは溜めを持つ。
+            if (a.target->Current() != b.target->Current()) continue;
+
+            // 水平だけで測る。高さを含めると、浮いている Mite と地を這う Serpent が
+            // 真上に重なっただけで «届いていない» 判定になる。
+            Vector3 delta = b.position - a.position;
+            delta.y = 0.0f;
+            const float distanceSq = delta.LengthSq();
+            if (distanceSq > radiusSq) continue;
+
+            const float distance = std::sqrt(distanceSq);
+            const float strength = shock::Falloff(distance, radius, tuning->repulsePlateau);
+            if (strength <= 0.0f) continue;
+
+            // 完全に重なった 2 体は向きが決まらない。各自の震えの種から作らせる
+            // (PolarityBodyComponent::ApplyRepulse がゼロ長を受けて散らす)。
+            const Vector3 direction = delta.NormalizedOr(Vector3::ZERO);
+
+            // 両方に効かせる。片方だけだと «押した方だけが動く» になり、
+            // 同じ極どうしという対称な関係が絵から読めない。
+            const bool pushedA = PushAway(a, -direction, strength);
+            const bool pushedB = PushAway(b,  direction, strength);
+            if (!pushedA && !pushedB) continue;
+            ++debugRepulseCount;
+
+            // 押し «そのもの» の絵は 2 体の間に 1 枚だけ出す。弾かれた側それぞれに
+            // 出すと、同じ 1 回の出来事が 2 回起きたように見える。
+            //
+            // WHY 地面へ描くか: 押しは «どこからどこまで届いたか» が情報で、
+            //     宙に浮いた球ではそれが読めない。床を走る帯なら、届いた範囲が
+            //     そのまま距離として見える (絵は DecalPolarityRing.hlsl)。
+            if (repulseVfx) {
+                const Vector3 midpoint = (a.position + b.position) * 0.5f;
+                // 地面の放射は «盤面のその場所» で起きた出来事なので、同時に何組
+                // 弾けてもその数だけ出す (爆発を 1 件に絞らないのと同じ理由)。
+                if (auto* rings = PolarityRingComponent::Instance())
+                    rings->Burst(midpoint, radius, a.target->Current());
+
+                // WHY 音だけ 1 フレーム 1 回に絞るか: 反発は «組» ごとに成立する。
+                //     同極が 8 体固まっていれば 1 フレームで 28 組が同時に弾けうる。
+                //     絵は場所が違うので重なっても読めるが、音は同じ «バンッ» が
+                //     28 本重なって割れるだけで、しかも voice を一気に食い潰す。
+                if (m_repulseSfxFrame != time.FrameCount()) {
+                    m_repulseSfxFrame = time.FrameCount();
+                    se::PlayAt(audio, se::kPolarityRepulse, midpoint);
+                }
+            }
+        }
+    }
+}
+
+inline bool PolarityFieldComponent::PushAway(Candidate& candidate,
+                                             const Vector3& direction, float strength)
+{
+    if (!candidate.object || !candidate.target) return false;
+    // 連続で弾くと押し合いが毎フレーム反転して、盤面が痙攣しているようにしか見えない。
+    if (!candidate.target->CanBeRepulsed()) return false;
+
+    const float speed = Max(tuning->repulseSpeed, 0.0f) * strength;
+    const float lift  = Max(tuning->repulseLift,  0.0f) * strength;
+    if (speed <= 0.0f) return false;
+
+    // 弾かれ «方» を本人が引き受けている相手 (Roller は転がり出す) はそちらへ渡す。
+    // 盤面は «誰が弾かれたか» までしか決めない。
+    if (candidate.target->onRepulse) {
+        candidate.target->onRepulse(direction, speed);
+    } else {
+        // 既定の弾け方。動けない側 (アンカー・ボス・壁) はここで落ちる。
+        if (!candidate.body || !candidate.movable) return false;
+        if (!candidate.body->IsAvailableForRepulse()) return false;
+        candidate.body->ApplyRepulse(direction, speed, lift, repulseFlightSeconds);
+    }
+
+    candidate.target->NotifyRepulsed();
+    // 今フレームは引力に参加させない。押された直後に引き戻されると、
+    // どちらの手が効いたのかが 1 フレームごとに入れ替わって読めなくなる。
+    candidate.pairable = false;
+
+    if (repulseVfx) {
+        // 弾かれた «この 1 体» に付く速度線。押しは «画面» の出来事にしないので、
+        // ヒットストップにも画角にも一切触らない。
+        //
+        // WHY 音をここで鳴らさないか: 反発は必ず 2 体に効く。1 体ずつ鳴らすと
+        //     1 回の «バンッ» が毎回 2 重になり、押しだけが不自然に重く聞こえる。
+        //     音と地面の環は «出来事» 側 (ApplyRepulsion) が 1 回だけ出す。
+        if (auto* vfx = VfxManagerComponent::Instance()) {
+            vfx->PlayLaunch(candidate.body ? candidate.body->LinkPoint()
+                                           : bodybounds::CenterWorld(*candidate.object,
+                                                                     kArcFallbackHeight),
+                            direction, candidate.target->Current(), speed);
+        }
+    }
+    return true;
+}
+
+inline void PolarityFieldComponent::PickSink()
+{
+    if (!chainConverge) return;
+
+    // BuildLinks と同じ届き方で選ぶ。ここだけ作用半径のままだと、連鎖中に
+    // «リンクは張れるのに集束点には選ばれない» 相手ができて挙動が食い違う。
+    const float radius   = AttractionRadius() *
+                           Lerp(1.0f, Max(chainRangeScale, 1.0f), m_chainWindow01);
+    const float radiusSq = radius * radius;
+    const int   count    = static_cast<int>(m_candidates.size());
+
+    int   best      = -1;
+    float bestStamp = -1.0f;
+
+    for (int i = 0; i < count; ++i) {
+        Candidate& sink = m_candidates[i];
+        if (!sink.pairable) continue;
+
+        // 既に引かれている個体は受け側になれない。飛びながら受けると、集束点が
+        // 動いたうえに «誰が誰へ向かっているのか» が 1 フレームごとに入れ替わる。
+        if (sink.body && sink.body->IsBeingPulled()) continue;
+
+        const float stamp = sink.target->ChargedAt();
+        if (stamp <= bestStamp) continue;
+
+        // 逆極が射程に 1 体も居なければ回路が閉じていない。閉じていない列を
+        // 受け側に選ぶと、本当に閉じている別の列がその枠を失う。
+        bool hasPartner = false;
+        for (int j = 0; j < count && !hasPartner; ++j) {
+            if (i == j) continue;
+            const Candidate& mover = m_candidates[j];
+            // 寄って来られるのは動ける側だけ。柱どうしでは何も起きない。
+            if (!mover.pairable || !mover.movable) continue;
+            if (!IsAttracting(sink.target->Current(), mover.target->Current())) continue;
+            if ((sink.position - mover.position).LengthSq() > radiusSq) continue;
+            hasPartner = true;
+        }
+        if (!hasPartner) continue;
+
+        best      = i;
+        bestStamp = stamp;
+    }
+
+    if (best >= 0) m_candidates[static_cast<std::size_t>(best)].isSink = true;
 }
 
 inline bool PolarityFieldComponent::IsOngoingLink(const Candidate& a, const Candidate& b) const
@@ -361,7 +639,11 @@ inline void PolarityFieldComponent::BuildLinks(float dt)
 {
     m_pairs.clear();
 
-    const float radius   = AttractionRadius();
+    // 連鎖が続いている間だけ遠くへ届く。窓が閉じるにつれて作用半径へ戻るので、
+    // «伸ばすほど次が遠い» が自然に効いて、無限には繋がらない。
+    debugChainWindow = m_chainWindow01;
+    const float radius   = AttractionRadius() *
+                           Lerp(1.0f, Max(chainRangeScale, 1.0f), m_chainWindow01);
     const float radiusSq = radius * radius;
     const int   count    = static_cast<int>(m_candidates.size());
 
@@ -373,11 +655,14 @@ inline void PolarityFieldComponent::BuildLinks(float dt)
             const Candidate& a = m_candidates[i];
             const Candidate& b = m_candidates[j];
 
-            // 引力が発生する唯一の条件 (7.3)。同極どうしは 7.8 の判断により何もしない。
+            // 引力が発生する唯一の条件。同極どうしは ApplyRepulsion が既に弾いている。
             if (!IsAttracting(a.target->Current(), b.target->Current())) continue;
             // 両方が動かない側 (柱どうし・柱とヘビースライム) なら何も起きない。
             // ここで捨てないと、動かない組がリンク枠を食って本当に飛ぶ組が作れなくなる。
-            if (!a.movable && !b.movable) continue;
+            // 集束点は «動ける» まま受け側に回るので、こちらも動かない側として数える。
+            const bool aReceives = !a.movable || a.isSink;
+            const bool bReceives = !b.movable || b.isSink;
+            if (aReceives && bReceives) continue;
 
             // 継続中のリンクは距離に関わらず最優先で維持する。途中で相手が変わると
             // 溜めからやり直しになり、飛んでいる最中に方向が切り替わって何が起きたのか
@@ -412,14 +697,21 @@ inline void PolarityFieldComponent::BuildLinks(float dt)
         //   何本引き受けても軌道が濁らない。ここでアンカーまで埋めてしまうと、
         //   7.6 の「柱に＋を置いておく → 周囲の敵が集まってくる」が 1 体ずつ順番待ちになり、
         //   設置型の戦術という柱の存在理由そのものが消える。
-        if (a.movable) a.linked = true;
-        if (b.movable) b.linked = true;
+        // 集束点は何本でも受けられるので埋まり扱いにしない (7.9)。埋めると、
+        // 並べた列のうち 1 体が寄った時点で残りが弾かれ、集束が成立しない。
+        if (a.movable && !a.isSink) a.linked = true;
+        if (b.movable && !b.isSink) b.linked = true;
         ++linkCount;
 
         // 動く側だけに引き寄せを指示する。相手が動かないなら、その相手は
         // 質量無限のアンカーとして扱われる (7.6 の柱と同じ扱い)。
-        if (a.movable) a.body->BeginPull(*b.object, !b.movable);
-        if (b.movable) b.body->BeginPull(*a.object, !a.movable);
+        //
+        // WHY 集束点に partnerIsAnchor を渡さないか: あちらは «柱は原点が足元で全高 8m»
+        //     という形の話で、狙う高さを変える (PolarityBodyComponent の TickFlying)。
+        //     集束点が雑魚なら高さは普通の敵と同じなので、幾何の扱いまでアンカーへ
+        //     寄せると、集まった先が足元へ潜り込む。
+        if (a.movable && !a.isSink) a.body->BeginPull(*b.object, !b.movable);
+        if (b.movable && !b.isSink) b.body->BeginPull(*a.object, !a.movable);
 
         // WHY BeginPull の «後» に張るか: 放電の強さは溜めの進み (WindupProgress) から
         //     取る。先に張ると、リンクが成立した最初のフレームだけ «溜めていないのに
@@ -440,6 +732,16 @@ inline void PolarityFieldComponent::BuildLinks(float dt)
     for (Candidate& candidate : m_candidates) {
         if (candidate.linked || !candidate.body) continue;
         candidate.body->CancelPull();
+
+        // 相手が決まらなかった «帯電したまま» の体はその場に浮かせて待たせる。
+        // 集束点は受け側なので浮かせない ─ 撃ち込まれる的が宙に浮いていると、
+        // 寄ってきた側がどこへ当たるのか事前に読めない。
+        if (!holdArmedBodies || candidate.isSink || !candidate.movable) {
+            candidate.body->EndArmed();
+            continue;
+        }
+        if (candidate.target->IsCharged()) candidate.body->BeginArmed();
+        else                               candidate.body->EndArmed();
     }
 
     debugLinkCount = linkCount;
@@ -498,6 +800,15 @@ inline void PolarityFieldComponent::DetectConvergence()
     // 落ちて «線は胸で交わっているのに画面は足元へ吸われる» という二重の中心になる。
     screen->Implode(bodybounds::CenterWorld(*focus, kArcFallbackHeight),
                     strength, implodeSeconds);
+
+    // 集束は四方から 1 点へ飛び込む絵になる。通常の画角だと巻き込んだ敵が画面外に出て、
+    // 何体まとめたのかが絵から読めない (Docs/camera-controls.md「集束時のカメラ」)。
+    //
+    // WHY 反発では広げないか: 押しは 1〜2 フレームで終わる即時の手で、毎秒使う。
+    //     そこで画角が動くと、連続して押したときに画面が絶えず揺れる。
+    //     «見せ場» として扱うのは引きだけ、という配分を画面の側でも守る。
+    if (auto* follow = CameraFollowManagerComponent::Instance())
+        follow->PunchFov(strength);
 }
 
 inline void PolarityFieldComponent::ResolveImpacts()

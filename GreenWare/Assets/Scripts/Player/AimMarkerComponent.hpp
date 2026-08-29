@@ -1,13 +1,13 @@
-/// @file AimMarkerComponent.hpp
-/// @brief ビームの手前に居る 1 体を WorldSpace UI の四隅ブラケットで示す
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    AimMarkerComponent.hpp
+/// @brief   ビームの手前に居る 1 体を WorldSpace UI の四隅ブラケットで示す
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 画面中央のレティクルではなく対象に付けるか:
 ///   6.2 のビームは半径 0.6m の太さを持ち、それが 6.4 で廃したエイム補助の代替になっている。
 ///   中央のレティクルだけだと、その太さのどこまでが判定に入っているかが読めず、
 ///   「掠めていたつもりが外れていた」が起きる。実際に判定へ入った 1 体を名指しすれば、
-///   太さの効き方がそのまま画面に出る。7.9 のタップ起爆が向かう先も、この 1 体になる。
+///   太さの効き方がそのまま画面に出る。タップの点付与が向かう先も、この 1 体になる。
 ///
 /// WHY 対象の大きさに合わせて枠を伸縮させるか:
 ///   固定サイズの枠だと、大きい敵では体の中に埋もれ、遠い敵では点にしか見えない。
@@ -25,7 +25,10 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
+#include <Scripts/Polarity/PolarityRingComponent.hpp>
+#include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
 #include <algorithm>
@@ -44,6 +47,24 @@ class AimMarkerComponent : public Script {
     FBZZ_SCRIPT(AimMarkerComponent)
 
 public:
+    // PlayerComponent が注入する。反発半径をここへ複製しない。
+    fbzz::Asset<PolarityTuning> tuning{};
+
+    // 狙っている相手の足元へ «反発半径» の環を出す。
+    //
+    // WHY 枠と同じ場所が持つか: どちらも «今この 1 体を狙っている» ことの表示で、
+    //     指している相手を知っているのはここだけ。環だけ別の持ち主にすると、
+    //     枠が乗り移った相手と環の中心が 1 フレームずれる。
+    //
+    // WHY 引力半径ではなく反発半径か: 引力 (12m) は «撃てば起きること» で、撃った後の
+    //     集束の絵がそれを教える。反発 (6m) は «撃つ前に知っていなければ» 判断できない
+    //     ─ この輪の中に同極が居るかどうかで、同じ 1 発が «散らす» にも «溜める» にも
+    //     なる (Docs/weapon-emitter.md「照準中の表示は距離を出す」)。
+    FBZZ_GROUP("Repulsion Ring")
+    FBZZ_FIELD(bool, showRepulsionRing, true, "Show Ring")
+    FBZZ_TOOLTIP("狙っている相手の足元に、同極が弾け合う距離を地面へ描く。"
+                 "見た目は PolarityRingComponent と DecalPolarityRing.hlsl が持つ")
+
     FBZZ_GROUP("Layout")
     FBZZ_FIELD_RANGE(float, padding, 0.25f, "Padding", 0.0f, 3.0f)
     FBZZ_TOOLTIP("体の外周から枠までのワールド距離。体にぴったり付けると輪郭に紛れる")
@@ -244,9 +265,22 @@ inline void AimMarkerComponent::OnLateUpdate()
     if (!target) {
         if (canvas) canvas->enabled = false;
         m_lastTarget = {};
+        // 環も «呼ばなくなった時点が解除»。ここで何もしないのが消す操作になる。
         return;
     }
     if (canvas) canvas->enabled = true;
+
+    // 反発半径の環。狙っている相手の «足元» へ出す。中心を体の高さに置くと、
+    // 地面へ落ちる投影が敵の背丈ぶん外れて、測っている距離が嘘になる。
+    if (showRepulsionRing && tuning) {
+        if (auto* rings = PolarityRingComponent::Instance()) {
+            Polarity polarity = Polarity::None;
+            if (const auto* state = scene.GetScript<PolarityTargetComponent>(target))
+                polarity = state->Current();
+            rings->ShowRadius(target->transform.worldPosition,
+                              tuning->repulsionRadius, polarity);
+        }
+    }
 
     // 乗り移った瞬間だけ大きく出す。同じ相手を指し続けている間は演出しない。
     if (target->GetID() != m_lastTarget) {

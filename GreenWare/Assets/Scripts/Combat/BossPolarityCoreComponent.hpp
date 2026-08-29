@@ -1,7 +1,7 @@
-/// @file BossPolarityCoreComponent.hpp
-/// @brief Boss「ポラリティ・コア」の極とフェーズ。IBoss の実装であり、発光色の正本
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    BossPolarityCoreComponent.hpp
+/// @brief   Boss「ポラリティ・コア」の極とフェーズ。IBoss の実装であり、発光色の正本
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY 極を決める者が色も描くか:
 ///   企画書 12.2 は発光色に意味を持たせる設計で、赤 = ＋ / 青 = − がずれた瞬間に盤面が
@@ -48,6 +48,22 @@ public:
     FBZZ_GROUP("Identity")
     FBZZ_FIELD(std::string, bossName, "POLARITY CORE", "Name")
 
+    // WHY 極を «自分で回す» のと «塗られる» の 2 通り持つか:
+    //   8 章のボスは周期で極を切り替え、プレイヤーはそれを読んで逆極の雑魚をぶつける。
+    //   読み合いはボス側の時計が作っていた。
+    //   塗られる側にすると、時計が消える代わりに «いつ撃ち込むか» がプレイヤーの手に
+    //   移る。仕込んだ雑魚を浮かせておいて、好きな瞬間にボスへ逆極を乗せて一斉に
+    //   叩き込む、という組み立てが成立する。どちらが良いかは触ってみないと決まらないので、
+    //   周期側を消さずにスイッチで残す。
+    //
+    // NOTE: Player Charged を入れる場合、同じ GameObject の PolarityTargetComponent で
+    //       Accepts Paint も入れること。あちらが塗りを受け取れないと、こちらは
+    //       «永久に無極» のまま何も起きない。
+    FBZZ_GROUP("Charging")
+    FBZZ_FIELD(bool, playerCharged, false, "Player Charged")
+    FBZZ_TOOLTIP("極を周期で切り替えず、プレイヤーが塗った極に追従する。"
+                 "切ると 10.6 の P1 6 秒 / P2 4 秒の周期へ戻る")
+
     FBZZ_GROUP("Polarity (8章)")
     FBZZ_FIELD_ENUM(Polarity, startPolarity, Polarity::Plus, "Start Polarity",
                     "None", "Plus (＋赤)", "Minus (−青)")
@@ -89,6 +105,7 @@ public:
     [[nodiscard]] int  CurrentPhase() const override { return m_phase; }
     [[nodiscard]] int  PhaseCount()   const override { return 2; }
     [[nodiscard]] bool IsStaggered()  const override { return m_staggered; }
+    [[nodiscard]] bool IsEngaged()    const override { return m_engaged; }
 
     // ── AI からの通知 ───────────────────────────────────────────────────────
 
@@ -102,6 +119,14 @@ public:
     ///     攻撃のたびに切れて «引かれていた雑魚が急に止まる» が頻発する。消灯は
     ///     «長く無防備を晒す» 激突だけの見た目で、短い硬直とは別の出来事。
     void SetCoreDark(bool dark) { m_coreDark = dark; }
+
+    /// 交戦が始まった / まだ始まっていない。BossRoomTriggerComponent が知らせる。
+    ///
+    /// WHY 極の側が «交戦中か» を持つか: 進行も HUD も補充も、ボスの入口は IBoss 1 本。
+    ///     登場の条件を持つスクリプトを直接見に行かせると、条件を «部屋» から
+    ///     «HP 閾値» や «時間» へ変えたときに、見に行っている側を全部書き換えることになる。
+    ///     条件は持つ側が決め、結果だけをここへ預ける (硬直・消灯と同じ «もらう» 向き)。
+    void SetEngaged(bool engaged) { m_engaged = engaged; }
 
     /// 極が切り替わった瞬間に呼ばれる。10.6 の P2 で磁力パルスを重ねるための合図。
     /// WHY 購読させるか: パルスを «出すかどうか» はフェーズごとの攻撃表 (10.6) の話で、
@@ -130,6 +155,12 @@ private:
     int      m_phase     = 1;
     bool     m_staggered = false;
     bool     m_coreDark  = false;
+    /// WHY 初期値が false か: ScriptSystem は GameObject ごとに OnAwake → OnStart →
+    ///     OnUpdate をまとめて回すので、先に並んだ GameObject (Manager の進行など) は
+    ///     ボスのどのスクリプトも走る前に IsEngaged() を読む。そこで true を返すと、
+    ///     まだ 0 の HP を «撃破済み» と読まれて開始と同時にクリアになる。
+    ///     «まだ» から始めて、OnStart で «登場条件を持たないボス» だけを true にする。
+    bool     m_engaged   = false;
 };
 
 FBZZ_REFLECT(BossPolarityCoreComponent)
@@ -137,10 +168,15 @@ FBZZ_REFLECT(BossPolarityCoreComponent)
 
 inline void BossPolarityCoreComponent::OnStart()
 {
-    m_polarity  = startPolarity;
+    // 塗られる側では «まだ誰も乗せていない» から始める。startPolarity を持ったまま
+    // 始めると、開始と同時に盤面の雑魚がボスへ吸い寄せられ、仕込む前に勝手に動く。
+    m_polarity  = playerCharged ? Polarity::None : startPolarity;
     m_phase     = 1;
     m_staggered = false;
     m_coreDark  = false;
+    // 登場条件を持つ構成では、この直後に BossRoomTriggerComponent が false へ戻す。
+    // 持たない構成 (置いた瞬間から戦っている) はここで交戦中になる。
+    m_engaged   = true;
     m_switchRemaining = SwitchPeriod();
 
     auto* target = scene.GetScript<PolarityTargetComponent>();
@@ -149,6 +185,12 @@ inline void BossPolarityCoreComponent::OnStart()
         // 形でしか症状が出ないので、名指しで止める。
         debug.LogError("BossPolarityCoreComponent requires a PolarityTargetComponent on the "
                        "same object (the attraction field only sees that script).");
+    } else if (playerCharged && !target->acceptsPaint) {
+        // 受け取れない的を «塗られる側» に設定している。症状は «撃っても極が乗らない»
+        // だけで、しかもボスは元々塗れない仕様なので «仕様どおり» と誤読される。
+        debug.LogError("BossPolarityCoreComponent has Player Charged but the "
+                       "PolarityTargetComponent does not accept paint. "
+                       "Enable Accepts Paint, or the boss can never be charged.");
     } else if (!target->selfDriven) {
         // 塗れてしまうと 8 章の「ボスには極性を付与できない」が崩れ、しかも
         // 見た目は «たまに色が変わる» だけなので、遊んでいて原因に辿り着けない。
@@ -156,7 +198,9 @@ inline void BossPolarityCoreComponent::OnStart()
                        "PolarityTargetComponent (8: the boss cannot be painted).");
     }
 
-    PublishPolarity();
+    // 塗られる側では極の正本が向こうにある。ここで publish すると開始の 1 フレームだけ
+    // こちらの値 (None) で上書きすることになり、意味が無いうえ向きが逆になる。
+    if (!playerCharged) PublishPolarity();
     ApplyGlow();
 }
 
@@ -201,19 +245,29 @@ inline void BossPolarityCoreComponent::OnUpdate()
     const auto* health = scene.GetScript<EnemyHealthComponent>();
     const bool  alive  = !health || health->IsAlive();
 
-    // 倒れた後も切替が続くと、崩れ落ちている最中に雑魚が吸い寄せられ続ける。
-    if (alive && !m_coreDark) {
-        m_switchRemaining -= Time::deltaTime;
-        if (m_switchRemaining <= 0.0f) Switch();
+    if (playerCharged) {
+        // 塗られる側では極の正本が PolarityTargetComponent へ移る。こちらは
+        // 発光とデバッグ表示のために «今どうなっているか» を読むだけで、書きに行かない。
+        // 書くと、塗られた極を毎フレーム自分の値で上書きして «撃ち込めない» になる。
+        if (const auto* target = scene.GetScript<PolarityTargetComponent>())
+            m_polarity = target->Current();
+        if (!alive) m_polarity = Polarity::None;
+        m_switchRemaining = 0.0f;
+    } else {
+        // 倒れた後も切替が続くと、崩れ落ちている最中に雑魚が吸い寄せられ続ける。
+        if (alive && !m_coreDark) {
+            m_switchRemaining -= Time::deltaTime;
+            if (m_switchRemaining <= 0.0f) Switch();
+        }
+
+        // 倒れたら極そのものを捨てる。消灯 (m_coreDark) は復帰する前提の一時的な状態なので、
+        // 元の極を覚えたまま CurrentPolarity() だけ None を返す方で表す。
+        if (!alive) m_polarity = Polarity::None;
+
+        // 硬直中の消灯も死亡も、盤面へ公開する値は CurrentPolarity() 1 本に通す。
+        // 見えている色と吸い寄せる力が食い違うと、プレイヤーの読みが外れる。
+        PublishPolarity();
     }
-
-    // 倒れたら極そのものを捨てる。消灯 (m_coreDark) は復帰する前提の一時的な状態なので、
-    // 元の極を覚えたまま CurrentPolarity() だけ None を返す方で表す。
-    if (!alive) m_polarity = Polarity::None;
-
-    // 硬直中の消灯も死亡も、盤面へ公開する値は CurrentPolarity() 1 本に通す。
-    // 見えている色と吸い寄せる力が食い違うと、プレイヤーの読みが外れる。
-    PublishPolarity();
 
     debugPhase     = m_phase;
     debugPolarity  = PolaritySymbol(CurrentPolarity());

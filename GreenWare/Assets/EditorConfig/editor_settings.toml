@@ -1,6 +1,6 @@
 [asset_browser]
 bookmarks = []
-current_folder = 'Assets/Scenes'
+current_folder = 'Assets/Materials/Effects'
 icon_size = 72.0
 search_all_folders = false
 sort_mode = 0
@@ -40,13 +40,15 @@ version = '1.0.0'
     path = 'Assets/Scenes/Title.scene'
 
 [camera]
-last_pos_x = 11.081121444702148
-last_pos_y = 10.19031810760498
-last_pos_z = -18.21024513244629
-last_rot_w = 1.0
-last_rot_x = 0.0
-last_rot_y = 0.0
-last_rot_z = 0.0
+last_pos_x = -18.630943298339844
+last_pos_y = 2.335972309112549
+last_pos_z = 8.549911499023438
+last_rot_w = 0.4918079972267151
+last_rot_x = 0.013435575179755688
+last_rot_y = 0.8702753186225891
+last_rot_z = -0.023774825036525726
+ortho_height = 20.0
+orthographic = false
 sensitivity = 0.15000000596046448
 speed = 5.0
 
@@ -73,7 +75,7 @@ view_mode = 0
 
 [game_view]
 aspect = 6
-play_focus_mode = 2
+play_focus_mode = 0
 
 [gizmo]
 mode = 0
@@ -212,6 +214,55 @@ shift = false
 [[hotkeys.overrides]]
 alt = false
 ctrl = false
+key = 560
+name = 'view.toggle_projection'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 537
+name = 'view.axis_front'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 538
+name = 'view.axis_back'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 539
+name = 'view.axis_left'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 540
+name = 'view.axis_right'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 541
+name = 'view.axis_top'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 542
+name = 'view.axis_bottom'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
 key = 568
 name = 'gizmo.move'
 shift = false
@@ -286,13 +337,6 @@ key = 572
 name = 'panel.shortcut_list'
 shift = false
 
-[[hotkeys.overrides]]
-alt = true
-ctrl = true
-key = 567
-name = 'panel.vfx_editor'
-shift = false
-
 [import]
 default_compression = 0
 generate_normals = true
@@ -305,6 +349,10 @@ up_axis = 0
 
 [[inspector_sections.states]]
 k = 8119941
+v = false
+
+[[inspector_sections.states]]
+k = 25116744
 v = false
 
 [[inspector_sections.states]]
@@ -421,6 +469,10 @@ v = true
 
 [[inspector_sections.states]]
 k = 281168557
+v = false
+
+[[inspector_sections.states]]
+k = 288758873
 v = false
 
 [[inspector_sections.states]]
@@ -640,6 +692,10 @@ k = 738561339
 v = true
 
 [[inspector_sections.states]]
+k = 745575663
+v = false
+
+[[inspector_sections.states]]
 k = 748481751
 v = true
 
@@ -678,6 +734,10 @@ v = true
 [[inspector_sections.states]]
 k = 826096896
 v = true
+
+[[inspector_sections.states]]
+k = 839585846
+v = false
 
 [[inspector_sections.states]]
 k = 847149709
@@ -760,6 +820,10 @@ k = 1062740451
 v = true
 
 [[inspector_sections.states]]
+k = 1068663635
+v = false
+
+[[inspector_sections.states]]
 k = 1075312545
 v = true
 
@@ -788,6 +852,10 @@ k = 1178833035
 v = true
 
 [[inspector_sections.states]]
+k = 1180602019
+v = false
+
+[[inspector_sections.states]]
 k = 1181671819
 v = true
 
@@ -809,6 +877,10 @@ v = true
 
 [[inspector_sections.states]]
 k = 1246269066
+v = false
+
+[[inspector_sections.states]]
+k = 1252815035
 v = false
 
 [[inspector_sections.states]]
@@ -834,6 +906,10 @@ v = true
 [[inspector_sections.states]]
 k = 1326618241
 v = true
+
+[[inspector_sections.states]]
+k = 1336402536
+v = false
 
 [[inspector_sections.states]]
 k = 1345042288
@@ -905,7 +981,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 1519051802
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 1521048711
@@ -938,6 +1014,10 @@ v = true
 [[inspector_sections.states]]
 k = 1562141988
 v = true
+
+[[inspector_sections.states]]
+k = 1565336390
+v = false
 
 [[inspector_sections.states]]
 k = 1588005430
@@ -1000,6 +1080,10 @@ k = 1735682612
 v = true
 
 [[inspector_sections.states]]
+k = 1740299835
+v = false
+
+[[inspector_sections.states]]
 k = 1743061689
 v = true
 
@@ -1026,6 +1110,10 @@ v = false
 [[inspector_sections.states]]
 k = 1796154214
 v = true
+
+[[inspector_sections.states]]
+k = 1797332755
+v = false
 
 [[inspector_sections.states]]
 k = 1803084568
@@ -1173,7 +1261,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2129324169
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 2134828511
@@ -1274,6 +1362,10 @@ v = false
 [[inspector_sections.states]]
 k = 2393849167
 v = true
+
+[[inspector_sections.states]]
+k = 2432566543
+v = false
 
 [[inspector_sections.states]]
 k = 2433709108
@@ -1453,7 +1545,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2935615967
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 2936622285
@@ -1546,6 +1638,10 @@ v = true
 [[inspector_sections.states]]
 k = 3164587302
 v = true
+
+[[inspector_sections.states]]
+k = 3169877737
+v = false
 
 [[inspector_sections.states]]
 k = 3177416435
@@ -1728,6 +1824,10 @@ k = 3549910247
 v = true
 
 [[inspector_sections.states]]
+k = 3553134693
+v = false
+
+[[inspector_sections.states]]
 k = 3597683820
 v = true
 
@@ -1830,6 +1930,10 @@ v = false
 [[inspector_sections.states]]
 k = 3924500087
 v = true
+
+[[inspector_sections.states]]
+k = 3932452350
+v = false
 
 [[inspector_sections.states]]
 k = 3947225618
@@ -2009,6 +2113,14 @@ name = 'SFX Editor'
 open = false
 
 [[panels.visible]]
+name = 'Sequence'
+open = false
+
+[[panels.visible]]
+name = 'VFX Timeline'
+open = false
+
+[[panels.visible]]
 name = 'Sprite Editor'
 open = false
 
@@ -2065,10 +2177,10 @@ name = 'AI Settings'
 open = false
 
 [scene]
-last_path = 'Assets/Scenes/Title.scene'
+last_path = 'Assets/Scenes/Main.scene'
 recent = [
-    'Assets/Scenes/Title.scene',
     'Assets/Scenes/Main.scene',
+    'Assets/Scenes/Title.scene',
     'Assets/Scenes/Result.scene',
     'Assets/Scenes/Load.scene',
     'Assets/Scenes/Options.scene'
