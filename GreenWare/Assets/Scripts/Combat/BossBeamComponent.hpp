@@ -1,7 +1,7 @@
-/// @file BossBeamComponent.hpp
-/// @brief ボスのコアビーム。線の «見え» と «当たり» の両方をここ 1 つが持つ
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    BossBeamComponent.hpp
+/// @brief   ボスのコアビーム。線の «見え» と «当たり» の両方をここ 1 つが持つ
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY 見えと当たりを 1 つに持たせるか:
 ///   企画書 8 章はコアビームの役割を «移動を強制する» と定義している。避けられたかどうかが
@@ -32,12 +32,16 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/BossPolarityCoreComponent.hpp>
+#include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
+#include <Scripts/Game/RumbleManagerComponent.hpp>
+#include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Utils/BeamTrailRendererComponent.hpp>
 #include <Scripts/Utils/ElectricArc.hpp>
 #include <Scripts/Utils/PolarityBeam.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/ShockFalloff.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
 #include <cmath>
@@ -60,6 +64,13 @@ inline constexpr MaterialPropertyId kBossBeamChargeId{ "charge" };
 /// 整数で巻けば、巻き戻ったフレームでも絵は 1 ドットも動かない。
 inline constexpr float kBossBeamPhaseWrap  = 128.0f;
 inline constexpr float kBossBeamScrollWrap = 1024.0f;
+
+/// 薙ぎの «下地» で低周波モーターを高周波の何割で回すか。
+/// WHY 高周波を主にするか: 低周波は «一撃» の器で、数秒回し続けると手が痺れて
+///     接地点が寄ってきたことが読めなくなる。薙ぎは打撃ではなく «焼いている音»。
+inline constexpr float kBossBeamSweepLowRatio = 0.45f;
+/// 点火しきった瞬間に縁が光っている長さ。構えの 1 秒より短くないと予兆に埋もれる。
+inline constexpr float kBossBeamSurgeSeconds = 0.28f;
 
 class BossBeamComponent : public Script {
     FBZZ_SCRIPT(BossBeamComponent)
@@ -137,6 +148,35 @@ public:
     FBZZ_FIELD_RANGE(float, lightIntensity, 24.0f, "Light Intensity", 0.0f, 200.0f)
     FBZZ_FIELD_RANGE(float, lightRange, 9.0f, "Light Range", 0.5f, 40.0f)
 
+    // WHY 予兆と薙ぎで測る場所を分けるか:
+    //   アパーチャは常にボスの腹下にあり、接地点は薙ぎに連れて盤面を走る。1 点で
+    //   兼ねると «ボスが唸り始めた» と «焼く線が自分へ寄ってきた» が同じ強さで返り、
+    //   どちらも «ビームが出ている» としか読めなくなる。8 章がこの攻撃に与えた
+    //   «移動を強制する» は、線が寄ってきたことが判って初めて成立する。
+    FBZZ_GROUP("Feedback")
+    FBZZ_FIELD_RANGE(float, chargeRumble, 0.45f, "Charge Rumble", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("点火の予兆。太りきるまで上がり続ける低周波の唸り。0 で出さない")
+    FBZZ_FIELD_RANGE(float, chargeRange, 30.0f, "Charge Range", 1.0f, 80.0f)
+    FBZZ_TOOLTIP("アパーチャからこの距離まで離れると予兆が届かなくなる。"
+                 "ビームは 8〜18m から撃たれるので、そこを覆う値でないと予兆にならない")
+    FBZZ_FIELD_RANGE(float, sweepRumble, 0.55f, "Sweep Rumble", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("照射中の下地。接地点の近さで決まるので、薙ぎが寄るほど強くなる")
+    FBZZ_FIELD_RANGE(float, burnRumble, 1.00f, "Burn Rumble", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("線に触れているあいだ。焼かれていることは距離に関わらず振り切る")
+    FBZZ_FIELD_RANGE(float, contactRange, 14.0f, "Contact Range", 1.0f, 60.0f)
+    FBZZ_TOOLTIP("接地点からこの距離まで離れると、薙ぎの揺れも振動も 0 になる")
+    FBZZ_FIELD_RANGE(float, contactNear, 2.0f, "Full Strength Within", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("この距離までは減衰させない。足元を舐めた線が薄まらないための床")
+    FBZZ_FIELD_RANGE(float, sweepShake, 0.35f, "Sweep Shake", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, shakeInterval, 0.12f, "Shake Interval", 0.02f, 1.0f)
+    FBZZ_TOOLTIP("照射中に揺れを継ぎ足す間隔。短くしすぎると要求が上限に達して"
+                 "同じ照射の揺れが互いを押し出す")
+    FBZZ_FIELD_RANGE(float, ignitionSurge, 0.80f, "Ignition Surge", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("点火しきった瞬間、画面の縁をボスの極の色で走らせる強さ")
+    FBZZ_FIELD_RANGE(float, ignitionShake, 0.50f, "Ignition Shake", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, burnDistortion, 0.70f, "Burn Distortion", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("線に触れているあいだ掛け続ける画面の歪み。抜けた瞬間に 0 へ戻る")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(float, debugCharge, 0.0f, "Charge")
     FBZZ_FIELD_READ_ONLY(float, debugLength, 0.0f, "Length")
@@ -148,6 +188,8 @@ public:
     // 放電の筋はルートに置いた GameObject なので、このスクリプトと一緒には消えない。
     void OnDestroy()    override
     {
+        // 照射の途中でシーンが切り替わっても、パッドと画面の歪みを置き去りにしない。
+        StopFeedback();
         for (ElectricArcBundle& arc : m_apertureArcs) arc.Detach(*this);
         for (ElectricArcBundle& arc : m_beamArcs)     arc.Detach(*this);
         for (ElectricArcBundle& arc : m_groundArcs)   arc.Detach(*this);
@@ -193,11 +235,17 @@ private:
     [[nodiscard]] Vector3 TraceContact(const Vector3& from, const Vector3& aimPoint,
                                        Vector3& outNormal) const;
     [[nodiscard]] Vector4 BeamColor() const;
+    /// 明るさを 1 に正規化した極性色。«色が意味を持つ» 側だけが要る値。
+    [[nodiscard]] Vector4 BeamHue() const;
 
     void Show(const Vector3& from, const Vector3& to);
     void Hide();
     /// 線分とプレイヤーの距離を測り、間隔を空けて当てる。
     void ResolveHit(const Vector3& from, const Vector3& to, float dt);
+    /// 揺れ・振動・画面の歪みを今フレームの «点火と接地点» から出す。
+    void DriveFeedback(const Vector3& from, float dt);
+    /// 掛けっぱなしの手触りを畳む。線を消すときに必ず通す。
+    void StopFeedback();
     void DriveEffects(float dt);
     /// 接地点の光。無ければ作り、照射していなければ消す。
     void DriveLight(bool lit);
@@ -241,6 +289,13 @@ private:
     float m_charge   = 0.0f;
     float m_hitTimer = 0.0f;
     float m_scorchTimer = 0.0f;
+    /// 揺れを継ぎ足すまでの残り。毎フレーム積むと要求どうしが押し出し合う。
+    float m_shakeTimer = 0.0f;
+    /// この 1 射で点火しきった合図を返したか。撃つたびに 1 度だけ。
+    bool  m_ignited = false;
+    /// 掛けっぱなしの手触りを持っているか。持っていないのに畳むと、
+    /// 他所が設定した歪みまで巻き添えで 0 にしてしまう。
+    bool  m_feedbackActive = false;
     bool  m_warnedNoCombat = false;
 };
 
@@ -288,6 +343,9 @@ inline void BossBeamComponent::OnStart()
     m_charge   = 0.0f;
     m_hitTimer = 0.0f;
     m_scorchTimer = 0.0f;
+    m_shakeTimer = 0.0f;
+    m_ignited = false;
+    m_feedbackActive = false;
     m_warnedNoCombat = false;
 
     m_core = EntityRef{ BuildLayer(LayerName("Core"))->GetID() };
@@ -362,6 +420,15 @@ inline Vector4 BossBeamComponent::BeamColor() const
     const Vector4 tint = PolarityColor(polarity);
     const float   gain = std::max(intensity, 0.0f);
     return { tint.x * gain, tint.y * gain, tint.z * gain, 1.0f };
+}
+
+inline Vector4 BossBeamComponent::BeamHue() const
+{
+    // 12.2 の «色が意味を持つ» を保つ。明るさは各所が自分の倍率で決めるので、
+    // 色として使いたい側は «どの極か» だけを取り出す。
+    const Vector4 tint = BeamColor();
+    const float   peak = std::max({ tint.x, tint.y, tint.z, 1.0e-4f });
+    return { tint.x / peak, tint.y / peak, tint.z / peak, 1.0f };
 }
 
 inline BeamTrailStyle BossBeamComponent::StyleOf(bool isCore) const
@@ -452,6 +519,9 @@ inline void BossBeamComponent::Show(const Vector3& from, const Vector3& to)
 
 inline void BossBeamComponent::Hide()
 {
+    // 手触りは m_visible より先に畳む。線を 1 度も出さずに撃ち止めた経路 (狙いが
+    // 付く前に AI が止めた) でも、点火の唸りだけは既に鳴っているため。
+    StopFeedback();
     if (!m_visible) return;
     m_visible  = false;
     m_touching = false;
@@ -527,9 +597,7 @@ inline void BossBeamComponent::EnsureArcs(std::vector<ElectricArcBundle>& bundle
 
 inline ElectricArcStyle BossBeamComponent::ArcStyleBase(float brightness) const
 {
-    const Vector4 tint = BeamColor();
-    const float   peak = std::max({ tint.x, tint.y, tint.z, 1.0e-4f });
-    const Vector4 hue{ tint.x / peak, tint.y / peak, tint.z / peak, 1.0f };
+    const Vector4 hue = BeamHue();
 
     ElectricArcStyle style;
     style.strandCount = std::clamp(arcStrands, 1, 6);
@@ -661,6 +729,81 @@ inline void BossBeamComponent::DriveEffects(float dt)
                         std::clamp(scorchSize * Clamp01(m_charge), 0.05f, 2.0f));
 }
 
+inline void BossBeamComponent::DriveFeedback(const Vector3& from, float dt)
+{
+    m_feedbackActive = true;
+
+    const float ignite = Clamp01(m_charge);
+    const GameObject* player = scene.FindWithTag(playerTag);
+
+    // 予兆はアパーチャから、薙ぎは接地点から測る (Feedback グループの冒頭を参照)。
+    const float chargeNear = shock::NearnessTo(player, from, std::max(chargeRange, 1.0f));
+    const float burnNear   = shock::NearnessTo(player, m_contact,
+                                                std::max(contactRange, 1.0f),
+                                                std::max(contactNear, 0.0f));
+    // 点火は低周波だけで返す。«近づいてくる質量» は重い唸りでしか表せない。
+    float low  = Clamp01(chargeRumble) * ignite * chargeNear;
+    float high = 0.0f;
+
+    // 薙いでいるあいだの下地。接地点が寄るほど強くなるので、線が来ることが手で判る。
+    const float sweeping = m_firing ? ignite : 0.0f;
+    const float sweep    = Clamp01(sweepRumble) * sweeping * burnNear;
+    low  = std::max(low,  sweep * kBossBeamSweepLowRatio);
+    high = std::max(high, sweep);
+
+    // 焼かれているあいだは距離を見ない。線の中に居ることは «近い» ではなく «当たっている»。
+    if (m_touching) {
+        low  = std::max(low,  Clamp01(burnRumble));
+        high = std::max(high, Clamp01(burnRumble));
+    }
+    if (auto* pad = RumbleManagerComponent::Instance())
+        pad->Sustain(RumbleChannel::BossBeam, low, high);
+
+    // 点火しきった 1 瞬。唸りが最大まで上がったのに何も起きないと、予兆が
+    // «ずっと鳴っている音» に化けて、いつ来たのかが判らない。ここで段を付ける。
+    if (!m_ignited && m_firing && ignite >= 1.0f) {
+        m_ignited = true;
+        if (auto* screen = ScreenEffectManagerComponent::Instance())
+            screen->Surge(BeamHue(), Clamp01(ignitionSurge) * chargeNear,
+                          kBossBeamSurgeSeconds);
+        if (auto* shake = CameraShakeManagerComponent::Instance())
+            shake->Shake(Clamp01(ignitionShake) * chargeNear);
+    }
+    if (!m_firing) m_ignited = false;
+
+    // WHY 揺れだけ間隔を空けて継ぎ足すか: CameraShakeManager は寿命付きの要求を溜める
+    //     器で、上限に達すると «最も弱いものを捨てる» が働く。毎フレーム積むと同じ
+    //     1 回の照射が自分の揺れを押し出し合い、強さが本数の運で決まってしまう。
+    //     振動が持続の器 (Sustain) を持つのに対して、こちらは持っていない。
+    m_shakeTimer -= dt;
+    if (sweep > 0.0f && m_shakeTimer <= 0.0f) {
+        m_shakeTimer = std::max(shakeInterval, 0.02f);
+        if (auto* shake = CameraShakeManagerComponent::Instance())
+            shake->Shake(Clamp01(sweepShake) * sweeping * burnNear);
+    }
+
+    // WHY Distort ではなく掛けっぱなしの器か: 線に触れているのは «状態» であって
+    //     当たった «瞬間» ではない。寿命付きの Distort を毎フレーム積むと、線から
+    //     抜けた後も溜まったぶんが残り、避けきったのに画面が歪んだままになる。
+    if (auto* screen = ScreenEffectManagerComponent::Instance())
+        screen->SetSustainedDistortion(m_touching ? Clamp01(burnDistortion) : 0.0f);
+}
+
+inline void BossBeamComponent::StopFeedback()
+{
+    m_ignited    = false;
+    m_shakeTimer = 0.0f;
+    // 持っていないのに畳まない。掛けっぱなしの歪みは盤面で 1 つしか無いので、
+    // 撃っていない間も 0 を書き続けると、他所が掛けた歪みを毎フレーム消してしまう。
+    if (!m_feedbackActive) return;
+    m_feedbackActive = false;
+
+    if (auto* pad = RumbleManagerComponent::Instance())
+        pad->StopSustain(RumbleChannel::BossBeam);
+    if (auto* screen = ScreenEffectManagerComponent::Instance())
+        screen->SetSustainedDistortion(0.0f);
+}
+
 inline void BossBeamComponent::DriveLight(bool lit)
 {
     if (!contactLight) {
@@ -696,10 +839,9 @@ inline void BossBeamComponent::DriveLight(bool lit)
     object->transform.position = m_contact;
     object->transform.worldPosition = m_contact;
 
-    const Vector4 tint = BeamColor();
-    const float   peak = std::max({ tint.x, tint.y, tint.z, 1.0e-4f });
+    const Vector4 hue = BeamHue();
     light->type      = LightComponent::Type::Point;
-    light->color     = { tint.x / peak, tint.y / peak, tint.z / peak };
+    light->color     = { hue.x, hue.y, hue.z };
     light->intensity = std::max(lightIntensity, 0.0f) * Clamp01(m_charge);
     light->range     = std::max(lightRange, 0.1f);
     light->castShadows = false;
@@ -736,6 +878,9 @@ inline void BossBeamComponent::OnLateUpdate()
     ResolveHit(from, m_contact, dt);
     DriveArcs(from, m_contact, dt);
     DriveLight(true);
+    // 手触りは ResolveHit の後。線に触れているかは «今フレームの答え» で、
+    // 焼かれている間だけ振り切る配分がそれを待っている。
+    DriveFeedback(from, dt);
     if (m_firing) DriveEffects(dt);
 
     if (drawDebugHit)

@@ -29,6 +29,7 @@ UIPixelInput VSMain(UIVertexInput input)
     output.pos     = mul(float4(input.pos, 0.0f, 1.0f), g_Ortho);
     output.uv      = input.uv;
     output.localUv = input.uv;
+    output.color   = input.color;
     return output;
 }
 
@@ -60,7 +61,7 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
         float4 outline = float4(outlineColor.rgb, outlineColor.a * outlineAlpha);
         result = UI_Over(result, outline);
     }
-    result *= g_Color;
+    result *= UITint(input);
 
     clip(result.a - 0.002f);
     return result;

@@ -1,7 +1,7 @@
-/// @file BossAnimatorComponent.hpp
-/// @brief Boss「ポラリティ・コア」のアニメーション駆動。AI から Animator への唯一の入口
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    BossAnimatorComponent.hpp
+/// @brief   Boss「ポラリティ・コア」のアニメーション駆動。AI から Animator への唯一の入口
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY AI と Animator の間に 1 枚挟むか:
 ///   Boss.animcontroller のパラメーター名は 14 個あり、しかも「Charge は Trigger で
@@ -134,6 +134,13 @@ public:
 
     /// 撃破。Death は崩れたまま最終フレームで止まり、Idle へは戻らない。
     void SetDead(bool dead);
+
+    /// 今の移動速度 [m/s]。歩容を選ぶのに使った «均した後» の値。
+    ///
+    /// WHY 公開するか: 足音も同じ速さで歩容 (巡回クロール / 突進クロール) を選ぶ。
+    ///     音の側が生の速度から選び直すと、平滑化の分だけ境目がずれ、脚が巡回の
+    ///     動きをしているのに音だけ突進へ切り替わるフレームができる。
+    [[nodiscard]] float Speed() const { return m_speed; }
 
     [[nodiscard]] bool IsDead()     const { return m_dead; }
     [[nodiscard]] bool IsBeaming()  const { return m_beaming; }

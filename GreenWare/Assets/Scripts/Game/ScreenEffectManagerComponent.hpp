@@ -1,7 +1,7 @@
-/// @file ScreenEffectManagerComponent.hpp
-/// @brief 画面効果 (フェード・フラッシュ・ビネット・色収差・専用パス) の唯一の書き手
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    ScreenEffectManagerComponent.hpp
+/// @brief   画面効果 (フェード・フラッシュ・ビネット・色収差・専用パス) の唯一の書き手
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 1 箇所に集めるか:
 ///   ランタイムの PostProcessSettings は「まるごと差し替える」器で、TimeManager が扱う
@@ -43,6 +43,9 @@ inline constexpr const char* kImplodeShaderPath =
 inline constexpr const char* kFreezeEffectName = "HitstopFreeze";
 inline constexpr const char* kFreezeShaderPath =
     "assets/shaders/PostProcess/Custom/HitstopFreeze.hlsl";
+inline constexpr const char* kOutlineEffectName = "PolarityOutline";
+inline constexpr const char* kOutlineShaderPath =
+    "assets/shaders/PostProcess/Custom/PolarityOutline.hlsl";
 
 class ScreenEffectManagerComponent : public Script {
     FBZZ_SCRIPT(ScreenEffectManagerComponent)
@@ -82,7 +85,7 @@ public:
     // WHY ビネットや Surge の «縁» ではなく画面の中を歪めるか:
     //   集束は盤面の 1 点で起きる出来事で、画面のどこで起きたかに意味がある。
     //   縁を光らせる表現は方向を持てないので、4 体を巻き込んだ大技も
-    //   足元の 1 体も同じ絵になる。11.6 が起爆で画角を広げるのと同じ動機。
+    //   足元の 1 体も同じ絵になる。集束で画角を広げるのと同じ動機。
     FBZZ_GROUP("Implode (7.9)")
     FBZZ_FIELD_RANGE(float, implodePull, 0.045f, "Pull", 0.0f, 0.25f)
     FBZZ_TOOLTIP("強さ 1.0 のときに画面が起点へ寄る最大量。画面の «高さ» に対する比。"
@@ -106,6 +109,23 @@ public:
     FBZZ_FIELD_RANGE(float, freezeRelease, 0.07f, "Release", 0.0f, 0.5f)
     FBZZ_TOOLTIP("止めが解けてから抜けきるまでの時間。掛かる側は常に 1 フレーム")
 
+    // 極を帯びた対象へ掛かる放電の輪郭。誰を縁取るかは
+    // PolarityTargetComponent が輪郭マスクへ申告し、ここは «縁取り方» だけを持つ。
+    //
+    // WHY 縁取るパスをここが載せるか:
+    //   customEffects は «まるごと差し替え» の対象 (このファイルの WHY)。対象側が
+    //   自分で AddCustom しても、次にこのマネージャーが書いた瞬間に消える。
+    FBZZ_GROUP("Polarity Outline")
+    FBZZ_FIELD_RANGE(float, outlineWidth, 5.0f, "Width", 1.0f, 16.0f)
+    FBZZ_TOOLTIP("輪郭の最大の太さ [px]。対象ごとの太さはこれに対する比で効く")
+    FBZZ_FIELD_RANGE(float, outlineCrackle, 0.55f, "Crackle", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("方向ごとに届く距離を揺らす量。0 で等幅の滑らかな輪郭")
+    FBZZ_FIELD_RANGE(float, outlineSpeed, 6.0f, "Speed", 0.0f, 30.0f)
+    FBZZ_TOOLTIP("明滅と放電の走る速さ [Hz]")
+    FBZZ_FIELD_RANGE(float, outlineGain, 2.5f, "Gain", 0.0f, 8.0f)
+    FBZZ_TOOLTIP("足す明るさ。HDR へ加算するので 1 を超えた分をブルームが拾う。"
+                 "上げすぎると芯が白く飛んで極の色が読めなくなる")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(float, debugFade, 0.0f, "Fade")
     FBZZ_FIELD_READ_ONLY(float, debugFlash, 0.0f, "Flash")
@@ -113,6 +133,7 @@ public:
     FBZZ_FIELD_READ_ONLY(float, debugSurge, 0.0f, "Surge")
     FBZZ_FIELD_READ_ONLY(float, debugImplode, 0.0f, "Implode")
     FBZZ_FIELD_READ_ONLY(float, debugFreeze, 0.0f, "Freeze")
+    FBZZ_FIELD_READ_ONLY(int, debugOutline, 0, "Outline")
 
     [[nodiscard]] static ScreenEffectManagerComponent* Instance() { return s_instance; }
 
@@ -143,6 +164,14 @@ public:
     //   に留まり、カメラの後ろへ回った時点で自然に畳める。
     void Implode(const Vector3& worldPoint, float strength01, float seconds);
 
+    // --- 輪郭: 誰かが輪郭マスクへ申告したことを知らせる (毎フレーム呼ぶ) ---
+    //
+    // WHY 強さも色も受け取らないか: 縁取る «相手» はマスクが持っていて、色も
+    //     太さも対象ごとに違う。ここが受け取れるのは 1 組の値だけなので、
+    //     受け取った時点で «最後に言った 1 体» の見た目に全員が揃ってしまう。
+    //     こちらが要るのは「今フレーム誰か居るか」だけ。
+    void KeepOutline() { m_outlineRequested = true; }
+
     void OnStart() override;
     void OnLateUpdate() override;
     void OnDestroy() override;
@@ -154,9 +183,15 @@ private:
     void CaptureBase();
 
     /// 専用パスを 1 本、今フレームの設定へ載せる。
-    static void PushCustomEffect(fbzz::renderer::PostProcessSettings& settings,
-                                 const char* name, const char* shaderPath,
-                                 float intensity, const Vector4& parameters);
+    ///
+    /// 既定は «Composite の後で画面を作り直す» 従来のカスタムパス。stage / blendMode を
+    /// 渡すと Composite の前 (HDR) で加算する «盤面の中で光るもの» にできる。
+    static void PushCustomEffect(
+        fbzz::renderer::PostProcessSettings& settings,
+        const char* name, const char* shaderPath,
+        float intensity, const Vector4& parameters,
+        fbzz::renderer::CustomPassStage stage = fbzz::renderer::CustomPassStage::PostProcess,
+        fbzz::renderer::BlendMode blendMode = fbzz::renderer::BlendMode::OPAQUE_BLEND);
 
     /// 集束の起点を今フレームの画面 UV へ落とす。カメラの後ろなら false。
     [[nodiscard]] bool ResolveImplodeUv(Vector2& outUv);
@@ -190,6 +225,9 @@ private:
 
     // 止めは «掛かる» ではなく «掛かっている» 状態なので、要求ではなく現在値を持つ。
     float   m_freeze = 0.0f;
+
+    // 今フレーム輪郭マスクへ申告した対象が居たか。OnLateUpdate が読んで倒す。
+    bool    m_outlineRequested = false;
 };
 
 FBZZ_REFLECT(ScreenEffectManagerComponent)
@@ -211,6 +249,7 @@ inline void ScreenEffectManagerComponent::OnStart()
     m_surgeRemaining = 0.0f;
     m_implodeRemaining = 0.0f;
     m_freeze = 0.0f;
+    m_outlineRequested = false;
 }
 
 inline void ScreenEffectManagerComponent::OnDestroy()
@@ -309,7 +348,8 @@ inline void ScreenEffectManagerComponent::Implode(const Vector3& worldPoint, flo
 
 inline void ScreenEffectManagerComponent::PushCustomEffect(
     fbzz::renderer::PostProcessSettings& settings, const char* name, const char* shaderPath,
-    float intensity, const Vector4& parameters)
+    float intensity, const Vector4& parameters,
+    fbzz::renderer::CustomPassStage stage, fbzz::renderer::BlendMode blendMode)
 {
     auto& custom = settings.customEffects.emplace_back();
     custom.name          = name;
@@ -321,6 +361,8 @@ inline void ScreenEffectManagerComponent::PushCustomEffect(
     custom.parameters[1] = parameters.y;
     custom.parameters[2] = parameters.z;
     custom.parameters[3] = parameters.w;
+    custom.stage         = stage;
+    custom.blendMode     = blendMode;
 }
 
 inline bool ScreenEffectManagerComponent::ResolveImplodeUv(Vector2& outUv)
@@ -366,7 +408,7 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
 
     // 集束の渦。立ち上がりを短く、引きずるのを長く取る。
     //
-    // WHY 立ち上がりを «残り» ではなく «経過» で測るか: 7.9 の集束は、起爆した瞬間に
+    // WHY 立ち上がりを «残り» ではなく «経過» で測るか: 集束は、成立した瞬間に
     //     全員が動き出して、あとは飛んでいくだけの出来事。開き方は集束の長さに
     //     関係なく一定でないと、巻き込んだ数で «食い付き» が変わってしまう。
     float implode = 0.0f;
@@ -404,15 +446,21 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
         m_freeze = std::max(freezeTarget, m_freeze - dt / std::max(freezeRelease, EPSILON));
     }
 
+    // 申告は毎フレーム来る前提なので、読んだ時点で倒す。倒さないと、最後の 1 体が
+    // 消えた後も «誰か居る» が残って全画面パスが 1 本鳴り続ける。
+    const bool outlineOn = m_outlineRequested;
+    m_outlineRequested   = false;
+
     debugFade       = m_fadeAlpha;
     debugFlash      = flash;
     debugDistortion = distortion;
     debugSurge      = surge;
     debugImplode    = implode;
     debugFreeze     = m_freeze;
+    debugOutline    = outlineOn ? 1 : 0;
 
     const bool active = m_fadeAlpha > 0.0f || flash > 0.0f || distortion > 0.0f
-                     || surge > 0.0f || implode > 0.0f || m_freeze > 0.0f;
+                     || surge > 0.0f || implode > 0.0f || m_freeze > 0.0f || outlineOn;
     if (!active) {
         // 何も掛かっていない間はランタイム上書きを外す。載せっぱなしにすると
         // シーンの PostProcessVolume が効かなくなる。
@@ -482,6 +530,23 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     // WHY 渦を先に置くか: チェーンは登録順に走る。渦は画素を «動かす» 変換、止めは
     //     動いた結果を «染める» 変換で、逆に並べると染めた色を渦が引き伸ばして
     //     階調の段が尾を引く。動かしてから染める方が、段が画面に対して素直に並ぶ。
+    // 輪郭だけは SceneHDR 段 (Composite の前) で加算する。
+    //
+    // WHY 他の効果と段を分けるか:
+    //   これは «画面の効果» ではなく «盤面の中で光っているもの»。トーンマップ後に
+    //   足すと 1 で頭打ちになり、どれだけ Gain を上げてもブルームが拾わず、
+    //   露出とも噛み合わない (明るい場所でも同じ濃さで浮く)。
+    //
+    // WHY 渦との前後を気にしなくてよくなるか:
+    //   HDR 段で焼き込んでしまえば、後段の渦は «輪郭も含んだ画面» を歪める。
+    //   LDR で並べていた頃のように、順番を間違えると輪郭だけ体から剥がれる、
+    //   という関係が無くなる。
+    if (outlineOn) {
+        PushCustomEffect(pp, kOutlineEffectName, kOutlineShaderPath, 1.0f,
+                         { outlineWidth, outlineCrackle, outlineSpeed, outlineGain },
+                         fbzz::renderer::CustomPassStage::SceneHDR,
+                         fbzz::renderer::BlendMode::ADDITIVE);
+    }
     if (implode > 0.0f) {
         PushCustomEffect(pp, kImplodeEffectName, kImplodeShaderPath, implode,
                          { implodeUv.x, implodeUv.y, implodePull, implodeReach });

@@ -1,7 +1,7 @@
-/// @file ImpactFeedbackManagerComponent.hpp
-/// @brief 「何が起きたか」を 1 回受け取り、手触りの反応をまとめて鳴らす
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    ImpactFeedbackManagerComponent.hpp
+/// @brief   「何が起きたか」を 1 回受け取り、手触りの反応をまとめて鳴らす
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 束ねるか:
 ///   ヒットストップ・カメラ揺れ・振動・画面効果・効果音は、常に同じ 1 つの出来事に
@@ -186,8 +186,8 @@ inline void ImpactFeedbackManagerComponent::Play(FeedbackEvent event, float stre
     if (auto* shake = CameraShakeManagerComponent::Instance())
         shake->Shake(strength * mix.shake);
 
-    if (auto* rumble = RumbleManagerComponent::Instance())
-        rumble->Rumble(strength * mix.rumble);
+    if (auto* pad = RumbleManagerComponent::Instance())
+        pad->Rumble(strength * mix.rumble);
 
     if (auto* screen = ScreenEffectManagerComponent::Instance()) {
         if (mix.flash > 0.0f)   screen->Flash(strength * mix.flash);

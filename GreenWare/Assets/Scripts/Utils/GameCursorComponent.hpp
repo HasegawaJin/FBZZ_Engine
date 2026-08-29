@@ -1,7 +1,7 @@
-/// @file GameCursorComponent.hpp
-/// @brief ゲーム内カーソル。マウスとパッドを 1 本のポインターへ畳む
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    GameCursorComponent.hpp
+/// @brief   ゲーム内カーソル。マウスとパッドを 1 本のポインターへ畳む
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY カーソルを 1 つ挟むか:
 ///   UIButton / UISlider / UIToggle の判定は「Canvas 空間の座標 1 つと押下状態」

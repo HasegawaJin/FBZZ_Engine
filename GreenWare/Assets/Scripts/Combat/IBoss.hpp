@@ -1,7 +1,7 @@
-/// @file IBoss.hpp
-/// @brief ボスが実装する横断インターフェース。「雑魚と違って何を持っているか」だけを宣言する
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    IBoss.hpp
+/// @brief   ボスが実装する横断インターフェース。「雑魚と違って何を持っているか」だけを宣言する
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY 基底クラスではなくインターフェースか:
 ///   ボスは今後増えるが、増えたときに共有したいのは «実装» ではなく «問い合わせ口» の方。
@@ -23,11 +23,12 @@
 ///   (企画書 7.4 / 10.6「撃破は衝突ダメージのみ」)。ここに CurrentHealth を重ねると、
 ///   ボスバーがどちらを読むかで割れる。ボスは IDamageable と IBoss を両方名乗ること。
 ///
-///   使う側は型で引ける:
-///     for (GameObject* go : scene.FindObjectsOfType<IBoss>())
-///         if (auto* boss = scene.GetScript<IBoss>(go)) ...
+///   使う側は型で引ける。ただし «盤面に出ているか» まで要るなら FindBossOnBoard()
+///   を通すこと (下の WHY)。
 #pragma once
 
+#include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
 
@@ -81,6 +82,55 @@ struct IBoss {
     ///     隙が意味するのは «プレイヤーが安全にコンボを組める時間» の方。
     ///     Vulnerable と名付けると「今なら撃てる」と読まれ、盤面の理解がずれる。
     [[nodiscard]] virtual bool IsStaggered() const = 0;
+
+    // ── 登場 ────────────────────────────────────────────────────────────────
+
+    /// 戦闘が始まっているか。«部屋に入るまで眠っている» ボスは、起きるまで false。
+    ///
+    /// WHY «居るか» と別に要るか: 眠っているボスも盤面には立っていて、見えている。
+    ///     存在だけで «戦闘中» と数えると、部屋へ入る前から体力バーが出て、弾薬の
+    ///     供給も始まり、進行は «もう戦っている» と思い込む。
+    ///
+    /// WHY 純粋仮想にしないか: 登場の条件を持たないボス (置いた瞬間から戦っている)
+    ///     の方が普通で、そちらに «true を返すだけ» を書かせる理由が無い。
+    [[nodiscard]] virtual bool IsEngaged() const { return true; }
 };
+
+/// 今この瞬間、«戦っている相手» としてのボス。居なければ nullptr。
+/// 盤面に出ていて (activeInHierarchy)、かつ交戦が始まっている (IsEngaged) こと。
+///
+/// WHY 2 つの条件を 1 つの関数にまとめるか:
+///   ボスが «まだ相手ではない» 状態は 2 通りある — GameObject ごと畳まれている場合と、
+///   立ってはいるが部屋へ入るまで眠っている場合 (BossRoomTriggerComponent)。
+///   どちらも進行・体力バー・弾薬の供給にとっては同じ «まだ» なので、区別する理由が無い。
+///
+/// WHY 存在で数えてはいけないか:
+///   まだ動いていないボスはスクリプトが走っていないので HP が 0 に見える。存在だけで
+///   «居る» と数えると、その 0 を «撃破済み» と読んで開始と同時にステージがクリアになる。
+///
+/// WHY 進行・HUD・補充で使い回すか:
+///   «ボスと戦っている» は勝利条件・体力バー・弾薬の供給が同時に切り替わる 1 つの節目。
+///   判定を各所へ書くと、片方だけ «まだ» だと思っている状態が作れてしまう。
+[[nodiscard]] inline GameObject* FindBossOnBoard(const ScriptSceneProxy& scene)
+{
+    for (GameObject* object : scene.FindObjectsOfType<IBoss>()) {
+        if (!object || !object->activeInHierarchy()) continue;
+        const auto* boss = scene.GetScript<IBoss>(object);
+        if (boss && boss->IsEngaged()) return object;
+    }
+    return nullptr;
+}
+
+/// この盤面にボスが «居る» か。眠っていても畳まれていても true。
+///
+/// WHY 交戦中かどうかと分けるか: «ボス戦の盤面である» ことは戦闘が始まる前から
+///     決まっている。進行がこれを見ずに «敵が 0 になったら勝ち» を残すと、
+///     部屋へ入る前に盤面が空になった瞬間クリアしてしまう。
+[[nodiscard]] inline bool StageHasBoss(const ScriptSceneProxy& scene)
+{
+    for (GameObject* object : scene.FindObjectsOfType<IBoss>())
+        if (scene.GetScript<IBoss>(object)) return true;
+    return false;
+}
 
 } // namespace sandbox

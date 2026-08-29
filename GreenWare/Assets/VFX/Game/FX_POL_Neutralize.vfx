@@ -1,52 +1,91 @@
-version = 5
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
 name = "FX_POL_Neutralize"
-description = "逆極を当てて中和した瞬間 (企画書 12.4)。付与と «逆向き» に、外から芯へ畳んで極を捨てる。"
-tags = ["greenware", "polarity", "warning", "short"]
-requiredRoles = ["core"]
-thumbnailTime = 0.08
-maxParticles = 90
-maxLights = 1
-maxAudioVoices = 0
+instanceId = "75fd1bbf-998d-4f4a-9b91-cc2341d5669c"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
 
-# ------------------------------------------------------------------------------
-# FX_POL_Neutralize — 帯電を失った瞬間。
-#
-# WHY 付与と «逆向き» に畳むか:
-#   12.4 は「中和・延長した瞬間にも明確なフィードバックを返す」を演出ではなく仕様として
-#   要求している。同じ «広がる» 絵で色だけ変えると、狙って中和したのか事故だったのかが
-#   一瞬では判別できない。付与は外へ開き、中和は外から芯へ畳む。動きの向きが逆なら、
-#   色を見る前に何が起きたかが分かる。
-#
-# WHY 赤でも青でもなく黄か:
-#   6.5 の中和警告と同じ kColorWarning。極性色を使うと «中和された» ではなく
-#   «別の極が乗った» に読める。12.2 が赤青に与えた意味をここで壊さない。
-#
-# WHY 明るくしないか:
-#   中和は «何も得られなかった» 結果である。付与より派手にすると、事故が起きたときの方が
-#   気持ちいいという逆の学習をさせてしまう。
-# ------------------------------------------------------------------------------
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
 
-[[nodes]]
-id = 1
-type = 0
-name = "Entry"
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
 duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "NeutralizeVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+symbolOffset = [0.0, 1.15, 0.0]
+collapseRadius = 1.1
+
+[[gameobjects]]
+name = "Collapse"
+instanceId = "278c40c7-1415-408d-bcf1-7706e916ba53"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_POL_Neutralize"
+parentInstanceId = "75fd1bbf-998d-4f4a-9b91-cc2341d5669c"
+
+[gameobjects.transform]
 position = [0.0, 0.0, 0.0]
-rotation = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
 
-# --- 0.00s: 打ち消しの芯。角の立たないグローで «鈍い» 反応にする ---------------
-[[nodes]]
-id = 2
-type = 2
-name = "Null Flash"
-duration = 0.16
-editorX = 260.0
-editorY = -60.0
+[[gameobjects]]
+name = "Discharge"
+instanceId = "c269ee6f-e88f-4d1f-bdaa-f56562ac376d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_POL_Neutralize"
+parentInstanceId = "75fd1bbf-998d-4f4a-9b91-cc2341d5669c"
+
+[gameobjects.transform]
 position = [0.0, 0.0, 0.0]
-rotation = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
-[nodes.particle]
+
+[[gameobjects]]
+name = "Null Flash"
+instanceId = "ff969cf4-85db-4f29-997b-589423ccc555"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Collapse"
+parentInstanceId = "278c40c7-1415-408d-bcf1-7706e916ba53"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
 cullingEnabled = false
 lodEnabled = false
 duration = 0.16
@@ -68,26 +107,31 @@ renderPriority = 70
 colorStart = [1.0, 0.82, 0.1, 1.0]
 colorEnd = [0.0, 0.0, 0.0, 0.0]
 bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
 
-# --- 0.00s: 外から芯へ吸い込まれる粒。付与の Charge Motes と逆向き ------------
-[[nodes]]
-id = 3
-type = 2
+[[gameobjects]]
 name = "Collapse Motes"
-duration = 0.60
-editorX = 260.0
-editorY = 180.0
+instanceId = "2f23da8f-a143-4990-bfcf-19e579906d49"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Collapse"
+parentInstanceId = "278c40c7-1415-408d-bcf1-7706e916ba53"
+
+[gameobjects.transform]
 position = [0.0, 0.0, 0.0]
-rotation = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
-[nodes.particle]
+
+[gameobjects.ParticleEmitter]
 cullingEnabled = false
 lodEnabled = false
-duration = 0.60
+duration = 0.6
 loop = false
 emitRate = 0.0
 maxParticles = 40
-# 外周に生んで内向きの速度を与える。Point から出すと «畳む» 動きが作れない。
 shape = 1
 sphereRadius = 1.1
 sizeStart = 0.26
@@ -99,34 +143,34 @@ velocityDamping = 0.5
 gravity = [0.0, 0.0, 0.0]
 materialPath = "Assets/Materials/Effects/FX_GlowSoft_Additive.mat"
 sortMode = 0
-# 負の radialVelocity = 中心へ向かう。これが «逆向き» の正体。
 radialVelocity = -4.2
 renderPriority = 50
 colorVariation = 0.12
-# 黄 → 無彩色。極の色が抜けて金属に戻る、という 12.2 の «帯電していない状態» へ着地する。
 useColorGradient = true
-colorGradient = [
-  [0.0, 1.00, 0.82, 0.10, 0.9],
-  [0.55, 0.72, 0.70, 0.62, 0.7],
-  [1.0, 0.55, 0.57, 0.60, 0.0],
-]
+colorGradient = [[0.0, 1.0, 0.82, 0.1, 0.9], [0.55, 0.72, 0.7, 0.62, 0.7], [1.0, 0.55, 0.57, 0.6, 0.0]]
 bursts = [{ time = 0.0, count = 26, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
 
-# --- 0.02s: 中和の記号。6.5 の警告と同じバツ印 --------------------------------
-[[nodes]]
-id = 4
-type = 2
+[[gameobjects]]
 name = "Cross Pop"
-duration = 0.60
-editorX = 560.0
-editorY = -60.0
+instanceId = "57d46f49-9b55-4c98-bf7f-645417b00398"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Discharge"
+parentInstanceId = "c269ee6f-e88f-4d1f-bdaa-f56562ac376d"
+
+[gameobjects.transform]
 position = [0.0, 1.4, 0.0]
-rotation = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
-[nodes.particle]
+
+[gameobjects.ParticleEmitter]
 cullingEnabled = false
 lodEnabled = false
-duration = 0.60
+duration = 0.6
 loop = false
 emitRate = 0.0
 maxParticles = 2
@@ -145,22 +189,28 @@ renderPriority = 80
 colorStart = [1.0, 0.82, 0.1, 1.0]
 colorEnd = [0.0, 0.0, 0.0, 0.0]
 bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.02
 
-# --- 0.04s: 抜けた電荷。無彩色のまま散る -------------------------------------
-[[nodes]]
-id = 5
-type = 2
+[[gameobjects]]
 name = "Discharge Puff"
-duration = 1.10
-editorX = 560.0
-editorY = 200.0
+instanceId = "d0d20540-60b7-4451-a5f3-5b0b3e1e21f4"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Discharge"
+parentInstanceId = "c269ee6f-e88f-4d1f-bdaa-f56562ac376d"
+
+[gameobjects.transform]
 position = [0.0, 0.2, 0.0]
-rotation = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
-[nodes.particle]
+
+[gameobjects.ParticleEmitter]
 cullingEnabled = false
 lodEnabled = false
-duration = 1.10
+duration = 1.1
 loop = false
 emitRate = 0.0
 maxParticles = 10
@@ -180,105 +230,49 @@ angularVelocityMin = -0.8
 angularVelocityMax = 0.8
 renderPriority = 0
 useColorGradient = true
-colorGradient = [
-  [0.0, 0.60, 0.60, 0.62, 0.0],
-  [0.15, 0.52, 0.52, 0.55, 0.45],
-  [1.0, 0.45, 0.45, 0.48, 0.0],
-]
+colorGradient = [[0.0, 0.6, 0.6, 0.62, 0.0], [0.15, 0.52, 0.52, 0.55, 0.45], [1.0, 0.45, 0.45, 0.48, 0.0]]
 bursts = [{ time = 0.0, count = 4, cycles = 1, interval = 0.03, probability = 1.0 }]
+startDelay = 0.04
 
-# --- 光源。付与より弱い。«何も得られなかった» を明るさでも言う ----------------
-[[nodes]]
-id = 6
-type = 5
+[[gameobjects]]
 name = "Null Light"
-duration = 0.22
-editorX = 860.0
-editorY = -60.0
+instanceId = "8baa215a-5ebb-4128-afca-eed1d151c4cb"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_POL_Neutralize"
+parentInstanceId = "75fd1bbf-998d-4f4a-9b91-cc2341d5669c"
+
+[gameobjects.transform]
 position = [0.0, 0.5, 0.0]
-rotation = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
 scale = [1.0, 1.0, 1.0]
-[nodes.light]
+
+[gameobjects.LightComponent]
+type = "Point"
 color = [1.0, 0.82, 0.1]
 intensity = 3.5
+enabled = true
 range = 3.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.22
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
 useIntensityCurve = true
-intensityCurve = [[0.0, 1.0], [0.25, 0.5], [1.0, 0.0]]
-
-[[links]]
-from = 1
-to = 2
-trigger = 1
-delay = 0.0
-[[links]]
-from = 1
-to = 3
-trigger = 1
-delay = 0.0
-[[links]]
-from = 1
-to = 4
-trigger = 1
-delay = 0.02
-[[links]]
-from = 1
-to = 5
-trigger = 1
-delay = 0.04
-[[links]]
-from = 1
-to = 6
-trigger = 1
-delay = 0.0
-
-[[groups]]
-id = 1
-title = "Collapse"
-note = "付与が外へ開くのに対し、ここは外から芯へ畳む。動きの向きだけで結果が読める。"
-x = 230.0
-y = -110.0
-width = 290.0
-height = 460.0
-color = [0.78, 0.66, 0.20, 0.16]
-
-[[groups]]
-id = 2
-title = "Discharge"
-note = "抜けた電荷は無彩色へ戻す。12.2 の «帯電していない状態» に着地させる。"
-x = 530.0
-y = -110.0
-width = 290.0
-height = 460.0
-color = [0.44, 0.44, 0.48, 0.14]
-
-# ── 公開パラメーター ──────────────────────────────────────────────────────────
-
-# 敵の背丈が Mite / Serpent / Roller で違う。呼び出し側がバツ印の高さを合わせる。
-[[parameters]]
-name = "Symbol Offset"
-type = 4
-hasRange = false
-[parameters.default]
-source = 0
-constantType = 4
-vector3 = [0.0, 1.4, 0.0]
-[[bindings]]
-paramName = "Symbol Offset"
-nodeId = 4
-schemaPath = "localPosition"
-
-# 畳み込む範囲。大型敵では体の外から吸わないと «内側で光っただけ» に見える。
-[[parameters]]
-name = "Collapse Radius"
-type = 0
-minimum = 0.3
-maximum = 6.0
-hasRange = true
-[parameters.default]
-source = 0
-constantType = 0
-float = 1.1
-[[bindings]]
-paramName = "Collapse Radius"
-nodeId = 3
-schemaPath = "particle.sphereRadius"
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.25, 0.5], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

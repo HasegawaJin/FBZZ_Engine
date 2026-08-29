@@ -1,7 +1,7 @@
-/// @file CameraFollowManagerComponent.hpp
-/// @brief カメラ追従を「緩めたい」要求を軸ごとに合成し、カメラへ 0..1 のたるみを 1 本渡す
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    CameraFollowManagerComponent.hpp
+/// @brief   カメラ追従を「緩めたい」要求を軸ごとに合成し、カメラへ 0..1 のたるみを 1 本渡す
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 追従を緩めると手触りが出るか:
 ///   カメラがプレイヤーへ常に密着していると、画面の中でプレイヤーはほとんど動かない。
@@ -68,7 +68,7 @@ public:
     /// そうすると条件が消えた時点から自然に戻り始め、解除の呼び出しが要らない。
     void Loosen(float horizontal01, float vertical01, float duration);
 
-    /// 画角を一瞬広げる (起爆などの手応え)。Option で切られていれば何もしない。
+    /// 画角を一瞬広げる (点火・集束などの手応え)。Option で切られていれば何もしない。
     void PunchFov(float strength01);
 
     /// カメラが毎フレーム読む合成済みのたるみ (0..1)。

@@ -1,7 +1,7 @@
-/// @file ChainDisplayComponent.hpp
-/// @brief 続いている連鎖の長さを HUD へ出す
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    ChainDisplayComponent.hpp
+/// @brief   続いている連鎖の長さを HUD へ出す
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY 数えるのは CombatManager か:
 ///   連鎖の長さは衝突を数えた結果で、戦果の一種。表示側が数えると、HUD を切った

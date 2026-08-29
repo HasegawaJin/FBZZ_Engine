@@ -1,7 +1,7 @@
-/// @file EnemyDeathVfxComponent.hpp
-/// @brief 撃破された敵の「体そのものが粒になって立ち昇る」演出
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    EnemyDeathVfxComponent.hpp
+/// @brief   撃破された敵の「体そのものが粒になって立ち昇る」演出
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY 体の «形» から出すか:
 ///   撃破の演出を «その場に爆発を 1 発置く» で済ませると、どの敵が倒れたのかは

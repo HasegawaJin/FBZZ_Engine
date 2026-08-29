@@ -1,7 +1,7 @@
-/// @file PlayerHealthBarComponent.hpp
-/// @brief シーンに置いた HUD の体力バーへ、プレイヤーの残量を流し込む
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    PlayerHealthBarComponent.hpp
+/// @brief   シーンに置いた HUD の体力バーへ、プレイヤーの残量を流し込む
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY UI をランタイムで組まないか:
 ///   HUD はオーサリングの対象で、位置も太さも色も絵合わせで何度も触る。ランタイムで

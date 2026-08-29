@@ -1,7 +1,7 @@
-/// @file PolarityBeam.hpp
-/// @brief 極性レーザーの当たりを測る純関数群
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    PolarityBeam.hpp
+/// @brief   極性レーザーの当たりを測る純関数群
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// WHY 純関数に切り出すか:
 ///   企画書 6.4 は「痛くあるべきなのはエイムミスではなく判断ミス」と書き、その代替として

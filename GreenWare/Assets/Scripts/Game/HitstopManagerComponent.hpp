@@ -1,7 +1,7 @@
-/// @file HitstopManagerComponent.hpp
-/// @brief ヒットストップの要求を受け付け、長さと強さを 1 箇所で決める
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    HitstopManagerComponent.hpp
+/// @brief   ヒットストップの要求を受け付け、長さと強さを 1 箇所で決める
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 呼び出し側から切り離すか:
 ///   ヒットストップは「当たった」と感じさせる主要な手段で (17 章)、当たる場所が増えるほど

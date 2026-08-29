@@ -1,7 +1,7 @@
-/// @file EnemyAiBase.hpp
-/// @brief 敵 AI が共通で持つ「標的・停止条件・接触攻撃」の土台
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    EnemyAiBase.hpp
+/// @brief   敵 AI が共通で持つ「標的・停止条件・接触攻撃」の土台
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// WHY 基底クラスにするか (インターフェースではなく):
 ///   IDamageable と違い、ここで共有したいのは宣言ではなく実装そのもの。標的の取り直し、
@@ -24,6 +24,7 @@
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
+#include <Scripts/Polarity/PolarityFieldComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/LoopVoice.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
@@ -69,7 +70,10 @@ public:
     //   スイッチにすると、表情のために付けた数値が敵の強さを変えることになる。
     //   持たせるのは「気づいたことを知らせる」だけで、動きは派生の判断のまま置く。
     FBZZ_GROUP("Awareness")
-    FBZZ_FIELD_RANGE(float, spotDistance, 14.0f, "Spot Distance", 0.0f, 60.0f)
+    // アリーナは直径 40m。14m だと盤面の半分以上で «気づいていない» 顔のまま詰めてきて、
+    // どれが自分を狙っているのかが目で読めなかった。追跡そのものは距離で止まらない
+    // (派生はいつでも詰める) ので、ここを広げても強さは変わらない。
+    FBZZ_FIELD_RANGE(float, spotDistance, 26.0f, "Spot Distance", 0.0f, 60.0f)
     FBZZ_TOOLTIP("プレイヤーがこの距離へ入ったら「見つけた」と知らせる。動きは変わらない")
     FBZZ_FIELD_RANGE(float, spotRelease, 4.0f, "Spot Release", 0.0f, 30.0f)
     FBZZ_TOOLTIP("見失うのは Spot Distance + この距離。同じ距離で切り替えると境目で反応が連打される")
@@ -114,8 +118,11 @@ protected:
     /// 現在の標的。見失っていれば nullptr。
     [[nodiscard]] GameObject* Player() const { return m_player.Resolve(scene); }
 
-    /// 自分から動いてはいけない状態か (死亡・引力・気絶・被弾硬直)。
+    /// 自分から動いてはいけない状態か (死亡・引力・気絶・被弾硬直・帯電中のアンカー)。
     [[nodiscard]] bool IsMovementLocked() const;
+
+    /// 極を帯びたまま «置かれている» アンカーか。動く敵の Armed Hold と対になる状態。
+    [[nodiscard]] bool IsArmedAnchor() const;
 
     /// 極性に動かされている最中か。true の間は速度を一切書いてはいけない。
     ///
@@ -124,6 +131,20 @@ protected:
     ///     引力が書いた値が毎回消え、敵はその場で震えるだけになる。AI がすべきなのは
     ///     「自分から動かないこと」であって、他人が書いた速度を打ち消すことではない。
     [[nodiscard]] bool IsPolarityDriven() const;
+
+    /// 盤面に «置かれて待っている» だけの状態か (Armed Hold / 帯電したアンカー)。
+    /// 運ばれている最中ではないので、速度を書いてはいけないだけで麻痺してはいない。
+    [[nodiscard]] bool IsHeldInPlace() const;
+
+    /// 何もしてはいけない状態か。倒れている・引力で運ばれている・被弾で怯んでいる。
+    ///
+    /// WHY 足止めと «手が出せない» を分けるか:
+    ///   極を乗せられた敵は盤面がその場へ浮かせて待たせる (Armed Hold)。ここを
+    ///   «動けない» と一緒くたにすると、待っている敵は目の前に立たれても手を出さない。
+    ///   プレイヤーは斬るたびに相手を塗るので、結果として «斬り続けている限り
+    ///   誰からも攻撃されない» という、難易度ではなく仕組みで無敵になる穴が空く。
+    ///   足を止めるのは盤面の仕事、手を止めるのは怯みと死だけ。
+    [[nodiscard]] bool IsActionLocked() const;
 
     [[nodiscard]] bool AttackReady() const { return m_attackRemaining <= 0.0f; }
 
@@ -333,8 +354,29 @@ inline void EnemyAiBase::RefreshPlayer()
 
 inline bool EnemyAiBase::IsPolarityDriven() const
 {
+    // 掴まれている / 投げられている間も含める。7.3 の「引かれている間 AI は停止する」は
+    // «この剛体の速度を自分で決めていない» という条件そのもので、掴みも同じ状態にある。
+    // 抵抗させると、手の中で暴れているのか AI が歩こうとしているのか絵で区別できない。
     const auto* body = scene.GetScript<PolarityBodyComponent>();
-    return body && (body->IsBeingPulled() || body->IsStunned());
+    return body && body->IsUnderControl();
+}
+
+// WHY アンカーにも «塗られたら止まる» が要るか:
+//   動ける敵は極を乗せた時点で盤面がその場へ浮かせて待たせる (PolarityField の Armed Hold)。
+//   だがその入口は PolarityBodyComponent を持つ個体だけで、動かない側の宣言として
+//   «付けない» ことになっている Roller は一度も通らない。結果アンカーだけが帯電したまま
+//   突進を続け、7.9 の «並べてから撃ち込む» で肝心の的が仕込みの最中に歩き去っていた。
+//
+// WHY 盤面のスイッチを共有するか:
+//   «塗る» が足止めを兼ねるかどうかは盤面 1 つの決定で、切ったときに動く敵だけ
+//   従来へ戻るのでは «塗られても向かってくる» が半分しか成立しない。
+inline bool EnemyAiBase::IsArmedAnchor() const
+{
+    const auto* target = scene.GetScript<PolarityTargetComponent>();
+    if (!target || !target->isAnchor || !target->IsCharged()) return false;
+
+    const auto* field = PolarityFieldComponent::Instance();
+    return !field || field->holdArmedBodies;
 }
 
 inline bool EnemyAiBase::IsMovementLocked() const
@@ -343,6 +385,22 @@ inline bool EnemyAiBase::IsMovementLocked() const
     const auto* target = scene.GetScript<PolarityTargetComponent>();
     return !health || !health->IsAlive() ||
            IsPolarityDriven() ||
+           IsArmedAnchor() ||
+           (target && target->IsHitReacting());
+}
+
+inline bool EnemyAiBase::IsHeldInPlace() const
+{
+    if (IsArmedAnchor()) return true;
+    const auto* body = scene.GetScript<PolarityBodyComponent>();
+    return body && body->IsArmed();
+}
+
+inline bool EnemyAiBase::IsActionLocked() const
+{
+    const auto* target = scene.GetScript<PolarityTargetComponent>();
+    return !IsAlive() ||
+           (IsPolarityDriven() && !IsHeldInPlace()) ||
            (target && target->IsHitReacting());
 }
 

@@ -1,15 +1,21 @@
-// FBZZ Engine
-// PlayerControllerComponent.hpp | sandbox
-// RigidBody ベースのプレイヤー移動・ジャンプ・回避。
-//
-// WHY 入力と物理操作を分離するか:
-//   可変フレームで入力を採取し、固定ステップで物理へ反映することで、
-//   短いキー入力の取りこぼしとフレームレート依存を防ぐ。
-//
-// WHY 回避に無敵時間を付けないか:
-//   11 章「ジャスト回避の判定と報酬は本バージョンでは実装しない」、19 章でも
-//   追加候補として明示的に外している。ここでは純粋な移動アクションとして実装し、
-//   判定と報酬は後から足せる形にしておく。
+/// @file    PlayerControllerComponent.hpp
+/// @brief   RigidBody ベースのプレイヤー移動・ジャンプ・回避。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY 入力と物理操作を分離するか:
+/// 可変フレームで入力を採取し、固定ステップで物理へ反映することで、
+/// 短いキー入力の取りこぼしとフレームレート依存を防ぐ。
+///
+/// WHY 回避に無敵時間を付けないか:
+/// ジャスト回避は本バージョンでは実装しない (Docs/open-questions.md)。極性回避と
+/// 役割が重なるため。ここでは純粋な移動アクションとして実装し、判定と報酬は
+/// 後から足せる形にしておく。
+///
+/// WHY 水平速度の出どころを移動入力 1 つに閉じるか:
+/// 攻撃や纏いから «外からの速度» を受け取れるようにしていたが、押していない
+/// フレームに体が動く原因が移動側と攻撃側のどちらにあるのか画面から切り分けられない。
+/// 足を動かすのは移動入力と回避だけ、という 1 本にしておく。
 #pragma once
 
 #include <Scripts/Data/PlayerTuning.hpp>
@@ -20,6 +26,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Game/CameraFollowManagerComponent.hpp>
 #include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
+#include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
 #include <Scripts/Utils/InputActions.hpp>
@@ -69,45 +76,25 @@ public:
 
     FBZZ_GROUP("Animator Params")
     FBZZ_FIELD(std::string, paramSpeed,         "Speed",        "Speed Param")
-    FBZZ_TOOLTIP("移動の速さ (m/s)。上半身の Aim Sway の強さがこれで決まる")
-    // ロコモーションの 2D ブレンド。モデル前方 +Z を Y、右 +X を X に取る。
-    // WHY 速さと別に持つか: 銃を抜いている間は体が照準を向くため、進行方向は
-    //     体の正面と一致しない。脚だけが進行方向へ合う必要があり、それは
-    //     「どの向きへ」という 2 軸でしか表せない。
-    FBZZ_FIELD(std::string, paramMoveX,         "MoveX",        "Move X Param")
-    FBZZ_FIELD(std::string, paramMoveY,         "MoveY",        "Move Y Param")
+    FBZZ_TOOLTIP("移動の速さ (m/s)。ロコモーションの Idle → Walk_F → Run_F がこれで決まる")
+    // WHY 2 軸 (MoveX / MoveY) を持たないか:
+    //   銃の頃は「体は照準を向き、脚だけが進行方向へ合う」ため、向きを 2 軸で
+    //   渡して横走り・後ろ走りへブレンドしていた。双剣は体ごと進行方向を向くので、
+    //   脚と体の向きが常に一致する。残る自由度は «速さ» の 1 軸だけになった。
     FBZZ_FIELD(std::string, paramVerticalSpeed, "VerticalSpeed","Vertical Speed Param")
     FBZZ_FIELD(std::string, paramIsGrounded,    "IsGrounded",   "IsGrounded Param")
     FBZZ_FIELD(std::string, paramJumpTrigger,   "Jump",         "Jump Trigger Param")
     FBZZ_FIELD(std::string, paramDodgeTrigger,  "Dodge",        "Dodge Trigger Param")
 
-    FBZZ_GROUP("Aim Animation")
-    // AimOffset は現在のソフトエイム対象をプレイヤー基準の角度へ変換して駆動する。
-    FBZZ_FIELD(std::string, paramAimYaw,   "AimYaw",   "Aim Yaw Param")
-    FBZZ_FIELD(std::string, paramAimPitch, "AimPitch", "Aim Pitch Param")
-    FBZZ_FIELD(std::string, aimLayerName,  "Aim",      "Aim Layer")
-    FBZZ_FIELD(std::string, aimSwayLayerName, "Add_AimSway", "Aim Sway Layer")
-    // 9 セルの角度は UpperArm_R 起点で実測したもの。足元から測ると、同じ高さに
-    // 立っている敵でもピッチが下向きに出て、腕が地面へ向く。
-    FBZZ_FIELD(std::string, aimOriginBoneName, "Chest", "Aim Origin Bone")
-    FBZZ_TOOLTIP("腕の付け根。見つからなければプレイヤー原点から測る")
-    // Docs/conventions/minibot-animation-export.md の実測コーン。
-    // ポーズを作り直したらここも入れ替える。
-    FBZZ_FIELD_RANGE(float, aimYawRangeDegrees,  45.0f, "Aim Yaw Range",  5.0f, 90.0f)
-    FBZZ_FIELD_RANGE(float, aimPitchUpDegrees,   39.0f, "Aim Pitch Up",   5.0f, 90.0f)
-    FBZZ_FIELD_RANGE(float, aimPitchDownDegrees, 34.0f, "Aim Pitch Down", 5.0f, 90.0f)
-    FBZZ_FIELD_RANGE(float, aimResponse, 14.0f, "Aim Response", 0.0f, 40.0f)
-    FBZZ_TOOLTIP("ポーズが新しい角度へ追い付く速さ。0 で補間せず即座に切り替える")
+    // WHY 9 セルのエイム (AimYaw / AimPitch / Aim レイヤー) が無いか:
+    //   腕で狙う姿勢そのものが双剣で無くなった (Docs/blades.md)。クリップ 10 本ごと
+    //   捨てたので、パラメーターとレイヤー名だけ残すと «設定はあるのに何も起きない»
+    //   になる。ロックオンした相手を向くのは、下の «立ち止まったときの旋回» だけ。
+    FBZZ_GROUP("Lock-On Turn")
     FBZZ_FIELD(bool, turnToAim, true, "Turn To Aim")
-    FBZZ_TOOLTIP("コーンを超えたヨーを体の旋回で吸収する (移動入力が無いときだけ)")
-    // WHY コーン (45 度) の際まで上げるか:
-    //   旋回が収束した先が、そのまま「立ち止まって狙っているときの姿勢」になる。
-    //   30 度だとポーズの 2/3 しか使われず、実測配分 (Chest 30 度 / UpperArm 15 度) の
-    //   胴体ひねりも 2/3 に留まる。値を上げるほど腰が据わったまま上体だけがねじれ、
-    //   下げるほど体ごと正対して上体のひねりが消える。狙っている姿に見せたいのは前者。
+    FBZZ_TOOLTIP("立ち止まっているあいだ、ロック対象の方へ体を回す (移動入力が無いときだけ)")
     FBZZ_FIELD_RANGE(float, aimTurnDeadzoneDegrees, 38.0f, "Aim Turn Deadzone", 0.0f, 90.0f)
-    FBZZ_TOOLTIP("この角度までは体を回さず、9 セルのポーズだけで狙う。"
-                 "Aim Yaw Range に近いほど上体のひねりが深くなる")
+    FBZZ_TOOLTIP("この角度までは体を回さない。0 に近づけるほど対象へ吸い付く")
 
     FBZZ_GROUP("Jump (derived)")
     // 重力は ProjectSettings の [physics] gravity、到達点は PlayerTuning。
@@ -139,8 +126,8 @@ public:
 
     // WHY アニメーションイベントではなく距離で鳴らすか:
     //   足接地のタイミングはクリップが持っているので、本来は Event Track が正しい。
-    //   ただし WeaponAnimatorComponent が同じ理由で書いているとおり、インポート後の
-    //   .anim にイベントは 1 つも入っておらず、入っていないときの挙動が「無音」なので
+    //   ただしインポート後の .anim にイベントは 1 つも入っておらず、
+    //   入っていないときの挙動が「無音」なので
     //   壊れていても気付けない。歩いた距離で刻めば、クリップの状態に依存しない。
     //   Event Track を打った時点でこちらを切ればよい (strideRun を 0 にする)。
     FBZZ_GROUP("Footsteps")
@@ -151,22 +138,34 @@ public:
     FBZZ_FIELD_RANGE(float, runSpeedThreshold, 4.0f, "Run At (m/s)", 0.1f, 20.0f)
     FBZZ_TOOLTIP("この水平速度を超えたら走りの足音・歩幅へ切り替える")
 
-    FBZZ_GROUP("Player Fire Animation")
-    // 発砲リコイルは銃のスライドとは別に Player の Add_Fire へ加算する。
-    FBZZ_FIELD(std::string, fireLayerName, "Add_Fire", "Fire Layer")
-    FBZZ_FIELD_FILE(fireLeftClipFile,  "guid:bd25df58d95f4297f208069c014514f5", "Left Fire Clip",  ".anim,.fbx")
-    FBZZ_FIELD_FILE(fireRightClipFile, "guid:48b26f14e4c8e89df23b7012356ea83f", "Right Fire Clip", ".anim,.fbx")
-    FBZZ_FIELD(std::string, fireLeftClipName,  "Fire_Pistol_L", "Left Fire Clip Name")
-    FBZZ_FIELD(std::string, fireRightClipName, "Fire_Pistol_R", "Right Fire Clip Name")
-    // Fire_Pistol_L/R は手首 26 度・前腕 7 度しか動かず、肩と上体は静止している。
-    // クリップを作り直すまでの暫定として、加算レイヤーの倍率で振れ幅を稼ぐ。
-    FBZZ_FIELD_RANGE(float, fireLayerGain, 2.0f, "Fire Recoil Gain", 0.0f, 4.0f)
-    FBZZ_TOOLTIP("Add_Fire の加算倍率。1.0 = クリップそのまま")
+    // WHY その場旋回だけ別に鳴らすか:
+    //   歩いている間は接地音が «動いている» を担っているので、旋回音まで重ねると
+    //   1 歩に 2 つの音が乗る。逆に立ち止まって向きだけ変えたときは、体が回っているのに
+    //   音が何も出ない (足は地面を蹴っていないので足音の条件に入らない)。
+    //   «歩いていない» ときだけ鳴らせば、担当が重ならずに空白も埋まる。
+    FBZZ_FIELD_RANGE(float, servoTurnRate, 60.0f, "Servo Turn At (deg/s)", 5.0f, 720.0f)
+    FBZZ_TOOLTIP("その場でこの角速度を超えて回ったら脚部サーボの音を鳴らす。0 に近づけると常時鳴る")
+    FBZZ_FIELD_RANGE(float, servoTurnInterval, 0.35f, "Servo Turn Interval", 0.05f, 3.0f)
+    FBZZ_TOOLTIP("サーボ音の最短間隔。回し続けている間はこの間隔で繰り返す")
+
+    // WHY 足音と同じ刻みに乗せるか:
+    //   土煙は «足が地面を蹴った» ことの絵で、足音はその音。別のしきい値と別のタイマーで
+    //   刻むと、走り出しや坂で片方だけ出る瞬間ができ、音と絵が別々の動作に見える。
+    //   歩きで出さないのも同じ理由で «走り» の判定を 1 つに保つため (量が欲しければ
+    //   Run At を下げる)。濃さ・大きさは VfxManagerComponent の Run Dust が持つ。
+    FBZZ_GROUP("Run Dust")
+    FBZZ_FIELD(bool, runDust, true, "Run Dust")
+    FBZZ_TOOLTIP("走っているあいだ、足が着くたびに足元へ土煙を出す")
+    FBZZ_FIELD(std::string, footBoneLeftName,  "Foot_L", "Left Foot Bone")
+    FBZZ_FIELD(std::string, footBoneRightName, "Foot_R", "Right Foot Bone")
+    FBZZ_TOOLTIP("土煙を立てる位置。見つからなければプレイヤー原点から出す")
 
     FBZZ_GROUP("Player Hit Animation")
     FBZZ_FIELD(std::string, hitLayerName, "Add_Hit", "Hit Layer")
-    FBZZ_FIELD_FILE(hitFrontClipFile, "guid:399f84087c05a267c373d75c4a778b11", "Front Hit Clip", ".anim,.fbx")
-    FBZZ_FIELD(std::string, hitFrontClipName, "Hit_F", "Front Hit Clip Name")
+    FBZZ_FIELD_FILE(hitFrontClipFile,
+        "guid:2c12835bcbbf3de2fd9aae7f9a21f1f0|Library/Baked/7e522cd4a98c0a3c76d1facdf7b0ce59/anims/Katana_Hit_F.anim",
+        "Front Hit Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, hitFrontClipName, "Katana_Hit_F", "Front Hit Clip Name")
 
     // 回避中か。被弾処理や敵 AI が「今は掴めない」を判断するのに使える。
     [[nodiscard]] bool  IsDodging() const { return m_dodgeRemaining > 0.0f; }
@@ -176,14 +175,41 @@ public:
     void OnStart() override;
     void OnUpdate() override;
     void OnFixedUpdate() override;
-    // PolarityGunComponent から呼ばれる Player 側の発砲リコイル。
-    void PlayFireAnimation(bool rightHand);
     // 被弾通知から呼ばれる標準の正面リアクション。
     void PlayHitAnimation();
     // PlayerComponent が内部モジュールとして保持するときのエイム結果の注入先。
     void SetAimComponent(PlayerAimComponent* aim) { m_aimOverride = aim; }
     // 武器の挙動そのものは WeaponRigComponent が持つ。ここは要求を渡すだけ。
     void SetWeaponRig(WeaponRigComponent* rig) { m_weaponRig = rig; }
+
+    /// 外から掛ける移動速度の倍率。溜めている間に足を鈍らせる用途 (PolarityBladeComponent)。
+    ///
+    /// WHY 掛ける側が毎フレーム設定するか: «掴んでいる» を知っているのは手の側だけで、
+    ///     ここが相手を名指しで問い合わせると、手を 1 つ足すたびに移動側を触ることになる。
+    ///     設定しなくなれば次のフレームに 1.0 へ戻るので、解除の呼び忘れで足が遅いまま
+    ///     張り付く事故も起きない。
+    void RequestMoveSpeedScale(float scale)
+    {
+        m_requestedMoveScale = Clamp(scale, 0.05f, 1.0f);
+    }
+
+    /// この向きへ体を向けるよう 1 フレームぶん要求する (斬撃が振る向きを渡す)。
+    ///
+    /// WHY 攻撃側が向きまで決めるか: 斬る向きを決めているのは剣
+    ///     (PolarityBladeComponent::SwingDirection) で、吸い付き補正を 0 にすると
+    ///     それはカメラの正面になる。こちらが独自にロック対象へ向き続けると、
+    ///     «体は敵を向いているのに刃は画面の奥へ抜ける» という、当たらない理由が
+    ///     画面から読めない食い違いが生まれる。振る向きは 1 つでなければならない。
+    ///
+    /// WHY 移動入力より優先するか: 走りながら斬ったとき、進行方向を向いたまま
+    ///     横へ斬ると «誰に向かって振ったのか» が消える。振っている間だけは
+    ///     刃の向きが体の向きを持つ。
+    void RequestFacing(const Vector3& direction)
+    {
+        Vector3 flat = direction;
+        flat.y = 0.0f;
+        if (flat.LengthSq() > EPSILON) m_requestedFacing = flat.Normalized();
+    }
 
     // 見た目の正面を +Z とする回転。transform.worldRotation はモデルのヨーオフセットを
     // 含むため、そのまま使うと「敵が正面に居るのに腕が真後ろを向く」になる。
@@ -196,9 +222,6 @@ private:
     void TickDodge(const Vector3& moveDirection, bool hasInput,
                    bool dodgeRequested, RigidBody& phy, float dt);
     void UpdateIK();
-    // 進行方向をモデルローカルの 2 軸へ落とし、脚の 2D ブレンドへ渡す。
-    void UpdateLocomotionParameters();
-    void UpdateAimParameters();
     // 上り / 下り / 早離しで重力を切り替える。倍率は World の重力に対する比。
     void UpdateGravityScale(const CharacterControllerComponent& cc, const RigidBody& phy);
     // 接地判定のしきい値を、今の重力と跳躍の長さから決め直す。
@@ -207,20 +230,21 @@ private:
     void RequestCameraSlack(const CharacterControllerComponent& cc, float planarSpeed);
     // 空中から接地へ変わった瞬間を掴み、落下速度の分だけ手触りを鳴らす。
     void TickLanding(const CharacterControllerComponent& cc, const RigidBody& phy);
-    // 接地して進んだ距離を積み、歩幅ぶん進むごとに足音を 1 回鳴らす。
-    void TickFootsteps(const CharacterControllerComponent& cc, float planarSpeed);
-    // コーンを超えたヨーを体の旋回で吸収する。ポーズだけでは ±45 度しか向けない。
+    // 接地して進んだ距離を積み、歩幅ぶん進むごとに足音と土煙を 1 回出す。
+    /// その場旋回の脚部サーボ。歩かずに向きだけ変えたときの «動いている» を返す。
+    void TickServoTurn(float planarSpeed, float dt);
+    void TickFootsteps(const CharacterControllerComponent& cc, const Vector3& velocity,
+                       float planarSpeed);
+    void CacheFootBones();
+    // 今まさに着いている足のワールド位置。土煙はここから立てる。
+    [[nodiscard]] Vector3 PlantedFootWorld();
+    // 立ち止まっているあいだ、ロック対象からずれたヨーを体の旋回で詰める。
     void TickAimTurn(RigidBody& phy, float dt);
     void UpdateSlopeLean(IKSolverComponent& ik, CharacterControllerComponent* cc,
                          RigidBodyComponent* rb);
 
-    void CacheAimOrigin();
-    // 照準が今どこを指しているか。6.4 でロックオンを廃したため、腕が向く先は
-    // 「選ばれた敵」ではなく「線の先」になる。敵が居ない方向を狙っていても腕は付いてくる。
+    // 今ロックしている相手の位置。PlayerAimComponent が選んだ 1 体。
     [[nodiscard]] bool AimPointWorld(Vector3& outPoint);
-    // 狙点を、モデルの正面 (+Z) から見た角度 (度) へ落とす。
-    [[nodiscard]] bool ResolveAimAngles(float& outYawDegrees, float& outPitchDegrees);
-    [[nodiscard]] Vector3 AimOriginWorld();
     Vector3 GetMoveForward() const;
     Vector3 GetMoveRight(const Vector3& forward) const;
 
@@ -250,11 +274,9 @@ private:
     PlayerAimComponent* m_aimOverride = nullptr;
     WeaponRigComponent* m_weaponRig   = nullptr;
 
-    // 腕の付け根のボーン。毎フレーム名前で探すと 58 ボーンを走査することになる。
-    EntityRef m_aimOrigin;
-    // Animator へ送っている今の値 (-1..1)。角度そのものではなくセル座標で持つ。
-    float m_aimYaw   = 0.0f;
-    float m_aimPitch = 0.0f;
+    // 左右の足首のボーン。土煙の位置を決めるためだけに持つ。
+    EntityRef m_footLeft;
+    EntityRef m_footRight;
 
     bool m_hasSpineTargetBase = false;
     Vector3 m_spineTargetBase = Vector3::ZERO;
@@ -265,11 +287,22 @@ private:
     Vector3 m_dodgeDirection = Vector3::ZERO;
     // 足音を鳴らしてから接地して進んだ距離 [m]。
     float   m_stepDistance   = 0.0f;
+    // 前フレームの平面上の前方向と、サーボ音を鳴らしてからの間隔。
+    Vector3 m_lastFacing       = Vector3::FORWARD;
+    bool    m_hasLastFacing    = false;
+    float   m_servoTurnCooldown = 0.0f;
     // 可変フレームで採取した入力を、次の固定ステップで一度だけ物理へ適用する。
     Vector3 m_moveDirection = Vector3::ZERO;
     // スティックの倒し量 0..1。キーボードは押していれば常に 1。
     float   m_moveMagnitude = 0.0f;
     bool    m_hasMoveInput = false;
+    // 外から掛かる移動速度の倍率。要求は 1 フレーム有効で、OnUpdate が取り込んでから
+    // 中立へ戻す。物理ステップが 1 フレームに複数回走っても、その全部で同じ値になる。
+    float   m_moveSpeedScale     = 1.0f;
+    float   m_requestedMoveScale = 1.0f;
+    // 振っている間だけ «刃の向き» が体の向きになる。長さ 0 は «要求なし»。
+    Vector3 m_facing          = Vector3::ZERO;
+    Vector3 m_requestedFacing = Vector3::ZERO;
     bool    m_jumpRequested = false;
     bool    m_dodgeRequested = false;
 
@@ -308,12 +341,16 @@ inline void PlayerControllerComponent::OnStart()
     m_hasMoveInput   = false;
     m_jumpRequested  = false;
     m_dodgeRequested = false;
-    m_aimYaw         = 0.0f;
-    m_aimPitch       = 0.0f;
     m_jumpHeld       = false;
     m_wasGrounded    = true;
     m_peakFallSpeed  = 0.0f;
     m_stepDistance   = 0.0f;
+    // 前フレームの向きは Play をまたいで持ち越さない。持ち越すと開始の 1 フレームで
+    // «一気に回った» ことになり、立っているだけでサーボ音が鳴る。
+    m_hasLastFacing     = false;
+    m_servoTurnCooldown = 0.0f;
+    m_facing            = Vector3::ZERO;
+    m_requestedFacing   = Vector3::ZERO;
 
     // 足音・回避音の出どころ。プレイヤー本人なので減衰を掛けずに 2D で鳴らす。
     se::EnsureSource(scene);
@@ -321,12 +358,20 @@ inline void PlayerControllerComponent::OnStart()
     if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
         TuneGrounding(*cc);
 
-    CacheAimOrigin();
+    CacheFootBones();
 }
 
 inline void PlayerControllerComponent::OnUpdate()
 {
     if (!enabled || !transform || !tuning) return;
+
+    // 前フレームに来ていた要求を取り込み、要求側を中立へ戻す。掛ける側が押し続けて
+    // いる間だけ鈍り、呼ばれなくなれば次のフレームで自然に元へ戻る。
+    m_moveSpeedScale     = m_requestedMoveScale;
+    m_requestedMoveScale = 1.0f;
+    m_facing          = m_requestedFacing;
+    m_requestedFacing = Vector3::ZERO;
+
     const Vector3 forward = GetMoveForward();
     const Vector3 right   = GetMoveRight(forward);
 
@@ -349,17 +394,15 @@ inline void PlayerControllerComponent::OnUpdate()
     // 押しっぱなしかどうかは押した瞬間では分からない。上昇中の重力を決めるために
     // 保持状態そのものを持つ。可変フレーム側で採り、固定ステップ側で使う。
     m_jumpHeld = input.GetAction(actions::kJump);
-    // 入力はここまで。抜く / 収める の中身は WeaponRigComponent の担当で、
-    // このスクリプトは銃の存在もソケットも知らない。
+    // 入力はここまで。抜く / 納める の中身は WeaponRigComponent の担当で、
+    // このスクリプトは刀の存在もソケットも知らない。
     if (m_weaponRig) {
         if (input.GetActionDown(actions::kDrawWeapons))    m_weaponRig->RequestDraw();
-        if (input.GetActionDown(actions::kHolsterWeapons)) m_weaponRig->RequestHolster();
+        if (input.GetActionDown(actions::kHolsterWeapons)) m_weaponRig->RequestSheathe();
         // パッドはボタンが足りないので 1 つで往復させる。どちらへ動かすかは
         // 押した側ではなく今の状態が決める。
-        if (input.GetActionDown(actions::kToggleWeapons)) {
-            if (m_weaponRig->IsDrawn()) m_weaponRig->RequestHolster();
-            else                        m_weaponRig->RequestDraw();
-        }
+        if (input.GetActionDown(actions::kToggleWeapons))
+            m_weaponRig->RequestToggle();
     }
 
     auto* cc = scene.GetComponent<CharacterControllerComponent>();
@@ -376,8 +419,6 @@ inline void PlayerControllerComponent::OnUpdate()
         ? DodgeSpeed()
         : std::sqrtf(velocity.x * velocity.x + velocity.z * velocity.z);
     animator.SetFloat(paramSpeed, planarSpeed);
-    UpdateLocomotionParameters();
-    UpdateAimParameters();
     UpdateIK();
 
     // 手触りの出力は可変フレーム側で回す。固定ステップは 1 フレームに 0 回にも
@@ -385,7 +426,8 @@ inline void PlayerControllerComponent::OnUpdate()
     if (cc && phy) {
         RequestCameraSlack(*cc, planarSpeed);
         TickLanding(*cc, *phy);
-        TickFootsteps(*cc, planarSpeed);
+        TickFootsteps(*cc, velocity, planarSpeed);
+        TickServoTurn(planarSpeed, Time::deltaTime);
     }
 
     // 重力と到達点から導かれる値を Inspector へ返す。ProjectSettings を触ったとき、
@@ -439,7 +481,38 @@ inline void PlayerControllerComponent::TickLanding(const CharacterControllerComp
     m_peakFallSpeed = 0.0f;
 }
 
+inline void PlayerControllerComponent::TickServoTurn(float planarSpeed, float dt)
+{
+    // 平面上の前方向。真上を向いた姿勢では成分が消えるので、前フレームへ落とす
+    // (Normalized() は長さ 0 で assert する)。
+    const Vector3 facing  = transform.worldRotation * Vector3::FORWARD;
+    const Vector3 forward = Vector3{ facing.x, 0.0f, facing.z }.NormalizedOr(m_lastFacing);
+
+    if (!m_hasLastFacing || dt <= 0.0f) {
+        m_lastFacing    = forward;
+        m_hasLastFacing = true;
+        return;
+    }
+
+    // 符号付きの回転角。Cross の y 成分が回転の向きをそのまま持っている。
+    const float cross   = Vector3::Cross(m_lastFacing, forward).y;
+    const float dot     = std::clamp(Vector3::Dot(m_lastFacing, forward), -1.0f, 1.0f);
+    const float yawRate = std::fabs(ToDeg(std::atan2f(cross, dot))) / dt;
+    m_lastFacing = forward;
+
+    m_servoTurnCooldown = Max(0.0f, m_servoTurnCooldown - dt);
+
+    // 歩いている間は足音が «動いている» を担っている。回避中も専用の音がある。
+    if (planarSpeed > EPSILON || IsDodging()) return;
+    if (yawRate < servoTurnRate) return;
+    if (m_servoTurnCooldown > 0.0f) return;
+
+    se::Play(audio, se::kPlayerServoTurn);
+    m_servoTurnCooldown = servoTurnInterval;
+}
+
 inline void PlayerControllerComponent::TickFootsteps(const CharacterControllerComponent& cc,
+                                                     const Vector3& velocity,
                                                      float planarSpeed)
 {
     // 空中と回避中は足が地面を蹴っていない。回避には専用の音があるので、
@@ -458,86 +531,67 @@ inline void PlayerControllerComponent::TickFootsteps(const CharacterControllerCo
         return;
     }
 
+    // WHY 歩幅そのものを毎歩振るか:
+    //   素材の README は «走り 0.355 秒 / 歩き 0.58 秒間隔を ±3% ほど揺らす» と
+    //   書いている (人の歩容は等間隔にならない)。歩幅で刻んでいるこちらでは、
+    //   一定の歩幅を一定の速さで踏むと間隔もぴたりと等間隔になるので、同じ揺れは
+    //   歩幅の側へ入れる。歩幅 1.35m / 走り 4.0m/s は 0.34 秒で、素材が想定している
+    //   歩調とほぼ重なっている。
+    //
+    // WHY 音量を振らないか:
+    //   1 歩ごとの音量差 (−2.4〜+1.8dB) は既にファイルへ焼き込んである。ここで
+    //   さらに掛けると二重になり、逆に揃えると «機械の足音» に戻る。触らないのが正解。
+    constexpr float kStrideJitter = 0.03f;
+    const float threshold = stride * random.Range(1.0f - kStrideJitter, 1.0f + kStrideJitter);
+
     m_stepDistance += planarSpeed * Time::deltaTime;
-    if (m_stepDistance < stride) return;
+    if (m_stepDistance < threshold) return;
 
     // 剰余で戻す。引き切ると、1 フレームで歩幅を大きく超えたとき (低フレームレートや
     // 回避の直後) に余りが積み残り、次の 1 歩が早まる。
-    m_stepDistance = std::fmod(m_stepDistance, stride);
+    m_stepDistance = std::fmod(m_stepDistance, threshold);
     se::Play(audio, running ? se::kPlayerFootstepRun : se::kPlayerFootstepWalk);
-}
 
-inline void PlayerControllerComponent::UpdateLocomotionParameters()
-{
-    if (!m_hasMoveInput) {
-        // 原点へ倒せば 2D ブレンドは Idle になる。方向は残さない
-        // (残すと止まった瞬間に最後の向きの歩きが薄く残る)。
-        animator.SetFloat(paramMoveX, 0.0f);
-        animator.SetFloat(paramMoveY, 0.0f);
-        return;
+    if (!running || !runDust) return;
+    if (auto* vfx = VfxManagerComponent::Instance()) {
+        // 蹴り出しの強さは «最高速に対する今の速さ»。しきい値からの比で取ると、
+        // Run At を下げただけで走り出しの 1 歩目が最大の土煙になる。
+        vfx->PlayRunDust(PlantedFootWorld(), velocity,
+                         Clamp01(planarSpeed / Max(MoveSpeed(), EPSILON)));
     }
-
-    // モデルの正面 (+Z) から見た進行方向。ResolveAimAngles と同じ基準を使う。
-    // WHY worldRotation ではなく ModelRotation() か: モデルは 180 度回してあり、
-    //     生の回転で割ると前後左右が入れ替わる。
-    const Vector3 local = ModelRotation().Inverse() * m_moveDirection;
-
-    // 半径が速さの輪を選ぶ。半分倒せば Walk の輪、いっぱいで Run の輪。
-    // 6.1 のなぞりは走りながら行うので、キーボード (常に 1.0) は Run のままになる。
-    animator.SetFloat(paramMoveX, local.x * m_moveMagnitude);
-    animator.SetFloat(paramMoveY, local.z * m_moveMagnitude);
 }
 
-inline void PlayerControllerComponent::UpdateAimParameters()
+inline void PlayerControllerComponent::CacheFootBones()
 {
-    // 銃を収納している間は、エイム差分と歩行中の上半身揺れを無効にする。
-    // レイヤー自体は Controller に常駐させ、再び抜いたときの再構築コストを避ける。
-    // 「抜いているか」は銃の側の事実なので、WeaponRigComponent に聞く。
-    const float aimWeight = (m_weaponRig && m_weaponRig->IsDrawn()) ? 1.0f : 0.0f;
-    animator.SetLayerWeight(aimLayerName, aimWeight);
-    animator.SetLayerWeight(aimSwayLayerName, aimWeight);
-
-    float yawDegrees   = 0.0f;
-    float pitchDegrees = 0.0f;
-    const bool hasAim = ResolveAimAngles(yawDegrees, pitchDegrees);
-
-    // 9 セルは -1..1 の格子。実測コーンで割り、外側はコーンの縁のセルへ張り付かせる。
-    // ワールド角ではなくモデルのローカル角なので、キャラクターの旋回とカメラの向きが
-    // 変わっても 9 セルの意味は変わらない。
-    const float desiredYaw = hasAim
-        ? std::clamp(yawDegrees / std::max(aimYawRangeDegrees, 1.0f), -1.0f, 1.0f)
-        : 0.0f;
-    const float pitchRange = std::max(
-        pitchDegrees >= 0.0f ? aimPitchUpDegrees : aimPitchDownDegrees, 1.0f);
-    const float desiredPitch = hasAim
-        ? std::clamp(pitchDegrees / pitchRange, -1.0f, 1.0f)
-        : 0.0f;
-
-    // WHY 補間するか: 照準はマウスの生の動きで飛ぶ。9 セルの格子へそのまま入れると、
-    //     隣のセルへ跨ぐたびに腕が 1 フレームで切り替わり、ポーズの差し替えが見える。
-    const float response = aimResponse > 0.0f
-        ? 1.0f - std::exp(-aimResponse * std::max(Time::deltaTime, 0.0f))
-        : 1.0f;
-    m_aimYaw   += (desiredYaw   - m_aimYaw)   * response;
-    m_aimPitch += (desiredPitch - m_aimPitch) * response;
-
-    animator.SetFloat(paramAimYaw, m_aimYaw);
-    animator.SetFloat(paramAimPitch, m_aimPitch);
-}
-
-inline void PlayerControllerComponent::CacheAimOrigin()
-{
-    m_aimOrigin = {};
+    m_footLeft  = {};
+    m_footRight = {};
     GameObject* self = scene.Self();
-    if (!self || aimOriginBoneName.empty())
-        return;
+    if (!self) return;
 
-    if (GameObject* bone = FindInSubtree(*self, aimOriginBoneName))
-        m_aimOrigin = EntityRef{ bone->GetID() };
-    else
-        debug.LogWarning("PlayerControllerComponent: aim origin bone '" + aimOriginBoneName
-                         + "' not found; aiming from the player origin "
-                           "(pitch will read flat for targets at eye level).");
+    if (GameObject* bone = FindInSubtree(*self, footBoneLeftName))
+        m_footLeft = EntityRef{ bone->GetID() };
+    if (GameObject* bone = FindInSubtree(*self, footBoneRightName))
+        m_footRight = EntityRef{ bone->GetID() };
+}
+
+inline Vector3 PlayerControllerComponent::PlantedFootWorld()
+{
+    GameObject* left  = m_footLeft.Resolve(scene);
+    GameObject* right = m_footRight.Resolve(scene);
+
+    // WHY 左右を交互に数えないか: 歩幅は距離で刻んでいるので、クリップの再生位相とは
+    //     独立に進む。交互に配ると走行速度が変わった瞬間から左右が入れ替わり、
+    //     宙に浮いている方の足から土煙が立つ。着いている足は «低い方» でしか分からない。
+    GameObject* planted = left;
+    if (!planted || (right && right->transform.worldPosition.y < left->transform.worldPosition.y))
+        planted = right;
+    if (!planted) return transform.worldPosition;
+
+    // 足首のボーンは床から浮いている。左右と前後の位置だけ足から借り、
+    // 高さは接地しているプレイヤー原点に合わせる。
+    Vector3 point = planted->transform.worldPosition;
+    point.y = transform.worldPosition.y;
+    return point;
 }
 
 inline bool PlayerControllerComponent::AimPointWorld(Vector3& outPoint)
@@ -554,43 +608,6 @@ inline Quaternion PlayerControllerComponent::ModelRotation() const
 {
     return (transform.worldRotation *
             Quaternion::FromAxisAngle(Vector3::UP, ToRad(-modelYawOffsetDegrees))).Normalized();
-}
-
-inline Vector3 PlayerControllerComponent::AimOriginWorld()
-{
-    if (GameObject* bone = m_aimOrigin.Resolve(scene))
-        return bone->transform.worldPosition;
-    return transform.worldPosition;
-}
-
-inline bool PlayerControllerComponent::ResolveAimAngles(float& outYawDegrees,
-                                                        float& outPitchDegrees)
-{
-    Vector3 aimPoint;
-    if (!AimPointWorld(aimPoint))
-        return false;
-
-    const Vector3 local = ModelRotation().Inverse() * (aimPoint - AimOriginWorld());
-    const float horizontal = std::sqrtf(local.x * local.x + local.z * local.z);
-    if (local.LengthSq() < EPSILON)
-        return false;
-
-    outYawDegrees   = ToDeg(std::atan2f(local.x, local.z));
-    outPitchDegrees = ToDeg(std::atan2f(local.y, std::max(horizontal, 0.0001f)));
-    return true;
-}
-
-inline void PlayerControllerComponent::PlayFireAnimation(bool rightHand)
-{
-    const std::string& clipFile = rightHand ? fireRightClipFile : fireLeftClipFile;
-    const std::string& clipName = rightHand ? fireRightClipName : fireLeftClipName;
-    if (clipFile.empty()) return;
-
-    // Fire は Additive Reference Pose = Pose_FireZero のレイヤーでのみ再生する。
-    // Aim / Hit と基準ポーズが異なるため、別レイヤーへ分けて混線を防ぐ。
-    // 倍率は撃つたびに入れ直す。Inspector で触った値がその場の 1 発から効く。
-    animator.SetLayerWeight(fireLayerName, fireLayerGain);
-    animator.PlaySlot(fireLayerName, clipFile, clipName, 0.0f, 0.08f, 1.0f, false);
 }
 
 inline void PlayerControllerComponent::PlayHitAnimation()
@@ -630,14 +647,29 @@ inline void PlayerControllerComponent::OnFixedUpdate()
             animator.SetTrigger(paramJumpTrigger);
         }
 
-        // WHY 銃を抜いている間は進行方向を向かないか:
-        //   進行方向を向くと、横へ走りながら正面を狙ったときに体が 90 度ずれる。
-        //   エイムオフセットは ±aimYawRangeDegrees (9 セルの実測 45 度) しか無いので、
-        //   腕がそこで頭打ちになり、銃口とレーザーが別々の方向を向く。
-        //   横走りのクリップが揃った今は、体を照準へ向けて脚を 2D ブレンドで
-        //   合わせるのが正しい。TickAimTurn がコーンを超えた分だけ体を回す。
-        const bool faceAim = m_weaponRig && m_weaponRig->IsDrawn();
-        if (m_hasMoveInput && rotateToMoveDirection && !faceAim) {
+        // WHY 抜刀していても進行方向を向くか:
+        //   銃の頃は «体を照準へ向けて、脚を 2D ブレンドで進行方向へ合わせる» 形だった。
+        //   これは横走り・後ろ走りのクリップが揃っていて初めて成立する。双剣では
+        //   ロコモーションを Katana_Idle / Walk_F / Run_F の前進 3 本だけにしたので、
+        //   体を照準へ固定すると «正面を向いたまま横へ滑る» になる。
+        //   斬る向きは体の向きではなく PolarityBladeComponent::SwingDirection() が
+        //   ロックオン対象から決めるので、体まで対象へ縛る理由はもう無い。
+        //   立ち止まっているときだけ TickAimTurn が体を対象へ向ける。
+        // 振っている間の «刃の向き» が最優先。走りの向きにもロック対象にも譲らない
+        // (RequestFacing の WHY を参照)。
+        //
+        // WHY 通常の旋回より速く回すか: 斬るのは 0.2 秒ほどの出来事で、いつもの
+        //     追従で回すと «振り終わってから向き終わる» ことになる。振り出しの
+        //     1 フレーム目で概ね向いていないと、刃と体が別々に動いて見える。
+        if (m_facing.LengthSq() > EPSILON) {
+            const Quaternion targetRotation =
+                (Quaternion::LookRotation(m_facing) *
+                 Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
+            const float turnResponse = 1.0f - std::exp(
+                -std::max(TurnSpeed(), 0.0f) * 3.0f * dt);
+            phy.SetRotation(Quaternion::Slerp(
+                phy.GetRotation(), targetRotation, turnResponse).Normalized());
+        } else if (m_hasMoveInput && rotateToMoveDirection) {
             const Quaternion targetRotation =
                 (Quaternion::LookRotation(m_moveDirection) *
                  Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
@@ -650,13 +682,19 @@ inline void PlayerControllerComponent::OnFixedUpdate()
         }
 
         // 倒し量をそのまま速さへ掛ける。スティックを半分倒せば半分の速さで歩く。
-        const Vector3 desiredVelocity = m_hasMoveInput
-            ? m_moveDirection * (MoveSpeed() * m_moveMagnitude)
+        //
+        // WHY MoveSpeed() 自体には掛けないか: あちらは走りのブレンドとカメラの
+        //     追従遅れを正規化する基準にも使われている。基準ごと縮めると、
+        //     鈍らせている間だけ «歩いているのに走りモーション» になる。
+        const Vector3 inputVelocity = m_hasMoveInput
+            ? m_moveDirection * (MoveSpeed() * m_moveMagnitude * m_moveSpeedScale)
             : Vector3::ZERO;
+        // 入力が無いときの -1 は減速の合図。水平速度の出どころは移動入力だけなので、
+        // 押していないフレームは必ずブレーキが掛かる。
         const float acceleration = m_hasMoveInput
             ? (cc->isGrounded ? GroundAccel() : AirAccel())
             : -1.0f;
-        cc->Move(&phy, desiredVelocity, dt, acceleration, GroundDecel());
+        cc->Move(&phy, inputVelocity, dt, acceleration, GroundDecel());
     }
 
     // WHY 最後に決めるか: 上りか下りかは、この step で与えたジャンプ初速まで
@@ -728,10 +766,10 @@ inline void PlayerControllerComponent::TickAimTurn(RigidBody& phy, float dt)
     const Vector3 local = ModelRotation().Inverse() * toTarget.Normalized();
     const float yawDegrees = ToDeg(std::atan2f(local.x, local.z));
 
-    // WHY 対象の方向をそのまま向かせないか: 体が対象へ正対すると AimYaw が常に 0 になり、
-    //     8 方向ポーズが中央セルから動かなくなる。コーンの内側は腕に任せ、
-    //     はみ出したぶんだけ体を回す (Docs/conventions/minibot-animation-export.md 6 節)。
-    const float deadzone = std::min(aimTurnDeadzoneDegrees, aimYawRangeDegrees);
+    // WHY 対象の方向へ «ぴったり» 向かせないか: 立ち止まっているだけで体がぬるぬる
+    //     追尾すると、狙っているというより «吸い付いている» 絵になる。少し外れている
+    //     ぶんは残し、はみ出した角度だけ回す。
+    const float deadzone = std::max(aimTurnDeadzoneDegrees, 0.0f);
     if (std::abs(yawDegrees) <= deadzone)
         return;
 

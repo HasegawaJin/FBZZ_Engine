@@ -30,14 +30,15 @@ struct SkinSrcVertex
     float4 boneWeights;  // 60
 };                       // = 76
 
-// 出力頂点。C++ の renderer::Vertex と完全に一致させること (44 bytes)。
+// 出力頂点。C++ の renderer::Vertex と完全に一致させること (60 bytes)。
 struct SkinnedOutVertex
 {
     float3 position;     //  0
     float3 normal;       // 12
     float3 tangent;      // 24
     float2 uv;           // 36
-};                       // = 44
+    float4 color;        // 44
+};                       // = 60
 
 StructuredBuffer<SkinSrcVertex>     gSrcVertices : register(SB_SKIN_SRC_VERTICES);
 // ボーンパレットは cbuffer ではなく StructuredBuffer で受ける。
@@ -80,6 +81,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
     o.normal   = mul(float4(v.normal,  0.0f), skin).xyz;
     o.tangent  = mul(float4(v.tangent, 0.0f), skin).xyz;
     o.uv       = v.uv;
+    // SkinnedVertex は頂点カラーを持たない。静的メッシュの「色なし」と同じ白を書く。
+    o.color    = float4(1.0f, 1.0f, 1.0f, 1.0f);
 
     gOutVertices[index] = o;
 }

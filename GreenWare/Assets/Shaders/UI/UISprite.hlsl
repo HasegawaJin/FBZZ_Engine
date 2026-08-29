@@ -13,5 +13,5 @@ UIPixelInput VSMain(UIVertexInput input)
 
 float4 PSMain(UIPixelInput input) : SV_TARGET
 {
-    return g_Texture.Sample(g_Sampler, input.uv) * g_Color;
+    return g_Texture.Sample(g_Sampler, input.uv) * UITint(input);
 }

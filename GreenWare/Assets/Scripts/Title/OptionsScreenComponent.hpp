@@ -1,7 +1,7 @@
-/// @file OptionsScreenComponent.hpp
-/// @brief OPTIONS 画面。行ウィジェットの状態を設定値と表示につなぐ
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    OptionsScreenComponent.hpp
+/// @brief   OPTIONS 画面。行ウィジェットの状態を設定値と表示につなぐ
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// 画面の作り (Reference: Assets/UI/Reference/Options_*.png):
 ///   Nav<TAB>Label (UIButton)          左のタブ
@@ -49,6 +49,14 @@ using namespace fbzz::scene;
 using namespace fbzz::math;
 
 namespace sandbox {
+
+// 振動の «試聴»。RumbleManager の Default Shape (0.55 / 0.30) に合わせてある。
+// ここだけ別の配分にすると、試したときの手触りと戦闘で返る手触りが別物になる。
+inline constexpr float kVibrationPreviewLow  = 0.55f;
+inline constexpr float kVibrationPreviewHigh = 0.30f;
+// つまみが動かなくなったら自然に切れる長さ。伸ばすと離した後まで手に残り、
+// «今どの値か» ではなく «さっきどこを通ったか» を触っていることになる。
+inline constexpr float kVibrationPreviewSeconds = 0.14f;
 
 class OptionsScreenComponent : public Script {
     FBZZ_SCRIPT(OptionsScreenComponent)
@@ -117,6 +125,8 @@ private:
 
     [[nodiscard]] float GetValue(const Row& row) const;
     void  SetValue(const Row& row, float value);
+    /// 今つまんだ強さでパッドを 1 度回す。振動は数字を読んでも決められない。
+    void  PreviewVibration(float scale01) const;
     [[nodiscard]] std::string FormatValue(const Row& row, float value) const;
     /// 行の子を名前で引く。子の名前 (Label / Value / Slider) は行をまたいで同じ。
     [[nodiscard]] static GameObject* Child(GameObject* parent, std::string_view name);
@@ -288,7 +298,7 @@ inline void OptionsScreenComponent::SetValue(const Row& row, float value)
     else if (k == "stickSens")   i.stickSens = value;
     else if (k == "curve")       i.curve = n;
     else if (k == "deadzone")    i.deadzone = value;
-    else if (k == "vibration")   i.vibration = value;
+    else if (k == "vibration")   { i.vibration = value; PreviewVibration(value); }
     else if (k == "fov")         g.fov = value;
     else if (k == "shake")       g.shake = value;
     else if (k == "hitstop")     g.hitstop = value;
@@ -309,6 +319,21 @@ inline void OptionsScreenComponent::SetValue(const Row& row, float value)
     else if (k == "bgm")         a.bgm = value;
     else if (k == "ui")          a.ui = value;
     s->Apply();
+}
+
+inline void OptionsScreenComponent::PreviewVibration(float scale01) const
+{
+    // WHY ここだけ RumbleManager を通さず直に書くか: あれは «同時に届いた要求を合成する»
+    //     ための係で、戦闘シーンにしか居ない。この画面には振動を要求する相手が他に
+    //     一人も居ないので、合成すべきものが無い。
+    //
+    // WHY 溜めずに «変わったフレームだけ» 出し直すか: SetVibration は指定秒で自動停止する。
+    //     つまみが止まれば呼ばれなくなり、こちらが止めなくても切れる。離した・タブを
+    //     変えた・画面を抜けた、のどれでも回りっぱなしにならない。
+    const float level = std::clamp(scale01, 0.0f, 1.0f);
+    if (level <= 0.0f) return;
+    input.SetVibration(kVibrationPreviewLow * level, kVibrationPreviewHigh * level,
+                       kVibrationPreviewSeconds);
 }
 
 inline std::string OptionsScreenComponent::FormatValue(const Row& row, float value) const
@@ -464,7 +489,7 @@ inline int OptionsScreenComponent::CurrentDevice() const
 inline void OptionsScreenComponent::PollControls()
 {
     for (const actions::ControlRow& row : actions::kControlRows) {
-        if (!row.action || !*row.action) continue;   // 軸と起爆は差し替えられない
+        if (!row.action || !*row.action) continue;   // 軸と点付与は差し替えられない
         GameObject* hit = scene.Find(std::string("CtrlDiv_") + row.key);
         if (hit && ui.WasClicked(hit)) {
             BeginRebind(row);

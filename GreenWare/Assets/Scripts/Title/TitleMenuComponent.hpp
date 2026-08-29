@@ -1,7 +1,7 @@
-/// @file TitleMenuComponent.hpp
-/// @brief タイトルメニュー。行ウィジェットの状態を見た目と遷移へつなぐ
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    TitleMenuComponent.hpp
+/// @brief   タイトルメニュー。行ウィジェットの状態を見た目と遷移へつなぐ
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// 画面の作り:
 ///   MenuRow_<NAME> (UIButton) ─┬─ Bar   (UIImage + UIMenuItem.mat)

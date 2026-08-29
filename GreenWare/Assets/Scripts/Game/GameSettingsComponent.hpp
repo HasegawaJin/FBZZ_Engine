@@ -1,7 +1,7 @@
-/// @file GameSettingsComponent.hpp
-/// @brief Option 設定の保存・読み込みと、表示 / 画質 / 音量 / 操作への反映
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    GameSettingsComponent.hpp
+/// @brief   Option 設定の保存・読み込みと、表示 / 画質 / 音量 / 操作への反映
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// WHY エンジンではなくゲームが持つか:
 ///   config ストアはキー名も構造もゲームが決める前提で作られている
@@ -107,7 +107,7 @@ inline constexpr float kStickSensReference = 2.0f;
 
 /// ゲームプレイの好み。config の [game] テーブルへ往復する。
 ///
-/// 読む側: 視野角と起爆時の FOV 変化は TpsCameraComponent、揺れ・止め・振動は
+/// 読む側: 視野角と点火・集束時の FOV 変化は TpsCameraComponent、揺れ・止め・振動は
 ///         各マネージャーの要求受け口、チェイン表示は ChainDisplayComponent。
 ///         いずれも Instance() が無い場面 (エディタでの単体再生など) では
 ///         既定値で動くよう、下の静的アクセサ越しに読む。

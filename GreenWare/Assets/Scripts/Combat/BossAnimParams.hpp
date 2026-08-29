@@ -1,7 +1,7 @@
-/// @file BossAnimParams.hpp
-/// @brief Boss.animcontroller のパラメーター名とステート名の一元定義
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    BossAnimParams.hpp
+/// @brief   Boss.animcontroller のパラメーター名とステート名の一元定義
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY 定数にするか:
 ///   SetFloat / SetTrigger は名前が違っても黙って何もしない。綴りを間違えた症状が

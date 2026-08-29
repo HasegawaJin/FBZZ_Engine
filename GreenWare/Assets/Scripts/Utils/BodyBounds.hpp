@@ -1,7 +1,7 @@
-/// @file BodyBounds.hpp
-/// @brief コライダーから体の上端・下端・当たり半径をワールド単位で測る
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    BodyBounds.hpp
+/// @brief   コライダーから体の上端・下端・当たり半径をワールド単位で測る
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 1 箇所へ集めるか:
 ///   頭上の体力バー・ロックオン枠・接触判定の 3 者が「この敵はどこからどこまでか」を

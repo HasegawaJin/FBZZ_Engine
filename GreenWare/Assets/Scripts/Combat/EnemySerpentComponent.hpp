@@ -1,7 +1,7 @@
-/// @file EnemySerpentComponent.hpp
-/// @brief Enemy B「Serpent」— 地を這って噛みつき、触れた仲間へ極性を伝染させる導体 (企画書 8)
-/// @author Hasegawa Jin
-/// @date 2026-08-24
+/// @file    EnemySerpentComponent.hpp
+/// @brief   Enemy B「Serpent」— 地を這って噛みつき、触れた仲間へ極性を伝染させる導体 (企画書 8)
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY 伝染をこの敵だけが持つか (企画書 8 / 10.1):
 ///   3.2 は「片銃連射でしか同極を重ねられない」を制約として置いている。Serpent は
@@ -53,13 +53,13 @@ class EnemySerpentComponent : public EnemyAiBase {
 
 public:
     FBZZ_GROUP("Bite")
-    FBZZ_FIELD_RANGE(float, attackRange, 3.0f, "Attack Range", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackRange, 3.6f, "Attack Range", 0.2f, 12.0f)
     FBZZ_TOOLTIP("鎌首が届く距離。全長 4.5m の胴体ぶん、Mite より遠くから噛める")
     FBZZ_FIELD_RANGE(float, attackDuration, 1.5f, "Attack Duration", 0.1f, 6.0f)
     FBZZ_TOOLTIP("噛みつきモーションの長さ。Attack.anim の尺 (1.5 秒) に合わせる")
     FBZZ_FIELD_RANGE(float, attackHitTime, 0.65f, "Hit Time", 0.0f, 6.0f)
     FBZZ_TOOLTIP("振り始めから牙が届くまでの秒数")
-    FBZZ_FIELD_RANGE(float, attackHitRange, 3.6f, "Hit Range", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackHitRange, 4.3f, "Hit Range", 0.2f, 12.0f)
     FBZZ_FIELD_RANGE(float, lungeSpeed, 1.6f, "Lunge Speed", 0.0f, 10.0f)
     FBZZ_TOOLTIP("牙が届くまで前へ詰める速さ。0 にするとその場で振り切る")
 
@@ -257,7 +257,10 @@ inline void EnemySerpentComponent::OnFixedUpdate()
 {
     const float dt = time.FixedDeltaTime();
 
-    if (IsPolarityDriven()) {
+    // 塗られて浮かされているだけの状態。這えないが牙は使える。
+    const bool held = IsHeldInPlace();
+
+    if (IsPolarityDriven() && !held) {
         // 振りかけの噛みつきは捨てる。Animator は Attack ステートを exitTime で抜けており、
         // 残したまま再開すると «モーションが無いのに牙が届く» になる。
         debugState    = "Polarity";
@@ -277,9 +280,9 @@ inline void EnemySerpentComponent::OnFixedUpdate()
         return;
     }
 
-    if (IsMovementLocked()) {
+    if (held ? IsActionLocked() : IsMovementLocked()) {
         debugState = "Locked";
-        StopHorizontal();
+        if (!held) StopHorizontal();
         return;
     }
 
@@ -303,7 +306,7 @@ inline void EnemySerpentComponent::OnFixedUpdate()
     FaceDirection(direction, dt);
 
     if (distanceSq <= attackRange * attackRange) {
-        StopHorizontal();
+        if (!held) StopHorizontal();
         if (!AttackReady()) {
             debugState = "Cooldown";
             return;
@@ -315,6 +318,12 @@ inline void EnemySerpentComponent::OnFixedUpdate()
         animator.SetTrigger(enemyanim::kAttack);
         // 鎌首をもたげる音。牙が届くのは attackHitTime 後なので、ここは «来る» の予告。
         se::Play(audio, se::kSerpentRear);
+        return;
+    }
+
+    // 待たされている間は詰められない。正面だけ外さずに牙が届くのを待つ。
+    if (held) {
+        debugState = "Armed";
         return;
     }
 
@@ -334,6 +343,10 @@ inline void EnemySerpentComponent::TickAttack(float dt)
     m_attackTimer -= dt;
 
     GameObject* player = Player();
+    // 浮かされている間は自分の速度を書かない。書くと盤面の «その場に留める» と
+    // 押し合いになり、待っているはずの個体が少しずつ列から流れ出す。
+    const bool held = IsHeldInPlace();
+
     if (player && elapsed < attackHitTime) {
         Vector3 toPlayer = player->transform.worldPosition - transform.worldPosition;
         toPlayer.y = 0.0f;
@@ -342,12 +355,14 @@ inline void EnemySerpentComponent::TickAttack(float dt)
         // 牙が届くまでは鎌首を伸ばしながら詰める。1.5 秒をその場で振り切る攻撃は、
         // 1 歩下がられた時点で «当たらないのに硬直だけ長い» になり、間合いの
         // 読み合いが «近づかない» の一手に潰れる。届いた後は伸び切って止まる。
-        const Vector3 forward  = toPlayer.NormalizedOr(Vector3::ZERO);
-        Vector3       velocity = physics.GetVelocity();
-        velocity.x = forward.x * std::max(lungeSpeed, 0.0f);
-        velocity.z = forward.z * std::max(lungeSpeed, 0.0f);
-        physics.SetVelocity(velocity);
-    } else {
+        if (!held) {
+            const Vector3 forward  = toPlayer.NormalizedOr(Vector3::ZERO);
+            Vector3       velocity = physics.GetVelocity();
+            velocity.x = forward.x * std::max(lungeSpeed, 0.0f);
+            velocity.z = forward.z * std::max(lungeSpeed, 0.0f);
+            physics.SetVelocity(velocity);
+        }
+    } else if (!held) {
         StopHorizontal();
     }
 

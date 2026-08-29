@@ -1,7 +1,7 @@
-/// @file FpsCameraComponent.hpp
-/// @brief 一人称視点。プレイヤーの目の位置にカメラを置き、視線をそのまま照準にする
-/// @author Hasegawa Jin
-/// @date 2026-08-26
+/// @file    FpsCameraComponent.hpp
+/// @brief   一人称視点。プレイヤーの目の位置にカメラを置き、視線をそのまま照準にする
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// 使い方: Main Camera から TpsCameraComponent を外し、これを付ける。
 ///         両方を付けると 2 つのスクリプトが同じ Transform を奪い合う。
@@ -109,7 +109,7 @@ public:
     FBZZ_FIELD_RANGE(float, bobResponse, 8.0f, "Bob Response", 0.0f, 40.0f)
     FBZZ_TOOLTIP("歩き出しと止まりで揺れが立ち上がる / 消える速さ")
 
-    // WHY 揺れ (被弾・着地・起爆) を持たないか: 生成と合成は
+    // WHY 揺れ (被弾・着地・集束) を持たないか: 生成と合成は
     //     CameraShakeManagerComponent の担当で、ここは合成済みのオフセットを
     //     最終位置へ足すだけにする。TPS と同じ形なので、視点を替えても
     //     揺れの調整はやり直しにならない。
@@ -249,7 +249,7 @@ inline void FpsCameraComponent::OnLateUpdate()
 
     eye += TickBob(foot, right, grounded, safeDt);
 
-    // 画角は Option の「視野角」が基準で、起爆の張り出しをそこへ足す。
+    // 画角は Option の「視野角」が基準で、点火・集束の張り出しをそこへ足す。
     // WHY 毎フレーム書くか: 基準そのものが設定変更で動く。1 度だけ書くと、
     //     Option で視野角を変えても遊びに戻るまで反映されない。
     float fovOffset = 0.0f;

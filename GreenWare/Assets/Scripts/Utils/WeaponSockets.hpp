@@ -1,18 +1,20 @@
-// FBZZ Engine
-// WeaponSockets.hpp | sandbox
-// 銃の装着点・アニメーションイベント・クリップ名の一元定義。
-// アタッチしないユーティリティ (FBZZ_SCRIPT を持たない)。
-//
-// WHY 1 ファイルに集めるか:
-//   ソケット名は Blender (エクスポート) と エンジン (scene.Find) の両方に現れる文字列で、
-//   しかも片方だけ直しても *コンパイルは通る*。壊れ方が「実行して銃が原点に出るまで
-//   気付かない」種類なので、リテラルを散らしてはいけない。PolarityTypes.hpp が配色を
-//   1 箇所に閉じ込めているのと同じ理由でここへ集約する。
-//
-// WHY 旧名も持つか:
-//   .scene に保存済みの GameObject 名は旧 FBX 由来のまま (GunSocket_Hand_L 等)。
-//   新 FBX を再インポートするまでは旧名しか存在しないため、両方を順に探す。
-//   移行が済んだら kLegacy* を消せばよい。
+/// @file    WeaponSockets.hpp
+/// @brief   武器の装着点・持ち替えタイミング・クリップ名の一元定義。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// アタッチしないユーティリティ (FBZZ_SCRIPT を持たない)。
+///
+/// WHY 1 ファイルに集めるか:
+/// ソケット名は Blender (エクスポート) と エンジン (scene.Find) の両方に現れる文字列で、
+/// しかも片方だけ直しても *コンパイルは通る*。壊れ方が「実行して銃が原点に出るまで
+/// 気付かない」種類なので、リテラルを散らしてはいけない。PolarityTypes.hpp が配色を
+/// 1 箇所に閉じ込めているのと同じ理由でここへ集約する。
+///
+/// WHY 旧名も持つか:
+/// .scene に保存済みの GameObject 名は旧 FBX 由来のまま (GunSocket_Hand_L 等)。
+/// 新 FBX を再インポートするまでは旧名しか存在しないため、両方を順に探す。
+/// 移行が済んだら kLegacy* を消せばよい。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
@@ -20,6 +22,21 @@
 #include <string_view>
 
 namespace sandbox {
+
+// ── 双剣 (現行) ─────────────────────────────────────────────────────────────
+// Player 側の刀ソケット。手は Grip_L/R の子、背中は Mount_Back の子にある。
+inline constexpr const char* kSocketKatanaL    = "SOCKET_Katana_L";
+inline constexpr const char* kSocketKatanaR    = "SOCKET_Katana_R";
+inline constexpr const char* kSocketBackSwordL = "SOCKET_BackSword_L";
+inline constexpr const char* kSocketBackSwordR = "SOCKET_BackSword_R";
+
+// 刀側のソケット。SOCKET_Grip が握りの基準、残り 3 本は斬撃トレイル用。
+inline constexpr const char* kSocketTip       = "SOCKET_Tip";
+inline constexpr const char* kSocketTrailBase = "SOCKET_Trail_Base";
+inline constexpr const char* kSocketTrailTip  = "SOCKET_Trail_Tip";
+
+inline constexpr const char* kSwordObjectL = "WPN_Sword_L";
+inline constexpr const char* kSwordObjectR = "WPN_Sword_R";
 
 // ── Player 側ソケット (SK_Player の SOCKET_* ボーン) ─────────────────────────
 inline constexpr const char* kSocketHandL    = "SOCKET_Hand_L";
@@ -72,6 +89,22 @@ inline constexpr float kReloadMagOutDelay    = 8.0f / 30.0f;  // Reload  8F
 inline constexpr float kReloadMagInDelay     = 48.0f / 30.0f; // Reload 48F
 inline constexpr float kReloadSlideDelay     = 58.0f / 30.0f; // Reload 58F
 
+// 抜刀 / 納刀で刀がソケットを移る時刻。出どころは player-motions.md の
+// FBZZ_EVENT__WeaponAttach 表 (30fps) で、右 → 左の順にずらしてある。
+//
+// WHY イベントノードを読まないか:
+//   README はイベントを「FBZZ_EVENT__WeaponAttach の Position X」という形で
+//   持っているが、エンジンにイベントを取り出す経路が無く、読むには
+//   ボーンの座標を毎フレーム監視することになる。監視が外れた壊れ方は
+//   「刀が背中に残ったまま」で、上の銃と同じく気付けない。秒数で持てば
+//   直す場所は 1 箇所しかない。イベントが引ける日が来たらここを消す。
+inline constexpr float kKatanaDrawTransferR    = 16.0f / 30.0f; // Katana_Draw    f16
+inline constexpr float kKatanaDrawTransferL    = 18.0f / 30.0f; // Katana_Draw    f18
+inline constexpr float kKatanaSheatheTransferR = 16.0f / 30.0f; // Katana_Sheathe f16
+inline constexpr float kKatanaSheatheTransferL = 22.0f / 30.0f; // Katana_Sheathe f22
+inline constexpr float kKatanaDrawDuration     = 34.0f / 30.0f; // Katana_Draw    34F
+inline constexpr float kKatanaSheatheDuration  = 40.0f / 30.0f; // Katana_Sheathe 40F
+
 // 手の識別。
 //
 // WHY 0/1 ではなく 1/2 か:
@@ -90,6 +123,22 @@ enum class HandSide : int { Left = 2, Right = 1 };
 [[nodiscard]] inline const char* HandSocketName(HandSide hand)
 {
     return hand == HandSide::Right ? kSocketHandR : kSocketHandL;
+}
+
+// ── 双剣側の引き当て ────────────────────────────────────────────────────────
+[[nodiscard]] inline const char* KatanaHandSocketName(HandSide hand)
+{
+    return hand == HandSide::Right ? kSocketKatanaR : kSocketKatanaL;
+}
+
+[[nodiscard]] inline const char* KatanaBackSocketName(HandSide hand)
+{
+    return hand == HandSide::Right ? kSocketBackSwordR : kSocketBackSwordL;
+}
+
+[[nodiscard]] inline const char* SwordObjectName(HandSide hand)
+{
+    return hand == HandSide::Right ? kSwordObjectR : kSwordObjectL;
 }
 
 [[nodiscard]] inline const char* LegacyHandSocketName(HandSide hand)
@@ -123,6 +172,11 @@ enum class HandSide : int { Left = 2, Right = 1 };
 [[nodiscard]] inline bool IsWeaponObject(const fbzz::scene::GameObject* object, HandSide hand)
 {
     return object != nullptr && object->name == WeaponObjectName(hand);
+}
+
+[[nodiscard]] inline bool IsSwordObject(const fbzz::scene::GameObject* object, HandSide hand)
+{
+    return object != nullptr && object->name == SwordObjectName(hand);
 }
 
 // ── 武器クリップ名 ──────────────────────────────────────────────────────────

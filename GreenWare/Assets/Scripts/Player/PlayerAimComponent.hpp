@@ -1,7 +1,7 @@
-/// @file PlayerAimComponent.hpp
-/// @brief 照準レイと、極性レーザーが触れている対象の一覧を毎フレーム 1 箇所で作る
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    PlayerAimComponent.hpp
+/// @brief   照準レイと、極性レーザーが触れている対象の一覧を毎フレーム 1 箇所で作る
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY ロックオン / ソフトエイムを持たないか:
 ///   企画書 6.4「ロックオンは 1 体を選ぶための仕組みで、なぞる操作とは目的が逆である。
@@ -86,12 +86,12 @@ public:
     /// 6.2 の「貫通する。線上の敵すべてに判定が乗る」がこの配列そのもの。
     [[nodiscard]] const std::vector<BeamContact>& Contacts() const { return m_contacts; }
 
-    /// 線に触れているうち最も手前の 1 体。タップの起爆点 (6.2) と、
+    /// 線に触れているうち最も手前の 1 体。タップの点付与の相手と、
     /// 照準表示が読む「今なにを指しているか」。
     ///
-    /// WHY 線の中心に最も近い 1 体ではなく手前の 1 体か: 起爆は 7.9 のとおり
+    /// WHY 線の中心に最も近い 1 体ではなく手前の 1 体か: タップは
     ///     「線から外した無極の 1 体」へ撃つ操作で、その 1 体は普通いちばん手前にいる。
-    ///     中心への近さで選ぶと、奥の敵を掠めた瞬間に起爆点が奥へ飛ぶ。
+    ///     中心への近さで選ぶと、奥の敵を掠めた瞬間に狙う相手が奥へ飛ぶ。
     [[nodiscard]] GameObject* CurrentTarget() const;
     [[nodiscard]] PolarityTargetComponent* CurrentPolarityTarget() const;
 

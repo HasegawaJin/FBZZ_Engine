@@ -1,7 +1,7 @@
-/// @file EnemyHealthBarComponent.hpp
-/// @brief 敵の頭上に追従する WorldSpace 体力バー
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    EnemyHealthBarComponent.hpp
+/// @brief   敵の頭上に追従する WorldSpace 体力バー
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY EnemyHealthComponent に同居させないか:
 ///   体力の値と、その値の見せ方は寿命が違う。バーの見た目 (太さ・色・高さ) は

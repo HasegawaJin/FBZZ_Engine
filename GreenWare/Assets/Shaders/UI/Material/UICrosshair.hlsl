@@ -94,8 +94,8 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
     // WHY 色を g_Color と分けるか: UIImage.color は「ウィジェット全体の濃さ」で、
     //     収納中のフェードに使う。極性の色まで同じ場所へ載せると、色を触るたびに
     //     フェードの効き方が変わる。役割の違う 2 つは最後に 1 度だけ合成する。
-    result.rgb *= g_Color.rgb;
-    result.a   *= g_Color.a;
+    result.rgb *= UITint(input).rgb;
+    result.a   *= UITint(input).a;
     result.rgb  = UI_Dither(result.rgb, input.pos.xy);
 
     clip(result.a - 0.002f);

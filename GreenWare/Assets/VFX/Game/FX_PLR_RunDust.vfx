@@ -1,0 +1,199 @@
+# FBZZ Engine
+# FX_PLR_RunDust.vfx — 走っている足が着くたびに床から立つ土煙。
+#
+# WHY 極性色を持たないか (12.2 / VFX/Game/README.md):
+#   土煙は «床の色» であって帯電の表示ではない。プレイヤーの足元は画面のほぼ中央に
+#   出続けるので、ここへ赤青を乗せると盤面の «誰が帯電しているか» が最も見たい場所で
+#   潰れる。差し替えるのは床の色 (Dust Color) だけ。
+#
+# WHY 3 層に割るか:
+#   Ground Wash は «床に触った» ことだけを示す平たい円で、水平ビルボードなので
+#   斜め上から見ても床に貼り付いて見える。Dust Puff はその上へ立ち上がる本体。
+#   Grit は不透明な粒で、輪郭のはっきりした 1 層が無いと煙全体がぼやけて速さが出ない。
+#
+# WHY 光源を置かないか:
+#   足元は 1 秒に 7 回近く鳴る。その回数の点光源はシャドウマップを毎回組み直すのと
+#   同義で、走っているあいだじゅう他の演出の光を押し出す。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_PLR_RunDust"
+instanceId = "bd53287a-5689-4854-8bcb-e080d8882fd4"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "RunDustVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+dustColor = [0.66, 0.63, 0.58, 0.4]
+puffSize = 0.78
+kickSpeed = 1.6
+gritPower = 0.9
+
+[[gameobjects]]
+name = "Ground Wash"
+instanceId = "9658d29a-da39-401d-acb2-b41d9cbfd820"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_RunDust"
+parentInstanceId = "bd53287a-5689-4854-8bcb-e080d8882fd4"
+
+# 床すれすれに置く。ちょうど 0 にすると水平ビルボードの半分が床へ潜って
+# 円が «欠けた半月» になる。
+[gameobjects.transform]
+position = [0.0, 0.04, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 4
+shape = 0
+sizeStart = 0.18
+sizeEnd = 1.1
+sizeCurvePower = 0.55
+lifetime = 0.5
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 0.0, 0.7]
+velocitySpread = 0.2
+velocityDamping = 3.4
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Smoke04_Premultiplied.mat"
+renderMode = 2
+sortMode = 1
+angularVelocityMin = -34.0
+angularVelocityMax = 34.0
+renderPriority = 28
+colorVariation = 0.06
+colorStart = [0.66, 0.63, 0.58, 0.4]
+colorEnd = [0.52, 0.5, 0.47, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Dust Puff"
+instanceId = "e7734eb2-294c-43d4-a0fe-bac87fa36d54"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_RunDust"
+parentInstanceId = "bd53287a-5689-4854-8bcb-e080d8882fd4"
+
+[gameobjects.transform]
+position = [0.0, 0.06, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# WHY 重力をわずかに «上» へ取るか: 舞い上がった砂は落ちるより先に薄まって消える。
+#     下向きにすると寿命の後半で床へ吸い込まれ、蹴り上げた形が消える。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 8
+shape = 2
+coneAngleDegrees = 38.0
+coneRadius = 0.06
+sizeStart = 0.16
+sizeEnd = 0.78
+sizeCurvePower = 0.6
+lifetime = 0.7
+lifetimeRandom = 0.4
+emitVelocity = [0.0, 0.67, 1.6]
+velocitySpread = 0.32
+velocityDamping = 2.6
+gravity = [0.0, 0.22, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -28.0
+angularVelocityMax = 28.0
+renderPriority = 32
+colorVariation = 0.07
+colorStart = [0.66, 0.63, 0.58, 0.4]
+colorEnd = [0.52, 0.5, 0.47, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.03, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Grit"
+instanceId = "26816d1e-795e-4b73-999d-01b644054886"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_PLR_RunDust"
+parentInstanceId = "bd53287a-5689-4854-8bcb-e080d8882fd4"
+
+[gameobjects.transform]
+position = [0.0, 0.05, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.25
+loop = false
+emitRate = 0.0
+maxParticles = 12
+shape = 2
+coneAngleDegrees = 30.0
+coneRadius = 0.04
+sizeStart = 0.035
+sizeEnd = 0.012
+sizeCurvePower = 1.4
+lifetime = 0.4
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 1.36, 2.88]
+velocitySpread = 0.9
+velocityDamping = 1.1
+gravity = [0.0, -9.8, 0.0]
+materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+renderMode = 1
+stretchedVelocityScale = 0.09
+stretchedLengthScale = 1.6
+sortMode = 0
+renderPriority = 36
+colorVariation = 0.12
+colorStart = [0.66, 0.63, 0.58, 1.0]
+colorEnd = [0.44, 0.42, 0.38, 0.0]
+bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
