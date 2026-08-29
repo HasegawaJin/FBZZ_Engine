@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12ImGuiRenderer.hpp | fbzz::renderer
-// Dear ImGui の DirectX 12 バックエンド橋渡し
+/// @file    DX12ImGuiRenderer.hpp
+/// @brief   Dear ImGui の DirectX 12 バックエンド橋渡し。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IImGuiRenderer.hpp>

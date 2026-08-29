@@ -1,17 +1,18 @@
-// FBZZ Engine
-// ParticleGpuSimulation.hpp | fbzz::scene
-// simulationMode = Gpu が実際に GPU で回るか、回らないなら「どの設定のせいか」を判定する
-//
-// WHY: GPU シミュレーションは条件を全て満たしたときだけ有効になり、1 つでも外れると
-//      黙って CPU へ縮退する。10 万粒子を狙って Gpu を指定したのに per-particle Trail を
-//      付けたせいで CPU で回っていた、という事故が起きるが、
-//      それが Editor にも lint にも実行状態にも一切出ていなかった。
-//      判定を 1 か所へ集約して「落ちた理由」まで返すことで、静的診断 (vfx.lint)・
-//      実行状態 (vfx.runtime)・Editor 表示・Script (particle.GetGpuFallbackReason) の
-//      4 経路が同じ答えを出せる。
-//
-// NOTE: 「GPU で大量」と「正しいソート」は両立しない、という設計判断そのものは妥当。
-//       妥当な判断を担当者と AI にさせるために、まず見えている必要がある、というのがここの目的。
+/// @file    ParticleGpuSimulation.hpp
+/// @brief   simulationMode = Gpu が実際に GPU で回るか、回らないなら「どの設定のせいか」を判定する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: GPU シミュレーションは条件を全て満たしたときだけ有効になり、1 つでも外れると
+/// 黙って CPU へ縮退する。10 万粒子を狙って Gpu を指定したのに per-particle Trail を
+/// 付けたせいで CPU で回っていた、という事故が起きるが、
+/// それが Editor にも lint にも実行状態にも一切出ていなかった。
+/// 判定を 1 か所へ集約して「落ちた理由」まで返すことで、静的診断 (vfx.lint)・
+/// 実行状態 (vfx.runtime)・Editor 表示・Script (particle.GetGpuFallbackReason) の
+/// 4 経路が同じ答えを出せる。
+///
+/// NOTE: 「GPU で大量」と「正しいソート」は両立しない、という設計判断そのものは妥当。
+/// 妥当な判断を担当者と AI にさせるために、まず見えている必要がある、というのがここの目的。
 #pragma once
 // ParticleGpuFallbackReason の宣言はここではなく ScriptParticleProxy.hpp にある。
 // WHY: Script も同じ理由を受け取れる必要があり、Script に Engine 実装 (Components/) を

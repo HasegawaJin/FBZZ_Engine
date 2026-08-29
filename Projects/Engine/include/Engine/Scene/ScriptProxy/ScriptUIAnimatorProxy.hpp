@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptUIAnimatorProxy.hpp | fbzz::scene
-// Script から UIAnimator の Tween を再生・停止するショートハンド
+/// @file    ScriptUIAnimatorProxy.hpp
+/// @brief   Script から UIAnimator の Tween を再生・停止するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #include <Math/Vector2.hpp>

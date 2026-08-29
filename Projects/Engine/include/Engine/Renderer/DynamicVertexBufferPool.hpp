@@ -1,7 +1,7 @@
-/// @file DynamicVertexBufferPool.hpp
-/// @brief 1 フレーム内で何度も書き換える動的頂点バッファの貸出プール。
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    DynamicVertexBufferPool.hpp
+/// @brief   1 フレーム内で何度も書き換える動的頂点バッファの貸出プール。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #pragma once
 
 #include "ResourceHandle.hpp"

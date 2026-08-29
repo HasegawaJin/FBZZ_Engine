@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AABBCollider.hpp | fbzz::physics
-// 軸整合バウンディングボックスコライダー
+/// @file    AABBCollider.hpp
+/// @brief   軸整合バウンディングボックスコライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Physics/Collider.hpp>
 

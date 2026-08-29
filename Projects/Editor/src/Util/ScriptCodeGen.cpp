@@ -1,6 +1,7 @@
-﻿// FBZZ Engine
-// ScriptCodeGen.cpp | fbzz::editor
-// エディター内からのソースコード生成ユーティリティ
+﻿/// @file    ScriptCodeGen.cpp
+/// @brief   エディター内からのソースコード生成ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
 #include <Editor/Util/ScriptCodeGen.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

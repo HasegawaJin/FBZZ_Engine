@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPipeline.cpp | fbzz::scene
-// IRenderPass / raw pass の収集と RenderGraph への組み込み・実行
+/// @file    RenderPipeline.cpp
+/// @brief   IRenderPass / raw pass の収集と RenderGraph への組み込み・実行。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "Engine/Scene/Systems/RenderPasses/RenderPipeline.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include <Engine/Core/Logger.hpp>

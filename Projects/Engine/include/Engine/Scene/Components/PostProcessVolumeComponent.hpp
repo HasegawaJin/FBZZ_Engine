@@ -1,16 +1,17 @@
-// FBZZ Engine
-// PostProcessVolumeComponent.hpp | fbzz::scene
-// ポストプロセス / 高度グラフィクス設定を、シーン内で領域・優先度つきに適用するボリューム。
-//
-// WHY: ルック設定はプロジェクト全体の固定値ではなく「その場所でどう見えるか」なので、
-//      屋外・洞窟・カットシーンのように場所ごとに切り替えられる必要がある。
-//      Unity の Volume と同じく、GameObject に付けたボリュームへプロファイルを
-//      アサインしていく形にすることで、シーンを見れば効き方が分かるようにする。
-//
-// 適用の仕組み (RenderSystem が毎フレーム合成する):
-//      ベース = VolumeSettings の既定値 (+ スクリプトのランタイム上書き)
-//      有効なボリュームを priority 昇順に、重み付きで順次ブレンドする
-//      重み = blendWeight × (isGlobal ? 1 : 距離ウェイト)
+/// @file    PostProcessVolumeComponent.hpp
+/// @brief   ポストプロセス / 高度グラフィクス設定を、シーン内で領域・優先度つきに適用するボリューム。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// WHY: ルック設定はプロジェクト全体の固定値ではなく「その場所でどう見えるか」なので、
+/// 屋外・洞窟・カットシーンのように場所ごとに切り替えられる必要がある。
+/// Unity の Volume と同じく、GameObject に付けたボリュームへプロファイルを
+/// アサインしていく形にすることで、シーンを見れば効き方が分かるようにする。
+///
+/// 適用の仕組み (RenderSystem が毎フレーム合成する):
+/// ベース = VolumeSettings の既定値 (+ スクリプトのランタイム上書き)
+/// 有効なボリュームを priority 昇順に、重み付きで順次ブレンドする
+/// 重み = blendWeight × (isGlobal ? 1 : 距離ウェイト)
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TriangleMeshCollider.cpp | fbzz::physics
-// BVH 構築と TriangleMeshCollider の Update 実装
+/// @file    TriangleMeshCollider.cpp
+/// @brief   BVH 構築と TriangleMeshCollider の Update 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>

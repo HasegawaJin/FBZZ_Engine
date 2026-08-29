@@ -1,19 +1,20 @@
-// FBZZ Engine
-// DX12HdriBaker.cpp | fbzz::renderer
-// IIblBaker の DX12 実装 — HDRI equirect → 4 DDS + .ibl をフレーム非依存で同期ベイクする
-//
-// 処理フロー (DX11IblBaker と同じ CS 資産 = SM5.0 DXBC を流用):
-//   [Phase 1]  equirect float* → GPU 2D → EquirectToCubemap CS × 6 面 → Env Cubemap mip0
-//              → CaptureTexture で読み戻し → DirectXTex GenerateMipMaps で mip 連鎖生成
-//              → *_env.dds 保存 + GPU へ mip 付きで再アップロード
-//   [Phase 2]  IrradianceConvolution CS × 6 → *_irr.dds
-//              PrefilteredEnvMap CS × (面 × mip) → *_prefilter.dds
-//              BRDFIntegration CS × 1 → *_brdf.dds
-//   [仕上げ]   FzIblHeader を .ibl に書き出す
-//
-// DX12 固有事情:
-//   - GenerateMips が無いため env mip 連鎖は CPU (DirectXTex) で作り GPU へ戻す。
-//   - 即時実行が無いため自前コマンドリスト + フェンスで各フェーズを完全同期する。
+/// @file    DX12HdriBaker.cpp
+/// @brief   IIblBaker の DX12 実装 — HDRI equirect → 4 DDS + .ibl をフレーム非依存で同期ベイクする。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+///
+/// 処理フロー (DX11IblBaker と同じ CS 資産 = SM5.0 DXBC を流用):
+/// [Phase 1]  equirect float* → GPU 2D → EquirectToCubemap CS × 6 面 → Env Cubemap mip0
+/// → CaptureTexture で読み戻し → DirectXTex GenerateMipMaps で mip 連鎖生成
+/// → *_env.dds 保存 + GPU へ mip 付きで再アップロード
+/// [Phase 2]  IrradianceConvolution CS × 6 → *_irr.dds
+/// PrefilteredEnvMap CS × (面 × mip) → *_prefilter.dds
+/// BRDFIntegration CS × 1 → *_brdf.dds
+/// [仕上げ]   FzIblHeader を .ibl に書き出す
+///
+/// DX12 固有事情:
+/// - GenerateMips が無いため env mip 連鎖は CPU (DirectXTex) で作り GPU へ戻す。
+/// - 即時実行が無いため自前コマンドリスト + フェンスで各フェーズを完全同期する。
 #pragma comment(lib, "ole32.lib") // DirectXTex が WIC を使う経路のための保険
 
 #include "DX12HdriBaker.hpp"

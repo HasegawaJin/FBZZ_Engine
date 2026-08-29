@@ -1,8 +1,10 @@
-// FBZZ Engine
-// SceneSerializer.hpp | fbzz::scene
-// TOML ベースのシーン保存・復元
-// GameObject 階層と登録済み Component を .fbzz に変換する。
-// 未知の型は ScriptFactory / ComponentRegistry との対応を見て扱う。
+/// @file    SceneSerializer.hpp
+/// @brief   TOML ベースのシーン保存・復元。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// GameObject 階層と登録済み Component を .fbzz に変換する。
+/// 未知の型は ScriptFactory / ComponentRegistry との対応を見て扱う。
 #pragma once
 #include <string>
 #include <memory>
@@ -44,6 +46,16 @@ public:
     // renderer: Mesh / Material の GPU リソース生成に使う
     static std::unique_ptr<Scene> Load(const std::string& path,
                                        renderer::ResourceManager& resources);
+
+    // TOML テキストから直接復元する。
+    // WHY: プレファブ展開のように「メモリ上の断片を一度きり読む」呼び出しが、
+    //      Load へ渡すためだけに一時ファイルを書いていた。
+    // sourcePath: このテキストの出所 (.scene / .prefab / .vfx のパス)。
+    //   パースエラーの表示だけでなく、TerrainComponent の terrainAssetPath など
+    //   「シーンからの相対パス」を解決する基準として使う。空にすると相対参照が解けない。
+    static std::unique_ptr<Scene> LoadFromText(const std::string& tomlText,
+                                               renderer::ResourceManager& resources,
+                                               const std::string& sourcePath);
 
     // 既存の Scene を path の内容で上書きする (PlayMode Stop / File > Open)
     static bool LoadInPlace(Scene& scene, const std::string& path,

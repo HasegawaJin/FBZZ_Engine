@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorSerializer.hpp | fbzz::editor
-// Scene に付随する Editor 専用メタデータの保存・復元
+/// @file    EditorSerializer.hpp
+/// @brief   Scene に付随する Editor 専用メタデータの保存・復元。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 #include <string>

@@ -1,26 +1,27 @@
-// FBZZ Engine
-// DataAsset.hpp | fbzz::asset
-// 純共有データアセット (Unity の ScriptableObject 相当) の基底とユーザー向けマクロ。
-//
-// 設計意図 (WHY):
-//   調整値を「コンポーネントのインスタンス単位フィールド」で持つと、同種オブジェクトが N 個あると
-//   値が N 個に複製され、リバランスが各個編集になる。DataAsset は値を 1 ファイル (.fzdata) に切り出し、
-//   複数スクリプトが Asset<T> で同じ実体を共有する。1 か所いじれば参照側すべてに反映される (純共有)。
-//
-//   実装の肝は「スクリプトと同じリフレクション基盤を流用する」こと。DataAsset は Script と同じ
-//   GetTypeName()/Reflect(IReflector&) の仮想インターフェースを持つため、FBZZ_FIELD などの
-//   登録マクロ・Inspector の ImGuiReflector・TOML リフレクタをそのまま使い回せる。
-//
-// 使い方:
-//   class EnemyStats : public fbzz::DataAsset {
-//       FBZZ_DATA_ASSET(EnemyStats)
-//       FBZZ_FIELD_RANGE(float, maxHp, 100.0f, "Max HP", 1.0f, 9999.0f)
-//   };
-//   FBZZ_REFLECT(EnemyStats)
-//
-//   // 参照側スクリプト:
-//   FBZZ_ASSET(EnemyStats, stats, "Stats")     // Inspector に .fzdata スロットが出る
-//   if (stats) health->Init(stats->maxHp);     // 解決は共有キャッシュ経由で自動
+/// @file    DataAsset.hpp
+/// @brief   純共有データアセット (Unity の ScriptableObject 相当) の基底とユーザー向けマクロ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// 設計意図 (WHY):
+/// 調整値を「コンポーネントのインスタンス単位フィールド」で持つと、同種オブジェクトが N 個あると
+/// 値が N 個に複製され、リバランスが各個編集になる。DataAsset は値を 1 ファイル (.fzdata) に切り出し、
+/// 複数スクリプトが Asset<T> で同じ実体を共有する。1 か所いじれば参照側すべてに反映される (純共有)。
+///
+/// 実装の肝は「スクリプトと同じリフレクション基盤を流用する」こと。DataAsset は Script と同じ
+/// GetTypeName()/Reflect(IReflector&) の仮想インターフェースを持つため、FBZZ_FIELD などの
+/// 登録マクロ・Inspector の ImGuiReflector・TOML リフレクタをそのまま使い回せる。
+///
+/// 使い方:
+/// class EnemyStats : public fbzz::DataAsset {
+/// FBZZ_DATA_ASSET(EnemyStats)
+/// FBZZ_FIELD_RANGE(float, maxHp, 100.0f, "Max HP", 1.0f, 9999.0f)
+/// };
+/// FBZZ_REFLECT(EnemyStats)
+///
+/// // 参照側スクリプト:
+/// FBZZ_ASSET(EnemyStats, stats, "Stats")     // Inspector に .fzdata スロットが出る
+/// if (stats) health->Init(stats->maxHp);     // 解決は共有キャッシュ経由で自動
 #pragma once
 #include <Engine/Scene/Script.hpp>            // IReflector / FBZZ_* 登録マクロ / DataAssetRef
 #include <Engine/Asset/DataAssetRegistry.hpp> // Asset<T>::Get() の解決先

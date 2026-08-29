@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneUtils.cpp | fbzz::scene
-// 起動・実行時にシーン / 物理 / UI サブシステムへ ProjectSettings を適用するユーティリティ
+/// @file    SceneUtils.cpp
+/// @brief   起動・実行時にシーン / 物理 / UI サブシステムへ ProjectSettings を適用するユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
 #include <Engine/Scene/SceneUtils.hpp>
 
 #include <Engine/Scene/Components/CameraComponent.hpp>

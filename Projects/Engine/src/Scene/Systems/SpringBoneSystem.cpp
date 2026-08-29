@@ -1,7 +1,7 @@
-/// @file SpringBoneSystem.cpp
-/// @brief 揺れもの (二次モーション) の Verlet 積分と骨行列への書き戻し
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    SpringBoneSystem.cpp
+/// @brief   揺れもの (二次モーション) の Verlet 積分と骨行列への書き戻し
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #include <Engine/Scene/Systems/SpringBoneSystem.hpp>
 
 #include "Engine/Core/Scheduler/SystemContext.hpp"

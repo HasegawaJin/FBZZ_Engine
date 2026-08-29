@@ -701,15 +701,15 @@ class SequenceImporter final : public IAssetImporter<SequenceAsset> {
 
 ## 11. 実装順
 
-| Step | 内容 | ここまでで何ができるか |
-|---|---|---|
-| 1 | `SequenceAsset` + `SequenceImporter` (Event / Activation / Transform のみ) | `.sequence` が読める |
-| 2 | `SequencePlayerComponent` + `SequenceSystem` (Evaluate / Snapshot / Restore) | 再生・復帰が動く |
-| 3 | `sequence` プロキシ + `OnSequenceEvent` / `OnSequenceFinished` | **合図が全部出せる。演出本体はスクリプトで書ける** |
-| 4 | AnimationTrack (`AnimationSlotPlayback::driven`) | ボスのクリップが時間軸に載る |
-| 5 | Property / Audio / VFX Track | **C++ を書かずに演出が組める** |
-| 6 | `SequencePanel` (スクラブ + キー編集) | 尺を目で詰められる |
-| 7 | ボス 3 本 (§10) | — |
+| Step | 内容 | ここまでで何ができるか | 状態 |
+|---|---|---|---|
+| 1 | `SequenceAsset` + `SequenceImporter` (Event / Activation / Transform のみ) | `.sequence` が読める | 実装済 (7 種すべて) |
+| 2 | `SequencePlayerComponent` + `SequenceSystem` (Evaluate / Snapshot / Restore) | 再生・復帰が動く | 実装済 |
+| 3 | `sequence` プロキシ + `OnSequenceEvent` / `OnSequenceFinished` | **合図が全部出せる。演出本体はスクリプトで書ける** | 実装済 |
+| 4 | AnimationTrack (`AnimationSlotPlayback::driven`) | ボスのクリップが時間軸に載る | 実装済 |
+| 5 | Property / Audio / VFX Track | **C++ を書かずに演出が組める** | 実装済 |
+| 6 | `SequencePanel` (スクラブ + キー編集) | 尺を目で詰められる | 実装済 |
+| 7 | ボス 3 本 (§10) | — | 未着手 |
 
 Step 3 と Step 5 が実用上のマイルストーン。Step 3 の時点で、
 演出をコルーチンではなく**アセットの時間軸**で持てるようになり、§1.2 の 4 つの問題が消える。
@@ -729,7 +729,56 @@ Step 3 と Step 5 が実用上のマイルストーン。Step 3 の時点で、
 
 ---
 
-## 13. 未決事項
+## 13. 実装で設計から変えたこと (Step 1–5)
+
+1. **トラックは派生型にせず 1 つの `SequenceTrack` へ畳んだ。**
+   §4.4 は `SequenceAnimationTrack : SequenceTrack` の形で書いていたが、実体は
+   `vector<unique_ptr<SequenceTrack>>` になり、コピー・保存・エディタの並べ替えが
+   すべてポインタ経由になる。種別ごとの分岐はどのみち評価側に 1 か所要るので、
+   `type` が選ばなかった種別のフィールドは使わない、という形で平たく持つ。
+
+2. **補間規則とプロパティ束縛は `.anim` と共有する実体を作った。**
+   §4.2 の「評価関数も 1 つで済む」を実装として満たすため、`AnimatorSystem.cpp` に
+   あったサンプリング関数を [AnimationSampling.hpp](../../Projects/Engine/include/Engine/Asset/AnimationSampling.hpp) へ、
+   `componentType + propertyName` の解決を
+   [AnimationPropertyBinding.hpp](../../Projects/Engine/include/Engine/Scene/AnimationPropertyBinding.hpp) へ出し、
+   `AnimatorSystem` はそちらを使うようにした。
+
+3. **`wrapMode` / `timeMode` は既定でアセットが正本。**
+   §6.1 は Player 側が常に上書きする形だったが、それだと HoldEnd と書いた
+   `.sequence` を `sequence.Play(path)` で回した瞬間に Once へ落ちる。
+   `overrideAssetSettings` を立てたときだけコンポーネント側が勝つ。
+
+4. **AnimationTrack は Animator の「追加レイヤー」を要求する。**
+   `AnimationSlotPlayback` は `AnimatorComponent::layers` の各要素が持つ機構で、
+   Base Layer (= `animator.states`) は Slot を持たない。既定の `layer = "Base"` で
+   動かすには Controller 側に `Base` という名前のレイヤーを 1 枚用意する必要がある。
+   見つからないときは、そのトラックだけ黙って止まらず警告を 1 回出す。
+
+5. **演出専用クリップは `AnimatorComponent::externalClipSources` で宣言する。**
+   `LoadClips` はステートと Additive 基準からしかソースを集めないため、どのステートからも
+   参照されない演出クリップは Slot へ差しても解決できなかった。`SequenceSystem` が
+   トラックの `source` をここへ足し、`clipsLoaded` を落として読み直させる。
+
+6. **`timePrev` は「前フレームの時刻」ではなく「離散トラックを発火した区間の下端」。**
+   再生開始直後だけ負にすることで、時刻 0.00 に置いたキー (`boss.entry.begin`) を
+   半開区間 `(tPrev, t]` へ確実に含める。
+
+7. **未保存の編集をそのままスクラブできるようにした** (§8 の前提)。
+   `SequencePanel` は編集のたびに `SequencePlayerComponent::authoringSequence` へ
+   スナップショットを差し替え、`authoringRevision` を進める。`SequenceSystem` は
+   ディスクの `.sequence` よりこちらを優先する (`VFXGraphComponent::authoringGraph` と同じ形)。
+   これが無いと「0.2 秒ずらすたびに Ctrl+S」になり、尺を詰める作業が成立しない。
+
+8. **復帰はアセットを一切見ない。** 戻す先 (トラック種別 / レイヤー名 / Property の当たり先) を
+   元の値と一緒に `SequenceTrackRuntime` へ撮る。
+   > **WHY:** 復帰しなければならない場面には「アセットが差し替わった」が含まれる
+   > (ディスクの再読込・エディタの編集)。戻し方をアセットから読む形だと、
+   > 差し替わった後だけ戻せない — つまり **編集した瞬間にだけ姿勢が残る**。
+
+---
+
+## 14. 未決事項
 
 1. **AnimationTrack のクロスフェードをレイヤー 2 枚で表現する制約** (§4.4.1) は許容できるか。
    ボス 3 本では `Base` 1 枚で足りるが、演出が増えたときに破綻しないか。

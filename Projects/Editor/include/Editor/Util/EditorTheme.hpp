@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorTheme.hpp | fbzz::editor
-// FBZZ Studio 固有のエディター配色・フォント・レイアウトの適用
+/// @file    EditorTheme.hpp
+/// @brief   FBZZ Studio 固有のエディター配色・フォント・レイアウトの適用。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 
 #pragma once
 

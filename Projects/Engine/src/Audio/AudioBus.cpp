@@ -23,12 +23,13 @@ std::string LowerCopy(std::string_view s)
 
 std::vector<BusDesc> DefaultBusLayout()
 {
+    // SE と Voice だけが残響を受ける。BGM と UI は空間に置かれた音ではないので素通し。
     return {
-        BusDesc{ kMasterBusName, {},             1.0f, 1.0f },
-        BusDesc{ "BGM",          kMasterBusName, 1.0f, 1.0f },
-        BusDesc{ "SE",           kMasterBusName, 1.0f, 1.0f },
-        BusDesc{ "UI",           kMasterBusName, 1.0f, 1.0f },
-        BusDesc{ "Voice",        kMasterBusName, 1.0f, 1.0f },
+        BusDesc{ kMasterBusName, {},             1.0f, 1.0f, false },
+        BusDesc{ "BGM",          kMasterBusName, 1.0f, 1.0f, false },
+        BusDesc{ "SE",           kMasterBusName, 1.0f, 1.0f, true  },
+        BusDesc{ "UI",           kMasterBusName, 1.0f, 1.0f, false },
+        BusDesc{ "Voice",        kMasterBusName, 1.0f, 1.0f, true  },
     };
 }
 
@@ -38,7 +39,7 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
     std::unordered_map<std::string, size_t> indexByName;
 
     // Master は必ず先頭に 1 本だけ存在させる。入力に無ければ既定値で補う。
-    unique.push_back(BusDesc{ kMasterBusName, {}, 1.0f, 1.0f });
+    unique.push_back(BusDesc{ kMasterBusName, {}, 1.0f, 1.0f, false });
     indexByName[LowerCopy(kMasterBusName)] = 0;
 
     for (const BusDesc& desc : descs) {
@@ -49,6 +50,7 @@ std::vector<BusDesc> NormalizeBusLayout(const std::vector<BusDesc>& descs)
             BusDesc& existing = unique[it->second];
             existing.volume        = desc.volume;
             existing.lowPassCutoff = desc.lowPassCutoff;
+            existing.reverb        = desc.reverb;
             if (it->second != 0) existing.parent = desc.parent;
             continue;
         }

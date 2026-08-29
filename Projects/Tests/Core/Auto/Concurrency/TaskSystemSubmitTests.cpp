@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TaskSystemSubmitTests.cpp | GoogleTest
-// TaskSystem の future 結果と引数転送を自動検証する。
+/// @file    TaskSystemSubmitTests.cpp
+/// @brief   TaskSystem の future 結果と引数転送を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Concurrency/TaskSystem.hpp>

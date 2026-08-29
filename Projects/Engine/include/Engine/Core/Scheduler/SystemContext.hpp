@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SystemContext.hpp | fbzz
-// 全 System への統一パラメータ。SystemScheduler が毎フレーム生成して渡す。
+/// @file    SystemContext.hpp
+/// @brief   全 System への統一パラメータ。SystemScheduler が毎フレーム生成して渡す。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 namespace fbzz::scene    { class Scene; }

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptPatrolProxy.hpp | fbzz::scene
-// Script から NavMeshPatrolComponent の経路と実行状態を操作するプロキシ
+/// @file    ScriptPatrolProxy.hpp
+/// @brief   Script から NavMeshPatrolComponent の経路と実行状態を操作するプロキシ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Math/Vector3.hpp>

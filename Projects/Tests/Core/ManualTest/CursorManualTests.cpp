@@ -1,6 +1,7 @@
-// FBZZ Engine
-// CursorManualTests.cpp | GoogleTest ManualTest
-// OS カーソルの表示・拘束・Editor 復元を開発者が目視確認する。
+/// @file    CursorManualTests.cpp
+/// @brief   OS カーソルの表示・拘束・Editor 復元を開発者が目視確認する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Cursor.hpp>

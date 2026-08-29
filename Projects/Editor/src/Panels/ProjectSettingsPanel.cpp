@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectSettingsPanel.cpp | fbzz::editor
-// Project settings editor UI
+/// @file    ProjectSettingsPanel.cpp
+/// @brief   Project settings editor UI.
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
@@ -1059,10 +1060,21 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
 
     bool dirty = ImGui::SliderFloat("Master Volume", &settings.audio.masterVolume, 0.0f, 1.0f);
 
+    dirty |= ImGui::SliderInt("Voice Limit", &settings.audio.voiceLimit, 8, 128);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("同時発音の上限。超えると AudioSource の Priority が低い音から"
+                          "畳まれる (ループ音は畳まれない)");
+    if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(now %zu)", audioManager->ActiveVoiceCount());
+    }
+
     ImGui::Spacing();
     ImGui::TextUnformatted("Mixer Buses");
     ImGui::TextDisabled("AudioSource の Bus Name と、スクリプトの audio.SetBusVolume() が"
                         " ここで定義した名前を指す");
+    ImGui::TextDisabled("Rev = AudioReverbZone の残響を受けるバス"
+                        " (切り替えると再生中の音がいったん止まる)");
 
     auto& buses = settings.audio.buses;
     if (buses.empty()) {
@@ -1118,6 +1130,9 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
         ImGui::SetNextItemWidth(110.0f);
         dirty |= ImGui::SliderFloat("##lowpass", &bus.lowPassCutoff, 0.0f, 1.0f, "LPF %.2f");
 
+        ImGui::SameLine();
+        dirty |= ImGui::Checkbox("Rev", &bus.reverb);
+
         if (!isMaster) {
             ImGui::SameLine();
             if (ImGui::SmallButton("-")) removeIndex = static_cast<int>(i);
@@ -1145,12 +1160,16 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     //     グラフを組み直さず、音量とフィルターだけを送る。
     if (dirty) {
         if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+            audioManager->SetVoiceLimit(static_cast<size_t>(settings.audio.voiceLimit));
             const std::vector<audio::BusDesc> layout = settings.audio.BuildBusLayout();
             const bool sameGraph =
                 layout.size() == audioManager->BusLayout().size() &&
                 std::equal(layout.begin(), layout.end(), audioManager->BusLayout().begin(),
                            [](const audio::BusDesc& a, const audio::BusDesc& b) {
-                               return a.name == b.name && a.parent == b.parent;
+                               // reverb も比較に入れる: 残響 DSP は submix の生成時に
+                               // しか差し込めないので、切り替えには組み直しが要る。
+                               return a.name == b.name && a.parent == b.parent
+                                   && a.reverb == b.reverb;
                            });
             if (sameGraph) {
                 for (const audio::BusDesc& desc : layout) {

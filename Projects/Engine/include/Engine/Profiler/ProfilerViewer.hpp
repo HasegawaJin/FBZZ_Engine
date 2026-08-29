@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProfilerViewer.hpp | fbzz::profiler
-// 収集済みプロファイル結果を ImGui で確認するデバッグビュー
+/// @file    ProfilerViewer.hpp
+/// @brief   収集済みプロファイル結果を ImGui で確認するデバッグビュー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 namespace fbzz::profiler {

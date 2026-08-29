@@ -1,15 +1,16 @@
-// FBZZ Engine
-// BuildConsole.hpp | fbzz::editor
-// スクリプト DLL / HLSL コンパイルの出力・診断・履歴を集約するハブ。
-//
-// WHY: これまでコンパイル結果は「StatusBar に一過性テキスト」＋「汎用 Console に生ログ」
-//      という二重の弱点があり、失敗内容へ辿り着けなかった。BuildConsole を唯一の情報源とし、
-//      Build Output パネル・StatusBar・ツールバー通知の 3 つの UI が同じデータを読む。
-//
-// 使い方 (EditorApp 側):
-//   1. ビルド開始時          : BeginBuild(kind)
-//   2. Tick ごと (Building中) : IngestFullLog(compiler.GetLog())   // 差分だけ取り込む
-//   3. ビルド確定時          : EndBuild(success, exitCode) / EndBuildCancelled()
+/// @file    BuildConsole.hpp
+/// @brief   スクリプト DLL / HLSL コンパイルの出力・診断・履歴を集約するハブ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
+///
+/// WHY: これまでコンパイル結果は「StatusBar に一過性テキスト」＋「汎用 Console に生ログ」
+/// という二重の弱点があり、失敗内容へ辿り着けなかった。BuildConsole を唯一の情報源とし、
+/// Build Output パネル・StatusBar・ツールバー通知の 3 つの UI が同じデータを読む。
+///
+/// 使い方 (EditorApp 側):
+/// 1. ビルド開始時          : BeginBuild(kind)
+/// 2. Tick ごと (Building中) : IngestFullLog(compiler.GetLog())   // 差分だけ取り込む
+/// 3. ビルド確定時          : EndBuild(success, exitCode) / EndBuildCancelled()
 #pragma once
 #include <deque>
 #include <string>

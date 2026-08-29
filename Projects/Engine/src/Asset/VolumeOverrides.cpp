@@ -1,9 +1,10 @@
-// FBZZ Engine
-// VolumeOverrides.cpp | fbzz::asset
-// 組み込み VolumeOverride の Apply / Reflect 実装とレジストリ登録。
-//
-// 各 Apply は「対象の現在値と自分の値を weight で混ぜ、対応する enabled を立てる」だけ。
-// 混ぜ方の規則 (float は線形、bool / int は閾値) は BlendXxx に集約されている。
+/// @file    VolumeOverrides.cpp
+/// @brief   組み込み VolumeOverride の Apply / Reflect 実装とレジストリ登録。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// 各 Apply は「対象の現在値と自分の値を weight で混ぜ、対応する enabled を立てる」だけ。
+/// 混ぜ方の規則 (float は線形、bool / int は閾値) は BlendXxx に集約されている。
 #include <Engine/Asset/VolumeOverrides.hpp>
 #include <Engine/Renderer/PostProcessBlend.hpp>
 #include <cstdio>
@@ -584,9 +585,34 @@ void CustomEffectOverride::Reflect(IReflector& r)
     r.BeginField("shaderPath", "shaderPath");
     r.SetFileExtensions(".hlsl");
     r.Field("shaderPath", effect.shaderPath);
+    // .mat を指すと、シェーダー・テクスチャ・名前付きパラメーターがそちらから来る。
+    r.BeginField("materialPath", "materialPath");
+    r.SetFileExtensions(".mat");
+    r.Field("materialPath", effect.materialPath);
     Range(r, "intensity", effect.intensity, 0.0f, 4.0f);
     Range(r, "blend",     effect.blend,     0.0f, 1.0f);
-    for (int i = 0; i < 4; ++i) {
+
+    // 列挙は int で出す (FogOverride::source と同じ扱い)。
+    //   stage     0 = SceneHDR (Composite 前) / 1 = PostProcess (後) / 2 = AfterOpaque (半透明の前)
+    //   blendMode 0 = 置き換え / 1 = アルファ / 2 = 加算 / 3 = 事前乗算 (HDR の段のみ有効)
+    int stage = static_cast<int>(effect.stage);
+    Integer(r, "stage", stage, 0, 2);
+    effect.stage = static_cast<renderer::CustomPassStage>(stage);
+
+    int blendMode = static_cast<int>(effect.blendMode);
+    Integer(r, "blendMode", blendMode, 0, 3);
+    effect.blendMode = static_cast<renderer::BlendMode>(blendMode);
+
+    // 追加入力のビット (CustomPassInput)。
+    //   1 深度 / 2 オブジェクトマスク / 4 速度 / 8 法線 / 16 ブルーム / 32 AO
+    int inputs = static_cast<int>(effect.inputs);
+    Integer(r, "inputs", inputs, 0, 63);
+    effect.inputs = static_cast<uint32_t>(inputs);
+
+    Integer(r, "iterations", effect.iterations, 1, 8);
+    Integer(r, "downscale",  effect.downscale,  1, 8);
+
+    for (int i = 0; i < 8; ++i) {
         char name[16];
         std::snprintf(name, sizeof(name), "param%d", i);
         Number(r, name, effect.parameters[i]);

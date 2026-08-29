@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptInputProxy.hpp | fbzz::scene
-// Script から入力状態を読むためのショートハンド
+/// @file    ScriptInputProxy.hpp
+/// @brief   Script から入力状態を読むためのショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Math/Vector2.hpp>

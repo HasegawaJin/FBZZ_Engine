@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BehaviorTreeSystem.cpp | fbzz::scene
-// 木のロード・共有・評価と、Scene に触るアクションの実装
+/// @file    BehaviorTreeSystem.cpp
+/// @brief   木のロード・共有・評価と、Scene に触るアクションの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include "Engine/Scene/Systems/BehaviorTreeSystem.hpp"
 
 #include "Engine/Core/Scheduler/SystemContext.hpp"

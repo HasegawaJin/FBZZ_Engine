@@ -1,19 +1,20 @@
-// FBZZ Engine
-// CharacterControllerComponent.hpp | fbzz::scene
-// キャラクター移動に必要な接地検出・ジャンプ状態管理をエンジン側に集約するコンポーネント
-//
-// WHY: 接地判定・速度安定化・タイマー管理はゲームロジックではなく物理システム隣接の汎用処理であり、
-//      Script 内に書くと同じステートマシンを全キャラクターで重複実装することになる。
-//      Unity の CharacterController に相当するが、このエンジンは RigidBody ベースの物理を使うため
-//      内部実装は velocity 操作による制御となる。
-//
-// 使い方:
-//   1. GameObject に RigidBodyComponent と一緒にアタッチする
-//   2. Script の OnUpdate 先頭で Tick(rb, dt) を呼ぶ
-//   3. 物理イベントから接地通知されるため、通常は衝突コールバックを書く必要はない
-//   4. 特殊な接地を追加する場合だけ RegisterGroundContact(info) を呼ぶ
-//   5. ジャンプ時は Jump(rb, impulse) を呼ぶ
-//   6. isGrounded / verticalSpeed を読んで Animator を操作する
+/// @file    CharacterControllerComponent.hpp
+/// @brief   キャラクター移動に必要な接地検出・ジャンプ状態管理をエンジン側に集約するコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: 接地判定・速度安定化・タイマー管理はゲームロジックではなく物理システム隣接の汎用処理であり、
+/// Script 内に書くと同じステートマシンを全キャラクターで重複実装することになる。
+/// Unity の CharacterController に相当するが、このエンジンは RigidBody ベースの物理を使うため
+/// 内部実装は velocity 操作による制御となる。
+///
+/// 使い方:
+/// 1. GameObject に RigidBodyComponent と一緒にアタッチする
+/// 2. Script の OnUpdate 先頭で Tick(rb, dt) を呼ぶ
+/// 3. 物理イベントから接地通知されるため、通常は衝突コールバックを書く必要はない
+/// 4. 特殊な接地を追加する場合だけ RegisterGroundContact(info) を呼ぶ
+/// 5. ジャンプ時は Jump(rb, impulse) を呼ぶ
+/// 6. isGrounded / verticalSpeed を読んで Animator を操作する
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>

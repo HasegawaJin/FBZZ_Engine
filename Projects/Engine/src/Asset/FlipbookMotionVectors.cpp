@@ -1,12 +1,13 @@
-// FBZZ Engine
-// FlipbookMotionVectors.cpp | fbzz::asset
-// フリップブックアトラス → モーションベクターアトラス生成の実装
-//
-// 処理フロー:
-//   1. アトラスを読み込み R32G32B32A32_FLOAT へ変換
-//   2. コマを切り出し、隣接コマ間でブロックマッチング → 画素ごとの移動量 [px]
-//   3. フロー場を平滑化してブロック境界の段差を消す
-//   4. 探索半径で正規化し [0,1] へエンコードして PNG (RG) へ書き出す
+/// @file    FlipbookMotionVectors.cpp
+/// @brief   フリップブックアトラス → モーションベクターアトラス生成の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// 処理フロー:
+/// 1. アトラスを読み込み R32G32B32A32_FLOAT へ変換
+/// 2. コマを切り出し、隣接コマ間でブロックマッチング → 画素ごとの移動量 [px]
+/// 3. フロー場を平滑化してブロック境界の段差を消す
+/// 4. 探索半径で正規化し [0,1] へエンコードして PNG (RG) へ書き出す
 #pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
 
 #include <Engine/Asset/FlipbookMotionVectors.hpp>

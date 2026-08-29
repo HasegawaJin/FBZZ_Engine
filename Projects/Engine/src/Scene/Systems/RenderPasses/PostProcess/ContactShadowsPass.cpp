@@ -1,11 +1,13 @@
-// FBZZ Engine
-// ContactShadowsPass.cpp | fbzz::scene
-// コンタクトシャドウ — スクリーンスペースのビュー空間レイマーチで
-// シャドウマップが届かない小物直下・近傍の接触影を高精度に生成する Compute パス。
-// WHY: 通常のシャドウマップは解像度の限界（テクセルサイズ / キャスケード遷移）で
-//      小物に張り付く細かい影を正確に表現できない。
-//      スクリーンスペースで深度バッファを直接トレースすることで
-//      解像度に依らない鋭い接触影を低コストで追加する。
+/// @file    ContactShadowsPass.cpp
+/// @brief   コンタクトシャドウ — スクリーンスペースのビュー空間レイマーチで。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// シャドウマップが届かない小物直下・近傍の接触影を高精度に生成する Compute パス。
+/// WHY: 通常のシャドウマップは解像度の限界（テクセルサイズ / キャスケード遷移）で
+/// 小物に張り付く細かい影を正確に表現できない。
+/// スクリーンスペースで深度バッファを直接トレースすることで
+/// 解像度に依らない鋭い接触影を低コストで追加する。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>

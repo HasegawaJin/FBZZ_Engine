@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TransformSystem.hpp | fbzz::scene
-// 親子階層からワールド Transform を再計算する System 群。
-// 各 Phase の親子関係を維持するため、必要なタイミングで実行する。
+/// @file    TransformSystem.hpp
+/// @brief   親子階層からワールド Transform を再計算する System 群。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 各 Phase の親子関係を維持するため、必要なタイミングで実行する。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 #include "Math/Quaternion.hpp"

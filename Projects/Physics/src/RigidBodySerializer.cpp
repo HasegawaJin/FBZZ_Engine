@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RigidBodySerializer.cpp | fbzz::physics
-// RigidBody の TOML シリアライズ / デシリアライズ
+/// @file    RigidBodySerializer.cpp
+/// @brief   RigidBody の TOML シリアライズ / デシリアライズ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #include <Physics/RigidBodySerializer.hpp>
 #include <toml++/toml.hpp>
 #include <sstream>

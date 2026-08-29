@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12UploadArena.hpp | fbzz::renderer
-// フレームごとの一時 GPU Upload メモリを線形割り当てするアリーナ
+/// @file    DX12UploadArena.hpp
+/// @brief   フレームごとの一時 GPU Upload メモリを線形割り当てするアリーナ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <array>

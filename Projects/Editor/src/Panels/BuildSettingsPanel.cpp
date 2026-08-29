@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BuildSettingsPanel.cpp | fbzz::editor
-// Build Settings パネルの ImGui UI 実装
+/// @file    BuildSettingsPanel.cpp
+/// @brief   Build Settings パネルの ImGui UI 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #include <Editor/Panels/BuildSettingsPanel.hpp>
 
 #include <Editor/EditorContext.hpp>

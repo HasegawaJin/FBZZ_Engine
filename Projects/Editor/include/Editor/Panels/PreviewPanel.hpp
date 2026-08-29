@@ -1,16 +1,17 @@
-// FBZZ Engine
-// PreviewPanel.hpp | fbzz::editor
-// Animation / Material / VFX の共通ルーターとプレビューウィンドウの宣言。
-// 各アセット種別の描画実装は AnimationPreview / MaterialPreview / VFXPreview へ分離する。
-// WHY: グラフの数値編集だけでは遷移のブレンド感やクリップの動きを確認できず、
-//      Play Mode まで往復する反復コストが大きいため。
+/// @file    PreviewPanel.hpp
+/// @brief   Animation / Material / VFX の共通ルーターとプレビューウィンドウの宣言。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// 各アセット種別の描画実装は AnimationPreview / MaterialPreview / VFXPreview へ分離する。
+/// WHY: グラフの数値編集だけでは遷移のブレンド感やクリップの動きを確認できず、
+/// Play Mode まで往復する反復コストが大きいため。
 #pragma once
 #include <Editor/Panels/AnimationMaskPreview.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Panels/IPreviewPanel.hpp>
 #include <Editor/Panels/MaterialPreview.hpp>
-#include <Editor/Panels/VFXPreview.hpp>
 #include <string_view>
 
 namespace fbzz::editor {

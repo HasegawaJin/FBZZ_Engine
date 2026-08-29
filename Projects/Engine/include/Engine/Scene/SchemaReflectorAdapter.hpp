@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SchemaReflectorAdapter.hpp | fbzz::scene
-// 新しい型スキーマを既存IReflectorへ投影する段階移行アダプタ
+/// @file    SchemaReflectorAdapter.hpp
+/// @brief   新しい型スキーマを既存IReflectorへ投影する段階移行アダプタ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #pragma once
 
 #include <Engine/Reflection/TypeSchema.hpp>

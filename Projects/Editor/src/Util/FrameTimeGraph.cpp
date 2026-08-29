@@ -1,7 +1,7 @@
-/// @file   FrameTimeGraph.cpp
-/// @brief  フレーム時間の履歴と、その大きな数値表示 / 面グラフ
-/// @author Hasegawa Jin
-/// @date   2026-08-24
+/// @file    FrameTimeGraph.cpp
+/// @brief   フレーム時間の履歴と、その大きな数値表示 / 面グラフ
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 #include <Editor/Util/FrameTimeGraph.hpp>
 
 #include <Editor/Util/EditorTheme.hpp>

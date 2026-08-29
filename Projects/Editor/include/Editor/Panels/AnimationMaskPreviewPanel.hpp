@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimationMaskPreviewPanel.hpp | fbzz::editor
-// FBX と Avatar Mask の実効ウェイトを同時に確認する独立プレビュー。
+/// @file    AnimationMaskPreviewPanel.hpp
+/// @brief   FBX と Avatar Mask の実効ウェイトを同時に確認する独立プレビュー。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>

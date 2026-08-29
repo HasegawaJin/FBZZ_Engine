@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Vector4.cpp | fbzz::math
-// 4次元ベクトルの演算実装
+/// @file    Vector4.cpp
+/// @brief   4次元ベクトルの演算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Vector4.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>

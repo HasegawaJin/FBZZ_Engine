@@ -1,12 +1,13 @@
-// FBZZ Engine
-// TerrainHeightMapLoader.cpp | fbzz::scene
-// DirectXTex を使って画像ファイルを heightData[] に変換する。
-//
-// 処理フロー:
-//   1. 拡張子で LoadFromDDSFile / LoadFromTGAFile / LoadFromWICFile を選択
-//   2. R32_FLOAT に変換（グレースケール・カラー問わず R チャンネルを使用）
-//   3. 地形サイズと異なる場合は三次補間でリサイズ
-//   4. 画素値 [0, 1] を heightData の正規化モードに応じてマッピング
+/// @file    TerrainHeightMapLoader.cpp
+/// @brief   DirectXTex を使って画像ファイルを heightData[] に変換する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// 処理フロー:
+/// 1. 拡張子で LoadFromDDSFile / LoadFromTGAFile / LoadFromWICFile を選択
+/// 2. R32_FLOAT に変換（グレースケール・カラー問わず R チャンネルを使用）
+/// 3. 地形サイズと異なる場合は三次補間でリサイズ
+/// 4. 画素値 [0, 1] を heightData の正規化モードに応じてマッピング
 #pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>

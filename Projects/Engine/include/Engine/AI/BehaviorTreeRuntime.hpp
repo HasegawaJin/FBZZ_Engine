@@ -1,14 +1,15 @@
-// FBZZ Engine
-// BehaviorTreeRuntime.hpp | fbzz::ai
-// コンパイル済みの木 (共有・不変)
-//
-// WHY 2 本の並列配列に分けるか:
-//   走査中に触るのは type / 子の範囲だけで、パラメータは
-//   「そのノードが実際に実行されるとき」しか要らない。
-//   8 バイトの BTNode だけを DFS pre-order で並べておけば、
-//   走査順とメモリ順が一致してプリフェッチが効く。
-//   パラメータ (文字列や vector を含む重い構造体) を同じ配列に混ぜると、
-//   1 ノードが数百バイトになりキャッシュラインを食い潰す。
+/// @file    BehaviorTreeRuntime.hpp
+/// @brief   コンパイル済みの木 (共有・不変)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY 2 本の並列配列に分けるか:
+/// 走査中に触るのは type / 子の範囲だけで、パラメータは
+/// 「そのノードが実際に実行されるとき」しか要らない。
+/// 8 バイトの BTNode だけを DFS pre-order で並べておけば、
+/// 走査順とメモリ順が一致してプリフェッチが効く。
+/// パラメータ (文字列や vector を含む重い構造体) を同じ配列に混ぜると、
+/// 1 ノードが数百バイトになりキャッシュラインを食い潰す。
 #pragma once
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 #include <Engine/AI/BehaviorTreeTypes.hpp>

@@ -1,6 +1,7 @@
-﻿// FBZZ Engine
-// AssetBrowserCommon.hpp | fbzz::editor
-// AssetBrowserPanel の分割ファイルで共有するファイル操作・描画ヘルパー
+﻿/// @file    AssetBrowserCommon.hpp
+/// @brief   AssetBrowserPanel の分割ファイルで共有するファイル操作・描画ヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include <Editor/Panels/AssetBrowserPanel.hpp>

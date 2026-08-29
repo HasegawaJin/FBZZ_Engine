@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Application.cpp | fbzz::core
-// Application シングルトンの初期化とメインループ
-// Window / Renderer / Audio / SceneManager を所有し、エンジン全体の寿命を管理する。
-// sandbox 側で手動ループする場合も、初期化済みサブシステムの入口になる。
+/// @file    Application.cpp
+/// @brief   Application シングルトンの初期化とメインループ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Window / Renderer / Audio / SceneManager を所有し、エンジン全体の寿命を管理する。
+/// sandbox 側で手動ループする場合も、初期化済みサブシステムの入口になる。
 #define NOMINMAX
 #include <Windows.h>
 #include <timeapi.h>
@@ -291,7 +293,7 @@ void Application::Run(IModule& module) {
         // WHY AudioSystem ではなくここで回すか: AudioSystem は SimOnly のため Edit モードでは
         //     走らない。生成クリップの回収を任せると、Editor のプレビュー再生ぶんが
         //     Play を開始するまで解放されない。
-        if (m_audioManager) m_audioManager->Update();
+        if (m_audioManager) m_audioManager->Update(dt);
 
         module.OnRender();
 

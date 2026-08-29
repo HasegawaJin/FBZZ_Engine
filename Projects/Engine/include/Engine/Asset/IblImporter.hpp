@@ -1,13 +1,14 @@
-// FBZZ Engine
-// IblImporter.hpp | fbzz::asset
-// .ibl バイナリ descriptor → IblAsset Runtime ローダー
-//
-// .ibl ファイルは Editor 側の IblBaker が生成する FzIblHeader を持つバイナリ。
-// ヘッダー内の 4 つの DDS パス (相対) を ResourceManager::LoadTexture() で GPU にロードし、
-// IblAsset::ResourceHandle として返す。
-//
-// 既存の DX11Texture::Init() が DDS cubemap を DirectXTex で正しく処理するため、
-// このインポーターは DDS のロードを完全に ResourceManager に委譲できる。
+/// @file    IblImporter.hpp
+/// @brief   .ibl バイナリ descriptor → IblAsset Runtime ローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// .ibl ファイルは Editor 側の IblBaker が生成する FzIblHeader を持つバイナリ。
+/// ヘッダー内の 4 つの DDS パス (相対) を ResourceManager::LoadTexture() で GPU にロードし、
+/// IblAsset::ResourceHandle として返す。
+///
+/// 既存の DX11Texture::Init() が DDS cubemap を DirectXTex で正しく処理するため、
+/// このインポーターは DDS のロードを完全に ResourceManager に委譲できる。
 #pragma once
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/IblAsset.hpp>

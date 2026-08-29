@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ComputeCall.hpp | fbzz::renderer
-// コンピュートシェーダーの実行要求データ
-// IRenderer::Dispatch に渡す軽量な値型。
-// GPU リソースは ResourceHandle で参照し、共有ポインタは持たない。
+/// @file    ComputeCall.hpp
+/// @brief   コンピュートシェーダーの実行要求データ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// IRenderer::Dispatch に渡す軽量な値型。
+/// GPU リソースは ResourceHandle で参照し、共有ポインタは持たない。
 #pragma once
 #include <array>
 #include <cstdint>

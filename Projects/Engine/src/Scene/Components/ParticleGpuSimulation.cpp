@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ParticleGpuSimulation.cpp | fbzz::scene
-// GPU シミュレーション可否とその縮退理由の判定
+/// @file    ParticleGpuSimulation.cpp
+/// @brief   GPU シミュレーション可否とその縮退理由の判定。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
@@ -41,6 +42,9 @@ ParticleGpuFallbackReason GetParticleGpuFallbackReason(const ParticleEmitterSett
     // GPU 経路 (頂点バッファを持たない) では測れない。
     if (material != nullptr && material->selfShadowStrength > 0.0f)
         return ParticleGpuFallbackReason::SelfShadow;
+    // 速さで見た目を変えるモジュールは CPU 側にしかない (理由は enum の宣言を参照)。
+    if (emitter.useSpeedSizeCurve || emitter.useSpeedColorGradient)
+        return ParticleGpuFallbackReason::SpeedModule;
     return ParticleGpuFallbackReason::None;
 }
 
@@ -63,6 +67,7 @@ const char* ParticleGpuFallbackFieldName(ParticleGpuFallbackReason reason)
     case ParticleGpuFallbackReason::Trail:                 return "trailEnabled";
     case ParticleGpuFallbackReason::SubEmitter:            return "subEmitter";
     case ParticleGpuFallbackReason::SelfShadow:            return "selfShadowStrength";
+    case ParticleGpuFallbackReason::SpeedModule:           return "useSpeedSizeCurve";
     }
     return "";
 }
@@ -102,6 +107,11 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
                "自己影は CPU が組んだ頂点バッファを光源視点で描き直して密度を測るため、"
                "頂点バッファを持たない GPU 経路では測れません。"
                "厚みより粒子数が要る場面では selfShadowStrength を 0 にしてください。";
+    case ParticleGpuFallbackReason::SpeedModule:
+        return "useSpeedSizeCurve / useSpeedColorGradient のため CPU で実行されます。"
+               "速さで大きさと色を変える処理は CPU 側にしかありません。"
+               "粒子数が要る場面では、寿命カーブ (useSizeCurve / useColorGradient) で"
+               "近い絵を作れないか先に試してください。";
     }
     return "";
 }

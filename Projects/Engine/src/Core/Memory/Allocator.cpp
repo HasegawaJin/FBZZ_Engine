@@ -1,7 +1,9 @@
-// FBZZ Engine
-// Allocator.cpp | fbzz::core
-// アロケータ共通ヘルパーの実装
-// アラインメント検証と統計更新の意味を全アロケータで揃える。
+/// @file    Allocator.cpp
+/// @brief   アロケータ共通ヘルパーの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// アラインメント検証と統計更新の意味を全アロケータで揃える。
 #include "Engine/Core/Memory/Allocator.hpp"
 
 namespace fbzz::core {

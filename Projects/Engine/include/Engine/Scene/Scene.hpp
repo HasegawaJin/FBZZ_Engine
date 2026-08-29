@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Scene.hpp | fbzz::scene
-// GameObject 所有と ComponentArray 管理
-// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
-// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
+/// @file    Scene.hpp
+/// @brief   GameObject 所有と ComponentArray 管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
+/// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>

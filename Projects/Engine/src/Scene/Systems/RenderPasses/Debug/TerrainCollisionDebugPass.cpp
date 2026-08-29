@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TerrainCollisionDebugPass.cpp | fbzz::scene
-// TerrainComponent のコリジョン形状を LOD ワイヤーで HDR バッファへ描画する IRenderPass 実装
-// 遠景: チャンク AABB ボックス / 近景: gridStride おきのダウンサンプリング格子
+/// @file    TerrainCollisionDebugPass.cpp
+/// @brief   TerrainComponent のコリジョン形状を LOD ワイヤーで HDR バッファへ描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// 遠景: チャンク AABB ボックス / 近景: gridStride おきのダウンサンプリング格子
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12PsoCache.cpp | fbzz::renderer
-// 固定スロット Root Signature と描画状態別 PSO の遅延構築
+/// @file    DX12PsoCache.cpp
+/// @brief   固定スロット Root Signature と描画状態別 PSO の遅延構築。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12PsoCache.hpp"
 
 #include "DX12Context.hpp"

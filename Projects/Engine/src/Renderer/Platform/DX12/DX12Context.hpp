@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Context.hpp | fbzz::renderer
-// DirectX 12 のデバイス・キュー・フレーム同期を共有管理する基盤
+/// @file    DX12Context.hpp
+/// @brief   DirectX 12 のデバイス・キュー・フレーム同期を共有管理する基盤。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <array>

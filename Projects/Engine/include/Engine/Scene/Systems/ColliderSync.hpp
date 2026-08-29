@@ -1,15 +1,16 @@
-// FBZZ Engine
-// ColliderSync.hpp | fbzz::scene
-// ColliderComponent → physics::Collider の遅延構築・形状同期・ワールド姿勢反映
-//
-// WHY: これらの処理は元々 PhysicsSystem.cpp の無名名前空間に閉じていた。
-//      しかし PhysicsSystem は RunMode::SimOnly のため、エディタ停止中は一度も走らない。
-//      その結果 MeshCollider / ConvexHullCollider / TerrainCollider は
-//      collider が nullptr のままとなり、コライダー可視化 (DebugCollidersPass) が
-//      「一部のオブジェクトだけ描かれない」状態になっていた。
-//      また Inspector の Reflect 経由で size / radius を編集しても
-//      SetSize() を通らないため、停止中は形状が古いまま表示されていた。
-//      同期処理を独立モジュールへ切り出し、Physics と可視化の双方から同じ手順を呼ぶ。
+/// @file    ColliderSync.hpp
+/// @brief   ColliderComponent → physics::Collider の遅延構築・形状同期・ワールド姿勢反映。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// WHY: これらの処理は元々 PhysicsSystem.cpp の無名名前空間に閉じていた。
+/// しかし PhysicsSystem は RunMode::SimOnly のため、エディタ停止中は一度も走らない。
+/// その結果 MeshCollider / ConvexHullCollider / TerrainCollider は
+/// collider が nullptr のままとなり、コライダー可視化 (DebugCollidersPass) が
+/// 「一部のオブジェクトだけ描かれない」状態になっていた。
+/// また Inspector の Reflect 経由で size / radius を編集しても
+/// SetSize() を通らないため、停止中は形状が古いまま表示されていた。
+/// 同期処理を独立モジュールへ切り出し、Physics と可視化の双方から同じ手順を呼ぶ。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>

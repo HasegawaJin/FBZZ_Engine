@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PlayModeController.hpp | fbzz::editor
-// エディター内のゲームループ実行状態を管理する
+/// @file    PlayModeController.hpp
+/// @brief   エディター内のゲームループ実行状態を管理する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <string>
 

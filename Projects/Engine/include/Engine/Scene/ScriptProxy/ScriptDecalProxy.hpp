@@ -1,7 +1,7 @@
-/// @file ScriptDecalProxy.hpp
-/// @brief Script から DecalComponent を操作するショートハンド
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    ScriptDecalProxy.hpp
+/// @brief   Script から DecalComponent を操作するショートハンド
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// 弾痕・血痕・汚れなど動的デカールをランタイムで制御する。
 #pragma once

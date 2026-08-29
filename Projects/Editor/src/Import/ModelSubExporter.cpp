@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ModelSubExporter.cpp | fbzz::editor
-// FBX → .fzasset (FZMD) + 代表 .mesh バイナリを生成する。
-// .fzasset はパッケージ展開用、.mesh は MeshRenderer から直接参照する代表メッシュ。
+/// @file    ModelSubExporter.cpp
+/// @brief   FBX → .fzasset (FZMD) + 代表 .mesh バイナリを生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// .fzasset はパッケージ展開用、.mesh は MeshRenderer から直接参照する代表メッシュ。
 #include <Editor/Import/ModelSubExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
@@ -27,8 +29,9 @@ struct Vertex {
     float normal[3];
     float tangent[3];
     float uv[2];
+    float color[4];
 };
-static_assert(sizeof(Vertex) == 44, "Vertex size mismatch with renderer::Vertex");
+static_assert(sizeof(Vertex) == 60, "Vertex size mismatch with renderer::Vertex");
 
 struct SkinnedVertex {
     float    position[3];
@@ -59,6 +62,13 @@ Vertex ConvertVertex(const aiMesh* mesh, uint32_t i, float scale)
     if (mesh->mTextureCoords[0]) {
         v.uv[0] = mesh->mTextureCoords[0][i].x;
         v.uv[1] = mesh->mTextureCoords[0][i].y;
+    }
+    // DCC が頂点カラーを持たない方が普通なので、既定は「色を持たない」= 白。
+    if (mesh->HasVertexColors(0)) {
+        const aiColor4D& c = mesh->mColors[0][i];
+        v.color[0] = c.r; v.color[1] = c.g; v.color[2] = c.b; v.color[3] = c.a;
+    } else {
+        v.color[0] = v.color[1] = v.color[2] = v.color[3] = 1.0f;
     }
     return v;
 }

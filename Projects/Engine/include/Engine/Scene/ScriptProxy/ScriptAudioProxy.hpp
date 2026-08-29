@@ -100,10 +100,21 @@ struct ScriptAudioProxy {
     /// 常に 1 本だけ鳴る専用スロット。AudioSource を経由しないので
     /// シーンにオブジェクトを置かなくても切り替えられる。
     ///@{
-    void PlayBGM(std::string_view clipPath, bool loop = true) const;
-    void PlayBGM(const AudioClipRef& clip, bool loop = true) const;
-    void StopBGM() const;
+    /// @param fadeSeconds 0 より大きいと、鳴っていた曲を消しながら新しい曲を
+    ///        立ち上げる (クロスフェード)。場面転換で音が途切れない。
+    void PlayBGM(std::string_view clipPath, bool loop = true, float fadeSeconds = 0.0f) const;
+    void PlayBGM(const AudioClipRef& clip, bool loop = true, float fadeSeconds = 0.0f) const;
+    void StopBGM(float fadeSeconds = 0.0f) const;
     [[nodiscard]] bool IsBGMPlaying() const;
+    ///@}
+
+    /// @name フェード (自 GameObject の主 voice)
+    /// 環境音のループを場面に合わせて出し入れする用。AudioSource の volume とは
+    /// 別枠で掛かるので、距離減衰や遮蔽の計算と喧嘩しない。
+    ///@{
+    void FadeTo(float gain, float seconds) const;
+    /// フェードし切ったところで停止する。呼んだ時点で IsPlaying() は false になる。
+    void FadeOutAndStop(float seconds) const;
     ///@}
 
     /// @name 手続き効果音

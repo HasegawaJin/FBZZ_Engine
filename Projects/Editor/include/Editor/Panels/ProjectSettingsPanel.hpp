@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectSettingsPanel.hpp | fbzz::editor
-// タグ・レイヤー名の編集パネル
+/// @file    ProjectSettingsPanel.hpp
+/// @brief   タグ・レイヤー名の編集パネル。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <cstdint>

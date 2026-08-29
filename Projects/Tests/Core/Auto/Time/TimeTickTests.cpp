@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TimeTickTests.cpp | GoogleTest
-// Time のリセットとフレーム進行を実時間に依存しない範囲で自動検証する。
+/// @file    TimeTickTests.cpp
+/// @brief   Time のリセットとフレーム進行を実時間に依存しない範囲で自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Time.hpp>

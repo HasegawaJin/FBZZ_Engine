@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ModelImporterUtils.cpp | fbzz::asset
-// Assimp 型変換および静的・スキンメッシュ両パスで共有するメッシュ変換の実装。
+/// @file    ModelImporterUtils.cpp
+/// @brief   Assimp 型変換および静的・スキンメッシュ両パスで共有するメッシュ変換の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
 #include "ModelImporterInternal.hpp"
 #include <Engine/Asset/Skeleton.hpp>
 #include <algorithm>
@@ -110,6 +111,11 @@ renderer::Vertex ImportVertex(const aiMesh* mesh, uint32_t i, float unitScale)
         : math::Vector3{ 1.0f, 0.0f, 0.0f };
     if (mesh->mTextureCoords[0])
         v.uv = { mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y };
+    // 頂点カラーを持つ DCC データはそのまま採る。無ければ既定の白 (= 色を持たない) のまま。
+    if (mesh->HasVertexColors(0)) {
+        const aiColor4D& c = mesh->mColors[0][i];
+        v.color = { c.r, c.g, c.b, c.a };
+    }
     return v;
 }
 

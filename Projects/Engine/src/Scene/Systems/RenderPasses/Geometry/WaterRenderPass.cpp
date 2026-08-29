@@ -1,10 +1,11 @@
-// FBZZ Engine
-// RenderPasses/Geometry/WaterRenderPass.cpp | fbzz::scene
-// WaterComponent → GPU 水面メッシュ・泡マスク・波紋テクスチャ生成と描画 (IRenderPass 実装)
-//
-// WHY: 水面は透明描画、Terrain 高さ参照、動的 CPU テクスチャ更新をまとめて扱う。
-//      Component に GPU リソースを持たせず System 側の static cache に閉じることで、
-//      Scene データは保存しやすい純粋なパラメータのまま保つ。
+/// @file    RenderPasses/Geometry/WaterRenderPass.cpp
+/// @brief   WaterComponent → GPU 水面メッシュ・泡マスク・波紋テクスチャ生成と描画 (IRenderPass 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// WHY: 水面は透明描画、Terrain 高さ参照、動的 CPU テクスチャ更新をまとめて扱う。
+/// Component に GPU リソースを持たせず System 側の static cache に閉じることで、
+/// Scene データは保存しやすい純粋なパラメータのまま保つ。
 #include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
 #include "GeometryPasses.hpp"
 #include "Engine/Asset/AssetManager.hpp"
@@ -817,8 +818,11 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             math::Vector3 cameraPos;
             float nearZ;
             float farZ;
+            // LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること
+            // (waterSsrEnabled は共通側で _reserved になっている枠)。
             float waterSsrEnabled;
-            float _pad[2];
+            float isOrthographic;
+            float _pad;
         };
         static_assert(sizeof(CameraCB) == 288, "CameraCB size mismatch");
 
@@ -831,6 +835,8 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         camData.nearZ = camera.m_near;
         camData.farZ = camera.m_far;
         camData.waterSsrEnabled = (ctx.isDeferred && ctx.settings.ssr.enabled) ? 1.0f : 0.0f;
+        camData.isOrthographic  =
+            camera.m_projection == renderer::ProjectionMode::Orthographic ? 1.0f : 0.0f;
         resources.Update(cameraCBH, &camData, sizeof(camData));
     }
 

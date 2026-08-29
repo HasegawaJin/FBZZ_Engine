@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ImGuiWidgets.cpp | fbzz::editor
-// プロジェクト固有の ImGui カスタムウィジェット実装
+/// @file    ImGuiWidgets.cpp
+/// @brief   プロジェクト固有の ImGui カスタムウィジェット実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/AssetSearch.hpp>
@@ -234,11 +235,8 @@ std::vector<std::string> SplitFilterExts(const char* exts)
 }
 
 // カード / 区切り表現の寸法。すべて現在のフォントサイズから作る。
-// WHY: 帯の太さやヘッダーの余白を px 直値で持つと、UI スケール (EditorTheme::SetUiScale)
-//      が FontGlobalScale で文字だけを拡大するため、倍率を上げると区切りが相対的に細く、
-//      ヘッダーの高さも詰まって見える (縮めると逆に帯だけが太く残る)。
-//      基準を FontSize に一本化すれば、どの倍率でも文字と区切りの比率が変わらない。
-// NOTE: ヘッダーと本文で別々に計算しないこと。継ぎ目で帯の太さが変わると段差になる。
+// px 直値だと、UI スケールが文字だけを拡大するので倍率ごとに比率が崩れる。
+// ヘッダーと本文で別々に計算しないこと。継ぎ目で帯の太さが変わると段差になる。
 struct CardMetrics {
     float accent; // 左帯の太さ
     float indent; // 本文の字下げ
@@ -254,10 +252,8 @@ CardMetrics Metrics()
 }
 
 // 見出しの帯に使う上下余白。文字の高さから作る薄い余白。
-// WHY: 既定の FramePadding は「入力欄として押しやすい高さ」に合わせた値で、
-//      読ませるだけの見出しには厚すぎる。コンポーネント数が多い Inspector では
-//      1 枚あたり数 px の厚みがそのまま縦スクロール量になるため、帯は文字に
-//      寄り添う高さまで詰めて、カードの枠が中身より目立たないようにする。
+// 既定の FramePadding は入力欄向けの高さで、読ませるだけの見出しには厚すぎる。
+// 1 枚あたり数 px がそのまま縦スクロール量になる。
 float HeaderPadY()
 {
     return std::max(2.0f, std::floor(ImGui::GetFontSize() * 0.14f));
@@ -447,10 +443,9 @@ bool AssetPathField(const char* label, std::string& path,
         ImGui::CalcItemWidth() - kBtnW - style.ItemSpacing.x);
     const float fieldLeft = ImGui::GetCursorScreenPos().x;  // ピッカー位置決め用
 
-    // Unity 風: 非フォーカス時はフルパスではなく [拡張子バッジ] + ファイル名だけを表示する。
-    // WHY: "Assets/Nature/Rock/Rock/materials/namaqualand_boulder_03.mat" のような長い相対パスを
-    //      そのまま InputText に出すと欄の幅で切れて視認性が悪い。クリックした瞬間だけフルパス
-    //      編集用の InputText に切り替え、そこでは従来通りタイプ入力・ドラッグ&ドロップができる。
+    // Unity 風: 非フォーカス時は [拡張子バッジ] + ファイル名だけを表示する。
+    // 長い相対パスをそのまま InputText に出すと欄の幅で切れて読めない。
+    // クリックした瞬間だけフルパス編集用の InputText に切り替える。
     ImGuiStorage* storage = ImGui::GetStateStorage();
     const ImGuiID editingId    = ImGui::GetID("##editing");
     const ImGuiID focusReqId   = ImGui::GetID("##focusReq");
@@ -567,11 +562,10 @@ bool AssetPathField(const char* label, std::string& path,
             ImGui::EndTooltip();
         }
 
-        // Unity の Object Field と同じ動線にする。
-        // シングルクリックは Ping (AssetBrowser 側で場所を示すだけ)、ダブルクリックは選択して
+        // Unity の Object Field と同じ動線。シングルクリックは Ping、ダブルクリックは
         // Inspector の表示対象そのものを参照先アセットへ移す。
-        // NOTE: ダブルクリック時は 2 回目の押下で clicked / doubleClicked が同時に立つ。
-        //       RequestAssetReveal が同一パスの要求を畳むため、選択指定は落ちない。
+        // ダブルクリック時は clicked / doubleClicked が同時に立つが、
+        // RequestAssetReveal が同一パスの要求を畳むので選択指定は落ちない。
         if (clicked)       RequestAssetReveal(path, false);
         if (doubleClicked) RequestAssetReveal(path, true);
 
@@ -617,16 +611,11 @@ bool AssetPathField(const char* label, std::string& path,
         s_picker.search[0]   = '\0';
         s_picker.anchorPos   = { fieldLeft, ImGui::GetItemRectMax().y + 2.0f };
         // 索引は AssetSearch が保持する。ルートが同じなら再走査は起きない。
-        // WHY 変更したか: 以前はピッカーを開くたびにプロジェクトルート全体を
-        //     recursive_directory_iterator で舐めており、build/ や ThirdParty/ まで
-        //     含めて数万ファイルを走査していた。開くたびに待ちが発生していた。
         AssetSearch::SetProjectRoot(projectRoot);
     }
 
-    // ラベルを ImGui 標準ラベル列（右側）に配置。ウィンドウ幅でクリップされる。
+    // ラベルを ImGui 標準ラベル列 (右側) に配置。ウィンドウ幅でクリップされる。
     // "##" 始まりは共通 Reflector が左カラムへラベルを描画済みであることを示す。
-    // WHY: 同じ AssetPathField を手書き Inspector と自動生成 Inspector の両方で使い、
-    //      自動生成側で内部 ID が画面へ重複表示されるのを防ぐ。
     if (!(label[0] == '#' && label[1] == '#')) {
         ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
         ImGui::TextUnformatted(label);
@@ -705,14 +694,9 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
 
     const std::string searchStr = s_picker.search;
 
-    // 索引をスコア順で引く。
-    // WHY 変更したか: 以前は空クエリで索引を全件取り出し、行を描くときに Match() で
-    //     捨てるだけだった。つまり並びは常にパス順で、スコア (完全一致 > 前方一致 >
-    //     部分一致 > 部分列一致) が一切効いていない。Match は部分列一致まで拾うため、
-    //     "rock" のような語でも R…o…c…k を含む無関係なファイルが大量に、しかも
-    //     パス順で混ざって出る = 「検索しても目的のものが出てこない」状態だった。
-    //     さらに maxResults に索引の全件数を渡していたので、索引が空の場合は
-    //     resize(0) で無条件に 0 件になり、その手掛かりも画面に出なかった。
+    // 索引をスコア順 (完全一致 > 前方一致 > 部分一致 > 部分列一致) で引く。
+    // 全件取り出して描画時に Match で捨てるとパス順のまま並び、部分列一致まで拾う都合で
+    // 無関係なファイルが大量に混ざる。
     constexpr std::size_t kMaxPickerRows = 300;
     const auto candidates =
         AssetSearch::Query(searchStr, s_picker.filterExts, kMaxPickerRows);
@@ -947,9 +931,8 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         if (!IsImageExt(ext)) continue;
 
         // スプライトのサブ項目。親テクスチャ名が語に当たっているなら全部出し、
-        // パス経由でしか当たっていないなら、さらにスプライト名でも絞る。
-        // WHY: アトラス 1 枚に 40 個入っていることがあり、無条件に展開すると
-        //      検索したのに一覧が親テクスチャ 1 枚で埋まってしまう。
+        // パス経由でしか当たっていないならスプライト名でも絞る。
+        // アトラス 1 枚に 40 個入っていることがあり、一覧が親 1 枚で埋まる。
         const bool parentMatched =
             searchStr.empty() || AssetSearch::Match(filename, searchStr) != 0;
         for (const asset::SpriteRect& sprite : ResolveSprites(absPath)) {
@@ -995,10 +978,8 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
 
 bool DragVec3(const char* label, math::Vector3& v, float speed, float min, float max)
 {
-    // ラベル列は Inspector 共通の幅を使い、成分は軸色付きにする。
-    // WHY: 以前は Columns(2) + 固定 100px のラベル列だったため、(1) UI スケールを上げると
-    //      ラベルが切れる、(2) Reflector 生成の行と値の左端が揃わない、という 2 つの
-    //      不揃いを抱えていた。共通のプロパティ行に乗せ替えて両方まとめて解消する。
+    // ラベル列は Inspector 共通の幅を使い、成分は軸色付きにする
+    // (固定 px 幅だと UI スケールでラベルが切れ、Reflector 生成の行とも左端が揃わない)。
     const PropertyRowScope row = BeginPropertyField(label);
     float arr[3] = { v.x, v.y, v.z };
     const bool changed = DragAxes("##v", arr, 3, speed, min, max);
@@ -1035,10 +1016,8 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     if (ImGui::SliderFloat("##slider", &value, min, max, "")) changed = true;
     hovered |= ImGui::IsItemHovered();
 
-    // 現在値までを淡いアクセントで塗り、掴み位置だけでなく「どれくらいか」を面で見せる。
-    // WHY: ImGui 標準のスライダーは掴み手だけなので、値の大小が一瞬で読み取れない。
-    //      塗りは掴み手と同色系なので重なっても情報が潰れない。
-    // NOTE: Ctrl+Click で数値入力に切り替わっている間は塗らない (入力中の文字が隠れる)。
+    // 現在値までを淡いアクセントで塗り、「どれくらいか」を面で見せる (標準は掴み手だけ)。
+    // Ctrl+Click で数値入力に切り替わっている間は塗らない (入力中の文字が隠れる)。
     if (max > min && !ImGui::TempInputIsActive(ImGui::GetItemID())) {
         const ImVec2 lo = ImGui::GetItemRectMin();
         const ImVec2 hi = ImGui::GetItemRectMax();
@@ -1071,10 +1050,8 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
         hovered |= ImGui::IsItemHovered();
     }
 
-    // 説明はウィジェット側で出す。
-    // WHY: この 1 行はスライダー / 入力ボックス / ラベルの 3 アイテムで構成されるため、
-    //      呼び出し側の ImGui::IsItemHovered() では最後のアイテムしか拾えない。
-    //      「ラベルの上でしかツールチップが出ない」という分かりにくい罠を封じる。
+    // 説明はウィジェット側で出す。この 1 行はスライダー / 入力ボックス / ラベルの
+    // 3 アイテムなので、呼び出し側の IsItemHovered() では最後のものしか拾えない。
     if (tooltip && tooltip[0] && hovered)
         ImGui::SetTooltip("%s", tooltip);
 
@@ -1086,9 +1063,8 @@ bool RangeField(const char* label, int& value, int min, int max, const char* fmt
                 const char* tooltip)
 {
     // 構成は float 版と同じ「塗り付きゲージ + 数値ボックス」。
-    // WHY float 版へ委譲しないか: ImGui の書式指定子は型と対でなければならず、
-    //   整数値を float スライダーに通すと "%d" が使えない (あるいは丸め残りで
-    //   1 ずれた値が表示される)。見た目の規則だけを共有し、型は分けて扱う。
+    // 書式指定子は型と対なので、整数を float スライダーへ通すと "%d" が使えない。
+    // 見た目の規則だけを共有し、型は分けて扱う。
     ImGui::PushID(label);
     bool changed = false;
     bool hovered = false;
@@ -1201,19 +1177,15 @@ bool DragAxes(const char* id, float* values, int count,
     const float total = std::max(ImGui::GetFontSize() * 6.0f, ImGui::CalcItemWidth() - labelW);
 
     // 頭文字は枠の「外」に置く。1 成分あたりこのスロット幅を先に取り、残りを数値欄に回す。
-    // WHY 外に出すか: 書式へ埋め込むと "X 0.000" が枠内で中央寄せされ、成分ごとに
-    //     数値の左端がばらつく (桁数で揺れる)。頭文字を外へ出すと数値だけが枠に残り、
-    //     3 成分の数字が同じ位置から始まるので、値の大小を縦に並べて比較できる。
-    // NOTE: X/Y/Z/W で字幅が違うと数値欄の幅までずれるため、最も広い字で固定幅を取る。
+    // 書式へ埋め込むと枠内で中央寄せされ、桁数で数値の左端がばらつく。
+    // X/Y/Z/W で字幅が違うと数値欄の幅までずれるため、最も広い字で固定幅を取る。
     float letterGlyphW = 0.0f;
     for (int i = 0; i < count; ++i)
         letterGlyphW = std::max(letterGlyphW, ImGui::CalcTextSize(AxisLetter(i)).x);
     const float letterSlotW = letterGlyphW + style.ItemInnerSpacing.x;
 
-    // 頭文字のぶんだけ数値欄は狭くなる。狭い Inspector では桁が欠けてしまうので、
     // 数値が読める幅を確保できないときは頭文字を落として数字を優先する。
-    // WHY 文字を捨ててよいか: そのときは枠の左端に軸色のマーカーを出すため、
-    //     色だけでも X / Y / Z は判別できる。読めない数字より欠けない数字を採る。
+    // そのときは枠の左端に軸色のマーカーを出すので、色だけでも X / Y / Z は判別できる。
     const float sampleW = ImGui::CalcTextSize("-8888.888").x + style.FramePadding.x * 2.0f;
     const float span    = total - gap * static_cast<float>(count - 1);
     const float withLetter =
@@ -1222,10 +1194,8 @@ bool DragAxes(const char* id, float* values, int count,
     const float each = std::max(ImGui::GetFontSize() * 2.0f,
                                 showAxisLetter ? withLetter : span / static_cast<float>(count));
 
-    // BeginGroup で囲むのが必須。成分を個別の DragFloat で描くと IsItemActivated() /
-    // IsItemDeactivatedAfterEdit() が「最後の成分」だけを見るようになり、X や Y を
-    // 動かした操作が Undo に積まれなくなる (DragFloat3 も内部で同じことをしている)。
-    // グループ化すれば ImGui が Active / Deactivated / Edited を全成分ぶん集約してくれる。
+    // BeginGroup で囲むのが必須。個別の DragFloat のままだと IsItemDeactivatedAfterEdit()
+    // が最後の成分だけを見るため、X や Y の操作が Undo に積まれない。
     ImGui::BeginGroup();
     ImGui::PushID(id);
     bool changed = false;
@@ -1250,9 +1220,7 @@ bool DragAxes(const char* id, float* values, int count,
         const float axisSpeed = speed > 0.0f ? speed : AdaptiveDragSpeed(values[i]);
         ImGui::SetNextItemWidth(each);
         // 頭文字を出せない狭さのときだけ、枠内の軸色マーカーで成分を示す。
-        // WHY 標準機能を使うか: 自前で後描きすると枠線の上に乗ってしまうし、
-        //     UI スケール変更にも追従しない。標準なら枠の内側・境界線の下に描かれ、
-        //     style.ColorMarkerSize がスケールされる。
+        // 自前で後描きすると枠線の上に乗り、UI スケールにも追従しない。
         if (!showAxisLetter) ImGui::SetNextItemColorMarker(AxisMarkerColor(i));
         if (ImGui::DragFloat(label, &values[i], axisSpeed, min, max, fmt ? fmt : "%.3f"))
             changed = true;
@@ -1425,10 +1393,8 @@ void EndPropertyField(const PropertyRowScope& row)
 
 namespace {
 
-// ◎ (一覧から選ぶ) と × (クリア) のグリフ。
-// WHY 自前で描くか: このエディタの ImGui フォントは ASCII 中心で、
-//     従来は "O" と "x" の文字を代用していた。文字は行によって太さも中心もばらつき、
-//     何のボタンなのかがアイコンとして読めていなかった。
+// ◎ (一覧から選ぶ) と × (クリア) のグリフ。フォントが ASCII 中心なので、
+// 文字を代用すると行ごとに太さと中心がばらついてアイコンとして読めない。
 void DrawPickGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
 {
     drawList->AddCircle(center, size * 0.30f, color, 16,
@@ -1769,41 +1735,30 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
 
     ImGui::PushID(label);
 
-    // ヘッダーを描く前の行頭と右端を控える。
-    // WHY: 枠付き CollapsingHeader の矩形は WindowPadding.x * 0.5 だけ左右へはみ出す
-    //      (ImGui の TreeNodeBehavior が framed のとき outer_extend を足す) 一方、
-    //      ImGui 自身のラベルは「はみ出す前のカーソル位置」を基準に置かれる。
-    //      GetItemRect から重ね描きの座標を作ると、その差分だけ左へずれる。
+    // ヘッダーを描く前の行頭と右端を控える。枠付き CollapsingHeader の矩形は
+    // WindowPadding.x * 0.5 だけ左右へはみ出すが、ラベルははみ出す前の位置を基準に置かれる。
+    // GetItemRect から重ね描きの座標を作るとその差分だけ左へずれる。
     const ImVec2 startPos     = ImGui::GetCursorScreenPos();
     const float  contentRight = startPos.x + ImGui::GetContentRegionAvail().x;
 
-    // 見出しだけ本文より 1 段大きい文字で組む。
-    // WHY: コンポーネント名と行ラベル (Position など) が同じ大きさだと、どこがカードの
-    //      切れ目なのかを色と位置だけで探すことになり、スクロール中に見出しが本文へ
-    //      埋もれる。1 段上げるだけで「名前 > 値の名前」の主従が文字の大きさでも伝わる。
-    // NOTE: PushFont には「グローバル倍率を掛ける前」の値 (style.FontSizeBase) を渡すこと。
-    //       GetFontSize() は倍率適用後の値なので、渡すと UI スケールが二重に掛かる
-    //       (ImGui 1.92 の仕様)。ここで押した文字サイズは矢印・チェック・⋯ にも効くため、
-    //       ヘッダーの部品がまとめて一回り大きくなり、帯の高さもそれに追従する。
-    //       サイズを整数へ丸めるのは、半端な値だとグリフのラスタライズがにじんで
-    //       「大きくしたのに細くぼやけて見える」ため。
+    // 見出しだけ本文より 1 段大きい文字で組み、「名前 > 値の名前」の主従を大きさでも伝える。
+    // PushFont には倍率を掛ける前の値 (style.FontSizeBase) を渡すこと。GetFontSize() は
+    // 倍率適用後なので、渡すと UI スケールが二重に掛かる (ImGui 1.92 の仕様)。
+    // ここで押した文字サイズは矢印・チェック・⋯ にも効き、帯の高さも追従する。
+    // 整数へ丸めるのは、半端な値だとラスタライズがにじんで細くぼやけて見えるため。
     constexpr float kTitleScale = 1.15f;
     ImGui::PushFont(nullptr, std::floor(style.FontSizeBase * kTitleScale));
 
-    // 帯の高さは見出しの文字にちょうど寄り添うぶんだけにする (HeaderPadY)。
-    // NOTE: PushFont 後に呼ぶこと。余白を見出しの文字サイズから作るため。
-    // 色は CollapsingHeader の 3 状態を Surface 系へ寄せ、選択色 (青) を出さない。
-    // WHY: 既定の Header 色はアクティブなアイテムと同じ扱いに見えるため、
-    //      「開いているだけ」のカードが全部強調されて主従が消える。
+    // 帯の高さは見出しの文字に寄り添うぶんだけ (HeaderPadY)。PushFont 後に呼ぶこと。
+    // 色は CollapsingHeader の 3 状態を Surface 系へ寄せ、選択色 (青) を出さない
+    // (既定の Header 色だと「開いているだけ」のカードが全部強調される)。
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, { style.FramePadding.x, HeaderPadY() });
     ImGui::PushStyleColor(ImGuiCol_Header,        EditorTheme::ColorU32(ThemeColor::SurfaceRaised));
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, EditorTheme::ColorU32(ThemeColor::SurfaceHover));
     ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::ColorU32(ThemeColor::SurfaceHover));
 
-    // ラベルは "##" で伏せ、矢印だけを ImGui に描かせる。
-    // WHY: チェックボックスと名前をヘッダーの帯の中へ収めたい。標準の並び
-    //      (Checkbox → SameLine → CollapsingHeader) だとヘッダーがチェック分だけ
-    //      右から始まり、カードの左端が毎行ギザギザになっていた。
+    // ラベルは "##" で伏せ、矢印だけを ImGui に描かせる。標準の並び
+    // (Checkbox → SameLine → CollapsingHeader) だとカードの左端がギザギザになる。
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_AllowOverlap;
     if (defaultOpen) flags |= ImGuiTreeNodeFlags_DefaultOpen;
     // 折り畳み状態の保存先 ID を名乗っておく (EditorApp が永続化対象を絞るのに使う)。
@@ -1811,16 +1766,10 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
     HeaderStateIdRegistry().insert(ImGui::GetID("##hdr"));
     result.open = ImGui::CollapsingHeader("##hdr", flags);
 
-    // ヘッダー自体をドラッグ元 / ドロップ先にする。
-    // WHY ヘッダーだけか: メニューや有効チェックをドラッグ対象にすると、既存のクリック操作と
-    //     競合する。Component の境界を表すヘッダーだけに並び替え操作を限定する。
-    //
-    // WHY 並び替え可能なカードだけを掴めるようにするか (不具合修正):
-    //     以前は BeginDragDropSource だけが reorder の有無を見ておらず、全カードが
-    //     "FBZZ_COMPONENT_ORDER" を撒いていた。結果、Transform やスクリプトカード、
-    //     Post Process のカードまで掴めるのに落としても何も起きない (掴める = 動かせる、
-    //     という UI の約束が破れている) 状態になり、さらに Transform を Component カードへ
-    //     落とすと「描画順のリストに存在しないキー」が保存データへ紛れ込んでいた。
+    // ヘッダー自体をドラッグ元 / ドロップ先にする。メニューや有効チェックを対象にすると
+    // 既存のクリック操作と競合するので、境界を表すヘッダーだけに限定する。
+    // 掴めるのは並び替え可能なカードだけ。全カードがペイロードを撒くと、落としても何も
+    // 起きないカードができ、保存データにも余計なキーが混ざる。
     if (reorder) {
         // ペイロード名はリスト (scope) ごとに分ける。ImGui のペイロード名は
         // 32 バイト上限なので、prefix 13 文字 + scope は 18 文字以内に収めること。
@@ -1855,13 +1804,8 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
                     const ImVec2 dropMax = ImGui::GetItemRectMax();
 
                     // カードの上半分なら手前へ、下半分なら後ろへ挿入する。
-                    //
-                    // WHY 修正したか: 以前は挿入位置が常に「対象の手前」で固定なのに、
-                    //   ガイド線だけを下端に描いていた。(1) 線が指す位置と実際の着地が
-                    //   1 枚ずれる、(2) どのカードへ落としても手前にしか入らないため
-                    //   最後尾へは絶対に移動できず、末尾のカードが事実上固定される、
-                    //   という 2 つが同時に起きていた。マウス位置で前後を決め、
-                    //   ガイド線もその辺へ描くことで見た目と結果を一致させる。
+                    // ガイド線も同じ辺へ描いて見た目と結果を一致させる。挿入位置を固定にすると
+                    // 線の指す位置と着地が 1 枚ずれ、最後尾へは移動できなくなる。
                     const float mid = (dropMin.y + dropMax.y) * 0.5f;
                     const bool  insertAfter = ImGui::GetMousePos().y >= mid;
                     const float lineY = insertAfter ? dropMax.y : dropMin.y;

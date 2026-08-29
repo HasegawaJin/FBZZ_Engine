@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnalysisPanel.cpp | fbzz::editor
-// Profiler と MemoryDebug を ImGui で表示する診断パネル実装
+/// @file    AnalysisPanel.cpp
+/// @brief   Profiler と MemoryDebug を ImGui で表示する診断パネル実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #include <Editor/Panels/AnalysisPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/FrameTimeGraph.hpp>

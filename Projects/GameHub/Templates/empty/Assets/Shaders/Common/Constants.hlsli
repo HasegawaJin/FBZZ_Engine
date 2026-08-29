@@ -15,7 +15,12 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float3   cameraPos;
     float    nearZ;
     float    farZ;
-    float3   _camPad;
+    // Water パスだけがこの枠を waterSsrEnabled として使う。他パスは 0。
+    float    _camReserved;
+    // 1 = 平行投影。深度バッファと視空間 Z の関係が射影で変わるため、
+    // 深度を線形化する側 (Space.hlsli の LinearizeDepth) が式を切り替える。
+    float    isOrthographic;
+    float    _camPad;
 };
 
 // b1 の 2 枠目を別の意味で使いたいシェーダーは、#include より前に
@@ -163,7 +168,9 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  screenFadeAlpha;
     // 大気フォグ統合 (環境システム §3-3): 0=Exponential(固定 fogColor), 1=Atmosphere(大気散乱)。
     float  fogSource;
-    float3 _fogPad;
+    // 放射ブラー (VFXScreenEffect)。画面中心から外へ引き伸ばす量 [0,1]。
+    float  radialBlur;
+    float2 _fogPad;
     // 投影コースティクス改良 (Phase C-2): 水域 XZ 範囲 + 波連動。C++ PostProcCB と一致。
     float  causticsCenterX;
     float  causticsCenterZ;
@@ -177,6 +184,13 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float2 bloomSrcTexel;
     float  bloomApplyThreshold; // 1 = 輝度閾値を掛ける (連鎖の 1 段目だけ)
     float  bloomAdditive;       // 1 = 書き込み先へ加算、0 = 上書き
+    // カスタムパスのパラメーター 4〜7 (customParameters が 0〜3)。
+    // WHY 末尾か: 途中へ挿すと以降の全オフセットがずれ、この 4 コピーのうち
+    //     直し忘れた 1 つだけが静かに別の値を読む。
+    float4 customParameters2;
+    // カスタムパスの «走り方» (書き手ではなくエンジンが埋める)。
+    //   x = 入力 UV のスケール (downscale の逆数) / y = 何回目の反復 / z = 反復の総数
+    float4 customPassInfo;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)

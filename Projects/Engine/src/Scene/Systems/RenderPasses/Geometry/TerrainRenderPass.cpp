@@ -1,24 +1,25 @@
-// FBZZ Engine
-// RenderPasses/Geometry/TerrainRenderPass.cpp | fbzz::scene
-// TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)
-//
-// テクスチャスロット (Terrain.hlsl と同期すること):
-//   t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
-//   t1-t4   = layer0-3 ディフューズ
-//   t5-t8   = layer0-3 法線
-//   t9-t12  = layer0-3 AO/Roughness (R=AO, G=Roughness)
-//   t13     = shadow depth
-//
-// サンプラースロット (Terrain.hlsl と同期すること):
-//   s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
-//   s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
-//   s2 = CLAMP_LINEAR      スプラットマップ用
-//
-// 設計上の注意:
-//   - シングルスレッド前提。static ローカルによる遅延初期化を使う。
-//   - GPU バッファは ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
-//   - heightDirty: 全チャンクを削除して再構築
-//   - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
+/// @file    RenderPasses/Geometry/TerrainRenderPass.cpp
+/// @brief   TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// テクスチャスロット (Terrain.hlsl と同期すること):
+/// t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
+/// t1-t4   = layer0-3 ディフューズ
+/// t5-t8   = layer0-3 法線
+/// t9-t12  = layer0-3 AO/Roughness (R=AO, G=Roughness)
+/// t13     = shadow depth
+///
+/// サンプラースロット (Terrain.hlsl と同期すること):
+/// s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
+/// s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
+/// s2 = CLAMP_LINEAR      スプラットマップ用
+///
+/// 設計上の注意:
+/// - シングルスレッド前提。static ローカルによる遅延初期化を使う。
+/// - GPU バッファは ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
+/// - heightDirty: 全チャンクを削除して再構築
+/// - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
@@ -130,7 +131,9 @@ struct TerrainCameraFrameCB {
     math::Matrix4 viewProjection;
     math::Matrix4 invViewProjection;
     math::Vector3 cameraPos; float nearZ;
-    float         farZ;      float _pad[3];
+    // LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること。
+    float         farZ;      float _reserved;
+    float         isOrthographic; float _pad;
 };
 static_assert(sizeof(TerrainCameraFrameCB) == 288, "PerFrameCB size mismatch");
 
@@ -665,6 +668,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         camData.cameraPos         = camera.m_position;
         camData.nearZ             = camera.m_near;
         camData.farZ              = camera.m_far;
+        camData.isOrthographic    =
+            camera.m_projection == renderer::ProjectionMode::Orthographic ? 1.0f : 0.0f;
         resources.Update(cameraCBH, &camData, sizeof(camData));
     }
 

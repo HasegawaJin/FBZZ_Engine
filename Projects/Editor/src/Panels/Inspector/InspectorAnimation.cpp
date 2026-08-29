@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorAnimation.cpp | fbzz::editor
-// Animation / IK 系 Component の Inspector 描画
+/// @file    InspectorAnimation.cpp
+/// @brief   Animation / IK 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorAnimation.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Engine/Asset/AssetManager.hpp>

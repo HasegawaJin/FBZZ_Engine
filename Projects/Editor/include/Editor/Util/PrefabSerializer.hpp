@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PrefabSerializer.hpp | fbzz::editor
-// Saves and instantiates GameObject hierarchies as .prefab assets
+/// @file    PrefabSerializer.hpp
+/// @brief   Saves and instantiates GameObject hierarchies as .prefab assets.
+/// @author  Hasegawa Jin
+/// @date    2026-05-26
 #pragma once
 #include <Editor/Util/PrefabOverrides.hpp>
 #include <Engine/Scene/Entity.hpp>

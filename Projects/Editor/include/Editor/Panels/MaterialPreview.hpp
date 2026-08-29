@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialPreview.hpp | fbzz::editor
-// Material アセット用プレビュー API。
+/// @file    MaterialPreview.hpp
+/// @brief   Material アセット用プレビュー API。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 namespace fbzz::asset { struct MaterialAsset; }

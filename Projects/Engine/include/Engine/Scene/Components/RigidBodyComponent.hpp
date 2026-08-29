@@ -1,8 +1,10 @@
-// FBZZ Engine
-// RigidBodyComponent.hpp | fbzz::scene
-// physics::RigidBody を Scene に紐付けるコンポーネント
-// Scene の Transform と physics::World の剛体状態を同期するための橋渡し。
-// RigidBodyComponent が RigidBody の唯一の所有者。World には RigidBody* を渡す。
+/// @file    RigidBodyComponent.hpp
+/// @brief   physics::RigidBody を Scene に紐付けるコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Scene の Transform と physics::World の剛体状態を同期するための橋渡し。
+/// RigidBodyComponent が RigidBody の唯一の所有者。World には RigidBody* を渡す。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Physics/BodyHandle.hpp>

@@ -19,8 +19,17 @@ float3 ReconstructWorldPos(float2 uv, float ndcDepth, float4x4 invVP)
 }
 
 // 線形深度 (カメラ空間 Z) に変換する
-float LinearizeDepth(float ndcDepth, float near, float far)
+// isOrtho : CameraConstants.isOrthographic をそのまま渡す (1 = 平行投影)
+//
+// WHY 引数を増やしたか: 平行投影では深度バッファの値が既に線形で、透視用の
+// 逆数式を通すと視空間 Z が大きく狂う。SSAO / SSR / 接触影 / ソフトパーティクル /
+// デカールが一斉に破綻するため、呼び出し側に射影の別を必ず渡させる。
+float LinearizeDepth(float ndcDepth, float near, float far, float isOrtho)
 {
+    // WHY lerp ではなく分岐か: 透視の式は平行投影の深度分布では 0 除算になりうる。
+    // lerp は両辺を評価するので inf が混ざり、重み 0 でも NaN が出る。
+    // isOrtho は定数バッファ由来でワープ内一様なので、分岐のコストは無い。
+    if (isOrtho > 0.5f) return near + ndcDepth * (far - near);
     return (near * far) / (far - ndcDepth * (far - near));
 }
 

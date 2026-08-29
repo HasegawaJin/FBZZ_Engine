@@ -1,9 +1,11 @@
-// FBZZ Engine
-// ReflectionProbeComponent.hpp | fbzz::scene
-// 局所的な環境反射を静的または実行時キューブマップで提供するプローブコンポーネント。
-// WHY: EnvironmentLightComponent はシーン全体のグローバル IBL を管理するが、
-//      室内や窓際など局所的に異なる反射環境が必要な場所には別のキューブマップが必要になる。
-//      動的キャプチャは空だけを焼く軽量方式と、周辺メッシュも焼く完全方式を選べる。
+/// @file    ReflectionProbeComponent.hpp
+/// @brief   局所的な環境反射を静的または実行時キューブマップで提供するプローブコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// WHY: EnvironmentLightComponent はシーン全体のグローバル IBL を管理するが、
+/// 室内や窓際など局所的に異なる反射環境が必要な場所には別のキューブマップが必要になる。
+/// 動的キャプチャは空だけを焼く軽量方式と、周辺メッシュも焼く完全方式を選べる。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Shader.cpp | fbzz::renderer
-// DXC / SM 6.8 による DXIL コンパイルと DXBC / DXIL 両対応リフレクション
+/// @file    DX12Shader.cpp
+/// @brief   DXC / SM 6.8 による DXIL コンパイルと DXBC / DXIL 両対応リフレクション。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12Shader.hpp"
 
 #include <Engine/Core/Logger.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimatorControllerAsset.hpp | fbzz::asset
-// Animator のステートマシン定義を共有アセットとして保存・復元する
+/// @file    AnimatorControllerAsset.hpp
+/// @brief   Animator のステートマシン定義を共有アセットとして保存・復元する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
 #pragma once
 
 #include <Engine/Scene/Components/AnimatorComponent.hpp>

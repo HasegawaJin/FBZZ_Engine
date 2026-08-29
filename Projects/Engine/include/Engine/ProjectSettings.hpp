@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ProjectSettings.hpp | fbzz
-// プロジェクト共通設定の定義と永続化
-// タグ名・レイヤー名など、エディタとランタイムで共有する軽量設定。
-// 読み書きは bool で成否を返し、例外は使わない。
+/// @file    ProjectSettings.hpp
+/// @brief   プロジェクト共通設定の定義と永続化。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
+///
+/// タグ名・レイヤー名など、エディタとランタイムで共有する軽量設定。
+/// 読み書きは bool で成否を返し、例外は使わない。
 #pragma once
 #include <array>
 #include <Math/Vector3.hpp>
@@ -22,6 +24,10 @@ struct PhysicsSettings {
 
 struct AudioSettings {
     float masterVolume = 1.0f;
+
+    /// 同時に鳴らせる voice の上限。超えた状態で鳴らそうとすると、優先度の低い音を
+    /// 畳んで場所を空ける。上げすぎると同種の音が重なって音量が飽和する。
+    int voiceLimit = 48;
 
     /// ミキサーバス構成。先頭は必ず Master (AudioManager 側で正規化される)。
     /// 旧形式の bgmVolume / seVolume を持つ設定ファイルは、読み込み時に

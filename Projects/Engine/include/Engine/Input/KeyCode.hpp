@@ -1,8 +1,10 @@
-// FBZZ Engine
-// KeyCode.hpp | fbzz::input
-// Win32 仮想キーコードに対応するキー定義
-// ゲーム側が OS の定数を直接見ないための薄い列挙。
-// 値は Win32 メッセージからそのまま変換できるように保つ。
+/// @file    KeyCode.hpp
+/// @brief   Win32 仮想キーコードに対応するキー定義。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// ゲーム側が OS の定数を直接見ないための薄い列挙。
+/// 値は Win32 メッセージからそのまま変換できるように保つ。
 #pragma once
 #include <cstdint>
 #ifndef NOMINMAX

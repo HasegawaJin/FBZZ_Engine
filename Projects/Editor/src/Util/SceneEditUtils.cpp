@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneEditUtils.cpp | fbzz::editor
-// シーン編集の共有ヘルパー実装
+/// @file    SceneEditUtils.cpp
+/// @brief   シーン編集の共有ヘルパー実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/SceneIO.hpp>

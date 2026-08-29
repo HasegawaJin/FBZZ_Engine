@@ -1,10 +1,12 @@
-// FBZZ Engine
-// TAAPass.cpp | fbzz::scene
-// Temporal Anti-Aliasing (TAA) — 前フレームバッファと現フレームをブレンドして
-// サブピクセルエイリアスを除去する。Halton ジッターとの組み合わせで収束を高速化する。
-// WHY: MSAA はリアルタイム品質のトレードオフが大きく、FXAA は精細さを失う。
-//      TAA は前フレームの情報を活用してゼロコストに近い高品質 AA を実現する。
-//      履歴バッファを ping-pong する理由: 同一 RT を SRV と RTV に同時束縛できないため。
+/// @file    TAAPass.cpp
+/// @brief   Temporal Anti-Aliasing (TAA) — 前フレームバッファと現フレームをブレンドして。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// サブピクセルエイリアスを除去する。Halton ジッターとの組み合わせで収束を高速化する。
+/// WHY: MSAA はリアルタイム品質のトレードオフが大きく、FXAA は精細さを失う。
+/// TAA は前フレームの情報を活用してゼロコストに近い高品質 AA を実現する。
+/// 履歴バッファを ping-pong する理由: 同一 RT を SRV と RTV に同時束縛できないため。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DrawCall.hpp>

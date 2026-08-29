@@ -1,7 +1,7 @@
-/// @file BloomPass.cpp
-/// @brief Bloom — ミップ連鎖でダウンサンプルし、逆順に足し戻して広いにじみを作る
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    BloomPass.cpp
+/// @brief   Bloom — ミップ連鎖でダウンサンプルし、逆順に足し戻して広いにじみを作る
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 //
 // 流れ (kBloomMipCount = 5 のとき):
 //   HDR --[閾値+縮小]--> chain0(1/2) --[縮小]--> chain1(1/4) ... --> chain4(1/32)

@@ -1,9 +1,11 @@
-// FBZZ Engine
-// IPreviewPanel.hpp | fbzz::editor
-// アセット種別ごとのプレビューパネルが共通して実装する描画契約。
-// WHY: Animation / Material / VFX を 1 枚のパネルへ集約すると、アセット種別の追加たびに
-//      IPanel のライフサイクルや Inspector の呼び出し規約まで変更する必要がある。
-//      種別判定と描画だけを小さなインターフェースへ切り出し、PreviewPanel はルーターとして保つ。
+/// @file    IPreviewPanel.hpp
+/// @brief   アセット種別ごとのプレビューパネルが共通して実装する描画契約。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY: Animation / Material / VFX を 1 枚のパネルへ集約すると、アセット種別の追加たびに
+/// IPanel のライフサイクルや Inspector の呼び出し規約まで変更する必要がある。
+/// 種別判定と描画だけを小さなインターフェースへ切り出し、PreviewPanel はルーターとして保つ。
 #pragma once
 
 #include <string_view>

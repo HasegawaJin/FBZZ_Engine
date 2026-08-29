@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptSnapshot.cpp | fbzz::editor
-// Script 1 個の Reflect フィールド ↔ TOML テキスト
+/// @file    ScriptSnapshot.cpp
+/// @brief   Script 1 個の Reflect フィールド ↔ TOML テキスト。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Util/ScriptSnapshot.hpp>
 #include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 #include <Engine/Scene/Script.hpp>

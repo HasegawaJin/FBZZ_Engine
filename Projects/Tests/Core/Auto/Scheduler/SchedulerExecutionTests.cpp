@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SchedulerExecutionTests.cpp | GoogleTest
-// Scheduler の Build、名前検索、初期化、更新契約を自動検証する。
+/// @file    SchedulerExecutionTests.cpp
+/// @brief   Scheduler の Build、名前検索、初期化、更新契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Scheduler/SystemScheduler.hpp>

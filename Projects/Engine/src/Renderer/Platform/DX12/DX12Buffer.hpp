@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Buffer.hpp | fbzz::renderer
-// CPU 更新可能な DirectX 12 頂点・インデックスバッファ
+/// @file    DX12Buffer.hpp
+/// @brief   CPU 更新可能な DirectX 12 頂点・インデックスバッファ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IBuffer.hpp>

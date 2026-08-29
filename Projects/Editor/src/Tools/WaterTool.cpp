@@ -1,6 +1,7 @@
-// FBZZ Engine
-// WaterTool.cpp | fbzz::editor
-// WaterTool の実装: ビューポート可視化・アセット管理・波エディタ UI
+/// @file    WaterTool.cpp
+/// @brief   WaterTool の実装: ビューポート可視化・アセット管理・波エディタ UI。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #include "WaterTool.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>

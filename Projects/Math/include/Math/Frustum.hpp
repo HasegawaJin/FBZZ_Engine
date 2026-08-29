@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Frustum.hpp | fbzz::math
-// 視錐台 (6平面による凸包)
+/// @file    Frustum.hpp
+/// @brief   視錐台 (6平面による凸包)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 
 #include "Plane.hpp"

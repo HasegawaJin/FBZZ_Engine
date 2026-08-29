@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BodyHandle.hpp | fbzz::physics
-// Physics World 内の pool 要素を世代付きで参照する軽量ハンドル
+/// @file    BodyHandle.hpp
+/// @brief   Physics World 内の pool 要素を世代付きで参照する軽量ハンドル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
 #pragma once
 #include <cstdint>
 

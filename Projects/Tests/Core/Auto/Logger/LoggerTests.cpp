@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LoggerTests.cpp | GoogleTest
-// Logger のレベルフィルタと非所有 Sink 契約を自動検証する。
+/// @file    LoggerTests.cpp
+/// @brief   Logger のレベルフィルタと非所有 Sink 契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/ILogSink.hpp>

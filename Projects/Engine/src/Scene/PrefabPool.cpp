@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PrefabPool.cpp | fbzz::scene
-// プレファブインスタンスの使い回し実装
+/// @file    PrefabPool.cpp
+/// @brief   プレファブインスタンスの使い回し実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
 #include <Engine/Scene/PrefabPool.hpp>
 
 #include <Engine/Scene/GameObject.hpp>

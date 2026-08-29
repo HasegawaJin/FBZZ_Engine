@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConvexHullCollider.hpp | fbzz::physics
-// 点群から構築した凸包コライダー (GJK / EPA 使用)
+/// @file    ConvexHullCollider.hpp
+/// @brief   点群から構築した凸包コライダー (GJK / EPA 使用)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 #include <array>
 #include <cstdint>

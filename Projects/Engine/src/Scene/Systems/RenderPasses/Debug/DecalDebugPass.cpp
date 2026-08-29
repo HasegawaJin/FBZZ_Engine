@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DecalDebugPass.cpp | fbzz::scene
-// DecalComponent の OBB ワイヤーフレーム可視化
-// Transform の worldScale * 0.5 を halfExtents として DebugDraw::Box を呼ぶ。
-// 投影方向 (-Y) を示す矢印線も中心から描画する。
+/// @file    DecalDebugPass.cpp
+/// @brief   DecalComponent の OBB ワイヤーフレーム可視化。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// Transform の worldScale * 0.5 を halfExtents として DebugDraw::Box を呼ぶ。
+/// 投影方向 (-Y) を示す矢印線も中心から描画する。
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>

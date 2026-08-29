@@ -1,9 +1,11 @@
-// FBZZ Engine
-// ModelImporterInternal.hpp | fbzz::asset
-// ModelImporter を複数 Translation Unit に分割するための内部宣言。
-// WHY: anonymous namespace では TU 間でシンボルを共有できないため、
-//      fbzz::asset 名前空間で宣言し各 .cpp が include して利用する。
-//      このヘッダーは src/Asset/ 専用であり、外部 include/ には置かない。
+/// @file    ModelImporterInternal.hpp
+/// @brief   ModelImporter を複数 Translation Unit に分割するための内部宣言。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
+///
+/// WHY: anonymous namespace では TU 間でシンボルを共有できないため、
+/// fbzz::asset 名前空間で宣言し各 .cpp が include して利用する。
+/// このヘッダーは src/Asset/ 専用であり、外部 include/ には置かない。
 #pragma once
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Renderer/Material.hpp>

@@ -1,10 +1,12 @@
-// FBZZ Engine
-// FzAssetFormat.hpp | fbzz::asset
-// fz* バイナリアセットのオンディスクレイアウト定義
-// WHY: Editor 側エクスポーターと Engine 側ローダーが同じ構造体を共有するため
-//      Engine の public include/ に置く。実行時のデシリアライズコストを最小化するため
-//      フォーマットは「ヘッダー + 連続したフラット配列」のみで構成し、
-//      ポインタ・可変長フィールド・パディングを持たない。
+/// @file    FzAssetFormat.hpp
+/// @brief   fz* バイナリアセットのオンディスクレイアウト定義。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// WHY: Editor 側エクスポーターと Engine 側ローダーが同じ構造体を共有するため
+/// Engine の public include/ に置く。実行時のデシリアライズコストを最小化するため
+/// フォーマットは「ヘッダー + 連続したフラット配列」のみで構成し、
+/// ポインタ・可変長フィールド・パディングを持たない。
 #pragma once
 #include <cstdint>
 
@@ -14,8 +16,21 @@ namespace fbzz::asset {
 // ヘッダー | 頂点配列 | インデックス配列
 // 頂点型は flags で切り替え (静的: Vertex / スキン: SkinnedVertex)
 
-constexpr uint32_t FZMESH_VERSION      = 1;
+// v2: 静的頂点の末尾に頂点カラー (float4) が付いた。スキン頂点は変わらない。
+constexpr uint32_t FZMESH_VERSION      = 2;
 constexpr uint32_t FZMESH_FLAG_SKINNED = 1u << 0;
+
+// v1 までの静的頂点。読み込み時の互換変換にだけ使う。
+//
+// WHY 残すか: 既に焼かれた .mesh / .fzasset を作り直させないため。読み手はバージョンを
+//      見てこちらで読み、色を白で埋めて renderer::Vertex へ広げる。書き手は常に新版。
+struct FzVertexV1 {
+    float position[3];
+    float normal[3];
+    float tangent[3];
+    float uv[2];
+};
+static_assert(sizeof(FzVertexV1) == 44, "FzVertexV1 must match the pre-color renderer::Vertex");
 
 struct FzMeshHeader {
     char     magic[4];        // "FZMH"

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// OcclusionCuller.cpp | fbzz::scene
-// CPU ソフトウェアオクルージョンカリングの実装
+/// @file    OcclusionCuller.cpp
+/// @brief   CPU ソフトウェアオクルージョンカリングの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <algorithm>
 #include <cmath>
@@ -19,6 +20,7 @@ void OcclusionCuller::Reset(const renderer::Camera& cam)
     m_proj  = cam.GetProjectionMatrix();
     m_nearZ = cam.m_near;
     m_farZ  = cam.m_far;
+    m_orthographic = cam.m_projection == renderer::ProjectionMode::Orthographic;
     std::fill(std::begin(m_depth), std::end(m_depth), 1.0f);
 }
 
@@ -71,8 +73,11 @@ bool OcclusionCuller::TestAndRaster(const math::Vector3& worldCenter, float worl
     // ビュー空間でのスクリーン半径 (近似式)
     // WHY: 射影行列の m[0][0] / m[1][1] はそれぞれ cotangent(fovX/2) / cotangent(fovY/2) に相当し、
     //      除することで正規化スクリーン空間の半径を求められる。厳密ではないが精度は十分。
-    const float ndcRx = worldRadius / viewZ * m_proj.m[0][0];
-    const float ndcRy = worldRadius / viewZ * m_proj.m[1][1];
+    // 平行投影は距離で縮まないので 1/viewZ を掛けない。掛けると引きの大きい
+    // 正投影カメラでは半径が数百分の 1 になり、見えているものが軒並み消える。
+    const float radiusScale = m_orthographic ? 1.0f : 1.0f / viewZ;
+    const float ndcRx = worldRadius * radiusScale * m_proj.m[0][0];
+    const float ndcRy = worldRadius * radiusScale * m_proj.m[1][1];
     const float screenRx = ndcRx * static_cast<float>(kWidth)  * 0.5f;
     const float screenRy = ndcRy * static_cast<float>(kHeight) * 0.5f;
 

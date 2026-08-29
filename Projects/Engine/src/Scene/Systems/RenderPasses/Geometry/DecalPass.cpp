@@ -1,7 +1,7 @@
-/// @file DecalPass.cpp
-/// @brief Deferred デカールパス
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    DecalPass.cpp
+/// @brief   Deferred デカールパス
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// 各 DecalComponent に対してフルスクリーントライアングルを 1 draw 発行する。
 /// PS が深度バッファからワールド座標を復元し、デカール OBB 外のフラグメントを

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ParticleSimulationRuntime.hpp | fbzz::scene
-// ParticleのCPU更新をRendererから分離してSystemSchedulerから実行する公開境界。
+/// @file    ParticleSimulationRuntime.hpp
+/// @brief   ParticleのCPU更新をRendererから分離してSystemSchedulerから実行する公開境界。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 namespace fbzz::physics { class World; }

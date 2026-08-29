@@ -1,7 +1,7 @@
-/// @file   ParticleMaterialFactory.cpp
-/// @brief  テクスチャ 1 枚から Particle 用 .mat を用意する共有ファクトリ
-/// @author Hasegawa Jin
-/// @date   2026-08-22
+/// @file    ParticleMaterialFactory.cpp
+/// @brief   テクスチャ 1 枚から Particle 用 .mat を用意する共有ファクトリ
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #include <Editor/Util/ParticleMaterialFactory.hpp>
 
 #include <Editor/Util/AssetPath.hpp>

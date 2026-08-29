@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetDatabase.cpp | fbzz::asset
-// GUID ⇄ アセットパスの双方向インデックス実装
+/// @file    AssetDatabase.cpp
+/// @brief   GUID ⇄ アセットパスの双方向インデックス実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -160,37 +161,51 @@ void RegisterLocked(const std::string& guid, const std::string& absPath, bool pr
 
 } // namespace
 
-bool AssetDatabase::ShouldHaveMeta(std::string_view lowerExt)
+bool AssetDatabase::ShouldHaveMeta(std::string_view lowerFileName)
 {
-    // 参照されうる原本アセットのみ。baked 生成物 (.fzasset/.mesh/.skel/.cso) は
-    // ソースから再生成されるため .meta を持たない (Library 隔離後は guid キーで引く)。
-    static constexpr std::string_view kExts[] = {
-        // 画像ソース
-        ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr", ".exr", ".bmp",
-        // モデルソース
-        ".fbx",
-        // native アセット (エディターで作る著作物)
-        ".mat", ".anim", ".animcontroller", ".animctrl", ".mask",
-        ".scene", ".terrain", ".fzdata", ".fnt", ".ibl",
-        // フォント原本。UIText.fontPath が .ttf/.ttc/.otf をパスで直接参照するため
-        // (動的フォントアトラス。Docs/design/font-system.md)、.fnt と同じく GUID が要る。
-        ".ttf", ".ttc", ".otf",
-        // 物理マテリアル。ColliderComponent がパスで参照するため GUID が要る
-        // (リネーム・移動しても参照が切れないように)。
-        ".physmat",
-        // Behavior Tree / VFX Graph。各 Component がパスで参照するため GUID が要る。
-        // WHY: Inspector で設定できるアセットは、Scene 保存時に guid: へ変換できなければ
-        //      フォルダ移動・リネームで参照が切れる。.vfx も同じ参照契約に揃える。
-        ".behaviortree", ".vfx",
-        // シェーダーソース (.mat から参照される)
-        ".hlsl",
-        // オーディオ。.synth は手続き効果音の定義で、他のクリップと同じく
-        // clipPath から参照されるため同じ扱いにする (Docs/design/audio-system.md)。
-        ".mp3", ".wav", ".ogg", ".flac", ".synth",
+    // 拡張子を持たないものは対象外。".gitignore" のような管理ファイルと
+    // "LICENSE" のような無拡張ファイルがここに落ちる。
+    // WHY 先頭ドットだけを弾くか: ".playmode_snapshot.scene" のようにドット始まりでも
+    //     拡張子を持つ実アセットがあるため、「ドット始まりは全部除外」にはできない。
+    const size_t dot = lowerFileName.rfind('.');
+    if (dot == std::string_view::npos || dot == 0) return false;
+    const std::string_view ext = lowerFileName.substr(dot);
+
+    // 拡張子として妥当な形だけを通す。
+    // WHY: EncodeGuidRefs はドキュメント中の全文字列にこの判定を掛けるため、
+    //      "Player.001" や "Score: 0.5" のような値までアセット候補として
+    //      ディスクを叩きに行かないよう、英字を含む短い英数字列に限る。
+    if (ext.size() < 2 || ext.size() > 17) return false;
+    bool hasAlpha = false;
+    for (const char c : ext.substr(1)) {
+        const auto uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc)) return false;
+        if (std::isalpha(uc)) hasAlpha = true;
+    }
+    if (!hasAlpha) return false;
+
+    // WHY 許可リストではなく除外リストか: 「Asset Browser には出るし Inspector でも
+    //     選べるのに ShouldHaveMeta に無く、guid が振られないので参照が壊れる」不具合を
+    //     拡張子を足すたびに繰り返してきた (Docs/design/audio-system.md の .flac)。
+    //     .md / .txt / .pdf のような資料も含め、原本は等しく GUID を持たせ、
+    //     再生成できる派生物だけを名指しで除外する。
+    static constexpr std::string_view kExcludedExts[] = {
+        ".meta",
+        // import / shader compile の生成物。GUID は原本の GUID から導出される (DeriveGuid)。
+        ".fzasset", ".mesh", ".skel", ".cso",
+        // ビルド生成物と作業用の一時ファイル。
+        ".dll", ".lib", ".pdb", ".exp", ".ilk", ".obj", ".exe", ".tmp", ".bak",
     };
-    for (const auto e : kExts)
-        if (lowerExt == e) return true;
-    return false;
+    for (const auto e : kExcludedExts)
+        if (ext == e) return false;
+
+    // ScriptCodeGen の出力。原本の .hpp から再生成されるので独立した GUID を持たない。
+    static constexpr std::string_view kExcludedSuffixes[] = { ".generated.hpp" };
+    for (const auto s : kExcludedSuffixes)
+        if (lowerFileName.size() >= s.size()
+            && lowerFileName.substr(lowerFileName.size() - s.size()) == s) return false;
+
+    return true;
 }
 
 bool AssetDatabase::ShouldHaveFolderMeta(std::string_view folderName)
@@ -363,7 +378,7 @@ void AssetDatabase::Init(const std::string& assetsRoot)
             continue;
         }
 
-        if (!ShouldHaveMeta(ext)) continue;
+        if (!ShouldHaveMeta(LowerCopy(util::FileSystem::GetFilename(absPath)))) continue;
         indexTarget(absPath);
     }
 
@@ -443,8 +458,7 @@ std::string AssetDatabase::GuidFromPath(const std::string& absPath)
         if (!ShouldHaveFolderMeta(util::FileSystem::PathToUtf8(dir.filename()))) return {};
         if (IsGeneratedModelPackageDir(dir)) return {};
     } else {
-        const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
-        if (!ShouldHaveMeta(ext)) return {};
+        if (!ShouldHaveMeta(LowerCopy(util::FileSystem::GetFilename(absPath)))) return {};
     }
 
     const std::string metaPath = absPath + ".meta";

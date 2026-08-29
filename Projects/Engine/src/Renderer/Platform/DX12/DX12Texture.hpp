@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Texture.hpp | fbzz::renderer
-// Default Heap テクスチャと永続CPU SRVを保持する DirectX 12 実装
+/// @file    DX12Texture.hpp
+/// @brief   Default Heap テクスチャと永続CPU SRVを保持する DirectX 12 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/ITexture.hpp>

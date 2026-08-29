@@ -1,11 +1,12 @@
-// FBZZ Engine
-// WaterComponent.hpp | fbzz::scene
-// 水面描画コンポーネント（ジオメトリ・Gerstner 波・マテリアル参照を管理）
-//
-// 視覚パラメータ（色・テクスチャ・Fresnel・泡・フローマップ等）は
-// materialPath が指す .mat ファイルで定義する。
-// WHY: パラメータをコンポーネントに持つと再利用・プリセット管理が難しい。
-//      fzmat に分離することで Inspector なしにシェーダーごとパラメータを差し替えられる。
+/// @file    WaterComponent.hpp
+/// @brief   水面描画コンポーネント（ジオメトリ・Gerstner 波・マテリアル参照を管理）。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 視覚パラメータ（色・テクスチャ・Fresnel・泡・フローマップ等）は
+/// materialPath が指す .mat ファイルで定義する。
+/// WHY: パラメータをコンポーネントに持つと再利用・プリセット管理が難しい。
+/// fzmat に分離することで Inspector なしにシェーダーごとパラメータを差し替えられる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

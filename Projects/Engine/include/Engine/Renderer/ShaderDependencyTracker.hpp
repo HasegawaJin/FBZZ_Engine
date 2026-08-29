@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ShaderDependencyTracker.hpp | fbzz::renderer
-// HLSLと再帰includeの更新時刻からCSOの鮮度を判定する
+/// @file    ShaderDependencyTracker.hpp
+/// @brief   HLSLと再帰includeの更新時刻からCSOの鮮度を判定する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <algorithm>

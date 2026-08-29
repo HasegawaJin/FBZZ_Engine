@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProceduralVFXTextures.cpp | fbzz::asset
-// VFX向けFlipbookとImpact DecalテクスチャのCPUプロシージャル生成実装
+/// @file    ProceduralVFXTextures.cpp
+/// @brief   VFX向けFlipbookとImpact DecalテクスチャのCPUプロシージャル生成実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma comment(lib, "ole32.lib") // DirectXTexのWIC PNGエンコーダーに必要
 
 #include <Engine/Asset/ProceduralVFXTextures.hpp>

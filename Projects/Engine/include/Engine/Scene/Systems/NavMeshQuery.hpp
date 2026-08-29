@@ -1,17 +1,18 @@
-// FBZZ Engine
-// NavMeshQuery.hpp | fbzz::scene
-// NavMesh に対する純粋なクエリ (最近傍ポリゴン / A* / Funnel 平滑化 / 高さサンプル)。
-//
-// WHY 分離するか:
-//   これらは元々 NavigationSystem.cpp の無名名前空間にあり、Agent の毎フレーム更新から
-//   しか呼べなかった。しかし「この 2 点間を実際に歩けるのか」は、Play を回して敵の
-//   挙動を眺める以外に確かめる手段が無く、AI (Command Bus の navmesh.path) からも
-//   Editor のデバッグ表示からも到達できない。ここへ出すことで、ランタイムが実際に
-//   使うのと同一のコードへ問い合わせできる。
-//
-//   別実装で経路を引き直してはならない。A* のコスト・areaMask の解釈・Funnel の
-//   ポータル左右判定が少しでも違うと「クエリでは通れるのに Agent は通らない」という、
-//   最も原因に辿り着けない食い違いが生まれる。
+/// @file    NavMeshQuery.hpp
+/// @brief   NavMesh に対する純粋なクエリ (最近傍ポリゴン / A* / Funnel 平滑化 / 高さサンプル)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// WHY 分離するか:
+/// これらは元々 NavigationSystem.cpp の無名名前空間にあり、Agent の毎フレーム更新から
+/// しか呼べなかった。しかし「この 2 点間を実際に歩けるのか」は、Play を回して敵の
+/// 挙動を眺める以外に確かめる手段が無く、AI (Command Bus の navmesh.path) からも
+/// Editor のデバッグ表示からも到達できない。ここへ出すことで、ランタイムが実際に
+/// 使うのと同一のコードへ問い合わせできる。
+///
+/// 別実装で経路を引き直してはならない。A* のコスト・areaMask の解釈・Funnel の
+/// ポータル左右判定が少しでも違うと「クエリでは通れるのに Agent は通らない」という、
+/// 最も原因に辿り着けない食い違いが生まれる。
 #pragma once
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Math/Vector3.hpp>

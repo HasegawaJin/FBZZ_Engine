@@ -1,13 +1,14 @@
-// FBZZ Engine
-// OcclusionCuller.hpp | fbzz::scene
-// CPU ソフトウェアオクルージョンカリング
-//
-// 概要:
-//   128x72 のリニア深度バッファを CPU 上に持ち、ワールド空間のバウンディング球を
-//   スクリーン空間に投影して可視判定とオクルーダー登録を行う。
-//
-// WHY: GPU Occlusion Query は結果が 1 フレーム遅延するため、高速移動シーンで
-//      誤カリングが起きやすい。CPU SW 方式は即時結果かつ実装が単純。
+/// @file    OcclusionCuller.hpp
+/// @brief   CPU ソフトウェアオクルージョンカリング。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// 概要:
+/// 128x72 のリニア深度バッファを CPU 上に持ち、ワールド空間のバウンディング球を
+/// スクリーン空間に投影して可視判定とオクルーダー登録を行う。
+///
+/// WHY: GPU Occlusion Query は結果が 1 フレーム遅延するため、高速移動シーンで
+/// 誤カリングが起きやすい。CPU SW 方式は即時結果かつ実装が単純。
 #pragma once
 
 #include <Engine/Renderer/Camera.hpp>
@@ -43,6 +44,9 @@ private:
     math::Matrix4 m_proj;
     float         m_nearZ = 0.1f;
     float         m_farZ  = 1000.0f;
+    // 平行投影では見かけの大きさが距離に依らない。スクリーン半径の式が変わるため、
+    // 射影の別をフレーム開始時に控えておく。
+    bool          m_orthographic = false;
 
     // ProjectPoint — ワールド座標を低解像度深度バッファ上のスクリーン座標へ射影する。
     bool ProjectPoint(const math::Vector3& worldPos,

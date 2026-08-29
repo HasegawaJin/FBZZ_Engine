@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptDllAbi.hpp | fbzz::scene
-// Script DLL とホスト実行ファイルの C++ ABI 互換性を検証する署名
+/// @file    ScriptDllAbi.hpp
+/// @brief   Script DLL とホスト実行ファイルの C++ ABI 互換性を検証する署名。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
 #pragma once
 
 #include "ComponentRegistry.hpp"
@@ -105,7 +106,9 @@ constexpr uint64_t kReflectionAbiVersion = 4;
 //      (衝突の強さ。仮想関数の並びは 3 から変わっていない)
 //   5: OptionalComponents の直後へ ExecuteInEditMode を追加
 //      (FBZZ_EXECUTE_ALWAYS による編集中実行の宣言)
-constexpr uint64_t kScriptVtableAbiVersion = 5;
+//   6: ExecuteInEditMode の直後へ OnSequenceEvent / OnSequenceFinished を追加
+//      (.sequence の EventTrack と終了通知)
+constexpr uint64_t kScriptVtableAbiVersion = 6;
 
 namespace detail {
 

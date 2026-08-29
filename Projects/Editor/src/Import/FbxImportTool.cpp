@@ -1,9 +1,10 @@
-// FBZZ Engine
-// FbxImportTool.cpp | fbzz::editor
-// FBX → fz* 変換パイプラインのオーケストレーター (BuildPipeline パターン)
-//
-// FbxImportTool → BuildPipeline() → IFbxSubExporter[] の順に変換責務を分割する。
-// 各 SubExporter は .fzasset / .anim / .mat / .meta を同一パッケージ配下に生成する。
+/// @file    FbxImportTool.cpp
+/// @brief   FBX → fz* 変換パイプラインのオーケストレーター (BuildPipeline パターン)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// FbxImportTool → BuildPipeline() → IFbxSubExporter[] の順に変換責務を分割する。
+/// 各 SubExporter は .fzasset / .anim / .mat / .meta を同一パッケージ配下に生成する。
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Import/AnimSubExporter.hpp>
 #include <Editor/Import/MatSubExporter.hpp>

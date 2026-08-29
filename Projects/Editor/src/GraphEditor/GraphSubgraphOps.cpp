@@ -1,6 +1,7 @@
-// FBZZ Engine
-// GraphSubgraphOps.cpp | fbzz::editor
-// 部分グラフ抽出と手動整列の実装
+/// @file    GraphSubgraphOps.cpp
+/// @brief   部分グラフ抽出と手動整列の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/GraphEditor/GraphSubgraphOps.hpp>
 
 #include <algorithm>

@@ -1,9 +1,11 @@
-// FBZZ Engine
-// SkeletonImporter.hpp | fbzz::asset
-// .skel バイナリ (FzSkelHeader フォーマット) → Skeleton デシリアライザ。
-// WHY: SkelSubExporter が FBX インポート時に書き出した .skel ファイルを
-//      ランタイムで読み込み、メッシュモデルとは独立してスケルトン構造を参照できるようにする。
-//      スキンなし FBX (アニメーション専用) からのインポートでも骨ノード階層を提供できる。
+/// @file    SkeletonImporter.hpp
+/// @brief   .skel バイナリ (FzSkelHeader フォーマット) → Skeleton デシリアライザ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-19
+///
+/// WHY: SkelSubExporter が FBX インポート時に書き出した .skel ファイルを
+/// ランタイムで読み込み、メッシュモデルとは独立してスケルトン構造を参照できるようにする。
+/// スキンなし FBX (アニメーション専用) からのインポートでも骨ノード階層を提供できる。
 #pragma once
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/Skeleton.hpp>

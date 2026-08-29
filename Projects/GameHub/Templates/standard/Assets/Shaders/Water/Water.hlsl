@@ -48,7 +48,8 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float    nearZ;
     float    farZ;
     float    waterSsrEnabled;
-    float2   _camPad;
+    float    isOrthographic;
+    float    _camPad;
 };
 
 // Water は半透明 Forward 描画で GBuffer に法線を書かないため、通常の SSR Compute の
@@ -279,6 +280,9 @@ float3 SampleWaterNormal(float2 worldXZ, float2 uv, float time)
 
 float LinearizeDepth(float rawDepth)
 {
+    // 平行投影では深度が既に線形。透視用の逆数式を通すと視空間 Z が狂い、
+    // 水深フェード・屈折・水面 SSR が一斉にずれる。
+    if (isOrthographic > 0.5f) return nearZ + rawDepth * (farZ - nearZ);
     return (nearZ * farZ) / max(farZ - rawDepth * (farZ - nearZ), 0.0001f);
 }
 

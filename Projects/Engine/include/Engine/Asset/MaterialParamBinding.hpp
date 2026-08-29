@@ -1,7 +1,7 @@
-/// @file MaterialParamBinding.hpp
-/// @brief .mat の params / textures を、シェーダーリフレクションに従って生バイト列へ束縛する
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    MaterialParamBinding.hpp
+/// @brief   .mat の params / textures を、シェーダーリフレクションに従って生バイト列へ束縛する
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY 描画パスから切り出すか:
 ///   この束縛は元々 GeometryPassHelpers.cpp の無名名前空間にあり、メッシュ描画からしか

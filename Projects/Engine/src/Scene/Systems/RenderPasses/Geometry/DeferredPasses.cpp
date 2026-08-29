@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPasses/DeferredPasses.cpp | fbzz::scene
-// Deferred パイプライン: GBuffer / DepthCopy / Lighting / SkinnedForward / ForwardTransparent
+/// @file    RenderPasses/DeferredPasses.cpp
+/// @brief   Deferred パイプライン: GBuffer / DepthCopy / Lighting / SkinnedForward / ForwardTransparent。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorTerrainWater.cpp | fbzz::editor
-// Terrain / Water 系 Component の Inspector 描画
+/// @file    InspectorTerrainWater.cpp
+/// @brief   Terrain / Water 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorTerrainWater.hpp"
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>

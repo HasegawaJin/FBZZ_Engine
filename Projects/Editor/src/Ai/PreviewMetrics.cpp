@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PreviewMetrics.cpp | fbzz::editor::ai
-// プレビュー RT の線形画素から評価指標を算出する実装
+/// @file    PreviewMetrics.cpp
+/// @brief   プレビュー RT の線形画素から評価指標を算出する実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Ai/PreviewMetrics.hpp>
 
 #include <algorithm>

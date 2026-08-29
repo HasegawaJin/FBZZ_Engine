@@ -1,15 +1,17 @@
-// FBZZ Engine
-// RenderPipeline.hpp | fbzz::scene
-// IRenderPass の登録と renderer::RenderGraph への変換を担う実行パイプライン
-// AddPass<T>() で型付きパスを、AddRawPass() でラムダ式パスをフレームごとに登録し、
-// Execute(ctx) が呼ばれた時点ですべてのパスを RenderGraph に組み込んで実行する。
-// 追加順が RenderGraph 上の優先度になる (依存関係が同一の場合のタイブレーク)。
-//
-// [TransientRTPool]
-// DeclareResource() で transient=true のリソースを宣言すると、Execute() 内で
-// Plan() → RebuildTransientPool() が走り、同一 aliasGroup のリソースが同一の
-// 物理 RT ハンドルを共有する。パスのコールバックからは ctx.getTransientRT(name) で
-// 確保済みハンドルを取得できる。
+/// @file    RenderPipeline.hpp
+/// @brief   IRenderPass の登録と renderer::RenderGraph への変換を担う実行パイプライン。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// AddPass<T>() で型付きパスを、AddRawPass() でラムダ式パスをフレームごとに登録し、
+/// Execute(ctx) が呼ばれた時点ですべてのパスを RenderGraph に組み込んで実行する。
+/// 追加順が RenderGraph 上の優先度になる (依存関係が同一の場合のタイブレーク)。
+///
+/// [TransientRTPool]
+/// DeclareResource() で transient=true のリソースを宣言すると、Execute() 内で
+/// Plan() → RebuildTransientPool() が走り、同一 aliasGroup のリソースが同一の
+/// 物理 RT ハンドルを共有する。パスのコールバックからは ctx.getTransientRT(name) で
+/// 確保済みハンドルを取得できる。
 #pragma once
 #include "IRenderPass.hpp"
 #include <Engine/Renderer/RenderGraph.hpp>

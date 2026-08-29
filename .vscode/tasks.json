@@ -36,7 +36,7 @@
         {
             "label": "Kill: Engine Processes",
             "type": "shell",
-            "command": "taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM FBZZVFXEditor.exe >nul 2>&1 & taskkill /F /T /IM Sandbox.exe >nul 2>&1 & taskkill /F /T /IM SandboxStandalone.exe >nul 2>&1 & exit 0",
+            "command": "taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM Sandbox.exe >nul 2>&1 & taskkill /F /T /IM SandboxStandalone.exe >nul 2>&1 & exit 0",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "silent",
@@ -122,13 +122,13 @@
 
         // ------------------------------------------------------------------
         // CMake Build — エディター (日常の編集ループで最も回す単位)
-        // WHY: Editor と VFXEditor は同じ Engine を共有し、SDK へも常に同じ版で
+        // WHY: Editor は Engine を共有し、SDK へも常に同じ版で
         //      入るため片方だけ古い状態を作らない。1 コマンドで両方を上げる。
         // ------------------------------------------------------------------
         {
             "label": "CMake: Build Editor (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZEditorLauncher FBZZVFXEditor",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZEditorLauncher",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -136,7 +136,7 @@
         {
             "label": "CMake: Build Editor (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZEditorLauncher FBZZVFXEditor",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZEditorLauncher",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -144,7 +144,7 @@
         {
             "label": "CMake: Build Editor (Release)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZEditorLauncher FBZZVFXEditor",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZEditorLauncher",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"

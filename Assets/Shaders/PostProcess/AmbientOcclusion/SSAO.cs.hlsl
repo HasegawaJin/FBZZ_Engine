@@ -47,7 +47,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
         return;
     }
     float3 origin   = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
-    float originDepth = LinearizeDepth(ndcDepth, nearZ, farZ);
+    float originDepth = LinearizeDepth(ndcDepth, nearZ, farZ, isOrthographic);
 
     // 半球サンプリング
     float occlusion = 0.0f;
@@ -83,7 +83,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
         if (sampleDepth >= 1.0f) continue;
 
         // ワールドZではなくカメラからの線形深度で判定し、カメラ回転によるAO反転を防ぐ。
-        float sceneDepth = LinearizeDepth(sampleDepth, nearZ, farZ);
+        float sceneDepth = LinearizeDepth(sampleDepth, nearZ, farZ, isOrthographic);
         float samplePosDepth = -mul(float4(samplePos, 1.0f), view).z;
         float rangeCheck = smoothstep(0.0f, 1.0f,
                                       SAMPLE_RADIUS / max(abs(originDepth - sceneDepth), EPSILON));

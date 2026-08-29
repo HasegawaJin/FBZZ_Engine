@@ -1,16 +1,17 @@
-// FBZZ Engine
-// RenderOperators.cpp | fbzz::editor
-// デバッグ表示とビューモードの Operator
-//
-// WHY: 移行前、これらは Debug メニュー (ImGui / ネイティブ) からしか切り替えられなかった。
-//      つまり **AI は viewport を撮れるのに、診断用の表示を出せなかった**。
-//      「敵がここへ来ない」を調べるのに NavMesh を可視化できず、
-//      「当たらない」を調べるのに Collider を出せず、
-//      粒子の重なりを疑っても overdraw ビューへ切り替えられない。
-//      AI が持っていたのは「絵を撮る」手段だけで、「何を写すか」を選べなかった。
-//
-//      表示の切り替えはシーンの内容を変えないので Undo には載せない (Action)。
-//      Docs/design/editor-operator-model.md
+/// @file    RenderOperators.cpp
+/// @brief   デバッグ表示とビューモードの Operator。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: 移行前、これらは Debug メニュー (ImGui / ネイティブ) からしか切り替えられなかった。
+/// つまり **AI は viewport を撮れるのに、診断用の表示を出せなかった**。
+/// 「敵がここへ来ない」を調べるのに NavMesh を可視化できず、
+/// 「当たらない」を調べるのに Collider を出せず、
+/// 粒子の重なりを疑っても overdraw ビューへ切り替えられない。
+/// AI が持っていたのは「絵を撮る」手段だけで、「何を写すか」を選べなかった。
+///
+/// 表示の切り替えはシーンの内容を変えないので Undo には載せない (Action)。
+/// Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>

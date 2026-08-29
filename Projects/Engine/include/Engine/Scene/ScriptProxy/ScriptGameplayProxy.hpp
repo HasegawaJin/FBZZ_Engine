@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptGameplayProxy.hpp | fbzz::scene
-// 新しい汎用ComponentをScript DLL境界から基本型だけで操作するProxy
+/// @file    ScriptGameplayProxy.hpp
+/// @brief   新しい汎用ComponentをScript DLL境界から基本型だけで操作するProxy。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <Math/Vector3.hpp>

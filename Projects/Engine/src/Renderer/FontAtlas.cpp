@@ -1,7 +1,7 @@
-/// @file FontAtlas.cpp
-/// @brief BMFont テキスト形式 / 旧独自形式の .fnt パースとページテクスチャのロード
-/// @author Hasegawa Jin
-/// @date 2026-06-02
+/// @file    FontAtlas.cpp
+/// @brief   BMFont テキスト形式 / 旧独自形式の .fnt パースとページテクスチャのロード
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 ///
 /// 対応する 2 形式:
 ///

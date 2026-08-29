@@ -1,10 +1,11 @@
-// FBZZ Engine
-// SelectionVisuals.hpp | fbzz::editor
-// Editor 全体で共有する選択・ホバー表示の描画ヘルパー
-//
-// WHY: Hierarchy / AssetBrowser / Inspector がそれぞれ別の色・太さで選択表示すると、
-//      ユーザーは「現在の操作対象」を毎回読み直す必要がある。選択・ホバー・主選択を
-//      共通パレットに集約し、視線移動だけで状態を判断できるようにする。
+/// @file    SelectionVisuals.hpp
+/// @brief   Editor 全体で共有する選択・ホバー表示の描画ヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
+///
+/// WHY: Hierarchy / AssetBrowser / Inspector がそれぞれ別の色・太さで選択表示すると、
+/// ユーザーは「現在の操作対象」を毎回読み直す必要がある。選択・ホバー・主選択を
+/// 共通パレットに集約し、視線移動だけで状態を判断できるようにする。
 #pragma once
 
 #include <Editor/Util/EditorTheme.hpp>

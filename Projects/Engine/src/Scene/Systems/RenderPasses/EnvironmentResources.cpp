@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EnvironmentResources.cpp | fbzz::scene
-// 空連動 IBL の状態オブジェクト — dirty 判定の実装。
+/// @file    EnvironmentResources.cpp
+/// @brief   空連動 IBL の状態オブジェクト — dirty 判定の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
 #include <Engine/Scene/Systems/RenderPasses/EnvironmentResources.hpp>
 #include <cmath>
 

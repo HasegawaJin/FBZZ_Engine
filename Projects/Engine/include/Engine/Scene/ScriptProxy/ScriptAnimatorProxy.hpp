@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptAnimatorProxy.hpp | fbzz::scene
-// Script から AnimatorComponent を操作するショートハンド
+/// @file    ScriptAnimatorProxy.hpp
+/// @brief   Script から AnimatorComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Math/Quaternion.hpp>

@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ColliderSync.cpp | fbzz::scene
-// ColliderComponent と physics::Collider の同期処理の実体。
-// PhysicsSystem (シミュレーション中) と DebugCollidersPass (可視化) の共通基盤。
+/// @file    ColliderSync.cpp
+/// @brief   ColliderComponent と physics::Collider の同期処理の実体。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// PhysicsSystem (シミュレーション中) と DebugCollidersPass (可視化) の共通基盤。
 #include "Engine/Scene/Systems/ColliderSync.hpp"
 
 #include "Engine/Scene/Scene.hpp"

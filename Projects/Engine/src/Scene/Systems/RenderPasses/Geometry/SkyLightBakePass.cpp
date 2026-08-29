@@ -1,13 +1,15 @@
-// FBZZ Engine
-// RenderPasses/SkyLightBakePass.cpp | fbzz::scene
-// 空連動 IBL (環境システム設計 Phase A) の「②SkyLightBake」パス。
-// SkyCapture が焼いた "SkyEnvCube" を irradiance / prefilter キューブマップへ畳み込み、
-// EnvironmentResources に動的 IBL テクスチャとして保持する。
-//
-// WHY (既存 compute の再利用):
-//   畳み込み自体は DX11IblBaker が editor の DDS ベイクで実証済み。本パスは抽象 IRenderer::BakeSkyLight
-//   を呼ぶだけで、DX11 側がその実証済み Compute (IBL.IrradianceConvolution / IBL.PrefilteredEnvMap) を
-//   キャプチャ済みキューブ SRV に対して走らせる。結果は ResourceManager::RegisterTexture で TextureTag 化する。
+/// @file    RenderPasses/SkyLightBakePass.cpp
+/// @brief   空連動 IBL (環境システム設計 Phase A) の「②SkyLightBake」パス。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// SkyCapture が焼いた "SkyEnvCube" を irradiance / prefilter キューブマップへ畳み込み、
+/// EnvironmentResources に動的 IBL テクスチャとして保持する。
+///
+/// WHY (既存 compute の再利用):
+/// 畳み込み自体は DX11IblBaker が editor の DDS ベイクで実証済み。本パスは抽象 IRenderer::BakeSkyLight
+/// を呼ぶだけで、DX11 側がその実証済み Compute (IBL.IrradianceConvolution / IBL.PrefilteredEnvMap) を
+/// キャプチャ済みキューブ SRV に対して走らせる。結果は ResourceManager::RegisterTexture で TextureTag 化する。
 #include "GeometryPasses.hpp"
 #include <Engine/Renderer/ITexture.hpp>
 #include <cstdint>

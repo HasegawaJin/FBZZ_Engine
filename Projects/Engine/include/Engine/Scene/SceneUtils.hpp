@@ -1,9 +1,10 @@
-// FBZZ Engine
-// SceneUtils.hpp | fbzz::scene
-// 起動・実行時にシーン / 物理 / UI サブシステムへ ProjectSettings を適用するユーティリティ
-//
-// WHY: Sandbox と EditorLauncher の両方が同じ「設定 → サブシステム反映」処理を必要とする。
-//      重複を避けるため Engine に集約し、どの起動モジュールからも参照できるようにする。
+/// @file    SceneUtils.hpp
+/// @brief   起動・実行時にシーン / 物理 / UI サブシステムへ ProjectSettings を適用するユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHY: Sandbox と EditorLauncher の両方が同じ「設定 → サブシステム反映」処理を必要とする。
+/// 重複を避けるため Engine に集約し、どの起動モジュールからも参照できるようにする。
 #pragma once
 
 #include <Engine/Core/Window.hpp>

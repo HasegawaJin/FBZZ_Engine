@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ChainConstraint.hpp | fbzz::physics
-// 複数剛体を固定距離でつなぐ鎖制約
+/// @file    ChainConstraint.hpp
+/// @brief   複数剛体を固定距離でつなぐ鎖制約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/Constraint.hpp>
 #include <vector>

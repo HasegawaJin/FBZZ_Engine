@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptTrailProxy.hpp | fbzz::scene
-// Script から TrailComponent を操作するショートハンド
+/// @file    ScriptTrailProxy.hpp
+/// @brief   Script から TrailComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Math/Vector3.hpp>

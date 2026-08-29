@@ -1,16 +1,17 @@
-// FBZZ Engine
-// main.cpp | fbzz::sandbox
-// Sandbox エディタ / スタンドアロンの起動分岐
-//
-// WHAT:
-//   Sandbox.exe --project <path>              -> エディタ起動
-//   Sandbox.exe --project <path> --standalone -> ゲームのみ起動
-//   Sandbox.exe (exe 隣に .fbzz_proj あり)     -> 配布物として Standalone 起動
-//   Sandbox.exe (引数なし)                    -> 開発用テンプレートを Editor 起動
-//
-// WHY: main.cpp は起動順序だけを読み取れる入口にする。
-//      引数解析、プロジェクト解決、Editor / Standalone のループ本体は専用ファイルへ分割し、
-//      実行モードごとの依存関係と責務を明確にする。
+/// @file    main.cpp
+/// @brief   Sandbox エディタ / スタンドアロンの起動分岐。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// WHAT:
+/// Sandbox.exe --project <path>              -> エディタ起動
+/// Sandbox.exe --project <path> --standalone -> ゲームのみ起動
+/// Sandbox.exe (exe 隣に .fbzz_proj あり)     -> 配布物として Standalone 起動
+/// Sandbox.exe (引数なし)                    -> 開発用テンプレートを Editor 起動
+///
+/// WHY: main.cpp は起動順序だけを読み取れる入口にする。
+/// 引数解析、プロジェクト解決、Editor / Standalone のループ本体は専用ファイルへ分割し、
+/// 実行モードごとの依存関係と責務を明確にする。
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
 #endif

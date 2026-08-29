@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialComponent.hpp | fbzz::scene
-// GameObject が参照する .mat マテリアルアセットと GPU Material キャッシュ
+/// @file    MaterialComponent.hpp
+/// @brief   GameObject が参照する .mat マテリアルアセットと GPU Material キャッシュ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 
 #include <Engine/Asset/AssetManager.hpp>

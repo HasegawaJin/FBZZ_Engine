@@ -1,8 +1,10 @@
-// FBZZ Engine
-// LifetimeSystem.hpp | fbzz::scene
-// LifetimeComponent を持つ GO の残り寿命を毎フレーム減算し、
-// 0 以下になったら DestroyQueue に積む。
-// FlushDestroyQueueSystem が実際の削除を行う。
+/// @file    LifetimeSystem.hpp
+/// @brief   LifetimeComponent を持つ GO の残り寿命を毎フレーム減算し、。
+/// @author  Hasegawa Jin
+/// @date    2026-06-10
+///
+/// 0 以下になったら DestroyQueue に積む。
+/// FlushDestroyQueueSystem が実際の削除を行う。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

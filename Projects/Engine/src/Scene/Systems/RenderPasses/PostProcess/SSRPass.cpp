@@ -1,8 +1,10 @@
-// FBZZ Engine
-// SSRPass.cpp | fbzz::scene
-// Screen Space Reflections パス — Compute Shader でレイマーチして映り込みを生成する。
-// WHY: キューブマップ反射は静的シーンしか映せないが、SSR は動的オブジェクトも正確に映す。
-//      GBuffer の法線・深度・金属度を活用するため、GBuffer 経路でのみ有効。
+/// @file    SSRPass.cpp
+/// @brief   Screen Space Reflections パス — Compute Shader でレイマーチして映り込みを生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// WHY: キューブマップ反射は静的シーンしか映せないが、SSR は動的オブジェクトも正確に映す。
+/// GBuffer の法線・深度・金属度を活用するため、GBuffer 経路でのみ有効。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>

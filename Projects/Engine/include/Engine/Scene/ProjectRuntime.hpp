@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectRuntime.hpp | fbzz::scene
-// Editor PlayとStandaloneで共有するプロジェクト実行状態と更新パイプライン
+/// @file    ProjectRuntime.hpp
+/// @brief   Editor PlayとStandaloneで共有するプロジェクト実行状態と更新パイプライン。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #pragma once
 
 #include <Engine/ProjectSettings.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AudioSpatialComponents.hpp | fbzz::scene
-// Reverb Zone、遮蔽、Mixer Sendの空間Audio制御Component
+/// @file    AudioSpatialComponents.hpp
+/// @brief   Reverb Zone、遮蔽、Mixer Sendの空間Audio制御Component。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
@@ -34,8 +35,14 @@ struct AudioOcclusionComponent {
     int obstacleLayerMask = -1;
     float volumeAttenuation = 0.45f;
     float lowPass = 0.35f;
+    // レイキャストの間隔 (秒)。毎フレーム撃つ必要はない。
     float updateInterval = 0.1f;
+    // 遮蔽の有無が切り替わったあと、実際の効きがそこへ届くまでの秒数。
+    // レイキャストの結果は 0/1 の二値なので、そのまま当てると物陰を横切るたびに音が跳ぶ。
+    float transitionTime = 0.15f;
     float currentOcclusion = 0.0f;
+    // レイキャストが最後に返した二値。currentOcclusion はここへ向かって動く。
+    float m_targetOcclusion = 0.0f;
     float updateTimer = 0.0f;
 
     const char* GetTypeName() const { return "Audio Occlusion"; }
@@ -46,6 +53,10 @@ struct AudioOcclusionComponent {
         r.FloatRange("volumeAttenuation", volumeAttenuation, 0.0f, 1.0f);
         r.FloatRange("lowPass", lowPass, 0.0f, 1.0f);
         r.Field("updateInterval", updateInterval);
+        r.BeginField("transitionTime", "transitionTime");
+        r.FloatRange("transitionTime", transitionTime, 0.0f, 1.0f);
+        r.Tooltip("遮蔽の切り替わりを馴染ませる秒数 (0 で即時)");
+        r.EndField();
         r.Readonly("currentOcclusion", currentOcclusion);
     }
 };
@@ -54,7 +65,6 @@ struct AudioMixerSendComponent {
     bool enabled = true;
     std::string busName = "Master";
     float sendLevel = 1.0f;
-    bool preFader = false;
 
     const char* GetTypeName() const { return "Audio Mixer Send"; }
     void Reflect(IReflector& r)
@@ -62,7 +72,6 @@ struct AudioMixerSendComponent {
         r.Field("enabled", enabled);
         r.Field("busName", busName);
         r.FloatRange("sendLevel", sendLevel, 0.0f, 1.0f);
-        r.Field("preFader", preFader);
     }
 };
 

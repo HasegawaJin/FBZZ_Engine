@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ScriptWaterProxy.hpp | fbzz::scene
-// Script から WaterComponent の Gerstner 波パラメータを操作するショートハンド。
-// 浮力スクリプトや水面エフェクトから水面高さを CPU 側で照会する用途にも使う。
+/// @file    ScriptWaterProxy.hpp
+/// @brief   Script から WaterComponent の Gerstner 波パラメータを操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 浮力スクリプトや水面エフェクトから水面高さを CPU 側で照会する用途にも使う。
 #pragma once
 
 #include <Math/Vector2.hpp>

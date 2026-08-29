@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PlayerControllerComponent.hpp | sandbox
-// RigidBody ベースの汎用プレイヤーコントローラースクリプト
+/// @file    PlayerControllerComponent.hpp
+/// @brief   RigidBody ベースの汎用プレイヤーコントローラースクリプト。
+/// @author  Hasegawa Jin
+/// @date    2026-06-19
 #pragma once
 
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>

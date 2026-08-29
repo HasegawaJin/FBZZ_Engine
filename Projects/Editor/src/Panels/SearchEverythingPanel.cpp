@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SearchEverythingPanel.cpp | fbzz::editor
-// シーン + アセット横断検索パネルの実装
+/// @file    SearchEverythingPanel.cpp
+/// @brief   シーン + アセット横断検索パネルの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Panels/SearchEverythingPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>

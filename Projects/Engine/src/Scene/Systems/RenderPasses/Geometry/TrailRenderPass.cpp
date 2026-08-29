@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPasses/Geometry/TrailRenderPass.cpp | fbzz::scene
-// TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)
+/// @file    RenderPasses/Geometry/TrailRenderPass.cpp
+/// @brief   TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 
 #include <Engine/Asset/AssetManager.hpp>
@@ -405,19 +406,26 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
         EnsureResources(*trail, ctx);
 
         if (trail->enabled && trail->beamMode) {
-            const auto transformPoint = [&go](const math::Vector3& local) {
+            const auto transformPoint = [&go, &trail](const math::Vector3& point) {
+                if (trail->beamWorldSpace) return point;
                 const math::Vector3 scaled{
-        local.x * go.transform.worldScale.x,
-        local.y * go.transform.worldScale.y,
-        local.z * go.transform.worldScale.z };
+        point.x * go.transform.worldScale.x,
+        point.y * go.transform.worldScale.y,
+        point.z * go.transform.worldScale.z };
     return go.transform.worldPosition +
         go.transform.worldRotation * scaled;
             };
             trail->ringHead = 0;
             trail->ringTail = 0;
             trail->ringCount = 0;
-            RingPushBack(*trail, { transformPoint(trail->beamStart), currentTime });
-            RingPushBack(*trail, { transformPoint(trail->beamEnd), currentTime });
+            // 折れ線が与えられていればそれを、無ければ従来どおり 2 端点を描く。
+            if (trail->beamPoints.size() >= 2) {
+                for (const math::Vector3& point : trail->beamPoints)
+                    RingPushBack(*trail, { transformPoint(point), currentTime });
+            } else {
+                RingPushBack(*trail, { transformPoint(trail->beamStart), currentTime });
+                RingPushBack(*trail, { transformPoint(trail->beamEnd), currentTime });
+            }
             trail->lastSampleTime = currentTime;
         } else if (trail->enabled) {
             const math::Vector3 samplePos = ResolveTrailSamplePosition(ctx.scene, go, *trail);

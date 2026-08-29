@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Quaternion.hpp | fbzz::math
-// クォータニオン回転 (ジンバルロック回避・Slerp補間)
+/// @file    Quaternion.hpp
+/// @brief   クォータニオン回転 (ジンバルロック回避・Slerp補間)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include "Vector3.hpp"

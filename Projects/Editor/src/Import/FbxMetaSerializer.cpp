@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FbxMetaSerializer.cpp | fbzz::editor
-// FBX .meta のモデルインポート設定シリアライズ
+/// @file    FbxMetaSerializer.cpp
+/// @brief   FBX .meta のモデルインポート設定シリアライズ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>

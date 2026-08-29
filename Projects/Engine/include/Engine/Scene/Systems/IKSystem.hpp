@@ -1,7 +1,9 @@
-// FBZZ Engine
-// IKSystem.hpp | fbzz::scene
-// AnimatorSystem が確定した FK ポーズに順序付き IK Solver を後処理として適用する。
-// TwoBone と FootPlace を同一システムで解き、地面判定は ctx.world に委譲する。
+/// @file    IKSystem.hpp
+/// @brief   AnimatorSystem が確定した FK ポーズに順序付き IK Solver を後処理として適用する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-30
+///
+/// TwoBone と FootPlace を同一システムで解き、地面判定は ctx.world に委譲する。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

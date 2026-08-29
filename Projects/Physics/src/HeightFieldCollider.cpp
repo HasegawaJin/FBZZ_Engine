@@ -1,6 +1,7 @@
-// FBZZ Engine
-// HeightFieldCollider.cpp | fbzz::physics
-// HeightFieldCollider の BVH 構築と Transform 同期
+/// @file    HeightFieldCollider.cpp
+/// @brief   HeightFieldCollider の BVH 構築と Transform 同期。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
 #include <Physics/HeightFieldCollider.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>

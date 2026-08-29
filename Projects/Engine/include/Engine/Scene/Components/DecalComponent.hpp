@@ -1,7 +1,7 @@
-/// @file DecalComponent.hpp
-/// @brief デカール投影コンポーネント
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    DecalComponent.hpp
+/// @brief   デカール投影コンポーネント
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// Transform の OBB をプロキシとして深度バッファからワールド座標を復元し、
 /// テクスチャを投影する。lifetime < 0 で永続、>= 0 で時間経過によりフェードアウト→削除。

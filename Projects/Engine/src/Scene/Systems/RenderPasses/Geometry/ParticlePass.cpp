@@ -158,17 +158,16 @@ struct ActiveForceField {
     uint32_t               channels;  // ParticleEmitter::forceFieldChannels と AND を取る
 };
 
-// 力場がこのエミッターに作用するか。
-// WHY 収集ではなく適用時に絞るか: 収集はパス先頭の 1 回だけで全エミッターが共有する。
-//     エミッターごとに収集し直すと O(エミッター数×オブジェクト数) に戻ってしまう。
+// 力場がこのエミッターに作用するか。収集はパス先頭で 1 回だけ行い全エミッターで
+// 共有するので、絞り込みは適用時に行う。
 bool AffectsEmitter(const ActiveForceField& field, uint32_t emitterChannels)
 {
     return (field.channels & emitterChannels) != 0u;
 }
 
 // シーンから有効な ParticleForceField を収集しワールド空間へ解決する。
-// WHY: エミッターごとに全 GameObject を走査すると O(エミッター数×オブジェクト数) に
-//      なるため、パス先頭で 1 回だけ収集して全エミッター (CPU/GPU) で共有する。
+// パス先頭で 1 回だけ収集して全エミッターで共有する (エミッターごとに走査すると
+// O(エミッター数×オブジェクト数) になる)。
 std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMask)
 {
     std::vector<ActiveForceField> fields;
@@ -194,8 +193,8 @@ std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMa
     }
 
     // WindZone をシーングローバルの風 (+乱流) として力場リストへ追加する。
-    // WHY: 草・雲と同じ WindZone 1 つでパーティクルもなびかせるため。
-    //      個別に強い風が欲しい場合は従来どおり ParticleForceField(Wind) を置けばよい。
+    // 草・雲と同じ WindZone 1 つでパーティクルもなびく。個別に強い風が要るなら
+    // ParticleForceField(Wind) を置く。
     const ActiveWindZone windZone = FindActiveWindZone(scene);
     if (windZone.active && windZone.strength > 0.0f) {
         ActiveForceField wind{};
@@ -293,13 +292,9 @@ void ApplyEmitterNoise(const ParticleEmitter& emitter,
 }
 
 // 周回 (orbital) と放射 (radial) の加速度を速度へ加える。
-// 式は ParticleGpuSim.cs.hlsl の ApplyOrbitalVelocity と一致させること (CPU/GPU で挙動を揃える)。
-//
-// origin は position と同じ空間でのエミッター原点。
-// WHY: World 空間シミュレーションでは粒子位置がワールド座標なのに emitPosition は
-//      エミッターローカルのオフセットで、そのまま引くと回転中心がずれる。
-//      呼び出し側に空間を合わせて渡させることで、Local/World の両方で同じ式が使える
-//      (GPU 側の gEmitterPos も同じ理由でワールド変換済みの値が入っている)。
+// 式は ParticleGpuSim.cs.hlsl の ApplyOrbitalVelocity と一致させること。
+// origin は position と同じ空間でのエミッター原点 — 呼び出し側に空間を合わせさせることで
+// Local/World の両方で同じ式が使える (GPU 側の gEmitterPos も同じ理由)。
 void ApplyOrbitalVelocity(const ParticleEmitter& emitter,
                           const math::Vector3&   origin,
                           const math::Vector3&   position,
@@ -381,12 +376,9 @@ float Random01(ParticleEmitter& emitter)
 // 粒子ごとの色ゆらぎ倍率を 1 粒子ぶん引く。RGB を各チャンネル独立に [1-v, 1+v] 倍して
 // 群れの単調さを崩す。alpha は返さない (フェード制御なのでゆらすと消え際が汚くなる)。
 //
-// WHY 色そのものではなく倍率を返すか:
-//   グラデーション使用時は色が毎フレーム作り直されるため、スポーン時に色へ焼き込むと
-//   翌フレームには消える。全テンプレートが useColorGradient を使っており、
-//   Fire の "Color Variation" / Explosion の "Fireball Variation" は CPU 経路で
-//   完全に無効だった。倍率として持ち、色を作り直すたびに掛け直す。
-// CPU/GPU どちらのスポーン経路からも同じ乱数列で呼ぶため、結果は決定論的に一致する。
+// 色ではなく倍率を返すのは、グラデーション使用時に色が毎フレーム作り直されるため
+// (スポーン時に焼き込むと翌フレームには消える)。
+// CPU/GPU どちらのスポーン経路からも同じ乱数列で呼ぶので結果は決定論的に一致する。
 math::Vector3 NextColorVariation(ParticleEmitter& emitter)
 {
     const float variation = Clamp01(emitter.settings.colorVariation);
@@ -402,8 +394,27 @@ math::Vector3 NextColorVariation(ParticleEmitter& emitter)
 
 // 寿命 t における粒子色をリニアで求める。グラデーション経路と start/end 経路の
 // どちらでも、色空間変換とゆらぎの適用順序を 1 か所に集める。
-// WHY: この 3 手順 (評価 → リニア化 → ゆらぎ) が 3 か所へ散っていたため、
-//      更新ループだけがゆらぎを取りこぼしていた。
+// 散らすと (以前そうだったように) 更新ループだけがゆらぎを取りこぼす。
+// 発生量の時間倍率。emitRate へ掛ける。
+// 粒の寿命ではなく再生時刻で引く — これはエミッターの «出し方» であって粒の性質ではない。
+[[nodiscard]] float EmitRateCurveScale(const ParticleEmitter& emitter)
+{
+    if (!emitter.settings.useEmitRateCurve) return 1.0f;
+    const float span = (std::max)(emitter.settings.duration, 0.0001f);
+    float t = emitter.runtime.playTime / span;
+    // loop するエミッターは 1 周ごとに同じ形を繰り返す。
+    if (emitter.settings.loop) t -= std::floor(t);
+    return (std::max)(emitter.settings.emitRateCurve.Evaluate(Clamp01(t)), 0.0f);
+}
+
+// 粒の «速さ» を speedRange で正規化した 0..1。
+// Local 空間では velocity もローカル量なので、エミッターをスケールすると読みが変わる。
+[[nodiscard]] float NormalizedParticleSpeed(const ParticleEmitter& emitter, const Particle& particle)
+{
+    const float range = (std::max)(emitter.settings.speedRange, 0.0001f);
+    return Clamp01(particle.velocity.Length() / range);
+}
+
 math::Vector4 EvaluateParticleColorLinear(const ParticleEmitter& emitter,
                                           const Particle& particle, float normalizedAge)
 {
@@ -414,6 +425,16 @@ math::Vector4 EvaluateParticleColorLinear(const ParticleEmitter& emitter,
     color.x *= particle.colorScale.x;
     color.y *= particle.colorScale.y;
     color.z *= particle.colorScale.z;
+    // 速さによる色。寿命の色へ «乗算» する。置き換えると、跳ね返って減速した粒だけ
+    // 寿命の色を失う。
+    if (emitter.settings.useSpeedColorGradient) {
+        const math::Vector4 tint = emitter.settings.speedColorGradient.EvaluateLinear(
+            NormalizedParticleSpeed(emitter, particle));
+        color.x *= tint.x;
+        color.y *= tint.y;
+        color.z *= tint.z;
+        color.w *= tint.w;
+    }
     return color;
 }
 
@@ -521,9 +542,8 @@ math::Vector4 ComputeSpriteRect(const ParticleEmitter& emitter, float normalized
 
 math::Vector3 TransformEmitterPoint(const Transform& transform, const math::Vector3& localPoint)
 {
-    // WHY: Transform::position は親基準のローカル座標であり、子 GameObject に Emitter を置くと
-    //      親 Player / Bone の移動が反映されない。Particle は描画時点のワールド空間で保持するため、
-    //      worldPosition/worldRotation/worldScale から発生点を解決する。
+    // Transform::position は親基準のローカル座標なので、子 GO に置くと親の移動が乗らない。
+    // Particle はワールド空間で保持するので world* から発生点を解決する。
     const math::Vector3 scaledLocal = {
         localPoint.x * transform.worldScale.x,
         localPoint.y * transform.worldScale.y,
@@ -659,11 +679,10 @@ const MeshShapeTriangle& PickMeshShapeTriangle(ParticleEmitter& emitter)
     return found == triangles.end() ? triangles.back() : *found;
 }
 
-// WHAT: GPUスキニングと同じ4ウェイト線形ブレンドをCPU側の発生点にだけ適用する。
-// WHY: 粒子本体はGPUシミュレーションのまま、読み戻しなしで現在のSkinnedAnimationへ追従できる。
-// WHY 法線を w=0 で流すか: 逆転置行列は Animator が持っていない。ボーン行列は回転と平行移動が
-//     主なので、平行移動だけ落とせば向きは十分合う (一様でないボーンスケールを掛けたモデルだけ
-//     ずれるが、スキンメッシュでそれを使うことはまず無い)。
+// GPU スキニングと同じ 4 ウェイト線形ブレンドを CPU 側の発生点にだけ適用する。
+// 粒子本体は GPU シミュレーションのまま、読み戻しなしで SkinnedAnimation へ追従できる。
+// 法線を w=0 で流すのは逆転置行列を Animator が持たないため。ボーン行列は回転と平行移動が
+// 主なので、平行移動だけ落とせば向きは十分合う。
 void SkinMeshShapeVertex(const MeshShapeVertex& vertex, const AnimatorComponent& animator,
                          math::Vector3& outPosition, math::Vector3& outNormal)
 {
@@ -756,11 +775,9 @@ bool WarnParticleMaterialOnce(const std::string& path)
 }
 
 // カスタムシェーダーが宣言した MaterialConstants (b2) 1 本ぶんの解決結果。
-//
-// WHY .mat 単位でキャッシュするか: 解決にはシェーダーのロードとリフレクションが要る。
-//     同じ .mat を 20 個のエミッターが共有していても、名前引きと Upload は 1 回で足りる。
-// WHY 値で持つか (shared_ptr にしないか): 下のキャッシュの要素としてしか存在しない。
-//     unordered_map はノード単位で確保するので rehash しても要素のアドレスは動かない。
+// 解決にはシェーダーのロードとリフレクションが要るので .mat 単位でキャッシュする。
+// 値で持つのは下のキャッシュの要素としてしか存在しないから (unordered_map はノード単位で
+// 確保するので rehash しても要素のアドレスは動かない)。
 struct ParticleMaterialBinding {
     renderer::ShaderDescriptor                            descriptor;
     renderer::ResourceHandle<renderer::ConstantBufferTag> paramsCB;
@@ -825,10 +842,8 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialPar
     return binding.paramsCB;
 }
 
-// .mat の blend_mode をパーティクルの合成モードへ。
-// WHY 変換が要るか: RenderState.hpp の BlendMode は Opaque も持つが、パーティクルは
-//     半透明前提で PSO が 3 種類しか無い。Opaque が来たら加算へ倒す
-//     (.mat の作り間違いで «板が並ぶ» より、光って見える方が原因に気付きやすい)。
+// .mat の blend_mode をパーティクルの合成モードへ。パーティクルは半透明前提で PSO が
+// 3 種類しか無いので、Opaque が来たら加算へ倒す («板が並ぶ» より気付きやすい)。
 ParticleBlendMode ParticleBlendFromMaterial(renderer::BlendMode blend)
 {
     switch (blend) {
@@ -867,13 +882,9 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
 {
     // 見た目のテクスチャは 3 枚とも .mat の [textures] から来る。
     //   albedo = 素材 / normal = 歪みベクトル専用マップ / tex5 = Motion Vector アトラス
-    // WHY: 以前は albedo だけ .mat で、歪みと MV はコンポーネントのパス文字列だった。
-    //      «素材を差し替えたのに歪みだけ前のまま» が起きるうえ、.mat を共有しても
-    //      その 2 枚だけエミッターごとに貼り直すことになっていた。
-    //
-    // 未設定なら既定 .mat へ落とす。1x1 白は alpha=1 なので、そのまま描くと
-    // 粒子が「不透明な四角」になり、素材の付け忘れが最も分かりにくい形で表に出る。
-    // NOTE: 既定 .mat が無いプロジェクトでは LoadMaterial が失敗し、従来どおり白へ落ちる。
+    // 未設定なら既定 .mat へ落とす。1x1 白は alpha=1 なので、そのまま描くと粒子が
+    // 「不透明な四角」になり、素材の付け忘れが最も分かりにくい形で表に出る。
+    // 既定 .mat が無いプロジェクトでは LoadMaterial が失敗し、従来どおり白へ落ちる。
     const bool usingFallback = emitter.settings.materialPath.empty();
     const std::string resolvedMaterial =
         usingFallback ? std::string(PARTICLE_FALLBACK_MATERIAL) : emitter.settings.materialPath;
@@ -909,9 +920,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
                 emitter.runtime.loadedMotionVectorTexturePath = motionTex;
             }
             // .mat の [params] albedo を色調整として引き継ぐ。
-            // WHY: materialPath を「描画設定の単一の信頼元」と定義しておきながら、
-            //      テクスチャとブレンドしか読んでいなかったため色調整だけが素通りしていた。
-            //      オーサリング値は sRGB なので、他の色と同じくリニアへ揃えて渡す。
+            // オーサリング値は sRGB なので、他の色と同じくリニアへ揃えて渡す。
             math::Vector4 tint{ 1.0f, 1.0f, 1.0f, 1.0f };
             if (const auto param = mat->params.find("albedo"); param != mat->params.end()) {
                 const auto& values = param->second;
@@ -924,14 +933,10 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             emitter.runtime.materialTint = ParticleSrgbToLinear(tint);
 
             // .mat が shader を指定していれば描画シェーダーを差し替える。
-            // WHY 既定 .mat では見ないか: フォールバックは担当者が選んだものではないので、
-            //     未設定にした瞬間に描画そのものが化けるのは避ける (blendMode と同じ判断)。
-            //
-            // WHY render_path を要求するか:
-            //   パーティクルの頂点は ParticleVertex (92B) で、b2 には ParticleRenderConstants が
-            //   来る。メッシュ用シェーダーはどちらも別物として読むため、割り当てると
-            //   «クラッシュせず静かに壊れた絵» になる。原因が絵から辿れない種類の事故なので
-            //   宣言で弾く。UI (UISystem) / Decal (DecalPass) と同じ判断。
+            // 既定 .mat では見ない — 未設定にした瞬間に描画が化けるのは避ける (blendMode と同じ)。
+            // render_path を要求するのは、頂点が ParticleVertex (92B)・b2 が
+            // ParticleRenderConstants で、メッシュ用シェーダーを割り当てると
+            // «クラッシュせず静かに壊れた絵» になるため。UI / Decal と同じ判断。
             const bool declaredForParticles = (mat->renderPath == asset::RenderPath::Particle);
             if (!usingFallback && !declaredForParticles && !mat->shaderPath.empty()
                 && WarnParticleMaterialOnce(resolvedMaterial)) {
@@ -947,10 +952,9 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
                 emitter.runtime.customShader = shaderPath.empty()
                     ? renderer::ResourceHandle<renderer::ShaderTag>{}
                     : resources.LoadShader(shaderPath);
-                // WHY 失敗を明示するか: ここで黙って組み込みへ落ちると、テクスチャを
-                //     持たない .mat では 1x1 白が貼られて «白い四角» が並ぶ。
-                //     手続きシェーダーの素材ほどテクスチャを持たないため、
-                //     一番起きやすい失敗が一番原因の分かりにくい絵になる。
+                // 黙って組み込みへ落ちると、テクスチャを持たない .mat では «白い四角» が並ぶ。
+                // 手続きシェーダーほどテクスチャを持たないので、一番起きやすい失敗が
+                // 一番分かりにくい絵になる。
                 if (!shaderPath.empty() && !emitter.runtime.customShader.IsValid()) {
                     FBZZ_LOG_WARN("Particle material '%s' references shader '%s' but it failed to "
                                   "load (not compiled?). Falling back to the built-in particle "
@@ -960,14 +964,11 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
                 }
             }
             // カスタムシェーダーが MaterialConstants を宣言していれば .mat の [params] を流す。
-            // WHY 毎フレーム引き直すか: .mat を編集した結果をエディタで即座に絵へ出すため。
-            //     解決自体は .mat 単位で 1 パス 1 回に畳んである。
+            // 毎フレーム引き直すのは編集結果を即座に絵へ出すため (解決は .mat 単位で 1 回)。
             emitter.runtime.materialParamsCB = ResolveParticleMaterialParams(
                 resources, resolvedMaterial, *mat, emitter.runtime.customShader);
-            // 見た目一式を .mat から «読む»。settings へは書き戻さない。
-            // WHY: settings はシーン保存対象なので、描画パスが書き込むと
-            //      «触っていないのに保存内容が変わる» / «Inspector で変えても戻る» が起きる。
-            //      以前 blendMode だけこれをやっていて、両方の症状が出ていた。
+            // 見た目一式を .mat から «読む»。settings はシーン保存対象なので書き戻さない
+            // («触っていないのに保存内容が変わる» / «Inspector で変えても戻る» が起きる)。
             emitter.runtime.material      = mat->particle;
             emitter.runtime.resolvedBlend = ParticleBlendFromMaterial(mat->blendMode);
             // アトラス分割は 0 だと UV 矩形が発散する。.mat は手書きできるのでここで丸める。
@@ -991,10 +992,9 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
     }
 }
 
-// GPU ソートを実際に走らせるか。
-// WHY: 判定を「バッファが確保済みか」に置くと、renderCB を作る時点 (描画前) と
-//      ソートを実行する時点 (Tick 内) で答えが食い違い、初回フレームだけ
-//      ソート無効の絵が出る。判定材料をシェーダーの有無だけにして 1 か所へ寄せる。
+// GPU ソートを実際に走らせるか。判定材料はシェーダーの有無だけ。
+// 「バッファが確保済みか」で見ると renderCB を作る時点と実行する時点で答えが食い違い、
+// 初回フレームだけソート無効の絵が出る。
 bool ShouldSortGpuParticles(const ParticleEmitter& emitter, const RenderPassHandles& handles)
 {
     return emitter.settings.sortMode != ParticleSortMode::None
@@ -1064,9 +1064,8 @@ void UpdateParticleRenderConstants(ParticleEmitter& emitter,
 }
 
 // 自己影用の密度 RT を、このパスで最初に使うときだけクリアして光源行列を流し込む。
-// RT / CB の生成は RenderSystem 側 (静的リソース) が持つ。
-// WHY: RenderPassHandles はフレームごとに作り直される値型なので、
-//      ここで遅延生成すると毎フレーム新しい RT を作って漏らす。
+// RT / CB の生成は RenderSystem 側 (静的リソース) が持つ ─ RenderPassHandles は毎フレーム
+// 作り直される値型なので、ここで遅延生成すると RT を漏らす。
 // 戻り値 false = 使えない (未生成 / シェーダー未ロード)。
 bool PrepareParticleSelfShadowTarget(RenderPassContext& ctx, bool& inoutClearedThisPass)
 {
@@ -1096,18 +1095,13 @@ bool PrepareParticleSelfShadowTarget(RenderPassContext& ctx, bool& inoutClearedT
 }
 
 // ビルボード頂点をエミッター 1 個ぶんずつ貸し出すプール。
-//
-// WHY 共有の 1 本 (旧 h.particleVB) をやめたか:
-//   エミッターごとに Update → Submit を繰り返す構造は DX12 で成立しない。Submit は
-//   コマンドリストへの記録でしかなく、GPU が頂点を読むのはフレーム終端なので、
-//   2 個目のエミッターの Update が 1 個目の Draw の中身まで差し替えてしまう
-//   (詳細は DynamicVertexBufferPool.hpp)。エミッターごとに別バッファを借りる。
+// 共有 1 本だと DX12 で成立しない。Submit はコマンドリストへの記録でしかなく GPU が
+// 頂点を読むのはフレーム終端なので、2 個目の Update が 1 個目の Draw まで差し替える
+// (詳細は DynamicVertexBufferPool.hpp)。
 renderer::DynamicVertexBufferPool g_particleVertexPool;
 
 // このフレームに本番描画したエミッターの記録 (どのバッファへ何クワッド積んだか)。
-// WHY: Overdraw 可視化は別パスなので、本番描画の結果を引き継がないと測る対象がずれる。
-//      従来は共有バッファ 1 本を前提に「最後のエミッターの中身」を全エミッターぶん
-//      数え直しており、エミッターが 2 個以上あると枚数が実際と食い違っていた。
+// Overdraw 可視化は別パスなので、本番描画の結果を引き継がないと測る対象がずれる。
 struct ParticleDrawRecord {
     const ParticleEmitter*                        emitter = nullptr;
     renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
@@ -1115,24 +1109,17 @@ struct ParticleDrawRecord {
 };
 std::vector<ParticleDrawRecord> g_particleDrawRecords;
 
-// 連続リボン (trailRibbon) の帯頂点用。帯はカメラへ正対させるので形がビューごとに変わる。
-// エミッターに 1 本持たせると、エディタの Scene View と Game View で同じバッファを
-// 別の形で 2 回書くことになり、DX12 では先に記録した Draw まで巻き添えになる。
+// 連続リボン (trailRibbon) の帯頂点用。帯はカメラへ正対するのでビューごとに形が変わり、
+// エミッターに 1 本だと Scene View と Game View が同じバッファを 2 回書いてしまう。
 renderer::DynamicVertexBufferPool g_trailRibbonVertexPool;
 
 // 1 エミッターぶんの密度を光源側 RT へ積む。
-//
-// 呼ぶ位置が重要: そのエミッターの頂点バッファをアップロードした直後、本番描画の前。
-// WHY: 密度は「実際に描くのと同じ形」で測らなければ意味がない。
-//
-// NOTE: 光源行列は専用 CB から渡す。h.frameCB を書き換えると後続の全パスへ漏れる
-//       (ShadowPass が書き換えて良いのは、あれがパスの先頭にいるから)。
-//
-// NOTE: この構造上、あるエミッターが受ける自己影は「自分自身 + 先に処理されたエミッター」
-//       までしか含まれない。単一エミッターの煙・雲 (自己影が最も効く形) では完全に正しく、
-//       複数エミッターを重ねた場合は後ろのものほど多く遮られる、という順序依存が残る。
-//       完全にするには全エミッターの形を一度に保持する別バッファが要り、
-//       粒子数ぶんのメモリを二重に持つことになるため、この近似を採る。
+// 呼ぶ位置が重要: 頂点バッファをアップロードした直後、本番描画の前
+// (密度は「実際に描くのと同じ形」で測らないと意味がない)。
+// 光源行列は専用 CB から渡す。h.frameCB を書き換えると後続の全パスへ漏れる。
+// 自己影に含まれるのは「自分自身 + 先に処理されたエミッター」まで。単一エミッターの
+// 煙・雲では完全に正しく、重ねた場合だけ順序依存が残る (完全にすると粒子数ぶんの
+// メモリを二重に持つことになるのでこの近似を採る)。
 void AccumulateParticleSelfShadowDensity(const ParticleEmitter& emitter, int quadCount,
                                          renderer::ResourceHandle<renderer::BufferTag> vertexBuffer,
                                          RenderPassContext& ctx)
@@ -1161,15 +1148,10 @@ void AccumulateParticleSelfShadowDensity(const ParticleEmitter& emitter, int qua
 }
 
 // 1 エミッターぶんの per-particle Trail を、連続した帯 (リボン) として描く。
-//
-// WHY: ビルボードを履歴点へ並べる方式は「点を細かく打てば線に見える」だけで、
-//      太くすると必ず粒の連なりが露見する。剣閃・魔法の軌跡のように
-//      幅のある帯が主役の表現はそれでは作れない。
-//      履歴点をポリラインとみなし、Trail ノードと同じマイター接合で帯を張る。
-//
-// NOTE: 色は帯の長さ方向へ colorStart → colorEnd を配る (Trail.hlsl の age)。
-//       粒子ごとの色ゆらぎは 1 DrawCall へまとめる都合で乗らない。
-//       粒ごとに色を変えたい場合はビルボード方式 (trailRibbon = false) を使う。
+// ビルボードを履歴点へ並べる方式は太くすると粒の連なりが露見するので、履歴点を
+// ポリラインとみなして Trail ノードと同じマイター接合で帯を張る。
+// 色は帯の長さ方向へ colorStart → colorEnd を配る (Trail.hlsl の age)。粒子ごとの
+// 色ゆらぎは 1 DrawCall へまとめる都合で乗らない (要るならビルボード方式を使う)。
 void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
                               int particleCount, RenderPassContext& ctx)
 {
@@ -1302,10 +1284,9 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
     SubmitCounted(ctx, dc);
 }
 
-// blendMode から PSO を選ぶ。CPU/GPU 双方の描画経路で同じ判定を使う。
-// WHY: 判定が 2 か所に散っていると、ブレンドモードを増やしたときに片方だけ
-//      追従して「CPU では正しいが GPU では加算のまま」という差が生まれる。
-// distortion は背景色を差し替える都合上、加算では画が破綻するためアルファへ倒す。
+// blendMode から PSO を選ぶ。CPU/GPU 双方の描画経路で同じ判定を使う
+// (散らすと「CPU では正しいが GPU では加算のまま」という差が生まれる)。
+// distortion は背景色を差し替えるので、加算では画が破綻する。アルファへ倒す。
 renderer::ResourceHandle<renderer::PipelineStateTag> SelectParticlePSO(
     const ParticleEmitter& emitter,
     renderer::ResourceHandle<renderer::PipelineStateTag> additivePSO,
@@ -1332,11 +1313,9 @@ GameObject* FindInSubtree(GameObject& root, const std::string& objectName)
     return nullptr;
 }
 
-// SubEmitterへイベント数分のBurstを積む。参照切れはVFXの縮退として無視する。
-// emitter.settings.subEmitterScopeRoot が有効なら、その GameObject 配下だけを名前で探す。
-// WHY: VFX Graph が生成する実体はノード名そのものを名乗るため、同じ .vfx を 2 箇所へ置くと
-//      シーン全体の名前引きでは隣のインスタンスを掴む。エフェクト内へ閉じることで、
-//      「片方を撃つともう片方から煙が出る」種類の取り違えが起きなくなる。
+// SubEmitter へイベント数分の Burst を積む。参照切れは VFX の縮退として無視する。
+// subEmitterScopeRoot が有効ならその GameObject 配下だけを名前で探す。VFX Graph の実体は
+// ノード名そのものを名乗るので、シーン全体で引くと同じ .vfx の隣のインスタンスを掴む。
 void QueueSubEmitter(Scene& scene, const ParticleEmitter& emitter,
                      const std::string& objectName, int count)
 {
@@ -1470,12 +1449,10 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
         break;
     }
 
-    // 初速のばらつきは 3 軸へ等方に掛ける。
-    // WHY: 以前は X/Z だけに乱数を掛けていたため、emitVelocity が上向き (炎・煙・噴煙) の
-    //      エミッターでは主軸方向の分散がゼロになり、全粒子が同じ速度で上がる硬い前線に
-    //      なっていた。Sphere/Cone 形状は shapeVelocity 側で別途方向を持つので、
-    //      ここは純粋に「initial velocity の揺らぎ」だけを担当する。
-    //      GPU 経路 (BuildGpuSpawnEntry) と必ず同じ式・同じ乱数消費順にすること。
+    // 初速のばらつきは 3 軸へ等方に掛ける。1 軸でも欠けると、その向きへ出すエミッターで
+    // 分散がゼロになり全粒子が同じ速度で進む硬い前線になる。
+    // 方向そのものは Sphere/Cone の shapeVelocity が持つので、ここは揺らぎだけを担当する。
+    // GPU 経路 (BuildGpuSpawnEntry) と必ず同じ式・同じ乱数消費順にすること。
     const float rx = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const float ry = RandomSigned01(emitter) * emitter.settings.velocitySpread;
     const float rz = RandomSigned01(emitter) * emitter.settings.velocitySpread;
@@ -1486,9 +1463,8 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     };
     p.velocity = transformVector(localVelocity);
     p.velocity = p.velocity + shapeVelocity;
-    // エミッターの移動を初速へ引き継ぐ。移動する剣・ロケットの火花が置き去りにならない。
-    // Local space シミュレーションでは粒子座標がエミッター基準で、親の移動は
-    // 描画時の変換で既に反映されるため、ここで足すと二重に効く。World のときだけ加算する。
+    // エミッターの移動を初速へ引き継ぐ (移動する剣・ロケットの火花が置き去りにならない)。
+    // Local では親の移動が描画時の変換で既に乗るので、World のときだけ加算する。
     if (emitter.settings.inheritVelocity != 0.0f
         && emitter.settings.simulationSpace == ParticleSimulationSpace::World) {
         p.velocity = p.velocity + emitter.runtime.emitterVelocity * Clamp01(emitter.settings.inheritVelocity);
@@ -1718,7 +1694,8 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         {
             // lodRateScale は CPU 経路と同じく発生レートへ掛ける。掛け忘れると
             // 遠距離のエミッターが GPU のときだけ間引かれない。
-            emitter.runtime.emitAccum += emitter.settings.emitRate * emitter.runtime.lodRateScale * dt;
+            emitter.runtime.emitAccum += emitter.settings.emitRate * emitter.runtime.lodRateScale
+                * EmitRateCurveScale(emitter) * dt;
             while (emitter.runtime.emitAccum >= 1.0f && static_cast<int>(spawns.size()) < maxP)
             {
                 emitter.runtime.emitAccum -= 1.0f;
@@ -1775,9 +1752,8 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     cb.noiseSpeed     = emitter.settings.noiseSpeed;
     cb.flipbookMode = static_cast<uint32_t>(emitter.runtime.material.flipbookMode);
     cb.flipbookFramesPerSecond = (std::max)(emitter.runtime.material.flipbookFramesPerSecond, 0.0f);
-    // 定数バッファはエミッター単位で詰め直すため、チャンネルの判定はここで済ませて
-    // 作用する力場だけを送る。CS 側はマスクを知らないまま届いた分を全部適用すればよく、
-    // GpuForceField のレイアウトも HLSL も変えずに済む。
+    // チャンネルの判定はここで済ませ、作用する力場だけを送る。CS 側は届いた分を全部
+    // 適用すればよく、GpuForceField のレイアウトも HLSL も変えずに済む。
     int fieldCount = 0;
     if (emitter.settings.receiveForceFields) {
         for (const ActiveForceField& f : forceFields) {
@@ -1908,17 +1884,10 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     }
 
     // ---- GPU ソート ---------------------------------------------------------
-    //
-    // WHY: 半透明の重なりは描画順で結果が変わるため、「GPU で大量に出す」と
-    //      「正しい前後関係」を両立するには GPU 側で並べ替えるしかない。
-    //      CPU へ読み戻して並べると毎フレーム同期待ちになり、GPU シミュレーションの意味が消える。
-    //
-    // NOTE: 並べ替えるのは (キー, 粒子 index) の対だけで、粒子プール自体は動かさない。
-    //       プールはスポーン用のリングバッファなので、要素の位置が変わると
-    //       gpuWriteHead が指す場所が意味を失い、スポーンとシミュレーションが壊れる。
-    //
-    // NOTE: simulateThisFrame の外に置く。複数ビュー (Scene View + Game View) では
-    //       同じフレームでもカメラが違い、正しい順序もビューごとに違うため。
+    // CPU へ読み戻して並べると毎フレーム同期待ちになるので GPU 側で並べ替える。
+    // 動かすのは (キー, 粒子 index) の対だけ。プールはスポーン用のリングバッファなので、
+    // 要素の位置が変わると gpuWriteHead の指す場所が意味を失う。
+    // simulateThisFrame の外に置く — 複数ビューでは正しい順序もビューごとに違う。
     const bool wantSort = ShouldSortGpuParticles(emitter, h);
     if (wantSort) {
         // bitonic sort は要素数が 2 のべき乗である前提で組む。LDS 段が 1 グループ分を
@@ -1984,17 +1953,13 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     }
 
     // renderCB は「ソートする」と言っているのにバッファが無い状態では描かない。
-    // WHY: VS はソート有効なら必ず t15 を引く。未バインドの SRV は 0 を返すため、
-    //      全インスタンスが粒子 0 番を指す明らかに誤った絵になる。
-    //      誤った絵を出すより、その 1 フレームを落とすほうが原因を追いやすい。
+    // VS はソート有効なら必ず t15 を引き、未バインドの SRV は 0 を返すので
+    // 全インスタンスが粒子 0 番を指す絵になる。1 フレーム落とす方が原因を追いやすい。
     if (wantSort && !emitter.runtime.gpuSortBuffer.IsValid()) return;
 
     // ---- メッシュパーティクル (インスタンス描画) ------------------------------
-    //
-    // WHY: CPU 経路は粒子 1 個につき DrawCall 1 本 (MeshTrailRenderPass) で、
-    //      GPU シミュレーションでは CPU 側に粒子配列が無いため描きようがなかった。
-    //      粒子データは既に StructuredBuffer にあるので、maxParticles 個の
-    //      インスタンス描画 1 本へ畳める。破片・瓦礫を大量に出す前提はこれで満たせる。
+    // CPU 経路は粒子 1 個につき DrawCall 1 本だが、GPU では粒子データが既に
+    // StructuredBuffer にあるので maxParticles 個のインスタンス描画 1 本へ畳める。
     if (!emitter.settings.meshParticlePath.empty()) {
         if (meshParticleRenderer == nullptr || !h.particleGpuMeshShader.IsValid()
             || !h.meshTrailPSO.IsValid())
@@ -2025,13 +1990,9 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     }
 
     // SV_VertexID ベース描画: 頂点バッファなし、VS が StructuredBuffer<GpuParticle> を t14 で読む。
-    //
     // .mat がシェーダーを指していれば CPU 経路と同じようにそれで描く。
-    // WHY: 以前ここは組み込み固定で customShader を見ておらず、simulationMode を Gpu に
-    //      した瞬間にカスタムシェーダーが無言で消えていた。
-    // NOTE: GPU 経路は頂点バッファを持たないため、差すシェーダーは
-    //       `#define FBZZ_PARTICLE_GPU` 付きで ParticleMaterial.hlsli を include して
-    //       いる必要がある (CPU 用に書いたものを差すと頂点入力が来ず何も出ない)。
+    // 頂点バッファを持たないので、差すシェーダーは `#define FBZZ_PARTICLE_GPU` 付きで
+    // ParticleMaterial.hlsli を include していること (CPU 用を差すと何も出ない)。
     const auto gpuShader = emitter.runtime.customShader.IsValid()
         ? emitter.runtime.customShader
         : h.particleGpuShader;
@@ -2064,8 +2025,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
 }
 
 // CanUseGpuSimulation の実体は ParticleGpuSimulation.cpp。
-// WHY: 「なぜ GPU に載らなかったか」を lint / 実行状態 / Editor へ返す必要があり、
-//      条件の羅列をここに閉じたままだと、判定と説明が別々に劣化していく。
+// 「なぜ GPU に載らなかったか」を lint / 実行状態 / Editor へ返す必要があるため。
 
 void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
 {
@@ -2089,9 +2049,8 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
     emitter.runtime.boundsRadius = (std::max)(radius, 0.01f);
 }
 
-// world は null 可 (Collision は ResolveParticleCollision 側でポインタとして扱う)。
-// WHY ポインタか: 描画パス側は RenderPassContext::physicsWorld をそのまま渡す。
-//     参照で受けると呼び出し側に null チェックとダミー World が要る。
+// world は null 可。描画パス側が RenderPassContext::physicsWorld をそのまま渡せるよう
+// ポインタで受ける (参照だと呼び出し側に null チェックとダミー World が要る)。
 void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
                         const AnimatorComponent* animator, float dt, float time,
                         const std::vector<ActiveForceField>& forceFields,
@@ -2120,7 +2079,8 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
         if (static_cast<int>(emitter.runtime.particles.size()) >= particleCapacity) {
             emitter.runtime.emitAccum = 0.0f;
         } else if (canEmit) {
-            emitter.runtime.emitAccum += emitter.settings.emitRate * emitter.runtime.lodRateScale * dt;
+            emitter.runtime.emitAccum += emitter.settings.emitRate * emitter.runtime.lodRateScale
+                * EmitRateCurveScale(emitter) * dt;
         }
         while (emitter.runtime.emitAccum >= 1.0f
                && static_cast<int>(emitter.runtime.particles.size()) < particleCapacity) {
@@ -2208,6 +2168,11 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             ? Clamp01(emitter.settings.sizeCurve.Evaluate(normalizedAge))
             : std::pow(normalizedAge, emitter.settings.sizeCurvePower);
         it->size = it->startSize + (it->endSize - it->startSize) * sizeT;
+        // 速さによる大きさ。火花が «速いほど大きく (= 長く) 見える» を作る。
+        if (emitter.settings.useSpeedSizeCurve) {
+            it->size *= (std::max)(emitter.settings.speedSizeCurve.Evaluate(
+                NormalizedParticleSpeed(emitter, *it)), 0.0f);
+        }
         AppendParticleTrailPoint(emitter, *it, dt);
         ++it;
     }
@@ -2215,14 +2180,10 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
 }
 
 // 再生状態 (delay / duration / loop / 距離 Emission / 時刻 Burst / Prewarm) を 1 フレーム分進める。
-// WHY 描画側から切り離すか: カリングされたエミッターでも「時間だけは進める」必要がある。
-//     描画ループの途中に埋めたままだと、可視でないと 1 行も進まず、画面外へ振って戻すたびに
-//     エフェクトが止まったところから再開してしまう。
-// NOTE: 1 フレームに 2 度呼ばれても進まない (lastPlaybackFrame で自衛する)。
-// NOTE: 通常は ParticleSimulationSystem (LateUpdate) が先に同じ 1 フレーム分を進めるため、
-//       ここは早期 return するだけになる。パスだけが動く経路 (システム未登録) のための
-//       予備であって «もう一つの実装» ではない。ParticleSimulationSystem::Update の
-//       再生ロジックと必ず同じ振る舞いに保つこと。
+// 描画から切り離すのは、カリングされたエミッターでも時間だけは進める必要があるため。
+// 1 フレームに 2 度呼ばれても進まない (lastPlaybackFrame で自衛する)。
+// 通常は ParticleSimulationSystem (LateUpdate) が先に進めるのでここは早期 return する。
+// システム未登録の経路のための予備であって «もう一つの実装» ではない。
 [[nodiscard]] bool AdvanceEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, float dt)
 {
     if (emitter.runtime.lastPlaybackFrame == Time::frameCount) return emitter.runtime.emitThisFrame;
@@ -2312,9 +2273,8 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
         // GPU指定を一時的にCPUへ縮退した場合、制約解除後に古いGPU粒子が復活しないよう履歴を破棄する。
         if (emitter->settings.simulationMode == ParticleSimulationMode::Gpu)
             emitter->runtime.gpuClearPending = true;
-        // WHY ここでも見るか: 再生 (発生) 側は ParticleSimulationSystem が止めているが、
-        //     粒子の更新はこちらなので、見ないと «発生は止まるのに既存の粒子は動き続ける»
-        //     という中途半端な «一時停止» になる。
+        // 発生側は ParticleSimulationSystem が止めるが、粒子の更新はこちら。
+        // 見ないと «発生は止まるのに既存の粒子は動き続ける» 中途半端な一時停止になる。
         if (emitter->settings.pauseWhenCulled && emitter->runtime.isCulledThisFrame) continue;
         if (emitter->runtime.lastCpuSimulationFrame == Time::frameCount) continue;
         const auto* animator = FindParticleAnimator(*gameObject);
@@ -2351,8 +2311,7 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
         const float step = (std::min)(kFixedStep, target - simulated);
 
         // 再生状態 (delay / duration / loop / Burst) を 1 ステップ進める。
-        // WHY: ParticleSimulationSystem::Update の再生規則をステップ単位で再現しないと、
-        //      Burst の発火タイミングやループ巻き戻しがリアルタイム再生とずれてしまう。
+        // ステップ単位で再現しないと Burst の発火やループ巻き戻しが実時間再生とずれる。
         bool canEmit = emitter.settings.playing;
         if (canEmit && emitter.runtime.delayTime < emitter.settings.startDelay) {
             emitter.runtime.delayTime += step;
@@ -2408,14 +2367,12 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
 
-    // Overdraw パスが読む記録は毎回このパスが作り直す。
-    // 早期 return より前に捨てるのが要点で、描かなかったフレームに前フレームの
-    // エミッターポインタが残ると、破棄済みオブジェクトを Overdraw パスが触りうる。
+    // Overdraw パスが読む記録は毎回このパスが作り直す。早期 return より前に捨てないと、
+    // 描かなかったフレームに残ったポインタで破棄済みオブジェクトを触りうる。
     g_particleDrawRecords.clear();
 
-    // .mat の [params] 解決をこのパスで 1 回だけやり直すための通番。
-    // 進めることで «.mat を編集したら次のフレームで絵に出る» を保ちつつ、
-    // 同じ .mat を共有するエミッターぶん名前引きと Upload を繰り返さない。
+    // .mat の [params] 解決をこのパスで 1 回だけやり直すための通番。編集が次のフレームで
+    // 絵に出つつ、同じ .mat を共有するエミッターぶん名前引きを繰り返さない。
     ++g_particlePassSerial;
 
     if (!h.particleShader.IsValid() || !h.particleIB.IsValid()) return;
@@ -2426,15 +2383,11 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     // 毎エミッターでクリアすると自分の密度しか見えず、自己影の意味が無くなる。
     bool selfShadowClearedThisPass = false;
 
-    // Distortionは現在のHDRを読みながら同じHDRへ書けないため、背景を専用RTへ退避してから読む。
-    //
-    // WHY (エミッターごとに取り直す): 1 回だけ退避すると、全ての歪みが「パーティクルを
-    //     1 つも描いていない背景」を屈折する。歪みを 2 枚重ねても後ろの歪みが手前へ伝わらず、
-    //     歪みの前に描いた炎や煙も屈折に映らない ― 重なり順が完全に無視された絵になる。
-    //     歪みを使うエミッターの描画直前に取り直せば、それまでに描いた全てが屈折へ入る。
-    // NOTE: 同一エミッター内で重なる粒子は 1 DrawCall なので、依然として同じ背景を共有する。
-    //       これは 1 パス方式の原理的な限界で、粒子単位の順序を出すには
-    //       粒子ごとに DrawCall を分ける (= 大量に出せなくなる) しかない。
+    // Distortion は現在の HDR を読みながら同じ HDR へ書けないので、背景を専用 RT へ退避する。
+    // 退避はエミッターごとに取り直す。1 回だけだと全ての歪みが「パーティクルを 1 つも
+    // 描いていない背景」を屈折し、重なり順が無視された絵になる。
+    // 同一エミッター内で重なる粒子は 1 DrawCall なので依然として同じ背景を共有する
+    // (粒子単位の順序を出すには DrawCall を分けるしかなく、大量に出せなくなる)。
     renderer::ResourceHandle<renderer::TextureTag> particleSceneColor;
     const bool needsSceneColor = std::any_of(ctx.scene.GameObjects().begin(), ctx.scene.GameObjects().end(),
         [](GameObject& object) {
@@ -2474,12 +2427,9 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     int particleBudget = ctx.settings.particleBudgetEnabled
         ? (std::max)(ctx.settings.particleBudget, 0) : 0;
 
-    // 描画順を renderPriority → カメラ距離 (遠い順) で確定させる。
-    // WHY: 半透明は描いた順に合成されるため、GameObject の並び順のままだと
-    //      「炎の手前に煙」が保証されず、シーンを編集しただけで前後が入れ替わる。
-    //      距離はバウンズ更新前なので Transform 位置で近似する (順序決定には十分)。
-    // GameObjectRange は要素数を公開しないため reserve せずに積む
-    // (パーティクルを持つ GameObject は通常わずかなので再確保は問題にならない)。
+    // 描画順を renderPriority → カメラ距離 (遠い順) で確定させる。GameObject の並び順の
+    // ままだと「炎の手前に煙」が保証されず、シーンを編集しただけで前後が入れ替わる。
+    // 距離はバウンズ更新前なので Transform 位置で近似する (順序決定には十分)。
     std::vector<GameObject*> sortedEmitters;
     for (auto& candidate : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(candidate, ctx.cullingMask)) continue;
@@ -2526,10 +2476,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
             ++ctx.statsParticleCulled;
             emitter->runtime.visibleParticleCount = 0;
             // pauseWhenCulled が false なら「描かないだけ」で時間は進める。
-            // WHY: 以前は両分岐とも continue で、このフラグは何の意味も持っていなかった。
-            //      Play 中は ParticleSimulationSystem が別に回るので露見しないが、
-            //      エディター (非 Play) ではこのパスがシミュレーションの実体そのものなので、
-            //      カメラを画面外へ振った瞬間にエフェクトが凍り、戻すと止まった粒子が残っていた。
+            // 非 Play のエディターではこのパスがシミュレーションの実体なので、進めないと
+            // カメラを画面外へ振った瞬間にエフェクトが凍る。
             if (!emitter->settings.pauseWhenCulled) {
                 (void)AdvanceEmitterPlayback(*emitter, tf, dtEmitter);
                 if (!CanUseGpuSimulation(emitter->settings, &emitter->runtime.material)
@@ -2568,7 +2516,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
             // CPU 経路と同じ理由でここでも取り直す (歪みの前後関係を保つ)。
             if (emitter->runtime.material.distortion && needsSceneColor) particleSceneColor = captureSceneColor();
             // メッシュパーティクルは同じ GameObject の MeshRenderer が形状を持つ
-            // (VFXGraphSystem が meshParticlePath から生成する)。GPU 経路はこれをインスタンス描画する。
+            // (meshParticlePath から解決する)。GPU 経路はこれをインスタンス描画する。
             const MeshRenderer* meshParticleRenderer = emitter->settings.meshParticlePath.empty()
                 ? nullptr : go.GetComponent<MeshRenderer>();
             TickGpuEmitter(*emitter, tf, animator, dtEmitter, time, canEmit, forceFields,
@@ -2578,13 +2526,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
 
         // シミュレーションはここでは行わない。ParticleSimulationSystem (LateUpdate) が
         // 描画より前に SimulateCpuEmitter で 1 フレーム分を進め終えている。
-        //
-        // WHY 描画パスに複製を置かないか:
-        //   以前はここに «機能の多い方» の CPU シミュレーションが丸ごと置かれていたが、
-        //   ParticleSimulationSystem が RunMode::Always で先に走って
-        //   lastCpuSimulationFrame を立てるため一度も実行されず、Orbital / Radial /
-        //   Drag カーブ / Rotation カーブ / per-particle Trail が
-        //   «実装済みなのに効かない» 状態になっていた。実装は SimulateCpuEmitter に集約する。
+        // 描画パスに複製を置くと、先に走る側が lastCpuSimulationFrame を立てるため
+        // 一度も実行されず «実装済みなのに効かない» 状態になる。
 
         const int available = static_cast<int>(emitter->runtime.particles.size());
         const int countBudget = particleBudget > 0 ? (std::min)(available, particleBudget) : available;
@@ -2706,9 +2649,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         resources.Update(particleVB, verts.data(),
                          static_cast<uint32_t>(verts.size() * sizeof(ParticleVertex)));
 
-        // 歪みを使うエミッターは、その直前までに描いた絵を屈折させる。
-        // 退避を取り直さないと「パーティクルを 1 つも描いていない背景」を屈折し続け、
-        // 歪みを重ねたときの前後関係が完全に失われる。
+        // 歪みを使うエミッターは、その直前までに描いた絵を屈折させる。取り直さないと
+        // 歪みを重ねたときの前後関係が失われる。
         if (emitter->runtime.material.distortion && needsSceneColor) particleSceneColor = captureSceneColor();
 
         // 自己影: このエミッターの密度を光源側 RT へ積む。頂点バッファに今の形が
@@ -2757,14 +2699,10 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     }
 }
 
-// パーティクルの重なり枚数を可視化する。
-// Particle パスの直後に、同じ頂点バッファを計数シェーダーで専用 RT へ描き直し、
-// ヒートマップへ変換して HDR RT を上書きする。
-//
-// WHY (Particle パス内でやらない): 計数には「加算のみ・専用 RT」が要るが、
-//     Particle パスは HDR へ通常の色を描く。同じパスに同居させると
-//     RT 切り替えとブレンド状態の分岐が本番描画側へ漏れ込み、
-//     診断機能のために本番の描画順が変わりかねない。独立したパスへ分ける。
+// パーティクルの重なり枚数を可視化する。Particle パスの直後に同じ頂点バッファを
+// 計数シェーダーで専用 RT へ描き直し、ヒートマップへ変換して HDR RT を上書きする。
+// 独立したパスにするのは、計数に要る「加算のみ・専用 RT」を同居させると RT 切り替えと
+// ブレンドの分岐が本番描画側へ漏れるため。
 void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
 {
     if (!ctx.settings.particleOverdrawView) return;
@@ -2800,10 +2738,9 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
     renderer.SetRenderTarget(overdrawRT, resources);
     renderer.Clear({ 0.0f, 0.0f, 0.0f, 1.0f });
 
-    // Particle パスが本番描画に使ったバッファとクワッド数をそのまま数え直す。
-    // ここで作り直すと「実際に描いた形」とずれ、測る意味がなくなる。
-    // GPU シミュレーションとメッシュパーティクルは頂点バッファを持たないため記録に載らず、
-    // この計数経路の対象外になる (CPU ビルボードだけを測る)。
+    // Particle パスが本番描画に使ったバッファとクワッド数をそのまま数え直す
+    // (作り直すと「実際に描いた形」とずれて測る意味がなくなる)。
+    // 頂点バッファを持たない GPU シミュレーションとメッシュパーティクルは対象外。
     for (const ParticleDrawRecord& record : g_particleDrawRecords) {
         if (!record.vertexBuffer.IsValid() || record.quadCount <= 0) continue;
 

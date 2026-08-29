@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Renderer.hpp | fbzz::renderer
-// IRenderer の DirectX 12 実装と Phase 1 フレーム制御
+/// @file    DX12Renderer.hpp
+/// @brief   IRenderer の DirectX 12 実装と Phase 1 フレーム制御。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IRenderer.hpp>

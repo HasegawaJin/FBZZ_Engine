@@ -1,11 +1,13 @@
-// FBZZ Engine
-// OperatorGroups.hpp | fbzz::editor
-// WHAT: 標準 Operator の登録関数群。EditorApp::RegisterBuiltinOperators がまとめて呼ぶ。
-// WHY:  EditorApp のメンバーを叩く必要がある操作 (New Scene / Play 等) と、
-//       EditorContext + UndoStack だけで完結する操作を分ける。後者は EditorApp を
-//       一切知らない自由関数として書けるので、パネルの実装詳細に依存せず、
-//       操作の追加が EditorApp の肥大化に直結しない。
-// 設計: Docs/design/editor-operator-model.md
+/// @file    OperatorGroups.hpp
+/// @brief   WHAT: 標準 Operator の登録関数群。EditorApp::RegisterBuiltinOperators がまとめて呼ぶ。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY:  EditorApp のメンバーを叩く必要がある操作 (New Scene / Play 等) と、
+/// EditorContext + UndoStack だけで完結する操作を分ける。後者は EditorApp を
+/// 一切知らない自由関数として書けるので、パネルの実装詳細に依存せず、
+/// 操作の追加が EditorApp の肥大化に直結しない。
+/// 設計: Docs/design/editor-operator-model.md
 #pragma once
 #include <Editor/Op/EditorOperator.hpp>
 
@@ -63,7 +65,7 @@ void RegisterDocumentOperators(OperatorRegistry& registry);
 //     Query として登録簿へ載せれば editor.op.query からそのまま引ける。
 void RegisterSfxOperators(OperatorRegistry& registry);
 
-// ParticleEmitter / VFXGraphComponent の再生制御。
+// ParticleEmitter / VFXComponent の再生制御。
 // Inspector の再生ボタンと同じコンポーネント API を使い、AI からも Play / Stop /
 // Restart / Clear / Burst / Trigger を一つの操作入口で呼べるようにする。
 void RegisterEffectOperators(OperatorRegistry& registry);

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialInspectorWidgets.hpp | fbzz::editor
-// .mat 用 Inspector ウィジェット群
+/// @file    MaterialInspectorWidgets.hpp
+/// @brief   .mat 用 Inspector ウィジェット群。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include <Engine/Asset/MaterialAsset.hpp>

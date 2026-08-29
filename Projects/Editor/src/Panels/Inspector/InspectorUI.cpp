@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorUI.cpp | fbzz::editor
-// RegistryとReflect定義から標準コンポーネントInspectorを自動生成する
+/// @file    InspectorUI.cpp
+/// @brief   RegistryとReflect定義から標準コンポーネントInspectorを自動生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorUI.hpp"
 
 namespace fbzz::editor {

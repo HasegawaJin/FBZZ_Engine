@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Gamepad.cpp | fbzz::input
-// XInputGetState のポーリングと、ボタン差分・振動寿命の管理
+/// @file    Gamepad.cpp
+/// @brief   XInputGetState のポーリングと、ボタン差分・振動寿命の管理。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include "Engine/Input/Gamepad.hpp"
 
 #include <algorithm>

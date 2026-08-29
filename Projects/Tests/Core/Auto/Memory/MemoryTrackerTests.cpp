@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MemoryTrackerTests.cpp | GoogleTest
-// MemoryTracker のタグ別統計とポインタ台帳を自動検証する。
+/// @file    MemoryTrackerTests.cpp
+/// @brief   MemoryTracker のタグ別統計とポインタ台帳を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Memory/MemoryTracker.hpp>

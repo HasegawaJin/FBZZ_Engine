@@ -1,16 +1,18 @@
-// FBZZ Engine
-// DX11Texture.hpp | fbzz::renderer
-// DX11 2D テクスチャ実装
-// ITexture を継承し、SRV / UAV とサイズ情報を保持する。
-// DirectXTex の読み込み結果を Renderer 抽象へ接続する。
-//
-// 設計方針:
-//   DirectXTex を採用した理由:
-//     - DDS (ブロック圧縮 BC1〜BC7 含む) / TGA / PNG / JPG を統一 API で扱える
-//     - ミップマップ生成・SRV 生成まで一貫して対応している
-//     - Microsoft 公式ライブラリで DirectX との親和性が高い
-//   外部に公開するのは ITexture::GetWidth/GetHeight と GetSRV() のみ。
-//   Submit 時に DX11Renderer が static_cast して GetSRV() を取り出す。
+/// @file    DX11Texture.hpp
+/// @brief   DX11 2D テクスチャ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// ITexture を継承し、SRV / UAV とサイズ情報を保持する。
+/// DirectXTex の読み込み結果を Renderer 抽象へ接続する。
+///
+/// 設計方針:
+/// DirectXTex を採用した理由:
+/// - DDS (ブロック圧縮 BC1〜BC7 含む) / TGA / PNG / JPG を統一 API で扱える
+/// - ミップマップ生成・SRV 生成まで一貫して対応している
+/// - Microsoft 公式ライブラリで DirectX との親和性が高い
+/// 外部に公開するのは ITexture::GetWidth/GetHeight と GetSRV() のみ。
+/// Submit 時に DX11Renderer が static_cast して GetSRV() を取り出す。
 #pragma once
 
 #include <d3d11.h>

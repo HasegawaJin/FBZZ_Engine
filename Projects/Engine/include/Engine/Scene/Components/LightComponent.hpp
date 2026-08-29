@@ -1,7 +1,7 @@
-/// @file LightComponent.hpp
-/// @brief ライトの発光設定を持つコンポーネント (方向と位置は Transform から取る)
-/// @author Hasegawa Jin
-/// @date 2025-06-12
+/// @file    LightComponent.hpp
+/// @brief   ライトの発光設定を持つコンポーネント (方向と位置は Transform から取る)
+/// @author  Hasegawa Jin
+/// @date    2025-06-12
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

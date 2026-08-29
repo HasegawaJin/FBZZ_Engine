@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ScriptComponent.hpp | fbzz::scene
-// GameObject に紐付く Script インスタンス群の所有者
-// std::unique_ptr の配列で複数 Script を保持し、owner を注入する。
-// 実行順とライフサイクル呼び出しは ScriptSystem が担う。
+/// @file    ScriptComponent.hpp
+/// @brief   GameObject に紐付く Script インスタンス群の所有者。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// std::unique_ptr の配列で複数 Script を保持し、owner を注入する。
+/// 実行順とライフサイクル呼び出しは ScriptSystem が担う。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

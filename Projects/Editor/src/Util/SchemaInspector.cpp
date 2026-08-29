@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SchemaInspector.cpp | fbzz::editor::widgets
-// ITypeSchema 走査による汎用 Inspector の実装
+/// @file    SchemaInspector.cpp
+/// @brief   ITypeSchema 走査による汎用 Inspector の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Util/SchemaInspector.hpp>
 
 #include <Editor/Util/ImGuiWidgets.hpp>

@@ -1,16 +1,17 @@
-// FBZZ Engine
-// ParticleCurvePresets.hpp | fbzz::asset
-// ParticleCurve の名前付きプリセット。Editor の UI と AI のオーサリング面で共有する。
-//
-// WHY: エフェクトが「AAA に見えるか」を決めるのは色や粒子数より時間曲線の形で、
-//      閃光の立ち上がり、煙の減衰、炎の呼吸はどれも定型がある。
-//      AI に 8 キーぶんの (time, value) を生で書かせると、意図した形になる保証が無く、
-//      失敗したときも「どのキーが悪いのか」を画像から逆算できない。
-//      名前付きの語彙にしておけば AI は "Spike" を選ぶだけで正しい形から始められ、
-//      そこからの微調整だけを画像評価に任せられる。
-//
-// WHY(配置): Editor 内の匿名 namespace に置くと AI 側から参照できず、同じ表を
-//      2 か所へ書くことになる。「1 定義 → N ビュー」の原則に従い Engine へ置く。
+/// @file    ParticleCurvePresets.hpp
+/// @brief   ParticleCurve の名前付きプリセット。Editor の UI と AI のオーサリング面で共有する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: エフェクトが「AAA に見えるか」を決めるのは色や粒子数より時間曲線の形で、
+/// 閃光の立ち上がり、煙の減衰、炎の呼吸はどれも定型がある。
+/// AI に 8 キーぶんの (time, value) を生で書かせると、意図した形になる保証が無く、
+/// 失敗したときも「どのキーが悪いのか」を画像から逆算できない。
+/// 名前付きの語彙にしておけば AI は "Spike" を選ぶだけで正しい形から始められ、
+/// そこからの微調整だけを画像評価に任せられる。
+///
+/// WHY(配置): Editor 内の匿名 namespace に置くと AI 側から参照できず、同じ表を
+/// 2 か所へ書くことになる。「1 定義 → N ビュー」の原則に従い Engine へ置く。
 #pragma once
 
 #include <Engine/Scene/Components/ParticleEmitter.hpp>

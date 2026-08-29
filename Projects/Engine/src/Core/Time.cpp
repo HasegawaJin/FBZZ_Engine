@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Time.cpp | fbzz
-// QueryPerformanceCounter によるフレーム時間計測
+/// @file    Time.cpp
+/// @brief   QueryPerformanceCounter によるフレーム時間計測。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Engine/Core/Time.hpp"
 
 #define NOMINMAX

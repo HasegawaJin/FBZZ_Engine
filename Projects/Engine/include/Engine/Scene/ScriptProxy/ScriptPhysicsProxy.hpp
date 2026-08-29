@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptPhysicsProxy.hpp | fbzz::scene
-// Script から物理コンポーネントへ転送するショートハンド
+/// @file    ScriptPhysicsProxy.hpp
+/// @brief   Script から物理コンポーネントへ転送するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Math/Vector3.hpp>

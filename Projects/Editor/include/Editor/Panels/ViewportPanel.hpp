@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ViewportPanel.hpp | fbzz::editor
-// IRenderTarget をテクスチャとして表示しカメラ操作を受け付ける
+/// @file    ViewportPanel.hpp
+/// @brief   IRenderTarget をテクスチャとして表示しカメラ操作を受け付ける。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <string>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SliderConstraint.hpp | fbzz::physics
-// 1 軸方向の移動だけを許すプリズマティック拘束
+/// @file    SliderConstraint.hpp
+/// @brief   1 軸方向の移動だけを許すプリズマティック拘束。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
 #pragma once
 #include <Physics/Constraint.hpp>
 

@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MemoryDebug.hpp | fbzz::core
-// スマートポインタ所有リソースの生存状況を追跡するデバッグ台帳
-// weak_ptr で監視するため所有権を増やさず、解放忘れの候補だけを検出する。
+/// @file    MemoryDebug.hpp
+/// @brief   スマートポインタ所有リソースの生存状況を追跡するデバッグ台帳。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// weak_ptr で監視するため所有権を増やさず、解放忘れの候補だけを検出する。
 #pragma once
 
 #include "Engine/Core/Memory/AllocationInfo.hpp"

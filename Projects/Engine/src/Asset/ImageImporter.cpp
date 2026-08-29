@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ImageImporter.cpp | fbzz::asset
-// 生画像 → TextureAsset
-// 元画像の隣の "<画像>.meta" があれば TexDescSerializer で設定を読み、GPU ロード
-// サイドカーが無ければ GuessTextureType で設定を推定して GPU ロード
+/// @file    ImageImporter.cpp
+/// @brief   生画像 → TextureAsset。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// 元画像の隣の "<画像>.meta" があれば TexDescSerializer で設定を読み、GPU ロード
+/// サイドカーが無ければ GuessTextureType で設定を推定して GPU ロード
 #include <Engine/Asset/ImageImporter.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>

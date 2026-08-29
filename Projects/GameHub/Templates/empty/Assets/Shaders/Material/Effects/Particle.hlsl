@@ -110,8 +110,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         if (gSoftParticles != 0)
         {
             float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
-            float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ);
-            float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
+            float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+            float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
             alpha *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
         }
         // 散乱光は積分の時点で alpha (= 1 - transmittance) の重みを含んだ «事前乗算» の値。
@@ -140,8 +140,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     if (gSoftParticles != 0)
     {
         float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
-        float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ);
-        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
+        float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
     // 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。

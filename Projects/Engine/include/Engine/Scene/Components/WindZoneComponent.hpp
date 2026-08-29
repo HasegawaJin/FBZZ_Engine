@@ -1,9 +1,11 @@
-// FBZZ Engine
-// WindZoneComponent.hpp | fbzz::scene
-// シーングローバルの風設定コンポーネント。
-// 雲 (VolumetricCloud)・パーティクルが同じ風を参照し、
-// 「風が吹くと煙も雲も同じ方向へ流れる」を 1 コンポーネントで成立させる。
-// EnvironmentLightComponent 等と同じ「シーンに 1 つ」パターン。複数ある場合は最初の有効な 1 つを使う。
+/// @file    WindZoneComponent.hpp
+/// @brief   シーングローバルの風設定コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+///
+/// 雲 (VolumetricCloud)・パーティクルが同じ風を参照し、
+/// 「風が吹くと煙も雲も同じ方向へ流れる」を 1 コンポーネントで成立させる。
+/// EnvironmentLightComponent 等と同じ「シーンに 1 つ」パターン。複数ある場合は最初の有効な 1 つを使う。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

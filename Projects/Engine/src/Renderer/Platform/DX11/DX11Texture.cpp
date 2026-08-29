@@ -1,10 +1,12 @@
-// FBZZ Engine
-// DX11Texture.cpp | fbzz::renderer
-// DX11 2D テクスチャ実装
-// DirectXTex で画像を読み込み、SRV / UAV を必要に応じて作る。
-// ファイル由来とメモリ由来の両方のテクスチャ生成を扱う。
-//
-// ole32.lib は DirectXTex が内部で CoCreateInstance (WIC) を呼ぶために必要。
+/// @file    DX11Texture.cpp
+/// @brief   DX11 2D テクスチャ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// DirectXTex で画像を読み込み、SRV / UAV を必要に応じて作る。
+/// ファイル由来とメモリ由来の両方のテクスチャ生成を扱う。
+///
+/// ole32.lib は DirectXTex が内部で CoCreateInstance (WIC) を呼ぶために必要。
 #pragma comment(lib, "ole32.lib")
 
 #include "DX11Texture.hpp"

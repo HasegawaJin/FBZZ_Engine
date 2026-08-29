@@ -1,11 +1,13 @@
-// FBZZ Engine
-// SchemaInspector.hpp | fbzz::editor::widgets
-// ITypeSchema を走査して型ごとのウィジェットを自動で描く汎用 Inspector
-// WHY: authoring フィールドは「スキーマ」「TOML codec」「手書き Inspector」「AI」の
-//      複数面に散らばりがちで、追加のたびにどこかが取り残される。スキーマから UI を
-//      生成できるようにしておけば、新しい leaf は宣言しただけで Inspector にも現れる。
-//      既存の手書き UI は情報量が多くスーパーセットなので置き換えず、共存させる
-//      (手書きが担当済みの leaf は skipPaths で除外する)。
+/// @file    SchemaInspector.hpp
+/// @brief   ITypeSchema を走査して型ごとのウィジェットを自動で描く汎用 Inspector。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: authoring フィールドは「スキーマ」「TOML codec」「手書き Inspector」「AI」の
+/// 複数面に散らばりがちで、追加のたびにどこかが取り残される。スキーマから UI を
+/// 生成できるようにしておけば、新しい leaf は宣言しただけで Inspector にも現れる。
+/// 既存の手書き UI は情報量が多くスーパーセットなので置き換えず、共存させる
+/// (手書きが担当済みの leaf は skipPaths で除外する)。
 #pragma once
 
 #include <Engine/Reflection/TypeSchema.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProceduralVFXTextures.hpp | fbzz::asset
-// VFX向けFlipbookとImpact DecalテクスチャのCPUプロシージャル生成API
+/// @file    ProceduralVFXTextures.hpp
+/// @brief   VFX向けFlipbookとImpact DecalテクスチャのCPUプロシージャル生成API。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <cstdint>

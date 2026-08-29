@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ModelPlacement.hpp | fbzz::editor
-// .fbx アセットを Scene 上の GameObject 階層として配置するユーティリティ
+/// @file    ModelPlacement.hpp
+/// @brief   .fbx アセットを Scene 上の GameObject 階層として配置するユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

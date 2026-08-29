@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimatorGraphOps.cpp | fbzz::editor
-// Animation Graph の共有操作 (整列・保存・dirty 登録)
+/// @file    AnimatorGraphOps.cpp
+/// @brief   Animation Graph の共有操作 (整列・保存・dirty 登録)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #include <Editor/GraphEditor/AnimatorGraphOps.hpp>
 
 #include <Editor/EditorContext.hpp>

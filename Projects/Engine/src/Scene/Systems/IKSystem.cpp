@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IKSystem.cpp | fbzz::scene
-// AnimatorSystem の FK 結果に複数種の IK Solver を順序付きで適用する。
-// WHY: IK はアニメーション後段で骨行列だけを補正し、足接地から全身 IK までを
-//      同一の依存順で処理して AnimatorSystem の責務を崩さない。
+/// @file    IKSystem.cpp
+/// @brief   AnimatorSystem の FK 結果に複数種の IK Solver を順序付きで適用する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-30
+///
+/// WHY: IK はアニメーション後段で骨行列だけを補正し、足接地から全身 IK までを
+/// 同一の依存順で処理して AnimatorSystem の責務を崩さない。
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"

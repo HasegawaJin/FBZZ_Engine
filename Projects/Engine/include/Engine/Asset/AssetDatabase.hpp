@@ -1,10 +1,11 @@
-// FBZZ Engine
-// AssetDatabase.hpp | fbzz::asset
-// GUID ⇄ アセットパスの双方向インデックス。
-//
-// 各アセット (ファイルおよびフォルダ) は隣接する "<名前>.meta" サイドカーの
-// [meta] guid で恒久 ID を持つ。フォルダの .meta は親ディレクトリに置く
-// (例: Assets/Textures/ → Assets/Textures.meta)。
+/// @file    AssetDatabase.hpp
+/// @brief   GUID ⇄ アセットパスの双方向インデックス。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
+///
+/// 各アセット (ファイルおよびフォルダ) は隣接する "<名前>.meta" サイドカーの
+/// [meta] guid で恒久 ID を持つ。フォルダの .meta は親ディレクトリに置く
+/// (例: Assets/Textures/ → Assets/Textures.meta)。
 
 // 参照側 (.mat / .scene / コンポーネント) は "guid:<32hex>" 形式の文字列を保存でき、
 // AssetManager::ResolvePath がロード時に実パスへ解決する。
@@ -111,8 +112,10 @@ public:
     // Init から呼ばれる。libraryRoot が無ければ何もしない。
     static void IndexBakedLibrary(const std::string& libraryBakedRoot);
 
-    // この拡張子のアセットは .meta を持つべきか (baked 生成物・.meta 自身は対象外)。
-    [[nodiscard]] static bool ShouldHaveMeta(std::string_view lowerExt);
+    // このファイルは .meta を持つべきか。引数はファイル名のみ (パスではない、小文字化済み)。
+    // 除外リスト方式: 再生成できる派生物 (.fzasset/.mesh/.skel/.cso/.generated.hpp/ビルド出力)
+    // と無拡張ファイル以外は、.md / .txt / .pdf のような資料も含めて GUID を持つ。
+    [[nodiscard]] static bool ShouldHaveMeta(std::string_view lowerFileName);
 
     // このフォルダは .meta ("<フォルダ名>.meta" を隣に置く) を持つべきか。
     // WHY: フォルダも参照対象になりうる (デフォルト保存先、検索スコープ、パック単位)。

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptSunMoonProxy.hpp | fbzz::scene
-// Script から太陽・月ディスクの描画設定を操作するプロキシ
+/// @file    ScriptSunMoonProxy.hpp
+/// @brief   Script から太陽・月ディスクの描画設定を操作するプロキシ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Math/Vector3.hpp>

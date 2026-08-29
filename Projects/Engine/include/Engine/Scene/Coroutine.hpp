@@ -1,26 +1,27 @@
-// FBZZ Engine
-// Coroutine.hpp | fbzz::scene
-// Unity 風コルーチン (C++20 coroutine ベース)。
-//
-// 設計意図 (WHY):
-//   「少し待ってから戻す」「数フレーム後に実行」「条件成立まで待つ」といった時間軸の処理を、
-//   OnUpdate にステートマシンとフラグを展開せず、直線的なコードで書けるようにする。
-//   ヒットストップ (一瞬 timeScale を 0 にして戻す) のような演出が典型例。
-//
-// 使い方:
-//   Coroutine HitStop() {
-//       time.SetTimeScale(0.0f);
-//       co_await WaitForSecondsRealtime(0.08f); // timeScale=0 中でも進む実時間待ち
-//       time.SetTimeScale(1.0f);
-//   }
-//   // どこかで:
-//   StartCoroutine(HitStop());
-//
-//   待機命令: WaitForSeconds / WaitForSecondsRealtime / WaitForFrames / WaitUntil / WaitWhile
+/// @file    Coroutine.hpp
+/// @brief   Unity 風コルーチン (C++20 coroutine ベース)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-29
+///
+/// 設計意図 (WHY):
+/// 「少し待ってから戻す」「数フレーム後に実行」「条件成立まで待つ」といった時間軸の処理を、
+/// OnUpdate にステートマシンとフラグを展開せず、直線的なコードで書けるようにする。
+/// ヒットストップ (一瞬 timeScale を 0 にして戻す) のような演出が典型例。
+///
+/// 使い方:
+/// Coroutine HitStop() {
+/// time.SetTimeScale(0.0f);
+/// co_await WaitForSecondsRealtime(0.08f); // timeScale=0 中でも進む実時間待ち
+/// time.SetTimeScale(1.0f);
+/// }
+/// // どこかで:
+/// StartCoroutine(HitStop());
+///
+/// 待機命令: WaitForSeconds / WaitForSecondsRealtime / WaitForFrames / WaitUntil / WaitWhile
 //   どの待機命令も必ず 1 フレーム以上中断する (0 秒・0 フレーム・成立済み述語であっても)。
 //   その場で再開できてしまうと、ループ内の co_await が回り続けてフレームが返らなくなるため。
-//
-// 進行は ScriptSystem が毎フレーム Script::UpdateCoroutines() を呼んで行う。
+///
+/// 進行は ScriptSystem が毎フレーム Script::UpdateCoroutines() を呼んで行う。
 // Script が破棄されると保持中のコルーチンも安全に破棄される (再開されない)。
 #pragma once
 

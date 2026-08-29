@@ -1,7 +1,9 @@
-// FBZZ Engine
-// NavMeshPatrolSystem.cpp | fbzz::scene
-// NavMeshPatrolComponent のウェイポイントを順送りし、同一 GO の NavMeshAgentComponent へ
-// SetDestination する。到達判定そのものは NavigationSystem (destinationReached) に委ねる。
+/// @file    NavMeshPatrolSystem.cpp
+/// @brief   NavMeshPatrolComponent のウェイポイントを順送りし、同一 GO の NavMeshAgentComponent へ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// SetDestination する。到達判定そのものは NavigationSystem (destinationReached) に委ねる。
 #include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"

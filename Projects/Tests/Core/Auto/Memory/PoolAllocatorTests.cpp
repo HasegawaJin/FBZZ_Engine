@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PoolAllocatorTests.cpp | GoogleTest
-// PoolAllocator の固定ブロック再利用契約を自動検証する。
+/// @file    PoolAllocatorTests.cpp
+/// @brief   PoolAllocator の固定ブロック再利用契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Memory/PoolAllocator.hpp>

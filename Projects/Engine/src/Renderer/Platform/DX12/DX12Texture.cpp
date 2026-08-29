@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Texture.cpp | fbzz::renderer
-// DirectXTex 読み込み画像を RGBA8 へ正規化して同期アップロードする
+/// @file    DX12Texture.cpp
+/// @brief   DirectXTex 読み込み画像を RGBA8 へ正規化して同期アップロードする。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12Texture.hpp"
 
 #include "DX12Context.hpp"

@@ -1,20 +1,22 @@
-// FBZZ Engine
-// BehaviorTreeOps.hpp | fbzz::editor::btops
-// WHAT: Behavior Tree の構造編集 (追加・削除・親付け・複製) を、UI から独立した
-//       共有実装として提供する。
-// WHY:  移行前、この 4 操作は BehaviorTreePanel と AI の EditorBusDispatcher に
-//       **別々に実装されていた**。AI 側には
-//         「Editor の TryReparent と同じ規則で、AI からは繋げるが人間の UI では
-//           弾かれる、という食い違いを作らない」
-//       というコメントまであり、つまり**同じ規則を手で 2 回書いて手で揃え続けていた**。
-//       文言まで既にずれていた (ルート重複の理由文がパネル側だけ「既存のルートへ
-//       繋いでください」と続く)。この種のずれは、どちらか一方だけを直したときに
-//       初めて表面化し、しかも「AI では通るのに UI では弾かれる」という
-//       再現条件の説明が難しい形でしか現れない。
-//
-//       BT の壊れ方は「木としては正しく、保存も Validate も通り、それでも意図どおり
-//       動かない」なので、入口の検査が経路によって違うのは特に危険。
-//       Docs/design/editor-operator-model.md
+/// @file    BehaviorTreeOps.hpp
+/// @brief   WHAT: Behavior Tree の構造編集 (追加・削除・親付け・複製) を、UI から独立した。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// 共有実装として提供する。
+/// WHY:  移行前、この 4 操作は BehaviorTreePanel と AI の EditorBusDispatcher に
+/// **別々に実装されていた**。AI 側には
+/// 「Editor の TryReparent と同じ規則で、AI からは繋げるが人間の UI では
+/// 弾かれる、という食い違いを作らない」
+/// というコメントまであり、つまり**同じ規則を手で 2 回書いて手で揃え続けていた**。
+/// 文言まで既にずれていた (ルート重複の理由文がパネル側だけ「既存のルートへ
+/// 繋いでください」と続く)。この種のずれは、どちらか一方だけを直したときに
+/// 初めて表面化し、しかも「AI では通るのに UI では弾かれる」という
+/// 再現条件の説明が難しい形でしか現れない。
+///
+/// BT の壊れ方は「木としては正しく、保存も Validate も通り、それでも意図どおり
+/// 動かない」なので、入口の検査が経路によって違うのは特に危険。
+/// Docs/design/editor-operator-model.md
 #pragma once
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 

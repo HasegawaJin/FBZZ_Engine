@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ScriptCharacterProxy.hpp | fbzz::scene
-// Script から CharacterControllerComponent を操作するショートハンド。
-// Tick / Jump / RegisterGroundContact を呼び出し元から RigidBody 取得コードを排除し、
-// isGrounded / verticalSpeed / groundNormal を読み取れるようにする。
+/// @file    ScriptCharacterProxy.hpp
+/// @brief   Script から CharacterControllerComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// Tick / Jump / RegisterGroundContact を呼び出し元から RigidBody 取得コードを排除し、
+/// isGrounded / verticalSpeed / groundNormal を読み取れるようにする。
 #pragma once
 
 #include <Math/Vector3.hpp>

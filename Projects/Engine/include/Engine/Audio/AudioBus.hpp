@@ -25,6 +25,10 @@ struct BusDesc {
     float       volume        = 1.0f;
     /// 0-1 正規化カットオフ。1 で無加工。水中・気絶などの一括加工に使う。
     float       lowPassCutoff = 1.0f;
+    /// AudioReverbZone の残響をこのバスへ掛けるか。
+    /// WHY 全バスに載せないか: 残響は submix ごとの実 DSP なので、載せた本数ぶん
+    ///     CPU を使う。BGM や UI に環境残響が乗るのも音楽的に正しくない。
+    bool        reverb        = false;
 };
 
 /// ProjectSettings が何も定義していないときの構成。

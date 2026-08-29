@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DebugDraw.cpp | fbzz::renderer
-// ワイヤーフレームのデバッグ描画実装
-// フレーム内に積まれた線分をバッチ化し、LINE_LIST の DrawCall として送る。
-// 物理・Scene の可視化から呼ばれるが、状態は描画フレーム内に閉じる。
+/// @file    DebugDraw.cpp
+/// @brief   ワイヤーフレームのデバッグ描画実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// フレーム内に積まれた線分をバッチ化し、LINE_LIST の DrawCall として送る。
+/// 物理・Scene の可視化から呼ばれるが、状態は描画フレーム内に閉じる。
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/DynamicVertexBufferPool.hpp>

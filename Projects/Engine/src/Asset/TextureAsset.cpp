@@ -1,5 +1,7 @@
-// FBZZ Engine
-// TextureAsset.cpp | fbzz::asset
+/// @file    TextureAsset.cpp
+/// @brief   テクスチャアセットの読み込みとインポート設定の適用。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>

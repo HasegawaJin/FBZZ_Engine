@@ -1,7 +1,9 @@
-// FBZZ Engine
-// BuildPipeline.cpp | fbzz::editor
-// WHAT: Start() でビルドを開始し、Tick() を毎フレーム呼ぶことで
-//       各ステップの詳細は BuildPipeline.hpp のコメントを参照。
+/// @file    BuildPipeline.cpp
+/// @brief   WHAT: Start() でビルドを開始し、Tick() を毎フレーム呼ぶことで。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// 各ステップの詳細は BuildPipeline.hpp のコメントを参照。
 #include <Editor/BuildPipeline.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Engine/Core/Logger.hpp>

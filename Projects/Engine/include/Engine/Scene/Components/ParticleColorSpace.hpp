@@ -1,7 +1,7 @@
-/// @file   ParticleColorSpace.hpp
-/// @brief  パーティクル色の色空間変換 (sRGB / Linear / OkLab) と黒体放射色の生成。
-/// @author Hasegawa Jin
-/// @date   2026-08-22
+/// @file    ParticleColorSpace.hpp
+/// @brief   パーティクル色の色空間変換 (sRGB / Linear / OkLab) と黒体放射色の生成。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #pragma once
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>

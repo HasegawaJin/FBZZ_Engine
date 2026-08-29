@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MeshTrailComponent.hpp | fbzz::scene
-// MeshRenderer / SkinnedMeshRenderer の形状を過去姿勢で半透明描画する残像トレイル
+/// @file    MeshTrailComponent.hpp
+/// @brief   MeshRenderer / SkinnedMeshRenderer の形状を過去姿勢で半透明描画する残像トレイル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Engine/Renderer/ResourceHandle.hpp>

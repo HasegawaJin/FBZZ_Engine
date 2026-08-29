@@ -1,8 +1,10 @@
-// FBZZ Engine
-// PhysicsSystem.cpp | fbzz::scene
-// Scene と physics::World の同期
-// RigidBodyComponent と ColliderComponent を physics に反映し、Step 後に Transform へ戻す。
-// Scene から physics への依存方向を保つ。
+/// @file    PhysicsSystem.cpp
+/// @brief   Scene と physics::World の同期。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// RigidBodyComponent と ColliderComponent を physics に反映し、Step 後に Transform へ戻す。
+/// Scene から physics への依存方向を保つ。
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ColliderSync.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"

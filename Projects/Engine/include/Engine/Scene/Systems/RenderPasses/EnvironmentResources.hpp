@@ -1,21 +1,22 @@
-// FBZZ Engine
-// EnvironmentResources.hpp | fbzz::scene
-// 空連動 IBL のためにフレームをまたいで生存する GPU リソースと状態の入れ物。
-//
-// 概要:
-//   「空 → 動的 IBL」(環境システム設計ドキュメント Phase A) の要石となる状態オブジェクト。
-//   空をキューブマップへ焼いた "SkyEnvCube" と、それを畳み込んだ "SkyIrradiance"/"SkyPrefilter"、
-//   および SkyLight として消費する方向光/色を保持する。
-//
-// WHY (System ではない):
-//   この engine の XxxSystem はスケジューラが毎フレーム呼ぶステートレス関数で、
-//   フレームをまたぐ GPU リソースを持てない。一方、空連動 IBL は
-//     1) キューブマップ/IBL テクスチャをフレーム間でキャッシュし
-//     2) 太陽方向・大気パラメータが変化したフレームだけ再ベイクする
-//   という永続状態と dirty 制御を要求する。そのため OcclusionCuller と同じく
-//   「RenderPasses/ 内の System でないヘルパー (状態オブジェクト)」として実装し、
-//   RenderSystem パイプラインの raw パス群がこれを RenderPassContext 経由で読み書きする。
-//   (設計詳細: Docs/design/environment-system.md §5-1)
+/// @file    EnvironmentResources.hpp
+/// @brief   空連動 IBL のためにフレームをまたいで生存する GPU リソースと状態の入れ物。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// 概要:
+/// 「空 → 動的 IBL」(環境システム設計ドキュメント Phase A) の要石となる状態オブジェクト。
+/// 空をキューブマップへ焼いた "SkyEnvCube" と、それを畳み込んだ "SkyIrradiance"/"SkyPrefilter"、
+/// および SkyLight として消費する方向光/色を保持する。
+///
+/// WHY (System ではない):
+/// この engine の XxxSystem はスケジューラが毎フレーム呼ぶステートレス関数で、
+/// フレームをまたぐ GPU リソースを持てない。一方、空連動 IBL は
+/// 1) キューブマップ/IBL テクスチャをフレーム間でキャッシュし
+/// 2) 太陽方向・大気パラメータが変化したフレームだけ再ベイクする
+/// という永続状態と dirty 制御を要求する。そのため OcclusionCuller と同じく
+/// 「RenderPasses/ 内の System でないヘルパー (状態オブジェクト)」として実装し、
+/// RenderSystem パイプラインの raw パス群がこれを RenderPassContext 経由で読み書きする。
+/// (設計詳細: Docs/design/environment-system.md §5-1)
 #pragma once
 
 #include <Engine/Renderer/ResourceHandle.hpp>

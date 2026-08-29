@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ModelAssetImporter.cpp | fbzz::asset
-// .fzasset バイナリ → ModelAsset デシリアライザ
+/// @file    ModelAssetImporter.cpp
+/// @brief   .fzasset バイナリ → ModelAsset デシリアライザ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
+#include <Engine/Asset/FzVertexCompat.hpp>
 #include <Engine/Asset/ModelAssetImporter.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Renderer/Mesh.hpp>
@@ -157,11 +159,14 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
         return nullptr;
     }
 
-    if (hdr.version != FZMODEL_VERSION || hdr.lodCount == 0) {
+    // v4 以前は静的頂点に色が無いだけで、他のチャンクは同一レイアウト。
+    if (hdr.version < FZMODEL_VERSION_PRE_VERTEX_COLOR || hdr.version > FZMODEL_VERSION
+        || hdr.lodCount == 0) {
         FBZZ_LOG_ERROR("ModelAssetImporter: unsupported header version=%u lodCount=%u [%s]",
                        hdr.version, hdr.lodCount, absPath.c_str());
         return nullptr;
     }
+    const bool hasVertexColor = hdr.version > FZMODEL_VERSION_PRE_VERTEX_COLOR;
 
     auto model = std::make_unique<ModelAsset>();
     const bool skinned = (hdr.flags & FZMODEL_FLAG_SKINNED) != 0;
@@ -221,9 +226,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
             mesh->isSkinned    = (smHdr.vertexFormat == 1);
 
             if (!mesh->isSkinned) {
-                mesh->cpuVertices.resize(smHdr.vertexCount);
-                if (!r.ReadBytes(mesh->cpuVertices.data(),
-                                 smHdr.vertexCount * sizeof(renderer::Vertex))) {
+                if (!ReadStaticVertices(r, smHdr.vertexCount, hasVertexColor, mesh->cpuVertices)) {
                     FBZZ_LOG_ERROR("ModelAssetImporter: truncated static vertices lod=%u submesh=%u count=%u [%s]",
                                    li, si, smHdr.vertexCount, absPath.c_str());
                     return nullptr;

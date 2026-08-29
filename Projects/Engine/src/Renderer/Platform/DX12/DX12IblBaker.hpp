@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12IblBaker.hpp | fbzz::renderer
-// キャプチャ済み環境キューブをirradiance/prefilterへGPU畳み込みする
+/// @file    DX12IblBaker.hpp
+/// @brief   キャプチャ済み環境キューブをirradiance/prefilterへGPU畳み込みする。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <memory>

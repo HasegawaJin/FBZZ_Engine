@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PhysicsMaterial.hpp | fbzz::physics
-// 剛体の表面物性 (反発・摩擦・密度) のプリセット定義
+/// @file    PhysicsMaterial.hpp
+/// @brief   剛体の表面物性 (反発・摩擦・密度) のプリセット定義。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include <cstdint>

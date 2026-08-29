@@ -1,6 +1,7 @@
-// FBZZ Engine
-// UndoHistoryPanel.cpp | fbzz::editor
-// Undo 履歴パネル実装
+/// @file    UndoHistoryPanel.cpp
+/// @brief   Undo 履歴パネル実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
 #include <Editor/Panels/UndoHistoryPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/UndoStack.hpp>

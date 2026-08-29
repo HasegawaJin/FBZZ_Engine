@@ -1,5 +1,7 @@
-// FBZZ Engine
-// TerrainGridComponent.cpp | fbzz::scene
+/// @file    TerrainGridComponent.cpp
+/// @brief   地形グリッドのタイル生成と管理の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>

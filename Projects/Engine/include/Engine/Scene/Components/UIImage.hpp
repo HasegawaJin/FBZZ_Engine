@@ -1,8 +1,10 @@
-// FBZZ Engine
-// UIImage.hpp | fbzz::scene
-// UI スプライト描画コンポーネント
-// 位置とサイズは GameObject::transform の local 値から読む。
-// Texture は ResourceHandle で参照し、AssetManager / ResourceManager が所有する。
+/// @file    UIImage.hpp
+/// @brief   UI スプライト描画コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
+///
+/// 位置とサイズは GameObject::transform の local 値から読む。
+/// Texture は ResourceHandle で参照し、AssetManager / ResourceManager が所有する。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector4.hpp>

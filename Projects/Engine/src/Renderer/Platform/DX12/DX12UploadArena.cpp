@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12UploadArena.cpp | fbzz::renderer
-// 256 byte CBV アラインメントを含む Upload Heap の線形割り当て
+/// @file    DX12UploadArena.cpp
+/// @brief   256 byte CBV アラインメントを含む Upload Heap の線形割り当て。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12UploadArena.hpp"
 
 #include <Engine/Core/Logger.hpp>

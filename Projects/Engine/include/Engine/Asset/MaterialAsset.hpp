@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialAsset.hpp | fbzz::asset
-// .mat マテリアルアセットのランタイム表現と TOML 入出力 API
+/// @file    MaterialAsset.hpp
+/// @brief   .mat マテリアルアセットのランタイム表現と TOML 入出力 API。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 #include <Engine/Asset/ParticleMaterialSettings.hpp>
 #include <Engine/Renderer/RenderLayer.hpp>
@@ -27,7 +28,7 @@ namespace fbzz::asset {
 // WHY Forward / Deferred をここへ持たないか:
 //      描画経路は RenderSettings::pipeline がプロジェクト全体で決める責務であり、
 //      Material ごとに上書きすると同じシーン内でライティング・GBuffer の前提が混在する。
-enum class RenderPath { Auto, Particle, Trail, UI, Decal };
+enum class RenderPath { Auto, Particle, Trail, UI, Decal, PostProcess };
 
 // fzmat の mesh_type フィールドが取れる値。
 // WHY: Surface シェーダー判定をパス文字列検索から fzmat 宣言へ移し、

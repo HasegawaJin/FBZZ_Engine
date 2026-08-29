@@ -1,7 +1,9 @@
-// FBZZ Engine
-// Time.hpp | fbzz
-// フレーム時間・経過時間・タイムスケール管理
-// Application::Run() 先頭で Time::Tick() を呼ぶ。以降は Time::deltaTime などを直接参照する。
+/// @file    Time.hpp
+/// @brief   フレーム時間・経過時間・タイムスケール管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Application::Run() 先頭で Time::Tick() を呼ぶ。以降は Time::deltaTime などを直接参照する。
 #pragma once
 #include <cstdint>
 

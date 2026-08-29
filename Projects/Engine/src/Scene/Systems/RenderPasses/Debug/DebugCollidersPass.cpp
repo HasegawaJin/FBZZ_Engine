@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DebugCollidersPass.cpp | fbzz::scene
-// コライダーワイヤーフレームを HDR バッファへ描画する IRenderPass 実装
+/// @file    DebugCollidersPass.cpp
+/// @brief   コライダーワイヤーフレームを HDR バッファへ描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LaunchArgs.cpp | fbzz::sandbox
-// Sandbox のコマンドライン引数解析
+/// @file    LaunchArgs.cpp
+/// @brief   Sandbox のコマンドライン引数解析。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #include "LaunchArgs.hpp"
 
 #include <Engine/Util/FileSystem.hpp>

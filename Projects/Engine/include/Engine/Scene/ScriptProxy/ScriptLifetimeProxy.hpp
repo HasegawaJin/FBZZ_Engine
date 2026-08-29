@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ScriptLifetimeProxy.hpp | fbzz::scene
-// Script から LifetimeComponent を操作するショートハンド。
-// 銃弾・パーティクル GO など、寿命タイマーを持つオブジェクトの残り時間を動的に制御する。
+/// @file    ScriptLifetimeProxy.hpp
+/// @brief   Script から LifetimeComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 銃弾・パーティクル GO など、寿命タイマーを持つオブジェクトの残り時間を動的に制御する。
 #pragma once
 
 namespace fbzz::scene {

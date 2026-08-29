@@ -19,20 +19,6 @@ export declare const ScenePropertyFilterSchema: z.ZodObject<{
     value: z.ZodType<JsonValue, unknown, z.core.$ZodTypeInternals<JsonValue, unknown>>;
 }, z.core.$strict>;
 export type ScenePropertyFilter = z.infer<typeof ScenePropertyFilterSchema>;
-export declare const VFXPreviewCameraSchema: z.ZodObject<{
-    preset: z.ZodOptional<z.ZodEnum<{
-        angle: "angle";
-        front: "front";
-        side: "side";
-        top: "top";
-    }>>;
-    target: z.ZodOptional<z.ZodTuple<[z.ZodNumber, z.ZodNumber, z.ZodNumber], null>>;
-    distance: z.ZodOptional<z.ZodNumber>;
-    yaw: z.ZodOptional<z.ZodNumber>;
-    pitch: z.ZodOptional<z.ZodNumber>;
-    fovY: z.ZodOptional<z.ZodNumber>;
-}, z.core.$strict>;
-export type VFXPreviewCamera = z.infer<typeof VFXPreviewCameraSchema>;
 export type EditorQuery = {
     t: 'editor.catalog';
 } | {
@@ -94,35 +80,6 @@ export type EditorQuery = {
     t: 'asset.thumbnail';
     path: string;
 } | {
-    t: 'vfx.graph';
-    path: string;
-    detail?: 'summary' | 'full' | undefined;
-} | {
-    t: 'vfx.nodeField';
-    path: string;
-    nodeId: number;
-    schemaPath?: string | undefined;
-    prefix?: string | undefined;
-} | {
-    t: 'vfx.lint';
-    path: string;
-} | {
-    t: 'vfx.diff';
-    base: string;
-    target: string;
-} | {
-    t: 'vfx.params';
-    path: string;
-    id?: string | undefined;
-} | {
-    t: 'vfx.schema';
-} | {
-    t: 'vfx.guide';
-} | {
-    t: 'vfx.templateCatalog';
-    query?: string | undefined;
-    limit?: number | undefined;
-} | {
     t: 'bt.tree';
     path: string;
 } | {
@@ -149,40 +106,10 @@ export type EditorQuery = {
 } | {
     t: 'bt.templateCatalog';
 } | {
-    t: 'vfx.runtime';
-} | {
-    t: 'vfx.previewEnsure';
-} | {
-    t: 'vfx.textureAnalyze';
-    path: string;
-} | {
-    t: 'vfx.materialAnalyze';
-    path: string;
-} | {
-    t: 'vfx.assetSurvey';
-    directory?: string | undefined;
-    limit?: number | undefined;
-    detail?: 'summary' | 'full' | undefined;
-    refresh?: boolean | undefined;
-} | {
     t: 'shader.inspect';
     path: string;
 } | {
     t: 'shader.diagnostics';
-} | {
-    t: 'vfx.curvePresets';
-} | {
-    t: 'vfx.preview';
-    path: string;
-    time: number;
-    w?: number | undefined;
-    h?: number | undefined;
-    view?: 'normal' | 'overdraw' | 'gizmos' | undefined;
-    camera?: VFXPreviewCamera | undefined;
-} | {
-    t: 'vfx.previewMetrics';
-    path: string;
-    view?: 'normal' | 'overdraw' | 'gizmos' | undefined;
 } | {
     t: 'material.inspect';
     id: string;
@@ -224,7 +151,7 @@ export type EditorQuery = {
     w: number;
     h: number;
     cameraId?: string | undefined;
-    view?: 'scene' | 'game' | 'vfx' | undefined;
+    view?: 'scene' | 'game' | undefined;
 } | {
     t: 'viewport.semantic';
     w: number;
@@ -364,141 +291,6 @@ export type EditorCommand = {
     path: string;
     shaderPath: string;
 } | {
-    t: 'vfx.graph.set';
-    path: string;
-    name?: string | undefined;
-    maxParticles?: number | undefined;
-    maxLights?: number | undefined;
-    maxAudioVoices?: number | undefined;
-} | {
-    t: 'vfx.node.add';
-    path: string;
-    nodeType: 'particle' | 'trail' | 'meshTrail' | 'light' | 'audio' | 'decal' | 'delay' | 'subGraph' | 'forceField' | 'mesh' | 'screenEffect' | 'cameraShake' | 'timeScale' | 'wind' | 'reroute';
-    name?: string | undefined;
-    from?: number | undefined;
-    assetPath?: string | undefined;
-} | {
-    t: 'vfx.node.duplicate';
-    path: string;
-    nodeId: number;
-    name?: string | undefined;
-    editorX?: number | undefined;
-    editorY?: number | undefined;
-} | {
-    t: 'vfx.node.remove';
-    path: string;
-    nodeId: number;
-} | {
-    t: 'vfx.node.setEnabled';
-    path: string;
-    nodeId: number;
-    enabled: boolean;
-} | {
-    t: 'vfx.node.setMetadata';
-    path: string;
-    nodeId: number;
-    name?: string | undefined;
-    editorX?: number | undefined;
-    editorY?: number | undefined;
-} | {
-    t: 'vfx.node.setParent';
-    path: string;
-    nodeId: number;
-    parentNodeId?: number | undefined;
-} | {
-    t: 'vfx.node.setField';
-    path: string;
-    nodeId: number;
-    schemaPath: string;
-    value: JsonValue;
-} | {
-    t: 'vfx.link.add';
-    path: string;
-    from: number;
-    to: number;
-    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
-    delay?: number | undefined;
-} | {
-    t: 'vfx.link.update';
-    path: string;
-    index: number;
-    from?: number | undefined;
-    to?: number | undefined;
-    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
-    delay?: number | undefined;
-} | {
-    t: 'vfx.link.remove';
-    path: string;
-    index: number;
-} | {
-    t: 'vfx.param.declare';
-    path: string;
-    name: string;
-    paramType: 'float' | 'int' | 'bool' | 'color' | 'vector3' | 'asset';
-    defaultValue: JsonValue;
-    minimum?: number | undefined;
-    maximum?: number | undefined;
-} | {
-    t: 'vfx.param.remove';
-    path: string;
-    name: string;
-} | {
-    t: 'vfx.param.bind';
-    path: string;
-    name: string;
-    nodeId: number;
-    schemaPath: string;
-} | {
-    t: 'vfx.param.unbind';
-    path: string;
-    name: string;
-    nodeId?: number | undefined;
-    schemaPath?: string | undefined;
-} | {
-    t: 'vfx.param.setDefault';
-    path: string;
-    name: string;
-    value: JsonValue;
-} | {
-    t: 'vfx.instance.set';
-    id: string;
-    name: string;
-    value: JsonValue;
-} | {
-    t: 'vfx.instance.clear';
-    id: string;
-    name: string;
-} | {
-    t: 'vfx.template.apply';
-    template: 'explosion' | 'fire' | 'smoke' | 'impact' | 'magic' | string;
-    path: string;
-    name?: string | undefined;
-    description?: string | undefined;
-    tags?: string[] | undefined;
-    mode?: 'replace' | 'merge' | 'subgraph' | undefined;
-    groups?: number[] | undefined;
-    anchorNodeId?: number | undefined;
-    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
-    delay?: number | undefined;
-    parentNodeId?: number | undefined;
-    variant?: string | undefined;
-    raiseBudget?: boolean | undefined;
-} | {
-    t: 'vfx.optimize';
-    path: string;
-    targetParticles?: number | undefined;
-    strategy?: 'particles' | 'fillRate' | 'both' | undefined;
-} | {
-    t: 'vfx.repair';
-    path: string;
-    connectOrphans?: boolean | undefined;
-    fixAssets?: boolean | undefined;
-    fixSprites?: boolean | undefined;
-    fixLighting?: boolean | undefined;
-    fixSorting?: boolean | undefined;
-    fixMeshFade?: boolean | undefined;
-    fixParents?: boolean | undefined;
-} | {
     t: 'bt.node.add';
     path: string;
     nodeType: string;
@@ -554,42 +346,6 @@ export type EditorCommand = {
     path: string;
     name?: string | undefined;
     description?: string | undefined;
-} | {
-    t: 'vfx.variant.upsert';
-    path: string;
-    name: string;
-    values: {
-        [key: string]: JsonValue;
-    };
-} | {
-    t: 'vfx.variant.remove';
-    path: string;
-    name: string;
-} | {
-    t: 'vfx.group.add';
-    path: string;
-    title?: string | undefined;
-    note?: string | undefined;
-    x?: number | undefined;
-    y?: number | undefined;
-    width?: number | undefined;
-    height?: number | undefined;
-    color?: [number, number, number, number] | undefined;
-} | {
-    t: 'vfx.group.update';
-    path: string;
-    groupId: number;
-    title?: string | undefined;
-    note?: string | undefined;
-    x?: number | undefined;
-    y?: number | undefined;
-    width?: number | undefined;
-    height?: number | undefined;
-    color?: [number, number, number, number] | undefined;
-} | {
-    t: 'vfx.group.remove';
-    path: string;
-    groupId: number;
 } | {
     t: 'vfx.generateMotionVectors';
     texturePath: string;
@@ -880,7 +636,6 @@ export declare const ViewportCaptureResultSchema: z.ZodObject<{
     view: z.ZodOptional<z.ZodEnum<{
         game: "game";
         scene: "scene";
-        vfx: "vfx";
     }>>;
 }, z.core.$strict>;
 export type ViewportCaptureResult = z.infer<typeof ViewportCaptureResultSchema>;

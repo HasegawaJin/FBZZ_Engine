@@ -1,10 +1,12 @@
-﻿// FBZZ Engine
-// ViewportPanel.cpp | fbzz::editor
-// Scene / Game / UI Viewport のレイアウトと入力ルーティング
+﻿/// @file    ViewportPanel.cpp
+/// @brief   Scene / Game / UI Viewport のレイアウトと入力ルーティング。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Viewport/ViewportCommon.hpp"
 #include "MapToolCommon.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
+#include <Editor/Util/ViewportCamera.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <iterator>
 
@@ -598,6 +600,22 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             dl->AddText(p, IM_COL32(100, 220, 255, 255), snapBuf);
         }
 
+        // ── 射影インジケーター (平行投影のときだけ) ────────────────────────
+        // WHY 出すか: 正投影は «たまたま真横から見ているだけの遠近視点» と
+        //      静止画では見分けが付かない。寸法を信じてよい状態かどうかを明示する。
+        if (IsEditorCameraOrthographic(ctx)) {
+            const char*  label = " ORTHO ";
+            const ImVec2 tsz   = ImGui::CalcTextSize(label);
+            const float  y     = viewportMin.y + 6.0f + ImGui::GetFrameHeight() + 4.0f
+                               + (ctx.snapEnabled ? tsz.y + 4.0f : 0.0f);
+            const ImVec2 p     = { viewportMin.x + 6.0f, y };
+            ImDrawList*  dl    = ImGui::GetWindowDrawList();
+            dl->AddRectFilled({ p.x - 2, p.y - 1 },
+                              { p.x + tsz.x + 2, p.y + tsz.y + 1 },
+                              IM_COL32(90, 70, 20, 200), 3.0f);
+            dl->AddText(p, IM_COL32(255, 210, 110, 255), label);
+        }
+
         // ── カメラブックマーク HUD (オリエンテーションギズモ下) ─────────────
         bool bookmarkRowHovered = false;
         {
@@ -679,7 +697,11 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             };
             const bool shiftHeld = ImGui::IsKeyDown(ImGuiKey_LeftShift)
                                 || ImGui::IsKeyDown(ImGuiKey_RightShift);
-            for (int i = 0; i < 9; ++i) {
+            // Alt + 数字は軸ビュー (view.axis_*) が取る。ここで拾うと、視点を切り替える
+            // つもりの Alt+1 がブックマーク 1 へ飛んでしまう。
+            const bool altHeld = ImGui::IsKeyDown(ImGuiKey_LeftAlt)
+                              || ImGui::IsKeyDown(ImGuiKey_RightAlt);
+            for (int i = 0; i < 9 && !altHeld; ++i) {
                 if (!ImGui::IsKeyPressed(kNumKeys[i])) continue;
                 // Map モード中は 1-6 をツールへ譲り、7-9 のみブックマークとして残す。
                 if (ctx.mapEditingMode && i < 6) continue;
@@ -697,8 +719,10 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         }
     }
     bool uiGizmoActive = false;
-    if (isUIView && !inPlayOrPause)
+    if (isUIView && !inPlayOrPause) {
+        DrawUISelectionOutlines(ctx, viewportMin, size);
         uiGizmoActive = DrawUIGizmo(ctx, viewportMin, size, m_uiGizmoDrag, m_uiGizmoDragStart, m_uiGizmoStartX, m_uiGizmoStartY, m_uiGizmoStartWidth, m_uiGizmoStartHeight, m_uiGizmoStartAngle, m_uiGizmoStartZ);
+    }
     if (isUIView && !inPlayOrPause && viewportHovered
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !uiGizmoActive)
         PickUIEntity(ctx, viewportMin, size);

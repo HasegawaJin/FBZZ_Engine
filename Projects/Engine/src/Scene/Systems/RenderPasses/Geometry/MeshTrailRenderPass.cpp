@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPasses/Geometry/MeshTrailRenderPass.cpp | fbzz::scene
-// MeshTrailComponent の過去姿勢サンプリング、Skinned bone palette 保存、半透明 DrawCall 発行 (IRenderPass 実装)
+/// @file    RenderPasses/Geometry/MeshTrailRenderPass.cpp
+/// @brief   MeshTrailComponent の過去姿勢サンプリング、Skinned bone palette 保存、半透明 DrawCall 発行 (IRenderPass 実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "Engine/Scene/Systems/RenderPasses/Geometry/MeshTrailRenderPass.hpp"
 
 #include <Engine/Asset/AssetManager.hpp>

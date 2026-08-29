@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FlipbookAtlasBaker.cpp | fbzz::asset
-// PNG等の画像列をRGBA8 Flipbook Atlasへ結合する実装
+/// @file    FlipbookAtlasBaker.cpp
+/// @brief   PNG等の画像列をRGBA8 Flipbook Atlasへ結合する実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma comment(lib, "ole32.lib")
 
 #include <Engine/Asset/FlipbookAtlasBaker.hpp>

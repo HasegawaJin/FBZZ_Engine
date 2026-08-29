@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ScriptUIProxy.hpp | fbzz::scene
-// Script から UI コンポーネントを操作するショートハンド
+/// @file    ScriptUIProxy.hpp
+/// @brief   Script から UI コンポーネントを操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
+#include <Math/Vector2.hpp>
 #include <Math/Vector4.hpp>
 #include <string>
 #include <string_view>
@@ -137,6 +139,102 @@ struct ScriptUIProxy {
     // param 名はシェーダーの MaterialConstants に宣言した変数名そのまま。
     // 綴りが違っても失敗しない (存在しない変数は無視される) ので、
     // 効かないときはまずシェーダーの変数名と突き合わせること。
+    /// @name 子を名前で引く
+    /// 直下の子から名前が一致する 1 つを返す。見つからなければ nullptr。
+    ///
+    /// WHY プロキシに置くか: HUD の 1 スクリプトが「行の中の Label / Value / Fill」を
+    ///     指す構成は UI では定型で、これが無いと画面ごとに同じ探索が写経される。
+    ///     写し間違えても nullptr が返るだけなので、間違いが表に出るのが遅い。
+    /// NOTE: 孫は探さない。階層をまたいだ検索は構成の変更で黙って壊れるため、
+    ///       1 段ずつ辿らせる。
+    [[nodiscard]] GameObject* Find(GameObject* parent, std::string_view childName) const;
+
+    /// ポインターがこのフレームに UI へ吸われたか。
+    ///
+    /// WHY 要るか: これが無いと、メニューの上でクリックした入力がそのまま
+    ///     ゲーム側 (射撃・カメラ操作) にも届く。撃つ前にこれを見て降りる。
+    [[nodiscard]] bool IsPointerOverUI() const;
+
+    /// @name UISlider
+    ///@{
+    [[nodiscard]] float GetSliderValue(GameObject* go) const;
+    void SetSliderValue(GameObject* go, float value) const;
+    /// 直近のフレームで値が動いたか (1 フレーム限定)。
+    [[nodiscard]] bool WasSliderChanged(GameObject* go) const;
+    void SetSliderRange(GameObject* go, float minimum, float maximum) const;
+    void SetSliderInteractable(GameObject* go, bool interactable) const;
+    ///@}
+
+    /// @name UIToggle
+    ///@{
+    [[nodiscard]] bool IsToggleOn(GameObject* go) const;
+    void SetToggleOn(GameObject* go, bool isOn) const;
+    [[nodiscard]] bool WasToggleChanged(GameObject* go) const;
+    void SetToggleInteractable(GameObject* go, bool interactable) const;
+    ///@}
+
+    /// @name UIScrollView
+    ///@{
+    [[nodiscard]] math::Vector2 GetScrollPosition(GameObject* go) const;
+    void SetScrollPosition(GameObject* go, const math::Vector2& position) const;
+    void SetScrollContentSize(GameObject* go, const math::Vector2& size) const;
+    [[nodiscard]] bool WasScrollChanged(GameObject* go) const;
+    ///@}
+
+    /// @name UIInputField
+    ///@{
+    [[nodiscard]] std::string GetFieldText(GameObject* go) const;
+    void SetFieldText(GameObject* go, std::string_view text) const;
+    [[nodiscard]] bool WasFieldChanged(GameObject* go) const;
+    /// Enter が押された (multiline では立たない)。
+    [[nodiscard]] bool WasSubmitted(GameObject* go) const;
+    [[nodiscard]] bool IsFieldFocused(GameObject* go) const;
+    void SetFieldFocused(GameObject* go, bool focused) const;
+    ///@}
+
+    /// @name UICanvasGroup
+    /// 画面まるごとのフェードと入力の遮断。要素ごとに色を書いて回らずに済む。
+    ///@{
+    [[nodiscard]] float GetGroupAlpha(GameObject* go) const;
+    void SetGroupAlpha(GameObject* go, float alpha) const;
+    void SetGroupInteractable(GameObject* go, bool interactable) const;
+    void SetGroupBlocksRaycasts(GameObject* go, bool blocks) const;
+    ///@}
+
+    /// @name フォーカス (パッド操作)
+    /// UICanvas.navigationEnabled を立てた Canvas でだけ意味を持つ。
+    ///@{
+    /// go のフォーカスを、その go が属する Canvas へ設定する。
+    void SetFocus(GameObject* go) const;
+    /// シーンで最初に見つかった Canvas のフォーカス。無ければ nullptr。
+    [[nodiscard]] GameObject* GetFocus() const;
+    [[nodiscard]] bool IsFocused(GameObject* go) const;
+    void ClearFocus(GameObject* go) const;
+    ///@}
+
+    /// @name ドラッグ & ドロップ
+    ///@{
+    [[nodiscard]] bool IsDragging(GameObject* go) const;
+    /// このフレームに離されたか (1 フレーム限定)。
+    [[nodiscard]] bool WasDropped(GameObject* go) const;
+    /// 落ちた先。受け皿が無ければ nullptr。
+    [[nodiscard]] GameObject* GetDropTarget(GameObject* go) const;
+    /// 受け皿がこのフレームに受け取ったか (1 フレーム限定)。
+    [[nodiscard]] bool WasReceived(GameObject* go) const;
+    [[nodiscard]] GameObject* GetReceivedFrom(GameObject* go) const;
+    [[nodiscard]] std::string GetReceivedPayload(GameObject* go) const;
+    [[nodiscard]] bool IsDropHovered(GameObject* go) const;
+    ///@}
+
+    /// @name テキストの 1 文字ずつ表示
+    ///@{
+    /// 描く文字数。-1 で全部。リッチテキストのタグは数に入らない。
+    void SetVisibleCharacters(GameObject* go, int count) const;
+    [[nodiscard]] int  GetVisibleCharacters(GameObject* go) const;
+    /// この文字列の総文字数 (タグを除く)。送り切ったかの判定に使う。
+    [[nodiscard]] int  GetCharacterCount(GameObject* go) const;
+    ///@}
+
     void SetMaterial(GameObject* go, std::string_view materialPath) const;
     void SetMaterialFloat(GameObject* go, std::string_view param, float value) const;
     void SetMaterialVector2(GameObject* go, std::string_view param, float x, float y) const;

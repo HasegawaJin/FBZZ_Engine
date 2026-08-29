@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptLightProxy.hpp | fbzz::scene
-// Script から LightComponent を操作するショートハンド
+/// @file    ScriptLightProxy.hpp
+/// @brief   Script から LightComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Math/Vector3.hpp>

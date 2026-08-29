@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SpriteEditorPanel.cpp | fbzz::editor
-// Sprite atlas を直接操作する視覚編集ツール
+/// @file    SpriteEditorPanel.cpp
+/// @brief   Sprite atlas を直接操作する視覚編集ツール。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Panels/SpriteEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>

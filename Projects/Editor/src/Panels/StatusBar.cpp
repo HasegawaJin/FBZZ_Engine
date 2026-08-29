@@ -1,6 +1,7 @@
-// FBZZ Engine
-// StatusBar.cpp | fbzz::editor
-// DockSpaceHost の画面下端でインライン描画される情報バー
+/// @file    StatusBar.cpp
+/// @brief   DockSpaceHost の画面下端でインライン描画される情報バー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>

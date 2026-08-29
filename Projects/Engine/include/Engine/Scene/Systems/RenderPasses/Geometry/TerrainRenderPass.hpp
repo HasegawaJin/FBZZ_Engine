@@ -1,11 +1,13 @@
-// FBZZ Engine
-// TerrainRenderPass.hpp | fbzz::scene
-// TerrainComponent を走査してチャンクメッシュを生成・描画するシステム
-// WHY: 地形描画に必要な「ハイトマップ → GPU メッシュ変換」「チャンク管理」
-//      「フラスタムカリング」はシーン全体をまたぐ横断的関心事であり、
-//      Component 内に書くと複数エンティティ間の最適化（チャンクキャッシュ共有等）が
-//      困難になる。System に分離することで Component はデータのみに専念できる。
-// 実装ファイル: Projects/Engine/src/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.cpp
+/// @file    TerrainRenderPass.hpp
+/// @brief   TerrainComponent を走査してチャンクメッシュを生成・描画するシステム。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// WHY: 地形描画に必要な「ハイトマップ → GPU メッシュ変換」「チャンク管理」
+/// 「フラスタムカリング」はシーン全体をまたぐ横断的関心事であり、
+/// Component 内に書くと複数エンティティ間の最適化（チャンクキャッシュ共有等）が
+/// 困難になる。System に分離することで Component はデータのみに専念できる。
+/// 実装ファイル: Projects/Engine/src/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.cpp
 #pragma once
 
 #include <Engine/Renderer/ResourceHandle.hpp>

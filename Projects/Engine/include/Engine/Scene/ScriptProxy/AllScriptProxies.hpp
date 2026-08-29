@@ -1,8 +1,10 @@
-// FBZZ Engine
-// AllScriptProxies.hpp | fbzz::scene
-// 全 ScriptProxy ヘッダーのアンブレラインクルード。
-// Script.hpp はここを 1 行インクルードするだけでよい。
-// 新しいプロキシを追加する際はこのファイルに include を 1 行追加すること。
+/// @file    AllScriptProxies.hpp
+/// @brief   全 ScriptProxy ヘッダーのアンブレラインクルード。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// Script.hpp はここを 1 行インクルードするだけでよい。
+/// 新しいプロキシを追加する際はこのファイルに include を 1 行追加すること。
 #pragma once
 
 #include <Engine/Scene/ScriptProxy/ScriptTransformProxy.hpp>
@@ -52,3 +54,5 @@
 #include <Engine/Scene/ScriptProxy/ScriptDisplayProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptGraphicsProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMotionWarpProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptSequenceProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptObjectMaskProxy.hpp>

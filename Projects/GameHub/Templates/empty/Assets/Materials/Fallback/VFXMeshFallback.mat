@@ -5,7 +5,7 @@
 #      VFX の Mesh ノードは衝撃波シェルや斬撃板として使う前提なので、
 #      未設定のまま置いてもエフェクトとして成立する加算・両面のUnlitを既定にする。
 #      色とフェードは MaterialComponent::paramOverrides 経由で
-#      VFXGraphSystem が albedo へ毎フレーム書き込む (共有アセットは汚れない)。
+#      VFXMaterialEnvelope が albedo へ毎フレーム書き込む (共有アセットは汚れない)。
 version = 1
 shader = "Assets/Shaders/Material/Surface/Unlit.hlsl"
 blend_mode = "Additive"

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// CapsuleCollider.cpp | fbzz::physics
-// Y 軸向きカプセルコライダー
+/// @file    CapsuleCollider.cpp
+/// @brief   Y 軸向きカプセルコライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #include <Physics/CapsuleCollider.hpp>
 
 namespace fbzz::physics

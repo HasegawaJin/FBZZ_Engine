@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ColliderVolume.hpp | fbzz::physics
-// Trigger コライダーを範囲として使う空間効果
+/// @file    ColliderVolume.hpp
+/// @brief   Trigger コライダーを範囲として使う空間効果。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/Volume.hpp>
 #include <Physics/Collider.hpp>

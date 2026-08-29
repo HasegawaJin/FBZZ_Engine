@@ -1,6 +1,7 @@
-// FBZZ Engine
-// OperatorBridge.cpp | fbzz::editor::ai
-// OperatorRegistry ↔ Editor Command Bus (AI / MCP) の変換
+/// @file    OperatorBridge.cpp
+/// @brief   OperatorRegistry ↔ Editor Command Bus (AI / MCP) の変換。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #include <Editor/Ai/OperatorBridge.hpp>
 
 #include <Editor/EditorContext.hpp>

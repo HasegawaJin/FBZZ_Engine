@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RigidBody.hpp | fbzz::physics
-// 剛体の状態と力の適用
+/// @file    RigidBody.hpp
+/// @brief   剛体の状態と力の適用。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Math/Vector3.hpp> // math::Vector3
 #include <Math/Quaternion.hpp> // math::Quaternion

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptAssetRef.hpp | fbzz::scene
-// Script SerializeField向けのGUID付き型安全Asset参照
+/// @file    ScriptAssetRef.hpp
+/// @brief   Script SerializeField向けのGUID付き型安全Asset参照。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <string>

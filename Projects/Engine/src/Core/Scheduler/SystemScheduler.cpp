@@ -1,8 +1,10 @@
-// FBZZ Engine
-// SystemScheduler.cpp | fbzz
-// Phase × DAG によるシステム実行管理。
-// Build() でトポロジカルソートし、競合しない System ペアを同バッチに配置する。
-// 同バッチの System は TaskSystem 経由で並列実行される。
+/// @file    SystemScheduler.cpp
+/// @brief   Phase × DAG によるシステム実行管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// Build() でトポロジカルソートし、競合しない System ペアを同バッチに配置する。
+/// 同バッチの System は TaskSystem 経由で並列実行される。
 #include "Engine/Core/Scheduler/SystemScheduler.hpp"
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"

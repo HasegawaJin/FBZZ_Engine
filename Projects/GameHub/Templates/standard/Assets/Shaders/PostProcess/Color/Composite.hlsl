@@ -153,6 +153,26 @@ float3 ApplyClarity(float3 ldr, float2 uv)
     return saturate(ldr + (ldr - blur) * clarityStrength);
 }
 
+// 放射ブラー — 画面中心から外向きへ数タップ伸ばす。
+//
+// WHY 中心から «外» か: 起爆の «押し出され感» は、視界の端が後ろへ流れることで出る。
+//     逆向き (外から中心) にすると «吸い込まれる» になり、被弾の演出になってしまう。
+// WHY タップ数を固定するか: 強さで分岐すると、弱いフレームと強いフレームで
+//     コストが変わり、一番負荷が高い瞬間 (集束の起爆) だけ可変になる。
+float3 ApplyRadialBlur(Texture2D tex, SamplerState samp, float2 uv, float3 base, float strength)
+{
+    if (strength <= 1.0e-5f) return base;
+    const int   TAPS = 6;
+    const float2 toCenter = (0.5f - uv) * strength;
+    float3 sum = base;
+    [unroll]
+    for (int i = 1; i <= TAPS; ++i) {
+        const float t = (float)i / (float)TAPS;
+        sum += tex.SampleLevel(samp, uv + toCenter * t, 0).rgb;
+    }
+    return sum / (float)(TAPS + 1);
+}
+
 float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     float2 sourceUV = ApplyPixelateUV(p.uv, pixelSize);
@@ -173,6 +193,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     {
         hdr = texHDR.Sample(sampLinearClamp, uv).rgb;
     }
+    // 放射ブラーは色収差の «後»。先に掛けると RGB のずれごと引き伸ばされ、
+    // 中心から外へ虹が走る (収差ではなくプリズムに見える)。
+    hdr = ApplyRadialBlur(texHDR, sampLinearClamp, uv, hdr, radialBlur);
     [branch]
     if (bloomIntensity > 0.0f)
     {

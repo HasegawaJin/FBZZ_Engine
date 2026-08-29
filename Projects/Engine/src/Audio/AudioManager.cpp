@@ -11,6 +11,7 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 
@@ -28,9 +29,15 @@ namespace fbzz::audio
 {
 namespace {
 
-// 生成クリップの合計サイズ上限。超えたら警告だけ出して生成は続ける。
-// WHY 止めないか: 音が急に鳴らなくなる方が、原因の分からない不具合として厄介。
+// 生成クリップの合計サイズ上限。超えても警告だけで生成は続ける。
+// 止めると「音が急に鳴らなくなる」という原因の追いにくい形で現れる。
 constexpr size_t kGeneratedBudgetBytes = 32u * 1024u * 1024u;
+
+// StopVoice の立ち下がり。「プツッ」を消せる最小限で、遅れは耳に分からない。
+constexpr float kStopFadeSeconds = 0.02f;
+
+// BGM はスティールしない。ループ音なので元から除外されるが、意図を数値でも残す。
+constexpr int kBgmPriority = 100;
 
 // ---- RIFF/WAV ヘッダ構造体 (リトルエンディアン前提) ----
 #pragma pack(push, 1)
@@ -58,9 +65,7 @@ std::string LowerExtension(const std::string& path)
 }
 
 // 論理パス ("Assets/...") とリネーム後の実体を AssetManager の規則で解決する。
-// WHY ここで解決するか: 従来は ifstream へ生のまま渡しており、カレントディレクトリが
-//     プロジェクト直下でないと読めなかった。解決できない場合は元の文字列へ落として
-//     従来の挙動を保つ。
+// 生のまま ifstream へ渡すと、カレントディレクトリ次第で読めない。
 std::string ResolveClipPath(const std::string& path)
 {
     const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
@@ -111,18 +116,66 @@ void AudioManager::Shutdown()
     m_device.Shutdown();
 }
 
-void AudioManager::Update()
+void AudioManager::Update(float dt)
 {
-    for (auto it = m_voiceToClip.begin(); it != m_voiceToClip.end();) {
-        if (m_device.IsPlaying(it->first)) { ++it; continue; }
-        const ClipId clip = it->second;
-        it = m_voiceToClip.erase(it);
-        if (const auto entry = m_clips.find(clip); entry != m_clips.end()) {
-            if (entry->second.voiceCount > 0) --entry->second.voiceCount;
+    dt = (std::max)(dt, 0.0f);
+
+    // 停止はクリップの解放まで連鎖して m_voices を書き換えるので、走査中には畳めない。
+    std::vector<uint32_t> fadedOut;
+    std::vector<uint32_t> finished;
+    for (auto& [voiceId, state] : m_voices) {
+        if (state.duration > 0.0f) {
+            state.elapsed += dt;
+            const float t = (std::min)(state.elapsed / state.duration, 1.0f);
+            state.fadeGain = state.fadeFrom + (state.fadeTo - state.fadeFrom) * t;
+            ApplyVoiceGain(voiceId, state);
+            if (t >= 1.0f) {
+                state.duration = 0.0f;
+                if (state.stopAtEnd) { fadedOut.push_back(voiceId); continue; }
+            }
         }
-        DropClipIfUnused(clip);
+        if (!m_device.IsPlaying(voiceId)) finished.push_back(voiceId);
     }
-    if (m_bgmVoiceId != 0 && !m_device.IsPlaying(m_bgmVoiceId)) m_bgmVoiceId = 0;
+
+    for (uint32_t voiceId : fadedOut) StopVoiceImmediate(voiceId);
+    // IsPlaying が false の時点でデバイス側は破棄済み。参照を戻すだけでよい。
+    for (uint32_t voiceId : finished) ForgetVoice(voiceId);
+}
+
+void AudioManager::SetVoiceLimit(size_t limit)
+{
+    m_voiceLimit = limit < 4 ? 4 : limit;
+}
+
+bool AudioManager::MakeRoomForVoice(int priority)
+{
+    if (m_voices.size() < m_voiceLimit) return true;
+
+    uint32_t victim         = 0;
+    int      victimPriority = 0;
+    uint64_t victimSequence = 0;
+    for (const auto& [voiceId, state] : m_voices) {
+        // ループ音は「鳴り続けること」が役目なので奪わない。
+        if (state.loop || voiceId == m_bgmVoiceId) continue;
+        if (victim == 0 || state.priority < victimPriority
+            || (state.priority == victimPriority && state.sequence < victimSequence)) {
+            victim         = voiceId;
+            victimPriority = state.priority;
+            victimSequence = state.sequence;
+        }
+    }
+
+    // 奪える相手が居ない、または相手の方が大事なら、新しい音の方を捨てる。
+    // 上限に達するのは同種の音が湧いた場面で、そこで大事な音を消す方が痛い。
+    if (victim == 0 || victimPriority > priority) return false;
+
+    StopVoiceImmediate(victim);
+    return true;
+}
+
+void AudioManager::ApplyVoiceGain(uint32_t voiceId, const VoiceState& state)
+{
+    m_device.SetVolume(voiceId, state.volume * state.fadeGain);
 }
 
 // ---- バス ----
@@ -133,6 +186,25 @@ void AudioManager::ApplyBusLayout(const std::vector<BusDesc>& buses)
     m_busLayout = NormalizeBusLayout(buses);
     if (!m_device.RebuildBuses(m_busLayout.data(), m_busLayout.size()))
         FBZZ_LOG_ERROR("AudioManager: bus layout rebuild failed (%zu buses)", m_busLayout.size());
+
+    // submix ごと作り直したので残響は初期状態。次の更新を素通りさせない。
+    m_reverbWet = -1.0f;
+}
+
+void AudioManager::SetEnvironmentReverb(float wet, float decaySeconds, float highFrequencyRatio)
+{
+    wet = std::clamp(wet, 0.0f, 1.0f);
+    if (std::fabs(wet - m_reverbWet) < 0.001f
+        && std::fabs(decaySeconds - m_reverbDecay) < 0.001f
+        && std::fabs(highFrequencyRatio - m_reverbHfRatio) < 0.001f) return;
+
+    m_reverbWet     = wet;
+    m_reverbDecay   = decaySeconds;
+    m_reverbHfRatio = highFrequencyRatio;
+    for (size_t i = 0; i < m_busLayout.size(); ++i) {
+        if (!m_busLayout[i].reverb) continue;
+        m_device.SetBusReverb(static_cast<BusIndex>(i), wet, decaySeconds, highFrequencyRatio);
+    }
 }
 
 BusIndex AudioManager::FindBus(std::string_view name) const
@@ -245,8 +317,7 @@ void AudioManager::DropClipIfUnused(ClipId clip)
     const auto it = m_clips.find(clip);
     if (it == m_clips.end()) return;
     const ClipEntry& entry = it->second;
-    // WHY 再生数まで見るか: XAudio2 は PCM をコピーせずポインタで参照し続ける。
-    //     鳴っている最中に vector を破棄すると、解放済みメモリを再生し続ける。
+    // XAudio2 は PCM をポインタで参照し続ける。鳴っている最中に捨てると解放済みメモリを鳴らす。
     if (entry.persistent || entry.refCount > 0 || entry.voiceCount > 0) return;
 
     m_generatedBytes -= (std::min)(m_generatedBytes, entry.pcm.size());
@@ -256,8 +327,13 @@ void AudioManager::DropClipIfUnused(ClipId clip)
 
 // ---- 再生 ----
 
-uint32_t AudioManager::PlayClipVoice(ClipId clip, bool loop, BusIndex bus)
+uint32_t AudioManager::PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
+                                     const PlayParams& params)
 {
+    // スティールはクリップの解放まで連鎖するので、m_clips のイテレーターより先に済ませる。
+    if (m_clips.find(clip) == m_clips.end()) return 0;
+    if (!MakeRoomForVoice(params.priority)) return 0;
+
     const auto it = m_clips.find(clip);
     if (it == m_clips.end() || it->second.pcm.empty()) return 0;
 
@@ -267,34 +343,88 @@ uint32_t AudioManager::PlayClipVoice(ClipId clip, bool loop, BusIndex bus)
     if (voiceId == 0) return 0;
 
     ++entry.voiceCount;
-    m_voiceToClip[voiceId] = clip;
+
+    VoiceState state;
+    state.clip     = clip;
+    state.loop     = loop;
+    state.priority = params.priority;
+    state.sequence = m_nextVoiceSequence++;
+    if (params.fadeInSeconds > 0.0f) {
+        state.fadeGain = 0.0f;
+        state.fadeFrom = 0.0f;
+        state.fadeTo   = 1.0f;
+        state.duration = params.fadeInSeconds;
+    }
+    m_voices[voiceId] = state;
+    ApplyVoiceGain(voiceId, state);
     return voiceId;
 }
 
-uint32_t AudioManager::PlayVoice(const std::string& path, bool loop, BusIndex bus)
+uint32_t AudioManager::PlayVoice(const std::string& path, bool loop, BusIndex bus,
+                                 const PlayParams& params)
 {
     const ClipId clip = AcquireClip(path);
-    return clip != 0 ? PlayClipVoice(clip, loop, bus) : 0;
+    return clip != 0 ? PlayClipVoice(clip, loop, bus, params) : 0;
 }
 
 void AudioManager::ForgetVoice(uint32_t voiceId)
 {
-    const auto it = m_voiceToClip.find(voiceId);
-    if (it == m_voiceToClip.end()) return;
-    const ClipId clip = it->second;
-    m_voiceToClip.erase(it);
+    const auto it = m_voices.find(voiceId);
+    if (it == m_voices.end()) return;
+    const ClipId clip = it->second.clip;
+    m_voices.erase(it);
     if (const auto entry = m_clips.find(clip); entry != m_clips.end()) {
         if (entry->second.voiceCount > 0) --entry->second.voiceCount;
     }
     DropClipIfUnused(clip);
+    if (m_bgmVoiceId == voiceId) m_bgmVoiceId = 0;
 }
 
 void AudioManager::StopVoice(uint32_t voiceId)
 {
     if (voiceId == 0) return;
+    if (m_bgmVoiceId == voiceId) m_bgmVoiceId = 0;
+    FadeOutAndStop(voiceId, kStopFadeSeconds);
+}
+
+void AudioManager::StopVoiceImmediate(uint32_t voiceId)
+{
+    if (voiceId == 0) return;
     m_device.StopBuffer(voiceId);
     ForgetVoice(voiceId);
-    if (m_bgmVoiceId == voiceId) m_bgmVoiceId = 0;
+}
+
+void AudioManager::FadeVoice(uint32_t voiceId, float toGain, float seconds)
+{
+    const auto it = m_voices.find(voiceId);
+    if (it == m_voices.end()) return;
+
+    VoiceState& state = it->second;
+    state.fadeFrom  = state.fadeGain;
+    state.fadeTo    = std::clamp(toGain, 0.0f, 1.0f);
+    state.elapsed   = 0.0f;
+    state.duration  = (std::max)(seconds, 0.0f);
+    state.stopAtEnd = false;
+    if (state.duration <= 0.0f) {
+        state.fadeGain = state.fadeTo;
+        ApplyVoiceGain(voiceId, state);
+    }
+}
+
+void AudioManager::FadeOutAndStop(uint32_t voiceId, float seconds)
+{
+    if (voiceId == 0) return;
+    const auto it = m_voices.find(voiceId);
+    // 追跡していない voice はフェードを掛ける先が無いので、そのまま畳む。
+    if (it == m_voices.end()) { m_device.StopBuffer(voiceId); return; }
+    if (seconds <= 0.0f) { StopVoiceImmediate(voiceId); return; }
+
+    VoiceState& state = it->second;
+    state.fadeFrom  = state.fadeGain;
+    state.fadeTo    = 0.0f;
+    state.elapsed   = 0.0f;
+    state.duration  = seconds;
+    state.stopAtEnd = true;
 }
 
 void AudioManager::PauseVoice(uint32_t voiceId)
@@ -346,15 +476,13 @@ void AudioManager::StopAllVoices()
     m_positional.clear();
 
     m_bgmVoiceId = 0;
-    for (const auto& tracked : m_voiceToClip)
+    for (const auto& tracked : m_voices)
         m_device.StopBuffer(tracked.first);
-    m_voiceToClip.clear();
+    m_voices.clear();
 
-    // 生成クリップは参照数によらずここで全部捨てる。
-    // WHY 参照を見ないか: 一括停止は Play→Stop と Shutdown でしか起きず、そのとき
-    //     スクリプト DLL ごと作り直されるためハンドルの持ち主が消えている。
-    //     参照を尊重すると、誰も Release できないクリップが Play のたびに積み上がる。
-    //     (この契約は ScriptAudioProxy::SynthClip のコメントと対になっている)
+    // 生成クリップは参照数によらず全部捨てる。一括停止が起きる Play→Stop と Shutdown では
+    // スクリプト DLL ごと作り直され、ハンドルの持ち主が消えているため。
+    // (ScriptAudioProxy::SynthClip のコメントと対)
     for (auto it = m_clips.begin(); it != m_clips.end();) {
         if (it->second.persistent) { it->second.voiceCount = 0; ++it; continue; }
         if (it->second.specHash != 0) m_specToClip.erase(it->second.specHash);
@@ -365,7 +493,13 @@ void AudioManager::StopAllVoices()
 
 void AudioManager::SetVoiceVolume(uint32_t voiceId, float volume)
 {
-    if (voiceId != 0) m_device.SetVolume(voiceId, volume);
+    if (voiceId == 0) return;
+    volume = (std::max)(volume, 0.0f);
+
+    const auto it = m_voices.find(voiceId);
+    if (it == m_voices.end()) { m_device.SetVolume(voiceId, volume); return; }
+    it->second.volume = volume;
+    ApplyVoiceGain(voiceId, it->second);
 }
 
 void AudioManager::SetVoicePitch(uint32_t voiceId, float pitch)
@@ -393,17 +527,29 @@ bool AudioManager::IsVoicePlaying(uint32_t voiceId)
 
 // ---- BGM / SE ----
 
-void AudioManager::PlayBGM(const std::string& path, bool loop)
+void AudioManager::PlayBGM(const std::string& path, bool loop, float fadeSeconds)
 {
-    StopBGM();
-    m_bgmVoiceId = PlayVoice(path, loop, FindBus("BGM"));
+    // クロスフェード中は新旧 2 本が鳴るが、BGM スロットが指すのは常に新しい方。
+    const uint32_t previous = m_bgmVoiceId;
+    m_bgmVoiceId = 0;
+    if (previous != 0) {
+        if (fadeSeconds > 0.0f) FadeOutAndStop(previous, fadeSeconds);
+        else                    StopVoiceImmediate(previous);
+    }
+
+    PlayParams params;
+    params.priority      = kBgmPriority;
+    params.fadeInSeconds = fadeSeconds;
+    m_bgmVoiceId = PlayVoice(path, loop, FindBus("BGM"), params);
 }
 
-void AudioManager::StopBGM()
+void AudioManager::StopBGM(float fadeSeconds)
 {
     if (m_bgmVoiceId == 0) return;
-    StopVoice(m_bgmVoiceId);
+    const uint32_t voiceId = m_bgmVoiceId;
     m_bgmVoiceId = 0;
+    if (fadeSeconds > 0.0f) FadeOutAndStop(voiceId, fadeSeconds);
+    else                    StopVoiceImmediate(voiceId);
 }
 
 void AudioManager::PlaySE(const std::string& path)
@@ -481,8 +627,7 @@ bool AudioManager::LoadWav(const std::string& path,
 bool AudioManager::LoadWithMediaFoundation(const std::string& path,
                                            WaveFormat& outFmt, std::vector<uint8_t>& outPcm)
 {
-    // WHY: AudioSource の path は UTF-8 として扱う。日本語フォルダへ移動した配布版でも
-    //      Media Foundation が正しい Unicode パスを受け取れるようにする。
+    // path は UTF-8。日本語フォルダへ移した配布版でも MF が正しく受け取れるようにする。
     const std::wstring wpath = fbzz::util::StringUtils::ToWide(path);
 
     Microsoft::WRL::ComPtr<IMFSourceReader> reader;

@@ -1,12 +1,13 @@
-// FBZZ Engine
-// TextureAnalysis.cpp | fbzz::asset
-// VFX 素材テクスチャの特徴量抽出と、そこから決まるオーサリング推奨値の導出
-//
-// 処理フロー:
-//   1. テクスチャを R32G32B32A32_FLOAT で読む
-//   2. 原寸のまま flipbook のコマ割りを推定 (縮小すると境界が潰れるため)
-//   3. 統計用に縮小し、アルファ・輝度・形状の特徴量を取る
-//   4. 特徴量から blendMode / alphaSource / sprite 設定などの推奨値を組み立てる
+/// @file    TextureAnalysis.cpp
+/// @brief   VFX 素材テクスチャの特徴量抽出と、そこから決まるオーサリング推奨値の導出。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// 処理フロー:
+/// 1. テクスチャを R32G32B32A32_FLOAT で読む
+/// 2. 原寸のまま flipbook のコマ割りを推定 (縮小すると境界が潰れるため)
+/// 3. 統計用に縮小し、アルファ・輝度・形状の特徴量を取る
+/// 4. 特徴量から blendMode / alphaSource / sprite 設定などの推奨値を組み立てる
 #pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
 
 #include <Engine/Asset/TextureAnalysis.hpp>
@@ -473,6 +474,7 @@ const char* RenderPathName(RenderPath path)
     case RenderPath::Trail:    return "trail";
     case RenderPath::UI:       return "ui";
     case RenderPath::Decal:    return "decal";
+    case RenderPath::PostProcess: return "post_process";
     case RenderPath::Auto:
     default:                   return "auto";
     }

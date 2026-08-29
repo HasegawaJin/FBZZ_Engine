@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SelectionOutlinePass.cpp | fbzz::scene
-// Selection outline render pass implementation
+/// @file    SelectionOutlinePass.cpp
+/// @brief   Selection outline render pass implementation.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DrawCall.hpp>

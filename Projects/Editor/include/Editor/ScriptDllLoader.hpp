@@ -1,21 +1,22 @@
-// FBZZ Engine
-// ScriptDllLoader.hpp | fbzz::editor
-// スクリプト DLL のロード / アンロード / ホットリロード管理
-//
-// WHAT: SandboxScripts.dll を LoadLibrary で動的にロードし、
-//       エクスポート関数 SandboxScripts_Register() 経由で ScriptFactory に登録する。
-//
-// WHY (ファイルロック対策):
-//   Windows の LoadLibrary はロードした DLL ファイルをロックする。
-//   ビルド中に上書きできないため、ロード前に _hot/ ディレクトリへ
-//   タイムスタンプ付きコピーを作成し、そのコピーをロードする。
-//   古いコピーは次回 Reload 時に掃除する。
-//
-// WHY (スクリプト破棄順序):
-//   仮想デストラクタが DLL コード内にあるため、FreeLibrary 前に
-//   すべての Script インスタンスを破棄しなければならない。
-//   Reload() はシーンをシリアライズ → Script 全破棄 → FreeLibrary →
-//   LoadLibrary → デシリアライズの順で処理する。
+/// @file    ScriptDllLoader.hpp
+/// @brief   スクリプト DLL のロード / アンロード / ホットリロード管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHAT: SandboxScripts.dll を LoadLibrary で動的にロードし、
+/// エクスポート関数 SandboxScripts_Register() 経由で ScriptFactory に登録する。
+///
+/// WHY (ファイルロック対策):
+/// Windows の LoadLibrary はロードした DLL ファイルをロックする。
+/// ビルド中に上書きできないため、ロード前に _hot/ ディレクトリへ
+/// タイムスタンプ付きコピーを作成し、そのコピーをロードする。
+/// 古いコピーは次回 Reload 時に掃除する。
+///
+/// WHY (スクリプト破棄順序):
+/// 仮想デストラクタが DLL コード内にあるため、FreeLibrary 前に
+/// すべての Script インスタンスを破棄しなければならない。
+/// Reload() はシーンをシリアライズ → Script 全破棄 → FreeLibrary →
+/// LoadLibrary → デシリアライズの順で処理する。
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SpriteEditorPanel.hpp | fbzz::editor
-// Texture atlas の Sprite 矩形・Pivot・9-slice Border を視覚編集する専用パネル
+/// @file    SpriteEditorPanel.hpp
+/// @brief   Texture atlas の Sprite 矩形・Pivot・9-slice Border を視覚編集する専用パネル。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/Asset/TextureAsset.hpp>

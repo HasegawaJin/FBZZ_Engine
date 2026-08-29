@@ -1,9 +1,11 @@
-// FBZZ Engine
-// SkinnedModelImporter.cpp | fbzz::asset
-// スキンメッシュ・スケルトン・アニメーションクリップのインポートパイプライン。
-// WHY: aiProcess_PreTransformVertices を使わずボーン階層を保持する。
-//      静的メッシュと異なり頂点ごとのボーンインデックス・ウェイトを CPU 側で構築し、
-//      GPU スキニングに必要な SkinnedVertex レイアウトへ変換する。
+/// @file    SkinnedModelImporter.cpp
+/// @brief   スキンメッシュ・スケルトン・アニメーションクリップのインポートパイプライン。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
+///
+/// WHY: aiProcess_PreTransformVertices を使わずボーン階層を保持する。
+/// 静的メッシュと異なり頂点ごとのボーンインデックス・ウェイトを CPU 側で構築し、
+/// GPU スキニングに必要な SkinnedVertex レイアウトへ変換する。
 #include "ModelImporterInternal.hpp"
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Core/Logger.hpp>

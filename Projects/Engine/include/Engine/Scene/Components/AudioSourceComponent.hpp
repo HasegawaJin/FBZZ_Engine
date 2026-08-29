@@ -4,6 +4,7 @@
 /// @date    2025-01-01
 #pragma once
 #include <Engine/Scene/Script.hpp>
+#include <Math/Vector3.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -29,6 +30,12 @@ struct AudioSourceComponent {
     float       minDistance  = 1.0f;
     float       maxDistance  = 50.0f;
     float       rolloffFactor = 1.0f;
+    /// 遠ざかるほど高域を吸わせる量 (0 で無加工)。距離そのものは rolloffFactor が受け持つ。
+    float       airAbsorption = 0.0f;
+    /// 相対速度によるピッチ変化の強さ。0 で無効、1 で物理どおり。既定は 0。
+    float       dopplerLevel = 0.0f;
+    /// 同時発音数が上限に達したとき、これが低い音から畳まれる。
+    int         priority = 0;
     bool        enabled     = true;
     bool        m_played       = false; // PlayOnAwake が発火済みかを追跡し、重複再生を防ぐ
     bool        m_isPlaying    = false; // 現在再生中
@@ -38,6 +45,11 @@ struct AudioSourceComponent {
     bool        m_pendingPause = false; // 次フレームに一時停止要求
     bool        m_pendingResume = false; // 次フレームに再開要求
     uint32_t    m_voiceId      = 0;     // AudioManager が返す非所有 voice ハンドル
+
+    // 前フレームのワールド座標と、それが有効かどうか。Doppler の相対速度に使う。
+    // 物理の速度を見ないのは、音源が RigidBody を持たない飾りであることが多いため。
+    math::Vector3 m_previousPosition{};
+    bool          m_hasPreviousPosition = false;
 
     // 手続き生成クリップを主 voice として鳴らす要求。clipPath より優先する。
     // 参照カウントを 1 つ持った状態で積まれ、AudioSystem が再生後に手放す。
@@ -78,6 +90,18 @@ struct AudioSourceComponent {
         r.FloatRange("minDistance", minDistance, 0.0f, 100000.0f);
         r.FloatRange("maxDistance", maxDistance, 0.001f, 100000.0f);
         r.FloatRange("rolloffFactor", rolloffFactor, 0.01f, 8.0f);
+        r.BeginField("airAbsorption", "airAbsorption");
+        r.FloatRange("airAbsorption", airAbsorption, 0.0f, 1.0f);
+        r.Tooltip("遠ざかるほど高域を吸わせる量 (0 で無加工)");
+        r.EndField();
+        r.BeginField("dopplerLevel", "dopplerLevel");
+        r.FloatRange("dopplerLevel", dopplerLevel, 0.0f, 1.0f);
+        r.Tooltip("相対速度によるピッチ変化 (0 で無効、1 で物理どおり)");
+        r.EndField();
+        r.BeginField("priority", "priority");
+        r.Field("priority", priority);
+        r.Tooltip("同時発音数が上限に達したとき、低い音から畳まれる");
+        r.EndField();
     }
 };
 

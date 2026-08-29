@@ -1,10 +1,11 @@
-// FBZZ Engine
-// ColliderComponent.cpp | fbzz::scene
-// 共有 .physmat の解決
-//
-// WHY ヘッダに置かないか: ColliderComponent.hpp は Script.hpp 経由で全ユーザースクリプトへ
-//     取り込まれる。AssetManager (と、それが引き連れる MaterialAsset / ResourceManager) を
-//     そこへ持ち込むと、スクリプトのビルド時間とインクルード依存が一段深くなる。
+/// @file    ColliderComponent.cpp
+/// @brief   共有 .physmat の解決。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
+///
+/// WHY ヘッダに置かないか: ColliderComponent.hpp は Script.hpp 経由で全ユーザースクリプトへ
+/// 取り込まれる。AssetManager (と、それが引き連れる MaterialAsset / ResourceManager) を
+/// そこへ持ち込むと、スクリプトのビルド時間とインクルード依存が一段深くなる。
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 
 #include <Engine/Asset/AssetManager.hpp>

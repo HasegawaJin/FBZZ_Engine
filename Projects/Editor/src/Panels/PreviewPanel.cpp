@@ -1,7 +1,9 @@
-// FBZZ Engine
-// PreviewPanel.cpp | fbzz::editor
-// Animation / Material / VFX の共通ルーター。
-// WHY: 各アセット種別の描画実装は分離し、ここでは拡張子判定とパネルのライフサイクルだけを扱う。
+/// @file    PreviewPanel.cpp
+/// @brief   Animation / Material / VFX の共通ルーター。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY: 各アセット種別の描画実装は分離し、ここでは拡張子判定とパネルのライフサイクルだけを扱う。
 #include <Editor/Panels/PreviewPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/PreviewPanelRenderers.hpp>
@@ -49,8 +51,6 @@ bool PreviewPanel::DrawPreview(EditorContext& ctx,
         const auto* material = asset::AssetManager::GetMaterial(handle);
         return material != nullptr && DrawMaterialPreviewWidget(ctx, *material, previewHeight);
     }
-    if (extension == ".vfx")
-        return DrawVFXPreviewWidget(ctx, assetPath, previewHeight);
     if (extension == ".mask" || extension == ".maskpreset")
         return m_animationMaskPreview.DrawPreview(ctx, assetPath, previewHeight);
     return DrawAnimationPreviewWidget(ctx, previewHeight);

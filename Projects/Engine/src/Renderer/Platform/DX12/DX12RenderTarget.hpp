@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12RenderTarget.hpp | fbzz::renderer
-// MRTカラー、深度、RTV/DSV/SRVを所有するDirectX 12描画先
+/// @file    DX12RenderTarget.hpp
+/// @brief   MRTカラー、深度、RTV/DSV/SRVを所有するDirectX 12描画先。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IRenderTarget.hpp>

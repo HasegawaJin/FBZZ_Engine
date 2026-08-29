@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SpringConstraint.hpp | fbzz::physics
-// Hooke 則バネ制約
+/// @file    SpringConstraint.hpp
+/// @brief   Hooke 則バネ制約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/Constraint.hpp>
 

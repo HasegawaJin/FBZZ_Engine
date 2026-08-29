@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IBuffer.hpp | fbzz::renderer
-// GPU バッファの抽象インターフェース
-// 具体バックエンドのバッファ実装を隠し、サイズや stride だけを公開する。
-// 生成は ResourceManager 経由に限定する。
+/// @file    IBuffer.hpp
+/// @brief   GPU バッファの抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 具体バックエンドのバッファ実装を隠し、サイズや stride だけを公開する。
+/// 生成は ResourceManager 経由に限定する。
 #pragma once
 #include <cstddef>
 #include <cstdint>

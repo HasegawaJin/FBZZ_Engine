@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PostProcessPasses.hpp | fbzz::scene
-// Post-process render pass entry points
+/// @file    PostProcessPasses.hpp
+/// @brief   Post-process render pass entry points.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <cstdint>
 
@@ -14,6 +15,13 @@ void ExecuteCausticsPass(RenderPassContext& ctx);
 void ExecuteCompositePass(RenderPassContext& ctx);
 void ExecuteFxaaPass(RenderPassContext& ctx);
 void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, uint32_t outputIndex);
+// HDR の段 (AfterOpaque / SceneHDR) のユーザーシェーダーを hdrRT へ適用する。
+// blendMode が OPAQUE_BLEND なら «退避 → 描き戻し»、それ以外は直接。
+// iterations / downscale が効くのはこちらだけ (CustomPostProcessPass.cpp の WHY)。
+void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex);
+// .mat をキーにした解決済みマテリアルのキャッシュを破棄する。
+// シーン切り替えやリソースリセットの際に呼ぶこと。
+void ReleaseCustomPassMaterialCache();
 
 // ---- Advanced Graphics Passes ----
 

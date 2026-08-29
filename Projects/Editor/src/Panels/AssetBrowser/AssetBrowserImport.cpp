@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetBrowserImport.cpp | fbzz::editor
-// AssetBrowser の未変換アセット検出とバックグラウンドインポート
+/// @file    AssetBrowserImport.cpp
+/// @brief   AssetBrowser の未変換アセット検出とバックグラウンドインポート。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>

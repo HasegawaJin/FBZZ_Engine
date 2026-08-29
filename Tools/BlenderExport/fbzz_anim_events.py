@@ -20,7 +20,7 @@
 # 1. イベントノードを作る:
 #       ev = ensure_event_empty(armature, "WeaponAttach")
 # 2. クリップごとのキーを書く (アクション名は EV_<アーマチュアのアクション名>):
-#       write_events(ev, "EV_MiniBot_Draw_Pistols", [(9, 1, 0.0), (11, 2, 0.0)])
+#       write_events(ev, "EV_MiniBot_Katana_Draw__WeaponAttach", [(16, 1, 0.0), (18, 2, 0.0)])
 # 3. あとは fbzz_export_minibot が書き出し直前に自動で割り当てる。
 #    そのクリップ用の EV_ アクションが無いノードは自動で無効化される。
 
@@ -120,7 +120,7 @@ def event_action_name(armature_action_name, event_name):
     """イベントノード用アクションの命名規則。
 
     WHY: ノード名まで含めないと、イベントノードが複数あるときに
-         同じアクションが全ノードへ割り当たり、Draw クリップで Holster
+         同じアクションが全ノードへ割り当たり、抜刀クリップで納刀側の
          イベントまで発火する。ノード単位で一意にする。
     """
     return f"{EVENT_ACTION_PREFIX}{armature_action_name}__{event_name}"
@@ -141,12 +141,19 @@ def write_clip_events(armature, armature_action_name, events, rest_frame=1):
     return written
 
 
-def bind_events_for_action(armature, action):
+def bind_events_for_action(armature, action, rest=(0, 0.0)):
     """書き出し直前に、各イベントノードへそのクリップ用アクションを割り当てる。
 
     `EV_<アクション名>__<イベント名>` が存在すればそれを割り当て、
-    無ければアクションを外す。アクションが無いノードは静止したまま書き出され、
-    取り込み側では「値が一度も変化しない = イベント 0 件」になるので無害。
+    無ければアクションを外したうえで静止値 rest へ戻す。
+
+    WHY rest へ戻すか: アクションを外すだけだと Empty の location は
+         「直前に書き出したクリップの最終フレームの値」のまま残り、その値が
+         クリップ全体の定数として焼かれる。取り込み側は先頭キーを静止値と
+         みなすので挙動としては 0 件のままだが、書き出し順を変えただけで
+         FBX のバイト列が変わり、差分レビューと再現性が壊れる。
+         export 側が base_poses で骨の未キー分を決定論にしているのと同じ理由で、
+         イベントノードも常に同じ値から始める。
     """
     bound = []
     for empty in event_empties(armature):
@@ -157,4 +164,7 @@ def bind_events_for_action(armature, action):
         if event_action is not None:
             _assign_first_slot(empty)
             bound.append((empty.name, event_action.name))
+        else:
+            empty.location = (float(rest[0]), float(rest[1]), 0.0)
+    bpy.context.view_layer.update()
     return bound

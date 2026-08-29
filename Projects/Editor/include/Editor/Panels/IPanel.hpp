@@ -1,6 +1,7 @@
-// FBZZ Engine
-// IPanel.hpp | fbzz::editor
-// エディターパネルの基底インターフェース
+/// @file    IPanel.hpp
+/// @brief   エディターパネルの基底インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <imgui.h>
 

@@ -1,5 +1,7 @@
-// FBZZ Engine
-// DX11StructuredBuffer.cpp | fbzz::renderer
+/// @file    DX11StructuredBuffer.cpp
+/// @brief   DX11 の構造化バッファ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-14
 #include "DX11StructuredBuffer.hpp"
 #include <Engine/Core/HResult.hpp>
 #include <Engine/Core/Logger.hpp>

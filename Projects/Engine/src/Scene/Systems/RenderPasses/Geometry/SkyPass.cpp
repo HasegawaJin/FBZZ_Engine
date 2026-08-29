@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPasses/SkyPass.cpp | fbzz::scene
-// スカイドーム描画
+/// @file    RenderPasses/SkyPass.cpp
+/// @brief   スカイドーム描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/SkyRenderer.hpp"

@@ -1,13 +1,14 @@
-// FBZZ Engine
-// BehaviorTreeTypes.hpp | fbzz::ai
-// Behavior Tree の基本列挙と、ノード種別に対する述語
-//
-// WHY Behavior Tree を選んだか (Docs/design/game-ai-layer.md):
-//   - 有限状態機械は状態数 N に対して遷移が O(N^2) に増え、
-//     「全状態から被弾リアクションへ」のような横断遷移で爆発する。
-//   - Utility AI はスコア関数の調整が非直感的で、
-//     「なぜこの行動を選んだか」のデバッグが著しく難しい。
-//   - BT は木構造で優先順位が視覚的に読め、サブツリーの再利用が効く。
+/// @file    BehaviorTreeTypes.hpp
+/// @brief   Behavior Tree の基本列挙と、ノード種別に対する述語。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY Behavior Tree を選んだか (Docs/design/game-ai-layer.md):
+/// - 有限状態機械は状態数 N に対して遷移が O(N^2) に増え、
+/// 「全状態から被弾リアクションへ」のような横断遷移で爆発する。
+/// - Utility AI はスコア関数の調整が非直感的で、
+/// 「なぜこの行動を選んだか」のデバッグが著しく難しい。
+/// - BT は木構造で優先順位が視覚的に読め、サブツリーの再利用が効く。
 #pragma once
 #include <cstdint>
 

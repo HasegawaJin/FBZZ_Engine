@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12StructuredBuffer.cpp | fbzz::renderer
-// CPU更新用Upload Buffer、読み取り専用Default Buffer、GPU書き込み用Default Bufferの生成
+/// @file    DX12StructuredBuffer.cpp
+/// @brief   CPU更新用Upload Buffer、読み取り専用Default Buffer、GPU書き込み用Default Bufferの生成。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12StructuredBuffer.hpp"
 
 #include "DX12Context.hpp"

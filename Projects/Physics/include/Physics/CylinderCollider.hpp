@@ -1,7 +1,7 @@
-/// @file CylinderCollider.hpp
-/// @brief ローカル Y 軸を中心線とする円柱コライダー
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    CylinderCollider.hpp
+/// @brief   ローカル Y 軸を中心線とする円柱コライダー
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 ///
 /// WHY カプセルと別形状にするか:
 ///   カプセルは端が丸いため、平らな面の上に立てても接地面が 1 点に縮退して倒れる。

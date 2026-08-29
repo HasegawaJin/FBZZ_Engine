@@ -1,19 +1,20 @@
-// FBZZ Engine
-// BuiltinOperators.cpp | fbzz::editor
-// エディター標準操作の登録 (Operator モデル Step 1)
-//
-// WHY: ここに並ぶ操作は、移行前はメニュー・ホットキー・コマンドパレットの 3 箇所へ
-//      別々に書かれていた。特に「実行可能条件」が面ごとに独立した式になっており、
-//      New Scene / Open Scene / Save はメニューだけが Prefab 編集中を禁じ、
-//      ホットキーとパレットからは素通りしていた。条件を poll へ 1 本化すれば、
-//      3 面が同じ述語を読むようになり、この種のずれが構造的に発生しなくなる。
-//
-// NOTE: パネルの表示トグルと Recent Scenes / アセット / GameObject 候補は
-//       ここに登録しない。前者は m_panels、後者はプロジェクトの実データという
-//       単一の出所から既に導出されており、二重管理が存在しないため。
-//       Operator にすべきなのは「実装が面ごとに複製されていた操作」だけ。
-//
-// 設計と移行段階: Docs/design/editor-operator-model.md
+/// @file    BuiltinOperators.cpp
+/// @brief   エディター標準操作の登録 (Operator モデル Step 1)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: ここに並ぶ操作は、移行前はメニュー・ホットキー・コマンドパレットの 3 箇所へ
+/// 別々に書かれていた。特に「実行可能条件」が面ごとに独立した式になっており、
+/// New Scene / Open Scene / Save はメニューだけが Prefab 編集中を禁じ、
+/// ホットキーとパレットからは素通りしていた。条件を poll へ 1 本化すれば、
+/// 3 面が同じ述語を読むようになり、この種のずれが構造的に発生しなくなる。
+///
+/// NOTE: パネルの表示トグルと Recent Scenes / アセット / GameObject 候補は
+/// ここに登録しない。前者は m_panels、後者はプロジェクトの実データという
+/// 単一の出所から既に導出されており、二重管理が存在しないため。
+/// Operator にすべきなのは「実装が面ごとに複製されていた操作」だけ。
+///
+/// 設計と移行段階: Docs/design/editor-operator-model.md
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
@@ -22,6 +23,7 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Selection.hpp>
+#include <Editor/Util/ViewportCamera.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
@@ -278,6 +280,45 @@ void EditorApp::RegisterBuiltinOperators()
         },
         hasSelection);
 
+    // WHY Operator にするか: 軸ビューはナビゲーションギズモのクリックでしか行けず、
+    //     マウスをドラッグしている最中に切り替えられなかった。メニュー・パレット・
+    //     ホットキー・AI の 4 面から同じ経路で呼べるようにする。
+    add("view.toggle_projection", "Toggle Orthographic", "Viewport",
+        "Scene View を遠近投影 / 平行投影で切り替える。",
+        OpKind::Action,
+        [](OpContext& c, const OpArgs&) {
+            if (!c.ctx.editorCamera)
+                return OpResult::Err("NO_CAMERA", "Scene View カメラがありません");
+            SetEditorCameraProjection(c.ctx,
+                IsEditorCameraOrthographic(c.ctx) ? renderer::ProjectionMode::Perspective
+                                                  : renderer::ProjectionMode::Orthographic);
+            return OpResult::Ok();
+        },
+        {},
+        [](const OpContext& c, const OpArgs&) { return IsEditorCameraOrthographic(c.ctx); });
+
+    struct AxisViewEntry { const char* id; const char* label; AxisView view; };
+    static constexpr AxisViewEntry kAxisViews[] = {
+        { "view.axis_front",  "View Front",  AxisView::Front  },
+        { "view.axis_back",   "View Back",   AxisView::Back   },
+        { "view.axis_left",   "View Left",   AxisView::Left   },
+        { "view.axis_right",  "View Right",  AxisView::Right  },
+        { "view.axis_top",    "View Top",    AxisView::Top    },
+        { "view.axis_bottom", "View Bottom", AxisView::Bottom },
+    };
+    for (const AxisViewEntry& entry : kAxisViews) {
+        const AxisView view = entry.view;
+        add(entry.id, entry.label, "Viewport",
+            "注視点を保ったまま、その軸の真正面へ視点を向ける。",
+            OpKind::Action,
+            [view](OpContext& c, const OpArgs&) {
+                if (!c.ctx.editorCamera)
+                    return OpResult::Err("NO_CAMERA", "Scene View カメラがありません");
+                SetEditorCameraAxisView(c.ctx, view);
+                return OpResult::Ok();
+            });
+    }
+
     // ── Gizmo ───────────────────────────────────────────────────────────────
     // WHY: 右ドラッグ中の W/A/S/D はカメラのフライ移動。ギズモ切替と衝突するので
     //      押下中は無効にする (Unity と同じ調停)。poll に置いたことで、
@@ -459,11 +500,6 @@ void EditorApp::RegisterBuiltinOperators()
         },
         {},
         [this](const OpContext&, const OpArgs&) { return m_showShortcutsOverlay; });
-
-    add("panel.vfx_editor", "Open VFX Editor", "Panels",
-        "独立プロセスの VFX Editor を起動する。",
-        OpKind::Action,
-        [](OpContext& c, const OpArgs&) { c.ctx.requestOpenVFXEditor = true; return OpResult::Ok(); });
 
     // ── EditorApp に依存しない操作群 ────────────────────────────────────────
     // パネル表示・UI スケール・Prefab 編集モード。m_panels を引くため

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// HdriLoader.cpp | fbzz::editor
-// .hdr / .exr → float RGBA ピクセル読み込み
+/// @file    HdriLoader.cpp
+/// @brief   .hdr / .exr → float RGBA ピクセル読み込み。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 
 #include <stb_image.h>
 

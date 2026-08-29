@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Json.cpp | fbzz::editor::ai
-// 最小 JSON パーサ / シリアライザ / base64 の実装。再帰下降で RFC 8259 のサブセットを扱う。
+/// @file    Json.cpp
+/// @brief   最小 JSON パーサ / シリアライザ / base64 の実装。再帰下降で RFC 8259 のサブセットを扱う。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Ai/Json.hpp>
 
 #include <array>

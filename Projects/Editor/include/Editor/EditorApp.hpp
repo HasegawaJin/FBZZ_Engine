@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorApp.hpp | fbzz::editor
-// エディター全体のライフサイクルを管理する
+/// @file    EditorApp.hpp
+/// @brief   エディター全体のライフサイクルを管理する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/Compiler.hpp>
 #include <Editor/EditorContext.hpp>
@@ -43,7 +44,6 @@ namespace fbzz::editor::ai { class EditorBusDispatcher; class NamedPipeServer; }
 namespace fbzz::editor {
 
 class ViewportPanel;
-class VFXEditorPanel;
 class BuildOutputPanel;
 class ProjectSettingsPanel;
 class BuildSettingsPanel;
@@ -105,15 +105,10 @@ private:
     void UpdateFocusAnim(float dt);
     void RenderSceneView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
     void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
-    void RenderVFXPreview();
 
     std::unique_ptr<scene::Scene>  m_scene;
-    std::unique_ptr<scene::Scene>  m_vfxPreviewScene;
-    scene::SceneManager            m_vfxPreviewSceneManager;
-    physics::World                 m_vfxPreviewPhysicsWorld;
     scene::ProjectRuntime          m_runtime;
     renderer::DebugCamera          m_debugCamera;
-    renderer::DebugCamera          m_vfxPreviewCamera;
     scene::UISystemContext         m_sceneUICtx;
     FocusAnim                      m_focusAnim;
     float                          m_simulationDt = 0.0f;
@@ -276,9 +271,7 @@ private:
     // AI Command Bus の所有権と寿命は EditorApp に集約し、Panel には制御コールバックだけを公開する。
     bool StartAiCommandBus();
     void StopAiCommandBus();
-    // AI 要求1行を、このプロセスで処理するか独立VFXEditorプロセスへ転送するかを決めて実行する。
-    // WHY: VFX Preview World は FBZZVFXEditor.exe が所有するため、
-    //      preview 系をここで処理すると必ず「World がありません」になる。
+    // AI 要求 1 行を処理する。
     std::string HandleAiRequest(const std::string& request);
 
     EditorContext                        m_ctx;
@@ -421,7 +414,6 @@ private:
     ViewportPanel*                           m_sceneViewportPanel     = nullptr;
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
     ViewportPanel*                           m_uiViewportPanel        = nullptr;
-    VFXEditorPanel*                          m_vfxEditorPanel         = nullptr;
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
     BuildSettingsPanel*                      m_buildSettingsPanel     = nullptr;
     AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
@@ -434,7 +426,6 @@ private:
     AiSettingsPanel*                         m_aiSettingsPanel        = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
-    renderer::ResourceHandle<renderer::RenderTargetTag> m_vfxPreviewRT;
 };
 
 } // namespace fbzz::editor

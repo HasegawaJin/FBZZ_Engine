@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Vector2.cpp | fbzz::math
-// 2次元ベクトルの演算実装
+/// @file    Vector2.cpp
+/// @brief   2次元ベクトルの演算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Vector2.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>

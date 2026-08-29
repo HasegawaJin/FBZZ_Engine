@@ -1,8 +1,10 @@
-// FBZZ Engine
-// RenderSystem.hpp | fbzz::scene
-// Scene から DrawCall を生成する描画 System
-// MeshRenderer / Light / Camera / Transform を集約し、IRenderer へ送信する。
-// Renderer の具体実装には依存せず、ResourceManager とインターフェースだけを使う。
+/// @file    RenderSystem.hpp
+/// @brief   Scene から DrawCall を生成する描画 System。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// MeshRenderer / Light / Camera / Transform を集約し、IRenderer へ送信する。
+/// Renderer の具体実装には依存せず、ResourceManager とインターフェースだけを使う。
 #pragma once
 #include <Physics/Layer.hpp>
 #include <memory>

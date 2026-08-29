@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BehaviorTreeOps.cpp | fbzz::editor::btops
-// Behavior Tree の構造編集 (BehaviorTreePanel と AI Command Bus の共有実装)
+/// @file    BehaviorTreeOps.cpp
+/// @brief   Behavior Tree の構造編集 (BehaviorTreePanel と AI Command Bus の共有実装)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>

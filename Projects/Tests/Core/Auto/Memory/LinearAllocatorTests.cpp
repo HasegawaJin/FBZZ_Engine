@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LinearAllocatorTests.cpp | GoogleTest
-// LinearAllocator の一括再利用と容量契約を自動検証する。
+/// @file    LinearAllocatorTests.cpp
+/// @brief   LinearAllocator の一括再利用と容量契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Memory/LinearAllocator.hpp>

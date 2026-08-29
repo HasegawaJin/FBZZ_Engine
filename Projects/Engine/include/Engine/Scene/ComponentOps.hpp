@@ -1,14 +1,15 @@
-// FBZZ Engine
-// ComponentOps.hpp | fbzz::scene
-// 型名 (文字列) からコンポーネントを操作するための実行時テーブル
-//
-// WHY 文字列で引く経路が要るか:
-//   ComponentRegistry は完全にコンパイル時の表で、型を知っているコードからしか使えない。
-//   しかしスクリプト DLL が宣言する必須コンポーネント (FBZZ_REQUIRE_COMPONENT) は
-//   DLL 境界を越えて渡す都合上「型名の文字列」でしか運べない。テンプレート実体を
-//   DLL 側で作らせると、同じ型なのに別実体が生まれて所有権と ABI の話が増える。
-//   ここで一度だけ ForEachRegisteredComponent を畳んで名前引きの表を作り、
-//   検証側は型を一切知らないまま「持っているか」を問い合わせられるようにする。
+/// @file    ComponentOps.hpp
+/// @brief   型名 (文字列) からコンポーネントを操作するための実行時テーブル。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY 文字列で引く経路が要るか:
+/// ComponentRegistry は完全にコンパイル時の表で、型を知っているコードからしか使えない。
+/// しかしスクリプト DLL が宣言する必須コンポーネント (FBZZ_REQUIRE_COMPONENT) は
+/// DLL 境界を越えて渡す都合上「型名の文字列」でしか運べない。テンプレート実体を
+/// DLL 側で作らせると、同じ型なのに別実体が生まれて所有権と ABI の話が増える。
+/// ここで一度だけ ForEachRegisteredComponent を畳んで名前引きの表を作り、
+/// 検証側は型を一切知らないまま「持っているか」を問い合わせられるようにする。
 #pragma once
 
 #include <Engine/Scene/ComponentRegistry.hpp>

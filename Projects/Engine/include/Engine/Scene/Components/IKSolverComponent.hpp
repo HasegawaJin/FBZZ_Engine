@@ -1,6 +1,7 @@
-// FBZZ Engine
-// IKSolverComponent.hpp | fbzz::scene
-// 複数種の IK ソルバーを順序付きで実行するチェーン設定
+/// @file    IKSolverComponent.hpp
+/// @brief   複数種の IK ソルバーを順序付きで実行するチェーン設定。
+/// @author  Hasegawa Jin
+/// @date    2026-05-30
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

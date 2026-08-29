@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProfileScope.hpp | fbzz::profiler
-// スコープ寿命に合わせて CPU 計測区間を自動記録する RAII ヘルパー
+/// @file    ProfileScope.hpp
+/// @brief   スコープ寿命に合わせて CPU 計測区間を自動記録する RAII ヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <Engine/Profiler/Profiler.hpp>

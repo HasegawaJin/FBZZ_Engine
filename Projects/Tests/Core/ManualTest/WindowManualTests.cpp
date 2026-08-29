@@ -1,6 +1,7 @@
-// FBZZ Engine
-// WindowManualTests.cpp | GoogleTest ManualTest
-// 実ウィンドウ生成とメッセージポンプを開発者が目視確認する。
+/// @file    WindowManualTests.cpp
+/// @brief   実ウィンドウ生成とメッセージポンプを開発者が目視確認する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Window.hpp>

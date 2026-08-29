@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12ConstantBuffer.hpp | fbzz::renderer
-// Submit 時点の GPU 仮想アドレスを保持する DirectX 12 定数バッファ
+/// @file    DX12ConstantBuffer.hpp
+/// @brief   Submit 時点の GPU 仮想アドレスを保持する DirectX 12 定数バッファ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IConstantBuffer.hpp>

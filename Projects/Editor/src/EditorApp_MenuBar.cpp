@@ -1,10 +1,11 @@
-// FBZZ Engine
-// EditorApp_MenuBar.cpp | fbzz::editor
-// メインメニューバーの構築とホットキー登録
-//
-// WHY: メニューバーは ImGui の MenuItem 呼び出しが大量に並ぶ UI 記述コードであり、
-//      ライフサイクル管理やシーン I/O とは関心が異なる。
-//      独立ファイルに分離することで、メニュー項目の追加・変更を局所化できる。
+/// @file    EditorApp_MenuBar.cpp
+/// @brief   メインメニューバーの構築とホットキー登録。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: メニューバーは ImGui の MenuItem 呼び出しが大量に並ぶ UI 記述コードであり、
+/// ライフサイクル管理やシーン I/O とは関心が異なる。
+/// 独立ファイルに分離することで、メニュー項目の追加・変更を局所化できる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -204,7 +205,6 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t VIEW_UNLIT      = 411;
     constexpr uint16_t VIEW_WIRE_LIT   = 412;
     constexpr uint16_t VIEW_WIRE_UNLIT = 413;
-    constexpr uint16_t OPEN_VFX         = 500;
     constexpr uint16_t TOGGLE_MAP       = 501;
     constexpr uint16_t OPEN_BUILD       = 502;
     constexpr uint16_t OPEN_IBL         = 503;
@@ -272,7 +272,7 @@ void EditorApp::InstallNativeMenuBar()
         submenu("View Mode", std::move(debugViewMode))
     }));
     menus.push_back(submenu("Tools", {
-        command("VFX Editor...", OPEN_VFX), command("Map Editing Mode", TOGGLE_MAP),
+        command("Map Editing Mode", TOGGLE_MAP),
         submenu("Terrain & Map", std::move(terrainTools)),
         command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL),
         command("Navigation...", OPEN_NAVIGATION)
@@ -287,11 +287,8 @@ void EditorApp::InstallNativeMenuBar()
             return true;
         }
 
-        // WHY: ネイティブメニューは項目ごとの有効/無効を持たないため、以前はここが
-        //      条件を一切見ずに実体を直接呼んでいた (Prefab 編集中の New Scene、
-        //      スクリプトのコンパイル中の Play が素通りしていた)。
-        //      InvokeOperator は poll を満たさない要求を実行せずに拒否するので、
-        //      表示上グレーアウトできない面でも他の面と同じ条件が効く。
+        // ネイティブメニューは項目ごとの有効/無効を持たないが、InvokeOperator は poll を
+        // 満たさない要求を拒否するので、グレーアウトできない面でも同じ条件が効く。
         switch (id) {
         case NEW_SCENE:       InvokeOperator("scene.new"); break;
         case OPEN_SCENE:      InvokeOperator("scene.open"); break;
@@ -308,12 +305,8 @@ void EditorApp::InstallNativeMenuBar()
         case STEP:            InvokeOperator("play.step"); break;
         case RELOAD_SCRIPTS:  InvokeOperator("script.reload"); break;
         case OPEN_ANALYSIS:   InvokeOperator("tools.analysis"); break;
-        // 表示トグルとビューモードは Operator を通す。
-        // WHY: 同じ切り替えを ImGui の Debug メニュー・このネイティブメニュー・
-        //      AI の 3 面が持つため、書き込み先 (EditorContext か ProjectSettings か)
-        //      を各面が個別に覚えていると必ずずれる。実際 Grid / Skeleton /
-        //      LightRange / VFXGizmos は EditorContext が正本で、RenderSettings 側へ
-        //      書いても毎フレーム上書きされる。
+        // 表示トグルとビューモードは Operator を通す。同じ切り替えを 3 面が持つので、
+        // 書き込み先 (EditorContext か ProjectSettings か) を各面が覚えていると必ずずれる。
         case TOGGLE_GRID:      InvokeOperator("render.show_grid"); break;
         case TOGGLE_LIGHTS:    InvokeOperator("render.show_light_range"); break;
         case TOGGLE_VFX:       InvokeOperator("render.show_vfx_gizmos"); break;
@@ -331,7 +324,6 @@ void EditorApp::InstallNativeMenuBar()
         case VIEW_WIRE_LIT:  InvokeViewMode("wireframe_lit"); break;
         case VIEW_WIRE_UNLIT:InvokeViewMode("wireframe_unlit"); break;
         case 700:            InvokeOperator("view.reset_ui_scale"); break;
-        case OPEN_VFX:       InvokeOperator("panel.vfx_editor"); break;
         case TOGGLE_MAP:     InvokeOperator("tools.map_editing_mode"); break;
         case OPEN_BUILD:     InvokeOperator("tools.build_settings"); break;
         // パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
@@ -408,11 +400,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
 
     // --- View ------------------------------------------------------------
     if (ImGui::BeginMenu("View")) {
-        // WHY operator 経由にするか: パネル一覧は m_panels という単一の出所から
-        //     出ているので実装の重複は無かったが、その導線が UI にしか無いため
-        //     **AI からはパネルを列挙することも開くこともできなかった**。
-        //     ここを panel.set_visible の投影にすると、人が押すのと同じ実体を
-        //     AI も呼べる (パネルが増えても operator は 1 つのまま)。
+        // panel.set_visible の投影にすることで、人が押すのと同じ実体を AI も呼べる
+        // (パネルが増えても operator は 1 つのまま)。
         if (ImGui::BeginMenu("Panels")) {
             for (auto& panel : m_panels) {
                 if (!panel->ShowInViewMenu()) continue;
@@ -420,6 +409,21 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
                 args.Set("panel", std::string(panel->GetWindowName()));
                 MenuItemOpArgs("panel.set_visible", args, panel->GetViewMenuName());
             }
+            ImGui::EndMenu();
+        }
+
+        // Scene View の視点。軸ビューはナビゲーションギズモのクリックと同じ操作を指す。
+        if (ImGui::BeginMenu("Scene Camera")) {
+            MenuItemOp("view.toggle_projection");
+            ImGui::Separator();
+            MenuItemOp("view.axis_front");
+            MenuItemOp("view.axis_back");
+            MenuItemOp("view.axis_left");
+            MenuItemOp("view.axis_right");
+            MenuItemOp("view.axis_top");
+            MenuItemOp("view.axis_bottom");
+            ImGui::Separator();
+            MenuItemOp("view.frame_selected");
             ImGui::EndMenu();
         }
 
@@ -455,11 +459,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         //      FBZZ でも View はレイアウト・パネル、Debug は実行/描画診断に寄せることで項目の意味を読み取りやすくする。
         MenuItemOp("tools.analysis", "Analysis");
         ImGui::Separator();
-        // WHY 全項目を operator の投影にしたか: 移行前ここはフラグのアドレスを
-        //     ImGui::MenuItem へ直接渡しており、**同じフラグを切り替える
-        //     render.show_* operator が別に存在していた**。表示と実体が別経路なので
-        //     チェックの意味と operator の条件が食い違いうるうえ、
-        //     ここへ項目を足しても AI からは見えないままになる。
+        // 全項目を operator の投影にする。フラグのアドレスを直接渡すと、同じフラグを
+        // 切り替える operator と表示が別経路になり、AI からも見えない。
         // --- Scene Overlays ---
         MenuItemOp("render.show_grid",        "Grid");
         MenuItemOp("render.show_light_range", "Light Range");
@@ -518,8 +519,6 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     }
 
     if (ImGui::BeginMenu("Tools")) {
-        MenuItemOp("panel.vfx_editor", "VFX Editor...");
-        ImGui::Separator();
         MenuItemOp("tools.map_editing_mode");
         ImGui::Separator();
         if (ImGui::BeginMenu("Terrain & Map")) {
@@ -529,10 +528,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
         MenuItemOp("tools.build_settings");
         ImGui::Separator();
-        // WHY 専用 operator を作らないか: これは「IBL Baker パネルを前面に出す」
-        //     でしかない。パネルごとに operator を生やすと、パネルを 1 つ足すたび
-        //     登録簿にも 1 つ足す羽目になり、m_panels という単一の出所が
-        //     二重管理へ戻る。名前を引数で渡す 1 つの操作で足りる。
+        // パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
+        // 名前を引数で渡す 1 つの操作で足りる。
         if (m_iblBakePanel && ImGui::MenuItem("IBL Baker..."))
             InvokePanelFocus(m_iblBakePanel);
         if (m_navigationPanel && ImGui::MenuItem("Navigation..."))
@@ -544,10 +541,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         if (m_aiSettingsPanel && ImGui::MenuItem("AI Settings..."))
             InvokePanelFocus(m_aiSettingsPanel);
         ImGui::Separator();
-        // WHY 押せる項目にしたか: 移行前ここは状態表示だけの無効項目で、
-        //     待受の開始・停止は AI Settings パネルの中にしかなかった。
-        //     チェックマークが operator の checked (= 実際の待受状態) なので、
-        //     表示としての役割は保ったまま、その場で切り替えられる。
+        // チェックマークは operator の checked (= 実際の待受状態) なので、
+        // 状態表示の役割を保ったままその場で切り替えられる。
         MenuItemOp("ai.command_bus", "Editor Command Bus");
         ImGui::EndMenu();
     }
@@ -811,13 +806,8 @@ void EditorApp::StartPlayMode()
     }
 
     // FBZZ_REQUIRE_COMPONENT の充足をシーン全体でまとめて検証する。
-    //
-    // WHY ここか: 付け忘れは「動かないけどエラーも出ない」という形でしか現れないため、
-    //     気付くのは大抵 Play したあと。Play を押した瞬間に Console へ全件出しておけば、
-    //     ゲームの挙動を目で追う前に原因が名指しで並んでいる状態から始められる。
-    // WHY Play を止めないか: 不足があっても他の部分は動くし、そもそも作りかけの
-    //     シーンを走らせて確かめるのが Play の役目。止めると「試せない」ほうの
-    //     コストが上回る。Unity の Console と同じく、報告はするが進行は妨げない。
+    // 付け忘れは「動かないけどエラーも出ない」形でしか現れないので、Play を押した瞬間に
+    // Console へ全件出す。ただし Play は止めない — 作りかけを走らせるのが Play の役目。
     if (const auto issues = scene::ValidateSceneScriptRequirements(*m_ctx.activeScene);
         !issues.empty()) {
         for (const auto& issue : issues)
@@ -854,10 +844,8 @@ void EditorApp::StartPlayMode()
         static_cast<uint32_t>(m_ctx.gameViewportWidth),
         static_cast<uint32_t>(m_ctx.gameViewportHeight)
     );
-    // graphics プロキシの書き換え先を Play 中だけ開ける。
-    // WHY スナップショットを取るか: 実体は ProjectSettings::render で、EditorApp は
-    //     終了時にこれを ProjectSettings.toml へ保存する。Play 中にスクリプトが
-    //     画質を落としただけで、プロジェクトの既定値がそのまま書き換わってしまう。
+    // graphics プロキシの書き換え先を Play 中だけ開ける。実体は ProjectSettings::render で
+    // 終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
     m_renderSettingsPlaySnapshot = m_ctx.projectSettings.render;
     core::Application::Get().SetActiveRenderSettings(&m_ctx.projectSettings.render);
     m_playMode.Play(*m_ctx.activeScene);
@@ -904,12 +892,8 @@ void EditorApp::InvokeViewMode(const char* mode)
 
 // =============================================================================
 // operator をメニュー項目として描く
-//
-// WHY: 以前は MenuItem に「表示名・ショートカット文字列・実行可否・実体」を
-//      すべて直書きしていた。ショートカット文字列は "Ctrl+S" のような固定値なので
-//      リバインドすると表示だけが嘘になり、実行可否はホットキー側と別式だったため
-//      「メニューではグレーアウトなのにキーからは通る」が起きていた。
-//      4 つとも登録済みの情報から引けるので、ここでは id だけを指定する。
+// 表示名・ショートカット文字列・実行可否・実体の 4 つとも登録済みの情報から引く。
+// 直書きするとリバインドで表示だけが嘘になり、実行可否もキー側と別式になる。
 // =============================================================================
 bool EditorApp::MenuItemOp(const char* operatorId, const char* labelOverride)
 {
@@ -933,11 +917,8 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
     const char* label = (labelOverride != nullptr) ? labelOverride : op->label.c_str();
     const bool  enabled = CanInvokeOperator(operatorId, args);
 
-    // チェックマークも登録簿から引く。
-    // WHY: 移行前、トグル項目だけは `MenuItem(label, nullptr, &ctx.showGrid)` と
-    //      フラグを直接指しており、同じフラグを切り替える operator が別に
-    //      存在していた (render.show_grid ほか 10 個)。表示と実体が別経路なので、
-    //      operator 側に条件を足してもメニューの見た目には反映されない。
+    // チェックマークも登録簿から引く。フラグを直接指すと表示と実体が別経路になり、
+    // operator 側に条件を足してもメニューの見た目に反映されない。
     bool checked = false;
     if (op->checked) {
         const OpContext context = MakeOpContext();
@@ -952,9 +933,7 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
 }
 
 // Operator のカテゴリ文字列を、ショートカット一覧の見出し分類へ対応づける。
-// WHY: 一覧の並びは HotkeyCategory (enum) で決まる一方、Operator 側は
-//      メニュー / パレットと共有する文字列カテゴリを持つ。対応表をここに 1 つ置き、
-//      登録側では文字列だけを書けばよいようにする。
+// 一覧は enum、Operator 側は文字列カテゴリなので、対応表をここに 1 つ置く。
 static HotkeyCategory HotkeyCategoryFromOperator(const std::string& category)
 {
     if (category == "File")      return HotkeyCategory::File;
@@ -971,18 +950,11 @@ static HotkeyCategory HotkeyCategoryFromOperator(const std::string& category)
 
 // =============================================================================
 // ホットキー登録 — キー割り当ての単一の定義場所
-//
-// WHY: ここに無いキーはリバインドできず、F1 の一覧にも出ない。逆に言えば、
-//      ここに書けば入力処理・一覧・リバインド UI・設定への永続化が全部ついてくる。
-//      パネル側で IsKeyPressed を直接叩くと、その 4 つが揃わないものが増える。
-//
-// NOTE: 「何をするか」と「いつ実行できるか」はここには無い。それらは
-//       OperatorRegistry (RegisterBuiltinOperators) が持ち、ここは
-//       **operator id にキーを割り当てるだけ**の表になっている。
-//       以前は同じ条件式がメニュー・ホットキー・コマンドパレットへ 3 回書かれ、
-//       New Scene / Open Scene / Save は実際にずれていた
-//       (メニューだけが Prefab 編集中を禁じ、ホットキーからは通っていた)。
-//       Docs/design/editor-operator-model.md
+// ここに書けば入力処理・F1 の一覧・リバインド UI・設定への永続化が全部ついてくる
+// (パネル側で IsKeyPressed を直接叩くと、その 4 つが揃わない)。
+// 「何をするか」「いつ実行できるか」は OperatorRegistry が持ち、ここは operator id に
+// キーを割り当てるだけの表。条件式を各面へ写すと必ずずれる。
+// Docs/design/editor-operator-model.md
 // =============================================================================
 void EditorApp::RegisterDefaultHotkeys()
 {
@@ -1030,11 +1002,9 @@ void EditorApp::RegisterDefaultHotkeys()
     // ── Edit ────────────────────────────────────────────────────────────────
     bind("edit.undo", ImGuiKey_Z, true, false, false, Scope::Global);
     bind("edit.redo", ImGuiKey_Y, true, false, false, Scope::Global);
-    // WHY: Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させ、
-    //      どちらの操作習慣のユーザーでも迷わないようにする。
-    //      同じ operator への 2 本目の割り当てなので operatorId は付けない
-    //      (付けると Rebind が id で引いたとき 1 本目とどちらを指すか決まらない)。
-    //      リバインドの保存鍵は従来どおり表示名になる。
+    // Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させる。
+    // 同じ operator への 2 本目なので operatorId は付けない (付けると Rebind が
+    // id で引いたときどちらを指すか決まらない)。保存鍵は表示名になる。
     {
         const EditorOperator* redo = m_operators.Find("edit.redo");
         if (redo != nullptr) {
@@ -1067,6 +1037,17 @@ void EditorApp::RegisterDefaultHotkeys()
     // ── Viewport ────────────────────────────────────────────────────────────
     bind("view.frame_selected", ImGuiKey_F, false, false, false, Scope::SceneViewport);
 
+    // WHY Alt + 数字か: 素の 1~9 はカメラブックマーク、Shift + 数字はその保存で埋まっている。
+    //     Alt は「視点の作り方を変える」修飾として空いており、ViewportPanel の
+    //     ブックマーク処理も Alt 押下中はスキップして取り合いを避けている。
+    bind("view.toggle_projection", ImGuiKey_O, false, false, false, Scope::SceneViewport);
+    bind("view.axis_front",  ImGuiKey_1, false, false, true, Scope::SceneViewport);
+    bind("view.axis_back",   ImGuiKey_2, false, false, true, Scope::SceneViewport);
+    bind("view.axis_left",   ImGuiKey_3, false, false, true, Scope::SceneViewport);
+    bind("view.axis_right",  ImGuiKey_4, false, false, true, Scope::SceneViewport);
+    bind("view.axis_top",    ImGuiKey_5, false, false, true, Scope::SceneViewport);
+    bind("view.axis_bottom", ImGuiKey_6, false, false, true, Scope::SceneViewport);
+
     // ── Gizmo ───────────────────────────────────────────────────────────────
     bind("gizmo.move",         ImGuiKey_W, false, false, false, Scope::SceneViewport);
     bind("gizmo.rotate",       ImGuiKey_E, false, false, false, Scope::SceneViewport);
@@ -1080,22 +1061,15 @@ void EditorApp::RegisterDefaultHotkeys()
     bind("play.pause",  ImGuiKey_P, true, true,  false, Scope::Global);
 
     // ── Panels ──────────────────────────────────────────────────────────────
-    // WHY 追加したか: メニューは以前から "Ctrl+Shift+B" と表示していたが、
-    //     その文字列は直書きで、実際にはどこにも割り当てられていなかった。
-    //     MenuItemOp が実割り当てから表示を引くようになったので、
-    //     「表示だけあるショートカット」は成立しない — 表示を消すか実装するかの
-    //     二択になり、ここでは実装する。
+    // MenuItemOp が実割り当てから表示を引くので、「表示だけあるショートカット」は成立しない。
     bind("tools.build_settings", ImGuiKey_B, true, true, false, Scope::Global);
 
     bind("panel.command_palette", ImGuiKey_K, true, false, false, Scope::Global);
     bind("panel.shortcut_list",   ImGuiKey_F1, false, false, false, Scope::Global);
-    // 独立VFXEditorはEditorのDock/Focus状態に依存せず、専用プロセスとして起動する。
-    bind("panel.vfx_editor",      ImGuiKey_V, true, false, true, Scope::Global);
 
     // ── 説明専用エントリ ─────────────────────────────────────────────────────
-    // WHY: マウス操作や数字キー列はキー 1 つに割り当てられないが、
-    //      「どう操作するか」の一覧としては同じくらい知りたい情報。別表に切り出すと
-    //      そこがまた手書きの二重管理になるので、同じ器に入れて一覧を 1 本に保つ。
+    // マウス操作や数字キー列はキー 1 つに割り当てられないが、一覧としては同じくらい要る。
+    // 別表に切り出すとそこがまた二重管理になるので、同じ器に入れて一覧を 1 本に保つ。
     m_hotkeys.RegisterInfo("Look around",     "RMB drag",       Cat::Viewport, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Fly (while RMB)", "W / A / S / D / Q / E", Cat::Viewport, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Pan",             "MMB drag",       Cat::Viewport, Scope::SceneViewport);

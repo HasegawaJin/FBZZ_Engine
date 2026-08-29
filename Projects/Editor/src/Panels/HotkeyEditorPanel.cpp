@@ -1,10 +1,11 @@
-// FBZZ Engine
-// HotkeyEditorPanel.cpp | fbzz::editor
-// ホットキー一覧表示とリバインド UI
-//
-// WHY: 一覧・整形・競合判定は HotkeyManager 側に持たせ、このパネルは表示と
-//      入力待ちだけを担当する。以前は整形処理がここと F1 オーバーレイに
-//      別々に書かれており、片方だけ直る状態だった。
+/// @file    HotkeyEditorPanel.cpp
+/// @brief   ホットキー一覧表示とリバインド UI。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
+///
+/// WHY: 一覧・整形・競合判定は HotkeyManager 側に持たせ、このパネルは表示と
+/// 入力待ちだけを担当する。以前は整形処理がここと F1 オーバーレイに
+/// 別々に書かれており、片方だけ直る状態だった。
 #include <Editor/Panels/HotkeyEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>

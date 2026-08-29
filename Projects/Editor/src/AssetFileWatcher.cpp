@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetFileWatcher.cpp | fbzz::editor
-// ReadDirectoryChangesW を使った非同期ポーリング型ファイル監視
+/// @file    AssetFileWatcher.cpp
+/// @brief   ReadDirectoryChangesW を使った非同期ポーリング型ファイル監視。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #include <Editor/AssetFileWatcher.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

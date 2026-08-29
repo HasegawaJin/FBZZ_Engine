@@ -1,6 +1,7 @@
-﻿// FBZZ Engine
-// SelectionMaskPass.cpp | fbzz::scene
-// Selection mask render pass implementation
+﻿/// @file    SelectionMaskPass.cpp
+/// @brief   Selection mask render pass implementation.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "../Geometry/GeometryPasses.hpp"  // FindAnimator (親方向探索) を共用する
@@ -24,8 +25,6 @@
 
 namespace fbzz::scene {
 
-namespace {
-
 bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& settings)
 {
     const EntityID id = go.GetID();
@@ -38,6 +37,8 @@ bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& 
     }
     return false;
 }
+
+namespace {
 
 // ParticlePassと同じ規則でLocal座標をWorld座標へ移す。
 math::Vector3 ParticleWorldPoint(const Transform& transform, const math::Vector3& localPoint)
@@ -278,6 +279,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
 
     TerrainSelectionMaskSystem(ctx);
     WaterSelectionMaskSystem(ctx);
+    if (ctx.appendUISelectionMask) ctx.appendUISelectionMask();
 
     r.SetRenderTarget(h.hdrRT, resources);
 }

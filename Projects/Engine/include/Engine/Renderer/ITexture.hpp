@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ITexture.hpp | fbzz::renderer
-// Texture の抽象インターフェース
-// SRV / UAV などのネイティブ表現を上位から隠す。
-// ファイル読み込みと生成は ResourceManager / AssetManager 経由にする。
+/// @file    ITexture.hpp
+/// @brief   Texture の抽象インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// SRV / UAV などのネイティブ表現を上位から隠す。
+/// ファイル読み込みと生成は ResourceManager / AssetManager 経由にする。
 #pragma once
 #include <cstdint>
 

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Vector3.cpp | fbzz::math
-// 3次元ベクトルの演算実装
+/// @file    Vector3.cpp
+/// @brief   3次元ベクトルの演算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Vector3.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>

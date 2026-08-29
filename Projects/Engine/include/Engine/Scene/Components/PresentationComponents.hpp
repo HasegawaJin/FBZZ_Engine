@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PresentationComponents.hpp | fbzz::scene
-// 2Dスプライト、線、ビルボード、投影表示に使う汎用描画Component
+/// @file    PresentationComponents.hpp
+/// @brief   2Dスプライト、線、ビルボード、投影表示に使う汎用描画Component。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>

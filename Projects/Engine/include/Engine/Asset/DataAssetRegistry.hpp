@@ -1,14 +1,15 @@
-// FBZZ Engine
-// DataAssetRegistry.hpp | fbzz::asset
-// DataAsset (純共有 ScriptableObject) の「パス → 共有 1 実体」キャッシュ兼 TOML 入出力。
-//
-// 設計意図 (WHY):
-//   ScriptableObject の本質は「データを 1 か所で持ち、複数の参照が同じ実体を共有する」こと。
-//   Registry が .fzdata パス単位で DataAsset を 1 つだけ生成・キャッシュし、Asset<T>::Get() は
-//   常にこの共有実体を返す。Inspector の編集はこの実体を直接書き換えるため、参照側すべてに即反映される。
-//
-//   静的メソッドは Engine 側 TU に実体を持ち (AssetManager と同方針)、スクリプト DLL からも
-//   DLL 境界越しに呼べる。これによりスクリプトは Engine 実装へ downcast 依存せずに値を引ける。
+/// @file    DataAssetRegistry.hpp
+/// @brief   DataAsset (純共有 ScriptableObject) の「パス → 共有 1 実体」キャッシュ兼 TOML 入出力。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// 設計意図 (WHY):
+/// ScriptableObject の本質は「データを 1 か所で持ち、複数の参照が同じ実体を共有する」こと。
+/// Registry が .fzdata パス単位で DataAsset を 1 つだけ生成・キャッシュし、Asset<T>::Get() は
+/// 常にこの共有実体を返す。Inspector の編集はこの実体を直接書き換えるため、参照側すべてに即反映される。
+///
+/// 静的メソッドは Engine 側 TU に実体を持ち (AssetManager と同方針)、スクリプト DLL からも
+/// DLL 境界越しに呼べる。これによりスクリプトは Engine 実装へ downcast 依存せずに値を引ける。
 #pragma once
 #include <string>
 

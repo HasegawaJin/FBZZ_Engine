@@ -1,16 +1,18 @@
-// FBZZ Engine
-// AnimatorGraphOps.hpp | fbzz::editor
-// WHAT: Animation Graph の「パネルの描画とは独立した操作」を共有実装として切り出す。
-// WHY:  自動整列・保存・dirty 登録は AnimationGraphPanel の private メンバーの中にあり、
-//       パネルを描画していないと呼べなかった。そのため AI 側は Animator の構造
-//       (state / transition / motion / parameter) を編集できるのに、
-//         - **保存する手段が無く**、編集は次回起動で消える
-//         - キャンバス整列ができず、AI が足したステートが既存ノードと重なったまま残る
-//       という状態だった。
-//
-//       別実装を書いてはならない — 整列の間隔が違えば「AI が整列したグラフを
-//       Editor で整列し直すと座標が動く」ことになり、差分に意味のない座標変更が
-//       毎回混ざる (BehaviorTreePanel::AutoLayout で既に踏んだのと同じ問題)。
+/// @file    AnimatorGraphOps.hpp
+/// @brief   WHAT: Animation Graph の「パネルの描画とは独立した操作」を共有実装として切り出す。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY:  自動整列・保存・dirty 登録は AnimationGraphPanel の private メンバーの中にあり、
+/// パネルを描画していないと呼べなかった。そのため AI 側は Animator の構造
+/// (state / transition / motion / parameter) を編集できるのに、
+/// - **保存する手段が無く**、編集は次回起動で消える
+/// - キャンバス整列ができず、AI が足したステートが既存ノードと重なったまま残る
+/// という状態だった。
+///
+/// 別実装を書いてはならない — 整列の間隔が違えば「AI が整列したグラフを
+/// Editor で整列し直すと座標が動く」ことになり、差分に意味のない座標変更が
+/// 毎回混ざる (BehaviorTreePanel::AutoLayout で既に踏んだのと同じ問題)。
 #pragma once
 #include <string>
 

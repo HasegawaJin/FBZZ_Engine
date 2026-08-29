@@ -1,6 +1,7 @@
-// FBZZ Engine
-// HotkeyManager.cpp | fbzz::editor
-// キーショートカットの登録・判定・整形
+/// @file    HotkeyManager.cpp
+/// @brief   キーショートカットの登録・判定・整形。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/HotkeyManager.hpp>
 #include <imgui.h>
 

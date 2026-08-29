@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneHierarchyPanel.cpp | fbzz::editor
-// Scene GameObject hierarchy and selection editing
+/// @file    SceneHierarchyPanel.cpp
+/// @brief   Scene GameObject hierarchy and selection editing.
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
@@ -23,6 +24,7 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/VFXComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
@@ -261,27 +263,33 @@ std::string SanitizeAssetName(const std::string& name)
     return result;
 }
 
-std::string UniquePrefabPath(const EditorContext& ctx, const std::string& objectName)
+// WHY 拡張子と置き場所を引数にするか: .vfx はプレハブと同じ中身だが、
+//     AssetBrowser の色分け・サムネイル・VFXRef のドロップ受理・開いたときの
+//     振る舞いがすべて拡張子で分岐する。同じ保存経路を通しつつ、
+//     «これは演出だ» という区別だけ呼び出し側が決められるようにする。
+std::string UniqueAssetPath(const EditorContext& ctx, const std::string& objectName,
+                            const char* subDirectory, const char* extension)
 {
     const std::string assetRoot = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
-    const std::string prefabDir = assetRoot + "/Prefabs";
-    util::FileSystem::EnsureDirectory(prefabDir);
+    const std::string directory = assetRoot + "/" + subDirectory;
+    util::FileSystem::EnsureDirectory(directory);
 
-    const std::string base = prefabDir + "/" + SanitizeAssetName(objectName);
-    std::string path = base + ".prefab";
+    const std::string base = directory + "/" + SanitizeAssetName(objectName);
+    std::string path = base + extension;
     for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
-        path = base + " " + std::to_string(i) + ".prefab";
+        path = base + " " + std::to_string(i) + extension;
     return path;
 }
 
-void SaveSelectedAsPrefab(EditorContext& ctx, const std::string& objectName)
+void SaveSelectedAsAsset(EditorContext& ctx, const std::string& objectName,
+                         const char* subDirectory, const char* extension)
 {
     if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
     scene::Scene& scene = *ctx.activeScene;
 
     // 保存 + インスタンス接続をまとめて実行する (Unity 互換の Create Prefab)。
     // 接続したルート GO は rootSelection に返り、Undo で接続解除に使う。
-    const std::string path = UniquePrefabPath(ctx, objectName);
+    const std::string path = UniqueAssetPath(ctx, objectName, subDirectory, extension);
     std::vector<scene::EntityID> rootSelection;
     if (!PrefabSerializer::SaveSelectionAndConnect(scene, ctx.selectedEntities, path, rootSelection))
         return;
@@ -925,7 +933,14 @@ void DrawHierarchyNode(EditorContext& ctx,
             }
         }
         if (ImGui::MenuItem("Save As Prefab")) {
-            SaveSelectedAsPrefab(ctx, go.name);
+            SaveSelectedAsAsset(ctx, go.name, "Prefabs", ".prefab");
+        }
+        // VFX ルートは .vfx として保存する。中身はプレハブと同じだが、
+        // 拡張子で «演出» と分かるようにしておく (VFXRef のドロップ先にもなる)。
+        if (go.GetComponent<scene::VFXComponent>() != nullptr) {
+            if (ImGui::MenuItem("Save As VFX")) {
+                SaveSelectedAsAsset(ctx, go.name, "VFX", ".vfx");
+            }
         }
         // プレファブインスタンスには Apply / Revert を提供する。
         // WHY: Unity 互換の Prefab 操作性。Apply はディスクへの書き戻しのみで
@@ -1210,7 +1225,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                     deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste_as_child"); };
                 ImGui::Separator();
                 if (ImGui::MenuItem("Save As Prefab"))
-                    SaveSelectedAsPrefab(ctx, go.name);
+                    SaveSelectedAsAsset(ctx, go.name, "Prefabs", ".prefab");
+                if (go.GetComponent<scene::VFXComponent>() != nullptr
+                    && ImGui::MenuItem("Save As VFX"))
+                    SaveSelectedAsAsset(ctx, go.name, "VFX", ".vfx");
                 ImGui::Separator();
                 // WHY operator 経由か (不具合修正 / Step 4): ここは DestroyGameObject を
                 //   直接呼んでおり、**Undo に載っていなかった**。検索結果から消したときだけ

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// StandaloneProjectModule.cpp | fbzz::scene
-// Standaloneプロジェクト共通のゲーム更新・描画モジュール実装
+/// @file    StandaloneProjectModule.cpp
+/// @brief   Standaloneプロジェクト共通のゲーム更新・描画モジュール実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #include <Engine/Scene/StandaloneProjectModule.hpp>
 
 #include <Engine/Audio/AudioManager.hpp>
@@ -39,8 +40,10 @@ bool StandaloneProjectModule::OnInit()
     auto& app = core::Application::Get();
     // GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
-    if (auto* audioManager = app.GetAudioManager())
+    if (auto* audioManager = app.GetAudioManager()) {
+        audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
         audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
+    }
     // graphics プロキシが触る描画設定の実体を登録する。配布ゲームでは
     // ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
     // ファイルへ戻ることはない。

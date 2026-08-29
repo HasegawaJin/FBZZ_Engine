@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderTargetCapture.cpp | fbzz::renderer::detail
-// ScratchImage → PNG (WIC) 変換の共通実装。
+/// @file    RenderTargetCapture.cpp
+/// @brief   ScratchImage → PNG (WIC) 変換の共通実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include "RenderTargetCapture.hpp"
 
 #include <DirectXTex.h>

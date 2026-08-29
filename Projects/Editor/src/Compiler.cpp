@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Compiler.cpp | fbzz::editor
-// RuntimeBuild 用の CMake 子プロセス管理
+/// @file    Compiler.cpp
+/// @brief   RuntimeBuild 用の CMake 子プロセス管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #include <Editor/Compiler.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>

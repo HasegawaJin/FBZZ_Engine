@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptSceneProxy.hpp | fbzz::scene
-// Script から Scene / GameObject 操作へ転送するショートハンド
+/// @file    ScriptSceneProxy.hpp
+/// @brief   Script から Scene / GameObject 操作へ転送するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

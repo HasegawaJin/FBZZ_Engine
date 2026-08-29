@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MapEditorPanel.cpp | fbzz::editor
-// Map Editing Mode のツール選択・設定パネル実装
+/// @file    MapEditorPanel.cpp
+/// @brief   Map Editing Mode のツール選択・設定パネル実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-14
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>

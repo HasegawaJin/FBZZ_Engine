@@ -1,15 +1,16 @@
-// FBZZ Engine
-// Json.hpp | fbzz::editor::ai
-// AI 連携 (MCP) の wire フォーマット用に、依存を増やさない最小 JSON 値・パーサ・シリアライザを自作する。
-//
-// 設計 (WHY):
-//   本エンジンは GLM / Bullet 等と同じく外部ライブラリを避け数学・物理を自作する方針で、
-//   シリアライズも toml++ 一本 (JSON ライブラリ非採用)。しかし Editor Command Bus は Claude/MCP と
-//   NDJSON でやり取りするため JSON が必要。プロトコル面は RFC 8259 のサブセットで完全仕様が既知なので、
-//   小さく読みやすい自作コーデックを1組だけ持つ。エラーは throw せず optional / bool で返す (プロジェクト規約)。
-//
-//   JsonValue は「タグ + 全フィールド」方式にする。union / recursive-variant を避けることで
-//   自己参照 (Array/Object が JsonValue を含む) を素直に表現でき、読みやすさを優先する。
+/// @file    Json.hpp
+/// @brief   AI 連携 (MCP) の wire フォーマット用に、依存を増やさない最小 JSON 値・パーサ・シリアライザを自作する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// 設計 (WHY):
+/// 本エンジンは GLM / Bullet 等と同じく外部ライブラリを避け数学・物理を自作する方針で、
+/// シリアライズも toml++ 一本 (JSON ライブラリ非採用)。しかし Editor Command Bus は Claude/MCP と
+/// NDJSON でやり取りするため JSON が必要。プロトコル面は RFC 8259 のサブセットで完全仕様が既知なので、
+/// 小さく読みやすい自作コーデックを1組だけ持つ。エラーは throw せず optional / bool で返す (プロジェクト規約)。
+///
+/// JsonValue は「タグ + 全フィールド」方式にする。union / recursive-variant を避けることで
+/// 自己参照 (Array/Object が JsonValue を含む) を素直に表現でき、読みやすさを優先する。
 #pragma once
 #include <cstdint>
 #include <optional>

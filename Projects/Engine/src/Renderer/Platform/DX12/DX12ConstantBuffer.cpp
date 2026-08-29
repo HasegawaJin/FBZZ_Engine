@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12ConstantBuffer.cpp | fbzz::renderer
-// Update ごとに Upload Arena の新しい CBV スライスへコピーする
+/// @file    DX12ConstantBuffer.cpp
+/// @brief   Update ごとに Upload Arena の新しい CBV スライスへコピーする。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12ConstantBuffer.hpp"
 
 #include "DX12UploadArena.hpp"

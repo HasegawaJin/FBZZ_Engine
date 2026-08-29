@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AnimationGraphPanel.cpp | fbzz::editor
-// AnimatorComponent のステートマシンをノードグラフとして編集するパネル
-// WHAT: imnodes で State ノードと Transition リンクを描画し、AnimatorComponent を直接更新する。
+/// @file    AnimationGraphPanel.cpp
+/// @brief   AnimatorComponent のステートマシンをノードグラフとして編集するパネル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
+///
+/// WHAT: imnodes で State ノードと Transition リンクを描画し、AnimatorComponent を直接更新する。
 #include <Editor/Panels/AnimationGraphPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
@@ -31,10 +33,6 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui_internal.h>
-// NOTE: 以前ここには `#include <imnodes.cpp>` があった。実装を .obj へ同梱することで
-//       imnodes.lib のリンク漏れを回避していたが、その代償として「他のどの .cpp も
-//       同じことをしてはならない」という不変条件をコメントでしか守れなくなっていた。
-//       現在は fbzz_editor が imnodes を PUBLIC リンクするため不要。
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
@@ -61,11 +59,8 @@ bool CanEditAnimationGraph(const EditorContext& ctx)
 }
 
 // このパネルが Inspector の表示対象を主張してよいか (パネルのウィンドウ内で呼ぶこと)。
-//
-// WHY 描くたびに公開しないか: 公開はローカル選択を ctx へ写す操作で、以前は描画のたびに
-//   無条件に走っていた。そのため Viewport や Hierarchy で GameObject を選び直しても
-//   次のフレームでグラフの選択に上書きされ、Inspector がステートを映したまま動かなかった。
-//   「最後に触った面が勝つ」に揃えるため、フォーカスを持っている間だけ主張する。
+// 描くたびに公開すると、Viewport や Hierarchy で選び直しても次のフレームで
+// グラフの選択に上書きされる。「最後に触った面が勝つ」に揃える。
 bool CanPublishSelection()
 {
     return ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -108,12 +103,10 @@ GraphLayout ToEditorGraphLayout(const asset::AnimatorGraphLayout& source)
     return layout;
 }
 
-// NOTE: ToAssetGraphLayout / SaveAnimatorControllerWithLayout /
-//       dirty 登録の本体は Editor/GraphEditor/AnimatorGraphOps.hpp へ移した。
-//       WHY: パネルの private/static に閉じていたため、パネルを描画していないと
-//            呼べず、AI からは Animator の構造は編集できるのに**保存できない**
-//            (次回起動で編集が消える) 状態だった。
-//            Docs/design/editor-operator-model.md
+// ToAssetGraphLayout / SaveAnimatorControllerWithLayout / dirty 登録の本体は
+// Editor/GraphEditor/AnimatorGraphOps.hpp。パネルの static に閉じていると、
+// 描画していないと呼べず AI からは編集できるのに保存できない。
+// Docs/design/editor-operator-model.md
 
 void MarkDirty(EditorContext& ctx)
 {
@@ -121,15 +114,9 @@ void MarkDirty(EditorContext& ctx)
         return;
 
     ++AnimationGraphEditGeneration();
-    // WHY selectedAssetPath ではなく animationControllerEditorPath を見るか (重要):
-    //   以前はここが「Asset Browser で今選ばれているファイル」を編集対象と見なしていた。
-    //   ところがクリップを Source 欄へドラッグするには Asset Browser を触る必要があり、
-    //   その瞬間に selectedAssetPath が .anim / .fbx へ移る。すると
-    //     - この分岐が false になり、編集が AssetDirtyRegistry に登録されない
-    //     - 保存先も見失う (Save が効いていないように見える)
-    //     - Inspector の "Modified" 表示も出ない
-    //   という 3 つが同時に起きていた。編集対象は「パネルが開いているドキュメント」であって
-    //   ブラウザーの選択ではない。animationControllerEditorPath がその唯一の識別子。
+    // 編集対象は「パネルが開いているドキュメント」であってブラウザーの選択ではない。
+    // selectedAssetPath を見ると、Source 欄へクリップをドラッグした瞬間に .anim へ移り、
+    // dirty 登録も保存先も Modified 表示も同時に失われる。
     if (MarkAnimatorControllerDirty(ctx))
         return;
     if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -165,14 +152,10 @@ scene::AnimatorComponent MakeAnimationGraphSnapshot(
 }
 
 // ── レイヤーグラフの一時差し替え ─────────────────────────────────────────────
-// WHY: このパネルは 130 箇所以上で animator.states / anyStateTransitions /
-//      defaultStateName を直接触っている。レイヤー対応のために全箇所を
-//      「今どのレイヤーか」で分岐させると、描画・選択・Undo・ノード配置の
-//      すべてに条件が散り、既存の動作を壊すリスクが高い。
-//
-//      AnimationLayer は AnimatorComponent と同じ型のステート配列を持つので、
-//      描画の前後で中身を入れ替えれば、パネル側は「常に自分のグラフを見ている」
-//      ままで良い。入れ替えは 1 フレーム内で完結し、デストラクタで必ず戻す。
+// このパネルは 130 箇所以上で animator.states を直接触っている。全箇所を
+// 「今どのレイヤーか」で分岐させると条件が散る。
+// AnimationLayer は同じ型のステート配列を持つので、描画の前後で中身を入れ替えれば
+// パネル側は常に自分のグラフを見ているままでよい。デストラクタで必ず戻す。
 struct LayerGraphScope {
     scene::AnimatorComponent* animator = nullptr;
     scene::AnimationLayer*    layer    = nullptr;
@@ -458,10 +441,8 @@ void TextElidedDisabled(const std::string& text, float budget)
     ImGui::TextDisabled("%s", ElideToWidth(text, budget).c_str());
 }
 
-// 合成ビューが使うスケルトン。
-// WHY 3 経路あるか: .animcontroller 単体を開いているときは GameObject が無い。
-//     マスクは作成元 FBX を覚えているので、それを最後の頼りにする。これが無いと
-//     「シーンに Player を置いてからでないとマスクを検証できない」になる。
+// 合成ビューが使うスケルトン。.animcontroller 単体を開いているときは GameObject が無いので、
+// マスクが覚えている作成元 FBX を最後の頼りにする。
 const asset::Skeleton* ResolveCompositionSkeleton(EditorContext& ctx,
                                                   const scene::AnimatorComponent& animator)
 {
@@ -676,30 +657,16 @@ bool DrawFloatParameterCombo(EditorContext& ctx,
 }
 
 // クリップの取得元アセットを選ぶ欄。
-//
-// WHY 共通ウィジェットを使うか:
-//   ここは以前 ImGui::InputText と AcceptDragDropPayload("ASSET_PATH") を手書きしていた。
-//   その結果、(1) "..." の検索ピッカーが無く目的のクリップを Asset Browser で
-//   探し回るしかない、(2) 拡張子を検証しないので .png でもフォルダでも受け付けて
-//   静かに壊れる、(3) パスの表示規則が Inspector の他のアセット欄と揃わない、
-//   という 3 つが同時に起きていた。widgets::AssetPathField は検索・型フィルター・
-//   Ping・右クリックメニュー・D&D を 1 箇所で持っているので、そちらへ寄せる。
-//   Inspector 側の "Ref Source" (加算レイヤーの基準ポーズ) は既にこれを使っており、
-//   同じ種類の値をパネルごとに違う UI で編集している状態を解消する意味もある。
+// 手書きの InputText + AcceptDragDropPayload だと検索ピッカーが無く、拡張子も検証しない。
+// widgets::AssetPathField が検索・型フィルター・Ping・D&D を 1 箇所で持っている。
 bool DrawAnimationSource(EditorContext& ctx,
                          const char* label,
                          scene::AnimatorComponent& animator,
                          std::string& sourcePath)
 {
     // .anim = クリップ単体、.fbx = インポート元、.asset/.fzasset = インポート済みモデル。
-    //
-    // WHY .anim を受けるか (不具合修正):
-    //   ランタイム (AnimatorSystem::LoadClips) は sourcePath が .anim のとき
-    //   AnimationClip として直接ロードする経路を持っており、「1 クリップ = 1 .anim」が
-    //   FBZZ の標準的な指定方法になっている。にもかかわらずこの欄のフィルターが
-    //   ".asset,.fbx" のままだったため、AcceptAssetPathDrop が .anim を無言で捨てていた。
-    //   結果、FBX の展開先 (Library/Baked/<guid>/anims/) から Assets へ取り出した .anim を
-    //   ドラッグしても「何も起きない」= アタッチできない状態になっていた。
+    // ランタイム (AnimatorSystem::LoadClips) は .anim を直接ロードする経路を持ち、
+    // 「1 クリップ = 1 .anim」が標準の指定方法なので、フィルターから外さないこと。
     const bool changed = widgets::AssetPathField(
         label, sourcePath, ".anim,.asset,.fzasset,.fbx", ctx.projectRoot);
     if (changed) {
@@ -712,9 +679,8 @@ bool DrawAnimationSource(EditorContext& ctx,
 }
 
 // 指定された Source / Clip の実再生秒数を返し、Graph UI の Length 表示に使用する。
-// Source / Clip 名 / index から実体のクリップを引く。
-// WHY 切り出すか: Length 表示と Loop Time の引き継ぎが同じ探索を必要とする。
-//     片方だけ規則を変えると「表示している尺と、参照しているクリップが別」になる。
+// Source / Clip 名 / index から実体のクリップを引く。Length 表示と Loop Time の引き継ぎが
+// 同じ探索を要るので、片方だけ規則を変えると表示と参照が別のクリップになる。
 const asset::AnimationClip* FindClip(const scene::AnimatorComponent& animator,
                                      const std::string& sourcePath,
                                      const std::string& clipName,
@@ -867,14 +833,9 @@ void DrawTransitionTimeline(const scene::AnimatorComponent& animator,
 }
 
 // sourcePath が指すクリップを animator.clips へ読み込む (未読込のときだけ)。
-//
-// WHY 関数に切り出すか: Clip コンボとキャンバスへのアセットドロップが同じ読み込みを必要とする。
-// WHY .anim を分岐するか (不具合修正):
-//   .anim は「1 ファイル = 1 クリップ」のバイナリで、モデルコンテナではない。
-//   LoadModel に渡すと ModelImporter まで落ちて必ず失敗するため、以前はここで
-//   何も積まれず、.anim を Source に指定しても Clip コンボが空・Clip Length が
-//   "unavailable" のままだった (実行時は AnimatorSystem::LoadClips が同じ分岐を
-//   持っているので再生自体はできる、というエディターとランタイムの食い違い)。
+// Clip コンボとキャンバスへのアセットドロップが同じ読み込みを要るので切り出す。
+// .anim は「1 ファイル = 1 クリップ」でモデルコンテナではないため、LoadModel に渡すと
+// 必ず失敗する。AnimatorSystem::LoadClips と同じ分岐をここにも置く。
 void EnsureSourceClipsLoaded(scene::AnimatorComponent& animator, const std::string& sourcePath)
 {
     if (sourcePath.empty()) return;
@@ -1027,13 +988,8 @@ void DrawBlendTreeEditor(EditorContext& ctx,
                 state.clipName,
                 state.clipIndex)) {
             // クリップを選び直したら、そのクリップの Loop Time を State の既定値にする。
-            //
-            // WHY 実行時の権威を State のままにするか (設計判断 A):
-            //   AnimatorSystem は一貫して state.loop を見ており、既存の .animcontroller は
-            //   すべて loop を保存済み (既定 true)。クリップ側を権威にすると、
-            //   今動いているコントローラーの再生が黙って変わる。
-            //   クリップは「オーサリング時の初期値の供給元」に留め、
-            //   ステートごとの例外は従来どおり Inspector で作れるようにする。
+            // 実行時の権威は state.loop のまま (設計判断 A)。クリップ側を権威にすると、
+            // 今動いているコントローラーの再生が黙って変わる。
             if (const asset::AnimationClip* clip =
                     FindClip(animator, state.sourcePath, state.clipName, state.clipIndex)) {
                 state.loop = clip->loop;
@@ -1276,15 +1232,10 @@ void DrawBlendTreeEditor(EditorContext& ctx,
     }
 }
 
-// ステート名の変更をグラフデータ全体へ波及させる。
-//
-// WHY 自由関数にするか: 名前は states[].name だけでなく、遷移 (toStateName)・
-//     defaultStateName・ノード配置マップのキーでもある。リネームの入口が
-//     グラフパネル (F2 / 右クリック) と Inspector の Name 欄の 2 つある以上、
-//     「参照を全部張り替える」責務を 1 箇所に集めておかないと、
-//     片方の入口だけ張り替え漏れを起こすという壊れ方をする。
-//     パネル固有の選択追従は呼び出し側 (AnimationGraphPanel) の仕事として分ける。
-//
+// ステート名の変更をグラフデータ全体へ波及させる。名前は states[].name だけでなく
+// 遷移 (toStateName)・defaultStateName・ノード配置マップのキーでもあり、リネームの入口も
+// 2 つあるので、張り替えの責務を 1 箇所へ集める。
+// パネル固有の選択追従は呼び出し側の仕事として分ける。
 // 戻り値: 実際に改名したら true。空名・重複名・添字範囲外は何もせず false。
 bool RenameStateInGraph(EditorContext& ctx,
                         scene::AnimatorComponent& animator,
@@ -1373,10 +1324,7 @@ void AnimationGraphPanel::ClearSelectionState()
 }
 
 // 名前から添字を作り直す。states[] を触った直後と、描画の先頭で必ず通る。
-//
-// WHY 毎フレームやるか: 削除・並べ替え・リネームのたびに個別へ添字を直して回ると、
-//     直し漏れた 1 箇所が「選択が別のステートを指す」という気付きにくい不具合になる。
-//     解決を 1 箇所に集めれば、名前が消えた = 選択が消える、が自動的に保証される。
+// 個別に添字を直して回ると、漏れた 1 箇所が「選択が別のステートを指す」不具合になる。
 void AnimationGraphPanel::ResolveSelectionIndices(const scene::AnimatorComponent& animator)
 {
     // 存在しなくなった名前を落とす (削除されたステートの選択はここで消える)。
@@ -1477,10 +1425,8 @@ void AnimationGraphPanel::SelectStateByName(const scene::AnimatorComponent& anim
     m_selectedKind = NodeKind::State;
     m_selectedStateNames.push_back(name);
     m_selectedNode = index;
-    // WHY キャンバスへも伝えるか: 以前はパネル側の選択だけを更新していたため、
-    //     ステートを追加・複製した直後に Inspector には新ステートが出るのに
-    //     グラフ上はどこも光っていない、という食い違いが起きていた。
-    //     VFX エディタは既に RequestSelection で揃えている。同じ規約へ寄せる。
+    // キャンバスへも伝える。パネル側だけだと、追加直後に Inspector には出るのに
+    // グラフ上はどこも光っていない状態になる (VFX エディタと同じ規約)。
     m_graphCanvas.RequestSelection({ NodeId(index) });
 }
 
@@ -1731,10 +1677,8 @@ void AnimationGraphPanel::DrawNodeCanvas(
         m_renameRequested = true;
     };
 
-    // WHY ダブルクリックでリネームしないか: 以前は Clip ステートならリネーム、
-    //     Blend Tree なら中へ入る、と同じ操作の意味がノードの型で変わっていた。
-    //     ダブルクリック =「中へ入る」に統一し、リネームは F2 と右クリックに寄せる
-    //     (Blend Tree を持たないステートでは何も起きないのが正しい)。
+    // ダブルクリック =「中へ入る」に統一し、リネームは F2 と右クリックに寄せる。
+    // Blend Tree を持たないステートでは何も起きないのが正しい。
     if (interaction.nodeDoubleClicked) {
         for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
             if (NodeId(i) != interaction.doubleClickedNode) continue;
@@ -1821,11 +1765,8 @@ void AnimationGraphPanel::DrawNodeCanvas(
             MarkDirty(ctx);
         }
     }
-    // 選択中のステートを「すべて」消す。
-    //
-    // WHY 名前で回すか: DeleteState は erase で添字を詰めるため、添字のリストを
-    //     順に渡すと 2 件目以降が別のステートを指す。名前は消しても他へずれないので、
-    //     1 件ずつ引き直して消せば取り違えが起きない。
+    // 選択中のステートを「すべて」消す。DeleteState は erase で添字を詰めるので、
+    // 添字のリストを順に渡すと 2 件目以降が別のステートを指す。名前で引き直す。
     const auto deleteSelectedStates = [&]() {
         if (m_selectedStateNames.empty()) return;
         const std::vector<std::string> targets = m_selectedStateNames;
@@ -1858,11 +1799,6 @@ void AnimationGraphPanel::DrawNodeCanvas(
         DuplicateState(ctx, animator, m_selectedNode, instanceId);
 
     // Asset Browser からクリップを落として State を作る (Unity の Animator と同じ操作)。
-    //
-    // WHY 追加するか (不具合修正): これまでステートマシンのキャンバスには
-    //   ドロップの受け皿が一切なく、.anim を持ってきても落とせなかった。
-    //   State を作ってから Inspector の Source 欄で選び直すしかなく、
-    //   「クリップをグラフへ置く」という一番自然な導線が存在しなかった。
     if (interaction.assetDropped) {
         const std::string dropped = NormalizeAssetPath(interaction.droppedAssetPath);
         if (IsAnimationSourceAsset(dropped)) {
@@ -1891,10 +1827,8 @@ void AnimationGraphPanel::DrawNodeCanvas(
         ImGui::OpenPopup("##AnimationGenericCanvasMenu");
     }
     if (interaction.nodeContextMenuRequested) {
-        // WHY 総当りで引くか: 以前は "id >= 1 && id < 1000000 なら id-1 が添字" という
-        //     ID 体系への直接依存で、Entry (1000010) がどちらの分岐にも入らず
-        //     「直前の選択のままメニューが開く」不具合になっていた。
-        //     ノードは種別で判定し、ステートは NodeId() の逆引きで確実に特定する。
+        // ノードは種別で判定し、ステートは NodeId() の逆引きで特定する。
+        // ID 体系へ直接依存すると Entry のような特殊 ID がどの分岐にも入らない。
         const int contextNode = interaction.contextMenuNode;
         if (contextNode == AnyStateNodeId()) {
             ClearSelectionState();
@@ -2230,18 +2164,12 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     const bool allowEditing = CanEditAnimationGraph(ctx);
 
     // ── 編集ドキュメントの決定 ────────────────────────────────────────────
-    // WHY 選択追従をやめるか:
-    //   以前は ctx.selectedAssetPath をそのまま編集対象にしていた。しかし Source 欄へ
-    //   クリップをドラッグするには Asset Browser を触る必要があり、そこで選択が変わると
-    //   編集対象ごと切り替わって未保存の変更が確認なしで消えていた。
-    //   ここでは「明示的に開いたパス」を保持し、選択が動いても手放さない。
-    //   まだ何も開いていないときだけ、選択中の .animcontroller を初回の入口として拾う
-    //   (BehaviorTreePanel と同じ規則)。
+    // 「明示的に開いたパス」を保持し、選択が動いても手放さない。選択追従だと Source 欄へ
+    // ドラッグするたびに編集対象ごと切り替わり、未保存の変更が確認なしで消える。
+    // まだ何も開いていないときだけ、選択中の .animcontroller を初回の入口として拾う。
     if (!m_requestedPath.empty()) {
-        // WHY 絶対パスへ正規化するか: 呼び出し元によって "Assets/..." 相対 (Inspector の
-        //     controllerPath) と絶対パス (Asset Browser の選択) が混ざる。AssetDirtyRegistry の
-        //     キーは絶対パス前提なので、ここで 1 度だけ揃えておかないと
-        //     「Modified 表示は出るのに Save All で拾われない」といった食い違いが起きる。
+        // 呼び出し元によって相対パスと絶対パスが混ざる。AssetDirtyRegistry のキーは
+        // 絶対パス前提なので、ここで 1 度だけ揃える。
         const std::string requested =
             asset::AssetManager::ResolveAssetPath(m_requestedPath);
         m_requestedPath.clear();
@@ -2333,10 +2261,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SameLine();
             ImGui::TextDisabled("> %s", breadcrumbName.c_str());
         }
-        // 保存操作は他のアセット型と揃える。
-        // WHY Ctrl+S を足すか: .tex / .mask / .terrain / Model Meta は既に
-        //     「Apply ボタン または Ctrl+S」で保存できる。Animator Controller だけが
-        //     専用ボタンのみで、他と同じつもりで Ctrl+S を押しても何も起きなかった。
+        // 保存操作は他のアセット型と揃える (.tex / .mask / .terrain と同じく Ctrl+S も効く)。
         const bool controllerDirty =
             ctx.animationControllerDirty || AssetDirtyRegistry::IsDirty(docPath);
         ImGui::SameLine();
@@ -2394,9 +2319,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         }
 
         // ドキュメントを閉じてシーン内 Animator の編集モードへ戻る。
-        // WHY 必要か: 編集対象を選択から切り離した結果、一度アセットを開くと
-        //     GameObject の AnimatorComponent を直接いじる従来モードへ戻れなくなる。
-        //     「開く」を明示にした以上、「閉じる」も明示の操作として要る。
+        // 「開く」を明示にした以上、「閉じる」も明示の操作として要る。
         ImGui::SameLine();
         if (ImGui::SmallButton("Close")) {
             if (controllerDirty) {
@@ -2576,9 +2499,8 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
 }
 
 // 編集対象レイヤーを選ぶツールバー。Base Layer と各 AnimationLayer を切り替える。
-// WHY: レイヤーごとのステートマシンは、これが無いとノードグラフから一切触れない。
-//      切り替え時は選択状態と BlendTree の掘り下げをリセットする。
-//      別グラフのインデックスを持ち越すと、存在しないステートを指したまま描画してしまう。
+// 切り替え時は選択と BlendTree の掘り下げをリセットする (別グラフの添字を持ち越すと
+// 存在しないステートを指したまま描画する)。
 void AnimationGraphPanel::DrawLayerSelector(
     EditorContext& ctx, scene::AnimatorComponent& animator, bool allowEditing)
 {
@@ -3046,11 +2968,8 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
             if (ImGui::Checkbox("Value", &param.boolValue)) MarkDirty(ctx);
             break;
         case scene::ParamType::Trigger:
-            // Trigger は Draw/Holster/Jump など実行時入力からのみ発火させる。
-            // WHY 手動 Fire を置かないか: ここで true にすると、その値が Controller へ
-            //      保存され、再ロード時に「起動直後から遷移する」「別の遷移まで巻き込む」
-            //      という非決定的な状態になる。Graph は定義編集、Trigger はランタイム入力
-            //      という責務分離にする。
+            // Trigger は実行時入力からのみ発火させる。ここで true にすると Controller へ
+            // 保存され、起動直後から遷移する非決定的な状態になる。
             ImGui::TextDisabled("Runtime Trigger");
             break;
         }
@@ -3077,15 +2996,9 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
 
 
 // 選択中ステートの名前を編集する欄。
-//
-// WHY Inspector にも置くか: 従来のリネーム導線はグラフ上の F2 と右クリックメニューだけで、
-//     Inspector を見ているあいだは名前を変えられること自体に気付けなかった。
-//     Unity と同じく「選択したノードの名前は Inspector の一番上で変えられる」に揃える。
-//
-// WHY 1 文字ごとに反映しないか: 名前は遷移 (toStateName)・defaultStateName・
-//     ノード配置マップのキーそのもの。打鍵のたびに改名すると、"Idle" → "Idl" → "Id"…と
-//     中間状態で参照を張り替え続けることになり、Undo 履歴もその分だけ刻まれる。
-//     Enter またはフォーカスを外したときにだけ確定する。
+// 名前は遷移 (toStateName)・defaultStateName・ノード配置マップのキーそのものなので、
+// 打鍵のたびに改名すると中間状態で参照を張り替え続ける。
+// Enter かフォーカスを外したときだけ確定する。
 // ownerKey: ctx.graphLayouts のキー (GameObject なら instanceId、アセットなら .animcontroller パス)。
 static void DrawStateNameField(EditorContext& ctx,
                                scene::AnimatorComponent& animator,
@@ -3110,11 +3023,9 @@ static void DrawStateNameField(EditorContext& ctx,
     const bool allowEditing = CanEditAnimationGraph(ctx);
     ImGui::BeginDisabled(!allowEditing);
     ImGui::SetNextItemWidth(-1.0f);
-    // EnterReturnsTrue と IsItemDeactivatedAfterEdit の両方を確定条件にする。
-    // WHY 両方か: Enter を押さずに他の欄へ移る操作が普通にあるため、
-    //     Enter だけだと「打ったのに変わらない」状態でフォーカスが外れる。
-    // WHY AutoSelectAll を付けないか: 常設の欄なので、クリックのたびに全選択されると
-    //     語尾だけ直す操作 (Idle → Idle_Loop) ができない。全消しは Ctrl+A で足りる。
+    // EnterReturnsTrue と IsItemDeactivatedAfterEdit の両方を確定条件にする
+    // (Enter だけだと、他の欄へ移ったとき「打ったのに変わらない」)。
+    // AutoSelectAll は付けない — 語尾だけ直す操作ができなくなる。
     const bool submitted = ImGui::InputText(
         "Name##state_name", nameBuffer, sizeof(nameBuffer),
         ImGuiInputTextFlags_EnterReturnsTrue);
@@ -3252,10 +3163,7 @@ static bool DrawAnimationGraphDetails(EditorContext& ctx,
         if (ImGui::Checkbox("Loop##det", &state.loop))
             MarkDirty(ctx);
         // クリップ側の Loop Time と食い違っているときだけ、その旨を出す。
-        //
-        // WHY 出すか: 実行時の権威は State (設計 A) なので、FBX で Loop Time を入れても
-        //     既存ステートは自動では変わらない。黙って食い違うと
-        //     「FBX でループにしたのにループしない」の原因が見えなくなる。
+        // 実行時の権威は State なので、FBX 側を変えても既存ステートは自動では変わらない。
         if (state.mode == scene::AnimationStateMode::Clip) {
             if (const asset::AnimationClip* clip =
                     FindClip(animator, state.sourcePath, state.clipName, state.clipIndex)) {
@@ -3531,10 +3439,8 @@ void AnimationGraphPanel::AddState(EditorContext& ctx, scene::AnimatorComponent&
     scene::AnimationState state;
     state.name = MakeUniqueStateName(animator, baseName);
     if (animator.defaultStateName.empty()) animator.defaultStateName = state.name;
-    // 空 Node はアニメーションを自動割り当てしない。
-    // WHY: Graph 上の既存クリップ一覧から先頭を勝手に選ぶと、作成した Node が
-    //      意図しない .anim を再生し、Inspector で設定する前に意味を持ってしまう。
-    //      Unity と同じく、Node の作成と Motion の割り当てを分離する。
+    // 空 Node はアニメーションを自動割り当てしない。勝手に選ぶと、Inspector で設定する前に
+    // 意図しない .anim を再生してしまう。
     state.sourcePath.clear();
     state.clipName.clear();
     state.clipIndex = -1;
@@ -3621,10 +3527,8 @@ void AnimationGraphPanel::AutoLayoutStates(EditorContext& ctx,
                                            scene::AnimatorComponent& animator,
                                            const std::string& instanceId)
 {
-    // 整列そのものは共有実装 (AnimatorGraphOps) が持つ。
-    // WHY: ここに書いたままだと AI 側の animation.auto_layout が別実装になり、
-    //      間隔がわずかに違うだけで「AI が整列したグラフを Editor で整列し直すと
-    //      座標が動く」= 差分に意味のない座標変更が毎回混ざる状態になる。
+    // 整列そのものは共有実装 (AnimatorGraphOps) が持つ。別実装にすると、間隔がわずかに
+    // 違うだけで整列し直すたび意味のない座標差分が混ざる。
     AutoLayoutAnimatorStates(ctx.graphLayouts[instanceId], animator);
     MarkDirty(ctx);
 }
@@ -3722,11 +3626,9 @@ void AnimationGraphPanel::RenameLayer(EditorContext& ctx,
     MarkDirty(ctx);
 }
 
-// 名前が選択の権威なので、リネームしたら選択側も追従させる。
-// これを忘れると次の ResolveSelectionIndices で「消えたステート」と判定され、
-// リネーム直後に選択が外れる。
-// WHY 独立させたか: Inspector の Name 欄からの改名もこの追従を必要とするため、
-//     パネル外で起きた改名を取り込む入口としても使う。
+// 名前が選択の権威なので、リネームしたら選択側も追従させる。忘れると次の
+// ResolveSelectionIndices で「消えたステート」と判定され、選択が外れる。
+// Inspector の Name 欄からの改名を取り込む入口も兼ねる。
 void AnimationGraphPanel::AdoptStateRename(const std::string& oldName,
                                             const std::string& newName)
 {

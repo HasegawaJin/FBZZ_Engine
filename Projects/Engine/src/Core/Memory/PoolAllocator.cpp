@@ -1,7 +1,9 @@
-// FBZZ Engine
-// PoolAllocator.cpp | fbzz::core
-// PoolAllocator の実装
-// 固定長ブロックを空きリストで管理し、同サイズ割り当てを O(1) で再利用する。
+/// @file    PoolAllocator.cpp
+/// @brief   PoolAllocator の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// 固定長ブロックを空きリストで管理し、同サイズ割り当てを O(1) で再利用する。
 #include "Engine/Core/Memory/PoolAllocator.hpp"
 
 #include <cstdlib>

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Entity.hpp | fbzz::scene
-// Scene 内の GameObject を識別する ID
-// index と generation を組み合わせ、破棄済み参照を検出する。
-// 外部公開は GameObject 経由を基本とし、System 内部で軽量参照として使う。
+/// @file    Entity.hpp
+/// @brief   Scene 内の GameObject を識別する ID。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// index と generation を組み合わせ、破棄済み参照を検出する。
+/// 外部公開は GameObject 経由を基本とし、System 内部で軽量参照として使う。
 #pragma once
 #include <cstdint>
 

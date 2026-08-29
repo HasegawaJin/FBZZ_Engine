@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RigidBodySerializer.hpp | fbzz::physics
-// RigidBody の TOML シリアライズ / デシリアライズ
+/// @file    RigidBodySerializer.hpp
+/// @brief   RigidBody の TOML シリアライズ / デシリアライズ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/RigidBody.hpp>
 #include <string>

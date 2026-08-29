@@ -1,19 +1,20 @@
-// FBZZ Engine
-// Reflection.hpp | fbzz::scene::detail
-// スクリプトの「自己登録リフレクション」基盤。
-//
-// 設計意図 (WHY):
-//   従来は外部ツール (FBZZ Header Tool / FHT) が FBZZ_FIELD を走査して
-//   .generated.hpp に Reflect() を吐き出していた。これは
-//     - 生成漏れフットガン (フィールド追加後に再生成しないと Inspector が古いまま)
-//     - 1 スクリプト = 3 ファイル (.hpp / .cpp / .generated.hpp) の煩雑さ
-//     - リポジトリ外ツールへの暗黙依存
-//   を生んでいた。
-//
-//   本ヘッダは __COUNTER__ ベースのタグディスパッチで、フィールド宣言と
-//   同じ場所から Reflect() を生成する土台を提供する。これにより外部ツールも
-//   .generated.hpp も不要になり、「フィールドを 1 行足すだけ」で Inspector と
-//   シリアライズが自動追従する (単一の真実)。
+/// @file    Reflection.hpp
+/// @brief   スクリプトの「自己登録リフレクション」基盤。
+/// @author  Hasegawa Jin
+/// @date    2026-06-29
+///
+/// 設計意図 (WHY):
+/// 従来は外部ツール (FBZZ Header Tool / FHT) が FBZZ_FIELD を走査して
+/// .generated.hpp に Reflect() を吐き出していた。これは
+/// - 生成漏れフットガン (フィールド追加後に再生成しないと Inspector が古いまま)
+/// - 1 スクリプト = 3 ファイル (.hpp / .cpp / .generated.hpp) の煩雑さ
+/// - リポジトリ外ツールへの暗黙依存
+/// を生んでいた。
+///
+/// 本ヘッダは __COUNTER__ ベースのタグディスパッチで、フィールド宣言と
+/// 同じ場所から Reflect() を生成する土台を提供する。これにより外部ツールも
+/// .generated.hpp も不要になり、「フィールドを 1 行足すだけ」で Inspector と
+/// シリアライズが自動追従する (単一の真実)。
 #pragma once
 #include <string>
 

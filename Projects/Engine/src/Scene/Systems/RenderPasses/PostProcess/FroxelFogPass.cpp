@@ -1,7 +1,7 @@
-/// @file FroxelFogPass.cpp
-/// @brief 視錐台フロクセルへ霧を焼き、Z 方向へ積分する
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    FroxelFogPass.cpp
+/// @brief   視錐台フロクセルへ霧を焼き、Z 方向へ積分する
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 //
 // Inject → Integrate の 2 ディスパッチ。結果は handles.froxelIntegrated に残り、
 // Composite が深度からスライスを引いて 1 回サンプルする。

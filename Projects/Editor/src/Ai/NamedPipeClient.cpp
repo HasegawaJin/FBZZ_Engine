@@ -1,6 +1,7 @@
-// FBZZ Engine
-// NamedPipeClient.cpp | fbzz::editor::ai
-// 同期Named PipeクライアントのWin32実装
+/// @file    NamedPipeClient.cpp
+/// @brief   同期Named PipeクライアントのWin32実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Ai/NamedPipeClient.hpp>
 
 #include <Windows.h>

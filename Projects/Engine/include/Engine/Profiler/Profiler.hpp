@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Profiler.hpp | fbzz::profiler
-// CPU 計測サンプルをフレーム単位で収集する軽量プロファイラ
+/// @file    Profiler.hpp
+/// @brief   CPU 計測サンプルをフレーム単位で収集する軽量プロファイラ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <Engine/Profiler/ProfilerMarker.hpp>

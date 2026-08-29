@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ObjectPresets.cpp | fbzz::editor
-// Add Object プリセットの実体。SceneHierarchyPanel のメニューと AI (preset.create) が同じ表を使う。
+/// @file    ObjectPresets.cpp
+/// @brief   Add Object プリセットの実体。SceneHierarchyPanel のメニューと AI (preset.create) が同じ表を使う。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
 #include <Editor/Util/ObjectPresets.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -448,17 +449,189 @@ scene::GameObject* MakeParticleForceField(EditorContext& ctx)
     return &go;
 }
 
-scene::GameObject* MakeVFXGraph(EditorContext& ctx)
-{
-    auto& go = ctx.activeScene->CreateGameObject("VFX Graph");
-    go.AddComponent<scene::VFXGraphComponent>();
-    return &go;
-}
-
 scene::GameObject* MakeTrail(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Trail");
     go.AddComponent<scene::TrailComponent>();
+    return &go;
+}
+
+// ── VFX (.vfx プレハブ) の部品 ──────────────────────────────────────────────
+
+// 立ち上がり 0.1 → ピーク → 減衰。閃光・画面フラッシュの既定の重み。
+scene::ParticleCurve MakeFlashWeightCurve()
+{
+    scene::ParticleCurve curve;
+    curve.keys[0] = { 0.0f, 0.0f };
+    curve.keys[1] = { 0.1f, 1.0f };
+    curve.keys[2] = { 1.0f, 0.0f };
+    for (std::size_t i = 3; i < scene::kMaxParticleCurveKeys; ++i) curve.keys[i] = curve.keys[2];
+    curve.keyCount = 3;
+    return curve;
+}
+
+// 頭でっかちに減衰する。カメラ揺れの既定 (旧 falloffPower = 2 相当)。
+scene::ParticleCurve MakeDecayWeightCurve()
+{
+    scene::ParticleCurve curve;
+    curve.keys[0] = { 0.0f, 1.0f };
+    curve.keys[1] = { 0.25f, 0.56f };
+    curve.keys[2] = { 0.5f, 0.25f };
+    curve.keys[3] = { 0.75f, 0.06f };
+    curve.keys[4] = { 1.0f, 0.0f };
+    for (std::size_t i = 5; i < scene::kMaxParticleCurveKeys; ++i) curve.keys[i] = curve.keys[4];
+    curve.keyCount = 5;
+    return curve;
+}
+
+// WHY 既存の fx.* と分けるか: シーンに常設するエフェクト (焚き火・煙突) と、
+//     1 発鳴らして消える演出では既定値が正反対になる。前者は loop = true で
+//     出しっぱなし、後者は loop = false・duration 有限で、終わったら自分で畳む。
+//     同じプリセットに両方を兼ねさせると、置いた直後の挙動がどちらでも間違う。
+
+scene::GameObject* MakeVFXRoot(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("VFX");
+    go.AddComponent<scene::VFXComponent>();
+    return &go;
+}
+
+scene::GameObject* MakeVFXGroup(EditorContext& ctx)
+{
+    // 層のまとまり。Transform だけを持ち、時間には関与しない。
+    return &ctx.activeScene->CreateGameObject("Layer");
+}
+
+scene::GameObject* MakeVFXParticle(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Particle");
+    scene::ParticleEmitter emitter;
+    emitter.settings.loop = false;
+    emitter.settings.duration = 1.0f;
+    emitter.settings.lifetime = 0.8f;
+    go.AddComponent<scene::ParticleEmitter>(std::move(emitter));
+    return &go;
+}
+
+scene::GameObject* MakeVFXLightFlash(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Light Flash");
+    scene::LightComponent light;
+    light.type = scene::LightComponent::Type::Point;
+    light.intensity = 20.0f;
+    light.range = 8.0f;
+    // 一瞬の閃光に影は要らない。点光源の影は 6 面ぶん描くので、
+    // 既定で有効なままだと «光らせただけ» で目に見えて重くなる。
+    light.castShadows = false;
+    go.AddComponent<scene::LightComponent>(light);
+    scene::VFXElement element;
+    element.duration = 0.4f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    go.AddComponent<scene::VFXLightEnvelope>();
+    return &go;
+}
+
+scene::GameObject* MakeVFXMeshShell(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Shell");
+    scene::MeshRenderer renderer;
+    renderer.meshPath = "primitive:sphere";
+    go.AddComponent<scene::MeshRenderer>(std::move(renderer));
+    scene::MaterialComponent material;
+    material.materialPath = scene::kVFXMeshFallbackMaterial;
+    go.AddComponent<scene::MaterialComponent>(std::move(material));
+    scene::VFXElement element;
+    element.duration = 0.5f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    go.AddComponent<scene::VFXTransformEnvelope>();
+    go.AddComponent<scene::VFXMaterialEnvelope>();
+    return &go;
+}
+
+scene::GameObject* MakeVFXForceField(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Blast Push");
+    scene::ParticleForceField field;
+    field.fieldType = scene::ParticleForceFieldType::Repulse;
+    field.strength = 20.0f;
+    field.radius = 4.5f;
+    go.AddComponent<scene::ParticleForceField>(std::move(field));
+    scene::VFXElement element;
+    element.duration = 0.25f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXScreenEffect(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Screen Flash");
+    scene::VFXScreenEffect effect;
+    effect.flashIntensity = 0.35f;
+    effect.bloomBoost = 0.4f;
+    // 明るさだけでは «押し出された» にならないので、動きも少しだけ足す。
+    effect.radialBlur = 0.05f;
+    go.AddComponent<scene::VFXScreenEffect>(std::move(effect));
+    scene::VFXElement element;
+    element.duration = 0.3f;
+    // 立ち上がり 0.03 秒 → 減衰 0.25 秒。定数の重みでは «一瞬だけ» にならない。
+    element.weightCurve = MakeFlashWeightCurve();
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXCameraShake(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Camera Shake");
+    scene::VFXCameraShake shake;
+    // 揺れだけでは «揺れた» で終わる。発生源から押しのけられる成分を既定で少し入れる。
+    shake.kick = 0.06f;
+    go.AddComponent<scene::VFXCameraShake>(std::move(shake));
+    scene::VFXElement element;
+    element.duration = 0.35f;
+    element.weightCurve = MakeDecayWeightCurve();
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXTimeScale(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Hit Stop");
+    go.AddComponent<scene::VFXTimeScale>();
+    scene::VFXElement element;
+    element.duration = 0.12f;
+    go.AddComponent<scene::VFXElement>(std::move(element));
+    return &go;
+}
+
+scene::GameObject* MakeVFXBeam(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Beam");
+    // 見た目は Trail が持つ。経路だけ VFXBeam が毎フレーム書く。
+    scene::TrailComponent trail;
+    trail.beamMode = true;
+    trail.widthStart = 0.12f;
+    trail.widthEnd = 0.12f;   // 引き寄せの線は先細らせない。先細ると «飛んだ跡» に見える
+    trail.uvMode = scene::TrailUVMode::Tile;
+    trail.uvTiling = 4.0f;
+    trail.uvScrollSpeed = -2.0f; // 流れる向きで «どちらへ引かれているか» を出す
+    go.AddComponent<scene::TrailComponent>(std::move(trail));
+
+    scene::VFXBeamComponent beam;
+    beam.segments = 12;
+    beam.jitter = 0.08f;
+    go.AddComponent<scene::VFXBeamComponent>(std::move(beam));
+    return &go;
+}
+
+scene::GameObject* MakeVFXDecal(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Ground Mark");
+    scene::DecalComponent decal;
+    decal.lifetime = 4.0f;
+    decal.fadeTime = 1.0f;
+    go.AddComponent<scene::DecalComponent>(std::move(decal));
+    go.AddComponent<scene::VFXDecalEnvelope>();
+    go.transform.scale = { 2.0f, 3.0f, 2.0f };
     return &go;
 }
 
@@ -694,9 +867,21 @@ constexpr ObjectPreset kPresets[] = {
 
     { "fx.particle",   "Effects", "Particle Emitter",     "ParticleEmitter 単体", &MakeParticleEmitter },
     { "fx.forceField", "Effects", "Particle Force Field", "パーティクルへ働く力場", &MakeParticleForceField },
-    { "fx.vfxGraph",   "Effects", "VFX Graph",            "VFXGraphComponent。graphPath に .vfx を設定して使う", &MakeVFXGraph },
     { "fx.trail",      "Effects", "Trail",                "移動軌跡を帯で描く", &MakeTrail },
     { "fx.meshTrail",  "Effects", "Mesh Trail",           "メッシュの残像を残す", &MakeMeshTrail },
+
+    // .vfx プレハブの部品。vfx.root の子として組む (Docs/design/vfx-prefab.md)。
+    { "vfx.root",         "VFX", "VFX Root",      "VFXComponent。これを .vfx として保存する。子が層になる", &MakeVFXRoot },
+    { "vfx.group",        "VFX", "Layer",         "空 GameObject。層のまとまり。時間には関与しない", &MakeVFXGroup },
+    { "vfx.particle",     "VFX", "Particle",      "1 発ぶんの ParticleEmitter (loop なし・duration 1 秒)", &MakeVFXParticle },
+    { "vfx.lightFlash",   "VFX", "Light Flash",   "点光源 + 生存窓 + 明るさカーブ。影は落とさない", &MakeVFXLightFlash },
+    { "vfx.meshShell",    "VFX", "Mesh Shell",    "球シェル + 膨張カーブ + 色フェード。衝撃波・斬撃に使う", &MakeVFXMeshShell },
+    { "vfx.forceField",   "VFX", "Force Field",   "爆風。周囲のパーティクルを押しのける", &MakeVFXForceField },
+    { "vfx.decal",        "VFX", "Ground Mark",   "床の跡。濃さのカーブ付き", &MakeVFXDecal },
+    { "vfx.beam",         "VFX", "Beam (2 点を結ぶ)", "Trail + VFXBeam。2 つの実体を結ぶ。引き寄せの線・電弧に使う", &MakeVFXBeam },
+    { "vfx.screenEffect", "VFX", "Screen Flash",  "画面フラッシュ + ブルーム上乗せ", &MakeVFXScreenEffect },
+    { "vfx.cameraShake",  "VFX", "Camera Shake",  "カメラ揺れ。頭でっかちに減衰する", &MakeVFXCameraShake },
+    { "vfx.timeScale",    "VFX", "Hit Stop",      "一瞬の時間減速", &MakeVFXTimeScale },
 
     { "decal.medium", "Decal", "Decal (2m x 2m)", "デカール投影ボリューム", &MakeDecalMedium },
     { "decal.small",  "Decal", "Decal (1m x 1m)", "小さいデカール投影ボリューム", &MakeDecalSmall },

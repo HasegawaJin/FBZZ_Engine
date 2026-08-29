@@ -1,6 +1,7 @@
-// FBZZ Engine
-// GuidRefCodec.cpp | fbzz::asset
-// TOML シリアライズ境界でのアセット参照 ⇄ GUID 変換実装
+/// @file    GuidRefCodec.cpp
+/// @brief   TOML シリアライズ境界でのアセット参照 ⇄ GUID 変換実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -131,9 +132,9 @@ std::string EncodeGuidRef(const std::string& pathOrRef)
     if (AssetDatabase::IsGuidRef(pathOrRef)) return pathOrRef; // 既にエンコード済み
 
     const AssetReferenceParts parts = SplitAssetReference(pathOrRef);
-    // 拡張子で高速に足切りする。baked (.fzasset/.mesh/.skel) や通常文字列はここで素通り。
-    const std::string ext = LowerCopy(util::FileSystem::GetExtension(parts.base));
-    if (!AssetDatabase::ShouldHaveMeta(ext)) return pathOrRef;
+    // ファイル名で高速に足切りする。baked (.fzasset/.mesh/.skel) や通常文字列はここで素通り。
+    const std::string name = LowerCopy(util::FileSystem::GetFilename(parts.base));
+    if (!AssetDatabase::ShouldHaveMeta(name)) return pathOrRef;
 
     // 相対 ("Assets/...") も絶対パスも AssetManager の解決規則で実パス化してから索引を引く。
     // 未登録 (実在しない / Assets 外) なら元の文字列を返し、データを壊さない。

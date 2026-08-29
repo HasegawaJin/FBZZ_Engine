@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FbxMetaSerializer.hpp | fbzz::editor
-// FBX の Unity 風 .meta サイドカーへモデルインポート設定を保存・復元する
+/// @file    FbxMetaSerializer.hpp
+/// @brief   FBX の Unity 風 .meta サイドカーへモデルインポート設定を保存・復元する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
 #pragma once
 
 #include <Editor/Import/FbxImportTool.hpp>

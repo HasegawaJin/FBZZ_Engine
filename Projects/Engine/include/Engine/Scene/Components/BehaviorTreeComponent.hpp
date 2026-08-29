@@ -1,11 +1,12 @@
-// FBZZ Engine
-// BehaviorTreeComponent.hpp | fbzz::scene
-// エージェント 1 体に Behavior Tree を持たせるコンポーネント
-//
-// WHY 木そのものを持たないか:
-//   木の構造は共有・不変で、100 体が同じ木を使っても実体は 1 つでよい。
-//   ここが持つのは「実行状態」(どのノードが Running か、Blackboard の中身) だけ。
-//   構造は shared_ptr<const BehaviorTreeRuntime> でパス単位に共有する。
+/// @file    BehaviorTreeComponent.hpp
+/// @brief   エージェント 1 体に Behavior Tree を持たせるコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY 木そのものを持たないか:
+/// 木の構造は共有・不変で、100 体が同じ木を使っても実体は 1 つでよい。
+/// ここが持つのは「実行状態」(どのノードが Running か、Blackboard の中身) だけ。
+/// 構造は shared_ptr<const BehaviorTreeRuntime> でパス単位に共有する。
 #pragma once
 #include <Engine/AI/BehaviorTreeEvaluator.hpp>
 #include <Engine/AI/BehaviorTreeRuntime.hpp>

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IFbxSubExporter.hpp | fbzz::editor
-// FBX インポートパイプラインの部品インターフェース
-// FbxImportTool::BuildPipeline() が IFbxSubExporter のリストを構築し、
-// 各 Export() を順に呼ぶ。サブエクスポーターはそれぞれ独立した責務を持つ。
+/// @file    IFbxSubExporter.hpp
+/// @brief   FBX インポートパイプラインの部品インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// FbxImportTool::BuildPipeline() が IFbxSubExporter のリストを構築し、
+/// 各 Export() を順に呼ぶ。サブエクスポーターはそれぞれ独立した責務を持つ。
 #pragma once
 #include <Engine/Asset/TextureAsset.hpp>
 #include <string>

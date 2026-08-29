@@ -1,12 +1,13 @@
-// FBZZ Engine
-// RenderPasses/ShadowPass.cpp | fbzz::scene
-// カスケードシャドウマップ描画 (静的メッシュ + スキンドメッシュ + Terrain)
-//
-// 1 枚の深度テクスチャを 2x2 のタイルへ分け、カスケードごとに別タイルへ描き込む
-// (アトラス)。カスケードの分割位置・行列・タイル矩形は RenderSystem が
-// RenderPassContext::shadowCascades へ組み立て済みで、このパスは
-// 「タイルを選ぶ → frameCB をそのカスケードの行列へ差し替える → caster を提出」
-// を分割数ぶん繰り返すだけになっている。
+/// @file    RenderPasses/ShadowPass.cpp
+/// @brief   カスケードシャドウマップ描画 (静的メッシュ + スキンドメッシュ + Terrain)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// 1 枚の深度テクスチャを 2x2 のタイルへ分け、カスケードごとに別タイルへ描き込む
+/// (アトラス)。カスケードの分割位置・行列・タイル矩形は RenderSystem が
+/// RenderPassContext::shadowCascades へ組み立て済みで、このパスは
+/// 「タイルを選ぶ → frameCB をそのカスケードの行列へ差し替える → caster を提出」
+/// を分割数ぶん繰り返すだけになっている。
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "Engine/Scene/Scene.hpp"

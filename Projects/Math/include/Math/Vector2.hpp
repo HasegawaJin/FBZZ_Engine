@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Vector2.hpp | fbzz::math
-// 2次元ベクトル (UV座標・スクリーン座標)
+/// @file    Vector2.hpp
+/// @brief   2次元ベクトル (UV座標・スクリーン座標)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 namespace fbzz::math {

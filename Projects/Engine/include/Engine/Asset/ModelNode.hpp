@@ -1,11 +1,12 @@
-// FBZZ Engine
-// ModelNode.hpp | fbzz::asset
-// DCC (FBX) のノード階層 — メッシュを GameObject へどう配るかの対応表
-//
-// WHY 独立したヘッダーにするか:
-//   新形式の ModelAsset (.fzasset) と旧 Model の両方がこの型を持つ必要がある。
-//   どちらか一方へ置くと他方が相手をインクルードすることになり、
-//   「新形式が旧形式に依存する」という逆向きの依存が生まれる。
+/// @file    ModelNode.hpp
+/// @brief   DCC (FBX) のノード階層 — メッシュを GameObject へどう配るかの対応表。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY 独立したヘッダーにするか:
+/// 新形式の ModelAsset (.fzasset) と旧 Model の両方がこの型を持つ必要がある。
+/// どちらか一方へ置くと他方が相手をインクルードすることになり、
+/// 「新形式が旧形式に依存する」という逆向きの依存が生まれる。
 #pragma once
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>

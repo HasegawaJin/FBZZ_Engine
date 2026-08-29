@@ -1,8 +1,10 @@
-// FBZZ Engine
-// UIButton.hpp | fbzz::scene
-// ランタイム UI ボタンの状態コンポーネント
-// ヒット判定結果と遷移状態を保持し、UISystem が入力から更新する。
-// クリック時の処理は script / event 側へ接続する。
+/// @file    UIButton.hpp
+/// @brief   ランタイム UI ボタンの状態コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
+///
+/// ヒット判定結果と遷移状態を保持し、UISystem が入力から更新する。
+/// クリック時の処理は script / event 側へ接続する。
 #pragma once
 #include <Math/Vector4.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -19,6 +21,10 @@ enum class UIButtonState {
 // 状態別スプライト欄が受け付ける拡張子 (ImageImporter が読める画像)。
 inline constexpr const char* kSpriteFieldExtensions =
     ".fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp";
+
+// UI の効果音欄が受け付ける拡張子 (AudioSourceComponent と同じ集合)。
+inline constexpr const char* kUISoundFieldExtensions =
+    ".wav,.mp3,.ogg,.flac,.synth";
 
 struct UIButton {
     math::Vector4 normalColor   = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -41,6 +47,18 @@ struct UIButton {
     std::string hoveredSprite;
     std::string pressedSprite;
     std::string disabledSprite;
+
+    // 状態が変わった瞬間に鳴らす音。空欄なら鳴らさない。
+    //
+    // WHY コンポーネントに持たせるか (スクリプトで鳴らさないか):
+    //   「触れたら鳴る・押したら鳴る」は例外なく全ボタンに要る挙動で、
+    //   スクリプトで書くと画面ごとに同じ数行が写経される。写経は必ず
+    //   どこかで抜け、抜けた画面だけ無音になる ─ しかも気付きにくい。
+    //   UIAudioSystem がこの 2 つを見て鳴らすので、置くだけで揃う。
+    // WHY .synth も受け付けるか: UI の効果音は短い手続き音で足りることが多く、
+    //   波形ファイルを 1 つずつ書き出すより速い (Docs/design/audio-system.md)。
+    std::string hoverSound;
+    std::string clickSound;
 
     bool isInteractable = true;
     bool enabled = true;
@@ -72,6 +90,11 @@ struct UIButton {
         r.FileField("hoveredSprite",  hoveredSprite,  kSpriteFieldExtensions);
         r.FileField("pressedSprite",  pressedSprite,  kSpriteFieldExtensions);
         r.FileField("disabledSprite", disabledSprite, kSpriteFieldExtensions);
+        r.Group("Sound");
+        r.FileField("hoverSound", hoverSound, kUISoundFieldExtensions,
+                    "カーソルが乗った瞬間に鳴らします。空欄で無音");
+        r.FileField("clickSound", clickSound, kUISoundFieldExtensions,
+                    "クリックが成立した瞬間に鳴らします。空欄で無音");
         static constexpr const char* kStateLabels[] = { "Normal", "Hovered", "Pressed" };
         const int stateIndex = static_cast<int>(state);
         r.Readonly("state", isInteractable && stateIndex >= 0 && stateIndex < 3

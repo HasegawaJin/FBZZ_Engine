@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptDllLoader.cpp | fbzz::editor
-// スクリプト DLL のロード / アンロード / ホットリロード管理
+/// @file    ScriptDllLoader.cpp
+/// @brief   スクリプト DLL のロード / アンロード / ホットリロード管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
 #include <Editor/ScriptDllLoader.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>

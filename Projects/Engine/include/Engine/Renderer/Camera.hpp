@@ -37,6 +37,14 @@ enum class CameraClearMode : uint8_t {
     DepthOnly = 1,
 };
 
+enum class ProjectionMode : uint8_t {
+    /// 遠近感のある通常の射影。
+    Perspective = 0,
+    /// 平行投影。奥行きで大きさが変わらないため、Front / Top / Side からの
+    /// 寸法合わせに使う。m_fovY の代わりに m_orthoHeight が画角を決める。
+    Orthographic = 1,
+};
+
 class Camera {
 public:
     math::Matrix4 GetViewMatrix()       const;
@@ -56,6 +64,12 @@ public:
     float m_aspect = 16.0f / 9.0f;
     float m_near   = 0.1f;
     float m_far    = 1000.0f;
+
+    ProjectionMode m_projection = ProjectionMode::Perspective;
+    /// Orthographic のときに映る縦幅 (ワールド単位)。横幅は m_aspect 倍。
+    /// WHY 半分ではなく全体か: ビューポート上の「1 画面に何 m 入るか」がそのまま値になり、
+    ///     地形サイズやアリーナ直径と直接見比べられる。
+    float m_orthoHeight = 20.0f;
 
     /// このカメラで描き始めるときの背景色。何も写らない画素に残る色。
     /// 空 (Sky) を描くシーンでは空が上書きするため見えない。

@@ -1,7 +1,7 @@
-/// @file WeatherSystem.hpp
-/// @brief WeatherComponent の降雨量から濡れ量を時間積分する
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    WeatherSystem.hpp
+/// @brief   WeatherComponent の降雨量から濡れ量を時間積分する
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #pragma once
 
 #include <Engine/Core/Scheduler/ISystem.hpp>

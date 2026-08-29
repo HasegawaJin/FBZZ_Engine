@@ -1,12 +1,14 @@
-// FBZZ Engine
-// Gizmo.hpp | fbzz::renderer
-// 敵 AI / ゲームプレイデバッグ向け高レベルワイヤーフレーム描画ユーティリティ。
-// DebugDraw を束ねて「視野錐・ウェイポイント経路・検知範囲・ターゲットライン」を提供する。
-// 呼び出し前に DebugDraw::BeginFrame() が呼ばれている必要がある (Flush 区間内で使うこと)。
-//
-// WHY: DebugDraw は汎用的な低レベル API だが、AI デバッグに必要な複合プリミティブを
-//      各スクリプトが毎回組み立てると重複が生じる。
-//      Gizmo はよく使うパターンをエンジン標準として提供し、Script / Editor 双方から呼べるようにする。
+/// @file    Gizmo.hpp
+/// @brief   敵 AI / ゲームプレイデバッグ向け高レベルワイヤーフレーム描画ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
+///
+/// DebugDraw を束ねて「視野錐・ウェイポイント経路・検知範囲・ターゲットライン」を提供する。
+/// 呼び出し前に DebugDraw::BeginFrame() が呼ばれている必要がある (Flush 区間内で使うこと)。
+///
+/// WHY: DebugDraw は汎用的な低レベル API だが、AI デバッグに必要な複合プリミティブを
+/// 各スクリプトが毎回組み立てると重複が生じる。
+/// Gizmo はよく使うパターンをエンジン標準として提供し、Script / Editor 双方から呼べるようにする。
 #pragma once
 
 #include <Math/Quaternion.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimationMaskPreview.cpp | fbzz::editor
-// Avatar Mask の IPreviewPanel 実装。
+/// @file    AnimationMaskPreview.cpp
+/// @brief   Avatar Mask の IPreviewPanel 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #include <Editor/Panels/AnimationMaskPreview.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/Util/AssetPath.hpp>

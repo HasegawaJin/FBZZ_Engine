@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ViewportCommon.hpp | fbzz::editor
-// ViewportPanel の分割ファイルで共有する描画・ピッキングヘルパー
+/// @file    ViewportCommon.hpp
+/// @brief   ViewportPanel の分割ファイルで共有する描画・ピッキングヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include <Editor/Panels/ViewportPanel.hpp>
@@ -70,6 +71,8 @@ void RectSelectEntities(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& v
                         const ImVec2& rectA, const ImVec2& rectB);
 void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
+// 選択中の UI 要素すべての矩形を描く。ギズモより先に呼ぶこと (ハンドルを上に出す)。
+void DrawUISelectionOutlines(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& drag, ImVec2& dragStart, float& startX, float& startY, float& startWidth, float& startHeight, float& startAngle, float& startZ);
 // 矢印キーで選択中 UI 要素を微移動する（1px / Shift で 10px）。allowed=false のときは何もしない。
 void HandleUINudge(EditorContext& ctx, bool allowed);

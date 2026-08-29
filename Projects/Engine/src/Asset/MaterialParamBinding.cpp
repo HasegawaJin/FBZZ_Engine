@@ -1,7 +1,7 @@
-/// @file MaterialParamBinding.cpp
-/// @brief MaterialParamBinding.hpp の実装
-/// @author Hasegawa Jin
-/// @date 2026-08-22
+/// @file    MaterialParamBinding.cpp
+/// @brief   MaterialParamBinding.hpp の実装
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #include <Engine/Asset/MaterialParamBinding.hpp>
 
 #include <algorithm>

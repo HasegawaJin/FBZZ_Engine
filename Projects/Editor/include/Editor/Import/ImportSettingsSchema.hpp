@@ -1,15 +1,16 @@
-// FBZZ Engine
-// ImportSettingsSchema.hpp | fbzz::editor
-// 拡張子とテクスチャ型から「意味を持つインポート設定項目」を決める単一の判定表
-//
-// WHY: Import Settings の UI は AssetBrowser のモーダル (モデル / テクスチャ) と
-//      Inspector の 3 箇所にあり、それぞれが独自に項目を並べていた。結果として
-//      .hdr に sRGB チェックが出る、法線マップに BC1 が選べる、.dds に再エンコード
-//      設定が出る、といった「その拡張子に全く関係ない項目」が表示されていた。
-//      判定をこのヘッダ 1 箇所へ集約し、UI 側は問い合わせるだけにする。
-//
-// WHAT: 拡張子 → ImportCategory の分類と、(category, TextureType) → 有効フィールドの
-//       マスクを提供する。UI は「隠す」ではなく「マスクが false なら描かない」で使う。
+/// @file    ImportSettingsSchema.hpp
+/// @brief   拡張子とテクスチャ型から「意味を持つインポート設定項目」を決める単一の判定表。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: Import Settings の UI は AssetBrowser のモーダル (モデル / テクスチャ) と
+/// Inspector の 3 箇所にあり、それぞれが独自に項目を並べていた。結果として
+/// .hdr に sRGB チェックが出る、法線マップに BC1 が選べる、.dds に再エンコード
+/// 設定が出る、といった「その拡張子に全く関係ない項目」が表示されていた。
+/// 判定をこのヘッダ 1 箇所へ集約し、UI 側は問い合わせるだけにする。
+///
+/// WHAT: 拡張子 → ImportCategory の分類と、(category, TextureType) → 有効フィールドの
+/// マスクを提供する。UI は「隠す」ではなく「マスクが false なら描かない」で使う。
 #pragma once
 #include <Engine/Asset/TextureAsset.hpp>
 #include <string_view>

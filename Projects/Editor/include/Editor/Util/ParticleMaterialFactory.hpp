@@ -1,7 +1,7 @@
-/// @file   ParticleMaterialFactory.hpp
-/// @brief  テクスチャ 1 枚から Particle 用 .mat を用意する共有ファクトリ
-/// @author Hasegawa Jin
-/// @date   2026-08-22
+/// @file    ParticleMaterialFactory.hpp
+/// @brief   テクスチャ 1 枚から Particle 用 .mat を用意する共有ファクトリ
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 ///
 /// WHY: ParticleEmitter の描画設定は materialPath (.mat) が単一の信頼元で、
 ///      テクスチャを直接持てない。ところが担当者の手元にあるのは .png であって

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TaskSystemConcurrencyTests.cpp | GoogleTest
-// TaskSystem の複数タスク完了とワーカー数設定を自動検証する。
+/// @file    TaskSystemConcurrencyTests.cpp
+/// @brief   TaskSystem の複数タスク完了とワーカー数設定を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Concurrency/TaskSystem.hpp>

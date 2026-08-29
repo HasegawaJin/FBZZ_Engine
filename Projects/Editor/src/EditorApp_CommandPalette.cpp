@@ -1,9 +1,10 @@
-// FBZZ Engine
-// EditorApp_CommandPalette.cpp | fbzz::editor
-// コマンドパレット (Ctrl+K): アクションを名前で検索して即実行するクイックランチャー
-//
-// WHY: パネル・メニュー階層が多く、目的の操作へ到達する導線が深い。VSCode / Unity の
-//      コマンドパレット同様、キーボードだけで検索→実行できる横断的な入口を用意して発見性を上げる。
+/// @file    EditorApp_CommandPalette.cpp
+/// @brief   コマンドパレット (Ctrl+K): アクションを名前で検索して即実行するクイックランチャー。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// WHY: パネル・メニュー階層が多く、目的の操作へ到達する導線が深い。VSCode / Unity の
+/// コマンドパレット同様、キーボードだけで検索→実行できる横断的な入口を用意して発見性を上げる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/IPanel.hpp>
@@ -40,7 +41,7 @@ void EditorApp::RefreshPaletteAssetIndex()
         ".scene", ".prefab", ".mat", ".fbx", ".obj", ".gltf", ".glb",
         ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr",
         ".hlsl", ".hlsli", ".hpp", ".cpp", ".h", ".cs", ".lua",
-        ".anim", ".animcontroller", ".vfx", ".skel",
+        ".anim", ".animcontroller", ".vfx", ".skel", ".sequence", ".behaviortree",
         ".wav", ".mp3", ".ogg", ".flac", ".synth",
         ".terrain", ".asset", ".fzdata", ".physmat",
     };

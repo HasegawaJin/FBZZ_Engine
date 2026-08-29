@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ModelAssetImporter.hpp | fbzz::asset
-// .fzasset バイナリ → ModelAsset ローダー
+/// @file    ModelAssetImporter.hpp
+/// @brief   .fzasset バイナリ → ModelAsset ローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/ModelAsset.hpp>

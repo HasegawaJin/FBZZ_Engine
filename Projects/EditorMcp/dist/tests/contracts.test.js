@@ -57,7 +57,9 @@ test('Operator ゲートウェイの契約を検証する', () => {
 });
 test('viewport.capture は既定上限を超える要求を拒否する', () => {
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540 }).success, true);
-    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'vfx' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'game' }).success, true);
+    // .vfx はプレファブになり、専用のプレビュー面が無くなった。
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'vfx' }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 3840, h: 2160 }).success, false);
 });
 test('catalog・scene.find・node.duplicate の契約を検証する', () => {

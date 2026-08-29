@@ -1,10 +1,11 @@
-// FBZZ Engine
-// EditorApp_Scene.cpp | fbzz::editor
-// シーンの新規作成・開く・保存・ダーティ追跡・ホットリロード
-//
-// WHY: EditorApp.cpp が肥大化しないよう、シーン I/O とダーティ追跡を分離した。
-//      これらはいずれも「シーンファイル」という単一の概念を中心とした処理群であり、
-//      ライフサイクル管理 (Init/Shutdown/BeginFrame) や UI (MenuBar) とは関心が異なる。
+/// @file    EditorApp_Scene.cpp
+/// @brief   シーンの新規作成・開く・保存・ダーティ追跡・ホットリロード。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: EditorApp.cpp が肥大化しないよう、シーン I/O とダーティ追跡を分離した。
+/// これらはいずれも「シーンファイル」という単一の概念を中心とした処理群であり、
+/// ライフサイクル管理 (Init/Shutdown/BeginFrame) や UI (MenuBar) とは関心が異なる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -461,9 +462,8 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath)
 
     // 別名保存は衝突しない。同じファイルを上書きするときだけ、読み込み後に他人が
     // 書いていないかを見る。
-    // WHY ここではモーダルを出さないか: この関数は AI (Command Bus の scene.save) も
-    //     通る。人のクリック待ちにするとバスの drain が止まり、次の要求も詰まる。
-    //     黙って踏むよりは失敗を返し、呼び出し側に選ばせる。
+    // モーダルは出さない。この関数は AI (scene.save) も通り、クリック待ちにするとバスの
+    // drain が止まる。黙って踏むよりは失敗を返す。
     if (util::FileSystem::SamePathText(path, m_ctx.currentScenePath) && IsSceneStaleOnDisk()) {
         FBZZ_LOG_ERROR("Save refused: %s changed on disk after it was opened. "
                        "Reload it, or save through Ctrl+S to choose which version wins.",
@@ -731,11 +731,9 @@ bool CMakeCacheUsesSdkRoot(const std::filesystem::path& buildDir, const std::str
     const std::string cachedRoot = ReadCachedSdkRoot(buildDir);
     if (cachedRoot.empty()) return false;
 
-    // WHY: 以前は cache 全文への部分一致で判定していたため、".../SDK/0.1.0" が
-    //      ".../SDK/0.1.0-dev.dirty" へ前方一致し、既に消えた SDK を指す cache を
-    //      「一致」と誤判定していた。その結果 reconfigure が永久にスキップされ、
-    //      毎起動 find_package(FBZZ) 失敗 → Scripts compile error を繰り返していた。
-    //      行末までを含めた値の完全一致 (区切り文字・大小文字は正規化) で比較する。
+    // 行末までを含めた値の完全一致で比較する (区切り文字・大小文字は正規化)。
+    // 部分一致だと ".../SDK/0.1.0" が ".../SDK/0.1.0-dev.dirty" へ前方一致し、
+    // 消えた SDK を指す cache を「一致」と誤判定して reconfigure が永久にスキップされる。
     if (!util::FileSystem::SamePathText(cachedRoot, sdkRoot)) return false;
 
     // 値が一致していても SDK 実体が無ければ configure は必ず失敗するので stale 扱いにする。

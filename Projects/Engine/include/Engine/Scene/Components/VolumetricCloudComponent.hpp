@@ -1,9 +1,10 @@
-// FBZZ Engine
-// VolumetricCloudComponent.hpp | fbzz::scene
-// レイマーチ雲の描画パラメータを Scene に保持する Component
-//
-// WHY: 雲は Scene ごとに高さ・厚み・密度が大きく変わる環境要素のため、
-//      RenderSettings ではなく Component として保存し、Inspector / SceneSerializer から調整できるようにする。
+/// @file    VolumetricCloudComponent.hpp
+/// @brief   レイマーチ雲の描画パラメータを Scene に保持する Component。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// WHY: 雲は Scene ごとに高さ・厚み・密度が大きく変わる環境要素のため、
+/// RenderSettings ではなく Component として保存し、Inspector / SceneSerializer から調整できるようにする。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

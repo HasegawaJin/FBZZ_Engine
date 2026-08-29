@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialExporter.cpp | fbzz::editor
-// aiMaterial → .mat (TOML) + テクスチャをそのまま texturesDir にコピー
+/// @file    MaterialExporter.cpp
+/// @brief   aiMaterial → .mat (TOML) + テクスチャをそのまま texturesDir にコピー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Editor/Import/MaterialExporter.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>

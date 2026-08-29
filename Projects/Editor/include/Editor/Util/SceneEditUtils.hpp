@@ -1,10 +1,11 @@
-// FBZZ Engine
-// SceneEditUtils.hpp | fbzz::editor
-// シーン編集の共有ヘルパー (削除・複製・スナップショット Undo)
-//
-// WHY: 削除 (Delete) や複製 (Ctrl+D) は Hierarchy パネルだけでなく Scene Viewport
-//      からも実行できるべき操作 (Unity 互換)。パネルごとに実装が分かれると
-//      Undo の挙動が食い違うため、ここに一本化する。
+/// @file    SceneEditUtils.hpp
+/// @brief   シーン編集の共有ヘルパー (削除・複製・スナップショット Undo)。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
+///
+/// WHY: 削除 (Delete) や複製 (Ctrl+D) は Hierarchy パネルだけでなく Scene Viewport
+/// からも実行できるべき操作 (Unity 互換)。パネルごとに実装が分かれると
+/// Undo の挙動が食い違うため、ここに一本化する。
 #pragma once
 
 #include <Editor/Util/Selection.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SSAOPass.cpp | fbzz::scene
-// Deferred GBuffer を入力に Screen Space Ambient Occlusion を生成する。
+/// @file    SSAOPass.cpp
+/// @brief   Deferred GBuffer を入力に Screen Space Ambient Occlusion を生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>

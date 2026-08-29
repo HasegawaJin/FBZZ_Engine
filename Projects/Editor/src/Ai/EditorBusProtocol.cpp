@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorBusProtocol.cpp | fbzz::editor::ai
-// wire エンベロープの検証と応答生成。
+/// @file    EditorBusProtocol.cpp
+/// @brief   wire エンベロープの検証と応答生成。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Ai/EditorBusProtocol.hpp>
 
 namespace fbzz::editor::ai {

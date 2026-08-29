@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BehaviorTreeTypes.cpp | fbzz::ai
-// ノード種別の分類と表示名
+/// @file    BehaviorTreeTypes.cpp
+/// @brief   ノード種別の分類と表示名。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/AI/BehaviorTreeTypes.hpp>
 
 namespace fbzz::ai {

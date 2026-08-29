@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Shader.hpp | fbzz::renderer
-// DXBC / DXIL シェーダーバイトコードと入力レイアウト情報の DirectX 12 表現
+/// @file    DX12Shader.hpp
+/// @brief   DXBC / DXIL シェーダーバイトコードと入力レイアウト情報の DirectX 12 表現。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IShader.hpp>

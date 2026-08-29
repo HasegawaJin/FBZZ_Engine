@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainWaterDefaults.cpp | fbzz::editor
-// Terrain / Water の Editor 既定アセットパス定義
+/// @file    TerrainWaterDefaults.cpp
+/// @brief   Terrain / Water の Editor 既定アセットパス定義。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 
 namespace fbzz::editor {

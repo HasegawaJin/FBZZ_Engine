@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnalysisPanel.hpp | fbzz::editor
-// Profiler と MemoryDebug をまとめて確認するエディター診断パネル
+/// @file    AnalysisPanel.hpp
+/// @brief   Profiler と MemoryDebug をまとめて確認するエディター診断パネル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>

@@ -1,14 +1,15 @@
-// FBZZ Engine
-// RenderPasses/Geometry/ClusterLightPass.cpp | fbzz::scene
-// クラスタライトカリング (Forward+ / Deferred+) の実行パス
-//
-// 視錐台を 32x18x24 のクラスタへ分割し、各クラスタへ影響するライトの番号を
-// 1 回のディスパッチで集める。以降のライティングは、そのピクセルが属するクラスタの
-// ライトだけを評価すればよくなる。
-//
-// WHY 1 フレーム 1 ディスパッチで済ませるか: DX12 の Dispatch はテクスチャ/UAV テーブルの
-//     ディスクリプタコピーをキャッシュしないため、呼ぶたびに 40 回のコピーが走る。
-//     クラスタ分割は画面全体で 1 度決まれば十分なので、Shadow より前に 1 回だけ実行する。
+/// @file    RenderPasses/Geometry/ClusterLightPass.cpp
+/// @brief   クラスタライトカリング (Forward+ / Deferred+) の実行パス。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
+///
+/// 視錐台を 32x18x24 のクラスタへ分割し、各クラスタへ影響するライトの番号を
+/// 1 回のディスパッチで集める。以降のライティングは、そのピクセルが属するクラスタの
+/// ライトだけを評価すればよくなる。
+///
+/// WHY 1 フレーム 1 ディスパッチで済ませるか: DX12 の Dispatch はテクスチャ/UAV テーブルの
+/// ディスクリプタコピーをキャッシュしないため、呼ぶたびに 40 回のコピーが走る。
+/// クラスタ分割は画面全体で 1 度決まれば十分なので、Shadow より前に 1 回だけ実行する。
 #include "GeometryPasses.hpp"
 #include <Engine/Renderer/ComputeCall.hpp>
 

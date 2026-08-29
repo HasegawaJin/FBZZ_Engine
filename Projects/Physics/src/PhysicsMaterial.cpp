@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PhysicsMaterial.cpp | fbzz::physics
-// 剛体の表面物性 (反発・摩擦・密度) のプリセットと合成規則
+/// @file    PhysicsMaterial.cpp
+/// @brief   剛体の表面物性 (反発・摩擦・密度) のプリセットと合成規則。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/PhysicsMaterial.hpp>
 #include <algorithm> // std::min, std::max
 #include <cmath>     // std::sqrt

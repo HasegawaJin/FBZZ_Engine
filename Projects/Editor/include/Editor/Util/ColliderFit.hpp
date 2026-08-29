@@ -1,12 +1,13 @@
-// FBZZ Engine
-// ColliderFit.hpp | fbzz::editor
-// GameObject のメッシュ bounds から Collider の寸法を自動計算するヘルパー。
-//
-// WHY: Collider を固定既定値 (1m³ 等) で生成すると、モデルやプリミティブの実寸と
-//      合わず毎回手調整になる。Unity と同じく「アタッチした瞬間にメッシュへフィット」
-//      させるため、Inspector の Add Component と Hierarchy の Create の両方がここを使う。
-// メッシュが無い GameObject には Unity 相当の既定値
-// (Box 1m³ / Sphere r0.5 / Capsule r0.5,h2 / Cylinder r0.5,h2)。
+/// @file    ColliderFit.hpp
+/// @brief   GameObject のメッシュ bounds から Collider の寸法を自動計算するヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-07-08
+///
+/// WHY: Collider を固定既定値 (1m³ 等) で生成すると、モデルやプリミティブの実寸と
+/// 合わず毎回手調整になる。Unity と同じく「アタッチした瞬間にメッシュへフィット」
+/// させるため、Inspector の Add Component と Hierarchy の Create の両方がここを使う。
+/// メッシュが無い GameObject には Unity 相当の既定値
+/// (Box 1m³ / Sphere r0.5 / Capsule r0.5,h2 / Cylinder r0.5,h2)。
 #pragma once
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/GameObject.hpp>

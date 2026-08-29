@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPasses/GeometryPassHelpers.cpp | fbzz::scene
-// ジオメトリパス共有ヘルパー関数
+/// @file    RenderPasses/GeometryPassHelpers.cpp
+/// @brief   ジオメトリパス共有ヘルパー関数。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "GeometryPasses.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
@@ -623,7 +624,11 @@ bool TestBoundsVisible(RenderPassContext& ctx, const GameObject& go, const World
     // 画面高さ比 = radius * (1/tan(fovY/2)) / 距離。
     // 単位は LODLevel::screenRelativeHeight と同じで、LODSystem の projectedHeight と一致する。
     if (ctx.smallObjectScreenHeight > 0.0f && ctx.cullProjScaleY > 0.0f && distance > 0.0f) {
-        const float screenHeight = bounds.radius * ctx.cullProjScaleY / distance;
+        // 平行投影は距離で縮まない。割ってしまうと、引きの大きい正投影カメラでは
+        // ほぼ全オブジェクトが「極小」と判定されて消える。
+        const float screenHeight = ctx.cullOrthographic
+            ? bounds.radius * ctx.cullProjScaleY
+            : bounds.radius * ctx.cullProjScaleY / distance;
         if (screenHeight < ctx.smallObjectScreenHeight) {
             ++ctx.statsSmallObjectCulled;
             return false;

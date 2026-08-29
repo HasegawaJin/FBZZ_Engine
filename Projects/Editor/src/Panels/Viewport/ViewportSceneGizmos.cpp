@@ -1,9 +1,11 @@
-// FBZZ Engine
-// ViewportSceneGizmos.cpp | fbzz::editor
-// Scene View のカメラ・ライトアイコンと3D Gizmo
+/// @file    ViewportSceneGizmos.cpp
+/// @brief   Scene View のカメラ・ライトアイコンと3D Gizmo。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "ViewportCommon.hpp"
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/ViewportCamera.hpp>
 // メッシュを持たないコンポーネントのアイコン描画に必要な型。
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
@@ -438,26 +440,10 @@ void NavForwardToYawPitch(const math::Vector3& fwd, float& yaw, float& pitch)
 }
 
 // yaw / pitch からカメラ姿勢を組み立て、ピボットと距離を保ったまま Teleport 要求へ流す。
-// WHY: Camera へ直接 m_position/m_rotation を書くと DebugCamera が持つ
-//      yaw/pitch/pivot と乖離し、次に FPS ルックやオービットを始めた瞬間に視点が飛ぶ。
-//      カメラブックマークと同じ Teleport 要求経由にして内部状態まで一括同期する。
+// 実体は Util/ViewportCamera へ移した (コマンドパレット・AI からの軸ビューと同じ経路)。
 void NavApplyYawPitch(EditorContext& ctx, float yaw, float pitch)
 {
-    // ±90 ちょうどにすると forward が真上/真下になり、Teleport 側の atan2(0, 0) から
-    // yaw を復元できず 0 に落ちる。DebugCamera のオービット上限と揃えつつ、
-    // 見た目には真上・真下と区別が付かない角度で止める。
-    pitch = math::Clamp(pitch, -89.9f, 89.9f);
-
-    const math::Quaternion yawQ =
-        math::Quaternion::FromAxisAngle({ 0.0f, 1.0f, 0.0f }, math::ToRad(yaw));
-    const math::Quaternion pitchQ =
-        math::Quaternion::FromAxisAngle({ 1.0f, 0.0f, 0.0f }, math::ToRad(pitch));
-    const math::Quaternion rot = yawQ * pitchQ;
-    const math::Vector3    fwd = rot * math::Vector3::FORWARD;
-
-    ctx.teleportRotation      = rot;
-    ctx.teleportPosition      = ctx.editorCameraPivot - fwd * ctx.editorCameraFocusDistance;
-    ctx.requestTeleportCamera = true;
+    PointEditorCamera(ctx, yaw, pitch);
 }
 
 // from → to の角度差を -180..180 に畳む (補間で遠回りさせないため)。
@@ -688,7 +674,10 @@ void DrawGizmo(EditorContext& ctx,
 
     ImGuizmo::SetDrawlist();
     ImGuizmo::Enable(true);
-    ImGuizmo::SetOrthographic(false);
+    // ImGuizmo はハンドルの大きさを射影から逆算するため、ここを間違えると
+    // 正投影でハンドルが極端に伸び縮みして掴めなくなる。
+    ImGuizmo::SetOrthographic(
+        ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic);
     ImGuizmo::SetRect(viewportMin.x, viewportMin.y, viewportSize.x, viewportSize.y);
 
     ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE;

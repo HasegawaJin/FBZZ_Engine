@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Inspector/InspectorPanel.cpp | fbzz::editor
-// 選択 Entity / Asset の Inspector ルーティング
+/// @file    Inspector/InspectorPanel.cpp
+/// @brief   選択 Entity / Asset の Inspector ルーティング。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>

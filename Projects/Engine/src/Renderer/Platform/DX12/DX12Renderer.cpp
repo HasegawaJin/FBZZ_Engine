@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Renderer.cpp | fbzz::renderer
-// DirectX 12 バックバッファのフレーム記録とクリア操作
+/// @file    DX12Renderer.cpp
+/// @brief   DirectX 12 バックバッファのフレーム記録とクリア操作。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12Renderer.hpp"
 
 #include <Engine/Core/Logger.hpp>

@@ -1,13 +1,14 @@
-// FBZZ Engine
-// SandboxScriptsDll.cpp | sandbox
-// スクリプト DLL のエントリポイント
-//
-// WHY (コールバック渡し設計):
-//   fbzz_engine は shared runtime として EXE / Script DLL から共有される。
-//   ただし Script DLL は任意のユーザーコードを後からロードする拡張境界なので、
-//   登録 API は DLL 側からグローバル状態へ暗黙アクセスするより、EXE が渡す関数ポインタ経由にする。
-//   これにより ScriptFactory の所有者をホスト側へ固定し、将来の外部プラグイン SDK 化でも
-//   境界が明確なまま保てる。
+/// @file    SandboxScriptsDll.cpp
+/// @brief   スクリプト DLL のエントリポイント。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHY (コールバック渡し設計):
+/// fbzz_engine は shared runtime として EXE / Script DLL から共有される。
+/// ただし Script DLL は任意のユーザーコードを後からロードする拡張境界なので、
+/// 登録 API は DLL 側からグローバル状態へ暗黙アクセスするより、EXE が渡す関数ポインタ経由にする。
+/// これにより ScriptFactory の所有者をホスト側へ固定し、将来の外部プラグイン SDK 化でも
+/// 境界が明確なまま保てる。
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 #include "Scripts/PlayerControllerComponent.hpp"

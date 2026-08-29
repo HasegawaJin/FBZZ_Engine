@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptApplicationProxy.hpp | fbzz::scene
-// Script から Application の基本状態を扱うショートハンド
+/// @file    ScriptApplicationProxy.hpp
+/// @brief   Script から Application の基本状態を扱うショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #include <cstdint>
