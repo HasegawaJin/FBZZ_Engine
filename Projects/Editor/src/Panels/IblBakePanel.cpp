@@ -1,6 +1,7 @@
-// FBZZ Engine
-// IblBakePanel.cpp | fbzz::editor
-// HDRI → IBL ベイクパネル ImGui UI 実装
+/// @file    IblBakePanel.cpp
+/// @brief   HDRI → IBL ベイクパネル ImGui UI 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/Import/HdriLoader.hpp>
 #include <Editor/Util/FileDialog.hpp>

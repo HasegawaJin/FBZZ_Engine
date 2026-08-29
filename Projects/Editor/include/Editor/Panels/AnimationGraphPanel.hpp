@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AnimationGraphPanel.hpp | fbzz::editor
-// AnimatorComponent のステートマシンをノードグラフとして編集するパネル
-// WHY: Inspector の縦リストでは遷移関係が追いづらいため、状態と遷移を同じ画面で直接編集できる UI を提供する。
+/// @file    AnimationGraphPanel.hpp
+/// @brief   AnimatorComponent のステートマシンをノードグラフとして編集するパネル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
+///
+/// WHY: Inspector の縦リストでは遷移関係が追いづらいため、状態と遷移を同じ画面で直接編集できる UI を提供する。
 #pragma once
 #include <Editor/GraphEditor/GraphCanvas.hpp>
 #include <Editor/GraphEditor/GraphView.hpp>

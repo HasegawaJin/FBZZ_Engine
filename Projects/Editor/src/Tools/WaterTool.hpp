@@ -1,18 +1,19 @@
-// FBZZ Engine
-// WaterTool.hpp | fbzz::editor
-// エディタ上で WaterComponent の水面パラメータを視覚的に編集するツール
-//
-// WHY: TerrainTool がブラシ操作に特化しているのと同様に、WaterTool は水面固有の
-//      編集操作（波プリセット適用・ビューポート上の範囲/波向き可視化）を一箇所に集約する。
-//      Inspector の WaterComponent セクションはパラメータ列挙にとどめ、
-//      WaterTool はより直感的な視覚フィードバックを提供する。
-//
-// 使い方:
-//   1. ViewportPanel::OnRenderContent のシーンビュー処理末尾で Update() を呼ぶ
-//   2. WaterTool::OnEditorGUI() でツールウィンドウを表示する
-//   3. water.meshDirty / foamDirty / texDirty は WaterTool が自動的に立てる
-//
-// 依存: Engine (WaterComponent, Camera, Scene), ImGui
+/// @file    WaterTool.hpp
+/// @brief   エディタ上で WaterComponent の水面パラメータを視覚的に編集するツール。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// WHY: TerrainTool がブラシ操作に特化しているのと同様に、WaterTool は水面固有の
+/// 編集操作（波プリセット適用・ビューポート上の範囲/波向き可視化）を一箇所に集約する。
+/// Inspector の WaterComponent セクションはパラメータ列挙にとどめ、
+/// WaterTool はより直感的な視覚フィードバックを提供する。
+///
+/// 使い方:
+/// 1. ViewportPanel::OnRenderContent のシーンビュー処理末尾で Update() を呼ぶ
+/// 2. WaterTool::OnEditorGUI() でツールウィンドウを表示する
+/// 3. water.meshDirty / foamDirty / texDirty は WaterTool が自動的に立てる
+///
+/// 依存: Engine (WaterComponent, Camera, Scene), ImGui
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>

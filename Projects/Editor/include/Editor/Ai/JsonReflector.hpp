@@ -1,15 +1,16 @@
-// FBZZ Engine
-// JsonReflector.hpp | fbzz::editor::ai
-// IReflector を実装し、コンポーネントの反射フィールドと JSON を相互変換する。
-//
-// 設計 (WHY):
-//   Inspector の ImGuiReflector・SceneSerializer の TOML リフレクタと同じ IReflector ビジターを
-//   AI 境界にも通す。これにより component.set / node.components が既存の FBZZ_FIELD 宣言に自動追従し、
-//   コンポーネントごとの手書き JSON マッピングを排除する (単一の真実)。
-//
-//   対応範囲は数値・真偽・文字列・ベクトル・クォータニオン (= AI が調整したい大半のパラメータ)。
-//   EntityID/参照型はシーン解決を要するため本リフレクタでは扱わず (読みは省略・書きは無視)、
-//   構造的な変更は node.reparent 等の専用 Command 側に委ねる。
+/// @file    JsonReflector.hpp
+/// @brief   IReflector を実装し、コンポーネントの反射フィールドと JSON を相互変換する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// 設計 (WHY):
+/// Inspector の ImGuiReflector・SceneSerializer の TOML リフレクタと同じ IReflector ビジターを
+/// AI 境界にも通す。これにより component.set / node.components が既存の FBZZ_FIELD 宣言に自動追従し、
+/// コンポーネントごとの手書き JSON マッピングを排除する (単一の真実)。
+///
+/// 対応範囲は数値・真偽・文字列・ベクトル・クォータニオン (= AI が調整したい大半のパラメータ)。
+/// EntityID/参照型はシーン解決を要するため本リフレクタでは扱わず (読みは省略・書きは無視)、
+/// 構造的な変更は node.reparent 等の専用 Command 側に委ねる。
 #pragma once
 #include <Editor/Ai/Json.hpp>
 #include <Engine/Scene/Script.hpp> // IReflector

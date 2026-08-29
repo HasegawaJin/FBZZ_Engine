@@ -1,7 +1,7 @@
-/// @file   Selection.hpp
-/// @brief  Editor の選択状態を変更する唯一の入口
-/// @author Hasegawa Jin
-/// @date   2026-08-26
+/// @file    Selection.hpp
+/// @brief   Editor の選択状態を変更する唯一の入口
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 ///
 /// WHY: 選択は Hierarchy / Scene View / 検索 / コマンドパレット / Map / AI Operator と
 ///      多くの面から起きるのに、これまでは各面が ctx.selectedEntities を直に書いていた。

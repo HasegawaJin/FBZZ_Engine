@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MatSubExporter.cpp | fbzz::editor
-// FBX aiMaterial → .mat TOML + textures/ コピー
-// MaterialExporter を委譲して 1 マテリアルインデックスにつき 1 ファイルを生成する。
+/// @file    MatSubExporter.cpp
+/// @brief   FBX aiMaterial → .mat TOML + textures/ コピー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// MaterialExporter を委譲して 1 マテリアルインデックスにつき 1 ファイルを生成する。
 #include <Editor/Import/MatSubExporter.hpp>
 #include <Editor/Import/MaterialExporter.hpp>
 #include <Engine/Util/FileSystem.hpp>

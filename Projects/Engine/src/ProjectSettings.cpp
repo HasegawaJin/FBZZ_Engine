@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ProjectSettings.cpp | fbzz
-// プロジェクト設定の TOML 永続化実装
-// タグ・レイヤーなどエディタとランタイムで共有する設定を読み書きする。
-// 失敗時は bool で返し、例外は使わない。
+/// @file    ProjectSettings.cpp
+/// @brief   プロジェクト設定の TOML 永続化実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
+///
+/// タグ・レイヤーなどエディタとランタイムで共有する設定を読み書きする。
+/// 失敗時は bool で返し、例外は使わない。
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -264,6 +266,9 @@ bool ProjectSettings::Load(const std::string& path)
         };
         audio.masterVolume = unitRange((*audioTbl)["masterVolume"]
                                            .value_or((double)audio.masterVolume));
+        audio.voiceLimit = (int)(*audioTbl)["voiceLimit"]
+                               .value_or((int64_t)audio.voiceLimit);
+        if (audio.voiceLimit < 4) audio.voiceLimit = 4;
 
         std::vector<audio::BusDesc> buses;
         if (auto* busArray = (*audioTbl)["bus"].as_array()) {
@@ -276,6 +281,7 @@ bool ProjectSettings::Load(const std::string& path)
                 desc.parent        = (*busTbl)["parent"].value_or(std::string{});
                 desc.volume        = unitRange((*busTbl)["volume"].value_or(1.0));
                 desc.lowPassCutoff = unitRange((*busTbl)["lowPassCutoff"].value_or(1.0));
+                desc.reverb        = (*busTbl)["reverb"].value_or(false);
                 buses.push_back(std::move(desc));
             }
         }
@@ -405,6 +411,7 @@ bool ProjectSettings::Save(const std::string& path) const
 
     toml::table audioTbl;
     audioTbl.insert("masterVolume", (double)audio.masterVolume);
+    audioTbl.insert("voiceLimit", (int64_t)audio.voiceLimit);
     {
         toml::array busArray;
         for (const audio::BusDesc& desc : audio.buses) {
@@ -414,6 +421,7 @@ bool ProjectSettings::Save(const std::string& path) const
             busTbl.insert("volume", (double)desc.volume);
             if (desc.lowPassCutoff < 1.0f)
                 busTbl.insert("lowPassCutoff", (double)desc.lowPassCutoff);
+            if (desc.reverb) busTbl.insert("reverb", true);
             busArray.push_back(std::move(busTbl));
         }
         audioTbl.insert("bus", std::move(busArray));

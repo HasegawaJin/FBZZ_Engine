@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MemorySystemTests.cpp | GoogleTest
-// MemorySystem の所有するフレームアロケータとライフサイクルを自動検証する。
+/// @file    MemorySystemTests.cpp
+/// @brief   MemorySystem の所有するフレームアロケータとライフサイクルを自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Memory/MemorySystem.hpp>

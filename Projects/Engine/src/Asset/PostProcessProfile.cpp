@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PostProcessProfile.cpp | fbzz::asset
-// オーバーライドリストの適用・複製と、TOML (.fzdata) との相互変換。
+/// @file    PostProcessProfile.cpp
+/// @brief   オーバーライドリストの適用・複製と、TOML (.fzdata) との相互変換。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>

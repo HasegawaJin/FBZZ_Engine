@@ -1,8 +1,10 @@
-// FBZZ Engine
-// PrimitiveMesh.cpp | fbzz::renderer
-// 手続き生成メッシュの実装
-// Cube / Sphere / Plane / Quad を CPU 側で生成し、ResourceManager で GPU バッファ化する。
-// アセット読み込みなしでデバッグ・既定形状を使えるようにする。
+/// @file    PrimitiveMesh.cpp
+/// @brief   手続き生成メッシュの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Cube / Sphere / Plane / Quad を CPU 側で生成し、ResourceManager で GPU バッファ化する。
+/// アセット読み込みなしでデバッグ・既定形状を使えるようにする。
 #include "Engine/Renderer/PrimitiveMesh.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Math/MathUtils.hpp>

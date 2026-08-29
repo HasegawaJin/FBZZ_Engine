@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Application.hpp | fbzz::core
-// エンジンのエントリポイントとメインループ
-// Window / Renderer / Audio / SceneManager を一箇所で所有する Application シングルトン。
-// sandbox や editor は Get() から各サブシステムへアクセスする。
+/// @file    Application.hpp
+/// @brief   エンジンのエントリポイントとメインループ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Window / Renderer / Audio / SceneManager を一箇所で所有する Application シングルトン。
+/// sandbox や editor は Get() から各サブシステムへアクセスする。
 #pragma once
 #include "Engine/Core/Memory/MemorySystem.hpp"
 #include "Engine/Core/Window.hpp"

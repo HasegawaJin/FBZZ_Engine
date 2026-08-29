@@ -1,7 +1,7 @@
-/// @file   Selection.cpp
-/// @brief  選択状態の変更と、その副作用 (チャンネル排他・Hierarchy への反映)
-/// @author Hasegawa Jin
-/// @date   2026-08-26
+/// @file    Selection.cpp
+/// @brief   選択状態の変更と、その副作用 (チャンネル排他・Hierarchy への反映)
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
 #include <Editor/Util/Selection.hpp>
 #include <Editor/EditorContext.hpp>
 #include <algorithm>

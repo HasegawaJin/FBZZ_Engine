@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorBusDispatcher.cpp | fbzz::editor::ai
-// Editor Command Bus のメインスレッド処理。Query/Command を Scene・UndoStack・Renderer へ写像する。
+/// @file    EditorBusDispatcher.cpp
+/// @brief   Editor Command Bus のメインスレッド処理。Query/Command を Scene・UndoStack・Renderer へ写像する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Ai/EditorBusDispatcher.hpp>
 
 #include <Editor/Ai/EditorBusProtocol.hpp>
@@ -28,15 +29,11 @@
 #include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
 #include <Editor/GraphEditor/GraphSubgraphOps.hpp>
-#include <Editor/VFXEditor/Document/VFXGraphEditOps.hpp>
-#include <Editor/VFXEditor/Document/VFXGraphOps.hpp>
-#include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
 #include <Engine/AI/BehaviorTreeTypes.hpp>
-#include <Editor/VFXEditor/Services/VFXTemplateCatalog.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
@@ -52,9 +49,6 @@
 #include <Engine/Asset/TextureAnalysis.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/ParticleCurvePresets.hpp>
-#include <Engine/Asset/VFXGraphAsset.hpp>
-#include <Engine/Asset/VFXAuthoringSchema.hpp>
-#include <Engine/Asset/VFXParameterRuntime.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Memory/MemorySystem.hpp>
 #include <Engine/Core/Time.hpp>
@@ -78,7 +72,6 @@
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Systems/ParticleOverdrawStats.hpp>
-#include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/ProjectRuntime.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -506,1479 +499,20 @@ void RestoreComponents(GameObject& go, const JsonValue& snapshot)
     }
 }
 
-const char* VFXParamTypeName(asset::VFXParamType type)
-{
-    switch (type) {
-    case asset::VFXParamType::Float: return "Float";
-    case asset::VFXParamType::Int: return "Int";
-    case asset::VFXParamType::Bool: return "Bool";
-    case asset::VFXParamType::Color: return "Color";
-    case asset::VFXParamType::Vector3: return "Vector3";
-    case asset::VFXParamType::AssetRef: return "AssetRef";
-    }
-    return "Unknown";
-}
-
-JsonValue VFXConstantJson(const asset::VFXConstant& value)
-{
-    if (const auto* item = std::get_if<float>(&value)) return JsonValue(*item);
-    if (const auto* item = std::get_if<int>(&value)) return JsonValue(*item);
-    if (const auto* item = std::get_if<bool>(&value)) return JsonValue(*item);
-    if (const auto* item = std::get_if<std::string>(&value)) return JsonValue(*item);
-    JsonValue result = JsonValue::MakeArray();
-    if (const auto* item = std::get_if<math::Vector3>(&value)) {
-        result.Push(JsonValue(item->x)); result.Push(JsonValue(item->y)); result.Push(JsonValue(item->z));
-    } else if (const auto* item = std::get_if<math::Vector4>(&value)) {
-        result.Push(JsonValue(item->x)); result.Push(JsonValue(item->y));
-        result.Push(JsonValue(item->z)); result.Push(JsonValue(item->w));
-    }
-    return result;
-}
-
-// 値ソースをAIが意味論を保ったまま再編集できる形へ変換する。
-JsonValue VFXParamValueJson(const asset::VFXGraphAsset& graph, const asset::VFXParamValue& value,
-                            float normalizedTime, std::uint32_t seed, std::string_view name)
-{
-    JsonValue result = JsonValue::MakeObject();
-    if (const auto* constant = std::get_if<asset::VFXConstant>(&value.source)) {
-        result.Set("source", JsonValue("Constant"));
-        result.Set("value", VFXConstantJson(*constant));
-    } else if (const auto* curve = std::get_if<asset::VFXCurveSource>(&value.source)) {
-        result.Set("source", JsonValue("Curve"));
-        result.Set("value", JsonValue(curve->curve.Evaluate(normalizedTime)));
-        JsonValue keys = JsonValue::MakeArray();
-        for (std::uint32_t index = 0; index < (std::min)(curve->curve.keyCount, scene::kMaxParticleCurveKeys); ++index) {
-            JsonValue key = JsonValue::MakeArray();
-            key.Push(JsonValue(curve->curve.keys[index].time));
-            key.Push(JsonValue(curve->curve.keys[index].value));
-            keys.Push(std::move(key));
-        }
-        result.Set("keys", std::move(keys));
-    } else if (const auto* gradient = std::get_if<asset::VFXGradientSource>(&value.source)) {
-        result.Set("source", JsonValue("Gradient"));
-        const auto sampled = gradient->gradient.Evaluate(normalizedTime);
-        JsonValue color = JsonValue::MakeArray();
-        color.Push(JsonValue(sampled.x)); color.Push(JsonValue(sampled.y));
-        color.Push(JsonValue(sampled.z)); color.Push(JsonValue(sampled.w));
-        result.Set("value", std::move(color));
-        JsonValue keys = JsonValue::MakeArray();
-        for (std::uint32_t index = 0; index < (std::min)(gradient->gradient.keyCount, scene::kMaxParticleCurveKeys); ++index) {
-            JsonValue key = JsonValue::MakeArray();
-            key.Push(JsonValue(gradient->gradient.keys[index].time));
-            key.Push(JsonValue(gradient->gradient.keys[index].color.x));
-            key.Push(JsonValue(gradient->gradient.keys[index].color.y));
-            key.Push(JsonValue(gradient->gradient.keys[index].color.z));
-            key.Push(JsonValue(gradient->gradient.keys[index].color.w));
-            keys.Push(std::move(key));
-        }
-        result.Set("keys", std::move(keys));
-    } else if (const auto* random = std::get_if<asset::VFXRandomRange>(&value.source)) {
-        result.Set("source", JsonValue("RandomRange"));
-        result.Set("minimum", JsonValue(random->minimum));
-        result.Set("maximum", JsonValue(random->maximum));
-        const float alpha = asset::DeterministicVFXRandom(seed, name);
-        result.Set("value", JsonValue(random->minimum + (random->maximum - random->minimum) * alpha));
-    } else if (const auto* attribute = std::get_if<asset::VFXAttributeRef>(&value.source)) {
-        result.Set("source", JsonValue("AttributeRef"));
-        result.Set("path", JsonValue(attribute->path));
-    } else if (const auto* signal = std::get_if<asset::VFXSignalRef>(&value.source)) {
-        result.Set("source", JsonValue("Signal"));
-        result.Set("name", JsonValue(signal->signalName));
-        const auto output = std::find_if(graph.signalOutputs.begin(), graph.signalOutputs.end(),
-            [&](const auto& item) { return item.name == signal->signalName; });
-        if (output != graph.signalOutputs.end()) {
-            std::unordered_map<int, float> cache;
-            result.Set("value", JsonValue(asset::EvaluateVFXSignalNode(graph, output->nodeId, normalizedTime, cache)));
-        }
-    }
-    return result;
-}
-
-const char* PropertyTypeName(reflection::PropertyType type)
-{
-    switch (type) {
-    case reflection::PropertyType::Float: return "Float";
-    case reflection::PropertyType::Int: return "Int";
-    case reflection::PropertyType::Bool: return "Bool";
-    case reflection::PropertyType::Vector2: return "Vector2";
-    case reflection::PropertyType::Vector3: return "Vector3";
-    case reflection::PropertyType::Color: return "Color";
-    case reflection::PropertyType::Quaternion: return "Quaternion";
-    case reflection::PropertyType::String: return "String";
-    case reflection::PropertyType::AssetRef: return "AssetRef";
-    case reflection::PropertyType::Curve: return "Curve";
-    case reflection::PropertyType::Gradient: return "Gradient";
-    case reflection::PropertyType::Enum: return "Enum";
-    case reflection::PropertyType::Struct: return "Struct";
-    case reflection::PropertyType::Array: return "Array";
-    }
-    return "Unknown";
-}
-
-// スキーマ内の葉プロパティのパスを全て集める。
-// 配列は owner の実要素数ぶん "bursts[0].count" のように展開されるため、
-// 走査には対象インスタンスが要る (要素数はインスタンスにしか無い情報のため)。
-// 走査の実体は reflection::CollectLeafPaths ひとつに集約し、Inspector・テストと同じ結果を返す。
-void CollectVFXSchemaPaths(const reflection::ITypeSchema& schema, const void* owner,
-                           const std::string& prefix, std::vector<std::string>& output)
-{
-    reflection::CollectLeafPaths(schema, owner, prefix, output);
-}
-
-// プロパティ値を比較・提示用のテキストへ落とす。
-// WHY: 差分は「変わったかどうか」と「何から何へ」が伝わればよく、型ごとの JSON 表現を
-//      作り分けるほどの情報量は要らない。テキスト1本にすると比較も出力も1経路で済む。
-std::string VFXSchemaValueToText(reflection::PropertyType type, const std::any& value)
-{
-    const auto number = [](double v) {
-        char buffer[64];
-        std::snprintf(buffer, sizeof(buffer), "%.4g", v);
-        return std::string(buffer);
-    };
-    if (const auto* v = std::any_cast<float>(&value)) return number(*v);
-    if (const auto* v = std::any_cast<int>(&value)) return std::to_string(*v);
-    if (const auto* v = std::any_cast<bool>(&value)) return *v ? "true" : "false";
-    if (const auto* v = std::any_cast<std::string>(&value)) return *v;
-    if (const auto* v = std::any_cast<math::Vector3>(&value))
-        return "[" + number(v->x) + ", " + number(v->y) + ", " + number(v->z) + "]";
-    if (const auto* v = std::any_cast<math::Vector4>(&value))
-        return "[" + number(v->x) + ", " + number(v->y) + ", " + number(v->z) + ", " + number(v->w) + "]";
-    // Curve / Gradient など構造値は個別比較しない (差分としては「変更あり」で十分)。
-    return std::string("<") + PropertyTypeName(type) + ">";
-}
-
-// スキーマ値を JSON へ戻す。JsonToSchemaValue の対になる読み出しで、
-// ここが返した value をそのまま vfx.node.setField の value へ渡せる (=往復できる) ことが要件。
-//
-// WHY: これまで書き込み側 (setField) しか存在せず、「今このノードの blendMode が何か」
-//      「texturePath に何が入っているか」を API 越しに確かめる手段が無かった。
-//      その結果 AI は現在値を知らないまま上書きし、変更が効いたのかどうかも
-//      プレビュー画像からしか判断できなかった。読み出しを対で用意して推測を消す。
-//
-// Curve / Gradient は JsonToParticleCurve / JsonToParticleGradient が受け付ける
-// { interp, keys } 形式で返す。キー列を配列で書き戻せば同じ形が再現する。
-JsonValue SchemaValueToJson(reflection::PropertyType type, const std::any& value)
-{
-    if (const auto* v = std::any_cast<bool>(&value)) return JsonValue(*v);
-    if (const auto* v = std::any_cast<int>(&value)) return JsonValue(*v);
-    if (const auto* v = std::any_cast<float>(&value)) return JsonValue(static_cast<double>(*v));
-    if (const auto* v = std::any_cast<std::string>(&value)) return JsonValue(*v);
-    if (const auto* v = std::any_cast<math::Vector3>(&value)) {
-        JsonValue result = JsonValue::MakeArray();
-        result.Push(JsonValue(v->x)); result.Push(JsonValue(v->y)); result.Push(JsonValue(v->z));
-        return result;
-    }
-    if (const auto* v = std::any_cast<math::Vector4>(&value)) {
-        JsonValue result = JsonValue::MakeArray();
-        result.Push(JsonValue(v->x)); result.Push(JsonValue(v->y));
-        result.Push(JsonValue(v->z)); result.Push(JsonValue(v->w));
-        return result;
-    }
-    if (const auto* v = std::any_cast<scene::ParticleCurve>(&value)) {
-        JsonValue keys = JsonValue::MakeArray();
-        for (std::uint32_t index = 0; index < (std::min)(v->keyCount, scene::kMaxParticleCurveKeys); ++index) {
-            JsonValue key = JsonValue::MakeArray();
-            key.Push(JsonValue(v->keys[index].time));
-            key.Push(JsonValue(v->keys[index].value));
-            keys.Push(std::move(key));
-        }
-        JsonValue result = JsonValue::MakeObject();
-        result.Set("interp", JsonValue(static_cast<int>(v->interpolation)));
-        result.Set("keys", std::move(keys));
-        return result;
-    }
-    if (const auto* v = std::any_cast<scene::ParticleGradient>(&value)) {
-        JsonValue keys = JsonValue::MakeArray();
-        for (std::uint32_t index = 0; index < (std::min)(v->keyCount, scene::kMaxParticleCurveKeys); ++index) {
-            JsonValue key = JsonValue::MakeArray();
-            key.Push(JsonValue(v->keys[index].time));
-            key.Push(JsonValue(v->keys[index].color.x));
-            key.Push(JsonValue(v->keys[index].color.y));
-            key.Push(JsonValue(v->keys[index].color.z));
-            key.Push(JsonValue(v->keys[index].color.w));
-            keys.Push(std::move(key));
-        }
-        JsonValue result = JsonValue::MakeObject();
-        result.Set("interp", JsonValue(static_cast<int>(v->interpolation)));
-        result.Set("keys", std::move(keys));
-        return result;
-    }
-    // ここへ来るのは PropertyType を足したのに変換を書き忘れた場合だけ。
-    // null を返すと「値が無い」と誤読されるため、型名を文字列で返して欠落だと分かるようにする。
-    return JsonValue(std::string("<unsupported:") + PropertyTypeName(type) + ">");
-}
-
-void AppendSchemaProperties(JsonValue& output, const reflection::ITypeSchema& schema,
-                            const std::string& prefix)
-{
-    for (const auto& property : schema.Properties()) {
-        const std::string path = prefix.empty() ? std::string(property.key)
-                                                : prefix + "." + std::string(property.key);
-        if (property.type == reflection::PropertyType::Struct && property.childSchema != nullptr) {
-            AppendSchemaProperties(output, *property.childSchema, path);
-            continue;
-        }
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("path", JsonValue(path));
-        item.Set("type", JsonValue(PropertyTypeName(property.type)));
-        item.Set("display", JsonValue(std::string(property.display)));
-        item.Set("category", JsonValue(std::string(property.category)));
-        item.Set("exposable", JsonValue(property.exposable));
-        if (property.range.enabled) {
-            item.Set("minimum", JsonValue(property.range.minimum));
-            item.Set("maximum", JsonValue(property.range.maximum));
-        }
-        // enum は数値の意味が名前を見ないと分からない。選択肢を並べて渡す。
-        if (!property.enumNames.empty()) {
-            JsonValue names = JsonValue::MakeArray();
-            for (const std::string_view name : property.enumNames)
-                names.Push(JsonValue(std::string(name)));
-            item.Set("enumNames", std::move(names));
-        }
-        // 配列は path 自体を setField の対象にできない。添字を付けて要素へ降りることと、
-        // 要素型のフィールド一覧を AI が引けるよう明示する。
-        if (property.type == reflection::PropertyType::Array) {
-            item.Set("indexed", JsonValue(true));
-            item.Set("elementPathExample", JsonValue(path + "[0]"));
-            if (property.childSchema != nullptr) {
-                JsonValue elementFields = JsonValue::MakeArray();
-                AppendSchemaProperties(elementFields, *property.childSchema, path + "[0]");
-                item.Set("elementFields", std::move(elementFields));
-            }
-        }
-        output.Push(std::move(item));
-    }
-}
-
-// vfx.lint — .vfx を静的診断し、問題を構造化テキストで返す。
-// WHY: AI がエフェクトを組むとき、スクリーンショットを見て気付くより
-//      「Entry から届かないノードがある」「テクスチャが無い」を文章で受け取る方が
-//      桁違いに速く確実に直せる。Validate が通っても実際には何も出ない、という
-//      typo 起因の空振りをここで潰す。
-// lint の各 code に対する「どう直すか」。issue へ添えて返す。
-//
-// WHY: これまで lint は「何が壊れているか」だけを返し、直し方は AI の推測に任せていた。
-//      結果として、同じ警告に対して呼ぶコマンドが毎回変わり、直したつもりで別の規約を
-//      踏み直す往復が発生する。code ごとに正解の操作を 1 つ書いておけば、
-//      修正は推論ではなく参照になる。文言ではなく code で引けることが重要で、
-//      これは Editor の警告 banner と AI が同じ code 集合を共有しているから成立する。
-//
-// autoFixable: vfx.repair が判断なしで直せるもの。false は設計判断が要るため AI に残す。
-struct VFXFixHint {
-    const char* code;
-    bool autoFixable;
-    const char* action;  // 呼ぶべきコマンドと引数
-    const char* caution; // 直す前に確認すべきこと (空なら無し)
-};
-
-const VFXFixHint* FindVFXFixHint(std::string_view code)
-{
-    static constexpr VFXFixHint kHints[] = {
-        { "UNREACHABLE_NODE", true,
-          "vfx_repair(connectOrphans=true) で Entry から OnStart で接続する。"
-          "意図した発火順があるなら vfx_link_add で適切な source から繋ぐ。",
-          "Entry 直結は「グラフ開始と同時に出る」意味になる。遅らせたいなら startOffset も設定する。" },
-        { "MISSING_ASSET", true,
-          "vfx_repair(fixAssets=true) でファイル名の近いアセットへ張り替える。"
-          "見つからない場合は asset_list で実在パスを調べ vfx_node_set_field で設定する。",
-          "自動置換はファイル名の類似だけで選ぶため、置換後に vfx_inspect_graph でパスを確認すること。" },
-        { "EMPTY_SUBGRAPH", false,
-          "vfx_node_set_field(schemaPath=\"subGraph.graphPath\") で .vfx を指定するか、"
-          "vfx_node_remove でノードごと削除する。", "" },
-        { "EMPTY_PARTICLE_MATERIAL", false,
-          "vfx_node_set_field(schemaPath=\"particle.materialPath\") で .mat を指定する。"
-          "手持ちの .mat は Assets/Materials/Particles/ にある (asset_list で一覧できる)。",
-          "未設定は既定の ParticleFallback.mat (加算の丸い光) で描かれる。絵は出るので"
-          "壊れて見えないが、意図した素材・ブレンドは一切効いていない。" },
-        { "MATERIAL_PATH_NOT_MAT", false,
-          "materialPath には .mat だけを入れる。テクスチャを使いたい場合は、その画像を"
-          "albedo に持つ .mat を用意してから指定する。",
-          "ParticleEmitter はテクスチャを直接持てない。.png を materialPath に入れると"
-          "マテリアル解決に失敗し、未設定と同じ 1x1 白になる。" },
-        { "SHEARED_SPRITE", true,
-          "vfx_repair(fixSprites=true) で sizeAxisScale を等方 [1,1,1] へ戻す。"
-          "縦長にしたい場合は代わりに回転 (angularVelocity / rotationCurve) を 0 にする。",
-          "どちらを捨てるかは見た目の意図次第。炎の舌なら非等方、破片なら回転を残す。" },
-        { "MESH_NO_FADE", true,
-          "vfx_repair(fixMeshFade=true) で mesh.colorEnd の RGB を 0 にする。",
-          "加算ブレンドでは RGB が 0 になって初めて消える。alpha だけ 0 にしても残る。" },
-        { "BOUND_FIELD_OVERRIDDEN", false,
-          "ノード側ではなく vfx_param_set_default で公開パラメーターの既定値を変更する。"
-          "そのノードだけ別の値にしたいなら vfx_param_bind を解いてから設定する。",
-          "bind 済み leaf への書き込みは保存されるが実行時に必ず上書きされる。" },
-        { "OVER_BUDGET_PARTICLES", true,
-          "vfx_optimize_budget(targetParticles=...) で各ノードの maxParticles を按分して下げる。",
-          "見た目の密度が落ちる。粒を大きくして枚数を減らす方が破綻しにくい。" },
-        { "GPU_FALLBACK", false,
-          "message が名指しした設定を変えて GPU 条件を満たすか、"
-          "その設定を残すなら particle.simulationMode を 0 (Cpu) へ戻して意図を明示する。"
-          "どちらを採るかは表現の要求次第で、機械的には決められない。",
-          "「GPU で大量」と「per-particle Trail・SubEmitter・Local 空間」は両立しない"
-          "(ソートとメッシュパーティクルは GPU 側で対応済みなので縮退しない)。"
-          "粒子数を増やしても、縮退したままでは GPU 側の性能は一切使われない。" },
-        { "PARENT_HAS_NO_TRANSFORM", true,
-          "vfx_repair(fixParents=true) で親指定を外す。位置を継承したいなら"
-          "vfx_node_set_parent で実体を持つノード (Particle / Mesh / Light など) を親にする。",
-          "Entry / Delay / Reroute は実体を持たず、空間上の位置も持たない。" },
-        { "PARENT_OVERRIDDEN_BY_SOCKET", false,
-          "attachBone と parentNodeId のどちらを使うか決める。ボーン追従が要るなら"
-          "vfx_node_set_parent(parentNodeId=-1) で親を外し、要らないなら"
-          "vfx_node_set_field(schemaPath=\"attachBone\", value=\"\") で socket を外す。",
-          "実行時は socket が優先されるため、今は parentNodeId 側が効いていない。" },
-        { "NO_OUTPUT", false,
-          "vfx_node_add で Particle / Mesh / Light などの実体ノードを追加する。"
-          "骨格から作るなら vfx_template_apply が早い。", "" },
-        { "UNKNOWN_SHADER_PARAM", false,
-          "shader_inspect でそのマテリアルのシェーダー変数一覧を取り、実在する名前へ直す。"
-          "動かしたい効果に対応する変数が無ければ、別のシェーダーを持つ .mat へ差し替える。",
-          "未使用変数はコンパイル時に消えるため、HLSL に宣言があっても実行時には存在しないことがある。"
-          "shader_inspect が返すのはコンパイル済みバイトコードの実体。" },
-    };
-    for (const auto& hint : kHints)
-        if (code == hint.code) return &hint;
-    return nullptr;
-}
-
-Outcome DoVFXLint(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    const std::string path = StringField(payload, "path");
-    if (path.empty()) return Outcome::Err("BAD_ARG", "path が必要です");
-    asset::VFXGraphAsset graph;
-    std::string parseError;
-    if (!asset::ParseVFXGraphAsset(path, graph, &parseError))
-        return Outcome::Err("VFX_INVALID", parseError);
-
-    JsonValue issues = JsonValue::MakeArray();
-    int errorCount = 0;
-    int warningCount = 0;
-    const auto addIssue = [&](const char* severity, const char* code,
-                              std::string message, int nodeId) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("severity", JsonValue(std::string(severity)));
-        item.Set("code", JsonValue(std::string(code)));
-        item.Set("message", JsonValue(std::move(message)));
-        if (nodeId > 0) item.Set("nodeId", JsonValue(nodeId));
-        // 直し方を code から引いて添える。AI に毎回推論させないための機械可読な手順。
-        if (const VFXFixHint* hint = FindVFXFixHint(code); hint != nullptr) {
-            item.Set("autoFixable", JsonValue(hint->autoFixable));
-            item.Set("fix", JsonValue(std::string(hint->action)));
-            if (hint->caution[0] != '\0') item.Set("caution", JsonValue(std::string(hint->caution)));
-        } else {
-            // 手順を用意していない code は「自動修復できない」と明示する。
-            // 黙って欠落させると、AI は fix が無いことを「直さなくてよい」と読みかねない。
-            item.Set("autoFixable", JsonValue(false));
-        }
-        issues.Push(std::move(item));
-        if (std::string_view(severity) == "error") ++errorCount;
-        else ++warningCount;
-    };
-
-    // 1. スキーマ検証 (ID重複・Entry数・負の時間など)
-    std::string validationError;
-    if (!asset::ValidateVFXGraphAsset(graph, &validationError))
-        addIssue("error", "INVALID_GRAPH", validationError, 0);
-
-    // 2. スケジュール構築 = 循環検出
-    std::vector<float> startTimes;
-    float duration = 0.0f;
-    std::string scheduleError;
-    const bool scheduled = asset::BuildVFXGraphSchedule(graph, startTimes, duration, &scheduleError);
-    if (!scheduled) addIssue("error", "SCHEDULE_FAILED", scheduleError, 0);
-
-    // 3. Entry からの到達性。検証は通るが実行時に一度も起動しない配線ミス。
-    const auto entry = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-        [](const asset::VFXGraphNode& node) { return node.type == asset::VFXNodeType::Entry; });
-    if (entry != graph.nodes.end()) {
-        std::vector<int> reachable{ entry->id };
-        for (std::size_t head = 0; head < reachable.size(); ++head) {
-            for (const auto& link : graph.links) {
-                if (link.fromNode != reachable[head]) continue;
-                if (std::find(reachable.begin(), reachable.end(), link.toNode) == reachable.end())
-                    reachable.push_back(link.toNode);
-            }
-        }
-        for (const auto& node : graph.nodes) {
-            if (std::find(reachable.begin(), reachable.end(), node.id) != reachable.end()) continue;
-            addIssue("error", "UNREACHABLE_NODE",
-                     "Entry から到達できないため実行時に起動しません: " + node.name, node.id);
-        }
-    }
-
-    // 4. 参照アセットの実在確認。空振りの最頻原因。
-    namespace fs = std::filesystem;
-    const auto checkAsset = [&](const std::string& assetPath, const char* label, int nodeId) {
-        if (assetPath.empty()) return;
-        if (assetPath.rfind("primitive:", 0) == 0) return;
-        std::error_code ec;
-        const bool inProject = !ctx.projectRoot.empty()
-            && fs::is_regular_file(fs::path(ctx.projectRoot) / assetPath, ec);
-        ec.clear();
-        const bool inEngine = !ctx.engineRoot.empty()
-            && fs::is_regular_file(fs::path(ctx.engineRoot) / assetPath, ec);
-        ec.clear();
-        if (inProject || inEngine || fs::is_regular_file(assetPath, ec)) return;
-        addIssue("error", "MISSING_ASSET",
-                 std::string(label) + " が見つかりません: " + assetPath, nodeId);
-    };
-    for (const auto& node : graph.nodes) {
-        switch (node.type) {
-        case asset::VFXNodeType::Particle: {
-        checkAsset(node.particle.materialPath, "material", node.id);
-            checkAsset(node.particle.meshShapePath, "meshShape", node.id);
-            // GPU シミュレーションの無言の縮退。simulationMode = Gpu にしても、
-            // 条件のどれか 1 つを外すと黙って CPU へ落ちる。
-            // WHY: 10 万粒子を狙って Gpu を指定したのに per-particle Trail を付けたせいで
-            //      CPU で回っていた、という事故が起きるが、それが今までどこにも出ていなかった。
-            //      静的解析で判る条件ばかりなので、実行する前にここで名指しする。
-            if (const auto reason = scene::GetParticleGpuFallbackReason(
-                    node.particle, ResolveParticleMaterialSettings(node.particle.materialPath));
-                reason != scene::ParticleGpuFallbackReason::None
-                && reason != scene::ParticleGpuFallbackReason::NotRequested) {
-                addIssue("warning", "GPU_FALLBACK",
-                         std::string("simulationMode = Gpu ですが ")
-                             + scene::ParticleGpuFallbackFieldName(reason)
-                             + " のため CPU で実行されます。"
-                             + scene::ParticleGpuFallbackDescription(reason),
-                         node.id);
-            }
-            break;
-        }
-        case asset::VFXNodeType::Trail:
-        case asset::VFXNodeType::MeshTrail:
-        checkAsset(node.trail.materialPath, "material", node.id);
-            checkAsset(node.trail.meshPath, "mesh", node.id);
-            break;
-        case asset::VFXNodeType::Audio:
-            checkAsset(node.audio.clipPath, "clip", node.id);
-            break;
-        case asset::VFXNodeType::Decal:
-            checkAsset(node.decal.materialPath, "material", node.id);
-            checkAsset(node.decal.albedoPath, "albedo", node.id);
-            // .mat を割り当てた Decal は albedo を使わない。両方空のときだけ「絵が無い」。
-            if (node.decal.albedoPath.empty() && node.decal.materialPath.empty())
-                addIssue("warning", "EMPTY_DECAL",
-                         "Decal に albedo も material もありません", node.id);
-            break;
-        case asset::VFXNodeType::Mesh:
-            checkAsset(node.mesh.meshPath, "mesh", node.id);
-            checkAsset(node.mesh.materialPath, "material", node.id);
-            // animatedParam は「マテリアルのシェーダーに実在する変数名」でなければならない。
-            // WHY: 存在しない名前を書いても保存は通り、実行時は黙って無視される。
-            //      Dissolve の alphaCutoff を動かすつもりが綴り違いで何も起きない、という
-            //      失敗はプレビュー画像から原因を特定できない (「変化しない」としか見えない)。
-            if (!node.mesh.animatedParam.empty() && ctx.resources != nullptr) {
-                const std::string materialPath = node.mesh.materialPath.empty()
-                    ? std::string(asset::VFX_MESH_FALLBACK_MATERIAL) : node.mesh.materialPath;
-                asset::MaterialAsset material;
-                if (asset::LoadMaterialAssetFromFile(
-                        asset::AssetManager::ResolveAssetPath(materialPath), material)
-                    && !material.shaderPath.empty()) {
-                    const std::string resolvedShader =
-                        asset::AssetManager::ResolveAssetPath(material.shaderPath);
-                    const auto handle = ctx.resources->LoadShader(
-                        resolvedShader.empty() ? material.shaderPath : resolvedShader);
-                    const renderer::IShader* shader =
-                        handle.IsValid() ? ctx.resources->Get(handle) : nullptr;
-                    if (shader != nullptr && shader->GetDescriptor().IsValid()
-                        && shader->GetDescriptor().FindVar(node.mesh.animatedParam) == nullptr)
-                        addIssue("warning", "UNKNOWN_SHADER_PARAM",
-                                 "animatedParam \"" + node.mesh.animatedParam
-                                     + "\" が " + materialPath
-                                     + " のシェーダーに存在しません (実行時に無視されます)",
-                                 node.id);
-                }
-            }
-            // colorEnd の RGB が残っていると加算ブレンドで消えずに残り続ける。
-            if ((std::max)({ node.mesh.colorEnd.x, node.mesh.colorEnd.y, node.mesh.colorEnd.z })
-                > 0.02f)
-                addIssue("warning", "MESH_NO_FADE",
-                         "colorEnd の RGB が 0 でないため消えずに残ります", node.id);
-            break;
-        case asset::VFXNodeType::SubGraph:
-            if (node.subGraph.graphPath.empty())
-                addIssue("error", "EMPTY_SUBGRAPH", "Sub Graph に .vfx 参照がありません", node.id);
-            else checkAsset(node.subGraph.graphPath, "graph", node.id);
-            break;
-        default: break;
-        }
-    }
-
-    // 5. budget 超過
-    const asset::VFXGraphBudgetStats budget = asset::CalculateVFXGraphBudget(graph);
-    if (budget.particles > graph.maxParticles)
-        addIssue("warning", "OVER_BUDGET_PARTICLES",
-                 "particle budget 超過: " + std::to_string(budget.particles) + " / "
-                     + std::to_string(graph.maxParticles), 0);
-    if (budget.lights > graph.maxLights)
-        addIssue("warning", "OVER_BUDGET_LIGHTS",
-                 "light budget 超過: " + std::to_string(budget.lights) + " / "
-                     + std::to_string(graph.maxLights), 0);
-    if (budget.audioVoices > graph.maxAudioVoices)
-        addIssue("warning", "OVER_BUDGET_AUDIO",
-                 "audio budget 超過: " + std::to_string(budget.audioVoices) + " / "
-                     + std::to_string(graph.maxAudioVoices), 0);
-
-    // 6. 公開パラメーターとバインドの整合。型不一致は保存できてしまうので明示する。
-    for (const auto& binding : graph.bindings) {
-        const auto* definition = asset::FindVFXParameter(graph, binding.paramName);
-        if (definition == nullptr) {
-            addIssue("error", "UNKNOWN_PARAM",
-                     "binding が未定義のパラメーターを参照しています: " + binding.paramName,
-                     binding.nodeId);
-            continue;
-        }
-        const auto node = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-            [&binding](const asset::VFXGraphNode& item) { return item.id == binding.nodeId; });
-        if (node == graph.nodes.end()) {
-            addIssue("error", "BINDING_NODE_MISSING",
-                     "binding の nodeId が存在しません: " + binding.paramName, binding.nodeId);
-            continue;
-        }
-        reflection::ResolvedProperty resolved;
-        if (!reflection::ResolveProperty(asset::GetVFXNodeSchema(), &*node, binding.schemaPath, resolved)
-            || resolved.property == nullptr) {
-            addIssue("error", "BINDING_PATH_INVALID",
-                     "schemaPath を解決できません: " + binding.schemaPath, binding.nodeId);
-        }
-    }
-
-    // 7. 「検証は通るが見た目が壊れる」設定。
-    // WHY: これらは AI が最も踏みやすく、かつスクリーンショットからは原因を特定できない類
-    //      (回転×非等方でスプライトがせん断される / bind 済みフィールドの編集が実行時に死ぬ)。
-    //      Editor の警告 banner と同じ CollectVFXGraphWarnings をそのまま使うことで、
-    //      「人が見る面」と「AI が読む面」が一致し続ける (別実装にすると必ずドリフトする)。
-    //      参照切れだけは上の checkAsset がプロジェクト/エンジン両ルートを見る分だけ賢いので、
-    //      そちらへ任せて二重報告を避ける。
-    for (const auto& warning : asset::CollectVFXGraphWarnings(graph, /*checkAssetReferences=*/false))
-        addIssue("warning", warning.code.c_str(), warning.message, warning.nodeId);
-
-    // 8. 何も出ないグラフ (Entry と Delay しかない)
-    const bool hasVisual = std::any_of(graph.nodes.begin(), graph.nodes.end(),
-        [](const asset::VFXGraphNode& node) {
-            return node.type != asset::VFXNodeType::Entry
-                && node.type != asset::VFXNodeType::Delay;
-        });
-    if (!hasVisual)
-        addIssue("warning", "NO_OUTPUT", "実体を持つノードが1つもありません", 0);
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(path));
-    result.Set("name", JsonValue(graph.name));
-    result.Set("duration", JsonValue(scheduled ? duration : 0.0));
-    result.Set("nodeCount", JsonValue(static_cast<int>(graph.nodes.size())));
-    result.Set("linkCount", JsonValue(static_cast<int>(graph.links.size())));
-    result.Set("errors", JsonValue(errorCount));
-    result.Set("warnings", JsonValue(warningCount));
-    result.Set("issues", std::move(issues));
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.diff — 2つの .vfx の差分を構造化して返す。
-// WHY: AI が編集の前後を比べるとき、ファイル全文を2回読ませると
-//      文脈を食い潰すうえ「どこが変わったか」の判断自体を毎回やり直すことになる。
-//      ノード/リンク/パラメーターの単位で差分だけを返す。
-Outcome DoVFXDiff(const JsonValue& payload)
-{
-    const std::string basePath = StringField(payload, "base");
-    const std::string targetPath = StringField(payload, "target");
-    if (basePath.empty() || targetPath.empty())
-        return Outcome::Err("BAD_ARG", "base と target が必要です");
-    asset::VFXGraphAsset base;
-    asset::VFXGraphAsset target;
-    std::string error;
-    if (!asset::ParseVFXGraphAsset(basePath, base, &error))
-        return Outcome::Err("VFX_INVALID", "base: " + error);
-    if (!asset::ParseVFXGraphAsset(targetPath, target, &error))
-        return Outcome::Err("VFX_INVALID", "target: " + error);
-
-    const auto findNode = [](const asset::VFXGraphAsset& graph, int id) -> const asset::VFXGraphNode* {
-        const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-            [id](const asset::VFXGraphNode& node) { return node.id == id; });
-        return it == graph.nodes.end() ? nullptr : &*it;
-    };
-
-    JsonValue addedNodes = JsonValue::MakeArray();
-    JsonValue removedNodes = JsonValue::MakeArray();
-    JsonValue changedNodes = JsonValue::MakeArray();
-    for (const auto& node : target.nodes) {
-        const auto* previous = findNode(base, node.id);
-        if (previous == nullptr) {
-            JsonValue item = JsonValue::MakeObject();
-            item.Set("nodeId", JsonValue(node.id));
-            item.Set("name", JsonValue(node.name));
-            item.Set("nodeType", JsonValue(std::string(asset::VFXNodeTypeName(node.type))));
-            addedNodes.Push(std::move(item));
-            continue;
-        }
-        // 値の差分はスキーマを総なめし、変わったプロパティのパスと新旧値を並べる。
-        JsonValue fields = JsonValue::MakeArray();
-        std::vector<std::string> paths;
-        // 走査対象は編集後 (target) のノード。配列要素が増えた分も差分に出したいため。
-        CollectVFXSchemaPaths(asset::GetVFXNodeSchema(), &node, {}, paths);
-        for (const std::string& schemaPath : paths) {
-            reflection::ResolvedProperty before;
-            reflection::ResolvedProperty after;
-            if (!reflection::ResolveProperty(asset::GetVFXNodeSchema(), &node, schemaPath, after)
-                || after.property == nullptr) continue;
-            // base 側で解決できない = 配列要素が増えた (bursts[2] が新設された等)。
-            // ここで continue すると「Burst を足した」変更が差分から丸ごと消えるため、
-            // 追加として明示する。
-            const bool existedBefore =
-                reflection::ResolveProperty(asset::GetVFXNodeSchema(), previous, schemaPath, before)
-                && before.property != nullptr;
-            const std::string beforeText = existedBefore
-                ? VFXSchemaValueToText(before.property->type, before.property->get(before.constOwner))
-                : std::string("<absent>");
-            const std::string afterText = VFXSchemaValueToText(after.property->type,
-                                                               after.property->get(after.constOwner));
-            if (beforeText == afterText) continue;
-            JsonValue field = JsonValue::MakeObject();
-            field.Set("schemaPath", JsonValue(schemaPath));
-            field.Set("before", JsonValue(beforeText));
-            field.Set("after", JsonValue(afterText));
-            fields.Push(std::move(field));
-        }
-        if (previous->name != node.name) {
-            JsonValue field = JsonValue::MakeObject();
-            field.Set("schemaPath", JsonValue(std::string("name")));
-            field.Set("before", JsonValue(previous->name));
-            field.Set("after", JsonValue(node.name));
-            fields.Push(std::move(field));
-        }
-        if (fields.AsArray().empty()) continue;
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("nodeId", JsonValue(node.id));
-        item.Set("name", JsonValue(node.name));
-        item.Set("fields", std::move(fields));
-        changedNodes.Push(std::move(item));
-    }
-    for (const auto& node : base.nodes) {
-        if (findNode(target, node.id) != nullptr) continue;
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("nodeId", JsonValue(node.id));
-        item.Set("name", JsonValue(node.name));
-        item.Set("nodeType", JsonValue(std::string(asset::VFXNodeTypeName(node.type))));
-        removedNodes.Push(std::move(item));
-    }
-
-    const auto linkKey = [](const asset::VFXGraphLink& link) {
-        return std::to_string(link.fromNode) + "->" + std::to_string(link.toNode) + ":"
-            + std::to_string(static_cast<int>(link.trigger));
-    };
-    JsonValue addedLinks = JsonValue::MakeArray();
-    JsonValue removedLinks = JsonValue::MakeArray();
-    std::vector<std::string> baseKeys;
-    for (const auto& link : base.links) baseKeys.push_back(linkKey(link));
-    std::vector<std::string> targetKeys;
-    for (const auto& link : target.links) targetKeys.push_back(linkKey(link));
-    for (std::size_t index = 0; index < target.links.size(); ++index) {
-        if (std::find(baseKeys.begin(), baseKeys.end(), targetKeys[index]) != baseKeys.end()) continue;
-        addedLinks.Push(JsonValue(targetKeys[index]));
-    }
-    for (std::size_t index = 0; index < base.links.size(); ++index) {
-        if (std::find(targetKeys.begin(), targetKeys.end(), baseKeys[index]) != targetKeys.end()) continue;
-        removedLinks.Push(JsonValue(baseKeys[index]));
-    }
-
-    JsonValue parameterChanges = JsonValue::MakeArray();
-    for (const auto& parameter : target.parameters) {
-        if (asset::FindVFXParameter(base, parameter.name) == nullptr)
-            parameterChanges.Push(JsonValue("added: " + parameter.name));
-    }
-    for (const auto& parameter : base.parameters) {
-        if (asset::FindVFXParameter(target, parameter.name) == nullptr)
-            parameterChanges.Push(JsonValue("removed: " + parameter.name));
-    }
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("base", JsonValue(basePath));
-    result.Set("target", JsonValue(targetPath));
-    const bool identical = addedNodes.AsArray().empty() && removedNodes.AsArray().empty()
-        && changedNodes.AsArray().empty() && addedLinks.AsArray().empty()
-        && removedLinks.AsArray().empty() && parameterChanges.AsArray().empty();
-    result.Set("identical", JsonValue(identical));
-    result.Set("addedNodes", std::move(addedNodes));
-    result.Set("removedNodes", std::move(removedNodes));
-    result.Set("changedNodes", std::move(changedNodes));
-    result.Set("addedLinks", std::move(addedLinks));
-    result.Set("removedLinks", std::move(removedLinks));
-    result.Set("parameters", std::move(parameterChanges));
-    return Outcome::Ok(std::move(result));
-}
-
-// VFX ノードの Transform を返すための最小ヘルパー。
-// NOTE: Scene 側の VectorToJson は GameObject 用に別の場所で定義されているため、
-//       依存を持ち込まずここで完結させる。
-JsonValue VFXVector3ToJson(const math::Vector3& value)
-{
-    JsonValue result = JsonValue::MakeArray();
-    result.Push(JsonValue(value.x));
-    result.Push(JsonValue(value.y));
-    result.Push(JsonValue(value.z));
-    return result;
-}
-
-// detail="summary" (既定) は「構造を把握する」ための最小集合だけを返し、
-// detail="full" は編集に必要な全フィールド (Transform / エディタ座標 / グループ / シグナル) を返す。
-//
-// WHY: 以前は常に全部を返していたため、5 個のテンプレートを一巡見るだけで
-//      editorPosition と transform が数百行を占め、lint が「問題なし」と言っている
-//      グラフでも読むだけで context を大きく食っていた。
-//      構造の把握と座標の編集は別の作業なので、要求されたときだけ後者を返す。
-Outcome DoVFXGraphInspect(const JsonValue& payload)
-{
-    const std::string path = StringField(payload, "path");
-    if (path.empty()) return Outcome::Err("BAD_ARG", "path が必要です");
-    const std::string detail = LowerAscii(StringField(payload, "detail"));
-    if (!detail.empty() && detail != "summary" && detail != "full")
-        return Outcome::Err("BAD_ARG", "detail は summary / full のいずれかです");
-    const bool full = detail == "full";
-    asset::VFXGraphAsset graph;
-    std::string error;
-    if (!asset::ParseVFXGraphAsset(path, graph, &error))
-        return Outcome::Err("VFX_INVALID", error);
-    const bool valid = asset::ValidateVFXGraphAsset(graph, &error);
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(path));
-    result.Set("detail", JsonValue(full ? "full" : "summary"));
-    result.Set("name", JsonValue(graph.name));
-    result.Set("version", JsonValue(graph.version));
-    JsonValue budgetLimits = JsonValue::MakeObject();
-    budgetLimits.Set("particles", JsonValue(graph.maxParticles));
-    budgetLimits.Set("lights", JsonValue(graph.maxLights));
-    budgetLimits.Set("audioVoices", JsonValue(graph.maxAudioVoices));
-    result.Set("budgetLimits", std::move(budgetLimits));
-    result.Set("valid", JsonValue(valid));
-    result.Set("validationError", JsonValue(valid ? std::string{} : error));
-    JsonValue nodes = JsonValue::MakeArray();
-    for (const auto& node : graph.nodes) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("id", JsonValue(node.id));
-        item.Set("type", JsonValue(asset::VFXNodeTypeName(node.type)));
-        item.Set("name", JsonValue(node.name));
-        item.Set("enabled", JsonValue(node.enabled));
-        item.Set("startOffset", JsonValue(node.startOffset));
-        item.Set("duration", JsonValue(node.duration));
-        if (full) {
-            JsonValue editorPosition = JsonValue::MakeArray();
-            editorPosition.Push(JsonValue(node.editorX));
-            editorPosition.Push(JsonValue(node.editorY));
-            item.Set("editorPosition", std::move(editorPosition));
-            // 空間の配置。link (実行の因果) とは独立した情報で、これを返さないと AI は
-            // 「位置がどう決まっているか」を一切知らないままフィールドを書き換えることになる。
-            JsonValue transform = JsonValue::MakeObject();
-            transform.Set("position", VFXVector3ToJson(node.localPosition));
-            transform.Set("rotationDegrees", VFXVector3ToJson(node.localRotationDegrees));
-            transform.Set("scale", VFXVector3ToJson(node.localScale));
-            item.Set("transform", std::move(transform));
-        }
-        // -1 = owner 直下。それ以外は親ノードの id で、その Transform が合成される。
-        // 親を持つノードの localPosition は親からの相対値になるため、
-        // 既定でも「親がいる」ことだけは落とさない (summary では -1 を省く)。
-        if (full || node.parentNodeId != -1) item.Set("parentNodeId", JsonValue(node.parentNodeId));
-        if (!node.attachBone.empty()) item.Set("attachBone", JsonValue(node.attachBone));
-        if (node.type == asset::VFXNodeType::Particle) {
-            item.Set("maxParticles", JsonValue(node.particle.maxParticles));
-            // 「要求」と「実際に走る経路」を分けて返す。同じ値だと縮退に気づけない。
-            const auto gpuFallback = scene::GetParticleGpuFallbackReason(
-                node.particle, ResolveParticleMaterialSettings(node.particle.materialPath));
-            item.Set("simulation", JsonValue(node.particle.simulationMode == scene::ParticleSimulationMode::Gpu
-                ? "GPU" : "CPU"));
-            item.Set("effectiveSimulation",
-                     JsonValue(gpuFallback == scene::ParticleGpuFallbackReason::None ? "GPU" : "CPU"));
-            if (node.particle.simulationMode == scene::ParticleSimulationMode::Gpu
-                && gpuFallback != scene::ParticleGpuFallbackReason::None) {
-                item.Set("gpuFallbackField",
-                         JsonValue(std::string(scene::ParticleGpuFallbackFieldName(gpuFallback))));
-            }
-            item.Set("bursts", JsonValue(static_cast<int>(node.particle.bursts.size())));
-            item.Set("collision", JsonValue(static_cast<int>(node.particle.collisionMode)));
-        } else if (node.type == asset::VFXNodeType::SubGraph) {
-            item.Set("graphPath", JsonValue(node.subGraph.graphPath));
-        }
-        nodes.Push(std::move(item));
-    }
-    result.Set("nodes", std::move(nodes));
-    JsonValue links = JsonValue::MakeArray();
-    for (const auto& link : graph.links) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("from", JsonValue(link.fromNode));
-        item.Set("to", JsonValue(link.toNode));
-        item.Set("trigger", JsonValue(asset::VFXLinkTriggerName(link.trigger)));
-        item.Set("delay", JsonValue(link.delay));
-        links.Push(std::move(item));
-    }
-    result.Set("links", std::move(links));
-    // グループは canvas 上の見た目のまとまりで、実行にも保存内容にも影響しない。
-    // summary では件数だけ返し、レイアウトを編集するときだけ full で中身を読む。
-    JsonValue groups = JsonValue::MakeArray();
-    if (!full) result.Set("groupCount", JsonValue(static_cast<int>(graph.groups.size())));
-    for (const auto& group : graph.groups) {
-        if (!full) break;
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("id", JsonValue(group.id));
-        item.Set("title", JsonValue(group.title));
-        item.Set("note", JsonValue(group.note));
-        item.Set("x", JsonValue(group.x));
-        item.Set("y", JsonValue(group.y));
-        item.Set("width", JsonValue(group.width));
-        item.Set("height", JsonValue(group.height));
-        JsonValue color = JsonValue::MakeArray();
-        color.Push(JsonValue(group.color.x));
-        color.Push(JsonValue(group.color.y));
-        color.Push(JsonValue(group.color.z));
-        color.Push(JsonValue(group.color.w));
-        item.Set("color", std::move(color));
-        groups.Push(std::move(item));
-    }
-    result.Set("groups", std::move(groups));
-    JsonValue parameters = JsonValue::MakeArray();
-    for (const auto& parameter : graph.parameters) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("name", JsonValue(parameter.name));
-        item.Set("type", JsonValue(static_cast<int>(parameter.type)));
-        item.Set("hasRange", JsonValue(parameter.hasRange));
-        item.Set("minimum", JsonValue(parameter.minimum));
-        item.Set("maximum", JsonValue(parameter.maximum));
-        item.Set("source", JsonValue(static_cast<int>(parameter.defaultValue.source.index())));
-        parameters.Push(std::move(item));
-    }
-    result.Set("parameters", std::move(parameters));
-    JsonValue bindings = JsonValue::MakeArray();
-    for (const auto& binding : graph.bindings) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("paramName", JsonValue(binding.paramName));
-        item.Set("nodeId", JsonValue(binding.nodeId));
-        item.Set("schemaPath", JsonValue(binding.schemaPath));
-        bindings.Push(std::move(item));
-    }
-    result.Set("bindings", std::move(bindings));
-    JsonValue variants = JsonValue::MakeArray();
-    for (const auto& variant : graph.variants) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("name", JsonValue(variant.name));
-        item.Set("overrideCount", JsonValue(static_cast<int>(variant.overrides.size())));
-        variants.Push(std::move(item));
-    }
-    result.Set("variants", std::move(variants));
-    JsonValue forwards = JsonValue::MakeArray();
-    for (const auto& forward : graph.subGraphForwards) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("nodeId", JsonValue(forward.nodeId));
-        item.Set("parentParam", JsonValue(forward.parentParam));
-        item.Set("childParam", JsonValue(forward.childParam));
-        forwards.Push(std::move(item));
-    }
-    result.Set("subGraphForwards", std::move(forwards));
-    // シグナルの演算グラフは中身を読む必要があるときだけ返す。
-    // summary では「シグナルを使っているか」だけ判れば十分で、それは signalOutputs で判る。
-    JsonValue signalNodes = JsonValue::MakeArray();
-    if (!full) result.Set("signalNodeCount", JsonValue(static_cast<int>(graph.signalNodes.size())));
-    for (const auto& signal : graph.signalNodes) {
-        if (!full) break;
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("id", JsonValue(signal.id));
-        item.Set("operation", JsonValue(static_cast<int>(signal.operation)));
-        item.Set("inputA", JsonValue(signal.inputA));
-        item.Set("inputB", JsonValue(signal.inputB));
-        item.Set("valueA", JsonValue(signal.valueA));
-        item.Set("valueB", JsonValue(signal.valueB));
-        signalNodes.Push(std::move(item));
-    }
-    result.Set("signalNodes", std::move(signalNodes));
-    JsonValue signalOutputs = JsonValue::MakeArray();
-    for (const auto& output : graph.signalOutputs) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("name", JsonValue(output.name));
-        item.Set("nodeId", JsonValue(output.nodeId));
-        signalOutputs.Push(std::move(item));
-    }
-    result.Set("signalOutputs", std::move(signalOutputs));
-    const auto cost = asset::CalculateVFXGraphBudget(graph);
-    JsonValue budget = JsonValue::MakeObject();
-    budget.Set("particles", JsonValue(cost.particles));
-    budget.Set("particleLimit", JsonValue(graph.maxParticles));
-    budget.Set("lights", JsonValue(cost.lights));
-    budget.Set("lightLimit", JsonValue(graph.maxLights));
-    budget.Set("audioVoices", JsonValue(cost.audioVoices));
-    budget.Set("audioLimit", JsonValue(graph.maxAudioVoices));
-    budget.Set("withinBudget", JsonValue(cost.particles <= graph.maxParticles
-        && cost.lights <= graph.maxLights && cost.audioVoices <= graph.maxAudioVoices));
-    result.Set("budget", std::move(budget));
-    if (!full) {
-        result.Set("hint", JsonValue(std::string(
-            "detail=\"summary\" のため、ノードの transform / editorPosition、group、"
-            "signalNode の中身は返していません。空間配置やキャンバス配置を編集するときだけ "
-            "detail=\"full\" で読み直してください。"
-            "個々のフィールドの現在値は vfx.nodeField (vfx_node_get_field) で 1 つずつ引けます。")));
-    }
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.nodeField — vfx.node.setField の対になる読み出し。
-//
-// WHY: 設定を書く手段 (setField) はあるのに読む手段が無く、blendMode / texturePath /
-//      colorGradient に「今何が入っているか」を確認できなかった。
-//      vfx.graph は構造しか返さず、node.components は Scene のノード用で
-//      VFX Graph のノード id とは別空間なので使えない。
-//      現在値を知らないまま書くと、変更が効いたのかどうかもプレビュー画像からしか
-//      判断できず、反復が「変えて見る」の繰り返しになる。
-//
-// schemaPath 省略時はそのノードの全 leaf を返す。prefix を渡せば
-// "particle." のように部分木だけへ絞れる (全 leaf は Particle で 100 個を超えるため)。
-Outcome DoVFXNodeField(const JsonValue& payload)
-{
-    const std::string path = StringField(payload, "path");
-    if (path.empty()) return Outcome::Err("BAD_ARG", "path が必要です");
-    const JsonValue* nodeIdValue = payload.Find("nodeId");
-    if (nodeIdValue == nullptr || !nodeIdValue->IsNumber())
-        return Outcome::Err("BAD_ARG", "nodeId が必要です");
-    const int nodeId = nodeIdValue->AsInt();
-
-    asset::VFXGraphAsset graph;
-    std::string error;
-    if (!asset::LoadVFXGraphAsset(path, graph, &error)) return Outcome::Err("VFX_INVALID", error);
-    const auto node = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-        [nodeId](const asset::VFXGraphNode& item) { return item.id == nodeId; });
-    if (node == graph.nodes.end())
-        return Outcome::Err("BAD_ARG", "nodeId が存在しません: " + std::to_string(nodeId));
-
-    // 読み出し専用なので const オーバーロードを選ばせる。
-    // 非 const で解決すると set を持たないプロパティが leaf として弾かれ、
-    // 「読めるはずの値が読めない」という書き込み側の制約を読み出しへ持ち込んでしまう。
-    const asset::VFXGraphNode* const target = &*node;
-
-    // 値 1 つを JSON 化する共通処理。setField の value と同じ表現で返すことが要件。
-    const auto readField = [target](const std::string& schemaPath, JsonValue& item) -> bool {
-        reflection::ResolvedProperty resolved;
-        if (!reflection::ResolveProperty(asset::GetVFXNodeSchema(), target, schemaPath, resolved)
-            || resolved.property == nullptr) return false;
-        item.Set("schemaPath", JsonValue(schemaPath));
-        item.Set("type", JsonValue(std::string(PropertyTypeName(resolved.property->type))));
-        item.Set("value", SchemaValueToJson(resolved.property->type,
-                                            resolved.property->get(resolved.constOwner)));
-        // enum は数値のままだと意味が読めない。選択肢と現在の名前を添える。
-        if (!resolved.property->enumNames.empty()) {
-            const std::any raw = resolved.property->get(resolved.constOwner);
-            if (const auto* index = std::any_cast<int>(&raw);
-                index != nullptr && *index >= 0
-                && static_cast<std::size_t>(*index) < resolved.property->enumNames.size())
-                item.Set("enumName", JsonValue(std::string(resolved.property->enumNames[
-                    static_cast<std::size_t>(*index)])));
-        }
-        return true;
-    };
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(path));
-    result.Set("nodeId", JsonValue(nodeId));
-    result.Set("nodeType", JsonValue(std::string(asset::VFXNodeTypeName(node->type))));
-    result.Set("name", JsonValue(node->name));
-
-    if (const std::string schemaPath = StringField(payload, "schemaPath"); !schemaPath.empty()) {
-        JsonValue item = JsonValue::MakeObject();
-        if (!readField(schemaPath, item))
-            return Outcome::Err("UNKNOWN_FIELD",
-                                "schemaPath を解決できません: " + schemaPath
-                                + " (有効な path は vfx.schema、または schemaPath を省略して"
-                                  "このノードの leaf 一覧を取得してください)");
-        result.Set("field", std::move(item));
-        return Outcome::Ok(std::move(result));
-    }
-
-    // 全 leaf。走査対象は「このノードの実インスタンス」なので、bursts[N] は実要素数ぶん出る。
-    const std::string prefix = StringField(payload, "prefix");
-    std::vector<std::string> paths;
-    CollectVFXSchemaPaths(asset::GetVFXNodeSchema(), target, {}, paths);
-    JsonValue fields = JsonValue::MakeArray();
-    int skipped = 0;
-    for (const std::string& schemaPath : paths) {
-        if (!prefix.empty() && schemaPath.rfind(prefix, 0) != 0) { ++skipped; continue; }
-        JsonValue item = JsonValue::MakeObject();
-        if (readField(schemaPath, item)) fields.Push(std::move(item));
-    }
-    result.Set("fields", std::move(fields));
-    result.Set("filteredOut", JsonValue(skipped));
-    result.Set("hint", JsonValue(std::string(
-        "value は vfx.node.setField (vfx_node_set_field) の value へそのまま渡せる形です。"
-        "Curve / Gradient は {interp, keys} で返るので、keys を書き換えて渡せば往復します。"
-        "全 leaf は Particle ノードだけで 100 個を超えます。"
-        "prefix=\"particle.\" のように絞るか、schemaPath を指定して 1 つだけ読んでください。")));
-    return Outcome::Ok(std::move(result));
-}
-
-Outcome DoVFXParams(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    const std::string path = StringField(payload, "path");
-    if (path.empty()) return Outcome::Err("BAD_ARG", "path が必要です");
-    asset::VFXGraphAsset graph;
-    std::string error;
-    if (!asset::LoadVFXGraphAsset(path, graph, &error)) return Outcome::Err("VFX_INVALID", error);
-
-    scene::VFXGraphComponent fallback;
-    fallback.graphPath = path;
-    scene::VFXGraphComponent* instance = nullptr;
-    const std::string id = StringField(payload, "id");
-    if (!id.empty()) {
-        GameObject* object = ctx.activeScene != nullptr ? ctx.activeScene->FindByGuid(id) : nullptr;
-        instance = object != nullptr ? object->GetComponent<scene::VFXGraphComponent>() : nullptr;
-        if (instance == nullptr) return Outcome::Err("NOT_PRESENT", "対象にVFXGraphComponentがありません");
-    }
-    const scene::VFXGraphComponent& sourceComponent = instance != nullptr ? *instance : fallback;
-    const float normalizedTime = instance != nullptr && instance->graphDuration > 0.0f
-        ? std::clamp(instance->playTime / instance->graphDuration, 0.0f, 1.0f) : 0.0f;
-
-    JsonValue parameters = JsonValue::MakeArray();
-    for (const auto& definition : graph.parameters) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("name", JsonValue(definition.name));
-        item.Set("type", JsonValue(VFXParamTypeName(definition.type)));
-        item.Set("default", VFXParamValueJson(graph, definition.defaultValue, normalizedTime, 0, definition.name));
-        item.Set("hasRange", JsonValue(definition.hasRange));
-        if (definition.hasRange) {
-            item.Set("minimum", JsonValue(definition.minimum));
-            item.Set("maximum", JsonValue(definition.maximum));
-        }
-        const bool overridden = std::any_of(sourceComponent.parameterOverrides.begin(),
-            sourceComponent.parameterOverrides.end(), [&](const auto& value) { return value.paramName == definition.name; });
-        item.Set("overridden", JsonValue(overridden));
-        if (const auto* effective = asset::ResolveVFXParamSource(graph, sourceComponent, definition))
-            item.Set("effective", VFXParamValueJson(graph, *effective, normalizedTime, 0, definition.name));
-        JsonValue bindings = JsonValue::MakeArray();
-        for (const auto& binding : graph.bindings) {
-            if (binding.paramName != definition.name) continue;
-            JsonValue bindingJson = JsonValue::MakeObject();
-            bindingJson.Set("nodeId", JsonValue(binding.nodeId));
-            bindingJson.Set("schemaPath", JsonValue(binding.schemaPath));
-            bindings.Push(std::move(bindingJson));
-        }
-        item.Set("bindings", std::move(bindings));
-        parameters.Push(std::move(item));
-    }
-    JsonValue staleOverrides = JsonValue::MakeArray();
-    for (const auto& value : sourceComponent.parameterOverrides) {
-        if (asset::FindVFXParameter(graph, value.paramName) == nullptr) staleOverrides.Push(JsonValue(value.paramName));
-    }
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(path));
-    result.Set("instanceId", JsonValue(id));
-    result.Set("variant", JsonValue(sourceComponent.variant));
-    result.Set("normalizedTime", JsonValue(normalizedTime));
-    result.Set("parameters", std::move(parameters));
-    result.Set("staleOverrides", std::move(staleOverrides));
-    return Outcome::Ok(std::move(result));
-}
-
-// AI へ提示するノード型の一覧。VFXNodeType の全値をここで列挙する。
-// WHY: 個別に書き並べると型を足したときに必ず追従漏れが出て、
-//      「エンジンにはあるのに AI からは存在しないノード」が生まれる。
-//      末尾の static_assert が、列挙漏れをビルド時に落とす。
-constexpr asset::VFXNodeType ALL_VFX_NODE_TYPES[] = {
-    asset::VFXNodeType::Entry, asset::VFXNodeType::Delay, asset::VFXNodeType::Particle,
-    asset::VFXNodeType::Trail, asset::VFXNodeType::MeshTrail, asset::VFXNodeType::Light,
-    asset::VFXNodeType::Audio, asset::VFXNodeType::Decal, asset::VFXNodeType::SubGraph,
-    asset::VFXNodeType::ForceField, asset::VFXNodeType::Mesh, asset::VFXNodeType::ScreenEffect,
-    asset::VFXNodeType::CameraShake, asset::VFXNodeType::TimeScale, asset::VFXNodeType::Wind,
-    asset::VFXNodeType::Reroute, asset::VFXNodeType::AnimatedMesh,
-};
-static_assert(std::size(ALL_VFX_NODE_TYPES)
-                  == static_cast<std::size_t>(asset::VFXNodeType::AnimatedMesh) + 1,
-              "VFXNodeType を追加したら ALL_VFX_NODE_TYPES と ParseVFXNodeType も更新すること");
-
-Outcome DoVFXSchema()
-{
-    JsonValue fields = JsonValue::MakeArray();
-    AppendSchemaProperties(fields, asset::GetVFXNodeSchema(), {});
-    JsonValue nodeTypes = JsonValue::MakeArray();
-    for (const auto type : ALL_VFX_NODE_TYPES)
-        nodeTypes.Push(JsonValue(asset::VFXNodeTypeName(type)));
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("schema", JsonValue(std::string(asset::GetVFXNodeSchema().TypeName())));
-    result.Set("nodeTypes", std::move(nodeTypes));
-    result.Set("fields", std::move(fields));
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.curvePresets — 名前付きカーブプリセットの目録を返す。
-// WHY: エフェクトが AAA に見えるかは時間曲線の形で決まるが、AI が (time,value) を
-//      生で並べても意図した形になった保証が無く、外したときも画像から逆算できない。
-//      Editor の UI と同じ表 (ParticleCurvePresets.hpp) を返すことで、
-//      AI は "Spike" を選ぶだけで正しい形から始められ、微調整だけを画像評価に回せる。
-Outcome DoVFXCurvePresets()
-{
-    JsonValue presets = JsonValue::MakeArray();
-    for (const asset::ParticleCurvePreset& preset : asset::ParticleCurvePresets()) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("name", JsonValue(std::string(preset.name)));
-        item.Set("description", JsonValue(std::string(preset.description)));
-        item.Set("interpolation", JsonValue(static_cast<int>(preset.interpolation)));
-        item.Set("keyCount", JsonValue(static_cast<int>(preset.keyCount)));
-        JsonValue keys = JsonValue::MakeArray();
-        for (std::uint32_t index = 0; index < preset.keyCount; ++index) {
-            JsonValue key = JsonValue::MakeArray();
-            key.Push(JsonValue(static_cast<double>(preset.keys[index][0])));
-            key.Push(JsonValue(static_cast<double>(preset.keys[index][1])));
-            keys.Push(std::move(key));
-        }
-        item.Set("keys", std::move(keys));
-        presets.Push(std::move(item));
-    }
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("presets", std::move(presets));
-    result.Set("usage", JsonValue(std::string(
-        "vfx.node.setField の value に {\"preset\":\"Spike\",\"scale\":1.0} を渡すと適用されます。"
-        "生のキーを指定する場合は {\"interp\":0|1|2,\"keys\":[[t,v],...]} (最大 8 キー)。"
-        "interp は 0=Linear 1=Step 2=Smooth。")));
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.guide — このエンジンで「見られるエフェクト」を作るための規約を機械可読で返す。
-//
-// WHY: AI がゼロから .vfx を組むと、DAG 検証も lint も通るのに見た目が破綻する、という
-//      失敗の仕方をする。実際、同梱テンプレート 5 件のうち 4 件が
-//      「回転×非等方でせん断」「lightingStrength>1 で煙が黒く潰れる」
-//      「bind 済みフィールドの編集が実行時に死ぬ」を踏んでいた。人間が作っても同じである。
-//      これらは画像を見ても原因が分からない類なので、反復では収束しない。
-//      作る前に規約を渡し、作った後に lint で同じ規約を検査する二段構えにする。
-//
-// rule 各項目の lintCode は、その規約を機械的に検査している vfx.lint の issue code。
-// 空文字は「検査できないが守るべき設計原則」で、AI 側の判断に委ねる部分を明示する。
-Outcome DoVFXGuide()
-{
-    struct Rule {
-        const char* topic;
-        const char* rule;
-        const char* why;
-        const char* lintCode;
-    };
-    static constexpr Rule kRules[] = {
-        { "material",
-          "テクスチャを割り当てる前に必ず vfx.textureAnalyze でその素材を解析する。"
-          "blendMode / alphaSource / spriteColumns / spriteRows / softParticles は"
-          "素材の中身で正解が変わり、ファイル名やパスからは判断できない。",
-          "素材を見ずに設定を決めると、アルファが機能していない素材で矩形の板が描かれる、"
-          "事前乗算素材の縁が黒く縁取られる、アトラスをコマ割りせず 1 枚絵として貼る、"
-          "といった失敗をする。いずれもプレビュー画像から原因を特定できないため、"
-          "反復しても収束しない。観測すれば機械的に決まる項目を推測に任せないこと。", "" },
-        { "material",
-          "materialPath を設定した Emitter では、blendMode は実行時に .mat の blend_mode で"
-          "上書きされる。ブレンドを変えるなら Emitter ではなく .mat を編集する。"
-          ".mat を割り当てている場合は vfx.materialAnalyze で実際に効く設定を確認する。",
-          "materialPath が描画設定の単一の信頼元になる設計なので、Emitter 側の blendMode は"
-          "保存はされても実行時に使われない。「Additive にしたのに Alpha で描かれる」という"
-          "形でしか現れず、値を見ても原因が判らない。", "" },
-        { "material",
-          "シェーダー変数名を要求する設定 (.mat の params / Mesh ノードの animatedParam) は、"
-          "書く前に shader.inspect で実在する名前を確認する。",
-          "存在しない名前を書いても保存は通り、実行時は黙って無視される。"
-          "「値を変えても絵が変わらない」としか見えず、綴り違いに最後まで気付けない。"
-          "未使用変数はコンパイル時に消えるため、HLSL の宣言を読むだけでは不十分で、"
-          "コンパイル済みバイトコードのリフレクション結果を見る必要がある。",
-          "UNKNOWN_SHADER_PARAM" },
-        { "material",
-          "解析の alpha.isMeaningful=false なら alphaSource=1 (Luminance) が必須。"
-          "alpha.likelyPremultiplied=true なら blendMode=2 (Premultiplied)。",
-          "アルファチャンネルが全画素 1.0 の素材は珍しくない (RGB だけで作られた炎など)。"
-          "TextureAlpha のままでは全面不透明として描かれ、粒子が矩形の板になる。", "" },
-        { "blending",
-          "炎の本体は Alpha (blendMode=1) + sortMode=1、発光する芯だけ Additive (blendMode=0)。"
-          "芯の renderPriority を本体より大きくして手前に描く。",
-          "全レイヤーを加算にすると数十枚の重なりが白飽和し、輪郭の無い光の玉になる。"
-          "物体として見えるには背景を隠す不透明な body が要る。", "" },
-        { "blending",
-          "Alpha / Premultiplied の .mat を使うエミッターは必ず sortMode=1 (BackToFront)。",
-          "半透明の重なりは描画順で結果が変わり、None だとフレームごとにちらつく。"
-          "ブレンドは .mat の blend_mode が決めるので、素材を差し替えたら sortMode も見直す。", "" },
-        { "motion",
-          "上向きの加速度は emitVelocity・gravity・ForceField のうち 1 つだけが持つ。"
-          "推奨は ForceField (Wind) に集約し、各エミッターの gravity は 0。",
-          "三重に計上すると発生半径の 10 倍以上吹き上がり、焚き火ではなくガスの噴流になる。"
-          "1 か所に集約すると、そこを触るだけで全レイヤーの伸びが揃って変わる。", "" },
-        { "motion",
-          "火の粉など一部の粒子には下向き gravity を与え、上昇風の外へ抜けて落ちるようにする。",
-          "全部が上がりっぱなしだと「立ち上る点の列」にしか見えず、熱気の境界が出ない。", "" },
-        { "sprite",
-          "回転 (angularVelocity / rotationCurve) と非等方 sizeAxisScale は排他。"
-          "縦に伸ばす層は回さない、回す層は sizeAxisScale=[1,1,1]。",
-          "Particle.hlsl は回転の後に軸倍率を掛けるため、両立させるとスプライトが"
-          "平行四辺形へせん断される。両立させる方法は無い。", "SHEARED_SPRITE" },
-        { "sprite",
-          "sizeEnd は sizeStart の 4〜6 割程度に留め、0 付近にしない。",
-          "0 へ収束させると上がるほど点になり、炎の舌や煙の広がりにならない。"
-          "尖らせるのは寿命とアルファの役目。", "" },
-        { "color",
-          "colorGradient のアルファは 0 で始まり 0 で終える (中間にピークを置く)。",
-          "端が 0 でないと粒子が発生・消滅する瞬間にポップして、板ポリの出入りが見える。", "" },
-        { "lighting",
-          ".mat の sixWayLighting を使う場合 lightingStrength は 1.0 以下 (推奨 0.5〜0.8)。",
-          "シェーダー側で saturate されるため 1.0 超は「元の色を捨てて ambient+N·L で塗る」"
-          "意味しか持たず、暗い環境で煙が黒く潰れる。", "" },
-        { "layering",
-          "renderPriority は 煙(0) < 炎本体(20) < 芯(30) < 火の粉(40) < 歪み(100) の順。",
-          "歪み (distortion) は背景を屈折させるため必ず最後。煙が炎より手前に来ると"
-          "光っているはずの炎が濁る。", "" },
-        { "hierarchy",
-          "link は「いつ動くか」だけを決める。位置の入れ子は parentNodeId で別に指定する。"
-          "衝撃波から link で繋いだ煙は、衝撃波の位置を継承しない。"
-          "一緒に動かしたいなら vfx.node.setParent で親子にすること。",
-          "この 2 つは別の軸で、link 1 本に兼任させると「傾けたいだけなのに発火順まで変わる」"
-          "形で必ず破綻する。逆に、親子にしただけでは発火順は変わらない。", "" },
-        { "hierarchy",
-          "親に指定できるのは実体を持つノードだけ。Entry と Delay は時間だけのノードなので"
-          "親にすると実行時に owner 直下へ落ちる。attachBone を指定したノードは"
-          "socket 追従が優先され、parentNodeId は無視される。",
-          "どちらも「設定したのに効かない」という形でしか現れず、"
-          "プレビュー画像からは原因を特定できない。",
-          "PARENT_HAS_NO_TRANSFORM" },
-        { "hierarchy",
-          "親ノードの実行時エンベロープ (Mesh の膨張スケールなど) は子へ波及しない。"
-          "継承されるのはオーサリング値の Position/Rotation/Scale だけ。",
-          "実体同士を直接親子にすると親の再生終了で子も消えるため、ランタイムは"
-          "Transform だけを持つグループを間に挟んでいる。"
-          "「衝撃波が 40 倍に膨らむと煙も 40 倍になる」ことは無い。", "" },
-        { "parameters",
-          "公開パラメーターに bind した leaf は、ノード側ではなく parameter の default を編集する。"
-          "1 つの param が複数ノードを駆動する場合、全ノードの値を揃えておく。",
-          "bind 済み leaf は生成時に必ず param 値で上書きされるため、"
-          "ノード側の編集は保存されても実行時には使われない。", "BOUND_FIELD_OVERRIDDEN" },
-        { "curves",
-          "時間曲線は vfx.curvePresets の名前付きプリセットから始め、そこから微調整する。"
-          "setField の value に {\"preset\":\"Spike\"} を渡す。",
-          "エフェクトの質を最も左右するのは時間曲線の形。生のキー列を書くと"
-          "意図した形になったかを画像からしか確認できず、反復が収束しない。", "" },
-        { "budget",
-          "粒子数の budget 内に収めたうえで、vfx.runtime の cost を見る。"
-          "particlePassGpuMs が 1ms を超えていて overdraw.meanLayers も大きいなら原因は fill rate で、"
-          "粒子数ではなく vfx.optimize(strategy=\"fillRate\") で「粒を大きくして枚数を減らす」を選ぶ。",
-          "実際のボトルネックは粒子数ではなく fill rate であることが多く、"
-          "大きな半透明板の重なりは粒子数からは見えない。"
-          "fill rate が原因のときに粒子数を減らすのは効きが悪く、見た目だけが痩せる。",
-          "OVER_BUDGET_PARTICLES" },
-        { "budget",
-          "simulationMode = Gpu にしただけでは GPU で回るとは限らない。"
-          "simulationSpace=Local / per-particle Trail / SubEmitter / prewarm / "
-          "flipbookFrameBlending / selfShadowStrength > 0 / Depth 以外の collision の"
-          "いずれかがあると黙って CPU へ縮退する。"
-          "sortMode と meshParticlePath は GPU と併用できる (GPU ソートとインスタンス描画で対応済み)。"
-          "vfx.lint の GPU_FALLBACK と vfx.runtime の simulation.effective で必ず確認する。",
-          "縮退に気づかないまま粒子数だけ増やすと、性能は一切使われないまま CPU 負荷だけが上がる。",
-          "GPU_FALLBACK" },
-        { "workflow",
-          "vfx.assetSurvey で手持ち素材を棚卸し → vfx.template.apply で骨格を複製 → "
-          "使う素材を vfx.textureAnalyze (.mat 割当時は vfx.materialAnalyze) で解析 → "
-          "recommendations を setField で適用 → param で調整 → vfx.lint → "
-          "vfx.previewEnsure で Preview World を起動 → "
-          "vfx.previewMetrics で issues が空になるまで直す → "
-          "vfx.previewCurve で時間の形 (立ち上がり・ピーク位置・消え際) を評価 → "
-          "残った「らしさ」だけを vfx.preview の画像で詰める → 反復。",
-          "ゼロからノードを並べるより、検証済みテンプレートを出発点にする方が失敗率が低い。"
-          "棚卸しを先にするのは、recipe が要求する層を作れる素材が手元にあるとは限らないため。"
-          "無い素材を前提にしたグラフを組んでも、後から代替を探し直すことになる。"
-          "素材の解析を先に済ませると、blendMode や alphaSource のような"
-          "「画像を見ても原因が判らない」種類の誤りが最初から入らない。"
-          "lint は画像に写らない破綻を文章で返すので、capture より先に必ず通す。"
-          "Preview World は Editor 本体ではなく独立プロセス FBZZVFXEditor が所有するため、"
-          "起動していなければ preview 系は全て NO_PREVIEW_WORLD になる。"
-          "vfx.previewEnsure がその起動と初期化完了までを引き受ける。", "" },
-        { "expression",
-          "太い帯 (剣閃・魔法の軌跡・リボン状の炎) は particle.trailRibbon = true にする。"
-          "per-particle Trail の既定はビルボードを履歴点へ並べる方式で、太くすると"
-          "必ず粒の連なりが露見する。帯の幅は trailRibbonWidth (0 で粒子サイズ)。",
-          "「線に見えるまで点を細かく打つ」のは細い軌跡までしか通用しない。"
-          "帯が主役の表現では、履歴点をポリラインとみなして 1 枚の面を張るしかない。", "" },
-        { "expression",
-          "厚みのある煙・雲には .mat の selfShadowStrength を入れる。"
-          "受け影 (receiveShadows) は他の物体が落とす影しか扱わないため、"
-          "これが無いと粒子をいくら重ねても光の当たり方が一様で平坦な塊に見える。",
-          "自己影は光源側の密度から減衰させる近似で、CPU 頂点バッファを要求するため"
-          "GPU シミュレーションとは併用できない (vfx.lint の GPU_FALLBACK が名指しする)。"
-          "volumetric と併用すると、雲を貫く光の筋 (光の柱) がボリューム内部に現れる。", "" },
-        { "expression",
-          "歪み (distortion) を複数重ねるときは、重ねる順に renderPriority を付ける。"
-          "背景の退避は歪みエミッターの描画直前に取り直されるため、"
-          "順序が決まっていれば後ろの歪みが手前の歪みへ正しく伝わる。",
-          "同一エミッター内で重なる粒子は 1 DrawCall なので同じ背景を共有する。"
-          "粒子単位の前後関係が要るなら、歪みを別エミッターへ分けるしかない。", "" },
-        { "expression",
-          "焼け跡・血痕・着弾痕の Decal は angleFadeStrength を 0 にしない。"
-          "既定 (1.0 / 70 度) のままなら、壁と床の角をまたいだ部分が自動的に消える。",
-          "OBB 投影は投影軸に対して斜めな面へ当てるとテクスチャが引き伸ばされ、"
-          "「伸びた汚れ」として露見する。角度で薄めれば破綻する範囲がそのまま消える。", "" },
-        { "expression",
-          "Decal に decal.materialPath を入れるのは、テクスチャ 1 枚では作れない絵が要るときだけ。"
-          "入れる .mat は render_path = \"decal\" 必須で、入れた瞬間 albedoPath / color / "
-          "normalStrength / emissiveScale は効かなくなる (fadeTime と angleFade は両方で効く)。",
-          "デカール用 .mat は b2 を MaterialConstants として使う契約で、メッシュ用の .mat を"
-          "割り当てると頂点入力の無いパスに載って何も出ない。用途宣言で弾いている。", "" },
-        { "diagnosis",
-          "ノードが画に出ないときは、画像を睨む前に vfx.runtime で実行状態を見る。"
-          "active=false かつ waitingForEvent=true なら OnCollision / OnDeath 待ちで、"
-          "その事象が起きない限り永久に起動しない。",
-          "「出ない」原因は起動していない / イベント待ち / 起動しているが見えない の 3 通りで、"
-          "画像からは区別できない。前 2 つは実行状態を見れば即断でき、"
-          "残った 1 つだけが画像で判断すべき問題になる。", "" },
-        { "diagnosis",
-          "見た目の原因が画像から分からないときは vfx.preview の view を切り替える。"
-          "gizmos = 力場の半径・向きとエミッター形状/初速、overdraw = 重なり枚数。",
-          "力場もエミッター形状も見えない体積なので、通常の絵からは"
-          "「半径が足りないのか強さが足りないのか」を切り分けられない。", "" },
-        { "evaluation",
-          "画像を目で見て直す前に vfx.previewMetrics の issues を空にする。"
-          "BLOWN_OUT / SCREEN_FLOODED / EMPTY_FRAME / STATIC_FRAME / OFF_CENTER は"
-          "機械的に判る破綻で、これが残っているうちは画像を睨んでも意味がない。",
-          "同じ画から毎回違う結論が出るのは「少し暗い」の“少し”に基準が無いため。"
-          "先に数値で潰せる破綻を潰すと、残った判断だけを画像へ委ねられ、反復が収束する。"
-          "指標が良くても「炎に見えない」ことはあるので、置き換えではなく前段として使う。", "" },
-        { "evaluation",
-          "エフェクトの質は静止画ではなく時間の形で決まる。vfx.previewCurve で"
-          "peakNormalized (ピーク位置) と tailRatio (消え際) を見る。"
-          "爆発はピークが 0.15 より手前、煙や炎は中盤〜後半が目安。"
-          "tailRatio が 0.5 を超えていれば再生終了時点で消えていない。",
-          "立ち上がりの速さ・ピークの位置・消え際の粘りは、t=0/peak/end の 3 枚を見ても判定できない。", "" },
-        { "evaluation",
-          "ビルボードは横から見ると平面なので、シルエットの破綻は vfx.preview の"
-          "camera に yaw:90 を渡さない限り絶対に判らない。"
-          "ゲーム内距離で読めるかは vfx.previewSweep で距離を振って確認する。",
-          "近接で作り込んだディテールは 10m 先では消え、逆に近くで見ると板が透けているのが判る。"
-          "lodNearDistance / lodFarDistance を設定しても、距離を変えなければ切り替わりを一度も見られない。",
-          "" },
-    };
-
-    JsonValue rules = JsonValue::MakeArray();
-    for (const Rule& item : kRules) {
-        JsonValue entry = JsonValue::MakeObject();
-        entry.Set("topic", JsonValue(std::string(item.topic)));
-        entry.Set("rule", JsonValue(std::string(item.rule)));
-        entry.Set("why", JsonValue(std::string(item.why)));
-        // 検査可能な規約はどの lint code で落ちるかを明示する。
-        // 「守れているか」を AI 自身が確認できる形にしないと、規約は読まれて終わる。
-        if (item.lintCode[0] != '\0')
-            entry.Set("lintCode", JsonValue(std::string(item.lintCode)));
-        rules.Push(std::move(entry));
-    }
-    // 代表的な層構成。ゼロから積むより、この骨格に沿わせた方が確実に「らしく」なる。
-    // 表の実体は VFXRecipeLibrary が持つ。Editor の Recipe ウィザードも同じ表を読むため、
-    // 「guide は煙を要求するがウィザードは作らない」という食い違いが起きない。
-    JsonValue recipes = JsonValue::MakeArray();
-    for (const VFXRecipe& item : GetVFXRecipes()) {
-        JsonValue entry = JsonValue::MakeObject();
-        entry.Set("name", JsonValue(std::string(item.name)));
-        entry.Set("summary", JsonValue(std::string(item.summary)));
-        entry.Set("layers", JsonValue(std::string(item.layers)));
-        // 必要な素材ロール。vfx.assetSurvey の coverage と同じ語彙なので突き合わせられる。
-        JsonValue roles = JsonValue::MakeArray();
-        for (const auto& role : CollectRecipeRoles(item)) roles.Push(JsonValue(role));
-        entry.Set("requiredRoles", std::move(roles));
-        recipes.Push(std::move(entry));
-    }
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("rules", std::move(rules));
-    result.Set("recipes", std::move(recipes));
-    result.Set("note", JsonValue(std::string(
-        "lintCode を持つ規約は vfx.lint が機械的に検査する。"
-        "持たない規約は検査できないため、適用したかどうかは AI 側で担保すること。"
-        "recipe の requiredRoles は vfx.assetSurvey の coverage と同じ語彙なので、"
-        "着手前に手持ち素材で足りるかを突き合わせられる。")));
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.templateCatalog — 人間と AI が同じプロジェクト固有 Template 集合を参照する。
-// WHY: 生成結果を Template へ昇格しても AI が列挙できなければ、次の制作で再利用されず
-//      「知識化」にならない。UI と同じ Catalog service を唯一の信頼元として返す。
-Outcome DoVFXTemplateCatalog(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    VFXTemplateCatalog catalog;
-    catalog.Scan(ctx, true);
-
-    const std::string query = LowerAscii(StringField(payload, "query"));
-    int limit = 64;
-    if (const JsonValue* value = payload.Find("limit"); value != nullptr && value->IsNumber())
-        limit = std::clamp(value->AsInt(), 1, 256);
-
-    JsonValue templates = JsonValue::MakeArray();
-    int matched = 0;
-    // 絞り込みは Catalog の searchKey が唯一の正本 (Editor の検索欄と同じ集合を返すため)。
-    for (const GraphTemplateEntry* entry : catalog.Filter(query)) {
-        if (matched >= limit) break;
-
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("name", JsonValue(entry->name));
-        item.Set("path", JsonValue(entry->path));
-        item.Set("category", JsonValue(entry->category));
-        item.Set("origin", JsonValue(std::string(TemplateOriginName(entry->origin))));
-        item.Set("summary", JsonValue(entry->summary));
-        // 説明は graph.name への相乗りをやめ、description として持つようにした。
-        item.Set("description", JsonValue(entry->description));
-        JsonValue tags = JsonValue::MakeArray();
-        for (const auto& tag : entry->tags) tags.Push(JsonValue(tag));
-        item.Set("tags", std::move(tags));
-        JsonValue roles = JsonValue::MakeArray();
-        for (const auto& role : entry->requiredRoles) roles.Push(JsonValue(role));
-        item.Set("requiredRoles", std::move(roles));
-        JsonValue variants = JsonValue::MakeArray();
-        for (const auto& variant : entry->variants) variants.Push(JsonValue(variant.name));
-        item.Set("variants", std::move(variants));
-        // 層 = 部分取り込みの単位。groups に id を渡せばその層だけを merge できる。
-        JsonValue layers = JsonValue::MakeArray();
-        for (const auto& layer : entry->layers) {
-            JsonValue layerItem = JsonValue::MakeObject();
-            layerItem.Set("groupId", JsonValue(layer.groupId));
-            layerItem.Set("title", JsonValue(layer.title));
-            layerItem.Set("note", JsonValue(layer.note));
-            layerItem.Set("nodeCount", JsonValue(layer.nodeCount));
-            layers.Push(std::move(layerItem));
-        }
-        item.Set("layers", std::move(layers));
-        JsonValue missing = JsonValue::MakeArray();
-        for (const auto& path : entry->missingAssets) missing.Push(JsonValue(path));
-        item.Set("missingAssets", std::move(missing));
-        JsonValue budget = JsonValue::MakeObject();
-        budget.Set("particles", JsonValue(entry->particleBudget));
-        budget.Set("lights", JsonValue(entry->lightBudget));
-        budget.Set("audioVoices", JsonValue(entry->audioBudget));
-        item.Set("budget", std::move(budget));
-        item.Set("nodeCount", JsonValue(entry->nodeCount));
-        item.Set("linkCount", JsonValue(entry->linkCount));
-        item.Set("duration", JsonValue(entry->duration));
-        item.Set("valid", JsonValue(entry->valid));
-        if (!entry->thumbnailPath.empty()) item.Set("thumbnail", JsonValue(entry->thumbnailPath));
-        templates.Push(std::move(item));
-        ++matched;
-    }
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("templates", std::move(templates));
-    result.Set("matched", JsonValue(matched));
-    result.Set("total", JsonValue(static_cast<int>(catalog.entries.size())));
-    result.Set("status", JsonValue(catalog.status));
-    result.Set("hint", JsonValue(std::string(
-        "採択済み候補は vfx_knowledge_promote で Assets/VFX/Templates へ昇格すると、"
-        "以後の vfx_candidate_fork から再利用できます。"
-        "既存グラフへ層だけを足すなら vfx_template_apply の mode=merge と groups を使います。"
-        "missingAssets が空でない Template は、適用しても該当ノードが描画されません。")));
-    return Outcome::Ok(std::move(result));
-}
-
 // projectRoot 配下のファイルだけを許す解決。定義はこのファイルの後方にあるため前方宣言する。
 bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& requested,
                         std::filesystem::path& outPath, std::string& outRelative);
 
 // ── Behavior Tree ───────────────────────────────────────────────────────────
-// WHY VFX と同じ形にするか: AI から見ると「アセットを読む → 構造を知る → 規約を読む →
-//     編集する → 検証する」という流れは VFX グラフと同一で、面の作り方を変える理由が無い。
-//     bt.tree / bt.guide / bt.lint / bt.node.* を vfx.* と同じ語彙で揃える。
+// bt.tree / bt.guide / bt.lint / bt.node.* を vfx.* と同じ語彙で揃える。
+// 「読む → 構造を知る → 規約を読む → 編集 → 検証」の流れは VFX グラフと同一のため。
 
 // ── BT ノードのフィールド目録 ───────────────────────────────────────────────
-// WHY 表にするか: bt.node.setField は種別を見ずに代入していたため、
-//     HasTarget へ duration を書いても、Wait へ range を書いても受理され保存まで通った。
-//     効かない設定は「実行しても行動が変わらない」としか見えないので、
-//     書いた側は最後まで誤りに気づけない (VFX の UNKNOWN_SHADER_PARAM と同じ壊れ方)。
-//     受理集合を 1 つの表にして bt.schema で公開し、書き込み時も同じ表で弾く。
-//
-// appliesTo は **ランタイムが実際に読むか** で決める。Inspector の見た目ではない。
-// (例: turnSpeedDeg は LookAt しか読まず、range は IsTargetInRange しか読まない)
+// 受理集合を 1 つの表にして bt.schema で公開し、書き込み時も同じ表で弾く。
+// 種別を見ずに代入すると Wait へ range を書いても保存まで通り、
+// 「実行しても行動が変わらない」としか見えない誤りになる。
+// appliesTo は **ランタイムが実際に読むか** で決める。Inspector の見た目ではない
+// (turnSpeedDeg は LookAt しか読まず、range は IsTargetInRange しか読まない)。
 struct BTFieldSpec {
     const char* name;
     const char* type;         // "float" | "int" | "bool" | "string" | "enum"
@@ -2207,13 +741,9 @@ Outcome DoBehaviorTree(editor::EditorContext& ctx, const JsonValue& payload)
 }
 
 // lint の code ごとに「どう直すか」を機械可読で持つ表。vfx.lint の VFXFixHint と同じ役割。
-//
-// WHY: これまで bt.lint は「何が壊れているか」だけを返し、直し方は AI の推測だった。
-//      BT は特に「木としては正しいが意図どおり動かない」壊れ方が多く、
-//      直し方が code ごとに一意に決まるものが大半なので、推論ではなく参照にする。
-//      code は Engine の CollectBehaviorTreeWarnings が唯一の正本で、
-//      Editor の警告 banner と AI がまったく同じ集合を見る。
-//
+// BT は「木としては正しいが意図どおり動かない」壊れ方が多く、直し方は code ごとに
+// ほぼ一意に決まるので、推論ではなく参照にする。
+// code の正本は Engine の CollectBehaviorTreeWarnings (Editor の警告 banner と同じ集合)。
 // autoFixable: bt.repair が判断なしで直せるもの。false は設計判断が要るため AI に残す。
 struct BTFixHint {
     const char* code;
@@ -2449,12 +979,8 @@ Outcome DoBehaviorTreeGuide()
 }
 
 // bt.schema — ノード種別ごとに「何を書けるか」を返す。bt.node.setField の対。
-//
-// WHY 必要か: setField は field 名を文字列で受けるのに、その名前の一覧を知る手段が
-//     無かった。実在しない名前は BT_UNKNOWN_FIELD で弾かれるが、**実在するが
-//     その種別では読まれない名前** (Wait へ range、HasTarget へ duration) は
-//     受理され保存まで通り、「設定したのに行動が変わらない」としか見えない。
-//     受理集合そのものを公開すれば、試行錯誤ではなく参照で決まる。
+// 実在しない名前は BT_UNKNOWN_FIELD で弾かれるが、実在するがその種別では読まれない
+// 名前 (Wait へ range) は保存まで通ってしまう。受理集合そのものを公開する。
 Outcome DoBehaviorTreeSchema(const JsonValue& payload)
 {
     // nodeType 指定があればその種別だけに絞る。木を組む最中は 1 種別しか要らないのに、
@@ -2528,10 +1054,8 @@ Outcome DoBehaviorTreeSchema(const JsonValue& payload)
 }
 
 // bt.nodeField — ノードの現在値を読む。bt.node.setField の対になる読み出し。
-//
-// WHY: 書く手段はあるのに読む手段が無く、duration や keyName に**今何が入っているか**を
-//      API 越しに確かめられなかった。bt.tree は要約なので全フィールドを返さない。
-//      現在値を知らないまま書くと、変更が効いたのかどうかも判断できない。
+// bt.tree は要約なので全フィールドを返さない。現在値を知らないまま書くと、
+// 変更が効いたのかどうかも判断できない。
 Outcome DoBehaviorTreeNodeField(editor::EditorContext& ctx, const JsonValue& payload)
 {
     fbzz::ai::BehaviorTreeAsset asset;
@@ -2580,12 +1104,8 @@ Outcome DoBehaviorTreeNodeField(editor::EditorContext& ctx, const JsonValue& pay
 }
 
 // bt.runtime — Play 中に「今どの枝が走っているか」と Blackboard の実値を返す。
-//
-// WHY 静的な木では足りないか: BT が意図どおり動かない原因は
-//     「条件が偽のまま」「割り込めていない」「そもそも到達していない」の 3 通りあり、
-//     木を読んでも lint を掛けても区別できない。Blackboard の実値と各ノードの
-//     最終 status を突き合わせて初めて、どれなのかが 1 回で決まる。
-//     viewport_capture で敵の動きを見ても、なぜその行動を選んだかは映らない。
+// BT が動かない原因は「条件が偽」「割り込めていない」「到達していない」の 3 通りで、
+// 木を読んでも lint を掛けても区別できない。実値と最終 status を突き合わせて初めて決まる。
 Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& payload)
 {
     if (ctx.activeScene == nullptr)
@@ -2728,10 +1248,7 @@ Outcome DoBehaviorTreeRuntime(editor::EditorContext& ctx, const JsonValue& paylo
 }
 
 // bt.diff — 2 つの .behaviortree の構造差分を返す。
-//
-// WHY: 木を編集したあと「何が変わったか」を確かめる手段が bt.tree の目視比較しかなく、
-//      ノードが 20 を超えると人も AI も追えない。候補を分岐させて比較する使い方
-//      (元の木を残したまま別案を作る) も、差分が出せないと成立しない。
+// bt.tree の目視比較はノードが 20 を超えると追えず、別案を作って比べる使い方も成立しない。
 Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
 {
     const auto load = [&ctx](const std::string& key, const JsonValue& source,
@@ -2838,9 +1355,8 @@ Outcome DoBehaviorTreeDiff(editor::EditorContext& ctx, const JsonValue& payload)
 }
 
 // ── Behavior Tree のテンプレート ────────────────────────────────────────────
-// 探索順は VFXTemplateCatalog と同じ「Project → 開発 Engine → 実行ファイル同梱」。
-// WHY 同じにするか: 片方だけ配布版で見つからない、という差が出ると
-//     「AI では使えるのに Editor では出てこない」テンプレートが生まれる。
+// 探索順は「Project → 開発 Engine → 実行ファイル同梱」。Editor と揃えないと
+// 「AI では使えるのに Editor では出てこない」テンプレートが生まれる。
 std::vector<std::filesystem::path> BehaviorTreeTemplateRoots(const editor::EditorContext& ctx)
 {
     namespace fs = std::filesystem;
@@ -2924,97 +1440,8 @@ Outcome DoBehaviorTreeTemplateCatalog(editor::EditorContext& ctx)
     return Outcome::Ok(std::move(result));
 }
 
-// vfx.textureAnalyze — 素材テクスチャの中身を観測し、そこから決まる設定を返す。
-//
-// WHY: これまで素材は AI にとってパス文字列でしかなく、中身を知る手段が無かった。
-//      結果として blendMode も alphaSource も spriteColumns もファイル名からの推測になり、
-//      プレビューが変になってから初めて誤りに気づく (しかも画像からは原因が判らない)。
-//      画素を数えれば機械的に決まる項目は多く、そこを観測に置き換えるだけで
-//      「見た目が破綻したまま反復が収束しない」という失敗の大半が消える。
-Outcome DoVFXTextureAnalyze(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    namespace fs = std::filesystem;
-    fs::path textureFile;
-    std::string texturePath;
-    if (!ResolveProjectFile(ctx, StringField(payload, "path"), textureFile, texturePath)
-        || !fs::is_regular_file(textureFile))
-        return Outcome::Err("TEXTURE_NOT_FOUND", "projectRoot 配下のテクスチャを指定してください");
-
-    const asset::TextureAnalysis analysis =
-        asset::AnalyzeTexture(textureFile.generic_string());
-    if (!analysis.success) return Outcome::Err("TEXTURE_INVALID", analysis.message);
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(texturePath));
-    result.Set("summary", JsonValue(analysis.message));
-    result.Set("classification", JsonValue(analysis.classification));
-    result.Set("width", JsonValue(analysis.width));
-    result.Set("height", JsonValue(analysis.height));
-    result.Set("powerOfTwo", JsonValue(analysis.powerOfTwo));
-
-    JsonValue alpha = JsonValue::MakeObject();
-    alpha.Set("hasChannel", JsonValue(analysis.hasAlphaChannel));
-    // 「チャンネルはあるが全部 1.0」は実質アルファ無し。両方返さないと判断できない。
-    alpha.Set("isMeaningful", JsonValue(analysis.alphaIsMeaningful));
-    alpha.Set("min", JsonValue(analysis.alphaMin));
-    alpha.Set("max", JsonValue(analysis.alphaMax));
-    alpha.Set("mean", JsonValue(analysis.alphaMean));
-    alpha.Set("transparentRatio", JsonValue(analysis.transparentRatio));
-    alpha.Set("opaqueRatio", JsonValue(analysis.opaqueRatio));
-    alpha.Set("likelyPremultiplied", JsonValue(analysis.likelyPremultiplied));
-    result.Set("alpha", std::move(alpha));
-
-    JsonValue appearance = JsonValue::MakeObject();
-    appearance.Set("luminanceMean", JsonValue(analysis.luminanceMean));
-    appearance.Set("luminanceMax", JsonValue(analysis.luminanceMax));
-    appearance.Set("saturationMean", JsonValue(analysis.saturationMean));
-    JsonValue color = JsonValue::MakeArray();
-    for (const float channel : analysis.averageColor) color.Push(JsonValue(channel));
-    appearance.Set("averageColor", std::move(color));
-    // 中心と外周の輝度比。2 を超えると「発光する芯」を持つ素材とみなせる。
-    appearance.Set("coreHotspot", JsonValue(analysis.coreHotspot));
-    appearance.Set("coverage", JsonValue(analysis.coverage));
-    appearance.Set("radialSymmetry", JsonValue(analysis.radialSymmetry));
-    appearance.Set("edgeHardness", JsonValue(analysis.edgeHardness));
-    appearance.Set("seamlessScore", JsonValue(analysis.seamlessScore));
-    result.Set("appearance", std::move(appearance));
-
-    JsonValue flipbook = JsonValue::MakeArray();
-    for (const auto& candidate : analysis.flipbookCandidates) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("columns", JsonValue(candidate.columns));
-        item.Set("rows", JsonValue(candidate.rows));
-        item.Set("frames", JsonValue(candidate.columns * candidate.rows));
-        item.Set("seamScore", JsonValue(candidate.seamScore));
-        item.Set("uniformity", JsonValue(candidate.uniformity));
-        flipbook.Push(std::move(item));
-    }
-    result.Set("flipbookCandidates", std::move(flipbook));
-
-    // 推奨設定。schemaPath と value をそのまま vfx.node.setField へ渡せる形にする。
-    JsonValue recommendations = JsonValue::MakeArray();
-    for (const auto& recommendation : analysis.recommendations) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("schemaPath", JsonValue(recommendation.schemaPath));
-        item.Set("value", JsonValue(recommendation.value));
-        item.Set("reason", JsonValue(recommendation.reason));
-        recommendations.Push(std::move(item));
-    }
-    result.Set("recommendations", std::move(recommendations));
-    result.Set("hint", JsonValue(std::string(
-        "recommendations は観測から機械的に決まる設定です。schemaPath が particle.* のものは "
-        "vfx_node_set_field へそのまま渡せます。material.* のものは素材の性質なので "
-        ".mat 側 (blend_mode / [particle]) を編集してください (Inspector の Material に UI があります)。"
-        "flipbookCandidates が空でなければアトラス素材で、先頭が最有力の候補です。"
-        "層構成のどこへ置くかは classification (glow=発光する芯 / smoke=背景を隠す body / "
-        "spark=火の粉 / flipbook=アニメーション素材) を vfx_guide の recipe と突き合わせてください。")));
-    return Outcome::Ok(std::move(result));
-}
-
 // シェーダーの変数目録を JSON にする。descriptor が無効なら空配列を返す。
-// WHY: ShaderDescriptor は PS バイトコードのリフレクション結果で、
-//      「このシェーダーに何を書けるか」の唯一の正本。これを返さない限り、
-//      .mat の params も VFX Mesh ノードの animatedParam も名前を推測するしかない。
+// ShaderDescriptor は PS バイトコードのリフレクション結果で、「何を書けるか」の唯一の正本。
 JsonValue ShaderVarsToJson(const renderer::ShaderDescriptor& descriptor)
 {
     const auto typeName = [](renderer::ShaderVarType type) -> const char* {
@@ -3040,13 +1467,8 @@ JsonValue ShaderVarsToJson(const renderer::ShaderDescriptor& descriptor)
 }
 
 // shader.inspect — シェーダーが公開する変数とテクスチャスロットの目録を返す。
-//
-// WHY: .mat の params も VFX Mesh ノードの animatedParam も「シェーダー変数名」を要求するが、
-//      その名前の一覧を知る手段が今まで無かった。HLSL を読ませるのは現実的でないうえ、
-//      実際に効くのはコンパイル済みバイトコードのリフレクション結果であって
-//      ソース上の宣言ではない (未使用変数は最適化で消える)。
-//      存在しない名前を書いても保存は通り、実行時に黙って無視されるため、
-//      「設定したのに動かない」の原因が最後まで判らなかった。
+// 実際に効くのはコンパイル済みバイトコードのリフレクション結果で、ソース上の宣言ではない
+// (未使用変数は最適化で消える)。存在しない名前を書いても保存は通り実行時に無視される。
 Outcome DoShaderInspect(editor::EditorContext& ctx, const JsonValue& payload)
 {
     if (ctx.resources == nullptr) return Outcome::Err("NO_RENDERER", "ResourceManager がありません");
@@ -3092,7 +1514,7 @@ Outcome DoShaderInspect(editor::EditorContext& ctx, const JsonValue& payload)
     return Outcome::Ok(std::move(result));
 }
 
-// VFXEditorの表示と同じ正本から、シェーダーコンパイル診断をAIへ返す。
+// Editor の表示と同じ正本から、シェーダーコンパイル診断を AI へ返す。
 Outcome DoShaderCompileDiagnostics()
 {
     const auto diagnostics = renderer::GetShaderCompileDiagnostics();
@@ -3117,721 +1539,6 @@ Outcome DoShaderCompileDiagnostics()
     result.Set("diagnostics", std::move(items));
     return Outcome::Ok(std::move(result));
 }
-
-// vfx.materialAnalyze — .mat とその albedo テクスチャを併せて見る。
-//
-// WHY: パーティクルの見た目は .mat の blend_mode と [particle] が唯一の正本で、
-//      ParticleEmitter 側には無い。テクスチャ単体の解析だけを見ていると
-//      「素材はこう見えるはず」と「実際にどう描かれるか」が噛み合わない。
-//      .mat まで読んで初めて「この素材をこの設定で描くと何が起きるか」が言える。
-Outcome DoVFXMaterialAnalyze(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    namespace fs = std::filesystem;
-    fs::path materialFile;
-    std::string materialPath;
-    if (!ResolveProjectFile(ctx, StringField(payload, "path"), materialFile, materialPath)
-        || !fs::is_regular_file(materialFile))
-        return Outcome::Err("MATERIAL_NOT_FOUND", "projectRoot 配下の .mat を指定してください");
-
-    const asset::MaterialAnalysis analysis =
-        asset::AnalyzeMaterial(materialFile.generic_string());
-    if (!analysis.success) return Outcome::Err("MATERIAL_INVALID", analysis.message);
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(materialPath));
-    result.Set("summary", JsonValue(analysis.message));
-    result.Set("shaderPath", JsonValue(analysis.shaderPath));
-    result.Set("blendMode", JsonValue(analysis.blendMode));
-    result.Set("renderPath", JsonValue(analysis.renderPath));
-    result.Set("doubleSided", JsonValue(analysis.doubleSided));
-    result.Set("depthWrite", JsonValue(analysis.depthWrite));
-    result.Set("renderQueue", JsonValue(analysis.renderQueue));
-    result.Set("albedoTexturePath", JsonValue(analysis.albedoTexturePath));
-    result.Set("hasAlbedoTexture", JsonValue(analysis.hasAlbedoTexture));
-    // テクスチャ側の分類だけ再掲する。詳細が要るなら vfx.textureAnalyze を直接呼べばよい。
-    if (analysis.hasAlbedoTexture && analysis.albedoAnalysis.success) {
-        JsonValue albedo = JsonValue::MakeObject();
-        albedo.Set("classification", JsonValue(analysis.albedoAnalysis.classification));
-        albedo.Set("summary", JsonValue(analysis.albedoAnalysis.message));
-        albedo.Set("alphaIsMeaningful", JsonValue(analysis.albedoAnalysis.alphaIsMeaningful));
-        albedo.Set("likelyPremultiplied", JsonValue(analysis.albedoAnalysis.likelyPremultiplied));
-        albedo.Set("coreHotspot", JsonValue(analysis.albedoAnalysis.coreHotspot));
-        albedo.Set("coverage", JsonValue(analysis.albedoAnalysis.coverage));
-        result.Set("albedo", std::move(albedo));
-    }
-    result.Set("blendModeConflictsWithTexture", JsonValue(analysis.blendModeConflictsWithTexture));
-
-    JsonValue findings = JsonValue::MakeArray();
-    for (const auto& finding : analysis.findings) findings.Push(JsonValue(finding));
-
-    // シェーダー変数との照合。.mat の params にシェーダーへ存在しない名前があると、
-    // 保存はされるが実行時に無視される (Material が名前で束縛するため)。
-    // WHY: これは「値を変えても絵が変わらない」という形でしか現れず、
-    //      .mat を眺めても綴り違いに気付けない。シェーダー側の目録と突き合わせて初めて判る。
-    if (ctx.resources != nullptr && !analysis.shaderPath.empty()) {
-        const std::string resolvedShader = asset::AssetManager::ResolveAssetPath(analysis.shaderPath);
-        const auto handle = ctx.resources->LoadShader(
-            resolvedShader.empty() ? analysis.shaderPath : resolvedShader);
-        if (const renderer::IShader* shader = handle.IsValid() ? ctx.resources->Get(handle) : nullptr) {
-            const renderer::ShaderDescriptor& descriptor = shader->GetDescriptor();
-            result.Set("shaderVars", ShaderVarsToJson(descriptor));
-            asset::MaterialAsset material;
-            if (asset::LoadMaterialAssetFromFile(materialFile.generic_string(), material)) {
-                for (const auto& [name, values] : material.params) {
-                    const renderer::ShaderVarDesc* var = descriptor.FindVar(name);
-                    if (var == nullptr) {
-                        findings.Push(JsonValue("params の \"" + name
-                            + "\" はこのシェーダーに存在しません (実行時に無視されます)。"
-                              "shaderVars に載っている名前を使ってください"));
-                        continue;
-                    }
-                    // 要素数が足りないと残りが 0 で埋まる。色が黒くなる典型的な原因。
-                    if (values.size() < static_cast<std::size_t>(var->columns))
-                        findings.Push(JsonValue("params の \"" + name + "\" は "
-                            + std::to_string(var->columns) + " 要素必要ですが "
-                            + std::to_string(values.size()) + " 個しかありません (残りは 0 になります)"));
-                }
-            }
-        }
-    }
-    result.Set("findings", std::move(findings));
-
-    JsonValue recommendations = JsonValue::MakeArray();
-    for (const auto& recommendation : analysis.recommendations) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("schemaPath", JsonValue(recommendation.schemaPath));
-        item.Set("value", JsonValue(recommendation.value));
-        item.Set("reason", JsonValue(recommendation.reason));
-        recommendations.Push(std::move(item));
-    }
-    result.Set("recommendations", std::move(recommendations));
-    result.Set("hint", JsonValue(std::string(
-        "findings は .mat 自体を直すべき問題です (blend_mode / render_path / albedo 未設定)。"
-        "recommendations のうち material.* は .mat の [particle] へ、particle.* (sortMode など) は "
-        "vfx_node_set_field で Emitter へ適用します。"
-        "見た目 (ブレンド・アルファ・フリップブック・歪み・煙・影) は .mat が唯一の正本で、"
-        "Emitter 側には設定そのものが存在しません。")));
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.assetSurvey — プロジェクトの素材を分類し、狙う表現に対して何が足りないかを返す。
-//
-// WHY: vfx.guide の recipe は「煙 / 外炎 / 芯 / 火の粉 / 陽炎」のような層構成を示すが、
-//      その層を作れる素材が手元にあるかは別問題。AI は素材を 1 枚ずつ解析して
-//      初めて種類が判るため、何を持っているかを知らないまま recipe に沿おうとして
-//      「無い素材を前提にしたグラフ」を組んでしまう。先に棚卸しを返す。
-// 解析済みテクスチャの分類キャッシュ。キーはファイルパス、有効性はサイズ + 最終更新時刻で判定する。
-//
-// WHY: 解析は 1 枚あたり数十 ms かかるうえ、棚卸しは同じプロジェクトで何度も走る。
-//      素材は編集中もほぼ変わらないのに、毎回 120 枚を解析し直していた。
-//      内容ハッシュではなくサイズ + mtime で判定するのは、判定自体が解析より
-//      桁違いに安く、テクスチャを書き換えれば必ずどちらかが動くため。
-struct TextureSurveyCacheEntry {
-    std::uintmax_t size = 0;
-    std::int64_t   writeTime = 0;
-    std::string    classification;
-    std::string    summary;
-};
-
-std::unordered_map<std::string, TextureSurveyCacheEntry>& GetTextureSurveyCache()
-{
-    // プロセス生存中だけ保持する。Editor を再起動すれば当然作り直しになる。
-    static std::unordered_map<std::string, TextureSurveyCacheEntry> cache;
-    return cache;
-}
-
-Outcome DoVFXAssetSurvey(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    namespace fs = std::filesystem;
-    if (ctx.projectRoot.empty()) return Outcome::Err("NO_PROJECT", "projectRoot が未設定です");
-
-    // 走査範囲。既定は Assets/Textures 配下だが、指定があればそこを見る。
-    const std::string requested = StringField(payload, "directory");
-    fs::path scanRoot = fs::path(ctx.projectRoot) / (requested.empty() ? "Assets" : requested);
-    std::error_code ec;
-    if (!fs::is_directory(scanRoot, ec))
-        return Outcome::Err("DIR_NOT_FOUND", "走査対象のディレクトリがありません: " + scanRoot.generic_string());
-    // projectRoot の外へ出る指定を弾く。
-    const fs::path root = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
-    const fs::path target = fs::weakly_canonical(scanRoot, ec);
-    if (ec || target.string().rfind(root.string(), 0) != 0)
-        return Outcome::Err("BAD_ARG", "projectRoot の外は走査できません");
-
-    // 解析は 1 枚あたり数十 ms かかる。棚卸しは枚数が多いので、統計用の縮小を強めにし、
-    // 上限も設ける (全走査で分単位かかると、AI が最初の 1 手で詰まる)。
-    const JsonValue* limitValue = payload.Find("limit");
-    const int limit = std::clamp(limitValue != nullptr ? limitValue->AsInt() : 120, 1, 400);
-    // detail="summary" (既定) は 1 枚あたり path だけを返す。
-    // WHY: 棚卸しで知りたいのは「どの役割の素材が何枚あるか」であって、
-    //      120 枚ぶんの解析文まで読む必要は無い。個別の中身は vfx.textureAnalyze で見る。
-    const std::string detail = LowerAscii(StringField(payload, "detail"));
-    if (!detail.empty() && detail != "summary" && detail != "full")
-        return Outcome::Err("BAD_ARG", "detail は summary / full のいずれかです");
-    const bool full = detail == "full";
-    // 素材を差し替えたのに分類が古いままになるのを避けるための強制再解析。
-    const JsonValue* refreshValue = payload.Find("refresh");
-    if (refreshValue != nullptr && refreshValue->AsBool()) GetTextureSurveyCache().clear();
-
-    struct Entry {
-        std::string path;
-        std::string classification;
-        std::string summary;
-    };
-    std::vector<Entry> entries;
-    auto& cache = GetTextureSurveyCache();
-    int analyzedCount = 0;
-    int cachedCount = 0;
-    bool truncated = false;
-    for (const auto& file : fs::recursive_directory_iterator(
-             scanRoot, fs::directory_options::skip_permission_denied, ec)) {
-        if (!file.is_regular_file(ec)) { ec.clear(); continue; }
-        const std::string extension = LowerAscii(file.path().extension().string());
-        if (extension != ".png" && extension != ".tga" && extension != ".dds"
-            && extension != ".jpg" && extension != ".jpeg") continue;
-        if (static_cast<int>(entries.size()) >= limit) { truncated = true; break; }
-
-        // サイズと更新時刻が読めなければキャッシュは使わない (毎回解析する)。
-        // 読めない状態を「変化なし」と同一視すると、古い分類を返し続けることになる。
-        const std::string absolute = file.path().generic_string();
-        const std::uintmax_t size = fs::file_size(file.path(), ec);
-        bool statOk = !ec;
-        ec.clear();
-        const std::int64_t writeTime = statOk
-            ? static_cast<std::int64_t>(fs::last_write_time(file.path(), ec).time_since_epoch().count())
-            : 0;
-        if (ec) statOk = false;
-        ec.clear();
-
-        const auto cached = cache.find(absolute);
-        if (statOk && cached != cache.end() && cached->second.size == size
-            && cached->second.writeTime == writeTime) {
-            ++cachedCount;
-            entries.push_back({ fs::relative(file.path(), root, ec).generic_string(),
-                                cached->second.classification, cached->second.summary });
-            ec.clear();
-            continue;
-        }
-
-        const asset::TextureAnalysis analysis = asset::AnalyzeTexture(absolute, 128);
-        ++analyzedCount;
-        if (!analysis.success) continue;
-        if (statOk) cache[absolute] = { size, writeTime, analysis.classification, analysis.message };
-        entries.push_back({
-            fs::relative(file.path(), root, ec).generic_string(),
-            analysis.classification,
-            analysis.message,
-        });
-        ec.clear();
-    }
-
-    // 分類ごとにまとめる。AI は「glow が 3 枚ある」と知りたいのであって、
-    // 全ファイルの詳細を一度に読みたいわけではない。
-    JsonValue byClassification = JsonValue::MakeObject();
-    const auto collect = [&](const char* classification) {
-        JsonValue list = JsonValue::MakeArray();
-        for (const auto& entry : entries) {
-            if (entry.classification != classification) continue;
-            if (!full) { list.Push(JsonValue(entry.path)); continue; }
-            JsonValue item = JsonValue::MakeObject();
-            item.Set("path", JsonValue(entry.path));
-            item.Set("summary", JsonValue(entry.summary));
-            list.Push(std::move(item));
-        }
-        const int count = static_cast<int>(list.AsArray().size());
-        byClassification.Set(classification, std::move(list));
-        return count;
-    };
-    const int glowCount = collect("glow");
-    const int smokeCount = collect("smoke");
-    const int sparkCount = collect("spark");
-    const int flipbookCount = collect("flipbook");
-    collect("mask");
-    collect("unknown");
-
-    // 層構成に必要な素材が揃っているか。役割の表は VFXRecipeLibrary が唯一の正本。
-    // WHY: 判定基準を guide / recipe と別に持つと「guide は煙を要求するが survey は
-    //      要求しない」のような食い違いが生まれる。語彙も代替案も 1 か所から読む。
-    const auto availableFor = [&](const char* classification) {
-        const std::string name = classification;
-        if (name == "glow") return glowCount;
-        if (name == "smoke") return smokeCount;
-        if (name == "spark") return sparkCount;
-        if (name == "flipbook") return flipbookCount;
-        return 0;
-    };
-    JsonValue coverage = JsonValue::MakeArray();
-    JsonValue missing = JsonValue::MakeArray();
-    for (const editor::VFXAssetRoleInfo& info : editor::GetVFXAssetRoles()) {
-        const int available = availableFor(info.classification);
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("role", JsonValue(std::string(info.role)));
-        item.Set("classification", JsonValue(std::string(info.classification)));
-        item.Set("available", JsonValue(available));
-        item.Set("purpose", JsonValue(std::string(info.purpose)));
-        // 無い場合の代替案。「無い」とだけ返されても次の一手が決まらない。
-        item.Set("fallback", JsonValue(std::string(info.fallback)));
-        if (available == 0) missing.Push(JsonValue(std::string(info.role)));
-        coverage.Push(std::move(item));
-    }
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("directory", JsonValue(scanRoot.generic_string()));
-    result.Set("detail", JsonValue(full ? "full" : "summary"));
-    result.Set("analyzed", JsonValue(static_cast<int>(entries.size())));
-    // 今回実際に画素を読んだ枚数と、キャッシュから復元した枚数。
-    // 2 回目以降が速い理由 (と、refresh=true が要る場面) をここで見せる。
-    result.Set("freshlyAnalyzed", JsonValue(analyzedCount));
-    result.Set("fromCache", JsonValue(cachedCount));
-    result.Set("truncated", JsonValue(truncated));
-    result.Set("byClassification", std::move(byClassification));
-    result.Set("coverage", std::move(coverage));
-    result.Set("missingRoles", std::move(missing));
-    result.Set("hint", JsonValue(std::string(
-        "missingRoles にある役割は、手持ちの素材だけでは作れません。"
-        "core が無ければ加算で光る層を、body が無ければ背景を隠す層を作れないため、"
-        "その recipe をそのまま再現しようとしても破綻します。"
-        "代替として: core が無い場合は body 素材を Additive で小さく使う、"
-        "body が無い場合は glow 素材のアルファを寝かせて使う、で近似できます。"
-        "truncated=true なら limit を上げるか directory を絞ってください。"
-        "detail=\"summary\" では 1 枚あたり path だけを返します。"
-        "個別の素材の中身は vfx.textureAnalyze で見てください。"
-        "分類はサイズと最終更新時刻でキャッシュされます。"
-        "外部ツールで素材を差し替えたのに分類が変わらない場合だけ refresh=true を渡してください。")));
-    return Outcome::Ok(std::move(result));
-}
-
-// Preview World が無いときの応答。
-//
-// WHY: 以前は "VFX Preview Worldがありません" の 1 行しか返らず、
-//      未初期化なのか、独立プロセスが落ちているのか、GPU デバイスを取れていないのかを
-//      切り分けられなかった。しかもコンソールログにも残らないため、
-//      Editor 側を見に行っても何も手掛かりが無い状態だった。
-//      原因の切り分けに要る事実 (誰が World を所有しているか / 次に何を呼べばいいか) を
-//      メッセージへ入れ、同時にログにも残して console.logs から追えるようにする。
-Outcome MakeNoPreviewWorldOutcome(const char* requestName)
-{
-    FBZZ_LOG_WARN("AI Bus: %s は VFX Preview World を必要としますが、"
-                  "このプロセスは Preview World を所有していません", requestName);
-    return Outcome::Err("NO_PREVIEW_WORLD",
-        std::string(requestName) + " は VFX Preview World を必要としますが、"
-        "このプロセスは Preview World を所有していません。"
-        "Preview World は独立プロセス FBZZVFXEditor.exe が所有します "
-        "(Editor 本体は VFX の描画リソースを持ちません)。"
-        "vfx.previewEnsure (vfx_preview_ensure) を呼ぶと起動と初期化完了までを待って"
-        "状態を返します。それでも失敗する場合は console.logs で "
-        "\"VFXEditorLauncher\" を含む行を確認してください。");
-}
-
-// vfx.previewEnsure — Preview World を起動し、プレビュー系を呼べる状態か確認する。
-//
-// WHY: vfx.preview / vfx.previewMetrics / vfx.previewCurve / vfx.runtime は
-//      すべて Preview World の存在が前提だが、それを「作る」「在るか確かめる」手段が
-//      公開されていなかった。結果として vfx.guide が勧める
-//      lint → previewMetrics → previewCurve の後半 2 つが、環境によっては
-//      原理的に実行できないのに、その理由も分からないという状態になっていた。
-//      要求はメイン Editor 側で独立プロセスへ転送されるため、
-//      この関数へ到達した時点で World は既に在る (= 起動は転送側の責務)。
-Outcome DoVFXPreviewEnsure(editor::EditorContext& ctx)
-{
-    if (ctx.vfxPreviewScene == nullptr) return MakeNoPreviewWorldOutcome("vfx.previewEnsure");
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("previewWorld", JsonValue(true));
-    result.Set("owner", JsonValue("FBZZVFXEditor"));
-    // 描画まで到達できるか。renderer が無ければ preview は組めても画が返らない。
-    const bool rendererReady = ctx.renderer != nullptr;
-    result.Set("rendererReady", JsonValue(rendererReady));
-
-    GameObject* root = ctx.vfxPreviewScene->Find("__VFX_AI_PREVIEW_ROOT");
-    auto* component = root != nullptr ? root->GetComponent<scene::VFXGraphComponent>() : nullptr;
-    JsonValue prepared = JsonValue::MakeObject();
-    prepared.Set("hasGraph", JsonValue(component != nullptr));
-    if (component != nullptr) {
-        prepared.Set("path", JsonValue(component->graphPath));
-        prepared.Set("initialized", JsonValue(component->initialized));
-        prepared.Set("playTime", JsonValue(component->playTime));
-        prepared.Set("duration", JsonValue(component->graphDuration));
-        prepared.Set("nodeCount", JsonValue(static_cast<int>(component->runtimeNodes.size())));
-    }
-    result.Set("prepared", std::move(prepared));
-    result.Set("readyForPreview", JsonValue(rendererReady));
-    result.Set("hint", JsonValue(std::string(
-        "readyForPreview=true なら vfx.preview / vfx.previewMetrics / vfx.runtime を呼べます。"
-        "prepared.hasGraph=false は「まだ 1 度も vfx.preview を実行していない」だけで、"
-        "異常ではありません (vfx.runtime はその状態では NO_VFX_RUNTIME を返します)。"
-        "rendererReady=false のときは描画デバイスを取得できていないため、"
-        "画像を返す系は失敗します。console.logs でシェーダーコンパイルの失敗を確認してください。")));
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.runtime — 直前の vfx.preview が組んだ実行状態を、その時刻のまま読み出す。
-//
-// WHY: 「このノードが画に出てこない」は AI の最頻出の詰まり方だが、原因は 3 通りあって
-//      画像からは区別できない:
-//        (1) 起動していない       — Entry から未接続 / 無効化されている
-//        (2) 起動待ちのまま       — OnCollision / OnDeath 待ちで、その事象が起きていない
-//        (3) 起動しているが見えない — スケールが 0、色が透明、カメラ外、他の粒子に隠れている
-//      vfx.lint は静的解析なので (1) しか見えない。(2) はスケジュール表に位置を持たないため
-//      時刻からも推測できず、ここを返さない限り AI は画像を睨んで推測を続けることになる。
-//      実行状態を返せば (1)(2) は即断でき、残った (3) だけが画像で見るべき問題になる。
-//
-// NOTE: 参照するのは AI capture 用 Preview World であって、担当者が操作している
-//       VFX Editor の World ではない。表示設定や手動スクラブが混ざると再現しなくなるため。
-Outcome DoVFXRuntime(editor::EditorContext& ctx)
-{
-    if (ctx.vfxPreviewScene == nullptr) return MakeNoPreviewWorldOutcome("vfx.runtime");
-    GameObject* root = ctx.vfxPreviewScene->Find("__VFX_AI_PREVIEW_ROOT");
-    auto* component = root != nullptr ? root->GetComponent<scene::VFXGraphComponent>() : nullptr;
-    if (component == nullptr)
-        return Outcome::Err("NO_VFX_RUNTIME",
-                            "先に vfx.preview を実行してください (実行状態はその結果として作られます)");
-    if (!component->initialized)
-        return Outcome::Err("VFX_NOT_READY",
-                            "グラフがまだ構築されていません。vfx.preview の readyAfterFrame を待ってください");
-
-    // authoring 名を引くために元グラフも読む (runtimeNodes は id しか持たない)。
-    asset::VFXGraphAsset graph;
-    std::string loadError;
-    const bool hasGraph = asset::LoadVFXGraphAsset(component->graphPath, graph, &loadError);
-
-    JsonValue nodes = JsonValue::MakeArray();
-    int activeCount = 0;
-    int waitingCount = 0;
-    int gpuFallbackCount = 0;
-    int totalParticles = 0;
-    int totalVisibleParticles = 0;
-    for (const auto& state : component->runtimeNodes) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("nodeId", JsonValue(state.nodeId));
-        if (hasGraph) {
-            const auto node = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-                [&state](const asset::VFXGraphNode& candidate) { return candidate.id == state.nodeId; });
-            if (node != graph.nodes.end()) {
-                item.Set("name", JsonValue(node->name));
-                item.Set("type", JsonValue(asset::VFXNodeTypeName(node->type)));
-                item.Set("enabled", JsonValue(node->enabled));
-            }
-        }
-        item.Set("active", JsonValue(state.active));
-        if (state.active) ++activeCount;
-        // startTime が有限でない = イベント待ち。スケジュール上の位置を持たないので、
-        // scheduledStartTime (予定) と並べて「待っている」ことを明示する。
-        const bool waiting = !(state.startTime < (std::numeric_limits<float>::max)());
-        item.Set("waitingForEvent", JsonValue(waiting));
-        if (waiting) ++waitingCount;
-        else {
-            item.Set("startTime", JsonValue(state.startTime));
-            item.Set("endTime", JsonValue(state.endTime));
-        }
-        item.Set("scheduledStartTime", JsonValue(state.scheduledStartTime));
-        item.Set("scheduledEndTime", JsonValue(state.scheduledEndTime));
-        // 実体を持たないノード (Entry / Delay / 無効) は GameObject を作らない。
-        item.Set("hasInstance", JsonValue(state.entity.IsValid()));
-
-        // 実際に GPU で回っているか。simulationMode = Gpu にしても条件を 1 つ外すと
-        // 黙って CPU へ落ちるため、要求ではなく「結果」を返さないと事故に気づけない。
-        GameObject* instance = state.entity.IsValid()
-            ? ctx.vfxPreviewScene->GetGameObject(state.entity) : nullptr;
-        if (auto* emitter = instance != nullptr ? instance->GetComponent<scene::ParticleEmitter>() : nullptr) {
-            const auto reason = scene::GetParticleGpuFallbackReason(emitter->settings,
-                                                                   &emitter->runtime.material);
-            const bool requestedGpu = emitter->settings.simulationMode == scene::ParticleSimulationMode::Gpu;
-            const bool effectiveGpu = reason == scene::ParticleGpuFallbackReason::None;
-            JsonValue simulation = JsonValue::MakeObject();
-            simulation.Set("requested", JsonValue(requestedGpu ? "Gpu" : "Cpu"));
-            simulation.Set("effective", JsonValue(effectiveGpu ? "Gpu" : "Cpu"));
-            if (requestedGpu && !effectiveGpu) {
-                ++gpuFallbackCount;
-                simulation.Set("fallbackField",
-                               JsonValue(std::string(scene::ParticleGpuFallbackFieldName(reason))));
-                simulation.Set("fallbackReason",
-                               JsonValue(std::string(scene::ParticleGpuFallbackDescription(reason))));
-            }
-            item.Set("simulation", std::move(simulation));
-            const int alive = effectiveGpu
-                ? emitter->runtime.visibleParticleCount : static_cast<int>(emitter->runtime.particles.size());
-            item.Set("particleCount", JsonValue(alive));
-            item.Set("visibleParticleCount", JsonValue(emitter->runtime.visibleParticleCount));
-            item.Set("culled", JsonValue(emitter->runtime.isCulledThisFrame));
-            totalParticles += alive;
-            totalVisibleParticles += emitter->runtime.visibleParticleCount;
-        }
-        nodes.Push(std::move(item));
-    }
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(component->graphPath));
-    result.Set("playTime", JsonValue(component->playTime));
-    result.Set("duration", JsonValue(component->graphDuration));
-    result.Set("activeCount", JsonValue(activeCount));
-    result.Set("waitingForEventCount", JsonValue(waitingCount));
-    result.Set("gpuFallbackCount", JsonValue(gpuFallbackCount));
-    result.Set("nodes", std::move(nodes));
-
-    // 実測コスト。budget は粒子数でしか測れないが、実際のボトルネックはほぼ fill rate で、
-    // 「粒子は budget 内なのに重い」はここを見ない限り検知できない。
-    // 計測は RenderSystem が全パスへ自動で仕込んでいるので、ここは結果を読むだけ。
-    JsonValue cost = JsonValue::MakeObject();
-    cost.Set("totalParticles", JsonValue(totalParticles));
-    cost.Set("visibleParticles", JsonValue(totalVisibleParticles));
-    bool measured = false;
-    if (ctx.renderer != nullptr) {
-        for (const auto& profile : ctx.renderer->GpuProfGetResults()) {
-            if (profile.name != "Particle") continue;
-            cost.Set("particlePassGpuMs", JsonValue(profile.gpuMs));
-            measured = true;
-            break;
-        }
-    }
-    cost.Set("measured", JsonValue(measured));
-    // 重なり枚数。vfx.preview を view="overdraw" で実行したときだけ計測される。
-    // WHY: 「粒子は budget 内なのに particlePassGpuMs が伸びている」ときの原因はほぼこれで、
-    //      枚数が判れば「粒を大きくして枚数を減らす」という正しい手を選べる。
-    if (const auto& overdraw = scene::GetLastParticleOverdrawStats(); overdraw.valid) {
-        JsonValue item = JsonValue::MakeObject();
-        item.Set("measuredAtFrame", JsonValue(static_cast<std::int64_t>(overdraw.frame)));
-        item.Set("coveredRatio", JsonValue(overdraw.coveredRatio));
-        item.Set("meanLayers", JsonValue(overdraw.meanLayers));
-        item.Set("maxLayers", JsonValue(overdraw.maxLayers));
-        item.Set("heavyRatio", JsonValue(overdraw.heavyRatio));
-        item.Set("overdrawFactor", JsonValue(overdraw.overdrawFactor));
-        cost.Set("overdraw", std::move(item));
-    } else {
-        cost.Set("overdrawNote", JsonValue(std::string(
-            "重なり枚数はまだ計測していません。vfx.preview を view=\"overdraw\" で実行すると"
-            "その回だけ計測されます (読み戻しを伴うため常時計測はしません)")));
-    }
-    if (!measured) {
-        cost.Set("note", JsonValue(std::string(
-            "GPU 計測結果がまだ確定していません (数フレーム遅れて出ます)。"
-            "vfx.preview の直後ではなく、少し待ってから再度呼んでください")));
-    }
-    result.Set("cost", std::move(cost));
-
-    result.Set("hint", JsonValue(std::string(
-        "active=false かつ waitingForEvent=true のノードは OnCollision / OnDeath 待ちです。"
-        "source 側の Particle が衝突・死亡していない限り永久に起動しません "
-        "(collisionMode の設定、または OnComplete への trigger 変更を検討してください)。"
-        "active=true なのに画に出ない場合は、サイズ・色・カメラ画角の側を疑ってください。"
-        "simulation.effective が Cpu なのに requested が Gpu のノードは黙って縮退しています。"
-        "fallbackField が原因の設定名で、そこを直さない限り粒子数を増やしても GPU には載りません。"
-        "cost.particlePassGpuMs は Particle パス全体の実測時間です。"
-        "60fps の 1 フレームは 16.6ms なので、エフェクト単体で 1ms を超えたら重い部類。"
-        "粒子数が budget 内なのにここが伸びていれば原因は fill rate (重なり) で、"
-        "粒子数を減らすより「粒を大きくして枚数を減らす」ほうが効きます。")));
-    return Outcome::Ok(std::move(result));
-}
-
-Outcome DoVFXPreview(editor::EditorContext& ctx, const JsonValue& payload)
-{
-    if (ctx.vfxPreviewScene == nullptr) return MakeNoPreviewWorldOutcome("vfx.preview");
-    const std::string path = StringField(payload, "path");
-    const JsonValue* timeValue = payload.Find("time");
-    if (path.empty() || timeValue == nullptr || !timeValue->IsNumber())
-        return Outcome::Err("BAD_ARG", "pathとtimeが必要です");
-
-    // 診断ビュー。既定 (normal) は従来どおりクリーンな評価画。
-    // WHY: 通常の絵だけでは「なぜこう見えるのか」が分からない局面がある
-    //      (白飛びの原因が粒子数か emissive か / 炎が上がらない原因が力場の半径か強さか)。
-    //      AI がそこで手詰まりにならないよう、明示的に要求したときだけ診断表示を許す。
-    //      評価用の既定を変えないことが重要で、これを常時 on にすると
-    //      「決定論プレビューで同一時刻が同一画になる」前提そのものが崩れる。
-    const std::string view = LowerAscii(StringField(payload, "view"));
-    if (!view.empty() && view != "normal" && view != "overdraw" && view != "gizmos")
-        return Outcome::Err("BAD_ARG", "view は normal / overdraw / gizmos のいずれかです");
-    ctx.vfxAiPreviewOverdraw = view == "overdraw";
-    ctx.vfxAiPreviewGizmos   = view == "gizmos";
-
-    // カメラ。省略時は従来どおり操作用プレビューの視点をそのまま使う。
-    // WHY: 常に同じ 1 方向・1 距離からしか見られないと、ゲーム内距離での可読性も
-    //      ビルボードのシルエットも LOD の切り替わりも一度も検証できない。
-    //      preset は「代表 3 視点」を短く指定するための糖衣で、明示指定があればそちらが勝つ。
-    if (const JsonValue* cameraValue = payload.Find("camera");
-        cameraValue != nullptr && cameraValue->IsObject()) {
-        editor::EditorContext::VFXAiPreviewCamera camera;
-        camera.valid = true;
-        const std::string preset = LowerAscii(StringField(*cameraValue, "preset"));
-        if (!preset.empty()) {
-            if      (preset == "front") { camera.yaw = 0.0f;   camera.pitch = 5.0f;  }
-            else if (preset == "angle") { camera.yaw = 35.0f;  camera.pitch = 25.0f; }
-            else if (preset == "side")  { camera.yaw = 90.0f;  camera.pitch = 0.0f;  }
-            else if (preset == "top")   { camera.yaw = 0.0f;   camera.pitch = 80.0f; }
-            else return Outcome::Err("BAD_ARG", "camera.preset は front / angle / side / top のいずれかです");
-        }
-        const auto readNumber = [&cameraValue](const char* key, float& target) {
-            if (const JsonValue* value = cameraValue->Find(key); value != nullptr && value->IsNumber())
-                target = static_cast<float>(value->AsNumber());
-        };
-        readNumber("distance", camera.distance);
-        readNumber("yaw", camera.yaw);
-        readNumber("pitch", camera.pitch);
-        readNumber("fovY", camera.fovY);
-        if (const JsonValue* target = cameraValue->Find("target");
-            target != nullptr && target->IsArray() && target->AsArray().size() == 3) {
-            const auto& components = target->AsArray();
-            if (!components[0].IsNumber() || !components[1].IsNumber() || !components[2].IsNumber())
-                return Outcome::Err("BAD_ARG", "camera.target は数値 3 要素の配列です");
-            camera.targetX = static_cast<float>(components[0].AsNumber());
-            camera.targetY = static_cast<float>(components[1].AsNumber());
-            camera.targetZ = static_cast<float>(components[2].AsNumber());
-        }
-        // 極端な値は行列を壊す (distance=0 で LookAt が不定、pitch=±90 で up と一致)。
-        camera.distance = std::clamp(camera.distance, 0.05f, 500.0f);
-        camera.pitch    = std::clamp(camera.pitch, -89.0f, 89.0f);
-        camera.fovY     = std::clamp(camera.fovY, 5.0f, 120.0f);
-        ctx.vfxAiPreviewCamera = camera;
-    } else {
-        ctx.vfxAiPreviewCamera = {};
-    }
-
-    asset::VFXGraphAsset graph;
-    std::string error;
-    if (!asset::LoadVFXGraphAsset(path, graph, &error) || !asset::ValidateVFXGraphAsset(graph, &error))
-        return Outcome::Err("VFX_INVALID", error);
-
-    std::vector<float> starts;
-    float duration = 0.0f;
-    if (!asset::BuildVFXGraphSchedule(graph, starts, duration, &error)) return Outcome::Err("VFX_INVALID", error);
-    const float requestedTime = static_cast<float>(timeValue->AsNumber());
-    const float previewTime = std::clamp(requestedTime, 0.0f, (std::max)(duration, 0.0f));
-
-    // Preview Worldは保存対象外なので、静止画評価ごとに完全初期化してrandomSeedから再シミュレートする。
-    ctx.vfxPreviewScene->Clear();
-    GameObject& root = ctx.vfxPreviewScene->CreateGameObject("__VFX_AI_PREVIEW_ROOT");
-    scene::VFXGraphComponent component;
-    component.graphPath = path;
-    component.playOnAwake = false;
-    component.playing = false;
-    component.editorScrubTime = previewTime;
-    component.editorPreviewFrame = Time::frameCount + 8;
-    root.AddComponent<scene::VFXGraphComponent>(std::move(component));
-    ctx.vfxAiPreviewUntilFrame = Time::frameCount + 8;
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("path", JsonValue(path));
-    result.Set("time", JsonValue(previewTime));
-    result.Set("duration", JsonValue(duration));
-    result.Set("preparedAtFrame", JsonValue(static_cast<std::int64_t>(Time::frameCount)));
-    result.Set("readyAfterFrame", JsonValue(static_cast<std::int64_t>(Time::frameCount + 2)));
-    // 実際に使う視点を返す。preset とクランプ後の値が判らないと、AI は距離を振ったときに
-    // 「指定が効いたのか丸められたのか」を区別できない。
-    JsonValue camera = JsonValue::MakeObject();
-    camera.Set("overridden", JsonValue(ctx.vfxAiPreviewCamera.valid));
-    if (ctx.vfxAiPreviewCamera.valid) {
-        camera.Set("distance", JsonValue(ctx.vfxAiPreviewCamera.distance));
-        camera.Set("yaw", JsonValue(ctx.vfxAiPreviewCamera.yaw));
-        camera.Set("pitch", JsonValue(ctx.vfxAiPreviewCamera.pitch));
-        camera.Set("fovY", JsonValue(ctx.vfxAiPreviewCamera.fovY));
-        JsonValue target = JsonValue::MakeArray();
-        target.Push(JsonValue(ctx.vfxAiPreviewCamera.targetX));
-        target.Push(JsonValue(ctx.vfxAiPreviewCamera.targetY));
-        target.Push(JsonValue(ctx.vfxAiPreviewCamera.targetZ));
-        camera.Set("target", std::move(target));
-    }
-    result.Set("camera", std::move(camera));
-    return Outcome::Ok(std::move(result));
-}
-
-// vfx.previewMetrics — 直前に描いたプレビュー画を「絵」ではなく「数値」として読む。
-//
-// WHY: vfx.preview は PNG しか返さないため、良し悪しの判断が全て視覚に委ねられていた。
-//      同じ画から毎回違う結論が出るので直す量が決められず、反復が振動する。
-//      機械的に判る破綻 (白飛び・覆いすぎ・動いていない・画角ずれ) をここで先に潰し、
-//      残った「炎に見えるか」だけを画像と vfx_guide の規約へ委ねる、という切り分けにする。
-//      これは vfx.textureAnalyze が blendMode の推測を消したのと同じ構図。
-Outcome DoVFXPreviewMetrics(editor::EditorContext& ctx,
-                            renderer::ResourceHandle<renderer::RenderTargetTag> rt,
-                            const std::vector<float>* previousLuminance,
-                            std::vector<float>& outLuminance)
-{
-    if (ctx.vfxPreviewScene == nullptr) return MakeNoPreviewWorldOutcome("vfx.previewMetrics");
-    if (ctx.renderer == nullptr || ctx.resources == nullptr) {
-        FBZZ_LOG_WARN("AI Bus: vfx.previewMetrics — レンダラー/ResourceManager が未初期化です");
-        return Outcome::Err("NO_RENDERER",
-                            "レンダラーが未初期化です。VFX Preview を所有するプロセスが"
-                            "描画デバイスを取得できていません "
-                            "(console.logs でシェーダーコンパイルの失敗を確認してください)");
-    }
-    if (!rt.IsValid()) {
-        FBZZ_LOG_WARN("AI Bus: vfx.previewMetrics — VFX Preview RT が未生成です");
-        return Outcome::Err("NO_VIEWPORT",
-                            "VFX Preview RT が未生成です。先に vfx.preview を 1 度実行してください "
-                            "(RT は最初の vfx.preview で要求サイズぶん生成されます)");
-    }
-
-    std::vector<float> rgba;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    if (!ctx.renderer->CaptureRenderTargetToLinearRGBA(rt, *ctx.resources, rgba, width, height)
-        || width == 0 || height == 0) {
-        FBZZ_LOG_WARN("AI Bus: vfx.previewMetrics — Preview RT の読み戻しに失敗しました "
-                      "(width=%u height=%u)", width, height);
-        return Outcome::Err("CAPTURE_FAILED",
-                            "プレビューRTを数値として読み戻せませんでした "
-                            "(このレンダラーバックエンドは未対応の可能性があります)。"
-                            "vfx.previewEnsure で rendererReady を確認してください");
-    }
-
-    // 占有判定の基準は RenderAiPreview / RenderVFXPreview が使う Clear 色と同じ値。
-    // ここがずれると背景そのものを「描かれた画素」と数えてしまう。
-    static constexpr float kPreviewBackground[3] = { 0.018f, 0.021f, 0.028f };
-    const PreviewMetrics metrics = ComputePreviewMetrics(
-        rgba, width, height, kPreviewBackground, previousLuminance, &outLuminance);
-
-    JsonValue exposure = JsonValue::MakeObject();
-    exposure.Set("luminanceMean", JsonValue(metrics.luminanceMean));
-    exposure.Set("coveredLuminanceMean", JsonValue(metrics.coveredLuminanceMean));
-    exposure.Set("luminanceP99", JsonValue(metrics.luminanceP99));
-    exposure.Set("luminanceMax", JsonValue(metrics.luminanceMax));
-    exposure.Set("clippedRatio", JsonValue(metrics.clippedRatio));
-    exposure.Set("blownOutRatio", JsonValue(metrics.blownOutRatio));
-    JsonValue histogram = JsonValue::MakeArray();
-    for (float bucket : metrics.histogram) histogram.Push(JsonValue(bucket));
-    exposure.Set("histogram", std::move(histogram));
-
-    JsonValue occupancy = JsonValue::MakeObject();
-    occupancy.Set("coverage", JsonValue(metrics.coverage));
-    occupancy.Set("centroidX", JsonValue(metrics.centroidX));
-    occupancy.Set("centroidY", JsonValue(metrics.centroidY));
-    JsonValue bounds = JsonValue::MakeArray();
-    bounds.Push(JsonValue(metrics.boundsMinX));
-    bounds.Push(JsonValue(metrics.boundsMinY));
-    bounds.Push(JsonValue(metrics.boundsMaxX));
-    bounds.Push(JsonValue(metrics.boundsMaxY));
-    occupancy.Set("bounds", std::move(bounds));
-
-    JsonValue motion = JsonValue::MakeObject();
-    motion.Set("comparedWithPrevious", JsonValue(metrics.hasPrevious));
-    if (metrics.hasPrevious) {
-        motion.Set("meanLuminanceDelta", JsonValue(metrics.motion));
-        motion.Set("changedRatio", JsonValue(metrics.changedRatio));
-    }
-
-    JsonValue issues = JsonValue::MakeArray();
-    for (const std::string& issue : DescribePreviewMetricIssues(metrics)) issues.Push(JsonValue(issue));
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("width", JsonValue(static_cast<int>(width)));
-    result.Set("height", JsonValue(static_cast<int>(height)));
-    result.Set("exposure", std::move(exposure));
-    result.Set("occupancy", std::move(occupancy));
-    result.Set("motion", std::move(motion));
-    result.Set("issues", std::move(issues));
-    result.Set("hint", JsonValue(std::string(
-        "issues が空なら機械的に判る破綻は無い、という意味であって「良い絵」という意味ではない。"
-        "そこから先 (炎に見えるか、狙った勢いか) は画像と vfx_guide の規約で判断すること。"
-        "histogram は log2 輝度 [-8,+8] の 16 等分で、後ろの階級ほど明るい。"
-        "motion は直前に測ったフレームとの比較なので、時間を進めながら連続で呼ぶと意味を持つ。")));
-    return Outcome::Ok(std::move(result));
-}
-
-} // namespace
-
-// ── 応答生成の内部ヘルパ ─────────────────────────────────────────────────────
-namespace {
-using editor::CompositeCommand;
-using editor::ICommand;
-using editor::LambdaCommand;
 
 // dryRun 応答: 変更せず「何をする予定か」を返す。
 Outcome DryRunPreview(const std::string& type)
@@ -4636,9 +2343,8 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
 }
 
 // ── Animator ステートマシン照会・パラメーター駆動 ─────────────────────────────
-// WHY: 既存の animation.state は再生状態、animation.pose は骨行列に限られ、
-//      「どのパラメーターがどの遷移を発火させるか」という構造を AI が把握できなかった。
-//      グラフ構造の照会とパラメーター駆動を足し、AI が遷移や BlendTree を自律検証できるようにする。
+// animation.state は再生状態、animation.pose は骨行列だけで、「どのパラメーターが
+// どの遷移を発火させるか」という構造が読めなかった。
 
 const char* AnimatorParamTypeName(scene::ParamType type)
 {
@@ -4726,8 +2432,7 @@ void SetAnimatorParamValueJson(JsonValue& target, const scene::AnimatorParameter
 // AnimatorComponent のステートマシン全体 (states / transitions / parameters / anyState) を、
 // 現在の再生ステートやパラメーターのライブ値付きで返す。
 // レイヤー 1 件の要約 JSON。マスク・加算設定・ステート数・実行中ステートを含める。
-// WHY: レイヤーは書けるが読めない状態だと、AI は自分が作った構成を確認できず
-//      重複作成や存在しないレイヤーへの操作を繰り返す。書き込み API と対になる読み出しを用意する。
+// 書けるが読めない状態だと、作った構成を確認できず重複作成を繰り返すことになる。
 JsonValue AnimationLayerToJson(const scene::AnimationLayer& layer)
 {
     JsonValue entry = JsonValue::MakeObject();
@@ -5201,15 +2906,6 @@ Outcome DoSceneValidate(editor::EditorContext& ctx)
                 ++errors;
             }
         }
-        if (auto* vfx = go.GetComponent<scene::VFXGraphComponent>(); vfx != nullptr && !vfx->graphPath.empty()) {
-            fs::path graphPath;
-            std::string relative;
-            if (!ResolveProjectFile(ctx, vfx->graphPath, graphPath, relative) || !fs::is_regular_file(graphPath)) {
-                AddValidationIssue(issues, "error", "BROKEN_VFX_GRAPH", go,
-                    "VFX Graph が見つかりません: " + vfx->graphPath);
-                ++errors;
-            }
-        }
     }
     for (const auto& [name, objects] : names) {
         if (name.empty() || objects.size() < 2) continue;
@@ -5323,10 +3019,9 @@ int VirtualKeyFromName(std::string name)
 }
 
 // Animator ステートマシンの構造編集を Undo 可能な ICommand にまとめる共通ヘルパー。
-// WHY: add/set-state・transition・condition・motion のどれも「states + anyStateTransitions +
-//      parameters を丸ごとスナップショットして復元」で正しく戻せる (clip 実体を含まない軽量ベクトル)。
-//      実行時に NodeId から再解決し、edit() で実変更を行う。復元後はランタイム遷移状態を消し、
-//      消えたステートを指したまま再生が続くのを防ぐ。
+// どの編集も「states + anyStateTransitions + parameters を丸ごとスナップショットして復元」で
+// 戻せる (clip 実体を含まない軽量ベクトル)。
+// 復元後はランタイム遷移状態を消し、消えたステートを指したまま再生が続くのを防ぐ。
 std::unique_ptr<ICommand> MakeAnimatorEditCommand(
     scene::Scene* scene, std::string id, const char* description,
     std::function<void()> markDirty,
@@ -5389,9 +3084,8 @@ AnimatorGraphTarget ResolveGraphTarget(scene::AnimatorComponent& animator,
 }
 
 // Undo/Redo ラムダ内から使う、レイヤー解決つきのグラフ参照。
-// WHY: ラムダは実行時に GameObject を引き直すため、対象レイヤーもその場で解決し直す必要がある。
-//      実行時点でレイヤーが消えていた場合は Base Layer へフォールバックする。
-//      そこで落ちるより、無害な対象に落として Undo スタックを壊さない方が安全。
+// ラムダは実行時に GameObject を引き直すので、対象レイヤーもその場で解決する。
+// 消えていたら Base Layer へ落とす (落ちるより Undo スタックを壊さない方が安全)。
 struct AnimatorGraphRefs {
     scene::AnimatorComponent& animator;
     const std::string&        layerName;
@@ -5456,224 +3150,6 @@ void RenameAnimatorState(scene::AnimatorComponent& animator,
     if (animator.blendToState == oldName) animator.blendToState = newName;
 }
 
-std::optional<asset::VFXNodeType> ParseVFXNodeType(std::string value)
-{
-    value = LowerAscii(value);
-    if (value == "particle") return asset::VFXNodeType::Particle;
-    if (value == "trail") return asset::VFXNodeType::Trail;
-    if (value == "meshtrail" || value == "mesh trail") return asset::VFXNodeType::MeshTrail;
-    if (value == "light") return asset::VFXNodeType::Light;
-    if (value == "audio") return asset::VFXNodeType::Audio;
-    if (value == "decal") return asset::VFXNodeType::Decal;
-    if (value == "delay") return asset::VFXNodeType::Delay;
-    if (value == "subgraph" || value == "sub graph") return asset::VFXNodeType::SubGraph;
-    if (value == "forcefield" || value == "force field") return asset::VFXNodeType::ForceField;
-    if (value == "mesh") return asset::VFXNodeType::Mesh;
-    if (value == "screeneffect" || value == "screen effect") return asset::VFXNodeType::ScreenEffect;
-    if (value == "camerashake" || value == "camera shake") return asset::VFXNodeType::CameraShake;
-    if (value == "timescale" || value == "time scale") return asset::VFXNodeType::TimeScale;
-    if (value == "wind") return asset::VFXNodeType::Wind;
-    if (value == "reroute") return asset::VFXNodeType::Reroute;
-    if (value == "animatedmesh" || value == "animated mesh")
-        return asset::VFXNodeType::AnimatedMesh;
-    return std::nullopt;
-}
-
-
-// Curve / Gradient のキー配列を JSON から読む。
-// 受け付ける形:
-//   キー配列そのもの         [[t,v], ...]            / [[t,r,g,b,a], ...]
-//   補間モード付きオブジェクト { "interp": 0|1|2, "keys": [...] }
-//   プリセット名             { "preset": "Spike", "scale": 1.0 }   ※ Curve のみ
-// WHY: AI に 8 キーぶんの生の数値を書かせると、意図した形になったかを画像からしか
-//      確認できず反復が長くなる。名前付きプリセットを一次面に置き、生キーは
-//      「プリセットから微調整する」ための逃げ道として残す。
-bool JsonToParticleCurve(const JsonValue& json, scene::ParticleCurve& output)
-{
-    if (const std::string preset = json.IsObject() ? StringField(json, "preset") : std::string{};
-        !preset.empty()) {
-        const asset::ParticleCurvePreset* found = asset::FindParticleCurvePreset(preset);
-        if (found == nullptr) return false;
-        const JsonValue* scale = json.Find("scale");
-        asset::ApplyParticleCurvePreset(output, *found,
-            scale != nullptr && scale->IsNumber() ? static_cast<float>(scale->AsNumber()) : 1.0f);
-        return true;
-    }
-    const JsonValue* keys = json.IsArray() ? &json : json.Find("keys");
-    if (keys == nullptr || !keys->IsArray() || keys->AsArray().size() < 2) return false;
-    if (json.IsObject()) {
-        if (const JsonValue* interp = json.Find("interp"); interp != nullptr && interp->IsNumber())
-            output.interpolation = static_cast<scene::ParticleCurveInterpolation>(
-                std::clamp(interp->AsInt(), 0,
-                           static_cast<int>(scene::ParticleCurveInterpolation::Smooth)));
-    }
-    output.keyCount = static_cast<std::uint32_t>(
-        (std::min)(keys->AsArray().size(), output.keys.size()));
-    for (std::uint32_t index = 0; index < output.keyCount; ++index) {
-        const auto& key = keys->AsArray()[index];
-        if (!key.IsArray() || key.AsArray().size() < 2
-            || !key.AsArray()[0].IsNumber() || !key.AsArray()[1].IsNumber()) return false;
-        output.keys[index] = { static_cast<float>(key.AsArray()[0].AsNumber()),
-                               static_cast<float>(key.AsArray()[1].AsNumber()) };
-    }
-    return true;
-}
-
-bool JsonToParticleGradient(const JsonValue& json, scene::ParticleGradient& output)
-{
-    const JsonValue* keys = json.IsArray() ? &json : json.Find("keys");
-    if (keys == nullptr || !keys->IsArray() || keys->AsArray().size() < 2) return false;
-    if (json.IsObject()) {
-        if (const JsonValue* interp = json.Find("interp"); interp != nullptr && interp->IsNumber())
-            output.interpolation = static_cast<scene::ParticleCurveInterpolation>(
-                std::clamp(interp->AsInt(), 0,
-                           static_cast<int>(scene::ParticleCurveInterpolation::Smooth)));
-    }
-    output.keyCount = static_cast<std::uint32_t>(
-        (std::min)(keys->AsArray().size(), output.keys.size()));
-    for (std::uint32_t index = 0; index < output.keyCount; ++index) {
-        const auto& key = keys->AsArray()[index];
-        if (!key.IsArray() || key.AsArray().size() < 5) return false;
-        for (const auto& item : key.AsArray()) if (!item.IsNumber()) return false;
-        output.keys[index] = {
-            static_cast<float>(key.AsArray()[0].AsNumber()),
-            { static_cast<float>(key.AsArray()[1].AsNumber()),
-              static_cast<float>(key.AsArray()[2].AsNumber()),
-              static_cast<float>(key.AsArray()[3].AsNumber()),
-              static_cast<float>(key.AsArray()[4].AsNumber()) }
-        };
-    }
-    return true;
-}
-
-bool JsonToSchemaValue(const JsonValue& json, reflection::PropertyType type, std::any& output)
-{
-    // Curve / Gradient は 8 キー化と補間モード追加まで setField の対象外だった。
-    // そのため「スキーマには見えるのに AI からは一切編集できないフィールド」になっており、
-    // 時間曲線 (エフェクトの質を最も左右する要素) を AI が触れなかった。
-    if (type == reflection::PropertyType::Curve) {
-        scene::ParticleCurve curve;
-        if (!JsonToParticleCurve(json, curve)) return false;
-        output = curve;
-        return true;
-    }
-    if (type == reflection::PropertyType::Gradient) {
-        scene::ParticleGradient gradient;
-        if (!JsonToParticleGradient(json, gradient)) return false;
-        output = gradient;
-        return true;
-    }
-    if (type == reflection::PropertyType::Float && json.IsNumber()) output = static_cast<float>(json.AsNumber());
-    else if (type == reflection::PropertyType::Int && json.IsNumber()) output = json.AsInt();
-    // Enum は int で受け渡す (MakeEnumProperty 側が有効域へ clamp する)。
-    // WHY: ここを塞がないと、スキーマへ enum を載せても setField が常に BAD_ARG で弾かれ、
-    //      「スキーマには見えるのに AI から変更できないフィールド」が生まれる。
-    else if (type == reflection::PropertyType::Enum && json.IsNumber()) output = json.AsInt();
-    else if (type == reflection::PropertyType::Bool && json.IsBool()) output = json.AsBool();
-    else if ((type == reflection::PropertyType::String || type == reflection::PropertyType::AssetRef)
-             && json.IsString()) output = json.AsString();
-    else if ((type == reflection::PropertyType::Vector3 || type == reflection::PropertyType::Color)
-             && json.IsArray()) {
-        const auto& values = json.AsArray();
-        if (type == reflection::PropertyType::Vector3 && values.size() == 3
-            && values[0].IsNumber() && values[1].IsNumber() && values[2].IsNumber())
-            output = math::Vector3{ static_cast<float>(values[0].AsNumber()),
-                                    static_cast<float>(values[1].AsNumber()),
-                                    static_cast<float>(values[2].AsNumber()) };
-        else if (type == reflection::PropertyType::Color && values.size() == 4
-                 && std::all_of(values.begin(), values.end(), [](const JsonValue& item) { return item.IsNumber(); }))
-            output = math::Vector4{ static_cast<float>(values[0].AsNumber()),
-                                    static_cast<float>(values[1].AsNumber()),
-                                    static_cast<float>(values[2].AsNumber()),
-                                    static_cast<float>(values[3].AsNumber()) };
-    }
-    return output.has_value();
-}
-
-bool JsonToVFXParamValue(const JsonValue& json, asset::VFXParamType type, asset::VFXParamValue& output)
-{
-    if (json.IsObject()) {
-        const std::string source = LowerAscii(StringField(json, "source"));
-        if (source == "constant") {
-            const JsonValue* constant = json.Find("value");
-            return constant != nullptr && JsonToVFXParamValue(*constant, type, output);
-        }
-        if (source == "attribute" || source == "attributeref") {
-            const std::string path = StringField(json, "path");
-            if (path.empty()) return false;
-            output.source = asset::VFXAttributeRef{ path };
-            return true;
-        }
-        if (source == "signal") {
-            const std::string name = StringField(json, "name");
-            if (name.empty()) return false;
-            output.source = asset::VFXSignalRef{ name };
-            return true;
-        }
-        if ((source == "random" || source == "randomrange")
-            && (type == asset::VFXParamType::Float || type == asset::VFXParamType::Int)) {
-            const JsonValue* minimum = json.Find("minimum");
-            const JsonValue* maximum = json.Find("maximum");
-            if (minimum == nullptr || maximum == nullptr || !minimum->IsNumber() || !maximum->IsNumber()) return false;
-            output.source = asset::VFXRandomRange{ static_cast<float>(minimum->AsNumber()),
-                                                   static_cast<float>(maximum->AsNumber()) };
-            return true;
-        }
-        if (source == "curve" && type == asset::VFXParamType::Float) {
-            const JsonValue* keys = json.Find("keys");
-            if (keys == nullptr || !keys->IsArray() || keys->AsArray().empty()) return false;
-            asset::VFXCurveSource curve;
-            curve.curve.keyCount = static_cast<std::uint32_t>(
-                (std::min)(keys->AsArray().size(), curve.curve.keys.size()));
-            for (std::uint32_t index = 0; index < curve.curve.keyCount; ++index) {
-                const auto& key = keys->AsArray()[index];
-                if (!key.IsArray() || key.AsArray().size() < 2
-                    || !key.AsArray()[0].IsNumber() || !key.AsArray()[1].IsNumber()) return false;
-                curve.curve.keys[index] = { static_cast<float>(key.AsArray()[0].AsNumber()),
-                                            static_cast<float>(key.AsArray()[1].AsNumber()) };
-            }
-            output.source = curve;
-            return true;
-        }
-        if (source == "gradient" && type == asset::VFXParamType::Color) {
-            const JsonValue* keys = json.Find("keys");
-            if (keys == nullptr || !keys->IsArray() || keys->AsArray().empty()) return false;
-            asset::VFXGradientSource gradient;
-            gradient.gradient.keyCount = static_cast<std::uint32_t>(
-                (std::min)(keys->AsArray().size(), gradient.gradient.keys.size()));
-            for (std::uint32_t index = 0; index < gradient.gradient.keyCount; ++index) {
-                const auto& key = keys->AsArray()[index];
-                if (!key.IsArray() || key.AsArray().size() < 5) return false;
-                for (const auto& item : key.AsArray()) if (!item.IsNumber()) return false;
-                gradient.gradient.keys[index] = {
-                    static_cast<float>(key.AsArray()[0].AsNumber()),
-                    { static_cast<float>(key.AsArray()[1].AsNumber()), static_cast<float>(key.AsArray()[2].AsNumber()),
-                      static_cast<float>(key.AsArray()[3].AsNumber()), static_cast<float>(key.AsArray()[4].AsNumber()) }
-                };
-            }
-            output.source = gradient;
-            return true;
-        }
-    }
-    std::any value;
-    reflection::PropertyType propertyType = reflection::PropertyType::Float;
-    if (type == asset::VFXParamType::Int) propertyType = reflection::PropertyType::Int;
-    else if (type == asset::VFXParamType::Bool) propertyType = reflection::PropertyType::Bool;
-    else if (type == asset::VFXParamType::Color) propertyType = reflection::PropertyType::Color;
-    else if (type == asset::VFXParamType::Vector3) propertyType = reflection::PropertyType::Vector3;
-    else if (type == asset::VFXParamType::AssetRef) propertyType = reflection::PropertyType::AssetRef;
-    if (!JsonToSchemaValue(json, propertyType, value)) return false;
-    if (const auto* item = std::any_cast<float>(&value)) output.source = asset::VFXConstant{ *item };
-    else if (const auto* item = std::any_cast<int>(&value)) output.source = asset::VFXConstant{ *item };
-    else if (const auto* item = std::any_cast<bool>(&value)) output.source = asset::VFXConstant{ *item };
-    else if (const auto* item = std::any_cast<math::Vector4>(&value)) output.source = asset::VFXConstant{ *item };
-    else if (const auto* item = std::any_cast<math::Vector3>(&value)) output.source = asset::VFXConstant{ *item };
-    else if (const auto* item = std::any_cast<std::string>(&value)) output.source = asset::VFXConstant{ *item };
-    else return false;
-    return true;
-}
-
-// ── Behavior Tree の編集 Command ────────────────────────────────────────────
 // WHY VFX と同じ「アセット丸ごとスナップショット」方式にするか:
 //     木は最大でも数十ノードで、丸ごと持っても軽い。差分 Undo は
 //     「親を付け替えたら order も変わる」ような連動を取りこぼしやすい。
@@ -5774,11 +3250,7 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
 
     // 子の数を数える。子数上限の検査に使う。
     // 追加・削除・親付け・複製の実体は Editor/GraphEditor/BehaviorTreeOps.hpp。
-    // WHY: 以前はここに BehaviorTreePanel と同じ検査規則が手で書かれており、
-    //      「Editor の TryReparent と同じ規則で食い違いを作らない」というコメントで
-    //      手動の同期を約束していた。実際には文言が既にずれていた
-    //      (ルート重複の理由文がパネル側だけ「既存のルートへ繋いでください」と続く)。
-    //      Docs/design/editor-operator-model.md
+    // 検査規則を手で写すと Editor 側と黙ってずれる (Docs/design/editor-operator-model.md)。
     if (type == "bt.node.add") {
         fbzz::ai::BTNodeType nodeType{};
         const std::string typeName = StringField(payload, "nodeType");
@@ -5958,9 +3430,7 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         }
     } else if (type == "bt.repair") {
         // bt.lint が autoFixable=true と言った code だけを機械的に直す。
-        // WHY: AI は lint → 修正 → lint を回すが、「abortMode を lowerPriority にする」
-        //      「0 秒の Cooldown を 1 秒にする」は毎回同じ手順で、往復させる意味がない。
-        //      直し方が一意に決まるものだけを扱い、設計判断 (何をする木か) には触れない。
+        // 直し方が一意に決まるものだけを扱い、設計判断 (何をする木か) には触れない。
         const auto flag = [&payload](const char* name) {
             const JsonValue* value = payload.Find(name);
             return value == nullptr || value->AsBool();
@@ -6082,10 +3552,7 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         }
         newTree.blackboard.erase(found);
     } else if (type == "bt.autoLayout") {
-        // 間隔の定数ごと共有実装が持つ。以前はここに 300.0f を直書きして
-        // 「BehaviorTreePanel::AutoLayout と同じ値でなければならない」と
-        // コメントで約束していたが、向こうは NODE_MIN_WIDTH + 104 の計算値なので
-        // ノード幅を変えた瞬間に黙ってずれる状態だった。
+        // 間隔の定数ごと共有実装が持つ。数値を写すとノード幅を変えた瞬間に黙ってずれる。
         editor::btops::AutoLayout(newTree);
     } else {
         err = Outcome::Err("UNKNOWN_COMMAND", "未対応の BT コマンドです: " + type);
@@ -6124,637 +3591,18 @@ std::unique_ptr<ICommand> BuildBehaviorTreeCommand(editor::EditorContext& ctx,
         });
 }
 
-std::unique_ptr<ICommand> BuildVFXAssetCommand(editor::EditorContext& ctx,
-                                                const std::string& type,
-                                                const JsonValue& payload,
-                                                Outcome& err)
-{
-    const std::string path = StringField(payload, "path");
-    asset::VFXGraphAsset oldGraph;
-    std::string error;
-    if (path.empty() || !asset::LoadVFXGraphAsset(path, oldGraph, &error)) {
-        err = Outcome::Err("VFX_NOT_FOUND", error.empty() ? "有効な.vfx pathが必要です" : error);
-        return nullptr;
-    }
-    asset::VFXGraphAsset newGraph = oldGraph;
-    if (type == "vfx.graph.set") {
-        if (payload.Find("name") == nullptr && payload.Find("maxParticles") == nullptr
-            && payload.Find("maxLights") == nullptr && payload.Find("maxAudioVoices") == nullptr) {
-            err = Outcome::Err("BAD_ARG", "変更するGraph設定が必要です"); return nullptr;
-        }
-        if (const std::string name = StringField(payload, "name"); !name.empty()) newGraph.name = name;
-        if (const JsonValue* value = payload.Find("maxParticles"); value != nullptr)
-            newGraph.maxParticles = value->AsInt();
-        if (const JsonValue* value = payload.Find("maxLights"); value != nullptr)
-            newGraph.maxLights = value->AsInt();
-        if (const JsonValue* value = payload.Find("maxAudioVoices"); value != nullptr)
-            newGraph.maxAudioVoices = value->AsInt();
-    } else if (type == "vfx.node.add") {
-        // id 採番・既定 duration・既定座標は VFXGraphCanvas と共有する
-        // (Editor/VFXEditor/Document/VFXGraphEditOps.hpp)。
-        const auto nodeType = ParseVFXNodeType(StringField(payload, "nodeType"));
-        if (!nodeType.has_value()) { err = Outcome::Err("BAD_ARG", "未知のVFX nodeTypeです"); return nullptr; }
-        asset::VFXGraphNode node =
-            editor::vfxops::MakeNode(newGraph, *nodeType, StringField(payload, "name"));
-        const int nextId = node.id;
-        if (*nodeType == asset::VFXNodeType::SubGraph)
-            node.subGraph.graphPath = StringField(payload, "assetPath");
-        newGraph.nodes.push_back(std::move(node));
-        int from = 0;
-        if (const JsonValue* value = payload.Find("from"); value != nullptr && value->IsNumber()) from = value->AsInt();
-        if (from == 0) {
-            const auto entry = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-                [](const asset::VFXGraphNode& item) { return item.type == asset::VFXNodeType::Entry; });
-            if (entry != newGraph.nodes.end()) from = entry->id;
-        }
-        // validateSchedule=false: 壊れたグラフも受け取り、vfx_lint で指摘して
-        // AI に修復させる方針 (拒否すると修復の起点を持てない)。対話編集とは方針が違う。
-        if (from > 0)
-            (void)editor::vfxops::AddLink(newGraph, from, nextId,
-                                          asset::VFXLinkTrigger::OnStart, 0.0f,
-                                          /*validateSchedule=*/false);
-    } else if (type == "vfx.node.duplicate") {
-        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        const auto source = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-            [nodeId](const asset::VFXGraphNode& item) { return item.id == nodeId; });
-        if (source == newGraph.nodes.end() || source->type == asset::VFXNodeType::Entry) {
-            err = Outcome::Err("BAD_ARG", "複製可能なnodeIdが必要です"); return nullptr;
-        }
-        int nextId = 1;
-        for (const auto& node : newGraph.nodes) nextId = (std::max)(nextId, node.id + 1);
-        asset::VFXGraphNode duplicate = *source;
-        duplicate.id = nextId;
-        const std::string requestedName = StringField(payload, "name");
-        duplicate.name = requestedName.empty() ? duplicate.name + " Copy" : requestedName;
-        duplicate.editorX = payload.Find("editorX") != nullptr
-            ? static_cast<float>(payload.Find("editorX")->AsNumber()) : duplicate.editorX + 40.0f;
-        duplicate.editorY = payload.Find("editorY") != nullptr
-            ? static_cast<float>(payload.Find("editorY")->AsNumber()) : duplicate.editorY + 40.0f;
-        newGraph.nodes.push_back(std::move(duplicate));
-    } else if (type == "vfx.node.remove") {
-        // ノード / リンク / binding / parentNodeId の後始末は共有実装が持つ。
-        // 移行前は VFXGraphCanvas 側だけ後ろ 2 つを取りこぼしていた。
-        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        if (!editor::vfxops::RemoveNode(newGraph, nodeId)) {
-            err = Outcome::Err("BAD_ARG", "削除可能なnodeIdが必要です"); return nullptr;
-        }
-    } else if (type == "vfx.node.setEnabled") {
-        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        const JsonValue* enabled = payload.Find("enabled");
-        auto node = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-            [nodeId](const asset::VFXGraphNode& item) { return item.id == nodeId; });
-        if (node == newGraph.nodes.end() || node->type == asset::VFXNodeType::Entry
-            || enabled == nullptr || !enabled->IsBool()) {
-            err = Outcome::Err("BAD_ARG", "Entry以外のnodeIdとenabledが必要です"); return nullptr;
-        }
-        node->enabled = enabled->AsBool();
-    } else if (type == "vfx.node.setMetadata") {
-        if (payload.Find("name") == nullptr && payload.Find("editorX") == nullptr
-            && payload.Find("editorY") == nullptr) {
-            err = Outcome::Err("BAD_ARG", "変更するnode metadataが必要です"); return nullptr;
-        }
-        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        auto node = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-            [nodeId](const asset::VFXGraphNode& item) { return item.id == nodeId; });
-        if (node == newGraph.nodes.end()) {
-            err = Outcome::Err("BAD_ARG", "nodeId が存在しません"); return nullptr;
-        }
-        if (const std::string name = StringField(payload, "name"); !name.empty()) node->name = name;
-        if (const JsonValue* value = payload.Find("editorX"); value != nullptr)
-            node->editorX = static_cast<float>(value->AsNumber());
-        if (const JsonValue* value = payload.Find("editorY"); value != nullptr)
-            node->editorY = static_cast<float>(value->AsNumber());
-    } else if (type == "vfx.node.setParent") {
-        // 空間の親子付け。link (実行の因果) とは別軸なので専用コマンドにする。
-        // WHY: schemaPath 経由 (vfx.node.setField "parentNodeId") でも書けてしまうが、
-        //      それだと「循環」「実体を持たない親」を保存直前の一般検証でしか弾けず、
-        //      AI は失敗理由から何を直せばいいのか判断できない。ここで意味のある
-        //      エラーコードを返し、1 往復で正しい操作へ導く。
-        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        // parentNodeId 省略 / -1 で親を外す (owner 直下へ戻す)。
-        const int parentId = payload.Find("parentNodeId") != nullptr
-            ? payload.Find("parentNodeId")->AsInt() : -1;
-        auto node = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-            [nodeId](const asset::VFXGraphNode& item) { return item.id == nodeId; });
-        if (node == newGraph.nodes.end()) {
-            err = Outcome::Err("BAD_ARG", "nodeId が存在しません"); return nullptr;
-        }
-        if (node->type == asset::VFXNodeType::Entry || node->type == asset::VFXNodeType::Delay) {
-            err = Outcome::Err("NODE_HAS_NO_TRANSFORM",
-                               "Entry / Delay は空間上の実体を持たないため親を持てません");
-            return nullptr;
-        }
-        if (parentId != -1) {
-            if (parentId == nodeId) {
-                err = Outcome::Err("PARENT_SELF", "自分自身を親にはできません"); return nullptr;
-            }
-            const auto parent = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-                [parentId](const asset::VFXGraphNode& item) { return item.id == parentId; });
-            if (parent == newGraph.nodes.end()) {
-                err = Outcome::Err("BAD_ARG", "parentNodeId が存在しません"); return nullptr;
-            }
-            if (parent->type == asset::VFXNodeType::Entry
-                || parent->type == asset::VFXNodeType::Delay) {
-                err = Outcome::Err("PARENT_HAS_NO_TRANSFORM",
-                                   "Entry / Delay は実体を持たないため親にできません。"
-                                   "実体を持つノード (Particle / Mesh / Light など) を指定してください");
-                return nullptr;
-            }
-            // 自分の子孫を親にすると循環する。保存時ではなくここで具体的に弾く。
-            for (int cursor = parent->parentNodeId, guard = 0;
-                 cursor != -1 && guard <= static_cast<int>(newGraph.nodes.size()); ++guard) {
-                if (cursor == nodeId) {
-                    err = Outcome::Err("PARENT_CYCLE",
-                                       "指定した親はこのノードの子孫のため循環します");
-                    return nullptr;
-                }
-                const auto up = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-                    [cursor](const asset::VFXGraphNode& item) { return item.id == cursor; });
-                cursor = (up != newGraph.nodes.end()) ? up->parentNodeId : -1;
-            }
-            // attachBone との併用は拒否しない (socket 追従は正しい設定でありうる)。
-            // 実行時は socket が優先されて parentNodeId が無視されるが、それは
-            // CollectVFXGraphWarnings が PARENT_OVERRIDDEN_BY_SOCKET として報告し、
-            // vfx.lint 経由で AI へ届く。ここで別経路の通知を作ると二重管理になる。
-        }
-        node->parentNodeId = parentId;
-    } else if (type == "vfx.node.setField") {
-        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0;
-        const std::string schemaPath = StringField(payload, "schemaPath");
-        const JsonValue* input = payload.Find("value");
-        auto node = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-            [nodeId](const asset::VFXGraphNode& item) { return item.id == nodeId; });
-        reflection::ResolvedProperty resolved;
-        if (node == newGraph.nodes.end() || input == nullptr
-            || !reflection::ResolveProperty(asset::GetVFXNodeSchema(), &*node, schemaPath, resolved)
-            || resolved.property == nullptr) {
-            err = Outcome::Err("UNKNOWN_FIELD", "schemaPathを解決できません"); return nullptr;
-        }
-        std::any value;
-        if (!JsonToSchemaValue(*input, resolved.property->type, value)
-            || !resolved.property->set(resolved.owner, value)) {
-            err = Outcome::Err("TYPE_MISMATCH", "schemaPathの型とvalueが一致しません"); return nullptr;
-        }
-    } else if (type == "vfx.repair") {
-        // vfx.lint が指摘する機械的な不備を自動で直す。
-        // WHY: AI は lint → 修正 → lint を回すが、「Entry へ繋ぐ」「パスの綴りを直す」は
-        //      毎回同じ手順なので往復させる意味がない。判断の要らないものだけ自動化し、
-        //      設計判断が要るもの (何を出すか) は AI に残す。
-        const bool connectOrphans = payload.Find("connectOrphans") == nullptr
-            || payload.Find("connectOrphans")->AsBool();
-        const bool fixAssets = payload.Find("fixAssets") == nullptr
-            || payload.Find("fixAssets")->AsBool();
-        // 以下は「見た目が壊れる設定」の機械的修復。lint の警告 code と 1:1 で対応する。
-        // WHY: これらは直し方が一意に決まる (せん断は等方へ戻す以外に無い、
-        //      saturate される値は範囲内へ落とす以外に無い) ので、AI に往復させる意味がない。
-        //      逆に「何を出すか」のような設計判断が要るものはここに入れない。
-        const bool fixSprites = payload.Find("fixSprites") == nullptr
-            || payload.Find("fixSprites")->AsBool();
-        const bool fixMeshFade = payload.Find("fixMeshFade") == nullptr
-            || payload.Find("fixMeshFade")->AsBool();
-        const bool fixParents = payload.Find("fixParents") == nullptr
-            || payload.Find("fixParents")->AsBool();
-
-        for (auto& node : newGraph.nodes) {
-            if (node.type == asset::VFXNodeType::Particle) {
-                auto& particle = node.particle;
-                // SHEARED_SPRITE — 回転と非等方サイズは併用できない。
-                // 回転を残して軸倍率を落とす (回転は動きの質に効き、軸倍率は形にしか効かないため、
-                // 意図せず併用してしまった場合に失うものが小さいのは軸倍率の側)。
-                const bool spins = particle.angularVelocityMin != 0.0f
-                                || particle.angularVelocityMax != 0.0f || particle.useRotationCurve;
-                if (fixSprites && spins
-                    && (particle.sizeAxisScale.x != particle.sizeAxisScale.y))
-                    particle.sizeAxisScale = { 1.0f, 1.0f, 1.0f };
-                // NOTE: 旧 fixLighting / fixSorting はここに無い。lightingStrength も
-                //       ブレンドも .mat の [particle] / blend_mode が正本になったため、
-                //       .vfx を書き換えても直せない (素材側の修復として作り直すこと)。
-            }
-            // MESH_NO_FADE — 加算ブレンドは RGB が 0 になって初めて消える。
-            if (fixMeshFade && node.type == asset::VFXNodeType::Mesh) {
-                node.mesh.colorEnd.x = 0.0f;
-                node.mesh.colorEnd.y = 0.0f;
-                node.mesh.colorEnd.z = 0.0f;
-            }
-        }
-        // PARENT_HAS_NO_TRANSFORM — 実体を持たない親は実行時に無視される。
-        // 位置の意図までは復元できないので、親指定を外して「効いていない設定」を消すに留める。
-        if (fixParents) {
-            for (auto& node : newGraph.nodes) {
-                if (node.parentNodeId == -1) continue;
-                const auto parent = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-                    [&node](const asset::VFXGraphNode& item) { return item.id == node.parentNodeId; });
-                if (parent == newGraph.nodes.end()
-                    || parent->type == asset::VFXNodeType::Entry
-                    || parent->type == asset::VFXNodeType::Delay)
-                    node.parentNodeId = -1;
-            }
-        }
-
-        if (connectOrphans) {
-            const auto entry = std::find_if(newGraph.nodes.begin(), newGraph.nodes.end(),
-                [](const asset::VFXGraphNode& node) { return node.type == asset::VFXNodeType::Entry; });
-            if (entry != newGraph.nodes.end()) {
-                const int entryId = entry->id;
-                std::vector<int> reachable{ entryId };
-                for (std::size_t head = 0; head < reachable.size(); ++head) {
-                    for (const auto& link : newGraph.links) {
-                        if (link.fromNode != reachable[head]) continue;
-                        if (std::find(reachable.begin(), reachable.end(), link.toNode) == reachable.end())
-                            reachable.push_back(link.toNode);
-                    }
-                }
-                for (const auto& node : newGraph.nodes) {
-                    if (node.type == asset::VFXNodeType::Entry) continue;
-                    if (std::find(reachable.begin(), reachable.end(), node.id) != reachable.end()) continue;
-                    // 孤立ノードは Entry から OnStart で繋ぐ。スケジュールが破綻するなら戻す。
-                    newGraph.links.push_back({ entryId, node.id, asset::VFXLinkTrigger::OnStart, 0.0f });
-                    std::vector<float> starts;
-                    float duration = 0.0f;
-                    if (!asset::BuildVFXGraphSchedule(newGraph, starts, duration, nullptr))
-                        newGraph.links.pop_back();
-                }
-            }
-        }
-
-        if (fixAssets && !ctx.projectRoot.empty()) {
-            namespace fs = std::filesystem;
-            // 参照先が無いパスを、同じ拡張子のファイルの中からファイル名の近さで置き換える。
-            // 綴り違い・フォルダ移動を拾うのが目的なので、確信度が低いものは触らない。
-            const auto repairPath = [&](std::string& value) {
-                if (value.empty() || value.rfind("primitive:", 0) == 0) return;
-                std::error_code ec;
-                if (fs::is_regular_file(fs::path(ctx.projectRoot) / value, ec)) return;
-                ec.clear();
-                if (!ctx.engineRoot.empty()
-                    && fs::is_regular_file(fs::path(ctx.engineRoot) / value, ec)) return;
-                ec.clear();
-                const std::string wanted = LowerAscii(fs::path(value).filename().string());
-                const std::string extension = LowerAscii(fs::path(value).extension().string());
-                std::string best;
-                std::size_t bestScore = 0;
-                for (const fs::path& root : { fs::path(ctx.projectRoot), fs::path(ctx.engineRoot) }) {
-                    if (root.empty() || !fs::is_directory(root, ec)) { ec.clear(); continue; }
-                    for (const auto& file : fs::recursive_directory_iterator(
-                             root, fs::directory_options::skip_permission_denied, ec)) {
-                        if (!file.is_regular_file(ec)) continue;
-                        if (LowerAscii(file.path().extension().string()) != extension) continue;
-                        const std::string candidate = LowerAscii(file.path().filename().string());
-                        // 先頭からの一致文字数を素点にする。完全一致が最優先。
-                        std::size_t score = 0;
-                        while (score < candidate.size() && score < wanted.size()
-                               && candidate[score] == wanted[score]) ++score;
-                        if (candidate == wanted) score = wanted.size() + 100;
-                        if (score <= bestScore) continue;
-                        bestScore = score;
-                        best = fs::relative(file.path(), root, ec).generic_string();
-                        ec.clear();
-                    }
-                    ec.clear();
-                }
-                // ファイル名の半分以上が一致したものだけ採用する (無関係な置換を避ける)。
-                if (!best.empty() && bestScore >= wanted.size() / 2 + 1) value = best;
-            };
-            for (auto& node : newGraph.nodes) {
-                repairPath(node.particle.materialPath);
-                repairPath(node.particle.meshShapePath);
-                repairPath(node.trail.materialPath);
-                repairPath(node.trail.meshPath);
-                repairPath(node.audio.clipPath);
-                repairPath(node.decal.materialPath);
-                repairPath(node.decal.albedoPath);
-                repairPath(node.mesh.materialPath);
-                if (node.mesh.meshPath.rfind("primitive:", 0) != 0) repairPath(node.mesh.meshPath);
-                repairPath(node.subGraph.graphPath);
-            }
-        }
-    } else if (type == "vfx.link.add") {
-        const int from = payload.Find("from") != nullptr ? payload.Find("from")->AsInt() : 0;
-        const int to = payload.Find("to") != nullptr ? payload.Find("to")->AsInt() : 0;
-        asset::VFXLinkTrigger trigger = asset::VFXLinkTrigger::OnComplete;
-        const std::string triggerName = LowerAscii(StringField(payload, "trigger"));
-        if (triggerName == "onstart") trigger = asset::VFXLinkTrigger::OnStart;
-        else if (triggerName == "oncollision") trigger = asset::VFXLinkTrigger::OnCollision;
-    else if (triggerName == "ondeath") trigger = asset::VFXLinkTrigger::OnDeath;
-    else if (triggerName == "onanimationevent")
-        trigger = asset::VFXLinkTrigger::OnAnimationEvent;
-    else if (triggerName == "ontrigger")
-        trigger = asset::VFXLinkTrigger::OnTrigger;
-        const float delay = payload.Find("delay") != nullptr
-            ? static_cast<float>(payload.Find("delay")->AsNumber()) : 0.0f;
-        // Entry へは入力リンクを張れない、という規則だけは共有する。
-        // スケジュール検証は掛けない — 壊れたグラフも受け取り vfx_lint で指摘する方針。
-        if (!editor::vfxops::AddLink(newGraph, from, to, trigger, delay,
-                                     /*validateSchedule=*/false)) {
-            err = Outcome::Err("BAD_ARG", "from / to が不正です (Entry へは繋げません)");
-            return nullptr;
-        }
-    } else if (type == "vfx.link.update") {
-        const int index = payload.Find("index") != nullptr ? payload.Find("index")->AsInt() : -1;
-        if (index < 0 || index >= static_cast<int>(newGraph.links.size())) {
-            err = Outcome::Err("BAD_ARG", "link indexが範囲外です"); return nullptr;
-        }
-        auto& link = newGraph.links[static_cast<std::size_t>(index)];
-        if (const JsonValue* value = payload.Find("from"); value != nullptr) link.fromNode = value->AsInt();
-        if (const JsonValue* value = payload.Find("to"); value != nullptr) link.toNode = value->AsInt();
-        if (const JsonValue* value = payload.Find("delay"); value != nullptr)
-            link.delay = static_cast<float>(value->AsNumber());
-        if (payload.Find("trigger") != nullptr) {
-            const std::string triggerName = LowerAscii(StringField(payload, "trigger"));
-            if (triggerName == "onstart") link.trigger = asset::VFXLinkTrigger::OnStart;
-            else if (triggerName == "oncollision") link.trigger = asset::VFXLinkTrigger::OnCollision;
-    else if (triggerName == "ondeath") link.trigger = asset::VFXLinkTrigger::OnDeath;
-    else if (triggerName == "onanimationevent")
-        link.trigger = asset::VFXLinkTrigger::OnAnimationEvent;
-    else if (triggerName == "ontrigger")
-        link.trigger = asset::VFXLinkTrigger::OnTrigger;
-            else link.trigger = asset::VFXLinkTrigger::OnComplete;
-        }
-    } else if (type == "vfx.link.remove") {
-        const int index = payload.Find("index") != nullptr ? payload.Find("index")->AsInt() : -1;
-        if (index < 0 || index >= static_cast<int>(newGraph.links.size())) {
-            err = Outcome::Err("BAD_ARG", "link indexが範囲外です"); return nullptr;
-        }
-        newGraph.links.erase(newGraph.links.begin() + index);
-    } else if (type == "vfx.param.declare") {
-        const std::string name = StringField(payload, "name");
-        const std::string typeName = LowerAscii(StringField(payload, "paramType"));
-        asset::VFXParamType parameterType = asset::VFXParamType::Float;
-        if (typeName == "int") parameterType = asset::VFXParamType::Int;
-        else if (typeName == "bool") parameterType = asset::VFXParamType::Bool;
-        else if (typeName == "color") parameterType = asset::VFXParamType::Color;
-        else if (typeName == "vector3") parameterType = asset::VFXParamType::Vector3;
-        else if (typeName == "asset") parameterType = asset::VFXParamType::AssetRef;
-        asset::VFXParamDefinition definition;
-        definition.name = name;
-        definition.type = parameterType;
-        const JsonValue* defaultValue = payload.Find("defaultValue");
-        if (defaultValue == nullptr || !JsonToVFXParamValue(*defaultValue, parameterType, definition.defaultValue)) {
-            err = Outcome::Err("TYPE_MISMATCH", "defaultValueがparamTypeと一致しません"); return nullptr;
-        }
-        if (const JsonValue* minimum = payload.Find("minimum"); minimum != nullptr && minimum->IsNumber()) {
-            definition.minimum = static_cast<float>(minimum->AsNumber()); definition.hasRange = true;
-        }
-        if (const JsonValue* maximum = payload.Find("maximum"); maximum != nullptr && maximum->IsNumber()) {
-            definition.maximum = static_cast<float>(maximum->AsNumber()); definition.hasRange = true;
-        }
-        newGraph.parameters.push_back(std::move(definition));
-    } else if (type == "vfx.param.remove") {
-        const std::string name = StringField(payload, "name");
-        const auto parameter = std::find_if(newGraph.parameters.begin(), newGraph.parameters.end(),
-            [&](const auto& item) { return item.name == name; });
-        if (parameter == newGraph.parameters.end()) {
-            err = Outcome::Err("BAD_ARG", "公開パラメーターが存在しません"); return nullptr;
-        }
-        std::erase_if(newGraph.parameters, [&](const auto& item) { return item.name == name; });
-        std::erase_if(newGraph.bindings, [&](const auto& item) { return item.paramName == name; });
-        std::erase_if(newGraph.subGraphForwards, [&](const auto& item) { return item.parentParam == name; });
-        for (auto& variant : newGraph.variants)
-            std::erase_if(variant.overrides, [&](const auto& item) { return item.paramName == name; });
-    } else if (type == "vfx.param.bind") {
-        newGraph.bindings.push_back({ StringField(payload, "name"),
-            payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : 0,
-            StringField(payload, "schemaPath") });
-    } else if (type == "vfx.param.unbind") {
-        const std::string name = StringField(payload, "name");
-        const int nodeId = payload.Find("nodeId") != nullptr ? payload.Find("nodeId")->AsInt() : -1;
-        const std::string schemaPath = StringField(payload, "schemaPath");
-        const std::size_t beforeCount = newGraph.bindings.size();
-        std::erase_if(newGraph.bindings, [&](const auto& item) {
-            return item.paramName == name && (nodeId < 0 || item.nodeId == nodeId)
-                && (schemaPath.empty() || item.schemaPath == schemaPath);
-        });
-        if (beforeCount == newGraph.bindings.size()) {
-            err = Outcome::Err("BAD_ARG", "一致するbindingが存在しません"); return nullptr;
-        }
-    } else if (type == "vfx.param.setDefault") {
-        const std::string name = StringField(payload, "name");
-        auto parameter = std::find_if(newGraph.parameters.begin(), newGraph.parameters.end(),
-            [&](const auto& item) { return item.name == name; });
-        const JsonValue* input = payload.Find("value");
-        if (parameter == newGraph.parameters.end() || input == nullptr
-            || !JsonToVFXParamValue(*input, parameter->type, parameter->defaultValue)) {
-            err = Outcome::Err("TYPE_MISMATCH", "parameterまたはvalueが不正です"); return nullptr;
-        }
-    } else if (type == "vfx.optimize") {
-        // 最適化の戦略。
-        //
-        // WHY: 粒子数を一律に下げるだけの最適化は、原因が fill rate のときに効きが悪く、
-        //      見た目だけが痩せる。パーティクルのコストは粒子数ではなく「塗った画素数」で決まるため、
-        //      枚数を減らしても 1 枚あたりが大きいままなら塗る量はほとんど変わらない。
-        //      AAA で実際に使う手は「粒を大きくして枚数を減らす」(総塗り面積を下げつつ密度感を保つ) と
-        //      「遠距離でレイヤーを間引く」(引きの絵では層の枚数が読めないことを利用する) の 2 つ。
-        //      どちらが要るかは vfx.runtime の cost.overdraw と particlePassGpuMs を見て決める。
-        const std::string strategy = LowerAscii(StringField(payload, "strategy"));
-        const bool cutParticles = strategy.empty() || strategy == "particles" || strategy == "both";
-        const bool cutFillRate  = strategy == "fillrate" || strategy == "both";
-        if (!strategy.empty() && !cutParticles && !cutFillRate) {
-            err = Outcome::Err("BAD_ARG", "strategy は particles / fillRate / both のいずれかです");
-            return nullptr;
-        }
-        const int targetParticles = payload.Find("targetParticles") != nullptr
-            ? payload.Find("targetParticles")->AsInt() : 0;
-        if (cutParticles && targetParticles < 1) {
-            err = Outcome::Err("BAD_ARG", "targetParticlesは1以上です"); return nullptr;
-        }
-        const auto oldBudget = asset::CalculateVFXGraphBudget(newGraph);
-        const float scale = (cutParticles && oldBudget.particles > 0)
-            ? (std::min)(1.0f, static_cast<float>(targetParticles) / oldBudget.particles) : 1.0f;
-
-        // 「粒を大きくして枚数を減らす」の倍率。1 粒あたりの面積 s² が k^(2/3) 倍、
-        // 枚数が 1/k 倍になるので、総塗り面積は k^(1/3) 分の 1 まで落ちる。
-        // size を √k 倍にすると総面積が変わらず fill rate 対策にならないので、意図的に √より弱くする。
-        const float sizeCompensation = scale < 1.0f
-            ? std::pow(1.0f / (std::max)(scale, 0.01f), 1.0f / 3.0f) : 1.0f;
-
-        std::unordered_set<int> eventSources;
-        for (const auto& link : newGraph.links)
-            if (link.trigger == asset::VFXLinkTrigger::OnCollision || link.trigger == asset::VFXLinkTrigger::OnDeath)
-                eventSources.insert(link.fromNode);
-
-        // 遠距離で間引く候補を決めるため、各ノードの塗り寄与 (枚数 × 面積) を先に見積もる。
-        // WHY: 全ノードを一律に間引くと、遠景で「芯だけが残って形が判る」状態も壊れる。
-        //      塗りの大半を作っている層だけを落とすのが、見た目の劣化が最も小さい。
-        std::vector<std::pair<int, float>> fillContribution;
-        for (const auto& node : newGraph.nodes) {
-            if (node.type != asset::VFXNodeType::Particle) continue;
-            const float size = (std::max)(node.particle.sizeStart, node.particle.sizeEnd);
-            fillContribution.emplace_back(node.id, static_cast<float>(node.particle.maxParticles) * size * size);
-        }
-        std::sort(fillContribution.begin(), fillContribution.end(),
-                  [](const auto& a, const auto& b) { return a.second > b.second; });
-        // 上位 1/3 (最低 1 個) を「遠距離で間引く層」とする。層が 2 枚以下なら間引かない。
-        std::unordered_set<int> thinAtDistance;
-        if (cutFillRate && fillContribution.size() >= 3) {
-            const std::size_t count =
-                (std::max)(std::size_t{1}, fillContribution.size() / std::size_t{3});
-            for (std::size_t index = 0; index < count; ++index)
-                thinAtDistance.insert(fillContribution[index].first);
-        }
-
-        for (auto& node : newGraph.nodes) {
-            if (node.type != asset::VFXNodeType::Particle) continue;
-            if (cutParticles) {
-                node.particle.maxParticles =
-                    (std::max)(1, static_cast<int>(std::round(node.particle.maxParticles * scale)));
-                node.particle.emitRate *= scale;
-            }
-            if (cutFillRate) {
-                if (cutParticles) {
-                    // 枚数が減った分の密度感を粒の大きさで補う。総塗り面積は下がったまま。
-                    node.particle.sizeStart *= sizeCompensation;
-                    node.particle.sizeEnd   *= sizeCompensation;
-                }
-                // 遠距離でのレイヤー間引き。寄与の大きい層だけを完全に落とす。
-                if (thinAtDistance.contains(node.id)) {
-                    node.particle.lodFarRateScale = 0.0f;
-                    node.particle.lodFarDistance = (std::min)(node.particle.lodFarDistance, 25.0f);
-                }
-            }
-            node.particle.lodEnabled = true;
-            node.particle.lodNearRateScale = 1.0f;
-            node.particle.lodFarRateScale = (std::min)(node.particle.lodFarRateScale, 0.35f);
-            // GPU へ載せられるものは載せる。載らない設定を持つノードは触らない
-            // (ここで無理に Gpu を立てると、黙って CPU へ縮退したまま「GPU 化した」と読める)。
-            scene::ParticleEmitterSettings candidate = node.particle;
-            candidate.simulationMode = scene::ParticleSimulationMode::Gpu;
-            if (!eventSources.contains(node.id)
-                && scene::CanUseGpuSimulation(
-                    candidate, ResolveParticleMaterialSettings(node.particle.materialPath)))
-                node.particle.simulationMode = scene::ParticleSimulationMode::Gpu;
-        }
-        newGraph.maxParticles = cutParticles
-            ? (std::max)(targetParticles, asset::CalculateVFXGraphBudget(newGraph).particles)
-            : newGraph.maxParticles;
-    } else if (type == "vfx.variant.upsert") {
-        const std::string name = StringField(payload, "name");
-        const JsonValue* values = payload.Find("values");
-        if (name.empty() || values == nullptr || !values->IsObject()) {
-            err = Outcome::Err("BAD_ARG", "name / values objectが必要です"); return nullptr;
-        }
-        asset::VFXVariantSet variant;
-        variant.name = name;
-        for (const auto& [paramName, json] : values->AsObject()) {
-            const auto definition = std::find_if(newGraph.parameters.begin(), newGraph.parameters.end(),
-                [&](const auto& parameter) { return parameter.name == paramName; });
-            asset::VFXParamValue value;
-            if (definition == newGraph.parameters.end()
-                || !JsonToVFXParamValue(json, definition->type, value)) {
-                err = Outcome::Err("TYPE_MISMATCH", "variant値が公開パラメーターと一致しません: " + paramName);
-                return nullptr;
-            }
-            variant.overrides.push_back({ paramName, std::move(value) });
-        }
-        auto existing = std::find_if(newGraph.variants.begin(), newGraph.variants.end(),
-            [&](const auto& item) { return item.name == name; });
-        if (existing == newGraph.variants.end()) newGraph.variants.push_back(std::move(variant));
-        else *existing = std::move(variant);
-    } else if (type == "vfx.variant.remove") {
-        const std::string name = StringField(payload, "name");
-        const std::size_t beforeCount = newGraph.variants.size();
-        std::erase_if(newGraph.variants, [&](const auto& item) { return item.name == name; });
-        if (beforeCount == newGraph.variants.size()) {
-            err = Outcome::Err("BAD_ARG", "Variantが存在しません"); return nullptr;
-        }
-    } else if (type == "vfx.group.add" || type == "vfx.group.update") {
-        asset::VFXGraphGroup* group = nullptr;
-        if (type == "vfx.group.add") {
-            int nextId = 1;
-            for (const auto& item : newGraph.groups) nextId = (std::max)(nextId, item.id + 1);
-            newGraph.groups.push_back({});
-            newGraph.groups.back().id = nextId;
-            group = &newGraph.groups.back();
-        } else {
-            if (payload.Find("title") == nullptr && payload.Find("note") == nullptr
-                && payload.Find("x") == nullptr && payload.Find("y") == nullptr
-                && payload.Find("width") == nullptr && payload.Find("height") == nullptr
-                && payload.Find("color") == nullptr) {
-                err = Outcome::Err("BAD_ARG", "変更するGroup設定が必要です"); return nullptr;
-            }
-            const int groupId = payload.Find("groupId") != nullptr ? payload.Find("groupId")->AsInt() : 0;
-            const auto found = std::find_if(newGraph.groups.begin(), newGraph.groups.end(),
-                [groupId](const auto& item) { return item.id == groupId; });
-            if (found == newGraph.groups.end()) {
-                err = Outcome::Err("BAD_ARG", "groupIdが存在しません"); return nullptr;
-            }
-            group = &*found;
-        }
-        if (const std::string title = StringField(payload, "title"); !title.empty()) group->title = title;
-        if (payload.Find("note") != nullptr) group->note = StringField(payload, "note");
-        if (const JsonValue* value = payload.Find("x"); value != nullptr) group->x = static_cast<float>(value->AsNumber());
-        if (const JsonValue* value = payload.Find("y"); value != nullptr) group->y = static_cast<float>(value->AsNumber());
-        if (const JsonValue* value = payload.Find("width"); value != nullptr) group->width = static_cast<float>(value->AsNumber());
-        if (const JsonValue* value = payload.Find("height"); value != nullptr) group->height = static_cast<float>(value->AsNumber());
-        if (const JsonValue* value = payload.Find("color"); value != nullptr && value->IsArray()
-            && value->AsArray().size() == 4) {
-            group->color = { static_cast<float>(value->AsArray()[0].AsNumber()),
-                             static_cast<float>(value->AsArray()[1].AsNumber()),
-                             static_cast<float>(value->AsArray()[2].AsNumber()),
-                             static_cast<float>(value->AsArray()[3].AsNumber()) };
-        }
-    } else if (type == "vfx.group.remove") {
-        const int groupId = payload.Find("groupId") != nullptr ? payload.Find("groupId")->AsInt() : 0;
-        const std::size_t beforeCount = newGraph.groups.size();
-        std::erase_if(newGraph.groups, [groupId](const auto& item) { return item.id == groupId; });
-        if (beforeCount == newGraph.groups.size()) {
-            err = Outcome::Err("BAD_ARG", "groupIdが存在しません"); return nullptr;
-        }
-    } else return nullptr;
-
-    if (!asset::ValidateVFXGraphAsset(newGraph, &error)) {
-        err = Outcome::Err("VFX_VALIDATION", error);
-        return nullptr;
-    }
-    editor::EditorContext* context = &ctx;
-    std::string commandLabel = "AI: Edit VFX Graph";
-    if (type == "vfx.graph.set") commandLabel = "AI: Set VFX Graph";
-    else if (type == "vfx.node.add") commandLabel = "AI: Add VFX Node";
-    else if (type == "vfx.node.duplicate") commandLabel = "AI: Duplicate VFX Node";
-    else if (type == "vfx.node.remove") commandLabel = "AI: Remove VFX Node";
-    else if (type == "vfx.node.setEnabled") commandLabel = "AI: Toggle VFX Node";
-    else if (type == "vfx.node.setMetadata") commandLabel = "AI: Set VFX Node Metadata";
-    else if (type == "vfx.node.setParent") commandLabel = "AI: Parent VFX Node";
-    else if (type == "vfx.node.setField") commandLabel = "AI: Set VFX Node Field";
-    else if (type == "vfx.link.add") commandLabel = "AI: Add VFX Link";
-    else if (type == "vfx.link.update") commandLabel = "AI: Update VFX Link";
-    else if (type == "vfx.link.remove") commandLabel = "AI: Remove VFX Link";
-    else if (type == "vfx.param.declare") commandLabel = "AI: Declare VFX Parameter";
-    else if (type == "vfx.param.remove") commandLabel = "AI: Remove VFX Parameter";
-    else if (type == "vfx.param.bind") commandLabel = "AI: Bind VFX Parameter";
-    else if (type == "vfx.param.unbind") commandLabel = "AI: Unbind VFX Parameter";
-    else if (type == "vfx.param.setDefault") commandLabel = "AI: Set VFX Parameter Default";
-    else if (type == "vfx.variant.upsert") commandLabel = "AI: Upsert VFX Variant";
-    else if (type == "vfx.variant.remove") commandLabel = "AI: Remove VFX Variant";
-    else if (type == "vfx.group.add") commandLabel = "AI: Add VFX Group";
-    else if (type == "vfx.group.update") commandLabel = "AI: Update VFX Group";
-    else if (type == "vfx.group.remove") commandLabel = "AI: Remove VFX Group";
-    else if (type == "vfx.optimize") commandLabel = "AI: Optimize VFX";
-    else if (type == "vfx.repair") commandLabel = "AI: Repair VFX";
-    return std::make_unique<LambdaCommand>(std::move(commandLabel),
-        [context, path, newGraph]() {
-            if (asset::SaveVFXGraphAsset(path, newGraph)) context->requestAssetBrowserRefresh = true;
-        },
-        [context, path, oldGraph]() {
-            if (asset::SaveVFXGraphAsset(path, oldGraph)) context->requestAssetBrowserRefresh = true;
-        });
-}
-
 // 1つの mutating Command を Undo 可能な ICommand へ変換する (実行はしない)。失敗時 nullptr + err。
 // createdSink != nullptr のとき生成系 Command は代表ルートの instanceId をそこへ書き込む。
 // detailSink != nullptr のとき、Command が「適用の副作用」を応答へ載せたい場合にそこへ書く。
-//   WHY: applied:true だけでは、Template 取り込みでパラメーターが改名されたことも
-//        budget が引き上げられたことも AI へ伝わらない。次の手で存在しない名前を
-//        指してしまうため、黙って起きる変更は必ず応答へ載せる。
+//   applied:true だけでは Template 取り込みでの改名も budget の引き上げも伝わらず、
+//   次の手で存在しない名前を指してしまう。黙って起きる変更は必ず応答へ載せる。
 // ═════════════════════════════════════════════════════════════════════════════
 // ワールドオーサリング (Scene 入出力 / Terrain / NavMesh / Environment / Audio / UI / Build)
 //
-// WHY このまとまりが必要か:
-//   ここまでの Query/Command は「シーンに置いたオブジェクトとそのコンポーネント」を扱う。
-//   しかし屋外シーンの実体は、GameObject を並べたものではなく地形の高さ・スプラット・植生・
-//   NavMesh・空と光の設定でできている。それらは Inspector のスカラー値ではなくブラシとベイク
-//   でしか変えられないため、component.set しか持たない AI からは「読むことすらできない領域」
-//   として残っていた。さらに AI が触れるのは常に「今開いているシーン 1 枚」だけで、
-//   プロジェクト内の他のシーンへ移る手段が無かった (scene.list / scene.open / scene.save)。
+// ここまでの Query/Command は「シーンに置いたオブジェクトとそのコンポーネント」を扱うが、
+// 屋外シーンの実体は地形の高さ・スプラット・植生・NavMesh・空と光の設定でできている。
+// どれもブラシとベイクでしか変えられず、component.set だけでは読むことすらできない。
+// シーンの移動手段 (scene.list / scene.open / scene.save) もここが持つ。
 // ═════════════════════════════════════════════════════════════════════════════
 
 // projectRoot 配下を走査して .scene を列挙する。
@@ -6810,9 +3658,7 @@ Outcome DoSceneList(editor::EditorContext& ctx)
 }
 
 // アクティブシーンを切り替える。未保存変更は discardUnsaved を明示しない限り拒否する。
-// WHY 拒否するか: Editor 本来の導線は確認モーダルだが、AI 要求の途中でモーダルを開くと
-//      人がクリックするまでバスの drain (メインスレッド) が止まり、以降の要求も返らない。
-//      「捨てる」判断を引数として先に受け取り、モーダルを介さない実体だけを呼ぶ。
+// 確認モーダルを開くと人がクリックするまでバスの drain が止まり、以降の要求も返らない。
 Outcome DoSceneOpen(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
     if (!ctx.openScenePathImmediate) return Outcome::Err("NO_HOST", "シーンを開く機能が未接続です");
@@ -6896,10 +3742,7 @@ Outcome DoSceneSave(editor::EditorContext& ctx, const JsonValue& payload, bool d
 // ── Add Object プリセット ───────────────────────────────────────────────────
 
 // Hierarchy の Add Object メニューと同じ登録表を返す。
-// WHY: これが無いと AI は「Cube を置く」ために node_create + component_add(MeshRenderer) +
-//      meshPath の推測 + component_add(MaterialComponent) + Collider の選択、を自力で組み立てる
-//      ことになる。組み立て方は毎回変わるので、人がメニューから置いた Cube と AI が置いた Cube で
-//      中身の違うオブジェクトがシーンに混ざる。プリセットを共有すれば結果が一致する。
+// 自力で組み立てさせると毎回中身が変わり、人が置いた Cube と AI が置いた Cube が別物になる。
 Outcome DoPresetCatalog(const JsonValue& payload)
 {
     const std::string category = LowerAscii(StringField(payload, "category"));
@@ -6922,9 +3765,8 @@ Outcome DoPresetCatalog(const JsonValue& payload)
 // ── Terrain ─────────────────────────────────────────────────────────────────
 
 // heightData / splatData の統計を返す。値そのもの (65x65 で 4225 個) は返さない。
-// WHY: 生データを返すと 1 回の応答で context を食い潰すうえ、AI が判断に使うのは
-//      「どれくらい起伏があるか」「どのレイヤーが支配的か」という要約でしかない。
-//      特定地点の実値が要るときは terrain.sample で点を指定して読む。
+// 判断に使うのは「どれくらい起伏があるか」の要約で、生データは context を食い潰す。
+// 特定地点の実値が要るときは terrain.sample で点を指定して読む。
 JsonValue TerrainStatsJson(const scene::TerrainComponent& terrain)
 {
     JsonValue stats = JsonValue::MakeObject();
@@ -7316,10 +4158,8 @@ scene::NavMeshSurfaceComponent* ResolveNavMeshSurface(scene::Scene& activeScene,
 }
 
 // 2 点間の経路を、Agent が実際に使うのと同じ A* + Funnel で引く。
-// WHY: 「敵がここへ来ない」の原因は、BT の条件・Agent の設定・NavMesh の穴の 3 通りある。
-//      bt_runtime_state は 1 つ目を、navmesh_get_state は 2 つ目を切り分けるが、
-//      3 つ目は経路そのものを引いてみるまで分からない。Play して眺めても
-//      「行かない」ことしか観測できず、行けないのか行こうとしないのかが区別できない。
+// 「敵がここへ来ない」の原因は BT の条件・Agent の設定・NavMesh の穴の 3 通りで、
+// 3 つ目は経路そのものを引いてみるまで分からない。
 Outcome DoNavMeshPath(editor::EditorContext& ctx, const JsonValue& payload)
 {
     scene::Scene* activeScene = ctx.activeScene;
@@ -7474,18 +4314,15 @@ Outcome DoNavMeshSample(editor::EditorContext& ctx, const JsonValue& payload)
 
 // 環境系コンポーネントの一覧。Reflect 済みの値をそのまま返すので、editor_catalog の
 // フィールド定義と 1 対 1 で対応し、component_set でそのまま書き戻せる。
-// WHY 専用ツールにするか: 空・太陽・霧・IBL・雲・ポストプロセスは別々の GameObject に
-//      散らばっていて、scene_get_tree を読んでも「どれが環境設定なのか」は名前から
-//      推測するしかない。「今この画がなぜこの明るさなのか」を 1 回で読めるようにする。
+// 空・太陽・霧・IBL・雲・ポストは別々の GameObject に散らばっており、
+// 「今この画がなぜこの明るさなのか」を 1 回で読めるようにする。
 Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
 {
     scene::Scene* activeScene = ctx.activeScene;
     if (activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
 
     // 対象は ComponentCategory::Environment に登録された型すべて。
-    // WHY 型名を並べないか: 空・霧・雲・IBL は今後も増える。ここへ名前表を書くと、
-    //      新しい環境コンポーネントを足した人が「AI からだけ見えない」状態を作る。
-    //      分類の正本は ComponentRegistry なので、そこから引く。
+    // 名前表を書くと、新しい環境コンポーネントが「AI からだけ見えない」状態になる。
     std::unordered_set<std::string> environmentTypes;
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
         if constexpr (Reg::category == scene::ComponentCategory::Environment
@@ -7584,18 +4421,22 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
         listeners.Push(std::move(entry));
     }
 
-    // AudioSource の busName が指せる名前の一覧。
-    // WHY 返すか: fields に busName が出ても、有効な名前が分からなければ AI は
-    //     綴りを推測するしかない。未知の名前は Master へ落ちるため、間違えても
-    //     エラーにならず「なぜか音量設定が効かない」形でしか現れない。
+    // AudioSource の busName が指せる名前の一覧。未知の名前は Master へ落ちるだけで
+    // エラーにならず、「なぜか音量設定が効かない」形でしか現れない。
     JsonValue buses = JsonValue::MakeArray();
+    int voiceLimit   = 0;
+    int activeVoices = 0;
     if (auto* audioManager = core::Application::Get().GetAudioManager()) {
+        voiceLimit   = static_cast<int>(audioManager->VoiceLimit());
+        activeVoices = static_cast<int>(audioManager->ActiveVoiceCount());
         for (const audio::BusDesc& desc : audioManager->BusLayout()) {
             JsonValue entry = JsonValue::MakeObject();
             entry.Set("name", JsonValue(desc.name));
             entry.Set("parent", JsonValue(desc.parent));
             entry.Set("volume", JsonValue(desc.volume));
             entry.Set("lowPassCutoff", JsonValue(desc.lowPassCutoff));
+            // AudioReverbZone が効くのは reverb=true のバスへ出している音だけ。
+            entry.Set("reverb", JsonValue(desc.reverb));
             buses.Push(std::move(entry));
         }
     }
@@ -7606,6 +4447,9 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("listenerCount", JsonValue(static_cast<int>(listeners.AsArray().size())));
     result.Set("listeners", std::move(listeners));
     result.Set("buses", std::move(buses));
+    // 同時発音の上限に張り付いていると、優先度の低い音から畳まれて鳴らなくなる。
+    result.Set("voiceLimit", JsonValue(voiceLimit));
+    result.Set("activeVoices", JsonValue(activeVoices));
     // 3D 減衰は Listener が無いと成立しない。「音が聞こえない」の最頻出原因なので明示する。
     if (listeners.AsArray().empty())
         result.Set("warning", JsonValue("AudioListener がシーンにありません (3D 音の距離減衰が効きません)"));
@@ -7615,9 +4459,8 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
 // ── UI ──────────────────────────────────────────────────────────────────────
 
 // Canvas を根とする UI ツリーを、矩形と描画順が読める形で返す。
-// WHY: UI は Transform ではなく RectTransform 的な矩形で決まり、scene_get_tree の
-//      階層だけでは「画面のどこに何が出るか」が一切分からない。viewport_capture の
-//      絵と突き合わせる相手が無いと、ずれているのか隠れているのかも言えない。
+// UI は矩形で決まるので、scene_get_tree の階層だけでは「画面のどこに何が出るか」が
+// 分からず、viewport_capture の絵と突き合わせる相手が無い。
 JsonValue UIElementJson(GameObject& go)
 {
     JsonValue entry = JsonValue::MakeObject();
@@ -7668,9 +4511,8 @@ Outcome DoUIInspect(editor::EditorContext& ctx, const JsonValue& payload)
 // ── Build (スクリプト DLL / HLSL のコンパイル状態) ───────────────────────────
 
 // BuildConsole の履歴と診断を返す。shader_get_compile_diagnostics の Script 版。
-// WHY: スクリプトのコンパイルが通っていないと Play も component_add も無意味な結果になるが、
-//      AI からはその失敗が console_get_logs の断片としてしか見えず、
-//      どのファイルの何行目で落ちたのかを組み立て直す必要があった。
+// コンパイルが通っていないと Play も component_add も無意味な結果になるが、
+// console_get_logs の断片からは何行目で落ちたのかを組み立て直す必要がある。
 Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
 {
     if (ctx.buildConsole == nullptr) return Outcome::Err("NO_BUILD_CONSOLE", "BuildConsole が未設定です");
@@ -7743,9 +4585,7 @@ Outcome DoBuildRun(editor::EditorContext& ctx, const JsonValue& payload, bool dr
     if (dryRun) return DryRunPreview("build.run");
 
     // 実体は script.reload operator。Play ツールバーの Reload Scripts と同じ経路を通る。
-    // WHY フラグを直に立てないか: operator の poll は scriptReloadBusy に加えて
-    //     hotReloadState (Compiling / Reloading) も見る。上の 2 条件だけを写すと、
-    //     ホットリロードが走らせたコンパイルの最中に AI からもう 1 本走らせられる。
+    // フラグを直に立てると、ホットリロード中のコンパイルにもう 1 本重ねられる。
     if (const editor::OpResult result = editor::InvokeOperator(ctx, "script.reload"); !result.ok)
         return Outcome::Err(result.errorCode.empty() ? "BUILD_BUSY" : result.errorCode,
                             result.message);
@@ -7763,213 +4603,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
                                        std::shared_ptr<std::string> createdSink,
                                        JsonValue* detailSink = nullptr)
 {
-    if (type == "vfx.template.apply") {
-        namespace fs = std::filesystem;
-        if (ctx.projectRoot.empty()) { err = Outcome::Err("NO_PROJECT", "projectRoot が未設定です"); return nullptr; }
-        const std::string templateName = StringField(payload, "template");
-        const std::string destination = StringField(payload, "path");
-        if (templateName.empty() || destination.empty()) {
-            err = Outcome::Err("BAD_ARG", "template / path が必要です"); return nullptr;
-        }
-        // Templates ディレクトリを走査して名前で解決する。
-        // WHY: 以前は5種をハードコードした map だったため、プロジェクトへ Template を
-        //      追加しても AI からは存在しないままだった。エディタ UI 側と同じ
-        //      「ディスクが唯一の信頼元」という規則に揃える。
-        std::error_code ec;
-        const fs::path root = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
-        const std::string lowerTemplate = LowerAscii(templateName);
-        fs::path source;
-        if (lowerTemplate.find('/') == std::string::npos
-            && lowerTemplate.find('\\') == std::string::npos) {
-            // 名前指定: Project > Engine の順に Templates を探し、拡張子なしの stem で照合する。
-            std::vector<fs::path> roots{ root / "Assets/VFX/Templates" };
-            if (!ctx.engineRoot.empty())
-                roots.push_back(fs::path(ctx.engineRoot) / "Assets/VFX/Templates");
-            for (const fs::path& directory : roots) {
-                if (!fs::is_directory(directory, ec)) { ec.clear(); continue; }
-                for (const fs::directory_entry& file : fs::directory_iterator(directory, ec)) {
-                    if (!file.is_regular_file(ec) || file.path().extension() != ".vfx") continue;
-                    if (LowerAscii(file.path().stem().string()) != lowerTemplate) continue;
-                    source = file.path();
-                    break;
-                }
-                ec.clear();
-                if (!source.empty()) break;
-            }
-        }
-        // パス直指定 (または名前解決に失敗) のときは projectRoot 相対として扱う。
-        if (source.empty()) source = root / fs::path(templateName);
-        source = fs::weakly_canonical(source, ec);
-        const fs::path target = fs::weakly_canonical(root / fs::path(destination), ec);
-        const fs::path engineRoot = ctx.engineRoot.empty() ? root
-            : fs::weakly_canonical(fs::path(ctx.engineRoot), ec);
-        const bool sourceAllowed = source.generic_string().rfind(root.generic_string(), 0) == 0
-            || source.generic_string().rfind(engineRoot.generic_string(), 0) == 0;
-        if (ec || !sourceAllowed || target.generic_string().rfind(root.generic_string(), 0) != 0
-            || LowerAscii(target.extension().string()) != ".vfx") {
-            err = Outcome::Err("BAD_PATH", "template と path はprojectRoot配下の.vfxである必要があります");
-            return nullptr;
-        }
-        asset::VFXGraphAsset templateGraph;
-        std::string loadError;
-        if (!asset::LoadVFXGraphAsset(source.generic_string(), templateGraph, &loadError)) {
-            err = Outcome::Err("VFX_TEMPLATE_NOT_FOUND", loadError); return nullptr;
-        }
-        const bool existed = fs::exists(target, ec);
-        asset::VFXGraphAsset previous;
-        if (existed && !asset::LoadVFXGraphAsset(target.generic_string(), previous, &loadError)) {
-            err = Outcome::Err("VFX_DEST_INVALID", loadError); return nullptr;
-        }
-
-        // 取り込み方。人間の UI と同じ 3 択を AI へも開く。
-        // WHY: これまでは「複製して新規アセット化」だけで、AI は既存グラフへ層を
-        //      足せなかった。人間が Merge で 1 操作にできることを、AI は
-        //      ノードを 1 個ずつ add してリンクを張るしかなく、失敗率が違いすぎる。
-        const std::string modeText = LowerAscii(StringField(payload, "mode"));
-        const bool merging = modeText == "merge";
-        const bool subGraphMode = modeText == "subgraph";
-        if (!modeText.empty() && !merging && !subGraphMode && modeText != "replace") {
-            err = Outcome::Err("BAD_ARG", "mode は replace / merge / subgraph のいずれかです");
-            return nullptr;
-        }
-        if ((merging || subGraphMode) && !existed) {
-            err = Outcome::Err("VFX_DEST_NOT_FOUND",
-                               "merge / subgraph は既存の .vfx を対象にします");
-            return nullptr;
-        }
-
-        asset::VFXGraphAsset result;
-        JsonValue reportJson = JsonValue::MakeObject();
-        if (merging || subGraphMode) {
-            result = previous;
-            editor::vfx::TemplateMergeOptions options;
-            if (const JsonValue* value = payload.Find("anchorNodeId"); value != nullptr)
-                options.anchorNodeId = value->AsInt();
-            if (const JsonValue* value = payload.Find("delay"); value != nullptr)
-                options.anchorDelay = static_cast<float>(value->AsNumber());
-            if (const JsonValue* value = payload.Find("parentNodeId"); value != nullptr)
-                options.parentNodeId = value->AsInt();
-            if (const JsonValue* value = payload.Find("raiseBudget"); value != nullptr)
-                options.raiseBudget = value->AsBool();
-            options.variantName = StringField(payload, "variant");
-            const std::string triggerText = LowerAscii(StringField(payload, "trigger"));
-            if (triggerText == "oncomplete") options.anchorTrigger = asset::VFXLinkTrigger::OnComplete;
-            else if (triggerText == "onstart") options.anchorTrigger = asset::VFXLinkTrigger::OnStart;
-            else if (triggerText == "oncollision") options.anchorTrigger = asset::VFXLinkTrigger::OnCollision;
-            else if (triggerText == "ondeath") options.anchorTrigger = asset::VFXLinkTrigger::OnDeath;
-            else if (!triggerText.empty()) {
-                err = Outcome::Err("BAD_ARG",
-                    "trigger は onComplete / onStart / onCollision / onDeath のいずれかです");
-                return nullptr;
-            }
-            if (const JsonValue* groups = payload.Find("groups"); groups != nullptr && groups->IsArray())
-                for (const JsonValue& item : groups->AsArray())
-                    options.groupFilter.push_back(item.AsInt());
-
-            const std::string label = source.stem().generic_string();
-            if (subGraphMode) {
-                // 複製せず参照として置く。Template を直すと参照元へ伝播する。
-                const fs::path relativeSource = fs::relative(source, root, ec);
-                if (ec) { err = Outcome::Err("BAD_PATH", "Template のパスを解決できません"); return nullptr; }
-                if (fs::weakly_canonical(target, ec) == source) {
-                    err = Outcome::Err("VFX_SELF_REFERENCE",
-                                       "自分自身を Sub Graph として参照することはできません");
-                    return nullptr;
-                }
-                int nextNodeId = 0;
-                for (const auto& node : result.nodes) nextNodeId = (std::max)(nextNodeId, node.id);
-                int anchorId = options.anchorNodeId;
-                if (anchorId < 0)
-                    for (const auto& node : result.nodes)
-                        if (node.type == asset::VFXNodeType::Entry) anchorId = node.id;
-                asset::VFXGraphNode node;
-                node.id = nextNodeId + 1;
-                node.type = asset::VFXNodeType::SubGraph;
-                node.name = label;
-                std::vector<float> starts;
-                float duration = 0.0f;
-                node.duration = asset::BuildVFXGraphSchedule(templateGraph, starts, duration, nullptr)
-                                && duration > 0.0f ? duration : 1.0f;
-                node.subGraph.graphPath = relativeSource.generic_string();
-                node.parentNodeId = options.parentNodeId;
-                node.editorX = 300.0f;
-                node.editorY = 60.0f * static_cast<float>(result.nodes.size());
-                result.nodes.push_back(std::move(node));
-                if (anchorId > 0)
-                    result.links.push_back({ anchorId, nextNodeId + 1, options.anchorTrigger,
-                                             options.anchorDelay, {} });
-                reportJson.Set("addedNodes", JsonValue(1));
-            } else {
-                editor::vfx::TemplateMergeReport report;
-                std::string mergeError;
-                if (!editor::vfx::MergeGraphTemplateInto(result, templateGraph, label, options,
-                                                         report, &mergeError)) {
-                    err = Outcome::Err("VFX_MERGE_FAILED", mergeError);
-                    return nullptr;
-                }
-                // 改名・budget 引き上げ・不足素材は「黙って起きると困ること」。
-                // 応答に載せないと、AI は次の手で存在しないパラメーター名を指す。
-                reportJson.Set("addedNodes", JsonValue(static_cast<int>(report.addedNodes.size())));
-                JsonValue renamed = JsonValue::MakeArray();
-                for (const auto& [oldName, newName] : report.renamedParameters) {
-                    JsonValue item = JsonValue::MakeObject();
-                    item.Set("from", JsonValue(oldName));
-                    item.Set("to", JsonValue(newName));
-                    renamed.Push(std::move(item));
-                }
-                reportJson.Set("renamedParameters", std::move(renamed));
-                JsonValue missing = JsonValue::MakeArray();
-                for (const auto& path : report.missingAssets) missing.Push(JsonValue(path));
-                reportJson.Set("missingAssets", std::move(missing));
-                JsonValue budget = JsonValue::MakeObject();
-                budget.Set("particles", JsonValue(report.budgetAfter[0]));
-                budget.Set("lights", JsonValue(report.budgetAfter[1]));
-                budget.Set("audioVoices", JsonValue(report.budgetAfter[2]));
-                reportJson.Set("budget", std::move(budget));
-            }
-        } else {
-            result = std::move(templateGraph);
-            // Template の説明は Template のもの。複製先へそのまま持ち越すと、
-            // 生成した全ての .vfx が同じ説明を持つカタログになる。
-            result.description.clear();
-            result.tags.clear();
-        }
-        const std::string requestedName = StringField(payload, "name");
-        if (!requestedName.empty()) result.name = requestedName;
-        else if (!merging && !subGraphMode) result.name = target.stem().generic_string();
-        // 説明とタグは「説明」として持たせる。以前は用途を graph.name へ押し込んでいたため、
-        // AI は graphName として読めるのに Editor のカタログはファイル名しか出せなかった。
-        if (const JsonValue* value = payload.Find("description"); value != nullptr && value->IsString())
-            result.description = value->AsString();
-        if (const JsonValue* value = payload.Find("tags"); value != nullptr && value->IsArray()) {
-            result.tags.clear();
-            for (const JsonValue& item : value->AsArray())
-                if (item.IsString() && !item.AsString().empty()) result.tags.push_back(item.AsString());
-        }
-
-        // Validate は保存時にも走るが、ここで落とせば「保存されたが壊れている」を避けられる。
-        std::string validateError;
-        if (!asset::ValidateVFXGraphAsset(result, &validateError)) {
-            err = Outcome::Err("VFX_INVALID", validateError); return nullptr;
-        }
-        reportJson.Set("mode", JsonValue(subGraphMode ? std::string("subgraph")
-                                       : merging ? std::string("merge") : std::string("replace")));
-        if (detailSink != nullptr) *detailSink = std::move(reportJson);
-
-        editor::EditorContext* context = &ctx;
-        const std::string targetString = target.generic_string();
-        return std::make_unique<LambdaCommand>("AI: Apply VFX Template",
-            [context, targetString, result]() {
-                std::error_code createError;
-                std::filesystem::create_directories(std::filesystem::path(targetString).parent_path(), createError);
-                if (asset::SaveVFXGraphAsset(targetString, result)) context->requestAssetBrowserRefresh = true;
-            },
-            [context, targetString, existed, previous]() {
-                if (existed) (void)asset::SaveVFXGraphAsset(targetString, previous);
-                else { std::error_code removeError; std::filesystem::remove(targetString, removeError); }
-                context->requestAssetBrowserRefresh = true;
-            });
-    }
     // モーションベクター生成もテクスチャファイルだけを扱い、Scene を必要としない。
     // Scene 必須チェックより前に置くこと (独立 VFX Editor にはゲーム Scene が無い)。
     if (type == "vfx.generateMotionVectors") {
@@ -8003,11 +4636,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
     }
     // .behaviortree の編集も Scene を必要としない (アセット単体で完結する)。
     if (type.starts_with("bt.")) return BuildBehaviorTreeCommand(ctx, type, payload, err, detailSink);
-    // .vfx asset編集はメインSceneを必要としない。独立VFX Editorだけ開いた状態でもAI編集を許可する。
-    if (type == "vfx.graph.set" || type.starts_with("vfx.node.") || type.starts_with("vfx.link.")
-        || type.starts_with("vfx.param.") || type == "vfx.optimize"
-        || type.starts_with("vfx.variant.") || type.starts_with("vfx.group.") || type == "vfx.repair")
-        return BuildVFXAssetCommand(ctx, type, payload, err);
     scene::Scene* scene = ctx.activeScene;
     if (scene == nullptr) { err = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); return nullptr; }
     const auto markDirty = [&ctx]() { if (ctx.markSceneDirty) ctx.markSceneDirty(); };
@@ -8065,8 +4693,7 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
 
     // ── Terrain: ブラシ操作 ─────────────────────────────────────────────────
     // マウスドラッグを持たない AI のために、ストローク 1 回ぶんを 1 コマンドとして受ける。
-    // iterations は「押し続けた回数」に相当する。Smooth / Flatten は 1 回では収束しないため、
-    // これが無いと AI は同じ要求を何十回も投げることになる (そのぶん Undo 履歴も汚れる)。
+    // iterations は「押し続けた回数」。Smooth / Flatten は 1 回では収束しない。
     if (type == "terrain.sculpt" || type == "terrain.paint") {
         math::Vector3 center;
         if (!ReadVec3(payload, "position", center)) {
@@ -8243,8 +4870,7 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
 
     // ── Audio: 再生制御 ────────────────────────────────────────────────────
     // AudioSource は pending フラグを立てると AudioSystem が次フレームに実行する。
-    // WHY Undo 可能にするか: 「鳴らした」の取り消しは停止。BGM を差し替えて確認する
-    //      作業で履歴が飛び飛びになると、run_transaction で束ねたときに戻せなくなる。
+    // Undo 可能にするのは、履歴が飛び飛びだと run_transaction で束ねたとき戻せないため。
     if (type == "audio.control") {
         const std::string id = StringField(payload, "id");
         GameObject* go = scene->FindByGuid(id);
@@ -8274,48 +4900,6 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
         return std::make_unique<LambdaCommand>("AI: Audio Control",
             [request, action]()     { request(action); },
             [request, undoAction]() { request(undoAction); });
-    }
-
-    if (type == "vfx.instance.set" || type == "vfx.instance.clear") {
-        const std::string id = StringField(payload, "id");
-        const std::string name = StringField(payload, "name");
-        GameObject* gameObject = scene->FindByGuid(id);
-        auto* component = gameObject != nullptr ? gameObject->GetComponent<scene::VFXGraphComponent>() : nullptr;
-        if (component == nullptr) { err = Outcome::Err("NOT_PRESENT", "VFXGraphComponentがありません"); return nullptr; }
-        const auto oldOverrides = component->parameterOverrides;
-        auto newOverrides = oldOverrides;
-        std::erase_if(newOverrides, [&](const asset::VFXParamOverride& item) { return item.paramName == name; });
-        if (type == "vfx.instance.set") {
-            asset::VFXGraphAsset graph;
-            std::string loadError;
-            if (!asset::LoadVFXGraphAsset(component->graphPath, graph, &loadError)) {
-                err = Outcome::Err("VFX_NOT_FOUND", loadError); return nullptr;
-            }
-            const auto definition = std::find_if(graph.parameters.begin(), graph.parameters.end(),
-                [&](const auto& item) { return item.name == name; });
-            const JsonValue* input = payload.Find("value");
-            asset::VFXParamValue value;
-            if (definition == graph.parameters.end() || input == nullptr
-                || !JsonToVFXParamValue(*input, definition->type, value)) {
-                err = Outcome::Err("TYPE_MISMATCH", "公開パラメーターとvalueが一致しません"); return nullptr;
-            }
-            newOverrides.push_back({ name, std::move(value) });
-        }
-        return std::make_unique<LambdaCommand>("AI: Set VFX Override",
-            [scene, id, newOverrides, markDirty]() {
-                if (auto* object = scene->FindByGuid(id))
-                    if (auto* value = object->GetComponent<scene::VFXGraphComponent>()) {
-                        value->parameterOverrides = newOverrides; value->reloadRequested = true;
-                    }
-                markDirty();
-            },
-            [scene, id, oldOverrides, markDirty]() {
-                if (auto* object = scene->FindByGuid(id))
-                    if (auto* value = object->GetComponent<scene::VFXGraphComponent>()) {
-                        value->parameterOverrides = oldOverrides; value->reloadRequested = true;
-                    }
-                markDirty();
-            });
     }
 
     if (type == "node.create") {
@@ -8560,11 +5144,8 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
                         editor::ToProjectAssetDiskPath(projectRoot, target->prefabAssetPath);
                     *existedBefore = util::FileSystem::ReadText(disk, *beforeContent);
                     *beforeScene = editor::SceneIO::Serialize(*scene);
-                    // WHY ApplyAndPropagate か (不具合修正): 以前はここが Apply だけを呼び、
-                    //   同じ .prefab の他インスタンスを新定義へ揃えていなかった。
-                    //   UI の Apply ボタン 4 箇所はすべて直後に PropagateToInstances を
-                    //   呼んでおり、**AI から実行したときだけ「ファイルは変わったのに
-                    //   画面の実体は古いまま」**になっていた。
+                    // Apply だけだと同じ .prefab の他インスタンスが新定義へ揃わず、
+                    // 「ファイルは変わったのに画面の実体は古いまま」になる。
                     (void)editor::PrefabSerializer::ApplyAndPropagate(
                         *scene, target->GetID(), projectRoot);
                     *afterScene = editor::SceneIO::Serialize(*scene);
@@ -8731,10 +5312,8 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
         asset::MaterialAsset newAsset = oldAsset;
         newAsset.shaderPath = shaderPath;
         editor::EditorContext* context = &ctx;
-        // WHY Unload ではなく ReloadPath か: Unload はスロットを解放して世代を進めるため、
-        //     既に配ってある AssetHandle が一斉に死ぬ。しかもレンダラーが実際に読むのは
-        //     旧 API 側の s_materials で、そちらは Unload の対象外だった。
-        //     ReloadPath はハンドルを保ったまま両方の実体を差し替える。
+        // Unload はスロットを解放して世代を進めるので、配ってある AssetHandle が一斉に死ぬ。
+        // ReloadPath はハンドルを保ったまま両方の実体を差し替える。
         const auto applyToDisk = [context](const fs::path& file,
                                            const asset::MaterialAsset& value) {
             if (!asset::SaveMaterialAssetToFile(file.generic_string(), value)) return;
@@ -9527,9 +6106,8 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
         }
 
         // ── Slot ────────────────────────────────────────────────────────────
-        // WHY: Slot 自体はランタイム状態だが、他の編集と同じ Command 経路に載せる。
-        //      dryRun 判定と Undo スタックへの積み込みを呼び出し側に任せられ、
-        //      「AI が投げた割り込み再生を Undo で取り消す」も自然に成立する。
+        // Slot はランタイム状態だが、他の編集と同じ Command 経路に載せる。dryRun 判定と
+        // Undo への積み込みを呼び出し側へ任せられる。
         if (type == "animation.playSlot") {
             const std::string sourcePath = StringField(payload, "sourcePath");
             const std::string clipName   = StringField(payload, "clipName");
@@ -9701,13 +6279,9 @@ Outcome DoCommand(editor::EditorContext& ctx, const std::string& type, const Jso
         return Outcome::Ok(std::move(result));
     }
 
-    // Operator へ移送済み (Step 3)。
-    // WHY: edit.undo / edit.redo は既に Operator として登録され、メニュー・ホットキー・
-    //      コマンドパレットがそれを呼んでいる。ここに 2 つ目の実装を残すと、
-    //      「実行できるかどうか」の判定が AI 側だけ別式という状態が復活する。
-    //      応答の形 (applied / description) は互換のまま維持する — MCP の
-    //      editor_undo / editor_redo は既存ツール名で使われているため。
-    //      Docs/design/editor-operator-model.md
+    // Operator へ移送済み (Step 3)。2 つ目の実装を残すと「実行できるか」の判定が
+    // AI 側だけ別式になる。応答の形 (applied / description) は互換のまま維持する。
+    // Docs/design/editor-operator-model.md
     if (type == "editor.undo" || type == "editor.redo") {
         if (ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
         if (ctx.operators == nullptr) return Outcome::Err("NO_REGISTRY", "Operator レジストリが未初期化です");
@@ -9903,13 +6477,9 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
         } else if (type == "scene.tree") {
             if (activeScene == nullptr) { outcome = Outcome::Err("NO_SCENE", "アクティブシーンがありません"); }
             else {
-                // includeGenerated: システムが実行時に作った GO (VFX Graph のノード実体、
-                // Water splash) をツリーへ含めるか。既定は含めない。
-                // WHY: 爆発を 5 箇所に置いて再生すれば、それだけで数十ノードが増える。
-                //      AI は「編集できるオブジェクト」を探してツリーを読むが、生成物は
-                //      編集しても保存されない (SceneSerializer が捨てる) ため、
-                //      混ぜると context を食い潰したうえで無駄な編集を誘発する。
-                //      実行状態を調べたいときだけ明示的に要求させる。
+                // includeGenerated: 実行時に作られた GO (VFX ノード実体、Water splash) を
+                // ツリーへ含めるか。既定は含めない — 生成物は編集しても保存されないので、
+                // 混ぜると context を食い潰したうえで無駄な編集を誘発する。
                 const JsonValue* includeValue = payload.Find("includeGenerated");
                 const bool includeGenerated = includeValue != nullptr && includeValue->AsBool();
                 struct Builder {
@@ -9993,10 +6563,6 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             outcome = DoAssetFindUnused(m_context, payload);
         } else if (type == "asset.thumbnail") {
             outcome = DoAssetThumbnail(m_context, payload);
-        } else if (type == "vfx.graph") {
-            outcome = DoVFXGraphInspect(payload);
-        } else if (type == "vfx.lint") {
-            outcome = DoVFXLint(m_context, payload);
         } else if (type == "bt.tree") {
             outcome = DoBehaviorTree(m_context, payload);
         } else if (type == "bt.lint") {
@@ -10013,51 +6579,10 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             outcome = DoBehaviorTreeDiff(m_context, payload);
         } else if (type == "bt.templateCatalog") {
             outcome = DoBehaviorTreeTemplateCatalog(m_context);
-        } else if (type == "vfx.guide") {
-            outcome = DoVFXGuide();
-        } else if (type == "vfx.templateCatalog") {
-            outcome = DoVFXTemplateCatalog(m_context, payload);
-        } else if (type == "vfx.curvePresets") {
-            outcome = DoVFXCurvePresets();
-        } else if (type == "vfx.diff") {
-            outcome = DoVFXDiff(payload);
-        } else if (type == "vfx.params") {
-            outcome = DoVFXParams(m_context, payload);
-        } else if (type == "vfx.schema") {
-            outcome = DoVFXSchema();
-        } else if (type == "vfx.nodeField") {
-            outcome = DoVFXNodeField(payload);
-        } else if (type == "vfx.previewEnsure") {
-            outcome = DoVFXPreviewEnsure(m_context);
-        } else if (type == "vfx.runtime") {
-            outcome = DoVFXRuntime(m_context);
-        } else if (type == "vfx.textureAnalyze") {
-            outcome = DoVFXTextureAnalyze(m_context, payload);
-        } else if (type == "vfx.materialAnalyze") {
-            outcome = DoVFXMaterialAnalyze(m_context, payload);
-        } else if (type == "vfx.assetSurvey") {
-            outcome = DoVFXAssetSurvey(m_context, payload);
-    } else if (type == "shader.inspect") {
-        outcome = DoShaderInspect(m_context, payload);
-    } else if (type == "shader.diagnostics") {
-        outcome = DoShaderCompileDiagnostics();
-        } else if (type == "vfx.preview") {
-            outcome = DoVFXPreview(m_context, payload);
-        } else if (type == "vfx.previewMetrics") {
-            // 前回との比較対象を取り違えないよう、同じ .vfx / 同じ view のときだけ動き指標を出す。
-            // 別のエフェクトへ切り替えた直後の「大きく変わった」は意味を持たない。
-            // 解像度違いは ComputePreviewMetrics が画素数の不一致として弾く。
-            const std::string key = StringField(payload, "path") + "|"
-                + LowerAscii(StringField(payload, "view"));
-            const bool comparable = !m_previousPreviewKey.empty() && m_previousPreviewKey == key;
-            std::vector<float> luminance;
-            outcome = DoVFXPreviewMetrics(m_context, m_vfxPreviewRT,
-                                          comparable ? &m_previousPreviewLuminance : nullptr,
-                                          luminance);
-            if (outcome.ok) {
-                m_previousPreviewLuminance = std::move(luminance);
-                m_previousPreviewKey = key;
-            }
+        } else if (type == "shader.inspect") {
+            outcome = DoShaderInspect(m_context, payload);
+        } else if (type == "shader.diagnostics") {
+            outcome = DoShaderCompileDiagnostics();
         } else if (type == "material.inspect") {
             outcome = DoMaterialInspect(m_context, payload);
         } else if (type == "animation.state") {
@@ -10103,14 +6628,16 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
         } else if (type == "viewport.capture") {
             std::string view = StringField(payload, "view");
             if (view.empty()) view = "scene";
-            if (view != "scene" && view != "game" && view != "vfx") {
-                outcome = Outcome::Err("BAD_ARG", "view は scene、game、vfx のいずれかで指定してください");
+            // WHY "vfx" ビューが無くなったか: .vfx はプレファブになり、中身は
+            // Prefab 編集モードで «普通のシーン» として開く。専用のプレビュー面が
+            // 無いので、撮る対象も scene ビューそのものになる。
+            if (view != "scene" && view != "game") {
+                outcome = Outcome::Err("BAD_ARG", "view は scene か game で指定してください");
             } else {
                 // EditorApp は画面に出ているビューポートしか描かないため、キャプチャ中だけは
                 // 隠れているビューも描き続けさせる。連続キャプチャで古い絵を掴まないための猶予。
                 m_context.aiViewportRenderUntilFrame = Time::frameCount + 8;
-                const auto target = view == "game" ? m_gameViewportRT
-                    : (view == "vfx" ? m_vfxPreviewRT : m_sceneViewportRT);
+                const auto target = view == "game" ? m_gameViewportRT : m_sceneViewportRT;
                 outcome = DoViewportCapture(m_context, target);
                 if (outcome.ok) outcome.result.Set("view", JsonValue(view));
             }
@@ -10143,9 +6670,8 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             outcome = FromBridge(ListOperators(m_context, payload));
         } else if (type == "editor.op.query") {
             // kind=query の Operator を実行して結果データを返す。
-            // WHY 入口を分けるか: editor.op.invoke は MCP 側で write 権限のツール。
-            //      読むだけの操作をそこへ閉じ込めると、read 権限で接続した AI が
-            //      「目録には出るが 1 つも呼べない Query」を見ることになる。
+            // editor.op.invoke は write 権限のツールなので、読むだけの操作を混ぜると
+            // read 権限の接続から「目録には出るが呼べない Query」に見える。
             outcome = FromBridge(QueryOperator(m_context, payload));
         } else {
             outcome = Outcome::Err("UNKNOWN_QUERY", "未対応の Query: " + type);

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Volume.hpp | fbzz::physics
-// 空間効果 Volume の基底クラス
+/// @file    Volume.hpp
+/// @brief   空間効果 Volume の基底クラス。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 #include <Physics/RigidBody.hpp>
 

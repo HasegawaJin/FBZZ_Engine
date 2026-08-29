@@ -1,16 +1,17 @@
-// FBZZ Engine
-// FbxImportTool.hpp | fbzz::editor
-// FBX ファイルをエンジンネイティブ形式に変換するインポートツール
-//
-// 新パイプライン出力構造:
-//   Library/Baked/<fbx-guid>/<name>.fzasset ← 統合モデルバイナリ (FZMD)
-//   outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v3
-//   outputDir/materials/<MaterialName>.mat ← マテリアル TOML
-//   outputDir/textures/*.png     ← テクスチャコピー + *.png.meta 自動生成
-//   <source>.fbx.meta            ← GUID + モデル import 設定
-//
-// BuildPipeline() で IFbxSubExporter のリストを構築する。
-// 各 Export() を順に呼び、失敗時は outputDir ごとロールバックする。
+/// @file    FbxImportTool.hpp
+/// @brief   FBX ファイルをエンジンネイティブ形式に変換するインポートツール。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// 新パイプライン出力構造:
+/// Library/Baked/<fbx-guid>/<name>.fzasset ← 統合モデルバイナリ (FZMD)
+/// outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v3
+/// outputDir/materials/<MaterialName>.mat ← マテリアル TOML
+/// outputDir/textures/*.png     ← テクスチャコピー + *.png.meta 自動生成
+/// <source>.fbx.meta            ← GUID + モデル import 設定
+///
+/// BuildPipeline() で IFbxSubExporter のリストを構築する。
+/// 各 Export() を順に呼び、失敗時は outputDir ごとロールバックする。
 #pragma once
 #include <Editor/Import/IFbxSubExporter.hpp>
 #include <Engine/Asset/TextureAsset.hpp>

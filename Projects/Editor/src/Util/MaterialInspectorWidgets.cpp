@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialInspectorWidgets.cpp | fbzz::editor
-// .mat 用 Inspector ウィジェット群
+/// @file    MaterialInspectorWidgets.cpp
+/// @brief   .mat 用 Inspector ウィジェット群。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Math/Vector2.hpp>

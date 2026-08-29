@@ -1,6 +1,7 @@
-﻿// FBZZ Engine
-// RenderPasses/Geometry/GeometryPasses.hpp | fbzz::scene
-// ジオメトリ描画パスの宣言とインラインヘルパー
+﻿/// @file    RenderPasses/Geometry/GeometryPasses.hpp
+/// @brief   ジオメトリ描画パスの宣言とインラインヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -295,6 +296,13 @@ void ExecuteParticlePass                   (RenderPassContext& ctx);
 //      ctx.settings.particleOverdrawView が true のときだけ Particle パスの直後に走る。
 void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
+// RenderSettings::objectMaskRequests のシルエットを objectMaskRT へ描く (RGB=色 / A=太さ)。
+// 輪郭そのものは描かない ─ 見た目は CustomPostProcess のシェーダーが決める。
+//
+// WHY エディタ選択マスク (SelectionMaskPass) と分けるか:
+//   あちらのマスクは «選ばれているか» の 1 ビットで、SelectionOutline.hlsl が .r を
+//   被覆率として読む。同じ RT へ色を書くと、選択輪郭の太さが対象の色で変わる。
+void ExecuteObjectMaskPass                (RenderPassContext& ctx);
 // 不透明ジオメトリのモーションベクターを velocityRT へ描く。TAA / MotionBlur が
 // 「カメラの動き」しか知らない状態を解消する。両方が無効なら実行しなくてよい。
 void ExecuteVelocityPass                   (RenderPassContext& ctx);

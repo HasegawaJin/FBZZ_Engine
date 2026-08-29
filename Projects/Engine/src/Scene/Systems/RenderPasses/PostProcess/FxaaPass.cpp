@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FxaaPass.cpp | fbzz::scene
-// FXAA render pass implementation
+/// @file    FxaaPass.cpp
+/// @brief   FXAA render pass implementation.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DrawCall.hpp>

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ResourcePool.hpp | fbzz::renderer
-// 世代番号付きリソーススロットプール
-// 任意のリソース型を slot / generation で管理する内部コンテナ。
-// 削除された slot を再利用しても古いハンドルが通らないようにする。
+/// @file    ResourcePool.hpp
+/// @brief   世代番号付きリソーススロットプール。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
+///
+/// 任意のリソース型を slot / generation で管理する内部コンテナ。
+/// 削除された slot を再利用しても古いハンドルが通らないようにする。
 #pragma once
 #include <Engine/Core/Memory/MemoryDebug.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>

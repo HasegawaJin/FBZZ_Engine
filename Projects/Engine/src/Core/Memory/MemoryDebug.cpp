@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MemoryDebug.cpp | fbzz::core
-// MemoryDebug の実装
-// weak_ptr の期限切れを掃除し、まだ生きているスマートポインタ所有リソースを列挙する。
+/// @file    MemoryDebug.cpp
+/// @brief   MemoryDebug の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// weak_ptr の期限切れを掃除し、まだ生きているスマートポインタ所有リソースを列挙する。
 #include "Engine/Core/Memory/MemoryDebug.hpp"
 
 namespace fbzz::core {

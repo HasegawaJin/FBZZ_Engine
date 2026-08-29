@@ -1,7 +1,7 @@
-/// @file EditorApp_AssetReload.cpp
-/// @brief ディスク上で書き換わったアセットを、実行中のキャッシュへ読み直す。
-/// @author Hasegawa Jin
-/// @date 2026-08-21
+/// @file    EditorApp_AssetReload.cpp
+/// @brief   ディスク上で書き換わったアセットを、実行中のキャッシュへ読み直す。
+/// @author  Hasegawa Jin
+/// @date    2026-08-21
 #include <Editor/EditorApp.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/Toast.hpp>

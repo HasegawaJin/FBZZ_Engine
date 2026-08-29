@@ -1,7 +1,9 @@
-// FBZZ Engine
-// SystemScheduler.hpp | fbzz
-// ISystem を Phase × DAG で管理し、フレーム内並列実行を調停するスケジューラ。
-// Build() 後に Update() / LateUpdate() を呼ぶ。
+/// @file    SystemScheduler.hpp
+/// @brief   ISystem を Phase × DAG で管理し、フレーム内並列実行を調停するスケジューラ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// Build() 後に Update() / LateUpdate() を呼ぶ。
 #pragma once
 #include "ISystem.hpp"
 #include "Phase.hpp"

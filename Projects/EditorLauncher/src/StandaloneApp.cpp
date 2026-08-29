@@ -1,10 +1,11 @@
-// FBZZ Engine
-// StandaloneApp.cpp | fbzz::editor_launcher
-// スタンドアロンモードのゲームループ実装 (IModule)
-//
-// WHY: IModule を継承することで Application::Run() に乗せる。
-//      これにより Profiler::BeginFrame/EndFrame・MemorySystem・
-//      Input::Update・PollEvents などフレーム境界処理がエンジン側で統一される。
+/// @file    StandaloneApp.cpp
+/// @brief   スタンドアロンモードのゲームループ実装 (IModule)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: IModule を継承することで Application::Run() に乗せる。
+/// これにより Profiler::BeginFrame/EndFrame・MemorySystem・
+/// Input::Update・PollEvents などフレーム境界処理がエンジン側で統一される。
 #include "StandaloneApp.hpp"
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
@@ -103,8 +104,10 @@ bool StandaloneApp::OnInit()
     auto& app = core::Application::Get();
     // StandaloneのProjectRuntimeにもApplication所有のAudioManagerを共有する。
     m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
-    if (auto* audioManager = app.GetAudioManager())
+    if (auto* audioManager = app.GetAudioManager()) {
+        audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
         audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
+    }
     // graphics プロキシが触る描画設定の実体を登録する (配布ゲームでは書き戻さない)。
     app.SetActiveRenderSettings(&m_settings.render);
     m_runtime.ActivateScriptRuntime(

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Cursor.hpp | fbzz::core
-// ランタイムからマウスカーソル表示と拘束状態を制御する API
+/// @file    Cursor.hpp
+/// @brief   ランタイムからマウスカーソル表示と拘束状態を制御する API。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #ifdef _WIN32

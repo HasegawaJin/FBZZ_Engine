@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BuildSettings.cpp | fbzz::editor
-// BuildSettings のパス解決と旧形式ファイルの移行読み込み
+/// @file    BuildSettings.cpp
+/// @brief   BuildSettings のパス解決と旧形式ファイルの移行読み込み。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #include <Editor/BuildSettings.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

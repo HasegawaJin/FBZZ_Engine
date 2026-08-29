@@ -20,6 +20,8 @@ UIPixelInput VSMain(UIVertexInput input)
     output.pos     = mul(float4(input.pos, 0.0f, 1.0f), g_Ortho);
     output.uv      = input.uv;
     output.localUv = input.uv;
+    // リッチテキストの色はここを通る。1 ドローに詰めた文字ごとに違う値が乗る。
+    output.color   = input.color;
     return output;
 }
 
@@ -50,5 +52,6 @@ float4 PSMain(UIPixelInput input) : SV_TARGET
     // 完全透明なピクセルは破棄してブレンド/オーバードローを減らす。
     // fwidth は clip より前に評価済みなので、破棄が微分に影響することはない。
     clip(alpha - 0.002f);
-    return float4(g_Color.rgb, g_Color.a * alpha);
+    float4 tint = UITint(input);
+    return float4(tint.rgb, tint.a * alpha);
 }

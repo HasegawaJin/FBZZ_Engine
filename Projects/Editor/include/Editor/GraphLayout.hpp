@@ -1,7 +1,9 @@
-// FBZZ Engine
-// GraphLayout.hpp | fbzz::editor
-// Animation Graph Editor 専用のノード配置情報を保持する。
-// WHY: AnimatorComponent はランタイムデータなので、エディター上の表示座標を混ぜない。
+/// @file    GraphLayout.hpp
+/// @brief   Animation Graph Editor 専用のノード配置情報を保持する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
+///
+/// WHY: AnimatorComponent はランタイムデータなので、エディター上の表示座標を混ぜない。
 #pragma once
 #include <imgui.h>
 #include <string>

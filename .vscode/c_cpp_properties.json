@@ -25,7 +25,6 @@
                 "${workspaceFolder}/Projects/Editor/include",
                 "${workspaceFolder}/Projects/Editor/src",
                 "${workspaceFolder}/Projects/EditorLauncher/src",
-                "${workspaceFolder}/Projects/VFXEditorLauncher/src",
                 "${workspaceFolder}/Projects/Sandbox/src",
                 "${workspaceFolder}/Projects/Tests",
                 // サードパーティ

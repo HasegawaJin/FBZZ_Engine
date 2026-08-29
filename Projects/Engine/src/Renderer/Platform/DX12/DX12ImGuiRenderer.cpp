@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12ImGuiRenderer.cpp | fbzz::renderer
-// imgui_impl_win32 / imgui_impl_dx12 の初期化と描画記録
+/// @file    DX12ImGuiRenderer.cpp
+/// @brief   imgui_impl_win32 / imgui_impl_dx12 の初期化と描画記録。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12ImGuiRenderer.hpp"
 
 #include "DX12Context.hpp"

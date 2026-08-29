@@ -1,6 +1,7 @@
-// FBZZ Engine
-// VolumeOverride.cpp | fbzz::asset
-// VolumeOverride の型レジストリ実装。
+/// @file    VolumeOverride.cpp
+/// @brief   VolumeOverride の型レジストリ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
 #include <Engine/Asset/VolumeOverride.hpp>
 #include <algorithm>
 #include <unordered_map>

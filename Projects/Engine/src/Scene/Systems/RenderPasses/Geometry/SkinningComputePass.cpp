@@ -1,19 +1,20 @@
-// FBZZ Engine
-// RenderPasses/Geometry/SkinningComputePass.cpp | fbzz::scene
-// コンピュートスキニング — ボーン変形を 1 フレームに 1 回だけ計算して共有する
-//
-// WHY: スキニングは各マテリアルの VS 内で行われていたため、同じキャラクターを
-//      シャドウマップと画面へ描くたびに同じ変形を計算し直していた。計測では
-//      DeferredSkinnedForward 単体で 8.8ms、Shadow 22.1ms のかなりの割合が
-//      この重複した頂点処理だった。
-//
-//      ここで一度だけ変形して静的メッシュと同じ頂点レイアウト (renderer::Vertex) へ
-//      書き出すと、後続パスは「ただの静的メッシュ」として扱える。
-//
-// 制約 (この経路を使わず従来の VS スキニングへフォールバックする条件):
-//   - Animator がいない / パレット未評価  → 変形結果が bind pose と同じで得がない
-//   - モーフが有効                        → 入力頂点がインスタンス固有になるため未対応
-//   - バックエンドが GPU 書き込み頂点バッファ非対応
+/// @file    RenderPasses/Geometry/SkinningComputePass.cpp
+/// @brief   コンピュートスキニング — ボーン変形を 1 フレームに 1 回だけ計算して共有する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// WHY: スキニングは各マテリアルの VS 内で行われていたため、同じキャラクターを
+/// シャドウマップと画面へ描くたびに同じ変形を計算し直していた。計測では
+/// DeferredSkinnedForward 単体で 8.8ms、Shadow 22.1ms のかなりの割合が
+/// この重複した頂点処理だった。
+///
+/// ここで一度だけ変形して静的メッシュと同じ頂点レイアウト (renderer::Vertex) へ
+/// 書き出すと、後続パスは「ただの静的メッシュ」として扱える。
+///
+/// 制約 (この経路を使わず従来の VS スキニングへフォールバックする条件):
+/// - Animator がいない / パレット未評価  → 変形結果が bind pose と同じで得がない
+/// - モーフが有効                        → 入力頂点がインスタンス固有になるため未対応
+/// - バックエンドが GPU 書き込み頂点バッファ非対応
 #include "GeometryPasses.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -44,8 +45,8 @@ constexpr uint32_t kSkinningGroupSize = 64u;
 // ここがずれると頂点が明後日の方向へ飛ぶ形で壊れるため、サイズで固定しておく。
 static_assert(sizeof(renderer::SkinnedVertex) == 76,
     "SkinSrcVertex in SkinningCompute.cs.hlsl must match renderer::SkinnedVertex (76 bytes)");
-static_assert(sizeof(renderer::Vertex) == 44,
-    "SkinnedOutVertex in SkinningCompute.cs.hlsl must match renderer::Vertex (44 bytes)");
+static_assert(sizeof(renderer::Vertex) == 60,
+    "SkinnedOutVertex in SkinningCompute.cs.hlsl must match renderer::Vertex (60 bytes)");
 
 // SkinningConstants (b0) — CS 側と一致させること。
 struct SkinningCB {

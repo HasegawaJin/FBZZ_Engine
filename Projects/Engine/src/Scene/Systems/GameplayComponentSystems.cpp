@@ -1,6 +1,7 @@
-// FBZZ Engine
-// GameplayComponentSystems.cpp | fbzz::scene
-// 汎用GameObject Componentの追従、曲線移動、Camera制御、Billboard姿勢を評価する
+/// @file    GameplayComponentSystems.cpp
+/// @brief   汎用GameObject Componentの追従、曲線移動、Camera制御、Billboard姿勢を評価する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Scene/Systems/GameplayComponentSystems.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Scene.hpp>

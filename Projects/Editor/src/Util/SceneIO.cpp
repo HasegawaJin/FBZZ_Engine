@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneIO.cpp | fbzz::editor
-// Editor wrapper for scene save/load and in-memory playmode snapshots
+/// @file    SceneIO.cpp
+/// @brief   Editor wrapper for scene save/load and in-memory playmode snapshots.
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
 #include <Editor/Util/EditorSerializer.hpp>

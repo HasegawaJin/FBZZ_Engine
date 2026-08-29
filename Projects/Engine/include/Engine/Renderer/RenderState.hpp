@@ -1,8 +1,10 @@
-// FBZZ Engine
-// RenderState.hpp | fbzz::renderer
-// Renderer のパイプライン状態記述
-// トポロジー・ブレンド・深度・カリングなどをバックエンド非依存で表す。
-// PipelineState の生成キーとして使うため、値型として扱う。
+/// @file    RenderState.hpp
+/// @brief   Renderer のパイプライン状態記述。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// トポロジー・ブレンド・深度・カリングなどをバックエンド非依存で表す。
+/// PipelineState の生成キーとして使うため、値型として扱う。
 #pragma once
 
 // wingdi.h が OPAQUE=2 を定義するため、公開 API 名には接尾辞を付ける。

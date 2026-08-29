@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ModalDialog.hpp | fbzz::editor
-// ImGui モーダル確認ダイアログの汎用ラッパー
+/// @file    ModalDialog.hpp
+/// @brief   ImGui モーダル確認ダイアログの汎用ラッパー。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <functional>
 #include <string>

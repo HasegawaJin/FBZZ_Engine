@@ -1,6 +1,7 @@
-// FBZZ Engine
-// CompositePass.cpp | fbzz::scene
-// Composite render pass implementation
+/// @file    CompositePass.cpp
+/// @brief   Composite render pass implementation.
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "PostProcessPasses.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -127,6 +128,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.fogColor[2] = pp.fog.color[2];
     // フォグ色の出どころ (0=Exponential, 1=Atmosphere)。Atmosphere は b3/b6 から大気散乱を計算する。
     postData.fogSource = static_cast<float>(pp.fog.source);
+    postData.radialBlur = std::clamp(pp.lens.radialBlur, 0.0f, 1.0f);
     postData.contrast = pp.colorGrading.enabled ? pp.colorGrading.contrast : 0.0f;
     postData.saturation = pp.colorGrading.enabled ? pp.colorGrading.saturation : 1.0f;
     postData.hueShift = pp.colorGrading.enabled ? pp.colorGrading.hueShift : 0.0f;

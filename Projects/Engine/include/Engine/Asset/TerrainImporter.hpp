@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainImporter.hpp | fbzz::asset
-// .terrain バイナリ → TerrainAsset ローダー
+/// @file    TerrainImporter.hpp
+/// @brief   .terrain バイナリ → TerrainAsset ローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>

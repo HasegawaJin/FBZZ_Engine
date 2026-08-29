@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorCore.cpp | fbzz::editor
-// Transform / Script の Inspector 描画
+/// @file    InspectorCore.cpp
+/// @brief   Transform / Script の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorCore.hpp"
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -26,14 +27,9 @@ namespace {
 constexpr ImU32 kScriptAccent = IM_COL32(120, 190, 255, 255);
 
 // スクリプトカードを Component の表示順リストへ載せるためのキー。
-//
-// WHY index ではなく型名か: キーは .meta へ保存され、次にシーンを開いたときに
-//   同じカードを指し続けなければならない。index はスクリプトを 1 つ足しただけで
-//   全部ずれる。型名なら足しても消しても他のカードのキーが動かない。
-// WHY "Script:" を前置するか: エンジン Component のキーは表示名そのもの ("Mesh Renderer")
-//   なので、ユーザーが同名のスクリプトを書いたときに衝突する。名前空間を分ける。
-// WHY 同型が複数あるとき "#n" を足すか: 1 つの GameObject に同じスクリプトを 2 つ
-//   付けられる (弾を 2 門ぶん等)。キーが重複すると 2 枚が同じ席を奪い合う。
+// キーは .meta へ保存されるので index は使えない (1 つ足しただけで全部ずれる)。
+// "Script:" を前置するのは、エンジン Component のキーが表示名そのもので衝突するため。
+// 同型が複数あるときの "#n" は、同じスクリプトを 2 つ付けたとき席を奪い合わないため。
 std::string ScriptOrderKey(const scene::ScriptComponent& sc, int index)
 {
     const auto typeNameOf = [](const scene::ScriptEntry& entry) -> std::string {
@@ -54,10 +50,8 @@ std::string ScriptOrderKey(const scene::ScriptComponent& sc, int index)
 }
 
 // 1 フレームのあいだ全スクリプトカードで共有する状態。
-//
-// WHY ファイルスコープの static か: カードは Component と混ざって 1 枚ずつ別々の
-//   コールバックから描かれるようになったため、以前のように 1 つの関数のローカル変数で
-//   持てない。Inspector は 1 フレームに 1 GameObject しか描かないので単一で足りる。
+// カードは 1 枚ずつ別々のコールバックから描かれるので関数ローカルには持てない。
+// Inspector は 1 フレームに 1 GameObject しか描かないので単一で足りる。
 struct ScriptInspectorFrame {
     // 編集開始時の値 (Undo の before)。index → スナップショット。
     std::vector<std::string> beforeSnapshots;
@@ -70,12 +64,8 @@ struct ScriptInspectorFrame {
 ScriptInspectorFrame s_scriptFrame;
 
 // スクリプト 1 個ぶんの編集を 1 コマンドとして記録する追跡状態。
-//
-// WHY: 以前はシーン全体を TOML 化して before/after にしていた。スクリプトの実体は
-//      DLL の向こうにあり、型を知らないエディタからは値を取り出せないというのが理由。
-//      だが Script は Reflect() を実装しているので、IReflector を 1 つ用意すれば
-//      型を知らないまま「そのスクリプトだけ」を読み書きできる。
-//      これで Undo が全シーン再構築ではなく値の復元になり、EntityID も選択も維持される。
+// Script は Reflect() を実装しているので、IReflector を 1 つ用意すれば型を知らないまま
+// 「そのスクリプトだけ」を読み書きできる。全シーン再構築にせずに済み、選択も維持される。
 struct ScriptUndoTracker {
     ImGuiID     activeId = 0;
     std::string before;        // 編集開始時のスナップショット
@@ -87,17 +77,10 @@ struct ScriptUndoTracker {
 ScriptUndoTracker s_scriptUndo;
 
 // 表示順 (Component 順リスト) に合わせて sc.scripts を並べ替え、リスト側のキーも
-// 並べ替え後の実体に合わせて書き直す。
-//
-// WHY 表示順を正にするか: スクリプトカードがエンジン Component と同じ 1 枚として
-//   並ぶようになった以上、「上にあるカードほど先に動く」以外の対応付けは説明できない。
-//   実行順 (ScriptSystem が回す順) を表示順から導出し、2 つの並びが食い違う状態を作らない。
-//
-// WHY キーを書き直すか (同型スクリプト対策): キーの "#n" は「配列の中で同じ型が何番目か」
-//   なので、同じ型を 2 つ付けた GameObject で 2 枚を入れ替えると、実体と一緒にキーも
-//   入れ替わる。書き直さないと「入れ替える → キーも入れ替わる → 次フレームまた入れ替える」
-//   と毎フレーム反転し続ける。並べ替えた直後に、リスト上のスクリプト席へ配列順の
-//   キーを埋め直して自己整合にする。
+// 並べ替え後の実体に合わせて書き直す。実行順は表示順から導出し、2 つの並びが
+// 食い違わないようにする (「上にあるカードほど先に動く」)。
+// キーの "#n" は「配列の中で同じ型が何番目か」なので、同型を 2 つ付けて入れ替えると
+// キーも一緒に入れ替わる。書き直さないと毎フレーム反転し続ける。
 // @return 実際に並びが変わったら true
 bool SyncScriptOrderToDisplay(scene::ScriptComponent& sc,
                               EditorContext& ctx,
@@ -152,12 +135,8 @@ bool SyncScriptOrderToDisplay(scene::ScriptComponent& sc,
 
 // FBZZ_REQUIRE_COMPONENT の不足をスクリプトカードの先頭へ出す。
 // 戻り値: Fix が押されて実際に追加が起きたら true (呼び出し側がシーンを dirty にする)。
-//
-// WHY 自動追加ではなく警告 + 明示的な Fix にするか:
-//   スクリプトを付けた瞬間に黙ってコンポーネントが増えると、(1) シーンが自分の知らない
-//   ところで書き換わり、(2) Undo の粒度が「スクリプト 1 件」からずれ、(3) そもそも
-//   Animator は Controller 未設定なら足しても動かないので「揃っているのに動かない」
-//   という一段深い迷子を作る。足りないことを名指しし、直すかどうかは人が決める。
+// 自動追加にしないのは、黙ってシーンが書き換わり Undo の粒度もずれるため。
+// Animator のように足しても Controller 未設定なら動かないものもある。直すかは人が決める。
 bool DrawScriptRequirementBanner(scene::GameObject& go,
                                  const scene::Script& script,
                                  EditorContext& ctx)
@@ -219,11 +198,8 @@ bool DrawScriptRequirementBanner(scene::GameObject& go,
 }
 
 // UIImage の原寸 = 元画像の 1 ピクセルが画面の 1 ピクセルになる大きさ。
-//
-// WHY 素材の pixelsPerUnit と multiplier を両方掛けるか:
-//     Sliced / Tiled は Border とタイルを「元画像のピクセル数 ÷ multiplier」で描く。
-//     原寸も同じ換算にしておかないと、原寸に合わせた矩形なのに 9-slice の角だけ
-//     大きさが合わない、という食い違いが起きる。
+// pixelsPerUnit と multiplier を両方掛ける。Sliced / Tiled は Border とタイルを
+// 「元画像のピクセル数 ÷ multiplier」で描くので、揃えないと 9-slice の角だけ合わない。
 bool ResolveUIImageNativeSize(const scene::UIImage& image, EditorContext& ctx,
                               math::Vector2& outSize)
 {
@@ -311,19 +287,13 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
     if (!TransformEquals(before, after) && ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
-// NOTE: Transform の値クリップボードは EditorContext::transformClipboard にある。
-//       以前はこの翻訳単位の関数内 static だったため、AI (transform.copy /
-//       transform.paste operator) から同じ器を触れなかった。別々に持つと
-//       「人がコピーしたものを AI が貼れない」だけでなく、同じ操作名で中身が違う
-//       という最も追いにくい食い違いになる。
-//       コピー/貼り付け/リセットの実体は Editor/Op/InspectorOperators.cpp。
+// Transform の値クリップボードは EditorContext::transformClipboard にある
+// (AI の transform.copy / transform.paste と同じ器を共有するため)。
+// コピー/貼り付け/リセットの実体は Editor/Op/InspectorOperators.cpp。
 
-// Transform をメニュー操作で書き換えた際の Undo コマンドを積む (連続ドラッグ用の TrackTransformEdit とは別経路)。
-//
-// WHY: 以前はシーン全体を TOML 化して before/after にしていたが、戻すのが 1 つの
-//      GameObject の Transform だけなのにシーン全体を Deserialize で再構築していた。
-//      EntityID が振り直されるため選択・ロック・エディタ非表示が毎回消え、
-//      大きなシーンでは Paste/Reset のたびに全文シリアライズ 2 回ぶんのヒッチが出ていた。
+// Transform をメニュー操作で書き換えた際の Undo コマンドを積む
+// (連続ドラッグ用の TrackTransformEdit とは別経路)。
+// シーン全体のスナップショットにすると EntityID が振り直され、選択・ロックが毎回消える。
 void PushTransformSnapshotUndo(scene::GameObject& go,
                                EditorContext& ctx,
                                const scene::Transform& before,
@@ -356,10 +326,9 @@ void PushTransformSnapshotUndo(scene::GameObject& go,
 bool& UniformScaleLock() { static bool locked = false; return locked; }
 
 // ラベルの右クリックで「この行だけ既定値へ戻す」メニューを出す。
-// WHY: 「試しに動かしたが元に戻したい」は Inspector で最も多い後戻り操作。Ctrl+Z は
-//      直前の他の編集まで巻き戻してしまうため、行単位で戻せる口を別に用意する。
-// NOTE: ImGui の仕様上、直前に描いたアイテム (= ラベル) に紐づくので、値ウィジェットを
-//       描く前に呼び、要求だけ受け取って値の適用は後で行う。
+// Ctrl+Z は直前の他の編集まで巻き戻すので、行単位で戻せる口を別に用意する。
+// 直前に描いたアイテム (= ラベル) に紐づくので、値ウィジェットを描く前に呼び、
+// 要求だけ受け取って値の適用は後で行う。
 [[nodiscard]] bool RowResetRequested(const char* popupId)
 {
     bool requested = false;
@@ -371,14 +340,9 @@ bool& UniformScaleLock() { static bool locked = false; return locked; }
 }
 
 // Transform ヘッダーの Copy / Paste / Reset メニュー (⋯ ボタン / ヘッダー右クリック)。
-//
-// WHY 自前で値を書き換えないか (Operator モデル Step 4):
-//   以前はここが Transform の代入と Undo コマンドの生成を直接持っていた。
-//   同じ操作を AI・コマンドパレットからも呼べるようにした結果、実装が 2 つになり、
-//   「Inspector から貼ったときと AI から貼ったときで Undo ラベルが違う」
-//   「片方だけ markSceneDirty を忘れる」といった食い違いが起きうる状態だった。
-//   このメニューは operator の消費者に徹する — 実体は 1 つだけになる。
-//   Docs/design/editor-operator-model.md
+// 値の書き換えは自前で持たず operator の消費者に徹する。実装が 2 つあると
+// 「AI から貼ったときだけ Undo ラベルが違う」といった食い違いが起きる。
+// Docs/design/editor-operator-model.md
 void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 {
     if (!ImGui::BeginPopup("##transform_hdr_ctx")) return;
@@ -425,7 +389,7 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
         auto& t = go->transform;
         ImGui::Spacing();
 
-        const bool isUI = go->GetComponent<scene::UIImage>() || go->GetComponent<scene::UIText>();
+        const bool isUI = scene::IsUIElement(*go);
 
         if (isUI) {
             const float itemW = (ImGui::GetContentRegionAvail().x
@@ -451,34 +415,64 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 t.rotation = widgets::EulerDegToQuat({ euler.x, euler.y, rotZ });
             TrackTransformEdit(*go, ctx, "Change Rotation");
 
-            if (auto* uiImage = go->GetComponent<scene::UIImage>()) {
+            // 実測サイズの文字以外は scale.xy が矩形そのものなので寸法として出す
+            // (絵を持たない Mask や Scroll View もここでしか大きさを決められない)。
+            // ストレッチしている軸は親から決まるので触らせない (「効かない欄」になる)。
+            const scene::UIAnchor* uiAnchor = nullptr;
+            if (const auto* image = go->GetComponent<scene::UIImage>())
+                uiAnchor = &image->anchoring;
+            else if (const auto* text = go->GetComponent<scene::UIText>())
+                uiAnchor = &text->anchoring;
+            const bool stretchX = uiAnchor && uiAnchor->stretchX;
+            const bool stretchY = uiAnchor && uiAnchor->stretchY;
+
+            if (!scene::HasMeasuredUISize(*go)) {
                 ImGui::Text("Size");
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(itemW);
-                ImGui::DragFloat("##sw", &t.scale.x, 1.0f, 1.0f, 0.0f, "W %.0f");
+                ImGui::BeginDisabled(stretchX);
+                ImGui::DragFloat("##sw", &t.scale.x, 1.0f, 1.0f, 0.0f,
+                                 stretchX ? "W (stretch)" : "W %.0f");
+                ImGui::EndDisabled();
                 TrackTransformEdit(*go, ctx, "Change Width");
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(itemW);
-                ImGui::DragFloat("##sh", &t.scale.y, 1.0f, 1.0f, 0.0f, "H %.0f");
+                ImGui::BeginDisabled(stretchY);
+                ImGui::DragFloat("##sh", &t.scale.y, 1.0f, 1.0f, 0.0f,
+                                 stretchY ? "H (stretch)" : "H %.0f");
+                ImGui::EndDisabled();
                 TrackTransformEdit(*go, ctx, "Change Height");
+                if ((stretchX || stretchY)
+                    && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip("ストレッチしている軸の大きさは親から決まります。"
+                                      "余白は UI Image / UI Text の offsetMax と position で調整します");
+                }
+            }
 
+            if (auto* uiImage = go->GetComponent<scene::UIImage>()) {
                 // 絵を貼った直後にまずやりたいのは「元の絵の比率に戻す」で、
                 // それを手計算させないための 1 手。解決できないうちは押させない。
                 math::Vector2 nativeSize{};
                 const bool hasNativeSize =
                     ResolveUIImageNativeSize(*uiImage, ctx, nativeSize);
-                ImGui::BeginDisabled(!hasNativeSize);
+                // 両軸ストレッチなら原寸に戻す先が無い。
+                const bool canSetNative = hasNativeSize && !(stretchX && stretchY);
+                ImGui::BeginDisabled(!canSetNative);
                 if (ImGui::SmallButton("Set Native Size")) {
                     const scene::Transform before = t;
-                    t.scale.x = nativeSize.x;
-                    t.scale.y = nativeSize.y;
+                    // ストレッチしている軸には書かない。書いても捨てられる値で
+                    // Undo の履歴だけが増える。
+                    if (!stretchX) t.scale.x = nativeSize.x;
+                    if (!stretchY) t.scale.y = nativeSize.y;
                     PushTransformSnapshotUndo(*go, ctx, before, "Set Native Size");
                 }
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                    ImGui::SetTooltip(hasNativeSize
-                        ? "元画像の 1 ピクセルが画面の 1 ピクセルになる大きさへ合わせます"
-                        : "テクスチャが未設定か、まだ読み込まれていません");
+                    ImGui::SetTooltip(!hasNativeSize
+                        ? "テクスチャが未設定か、まだ読み込まれていません"
+                        : canSetNative
+                            ? "元画像の 1 ピクセルが画面の 1 ピクセルになる大きさへ合わせます"
+                            : "両軸ともストレッチしているため、大きさは親から決まります");
                 }
             }
         } else {
@@ -555,10 +549,8 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             }
 
             // ── ワールド座標 (読み取り専用) ──
-            // WHY: 上の 3 行はすべてローカル値。階層下のオブジェクトは
-            //      「Position が 0,0,0 なのに原点にいない」が普通に起きるため、
-            //      実際の位置を並べて出しておかないと毎回 Hierarchy を辿り直すことになる。
-            //      編集はローカル側でしかできないので、こちらは表示専用にとどめる。
+            // 上の 3 行はローカル値で、階層下では「Position が 0,0,0 なのに原点にいない」が
+            // 普通に起きる。編集はローカル側でしかできないので、こちらは表示専用。
             if (const scene::GameObject* parent = go->GetParent()) {
                 ImGui::PushID("world");
                 const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
@@ -652,24 +644,15 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
     auto& entry = sc->scripts[static_cast<size_t>(i)];
 
     // 並び替えはエンジン Component とまったく同じ仕組み (COMPONENT スコープ) に乗せる。
-    //
-    // WHY 専用スコープをやめたか (不具合修正): 以前はスクリプトだけ別スコープ
-    //   ("SCRIPT") で、Component 順リストには "Scripts" という 1 個のキーしか
-    //   登録されていなかった。そのキーを持つドラッグ元 / ドロップ先を描く UI が
-    //   どこにも無いため、スクリプトのカードは Component との相対位置を一切
-    //   変えられず (常に最後尾に固定)、逆に Component をスクリプトより後ろへ
-    //   落とすこともできなかった。カード 1 枚 = 並び順の 1 席に統一する。
+    // カード 1 枚 = 並び順の 1 席。専用スコープにすると Component との相対位置を
+    // 変えられなくなる。
     const std::string orderKey = ScriptOrderKey(*sc, i);
     const widgets::ComponentReorderTarget reorder =
         MakeComponentReorderTarget(go, ctx, orderKey.c_str());
 
-    // ⋯ メニューの Move Up / Move Down。1 つ隣へずらすだけならメニューの方が確実で、
-    // カードを畳んでいない縦長の Inspector ではドラッグの移動距離が大きくなる。
-    //
-    // WHY operator 経由か (Step 4): 端に居るかどうかの判定 (hasPrev / hasNext) を
-    //   ここで書くと、同じ判定が operator の poll にもあり 2 箇所になる。
-    //   poll は引数を見られるので、「このカードをこの方向へ動かせるか」まで
-    //   operator 側 1 箇所で答えられる。淡色表示もその答えをそのまま使う。
+    // ⋯ メニューの Move Up / Move Down。1 つ隣へずらすだけならメニューの方が確実。
+    // 端の判定 (hasPrev / hasNext) は operator の poll が引数を見て答える。
+    // ここで書くと同じ判定が 2 箇所になる。淡色表示もその答えを使う。
     const auto drawMoveMenuItems = [&]() {
         OpArgs args;
         args.Set("node", go->instanceId);
@@ -848,12 +831,9 @@ void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
     }
 
     // 表示順 (Component 順リスト) を正として実行順を追従させる。
-    //
-    // WHY 毎フレーム同期するか: 並び替えは Component 順リスト側で起きるため、
-    //   移動を検知する専用の経路を作るとドラッグ / メニュー / Undo / Redo の 4 か所へ
-    //   同じ同期を書き写すことになる。導出を 1 か所に置けば、どの経路で順序が
-    //   変わっても必ず追従し、食い違いが原理的に起きない。
-    //   並びが既に一致していれば何もしない (通常フレームのコストは比較だけ)。
+    // 移動を検知する専用経路を作るとドラッグ / メニュー / Undo / Redo の 4 か所へ
+    // 同じ同期を書き写すことになる。毎フレーム導出すればどの経路でも必ず追従する
+    // (一致していれば比較だけで終わる)。
     if (SyncScriptOrderToDisplay(*sc, ctx, go->instanceId)) {
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     }

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AvatarMaskAsset.cpp | fbzz::asset
-// .mask アセットの TOML 入出力とボーン別ウェイト評価
+/// @file    AvatarMaskAsset.cpp
+/// @brief   .mask アセットの TOML 入出力とボーン別ウェイト評価。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Core/Logger.hpp>

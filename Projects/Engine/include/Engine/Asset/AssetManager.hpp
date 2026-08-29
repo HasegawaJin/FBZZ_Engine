@@ -1,19 +1,20 @@
-// FBZZ Engine
-// AssetManager.hpp | fbzz::asset
-// 統一アセットロード API
-//
-// 新 API: AssetManager::Load<T>(path) → AssetHandle<T>
-//   対応型: ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
-//           TerrainAsset, AnimatorControllerAsset
-//   RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
-//
-// 旧 API (後方互換 — 移行中のコールサイト向け):
-//   LoadModel(path)   → Model*
-//   LoadMaterial(path)→ ResourceHandle<MaterialAssetTag>
-//   GetMaterial(h)    → MaterialAsset*
-//   テクスチャは ResourceManager::LoadTexture() を使うこと。
-//
-// 旧 API への Load<Model> シンタックスは LoadModel() に移行すること。
+/// @file    AssetManager.hpp
+/// @brief   統一アセットロード API。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 新 API: AssetManager::Load<T>(path) → AssetHandle<T>
+/// 対応型: ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
+/// TerrainAsset, AnimatorControllerAsset, SequenceAsset
+/// RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
+///
+/// 旧 API (後方互換 — 移行中のコールサイト向け):
+/// LoadModel(path)   → Model*
+/// LoadMaterial(path)→ ResourceHandle<MaterialAssetTag>
+/// GetMaterial(h)    → MaterialAsset*
+/// テクスチャは ResourceManager::LoadTexture() を使うこと。
+///
+/// 旧 API への Load<Model> シンタックスは LoadModel() に移行すること。
 #pragma once
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
@@ -36,6 +37,7 @@ struct AnimationClip;
 struct AnimatorControllerAsset;
 struct ModelAsset;
 struct PhysicsMaterialAsset;
+struct SequenceAsset;
 struct TerrainAsset;
 struct TextureAsset;
 
@@ -258,6 +260,8 @@ template<>
 AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& relativePath);
 template<>
 AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath);
+template<>
+AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath);
 
 template<>
 ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h);
@@ -273,6 +277,8 @@ template<>
 TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h);
 template<>
 PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h);
+template<>
+SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h);
 
 template<>
 void AssetManager::Unload<ModelAsset>(const std::string& relativePath);
@@ -288,5 +294,7 @@ template<>
 void AssetManager::Unload<TextureAsset>(const std::string& relativePath);
 template<>
 void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<SequenceAsset>(const std::string& relativePath);
 
 } // namespace fbzz::asset

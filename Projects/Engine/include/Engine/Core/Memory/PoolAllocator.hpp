@@ -1,7 +1,9 @@
-// FBZZ Engine
-// PoolAllocator.hpp | fbzz::core
-// 固定長ブロックを再利用するプールアロケータ
-// Component など同サイズのオブジェクトを頻繁に生成破棄する場面の断片化を抑える。
+/// @file    PoolAllocator.hpp
+/// @brief   固定長ブロックを再利用するプールアロケータ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// Component など同サイズのオブジェクトを頻繁に生成破棄する場面の断片化を抑える。
 #pragma once
 
 #include "Engine/Core/Memory/Allocator.hpp"

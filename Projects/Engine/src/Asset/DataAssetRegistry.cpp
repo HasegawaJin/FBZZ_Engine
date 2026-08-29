@@ -1,8 +1,9 @@
-// FBZZ Engine
-// DataAssetRegistry.cpp | fbzz::asset
-// DataAsset の「パス → 共有 1 実体」キャッシュと .fzdata (TOML) 入出力の実装。
-//
-// 値型の TOML 変換は util::TomlWrite/ReadReflector (Engine/Util/TomlReflector.hpp) を使う。
+/// @file    DataAssetRegistry.cpp
+/// @brief   DataAsset の「パス → 共有 1 実体」キャッシュと .fzdata (TOML) 入出力の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// 値型の TOML 変換は util::TomlWrite/ReadReflector (Engine/Util/TomlReflector.hpp) を使う。
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>

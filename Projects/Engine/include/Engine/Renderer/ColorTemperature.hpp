@@ -1,7 +1,7 @@
-/// @file ColorTemperature.hpp
-/// @brief 色温度 [K] からリニア sRGB の光色を作る
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    ColorTemperature.hpp
+/// @brief   色温度 [K] からリニア sRGB の光色を作る
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #pragma once
 #include <Math/Vector3.hpp>
 #include <algorithm>

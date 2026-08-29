@@ -1,17 +1,18 @@
-// FBZZ Engine
-// EffectOperators.cpp | fbzz::editor
-// ParticleEmitter / VFXGraphComponent の再生制御 Operator
-//
-// WHY: Inspector にはエフェクトを再生・停止・リセットする操作がある一方、AI からは
-//      VFX のアセット編集やパラメーター変更しかできず、シーン上の実体を同じ手順で
-//      確認できなかった。コンポーネント側の共通 API を呼ぶ薄い Operator にすることで、
-//      UI・Script・AI の再生状態リセット漏れを防ぎ、実体のプレビュー操作を一つへ集約する。
-//      再生状態はランタイム操作なので Undo には載せない。
+/// @file    EffectOperators.cpp
+/// @brief   ParticleEmitter / VFXComponent の再生制御 Operator。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: Inspector にはエフェクトを再生・停止・リセットする操作がある一方、AI からは
+/// VFX のアセット編集やパラメーター変更しかできず、シーン上の実体を同じ手順で
+/// 確認できなかった。コンポーネント側の共通 API を呼ぶ薄い Operator にすることで、
+/// UI・Script・AI の再生状態リセット漏れを防ぎ、実体のプレビュー操作を一つへ集約する。
+/// 再生状態はランタイム操作なので Undo には載せない。
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/VFXGraphComponent.hpp>
+#include <Engine/Scene/Components/VFXComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 
@@ -49,9 +50,9 @@ void RegisterEffectOperators(OperatorRegistry& registry)
     op.id        = "effects.control";
     op.label     = "Control Effect";
     op.category  = "Effects";
-    op.desc      = "シーン上の ParticleEmitter または VFXGraphComponent を制御する。"
+    op.desc      = "シーン上の ParticleEmitter または VFXComponent を制御する。"
                    "Particle は play / pause / restart / stop / clear / burst、"
-                   "VFX Graph は play / pause / resume / restart / stop / trigger に対応する。";
+                   "VFX は play / pause / resume / restart / stop / trigger に対応する。";
     op.caution   = "再生状態とランタイム粒子を変更するが、シーン編集の Undo 履歴には載らない。";
     op.kind      = OpKind::Action;
 
@@ -76,7 +77,7 @@ void RegisterEffectOperators(OperatorRegistry& registry)
     OpParam nameParam;
     nameParam.name = "name";
     nameParam.type = OpParamType::String;
-    nameParam.desc = "VFX Graph の Trigger 名";
+    nameParam.desc = "VFX の Trigger 名 (VFXElement::trigger と一致させる)";
     nameParam.required = false;
 
     op.params = { nodeParam, actionParam, countParam, nameParam };
@@ -85,7 +86,7 @@ void RegisterEffectOperators(OperatorRegistry& registry)
         if (go == nullptr) return false;
         const std::string action = args.GetString("action");
         const bool hasParticle = go->GetComponent<scene::ParticleEmitter>() != nullptr;
-        const bool hasVFX = go->GetComponent<scene::VFXGraphComponent>() != nullptr;
+        const bool hasVFX = go->GetComponent<scene::VFXComponent>() != nullptr;
         const bool validBurst = args.GetInt("count", 10) >= 1
             && args.GetInt("count", 10) <= 100000;
         const bool validTrigger = !args.GetString("name").empty();
@@ -118,7 +119,7 @@ void RegisterEffectOperators(OperatorRegistry& registry)
             applied = true;
         }
 
-        if (auto* vfx = go->GetComponent<scene::VFXGraphComponent>();
+        if (auto* vfx = go->GetComponent<scene::VFXComponent>();
             vfx != nullptr && IsVFXAction(action)) {
             if (action == "play" || action == "resume") vfx->Resume();
             else if (action == "pause")                  vfx->Pause();
@@ -134,9 +135,9 @@ void RegisterEffectOperators(OperatorRegistry& registry)
 
         if (applied) return OpResult::Ok();
         if (go->GetComponent<scene::ParticleEmitter>() != nullptr
-            || go->GetComponent<scene::VFXGraphComponent>() != nullptr)
+            || go->GetComponent<scene::VFXComponent>() != nullptr)
             return OpResult::Err("BAD_ARG", "対象コンポーネントに対応しない action です");
-        return OpResult::Err("NOT_PRESENT", "ParticleEmitter または VFXGraphComponent がありません");
+        return OpResult::Err("NOT_PRESENT", "ParticleEmitter または VFXComponent がありません");
     };
 
     registry.Register(std::move(op));

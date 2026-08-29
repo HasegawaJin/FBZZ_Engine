@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TriangleMeshCollider.hpp | fbzz::physics
-// 任意メッシュの静的コライダー (BVH 加速)
-// Physics は Engine に依存しないため、Mesh の代わりに生データを受け取る
+/// @file    TriangleMeshCollider.hpp
+/// @brief   任意メッシュの静的コライダー (BVH 加速)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// Physics は Engine に依存しないため、Mesh の代わりに生データを受け取る
 #pragma once
 #include <vector>
 #include <cstdint>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPasses/CausticsPass.cpp | fbzz::scene
-// 水面越しの投影コースティクスを HDR バッファへ加算合成するポストプロセスパス
+/// @file    RenderPasses/CausticsPass.cpp
+/// @brief   水面越しの投影コースティクスを HDR バッファへ加算合成するポストプロセスパス。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "../PostProcess/PostProcessPasses.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>

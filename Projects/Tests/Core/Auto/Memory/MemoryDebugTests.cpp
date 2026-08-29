@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MemoryDebugTests.cpp | GoogleTest
-// MemoryDebug の非所有 weak_ptr 追跡契約を自動検証する。
+/// @file    MemoryDebugTests.cpp
+/// @brief   MemoryDebug の非所有 weak_ptr 追跡契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Memory/MemoryDebug.hpp>

@@ -1,10 +1,11 @@
-// FBZZ Engine
-// BuildOutputPanel.hpp | fbzz::editor
-// スクリプト DLL / HLSL コンパイルの診断・ライブログ・ビルド履歴を表示する専用パネル。
-//
-// WHY: 汎用 Console はあらゆるログが混在し、コンパイルエラーが埋もれていた。
-//      本パネルはビルド出力だけを対象に、診断を file:line 付きで構造化表示し、
-//      ダブルクリックで該当箇所を外部エディタで開けるようにする。
+/// @file    BuildOutputPanel.hpp
+/// @brief   スクリプト DLL / HLSL コンパイルの診断・ライブログ・ビルド履歴を表示する専用パネル。
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
+///
+/// WHY: 汎用 Console はあらゆるログが混在し、コンパイルエラーが埋もれていた。
+/// 本パネルはビルド出力だけを対象に、診断を file:line 付きで構造化表示し、
+/// ダブルクリックで該当箇所を外部エディタで開けるようにする。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 

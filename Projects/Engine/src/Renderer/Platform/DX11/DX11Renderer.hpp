@@ -1,19 +1,21 @@
-// FBZZ Engine
-// DX11Renderer.hpp | fbzz::renderer
-// IRenderer の DX11 実装
-// DX11 固有のデバイスオブジェクトと各種バインド処理を保持する。
-// Application からは IRenderer として所有される。
-//
-// 設計方針:
-//   上位レイヤー (Application / Sandbox) は IRenderer& のみを参照し、
-//   このクラスに直接アクセスしない。依存方向: sandbox → engine (IRenderer) → DX11Renderer。
-//   Application.cpp のみが DX11Renderer を make_unique して IRenderer に格納する
-//   ファクトリー役を担い、それ以外の場所では DX11Renderer を知る必要がない。
-//
-//   サンプラー:
-//     Init() 時に SamplerMode::COUNT 種を事前生成しておき、BindStaticSamplers() が
-//     レジスタごとに意味を固定した並びを BeginFrame で 1 回だけ張る。
-//     パス単位の差し替えはしない (DX12 の静的サンプラーと意味を揃えるため)。
+/// @file    DX11Renderer.hpp
+/// @brief   IRenderer の DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// DX11 固有のデバイスオブジェクトと各種バインド処理を保持する。
+/// Application からは IRenderer として所有される。
+///
+/// 設計方針:
+/// 上位レイヤー (Application / Sandbox) は IRenderer& のみを参照し、
+/// このクラスに直接アクセスしない。依存方向: sandbox → engine (IRenderer) → DX11Renderer。
+/// Application.cpp のみが DX11Renderer を make_unique して IRenderer に格納する
+/// ファクトリー役を担い、それ以外の場所では DX11Renderer を知る必要がない。
+///
+/// サンプラー:
+/// Init() 時に SamplerMode::COUNT 種を事前生成しておき、BindStaticSamplers() が
+/// レジスタごとに意味を固定した並びを BeginFrame で 1 回だけ張る。
+/// パス単位の差し替えはしない (DX12 の静的サンプラーと意味を揃えるため)。
 #pragma once
 
 #include <d3d11.h>

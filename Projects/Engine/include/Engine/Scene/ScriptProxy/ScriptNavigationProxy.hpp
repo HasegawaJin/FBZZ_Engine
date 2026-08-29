@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptNavigationProxy.hpp | fbzz::scene
-// Script から NavMeshAgentComponent へ転送するショートハンド (Unity の NavMeshAgent 相当)
+/// @file    ScriptNavigationProxy.hpp
+/// @brief   Script から NavMeshAgentComponent へ転送するショートハンド (Unity の NavMeshAgent 相当)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

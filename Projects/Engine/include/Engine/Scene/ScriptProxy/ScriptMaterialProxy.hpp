@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptMaterialProxy.hpp | fbzz::scene
-// Scriptから共有Material参照とGameObject単位overrideを安全に操作する
+/// @file    ScriptMaterialProxy.hpp
+/// @brief   Scriptから共有Material参照とGameObject単位overrideを安全に操作する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>

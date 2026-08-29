@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MapEditorPanel.hpp | fbzz::editor
-// Viewport 中心の Map Editing Mode で地形・水・植生ツールを集約するパネル
+/// @file    MapEditorPanel.hpp
+/// @brief   Viewport 中心の Map Editing Mode で地形・水・植生ツールを集約するパネル。
+/// @author  Hasegawa Jin
+/// @date    2026-06-14
 #pragma once
 
 #include <Editor/Panels/EditorToolPanel.hpp>

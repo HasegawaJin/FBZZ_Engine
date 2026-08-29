@@ -1,23 +1,24 @@
-// FBZZ Engine
-// Signal.hpp | fbzz
-// 型安全な軽量シグナル (オブザーバー) ユーティリティ。
-//
-// 設計意図 (WHY):
-//   スクリプト間連携は従来 scene.Find("Player_Sword_Trail")->GetScript<T>()->Method()
-//   のように文字列名の合成で結合しており、リネームで壊れ・型安全でなかった。
-//
-//   Signal<Args...> は「発火側がイベントを type-safe に通知し、購読側がラムダで受ける」
-//   観測者パターンを最小実装で提供する。グローバル状態を持たないため、EXE / Script DLL の
-//   二重レジストリ問題 (ScriptFactory と同種の ABI 境界問題) を回避できる。
-//   コンポーネント/スクリプトのメンバーとして公開イベントを表現するのに使う。
-//
-//   使用例 (発火側スクリプト):
-//     fbzz::Signal<> onBloodSpray;                 // 引数なしイベントを公開
-//     void OnHit() { onBloodSpray.Emit(); }
-//
-//   使用例 (購読側):
-//     // FBZZ_REF(SwordTrailComponent, trail, "Trail") で参照を取得して購読
-//     if (trail) trail->onBloodSpray.Connect([this]{ DoSomething(); });
+/// @file    Signal.hpp
+/// @brief   型安全な軽量シグナル (オブザーバー) ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-29
+///
+/// 設計意図 (WHY):
+/// スクリプト間連携は従来 scene.Find("Player_Sword_Trail")->GetScript<T>()->Method()
+/// のように文字列名の合成で結合しており、リネームで壊れ・型安全でなかった。
+///
+/// Signal<Args...> は「発火側がイベントを type-safe に通知し、購読側がラムダで受ける」
+/// 観測者パターンを最小実装で提供する。グローバル状態を持たないため、EXE / Script DLL の
+/// 二重レジストリ問題 (ScriptFactory と同種の ABI 境界問題) を回避できる。
+/// コンポーネント/スクリプトのメンバーとして公開イベントを表現するのに使う。
+///
+/// 使用例 (発火側スクリプト):
+/// fbzz::Signal<> onBloodSpray;                 // 引数なしイベントを公開
+/// void OnHit() { onBloodSpray.Emit(); }
+///
+/// 使用例 (購読側):
+/// // FBZZ_REF(SwordTrailComponent, trail, "Trail") で参照を取得して購読
+/// if (trail) trail->onBloodSpray.Connect([this]{ DoSomething(); });
 #pragma once
 #include <cstdint>
 #include <functional>

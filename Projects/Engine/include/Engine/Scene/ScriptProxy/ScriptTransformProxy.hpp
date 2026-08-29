@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ScriptTransformProxy.hpp | fbzz::scene
-// Script から Transform 操作へ転送するショートハンド
-// __declspec(property) により transform.position / transform.worldPosition を
-// -> 不要でアクセスできる。position=ローカル、worldPosition=ワールド。
+/// @file    ScriptTransformProxy.hpp
+/// @brief   Script から Transform 操作へ転送するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// __declspec(property) により transform.position / transform.worldPosition を
+/// -> 不要でアクセスできる。position=ローカル、worldPosition=ワールド。
 #pragma once
 
 #include <Math/Quaternion.hpp>

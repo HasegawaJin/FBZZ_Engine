@@ -1,7 +1,7 @@
-/// @file EditorApp_SceneReload.cpp
-/// @brief 開いているシーンがディスク上で書き換わったときの追従と、上書き事故の防止。
-/// @author Hasegawa Jin
-/// @date 2026-08-21
+/// @file    EditorApp_SceneReload.cpp
+/// @brief   開いているシーンがディスク上で書き換わったときの追従と、上書き事故の防止。
+/// @author  Hasegawa Jin
+/// @date    2026-08-21
 #include <Editor/EditorApp.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ModalDialog.hpp>

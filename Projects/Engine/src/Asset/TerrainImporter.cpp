@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainImporter.cpp | fbzz::asset
-// .terrain バイナリ → TerrainAsset デシリアライザ
+/// @file    TerrainImporter.cpp
+/// @brief   .terrain バイナリ → TerrainAsset デシリアライザ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Engine/Asset/FzTerrainFormat.hpp>
 #include <Engine/Asset/TerrainImporter.hpp>
 #include <Engine/Core/Logger.hpp>

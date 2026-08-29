@@ -1,18 +1,19 @@
-// FBZZ Engine
-// ObjectPresets.hpp | fbzz::editor
-// 「Add Object」で置ける GameObject プリセットの単一登録表。
-//
-// WHY 表にするか:
-//   プリセットは「どのコンポーネントをどの初期値で組み合わせるか」という知識で、
-//   これまで SceneHierarchyPanel.cpp の ImGui メニュー本体に直接埋め込まれていた。
-//   そのため (1) メニューを描く経路からしか作れず、AI (Command Bus) からは同じものを
-//   1 個も作れない、(2) プリセットを増やすたびにメニューのネスト構造を手で書き足す、
-//   という 2 つの問題があった。
-//
-//   ここでは生成関数まで含めて 1 つの表にする。表に載せた時点でメニューにも AI にも
-//   同時に現れ、片方だけに存在するプリセットを作れない。AI 側が「Cube を置く」ために
-//   MeshRenderer + MaterialComponent + BoxCollider の組み合わせを推測する必要も無くなる
-//   (推測させると、人がメニューから置いたものと中身の違うオブジェクトが混ざる)。
+/// @file    ObjectPresets.hpp
+/// @brief   「Add Object」で置ける GameObject プリセットの単一登録表。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// WHY 表にするか:
+/// プリセットは「どのコンポーネントをどの初期値で組み合わせるか」という知識で、
+/// これまで SceneHierarchyPanel.cpp の ImGui メニュー本体に直接埋め込まれていた。
+/// そのため (1) メニューを描く経路からしか作れず、AI (Command Bus) からは同じものを
+/// 1 個も作れない、(2) プリセットを増やすたびにメニューのネスト構造を手で書き足す、
+/// という 2 つの問題があった。
+///
+/// ここでは生成関数まで含めて 1 つの表にする。表に載せた時点でメニューにも AI にも
+/// 同時に現れ、片方だけに存在するプリセットを作れない。AI 側が「Cube を置く」ために
+/// MeshRenderer + MaterialComponent + BoxCollider の組み合わせを推測する必要も無くなる
+/// (推測させると、人がメニューから置いたものと中身の違うオブジェクトが混ざる)。
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 #include <span>

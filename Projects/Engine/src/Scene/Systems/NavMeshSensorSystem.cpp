@@ -1,9 +1,11 @@
-// FBZZ Engine
-// NavMeshSensorSystem.cpp | fbzz::scene
-// NavMeshSensorComponent の視野角・距離・遮蔽判定を評価し、検知状態の変化を
-// Script コールバック (OnNavMeshTargetSpotted/Lost) で通知する。
-// autoChase 中は同 GO の NavMeshAgentComponent と連携し、見失った直後は
-// 最後に見えた位置まで一度だけ移動させてから巡回などへ戻れるようにする。
+/// @file    NavMeshSensorSystem.cpp
+/// @brief   NavMeshSensorComponent の視野角・距離・遮蔽判定を評価し、検知状態の変化を。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// Script コールバック (OnNavMeshTargetSpotted/Lost) で通知する。
+/// autoChase 中は同 GO の NavMeshAgentComponent と連携し、見失った直後は
+/// 最後に見えた位置まで一度だけ移動させてから巡回などへ戻れるようにする。
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"

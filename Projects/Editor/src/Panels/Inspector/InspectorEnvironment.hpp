@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorEnvironment.hpp | fbzz::editor
-// Environment / Decal 系 Component の Inspector 描画
+/// @file    InspectorEnvironment.hpp
+/// @brief   Environment / Decal 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include "InspectorCommon.hpp"

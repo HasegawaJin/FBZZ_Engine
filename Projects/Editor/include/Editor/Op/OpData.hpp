@@ -1,22 +1,24 @@
-// FBZZ Engine
-// OpData.hpp | fbzz::editor
-// WHAT: Operator が「返す」構造化データ。数値・文字列・配列・オブジェクトの入れ子を表す。
-// WHY:  OpKind::Query は最初から型にあったのに、**実際に登録された Query 操作は 1 つも無かった**。
-//       OpResult が持てるのは ok / errorCode / message だけで、読み取り結果を返す場所が
-//       どこにも無かったためで、「読む機能」は Operator にできず 10,000 行の
-//       EditorBusDispatcher 側へ書き続けるしかなかった。つまり登録簿は
-//       「書く操作の目録」に留まり、AI から見た Editor は
-//       「op.list に出る操作」と「dispatcher にしか無い照会」の 2 系統に割れていた。
-//       返り値の器を 1 つ足すだけで Query が成立し、以後は読み書きの両方が
-//       同じ登録簿へ載る (Docs/design/editor-operator-model.md §7)。
-//
-// WHY JsonValue を使わないか: Op 層が AI 層 (Editor/Ai/Json.hpp) を知ると、
-//       AI を外した構成でエディターが組めなくなる。OpArgs が JSON に依存していないのと
-//       同じ理由で、返り値側も Op 層だけで完結する型を持つ。JSON への変換は
-//       境界にいる OperatorBridge が 1 箇所で行う。
-//
-// 表現方法は JsonValue と同じ「タグ + 全フィールド」方式にそろえてある。
-// recursive-variant を避けると自己参照 (Array/Object が OpData を含む) を素直に書ける。
+/// @file    OpData.hpp
+/// @brief   WHAT: Operator が「返す」構造化データ。数値・文字列・配列・オブジェクトの入れ子を表す。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY:  OpKind::Query は最初から型にあったのに、**実際に登録された Query 操作は 1 つも無かった**。
+/// OpResult が持てるのは ok / errorCode / message だけで、読み取り結果を返す場所が
+/// どこにも無かったためで、「読む機能」は Operator にできず 10,000 行の
+/// EditorBusDispatcher 側へ書き続けるしかなかった。つまり登録簿は
+/// 「書く操作の目録」に留まり、AI から見た Editor は
+/// 「op.list に出る操作」と「dispatcher にしか無い照会」の 2 系統に割れていた。
+/// 返り値の器を 1 つ足すだけで Query が成立し、以後は読み書きの両方が
+/// 同じ登録簿へ載る (Docs/design/editor-operator-model.md §7)。
+///
+/// WHY JsonValue を使わないか: Op 層が AI 層 (Editor/Ai/Json.hpp) を知ると、
+/// AI を外した構成でエディターが組めなくなる。OpArgs が JSON に依存していないのと
+/// 同じ理由で、返り値側も Op 層だけで完結する型を持つ。JSON への変換は
+/// 境界にいる OperatorBridge が 1 箇所で行う。
+///
+/// 表現方法は JsonValue と同じ「タグ + 全フィールド」方式にそろえてある。
+/// recursive-variant を避けると自己参照 (Array/Object が OpData を含む) を素直に書ける。
 #pragma once
 
 #include <Math/Vector3.hpp>

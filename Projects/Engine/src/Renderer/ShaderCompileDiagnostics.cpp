@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ShaderCompileDiagnostics.cpp | fbzz::renderer
-// シェーダーコンパイル診断レジストリのスレッドセーフ実装
+/// @file    ShaderCompileDiagnostics.cpp
+/// @brief   シェーダーコンパイル診断レジストリのスレッドセーフ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
 
 #include <algorithm>
@@ -10,7 +11,7 @@ namespace fbzz::renderer {
 namespace {
 
 // ResourceManager生成前の起動時コンパイルも記録する必要があるため、所有者を持たないプロセス寿命の状態にする。
-// WHY: VFXEditorPanelやConsoleSinkを所有者にすると、それらの生成前に出た最重要エラーだけが失われる。
+// WHY: パネルや ConsoleSink を所有者にすると、それらの生成前に出た最重要エラーだけが失われる。
 struct ShaderCompileDiagnosticState {
     std::mutex mutex;
     std::vector<ShaderCompileDiagnostic> diagnostics;

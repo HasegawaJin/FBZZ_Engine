@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AiSetupService.cpp | fbzz::editor::ai
-// AI 連携セットアップの実装。診断・Claude Desktop 登録・起動を Win32/FS 操作で行う。
+/// @file    AiSetupService.cpp
+/// @brief   AI 連携セットアップの実装。診断・Claude Desktop 登録・起動を Win32/FS 操作で行う。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Ai/AiSetupService.hpp>
 
 #include <Editor/Ai/Json.hpp>

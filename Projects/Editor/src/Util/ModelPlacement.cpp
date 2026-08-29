@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ModelPlacement.cpp | fbzz::editor
-// .fbx アセットから Scene 用 GameObject 階層を構築する
+/// @file    ModelPlacement.cpp
+/// @brief   .fbx アセットから Scene 用 GameObject 階層を構築する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>

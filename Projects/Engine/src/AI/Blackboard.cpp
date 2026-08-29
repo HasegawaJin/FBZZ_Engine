@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Blackboard.cpp | fbzz::ai
-// 型付き共有データ領域の実装
+/// @file    Blackboard.cpp
+/// @brief   型付き共有データ領域の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/AI/Blackboard.hpp>
 
 namespace fbzz::ai {

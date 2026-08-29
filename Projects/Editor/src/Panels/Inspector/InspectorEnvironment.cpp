@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorEnvironment.cpp | fbzz::editor
-// Environment / Decal / IBL / PostProcess 系 Component の Inspector 描画
+/// @file    InspectorEnvironment.cpp
+/// @brief   Environment / Decal / IBL / PostProcess 系 Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorEnvironment.hpp"
 
 namespace fbzz::editor {

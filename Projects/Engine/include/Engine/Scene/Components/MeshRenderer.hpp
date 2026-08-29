@@ -1,8 +1,10 @@
-// FBZZ Engine
-// MeshRenderer.hpp | fbzz::scene
-// メッシュ参照と表示フラグを持つコンポーネント
-// RenderSystem が Transform と組み合わせて DrawCall を発行する。
-// GPU リソースは ResourceHandle / shared asset 側に所有させる。
+/// @file    MeshRenderer.hpp
+/// @brief   メッシュ参照と表示フラグを持つコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// RenderSystem が Transform と組み合わせて DrawCall を発行する。
+/// GPU リソースは ResourceHandle / shared asset 側に所有させる。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Matrix4.hpp>
@@ -32,6 +34,12 @@ struct MeshRenderer {
 
     // "primitive:cube" / "primitive:sphere" / "models/foo.fbx:0"
     std::string meshPath;
+
+    // meshPath を書き換えたので mesh を引き直してほしい、という要求。
+    // RuntimeMeshSystem が Phase::LateUpdate で処理して false へ戻す。シーンへは保存しない。
+    // mesh の解決には ResourceManager が要るが、SystemContext がそれを持つのは LateUpdate だけ。
+    // フラグが無いと文字列だけ変わって形が変わらず、実行中の差し替えが黙って効かない。
+    bool meshPathDirty = false;
 
     // VelocityPass だけが読み書きする。シーンへは保存しない。
     //

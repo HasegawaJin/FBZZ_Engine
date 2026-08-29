@@ -1,6 +1,7 @@
-// FBZZ Engine
-// World.hpp | fbzz::physics
-// 物理シミュレーション世界の管理と Step 実行
+/// @file    World.hpp
+/// @brief   物理シミュレーション世界の管理と Step 実行。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Physics/RigidBody.hpp>
 #include <Physics/BodyHandle.hpp>

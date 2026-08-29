@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ParticleEditWidgets.cpp | fbzz::editor
-// ParticleCurve / ParticleGradient のドラッグ編集ウィジェット実装
+/// @file    ParticleEditWidgets.cpp
+/// @brief   ParticleCurve / ParticleGradient のドラッグ編集ウィジェット実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include <Editor/Util/ParticleEditWidgets.hpp>
 
 // プリセット表は Engine 側に 1 つだけ置き、Editor UI と AI が同じ語彙を使う。

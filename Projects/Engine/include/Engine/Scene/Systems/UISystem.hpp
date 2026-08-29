@@ -1,8 +1,10 @@
-// FBZZ Engine
-// UISystem.hpp | fbzz::scene
-// ランタイム UI の描画とボタン入力処理
-// UICanvas / UIImage / UIText / UIButton を走査して DrawCall とヒット状態を作る。
-// WorldSpace UI には viewProjection を渡して座標変換する。
+/// @file    UISystem.hpp
+/// @brief   ランタイム UI の描画とボタン入力処理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
+///
+/// UICanvas / UIImage / UIText / UIButton を走査して DrawCall とヒット状態を作る。
+/// WorldSpace UI には viewProjection を渡して座標変換する。
 #pragma once
 #include <Engine/Renderer/FontAtlas.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -10,10 +12,12 @@
 #include <Engine/Renderer/ShaderDescriptor.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Matrix4.hpp>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -43,13 +47,38 @@ struct UITextLine {
     std::size_t begin = 0;   ///< text.text へのバイトオフセット (この行の先頭)
     std::size_t end   = 0;   ///< 同 (この行の終端。改行文字は含まない)
     float       width = 0.0f;
+    /// この行の送り高さ。リッチテキストで <size> を使うと行ごとに変わる。
+    float       height = 0.0f;
+    /// この行の末尾を "…" に置き換えて描く (TextOverflow::Ellipsis)。
+    bool        ellipsis = false;
 };
 
 // UI の頂点。UISystem.cpp の UIVertex と同じレイアウトで、
 // 作業領域を Context に置くためにヘッダーへ出したもの。
+//
+// LAYOUT: Assets/Shaders/UI/UICommon.hlsli の UIVertexInput と
+//         宣言順・詰め方を一致させること (入力レイアウトは VS のリフレクションから
+//         宣言順に組み立てられるので、順番がずれると黙って別の値を読む)。
 struct UIVertex2D {
     math::Vector2 pos;
     math::Vector2 uv;
+    // 頂点ごとの色。g_Color に掛かる。色を使わない描画では白を積む。
+    math::Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+};
+
+// クリップ領域を表す半平面 1 枚。dot(p - point, normal) >= 0 側を残す。
+//
+// WHY 矩形ではなく半平面の並びで持つか:
+//   Mask は回転できるうえ、Scroll View の中に Mask を置くような入れ子も起きる。
+//   回転した矩形どうしの共通部分は矩形にならないので、「矩形 1 つ」では表せない。
+//   半平面の並びなら、入れ子は単に本数が増えるだけで、切り取りの手順は変わらない。
+// WHY GPU ではなく CPU で切るか:
+//   シェーダーで捨てる方式にすると、UI マテリアルを書く人全員が
+//   クリップの呼び出しを書き写す必要があり、書き忘れた 1 本だけが
+//   マスクを無視して描かれる。頂点の段階で切れば、どのマテリアルにも等しく効く。
+struct UIClipPlane {
+    math::Vector2 point{};
+    math::Vector2 normal{};
 };
 
 // UIImage.materialPath から解決した 1 件ぶんの描画設定。
@@ -110,6 +139,11 @@ struct UISystemContext {
     renderer::ResourceHandle<renderer::ConstantBufferTag> constants;
     renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
     renderer::ResourceHandle<renderer::PipelineStateTag>  worldPso;
+    // 選択マスク用: 不透明・深度書き込みあり・カリング無し。
+    // WHY 通常の UI PSO を使い回さないか: UI は DEPTH_OFF なので選択マスク RT の
+    //     深度が初期値 (最遠) のままになり、SelectionOutline.hlsl の遮蔽判定
+    //     (選択物の深度 <= シーン深度) が 3D の手前でだけ落ちて輪郭が消える。
+    renderer::ResourceHandle<renderer::PipelineStateTag>  selectionMaskPso;
     renderer::ResourceHandle<renderer::TextureTag>        whiteTexture;
     // キーは「フォントのパス + 焼いた解像度」。同じフォントでも表示サイズが違えば
     // 別実体になる (FontAtlas.hpp の WHY を参照)。
@@ -144,6 +178,14 @@ struct UISystemContext {
     std::vector<std::vector<UIVertex2D>>                  textPageScratch;
     // UILayoutGroup が並べ替えに使う子インデックス。
     std::vector<int>                                      layoutIndexScratch;
+    // レイアウトが子のサイズを一度に見るための作業領域。
+    // 揃え・伸縮・Grid の折り返しは「全部の寸法が分かってから」でないと解けない。
+    std::vector<math::Vector2>                            layoutSizeScratch;
+
+    // いま有効なクリップ半平面。Mask / Scroll View に入るたび 4 枚積み、抜けると外す。
+    // WHY 深さごとに分けないか: 積んだ面は子孫すべてに効き続けるので、
+    //     1 本のスタックが階層の状態をそのまま表す。
+    std::vector<UIClipPlane>                              clipPlanes;
 
     // WHY DrawCall ごとに別の頂点バッファを配るか:
     //   DX12 は DrawCall をコマンドリストへ *記録* するだけで、GPU が実行するのは
@@ -165,6 +207,19 @@ struct UISystemContext {
 // UIText.fontPath が空のときに使用するデフォルトフォントアトラスのベースパス (拡張子なし) を設定する。
 void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePath);
 
+/// 直近の UI 入力処理で、ポインターがいずれかの UI 要素に吸われたか。
+///
+/// WHY 要るか: これが無いと、メニューの上でクリックした入力がそのまま
+///     ゲーム側 (射撃・カメラ操作) にも届く。判定そのものは
+///     ProcessUIEventsRecursive が既に出しているのに、外へ出す口が無かった。
+/// NOTE: GameViewport の入力パスだけが更新する。値はフレーム単位で、
+///       UI が 1 度も回っていなければ false。
+[[nodiscard]] bool UIPointerOverUI();
+
+/// リッチテキストのタグを除いた文字数。visibleCharacters の上限を知るのに使う。
+/// richText が false なら単純な UTF-8 の文字数。
+[[nodiscard]] std::size_t UITextVisibleLength(const std::string& text, bool richText);
+
 // フォントアトラスキャッシュをクリアする。シーン破棄・アセットリロード時に呼ぶ。
 void UISystemFlushCache(UISystemContext& ctx);
 
@@ -185,5 +240,24 @@ void UISystem(Scene& scene,
               math::Quaternion cameraWorldRot = math::Quaternion::Identity(),
               const math::Matrix4& viewProjection = math::Matrix4::Identity(),
               UIRenderTargetView targetView = UIRenderTargetView::GameViewport);
+
+// isSelected が true を返した UI 要素の矩形を、いま束ねられている選択マスク RT へ
+// 白で塗る。呼び出し側が選択マスク RT をバインドしてから呼ぶこと。
+//
+// WHY 輪郭そのものを UI パスで描かないか: 3D オブジェクトの選択輪郭は
+//     SelectionOutline パスがマスクの縁を検出して描いている。UI だけ別に描くと
+//     太さも色も RenderSettings の outlineColor / outlineWidth から外れ、
+//     同じ「選択中」が 2 種類の見た目になる。塗るのはマスクまでにする。
+void UISelectionMaskSystem(Scene& scene,
+                           renderer::IRenderer& renderer,
+                           renderer::ResourceManager& resources,
+                           UISystemContext& ctx,
+                           float viewportWidth,
+                           float viewportHeight,
+                           const std::function<bool(GameObject&)>& isSelected,
+                           math::Vector3    cameraWorldPos = math::Vector3::ZERO,
+                           math::Quaternion cameraWorldRot = math::Quaternion::Identity(),
+                           const math::Matrix4& viewProjection = math::Matrix4::Identity(),
+                           UIRenderTargetView targetView = UIRenderTargetView::GameViewport);
 
 } // namespace fbzz::scene

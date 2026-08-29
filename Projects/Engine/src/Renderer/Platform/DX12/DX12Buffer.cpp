@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Buffer.cpp | fbzz::renderer
-// 永続 Map した Upload Heap による動的頂点・インデックス更新
+/// @file    DX12Buffer.cpp
+/// @brief   永続 Map した Upload Heap による動的頂点・インデックス更新。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12Buffer.hpp"
 #include "DX12Context.hpp"
 #include "DX12StateTracker.hpp"

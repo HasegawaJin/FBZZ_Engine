@@ -1,16 +1,17 @@
-// FBZZ Engine
-// GraphLayoutAlgo.hpp | fbzz::editor
-// 有向グラフの自動整列 (深さベースの列配置)
-//
-// WHY 共通化するか:
-//   VFXGraphCanvas.cpp:399-453 と AnimationGraphPanel.cpp:3505-3527 が
-//   別々に整列を実装している。前者は深さベースで実用的、後者は
-//   「4 列の単純グリッド」で木構造を反映しない。同じ操作なのに
-//   ツールによって結果の質が違う状態だった。
-//
-// WHY 座標だけを返すか:
-//   ノード位置の保存先はツールごとに違う (VFX はノード自身の editorX/editorY、
-//   Animation は EditorContext::graphLayouts)。計算だけして書き込みは任せる。
+/// @file    GraphLayoutAlgo.hpp
+/// @brief   有向グラフの自動整列 (深さベースの列配置)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY 共通化するか:
+/// VFXGraphCanvas.cpp:399-453 と AnimationGraphPanel.cpp:3505-3527 が
+/// 別々に整列を実装している。前者は深さベースで実用的、後者は
+/// 「4 列の単純グリッド」で木構造を反映しない。同じ操作なのに
+/// ツールによって結果の質が違う状態だった。
+///
+/// WHY 座標だけを返すか:
+/// ノード位置の保存先はツールごとに違う (VFX はノード自身の editorX/editorY、
+/// Animation は EditorContext::graphLayouts)。計算だけして書き込みは任せる。
 #pragma once
 #include <imgui.h>
 

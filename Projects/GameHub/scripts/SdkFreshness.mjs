@@ -112,7 +112,6 @@ export async function AssertSdkIsCurrent(repositoryRoot, configuration) {
     `bin/${configuration}/FBZZEngine.dll`,
     `bin/${configuration}/published.stamp`,
     `tools/${configuration}/Editor/FBZZEditor.exe`,
-    `tools/${configuration}/Editor/FBZZVFXEditor.exe`,
     `tools/${configuration}/Editor/imgui.dll`,
   ];
   const availability = await Promise.all(requiredPaths.map(async (relativePath) => ({

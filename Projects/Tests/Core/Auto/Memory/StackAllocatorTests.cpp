@@ -1,6 +1,7 @@
-// FBZZ Engine
-// StackAllocatorTests.cpp | GoogleTest
-// StackAllocator の LIFO 解放契約を自動検証する。
+/// @file    StackAllocatorTests.cpp
+/// @brief   StackAllocator の LIFO 解放契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Memory/StackAllocator.hpp>

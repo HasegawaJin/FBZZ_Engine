@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptTimeProxy.hpp | fbzz::scene
-// Script から Time の値とタイムスケールを扱うショートハンド
+/// @file    ScriptTimeProxy.hpp
+/// @brief   Script から Time の値とタイムスケールを扱うショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #include <cstdint>

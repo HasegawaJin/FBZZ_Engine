@@ -1,11 +1,13 @@
-// FBZZ Engine
-// HeightFieldCollider.hpp | fbzz::physics
-// ハイトマップ地形向け最適化コライダー
-// TriangleMeshCollider の代替で、heightData をグリッドとして保持し
-// メモリ量を削減しつつ地形専用の BVH 再構築パスを提供する。
-// WHY: TriangleMeshCollider では positions + indices + BVH を保持するが、
-//      地形は均一グリッドのため float 配列だけで同等情報を表現できる。
-//      また transform 変化と heightData 変化を分離して管理できる。
+/// @file    HeightFieldCollider.hpp
+/// @brief   ハイトマップ地形向け最適化コライダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-16
+///
+/// TriangleMeshCollider の代替で、heightData をグリッドとして保持し
+/// メモリ量を削減しつつ地形専用の BVH 再構築パスを提供する。
+/// WHY: TriangleMeshCollider では positions + indices + BVH を保持するが、
+/// 地形は均一グリッドのため float 配列だけで同等情報を表現できる。
+/// また transform 変化と heightData 変化を分離して管理できる。
 #pragma once
 #include <Physics/Collider.hpp>
 #include <Physics/BVHNode.hpp>

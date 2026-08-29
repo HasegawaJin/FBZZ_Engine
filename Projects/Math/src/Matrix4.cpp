@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Matrix4.cpp | fbzz::math
-// 4x4行列の演算実装 (DirectX 左手系)
+/// @file    Matrix4.cpp
+/// @brief   4x4行列の演算実装 (DirectX 左手系)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Matrix4.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>

@@ -1,9 +1,11 @@
-// FBZZ Engine
-// ModelAsset.hpp | fbzz::asset
-// .fzasset バイナリのランタイム表現
-// メッシュ複数 + LOD + スケルトンを保持する。マテリアル・アニメは別アセット。
-// WHY: 旧 Model はメッシュ/マテリアル/アニメを一括保持していたが、
-//      各アセットを独立させることで再利用・差し替えを容易にする。
+/// @file    ModelAsset.hpp
+/// @brief   .fzasset バイナリのランタイム表現。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// メッシュ複数 + LOD + スケルトンを保持する。マテリアル・アニメは別アセット。
+/// WHY: 旧 Model はメッシュ/マテリアル/アニメを一括保持していたが、
+/// 各アセットを独立させることで再利用・差し替えを容易にする。
 #pragma once
 #include <Engine/Asset/ModelNode.hpp>
 #include <Engine/Asset/Skeleton.hpp>

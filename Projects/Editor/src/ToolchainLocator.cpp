@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ToolchainLocator.cpp | fbzz::editor
-// RuntimeBuild が使用する CMake とビルド成果物パスの解決
+/// @file    ToolchainLocator.cpp
+/// @brief   RuntimeBuild が使用する CMake とビルド成果物パスの解決。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #include <Editor/ToolchainLocator.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

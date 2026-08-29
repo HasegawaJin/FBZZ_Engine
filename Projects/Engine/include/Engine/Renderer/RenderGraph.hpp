@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderGraph.hpp | fbzz::renderer
-// Render pass dependency graph with culling, lifetime analysis and profiling hooks
+/// @file    RenderGraph.hpp
+/// @brief   Render pass dependency graph with culling, lifetime analysis and profiling hooks.
+/// @author  Hasegawa Jin
+/// @date    2026-05-26
 #pragma once
 
 #include <algorithm>

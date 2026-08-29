@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FrameAllocatorTests.cpp | GoogleTest
-// FrameAllocator のフレーム境界リセット契約を自動検証する。
+/// @file    FrameAllocatorTests.cpp
+/// @brief   FrameAllocator のフレーム境界リセット契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Memory/FrameAllocator.hpp>

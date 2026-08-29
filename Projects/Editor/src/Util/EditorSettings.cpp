@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorSettings.cpp | fbzz::editor
-// エディター設定の TOML 永続化実装
+/// @file    EditorSettings.cpp
+/// @brief   エディター設定の TOML 永続化実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/EditorSettings.hpp>
 #include <toml++/toml.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -37,6 +38,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["camera"]["last_rot_y"].value<float>())  cameraLastRy      = *v;
     if (auto v = tbl["camera"]["last_rot_z"].value<float>())  cameraLastRz      = *v;
     if (auto v = tbl["camera"]["last_rot_w"].value<float>())  cameraLastRw      = *v;
+    if (auto v = tbl["camera"]["orthographic"].value<bool>()) cameraOrthographic = *v;
+    if (auto v = tbl["camera"]["ortho_height"].value<float>()) cameraOrthoHeight = *v;
 
     // ビュー
     if (auto v = tbl["view"]["show_grid"].value<bool>())      showGrid      = *v;
@@ -275,6 +278,8 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     camTbl.insert("last_rot_y",  cameraLastRy);
     camTbl.insert("last_rot_z",  cameraLastRz);
     camTbl.insert("last_rot_w",  cameraLastRw);
+    camTbl.insert("orthographic", cameraOrthographic);
+    camTbl.insert("ortho_height", cameraOrthoHeight);
 
     // ビュー
     toml::table viewTbl;

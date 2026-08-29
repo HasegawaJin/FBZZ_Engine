@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConsolePanel.hpp | fbzz::editor
-// ログエントリをフィルタ・検索・表示するコンソールパネル
+/// @file    ConsolePanel.hpp
+/// @brief   ログエントリをフィルタ・検索・表示するコンソールパネル。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Util/ConsoleSink.hpp>

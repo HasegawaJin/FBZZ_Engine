@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ComponentArray.hpp | fbzz::scene
-// EntityID から Component へ引くスパースセット
-// dense 配列で連続メモリを保ち、System の走査を高速化する。
-// Remove は末尾要素との swap で O(1) にする。
+/// @file    ComponentArray.hpp
+/// @brief   EntityID から Component へ引くスパースセット。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// dense 配列で連続メモリを保ち、System の走査を高速化する。
+/// Remove は末尾要素との swap で O(1) にする。
 #pragma once
 #include "Entity.hpp"
 #include <span>

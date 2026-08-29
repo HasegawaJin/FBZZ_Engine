@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorTheme.cpp | fbzz::editor
-// FBZZ Studio 固有のエディター配色・フォント・レイアウトの適用
+/// @file    EditorTheme.cpp
+/// @brief   FBZZ Studio 固有のエディター配色・フォント・レイアウトの適用。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 
 #include <Editor/Util/EditorTheme.hpp>
 #include <Engine/Util/FileSystem.hpp>

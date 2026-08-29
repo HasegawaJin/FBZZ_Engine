@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BuildConsole.cpp | fbzz::editor
-// コンパイラ出力の解析・診断抽出・履歴管理。
+/// @file    BuildConsole.cpp
+/// @brief   コンパイラ出力の解析・診断抽出・履歴管理。
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
 #include <Editor/Util/BuildConsole.hpp>
 
 #include <Windows.h>   // GetTickCount64 / GetLocalTime

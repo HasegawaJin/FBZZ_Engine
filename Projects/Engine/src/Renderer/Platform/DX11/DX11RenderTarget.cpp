@@ -1,8 +1,10 @@
-// FBZZ Engine
-// DX11RenderTarget.cpp | fbzz::renderer
-// DX11 オフスクリーン描画ターゲット実装
-// MRT、深度、SRV 取得をまとめ、ポストプロセスやシャドウに使う。
-// RenderTarget の生成と解放を DX11 リソース寿命に合わせる。
+/// @file    DX11RenderTarget.cpp
+/// @brief   DX11 オフスクリーン描画ターゲット実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// MRT、深度、SRV 取得をまとめ、ポストプロセスやシャドウに使う。
+/// RenderTarget の生成と解放を DX11 リソース寿命に合わせる。
 #include "DX11RenderTarget.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>

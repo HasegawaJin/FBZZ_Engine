@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LightRangeDebugPass.cpp | fbzz::scene
-// Point / Spot ライトの影響範囲を HDR バッファへワイヤーで描画する IRenderPass 実装
+/// @file    LightRangeDebugPass.cpp
+/// @brief   Point / Spot ライトの影響範囲を HDR バッファへワイヤーで描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>

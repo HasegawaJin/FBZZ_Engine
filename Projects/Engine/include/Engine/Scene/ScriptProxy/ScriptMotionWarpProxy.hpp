@@ -1,7 +1,7 @@
-/// @file ScriptMotionWarpProxy.hpp
-/// @brief Script から MotionWarpComponent へ寄せ先を渡すショートハンド
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    ScriptMotionWarpProxy.hpp
+/// @brief   Script から MotionWarpComponent へ寄せ先を渡すショートハンド
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #pragma once
 
 #include <Math/Quaternion.hpp>

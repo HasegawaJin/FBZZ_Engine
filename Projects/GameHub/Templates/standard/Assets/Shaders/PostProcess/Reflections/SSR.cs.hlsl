@@ -179,7 +179,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
         // ビュー空間での深度に変換して比較
         // WHY: ビュー空間深度は線形なので厚みの比較が直感的
-        float sampleDepthLinear = LinearizeDepth(sampleNdcDepth, nearZ, farZ);
+        float sampleDepthLinear = LinearizeDepth(sampleNdcDepth, nearZ, farZ, isOrthographic);
         // 透視投影後の補間率からビュー深度を逆数補間する。
         // WHY: UV を線形補間してもビュー深度は線形でないため、遠近補正なしでは交差位置がずれる。
         float rayDepthLinear = rcp(lerp(rcp(rayOriginVS.z), rcp(rayEndVS.z), traceRatio));

@@ -1,7 +1,9 @@
-// FBZZ Engine
-// MemoryTracker.hpp | fbzz::core
-// メモリ使用量を用途タグ別に集計するトラッカー
-// アロケータの実装詳細と独立して、サブシステム単位の使用傾向を確認できるようにする。
+/// @file    MemoryTracker.hpp
+/// @brief   メモリ使用量を用途タグ別に集計するトラッカー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// アロケータの実装詳細と独立して、サブシステム単位の使用傾向を確認できるようにする。
 #pragma once
 
 #include "Engine/Core/Memory/Allocator.hpp"

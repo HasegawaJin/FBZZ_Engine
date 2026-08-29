@@ -1,12 +1,13 @@
-// FBZZ Engine
-// TerrainOperators.cpp | fbzz::editor
-// Terrain データ編集の Operator
-//
-// WHY: Terrain の columns / rows は heightData と splatData のサイズと一体であり、
-//      数値だけを変更すると TerrainRenderPass と PhysicsSystem が不整合な配列を読む。
-//      Inspector は TerrainComponent::Resize() を通して安全に変更しているため、
-//      AI からも同じ入口を使い、変更前後の TerrainComponent を丸ごと Undo へ保持する。
-//      Docs/design/editor-operator-model.md
+/// @file    TerrainOperators.cpp
+/// @brief   Terrain データ編集の Operator。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: Terrain の columns / rows は heightData と splatData のサイズと一体であり、
+/// 数値だけを変更すると TerrainRenderPass と PhysicsSystem が不整合な配列を読む。
+/// Inspector は TerrainComponent::Resize() を通して安全に変更しているため、
+/// AI からも同じ入口を使い、変更前後の TerrainComponent を丸ごと Undo へ保持する。
+/// Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>

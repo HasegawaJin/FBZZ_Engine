@@ -54,42 +54,17 @@ RIGS = [
         "root_bone": "Root",
         "root_motion": True,
         # 全クリップ共通の基準ポーズ。rest へ戻したあと、この順に流し込む。
-        # Idle が 23 ボーン、Pose_GripPistols が指 24 ボーンを埋め、
+        # Idle が 23 ボーン、Pose_GripKatana が指 24 ボーンを埋め、
         # 残り (SOCKET_* / Core / Vent_*_Rotor / Grip_L/R / Mount_Back) は rest のまま。
-        "base_poses": ["MiniBot_Idle", "MiniBot_Pose_GripPistols"],
+        #
+        # WHY 実在するアクション名であること: resolve_base_poses は見つからない
+        #      名前を黙って捨てる。存在しない名前を書くとエラーにならないまま
+        #      基準ポーズが減り、埋まらなかったボーンが rest で焼き込まれる。
+        #      指が rest (開いた手) になると武器をすり抜けるので、リグの
+        #      アクションを整理したときはここも必ず合わせる。
+        "base_poses": ["MiniBot_Idle", "MiniBot_Pose_GripKatana"],
     },
 
-    {
-        "package": "WPN_Assault",
-        "armature": "WPN_Assault_Rig",
-        "prefix": "Assault_",
-        "root_bone": None,
-        "root_motion": False,
-        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
-        "base_poses": None,
-    },
-    {
-        "package": "WPN_Pistol_R",
-        "armature": "WPN_Pistol_R_Rig",
-        "prefix": "Pistol_",
-        "root_bone": None,
-        "root_motion": False,
-        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
-        "base_poses": None,
-        # 左右のピストルは別アーマチュアだが同じ Pistol_ 接頭辞を共有するため、
-        # スロット (slot identifier) で所属を判定する。
-        "slot_filter": "OBWPN_Pistol_R_Rig",
-    },
-    {
-        "package": "WPN_Pistol_L",
-        "armature": "WPN_Pistol_L_Rig",
-        "prefix": "Pistol_",
-        "root_bone": None,
-        "root_motion": False,
-        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
-        "base_poses": None,
-        "slot_filter": "OBWPN_Pistol_L_Rig",
-    },
     {
         "package": "WPN_Sword_R",
         "armature": "WPN_Sword_R_Rig",
@@ -98,6 +73,8 @@ RIGS = [
         "root_motion": False,
         # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
         "base_poses": None,
+        # 左右の刀は別アーマチュアだが同じ Sword_ 接頭辞を共有するため、
+        # スロット (slot identifier) で所属を判定する。
         "slot_filter": "OBWPN_Sword_R_Rig",
     },
     {
@@ -106,7 +83,6 @@ RIGS = [
         "prefix": "Sword_",
         "root_bone": None,
         "root_motion": False,
-        # 未キーのボーンを埋める基準ポーズ。None なら <prefix>Idle を自動解決する。
         "base_poses": None,
         "slot_filter": "OBWPN_Sword_L_Rig",
     },

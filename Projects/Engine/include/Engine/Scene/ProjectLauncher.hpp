@@ -1,12 +1,13 @@
-// FBZZ Engine
-// ProjectLauncher.hpp | fbzz::scene
-// ProjectRuntime内部で使う設定適用・シーン登録ユーティリティクラス。
-//
-// WHY: Sandbox / EditorLauncher / GameHub テンプレートが
-//      「ProjectSettings 適用 → シーン登録」という同一の起動フローを
-//      それぞれ実装していた。Engine 側に集約することで
-//   1. テンプレートを薄くし、ユーザーが触るべきコードを最小化する。
-//   2. 起動手順の変更を 1 か所に閉じ込める。
+/// @file    ProjectLauncher.hpp
+/// @brief   ProjectRuntime内部で使う設定適用・シーン登録ユーティリティクラス。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// WHY: Sandbox / EditorLauncher / GameHub テンプレートが
+/// 「ProjectSettings 適用 → シーン登録」という同一の起動フローを
+/// それぞれ実装していた。Engine 側に集約することで
+/// 1. テンプレートを薄くし、ユーザーが触るべきコードを最小化する。
+/// 2. 起動手順の変更を 1 か所に閉じ込める。
 #pragma once
 #include <Engine/ProjectSettings.hpp>
 #include <filesystem>

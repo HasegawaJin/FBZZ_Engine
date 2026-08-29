@@ -1,7 +1,7 @@
-/// @file FontAtlas.hpp
-/// @brief BMFont 互換フォントアトラスのロードとグリフメトリクス管理
-/// @author Hasegawa Jin
-/// @date 2026-06-02
+/// @file    FontAtlas.hpp
+/// @brief   BMFont 互換フォントアトラスのロードとグリフメトリクス管理
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 ///
 /// WHY: 旧実装は「全グリフが同じセル幅を占める」独自 .fnt 形式しか読めず、
 ///      per-glyph の矩形・オフセットもカーニングも持てなかった。ASCII 128 エントリの

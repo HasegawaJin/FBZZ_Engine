@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Ray.hpp | fbzz::math
-// レイ (origin + t * direction)
+/// @file    Ray.hpp
+/// @brief   レイ (origin + t * direction)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 
 #include "Vector3.hpp"

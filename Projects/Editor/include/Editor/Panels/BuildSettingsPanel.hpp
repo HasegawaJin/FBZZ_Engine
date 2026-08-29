@@ -1,10 +1,11 @@
-// FBZZ Engine
-// BuildSettingsPanel.hpp | fbzz::editor
-// ゲームパッケージング設定パネル
-//
-// WHAT: Unity の "File → Build Settings" に相当する ImGui パネル。
-//       ビルドに含めるシーン一覧、出力先、製品名を編集し、
-//       BuildPipeline を通じてゲームをパッケージングする。
+/// @file    BuildSettingsPanel.hpp
+/// @brief   ゲームパッケージング設定パネル。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHAT: Unity の "File → Build Settings" に相当する ImGui パネル。
+/// ビルドに含めるシーン一覧、出力先、製品名を編集し、
+/// BuildPipeline を通じてゲームをパッケージングする。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/BuildSettings.hpp>

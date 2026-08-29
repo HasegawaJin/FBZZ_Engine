@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Transform.hpp | fbzz::scene
-// 全 GameObject が持つ位置・回転・スケール
-// local 値はユーザー操作用、world 値は TransformSystem が毎フレーム更新する。
-// 親子階層の所有は GameObject が持ち、Transform は姿勢計算に集中する。
+/// @file    Transform.hpp
+/// @brief   全 GameObject が持つ位置・回転・スケール。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// local 値はユーザー操作用、world 値は TransformSystem が毎フレーム更新する。
+/// 親子階層の所有は GameObject が持ち、Transform は姿勢計算に集中する。
 #pragma once
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>

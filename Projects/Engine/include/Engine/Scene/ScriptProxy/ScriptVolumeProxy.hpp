@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptVolumeProxy.hpp | fbzz::scene
-// Script から VolumeComponent (重力・渦・爆風・時間減速など) を操作するショートハンド。
+/// @file    ScriptVolumeProxy.hpp
+/// @brief   Script から VolumeComponent (重力・渦・爆風・時間減速など) を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 #pragma once
 
 #include <Math/Vector3.hpp>

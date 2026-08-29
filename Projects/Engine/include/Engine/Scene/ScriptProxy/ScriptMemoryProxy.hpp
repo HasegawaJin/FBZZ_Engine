@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptMemoryProxy.hpp | fbzz::scene
-// Script から一時メモリ / 固定長プールを安全に扱うための Proxy
+/// @file    ScriptMemoryProxy.hpp
+/// @brief   Script から一時メモリ / 固定長プールを安全に扱うための Proxy。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 
 #include <Engine/Core/Memory/Allocator.hpp>

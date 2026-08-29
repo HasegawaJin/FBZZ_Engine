@@ -1,6 +1,7 @@
-// FBZZ Engine
-// StatusBar.hpp | fbzz::editor
-// 画面下端に固定描画される情報バーとドロワーパネルの開閉操作
+/// @file    StatusBar.hpp
+/// @brief   画面下端に固定描画される情報バーとドロワーパネルの開閉操作。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <string>
 

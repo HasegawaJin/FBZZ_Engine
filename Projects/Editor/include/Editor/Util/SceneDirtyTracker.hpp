@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneDirtyTracker.hpp | fbzz::editor
-// Tracks whether the active scene differs from the last clean snapshot
+/// @file    SceneDirtyTracker.hpp
+/// @brief   Tracks whether the active scene differs from the last clean snapshot.
+/// @author  Hasegawa Jin
+/// @date    2026-05-26
 #pragma once
 #include <cstddef>
 

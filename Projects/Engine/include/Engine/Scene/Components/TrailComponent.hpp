@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TrailComponent.hpp | fbzz::scene
-// 移動体の軌跡をリボン状メッシュとして描画するための制御点・外観パラメータ
+/// @file    TrailComponent.hpp
+/// @brief   移動体の軌跡をリボン状メッシュとして描画するための制御点・外観パラメータ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -59,6 +60,16 @@ struct TrailComponent {
     bool beamMode = false;
     math::Vector3 beamStart = math::Vector3::ZERO;
     math::Vector3 beamEnd = { 0.0f, 0.0f, 5.0f };
+
+    // beamStart / beamEnd の間を通す中間点。空なら 2 端点の直線。
+    // 書き手は VFXBeamComponent で毎フレーム作り直すため、シーンへは保存しない
+    // (保存すると「止めた瞬間の形」がアセットに焼き付く)。
+    std::vector<math::Vector3> beamPoints;
+
+    // beamPoints / beamStart / beamEnd をワールド座標として解釈する。
+    // 2 つの実体を結ぶビームは、どちらか一方のローカル空間では表せない。
+    bool beamWorldSpace = false;
+
     TrailWidthEasing widthEasing = TrailWidthEasing::Linear;
     math::Vector4 colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector4 colorEnd   = { 1.0f, 1.0f, 1.0f, 0.0f };

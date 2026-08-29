@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Compiler.hpp | fbzz::editor
-// RuntimeBuild とアセット生成用の非同期子プロセス管理
+/// @file    Compiler.hpp
+/// @brief   RuntimeBuild とアセット生成用の非同期子プロセス管理。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
 #pragma once
 
 #include <Windows.h>

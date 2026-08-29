@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Collider.hpp | fbzz::physics
-// コライダー形状の定義 (Sphere / AABB / OBB / Capsule / Cylinder / Mesh / ConvexHull / HeightField)
+/// @file    Collider.hpp
+/// @brief   コライダー形状の定義 (Sphere / AABB / OBB / Capsule / Cylinder / Mesh / ConvexHull / HeightField)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>

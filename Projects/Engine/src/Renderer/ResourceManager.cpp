@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ResourceManager.cpp | fbzz::renderer
-// Renderer リソースの所有とハンドル解決
-// IRenderer の非公開生成 API を呼び、ResourceHandle と実体を対応付ける。
-// 上位システムが shared_ptr を直接保持しないための境界。
+/// @file    ResourceManager.cpp
+/// @brief   Renderer リソースの所有とハンドル解決。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
+///
+/// IRenderer の非公開生成 API を呼び、ResourceHandle と実体を対応付ける。
+/// 上位システムが shared_ptr を直接保持しないための境界。
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>

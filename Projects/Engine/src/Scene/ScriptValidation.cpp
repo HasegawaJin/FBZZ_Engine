@@ -1,5 +1,7 @@
-// FBZZ Engine
-// ScriptValidation.cpp | fbzz::scene
+/// @file    ScriptValidation.cpp
+/// @brief   スクリプトの必須 / 任意コンポーネント充足検査の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #include <Engine/Scene/ScriptValidation.hpp>
 
 #include <Engine/Scene/ComponentOps.hpp>

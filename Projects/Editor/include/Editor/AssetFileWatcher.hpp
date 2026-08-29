@@ -1,10 +1,12 @@
-// FBZZ Engine
-// AssetFileWatcher.hpp | fbzz::editor
-// Assets/ ディレクトリの変化をポーリングで検出するファイルシステム監視
-// WHY: ReadDirectoryChangesW の非同期オーバーラップモードを使い、
-//      std::thread なしで変化通知を取得する。
-//      毎フレーム Poll() を呼ぶだけでイベントを取得できる。
-//      AGENTS.md の「Step 1〜5 はシングルスレッド」方針に準拠する。
+/// @file    AssetFileWatcher.hpp
+/// @brief   Assets/ ディレクトリの変化をポーリングで検出するファイルシステム監視。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// WHY: ReadDirectoryChangesW の非同期オーバーラップモードを使い、
+/// std::thread なしで変化通知を取得する。
+/// 毎フレーム Poll() を呼ぶだけでイベントを取得できる。
+/// AGENTS.md の「Step 1〜5 はシングルスレッド」方針に準拠する。
 #pragma once
 #include <string>
 #include <vector>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// WaterRenderPass.hpp | fbzz::scene
-// WaterComponent を走査して水面メッシュ・泡・波紋を描画する IRenderPass 実装
+/// @file    WaterRenderPass.hpp
+/// @brief   WaterComponent を走査して水面メッシュ・泡・波紋を描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>

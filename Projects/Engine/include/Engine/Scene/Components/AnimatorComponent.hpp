@@ -1,11 +1,13 @@
-// FBZZ Engine
-// AnimatorComponent.hpp | fbzz::scene
-// スケルタルアニメーション再生状態コンポーネント
-// Model の AnimationClip を参照し、現在時刻や再生速度を保持する。
-// 骨行列の計算と GPU 転送は AnimatorSystem が行う。
-//
-// ── ステートマシン設計 ──────────────────────────────────────────────────────────
-// AnimatorSystem は State / BlendTree を統一したステートマシンとして評価する。
+/// @file    AnimatorComponent.hpp
+/// @brief   スケルタルアニメーション再生状態コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// Model の AnimationClip を参照し、現在時刻や再生速度を保持する。
+/// 骨行列の計算と GPU 転送は AnimatorSystem が行う。
+///
+/// ── ステートマシン設計 ──────────────────────────────────────────────────────────
+/// AnimatorSystem は State / BlendTree を統一したステートマシンとして評価する。
 #pragma once
 
 #include <Engine/Asset/AnimationClip.hpp>
@@ -244,6 +246,8 @@ struct AnimationSlotPlayback {
     bool  stopping = false;  // フェードアウト中
     float time     = 0.0f;   // クリップ内の再生秒数
     float weight   = 0.0f;   // 0..1。ステートマシン出力に対するこの Slot の被せ量
+    // SequenceSystem が時刻を握っている間 true。AnimatorSystem は自前で time を進めない。
+    bool  driven   = false;
 };
 
 struct AnimationLayer {
@@ -377,6 +381,11 @@ struct AnimatorComponent {
     // ルートモーションの適用先・解決方法・軸マスク。
     // VFX の決定論的 Preview は mode = None を使い、姿勢だけを評価して Transform を動かさない。
     RootMotionSettings rootMotion;
+
+    // ステートから参照されないクリップ (演出専用) のソース。
+    // LoadClips はステートと Additive 基準からしか集めないので、ここに宣言が無いと
+    // Slot へ差し込んでも「参照が解決できない」として黙って畳まれる。
+    std::vector<std::string> externalClipSources;
 
     // ランタイム専用。初回更新時にステート参照から再構築する。
     std::vector<asset::AnimationClip> clips;

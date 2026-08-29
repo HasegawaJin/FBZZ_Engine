@@ -1,8 +1,10 @@
-// FBZZ Engine
-// SkyRenderer.hpp | fbzz::scene
-// 大気散乱スカイドーム設定コンポーネント
-// 太陽方向・散乱係数など、空描画に必要な値を Scene に保持する。
-// 描画順やシェーダー実体は RenderSystem / Renderer が扱う。
+/// @file    SkyRenderer.hpp
+/// @brief   大気散乱スカイドーム設定コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 太陽方向・散乱係数など、空描画に必要な値を Scene に保持する。
+/// 描画順やシェーダー実体は RenderSystem / Renderer が扱う。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InputActionMap.cpp | fbzz::input
-// アクション/軸の評価、デッドゾーン処理、平滑化、リバインド
+/// @file    InputActionMap.cpp
+/// @brief   アクション/軸の評価、デッドゾーン処理、平滑化、リバインド。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Input/Input.hpp"
 #include "Engine/Input/Gamepad.hpp"

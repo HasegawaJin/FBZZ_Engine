@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Phase.hpp | fbzz
-// フレーム内実行フェーズ定義と固定ステップ設定
+/// @file    Phase.hpp
+/// @brief   フレーム内実行フェーズ定義と固定ステップ設定。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <cstdint>
 

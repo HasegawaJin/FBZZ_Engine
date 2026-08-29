@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ModelImporter.cpp | fbzz::asset
-// 外部モデルファイルの読み込みエントリーポイント。
-// スキニングの有無を判定し、静的・スキンメッシュのどちらのパスへ委譲するかを決める。
+/// @file    ModelImporter.cpp
+/// @brief   外部モデルファイルの読み込みエントリーポイント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// スキニングの有無を判定し、静的・スキンメッシュのどちらのパスへ委譲するかを決める。
 #include <Engine/Asset/ModelImporter.hpp>
 #include <Engine/Core/Logger.hpp>
 #include "ModelImporterInternal.hpp"

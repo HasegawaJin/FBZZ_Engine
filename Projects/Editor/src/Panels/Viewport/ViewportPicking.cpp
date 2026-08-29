@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ViewportPicking.cpp | fbzz::editor
-// Scene View のアセットドロップと3Dピッキング
+/// @file    ViewportPicking.cpp
+/// @brief   Scene View のアセットドロップと3Dピッキング。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "ViewportCommon.hpp"
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -25,6 +26,15 @@ math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin
 
     const math::Matrix4 invVP = math::Matrix4::Inverse(
         ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix());
+
+    // 正投影の視線はすべて平行で、カメラ位置を通らない。原点はカーソル位置の近平面上の点。
+    // WHY 分けるか: Ray::FromNDC はカメラ位置を原点に固定するため、正投影では
+    //     画面中央以外のクリックが常に中央付近を貫くレイになり、まるで当たらない。
+    if (ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic) {
+        math::Vector4 nearWorld = invVP * math::Vector4{ nx, ny, 0.0f, 1.0f };
+        if (std::fabs(nearWorld.w) > 1e-6f) nearWorld = nearWorld * (1.0f / nearWorld.w);
+        return { { nearWorld.x, nearWorld.y, nearWorld.z }, ctx.editorCamera->GetForward() };
+    }
     return math::Ray::FromNDC(nx, ny, ctx.editorCamera->m_position, invVP);
 }
 

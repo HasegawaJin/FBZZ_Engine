@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12IblBaker.cpp | fbzz::renderer
-// TextureCube SRVから面×mip UAVへIBL Computeを記録する
+/// @file    DX12IblBaker.cpp
+/// @brief   TextureCube SRVから面×mip UAVへIBL Computeを記録する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12IblBaker.hpp"
 
 #include "DX12Context.hpp"

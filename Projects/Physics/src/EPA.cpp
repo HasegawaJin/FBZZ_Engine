@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EPA.cpp | fbzz::physics
-// Expanding Polytope Algorithm の実装
+/// @file    EPA.cpp
+/// @brief   Expanding Polytope Algorithm の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/EPA.hpp>
 #include <algorithm>
 #include <cassert>

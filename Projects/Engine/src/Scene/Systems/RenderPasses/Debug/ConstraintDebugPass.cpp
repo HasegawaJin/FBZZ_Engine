@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ConstraintDebugPass.cpp | fbzz::scene
-// 物理拘束のデバッグジオメトリを HDR バッファへ描画する IRenderPass 実装
-// physicsWorld が nullptr の場合 (RenderSystem 呼び出し元が未渡し) はスキップする。
+/// @file    ConstraintDebugPass.cpp
+/// @brief   物理拘束のデバッグジオメトリを HDR バッファへ描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// physicsWorld が nullptr の場合 (RenderSystem 呼び出し元が未渡し) はスキップする。
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>

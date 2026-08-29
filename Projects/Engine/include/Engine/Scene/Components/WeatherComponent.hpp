@@ -1,7 +1,7 @@
-/// @file WeatherComponent.hpp
-/// @brief シーン全体の天候 (降雨量と路面の濡れ) を持つコンポーネント
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    WeatherComponent.hpp
+/// @brief   シーン全体の天候 (降雨量と路面の濡れ) を持つコンポーネント
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 ///
 /// WindZoneComponent / EnvironmentLightComponent と同じ「シーンに 1 つ」パターン。
 /// 複数ある場合は最初の有効な 1 つを使う。

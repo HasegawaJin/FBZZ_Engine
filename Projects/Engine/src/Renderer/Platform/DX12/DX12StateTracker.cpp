@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12StateTracker.cpp | fbzz::renderer
-// バインド地点で必要な Transition Barrier を溜め込み、まとめて発行する
+/// @file    DX12StateTracker.cpp
+/// @brief   バインド地点で必要な Transition Barrier を溜め込み、まとめて発行する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12StateTracker.hpp"
 
 namespace fbzz::renderer {

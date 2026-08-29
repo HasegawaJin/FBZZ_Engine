@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LODGroupComponent.hpp | fbzz::scene
-// カメラ上の相対表示サイズに応じて Renderer 群を切り替える LOD 定義
+/// @file    LODGroupComponent.hpp
+/// @brief   カメラ上の相対表示サイズに応じて Renderer 群を切り替える LOD 定義。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

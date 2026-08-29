@@ -1,16 +1,16 @@
-// FBZZ Engine
-// MaterialPreview.cpp | fbzz::editor
-// Material 専用オフスクリーンプレビュー
-// WHAT: 選択中の .mat を AssetBrowser と同じ球体・照明・レンダー設定で描画する。
-//       Inspector と Preview パネルの見た目がアセットの場所で変わらないようにする。
+/// @file    MaterialPreview.cpp
+/// @brief   Material 専用オフスクリーンプレビュー。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHAT: 選択中の .mat を AssetBrowser と同じ球体・照明・レンダー設定で描画する。
+/// Inspector と Preview パネルの見た目がアセットの場所で変わらないようにする。
 #include <Editor/Panels/MaterialPreview.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
-#include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
-#include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -196,6 +196,7 @@ std::string ResolveMaterialPreviewShaderPath(const asset::MaterialAsset& materia
         material.renderPath == asset::RenderPath::Trail ||
         material.renderPath == asset::RenderPath::UI ||
         material.renderPath == asset::RenderPath::Decal ||
+        material.renderPath == asset::RenderPath::PostProcess ||
         lower.find("/terrain/") != std::string::npos ||
         lower.find("/water/") != std::string::npos;
     return unsupportedGeometry
@@ -210,7 +211,8 @@ MaterialPreviewFlavor DetectMaterialPreviewFlavor(const asset::MaterialAsset& ma
     if (material.renderPath == asset::RenderPath::Particle ||
         material.renderPath == asset::RenderPath::Trail ||
         material.renderPath == asset::RenderPath::UI ||
-        material.renderPath == asset::RenderPath::Decal)
+        material.renderPath == asset::RenderPath::Decal ||
+        material.renderPath == asset::RenderPath::PostProcess)
         return MaterialPreviewFlavor::Unsupported;
     if (material.meshType == asset::MeshType::Skinned)
         return MaterialPreviewFlavor::Skinned;

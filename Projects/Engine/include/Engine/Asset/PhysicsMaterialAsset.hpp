@@ -1,16 +1,17 @@
-// FBZZ Engine
-// PhysicsMaterialAsset.hpp | fbzz::asset
-// .physmat 物理マテリアルアセットのランタイム表現と TOML 入出力 API
-//
-// 設計意図 (WHY):
-//   physics::PhysicsMaterial は以前からコライダーへ「インライン値」で持たせていた。
-//   そのため氷の床を 20 枚置くと同じ 4 つの数値を 20 回打つことになり、後から
-//   「やっぱり少し滑りすぎ」と思っても 20 箇所を直して回る必要があった。
-//   .mat と同じく共有アセットにすることで、材質の調整が 1 ファイルの編集で全箇所へ届く。
-//
-//   Physics 側の値型をそのまま内包し、アセット側で値を再定義しない。
-//   WHY: 物理挙動の正本は Physics モジュールにあるべきで、Engine 側に平行した定義を作ると
-//        フィールドを足したときに片方だけ更新されるズレが必ず起きる。
+/// @file    PhysicsMaterialAsset.hpp
+/// @brief   .physmat 物理マテリアルアセットのランタイム表現と TOML 入出力 API。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
+///
+/// 設計意図 (WHY):
+/// physics::PhysicsMaterial は以前からコライダーへ「インライン値」で持たせていた。
+/// そのため氷の床を 20 枚置くと同じ 4 つの数値を 20 回打つことになり、後から
+/// 「やっぱり少し滑りすぎ」と思っても 20 箇所を直して回る必要があった。
+/// .mat と同じく共有アセットにすることで、材質の調整が 1 ファイルの編集で全箇所へ届く。
+///
+/// Physics 側の値型をそのまま内包し、アセット側で値を再定義しない。
+/// WHY: 物理挙動の正本は Physics モジュールにあるべきで、Engine 側に平行した定義を作ると
+/// フィールドを足したときに片方だけ更新されるズレが必ず起きる。
 #pragma once
 #include <Engine/Scene/Script.hpp>   // IReflector (Inspector / TOML 共用の反射)
 #include <Physics/PhysicsMaterial.hpp>

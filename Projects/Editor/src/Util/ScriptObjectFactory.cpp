@@ -1,5 +1,7 @@
-// FBZZ Engine
-// ScriptObjectFactory.cpp | fbzz::editor
+/// @file    ScriptObjectFactory.cpp
+/// @brief   スクリプトから GameObject 一式を組み立てる実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #include <Editor/Util/ScriptObjectFactory.hpp>
 
 // WHY このヘッダを引くか: コンポーネントの「既定値付き追加」(コライダーの自動フィット、

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ProjectRuntime.cpp | fbzz::scene
-// Editor PlayとStandaloneで共有するプロジェクト実行パイプライン実装
+/// @file    ProjectRuntime.cpp
+/// @brief   Editor PlayとStandaloneで共有するプロジェクト実行パイプライン実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #include <Engine/Scene/ProjectRuntime.hpp>
 
 #include <Engine/Renderer/ResourceManager.hpp>

@@ -1,14 +1,15 @@
-// FBZZ Engine
-// VFXGizmoDebugPass.cpp | fbzz::scene
-// パーティクル力場の影響体積とエミッター発生形状をワイヤーで描画する IRenderPass 実装
-//
-// WHY: 力場もエミッター形状も「粒子の動きからしか推測できない見えない体積」で、
-//      VFX の調整で最も当て推量になりやすい部分だった。radius 3.2 と 4.0 の違いを
-//      吹き上がり方から逆算するのは現実的でなく、「炎が横に千切れる」「上がりきらない」の
-//      原因が力場の半径なのか強さなのか切り分けられない。形が見えれば一目で済む。
-//
-// 表示は操作用 Preview / Scene View 限定にすること (AI capture では常に off)。
-// 評価用の静止画にギズモが写り込むと、視覚判断が表示設定に左右されて再現しなくなる。
+/// @file    VFXGizmoDebugPass.cpp
+/// @brief   パーティクル力場の影響体積とエミッター発生形状をワイヤーで描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: 力場もエミッター形状も「粒子の動きからしか推測できない見えない体積」で、
+/// VFX の調整で最も当て推量になりやすい部分だった。radius 3.2 と 4.0 の違いを
+/// 吹き上がり方から逆算するのは現実的でなく、「炎が横に千切れる」「上がりきらない」の
+/// 原因が力場の半径なのか強さなのか切り分けられない。形が見えれば一目で済む。
+///
+/// 表示は操作用 Preview / Scene View 限定にすること (AI capture では常に off)。
+/// 評価用の静止画にギズモが写り込むと、視覚判断が表示設定に左右されて再現しなくなる。
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>

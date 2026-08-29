@@ -134,8 +134,7 @@ add_custom_target(FBZZSDK
         "-DSDK_STORE_ROOT=${FBZZ_SDK_STORE_ROOT}"
         "-DKEEP_SDK_ID=${FBZZ_SDK_ID}"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/PruneFBZZSDKStore.cmake"
-    # WHY: GameHubからVFXを開く際もSDK内の実行ファイルを使うため、EditorとVFXEditorを同じ版へ揃える。
-    DEPENDS FBZZMath FBZZPhysics FBZZEngine FBZZEditorLauncher FBZZVFXEditor
+    DEPENDS FBZZMath FBZZPhysics FBZZEngine FBZZEditorLauncher
     COMMENT "Publishing immutable FBZZ SDK ${FBZZ_SDK_ID}"
     VERBATIM
 )

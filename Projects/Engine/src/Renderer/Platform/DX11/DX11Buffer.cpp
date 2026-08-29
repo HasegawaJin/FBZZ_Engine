@@ -1,13 +1,15 @@
-// FBZZ Engine
-// DX11Buffer.cpp | fbzz::renderer
-// DX11 頂点・インデックスバッファ実装
-// IBuffer の抽象 API を D3D11Buffer に対応付ける。
-// 動的更新を前提に Map / Unmap で CPU から内容を書き換える。
-//
-// バッファ戦略:
-//   D3D11_USAGE_DYNAMIC + D3D11_CPU_ACCESS_WRITE を採用。
-//   頂点データを毎フレーム CPU から書き換えるユースケース (デバッグ描画・UI 等) に対応する。
-//   更新が不要な静的ジオメトリは Step 2 以降で IMMUTABLE バッファに移行予定。
+/// @file    DX11Buffer.cpp
+/// @brief   DX11 頂点・インデックスバッファ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// IBuffer の抽象 API を D3D11Buffer に対応付ける。
+/// 動的更新を前提に Map / Unmap で CPU から内容を書き換える。
+///
+/// バッファ戦略:
+/// D3D11_USAGE_DYNAMIC + D3D11_CPU_ACCESS_WRITE を採用。
+/// 頂点データを毎フレーム CPU から書き換えるユースケース (デバッグ描画・UI 等) に対応する。
+/// 更新が不要な静的ジオメトリは Step 2 以降で IMMUTABLE バッファに移行予定。
 #include "DX11Buffer.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>

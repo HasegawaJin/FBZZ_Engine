@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ComponentOps.cpp | fbzz::scene
-// ComponentRegistry を畳んで名前引きテーブルを 1 度だけ構築する
+/// @file    ComponentOps.cpp
+/// @brief   ComponentRegistry を畳んで名前引きテーブルを 1 度だけ構築する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #include <Engine/Scene/ComponentOps.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>

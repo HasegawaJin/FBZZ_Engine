@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DebugPasses.hpp | fbzz::scene
-// デバッグ描画 IRenderPass の宣言
+/// @file    DebugPasses.hpp
+/// @brief   デバッグ描画 IRenderPass の宣言。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
 

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ParticleEmitterAssetCodec.hpp | fbzz::asset
-// ParticleEmitterのauthoring設定をTOMLへ変換する共通codec
+/// @file    ParticleEmitterAssetCodec.hpp
+/// @brief   ParticleEmitterのauthoring設定をTOMLへ変換する共通codec。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #pragma once
 
 #include <toml++/toml.hpp>

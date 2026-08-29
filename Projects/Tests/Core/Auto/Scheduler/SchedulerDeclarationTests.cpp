@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SchedulerDeclarationTests.cpp | GoogleTest
-// Scheduler の Phase、アクセス、順序宣言の値型契約を自動検証する。
+/// @file    SchedulerDeclarationTests.cpp
+/// @brief   Scheduler の Phase、アクセス、順序宣言の値型契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Scheduler/ComponentAccess.hpp>

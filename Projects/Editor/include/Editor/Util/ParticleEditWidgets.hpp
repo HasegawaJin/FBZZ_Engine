@@ -1,9 +1,11 @@
-// FBZZ Engine
-// ParticleEditWidgets.hpp | fbzz::editor
-// ParticleCurve / ParticleGradient のドラッグ編集ウィジェット
-// WHY: 旧 UI は Time/Value の DragFloat 羅列で、カーブの形が編集中に想像できなかった。
-//      Unity の Curve / Gradient フィールド相当のキャンバス操作 (キーをドラッグ、
-//      ダブルクリックで追加、右クリックで削除) を VFX Editor と Inspector の両方から共用する。
+/// @file    ParticleEditWidgets.hpp
+/// @brief   ParticleCurve / ParticleGradient のドラッグ編集ウィジェット。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+///
+/// WHY: 旧 UI は Time/Value の DragFloat 羅列で、カーブの形が編集中に想像できなかった。
+/// Unity の Curve / Gradient フィールド相当のキャンバス操作 (キーをドラッグ、
+/// ダブルクリックで追加、右クリックで削除) を VFX Editor と Inspector の両方から共用する。
 #pragma once
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 

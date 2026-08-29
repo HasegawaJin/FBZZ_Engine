@@ -1,7 +1,7 @@
-/// @file CylinderCollider.cpp
-/// @brief CylinderCollider.hpp の実装
-/// @author Hasegawa Jin
-/// @date 2026-08-23
+/// @file    CylinderCollider.cpp
+/// @brief   CylinderCollider.hpp の実装
+/// @author  Hasegawa Jin
+/// @date    2026-08-23
 #include <Physics/CylinderCollider.hpp>
 #include <algorithm>
 #include <cmath>

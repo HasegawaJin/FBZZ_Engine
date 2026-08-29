@@ -23,6 +23,8 @@ public:
     bool RebuildBuses(const BusDesc* descs, size_t count) override;
     void SetBusVolume(BusIndex bus, float volume) override;
     void SetBusLowPass(BusIndex bus, float normalizedCutoff) override;
+    void SetBusReverb(BusIndex bus, float wet,
+                      float decaySeconds, float highFrequencyRatio) override;
 
     [[nodiscard]] uint32_t PlayBuffer(
         const void* pcmData, size_t bytes,
@@ -61,8 +63,16 @@ private:
     // CoInitializeEx成功時だけCoUninitializeを対にし、初期化途中の失敗でも安全に後始末する。
     bool                             m_comInitialized = false;
 
+    /// 1 本のバス。effect スロット 0 が残響で、持たないバスでは hasReverb が false。
+    struct BusEntry
+    {
+        IXAudio2SubmixVoice* voice         = nullptr;
+        bool                 hasReverb     = false;
+        bool                 reverbEnabled = false;
+    };
+
     // 添字は BusIndex。先頭が Master。
-    std::vector<IXAudio2SubmixVoice*> m_buses;
+    std::vector<BusEntry> m_buses;
 
     uint32_t                                 m_nextId = 1;
     std::unordered_map<uint32_t, VoiceEntry> m_voices;

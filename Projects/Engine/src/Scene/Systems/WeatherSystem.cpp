@@ -1,7 +1,7 @@
-/// @file WeatherSystem.cpp
-/// @brief 降雨量 → 濡れ量の時間積分と、雨エミッターの発生量制御
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    WeatherSystem.cpp
+/// @brief   降雨量 → 濡れ量の時間積分と、雨エミッターの発生量制御
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #include <Engine/Scene/Systems/WeatherSystem.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Scene.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimationPreview.hpp | fbzz::editor
-// Animation アセット用プレビュー API。
+/// @file    AnimationPreview.hpp
+/// @brief   Animation アセット用プレビュー API。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 #include <Engine/Asset/AvatarMaskAsset.hpp>

@@ -1,19 +1,20 @@
-// FBZZ Engine
-// PanelOperators.cpp | fbzz::editor
-// ワークスペース (パネル表示 / UI スケール / Prefab 編集モード) の Operator
-//
-// WHY: これらは「二重管理が無いから Operator にしない」として意図的に外してあった。
-//      パネルの表示トグルは m_panels という単一の出所から View メニューとコマンド
-//      パレットが導出しているので、確かに実装は重複していない。
-//      しかしその判断は **人が使う 2 面しか数えていなかった**。AI から見ると、
-//      パネルは「存在すら列挙できない対象」で、開くことも閉じることもできない。
-//      viewport_capture が撮るのは Scene / Game の RT なので、Console や Inspector の
-//      中身は撮れず、「今どのパネルが開いているか」を知る手段も無い。
-//      重複が無いことは Operator にしない理由になるが、**AI から到達できない理由には
-//      ならない**。ここでは実装を複製せず、m_panels をそのまま引数で引ける
-//      1 つの操作として公開する (パネルが増えても操作は増えない)。
-//
-// 設計: Docs/design/editor-operator-model.md §7
+/// @file    PanelOperators.cpp
+/// @brief   ワークスペース (パネル表示 / UI スケール / Prefab 編集モード) の Operator。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: これらは「二重管理が無いから Operator にしない」として意図的に外してあった。
+/// パネルの表示トグルは m_panels という単一の出所から View メニューとコマンド
+/// パレットが導出しているので、確かに実装は重複していない。
+/// しかしその判断は **人が使う 2 面しか数えていなかった**。AI から見ると、
+/// パネルは「存在すら列挙できない対象」で、開くことも閉じることもできない。
+/// viewport_capture が撮るのは Scene / Game の RT なので、Console や Inspector の
+/// 中身は撮れず、「今どのパネルが開いているか」を知る手段も無い。
+/// 重複が無いことは Operator にしない理由になるが、**AI から到達できない理由には
+/// ならない**。ここでは実装を複製せず、m_panels をそのまま引数で引ける
+/// 1 つの操作として公開する (パネルが増えても操作は増えない)。
+///
+/// 設計: Docs/design/editor-operator-model.md §7
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>

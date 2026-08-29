@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Quaternion.cpp | fbzz::math
-// クォータニオンの演算実装
+/// @file    Quaternion.cpp
+/// @brief   クォータニオンの演算実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Math/Quaternion.hpp"
 #include "Math/Matrix4.hpp"
 #include "Math/MathUtils.hpp"

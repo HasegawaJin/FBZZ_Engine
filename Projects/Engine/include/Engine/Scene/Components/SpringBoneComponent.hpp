@@ -1,7 +1,7 @@
-/// @file SpringBoneComponent.hpp
-/// @brief 髪・布・アクセサリをアニメーションに遅れて追従させる二次モーション設定
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    SpringBoneComponent.hpp
+/// @brief   髪・布・アクセサリをアニメーションに遅れて追従させる二次モーション設定
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

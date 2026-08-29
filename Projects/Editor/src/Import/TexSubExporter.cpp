@@ -1,8 +1,10 @@
-// FBZZ Engine
-// TexSubExporter.cpp | fbzz::editor
-// textures/ フォルダ内の生画像に "<画像>.meta" サイドカーを自動生成する
-// MatSubExporter の後に実行されることを前提とする。
-// GuessTextureType で型を推定し、flipGreen (法線マップ) を設定する。
+/// @file    TexSubExporter.cpp
+/// @brief   textures/ フォルダ内の生画像に "<画像>.meta" サイドカーを自動生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// MatSubExporter の後に実行されることを前提とする。
+/// GuessTextureType で型を推定し、flipGreen (法線マップ) を設定する。
 #include <Editor/Import/TexSubExporter.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>

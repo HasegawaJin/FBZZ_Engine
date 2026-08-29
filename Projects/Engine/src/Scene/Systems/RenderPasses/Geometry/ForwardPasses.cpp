@@ -1,17 +1,18 @@
-// FBZZ Engine
-// RenderPasses/ForwardPasses.cpp | fbzz::scene
-// Forward パイプライン: 不透明 + 半透明の静的・スキンドメッシュ描画
-//
-// カリング戦略:
-//   1. Frustum Culling (フラスタムカリング)
-//      カメラ視錐台に交差しないバウンディング球を持つオブジェクトを除外する。
-//      Frustum::IntersectsSphere() で 6 平面テストを行う。
-//
-//   2. Software Occlusion Culling (ソフトウェアオクルージョンカリング)
-//      不透明静的オブジェクトを前から後ろ順にソートし、CPU 上の小型深度バッファで
-//      完全に隠蔽されているかどうかを判定する。
-//      スキンドメッシュはバインドポーズ球がアニメーション後の姿勢と乖離するため除外。
-//      半透明は深度書き込みを行わないためオクルージョンカリング対象外。
+/// @file    RenderPasses/ForwardPasses.cpp
+/// @brief   Forward パイプライン: 不透明 + 半透明の静的・スキンドメッシュ描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// カリング戦略:
+/// 1. Frustum Culling (フラスタムカリング)
+/// カメラ視錐台に交差しないバウンディング球を持つオブジェクトを除外する。
+/// Frustum::IntersectsSphere() で 6 平面テストを行う。
+///
+/// 2. Software Occlusion Culling (ソフトウェアオクルージョンカリング)
+/// 不透明静的オブジェクトを前から後ろ順にソートし、CPU 上の小型深度バッファで
+/// 完全に隠蔽されているかどうかを判定する。
+/// スキンドメッシュはバインドポーズ球がアニメーション後の姿勢と乖離するため除外。
+/// 半透明は深度書き込みを行わないためオクルージョンカリング対象外。
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"

@@ -1,21 +1,22 @@
-// FBZZ Engine
-// DynamicFontSource.hpp | fbzz::renderer
-// TTF/TTC/OTF から実行時にグリフをラスタライズして育てる動的フォントアトラス
-//
-// WHY: 日本語は JIS 第 1 水準だけで約 3,000 字あり、事前生成の静的アトラスに
-//      全部載せると PNG が数 MB になる。しかも実際に画面へ出るのはその一部でしかない。
-//      TextMeshPro の Dynamic Font Asset と同じく「使われた文字だけをその場で焼く」方式にすると、
-//      アトラスは実使用ぶんで済み、プレイヤー名のような動的テキストにも対応できる。
-//
-// WHY (SDF で焼く): 48px 固定のカバレッジでは fontSize を上げたときに字形が角張る。
-//      stb_truetype の stbtt_GetCodepointSDF が符号付き距離場を直接生成できるため、
-//      焼く段階で SDF にしておけば任意サイズでシャープに出せる。
-//      シェーダー側は UIText.hlsl の fwidth 正規化がそのまま距離場の AA として機能するので、
-//      カバレッジと SDF で分岐する必要がない。
-//
-// 使い方 (FontAtlas 経由。直接触るのは FontAtlas のみ):
-//   FontAtlas が fontPath の拡張子で .ttf/.ttc/.otf を検出したときに生成し、
-//   UISystem がレイアウト前に FontAtlas::PrepareText() を呼ぶと未登録グリフが焼かれる。
+/// @file    DynamicFontSource.hpp
+/// @brief   TTF/TTC/OTF から実行時にグリフをラスタライズして育てる動的フォントアトラス。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY: 日本語は JIS 第 1 水準だけで約 3,000 字あり、事前生成の静的アトラスに
+/// 全部載せると PNG が数 MB になる。しかも実際に画面へ出るのはその一部でしかない。
+/// TextMeshPro の Dynamic Font Asset と同じく「使われた文字だけをその場で焼く」方式にすると、
+/// アトラスは実使用ぶんで済み、プレイヤー名のような動的テキストにも対応できる。
+///
+/// WHY (SDF で焼く): 48px 固定のカバレッジでは fontSize を上げたときに字形が角張る。
+/// stb_truetype の stbtt_GetCodepointSDF が符号付き距離場を直接生成できるため、
+/// 焼く段階で SDF にしておけば任意サイズでシャープに出せる。
+/// シェーダー側は UIText.hlsl の fwidth 正規化がそのまま距離場の AA として機能するので、
+/// カバレッジと SDF で分岐する必要がない。
+///
+/// 使い方 (FontAtlas 経由。直接触るのは FontAtlas のみ):
+/// FontAtlas が fontPath の拡張子で .ttf/.ttc/.otf を検出したときに生成し、
+/// UISystem がレイアウト前に FontAtlas::PrepareText() を呼ぶと未登録グリフが焼かれる。
 #pragma once
 #include <Engine/Renderer/FontAtlas.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// IRenderPass.hpp | fbzz::scene
-// レンダーパスの基底インターフェース
-// RenderPipeline::AddPass<T>() で登録し、Execute 時に RenderGraph へ自動組み込みされる。
-// 各パスは Name / DeclareAccesses / IsEnabled / Execute を実装する。
+/// @file    IRenderPass.hpp
+/// @brief   レンダーパスの基底インターフェース。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// RenderPipeline::AddPass<T>() で登録し、Execute 時に RenderGraph へ自動組み込みされる。
+/// 各パスは Name / DeclareAccesses / IsEnabled / Execute を実装する。
 #pragma once
 #include <Engine/Renderer/RenderGraph.hpp>
 #include <string_view>

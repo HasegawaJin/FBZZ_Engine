@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PhysicsMaterialImporter.cpp | fbzz::asset
-// .physmat TOML → PhysicsMaterialAsset
+/// @file    PhysicsMaterialImporter.cpp
+/// @brief   .physmat TOML → PhysicsMaterialAsset。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
 #include <Engine/Asset/PhysicsMaterialImporter.hpp>
 #include <Engine/Core/Logger.hpp>
 

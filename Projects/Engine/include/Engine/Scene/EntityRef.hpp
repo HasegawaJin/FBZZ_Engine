@@ -1,7 +1,9 @@
-// FBZZ Engine
-// EntityRef.hpp | fbzz::scene
-// EntityID の安全ラッパー — ScriptSceneProxy 経由で GameObject* を 1 ステップで解決する。
-// IReflector は EntityID と同じ Inspector UI / シリアライズフローを使う。
+/// @file    EntityRef.hpp
+/// @brief   EntityID の安全ラッパー — ScriptSceneProxy 経由で GameObject* を 1 ステップで解決する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-10
+///
+/// IReflector は EntityID と同じ Inspector UI / シリアライズフローを使う。
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 

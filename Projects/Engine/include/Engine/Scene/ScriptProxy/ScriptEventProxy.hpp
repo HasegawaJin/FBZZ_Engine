@@ -1,9 +1,10 @@
-// FBZZ Engine
-// ScriptEventProxy.hpp | fbzz::scene
-// Script からスクリプト間イベントを発火・購読する
-//
-// 設計意図は ScriptEvent.hpp を参照。ここは型安全な薄いラッパーで、
-// イベント構造体 ←→ void* の詰め替えだけを担う。
+/// @file    ScriptEventProxy.hpp
+/// @brief   Script からスクリプト間イベントを発火・購読する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-16
+///
+/// 設計意図は ScriptEvent.hpp を参照。ここは型安全な薄いラッパーで、
+/// イベント構造体 ←→ void* の詰め替えだけを担う。
 #pragma once
 
 #include <Engine/Scene/ScriptEvent.hpp>

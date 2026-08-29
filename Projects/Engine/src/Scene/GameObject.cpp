@@ -1,8 +1,10 @@
-// FBZZ Engine
-// GameObject.cpp | fbzz::scene
-// GameObject の非 template メソッド実装
-// active、tag、親子関係、検索、Destroy の OOP API を提供する。
-// Component 操作の template 本体は Scene.hpp 側に置く。
+/// @file    GameObject.cpp
+/// @brief   GameObject の非 template メソッド実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// active、tag、親子関係、検索、Destroy の OOP API を提供する。
+/// Component 操作の template 本体は Scene.hpp 側に置く。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Scene/ScriptRuntime.hpp"

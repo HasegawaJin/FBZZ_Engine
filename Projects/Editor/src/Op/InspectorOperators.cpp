@@ -1,13 +1,14 @@
-// FBZZ Engine
-// InspectorOperators.cpp | fbzz::editor
-// Inspector が持っていた操作を Operator として公開する
-//
-// WHY: Transform の Copy / Paste / Reset とコンポーネントの並べ替えは、移行前
-//      Inspector のヘッダー右クリックメニューにしか存在しなかった。つまり
-//      コマンドパレットからもホットキーからも AI からも到達できず、
-//      「人が Inspector を開いてマウスで右クリックする」以外の手段が無かった。
-//      Operator として 1 度書けば 6 面すべてに同時に現れる。
-//      Docs/design/editor-operator-model.md
+/// @file    InspectorOperators.cpp
+/// @brief   Inspector が持っていた操作を Operator として公開する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: Transform の Copy / Paste / Reset とコンポーネントの並べ替えは、移行前
+/// Inspector のヘッダー右クリックメニューにしか存在しなかった。つまり
+/// コマンドパレットからもホットキーからも AI からも到達できず、
+/// 「人が Inspector を開いてマウスで右クリックする」以外の手段が無かった。
+/// Operator として 1 度書けば 6 面すべてに同時に現れる。
+/// Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>

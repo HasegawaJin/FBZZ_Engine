@@ -1,9 +1,10 @@
-﻿// FBZZ Engine
-// TerrainComponent.cpp | fbzz::scene
-// ハイトマップ地形コンポーネントのメソッド実装
-//
-// ここでは純粋なデータ操作（高さクエリ・法線計算）のみを行う。
-// GPU メッシュ生成・描画は TerrainRenderPass.cpp に委譲する。
+﻿/// @file    TerrainComponent.cpp
+/// @brief   ハイトマップ地形コンポーネントのメソッド実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// ここでは純粋なデータ操作（高さクエリ・法線計算）のみを行う。
+/// GPU メッシュ生成・描画は TerrainRenderPass.cpp に委譲する。
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include <Math/Vector3.hpp>
 #include <algorithm>

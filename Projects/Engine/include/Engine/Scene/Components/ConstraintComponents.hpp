@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConstraintComponents.hpp | fbzz::scene
-// Bone Socket追従とTransform制約をGameObject間で再利用するComponent
+/// @file    ConstraintComponents.hpp
+/// @brief   Bone Socket追従とTransform制約をGameObject間で再利用するComponent。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>

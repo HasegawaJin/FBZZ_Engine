@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ShaderCompileDiagnostics.hpp | fbzz::renderer
-// DX11/DX12と外部HLSLビルドのコンパイル診断をEditorへ公開する共有レジストリ
+/// @file    ShaderCompileDiagnostics.hpp
+/// @brief   DX11/DX12と外部HLSLビルドのコンパイル診断をEditorへ公開する共有レジストリ。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #pragma once
 
 #include <cstdint>
@@ -10,7 +11,7 @@
 namespace fbzz::renderer {
 
 // 1回のシェーダーコンパイルが返した診断。
-// WHY: LoggerだけではVFXEditor起動前のエラーを拾えず、Consoleを持たない独立Appでも表示できない。
+// WHY: Logger だけでは Console 生成前のエラーを拾えず、Console を持たないアプリでも表示できない。
 struct ShaderCompileDiagnostic {
     std::uint64_t sequence = 0;
     std::string path;

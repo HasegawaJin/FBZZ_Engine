@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RenderPassContext.hpp | fbzz::scene
-// RenderGraph 注入パスと各描画パスが共有する実行コンテキスト
+/// @file    RenderPassContext.hpp
+/// @brief   RenderGraph 注入パスと各描画パスが共有する実行コンテキスト。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Renderer/Camera.hpp>
@@ -126,9 +127,8 @@ struct GpuParticleEmitterCB {
     float         velocityPad0;
     float         velocityPad1;
     // ── カーブ 8 キー化の追加分 ──────────────────────────────────────────────
-    // WHY: 既存の *Keys01/23 (キー 0〜3) はオフセットを変えずそのまま残し、
-    //      キー 4〜7 を末尾へ足す。CB は「末尾追加のみ」を規約にしてあり、
-    //      途中へ挿すと HLSL 側の全オフセットがずれて静かに壊れる。
+    // 既存の *Keys01/23 はオフセットを変えずキー 4〜7 を末尾へ足す。
+    // CB は「末尾追加のみ」が規約 (途中へ挿すと HLSL 側の全オフセットがずれる)。
     math::Vector4 sizeCurveKeys45;
     math::Vector4 sizeCurveKeys67;
     math::Vector4 velocityCurveKeys45;
@@ -161,7 +161,15 @@ struct PerFrameCB {
     math::Vector3 cameraPos;
     float         nearZ;
     float         farZ;
-    float         _pad[3];
+    // WaterRenderPass だけが waterSsrEnabled として使う枠。他パスは 0 のまま。
+    float         _reserved;
+    // 平行投影なら 1、遠近投影なら 0。
+    // WHY CB に要るか: 深度バッファの値と視空間 Z の関係が射影で変わる。
+    //     Space.hlsli の LinearizeDepthAuto がこれで式を切り替えないと、
+    //     SSAO / SSR / コンタクトシャドウ / ソフトパーティクル / デカールが
+    //     正投影ビューで一斉に破綻する。
+    float         isOrthographic;
+    float         _pad;
 };
 
 /// TAA サブピクセルジッターを織り込んだ射影行列を返す。
@@ -172,6 +180,13 @@ inline math::Matrix4 MakeJitteredProjection(const renderer::Camera& camera,
                                             float jitterNdcX, float jitterNdcY)
 {
     math::Matrix4 projection = camera.GetProjectionMatrix();
+    if (camera.m_projection == renderer::ProjectionMode::Orthographic) {
+        // 正投影は clip.w が常に 1 なので、平行移動成分へ直接足す。
+        // 透視と同じ m[*][2] へ足すと、ずれ量が視空間 Z に比例してしまう。
+        projection.m[0][3] += jitterNdcX;
+        projection.m[1][3] += jitterNdcY;
+        return projection;
+    }
     // 列ベクトル規約 (clip = P * viewPos) なので、m[0][2] / m[1][2] に足すと
     // clip.xy += jitter * clip.w となり、深度に依らない一定のピクセルずれになる。
     projection.m[0][2] += jitterNdcX;
@@ -204,6 +219,8 @@ inline PerFrameCB MakeCameraFrameCB(const renderer::Camera& camera,
     frameData.cameraPos         = camera.m_position;
     frameData.nearZ             = camera.m_near;
     frameData.farZ              = camera.m_far;
+    frameData.isOrthographic =
+        camera.m_projection == renderer::ProjectionMode::Orthographic ? 1.0f : 0.0f;
     return frameData;
 }
 
@@ -260,12 +277,9 @@ enum class PunctualLightType : uint32_t {
 };
 
 // 点光源 / スポット / 面光源を統合した 1 本ぶん (96 bytes)。
-// WHY 統合するか: インデックス空間が 1 本になり、カリング CS も PS も 1 重ループで済む。
-//
-// shadowIndex / cookieIndex は punctualShadowVP / lightCookieVP の何番目を指すか。-1 で無効。
-// WHY 番号で参照するか: 影や Cookie を持てるライトは全体のごく一部なので、全ライトぶんの
-//     行列を配るのではなく、持っているものだけがスロットを指す。おかげでライトを 256 本
-//     置いても、影を持つのは 16 本まで、という配分が定数バッファを太らせずに成立する。
+// 統合するとインデックス空間が 1 本になり、カリング CS も PS も 1 重ループで済む。
+// shadowIndex / cookieIndex は punctualShadowVP / lightCookieVP の何番目か。-1 で無効。
+// 番号で参照するので、ライト 256 本に対し影は 16 本まで、という配分が CB を太らせない。
 struct PunctualLightGPU {
     math::Vector3 position;  float    range;
     math::Vector3 color;     float    intensity;
@@ -284,9 +298,7 @@ inline constexpr int kMaxPunctualShadows = 16;
 // Cookie アトラスのタイル数。FBZZ_MAX_LIGHT_COOKIES と一致させること。
 inline constexpr int kMaxLightCookies = 8;
 // Cookie アトラスの寸法。4 列 x 2 行 = kMaxLightCookies タイル。
-// WHY 正方形にしないか: 8 タイルをちょうど埋める比が 4:2 なので、2048x2048 にすると
-//     半分が未使用のまま常駐する。Cookie は毎フレーム焼き直すものではないが、
-//     使われないメモリを 4MB 抱える理由もない。
+// 8 タイルをちょうど埋める比が 4:2 なので、正方形にすると半分が未使用のまま常駐する。
 inline constexpr uint32_t kLightCookieTileSize    = 512u;
 inline constexpr uint32_t kLightCookieAtlasCols   = 4u;
 inline constexpr uint32_t kLightCookieAtlasRows   = 2u;
@@ -323,15 +335,12 @@ struct PunctualShadowConstantsCB {
     // レガシー経路 (b3 の固定長配列) 用のスロット番号。x = shadowIndex, y = cookieIndex。
     //   [0..7]  → LightConstantsCB::pointLights[0..7]
     //   [8..11] → LightConstantsCB::spotLights[0..3]
-    // WHY b3 へ足さないか: LightConstants の HLSL 定義は Constants / Decal / Terrain /
-    //     Water の 4 か所へ手書きで複製されている。1 つ漏らすとそのシェーダーだけ
-    //     全ライトが別オフセットを読む。番号だけをこちらへ逃がせば b3 は不変。
+    // LightConstants の HLSL 定義は 4 か所へ手書きで複製されており、1 つ漏らすと
+    // そのシェーダーだけ全ライトが別オフセットを読む。番号だけ逃がして b3 は不変にする。
     math::Vector4 legacyPunctualSlots[kMaxLegacyPunctualLights];
 
     // レガシー経路用の「大きさを持つ光源」の実体。1 本あたり kLegacyShapedLightStride レジスタ。
-    // WHY 番号ではなく実体を載せるか: 影 / Cookie と違い、b3 には Area / Sphere / Tube の
-    //     「型」そのものが無い。既定のパイプラインが Forward (= b3 経路) なので、
-    //     ここを通さないと Forward+ でしか光らない。
+    // b3 には Area / Sphere / Tube の型そのものが無いので、番号ではなく実体を載せる。
     math::Vector4 legacyShapedLight[kMaxLegacyShapedLights * kLegacyShapedLightStride];
 
     float         punctualShadowTexel[2];
@@ -382,12 +391,8 @@ static_assert(sizeof(FroxelFogCB) == 224,
     "FroxelFogCB must match FroxelFogConstants in Common/FroxelFogConstants.hlsli (224 bytes)");
 
 // フロクセル霧がフレームをまたいで持ち越す状態。実体はビュー単位で確保する。
-//
-// WHY ビュー別に持つか: フロクセルのグリッドはカメラの視錐台に貼り付いている。
-//     SceneView と GameView が 1 組を共有すると、(1) 互いの散乱ボリュームを毎フレーム
-//     上書きし合い、(2) 相手のカメラ行列で履歴を引き直すことになる。結果、霧が
-//     視界の中でとぎれとぎれに明滅する。prevViewProjection を ViewRenderTargets へ
-//     分けたのとまったく同じ理由で、こちらも分ける必要がある。
+// グリッドは視錐台に貼り付くので、共有すると互いのボリュームを上書きし合い、
+// 相手のカメラ行列で履歴を引き直して霧が明滅する (prevViewProjection と同じ理由)。
 struct FroxelFogViewState {
     // 履歴の引き直しに使う前フレームのビュー射影。
     math::Matrix4 prevViewProjection = math::Matrix4::Identity();
@@ -604,11 +609,9 @@ struct PostProcCB {
     float colorFilterIntensity;
     float _qualityPad0;
     float colorFilter[3];
-    // Option の「明るさ」。float3 colorFilter の 4 成分目にあたる空きスロットを使うため、
-    // cbuffer のレイアウトは変わらない。1.0 で無加工。
-    // NOTE: PostProcCB は zero-init して使う場所があり、そこでは 0 (= 真っ黒) になる。
-    //       Composite 以外のシェーダーはこの値を読まないので実害は無いが、
-    //       別のパスで読むなら必ず明示的に埋めること。
+    // Option の「明るさ」。colorFilter の 4 成分目の空きを使うのでレイアウトは変わらない。
+    // 1.0 で無加工。PostProcCB を zero-init する場所では 0 (= 真っ黒) になるので、
+    // Composite 以外のパスで読むなら必ず明示的に埋めること。
     float userBrightness;
     // 画面フェード — Composite パスの最終出力に適用する。alpha=0 で通常, 1 で全面フェード色。
     float screenFadeColor[3];
@@ -616,7 +619,11 @@ struct PostProcCB {
     // 大気フォグ統合 (環境システム §3-3): フォグ色の出どころ。0=指数(従来), 1=大気散乱(エアリアル)。
     // WHY: 末尾に追加し既存フィールドのオフセットを変えない (HLSL PostProcConstants と一致)。
     float fogSource;
-    float _fogPad[3];
+    // 放射ブラー (VFXScreenEffect)。画面中心から外へ引き伸ばす量 [0,1]。
+    // 既存の padding を名前付きにするだけ。レイアウトを変えると Constants.hlsli の
+    // 4 コピーを同時に直す必要があり、1 つ漏らすとそのプロジェクトだけ値がずれる。
+    float radialBlur;
+    float _fogPad[2];
     // 投影コースティクス改良 (Phase C-2): 水域 XZ 範囲フェード + 波連動 UV ゆらぎ。
     // HalfExtent<=0 で範囲無制限 (後方互換)。WaveAmp=0 でゆらぎ無し。
     float causticsCenterX;
@@ -636,6 +643,16 @@ struct PostProcCB {
     float bloomApplyThreshold;
     // 1 = 書き込み先へ加算 (アップサンプルの途中段)、0 = 上書き。
     float bloomAdditive;
+    // カスタムパスのパラメーター 4〜7。既存の customParameters (0〜3) は
+    // 中ほどに埋まっていて伸ばせないので、続きを末尾へ足す。
+    // WHY 4 本では足りないか: 太さ・揺れ・速さ・明るさで既に埋まる。色や閾値を
+    //     持たせようとした時点で «効果を 2 つに割る» しかなくなり、パスが増える。
+    float customParameters2[4];
+    // カスタムパスの «走り方»。パラメーターと違い、書き手ではなくエンジンが埋める。
+    //   x = 入力 UV のスケール (downscale の逆数)。縮小して走るときだけ 1 未満
+    //   y = 今が何回目の反復か (0 起点) / z = 反復の総数
+    //   w = 予約
+    float customPassInfo[4];
 };
 
 /// 画面サイズ由来のフィールドだけを埋めた PostProcCB を返す。
@@ -660,14 +677,21 @@ struct OutlineCB {
     float         _pad[3];
 };
 
+// ObjectMaskConstants (b2) — Pipeline/Mask/ObjectMask*.hlsl と一致させること。
+//   payload … そのままマスクへ書く RGBA (意味は書き手と読み手の取り決め)
+//   flags.x … 1 = 手前に何かある画素を捨てる (visibleOnly)
+struct ObjectMaskCB {
+    math::Vector4 payload;
+    math::Vector4 flags;
+};
+static_assert(sizeof(ObjectMaskCB) == 32, "ObjectMaskCB size mismatch");
+
 // デカールの受信レイヤーフィルタが有効であることを示す DecalCB::flags のビット。
 inline constexpr uint32_t kDecalFlagReceiverFilter = 1u;
 
 // DecalConstants (b10) — Material/Decal/DecalCommon.hlsli と完全に一致させること。
-//
-// WHY b2 ではないか: b2 は cbuffer 名 "MaterialConstants" として .mat の
-//   リフレクション対象になる。デカールの投影データをそこへ置くと、デカールだけ
-//   マテリアルを持てない例外になる (Assets/Shaders/Common/Binding.hlsli 参照)。
+// b2 は "MaterialConstants" として .mat のリフレクション対象なので、投影データを
+// そこへ置くとデカールだけマテリアルを持てない例外になる (Common/Binding.hlsli 参照)。
 struct DecalCB {
     math::Matrix4 invDecalWorld;
     math::Vector3 decalTangent;
@@ -678,10 +702,8 @@ struct DecalCB {
     float         _pad2 = 0.0f;
     float         alpha = 1.0f;
     // 角度フェード。受け面の法線が投影軸から傾くほどデカールを薄くする。
-    // WHY: OBB 投影は投影軸に対して斜めな面へ当てると、テクスチャが引き伸ばされて
-    //      長い筋になる。着弾痕や血痕が壁の角をまたいだ瞬間に「伸びた汚れ」として
-    //      露見する、デカールで最も目立つ破綻がこれ。
-    //      角度で薄めれば、破綻する範囲がそのまま消える。
+    // OBB 投影は斜めの面でテクスチャが引き伸ばされて長い筋になる (壁の角をまたいだ
+    // 着弾痕が「伸びた汚れ」に見える)。角度で薄めれば破綻する範囲がそのまま消える。
     float         angleFadeStrength = 1.0f; // 0 = フェードなし
     float         angleFadeCos      = 0.34f; // この cos より寝た面では完全に消える (既定 70 度)
     uint32_t      flags             = 0;
@@ -721,6 +743,9 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
+    // ランタイムの輪郭マスク (RGB=要求された色 / A=太さ)。エディタ選択のマスクとは
+    // 別に持つ。あちらは «選ばれているか» の 1 ビットで、色を載せると成立しない。
+    renderer::ResourceHandle<renderer::RenderTargetTag> objectMaskRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
     renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
 
@@ -751,6 +776,12 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskParticleShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskParticleGpuShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
+    renderer::ResourceHandle<renderer::ShaderTag> objectMaskShader;
+    renderer::ResourceHandle<renderer::ShaderTag> objectMaskSkinnedShader;
+    // 全画面コピー。読みながら書けない場所で «今の絵» を退避するのに使う。
+    renderer::ResourceHandle<renderer::ShaderTag> copyColorShader;
+    // 縮小して走ったカスタムパスの結果を実寸へ戻す。
+    renderer::ResourceHandle<renderer::ShaderTag> customComposeShader;
     renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
     std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
 
@@ -767,6 +798,7 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> postprocCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> objectMaskCB;
 
     renderer::ResourceHandle<renderer::RenderTargetTag>   decalDepthRT;
     // 可視サーフェスのレイヤー番号 + 1 を持つ受信バッファ。レイヤーフィルタを持つ
@@ -788,24 +820,21 @@ struct RenderPassHandles {
 
     // ---- モーションベクター ----
     // RG = 現 UV - 前フレーム UV、B = 書き込み済みフラグ。TAA / MotionBlur が t26 で読む。
-    // WHY 専用 RT か: RGBA16F 1 枚ぶんの帯域を使うが、CreateRenderTarget に
-    //     フォーマット引数が無く RG16F を作れない。バックエンド改修を避けた結果の割り切り。
+    // RGBA16F を使うのは CreateRenderTarget にフォーマット引数が無く RG16F を作れないため。
     renderer::ResourceHandle<renderer::RenderTargetTag>   velocityRT;
     renderer::ResourceHandle<renderer::ShaderTag>         velocityShader;
     renderer::ResourceHandle<renderer::ShaderTag>         velocitySkinnedShader;
 
     // ---- Spot / Point シャドウ ----
     // Directional の CSM (shadowMapRT) とは別のアトラス。t28 へ束縛する。
-    // WHY 相乗りさせないか: CSM のタイル数はカメラ視錐台の分割で決まり、こちらは
-    //     シーンにある影付きライトの本数で決まる。同じ面積を奪い合わせると、
-    //     ライトを 1 つ置いただけで Directional の遠景カスケードが粗くなる。
+    // CSM のタイル数は視錐台の分割で、こちらは影付きライトの本数で決まる。
+    // 面積を奪い合わせると、ライトを 1 つ置いただけで遠景カスケードが粗くなる。
     renderer::ResourceHandle<renderer::RenderTargetTag>   punctualShadowRT;
     renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
 
     // ---- ライト Cookie (投影テクスチャ) ----
     // 複数の Cookie を 1 枚へ敷き詰めたアトラス。t31 へ束縛する。
-    // WHY アトラスか: Cookie を持つライトは 1 回のピクセルシェーダー呼び出しの中で
-    //     まとめて評価されるので、ライトごとにテクスチャを差し替えられない。
+    // 1 回の PS 呼び出しの中でまとめて評価するので、ライトごとに差し替えられない。
     renderer::ResourceHandle<renderer::RenderTargetTag>   lightCookieRT;
     renderer::ResourceHandle<renderer::ShaderTag>         cookieBlitShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> cookieBlitCB;
@@ -906,11 +935,8 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>           clusterCullCS;
 
     // clusterCB と同じ内容で、供給モードだけ Linear に固定した版。
-    //
-    // WHY 別に持つか: クラスタリストはメインカメラの視錐台に対して 1 回だけ作られる。
-    //      別の視点から描くパス (リフレクションプローブの捕捉) がそのリストを引くと、
-    //      画面上のタイル座標も Z スライスも対応が取れず、まったく別の場所のライトを
-    //      拾ってしまう。そうしたパスは統合配列を全数走査する Linear へ落とす。
+    // クラスタリストはメインカメラの視錐台に対して 1 回だけ作られるので、別視点の
+    // パス (リフレクションプローブ) が引くとまったく別の場所のライトを拾う。
     renderer::ResourceHandle<renderer::ConstantBufferTag>   clusterLinearCB;
 
     // ---- Advanced Graphics ----
@@ -977,9 +1003,8 @@ struct RenderPassHandles {
 
 // ShadowCascade — カスケード 1 枚ぶんの描画情報。RenderSystem が毎フレーム組み立て、
 // ShadowPass がアトラスのタイルへ描き、各ライティングパスが CB へ転送する。
-// WHY: カスケードは「視錐台のどの距離帯を担当するか」以外は単一シャドウマップと同じ構造を
-//      持つ。行列・カリング錐台・書き込み先タイル・バイアスをひとまとめにしておけば、
-//      ShadowPass 側は「タイルを選んで既存の caster 提出を回す」だけで済む。
+// 行列・カリング錐台・書き込み先タイル・バイアスを束ねてあるので、ShadowPass 側は
+// 「タイルを選んで既存の caster 提出を回す」だけで済む。
 struct ShadowCascade {
     math::Matrix4 viewProjection;
     // ライトビュー単体。第 3 行がライト前方への射影なので、caster を光源に近い順へ
@@ -1004,11 +1029,8 @@ struct ShadowCascade {
 // PunctualShadowView — Spot / Point シャドウアトラスのタイル 1 枚ぶんの描画情報。
 // RenderSystem が毎フレーム組み立て、ShadowPass がタイルへ描き、
 // GeometryPassHelpers が PunctualShadowConstantsCB へ転送する。
-//
-// WHY ShadowCascade と別の型にするか: 中身はよく似ているが、あちらは正射影で
-//     texelWorldSize からワールド距離が一意に決まるのに対し、こちらは透視投影で
-//     1 テクセルが覆う距離が深度によって変わる。同じ型に押し込むと
-//     「使ってよいフィールドが型からは分からない」構造になる。
+// ShadowCascade と別の型なのは、あちらが正射影でワールド距離が一意に決まるのに対し
+// こちらは透視投影で深度によって変わるため。同じ型だと使ってよい欄が分からなくなる。
 struct PunctualShadowView {
     math::Matrix4 viewProjection;
     // ライトビュー単体。caster を光源に近い順へ並べるための深度キー算出に使う。
@@ -1029,9 +1051,8 @@ struct PunctualShadowView {
     // 光源半径ぶんの半影の広がり [テクセル]。0 で従来どおり硬い縁。
     float         penumbraTexels = 0.0f;
     // 1 テクセルが張る角度 [rad] = 2*tan(halfFov) / タイル一辺。
-    // WHY 角度で持つか: 透視投影では 1 テクセルの覆うワールド距離が深度に比例するので、
-    //     ShadowCascade の texelWorldSize のような固定値を持てない。角度なら深度に
-    //     依存しないので、caster の「半径 / 距離」と直接比べられる。
+    // 透視投影ではテクセルの覆うワールド距離が深度に比例するので固定値を持てない。
+    // 角度なら深度に依存せず、caster の「半径 / 距離」と直接比べられる。
     float         texelAngularSize = 0.0f;
 };
 
@@ -1064,9 +1085,8 @@ struct RenderPassContext {
     RenderPassHandles& handles;
 
     // ---- カリング挙動 (CameraComponent 由来) ----
-    // WHY パスが直接 CameraComponent を読まないか: Scene View / VFX プレビューのように
-    //      「シーンのメインカメラとは別の視点」で描く経路があり、そこでゲームカメラの
-    //      設定が効いてしまうと、エディタ上の見え方が編集対象と食い違う。
+    // パスが直接 CameraComponent を読むと、Scene View や VFX プレビューでゲームカメラの
+    // 設定が効いてしまい、エディタ上の見え方が編集対象と食い違う。
     bool  frustumCullingEnabled   = true;
     bool  occlusionCullingEnabled = true;
     // 全バウンディング球へ加算するワールド単位の余白 [m]。
@@ -1083,17 +1103,23 @@ struct RenderPassContext {
     // WHY 事前計算して持つか: Camera::GetProjectionMatrix() は毎回行列を組み直して返すため、
     //      オブジェクトごとに呼ぶと判定より行列生成の方が高くつく。
     float cullProjScaleY          = 0.0f;
+    // 平行投影か。画面高さ比は距離で割らないので、判定式が分岐する。
+    bool  cullOrthographic        = false;
     // 距離計算用のカメラ前方ベクトル (深度距離モードでのみ使う)。同じ理由で事前計算する。
     math::Vector3 cullCameraForward = { 0.0f, 0.0f, 1.0f };
 
     uint32_t width = 0;
     uint32_t height = 0;
     bool selectionOutlineEnabled = false;
+    // 今フレームに 1 件でも生きた輪郭要求があるか (RenderSettings::objectMaskRequests)。
+    bool objectMaskEnabled = false;
+    // 選択マスクへ UI 要素の矩形を追記する。UISystemContext を握っているのは
+    // Viewport ごとの呼び出し元なので、パス側は「入っていれば呼ぶ」だけにする。
+    std::function<void()> appendUISelectionMask;
 
     // TAA サブピクセルジッター (NDC 単位)。TAA が無効なフレームは 0。
-    // WHY: TAA はフレームごとにサンプル点をピクセル内でずらして初めてサブピクセル情報が
-    //      集まる。ジッターが無いと再投影とブレンドをするだけで、静止カメラでは同じ絵に
-    //      収束してアンチエイリアスにならない。b0 を組む各パスが MakeCameraFrameCB へ渡す。
+    // ジッターが無いと静止カメラでは同じ絵に収束してアンチエイリアスにならない。
+    // b0 を組む各パスが MakeCameraFrameCB へ渡す。
     float taaJitterNdcX = 0.0f;
     float taaJitterNdcY = 0.0f;
 
@@ -1101,9 +1127,8 @@ struct RenderPassContext {
 
     // ---- クラスタライトカリング ----
     // punctualLights は b3 の固定長配列 (点 8 / スポット 4) と並行して構築される。
-    // WHY 併存させるか: b3 は Sky / Terrain / Particle など 20 以上のシェーダーが
-    //      directional・ambient を読むために使っており、消すと影響範囲が広すぎる。
-    //      点光源とスポットだけをこちらへ逃がし、対応済みのパスから順に切り替える。
+    // b3 は 20 以上のシェーダーが directional・ambient を読むために使っているので消せない。
+    // 点光源とスポットだけをこちらへ逃がし、対応済みのパスから順に切り替える。
     std::vector<PunctualLightGPU> punctualLights;
     ClusterLightMode              clusterLightMode = ClusterLightMode::Legacy;
     bool                          clusterDebugHeatmap = false;
@@ -1123,19 +1148,15 @@ struct RenderPassContext {
     bool                        ssaoEnabled = false;
     // GBuffer の深度が「この時点で書き終わっている」か。
     // Deferred では常に true、Forward では GBuffer プリパスを走らせたときだけ true。
-    //
-    // WHY isDeferred と分けるか: isDeferred は「不透明を GBuffer でライティングするか」で、
-    //     こちらは「GBuffer の深度を読んでよいか」。Forward + プリパスでは前者が false、
-    //     後者が true になる。同一視すると接触影が hdrRT のまだ書かれていない深度を読む。
+    // isDeferred は「不透明を GBuffer でライティングするか」でこちらとは別。同一視すると
+    // 接触影が hdrRT のまだ書かれていない深度を読む。
     bool                        gbufferDepthReady = false;
     // 前方描画のマテリアルへ渡す画面空間の遮蔽。無効ハンドルなら束縛しない。
     // AO は GTAO / SSAO のうち実際に走った方が入る (シェーダーからは区別しない)。
     renderer::ResourceHandle<renderer::TextureTag> screenAoTexture;
     renderer::ResourceHandle<renderer::TextureTag> screenContactShadowTexture;
-    // ライト正射影の深度範囲で正規化済みの NDC バイアス。
-    // WHY: near=1, far=shadowRadius*2+40 のため固定 NDC 値はシーンスケール依存になる。
-    //      RenderSystem 側で 0.005 / depthRange として渡すことで
-    //      ワールド空間で約 5mm 相当の一定バイアスを保つ。
+    // ライト正射影の深度範囲で正規化済みの NDC バイアス。固定 NDC 値だとシーンスケール
+    // 依存になるので、0.005 / depthRange としてワールド約 5mm 相当を保つ。
     float                       shadowBiasNDC  = 0.0f;
     float                       shadowStrength = 1.0f;  // LightComponent から流れてくる影の濃さ
 
@@ -1156,12 +1177,10 @@ struct RenderPassContext {
     // レガシーライト経路 (b3 の固定長配列) 用のスロット番号。-1 = 無し。
     //   [0..7]  → lightData.pointLights[0..7]
     //   [8..11] → lightData.spotLights[0..3]
-    // WHY 必要か: b3 経路のシェーダーは PunctualLightGPU を読まないので、
-    //     ライト構造体に埋めた shadowIndex / cookieIndex が届かない。既定パイプラインが
-    //     Forward (= b3 経路) である以上、ここを通さないと影が「Forward+ でだけ出る」
-    //     という、設定に埋もれた不具合になる。
-    // 既定値は必ず -1。集成体初期化で省略されると 0 埋めになり、0 は「スロット 0」という
-    // 有効な番号なので、影を持たないライトが他のライトの深度を引いてしまう。
+    // b3 経路のシェーダーは PunctualLightGPU を読まないので、構造体に埋めた
+    // shadowIndex / cookieIndex が届かない。ここを通さないと影が Forward+ でだけ出る。
+    // 既定値は必ず -1。0 埋めだと「スロット 0」という有効な番号になり、影を持たない
+    // ライトが他のライトの深度を引く。
     int legacyShadowSlots[kMaxLegacyPunctualLights] =
         { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
     int legacyCookieSlots[kMaxLegacyPunctualLights] =
@@ -1226,10 +1245,8 @@ struct RenderPassContext {
     int statsParticleBudgetDropped = 0;
 
     // トランジェント RT リゾルバ。RenderPipeline::Execute() が設定する。
-    // WHY: パスコールバックが RenderPipeline を直接参照しないよう、
-    //      依存方向を逆転させずにハンドル取得を可能にするためのコールバックとして渡す。
-    //      DeclareResource で transient=true のリソースのみ有効。
-    //      未設定 (nullptr) の場合は空ハンドルを返す。
+    // パスコールバックが RenderPipeline を直接参照しないよう、コールバックで渡す。
+    // DeclareResource で transient=true のリソースのみ有効。未設定なら空ハンドル。
     std::function<renderer::ResourceHandle<renderer::RenderTargetTag>(std::string_view)> getTransientRT;
 };
 

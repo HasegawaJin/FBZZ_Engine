@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ContactCache.cpp | fbzz::physics
-// フレーム間接触インパルスのキャッシュ (Warm Starting 用)
+/// @file    ContactCache.cpp
+/// @brief   フレーム間接触インパルスのキャッシュ (Warm Starting 用)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/ContactCache.hpp>
 #include <Physics/RigidBody.hpp>
 #include <algorithm>

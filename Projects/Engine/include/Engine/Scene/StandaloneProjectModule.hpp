@@ -1,6 +1,7 @@
-// FBZZ Engine
-// StandaloneProjectModule.hpp | fbzz::scene
-// Standaloneプロジェクト共通のゲーム更新・描画モジュール
+/// @file    StandaloneProjectModule.hpp
+/// @brief   Standaloneプロジェクト共通のゲーム更新・描画モジュール。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
 #pragma once
 
 #include <Engine/Core/IModule.hpp>

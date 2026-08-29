@@ -1,7 +1,7 @@
-/// @file SpringBoneSystem.hpp
-/// @brief 確定済みの FK / IK ポーズへ揺れもの (二次モーション) を上乗せする
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    SpringBoneSystem.hpp
+/// @brief   確定済みの FK / IK ポーズへ揺れもの (二次モーション) を上乗せする
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #pragma once
 
 #include "Engine/Core/Scheduler/ISystem.hpp"

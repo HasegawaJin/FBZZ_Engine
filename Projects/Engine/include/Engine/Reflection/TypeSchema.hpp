@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TypeSchema.hpp | fbzz::reflection
-// Inspector・シリアライズ・AI編集・VFX bindingが共有する型スキーマ基盤
+/// @file    TypeSchema.hpp
+/// @brief   Inspector・シリアライズ・AI編集・VFX bindingが共有する型スキーマ基盤。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #pragma once
 
 #include <any>

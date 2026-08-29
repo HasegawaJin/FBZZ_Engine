@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptParticleProxy.hpp | fbzz::scene
-// Script から ParticleEmitter を操作するショートハンド
+/// @file    ScriptParticleProxy.hpp
+/// @brief   Script から ParticleEmitter を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
 #pragma once
 #include <Engine/Scene/Components/ParticleColorSpace.hpp> // ParticleColorSpace
 #include <Math/Vector3.hpp>
@@ -57,6 +58,12 @@ enum class ParticleGpuFallbackReason {
     Trail,                 // per-particle Trail。GpuParticle は位置履歴を持たない
     SubEmitter,            // birth / death / collision SubEmitter。発火は CPU 側の処理
     SelfShadow,            // selfShadowStrength > 0。密度パスが CPU 頂点バッファを要求する
+    // 速さで見た目を変えるモジュール (useSpeedSizeCurve / useSpeedColorGradient)。
+    // WHY GPU へ載せないか: 速度グラデーションは 8 キー = float4 が 12 本必要で、
+    //     シミュレーション定数バッファを 1 モジュールのために倍近く太らせる。
+    //     しかも CPU と «必ず同じ式» を保つ約束があるため、GPU 側だけ 2 色補間で
+    //     近似する逃げ方も取れない。載せるなら CB の作り直しから始める話になる。
+    SpeedModule,
 };
 
 enum class ParticleSimulationSpace : uint8_t {

@@ -1,7 +1,9 @@
-// FBZZ Engine
-// FrameAllocator.cpp | fbzz::core
-// FrameAllocator の実装
-// LinearAllocator をフレーム境界で Reset する薄いラッパーとして扱う。
+/// @file    FrameAllocator.cpp
+/// @brief   FrameAllocator の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// LinearAllocator をフレーム境界で Reset する薄いラッパーとして扱う。
 #include "Engine/Core/Memory/FrameAllocator.hpp"
 
 namespace fbzz::core {

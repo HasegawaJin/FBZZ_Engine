@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ComponentRegistry.hpp | fbzz::scene
-// コンポーネント型とEditor／永続化メタデータの単一登録表
+/// @file    ComponentRegistry.hpp
+/// @brief   コンポーネント型とEditor／永続化メタデータの単一登録表。
+/// @author  Hasegawa Jin
+/// @date    2026-05-22
 #pragma once
 
 #include "Components/MeshRenderer.hpp"
@@ -23,6 +24,7 @@
 #include "Components/SkinnedMeshRenderer.hpp"
 #include "Components/BoneComponent.hpp"
 #include "Components/UICanvas.hpp"
+#include "Components/UICanvasGroup.hpp"
 #include "Components/UIImage.hpp"
 #include "Components/UIButton.hpp"
 #include "Components/UIText.hpp"
@@ -44,8 +46,11 @@
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
 #include "Components/LifetimeComponent.hpp"
-#include "Components/VFXGraphComponent.hpp"
 #include "Components/VFXScreenEffect.hpp"
+#include "Components/VFXComponent.hpp"
+#include "Components/VFXElement.hpp"
+#include "Components/VFXBeamComponent.hpp"
+#include "Components/VFXAudioEnvelope.hpp"
 #include "Components/PresentationComponents.hpp"
 #include "Components/ConstraintComponents.hpp"
 #include "Components/SplineComponents.hpp"
@@ -59,6 +64,8 @@
 #include "Components/NavMeshPatrolComponent.hpp"
 #include "Components/NavMeshSensorComponent.hpp"
 #include "Components/BehaviorTreeComponent.hpp"
+#include "Components/ProceduralMeshComponent.hpp"
+#include "Components/SequencePlayerComponent.hpp"
 #include "ScriptComponent.hpp"
 
 #include <cstddef>
@@ -198,11 +205,12 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(AtmosphericScatteringComponent, Environment, "Atmospheric Scattering"),
     FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume"),
     // WHY: ComponentRegistryはScript DLL ABIへ影響するため、新規型は既存順を崩さず末尾へ追加する。
-    FBZZ_CUSTOM_COMPONENT(VFXGraphComponent, Effects, "VFX Graph"),
-    // VFXGraphSystemがScreenEffectノードから生成する内部型。手動追加もシーン保存もしない。
-    FBZZ_INTERNAL_COMPONENT(VFXScreenEffect, "VFX Screen Effect"),
-    FBZZ_INTERNAL_COMPONENT(VFXCameraShake, "VFX Camera Shake"),
-    FBZZ_INTERNAL_COMPONENT(VFXTimeScale, "VFX Time Scale"),
+    // かつては VFXGraphSystem が生成するだけの内部型だったが、.vfx がプレハブになった
+    // 以上「シーンに置いて保存できる」必要がある (置けなければ変換で消える)。
+    // weight は VFXElement が毎フレーム書くランタイム値なので Reflect には含めない。
+    FBZZ_COMPONENT(VFXScreenEffect, Effects, "VFX Screen Effect"),
+    FBZZ_COMPONENT(VFXCameraShake, Effects, "VFX Camera Shake"),
+    FBZZ_COMPONENT(VFXTimeScale, Effects, "VFX Time Scale"),
     FBZZ_COMPONENT(SpriteRendererComponent, Rendering, "Sprite Renderer"),
     FBZZ_COMPONENT(SortingGroupComponent, Rendering, "Sorting Group"),
     FBZZ_COMPONENT(LineRendererComponent, Rendering, "Line Renderer"),
@@ -232,7 +240,26 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(SpringBoneComponent, Animation, "Spring Bone"),
     // 寄せ先はスクリプトが毎回入れ替えるランタイム値で、保存する設定は enabled だけ。
     FBZZ_COMPONENT(MotionWarpComponent, Animation, "Motion Warp"),
-    FBZZ_COMPONENT(WeatherComponent, Environment, "Weather")
+    FBZZ_COMPONENT(WeatherComponent, Environment, "Weather"),
+    // 形の正本はスクリプトなので保存も手動追加もしない。mesh.Apply が付ける。
+    FBZZ_INTERNAL_COMPONENT(ProceduralMeshComponent, "Procedural Mesh"),
+    FBZZ_COMPONENT(SequencePlayerComponent, Misc, "Sequence Player"),
+    // .vfx プレハブの再生ヘッドと生存窓 (Docs/design/vfx-prefab.md)。
+    FBZZ_COMPONENT(VFXComponent, Effects, "VFX"),
+    FBZZ_COMPONENT(VFXElement, Effects, "VFX Element"),
+    FBZZ_COMPONENT(VFXLightEnvelope, Effects, "VFX Light Envelope"),
+    FBZZ_COMPONENT(VFXTransformEnvelope, Effects, "VFX Transform Envelope"),
+    FBZZ_COMPONENT(VFXMaterialEnvelope, Effects, "VFX Material Envelope"),
+    FBZZ_COMPONENT(VFXDecalEnvelope, Effects, "VFX Decal Envelope"),
+    FBZZ_COMPONENT(VFXAudioEnvelope, Effects, "VFX Audio Envelope"),
+    // 経路だけを持つ。見た目は同じ GameObject の TrailComponent が受け持つ。
+    FBZZ_COMPONENT(VFXBeamComponent, Effects, "VFX Beam"),
+    // 配下の透明度と入力可否をまとめて変える。矩形は持たない。
+    FBZZ_COMPONENT(UICanvasGroup, UI, "UI Canvas Group"),
+    FBZZ_COMPONENT(UIContentSizeFitter, UI, "UI Content Size Fitter"),
+    FBZZ_COMPONENT(UINavigation, UI, "UI Navigation"),
+    FBZZ_COMPONENT(UIDragSource, UI, "UI Drag Source"),
+    FBZZ_COMPONENT(UIDropTarget, UI, "UI Drop Target")
 >;
 
 template<typename Registry>

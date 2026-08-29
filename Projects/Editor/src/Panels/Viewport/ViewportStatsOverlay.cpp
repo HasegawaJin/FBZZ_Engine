@@ -1,7 +1,7 @@
-/// @file   ViewportStatsOverlay.cpp
-/// @brief  Game ビューポート左下へ重ねるフレーム統計 HUD
-/// @author Hasegawa Jin
-/// @date   2026-08-24
+/// @file    ViewportStatsOverlay.cpp
+/// @brief   Game ビューポート左下へ重ねるフレーム統計 HUD
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// 役割は「絵を見ながら横目で確認する層」に限定する。
 /// WHY: 内訳の一覧は Analysis > Rendering が表と GPU パス履歴で持っている。

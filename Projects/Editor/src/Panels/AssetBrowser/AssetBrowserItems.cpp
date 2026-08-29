@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetBrowserItems.cpp | fbzz::editor
-// AssetBrowser のフォルダツリーとファイルアイコン描画
+/// @file    AssetBrowserItems.cpp
+/// @brief   AssetBrowser のフォルダツリーとファイルアイコン描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Op/EditorOperator.hpp>
@@ -8,7 +9,6 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/UndoStack.hpp>
-#include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Windows.h>
@@ -38,9 +38,8 @@ namespace fbzz::editor {
 namespace {
 
 // アセット本体と "<本体>.meta" サイドカーを一括で移動 / リネームし、GUID 索引を追随させる。
-// WHY: .meta は AssetDatabase の恒久 guid を保持する。サイドカーを置き去りにすると
-//      移動先で guid が再発行され、シーン / マテリアルからの guid: 参照が全て切れる。
-//      ディレクトリ移動時は OnAssetMoved が配下の索引をプレフィックス付け替えで追随させる。
+// .meta を置き去りにすると移動先で guid が再発行され、guid: 参照が全て切れる。
+// ディレクトリ移動時は OnAssetMoved が配下の索引をプレフィックス付け替えで追随させる。
 bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs)
 {
     if (fromAbs.empty() || toAbs.empty() ||
@@ -74,27 +73,15 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs)
     return true;
 }
 
-// 削除は Undo 履歴へ載せず、プロジェクト内のごみ箱へ退避する。
-//
-// WHY 履歴に載せないか (重要):
-//   Undo スタックはシーン編集と共有されている。削除をそこへ積むと、Scene View で
-//   Ctrl+Z / Ctrl+Y を押しただけでディスク上のファイルが復活したり再削除されたりする。
-//   さらに旧実装は「Undo されないまま履歴からあふれたらデストラクタで退避データを完全削除」
-//   していたため、履歴が 128 件を超えた瞬間に復元手段が予告なく消えていた。
-//
-// WHY ごみ箱へ移すか:
-//   Undo 対象から外しても「消したものを取り戻せない」状態にはしたくない。
-//   Unity の OS ごみ箱行きと同じ扱いで、実体は .fbzz/Trash/<日時>/ に残し続ける
-//   (自動削除しない)。復元はエクスプローラーで戻すだけで済む。
+// 削除は Undo 履歴へ載せず、プロジェクト内のごみ箱 (.fbzz/Trash/<日時>/) へ退避する。
+// Undo スタックはシーン編集と共有なので、載せると Scene View の Ctrl+Z でディスク上の
+// ファイルが復活・再削除される。履歴からあふれた時点で復元手段も消える。
+// ごみ箱の実体は自動削除しないので、復元はエクスプローラーで戻すだけで済む。
 // @return ごみ箱へ移せた項目数
 // 削除したアセットを「もう無いもの」として各所へ知らせる。
-//
-// WHY 消すだけでは足りないか: ResourceManager のテクスチャキャッシュはパス一致で
-//     即返すため、ファイルを消してもエディタを再起動するまで古い絵が出続ける。
-//     「消したのに映っている」は参照切れより質が悪く、消したつもりのアセットを
-//     配布物へ持ち込む。GUID 索引にも残るので、参照側は壊れた参照だと気付けない。
-// NOTE: フォルダを渡された場合も配下ごと外れる (OnAssetRemoved / EvictTexture の
-//       どちらも前方一致で配下を処理する)。
+// ResourceManager のテクスチャキャッシュはパス一致で即返すので、消しただけだと
+// 再起動まで古い絵が出続け、消したつもりのアセットを配布物へ持ち込むことになる。
+// フォルダを渡された場合も配下ごと外れる (どちらの経路も前方一致で処理する)。
 void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
 {
     // GUID 索引から外す。以後この参照は「解決できない guid」になり、
@@ -261,10 +248,8 @@ bool MoveProjectAssetToDirectory(const std::string& srcProjectPath,
         return false;
     }
 
-    // 移動も Undo 履歴には積まない。
-    // WHY: ファイルの場所はディスクの状態であって、シーン編集の履歴とは別の軸にある。
-    //      同じスタックに載せると Scene View の Ctrl+Z がアセットを勝手に動かし、
-    //      そのあいだに外部エディタや別操作が入ると復元先が実態と食い違う。
+    // 移動も Undo 履歴には積まない。ファイルの場所はディスクの状態で、シーン編集の
+    // 履歴とは別の軸にある (同じスタックだと Ctrl+Z がアセットを勝手に動かす)。
     ctx.requestAssetBrowserRefresh = true;
 
     outSrcAbs = srcAbs;
@@ -295,6 +280,8 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".mask", nullptr },                                  { 0.55f, 0.45f, 0.90f, 1.0f }, "MASK"    },
     { { ".vfx", nullptr },                                   { 0.95f, 0.35f, 0.55f, 1.0f }, "VFX"     },
     { { ".behaviortree", nullptr },                          { 0.45f, 0.80f, 0.65f, 1.0f }, "AI"      },
+    // 演出タイムライン。時間軸を持つ仲間 (.anim / .animcontroller) と同系色。
+    { { ".sequence", nullptr },                              { 0.85f, 0.60f, 0.30f, 1.0f }, "SEQ"     },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
     // 物理マテリアル。見た目の .mat と取り違えないよう、色は物理系 (青緑) から離す。
     { { ".physmat", nullptr },                               { 0.90f, 0.50f, 0.25f, 1.0f }, "PHYSMAT" },
@@ -462,16 +449,14 @@ static ThumbnailShaderFlavor DetectThumbnailShaderFlavor(std::string_view shader
 
 static ThumbnailShaderFlavor DetectMaterialThumbnailFlavor(const asset::MaterialAsset& asset)
 {
-    // WHY: Particle / Trail 用 .mat は MeshRenderer と頂点入力・定数バッファが違うため、
-    //      AssetBrowser の球メッシュ preview に流すと不正な IA レイアウトでクラッシュし得る。
-    //      mesh_type / render_path を .mat の信頼元として扱い、shader path だけの推測を避ける。
-    // UI 用 .mat も同じ理由で弾く。UI パスは b0 を UIConstants として使うため、
-    // 球メッシュのプレビューでは ortho 行列の位置にカメラ行列が入り、頂点が飛ぶ。
-    // Decal 用 .mat は頂点入力そのものを持たない (SV_VertexID でフルスクリーン三角形)。
+    // Particle / Trail / UI / Decal の .mat は MeshRenderer と頂点入力も定数バッファも違う。
+    // 球メッシュのプレビューへ流すと不正な IA レイアウトでクラッシュしうる。
+    // 判定は render_path を信頼元にする (shader path からの推測はしない)。
     if (asset.renderPath == asset::RenderPath::Particle ||
         asset.renderPath == asset::RenderPath::Trail ||
         asset.renderPath == asset::RenderPath::UI ||
-        asset.renderPath == asset::RenderPath::Decal) {
+        asset.renderPath == asset::RenderPath::Decal ||
+        asset.renderPath == asset::RenderPath::PostProcess) {
         return ThumbnailShaderFlavor::Unsupported;
     }
     if (asset.meshType == asset::MeshType::Skinned) {
@@ -480,10 +465,8 @@ static ThumbnailShaderFlavor DetectMaterialThumbnailFlavor(const asset::Material
     return DetectThumbnailShaderFlavor(asset.shaderPath);
 }
 
-// t0-t15 は標準 Material スロット。Terrain/Water は専用名で解決されるが、
-// それ以外の汎用スロットはここで名前フォールバックが効く。
-// WHY: preview.textures.assign(16,{}) と同サイズにすることで、
-//      bind.slot が 8-15 の汎用スロットでも FindMaterialTexturePath が機能する。
+// t0-t15 は標準 Material スロット。Terrain/Water は専用名で解決され、それ以外は
+// ここで名前フォールバックが効く。preview.textures と同じ 16 要素にしておくこと。
 constexpr std::array<const char*, 16> kMaterialTextureSlotNames = {
     "albedo",
     "normal",
@@ -766,10 +749,8 @@ struct ThumbnailRenderer {
     // シーン描画の b12 が残るとアトラス未束縛のまま「完全な影」を引いて黒くなる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
     // ライト供給モード (b9) の無効化用。中身は 0 = FBZZ_LIGHT_MODE_LEGACY のまま使う。
-    // WHY 要るか: シーン描画は Forward でも LINEAR (統合配列) を使うようになった。
-    //     b9 の束縛はドローをまたいで残る一方、ライト配列 (t29) は毎回クリアされるので、
-    //     そのままだとプレビューが「本数は残っているのに中身が全部ゼロ」を読み、
-    //     ライトが一つも当たらなくなる。0 を渡してレガシー経路 (b3) へ倒す。
+    // b9 の束縛はドローをまたいで残るが t29 は毎回クリアされるので、渡さないと
+    // 「本数は残っているのに中身が全部ゼロ」を読んでライトが当たらない。
     renderer::ResourceHandle<renderer::ConstantBufferTag> clusterCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> terrainObjectCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> waterObjectCB;
@@ -1289,9 +1270,8 @@ static bool RenderMeshThumbnail(
     }
 
     // ── 3 点照明リグ (キー / フィル / リム) ──
-    // WHY: 単一平行光 + 高いアンビエントでは陰影のグラデーションが浅く、球が円板の
-    //      ように平坦に見える。アンビエントを落として明暗差を作り、寒色フィルで陰側の
-    //      丸みを読ませ、背後からのリムライトで輪郭を背景から分離して立体感を出す。
+    // 単一平行光 + 高いアンビエントだと球が円板に見える。アンビエントを落として明暗差を作り、
+    // 寒色フィルで陰側の丸みを、リムで輪郭を背景から分離する。
     renderer::LightConstantsCB lightData{};
     const math::Vector3 keyLight = (camera.m_position + math::Vector3{ radius * 1.4f, radius * 1.8f, radius * 0.8f } - center).Normalized();
     lightData.lightDir = { -keyLight.x, -keyLight.y, -keyLight.z };
@@ -1300,15 +1280,11 @@ static bool RenderMeshThumbnail(
     lightData.lightIntensity = 1.8f / 3.14159265358979323846f;
     lightData.ambientColor = { 0.10f, 0.11f, 0.14f }; // 陰が黒潰れしない下限まで低減
 
-    // WHY: LightAttenuation は 1/dist^2 の絶対距離減衰を含むため、そのままでは
-    //      メッシュ半径によってライトの効きが大きく変わる。狙いの明るさになるよう
-    //      距離補正を強度へ掛け、どのサイズのプレビューでも同じ見た目にする。
-    //      range = radius * 20 に対し dist は radius * 3 前後なので、LightAttenuation の
-    //      range 窓 (1-(d/r)^4)^2 はほぼ 1.0 で無視でき、逆二乗だけを打ち消せばよい。
-    // NOTE: このリグは「絵として狙った明るさ」を直接指定する手調整値なので、
-    //       Lighting.hlsli の LIGHT_UNIT_SCALE (= PI) も相殺する。こうすることで
-    //       targetIntensity がそのまま最終的な寄与の強さを表し、シェーダー側の
-    //       単位換算を変えてもサムネイルの見た目は動かない。
+    // LightAttenuation は 1/dist^2 を含むので、そのままだとメッシュ半径で効きが変わる。
+    // 距離補正を強度へ掛けて、どのサイズでも同じ見た目にする。
+    // range = radius*20 に対し dist は radius*3 前後なので range 窓はほぼ 1.0、逆二乗だけ打ち消せばよい。
+    // LIGHT_UNIT_SCALE (= PI) も相殺する。targetIntensity がそのまま寄与の強さを表すので、
+    // シェーダー側の単位換算を変えてもサムネイルの見た目は動かない。
     constexpr float kPreviewUnitScale = 3.14159265358979323846f; // Lighting.hlsli の LIGHT_UNIT_SCALE
     const auto placeThumbnailLight = [&](renderer::PointLight& light,
                                          const math::Vector3&  offsetFromCenter,
@@ -1424,11 +1400,8 @@ static void DrawRenderTargetThumbnail(
 }
 
 // ─── プレビュー失敗の再試行 ─────────────────────────────────────────────────
-// 素材を一括で入れた直後の失敗は、素材が壊れているのではなく「まだ書き込みが
-// 終わっていない」「まだインポートが走っていない」だけのことがほとんどで、
-// 数百 ms 後には成功する。1 回の失敗で打ち切ると再起動するまで直らないため、
-// 間隔を空けて有限回だけ焼き直す。無限に再試行しないのは、本当に壊れた素材で
-// 毎フレーム Assimp / WIC を走らせないため。
+// 一括投入直後の失敗はたいてい「まだ書き込みが終わっていない」だけで、数百 ms 後に成功する。
+// 1 回で打ち切ると再起動まで直らず、無限に試すと壊れた素材で毎フレーム Assimp / WIC を回す。
 constexpr uint32_t kPreviewMaxRetries    = 10;
 constexpr double   kPreviewRetryInterval = 0.5;
 
@@ -1461,8 +1434,7 @@ static void EnsureThumbnailRT(T& t, EditorContext& ctx) {
 
 // マテリアルサムネイルの GPU 側キャッシュ (シェーダー / CB / テクスチャ) を捨て、
 // 次フレームで RebuildMaterialThumbnailGpuData から作り直させる。
-// WHY: .mat の再読み込み経路がディスク更新と Inspector 編集の 2 つあり、
-//      どちらも同じ後始末を必要とするため 1 箇所にまとめる。
+// .mat の再読み込み経路がディスク更新と Inspector 編集の 2 つあるので 1 箇所にまとめる。
 template<typename T>
 static void ResetMaterialPreviewGpuState(T& preview, renderer::ResourceManager* resources) {
     preview.previewTexture = {};
@@ -1837,9 +1809,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
 
         // Inspector で編集中の .mat は、保存を待たずにサムネイルへ反映する。
-        // WHY: ファイル更新時刻だけを見ていると、スライダーを動かしている最中の見た目が
-        //      AssetBrowser 側だけ古いままになる。Inspector が値変更のたびに進める
-        //      リビジョンを検知して、AssetManager 上の (未保存の) 実体からサムネイルを描き直す。
+        // ファイル更新時刻だけだとスライダーを動かしている最中の見た目が古いままになるので、
+        // Inspector が値変更のたびに進めるリビジョンを見る。
         if (!ctx.materialPreviewRevisions.empty()) {
             const std::string relPath = NormalizeAssetPath(e.path);
             const uint64_t revision = ctx.MaterialPreviewRevision(relPath);
@@ -1850,11 +1821,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     preview.asset  = *live;
                     MarkPreviewSucceeded(preview);
                     preview.loaded = true;
-                    // ここでは GPU リソースを捨てない。RebuildMaterialThumbnailGpuData が
-                    // シェーダー変更を検知して張り替え、テクスチャと定数バッファは毎回更新するため、
-                    // 再描画フラグを落とすだけで足りる。
-                    // WHY: スライダーをドラッグしている間は毎フレームここを通るので、
-                    //      定数バッファを作り直すとハンドルの生成/破棄が延々と続いてしまう。
+                    // ここでは GPU リソースを捨てず、再描画フラグを落とすだけ。ドラッグ中は
+                    // 毎フレーム通るので、定数バッファを作り直すと生成/破棄が延々と続く。
                     preview.thumbnailRendered = false;
                 }
             }
@@ -2551,11 +2519,9 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         const ImVec2 bsz = ImGui::CalcTextSize("!");
         dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f }, IM_COL32(255, 255, 255, 255), "!");
     }
-    // ↻ バッジ (再インポートが必要) はここにあった。
-    // WHY 消したか: 原本や import 設定の変更はウォッチャーが拾って自動で焼き直すので、
-    //     「古い」状態は人が見て対処する対象ではなくなった。焼き直しの最中は
-    //     EditorTaskOverlay が出るため、そこで進行は分かる。
     // 橙ドット: 未保存変更があるアセット
+    // (「再インポートが必要」の印は廃止。ウォッチャーが自動で焼き直し、進行は
+    //  EditorTaskOverlay に出る)
     if (!e.isDir && AssetDirtyRegistry::IsDirty(e.path)) {
         const float r  = sz * 0.10f;
         const float cx = origin.x + r + 2.0f;
@@ -2563,9 +2529,7 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
     // ▶/▼ 展開トグル: FBX と Sprite Texture はサブアセットを持つ。
-    // WHY: 素の三角形はサムネイルの絵柄に溶けて「押せる場所」に見えなかった。
-    //      暗いチップ (角丸の下地) に乗せてボタンらしさを与え、展開中は
-    //      アクセント色にしてサブアセットの帯と対応付ける。
+    // 素の三角形はサムネイルの絵柄に溶けるので、暗いチップに乗せて押せる場所だと分からせる。
     if (!e.isDir && !e.isSubAsset && e.hasSubAssets) {
         const bool  expanded = m_expandedAssets.count(e.path) > 0;
         const float ts   = sz * 0.18f;                 // 三角サイズ (クリック判定と共通)
@@ -2719,21 +2683,17 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
     } else if (ext == ".animcontroller" || ext == ".vfx" || ext == ".behaviortree"
-               || ext == ".synth") {
-        // ドキュメント面へ渡す振り分けは asset.open operator が持つ。
-        // WHY 写さないか: 同じ分岐がコマンドパレットと SearchEverything にもあり、
-        //      そちらは .behaviortree を落としていた (このパネルからしか開けなかった)。
-        //      対応拡張子を足したときに全経路へ同時に効く形にしておく。
+               || ext == ".synth" || ext == ".sequence") {
+        // ドキュメント面へ渡す振り分けは asset.open operator が持つ。分岐を写すと、
+        // 対応拡張子を足したときに一部の経路だけ取りこぼす。
         OpArgs args;
         args.Set("path", path);
         InvokeOperator(ctx, "asset.open", args);
     }
 }
 
-// 選択中パスのスナップショットをクリップボードに積む。
-// WHY: OS クリップボードではなく panel ローカルに持つのは、ファイル実体コピーは
-//      アプリ終了後に有効である必要がなく (プロセス跨ぎの貼り付けは対象外)、
-//      パス文字列コピー (Copy Path) と役割を混同させないため。
+// 選択中パスのスナップショットをクリップボードに積む。OS クリップボードではなく
+// panel ローカルなのは、プロセス跨ぎの貼り付けが対象外で、Copy Path と役割が違うため。
 void AssetBrowserPanel::CopySelectionToClipboard()
 {
     m_clipboardPaths.clear();
@@ -2746,13 +2706,8 @@ void AssetBrowserPanel::CopySelectionToClipboard()
 
 // 現在開いているフォルダへクリップボードの内容を複製する。
 // 生成した実体は Undo 対象外 (取り消したいときは Delete でごみ箱へ送る)。
-//
-// WHY Library の生成物を「取り出し」として扱うか:
-//   Library/Baked の .anim / .mat / textures をコピペすると、.meta を複製しない仕様の
-//   おかげで結果的に「新しい GUID を持つ独立アセット」ができる。これは Extract と
-//   まったく同じ結果だが、以前は何の説明も出ないため「ただのコピー」に見えていた。
-//   同じ結果を出す道が 2 本あって片方だけ意味が語られている状態を解消し、
-//   コピペを取り出しの正式な動線として認める。
+// Library/Baked からのコピペは .meta を複製しない仕様のおかげで Extract と同じ結果になる。
+// これを取り出しの正式な動線として認め、そう説明する。
 void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
 {
     if (m_clipboardPaths.empty()) return;
@@ -2860,10 +2815,8 @@ std::string AssetBrowserPanel::ExtractSubAsset(const Entry& e, EditorContext& ct
 
     if (!CopyAssetPath(e.path, destPath, false)) return {};
 
-    // .meta は複製しない。
-    // WHY: GUID をコピーすると 2 つの実体が同じ GUID を名乗り、参照解決が
-    //      どちらを返すか不定になる。.meta を作らずに置けば、AssetDatabase の
-    //      スキャンが新しい GUID を採番して独立したアセットになる。
+    // .meta は複製しない。GUID をコピーすると 2 つの実体が同じ GUID を名乗り、
+    // 参照解決が不定になる。作らずに置けばスキャンが新しい GUID を採番する。
     return destPath;
 }
 
@@ -2947,18 +2900,12 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         return;
     }
 
-    // Library/Baked に隔離された生成物 (.anim 等) を Assets へ取り出す。
-    //
-    // WHY 取り出しを用意するか (Unity の "Extract From Prefab" 相当):
-    //   隔離した .anim は再インポートのたびに上書きされる。1 本だけ手で調整したい
-    //   (イベントを足す・別のクリップとして派生させる) 場合、上書きされない実体が要る。
-    //   コピーして Assets へ置き、新しい GUID を振れば独立アセットになり、
-    //   以降は原本 FBX の再インポートから切り離される。
-    //
-    // WHY 元の参照を書き換えないか:
-    //   既存のシーンや .animcontroller は Library 側を guid で指している。取り出した
-    //   瞬間に全部を新しい方へ向けると、「複製したつもりが元も変わった」ことになる。
-    //   取り出した実体を使うかどうかは、人が参照を差し替えて決める。
+    // Library/Baked に隔離された生成物 (.anim 等) を Assets へ取り出す
+    // (Unity の "Extract From Prefab" 相当)。
+    // 隔離した .anim は再インポートのたびに上書きされるので、手で調整したいときは
+    // 上書きされない実体が要る。新しい GUID を振れば原本 FBX から切り離される。
+    // 元の参照は書き換えない。全部を新しい方へ向けると「複製したつもりが元も変わった」
+    // ことになるので、差し替えるかどうかは人が決める。
     if (!e.isDir && e.isSubAsset && !e.isSpriteSubAsset && IsExtractableSubAsset(e)) {
         if (ImGui::MenuItem("Extract to Assets")) {
             const std::string extracted = ExtractSubAsset(e, ctx);
@@ -3005,10 +2952,9 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
 
     if (!e.isDir && IsImportableRaw(e.ext)) {
         // 原本と設定の変更はウォッチャーが自動で焼き直すので、ここは
-        // 「変更が無いのに作り直したい」ときの手動経路として残す。
-        // ラベルの出し分けは m_outdatedPaths ではなく「既に入っているか」で決める。
-        // WHY: 自動化した今、古い印はキュー投入から完了までの一瞬しか立たない。
-        //      それをラベルの根拠にすると、ほぼ常に Re-import が Import に見える。
+        // 「変更が無いのに作り直したい」ときの手動経路。
+        // ラベルは m_outdatedPaths ではなく「既に入っているか」で出し分ける
+        // (古い印はキュー投入から完了までの一瞬しか立たない)。
         const bool imported = IsAlreadyImported(e.path);
         if (ImGui::MenuItem(imported ? "\xe2\x86\xbb Re-import" : "Import")) {
             // 自動経路と同じ「処理中」の印で二重投入を防ぐ (完了時に取り除かれる)。
@@ -3106,14 +3052,9 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         m_findRefs.open = true;
 
         // 探すのは (1) GUID 参照、(2) パス参照 の 2 通り。
-        //
-        // WHY: ディスク上の参照は保存時に "guid:<32hex>" へ変換されているため
-        //      (GuidRefCodec)、ファイル名で探しても .scene からは 1 件も見つからない。
-        //      一方 baked アセットや guid を持たない参照はパスのまま残るので、両方を見る。
-        //
-        // NOTE: 以前はファイル名に加えて「拡張子を除いた stem」でも一致とみなしていたが、
-        //       これは "Fire" のような短い名前が無関係なファイルの本文へ大量に当たり、
-        //       結果一覧が使い物にならなかった。stem 単独の一致は採らない。
+        // ディスク上の参照は保存時に "guid:<32hex>" へ変換される (GuidRefCodec) が、
+        // baked アセットや guid を持たない参照はパスのまま残るため両方を見る。
+        // 拡張子を除いた stem 単独の一致は採らない ("Fire" のような短い名前が誤爆する)。
         const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(e.path);
         const std::string guidRef = guid.empty()
             ? std::string{} : std::string(asset::AssetDatabase::kGuidPrefix) + guid;
@@ -3359,8 +3300,6 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
         m_entryDragStarted = true;  // ドラッグ中はリリース時の選択変更を抑制
         const std::string payloadPath = ToAssetDragPayloadPath(e.path, ctx);
         ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
-        // ImGui payloadはプロセス境界を越えないため、同じdragを独立VFXEditor向けIPCでも追跡する。
-        VFXEditorLauncher::TrackAssetDrag(ctx.projectRoot, payloadPath);
         ImGui::TextUnformatted(e.name.c_str());
         ImGui::EndDragDropSource();
     }

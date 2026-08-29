@@ -1,20 +1,21 @@
-// FBZZ Engine
-// BehaviorTreePanel.hpp | fbzz::editor
-// .behaviortree を木として編集するパネル
-//
-// WHY 必要か:
-//   AssetBrowser の Create > Behavior Tree で .behaviortree を**作れるのに開けなかった**。
-//   アセット層 (BTNodeDef / Validate / Warnings / Compile) は揃っていたのに、
-//   編集面だけが無く、TOML を手書きするしかない状態だった。
-//
-// WHY 共通 GraphCanvas の上に作るか:
-//   Docs/design/graph-editor-framework.md が「フレームワークの最初の実利用者であり
-//   検証台」として想定していたのがこのパネル。木構造なので自動整列がそのまま効き、
-//   VFX の DAG より条件が良い。ここで API の穴が出れば framework 側を直す。
-//
-// 責務の分担:
-//   描画・パン・ズーム・選択・接続ドラッグ・ショートカット → GraphCanvas
-//   木の妥当性 (親の重複 / 循環 / 子数制限) と Undo と保存 → このパネル
+/// @file    BehaviorTreePanel.hpp
+/// @brief   .behaviortree を木として編集するパネル。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY 必要か:
+/// AssetBrowser の Create > Behavior Tree で .behaviortree を**作れるのに開けなかった**。
+/// アセット層 (BTNodeDef / Validate / Warnings / Compile) は揃っていたのに、
+/// 編集面だけが無く、TOML を手書きするしかない状態だった。
+///
+/// WHY 共通 GraphCanvas の上に作るか:
+/// Docs/design/graph-editor-framework.md が「フレームワークの最初の実利用者であり
+/// 検証台」として想定していたのがこのパネル。木構造なので自動整列がそのまま効き、
+/// VFX の DAG より条件が良い。ここで API の穴が出れば framework 側を直す。
+///
+/// 責務の分担:
+/// 描画・パン・ズーム・選択・接続ドラッグ・ショートカット → GraphCanvas
+/// 木の妥当性 (親の重複 / 循環 / 子数制限) と Undo と保存 → このパネル
 #pragma once
 #include <Editor/GraphEditor/GraphCanvas.hpp>
 #include <Editor/GraphEditor/GraphView.hpp>

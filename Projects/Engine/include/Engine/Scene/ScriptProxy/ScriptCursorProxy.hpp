@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptCursorProxy.hpp | fbzz::scene
-// Script からマウスカーソル表示・拘束状態を制御するショートハンド
+/// @file    ScriptCursorProxy.hpp
+/// @brief   Script からマウスカーソル表示・拘束状態を制御するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #include <Engine/Core/Cursor.hpp>

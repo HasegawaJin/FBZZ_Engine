@@ -1,9 +1,10 @@
-// FBZZ Engine
-// ProjectResolver.hpp | fbzz
-// .fbzz_proj と ProjectSettings から起動対象を解決するユーティリティ
-//
-// WHY: Sandbox と EditorLauncher の両方が同じ「プロジェクトパス → 設定ファイル → 開始シーン」解決を必要とする。
-//      重複を避けるため Engine に集約し、どちらの起動バイナリからも参照できるようにする。
+/// @file    ProjectResolver.hpp
+/// @brief   .fbzz_proj と ProjectSettings から起動対象を解決するユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHY: Sandbox と EditorLauncher の両方が同じ「プロジェクトパス → 設定ファイル → 開始シーン」解決を必要とする。
+/// 重複を避けるため Engine に集約し、どちらの起動バイナリからも参照できるようにする。
 #pragma once
 
 #include <filesystem>

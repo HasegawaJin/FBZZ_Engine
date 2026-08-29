@@ -1,10 +1,12 @@
-// FBZZ Engine
-// ScriptEnvironmentProxy.hpp | fbzz::scene
-// Script からシーン全体の環境設定を操作するショートハンド。
-// EnvironmentLightComponent / AtmosphericScatteringComponent / SkyRenderer を
-// シーン内から検索して操作するため、任意の Script から呼べる。
-// WHY: これらは通常シーンに 1 つしか存在しないグローバル設定コンポーネントであり、
-//      Script が所属する GO に付いていなくても操作できることが重要。
+/// @file    ScriptEnvironmentProxy.hpp
+/// @brief   Script からシーン全体の環境設定を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// EnvironmentLightComponent / AtmosphericScatteringComponent / SkyRenderer を
+/// シーン内から検索して操作するため、任意の Script から呼べる。
+/// WHY: これらは通常シーンに 1 つしか存在しないグローバル設定コンポーネントであり、
+/// Script が所属する GO に付いていなくても操作できることが重要。
 #pragma once
 
 #include <Math/Vector3.hpp>

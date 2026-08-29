@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConvexHullCollider.cpp | fbzz::physics
-// Quickhull による凸包構築と GJK サポート関数
+/// @file    ConvexHullCollider.cpp
+/// @brief   Quickhull による凸包構築と GJK サポート関数。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/ConvexHullCollider.hpp>
 #include <algorithm>
 #include <array>

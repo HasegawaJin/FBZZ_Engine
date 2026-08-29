@@ -1,6 +1,7 @@
-// FBZZ Engine
-// GJK.cpp | fbzz::physics
-// Gilbert-Johnson-Keerthi アルゴリズムの実装
+/// @file    GJK.cpp
+/// @brief   Gilbert-Johnson-Keerthi アルゴリズムの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/GJK.hpp>
 #include <cmath>
 #include <limits>

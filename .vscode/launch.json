@@ -3,7 +3,7 @@
 // デバッグ実行の入口。
 //
 // 2 つの起動経路がある:
-//   1. ビルドツリー直接起動 (FBZZEditor / FBZZVFXEditor / Sandbox / Tests)
+//   1. ビルドツリー直接起動 (FBZZEditor / Sandbox / Tests)
 //      → 最短でブレークポイントに入れる。日常のデバッグはこちら。
 //   2. GameHub 経由 (GameHub + SDK)
 //      → 実際のユーザー体験と同じ経路。ただし GameHub は Editor を
@@ -69,27 +69,7 @@
             "presentation": { "group": "1_editor", "order": 2 }
         },
         {
-            "name": "FBZZVFXEditor (Development)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZVFXEditor.exe",
-            "args": [
-                "--project",
-                "${input:fbzzProjectPath}"
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
-            "environment": [
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
-                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
-            ],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build Editor (Development)",
-            "presentation": { "group": "1_editor", "order": 3 }
-        },
-        {
-            // GameHub から起動した Editor / VFXEditor はデバッガーを持たないので、
+            // GameHub から起動した Editor はデバッガーを持たないので、
             // 後からここでアタッチする。プロセス一覧から FBZZEditor.exe を選ぶ。
             "name": "Attach: FBZZ プロセス",
             "type": "cppvsdbg",

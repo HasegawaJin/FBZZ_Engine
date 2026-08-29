@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptMeshTrailProxy.hpp | fbzz::scene
-// Script から MeshTrailComponent を操作するショートハンド
+/// @file    ScriptMeshTrailProxy.hpp
+/// @brief   Script から MeshTrailComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 
 #include <Math/Vector4.hpp>

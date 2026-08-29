@@ -1,9 +1,10 @@
-// FBZZ Engine
-// PostProcessInspectorWidgets.hpp | fbzz::editor
-// PostProcessProfile (.fzdata) のオーバーライド編集 UI
-//
-// WHY 独立したファイルにするか: 「リストの編集」(追加・削除・並べ替え・一時無効化) は
-//     Inspector の他のどのパネルとも構造が違い、Inspector 本体へ直接書くと埋もれる。
+/// @file    PostProcessInspectorWidgets.hpp
+/// @brief   PostProcessProfile (.fzdata) のオーバーライド編集 UI。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// WHY 独立したファイルにするか: 「リストの編集」(追加・削除・並べ替え・一時無効化) は
+/// Inspector の他のどのパネルとも構造が違い、Inspector 本体へ直接書くと埋もれる。
 #pragma once
 #include <string>
 

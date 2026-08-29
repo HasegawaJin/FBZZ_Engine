@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptTerrainProxy.hpp | fbzz::scene
-// Script から TerrainComponent を照会・更新するショートハンド
+/// @file    ScriptTerrainProxy.hpp
+/// @brief   Script から TerrainComponent を照会・更新するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #include <Math/Vector3.hpp>

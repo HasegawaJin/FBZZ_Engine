@@ -1,6 +1,7 @@
-// FBZZ Engine
-// LODSystem.hpp | fbzz::scene
-// メインカメラ上の投影サイズから LODGroupComponent の表示レベルを決定する。
+/// @file    LODSystem.hpp
+/// @brief   メインカメラ上の投影サイズから LODGroupComponent の表示レベルを決定する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Core/Scheduler/ISystem.hpp>

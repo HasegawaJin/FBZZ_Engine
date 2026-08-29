@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TerrainWaterDefaults.hpp | fbzz::editor
-// Terrain / Water の Editor 既定アセットパスを集約する
+/// @file    TerrainWaterDefaults.hpp
+/// @brief   Terrain / Water の Editor 既定アセットパスを集約する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 namespace fbzz::editor {

@@ -1,16 +1,17 @@
-// FBZZ Engine
-// DynamicFontSource.cpp | fbzz::renderer
-// stb_truetype による SDF ラスタライズと stb_rect_pack によるアトラス配置
-//
-// 処理の流れ (1 グリフあたり):
-//   1. stbtt_GetCodepointSDF で符号付き距離場ビットマップを得る (padding ぶん外側へ広がる)
-//   2. stbrp_pack_rects でアトラス上の空き矩形へ配置する
-//   3. CPU 側のページバッファへコピーし、ページのダーティ矩形を広げる
-//   4. 全グリフを処理し終えたら、ページごとに 1 回だけ ITexture::UpdateRegion で転送する
-//
-// WHY (ダーティ矩形をまとめる): DX12 のリージョン転送は同期 Flush を伴うため、
-//   グリフ 1 個ごとに転送すると日本語 1 行の初出で数十回 GPU を待つことになる。
-//   ページ単位でまとめると、どれだけ文字が増えてもフレームあたり「ページ数」回で済む。
+/// @file    DynamicFontSource.cpp
+/// @brief   stb_truetype による SDF ラスタライズと stb_rect_pack によるアトラス配置。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// 処理の流れ (1 グリフあたり):
+/// 1. stbtt_GetCodepointSDF で符号付き距離場ビットマップを得る (padding ぶん外側へ広がる)
+/// 2. stbrp_pack_rects でアトラス上の空き矩形へ配置する
+/// 3. CPU 側のページバッファへコピーし、ページのダーティ矩形を広げる
+/// 4. 全グリフを処理し終えたら、ページごとに 1 回だけ ITexture::UpdateRegion で転送する
+///
+/// WHY (ダーティ矩形をまとめる): DX12 のリージョン転送は同期 Flush を伴うため、
+/// グリフ 1 個ごとに転送すると日本語 1 行の初出で数十回 GPU を待つことになる。
+/// ページ単位でまとめると、どれだけ文字が増えてもフレームあたり「ページ数」回で済む。
 #include <Engine/Renderer/DynamicFontSource.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/ITexture.hpp>

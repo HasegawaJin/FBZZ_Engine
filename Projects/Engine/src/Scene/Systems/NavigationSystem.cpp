@@ -1,11 +1,12 @@
-// FBZZ Engine
-// NavigationSystem.cpp | fbzz::scene
-// NavMeshAgentComponent の毎フレーム更新: パス計算 (A* + Funnel Algorithm) と移動 (Steering)。
-//
-// 複数 NavMeshSurface: agentTypeId が一致する Surface を各 Agent が個別に選択する。
-// オフメッシュリンク: NavMesh::offMeshLinks を A* のエッジとして扱い、TRAVERSING_LINK 状態で補間移動。
-// NavMesh スナップ: snapToNavMesh=true のとき移動後に NavMesh 面の Y へ補正する。
-// Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ逆変換して書き戻す。
+/// @file    NavigationSystem.cpp
+/// @brief   NavMeshAgentComponent の毎フレーム更新: パス計算 (A* + Funnel Algorithm) と移動 (Steering)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// 複数 NavMeshSurface: agentTypeId が一致する Surface を各 Agent が個別に選択する。
+/// オフメッシュリンク: NavMesh::offMeshLinks を A* のエッジとして扱い、TRAVERSING_LINK 状態で補間移動。
+/// NavMesh スナップ: snapToNavMesh=true のとき移動後に NavMesh 面の Y へ補正する。
+/// Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ逆変換して書き戻す。
 #include "Engine/Scene/Systems/NavigationSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/NavMeshQuery.hpp"

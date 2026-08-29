@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SignalTests.cpp | GoogleTest
-// Signal の購読・解除と通知中の変更に対する契約を自動検証する。
+/// @file    SignalTests.cpp
+/// @brief   Signal の購読・解除と通知中の変更に対する契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Signal.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// OperatorRegistry.cpp | fbzz::editor
-// Editor Operator の登録簿と実行経路
+/// @file    OperatorRegistry.cpp
+/// @brief   Editor Operator の登録簿と実行経路。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
 #include <Editor/Op/EditorOperator.hpp>
 
 #include <Editor/EditorContext.hpp>

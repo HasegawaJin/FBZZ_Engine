@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimCtrlImporter.cpp | fbzz::asset
-// .animctrl TOML → AnimatorControllerAsset ローダー (LoadAnimatorControllerAsset ラッパー)
+/// @file    AnimCtrlImporter.cpp
+/// @brief   .animctrl TOML → AnimatorControllerAsset ローダー (LoadAnimatorControllerAsset ラッパー)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Engine/Asset/AnimCtrlImporter.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Core/Logger.hpp>

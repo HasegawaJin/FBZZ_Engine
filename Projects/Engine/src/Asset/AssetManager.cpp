@@ -1,16 +1,21 @@
-// FBZZ Engine
-// AssetManager.cpp | fbzz::asset
-// アセットロード・キャッシュ管理
-// 新 API は Load<T>() テンプレートをヘッダーでインライン化。ここでは旧 API と Init を実装する。
+/// @file    AssetManager.cpp
+/// @brief   アセットロード・キャッシュ管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 新 API は Load<T>() テンプレートをヘッダーでインライン化。ここでは旧 API と Init を実装する。
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AnimationImporter.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AnimCtrlImporter.hpp>
+#include <Engine/Asset/SequenceAsset.hpp>
+#include <Engine/Asset/SequenceImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
+#include <Engine/Asset/FzVertexCompat.hpp>
 #include <Engine/Asset/IblAsset.hpp>
 #include <Engine/Asset/IblImporter.hpp>
 #include <Engine/Asset/ImageImporter.hpp>
@@ -177,11 +182,13 @@ std::unique_ptr<Model> LoadFzMeshModel(
         FBZZ_LOG_ERROR("AssetManager: bad .mesh magic [%s]", absPath.c_str());
         return nullptr;
     }
-    if (hdr.version != FZMESH_VERSION || hdr.vertexCount == 0 || hdr.indexCount == 0) {
+    if (hdr.version == 0 || hdr.version > FZMESH_VERSION
+        || hdr.vertexCount == 0 || hdr.indexCount == 0) {
         FBZZ_LOG_ERROR("AssetManager: unsupported .mesh header version=%u vertices=%u indices=%u [%s]",
                        hdr.version, hdr.vertexCount, hdr.indexCount, absPath.c_str());
         return nullptr;
     }
+    const bool hasVertexColor = hdr.version >= 2;
 
     auto mesh = std::make_unique<renderer::Mesh>();
     mesh->vertexCount = hdr.vertexCount;
@@ -202,9 +209,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
             mesh->cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex),
             sizeof(renderer::SkinnedVertex));
     } else {
-        mesh->cpuVertices.resize(hdr.vertexCount);
-        if (!reader.ReadBytes(mesh->cpuVertices.data(),
-                              hdr.vertexCount * sizeof(renderer::Vertex))) {
+        if (!ReadStaticVertices(reader, hdr.vertexCount, hasVertexColor, mesh->cpuVertices)) {
             FBZZ_LOG_ERROR("AssetManager: truncated .mesh vertices [%s]", absPath.c_str());
             return nullptr;
         }
@@ -532,6 +537,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     RegisterImporter<TextureAsset>            (std::make_unique<ImageImporter>());
     RegisterImporter<IblAsset>               (std::make_unique<IblImporter>());
     RegisterImporter<PhysicsMaterialAsset>    (std::make_unique<PhysicsMaterialImporter>());
+    RegisterImporter<SequenceAsset>           (std::make_unique<SequenceImporter>());
 }
 
 void AssetManager::UnloadAll()
@@ -549,6 +555,7 @@ void AssetManager::UnloadAll()
     AssetStore<TextureAsset>::Get().Clear();
     AssetStore<IblAsset>::Get().Clear();
     AssetStore<PhysicsMaterialAsset>::Get().Clear();
+    AssetStore<SequenceAsset>::Get().Clear();
 
     // 旧 API キャッシュをクリア
     s_models.clear();
@@ -669,6 +676,12 @@ AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const
 }
 
 template<>
+AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath)
+{
+    return LoadFromStore<SequenceAsset>(relativePath);
+}
+
+template<>
 ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h)
 {
     return GetFromStore<ModelAsset>(h);
@@ -708,6 +721,12 @@ template<>
 PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h)
 {
     return GetFromStore<PhysicsMaterialAsset>(h);
+}
+
+template<>
+SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h)
+{
+    return GetFromStore<SequenceAsset>(h);
 }
 
 template<>
@@ -752,6 +771,12 @@ void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath)
     UnloadFromStore<PhysicsMaterialAsset>(relativePath);
 }
 
+template<>
+void AssetManager::Unload<SequenceAsset>(const std::string& relativePath)
+{
+    UnloadFromStore<SequenceAsset>(relativePath);
+}
+
 void AssetManager::FlushFailed()
 {
     // WHY Init() のインポーター登録と同じ並び・同じ顔ぶれで書くか:
@@ -768,6 +793,7 @@ void AssetManager::FlushFailed()
     FlushStore<TextureAsset>();
     FlushStore<IblAsset>();
     FlushStore<PhysicsMaterialAsset>();
+    FlushStore<SequenceAsset>();
 
     for (auto it = s_models.begin(); it != s_models.end(); )
         it = it->second ? ++it : s_models.erase(it);
@@ -851,6 +877,7 @@ int AssetManager::ReloadPath(const std::string& absPath)
     reloaded += ReloadFromStore<MaterialAsset>(target);
     reloaded += ReloadFromStore<PhysicsMaterialAsset>(target);
     reloaded += ReloadFromStore<TerrainAsset>(target);
+    reloaded += ReloadFromStore<SequenceAsset>(target);
 
     // 旧 API の .mat は別のスロットプールに載る。レンダラーが参照しているのは
     // こちらなので、新 API 側だけ差し替えても画面は古いままになる。

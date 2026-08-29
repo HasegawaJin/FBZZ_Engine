@@ -1,7 +1,9 @@
-// FBZZ Engine
-// DataAssetFactory.cpp | fbzz::asset
-// DataAsset 型名から生成関数を引くレジストリ実装 (ScriptFactory と同構造)。
-// DataAssetRegistry が .fzdata の "type" キーからユーザー定義 DataAsset を復元するために使う。
+/// @file    DataAssetFactory.cpp
+/// @brief   DataAsset 型名から生成関数を引くレジストリ実装 (ScriptFactory と同構造)。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// DataAssetRegistry が .fzdata の "type" キーからユーザー定義 DataAsset を復元するために使う。
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <algorithm>

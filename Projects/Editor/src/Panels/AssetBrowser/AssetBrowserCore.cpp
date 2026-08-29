@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AssetBrowserCore.cpp | fbzz::editor
-// AssetBrowser のルート、マウント、ディレクトリ走査
+/// @file    AssetBrowserCore.cpp
+/// @brief   AssetBrowser のルート、マウント、ディレクトリ走査。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/UndoStack.hpp>

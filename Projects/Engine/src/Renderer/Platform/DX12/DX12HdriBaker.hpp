@@ -1,26 +1,27 @@
-// FBZZ Engine
-// DX12HdriBaker.hpp | fbzz::renderer
-// IIblBaker の DirectX 12 実装 — Editor 専用の HDRI (.hdr / .exr) → DDS ベイカー
-//
-// 役割の切り分け:
-//   - DX12HdriBaker (このファイル): Editor から呼ばれ、equirect float ピクセルを
-//     4 枚の DDS (env / irradiance / prefilter / brdf) + .ibl 記述子へ焼き出す。
-//     DX11IblBaker::Bake() の DX12 版。IRenderer::CreateIblBaker() が生成する。
-//   - DX12IblBaker (別ファイル): BakeSkyLight() の実行時畳み込み経路 (空連動 IBL)。
-//     こちらは開いているフレームのコマンドリストへ記録する GPU 常駐テクスチャ生成。
-//
-// 設計上の注意 (DX11IblBaker との差分):
-//   - DX11 は即時コンテキストで完結するが、DX12 は「記録 → submit → フェンス待ち」が必要。
-//     そのため本クラスは **フレームサイクルから独立した自前のコマンドリスト・フェンス**を持ち、
-//     各フェーズを同期実行する (DX11 の即時実行と同じ意味論を再現。一度きりの Editor 操作なので
-//     GPU 完全待機のストールは許容する)。
-//   - DX12 には ID3D11DeviceContext::GenerateMips が無い。env cubemap の mip 連鎖は
-//     GPU で mip0 を焼いた後、DirectXTex (CPU) で生成し直して GPU へ再アップロードする。
-//     これにより prefilter の PDF ベース LOD 参照 (firefly 低減) が DX11 と一致する。
-//   - Compute の Root Signature / static sampler / 定数スロット契約 (b0 / t0 / u0) は
-//     DX12PsoCache の汎用 Compute Root Signature をそのまま共有する。
-//
-// 依存方向: 上位レイヤーからは IIblBaker* としてのみ触れられる (DX12 型は漏らさない)。
+/// @file    DX12HdriBaker.hpp
+/// @brief   IIblBaker の DirectX 12 実装 — Editor 専用の HDRI (.hdr / .exr) → DDS ベイカー。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+///
+/// 役割の切り分け:
+/// - DX12HdriBaker (このファイル): Editor から呼ばれ、equirect float ピクセルを
+/// 4 枚の DDS (env / irradiance / prefilter / brdf) + .ibl 記述子へ焼き出す。
+/// DX11IblBaker::Bake() の DX12 版。IRenderer::CreateIblBaker() が生成する。
+/// - DX12IblBaker (別ファイル): BakeSkyLight() の実行時畳み込み経路 (空連動 IBL)。
+/// こちらは開いているフレームのコマンドリストへ記録する GPU 常駐テクスチャ生成。
+///
+/// 設計上の注意 (DX11IblBaker との差分):
+/// - DX11 は即時コンテキストで完結するが、DX12 は「記録 → submit → フェンス待ち」が必要。
+/// そのため本クラスは **フレームサイクルから独立した自前のコマンドリスト・フェンス**を持ち、
+/// 各フェーズを同期実行する (DX11 の即時実行と同じ意味論を再現。一度きりの Editor 操作なので
+/// GPU 完全待機のストールは許容する)。
+/// - DX12 には ID3D11DeviceContext::GenerateMips が無い。env cubemap の mip 連鎖は
+/// GPU で mip0 を焼いた後、DirectXTex (CPU) で生成し直して GPU へ再アップロードする。
+/// これにより prefilter の PDF ベース LOD 参照 (firefly 低減) が DX11 と一致する。
+/// - Compute の Root Signature / static sampler / 定数スロット契約 (b0 / t0 / u0) は
+/// DX12PsoCache の汎用 Compute Root Signature をそのまま共有する。
+///
+/// 依存方向: 上位レイヤーからは IIblBaker* としてのみ触れられる (DX12 型は漏らさない)。
 #pragma once
 
 #include <Engine/Renderer/IIblBaker.hpp>

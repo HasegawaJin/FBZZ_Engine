@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ColliderDebugGeometry.cpp | fbzz::physics
-// コライダー可視化用のワイヤージオメトリ生成
+/// @file    ColliderDebugGeometry.cpp
+/// @brief   コライダー可視化用のワイヤージオメトリ生成。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #include <Physics/ColliderDebugGeometry.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/OBBCollider.hpp>

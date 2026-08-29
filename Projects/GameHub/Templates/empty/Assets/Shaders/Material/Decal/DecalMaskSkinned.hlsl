@@ -44,8 +44,8 @@ DecalMaskPixelInput VSMain(SkinnedVSInput input)
 float4 PSMain(DecalMaskPixelInput input) : SV_Target
 {
     float sceneDepth = texSceneDepth.Load(int3((int)input.pos.x, (int)input.pos.y, 0)).r;
-    float sceneView  = LinearizeDepth(sceneDepth,  nearZ, farZ);
-    float fragView   = LinearizeDepth(input.pos.z, nearZ, farZ);
+    float sceneView  = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+    float fragView   = LinearizeDepth(input.pos.z, nearZ, farZ, isOrthographic);
     // 許容差は DecalMask.hlsl と同じ根拠。スキニングは行列合成を挟むぶん
     // 通常描画との丸め差が大きいので、狭めないこと。
     if (fragView > sceneView + max(0.01f, sceneView * 0.002f))

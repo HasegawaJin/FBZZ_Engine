@@ -1,11 +1,12 @@
-// FBZZ Engine
-// EditorSettings.hpp | fbzz::editor
-// エディター設定の永続化 (toml++ 使用)
-//
-// WHY: エディター固有の UX 設定 (カメラ速度・グリッド表示・ギズモモード等) は
-//      プロジェクト設定とは独立して保存したい。
-//      ProjectSettings はゲームランタイムに影響する設定であり、
-//      EditorSettings はエディター操作の快適性に関するユーザー個人設定のため分離している。
+/// @file    EditorSettings.hpp
+/// @brief   エディター設定の永続化 (toml++ 使用)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// WHY: エディター固有の UX 設定 (カメラ速度・グリッド表示・ギズモモード等) は
+/// プロジェクト設定とは独立して保存したい。
+/// ProjectSettings はゲームランタイムに影響する設定であり、
+/// EditorSettings はエディター操作の快適性に関するユーザー個人設定のため分離している。
 #pragma once
 #include <Editor/BuildSettings.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
@@ -28,6 +29,9 @@ struct EditorSettings {
     //      前回セッション終了時の位置・回転を保存して次回起動時に復元する。
     float cameraLastPx = 0.0f, cameraLastPy = 2.5f, cameraLastPz = -8.0f;
     float cameraLastRx = 0.0f, cameraLastRy = 0.0f, cameraLastRz = 0.0f, cameraLastRw = 1.0f;
+    // 平行投影で作業していたなら、その画角ごと次回へ引き継ぐ。
+    bool  cameraOrthographic  = false;
+    float cameraOrthoHeight   = 20.0f;
 
     // --- ビュー -----------------------------------------------------------
     bool  showGrid            = true;

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// PreviewPanelRenderers.hpp | fbzz::editor
-// PreviewPanel の種別別描画実装と共通パネルを接続する内部 API。
-// WHY: IPreviewPanel の公開契約に Animation 専用の UI 状態を漏らさず、
-//      Animation / Material / VFX の実装ファイルを独立して保守できるようにする。
+/// @file    PreviewPanelRenderers.hpp
+/// @brief   PreviewPanel の種別別描画実装と共通パネルを接続する内部 API。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY: IPreviewPanel の公開契約に Animation 専用の UI 状態を漏らさず、
+/// Animation / Material / VFX の実装ファイルを独立して保守できるようにする。
 #pragma once
 
 namespace fbzz::editor {

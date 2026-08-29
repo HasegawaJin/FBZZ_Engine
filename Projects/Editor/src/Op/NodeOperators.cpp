@@ -1,13 +1,14 @@
-// FBZZ Engine
-// NodeOperators.cpp | fbzz::editor
-// GameObject そのものを対象にする Operator
-//
-// WHY: リネームは Hierarchy パネルと AI (node.rename) の両方が実装を持っていた。
-//      しかも中身が違い、パネル側は**名前を 1 つ変えるためにシーン全体を 2 回
-//      TOML シリアライズ**していた (ExecuteSceneEditWithUndo 経由)。
-//      同じ操作なのに Undo の重さと履歴ラベルが経路で違う状態で、
-//      大きなシーンではパネルからのリネームだけが目に見えて重かった。
-//      Docs/design/editor-operator-model.md
+/// @file    NodeOperators.cpp
+/// @brief   GameObject そのものを対象にする Operator。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: リネームは Hierarchy パネルと AI (node.rename) の両方が実装を持っていた。
+/// しかも中身が違い、パネル側は**名前を 1 つ変えるためにシーン全体を 2 回
+/// TOML シリアライズ**していた (ExecuteSceneEditWithUndo 経由)。
+/// 同じ操作なのに Undo の重さと履歴ラベルが経路で違う状態で、
+/// 大きなシーンではパネルからのリネームだけが目に見えて重かった。
+/// Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>

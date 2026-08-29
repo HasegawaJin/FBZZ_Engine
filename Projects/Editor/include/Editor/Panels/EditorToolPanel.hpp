@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorToolPanel.hpp | fbzz::editor
-// Effect/Map等の制作ツールが共通利用するEditorパネル基底クラス
+/// @file    EditorToolPanel.hpp
+/// @brief   Effect/Map等の制作ツールが共通利用するEditorパネル基底クラス。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>

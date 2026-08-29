@@ -1,16 +1,17 @@
-// FBZZ Engine
-// DX11IblBaker.cpp | fbzz::renderer
-// IIblBaker の DX11 実装 — GPU Compute でベイク → DirectXTex で DDS 保存
-//
-// 処理フロー:
-//   1. CSO を読み込み ComputeShader を生成
-//   2. Equirect float* → GPU Texture2D (R32G32B32A32_FLOAT)
-//   3. EquirectToCubemap CS × 6 面 → Environment Cubemap (R16G16B16A16_FLOAT)
-//   4. IrradianceConvolution CS × 6 面 → Irradiance Cubemap (R16G16B16A16_FLOAT)
-//   5. PrefilteredEnvMap CS × (face × mip) → Prefiltered Cubemap (R16G16B16A16_FLOAT)
-//   6. BRDFIntegration CS × 1 → BRDF LUT (R16G16B16A16_FLOAT、RG を使用)
-//   7. CaptureTexture → SaveToDDSFile × 4
-//   8. FzIblHeader を .ibl に書き出す
+/// @file    DX11IblBaker.cpp
+/// @brief   IIblBaker の DX11 実装 — GPU Compute でベイク → DirectXTex で DDS 保存。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 処理フロー:
+/// 1. CSO を読み込み ComputeShader を生成
+/// 2. Equirect float* → GPU Texture2D (R32G32B32A32_FLOAT)
+/// 3. EquirectToCubemap CS × 6 面 → Environment Cubemap (R16G16B16A16_FLOAT)
+/// 4. IrradianceConvolution CS × 6 面 → Irradiance Cubemap (R16G16B16A16_FLOAT)
+/// 5. PrefilteredEnvMap CS × (face × mip) → Prefiltered Cubemap (R16G16B16A16_FLOAT)
+/// 6. BRDFIntegration CS × 1 → BRDF LUT (R16G16B16A16_FLOAT、RG を使用)
+/// 7. CaptureTexture → SaveToDDSFile × 4
+/// 8. FzIblHeader を .ibl に書き出す
 #pragma comment(lib, "ole32.lib") // DirectXTex が内部で WIC を使う
 
 #include "DX11IblBaker.hpp"

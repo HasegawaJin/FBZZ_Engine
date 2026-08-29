@@ -1,18 +1,19 @@
-// FBZZ Engine
-// VolumeOverrides.hpp | fbzz::asset
-// 組み込みの VolumeOverride 派生一覧。
-//
-// 効果 1 つ = クラス 1 つ。各クラスはその効果のパラメーターだけを持ち、
-// 対応する XxxSettings::enabled は Apply 側で立てる。
-// WHY enabled をフィールドに持たないか:
-//   「リストに載っていること」自体が使用の意思表示で、一時的に外したいときは
-//   基底の active を落とす。両方あると「enabled=false の Bloom オーバーライド」
-//   という、存在するのに効かない読みにくい状態が作れてしまう。
-//
-// 新しい効果を足す手順はこのファイル内で完結する:
-//   1. ここにクラスを 1 つ足す
-//   2. VolumeOverrides.cpp に Apply / Reflect を書き、FBZZ_REGISTER_VOLUME_OVERRIDE
-//   Inspector の Add Override メニューと .fzdata の読み書きは自動的に追随する。
+/// @file    VolumeOverrides.hpp
+/// @brief   組み込みの VolumeOverride 派生一覧。
+/// @author  Hasegawa Jin
+/// @date    2026-08-14
+///
+/// 効果 1 つ = クラス 1 つ。各クラスはその効果のパラメーターだけを持ち、
+/// 対応する XxxSettings::enabled は Apply 側で立てる。
+/// WHY enabled をフィールドに持たないか:
+/// 「リストに載っていること」自体が使用の意思表示で、一時的に外したいときは
+/// 基底の active を落とす。両方あると「enabled=false の Bloom オーバーライド」
+/// という、存在するのに効かない読みにくい状態が作れてしまう。
+///
+/// 新しい効果を足す手順はこのファイル内で完結する:
+/// 1. ここにクラスを 1 つ足す
+/// 2. VolumeOverrides.cpp に Apply / Reflect を書き、FBZZ_REGISTER_VOLUME_OVERRIDE
+/// Inspector の Add Override メニューと .fzdata の読み書きは自動的に追随する。
 #pragma once
 #include <Engine/Asset/VolumeOverride.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>

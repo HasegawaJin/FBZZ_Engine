@@ -1,21 +1,22 @@
-// FBZZ Engine
-// BehaviorTreeOperators.cpp | fbzz::editor
-// Behavior Tree の Operator
-//
-// WHY ここに全 bt_* を並べないか:
-//   bt_* の AI ツールは 29 個あるが、その大半は
-//   bt.node.setField(path, nodeId, field, value) のように
-//   「パスと id と名前を指定して値を書く」API で、コマンドパレットから
-//   呼びたい場面が存在しない。Operator にすると引数宣言が増えるだけで、
-//   人が使う面には現れないまま層が 1 つ深くなる。
-//
-//   Operator にする価値があるのは
-//     - 引数が無い / ほとんど無い
-//     - 「今開いているドキュメント」に対して人も実行したい
-//   もの。ここではそれだけを登録する。実装の共有 (本題) は
-//   Editor/GraphEditor/BehaviorTreeOps.hpp が担っており、
-//   パネルと AI ハンドラの両方がそこを通る。
-//   Docs/design/editor-operator-model.md §6 Step 5
+/// @file    BehaviorTreeOperators.cpp
+/// @brief   Behavior Tree の Operator。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY ここに全 bt_* を並べないか:
+/// bt_* の AI ツールは 29 個あるが、その大半は
+/// bt.node.setField(path, nodeId, field, value) のように
+/// 「パスと id と名前を指定して値を書く」API で、コマンドパレットから
+/// 呼びたい場面が存在しない。Operator にすると引数宣言が増えるだけで、
+/// 人が使う面には現れないまま層が 1 つ深くなる。
+///
+/// Operator にする価値があるのは
+/// - 引数が無い / ほとんど無い
+/// - 「今開いているドキュメント」に対して人も実行したい
+/// もの。ここではそれだけを登録する。実装の共有 (本題) は
+/// Editor/GraphEditor/BehaviorTreeOps.hpp が担っており、
+/// パネルと AI ハンドラの両方がそこを通る。
+/// Docs/design/editor-operator-model.md §6 Step 5
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>

@@ -1,8 +1,10 @@
-// FBZZ Engine
-// TypeIndex.hpp | fbzz::util
-// RTTI に依存しないコンパイル時型 ID
-// ComponentArray や登録表で型ごとの連番 ID が必要な場合に使う。
-// dynamic_cast の代替ではなく、型別ストレージのキーとして使う。
+/// @file    TypeIndex.hpp
+/// @brief   RTTI に依存しないコンパイル時型 ID。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
+///
+/// ComponentArray や登録表で型ごとの連番 ID が必要な場合に使う。
+/// dynamic_cast の代替ではなく、型別ストレージのキーとして使う。
 #pragma once
 #include <cstdint>
 

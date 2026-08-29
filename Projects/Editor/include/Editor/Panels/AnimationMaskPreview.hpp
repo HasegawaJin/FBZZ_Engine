@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimationMaskPreview.hpp | fbzz::editor
-// Avatar Mask を IPreviewPanel 契約で描画する Inspector 埋め込みプレビュー。
+/// @file    AnimationMaskPreview.hpp
+/// @brief   Avatar Mask を IPreviewPanel 契約で描画する Inspector 埋め込みプレビュー。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 #include <Editor/Panels/IPreviewPanel.hpp>

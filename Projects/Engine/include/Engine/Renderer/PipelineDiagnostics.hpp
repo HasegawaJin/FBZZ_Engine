@@ -1,7 +1,7 @@
-/// @file PipelineDiagnostics.hpp
-/// @brief 現在のパイプラインでは効かない設定を列挙する
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    PipelineDiagnostics.hpp
+/// @brief   現在のパイプラインでは効かない設定を列挙する
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 //
 // WHY 要るか: パイプラインを切り替えると、有効にしてある設定の一部が黙って無視される。
 //     SSAO を ON にしたまま Forward を選ぶと、チェックは入っているのに絵は変わらない。

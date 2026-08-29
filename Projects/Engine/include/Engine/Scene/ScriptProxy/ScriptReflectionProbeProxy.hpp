@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ScriptReflectionProbeProxy.hpp | fbzz::scene
-// Script から ReflectionProbeComponent を操作するショートハンド。
-// 影響半径や強度をランタイムで変化させてポータル・水面反射の切り替えなどに使う。
+/// @file    ScriptReflectionProbeProxy.hpp
+/// @brief   Script から ReflectionProbeComponent を操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 影響半径や強度をランタイムで変化させてポータル・水面反射の切り替えなどに使う。
 #pragma once
 
 #include <Math/Vector3.hpp>

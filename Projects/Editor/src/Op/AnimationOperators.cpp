@@ -1,17 +1,18 @@
-// FBZZ Engine
-// AnimationOperators.cpp | fbzz::editor
-// Animation Graph とアセット保存の Operator
-//
-// WHY: 移行前、AI は Animator の構造 (state / transition / motion / parameter / layer) を
-//      一通り編集できたのに、**保存する手段が 1 つも無かった**。
-//      `asset_save_all` に相当するものは Editor の Save All メニューにしか無く、
-//      AI から見ると「編集は成功したのに、次に開くと元に戻っている」という形でしか
-//      現れない。しかも編集の直後に viewport を見ても違いは正しく出るので、
-//      観察による反復では永久に気づけない種類の欠落だった。
-//
-//      同様にキャンバスの自動整列もパネル内部に閉じており、AI が足したステートは
-//      既存ノードと重なった位置に残り続けていた。
-//      Docs/design/editor-operator-model.md
+/// @file    AnimationOperators.cpp
+/// @brief   Animation Graph とアセット保存の Operator。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY: 移行前、AI は Animator の構造 (state / transition / motion / parameter / layer) を
+/// 一通り編集できたのに、**保存する手段が 1 つも無かった**。
+/// `asset_save_all` に相当するものは Editor の Save All メニューにしか無く、
+/// AI から見ると「編集は成功したのに、次に開くと元に戻っている」という形でしか
+/// 現れない。しかも編集の直後に viewport を見ても違いは正しく出るので、
+/// 観察による反復では永久に気づけない種類の欠落だった。
+///
+/// 同様にキャンバスの自動整列もパネル内部に閉じており、AI が足したステートは
+/// 既存ノードと重なった位置に残り続けていた。
+/// Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>

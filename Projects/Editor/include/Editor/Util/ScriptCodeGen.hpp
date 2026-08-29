@@ -1,21 +1,22 @@
-// FBZZ Engine
-// ScriptCodeGen.hpp | fbzz::editor
-// エディター内からのソースコード生成ユーティリティ
-//
-// WHAT: C++ スクリプトヘッダと HLSL シェーダーのテンプレートを生成し、
-//       スクリプト登録リストを Assets/Scripts の実ファイル一覧から自動同期する。
-//
-// WHY (エントリ一元管理):
-//   スクリプト登録エントリは Scripts/ScriptList.inl (X-macro ファイル) で一元管理する。
-//   DLL 側 / EXE 側ともに ScriptList.inl を #include して展開するため、
-//   ScriptCodeGen は Assets/ 配下の FBZZ_SCRIPT(...) をスキャンして、登録と include を同期する。
-//
-//   include セクション (DLL/EXE 共通 #include のみ):
-//     新方式のスクリプトは実装を inline 化したため _IMPL ガードや専用 .cpp は不要。
-//     Reflect() は FBZZ_REFLECT がヘッダ内で生成するため .generated.hpp も生成しない。
-//
-//   コード生成後にファイルが変更されると ScriptDllLoader の監視が反応し
-//   自動リビルド → ホットリロードまで自動実行される。
+/// @file    ScriptCodeGen.hpp
+/// @brief   エディター内からのソースコード生成ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-03
+///
+/// WHAT: C++ スクリプトヘッダと HLSL シェーダーのテンプレートを生成し、
+/// スクリプト登録リストを Assets/Scripts の実ファイル一覧から自動同期する。
+///
+/// WHY (エントリ一元管理):
+/// スクリプト登録エントリは Scripts/ScriptList.inl (X-macro ファイル) で一元管理する。
+/// DLL 側 / EXE 側ともに ScriptList.inl を #include して展開するため、
+/// ScriptCodeGen は Assets/ 配下の FBZZ_SCRIPT(...) をスキャンして、登録と include を同期する。
+///
+/// include セクション (DLL/EXE 共通 #include のみ):
+/// 新方式のスクリプトは実装を inline 化したため _IMPL ガードや専用 .cpp は不要。
+/// Reflect() は FBZZ_REFLECT がヘッダ内で生成するため .generated.hpp も生成しない。
+///
+/// コード生成後にファイルが変更されると ScriptDllLoader の監視が反応し
+/// 自動リビルド → ホットリロードまで自動実行される。
 #pragma once
 #include <string>
 

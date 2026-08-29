@@ -4,6 +4,7 @@
 /// @date    2025-01-01
 #include "Engine/Audio/XAudio2Device.hpp"
 #include "Engine/Core/Logger.hpp"
+#include <xaudio2fx.h>
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -15,6 +16,10 @@
 namespace fbzz::audio
 {
 namespace {
+
+// バスはすべてステレオ。SetPan は左右 2ch にしか書かず、XAudio2 の残響も入力 1-2ch しか
+// 受けないので、マスターに合わせると 5.1 環境でだけ ReverbZone が死ぬ。展開は XAudio2 任せ。
+constexpr uint32_t kBusChannels = 2;
 
 bool EqualsIgnoreCase(const std::string& a, const std::string& b)
 {
@@ -32,9 +37,8 @@ bool XAudio2Device::Init()
 {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (hr == RPC_E_CHANGED_MODE) {
-        // WHY: Window が OLE ドラッグ&ドロップ (IDropTarget) のためにこのスレッドを先に STA で
-        //      初期化していると、MTA 要求は RPC_E_CHANGED_MODE を返す。XAudio2 は STA でも動作するため、
-        //      この COM 初期化を「所有しない」形でそのまま続行する (対の CoUninitialize は呼ばない)。
+        // Window が OLE D&D のためこのスレッドを STA で先に初期化していると MTA 要求が弾かれる。
+        // XAudio2 は STA でも動くので、COM を「所有しない」形で続行する (CoUninitialize しない)。
         m_comInitialized = false;
     } else if (FAILED(hr) && hr != S_FALSE) {
         // S_FALSE はすでに初期化済みなので問題なし。それ以外の失敗のみエラー扱いにする。
@@ -105,15 +109,15 @@ void XAudio2Device::DestroyBuses()
 {
     // 子が親へ送っているため、末尾 (葉) から壊す。
     for (auto it = m_buses.rbegin(); it != m_buses.rend(); ++it) {
-        if (*it) (*it)->DestroyVoice();
+        if (it->voice) it->voice->DestroyVoice();
     }
     m_buses.clear();
 }
 
 IXAudio2Voice* XAudio2Device::BusVoice(BusIndex bus) const
 {
-    if (bus < m_buses.size() && m_buses[bus]) return m_buses[bus];
-    if (!m_buses.empty() && m_buses[kMasterBus]) return m_buses[kMasterBus];
+    if (bus < m_buses.size() && m_buses[bus].voice) return m_buses[bus].voice;
+    if (!m_buses.empty() && m_buses[kMasterBus].voice) return m_buses[kMasterBus].voice;
     return nullptr;
 }
 
@@ -140,29 +144,55 @@ bool XAudio2Device::RebuildBuses(const BusDesc* descs, size_t count)
     }
     const uint32_t maxDepth = *std::max_element(depth.begin(), depth.end());
 
-    m_buses.assign(count, nullptr);
+    m_buses.assign(count, BusEntry{});
     for (size_t i = 0; i < count; ++i) {
         XAUDIO2_SEND_DESCRIPTOR send{};
         XAUDIO2_VOICE_SENDS    sends{};
         const XAUDIO2_VOICE_SENDS* sendList = nullptr;
         if (i != 0) {
-            send  = XAUDIO2_SEND_DESCRIPTOR{ 0, m_buses[parentIndex[i]] };
+            send  = XAUDIO2_SEND_DESCRIPTOR{ 0, m_buses[parentIndex[i]].voice };
             sends = XAUDIO2_VOICE_SENDS{ 1, &send };
             sendList = &sends;
+        }
+
+        // 残響 XAPO は submix の生成時にしか差し込めない。止めた状態で載せ、ゾーンで回し始める。
+        IUnknown* reverbApo = nullptr;
+        XAUDIO2_EFFECT_DESCRIPTOR effect{};
+        XAUDIO2_EFFECT_CHAIN      chain{};
+        const XAUDIO2_EFFECT_CHAIN* chainPtr = nullptr;
+        if (descs[i].reverb && SUCCEEDED(XAudio2CreateReverb(&reverbApo))) {
+            effect.pEffect        = reverbApo;
+            effect.InitialState   = FALSE;
+            effect.OutputChannels = kBusChannels;
+            chain    = XAUDIO2_EFFECT_CHAIN{ 1, &effect };
+            chainPtr = &chain;
         }
 
         // XAudio2 は ProcessingStage の小さい submix から処理する。子は親より
         // 先に処理されなければならないので、深いバスほど小さい stage を与える。
         const UINT32 stage = maxDepth - depth[i];
-        const HRESULT hr = m_xaudio2->CreateSubmixVoice(
-            &m_buses[i], m_masterChannels, m_masterSampleRate,
-            XAUDIO2_VOICE_USEFILTER, stage, sendList, nullptr);
+        HRESULT hr = m_xaudio2->CreateSubmixVoice(
+            &m_buses[i].voice, kBusChannels, m_masterSampleRate,
+            XAUDIO2_VOICE_USEFILTER, stage, sendList, chainPtr);
+        if (FAILED(hr) && chainPtr) {
+            // 残響を諦めれば作れる。無音のバスにするよりは素通しで残す。
+            FBZZ_LOG_WARN("XAudio2Device: reverb unavailable on bus [%s], falling back to dry",
+                          descs[i].name.c_str());
+            chainPtr = nullptr;
+            hr = m_xaudio2->CreateSubmixVoice(
+                &m_buses[i].voice, kBusChannels, m_masterSampleRate,
+                XAUDIO2_VOICE_USEFILTER, stage, sendList, nullptr);
+        }
+        // submix が AddRef 済みなので、こちらの参照は返す。
+        if (reverbApo) reverbApo->Release();
+
         if (FAILED(hr)) {
             FBZZ_LOG_ERROR("XAudio2Device: CreateSubmixVoice failed for bus [%s]",
                            descs[i].name.c_str());
             DestroyBuses();
             return false;
         }
+        m_buses[i].hasReverb = chainPtr != nullptr;
 
         SetBusVolume(static_cast<BusIndex>(i), descs[i].volume);
         SetBusLowPass(static_cast<BusIndex>(i), descs[i].lowPassCutoff);
@@ -172,19 +202,47 @@ bool XAudio2Device::RebuildBuses(const BusDesc* descs, size_t count)
 
 void XAudio2Device::SetBusVolume(BusIndex bus, float volume)
 {
-    if (bus >= m_buses.size() || !m_buses[bus]) return;
-    m_buses[bus]->SetVolume((std::max)(volume, 0.0f));
+    if (bus >= m_buses.size() || !m_buses[bus].voice) return;
+    m_buses[bus].voice->SetVolume((std::max)(volume, 0.0f));
 }
 
 void XAudio2Device::SetBusLowPass(BusIndex bus, float normalizedCutoff)
 {
-    if (bus >= m_buses.size() || !m_buses[bus]) return;
+    if (bus >= m_buses.size() || !m_buses[bus].voice) return;
     normalizedCutoff = (std::max)(0.001f, (std::min)(normalizedCutoff, 1.0f));
     XAUDIO2_FILTER_PARAMETERS filter{};
     filter.Type      = LowPassFilter;
     filter.Frequency = 2.0f * std::sin(3.14159265358979323846f * normalizedCutoff / 6.0f);
     filter.OneOverQ  = 1.0f;
-    m_buses[bus]->SetFilterParameters(&filter);
+    m_buses[bus].voice->SetFilterParameters(&filter);
+}
+
+void XAudio2Device::SetBusReverb(BusIndex bus, float wet,
+                                 float decaySeconds, float highFrequencyRatio)
+{
+    if (bus >= m_buses.size()) return;
+    BusEntry& entry = m_buses[bus];
+    if (!entry.voice || !entry.hasReverb) return;
+
+    wet = (std::max)(0.0f, (std::min)(wet, 1.0f));
+    const bool wantEnabled = wet > 0.0f;
+    if (wantEnabled != entry.reverbEnabled) {
+        if (wantEnabled) entry.voice->EnableEffect(0);
+        else             entry.voice->DisableEffect(0);
+        entry.reverbEnabled = wantEnabled;
+    }
+    if (!wantEnabled) return;
+
+    // I3DL2 の一般的な部屋を土台に、ゾーンが持つ 3 つだけ差し替える。
+    // ネイティブ値を直に組むと反射遅延や密度まで決めることになり、対応が付かない。
+    XAUDIO2FX_REVERB_I3DL2_PARAMETERS i3dl2 = XAUDIO2FX_I3DL2_PRESET_GENERIC;
+    i3dl2.WetDryMix    = wet * 100.0f;
+    i3dl2.DecayTime    = (std::max)(decaySeconds, 0.1f);
+    i3dl2.DecayHFRatio = (std::max)(0.1f, (std::min)(highFrequencyRatio, 2.0f));
+
+    XAUDIO2FX_REVERB_PARAMETERS native{};
+    ReverbConvertI3DL2ToNative(&i3dl2, &native, FALSE);
+    entry.voice->SetEffectParameters(0, &native, sizeof(native));
 }
 
 uint32_t XAudio2Device::PlayBuffer(
@@ -250,9 +308,8 @@ void XAudio2Device::PauseBuffer(uint32_t voiceId)
 {
     auto it = m_voices.find(voiceId);
     if (it == m_voices.end()) return;
-    // WHY FlushSourceBuffers を呼ばないか: フラッシュするとキューが空になり、
-    //     再生位置も失われる。Stop() だけなら voice は「止まっているが
-    //     バッファは保持したまま」になり、Start() で続きから鳴る。
+    // FlushSourceBuffers を呼ぶとキューが空になり再生位置も失われる。
+    // Stop() だけならバッファを保持したままなので Start() で続きから鳴る。
     it->second.voice->Stop();
 }
 
@@ -274,7 +331,7 @@ void XAudio2Device::SetPitch(uint32_t voiceId, float pitch)
 {
     auto it = m_voices.find(voiceId);
     if (it == m_voices.end()) return;
-    // WHY: XAudio2 の許容範囲外は HRESULT 失敗になるため、公開 API 境界で制限する。
+    // 許容範囲外は HRESULT 失敗になるので、公開 API 境界で丸める。
     pitch = (std::max)(XAUDIO2_MIN_FREQ_RATIO, (std::min)(pitch, XAUDIO2_MAX_FREQ_RATIO));
     it->second.voice->SetFrequencyRatio(pitch);
 }
@@ -290,7 +347,7 @@ void XAudio2Device::SetPan(uint32_t voiceId, float pan)
     const uint32_t destinationChannels = it->second.destinationChannels;
     if (destinationChannels < 2) return;
 
-    // WHAT: モノラル音源を等電力パンで左右へ配分し、音像移動時の音量落ちを抑える。
+    // 等電力パン。単純な線形配分だと音像が中央を通るときに音量が落ちる。
     pan = (std::max)(-1.0f, (std::min)(pan, 1.0f));
     const float left  = std::sqrt(0.5f * (1.0f - pan));
     const float right = std::sqrt(0.5f * (1.0f + pan));
@@ -309,7 +366,7 @@ void XAudio2Device::SetLowPass(uint32_t voiceId, float normalizedCutoff)
     normalizedCutoff = (std::max)(0.001f, (std::min)(normalizedCutoff, 1.0f));
     XAUDIO2_FILTER_PARAMETERS filter{};
     filter.Type = LowPassFilter;
-    // XAudio2の周波数係数は 2*sin(pi*cutoff/6) で、1.0を無加工相当に写像する。
+    // XAudio2 の周波数係数は 2*sin(pi*cutoff/6)。1.0 が無加工相当。
     filter.Frequency = 2.0f * std::sin(3.14159265358979323846f * normalizedCutoff / 6.0f);
     filter.OneOverQ  = 1.0f;
     it->second.voice->SetFilterParameters(&filter);

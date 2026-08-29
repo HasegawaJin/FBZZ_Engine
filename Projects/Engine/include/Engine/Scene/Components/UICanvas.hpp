@@ -1,10 +1,15 @@
-// FBZZ Engine
-// UICanvas.hpp | fbzz::scene
-// ランタイム UI の座標空間設定コンポーネント
-// ScreenSpace と WorldSpace の変換基準を Scene に持たせる。
-// UISystem は sortOrder と renderMode を見て描画順を決める。
+/// @file    UICanvas.hpp
+/// @brief   ランタイム UI の座標空間設定コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-23
+///
+/// ScreenSpace と WorldSpace の変換基準を Scene に持たせる。
+/// UISystem は sortOrder と renderMode を見て描画順を決める。
 #pragma once
+#include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/Vector2.hpp>
+#include <Math/Vector4.hpp>
 
 namespace fbzz::scene {
 
@@ -38,6 +43,28 @@ struct UICanvas {
     // 敵の頭上に出す体力ゲージなど、3D 空間に置きつつ常に読めるようにする UI に使う。
     bool         faceCamera   = false;
     bool         enabled      = true;
+
+    // 表示を保証したい領域から外す余白 (左, 上, 右, 下 / Canvas ピクセル)。
+    //
+    // WHY Canvas の寸法を縮めず余白で持つか:
+    //   canvasWidth を縮めると、アンカー 0..1 の意味そのものが動く。同じシーンを
+    //   セーフエリア有り / 無しで見たときに要素の相対位置まで変わってしまい、
+    //   「安全域の指定」ではなく「別のレイアウト」になる。Canvas の広さは
+    //   そのままに、直下の子から見た親の矩形だけを内側へ寄せる。
+    // WHY OS から取らないか: この環境で実測できるのはウィンドウの寸法までで、
+    //   テレビのオーバースキャンやウルトラワイドで避けたい量は作り手の判断。
+    //   自動値を当てにすると、確認できない環境の値を信じることになる。
+    math::Vector4 safeArea = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    // キーボード / ゲームパッドの方向入力でフォーカスを移動させる。
+    // 立てた Canvas でだけ働く (UIControls.hpp の UINavigation を参照)。
+    bool         navigationEnabled = false;
+    // 倒しっぱなしのときの初回待ちと以降の間隔 (秒)。滑って飛ばないようにする。
+    float        navigationRepeatDelay    = 0.4f;
+    float        navigationRepeatInterval = 0.12f;
+
+    // ランタイム専用: いまフォーカスが乗っている要素。シーンへは保存しない。
+    EntityRef    focusedObject{};
 
     // 直近のフレームで UISystem が解決したマウス位置 (Canvas 空間、左上原点)。
     //
@@ -76,10 +103,23 @@ struct UICanvas {
         r.FloatRange("referenceHeight", referenceHeight, 1.0f, 16384.0f);
         r.FloatRange("matchWidthOrHeight", matchWidthOrHeight, 0.0f, 1.0f);
 
+        r.Field("safeArea", safeArea);
+        r.Tooltip("表示を保証したい領域から外す余白 (左, 上, 右, 下 / Canvas px)。"
+                  "Canvas の広さは変えず、直下の子から見た親の矩形だけを内側へ寄せます");
+
         r.Group("World & Camera Space");
         r.FloatRange("worldScale", worldScale, 0.00001f, 1.0f);
         r.FloatRange("planeDistance", planeDistance, 0.01f, 10000.0f);
         r.Field("faceCamera",    faceCamera);
+
+        r.Group("Navigation");
+        r.Field("navigationEnabled", navigationEnabled);
+        r.Tooltip("方向キー / パッドでフォーカスを移動させます。"
+                  "移動先には UI Navigation コンポーネントが要ります");
+        r.FieldIf("navigationRepeatDelay", navigationRepeatDelay, navigationEnabled,
+                  "倒しっぱなしで次へ進むまでの初回待ち (秒)");
+        r.FieldIf("navigationRepeatInterval", navigationRepeatInterval, navigationEnabled,
+                  "以降の移動間隔 (秒)");
     }
 };
 

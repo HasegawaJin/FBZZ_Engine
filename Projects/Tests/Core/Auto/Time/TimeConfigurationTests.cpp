@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TimeConfigurationTests.cpp | GoogleTest
-// Time の時間倍率・FPS 設定のクランプ契約を自動検証する。
+/// @file    TimeConfigurationTests.cpp
+/// @brief   Time の時間倍率・FPS 設定のクランプ契約を自動検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <gtest/gtest.h>
 
 #include <Engine/Core/Time.hpp>

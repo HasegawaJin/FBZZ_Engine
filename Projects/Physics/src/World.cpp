@@ -1,6 +1,7 @@
-// FBZZ Engine
-// World.cpp | fbzz::physics
-// 物理シミュレーション世界の管理と Step 実行
+/// @file    World.cpp
+/// @brief   物理シミュレーション世界の管理と Step 実行。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/World.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>

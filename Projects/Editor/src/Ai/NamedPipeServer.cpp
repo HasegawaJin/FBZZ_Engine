@@ -1,6 +1,7 @@
-// FBZZ Engine
-// NamedPipeServer.cpp | fbzz::editor::ai
-// Win32 Named Pipe の待受・接続処理。オーバーラップド IO + stopEvent でクリーンに停止する。
+/// @file    NamedPipeServer.cpp
+/// @brief   Win32 Named Pipe の待受・接続処理。オーバーラップド IO + stopEvent でクリーンに停止する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Ai/NamedPipeServer.hpp>
 
 #include <atomic>

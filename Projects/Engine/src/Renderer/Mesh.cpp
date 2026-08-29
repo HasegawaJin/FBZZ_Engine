@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Mesh.cpp | fbzz::renderer
-// Mesh ユーティリティ関数
+/// @file    Mesh.cpp
+/// @brief   Mesh ユーティリティ関数。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #include "Engine/Renderer/Mesh.hpp"
 #include <cmath>
 #include <limits>

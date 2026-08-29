@@ -1,10 +1,11 @@
-// FBZZ Engine
-// StandaloneApp.hpp | fbzz::editor_launcher
-// エディタ UI を持たないスタンドアロン (配布ゲーム) モードのライフサイクル管理。
-//
-// WHY: IModule を実装することで Application::Run() に乗せ、
-//      Profiler / MemorySystem / Input::Update / PollEvents などの
-//      フレーム境界処理をエンジン側に委譲する。
+/// @file    StandaloneApp.hpp
+/// @brief   エディタ UI を持たないスタンドアロン (配布ゲーム) モードのライフサイクル管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: IModule を実装することで Application::Run() に乗せ、
+/// Profiler / MemorySystem / Input::Update / PollEvents などの
+/// フレーム境界処理をエンジン側に委譲する。
 #pragma once
 #include <Editor/ScriptDllLoader.hpp>
 #include <Engine/Core/ILogSink.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorCommon.hpp | fbzz::editor
-// Inspector のカテゴリ分割ファイルで共有する描画ヘルパー
+/// @file    InspectorCommon.hpp
+/// @brief   Inspector のカテゴリ分割ファイルで共有する描画ヘルパー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #pragma once
 
 #include <Editor/Panels/InspectorPanel.hpp>
@@ -51,6 +52,7 @@
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/UIElement.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
@@ -61,7 +63,6 @@
 // ComponentUndoCompare の特化で参照する。
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
-#include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
@@ -164,27 +165,13 @@ void PushComponentValueCommand(scene::GameObject& go,
 
 // ── Undo 判定 ────────────────────────────────────────────────────────────────
 // 「ユーザーが Inspector で編集しうる値」が変わったかを比較する。
-//
-// 従来は「ImGui の ActiveID が動いた = 編集した」とみなして積んでいた。しかし
-// ActiveID はクリックや折りたたみの開閉でも動くため、参照先を見に行っただけで
-// 中身の変わらない履歴が残っていた。この判定があると、編集ウィジェットを
-// コンポーネントのセクション内へ自由に置けるようになる。
-//
-// WHY 構造体全体を比較しないか (重要):
-//   コンポーネントはランタイム状態を同じ構造体に持っている — GPU ハンドル、ボーンの
-//   EntityID、スキニング済み頂点バッファ、ベイク結果、dirty フラグ、LOD の可視フラグ。
-//   これらはシステムが毎フレーム書き換えるため、全体比較にすると「触っていないのに
-//   毎フレーム差分あり」になって Undo が溢れる。
-//
-// WHY Reflect() を基準にするか:
-//   Reflect() に載っていないフィールドは SceneSerializer にも保存されない。つまり
-//   「Reflect() されている = 永続的なユーザー状態」がほぼ成り立つ。1 つ 1 つ手で
-//   フィールドを列挙するより、リフレクションを通した値を比較する方が短く、
-//   フィールドを増やしたときに比較を書き忘れて Undo が静かに壊れることもない。
-//
-//   例外は「Reflect() では表現できず SceneSerializer が専用コードで読み書きする」
-//   フィールドを持つコンポーネント (vector<struct> 等)。そちらは下で個別に特化し、
-//   リフレクションの digest に加えてその配列も比較する。
+// ActiveID が動いた = 編集した、とみなすとクリックや折りたたみでも履歴が積まれる。
+// 構造体全体は比較できない ─ GPU ハンドルや dirty フラグなどのランタイム状態を
+// 同じ構造体が持っており、毎フレーム差分ありになって Undo が溢れる。
+// 基準は Reflect()。載っていないフィールドは SceneSerializer にも保存されないので、
+// 「Reflect() されている = 永続的なユーザー状態」がほぼ成り立つ。
+// 例外は Reflect() で表現できず専用コードで読み書きするフィールド (vector<struct> 等)。
+// そちらは下で個別に特化し、digest に加えてその配列も比較する。
 
 // Reflect() された値をすべて 1 本の文字列へ落とすリフレクタ。
 // WHY 文字列へ落とすか: 型ごとの比較関数を書かずに済み、フィールドの追加・削除にも
@@ -276,11 +263,8 @@ template<typename T>
 }
 
 // Reflect() がそのコンポーネントの編集可能な状態を完全に覆っていることの宣言。
-// 既定は false = 従来どおり必ず Undo を積む (安全側)。
-//
-// WHY オプトインにするか: 宣言を書き忘れても挙動は今までと同じ (履歴が少し多い) で済む。
-//     逆に既定を true にすると、Reflect() が不完全なコンポーネントで
-//     「編集したのに Undo できない」という取り返しのつかない壊れ方になる。
+// 既定は false = 必ず Undo を積む (安全側)。書き忘れても履歴が少し多いだけで済むが、
+// 既定を true にすると「編集したのに Undo できない」取り返しのつかない壊れ方になる。
 template<typename T>
 struct ComponentUndoReflects : std::false_type {};
 
@@ -320,13 +304,10 @@ FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshModifierComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshOffMeshLinkComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSensorComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSurfaceComponent)
-// ParticleEmitter は意図的にここへ載せない。
-// WHY: 保存は ParticleEmitterAssetCodec が担っており、Reflect() は編集可能な状態の
-//      一部しか覆っていない (Trail / Collision / Volumetric / Distortion / Blackbody /
-//      各カーブ / bursts / orbital など)。宣言すると digest が一致してしまい、
-//      それらを編集しても Undo に積まれず markSceneDirty も呼ばれない
-//      = «編集したのに保存されず黙って消える» になる。
-//      Reflect() が codec と一致したら (別タスク) ここへ戻すこと。
+// ParticleEmitter は意図的にここへ載せない。保存は ParticleEmitterAssetCodec が担い、
+// Reflect() は編集可能な状態の一部 (Trail / Collision / 各カーブ / bursts 等) しか覆わない。
+// 宣言すると digest が一致し、編集しても Undo に積まれず «保存されず黙って消える» になる。
+// Reflect() が codec と一致したらここへ戻すこと。
 FBZZ_COMPONENT_UNDO_REFLECTS(ParticleForceField)
 FBZZ_COMPONENT_UNDO_REFLECTS(PostProcessVolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(ReflectionProbeComponent)
@@ -336,7 +317,6 @@ FBZZ_COMPONENT_UNDO_REFLECTS(SphereColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(SunMoonRenderer)
 FBZZ_COMPONENT_UNDO_REFLECTS(TerrainColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(TrailComponent)
-FBZZ_COMPONENT_UNDO_REFLECTS(VFXGraphComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(VolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(VolumetricCloudComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(WaterComponent)
@@ -358,12 +338,9 @@ template<typename T, typename Equal>
     return true;
 }
 
-// DrawComponentSectionCustom (unique_ptr を持つため専用 Snapshot を使うコンポーネント) の
-// 変更判定。Snapshot が operator== を持っていればそれを使い、無ければ従来どおり必ず積む。
-//
-// WHY 型特化ではなく operator== の検出にするか:
-//   Snapshot 型は使う側の .cpp の無名名前空間で定義されている。ヘッダー側から
-//   明示的特化を書けないため、Snapshot に == を足すだけで有効になる形にしておく。
+// DrawComponentSectionCustom (専用 Snapshot を使うコンポーネント) の変更判定。
+// Snapshot が operator== を持っていればそれを使い、無ければ必ず積む。
+// Snapshot 型は .cpp の無名名前空間にあり明示的特化を書けないので、== の検出で拾う。
 template<typename Snapshot>
 struct ComponentSnapshotCompare {
     static bool Equal(const Snapshot& a, const Snapshot& b)
@@ -710,9 +687,8 @@ void DrawUndoableComponentBody(scene::GameObject& go,
     const Snapshot after = capture(component);
 
     // 値が動いていない操作 (参照欄のクリック等) では積まない。
-    // WHY component の digest だけで足りるか: RigidBodyComponent::Reflect は
-    //     rigidBody ポインタの先 (mass / gravityScale 等) まで読み書きする。
-    //     Snapshot は body を深いコピーで持つため、before 側の digest も実値を反映する。
+    // RigidBodyComponent::Reflect は body の先まで読み書きし、Snapshot も body を
+    // 深いコピーで持つので、component の digest だけで足りる。
     if (edit.before.hasBody == after.hasBody &&
         ComponentUndoCompare<scene::RigidBodyComponent>::UserValuesEqual(
             edit.before.component, component)) {
@@ -792,9 +768,8 @@ inline ImU32 ComponentCategoryAccent(scene::ComponentCategory category)
 }
 
 // 登録テーブルから型 → カテゴリを引く (未登録は Misc)。
-// WHY: テンプレート側で ForEachRegisteredComponent を回すと、コンポーネント型ごとに
-//      全登録ぶんの実体化が起きて (型数の 2 乗) ビルドが跳ねる。テーブル化は
-//      非テンプレート関数に閉じ込め、実体化を 1 回だけに抑える。
+// テンプレート側で ForEachRegisteredComponent を回すと実体化が型数の 2 乗になる。
+// テーブル化を非テンプレート関数へ閉じ込め、実体化を 1 回に抑える。
 inline scene::ComponentCategory LookupComponentCategory(const std::type_info& type)
 {
     static const std::vector<std::pair<std::type_index, scene::ComponentCategory>> table = []() {
@@ -820,12 +795,8 @@ inline ImU32 ComponentAccent()
 }
 
 // コンポーネントの「有効フラグ」の置き場を吸収する。
-//
-// WHY 2 か所を見るか:
-//   大半のコンポーネントは直下に bool enabled を持つが、オーサリング値とランタイム状態を
-//   分けた型 (ParticleEmitter) は settings.enabled に置く。ヘッダーのチェックボックスが
-//   直下しか見ないと、分離した瞬間に «Inspector から無効化も再有効化もできない» になり、
-//   スクリプトが false にして保存したシーンは TOML を手で直すまで復帰できなくなる。
+// 大半は直下の bool enabled だが、オーサリング値を分けた型 (ParticleEmitter) は
+// settings.enabled に置く。直下しか見ないと «Inspector から無効化も再有効化もできない»。
 template<typename T>
 [[nodiscard]] constexpr bool ComponentHasEnabled()
 {
@@ -843,9 +814,8 @@ template<typename T>
 }
 
 // 既存のカテゴリ別 Inspector を一度収集し、GameObject が持つ順序で再生するための一時バッファ。
-// WHY: 専用 Inspector 関数を一つへ統合すると、既存の Component 固有 UI と Undo 実装を
-//      大規模に書き換える必要がある。描画要求だけを遅延させれば、既存の責務を保ったまま
-//      カードの並び順だけを差し替えられる。
+// 描画要求だけを遅延させれば、既存の Component 固有 UI と Undo 実装に触れずに
+// カードの並び順だけを差し替えられる。
 struct InspectorComponentDrawCollector {
     struct Request {
         std::string key;
@@ -980,11 +950,9 @@ void DrawComponentSection(scene::GameObject* go,
     const ImU32 accent = ComponentAccent<T>();
     widgets::ComponentHeaderResult header;
 
-    // WHY: BoneComponent のような構造上常に有効な補助 Component は enabled を持たない。
-    //      共通 Inspector を利用できるよう、bool enabled がある型だけ有効チェックを描画する。
-    // NOTE: ParticleEmitter のようにオーサリング値を settings へ分離した型は、直下ではなく
-    //       settings.enabled に持つ。ComponentEnabledFlag が両方の置き場を吸収する
-    //       (分離したとたんに «Inspector から無効化できない» になるのを防ぐ)。
+    // BoneComponent のような常に有効な補助 Component は enabled を持たないので、
+    // bool enabled がある型だけ有効チェックを描画する。
+    // 置き場が直下か settings かは ComponentEnabledFlag が吸収する。
     constexpr bool hasEnabled = ComponentHasEnabled<T>();
     if constexpr (hasEnabled) {
         T beforeEnabled{};
@@ -1151,10 +1119,8 @@ inline const char* ComponentCategoryLabel(scene::ComponentCategory category)
 }
 
 // DrawComponentSection の Snapshot カスタマイズ版。
-// WHY: unique_ptr を含むコンポーネント (MeshCollider 等) では、コンポーネント全体のコピーが
-//      physics body を消去してしまう。CaptureFn / ApplyFn を渡すことで
-//      serializable フィールドのみを Undo スナップショットとして保持できる。
-//      T が異なれば ComponentActiveEditCustom<T, Snapshot> の static も別インスタンスになる。
+// unique_ptr を含むコンポーネント (MeshCollider 等) は、全体のコピーで physics body が消える。
+// CaptureFn / ApplyFn を渡して serializable フィールドだけを Undo へ持つ。
 template<typename T, typename Snapshot, typename DrawFn, typename CaptureFn, typename ApplyFn>
 void DrawComponentSectionCustom(
     scene::GameObject* go,
@@ -1502,9 +1468,8 @@ inline scene::CylinderColliderComponent CreateCylinderCollider(float radius = 0.
     return collider;
 }
 // SyncColliderPreview — Inspector で形状を編集した直後に physics::Collider へ反映する。
-// WHY: 以前はここに独自の姿勢反映コピーがあり、しかも world ではなくローカルの
-//      position / rotation を使っていたため、親を持つオブジェクトでは Inspector の
-//      プレビューとコライダー可視化がずれていた。Engine 側の ColliderSync に一本化する。
+// 姿勢の反映は Engine 側の ColliderSync に一本化する (独自コピーだと world とローカルを
+// 取り違えて、親を持つオブジェクトでプレビューがずれる)。
 template<typename T>
 void SyncColliderPreview(scene::GameObject& go, T& col)
 {
@@ -1759,12 +1724,8 @@ inline void CollectAddedComponentOps(
 }
 
 // 登録済みコンポーネントを追加し、この操作で増えた型だけを戻す Undo コマンドを返す。
-//
-// WHY: 以前はシーン全体を TOML 化して before/after スナップショットにしていた。
-//      1 コンポーネント追加のたびに全文シリアライズが 2 回走るうえ、Undo が
-//      Scene の Deserialize による全再構築になるため EntityID が振り直され、
-//      選択・ロック・エディタ非表示・Inspector のスクロール位置が毎回消えていた。
-//      増えたコンポーネントだけを足し引きすれば、シーンの他の部分には一切触れない。
+// シーン全体のスナップショットにすると Undo が全再構築になって EntityID が振り直され、
+// 選択・ロック・スクロール位置が毎回消える。増えた型だけを足し引きする。
 template<typename T>
 std::unique_ptr<ICommand> AddRegisteredComponentWithUndo(scene::GameObject& go,
                                                          EditorContext& ctx,
@@ -1802,14 +1763,9 @@ std::unique_ptr<ICommand> AddRegisteredComponentWithUndo(scene::GameObject& go,
 }
 
 // 型名 (文字列) で登録済みコンポーネントを追加する。
-//
-// WHY 名前引きの経路が要るか:
-//   FBZZ_REQUIRE_COMPONENT の要求は DLL 境界を越える都合で型名の文字列でしか運べない。
-//   ここで ComponentRegistry を畳んで名前を突き合わせ、追加そのものは
-//   AddRegisteredComponent<T> へ委ねる。こうすると Fix ボタンで付いたコンポーネントが
-//   Add Component メニューから付けたものと完全に同じ初期値になる
-//   (コライダーの自動フィット、RigidBody の既定質量、Animator の随伴追加など)。
-//   ここで go.AddComponent<T>() を直接呼ぶと、その既定値だけが失われる。
+// FBZZ_REQUIRE_COMPONENT の要求は DLL 境界を越える都合で型名の文字列でしか運べない。
+// 追加そのものは AddRegisteredComponent<T> へ委ねること。go.AddComponent<T>() を直接呼ぶと、
+// コライダーの自動フィットや RigidBody の既定質量といった初期化が失われる。
 inline bool AddRegisteredComponentByName(scene::GameObject& go, std::string_view typeName)
 {
     bool handled = false;
@@ -1825,9 +1781,7 @@ inline bool AddRegisteredComponentByName(scene::GameObject& go, std::string_view
 
 // 型名で「そのコンポーネントを持っているか」を答える。FBZZ_REF(LightComponent, ...) の
 // ドロップ検証とピッカー絞り込みが使う。
-//
-// WHY 内部型 (addable = false) も対象にするか: 参照するだけなら手で足せる必要はない。
-//     Bone のようにエンジンが張るコンポーネントを指したい場面はある。
+// 内部型 (addable = false) も対象にする ─ Bone のようにエンジンが張るものを指す場面はある。
 inline bool HasRegisteredComponentByName(scene::GameObject& go, std::string_view typeName)
 {
     bool found = false;
@@ -1841,9 +1795,7 @@ inline bool HasRegisteredComponentByName(scene::GameObject& go, std::string_view
 
 // 不足している必須コンポーネントをまとめて追加し、この操作で増えた型だけを戻す
 // Undo コマンドを返す。Inspector の "Fix" ボタンの実体。
-//
-// WHY 1 コマンドにまとめるか: 3 個足りない状態を直したとき、Ctrl+Z 3 回で戻るのは
-//     「1 回のクリックを 1 回で取り消せる」という期待に反する。押した操作の単位で戻す。
+// 1 コマンドにまとめる ─ 押した操作の単位で戻せないと Ctrl+Z を何度も叩くことになる。
 inline std::unique_ptr<ICommand> AddMissingComponentsWithUndo(
     scene::GameObject& go,
     EditorContext& ctx,
@@ -1960,11 +1912,8 @@ inline bool AddComponentCategory(const char* label, const char* filter, DrawItem
     return drawItems(label, filter);
 }
 // Add Component メニュー。targets が複数なら、選択全体へまとめて追加する。
-//
-// WHY: 「選んだ 20 個全部に AudioSource を足す」はレベル調整で普通に出る操作なのに、
-//      この UI が単一 GameObject 前提だったため 20 回繰り返すしかなかった。
-//      対象をリストで受ければ、単体は「要素 1 個のリスト」として同じ経路に乗る。
-//      追加は 1 回の Undo でまとめて戻る (対象数だけ Ctrl+Z を叩かせない)。
+// 対象をリストで受ければ、単体は「要素 1 個のリスト」として同じ経路に乗る。
+// 追加は 1 回の Undo でまとめて戻る。
 inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& targets,
                                       char (&filterBuffer)[64],
                                       EditorContext& ctx,

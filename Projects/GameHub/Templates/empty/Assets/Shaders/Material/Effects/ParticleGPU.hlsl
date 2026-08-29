@@ -105,8 +105,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         if (gSoftParticles != 0)
         {
             float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
-            float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ);
-            float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
+            float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+            float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
             volAlpha *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
         }
         // Particle.hlsl と同じ扱い: 積分済みの scattered は事前乗算なので、
@@ -122,8 +122,8 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     if (gSoftParticles != 0)
     {
         float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
-        float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ);
-        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
+        float sceneLinear = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+        float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ, isOrthographic);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
     // 頂点カラー (グラデーション) は既にリニア。tint は .mat 由来の共有色調整。

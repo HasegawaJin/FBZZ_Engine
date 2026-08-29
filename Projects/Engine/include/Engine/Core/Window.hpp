@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Window.hpp | fbzz::core
-// Win32 ウィンドウの生成・イベント処理
-// Renderer のリサイズ通知と ImGui の WndProc フックをつなぐ境界。
-// HWND は必要なバックエンドへ渡すために公開する。
+/// @file    Window.hpp
+/// @brief   Win32 ウィンドウの生成・イベント処理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Renderer のリサイズ通知と ImGui の WndProc フックをつなぐ境界。
+/// HWND は必要なバックエンドへ渡すために公開する。
 #pragma once
 #include <string>
 #include <vector>

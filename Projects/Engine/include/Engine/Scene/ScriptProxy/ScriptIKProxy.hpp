@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ScriptIKProxy.hpp | fbzz::scene
-// Script から IKSolverComponent のチェーンを操作するショートハンド。
-// ターゲット名でチェーンを特定するため、Inspector で設定した targetName と一致させること。
+/// @file    ScriptIKProxy.hpp
+/// @brief   Script から IKSolverComponent のチェーンを操作するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// ターゲット名でチェーンを特定するため、Inspector で設定した targetName と一致させること。
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

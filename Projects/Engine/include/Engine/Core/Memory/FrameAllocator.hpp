@@ -1,7 +1,9 @@
-// FBZZ Engine
-// FrameAllocator.hpp | fbzz::core
-// 1 フレーム内の一時メモリを管理する専用アロケータ
-// BeginFrame/EndFrame のタイミングで Reset し、短命データをまとめて再利用する。
+/// @file    FrameAllocator.hpp
+/// @brief   1 フレーム内の一時メモリを管理する専用アロケータ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+///
+/// BeginFrame/EndFrame のタイミングで Reset し、短命データをまとめて再利用する。
 #pragma once
 
 #include "Engine/Core/Memory/LinearAllocator.hpp"

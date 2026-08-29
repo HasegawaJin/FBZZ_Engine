@@ -1,7 +1,7 @@
-/// @file LensFlarePass.cpp
-/// @brief スクリーンスペースレンズフレアを HDR バッファへ加算合成するパス
-/// @author Hasegawa Jin
-/// @date 2026/06/23
+/// @file    LensFlarePass.cpp
+/// @brief   スクリーンスペースレンズフレアを HDR バッファへ加算合成するパス
+/// @author  Hasegawa Jin
+/// @date    2026/06/23
 
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>

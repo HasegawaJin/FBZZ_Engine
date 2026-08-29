@@ -1,15 +1,16 @@
-// FBZZ Engine
-// InputActionMapSerializer.cpp | fbzz::input
-// .inputactions (TOML) の読み書き
-//
-// WHY TOML か:
-//   シーン (.scene) / プロジェクト設定と同じ toml++ を使い、依存を増やさない。
-//   バイナリではなくテキストにすることで、Git 上でキーコンフィグの差分が読める。
-//
-// WHY ProjectSettings/ に置くか:
-//   入力バインドはエディタ設定ではなくゲーム設定であり、
-//   BuildPipeline の CopyProjectFiles ステップで配布物に含める必要がある。
-//   Assets/EditorConfig/ に置くと配布物から漏れる。
+/// @file    InputActionMapSerializer.cpp
+/// @brief   .inputactions (TOML) の読み書き。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY TOML か:
+/// シーン (.scene) / プロジェクト設定と同じ toml++ を使い、依存を増やさない。
+/// バイナリではなくテキストにすることで、Git 上でキーコンフィグの差分が読める。
+///
+/// WHY ProjectSettings/ に置くか:
+/// 入力バインドはエディタ設定ではなくゲーム設定であり、
+/// BuildPipeline の CopyProjectFiles ステップで配布物に含める必要がある。
+/// Assets/EditorConfig/ に置くと配布物から漏れる。
 #include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Core/Logger.hpp"
 

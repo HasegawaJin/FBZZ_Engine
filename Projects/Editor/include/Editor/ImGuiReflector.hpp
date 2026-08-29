@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ImGuiReflector.hpp | fbzz::editor
-// ImGui implementation of scene script reflection fields
+/// @file    ImGuiReflector.hpp
+/// @brief   ImGui implementation of scene script reflection fields.
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include <Editor/Util/ImGuiWidgets.hpp>

@@ -1,11 +1,12 @@
-// FBZZ Engine
-// InputBinding.hpp | fbzz::input
-// 「アクション名 → 物理入力」のバインド定義
-//
-// WHY この層が必要か:
-//   スクリプトが KeyCode::SPACE を直接参照すると、キーコンフィグもゲームパッド対応も
-//   原理的に不可能になる。「Jump」という論理名と、それを発火させる物理入力の集合を
-//   分離することで、バインドの差し替えがゲームロジックに一切影響しなくなる。
+/// @file    InputBinding.hpp
+/// @brief   「アクション名 → 物理入力」のバインド定義。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY この層が必要か:
+/// スクリプトが KeyCode::SPACE を直接参照すると、キーコンフィグもゲームパッド対応も
+/// 原理的に不可能になる。「Jump」という論理名と、それを発火させる物理入力の集合を
+/// 分離することで、バインドの差し替えがゲームロジックに一切影響しなくなる。
 #pragma once
 #include "GamepadButton.hpp"
 #include <cstdint>

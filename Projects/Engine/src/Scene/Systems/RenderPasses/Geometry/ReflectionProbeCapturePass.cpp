@@ -1,10 +1,11 @@
-// FBZZ Engine
-// ReflectionProbeCapturePass.cpp | fbzz::scene
-// ReflectionProbe の空のみ／周辺メッシュ込み動的キャプチャと IBL 畳み込み
-//
-// WHY: プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得る。
-//      そのため更新間隔と明示リクエストで更新を間引き、昼夜変化だけを追従したい用途には
-//      DynamicSky、室内・配置物の反射には DynamicScene を提供する。
+/// @file    ReflectionProbeCapturePass.cpp
+/// @brief   ReflectionProbe の空のみ／周辺メッシュ込み動的キャプチャと IBL 畳み込み。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得る。
+/// そのため更新間隔と明示リクエストで更新を間引き、昼夜変化だけを追従したい用途には
+/// DynamicSky、室内・配置物の反射には DynamicScene を提供する。
 #include "GeometryPasses.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>

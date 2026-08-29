@@ -1,20 +1,21 @@
-// FBZZ Engine
-// EditorSerializer.cpp | fbzz::editor
-// Scene に付随する Editor 専用メタデータの TOML 永続化
-//
-// 保存先は Scene の "<scene>.meta" サイドカー内の [editor] テーブル。
-//
-// WHY サイドカーを丸ごと上書きしないか (不具合修正):
-//   "<scene>.meta" は Editor だけのものではない。AssetDatabase が同じファイルの
-//   [meta] guid にアセット GUID を書いており、.scene は GUID を持つ対象
-//   (AssetDatabase::ShouldHaveMeta) に含まれる。以前の実装は toml::table を新規に
-//   作って WriteText で上書きしていたため、シーンを保存するたびに [meta] guid が
-//   消えていた。次のスキャンで AssetDatabase が「GUID の無い .meta」を見つけて
-//   新しい乱数 GUID を振り直すため、そのシーンを指す guid: 参照が保存のたびに
-//   壊れる。逆に AssetDatabase が先に書けば Editor の並び順が読めなくなる
-//   (実際、並び替えても次回起動で元へ戻る状態だった)。
-//   AssetDatabase 側の WriteGuidToMeta と同じく「既存テーブルを読んで自分の
-//   セクションだけ差し替える」方式に揃え、2 者が同じファイルに同居できるようにする。
+/// @file    EditorSerializer.cpp
+/// @brief   Scene に付随する Editor 専用メタデータの TOML 永続化。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// 保存先は Scene の "<scene>.meta" サイドカー内の [editor] テーブル。
+///
+/// WHY サイドカーを丸ごと上書きしないか (不具合修正):
+/// "<scene>.meta" は Editor だけのものではない。AssetDatabase が同じファイルの
+/// [meta] guid にアセット GUID を書いており、.scene は GUID を持つ対象
+/// (AssetDatabase::ShouldHaveMeta) に含まれる。以前の実装は toml::table を新規に
+/// 作って WriteText で上書きしていたため、シーンを保存するたびに [meta] guid が
+/// 消えていた。次のスキャンで AssetDatabase が「GUID の無い .meta」を見つけて
+/// 新しい乱数 GUID を振り直すため、そのシーンを指す guid: 参照が保存のたびに
+/// 壊れる。逆に AssetDatabase が先に書けば Editor の並び順が読めなくなる
+/// (実際、並び替えても次回起動で元へ戻る状態だった)。
+/// AssetDatabase 側の WriteGuidToMeta と同じく「既存テーブルを読んで自分の
+/// セクションだけ差し替える」方式に揃え、2 者が同じファイルに同居できるようにする。
 #include <Editor/Util/EditorSerializer.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
 #include <Engine/Core/Logger.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Toast.cpp | fbzz::editor
-// トースト通知の描画実装
+/// @file    Toast.cpp
+/// @brief   トースト通知の描画実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Editor/Util/Toast.hpp>
 #include <imgui.h>
 #include <algorithm>

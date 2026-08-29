@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AnimSubExporter.cpp | fbzz::editor
-// FBX → .anim バイナリ v3
-// AnimationImporter.cpp の v3 レイアウトと対応し、Node Transform と Morph Weight を同時に保存する。
+/// @file    AnimSubExporter.cpp
+/// @brief   FBX → .anim バイナリ v3。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// AnimationImporter.cpp の v3 レイアウトと対応し、Node Transform と Morph Weight を同時に保存する。
 #include <Editor/Import/AnimSubExporter.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EPA.hpp | fbzz::physics
-// Expanding Polytope Algorithm (GJK 交差後の貫通深度・法線・接触点計算)
+/// @file    EPA.hpp
+/// @brief   Expanding Polytope Algorithm (GJK 交差後の貫通深度・法線・接触点計算)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 #include <Physics/GJK.hpp>
 

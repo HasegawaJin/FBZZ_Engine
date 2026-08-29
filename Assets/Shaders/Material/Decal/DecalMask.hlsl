@@ -52,8 +52,8 @@ DecalMaskPixelInput VSMain(float3 pos : POSITION)
 float4 PSMain(DecalMaskPixelInput input) : SV_Target
 {
     float sceneDepth = texSceneDepth.Load(int3((int)input.pos.x, (int)input.pos.y, 0)).r;
-    float sceneView  = LinearizeDepth(sceneDepth,  nearZ, farZ);
-    float fragView   = LinearizeDepth(input.pos.z, nearZ, farZ);
+    float sceneView  = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
+    float fragView   = LinearizeDepth(input.pos.z, nearZ, farZ, isOrthographic);
     if (fragView > sceneView + DecalReceiverDepthTolerance(sceneView))
         discard;
 

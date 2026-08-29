@@ -1,12 +1,13 @@
-// FBZZ Engine
-// ScriptValidation.hpp | fbzz::scene
-// FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT の充足検査
-//
-// WHY Engine 側に置くか:
-//   同じ判定を 3 箇所が必要とする — Inspector の赤帯、Play 開始時のシーン一括検証、
-//   ScriptSystem の実行時警告。Editor に置くと最後の 1 つ (Standalone ビルド) が
-//   検証を失い、「エディタでは怒られるのに製品ビルドでは無言で動かない」という
-//   一番混乱する食い違いが生まれる。判定はここに一本化する。
+/// @file    ScriptValidation.hpp
+/// @brief   FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT の充足検査。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY Engine 側に置くか:
+/// 同じ判定を 3 箇所が必要とする — Inspector の赤帯、Play 開始時のシーン一括検証、
+/// ScriptSystem の実行時警告。Editor に置くと最後の 1 つ (Standalone ビルド) が
+/// 検証を失い、「エディタでは怒られるのに製品ビルドでは無言で動かない」という
+/// 一番混乱する食い違いが生まれる。判定はここに一本化する。
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

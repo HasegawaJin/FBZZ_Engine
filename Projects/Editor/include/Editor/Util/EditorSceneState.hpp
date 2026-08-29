@@ -1,6 +1,7 @@
-// FBZZ Engine
-// EditorSceneState.hpp | fbzz::editor
-// Scene に紐づく Editor 専用メタデータ
+/// @file    EditorSceneState.hpp
+/// @brief   Scene に紐づく Editor 専用メタデータ。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
 #pragma once
 
 #include <algorithm>

@@ -1,14 +1,15 @@
-// FBZZ Engine
-// Material.hpp | fbzz::renderer
-// シェーダー・テクスチャ・パラメータの束
-//
-// シェーダーリフレクション駆動方式:
-//   paramData  … CB_MATERIAL と同サイズの生バイト列。SyncMaterial() が
-//                MaterialAsset の params から ShaderDescriptor 経由で構築し、
-//                Upload() が textureMask を書き込んで GPU へ転送する。
-//   textures   … スロット番号でインデックス。ShaderDescriptor::textures に合わせる。
-//
-// MaterialParams 構造体はなくなった。レイアウトは ShaderDescriptor が保証する。
+/// @file    Material.hpp
+/// @brief   シェーダー・テクスチャ・パラメータの束。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// シェーダーリフレクション駆動方式:
+/// paramData  … CB_MATERIAL と同サイズの生バイト列。SyncMaterial() が
+/// MaterialAsset の params から ShaderDescriptor 経由で構築し、
+/// Upload() が textureMask を書き込んで GPU へ転送する。
+/// textures   … スロット番号でインデックス。ShaderDescriptor::textures に合わせる。
+///
+/// MaterialParams 構造体はなくなった。レイアウトは ShaderDescriptor が保証する。
 #pragma once
 #include "ResourceHandle.hpp"
 #include "ShaderDescriptor.hpp"

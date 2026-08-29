@@ -1,20 +1,21 @@
-// FBZZ Engine
-// AnimatorDebugPass.cpp | fbzz::scene
-// スケルトン骨格を HDR バッファへワイヤーで描画する IRenderPass 実装
-//
-// このパスが満たすべき条件は 3 つある。
-//   1. 停止中 (エディタで再生していない) でも骨が出ること。
-//      旧実装は AnimatorComponent::nodeGlobalTransforms が空なら即 return していたが、
-//      この配列を埋めるのは AnimatorSystem の「シミュレーション中のみ」通る経路で、
-//      停止中はずっと空のまま。つまり Overlay > Skeleton は再生中しか機能していなかった。
-//   2. 描かれているメッシュと重なること。
-//      スキニング行列は boneMatrix = rootInverseTransform * nodeGlobal * offsetMatrix なので、
-//      関節のワールド位置も rootInverseTransform を通した位置になる。これを掛け忘れると、
-//      rootInverseTransform が単位行列でないリグ (Blender 書き出し等) で骨だけがずれる。
-//      Mixamo 系は偶然単位行列になるため、この抜けは特定のモデルでしか露見しない。
-//   3. ノード数と配列長が食い違っても落ちないこと。
-//      Animator が解決したスケルトンと SkinnedMeshRenderer のモデルは差し替えの途中で
-//      不一致になり得る。旧実装は親側だけ範囲検査して子側 (ni) を素通ししていた。
+/// @file    AnimatorDebugPass.cpp
+/// @brief   スケルトン骨格を HDR バッファへワイヤーで描画する IRenderPass 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// このパスが満たすべき条件は 3 つある。
+/// 1. 停止中 (エディタで再生していない) でも骨が出ること。
+/// 旧実装は AnimatorComponent::nodeGlobalTransforms が空なら即 return していたが、
+/// この配列を埋めるのは AnimatorSystem の「シミュレーション中のみ」通る経路で、
+/// 停止中はずっと空のまま。つまり Overlay > Skeleton は再生中しか機能していなかった。
+/// 2. 描かれているメッシュと重なること。
+/// スキニング行列は boneMatrix = rootInverseTransform * nodeGlobal * offsetMatrix なので、
+/// 関節のワールド位置も rootInverseTransform を通した位置になる。これを掛け忘れると、
+/// rootInverseTransform が単位行列でないリグ (Blender 書き出し等) で骨だけがずれる。
+/// Mixamo 系は偶然単位行列になるため、この抜けは特定のモデルでしか露見しない。
+/// 3. ノード数と配列長が食い違っても落ちないこと。
+/// Animator が解決したスケルトンと SkinnedMeshRenderer のモデルは差し替えの途中で
+/// 不一致になり得る。旧実装は親側だけ範囲検査して子側 (ni) を素通ししていた。
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>

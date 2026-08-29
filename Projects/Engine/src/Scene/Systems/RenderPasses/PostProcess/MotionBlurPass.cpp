@@ -1,11 +1,12 @@
-// FBZZ Engine
-// MotionBlurPass.cpp | fbzz::scene
-// モーションブラー — 各ピクセルの移動量ぶんサンプルを積算してブレを表現する Compute パス。
-//
-// 移動量の出どころは 2 つある:
-//   1. VelocityPass が描いたモーションベクター (t26) — カメラとオブジェクト両方の動き
-//   2. 深度 + prevViewProjection の再投影 — カメラの動きだけ。1 が無い画素の穴埋め
-// 判定はシェーダー側で行う (velocity.b が書き込み済みフラグ)。
+/// @file    MotionBlurPass.cpp
+/// @brief   モーションブラー — 各ピクセルの移動量ぶんサンプルを積算してブレを表現する Compute パス。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// 移動量の出どころは 2 つある:
+/// 1. VelocityPass が描いたモーションベクター (t26) — カメラとオブジェクト両方の動き
+/// 2. 深度 + prevViewProjection の再投影 — カメラの動きだけ。1 が無い画素の穴埋め
+/// 判定はシェーダー側で行う (velocity.b が書き込み済みフラグ)。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>

@@ -1,5 +1,7 @@
-// FBZZ Engine
-// BuildOutputPanel.cpp | fbzz::editor
+/// @file    BuildOutputPanel.cpp
+/// @brief   ビルド診断・ライブログ・履歴パネルの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
 #include <Editor/Panels/BuildOutputPanel.hpp>
 
 #include <Editor/EditorContext.hpp>

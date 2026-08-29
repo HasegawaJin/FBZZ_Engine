@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12PsoCache.hpp | fbzz::renderer
-// 汎用 Root Signature と遅延生成 Graphics PSO のキャッシュ
+/// @file    DX12PsoCache.hpp
+/// @brief   汎用 Root Signature と遅延生成 Graphics PSO のキャッシュ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/RenderState.hpp>

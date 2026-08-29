@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneHierarchyPanel.hpp | fbzz::editor
-// シーン内 GameObject をツリー表示し選択状態を EditorContext に書き込む
+/// @file    SceneHierarchyPanel.hpp
+/// @brief   シーン内 GameObject をツリー表示し選択状態を EditorContext に書き込む。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/Scene/Entity.hpp>

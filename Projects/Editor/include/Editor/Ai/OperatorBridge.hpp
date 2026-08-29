@@ -1,16 +1,18 @@
-// FBZZ Engine
-// OperatorBridge.hpp | fbzz::editor::ai
-// WHAT: OperatorRegistry を Editor Command Bus (AI / MCP) へ公開する薄い変換層。
-// WHY:  従来 AI へ機能を出すには、EditorBusDispatcher の巨大な if/else へハンドラを書き、
-//       さらに TypeScript 側 (tools.ts) へ zod スキーマを手書きし、ドキュメントの
-//       ツール一覧にも追記する必要があった。1 機能につき 3 箇所で、写し損ねると
-//       人が使う経路と AI が使う経路で結果が変わる。実際にその食い違いは
-//       ObjectPresets / TerrainBrush / NavMeshQuery など 8 回、症状が出てから直している。
-//
-//       ここが公開するのは editor.op.list と editor.op.invoke の 2 種だけで、
-//       操作そのものは OperatorRegistry が正本。以後どれだけ操作が増えても
-//       この層のコードは増えない (MCP 側も同様)。
-//       設計と移行段階: Docs/design/editor-operator-model.md
+/// @file    OperatorBridge.hpp
+/// @brief   WHAT: OperatorRegistry を Editor Command Bus (AI / MCP) へ公開する薄い変換層。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// WHY:  従来 AI へ機能を出すには、EditorBusDispatcher の巨大な if/else へハンドラを書き、
+/// さらに TypeScript 側 (tools.ts) へ zod スキーマを手書きし、ドキュメントの
+/// ツール一覧にも追記する必要があった。1 機能につき 3 箇所で、写し損ねると
+/// 人が使う経路と AI が使う経路で結果が変わる。実際にその食い違いは
+/// ObjectPresets / TerrainBrush / NavMeshQuery など 8 回、症状が出てから直している。
+///
+/// ここが公開するのは editor.op.list と editor.op.invoke の 2 種だけで、
+/// 操作そのものは OperatorRegistry が正本。以後どれだけ操作が増えても
+/// この層のコードは増えない (MCP 側も同様)。
+/// 設計と移行段階: Docs/design/editor-operator-model.md
 #pragma once
 #include <Editor/Ai/Json.hpp>
 #include <string>

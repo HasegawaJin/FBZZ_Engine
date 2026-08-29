@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Mesh.hpp | fbzz::renderer
-// GPU メッシュと頂点フォーマットの定義
-// 静的メッシュとスキンメッシュの両方を扱う。
-// CPU 側頂点配列はデバッグや再生成用に必要な範囲だけ保持する。
+/// @file    Mesh.hpp
+/// @brief   GPU メッシュと頂点フォーマットの定義。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 静的メッシュとスキンメッシュの両方を扱う。
+/// CPU 側頂点配列はデバッグや再生成用に必要な範囲だけ保持する。
 #pragma once
 #include <cstdint>
 #include <string>
@@ -10,6 +12,7 @@
 #include "ResourceHandle.hpp"
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 
 namespace fbzz::renderer {
 
@@ -18,6 +21,22 @@ struct Vertex {
     math::Vector3 normal;
     math::Vector3 tangent;
     math::Vector2 uv;
+    // 頂点カラー (RGBA)。既定の白は「色を持たない」と同じ意味になる。
+    //
+    // WHY 必ず末尾に置くか (触るときは必ず読むこと):
+    //   入力レイアウトは DX11Shader / DX12Shader が VS のリフレクション結果を
+    //   «宣言順に詰めて» 組み立てる。つまり各要素のオフセットはシェーダー側の
+    //   宣言順だけで決まり、この構造体とは独立に計算される。色を末尾に置く限り、
+    //   COLOR を宣言しないシェーダーの POSITION/NORMAL/TANGENT/TEXCOORD の
+    //   オフセットは変わらないため、既存シェーダーは 1 行も触らずに動き続ける。
+    //   途中へ挿すと全シェーダーのオフセットが一斉にずれる。
+    //
+    // WHY float4 で持つか (RGBA8 に圧縮しないか):
+    //   リフレクションは「float4 と宣言されている」ことしか分からず、4 バイトへ
+    //   圧縮するには semantic 名で例外を作る必要がある。だが COLOR は DebugDraw と
+    //   ParticleVSIn が本物の float4 として既に使っており、名前で分岐すると
+    //   そちらが壊れる。1 頂点 16 バイトはこの一貫性の対価。
+    math::Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
 struct SkinnedVertex {

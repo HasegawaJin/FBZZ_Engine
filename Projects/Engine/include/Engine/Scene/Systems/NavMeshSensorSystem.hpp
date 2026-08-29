@@ -1,8 +1,10 @@
-// FBZZ Engine
-// NavMeshSensorSystem.hpp | fbzz::scene
-// NavMeshSensorComponent の視野角・距離・遮蔽判定を毎フレーム評価し、
-// autoChase が有効なら同 GO の NavMeshAgentComponent を自動で追跡させる。
-// NavMeshPatrolSystem より前、NavigationSystem より前に呼ぶ。
+/// @file    NavMeshSensorSystem.hpp
+/// @brief   NavMeshSensorComponent の視野角・距離・遮蔽判定を毎フレーム評価し、。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// autoChase が有効なら同 GO の NavMeshAgentComponent を自動で追跡させる。
+/// NavMeshPatrolSystem より前、NavigationSystem より前に呼ぶ。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

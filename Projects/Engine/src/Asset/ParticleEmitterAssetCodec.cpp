@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ParticleEmitterAssetCodec.cpp | fbzz::asset
-// ParticleEmitterの全authoringモジュールを欠落なくTOMLへ保存・復元する
+/// @file    ParticleEmitterAssetCodec.cpp
+/// @brief   ParticleEmitterの全authoringモジュールを欠落なくTOMLへ保存・復元する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 #include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 
 #include <Engine/Core/Logger.hpp>
@@ -217,6 +218,8 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
     FBZZ_VFX_BOOL(useSizeCurve); FBZZ_VFX_BOOL(useVelocityCurve); FBZZ_VFX_BOOL(useColorGradient);
+    FBZZ_VFX_BOOL(useEmitRateCurve); FBZZ_VFX_FLOAT(speedRange);
+    FBZZ_VFX_BOOL(useSpeedSizeCurve); FBZZ_VFX_BOOL(useSpeedColorGradient);
     FBZZ_VFX_BOOL(useRotationCurve); FBZZ_VFX_BOOL(useDragCurve);
     FBZZ_VFX_FLOAT(orbitalVelocity); FBZZ_VFX_FLOAT(radialVelocity); FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
@@ -246,7 +249,10 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     WriteCurve(table, "rotationCurve", emitter.rotationCurve);
     WriteCurve(table, "dragCurve", emitter.dragCurve);
     WriteCurve(table, "temperatureCurve", emitter.temperatureCurve);
+    WriteCurve(table, "emitRateCurve", emitter.emitRateCurve);
+    WriteCurve(table, "speedSizeCurve", emitter.speedSizeCurve);
     table.insert("colorGradient", SerializeParticleGradient(emitter.colorGradient));
+    table.insert("speedColorGradient", SerializeParticleGradient(emitter.speedColorGradient));
     toml::array bursts;
     for (const auto& burst : emitter.bursts) {
         toml::table item;
@@ -333,6 +339,8 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
     FBZZ_VFX_BOOL(useSizeCurve); FBZZ_VFX_BOOL(useVelocityCurve); FBZZ_VFX_BOOL(useColorGradient);
+    FBZZ_VFX_BOOL(useEmitRateCurve); FBZZ_VFX_FLOAT(speedRange);
+    FBZZ_VFX_BOOL(useSpeedSizeCurve); FBZZ_VFX_BOOL(useSpeedColorGradient);
     FBZZ_VFX_BOOL(useRotationCurve); FBZZ_VFX_BOOL(useDragCurve);
     FBZZ_VFX_FLOAT(orbitalVelocity); FBZZ_VFX_FLOAT(radialVelocity); FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
@@ -363,7 +371,10 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     ReadCurve(table, "rotationCurve", emitter.rotationCurve);
     ReadCurve(table, "dragCurve", emitter.dragCurve);
     ReadCurve(table, "temperatureCurve", emitter.temperatureCurve);
+    ReadCurve(table, "emitRateCurve", emitter.emitRateCurve);
+    ReadCurve(table, "speedSizeCurve", emitter.speedSizeCurve);
     DeserializeParticleGradient(table, "colorGradient", emitter.colorGradient);
+    DeserializeParticleGradient(table, "speedColorGradient", emitter.speedColorGradient);
     emitter.bursts.clear();
     if (const auto* bursts = table["bursts"].as_array()) {
         for (const auto& node : *bursts) {

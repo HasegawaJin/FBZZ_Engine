@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TexDescSerializer.cpp | fbzz::asset
-// .tex TOML descriptor の読み書き
+/// @file    TexDescSerializer.cpp
+/// @brief   .tex TOML descriptor の読み書き。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

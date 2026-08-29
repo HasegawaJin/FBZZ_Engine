@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SceneIO.hpp | fbzz::editor
-// シーンを TOML 形式でシリアライズ/デシリアライズ
+/// @file    SceneIO.hpp
+/// @brief   シーンを TOML 形式でシリアライズ/デシリアライズ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
 #pragma once
 #include <string>
 #include <vector>

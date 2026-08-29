@@ -1,7 +1,9 @@
-// FBZZ Engine
-// Profiler.cpp | fbzz::profiler
-// CPU プロファイラの収集バッファ管理と ImGui ビュー描画
-// シングルスレッドのゲームループから呼ばれる前提で、低コストなスコープ計測を提供する。
+/// @file    Profiler.cpp
+/// @brief   CPU プロファイラの収集バッファ管理と ImGui ビュー描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-02
+///
+/// シングルスレッドのゲームループから呼ばれる前提で、低コストなスコープ計測を提供する。
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Profiler/ProfilerViewer.hpp>
 

@@ -1,7 +1,7 @@
-/// @file VelocityPass.cpp
-/// @brief 不透明ジオメトリのモーションベクターを専用 RT へ描く
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    VelocityPass.cpp
+/// @brief   不透明ジオメトリのモーションベクターを専用 RT へ描く
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 ///
 /// TAA とモーションブラーはこれまで深度 + prevViewProjection の再投影だけを使っており、
 /// 復元できるのはカメラの動きに限られていた。動くオブジェクトは「静止している」と

@@ -1,20 +1,20 @@
-// FBZZ Engine
-// AnimationPreview.cpp | fbzz::editor
-// Animation 専用オフスクリーンプレビュー
-// WHAT: 選択中の State / Transition / .anim / モデルからクリップを解決し、
-//       スキンメッシュを SkinnedLit でレンダーターゲットへ毎フレーム描画する。
-//       Inspector 下部と独立パネルが同じ再生状態 (時刻・カメラ・速度) を共有する。
+/// @file    AnimationPreview.cpp
+/// @brief   Animation 専用オフスクリーンプレビュー。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHAT: 選択中の State / Transition / .anim / モデルからクリップを解決し、
+/// スキンメッシュを SkinnedLit でレンダーターゲットへ毎フレーム描画する。
+/// Inspector 下部と独立パネルが同じ再生状態 (時刻・カメラ・速度) を共有する。
 #include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/Panels/PreviewPanelRenderers.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
-#include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
-#include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>

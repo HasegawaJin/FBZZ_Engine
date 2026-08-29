@@ -1,9 +1,11 @@
-// FBZZ Engine
-// EnvironmentLightComponent.hpp | fbzz::scene
-// シーン全体の IBL (Image-Based Lighting) 設定を GameObject として管理するコンポーネント。
-// WHY: ProjectSettings の ibl 設定はグローバルだが、このコンポーネントをシーンに置くことで
-//      Scene Inspector から IBL を差し替えられ、シーンごとに異なる環境光を使い分けられる。
-//      RenderSystem が最初のアクティブなコンポーネントを採用し ProjectSettings を上書きする。
+/// @file    EnvironmentLightComponent.hpp
+/// @brief   シーン全体の IBL (Image-Based Lighting) 設定を GameObject として管理するコンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// WHY: ProjectSettings の ibl 設定はグローバルだが、このコンポーネントをシーンに置くことで
+/// Scene Inspector から IBL を差し替えられ、シーンごとに異なる環境光を使い分けられる。
+/// RenderSystem が最初のアクティブなコンポーネントを採用し ProjectSettings を上書きする。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <cstdint>

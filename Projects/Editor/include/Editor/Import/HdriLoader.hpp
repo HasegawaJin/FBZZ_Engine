@@ -1,12 +1,13 @@
-// FBZZ Engine
-// HdriLoader.hpp | fbzz::editor
-// .hdr / .exr HDRI ファイルを float RGBA ピクセル配列として読み込むローダー
-//
-// .hdr : stb_image の stbi_loadf() を使用 (既存 Stb サードパーティ)
-// .exr : TinyEXR の LoadEXR() を使用 (ThirdParty/TinyExr/tinyexr.h)
-//
-// 読み込んだピクセルは RGBA float (4ch) として正規化される。
-// IblBaker に float* を渡す前にこのクラスで読み込む。
+/// @file    HdriLoader.hpp
+/// @brief   .hdr / .exr HDRI ファイルを float RGBA ピクセル配列として読み込むローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// .hdr : stb_image の stbi_loadf() を使用 (既存 Stb サードパーティ)
+/// .exr : TinyEXR の LoadEXR() を使用 (ThirdParty/TinyExr/tinyexr.h)
+///
+/// 読み込んだピクセルは RGBA float (4ch) として正規化される。
+/// IblBaker に float* を渡す前にこのクラスで読み込む。
 #pragma once
 #include <cstdint>
 #include <memory>

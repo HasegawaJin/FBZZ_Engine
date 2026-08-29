@@ -1,24 +1,26 @@
-// FBZZ Engine
-// FzModelFormat.hpp | fbzz::asset
-// .fzasset バイナリのオンディスクレイアウト定義
-// メッシュ複数 + LOD + スケルトンを 1 ファイルに統合する。
-// 旧 FzAssetFormat.hpp の FZMH/FZSK 部分を置き換える。
-//
-// レイアウト:
-//   FzModelHeader
-//   materialSlotNames: materialSlotCount × 64 バイト (null 終端)
-//   LOD[0..lodCount-1]:
-//     FzLodHeader
-//     FzSubmeshHeader[0..submeshCount-1]
-//       頂点データ (Vertex or SkinnedVertex)
-//       インデックスデータ (uint32 × indexCount)
-//   スケルトン (SKINNED フラグ時):
-//     FzSkelHeader
-//     FzSkeletonNodeData[] (各ノードの childCount × int32 が直後に続く)
-//     FzBoneData[]
-//   ノード階層 (v4 以降・NODES フラグ時):
-//     FzModelNodeChunkHeader
-//     FzModelNodeData[] (各ノードの meshCount × uint32 と childCount × int32 が直後に続く)
+/// @file    FzModelFormat.hpp
+/// @brief   .fzasset バイナリのオンディスクレイアウト定義。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// メッシュ複数 + LOD + スケルトンを 1 ファイルに統合する。
+/// 旧 FzAssetFormat.hpp の FZMH/FZSK 部分を置き換える。
+///
+/// レイアウト:
+/// FzModelHeader
+/// materialSlotNames: materialSlotCount × 64 バイト (null 終端)
+/// LOD[0..lodCount-1]:
+/// FzLodHeader
+/// FzSubmeshHeader[0..submeshCount-1]
+/// 頂点データ (Vertex or SkinnedVertex)
+/// インデックスデータ (uint32 × indexCount)
+/// スケルトン (SKINNED フラグ時):
+/// FzSkelHeader
+/// FzSkeletonNodeData[] (各ノードの childCount × int32 が直後に続く)
+/// FzBoneData[]
+/// ノード階層 (v4 以降・NODES フラグ時):
+/// FzModelNodeChunkHeader
+/// FzModelNodeData[] (各ノードの meshCount × uint32 と childCount × int32 が直後に続く)
 #pragma once
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <cstdint>
@@ -28,7 +30,11 @@ namespace fbzz::asset {
 // v4: 末尾に DCC のノード階層チャンク (FZND) を追加。
 // WHY 末尾へ足すか: 既存の全オフセットに触れずに拡張できる。読み手は LOD と
 //     スケルトンを読み終えた後で、フラグを見てから続きを読むだけでよい。
-constexpr uint32_t FZMODEL_VERSION      = 4;
+// v5: 静的サブメッシュの頂点に頂点カラー (float4) が付いた (FzVertexV1 → renderer::Vertex)。
+//     スキンサブメッシュの SkinnedVertex は変わらない。
+constexpr uint32_t FZMODEL_VERSION      = 5;
+// 頂点カラーを持たない静的頂点で書かれた版。読み込み時の分岐に使う。
+constexpr uint32_t FZMODEL_VERSION_PRE_VERTEX_COLOR = 4;
 constexpr uint32_t FZMODEL_FLAG_SKINNED = 1u << 0;
 constexpr uint32_t FZMODEL_FLAG_LOD     = 1u << 1;
 // ノード階層チャンクが存在する。メッシュを持たないモデルでは立たない。

@@ -1,13 +1,14 @@
-// FBZZ Engine
-// CameraCullingSettings.hpp | fbzz::scene
-// CameraComponent のカリング設定を、値だけ抜き出した受け渡し用 POD
-//
-// WHY 独立したヘッダにするか: RenderSystem / RenderPassContext は Renderer 層寄りで
-//      CameraComponent (Script / Layer 依存) を知らない。一方でこの値は
-//      「どのカメラで描くか」を決める呼び出し側と描画側の両方が要る。
-//      SceneUtils.hpp (Window / ProjectSettings / physics::World を引く重いヘッダ) を
-//      RenderSystem.hpp から include すると、Windows ヘッダのマクロ汚染までが
-//      RenderSystem を include する全モジュールへ波及するため、値だけをここへ切り出す。
+/// @file    CameraCullingSettings.hpp
+/// @brief   CameraComponent のカリング設定を、値だけ抜き出した受け渡し用 POD。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY 独立したヘッダにするか: RenderSystem / RenderPassContext は Renderer 層寄りで
+/// CameraComponent (Script / Layer 依存) を知らない。一方でこの値は
+/// 「どのカメラで描くか」を決める呼び出し側と描画側の両方が要る。
+/// SceneUtils.hpp (Window / ProjectSettings / physics::World を引く重いヘッダ) を
+/// RenderSystem.hpp から include すると、Windows ヘッダのマクロ汚染までが
+/// RenderSystem を include する全モジュールへ波及するため、値だけをここへ切り出す。
 #pragma once
 
 namespace fbzz::scene {

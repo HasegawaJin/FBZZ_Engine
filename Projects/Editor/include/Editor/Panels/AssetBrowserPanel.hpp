@@ -1,11 +1,11 @@
-// FBZZ Engine
-// AssetBrowserPanel.hpp | fbzz::editor
-// Unity スタイルのアセットブラウザ
+/// @file    AssetBrowserPanel.hpp
+/// @brief   Unity スタイルのアセットブラウザ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <Editor/AssetFileWatcher.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
-#include <Editor/VFXEditor/Services/VFXTemplateCatalog.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
@@ -237,7 +237,6 @@ private:
     // WHY: 新規作成の入口が「空 Entry 1 個」しか無いと、VFX で最も難しい
     //      層構成を毎回ゼロから積み直すことになる。VFX Editor と同じ
     //      カタログサービスを共有し、表示の食い違いを作らない。
-    VFXTemplateCatalog    m_vfxTemplates;
 
     std::string           m_rootPath;
     std::string           m_currentPath;

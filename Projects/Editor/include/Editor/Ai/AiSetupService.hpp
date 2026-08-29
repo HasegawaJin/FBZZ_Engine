@@ -1,13 +1,14 @@
-// FBZZ Engine
-// AiSetupService.hpp | fbzz::editor::ai
-// AI 連携 (Claude/MCP) のセットアップを Editor 内で完結させるためのサービス。
-//
-// 設計 (WHY):
-//   MCP サーバ (stdio.js) は Claude クライアントが自動起動するため、ユーザーが行う作業は本来
-//   「登録」と「Bus 有効化」だけ。しかし登録は claude_desktop_config.json の手編集や CLI 実行が
-//   必要で、Editor の外に出る摩擦になっていた。本サービスは環境診断 (node / dist / 登録状態) と
-//   Claude Desktop への登録書き込みを Editor 内の 1 クリックへ集約する。
-//   ファイル IO / Win32 詳細は .cpp に閉じ、UI (AI Settings Panel) はここの結果を表示するだけにする。
+/// @file    AiSetupService.hpp
+/// @brief   AI 連携 (Claude/MCP) のセットアップを Editor 内で完結させるためのサービス。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// 設計 (WHY):
+/// MCP サーバ (stdio.js) は Claude クライアントが自動起動するため、ユーザーが行う作業は本来
+/// 「登録」と「Bus 有効化」だけ。しかし登録は claude_desktop_config.json の手編集や CLI 実行が
+/// 必要で、Editor の外に出る摩擦になっていた。本サービスは環境診断 (node / dist / 登録状態) と
+/// Claude Desktop への登録書き込みを Editor 内の 1 クリックへ集約する。
+/// ファイル IO / Win32 詳細は .cpp に閉じ、UI (AI Settings Panel) はここの結果を表示するだけにする。
 #pragma once
 #include <string>
 

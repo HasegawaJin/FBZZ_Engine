@@ -1,9 +1,11 @@
-// FBZZ Engine
-// StaticModelImporter.cpp | fbzz::asset
-// 静的メッシュ (ボーンなし) のインポートパイプライン。
-// WHY: aiProcess_PreTransformVertices でノード階層を事前にフラット化し、
-//      JoinIdenticalVertices で重複頂点を除去することでドローコールを削減する。
-//      スキンメッシュにこれらを適用するとボーン割り当てが壊れるため、別パスとして分離する。
+/// @file    StaticModelImporter.cpp
+/// @brief   静的メッシュ (ボーンなし) のインポートパイプライン。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
+///
+/// WHY: aiProcess_PreTransformVertices でノード階層を事前にフラット化し、
+/// JoinIdenticalVertices で重複頂点を除去することでドローコールを削減する。
+/// スキンメッシュにこれらを適用するとボーン割り当てが壊れるため、別パスとして分離する。
 #include "ModelImporterInternal.hpp"
 
 namespace fbzz::asset {

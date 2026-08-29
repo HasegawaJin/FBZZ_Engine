@@ -1,19 +1,19 @@
-// FBZZ Engine
-// AssetBrowserCreate.cpp | fbzz::editor
-// AssetBrowser の FBX 内容表示と Create メニュー
+/// @file    AssetBrowserCreate.cpp
+/// @brief   AssetBrowser の FBX 内容表示と Create メニュー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
-#include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/Asset/SequenceAsset.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
 #include <Engine/Audio/Synth.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
-#include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
 #include <filesystem>
 
 namespace fbzz::editor {
@@ -293,6 +293,29 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
+    // 演出タイムライン。空でも「合図を並べる EventTrack 1 本」だけは入れて出す。
+    // WHY: 完全に空の .sequence は SequencePlayerComponent に挿しても何も起きず、
+    //      設定が足りないのかアセットが壊れているのか見分けが付かない。
+    if (ImGui::MenuItem("Sequence")) {
+        std::string newPath = m_currentPath + "/New Sequence.sequence";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Sequence " + std::to_string(suffix++) + ".sequence";
+        asset::SequenceAsset sequence;
+        sequence.name     = std::filesystem::path(newPath).stem().generic_string();
+        sequence.duration = 3.0;
+        asset::SequenceTrack cues;
+        cues.type = asset::SequenceTrackType::Event;
+        cues.name = "Cues";
+        sequence.tracks.push_back(std::move(cues));
+        if (!asset::SaveSequenceAsset(newPath, sequence)) {
+            FBZZ_LOG_ERROR("Sequence creation failed: %s", newPath.c_str());
+            return;
+        }
+        NotifyAssetCreated(newPath);
+        RefreshDirectory();
+        BeginRenameForPath(newPath, &ctx);
+    }
     // Avatar Mask: アニメーションレイヤーを「どのボーンに効かせるか」の再利用アセット。
     // WHY: 上半身だけ / 下半身だけの制御はこれが無いと毎回ボーンパスを手書きすることになる。
     if (ImGui::MenuItem("Avatar Mask")) {
@@ -312,71 +335,6 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
-    // VFX Graph は「空 Entry 1 個」から始めるのが最も難しいアセットなので、
-    // 作る時点で骨格を選べるようにする。
-    // WHY: VFX の難所は「どの層をどの順にどのブレンドで重ねるか」であって、
-    //      ノードを置く作業ではない。空から始めさせるのは、その難所を毎回
-    //      ゼロから解かせているのと同じ。Template と Recipe を同じ入口に置く。
-    if (ImGui::BeginMenu("VFX Graph")) {
-        const auto createGraph = [&](const asset::VFXGraphAsset& graph, const char* baseName) {
-            std::string newPath = m_currentPath + "/" + baseName + ".vfx";
-            int suffix = 1;
-            while (util::FileSystem::Exists(newPath))
-                newPath = m_currentPath + "/" + baseName + " " + std::to_string(suffix++) + ".vfx";
-            asset::VFXGraphAsset output = graph;
-            output.name = std::filesystem::path(newPath).stem().generic_string();
-            // Template / Recipe の説明はそこのものであって、この .vfx のものではない。
-            // 引き継ぐと全ての .vfx が同じ説明を持つことになる。
-            output.description.clear();
-            output.tags.clear();
-            std::string error;
-            if (!asset::SaveVFXGraphAsset(newPath, output, &error)) {
-                FBZZ_LOG_ERROR("VFX Graph creation failed: %s (%s)", newPath.c_str(), error.c_str());
-                return;
-            }
-            NotifyAssetCreated(newPath);
-            RefreshDirectory();
-            BeginRenameForPath(newPath, &ctx);
-        };
-
-        if (ImGui::MenuItem("Empty")) {
-            asset::VFXGraphAsset graph;
-            graph.nodes.push_back({ .id = 1, .type = asset::VFXNodeType::Entry,
-                                    .name = "Entry", .editorX = 40.0f, .editorY = 120.0f,
-                                    .duration = 0.0f });
-            createGraph(graph, "New VFX Graph");
-        }
-        // Recipe は素材を割り当てずに骨格だけを出す。素材は VFX Editor で
-        // Inspector から差せばよく、ここで素材ピッカーまで抱えると入口が重くなる。
-        if (ImGui::BeginMenu("From Recipe")) {
-            for (const VFXRecipe& recipe : GetVFXRecipes()) {
-                if (!ImGui::MenuItem(recipe.name)) continue;
-                VFXRecipeBuildOptions options;
-                options.loop = recipe.loopByDefault;
-                createGraph(BuildGraphFromRecipe(recipe, options), recipe.name);
-            }
-            ImGui::EndMenu();
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("層構成・ブレンド・描画順が揃った骨格を作ります。\n"
-                              "素材は生成後に VFX Editor で割り当ててください。");
-        if (ImGui::BeginMenu("From Template")) {
-            m_vfxTemplates.Scan(ctx, false);
-            if (m_vfxTemplates.entries.empty())
-                ImGui::TextDisabled("Assets/VFX/Templates に .vfx がありません");
-            for (const GraphTemplateEntry& entry : m_vfxTemplates.entries) {
-                const std::string label = entry.category.empty()
-                    ? entry.name : entry.category + " / " + entry.name;
-                if (!ImGui::MenuItem(label.c_str(), nullptr, false, entry.valid)) continue;
-                asset::VFXGraphAsset graph;
-                if (asset::ParseVFXGraphAsset(entry.path, graph, nullptr))
-                    createGraph(graph, entry.name.c_str());
-            }
-            ImGui::EndMenu();
-        }
-        ImGui::EndMenu();
-    }
-
     if (ImGui::MenuItem("Behavior Tree")) {
         std::string newPath = m_currentPath + "/New Behavior Tree.behaviortree";
         int suffix = 1;

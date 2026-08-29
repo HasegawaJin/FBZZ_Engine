@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12RenderTarget.cpp | fbzz::renderer
-// RGBA16F MRTとSRV読み取り可能なR32深度の生成
+/// @file    DX12RenderTarget.cpp
+/// @brief   RGBA16F MRTとSRV読み取り可能なR32深度の生成。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12RenderTarget.hpp"
 
 #include "DX12Context.hpp"

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12Context.cpp | fbzz::renderer
-// DirectX 12 の初期化、フレーム記録、フェンス同期、リサイズ処理
+/// @file    DX12Context.cpp
+/// @brief   DirectX 12 の初期化、フレーム記録、フェンス同期、リサイズ処理。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include "DX12Context.hpp"
 
 #include <Engine/Core/Logger.hpp>

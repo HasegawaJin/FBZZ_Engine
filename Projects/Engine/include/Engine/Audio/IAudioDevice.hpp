@@ -32,6 +32,15 @@ public:
     virtual void SetBusVolume(BusIndex bus, float volume) = 0;
     virtual void SetBusLowPass(BusIndex bus, float normalizedCutoff) = 0;
 
+    /// BusDesc::reverb が true のバスの残響を更新する。false のバスでは何も起きない。
+    /// WHY wet=0 を特別扱いするか: 残響 DSP は鳴っていなくても回り続けるため、
+    ///     ゾーンの外にいる間は明示的に止めないと常時 CPU を食う。
+    /// @param wet 0-1。0 で残響を止める。
+    /// @param decaySeconds 残響が -60dB まで落ちるまでの秒数。
+    /// @param highFrequencyRatio 1 で高域も同じだけ残り、0 に近いほど高域が早く減る。
+    virtual void SetBusReverb(BusIndex bus, float wet,
+                              float decaySeconds, float highFrequencyRatio) = 0;
+
     /// pcmData は voice が終わるまで呼び出し側が生かしておくこと。
     /// WHY: XAudio2 はサブミットされたバッファをコピーせずポインタで参照し続ける。
     /// @param bus 出力先。範囲外なら Master へ落とす。

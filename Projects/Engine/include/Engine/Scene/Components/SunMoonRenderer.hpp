@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SunMoonRenderer.hpp | fbzz::scene
-// 太陽・月ディスクをスカイドームとは別パスで描画する設定コンポーネント
+/// @file    SunMoonRenderer.hpp
+/// @brief   太陽・月ディスクをスカイドームとは別パスで描画する設定コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

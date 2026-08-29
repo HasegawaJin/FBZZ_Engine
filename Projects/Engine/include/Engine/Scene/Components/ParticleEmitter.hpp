@@ -54,10 +54,8 @@ struct GpuSpawnEntry {
     float         size;            // 4B
     math::Vector4 colorStart;      // 16B
     // 粒子ごとの色ゆらぎ倍率 (xyz)。w は未使用。
-    // WHY: 旧実装は CS 側で colorStart / CB の基準色の「比」から倍率を復元していた。
-    //      基準色が黒に近いチャンネルでは比が数値的に暴れ、グラデーション使用時は
-    //      そもそも基準色と無関係な色になるため復元が成立しなかった。
-    //      CPU が求めた倍率をそのまま渡せば CPU 経路と必ず一致する。
+    // CPU が求めた倍率をそのまま渡す。基準色との「比」から復元しようとすると、
+    // 黒に近いチャンネルで暴れ、グラデーション使用時はそもそも成立しない。
     math::Vector4 colorScale;      // 16B
     math::Vector4 uvRect;          // 16B
     float         rotation;        // 4B
@@ -122,23 +120,18 @@ struct MeshShapeVertex {
 };
 
 // MeshShapeTriangle — MeshSurface の面積重み抽選 1 枚ぶん。頂点は meshShapeVertices への添字。
-//
-// WHY 三角形を持つか: 頂点をそのまま一様抽選すると、粒子は «頂点密度» に比例して湧く。
-//     顔や関節だけポリゴンが細かいモデルでは、そこからしか粒が出ないように見える。
-//     面積に比例させ、さらに三角形内部を重心座標で取れば、低ポリでも表面が埋まる。
-// WHY バインドポーズ面積で重み付けるか: スキニングで面積は多少伸縮するが、抽選の «比率»
-//     はほとんど変わらない。毎スポーンで全三角形の面積を測り直す価値はない。
+// 頂点を一様抽選すると «頂点密度» に比例して湧き、細かい部位からしか粒が出ない。
+// 面積に比例させ、三角形内部を重心座標で取れば低ポリでも表面が埋まる。
+// 重みはバインドポーズ面積で足りる (スキニングで伸縮しても抽選の比率はほぼ変わらない)。
 struct MeshShapeTriangle {
     uint32_t indices[3] = {};
     // 先頭からこの三角形までの面積の総和。1 回の乱数を二分探索で引くための累積分布。
     float    cumulativeArea = 0.0f;
 };
 
-// materialPath 未設定の Emitter が使う既定 .mat。
-// WHY: 未設定は 1x1 白テクスチャへ落ちるが、白は alpha=1 なので粒子が「色付きの
-//      不透明な四角」として描かれる。素材の付け忘れが最も分かりにくい形で現れるうえ、
-//      柔らかい既定さえあれば置いた瞬間から煙にも光にも見える。加算の丸い光を既定にする。
-// NOTE: これが無いプロジェクトでは従来どおり白へ落ちる (存在しなくても壊れない)。
+// materialPath 未設定の Emitter が使う既定 .mat。加算の丸い光。
+// 何も無いと 1x1 白 (alpha=1) へ落ち、粒子が「不透明な四角」として描かれる。
+// これが無いプロジェクトでは従来どおり白へ落ちる (存在しなくても壊れない)。
 inline constexpr const char* PARTICLE_FALLBACK_MATERIAL =
     "Assets/Materials/Particles/ParticleFallback.mat";
 
@@ -176,14 +169,10 @@ struct ParticleRuntime {
     std::string           loadedMaterialPath; // materialPath の変更検出用。シーン保存対象外。
 
     // .mat が shader を指定していたときの描画シェーダー。無効なら組み込み Particle.hlsl。
-    //
-    // WHY 差し替えを許すか:
-    //   組み込みの Particle.hlsl は「テクスチャを貼ったビルボード」の絵しか出せない。
-    //   放電・電荷のように手続きで形を作りたい素材は、テクスチャを描き起こすより
-    //   ピクセルシェーダーで書いた方が解像度に依存せず調整も速い。
-    // NOTE: 差し替えたシェーダーは Material/Effects/ParticleMaterial.hlsli を include し、
-    //       .mat には render_path = "particle" を書くこと。フリップブック・歪み・煙は
-    //       自前で書かない限り効かない。
+    // 組み込みは「テクスチャを貼ったビルボード」しか出せないので、放電のように手続きで
+    // 形を作る素材は差し替える。
+    // 差し替えたシェーダーは Material/Effects/ParticleMaterial.hlsli を include し、
+    // .mat には render_path = "particle" を書くこと。フリップブック・歪み・煙は自前で書く。
     renderer::ResourceHandle<renderer::ShaderTag> customShader;
     std::string           loadedShaderPath;   // customShader の変更検出用。シーン保存対象外。
     // カスタムシェーダーが宣言した MaterialConstants (b2) へ流す .mat の [params]。
@@ -191,12 +180,8 @@ struct ParticleRuntime {
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialParamsCB;
 
     // .mat から解決した «見た目» 一式。シミュレーションも描画もこちらだけを見る。
-    //
-    // WHY settings 側へ書き戻さないか:
-    //   以前は blendMode だけ .mat の値を settings へ代入しており、settings は
-    //   シーン保存対象なので «触っていないのに保存内容が変わる» / «Inspector で
-    //   変えても次のフレームで戻る» が起きていた。解決結果はランタイム側に置き、
-    //   オーサリング値 (.mat) は読むだけにする。
+    // settings はシーン保存対象なので書き戻さない («触っていないのに保存内容が変わる» /
+    // «Inspector で変えても次のフレームで戻る» が起きる)。
     asset::ParticleMaterialSettings material;
     // .mat の blend_mode から解決した実効ブレンド。PSO 選択はこれを見る。
     ParticleBlendMode resolvedBlend = ParticleBlendMode::Additive;
@@ -224,16 +209,11 @@ struct ParticleRuntime {
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;    // DYNAMIC SRV: CPU がスポーンデータを書く
     renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuEmitterCB;      // CS 用エミッター定数バッファ
     renderer::ResourceHandle<renderer::ConstantBufferTag>   renderCB;          // VS/PS 描画モード・Soft Particle
-    // GPU ソート。sortMode != None のときだけ確保する。
-    // WHY: 粒子プールそのものは並べ替えられない (リングバッファ位置が動くとスポーンが壊れる)。
-    //      並べ替えるのは (キー, 粒子 index) の対だけで、描画 VS がその順に粒子を引く。
-    // 連続リボン (trailRibbon)。帯の頂点は毎フレーム CPU で作り直す。
-    // WHY: 履歴点はビルボード用にしか持っていないため、帯の形は粒子の運動から
-    //      その場で組み立てるしかない (GPU シミュレーションでは履歴を持てないので CPU 限定)。
-    // 頂点バッファはここに持たず、描画側の DynamicVertexBufferPool から借りる。
-    // WHY: 帯はカメラへ正対させるので形がビューごとに変わる。エディタは 1 フレームで
-    //      Scene View と Game View を続けて描くため、エミッターに 1 本持たせると
-    //      DX12 では後のビューの形が先のビューの Draw まで書き替えてしまう。
+    // GPU ソート。sortMode != None のときだけ確保する。並べ替えるのは (キー, 粒子 index)
+    // の対だけ (プール自体を動かすとリングバッファ位置が変わってスポーンが壊れる)。
+    // 連続リボン (trailRibbon)。帯の頂点は毎フレーム CPU で作り直す (GPU では履歴を持てない)。
+    // 頂点バッファは描画側の DynamicVertexBufferPool から借りる。帯はビューごとに形が
+    // 変わるので、エミッターに 1 本持たせると後のビューが先のビューの Draw を書き替える。
     renderer::ResourceHandle<renderer::ConstantBufferTag>   trailRibbonCB;
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSortBuffer;     // RWStructuredBuffer<uint2>
     renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuSortCB;         // bitonic の (k, j) を段ごとに更新
@@ -324,10 +304,7 @@ struct ParticleEmitterSettings {
     float         sizeStart      = 0.4f;
     float         sizeEnd        = 0.05f;
     // ビルボードの縦横比。size に対する軸ごとの倍率で、xy のみ使う (z は Mesh Particle 用)。
-    // WHY: 粒子サイズが等方の正方形しか作れないと、縦に伸びる炎・平たい衝撃波・
-    //      横に流れる煙といった AAA で常用する形が組めない。粒子ごとではなく
-    //      エミッター単位の値なので、per-particle データではなく定数バッファへ載せる
-    //      (頂点フォーマットを太らせずに済む)。
+    // エミッター単位の値なので per-particle ではなく定数バッファへ載せる。
     math::Vector3 sizeAxisScale  = { 1.0f, 1.0f, 1.0f };
     float         lifetime       = 2.0f;
     float         lifetimeRandom = 0.0f;
@@ -358,19 +335,15 @@ struct ParticleEmitterSettings {
     float       meshShapeScale = 1.0f;
     // 同じ GameObject の AnimatorComponent が持つ現在のボーン行列で発生点を変形する。
     bool        meshShapeFollowSkinnedAnimation = false;
-    // 表面法線方向へ与える初速 [m/s]。0 なら従来どおり emitVelocity だけで飛ぶ。
-    // WHY: Sphere / Cone は形状そのものが方向を持つのに、MeshSurface だけは «形に沿って
-    //      湧くが全部同じ向きに飛ぶ» しか作れなかった。表面から «にじみ出る» 崩壊や
-    //      被膜が剥がれる表現は、法線が初速に入って初めて成立する。
-    //      負値を許すのは、逆に «表面へ吸い込む» 収束エフェクトを同じ設定で作れるため。
+    // 表面法線方向へ与える初速 [m/s]。0 なら emitVelocity だけで飛ぶ。
+    // 表面から «にじみ出る» 崩壊は、法線が初速に入って初めて成立する。
+    // 負値は «表面へ吸い込む» 収束エフェクトになる。
     float       meshShapeNormalVelocity = 0.0f;
 
     ParticleSortMode  sortMode  = ParticleSortMode::None;
     // エミッター間の描画順。小さいほど先に描かれる (＝奥に見える)。
-    // WHY: sortMode は 1 エミッター内の粒子しか並べ替えない。炎と煙のように
-    //      別エミッターが重なる構成では、GameObject の並び順で前後が決まってしまい、
-    //      シーンを編集しただけで見た目が変わる。優先度を明示して安定させる。
-    //      同値のときはカメラから遠い順に描く (半透明の一般的な描画順)。
+    // sortMode は 1 エミッター内しか並べ替えないので、別エミッターが重なる構成では
+    // GameObject の並び順で前後が決まってしまう。同値ならカメラから遠い順。
     int renderPriority = 0;
     ParticleSimulationMode simulationMode = ParticleSimulationMode::Cpu;
     ParticleSimulationSpace simulationSpace = ParticleSimulationSpace::World;
@@ -380,20 +353,16 @@ struct ParticleEmitterSettings {
 
     // CollisionはCPUで自作Physics WorldをQueryする。GPU指定時は正確性優先でCPUへ縮退する。
 
-    // 見た目の正本となる .mat アセットへの参照。
-    // ブレンド・アルベド・フリップブック・歪み・煙・自己影・明るさはすべてここから来る
-    // (解決結果は runtime.material / runtime.resolvedBlend)。
-    // WHY エミッターに持たせないか: 同じ素材を複数のエミッターで共有するため。
-    //      詳細は Engine/Asset/ParticleMaterialSettings.hpp を参照。
-    // NOTE: 空のときは PARTICLE_FALLBACK_MATERIAL が使われる (白い矩形にはならない)。
+    // 見た目の正本となる .mat アセットへの参照。ブレンド・アルベド・フリップブック・
+    // 歪み・煙・自己影・明るさはすべてここから来る (解決結果は runtime.material)。
+    // 同じ素材を複数のエミッターで共有するため .mat 側に持つ。
+    // 空のときは PARTICLE_FALLBACK_MATERIAL が使われる (白い矩形にはならない)。
     std::string materialPath;
     // 空でない場合はbillboardの代わりに静的Meshを各CPU粒子のTRSで描画する。
     std::string meshParticlePath;
     // 粒子ごとの色ゆらぎ [0,1]。発生時に RGB を各チャンネル独立で ±colorVariation 倍する。
-    // WHY: 同じエミッターから出た粒子が完全に同色だと、群れが一枚のベタ塗りに見える。
-    //      チャンネル独立にすることで明度差と軽い色相差が同時に出て、炎・火花に厚みが出る。
-    //      per-particle の startColor/endColor は CPU/GPU 双方のスポーン経路に既にあるため、
-    //      頂点フォーマットも定数バッファも増やさずに効かせられる。
+    // 完全に同色だと群れが一枚のベタ塗りに見える。チャンネル独立にすると明度差と
+    // 軽い色相差が同時に出て厚みが出る。
     float colorVariation = 0.0f;
     float sizeCurvePower = 1.0f;
     float colorCurvePower = 1.0f;
@@ -416,6 +385,24 @@ struct ParticleEmitterSettings {
     bool useDragCurve = false;
     ParticleCurve dragCurve;
 
+    // ── 発生量の時間変化 ──
+    // emitRate に掛ける倍率。エミッターの再生時刻を duration で正規化した 0..1 で引く。
+    // burst を刻んで近似すると粒の湧き方が段になって «脈打つ» ように見える。
+    // loop するエミッターでは playTime を duration で割った余りで引く。
+    bool useEmitRateCurve = false;
+    ParticleCurve emitRateCurve;
+
+    // ── 速度による見た目 ──
+    // 粒の «速さ» で大きさと色を変える。寿命ベースのカーブとは別の軸。
+    // 火花は «速いものほど明るく長い» のであって «出てすぐが明るい» のではないので、
+    // 寿命だけを見ると跳ね返って減速した粒が «まだ若いから明るい» まま残る。
+    // 正規化: speed / speedRange を 0..1 にクランプしてカーブを引く。
+    float speedRange = 10.0f;
+    bool useSpeedSizeCurve = false;
+    ParticleCurve speedSizeCurve;         // size への倍率
+    bool useSpeedColorGradient = false;
+    ParticleGradient speedColorGradient;  // 寿命の色へ乗算する
+
     // ── 速度モジュール (エミッター原点まわりの周回・放射) ──
     // WHY: 重力とノイズだけでは「渦を巻きながら広がる」魔法陣・竜巻・吸い込みが作れない。
     //      ForceField はシーン全体の場だが、こちらはエミッターに追従する固有の運動として効く。
@@ -432,13 +419,10 @@ struct ParticleEmitterSettings {
     std::vector<ParticleBurst> bursts;
 
     // 履歴点へビルボードを並べるのではなく、連続した 1 枚の帯として描く。
-    // WHY: ビルボード方式は「点を細かく打てば線に見える」だけで、太くすると必ず粒の連なりが露見する。
-    //      剣閃・魔法の軌跡・リボン状の炎のように「幅のある帯」が主役の表現はこれでは作れない。
-    //      有効時は履歴点をポリラインとみなし、隣り合う点をマイター接合した帯を張る
-    //      (Trail ノードと同じリボン生成・同じシェーダーを使う)。
-    // NOTE: 帯は 1 エミッターぶんをまとめて 1 DrawCall で描くため、色は粒子ごとではなく
-    //       エミッターの colorStart / colorEnd を帯の長さ方向へ配る。
-    //       粒子ごとの色ゆらぎを尾へ乗せたい場合はビルボード方式のままにすること。
+    // ビルボード方式は太くすると粒の連なりが露見するので、幅のある帯が主役の表現
+    // (剣閃・魔法の軌跡) には使えない。有効時は Trail ノードと同じリボン生成を通す。
+    // 帯は 1 エミッターを 1 DrawCall で描くので、色は colorStart / colorEnd を長さ方向へ配る
+    // (粒子ごとの色ゆらぎを尾へ乗せたいならビルボード方式のまま)。
     // SubEmitterはGameObject名で参照し、各イベントで対象EmitterへBurstを積む。
 
     // Culling/LOD — 粒子の現在Boundsを使い、遠距離では発生数と描画数を段階的に削減する。
@@ -481,10 +465,8 @@ struct ParticleEmitterSettings {
     // ── 黒体放射 (色温度オーサリング) ──
     // 有効にすると colorGradient の RGB を温度カーブから毎フレーム作り直す
     // (アルファはグラデーション側の値をそのまま使う)。
-    // WHY: 炎・爆発の色は「すす粒子の温度による黒体放射」で決まり、任意の RGB を
-    //      並べても炎に見えない。さらに輻射輝度は T^4 に比例するため、根元と先端の差は
-    //      色差ではなく数倍〜十数倍の輝度差として出る。RGB を手で置く限り
-    //      「白熱した芯 + 彩度の高い橙の縁」は作れない (芯を明るくすると縁まで白む)。
+    // 炎・爆発の色はすす粒子の温度による黒体放射で決まるので、任意の RGB を並べても
+    // 炎に見えない。輻射輝度は T^4 に比例し、根元と先端の差は色差ではなく輝度差として出る。
     bool  blackbodyEnabled = false;
     // 寿命 [0,1] → 色温度 [K]。既定は焚き火の実測域 (根元 1900K → 先端 1100K)。
     // WHY: ParticleCurve の既定キーは 0→1 で、そのまま温度として使うと 1K = 真っ黒になる。
@@ -498,12 +480,9 @@ struct ParticleEmitterSettings {
     // ── per-particle Trail ──
     // 粒子 1 つ 1 つに尾を付ける。火の粉・魔法の軌跡のように「粒が線を引く」表現用。
     // 実装は履歴点へビルボードを連ねる方式で、専用の ribbon シェーダーは持たない。
-    // WHY: 既存のパーティクル描画 (シェーダー・PSO・テクスチャ・ブレンド) をそのまま
-    //      使えるため、素材やブレンド設定が本体と自動的に揃う。サンプル間隔を十分
-    //      短くすれば連続した尾として見える。真の連続リボンが要るケース (太い帯) は
-    //      従来どおり Trail ノードを使う。
-    // GPU シミュレーションでは履歴を保持できないため、有効時は CPU へ縮退する
-    // (CanUseGpuSimulation を参照)。
+    // 既存の描画 (シェーダー・PSO・テクスチャ・ブレンド) をそのまま使えるので素材が揃う。
+    // 太い帯が要るなら Trail ノードを使うこと。
+    // GPU シミュレーションでは履歴を保持できないため、有効時は CPU へ縮退する。
     bool  trailEnabled = false;
     int   trailPointCount = 6;          // 使用する履歴点数 [1, kMaxParticleTrailPoints]
     float trailSampleInterval = 0.03f;  // 履歴を刻む間隔 [秒]。短いほど滑らか
@@ -515,11 +494,10 @@ struct ParticleEmitterSettings {
     // WHY: 帯は粒子サイズと独立に太さを決めたいことが多い (小さな火の粉が太い軌跡を引く等)。
     float trailRibbonWidth = 0.0f;
     int subEmitterBurstCount = 1;
-    // 名前引きの探索範囲を限定するルート GameObject。INVALID でシーン全体 (従来どおり)。
-    // WHY: VFX Graph が生成するノード実体は、同じ .vfx を複数配置すれば同名の GO が並ぶ。
-    //      シーン全体を名前で引くと、隣に置いた別インスタンスの粒子を誤って吹かせてしまう。
-    //      VFXGraphSystem がここへ owner を入れ、参照をそのエフェクト内へ閉じる。
-    // NOTE: ランタイム専用。シーン保存対象ではない (シーン上の手置き Emitter は INVALID のまま)。
+    // 名前引きの探索範囲を限定するルート GameObject。INVALID でシーン全体。
+    // 同じ .vfx を複数配置すると同名の GO が並ぶので、シーン全体で引くと隣のインスタンスを
+    // 吹かせてしまう。VFXGraphSystem がここへ owner を入れて参照をエフェクト内へ閉じる。
+    // ランタイム専用。シーン保存対象ではない。
     EntityID subEmitterScopeRoot = EntityID::INVALID;
     std::string birthSubEmitter;
     std::string deathSubEmitter;

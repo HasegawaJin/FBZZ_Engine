@@ -1,9 +1,10 @@
-// FBZZ Engine
-// GraphCanvas.cpp | fbzz::editor
-// ImNodes を包み、ノードグラフ編集の共通操作をひとまとめにする
-//
-// NOTE: imnodes の実装は ThirdParty の imnodes ターゲットにある (fbzz_editor が
-//   PUBLIC リンクする)。ここは宣言だけを含める。
+/// @file    GraphCanvas.cpp
+/// @brief   ImNodes を包み、ノードグラフ編集の共通操作をひとまとめにする。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// NOTE: imnodes の実装は ThirdParty の imnodes ターゲットにある (fbzz_editor が
+/// PUBLIC リンクする)。ここは宣言だけを含める。
 #include <Editor/GraphEditor/GraphCanvas.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 

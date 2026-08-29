@@ -1,0 +1,18 @@
+# FBZZ Engine
+# ProceduralMeshFallback.mat
+# ProceduralMeshComponent の既定マテリアル (頂点カラー Unlit / Alpha Blend / 両面)
+# 両面なのは、毎フレーム組み直すメッシュは巻き順が裏返りうるため。
+version = 1
+shader = "guid:1853a4b025e24086b5f73bcbee7c9c73"
+blend_mode = "AlphaBlend"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = ""
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]

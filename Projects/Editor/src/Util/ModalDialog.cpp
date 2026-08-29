@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ModalDialog.cpp | fbzz::editor
-// ImGui modal confirmation dialogs
+/// @file    ModalDialog.cpp
+/// @brief   ImGui modal confirmation dialogs.
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/ModalDialog.hpp>
 #include <imgui.h>
 #include <cstring>

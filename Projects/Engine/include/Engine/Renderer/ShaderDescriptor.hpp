@@ -1,8 +1,10 @@
-// FBZZ Engine
-// ShaderDescriptor.hpp | fbzz::renderer
-// PS バイトコードをリフレクションして得られるシェーダーメタ情報。
-// MaterialConstants / PostProcConstants の変数レイアウトとテクスチャバインドを保持する。
-// DX11Shader::Init() が構築し、Material・PostProcess Inspector と SyncMaterial が参照する。
+/// @file    ShaderDescriptor.hpp
+/// @brief   PS バイトコードをリフレクションして得られるシェーダーメタ情報。
+/// @author  Hasegawa Jin
+/// @date    2026-05-30
+///
+/// MaterialConstants / PostProcConstants の変数レイアウトとテクスチャバインドを保持する。
+/// DX11Shader::Init() が構築し、Material・PostProcess Inspector と SyncMaterial が参照する。
 #pragma once
 #include <string>
 #include <string_view>

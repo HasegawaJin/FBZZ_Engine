@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConstraintDebugGeometry.hpp | fbzz::physics
-// 制約可視化用のワイヤージオメトリ生成
+/// @file    ConstraintDebugGeometry.hpp
+/// @brief   制約可視化用のワイヤージオメトリ生成。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 #include <Physics/ColliderDebugGeometry.hpp>
 #include <Physics/Constraint.hpp>

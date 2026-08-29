@@ -1,9 +1,9 @@
-// FBZZ Engine
-// AssetBrowserPanel.cpp | fbzz::editor
-// AssetBrowserPanel のフォルダツリーとアセットグリッド描画
+/// @file    AssetBrowserPanel.cpp
+/// @brief   AssetBrowserPanel のフォルダツリーとアセットグリッド描画。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "AssetBrowser/AssetBrowserCommon.hpp"
 #include <Editor/Util/AssetSearch.hpp>
-#include <Editor/Util/VFXEditorLauncher.hpp>
 
 namespace fbzz::editor {
 
@@ -50,7 +50,8 @@ std::vector<std::string> AssetBrowserPanel::TypeFilterExtensions() const
     case TypeFilter::Mesh:      return { ".fbx", ".obj", ".gltf", ".glb", ".mesh" };
     case TypeFilter::Shader:    return { ".hlsl", ".hlsli" };
     case TypeFilter::Prefab:    return { ".prefab" };
-    case TypeFilter::Animation: return { ".anim", ".animcontroller", ".animctrl", ".mask" };
+    case TypeFilter::Animation: return { ".anim", ".animcontroller", ".animctrl", ".mask",
+                                         ".sequence" };
     case TypeFilter::Skeleton:  return { ".skel" };
     case TypeFilter::Asset:     return { ".asset" };
     case TypeFilter::All:
@@ -810,7 +811,6 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                 m_entryDragStarted = true;
                 const std::string payloadPath = ToAssetDragPayloadPath(e.path, ctx);
                 ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
-                VFXEditorLauncher::TrackAssetDrag(ctx.projectRoot, payloadPath);
                 ImGui::TextUnformatted(e.name.c_str());
                 ImGui::EndDragDropSource();
             }

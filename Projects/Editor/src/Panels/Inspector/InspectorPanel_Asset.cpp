@@ -1,14 +1,15 @@
-// FBZZ Engine
-// Inspector/InspectorPanel_Asset.cpp | fbzz::editor
-// Asset Browser から選択したファイル用 Inspector
-// Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
+/// @file    Inspector/InspectorPanel_Asset.cpp
+/// @brief   Asset Browser から選択したファイル用 Inspector。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
+///
+/// Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
 #include "InspectorCommon.hpp"
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationMaskPreview.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/Panels/MaterialPreview.hpp>
-#include <Editor/Panels/VFXPreview.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>
@@ -87,7 +88,6 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
     const std::string filename = util::FileSystem::GetFilename(assetPath);
     const std::string ext =
         util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
-    bool drawVfxPreviewAtBottom = false;
 
     // deselect 自動保存: 前回の .mat が dirty のまま別アセットへ移動したとき保存する。
     // WHY: 「Save ボタンを押し忘れる」問題を解消しつつ、mid-drag 中の大量書き込みを避けるため
@@ -413,10 +413,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SeparatorText("Preview");
         DrawMaterialPreviewWidget(ctx, mat, 240.0f);
     } else if (ext == ".vfx") {
-        ImGui::TextDisabled("Type: VFX Graph");
-        // MaterialPreview / AnimationPreview と同じく、分岐の最後で描画する。
-        // WHY: VFX の概要や編集項目が増えても、プレビューを Inspector 上部へ戻さないため。
-        drawVfxPreviewAtBottom = true;
+        // .vfx はプレファブなので、中身を見るのは Prefab 編集モード
+        // (ダブルクリック = asset.open) が受け持つ。Inspector は素性だけ出す。
+        ImGui::TextDisabled("Type: VFX (Prefab)");
+        ImGui::TextDisabled("ダブルクリックで中身を開きます。");
     } else if (ext == ".animcontroller") {
         if (DrawAnimationGraphAssetInspector(ctx)) {
             // Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
@@ -2864,10 +2864,6 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Drag from Asset Browser to assign to a field.");
     }
 
-    if (drawVfxPreviewAtBottom) {
-        ImGui::SeparatorText("Preview");
-        DrawVFXPreviewWidget(ctx, absPath, 240.0f);
-    }
 }
 
 } // namespace fbzz::editor

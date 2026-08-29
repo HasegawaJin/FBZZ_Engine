@@ -1,7 +1,7 @@
-/// @file PipelineDiagnostics.cpp
-/// @brief 現在のパイプラインでは効かない設定を列挙する
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    PipelineDiagnostics.cpp
+/// @brief   現在のパイプラインでは効かない設定を列挙する
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #include <Engine/Renderer/PipelineDiagnostics.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 

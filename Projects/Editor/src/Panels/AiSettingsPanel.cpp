@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AiSettingsPanel.cpp | fbzz::editor
-// AI 連携の状態表示とセットアップ操作を描画する
+/// @file    AiSettingsPanel.cpp
+/// @brief   AI 連携の状態表示とセットアップ操作を描画する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Panels/AiSettingsPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <imgui.h>

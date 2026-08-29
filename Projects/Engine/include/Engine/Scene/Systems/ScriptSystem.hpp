@@ -1,7 +1,9 @@
-// FBZZ Engine
-// ScriptSystem.hpp | fbzz::scene
-// GameObject に付いたユーザースクリプトの実行 System
-// Start / Update などのライフサイクルを Scene 全体に対して進める。
+/// @file    ScriptSystem.hpp
+/// @brief   GameObject に付いたユーザースクリプトの実行 System。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Start / Update などのライフサイクルを Scene 全体に対して進める。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

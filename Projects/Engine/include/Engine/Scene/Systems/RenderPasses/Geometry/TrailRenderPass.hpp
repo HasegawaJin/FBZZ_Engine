@@ -1,6 +1,7 @@
-// FBZZ Engine
-// TrailRenderSystem.hpp | fbzz::scene
-// TrailComponent を更新し、マイタージョイント付きリボンとして透明描画するシステム
+/// @file    TrailRenderSystem.hpp
+/// @brief   TrailComponent を更新し、マイタージョイント付きリボンとして透明描画するシステム。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>

@@ -1,7 +1,7 @@
-/// @file   FrameTimeGraph.hpp
-/// @brief  フレーム時間の履歴と、その大きな数値表示 / 面グラフ
-/// @author Hasegawa Jin
-/// @date   2026-08-24
+/// @file    FrameTimeGraph.hpp
+/// @brief   フレーム時間の履歴と、その大きな数値表示 / 面グラフ
+/// @author  Hasegawa Jin
+/// @date    2026-08-24
 ///
 /// WHY: ビューポートの Stats HUD と Analysis > Rendering が同じ「今フレームが
 ///      予算に収まっているか」を見せる。履歴を表示側それぞれに持たせると、

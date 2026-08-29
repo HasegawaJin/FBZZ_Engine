@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BehaviorTreePanel.cpp | fbzz::editor
-// .behaviortree の木エディタ実装 (共通 GraphCanvas の最初の実利用者)
+/// @file    BehaviorTreePanel.cpp
+/// @brief   .behaviortree の木エディタ実装 (共通 GraphCanvas の最初の実利用者)。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Editor/Panels/BehaviorTreePanel.hpp>
 
 #include <Editor/EditorContext.hpp>

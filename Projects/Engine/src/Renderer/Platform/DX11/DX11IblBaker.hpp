@@ -1,14 +1,15 @@
-// FBZZ Engine
-// DX11IblBaker.hpp | fbzz::renderer
-// IIblBaker の DX11 実装
-//
-// DX11 の Compute Shader を直接発行して IBL テクスチャを GPU ベイクし、
-// DirectXTex の CaptureTexture + SaveToDDSFile で DDS ファイルに書き出す。
-//
-// 設計上の注意:
-//   - ResourceManager / IRenderer は一切使わない (Texture2DArray UAV 操作が必要なため)
-//   - DX11 デバイスは DX11Renderer::GetDevice()/GetDeviceContext() から受け取る
-//   - このクラスは DX11 プラットフォーム層内に閉じており、上位からは IIblBaker* で触れる
+/// @file    DX11IblBaker.hpp
+/// @brief   IIblBaker の DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// DX11 の Compute Shader を直接発行して IBL テクスチャを GPU ベイクし、
+/// DirectXTex の CaptureTexture + SaveToDDSFile で DDS ファイルに書き出す。
+///
+/// 設計上の注意:
+/// - ResourceManager / IRenderer は一切使わない (Texture2DArray UAV 操作が必要なため)
+/// - DX11 デバイスは DX11Renderer::GetDevice()/GetDeviceContext() から受け取る
+/// - このクラスは DX11 プラットフォーム層内に閉じており、上位からは IIblBaker* で触れる
 #pragma once
 #include <Engine/Renderer/IIblBaker.hpp>
 #include <d3d11.h>

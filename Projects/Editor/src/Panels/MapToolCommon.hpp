@@ -1,8 +1,10 @@
-// FBZZ Engine
-// MapToolCommon.hpp | fbzz::editor
-// Map Editing Mode のツール切替を MapEditorPanel と ViewportPanel (オーバーレイ / 数字キー) で共有する。
-// WHY: ツールの SetActive 切替がパネルごとに分散すると、片方から切り替えたときに
-//      もう片方の表示状態と食い違うため、唯一の切替関数をここに置く。
+/// @file    MapToolCommon.hpp
+/// @brief   Map Editing Mode のツール切替を MapEditorPanel と ViewportPanel (オーバーレイ / 数字キー) で共有する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+///
+/// WHY: ツールの SetActive 切替がパネルごとに分散すると、片方から切り替えたときに
+/// もう片方の表示状態と食い違うため、唯一の切替関数をここに置く。
 #pragma once
 
 #include <Editor/EditorContext.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptAssetRef.cpp | fbzz::scene
-// Script用Asset参照のGUID・path相互解決
+/// @file    ScriptAssetRef.cpp
+/// @brief   Script用Asset参照のGUID・path相互解決。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Scene/ScriptAssetRef.hpp>
 
 #include <Engine/Asset/AssetDatabase.hpp>

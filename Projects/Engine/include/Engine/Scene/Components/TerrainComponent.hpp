@@ -1,15 +1,16 @@
-// FBZZ Engine
-// TerrainComponent.hpp | fbzz::scene
-// ハイトマップベースの地形コンポーネント
-//
-// WHY: 屋外シーンに広い起伏地形を置くには、個別の MeshRenderer では頂点データ管理と
-//      高さクエリ（キャラクター・Physics）が分散してしまう。
-//      TerrainComponent に heightData / splatData を一元管理させ、
-//      TerrainRenderPass がチャンク分割と GPU 転送を行う構造にすることで
-//      「データ所有」と「描画戦略」を分離する。
-//
-// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .mat で管理する。
-// WHY: レイヤーごとに独立した .mat にすることで複数地形間でマテリアルを再利用できる。
+/// @file    TerrainComponent.hpp
+/// @brief   ハイトマップベースの地形コンポーネント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHY: 屋外シーンに広い起伏地形を置くには、個別の MeshRenderer では頂点データ管理と
+/// 高さクエリ（キャラクター・Physics）が分散してしまう。
+/// TerrainComponent に heightData / splatData を一元管理させ、
+/// TerrainRenderPass がチャンク分割と GPU 転送を行う構造にすることで
+/// 「データ所有」と「描画戦略」を分離する。
+///
+/// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .mat で管理する。
+/// WHY: レイヤーごとに独立した .mat にすることで複数地形間でマテリアルを再利用できる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

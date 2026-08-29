@@ -1,6 +1,7 @@
-// FBZZ Engine
-// AnimatorControllerAsset.cpp | fbzz::asset
-// .animcontroller の TOML 入出力と AnimatorComponent への適用
+/// @file    AnimatorControllerAsset.cpp
+/// @brief   .animcontroller の TOML 入出力と AnimatorComponent への適用。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>

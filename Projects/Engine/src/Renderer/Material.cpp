@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Material.cpp | fbzz::renderer
-// Material の GPU パラメーター初期化と転送
+/// @file    Material.cpp
+/// @brief   Material の GPU パラメーター初期化と転送。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <cstring>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// FixedConstraint.cpp | fbzz::physics
-// 2 つの剛体の相対位置・相対回転を固定する溶接拘束
+/// @file    FixedConstraint.cpp
+/// @brief   2 つの剛体の相対位置・相対回転を固定する溶接拘束。
+/// @author  Hasegawa Jin
+/// @date    2026-06-08
 #include <Physics/FixedConstraint.hpp>
 
 namespace fbzz::physics

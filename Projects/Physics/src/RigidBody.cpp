@@ -1,6 +1,7 @@
-// FBZZ Engine
-// RigidBody.cpp | fbzz::physics
-// 剛体の状態と力の積分
+/// @file    RigidBody.cpp
+/// @brief   剛体の状態と力の積分。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Physics/RigidBody.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>

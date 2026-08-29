@@ -1,8 +1,10 @@
-// FBZZ Engine
-// SceneManager.cpp | fbzz::scene
-// Scene 遷移と System 更新順の管理
-// 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
-// RenderSystem は BeginFrame / EndFrame の都合でゲームループ側から呼ぶ。
+/// @file    SceneManager.cpp
+/// @brief   Scene 遷移と System 更新順の管理。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
+/// RenderSystem は BeginFrame / EndFrame の都合でゲームループ側から呼ぶ。
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
@@ -21,10 +23,14 @@
 #include "Engine/Scene/Systems/AudioSystem.hpp"
 #include "Engine/Scene/Systems/LODSystem.hpp"
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
+#include "Engine/Scene/Systems/UIAudioSystem.hpp"
 #include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
 #include "Engine/Scene/Systems/WeatherSystem.hpp"
-#include "Engine/Scene/Systems/VFXGraphSystem.hpp"
+#include "Engine/Scene/Systems/SequenceSystem.hpp"
+#include "Engine/Scene/Systems/VFXSystem.hpp"
+#include "Engine/Scene/Systems/VFXBeamSystem.hpp"
 #include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
+#include "Engine/Scene/Systems/RuntimeMeshSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -73,7 +79,13 @@ void SceneManager::BuildScheduler()
 
     // LateScript
     m_scheduler.AddSystem<LateScriptSystem>();
-    m_scheduler.AddSystem<VFXGraphSystem>();
+    // .sequence は VFX / Audio へ書き込むため、両者より先に評価する
+    // (実行順は SequenceSystem の OrderingHints が決める)。
+    m_scheduler.AddSystem<SequenceSystem>();
+    m_scheduler.AddSystem<VFXSystem>();
+    m_scheduler.AddSystem<VFXBeamSystem>();
+    // UI の効果音は AudioSystem より前に積む (OrderingHints が実際の順を決める)。
+    m_scheduler.AddSystem<UIAudioSystem>();
     m_scheduler.AddSystem<AudioSystem>();
 
     // Cleanup
@@ -94,6 +106,9 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<CameraRigSystem>();
     m_scheduler.AddSystem<BillboardSystem>();
     m_scheduler.AddSystem<PresentationSystem>();
+    // Script が組んだメッシュを GPU へ載せる。Sprite / Line と同じ «CPU で作って
+    // LateUpdate で焼く» 経路なので、PresentationSystem の隣に置く。
+    m_scheduler.AddSystem<RuntimeMeshSystem>();
     // 雨量はパーティクルの発生量を決めるので、シミュレーションより先 (OrderingHints で明示)。
     m_scheduler.AddSystem<WeatherSystem>();
     m_scheduler.AddSystem<ParticleSimulationSystem>();

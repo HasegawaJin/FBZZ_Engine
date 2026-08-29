@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MeshTrailRenderSystem.hpp | fbzz::scene
-// MeshTrailComponent のサンプル更新と Mesh / SkinnedMesh 残像 DrawCall 発行
+/// @file    MeshTrailRenderSystem.hpp
+/// @brief   MeshTrailComponent のサンプル更新と Mesh / SkinnedMesh 残像 DrawCall 発行。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 #pragma once
 
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>

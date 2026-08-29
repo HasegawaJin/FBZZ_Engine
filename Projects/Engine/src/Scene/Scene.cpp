@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Scene.cpp | fbzz::scene
-// Scene の Entity 管理と GameObject 所有
-// EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
-// フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
+/// @file    Scene.cpp
+/// @brief   Scene の Entity 管理と GameObject 所有。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
+/// フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"

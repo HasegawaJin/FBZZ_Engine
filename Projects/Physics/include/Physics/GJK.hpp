@@ -1,6 +1,7 @@
-// FBZZ Engine
-// GJK.hpp | fbzz::physics
-// Gilbert-Johnson-Keerthi 距離アルゴリズム (交差判定 + 最近傍点)
+/// @file    GJK.hpp
+/// @brief   Gilbert-Johnson-Keerthi 距離アルゴリズム (交差判定 + 最近傍点)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 #include <array>
 #include <Math/Vector3.hpp>

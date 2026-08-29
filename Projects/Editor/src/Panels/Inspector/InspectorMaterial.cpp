@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorMaterial.cpp | fbzz::editor
-// Material Component の Inspector 描画
+/// @file    InspectorMaterial.cpp
+/// @brief   Material Component の Inspector 描画。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include "InspectorMaterial.hpp"
 
 namespace fbzz::editor {

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ScriptColliderProxy.hpp | fbzz::scene
-// Script から ColliderComponent を安全に更新するショートハンド
+/// @file    ScriptColliderProxy.hpp
+/// @brief   Script から ColliderComponent を安全に更新するショートハンド。
+/// @author  Hasegawa Jin
+/// @date    2026-06-26
 #pragma once
 
 #include <Math/Vector3.hpp>

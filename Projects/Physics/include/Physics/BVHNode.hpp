@@ -1,6 +1,7 @@
-// FBZZ Engine
-// BVHNode.hpp | fbzz::physics
-// AABB バウンディングボリューム階層 (TriangleMeshCollider 用)
+/// @file    BVHNode.hpp
+/// @brief   AABB バウンディングボリューム階層 (TriangleMeshCollider 用)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 #include <array>
 #include <vector>

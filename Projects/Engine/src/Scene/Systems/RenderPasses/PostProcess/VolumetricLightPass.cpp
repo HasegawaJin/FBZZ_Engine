@@ -1,9 +1,11 @@
-// FBZZ Engine
-// VolumetricLightPass.cpp | fbzz::scene
-// 体積光（ゴッドレイ・光柱）Compute パス。
-// WHY: レイマーチで各ピクセルからカメラ → シーンまでのパスを積分し、
-//      シャドウマップで遮蔽判定しながら Mie 散乱を蓄積する。
-//      結果は HDR バッファに加算合成し、霧の中の光差し込みを表現する。
+/// @file    VolumetricLightPass.cpp
+/// @brief   体積光（ゴッドレイ・光柱）Compute パス。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// WHY: レイマーチで各ピクセルからカメラ → シーンまでのパスを積分し、
+/// シャドウマップで遮蔽判定しながら Mie 散乱を蓄積する。
+/// 結果は HDR バッファに加算合成し、霧の中の光差し込みを表現する。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>

@@ -1,7 +1,7 @@
-/// @file MotionWarpComponent.hpp
-/// @brief ルートモーションの軌道を指定地点へ寄せる (Motion Warping) 設定
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    MotionWarpComponent.hpp
+/// @brief   ルートモーションの軌道を指定地点へ寄せる (Motion Warping) 設定
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

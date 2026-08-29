@@ -1,8 +1,10 @@
-// FBZZ Engine
-// AssetDirtyRegistry.hpp | fbzz::editor
-// Unreal 方式の未保存アセット中央レジストリ
-// WHY: シーン (SceneDirtyTracker) と同様に、マテリアル・AnimatorController など
-//      各アセットファイルの編集状態を一元管理し、Save All / 終了時確認を実現する。
+/// @file    AssetDirtyRegistry.hpp
+/// @brief   Unreal 方式の未保存アセット中央レジストリ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
+///
+/// WHY: シーン (SceneDirtyTracker) と同様に、マテリアル・AnimatorController など
+/// 各アセットファイルの編集状態を一元管理し、Save All / 終了時確認を実現する。
 #pragma once
 #include <functional>
 #include <string>

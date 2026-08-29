@@ -1,12 +1,14 @@
-// FBZZ Engine
-// DX11Renderer.cpp | fbzz::renderer
-// IRenderer の DX11 実装
-// デバイス・スワップチェーン・バックバッファ・フレーム送信を管理する。
-// 上位レイヤーには IRenderer と ResourceManager の境界だけを見せる。
-//
-// d3d11.lib / dxgi.lib はプラグマリンクで解決する。
-// CMakeLists で target_link_libraries に追加してもよいが、
-// DX11 依存を実装ファイルに閉じ込めるためここで宣言している。
+/// @file    DX11Renderer.cpp
+/// @brief   IRenderer の DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// デバイス・スワップチェーン・バックバッファ・フレーム送信を管理する。
+/// 上位レイヤーには IRenderer と ResourceManager の境界だけを見せる。
+///
+/// d3d11.lib / dxgi.lib はプラグマリンクで解決する。
+/// CMakeLists で target_link_libraries に追加してもよいが、
+/// DX11 依存を実装ファイルに閉じ込めるためここで宣言している。
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 

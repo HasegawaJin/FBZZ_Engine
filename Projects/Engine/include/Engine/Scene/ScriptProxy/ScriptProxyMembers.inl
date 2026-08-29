@@ -1,18 +1,20 @@
-// FBZZ Engine
-// ScriptProxyMembers.inl — Script クラスが持つプロキシメンバーの X-macro リスト
-//
-// 使い方 (Script.hpp 内):
-//   #define FBZZ_PROXY_MEMBER(Type, Name)     Type Name { this };
-//   #define FBZZ_PROXY_STANDALONE(Type, Name) Type Name;
-//   #include <Engine/Scene/ScriptProxy/ScriptProxyMembers.inl>
-//   #undef FBZZ_PROXY_MEMBER
-//   #undef FBZZ_PROXY_STANDALONE
-//
-// 新しいプロキシを追加するには:
-//   1. ScriptProxy/XxxProxy.hpp を作成
-//   2. AllScriptProxies.hpp に #include を追加
-//   3. ここにエントリを 1 行追加 (コンストラクタが Script* を受け取る → MEMBER, そうでない → STANDALONE)
-//   4. ScriptProxies.cpp に実装を追加
+/// @file    ScriptProxyMembers.inl
+/// @brief   ScriptProxyMembers.inl — Script クラスが持つプロキシメンバーの X-macro リスト。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// 使い方 (Script.hpp 内):
+/// #define FBZZ_PROXY_MEMBER(Type, Name)     Type Name { this };
+/// #define FBZZ_PROXY_STANDALONE(Type, Name) Type Name;
+/// #include <Engine/Scene/ScriptProxy/ScriptProxyMembers.inl>
+/// #undef FBZZ_PROXY_MEMBER
+/// #undef FBZZ_PROXY_STANDALONE
+///
+/// 新しいプロキシを追加するには:
+/// 1. ScriptProxy/XxxProxy.hpp を作成
+/// 2. AllScriptProxies.hpp に #include を追加
+/// 3. ここにエントリを 1 行追加 (コンストラクタが Script* を受け取る → MEMBER, そうでない → STANDALONE)
+/// 4. ScriptProxies.cpp に実装を追加
 
 // FBZZ_PROXY_MEMBER     — Script* { this } で初期化するプロキシ (大多数)
 // FBZZ_PROXY_STANDALONE — デフォルト初期化するプロキシ (Script* を受け取らない設計のもの)
@@ -66,3 +68,5 @@ FBZZ_PROXY_MEMBER(ScriptConfigProxy,        config)
 FBZZ_PROXY_MEMBER(ScriptDisplayProxy,       display)
 FBZZ_PROXY_MEMBER(ScriptGraphicsProxy,      graphics)
 FBZZ_PROXY_MEMBER(ScriptMotionWarpProxy,    motionWarp)
+FBZZ_PROXY_MEMBER(ScriptSequenceProxy,      sequence)
+FBZZ_PROXY_MEMBER(ScriptObjectMaskProxy,    objectMask)

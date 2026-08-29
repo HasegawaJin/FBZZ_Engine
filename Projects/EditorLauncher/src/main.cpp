@@ -1,19 +1,20 @@
-// FBZZ Engine
-// main.cpp | fbzz::editor_launcher
-// エディタ / スタンドアロン両対応のエントリポイント
-//
-// WHAT: コマンドライン引数を解析し、エディタモードとスタンドアロンモードを切り替える。
-//   FBZZEditor.exe --project <path>              → エディタ起動 (既存)
-//   FBZZEditor.exe --project <path> --standalone → エディタ UI なし・ゲームのみ起動
-//   FBZZEditor.exe (exe 隣に .fbzz_proj あり)     → 配布版として Standalone 起動
-//   FBZZEditor.exe (引数なし / .fbzz_proj なし)   → 開発用テンプレートを Editor 起動
-//
-// WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
-//      配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
-//
-// WHY (Util の配置): Utf8ToWide / PathToUtf8 / Exists / ReadText 等の文字列・パス変換は
-//      EditorLauncher と Sandbox の両方で必要なため Engine/Util に集約した。
-//      ここでは Engine の API を直接呼ぶことで実装の重複を排除している。
+/// @file    main.cpp
+/// @brief   エディタ / スタンドアロン両対応のエントリポイント。
+/// @author  Hasegawa Jin
+/// @date    2026-05-25
+///
+/// WHAT: コマンドライン引数を解析し、エディタモードとスタンドアロンモードを切り替える。
+/// FBZZEditor.exe --project <path>              → エディタ起動 (既存)
+/// FBZZEditor.exe --project <path> --standalone → エディタ UI なし・ゲームのみ起動
+/// FBZZEditor.exe (exe 隣に .fbzz_proj あり)     → 配布版として Standalone 起動
+/// FBZZEditor.exe (引数なし / .fbzz_proj なし)   → 開発用テンプレートを Editor 起動
+///
+/// WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
+/// 配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
+///
+/// WHY (Util の配置): Utf8ToWide / PathToUtf8 / Exists / ReadText 等の文字列・パス変換は
+/// EditorLauncher と Sandbox の両方で必要なため Engine/Util に集約した。
+/// ここでは Engine の API を直接呼ぶことで実装の重複を排除している。
 #include "StandaloneApp.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>

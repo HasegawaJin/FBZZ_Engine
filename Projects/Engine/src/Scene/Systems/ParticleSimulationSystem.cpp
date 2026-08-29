@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ParticleSimulationSystem.cpp | fbzz::scene
-// Particle再生、距離Emission、時刻Burst、Prewarmを描画前に一度だけ評価する。
+/// @file    ParticleSimulationSystem.cpp
+/// @brief   Particle再生、距離Emission、時刻Burst、Prewarmを描画前に一度だけ評価する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #include <Engine/Scene/Systems/ParticleSimulationSystem.hpp>
 #include <Engine/Scene/Systems/ParticleSimulationRuntime.hpp>
 

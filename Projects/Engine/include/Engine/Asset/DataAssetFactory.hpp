@@ -1,7 +1,9 @@
-// FBZZ Engine
-// DataAssetFactory.hpp | fbzz::asset
-// DataAssetRegistry が保存された型名から DataAsset 実体を復元するための型レジストリ。
-// ScriptFactory と同方針: ユーザー定義型 (スクリプト DLL 内) を型名キーで生成する。
+/// @file    DataAssetFactory.hpp
+/// @brief   DataAssetRegistry が保存された型名から DataAsset 実体を復元するための型レジストリ。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// ScriptFactory と同方針: ユーザー定義型 (スクリプト DLL 内) を型名キーで生成する。
 #pragma once
 #include <Engine/Asset/DataAsset.hpp>
 #include <cstdint>

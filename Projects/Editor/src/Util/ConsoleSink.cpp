@@ -1,6 +1,7 @@
-// FBZZ Engine
-// ConsoleSink.cpp | fbzz::editor
-// ILogSink 実装 — リングバッファにログエントリを蓄積する
+/// @file    ConsoleSink.cpp
+/// @brief   ILogSink 実装 — リングバッファにログエントリを蓄積する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #include <Editor/Util/ConsoleSink.hpp>
 
 namespace fbzz::editor {

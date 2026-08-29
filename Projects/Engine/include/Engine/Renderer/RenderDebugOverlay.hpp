@@ -1,8 +1,10 @@
-// FBZZ Engine
-// RenderDebugOverlay.hpp | fbzz::renderer
-// パスごとの RT サムネイルと CPU タイミングを表示する ImGui デバッグオーバーレイ。
-// RenderSettings::passViewerEnabled が true のとき RenderSystem の末尾から呼ばれる。
-// ImGui フレーム内 (ImGui::NewFrame() と ImGui::Render() の間) での呼び出しが前提。
+/// @file    RenderDebugOverlay.hpp
+/// @brief   パスごとの RT サムネイルと CPU タイミングを表示する ImGui デバッグオーバーレイ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
+///
+/// RenderSettings::passViewerEnabled が true のとき RenderSystem の末尾から呼ばれる。
+/// ImGui フレーム内 (ImGui::NewFrame() と ImGui::Render() の間) での呼び出しが前提。
 #pragma once
 
 #include "ResourceHandle.hpp"

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Vector3.hpp | fbzz::math
-// 3次元ベクトル (位置・方向・法線・RGB色)
+/// @file    Vector3.hpp
+/// @brief   3次元ベクトル (位置・方向・法線・RGB色)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 namespace fbzz::math {

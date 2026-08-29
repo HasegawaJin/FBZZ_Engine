@@ -1,6 +1,7 @@
-// FBZZ Engine
-// MaterialAsset.cpp | fbzz::asset
-// .mat マテリアルアセットの TOML シリアライズ / デシリアライズ
+/// @file    MaterialAsset.cpp
+/// @brief   .mat マテリアルアセットの TOML シリアライズ / デシリアライズ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -102,6 +103,7 @@ RenderPath RenderPathFromString(std::string_view value)
     if (value == "trail" || value == "Trail") return RenderPath::Trail;
     if (value == "ui" || value == "UI") return RenderPath::UI;
     if (value == "decal" || value == "Decal") return RenderPath::Decal;
+    if (value == "post_process" || value == "PostProcess") return RenderPath::PostProcess;
     return RenderPath::Auto;
 }
 
@@ -112,6 +114,7 @@ const char* RenderPathToString(RenderPath rp)
     case RenderPath::Trail:    return "trail";
     case RenderPath::UI:       return "ui";
     case RenderPath::Decal:    return "decal";
+    case RenderPath::PostProcess: return "post_process";
     case RenderPath::Auto:
     default:                   return "auto";
     }

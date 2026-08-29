@@ -1,7 +1,7 @@
-/// @file LightCookiePass.cpp
-/// @brief ライト Cookie の元テクスチャをアトラスのタイルへ焼き直す
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    LightCookiePass.cpp
+/// @brief   ライト Cookie の元テクスチャをアトラスのタイルへ焼き直す
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 //
 // WHY 毎フレーム焼かないか: Cookie の顔ぶれは、ライトを追加・削除するか、Inspector で
 //      パスや回転を変えたときしか動かない。全画面三角形 8 枚とはいえ、変わっていない

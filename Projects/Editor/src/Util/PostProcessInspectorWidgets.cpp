@@ -1,17 +1,18 @@
-// FBZZ Engine
-// PostProcessInspectorWidgets.cpp | fbzz::editor
-// PostProcessProfile のオーバーライド編集 UI の実装。
-//
-// 画面構成 (上から):
-//   1. サマリーバー   — 何個の効果が効いているか、排他スロットの競合が無いか
-//   2. Add Override   — カテゴリ別ポップアップ。検索付き。追加済みは選べない
-//   3. オーバーライドカード — Inspector のコンポーネントカードと同じ見た目
-//   4. 空状態のプレースホルダ
-//
-// WHY コンポーネントカードと同じ見た目にそろえるか:
-//     Inspector には既に「左に色帯 + チェック + 折りたたみ」というカードの語彙がある。
-//     ここだけ独自の見た目にすると、同じ画面に 2 つの規則が並ぶことになる。
-//     色帯の色だけを効果カテゴリのものに差し替え、構造は共有する。
+/// @file    PostProcessInspectorWidgets.cpp
+/// @brief   PostProcessProfile のオーバーライド編集 UI の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+///
+/// 画面構成 (上から):
+/// 1. サマリーバー   — 何個の効果が効いているか、排他スロットの競合が無いか
+/// 2. Add Override   — カテゴリ別ポップアップ。検索付き。追加済みは選べない
+/// 3. オーバーライドカード — Inspector のコンポーネントカードと同じ見た目
+/// 4. 空状態のプレースホルダ
+///
+/// WHY コンポーネントカードと同じ見た目にそろえるか:
+/// Inspector には既に「左に色帯 + チェック + 折りたたみ」というカードの語彙がある。
+/// ここだけ独自の見た目にすると、同じ画面に 2 つの規則が並ぶことになる。
+/// 色帯の色だけを効果カテゴリのものに差し替え、構造は共有する。
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/EditorTheme.hpp>

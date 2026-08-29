@@ -1,7 +1,9 @@
-// FBZZ Engine
-// AnimationImporter.cpp | fbzz::asset
-// .anim バイナリ v3 → AnimationClip デシリアライザ
-// WHAT: v3 の型付き Property / Material / Morph Track を復元する。
+/// @file    AnimationImporter.cpp
+/// @brief   .anim バイナリ v3 → AnimationClip デシリアライザ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// WHAT: v3 の型付き Property / Material / Morph Track を復元する。
 #include <Engine/Asset/AnimationImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>

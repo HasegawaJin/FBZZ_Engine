@@ -1,9 +1,11 @@
-// FBZZ Engine
-// RendererFactory.cpp | fbzz::renderer
-// RendererBackend → 具象バックエンドの生成・配線を担う合成ポイント。
-// WHY: 具象ヘッダー (DX11Renderer / DX11ImGuiRenderer) を include するのは本ファイルだけに限定し、
-//      上位レイヤー (Application / GameHub) が DX11 を知らずにバックエンドを選べるようにする。
-//      DX12 追加時は switch に case を足すだけで済む。
+/// @file    RendererFactory.cpp
+/// @brief   RendererBackend → 具象バックエンドの生成・配線を担う合成ポイント。
+/// @author  Hasegawa Jin
+/// @date    2026-07-02
+///
+/// WHY: 具象ヘッダー (DX11Renderer / DX11ImGuiRenderer) を include するのは本ファイルだけに限定し、
+/// 上位レイヤー (Application / GameHub) が DX11 を知らずにバックエンドを選べるようにする。
+/// DX12 追加時は switch に case を足すだけで済む。
 #include "Engine/Renderer/RendererFactory.hpp"
 
 #include "Engine/Core/Logger.hpp"

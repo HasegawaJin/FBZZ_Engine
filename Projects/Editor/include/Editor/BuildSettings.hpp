@@ -1,13 +1,14 @@
-// FBZZ Engine
-// BuildSettings.hpp | fbzz::editor
-// ゲームビルドのパッケージング設定
-//
-// WHAT: Unity の Build Settings に相当する構造体。
-//       ビルドに含めるシーン、出力先、製品名、バージョンを保持する。
-//
-// WHY (永続化を持たない): 保存先は EditorSettings (Assets/EditorConfig/editor_settings.toml)。
-//      エディターが覚えている他の状態と同じファイルに入れることで、
-//      プロジェクトルートに設定ファイルが増えるのを避ける。
+/// @file    BuildSettings.hpp
+/// @brief   ゲームビルドのパッケージング設定。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
+///
+/// WHAT: Unity の Build Settings に相当する構造体。
+/// ビルドに含めるシーン、出力先、製品名、バージョンを保持する。
+///
+/// WHY (永続化を持たない): 保存先は EditorSettings (Assets/EditorConfig/editor_settings.toml)。
+/// エディターが覚えている他の状態と同じファイルに入れることで、
+/// プロジェクトルートに設定ファイルが増えるのを避ける。
 #pragma once
 #include <filesystem>
 #include <string>

@@ -40,7 +40,9 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float3   cameraPos;
     float    nearZ;
     float    farZ;
-    float3   _camPad;
+    float    _camReserved;   // Water パスのみ waterSsrEnabled として使う枠
+    float    isOrthographic; // 1 = 平行投影
+    float    _camPad;
 };
 
 // デカールパスは DeferredLighting 後の HDR へ合成するため GBuffer 法線を更新できない。

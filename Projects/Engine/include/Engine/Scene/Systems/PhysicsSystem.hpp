@@ -1,8 +1,10 @@
-// FBZZ Engine
-// PhysicsSystem.hpp | fbzz::scene
-// Scene と physics::World の同期 System
-// RigidBodyComponent から World へ入力し、シミュレーション後の結果を Transform へ戻す。
-// 固定ステップは SystemScheduler::PhaseConfig で制御する。
+/// @file    PhysicsSystem.hpp
+/// @brief   Scene と physics::World の同期 System。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// RigidBodyComponent から World へ入力し、シミュレーション後の結果を Transform へ戻す。
+/// 固定ステップは SystemScheduler::PhaseConfig で制御する。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 

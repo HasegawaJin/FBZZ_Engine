@@ -1,6 +1,7 @@
-// FBZZ Engine
-// StandaloneLauncher.cpp | fbzz::editor
-// CreateProcess による子プロセス起動の実装
+/// @file    StandaloneLauncher.cpp
+/// @brief   CreateProcess による子プロセス起動の実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-31
 #include <Editor/Util/StandaloneLauncher.hpp>
 
 #include <Engine/Core/Logger.hpp>

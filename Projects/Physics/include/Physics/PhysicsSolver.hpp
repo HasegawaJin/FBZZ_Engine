@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PhysicsSolver.hpp | fbzz::physics
-// 衝突検出 (Broad/Narrow フェーズ) と衝突解決 (PGS インパルスベース)
+/// @file    PhysicsSolver.hpp
+/// @brief   衝突検出 (Broad/Narrow フェーズ) と衝突解決 (PGS インパルスベース)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 #include <functional>
 #include <Physics/ContactPoint.hpp>

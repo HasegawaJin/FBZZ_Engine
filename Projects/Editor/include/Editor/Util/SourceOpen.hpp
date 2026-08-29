@@ -1,9 +1,11 @@
-// FBZZ Engine
-// SourceOpen.hpp | fbzz::editor
-// 診断・ログの「ファイル:行」を外部エディターで開くための共通ユーティリティ
-// WHY: Build Output パネルはビルド診断から、Console パネルはランタイムログから、
-//      それぞれ同じ「該当ソース行へ飛ぶ」操作を提供する。VSCode CLI の探索と
-//      フォールバック手順を 2 箇所に書くと片方だけ壊れるため、ここへ集約する。
+/// @file    SourceOpen.hpp
+/// @brief   診断・ログの「ファイル:行」を外部エディターで開くための共通ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+///
+/// WHY: Build Output パネルはビルド診断から、Console パネルはランタイムログから、
+/// それぞれ同じ「該当ソース行へ飛ぶ」操作を提供する。VSCode CLI の探索と
+/// フォールバック手順を 2 箇所に書くと片方だけ壊れるため、ここへ集約する。
 #pragma once
 #include <cstddef>
 #include <string>

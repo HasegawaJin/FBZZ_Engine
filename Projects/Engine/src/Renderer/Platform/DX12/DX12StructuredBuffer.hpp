@@ -1,6 +1,7 @@
-// FBZZ Engine
-// DX12StructuredBuffer.hpp | fbzz::renderer
-// StructuredBuffer / RWStructuredBuffer のDirectX 12実装
+/// @file    DX12StructuredBuffer.hpp
+/// @brief   StructuredBuffer / RWStructuredBuffer のDirectX 12実装。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
 #pragma once
 
 #include <Engine/Renderer/IStructuredBuffer.hpp>

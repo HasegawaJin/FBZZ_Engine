@@ -1,8 +1,10 @@
-// FBZZ Engine
-// Model.hpp | fbzz::asset
-// FBX / OBJ などから得たメッシュ・マテリアル・アニメーション一式
-// AssetManager が唯一の所有者。Scene 側のコンポーネントは Mesh* / Material* の非所有参照を使う。
-// メッシュとマテリアルの対応は配列インデックスで揃える前提にする。
+/// @file    Model.hpp
+/// @brief   FBX / OBJ などから得たメッシュ・マテリアル・アニメーション一式。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// AssetManager が唯一の所有者。Scene 側のコンポーネントは Mesh* / Material* の非所有参照を使う。
+/// メッシュとマテリアルの対応は配列インデックスで揃える前提にする。
 #pragma once
 #include <memory>
 #include <vector>

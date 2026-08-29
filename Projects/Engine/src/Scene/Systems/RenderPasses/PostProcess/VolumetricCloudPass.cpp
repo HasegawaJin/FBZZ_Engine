@@ -1,10 +1,11 @@
-// FBZZ Engine
-// VolumetricCloudPass.cpp | fbzz::scene
-// VolumetricCloudComponent をレイマーチして HDR へ合成する。
-//
-// WHY: 事前ベイクした 3D ノイズ (Shape + Detail / CloudNoiseBake) を使う本格ボリューメトリック雲。
-//      太陽方向ライトマーチによるセルフシャドウ + 空白スキップで負荷を抑える。
-//      レンダー解像度は kCloudResShift で Full/Half を切り替える (既定 Full)。
+/// @file    VolumetricCloudPass.cpp
+/// @brief   VolumetricCloudComponent をレイマーチして HDR へ合成する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-01
+///
+/// WHY: 事前ベイクした 3D ノイズ (Shape + Detail / CloudNoiseBake) を使う本格ボリューメトリック雲。
+/// 太陽方向ライトマーチによるセルフシャドウ + 空白スキップで負荷を抑える。
+/// レンダー解像度は kCloudResShift で Full/Half を切り替える (既定 Full)。
 #include "PostProcessPasses.hpp"
 #include "../Geometry/GeometryPasses.hpp"
 #include <Engine/Core/Time.hpp>

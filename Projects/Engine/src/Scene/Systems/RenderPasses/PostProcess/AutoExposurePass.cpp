@@ -1,7 +1,7 @@
-/// @file AutoExposurePass.cpp
-/// @brief HDR バッファの輝度ヒストグラムから露出を決めて時間順応させる
-/// @author Hasegawa Jin
-/// @date 2026-08-25
+/// @file    AutoExposurePass.cpp
+/// @brief   HDR バッファの輝度ヒストグラムから露出を決めて時間順応させる
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 //
 // 2 つの Dispatch で完結する。
 //   1. ExposureHistogram : 画面を走査して対数輝度のヒストグラムを作る

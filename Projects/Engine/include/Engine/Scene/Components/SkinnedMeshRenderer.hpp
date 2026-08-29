@@ -1,6 +1,7 @@
-// FBZZ Engine
-// SkinnedMeshRenderer.hpp | fbzz::scene
-// Component that draws a skinned model and owns runtime bone entity links.
+/// @file    SkinnedMeshRenderer.hpp
+/// @brief   Component that draws a skinned model and owns runtime bone entity links.
+/// @author  Hasegawa Jin
+/// @date    2026-05-24
 #pragma once
 
 #include <Engine/Asset/Model.hpp>

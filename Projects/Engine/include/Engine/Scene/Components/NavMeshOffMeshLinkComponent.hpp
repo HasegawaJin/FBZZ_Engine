@@ -1,8 +1,10 @@
-// FBZZ Engine
-// NavMeshOffMeshLinkComponent.hpp | fbzz::scene
-// NavMesh 上の非連続エリアを接続するオフメッシュリンク（Unity の Off-Mesh Link 相当）。
-// GO をリンクの起点側に置き、startPoint / endPoint をワールド座標で指定する。
-// NavMeshBakeSystem がベイク完了後に最近傍ポリゴンへ自動接続する。
+/// @file    NavMeshOffMeshLinkComponent.hpp
+/// @brief   NavMesh 上の非連続エリアを接続するオフメッシュリンク（Unity の Off-Mesh Link 相当）。
+/// @author  Hasegawa Jin
+/// @date    2026-06-17
+///
+/// GO をリンクの起点側に置き、startPoint / endPoint をワールド座標で指定する。
+/// NavMeshBakeSystem がベイク完了後に最近傍ポリゴンへ自動接続する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

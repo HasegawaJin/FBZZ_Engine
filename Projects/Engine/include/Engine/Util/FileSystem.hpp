@@ -1,8 +1,10 @@
-// FBZZ Engine
-// FileSystem.hpp | fbzz::util
-// ファイル・ディレクトリ操作ユーティリティ
-// Win32 / 標準ライブラリの差を吸収し、エンジン内のパス処理を集約する。
-// 読み書き失敗は bool や空配列で返し、例外は使わない。
+/// @file    FileSystem.hpp
+/// @brief   ファイル・ディレクトリ操作ユーティリティ。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// Win32 / 標準ライブラリの差を吸収し、エンジン内のパス処理を集約する。
+/// 読み書き失敗は bool や空配列で返し、例外は使わない。
 #pragma once
 #include <cstdint>
 #include <filesystem>

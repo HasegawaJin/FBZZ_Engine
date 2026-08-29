@@ -1,16 +1,18 @@
-// FBZZ Engine
-// DX11RenderTarget.hpp | fbzz::renderer
-// DX11 オフスクリーン描画ターゲット実装
-// IRenderTarget を継承し、RTV / DSV / SRV の組を管理する。
-// バックバッファ以外の描画先を Renderer 抽象から扱えるようにする。
-//
-// 設計方針:
-//   IRenderTarget を継承し、ポストプロセス・シャドウマップ等の RTT パターンを抽象化する。
-//   カラーバッファは D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE の両フラグで
-//   生成し、描画先としても SRV としても使用できる "Read-Back テクスチャ" にする。
-//
-//   ResourceManager は DX11Renderer 経由で SRV を ITexture ラッパー化し、
-//   上位レイヤーへは ResourceHandle<TextureTag> として公開する。
+/// @file    DX11RenderTarget.hpp
+/// @brief   DX11 オフスクリーン描画ターゲット実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// IRenderTarget を継承し、RTV / DSV / SRV の組を管理する。
+/// バックバッファ以外の描画先を Renderer 抽象から扱えるようにする。
+///
+/// 設計方針:
+/// IRenderTarget を継承し、ポストプロセス・シャドウマップ等の RTT パターンを抽象化する。
+/// カラーバッファは D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE の両フラグで
+/// 生成し、描画先としても SRV としても使用できる "Read-Back テクスチャ" にする。
+///
+/// ResourceManager は DX11Renderer 経由で SRV を ITexture ラッパー化し、
+/// 上位レイヤーへは ResourceHandle<TextureTag> として公開する。
 #pragma once
 
 #include <d3d11.h>

@@ -1,10 +1,11 @@
-// FBZZ Engine
-// EditorApp_Shortcuts.cpp | fbzz::editor
-// ショートカット一覧オーバーレイ (F1) と選択ヒストリ (Alt+←/→)
-//
-// WHY: ホットキーは HotkeyManager が保持しているのに一覧で見る手段が無く、発見性が低かった。
-//      また階層で選び直す手間を減らすため、直近の選択を往復できる履歴を用意する。
-//      どちらも「操作の見通しを良くする」横断的 UX 改善であり、1 ファイルにまとめる。
+/// @file    EditorApp_Shortcuts.cpp
+/// @brief   ショートカット一覧オーバーレイ (F1) と選択ヒストリ (Alt+←/→)。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// WHY: ホットキーは HotkeyManager が保持しているのに一覧で見る手段が無く、発見性が低かった。
+/// また階層で選び直す手間を減らすため、直近の選択を往復できる履歴を用意する。
+/// どちらも「操作の見通しを良くする」横断的 UX 改善であり、1 ファイルにまとめる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>

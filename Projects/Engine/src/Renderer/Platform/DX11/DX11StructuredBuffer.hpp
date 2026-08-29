@@ -1,15 +1,17 @@
-// FBZZ Engine
-// DX11StructuredBuffer.hpp | fbzz::renderer
-// IStructuredBuffer の DX11 実装。
-// readWrite=false (DYNAMIC): SRV のみ。DrawInstanced インスタンスデータや CS 入力に使う。
-// readWrite=true  (DEFAULT): SRV + UAV。CS が RWStructuredBuffer として書き込む GPU 粒子プール等に使う。
-//
-// WHY: StructuredBuffer<T> は HLSL 側で InstanceID から直接インデックスできるため、
-//      IASetVertexBuffers のインスタンスストリームより HLSL の記述が直感的になる。
-//      また stride が 16 バイト境界に制限されないため、20 バイトのような非整合な
-//      構造体も扱える。
-// WHY readWrite=true: D3D11 では DYNAMIC バッファは UAV 不可のため、CS 書き込みが必要な場合は
-//      DEFAULT + UpdateSubresource で CPU から初期データを供給する設計にする。
+/// @file    DX11StructuredBuffer.hpp
+/// @brief   IStructuredBuffer の DX11 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-14
+///
+/// readWrite=false (DYNAMIC): SRV のみ。DrawInstanced インスタンスデータや CS 入力に使う。
+/// readWrite=true  (DEFAULT): SRV + UAV。CS が RWStructuredBuffer として書き込む GPU 粒子プール等に使う。
+///
+/// WHY: StructuredBuffer<T> は HLSL 側で InstanceID から直接インデックスできるため、
+/// IASetVertexBuffers のインスタンスストリームより HLSL の記述が直感的になる。
+/// また stride が 16 バイト境界に制限されないため、20 バイトのような非整合な
+/// 構造体も扱える。
+/// WHY readWrite=true: D3D11 では DYNAMIC バッファは UAV 不可のため、CS 書き込みが必要な場合は
+/// DEFAULT + UpdateSubresource で CPU から初期データを供給する設計にする。
 #pragma once
 
 #include <Engine/Renderer/IStructuredBuffer.hpp>

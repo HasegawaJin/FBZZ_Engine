@@ -1,7 +1,9 @@
-// FBZZ Engine
-// TextureAsset.hpp | fbzz::asset
-// テクスチャアセットのランタイム表現とインポート設定
-// .tex TOML descriptor または .png/.dds/.tga 直参照を統一型で扱う。
+/// @file    TextureAsset.hpp
+/// @brief   テクスチャアセットのランタイム表現とインポート設定。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+///
+/// .tex TOML descriptor または .png/.dds/.tga 直参照を統一型で扱う。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector2.hpp>

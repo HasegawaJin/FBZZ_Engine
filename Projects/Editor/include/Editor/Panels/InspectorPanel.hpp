@@ -1,6 +1,7 @@
-// FBZZ Engine
-// InspectorPanel.hpp | fbzz::editor
-// 選択 Entity のコンポーネントを表示・編集する
+/// @file    InspectorPanel.hpp
+/// @brief   選択 Entity のコンポーネントを表示・編集する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>

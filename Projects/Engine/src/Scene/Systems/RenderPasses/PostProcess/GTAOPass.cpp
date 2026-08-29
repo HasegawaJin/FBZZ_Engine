@@ -1,9 +1,11 @@
-// FBZZ Engine
-// GTAOPass.cpp | fbzz::scene
-// Ground Truth Ambient Occlusion (Horizon-Based AO) パス。
-// SSAO より高品質で、接触部・コーナー部の陰が自然に締まる。
-// WHY: SSAO は半球上のランダムサンプルで AO を近似するため、法線方向と無関係なアーティファクトが出やすい。
-//      GTAO (Horizon-Based AO) はスライスごとに水平線角度を積分するため、物理的に正確な AO が得られる。
+/// @file    GTAOPass.cpp
+/// @brief   Ground Truth Ambient Occlusion (Horizon-Based AO) パス。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
+///
+/// SSAO より高品質で、接触部・コーナー部の陰が自然に締まる。
+/// WHY: SSAO は半球上のランダムサンプルで AO を近似するため、法線方向と無関係なアーティファクトが出やすい。
+/// GTAO (Horizon-Based AO) はスライスごとに水平線角度を積分するため、物理的に正確な AO が得られる。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>

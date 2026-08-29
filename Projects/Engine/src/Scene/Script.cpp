@@ -1,11 +1,14 @@
-// FBZZ Engine
-// Script.cpp | fbzz::scene
-// Script 基底クラスの便利 API 実装
-// template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
+/// @file    Script.cpp
+/// @brief   Script 基底クラスの便利 API 実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-27
+///
+/// template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -31,7 +34,11 @@ void Script::SetPrefabInstantiationCallback(PrefabInstantiateFn fn)
 
 bool Script::InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
 {
-    if (!s_instantiateFn) return false;
+    // WHY 既定を持つか: 以前はコールバック未設定で無条件に false を返していたため、
+    //     コールバックを注入するのが Editor だけだったスタンドアロン実行では
+    //     プレファブ生成が丸ごと動かなかった (PrefabPool::Spawn も必ず失敗する)。
+    //     Editor は差分 (override) 付きの生成を注入して上書きする。
+    if (!s_instantiateFn) return InstantiatePrefabAsset(scene, path, roots);
     return s_instantiateFn(scene, path, roots);
 }
 
@@ -115,6 +122,45 @@ bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&)
     }
 #else
     (this->*callback)(info);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&),
+                             const SequenceEventInfo& info)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, "OnSequenceEvent");
+        return false;
+    }
+#else
+    (this->*callback)(info);
+    return true;
+#endif
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const char*),
+                             const char* argument,
+                             const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted) return false;
+#if defined(_MSC_VER)
+    __try {
+        (this->*callback)(argument);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+        return false;
+    }
+#else
+    (this->*callback)(argument);
     return true;
 #endif
 }

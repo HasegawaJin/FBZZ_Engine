@@ -1,19 +1,20 @@
-// FBZZ Engine
-// ScriptObjectFactory.hpp | fbzz::editor
-// スクリプト 1 つから「それが動く GameObject」を丸ごと作る
-//
-// WHY:
-//   汎用の EnemyScript を書いたとき、置くたびに RigidBody / Collider / Animator /
-//   NavMeshAgent を手で選び直すのでは、スクリプトを共通化した意味が配置作業に
-//   吸い取られてしまう。FBZZ_REQUIRE_COMPONENT でスクリプト側が要求を宣言している
-//   なら、その宣言をそのまま組み立て手順として使える。
-//
-//   ここで作った GameObject をそのまま "Save As Prefab" すれば、以降は
-//   プレファブ 1 個のドラッグで配置が済む。スクリプトが実行時に自分で
-//   GetOrAddComponent する設計を採らないのは、Collider の寸法や Animator の
-//   Controller のように「コードからは決められない値」が必ず残るため。
-//   組み立てはエディタ (人が値を詰められる場所) で一度だけ行い、
-//   結果を Prefab として固定するのが、破綻しない唯一の分担になる。
+/// @file    ScriptObjectFactory.hpp
+/// @brief   スクリプト 1 つから「それが動く GameObject」を丸ごと作る。
+/// @author  Hasegawa Jin
+/// @date    2026-08-19
+///
+/// WHY:
+/// 汎用の EnemyScript を書いたとき、置くたびに RigidBody / Collider / Animator /
+/// NavMeshAgent を手で選び直すのでは、スクリプトを共通化した意味が配置作業に
+/// 吸い取られてしまう。FBZZ_REQUIRE_COMPONENT でスクリプト側が要求を宣言している
+/// なら、その宣言をそのまま組み立て手順として使える。
+///
+/// ここで作った GameObject をそのまま "Save As Prefab" すれば、以降は
+/// プレファブ 1 個のドラッグで配置が済む。スクリプトが実行時に自分で
+/// GetOrAddComponent する設計を採らないのは、Collider の寸法や Animator の
+/// Controller のように「コードからは決められない値」が必ず残るため。
+/// 組み立てはエディタ (人が値を詰められる場所) で一度だけ行い、
+/// 結果を Prefab として固定するのが、破綻しない唯一の分担になる。
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>

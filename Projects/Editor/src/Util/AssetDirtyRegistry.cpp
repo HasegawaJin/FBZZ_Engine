@@ -1,5 +1,7 @@
-// FBZZ Engine
-// AssetDirtyRegistry.cpp | fbzz::editor
+/// @file    AssetDirtyRegistry.cpp
+/// @brief   未保存アセット中央レジストリの実装。
+/// @author  Hasegawa Jin
+/// @date    2026-06-13
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <algorithm>
 

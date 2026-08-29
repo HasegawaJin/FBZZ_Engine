@@ -1,7 +1,9 @@
-// FBZZ Engine
-// LODSystem.cpp | fbzz::scene
-// LODGroupComponent の参照解決と Renderer 可視性の更新
-// enabled と lodVisible を分離し、ユーザーが設定した Renderer 有効状態を上書きしない。
+/// @file    LODSystem.cpp
+/// @brief   LODGroupComponent の参照解決と Renderer 可視性の更新。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+///
+/// enabled と lodVisible を分離し、ユーザーが設定した Renderer 有効状態を上書きしない。
 #include <Engine/Scene/Systems/LODSystem.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PostProcessBlend.cpp | fbzz::renderer
-// ボリューム合成プリミティブと、解決結果の描画設定への流し込み。
+/// @file    PostProcessBlend.cpp
+/// @brief   ボリューム合成プリミティブと、解決結果の描画設定への流し込み。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
 #include <Engine/Renderer/PostProcessBlend.hpp>
 #include <algorithm>
 

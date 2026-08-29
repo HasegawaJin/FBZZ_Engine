@@ -1,8 +1,10 @@
-// FBZZ Engine
-// StringUtils.cpp | fbzz::util
-// 文字列操作ユーティリティ実装
-// 検索・分割・trim・大文字小文字変換と wide / narrow 変換を扱う。
-// Win32 API 境界で必要な文字列変換をここに集約する。
+/// @file    StringUtils.cpp
+/// @brief   文字列操作ユーティリティ実装。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+///
+/// 検索・分割・trim・大文字小文字変換と wide / narrow 変換を扱う。
+/// Win32 API 境界で必要な文字列変換をここに集約する。
 #include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
 #include <cctype>

@@ -54,6 +54,14 @@ struct UIVertexInput
     float2 pos : POSITION;
     // 矩形内の正規化座標 (0,0)=左上 〜 (1,1)=右下。アトラス UV ではない。
     float2 uv  : TEXCOORD0;
+    // 頂点ごとの色。g_Color に **掛かる** (置き換えではない)。
+    //
+    // WHY 要るか: g_Color は 1 ドローに 1 つしか無いので、それだけだと
+    //     「1 つの文字列の中で一部の語だけ色を変える」が原理的に書けない。
+    //     語ごとにドローを割ると、1 行の文章で何十ドローにもなる。
+    //     頂点に色を載せれば 1 ドローのまま文字ごとに色を変えられる。
+    // NOTE: 色を使わない描画では UISystem が白 (1,1,1,1) を積む。
+    float4 color : COLOR;
 };
 
 struct UIPixelInput
@@ -63,6 +71,8 @@ struct UIPixelInput
     float2 uv       : TEXCOORD0;
     // 矩形内 0..1。図形を描くのはこちらを使う (アトラスの位置に依存しない)。
     float2 localUv  : TEXCOORD1;
+    // 頂点色の補間結果。PSMain は最終色にこれを掛けること。
+    float4 color    : COLOR;
 };
 
 // 全 UI シェーダーで共通の頂点処理。マテリアル側は PSMain だけ書けばよい。
@@ -72,7 +82,18 @@ UIPixelInput UIVertexMain(UIVertexInput input)
     output.pos     = mul(float4(input.pos, 0.0f, 1.0f), g_Ortho);
     output.localUv = input.uv;
     output.uv      = g_UVRect.xy + input.uv * (g_UVRect.zw - g_UVRect.xy);
+    output.color   = input.color;
     return output;
+}
+
+// UI 要素の最終的な染め色。g_Color (要素の色) と頂点色を畳んだもの。
+//
+// WHY 関数にするか: マテリアル側が g_Color だけを掛けて頂点色を掛け忘れると、
+//     リッチテキストの色指定がそのマテリアルでだけ黙って無視される。
+//     「掛けるべきもの」を 1 つの名前にしておけば、書き写す対象が 1 つで済む。
+float4 UITint(UIPixelInput input)
+{
+    return g_Color * input.color;
 }
 
 // 矩形内の位置をピクセル単位で返す。中心が原点。

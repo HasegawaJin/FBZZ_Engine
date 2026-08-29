@@ -74,6 +74,11 @@
 #define TEX_BLOOM       t10
 #define TEX_ENV_CUBE    t11  // Skybox キューブマップ / IBL
 #define TEX_ENV_EQUIRECT t12 // Skydome 等緯度テクスチャ
+// カスタムパスが宣言したときだけ束縛される追加入力。IBL / Skydome と時分割で共有する。
+// WHY 空きスロットを増やさず時分割か: 全画面のカスタムパスはシーンのジオメトリを
+//     描かないので環境マップを読まない。同じフレームでも同時に束縛されることが無い。
+#define TEX_CUSTOM_VELOCITY t11 // モーションベクター (RG = 速度)
+#define TEX_CUSTOM_NORMAL   t12 // GBuffer 法線 (Deferred 系のみ)
 // 各ピクセルの可視サーフェスが属するレイヤー番号 + 1 を格納する。0 = 未描画。
 // WHY 0 を「未描画」に使うか: レイヤー 0 (Default) が有効な番号なので、クリア値と
 //     区別が付かないと地形やフォリッジのように受信バッファへ描かないジオメトリが

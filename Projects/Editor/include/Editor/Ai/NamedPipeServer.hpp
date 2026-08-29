@@ -1,12 +1,13 @@
-// FBZZ Engine
-// NamedPipeServer.hpp | fbzz::editor::ai
-// Editor Command Bus の受け口。Windows Named Pipe を待ち受け、NDJSON 要求をメインスレッドへ渡す。
-//
-// 設計 (WHY):
-//   MCP サーバ (Node) は接続毎に1要求→1応答→切断する NDJSON クライアント。並行クライアント
-//   (Claude Code / Desktop) に備え PIPE_UNLIMITED_INSTANCES で複数接続を受ける。
-//   IO はワーカースレッドで行い、シーン変更を伴う実処理は必ずメインスレッド (DrainRequests) で実行する。
-//   Win32 の詳細 (HANDLE / OVERLAPPED) はヘッダに出さず pimpl で隠蔽し、上位に <windows.h> を波及させない。
+/// @file    NamedPipeServer.hpp
+/// @brief   Editor Command Bus の受け口。Windows Named Pipe を待ち受け、NDJSON 要求をメインスレッドへ渡す。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
+///
+/// 設計 (WHY):
+/// MCP サーバ (Node) は接続毎に1要求→1応答→切断する NDJSON クライアント。並行クライアント
+/// (Claude Code / Desktop) に備え PIPE_UNLIMITED_INSTANCES で複数接続を受ける。
+/// IO はワーカースレッドで行い、シーン変更を伴う実処理は必ずメインスレッド (DrainRequests) で実行する。
+/// Win32 の詳細 (HANDLE / OVERLAPPED) はヘッダに出さず pimpl で隠蔽し、上位に <windows.h> を波及させない。
 #pragma once
 #include <functional>
 #include <memory>

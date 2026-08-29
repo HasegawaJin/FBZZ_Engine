@@ -29,7 +29,6 @@ set(REQUIRED_PATHS
     # WHY: 作業世代の最新性判定は公開時刻に依存するため、stampの存在もSDK契約に含める。
     "bin/${CONFIG}/published.stamp"
     "tools/${CONFIG}/Editor/FBZZEditor.exe"
-    "tools/${CONFIG}/Editor/FBZZVFXEditor.exe"
     # WHY: Editor は imgui 共有 DLL を起動時に読み込むため、exe と同じ階層への配置をSDK契約として検証する。
     "tools/${CONFIG}/Editor/imgui.dll"
 )
