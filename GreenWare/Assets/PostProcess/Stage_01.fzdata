@@ -1,0 +1,66 @@
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+intensity = 1.0
+radius = 1.2000000476837158
+slices = 4
+stepsPerSlice = 6
+type = 'GTAO'
+
+[[overrides]]
+active = true
+rayLength = 0.6000000238418579
+steps = 12
+strength = 0.6000000238418579
+thickness = 0.07999999821186066
+type = 'ContactShadow'
+
+[[overrides]]
+active = true
+intensity = 0.55
+softKnee = 0.5
+threshold = 1.1
+type = 'Bloom'
+
+[[overrides]]
+active = true
+exposure = 1.0
+type = 'Exposure'
+
+[[overrides]]
+active = false
+compensation = 0.0
+highPercent = 0.949999988079071
+lowPercent = 0.44999998807907104
+maxEV = 14.0
+maxExposureEV = 8.0
+minEV = -6.0
+minExposureEV = -8.0
+speedDown = 1.2000000476837158
+speedUp = 0.800000011920929
+type = 'AutoExposure'
+
+[[overrides]]
+active = true
+density = 0.029999999329447746
+edgeFade = 0.3499999940395355
+heightFalloff = 0.07999999821186066
+heightStart = 0.5
+intensity = 0.06425702571868896
+maxDistance = 4000.0
+minDistance = 500.0
+scattering = 0.6499999761581421
+steps = 24
+tint = [ 1.0, 0.9700000286102295, 0.9200000166893005 ]
+type = 'VolumetricLight'
+
+[[overrides]]
+active = true
+samples = 8
+strength = 0.30000001192092896
+type = 'MotionBlur'
+
+[[overrides]]
+active = true
+type = 'FXAA'

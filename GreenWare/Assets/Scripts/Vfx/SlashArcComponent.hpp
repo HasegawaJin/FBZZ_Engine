@@ -293,7 +293,7 @@ inline GameObject* SlashArcComponent::EnsureObject(Slot& slot, int index)
     slot.ref = EntityRef{ object->GetID() };
 
     // Create / AddComponent はシーンの配列を伸ばしうる。設定は必ず ID から引き直した
-    // 個体へ入れる (BossShockwaveComponent と同じ理由)。
+    // 個体へ入れる ─ 作った直後のポインタは、次の Create で無効になりうる。
     GameObject* arc = slot.ref.Resolve(scene);
     if (!arc) return nullptr;
 

@@ -54,7 +54,7 @@ public:
     FBZZ_FIELD(bool, drawBounds, true, "Draw Bounds")
 
     [[nodiscard]] static ArenaBoundsComponent* Instance() { return s_instance; }
-    /// 中心と半径。湧き位置を決める側 (EnemySupplyComponent) が同じ円を読むための窓口。
+    /// 中心と半径。盤面の位置を決める側が同じ円を読むための窓口。
     [[nodiscard]] Vector3 Center() const { return transform.worldPosition; }
     [[nodiscard]] float   Radius() const { return std::max(radius, 1.0f); }
 

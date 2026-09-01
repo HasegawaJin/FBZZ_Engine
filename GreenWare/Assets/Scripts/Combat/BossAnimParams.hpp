@@ -37,7 +37,6 @@ inline constexpr const char* kBeam     = "Beam";     ///< ビームの構え開�
 inline constexpr const char* kBeaming  = "Beaming";  ///< 照射中。false で Beam_End へ
 inline constexpr const char* kHit      = "Hit";      ///< 加算レイヤーの被弾リアクション
 inline constexpr const char* kIsDead   = "IsDead";   ///< 死亡ステートへの分岐
-
 /// ステートマシンが自分の意思で抜けられる (＝行動を割り込ませてよい) ステート。
 inline constexpr const char* kLocomotion = "Locomotion";
 inline constexpr const char* kTurnLeft   = "TurnLeft";

@@ -41,7 +41,6 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Game/RumbleManagerComponent.hpp>
-#include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityRingComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
@@ -74,8 +73,6 @@ public:
     FBZZ_TOOLTIP("この距離まで近づいた帯電中の敵を弾き飛ばす。0 で体当たりを切る")
 
     FBZZ_GROUP("Feedback")
-    FBZZ_FIELD_RANGE(float, chargeSurge, 0.7f, "Charge Surge", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("極を纏った瞬間、画面の縁をその極の色で走らせる強さ")
     FBZZ_FIELD_RANGE(float, chargeRumble, 0.55f, "Charge Rumble", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, glowIntensity, 0.9f, "Glow Intensity", 0.0f, 4.0f)
     FBZZ_TOOLTIP("纏っている間、プレイヤーの発光パーツをこの強さで極の色に置き換える。"
@@ -211,8 +208,6 @@ inline void PlayerPolarityComponent::Charge(Polarity polarity, float seconds)
     // (相手が自分になっただけ)。
     se::Play(audio, se::kPolarityInfect);
 
-    if (auto* screen = ScreenEffectManagerComponent::Instance())
-        screen->Surge(PolarityColor(m_polarity), chargeSurge, 0.2f);
     if (auto* pad = RumbleManagerComponent::Instance())
         pad->Rumble(chargeRumble);
 }
@@ -284,11 +279,12 @@ inline void PlayerPolarityComponent::DriveVisual()
             glow->RequestColor(color, glowIntensity);
     }
 
-    // 輪郭は敵と同じ記号。自分も «帯電しているもの» の 1 つになったことが、
-    // 視界の端でも読める。マスクの意味は読む側 (PolarityOutline.hlsl) との
-    // 取り決めで、RGB = 極の色 / A = 太さ。
-    objectMask.Set(color, 1.0f);
-    if (auto* screen = ScreenEffectManagerComponent::Instance()) screen->KeepOutline();
+    // WHY 自分には輪郭を掛けないか:
+    //   輪郭は «視界の端に居るものの極を数える» ための記号で、プレイヤーは常に
+    //   画面の中央に居るので端で数える必要がない。それどころか、TPS では自機が
+    //   画面で一番大きく映るぶん、輪郭を掛けると盤面のどれよりも目立ってしまい、
+    //   «どの脚が何極か» を読ませたい相手の輪郭が沈む。纏いは発光パーツの色と
+    //   画面の縁のサージが受け持つ。
 }
 
 } // namespace sandbox

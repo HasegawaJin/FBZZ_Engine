@@ -1,0 +1,29 @@
+# GreenWare
+# M_E_Ring_Idle_Dissolve.mat
+# 蛇の «帯・側面スロット» の撃破ディゾルブ用。元の M_E_Ring_Idle と同じ琥珀で灯る。
+#
+# WHY 自発光をここにも持つか: EnemyDeathVfxComponent は差し替えのときに
+# MaterialInstance の override を運び直すが、元の .mat 側の値 (ここ) は運ばない。
+# 素の値を欠かすと、消えていく最中だけ帯の光が落ちて «先に電源が切れた» に見える。
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'skinned'
+name = 'M_E_Ring_Idle_Dissolve'
+render_path = 'auto'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedEnemyDissolve.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.14, 0.085, 0.02, 1.0 ]
+metallic = 0.0
+roughness = 0.25
+emissiveColor = [ 1.0, 0.58, 0.14 ]
+emissiveScale = 2.2
+dissolveAmount = 0.0
+dissolveAxis = [ 0.0, 1.0, 0.0 ]
+dissolveRange = 9.0
+dissolveSweep = 0.45
+dissolveNoiseScale = 1.6
+dissolveEdgeWidth = 0.22
+dissolveEdgeColor = [ 1.0, 0.72, 0.30 ]
+dissolveEdgeIntensity = 7.0

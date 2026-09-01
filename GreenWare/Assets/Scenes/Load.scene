@@ -41,8 +41,9 @@ prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.UIImage]
-    color = [ 0.02, 0.02, 0.02, 1.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
     enabled = true
+    materialPath = 'Assets/Materials/UI/UITitleBackdrop.mat'
     texturePath = ''
     uvMax = [ 1.0, 1.0 ]
     uvMin = [ 0.0, 0.0 ]

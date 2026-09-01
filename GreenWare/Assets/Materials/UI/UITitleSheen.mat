@@ -1,0 +1,24 @@
+version = 1
+name = 'UITitleSheen'
+shader = "Assets/Shaders/UI/Material/UITitleSheen.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+# 染め分けは «倍率» として掛かる。1 を超える成分は持たせない ─ 素材より明るく
+# すると題字が発光してしまい、ロゴではなく看板に見える。
+tintPlus = [ 1.0, 0.88, 0.84, 1.0 ]
+tintMinus = [ 0.86, 0.93, 1.0, 1.0 ]
+tintStrength = 0.55
+# 艶は白ではなく «わずかに冷たい白»。純白を足すと加算の頂点が飛ぶ
+# (Docs: 加算の白飛びは «明るい画素の面積» で決まる)。
+sheenColor = [ 0.78, 0.86, 1.0, 0.55 ]
+sheenWidth = 0.13
+sheenTilt = 0.35
+# sheenPhase は TitleDressingComponent が進める。0 は «帯が左端の外» の位置。
+sheenPhase = 0.0
+edgeGlow = 0.0

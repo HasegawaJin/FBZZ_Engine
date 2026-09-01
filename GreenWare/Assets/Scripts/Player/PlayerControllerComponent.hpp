@@ -177,6 +177,17 @@ public:
     void OnFixedUpdate() override;
     // 被弾通知から呼ばれる標準の正面リアクション。
     void PlayHitAnimation();
+
+    /// 被弾で押される。direction は水平の向き (正規化は中で行う)。
+    ///
+    /// WHY 物理の力積ではなく «移動の速度» として持つか: 水平速度の出どころは
+    ///     `cc->Move` に渡す入力速度 1 つだけで、そこへ辿り着かない AddImpulse は
+    ///     次の FixedUpdate で必ず打ち消される (DemoGame で踏んだ)。押しは
+    ///     «一定時間、入力の代わりに置かれる速度» として扱う。
+    ///
+    /// WHY 押しが要るか: 押されないと被弾のコストが HP だけになり、間合いが変わらない。
+    ///     斬りに戻る距離が増えて初めて «食らった» が手数の損になる。
+    void Knockback(const Vector3& direction, float speed, float seconds);
     // PlayerComponent が内部モジュールとして保持するときのエイム結果の注入先。
     void SetAimComponent(PlayerAimComponent* aim) { m_aimOverride = aim; }
     // 武器の挙動そのものは WeaponRigComponent が持つ。ここは要求を渡すだけ。
@@ -285,6 +296,12 @@ private:
     float   m_dodgeRemaining = 0.0f;
     float   m_dodgeCooldown  = 0.0f;
     Vector3 m_dodgeDirection = Vector3::ZERO;
+
+    // 被弾の押し。残り時間で細らせながら入力へ混ぜる。
+    Vector3 m_knockDir     = Vector3::ZERO;
+    float   m_knockSpeed   = 0.0f;
+    float   m_knockSeconds = 0.0f;
+    float   m_knockLeft    = 0.0f;
     // 足音を鳴らしてから接地して進んだ距離 [m]。
     float   m_stepDistance   = 0.0f;
     // 前フレームの平面上の前方向と、サーボ音を鳴らしてからの間隔。
@@ -610,6 +627,18 @@ inline Quaternion PlayerControllerComponent::ModelRotation() const
             Quaternion::FromAxisAngle(Vector3::UP, ToRad(-modelYawOffsetDegrees))).Normalized();
 }
 
+inline void PlayerControllerComponent::Knockback(const Vector3& direction, float speed,
+                                                 float seconds)
+{
+    const Vector3 flat{ direction.x, 0.0f, direction.z };
+    if (flat.LengthSq() < EPSILON || speed <= 0.0f || seconds <= 0.0f) return;
+
+    m_knockDir     = flat.NormalizedOr(Vector3::FORWARD);
+    m_knockSpeed   = speed;
+    m_knockSeconds = seconds;
+    m_knockLeft    = seconds;
+}
+
 inline void PlayerControllerComponent::PlayHitAnimation()
 {
     if (hitFrontClipFile.empty()) return;
@@ -686,14 +715,26 @@ inline void PlayerControllerComponent::OnFixedUpdate()
         // WHY MoveSpeed() 自体には掛けないか: あちらは走りのブレンドとカメラの
         //     追従遅れを正規化する基準にも使われている。基準ごと縮めると、
         //     鈍らせている間だけ «歩いているのに走りモーション» になる。
-        const Vector3 inputVelocity = m_hasMoveInput
+        Vector3 inputVelocity = m_hasMoveInput
             ? m_moveDirection * (MoveSpeed() * m_moveMagnitude * m_moveSpeedScale)
             : Vector3::ZERO;
         // 入力が無いときの -1 は減速の合図。水平速度の出どころは移動入力だけなので、
         // 押していないフレームは必ずブレーキが掛かる。
-        const float acceleration = m_hasMoveInput
+        float acceleration = m_hasMoveInput
             ? (cc->isGrounded ? GroundAccel() : AirAccel())
             : -1.0f;
+
+        // 被弾の押し。残り時間で細らせながら «入力の代わり» に置く。
+        //
+        // WHY 入力へ足さずに混ぜるか: 足すと押されている間にスティックを倒せば
+        //     ほぼ打ち消せてしまい、押した意味が消える。逆に入力を完全に殺すと
+        //     «操作を取り上げられた» になる。残り時間で比率を渡す。
+        if (m_knockLeft > 0.0f) {
+            m_knockLeft = std::max(0.0f, m_knockLeft - dt);
+            const float ratio = m_knockSeconds > EPSILON ? m_knockLeft / m_knockSeconds : 0.0f;
+            inputVelocity = m_knockDir * (m_knockSpeed * ratio) + inputVelocity * (1.0f - ratio);
+            acceleration  = std::max(GroundAccel(), 1.0f);
+        }
         cc->Move(&phy, inputVelocity, dt, acceleration, GroundDecel());
     }
 

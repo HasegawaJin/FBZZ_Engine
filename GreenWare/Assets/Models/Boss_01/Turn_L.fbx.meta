@@ -1,0 +1,31 @@
+file_format_version = 1
+
+[cache]
+baked_container = 'Library/Baked/<asset-guid>'
+settings_hash = '2d6a7a2c4bd316c5'
+source_hash = 'e58649bf918e305e'
+
+[meta]
+guid = '95bc59f38a2626a5fd4523e9c2ff6c4c'
+
+[model]
+default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 4
+normal_map_convention = 'DirectX'
+root_motion_node = ''
+selected_animations = [ 'Turn_L' ]
+selected_meshes = []
+source_dcc = 'Auto'
+unit_scale_multiplier = 1.0
+up_axis = 0
+
+    [[model.clips]]
+    end_frame = 39.0
+    loop = true
+    name = 'Turn_L'
+    output_name = ''
+    start_frame = 0.0

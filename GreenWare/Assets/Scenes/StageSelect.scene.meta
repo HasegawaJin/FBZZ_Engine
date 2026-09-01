@@ -1,0 +1,495 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Canvas' ]
+    instance_id = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '6812ed96-b772-4f28-920f-284aa4e09350'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '3a6d537f-cdb5-4ab6-8f43-bb03f16f291e'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '1d0a38b3-83b8-4382-86ae-7e6aed2213bd'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a589a368-4158-4267-9755-abcc76c73281'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'c024dce9-13f9-4ace-b6a2-667a9738758a'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '937d1e95-c04e-451c-a3a7-3ef4231e4dda'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f5ca59db-e5ee-48ab-9455-12a87451c211'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '5cc1b7d3-96a9-45ee-9902-2da8cc96c9a6'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '2186be9f-4f67-4857-bc44-77e865fc4de0'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '95098605-ccd1-4bdb-9d59-a04a9b877d9e'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = '5d0631b7-3729-4d01-b9d0-72994ba47e1a'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'd27260ef-4fc0-4025-85d7-3b7ac37b9676'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '2c4c0c7a-9577-4586-b09d-1e05f89433c3'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '924445d7-13ca-47cf-ae1a-c3f35a972613'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '81f9fe0d-98e0-479e-8d02-afccfa5a3344'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '51b17a89-7cfe-4c75-8948-6ef953bab007'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '13c0fafa-f31e-4bb5-9c25-583da5c344ba'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '6bcad430-6dd9-4100-902f-11f56dbc5a20'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = '6d60d856-288b-4f99-8783-3e7c2f09010b'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '8cd9f086-e90a-46d4-bb96-a07ce0064830'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '8f33a92e-6b0a-42df-91ba-5f36bf7a5fb3'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '7c844d1c-d25b-4e45-90fd-d424a4ec05ba'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '3c182ca6-913a-4f22-889a-83c032b16bdf'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '5a9bc259-59b9-4012-b1cc-4c7a7ed419b5'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '55ab0fca-e573-4f37-a5fa-16ef4afe0cae'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'd5cfc3af-2b1a-44f4-99c9-54a52f5be425'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = '3baddab2-e1b6-4f04-8a97-c638f5c7e477'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'c08c0f6e-38ed-45b8-96eb-16d02d19ae7c'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '0c800452-48fa-4853-935f-74e5dc41f808'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '50a6e095-1be6-409c-84ca-84510be84f3c'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '96755820-b6df-497e-918e-e1a24300ddc1'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '20cd2707-277f-43e2-9931-b0ae709878b5'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'e1a411c5-fc93-4cfe-a9f4-b06a502c27de'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'e917ca5f-d317-451b-b942-570279f4149c'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = '0c0ec316-5942-45f9-894e-9b19c5632366'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '2e3b9df2-4cb0-4b9b-a6a5-0d958d6300c5'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'ae984654-d34f-4ddc-8b07-24eb70776f99'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '1e925468-1ed8-4e20-8b77-91643f190b98'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'd23a4726-69f7-43fd-a7cf-1953e732c2fc'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '5b91f3e0-5961-40be-80d0-f91188c328fc'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '73c70627-5044-45b1-b5a2-9e5f00654a93'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'c624d29e-d21b-4850-ab94-a3e47316a6ff'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = '1d49c84a-5d99-4427-b02b-e608c75c2296'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '2c968dee-c113-4c07-a24c-cdcf6a7cfc09'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '475af5a2-ea40-4089-9cb5-f20d77f84d00'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'b9005b12-6e0a-4bf7-a8bf-f0827821effc'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'd18c3481-0ad6-43dc-bc82-59c4e4ce4a9f'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f24e1c72-bcd2-4ef2-86c9-9cf9a56dbf16'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'ed6fcf0b-70e8-4c11-857a-c7bb7c4d8af8'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '807e9d61-1234-49bd-8f46-da316ad981f1'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = '8341cb6f-3c95-4bcc-963b-cd412467fdbd'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'd9ad3ab3-7302-4b7a-b61d-8c98a7c9567f'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'c214e23c-4c0f-4ceb-b431-4bd02fe57133'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '819bce31-223b-4ba5-9553-4730263882ce'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'bc2b5fb3-bad0-403d-8cee-cfd58fe4a217'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '74c65bba-18ab-4aae-98ee-5df616b422d1'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f7d0f154-374a-4a95-9127-41905ad7db06'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'e31e6a75-f510-4bd0-820d-a16e72f68eb6'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Button' ]
+    instance_id = '971d999f-7e63-4330-b3b3-c28236f95471'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'd811efaf-afc3-4147-a5df-87d9b875efc3'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'a36a0b07-2525-4ab2-a6b6-f0a612268010'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'c9b253b2-78f5-4541-9c24-cc79f41a61bc'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '322a4efa-6287-440f-af04-a1a7bd422dfb'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '73caa79a-54ad-4a31-8112-d16381e32922'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'b875dd11-26a4-4048-a206-771da7b0d308'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '76a6081b-c00a-4546-9f70-715d900bca35'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '2accd08c-37c8-447d-9cf8-947c22065bb4'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'c146ecce-ba1d-4d3c-80c6-9e09a9b6e6ee'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '14f06c57-5688-4710-b714-641cdf7b3c42'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'c6af8829-6b5c-41e9-9312-e9274b114865'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '1c648af2-378f-4c54-b665-681123736f45'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'b5af5cb4-b9bb-467c-a18a-4f1f5c988c7a'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '8774822b-c718-4f0e-91e4-732a34d79c87'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = 'fdcbb593-0df0-426f-998e-f16f2d9786d3'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '0fa403ae-6398-4960-b6b1-4605b3bb9766'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '4a722fcc-a18b-46ea-a1f3-010a2f783890'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '66ff8d57-0387-4560-90d5-0782dd74a407'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '6b73719d-6bfa-4f9a-b3f7-4b7cb2da5f3d'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '69781f86-8e54-4d8a-818e-b5f3f7526c57'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '6ed21976-6329-492d-82a5-23505e3f8342'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '8932c33c-00c9-43c7-942a-b72050716aa4'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '580041f7-1bec-408f-8a7e-e95603b3dc95'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'bd3e467f-7047-4877-a52e-6791d4285897'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '390128f0-6f7c-4636-9cff-4900a8df9346'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '0f59d294-fba9-4b12-83fc-6894ab4ea607'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'c9fd88b9-18a5-4e0d-9610-417e9dc1158d'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '2e9e1da2-504c-4600-b13e-eab8c581a312'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '200b8656-6f87-479a-a1f6-359d4bf28afe'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f91cfa2e-e035-4091-a395-253253265d85'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '4425ee3a-6e2d-43f6-9295-1693ebbd6472'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '5fb608ad-0e29-4971-9977-cf18295fda9a'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'ce40e57b-73e6-4502-8614-ea161da24869'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '19307bf9-b6af-4ac6-b173-cd37085338fc'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'ba651883-b0c1-44d9-879f-6d972282cd43'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '641ac93e-dab6-4543-bf5b-b100b8dbc143'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '756b2c04-16b3-4a2d-8cb9-ac0b95d76b92'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '5e8262e0-6c21-45fa-9378-acc20a2dccec'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'a2a868d0-7bf1-447b-9e4c-934410125dc8'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '39f3289c-e2b8-4af6-b997-ee8c90e37911'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '82beeb89-f086-458e-8cc9-e70cb286b6e4'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '558a042d-7cbe-4c35-abc6-f46e44c1df3c'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '88ad95d5-d1fd-4625-bb49-21bb2e64dd28'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'e864080a-5ffc-4521-bf8c-8ea011e66a62'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '18bf6f36-e232-408d-801a-8063f0b7ddc9'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '897ce008-e086-4104-bfb7-afbac4598f52'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '221dd861-b453-4194-ad9d-08634bd17652'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'fb488c48-64a0-4b18-9494-5c55155497a1'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '873a4884-37fe-4663-9d68-0ef9cc56efc4'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '420ab1e8-415b-4771-9275-817a475be4f2'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f26616f2-39f8-445c-b7ef-8fce7d3f79e4'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'ec2284ad-22ed-4431-ab82-9293aa91f275'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '75e14992-fd80-4979-8a59-53a0b0783b39'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'e6cfcc47-07ae-44ad-9847-9b131e8583b0'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'a6ef319a-af1d-4ced-ae1e-d7188646f702'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '1debc681-21f9-4cb6-8d47-880913fce77e'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'e889e46e-2805-42ae-9d39-05f2f95b62f2'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'd15a05eb-787c-4905-a58f-164a89aa35c7'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'b494e8fc-1a29-4cde-b664-0537323ec9e7'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f7020b64-eb3a-4002-ad27-f59238178afe'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image', 'Script:GameCursorComponent' ]
+    instance_id = 'c70a9920-556e-4824-97dc-0846e4981fe2'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:StageSelectComponent' ]
+    instance_id = '87d6c2c7-f288-4450-93b8-629951579fc3'
+
+[meta]
+guid = 'bfefb1fc8b8a4d397fbe2ef4ef2b6cd9'

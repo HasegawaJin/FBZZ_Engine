@@ -30,6 +30,10 @@ voiceLimit = 48
     parent = 'Master'
     volume = 1.0
 
+[cursor]
+lock_mode = 'Locked'
+visible = true
+
 [layers]
 names = [
     'Default',
@@ -102,7 +106,7 @@ showUIRects = false
 viewMode = 0
 
 [runtime]
-start_scene = 'Assets/Scenes/Main.scene'
+start_scene = 'Assets/Scenes/Title.scene'
 
 [screen]
 height = 1080

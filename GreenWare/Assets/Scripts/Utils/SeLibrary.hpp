@@ -178,94 +178,122 @@ inline Bank kPlayerWeaponDeploy { kPlayerWeaponDeployPaths };
 inline Bank kPlayerWeaponStow   { kPlayerWeaponStowPaths };
 
 
-// ── Weapon ──────────────────────────────────────────────────────────────────
+// ── Blade (双剣) ────────────────────────────────────────────────────────────
 // 極ごとに音が分かれているのは企画書 12.2 の「赤と青を耳でも区別する」に対応する。
-// ＋ = 右手 / − = 左手 なので、バッテリーの L/R は極から一意に決まる。
-inline constexpr std::string_view kBeamStartPlusPaths[]  = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Beam_Start_Plus.wav" };
-inline constexpr std::string_view kBeamStartMinusPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Beam_Start_Minus.wav" };
-inline constexpr std::string_view kBeamLoopPlusPaths[]   = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Beam_Loop_Plus.wav" };
-inline constexpr std::string_view kBeamLoopMinusPaths[]  = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Beam_Loop_Minus.wav" };
-inline constexpr std::string_view kBeamEndPlusPaths[]    = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Beam_End_Plus.wav" };
-inline constexpr std::string_view kBeamEndMinusPaths[]   = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Beam_End_Minus.wav" };
+// ＋ = 右手 / − = 左手 なので、極が決まれば手も一意に決まる。
+//
+// WHY 銃の音を «消した» か:
+//   企画が Wave 制の銃から双剣へ移った時点で、Beam / Paint / Tap / Battery は
+//   鳴らす場所そのものが無くなった。定義だけ残すと «使える音がある» ように見えて、
+//   次に音を足す人が空振りする。素材ごと畳んで、双剣の音と 1 対 1 で並べ直す。
+//
+// WHY 段ごとに別の音を持つか:
+//   1 段目と 3 段目が同じ «シュッ» だと、連撃のどこに居るかが耳で追えない。
+//   3 段目 (締め) だけ長く重くしてあるので、次が繋がるかどうかが音で判る。
+inline constexpr std::string_view kBladeSwingR1Paths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_1st_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_1st_02.wav",
+};
+inline constexpr std::string_view kBladeSwingR2Paths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_2nd_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_2nd_02.wav",
+};
+inline constexpr std::string_view kBladeSwingR3Paths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_3rd_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_R_3rd_02.wav",
+};
+inline constexpr std::string_view kBladeSwingL1Paths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_1st_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_1st_02.wav",
+};
+inline constexpr std::string_view kBladeSwingL2Paths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_2nd_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_2nd_02.wav",
+};
+inline constexpr std::string_view kBladeSwingL3Paths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_3rd_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Swing_L_3rd_02.wav",
+};
 
-inline constexpr std::string_view kPaintConfirmPlusPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Plus_01.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Plus_02.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Plus_03.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Plus_04.wav",
+inline constexpr std::string_view kBladeHitRPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_R_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_R_02.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_R_03.wav",
 };
-inline constexpr std::string_view kPaintConfirmMinusPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Minus_01.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Minus_02.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Minus_03.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Confirm_Minus_04.wav",
+inline constexpr std::string_view kBladeHitLPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_L_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_L_02.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_L_03.wav",
 };
-inline constexpr std::string_view kPaintExtendPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Extend_01.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Paint_Extend_02.wav",
+inline constexpr std::string_view kBladeHitFinishRPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_Finish_R.wav" };
+inline constexpr std::string_view kBladeHitFinishLPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Hit_Finish_L.wav" };
+
+inline constexpr std::string_view kBladeChargePlusPaths[]  = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Charge_Plus.wav" };
+inline constexpr std::string_view kBladeChargeMinusPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Charge_Minus.wav" };
+// 溜めの持続音。振幅変調は PlayerTuning の chargeShakeHz (24Hz) に合わせてあるので、
+// 画面の震えと音のうねりが同じ周期で来る。別々の数字にすると «ずれている» と感じる。
+inline constexpr std::string_view kBladeChargeUpLoopPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_ChargeUp_Loop.wav" };
+inline constexpr std::string_view kBladeChargeUpFullPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_ChargeUp_Full.wav" };
+inline constexpr std::string_view kBladeChargeSlashRPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_ChargeSlash_R.wav" };
+inline constexpr std::string_view kBladeChargeSlashLPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_ChargeSlash_L.wav" };
+
+inline constexpr std::string_view kBladeDashPaths[] = {
+    "Assets/Sound/SE/Weapon/SE_BLD_Dash_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Dash_02.wav",
 };
+// ＋と−が打ち消し合って無極へ落ちる音。斬撃そのものではなく «帯びが消えた» 合図。
 inline constexpr std::string_view kNeutralizePaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Neutralize_01.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Neutralize_02.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Neutralize_01.wav",
+    "Assets/Sound/SE/Weapon/SE_BLD_Neutralize_02.wav",
 };
-inline constexpr std::string_view kTapPlusPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Tap_Plus_01.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Tap_Plus_02.wav",
-};
-inline constexpr std::string_view kTapMinusPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Tap_Minus_01.wav",
-    "Assets/Sound/SE/Weapon/SE_WPN_Tap_Minus_02.wav",
-};
-inline constexpr std::string_view kBatteryEmptyRightPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Battery_Empty_R.wav" };
-inline constexpr std::string_view kBatteryEmptyLeftPaths[]  = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Battery_Empty_L.wav" };
-inline constexpr std::string_view kBatteryFullRightPaths[]  = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Battery_Full_R.wav" };
-inline constexpr std::string_view kBatteryFullLeftPaths[]   = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Battery_Full_L.wav" };
-inline constexpr std::string_view kWarnNeutralPaths[] = {
-    "Assets/Sound/SE/Weapon/SE_WPN_Warn_Neutral.wav" };
 
-inline Bank kBeamStartPlus     { kBeamStartPlusPaths };
-inline Bank kBeamStartMinus    { kBeamStartMinusPaths };
-inline Bank kBeamLoopPlus      { kBeamLoopPlusPaths };
-inline Bank kBeamLoopMinus     { kBeamLoopMinusPaths };
-inline Bank kBeamEndPlus       { kBeamEndPlusPaths };
-inline Bank kBeamEndMinus      { kBeamEndMinusPaths };
-inline Bank kPaintConfirmPlus  { kPaintConfirmPlusPaths };
-inline Bank kPaintConfirmMinus { kPaintConfirmMinusPaths };
-inline Bank kPaintExtend       { kPaintExtendPaths };
-inline Bank kNeutralize        { kNeutralizePaths };
-inline Bank kTapPlus           { kTapPlusPaths };
-inline Bank kTapMinus          { kTapMinusPaths };
-inline Bank kBatteryEmptyRight { kBatteryEmptyRightPaths };
-inline Bank kBatteryEmptyLeft  { kBatteryEmptyLeftPaths };
-inline Bank kBatteryFullRight  { kBatteryFullRightPaths };
-inline Bank kBatteryFullLeft   { kBatteryFullLeftPaths };
-inline Bank kWarnNeutral       { kWarnNeutralPaths };
+inline Bank kBladeSwingR1     { kBladeSwingR1Paths };
+inline Bank kBladeSwingR2     { kBladeSwingR2Paths };
+inline Bank kBladeSwingR3     { kBladeSwingR3Paths };
+inline Bank kBladeSwingL1     { kBladeSwingL1Paths };
+inline Bank kBladeSwingL2     { kBladeSwingL2Paths };
+inline Bank kBladeSwingL3     { kBladeSwingL3Paths };
+inline Bank kBladeHitR        { kBladeHitRPaths };
+inline Bank kBladeHitL        { kBladeHitLPaths };
+inline Bank kBladeHitFinishR  { kBladeHitFinishRPaths };
+inline Bank kBladeHitFinishL  { kBladeHitFinishLPaths };
+inline Bank kBladeChargePlus  { kBladeChargePlusPaths };
+inline Bank kBladeChargeMinus { kBladeChargeMinusPaths };
+inline Bank kBladeChargeUpLoop { kBladeChargeUpLoopPaths };
+inline Bank kBladeChargeUpFull { kBladeChargeUpFullPaths };
+inline Bank kBladeChargeSlashR { kBladeChargeSlashRPaths };
+inline Bank kBladeChargeSlashL { kBladeChargeSlashLPaths };
+inline Bank kBladeDash        { kBladeDashPaths };
+inline Bank kNeutralize       { kNeutralizePaths };
 
-[[nodiscard]] inline const Bank& BeamStart(Polarity p)
-{ return p == Polarity::Plus ? kBeamStartPlus : kBeamStartMinus; }
-[[nodiscard]] inline const Bank& BeamLoop(Polarity p)
-{ return p == Polarity::Plus ? kBeamLoopPlus : kBeamLoopMinus; }
-[[nodiscard]] inline const Bank& BeamEnd(Polarity p)
-{ return p == Polarity::Plus ? kBeamEndPlus : kBeamEndMinus; }
-[[nodiscard]] inline const Bank& PaintConfirm(Polarity p)
-{ return p == Polarity::Plus ? kPaintConfirmPlus : kPaintConfirmMinus; }
-[[nodiscard]] inline const Bank& Tap(Polarity p)
-{ return p == Polarity::Plus ? kTapPlus : kTapMinus; }
-[[nodiscard]] inline const Bank& BatteryEmpty(Polarity p)
-{ return p == Polarity::Plus ? kBatteryEmptyRight : kBatteryEmptyLeft; }
-[[nodiscard]] inline const Bank& BatteryFull(Polarity p)
-{ return p == Polarity::Plus ? kBatteryFullRight : kBatteryFullLeft; }
-
+/// 空振りの «ヒュッ»。stage は «これから振る段» (0 起点)。
+///
+/// WHY 段を丸めるか: コンボ長は PlayerTuning 側の値で、3 段とは限らない。
+///     素材は 3 種類しか無いので、範囲外は最後の段へ寄せる。鳴らないより、
+///     «締めの音が続く» 方が連撃の終わりとして読める。
+[[nodiscard]] inline const Bank& BladeSwing(Polarity p, int stage)
+{
+    const int s = stage < 0 ? 0 : (stage > 2 ? 2 : stage);
+    if (p == Polarity::Plus)
+        return s == 0 ? kBladeSwingR1 : s == 1 ? kBladeSwingR2 : kBladeSwingR3;
+    return s == 0 ? kBladeSwingL1 : s == 1 ? kBladeSwingL2 : kBladeSwingL3;
+}
+[[nodiscard]] inline const Bank& BladeHit(Polarity p)
+{ return p == Polarity::Plus ? kBladeHitR : kBladeHitL; }
+[[nodiscard]] inline const Bank& BladeHitFinish(Polarity p)
+{ return p == Polarity::Plus ? kBladeHitFinishR : kBladeHitFinishL; }
+[[nodiscard]] inline const Bank& BladeCharge(Polarity p)
+{ return p == Polarity::Plus ? kBladeChargePlus : kBladeChargeMinus; }
+[[nodiscard]] inline const Bank& BladeChargeSlash(Polarity p)
+{ return p == Polarity::Plus ? kBladeChargeSlashR : kBladeChargeSlashL; }
 
 // ── Impact ──────────────────────────────────────────────────────────────────
 inline constexpr std::string_view kImpactLightPaths[] = {
@@ -581,30 +609,23 @@ inline Bank kPolarityLinkTrail         { kPolarityLinkTrailPaths };
 
 /// 同極が弾き合う «バンッ»。毎秒のように鳴るので、軽い衝突と同じ短さで扱う。
 ///
-/// WHY 専用の素材を持たないか: まだ録っていない。SE_POL_Repulse_* を用意したら
-///     ここのパスを差し替えるだけで全箇所に効く (Docs/open-questions.md に残してある)。
-///     引力側 (kAttractLaunch) を流用しないのは、押しと引きが同じ音になると
-///     Docs/presentation.md が «別物にする» と決めた 2 つの手が耳で区別できなくなるため。
-inline Bank kPolarityRepulse           { kImpactLightPaths };
+/// WHY 残響を掛けていないか: Docs/presentation.md が «画面に残らないこと» を要件に
+///     挙げている。アリーナの反射を足すと 1 発ごとに 230ms 尾を引いて、連続で
+///     弾いたときに «まだ前のが鳴っている» 状態になる。
+inline constexpr std::string_view kPolarityRepulsePaths[] = {
+    "Assets/Sound/SE/Polarity/SE_POL_Repulse_01.wav",
+    "Assets/Sound/SE/Polarity/SE_POL_Repulse_02.wav",
+    "Assets/Sound/SE/Polarity/SE_POL_Repulse_03.wav",
+    "Assets/Sound/SE/Polarity/SE_POL_Repulse_04.wav",
+};
+inline Bank kPolarityRepulse           { kPolarityRepulsePaths };
 
-/// 斬撃が当たった瞬間。
-///
-/// WHY 専用の素材を持たないか: まだ録っていない。SE_BLD_Hit_* を用意したら
-///     ここのパスを差し替えるだけで全箇所に効く (Docs/open-questions.md に残してある)。
-/// NOTE: 空振りの «ヒュッ» は鳴らしていない。手持ちの素材で近いものが無く、
-///     別の音を当てると «何が起きたのか» を取り違える方が害が大きい。
-///     斬撃で最初に欲しい音はこれ (SE_BLD_Swing_*)。
-inline Bank kBladeHit                  { kImpactLightPaths };
 
 [[nodiscard]] inline const Bank& PolarityChargedLoop(Polarity p)
 { return p == Polarity::Plus ? kPolarityChargedLoopPlus : kPolarityChargedLoopMinus; }
 
 
 // ── UI ──────────────────────────────────────────────────────────────────────
-inline constexpr std::string_view kUiWaveStartPaths[] = {
-    "Assets/Sound/SE/UI/SE_UI_WaveStart.wav" };
-inline constexpr std::string_view kUiWaveClearPaths[] = {
-    "Assets/Sound/SE/UI/SE_UI_WaveClear.wav" };
 inline constexpr std::string_view kUiGameClearPaths[] = {
     "Assets/Sound/SE/UI/SE_UI_GameClear.wav" };
 inline constexpr std::string_view kUiGameOverPaths[]  = {
@@ -619,13 +640,17 @@ inline constexpr std::string_view kUiComboPaths[]     = {
     "Assets/Sound/SE/UI/SE_UI_Combo.wav" };
 inline constexpr std::string_view kUiComboHighPaths[] = {
     "Assets/Sound/SE/UI/SE_UI_Combo_High.wav" };
+inline constexpr std::string_view kUiLockOnPaths[]     = {
+    "Assets/Sound/SE/UI/SE_UI_Lock_On.wav" };
+inline constexpr std::string_view kUiLockSwitchPaths[] = {
+    "Assets/Sound/SE/UI/SE_UI_Lock_Switch.wav" };
 inline constexpr std::string_view kUiRankSPaths[] = { "Assets/Sound/SE/UI/SE_UI_Rank_S.wav" };
 inline constexpr std::string_view kUiRankAPaths[] = { "Assets/Sound/SE/UI/SE_UI_Rank_A.wav" };
 inline constexpr std::string_view kUiRankBPaths[] = { "Assets/Sound/SE/UI/SE_UI_Rank_B.wav" };
 inline constexpr std::string_view kUiRankCPaths[] = { "Assets/Sound/SE/UI/SE_UI_Rank_C.wav" };
 
-inline Bank kUiWaveStart { kUiWaveStartPaths };
-inline Bank kUiWaveClear { kUiWaveClearPaths };
+// NOTE: Wave 制は企画から外れた。WaveDirectorComponent と SE_UI_Wave* も削除済み。
+//       «ステージが始まる» の合図は kUiGateOpen (ボス部屋の扉が開く音) が受け持つ。
 inline Bank kUiGameClear { kUiGameClearPaths };
 inline Bank kUiGameOver  { kUiGameOverPaths };
 inline Bank kUiGateOpen  { kUiGateOpenPaths };
@@ -633,6 +658,8 @@ inline Bank kUiResult    { kUiResultPaths };
 inline Bank kUiRetry     { kUiRetryPaths };
 inline Bank kUiCombo     { kUiComboPaths };
 inline Bank kUiComboHigh { kUiComboHighPaths };
+inline Bank kUiLockOn     { kUiLockOnPaths };
+inline Bank kUiLockSwitch { kUiLockSwitchPaths };
 inline Bank kUiRankS     { kUiRankSPaths };
 inline Bank kUiRankA     { kUiRankAPaths };
 inline Bank kUiRankB     { kUiRankBPaths };

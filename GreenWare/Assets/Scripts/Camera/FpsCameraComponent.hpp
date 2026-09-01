@@ -178,6 +178,21 @@ inline void FpsCameraComponent::OnStart()
     //     基準を持てず、3D 音源が丸ごと鳴らない。しかも警告は出ないので、
     //     症状は「敵の音だけ無音」という形でしか現れない。
     se::EnsureListener(scene);
+
+    // 視点はマウスの «移動量» で回す。Locked は毎フレーム OS カーソルを画面中央へ戻して
+    // 移動量だけを渡すモードで、これが無いとカーソルが画面端に着いた時点で振り向けなくなる。
+    //
+    // WHY 画面ごとに宣言するか: 同じゲームでもタイトルやオプションは «絶対座標» で
+    //     カーソルを動かす ([[GameCursorComponent]] は Confined を要求する)。
+    //     プロジェクト設定は起動時の初期値でしかないので、必要な側が名乗る。
+    //
+    // WHY Play 中だけか: このスクリプトは FBZZ_EXECUTE_ALWAYS() で編集中も走る。
+    //     ガードが無いと、このカメラが居るシーンを開いただけで Editor の OS カーソルが
+    //     消え、ウィンドウ中央へ拘束される。
+    if (app.IsPlaying()) {
+        cursor.SetLockMode(CursorLockMode::Locked);
+        cursor.SetVisible(false);
+    }
 }
 
 inline Quaternion FpsCameraComponent::CurrentRotation() const

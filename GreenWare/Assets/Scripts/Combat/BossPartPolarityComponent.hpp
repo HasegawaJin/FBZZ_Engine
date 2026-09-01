@@ -50,13 +50,21 @@ public:
     FBZZ_FIELD_READ_ONLY(std::string, legSuffix, "", "Leg")
     FBZZ_FIELD_READ_ONLY(std::string, debugPolarity, "None", "Polarity")
     FBZZ_FIELD_READ_ONLY(float, debugRemaining, 0.0f, "Remaining")
+    FBZZ_FIELD_READ_ONLY(bool, debugBroken, false, "Broken")
 
-    /// 極を乗せる。同じ極を重ねたら残りを満タンへ戻す。
+    /// 極を乗せる。同じ極を重ねたら残りを満タンへ戻す。壊れた部位は受け付けない。
     void Apply(Polarity polarity);
     void Clear();
 
+    /// もぎ取られた。以後この部位は極を持てない。
+    ///
+    /// WHY 極を «持てない» まで含めるか: 脚を落とした後も塗れると、画面から消えた部位が
+    ///     盤面には残ることになる。«見えているものが全部» を崩さない。
+    void Break();
+
     [[nodiscard]] Polarity Current()    const { return m_polarity; }
     [[nodiscard]] bool     IsCharged()  const { return m_polarity != Polarity::None; }
+    [[nodiscard]] bool     IsBroken()   const { return m_broken; }
     [[nodiscard]] float    Remaining()  const { return m_remaining; }
     /// 1 = 乗せた直後 / 0 = 切れる直前。
     [[nodiscard]] float    RemainingNormalized() const;
@@ -66,15 +74,23 @@ public:
 private:
     Polarity m_polarity  = Polarity::None;
     float    m_remaining = 0.0f;
+    bool     m_broken    = false;
 };
 
 FBZZ_REFLECT(BossPartPolarityComponent)
 
 inline void BossPartPolarityComponent::Apply(Polarity polarity)
 {
-    if (polarity == Polarity::None) return;
+    if (m_broken || polarity == Polarity::None) return;
     m_polarity  = polarity;
     m_remaining = std::max(duration, 0.1f);
+}
+
+inline void BossPartPolarityComponent::Break()
+{
+    m_broken    = true;
+    debugBroken = true;
+    Clear();
 }
 
 inline void BossPartPolarityComponent::Clear()

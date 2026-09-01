@@ -1,0 +1,31 @@
+file_format_version = 1
+
+[cache]
+baked_container = 'Library/Baked/<asset-guid>'
+settings_hash = '72eb3d778f86de5f'
+source_hash = '8b1940a5c7dc8708'
+
+[meta]
+guid = 'eb043aa096b8efae111e826f43ddeaa3'
+
+[model]
+default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 4
+normal_map_convention = 'DirectX'
+root_motion_node = ''
+selected_animations = []
+selected_meshes = []
+source_dcc = 'Auto'
+unit_scale_multiplier = 1.0
+up_axis = 0
+
+    [[model.clips]]
+    end_frame = 29.0
+    loop = true
+    name = 'Charge_Run'
+    output_name = ''
+    start_frame = 0.0

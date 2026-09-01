@@ -20,7 +20,7 @@
 ///   0 のまま出しっぱなしにすると «倒し切ったのにバーが残っている» に見える。
 ///
 /// WHY 減り方を敵の頭上バーと揃えるか:
-///   EnemyHealthBarComponent の Drain (遅れて追いつく帯) と同じ理屈が、ボスでは
+///   Drain (遅れて追いつく帯) の理屈が、ボスでは
 ///   もっと強く効く。ボスへ通る 1 発は «帯電した雑魚を叩き込んだ» という数十秒の
 ///   組み立ての成果で、盤面で一番貴重な出来事なのに、長さが飛ぶだけだと «入った»
 ///   ことしか分からない。削れた量が数フレーム残れば «どれだけ入ったか» まで返る。
@@ -51,12 +51,11 @@ class BossHealthBarComponent : public Script {
 
 public:
     FBZZ_GROUP("Boss")
-    // WHY 型で探すだけにしないか:
-    //   FindObjectsOfType<IBoss>() は «盤面に居るボス» を型から引く汎用の口で、
-    //   ボスが 1 体しか居ないこの盤面ではそれで足りる。ただしこの参照が外れると
-    //   症状は «バーが出ない» だけになり、UI 側を疑って探し回ることになる
-    //   (WaveDirectorComponent が同じ理由でボスを Ref で持っている)。
-    //   明示の割り当てを先に見て、空のときだけ型で探す。
+    // WHY 名簿で探すだけにしないか:
+    //   IBoss の名簿 (IBoss.hpp) は «盤面に居るボス» を引く汎用の口で、ボスが
+    //   1 体しか居ないこの盤面ではそれで足りる。ただしボス側が名乗り忘れると
+    //   症状は «バーが出ない» だけになり、UI 側を疑って探し回ることになる。
+    //   明示の割り当てを先に見て、空のときだけ名簿で探す。
     FBZZ_REF(GameObject, bossObject, "Boss")
     FBZZ_TOOLTIP("体力を出す相手。未設定なら IBoss を実装したオブジェクトを盤面から探す")
 
@@ -123,7 +122,7 @@ private:
     /// バーを隠す。
     void Hide();
     /// 遅れて追いつく帯の残量を進める。戻り値が帯の塗り潰し量。
-    /// 式は EnemyHealthBarComponent::AdvanceDrain と同じもの。
+    /// 減った直後だけ速く、そこから指数で追いつく。
     float AdvanceDrain(float ratio);
 
     EntityRef m_fill;
@@ -211,8 +210,19 @@ inline GameObject* BossHealthBarComponent::FindBoss() const
 {
     // 出てくる前のボスは «居ない»。畳まれている間もバーを出すと、Wave を戦っている
     // あいだじゅう «まだ見ぬ相手の満タンの体力» が画面上部に居座る。
-    if (GameObject* assigned = bossObject.Get())
-        return assigned->activeInHierarchy() ? assigned : nullptr;
+    //
+    // WHY 割り当てがあっても «出てきたか» を見るか: ここを素通しにすると、参照を
+    //     張った瞬間から満タンのバーが出っぱなしになる。探し方 (全走査 / 名指し) を
+    //     変えても «いつ出るか» は変わらない、という関係を保つ。
+    //
+    // WHY IBoss を引けないときは通すか: 名指しされている以上、それがボスであることは
+    //     オーサリングの意思。インターフェースを引けないのは組み方の問題で、
+    //     «バーを出さない» で黙らせると原因が画面から消える。
+    if (GameObject* assigned = bossObject.Get()) {
+        if (!assigned->activeInHierarchy()) return nullptr;
+        const auto* boss = IBoss::Of(assigned);
+        return (!boss || boss->IsEngaged()) ? assigned : nullptr;
+    }
 
     return FindBossOnBoard(scene);
 }
@@ -251,7 +261,7 @@ inline void BossHealthBarComponent::OnLateUpdate()
         if (!m_warnedNoBoss) {
             // 割り当てがあるなら «まだ出ていないだけ»。全走査はそこで打ち切る。
             const bool authored = bossObject.IsAssigned()
-                               || !scene.FindObjectsOfType<IBoss>().empty();
+                               || !IBoss::Registry().empty();
             if (!authored || boss) {
                 m_warnedNoBoss = true;
                 debug.LogError(boss
@@ -289,7 +299,7 @@ inline void BossHealthBarComponent::OnLateUpdate()
     // WHY 倒れた後は無極として扱うか: 明滅と極性記号は «まだ撃ち込める» の合図。
     //     0 まで減り切るのを見せている数百ミリ秒のあいだも出し続けると、決着が
     //     «まだ続いている» に見える。倒れた時点でこの軸は黙らせる。
-    const auto* bossScript = scene.GetScript<IBoss>(boss);
+    const auto* bossScript = IBoss::Of(boss);
     const Polarity polarity = (alive && bossScript) ? bossScript->CurrentPolarity()
                                                     : Polarity::None;
 

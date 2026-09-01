@@ -138,6 +138,16 @@ inline void GameCursorComponent::OnStart()
     s_position   = { m_canvasSize.x * 0.5f, m_canvasSize.y * 0.5f };
     m_lastMouse  = ui.GetCanvasMousePosition();
     s_usingPad   = false;
+
+    // このカーソルはマウスの «絶対座標» で動く。Locked は毎フレーム OS カーソルを中央へ
+    // 戻すモードなので、そのままだと絵が画面中央に貼り付いてマウスで動かせなくなる。
+    // Confined なら座標は生きたまま、ポインターがゲーム画面の外 (別モニター) へ
+    // 出て行くことだけを止められる。
+    //
+    // WHY OS カーソルを隠すか: 隠さないと矢印が 2 つ見える。Confined と対で使うこと。
+    //     非表示だけだと、別モニターへ出た先で OS の矢印が戻ってくる。
+    cursor.SetLockMode(CursorLockMode::Confined);
+    cursor.SetVisible(false);
 }
 
 inline void GameCursorComponent::OnDestroy()

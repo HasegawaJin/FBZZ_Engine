@@ -28,6 +28,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector3.hpp>
+#include <Scripts/Camera/BossCameraDirectorComponent.hpp>
 #include <Scripts/Combat/BossAiComponent.hpp>
 #include <Scripts/Combat/BossAudioComponent.hpp>
 #include <Scripts/Combat/BossPolarityCoreComponent.hpp>
@@ -146,6 +147,11 @@ inline void BossRoomTriggerComponent::Engage()
     // 5 秒の登場が終わり、踏み込んだときには何も起きていないことになる
     // (BossAudioComponent の Play Appear は切っておくこと)。
     if (auto* sfx = scene.GetScript<BossAudioComponent>()) sfx->Appear();
+
+    // 見上げてボスの全身を見せる。ここが «何と戦うか» を伝える唯一の機会で、
+    // 戦いはまだ始まっていないので操作を取り上げても失うものが無い。
+    if (auto* camera = BossCameraDirectorComponent::Instance())
+        camera->Play(BossShot::Intro);
 }
 
 inline void BossRoomTriggerComponent::OnUpdate()

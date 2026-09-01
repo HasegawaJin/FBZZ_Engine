@@ -30,6 +30,7 @@
 #include <Scripts/Utils/InputActions.hpp>
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -203,9 +204,27 @@ class GameSettingsComponent : public Script {
     FBZZ_SCRIPT(GameSettingsComponent)
 
 public:
+    // 保存先。既定 (エンジン側) は «実行ファイルの隣の Config/settings.toml»。
+    //
+    // WHY 実行ファイルの隣ではいけないか: エディタ (SDK/tools/…/Editor) と配布ビルド
+    //     (Binaries/…/GreenWareStandalone) は別の exe なので、既定のままだと
+    //     **別々のファイル**になる。エディタで調整した設定はゲームを起動しても
+    //     どこにも無く、ゲームで変えた設定はエディタに出てこない ─
+    //     «ランタイムでは設定が保存できていない» はこの形で現れる。
+    //     ユーザーごとに 1 つの場所へ寄せれば、どちらから起動しても同じ設定になる。
+    FBZZ_GROUP("Storage")
+    FBZZ_FIELD(bool, perUserConfig, true, "Per User")
+    FBZZ_TOOLTIP("設定を %LOCALAPPDATA%/<Folder>/settings.toml へ保存する。"
+                 "切ると実行ファイルの隣 (Config/settings.toml) に戻る ─ "
+                 "USB へ入れて持ち運ぶような «可搬» の配布にするときだけ切ること")
+    FBZZ_FIELD(std::string, configFolder, "GreenWare", "Folder")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(std::string, debugResolution, "-", "Resolution")
     FBZZ_FIELD_READ_ONLY(std::string, debugQuality, "-", "Quality")
+    FBZZ_FIELD_READ_ONLY(std::string, debugConfigPath, "-", "Config Path")
+    FBZZ_TOOLTIP("実際に読み書きしているファイル。設定が «保存されない» ときは"
+                 "まずここを見ること (見ているファイルが期待と違うことが多い)")
 
     /// シーンに 1 つだけ置く前提。Option 画面の UI はここから値を読み書きする。
     [[nodiscard]] static GameSettingsComponent* Instance() { return s_instance; }
@@ -381,6 +400,16 @@ inline void GameSettingsComponent::OnStart()
         m_video.width  = static_cast<int>(monitor.width);
         m_video.height = static_cast<int>(monitor.height);
     }
+
+    // 保存先を決めてから読む。SetPath はテーブルを差し替えるので、必ず Load より先。
+    if (perUserConfig) {
+        if (const char* root = std::getenv("LOCALAPPDATA")) {
+            const std::string folder = configFolder.empty() ? std::string("GreenWare")
+                                                            : configFolder;
+            config.SetPath(std::string(root) + "/" + folder + "/settings.toml");
+        }
+    }
+    debugConfigPath = config.GetPath();
 
     // 読めなくても (初回起動 / 破損) 既定値で進む。config.Read はテーブルが
     // 無ければ false を返すだけで、構造体には触らない。

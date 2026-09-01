@@ -24,13 +24,17 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Camera/BossCameraDirectorComponent.hpp>
 #include <Scripts/Combat/BossAnimatorComponent.hpp>
 #include <Scripts/Combat/BossAudioComponent.hpp>
 #include <Scripts/Combat/BossBeamComponent.hpp>
 #include <Scripts/Combat/BossDeathVfxComponent.hpp>
 #include <Scripts/Combat/BossHitboxRigComponent.hpp>
 #include <Scripts/Combat/BossPolarityCoreComponent.hpp>
+#include <Scripts/Combat/BossRagdollComponent.hpp>
 #include <Scripts/Combat/BossShockwaveComponent.hpp>
+#include <Scripts/Combat/LaserVolleyComponent.hpp>
+#include <Scripts/Combat/BossTelegraph.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
@@ -41,6 +45,7 @@
 #include <Scripts/Utils/ShockFalloff.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 using namespace fbzz::scene;
@@ -67,6 +72,9 @@ public:
     FBZZ_GROUP("Locomotion")
     FBZZ_FIELD_RANGE(float, patrolSpeed, 2.4f, "Patrol Speed", 0.0f, 12.0f)
     FBZZ_TOOLTIP("8 章の巡回速度 2.4 m/s。Walk_Crawl の歩調はこの速さを想定している")
+    FBZZ_FIELD_RANGE(float, crippledSpeedScale, 0.35f, "Crippled Speed", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("脚を失った後の巡回速度の倍率。0 で据え付けの砲台になる。"
+                 "引きずって進む体なので «追われるが振り切れる» 辺りに置く")
     FBZZ_FIELD_RANGE(float, turnSpeed, 45.0f, "Turn Speed", 5.0f, 360.0f)
     FBZZ_TOOLTIP("巡回中の旋回速度 [度/秒]。速すぎるとその場旋回モーションが出ない")
     FBZZ_FIELD_RANGE(float, keepDistance, 4.0f, "Keep Distance", 0.0f, 20.0f)
@@ -79,8 +87,14 @@ public:
     FBZZ_TOOLTIP("ここから Charge From までがコアビーム。移動を強制する")
     FBZZ_FIELD_RANGE(float, stompMaxRange, 6.0f, "Stomp Within", 1.0f, 20.0f)
     FBZZ_TOOLTIP("これ以下なら踏みつけ。腹下へ潜った罰")
-    FBZZ_FIELD_RANGE(float, attackInterval, 3.0f, "Attack Interval", 0.2f, 20.0f)
-    FBZZ_TOOLTIP("攻撃を出し終えてから次を選ぶまでの間。隙とは別に置く «呼吸»")
+    FBZZ_FIELD_RANGE(float, attackInterval, 1.2f, "Attack Interval", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("攻撃を出し終えてから次を選ぶまでの間。隙とは別に置く «呼吸»。"
+                 "各攻撃は 2〜5 秒あるので、ここを長くすると «何も起きない» 時間になる")
+    // WHY 体力で間合いの «回り» を変えるか: 1 つの間隔で通すと、序盤に合わせれば
+    //     終盤が作業になり、終盤に合わせれば開幕で殺される。削るほど詰めてくる形なら、
+    //     «あと少し» が一番危ないという山が戦いの中に立つ。
+    FBZZ_FIELD_RANGE(float, intervalAtLowHealth, 0.35f, "Interval (Low HP)", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("体力 0 まで削ったときの Attack Interval。満タン時の値からここへ寄っていく")
 
     FBZZ_GROUP("Stomp")
     FBZZ_FIELD_RANGE(float, stompHitTime, 0.80f, "Hit Time", 0.0f, 3.0f)
@@ -155,6 +169,35 @@ public:
     FBZZ_TOOLTIP("8 章は «全域» なので、アリーナ半径 (実測 20m) を覆う値を既定にする")
     FBZZ_FIELD_RANGE(float, pulseKnockback, 9.0f, "Knockback", 0.0f, 40.0f)
     FBZZ_TOOLTIP("帯電中の雑魚を外向きへ弾く速さ。極性そのものは残す (8 章)")
+
+    // 複数方向レーザー ─ コアから放射状に何本も伸ばし、隙間へ逃げさせる。
+    //
+    // WHY 1 本のビーム (BossBeamComponent) と別に要るか: あちらは «薙ぐ» 手で、
+    //     線から離れる方向へ走れば必ず避けられる ─ つまり «逃げ続ける» が正解になる。
+    //     等間隔の扇は逃げる方向そのものを塞ぐので、«隙間はどこか» を読んで
+    //     その 1 か所へ入る、という別の判断になる。
+    //
+    // WHY 回さないか: 回る扇は «追いつかれる» 恐怖を作るが、隙間の位置が毎瞬変わるので
+    //     読む対象が消える。止めておけば «どこへ入るか» を選ばせられる。
+    FBZZ_GROUP("Fan Beam")
+    FBZZ_FIELD(bool, fanBeam, true, "Enable")
+    FBZZ_FIELD_RANGE_INT(int, fanBeams, 6, "Beams", 2, 16)
+    FBZZ_TOOLTIP("放射する本数。多いほど隙間が狭い。偶数だと «正面と真後ろ» が対になる")
+    FBZZ_FIELD_RANGE(float, fanLength, 26.0f, "Length", 4.0f, 60.0f)
+    FBZZ_TOOLTIP("1 本の長さ [m]。アリーナ半径 (20 m) を越える値にすると «全域» になる")
+    FBZZ_FIELD_RANGE(float, fanHeight, 1.60f, "Height", 0.0f, 8.0f)
+    FBZZ_TOOLTIP("床からの高さ [m]。跳んで越えられる高さにすると «跳ぶ» が択に入る")
+    FBZZ_FIELD_RANGE(float, fanCooldown, 13.0f, "Cooldown", 0.0f, 90.0f)
+    FBZZ_FIELD_RANGE_INT(int, fanFromPhase, 2, "From Phase", 1, 3)
+    FBZZ_TOOLTIP("この段から出す。第 1 段は 8 章の表どおりの手だけにする")
+
+    FBZZ_GROUP("Telegraph")
+    // WHY ビームだけ幅を別に持つか: 当たりの太さ (BossBeamComponent の Hit Radius) は
+    //     線に触れたかを測る値で、予兆は «この帯から出ろ» を言う図形。同じにすると
+    //     ぎりぎり避けた判定が予兆の縁と一致してしまい、避けられたのか偶然かが
+    //     プレイヤーから読めない。予兆は当たりより気持ち広く出す。
+    FBZZ_FIELD_RANGE(float, telegraphBeamWidth, 1.6f, "Beam Width", 0.1f, 8.0f)
+    FBZZ_TOOLTIP("ビームの予兆帯の半幅 [m]。当たり判定 (Hit Radius 1.15) より広く取る")
     FBZZ_FIELD_RANGE_INT(int, pulseDamage, 1, "Damage", 0, 100)
 
     // WHY 攻撃ごとの数値と別に «手触り» を並べるか:
@@ -187,6 +230,9 @@ public:
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(std::string, debugAct, "Idle", "Act")
     FBZZ_FIELD_READ_ONLY(float, debugDistance, 0.0f, "Distance")
+    // 「攻撃が当たらない」は、判定が出ていない・距離で外れた・受け手に届かなかったの
+    // 3 つが同じ «減らない» に見える。直近の 1 回がどれだったかを残す。
+    FBZZ_FIELD_READ_ONLY(std::string, debugLastHit, "-", "Last Hit")
     FBZZ_FIELD(bool, drawDebugRanges, false, "Draw Ranges")
 
     void OnStart() override;
@@ -206,11 +252,55 @@ public:
     ///     部位を塗る手順そのものにリスクが無くなる。足は止まっても手は出し続ける。
     void SetRestrained(bool restrained) { m_restrained = restrained; }
 
+    /// 脚を失って «歩けない» 体になった。BossPolarityRigComponent が申告する。
+    ///
+    /// WHY 攻撃まで奪わないか: 動けないうえ手も出ないと、そこから先は «安全に削るだけ» の
+    ///     作業になる。四足が二足になったら «歩く重機» から «据え付けの砲台» へ役割が
+    ///     変わる、という形にして、間合いの読み合いだけを残す。
+    void SetCrippled(bool crippled);
+    [[nodiscard]] bool IsCrippled() const { return m_crippled; }
+
+    /// 1 本が壊れた。BossPolarityRigComponent が壊した瞬間に申告する。
+    ///
+    /// WHY 押し込む形にするか (こちらから IsLegBroken を引かないか):
+    ///     脚の状態を持っているのは BossPolarityRigComponent で、あちらは既に
+    ///     SetCrippled を呼ぶために BossAiComponent を include している。
+    ///     こちらから引き返すと include が循環する。申告の向きを 1 本に保つ。
+    void SetLegBroken(int leg)
+    {
+        if (leg >= 0 && leg < 4) m_legBroken[leg] = true;
+    }
+    [[nodiscard]] bool IsLegBroken(BossLeg leg) const
+    {
+        const int i = static_cast<int>(leg);
+        return i >= 0 && i < 4 && m_legBroken[i];
+    }
+    /// 踏みつけに使える脚が 1 本でも残っているか。
+    [[nodiscard]] bool HasStompLeg() const
+    {
+        for (bool broken : m_legBroken)
+            if (!broken) return true;
+        return false;
+    }
+
+    /// 今フレーム地面へ出すべき予兆。出す物が無ければ shape == None。
+    ///
+    /// WHY 状態から毎フレーム組み直すか (攻撃の開始時に 1 度だけ積まないか):
+    ///     着弾点は進行中に動く (踏みつけは足に、ビームは薙ぎに追従する)。
+    ///     開始時に固定すると «予兆の輪から出たのに踏まれる» が起きる。
+    [[nodiscard]] const BossTelegraph& CurrentTelegraph() const { return m_telegraph; }
+
+    /// 今まさに踏み下ろそうとしている脚。踏みつけ以外では前回の値が残る。
+    ///
+    /// WHY 公開するか: 部位発光は «どの脚が来るか» まで言えないと «何か来る» で
+    ///     終わってしまう。四脚が同時に光ると、避ける向きを選べない。
+    [[nodiscard]] BossLeg StompLeg() const { return m_stompLeg; }
+
 private:
     /// 今出している行動。Idle 以外は途中で選び直さない。
     enum class Act : int {
         Idle = 0, Stomp, JumpUp, JumpAir, JumpLand,
-        ChargeWindup, ChargeRun, CrashStun, Beam, Pulse
+        ChargeWindup, ChargeRun, CrashStun, Beam, Pulse, FanBeam
     };
 
     void TickIdle(float dt);
@@ -223,12 +313,15 @@ private:
     void TickCrashStun(float dt);
     void TickBeam(float dt);
     void TickPulse(float dt);
+    void TickFanBeam(float dt);
 
     void BeginStomp();
     void BeginJump();
     void BeginCharge();
     void BeginBeam();
     void BeginPulse();
+    /// 放射状のレーザー。@ret 出したら true。
+    bool BeginFanBeam();
     void BeginCrash();
     /// 終端をボスの正面へ置き直す。照射中は毎フレーム呼ぶ。
     /// @param sweep01 薙ぎの進み [0,1]。1 へ近づくほど終端を持ち上げる。
@@ -242,6 +335,8 @@ private:
     [[nodiscard]] BossLeg PickStompLeg(const Vector3& toPlayer) const;
     /// 踏みつけの着弾点。ヒットボックスのリグが居れば足ボーンの実座標を使う。
     [[nodiscard]] Vector3 StompPoint(BossLeg leg) const;
+    /// 今の行動から予兆を組み直す。OnFixedUpdate の末尾で毎フレーム呼ぶ。
+    void UpdateTelegraph();
 
     [[nodiscard]] GameObject* Player() const { return m_player.Resolve(scene); }
     void RefreshPlayer();
@@ -252,10 +347,12 @@ private:
     /// 水平速度を 0 にする。落下は殺さない。
     void StopHorizontal() const;
     void MoveHorizontal(const Vector3& direction, float speed) const;
+    /// 次の «呼吸» の長さ。残り体力が少ないほど短い。
+    [[nodiscard]] float AttackInterval() const;
     /// プレイヤーへダメージを入れる。経路は CombatManager 1 本に通す。
     bool HitPlayer(int amount) const;
     /// 円内のプレイヤーを殴る。踏みつけ・パルスの衝撃波が共有する。
-    bool HitPlayerInSphere(const Vector3& center, float radius, int amount) const;
+    bool HitPlayerInSphere(const Vector3& center, float radius, int amount);
     /// 場所のある衝撃を «画面と手» の両方へ返す。減衰は 1 度だけ出して共有する。
     /// @param range 0 以下なら feedbackRange を使う。
     void PlayShock(const Vector3& center, float strength01, float range = 0.0f) const;
@@ -279,6 +376,10 @@ private:
     float     m_stunSeconds = 0.0f;
     /// 脚を引かれていて歩けない。BossPolarityRigComponent が毎フレーム申告する。
     bool      m_restrained  = false;
+    /// 脚を失って二度と歩けない。restrained と違い、一度立つと戻らない。
+    bool      m_crippled    = false;
+    /// 壊れた脚。踏みつけの脚選びと «踏めるかどうか» の判定に使う。
+    bool      m_legBroken[4] = { false, false, false, false };
     /// 今の行動でダメージ判定を出したか。1 回の振りで 1 回だけ当てる。
     bool      m_dealt      = false;
     /// 踏み込んだ瞬間に固定した突進方向。以後は変えない (8 章)。
@@ -287,10 +388,13 @@ private:
     /// 大ジャンプの離陸点と着地点。踏み切った瞬間に確定させる。
     Vector3   m_jumpStart  = Vector3::ZERO;
     Vector3   m_jumpTarget = Vector3::ZERO;
+    BossTelegraph m_telegraph{};
     /// Land を流し始めたか。接地の landContactTime 前に 1 度だけ流す。
     bool      m_landCued   = false;
     /// 中距離で跳ぶかビームか。同じ間合いから同じ手しか来ないと読み合いにならない。
     bool      m_preferJump = false;
+    /// 扇の冷却。間合いに依らない手なので、出しすぎると他の手が消える。
+    float     m_fanCooldown = 0.0f;
     /// ビームの段 (0 = 構え / 1 = 照射 / 2 = 終わり)。
     int       m_beamStage  = 0;
     /// 「戦闘が居ない」を 1 度だけ言うためのラッチ。報告は const な当て所からも起きる。
@@ -331,7 +435,7 @@ inline void BossAiComponent::OnStart()
 {
     m_act      = Act::Idle;
     m_timer    = 0.0f;
-    m_cooldown = std::max(attackInterval, 0.0f);
+    m_cooldown = AttackInterval();
     m_dealt    = false;
     m_landCued = false;
     m_beamStage = 0;
@@ -419,6 +523,17 @@ inline void BossAiComponent::MoveHorizontal(const Vector3& direction, float spee
     physics.SetVelocity(velocity);
 }
 
+inline float BossAiComponent::AttackInterval() const
+{
+    const float full = std::max(attackInterval, 0.0f);
+    const float low  = std::max(intervalAtLowHealth, 0.0f);
+
+    // HP を持っているのは EnemyHealthComponent。無い構成では «満タンのまま» として扱う。
+    const auto* health = scene.GetScript<EnemyHealthComponent>();
+    const float remaining = health ? Clamp01(health->Normalized()) : 1.0f;
+    return Lerp(low, full, remaining);
+}
+
 inline bool BossAiComponent::HitPlayer(int amount) const
 {
     GameObject* player = Player();
@@ -433,11 +548,13 @@ inline bool BossAiComponent::HitPlayer(int amount) const
         }
         return false;
     }
-    return combat->DamagePlayer(player, amount);
+    // 押しはボスの位置から外へ。踏みつけも突進も «ボスに弾かれた» が正しい向き。
+    const Vector3 source = transform.worldPosition;
+    return combat->DamagePlayer(player, amount, &source);
 }
 
 inline bool BossAiComponent::HitPlayerInSphere(const Vector3& center, float radius,
-                                               int amount) const
+                                               int amount)
 {
     GameObject* player = Player();
     if (!player) return false;
@@ -446,8 +563,20 @@ inline bool BossAiComponent::HitPlayerInSphere(const Vector3& center, float radi
     //     盤面の全コライダーを集めて絞り込む理由が無い。距離で足りる。
     Vector3 toPlayer = player->transform.worldPosition - center;
     toPlayer.y = 0.0f;
-    if (toPlayer.LengthSq() > radius * radius) return false;
-    return HitPlayer(amount);
+    const float distance = toPlayer.Length();
+
+    char note[64] = {};
+    if (distance > radius) {
+        std::snprintf(note, sizeof(note), "%s %.1f/%.1fm out", debugAct.c_str(), distance, radius);
+        debugLastHit = note;
+        return false;
+    }
+
+    const bool dealt = HitPlayer(amount);
+    std::snprintf(note, sizeof(note), "%s %.1f/%.1fm %s", debugAct.c_str(), distance, radius,
+                  dealt ? "hit" : "blocked");
+    debugLastHit = note;
+    return dealt;
 }
 
 inline void BossAiComponent::PlayShock(const Vector3& center, float strength01,
@@ -474,6 +603,11 @@ inline void BossAiComponent::AnnounceDeath()
     // 崩れていく «見え» は BossDeathVfxComponent が受け持つ。ここが出すのは告知だけで、
     // 両者は同じ 1 フレームから始まって別々の速さで進む (告知は今すぐ / 崩壊は数秒)。
     if (auto* death = scene.GetScript<BossDeathVfxComponent>()) death->Begin();
+
+    // 崩壊と同じフレームからカメラも引き始める。ここから先はリザルトへ行くだけで、
+    // 返す遊びが無いので演出が画面を持ったまま終わる。
+    if (auto* camera = BossCameraDirectorComponent::Instance())
+        camera->Play(BossShot::Death);
 
     // WHY ここだけ距離で減らさないか: 撃破は盤面のどこかで «起きた衝撃» ではなく、
     //     戦いが終わったという告知。距離を掛けると、遠くから丁寧に組み立てて倒した
@@ -521,19 +655,96 @@ inline void BossAiComponent::OnFixedUpdate()
         debugDistance = toPlayer.Length();
     }
 
+    // WHY return をやめて break にしたか: 予兆はどの行動から抜けても «今の状態» から
+    //     組み直す必要がある。各 Tick の末尾へ書くと 9 箇所に散り、1 つ足すたびに
+    //     書き忘れが «その攻撃だけ予兆が出ない» という形で出る。
+    m_fanCooldown = std::max(m_fanCooldown - dt, 0.0f);
+
     switch (m_act) {
-    case Act::Stomp:        TickStomp(dt);        return;
-    case Act::JumpUp:       TickJumpUp(dt);       return;
-    case Act::JumpAir:      TickJumpAir(dt);      return;
-    case Act::JumpLand:     TickJumpLand(dt);     return;
-    case Act::ChargeWindup: TickChargeWindup(dt); return;
-    case Act::ChargeRun:    TickChargeRun(dt);    return;
-    case Act::CrashStun:    TickCrashStun(dt);    return;
-    case Act::Beam:         TickBeam(dt);         return;
-    case Act::Pulse:        TickPulse(dt);        return;
-    case Act::Idle:         break;
+    case Act::Stomp:        TickStomp(dt);        break;
+    case Act::JumpUp:       TickJumpUp(dt);       break;
+    case Act::JumpAir:      TickJumpAir(dt);      break;
+    case Act::JumpLand:     TickJumpLand(dt);     break;
+    case Act::ChargeWindup: TickChargeWindup(dt); break;
+    case Act::ChargeRun:    TickChargeRun(dt);    break;
+    case Act::CrashStun:    TickCrashStun(dt);    break;
+    case Act::Beam:         TickBeam(dt);         break;
+    case Act::Pulse:        TickPulse(dt);        break;
+    case Act::FanBeam:      TickFanBeam(dt);      break;
+    case Act::Idle:         TickIdle(dt);         break;
     }
-    TickIdle(dt);
+
+    UpdateTelegraph();
+}
+
+inline void BossAiComponent::UpdateTelegraph()
+{
+    m_telegraph = {};
+    if (!IsAlive()) return;
+
+    const Vector3 self = transform.worldPosition;
+
+    switch (m_act) {
+    case Act::Stomp:
+        // 着弾点は足に追従させる。振り上げの途中で相手が動くので、開始時に固定すると
+        // «輪の外へ出たのに踏まれた» が起きる。
+        m_telegraph.shape    = BossTelegraphShape::Circle;
+        m_telegraph.kind     = BossAttackKind::Stomp;
+        m_telegraph.origin   = StompPoint(m_stompLeg);
+        m_telegraph.radius   = std::max(stompRadius, 0.1f);
+        m_telegraph.progress = Clamp01(m_timer / std::max(stompHitTime, 0.01f));
+        break;
+
+    case Act::JumpUp:
+    case Act::JumpAir: {
+        // 着地点は踏み切った瞬間に確定している。滞空中に動かないので «そこへ来る» と
+        // 言い切れる ─ 予兆として一番強い形。
+        m_telegraph.shape  = BossTelegraphShape::Circle;
+        m_telegraph.kind   = BossAttackKind::Slam;
+        m_telegraph.origin = m_jumpTarget;
+        m_telegraph.radius = std::max(jumpHitRadius, 0.1f);
+        const float total = std::max(jumpTakeoffTime + jumpAirTime, 0.01f);
+        const float done  = (m_act == Act::JumpUp) ? m_timer : jumpTakeoffTime + m_timer;
+        m_telegraph.progress = Clamp01(done / total);
+        break;
+    }
+
+    case Act::ChargeWindup:
+        m_telegraph.shape     = BossTelegraphShape::Line;
+        m_telegraph.kind      = BossAttackKind::Charge;
+        m_telegraph.origin    = self;
+        m_telegraph.direction = Forward();
+        m_telegraph.length    = std::max(chargeSpeed * chargeMaxSeconds, 1.0f);
+        m_telegraph.radius    = std::max(chargeHitRadius, 0.1f);
+        m_telegraph.progress  = Clamp01(m_timer / std::max(chargeWindupTime, 0.01f));
+        break;
+
+    case Act::Beam:
+        // 構えの間だけ。撃ち始めたら線そのものが «来ている» を言うので、予兆を
+        // 重ねると «まだ来ていない» と読み違える。
+        if (m_timer >= beamStartTime) break;
+        m_telegraph.shape     = BossTelegraphShape::Line;
+        m_telegraph.kind      = BossAttackKind::Beam;
+        m_telegraph.origin    = self;
+        m_telegraph.direction = Forward();
+        m_telegraph.length    = std::max(beamLength, 1.0f);
+        m_telegraph.radius    = std::max(telegraphBeamWidth, 0.1f);
+        m_telegraph.progress  = Clamp01(m_timer / std::max(beamStartTime, 0.01f));
+        break;
+
+    case Act::Pulse:
+        m_telegraph.shape    = BossTelegraphShape::Circle;
+        m_telegraph.kind     = BossAttackKind::Pulse;
+        m_telegraph.origin   = self;
+        m_telegraph.radius   = std::max(pulseRadius, 0.1f);
+        m_telegraph.progress = Clamp01(m_timer / std::max(pulseHitTime, 0.01f));
+        break;
+
+    // 突進中・激突スタン・着地後・待機は予兆を出さない。
+    // 走り出した突進に輪を出しても «今そこに居る» を言うだけで、避ける先を示さない。
+    default:
+        break;
+    }
 }
 
 inline void BossAiComponent::TickIdle(float dt)
@@ -562,17 +773,58 @@ inline void BossAiComponent::TickIdle(float dt)
 
     // 間合いより遠ければ詰める。近ければ止まって «腹下へ潜る» 余地を残す。
     // 脚を引かれている間は詰めない (接地した足を引きずるとスライドに見える)。
-    if (!m_restrained && distance > std::max(keepDistance, 0.0f))
-        MoveHorizontal(direction, patrolSpeed);
+    //
+    // WHY 崩れても止めないか: 崩れは姿勢の層が «体を傾けて残った脚を床へ留める» 形で
+    //     作っているので、動いても足は床に付いたまま引きずられる。完全に据え付けに
+    //     すると «離れて立っているだけで何も起きない» 盤面が生まれる。速さだけ削って、
+    //     «逃げれば追われるが振り切れる» へ寄せる。
+    const float speed = m_crippled ? patrolSpeed * std::clamp(crippledSpeedScale, 0.0f, 1.0f)
+                                   : patrolSpeed;
+    if (!m_restrained && speed > 0.0f && distance > std::max(keepDistance, 0.0f))
+        MoveHorizontal(direction, speed);
     else
         StopHorizontal();
+}
+
+inline void BossAiComponent::SetCrippled(bool crippled)
+{
+    if (m_crippled == crippled) return;
+    m_crippled = crippled;
+
+    // WHY ここでアニメータを触らないか: 崩れは «クリップの差し替え» ではなく
+    //     «体に掛ける変形» で、BossCollapsePostureComponent が持っている。
+    //     ステートマシンから見れば崩れる前と後で何も変わらない。
+    //
+    // WHY 水平を凍らせないか: 凍らせると引きずって動けなくなる。歩速を削るのは
+    //     Think 側でやっていて、そちらなら «押されて滑る» も物理に残せる。
+
+    StopHorizontal();
 }
 
 inline bool BossAiComponent::SelectAttack()
 {
     const float distance = debugDistance;
 
+    // 脚を失っても手は減らさない。
+    //
+    // WHY 封じないか: 崩れは «体に掛ける変形» なので、どのクリップを再生しても
+    //     胴は傾いたまま・残った脚は床に付いたままになる。踏みつけもビームも
+    //     «崩れた体でそれをやっている» 絵として成立する。封じると手が 1 つに
+    //     なって、脚を折るほど戦いが単調になるという逆の設計になる。
+    //
+    // 突進と大ジャンプだけは残す ─ どちらも脚で床を蹴る移動そのもので、
+    // 引きずって進む体では «そこまでは動けない»。
+    if (m_crippled) {
+        if (distance <= stompMaxRange && HasStompLeg()) { BeginStomp(); return true; }
+        BeginBeam();
+        return true;
+    }
+
     // 8 章の表をそのまま上から当てる。範囲が重ならないよう境界は片側だけを含める。
+    // 扇は間合いを問わない «全域» の手。冷却が明けていれば表より先に出す ─
+    // 表どおりの手だけだと、距離さえ保てば安全という盤面が最後まで残る。
+    if (BeginFanBeam()) return true;
+
     if (distance >= chargeMinRange) { BeginCharge(); return true; }
 
     // 中距離はビームと大ジャンプで交互に出す。
@@ -589,7 +841,9 @@ inline bool BossAiComponent::SelectAttack()
     // 踏みつけの間合いより外・ビームの間合いより内。8 章の表が空けている帯なので、
     // 距離を詰める手段でもある大ジャンプを当てる。
     if (distance >= jumpMinRange) { BeginJump();  return true; }
-    if (distance <= stompMaxRange) { BeginStomp(); return true; }
+    // 脚が 1 本残っていれば踏める (PickStompLeg が生きている脚へ寄せる)。
+    // 1 本も無いときにここを通すと «無い脚を振り下ろす» 絵になる。
+    if (distance <= stompMaxRange && HasStompLeg()) { BeginStomp(); return true; }
 
     // どれにも当たらない設定 (jumpMinRange > stompMaxRange の隙間) は «詰める» に任せる。
     return false;
@@ -604,8 +858,26 @@ inline BossLeg BossAiComponent::PickStompLeg(const Vector3& toPlayer) const
     // 8 章「プレイヤーはボスの周囲を回るため、背後へ回り込んでも踏みつけが届く」。
     const bool onRight = Vector3::Dot(toPlayer, right) >= 0.0f;
 
-    if (front) return onRight ? BossLeg::FrontRight : BossLeg::FrontLeft;
-    return onRight ? BossLeg::BackRight : BossLeg::BackLeft;
+    const BossLeg wanted = front ? (onRight ? BossLeg::FrontRight : BossLeg::FrontLeft)
+                                 : (onRight ? BossLeg::BackRight  : BossLeg::BackLeft);
+    if (!IsLegBroken(wanted)) return wanted;
+
+    // 壊れた脚では踏めない。«無い脚を振り下ろす» のは、壊した手応えを
+    // その場で否定してしまう一番まずい絵になる。
+    //
+    // WHY 隣→対角の順に降りるか: 同じ側の脚なら踏み込む向きが近く、届く範囲も似る。
+    //     対角へ飛ぶと «反対側の脚で足元を踏む» という無理な絵になるので最後に回す。
+    const BossLeg fallback[4][3] = {
+        /* FR */ { BossLeg::BackRight,  BossLeg::FrontLeft,  BossLeg::BackLeft   },
+        /* FL */ { BossLeg::BackLeft,   BossLeg::FrontRight, BossLeg::BackRight  },
+        /* BR */ { BossLeg::FrontRight, BossLeg::BackLeft,   BossLeg::FrontLeft  },
+        /* BL */ { BossLeg::FrontLeft,  BossLeg::BackRight,  BossLeg::FrontRight },
+    };
+    for (const BossLeg candidate : fallback[static_cast<int>(wanted)])
+        if (!IsLegBroken(candidate)) return candidate;
+
+    // 全部落ちている。呼ぶ前に HasStompLeg() で弾く約束なので、ここへは来ない。
+    return wanted;
 }
 
 inline Vector3 BossAiComponent::StompPoint(BossLeg leg) const
@@ -866,9 +1138,17 @@ inline void BossAiComponent::BeginCrash()
     // 激突とスタンは 1 続きの出来事。復帰音を明ける手前へ置けるよう、長さごと渡す。
     if (auto* sfx = Sfx()) sfx->Crash(crashStunTime);
 
+    // 壁への激突は突進の速度が乗ったまま止まる。倒れる向きは進行方向が決めるので、
+    // 対を渡す転倒 (BossPolarityRigComponent::Fire) と違って方向は足さない。
+    if (auto* rag = scene.GetScript<BossRagdollComponent>()) rag->Begin(crashStunTime);
+
     // 8 章の «避けて壁へ誘導する» が成立した瞬間。プレイヤーが仕掛けて起こした結果
     // なので、踏みつけや着地と同じ «受けた衝撃» の語で返す。
     PlayShock(transform.worldPosition, crashRumble);
+
+    // WHY ここで衝撃波を出さないか: BossShockwaveComponent::Emit は当たりを持つ。
+    //     激突はプレイヤーが «避けて壁へ誘導した» 成果そのものなので、成立した瞬間に
+    //     罰を出すことになる。輪を出すのは自分から仕掛けた手 (着地・パルス) だけ。
 
     // 8 章の «大ダメージ»。15 章「敵を武器として使う」がボス自身にも適用される、
     // 唯一の «銃以外で削れる» 経路なので、盤面の衝突と同じ CombatManager ではなく
@@ -888,7 +1168,14 @@ inline void BossAiComponent::TickCrashStun(float dt)
 {
     StopHorizontal();
     m_timer += dt;
-    if (m_timer >= m_stunSeconds) EndAct();
+    if (m_timer < m_stunSeconds) return;
+
+    EndAct();
+    // WHY ここだけ呼吸を挟まないか: 激突も転倒も、プレイヤーが仕掛けて作った隙で、
+    //     その «無防備な数秒» が既に反撃の時間そのものになっている。上から
+    //     Attack Interval を足すと、自分で崩したときほど何も起きない時間が伸びる
+    //     ── 一番うまく戦えたときに一番退屈になる。立ち上がったら即座に次を選ぶ。
+    m_cooldown = 0.0f;
 }
 
 inline void BossAiComponent::Topple(float seconds, int selfDamage)
@@ -904,6 +1191,10 @@ inline void BossAiComponent::Topple(float seconds, int selfDamage)
     m_stunSeconds = std::max(seconds, 0.1f);
     debugAct      = "Topple";
     StopHorizontal();
+
+    // 倒れているあいだは手出しが要らない。寄って «効いた» を返す。
+    if (auto* camera = BossCameraDirectorComponent::Instance())
+        camera->Play(BossShot::Topple);
 
     if (auto* anim = Anim()) anim->Crash();
     if (auto* sfx  = Sfx())  sfx->Crash(m_stunSeconds);
@@ -1021,6 +1312,52 @@ inline void BossAiComponent::AimBeam(float sweep01)
     beam->Aim(transform.worldPosition + Forward() * reach, lift);
 }
 
+inline bool BossAiComponent::BeginFanBeam()
+{
+    auto* volley = scene.GetScript<LaserVolleyComponent>();
+    if (!fanBeam || !volley || m_fanCooldown > 0.0f) return false;
+    if (Core() && Core()->CurrentPhase() < fanFromPhase) return false;
+
+    // 位相はプレイヤーの «間» へ隙間が来ないようにずらす。真正面に隙間が来ると
+    // «立っているだけで避けている» 形になり、読む対象が消える。
+    float phaseDegrees = 0.0f;
+    if (GameObject* player = Player()) {
+        const Vector3 away = player->transform.worldPosition - transform.worldPosition;
+        const float   step = 360.0f / static_cast<float>(std::max(fanBeams, 2));
+        phaseDegrees = ToDeg(std::atan2(away.z, away.x)) + step * 0.5f;
+    }
+
+    volley->FireFan(transform.worldPosition, fanBeams, fanLength, phaseDegrees,
+                    std::max(fanHeight, 0.0f));
+
+    m_act         = Act::FanBeam;
+    m_timer       = 0.0f;
+    m_dealt       = false;
+    m_fanCooldown = std::max(fanCooldown, 0.0f);
+    debugAct      = "Fan Beam";
+
+    if (auto* anim = Anim()) anim->BeginBeam();
+    if (auto* sfx  = Sfx())  sfx->BeginBeam();
+    return true;
+}
+
+inline void BossAiComponent::TickFanBeam(float dt)
+{
+    debugAct = "Fan Beam";
+    StopHorizontal();
+    m_timer += dt;
+
+    // 撃っている間はプレイヤーを向く。線は動かないが «誰へ向けたか» は返す。
+    if (GameObject* player = Player()) {
+        Vector3 toPlayer = player->transform.worldPosition - transform.worldPosition;
+        toPlayer.y = 0.0f;
+        FaceDirection(toPlayer, dt, turnSpeed);
+    }
+
+    const auto* volley = scene.GetScript<LaserVolleyComponent>();
+    if (!volley || !volley->IsActive()) EndAct();
+}
+
 inline void BossAiComponent::BeginPulse()
 {
     m_act    = Act::Pulse;
@@ -1048,6 +1385,10 @@ inline void BossAiComponent::TickPulse(float dt)
         // 減衰の外周をパルスの半径そのものに揃える。8 章が «全域» と決めている攻撃なので、
         // 手触りの届く範囲だけ別に持つと «届いていないのに震える» 距離ができる。
         PlayShock(center, pulseRumble, std::max(pulseRadius, 1.0f));
+
+        // 広がる輪を出す。«全域» の攻撃なのに絵が «その場の閃光» だけだと、
+        // どこまで届いたのかが画面に残らない (着地と同じ波を使う)。
+        if (auto* wave = Shock()) wave->Emit(center);
 
         // 8 章「帯電中の雑魚が外向きに弾き飛ばされる。極性そのものは残る」。
         // 引力を切ってから弾く。切らないと、次のフレームに盤面が同じリンクを
@@ -1079,7 +1420,7 @@ inline void BossAiComponent::EndAct()
     m_timer    = 0.0f;
     m_dealt    = false;
     m_landCued = false;
-    m_cooldown = std::max(attackInterval, 0.0f);
+    m_cooldown = AttackInterval();
     debugAct   = "Idle";
 
     // 硬直と消灯は行動の終わりで必ず解く。途中で打ち切られた経路 (死亡・激突) も
