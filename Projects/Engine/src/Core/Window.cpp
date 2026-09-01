@@ -7,6 +7,7 @@
 /// Renderer / ImGui とはコールバックで疎結合に接続する。
 
 #include "Engine/Core/Window.hpp"
+#include "Engine/Core/Cursor.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Input/Input.hpp"
 #include "Engine/Util/FileSystem.hpp"
@@ -599,8 +600,23 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         window->m_height = h;
         if (window->m_resizeCallback)
             window->m_resizeCallback(w, h);
+        // 拘束中はクライアント矩形が変わった時点で拘束範囲も古くなる。
+        fbzz::core::Cursor::ApplyLock();
         return 0;
     }
+
+    // 拘束範囲はスクリーン座標なので、寸法が同じでも «動いた» だけで古くなる。
+    case WM_MOVE:
+        fbzz::core::Cursor::ApplyLock();
+        return 0;
+
+    // WHY 活性を Cursor へ伝えるか: ClipCursor はフォアグラウンドが変わると OS 側で外れ、
+    //     ShowCursor(FALSE) は復帰時に戻す責任がこちらに残る。要求状態は Cursor が持ち、
+    //     «いま OS へ効かせてよいか» だけをここから渡す。これが無いと Alt+Tab で
+    //     抜けた先でカーソルが拘束されたままになったり、戻ってきて拘束が復活しない。
+    case WM_ACTIVATEAPP:
+        fbzz::core::Cursor::SetWindowActive(wParam != FALSE);
+        return 0;
 
     // DPI の異なるモニターへ移動した / 表示スケールが変更された。
     case WM_DPICHANGED:

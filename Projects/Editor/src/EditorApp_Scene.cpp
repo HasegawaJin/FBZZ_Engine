@@ -860,6 +860,12 @@ void EditorApp::InitScriptDll()
 {
     if (!m_ctx.hotReloadEnabled) return;
 
+    // HLSL の監視先は C++ ツールチェーンと無関係に決まる。必要なのは PowerShell と
+    // シェーダーツリー同梱の compile_shaders.ps1 だけで、cmake は 1 度も通らない。
+    // ツールチェーン分岐の中で決めていた頃は、build.config を持たない (あるいは
+    // configure に失敗した) プロジェクトでシェーダーのリロードまで道連れに死んでいた。
+    InitHlslHotReload();
+
     ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
         util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
     bool sdkCacheRefreshed = false;
@@ -900,13 +906,7 @@ void EditorApp::InitScriptDll()
 
         const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         m_scriptsSourceDir     = engineRoot / L"Assets" / L"Scripts";
-        // WHY: Engine shaderはプロジェクトへコピーせず、選択中SDKの共有assetを正本とする。
-        m_hlslSourceDir        = util::FileSystem::PathFromUtf8(
-            asset::AssetManager::ResolveAssetPath("Assets/Shaders"));
-        m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.ps1";
-
         m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
-        m_ctx.hlslSourceDir    = util::FileSystem::PathToUtf8(m_hlslSourceDir);
 
         // 新方式: Reflect() はヘッダ内の FBZZ_REFLECT が生成するため、起動時の
         //         .generated.hpp 一括生成 (旧 FHT) は不要になった。
@@ -1036,14 +1036,60 @@ void EditorApp::InitScriptDll()
             FBZZ_LOG_INFO("ScriptDll: source is newer than DLL; scheduling rebuild");
         }
     }
-    if (!m_hlslSourceDir.empty()) {
-        m_hlslSourceFingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
-        if (m_hlslSourceFingerprint != 0) {
-            m_hlslCompilePending = true;
-            m_hlslDebounceTimer = 0.0f;
-            // WHY: 起動していない間の削除もstampでは判定できないため、差分スクリプトを一度走らせる。
-            FBZZ_LOG_INFO("HLSL: 起動時の差分検証を予約します");
-        }
+}
+
+// 監視するシェーダーツリーを決め、それがプロジェクトの持ち物かを判定する。
+//
+// WHY 所有者を見るか: AssetManager::ResolveAssetPath は «プロジェクト → 共有 SDK» の順に
+//   探すので、自前の Assets/Shaders を持たないプロジェクトでは SDK 側の実体が返る。
+//   そこへ書き戻すと、その SDK を使う他のプロジェクトの CSO まで書き換わる。
+//   逆に自前のツリーを持っているなら書き換えて困る相手はいないので、止める理由もない。
+//   従来は FBZZ_SOURCE_TREE_BUILD というビルド構成で切っており、«自前のシェーダーを
+//   持つ SDK プロジェクト» が巻き添えで無効化されていた。判断すべきはビルド構成ではなく
+//   «今から書き込む先が誰のものか» なので、実行時の所在で決める。
+void EditorApp::InitHlslHotReload()
+{
+    m_hlslProjectOwned      = false;
+    m_hlslSourceDir         = util::FileSystem::PathFromUtf8(
+        asset::AssetManager::ResolveAssetPath("Assets/Shaders"));
+    m_compileShadersScript  = m_hlslSourceDir / L"compile_shaders.ps1";
+    m_ctx.hlslSourceDir     = util::FileSystem::PathToUtf8(m_hlslSourceDir);
+
+    if (m_ctx.projectRoot.empty() || m_ctx.hlslSourceDir.empty()) return;
+
+    // 比較の前に絶対化して '..' を畳む。ResolveAssetPath は基準パスを継ぎ足すだけなので、
+    // 相対のまま比べると «プロジェクトの中» を «外» と読み違える。
+    const auto absolutize = [](const std::filesystem::path& path) {
+        if (path.is_absolute())
+            return util::FileSystem::PathToUtf8(path.lexically_normal());
+        std::error_code error;
+        const std::filesystem::path full = std::filesystem::absolute(path, error);
+        return util::FileSystem::PathToUtf8((error ? path : full).lexically_normal());
+    };
+    const std::string shaderDirAbs  = absolutize(m_hlslSourceDir);
+    const std::string projectAbs    = absolutize(util::FileSystem::PathFromUtf8(m_ctx.projectRoot));
+
+    if (!util::FileSystem::IsChildPathText(shaderDirAbs, projectAbs)) {
+        FBZZ_LOG_INFO("HLSL: hot reload is off - %s belongs to the shared SDK, not this project. "
+                      "Copy Assets/Shaders into the project to edit shaders live.",
+                      m_ctx.hlslSourceDir.c_str());
+        return;
+    }
+    // 走らせるのは同梱スクリプトなので、無いなら «自前のツリー» とは呼べない。
+    if (!util::FileSystem::Exists(m_compileShadersScript)) {
+        FBZZ_LOG_WARN("HLSL: hot reload is off - compile_shaders.ps1 not found in %s",
+                      m_ctx.hlslSourceDir.c_str());
+        return;
+    }
+
+    m_hlslProjectOwned      = true;
+    m_hlslSourceFingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
+    if (m_hlslSourceFingerprint != 0) {
+        m_hlslCompilePending = true;
+        m_hlslDebounceTimer  = 0.0f;
+        // WHY: 起動していない間の削除もstampでは判定できないため、差分スクリプトを一度走らせる。
+        FBZZ_LOG_INFO("HLSL: hot reload is on for %s; verifying the tree once",
+                      m_ctx.hlslSourceDir.c_str());
     }
 }
 
@@ -1238,10 +1284,8 @@ void EditorApp::TickScriptCompile()
 
 void EditorApp::CheckHlslDirty()
 {
-#if !defined(FBZZ_SOURCE_TREE_BUILD) || !FBZZ_SOURCE_TREE_BUILD
-    // WHY: immutable SDKの共有shaderをEditor実行中に書き換えてはならない。
-    return;
-#else
+    // 共有 SDK の shader を実行中に書き換えてはならない。判定は InitHlslHotReload が持つ。
+    if (!m_hlslProjectOwned) return;
     if (!m_ctx.hotReloadEnabled) return;
     if (m_hlslSourceDir.empty()) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
@@ -1270,15 +1314,12 @@ void EditorApp::CheckHlslDirty()
     m_hlslDebounceTimer  = 0.5f;
     FBZZ_LOG_DEBUG("HLSL: change detected in %s; recompiling after 500 ms debounce",
                    m_ctx.hlslSourceDir.c_str());
-#endif
 }
 
 void EditorApp::TickHlslCompile()
 {
-#if !defined(FBZZ_SOURCE_TREE_BUILD) || !FBZZ_SOURCE_TREE_BUILD
-    // SDK EditorではSDK publish時に確定したcompiled shaderだけを使用する。
-    return;
-#else
+    if (!m_hlslProjectOwned) return;
+
     if (m_hlslCompilePending) {
         m_hlslDebounceTimer -= 0.016f;
         if (m_hlslDebounceTimer > 0.0f) return;
@@ -1351,7 +1392,6 @@ void EditorApp::TickHlslCompile()
         m_ctx.hotReloadDoneTimer = 8.0f;
         m_hlslCompiler.Reset();
     }
-#endif
 }
 
 void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std::string& msg)

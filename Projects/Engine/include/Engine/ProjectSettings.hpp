@@ -9,6 +9,7 @@
 #include <array>
 #include <Math/Vector3.hpp>
 #include <Engine/Audio/AudioBus.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/RendererBackend.hpp>
 #include <string>
@@ -104,6 +105,11 @@ struct ProjectSettings {
     ScreenSettings               screen;
     AppSettings                  app;
     WindowSettings               window;
+    // ゲーム開始時のカーソル状態。Standalone は起動時、Editor は Play 開始時に適用する。
+    // WHY Editor の Play Focus Mode と分けるか: Focus Mode は «ウィンドウの並べ方» の話で、
+    //     カーソルを取るかどうかはゲームの作りで決まる。同じ knob に載せると、
+    //     ゲーム内カーソルを持つ作品が Focused を選べなくなる。
+    core::CursorPolicy           cursor;
 
     static ProjectSettings Default();
     bool Load(const std::string& path);

@@ -9,6 +9,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <cstdint>
+#include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/IBuffer.hpp>
 #include <Engine/Renderer/IConstantBuffer.hpp>
 #include <Engine/Renderer/IPipelineState.hpp>
@@ -116,6 +117,9 @@ void ResourceManager::Reset()
     // WHY: デバイスロスト復帰後に旧ネイティブリソースへ触るとクラッシュするため、
     //      RenderSystem 側は GetResetVersion() の変化を検知して static handle を再作成する。
     ReleaseOwnedResourcesForShutdown();
+    // 追跡していたハンドルも一緒に無効になる。返しにいくと «リセット後に作られた
+    // 別の実体» を巻き添えにするので、控えだけ捨てる。
+    m_trackedMeshes.clear();
     ++m_resetVersion;
     FBZZ_LOG_INFO("ResourceManager: reset renderer resources (version=%llu)",
                   static_cast<unsigned long long>(m_resetVersion));
@@ -480,6 +484,67 @@ void ResourceManager::LogLiveDebugResources() const
     }
 }
 
+// ── Mesh のバッファの寿命 ─────────────────────────────────────────────────────
+
+// WHY ReleaseMeshBuffers(Mesh&) と分かれているか: こちらが呼ばれるのは «Mesh の実体が
+// もう無い» ときで、Mesh を逆参照できない。控えておいたハンドルだけを頼りに返す。
+std::size_t ResourceManager::ReleaseTrackedMeshBuffers(TrackedMesh& tracked)
+{
+    std::size_t released = 0;
+    if (tracked.vertexBuffer.IsValid()) { Release(tracked.vertexBuffer); ++released; }
+    if (tracked.indexBuffer.IsValid())  { Release(tracked.indexBuffer);  ++released; }
+    tracked.vertexBuffer = {};
+    tracked.indexBuffer  = {};
+    return released;
+}
+
+void ResourceManager::TrackMeshBuffers(const std::shared_ptr<Mesh>& mesh)
+{
+    if (!mesh) return;
+
+    for (TrackedMesh& tracked : m_trackedMeshes) {
+        if (tracked.key != mesh.get()) continue;
+
+        // WHY 期限切れなら先に返すか: 同じ番地に別の Mesh が生まれることがある。
+        //     そのまま上書きすると、前の Mesh のバッファを返す機会が永久に失われる。
+        if (tracked.mesh.expired()) ReleaseTrackedMeshBuffers(tracked);
+
+        tracked.mesh         = mesh;
+        tracked.vertexBuffer = mesh->vertexBuffer;
+        tracked.indexBuffer  = mesh->indexBuffer;
+        return;
+    }
+
+    m_trackedMeshes.push_back(
+        TrackedMesh{ mesh.get(), mesh, mesh->vertexBuffer, mesh->indexBuffer });
+}
+
+std::size_t ResourceManager::ReleaseMeshBuffers(Mesh& mesh)
+{
+    std::size_t released = 0;
+    if (mesh.vertexBuffer.IsValid()) { Release(mesh.vertexBuffer); ++released; }
+    if (mesh.indexBuffer.IsValid())  { Release(mesh.indexBuffer);  ++released; }
+    mesh.vertexBuffer = {};
+    mesh.indexBuffer  = {};
+    return released;
+}
+
+std::size_t ResourceManager::SweepOrphanedMeshBuffers()
+{
+    std::size_t released = 0;
+    for (std::size_t i = 0; i < m_trackedMeshes.size();) {
+        if (!m_trackedMeshes[i].mesh.expired()) {
+            ++i;
+            continue;
+        }
+        released += ReleaseTrackedMeshBuffers(m_trackedMeshes[i]);
+        // 順序に意味は無いので、末尾と入れ替えて縮める。
+        m_trackedMeshes[i] = m_trackedMeshes.back();
+        m_trackedMeshes.pop_back();
+    }
+    return released;
+}
+
 std::size_t ResourceManager::GetLiveDebugResourceCount() const
 {
     return m_shaders.GetLiveDebugCount()
@@ -518,6 +583,38 @@ const core::AllocationInfo* ResourceManager::GetLiveDebugResource(std::size_t in
     index -= renderTargetCount;
 
     return m_structuredBuffers.GetLiveDebugInfo(index);
+}
+
+bool SizedRenderTarget::Ensure(ResourceManager& resources,
+                               uint32_t width, uint32_t height, uint32_t colorCount)
+{
+    const uint64_t resetVersion = resources.GetResetVersion();
+    if (m_resetVersion != resetVersion) {
+        // WHY 返さずに捨てるか: リセットではマネージャーが実体ごと畳んでいる。
+        //     こちらのハンドルは無効で、返しにいっても意味が無い (最悪、同じスロットへ
+        //     入ってきた別の実体を巻き添えにする)。控えだけ捨てて作り直す。
+        m_resetVersion = resetVersion;
+        m_handle       = {};
+        m_width = m_height = m_colorCount = 0;
+    }
+
+    if (m_handle.IsValid() && m_width == width && m_height == height && m_colorCount == colorCount)
+        return false;
+
+    if (m_handle.IsValid()) resources.Release(m_handle);
+    m_handle     = resources.CreateRenderTarget(width, height, colorCount);
+    m_width      = width;
+    m_height     = height;
+    m_colorCount = colorCount;
+    return true;
+}
+
+void SizedRenderTarget::Release(ResourceManager& resources)
+{
+    if (m_handle.IsValid() && m_resetVersion == resources.GetResetVersion())
+        resources.Release(m_handle);
+    m_handle = {};
+    m_width = m_height = m_colorCount = 0;
 }
 
 } // namespace fbzz::renderer

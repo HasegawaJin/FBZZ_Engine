@@ -37,6 +37,7 @@
 #include "Components/PostProcessVolumeComponent.hpp"
 #include "Components/IKSolverComponent.hpp"
 #include "Components/SpringBoneComponent.hpp"
+#include "Components/RagdollComponent.hpp"
 #include "Components/MotionWarpComponent.hpp"
 #include "Components/CharacterControllerComponent.hpp"
 #include "Components/TerrainComponent.hpp"
@@ -259,7 +260,9 @@ using ComponentRegistry = std::tuple<
     FBZZ_COMPONENT(UIContentSizeFitter, UI, "UI Content Size Fitter"),
     FBZZ_COMPONENT(UINavigation, UI, "UI Navigation"),
     FBZZ_COMPONENT(UIDragSource, UI, "UI Drag Source"),
-    FBZZ_COMPONENT(UIDropTarget, UI, "UI Drop Target")
+    FBZZ_COMPONENT(UIDropTarget, UI, "UI Drop Target"),
+    // 実行状態 (質点・拘束・段階) は保存しないので保存は手動。設定は Reflect で足りる。
+    FBZZ_AUTO_INSPECTOR_COMPONENT(RagdollComponent, Animation, "Ragdoll")
 >;
 
 template<typename Registry>

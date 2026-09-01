@@ -6,6 +6,18 @@
 
 namespace fbzz::editor {
 
+namespace {
+
+// 名前なしレイヤーは既定で 26 個あり、空文字のままウィジェットへ渡すと
+// ImGui の ID が全部同じになる (空ラベル = 親と同じ ID)。表示名を必ず埋める。
+std::string LayerDisplayName(const ProjectSettings& settings, int layer)
+{
+    const std::string& name = settings.game.layerNames[layer];
+    return name.empty() ? ("User Layer " + std::to_string(layer)) : name;
+}
+
+} // namespace
+
 void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     DrawComponentSection<scene::LightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light",
@@ -71,11 +83,13 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     cc.cullingMask = all ? fbzz::Layer::Everything : fbzz::Layer::Nothing;
                 ImGui::Separator();
                 for (int i = 0; i < scene::kCullLayerCount; ++i) {
+                    ImGui::PushID(i);
                     bool on = fbzz::Layer::Contains(cc.cullingMask, i);
-                    if (ImGui::Checkbox(c.projectSettings.game.layerNames[i].c_str(), &on)) {
+                    if (ImGui::Checkbox(LayerDisplayName(c.projectSettings, i).c_str(), &on)) {
                         if (on) cc.cullingMask |=  fbzz::Layer::Mask(i);
                         else    cc.cullingMask &= ~fbzz::Layer::Mask(i);
                     }
+                    ImGui::PopID();
                 }
                 ImGui::EndCombo();
             }
@@ -157,7 +171,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 ImGui::BeginChild("##layercull", ImVec2(0.0f, 220.0f), true);
                 for (int i = 0; i < scene::kCullLayerCount; ++i) {
                     ImGui::PushID(i);
-                    ImGui::DragFloat(c.projectSettings.game.layerNames[i].c_str(),
+                    ImGui::DragFloat(LayerDisplayName(c.projectSettings, i).c_str(),
                                      &cc.layerCullDistances[i],
                                      1.0f, 0.0f, 100000.0f,
                                      cc.layerCullDistances[i] > 0.0f ? "%.0f m" : "default");

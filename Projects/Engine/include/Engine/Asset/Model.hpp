@@ -18,6 +18,27 @@
 namespace fbzz::asset {
 
 struct Model {
+    Model() = default;
+    /// メッシュの GPU バッファを返す。
+    ///
+    /// WHY Model が返すか (2026-09-01 に追加):
+    ///   `renderer::Mesh` は «形» を持つだけの構造体で ResourceManager を知らないため、
+    ///   自分ではバッファを返せない。唯一の所有者はこの Model なので、寿命を持つ側が
+    ///   返す。これが無いと、モデルを読み直すたび (アセットのホットリロード /
+    ///   プロジェクト切り替え / UnloadAll) に頂点・インデックスバッファが GPU へ
+    ///   残り続けた。
+    ///
+    /// WHY Active() を使うか:
+    ///   Model はアセットの静的キャッシュに載っていて、ResourceManager より後に
+    ///   消えることがある。そのときは Active() が空なので «返す相手が居ない» と
+    ///   分かる (プロセスが終わる場面なので実害も無い)。
+    ~Model();
+
+    Model(const Model&)            = delete;
+    Model& operator=(const Model&) = delete;
+    Model(Model&&)                 = default;
+    Model& operator=(Model&&)      = default;
+
     // WHY: Model が meshes / materials の唯一の所有者。
     //      MeshRenderer / MaterialComponent は Mesh* / Material* (非所有) を保持する。
     std::vector<std::unique_ptr<renderer::Mesh>>     meshes;

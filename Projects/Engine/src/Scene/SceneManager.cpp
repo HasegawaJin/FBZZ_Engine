@@ -18,6 +18,7 @@
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
 #include "Engine/Scene/Systems/IKSystem.hpp"
+#include "Engine/Scene/Systems/RagdollSystem.hpp"
 #include "Engine/Scene/Systems/SpringBoneSystem.hpp"
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
 #include "Engine/Scene/Systems/AudioSystem.hpp"
@@ -100,6 +101,9 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<IKSystem>();
     // 揺れものは IK が確定した姿勢を静止姿勢として読むので、必ず IK より後。
     m_scheduler.AddSystem<SpringBoneSystem>();
+    // ラグドールは «倒れる数秒» だけ骨を丸ごと持っていく。揺れものより後に置き、
+    // 戻り際は揺れ込みの姿勢へブレンドする。
+    m_scheduler.AddSystem<RagdollSystem>();
     // DCC Bone姿勢をAnimator/IKが確定した後にSocket、Camera、表示補助を評価する。
     m_scheduler.AddSystem<ConstraintSystem>();
     m_scheduler.AddSystem<SplineSystem>();

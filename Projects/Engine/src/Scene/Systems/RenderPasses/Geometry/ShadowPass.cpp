@@ -236,7 +236,7 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx,
         // bounds 計算は全 submesh を 2 周するので、安いフラグ判定を全て通してから呼ぶ。
         WorldBounds bounds{};
         const bool hasBounds =
-            ComputeSkinnedWorldBounds(go.transform, *smr, bounds, ctx.cullingBoundsPadding);
+            ComputeSkinnedWorldBounds(go, *smr, bounds, ctx.cullingBoundsPadding);
 
         // 距離カリングで本体が消えた caster は影も落とさない。
         if (hasBounds && !IsWithinCullDistance(ctx, go, bounds)) continue;

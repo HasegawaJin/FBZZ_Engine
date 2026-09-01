@@ -7,6 +7,7 @@
 #include <cstdint>
 
 namespace fbzz { struct ProjectSettings; }
+namespace fbzz::core { struct CursorPolicy; }
 namespace fbzz::renderer { struct RenderSettings; }
 
 namespace fbzz::editor {
@@ -39,6 +40,8 @@ private:
     void DrawSection(EditorContext& ctx);
 
     void DrawApplication(ProjectSettings& settings);
+    // ゲーム開始時のカーソル方針 (拘束モード + 表示)。
+    void DrawCursor(core::CursorPolicy& cursor);
     void DrawImport(EditorContext& ctx);
 
     // Graphics セクション。中を 3 つの折りたたみに分ける。

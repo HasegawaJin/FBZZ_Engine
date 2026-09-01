@@ -786,6 +786,33 @@ void ApplyAnimatedPoseToBones(Scene& scene,
     }
 }
 
+// ボーン階層を積み始める親。既定では SkinnedMeshRenderer が乗っている GameObject だが、
+// root ボーンが別のノードにぶら下げ直されていればそちらを使う。
+//
+// WHY owner 固定にしないか:
+//   owner を親と決め打つと、owner と root ボーンの間に挟んだノードが伝播で素通しされ、
+//   そこへ書いた回転・移動が毎フレーム捨てられる。骨より上に 1 枚挟んで «クリップの
+//   上から体ごと傾ける» (脚を失ったボスが崩れる等) が、挟んだ側からは «何も起きない»
+//   としか見えなくなる。骨の world は骨の実際の親から積む。
+//
+//   スキニング行列は owner のローカル系で組む (RebuildSkinningFromBoneTransforms) ので、
+//   挟んだノードのぶんはメッシュにも当たり判定にもそのまま乗る。
+const Transform& SkeletonParentTransform(Scene& scene,
+                                         const SkinnedMeshRenderer& smr,
+                                         const asset::Skeleton& skeleton,
+                                         GameObject& owner)
+{
+    if (skeleton.rootNodeIndex < 0 ||
+        skeleton.rootNodeIndex >= static_cast<int>(smr.nodeEntities.size()))
+        return owner.transform;
+    GameObject* rootBone =
+        scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(skeleton.rootNodeIndex)]);
+    if (!rootBone) return owner.transform;
+    GameObject* parent = rootBone->GetParent();
+    if (!parent || parent == &owner) return owner.transform;
+    return parent->transform;
+}
+
 void PropagateBoneTransforms(Scene& scene,
                              const asset::Skeleton& skeleton,
                              SkinnedMeshRenderer& smr,
@@ -825,7 +852,7 @@ void PropagateBoneTransforms(Scene& scene,
 void ApplyBindPoseToBones(Scene& scene,
                           const asset::Skeleton& skeleton,
                           SkinnedMeshRenderer& smr,
-                          const Transform& owner)
+                          GameObject& owner)
 {
     for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
         if (i >= smr.nodeEntities.size()) continue;
@@ -839,7 +866,48 @@ void ApplyBindPoseToBones(Scene& scene,
 
     std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
     PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
-                            skeleton.rootNodeIndex, owner, visited);
+                            skeleton.rootNodeIndex,
+                            SkeletonParentTransform(scene, smr, skeleton, owner), visited);
+}
+
+// 骨の «いまの» 位置から、カリング用の球を owner ローカル空間で組み直す。
+//
+// WHY 骨から作るか: 従来の球はバインドポーズの submesh バウンズを Renderer の
+//   Transform で運んだもので、骨がバインドポーズの近くにいる前提だった。Script が
+//   骨を数十 m 動かす構成 (externalPose で経路に沿って場を渡る胴など) では、球だけが
+//   バインドポーズの場所に取り残され、部位ごとに独立して明滅する。
+//
+// WHY 肉の厚みを足さないか: ここは «骨がどこにいるか» までを返し、その周りの
+//   厚みは読む側 (ComputeSkinnedWorldBounds) が submesh のバインド半径で足す。
+//   厚みは Renderer ごとに違うので、ここで一律に足すと必ず過大になる。
+void UpdateSkinnedBounds(AnimatorComponent& animator, const asset::Skeleton& skeleton)
+{
+    constexpr float kBig = 1.0e18f;
+    math::Vector3 lo{ kBig, kBig, kBig };
+    math::Vector3 hi{ -kBig, -kBig, -kBig };
+    bool any = false;
+
+    // nodeGlobal は rootTransform を含んでいる (PropagateBoneTransforms の規約)。
+    // boneMatrices と同じく rootInverseTransform を掛けて owner ローカルへ戻す。
+    for (const auto& bone : skeleton.bones) {
+        if (bone.nodeIndex < 0 ||
+            bone.nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+            continue;
+        const math::Matrix4 m =
+            skeleton.rootInverseTransform *
+            animator.nodeGlobalTransforms[static_cast<size_t>(bone.nodeIndex)];
+        const math::Vector3 p{ m.m[0][3], m.m[1][3], m.m[2][3] };
+        lo = { (std::min)(lo.x, p.x), (std::min)(lo.y, p.y), (std::min)(lo.z, p.z) };
+        hi = { (std::max)(hi.x, p.x), (std::max)(hi.y, p.y), (std::max)(hi.z, p.z) };
+        any = true;
+    }
+
+    if (!any) {
+        animator.skinnedBoundsRadius = 0.0f;
+        return;
+    }
+    animator.skinnedBoundsCenter = (lo + hi) * 0.5f;
+    animator.skinnedBoundsRadius = (hi - lo).Length() * 0.5f;
 }
 
 void RebuildSkinningFromBoneTransforms(Scene& scene,
@@ -2643,7 +2711,8 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
     if (poseChanged || !animator.layers.empty()) {
         std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
         PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
-                                skeleton.rootNodeIndex, owner.transform, visited);
+                                skeleton.rootNodeIndex,
+                                SkeletonParentTransform(scene, smr, skeleton, owner), visited);
         RebuildSkinningFromBoneTransforms(scene, owner, skeleton, smr, animator);
     }
 }
@@ -2684,19 +2753,43 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     }
     EnsureBoneHierarchy(scene, go, smr, skeleton);
 
+    // クリップの代わりに Script が骨を並べる構成 (externalPose)。
+    //
+    // WHY 要るか: クリップで表せない動き ─ 経路に沿って毎フレーム形が変わる胴のような
+    //     ものは、Script が骨のローカルを直接書くしかない。だがここは «クリップが無ければ
+    //     バインドポーズへ戻す» ので、書いた姿勢が毎フレーム消される。しかも
+    //     スキニングパレットを埋めるのは Animator だけなので、Animator を外すと
+    //     今度は骨を書いてもメッシュが動かない (bind pose の CB が使われる)。
+    //     «戻さずに、今の骨からパレットを組み直す» という 3 つ目の道をここに置く。
+    //
+    // WHY IK チェーンで代用しないか: IKSystem は骨を «動かせる» が、29 関節を任意の
+    //     形へ置くには関節ごとにチェーンと的を 1 組ずつ持つことになり、
+    //     «骨のローカルを書く» という一番素直な表現より遠回りになる。
+    const auto applyRestPose = [&]() {
+        if (animator.externalPose) {
+            // Script が書いたローカルからワールドを組み直し、そこからパレットを作る。
+            std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
+            PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
+                                    skeleton.rootNodeIndex,
+                                    SkeletonParentTransform(scene, smr, skeleton, go), visited);
+            RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
+            return;
+        }
+        ApplyBindPoseToBones(scene, skeleton, smr, go);
+        UploadBindPose(animator, resources, &skeleton);
+    };
+
     // 評価できるクリップが無いフレームは移動量ゼロを公開する。
     // WHY: 前フレームの delta が残ると、ExtractOnly の Script が止まった値で動き続ける。
     if (!curSt) {
-        ApplyBindPoseToBones(scene, skeleton, smr, go.transform);
-        UploadBindPose(animator, resources, &skeleton);
+        applyRestPose();
         ProcessRootMotion(animator, go, {}, dt);
         return;
     }
 
     auto currentClips = BuildStateClips(animator, *curSt, animator.stateTime);
     if (currentClips.empty()) {
-        ApplyBindPoseToBones(scene, skeleton, smr, go.transform);
-        UploadBindPose(animator, resources, &skeleton);
+        applyRestPose();
         ProcessRootMotion(animator, go, {}, dt);
         return;
     }
@@ -2772,7 +2865,8 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
 
     std::vector<uint8_t> propagationVisited(skeleton.nodes.size(), 0);
     PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
-                            skeleton.rootNodeIndex, go.transform, propagationVisited);
+                            skeleton.rootNodeIndex,
+                            SkeletonParentTransform(scene, smr, skeleton, go), propagationVisited);
     RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
 }
 
@@ -2811,6 +2905,10 @@ void AnimatorSystem::Update(SystemContext& ctx)
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
         animator->firedEvents.clear();
+        // 骨から作るカリング球は «今フレーム確定した» ときだけ有効。ここで一度捨てて、
+        // ポーズを組み終えた経路だけが入れ直す。停止中やスケルトンを持たない Animator は
+        // 0 のままになり、カリングは従来のバインドポーズ球へ落ちる。
+        animator->skinnedBoundsRadius = 0.0f;
 
         if (!animator->controllerPath.empty() &&
             animator->loadedControllerPath != animator->controllerPath) {
@@ -2899,7 +2997,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
                 skeleton->rootNodeIndex < static_cast<int>(skeleton->nodes.size()))
             {
                 EnsureBoneHierarchy(scene, go, *smr, *skeleton);
-                ApplyBindPoseToBones(scene, *skeleton, *smr, go.transform);
+                ApplyBindPoseToBones(scene, *skeleton, *smr, go);
             }
             UploadBindPose(*animator, resources, skeleton);
             // 停止中は移動量ゼロを公開する。前フレームの delta が残ると
@@ -2946,6 +3044,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
                                  previousTime, currentTime, false);
         }
         UpdateMorphVertexBuffers(*smr, resources);
+        UpdateSkinnedBounds(*animator, *skeleton);
 
         SkinningCB cb{};
         for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)

@@ -6,6 +6,7 @@
 
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -48,6 +49,8 @@ bool StandaloneProjectModule::OnInit()
     // ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
     // ファイルへ戻ることはない。
     app.SetActiveRenderSettings(&m_settings.render);
+    // カーソルの初期状態はプロジェクト設定が持つ。以降はスクリプトの cursor プロキシが正本。
+    core::Cursor::Apply(m_settings.cursor);
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
     return true;
@@ -55,6 +58,10 @@ bool StandaloneProjectModule::OnInit()
 
 void StandaloneProjectModule::OnUpdate(float dt)
 {
+    // WHY 毎フレーム張り直すか: Locked は中央へ戻す処理そのものがここにあり、Confined も
+    //     他アプリが ClipCursor を取ると黙って外れる。Input::Update の直後・スクリプトの前で
+    //     解くことで、Locked のマウス移動量がそのフレームのうちに読める。
+    core::Cursor::ApplyLock();
     m_runtime.Update(dt, m_settings, true);
 }
 

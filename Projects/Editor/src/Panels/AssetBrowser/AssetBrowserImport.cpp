@@ -46,9 +46,11 @@ namespace {
 bool IsHotReloadableAsset(const std::string& absPath)
 {
     const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
+    // 並びは AssetManager::ReloadPath が差し替える型と一致させること。
+    // 片方にだけ足すと「エンジンは差し替えられるのに通知が届かない」側へ倒れる。
     return ext == ".mat"   || ext == ".anim"   || ext == ".animcontroller" ||
            ext == ".mask"  || ext == ".fzdata" || ext == ".physmat"        ||
-           ext == ".synth" || ext == ".terrain";
+           ext == ".synth" || ext == ".terrain" || ext == ".sequence";
 }
 
 const char* SourceDccLabel(FbxSourceDcc value)

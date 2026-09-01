@@ -19,6 +19,7 @@
 // TerrainTool は src/ 内の内部ヘッダーなので前方宣言で対応する
 // WHY: TerrainTool.hpp は imgui.h に依存しており、EditorApp.hpp に直接インクルードすると
 //      Engine 層のヘッダーが imgui に依存してしまう。std::unique_ptr で所有して隠蔽する。
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/IModule.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -126,7 +127,8 @@ private:
     void EnterPlayViewportLayout(uint32_t dockId);
     void ExitPlayViewportLayout(uint32_t dockId);
     void BuildPlayViewportLayout(uint32_t dockId);
-    void UpdatePlayFocusModeControls();
+    // Play 中の OS カーソル (拘束範囲・方針の適用と Escape の解放)。
+    void UpdatePlayCursorControls();
     // Play 開始/停止/トグル。ツールバーのボタンと Ctrl+P ホットキーの共通経路。
     void StartPlayMode();
     void StopPlayMode();
@@ -184,6 +186,9 @@ private:
     void TickScriptCompile();
 
     // HLSL ホットリロード
+    /// 監視先のシェーダーツリーを決め、プロジェクトの持ち物かどうかを判定する。
+    /// 共有 SDK 側へ解決された場合は監視も再コンパイルも行わない。
+    void InitHlslHotReload();
     void CheckHlslDirty();
     void TickHlslCompile();
 
@@ -315,7 +320,11 @@ private:
     const char*                     m_playIniFilename = nullptr;
     std::vector<bool>               m_playPanelVisibility;
     bool                            m_playViewportLayoutActive = false;
-    bool                            m_playFocusedCursorHidden = false;
+    bool                            m_playCursorApplied  = false; // Play 開始時のカーソル方針を適用済みか
+    bool                            m_playCursorReleased = false; // Escape で一時解放したか (2 回目で Stop)
+    // 最後に押し込んだカーソル方針。ここと違う値になったときだけ再適用し、
+    // それ以外はスクリプトの cursor プロキシに任せる。
+    core::CursorPolicy              m_playCursorPolicy{};
     bool                            m_terrainToolWasActive = false;
     int                             m_terrainToolModeBeforeMap = 0;
     bool                            m_waterToolWasActive = false;
@@ -345,6 +354,10 @@ private:
     // HLSL ホットリロード
     std::filesystem::path    m_hlslSourceDir;      // Assets/shaders/ ディレクトリ
     std::filesystem::path    m_compileShadersScript; // compile_shaders.bat パス
+    /// m_hlslSourceDir が「開いているプロジェクトの持ち物」か。
+    /// 共有 SDK の shader へ解決されたときは false になり、監視も再コンパイルも行わない
+    /// (実行中の Editor が SDK を書き換えると、その SDK を使う他プロジェクトまで巻き込む)。
+    bool                     m_hlslProjectOwned = false;
     FILETIME                 m_lastHlslWriteTime = {}; // HLSL ツリー内で最も新しい更新時刻
     Compiler                 m_hlslCompiler;
     bool                     m_hlslCompilePending = false;

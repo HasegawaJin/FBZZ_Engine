@@ -640,9 +640,8 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     //      binding hdrRT as the output RT, since DX11 prohibits simultaneous read/write.
     static auto copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
     static auto depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    static renderer::ResourceHandle<renderer::RenderTargetTag> s_sceneColorRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> s_sceneDepthRT;
-    static uint32_t s_sceneColorW = 0, s_sceneColorH = 0;
+    static renderer::SizedRenderTarget s_sceneColorRT;
+    static renderer::SizedRenderTarget s_sceneDepthRT;
 
     if (s_resetVersion != resources.GetResetVersion()) {
         s_resetVersion    = resources.GetResetVersion();
@@ -657,10 +656,6 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         neutralRippleTex  = [&] { const uint8_t r[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(r, 1, 1); }();
         copyColorShader   = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         depthCopyShader   = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-        // WHY: IsValid() は id != 0 のみ確認し Reset 後の失効を検出しない。
-        //      W/H をゼロにして次の解像度チェックで強制的に RT を再生成させる。
-        s_sceneColorW = 0;
-        s_sceneColorH = 0;
     }
     // 無効になったエンティティのキャッシュを解放する
     {
@@ -720,15 +715,8 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         return;
     }
 
-    if (ctx.width != s_sceneColorW || ctx.height != s_sceneColorH
-        || !s_sceneColorRT.IsValid() || !s_sceneDepthRT.IsValid()) {
-        if (s_sceneColorRT.IsValid()) resources.Release(s_sceneColorRT);
-        if (s_sceneDepthRT.IsValid()) resources.Release(s_sceneDepthRT);
-        s_sceneColorRT = resources.CreateRenderTarget(ctx.width, ctx.height, 1);
-        s_sceneDepthRT = resources.CreateRenderTarget(ctx.width, ctx.height, 0);
-        s_sceneColorW = ctx.width;
-        s_sceneColorH = ctx.height;
-    }
+    (void)s_sceneColorRT.Ensure(resources, ctx.width, ctx.height, 1);
+    (void)s_sceneDepthRT.Ensure(resources, ctx.width, ctx.height, 0);
     renderer.SetRenderTarget(s_sceneColorRT, resources);
     if (copyColorShader.IsValid()) {
         renderer::DrawCall copyDC;

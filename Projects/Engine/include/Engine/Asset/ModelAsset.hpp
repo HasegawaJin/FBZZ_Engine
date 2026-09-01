@@ -28,6 +28,16 @@ struct LodLevel {
 };
 
 struct ModelAsset {
+    ModelAsset() = default;
+    /// submesh の GPU バッファを返す。理由と注意点は `Model::~Model` と同じ ─
+    /// `renderer::Mesh` は ResourceManager を知らないので、唯一の所有者が返す。
+    ~ModelAsset();
+
+    ModelAsset(const ModelAsset&)            = delete;
+    ModelAsset& operator=(const ModelAsset&) = delete;
+    ModelAsset(ModelAsset&&)                 = default;
+    ModelAsset& operator=(ModelAsset&&)      = default;
+
     // lods[0] が最高品質。常に 1 以上存在する。
     std::vector<LodLevel>          lods;
     // マテリアルスロット名。Scene/Prefab で実際の .mat に束縛する。

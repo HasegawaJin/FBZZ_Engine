@@ -269,7 +269,19 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
 
     const auto& custom = pp.customEffects[customIndex];
     const ResolvedCustomPass resolved = ResolveCustomPass(ctx, customIndex);
-    if (!resolved.IsValid()) return;
+    if (!resolved.IsValid()) {
+        // シェーダーも .mat も解決できない要求は、今までここで黙って捨てていた。
+        // 症状が «その効果だけ何も起きない» なので、パス名を名指しで出す。
+        static std::string sLastUnresolved;
+        if (sLastUnresolved != custom.name) {
+            sLastUnresolved = custom.name;
+            FBZZ_LOG_WARN("CustomPostProcess: '%s' のシェーダーを解決できません "
+                          "(shaderPath='%s' materialPath='%s')",
+                          custom.name.c_str(), custom.shaderPath.c_str(),
+                          custom.materialPath.c_str());
+        }
+        return;
+    }
 
     const bool needsIntermediate = outputIndex < 2;
     if (needsIntermediate && !h.customPostProcessRT[outputIndex].IsValid())

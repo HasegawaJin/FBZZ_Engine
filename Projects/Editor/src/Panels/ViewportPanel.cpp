@@ -166,6 +166,38 @@ const char* GetPlayFocusModeLabel(EditorContext::PlayFocusMode mode)
     }
 }
 
+const char* GetPlayCursorOverrideLabel(EditorContext::PlayCursorOverride mode)
+{
+    return mode == EditorContext::PlayCursorOverride::Free ? "Cursor: Free"
+                                                           : "Cursor: Project";
+}
+
+// Play 中のカーソルを取り上げさせない口。プロジェクト設定もスクリプトの要求も書き換えず、
+// «OS へ効かせるか» だけを止める。エディター再起動で Project へ戻るので、デバッグのために
+// 外したまま忘れても配布ビルドには影響しない。
+void DrawPlayCursorOverrideControl(EditorContext& ctx)
+{
+    if (ImGui::BeginCombo("##play_cursor_override",
+                          GetPlayCursorOverrideLabel(ctx.playCursorOverride))) {
+        constexpr EditorContext::PlayCursorOverride kModes[] = {
+            EditorContext::PlayCursorOverride::Project,
+            EditorContext::PlayCursorOverride::Free
+        };
+        for (EditorContext::PlayCursorOverride mode : kModes) {
+            const bool selected = ctx.playCursorOverride == mode;
+            if (ImGui::Selectable(GetPlayCursorOverrideLabel(mode), selected))
+                ctx.playCursorOverride = mode;
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("Project: ゲームの要求どおりにカーソルを拘束/非表示にする\n"
+                          "Free:    スクリプトが拘束を要求しても OS へ効かせない\n"
+                          "         (デバッグ用・保存されない)");
+}
+
 void DrawGameViewportToolbar(EditorContext& ctx)
 {
     // WHY: Game View は Play 確認の中心なので、フォーカス操作を Viewport 直上へ置く。
@@ -200,7 +232,12 @@ void DrawGameViewportToolbar(EditorContext& ctx)
         ImGui::EndCombo();
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("Controls Game View behavior when Play starts");
+        ImGui::SetTooltip("Play 開始時の Game View のレイアウトだけを決める。\n"
+                          "カーソルの拘束/表示は Project Settings の [cursor] が持つ");
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    DrawPlayCursorOverrideControl(ctx);
 
     ImGui::PopStyleVar(2);
 }
@@ -429,6 +466,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         if (isGameView) {
             ctx.gameViewportOriginX = viewportMin.x;
             ctx.gameViewportOriginY = viewportMin.y;
+            ctx.gameViewportRectValid = true;
         } else {
             ctx.uiViewportOriginX = viewportMin.x;
             ctx.uiViewportOriginY = viewportMin.y;
@@ -436,15 +474,21 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     }
     ImVec2 viewportMax = { viewportMin.x + size.x, viewportMin.y + size.y };
     bool viewportHovered = ImGui::IsMouseHoveringRect(viewportMin, viewportMax);
-    if (hdrRT.IsValid() && ctx.imguiRenderer && resources) {
-        ImTextureID texID = static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(ctx.imguiRenderer->GetImTextureID(hdrRT, *resources, 0)));
-        ImGui::GetWindowDrawList()->AddImage(texID, viewportMin, viewportMax);
+    // WHY 戻り値を見るか: GetImTextureID は RT が生きていても «描画側の枠が尽きた»
+    //     ときに nullptr を返す。そのまま AddImage へ渡すと DX12 では無効な
+    //     ディスクリプタテーブルを束縛することになり、何も出ない絵の理由が画面に残らない。
+    void* rawTexID = (hdrRT.IsValid() && ctx.imguiRenderer && resources)
+        ? ctx.imguiRenderer->GetImTextureID(hdrRT, *resources, 0)
+        : nullptr;
+    if (rawTexID) {
+        ImGui::GetWindowDrawList()->AddImage(
+            static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(rawTexID)), viewportMin, viewportMax);
     } else {
         ImVec2 cursor = ImGui::GetCursorScreenPos();
         ImGui::GetWindowDrawList()->AddRectFilled(
             cursor, { cursor.x + size.x, cursor.y + size.y }, IM_COL32(30, 30, 30, 255));
         ImGui::SetCursorScreenPos({ cursor.x + size.x * 0.5f - 60.0f, cursor.y + size.y * 0.5f - 7.0f });
-        ImGui::TextDisabled("No Render Target");
+        ImGui::TextDisabled(hdrRT.IsValid() ? "Render Target Unavailable" : "No Render Target");
     }
 
     const bool inPlayOrPause = ctx.playMode && !ctx.playMode->IsInEditor();
