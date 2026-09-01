@@ -9293,6 +9293,7 @@ tag = 'Enemy'
         debugPull = 0.0
         drawPartMarks = false
         drawPullLink = true
+        flinchAnim = true
         flinchChargedScale = 2.2
         flinchForce = 95.0
         flinchOnHit = true
@@ -9647,7 +9648,16 @@ tag = 'Enemy'
         pairPush = 7.0
         pairPushRadius = 4.5
         rootBone = ''
+        staggerBlendIn = 0.03
+        staggerBlendOut = 0.34
+        staggerGravity = 0.12
+        staggerLocalPush = 5.0
+        staggerLocalRadius = 3.6
+        staggerPush = 3.4
+        staggerSeconds = 0.14
+        staggerWeight = 0.45
         useRagdoll = true
+        useStagger = true
 
     [[gameobjects.ScriptComponents]]
     enabled = true
