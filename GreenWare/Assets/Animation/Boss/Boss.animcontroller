@@ -8,6 +8,28 @@ anyStateY = 560.0
 entryX = -320.0
 entryY = 60.0
 
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 0
+    stateName = 'Locomotion'
+    x = -240.0
+    y = 20.0
+
+    [[editorLayout.blendTreeMotions]]
+    motionIndex = 1
+    stateName = 'Locomotion'
+    x = -240.0
+    y = 140.0
+
+    [[editorLayout.nodes]]
+    stateName = 'MagneticPulse'
+    x = 460.0
+    y = 60.0
+
+    [[editorLayout.nodes]]
+    stateName = 'Land'
+    x = 940.0
+    y = -300.0
+
     [[editorLayout.nodes]]
     stateName = 'Locomotion'
     x = 60.0
@@ -19,23 +41,23 @@ entryY = 60.0
     y = -140.0
 
     [[editorLayout.nodes]]
-    stateName = 'TurnRight'
-    x = 60.0
-    y = 240.0
-
-    [[editorLayout.nodes]]
     stateName = 'JumpUp'
     x = 460.0
     y = -300.0
 
     [[editorLayout.nodes]]
-    stateName = 'FallIdle'
+    stateName = 'BeamLoop'
     x = 700.0
-    y = -300.0
+    y = 420.0
 
     [[editorLayout.nodes]]
-    stateName = 'Land'
-    x = 940.0
+    stateName = 'TurnRight'
+    x = 60.0
+    y = 240.0
+
+    [[editorLayout.nodes]]
+    stateName = 'FallIdle'
+    x = 700.0
     y = -300.0
 
     [[editorLayout.nodes]]
@@ -59,11 +81,6 @@ entryY = 60.0
     y = -120.0
 
     [[editorLayout.nodes]]
-    stateName = 'MagneticPulse'
-    x = 460.0
-    y = 60.0
-
-    [[editorLayout.nodes]]
     stateName = 'ChargeWindup'
     x = 460.0
     y = 240.0
@@ -84,11 +101,6 @@ entryY = 60.0
     y = 420.0
 
     [[editorLayout.nodes]]
-    stateName = 'BeamLoop'
-    x = 700.0
-    y = 420.0
-
-    [[editorLayout.nodes]]
     stateName = 'BeamEnd'
     x = 940.0
     y = 420.0
@@ -98,24 +110,12 @@ entryY = 60.0
     x = 60.0
     y = 700.0
 
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 0
-    stateName = 'Locomotion'
-    x = -240.0
-    y = 20.0
-
-    [[editorLayout.blendTreeMotions]]
-    motionIndex = 1
-    stateName = 'Locomotion'
-    x = -240.0
-    y = 140.0
-
 [[anyStateTransitions]]
 exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'Death'
-transitionDuration = 0.15
+transitionDuration = 0.15000000596046448
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -127,7 +127,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'CrashStun'
-transitionDuration = 0.1
+transitionDuration = 0.10000000149011612
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -144,7 +144,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'JumpUp'
-transitionDuration = 0.06
+transitionDuration = 0.05999999865889549
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -161,7 +161,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'Stomp_FR'
-transitionDuration = 0.12
+transitionDuration = 0.11999999731779099
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -183,7 +183,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'Stomp_FL'
-transitionDuration = 0.12
+transitionDuration = 0.11999999731779099
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -205,7 +205,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'Stomp_BR'
-transitionDuration = 0.12
+transitionDuration = 0.11999999731779099
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -227,7 +227,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'Stomp_BL'
-transitionDuration = 0.12
+transitionDuration = 0.11999999731779099
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -249,7 +249,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'ChargeWindup'
-transitionDuration = 0.12
+transitionDuration = 0.11999999731779099
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -266,7 +266,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'BeamStart'
-transitionDuration = 0.12
+transitionDuration = 0.11999999731779099
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -283,7 +283,7 @@ exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
 toStateName = 'MagneticPulse'
-transitionDuration = 0.08
+transitionDuration = 0.07999999821186066
 
     [[anyStateTransitions.conditions]]
     op = 4
@@ -311,8 +311,8 @@ weight = 0.0
     time = 0.0
 
     [layers.slot]
-    fadeInDuration = 0.1
-    fadeOutDuration = 0.15
+    fadeInDuration = 0.10000000149011612
+    fadeOutDuration = 0.15000000596046448
 
     [[layers.states]]
     clipIndex = -1
@@ -332,9 +332,11 @@ weight = 0.0
         syncNormalizedTime = false
 
         [layers.states.blendTree2D]
+        dampTime = 0.0
         motions = []
         paramX = ''
         paramY = ''
+        syncNormalizedTime = false
         type = 0
 
 [[layers]]
@@ -352,15 +354,15 @@ weight = 1.0
     time = 0.0
 
     [layers.slot]
-    fadeInDuration = 0.05
-    fadeOutDuration = 0.12
+    fadeInDuration = 0.05000000074505806
+    fadeOutDuration = 0.11999999731779099
 
     [[layers.anyStateTransitions]]
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'Hit'
-    transitionDuration = 0.04
+    transitionDuration = 0.03999999910593033
 
         [[layers.anyStateTransitions.conditions]]
         op = 4
@@ -385,9 +387,11 @@ weight = 1.0
         syncNormalizedTime = false
 
         [layers.states.blendTree2D]
+        dampTime = 0.0
         motions = []
         paramX = ''
         paramY = ''
+        syncNormalizedTime = false
         type = 0
 
     [[layers.states]]
@@ -407,18 +411,20 @@ weight = 1.0
         syncNormalizedTime = false
 
         [layers.states.blendTree2D]
+        dampTime = 0.0
         motions = []
         paramX = ''
         paramY = ''
+        syncNormalizedTime = false
         type = 0
 
         [[layers.states.transitions]]
         conditions = []
-        exitTime = 0.85
+        exitTime = 0.8500000238418579
         fixedDuration = true
         hasExitTime = true
         toStateName = 'HitIdle'
-        transitionDuration = 0.12
+        transitionDuration = 0.11999999731779099
 
 [[parameters]]
 boolValue = false
@@ -529,7 +535,7 @@ sourcePath = ''
 speed = 1.0
 
     [states.blendTree1D]
-    dampTime = 0.18
+    dampTime = 0.18000000715255737
     paramName = 'Speed'
     syncNormalizedTime = false
 
@@ -554,9 +560,11 @@ speed = 1.0
         threshold = 2.0
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -564,7 +572,7 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'TurnLeft'
-    transitionDuration = 0.2
+    transitionDuration = 0.20000000298023224
 
         [[states.transitions.conditions]]
         op = 0
@@ -574,7 +582,7 @@ speed = 1.0
         [[states.transitions.conditions]]
         op = 1
         paramName = 'Speed'
-        threshold = 0.4
+        threshold = 0.4000000059604645
 
         [[states.transitions.conditions]]
         op = 5
@@ -586,7 +594,7 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'TurnRight'
-    transitionDuration = 0.2
+    transitionDuration = 0.20000000298023224
 
         [[states.transitions.conditions]]
         op = 1
@@ -596,7 +604,7 @@ speed = 1.0
         [[states.transitions.conditions]]
         op = 1
         paramName = 'Speed'
-        threshold = 0.4
+        threshold = 0.4000000059604645
 
         [[states.transitions.conditions]]
         op = 5
@@ -620,9 +628,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -630,24 +640,24 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'Locomotion'
-    transitionDuration = 0.2
+    transitionDuration = 0.20000000298023224
 
         [[states.transitions.conditions]]
         op = 1
         paramName = 'Turn'
-        threshold = 0.4
+        threshold = 0.4000000059604645
 
     [[states.transitions]]
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'Locomotion'
-    transitionDuration = 0.2
+    transitionDuration = 0.20000000298023224
 
         [[states.transitions.conditions]]
         op = 0
         paramName = 'Speed'
-        threshold = 0.6
+        threshold = 0.6000000238418579
 
 [[states]]
 clipIndex = -1
@@ -666,9 +676,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -676,24 +688,24 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'Locomotion'
-    transitionDuration = 0.2
+    transitionDuration = 0.20000000298023224
 
         [[states.transitions.conditions]]
         op = 0
         paramName = 'Turn'
-        threshold = -0.4
+        threshold = -0.4000000059604645
 
     [[states.transitions]]
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'Locomotion'
-    transitionDuration = 0.2
+    transitionDuration = 0.20000000298023224
 
         [[states.transitions.conditions]]
         op = 0
         paramName = 'Speed'
-        threshold = 0.6
+        threshold = 0.6000000238418579
 
 [[states]]
 clipIndex = -1
@@ -712,9 +724,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -742,9 +756,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -776,18 +792,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
     transitionDuration = 0.0
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -806,18 +824,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.12
+    transitionDuration = 0.11999999731779099
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -836,18 +856,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.12
+    transitionDuration = 0.11999999731779099
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -866,18 +888,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.12
+    transitionDuration = 0.11999999731779099
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -896,18 +920,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.12
+    transitionDuration = 0.11999999731779099
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -926,18 +952,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.08
+    transitionDuration = 0.07999999821186066
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -956,9 +984,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -967,7 +997,7 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'ChargeRun'
-    transitionDuration = 0.1
+    transitionDuration = 0.10000000149011612
 
 [[states]]
 clipIndex = -1
@@ -986,9 +1016,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -1020,18 +1052,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.15
+    transitionDuration = 0.15000000596046448
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -1050,9 +1084,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -1061,7 +1097,7 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'BeamLoop'
-    transitionDuration = 0.06
+    transitionDuration = 0.05999999865889549
 
 [[states]]
 clipIndex = -1
@@ -1080,9 +1116,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -1090,7 +1128,7 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'BeamEnd'
-    transitionDuration = 0.08
+    transitionDuration = 0.07999999821186066
 
         [[states.transitions.conditions]]
         op = 5
@@ -1114,18 +1152,20 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
-    conditions = []
     exitTime = 1.0
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
-    transitionDuration = 0.12
+    transitionDuration = 0.11999999731779099
+    conditions = []
 
 [[states]]
 clipIndex = -1
@@ -1144,9 +1184,11 @@ speed = 1.0
     syncNormalizedTime = false
 
     [states.blendTree2D]
+    dampTime = 0.0
     motions = []
     paramX = ''
     paramY = ''
+    syncNormalizedTime = false
     type = 0
 
     [[states.transitions]]
@@ -1154,7 +1196,7 @@ speed = 1.0
     fixedDuration = true
     hasExitTime = false
     toStateName = 'Locomotion'
-    transitionDuration = 0.2
+    transitionDuration = 0.20000000298023224
 
         [[states.transitions.conditions]]
         op = 5

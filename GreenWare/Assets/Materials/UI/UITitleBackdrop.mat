@@ -1,0 +1,32 @@
+version = 1
+name = 'UITitleBackdrop'
+shader = "Assets/Shaders/UI/Material/UITitleBackdrop.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+# 下地は «消灯した装置の中»。真っ黒にすると手前の黒い UI が浮くので、
+# わずかに青を残した炭色にしてある。
+baseColor = [ 0.043, 0.047, 0.055, 1.0 ]
+# 極の色は PolarityTypes の ＋ / − と同じ芯 (Menu_Bar_red / _blue の実測値)。
+plusColor = [ 1.0, 0.415686, 0.360784, 1.0 ]
+minusColor = [ 0.388235, 0.643137, 1.0, 1.0 ]
+glowStrength = 0.16
+glowRadius = 1.15
+vignette = 0.55
+scanStrength = 0.055
+scanPeriod = 3.0
+grain = 0.012
+# phase は ScreenDressingComponent が毎フレーム進める。
+# .mat 側は 0 (止まった状態) を既定にしておく ─ エディタで開いた絵が正本。
+phase = 0.0
+# coverage も画面ごとに ScreenDressingComponent が上書きする。既定は 1
+# (後ろに何も無い画面 = Options / StageSelect の見え方) にしておく。
+coverage = 1.0
+edgeCoverage = 0.35
+# NOTE: 後ろに 3D が居る画面は ScreenDressingComponent が coverage を 0.1 前後まで
+#       下げる。額縁 (edgeCoverage) は coverage と独立に効くので、中央だけが抜ける。

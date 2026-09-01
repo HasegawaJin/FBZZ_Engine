@@ -1,0 +1,28 @@
+# FBZZ Engine
+# FX_DangerWall.mat — 直進攻撃の通り道を垂直に立てる壁。
+#
+# WHY 加算 + depth_write なしか:
+#   壁は «見えなければならない» が «向こうが見えなくなっては困る» 場所でもある。
+#   避ける先は壁の向こうにあることが多い。深度を書くと後ろの床が消え、
+#   アルファブレンドだと 2 枚重なった角度だけ濃くなって危険度を誤読させる。
+#
+# 色は DecalBossTelegraph の frameColor と同じ琥珀。極の赤青とは別語彙 (12.2)。
+version = 1
+shader = "Assets/Shaders/Material/Effects/DangerWall.hlsl"
+mesh_type = "surface"
+render_path = "auto"
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+
+[params]
+albedo = [1.00, 0.62, 0.14, 1.0]
+progress = 0.0
+# Bloom のしきい値 (1.1) を越える値。ここが 1.0 以下だと壁が滲まない。
+intensity = 2.4
+ribCount = 18.0
+ribWidth = 0.16
+ribScroll = 0.0
+edgeWidth = 0.12
+heightFade = 0.65

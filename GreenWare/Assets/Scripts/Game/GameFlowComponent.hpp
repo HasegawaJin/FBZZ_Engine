@@ -14,9 +14,7 @@
 #include <Scripts/Combat/IBoss.hpp>
 #include <Scripts/Game/ArenaHazardComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
-#include <Scripts/Game/EnemySupplyComponent.hpp>
 #include <Scripts/Game/GameResultState.hpp>
-#include <Scripts/Game/WaveDirectorComponent.hpp>
 #include <Scripts/Player/PlayerComponent.hpp>
 #include <Scripts/Utils/LoopVoice.hpp>
 #include <Scripts/Utils/ManagerWatch.hpp>
@@ -37,8 +35,8 @@ public:
     //   ボスは型 (IBoss) で探せば足りるはずだが、この参照が外れたときの症状は
     //   «倒しても何も起きない» で、しかも進行側は何も言わない。勝ち負けが決まらない
     //   のは盤面で最も重い壊れ方なのに、原因は画面のどこにも出ない。
-    //   BossHealthBarComponent / WaveDirectorComponent と同じく、明示の割り当てを
-    //   先に見て、空のときだけ型で探す。
+    //   BossHealthBarComponent と同じく、明示の割り当てを先に見て、
+    //   空のときだけ型で探す。
     FBZZ_GROUP("Boss")
     FBZZ_REF(GameObject, bossObject, "Boss")
     FBZZ_TOOLTIP("これを倒したらクリア。未設定なら IBoss を実装したオブジェクトを盤面から探す")
@@ -53,16 +51,16 @@ public:
     //   ボス側に合わせれば雑魚戦の終わりが毎回間延びする。
     //   敗北をこちら側に載せないのは、待たせているあいだ画面に «倒れたプレイヤー» しか
     //   映らないため (見せるものが無い時間は短いほどよい)。
-    FBZZ_FIELD_RANGE(float, bossEndDelay, 4.6f, "Boss End Delay", 0.0f, 12.0f)
+    FBZZ_FIELD_RANGE(float, bossEndDelay, 5.0f, "Boss End Delay", 0.0f, 12.0f)
     FBZZ_TOOLTIP("ボスを倒したときだけ使う待ち。撃破演出が終わるより短くすると、"
-                 "崩れている途中でリザルトへ切り替わる")
+                 "崩れている途中でリザルトへ切り替わる。ボスの EnemyHealthComponent の "
+                 "Destroy Delay はこれより長くしておくこと (先に消える)")
 
     // WHY 体力の表示を持たないか:
     //   体力は PlayerHealthBarComponent がバーとして出している。同じ値を進行側でも
     //   文字にすると、片方の書式や色を変えたときにもう片方だけが取り残される。
-    //   ここが出すのは進行 (残り敵数と目的) だけ。
+    //   ここが出すのは進行 (今の目的) だけ。
     FBZZ_GROUP("HUD Names")
-    FBZZ_FIELD(std::string, enemyTextName, "HUD_Enemies", "Enemy Text")
     FBZZ_FIELD(std::string, objectiveTextName, "HUD_Objective", "Objective Text")
 
     // WHY 環境音を進行側が持つか:
@@ -74,10 +72,9 @@ public:
     FBZZ_TOOLTIP("アリーナの環境音の音量。0 で鳴らさない")
 
     FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugEnemies, 0, "Enemies")
     FBZZ_FIELD_READ_ONLY(float, debugElapsed, 0.0f, "Elapsed")
     FBZZ_FIELD_READ_ONLY(std::string, debugBoss, "", "Boss Object")
-    FBZZ_TOOLTIP("勝利条件として見ている相手。空なら «敵を全滅» が勝利条件になっている")
+    FBZZ_TOOLTIP("勝利条件として見ている相手。空ならボスがまだ眠っている")
     FBZZ_FIELD_READ_ONLY(std::string, debugOutcome, "-", "Outcome")
 
     void OnStart() override;
@@ -86,15 +83,9 @@ public:
 
 private:
     void BeginEnd(bool victory);
-    void RefreshHud(int enemiesAlive);
-    [[nodiscard]] int CountEnemies() const;
+    void RefreshHud();
 
-    /// 勝利条件として見るボス。居るなら勝利条件はボス撃破になる。
-    ///
-    /// WHY «敵が 0» を勝利にできないか: 雑魚はボスを削るための弾薬で、
-    ///     EnemySupplyComponent が戦闘中ずっと補充し続ける (あちらの冒頭)。
-    ///     «全滅» を条件にすると、補充が止まらない限り永久に成立しない。
-    ///     ボス戦で終わりを決めるのはボスの生死だけ。
+    /// 勝利条件として見るボス。この盤面で終わりを決めるのはこの相手の生死だけ。
     ///
     /// WHY 1 体だけ返すか (以前は全 IBoss を走査していた): 盤面に置くボスは 1 体で、
     ///     «2 体目が居たら両方倒す» は一度も要件になっていない。にもかかわらず
@@ -110,17 +101,6 @@ private:
     ///     «ボスは起きたか» を見に行くと、同じ問いの答えが盤面に 3 つできる。
     void SyncBoard(bool fighting) const;
 
-    /// Wave 進行が終わっているか。
-    ///
-    /// WHY 要るか: Wave の «あいだ» は盤面が必ず空になる。そこを勝利にすると、
-    ///     Wave 1 を片付けた瞬間にリザルトへ飛ぶ。進行を置かないシーン
-    ///     (単体の検証用) では常に true を返して、従来どおり全滅で終わらせる。
-    [[nodiscard]] bool WavesFinished() const
-    {
-        const auto* director = WaveDirectorComponent::Instance();
-        return !director || !director->IsRunning();
-    }
-
     // WHY 保持せず毎回引くか: マネージャーは別の子オブジェクトに居るので、
     //     どちらの OnStart が先に走るかはシーンの並び次第になる。開始時に 1 度
     //     掴んで持ち続けると、並び順を変えただけで戦果が丸ごと 0 になる。
@@ -133,11 +113,12 @@ private:
     // 「戦闘が居ない」の報告口。最初のフレームだけ空なのは並び順の都合なので、
     // 猶予を過ぎても見つからないときだけ出す (ManagerWatch.hpp)。
     ManagerWatch m_combatWatch;
+    /// ボスが 1 体も名乗っていない盤面を報告するための猶予。
+    ManagerWatch m_bossWatch;
     /// 「ボスに体力が付いていない」を 1 度だけ言うためのラッチ。
     bool m_warnedNoBossHealth = false;
     /// 「リザルトへ移れない」を 1 度だけ言うためのラッチ。
     bool m_warnedNoResultScene = false;
-    bool m_sawEnemy = false;
     bool m_ending = false;
     bool m_victory = false;
     float m_endRemaining = 0.0f;
@@ -159,7 +140,8 @@ inline void GameFlowComponent::OnStart()
 
     // 進行の音は画面の出来事であって空間の出来事ではないので UI バスの 2D。
     se::EnsureSource(scene, "UI");
-    se::Play(audio, se::kUiWaveStart);
+    // Wave 制を畳んだので «Wave 開始» は無い。ステージの始まりはボス部屋の扉が開く音。
+    se::Play(audio, se::kUiGateOpen);
 
     // 環境音は «場所を持たない» 音。3D で鳴らすと、進行スクリプトが置かれた座標が
     // アリーナの中心だという前提が要る上に、プレイヤーがそこから離れるほど
@@ -169,11 +151,7 @@ inline void GameFlowComponent::OnStart()
     m_ambience.Update(*this, se::kEnvArenaAmb.First(), ambienceVolume);
 
     m_combatWatch.Reset();
-    // WHY ここで敵を数えないか: CombatManagerComponent の OnStart がこのスクリプトより
-    //     後ろに並んでいると Instance() がまだ空で、CountEnemies() は必ず 0 を返す。
-    //     「開始時に敵が居たか」を 0 で確定させると、実際には敵が居るのに
-    //     居なかったことになる。数えるのは OnUpdate に任せる (下で毎フレーム更新する)。
-    m_sawEnemy = false;
+    m_bossWatch.Reset();
 
     if (GameObject* player = scene.FindWithTag("Player")) {
         m_player = scene.GetScript<PlayerComponent>(player);
@@ -183,13 +161,6 @@ inline void GameFlowComponent::OnStart()
 
     if (!m_player)
         debug.LogError("GameFlowComponent requires a PlayerComponent on the Player-tagged object.");
-}
-
-inline int GameFlowComponent::CountEnemies() const
-{
-    // 数える規則は戦闘側の知識なので委譲する。未設定でも進行が止まらないよう 0 を返す。
-    auto* combat = Combat();
-    return combat ? combat->CountEnemiesAlive() : 0;
 }
 
 inline GameObject* GameFlowComponent::FindBoss() const
@@ -204,11 +175,7 @@ inline GameObject* GameFlowComponent::FindBoss() const
 
 inline void GameFlowComponent::SyncBoard(bool fighting) const
 {
-    // 弾薬が湧くのは戦っているあいだだけ。閉じていないと、部屋へ入る前のアリーナに
-    // 雑魚が溜まっていき、ボスと «同時に出ない» が崩れる。
-    if (auto* supply = EnemySupplyComponent::Instance()) supply->SetSupplyActive(fighting);
-
-    // 中央の焼けもボス戦の一部。開幕から作動していると、踏み込む前から
+    // 中央の焼けはボス戦の一部。開幕から作動していると、踏み込む前から
     // «近づけない場所» ができて、部屋の中がどう見えるかが変わってしまう。
     if (auto* hazard = ArenaHazardComponent::Instance()) hazard->SetHazardActive(fighting);
 }
@@ -230,20 +197,13 @@ inline void GameFlowComponent::BeginEnd(bool victory)
     m_ambience.Stop(*this);
 }
 
-inline void GameFlowComponent::RefreshHud(int enemiesAlive)
+inline void GameFlowComponent::RefreshHud()
 {
-    // ボス戦では数字の意味が «あと何体倒せば終わるか» から «今いくつ弾があるか» へ
-    // 変わる。同じ "ENEMIES" のまま出すと、減っていくのを勝利への進捗と読んでしまう。
-    const bool boss = FindBoss() != nullptr;
-    if (GameObject* text = scene.Find(enemyTextName)) {
-        ui.SetText(text, (boss ? "AMMO " : "ENEMIES ") + std::to_string(enemiesAlive));
-    }
     if (GameObject* text = scene.Find(objectiveTextName)) {
-        // 目的は «撃つ» ではなく «動かす»。同じ極で散らし、逆の極で寄せる、という
-        // 2 つの手があることを 1 行で言い切る。
+        // 目的は «削り切る» ではなく «転ばせる»。極を乗せる相手はボスの脚で、
+        // 異極を対で作ると引き合ってもげる ─ それを 1 行で言い切る。
         ui.SetText(text, m_ending ? (m_victory ? "AREA CLEAR" : "SYSTEM DOWN")
-                        : boss    ? "SLAM CHARGED ENEMIES INTO THE CORE"
-                                  : "SAME POLE PUSHES   OPPOSITE POLE PULLS");
+                                  : "CHARGE OPPOSITE POLES ON ITS LEGS");
     }
 }
 
@@ -263,22 +223,23 @@ inline void GameFlowComponent::OnUpdate()
     if (!m_ending) m_elapsed += Time::deltaTime;
     debugElapsed = m_elapsed;
 
-    const int enemies = CountEnemies();
-    debugEnemies = enemies;
-    if (enemies > 0) m_sawEnemy = true;
-
-    // ボスが居る盤面では «ボスが倒れたか» だけが終わりを決める。雑魚は弾薬なので
-    // 補充され続け、数が 0 になることは無い。
+    // 終わりを決めるのはボスの生死だけ。
     //
     // WHY «居る» と «戦っている» を分けて見るか: 部屋へ入る前のボスは立っているだけで
-    //     相手ではない (FindBossOnBoard の WHY)。それでも盤面はボス戦のままなので、
-    //     «敵が 0 になったら勝ち» は最後まで使ってはいけない。踏み込む前のアリーナは
-    //     必ず空なので、混ぜると開始と同時にクリアになる。
+    //     相手ではない (FindBossOnBoard の WHY)。
     GameObject* boss = FindBoss();
     debugBoss = boss ? boss->name : std::string{};
 
-    // 決着が付いた後まで供給を開けておくと、崩れているボスの周りに雑魚が湧き続ける。
+    // 決着が付いた後まで盤面を開けておくと、崩れているボスの周りで床が焼け続ける。
     SyncBoard(boss != nullptr && !m_ending);
+
+    // ボスが 1 体も名簿に載っていない盤面は «勝ちようがない»。以前ここは静かに
+    // 何もせず、«倒してもステージが終わらない» としか画面に出なかった (IBoss.hpp の WHY)。
+    if (!m_ending && m_bossWatch.ShouldReport(StageHasBoss(scene))) {
+        debug.LogError("GameFlowComponent: no IBoss is registered on this board. "
+                       "The stage can never be cleared. Each boss must call "
+                       "IBoss::Bind(scene.Self(), this) in OnStart.");
+    }
 
     if (!m_ending) {
         if (StageHasBoss(scene)) {
@@ -300,11 +261,12 @@ inline void GameFlowComponent::OnUpdate()
             } else if (health && !health->IsAlive()) {
                 BeginEnd(true);
             }
-        } else if (m_sawEnemy && enemies == 0 && WavesFinished()) {
-            BeginEnd(true);
         }
+        // WHY ボスの居ない盤面に «勝ち» が無いか: 雑魚戦を畳んだので «敵を全部倒す»
+        //     という決着が無くなった。ボスの居ないステージは今のところ存在しない。
+        //     ここで «敵 0 なら勝ち» を残すと、盤面が空の間ずっと成立してしまう。
     }
-    RefreshHud(enemies);
+    RefreshHud();
 
     if (!m_ending) return;
     m_endRemaining -= Time::deltaTime;

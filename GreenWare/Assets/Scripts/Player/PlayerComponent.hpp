@@ -53,6 +53,11 @@ public:
     // 敵も樽もプレイヤーも同じ入口で殴れるようにする。CombatManager が
     // 「誰に何点入れたか」を 1 本の経路で記録できるのはこれによる。
     bool ApplyDamage(int amount) override { return m_health.TakeDamage(amount); }
+    /// 押されるのは移動の話なので、そのまま操作へ渡す。
+    void ApplyKnockback(const fbzz::math::Vector3& fromWorld, float speed, float seconds) override
+    {
+        m_controller.Knockback(transform.worldPosition - fromWorld, speed, seconds);
+    }
     [[nodiscard]] int  CurrentHealth() const override { return m_health.Current(); }
     [[nodiscard]] int  MaxHealth()     const override { return m_health.MaxHealth(); }
     [[nodiscard]] bool IsAlive()       const override { return m_health.IsAlive(); }
@@ -190,6 +195,10 @@ inline void PlayerComponent::OnStart()
         return;
     }
 
+    // «殴られる側» として名乗る。CombatManager はこの名簿からしか引けない
+    // (理由は IDamageable::Of のコメント)。
+    IDamageable::Bind(scene.Self(), this);
+
     // エイムを先に更新し、同じフレームの移動アニメーションと発射判定が同じ対象を見る。
     m_controller.OnStart();
     // 銃の追従設定はコントローラーの後。銃が腰へスナップしてから最初の描画が走る。
@@ -269,6 +278,7 @@ inline void PlayerComponent::OnFixedUpdate()
 
 inline void PlayerComponent::OnDestroy()
 {
+    IDamageable::Unbind(scene.Self(), this);
     m_aimMarker.OnDestroy();
     m_headLook.OnDestroy();
     m_slashArc.OnDestroy();

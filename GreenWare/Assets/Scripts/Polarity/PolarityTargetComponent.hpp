@@ -158,7 +158,7 @@ public:
     ///     盤面がそれを知る手段がここしかない。isAnchor は «動かない側» の宣言で、
     ///     転がっていても動かない側であることは変わらないため流用できない。
     [[nodiscard]] bool IsLinkSuspended() const { return m_linkSuspended; }
-    /// 本人 (EnemyRollerComponent など) が毎フレーム申告する。
+    /// 本人が毎フレーム申告する。
     void SetLinkSuspended(bool suspended) { m_linkSuspended = suspended; }
 
     // ── 中和の罰 ────────────────────────────────────────────────────────

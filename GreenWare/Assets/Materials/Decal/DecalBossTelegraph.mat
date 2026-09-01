@@ -1,0 +1,43 @@
+version = 1
+name = 'DecalBossTelegraph'
+shader = 'Assets/Shaders/Material/Decal/Material/DecalBossTelegraph.hlsl'
+render_path = 'decal'
+blend_mode = 'AlphaBlend'
+double_sided = true
+render_queue = 3000
+
+[params]
+# 危険の色。極の赤青とは別の語彙にする ─ 同じ赤だと «＋が乗っている» と
+# «踏まれる» が同じ色になり、盤面の読みと避ける判断が混ざる。
+# 12.2 が空けている黄～橙の帯へ寄せる。
+frameColor = [ 1.00, 0.62, 0.14, 0.90 ]
+fillColor = [ 1.00, 0.38, 0.10, 0.55 ]
+
+# 形は 1 枚ごとの override が決める (BossTelegraphComponent)。
+# 既定は円 ─ 帯は «長さ» の意味を持つので、指定漏れで帯が出ると嘘の射程になる。
+shape = 0.0
+progress = 0.0
+
+frameWidth = 0.055
+edgeSoftness = 0.35
+
+# 中心の抜き。足元が塗りで潰れると避ける先が読めない。
+innerFade = 0.35
+pulse = 1.0
+fillGain = 1.0
+
+# 満ちの先端。動いている線が 1 本あると «あと何秒» が絵になる。
+frontWidth = 0.055
+
+# 斜線ハッチ。多いと «明るい面» に潰れ、少ないと模様に見えない。
+stripeCount = 14.0
+stripeWidth = 0.34
+stripeScroll = 0.0
+
+# 矢羽根は帯だけ。少なめにしないと斜線と喧嘩して «どちらの模様» か読めない。
+chevronCount = 5.0
+
+# 落下リング。BossTelegraphComponent が攻撃の種類から毎フレーム上書きする。
+# 既定は 0 (地を這う) ─ 指定漏れで «降ってくる» が出ると嘘の避け方を教えることになる。
+threatAbove = 0.0
+approachWidth = 0.07

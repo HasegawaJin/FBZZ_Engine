@@ -136,6 +136,8 @@ public:
 
     void OnStart()  override;
     void OnUpdate() override;
+    /// 名簿から降りる。載ったままだと、畳んだシーンのボスを進行が探し当てる。
+    void OnDestroy() override { IBoss::Unbind(scene.Self(), this); }
 
 private:
     /// HP 割合からフェーズを決め直す。変わったら切替タイマーも新しい周期へ入れ直す。
@@ -168,6 +170,10 @@ FBZZ_REFLECT(BossPolarityCoreComponent)
 
 inline void BossPolarityCoreComponent::OnStart()
 {
+    // «ボスとして» 名乗る。型で引く経路はこの環境では空を返すので、
+    // ここを書き忘れると倒してもステージが終わらない (IBoss.hpp の WHY)。
+    IBoss::Bind(scene.Self(), this);
+
     // 塗られる側では «まだ誰も乗せていない» から始める。startPolarity を持ったまま
     // 始めると、開始と同時に盤面の雑魚がボスへ吸い寄せられ、仕込む前に勝手に動く。
     m_polarity  = playerCharged ? Polarity::None : startPolarity;

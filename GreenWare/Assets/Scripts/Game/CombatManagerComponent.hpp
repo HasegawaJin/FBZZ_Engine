@@ -5,7 +5,7 @@
 ///
 /// WHY ダメージを「与える側」ではなくここで適用するか:
 ///   以前は極性衝突だけがここを通り、敵からプレイヤーへの接触ダメージは
-///   EnemyChaserComponent が PlayerComponent::TakeDamage() を直接呼んでいた。
+///   敵の接触攻撃が PlayerComponent::TakeDamage() を直接呼んでいた。
 ///   ダメージの経路が 2 本あると、「無敵時間を入れたい」「与ダメージを記録したい」
 ///   といった 1 つの要求が必ず 2 箇所の編集になり、片方を忘れた側だけ仕様から外れる。
 ///   実際、撃破数は数えられているのに被ダメージはどこにも残っていなかった。
@@ -13,7 +13,7 @@
 ///
 /// WHY ダメージ「値」までは持たないか:
 ///   敵ごとの耐久や攻撃力は敵の種類の性質で、EnemyHealthComponent /
-///   EnemyChaserComponent に載っているのが正しい。ここが持つのは「適用と集計」で、
+///   攻撃する側に載っているのが正しい。ここが持つのは「適用と集計」で、
 ///   値まで吸い上げると敵を 1 種類足すたびにこのファイルが伸びる。
 ///
 /// WHY GameFlowComponent から切り出すか:
@@ -41,6 +41,7 @@
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <string>
 #include <vector>
@@ -151,15 +152,25 @@ public:
                                     : std::clamp(m_chainRemaining / chainSeconds, 0.0f, 1.0f);
     }
 
-    /// 生存している敵の数。全滅判定は進行側が持つが、数える規則は戦闘側の知識。
-    [[nodiscard]] int CountEnemiesAlive() const;
-
-    /// 敵を 1 体倒した瞬間に呼ばれる。進行側が撃破数の演出やウェーブ管理に使う。
+    /// 敵を 1 体倒した瞬間に呼ばれる。撃破の演出を挿す口。
     std::function<void()> onEnemyDefeated;
 
     /// プレイヤーへのダメージ。敵の接触攻撃など、盤面を経由しない経路はここを通す。
     /// 実際に減ったら true。無敵時間などで弾かれた場合は false。
-    bool DamagePlayer(GameObject* player, int amount);
+    ///
+    /// @param source 押し出しの起点 (当たった物の位置)。渡すと «そこから離れる» 向きへ
+    ///               押す。nullptr なら押さない。
+    ///
+    /// WHY 押しをここで配るか: 押す / 押さないは «殴られた» という 1 つの出来事の
+    ///     一部で、敵ごとに書くと «この敵だけ押されない» が普通に起きる。
+    ///     揺れと振動を ImpactFeedbackManager が 1 箇所で配っているのと同じ形。
+    bool DamagePlayer(GameObject* player, int amount, const Vector3* source = nullptr);
+
+    FBZZ_GROUP("Knockback")
+    FBZZ_FIELD_RANGE(float, playerKnockSpeed, 7.0f, "Speed", 0.0f, 30.0f)
+    FBZZ_TOOLTIP("被弾で押し出される初速 [m/s]。0 で押さない")
+    FBZZ_FIELD_RANGE(float, playerKnockSeconds, 0.22f, "Duration", 0.0f, 1.5f)
+    FBZZ_TOOLTIP("押される時間。長いほど «操作を取り上げられた» に寄るので短く")
 
     /// 盤面を経由しない衝突の報告口。転がっている Roller が他の敵を轢いたときのように、
     /// «引力で飛んだわけではないが、確かに衝突が起きた» 経路が通る。
@@ -205,7 +216,7 @@ private:
     ///
     /// WHY その場で作らないか: 撃破は盤面の衝突を解決している最中に起きる。あちらは
     ///     GameObject* を持ったまま回っているので、途中で GameObject を増やすと
-    ///     配列の再確保でその参照が無効になりうる (EnemySupplyComponent と同じ理由)。
+    ///     配列の再確保でその参照が無効になりうる。
     ///     «倒れた» を覚えておいて、次の OnUpdate で置く。
     struct PendingCore {
         Vector3  point{};
@@ -219,6 +230,11 @@ private:
     std::vector<EntityRef>   m_coreSlots;
     int  m_coreNext = 0;
     bool m_warnedNoCoreVfx = false;
+    bool m_warnedNoPlayerTarget = false;
+    /// 受け手の検算を始めるまでの猶予 (秒)。スクリプト間のライフサイクルの
+    /// 前後関係を吸収する。
+    static constexpr float kTargetGraceSeconds = 0.5f;
+    float m_targetGrace = 0.0f;
 
     bool m_subscribed = false;
     // 「盤面が居ない」の報告口。購読は繋がるまで毎フレーム試すので、
@@ -276,7 +292,7 @@ inline void CombatManagerComponent::OnStart()
     se::EnsureSource(scene, "UI");
 
     // 枠を先に積む。戦闘中に GameObject を作ると配列の再確保が走り、その 1 フレームだけ
-    // 盤面が固まる (EnemySupplyComponent と同じ理由)。
+    // 盤面が固まる。
     //
     // WHY 使うときに 1 つずつではなく «全部» 作るか:
     //   枠には PolarityTargetComponent を後から足している。足した Script の OnStart は
@@ -425,6 +441,35 @@ inline void CombatManagerComponent::EnsureSubscribed()
 inline void CombatManagerComponent::OnUpdate()
 {
     EnsureSubscribed();
+
+    // ── 受け手の検算 ────────────────────────────────────────────────────────
+    // WHY 1 フレーム目で判定しないか:
+    //   このエンジンは «全員の OnStart → 全員の OnUpdate» の順では回らない。実測では
+    //   CombatManager の最初の OnUpdate が PlayerComponent の OnStart より先に走り、
+    //   その時点の名簿はまだ空だった。1 フレーム目を見て報告すると
+    //   «まだ名乗っていないだけ» を欠陥として出してしまう。
+    //
+    // WHY 攻撃が当たるまで待たないか:
+    //   DamagePlayer 側の報告は «敵が初めて殴った瞬間» まで出ない。数分戦ってから
+    //   «ずっと無敵だった» と判るのでは遅い。猶予を置いて 1 度だけ確かめる。
+    if (!m_warnedNoPlayerTarget && m_targetGrace < kTargetGraceSeconds) {
+        m_targetGrace += std::max(time.UnscaledDeltaTime(), 0.0f);
+        if (m_targetGrace >= kTargetGraceSeconds) {
+            GameObject* player = scene.FindWithTag("Player");
+            if (!player) {
+                m_warnedNoPlayerTarget = true;
+                debug.LogError("CombatManagerComponent: tag=Player の GameObject が無い。"
+                               "敵の攻撃は誰にも当たらない。");
+            } else if (!IDamageable::Of(player)) {
+                m_warnedNoPlayerTarget = true;
+                debug.LogError("CombatManagerComponent: '" + player->name
+                               + "' が IDamageable として名乗っていない。"
+                                 "PlayerComponent::OnStart の IDamageable::Bind() を"
+                                 "確認すること。このままでは敵の攻撃が一切通らない。");
+            }
+        }
+    }
+
     SpawnPendingCores();
     debugFaces = EyeSpriteComponent::RegisteredCount();
 
@@ -465,23 +510,30 @@ inline void CombatManagerComponent::Notify(GameObject* character, CharacterEvent
     if (auto* eyes = EyeSpriteComponent::For(character)) eyes->React(event);
 }
 
-inline int CombatManagerComponent::CountEnemiesAlive() const
-{
-    int count = 0;
-    for (GameObject* object : scene.FindObjectsOfType<EnemyHealthComponent>()) {
-        const auto* health = scene.GetScript<EnemyHealthComponent>(object);
-        if (object && object->activeInHierarchy() && health && health->IsAlive()) ++count;
-    }
-    return count;
-}
-
-inline bool CombatManagerComponent::DamagePlayer(GameObject* player, int amount)
+inline bool CombatManagerComponent::DamagePlayer(GameObject* player, int amount,
+                                                 const Vector3* source)
 {
     // WHY PlayerComponent ではなく IDamageable で引くか: 「殴られる側」であることだけが
     //     ここでの関心で、それがプレイヤーかどうかは知らなくてよい。将来プレイヤーが
     //     乗り物に乗る / 分身を出すといった構成になっても、この関数は変わらない。
-    auto* target = scene.GetScript<IDamageable>(player);
-    if (!target) return false;
+    //
+    // WHY scene.GetScript<IDamageable>() ではないか: この環境では横断インターフェースで
+    //     引くと必ず nullptr が返る (基底たどりが効いていない。IDamageable::Of を参照)。
+    //     ここが空振りすると «敵の攻撃が一切通らない» という形でしか症状が出ないので、
+    //     確実に引ける名簿の方を使う。
+    auto* target = IDamageable::Of(player);
+    if (!target) {
+        // WHY ここだけ名指しで報告するか: 敵の攻撃が «当たっているのに減らない» とき、
+        //     画面には «避けられている» としか出ない。受け手が居ないのか無敵で
+        //     弾かれたのかは、この 1 行が無いと攻撃側からもプレイヤー側からも見えない。
+        if (!m_warnedNoPlayerTarget) {
+            m_warnedNoPlayerTarget = true;
+            debug.LogError("CombatManagerComponent: the player object has no IDamageable "
+                           "(PlayerComponent). Enemy attacks can never deal damage. "
+                           "IDamageable::Bind() を OnStart で呼んでいるか確認すること。");
+        }
+        return false;
+    }
 
     const int before = target->CurrentHealth();
     if (!target->ApplyDamage(std::max(amount, 1))) return false;
@@ -489,6 +541,11 @@ inline bool CombatManagerComponent::DamagePlayer(GameObject* player, int amount)
     // 無敵時間で弾かれた分を数えないよう、実際に減った量だけを積む。
     m_damageToPlayer += std::max(before - target->CurrentHealth(), 0);
     debugDamageToPlayer = m_damageToPlayer;
+
+    // 押しは «通った» ときだけ。無敵で弾いた一撃でも押すと、避けているのに
+    // 位置だけ持っていかれる。押し方を知っているのは殴られた側 (IDamageable)。
+    if (source && playerKnockSpeed > 0.0f)
+        target->ApplyKnockback(*source, playerKnockSpeed, playerKnockSeconds);
 
     Notify(player, target->IsAlive() ? CharacterEvent::Hurt : CharacterEvent::Defeated);
     return true;

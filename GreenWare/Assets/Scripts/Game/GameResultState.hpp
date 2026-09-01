@@ -28,6 +28,11 @@ struct GameResultState {
     /// ノーリトライで通したか。リトライしたプレイにはランクを出さない。
     static inline bool noRetry = true;
 
+    /// ボスの残り HP (0〜1)。負けたときに «あと何割だったか» を出すためだけに持つ。
+    static inline float bossHpRemain01 = 1.0f;
+    /// 倒れたときのボスのフェーズ (1 or 2)。HP 50% で変わる (Docs/game-flow.md)。
+    static inline int bossPhase = 1;
+
     /// 自己ベスト。同じセッションのあいだだけ持つ (保存は GameSettings の担当)。
     static inline float bestSeconds = 0.0f;
     static inline int   bestScore   = 0;
@@ -41,9 +46,9 @@ struct GameResultState {
     {
         int score = 0;
 
-        if (clearSeconds <= 390.0f)      score += 3;   // 6 分 30 秒
-        else if (clearSeconds <= 480.0f) score += 2;   // 8 分
-        else if (clearSeconds <= 600.0f) score += 1;   // 10 分
+        if (clearSeconds <= 180.0f)      score += 3;   // 3 分
+        else if (clearSeconds <= 240.0f) score += 2;   // 4 分
+        else if (clearSeconds <= 300.0f) score += 1;   // 5 分
 
         if (bestChain >= 5)      score += 3;
         else if (bestChain >= 4) score += 2;
@@ -84,7 +89,7 @@ struct GameResultState {
     {
         if (!victory) return;
         if (bestSeconds <= 0.0f || clearSeconds < bestSeconds) bestSeconds = clearSeconds;
-        bestScore = std::max(bestScore, Score());
+        bestScore = (std::max)(bestScore, Score());
     }
 };
 

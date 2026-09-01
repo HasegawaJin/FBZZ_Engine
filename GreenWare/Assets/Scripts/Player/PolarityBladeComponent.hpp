@@ -31,7 +31,9 @@
 
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/BossHitboxRigComponent.hpp>
 #include <Scripts/Combat/BossPartPolarityComponent.hpp>
+#include <Scripts/Combat/BossPolarityRigComponent.hpp>
 #include <Scripts/Combat/IBoss.hpp>
 #include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
@@ -472,6 +474,10 @@ inline void PolarityBladeComponent::BeginSwing(Polarity polarity)
 
     PlaySlashMotion(polarity);
 
+    // 振り出しの «ヒュッ»。当たったかどうかとは別に、振ったこと自体を返す。
+    // WHY 段を渡すか: 1 段目と締めが同じ音だと、連撃のどこに居るかが耳で追えない。
+    se::Play(audio, se::BladeSwing(polarity, m_combo));
+
     // 空振りにも軽い手応えを返す。無反応だと «入力が拾われていない» に見える。
     if (auto* pad = RumbleManagerComponent::Instance())
         pad->Rumble(0.0f, swingRumble, 0.05f);
@@ -499,11 +505,13 @@ inline void PolarityBladeComponent::BeginCharged(Polarity polarity, float ratio)
 
     PlaySlashMotion(polarity);
 
+    // 溜め斬りは通常の «ヒュッ» とは別の音。同じにすると、溜めた一振りが
+    // 通常斬りに埋もれて «溜めた意味» が耳から消える。
+    se::Play(audio, se::BladeChargeSlash(polarity));
+
     // 振り出しの重さ。ここで返さないと、溜めた手応えが «当たったとき» まで来ない。
     if (auto* pad = RumbleManagerComponent::Instance())
         pad->Rumble(chargedRumble * m_chargedRatio, chargedRumble * 0.5f * m_chargedRatio, 0.12f);
-    if (auto* screen = ScreenEffectManagerComponent::Instance())
-        screen->Surge(PolarityColor(polarity), 0.6f * m_chargedRatio, 0.25f);
 
     debugPhase = "Charged";
     debugCombo = m_combo;
@@ -513,13 +521,10 @@ inline void PolarityBladeComponent::NotifyChargeFull()
 {
     m_chargeFull = true;
 
-    // «もう溜まった» を耳と手に返す。画面を見ていなくても離す時が分かるようにする
-    // (バッテリー満タンと同じ合図を使う ─ 起きていることが同じなので音も同じ)。
-    se::Play(audio, se::BatteryFull(m_holding));
+    // «もう溜まった» を耳と手に返す。画面を見ていなくても離す時が分かるようにする。
+    se::Play(audio, se::kBladeChargeUpFull);
     if (auto* pad = RumbleManagerComponent::Instance())
         pad->Rumble(0.0f, 0.9f, 0.06f);
-    if (auto* screen = ScreenEffectManagerComponent::Instance())
-        screen->Flash(PolarityColor(m_holding), 0.35f, 0.12f);
 }
 
 // WHY 比の 2 乗で立ち上げるか:
@@ -550,7 +555,13 @@ inline void PolarityBladeComponent::DriveCharge()
 
     // 音程が溜め比で上がる。満溜めの合図 (NotifyChargeFull) が鳴る前から、
     // «あと少し» が耳だけで分かる。
-    m_chargeVoice.Update(*this, se::PolarityChargedLoop(m_holding).First(),
+    //
+    // WHY kPolarityChargedLoop ではなく専用素材か:
+    //   あちらは «敵が帯びている» 持続音で、鳴っている主体が違う。加えてこの素材は
+    //   振幅の揺れを chargeShakeHz (24Hz) に合わせてあるので、画面の震えと
+    //   音のうねりが同じ周期で来る。別の周期どうしを重ねると、速い方が遅い方を
+    //   «ずれている» ように聞かせてしまう。
+    m_chargeVoice.Update(*this, se::kBladeChargeUpLoop.First(),
                          chargeVoiceVolume * ratio, 0.7f + 0.8f * ratio);
 
     // 足を鈍らせる。溜めながら全速で走れると «こらえている» が絵から消える。
@@ -662,7 +673,8 @@ inline void PolarityBladeComponent::ResolveHit()
     // WHY 1 つのループにまとめないか: 両者は «極を持つ» ことしか共通していない。
     //     混ぜるには基底クラスを 1 枚挟むことになり、盤面の側 (引力・持続・中和) が
     //     部位の都合を知る形になる。同じ扇を 2 度通す方が、依存の向きが増えない。
-    int parts = 0;
+    int         parts  = 0;
+    GameObject* struck = nullptr;
     for (GameObject* object : scene.FindObjectsOfType<BossPartPolarityComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartPolarityComponent>(object);
@@ -681,6 +693,14 @@ inline void PolarityBladeComponent::ResolveHit()
         if (Vector3::Dot(delta / distance, direction) < halfCos) continue;
 
         part->Apply(m_polarity);
+        // 斬った脚が «効いている» を返す。押す向きはプレイヤーから部位への水平方向
+        // ── 斬撃の扇の向きだと、横をすり抜けた一撃でも正面へ押すことになる。
+        if (auto* rig = scene.GetScript<BossPolarityRigComponent>())
+            rig->Flinch(part->legSuffix, object->transform.worldPosition,
+                        delta / distance, m_charged);
+        // 芝居を持っているのは部位ではなく本体。固める相手をここで引いておく
+        // (下の «当たった» 処理からは、どの部位に入ったかまでは見えない)。
+        if (!struck) struck = BossHitboxRigComponent::BossRootOf(object);
         // 乗った «瞬間» をその場に出す。持続の表示は BossPolarityRigComponent が
         // 別に持つ ─ 環は一発の演出なので、鳴らし続けると «乗っている» ではなく
         // «何かが爆ぜ続けている» に見える。
@@ -714,8 +734,6 @@ inline void PolarityBladeComponent::ResolveHit()
     if (m_charged) {
         if (auto* rings = PolarityRingComponent::Instance())
             rings->Burst(origin, range, m_polarity);
-        if (auto* screen = ScreenEffectManagerComponent::Instance())
-            screen->Flash(PolarityColor(m_polarity), 0.45f * m_chargedRatio, 0.14f);
         // 当たったときの揺れは下でまとめて出す。ここは空振りぶんだけ。
         if (hits == 0)
             if (auto* shake = CameraShakeManagerComponent::Instance())
@@ -729,14 +747,25 @@ inline void PolarityBladeComponent::ResolveHit()
         const float stopStrength = m_charged
             ? Lerp(Clamp01(hitStop), Clamp01(chargedHitStop), m_chargedRatio)
             : Clamp01(hitStop);
-        if (auto* stop = HitstopManagerComponent::Instance()) stop->Hit(stopStrength);
+        if (auto* stop = HitstopManagerComponent::Instance()) {
+            stop->Hit(stopStrength);
+            // 世界の止めとは別に、当事者の芝居だけを固める。振り抜いた腕と斬られた
+            // 体が «食い込んで止まる» ことで «当たった» が出る ─ 全体の止めを
+            // 深くしてこれを作ろうとすると、カメラも粒子も一緒に固まってテンポが先に壊れる。
+            stop->FreezeAnimation(scene.Self(), stopStrength);
+            if (struck) stop->FreezeAnimation(struck, stopStrength);
+        }
         if (auto* shake = CameraShakeManagerComponent::Instance())
             shake->Shake(m_charged ? Clamp01(chargedShake) : Clamp01(hitShake));
         if (auto* pad = RumbleManagerComponent::Instance()) {
             const float strength = m_charged ? Clamp01(chargedRumble) : Clamp01(hitRumble);
             pad->Rumble(strength, strength * 0.6f, m_charged ? 0.18f : 0.07f);
         }
-        se::Play(audio, se::kBladeHit, m_charged ? 1.0f + 0.4f * m_chargedRatio : 1.0f);
+        // 締めの一撃だけ重い音。連撃が «終わった» ことを、画面を見ずに判るようにする。
+        // 溜め斬りは段を持たないので、常に締め扱いでいい (BeginCharged が m_combo=0 にする)。
+        const bool heavy = m_charged || IsFinisher();
+        se::Play(audio, heavy ? se::BladeHitFinish(m_polarity) : se::BladeHit(m_polarity),
+                 m_charged ? 1.0f + 0.4f * m_chargedRatio : 1.0f);
     }
 
     // 判定そのものを線で出す。軌跡と重ねて «影が一致しているか» を目で確かめるためで、
@@ -781,7 +810,7 @@ inline void PolarityBladeComponent::HitOne(GameObject& object,
     //
     // WHY 立っている間は通さないか: いつでも削れるなら、部位に極を乗せて転ばせる手順が
     //     «遠回り» に落ちる。倒してから斬る、が最短であり続ける形にしておく。
-    const auto* boss = scene.GetScript<IBoss>(&object);
+    const auto* boss = IBoss::Of(&object);
     if (!boss || boss->IsStaggered()) {
         const int damage = m_charged
             ? static_cast<int>(Lerp(static_cast<float>(std::max(tuning->bladeDamage, 0)),

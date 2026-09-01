@@ -1,0 +1,119 @@
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+intensity = 1.15
+radius = 1.1
+slices = 4
+stepsPerSlice = 6
+type = 'GTAO'
+
+[[overrides]]
+active = true
+rayLength = 0.7
+steps = 12
+strength = 0.7
+thickness = 0.08
+type = 'ContactShadow'
+
+[[overrides]]
+active = true
+intensity = 0.4
+maxDistance = 32.0
+steps = 24
+thickness = 0.2
+type = 'SSR'
+
+[[overrides]]
+active = true
+intensity = 0.6
+softKnee = 0.5
+threshold = 1.0
+type = 'Bloom'
+
+[[overrides]]
+active = true
+exposure = 1.0
+type = 'Exposure'
+
+[[overrides]]
+active = false
+compensation = 0.0
+highPercent = 0.949999988079071
+lowPercent = 0.44999998807907104
+maxEV = 14.0
+maxExposureEV = 8.0
+minEV = -6.0
+minExposureEV = -8.0
+speedDown = 1.2000000476837158
+speedUp = 0.800000011920929
+type = 'AutoExposure'
+
+[[overrides]]
+active = true
+highlightCompression = 0.22
+shadowLift = 0.1
+type = 'ShadowHighlight'
+
+[[overrides]]
+active = true
+contrast = 0.14
+hueShift = 0.0
+saturation = 0.98
+temperature = -0.12
+tint = 0.0
+type = 'ColorGrading'
+
+[[overrides]]
+active = true
+radius = 2.0
+strength = 0.26
+type = 'Clarity'
+
+[[overrides]]
+active = true
+radius = 1.0
+strength = 0.3
+type = 'Sharpen'
+
+[[overrides]]
+active = true
+albedo = [ 0.58, 0.63, 0.72 ]
+ambient = 0.6
+anisotropy = 0.55
+density = 0.03
+emissive = [ 0.0, 0.0, 0.0 ]
+farDistance = 45.0
+heightFalloff = 0.06
+heightStart = 0.0
+nearDistance = 0.5
+type = 'FroxelFog'
+
+[[overrides]]
+active = true
+samples = 8
+strength = 0.3
+type = 'MotionBlur'
+
+[[overrides]]
+active = true
+color = [ 0.0, 0.0, 0.0 ]
+intensity = 0.34
+roundness = 0.85
+smoothness = 0.5
+type = 'Vignette'
+
+[[overrides]]
+active = true
+amount = 0.002
+type = 'ChromaticAberration'
+
+[[overrides]]
+active = true
+intensity = 0.028
+response = 0.65
+type = 'FilmGrain'
+
+[[overrides]]
+active = true
+type = 'FXAA'

@@ -1,0 +1,31 @@
+file_format_version = 1
+
+[cache]
+baked_container = 'Library/Baked/<asset-guid>'
+settings_hash = '1de386e6ebb31ef2'
+source_hash = '98ea7d8d817209c7'
+
+[meta]
+guid = 'd27b59b96c65fd0514b6e846718224cd'
+
+[model]
+default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 4
+normal_map_convention = 'DirectX'
+root_motion_node = ''
+selected_animations = [ 'Crippled_FR_FL' ]
+selected_meshes = []
+source_dcc = 'Auto'
+unit_scale_multiplier = 1.0
+up_axis = 0
+
+    [[model.clips]]
+    end_frame = 89.0
+    loop = true
+    name = 'Crippled_FR_FL'
+    output_name = ''
+    start_frame = 0.0

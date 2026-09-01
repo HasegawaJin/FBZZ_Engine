@@ -49,7 +49,7 @@ public:
     FBZZ_TOOLTIP("光が寄ってくる速さ。0 で瞬間的に切り替わる")
 
     FBZZ_GROUP("Flow")
-    FBZZ_FIELD(std::string, startScene,   "Main",    "START")
+    FBZZ_FIELD(std::string, startScene,   "StageSelect", "START")
     FBZZ_FIELD(std::string, optionsScene, "Options", "OPTIONS")
 
     FBZZ_GROUP("Debug")

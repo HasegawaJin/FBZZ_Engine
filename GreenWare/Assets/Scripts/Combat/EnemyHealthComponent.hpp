@@ -34,7 +34,12 @@ public:
     FBZZ_FIELD_RANGE(float, speedDamageScale, 0.0f, "Speed Scale", 0.0f, 100.0f)
     FBZZ_FIELD_RANGE(float, anchorDamageMultiplier, 1.0f, "Anchor Multiplier", 0.0f, 10.0f)
     FBZZ_TOOLTIP("柱・壁へ叩きつけた場合だけ掛ける倍率")
-    FBZZ_FIELD_RANGE(float, destroyDelay, 0.05f, "Destroy Delay", 0.0f, 5.0f)
+    // 上限が 5 秒だとボスに足りない。ボスは撃破からリザルトへ移るまで数秒あり
+    // (GameFlowComponent の Boss End Delay)、その間より先に消えると «倒した相手が
+    // 居ないまま結果を待つ» 画になる。待ちを伸ばすときは必ずこちらも一緒に伸ばす。
+    FBZZ_FIELD_RANGE(float, destroyDelay, 0.05f, "Destroy Delay", 0.0f, 12.0f)
+    FBZZ_TOOLTIP("倒れてから GameObject を畳むまでの秒数。撃破演出が付いていれば"
+                 "その長さの方が優先される («最低でもこれだけは残す» の意味)")
 
     FBZZ_GROUP("Feedback")
     FBZZ_FIELD_AUDIO(sfxHit, "", "SFX Hit")
@@ -72,12 +77,12 @@ public:
     ///     式を持つのはこちら、という今の分け方をそのまま保つ。
     bool TakeImpact(const PolarityImpact& impact, float chainMultiplier = 1.0f);
 
-    /// 撃破音を機種ごとの束へ差し替える。AI が起動時に自分の束を預ける。
+    /// 撃破音を相手ごとの束へ差し替える。相手側が起動時に自分の束を預ける。
     ///
-    /// WHY Inspector の欄で足りないか: sfxDeath は 1 本しか持てないので、変奏が
-    ///     3 つある機種では毎回同じ音になる。かといってここが EnemyAiBase を知ると、
-    ///     AI が EnemyHealth を見ている今の向きと合わせて include が輪になる。
-    ///     «束を預ける» 向きだけにすれば、知る側は AI の 1 方向で済む。
+    /// WHY Inspector の欄で足りないか: sfxDeath は 1 本しか持てないので、変奏を
+    ///     持たせられない。かといってここが相手のスクリプトを知ると、相手が
+    ///     EnemyHealth を見ている今の向きと合わせて include が輪になる。
+    ///     «束を預ける» 向きだけにすれば、知る側は 1 方向で済む。
     void SetDestroyVoice(const se::Bank* bank) { m_destroyVoice = bank; }
 
     /// 被弾音を差し替える。撃破音と同じ «預ける» 向き。
@@ -88,9 +93,12 @@ public:
     ///     «今の攻め方で合っているのか» が耳から判断できなくなる。
     void SetFlinchVoice(const se::Bank* bank) { m_flinchVoice = bank; }
     void ResetHealth();
+    void OnDestroy() override { IDamageable::Unbind(scene.Self(), this); }
     void OnStart() override
     {
         ResetHealth();
+        // «殴られる側» として名乗る (IDamageable::Of のコメント参照)。
+        IDamageable::Bind(scene.Self(), this);
         // 敵は盤面のあちこちに居る。どの方向で何が起きたかが分かる必要があるので 3D。
         se::EnsureSource(scene, "SE", 1.0f);
 

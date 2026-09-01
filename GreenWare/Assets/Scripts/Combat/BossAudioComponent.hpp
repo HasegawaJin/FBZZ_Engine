@@ -224,7 +224,7 @@ inline void BossAudioComponent::OnStart()
 
     // 被弾と撃破は EnemyHealthComponent が鳴らす経路を既に持っている。ここは
     // «ボスのときはこの束» を預けるだけにして、鳴らす場所を 2 つに増やさない
-    // (EnemyAiBase が機種ごとの撃破音を預けるのと同じ向き)。
+    // («鳴らす側» ではなく «束を預ける側» になる)。
     if (auto* health = scene.GetScript<EnemyHealthComponent>()) {
         health->SetFlinchVoice(&se::kBossDamaged);
         health->SetDestroyVoice(&se::kBossDestroy);

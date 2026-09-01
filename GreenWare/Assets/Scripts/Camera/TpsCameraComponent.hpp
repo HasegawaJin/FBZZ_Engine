@@ -85,6 +85,18 @@ public:
     void OnUpdate() override;
     void OnLateUpdate() override;
 
+    /// 演出カメラから操作を返してもらうときの引き継ぎ。
+    ///
+    /// WHY 必要か: 追従は «前フレームの自分の位置» から寄せる (m_unshakenPosition)。
+    ///     演出がカメラを別の場所へ持って行っている間もその記憶は止まったままなので、
+    ///     ただ有効へ戻すと «演出の画から遊びの画へ 1 フレームで飛ぶ» ことになる。
+    ///     返す側が «今どこを向いて居るか» を教えれば、そこから滑らかに戻せる。
+    ///
+    /// WHY 向きを yaw / pitch へ戻すか: 向きの正本は入力で回している 2 つの角で、
+    ///     transform.rotation は毎フレームそこから組み直される。角を更新しないと、
+    ///     位置だけ引き継いで向きは «演出前に見ていた方向» へ瞬間で戻る。
+    void ResumeFrom(const Vector3& position, const Quaternion& rotation);
+
 private:
     /// yaw / pitch から今フレームの向きを組む。OnUpdate と OnLateUpdate が同じ式を使う。
     [[nodiscard]] Quaternion CurrentRotation() const;
@@ -116,6 +128,21 @@ inline void TpsCameraComponent::OnStart()
     //     基準を持てず、3D 音源が丸ごと鳴らない。しかも警告は出ないので、
     //     症状は「敵の音だけ無音」という形でしか現れない。
     se::EnsureListener(scene);
+
+    // 視点はマウスの «移動量» で回す。Locked は毎フレーム OS カーソルを画面中央へ戻して
+    // 移動量だけを渡すモードで、これが無いとカーソルが画面端に着いた時点で振り向けなくなる。
+    //
+    // WHY 画面ごとに宣言するか: 同じゲームでもタイトルやオプションは «絶対座標» で
+    //     カーソルを動かす ([[GameCursorComponent]] は Confined を要求する)。
+    //     プロジェクト設定は起動時の初期値でしかないので、必要な側が名乗る。
+    //
+    // WHY Play 中だけか: このスクリプトは FBZZ_EXECUTE_ALWAYS() で編集中も走る。
+    //     ガードが無いと、このカメラが居るシーンを開いただけで Editor の OS カーソルが
+    //     消え、ウィンドウ中央へ拘束される。
+    if (app.IsPlaying()) {
+        cursor.SetLockMode(CursorLockMode::Locked);
+        cursor.SetVisible(false);
+    }
 }
 
 inline Quaternion TpsCameraComponent::CurrentRotation() const
@@ -123,6 +150,20 @@ inline Quaternion TpsCameraComponent::CurrentRotation() const
     const Quaternion yawRot   = Quaternion::FromAxisAngle(Vector3::UP,    ToRad(yaw));
     const Quaternion pitchRot = Quaternion::FromAxisAngle(Vector3::RIGHT, ToRad(pitch));
     return (yawRot * pitchRot).Normalized();
+}
+
+inline void TpsCameraComponent::ResumeFrom(const Vector3& position, const Quaternion& rotation)
+{
+    m_unshakenPosition  = position;
+    m_hasCameraPosition = true;
+
+    // 前ベクトルから 2 つの角を復元する。CurrentRotation が yaw(Y) → pitch(X) の順で
+    // 組んでいるので、その逆順に解く。
+    const Vector3 forward = (rotation * Vector3::FORWARD).NormalizedOr(Vector3::FORWARD);
+    yaw   = ToDeg(std::atan2(forward.x, forward.z));
+    // 真上・真下を向いていると水平成分が消えて yaw が不定になる。pitch だけは
+    // 必ず取れるので、そちらは素直に asin で出す。
+    pitch = Clamp(ToDeg(std::asin(Clamp(-forward.y, -1.0f, 1.0f))), minPitch, maxPitch);
 }
 
 inline void TpsCameraComponent::OnUpdate()

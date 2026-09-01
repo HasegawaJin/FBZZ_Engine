@@ -9,7 +9,7 @@ type = 'SSAO'
 active = true
 intensity = 0.1149425283074379
 softKnee = 1.0
-threshold = 2.1455938816070557
+threshold = 4.0
 type = 'Bloom'
 
 [[overrides]]
@@ -19,38 +19,30 @@ type = 'Exposure'
 
 [[overrides]]
 active = true
-density = 0.0
-edgeFade = 1.0
-heightFalloff = 0.10574913769960403
-heightStart = 247.6922607421875
-intensity = 1.7230769395828247
-maxDistance = 778.2704467773438
-minDistance = 500.0
-scattering = 0.0
-steps = 4
+density = 0.03
+edgeFade = 0.35
+heightFalloff = 0.08
+heightStart = 0.5
+intensity = 0.35
+maxDistance = 70.0
+minDistance = 1.5
+scattering = 0.65
+steps = 24
 tint = [ 1.0, 1.0, 1.0 ]
 type = 'VolumetricLight'
-
-[[overrides]]
-active = false
-distortion = 1.0
-ghostCount = 1
-haloWidth = 0.20000000298023224
-intensity = 0.20000000298023224
-type = 'LensFlare'
 
 [[overrides]]
 active = true
 type = 'FXAA'
 
 [[overrides]]
-active = true
+active = false
 compensation = 0.0
 highPercent = 0.949999988079071
 lowPercent = 0.44999998807907104
 maxEV = 2.0
 maxExposureEV = 8.0
-minEV = -2.0
+minEV = 0.0
 minExposureEV = -8.0
 speedDown = 1.2000000476837158
 speedUp = 0.800000011920929

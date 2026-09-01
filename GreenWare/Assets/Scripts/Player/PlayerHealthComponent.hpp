@@ -10,16 +10,29 @@
 /// 11 章と 19 章がジャスト回避 (判定・無敵・報酬) を本バージョンから明示的に外している。
 /// ここに置くのは被弾直後の短い無敵だけで、これは連続ヒットで一瞬に溶けるのを防ぐための
 /// ものであり、回避の報酬ではない。混同すると 19 章の判断を無効化してしまう。
+///
+/// WHY 無敵を «見せる» か:
+/// 弾かれた一撃は画面に何も残さない ─ HP が減らないので、プレイヤーには
+/// «当たったのに減らなかった» のか «避けられていた» のかが区別できない。
+/// 体が点滅していれば、その 0.6 秒は «今は当たらない» と読めて、踏み込む判断ができる。
+/// 明滅は自発光でやる (半透明にすると深度書き込みが外れて体の裏が透ける)。
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Data/PlayerTuning.hpp>
 #include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
 #include <Scripts/Player/PlayerControllerComponent.hpp>
+#include <Scripts/Utils/GlowMaterial.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
+#include <cmath>
+#include <cstdint>
 #include <functional>
+#include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -42,8 +55,20 @@ public:
     // 被弾時の揺れ・振動・画面効果は ImpactFeedbackManagerComponent の Player Hurt が持つ。
     // 12 章の「強さは 1 箇所で持つ」方針を、被弾以外の出来事も含めた形へ広げたもの。
 
+    // 無敵の «見せ方»。被弾直後の 0.6 秒 (PlayerTuning の hitInvulnerable) に掛かる。
+    FBZZ_GROUP("Invulnerable Flash")
+    FBZZ_FIELD(bool, flashOnInvulnerable, true, "Flash")
+    FBZZ_FIELD_RANGE(float, flashHz, 9.0f, "Hz", 0.0f, 30.0f)
+    FBZZ_TOOLTIP("明滅の速さ。遅いと «光っている» に見え、速すぎるとちらつく")
+    FBZZ_FIELD_COLOR(flashColor, (Vector4{ 1.00f, 0.42f, 0.38f, 1.0f }), "Color")
+    FBZZ_TOOLTIP("被弾の赤。極の赤 (＋) と紛れないよう、彩度を落とした肌色寄りにしてある")
+    FBZZ_FIELD_RANGE(float, flashStrength, 3.2f, "Strength", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("自発光の強さ。ブルームのしきい値 (4.0) より少し下 ─ "
+                 "越えると画面が滲んで «攻撃を受けている» に見える")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "Health")
+    FBZZ_FIELD_READ_ONLY(int, debugFlashParts, 0, "Flash Parts")
 
     [[nodiscard]] int   Current() const { return m_health; }
     // WHY Max() にしないか: math::Max を同じクラス内から呼べなくなる (名前が隠れる)。
@@ -69,9 +94,26 @@ public:
     void SetController(PlayerControllerComponent* controller) { m_controllerOverride = controller; }
 
 private:
+    /// 明滅させる 1 スロット。元の自発光を控えて、無敵が明けたら必ず戻す。
+    struct FlashSlot {
+        EntityRef target;
+        uint32_t  slot = 0;
+        Vector3   baseColor{ 0.0f, 0.0f, 0.0f };
+        float     baseScale = 0.0f;
+    };
+
+    /// 体を描いている部位を集める。DLL リロードでも名前ではなく EntityRef で持つ。
+    void CollectFlashTargets(GameObject& object);
+    /// 明滅を書く。無敵でないフレームは元の値へ戻して、書いたことを忘れる。
+    void DriveFlash();
+
     int   m_health       = 0;
     float m_invulnerable = 0.0f;
     PlayerControllerComponent* m_controllerOverride = nullptr;
+
+    std::vector<FlashSlot> m_flash;
+    /// 今フレーム自発光を上書きしているか。戻し忘れを 1 つの札で防ぐ。
+    bool  m_flashing = false;
 };
 
 FBZZ_REFLECT(PlayerHealthComponent)
@@ -103,6 +145,54 @@ inline void PlayerHealthComponent::OnStart()
 
     ResetHealth();
     se::EnsureSource(scene);
+
+    // 明滅させる先は «体を描いているもの» 全部。武器も含めるのは、
+    // 手だけ光らないと «剣は別のもの» に見えるため。
+    m_flash.clear();
+    m_flashing = false;
+    if (GameObject* self = scene.Self()) CollectFlashTargets(*self);
+    debugFlashParts = static_cast<int>(m_flash.size());
+}
+
+inline void PlayerHealthComponent::CollectFlashTargets(GameObject& object)
+{
+    if (object.GetComponent<SkinnedMeshRenderer>() || object.GetComponent<MeshRenderer>()) {
+        FlashSlot entry{ EntityRef{ object.GetID() }, 0u, Vector3::ZERO, 0.0f };
+        const MaterialInstance instance = material.Instance(entry.target, entry.slot);
+        if (instance.IsValid()) {
+            // 元の値が読めない材質もある (自発光を持たない)。0 から始めて 0 へ戻す。
+            (void)instance.TryGetVector3(kEmissiveColorId, entry.baseColor);
+            (void)instance.TryGetFloat(kEmissiveScaleId, entry.baseScale);
+            m_flash.push_back(entry);
+        }
+    }
+
+    for (int i = 0; i < object.GetChildCount(); ++i)
+        if (GameObject* child = object.GetChild(i)) CollectFlashTargets(*child);
+}
+
+inline void PlayerHealthComponent::DriveFlash()
+{
+    const bool want = flashOnInvulnerable && IsInvulnerable() && IsAlive();
+    if (!want && !m_flashing) return;   // 書いていないなら戻すものも無い
+
+    // 明滅は矩形波。滑らかに上下させると «光っている» になり、点滅として読めない。
+    const float wave = flashHz > 0.0f
+        ? (std::sin(Time::time * flashHz * TWO_PI) >= 0.0f ? 1.0f : 0.0f) : 1.0f;
+
+    for (const FlashSlot& entry : m_flash) {
+        const MaterialInstance instance = material.Instance(entry.target, entry.slot);
+        if (!instance.IsValid()) continue;
+        if (want) {
+            instance.SetVector3(kEmissiveColorId,
+                                Vector3{ flashColor.x, flashColor.y, flashColor.z });
+            instance.SetFloat(kEmissiveScaleId, Max(flashStrength, 0.0f) * wave);
+        } else {
+            instance.SetVector3(kEmissiveColorId, entry.baseColor);
+            instance.SetFloat(kEmissiveScaleId, entry.baseScale);
+        }
+    }
+    m_flashing = want;
 }
 
 inline void PlayerHealthComponent::ResetHealth()
@@ -116,6 +206,7 @@ inline void PlayerHealthComponent::OnUpdate()
 {
     if (m_invulnerable > 0.0f)
         m_invulnerable = fbzz::math::Max(0.0f, m_invulnerable - Time::deltaTime);
+    DriveFlash();
 }
 
 inline bool PlayerHealthComponent::TakeDamage(int amount)

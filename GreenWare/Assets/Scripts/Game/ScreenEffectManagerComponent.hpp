@@ -123,6 +123,21 @@ public:
     FBZZ_FIELD_RANGE(float, outlineSpeed, 6.0f, "Speed", 0.0f, 30.0f)
     FBZZ_TOOLTIP("明滅と放電の走る速さ [Hz]")
     FBZZ_FIELD_RANGE(float, outlineGain, 2.5f, "Gain", 0.0f, 8.0f)
+
+    // 放電 (びりびり)。輪郭の «上へ» 細い筋を足す層で、帯そのものは削らない。
+    //
+    // WHY 削らないか: 電気で帯を欠けさせると、強くするほど輪郭が虫食いになって
+    //     «どの脚が何極か» が読めなくなる。芯を成立させてから乗せる
+    //     (Vfx/SlashArcComponent で同じ結論に至っている)。
+    FBZZ_FIELD_RANGE(float, outlineArcRate, 14.0f, "Arc Rate (Hz)", 0.0f, 60.0f)
+    FBZZ_TOOLTIP("放電を引き直す速さ。速すぎると «放電» ではなく «画面のちらつき» になる。"
+                 "2〜3 フレーム保つ 10〜20 あたりが電気に見える")
+    FBZZ_FIELD_RANGE(float, outlineArcChance, 0.35f, "Arc Chance", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("同時に放電する方向の割合。1 に近づけると全周が伸びて «太い輪郭» に戻る")
+    FBZZ_FIELD_RANGE(float, outlineArcReach, 1.9f, "Arc Reach", 1.0f, 4.0f)
+    FBZZ_TOOLTIP("放電した方向がどこまで伸びるか。1 で伸びない")
+    FBZZ_FIELD_RANGE(float, outlineArcSharp, 9.0f, "Arc Sharpness", 1.0f, 24.0f)
+    FBZZ_TOOLTIP("筋の細さ。低いと帯が明るくなるだけで «線» に見えない")
     FBZZ_TOOLTIP("足す明るさ。HDR へ加算するので 1 を超えた分をブルームが拾う。"
                  "上げすぎると芯が白く飛んで極の色が読めなくなる")
 
@@ -191,7 +206,8 @@ private:
         const char* name, const char* shaderPath,
         float intensity, const Vector4& parameters,
         fbzz::renderer::CustomPassStage stage = fbzz::renderer::CustomPassStage::PostProcess,
-        fbzz::renderer::BlendMode blendMode = fbzz::renderer::BlendMode::OPAQUE_BLEND);
+        fbzz::renderer::BlendMode blendMode = fbzz::renderer::BlendMode::OPAQUE_BLEND,
+        const Vector4& parameters2 = Vector4{});
 
     /// 集束の起点を今フレームの画面 UV へ落とす。カメラの後ろなら false。
     [[nodiscard]] bool ResolveImplodeUv(Vector2& outUv);
@@ -349,7 +365,8 @@ inline void ScreenEffectManagerComponent::Implode(const Vector3& worldPoint, flo
 inline void ScreenEffectManagerComponent::PushCustomEffect(
     fbzz::renderer::PostProcessSettings& settings, const char* name, const char* shaderPath,
     float intensity, const Vector4& parameters,
-    fbzz::renderer::CustomPassStage stage, fbzz::renderer::BlendMode blendMode)
+    fbzz::renderer::CustomPassStage stage, fbzz::renderer::BlendMode blendMode,
+    const Vector4& parameters2)
 {
     auto& custom = settings.customEffects.emplace_back();
     custom.name          = name;
@@ -361,6 +378,10 @@ inline void ScreenEffectManagerComponent::PushCustomEffect(
     custom.parameters[1] = parameters.y;
     custom.parameters[2] = parameters.z;
     custom.parameters[3] = parameters.w;
+    custom.parameters[4] = parameters2.x;
+    custom.parameters[5] = parameters2.y;
+    custom.parameters[6] = parameters2.z;
+    custom.parameters[7] = parameters2.w;
     custom.stage         = stage;
     custom.blendMode     = blendMode;
 }
@@ -542,10 +563,18 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     //   LDR で並べていた頃のように、順番を間違えると輪郭だけ体から剥がれる、
     //   という関係が無くなる。
     if (outlineOn) {
+        // PostProcess 段 (LDR)。エディタの選択輪郭と同じ «最後に描き直す» 経路で、
+        // これが実際に画面へ出る唯一の形だった。
+        //
+        // WHY blendMode を渡さないか: LDR 段は blendMode を見ない。前段の画を t5 で
+        //     受け取って全画面を描き直す実装なので、合成はシェーダーが自分で行う
+        //     (PolarityOutline.hlsl の NOTE)。加算を指定しても効かない。
         PushCustomEffect(pp, kOutlineEffectName, kOutlineShaderPath, 1.0f,
                          { outlineWidth, outlineCrackle, outlineSpeed, outlineGain },
-                         fbzz::renderer::CustomPassStage::SceneHDR,
-                         fbzz::renderer::BlendMode::ADDITIVE);
+                         fbzz::renderer::CustomPassStage::PostProcess,
+                         fbzz::renderer::BlendMode::OPAQUE_BLEND,
+                         { outlineArcRate, outlineArcChance,
+                           outlineArcReach, outlineArcSharp });
     }
     if (implode > 0.0f) {
         PushCustomEffect(pp, kImplodeEffectName, kImplodeShaderPath, implode,

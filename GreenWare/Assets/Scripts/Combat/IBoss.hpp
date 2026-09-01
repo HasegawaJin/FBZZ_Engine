@@ -10,7 +10,7 @@
 ///   なのか、ステートマシンなのか) はボスごとに違う。実装を基底へ引き上げると、
 ///   2 体目が «違う決め方» をした瞬間に基底へフラグが生えていく。
 ///   まずは宣言だけを固定し、共有できる実装が実際に 2 体で重複してから
-///   BossAiBase を切り出す (IDamageable と EnemyAiBase の使い分けと同じ判断)。
+///   BossAiBase を切り出す (IDamageable と同じ «宣言だけ» の判断)。
 ///
 /// WHY Script を継承しないか:
 ///   Script 派生を 2 つ以上継承すると Script 部分オブジェクトが 2 個になり、
@@ -23,14 +23,24 @@
 ///   (企画書 7.4 / 10.6「撃破は衝突ダメージのみ」)。ここに CurrentHealth を重ねると、
 ///   ボスバーがどちらを読むかで割れる。ボスは IDamageable と IBoss を両方名乗ること。
 ///
-///   使う側は型で引ける。ただし «盤面に出ているか» まで要るなら FindBossOnBoard()
-///   を通すこと (下の WHY)。
+///   使う側は名簿 (Of / FindBossOnBoard) から引く。**型では引けない** (下の WHY)。
+///
+/// WHY 型で引かず名簿を持つか (2026-09-01 の修正):
+///   `scene.GetScript<IBoss>()` と `FindObjectsOfType<IBoss>()` は、この環境では
+///   横断インターフェースに対して必ず空を返す (基底たどりが効いていない。
+///   IDamageable が先に同じ壁に当たっていて、あちらは名簿で回避している)。
+///   そのため `StageHasBoss()` が常に false を返し、**ボスを倒しても
+///   GameFlowComponent の勝利判定へ一度も入らない** ─ ステージが終わらず
+///   リザルトへも移らない、という形で 2 ステージとも壊れていた
+///   (Stage_01 のシーンに残っていた `debugBoss = ''` がその跡)。
+///   ボスは自分で名乗り、引く側は名簿を見る。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
+#include <unordered_map>
 
 using namespace fbzz::scene;
 
@@ -94,6 +104,35 @@ struct IBoss {
     /// WHY 純粋仮想にしないか: 登場の条件を持たないボス (置いた瞬間から戦っている)
     ///     の方が普通で、そちらに «true を返すだけ» を書かせる理由が無い。
     [[nodiscard]] virtual bool IsEngaged() const { return true; }
+
+    // ── 名簿 (IDamageable と同じ形) ──────────────────────────────────────────
+    // 実装側は OnStart で Bind、OnDestroy で Unbind すること。書き忘れると
+    // «倒してもステージが終わらない» という形でしか症状が出ない。
+
+    static std::unordered_map<const GameObject*, IBoss*>& Registry()
+    {
+        static std::unordered_map<const GameObject*, IBoss*> map;
+        return map;
+    }
+
+    static void Bind(const GameObject* go, IBoss* self)
+    {
+        if (go && self) Registry()[go] = self;
+    }
+    /// 自分が載っているときだけ消す (同じ GameObject を使い回したとき、
+    /// 後から来た方を消さないため)。
+    static void Unbind(const GameObject* go, const IBoss* self)
+    {
+        if (!go) return;
+        auto it = Registry().find(go);
+        if (it != Registry().end() && it->second == self) Registry().erase(it);
+    }
+    [[nodiscard]] static IBoss* Of(const GameObject* go)
+    {
+        if (!go) return nullptr;
+        auto it = Registry().find(go);
+        return it == Registry().end() ? nullptr : it->second;
+    }
 };
 
 /// 今この瞬間、«戦っている相手» としてのボス。居なければ nullptr。
@@ -113,10 +152,14 @@ struct IBoss {
 ///   判定を各所へ書くと、片方だけ «まだ» だと思っている状態が作れてしまう。
 [[nodiscard]] inline GameObject* FindBossOnBoard(const ScriptSceneProxy& scene)
 {
-    for (GameObject* object : scene.FindObjectsOfType<IBoss>()) {
-        if (!object || !object->activeInHierarchy()) continue;
-        const auto* boss = scene.GetScript<IBoss>(object);
-        if (boss && boss->IsEngaged()) return object;
+    (void)scene;   // 名簿はシーンに依らない。引数は呼ぶ側の書き方を変えないために残す
+    for (const auto& [object, boss] : IBoss::Registry()) {
+        if (!object || !boss) continue;
+        // WHY const を外すか: 名簿のキーは «誰か» を指すためだけの const で、
+        //     返す先 (勝利判定・HUD) はその GameObject を普通に読み書きする。
+        GameObject* self = const_cast<GameObject*>(object);
+        if (!self->activeInHierarchy() || !boss->IsEngaged()) continue;
+        return self;
     }
     return nullptr;
 }
@@ -128,8 +171,9 @@ struct IBoss {
 ///     部屋へ入る前に盤面が空になった瞬間クリアしてしまう。
 [[nodiscard]] inline bool StageHasBoss(const ScriptSceneProxy& scene)
 {
-    for (GameObject* object : scene.FindObjectsOfType<IBoss>())
-        if (scene.GetScript<IBoss>(object)) return true;
+    (void)scene;
+    for (const auto& [object, boss] : IBoss::Registry())
+        if (object && boss) return true;
     return false;
 }
 

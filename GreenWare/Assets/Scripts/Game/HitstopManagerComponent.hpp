@@ -15,6 +15,8 @@
 ///   画面が長時間止まる。強い方の深さと長い方の残り時間を採り、常に 1 本として扱う。
 #pragma once
 
+#include <Engine/Scene/EntityRef.hpp>
+#include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Game/GameSettingsComponent.hpp>
@@ -39,8 +41,31 @@ public:
     FBZZ_FIELD_RANGE(float, timeScale, 0.05f, "Time Scale", 0.0f, 1.0f)
     FBZZ_TOOLTIP("停止中のタイムスケール。0 で完全停止。少し流した方が固まって見えにくい")
 
+    // アニメーションだけを止める口。画面全体は動いたまま、当たった当人の芝居だけが
+    // 数フレーム固まる。
+    //
+    // WHY 全体を止めるのと別に要るか:
+    //   Request() の止めは «世界が止まる» ので、強くすると画面全体がぎこちなくなる。
+    //   一方 «斬った手応え» は «斬った腕と斬られた体が食い込んで止まる» ことで出る。
+    //   全体を止めてそれを作ろうとすると、当たりを重くするたびにカメラも粒子も
+    //   一緒に止まり、テンポの方が先に壊れる。止める対象を «当事者» に絞れば、
+    //   全体の止めは «衝撃» の担当のまま短く保てて、手応えだけを深くできる。
+    //
+    // WHY 全体の止めより長くしてよいか:
+    //   止まっているのが 1 体だけなら «画面が固まった» とは読まれない。格闘ゲームの
+    //   ヒットストップも 5〜8 フレーム (0.08〜0.13 秒) の幅にある。
+    FBZZ_GROUP("Animation")
+    FBZZ_FIELD_RANGE(float, animMaxSeconds, 0.13f, "Anim Max", 0.0f, 0.6f)
+    FBZZ_TOOLTIP("最も強い当たりでアニメーションが固まる長さ。強さ (0..1) に比例して縮む")
+    FBZZ_FIELD_RANGE(float, animMinSeconds, 0.05f, "Anim Min", 0.0f, 0.6f)
+    FBZZ_TOOLTIP("弱い当たりでも最低これだけは固める")
+    FBZZ_FIELD_RANGE(float, animSpeed, 0.0f, "Anim Speed", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("固めている間の再生速度。0 で完全停止。0.1 前後にすると «めり込みながら"
+                 "押し切る» 感じになる")
+
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(float, debugRemaining, 0.0f, "Remaining")
+    FBZZ_FIELD_READ_ONLY(int, debugFrozen, 0, "Frozen Actors")
 
     [[nodiscard]] static HitstopManagerComponent* Instance() { return s_instance; }
 
@@ -49,6 +74,17 @@ public:
     // 長さと深さを直接指定する。演出上どうしても個別に決めたい場所だけで使う。
     void Request(float seconds, float scale);
     void Cancel();
+
+    /// target のアニメーションだけを強さ (0..1) ぶん固める。全体の時間は動いたまま。
+    ///
+    /// 渡すのは «芝居を持っている本体»。当たった部位 (ボスの脚など) ではなく、
+    /// Animator が乗っているオブジェクトを渡すこと ─ 部位に渡しても何も起きない。
+    ///
+    /// 同じ相手を重ねて呼んでも二重には掛からない。長い方の残りを採り、
+    /// 元の速度は «最初に固めたときの値» を覚え続ける。
+    void FreezeAnimation(GameObject* target, float strength01);
+    /// 固めている相手を全部その場で戻す。
+    void ThawAnimations();
 
     [[nodiscard]] bool IsActive() const { return m_remaining > 0.0f; }
 
@@ -66,10 +102,32 @@ public:
 
     void OnStart() override;
     void OnUpdate() override;
-    void OnDestroy() override { Cancel(); if (s_instance == this) s_instance = nullptr; }
+    void OnDestroy() override
+    {
+        Cancel();
+        ThawAnimations();
+        if (s_instance == this) s_instance = nullptr;
+    }
 
 private:
     static inline HitstopManagerComponent* s_instance = nullptr;
+
+    /// 固めている 1 体ぶん。
+    ///
+    /// WHY 元の速度を覚えるか: 解除で 1.0 へ戻すと、もともと遅回し・逆再生に
+    ///     していた相手の設定を止めが踏み潰す。止めは «一時的に上書きする» もので、
+    ///     何が正しい速度かを決めるのはあくまで相手側。
+    struct FrozenActor {
+        EntityRef target;
+        float     remaining = 0.0f;
+        float     restore   = 1.0f;
+    };
+    /// 同時に固められる数。1 回の当たりで動くのは «斬った側と斬られた側» なので
+    /// 2 で足りるが、溜め斬りが複数の相手へ同時に入る余地を見て少し多めに取る。
+    static constexpr int kMaxFrozen = 8;
+    FrozenActor m_frozen[kMaxFrozen];
+
+    void TickAnimations(float dt);
 
     float m_remaining    = 0.0f;
     float m_scale        = 1.0f;
@@ -92,6 +150,10 @@ inline void HitstopManagerComponent::OnStart()
     m_scale        = 1.0f;
     m_seconds      = 0.0f;
     m_warnedNoTime = false;
+    // 前のプレイで固めたままの相手は居ない (Script は作り直される) が、
+    // 残りだけは 0 から始める。
+    for (FrozenActor& actor : m_frozen) { actor = {}; }
+    debugFrozen = 0;
 }
 
 inline float HitstopManagerComponent::Weight01() const
@@ -154,13 +216,84 @@ inline void HitstopManagerComponent::Cancel()
         timeManager->ClearOverride();
 }
 
+inline void HitstopManagerComponent::FreezeAnimation(GameObject* target, float strength01)
+{
+    if (!target) return;
+
+    // 全体の止めと同じ Option を掛ける。片方だけ効かない設定があると、
+    // «ヒットストップを切ったのに手応えが残る» という半端な状態になる。
+    const float seconds = Lerp(std::max(animMinSeconds, 0.0f),
+                               std::max(animMaxSeconds, 0.0f), Clamp01(strength01))
+                        * GameSettingsComponent::HitstopScale();
+    if (seconds <= 0.0f) return;
+
+    const EntityID id = target->GetID();
+    FrozenActor*   slot = nullptr;
+
+    for (FrozenActor& actor : m_frozen) {
+        if (actor.remaining > 0.0f && actor.target.Resolve(scene) == target) {
+            // 既に固めている相手。長い方を採るだけで、元の速度は上書きしない
+            // (今の速度は自分が書いた 0 なので、控え直すと二度と戻らなくなる)。
+            actor.remaining = std::max(actor.remaining, seconds);
+            return;
+        }
+        if (!slot && actor.remaining <= 0.0f) slot = &actor;
+    }
+    // 空きが無いのは «同時に 8 体へ当てた» ときだけ。固め損ねても手応えが 1 回
+    // 薄くなるだけなので、古いものを蹴り出してまで入れる価値はない。
+    if (!slot) return;
+
+    slot->target    = EntityRef{ id };
+    slot->restore   = animator.GetSpeed(target);
+    slot->remaining = seconds;
+    animator.SetSpeed(target, Clamp01(animSpeed));
+}
+
+inline void HitstopManagerComponent::ThawAnimations()
+{
+    for (FrozenActor& actor : m_frozen) {
+        if (actor.remaining <= 0.0f) continue;
+        if (GameObject* target = actor.target.Resolve(scene))
+            animator.SetSpeed(target, actor.restore);
+        actor.remaining = 0.0f;
+        actor.target    = {};
+    }
+    debugFrozen = 0;
+}
+
+inline void HitstopManagerComponent::TickAnimations(float dt)
+{
+    int alive = 0;
+    for (FrozenActor& actor : m_frozen) {
+        if (actor.remaining <= 0.0f) continue;
+
+        actor.remaining -= dt;
+        if (actor.remaining > 0.0f) {
+            ++alive;
+            continue;
+        }
+
+        // 相手が消えていても «戻し忘れ» にはならない (Resolve が空を返すだけ)。
+        if (GameObject* target = actor.target.Resolve(scene))
+            animator.SetSpeed(target, actor.restore);
+        actor.target = {};
+    }
+    debugFrozen = alive;
+}
+
 inline void HitstopManagerComponent::OnUpdate()
 {
-    if (m_remaining <= 0.0f) return;
-
     // WHY 実時間で数えるか: 止めている当人が縮んだ時間で残りを数えると、
     //     深く止めるほど解除が遅れる。timeScale 0 では永久に戻らない。
-    m_remaining -= std::max(time.UnscaledDeltaTime(), 0.0f);
+    //     アニメーションの止めも同じ ─ こちらは全体の止めと重なることがあり、
+    //     縮んだ時間で数えると «全体が止まっている間だけ固まり続ける» ことになる。
+    const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
+
+    TickAnimations(dt);
+
+    if (m_remaining <= 0.0f) return;
+
+    m_remaining -= dt;
     debugRemaining = std::max(m_remaining, 0.0f);
     if (m_remaining > 0.0f) return;
 

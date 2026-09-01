@@ -69,8 +69,6 @@ inline constexpr float kBossBeamScrollWrap = 1024.0f;
 /// WHY 高周波を主にするか: 低周波は «一撃» の器で、数秒回し続けると手が痺れて
 ///     接地点が寄ってきたことが読めなくなる。薙ぎは打撃ではなく «焼いている音»。
 inline constexpr float kBossBeamSweepLowRatio = 0.45f;
-/// 点火しきった瞬間に縁が光っている長さ。構えの 1 秒より短くないと予兆に埋もれる。
-inline constexpr float kBossBeamSurgeSeconds = 0.28f;
 
 class BossBeamComponent : public Script {
     FBZZ_SCRIPT(BossBeamComponent)
@@ -171,8 +169,6 @@ public:
     FBZZ_FIELD_RANGE(float, shakeInterval, 0.12f, "Shake Interval", 0.02f, 1.0f)
     FBZZ_TOOLTIP("照射中に揺れを継ぎ足す間隔。短くしすぎると要求が上限に達して"
                  "同じ照射の揺れが互いを押し出す")
-    FBZZ_FIELD_RANGE(float, ignitionSurge, 0.80f, "Ignition Surge", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("点火しきった瞬間、画面の縁をボスの極の色で走らせる強さ")
     FBZZ_FIELD_RANGE(float, ignitionShake, 0.50f, "Ignition Shake", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, burnDistortion, 0.70f, "Burn Distortion", 0.0f, 1.0f)
     FBZZ_TOOLTIP("線に触れているあいだ掛け続ける画面の歪み。抜けた瞬間に 0 へ戻る")
@@ -763,9 +759,6 @@ inline void BossBeamComponent::DriveFeedback(const Vector3& from, float dt)
     // «ずっと鳴っている音» に化けて、いつ来たのかが判らない。ここで段を付ける。
     if (!m_ignited && m_firing && ignite >= 1.0f) {
         m_ignited = true;
-        if (auto* screen = ScreenEffectManagerComponent::Instance())
-            screen->Surge(BeamHue(), Clamp01(ignitionSurge) * chargeNear,
-                          kBossBeamSurgeSeconds);
         if (auto* shake = CameraShakeManagerComponent::Instance())
             shake->Shake(Clamp01(ignitionShake) * chargeNear);
     }
