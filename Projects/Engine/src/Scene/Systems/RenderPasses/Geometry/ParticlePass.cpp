@@ -2396,21 +2396,14 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         });
     // 現在の HDR を退避 RT へコピーし、そのテクスチャを返す。失敗時は無効ハンドル。
     const auto captureSceneColor = [&]() -> renderer::ResourceHandle<renderer::TextureTag> {
-        static renderer::ResourceHandle<renderer::RenderTargetTag> sceneColorRT;
+        static renderer::SizedRenderTarget sceneColorRT;
         static std::uint64_t resetVersion = 0;
-        static std::uint32_t sceneColorWidth = 0;
-        static std::uint32_t sceneColorHeight = 0;
         static renderer::ResourceHandle<renderer::ShaderTag> copyShader;
         if (resetVersion != resources.GetResetVersion()) {
             resetVersion = resources.GetResetVersion();
-            sceneColorRT = {}; sceneColorWidth = 0; sceneColorHeight = 0;
             copyShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         }
-        if (!sceneColorRT.IsValid() || sceneColorWidth != ctx.width || sceneColorHeight != ctx.height) {
-            if (sceneColorRT.IsValid()) resources.Release(sceneColorRT);
-            sceneColorRT = resources.CreateRenderTarget(ctx.width, ctx.height, 1);
-            sceneColorWidth = ctx.width; sceneColorHeight = ctx.height;
-        }
+        (void)sceneColorRT.Ensure(resources, ctx.width, ctx.height, 1);
         if (!sceneColorRT.IsValid() || !copyShader.IsValid()) return {};
         renderer.SetRenderTarget(sceneColorRT, resources);
         renderer::DrawCall copy;
@@ -2421,6 +2414,22 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         return resources.GetColorTexture(sceneColorRT, 0);
     };
     if (needsSceneColor) particleSceneColor = captureSceneColor();
+
+    // 取り直しの枚数を絞る。
+    //
+    // WHY 上限が要るか: 退避はフルスクリーンのコピー (RT 切り替え 2 回 + 全画面描画) で、
+    //   «同時に歪んでいるエミッターの数» がそのままフレーム時間に乗る。爆発の演出に
+    //   陽炎の層が 1 枚入っているだけで «1 発 = 1 コピー» になり、ボスが一度に十数発
+    //   撒く場面 (GreenWare の Boss02) では画面コピーだけで十数回走った。
+    //   先着数枚までを取り直せば重なり順は十分に出る ─ それ以降は既に «粒でびっしり»
+    //   なので、屈折元が 1 世代古いことは絵として読み取れない。
+    constexpr int kMaxDistortionRecaptures = 3;
+    int distortionRecaptures = 0;
+    const auto recaptureSceneColor = [&] {
+        if (!needsSceneColor || distortionRecaptures >= kMaxDistortionRecaptures) return;
+        ++distortionRecaptures;
+        particleSceneColor = captureSceneColor();
+    };
 
     // シーン内の力場を 1 回だけ収集し、全エミッター (CPU/GPU) で共有する
     const std::vector<ActiveForceField> forceFields = GatherForceFields(ctx);
@@ -2514,7 +2523,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
                                           ShouldSortGpuParticles(*emitter, ctx.handles));
             ctx.statsParticleVisible += drawLimit;
             // CPU 経路と同じ理由でここでも取り直す (歪みの前後関係を保つ)。
-            if (emitter->runtime.material.distortion && needsSceneColor) particleSceneColor = captureSceneColor();
+            if (emitter->runtime.material.distortion) recaptureSceneColor();
             // メッシュパーティクルは同じ GameObject の MeshRenderer が形状を持つ
             // (meshParticlePath から解決する)。GPU 経路はこれをインスタンス描画する。
             const MeshRenderer* meshParticleRenderer = emitter->settings.meshParticlePath.empty()
@@ -2651,7 +2660,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
 
         // 歪みを使うエミッターは、その直前までに描いた絵を屈折させる。取り直さないと
         // 歪みを重ねたときの前後関係が失われる。
-        if (emitter->runtime.material.distortion && needsSceneColor) particleSceneColor = captureSceneColor();
+        if (emitter->runtime.material.distortion) recaptureSceneColor();
 
         // 自己影: このエミッターの密度を光源側 RT へ積む。頂点バッファに今の形が
         // 乗っている間しか測れないので、本番描画の直前に行う。
@@ -2714,24 +2723,17 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
 
     // 計数 RT とシェーダーは診断を有効にしたときだけ作る。
     // resetVersion を見て、デバイスロストや再初期化のあとで作り直す。
-    static renderer::ResourceHandle<renderer::RenderTargetTag> overdrawRT;
+    static renderer::SizedRenderTarget overdrawRT;
     static renderer::ResourceHandle<renderer::ShaderTag> countShader;
     static renderer::ResourceHandle<renderer::ShaderTag> heatmapShader;
     static std::uint64_t resetVersion = 0;
-    static std::uint32_t rtWidth = 0;
-    static std::uint32_t rtHeight = 0;
     if (resetVersion != resources.GetResetVersion()) {
         resetVersion = resources.GetResetVersion();
-        overdrawRT = {}; rtWidth = 0; rtHeight = 0;
         countShader = resources.LoadShader("Assets/Shaders/Debug/ParticleOverdraw.hlsl");
         heatmapShader = resources.LoadShader("Assets/Shaders/Debug/OverdrawHeatmap.hlsl");
     }
     if (!countShader.IsValid() || !heatmapShader.IsValid()) return;
-    if (!overdrawRT.IsValid() || rtWidth != ctx.width || rtHeight != ctx.height) {
-        if (overdrawRT.IsValid()) resources.Release(overdrawRT);
-        overdrawRT = resources.CreateRenderTarget(ctx.width, ctx.height, 1);
-        rtWidth = ctx.width; rtHeight = ctx.height;
-    }
+    (void)overdrawRT.Ensure(resources, ctx.width, ctx.height, 1);
     if (!overdrawRT.IsValid()) return;
 
     // 計数: 黒でクリアし、パーティクルを 1 枚あたり R+1 で積む。

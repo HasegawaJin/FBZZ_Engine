@@ -10,6 +10,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <bit>
+#include <cstddef>
 #include <imgui.h>
 #include <imgui_impl_dx12.h>
 #include <imgui_impl_win32.h>
@@ -100,13 +101,18 @@ void DX12ImGuiRenderer::ImGuiShutdown()
     m_imguiInitialized = false;
     m_textureCache.clear();
     m_freeDescriptors.clear();
+    m_retiredDescriptors.clear();
     m_nextDescriptor = 0;
+    m_frameCounter = 0;
     m_reportedHeapExhaustion = false;
 }
 
 void DX12ImGuiRenderer::ImGuiNewFrame()
 {
     if (!m_imguiInitialized) return;
+    ++m_frameCounter;
+    if (m_frameCounter % SWEEP_INTERVAL_FRAMES == 0)
+        SweepReleasedDescriptors();
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
 }
@@ -134,9 +140,54 @@ void DX12ImGuiRenderer::ImGuiRenderPlatformWindows()
     ImGui::RenderPlatformWindowsDefault();
 }
 
+// 解放済みリソースが握ったままのディスクリプタを回収する。
+//
+// WHY 要るか: ImGui 可視ヒープは 4096 枚しかないのに、キャッシュのキーはハンドル
+//     (id + 世代) で、寸法が変わるたびに作り直されるビューポート RT も、読み直すたびに
+//     別ハンドルになるサムネイルも、そのつど新しい 1 枚を «永久に» 取っていた。
+//     枯渇すると以降 CacheDescriptor が nullptr を返すため、作り直した側のビューポートだけ
+//     絵が出なくなり、ハンドルが据え置きのビューポートは映ったままになる
+//     (Scene View だけ消えて Game View は無事、という形で出た)。
+void DX12ImGuiRenderer::SweepReleasedDescriptors()
+{
+    if (ResourceManager* resources = ResourceManager::Active()) {
+        for (auto it = m_textureCache.begin(); it != m_textureCache.end();) {
+            const CacheKey& key = it->first;
+            const bool alive = key.kind == CACHE_KIND_RENDER_TARGET
+                ? resources->Get(ResourceHandle<RenderTargetTag>{ key.id, key.generation }) != nullptr
+                : resources->Get(ResourceHandle<TextureTag>{ key.id, key.generation }) != nullptr;
+            if (alive) {
+                ++it;
+                continue;
+            }
+            m_retiredDescriptors.push_back({ it->second, m_frameCounter });
+            it = m_textureCache.erase(it);
+        }
+    }
+
+    // WHY すぐ再利用へ回さないか: ディスクリプタの中身が読まれるのはコマンドリストの
+    //     実行時で、まだ GPU が走っているフレームの分を上書きするとその絵が壊れる。
+    //     CPU は FRAME_COUNT フレームより先へは進めないので、それを越えたものだけ返す。
+    size_t reclaimed = 0;
+    while (reclaimed < m_retiredDescriptors.size()
+           && m_frameCounter >= m_retiredDescriptors[reclaimed].frame + DX12Context::FRAME_COUNT + 1) {
+        m_freeDescriptors.push_back(m_retiredDescriptors[reclaimed].index);
+        ++reclaimed;
+    }
+    m_retiredDescriptors.erase(m_retiredDescriptors.begin(),
+                               m_retiredDescriptors.begin() + static_cast<std::ptrdiff_t>(reclaimed));
+}
+
 bool DX12ImGuiRenderer::AllocateDescriptor(
     uint32_t& index, D3D12_CPU_DESCRIPTOR_HANDLE& cpu, D3D12_GPU_DESCRIPTOR_HANDLE& gpu)
 {
+    // 定期回収を待たずに枯渇したときの最後の一手。回収分が再利用可能になるまで数フレーム
+    // かかるので今回の割り当ては失敗しうるが、恒久的な «絵が出ない» 状態にはならない。
+    if (m_freeDescriptors.empty() && m_context
+        && m_nextDescriptor >= m_context->GetImGuiDescriptorCapacity()) {
+        SweepReleasedDescriptors();
+    }
+
     if (!m_freeDescriptors.empty()) {
         index = m_freeDescriptors.back();
         m_freeDescriptors.pop_back();
@@ -195,7 +246,8 @@ void* DX12ImGuiRenderer::GetImTextureID(
     if (static_cast<uint32_t>(slot) >= target->GetColorCount()) return nullptr;
     if (m_context->IsFrameOpen())
         target->TransitionColorForRead(m_context->GetCommandList(), static_cast<uint32_t>(slot));
-    return CacheDescriptor({handle.id, handle.gen, static_cast<uint16_t>(slot), 0},
+    return CacheDescriptor({handle.id, handle.gen, static_cast<uint16_t>(slot),
+                            CACHE_KIND_RENDER_TARGET},
                            target->GetColorSrv(static_cast<uint32_t>(slot)));
 }
 
@@ -206,7 +258,7 @@ void* DX12ImGuiRenderer::GetImTextureID(
     if (!textureBase) return nullptr;
     auto* texture = static_cast<DX12Texture*>(textureBase);
     if (m_context->IsFrameOpen()) texture->TransitionForPixelRead(m_context->GetCommandList());
-    return CacheDescriptor({handle.id, handle.gen, 0, 1}, texture->GetSrvCpu());
+    return CacheDescriptor({handle.id, handle.gen, 0, CACHE_KIND_TEXTURE}, texture->GetSrvCpu());
 }
 
 } // namespace fbzz::renderer

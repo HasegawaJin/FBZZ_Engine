@@ -589,9 +589,10 @@ std::string AssetBrowserPanel::ResolveFallbackAssetDir(const std::string& childD
     std::filesystem::path current = util::FileSystem::PathFromUtf8(
         util::FileSystem::NormalizePathSeparators(m_rootPath));
 
-    // WHY: ctx.scriptsSourceDir / ctx.hlslSourceDir は hot reload の ToolchainLocator 成功後にだけ入る。
-    //      AssetBrowser は hot reload なしでも使うため、現在の Assets ルートから親をたどって
-    //      リポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
+    // WHY: ctx.scriptsSourceDir は hot reload の ToolchainLocator 成功後にだけ入る
+    //      (ctx.hlslSourceDir は ToolchainLocator に依存しなくなったが、hotReloadEnabled が
+    //      false なら依然として空)。AssetBrowser は hot reload なしでも使うため、現在の
+    //      Assets ルートから親をたどってリポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
     for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
         const std::filesystem::path candidate = current / "Assets" / childDirName;
         if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(candidate)))

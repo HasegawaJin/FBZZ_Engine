@@ -265,13 +265,27 @@ struct EditorContext {
     float gameViewportOriginY = 0.0f;
     float gameViewportWidth   = 1280.0f;
     float gameViewportHeight  = 720.0f;
+    // Game View がこのフレームに実際に描かれ、上の矩形が «今の画面» を指しているか。
+    // WHY: 寸法と原点はパネルが描いたときにしか書かれず、閉じている間は前回の値が残る。
+    //      カーソル拘束のように «外れると操作不能» な用途は、古い矩形を掴んではいけない。
+    bool  gameViewportRectValid = false;
     bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
+    // Play 開始時の «ウィンドウの並べ方»。カーソルの扱いはここでは決めない
+    // (ProjectSettings の [cursor] と playCursorOverride が決める)。
     enum class PlayFocusMode {
         Focused,
         Maximized,
         Unfocused
     };
     PlayFocusMode playFocusMode = PlayFocusMode::Maximized; // Unity の Play Focused / Maximized / Unfocused 相当
+    // Play 中のカーソル方針を、プロジェクト設定を書き換えずに一時的に外す口。
+    // WHY: Confined + 非表示のゲームを Editor で触るとき、Inspector を弄るたびに
+    //      ProjectSettings.toml を往復させたくない。
+    enum class PlayCursorOverride {
+        Project,   // ProjectSettings の [cursor] に従う
+        Free       // 常に None + 表示 (デバッグ用)
+    };
+    PlayCursorOverride playCursorOverride = PlayCursorOverride::Project;
     bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
     bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
     // Map Editing Mode の選択中ツール。

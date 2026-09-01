@@ -323,6 +323,12 @@ bool ProjectSettings::Load(const std::string& path)
         if (window.height < 1) window.height = 1;
     }
 
+    if (auto* cursorTbl = tbl["cursor"].as_table()) {
+        if (auto mode = (*cursorTbl)["lock_mode"].value<std::string>())
+            cursor.lockMode = core::CursorLockModeFromString(*mode);
+        cursor.visible = (*cursorTbl)["visible"].value_or(cursor.visible);
+    }
+
     if (auto* uiTbl = tbl["ui"].as_table())
         ui.defaultFontPath = (*uiTbl)["default_font"].value_or(ui.defaultFontPath);
 
@@ -448,6 +454,10 @@ bool ProjectSettings::Save(const std::string& path) const
     toml::table runtimeTbl;
     runtimeTbl.insert("start_scene", game.runtime.startScene);
 
+    toml::table cursorTbl;
+    cursorTbl.insert("lock_mode", core::ToString(cursor.lockMode));
+    cursorTbl.insert("visible",   cursor.visible);
+
     toml::table uiTbl;
     uiTbl.insert("default_font", ui.defaultFontPath);
 
@@ -462,6 +472,7 @@ bool ProjectSettings::Save(const std::string& path) const
     root.insert("screen",  std::move(screenTbl));
     root.insert("app",     std::move(appTbl));
     root.insert("window",  std::move(windowTbl));
+    root.insert("cursor",  std::move(cursorTbl));
     root.insert("ui",      std::move(uiTbl));
 
     NormalizeTomlFloats(root);

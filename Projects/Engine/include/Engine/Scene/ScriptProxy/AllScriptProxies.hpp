@@ -56,3 +56,5 @@
 #include <Engine/Scene/ScriptProxy/ScriptMotionWarpProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptSequenceProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptObjectMaskProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptSpringBoneProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptRagdollProxy.hpp>

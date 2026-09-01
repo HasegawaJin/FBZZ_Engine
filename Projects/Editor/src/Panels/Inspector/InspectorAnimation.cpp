@@ -529,6 +529,14 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
             ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
             ImGui::Checkbox("Playing", &anim.playing);
+            ImGui::Checkbox("External Pose", &anim.externalPose);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Script が骨のローカルを毎フレーム書く構成。\n"
+                    "クリップが無いフレームでもバインドポーズへ戻さず、\n"
+                    "今の骨からスキニングパレットを組み直す。\n"
+                    "クリップで表せない動き (経路に沿って形が変わる胴など) 用。");
+            }
             DrawRootMotionSettings(anim);
 
             if (!anim.currentStateName.empty()) {

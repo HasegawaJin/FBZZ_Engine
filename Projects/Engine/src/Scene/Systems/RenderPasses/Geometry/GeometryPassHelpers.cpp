@@ -530,12 +530,54 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, 
     return { worldCenter, mesh.boundsRadius * maxScale + (padding > 0.0f ? padding : 0.0f) };
 }
 
-bool ComputeSkinnedWorldBounds(const Transform& tf,
+bool ComputeSkinnedWorldBounds(const GameObject& go,
                                const SkinnedMeshRenderer& smr,
                                WorldBounds& outBounds,
                                float padding)
 {
     if (!smr.model) return false;
+
+    const Transform& tf = go.transform;
+
+    // 骨から作った球があればそちらを使う。
+    //
+    // WHY バインドポーズ球では足りないか: 下のループはバインドポーズの submesh バウンズを
+    //     Renderer の Transform で運んでいるだけで、骨がどこへ行ったかを見ていない。
+    //     Script が骨を数十 m 動かす構成では、球がバインドポーズの場所に取り残されて
+    //     «実体は見えているのに視錐台の外／遮蔽物の中» と判定され、部位ごとに明滅する。
+    //
+    // WHY 肉の厚みを足すか: Animator が持っているのは骨の広がりだけ。その周りの
+    //     ジオメトリは submesh のバインド半径ぶん外へ出る。Renderer ごとに違う値なので、
+    //     この Renderer が描く submesh の最大値をここで足す。
+    // GetComponent に const 版が無いので剥がす。ここは読むだけ。
+    for (GameObject* current = const_cast<GameObject*>(&go); current;
+         current = current->GetParent()) {
+        const auto* animator = current->GetComponent<AnimatorComponent>();
+        if (!animator) continue;
+        if (animator->skinnedBoundsRadius <= 0.0f) break;
+
+        float flesh = 0.0f;
+        for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot)
+            if (const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot))
+                flesh = (std::max)(flesh, meshPtr->boundsRadius);
+
+        // 球は Animator の owner のローカル空間にある。運ぶのもその Transform。
+        const math::Matrix4 world = current->transform.GetWorldMatrix();
+        const math::Vector3& c = animator->skinnedBoundsCenter;
+        outBounds.center = {
+            world.m[0][0]*c.x + world.m[0][1]*c.y + world.m[0][2]*c.z + world.m[0][3],
+            world.m[1][0]*c.x + world.m[1][1]*c.y + world.m[1][2]*c.z + world.m[1][3],
+            world.m[2][0]*c.x + world.m[2][1]*c.y + world.m[2][2]*c.z + world.m[2][3],
+        };
+        const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
+        const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
+        const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
+        const float maxScale = (std::max)({ sx, sy, sz });
+
+        outBounds.radius = (animator->skinnedBoundsRadius + flesh) * maxScale;
+        if (padding > 0.0f) outBounds.radius += padding;
+        return true;
+    }
 
     bool hasBounds = false;
     math::Vector3 weightedCenter = math::Vector3::ZERO;
@@ -664,7 +706,7 @@ bool IsSkinnedVisible(RenderPassContext& ctx,
 {
     WorldBounds bounds{};
     // bounds を作れない (CPU 頂点未生成など) 場合は安全側に倒して描く。
-    if (!ComputeSkinnedWorldBounds(go.transform, smr, bounds, ctx.cullingBoundsPadding))
+    if (!ComputeSkinnedWorldBounds(go, smr, bounds, ctx.cullingBoundsPadding))
         return true;
     return TestBoundsVisible(ctx, go, bounds);
 }

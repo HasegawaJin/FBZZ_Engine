@@ -103,6 +103,15 @@ void XAudio2Device::DestroyAllSourceVoices()
         }
     }
     m_voices.clear();
+
+    // WHY 取り置きも一緒に畳むか: プールの voice は «作ったときの送り先» を握っている。
+    //     ここが呼ばれるのはバスを作り直すときと終了時で、どちらもその送り先が
+    //     この直後に消える。残すと «消えた submix へ送る voice» を配ることになる。
+    for (auto& [key, pool] : m_voicePool) {
+        for (IXAudio2SourceVoice* voice : pool)
+            if (voice) voice->DestroyVoice();
+    }
+    m_voicePool.clear();
 }
 
 void XAudio2Device::DestroyBuses()
@@ -264,12 +273,24 @@ uint32_t XAudio2Device::PlayBuffer(
     XAUDIO2_SEND_DESCRIPTOR send{ 0, destination };
     XAUDIO2_VOICE_SENDS    sends{ 1, &send };
 
-    IXAudio2SourceVoice* voice = nullptr;
-    HRESULT hr = m_xaudio2->CreateSourceVoice(
-        &voice, &wfx, XAUDIO2_VOICE_USEFILTER, XAUDIO2_MAX_FREQ_RATIO,
-        nullptr, destination ? &sends : nullptr);
-    if (FAILED(hr)) return 0;
+    // 使い終わった voice を取っておいて回す。
+    //
+    // WHY 毎回作らないか: CreateSourceVoice と DestroyVoice は «オーディオ処理の
+    //     区切り» を待つ呼び出しで、ゲームスレッドがそこで止まる。1 発だけなら
+    //     気付かないが、«音が鳴った瞬間» に前の音の後始末 (DestroyVoice) がまとめて
+    //     走ると、そのフレームだけ数ミリ秒持っていかれる。GreenWare の Boss02 の
+    //     レーザーは «溜め + 発射 + 柱ごとの着弾» が短時間に固まるため、そこで
+    //     «SE が鳴るたびにカクつく» という形で出た (2026-09-01)。
+    const VoiceKey key{ fmt.channels, fmt.sampleRate, fmt.bitsPerSample, destination };
+    IXAudio2SourceVoice* voice = TakePooledVoice(key);
+    if (!voice) {
+        HRESULT created = m_xaudio2->CreateSourceVoice(
+            &voice, &wfx, XAUDIO2_VOICE_USEFILTER, XAUDIO2_MAX_FREQ_RATIO,
+            nullptr, destination ? &sends : nullptr);
+        if (FAILED(created)) return 0;
+    }
 
+    HRESULT hr = S_OK;
     XAUDIO2_BUFFER buf{};
     buf.AudioBytes = static_cast<UINT32>(bytes);
     buf.pAudioData = static_cast<const BYTE*>(pcmData);
@@ -291,7 +312,7 @@ uint32_t XAudio2Device::PlayBuffer(
     }
 
     const uint32_t id = m_nextId++;
-    m_voices[id] = VoiceEntry{ voice, loop, fmt.channels, destination, destinationChannels };
+    m_voices[id] = VoiceEntry{ voice, loop, fmt.channels, destination, destinationChannels, key };
     return id;
 }
 
@@ -299,8 +320,7 @@ void XAudio2Device::StopBuffer(uint32_t voiceId)
 {
     auto it = m_voices.find(voiceId);
     if (it == m_voices.end()) return;
-    it->second.voice->Stop();
-    it->second.voice->DestroyVoice();
+    RecycleVoice(it->second);
     m_voices.erase(it);
 }
 
@@ -381,9 +401,57 @@ bool XAudio2Device::IsPlaying(uint32_t voiceId)
     it->second.voice->GetState(&state);
     if (state.BuffersQueued != 0) return true;
 
-    it->second.voice->DestroyVoice();
+    RecycleVoice(it->second);
     m_voices.erase(it);
     return false;
+}
+
+void XAudio2Device::RecycleVoice(const VoiceEntry& entry)
+{
+    IXAudio2SourceVoice* voice = entry.voice;
+    if (!voice) return;
+
+    std::vector<IXAudio2SourceVoice*>& pool = m_voicePool[entry.key];
+    if (pool.size() >= kMaxPooledPerKey) {
+        voice->DestroyVoice();
+        return;
+    }
+
+    // 積む前に «次の音がそのまま鳴らせる» 状態へ戻す。
+    //
+    // WHY 全部戻すか: 使い回す以上、前の音の設定はすべて «次の音の初期値» になる。
+    //     1 つでも戻し忘れると «たまに小さい / たまに籠る / たまに左から鳴る» という、
+    //     鳴らした側のコードを見ても原因の分からない形で出る。
+    voice->Stop();
+    voice->FlushSourceBuffers();
+    voice->SetVolume(1.0f);
+    voice->SetFrequencyRatio(1.0f);
+    XAUDIO2_FILTER_PARAMETERS bypass{ LowPassFilter, 1.0f, 1.0f };
+    voice->SetFilterParameters(&bypass);
+
+    // パンはモノラル voice の出力行列として書かれている (SetPan)。中央へ戻す。
+    if (entry.channels == 1 && entry.destinationChannels >= 2) {
+        IXAudio2Voice* destination = entry.destination
+            ? entry.destination : static_cast<IXAudio2Voice*>(m_masterVoice);
+        if (destination) {
+            std::vector<float> matrix(entry.destinationChannels, 0.0f);
+            matrix[0] = std::sqrt(0.5f);
+            matrix[1] = std::sqrt(0.5f);
+            voice->SetOutputMatrix(destination, 1, entry.destinationChannels, matrix.data());
+        }
+    }
+
+    pool.push_back(voice);
+}
+
+IXAudio2SourceVoice* XAudio2Device::TakePooledVoice(const VoiceKey& key)
+{
+    const auto it = m_voicePool.find(key);
+    if (it == m_voicePool.end() || it->second.empty()) return nullptr;
+
+    IXAudio2SourceVoice* voice = it->second.back();
+    it->second.pop_back();
+    return voice;
 }
 
 void XAudio2Device::PurgeFinishedVoices()
@@ -393,7 +461,7 @@ void XAudio2Device::PurgeFinishedVoices()
         XAUDIO2_VOICE_STATE state{};
         it->second.voice->GetState(&state);
         if (state.BuffersQueued == 0) {
-            it->second.voice->DestroyVoice();
+            RecycleVoice(it->second);
             it = m_voices.erase(it);
         } else {
             ++it;

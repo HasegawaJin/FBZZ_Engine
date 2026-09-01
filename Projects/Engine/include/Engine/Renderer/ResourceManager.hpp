@@ -31,6 +31,7 @@ class IRenderer;
 class IShader;
 class IStructuredBuffer;
 class ITexture;
+struct Mesh;
 
 class ResourceManager {
 public:
@@ -138,7 +139,37 @@ public:
     [[nodiscard]] std::size_t GetLiveDebugResourceCount() const;
     [[nodiscard]] const core::AllocationInfo* GetLiveDebugResource(std::size_t index) const;
 
+    /// @name Mesh のバッファの寿命
+    ///
+    /// WHY 追跡が要るか:
+    ///   Mesh は «形» を持つだけの構造体で、ResourceManager を知らない。そのため
+    ///   デストラクタで頂点 / インデックスバッファを返せず、モデルの読み直しや
+    ///   手続きメッシュ・線の GameObject が畳まれるたびに、そのぶんが GPU に残り続けた。
+    ///   Mesh 側へ ResourceManager を持たせる案は «Mesh がマネージャーより長生きする»
+    ///   経路 (アセットの静的キャッシュ) で解放時に触りにいくため採らない。
+    ///   代わりに «誰も参照しなくなった Mesh» をこちらが毎フレーム拾って返す。
+    ///@{
+    /// バッファを作った / 作り直した直後に呼ぶ。同じ Mesh は上書きされる。
+    void TrackMeshBuffers(const std::shared_ptr<Mesh>& mesh);
+    /// 実体が消えた Mesh のバッファを返す。フレームに 1 回呼ぶ。@ret 返した本数。
+    std::size_t SweepOrphanedMeshBuffers();
+    /// 頂点 / インデックスバッファを返し、ハンドルを空にする。@ret 返した本数。
+    /// 唯一の所有者が畳まれるとき (Model / ModelAsset のデストラクタ) に呼ぶ。
+    std::size_t ReleaseMeshBuffers(Mesh& mesh);
+    ///@}
+
 private:
+    /// 追跡している Mesh 1 つぶん。
+    struct TrackedMesh {
+        /// 同一性の照合だけに使う。逆参照はしない (消えている可能性がある)。
+        const Mesh* key = nullptr;
+        std::weak_ptr<Mesh> mesh;
+        ResourceHandle<BufferTag> vertexBuffer;
+        ResourceHandle<BufferTag> indexBuffer;
+    };
+    std::size_t ReleaseTrackedMeshBuffers(TrackedMesh& tracked);
+    std::vector<TrackedMesh> m_trackedMeshes;
+
     static uint64_t Key(ResourceHandle<RenderTargetTag> h);
     void ReleaseOwnedResourcesForShutdown();
     void LogLiveDebugResources() const;
@@ -158,6 +189,41 @@ private:
     std::unordered_map<uint64_t, std::vector<ResourceHandle<TextureTag>>> m_renderTargetColors;
     std::unordered_map<uint64_t, ResourceHandle<TextureTag>> m_renderTargetDepths;
     uint64_t m_resetVersion = 1;
+};
+
+/// 寸法に合わせて作り直すレンダーターゲット。
+///
+/// WHY これを挟むか:
+///   「今の寸法を覚えておく」「変わったら *前のを返してから* 作り直す」「デバイスリセットの
+///   ときだけは返さずに作り直す」の 3 つは、オフスクリーン RT を持つパスすべてで同じ形に
+///   なる。各所で静的変数 (ハンドル + 幅 + 高さ + リセット版数) を並べて書いていたが、
+///   1 か所でも «返す» を書き落とすと、寸法が動くたびに RT が丸ごと GPU に残る。
+///   実際 CSM のアトラスがそれで漏れ、«ShadowPass だけ突然重い / エディタ再起動で直る»
+///   として出た (2026-09-01)。書き落としようのない形へ寄せる。
+///
+/// 使い方は毎フレーム `Ensure(...)` を呼ぶだけ。寸法が同じなら何もしない。
+/// ハンドルへ暗黙変換できるので、描画側 (SetRenderTarget / GetDepthTexture) はそのまま渡せる。
+class SizedRenderTarget {
+public:
+    /// @param colorCount 0 = 深度のみ。
+    /// @ret 今回作り直したら true (中身は未定義になるので、キャッシュを持つ側は捨てること)。
+    bool Ensure(ResourceManager& resources, uint32_t width, uint32_t height, uint32_t colorCount = 1);
+    /// 明示的に返す。以後の Ensure は作り直しから始まる。
+    void Release(ResourceManager& resources);
+
+    [[nodiscard]] ResourceHandle<RenderTargetTag> Handle() const { return m_handle; }
+    operator ResourceHandle<RenderTargetTag>() const { return m_handle; }
+    [[nodiscard]] bool     IsValid() const { return m_handle.IsValid(); }
+    [[nodiscard]] uint32_t Width()   const { return m_width; }
+    [[nodiscard]] uint32_t Height()  const { return m_height; }
+
+private:
+    ResourceHandle<RenderTargetTag> m_handle;
+    uint32_t m_width      = 0;
+    uint32_t m_height     = 0;
+    uint32_t m_colorCount = 0;
+    // ResourceManager の初期値は 1。0 から始めることで初回は必ず «リセット後» として通る。
+    uint64_t m_resetVersion = 0;
 };
 
 } // namespace fbzz::renderer

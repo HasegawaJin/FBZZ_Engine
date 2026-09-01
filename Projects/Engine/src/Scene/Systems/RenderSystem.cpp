@@ -21,6 +21,7 @@
 #include "RenderPasses/PostProcess/CloudNoiseBake.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "RenderPasses/Debug/SelectionPasses.hpp"
+#include "Engine/Core/Application.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -421,7 +422,7 @@ SceneShadowBounds ComputeSceneShadowBounds(Scene& scene, fbzz::LayerMask culling
         if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
             if (smr->enabled && smr->model) {
                 WorldBounds bounds{};
-                if (ComputeSkinnedWorldBounds(go.transform, *smr, bounds))
+                if (ComputeSkinnedWorldBounds(go, *smr, bounds))
                     AccumulateBounds(result, bounds);
             }
         }
@@ -670,13 +671,14 @@ void RenderSystem(Scene& scene,
     // 静的リソースの遅延初期化
     // =========================================================================
     static uint64_t sResourceResetVersion = resources.GetResetVersion();
-    static uint32_t sShadowMapResolution  = 0u;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
+    // シャドウアトラスは «解像度が動く» リソース (画質プリセットとエディタの Play/Stop)。
+    // 作り直しと解放は SizedRenderTarget に任せる ─ 自前で書くと、返し忘れた 1 か所が
+    // そのまま «ShadowPass だけ突然重い» になる。
+    static renderer::SizedRenderTarget shadowMapRT;
     // Spot / Point 用のシャドウアトラス。Directional の CSM とは面積を共有しない。
-    static uint32_t sPunctualShadowResolution = 0u;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> punctualShadowRT;
-    // ライト Cookie を敷き詰めるアトラス。寸法は固定なので確保は 1 回だけ。
-    static renderer::ResourceHandle<renderer::RenderTargetTag> lightCookieRT;
+    static renderer::SizedRenderTarget punctualShadowRT;
+    // ライト Cookie を敷き詰めるアトラス。寸法は固定なので作り直しは起きない。
+    static renderer::SizedRenderTarget lightCookieRT;
     static auto cookieBlitShader =
         resources.LoadShader("Assets/Shaders/Pipeline/Lighting/CookieBlit.hlsl");
     static auto shadowShader         = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
@@ -844,8 +846,7 @@ void RenderSystem(Scene& scene,
     // パーティクル自己影: 光源側の密度 RT と、光源行列を入れる専用 frame CB。
     // RenderPassHandles は毎フレーム作り直される値型なので、パス側で遅延生成すると RT を漏らす。
     // 解像度が固定なのは、拾うのが「煙の内部で光がどれだけ減るか」という低周波の情報だから。
-    static auto particleSelfShadowRT =
-        resources.CreateRenderTarget(RenderPassHandles::kSelfShadowResolution, RenderPassHandles::kSelfShadowResolution, 1);
+    static renderer::SizedRenderTarget particleSelfShadowRT;
     static auto particleSelfShadowFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
 
     // WHY: static handle は通常フレームでは再利用し、ResourceManager::Reset() 後だけ世代差分で再生成する。
@@ -966,30 +967,47 @@ void RenderSystem(Scene& scene,
         renderer::DepthMode::DEPTH_OFF
     });
 
-    // Spot / Point シャドウアトラス。解像度は CSM とは別設定なので、こちらだけ
-    // 変えたときにシェーダーの再ロード (下の大きい方のブロック) を巻き込まないよう分ける。
-    const uint32_t punctualShadowRes = (std::max)(rs.shadow.punctualMapResolution, 64u);
-    if (sResourceResetVersion != resources.GetResetVersion()
-        || sPunctualShadowResolution != punctualShadowRes || !punctualShadowRT.IsValid()) {
-        sPunctualShadowResolution = punctualShadowRes;
-        punctualShadowRT = resources.CreateRenderTarget(punctualShadowRes, punctualShadowRes, 0);
-    }
+    const bool resourcesWereReset = sResourceResetVersion != resources.GetResetVersion();
 
-    if (sResourceResetVersion != resources.GetResetVersion() || !lightCookieRT.IsValid()) {
-        lightCookieRT = resources.CreateRenderTarget(
-            kLightCookieAtlasWidth, kLightCookieAtlasHeight, 1);
+    // 誰も参照しなくなった Mesh のバッファを返す。手続きメッシュ・線は GameObject と
+    // 一緒に消えるが、Mesh 自身は ResourceManager を知らないので自分では返せない。
+    // フレームに 1 回、こちらから拾いに行く (ResourceManager::TrackMeshBuffers の WHY)。
+    if (!resourcesWereReset) (void)resources.SweepOrphanedMeshBuffers();
+
+    // シャドウアトラス。解像度は «動く» ─ 画質プリセットの適用 (GameSettings が各シーンの
+    // OnStart で行う) と、エディタの Play / Stop による RenderSettings の差し替えで、
+    // 1 回の試遊につき数回作り直される。1 枚で数十 MB あるので、返し忘れると数回の Play で
+    // 数百 MB 漏れ «ShadowPass だけ突然重い / エディタ再起動で直る» として出る (2026-09-01)。
+    // 解像度は CSM と punctual で別設定なので、それぞれ独立に作り直す。
+    const uint32_t punctualShadowRes = (std::max)(rs.shadow.punctualMapResolution, 64u);
+    (void)punctualShadowRT.Ensure(resources, punctualShadowRes, punctualShadowRes, 0);
+
+    if (lightCookieRT.Ensure(resources, kLightCookieAtlasWidth, kLightCookieAtlasHeight, 1)) {
         cookieBlitShader =
             resources.LoadShader("Assets/Shaders/Pipeline/Lighting/CookieBlit.hlsl");
-        // アトラスの中身はリソースリセットで失われる。焼き直し済みの記録も捨てる。
+        // アトラスの中身は作り直しで失われる。焼き直し済みの記録も捨てる。
         ReleaseLightCookieCache();
     }
 
-    const uint32_t shadowRes = rs.shadow.mapResolution;
-    if (sResourceResetVersion != resources.GetResetVersion() || sShadowMapResolution != shadowRes || !shadowMapRT.IsValid()) {
-        sResourceResetVersion = resources.GetResetVersion();
-        sShadowMapResolution  = shadowRes;
+    // WHY 下のシェーダー再ロードと分けるか (2026-09-01 の修正):
+    //   以前はアトラスとシェーダーが 1 つの if に同居していて、影の解像度が 1 段変わるだけで
+    //   シェーダー約 40 本・定数バッファ十数個・PSO・BRDF LUT まで作り直していた。
+    //   しかもどれも古いハンドルを返していないので、そのぶんが丸ごと漏れる。
+    (void)shadowMapRT.Ensure(resources, rs.shadow.mapResolution, rs.shadow.mapResolution, 0);
 
-        shadowMapRT = resources.CreateRenderTarget(shadowRes, shadowRes, 0);
+    (void)particleSelfShadowRT.Ensure(resources, RenderPassHandles::kSelfShadowResolution,
+                                      RenderPassHandles::kSelfShadowResolution, 1);
+
+    // シェーダー / 定数バッファ / PSO の作り直し。
+    //
+    // WHY «リセットされたときと初回» だけか: どれもデバイスリセットで実体ごと失われる
+    //   もので、返す相手はもう居ない (だから Release を書いていない)。逆に言えば、
+    //   実体が生きているうちにここを通してはいけない ─ 通ったぶんがそのまま漏れる。
+    static bool sStaticsLoaded = false;
+    if (resourcesWereReset || !sStaticsLoaded) {
+        sStaticsLoaded        = true;
+        sResourceResetVersion = resources.GetResetVersion();
+
         shadowShader        = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
         skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
         velocityShader        = resources.LoadShader("Assets/Shaders/Motion/Velocity.hlsl");
@@ -1086,8 +1104,6 @@ void RenderSystem(Scene& scene,
         decalMaterialCB = resources.CreateConstantBuffer(sizeof(DecalMaterialCB));
         decalReceiverCB = resources.CreateConstantBuffer(sizeof(DecalReceiverCB));
         volumetricCloudCB = resources.CreateConstantBuffer(176);
-        particleSelfShadowRT = resources.CreateRenderTarget(
-            RenderPassHandles::kSelfShadowResolution, RenderPassHandles::kSelfShadowResolution, 1);
         particleSelfShadowFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
 
         defaultPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
@@ -1919,13 +1935,38 @@ void RenderSystem(Scene& scene,
     //
     // WHY 生きた申告の有無で切るか: 申告が 1 件も無いフレームまでマスクを描くと、
     //     何も印されていない盤面で全画面のクリアと 1 パスぶんの帯域を毎フレーム捨てる。
+    // WHY 理由を出すか: 4 つの条件のどれで落ちても症状は «輪郭が出ない» の 1 種類で、
+    //     しかも黙って落ちる。どれが欠けているかを 1 行で名指しできるようにしておく。
+    const char* objectMaskOffReason = nullptr;
     const bool objectMaskEnabled = [&]() {
-        if (!objectMaskRT.IsValid() || !selectionMaskPso.IsValid()) return false;
-        if (!objectMaskShader.IsValid() && !objectMaskSkinnedShader.IsValid()) return false;
+        if (!objectMaskRT.IsValid())      { objectMaskOffReason = "objectMaskRT 未作成"; return false; }
+        if (!selectionMaskPso.IsValid())  { objectMaskOffReason = "selectionMaskPso 未作成"; return false; }
+        if (!objectMaskShader.IsValid() && !objectMaskSkinnedShader.IsValid()) {
+            objectMaskOffReason = "Pipeline/Mask のシェーダーが両方とも読めない";
+            return false;
+        }
         for (const renderer::RenderObjectMaskRequest& request : rs.objectMaskRequests)
             if (renderer::IsObjectMaskRequestLive(request, Time::frameCount)) return true;
+        objectMaskOffReason = rs.objectMaskRequests.empty()
+            ? "申告が 1 件も届いていない (RenderSettings の実体違い)"
+            : "申告はあるが全部フレーム落ち (提出が描画より後)";
         return false;
     }();
+    {
+        static const char* sLastReason = "";
+        const char* reason = objectMaskEnabled ? "(有効)" : objectMaskOffReason;
+        if (reason && reason != sLastReason) {
+            sLastReason = reason;
+            // 申告先と読み手が同じ実体かを直接見る。RenderSystem は settings を «複製» して
+            // 使うので、複製元のアドレスが Application の active と一致しているかが要点。
+            const void* readFrom = static_cast<const void*>(settings);
+            const void* active   = static_cast<const void*>(
+                core::Application::Get().GetActiveRenderSettings());
+            FBZZ_LOG_INFO("ObjectMask: %s (requests=%zu / 読み手=%p 申告先=%p %s)",
+                          reason, rs.objectMaskRequests.size(), readFrom, active,
+                          readFrom == active ? "一致" : "不一致");
+        }
+    }
 
     // 「有効なのに現在のパイプラインでは無視される設定」をログへ出す。
     // エディタを開かずにビルドする経路でも同じ落とし穴を踏むので、警告表示だけでは足りない。
@@ -2012,6 +2053,30 @@ void RenderSystem(Scene& scene,
         case renderer::CustomPassStage::PostProcess: customPostProcessIndices.push_back(i); break;
         }
     }
+    // WHY ここも出すか: マスクを «読む» パスが 1 本も無いと、RenderGraph は
+    //     ObjectMask パスごと刈る (BuildExecutionOrder)。輪郭が出ない症状は
+    //     «申告が届いていない» と «読み手が居なくて刈られた» で同じに見える。
+    {
+        static size_t sAfterOpaque = SIZE_MAX;
+        static size_t sSceneHdr    = SIZE_MAX;
+        static size_t sPostProcess = SIZE_MAX;
+        if (customAfterOpaqueIndices.size() != sAfterOpaque
+            || customSceneHdrIndices.size() != sSceneHdr
+            || customPostProcessIndices.size() != sPostProcess) {
+            sAfterOpaque = customAfterOpaqueIndices.size();
+            sSceneHdr    = customSceneHdrIndices.size();
+            sPostProcess = customPostProcessIndices.size();
+            std::string names;
+            for (const auto& custom : rs.postProcess.customEffects) {
+                names += custom.name;
+                names += custom.enabled ? "(on) " : "(off) ";
+            }
+            FBZZ_LOG_INFO("CustomPass: afterOpaque=%zu sceneHdr=%zu postProcess=%zu / %s",
+                          sAfterOpaque, sSceneHdr, sPostProcess,
+                          names.empty() ? "(効果なし)" : names.c_str());
+        }
+    }
+
     passHandles.selectionMaskPSO  = selectionMaskPso;
     passHandles.postprocPSO       = postprocPSO;
     // Cookie 焼き。全画面三角形を不透明で塗るだけなので postproc と同じ状態でよい。

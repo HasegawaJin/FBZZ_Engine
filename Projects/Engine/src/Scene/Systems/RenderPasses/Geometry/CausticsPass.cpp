@@ -136,9 +136,7 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     static std::string s_loadedPath;
     static renderer::ResourceHandle<renderer::TextureTag> s_loadedTexture;
     static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    static renderer::ResourceHandle<renderer::RenderTargetTag> s_causticsDepthRT;
-    static uint32_t s_causticsDepthW = 0;
-    static uint32_t s_causticsDepthH = 0;
+    static renderer::SizedRenderTarget s_causticsDepthRT;
     static uint64_t s_resetVersion = 0;
 
     if (s_resetVersion != ctx.resources.GetResetVersion()) {
@@ -149,16 +147,9 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
             s_loadedTexture = {};
         }
         depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-        s_causticsDepthW = 0;
-        s_causticsDepthH = 0;
     }
 
-    if (ctx.width != s_causticsDepthW || ctx.height != s_causticsDepthH || !s_causticsDepthRT.IsValid()) {
-        if (s_causticsDepthRT.IsValid()) ctx.resources.Release(s_causticsDepthRT);
-        s_causticsDepthRT = ctx.resources.CreateRenderTarget(ctx.width, ctx.height, 0);
-        s_causticsDepthW = ctx.width;
-        s_causticsDepthH = ctx.height;
-    }
+    (void)s_causticsDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, 0);
 
     renderer::ResourceHandle<renderer::TextureTag> causticsTex = fallbackCaustics;
     if (!source.texturePath.empty()) {

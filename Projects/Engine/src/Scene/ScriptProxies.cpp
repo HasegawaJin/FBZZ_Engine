@@ -74,9 +74,11 @@
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
 #include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
+#include <Engine/Scene/Components/RagdollComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/SequencePlayerComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/PresentationComponents.hpp>
@@ -7033,7 +7035,19 @@ void SubmitObjectMaskRequest(GameObject* target, const math::Vector4& color,
 {
     if (!target || !target->IsValid()) return;
     auto* settings = ActiveRenderSettings();
-    if (!settings) return;
+    if (!settings) {
+        // 申告先が無い。Play 中は EditorApp が、配布ビルドは StandaloneProjectModule が
+        // 差す。ここが null だと «Set は呼べているのに何も起きない» になり、
+        // 呼んだ側からは成功と区別が付かない。
+        static bool sWarned = false;
+        if (!sWarned) {
+            sWarned = true;
+            FBZZ_LOG_WARN("ObjectMask: 申告先の RenderSettings がありません "
+                          "(Application::SetActiveRenderSettings が呼ばれていない)。"
+                          "この間のマスク申告はすべて捨てられます");
+        }
+        return;
+    }
 
     const EntityID id = target->GetID();
 
@@ -7094,6 +7108,255 @@ void ScriptObjectMaskProxy::Clear() const
 void ScriptObjectMaskProxy::Clear(GameObject& target) const
 {
     WithdrawObjectMaskRequest(&target);
+}
+
+// ---------------------------------------------------------------------------
+// ScriptSpringBoneProxy
+// ---------------------------------------------------------------------------
+namespace {
+SpringBoneChain* FindSpringChain(const Script* script, std::string_view rootBoneName)
+{
+    auto* spring = SelfComponent<SpringBoneComponent>(script);
+    if (!spring) return nullptr;
+    for (SpringBoneChain& chain : spring->chains)
+        if (chain.rootBoneName == rootBoneName) return &chain;
+    return nullptr;
+}
+} // namespace
+
+void ScriptSpringBoneProxy::EnsureChain(std::string_view rootBoneName, int maxDepth) const
+{
+    if (!script || !script->m_gameObject || rootBoneName.empty()) return;
+
+    auto* spring = script->m_gameObject->GetComponent<SpringBoneComponent>();
+    if (!spring) spring = &script->m_gameObject->AddComponent<SpringBoneComponent>();
+
+    for (SpringBoneChain& chain : spring->chains) {
+        if (chain.rootBoneName != rootBoneName) continue;
+        // 段数が変わったら組み直させる。nodes を空にするのが «組み直せ» の合図。
+        if (chain.maxDepth != maxDepth) {
+            chain.maxDepth = maxDepth;
+            chain.nodes.clear();
+        }
+        return;
+    }
+
+    SpringBoneChain chain{};
+    chain.rootBoneName = std::string(rootBoneName);
+    chain.maxDepth     = maxDepth;
+    // 既定は «動かない»。Script が作るチェーンは、使う瞬間に weight を上げて使う。
+    chain.weight       = 0.0f;
+    chain.gravityPower = 0.0f;
+    spring->chains.push_back(std::move(chain));
+}
+
+bool ScriptSpringBoneProxy::HasChain(std::string_view rootBoneName) const
+{
+    return FindSpringChain(script, rootBoneName) != nullptr;
+}
+
+void ScriptSpringBoneProxy::SetChainEnabled(std::string_view rootBoneName, bool enabled) const
+{
+    if (auto* chain = FindSpringChain(script, rootBoneName)) chain->enabled = enabled;
+}
+
+bool ScriptSpringBoneProxy::IsChainEnabled(std::string_view rootBoneName) const
+{
+    const auto* chain = FindSpringChain(script, rootBoneName);
+    return chain && chain->enabled;
+}
+
+void ScriptSpringBoneProxy::SetWeight(std::string_view rootBoneName, float weight) const
+{
+    if (auto* chain = FindSpringChain(script, rootBoneName))
+        chain->weight = math::Clamp01(weight);
+}
+
+float ScriptSpringBoneProxy::GetWeight(std::string_view rootBoneName) const
+{
+    const auto* chain = FindSpringChain(script, rootBoneName);
+    return chain ? chain->weight : 0.0f;
+}
+
+void ScriptSpringBoneProxy::SetSpring(std::string_view rootBoneName,
+                                      float stiffness, float damping) const
+{
+    if (auto* chain = FindSpringChain(script, rootBoneName)) {
+        chain->stiffness = math::Clamp01(stiffness);
+        chain->damping   = math::Clamp01(damping);
+    }
+}
+
+void ScriptSpringBoneProxy::SetLimitAngle(std::string_view rootBoneName, float degrees) const
+{
+    if (auto* chain = FindSpringChain(script, rootBoneName))
+        chain->limitAngle = math::Clamp(degrees, 0.0f, 180.0f);
+}
+
+void ScriptSpringBoneProxy::SetRadius(std::string_view rootBoneName, float radius) const
+{
+    if (auto* chain = FindSpringChain(script, rootBoneName))
+        chain->radius = radius < 0.0f ? 0.0f : radius;
+}
+
+void ScriptSpringBoneProxy::SetForce(std::string_view rootBoneName,
+                                     const math::Vector3& direction,
+                                     float power) const
+{
+    auto* chain = FindSpringChain(script, rootBoneName);
+    if (!chain) return;
+    chain->gravityDirection = direction;
+    chain->gravityPower     = power;
+}
+
+void ScriptSpringBoneProxy::ClearForce(std::string_view rootBoneName) const
+{
+    if (auto* chain = FindSpringChain(script, rootBoneName)) chain->gravityPower = 0.0f;
+}
+
+void ScriptSpringBoneProxy::ResetAll() const
+{
+    // hasLastOwnerPosition を落とすと、次の更新で全チェーンが静止姿勢へ戻る
+    // (SpringBoneSystem のテレポート復帰と同じ経路)。
+    if (auto* spring = SelfComponent<SpringBoneComponent>(script))
+        spring->hasLastOwnerPosition = false;
+}
+
+void ScriptSpringBoneProxy::SetEnabled(bool enabled) const
+{
+    if (auto* spring = SelfComponent<SpringBoneComponent>(script)) spring->enabled = enabled;
+}
+
+bool ScriptSpringBoneProxy::IsEnabled() const
+{
+    const auto* spring = SelfComponent<SpringBoneComponent>(script);
+    return spring && spring->enabled;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptRagdollProxy
+// ---------------------------------------------------------------------------
+namespace {
+RagdollComponent* EnsureRagdoll(const Script* script)
+{
+    if (!script) return nullptr;
+    // NOTE: m_gameObject は protected で、friend なのは Proxy 型だけ。free function から
+    //       直接は引けないため、公開されている scene プロキシ経由で取り出す。
+    GameObject* object = script->scene.Self();
+    if (!object || !object->IsValid()) return nullptr;
+    if (auto* ragdoll = object->GetComponent<RagdollComponent>()) return ragdoll;
+    return &object->AddComponent<RagdollComponent>();
+}
+} // namespace
+
+void ScriptRagdollProxy::Begin(float holdSeconds, float maxWeight, float gravityScale) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+    ragdoll->beginRequested = true;
+    ragdoll->endRequested   = false;
+    ragdoll->holdRemaining  = holdSeconds > 0.0f ? holdSeconds : 0.0f;
+    ragdoll->activationWeight  = math::Clamp01(maxWeight);
+    ragdoll->activationGravity = gravityScale < 0.0f ? 0.0f : gravityScale;
+}
+
+void ScriptRagdollProxy::End() const
+{
+    auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    if (!ragdoll || ragdoll->phase == RagdollPhase::Idle) return;
+    ragdoll->endRequested  = true;
+    ragdoll->holdRemaining = 0.0f;
+}
+
+void ScriptRagdollProxy::Push(const math::Vector3& velocity) const
+{
+    auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    if (!ragdoll) return;
+    ragdoll->pendingImpulses.push_back(RagdollImpulse{ math::Vector3::ZERO, velocity, 0.0f });
+}
+
+void ScriptRagdollProxy::PushAt(const math::Vector3& origin,
+                                const math::Vector3& velocity,
+                                float radius) const
+{
+    auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    if (!ragdoll) return;
+    ragdoll->pendingImpulses.push_back(
+        RagdollImpulse{ origin, velocity, radius < 0.0f ? 0.0f : radius });
+}
+
+bool ScriptRagdollProxy::IsActive() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll && ragdoll->IsActive();
+}
+
+float ScriptRagdollProxy::GetWeight() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll ? ragdoll->weight : 0.0f;
+}
+
+const char* ScriptRagdollProxy::GetStatus() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    // «コンポーネントがそもそも無い» は «止まっている» と区別が付かないと調べようがない。
+    if (!ragdoll) return "NoComponent";
+    switch (ragdoll->runtimeStatus) {
+    case RagdollStatus::Idle:          return "Idle";
+    case RagdollStatus::Disabled:      return "Disabled";
+    case RagdollStatus::NotPlaying:    return "NotPlaying";
+    case RagdollStatus::NoAnimator:    return "NoAnimator";
+    case RagdollStatus::NoSkinnedMesh: return "NoSkinnedMesh";
+    case RagdollStatus::NoParticles:   return "NoParticles";
+    case RagdollStatus::NoBones:       return "NoBones";
+    case RagdollStatus::Running:       return "Running";
+    }
+    return "Unknown";
+}
+
+int ScriptRagdollProxy::GetParticleCount() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll ? ragdoll->runtimeParticleCount : 0;
+}
+
+void ScriptRagdollProxy::SetRoot(const char* rootBoneName, int maxDepth) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+    const std::string next = rootBoneName ? rootBoneName : "";
+    if (ragdoll->rootBoneName == next && ragdoll->maxDepth == maxDepth) return;
+    ragdoll->rootBoneName = next;
+    ragdoll->maxDepth     = maxDepth;
+    // 質点の並びが変わる。空にするのが «組み直せ» の合図。
+    ragdoll->particles.clear();
+    ragdoll->links.clear();
+}
+
+void ScriptRagdollProxy::SetGravity(float gravity) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script))
+        ragdoll->gravity = gravity < 0.0f ? 0.0f : gravity;
+}
+
+void ScriptRagdollProxy::SetBlend(float blendIn, float blendOut) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+    ragdoll->blendIn  = blendIn  < 0.0f ? 0.0f : blendIn;
+    ragdoll->blendOut = blendOut < 0.0f ? 0.0f : blendOut;
+}
+
+void ScriptRagdollProxy::SetEnabled(bool enabled) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script)) ragdoll->enabled = enabled;
+}
+
+bool ScriptRagdollProxy::IsEnabled() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll && ragdoll->enabled;
 }
 
 } // namespace fbzz::scene

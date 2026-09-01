@@ -40,6 +40,7 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/RagdollComponent.hpp>
 #include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
@@ -1502,6 +1503,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             animTbl.insert("speed",     (double)anim->speed);
             animTbl.insert("enabled",   anim->enabled);
             animTbl.insert("playing",   anim->playing);
+            animTbl.insert("externalPose", anim->externalPose);
             // ── Root Motion ───────────────────────────────────────────────
             animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
             animTbl.insert("rootMotionSource",   (int64_t)anim->rootMotion.source);
@@ -1796,6 +1798,25 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             springTbl.insert("colliders", std::move(collidersArr));
 
             goTbl.insert("SpringBoneComponent", std::move(springTbl));
+        }
+
+        // RagdollComponent
+        if (auto* ragdoll = go.GetComponent<RagdollComponent>()) {
+            toml::table ragdollTbl;
+            ragdollTbl.insert("enabled",          ragdoll->enabled);
+            ragdollTbl.insert("rootBoneName",     ragdoll->rootBoneName);
+            ragdollTbl.insert("maxDepth",         (int64_t)ragdoll->maxDepth);
+            ragdollTbl.insert("gravity",          (double)ragdoll->gravity);
+            ragdollTbl.insert("damping",          (double)ragdoll->damping);
+            ragdollTbl.insert("iterations",       (int64_t)ragdoll->iterations);
+            ragdollTbl.insert("braceStiffness",   (double)ragdoll->braceStiffness);
+            ragdollTbl.insert("boneRadius",       (double)ragdoll->boneRadius);
+            ragdollTbl.insert("groundOffset",     (double)ragdoll->groundOffset);
+            ragdollTbl.insert("groundFriction",   (double)ragdoll->groundFriction);
+            ragdollTbl.insert("blendIn",          (double)ragdoll->blendIn);
+            ragdollTbl.insert("blendOut",         (double)ragdoll->blendOut);
+            ragdollTbl.insert("simulateInEditor", ragdoll->simulateInEditor);
+            goTbl.insert("RagdollComponent", std::move(ragdollTbl));
         }
 
         // ScriptComponent
@@ -2694,6 +2715,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             anim.speed     = (float)(*animTbl)["speed"].value_or(1.0);
             anim.enabled   = (*animTbl)["enabled"].value_or(true);
             anim.playing   = (*animTbl)["playing"].value_or(true);
+            anim.externalPose = (*animTbl)["externalPose"].value_or(false);
 
             // ── Root Motion ───────────────────────────────────────────────
             const auto readEnum = [&animTbl](const char* key, int fallback) {
@@ -3043,6 +3065,28 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 }
             }
             go.AddComponent<SpringBoneComponent>(std::move(spring));
+        }
+
+        // RagdollComponent
+        //
+        // 実行状態 (particles / links / phase) は保存しない。ラグドールは倒れる数秒の
+        // ための一時状態で、シーンに焼き付いていると Play した瞬間に崩れている。
+        if (auto* ragdollTbl = (*goTbl)["RagdollComponent"].as_table()) {
+            RagdollComponent ragdoll{};
+            ragdoll.enabled        = (*ragdollTbl)["enabled"].value_or(true);
+            ragdoll.rootBoneName   = (*ragdollTbl)["rootBoneName"].value_or(std::string{});
+            ragdoll.maxDepth       = (int)(*ragdollTbl)["maxDepth"].value_or((int64_t)0);
+            ragdoll.gravity        = (float)(*ragdollTbl)["gravity"].value_or(26.0);
+            ragdoll.damping        = (float)(*ragdollTbl)["damping"].value_or(0.04);
+            ragdoll.iterations     = (int)(*ragdollTbl)["iterations"].value_or((int64_t)10);
+            ragdoll.braceStiffness = (float)(*ragdollTbl)["braceStiffness"].value_or(0.55);
+            ragdoll.boneRadius     = (float)(*ragdollTbl)["boneRadius"].value_or(0.28);
+            ragdoll.groundOffset   = (float)(*ragdollTbl)["groundOffset"].value_or(0.0);
+            ragdoll.groundFriction = (float)(*ragdollTbl)["groundFriction"].value_or(0.55);
+            ragdoll.blendIn        = (float)(*ragdollTbl)["blendIn"].value_or(0.06);
+            ragdoll.blendOut       = (float)(*ragdollTbl)["blendOut"].value_or(0.40);
+            ragdoll.simulateInEditor = (*ragdollTbl)["simulateInEditor"].value_or(false);
+            go.AddComponent<RagdollComponent>(std::move(ragdoll));
         }
 
         // TerrainComponent

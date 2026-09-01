@@ -1,0 +1,59 @@
+/// @file    ScriptRagdollProxy.hpp
+/// @brief   Script から RagdollComponent を起動・停止し、衝撃を与えるプロキシ
+/// @author  Hasegawa Jin
+/// @date    2026-09-01
+///
+/// ラグドールは «倒れる数秒» のための一時状態で、常時走らせるものではない。
+/// Begin() で今の姿勢を捕獲して物理へ渡し、End() でアニメーションへ戻す。
+#pragma once
+
+#include <Math/Vector3.hpp>
+
+namespace fbzz::scene {
+
+class Script;
+
+struct ScriptRagdollProxy {
+    Script* script = nullptr;
+
+    /// 今の姿勢を捕獲して落とし始める。RagdollComponent が無ければ追加する。
+    ///
+    /// @param holdSeconds  0 より大きければその秒数で自動的にブレンドアウトへ入る。
+    /// @param maxWeight    Hold 中の適用率 [0,1]。1 で完全に物理、0.4 なら
+    ///                     «再生中のクリップの上に押された分だけ乗る» (よろめき)。
+    /// @param gravityScale この起動での重力倍率。よろめきは 0 に近い値にしないと、
+    ///                     押された動きではなく «崩れ落ちて戻る» 動きになる。
+    void Begin(float holdSeconds = 0.0f,
+               float maxWeight = 1.0f,
+               float gravityScale = 1.0f) const;
+    /// アニメーションへ戻し始める。blendOut 秒かけて FK ポーズへ寄る。
+    void End() const;
+
+    /// 全ての質点へ一律に速度を足す [m/s]。倒す «向き» はここで決める。
+    void Push(const math::Vector3& velocity) const;
+    /// origin から radius の内側だけに、距離で減衰させた速度を足す。
+    void PushAt(const math::Vector3& origin,
+                const math::Vector3& velocity,
+                float radius) const;
+
+    [[nodiscard]] bool  IsActive() const;
+    /// 適用率 [0,1]。0 で完全にアニメーション、1 で完全に物理。
+    [[nodiscard]] float GetWeight() const;
+
+    /// 前回の更新で何をしたか。骨が動かないときに理由を名指しする
+    /// ("NoAnimator" / "NoSkinnedMesh" / "NoParticles" / "NoBones" / "Running" など)。
+    /// 戻り値は静的な文字列なので寿命を気にしなくてよい。
+    [[nodiscard]] const char* GetStatus() const;
+    /// 組めた質点の数。0 なら根ボーンが見つかっていない。
+    [[nodiscard]] int GetParticleCount() const;
+
+    /// 落とし始める骨と、そこから何段まで落とすか (0 で葉まで)。
+    void SetRoot(const char* rootBoneName, int maxDepth = 0) const;
+    void SetGravity(float gravity) const;
+    void SetBlend(float blendIn, float blendOut) const;
+
+    void SetEnabled(bool enabled) const;
+    [[nodiscard]] bool IsEnabled() const;
+};
+
+} // namespace fbzz::scene

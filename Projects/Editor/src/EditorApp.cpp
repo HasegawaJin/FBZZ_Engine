@@ -1046,7 +1046,7 @@ void EditorApp::BeginFrame()
         ImGui::NewFrame();
     }
 
-    UpdatePlayFocusModeControls();
+    UpdatePlayCursorControls();
 
     // WHY: Play/Pause の識別色もブランドテーマ側へ集約し、通常時に旧配色を復元しない。
     EditorTheme::ApplyWorkspaceTint(
@@ -1133,6 +1133,8 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     ctx.sceneViewportHovered = false;
     ctx.hierarchyFocused     = false;
     ctx.assetBrowserFocused  = false;
+    ctx.gameViewportRectValid = false;
+    ctx.gameViewportFocused   = false;
 
     // Build Output パネルの表示要求を処理する (StatusBar クリック / 失敗通知バーの Show)。
     if (m_buildOutputPanel) {
@@ -1485,42 +1487,112 @@ void EditorApp::BuildPlayViewportLayout(uint32_t dockId)
     ImGui::DockBuilderFinish(root);
 }
 
-void EditorApp::UpdatePlayFocusModeControls()
+void EditorApp::UpdatePlayCursorControls()
 {
-    const bool focusedPlay =
-        m_ctx.playFocusMode == EditorContext::PlayFocusMode::Focused
-        && !m_playMode.IsInEditor()
-        && !m_playMode.HasPendingRestore();
+    const bool playing =
+        !m_playMode.IsInEditor() && !m_playMode.HasPendingRestore();
 
-    if (focusedPlay && !m_playFocusedCursorHidden) {
-        // WHY: 非表示だけでは OS カーソルが画面端に到達して入力が止まる。
-        //      Unity の Focused 実行と同様にカーソルを隠し、ウィンドウ中央へロックする。
-        core::Cursor::SetLockMode(core::CursorLockMode::Locked);
-        core::Cursor::SetVisible(false);
-        m_playFocusedCursorHidden = true;
-    } else if (!focusedPlay && m_playFocusedCursorHidden) {
-        core::Cursor::ResetForEditor();
-        m_playFocusedCursorHidden = false;
+    if (!playing) {
+        if (m_playCursorApplied) {
+            core::Cursor::ResetForEditor();
+            m_playCursorApplied  = false;
+            m_playCursorReleased = false;
+            m_playCursorPolicy   = {};
+        }
+        // WHY 編集中も抑制を張り続けるか: FBZZ_EXECUTE_ALWAYS() の Script は Play を
+        //     押していなくても OnStart / OnUpdate が走る。そこで cursor プロキシを
+        //     触られると、シーンを開いただけで Editor の OS カーソルが消えたり
+        //     ウィンドウ中央へ拘束されたりして、編集そのものができなくなる。
+        //     要求は Cursor 側に残しておき (Play で Apply が上書きする)、
+        //     «OS へ流すか» だけをここで止める。
+        core::Cursor::SetSuppressed(true);
+        return;
     }
 
-    if (focusedPlay)
-        core::Cursor::ApplyLock();
-
-    if (focusedPlay && m_ctx.activeScene && input::Input::KeyDown(input::KeyCode::ESCAPE)) {
-        // WHAT: Focused 実行中の Escape はゲーム入力の解放と PlayMode 終了を兼ねる。
-        //
-        // WHY: 終了時の後始末は StopPlayMode() が 1 箇所に集めている。
-        //      m_playMode.Stop() だけを直接呼ぶと、そこに集めてある
-        //        ・ループ Voice の一括停止 (AudioSystem は SimOnly なので、
-        //          EditMode へ戻った後では止められない)
-        //        ・Play 中にスクリプトが変えた画質・明るさの破棄
-        //      が丸ごと抜ける。結果、Escape で抜けたときだけ BGM と SE が
-        //      編集操作中まで鳴り続け、画質も Play 中のまま残る。
-        //      抜ける «経路» が増えても後始末が漏れないよう、必ずここを通す。
-        StopPlayMode();
-        core::Cursor::ResetForEditor();
-        m_playFocusedCursorHidden = false;
+    // WHY 毎フレーム渡すか: Game View は Dock のドラッグでもウィンドウのリサイズでも動く。
+    //     拘束範囲を «見えているゲーム画面» に合わせ続けないと、Confined の縁と絵の縁、
+    //     Locked の中心と viewport の中心が静かにずれる。
+    // WHY 描かれたフレームだけか: 矩形はパネルが描いたときにしか更新されない。Play 開始直後の
+    //     ように «まだ一度も描いていない» 状態で渡すと、既定値 (デスクトップ左上 1280x720) へ
+    //     カーソルを閉じ込めてしまう。描けていない間はウィンドウ全体を使わせる。
+    if (m_ctx.gameViewportRectValid) {
+        core::Cursor::SetClipRegion(m_ctx.gameViewportOriginX, m_ctx.gameViewportOriginY,
+                                    m_ctx.gameViewportWidth,   m_ctx.gameViewportHeight);
+    } else {
+        core::Cursor::ClearClipRegion();
     }
+
+    // 押し込むのは «初期値が変わったとき» だけ。毎フレーム押し込むとスクリプトの
+    // cursor.SetLockMode が即座に潰される。逆に Play 開始の 1 回きりにすると、
+    // Play 中に Project Settings を直しても次の Play まで効かない。
+    const core::CursorPolicy policy = m_ctx.projectSettings.cursor;
+    const bool policyChanged = m_playCursorPolicy.lockMode != policy.lockMode
+                            || m_playCursorPolicy.visible  != policy.visible;
+    if (!m_playCursorApplied || policyChanged) {
+        core::Cursor::Apply(policy);
+        m_playCursorPolicy   = policy;
+        m_playCursorApplied  = true;
+        m_playCursorReleased = false;
+    }
+
+    // WHY フォーカスで切るか: Play Unfocused は «ゲームは回すが編集は続ける» モードで、
+    //     ここで無条件に拘束するとその選択が意味を失う。Game View を離れたら OS へは
+    //     効かせず、戻ってきたらゲームの要求どおりに張り直す (要求自体は Cursor が保持)。
+    // WHY 離れたら解放を畳むか: Escape の «解放» は今この画面を離れるための一時措置。
+    //     一度 Game View から出た時点で役目は終わりで、次にクリックして戻れば
+    //     またゲームがカーソルを持つ。
+    // WHY Cursor: Free を «初期値» でなく抑制で表すか: 初期値として押し込むと、
+    //     スクリプトの OnStart が cursor.SetLockMode を呼んだ瞬間に上書きされて、
+    //     デバッグのために外したはずのカーソルが戻ってこない。
+    const bool freeOverride =
+        m_ctx.playCursorOverride == EditorContext::PlayCursorOverride::Free;
+    const bool gameFocused = m_ctx.gameViewportFocused;
+    if (!gameFocused)
+        m_playCursorReleased = false;
+    core::Cursor::SetSuppressed(freeOverride || !gameFocused || m_playCursorReleased);
+
+    // Locked の中央戻しはここが担い、Confined も他アプリに ClipCursor を取られると
+    // 黙って外れる。抑制中は ApplyLock 自身が何もしない。
+    core::Cursor::ApplyLock();
+
+    // WHY WantTextInput を見るか: Input::KeyDown は Win32 の生状態で、ImGui のフィールドを
+    //     編集中かどうかを知らない。Inspector で名前を打っている最中の «編集キャンセルの
+    //     Escape» が、そのまま Play の停止まで巻き込む。
+    if (!m_ctx.activeScene
+        || ImGui::GetIO().WantTextInput
+        || !input::Input::KeyDown(input::KeyCode::ESCAPE))
+        return;
+
+    // Escape を横取りしてよいのは «今まさにカーソルを取り上げているとき» と、
+    // 従来どおり Focused 実行のとき。自由なカーソルで Maximized / Unfocused を
+    // 回しているなら Escape はゲームのもので、終了はツールバー / Ctrl+P が担う。
+    const core::CursorPolicy request{ core::Cursor::GetLockMode(), core::Cursor::IsVisible() };
+    if (!core::Cursor::IsSuppressed() && request.CapturesCursor()) {
+        // 1 回目は解放だけ。ゲームは動かしたまま Inspector を触りに行ける。
+        m_playCursorReleased = true;
+        core::Cursor::SetSuppressed(true);
+        return;
+    }
+
+    const bool escapeStops =
+        m_playCursorReleased
+        || m_ctx.playFocusMode == EditorContext::PlayFocusMode::Focused;
+    if (!escapeStops)
+        return;
+
+    // WHY StopPlayMode() を通すか: 終了時の後始末は StopPlayMode() が 1 箇所に集めている。
+    //      m_playMode.Stop() だけを直接呼ぶと、そこに集めてある
+    //        ・ループ Voice の一括停止 (AudioSystem は SimOnly なので、
+    //          EditMode へ戻った後では止められない)
+    //        ・Play 中にスクリプトが変えた画質・明るさの破棄
+    //      が丸ごと抜ける。結果、Escape で抜けたときだけ BGM と SE が
+    //      編集操作中まで鳴り続け、画質も Play 中のまま残る。
+    //      抜ける «経路» が増えても後始末が漏れないよう、必ずここを通す。
+    StopPlayMode();
+    core::Cursor::ResetForEditor();
+    m_playCursorApplied  = false;
+    m_playCursorReleased = false;
+    m_playCursorPolicy   = {};
 }
 
 void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)
@@ -1542,7 +1614,9 @@ void EditorApp::ResizeViewportRTsIfNeeded()
                            ViewportPanel* panel,
                            float width,
                            float height) {
-        if (!rt.IsValid() || !panel) return;
+        // WHY 無効なハンドルでも通すか: ここで弾くと、一度でも生成に失敗した
+        //      ビューポートは «作り直しの入口» を失い、二度と映らなくなる。
+        if (!panel) return;
 
         const uint32_t vpW = static_cast<uint32_t>(width);
         const uint32_t vpH = static_cast<uint32_t>(height);
@@ -1550,8 +1624,12 @@ void EditorApp::ResizeViewportRTsIfNeeded()
         auto* currentRT = m_resources->Get(rt);
         if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) return;
 
+        const auto created = m_resources->CreateRenderTarget(vpW, vpH);
+        // 生成に失敗したら今の RT を持ち続ける。捨てた上で作れないと絵が消えたまま戻らない。
+        if (!created.IsValid()) return;
+
         const auto previousRT = rt;
-        rt = m_resources->CreateRenderTarget(vpW, vpH);
+        rt = created;
         // WHY: ハンドルの上書きだけでは旧DX11リソースがResourceManagerに残り、
         //      Dock操作を繰り返すほどVRAM使用量とPresent待機が増える。
         if (previousRT.IsValid())

@@ -378,6 +378,20 @@ struct AnimatorComponent {
     std::string loadedControllerPath;
     float       speed      = 1.0f;
     bool        playing    = true;
+    // クリップの代わりに Script が骨のローカルを書く構成。
+    //
+    // WHY 要るか: 経路に沿って毎フレーム形が変わる胴のような動きはクリップで表せない。
+    //     ところが AnimatorSystem は «評価できるクリップが無い» フレームで骨を
+    //     バインドポーズへ戻すため、Script が書いた姿勢は毎フレーム消える。
+    //     かといって Animator を外すと、スキニングパレットを埋める者が居なくなり
+    //     (SkinningComputePass / 各 GeometryPass は親をたどって Animator を探す)、
+    //     骨を動かしてもメッシュは bind pose のまま描かれる。
+    //     これを立てると «戻さずに、今の骨からパレットを組み直す» に切り替わる。
+    //
+    // WHY playing / enabled で代用できないか: enabled = false は Animator の評価ごと
+    //     止めるので、パレットが一度も作られない。playing はクリップの再生位置を
+    //     止めるだけで、バインドポーズへ戻す経路はそのまま通る。
+    bool        externalPose = false;
     // ルートモーションの適用先・解決方法・軸マスク。
     // VFX の決定論的 Preview は mode = None を使い、姿勢だけを評価して Transform を動かさない。
     RootMotionSettings rootMotion;
@@ -396,6 +410,20 @@ struct AnimatorComponent {
     // 最後に Controller / クリップ / マスクを取り込んだときのアセット世代。
     // これが AssetManager の現在値と食い違う間は、派生キャッシュが古い。
     int  appliedAssetGeneration = -1;
+
+    // スキニング後の骨が «実際にどこにいるか» (owner のローカル空間)。
+    //
+    // WHY 要るか: カリングの球はバインドポーズの submesh バウンズを Renderer の
+    //     Transform で運んだものだった。骨がバインドポーズの近くにいる限りそれで
+    //     足りるが、Script が骨を数十 m 動かすもの (経路に沿って場を渡る胴など) では
+    //     球と実体が別の場所にあり、«実体は見えているのに球が視錐台の外／遮蔽物の中»
+    //     で消える ─ 部位ごとに独立して明滅する。骨から作り直した球をここに置く。
+    //
+    // WHY 半径 0 を «未計算» にするか: スケルトンを持たない Animator や停止中は
+    //     骨の姿勢が確定していない。そこで 0 を返しておけば、カリング側は
+    //     従来のバインドポーズ球へそのまま落ちる。
+    math::Vector3 skinnedBoundsCenter{};
+    float         skinnedBoundsRadius = 0.0f;
 
     std::vector<math::Matrix4> boneMatrices;
     std::vector<math::Matrix4> nodeGlobalTransforms;
@@ -479,6 +507,7 @@ struct AnimatorComponent {
         r.Field("controllerPath",   controllerPath);
         r.Field("speed",            speed);
         r.Field("playing",          playing);
+        r.Field("externalPose",     externalPose);
         r.Field("rootMotionMode",     reinterpret_cast<int&>(rootMotion.mode));
         r.Field("rootMotionSource",   reinterpret_cast<int&>(rootMotion.source));
         r.Field("rootMotionPoseMode", reinterpret_cast<int&>(rootMotion.poseMode));

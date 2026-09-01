@@ -616,6 +616,12 @@ void PresentationSystem::Update(SystemContext& ctx)
         if (mesh.indexCount > 0)
             resources.Update(mesh.indexBuffer, mesh.cpuIndices.data(),
                              static_cast<size_t>(mesh.indexCount) * sizeof(uint32_t));
+
+        // 誰も参照しなくなったらバッファを返してもらう。ここで作る Mesh は
+        // 手続きメッシュと線の «その GameObject 専用» で、GameObject が畳まれると
+        // shared_ptr ごと消える ─ その瞬間に返す先が無くなるのを防ぐ。
+        // (毎フレーム呼ぶが、同じ Mesh は控えを上書きするだけ)
+        resources.TrackMeshBuffers(slot);
     };
     const auto applyMaterial = [](GameObject& go, const std::string& path,
                                   const math::Vector4& color, const std::string& texture,

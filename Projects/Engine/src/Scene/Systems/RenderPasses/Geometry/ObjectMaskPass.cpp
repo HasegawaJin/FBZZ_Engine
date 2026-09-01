@@ -17,6 +17,7 @@
 ///   ここは別の RT へ描いているのでシーン深度を自由に読める。«見えている面だけ»
 ///   にするかどうかは申告ごとの visibleOnly が決める (壁越しシルエットは false)。
 #include "GeometryPasses.hpp"
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
@@ -32,6 +33,13 @@
 namespace fbzz::scene {
 
 namespace {
+
+// このフレームでマスクへ実際に発行したドローコール数。
+//
+// WHY 数えるか: «輪郭が出ない» は申告・描画・後段のどこで切れても症状が同じ
+//     «何も見えない» になる。RenderDoc を開かずに «パスが走ったか / 何枚描いたか»
+//     を切り分けられるようにしておく。値が変わったときだけ 1 行出す。
+int g_objectMaskDraws = 0;
 
 void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
 {
@@ -61,6 +69,7 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
             dc.constantBuffers[2] = h.objectMaskCB;
             dc.textures[7] = resources.GetDepthTexture(h.hdrRT);
             r.Submit(dc, resources);
+            ++g_objectMaskDraws;
         }
     }
 
@@ -98,6 +107,7 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
         dc.constantBuffers[7] = skinCB;
         dc.textures[7] = resources.GetDepthTexture(h.hdrRT);
         r.Submit(dc, resources);
+        ++g_objectMaskDraws;
     }
 }
 
@@ -128,12 +138,18 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
     r.SetRenderTarget(h.objectMaskRT, resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
+    g_objectMaskDraws = 0;
+    int live    = 0;
+    int resolved = 0;
+
     for (const renderer::RenderObjectMaskRequest& request : ctx.settings.objectMaskRequests) {
         if (!renderer::IsObjectMaskRequestLive(request, Time::frameCount)) continue;
+        ++live;
 
         GameObject* root = ctx.scene.GetGameObject(
             EntityID{ request.id.index, request.id.generation });
         if (!root) continue;
+        ++resolved;
 
         ObjectMaskCB maskData{};
         maskData.payload = {
@@ -148,6 +164,22 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
         resources.Update(h.objectMaskCB, &maskData, sizeof(ObjectMaskCB));
 
         DrawSubtreeMask(*root, request.includeChildren, ctx);
+    }
+
+    // 内訳が変わったときだけ 1 行。毎フレーム出すとログが埋まって本当のエラーが見えなくなる
+    // (RenderSystem の «無視される設定» の報告と同じ扱い)。
+    {
+        static int sLive = -1;
+        static int sResolved = -1;
+        static int sDraws = -1;
+        if (live != sLive || resolved != sResolved || g_objectMaskDraws != sDraws) {
+            sLive = live;
+            sResolved = resolved;
+            sDraws = g_objectMaskDraws;
+            FBZZ_LOG_INFO("ObjectMask: live=%d resolved=%d draws=%d "
+                          "(live=0 なら申告が届いていない / draws=0 なら描く物が無い)",
+                          live, resolved, g_objectMaskDraws);
+        }
     }
 
     r.SetRenderTarget(h.hdrRT, resources);

@@ -410,6 +410,56 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
     ImGui::SeparatorText("Screen");
     ImGui::DragInt("Width",  &settings.screen.width,  1.0f, 1, 7680);
     ImGui::DragInt("Height", &settings.screen.height, 1.0f, 1, 4320);
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Cursor");
+    DrawCursor(settings.cursor);
+}
+
+void ProjectSettingsPanel::DrawCursor(core::CursorPolicy& cursor)
+{
+    // WHY Play Focus Mode と別に置くか: Focus Mode は Game View の並べ方の話で、
+    //     カーソルを取るかどうかはゲームの作りで決まる。ここが正本で、Standalone は起動時、
+    //     Editor は Play 開始時に同じ値を適用する。実行中はスクリプトが上書きしてよい。
+    struct Entry { core::CursorLockMode mode; const char* label; const char* help; };
+    static constexpr Entry kModes[] = {
+        { core::CursorLockMode::None,     "None",
+          "拘束しない。マウスは画面外へ出られる" },
+        { core::CursorLockMode::Confined, "Confined",
+          "ゲーム画面の中へ閉じ込める。マウスの絶対座標は生きるので、\n"
+          "自前のカーソルを描くゲームはこちら。マルチモニターでも出て行かない" },
+        { core::CursorLockMode::Locked,   "Locked",
+          "毎フレーム中央へ戻し、移動量だけを渡す (FPS のマウスルック用)。\n"
+          "絶対座標が消えるため、ゲーム内カーソルは中央に貼り付く" },
+    };
+
+    const auto* current = &kModes[0];
+    for (const Entry& e : kModes)
+        if (e.mode == cursor.lockMode) current = &e;
+
+    if (ImGui::BeginCombo("Lock Mode", current->label)) {
+        for (const Entry& e : kModes) {
+            const bool selected = cursor.lockMode == e.mode;
+            if (ImGui::Selectable(e.label, selected)) cursor.lockMode = e.mode;
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("%s", e.help);
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s", current->help);
+
+    ImGui::Checkbox("Visible", &cursor.visible);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("OS のカーソルを出すか。ゲーム内カーソルを描くなら外す");
+
+    if (!cursor.visible && cursor.lockMode == core::CursorLockMode::None) {
+        // 非表示だけではマルチモニターで破綻する。ShowCursor はスレッド単位で、
+        // 他アプリのウィンドウ上ではそのアプリのカーソルが出るため。
+        ImGui::TextColored({ 1.0f, 0.75f, 0.3f, 1.0f },
+            "非表示のみだと別モニターでカーソルが再出現します。Confined を推奨");
+    }
 }
 
 void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render)

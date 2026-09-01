@@ -405,7 +405,12 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
 
 // SkinnedMeshRenderer の全 submesh bounds を 1 つの保守的なワールド球へまとめる。
 // false の場合は CPU bounds 未生成などで安全にカリングできないため、呼び出し側は描画を継続する。
-bool ComputeSkinnedWorldBounds(const Transform& tf,
+//
+// WHY Transform ではなく GameObject を受けるか: 骨がバインドポーズから大きく離れる
+//     構成では、バインドポーズ球は実体とまったく別の場所に残る。親をたどって
+//     Animator を引き、そこに焼かれた «いまの骨の広がり» を使うために、
+//     階層をたどれる GameObject が要る (AnimatorSystem::UpdateSkinnedBounds)。
+bool ComputeSkinnedWorldBounds(const GameObject& go,
                                const SkinnedMeshRenderer& smr,
                                WorldBounds& outBounds,
                                float padding = 0.0f);

@@ -15,8 +15,11 @@
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/Uuid.hpp>
+#include <filesystem>
 #include <memory>
 #include <sstream>
+#include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -65,6 +68,42 @@ bool ReadToml(const std::string& path, toml::table& outTable)
 
     outTable = result.table();
     return true;
+}
+
+/// 解析済みプレファブの取り置き。鍵は実ファイルパス、鮮度は最終更新時刻で見る。
+///
+/// WHY 要るか: プレファブの展開は «読む → TOML を解析する → 木を複製する» の順で、
+///   最初の 2 つは同じファイルなら毎回まったく同じ結果になる。にもかかわらず 1 体
+///   出すたびに走っていたため、演出のように «短時間に何発も出す» 使い方では、
+///   そこだけでフレームが飛んだ (GreenWare の Boss02 が柱を 4 本立てる瞬間に
+///   ScriptSystem が 300ms ─ 2026-09-01)。
+///
+/// WHY 更新時刻を見るか: エディタで .prefab / .vfx を保存し直したら次の生成から
+///   効いてほしい。取り置きを «永久に» にすると、直したのに古い方が出続ける。
+///   時刻の問い合わせ 1 回は、読み直して解析するより桁で安い。
+const toml::table* CachedPrefabDoc(const std::string& diskPath)
+{
+    struct Entry {
+        toml::table                    doc;
+        std::filesystem::file_time_type stamp{};
+    };
+    static std::unordered_map<std::string, Entry> cache;
+
+    std::error_code error;
+    const std::filesystem::file_time_type stamp =
+        std::filesystem::last_write_time(std::filesystem::path(diskPath), error);
+
+    const auto found = cache.find(diskPath);
+    // 時刻が取れないときは «変わっていない» とみなす。取り置きがあるのに読み直すと、
+    // 読めない状況 (排他中など) で毎回もとの重さへ戻ってしまう。
+    if (found != cache.end() && (error || found->second.stamp == stamp))
+        return &found->second.doc;
+
+    Entry entry;
+    if (!ReadToml(diskPath, entry.doc)) return nullptr;
+    entry.stamp = error ? std::filesystem::file_time_type{} : stamp;
+
+    return &(cache[diskPath] = std::move(entry)).doc;
 }
 
 } // namespace
@@ -124,13 +163,14 @@ bool InstantiatePrefabAsset(Scene& scene,
 
     const std::string diskPath = ResolvePrefabPath(path);
 
-    toml::table prefabDoc;
-    if (!ReadToml(diskPath, prefabDoc)) {
+    // 取り置きは «読むだけ»。振り直しはすべて下の copied 側で行うので共有して問題ない。
+    const toml::table* prefabDoc = CachedPrefabDoc(diskPath);
+    if (!prefabDoc) {
         FBZZ_LOG_ERROR("Prefab load failed: %s", diskPath.c_str());
         return false;
     }
 
-    auto* prefabObjects = prefabDoc["gameobjects"].as_array();
+    const auto* prefabObjects = (*prefabDoc)["gameobjects"].as_array();
     if (!prefabObjects || prefabObjects->empty()) return false;
 
     auto* resources = renderer::ResourceManager::Active();

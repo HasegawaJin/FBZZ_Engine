@@ -159,22 +159,13 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     //      depth へ描かれる。GBuffer depth には地形が含まれないため、そこを読むと雲が地形を貫通して
     //      手前に描かれてしまう。常に hdrRT の depth（全不透明を含む）を終端判定に使う。
     static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    static renderer::ResourceHandle<renderer::RenderTargetTag> s_cloudDepthRT;
-    static uint32_t s_cloudDepthW = 0;
-    static uint32_t s_cloudDepthH = 0;
+    static renderer::SizedRenderTarget s_cloudDepthRT;
     static uint64_t s_resetVersion = 0;
     if (s_resetVersion != ctx.resources.GetResetVersion()) {
         s_resetVersion = ctx.resources.GetResetVersion();
         depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-        s_cloudDepthW = 0;
-        s_cloudDepthH = 0;
     }
-    if (ctx.width != s_cloudDepthW || ctx.height != s_cloudDepthH || !s_cloudDepthRT.IsValid()) {
-        if (s_cloudDepthRT.IsValid()) ctx.resources.Release(s_cloudDepthRT);
-        s_cloudDepthRT = ctx.resources.CreateRenderTarget(ctx.width, ctx.height, 0);
-        s_cloudDepthW = ctx.width;
-        s_cloudDepthH = ctx.height;
-    }
+    (void)s_cloudDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, 0);
     ctx.renderer.SetRenderTarget(s_cloudDepthRT, ctx.resources);
     ctx.renderer.ClearDepth();
     if (depthCopyShader.IsValid()) {
@@ -190,23 +181,10 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     // オフスクリーン RT(RGBA16F) に scatter.rgb + alpha を描き、後段でフル解像度へアップスケール合成する。
     // フル解像度時は 1:1 サンプル(ピクセル中心)になるため無損失。
     const uint32_t kCloudResShift = cloud->halfResolution ? 1u : 0u;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> s_cloudRT;
-    static uint32_t s_cloudW = 0, s_cloudH = 0;
-    static uint64_t s_cloudResetVer = 0;
-    if (s_cloudResetVer != ctx.resources.GetResetVersion()) {
-        s_cloudResetVer = ctx.resources.GetResetVersion();
-        s_cloudRT = {};   // デバイスリセット後の旧ハンドルは無効。解放せず作り直す。
-        s_cloudW = 0;
-        s_cloudH = 0;
-    }
+    static renderer::SizedRenderTarget s_cloudRT;
     const uint32_t cloudW = (ctx.width  >> kCloudResShift) < 1u ? 1u : (ctx.width  >> kCloudResShift);
     const uint32_t cloudH = (ctx.height >> kCloudResShift) < 1u ? 1u : (ctx.height >> kCloudResShift);
-    if (cloudW != s_cloudW || cloudH != s_cloudH || !s_cloudRT.IsValid()) {
-        if (s_cloudRT.IsValid()) ctx.resources.Release(s_cloudRT);
-        s_cloudRT = ctx.resources.CreateRenderTarget(cloudW, cloudH, 1);
-        s_cloudW = cloudW;
-        s_cloudH = cloudH;
-    }
+    (void)s_cloudRT.Ensure(ctx.resources, cloudW, cloudH, 1);
 
     // 1) レイマーチをオフスクリーン RT へ描く (OPAQUE 書き込み・深度オフ)。
     //    SetRenderTarget が RT サイズへビューポートを自動調整するため解像度に依らず同じ UV で走る。
