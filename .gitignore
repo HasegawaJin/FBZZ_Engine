@@ -5,6 +5,9 @@ build_log.txt
 .cache/
 /SDK/
 /Artifacts/
+# ゲームプロジェクトの配布ビルド出力。exe / dll だけでなく、その隣へ複製される
+# EngineAssets / Library まで丸ごと入るため (GreenWare で 480MB) ディレクトリごと除外する。
+Binaries/
 
 # CMake
 CMakeCache.txt
