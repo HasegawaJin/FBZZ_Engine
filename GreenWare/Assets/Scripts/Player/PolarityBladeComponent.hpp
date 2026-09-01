@@ -806,20 +806,31 @@ inline void PolarityBladeComponent::HitOne(GameObject& object,
     // 極を乗せる。中和・上書き・付与の判定は極性システム側が 1 箇所で持っている。
     (void)target.Apply(m_polarity);
 
-    // 削る。ボスは «無防備なあいだ» だけ通る。
+    // 削る。ボスは立っている間も通るが、無防備なあいだより大きく減る。
     //
-    // WHY 立っている間は通さないか: いつでも削れるなら、部位に極を乗せて転ばせる手順が
-    //     «遠回り» に落ちる。倒してから斬る、が最短であり続ける形にしておく。
+    // WHY 立っている間を «小さく» するか: 等倍で削れるなら、部位に極を乗せて転ばせる
+    //     手順が «遠回り» に落ちる。倒してから斬るのが最短であり続ける量に留める。
+    //     一方で 0 にすると、当たっているのに数字が動かない時間が戦闘の大半を占め、
+    //     手応えでしか命中が分からなくなる。
     const auto* boss = IBoss::Of(&object);
-    if (!boss || boss->IsStaggered()) {
-        const int damage = m_charged
-            ? static_cast<int>(Lerp(static_cast<float>(std::max(tuning->bladeDamage, 0)),
-                                    static_cast<float>(std::max(tuning->bladeChargedDamage, 0)),
-                                    m_chargedRatio))
-            : std::max(tuning->bladeDamage, 0);
-        if (auto* combat = CombatManagerComponent::Instance())
-            (void)combat->DamageEnemyDirect(&object, damage);
-    }
+    const bool  guarded = boss && !boss->IsStaggered();
+
+    float damage = m_charged
+        ? Lerp(static_cast<float>(std::max(tuning->bladeDamage, 0)),
+               static_cast<float>(std::max(tuning->bladeChargedDamage, 0)),
+               m_chargedRatio)
+        : static_cast<float>(std::max(tuning->bladeDamage, 0));
+    if (guarded) damage *= Clamp01(tuning->bladeBossStandingScale);
+
+    // 倍率で 1 未満へ落ちた一撃を 0 に切り捨てない。«通る» と決めた以上、
+    // 当たれば必ず 1 は減る ── 0 が混じると «たまに効かない» に見える。
+    const int applied = damage > 0.0f
+        ? std::max(static_cast<int>(damage), 1)
+        : 0;
+    if (applied <= 0) return;
+
+    if (auto* combat = CombatManagerComponent::Instance())
+        (void)combat->DamageEnemyDirect(&object, applied);
 }
 
 inline void PolarityBladeComponent::OnUpdate()

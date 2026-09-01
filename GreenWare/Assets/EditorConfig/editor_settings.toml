@@ -40,13 +40,13 @@ version = '1.0.0'
     path = 'Assets/Scenes/Title.scene'
 
 [camera]
-last_pos_x = -11.987863540649414
-last_pos_y = 13.16524887084961
-last_pos_z = -23.455957412719727
-last_rot_w = 0.9555689692497253
-last_rot_x = 0.13946150243282318
-last_rot_y = 0.25696665048599243
-last_rot_z = -0.03750326856970787
+last_pos_x = -11.177434921264648
+last_pos_y = 9.563285827636719
+last_pos_z = -25.34331512451172
+last_rot_w = 0.8849347829818726
+last_rot_x = 0.14695174992084503
+last_rot_y = 0.4359526038169861
+last_rot_z = -0.07239402830600739
 ortho_height = 20.0
 orthographic = false
 sensitivity = 0.15000000596046448
@@ -58,7 +58,7 @@ clear_on_play = false
 collapse = false
 show_debug = false
 show_detail = true
-show_error = false
+show_error = true
 show_info = false
 show_warn = true
 
@@ -2546,7 +2546,7 @@ open = false
 
 [[panels.visible]]
 name = 'Animation Graph'
-open = true
+open = false
 
 [[panels.visible]]
 name = 'Behavior Tree'
