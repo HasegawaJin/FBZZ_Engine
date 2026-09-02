@@ -3,10 +3,30 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include "InspectorMaterial.hpp"
+#include <Editor/Util/AssetDirtyRegistry.hpp>
 
 namespace fbzz::editor {
 
 namespace {
+
+// 編集された .mat を未保存アセットとして登録する。
+//
+// WHY 必要か: このインライン編集は AssetManager 上の実体を直接書き換えるだけで、
+//     ディスクへ落とすのは「Save .mat」を押したときだけだった。登録しないと
+//     シーンを閉じるときの未保存プロンプトにも Save All にも出てこないため、
+//     Double Sided のような .mat 側のパラメータが警告なしに消える。
+void RegisterMaterialDirty(const scene::MaterialSlot& slot, const EditorContext& ctx)
+{
+    if (slot.materialPath.empty() || !slot.materialAsset.IsValid()) return;
+    const std::string diskPath = MaterialAssetDiskPath(ctx, slot.materialPath);
+    const auto handle = slot.materialAsset;
+    AssetDirtyRegistry::Register(
+        diskPath, NormalizeAssetPath(slot.materialPath), "MAT",
+        [diskPath, handle]() {
+            const auto* material = asset::AssetManager::GetMaterial(handle);
+            return material && asset::SaveMaterialAssetToFile(diskPath, *material);
+        });
+}
 
 // マテリアルスロット 1 つぶんの .mat 編集 UI (shader / textures / params / 保存)。
 //
@@ -207,6 +227,7 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                         }
                     }
                 }
+                RegisterMaterialDirty(mc, ctx);
             }
 
             const ImGuiID activeAfter = ImGui::GetActiveID();
@@ -217,11 +238,24 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                 const auto markDirty = ctx.markSceneDirty;
                 EditorContext* context = &ctx;
                 const std::string relPath = NormalizeAssetPath(mc.materialPath);
-                auto apply = [handle, markDirty, context, relPath](const asset::MaterialAsset& value) {
+                const std::string diskPath = MaterialAssetDiskPath(ctx, mc.materialPath);
+                auto apply = [handle, markDirty, context, relPath, diskPath](
+                                 const asset::MaterialAsset& value) {
                     if (auto* target = asset::AssetManager::GetMaterial(handle)) {
                         *target = value;
                         context->BumpMaterialPreviewRevision(relPath);
                         if (markDirty) markDirty();
+                        // Undo / Redo はメモリ上の値だけを戻す。保存済みでも
+                        // ここでディスクとずれるので、改めて未保存として積み直す。
+                        if (!diskPath.empty()) {
+                            AssetDirtyRegistry::Register(
+                                diskPath, relPath, "MAT",
+                                [handle, diskPath]() {
+                                    const auto* material = asset::AssetManager::GetMaterial(handle);
+                                    return material
+                                        && asset::SaveMaterialAssetToFile(diskPath, *material);
+                                });
+                        }
                     }
                 };
                 ctx.undoStack->Push(std::make_unique<LambdaCommand>(
@@ -252,8 +286,11 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
             if (!canSave)
                 ImGui::BeginDisabled();
             if (ImGui::Button("Save .mat")) {
-                if (asset::SaveMaterialAssetToFile(MaterialAssetDiskPath(ctx, mc.materialPath), mat))
+                const std::string diskPath = MaterialAssetDiskPath(ctx, mc.materialPath);
+                if (asset::SaveMaterialAssetToFile(diskPath, mat)) {
+                    AssetDirtyRegistry::MarkClean(diskPath);
                     ctx.requestAssetBrowserRefresh = true;
+                }
             }
             if (!canSave)
                 ImGui::EndDisabled();

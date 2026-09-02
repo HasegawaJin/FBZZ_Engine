@@ -1010,10 +1010,13 @@ bool SolveSpine(IKChain& chain,
 
 } // namespace
 
+// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
+// System と同じバッチに入って並列に走る (AnimatorSystem::GetAccess の WHY を参照)。
 ComponentAccess IKSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Writes<IKSolverComponent, AnimatorComponent, BoneComponent>();
+        .Reads<SkinnedMeshRenderer>()
+        .Writes<IKSolverComponent, AnimatorComponent, BoneComponent, Transform>();
 }
 
 OrderingHints IKSystem::GetOrder() const

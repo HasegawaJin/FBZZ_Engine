@@ -2,8 +2,12 @@ type = 'PostProcessProfile'
 
 [[overrides]]
 active = true
-intensity = 1.0
-radius = 1.2000000476837158
+type = 'FXAA'
+
+[[overrides]]
+active = true
+intensity = 4.0
+radius = 10.0
 slices = 4
 stepsPerSlice = 6
 type = 'GTAO'
@@ -18,9 +22,9 @@ type = 'ContactShadow'
 
 [[overrides]]
 active = true
-intensity = 0.55
-softKnee = 0.5
-threshold = 1.1
+intensity = 0.16685748100280762
+softKnee = 1.0
+threshold = 4.0
 type = 'Bloom'
 
 [[overrides]]
@@ -60,7 +64,3 @@ active = true
 samples = 8
 strength = 0.30000001192092896
 type = 'MotionBlur'
-
-[[overrides]]
-active = true
-type = 'FXAA'

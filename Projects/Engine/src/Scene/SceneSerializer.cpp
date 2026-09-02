@@ -1816,6 +1816,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ragdollTbl.insert("blendIn",          (double)ragdoll->blendIn);
             ragdollTbl.insert("blendOut",         (double)ragdoll->blendOut);
             ragdollTbl.insert("simulateInEditor", ragdoll->simulateInEditor);
+            ragdollTbl.insert("muscleStiffness",  (double)ragdoll->muscleStiffness);
+            ragdollTbl.insert("muscleFalloff",    (double)ragdoll->muscleFalloff);
+            ragdollTbl.insert("muscleDamping",    (double)ragdoll->muscleDamping);
+            ragdollTbl.insert("impactSlack",      (double)ragdoll->impactSlack);
+            ragdollTbl.insert("recoverySeconds",  (double)ragdoll->recoverySeconds);
+            ragdollTbl.insert("collapseDistance", (double)ragdoll->collapseDistance);
+            ragdollTbl.insert("activateOnStart",  ragdoll->activateOnStart);
             goTbl.insert("RagdollComponent", std::move(ragdollTbl));
         }
 
@@ -3086,6 +3093,13 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             ragdoll.blendIn        = (float)(*ragdollTbl)["blendIn"].value_or(0.06);
             ragdoll.blendOut       = (float)(*ragdollTbl)["blendOut"].value_or(0.40);
             ragdoll.simulateInEditor = (*ragdollTbl)["simulateInEditor"].value_or(false);
+            ragdoll.muscleStiffness  = (float)(*ragdollTbl)["muscleStiffness"].value_or(0.45);
+            ragdoll.muscleFalloff    = (float)(*ragdollTbl)["muscleFalloff"].value_or(0.86);
+            ragdoll.muscleDamping    = (float)(*ragdollTbl)["muscleDamping"].value_or(0.18);
+            ragdoll.impactSlack      = (float)(*ragdollTbl)["impactSlack"].value_or(0.60);
+            ragdoll.recoverySeconds  = (float)(*ragdollTbl)["recoverySeconds"].value_or(0.50);
+            ragdoll.collapseDistance = (float)(*ragdollTbl)["collapseDistance"].value_or(0.90);
+            ragdoll.activateOnStart  = (*ragdollTbl)["activateOnStart"].value_or(false);
             go.AddComponent<RagdollComponent>(std::move(ragdoll));
         }
 

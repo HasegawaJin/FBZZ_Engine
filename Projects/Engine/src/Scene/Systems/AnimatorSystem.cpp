@@ -2870,11 +2870,18 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
 }
 
+// WHY Transform と SkinnedMeshRenderer まで宣言するか:
+//   SystemScheduler は ComponentAccess が交差しない System を同じバッチにまとめ、
+//   TaskSystem で «並列に» 走らせる。ここは骨 GameObject の Transform を毎フレーム
+//   書き、smr.nodeEntities を作る側なので、宣言から漏らすと «Transform か
+//   SkinnedMeshRenderer は触るが Animator/Bone は触らない» System と同じバッチに入る。
+//   実際 LODSystem は SkinnedMeshRenderer を書く側で、交差が無いまま並んでいた。
+//   宣言は «何を触るか» であって «何を持っているか» ではない。
 ComponentAccess AnimatorSystem::GetAccess() const
 {
     return ComponentAccess{}
         .Reads<AnimatorComponent>()
-        .Writes<AnimatorComponent, BoneComponent>();
+        .Writes<AnimatorComponent, BoneComponent, SkinnedMeshRenderer, Transform>();
 }
 
 OrderingHints AnimatorSystem::GetOrder() const

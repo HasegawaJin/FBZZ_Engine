@@ -322,7 +322,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -348,7 +348,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
+    material = 'guid:982fe3b5e60716989390674d7d27cab2|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -374,7 +374,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
+    material = 'guid:982fe3b5e60716989390674d7d27cab2|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -400,7 +400,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshColliderComponent]
@@ -443,7 +443,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -469,7 +469,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -495,7 +495,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -521,7 +521,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -547,7 +547,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -573,7 +573,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -599,7 +599,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -625,7 +625,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -651,7 +651,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -677,7 +677,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -703,7 +703,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -729,7 +729,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -755,7 +755,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -781,7 +781,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -807,7 +807,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -833,7 +833,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -859,7 +859,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -885,7 +885,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -911,7 +911,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -937,7 +937,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -963,7 +963,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -989,7 +989,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1015,7 +1015,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
+    material = 'guid:c5b10c9363ce62f7b0c961977273826d|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1041,7 +1041,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
+    material = 'guid:c5b10c9363ce62f7b0c961977273826d|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1067,7 +1067,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshRenderer]
@@ -1093,7 +1093,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1119,7 +1119,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshColliderComponent]
@@ -1162,7 +1162,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshColliderComponent]
@@ -1205,7 +1205,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshColliderComponent]
@@ -1248,7 +1248,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshColliderComponent]
@@ -1291,7 +1291,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshColliderComponent]
@@ -1334,7 +1334,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1360,7 +1360,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshColliderComponent]
@@ -1403,7 +1403,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
+    material = 'guid:ae627c22c942532592c28cc4afa2526b|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/DefaultMaterial.mat'
     visible = false
 
     [gameobjects.MeshColliderComponent]
@@ -1446,7 +1446,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1472,7 +1472,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
+    material = 'guid:c5b10c9363ce62f7b0c961977273826d|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WarnLight.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1498,7 +1498,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1524,7 +1524,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1550,7 +1550,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1576,7 +1576,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1602,7 +1602,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
+    material = 'guid:982fe3b5e60716989390674d7d27cab2|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_CoreRing.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1628,7 +1628,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1654,7 +1654,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1680,7 +1680,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1706,7 +1706,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1732,7 +1732,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
+    material = 'guid:cf7ac09812e56674eaef1454bf67a1fe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Deck.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1758,7 +1758,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1784,7 +1784,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
+    material = 'guid:6d9f46f77d76dfcd6f0ad790b6008afb|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_WallPanel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1810,7 +1810,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
+    material = 'guid:20c273aa55c60f5510d4d0333c82659f|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Hazard.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1836,7 +1836,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1862,7 +1862,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1888,7 +1888,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
+    material = 'guid:aca6bdca6ad6b024106d3528af4a7afe|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_StripGlow.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -1914,7 +1914,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
+    material = 'guid:c12015f1730207907a992d18d1bb080a|Library/Baked/329c7a7f6784b08a34f592a1345b04ab/materials/M_AR_Steel.mat'
     visible = true
 
     [gameobjects.MeshRenderer]
@@ -4279,39 +4279,39 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_MetalDark.mat'
+    material = 'guid:0a2013a587a24ce8dbf0a03b9d64c40e|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_MetalDark.mat'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordCore_Plus.mat'
+        material = 'guid:17dac89feb564a3a0100d9fec10d11a0|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordCore_Plus.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordSteel.mat'
+        material = 'guid:26a02a321eb4e2a1c66a35e044c914d7|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordSteel.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorGrey.mat'
+        material = 'guid:0c83654c3a6a113ff1988eafaf1291a1|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorGrey.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordAccent.mat'
+        material = 'guid:94b2486afead42e8ba91f6a7239a25ea|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordAccent.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_PanelLine.mat'
+        material = 'guid:603bec7abde99ad7fe4197cd9bcd595d|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_PanelLine.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorWhite.mat'
+        material = 'guid:4fa518d12ea23ea50a346419a5359f77|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorWhite.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordMark_Plus.mat'
+        material = 'guid:4eeec6fe8a3dc430aea0b9cba6b9f2ea|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordMark_Plus.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordGlow_Plus.mat'
+        material = 'guid:63a19707f308ee342939732d505542ca|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordGlow_Plus.mat'
         visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -4353,39 +4353,39 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_MetalDark.mat'
+    material = 'guid:4171165b6083906753b520cc3ef456a5|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_MetalDark.mat'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordCore_Minus.mat'
+        material = 'guid:2a21ffa8826930cd47015e43bbfd66c3|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordCore_Minus.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordSteel.mat'
+        material = 'guid:d445eb3c179619644fdea1e3b5d493ea|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordSteel.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorGrey.mat'
+        material = 'guid:cf0d73a5513af24400f0b0c77c214a06|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorGrey.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordAccent.mat'
+        material = 'guid:819cdf59cddee3f7bc8edbbcfd24c099|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordAccent.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_PanelLine.mat'
+        material = 'guid:1c412dee3ca368608d36d0c0a0ebfdf6|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_PanelLine.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorWhite.mat'
+        material = 'guid:57da4880a47fc814f2e5a6f34d87f016|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorWhite.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordMark_Minus.mat'
+        material = 'guid:4beb739f4a36f997cf3417059e440f81|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordMark_Minus.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordGlow_Minus.mat'
+        material = 'guid:c20db6c98c8de25bda86da37f9d15ca1|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordGlow_Minus.mat'
         visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -4532,7 +4532,7 @@ tag = 'Player'
 
             [gameobjects.AnimatorComponent.layers.additiveReference]
             clipName = 'Katana_Stance'
-            sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e0e96bf4d9140090be7774ccaaaeab58/anims/Katana_Stance.anim'
+            sourcePath = 'guid:e1fe26048e4d49d1529dc29ee167259b|Library/Baked/e0e96bf4d9140090be7774ccaaaeab58/anims/Katana_Stance.anim'
             time = 0.0
 
         [[gameobjects.AnimatorComponent.parameters]]
@@ -4606,7 +4606,7 @@ tag = 'Player'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/f9afc042bf0ff57266eb135e1c6a347c/anims/Katana_Idle.anim'
+                sourcePath = 'guid:fd0cd663e3ddc91d519bace6fd35938f|Library/Baked/f9afc042bf0ff57266eb135e1c6a347c/anims/Katana_Idle.anim'
                 speed = 1.0
                 threshold = 0.0
 
@@ -4616,7 +4616,7 @@ tag = 'Player'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/d3dd8f4ed77c09cbabc0022078ee9b5f/anims/Katana_Walk_F.anim'
+                sourcePath = 'guid:508fa864a51130ab310f00d2b1347da9|Library/Baked/d3dd8f4ed77c09cbabc0022078ee9b5f/anims/Katana_Walk_F.anim'
                 speed = 1.0
                 threshold = 3.0
 
@@ -4626,7 +4626,7 @@ tag = 'Player'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/23b5fa779b9ea93d6a3d8784c91a1446/anims/Katana_Run_F.anim'
+                sourcePath = 'guid:c9091552d7aadde0cdbf29b3d19126f6|Library/Baked/23b5fa779b9ea93d6a3d8784c91a1446/anims/Katana_Run_F.anim'
                 speed = 1.0
                 threshold = 7.5
 
@@ -4645,7 +4645,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'Player_JumpUp'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/5af1787bd9577a2151dacae49291b917/anims/Katana_JumpUp.anim'
+        sourcePath = 'guid:29f66689b5e64d39c53e9915bbbb7097|Library/Baked/5af1787bd9577a2151dacae49291b917/anims/Katana_JumpUp.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4681,7 +4681,7 @@ tag = 'Player'
         loop = true
         mode = 0
         name = 'Player_FallIdle'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e6c748ed6a832a4c20c164913e085478/anims/Katana_FallIdle.anim'
+        sourcePath = 'guid:01f1566f139f71aaa1081c876ae4d444|Library/Baked/e6c748ed6a832a4c20c164913e085478/anims/Katana_FallIdle.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4717,7 +4717,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'Player_Land'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/01e7d9237d6e60407ab80eae2ea6c8e6/anims/Katana_Land.anim'
+        sourcePath = 'guid:205d0510396c37c645f19bd30d86b388|Library/Baked/01e7d9237d6e60407ab80eae2ea6c8e6/anims/Katana_Land.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4749,7 +4749,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'Dodge_Roll'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/aa7245441a507b79edfa071a10b383c8/anims/Katana_Dodge_Roll.anim'
+        sourcePath = 'guid:57e9753f681702e5dfc34569ac60ff43|Library/Baked/aa7245441a507b79edfa071a10b383c8/anims/Katana_Dodge_Roll.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4781,7 +4781,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'Hit_Heavy'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/28077ad676cdbaf734a8dc25330f3848/anims/Katana_Hit_Heavy.anim'
+        sourcePath = 'guid:5424718d6c48d4287ef0d6f1d8279d76|Library/Baked/28077ad676cdbaf734a8dc25330f3848/anims/Katana_Hit_Heavy.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4813,7 +4813,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'KatanaDraw'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9873c746d0c7f993161455bdcad44fd2/anims/Katana_Draw.anim'
+        sourcePath = 'guid:f95e9fb9af1aadd78aa62a353427cf7d|Library/Baked/9873c746d0c7f993161455bdcad44fd2/anims/Katana_Draw.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4845,7 +4845,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'KatanaSheathe'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/bf25e66cf0b7067fb10270753895d369/anims/Katana_Sheathe.anim'
+        sourcePath = 'guid:0f86f25d3e776da5040d7badc8568677|Library/Baked/bf25e66cf0b7067fb10270753895d369/anims/Katana_Sheathe.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4877,7 +4877,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'KatanaIai'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9881396f555b1ba645879af4182ab242/anims/Katana_Iai.anim'
+        sourcePath = 'guid:a8e93adfc508a70f9f38920605a723b9|Library/Baked/9881396f555b1ba645879af4182ab242/anims/Katana_Iai.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4909,7 +4909,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'KatanaJumpSlam'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/c5e2ceda3142673a0f22a3124890dfec/anims/Katana_JumpSlam.anim'
+        sourcePath = 'guid:4e361e81571f7e6ddecbd65b36fbc1e7|Library/Baked/c5e2ceda3142673a0f22a3124890dfec/anims/Katana_JumpSlam.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4941,7 +4941,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'KatanaParry'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/666b941eebe9b223466ebc40c8219f33/anims/Katana_Parry.anim'
+        sourcePath = 'guid:b96af3932d2454abc972919df59e087d|Library/Baked/666b941eebe9b223466ebc40c8219f33/anims/Katana_Parry.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4973,7 +4973,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'KatanaVictory'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/21a4869845853e10e1a4b33d8559026d/anims/Katana_Victory.anim'
+        sourcePath = 'guid:013a6bb385e1ef3597d8268790fac267|Library/Baked/21a4869845853e10e1a4b33d8559026d/anims/Katana_Victory.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -5005,7 +5005,7 @@ tag = 'Player'
         loop = true
         mode = 0
         name = 'KatanaLose'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/a617b2aefc7de8d332e2e8c54fd8c277/anims/Katana_Lose.anim'
+        sourcePath = 'guid:3cbbb14d53ac2afdc34a5d1460ce23e7|Library/Baked/a617b2aefc7de8d332e2e8c54fd8c277/anims/Katana_Lose.anim'
         speed = 1.0
         transitions = []
 
@@ -5216,7 +5216,7 @@ tag = 'Player'
         gripSocketName = 'SOCKET_Grip'
         headBoneName = 'Head'
         headWeight = 0.85
-        hitFrontClipFile = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/7e522cd4a98c0a3c76d1facdf7b0ce59/anims/Katana_Hit_F.anim'
+        hitFrontClipFile = 'guid:2c12835bcbbf3de2fd9aae7f9a21f1f0|Library/Baked/7e522cd4a98c0a3c76d1facdf7b0ce59/anims/Katana_Hit_F.anim'
         hitFrontClipName = 'Katana_Hit_F'
         hitLayerName = 'Add_Hit'
         hitRumble = 0.35
@@ -5257,15 +5257,15 @@ tag = 'Player'
         showRepulsionRing = true
         slashFadeIn = 0.05
         slashFadeOut = 0.12
-        slashFinisherClipFile = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/68621dfe4a66ccf3f74cfd49ba4c7075/anims/Katana_Slash_Dual.anim'
+        slashFinisherClipFile = 'guid:12deb7da34415ea7eae58fcc71945ab1|Library/Baked/68621dfe4a66ccf3f74cfd49ba4c7075/anims/Katana_Slash_Dual.anim'
         slashFinisherClipName = 'Katana_Slash_Dual'
         slashFinisherHitTime = 0.466667
         slashHitTime = 0.4
         slashLayerGain = 1.0
         slashLayerName = 'Attack'
-        slashLeftClipFile = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/3c44e89bba0ce00b16bfcc71d0d09089/anims/Katana_Slash_L.anim'
+        slashLeftClipFile = 'guid:df86ad597c33fe11e376bde87f62a4bf|Library/Baked/3c44e89bba0ce00b16bfcc71d0d09089/anims/Katana_Slash_L.anim'
         slashLeftClipName = 'Katana_Slash_L'
-        slashRightClipFile = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/eb4f77f1e5395fbec0a9271e4462e095/anims/Katana_Slash_R.anim'
+        slashRightClipFile = 'guid:f4b66683b4b00dd2699acea0edb05d70|Library/Baked/eb4f77f1e5395fbec0a9271e4462e095/anims/Katana_Slash_R.anim'
         slashRightClipName = 'Katana_Slash_R'
         startDrawn = true
         stopOnGeometry = true
@@ -5319,7 +5319,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_AccentGreen.mat'
+    material = 'guid:cd4a732a1be135d0548f545685dcbdee|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_AccentGreen.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5348,7 +5348,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_AccentYellow.mat'
+    material = 'guid:8bca995d99835491c3f7c9ca4f92af87|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_AccentYellow.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5377,7 +5377,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorGrey.mat'
+    material = 'guid:8a73d6d8592397296bf8b3334ebd79d3|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5406,7 +5406,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorWhite.mat'
+    material = 'guid:20a2c14f6500107fb0018dc7d0424989|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorWhite.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5435,7 +5435,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_GlowGreen.mat'
+    material = 'guid:4f6f505fb30354ad40bc41771f6f662b|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_GlowGreen.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5464,7 +5464,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_GlowGreenSoft.mat'
+    material = 'guid:25cd6254ff26040555c052e591cb383f|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_GlowGreenSoft.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5493,7 +5493,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_LampGreen.mat'
+    material = 'guid:6026be6349dc9ac8ed59c272f219ae0a|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_LampGreen.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5522,7 +5522,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_MetalDark.mat'
+    material = 'guid:eb136c6a518e09566a0fb23c89a7a184|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5551,7 +5551,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_PanelLine.mat'
+    material = 'guid:7ae7ed1f56fcfe85be75042bcc54fc9b|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5580,7 +5580,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_VisorDark.mat'
+    material = 'guid:88969755a9c7c1d2b6732a7864ea7458|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_VisorDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -8180,7 +8180,7 @@ tag = 'Enemy'
 
             [gameobjects.AnimatorComponent.layers.additiveReference]
             clipName = 'Idle'
-            sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
+            sourcePath = 'guid:1a9b2ffbaccf5bee0bbb5092e14fe82c|Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
             time = 0.0
 
         [[gameobjects.AnimatorComponent.parameters]]
@@ -8302,7 +8302,7 @@ tag = 'Enemy'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
+                sourcePath = 'guid:1a9b2ffbaccf5bee0bbb5092e14fe82c|Library/Baked/7115162fc1db1ce0d3d7f099bcaf0d8b/anims/Idle.anim'
                 speed = 1.0
                 threshold = 0.0
 
@@ -8312,7 +8312,7 @@ tag = 'Enemy'
                 ikWeight = 1.0
                 posX = 0.0
                 posY = 0.0
-                sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/5c93c79d168a882bcb143675fb9e61b1/anims/Walk_Crawl.anim'
+                sourcePath = 'guid:652fe0d20639e2afbbcca6df06e89ea5|Library/Baked/5c93c79d168a882bcb143675fb9e61b1/anims/Walk_Crawl.anim'
                 speed = 1.0
                 threshold = 2.0
 
@@ -8375,7 +8375,7 @@ tag = 'Enemy'
         loop = true
         mode = 0
         name = 'TurnLeft'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/95bc59f38a2626a5fd4523e9c2ff6c4c/anims/Turn_L.anim'
+        sourcePath = 'guid:efcb0b100a2db9968c010570acfad920|Library/Baked/95bc59f38a2626a5fd4523e9c2ff6c4c/anims/Turn_L.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8423,7 +8423,7 @@ tag = 'Enemy'
         loop = true
         mode = 0
         name = 'TurnRight'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/4d16ffe991993011161f45b274aed783/anims/Turn_R.anim'
+        sourcePath = 'guid:f0e2bba122d748504db82e0e4f6dde02|Library/Baked/4d16ffe991993011161f45b274aed783/anims/Turn_R.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8471,7 +8471,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'JumpUp'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/d7ba8d545f632ef6eb7f44465d90fbf0/anims/JumpUp.anim'
+        sourcePath = 'guid:3a15fa0aa30ce9912b22bb858a6b09b7|Library/Baked/d7ba8d545f632ef6eb7f44465d90fbf0/anims/JumpUp.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8503,7 +8503,7 @@ tag = 'Enemy'
         loop = true
         mode = 0
         name = 'FallIdle'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/67445413f5d2429460f20f85134a2f28/anims/FallIdle.anim'
+        sourcePath = 'guid:0b584a43fc98f73d997400a1125cac4f|Library/Baked/67445413f5d2429460f20f85134a2f28/anims/FallIdle.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8539,7 +8539,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'Land'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/c70dc16ed9f58786e101ce91b35e119e/anims/Land.anim'
+        sourcePath = 'guid:708ef6fe0c81f15f31abc9c2a7050c31|Library/Baked/c70dc16ed9f58786e101ce91b35e119e/anims/Land.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8571,7 +8571,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'Stomp_FR'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/383e9d382e29dc7b818f0a403586968b/anims/Stomp_FR.anim'
+        sourcePath = 'guid:44feba4d164917a2a7bb043d0ded6758|Library/Baked/383e9d382e29dc7b818f0a403586968b/anims/Stomp_FR.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8603,7 +8603,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'Stomp_FL'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/9298a95e02e96f9c0ee9cb4087453ac9/anims/Stomp_FL.anim'
+        sourcePath = 'guid:3a0df9102e087664fb3ff8ffb441045a|Library/Baked/9298a95e02e96f9c0ee9cb4087453ac9/anims/Stomp_FL.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8635,7 +8635,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'Stomp_BR'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/ffcfe3a2d79b929f35e98d66ae46d9a3/anims/Stomp_BR.anim'
+        sourcePath = 'guid:96655b438f41a03bd736e1dee313ea29|Library/Baked/ffcfe3a2d79b929f35e98d66ae46d9a3/anims/Stomp_BR.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8667,7 +8667,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'Stomp_BL'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/dacceeae15a178959bb88349fa2c6ece/anims/Stomp_BL.anim'
+        sourcePath = 'guid:11c91906c811e13c22523b7f673229be|Library/Baked/dacceeae15a178959bb88349fa2c6ece/anims/Stomp_BL.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8699,7 +8699,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'MagneticPulse'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/faa51d40c8d488e641bb58b07d88d4b8/anims/Magnetic_Pulse.anim'
+        sourcePath = 'guid:2eee86cea0dc35b38ce8e5de944b1635|Library/Baked/faa51d40c8d488e641bb58b07d88d4b8/anims/Magnetic_Pulse.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8731,7 +8731,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'ChargeWindup'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/c2cdcb877d7170b3fee42bf2841bcca1/anims/Charge_Windup.anim'
+        sourcePath = 'guid:8d0cc7fa4aa6822620d11997dac38344|Library/Baked/c2cdcb877d7170b3fee42bf2841bcca1/anims/Charge_Windup.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8763,7 +8763,7 @@ tag = 'Enemy'
         loop = true
         mode = 0
         name = 'ChargeRun'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/eb043aa096b8efae111e826f43ddeaa3/anims/Charge_Run.anim'
+        sourcePath = 'guid:1042ccdf8953874592e44faa9944b723|Library/Baked/eb043aa096b8efae111e826f43ddeaa3/anims/Charge_Run.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8799,7 +8799,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'CrashStun'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/f790b35dcbc90fdd77cf0123af92776f/anims/Crash_Stun.anim'
+        sourcePath = 'guid:2ee50ebd2a934092be22b54bc4bacaa8|Library/Baked/f790b35dcbc90fdd77cf0123af92776f/anims/Crash_Stun.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8831,7 +8831,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'BeamStart'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/0031f917ee493e64da421e66ccf45f69/anims/Beam_Start.anim'
+        sourcePath = 'guid:4befc974168e7b23ebe7a22b05c5e1d5|Library/Baked/0031f917ee493e64da421e66ccf45f69/anims/Beam_Start.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8863,7 +8863,7 @@ tag = 'Enemy'
         loop = true
         mode = 0
         name = 'BeamLoop'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/29ae10dffaa9073bece66868a45b6022/anims/Beam_Loop.anim'
+        sourcePath = 'guid:d5f6a2ab4a77bcd8605d046944b71412|Library/Baked/29ae10dffaa9073bece66868a45b6022/anims/Beam_Loop.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8899,7 +8899,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'BeamEnd'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/608c8e0aaf442cbe3c00770ac772c6a3/anims/Beam_End.anim'
+        sourcePath = 'guid:36cd2ea8a2778bc4c1c4231783aff9e2|Library/Baked/608c8e0aaf442cbe3c00770ac772c6a3/anims/Beam_End.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -8931,7 +8931,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'Death'
-        sourcePath = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/c7e29924650f95ab69ecb684beb5d2dd/anims/Death.anim'
+        sourcePath = 'guid:8f50e47345faf1c8c80b68826cd77f92|Library/Baked/c7e29924650f95ab69ecb684beb5d2dd/anims/Death.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -9630,43 +9630,13 @@ tag = 'Enemy'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
-    type = 'BossRagdollComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        blendIn = 0.05
-        blendOut = 0.6
-        debugActive = false
-        debugParticles = 0
-        debugStatus = 'Idle'
-        debugWeight = 0.0
-        fallLift = 0.6
-        fallPush = 2.6
-        gravity = 26.0
-        holdRatio = 0.55
-        maxDepth = 0
-        pairPush = 7.0
-        pairPushRadius = 4.5
-        rootBone = ''
-        staggerBlendIn = 0.03
-        staggerBlendOut = 0.34
-        staggerGravity = 0.12
-        staggerLocalPush = 5.0
-        staggerLocalRadius = 3.6
-        staggerPush = 3.4
-        staggerSeconds = 0.14
-        staggerWeight = 0.45
-        useRagdoll = true
-        useStagger = true
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
     type = 'BossStepDustComponent'
 
         [gameobjects.ScriptComponents.fields]
         debugLift = 0.0
         debugSteps = 0
         drawDebugFeet = false
-        dustScale = 0.85
+        dustScale = 2.0
         footCooldown = 0.18
         fullSpeed = 4.0
         groundOffset = 0.0
@@ -9715,6 +9685,40 @@ tag = 'Enemy'
         releaseSeconds = 0.12
         warnColor = [ 1.0, 0.62, 0.14, 1.0 ]
 
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossRagdollComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        blendIn = 0.1
+        blendOut = 0.0
+        debugActive = false
+        debugDeviation = 0.0
+        debugParticles = 0
+        debugStatus = 'Idle'
+        debugWeight = 0.0
+        fallLift = 0.6
+        fallPush = 2.6
+        gravity = 29.879517
+        holdRatio = 0.55
+        maxDepth = 0
+        pairPush = 7.0
+        pairPushRadius = 4.5
+        rootBone = ''
+        staggerBlendIn = 0.03
+        staggerBlendOut = 0.22
+        staggerFalloff = 0.84
+        staggerLocalPush = 5.0
+        staggerLocalRadius = 3.6
+        staggerMuscle = 1.0
+        staggerMuscleDamping = 0.2
+        staggerPush = 3.4
+        staggerRecovery = 2.0
+        staggerSeconds = 0.3
+        staggerSlack = 0.55
+        useRagdoll = true
+        useStagger = true
+
 [[gameobjects]]
 active = true
 instanceId = '755b8478-8edf-4ed8-b9de-76235d2c95e4'
@@ -9728,7 +9732,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_BL.mat'
+    material = 'guid:5ad5350b26f080e5ff0ca5207e2fe30f|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_BL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9757,7 +9761,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_BR.mat'
+    material = 'guid:2afd2bcb14a42fcf2ee5ae60907de725|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_BR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9786,7 +9790,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_Body.mat'
+    material = 'guid:6524b872454a7d57d0c1261e19827505|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_Body.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9815,7 +9819,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_FL.mat'
+    material = 'guid:ab5e7fe7f12f44d105f5ff825ba81ed3|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_FL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9844,7 +9848,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_FR.mat'
+    material = 'guid:52e07b2e206908535e74043c2c6e5b51|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_ArmorGrey_FR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9873,7 +9877,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Core_Plus_Body.mat'
+    material = 'guid:320b5d3e9c6f742f16d25176ba46d7dd|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Core_Plus_Body.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9902,7 +9906,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Hazard_Body.mat'
+    material = 'guid:5657b08413ad78571d99303e3807b00d|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Hazard_Body.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9931,7 +9935,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_BL.mat'
+    material = 'guid:d7fb26f2730a456cd4d6b20ff8c341ea|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_BL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9960,7 +9964,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_BR.mat'
+    material = 'guid:b6923262798fdca2bf7ab947c5c28604|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_BR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -9989,7 +9993,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_Body.mat'
+    material = 'guid:856ba1a126277af2c1355817e37c29b4|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_Body.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10018,7 +10022,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_FL.mat'
+    material = 'guid:4c5e369395ef0c10f1c82c7273f2d70e|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_FL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10047,7 +10051,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_FR.mat'
+    material = 'guid:4f1e73e2a830d24e458def1e79b418d0|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_MetalDark_FR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10076,7 +10080,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_BL.mat'
+    material = 'guid:0a26f216c40bcb7520c7222e5c613673|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_BL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10105,7 +10109,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_BR.mat'
+    material = 'guid:42bec387065f533f75df26e82a4449f1|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_BR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10134,7 +10138,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_Body.mat'
+    material = 'guid:b7ff670949173cc7ed13f1ff43e11cd1|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_Body.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10163,7 +10167,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_FL.mat'
+    material = 'guid:5aaf3cf38e48dc616de95d0b23bb032f|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_FL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10192,7 +10196,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_FR.mat'
+    material = 'guid:f031dd8bde53b103a128664b38ec3045|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_PanelLine_FR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10221,7 +10225,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Ring_Plus_Body.mat'
+    material = 'guid:17c18a81f75b7e1e493c8ff077db789c|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Ring_Plus_Body.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10250,7 +10254,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_BL.mat'
+    material = 'guid:797df6faee04aab92bec5817fced841b|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_BL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10279,7 +10283,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_BR.mat'
+    material = 'guid:058c05f45a41396b39f96e6e3e38eec9|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_BR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10308,7 +10312,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_Body.mat'
+    material = 'guid:cb997518c938afe3fbd059614af34729|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_Body.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10337,7 +10341,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_FL.mat'
+    material = 'guid:2edd3360bc95abad51639a5bd63f34d7|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_FL.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -10366,7 +10370,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'C:/Users/jinhs/Desktop/FBZZ_Engine/GreenWare/Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_FR.mat'
+    material = 'guid:b0b2ddd2a61384a70b9395371e5a287d|Library/Baked/e8da5d90da0a35029a4c9df66fd79cdb/materials/M_E_Stencil_FR.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]

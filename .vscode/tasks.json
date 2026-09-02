@@ -184,7 +184,7 @@
         {
             "label": "CMake: Build Tests (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsCoreAuto",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -192,7 +192,7 @@
         {
             "label": "CMake: Build Tests (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsCoreAuto",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -200,7 +200,7 @@
         {
             "label": "CMake: Build Tests (Release)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsCoreAuto",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"

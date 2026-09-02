@@ -408,10 +408,13 @@ void StepChain(SpringBoneChain& chain,
 
 } // namespace
 
+// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
+// System と同じバッチに入って並列に走る (AnimatorSystem::GetAccess の WHY を参照)。
 ComponentAccess SpringBoneSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Writes<SpringBoneComponent, AnimatorComponent, BoneComponent>();
+        .Reads<SkinnedMeshRenderer>()
+        .Writes<SpringBoneComponent, AnimatorComponent, BoneComponent, Transform>();
 }
 
 OrderingHints SpringBoneSystem::GetOrder() const

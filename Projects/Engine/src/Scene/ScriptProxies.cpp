@@ -7253,11 +7253,40 @@ void ScriptRagdollProxy::Begin(float holdSeconds, float maxWeight, float gravity
 {
     auto* ragdoll = EnsureRagdoll(script);
     if (!ragdoll) return;
-    ragdoll->beginRequested = true;
-    ragdoll->endRequested   = false;
-    ragdoll->holdRemaining  = holdSeconds > 0.0f ? holdSeconds : 0.0f;
+    ragdoll->beginRequested  = true;
+    ragdoll->activeRequested = false;
+    ragdoll->endRequested    = false;
+    ragdoll->holdRemaining   = holdSeconds > 0.0f ? holdSeconds : 0.0f;
     ragdoll->activationWeight  = math::Clamp01(maxWeight);
     ragdoll->activationGravity = gravityScale < 0.0f ? 0.0f : gravityScale;
+}
+
+void ScriptRagdollProxy::BeginActive(float holdSeconds) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+    // 既に立って走っているなら捕獲し直さない。目標はどのみち毎フレーム取り直すので
+    // 呼び直す意味が無く、Begin すると押されて沈んでいた勢いだけが消える。
+    if (ragdoll->IsStanding()) {
+        ragdoll->endRequested  = false;
+        ragdoll->holdRemaining = holdSeconds > 0.0f ? holdSeconds : 0.0f;
+        // 戻りかけで殴られた。Hold へ飛ばすと適用率が跳ねるので、今の適用率に
+        // 対応する時刻から BlendIn をやり直す ─ 連撃のたびに «また効き始める»。
+        if (ragdoll->phase == RagdollPhase::BlendOut) {
+            const float ceiling = std::max(ragdoll->activationWeight, math::EPSILON);
+            ragdoll->phase      = RagdollPhase::BlendIn;
+            ragdoll->phaseTimer =
+                math::Clamp01(ragdoll->weight / ceiling) * std::max(ragdoll->blendIn, 0.0f);
+        }
+        return;
+    }
+    ragdoll->beginRequested  = true;
+    ragdoll->activeRequested = true;
+    ragdoll->endRequested    = false;
+    ragdoll->holdRemaining   = holdSeconds > 0.0f ? holdSeconds : 0.0f;
+    // 立っている絵はクリップと一致するので、薄く乗せる理由が無い。
+    ragdoll->activationWeight  = 1.0f;
+    ragdoll->activationGravity = 1.0f;
 }
 
 void ScriptRagdollProxy::End() const
@@ -7291,10 +7320,22 @@ bool ScriptRagdollProxy::IsActive() const
     return ragdoll && ragdoll->IsActive();
 }
 
+bool ScriptRagdollProxy::IsStanding() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll && ragdoll->IsStanding();
+}
+
 float ScriptRagdollProxy::GetWeight() const
 {
     const auto* ragdoll = SelfComponent<RagdollComponent>(script);
     return ragdoll ? ragdoll->weight : 0.0f;
+}
+
+float ScriptRagdollProxy::GetDeviation() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll ? ragdoll->runtimeDeviation : 0.0f;
 }
 
 const char* ScriptRagdollProxy::GetStatus() const
@@ -7346,6 +7387,29 @@ void ScriptRagdollProxy::SetBlend(float blendIn, float blendOut) const
     if (!ragdoll) return;
     ragdoll->blendIn  = blendIn  < 0.0f ? 0.0f : blendIn;
     ragdoll->blendOut = blendOut < 0.0f ? 0.0f : blendOut;
+}
+
+void ScriptRagdollProxy::SetMuscle(float stiffness, float falloff, float damping) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+    ragdoll->muscleStiffness = math::Clamp01(stiffness);
+    ragdoll->muscleFalloff   = math::Clamp01(falloff);
+    ragdoll->muscleDamping   = math::Clamp01(damping);
+}
+
+void ScriptRagdollProxy::SetRecovery(float impactSlack, float recoverySeconds) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+    ragdoll->impactSlack     = math::Clamp01(impactSlack);
+    ragdoll->recoverySeconds = recoverySeconds < 0.0f ? 0.0f : recoverySeconds;
+}
+
+void ScriptRagdollProxy::SetCollapse(float distance) const
+{
+    if (auto* ragdoll = EnsureRagdoll(script))
+        ragdoll->collapseDistance = distance < 0.0f ? 0.0f : distance;
 }
 
 void ScriptRagdollProxy::SetEnabled(bool enabled) const

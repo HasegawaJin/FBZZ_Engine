@@ -103,6 +103,11 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                             const auto f = DrawTerrainLayerMaterialInspector(*mat);
                             if (f.textureDirty) tc.splatDirty         = true;
                             if (f.paramDirty)   tc.materialParamDirty = true;
+                            // レイヤー .mat の実体はシーン保存時に SceneSerializer が
+                            // 書き出す。編集してもシーンが dirty にならないと、保存も
+                            // 終了時の確認も素通りして値が消える。
+                            if ((f.textureDirty || f.paramDirty) && ctx.markSceneDirty)
+                                ctx.markSceneDirty();
                         }
                         if (ImGui::Button("Save .mat")) {
                             (void)asset::SaveMaterialAssetToFile(

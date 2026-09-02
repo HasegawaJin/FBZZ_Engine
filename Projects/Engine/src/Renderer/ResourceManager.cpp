@@ -38,6 +38,20 @@ std::string TextureCacheKey(std::string_view path)
     std::replace(key.begin(), key.end(), '\\', '/');
     return key;
 }
+
+// テクスチャが占めるバイト数の概算。
+//
+// WHY 概算で足りるか: ITexture が公開するのは寸法だけで、フォーマットもミップ数も
+//     バックエンドの内側にある。Analysis パネルが答えたいのは «どの用途が増え続けて
+//     いるか» であって GPU の実測値ではないので、RGBA8 換算の桁が合っていれば読める。
+//     ブロック圧縮の DDS は過大に、HDR/ミップ付きは過小に出る点だけは承知して使うこと。
+std::size_t EstimateTextureBytes(const ITexture& texture, std::size_t bytesPerTexel = 4)
+{
+    return static_cast<std::size_t>(texture.GetWidth())
+         * static_cast<std::size_t>(texture.GetHeight())
+         * static_cast<std::size_t>(texture.GetDepth())
+         * bytesPerTexel;
+}
 }
 
 ResourceManager::ResourceManager(IRenderer& renderer)
@@ -75,7 +89,9 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
         return ResourceHandle<ShaderTag>::Null();
     }
 
-    ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader), "Shader", __FILE__, __LINE__);
+    // WHY 0 か: シェーダーバイトコードの実サイズはバックエンドの内側にあり、
+    //          ITexture / IBuffer のように寸法から復元することもできない。
+    ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader), 0, "Shader", __FILE__, __LINE__);
     m_shaderCache[key] = handle;
     return handle;
 }
@@ -146,7 +162,9 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
         return ResourceHandle<TextureTag>::Null();
     }
 
-    ResourceHandle<TextureTag> handle = m_textures.Insert(std::move(texture), "Texture", __FILE__, __LINE__);
+    const std::size_t textureBytes = EstimateTextureBytes(*texture);
+    ResourceHandle<TextureTag> handle =
+        m_textures.Insert(std::move(texture), textureBytes, "Texture", __FILE__, __LINE__);
     m_textureCache[key] = handle;
     return handle;
 }
@@ -171,7 +189,8 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
     }
 
     // ResourcePool のスロットを置換し、RenderSystem や Material が保持するハンドルを有効なまま保つ。
-    m_textures.Replace(it->second, std::move(newTexture));
+    const std::size_t reloadedBytes = EstimateTextureBytes(*newTexture);
+    m_textures.Replace(it->second, std::move(newTexture), reloadedBytes);
     return it->second;
 }
 
@@ -204,7 +223,10 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, u
         FBZZ_LOG_ERROR("ResourceManager::CreateTexture failed (%ux%u)", width, height);
         return ResourceHandle<TextureTag>::Null();
     }
-    return m_textures.Insert(std::move(texture), "TextureFromData", __FILE__, __LINE__);
+    // WHY サイズを先に控えるか: 引数の評価順は未規定で、std::move した後に
+    //     *texture を読むと空のポインタを参照しうる。
+    const std::size_t bytes = EstimateTextureBytes(*texture);
+    return m_textures.Insert(std::move(texture), bytes, "TextureFromData", __FILE__, __LINE__);
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateTexture3D(
@@ -215,33 +237,40 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture3D(
         FBZZ_LOG_ERROR("ResourceManager::CreateTexture3D failed (%ux%ux%u)", width, height, depth);
         return ResourceHandle<TextureTag>::Null();
     }
-    return m_textures.Insert(std::move(texture), "Texture3DFromData", __FILE__, __LINE__);
+    const std::size_t bytes = EstimateTextureBytes(*texture);
+    return m_textures.Insert(std::move(texture), bytes, "Texture3DFromData", __FILE__, __LINE__);
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride), "VertexBuffer", __FILE__, __LINE__);
+    return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride), bytes,
+                            "VertexBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateGpuWritableVertexBuffer(size_t bytes, uint32_t stride)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeGpuWritableVertexBuffer(bytes, stride),
+    return m_buffers.Insert(m_renderer.CreateNativeGpuWritableVertexBuffer(bytes, stride), bytes,
                             "GpuWritableVertexBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count), "IndexBuffer", __FILE__, __LINE__);
+    return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count),
+                            static_cast<std::size_t>(count) * sizeof(uint32_t),
+                            "IndexBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t sizeBytes)
 {
-    return m_constantBuffers.Insert(m_renderer.CreateNativeConstantBuffer(sizeBytes), "ConstantBuffer", __FILE__, __LINE__);
+    return m_constantBuffers.Insert(m_renderer.CreateNativeConstantBuffer(sizeBytes), sizeBytes,
+                                    "ConstantBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const PipelineStateDesc& desc)
 {
-    return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc), "PipelineState", __FILE__, __LINE__);
+    // PSO は状態の束で、専有メモリと呼べる実体を持たない。
+    return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc), 0,
+                                   "PipelineState", __FILE__, __LINE__);
 }
 
 ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
@@ -256,17 +285,24 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
             *rt,
             i,
             RenderTargetTextureKind::Color);
-        colors.push_back(m_textures.Insert(std::move(colorTexture), "RenderTargetColorTexture", __FILE__, __LINE__));
+        const std::size_t colorBytes = colorTexture ? EstimateTextureBytes(*colorTexture) : 0;
+        colors.push_back(m_textures.Insert(std::move(colorTexture), colorBytes,
+                                           "RenderTargetColorTexture", __FILE__, __LINE__));
     }
 
     auto depthTexture = m_renderer.CreateNativeTextureFromRenderTarget(
         *rt,
         0,
         RenderTargetTextureKind::Depth);
+    const std::size_t depthBytes = depthTexture ? EstimateTextureBytes(*depthTexture) : 0;
     ResourceHandle<TextureTag> depth =
-        m_textures.Insert(std::move(depthTexture), "RenderTargetDepthTexture", __FILE__, __LINE__);
+        m_textures.Insert(std::move(depthTexture), depthBytes,
+                          "RenderTargetDepthTexture", __FILE__, __LINE__);
 
-    ResourceHandle<RenderTargetTag> handle = m_renderTargets.Insert(std::move(rt), "RenderTarget", __FILE__, __LINE__);
+    // WHY 0 か: RT のメモリは上で登録した色 / 深度テクスチャ側に計上済み。
+    //          ここでも数えると同じ実体を二重に積む。
+    ResourceHandle<RenderTargetTag> handle =
+        m_renderTargets.Insert(std::move(rt), 0, "RenderTarget", __FILE__, __LINE__);
     const uint64_t key = Key(handle);
     m_renderTargetColors[key] = std::move(colors);
     m_renderTargetDepths[key] = depth;
@@ -283,11 +319,15 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint3
     //      解放処理を通常 RT と共有できる (キューブ専用のクリーンアップを書かずに済む)。
     //      深度バッファは持たないため m_renderTargetDepths には登録しない。
     std::vector<ResourceHandle<TextureTag>> colors;
-    if (auto cubeTex = m_renderer.CreateNativeCubeTextureFromRenderTarget(*rt))
-        colors.push_back(m_textures.Insert(std::move(cubeTex), "CubemapRenderTargetTexture", __FILE__, __LINE__));
+    if (auto cubeTex = m_renderer.CreateNativeCubeTextureFromRenderTarget(*rt)) {
+        // 6 面ぶん。GetWidth/GetHeight は 1 面の寸法しか返さない。
+        const std::size_t cubeBytes = EstimateTextureBytes(*cubeTex) * 6u;
+        colors.push_back(m_textures.Insert(std::move(cubeTex), cubeBytes,
+                                           "CubemapRenderTargetTexture", __FILE__, __LINE__));
+    }
 
     ResourceHandle<RenderTargetTag> handle =
-        m_renderTargets.Insert(std::move(rt), "CubemapRenderTarget", __FILE__, __LINE__);
+        m_renderTargets.Insert(std::move(rt), 0, "CubemapRenderTarget", __FILE__, __LINE__);
     m_renderTargetColors[Key(handle)] = std::move(colors);
     return handle;
 }
@@ -300,7 +340,9 @@ ResourceHandle<TextureTag> ResourceManager::GetCubemapTexture(ResourceHandle<Ren
 
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height)
 {
-    return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height), "ComputeTexture", __FILE__, __LINE__);
+    return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height),
+                             static_cast<std::size_t>(width) * height * 8u, // RGBA16F
+                             "ComputeTexture", __FILE__, __LINE__);
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
@@ -312,7 +354,8 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
                       width, height, depth);
         return ResourceHandle<TextureTag>::Null();
     }
-    return m_textures.Insert(std::move(texture), "ComputeTexture3D", __FILE__, __LINE__);
+    const std::size_t bytes = EstimateTextureBytes(*texture, 8u); // RGBA16F
+    return m_textures.Insert(std::move(texture), bytes, "ComputeTexture3D", __FILE__, __LINE__);
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
@@ -325,13 +368,16 @@ ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
                       width, height);
         return ResourceHandle<TextureTag>::Null();
     }
-    return m_textures.Insert(std::move(texture), "DynamicTexture", __FILE__, __LINE__);
+    const std::size_t bytes =
+        EstimateTextureBytes(*texture, format == DynamicTextureFormat::R8 ? 1u : 4u);
+    return m_textures.Insert(std::move(texture), bytes, "DynamicTexture", __FILE__, __LINE__);
 }
 
 ResourceHandle<TextureTag> ResourceManager::RegisterTexture(std::unique_ptr<ITexture> texture)
 {
     if (!texture) return ResourceHandle<TextureTag>::Null();
-    return m_textures.Insert(std::move(texture), "AdoptedTexture", __FILE__, __LINE__);
+    const std::size_t bytes = EstimateTextureBytes(*texture);
+    return m_textures.Insert(std::move(texture), bytes, "AdoptedTexture", __FILE__, __LINE__);
 }
 
 ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
@@ -341,7 +387,8 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(cons
         FBZZ_LOG_ERROR("ResourceManager::CreateStructuredBuffer failed (count=%u stride=%u)", elementCount, stride);
         return ResourceHandle<StructuredBufferTag>::Null();
     }
-    return m_structuredBuffers.Insert(std::move(sb), "StructuredBuffer", __FILE__, __LINE__);
+    return m_structuredBuffers.Insert(std::move(sb), static_cast<std::size_t>(elementCount) * stride,
+                                      "StructuredBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<StructuredBufferTag> ResourceManager::CreateGpuLocalStructuredBuffer(
@@ -353,7 +400,8 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateGpuLocalStructuredBuf
                        elementCount, stride);
         return ResourceHandle<StructuredBufferTag>::Null();
     }
-    return m_structuredBuffers.Insert(std::move(sb), "GpuLocalStructuredBuffer", __FILE__, __LINE__);
+    return m_structuredBuffers.Insert(std::move(sb), static_cast<std::size_t>(elementCount) * stride,
+                                      "GpuLocalStructuredBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
@@ -363,7 +411,8 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(co
         FBZZ_LOG_ERROR("ResourceManager::CreateRWStructuredBuffer failed (count=%u stride=%u)", elementCount, stride);
         return ResourceHandle<StructuredBufferTag>::Null();
     }
-    return m_structuredBuffers.Insert(std::move(sb), "RWStructuredBuffer", __FILE__, __LINE__);
+    return m_structuredBuffers.Insert(std::move(sb), static_cast<std::size_t>(elementCount) * stride,
+                                      "RWStructuredBuffer", __FILE__, __LINE__);
 }
 
 IShader* ResourceManager::Get(ResourceHandle<ShaderTag> h) { return m_shaders.Get(h); }

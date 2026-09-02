@@ -5,8 +5,63 @@
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <cstring>
+#include <utility>
 
 namespace fbzz::renderer {
+
+namespace {
+
+// WHY Active() を使うか: Material は Model / MaterialComponent / 各パスのキャッシュへ
+//     埋め込まれて畳まれるため、破棄地点へ ResourceManager& を渡す経路が無い。
+//     ResourceManager より後に消える Material では Active() が空になり、
+//     そのときは解放先そのものが既に無いので何もしないのが正しい。
+void ReleaseParamsBuffer(ResourceHandle<ConstantBufferTag>& buffer)
+{
+    if (!buffer.IsValid()) return;
+    if (ResourceManager* resources = ResourceManager::Active())
+        resources->Release(buffer);
+    buffer = {};
+}
+
+} // namespace
+
+Material::~Material()
+{
+    ReleaseParamsBuffer(paramsBuffer);
+}
+
+Material::Material(Material&& other) noexcept
+    : shader(other.shader)
+    , textures(std::move(other.textures))
+    , paramsBuffer(other.paramsBuffer)
+    , paramData(std::move(other.paramData))
+    , shaderPath(std::move(other.shaderPath))
+{
+    other.paramsBuffer = {};
+}
+
+Material& Material::operator=(Material&& other) noexcept
+{
+    if (this == &other) return *this;
+    ReleaseParamsBuffer(paramsBuffer);
+    shader       = other.shader;
+    textures     = std::move(other.textures);
+    paramsBuffer = other.paramsBuffer;
+    paramData    = std::move(other.paramData);
+    shaderPath   = std::move(other.shaderPath);
+    other.paramsBuffer = {};
+    return *this;
+}
+
+Material Material::CloneWithoutGpuResources() const
+{
+    Material clone;
+    clone.shader     = shader;
+    clone.textures   = textures;
+    clone.paramData  = paramData;
+    clone.shaderPath = shaderPath;
+    return clone;
+}
 
 void Material::Init(ResourceManager& resources, uint32_t cbufferSize)
 {

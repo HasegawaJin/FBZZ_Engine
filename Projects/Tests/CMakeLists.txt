@@ -75,6 +75,44 @@ gtest_discover_tests(FBZZTestsCoreAuto
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
 )
 
+add_executable(FBZZTestsPhysicsAuto
+    Physics/Auto/XPBDSolverTests.cpp
+    Physics/Auto/XPBDJointTests.cpp
+)
+
+add_executable(FBZZTestsEngineAuto
+    Engine/Auto/RagdollRigTests.cpp
+)
+set_target_properties(FBZZTestsEngineAuto PROPERTIES
+    OUTPUT_NAME "FBZZTestsEngineAuto"
+    RUNTIME_OUTPUT_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
+)
+target_link_libraries(FBZZTestsEngineAuto
+    PRIVATE
+        GTest::gtest_main
+        FBZZEngine
+        FBZZPhysics
+)
+add_dependencies(FBZZTestsEngineAuto FBZZTestsStageRuntime)
+gtest_discover_tests(FBZZTestsEngineAuto
+    DISCOVERY_TIMEOUT 60
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
+)
+set_target_properties(FBZZTestsPhysicsAuto PROPERTIES
+    OUTPUT_NAME "FBZZTestsPhysicsAuto"
+    RUNTIME_OUTPUT_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
+)
+target_link_libraries(FBZZTestsPhysicsAuto
+    PRIVATE
+        GTest::gtest_main
+        FBZZPhysics
+)
+add_dependencies(FBZZTestsPhysicsAuto FBZZTestsStageRuntime)
+gtest_discover_tests(FBZZTestsPhysicsAuto
+    DISCOVERY_TIMEOUT 60
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
+)
+
 # ManualTest は CTest に登録しない。Window/Cursor の OS 状態を変更するため、
 # 開発者が Visual Studio から意図的に起動した場合だけ実行する。
 add_executable(FBZZTestsCoreManual

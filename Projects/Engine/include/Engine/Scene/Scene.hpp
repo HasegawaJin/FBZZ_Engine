@@ -104,6 +104,9 @@ public:
     static constexpr uint32_t MAX_ENTITIES = ComponentArray<uint8_t>::MAX;
 
     Scene() = default;
+    // WHY 明示するか: Component が個体ごとに確保した GPU リソースは ResourceManager 側の実体で、
+    //      Component が消えるだけでは返らない。畳むときに必ず返す口をここに置く。
+    ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
     Scene(Scene&& other) noexcept;
