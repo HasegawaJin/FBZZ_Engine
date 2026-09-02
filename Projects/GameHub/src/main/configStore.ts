@@ -29,7 +29,7 @@ const DEFAULT_CONFIG: HubConfig = {
     sdkRoot: '',
     sdkId: '',
     sdkConfiguration: 'Development',
-    theme: 'midnight',
+    theme: 'modern',
   },
   projects: [],
 };
@@ -85,6 +85,13 @@ async function readSdkId(sdkRoot: string): Promise<string> {
 
 function asSdkConfiguration(value: unknown): SdkBuildConfiguration {
   return value === 'Debug' || value === 'Release' ? value : 'Development';
+}
+
+const THEMES: readonly HubTheme[] = ['modern', 'dark', 'light', 'system'];
+
+// 'midnight' は旧テーマ名。既存の hub_config.toml を読み捨てず 'modern' へ寄せる。
+function asTheme(value: unknown): HubTheme {
+  return THEMES.includes(value as HubTheme) ? value as HubTheme : 'modern';
 }
 
 /**
@@ -170,7 +177,6 @@ export class ConfigStore {
       const document = parse(await readFile(this.configPath, 'utf8')) as Record<string, unknown>;
       const hub = (document.hub ?? {}) as Record<string, unknown>;
       const rawProjects = Array.isArray(document.projects) ? document.projects : [];
-      const theme = asString(hub.theme);
 
       this.config = {
         settings: {
@@ -178,7 +184,7 @@ export class ConfigStore {
           sdkRoot: asString(hub.sdk_root) || asString(hub.engine_root),
           sdkId: asString(hub.sdk_id),
           sdkConfiguration: asSdkConfiguration(hub.sdk_configuration),
-          theme: theme === 'dark' ? 'dark' : 'midnight',
+          theme: asTheme(hub.theme),
         },
         projects: rawProjects.flatMap((item) => {
           if (!item || typeof item !== 'object') return [];
@@ -224,7 +230,6 @@ export class ConfigStore {
   async setSettings(settings: HubSettings): Promise<void> {
     // ユーザーの手動設定を、起動時に残っている自動検出結果で上書きしない。
     this.configGeneration += 1;
-    const theme: HubTheme = settings.theme === 'dark' ? 'dark' : 'midnight';
     const sdkRoot = settings.sdkRoot.trim();
     const sdkId = await readSdkId(sdkRoot);
     if (sdkRoot && !sdkId) throw new Error('選択されたフォルダーは有効なFBZZ SDKではありません。');
@@ -233,7 +238,7 @@ export class ConfigStore {
       sdkRoot,
       sdkId,
       sdkConfiguration: asSdkConfiguration(settings.sdkConfiguration),
-      theme,
+      theme: asTheme(settings.theme),
     };
     await this.save();
   }
