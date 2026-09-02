@@ -14,13 +14,13 @@ if (started) {
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
-    width: 1360,
-    height: 820,
+    width: 1280,
+    height: 720,
     minWidth: 980,
     minHeight: 640,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#090b12',
+    backgroundColor: '#0e1013',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
