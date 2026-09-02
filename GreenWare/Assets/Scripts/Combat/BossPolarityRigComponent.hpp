@@ -171,11 +171,6 @@ public:
     FBZZ_GROUP("Leg Flinch")
     FBZZ_FIELD(bool, flinchOnHit, true, "Flinch On Hit")
     FBZZ_TOOLTIP("斬った脚を弾ませる。切ると斬撃に対して脚が無反応になる")
-    // Boss.animcontroller の Add_Hit レイヤー (加算 / 基準 Idle / M_Boss_Hit.mask)。
-    // 手続きの押しと違って «ボスが身をすくめる» という意思のある反応になるので、
-    // 物理と重ねて初めて «当たった» が体の芝居として返る。
-    FBZZ_FIELD(bool, flinchAnim, true, "Hit Reaction Clip")
-    FBZZ_TOOLTIP("被弾クリップ (Hit_Add) を加算で重ねる。切ると物理の押しだけになる")
     FBZZ_FIELD_RANGE(float, flinchSeconds, 0.32f, "Duration", 0.05f, 2.0f)
     FBZZ_TOOLTIP("弾みが収まるまで。長いと «押され続けている» に見える")
     FBZZ_FIELD_RANGE(float, flinchForce, 95.0f, "Force", 0.0f, 600.0f)
@@ -647,11 +642,6 @@ inline void BossPolarityRigComponent::Flinch(const std::string& legSuffix,
         rag->PushAt(hitPoint, direction, flinchPush * scale, flinchPushRadius);
         return;
     }
-
-    // 立っている間だけ。倒れている体の骨はラグドールが持っているので、加算レイヤーを
-    // 動かしても後段で丸ごと上書きされ、トリガーだけが空振りする。
-    if (flinchAnim)
-        if (auto* anim = scene.GetScript<BossAnimatorComponent>()) anim->ReactToHit();
 
     const int leg = LegIndexOf(legSuffix);
     if (leg >= 0 && !IsLegBroken(leg)) {

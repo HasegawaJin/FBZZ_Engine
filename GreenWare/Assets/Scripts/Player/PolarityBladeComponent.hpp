@@ -132,21 +132,6 @@ public:
     FBZZ_TOOLTIP("空振りにも返す軽い手応え。0 にすると «入力が拾われていない» に見える")
 
     // ── 溜め ────────────────────────────────────────────────────────────────
-    //
-    // WHY 震えを体に出すか (画面ではなく):
-    //   溜めは «力が溜まっている» ではなく «こらえている» を見せる時間で、
-    //   こらえているのはプレイヤーの体。画面だけを揺らすと «カメラが震えている» に
-    //   なり、溜めているのが誰なのか画面から消える。体が震え、その余波として
-    //   パッドと画面が薄く付いてくる、という順に積む。
-    //
-    // WHY ポーズを触らずモデルの拡縮だけで震わせるか:
-    //   骨を動かす手 (IK) は «アニメーションそのものを書き換える» ことになる。溜めの震えは
-    //   «今のポーズのまま体が細かく振れている» であって、別のポーズを作りたいわけではない。
-    //   モデルを丸ごと拡縮すれば、どのクリップが再生されていても、その上から等しく掛かる。
-    //
-    //   拡縮の原点はモデル原点 (足元) なので、原点から遠い手や頭ほど大きく動く。
-    //   «手はしっかり震えているのに体の嵩は変わらない» は、横の締まりを 0 に寄せるだけで
-    //   出せる ─ 部位ごとに別の仕掛けを足す必要はない (shake::BodyShake)。
     FBZZ_GROUP("Charge")
     FBZZ_FIELD_RANGE(float, chargeShake, 0.003f, "Body Shake", 0.0f, 0.05f)
     FBZZ_TOOLTIP("満溜めでの縦の伸び幅 (素の大きさに対する比)。足元が原点なので、"
@@ -226,11 +211,6 @@ private:
     /// 扇の中に居る対象すべてを斬る。
     void ResolveHit();
     /// 1 体ぶんの処理。極を乗せて、少し削る。
-    ///
-    /// WHY 押し出さないか: 斬撃で相手を飛ばすと、盤面を動かす手が «極性で組む» と
-    ///     «斬って散らす» の 2 本になる。散らす方が速くて確実なので、極を乗せて
-    ///     引き合わせるという本作の芯が «遠回り» に落ちる。刃は極を乗せるだけにして、
-    ///     相手を動かすのは極性 (引力・斥力・衝突) の側にだけ残す。
     void HitOne(GameObject& object, PolarityTargetComponent& target);
     /// 斬る向き。狙っている相手が居ればそちらへ、居なければカメラの前方へ。
     [[nodiscard]] Vector3 SwingDirection() const;
@@ -242,10 +222,6 @@ private:
 
 
     /// 連撃の段数。1 を下回らせない。
-    ///
-    /// WHY math の Max を使わないか: fbzz::math::Max は float を返す。
-    ///     段数は剰余 (`%`) の右辺に来るので、float になった時点でコンパイルが通らない。
-    ///     整数として扱いたい調整値は std::max で受けること。
     [[nodiscard]] int ComboLength() const
     { return std::max(tuning->bladeComboLength, 1); }
 
@@ -806,31 +782,20 @@ inline void PolarityBladeComponent::HitOne(GameObject& object,
     // 極を乗せる。中和・上書き・付与の判定は極性システム側が 1 箇所で持っている。
     (void)target.Apply(m_polarity);
 
-    // 削る。ボスは立っている間も通るが、無防備なあいだより大きく減る。
+    // 削る。ボスは «無防備なあいだ» だけ通る。
     //
-    // WHY 立っている間を «小さく» するか: 等倍で削れるなら、部位に極を乗せて転ばせる
-    //     手順が «遠回り» に落ちる。倒してから斬るのが最短であり続ける量に留める。
-    //     一方で 0 にすると、当たっているのに数字が動かない時間が戦闘の大半を占め、
-    //     手応えでしか命中が分からなくなる。
+    // WHY 立っている間は通さないか: いつでも削れるなら、部位に極を乗せて転ばせる手順が
+    //     «遠回り» に落ちる。倒してから斬る、が最短であり続ける形にしておく。
     const auto* boss = IBoss::Of(&object);
-    const bool  guarded = boss && !boss->IsStaggered();
-
-    float damage = m_charged
-        ? Lerp(static_cast<float>(std::max(tuning->bladeDamage, 0)),
-               static_cast<float>(std::max(tuning->bladeChargedDamage, 0)),
-               m_chargedRatio)
-        : static_cast<float>(std::max(tuning->bladeDamage, 0));
-    if (guarded) damage *= Clamp01(tuning->bladeBossStandingScale);
-
-    // 倍率で 1 未満へ落ちた一撃を 0 に切り捨てない。«通る» と決めた以上、
-    // 当たれば必ず 1 は減る ── 0 が混じると «たまに効かない» に見える。
-    const int applied = damage > 0.0f
-        ? std::max(static_cast<int>(damage), 1)
-        : 0;
-    if (applied <= 0) return;
-
-    if (auto* combat = CombatManagerComponent::Instance())
-        (void)combat->DamageEnemyDirect(&object, applied);
+    if (!boss || boss->IsStaggered()) {
+        const int damage = m_charged
+            ? static_cast<int>(Lerp(static_cast<float>(std::max(tuning->bladeDamage, 0)),
+                                    static_cast<float>(std::max(tuning->bladeChargedDamage, 0)),
+                                    m_chargedRatio))
+            : std::max(tuning->bladeDamage, 0);
+        if (auto* combat = CombatManagerComponent::Instance())
+            (void)combat->DamageEnemyDirect(&object, damage);
+    }
 }
 
 inline void PolarityBladeComponent::OnUpdate()
