@@ -38,6 +38,17 @@ foreach(REQUIRED_PATH IN LISTS REQUIRED_PATHS)
     endif()
 endforeach()
 
+# WHY: DX12はプロジェクトテンプレートの既定rendererであり、DXIL reflectionはdxcompiler.dllを
+#      exe隣から LoadLibraryW で解決する。DXCを同梱するSDKでEditor隣への配置が漏れると、
+#      shaderロードが全滅してDebugDrawの初期化assertで落ちる。同梱有無ではなく整合を契約とする。
+foreach(DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
+    if(EXISTS "${SDK_ROOT}/bin/${CONFIG}/${DXC_RUNTIME_DLL}"
+       AND NOT EXISTS "${SDK_ROOT}/tools/${CONFIG}/Editor/${DXC_RUNTIME_DLL}")
+        message(FATAL_ERROR
+            "FBZZ SDK validation failed: tools/${CONFIG}/Editor/${DXC_RUNTIME_DLL} is missing")
+    endif()
+endforeach()
+
 file(READ "${SDK_ROOT}/fbzz-sdk.toml" SDK_MANIFEST_TEXT)
 string(FIND "${SDK_MANIFEST_TEXT}" "id = \"${SDK_ID}\"" SDK_ID_POSITION)
 if(SDK_ID_POSITION EQUAL -1)

@@ -2,13 +2,14 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = 'd8f5002311fb7466'
-source_hash = '6d84bc0717446831'
+settings_hash = '18f10c26b1ca5223'
+source_hash = '4393579a2c4858e2'
 
 [meta]
 guid = '31143629a5e7de090343a3985e567d82'
 
 [model]
+clips = []
 default_compression = 'Auto'
 generate_normals = true
 generate_tangents = true
@@ -22,10 +23,3 @@ selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
-
-    [[model.clips]]
-    end_frame = 29.0
-    loop = true
-    name = 'Beam_Aim'
-    output_name = ''
-    start_frame = 0.0

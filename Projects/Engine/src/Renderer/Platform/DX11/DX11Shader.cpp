@@ -12,6 +12,7 @@
 #include <Engine/Core/HResult.hpp>
 #include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
 #include <Engine/Renderer/ShaderDependencyTracker.hpp>
+#include <Engine/Util/EngineAssetPath.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
 #include <d3dcompiler.h>
@@ -29,50 +30,11 @@ namespace fbzz::renderer
 
 namespace {
 
-bool FileExistsWide(const std::wstring& path)
-{
-    const DWORD attrs = GetFileAttributesW(path.c_str());
-    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
-}
-
-std::wstring JoinWidePath(const std::wstring& lhs, const std::wstring& rhs)
-{
-    if (lhs.empty()) return rhs;
-    const wchar_t tail = lhs.back();
-    if (tail == L'/' || tail == L'\\') return lhs + rhs;
-    return lhs + L"/" + rhs;
-}
-
-// 相対アセットパスをカレントディレクトリから上方向に探索して実ファイルへ解決する。
-// WHY: Editor / Standalone の起動場所が build/Development/... の場合でも、
-//      "Assets/Shaders/..." のようなリポジトリルート相対パスを D3DCompileFromFile が開けるようにする。
+// 相対アセットパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
+// util::ResolveEngineAssetPath に集約している。
 std::wstring ResolveReadablePath(const std::string& path)
 {
-    std::wstring requested = util::StringUtils::ToWide(path);
-    if (FileExistsWide(requested))
-        return requested;
-
-    if (requested.size() > 1 && requested[1] == L':')
-        return requested;
-
-    wchar_t cwdBuffer[MAX_PATH]{};
-    const DWORD len = GetCurrentDirectoryW(MAX_PATH, cwdBuffer);
-    if (len == 0 || len >= MAX_PATH)
-        return requested;
-
-    std::wstring current(cwdBuffer);
-    for (;;) {
-        const std::wstring candidate = JoinWidePath(current, requested);
-        if (FileExistsWide(candidate))
-            return candidate;
-
-        const size_t slash = current.find_last_of(L"/\\");
-        if (slash == std::wstring::npos)
-            break;
-        current = current.substr(0, slash);
-    }
-
-    return requested;
+    return util::ResolveEngineAssetPath(util::StringUtils::ToWide(path)).wstring();
 }
 
 std::string NarrowSlashes(std::wstring path)
@@ -340,7 +302,8 @@ std::vector<uint8_t> DX11Shader::LoadBinary(const std::string& filePath)
 {
     // WHY: カレントディレクトリまたは shader path に日本語が含まれる配布環境でも、
     //      CSO を Unicode パスで開けるよう UTF-8 から wide path に変換する。
-    std::ifstream file(fbzz::util::StringUtils::ToWide(filePath), std::ios::binary | std::ios::ate);
+    //      CSO も HLSL と同じ解決規則に通す — SDK の共有 asset だけが実体を持つ構成があるため。
+    std::ifstream file(ResolveReadablePath(filePath), std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
         FBZZ_LOG_ERROR("Shader binary open failed: %s", filePath.c_str());

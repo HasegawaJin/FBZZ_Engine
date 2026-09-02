@@ -12,12 +12,12 @@ locked_objects = []
     instance_id = '0f5f95f7-2ae5-4308-8efd-34097e29f400'
 
     [[editor.game_objects]]
-    component_order = [ 'Particle Emitter' ]
-    instance_id = 'fa9e0002-0000-0000-0000-000000000003'
-
-    [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
     instance_id = '41c4aca2-c9c2-488d-96f9-d5a5526dbd1c'
+
+    [[editor.game_objects]]
+    component_order = [ 'Particle Emitter' ]
+    instance_id = 'fa9e0002-0000-0000-0000-000000000003'
 
     [[editor.game_objects]]
     component_order = [ 'Skinned Mesh Renderer', 'Material' ]
@@ -61,16 +61,16 @@ locked_objects = []
     instance_id = 'ab724e67-2eac-4683-ae80-b60842f18981'
 
     [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = 'b97d6fdf-6824-49cb-993a-d84b7e97d488'
+
+    [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
     instance_id = 'e4d8b3d8-b040-4f33-8e49-2323bee67500'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
     instance_id = 'e2b11a77-24c3-4559-a5c3-f2bf9cae5558'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = 'b97d6fdf-6824-49cb-993a-d84b7e97d488'
 
     [[editor.game_objects]]
     component_order = [ 'Skinned Mesh Renderer', 'Material' ]

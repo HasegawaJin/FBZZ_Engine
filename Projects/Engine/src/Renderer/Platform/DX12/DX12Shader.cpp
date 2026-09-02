@@ -7,6 +7,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
 #include <Engine/Renderer/ShaderDependencyTracker.hpp>
+#include <Engine/Util/EngineAssetPath.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
 #include <bit>
@@ -26,23 +27,11 @@ namespace fbzz::renderer {
 
 namespace {
 
-// 相対Assetsパスを実行ディレクトリから上方向へ探索する。
-// WHY: Sandbox.exeの作業ディレクトリとリポジトリ直下のどちらから起動してもHLSLを発見するため。
+// 相対Assetsパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
+// util::ResolveEngineAssetPath に集約している。
 std::wstring ResolveShaderPath(const std::string& path)
 {
-    const std::wstring requested = util::StringUtils::ToWide(path);
-    if (GetFileAttributesW(requested.c_str()) != INVALID_FILE_ATTRIBUTES) return requested;
-    wchar_t cwd[MAX_PATH]{};
-    if (GetCurrentDirectoryW(MAX_PATH, cwd) == 0) return requested;
-    std::wstring current = cwd;
-    for (;;) {
-        const std::wstring candidate = current + L"/" + requested;
-        if (GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES) return candidate;
-        const size_t slash = current.find_last_of(L"/\\");
-        if (slash == std::wstring::npos) break;
-        current.resize(slash);
-    }
-    return requested;
+    return util::ResolveEngineAssetPath(util::StringUtils::ToWide(path)).wstring();
 }
 
 // dxcompiler.dll を遅延ロードして DXC API の静的リンク依存を避ける。
@@ -363,7 +352,8 @@ ShaderDescriptor DX12Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
 
 std::vector<uint8_t> DX12Shader::LoadBinary(const std::string& path)
 {
-    std::ifstream file(util::StringUtils::ToWide(path), std::ios::binary | std::ios::ate);
+    // WHY: CSO も HLSL と同じ解決規則に通す — SDK の共有 asset だけが実体を持つ構成があるため。
+    std::ifstream file(ResolveShaderPath(path), std::ios::binary | std::ios::ate);
     if (!file.is_open())
         return {};
     const size_t size = static_cast<size_t>(file.tellg());

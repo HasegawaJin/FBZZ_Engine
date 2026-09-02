@@ -2,13 +2,14 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '9346a5eeb463eeb6'
-source_hash = 'd43518cf497f84e2'
+settings_hash = '18f10c26b1ca5223'
+source_hash = '6e28a806ca662881'
 
 [meta]
 guid = '85f5fc802703d2d937706427d804623c'
 
 [model]
+clips = []
 default_compression = 'Auto'
 generate_normals = true
 generate_tangents = true
@@ -17,15 +18,8 @@ importer = 'ModelImporter'
 importer_version = 4
 normal_map_convention = 'DirectX'
 root_motion_node = ''
-selected_animations = [ 'Crippled_FL_BL' ]
+selected_animations = []
 selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
-
-    [[model.clips]]
-    end_frame = 89.0
-    loop = true
-    name = 'Crippled_FL_BL'
-    output_name = ''
-    start_frame = 0.0
