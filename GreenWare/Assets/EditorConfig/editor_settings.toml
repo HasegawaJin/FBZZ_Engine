@@ -40,13 +40,13 @@ version = '1.0.0'
     path = 'Assets/Scenes/Title.scene'
 
 [camera]
-last_pos_x = -11.987863540649414
-last_pos_y = 13.16524887084961
-last_pos_z = -23.455957412719727
-last_rot_w = 0.9555689692497253
-last_rot_x = 0.13946150243282318
-last_rot_y = 0.25696665048599243
-last_rot_z = -0.03750326856970787
+last_pos_x = 4.668574810028076
+last_pos_y = 2.718580722808838
+last_pos_z = -17.05765151977539
+last_rot_w = 0.964425265789032
+last_rot_x = 0.09253491461277008
+last_rot_y = -0.2464991956949234
+last_rot_z = 0.023651165887713432
 ortho_height = 20.0
 orthographic = false
 sensitivity = 0.15000000596046448
@@ -1405,7 +1405,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 1980011298
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 1981452864
@@ -2405,7 +2405,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 4068757142
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 4081936864
@@ -2621,12 +2621,12 @@ name = 'AI Settings'
 open = false
 
 [scene]
-last_path = 'Assets/Scenes/Stage_01.scene'
+last_path = 'Assets/Scenes/Stage_02.scene'
 recent = [
+    'Assets/Scenes/Stage_02.scene',
     'Assets/Scenes/Stage_01.scene',
     'Assets/Scenes/StageSelect.scene',
     'Assets/Scenes/Title.scene',
-    'Assets/Scenes/Stage_02.scene',
     'Assets/Scenes/Main.scene',
     'Assets/Scenes/Result.scene',
     'Assets/Scenes/Load.scene',

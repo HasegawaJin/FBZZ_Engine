@@ -2,31 +2,31 @@ type = 'PostProcessProfile'
 
 [[overrides]]
 active = true
-intensity = 1.15
-radius = 1.1
+intensity = 1.149999976158142
+radius = 1.100000023841858
 slices = 4
 stepsPerSlice = 6
 type = 'GTAO'
 
 [[overrides]]
 active = true
-rayLength = 0.7
+rayLength = 0.699999988079071
 steps = 12
-strength = 0.7
-thickness = 0.08
+strength = 0.699999988079071
+thickness = 0.07999999821186066
 type = 'ContactShadow'
 
 [[overrides]]
-active = true
-intensity = 0.4
+active = false
+intensity = 0.4000000059604645
 maxDistance = 32.0
 steps = 24
-thickness = 0.2
+thickness = 0.20000000298023224
 type = 'SSR'
 
 [[overrides]]
 active = true
-intensity = 0.6
+intensity = 0.025288665667176247
 softKnee = 0.5
 threshold = 1.0
 type = 'Bloom'
@@ -50,68 +50,68 @@ speedUp = 0.800000011920929
 type = 'AutoExposure'
 
 [[overrides]]
-active = true
-highlightCompression = 0.22
-shadowLift = 0.1
+active = false
+highlightCompression = 0.2199999988079071
+shadowLift = 0.10000000149011612
 type = 'ShadowHighlight'
 
 [[overrides]]
-active = true
-contrast = 0.14
+active = false
+contrast = 0.14000000059604645
 hueShift = 0.0
-saturation = 0.98
-temperature = -0.12
+saturation = 0.9800000190734863
+temperature = -0.11999999731779099
 tint = 0.0
 type = 'ColorGrading'
 
 [[overrides]]
-active = true
+active = false
 radius = 2.0
-strength = 0.26
+strength = 0.25999999046325684
 type = 'Clarity'
 
 [[overrides]]
-active = true
+active = false
 radius = 1.0
-strength = 0.3
+strength = 0.30000001192092896
 type = 'Sharpen'
 
 [[overrides]]
-active = true
-albedo = [ 0.58, 0.63, 0.72 ]
-ambient = 0.6
-anisotropy = 0.55
-density = 0.03
+active = false
+albedo = [ 0.5799999833106995, 0.6299999952316284, 0.7200000286102295 ]
+ambient = 0.6000000238418579
+anisotropy = 0.550000011920929
+density = 0.029999999329447746
 emissive = [ 0.0, 0.0, 0.0 ]
 farDistance = 45.0
-heightFalloff = 0.06
+heightFalloff = 0.05999999865889549
 heightStart = 0.0
 nearDistance = 0.5
 type = 'FroxelFog'
 
 [[overrides]]
-active = true
+active = false
 samples = 8
-strength = 0.3
+strength = 0.30000001192092896
 type = 'MotionBlur'
 
 [[overrides]]
-active = true
+active = false
 color = [ 0.0, 0.0, 0.0 ]
-intensity = 0.34
-roundness = 0.85
+intensity = 0.3400000035762787
+roundness = 0.8500000238418579
 smoothness = 0.5
 type = 'Vignette'
 
 [[overrides]]
-active = true
-amount = 0.002
+active = false
+amount = 0.0020000000949949026
 type = 'ChromaticAberration'
 
 [[overrides]]
-active = true
-intensity = 0.028
-response = 0.65
+active = false
+intensity = 0.02800000086426735
+response = 0.6499999761581421
 type = 'FilmGrain'
 
 [[overrides]]

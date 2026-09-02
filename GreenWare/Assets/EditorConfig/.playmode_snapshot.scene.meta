@@ -4,68 +4,24 @@ hidden_objects = []
 locked_objects = []
 
     [[editor.game_objects]]
-    component_order = [
-        'Capsule Collider',
-        'Rigid Body',
-        'Animator',
-        'Script:BossAnimatorComponent',
-        'Script:PolarityTargetComponent',
-        'Script:EnemyHealthComponent',
-        'Script:BossPolarityCoreComponent',
-        'Script:BossHitboxRigComponent',
-        'Script:BossPolarityRigComponent',
-        'Script:BossBeamComponent',
-        'Script:BossShockwaveComponent',
-        'Script:BossAiComponent',
-        'Script:BossAudioComponent',
-        'Script:BossDeathVfxComponent',
-        'Script:EnemyDeathVfxComponent',
-        'Script:BossRoomTriggerComponent',
-        'Script:BossTelegraphComponent',
-        'Script:BossCollapsePostureComponent',
-        'IK Solver',
-        'Audio Source',
-        'Script:BossStepDustComponent',
-        'Script:LaserVolleyComponent',
-        'Script:BossPartTelegraphComponent'
-    ]
-    instance_id = '5fe47bed-33f0-498b-88b6-5469850ccaac'
-
-    [[editor.game_objects]]
-    component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Environment Light', 'Atmospheric Scattering', 'Volumetric Cloud' ]
-    instance_id = 'a32b8f80-b125-4507-8ca5-9902943a2913'
-
-    [[editor.game_objects]]
-    component_order = [ 'Camera', 'Script:TpsCameraComponent', 'Audio Listener', 'Script:FpsCameraComponent' ]
-    instance_id = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material', 'Socket Attachment' ]
-    instance_id = 'c4eae030-9d43-4ea6-86e0-6346120cc090'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '54331ad0-bf25-40d8-aced-de8209167a44'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '85dfb354-3483-4b03-b795-408927f9fb0d'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '7f00224e-d247-49c8-b664-12b03be16d72'
+    instance_id = '0f5f95f7-2ae5-4308-8efd-34097e29f400'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '4078b94b-6ed3-4657-979f-daef0006defe'
+    instance_id = '41c4aca2-c9c2-488d-96f9-d5a5526dbd1c'
 
     [[editor.game_objects]]
-    component_order = [ 'UI Text' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000012'
+    component_order = [ 'Particle Emitter' ]
+    instance_id = 'fa9e0002-0000-0000-0000-000000000003'
 
     [[editor.game_objects]]
     component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'e3e797d1-8fd3-405e-9ca7-5e40cadfafd0'
+    instance_id = 'b2b5f772-e160-48bd-ab57-8c8e70e5bedb'
 
     [[editor.game_objects]]
     component_order = [
@@ -73,324 +29,160 @@ locked_objects = []
         'Rigid Body',
         'Character Controller',
         'Animator',
-        'Script:PlayerComponent',
-        'Script:PlayerHealthBarComponent',
         'IK Solver',
-        'Audio Source'
+        'Audio Source',
+        'Script:PlayerComponent',
+        'Script:PlayerHealthBarComponent'
     ]
     instance_id = '7e2bd121-6dc0-40fb-9986-db6abd43f721'
 
     [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'ceeb0fbb-12f8-4f41-ae12-d134292c357b'
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '193da91b-313c-4da2-9e4d-7ddae61101b8'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '31b9edb2-ed20-4430-a0e4-44ba773c03b1'
+    instance_id = '091442d7-5102-48d5-b481-60f10e99a556'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '2fa458b0-dff5-47de-8cc7-9cd202ca1633'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '70b7bc3b-0e4e-49ca-824c-2b055b09bfd6'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'dbff4d1f-fcde-4451-b61b-efeb24f137f4'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'ab724e67-2eac-4683-ae80-b60842f18981'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '04f214bf-8316-416e-b88f-278949a9031e'
+    instance_id = 'b97d6fdf-6824-49cb-993a-d84b7e97d488'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'd3945bae-4fea-4458-a155-98adabf9b325'
-
-    [[editor.game_objects]]
-    component_order = [ 'Bone' ]
-    instance_id = '7ad864a7-0443-41d4-b6cf-e071a151006b'
+    instance_id = 'e4d8b3d8-b040-4f33-8e49-2323bee67500'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '9d38e502-5e38-49aa-8e06-0dff8ecbe348'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'a7b01d85-24f7-4090-a5ca-4ef942cf6998'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'b5fe3ad9-370c-479f-bc2b-7dac9b2e5b19'
-
-    [[editor.game_objects]]
-    component_order = [ 'Bone' ]
-    instance_id = '33e11a58-8478-442d-b0c8-9c49b118e27b'
+    instance_id = 'e2b11a77-24c3-4559-a5c3-f2bf9cae5558'
 
     [[editor.game_objects]]
     component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'f427689c-88c7-487d-9a74-8629189ab069'
+    instance_id = 'f1558b44-cd34-4fb2-910a-13d0094a17eb'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '5331047c-ea25-4241-93c0-3d531153acb4'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:SerpentApertureComponent' ]
+    instance_id = 'f50ce569-da3d-49c8-8104-167ffbe6760d'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '0015777a-24bb-4c72-b224-35656ca2e62f'
+    instance_id = '7036fe8c-248b-466b-8679-28f895d47656'
 
     [[editor.game_objects]]
-    component_order = [ 'UI Image' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000011'
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '9f46ae0c-612c-4a9f-8565-8d93230d9244'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = 'c288de2e-52b2-4b4f-a270-ea198b2c310e'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '28d24309-dfc5-4202-a713-fe8286848030'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '2ca6f6a6-4a3c-4087-b2ef-7795afbda0df'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '3bf6cd79-81f2-405b-9c59-3750baa447b6'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '068d74d4-b1ab-45a9-af6e-8b8ae87ff38c'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = 'dd124de4-5c38-44d8-967a-6be3d71e2844'
+
+    [[editor.game_objects]]
+    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
+    instance_id = '2d11c331-6e29-4d4d-9789-de705140f926'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = 'db0a2b05-5433-4b1e-8891-551f1c0ba9fb'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '5065d9bd-0acf-484b-af03-d94b8385e0ae'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '8cec26c3-d9cc-409d-a48e-2f060a5237fd'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '4faf8227-c8b9-4694-8e44-70cc611919d7'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '3e974fea-4024-45ac-b364-4a9631034579'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '13d9190b-33ae-4e31-a67b-106c38d3cd72'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '95d841fc-d414-44d3-b424-6e535111da45'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = '159f8b90-da49-4155-9336-588c6dc922b6'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = 'a2b713a3-68c8-4535-837e-32964741c2e0'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '86656365-44ef-4086-aeea-84fe2a21ba4c'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
+    instance_id = 'edc5bdab-0a41-4b13-b985-ba240f24fe87'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'bcc89090-4f70-4696-8f9d-6d42fa2a1891'
 
     [[editor.game_objects]]
     component_order = [ 'Post Process Volume' ]
     instance_id = '29f249cf-bc13-44e7-a403-cc15ee729734'
 
     [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = 'f341282b-9730-4d5d-9904-f6c1699cb53c'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '21675421-d07a-4323-9670-2adceee4f23c'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '86c37a9f-bced-4660-b712-4af6fd78d330'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = 'e0098525-83c7-4f93-97b0-413e693611fd'
-
-    [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'f27e4293-8d46-42f1-b825-808f6a4480df'
+    instance_id = 'd1c8baf7-4da3-4aa6-9f8a-887603411380'
 
     [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'd5093642-ddbd-48e8-b240-4296a712de81'
+    component_order = [ 'Particle Emitter' ]
+    instance_id = 'fa9e0002-0000-0000-0000-000000000004'
 
     [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material', 'Socket Attachment' ]
-    instance_id = '1f19e8f5-8344-416b-8948-75b67fe4cc59'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '184ddf7c-542e-4299-89a2-d1bb9342642d'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '1adebe05-3d90-4028-bc3e-5c1f5db85b98'
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Text' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000004'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'a248b3f7-dfce-49e0-b5d4-2dbf048c00ab'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '8ca59d74-58f9-4f67-b891-172d654a1510'
-
-    [[editor.game_objects]]
-    component_order = [ 'Script:ArenaHazardComponent' ]
-    instance_id = 'f4000001-0000-0000-0000-0000000000a2'
-
-    [[editor.game_objects]]
-    component_order = [ 'Script:ArenaBoundsComponent' ]
-    instance_id = 'f4000001-0000-0000-0000-0000000000a1'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '3fcd47b4-cc39-4601-8992-97b57f658f24'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = '70631ccc-2ced-4b59-99a4-b2a534f2a2e8'
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Text' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000005'
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Canvas' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000001'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = 'f1443c55-e99a-414c-a38b-11d140b92528'
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Image' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000002'
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Image' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000003'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '887185d6-a5b7-40d7-b7c5-75b322344aaf'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '49f81de0-9c21-40ff-a0f3-9c727ad7fa1e'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '88d5de4b-fca3-4053-b25a-f2f497f6bf30'
-
-    [[editor.game_objects]]
-    component_order = [ 'Bone' ]
-    instance_id = '4a30f35f-d4fc-409c-9f62-36714c3786ff'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'd3a68cd7-b164-4398-b286-513dd22bace1'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '6afef9a3-dd84-458e-80d5-c0e42a4965cb'
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Image' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000010'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = '04994144-94a3-46a0-830b-20751f6448f8'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '1d8ec6ba-d4d0-484f-85d0-4edc93c1ba4b'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = '00c8c317-d13b-44ef-b7e6-c106a3a17c7c'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = '54f24825-b534-458b-bcfd-e84192f4e242'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'df7d18a2-e623-42ee-8e1e-243810e4811c'
-
-    [[editor.game_objects]]
-    component_order = [ 'Script:GameSettingsComponent' ]
-    instance_id = 'f4000001-0000-0000-0000-000000000030'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '782c245f-c0ba-4433-ab9d-839dd46a69d3'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light' ]
-    instance_id = 'f6d02dbe-2fca-46c9-8026-1f6a3d8f576a'
-
-    [[editor.game_objects]]
-    component_order = [ 'Bone' ]
-    instance_id = '8e841d43-23f2-466e-a494-fed8ec4a54d1'
-
-    [[editor.game_objects]]
-    component_order = [ 'Script:BossHealthBarComponent' ]
-    instance_id = 'f4000001-0000-0000-0000-00000000001f'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '36dd4e09-7019-4afb-a805-898b51380e76'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'fa795dab-9a73-4acf-998c-0b4298728a62'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'cbcaa582-e2ae-4c08-bf72-db3344adf76f'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '0942b878-6c9c-493a-a52f-a01c275ace40'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '31f13a93-a636-418e-9074-82ed3d04df0b'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '3fd743fa-e82a-4223-9ea8-7a25c8cf1019'
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Image' ]
-    instance_id = 'f4000002-0000-0000-0000-000000000013'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'd58db5c3-433f-4c29-9cc9-2ea5863d4187'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'dd18b073-2ca8-4c6f-b112-0ae77951571d'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '6376058a-a6dc-4c3a-854a-a08fc47d1895'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'ed454c15-3c18-493f-8128-0ae4fa4b53a6'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '1bb6b43a-ad2d-4ac1-923d-7160b2131b0e'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '21bd742f-9f72-47ca-ace6-9a5cdcacafb3'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '9d92a1f5-a088-4aaf-82b7-8dc5f1853fa7'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'bc24fdd0-649b-4203-a510-1fc4a34d4499'
-
-    [[editor.game_objects]]
-    component_order = [ 'Script:ScreenEffectManagerComponent' ]
-    instance_id = 'f4000001-0000-0000-0000-000000000018'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '6b8522af-5187-4b94-9cbb-6318d1323aa0'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'fe1377cf-44da-4e49-a6c5-a3d6806cf68d'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '37f3337e-9dc4-4464-9da6-1a3f44f36851'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material', 'Script:EyeSpriteComponent' ]
-    instance_id = '95d81255-63d9-4d75-ab4c-f19a141caf1c'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'c3001099-e953-4ba1-94c4-7608def00811'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '771e7dbb-331f-486e-be3a-377b96b90472'
-
-    [[editor.game_objects]]
-    component_order = [ 'Bone' ]
-    instance_id = 'bf65fc8c-5e38-4620-b5d9-375f9c1c1a1f'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = 'da4f6114-b7cf-4c03-bb1b-6118e04c2bec'
-
-    [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material' ]
-    instance_id = '6ec7e70c-6092-4c9f-84c1-1f7ea6313ca2'
-
-    [[editor.game_objects]]
-    component_order = [ 'Script:CombatManagerComponent' ]
-    instance_id = 'f4000001-0000-0000-0000-000000000015'
-
-    [[editor.game_objects]]
-    component_order = [ 'Script:RumbleManagerComponent' ]
-    instance_id = 'f4000001-0000-0000-0000-000000000017'
+    component_order = [ 'Particle Emitter' ]
+    instance_id = 'fa9e0002-0000-0000-0000-000000000005'
 
 [meta]
 guid = '41b4ab9efd567d60740f1428f21d51b5'

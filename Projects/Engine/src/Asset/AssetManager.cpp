@@ -33,6 +33,7 @@
 #include <Engine/Asset/TerrainImporter.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Util/EngineAssetPath.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Windows.h>
@@ -50,45 +51,11 @@ namespace fbzz::asset {
 
 namespace {
 
-// SDKのEngine assetsはプロジェクト外に一つだけ保持する。
-// GameHub起動時は環境変数、配布Standaloneはexe隣のEngineAssetsから解決する。
+// SDKのEngine assetsはプロジェクト外に一つだけ保持する。探索そのものは
+// util::EngineAssetRoot が持ち、シェーダーのパス解決と同じ結果を共有する。
 std::string DiscoverEngineAssetRoot()
 {
-    const DWORD required = GetEnvironmentVariableW(L"FBZZ_ENGINE_ASSET_ROOT", nullptr, 0);
-    if (required > 1) {
-        std::wstring value(required, L'\0');
-        const DWORD written = GetEnvironmentVariableW(
-            L"FBZZ_ENGINE_ASSET_ROOT", value.data(), required);
-        if (written > 0 && written < required) {
-            value.resize(written);
-            return util::FileSystem::PathToUtf8(std::filesystem::path(value));
-        }
-    }
-
-    std::wstring executable(MAX_PATH, L'\0');
-    for (;;) {
-        const DWORD written = GetModuleFileNameW(
-            nullptr, executable.data(), static_cast<DWORD>(executable.size()));
-        if (written == 0) return {};
-        if (written < executable.size()) {
-            executable.resize(written);
-            break;
-        }
-        executable.resize(executable.size() * 2);
-    }
-    const std::filesystem::path executableDirectory =
-        std::filesystem::path(executable).parent_path();
-    const std::filesystem::path stagedCandidate = executableDirectory / L"EngineAssets";
-    if (util::FileSystem::Exists(util::FileSystem::PathToUtf8(stagedCandidate)))
-        return util::FileSystem::PathToUtf8(stagedCandidate);
-
-    // SDK Editorは tools/<Config>/Editor にあり、共有assetはSDK root/share配下にある。
-    const std::filesystem::path sdkCandidate =
-        executableDirectory.parent_path().parent_path().parent_path()
-        / L"share" / L"fbzz" / L"Assets";
-    return util::FileSystem::Exists(util::FileSystem::PathToUtf8(sdkCandidate))
-        ? util::FileSystem::PathToUtf8(sdkCandidate)
-        : std::string{};
+    return util::FileSystem::PathToUtf8(util::EngineAssetRoot());
 }
 
 // 壊れた guid 参照は解決のたびに (= 毎フレーム) 通るため、同じ参照は 1 度だけ報告する。

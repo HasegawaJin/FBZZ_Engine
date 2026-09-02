@@ -84,3 +84,19 @@ add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
         "${CMAKE_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:FBZZEditorLauncher>/assets"
 )
+
+# WHY: DX12 プロジェクト (テンプレート既定) の shader は DXIL reflection に dxcompiler.dll を必要とし、
+#      LoadLibraryW は exe 隣を探す。Engine 出力へのコピーだけでは Editor/ サブディレクトリに届かず、
+#      shader ロードが全て失敗して DebugDraw の初期化 assert で落ちる。
+if(FBZZ_DXC_RUNTIME_DIRECTORY)
+    foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
+        if(EXISTS "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
+            add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${FBZZ_DXC_RUNTIME_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:FBZZEditorLauncher>/${FBZZ_DXC_RUNTIME_DLL}"
+                COMMENT "Copying ${FBZZ_DXC_RUNTIME_DLL} for DXIL runtime support"
+            )
+        endif()
+    endforeach()
+endif()

@@ -109,6 +109,9 @@ else()
 endif()
 if(FBZZ_DXC_EXECUTABLE)
     get_filename_component(FBZZ_DXC_DIRECTORY "${FBZZ_DXC_EXECUTABLE}" DIRECTORY)
+    # WHY: dxcompiler.dll は LoadLibraryW で exe 隣から解決されるため、Engine 出力に置くだけでは
+    #      サブディレクトリへ出力される Editor から見つからない。配置先を各 exe 側でも使えるよう公開する。
+    set(FBZZ_DXC_RUNTIME_DIRECTORY "${FBZZ_DXC_DIRECTORY}" CACHE INTERNAL "DXC runtime DLL directory")
     foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
         if(EXISTS "${FBZZ_DXC_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
             add_custom_command(TARGET FBZZEngine POST_BUILD

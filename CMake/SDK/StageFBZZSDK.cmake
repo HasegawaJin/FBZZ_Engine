@@ -26,6 +26,16 @@ file(COPY "${EDITOR_DIR}/" DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
 # WHY: Editor出力側のPOST_BUILD状態に依存せず、SDK生成時にも起動必須のimgui.dllをexe隣へ保証する。
 file(COPY "${IMGUI_DLL}" DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
 
+# WHY: DX12 の DXIL reflection は dxcompiler.dll を LoadLibraryW で exe 隣から解決する。
+#      bin/ だけに置くとEditorからは見えず、shaderロードが全滅する。imgui.dll と同じく
+#      Editor出力側のPOST_BUILD状態に依存せず、SDK生成時にexe隣へ保証する。
+foreach(OPTIONAL_DLL dxcompiler.dll dxil.dll)
+    if(EXISTS "${ENGINE_BINARY_DIR}/${OPTIONAL_DLL}")
+        file(COPY "${ENGINE_BINARY_DIR}/${OPTIONAL_DLL}"
+             DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
+    endif()
+endforeach()
+
 # 構成別の公開時刻。作業世代は毎回同じIDへ上書きされるため、IDだけでは最新性を判定できない。
 # WHY: install/file(COPY)は内容が同じfileをcopyせずmtimeも更新しないので、manifestや
 #      binaryの時刻は公開時刻として信用できない。公開のたびに必ず書き換わるstampを置く。

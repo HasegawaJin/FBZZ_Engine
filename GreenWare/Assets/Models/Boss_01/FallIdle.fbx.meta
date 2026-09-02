@@ -2,13 +2,14 @@ file_format_version = 1
 
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = 'b8f2a3057474c8c2'
-source_hash = 'dba7ff211d163839'
+settings_hash = '18f10c26b1ca5223'
+source_hash = '0077a5662ed601f5'
 
 [meta]
 guid = '67445413f5d2429460f20f85134a2f28'
 
 [model]
+clips = []
 default_compression = 'Auto'
 generate_normals = true
 generate_tangents = true
@@ -22,10 +23,3 @@ selected_meshes = []
 source_dcc = 'Auto'
 unit_scale_multiplier = 1.0
 up_axis = 0
-
-    [[model.clips]]
-    end_frame = 23.0
-    loop = true
-    name = 'FallIdle'
-    output_name = ''
-    start_frame = 0.0
