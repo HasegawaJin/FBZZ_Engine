@@ -19,15 +19,19 @@ template<typename T, typename Tag>
 class ResourcePool {
 public:
     // unique_ptr overload — converts to shared_ptr internally so MemoryDebug can track via weak_ptr.
+    // bytes は「この実体が占める GPU メモリ」。0 は «計上しない» を意味する
+    // (PipelineState のような状態オブジェクトや、サイズを取り出せないバックエンド)。
     ResourceHandle<Tag> Insert(std::unique_ptr<T> resource,
+                               std::size_t bytes,
                                const char* debugName = "ResourcePool",
                                const char* file = "Unknown",
                                int line = 0)
     {
-        return Insert(std::shared_ptr<T>(std::move(resource)), debugName, file, line);
+        return Insert(std::shared_ptr<T>(std::move(resource)), bytes, debugName, file, line);
     }
 
     ResourceHandle<Tag> Insert(std::shared_ptr<T> resource,
+                               std::size_t bytes,
                                const char* debugName = "ResourcePool",
                                const char* file = "Unknown",
                                int line = 0)
@@ -36,7 +40,10 @@ public:
 
         // WHY: ResourcePool は GPU リソースの実所有者なので、ここで追跡すれば各呼び出し元へ侵襲せず解放漏れを見つけられる。
         // WHY: 追跡枠が尽きても (MAX_DEBUG_ALLOCATIONS) プールの機能自体は成立するため戻り値は捨てる。
-        static_cast<void>(m_debug.TrackShared(resource, core::MemoryTag::RENDERER, debugName, file, line));
+        // WHY sizeof(T) を使わないか: T は IBuffer などのインターフェース型で、
+        //     その大きさは vptr 数バイト。実体の GPU メモリとは何の関係もない。
+        static_cast<void>(m_debug.TrackShared(resource,
+                                              MakeAllocationInfo(resource.get(), bytes, debugName, file, line)));
 
         uint32_t id = 0;
         if (!m_freeList.empty()) {
@@ -69,18 +76,18 @@ public:
     // WHY: Remove → Insert すると world generation が上がり既存ハンドルが無効になる。
     //      Replace は generation を維持したまま中身だけ入れ替えるため、
     //      シェーダーを参照する Material / PipelineState を更新せずにホットスワップできる。
-    void Replace(ResourceHandle<Tag> handle, std::unique_ptr<T> resource)
+    void Replace(ResourceHandle<Tag> handle, std::unique_ptr<T> resource, std::size_t bytes = 0)
     {
-        Replace(handle, std::shared_ptr<T>(std::move(resource)));
+        Replace(handle, std::shared_ptr<T>(std::move(resource)), bytes);
     }
 
-    void Replace(ResourceHandle<Tag> handle, std::shared_ptr<T> resource)
+    void Replace(ResourceHandle<Tag> handle, std::shared_ptr<T> resource, std::size_t bytes = 0)
     {
         if (!IsLive(handle) || !resource) return;
         Slot& slot = m_slots[handle.id];
         static_cast<void>(m_debug.Untrack(slot.resource.get()));
-        static_cast<void>(
-            m_debug.TrackShared(resource, core::MemoryTag::RENDERER, "ShaderReload", __FILE__, __LINE__));
+        static_cast<void>(m_debug.TrackShared(
+            resource, MakeAllocationInfo(resource.get(), bytes, "ResourceReload", __FILE__, __LINE__)));
         slot.resource = std::move(resource);
     }
 
@@ -132,6 +139,23 @@ public:
     }
 
 private:
+    static core::AllocationInfo MakeAllocationInfo(const T* pointer,
+                                                   std::size_t bytes,
+                                                   const char* debugName,
+                                                   const char* file,
+                                                   int line)
+    {
+        core::AllocationInfo info;
+        info.pointer       = const_cast<T*>(pointer);
+        info.size          = bytes;
+        info.alignment     = alignof(T);
+        info.tag           = core::MemoryTag::RENDERER;
+        info.allocatorName = debugName;
+        info.file          = file;
+        info.line          = line;
+        return info;
+    }
+
     struct Slot {
         std::shared_ptr<T> resource;
         uint32_t gen = 1; // 初期値を 1 にし、ResourceHandle デフォルトの gen=0 とは絶対に一致しない

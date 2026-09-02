@@ -27,7 +27,8 @@ locked_objects = []
         'Audio Source',
         'Script:BossStepDustComponent',
         'Script:LaserVolleyComponent',
-        'Script:BossPartTelegraphComponent'
+        'Script:BossPartTelegraphComponent',
+        'Script:BossRagdollComponent'
     ]
     instance_id = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 

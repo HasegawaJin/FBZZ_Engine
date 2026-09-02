@@ -6,6 +6,8 @@
 /// EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
 /// フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/PrefabPool.hpp"
+#include "Engine/Scene/SceneRenderResources.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
@@ -23,6 +25,27 @@
 #include <utility>
 
 namespace fbzz::scene {
+
+namespace {
+
+// Component 個体が抱えている GPU リソースを、返す先がまだ生きているあいだだけ返す。
+// WHY Active() を使うか: Scene は ResourceManager を知らない (Script も含めた上位が
+//     ResourceHandle しか触らない設計)。プロセス終了で ResourceManager が先に畳まれた
+//     場合は Active() が空になり、そのときは返す先そのものが無いので何もしなくてよい。
+void ReleaseGpuResourcesIfPossible(Scene& scene)
+{
+    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+        ReleaseSceneOwnedGpuResources(scene, *resources);
+}
+
+} // namespace
+
+Scene::~Scene()
+{
+    // WHY Clear() を呼ばないか: デストラクタから OnDestroy を回すと、既に畳まれた
+    //     サブシステムへスクリプトが触りにいく。ここで要るのは GPU リソースの返却だけ。
+    ReleaseGpuResourcesIfPossible(*this);
+}
 
 Scene::Scene(Scene&& other) noexcept
 {
@@ -105,6 +128,10 @@ void Scene::DestroyImmediate(EntityID id) {
                 entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
         }
     }
+
+    // Component が抱えている GPU リソースを、Component を捨てる前に返す。
+    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+        ReleaseEntityOwnedGpuResources(*this, id, *resources);
 
     // Component 削除
     RemoveAllComponents(id);
@@ -357,6 +384,14 @@ void Scene::Clear()
                 entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
     }
 
+    // Component を捨てる前に返す。捨ててからでは、どのハンドルを持っていたか辿れない。
+    ReleaseGpuResourcesIfPossible(*this);
+
+    // 待機列は Scene* をキーに持つ静的な表で、Scene の実体が同じまま中身だけ入れ替わる
+    // Play/Stop では生き残る。EntityID の generation は Clear で 0 に戻るので、
+    // 残したままだと «次の Play で無関係な GameObject をプール済みとして配る» ことが起きる。
+    PrefabPool::Clear(*this);
+
     m_destroyQueue.clear();
     m_gameObjects.clear();
 
@@ -458,6 +493,7 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
     }, m_arrays);
 
     CopyScriptComponentFrom(*this, src, dst);
+    ClearDuplicatedGpuHandles(*this, dst);
 }
 
 void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst)
@@ -469,6 +505,7 @@ void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst
     }, srcScene.m_arrays);
 
     CopyScriptComponentFrom(srcScene, src, dst);
+    ClearDuplicatedGpuHandles(*this, dst);
 }
 
 void Scene::CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst)

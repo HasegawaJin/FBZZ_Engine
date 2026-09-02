@@ -1,12 +1,14 @@
 /// @file    BossRagdollComponent.hpp
-/// @brief   ボスが倒れる数秒だけ骨を物理へ渡し、静止したらクリップへ返す
+/// @brief   転倒は脱力で落とし、被弾のひるみは筋力を入れたまま押す
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
 ///
-/// WHY 常時ラグドールにしないか:
+/// WHY 常時 «脱力» ラグドールにしないか:
 ///   21 クリップは踏みつけの «f16-20 で完全静止＝予兆» までフレーム単位で詰めてある。
-///   歩行と攻撃を物理へ渡すと、この読みやすさが最初に失われる。予兆が読めることが
-///   この戦いのフェアさの根拠なので、物理へ渡すのは «崩れる瞬間» だけに限る。
+///   歩行と攻撃を脱力させると、この読みやすさが最初に失われる。予兆が読めることが
+///   この戦いのフェアさの根拠なので、脱力させるのは «崩れる瞬間» だけに限る。
+///   被弾のひるみは筋力を入れた側 (Active) が持つ ── 釣り合い点がクリップそのものに
+///   なるので、予兆の絵を 1 フレームも崩さずに «押されて沈む» だけを足せる。
 ///
 /// WHY 倒れ «終わる» 前にクリップへ戻すか:
 ///   質点系が行き着く先は床の上の山で、そこに «倒れているボス» の絵は無い。
@@ -59,23 +61,33 @@ public:
     FBZZ_FIELD_RANGE(float, pairPushRadius, 4.5f, "Pair Radius", 0.5f, 20.0f)
     FBZZ_TOOLTIP("脚 1 本を弾く影響半径。広げると胴体まで持っていかれる")
 
-    // 斬られたときの «押されて泳ぐ»。転倒と同じ質点系を、薄く・短く・重力を抜いて使う。
+    // 斬られたときの «押されて泳ぐ»。転倒と同じ質点系を、筋力を入れたまま使う。
     //
-    // WHY 転倒と同じ仕組みで足りるか: 違うのは «どれだけ乗せるか» と «落とすか» だけ。
-    //     適用率を下げれば歩行クリップが下に残ったまま押された分だけ動き、重力を
-    //     抜けば «押された勢いが減衰して戻る» だけになる。別の仕掛けを足す必要がない。
+    // WHY 転倒 (脱力) ではなく筋力を入れるか: 脱力した体には «立っている» という
+    //     行き先が無く、押した分だけ崩れて戻らない。だから以前は適用率を 0.45 まで
+    //     下げ、重力を 0.12 に絞って «崩れ切る前に» クリップへ逃がしていた ── 薄く
+    //     乗せた結果、歩行クリップも半分消えて脚が滑る。筋力を入れると釣り合い点が
+    //     «今のアニメーション» になるので、適用率 1・重力そのままで «押されて沈み、
+    //     こらえて戻る» が出る。歩行は下に残るのではなく、そのまま再生され続ける。
     FBZZ_GROUP("Stagger")
     FBZZ_FIELD(bool, useStagger, true, "Use Stagger")
     FBZZ_TOOLTIP("斬られたときに体を物理で押す。切ると脚だけが反応する")
-    FBZZ_FIELD_RANGE(float, staggerSeconds, 0.14f, "Hold", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("押されたまま保つ秒数。長いと «よろめき» ではなく «怯み» になる")
-    FBZZ_FIELD_RANGE(float, staggerWeight, 0.45f, "Weight", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("歩行クリップの上にどれだけ乗せるか。1 に近づけるほど脚が止まって滑る")
-    FBZZ_FIELD_RANGE(float, staggerGravity, 0.12f, "Gravity x", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("よろめき中の重力倍率。0 で «押された勢いだけ»。上げるほど沈む")
+    FBZZ_FIELD_RANGE(float, staggerSeconds, 0.30f, "Hold", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("押されてから立ち姿へ戻し始めるまでの秒数。"
+                 "Recovery より短いと «こらえ直す» 途中でクリップへ返ることになる")
+    FBZZ_FIELD_RANGE(float, staggerMuscle, 0.34f, "Muscle", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("引き戻す強さ。上げるほどびくともせず、下げるほど大きくひるむ")
+    FBZZ_FIELD_RANGE(float, staggerFalloff, 0.84f, "Falloff", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("根から 1 段ごとの筋力の落ち方。下げるほど胴が残って脚先だけ流れる")
+    FBZZ_FIELD_RANGE(float, staggerMuscleDamping, 0.20f, "Damping", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("揺り返しの削り方。0 に近いと戻り際にぶるぶる残る")
+    FBZZ_FIELD_RANGE(float, staggerSlack, 0.55f, "Slack", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("当たった瞬間に抜ける力み。0 で «硬い体が少しめり込んで即戻る» ＝ 手応えが無い")
+    FBZZ_FIELD_RANGE(float, staggerRecovery, 0.28f, "Recovery", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("抜けた力みが戻るまでの秒数。ここが «こらえ直す» の長さ")
     FBZZ_FIELD_RANGE(float, staggerBlendIn, 0.03f, "Blend In", 0.0f, 0.5f)
-    FBZZ_FIELD_RANGE(float, staggerBlendOut, 0.34f, "Blend Out", 0.0f, 2.0f)
-    FBZZ_TOOLTIP("立ち姿へ戻るまで。ここが «泳いでから持ち直す» の長さ")
+    FBZZ_FIELD_RANGE(float, staggerBlendOut, 0.22f, "Blend Out", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("物理を降ろす秒数。戻り切った後で降ろすので、ここは短くてよい")
     FBZZ_FIELD_RANGE(float, staggerPush, 3.4f, "Push", 0.0f, 30.0f)
     FBZZ_TOOLTIP("体全体が押される速さ [m/s]。ノックバックの本体")
     FBZZ_FIELD_RANGE(float, staggerLocalPush, 5.0f, "Local Push", 0.0f, 40.0f)
@@ -93,6 +105,9 @@ public:
                  "NoParticles / NoBones のいずれか")
     FBZZ_FIELD_READ_ONLY(int, debugParticles, 0, "Particles")
     FBZZ_TOOLTIP("組めた質点の数。0 なら Root Bone がスケルトンに無い")
+    FBZZ_FIELD_READ_ONLY(float, debugDeviation, 0.0f, "Deviation")
+    FBZZ_TOOLTIP("クリップの姿勢から一番離れた骨の距離 [m]。ひるみの «効き» の実測値。"
+                 "Push を上げても伸びないなら Muscle が強すぎる")
 
     // 対を組まずに崩れ方だけ見るための口。引き合いを 2 回通してからでないと
     // 一度も見られない、では 1 回の確認に数分かかる (Break FR ボタンと同じ理由)。
@@ -123,10 +138,9 @@ public:
 
     /// 一点を押す。倒れている体へ斬撃を当てたときの反応がこれ。
     ///
-    /// WHY 倒れている «あいだだけ» か: 立っているボスを押すには、全身を物理へ渡して
-    ///     から押し返す力を作る (アクティブラグドール) ことになる。倒れている数秒は
-    ///     既に物理が骨を持っているので、押すだけで反応が返る ─ 斬撃でダメージが
-    ///     通るのもこの数秒だけなので、«効いている絵» が要る場所と一致する。
+    /// 立っているボスを押すのは Stagger() の担当 ── あちらは筋力を入れたまま押すので
+    /// 押し返しが返るが、こちらは既に脱力しているので押した分だけ崩れる。同じ Push でも
+    /// «こらえる» と «崩れる» に分かれるのは、筋力が入っているかどうかだけの違い。
     void PushAt(const Vector3& origin, const Vector3& direction,
                 float speed, float radius) const
     {
@@ -166,6 +180,7 @@ inline void BossRagdollComponent::OnUpdate()
     debugWeight    = ragdoll.GetWeight();
     debugStatus    = ragdoll.GetStatus();
     debugParticles = ragdoll.GetParticleCount();
+    debugDeviation = ragdoll.GetDeviation();
     if (!debugActive) m_staggering = false;
 }
 
@@ -181,16 +196,20 @@ inline void BossRagdollComponent::Stagger(const Vector3& hitPoint,
     if (push.LengthSq() <= EPSILON) return;
     const float scale = std::max(strength, 0.0f);
 
-    // 既に泳いでいる最中は押し足すだけ。Begin し直すと «泳いだ途中の姿勢» が新しい
-    // 静止姿勢になり、連撃のたびに戻る先がずれて体が流れっぱなしになる。
-    if (!m_staggering) {
-        ragdoll.SetRoot(rootBone.c_str(), std::max(maxDepth, 0));
-        ragdoll.SetGravity(gravity);
-        ragdoll.SetBlend(staggerBlendIn, staggerBlendOut);
-        ragdoll.SetEnabled(true);
-        ragdoll.Begin(std::max(staggerSeconds, 0.0f), staggerWeight, staggerGravity);
-        m_staggering = true;
-    }
+    ragdoll.SetRoot(rootBone.c_str(), std::max(maxDepth, 0));
+    ragdoll.SetGravity(gravity);
+    ragdoll.SetBlend(staggerBlendIn, staggerBlendOut);
+    ragdoll.SetMuscle(staggerMuscle, staggerFalloff, staggerMuscleDamping);
+    ragdoll.SetRecovery(staggerSlack, staggerRecovery);
+    // WHY ひるみでは崩落させないか: 転倒は «対を組み違えた結果» が持つ一枚看板で、
+    //     斬るたびに倒れるとその 1 回が安くなる。ひるみは «押しても立っている» が
+    //     結論で、倒すかどうかは AI が決める。
+    ragdoll.SetCollapse(0.0f);
+    ragdoll.SetEnabled(true);
+    // 既に泳いでいる最中でも呼んでよい。Active は捕獲し直さず保つ秒数を延ばすだけで、
+    // 目標はどのみち毎フレームのクリップから取り直される。
+    ragdoll.BeginActive(std::max(staggerSeconds, 0.0f));
+    m_staggering = true;
 
     ragdoll.Push(push * (staggerPush * scale));
     // 当たった所だけ余分に押す。斬られた脚が先に流れ、胴が遅れて付いてくる。

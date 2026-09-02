@@ -232,13 +232,16 @@ ProfilerCategory ClassifyProfileRecord(const profiler::ProfileRecord& record)
     return { "Others", IM_COL32(140, 140, 140, 225) };
 }
 
-// MemoryDebug から得た live resource をタグ別統計へ畳み込む。
-// WHAT: MemoryTracker へ入らない shared_ptr 所有リソースを、Debug UI 上では同じ MemoryStats 形式で表示する。
-core::MemoryStats BuildMemoryDebugStats(renderer::ResourceManager* resources)
+// MemoryDebug が追跡している GPU リソースを、用途タグ別の統計へ合流させる。
+//
+// WHY 別行にせず合流させるか: MemoryTracker には現状どのサブシステムも記録していないため、
+//     タグ行を素直に描くと «全部 0 MB» になる。ResourceManager が握る GPU リソースだけは
+//     MemoryDebug が実バイト数で追えているので、同じ RENDERER 行へ載せて 1 つの表にする。
+void AccumulateTrackedRendererResources(renderer::ResourceManager* resources,
+                                        std::vector<core::MemoryStats>& tagStats)
 {
-    core::MemoryStats stats;
     if (resources == nullptr) {
-        return stats;
+        return;
     }
 
     const std::size_t liveResourceCount = resources->GetLiveDebugResourceCount();
@@ -248,12 +251,17 @@ core::MemoryStats BuildMemoryDebugStats(renderer::ResourceManager* resources)
             continue;
         }
 
+        const auto tagIndex = static_cast<std::size_t>(info->tag);
+        if (tagIndex >= tagStats.size()) {
+            continue;
+        }
+
+        core::MemoryStats& stats = tagStats[tagIndex];
         stats.used += info->size;
         stats.peakUsed += info->size;
         ++stats.allocationCount;
         ++stats.activeCount;
     }
-    return stats;
 }
 
 // 履歴から平均値とピーク値を一括計算する。
@@ -640,18 +648,31 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
 
     const core::MemoryTracker& tracker = ctx.memorySystem->GetTracker();
     const core::MemoryStats frameStats = ctx.memorySystem->GetFrameAllocator().GetStats();
-    const core::MemoryStats totalStats = tracker.GetTotalStats();
-    const core::MemoryStats rendererDebugStats = BuildMemoryDebugStats(ctx.resources);
+
+    constexpr std::size_t kTagCount = static_cast<std::size_t>(core::MemoryTag::COUNT);
+    std::vector<core::MemoryStats> tagStats(kTagCount);
+    for (std::size_t i = 0; i < kTagCount; ++i)
+        tagStats[i] = tracker.GetStats(static_cast<core::MemoryTag>(i));
+    AccumulateTrackedRendererResources(ctx.resources, tagStats);
+
+    core::MemoryStats totalStats;
+    for (const core::MemoryStats& stats : tagStats) {
+        totalStats.used += stats.used;
+        totalStats.peakUsed += stats.peakUsed;
+        totalStats.capacity += stats.capacity;
+        totalStats.allocationCount += stats.allocationCount;
+        totalStats.freeCount += stats.freeCount;
+        totalStats.activeCount += stats.activeCount;
+    }
 
     // Sample memory history
     s_memHistory.elapsed += ImGui::GetIO().DeltaTime;
     if (s_memHistory.elapsed >= s_memHistory.sampleInterval) {
         s_memHistory.elapsed = 0.0f;
-        for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i) {
-            const auto tag = static_cast<core::MemoryTag>(i);
-            const char* tagName = tracker.GetTagName(tag);
+        for (std::size_t i = 0; i < kTagCount; ++i) {
+            const char* tagName = tracker.GetTagName(static_cast<core::MemoryTag>(i));
             auto& buf = s_memHistory.tagUsedMB[tagName];
-            buf.push_back(static_cast<float>(tracker.GetStats(tag).used) / (1024.0f * 1024.0f));
+            buf.push_back(static_cast<float>(tagStats[i].used) / (1024.0f * 1024.0f));
             if (buf.size() > MemoryHistoryState::kMaxFrames) buf.pop_front();
         }
     }
@@ -666,13 +687,12 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
 
     struct MemTagRow { const char* label; core::MemoryStats stats; };
     std::vector<MemTagRow> tagRows;
-    tagRows.reserve(static_cast<std::size_t>(core::MemoryTag::COUNT));
-    for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i) {
-        const auto tag = static_cast<core::MemoryTag>(i);
-        const char* tagName = tracker.GetTagName(tag);
+    tagRows.reserve(kTagCount);
+    for (std::size_t i = 0; i < kTagCount; ++i) {
+        const char* tagName = tracker.GetTagName(static_cast<core::MemoryTag>(i));
         if (s_memoryFilter.tagFilter[0] != '\0' &&
             std::strstr(tagName, s_memoryFilter.tagFilter) == nullptr) continue;
-        tagRows.push_back({ tagName, tracker.GetStats(tag) });
+        tagRows.push_back({ tagName, tagStats[i] });
     }
 
     constexpr ImGuiTableFlags kMemTableFlags =
@@ -704,7 +724,6 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
 
         DrawStatsRow("FrameAllocator", frameStats);
         DrawStatsRow("Tracked total", totalStats);
-        DrawStatsRow("MemoryDebug Renderer", rendererDebugStats);
         for (const MemTagRow& row : tagRows) {
             DrawStatsRow(row.label, row.stats);
         }
@@ -716,6 +735,10 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
                 tracker.GetActiveAllocationCount(),
                 tracker.GetMaxTrackedAllocationCount());
     ImGui::Text("Dropped tracking entries: %zu", tracker.GetDroppedAllocationCount());
+    // 0 が «使っていない» なのか «測っていない» なのか、表からは区別できない。
+    // RENDERER 以外はまだ記録側が居ないので、その旨をここで明示する。
+    ImGui::TextDisabled("Only RENDERER is instrumented; other tags stay 0 until their "
+                        "subsystems record into MemoryTracker.");
 
     if (ctx.resources != nullptr) {
         const std::size_t liveResourceCount = ctx.resources->GetLiveDebugResourceCount();

@@ -1,5 +1,5 @@
 /// @file    RagdollSystem.cpp
-/// @brief   骨を質点系として落とし、確定済みポーズへブレンドして書き戻す
+/// @brief   骨を質点系として落とす / 筋力で支え、確定済みポーズへブレンドして書き戻す
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
 #include <Engine/Scene/Systems/RagdollSystem.hpp>
@@ -206,6 +206,7 @@ void BuildParticles(RagdollComponent& ragdoll,
         RagdollParticle particle{};
         particle.nodeIndex      = current.node;
         particle.parentParticle = current.parentParticle;
+        particle.depth          = current.depth;
         const int index = static_cast<int>(ragdoll.particles.size());
         ragdoll.particles.push_back(particle);
 
@@ -263,7 +264,34 @@ void BuildLinks(RagdollComponent& ragdoll, const std::vector<FkSnapshot>& captur
     }
 }
 
-// 捕獲。ここが «アニメーションから物理へ» の境目で、以降 FK は参照しない。
+// «正解の姿勢» を pose で置き直す。回転の基準・向きの基準・距離拘束の自然長が
+// すべてここから出るので、質点が pose と一致していれば出力は pose そのものになる。
+//
+// WHY Active で毎フレーム呼ぶか: 捕獲した 1 フレームぶんを基準に据え置くと、歩けば
+//     関節が曲がって筋交いの自然長が合わなくなり、体が «捕獲した瞬間の形» へ
+//     引き戻される。基準ごと今のクリップへ乗せ替えれば、無負荷での釣り合い点が
+//     常に «今のアニメーション» になり、物理は差分だけを担当する。
+void RefreshRest(RagdollComponent& ragdoll, const std::vector<FkSnapshot>& pose)
+{
+    for (std::size_t i = 0; i < ragdoll.particles.size(); ++i) {
+        RagdollParticle& particle = ragdoll.particles[i];
+        particle.captureRotation = pose[i].rotation;
+        particle.captureScale    = pose[i].scale;
+
+        if (particle.firstChild >= 0) {
+            const std::size_t c = static_cast<std::size_t>(particle.firstChild);
+            const math::Vector3 delta = pose[c].position - pose[i].position;
+            particle.restDirection = delta.NormalizedOr(math::Vector3::ZERO);
+            particle.hasRest = delta.LengthSq() > math::EPSILON * math::EPSILON;
+        } else {
+            particle.restDirection = math::Vector3::ZERO;
+            particle.hasRest = false;
+        }
+    }
+    BuildLinks(ragdoll, pose);
+}
+
+// 捕獲。ここが «アニメーションから物理へ» の境目。
 //
 // WHY 前フレームの骨から初速を取らないか: 慣性を継ぐには全フレーム骨を控え続ける
 //     必要があり、倒れていない間もコストを払うことになる。しかも継いだ初速は
@@ -277,21 +305,75 @@ void Capture(RagdollComponent& ragdoll, const std::vector<FkSnapshot>& capture)
         particle.prevPosition = capture[i].position;
         particle.simPosition  = capture[i].position;
         particle.simRotation  = capture[i].rotation;
-        particle.captureRotation = capture[i].rotation;
-        particle.captureScale    = capture[i].scale;
-        particle.invMass         = 1.0f;
-
-        if (particle.firstChild >= 0) {
-            const std::size_t c = static_cast<std::size_t>(particle.firstChild);
-            const math::Vector3 delta = capture[c].position - capture[i].position;
-            particle.restDirection = delta.NormalizedOr(math::Vector3::ZERO);
-            particle.hasRest = delta.LengthSq() > math::EPSILON * math::EPSILON;
-        } else {
-            particle.restDirection = math::Vector3::ZERO;
-            particle.hasRest = false;
-        }
+        particle.invMass      = 1.0f;
+        particle.muscle       = 0.0f;
     }
-    BuildLinks(ragdoll, capture);
+    RefreshRest(ragdoll, capture);
+}
+
+// 根から遠いほど弱い筋力を配る。Passive では 0 のまま。
+void UpdateMuscles(RagdollComponent& ragdoll)
+{
+    if (ragdoll.mode != RagdollMode::Active) {
+        for (RagdollParticle& particle : ragdoll.particles) particle.muscle = 0.0f;
+        return;
+    }
+    const float stiffness = math::Clamp01(ragdoll.muscleStiffness);
+    const float falloff   = math::Clamp01(ragdoll.muscleFalloff);
+    for (RagdollParticle& particle : ragdoll.particles) {
+        particle.muscle =
+            stiffness * std::pow(falloff, static_cast<float>(std::max(particle.depth, 0)));
+    }
+}
+
+// 筋力。質点を目標姿勢へ «割合で» 寄せる。
+//
+// WHY prevPosition を動かさないか: Verlet では位置を直接動かすと差が速度になる。
+//     寄せたぶんがそのまま «戻ろうとする勢い» として残るので、押されて沈んだ体が
+//     行き過ぎて揺り返す ─ 硬いバネではなく筋肉に見えるのはこの行き過ぎのおかげで、
+//     出過ぎるぶんは muscleDamping で削る。
+void SolveMuscles(RagdollComponent& ragdoll, const std::vector<FkSnapshot>& target)
+{
+    const float scale = math::Clamp01(ragdoll.muscleScale);
+    if (scale <= 0.0f) return;
+
+    for (std::size_t i = 0; i < ragdoll.particles.size(); ++i) {
+        RagdollParticle& particle = ragdoll.particles[i];
+        if (particle.invMass <= 0.0f) continue;
+        const float strength = math::Clamp01(particle.muscle * scale);
+        if (strength <= 0.0f) continue;
+        particle.position += (target[i].position - particle.position) * strength;
+    }
+}
+
+// 目標姿勢から一番離れた質点の距離 [m]。«支え切れているか» の物差し。
+float PoseDeviation(const RagdollComponent& ragdoll, const std::vector<FkSnapshot>& target)
+{
+    float worst = 0.0f;
+    for (std::size_t i = 0; i < ragdoll.particles.size(); ++i)
+        worst = std::max(worst, (ragdoll.particles[i].position - target[i].position).Length());
+    return worst;
+}
+
+// 衝撃で抜けた筋力を戻す。
+void AdvanceRecovery(RagdollComponent& ragdoll, float dt)
+{
+    if (ragdoll.mode != RagdollMode::Active || ragdoll.recoveryRemaining <= 0.0f) {
+        ragdoll.recoveryRemaining = 0.0f;
+        ragdoll.muscleScale       = 1.0f;
+        return;
+    }
+
+    ragdoll.recoveryRemaining -= dt;
+    if (ragdoll.recoveryRemaining <= 0.0f) {
+        ragdoll.recoveryRemaining = 0.0f;
+        ragdoll.muscleScale       = 1.0f;
+        return;
+    }
+
+    const float total = std::max(ragdoll.recoverySeconds, math::EPSILON);
+    ragdoll.muscleScale = math::Lerp(1.0f, 1.0f - math::Clamp01(ragdoll.impactSlack),
+                                     math::Clamp01(ragdoll.recoveryRemaining / total));
 }
 
 void ApplyImpulses(RagdollComponent& ragdoll, float stepDt)
@@ -316,7 +398,7 @@ void ApplyImpulses(RagdollComponent& ragdoll, float stepDt)
 
 void SolveGround(RagdollComponent& ragdoll)
 {
-    const float floor    = ragdoll.groundHeight + std::max(ragdoll.boneRadius, 0.0f);
+    const float floor    = ragdoll.groundHeight + ragdoll.groundThickness;
     const float friction = math::Clamp01(ragdoll.groundFriction);
 
     for (RagdollParticle& particle : ragdoll.particles) {
@@ -359,7 +441,10 @@ void SolveLinks(RagdollComponent& ragdoll)
 
 void Integrate(RagdollComponent& ragdoll, float stepDt)
 {
-    const float damping = math::Clamp01(ragdoll.damping);
+    const float extra = ragdoll.mode == RagdollMode::Active
+        ? math::Clamp01(ragdoll.muscleDamping)
+        : 0.0f;
+    const float damping = math::Clamp01(ragdoll.damping + extra);
     const float gravity =
         std::max(ragdoll.gravity, 0.0f) * std::max(ragdoll.activationGravity, 0.0f);
     const math::Vector3 fall{ 0.0f, -gravity * stepDt * stepDt, 0.0f };
@@ -446,10 +531,13 @@ float AdvancePhase(RagdollComponent& ragdoll, float dt)
 
 } // namespace
 
+// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
+// System と同じバッチに入って並列に走る (AnimatorSystem::GetAccess の WHY を参照)。
 ComponentAccess RagdollSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Writes<RagdollComponent, AnimatorComponent, BoneComponent>();
+        .Reads<SkinnedMeshRenderer>()
+        .Writes<RagdollComponent, AnimatorComponent, BoneComponent, Transform>();
 }
 
 OrderingHints RagdollSystem::GetOrder() const
@@ -486,16 +574,30 @@ void RagdollSystem::Update(SystemContext& ctx)
                 ? RagdollStatus::NotPlaying
                 : RagdollStatus::Disabled;
             ragdoll->phase  = RagdollPhase::Idle;
+            ragdoll->mode   = RagdollMode::Passive;
             ragdoll->weight = 0.0f;
             ragdoll->pendingImpulses.clear();
-            ragdoll->beginRequested = false;
-            ragdoll->endRequested   = false;
+            ragdoll->beginRequested  = false;
+            ragdoll->endRequested    = false;
+            ragdoll->activeRequested = false;
+            ragdoll->startTriggered  = false;
             continue;
+        }
+
+        if (ragdoll->phase == RagdollPhase::Idle && ragdoll->activateOnStart &&
+            !ragdoll->startTriggered && !ragdoll->beginRequested) {
+            ragdoll->startTriggered    = true;
+            ragdoll->beginRequested    = true;
+            ragdoll->activeRequested   = true;
+            ragdoll->holdRemaining     = 0.0f;
+            ragdoll->activationWeight  = 1.0f;
+            ragdoll->activationGravity = 1.0f;
         }
 
         // 止まっているあいだは骨を 1 本も触らない。Animator が書いた姿勢がそのまま残る。
         if (ragdoll->phase == RagdollPhase::Idle && !ragdoll->beginRequested) {
-            ragdoll->runtimeStatus = RagdollStatus::Idle;
+            ragdoll->runtimeStatus    = RagdollStatus::Idle;
+            ragdoll->runtimeDeviation = 0.0f;
             ragdoll->pendingImpulses.clear();
             ragdoll->endRequested = false;
             continue;
@@ -543,12 +645,38 @@ void RagdollSystem::Update(SystemContext& ctx)
         if (ragdoll->beginRequested) {
             ragdoll->beginRequested = false;
             ragdoll->endRequested   = false;
+            ragdoll->mode = ragdoll->activeRequested ? RagdollMode::Active
+                                                     : RagdollMode::Passive;
+            ragdoll->activeRequested   = false;
+            ragdoll->muscleScale       = 1.0f;
+            ragdoll->recoveryRemaining = 0.0f;
+            // WHY Active だけ骨の太さを床へ足さないか: 目標姿勢が既に足を床へ置いている。
+            //     そこへ半径ぶんの下限を重ねると接地した足が毎フレーム持ち上げられ、
+            //     筋力と押し合って震える。倒れ込んだ後もこの床のままにする ── 途中で
+            //     半径を足すと、こらえていた足が一瞬で半径ぶん跳ね上がる。
+            ragdoll->groundThickness = ragdoll->mode == RagdollMode::Active
+                ? 0.0f
+                : std::max(ragdoll->boneRadius, 0.0f);
             ragdoll->groundHeight   = go->transform.worldPosition.y + ragdoll->groundOffset;
             ragdoll->phase          = RagdollPhase::BlendIn;
             ragdoll->phaseTimer     = 0.0f;
             ragdoll->weight         = 0.0f;
             Capture(*ragdoll, fk);
         }
+
+        // Active は基準ごと今のクリップへ乗せ替える。歩いて足元が上下しても床は付いて回る。
+        //
+        // WHY 床を «アニメーションの最下点まで» 下げるか: 床が目標姿勢より上にあると、
+        //     その下にある骨は毎ステップ押し上げられて筋力と押し合い、足だけが震える。
+        //     アニメーションが作る姿勢は常に «床を破っていない» 側に居なければならない。
+        if (ragdoll->mode == RagdollMode::Active) {
+            float floorHeight = go->transform.worldPosition.y + ragdoll->groundOffset;
+            for (const FkSnapshot& snapshot : fk)
+                floorHeight = std::min(floorHeight, snapshot.position.y);
+            ragdoll->groundHeight = floorHeight;
+            RefreshRest(*ragdoll, fk);
+        }
+        UpdateMuscles(*ragdoll);
 
         if (ragdoll->endRequested && ragdoll->phase != RagdollPhase::BlendOut) {
             ragdoll->endRequested = false;
@@ -565,10 +693,33 @@ void RagdollSystem::Update(SystemContext& ctx)
             ? std::min(frameDt / static_cast<float>(subSteps), kSubStep)
             : 0.0f;
 
+        AdvanceRecovery(*ragdoll, frameDt);
+
+        // 押された瞬間だけ筋力を抜く。抜かないと «硬い体が少しめり込んで即座に戻る» に
+        // なり、当たった側から見て手応えが無い。抜けたぶんは recoverySeconds で戻る。
+        if (!ragdoll->pendingImpulses.empty() && ragdoll->mode == RagdollMode::Active) {
+            ragdoll->muscleScale = std::min(ragdoll->muscleScale,
+                                            1.0f - math::Clamp01(ragdoll->impactSlack));
+            ragdoll->recoveryRemaining = std::max(ragdoll->recoverySeconds, 0.0f);
+        }
         ApplyImpulses(*ragdoll, stepDt > 0.0f ? stepDt : kSubStep);
+
         for (int step = 0; step < subSteps; ++step) {
             Integrate(*ragdoll, stepDt);
+            SolveMuscles(*ragdoll, fk);
             SolveLinks(*ragdoll);
+        }
+
+        ragdoll->runtimeDeviation = PoseDeviation(*ragdoll, fk);
+
+        // 支え切れなくなったら筋力を捨てる。基準はこのフレームの姿勢のままなので、
+        // 崩れ始めは «こらえていた形» から続く ─ Begin し直すと押された勢いが消える。
+        if (ragdoll->mode == RagdollMode::Active && ragdoll->collapseDistance > 0.0f &&
+            ragdoll->runtimeDeviation > ragdoll->collapseDistance) {
+            ragdoll->mode              = RagdollMode::Passive;
+            ragdoll->muscleScale       = 1.0f;
+            ragdoll->recoveryRemaining = 0.0f;
+            UpdateMuscles(*ragdoll);
         }
 
         ResolveRotations(*ragdoll, deltas);
