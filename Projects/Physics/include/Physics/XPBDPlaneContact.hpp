@@ -24,20 +24,36 @@ namespace fbzz::physics
                          const math::Vector3& planeNormal,
                          float                planeOffset);
 
-        void ResetLambda() override { m_lambda = 0.0f; }
+        /// 面を動かす。歩いているキャラクターの足元へ床を付いて回らせるために使う。
+        void SetPlane(const math::Vector3& planeNormal, float planeOffset);
+        /// クーロン摩擦係数。0 で «氷の上»。
+        void SetFriction(float friction) { m_friction = friction; }
+        /// 剛体を «瞬間移動» させた後に呼ぶ。前フレームからの移動を «滑った量» と
+        /// 見なすので、忘れると捕獲した瞬間に摩擦が跳ねる。
+        void ResetHistory() { m_hasPreviousPoint = false; }
+
+        void ResetLambda() override;
         void SolvePosition(float h) override;
 
         /// 直前の substep で押し返した深さ [m]。0 なら接触していない。
         [[nodiscard]] float GetPenetration() const { return m_penetration; }
 
     private:
+        void SolveFriction(float h);
+
         RigidBody*    m_body = nullptr;
         math::Vector3 m_localPoint;
         float         m_radius = 0.0f;
         math::Vector3 m_normal{ 0.0f, 1.0f, 0.0f };
         float         m_offset = 0.0f;
+        float         m_friction = 0.0f;
 
-        float m_lambda      = 0.0f;
-        float m_penetration = 0.0f;
+        float m_lambda         = 0.0f;
+        float m_lambdaFriction = 0.0f;
+        float m_penetration    = 0.0f;
+
+        /// 前の substep の位置パスを終えた時点の接触点。ここからの移動が «滑った量»。
+        math::Vector3 m_previousPoint;
+        bool          m_hasPreviousPoint = false;
     };
 } // namespace fbzz::physics

@@ -2,7 +2,6 @@
 /// @brief   Win32 カーソル状態を Engine API として一元管理する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-26
-#define NOMINMAX
 #include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Input/Input.hpp>

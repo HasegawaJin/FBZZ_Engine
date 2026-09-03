@@ -21,7 +21,7 @@
 
 #include "DX12Context.hpp"
 #include "DX12PsoCache.hpp"
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/StringUtils.hpp>
 

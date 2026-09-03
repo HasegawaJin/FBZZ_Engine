@@ -2,13 +2,15 @@
 /// @brief   OS カーソルの表示・拘束・Editor 復元を開発者が目視確認する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
 
 #include <Engine/Core/Cursor.hpp>
 
 namespace fbzz::tests {
 
-TEST(CursorManualTest, AppliesAndRestoresCursorState)
+class CursorManualTest : public testkit::Fixture {};
+
+TEST_F(CursorManualTest, AppliesAndRestoresCursorState)
 {
     core::Cursor::SetVisible(true);
     core::Cursor::SetLockMode(core::CursorLockMode::None);
@@ -25,7 +27,7 @@ TEST(CursorManualTest, AppliesAndRestoresCursorState)
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::None);
 }
 
-TEST(CursorManualTest, LockModeSurvivesTomlRoundTrip)
+TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
 {
     for (core::CursorLockMode mode : { core::CursorLockMode::None,
                                        core::CursorLockMode::Confined,
@@ -37,7 +39,7 @@ TEST(CursorManualTest, LockModeSurvivesTomlRoundTrip)
     EXPECT_EQ(core::CursorLockModeFromString("bogus"), core::CursorLockMode::None);
 }
 
-TEST(CursorManualTest, SuppressionKeepsTheGameRequest)
+TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
 {
     core::Cursor::ResetForEditor();
 
@@ -56,7 +58,7 @@ TEST(CursorManualTest, SuppressionKeepsTheGameRequest)
     EXPECT_TRUE(core::Cursor::IsVisible());
 }
 
-TEST(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
+TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
 {
     EXPECT_FALSE((core::CursorPolicy{ core::CursorLockMode::None, true }).CapturesCursor());
     EXPECT_TRUE((core::CursorPolicy{ core::CursorLockMode::None, false }).CapturesCursor());

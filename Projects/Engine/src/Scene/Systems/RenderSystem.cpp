@@ -969,10 +969,9 @@ void RenderSystem(Scene& scene,
 
     const bool resourcesWereReset = sResourceResetVersion != resources.GetResetVersion();
 
-    // 誰も参照しなくなった Mesh のバッファを返す。手続きメッシュ・線は GameObject と
-    // 一緒に消えるが、Mesh 自身は ResourceManager を知らないので自分では返せない。
-    // フレームに 1 回、こちらから拾いに行く (ResourceManager::TrackMeshBuffers の WHY)。
-    if (!resourcesWereReset) (void)resources.SweepOrphanedMeshBuffers();
+    // GPU リソースが «増え続けていないか» をフレーム単位で見張る。
+    // WHY ここか: 描画は 1 フレームに 1 度だけ通り、resources を持っている。
+    resources.TickLeakWatchdog();
 
     // シャドウアトラス。解像度は «動く» ─ 画質プリセットの適用 (GameSettings が各シーンの
     // OnStart で行う) と、エディタの Play / Stop による RenderSettings の差し替えで、
@@ -2965,6 +2964,7 @@ void RenderSystem(Scene& scene,
     appendCustomHdrPasses("CustomSceneHDR", customSceneHdrIndices);
 
     pipeline.AddPass<ConstraintDebugPass>();
+    pipeline.AddPass<RagdollDebugPass>();
     pipeline.AddPass<AnimatorDebugPass>();
     pipeline.AddPass<GridDebugPass>();
     pipeline.AddPass<LightRangeDebugPass>();

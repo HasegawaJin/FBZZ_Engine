@@ -6,7 +6,7 @@
 /// どのテストも «親を静止させ、子の骨を +X へ 1m 伸ばし、重力で下へ引く» 形にしてある。
 /// 関節フレームの X は骨の向き、Z 軸まわりの回転が «下へ垂れる» に対応する。
 /// 目視で確かめにくい «制限で止まる» «力負けして垂れる» を、角度の数字で固定する。
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
 
 #include <Physics/XPBDJoint.hpp>
 #include <Physics/XPBDSolver.hpp>
@@ -15,6 +15,8 @@
 #include <memory>
 
 namespace fbzz::tests {
+
+class XPBDJointTest : public testkit::Fixture {};
 
 namespace {
 
@@ -91,7 +93,7 @@ struct JointRig {
 
 } // namespace
 
-TEST(XPBDJointTest, SocketKeepsBodiesConnected)
+TEST_F(XPBDJointTest, SocketKeepsBodiesConnected)
 {
     JointRig rig;
     rig.Simulate(180);
@@ -99,7 +101,7 @@ TEST(XPBDJointTest, SocketKeepsBodiesConnected)
 }
 
 // 脱力した関節は真下までぶら下がる。制限もドライブも無い状態の基準。
-TEST(XPBDJointTest, LimplessJointHangsStraightDown)
+TEST_F(XPBDJointTest, LimplessJointHangsStraightDown)
 {
     JointRig rig;
     rig.Damp();
@@ -110,7 +112,7 @@ TEST(XPBDJointTest, LimplessJointHangsStraightDown)
 }
 
 // 可動域は «そこで止まる» こと。膝が逆に折れないのはこの拘束。
-TEST(XPBDJointTest, SwingLimitStopsTheBone)
+TEST_F(XPBDJointTest, SwingLimitStopsTheBone)
 {
     JointRig rig;
     auto& limits = rig.joint->Limits();
@@ -131,7 +133,7 @@ TEST(XPBDJointTest, SwingLimitStopsTheBone)
 }
 
 // 非対称な可動域。«片方向にしか曲がらない» が書けることの確認。
-TEST(XPBDJointTest, AsymmetricSwingLimitIsRespected)
+TEST_F(XPBDJointTest, AsymmetricSwingLimitIsRespected)
 {
     JointRig rig;
     auto& limits = rig.joint->Limits();
@@ -151,7 +153,7 @@ TEST(XPBDJointTest, AsymmetricSwingLimitIsRespected)
 }
 
 // ドライブは目標姿勢を保つ。定常たわみは compliance × トルクで決まる。
-TEST(XPBDJointTest, DriveHoldsTheTargetAgainstGravity)
+TEST_F(XPBDJointTest, DriveHoldsTheTargetAgainstGravity)
 {
     JointRig rig;
     auto& drive = rig.joint->Drive();
@@ -166,7 +168,7 @@ TEST(XPBDJointTest, DriveHoldsTheTargetAgainstGravity)
 }
 
 // M2 の核心その 1。支え切れずに «明らかに» 垂れること。どこまで垂れるかは下のテストが見る。
-TEST(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
+TEST_F(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
 {
     JointRig rig;
     auto& drive = rig.joint->Drive();
@@ -185,7 +187,7 @@ TEST(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
 
 // M2 の核心その 2。垂れるほど腕の «てこ» が短くなり、必要トルクが m·g·L·cos(θ) へ落ちる。
 // cos(θ) = τ_max/(m·g·L) を満たす角度で釣り合うこと ─ 上限の «値» が効いている証拠。
-TEST(XPBDJointTest, TorqueLimitBalancesAtTheAnalyticAngle)
+TEST_F(XPBDJointTest, TorqueLimitBalancesAtTheAnalyticAngle)
 {
     const float balance = std::acos(2.0f / 9.81f);
 
@@ -205,7 +207,7 @@ TEST(XPBDJointTest, TorqueLimitBalancesAtTheAnalyticAngle)
 }
 
 // 上の «動かない» が偶然でないこと。釣り合いより上に置けば落ち、下に置けば持ち上がる。
-TEST(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
+TEST_F(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
 {
     const float balance = std::acos(2.0f / 9.81f);
 
@@ -231,7 +233,7 @@ TEST(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
 }
 
 // 上限を十分に上げれば同じ設定で支え切る。上の結果がトルク上限由来だと固定する。
-TEST(XPBDJointTest, HighTorqueLimitStillHolds)
+TEST_F(XPBDJointTest, HighTorqueLimitStillHolds)
 {
     JointRig rig;
     auto& drive = rig.joint->Drive();
@@ -246,7 +248,7 @@ TEST(XPBDJointTest, HighTorqueLimitStillHolds)
 }
 
 // ドライブを切れば脱力する。Passive / Active の切り替えはこのフラグだけ。
-TEST(XPBDJointTest, DisabledDriveFallsLikeLimpJoint)
+TEST_F(XPBDJointTest, DisabledDriveFallsLikeLimpJoint)
 {
     JointRig rig;
     auto& drive = rig.joint->Drive();
@@ -260,7 +262,7 @@ TEST(XPBDJointTest, DisabledDriveFallsLikeLimpJoint)
 }
 
 // ドライブの目標を動かすと骨が付いてくる。Active の «クリップを追う» 経路。
-TEST(XPBDJointTest, DriveFollowsAMovingTarget)
+TEST_F(XPBDJointTest, DriveFollowsAMovingTarget)
 {
     JointRig rig;
     auto& drive = rig.joint->Drive();
@@ -275,7 +277,7 @@ TEST(XPBDJointTest, DriveFollowsAMovingTarget)
     EXPECT_NEAR(rig.DroopAngle(), -0.5f, 0.05f);
 }
 
-TEST(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
+TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
 {
     JointRig rig;
     auto& limits = rig.joint->Limits();

@@ -49,10 +49,13 @@ public:
     [[nodiscard]] Material CloneWithoutGpuResources() const;
 
     // paramData のサイズが変わったとき、または paramsBuffer が無効なときに cbuffer を再作成する。
-    void Init(ResourceManager& resources, uint32_t cbufferSize);
+    // where は既定のまま渡すこと。cbuffer の発生位置が «この Init» ではなく
+    // «どの経路の Material か» として記録される (Where の WHY を参照)。
+    void Init(ResourceManager& resources, uint32_t cbufferSize, Where where = Where::current());
 
     // textureMask を textures の有効性から計算して paramData に書き込み、GPU へ転送する。
-    void Upload(ResourceManager& resources, const ShaderDescriptor& desc);
+    void Upload(ResourceManager& resources, const ShaderDescriptor& desc,
+                Where where = Where::current());
 };
 
 } // namespace fbzz::renderer

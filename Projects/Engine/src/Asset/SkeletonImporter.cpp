@@ -8,7 +8,7 @@
 /// .skel は単独ファイルとして存在し、メッシュなしのスケルトン参照を可能にする。
 #include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Quaternion.hpp>

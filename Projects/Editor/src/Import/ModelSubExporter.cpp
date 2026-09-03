@@ -5,7 +5,7 @@
 ///
 /// .fzasset はパッケージ展開用、.mesh は MeshRenderer から直接参照する代表メッシュ。
 #include <Editor/Import/ModelSubExporter.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/mesh.h>

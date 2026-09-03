@@ -304,6 +304,9 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         ImGui::Checkbox("Grid",        &ctx.showGrid);
         ImGui::Checkbox("Light Range", &ctx.showLightRange);
         ImGui::Checkbox("VFX Gizmos", &ctx.showVFXGizmos);
+        ImGui::Checkbox("Ragdoll",    &ctx.showRagdoll);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("剛体・関節の可動域・接触点を重ねます。赤い関節は力負けしています。");
         ImGui::Checkbox("Colliders",   &ctx.projectSettings.render.showColliders);
         ImGui::Checkbox("UI Rects",    &ctx.projectSettings.render.showUIRects);
         if (ImGui::IsItemHovered())

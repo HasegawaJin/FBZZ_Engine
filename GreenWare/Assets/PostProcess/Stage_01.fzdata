@@ -22,7 +22,7 @@ type = 'ContactShadow'
 
 [[overrides]]
 active = true
-intensity = 0.16685748100280762
+intensity = 0.08653755486011505
 softKnee = 1.0
 threshold = 4.0
 type = 'Bloom'
@@ -35,27 +35,27 @@ type = 'Exposure'
 [[overrides]]
 active = false
 compensation = 0.0
-highPercent = 0.949999988079071
-lowPercent = 0.44999998807907104
-maxEV = 14.0
-maxExposureEV = 8.0
-minEV = -6.0
+highPercent = 0.6505747437477112
+lowPercent = 0.6952107548713684
+maxEV = 14.71264362335205
+maxExposureEV = 9.808428764343262
+minEV = -7.1724138259887695
 minExposureEV = -8.0
-speedDown = 1.2000000476837158
-speedUp = 0.800000011920929
+speedDown = 14.482757568359375
+speedUp = 9.425287246704102
 type = 'AutoExposure'
 
 [[overrides]]
 active = true
-density = 0.029999999329447746
-edgeFade = 0.3499999940395355
+density = 0.03562247380614281
+edgeFade = 0.28915661573410034
 heightFalloff = 0.07999999821186066
 heightStart = 0.5
-intensity = 0.06425702571868896
+intensity = 1.0281124114990234
 maxDistance = 4000.0
 minDistance = 500.0
-scattering = 0.6499999761581421
-steps = 24
+scattering = 0.15662650763988495
+steps = 18
 tint = [ 1.0, 0.9700000286102295, 0.9200000166893005 ]
 type = 'VolumetricLight'
 

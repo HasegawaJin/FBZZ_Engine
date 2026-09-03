@@ -826,7 +826,12 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialPar
     asset::InitDefaultMaterialParams(binding.descriptor, binding.paramData);
     asset::ApplyMaterialAssetParams(material, binding.descriptor, binding.paramData);
 
-    if (binding.paramsCB.IsValid() && binding.paramsCBSize != binding.descriptor.cbufferSize) {
+    // WHY IsValid() で足りないか: このキャッシュはシーンの寿命もデバイスリセットも跨ぐ。
+    //     ハンドルの体裁は残るので、実体が居るかどうかで «作り直し» を判断する。
+    const bool cbLive = resources.Get(binding.paramsCB) != nullptr;
+    if (!cbLive) {
+        binding.paramsCB = {};
+    } else if (binding.paramsCBSize != binding.descriptor.cbufferSize) {
         resources.Release(binding.paramsCB);
         binding.paramsCB = {};
     }
@@ -865,8 +870,10 @@ renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
             return texture;
     }
 
-    static const uint8_t white[4] = { 255, 255, 255, 255 };
-    return resources.CreateTexture(white, 1, 1);
+    // WHY 共有の 1 枚か: ここで作ると «誰も返さない 1x1» がエミッターの数だけ残る。
+    //     エミッターは Despawn / Stop で畳まれてもテクスチャを返さない (LoadTexture 由来の
+    //     ハンドルを返すと共有キャッシュを壊すため) ので、作った枚数がそのまま漏れる。
+    return resources.GetWhiteTexture();
 }
 
 

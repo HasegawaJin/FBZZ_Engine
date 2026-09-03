@@ -5,7 +5,6 @@
 ///
 /// Window / Renderer / Audio / SceneManager を所有し、エンジン全体の寿命を管理する。
 /// sandbox 側で手動ループする場合も、初期化済みサブシステムの入口になる。
-#define NOMINMAX
 #include <Windows.h>
 #include <timeapi.h>
 #include "Engine/Core/Application.hpp"

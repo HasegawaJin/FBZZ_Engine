@@ -6,7 +6,7 @@
 
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/TomlReflector.hpp>
+#include <Engine/Scene/TomlReflector.hpp>
 
 #include <toml++/toml.hpp>
 

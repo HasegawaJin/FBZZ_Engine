@@ -7359,7 +7359,31 @@ const char* ScriptRagdollProxy::GetStatus() const
 int ScriptRagdollProxy::GetParticleCount() const
 {
     const auto* ragdoll = SelfComponent<RagdollComponent>(script);
-    return ragdoll ? ragdoll->runtimeParticleCount : 0;
+    return ragdoll ? ragdoll->runtimeBodyCount : 0;
+}
+
+int ScriptRagdollProxy::GetSaturatedJointCount() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll ? ragdoll->runtimeSaturated : 0;
+}
+
+int ScriptRagdollProxy::GetLimitedJointCount() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll ? ragdoll->runtimeLimited : 0;
+}
+
+int ScriptRagdollProxy::GetContactCount() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll ? ragdoll->runtimeContacts : 0;
+}
+
+int ScriptRagdollProxy::GetUnmatchedBoneCount() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    return ragdoll ? ragdoll->runtimeUnmatched : 0;
 }
 
 void ScriptRagdollProxy::SetRoot(const char* rootBoneName, int maxDepth) const
@@ -7368,11 +7392,10 @@ void ScriptRagdollProxy::SetRoot(const char* rootBoneName, int maxDepth) const
     if (!ragdoll) return;
     const std::string next = rootBoneName ? rootBoneName : "";
     if (ragdoll->rootBoneName == next && ragdoll->maxDepth == maxDepth) return;
+    // 骨の並びが変わるので剛体も組み直しになるが、ここで壊す必要はない。
+    // RagdollSystem が «組んだときの root / maxDepth» と突き合わせて自分で組み直す。
     ragdoll->rootBoneName = next;
     ragdoll->maxDepth     = maxDepth;
-    // 質点の並びが変わる。空にするのが «組み直せ» の合図。
-    ragdoll->particles.clear();
-    ragdoll->links.clear();
 }
 
 void ScriptRagdollProxy::SetGravity(float gravity) const
@@ -7393,9 +7416,10 @@ void ScriptRagdollProxy::SetMuscle(float stiffness, float falloff, float damping
 {
     auto* ragdoll = EnsureRagdoll(script);
     if (!ragdoll) return;
-    ragdoll->muscleStiffness = math::Clamp01(stiffness);
-    ragdoll->muscleFalloff   = math::Clamp01(falloff);
-    ragdoll->muscleDamping   = math::Clamp01(damping);
+    // どれもプロファイルが与えた値への «倍率»。1 でプロファイルどおり。
+    ragdoll->driveScale   = stiffness < 0.0f ? 0.0f : stiffness;
+    ragdoll->driveFalloff = math::Clamp01(falloff);
+    ragdoll->driveDamping = damping < 0.0f ? 0.0f : damping;
 }
 
 void ScriptRagdollProxy::SetRecovery(float impactSlack, float recoverySeconds) const

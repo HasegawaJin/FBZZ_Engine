@@ -983,6 +983,20 @@ void EditorApp::InitScriptDll()
         } else {
             FBZZ_LOG_INFO("ScriptDll: stale DLL was rejected; rebuild scheduled");
             if (toolchain.found) {
+                // 拒否した DLL は消してから再ビルドを予約する。
+                //
+                // 消さないと «Engine をエクスポート不変で再リンクしただけ» のときに
+                // 抜け出せなくなる。ローダーは «Engine.dll より古い» と拒否し続けるが、
+                // ヘッダーもインポートライブラリも変わっていないので MSBuild は
+                // «更新不要» と正しく判断して何もせず、DLL の日時も進まない。
+                // 出力を消せばリンクだけは必ず走り、日時が進んで膠着が解ける。
+                std::error_code removeError;
+                std::filesystem::remove(m_scriptDllPath, removeError);
+                if (removeError) {
+                    FBZZ_LOG_WARN("ScriptDll: 古い DLL を削除できませんでした: %s",
+                                  removeError.message().c_str());
+                }
+
                 // WHY: Engine 側の Scene / Component レイアウトだけが変わった場合、
                 //      スクリプトソースのタイムスタンプ比較では古い DLL を検出できない。
                 //      ABI 不一致でロードを拒否した時点で依存ターゲット込みの再ビルドを予約する。

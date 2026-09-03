@@ -46,6 +46,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["view"]["grid_size"].value<float>())     gridSize      = *v;
     if (auto v = tbl["view"]["show_light_range"].value<bool>()) showLightRange = *v;
     if (auto v = tbl["view"]["show_vfx_gizmos"].value<bool>()) showVFXGizmos = *v;
+    if (auto v = tbl["view"]["show_ragdoll"].value<bool>()) showRagdoll = *v;
     if (auto v = tbl["view"]["show_skeleton"].value<bool>())  showSkeleton  = *v;
     if (auto v = tbl["view"]["show_stats"].value<bool>())     showStats = *v;
     if (auto v = tbl["view"]["scene_view_occlusion_culling"].value<bool>())
@@ -287,6 +288,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     viewTbl.insert("grid_size",        gridSize);
     viewTbl.insert("show_light_range", showLightRange);
     viewTbl.insert("show_vfx_gizmos", showVFXGizmos);
+    viewTbl.insert("show_ragdoll", showRagdoll);
     viewTbl.insert("show_skeleton",    showSkeleton);
     viewTbl.insert("show_stats",       showStats);
     viewTbl.insert("scene_view_occlusion_culling", sceneViewOcclusionCulling);

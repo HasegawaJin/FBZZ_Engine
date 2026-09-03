@@ -520,7 +520,9 @@ void DrawSharedComponentSection(EditorContext& ctx,
             for (auto* g : gos) {
                 if (auto* c = g->GetComponent<T>()) {
                     guids.push_back(g->instanceId);
+                    // やり直し用のコピーからは GPU ハンドルを消す (実体は下で返される)。
                     removed.push_back(*c);
+                    scene::ClearComponentGpuHandles(removed.back());
                     g->RemoveComponent<T>();
                 }
             }

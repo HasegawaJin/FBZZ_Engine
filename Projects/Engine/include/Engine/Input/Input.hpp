@@ -10,11 +10,10 @@
 #include "Math/Vector2.hpp"
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <string_view>
-#include <string>
 #include <unordered_map>
-#include <Windows.h>
 
 namespace fbzz::input {
 
@@ -49,13 +48,18 @@ public:
     // マウスホイール (1ノッチ = +1.0 / -1.0)
     static float MouseScrollDelta();
 
-    // Window::WndProc から呼ぶ内部関数
-    static void HandleKeyMessage  (UINT msg, WPARAM wParam);
+    /// @name Window::WndProc から呼ぶ内部関数
+    /// `msg` は Win32 の `UINT`、`wParam` は `WPARAM` と同じ幅。このヘッダーは
+    /// エンジン全域へ伝播するため `<Windows.h>` を引かず、幅の一致は Input.cpp の
+    /// static_assert で担保する。
+    ///@{
+    static void HandleKeyMessage  (unsigned int msg, std::uintptr_t wParam);
     static void HandleMouseMove   (int x, int y);
-    static void HandleMouseButton (UINT msg);
+    static void HandleMouseButton (unsigned int msg);
     static void HandleMouseScroll (float delta);
     static void HandleTextInput   (wchar_t character);
     static std::string_view TextInput();
+    ///@}
 
     // AI 自動プレイテスト用の入力注入。通常入力と同じフレーム状態へ合成する。
     // WHY: EditorMCP が Pause+Step と組み合わせてゲームを決定的に操作できるようにする。

@@ -9,6 +9,9 @@
 ///   3 か所を直すことになり、片方だけ対応が漏れた型は *エラーも警告もなく*
 ///   保存されなくなる。値型の変換とスコープ管理はここへ一本化し、
 ///   参照型 (EntityID / アセット GUID) のように文脈が要るものだけを派生で足す。
+///
+///   実体は scene::IReflector の実装なので Util ではなく Scene に置く。
+///   名前空間は呼び出し側を巻き込まないよう fbzz::util のまま据え置いている。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

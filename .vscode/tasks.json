@@ -34,9 +34,13 @@
         //      居ないと exit 1 を返すので、常に exit 0 へ潰してタスク連鎖を止めない。
         // ------------------------------------------------------------------
         {
+            // WHY テスト exe まで落とすか: テストとベンチは FBZZMath / FBZZPhysics /
+            //     FBZZEngine の DLL を掴む。結果を読ませるため終了時に入力待ちで止まる
+            //     設計なので、閉じ忘れた窓が 1 つあるだけで次のビルドが LNK1168 で落ちる。
+            //     ハングしたテストが残っている場合も同じ。
             "label": "Kill: Engine Processes",
             "type": "shell",
-            "command": "taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM Sandbox.exe >nul 2>&1 & taskkill /F /T /IM SandboxStandalone.exe >nul 2>&1 & exit 0",
+            "command": "taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM Sandbox.exe >nul 2>&1 & taskkill /F /T /IM SandboxStandalone.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsMathAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsCoreAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsPhysicsAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsEngineAuto.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestsCoreManual.exe >nul 2>&1 & taskkill /F /T /IM FBZZTestBench.exe >nul 2>&1 & exit 0",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "silent",
@@ -121,6 +125,19 @@
         },
 
         // ------------------------------------------------------------------
+        // ビルド時間の計測。MSBuild のタスク別集計で「コンパイルとリンクの
+        // どちらに時間が行っているか」を出す。増分を測るときは、直前に 1 ファイルだけ
+        // 保存し直してからこれを走らせる。
+        // ------------------------------------------------------------------
+        {
+            "label": "Profile: Build Timing (Development)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZEditorLauncher -- /clp:PerformanceSummary /v:m",
+            "group": "build",
+            "problemMatcher": []
+        },
+
+        // ------------------------------------------------------------------
         // CMake Build — エディター (日常の編集ループで最も回す単位)
         // WHY: Editor は Engine を共有し、SDK へも常に同じ版で
         //      入るため片方だけ古い状態を作らない。1 コマンドで両方を上げる。
@@ -180,11 +197,14 @@
 
         // ------------------------------------------------------------------
         // テスト
+        // WHY 対象を明示列挙するか: --target を書き漏らしたスイートは «ビルドされない»
+        //     だけで、エラーも警告も出ない。実際に Math とベンチが丸ごと抜けていた。
+        //     テストスイートを追加したら、この 3 タスクへも必ず 1 行足すこと。
         // ------------------------------------------------------------------
         {
             "label": "CMake: Build Tests (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -192,7 +212,7 @@
         {
             "label": "CMake: Build Tests (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -200,10 +220,108 @@
         {
             "label": "CMake: Build Tests (Release)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
+        },
+
+        // --- スイート単位のビルドと実行 ------------------------------------
+        // ${input:testSuite} は 1 回のタスク実行につき 1 度だけ聞かれ、
+        // ビルドと実行の両方へ同じ値が渡る。
+        {
+            "label": "Tests: Build Suite (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target ${input:testSuite}",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            // exe を直接叩く。gtest の出力がそのままターミナルに出るので、
+            // どのケースがどう落ちたかを ctest の要約より細かく読める。
+            "label": "Tests: Run Suite (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" run debug ${input:testSuite}",
+            "problemMatcher": []
+        },
+        {
+            "label": "Tests: Build & Run Suite (Debug)",
+            "dependsOn": [
+                "Tests: Build Suite (Debug)",
+                "Tests: Run Suite (Debug)"
+            ],
+            "dependsOrder": "sequence",
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            // 実行順に依存したテスト (TearDown の書き漏らし) は、順序を混ぜないと出てこない。
+            "label": "Tests: Shuffle Suite (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" run debug ${input:testSuite} --gtest_shuffle --gtest_repeat=10",
+            "dependsOn": "Tests: Build Suite (Debug)",
+            "group": "test",
+            "problemMatcher": []
+        },
+
+        // --- ビジュアル検証ベンチ ------------------------------------------
+        {
+            "label": "Bench: Build (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestBench",
+            "group": "build",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "Bench: Build & Run (Debug)",
+            "dependsOn": [
+                "Bench: Build (Debug)",
+                "Bench: Run (Debug)"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "Bench: Run (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" run debug FBZZTestBench",
+            "problemMatcher": []
+        },
+        {
+            "label": "Bench: Build & Run (Development)",
+            "dependsOn": [
+                "Bench: Build (Development)",
+                "Bench: Run (Development)"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "Bench: Build (Development)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestBench",
+            "group": "build",
+            "dependsOn": "Kill: Engine Processes",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "Bench: Run (Development)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" run development FBZZTestBench",
+            "problemMatcher": []
+        },
+
+        // --- カバレッジ ----------------------------------------------------
+        {
+            // 事前に choco install opencppcoverage が要る。
+            // 計測対象と出力先は Tools/RunCoverage.ps1 が持つ (CI と同じ設定)。
+            "label": "Tests: Coverage (Debug)",
+            "type": "shell",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\RunCoverage.ps1\" -BuildDir build/Debug -Config Debug",
+            "dependsOn": "CMake: Build Tests (Debug)",
+            "group": "test",
+            "problemMatcher": []
         },
         {
             // gtest_discover_tests() が CTest へ登録済みなので exe 直叩きではなく ctest を通す。
@@ -414,6 +532,40 @@
             "path": "Projects/EditorMcp",
             "group": "test",
             "problemMatcher": "$tsc"
+        }
+    ],
+
+    // ----------------------------------------------------------------------
+    // タスク実行時に聞く値
+    // ----------------------------------------------------------------------
+    "inputs": [
+        {
+            "id": "testSuite",
+            "type": "pickString",
+            "description": "対象のテストスイート",
+            "default": "FBZZTestsPhysicsAuto",
+            "options": [
+                {
+                    "label": "Math — Vector / Quaternion / Matrix",
+                    "value": "FBZZTestsMathAuto"
+                },
+                {
+                    "label": "Core — アロケーター / Scheduler / TaskSystem / Signal / Logger / Time",
+                    "value": "FBZZTestsCoreAuto"
+                },
+                {
+                    "label": "Physics — GJK / EPA / Collider / AABB / BVH / XPBD",
+                    "value": "FBZZTestsPhysicsAuto"
+                },
+                {
+                    "label": "Engine — RagdollRig",
+                    "value": "FBZZTestsEngineAuto"
+                },
+                {
+                    "label": "Core Manual — Window / Cursor (OS 状態を書き換える)",
+                    "value": "FBZZTestsCoreManual"
+                }
+            ]
         }
     ]
 }

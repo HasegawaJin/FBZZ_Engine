@@ -50,6 +50,7 @@
 #include <Scripts/Utils/BodyShake.hpp>
 #include <Scripts/Utils/InputActions.hpp>
 #include <Scripts/Utils/LoopVoice.hpp>
+#include <Scripts/Utils/PlayerActionState.hpp>
 #include <Scripts/Utils/PolarityTypes.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Vfx/SlashArcComponent.hpp>
@@ -212,6 +213,18 @@ private:
     void ResolveHit();
     /// 1 体ぶんの処理。極を乗せて、少し削る。
     void HitOne(GameObject& object, PolarityTargetComponent& target);
+    /// この一振りが与える量。溜め比で通常と溜め斬りの間を取る。
+    [[nodiscard]] int SlashDamage() const;
+    /// ロック対象が射程の外なら、発生のあいだで詰める。届かない相手へは何もしない。
+    void DashToTarget();
+    /// 斬った刃の極と «その部位» の極を突き合わせ、通る量の倍率を返す。
+    /// 逆極なら打ち消して 1.0、同極なら弾かれて Same Polarity x。
+    /// 塗られる側の部位 (蛇の節) はここで極を乗せて 1.0 を返す。
+    ///
+    /// WHY 手応え (止め・弾き・音) は 1 振りに 1 回しか出さないか:
+    ///     溜め斬りは 4 部位へ同時に当たる。部位ごとに弾くと 1 回の入力で 4 回
+    ///     押し返され、当たった数だけ体が飛ぶ。倍率は部位ごと、返しは 1 回。
+    [[nodiscard]] float PartDamageScale(BossPartPolarityComponent& part, GameObject* bossRoot);
     /// 斬る向き。狙っている相手が居ればそちらへ、居なければカメラの前方へ。
     [[nodiscard]] Vector3 SwingDirection() const;
     /// 今フレーム狙っている相手 (居なければ nullptr)。
@@ -260,6 +273,14 @@ private:
     bool     m_chargeFeel = false;
     /// 今出している一撃が溜め斬りか。判定も絵も音もここで分岐する。
     bool     m_charged = false;
+    /// この一振りで «極の突き合わせ» の手応え (止め・弾き・音) を既に返したか。
+    bool     m_matchResolved = false;
+    /// この一振りが最終段だったか。振り出しで決めて、硬直が明けるまで持つ。
+    ///
+    /// WHY IsFinisher() を都度呼ばないか: あちらは «これから振る段» を見るので、
+    ///     判定が出た後 (m_combo が進んだ後) に呼ぶと答えが入れ替わる。
+    ///     硬直中の申告 ─ ボスが差し込みを決める材料 ─ がそこで嘘になる。
+    bool     m_swingIsFinisher = false;
     /// 離した瞬間の溜め比 [0,1]。振り終わるまで固定する。
     float    m_chargedRatio = 0.0f;
 
@@ -438,10 +459,15 @@ inline void PolarityBladeComponent::BeginSwing(Polarity polarity)
 
     m_polarity = polarity;
     m_phase    = Phase::Startup;
+    m_swingIsFinisher = IsFinisher();
+    m_matchResolved   = false;
     m_timer    = Max(StartupSeconds(), 0.0f);
     m_buffered = Polarity::None;
 
     m_swingDirection = SwingDirection();
+
+    // 振り出しで詰める。判定が出る頃には間合いの内側に居る。
+    DashToTarget();
 
     // 振り «始めた» 瞬間から自分もその極を帯びる。当ててからでは、
     // 空振りした一振りだけ極が乗らず «どちらの剣を振ったか» が絵に出ない。
@@ -468,6 +494,9 @@ inline void PolarityBladeComponent::BeginCharged(Polarity polarity, float ratio)
     m_chargedRatio = Clamp01(ratio);
     m_polarity     = polarity;
     m_phase        = Phase::Startup;
+    // 溜め斬りは段を持たない。«最終段» としては数えない。
+    m_swingIsFinisher = false;
+    m_matchResolved   = false;
     m_timer        = Max(StartupSeconds(), 0.0f);
     m_buffered     = Polarity::None;
     // 溜めで区切る。段を持ち越すと «溜めたのに 2 段目の絵» が出る。
@@ -649,8 +678,9 @@ inline void PolarityBladeComponent::ResolveHit()
     // WHY 1 つのループにまとめないか: 両者は «極を持つ» ことしか共通していない。
     //     混ぜるには基底クラスを 1 枚挟むことになり、盤面の側 (引力・持続・中和) が
     //     部位の都合を知る形になる。同じ扇を 2 度通す方が、依存の向きが増えない。
-    int         parts  = 0;
-    GameObject* struck = nullptr;
+    int         parts   = 0;
+    int         painted = 0;
+    GameObject* struck  = nullptr;
     for (GameObject* object : scene.FindObjectsOfType<BossPartPolarityComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
         auto* part = scene.GetScript<BossPartPolarityComponent>(object);
@@ -668,25 +698,36 @@ inline void PolarityBladeComponent::ResolveHit()
         const float distance = std::sqrt(distanceSq);
         if (Vector3::Dot(delta / distance, direction) < halfCos) continue;
 
-        part->Apply(m_polarity);
+        // 芝居も本体側。突き合わせる相手と固める相手は同じなので 1 度だけ引いておく。
+        GameObject* root = BossHitboxRigComponent::BossRootOf(object);
+        if (!struck) struck = root;
+
+        // 部位の極と刃の極を突き合わせる。塗られる側の節はここで極が乗る。
+        const int dealt = static_cast<int>(SlashDamage() * PartDamageScale(*part, root));
+        (void)part->Damage(dealt);
+
+        // 部位ごとに極を持つボスは、本体の体力もここから削る (本体を直接斬る道は
+        // 塞いである)。削ることと倒すことが別々の作業にならないよう 1 本に通す。
+        if (part->selfDriven && root)
+            if (auto* combat = CombatManagerComponent::Instance())
+                (void)combat->DamageEnemyDirect(root, dealt);
         // 斬った脚が «効いている» を返す。押す向きはプレイヤーから部位への水平方向
         // ── 斬撃の扇の向きだと、横をすり抜けた一撃でも正面へ押すことになる。
         if (auto* rig = scene.GetScript<BossPolarityRigComponent>())
             rig->Flinch(part->legSuffix, object->transform.worldPosition,
                         delta / distance, m_charged);
-        // 芝居を持っているのは部位ではなく本体。固める相手をここで引いておく
-        // (下の «当たった» 処理からは、どの部位に入ったかまでは見えない)。
-        if (!struck) struck = BossHitboxRigComponent::BossRootOf(object);
-        // 乗った «瞬間» をその場に出す。持続の表示は BossPolarityRigComponent が
-        // 別に持つ ─ 環は一発の演出なので、鳴らし続けると «乗っている» ではなく
-        // «何かが爆ぜ続けている» に見える。
+        // 当たった «瞬間» をその場に出す。環は一発の演出なので、鳴らし続けると
+        // «当たっている» ではなく «何かが爆ぜ続けている» に見える。
         if (auto* rings = PolarityRingComponent::Instance())
             rings->Burst(object->transform.worldPosition, 2.0f, m_polarity);
+        if (!part->selfDriven) ++painted;
         ++parts;
         ++hits;
     }
-    // 溜め斬りは 4 本まとめて乗るので、1 部位ごとに鳴らすと同じ音が 4 枚重なる。
-    if (parts > 0) se::Play(audio, se::kPolarityInfect);
+    // «極が乗った» 音は塗ったときだけ。ボスの脚は自分で極を持っているので、
+    // 合っていたか外したかは kNeutralize / kPolarityRepulse の側が言う。
+    // 溜め斬りは複数の節へまとめて乗るので、1 部位ごとに鳴らすと同じ音が重なる。
+    if (painted > 0) se::Play(audio, se::kPolarityInfect);
 
     debugLastHits = hits;
 
@@ -782,20 +823,106 @@ inline void PolarityBladeComponent::HitOne(GameObject& object,
     // 極を乗せる。中和・上書き・付与の判定は極性システム側が 1 箇所で持っている。
     (void)target.Apply(m_polarity);
 
-    // 削る。ボスは «無防備なあいだ» だけ通る。
+    // 削る。立っていても倒れていても通る。
     //
-    // WHY 立っている間は通さないか: いつでも削れるなら、部位に極を乗せて転ばせる手順が
-    //     «遠回り» に落ちる。倒してから斬る、が最短であり続ける形にしておく。
-    const auto* boss = IBoss::Of(&object);
-    if (!boss || boss->IsStaggered()) {
-        const int damage = m_charged
-            ? static_cast<int>(Lerp(static_cast<float>(std::max(tuning->bladeDamage, 0)),
-                                    static_cast<float>(std::max(tuning->bladeChargedDamage, 0)),
-                                    m_chargedRatio))
-            : std::max(tuning->bladeDamage, 0);
-        if (auto* combat = CombatManagerComponent::Instance())
-            (void)combat->DamageEnemyDirect(&object, damage);
+    // WHY 立っている間も通すか: 斬撃は «極を乗せるため» の手だったので、削れるのを
+    //     転倒中だけに絞ってあった。その結果、戦闘時間の大半でプレイヤーが一番多く押す
+    //     入力が何も返さない状態になっていた。«斬れば削れる» を土台に戻し、どこを削ったかは
+    //     部位ごとの体力 (BossPartPolarityComponent) が受け持つ。
+    // 部位ごとに極を持つボス (四足) は、削るのが部位の側の仕事。ここで本体へ直接
+    // 通すと «色を読まずに胴を斬るだけ» が最短になり、部位の色分けが飾りに落ちる。
+    if (scene.GetScript<BossPolarityRigComponent>(&object)) return;
+
+    if (auto* combat = CombatManagerComponent::Instance())
+        (void)combat->DamageEnemyDirect(&object, SlashDamage());
+}
+
+inline void PolarityBladeComponent::DashToTarget()
+{
+    // 溜め斬りはその場で全周を薙ぐ手なので詰めない。踏み込むと «溜めて突っ込む»
+    // という別の技になり、全周である意味が消える。
+    if (m_charged || !m_controller) return;
+
+    const float dashRange = Max(tuning->bladeDashRange, 0.0f);
+    if (dashRange <= 0.0f) return;
+
+    GameObject* target = AimTarget();
+    if (!target) return;
+
+    Vector3 delta = target->transform.worldPosition - transform.worldPosition;
+    delta.y = 0.0f;
+    const float distance = delta.Length();
+    if (distance < EPSILON) return;
+
+    // 届く距離の測り方は判定 (ResolveHit) とまったく同じにする。別々に持つと
+    // «踏み込んだのに当たらない» / «届いているのに踏み込む» が両方起きる。
+    const float reach = Max(tuning->bladeRange, 0.0f) + bodybounds::RadiusWorld(*target);
+    const float gap   = distance - reach;
+    if (gap <= 0.0f || gap > dashRange) return;
+
+    const float travel = gap + Max(tuning->bladeDashDepth, 0.0f);
+    // 発生のあいだで払いきる速さ。上限で頭を打つので、遠いほど速く滑ることはない。
+    const float seconds = Max(StartupSeconds(), 0.02f);
+    const float speed   = std::min(travel / seconds, Max(tuning->bladeDashSpeed, 0.0f));
+    if (speed <= 0.0f) return;
+
+    m_controller->Knockback(delta / distance, speed, seconds);
+}
+
+inline float PolarityBladeComponent::PartDamageScale(BossPartPolarityComponent& part,
+                                                     GameObject* bossRoot)
+{
+    // 塗られる側 (蛇の節) は今までどおり。極を乗せるのが仕事で、突き合わせは無い。
+    if (!part.selfDriven) {
+        part.Apply(m_polarity);
+        return 1.0f;
     }
+
+    const Polarity worn = part.Current();
+    // 打ち消した直後は無極。どちらの剣でも満額で通る ─ 読み切った数秒の報酬。
+    if (worn == Polarity::None || m_polarity == Polarity::None) return 1.0f;
+
+    if (worn != m_polarity) {
+        part.Neutralize();
+        if (!m_matchResolved) {
+            m_matchResolved = true;
+            se::Play(audio, se::kNeutralize);
+            // 合わせた «瞬間» を止めで返す。通常の斬撃より一段深くして、
+            // «正しい剣だった» を手で分かるようにする。
+            if (auto* stop = HitstopManagerComponent::Instance())
+                stop->Hit(Clamp01(hitStop * 1.6f));
+        }
+        return 1.0f;
+    }
+
+    // 同極。通る量が落ち、こちらが弾かれる。
+    if (!m_matchResolved) {
+        m_matchResolved = true;
+
+        const float bounce = Max(tuning->bladeBounceSpeed, 0.0f);
+        if (bounce > 0.0f && m_controller && bossRoot) {
+            Vector3 away = transform.worldPosition - bossRoot->transform.worldPosition;
+            away.y = 0.0f;
+            // 弾かれる長さは硬直と揃える。硬直より長いと «動けるのに勝手に下がる» になり、
+            // 短いと «弾かれた» が絵に残らない。
+            m_controller->Knockback(away.NormalizedOr(-m_swingDirection), bounce,
+                                    Max(tuning->bladeRecovery, 0.05f));
+        }
+        se::Play(audio, se::kPolarityRepulse);
+        if (auto* pad = RumbleManagerComponent::Instance())
+            pad->Rumble(0.55f, 0.3f, 0.12f);
+    }
+
+    return Clamp01(tuning->bladeSamePolarityScale);
+}
+
+inline int PolarityBladeComponent::SlashDamage() const
+{
+    const int base = std::max(tuning->bladeDamage, 0);
+    if (!m_charged) return base;
+    return static_cast<int>(Lerp(static_cast<float>(base),
+                                 static_cast<float>(std::max(tuning->bladeChargedDamage, 0)),
+                                 m_chargedRatio));
 }
 
 inline void PolarityBladeComponent::OnUpdate()
@@ -856,6 +983,13 @@ inline void PolarityBladeComponent::OnUpdate()
         }
         break;
     }
+
+    // ボスが読む «今なにをしているか»。最終段の硬直が一番長いので、そこが差し込みどころ。
+    playeraction::Publish(m_phase != Phase::Idle,
+                          m_phase != Phase::Idle && m_swingIsFinisher,
+                          m_phase == Phase::Recovery,
+                          m_holding != Polarity::None ? ChargeRatio() : 0.0f,
+                          Time::time);
 }
 
 } // namespace sandbox

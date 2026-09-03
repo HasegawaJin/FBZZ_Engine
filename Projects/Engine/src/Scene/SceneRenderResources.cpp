@@ -9,10 +9,13 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/PresentationComponents.hpp>
+#include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 
+#include <memory>
 #include <vector>
 
 namespace fbzz::scene {
@@ -74,7 +77,9 @@ void Drop(MeshTrailComponent& trail, renderer::ResourceManager* resources)
 void Drop(ParticleEmitter& emitter, renderer::ResourceManager* resources)
 {
     ParticleRuntime& runtime = emitter.runtime;
-    Drop(resources, runtime.materialParamsCB);
+    // 借りているだけなので返さない (実体は ParticlePass が .mat 単位で 1 本持つ)。
+    // 返すと、同じ .mat を使う他のエミッターの b2 まで一緒に死ぬ。
+    runtime.materialParamsCB = {};
     Drop(resources, runtime.gpuParticleBuffer);
     Drop(resources, runtime.gpuSpawnBuffer);
     Drop(resources, runtime.gpuEmitterCB);
@@ -85,6 +90,38 @@ void Drop(ParticleEmitter& emitter, renderer::ResourceManager* resources)
     runtime.gpuSortCapacity = 0;
     runtime.gpuCapacity = 0;
     runtime.gpuInitialized = false;
+}
+
+// 2 枚のメッシュは «この Component 専用» で、他に持ち主が居ない。
+// WHY 空にまで戻すか: 次に焼くときは容量から取り直す。ハンドルだけ空にすると
+//     vertexCapacity が «確保済み» のまま残り、無効ハンドルへ書きにいく。
+void Drop(DoubleBufferedMesh& target, renderer::ResourceManager* resources)
+{
+    for (std::unique_ptr<renderer::Mesh>& slot : target.slots) {
+        if (!slot) continue;
+        if (resources != nullptr)
+            static_cast<void>(resources->ReleaseMeshBuffers(*slot));
+        slot.reset();
+    }
+    target.signature = 0;
+    target.current = 0;
+}
+
+void Drop(SpriteRendererComponent& sprite, renderer::ResourceManager* resources)
+{
+    Drop(sprite.runtimeMesh, resources);
+}
+
+void Drop(LineRendererComponent& line, renderer::ResourceManager* resources)
+{
+    Drop(line.runtimeMesh, resources);
+}
+
+void Drop(ProceduralMeshComponent& procedural, renderer::ResourceManager* resources)
+{
+    Drop(procedural.runtimeMesh, resources);
+    // 次のフレームで焼き直させる。dirty を戻さないと «空のメッシュのまま» になる。
+    procedural.dirty = MeshDirty::All;
 }
 
 void Drop(ReflectionProbeComponent& probe, renderer::ResourceManager* resources)
@@ -120,6 +157,9 @@ void ReleaseSceneOwnedGpuResources(Scene& scene, renderer::ResourceManager& reso
     DropAll<MeshTrailComponent>(scene, &resources);
     DropAll<ParticleEmitter>(scene, &resources);
     DropAll<ReflectionProbeComponent>(scene, &resources);
+    DropAll<SpriteRendererComponent>(scene, &resources);
+    DropAll<LineRendererComponent>(scene, &resources);
+    DropAll<ProceduralMeshComponent>(scene, &resources);
 }
 
 void ReleaseEntityOwnedGpuResources(Scene& scene, EntityID id, renderer::ResourceManager& resources)
@@ -130,6 +170,9 @@ void ReleaseEntityOwnedGpuResources(Scene& scene, EntityID id, renderer::Resourc
     DropOne<MeshTrailComponent>(scene, id, &resources);
     DropOne<ParticleEmitter>(scene, id, &resources);
     DropOne<ReflectionProbeComponent>(scene, id, &resources);
+    DropOne<SpriteRendererComponent>(scene, id, &resources);
+    DropOne<LineRendererComponent>(scene, id, &resources);
+    DropOne<ProceduralMeshComponent>(scene, id, &resources);
 }
 
 void ClearDuplicatedGpuHandles(Scene& scene, EntityID id)
@@ -140,6 +183,39 @@ void ClearDuplicatedGpuHandles(Scene& scene, EntityID id)
     DropOne<MeshTrailComponent>(scene, id, nullptr);
     DropOne<ParticleEmitter>(scene, id, nullptr);
     DropOne<ReflectionProbeComponent>(scene, id, nullptr);
+    DropOne<SpriteRendererComponent>(scene, id, nullptr);
+    DropOne<LineRendererComponent>(scene, id, nullptr);
+    DropOne<ProceduralMeshComponent>(scene, id, nullptr);
 }
+
+// Scene::RemoveComponent<T>() から呼ばれる 1 型ぶんの返却。
+// WHY Active() を使うか: 呼び出し側 (Scene.hpp のテンプレート) に Renderer を持ち込まないため。
+namespace {
+template <class Component>
+void DropToActive(Component& component)
+{
+    Drop(component, renderer::ResourceManager::Active());
+}
+} // namespace
+
+void ClearComponentGpuHandles(AnimatorComponent& component)        { Drop(component, nullptr); }
+void ClearComponentGpuHandles(SkinnedMeshRenderer& component)      { Drop(component, nullptr); }
+void ClearComponentGpuHandles(TrailComponent& component)           { Drop(component, nullptr); }
+void ClearComponentGpuHandles(MeshTrailComponent& component)       { Drop(component, nullptr); }
+void ClearComponentGpuHandles(ParticleEmitter& component)          { Drop(component, nullptr); }
+void ClearComponentGpuHandles(ReflectionProbeComponent& component) { Drop(component, nullptr); }
+void ClearComponentGpuHandles(SpriteRendererComponent& component)  { Drop(component, nullptr); }
+void ClearComponentGpuHandles(LineRendererComponent& component)    { Drop(component, nullptr); }
+void ClearComponentGpuHandles(ProceduralMeshComponent& component)  { Drop(component, nullptr); }
+
+void ReleaseComponentGpuResources(AnimatorComponent& component)        { DropToActive(component); }
+void ReleaseComponentGpuResources(SkinnedMeshRenderer& component)      { DropToActive(component); }
+void ReleaseComponentGpuResources(TrailComponent& component)           { DropToActive(component); }
+void ReleaseComponentGpuResources(MeshTrailComponent& component)       { DropToActive(component); }
+void ReleaseComponentGpuResources(ParticleEmitter& component)          { DropToActive(component); }
+void ReleaseComponentGpuResources(ReflectionProbeComponent& component) { DropToActive(component); }
+void ReleaseComponentGpuResources(SpriteRendererComponent& component)  { DropToActive(component); }
+void ReleaseComponentGpuResources(LineRendererComponent& component)    { DropToActive(component); }
+void ReleaseComponentGpuResources(ProceduralMeshComponent& component)  { DropToActive(component); }
 
 } // namespace fbzz::scene

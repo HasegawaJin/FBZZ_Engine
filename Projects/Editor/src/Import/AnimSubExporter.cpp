@@ -6,7 +6,7 @@
 /// AnimationImporter.cpp の v3 レイアウトと対応し、Node Transform と Morph Weight を同時に保存する。
 #include <Editor/Import/AnimSubExporter.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/anim.h>

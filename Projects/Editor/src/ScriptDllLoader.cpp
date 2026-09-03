@@ -18,7 +18,9 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <system_error>
 
 namespace fbzz::editor {
 
@@ -45,6 +47,69 @@ std::wstring MakeTimestamp()
     return std::to_wstring(ms);
 }
 
+// ── 古い DLL からエディターを守る 2 段構え ──────────────────────────────────
+//
+// WHY 要るか: Engine のヘッダーを触った日に Scripts.dll を建て直さないと、DLL は
+//     «別のレイアウトの Engine» を前提にしたまま読み込まれる。運が良ければ
+//     ScriptDllAbi の署名が弾くが、それはロードの «後» の話で、
+//       - 消えたエクスポート (既定引数の追加でマングル名が変わる) はロード自体を失敗させ、
+//       - DllMain / 静的初期化での違反はエディター本体を道連れにする。
+//     後者は «再ビルドすれば直る» ことにすら気付けない形で落ちるので、
+//     (1) 読む前に «古い» と分かるものは読まない、(2) それでも落ちたら受け止める。
+
+// 実行中の FBZZEngine.dll の最終更新時刻。取れなければ nullopt。
+std::optional<std::filesystem::file_time_type> EngineModuleWriteTime()
+{
+    HMODULE engine = GetModuleHandleW(L"FBZZEngine.dll");
+    if (engine == nullptr) return std::nullopt;
+
+    wchar_t path[MAX_PATH]{};
+    const DWORD length = GetModuleFileNameW(engine, path, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) return std::nullopt;
+
+    std::error_code ec;
+    const auto time = std::filesystem::last_write_time(std::filesystem::path(path), ec);
+    if (ec) return std::nullopt;
+    return time;
+}
+
+// SEH は C++ のデストラクタを持つ自動変数と同居できないので、素の関数へ切り出す。
+// NOTE: DllMain の途中で受け止めた場合、その DLL は «半分だけ初期化された» 状態で残る。
+//       だから受けたら必ず読み込みを失敗として扱い、二度と触らない (再ビルドへ回す)。
+HMODULE LoadLibraryGuarded(const wchar_t* path, DWORD& outExceptionCode)
+{
+    __try {
+        return LoadLibraryW(path);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        outExceptionCode = GetExceptionCode();
+        return nullptr;
+    }
+}
+
+bool GetAbiInfoGuarded(AbiInfoFnPtr fn, scene::ScriptDllAbiInfo& out, DWORD& outExceptionCode)
+{
+    __try {
+        out = fn();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        outExceptionCode = GetExceptionCode();
+        return false;
+    }
+}
+
+using RegisterCallback = void(*)(const char*, std::function<std::unique_ptr<scene::Script>()>);
+
+bool RegisterGuarded(RegisterFnPtr fn, RegisterCallback callback, DWORD& outExceptionCode)
+{
+    __try {
+        fn(callback);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        outExceptionCode = GetExceptionCode();
+        return false;
+    }
+}
+
 } // namespace
 
 // =============================================================================
@@ -66,16 +131,38 @@ bool ScriptDllLoader::Load(const std::filesystem::path& dllPath)
         return false;
     }
 
+    // Engine より古い DLL は読まない。
+    // WHY 署名チェックに任せないか: 署名を見るのはロードの後で、そこへ辿り着く前に
+    //     «消えたエクスポート» や «静的初期化での違反» で落ちることがある。
+    //     «エンジンより古い» は確実に作り直しが要る状態なので、触らずに突き返す。
+    if (const auto engineTime = EngineModuleWriteTime()) {
+        std::error_code ec;
+        const auto dllTime = std::filesystem::last_write_time(dllPath, ec);
+        if (!ec && dllTime < *engineTime) {
+            FBZZ_LOG_WARN("ScriptDllLoader::Load: Scripts DLL は FBZZEngine.dll より古いため "
+                          "読み込みません (再ビルドが要ります): %ls",
+                          dllPath.wstring().c_str());
+            return false;
+        }
+    }
+
     // _hot/ にコピーしてからロードする (元ファイルを再ビルドできるようにするため)
     CleanHotDir();
     m_hotCopy = CopyToHot(dllPath);
     if (m_hotCopy.empty()) return false;
 
     FBZZ_LOG_DEBUG("ScriptDllLoader: loading hot copy: %ls", m_hotCopy.wstring().c_str());
-    m_hDll = LoadLibraryW(m_hotCopy.wstring().c_str());
+    DWORD exceptionCode = 0;
+    m_hDll = LoadLibraryGuarded(m_hotCopy.wstring().c_str(), exceptionCode);
     if (!m_hDll) {
-        FBZZ_LOG_ERROR("ScriptDllLoader::Load: LoadLibrary failed: %ls (GLE=%lu)",
-                       m_hotCopy.wstring().c_str(), GetLastError());
+        if (exceptionCode != 0) {
+            FBZZ_LOG_ERROR("ScriptDllLoader::Load: DLL の初期化中に例外 (0x%08lX): %ls "
+                           "─ 古い DLL の可能性が高いので再ビルドへ回します",
+                           exceptionCode, m_hotCopy.wstring().c_str());
+        } else {
+            FBZZ_LOG_ERROR("ScriptDllLoader::Load: LoadLibrary failed: %ls (GLE=%lu)",
+                           m_hotCopy.wstring().c_str(), GetLastError());
+        }
         m_hotCopy.clear();
         return false;
     }
@@ -217,10 +304,20 @@ void ScriptDllLoader::RegisterScripts()
     // EXE 側の ScriptFactory::Register を関数ポインタとして渡す。
     // WHY: DLL 内で ScriptFactory::Register() を直接呼ぶと DLL の registry コピーに
     //      登録されてしまう。EXE 側の関数ポインタを渡すことで EXE の registry に登録する。
-    registerFn([](const char* typeName,
-                  std::function<std::unique_ptr<fbzz::scene::Script>()> factory) {
-        scene::ScriptFactory::Register(typeName, std::move(factory));
-    });
+    DWORD exceptionCode = 0;
+    const bool registered = RegisterGuarded(
+        registerFn,
+        [](const char* typeName,
+           std::function<std::unique_ptr<fbzz::scene::Script>()> factory) {
+            scene::ScriptFactory::Register(typeName, std::move(factory));
+        },
+        exceptionCode);
+    if (!registered) {
+        FBZZ_LOG_ERROR("ScriptDllLoader: %s の実行中に例外 (0x%08lX)。"
+                       "古い DLL の可能性が高いので再ビルドしてください",
+                       kRegisterFnName, exceptionCode);
+        return;
+    }
 
     FBZZ_LOG_DEBUG("ScriptDllLoader: scripts registered via %s (%d types)",
                   kRegisterFnName,
@@ -241,7 +338,13 @@ bool ScriptDllLoader::ValidateAbi() const
     }
 
     const scene::ScriptDllAbiInfo host = scene::GetScriptDllAbiInfo();
-    const scene::ScriptDllAbiInfo dll  = infoFn();
+    scene::ScriptDllAbiInfo dll{};
+    DWORD exceptionCode = 0;
+    if (!GetAbiInfoGuarded(infoFn, dll, exceptionCode)) {
+        FBZZ_LOG_WARN("ScriptDllLoader: %s の呼び出しで例外 (0x%08lX)。stale DLL として扱います",
+                      kAbiInfoFnName, exceptionCode);
+        return false;
+    }
 
     if (host.signature == dll.signature) return true;
 

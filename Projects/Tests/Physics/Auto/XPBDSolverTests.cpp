@@ -7,7 +7,7 @@
 /// 変わらない» は、compliance で拘束を書いた狙い (定常誤差が刻みに依らない) が
 /// 効いているかの直接の確認になる。ここが崩れると、以降の関節もドライブも
 /// «刻みを変えると硬さが変わる» ものになる。
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
 
 #include <Physics/XPBDPlaneContact.hpp>
 #include <Physics/XPBDSolver.hpp>
@@ -17,6 +17,8 @@
 #include <memory>
 
 namespace fbzz::tests {
+
+class XPBDSolverTest : public testkit::Fixture {};
 
 namespace {
 
@@ -38,7 +40,7 @@ std::unique_ptr<physics::RigidBody> MakeBody(const math::Vector3& position, floa
 
 } // namespace
 
-TEST(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
+TEST_F(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
 {
     physics::XPBDSolver solver;
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -56,7 +58,7 @@ TEST(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
     solver.ClearBodies();
 }
 
-TEST(XPBDSolverTest, PlaneContactStopsTheBody)
+TEST_F(XPBDSolverTest, PlaneContactStopsTheBody)
 {
     physics::XPBDSolver solver;
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -76,7 +78,7 @@ TEST(XPBDSolverTest, PlaneContactStopsTheBody)
 }
 
 // M1 の核心。刻みを変えても釣り合いの位置が動かないこと。
-TEST(XPBDSolverTest, RestingHeightIsIndependentOfSubstepCount)
+TEST_F(XPBDSolverTest, RestingHeightIsIndependentOfSubstepCount)
 {
     const auto restingHeight = [](int substeps) {
         physics::XPBDSolver solver;
@@ -99,7 +101,7 @@ TEST(XPBDSolverTest, RestingHeightIsIndependentOfSubstepCount)
     EXPECT_NEAR(coarse, fine, 1.0e-4f);
 }
 
-TEST(XPBDSolverTest, OffCenterContactGeneratesRotation)
+TEST_F(XPBDSolverTest, OffCenterContactGeneratesRotation)
 {
     physics::XPBDSolver solver;
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -119,7 +121,7 @@ TEST(XPBDSolverTest, OffCenterContactGeneratesRotation)
     solver.ClearBodies();
 }
 
-TEST(XPBDSolverTest, StaticBodyIsNotIntegrated)
+TEST_F(XPBDSolverTest, StaticBodyIsNotIntegrated)
 {
     physics::XPBDSolver solver;
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -134,7 +136,7 @@ TEST(XPBDSolverTest, StaticBodyIsNotIntegrated)
     solver.ClearBodies();
 }
 
-TEST(XPBDSolverTest, RestoresSleepSettingWhenRemoved)
+TEST_F(XPBDSolverTest, RestoresSleepSettingWhenRemoved)
 {
     physics::XPBDSolver solver;
     auto body = MakeBody({ 0.0f, 0.0f, 0.0f });
@@ -148,7 +150,7 @@ TEST(XPBDSolverTest, RestoresSleepSettingWhenRemoved)
     EXPECT_EQ(solver.GetBodyCount(), 0);
 }
 
-TEST(XPBDSolverTest, IgnoresDuplicateBodyRegistration)
+TEST_F(XPBDSolverTest, IgnoresDuplicateBodyRegistration)
 {
     physics::XPBDSolver solver;
     auto body = MakeBody({ 0.0f, 0.0f, 0.0f });

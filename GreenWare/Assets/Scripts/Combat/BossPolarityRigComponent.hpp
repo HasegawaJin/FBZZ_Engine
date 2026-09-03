@@ -1,18 +1,19 @@
 /// @file    BossPolarityRigComponent.hpp
-/// @brief   ボスの部位に乗った極どうしを引き合わせ、成立したらボス自身を転倒させる
+/// @brief   ボスの脚に極を配り、輪郭で見せ、削り切られた脚を落とす
 /// @author  Hasegawa Jin
 /// @date    2026-08-29
 ///
-/// WHY 部位を «実際に» 引き寄せないか:
-///   脚はスキンドメッシュのボーンで、AnimatorSystem が Phase::LateUpdate に位置も回転も
-///   毎フレーム書き直す。Script から動かしても消えるため、引き合いを絵にするには
-///   IK か専用クリップが要る。ここでは «引き合っている» を溜めの演出で見せ、
-///   結果だけを既存の転倒 (Crash) へ落とす。芯が面白いかは結果の方で決まる。
+/// 極を持つのはボスの側で、プレイヤーは «その脚に合った剣» を選ぶ。合っていれば満額
+/// 通ってその脚が数秒だけ無極になり、外すと弾かれる (判定は PolarityBladeComponent)。
 ///
-/// WHY 転倒を BossAiComponent の激突スタンへ流すか:
-///   «5 秒無防備・コア消灯・Boss_Crash モーション» は突進を壁へ誘導したとき用に
-///   既に作ってある。転倒に別の状態を足すと、同じ «倒れている» が 2 系統になり、
-///   復帰処理 (照射の後始末・重力・硬直の解除) を 2 箇所で持つことになる。
+/// WHY 極を輪郭で見せるか:
+///   脚は装甲が暗く、面積のわりに画面では細い。自発光を上げても «光っている» と
+///   気づく前に極の色が飽和する。形の外側へ出る輪郭なら、視界の端でも
+///   «どの脚が何極か» が数えられる。
+///
+/// WHY 脚が落ちる道を «削り切る» 1 本にするか:
+///   落とし方が複数あると、どれが本筋かがプレイの中で決まらない。斬った量だけが
+///   脚を落とす、という 1 本にしておけば «斬る» の結果が姿勢の変化として必ず返る。
 #pragma once
 
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
@@ -51,45 +52,25 @@ class BossPolarityRigComponent : public Script {
     FBZZ_SCRIPT(BossPolarityRigComponent)
 
 public:
-    FBZZ_GROUP("Pull")
-    FBZZ_FIELD_RANGE(float, pullSeconds, 0.90f, "Windup", 0.1f, 5.0f)
-    FBZZ_TOOLTIP("異極の 2 部位が揃ってから転倒するまで。ここが «見せ場» の長さで、"
-                 "短いと «斬った瞬間に勝手に転んだ» になり、長いと待たされる")
-    // WHY 対の距離を測るか: 部位はどれもボスの体の中にあるので既定では必ず届く。
-    //     «離れた 2 本ほど大きく崩れる» を後から入れるための入口として持つ。
-    FBZZ_FIELD_RANGE(float, pairRadius, 14.0f, "Pair Radius", 1.0f, 40.0f)
-    FBZZ_TOOLTIP("対として成立する部位間の距離。ボスの全幅は 9m なので既定では全対が届く")
-    FBZZ_FIELD_RANGE(float, pullDecay, 2.5f, "Decay", 0.5f, 20.0f)
-    FBZZ_TOOLTIP("対が崩れたとき溜めが戻る速さ。実時間の倍率")
-
-    FBZZ_GROUP("Topple")
-    FBZZ_FIELD_RANGE(float, toppleSeconds, 5.0f, "Topple Seconds", 0.5f, 15.0f)
-    FBZZ_TOOLTIP("転倒して無防備な秒数。既定は激突スタンと同じ 5 秒")
-    FBZZ_FIELD_RANGE_INT(int, toppleSelfDamage, 40, "Self Damage", 0, 2000)
-    FBZZ_TOOLTIP("転倒そのもので入るダメージ。0 にすると «隙を作るだけ» になる")
+    // 脚ごとの極。ボスが自分で帯び、プレイヤーは «その脚に合った剣» で斬る。
+    //
+    // WHY 常に 2 本ずつに割るか: 4 本が同じ極になると、その間ずっと片方の剣が
+    //     «外れの剣» になり、二刀で戦っている意味がその数秒だけ消える。
+    //     前 2 本と後ろ 2 本で割ると、色分けが «体の前後» として一目で読める。
+    FBZZ_GROUP("Part Polarity")
+    FBZZ_FIELD_RANGE(float, shuffleSeconds, 7.0f, "Shuffle Every", 0.0f, 60.0f)
+    FBZZ_TOOLTIP("脚の極を配り直す間隔 [秒]。前後の組が入れ替わる。0 で配り直さない")
 
     FBZZ_GROUP("Feel")
     // 帯電した部位をデバッグ球で囲う。輪郭が入る前の仮表示なので既定では出さない。
     FBZZ_FIELD(bool, drawPartMarks, false, "Draw Part Marks")
     FBZZ_TOOLTIP("帯電している部位を極の色の球で囲う。輪郭が出ないときの確認用")
     FBZZ_FIELD_RANGE(float, markRadius, 1.00f, "Mark Radius", 0.1f, 5.0f)
-    FBZZ_FIELD_RANGE(float, ringIntervalFar, 0.32f, "Ring Interval (start)", 0.02f, 2.0f)
-    FBZZ_FIELD_RANGE(float, ringIntervalNear, 0.07f, "Ring Interval (end)", 0.02f, 2.0f)
-    FBZZ_TOOLTIP("引き合いが始まってからの環の間隔。詰まっていくことで «来る» が耳と目で読める")
-    FBZZ_FIELD_RANGE(float, ringRadius, 2.2f, "Ring Radius", 0.2f, 10.0f)
-    FBZZ_FIELD_RANGE(float, toppleHitStop, 0.40f, "Hitstop", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, toppleShake, 0.85f, "Shake", 0.0f, 1.0f)
-    FBZZ_FIELD(bool, drawPullLink, true, "Draw Link")
-    FBZZ_TOOLTIP("引き合っている 2 部位を線で結ぶ。帯 (BeamTrail) を入れるまでの仮表示")
 
-    // 引き合いに使った脚は損耗する。同じ 2 本を往復させるだけで倒せると、4 本ある
-    // 意味が «予備» に落ちる。使うほど選べる対が減っていく形にして、どの 2 本で
-    // 組むかを毎回選び直させる。
+    // 脚は «削り切られたら» 落ちる。削るのは斬撃で、量は部位が持つ
+    // (BossPartPolarityComponent の Max Health)。
     FBZZ_GROUP("Part Break")
     FBZZ_FIELD(bool, breakLegs, true, "Break Legs")
-    FBZZ_FIELD_RANGE_INT(int, legDurability, 2, "Durability", 1, 10)
-    FBZZ_TOOLTIP("脚 1 本が耐えられる引き合いの回数。転倒 1 回で 2 本が 1 ずつ減る。"
-                 "2 なら 4 回の転倒で全部落ちる")
     FBZZ_FIELD_RANGE(float, breakHitStop, 0.30f, "Hitstop", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, breakShake, 0.55f, "Shake", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE_INT(int, crippleAtBrokenLegs, 2, "Cripple At", 1, 4)
@@ -106,8 +87,6 @@ public:
     FBZZ_FIELD_RANGE(float, outlineWidth, 0.70f, "Width", 0.1f, 1.0f)
     FBZZ_TOOLTIP("ScreenEffectManager の Width に対する比。ボスの脚は大きいので "
                  "敵 (1.0) より細くしないと «輪郭» ではなく «塗り» に見える")
-    FBZZ_FIELD_RANGE(float, outlinePullWidth, 1.00f, "Width (pulling)", 0.1f, 1.0f)
-    FBZZ_TOOLTIP("引き合っている間の太さ。溜まるほどここへ寄る")
     // WHY 既定で遮蔽を無視するか: 敵 (小さい・全身が見える) と違い、ボスの脚は
     //     全高 6m の体の真下にある。TPS の目線では胴体・他の脚・腹下の構造に
     //     常にどこかが隠れていて、遮蔽で捨てるとマスクがほとんど残らない。
@@ -122,38 +101,17 @@ public:
     FBZZ_FIELD(bool, outlineAllLegs, false, "Outline All (debug)")
     FBZZ_TOOLTIP("帯電に関係なく脚 4 本を白で縁取る。出れば描画側は生きている")
 
-    // 引き合いを «脚が寄る» 絵にする。ボーンは AnimatorSystem が LateUpdate で毎フレーム
-    // 書き直すので、IKSystem (同じ LateUpdate の後段) から動かすのが唯一の経路になる。
-    FBZZ_GROUP("Leg IK")
-    FBZZ_FIELD(bool, pullLegs, true, "Pull Legs")
-    FBZZ_TOOLTIP("引き合っている 2 本の脚を実際に寄せる。切ると溜めの演出だけになる")
-    FBZZ_FIELD_RANGE(float, pullConvergence, 0.75f, "Convergence", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("満溜めで «2 本の中点» までどれだけ寄せるか。1 で完全に重なるので、"
-                 "脚どうしがすれ違って見える手前で止める")
-    FBZZ_FIELD_RANGE(float, pullIkWeight, 1.0f, "IK Weight", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("IK の効き。溜め比の 2 乗に掛かるので、序盤はほとんど動かない")
-    FBZZ_FIELD(bool, holdWhilePulling, true, "Hold Still")
-    FBZZ_TOOLTIP("引かれている間ボスを歩かせない。接地した足を引きずるとスライドに見える")
-
-    // IK が寄せた «先» へ、遅れと行き過ぎを持って追従させる。
-    //
-    // WHY IK と両方持つか: IK は目標へ補間するだけなので、寄る動きに重さが出ない
-    //     ─ 到達も離脱も等速で、«引かれている» ではなく «寄せている» に見える。
-    //     揺れものは IK が確定した姿勢を静止姿勢として読む後段なので、上へ重ねると
-    //     «目標は IK が決め、そこへ辿り着く過程は物理が決める» になる。
-    //     どちらが効いているかは Pull Legs / Spring Pull を片方ずつ切れば分かる。
+    // 斬られた脚を «力» で振る層。ボーンは AnimatorSystem が LateUpdate で毎フレーム
+    // 書き直すので、その後段 (SpringBoneSystem) から動かすのが唯一の経路になる。
     FBZZ_GROUP("Leg Spring")
     FBZZ_FIELD(bool, springPull, true, "Spring Pull")
-    FBZZ_TOOLTIP("引き合いを揺れもの経由の «力» にする。切ると IK の補間だけになる")
+    FBZZ_TOOLTIP("斬られた脚を揺れもの経由の «力» で振る。切ると脚が無反応になる")
     FBZZ_FIELD(std::string, springRootBone, "Thigh", "Root Bone")
     FBZZ_TOOLTIP("揺らし始める骨。接尾辞 (_FR など) は自動で付く。"
                  "Thigh で脚全体、Shin なら膝から下だけが振られる")
     FBZZ_FIELD_RANGE_INT(int, springDepth, 4, "Depth", 1, 8)
     FBZZ_TOOLTIP("根から何段まで揺らすか。4 で Thigh / Shin / Hock / Foot。"
                  "増やすと指まで振られる")
-    FBZZ_FIELD_RANGE(float, springForce, 55.0f, "Force", 0.0f, 400.0f)
-    FBZZ_TOOLTIP("満溜めで相手の脚へ向かって掛かる加速度 [m/s^2]。"
-                 "溜め比の 2 乗で効くので、序盤はほとんど動かない")
     FBZZ_FIELD_RANGE(float, springWeight, 1.0f, "Weight", 0.0f, 1.0f)
     FBZZ_TOOLTIP("揺れの適用率。0 で FK のまま ＝ 力を掛けても動かない")
     FBZZ_FIELD_RANGE(float, springStiffness, 0.30f, "Stiffness", 0.0f, 1.0f)
@@ -200,8 +158,6 @@ public:
     FBZZ_FIELD_RANGE(float, bandThickness, 0.07f, "Band Thickness", 0.01f, 0.5f)
     FBZZ_FIELD_RANGE(float, bandBrightness, 3.0f, "Band Brightness", 0.0f, 12.0f)
     FBZZ_TOOLTIP("1 を超えるとブルームが拾う。輪は面積が小さいので白飛びしにくい")
-    FBZZ_FIELD_RANGE(float, bandPullBoost, 2.5f, "Band Boost (pulling)", 1.0f, 8.0f)
-    FBZZ_TOOLTIP("引き合っている間の上乗せ。溜まるほど明るくなる")
 
     FBZZ_GROUP("Debug")
     FBZZ_FIELD_READ_ONLY(int, debugCharged, 0, "Charged Parts")
@@ -211,19 +167,18 @@ public:
     // Outlined が出ているのに画面に何も無いならポストプロセス側。
     FBZZ_FIELD_READ_ONLY(int, debugLegMeshes, 0, "Leg Meshes")
     FBZZ_FIELD_READ_ONLY(int, debugOutlined, 0, "Outlined")
-    FBZZ_FIELD_READ_ONLY(std::string, debugPair, "-", "Pair")
-    FBZZ_FIELD_READ_ONLY(float, debugPull, 0.0f, "Pull")
+    FBZZ_FIELD_READ_ONLY(float, debugShuffleIn, 0.0f, "Shuffle In")
 
-    // 脚を失った状態を «その場で» 作る口。押すと引き合いで折ったときと同じ道を通る
-    // ので、崩れ姿勢だけでなく AI (歩けなくなる)・当たり判定・HP バー・VFX まで
+    // 脚を失った状態を «その場で» 作る口。押すと削り切ったときと同じ道を通るので、
+    // 崩れ姿勢だけでなく AI (歩けなくなる)・当たり判定・HP バー・VFX まで
     // 本番と同じ状態になる。
     //
-    // WHY 引き合わせて折るのを待たないか: 2 本折るには対を成立させて溜め切るのを
-    //     2 回、しかも狙った脚で通す必要がある。崩れ方の調整に毎回それをやると、
-    //     1 回の確認に数分かかって «さっきとどう変わったか» が分からなくなる。
+    // WHY 斬って削り切るのを待たないか: 脚 1 本を落とすのに数十回斬る必要があり、
+    //     崩れ方の調整に毎回それをやると 1 回の確認に数分かかって
+    //     «さっきとどう変わったか» が分からなくなる。
     void DebugBreakFrontRight();
     FBZZ_BUTTON(DebugBreakFrontRight, "Break FR")
-    FBZZ_TOOLTIP("Play 中に押すと、その脚を実際にもぎ取る。引き合いで折ったときと同じ"
+    FBZZ_TOOLTIP("Play 中に押すと、その脚を実際にもぎ取る。削り切ったときと同じ"
                  "状態 (AI・判定・HP バー・VFX まで) になる。戻すには Stop → Play。"
                  "見た目だけ試すなら BossCollapsePostureComponent の Preview を使う")
     void DebugBreakFrontLeft();
@@ -233,14 +188,9 @@ public:
     void DebugBreakBackLeft();
     FBZZ_BUTTON(DebugBreakBackLeft, "Break BL")
 
-    /// 引き合いの進み [0,1]。HUD と発光が読む。
-    [[nodiscard]] float PullRatio() const
-    { return Clamp01(m_pull / std::max(pullSeconds, 0.01f)); }
-    [[nodiscard]] bool IsPulling() const { return m_pull > 0.0f; }
-
     /// 脚の本数。表示側がループを回すのに使う。
     [[nodiscard]] static constexpr int LegCount() { return 4; }
-    /// 脚 1 本の残り耐久 [0,1]。1 = 無傷 / 0 = 落ちた。
+    /// 脚 1 本の残り [0,1]。1 = 無傷 / 0 = 落ちた。部位の体力をそのまま返す。
     [[nodiscard]] float LegDurabilityRatio(int leg) const;
     /// 脚がもぎ取られたか。
     [[nodiscard]] bool IsLegBroken(int leg) const;
@@ -279,14 +229,12 @@ private:
 
     /// 自分の配下にある部位だけを集める。
     void CollectParts(std::vector<Part>& out) const;
-    /// 異極の対を 1 組選ぶ。見つからなければ false。
-    [[nodiscard]] bool PickPair(const std::vector<Part>& parts, int& a, int& b) const;
+    /// 脚に極を配る。打ち消されている脚は空けたまま、時間が来たら前後の組を入れ替える。
+    void AssignPolarities(const std::vector<Part>& parts, float dt);
+    /// 削り切られた脚を落とす。脚が落ちる道はここ 1 本。
+    void BreakDepletedLegs(const std::vector<Part>& parts);
     /// 帯電している部位を極の色で囲う。毎フレーム。
     void DrawMarks(const std::vector<Part>& parts) const;
-    /// 引き合っている間だけ、間隔の詰まる環と唸りを出す。
-    void TickPullFeel(const Part& a, const Part& b, float dt);
-    void DrawLink(const Part& a, const Part& b) const;
-    void Fire(const Part& a, const Part& b);
     /// 表示用の短い部位名。"HB_Hock_FR" → "FR"。
     [[nodiscard]] static std::string ShortName(const GameObject& object);
 
@@ -301,43 +249,32 @@ private:
     ///     «作る» を先に済ませてから «読む» へ入る。
     void EnsureRuntime();
     void EnsureSolver();
-    [[nodiscard]] IKChain* EnsureChain(int leg);
-    /// 脚 1 本の «アニメーションが決めた足の位置»。
-    [[nodiscard]] bool FootWorld(int leg, Vector3& out) const;
 
-    void DrivePullIk(const Part& a, const Part& b);
-    /// IK を全部畳む。対が崩れたら必ず通る。
-    void ReleaseIk();
-    /// 脚 4 本ぶんの揺れを 1 箇所で決める。引き合いの力とよろけの力をここで足す。
+    /// 脚 4 本ぶんの揺れを 1 箇所で決める。
     ///
-    /// WHY 対の 2 本だけでなく毎フレーム 4 本を回すか: よろけは対と無関係に、
-    ///     どの脚にも起きる。«引いている間だけ» の処理に混ぜると、対を組んで
-    ///     いないときに斬った脚が無反応になる ── プレイヤーが最も長く過ごす
-    ///     状態で手応えが消える。
-    /// @param pairA / pairB 引き合っている脚 (居なければ -1)。
-    void DriveSpring(int pairA, int pairB, float dt);
+    /// WHY 斬られた脚だけでなく毎フレーム 4 本を回すか: よろけは減衰しきるまで
+    ///     数フレーム続く。当たったフレームだけ触ると、押された姿勢のまま止まる。
+    void DriveSpring(float dt);
     /// 揺れの力・適用率・よろけの残りを 0 へ戻す。
     void ReleaseSpring();
     /// 脚 1 本ぶんの揺れチェーンの根ボーン名 ("Thigh_FR")。
     [[nodiscard]] std::string SpringChain(int leg) const
     { return springRootBone + SuffixOf(leg); }
-    void DriveBands(const std::vector<Part>& parts, bool pulling) const;
+    void DriveBands(const std::vector<Part>& parts) const;
 
-    /// 引き合いに使った脚を損耗させ、限界を超えた脚をもぎ取る。
-    void WearLegs(const Part& a, const Part& b);
     /// 脚を 1 本もいだ後の後始末 (崩れの申告・歩行停止・四本目の決着)。
     ///
     /// WHY もぐ処理と分けるか: «もぐ» は脚 1 本の話だが、こちらは «何本失ったか» で
     ///     決まる。デバッグから 1 本だけもいだときも同じ判定を通さないと、
     ///     ボタンで折った脚だけ崩れず歩き続ける ─ 本番と違う状態で調整することになる。
     void ApplyLegLoss();
-    /// 脚 1 本を «引き合いで折れた» のと同じ手順で失わせる。
+    /// 脚 1 本を «削り切られた» のと同じ手順で失わせる。
     void DebugBreakLeg(int leg);
     /// 脚 1 本を落とす。分割された `E_*_<接尾辞>` を伏せ、極を持てなくする。
     void BreakLeg(int leg, const Vector3& at);
 
-    /// 帯電した脚のメッシュを輪郭マスクへ描く。
-    void DriveOutline(const std::vector<Part>& parts, bool pulling);
+    /// 極を帯びた脚のメッシュを、その極の色で輪郭マスクへ描く。
+    void DriveOutline(const std::vector<Part>& parts);
 
     /// 脚 1 本ぶんの IK 状態。
     struct LegIk {
@@ -347,9 +284,6 @@ private:
         EntityRef hitbox;
         /// その脚の分割メッシュ (`E_*_<接尾辞>`)。輪郭と欠損で名指しする。
         std::vector<EntityRef> meshes;
-        /// 引き始めの足の位置。ここから中点へ寄せる。
-        Vector3   anchor;
-        bool      held = false;
     };
 
     LegIk       m_legs[4];
@@ -358,14 +292,16 @@ private:
     bool m_crippled = false;
     bool m_allLegsKill = false;
 
-    /// 脚ごとの損耗。legDurability に達したらもぎ取る。
-    int         m_wear[4]      = { 0, 0, 0, 0 };
+    /// もぎ取った脚の札。
+    bool        m_broken[4]    = { false, false, false, false };
     /// よろけの残り秒数と向き。斬った瞬間に入り、2 乗で減衰しながら 0 へ戻る。
     Vector3     m_flinchDir[4];
     float       m_flinchTime[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     bool        m_runtimeBuilt = false;
-    float       m_pull         = 0.0f;
-    float       m_ringTimer    = 0.0f;
+    /// 脚の極を配り直すまでの残り [秒]。
+    float       m_shuffle      = 0.0f;
+    /// 前 2 本と後ろ 2 本、どちらが ＋ か。配り直すたびに反転する。
+    bool        m_polarityFlip = false;
 };
 
 FBZZ_REFLECT(BossPolarityRigComponent)
@@ -520,111 +456,6 @@ inline void BossPolarityRigComponent::EnsureRuntime()
     m_runtimeBuilt = true;
 }
 
-inline IKChain* BossPolarityRigComponent::EnsureChain(int leg)
-{
-    GameObject* self   = scene.Self();
-    GameObject* target = m_legs[leg].target.Resolve(scene);
-    if (!self || !target) return nullptr;
-
-    auto* ik = self->GetComponent<IKSolverComponent>();
-    if (!ik) return nullptr;
-
-    const int order = kChainOrderBase + leg;
-    for (IKChain& chain : ik->chains) {
-        if (chain.type == IKSolverType::FABRIK && chain.order == order) {
-            // 的はランタイム生成なのでシーンに残らない。参照は毎回張り直す。
-            chain.targetEntity = target->GetID();
-            return &chain;
-        }
-    }
-
-    const std::string suffix = SuffixOf(leg);
-    IKChain chain{};
-    chain.type  = IKSolverType::FABRIK;
-    // README のリグ構成どおり 4 節。TwoBone は 3 本しか受けないので FABRIK を使う。
-    chain.boneNames = { "Thigh" + suffix, "Shin" + suffix, "Hock" + suffix, "Foot" + suffix };
-    chain.order        = order;
-    chain.enabled      = false;
-    chain.weight       = 0.0f;
-    chain.targetEntity = target->GetID();
-    ik->chains.push_back(std::move(chain));
-    return &ik->chains.back();
-}
-
-inline bool BossPolarityRigComponent::FootWorld(int leg, Vector3& out) const
-{
-    const auto* rig = scene.GetScript<BossHitboxRigComponent>();
-    if (!rig) return false;
-    GameObject* foot = rig->FootBone(static_cast<BossLeg>(leg));
-    if (!foot) return false;
-    out = foot->transform.worldPosition;
-    return true;
-}
-
-inline void BossPolarityRigComponent::DrivePullIk(const Part& a, const Part& b)
-{
-    if (!pullLegs) return;
-
-    const int ia = LegIndexOf(a.part->legSuffix);
-    const int ib = LegIndexOf(b.part->legSuffix);
-    if (ia < 0 || ib < 0 || ia == ib) return;
-
-    // 引き始めの足の位置を 1 度だけ控える。
-    //
-    // WHY 毎フレーム読み直さないか: IK が効き始めると足のワールド位置は «IK が動かした
-    //     後» の値になる。それを次のフレームの基準にすると、自分の出力を入力に混ぜて
-    //     脚がじりじり寄り続ける (溜めが 0 でも戻らなくなる)。
-    const int legs[2] = { ia, ib };
-    for (const int leg : legs) {
-        if (m_legs[leg].held) continue;
-        if (!FootWorld(leg, m_legs[leg].anchor)) return;
-        m_legs[leg].held = true;
-    }
-
-    const Vector3 midpoint = (m_legs[ia].anchor + m_legs[ib].anchor) * 0.5f;
-    // 序盤をほとんど動かさないために 2 乗で効かせる。線形だと «塗った瞬間から
-    // ずっと脚が寄っている» に見えて、溜めの終わりが立たない。
-    const float ratio = PullRatio();
-    const float ease  = ratio * ratio;
-
-    for (const int leg : legs) {
-        IKChain* chain = EnsureChain(leg);
-        if (!chain) continue;
-
-        GameObject* target = m_legs[leg].target.Resolve(scene);
-        if (!target) continue;
-
-        const Vector3 goal =
-            Vector3::Lerp(m_legs[leg].anchor, midpoint, ease * Clamp01(pullConvergence));
-        // 的はルート直下なのでローカルとワールドが一致するが、両方書く
-        // (TransformSystem が回る前に IKSystem が読む経路があるため)。
-        target->transform.position      = goal;
-        target->transform.worldPosition = goal;
-
-        chain->enabled = true;
-        chain->weight  = Clamp01(ease * Max(pullIkWeight, 0.0f));
-    }
-
-    if (holdWhilePulling)
-        if (auto* ai = scene.GetScript<BossAiComponent>()) ai->SetRestrained(true);
-}
-
-inline void BossPolarityRigComponent::ReleaseIk()
-{
-    GameObject* self = scene.Self();
-    if (!self) return;
-
-    for (LegIk& leg : m_legs) leg.held = false;
-
-    if (auto* ik = self->GetComponent<IKSolverComponent>())
-        for (IKChain& chain : ik->chains)
-            if (chain.type == IKSolverType::FABRIK && chain.order >= kChainOrderBase) {
-                chain.enabled = false;
-                chain.weight  = 0.0f;
-            }
-
-    if (auto* ai = scene.GetScript<BossAiComponent>()) ai->SetRestrained(false);
-}
 
 inline void BossPolarityRigComponent::Flinch(const std::string& legSuffix,
                                             const Vector3& hitPoint,
@@ -638,7 +469,7 @@ inline void BossPolarityRigComponent::Flinch(const std::string& legSuffix,
 
     // 倒れているあいだは骨をラグドールが持っている。揺れものへ力を書いても
     // 後段で丸ごと上書きされるので、押す先をそちらへ振り替える。
-    if (rag && rag->IsActive() && !rag->IsStaggering()) {
+    if (rag && rag->IsToppling()) {
         rag->PushAt(hitPoint, direction, flinchPush * scale, flinchPushRadius);
         return;
     }
@@ -665,25 +496,11 @@ inline void BossPolarityRigComponent::Flinch(const std::string& legSuffix,
         posture->Stagger(hitPoint, staggerScale * scale);
 }
 
-inline void BossPolarityRigComponent::DriveSpring(int pairA, int pairB, float dt)
+inline void BossPolarityRigComponent::DriveSpring(float dt)
 {
     if (!springPull) return;
 
     Vector3 force[4];
-
-    // WHY 足の «今» の位置を使うか (IK の anchor ではなく): 力は «相手が今どこに
-    //     居るか» で向きが決まる。控えた開始位置を向け続けると、寄っていく途中で
-    //     力の向きだけが取り残され、脚が相手を通り過ぎてから曲がる。
-    if (pairA >= 0 && pairB >= 0 && pairA != pairB) {
-        Vector3 footA;
-        Vector3 footB;
-        if (FootWorld(pairA, footA) && FootWorld(pairB, footB)) {
-            const float ratio = PullRatio();
-            const float power = springForce * ratio * ratio;
-            force[pairA] = (footB - footA).NormalizedOr(Vector3::ZERO) * power;
-            force[pairB] = (footA - footB).NormalizedOr(Vector3::ZERO) * power;
-        }
-    }
 
     for (int leg = 0; leg < 4; ++leg) {
         if (m_flinchTime[leg] > 0.0f) {
@@ -726,8 +543,7 @@ inline void BossPolarityRigComponent::ReleaseSpring()
     }
 }
 
-inline void BossPolarityRigComponent::DriveBands(const std::vector<Part>& parts,
-                                                 bool pulling) const
+inline void BossPolarityRigComponent::DriveBands(const std::vector<Part>& parts) const
 {
     static constexpr MaterialPropertyId kAlbedoId{ "albedo" };
 
@@ -746,9 +562,8 @@ inline void BossPolarityRigComponent::DriveBands(const std::vector<Part>& parts,
 
         // 切れる直前は暗くする。«まだ乗っている» と «もう切れる» が同じ明るさだと、
         // 2 本目を入れに行くか諦めるかの判断ができない。
-        float gain = Max(bandBrightness, 0.0f) *
-                     FadeFromRemaining(part->RemainingNormalized());
-        if (pulling) gain *= Lerp(1.0f, Max(bandPullBoost, 1.0f), PullRatio());
+        const float gain = Max(bandBrightness, 0.0f) *
+                           FadeFromRemaining(part->RemainingNormalized());
 
         const Vector4 base = PolarityColor(part->Current());
         material.Instance(EntityRef{ band->GetID() })
@@ -759,14 +574,19 @@ inline void BossPolarityRigComponent::DriveBands(const std::vector<Part>& parts,
 inline float BossPolarityRigComponent::LegDurabilityRatio(int leg) const
 {
     if (leg < 0 || leg >= 4) return 0.0f;
-    const int limit = std::max(legDurability, 1);
-    return Clamp01(1.0f - static_cast<float>(m_wear[leg]) / static_cast<float>(limit));
+
+    // 脚が落ちるのは «部位を削り切ったとき» なので、残りもそこから読む。
+    if (GameObject* hitbox = m_legs[leg].hitbox.Resolve(scene))
+        if (const auto* part = scene.GetScript<BossPartPolarityComponent>(hitbox))
+            return part->IsBroken() ? 0.0f : part->HealthNormalized();
+
+    return m_broken[leg] ? 0.0f : 1.0f;
 }
 
 inline bool BossPolarityRigComponent::IsLegBroken(int leg) const
 {
     if (leg < 0 || leg >= 4) return true;
-    return m_wear[leg] >= std::max(legDurability, 1);
+    return m_broken[leg];
 }
 
 inline Polarity BossPolarityRigComponent::LegPolarity(int leg) const
@@ -787,8 +607,7 @@ inline bool BossPolarityRigComponent::LegAnchor(int leg, Vector3& out) const
     return true;
 }
 
-inline void BossPolarityRigComponent::DriveOutline(const std::vector<Part>& parts,
-                                                   bool pulling)
+inline void BossPolarityRigComponent::DriveOutline(const std::vector<Part>& parts)
 {
     debugOutlined = 0;
     if (!outlineLegs) return;
@@ -816,8 +635,7 @@ inline void BossPolarityRigComponent::DriveOutline(const std::vector<Part>& part
         // マスクの意味は読む側 (PolarityOutline.hlsl) との取り決め:
         // RGB = 極の色 / A = 太さ。PolarityTargetComponent と同じ約束で書く。
         const Vector4 color = PolarityColor(part.part->Current());
-        float width = Clamp01(outlineWidth);
-        if (pulling) width = Lerp(width, Clamp01(outlinePullWidth), PullRatio());
+        const float   width = Clamp01(outlineWidth);
 
         for (const EntityRef& ref : m_legs[leg].meshes)
             if (GameObject* piece = ref.Resolve(scene)) {
@@ -830,6 +648,55 @@ inline void BossPolarityRigComponent::DriveOutline(const std::vector<Part>& part
     // 申告はそのフレームだけ有効なので、出したいフレームは毎回パスも要求する。
     if (any)
         if (auto* screen = ScreenEffectManagerComponent::Instance()) screen->KeepOutline();
+}
+
+inline void BossPolarityRigComponent::AssignPolarities(const std::vector<Part>& parts,
+                                                       float dt)
+{
+    bool reshuffle = false;
+    if (shuffleSeconds > 0.0f) {
+        m_shuffle -= dt;
+        if (m_shuffle <= 0.0f) {
+            m_shuffle      = std::max(shuffleSeconds, 0.5f);
+            m_polarityFlip = !m_polarityFlip;
+            reshuffle      = true;
+        }
+    }
+    debugShuffleIn = std::max(m_shuffle, 0.0f);
+
+    for (const Part& part : parts) {
+        if (!part.part->selfDriven || part.part->IsBroken()) continue;
+        // 打ち消されている間は無極のまま置く。ここで塗り直すと «正しい剣で斬った»
+        // 報酬が同じフレームで取り消される。
+        if (part.part->IsNeutralized()) continue;
+        // 既に色が付いていて配り直しでもないなら触らない。毎フレーム書くと、
+        // 打ち消しから戻った瞬間の «色が戻った» が出来事として読めなくなる。
+        if (!reshuffle && part.part->IsCharged()) continue;
+
+        const int leg = LegIndexOf(part.part->legSuffix);
+        if (leg < 0) continue;
+
+        // 前 2 本 (FR/FL = 0,1) と後ろ 2 本 (BR/BL = 2,3) で割る。
+        const bool plus = ((leg < 2) != m_polarityFlip);
+        part.part->SetPolarity(plus ? Polarity::Plus : Polarity::Minus);
+    }
+}
+
+inline void BossPolarityRigComponent::BreakDepletedLegs(const std::vector<Part>& parts)
+{
+    if (!breakLegs) return;
+
+    for (const Part& part : parts) {
+        if (part.part->IsBroken() || !part.part->IsDepleted()) continue;
+        const int leg = LegIndexOf(part.part->legSuffix);
+        if (leg < 0 || IsLegBroken(leg)) continue;
+
+        // 札も一緒に倒す。IsLegBroken はこれを見ているので、書かないと
+        // «メッシュは消えているのに、まだ生きている脚» になる。
+        m_broken[leg] = true;
+        BreakLeg(leg, part.position);
+        ApplyLegLoss();
+    }
 }
 
 inline void BossPolarityRigComponent::CollectParts(std::vector<Part>& out) const
@@ -850,52 +717,6 @@ inline void BossPolarityRigComponent::CollectParts(std::vector<Part>& out) const
     }
 }
 
-inline bool BossPolarityRigComponent::PickPair(const std::vector<Part>& parts,
-                                               int& a, int& b) const
-{
-    const float radiusSq = std::max(pairRadius, 0.0f) * std::max(pairRadius, 0.0f);
-    // WHY «残りが少ない方» を優先して選ぶか: 先に塗った側から切れていくので、
-    //     組めるうちに組む対を選ばないと、対が成立した直後に片方が切れて
-    //     溜めが毎回ふりだしへ戻る。
-    float best = -1.0f;
-    bool  found = false;
-
-    const int count = static_cast<int>(parts.size());
-    for (int i = 0; i < count; ++i) {
-        if (!parts[i].part->IsCharged()) continue;
-        for (int j = i + 1; j < count; ++j) {
-            if (!parts[j].part->IsCharged()) continue;
-            if (!IsAttracting(parts[i].part->Current(), parts[j].part->Current())) continue;
-            if ((parts[j].position - parts[i].position).LengthSq() > radiusSq) continue;
-
-            const float urgency = -std::min(parts[i].part->Remaining(),
-                                            parts[j].part->Remaining());
-            if (!found || urgency > best) {
-                best  = urgency;
-                a     = i;
-                b     = j;
-                found = true;
-            }
-        }
-    }
-    return found;
-}
-
-inline void BossPolarityRigComponent::DrawLink(const Part& a, const Part& b) const
-{
-    if (!drawPullLink) return;
-
-    // 2 部位の色を混ぜたうえで、溜まるほど白へ寄せる。どちらの極かは両端の環が
-    // 言うので、線は «どれだけ張り詰めたか» だけを担当する。
-    const float   ratio = PullRatio();
-    const Vector4 ca    = PolarityColor(a.part->Current());
-    const Vector4 cb    = PolarityColor(b.part->Current());
-    const Vector4 color{ Lerp((ca.x + cb.x) * 0.5f, 1.0f, ratio),
-                         Lerp((ca.y + cb.y) * 0.5f, 1.0f, ratio),
-                         Lerp((ca.z + cb.z) * 0.5f, 1.0f, ratio), 1.0f };
-    debug.DrawLine(a.position, b.position, color);
-}
-
 inline void BossPolarityRigComponent::DrawMarks(const std::vector<Part>& parts) const
 {
     if (!drawPartMarks) return;
@@ -908,44 +729,6 @@ inline void BossPolarityRigComponent::DrawMarks(const std::vector<Part>& parts) 
         color.w = FadeFromRemaining(part.part->RemainingNormalized());
         debug.DrawSphere(part.position, std::max(markRadius, 0.05f), color);
     }
-}
-
-inline void BossPolarityRigComponent::TickPullFeel(const Part& a, const Part& b, float dt)
-{
-    m_ringTimer -= dt;
-    if (m_ringTimer > 0.0f) return;
-
-    // 間隔が詰まっていくことで «来る» を出す。同じ間隔で刻むと、溜まっているのか
-    // ただ乗っているだけなのかが音からも絵からも読めない。
-    const float ratio = PullRatio();
-    m_ringTimer = Lerp(std::max(ringIntervalFar, 0.02f),
-                       std::max(ringIntervalNear, 0.02f), ratio);
-
-    if (auto* rings = PolarityRingComponent::Instance()) {
-        rings->Burst(a.position, ringRadius, a.part->Current());
-        rings->Burst(b.position, ringRadius, b.part->Current());
-    }
-    if (auto* pad = RumbleManagerComponent::Instance())
-        pad->Rumble(0.10f + 0.35f * ratio, 0.05f + 0.20f * ratio, 0.06f);
-    se::Play(audio, se::kAttractWindup, 0.35f + 0.65f * ratio);
-}
-
-inline void BossPolarityRigComponent::WearLegs(const Part& a, const Part& b)
-{
-    if (!breakLegs) return;
-
-    const int legs[2]  = { LegIndexOf(a.part->legSuffix), LegIndexOf(b.part->legSuffix) };
-    const Vector3 at[2] = { a.position, b.position };
-    const int limit    = std::max(legDurability, 1);
-
-    for (int i = 0; i < 2; ++i) {
-        const int leg = legs[i];
-        if (leg < 0) continue;
-        if (++m_wear[leg] < limit) continue;
-        BreakLeg(leg, at[i]);
-    }
-
-    ApplyLegLoss();
 }
 
 inline void BossPolarityRigComponent::ApplyLegLoss()
@@ -1021,7 +804,9 @@ inline void BossPolarityRigComponent::BreakLeg(int leg, const Vector3& at)
             part->Break();
 
     if (GameObject* band = m_legs[leg].band.Resolve(scene)) band->SetActive(false);
-    m_legs[leg].held = false;
+    // 揺れを畳む。落ちた脚の骨へ力が残っていると、消えたメッシュの分だけ
+    // 揺れものが空回りし続ける。
+    ReleaseSpring();
 
     if (auto* ik = self->GetComponent<IKSolverComponent>())
         for (IKChain& chain : ik->chains)
@@ -1069,7 +854,7 @@ inline void BossPolarityRigComponent::DebugBreakLeg(int leg)
             FindInSubtree(*self, std::string("HB_Hock") + SuffixOf(leg)))
         at = hitbox->transform.worldPosition;
 
-    m_wear[leg] = std::max(legDurability, 1);
+    m_broken[leg] = true;
     BreakLeg(leg, at);
     ApplyLegLoss();
 }
@@ -1078,56 +863,6 @@ inline void BossPolarityRigComponent::DebugBreakFrontRight() { DebugBreakLeg(0);
 inline void BossPolarityRigComponent::DebugBreakFrontLeft()  { DebugBreakLeg(1); }
 inline void BossPolarityRigComponent::DebugBreakBackRight()  { DebugBreakLeg(2); }
 inline void BossPolarityRigComponent::DebugBreakBackLeft()   { DebugBreakLeg(3); }
-
-inline void BossPolarityRigComponent::Fire(const Part& a, const Part& b)
-{
-    const Vector3 midpoint = (a.position + b.position) * 0.5f;
-    const Polarity shown   = a.part->Current();
-
-    // 転倒をラグドールへ渡すのに、組んだ 2 本の足元が要る。IK を畳むと的が消えるので
-    // «畳む前» に控える。取れなければ方向なしの転倒になるだけで、進行は止まらない。
-    const int legA = LegIndexOf(a.part->legSuffix);
-    const int legB = LegIndexOf(b.part->legSuffix);
-    Vector3   footA;
-    Vector3   footB;
-    const bool haveFeet = legA >= 0 && legB >= 0 &&
-                          FootWorld(legA, footA) && FootWorld(legB, footB);
-
-    // 使った極は落とす。残したままだと転倒から復帰した瞬間に同じ対が再成立して、
-    // プレイヤーが何もしていないのに 2 度目が始まる。
-    a.part->Clear();
-    b.part->Clear();
-    m_pull      = 0.0f;
-    m_ringTimer = 0.0f;
-    // 転倒モーションが脚を持っていくので、IK は必ずここで手を離す。残すと
-    // 倒れている最中も足が引き寄せ先へ引っ張られ、崩れ方が毎回違って見える。
-    ReleaseIk();
-    ReleaseSpring();
-
-    if (auto* ai = scene.GetScript<BossAiComponent>())
-        ai->Topple(toppleSeconds, std::max(toppleSelfDamage, 0));
-
-    // Topple の «後» に渡す。Topple は EndAct で出しかけの行動を畳み、Boss_Crash を
-    // 流し込む ── ラグドールを先に始めると、捕獲した姿勢を Animator が上書きしてから
-    // 物理が走り、崩れ始めの 1 フレームだけ別のポーズが挟まる。
-    if (auto* rag = scene.GetScript<BossRagdollComponent>()) {
-        if (haveFeet) rag->BeginFromPair(footA, footB, toppleSeconds);
-        else          rag->Begin(toppleSeconds);
-    }
-
-    if (auto* stop = HitstopManagerComponent::Instance())  stop->Hit(Clamp01(toppleHitStop));
-    if (auto* shake = CameraShakeManagerComponent::Instance())
-        shake->Shake(Clamp01(toppleShake));
-    if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.95f, 0.7f, 0.35f);
-    if (auto* rings = PolarityRingComponent::Instance())
-        rings->Burst(midpoint, ringRadius * 3.0f, shown);
-
-    se::Play(audio, se::kAttractConverge);
-    se::Play(audio, se::kImpactHeavy);
-
-    // 損耗は最後。もぎ取りの止めと揺れが転倒のそれへ重なって、1 つの大きな出来事に見える。
-    WearLegs(a, b);
-}
 
 inline void BossPolarityRigComponent::OnUpdate()
 {
@@ -1147,43 +882,18 @@ inline void BossPolarityRigComponent::OnUpdate()
         if (part.part->IsBroken())  ++debugBrokenLegs;
     }
 
-    // 既に倒れている間は次の対を溜めない。倒れている 5 秒のあいだに組み上がると、
-    // 起き上がった瞬間にもう一度転ぶ ─ プレイヤーから見て «起きない敵» になる。
-    const auto* core       = scene.GetScript<BossPolarityCoreComponent>();
-    const bool  isDown     = core && core->IsStaggered();
-
-    int a = 0;
-    int b = 0;
-    const bool paired = !isDown && PickPair(parts, a, b);
+    // 極はボスが自分で配る。プレイヤーの仕事は «その脚に合った剣を選ぶ» ことだけで、
+    // 逆極どうしを引き合わせて転ばせる手は廃した。
+    AssignPolarities(parts, dt);
+    BreakDepletedLegs(parts);
 
     DrawMarks(parts);
-    DriveOutline(parts, paired);
+    DriveOutline(parts);
 
-    if (paired) {
-        m_pull += dt;
-        DrawLink(parts[a], parts[b]);
-        TickPullFeel(parts[a], parts[b], dt);
-        DrivePullIk(parts[a], parts[b]);
-        debugPair = ShortName(*parts[a].object) + PolaritySymbol(parts[a].part->Current()) +
-                    " / " +
-                    ShortName(*parts[b].object) + PolaritySymbol(parts[b].part->Current());
-    } else {
-        m_pull      = std::max(0.0f, m_pull - dt * std::max(pullDecay, 0.0f));
-        m_ringTimer = 0.0f;
-        debugPair   = "-";
-        ReleaseIk();
-    }
-
-    // 揺れは対の有無に関わらず毎フレーム決める。よろけは対を組んでいなくても起きる。
-    DriveSpring(paired ? LegIndexOf(parts[a].part->legSuffix) : -1,
-                paired ? LegIndexOf(parts[b].part->legSuffix) : -1,
-                dt);
-
-    DriveBands(parts, paired);
-    debugPull = PullRatio();
-
-    if (paired && m_pull >= std::max(pullSeconds, 0.01f))
-        Fire(parts[a], parts[b]);
+    // よろけは斬られたときに起きる (Flinch)。当たったフレームだけ触ると押された姿勢の
+    // まま止まるので、減衰しきるまで毎フレーム面倒を見る。
+    DriveSpring(dt);
+    DriveBands(parts);
 }
 
 } // namespace sandbox

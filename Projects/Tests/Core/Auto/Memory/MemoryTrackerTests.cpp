@@ -2,13 +2,16 @@
 /// @brief   MemoryTracker のタグ別統計とポインタ台帳を自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/MemoryTracker.hpp>
 
 namespace fbzz::tests {
 
-TEST(MemoryTrackerTest, RecordsAndFreesAllocationInfo)
+class MemoryTrackerTest : public testkit::EngineFixture {};
+
+TEST_F(MemoryTrackerTest, RecordsAndFreesAllocationInfo)
 {
     core::MemoryTracker tracker;
     int value = 0;
@@ -32,7 +35,7 @@ TEST(MemoryTrackerTest, RecordsAndFreesAllocationInfo)
     EXPECT_EQ(tracker.GetStats(core::MemoryTag::CORE).used, 0u);
 }
 
-TEST(MemoryTrackerTest, RejectsNullDuplicateAndUnknownFrees)
+TEST_F(MemoryTrackerTest, RejectsNullDuplicateAndUnknownFrees)
 {
     core::MemoryTracker tracker;
     core::AllocationInfo info;
@@ -49,7 +52,7 @@ TEST(MemoryTrackerTest, RejectsNullDuplicateAndUnknownFrees)
     EXPECT_TRUE(tracker.RecordFree(&value));
 }
 
-TEST(MemoryTrackerTest, MapsUnknownTagsToUnknownStatistics)
+TEST_F(MemoryTrackerTest, MapsUnknownTagsToUnknownStatistics)
 {
     core::MemoryTracker tracker;
     constexpr auto invalidTag = static_cast<core::MemoryTag>(999);

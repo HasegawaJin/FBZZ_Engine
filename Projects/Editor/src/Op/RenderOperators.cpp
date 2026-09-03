@@ -113,6 +113,12 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "どちらも「見えない体積」なので、値の違いを粒子の挙動から逆算するしかなかった。",
         &EditorContext::showVFXGizmos));
 
+    registry.Register(MakeContextToggle(
+        "render.show_ragdoll", "Show Ragdoll",
+        "ラグドールの剛体・関節の可動域・接触点を描く。"
+        "トルク上限に張り付いた関節が赤くなるので、どこが力負けしたかが位置で分かる。",
+        &EditorContext::showRagdoll));
+
     // WHY 追加したか: Debug メニューにありながら operator が無く、Grid や Skeleton と
     //     同じ列に並んでいるのに AI からだけ触れない項目だった。Stats は FPS と
     //     draw call を Game View へ焼き込むので、viewport_capture の絵に

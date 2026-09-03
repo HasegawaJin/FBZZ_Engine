@@ -13,7 +13,7 @@
 #include <Engine/Asset/SequenceAsset.hpp>
 #include <Engine/Asset/SequenceImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Asset/FzVertexCompat.hpp>
 #include <Engine/Asset/IblAsset.hpp>
@@ -31,7 +31,9 @@
 #include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
 #include <Engine/Asset/TerrainImporter.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
+#include <Engine/Renderer/AssetPathService.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/EngineAssetPath.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -210,6 +212,24 @@ std::unique_ptr<Model> LoadFzMeshModel(
     model->rootNodeIndex = 0;
     return model;
 }
+
+// ResourceManager::LoadTexture は AssetManager::Init より前にも呼ばれうるため、
+// Init ではなく DLL ロード時に差し込む。Init に置くとその間だけ解決規則が変わる。
+[[maybe_unused]] const bool g_assetPathServiceInstalled = [] {
+    renderer::AssetPathService service{};
+    service.resolveAssetPath = [](const std::string& path) {
+        return AssetManager::ResolveAssetPath(path);
+    };
+    service.resolveTextureSource = [](std::string_view texturePath, std::string& outSourcePath) {
+        return TexDescSerializer::ResolveSourcePath(texturePath, outSourcePath);
+    };
+    service.normalizeTextureKey = [](std::string_view reference, std::string& outTexturePath) {
+        std::string spriteName;
+        (void)ParseSpriteReference(reference, outTexturePath, spriteName);
+    };
+    renderer::SetAssetPathService(service);
+    return true;
+}();
 
 } // namespace
 

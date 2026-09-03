@@ -4,6 +4,7 @@
 /// @date    2026-08-26
 #include <Engine/Scene/Systems/RuntimeMeshSystem.hpp>
 
+#include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -35,8 +36,9 @@ void UploadProceduralMesh(ProceduralMeshComponent& component,
 {
     DoubleBufferedMesh& target = component.runtimeMesh;
     target.current ^= 1u;
-    std::shared_ptr<renderer::Mesh>& slot = target.slots[target.current];
-    if (!slot) slot = std::make_shared<renderer::Mesh>();
+    std::unique_ptr<renderer::Mesh>& slot = target.slots[target.current];
+    if (!slot) slot = core::MakeUnique<renderer::Mesh>();
+    if (!slot) return;
     renderer::Mesh& mesh = *slot;
 
     const MeshBuilder& builder = component.builder;

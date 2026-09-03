@@ -11,7 +11,7 @@
 #include "DX12StateTracker.hpp"
 #include "DX12Texture.hpp"
 #include "DX12UploadArena.hpp"
-#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Renderer/AssetPathService.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <array>
 #include <algorithm>
@@ -41,18 +41,33 @@ DX12IblBaker::DX12IblBaker(DX12Context* context, DX12StateTracker* tracker,
                            DX12PsoCache* psoCache, DX12UploadArena* uploadArena)
     : m_context(context), m_tracker(tracker), m_psoCache(psoCache), m_uploadArena(uploadArena) {}
 
+// 失敗したら unique_ptr を手放す。持ったままにすると次回の !m_xxxShader が false になり、
+// 初期化されていないシェーダーで true を返してしまう。そうなると IBL が静かに焼かれなく
+// なり、環境光を失った暗い画のままプロセスを再起動するまで回復しない。
 bool DX12IblBaker::EnsureShaders()
 {
-    if (!m_irradianceShader) {
-        m_irradianceShader = std::make_unique<DX12Shader>();
-        if (!m_irradianceShader->Init(asset::AssetManager::ResolveAssetPath(
-                "Assets/Shaders/IBL/IrradianceConvolution.cs.hlsl"))) return false;
+    const auto ensure = [this](std::unique_ptr<DX12Shader>& shader, const char* assetPath) {
+        if (shader) return true;
+        const std::string resolved = ResolveAssetPath(assetPath);
+        auto created = std::make_unique<DX12Shader>();
+        if (!created->Init(resolved)) {
+            if (!m_shaderFailureReported) {
+                FBZZ_LOG_ERROR("DX12IblBaker: 計算シェーダーの読み込みに失敗 [%s] (解決先: %s)",
+                               assetPath, resolved.c_str());
+                m_shaderFailureReported = true;
+            }
+            return false;
+        }
+        shader = std::move(created);
+        return true;
+    };
+
+    if (!ensure(m_irradianceShader, "Assets/Shaders/IBL/IrradianceConvolution.cs.hlsl")
+        || !ensure(m_prefilterShader, "Assets/Shaders/IBL/PrefilteredEnvMap.cs.hlsl")) {
+        return false;
     }
-    if (!m_prefilterShader) {
-        m_prefilterShader = std::make_unique<DX12Shader>();
-        if (!m_prefilterShader->Init(asset::AssetManager::ResolveAssetPath(
-                "Assets/Shaders/IBL/PrefilteredEnvMap.cs.hlsl"))) return false;
-    }
+    // 揃ったら次の失敗をまた報告できるようにする。
+    m_shaderFailureReported = false;
     return true;
 }
 
@@ -194,7 +209,18 @@ bool DX12IblBaker::Convolve(
     uint32_t prefilterMips, uint32_t sampleCount,
     std::unique_ptr<DX12Texture>& irradiance, std::unique_ptr<DX12Texture>& prefilter)
 {
-    if (!m_context->IsFrameOpen() || !environment.IsCubemap() || !EnsureShaders()) return false;
+    // 3 つの要因を 1 行にまとめると、IBL が焼かれない理由が画面からも Console からも
+    // 分からなくなる。環境光が丸ごと落ちる経路なので、どれで抜けたかは残す。
+    if (!m_context->IsFrameOpen()) {
+        FBZZ_LOG_WARN("DX12IblBaker: フレーム外から呼ばれたため IBL を焼けません");
+        return false;
+    }
+    if (!environment.IsCubemap()) {
+        FBZZ_LOG_WARN("DX12IblBaker: 環境レンダーターゲットがキューブマップではありません");
+        return false;
+    }
+    if (!EnsureShaders()) return false;
+
     CubeOutput irradianceOutput;
     CubeOutput prefilterOutput;
     if (!CreateOutput(irradianceSize, 1, irradianceOutput)

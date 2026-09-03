@@ -251,6 +251,9 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
     if (segment.chargeable) {
         auto& part = hitbox.AddScript<BossPartPolarityComponent>();
         part.legSuffix = segment.suffix;
+        // 四足の脚は «ボスが帯びていて、プレイヤーが逆極で斬る» 的。塗られる側ではない
+        // (蛇の節は塗られる側なので、あちらでは立てない)。
+        part.selfDriven = true;
     }
 
     return true;

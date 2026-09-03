@@ -27,6 +27,8 @@
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <Engine/Core/Memory/MakeUnique.hpp>
+
 #include <imgui.h>
 #include <algorithm>
 #include <array>
@@ -232,7 +234,7 @@ MaterialPreviewFlavor DetectMaterialPreviewFlavor(const asset::MaterialAsset& ma
 
 renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<renderer::Mesh>> cache;
+    static std::unordered_map<int, std::unique_ptr<renderer::Mesh>> cache;
     if (auto it = cache.find(segments); it != cache.end()) return it->second.get();
 
     auto* surface = renderer::PrimitiveMesh::Sphere(resources, segments);
@@ -251,7 +253,8 @@ renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& resources,
         vertices.push_back(skinned);
     }
 
-    auto mesh = std::make_shared<renderer::Mesh>();
+    auto mesh = core::MakeUnique<renderer::Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         vertices.data(), vertices.size() * sizeof(renderer::SkinnedVertex),
         sizeof(renderer::SkinnedVertex));
@@ -263,8 +266,9 @@ renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& resources,
     mesh->cpuSkinnedVertices = std::move(vertices);
     mesh->cpuIndices = surface->cpuIndices;
     mesh->ComputeBounds();
-    cache[segments] = mesh;
-    return mesh.get();
+    renderer::Mesh* result = mesh.get();
+    cache[segments] = std::move(mesh);
+    return result;
 }
 
 void SetMaterialPreviewDefault(std::vector<uint8_t>& data,

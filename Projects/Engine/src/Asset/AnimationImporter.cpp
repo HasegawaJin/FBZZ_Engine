@@ -6,7 +6,7 @@
 /// WHAT: v3 の型付き Property / Material / Morph Track を復元する。
 #include <Engine/Asset/AnimationImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 
 namespace fbzz::asset {

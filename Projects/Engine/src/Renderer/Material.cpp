@@ -63,7 +63,7 @@ Material Material::CloneWithoutGpuResources() const
     return clone;
 }
 
-void Material::Init(ResourceManager& resources, uint32_t cbufferSize)
+void Material::Init(ResourceManager& resources, uint32_t cbufferSize, Where where)
 {
     // サイズが変わった場合は cbuffer を再作成する。
     if (paramsBuffer.IsValid() && paramData.size() == cbufferSize) return;
@@ -77,13 +77,13 @@ void Material::Init(ResourceManager& resources, uint32_t cbufferSize)
     //      サイズが一致していれば上書きしない。サイズ不一致のときだけ 0 初期化する。
     if (paramData.size() != cbufferSize)
         paramData.assign(cbufferSize, 0u);
-    paramsBuffer = resources.CreateConstantBuffer(cbufferSize);
+    paramsBuffer = resources.CreateConstantBuffer(cbufferSize, where);
 }
 
-void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc)
+void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc, Where where)
 {
     if (!paramsBuffer.IsValid())
-        Init(resources, desc.cbufferSize);
+        Init(resources, desc.cbufferSize, where);
     if (!paramsBuffer.IsValid()) return;
     if (paramData.size() != desc.cbufferSize) return;
 

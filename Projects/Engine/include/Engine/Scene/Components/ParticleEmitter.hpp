@@ -177,6 +177,8 @@ struct ParticleRuntime {
     std::string           loadedShaderPath;   // customShader の変更検出用。シーン保存対象外。
     // カスタムシェーダーが宣言した MaterialConstants (b2) へ流す .mat の [params]。
     // 組み込みシェーダーは MaterialConstants を宣言しないので無効ハンドルのまま。
+    // WHY 所有しないか: 実体は ParticlePass が .mat 単位で 1 本だけ持ち、同じ .mat を使う
+    //     エミッターが借りて回す。ここで返すと、他のエミッターの b2 まで道連れに落ちる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialParamsCB;
 
     // .mat から解決した «見た目» 一式。シミュレーションも描画もこちらだけを見る。

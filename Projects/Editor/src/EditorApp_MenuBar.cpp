@@ -848,6 +848,13 @@ void EditorApp::StartPlayMode()
     // 終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
     m_renderSettingsPlaySnapshot = m_ctx.projectSettings.render;
     core::Application::Get().SetActiveRenderSettings(&m_ctx.projectSettings.render);
+    // Play 中の増加も Stop 後の残りも、この 1 つの基準から測る。
+    if (m_ctx.resources != nullptr) {
+        m_memoryLeakDiff.CaptureBaseline(*m_ctx.resources, "Play");
+        // 最初の Play だけ «セッション基準» も置く。キャッシュの初回充填と、
+        // 往復のたびに積むリークを、1 往復ぶんの差分だけでは区別できないため。
+        m_memoryLeakDiff.CaptureSessionBaselineIfAbsent(*m_ctx.resources);
+    }
     m_playMode.Play(*m_ctx.activeScene);
     if (m_playMode.IsPlaying() && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
         m_ctx.requestGameViewportFocus = true;
