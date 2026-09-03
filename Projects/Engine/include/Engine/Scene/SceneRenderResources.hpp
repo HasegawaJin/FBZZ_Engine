@@ -33,4 +33,59 @@ void ReleaseEntityOwnedGpuResources(Scene& scene, EntityID id, renderer::Resourc
 ///     所有者は複製元なので、ここでは «返さずに手放す» のが正しい。
 void ClearDuplicatedGpuHandles(Scene& scene, EntityID id);
 
+/// @name コンポーネント 1 つぶんの返却
+///
+/// WHY 型ごとのオーバーロードにするか:
+///   Scene::RemoveComponent<T>() は «どの型でも» 呼ばれるテンプレートで、
+///   GPU リソースを持たない型が大半。持つ型だけ非テンプレートの宣言を用意し、
+///   それ以外はテンプレートの何もしない版へ落とす — 呼び出し側は型を意識しない。
+///   ResourceManager を引数に取らないのは、Scene.hpp へ Renderer の実体を持ち込まないため
+///   (返却先は ResourceManager::Active() を使う。無ければ何もしない)。
+///@{
+struct AnimatorComponent;
+struct SkinnedMeshRenderer;
+struct TrailComponent;
+struct MeshTrailComponent;
+struct ParticleEmitter;
+struct ReflectionProbeComponent;
+struct SpriteRendererComponent;
+struct LineRendererComponent;
+struct ProceduralMeshComponent;
+
+void ReleaseComponentGpuResources(AnimatorComponent& component);
+void ReleaseComponentGpuResources(SkinnedMeshRenderer& component);
+void ReleaseComponentGpuResources(TrailComponent& component);
+void ReleaseComponentGpuResources(MeshTrailComponent& component);
+void ReleaseComponentGpuResources(ParticleEmitter& component);
+void ReleaseComponentGpuResources(ReflectionProbeComponent& component);
+void ReleaseComponentGpuResources(SpriteRendererComponent& component);
+void ReleaseComponentGpuResources(LineRendererComponent& component);
+void ReleaseComponentGpuResources(ProceduralMeshComponent& component);
+
+/// 上のどれにも当たらない型は GPU リソースを持たない。
+template <class T>
+inline void ReleaseComponentGpuResources(T&) {}
+///@}
+
+/// @name 値としてコピーした Component からハンドルだけ消す (返さない)
+///
+/// WHY 要るか: Undo は «外す前の Component» を値でコピーして持つ。そのコピーには
+///     コピー元と同じ GPU ハンドルが入っているが、実体は外した時点で返却済みで、
+///     同じ枠が別のリソースに再利用され得る。やり直しで «他人のバッファを掴んだ
+///     Component» が復活しないよう、コピー側のハンドルは空にしておく。
+///@{
+void ClearComponentGpuHandles(AnimatorComponent& component);
+void ClearComponentGpuHandles(SkinnedMeshRenderer& component);
+void ClearComponentGpuHandles(TrailComponent& component);
+void ClearComponentGpuHandles(MeshTrailComponent& component);
+void ClearComponentGpuHandles(ParticleEmitter& component);
+void ClearComponentGpuHandles(ReflectionProbeComponent& component);
+void ClearComponentGpuHandles(SpriteRendererComponent& component);
+void ClearComponentGpuHandles(LineRendererComponent& component);
+void ClearComponentGpuHandles(ProceduralMeshComponent& component);
+
+template <class T>
+inline void ClearComponentGpuHandles(T&) {}
+///@}
+
 } // namespace fbzz::scene

@@ -30,6 +30,7 @@
 #include <Scripts/Combat/BossBeamComponent.hpp>
 #include <Scripts/Combat/BossDeathVfxComponent.hpp>
 #include <Scripts/Combat/BossHitboxRigComponent.hpp>
+#include <Scripts/Combat/BossPartPolarityComponent.hpp>
 #include <Scripts/Combat/BossPolarityCoreComponent.hpp>
 #include <Scripts/Combat/BossRagdollComponent.hpp>
 #include <Scripts/Combat/BossShockwaveComponent.hpp>
@@ -42,6 +43,7 @@
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Polarity/PolarityTargetComponent.hpp>
+#include <Scripts/Utils/PlayerActionState.hpp>
 #include <Scripts/Utils/ShockFalloff.hpp>
 #include <algorithm>
 #include <cmath>
@@ -70,12 +72,13 @@ public:
     FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
 
     FBZZ_GROUP("Locomotion")
-    FBZZ_FIELD_RANGE(float, patrolSpeed, 2.4f, "Patrol Speed", 0.0f, 12.0f)
-    FBZZ_TOOLTIP("8 章の巡回速度 2.4 m/s。Walk_Crawl の歩調はこの速さを想定している")
+    FBZZ_FIELD_RANGE(float, patrolSpeed, 3.0f, "Patrol Speed", 0.0f, 12.0f)
+    FBZZ_TOOLTIP("巡回速度。Walk_Crawl の歩調は 2.4 m/s を想定して作ってあるので、"
+                 "上げすぎると足が滑る")
     FBZZ_FIELD_RANGE(float, crippledSpeedScale, 0.35f, "Crippled Speed", 0.0f, 1.0f)
     FBZZ_TOOLTIP("脚を失った後の巡回速度の倍率。0 で据え付けの砲台になる。"
                  "引きずって進む体なので «追われるが振り切れる» 辺りに置く")
-    FBZZ_FIELD_RANGE(float, turnSpeed, 45.0f, "Turn Speed", 5.0f, 360.0f)
+    FBZZ_FIELD_RANGE(float, turnSpeed, 80.0f, "Turn Speed", 5.0f, 360.0f)
     FBZZ_TOOLTIP("巡回中の旋回速度 [度/秒]。速すぎるとその場旋回モーションが出ない")
     FBZZ_FIELD_RANGE(float, keepDistance, 4.0f, "Keep Distance", 0.0f, 20.0f)
     FBZZ_TOOLTIP("これより近づいたら詰めるのをやめる。腹下へ潜られる余地を残す")
@@ -87,14 +90,36 @@ public:
     FBZZ_TOOLTIP("ここから Charge From までがコアビーム。移動を強制する")
     FBZZ_FIELD_RANGE(float, stompMaxRange, 6.0f, "Stomp Within", 1.0f, 20.0f)
     FBZZ_TOOLTIP("これ以下なら踏みつけ。腹下へ潜った罰")
-    FBZZ_FIELD_RANGE(float, attackInterval, 1.2f, "Attack Interval", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, attackInterval, 0.6f, "Attack Interval", 0.0f, 20.0f)
     FBZZ_TOOLTIP("攻撃を出し終えてから次を選ぶまでの間。隙とは別に置く «呼吸»。"
                  "各攻撃は 2〜5 秒あるので、ここを長くすると «何も起きない» 時間になる")
     // WHY 体力で間合いの «回り» を変えるか: 1 つの間隔で通すと、序盤に合わせれば
     //     終盤が作業になり、終盤に合わせれば開幕で殺される。削るほど詰めてくる形なら、
     //     «あと少し» が一番危ないという山が戦いの中に立つ。
-    FBZZ_FIELD_RANGE(float, intervalAtLowHealth, 0.35f, "Interval (Low HP)", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, intervalAtLowHealth, 0.25f, "Interval (Low HP)", 0.0f, 20.0f)
     FBZZ_TOOLTIP("体力 0 まで削ったときの Attack Interval。満タン時の値からここへ寄っていく")
+
+    // プレイヤーの «手» を読んで割り込む。距離の表は «どこに居るか» しか見ないので、
+    // これが無いと «何をしたか» に対して盤面が一度も応えない ＝ 会話にならない。
+    //
+    // WHY 表を置き換えず «割り込み» にするか: 反応だけで手を選ぶと、動かずに居る
+    //     プレイヤーへ何もしなくなる。距離の表は «放っておいても圧を掛け続ける» 側の
+    //     仕事なので残し、読みはその前へ差し込む形にする。
+    FBZZ_GROUP("Reactions")
+    FBZZ_FIELD(bool, reactToPlayer, true, "Enable")
+    FBZZ_TOOLTIP("プレイヤーの連撃・溜め・立ち止まりを読んで手を選ぶ。切ると距離の表だけになる")
+    FBZZ_FIELD_RANGE(float, reactCooldown, 2.2f, "React Cooldown", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("割り込みどうしの間隔。0 に近づけると «何をしても刺される» になる")
+    FBZZ_FIELD_RANGE(float, punishRange, 7.5f, "Punish Range", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("連撃の最終段を振っている相手へ踏みつけを差し込む距離。"
+                 "Stomp Within より少し広く取る ─ 振り切る頃には踏みの間合いに入っている")
+    FBZZ_FIELD_RANGE(float, breakChargeRatio, 0.35f, "Break Charge At", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("溜め比がここを超えたら潰しに行く。1 にすると «満溜めだけ» 咎める")
+    FBZZ_FIELD_RANGE(float, guardHealthRatio, 0.45f, "Guard Leg Below", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("脚の残りがこの割合を切ったら、その脚で踏んで «退かす»。"
+                 "0 で庇わない (削られている脚をそのまま差し出す)")
+    FBZZ_FIELD_RANGE(float, harassSeconds, 2.5f, "Harass After", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("プレイヤーが遠くで手を出さないままこの秒数が過ぎたら、遠距離の手で追い出す")
 
     FBZZ_GROUP("Stomp")
     FBZZ_FIELD_RANGE(float, stompHitTime, 0.80f, "Hit Time", 0.0f, 3.0f)
@@ -233,6 +258,9 @@ public:
     // 「攻撃が当たらない」は、判定が出ていない・距離で外れた・受け手に届かなかったの
     // 3 つが同じ «減らない» に見える。直近の 1 回がどれだったかを残す。
     FBZZ_FIELD_READ_ONLY(std::string, debugLastHit, "-", "Last Hit")
+    // «たまたま踏まれた» と «読まれて踏まれた» は画面では同じ絵になる。
+    // どちらだったかを直近の 1 回ぶんだけ残す。
+    FBZZ_FIELD_READ_ONLY(std::string, debugReaction, "-", "Reaction")
     FBZZ_FIELD(bool, drawDebugRanges, false, "Draw Ranges")
 
     void OnStart() override;
@@ -315,7 +343,9 @@ private:
     void TickPulse(float dt);
     void TickFanBeam(float dt);
 
-    void BeginStomp();
+    /// `forcedLeg` が 0〜3 なら必ずその脚で踏む (削られている脚を退かすため)。
+    /// -1 ならプレイヤーの居る側から選ぶ。
+    void BeginStomp(int forcedLeg = -1);
     void BeginJump();
     void BeginCharge();
     void BeginBeam();
@@ -331,6 +361,10 @@ private:
 
     /// 8 章の距離テーブル。出せる攻撃が無ければ false。
     [[nodiscard]] bool SelectAttack();
+    /// プレイヤーの手を読んで割り込む。出したら true。距離の表より先に通す。
+    [[nodiscard]] bool ReactToPlayer(float distance);
+    /// 一番削れている脚。`ratio` に残りの割合を返す。1 本も見つからなければ -1。
+    [[nodiscard]] int  WeakestLeg(float& ratio);
     /// 踏みつける脚。プレイヤーが前後どちら側・左右どちら側に居るかで選ぶ。
     [[nodiscard]] BossLeg PickStompLeg(const Vector3& toPlayer) const;
     /// 踏みつけの着弾点。ヒットボックスのリグが居れば足ボーンの実座標を使う。
@@ -395,6 +429,10 @@ private:
     bool      m_preferJump = false;
     /// 扇の冷却。間合いに依らない手なので、出しすぎると他の手が消える。
     float     m_fanCooldown = 0.0f;
+    /// 割り込みの冷却。これが明けるまで «読み» で手を選ばない。
+    float     m_reactCooldown = 0.0f;
+    /// プレイヤーが手を出していない秒数。遠くで様子を見ている時間を測る。
+    float     m_playerQuietFor = 0.0f;
     /// ビームの段 (0 = 構え / 1 = 照射 / 2 = 終わり)。
     int       m_beamStage  = 0;
     /// 「戦闘が居ない」を 1 度だけ言うためのラッチ。報告は const な当て所からも起きる。
@@ -658,7 +696,16 @@ inline void BossAiComponent::OnFixedUpdate()
     // WHY return をやめて break にしたか: 予兆はどの行動から抜けても «今の状態» から
     //     組み直す必要がある。各 Tick の末尾へ書くと 9 箇所に散り、1 つ足すたびに
     //     書き忘れが «その攻撃だけ予兆が出ない» という形で出る。
-    m_fanCooldown = std::max(m_fanCooldown - dt, 0.0f);
+    m_fanCooldown   = std::max(m_fanCooldown - dt, 0.0f);
+    m_reactCooldown = std::max(m_reactCooldown - dt, 0.0f);
+
+    // 手を出していない時間は、攻撃の最中も数え続ける。Idle でだけ数えると、
+    // 長い攻撃を出しているあいだ «様子見» が計測されず、遠くで待つのが安全になる。
+    {
+        const auto player = playeraction::Read(Time::time);
+        m_playerQuietFor = (player.swinging || player.chargeRatio > 0.0f)
+            ? 0.0f : m_playerQuietFor + dt;
+    }
 
     switch (m_act) {
     case Act::Stomp:        TickStomp(dt);        break;
@@ -769,6 +816,10 @@ inline void BossAiComponent::TickIdle(float dt)
     const Vector3 direction = toPlayer / distance;
     FaceDirection(direction, dt, turnSpeed);
 
+    // 読みは距離の表より先に通す。表は «放っておいても圧を掛ける» 側の仕事で、
+    // 読みは «今この瞬間の手» を咎める側なので、順番が逆だと咎めが 1 手遅れる。
+    if (ReactToPlayer(distance)) return;
+
     if (m_cooldown <= 0.0f && SelectAttack()) return;
 
     // 間合いより遠ければ詰める。近ければ止まって «腹下へ潜る» 余地を残す。
@@ -799,6 +850,89 @@ inline void BossAiComponent::SetCrippled(bool crippled)
     //     Think 側でやっていて、そちらなら «押されて滑る» も物理に残せる。
 
     StopHorizontal();
+}
+
+inline int BossAiComponent::WeakestLeg(float& ratio)
+{
+    ratio = 1.0f;
+    int weakest = -1;
+
+    // 部位は実行時に組まれるので、リグへ «脚ごとの入れ物» を持たせず盤面から拾う。
+    // 1 本の脚に複数の部位が乗るときは、一番削れているものがその脚の代表になる。
+    for (GameObject* object : scene.FindObjectsOfType<BossPartPolarityComponent>()) {
+        if (!object || !object->activeInHierarchy()) continue;
+        const auto* part = scene.GetScript<BossPartPolarityComponent>(object);
+        if (!part || part->IsBroken()) continue;
+
+        // 接尾辞から脚の番号へ。BossPolarityRigComponent の LegIndexOf と同じ表だが、
+        // あちらを呼ぶと BossPolarityRig → BossAi の include が環になる。
+        const std::string& suffix = part->legSuffix;
+        const int leg = suffix == "_FR" ? 0 : suffix == "_FL" ? 1
+                      : suffix == "_BR" ? 2 : suffix == "_BL" ? 3 : -1;
+        if (leg < 0 || m_legBroken[leg]) continue;
+
+        const float remaining = part->HealthNormalized();
+        if (remaining < ratio) {
+            ratio   = remaining;
+            weakest = leg;
+        }
+    }
+
+    if (weakest < 0) ratio = 1.0f;
+    return weakest;
+}
+
+inline bool BossAiComponent::ReactToPlayer(float distance)
+{
+    if (!reactToPlayer || m_reactCooldown > 0.0f) return false;
+
+    const auto player = playeraction::Read(Time::time);
+
+    // 差し込み ─ 連撃の最終段。硬直が一番長い一撃で、しかも «止めた» ぶん
+    // プレイヤーが踏み込んで来ている。ここを咎めると «振り切るかどうか» が賭けになる。
+    if (player.finisher && distance <= std::max(punishRange, 0.0f) && HasStompLeg()) {
+        m_reactCooldown = std::max(reactCooldown, 0.0f);
+        debugReaction   = "Punish finisher";
+        BeginStomp();
+        return true;
+    }
+
+    // 溜め潰し ─ 溜めている間は足が鈍る (Move Scale 0.35)。逃げられない相手なので、
+    // 近ければ踏み、届かなければ全域のパルスで «溜め切らせない» を作る。
+    if (player.chargeRatio >= std::max(breakChargeRatio, 0.01f)) {
+        m_reactCooldown = std::max(reactCooldown, 0.0f);
+        debugReaction   = "Break charge";
+        if (distance <= std::max(stompMaxRange, 0.0f) && HasStompLeg()) BeginStomp();
+        else                                                            BeginPulse();
+        return true;
+    }
+
+    // 庇う ─ 削られている脚を «退かす»。踏みつけは脚を振り上げる動作なので、
+    // 狙われている脚をそのまま反撃に使うと、退避と威嚇が 1 つの絵で済む。
+    if (guardHealthRatio > 0.0f && distance <= std::max(stompMaxRange, 0.0f)) {
+        float     ratio  = 1.0f;
+        const int leg    = WeakestLeg(ratio);
+        if (leg >= 0 && ratio < guardHealthRatio) {
+            m_reactCooldown = std::max(reactCooldown, 0.0f);
+            debugReaction   = "Guard leg";
+            BeginStomp(leg);
+            return true;
+        }
+    }
+
+    // 休ませない ─ 遠くで手を出さないまま時間が過ぎている。距離の表だけだと
+    // «離れて待つ» が安全な手として最後まで残るので、そこを塞ぐ。
+    if (harassSeconds > 0.0f && m_playerQuietFor >= harassSeconds
+        && distance >= std::max(beamMinRange, 0.0f)) {
+        m_playerQuietFor = 0.0f;
+        m_reactCooldown  = std::max(reactCooldown, 0.0f);
+        debugReaction    = "Harass";
+        // 扇が冷えていればそちら (逃げる方向そのものを塞ぐ手)。無ければ薙ぎ。
+        if (!BeginFanBeam()) BeginBeam();
+        return true;
+    }
+
+    return false;
 }
 
 inline bool BossAiComponent::SelectAttack()
@@ -1016,14 +1150,16 @@ inline void BossAiComponent::TickJumpLand(float dt)
     if (m_timer >= landTotalTime) EndAct();
 }
 
-inline void BossAiComponent::BeginStomp()
+inline void BossAiComponent::BeginStomp(int forcedLeg)
 {
     GameObject* player = Player();
     Vector3 toPlayer = player ? (player->transform.worldPosition - transform.worldPosition)
                               : Forward();
     toPlayer.y = 0.0f;
 
-    m_stompLeg = PickStompLeg(toPlayer);
+    m_stompLeg = (forcedLeg >= 0 && forcedLeg < 4 && !m_legBroken[forcedLeg])
+        ? static_cast<BossLeg>(forcedLeg)
+        : PickStompLeg(toPlayer);
     m_act      = Act::Stomp;
     m_timer    = 0.0f;
     m_dealt    = false;

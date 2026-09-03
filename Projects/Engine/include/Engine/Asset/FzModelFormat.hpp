@@ -22,7 +22,7 @@
 /// FzModelNodeChunkHeader
 /// FzModelNodeData[] (各ノードの meshCount × uint32 と childCount × int32 が直後に続く)
 #pragma once
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <cstdint>
 
 namespace fbzz::asset {

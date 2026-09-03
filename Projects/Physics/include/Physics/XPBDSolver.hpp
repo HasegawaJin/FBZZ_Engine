@@ -61,6 +61,22 @@ namespace fbzz::physics
             return static_cast<int>(m_constraints.size());
         }
 
+        /// 毎フレーム作り直す拘束 (接触)。**所有しない** ─ 実体は呼び出し側が
+        /// 使い回す配列で持ち、フレームごとに Clear → Add し直す。
+        ///
+        /// WHY 所有する側と分けるか: 接触は «誰と触れているか» が毎フレーム変わるので、
+        ///     unique_ptr で持つと毎フレーム確保と解放が走る。関節のように寿命が
+        ///     長いものと同じ器に入れると、ClearConstraints が関節まで落としてしまう。
+        ///
+        /// 常に永続拘束の**後**に解かれる。硬いもの (関節) より接触を後に置くと
+        /// «骨がわずかに伸びてでも床から出る» になり、逆だと足が床へ沈む。
+        void ClearTransient();
+        void AddTransient(XPBDConstraint* constraint);
+        [[nodiscard]] int GetTransientCount() const
+        {
+            return static_cast<int>(m_transient.size());
+        }
+
     private:
         struct BodyState
         {
@@ -76,6 +92,8 @@ namespace fbzz::physics
 
         std::vector<BodyState>                       m_bodies;
         std::vector<std::unique_ptr<XPBDConstraint>> m_constraints;
+        /// 非所有。呼び出し側が寿命を保証する (接触)。
+        std::vector<XPBDConstraint*>                 m_transient;
         math::Vector3                                m_gravity{ 0.0f, -9.81f, 0.0f };
         int                                          m_substeps = 8;
     };

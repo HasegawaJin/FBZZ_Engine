@@ -527,6 +527,85 @@ VSCode または Visual Studio でソリューションを開いてビルド。
 
 ---
 
+## テスト
+
+GoogleTest / GoogleMock による自動テスト。GoogleTest は `ThirdParty/GoogleTest/` に vendor 済みで、clone 直後にそのままビルドできる (ネットワーク取得なし)。
+
+規約は [`Docs/conventions/test.md`](Docs/conventions/test.md)。
+
+### 構成
+
+| 層 | 置き場所 | CTest 登録 | 判定 |
+|---|---|---|---|
+| **Auto** | `Projects/Tests/<Domain>/Auto/` | する | コードが自動判定 |
+| **Manual** | `Projects/Tests/<Domain>/ManualTest/` | しない | 開発者が目で判定 (OS 状態を書き換えるため) |
+| **Bench** | `Projects/Tests/Bench/` | しない | 絵を見て判定 (`FBZZTestBench.exe`) |
+
+テスト対象は **自作した部分**に絞っている。数学・物理・メモリはゼロから実装しており、壊れても目視では気づけないため。
+
+| スイート | 対象 |
+|---|---|
+| `FBZZTestsMathAuto` | Vector3 / Quaternion / Matrix4 — 左手座標系の規約、合成順、投影の深度範囲 |
+| `FBZZTestsPhysicsAuto` | GJK / EPA / Collider / AABB / BVH / XPBD |
+| `FBZZTestsCoreAuto` | アロケーター 4 種 / Scheduler / TaskSystem / Signal / Logger / Time |
+| `FBZZTestsEngineAuto` | RagdollRig |
+
+共通の土台は `FBZZTestKit` (静的ライブラリ)。数学型の近似比較マクロ、失敗メッセージ用の `PrintTo`、テスト名から決まる固定シード乱数、一時ディレクトリ、Logger の fake と mock を持つ。
+
+### 実行
+
+VS Code から `Ctrl+Shift+P` → `Tasks: Run Task`：
+
+| タスク | 内容 |
+|---|---|
+| `Tests: Build & Run Suite (Debug)` | スイートを選んでビルド → 実行 |
+| `Tests: Shuffle Suite (Debug)` | 順序を混ぜて 10 回。実行順依存の炙り出し |
+| `CMake: Build Tests (Debug)` | 全スイート + ベンチをビルド |
+| `Tests: Coverage (Debug)` | カバレッジ計測 |
+| `Bench: Build & Run (Debug)` | ビジュアル検証ベンチ |
+
+デバッガーを付けるときは `F5` から `Tests: Physics Auto (Debug)` 等を選ぶ（`--gtest_filter` を対話入力）。
+
+exe を直接起動した場合、結果のコンソールは**終了時に自動で閉じません**（自分だけがそのコンソールに繋がっているときに入力待ちで止まる）。文字サイズは画面の DPI に合わせて調整され、`FBZZ_CONSOLE_FONT_SIZE` で上書きできる。
+
+```powershell
+ctest --test-dir build/Debug -C Debug --output-on-failure
+ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
+
+# 実行順に依存したテストの炙り出し (定期的に回す)
+.\build\Debug\Binaries\Debug\Tests\FBZZTestsPhysicsAuto.exe --gtest_shuffle --gtest_repeat=10
+```
+
+### ビジュアル検証ベンチ
+
+`FBZZTestBench.exe` は、数値では判定できない挙動を目で確かめる層。ImGui の 2D 直交ビューに物理をそのまま描く。
+
+- **XPBD: 刻みと静止位置** — substep 2 / 8 / 32 を並走させ、静止位置が一致するか
+- **XPBD: 関節の鎖** — 可動域で止まるか、トルク上限で力負けするか
+- **GJK / EPA: 接触の法線と深さ** — 形状を動かしたときに法線が飛ばないか
+- **BVH: 木の形と問い合わせ** — 枝刈りの効き具合 (総当たり件数を常時併記)
+
+### カバレッジ
+
+行カバレッジを [OpenCppCoverage](https://github.com/OpenCppCoverage/OpenCppCoverage) で計測し、CI が PR にコメントする。
+
+```powershell
+choco install opencppcoverage
+.\Tools\RunCoverage.ps1              # Artifacts/Coverage/html/index.html に出力
+```
+
+計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。
+
+> MSVC + OpenCppCoverage が出せるのは**行カバレッジ (C0 相当)** で、分岐 (C1) カバレッジは含まない。分岐まで測るには clang-cl + llvm-cov による 2 本目のツールチェーンが必要になる。
+
+### CI
+
+[`.github/workflows/tests.yml`](.github/workflows/tests.yml) が `windows-latest` で configure → テスト exe のみビルド → `ctest` → カバレッジ計測 → PR コメント / ジョブサマリー / HTML レポートのアーティファクト添付までを行う。
+
+リポジトリ変数 `FBZZ_COVERAGE_MIN` を設定すると、その値を下回った時点で CI が落ちる (未設定なら素通り)。
+
+---
+
 ## 使用ライブラリ
 
 | ライブラリ | 用途 |

@@ -2,7 +2,7 @@
 /// @brief   TOML リフレクタの値型変換とスコープ管理。
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
-#include <Engine/Util/TomlReflector.hpp>
+#include <Engine/Scene/TomlReflector.hpp>
 
 // WHY codec を借りるか: カーブ / グラデーションの TOML 表現は .vfx と .scene で
 //     すでに 1 つに統一されている。ここで別形式を作ると、同じ型なのに

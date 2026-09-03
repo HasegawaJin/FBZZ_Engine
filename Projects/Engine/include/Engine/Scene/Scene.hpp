@@ -14,6 +14,7 @@
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
 #include "ScriptFactory.hpp"
+#include "SceneRenderResources.hpp"
 #include <Math/Vector4.hpp>
 #include <vector>
 #include <memory>
@@ -411,6 +412,11 @@ bool Scene::HasComponent(EntityID id) const {
 
 template<typename T>
 void Scene::RemoveComponent(EntityID id) {
+    // WHY ここで返すか: Component を配列から外すと «誰がそのハンドルを持っていたか» を
+    //     辿る手段が無くなる。Inspector から 1 つ外すたびに、その個体が抱えていた
+    //     定数バッファ / 頂点バッファが GPU に残り続けていた。
+    if (T* component = GetComponent<T>(id))
+        ReleaseComponentGpuResources(*component);
     GetArray<T>().Remove(id);
 }
 

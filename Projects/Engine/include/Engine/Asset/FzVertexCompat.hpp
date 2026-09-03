@@ -5,7 +5,7 @@
 #pragma once
 
 #include <Engine/Asset/BinaryReader.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 
 #include <cstdint>

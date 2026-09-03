@@ -1,31 +1,40 @@
 /// @file    RagdollComponent.hpp
-/// @brief   骨を質点系として落とす / 筋力で支える、ラグドールの設定と実行状態
+/// @brief   骨を XPBD の関節体として落とす / サーボで支える、ラグドールの設定と実行状態
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
 ///
-/// WHY 剛体と制約で組まないか:
-///   Physics の HingeConstraint はアンカー 2 点を同じ位置へ寄せるだけで軸を拘束せず、
-///   位置を直接書き換えて速度を直さない。ロープなら破綻しないが、13 節を超える
-///   関節体を «立たせたまま» 支えると伸びとジッターが出る。倒れる数秒だけが要るなら、
-///   骨 1 本を 1 質点とする Verlet と距離拘束で足りる ─ 位置ベースの距離拘束は
-///   反復するほど収束が保証される形なので、質量比にも刻みにも強い。
+/// WHY 質点系ではなく剛体と関節で組むか:
+///   骨 1 本を質点 1 個にすると、状態として持てるのは位置の 3 自由度だけになる。
+///   骨の姿勢は隣の質点への «向き» から後付けで組み立てるしかなく、ツイストが構造的に
+///   作れない。角度制限も «制限したい量» が状態として存在しないので書けず、慣性も
+///   質量分布も無い。回転を状態として持つ剛体にすると、可動域・ねじれ・慣性・
+///   サーボのトルク上限がすべて «関節の性質» として素直に書ける。
+///   設計の全体は Docs/design/active-ragdoll.md を参照。
+///
+/// WHY XPBD か:
+///   «1 ステップで詰める割合» で解くと、定常たわみが刻みの 2 乗に比例して変わる。
+///   compliance [rad/(N·m)] なら定常たわみが compliance × トルクで刻みに依らないので、
+///   フレームレートが変わっても «同じ硬さ» が保てる。
 ///
 /// WHY 脱力 (Passive) と筋力 (Active) の 2 通りを持つか:
 ///   脱力したラグドールには筋肉が無く、四足が崩れたら二度と立てない。だから転倒は
 ///   «崩れる瞬間だけ» 物理へ渡して静止したらクリップへ戻す ── 予兆をフレーム単位で
 ///   詰めてあるクリップ側の読みやすさを手放さずに «毎回違う倒れ方» だけを得る。
 ///   これに対し «立っているボスを押す» は、脱力では倒れるしか結果が無い。
-///   Active はアニメーションが今フレームに置いた骨の位置を «筋力の目標» として
-///   毎フレーム取り直し、質点をそこへ引き戻し続ける。無負荷なら目標と一致するので
-///   絵はクリップそのままで、押されたぶんだけ沈んで戻る。歩行と攻撃の読みやすさを
-///   保ったまま、立ったまま «効いている絵» を出せる。
+///   Active はアニメーションが今フレームに置いた関節角を «サーボの目標» として
+///   毎フレーム取り直す。無負荷なら目標と一致するので絵はクリップそのままで、
+///   押されたぶんだけ沈んで戻る。実装上の違いはドライブを解くかどうかだけになる。
 #pragma once
 
+#include <Engine/Scene/Ragdoll/RagdollProfile.hpp>
+#include <Engine/Scene/Ragdoll/RagdollRig.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 
+#include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -33,12 +42,20 @@ namespace fbzz::asset { struct Skeleton; }
 
 namespace fbzz::scene {
 
-/// 質点を何が動かすか。起動ごとに決まる。
+/// 関節を何が動かすか。起動ごとに決まる。
 enum class RagdollMode : std::uint8_t {
-    /// 脱力。捕獲した姿勢を初期値に、重力と距離拘束だけで崩れる。
+    /// 脱力。捕獲した姿勢を初期値に、重力と可動域だけで崩れる。
     Passive = 0,
-    /// 筋力。毎フレームのアニメーション姿勢を目標に取り直して引き戻し続ける。
+    /// サーボ。毎フレームのアニメーション姿勢を目標に取り直して引き戻し続ける。
     Active  = 1,
+};
+
+/// どのプリセットで剛体と関節を組むか。可動域の広さ・サーボの硬さ・トルク上限が変わる。
+enum class RagdollProfileKind : std::uint8_t {
+    /// 重機・ロボット。狭い可動域、硬いドライブ、有限のサーボトルク。
+    Mech     = 0,
+    /// 人型。広い可動域、柔らかいドライブ。
+    Humanoid = 1,
 };
 
 /// ラグドールの進行段階。
@@ -52,7 +69,7 @@ enum class RagdollPhase : std::uint8_t {
 /// 前回の更新で何をしたか。
 ///
 /// WHY 要るか: 骨を 1 本も動かせない理由が «Animator が居ない» «スキンドメッシュが
-///     見つからない» «質点が 0 本» «ボーンの GameObject が引けない» と 4 通りあり、
+///     見つからない» «剛体が 0 個» «ボーンの GameObject が引けない» と 4 通りあり、
 ///     症状はどれも «何も起きない» で同じ。黙って continue すると、どこを直せば
 ///     よいか画面から永久に分からない。
 enum class RagdollStatus : std::uint8_t {
@@ -61,80 +78,121 @@ enum class RagdollStatus : std::uint8_t {
     NotPlaying,      ///< 編集中で simulateInEditor が false
     NoAnimator,      ///< 同じ GameObject に AnimatorComponent が無い
     NoSkinnedMesh,   ///< 自分と直下の子にスキンドメッシュが無い / スケルトン未読み込み
-    NoParticles,     ///< 根ボーンが見つからず質点を 1 つも組めなかった
-    NoBones,         ///< 質点に対応するボーンの GameObject が引けない
+    NoParticles,     ///< 根ボーンが見つからず剛体を 1 つも組めなかった
+    NoBones,         ///< 剛体に対応するボーンの GameObject が引けない
     Running,         ///< 解いて骨へ書いた
 };
 
-/// 骨 1 本ぶんの質点。シーンへは保存しない。
-struct RagdollParticle {
-    int nodeIndex       = -1;
-    /// 同じ配列内の親の添字。-1 なら根。
-    int parentParticle  = -1;
-    /// 根から何段目か。Active の筋力は根から遠いほど弱い。
-    int depth           = 0;
-    /// この質点の筋力 [0,1]。1 ステップで姿勢差を詰める割合。Passive では 0。
-    float muscle        = 0.0f;
+/// 実行中だけ存在する物理の実体と、それを組んだときの条件。
+///
+/// WHY コピーすると空になるか: Inspector の自動対応はコンポーネントがコピー可能である
+///     ことを要求する (ComponentRegistry の static_assert)。剛体は単一所有で複製に意味が
+///     無く、複製先で組み直せばよい ── «条件が変わったら組み直す» 経路は元々あるので、
+///     写した先を空にしておけば次の更新で自然に組み上がる。
+struct RagdollRuntime {
+    /// 剛体・関節・接地拘束。組めるまで null。
+    ///
+    /// unique_ptr 越しに持つのは、内部で非所有ポインタ (ソルバ → 剛体、関節 → 剛体) が
+    /// 絡むため。コンポーネントは配列の再確保で動く。
+    std::unique_ptr<RagdollRig> rig;
+    /// このフレームの FK 姿勢。捕獲元であり、サーボの目標であり、ブレンド先でもある。
+    std::vector<RagdollBonePose> bones;
+    /// bones[i] に対応するスケルトンのノード添字。
+    std::vector<int>             boneNodes;
+    /// bones[i] の FK スケール。物理は姿勢しか動かさないので、書き戻しはこれを使う。
+    std::vector<math::Vector3>   boneScales;
 
-    math::Vector3 position     = math::Vector3::ZERO;
-    math::Vector3 prevPosition = math::Vector3::ZERO;
-    /// 0 で固定。根を床へ縫い付けたいときに使う。
-    float invMass = 1.0f;
+    /// rig を組んだときの条件。1 つでも変わったら組み直す。
+    const asset::Skeleton* builtSkeleton = nullptr;
+    std::string            builtRoot;
+    int                    builtMaxDepth = -1;
+    RagdollProfileKind     builtProfile  = RagdollProfileKind::Mech;
 
-    /// 捕獲した瞬間のワールド姿勢。回転はここからの «向きの差» で組み直す。
-    math::Vector3    restDirection   = math::Vector3::ZERO;
-    math::Quaternion captureRotation = math::Quaternion::Identity();
-    math::Vector3    captureScale    = math::Vector3::ONE;
-    /// 最初の子。回転を作る向きの相手。-1 なら葉。
-    int   firstChild = -1;
-    bool  hasRest    = false;
+    RagdollRuntime()  = default;
+    ~RagdollRuntime() = default;
+    RagdollRuntime(RagdollRuntime&&)            = default;
+    RagdollRuntime& operator=(RagdollRuntime&&) = default;
 
-    math::Vector3    simPosition = math::Vector3::ZERO;
-    math::Quaternion simRotation = math::Quaternion::Identity();
-};
-
-/// 質点 2 個を結ぶ距離拘束。
-struct RagdollLink {
-    int   a = -1;
-    int   b = -1;
-    float restLength = 0.0f;
-    /// 1 で剛。曲がりを抑える «筋交い» は 1 より下げて、完全には固めない。
-    float stiffness  = 1.0f;
+    RagdollRuntime(const RagdollRuntime&) {}
+    RagdollRuntime& operator=(const RagdollRuntime&)
+    {
+        rig.reset();
+        bones.clear();
+        boneNodes.clear();
+        boneScales.clear();
+        builtSkeleton = nullptr;
+        builtRoot.clear();
+        builtMaxDepth = -1;
+        return *this;
+    }
 };
 
 /// 発生した衝撃。フレーム末で消費する。
 struct RagdollImpulse {
     math::Vector3 origin    = math::Vector3::ZERO;
     math::Vector3 velocity  = math::Vector3::ZERO;
-    /// 0 以下なら全質点へ一律に効く。
+    /// 0 以下なら全剛体へ一律に効く。
     float         radius    = 0.0f;
 };
 
 /// スキンドメッシュの骨を一時的に物理へ渡す。AnimatorSystem / IKSystem / SpringBoneSystem
 /// の後段で解き、スキニング行列の最終書き込み者になる。
+///
+/// 剛体と関節の実体は RagdollRig が持つ。コンポーネントは配列の再確保で動くので、
+/// 非所有ポインタが絡む RagdollRig は必ず unique_ptr 越しに持つ。
 struct RagdollComponent {
     bool enabled = true;
 
     /// 落とし始める骨。空ならスケルトンの根から。
     std::string rootBoneName;
-    /// 根から何段まで質点にするか。0 で葉まで。
+    /// 根から何段まで剛体にするか。0 で葉まで。
     int maxDepth = 0;
+    /// 骨の太さ・重さ・可動域・サーボ特性を骨名から決めるプリセット。
+    RagdollProfileKind profile = RagdollProfileKind::Mech;
 
     /// 重力加速度 [m/s^2]。実測値より重い方が «重機が崩れる» に寄る。
     float gravity = 26.0f;
-    /// 1 ステップあたりの速度減衰 [0,1]。大きいほど早く静まる。
-    float damping = 0.04f;
-    /// 距離拘束の反復回数。少ないと脚が伸びる。
-    int   iterations = 10;
-    /// 関節を跨いだ «筋交い» の強さ [0,1]。0 で完全に脱力し、1 で折れ曲がらない。
-    float braceStiffness = 0.55f;
+    /// 1 フレームを何回に割って解くか。増やすほど硬いサーボが安定する。
+    ///
+    /// WHY 反復回数ではなく substep か: 位置射影を同じ刻みで何度も回しても、質量比の
+    ///     大きい関節連鎖は収束しない。刻みを小さくする方が効く (Macklin 2019)。
+    int   substeps = 12;
+    /// 速度の減衰 [1/s]。空気抵抗ではなく «関節のこすれ» の代用。
+    float linearDrag  = 0.35f;
+    float angularDrag = 0.60f;
 
-    /// 接地判定に使う骨の太さ [m]。
-    float boneRadius = 0.28f;
-    /// 接地面の高さ。Begin() したときのオーナーの足元から決める。
+    /// 骨の表面のクーロン摩擦係数。0 で氷の上、1 前後で «倒れた所で止まる»。
+    /// 世界側のマテリアルとは PhysicsMaterial の合成規則で混ざる。
+    float friction    = 0.9f;
+    /// 骨の反発係数。ラグドールが跳ねると重さが消えるので、既定は 0。
+    float restitution = 0.0f;
+
+    /// 世界の地形・壁と当たる。
+    bool contactWorld   = true;
+    /// 世界の «動く» 剛体とも当たる。瓦礫を蹴る / 弾かれる。
+    bool contactDynamic = true;
+    /// 自分の骨どうしが当たる。腕や脚が胴を貫通しなくなる。
+    bool contactSelf    = true;
+    /// Active (サーボで支えている) 間も世界の接触を解くか。
+    ///
+    /// WHY 既定で切るか: 立っている間 «足をどこに置くか» を決めているのはクリップで、
+    ///     床はその通りに踏まれている前提で作ってある。そこへカプセルの半径ぶんの
+    ///     押し出しを重ねると、足が半径だけ浮いた所でサーボと釣り合い、体が宙に浮く。
+    ///     世界と噛み合わせたいのは «崩れてから» なので、支えている間は切っておく。
+    ///     抜け止めの水平面は Active でもクリップの最下点まで下がるので、こちらは残る。
+    bool contactWhileActive = false;
+    /// 関節グラフ上でこの段数以内の先祖・子孫とは当てない。1 で親子、2 で祖父–孫まで。
+    int  selfSkip       = 2;
+
+    /// 世界のコライダーを取りこぼしたときの抜け止めに、水平面を 1 枚張る。
+    ///
+    /// WHY 実接触が入った後も残すか: 床コライダーを置き忘れたシーンで «床下へ
+    ///     消えていく» のは、原因が最も分かりにくい壊れ方になる。面は «オーナーの
+    ///     足元» と «今のクリップの最下点» の低い方に置くので、実際の床がある限り
+    ///     世界側が先に受け止め、この面は何もしない。**段差や多層の地形では切る。**
+    bool  groundPlane  = true;
+    /// 抜け止めの面の高さ。オーナーの足元からの相対 [m]。
     float groundOffset = 0.0f;
-    /// 接地中の水平減衰 [0,1]。1 で滑らない。
-    float groundFriction = 0.55f;
 
     /// アニメーションから物理へ移る秒数。0 で即座に切り替わる。
     float blendIn  = 0.06f;
@@ -144,28 +202,49 @@ struct RagdollComponent {
     /// simulateInEditor 相当。既定では Play 中だけ動く。
     bool simulateInEditor = false;
 
-    /// 根の質点が 1 ステップで姿勢差を詰める割合 [0,1]。Active 専用。
+    /// サーボのトルク上限と剛性に掛かる倍率。Active 専用。
     ///
-    /// WHY 力 [N] ではなく «詰める割合» か: 距離拘束も接地も位置を直接動かす解き方で
-    ///     揃えてあり、そこへ力だけ別単位で混ぜると刻みが変わるたびに釣り合いが動く。
-    ///     割合なら «何ステップで戻るか» が質量にも重力にも依らず読める。
-    float muscleStiffness = 0.45f;
-    /// 根から 1 段下がるごとに筋力へ掛かる倍率 [0,1]。
+    /// WHY 絶対値 [N·m] で持たないか: 適正なトルクは骨の長さと質量で決まり、骨格ごとに
+    ///     二桁違う。それを決めるのはプロファイルの仕事で、ここが持つのは «今どれだけ
+    ///     力んでいるか» という無次元の量。1 でプロファイルどおり、下げるほど力負けする。
+    float driveScale   = 1.0f;
+    /// 根から 1 関節下がるごとに driveScale へ掛かる倍率 [0,1]。
     ///
     /// WHY 一律にしないか: 全身を同じ強さで引くと骨がクリップへ張り付き、押しても
     ///     «少し遅れて同じ絵» にしかならない。腰を強く末端を弱くすると、体幹が支えて
     ///     手足だけが流れる ─ 押されて «こらえている» 形はこの差から出る。
-    float muscleFalloff = 0.86f;
-    /// Active 中の追加速度減衰 [0,1]。目標を追い越して揺れ戻るのを抑える。
-    float muscleDamping = 0.18f;
-    /// 衝撃を受けた瞬間に抜ける筋力の割合 [0,1]。0 で «押されても硬いまま»。
-    float impactSlack = 0.60f;
-    /// 抜けた筋力が元へ戻るまでの秒数。«こらえ直す» 時間。
-    float recoverySeconds = 0.50f;
-    /// 姿勢差がこの距離 [m] を超えたら筋力を捨てて脱力へ落ちる。0 で無効。
+    float driveFalloff = 0.90f;
+    /// サーボの減衰に掛かる倍率。下げるほど目標を追い越して揺れ戻る。
+    float driveDamping = 1.0f;
+    /// クリップが要求する関節角を測り、可動域をそこまで広げる。
     ///
-    /// WHY 要るか: 筋力は無限に強く、これが無いと «どれだけ殴っても最後は立っている»。
-    ///     支え切れなくなったら倒れる、が入って初めて立っている絵に意味が出る。
+    /// WHY 既定で入れるか: 可動域はバインドポーズが基準で、クリップがそこからどれだけ
+    ///     動かすかは骨格とモーション次第。プロファイルの値がクリップより狭いと、
+    ///     サーボが目標へ行けず «アニメーションが崩れる» ── 崩しているのは物理ではなく
+    ///     «物理が許していない» ことの方。切ると手で詰めることになる。
+    bool  learnLimits = true;
+    /// 測った範囲へ足す余裕 [度]。押されて少し越えるぶんを吸収する。
+    float limitMargin = 5.0f;
+
+    /// 根の骨をアニメーションへ繋ぎ止める力。自重を支えるのに要る力への倍率。
+    ///
+    /// WHY 要るか: 関節は隣の骨との相対しか拘束しないので、根は何にも繋がっていない。
+    ///     0 にして立たせると、サーボが形を保ったまま全体が重力で落ちていく。
+    ///     1.0 でぎりぎり自重を支え、下げるほど胴が沈む。
+    float rootAnchor = 3.0f;
+    /// 繋ぎ止めが上限の力を出し切るまでに沈む距離 [m]。押されたときの «遊び»。
+    float rootAnchorSag = 0.04f;
+    /// 同じく、上限のトルクを出し切るまでに傾く角 [rad]。
+    float rootAnchorTilt = 0.05f;
+
+    /// 衝撃を受けた瞬間に抜ける力みの割合 [0,1]。0 で «押されても硬いまま»。
+    float impactSlack = 0.60f;
+    /// 抜けた力みが元へ戻るまでの秒数。«こらえ直す» 時間。
+    float recoverySeconds = 0.50f;
+    /// 姿勢差がこの距離 [m] を超えたらサーボを捨てて脱力へ落ちる。0 で無効。
+    ///
+    /// WHY 要るか: サーボにトルク上限があっても、押し続ければ «たわんだまま立っている»
+    ///     に落ち着く。支え切れなくなったら倒れる、が入って初めて立っている絵に意味が出る。
     float collapseDistance = 0.90f;
     /// Play に入った時点で Active を起動する。スクリプト無しで立ったまま効かせる口。
     bool activateOnStart = false;
@@ -200,33 +279,47 @@ struct RagdollComponent {
     /// activateOnStart を消費済み。Play を抜けるたびに戻る。
     bool startTriggered  = false;
 
-    /// 今の筋力倍率 [0,1]。衝撃で 1-impactSlack まで落ち、recoverySeconds で 1 へ戻る。
+    /// 今の力み倍率 [0,1]。衝撃で 1-impactSlack まで落ち、recoverySeconds で 1 へ戻る。
     float muscleScale       = 1.0f;
     float recoveryRemaining = 0.0f;
 
-    std::vector<RagdollParticle> particles;
-    std::vector<RagdollLink>     links;
-    std::vector<RagdollImpulse>  pendingImpulses;
+    std::vector<RagdollImpulse> pendingImpulses;
 
-    /// particles を組んだときのスケルトン。差し替わったら組み直す。
-    const asset::Skeleton* builtSkeleton = nullptr;
-    float groundHeight = 0.0f;
-    /// 床へ足す骨の太さ [m]。起動時に決まり、その起動のあいだ動かない。
-    float groundThickness = 0.0f;
+    RagdollRuntime runtime;
 
-    int           runtimeParticleCount = 0;
-    int           runtimeLinkCount     = 0;
-    RagdollStatus runtimeStatus        = RagdollStatus::Idle;
-    /// アニメーション姿勢から一番離れた質点の距離 [m]。collapseDistance の判定値。
-    float         runtimeDeviation     = 0.0f;
+    /// 実際に使っている接地面の高さ [m]。Passive では起動時に決まり、その起動の
+    /// あいだ動かない ─ 途中で上げると、崩れ落ちている体が一瞬で持ち上がる。
+    float         runtimeGround     = 0.0f;
+    int           runtimeBodyCount  = 0;
+    int           runtimeJointCount = 0;
+    /// トルク上限に張り付いている関節の数。0 でない ＝ どこかが力負けしている。
+    int           runtimeSaturated  = 0;
+    /// 可動域に食い込んでいる関節の数。0 でない ＝ クリップが «曲げてよいことに
+    /// なっていない» 所まで曲げている。アニメーションが崩れる主因はたいていこちら。
+    int           runtimeLimited    = 0;
+    /// このフレームに解いた接触の数。0 のまま落ちていくなら世界に床コライダーが無い。
+    int           runtimeContacts   = 0;
+    /// プロファイルのどの規則にも当たらなかった骨の数。0 でないなら、その骨は可動域も
+    /// 太さも fallback のまま ─ «膝が逆に折れない» のような設定が効いていない。
+    /// 骨の名前は組み直したときにログへ出る。
+    int           runtimeUnmatched  = 0;
+    RagdollStatus runtimeStatus     = RagdollStatus::Idle;
+    /// アニメーション姿勢から一番離れた剛体の距離 [m]。collapseDistance の判定値。
+    float         runtimeDeviation  = 0.0f;
 
     const char* GetTypeName() const { return "Ragdoll"; }
 
     [[nodiscard]] bool IsActive() const { return phase != RagdollPhase::Idle; }
-    /// 筋力で支えている最中か。
+    /// サーボで支えている最中か。
     [[nodiscard]] bool IsStanding() const
     {
         return mode == RagdollMode::Active && phase != RagdollPhase::Idle;
+    }
+
+    [[nodiscard]] RagdollProfile ResolveProfile() const
+    {
+        return profile == RagdollProfileKind::Humanoid ? RagdollProfile::Humanoid()
+                                                       : RagdollProfile::Mech();
     }
 
     void Reflect(IReflector& r)
@@ -234,19 +327,36 @@ struct RagdollComponent {
         r.Field("enabled",          enabled);
         r.Field("rootBoneName",     rootBoneName);
         r.Field("maxDepth",         maxDepth);
+        {
+            static constexpr const char* kProfileLabels[] = { "Mech", "Humanoid" };
+            int kind = static_cast<int>(profile);
+            r.Enum("profile", kind, kProfileLabels);
+            profile = static_cast<RagdollProfileKind>(std::clamp(kind, 0, 1));
+        }
         r.Field("gravity",          gravity);
-        r.Field("damping",          damping);
-        r.Field("iterations",       iterations);
-        r.Field("braceStiffness",   braceStiffness);
-        r.Field("boneRadius",       boneRadius);
+        r.Field("substeps",         substeps);
+        r.Field("linearDrag",       linearDrag);
+        r.Field("angularDrag",      angularDrag);
+        r.Field("friction",         friction);
+        r.Field("restitution",      restitution);
+        r.Field("contactWorld",     contactWorld);
+        r.Field("contactDynamic",   contactDynamic);
+        r.Field("contactSelf",      contactSelf);
+        r.Field("contactWhileActive", contactWhileActive);
+        r.Field("selfSkip",         selfSkip);
+        r.Field("groundPlane",      groundPlane);
         r.Field("groundOffset",     groundOffset);
-        r.Field("groundFriction",   groundFriction);
         r.Field("blendIn",          blendIn);
         r.Field("blendOut",         blendOut);
         r.Field("simulateInEditor", simulateInEditor);
-        r.Field("muscleStiffness",  muscleStiffness);
-        r.Field("muscleFalloff",    muscleFalloff);
-        r.Field("muscleDamping",    muscleDamping);
+        r.Field("driveScale",       driveScale);
+        r.Field("driveFalloff",     driveFalloff);
+        r.Field("driveDamping",     driveDamping);
+        r.Field("learnLimits",      learnLimits);
+        r.Field("limitMargin",      limitMargin);
+        r.Field("rootAnchor",       rootAnchor);
+        r.Field("rootAnchorSag",    rootAnchorSag);
+        r.Field("rootAnchorTilt",   rootAnchorTilt);
         r.Field("impactSlack",      impactSlack);
         r.Field("recoverySeconds",  recoverySeconds);
         r.Field("collapseDistance", collapseDistance);

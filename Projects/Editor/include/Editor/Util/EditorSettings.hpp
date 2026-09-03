@@ -39,6 +39,8 @@ struct EditorSettings {
     bool  showLightRange      = true;
     // 力場の影響体積とエミッター発生形状。常時出すと邪魔なので既定は off。
     bool  showVFXGizmos       = false;
+    // ラグドールの剛体・可動域・接触点。調整中だけ点ける前提で既定は off。
+    bool  showRagdoll         = false;
     bool  showSkeleton        = false;
     bool  showStats           = true;  // Game Viewport の Stats オーバーレイ
     // Scene View のオクルージョンカリング。誤カリングの切り分け用なので既定は off。

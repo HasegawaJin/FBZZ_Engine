@@ -2,13 +2,16 @@
 /// @brief   StackAllocator の LIFO 解放契約を自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/StackAllocator.hpp>
 
 namespace fbzz::tests {
 
-TEST(StackAllocatorTest, FreesOnlyTheMostRecentAllocation)
+class StackAllocatorTest : public testkit::EngineFixture {};
+
+TEST_F(StackAllocatorTest, FreesOnlyTheMostRecentAllocation)
 {
     core::StackAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(256));
@@ -31,7 +34,7 @@ TEST(StackAllocatorTest, FreesOnlyTheMostRecentAllocation)
     allocator.Shutdown();
 }
 
-TEST(StackAllocatorTest, RejectsAnAllocationThatExceedsCapacity)
+TEST_F(StackAllocatorTest, RejectsAnAllocationThatExceedsCapacity)
 {
     core::StackAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(64));

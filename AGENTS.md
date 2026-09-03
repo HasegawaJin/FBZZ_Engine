@@ -356,6 +356,56 @@ class PolarityGunHudComponent : public Script {
 | `DX11Renderer*` へのダウンキャスト | 上位レイヤーは `IRenderer&` のみ参照 |
 | スクリプトから Engine 実装型を直接インクルード | `ScriptProxy` 経由でアクセス |
 
+### Engine 内部のモジュール (詳細: `Docs/conventions/build-performance.md` §4-4)
+
+```
+FBZZCore → FBZZRHI → FBZZRenderPlatform → FBZZRenderDX11 / FBZZRenderDX12 → FBZZEngine
+```
+
+すべて OBJECT ライブラリで、`FBZZEngine.dll` が `$<TARGET_OBJECTS:>` で飲み込む。
+出荷する DLL は増えない。
+
+- **新しいディレクトリを `Engine/src/` に作ったら `Projects/Engine/CMakeLists.txt` の
+  モジュール定義へ足す。** 足し忘れは configure 時に FATAL_ERROR で落ちる
+- **DX11 / DX12 のヘッダーは各モジュールの外から include できない。** バックエンドが
+  外へ出すのは `Engine/Renderer/BackendEntry.hpp` の生成関数 1 つだけ
+- 低層 (Core / RHI) が Asset や Scene を必要としたら、依存を逆転させる。
+  実例は `Engine/Renderer/AssetPathService.hpp`（パス解決の規則を Asset 層が差し込む）
+- STATIC にしないこと。自己登録の静的初期化子をリンカが捨てる
+
+---
+
+## テスト (詳細: `Docs/conventions/test.md`)
+
+GoogleTest / GoogleMock は `ThirdParty/GoogleTest/` に vendor 済み。FetchContent は使わない。
+
+| 層 | 置き場所 | CTest 登録 |
+|---|---|---|
+| Auto | `Projects/Tests/<Domain>/Auto/` | する |
+| Manual | `Projects/Tests/<Domain>/ManualTest/` | しない (OS 状態を触る) |
+
+- 素の `TEST` を書かず **`TEST_F` + TestKit の fixture** を使う
+- float の比較は `EXPECT_EQ` ではなく `EXPECT_VEC3_NEAR` 等 (`TestKit/Approx.hpp`)
+- 乱数・時刻・`sleep` を持ち込まない (`TestKit/Deterministic.hpp`)
+- 新規テストは `Projects/Tests/CMakeLists.txt` の `SOURCES` へ**手で 1 行足す** (`file(GLOB)` 禁止)
+
+---
+
+## ビルド時間 (詳細: `Docs/conventions/build-performance.md`)
+
+ビルド時間は **TU 数 × 1 TU あたりの前処理行数**で決まる。自作ヘッダーは
+前処理量の 3〜4% しかなく、残りは標準ヘッダーと `<Windows.h>`。
+
+- **ヘッダーに `<Windows.h>` を書かない** — 1 本で 35 万行。`.cpp` に書く。
+  OS 定数を列挙へ写すときは数値リテラル + Win32 境界の `.cpp` で `static_assert`
+- `.cpp` で Win32 が要るときは `WIN32_LEAN_AND_MEAN` を先に定義する
+- **`#define NOMINMAX` をソースに書かない** — ルートの CMakeLists が全構成へ定義済み。
+  include 順に依存した防御はヘッダーを 1 つ整理しただけで崩れる (C2589 の実例あり)
+- 標準ヘッダーは `fbzz_use_std_pch(<target>)` に任せる。**共有 PCH に `<Windows.h>` は入れない**
+  (DX バックエンドのように全 TU が Win32/D3D を使うモジュールだけ `PCH_EXTRA` で足す)
+- `-DFBZZ_UNITY_BUILD=ON` で翻訳単位を統合できる (CI・配布向け。増分ビルドは遅くなる)
+- `toml++` のようなヘッダーオンリー実装を公開ヘッダーへ載せない
+
 ---
 
 ## Git 運用 (詳細: `Docs/conventions/git.md`)

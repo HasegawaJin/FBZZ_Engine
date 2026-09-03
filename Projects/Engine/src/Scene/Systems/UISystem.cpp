@@ -447,6 +447,60 @@ void ApplyUIMaterialOverrides(renderer::ResourceManager& resources,
     call.constantBuffers[2] = binding.overrideConstants;
 }
 
+// .mat 解決キャッシュを捨てる。resources が非 null なら抱えている GPU リソースも返す。
+//
+// WHY 明示的に返すか: FontAtlas と Material は自分で返せる (デストラクタ) が、
+//     バインディングが直接持つ cbuffer と PSO には持ち主が居ない。捨てるだけだと
+//     .mat を編集するたびに ConstantBuffer と PipelineState が積み上がる。
+void ReleaseMaterialCache(UISystemContext& ctx, renderer::ResourceManager* resources)
+{
+    if (resources != nullptr) {
+        for (auto& entry : ctx.materialCache) {
+            UIMaterialBinding& binding = entry.second;
+            if (binding.overrideConstants.IsValid()) resources->Release(binding.overrideConstants);
+            if (binding.screenPso.IsValid())         resources->Release(binding.screenPso);
+            if (binding.worldPso.IsValid())          resources->Release(binding.worldPso);
+            binding.overrideConstants = {};
+            binding.screenPso         = {};
+            binding.worldPso          = {};
+        }
+    }
+    ctx.materialCache.clear();
+}
+
+// キャッシュの作り直しが要る «外の変化» を拾う。
+//
+// WHY ここで見るか: UISystemFlushCache を呼ぶべき瞬間 (デバイスロスト・アセットの
+//     再取り込み) を知っているのは呼び出し側 (Editor / Runtime) ではなく、版数を
+//     持っている ResourceManager と AssetManager。呼び出し側に «忘れずに呼ぶ» を
+//     期待すると、実際に忘れて «UI の .mat を編集しても再起動まで反映されない» が
+//     長く残った。入口で版数を突き合わせて、自分で捨てる。
+void SyncCacheGenerations(UISystemContext& ctx, renderer::ResourceManager& resources)
+{
+    const std::uint64_t resetVersion    = resources.GetResetVersion();
+    const int           assetGeneration = asset::AssetManager::GetAssetGeneration();
+
+    if (ctx.cachedResetVersion != resetVersion) {
+        ctx.cachedResetVersion    = resetVersion;
+        ctx.cachedAssetGeneration = assetGeneration;
+        // リセット後のハンドルは実体を失っている。返しにいかず控えだけ捨てる。
+        UISystemFlushCache(ctx, nullptr);
+        // EnsureInit が作ったシェーダー・PSO・白テクスチャも同じ世代のもの。
+        // 作り直させないと、以降ずっと死んだハンドルで描き続ける。
+        ctx.initialized = false;
+        return;
+    }
+
+    if (ctx.cachedAssetGeneration != assetGeneration) {
+        ctx.cachedAssetGeneration = assetGeneration;
+        // WHY マテリアルだけか: フォントアトラスは .ttf / .fnt を直接読んでおり
+        //     AssetManager のストアに載っていない。どのアセットが変わっても版数は動くので、
+        //     ここでアトラスまで捨てると «無関係な .png を保存しただけ» で
+        //     動的 SDF の焼き直しが走る (体感できるほど止まる)。
+        ReleaseMaterialCache(ctx, &resources);
+    }
+}
+
 // ── UISystemContext 初期化 ────────────────────────────────────────────────────
 void EnsureInit(UISystemContext& ctx, renderer::ResourceManager& resources)
 {
@@ -474,8 +528,9 @@ void EnsureInit(UISystemContext& ctx, renderer::ResourceManager& resources)
         renderer::DepthMode::DEPTH_ON
     });
 
-    static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
-    ctx.whiteTexture = resources.CreateTexture(kWhite, 1, 1);
+    // 共有の 1x1 白を借りる。ここで作ると、コンテキストの数だけ・デバイスリセットの
+    // 数だけ «誰も返さない 1 枚» が増える。
+    ctx.whiteTexture = resources.GetWhiteTexture();
 
     if (!ctx.shader.IsValid() || !ctx.textShader.IsValid() || !ctx.constants.IsValid() ||
         !ctx.pso.IsValid() || !ctx.worldPso.IsValid() || !ctx.whiteTexture.IsValid()) {
@@ -3365,6 +3420,20 @@ void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePat
     ctx.defaultFontPath = basePath;
 }
 
+void UISystemReleaseGpuResources(UISystemContext& ctx, renderer::ResourceManager& resources)
+{
+    const auto release = [&resources](auto& pool) {
+        for (auto& handle : pool)
+            if (handle.IsValid()) resources.Release(handle);
+        pool.clear();
+    };
+    release(ctx.imageVertexBuffers);
+    release(ctx.textVertexBuffers);
+    ctx.imageVertexCursor = 0;
+    ctx.textVertexCursor  = 0;
+    ctx.lastResetFrame    = ~std::uint64_t{ 0 };
+}
+
 bool UIPointerOverUI()
 {
     // WHY フレーム番号で照合するか: UI が回っていないフレーム (Play 前・UI の無い
@@ -3384,14 +3453,12 @@ std::size_t UITextVisibleLength(const std::string& text, bool richText)
     return count;
 }
 
-void UISystemFlushCache(UISystemContext& ctx)
+void UISystemFlushCache(UISystemContext& ctx, renderer::ResourceManager* resources)
 {
-    // WHY: シーン破棄時・アセットリロード時に呼び出して、古い FontAtlas テクスチャハンドルが
-    //      破棄済み ResourceManager を参照し続けるのを防ぐ。
+    ReleaseMaterialCache(ctx, resources);
+    // アトラスのページは ~FontAtlas が ResourceManager::Active() へ返す。
+    // リセット後の古いハンドルは世代が合わず、返しても何も起きない (安全に空振りする)。
     ctx.fontAtlasCache.clear();
-    // マテリアルも同じ理由で捨てる。加えて、.mat やシェーダーを編集したときに
-    // ここを通ることで反映される (解決結果は失敗も含めてキャッシュしているため)。
-    ctx.materialCache.clear();
     // 子リストの作業領域は破棄済み GameObject を指したままになりうる。
     // 中身だけ捨てて、確保済みの容量は次のシーンでそのまま使い回す。
     for (auto& children : ctx.childScratch) children.clear();
@@ -3410,6 +3477,7 @@ void UISystem(Scene& scene,
               const math::Matrix4& viewProjection,
               UIRenderTargetView targetView)
 {
+    SyncCacheGenerations(ctx, resources);
     EnsureInit(ctx, resources);
     BeginUIFrame(ctx);
 
@@ -3447,6 +3515,7 @@ void UISelectionMaskSystem(Scene& scene,
 {
     if (!isSelected) return;
 
+    SyncCacheGenerations(ctx, resources);
     EnsureInit(ctx, resources);
     BeginUIFrame(ctx);
 

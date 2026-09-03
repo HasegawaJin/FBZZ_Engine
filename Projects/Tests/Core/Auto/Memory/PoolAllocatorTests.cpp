@@ -2,13 +2,16 @@
 /// @brief   PoolAllocator の固定ブロック再利用契約を自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/PoolAllocator.hpp>
 
 namespace fbzz::tests {
 
-TEST(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
+class PoolAllocatorTest : public testkit::EngineFixture {};
+
+TEST_F(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
 {
     core::PoolAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(32, 3));
@@ -23,7 +26,7 @@ TEST(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
     allocator.Shutdown();
 }
 
-TEST(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
+TEST_F(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
 {
     core::PoolAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(32, 2));
@@ -49,7 +52,7 @@ TEST(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
 //
 // NOTE: blockSize を超える要求は Allocate 内の assert が先に止める。Development 構成は
 //       NDEBUG を定義しない (アサート有効) ため、その経路はテストから踏めない。
-TEST(PoolAllocatorTest, AcceptsAnyRequestThatFitsInTheBlock)
+TEST_F(PoolAllocatorTest, AcceptsAnyRequestThatFitsInTheBlock)
 {
     core::PoolAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(32, 2));

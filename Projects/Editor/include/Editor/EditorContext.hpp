@@ -27,7 +27,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; class ProjectRuntime; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; class MemoryLeakDiff; }
 
 namespace fbzz::editor {
 
@@ -101,6 +101,8 @@ struct EditorContext {
     renderer::IImGuiRenderer* imguiRenderer = nullptr;
     renderer::ResourceManager* resources = nullptr;
     core::MemorySystem* memorySystem = nullptr;
+    // Renderer リソースのリーク差分。EditorApp が所有し、Analysis パネルが読む。
+    MemoryLeakDiff*     memoryLeakDiff = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
     std::string       engineRoot;          // GameHubが選択したimmutable SDK root (cmake configureへ渡す)
@@ -366,6 +368,9 @@ struct EditorContext {
     // 力場の影響体積とエミッター発生形状のワイヤー表示。
     // シーンへ直接置いた ParticleForceField / ParticleEmitter にも効く。
     bool showVFXGizmos = false;
+    // ラグドールの剛体・可動域・接触点。飽和した関節が赤く出る。
+    // 常時出すと骨の絵が線で埋まるので、可動域とサーボを詰めるときだけ点ける。
+    bool showRagdoll   = false;
     bool showLightRange  = true;
     bool showSkeleton    = false;
     // Scene View で CPU ソフトウェアオクルージョンカリングを効かせるか。

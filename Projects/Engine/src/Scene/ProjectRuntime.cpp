@@ -105,6 +105,11 @@ void ProjectRuntime::Shutdown()
     }
     m_sceneManager.SetSimulating(false);
     m_sceneManager.SetPlaying(false);
+
+    // m_gameUICtx は Play セッションごとに作り直される。抱えている頂点バッファは
+    // ResourceHandle なのでデストラクタでは返せず、ここで返さないと往復のたびに残る。
+    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+        UISystemReleaseGpuResources(m_gameUICtx, *resources);
 }
 
 } // namespace fbzz::scene

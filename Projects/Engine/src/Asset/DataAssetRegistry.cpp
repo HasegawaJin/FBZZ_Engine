@@ -3,14 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 ///
-/// 値型の TOML 変換は util::TomlWrite/ReadReflector (Engine/Util/TomlReflector.hpp) を使う。
+/// 値型の TOML 変換は util::TomlWrite/ReadReflector (Engine/Scene/TomlReflector.hpp) を使う。
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/Script.hpp>           // scene::IReflector / DataAssetRef
 #include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/TomlReflector.hpp>
+#include <Engine/Scene/TomlReflector.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>

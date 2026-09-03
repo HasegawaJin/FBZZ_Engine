@@ -4,7 +4,7 @@
 /// @date    2026-06-23
 #include <Engine/Asset/IblImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

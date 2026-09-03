@@ -80,7 +80,8 @@ namespace fbzz::physics
     float SolvePositional(RigidBody* a, RigidBody* b,
                           const math::Vector3& rA, const math::Vector3& rB,
                           const math::Vector3& correction,
-                          float compliance, float h, float& lambda)
+                          float compliance, float h, float& lambda,
+                          float maxLambda)
     {
         const float violation = correction.Length();
         if (violation <= kMinViolation || h <= 0.0f) return 0.0f;
@@ -90,8 +91,18 @@ namespace fbzz::physics
         if (wSum <= kMinInverseMass) return 0.0f;
 
         const float alphaTilde = compliance / (h * h);
-        const float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
+        float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
+
+        // SolveAngular と同じく «蓄積した λ» に掛ける。摩擦は λ が上限に当たった時点で
+        // 滑り出す ─ 差分に掛けると substep が細かいほど強い摩擦になってしまう。
+        if (maxLambda > 0.0f) {
+            float clamped = lambda + deltaLambda;
+            clamped = clamped >  maxLambda ?  maxLambda : clamped;
+            clamped = clamped < -maxLambda ? -maxLambda : clamped;
+            deltaLambda = clamped - lambda;
+        }
         lambda += deltaLambda;
+        if (deltaLambda == 0.0f) return 0.0f;
 
         const math::Vector3 p = n * deltaLambda;
         ApplyPositionalImpulse(a, rA, p);
@@ -152,6 +163,34 @@ namespace fbzz::physics
         const math::Vector3 p = n * impulse;
         if (a) a->SetAngularVelocity(a->GetAngularVelocity() - a->ApplyInvInertia(p));
         if (b) b->SetAngularVelocity(b->GetAngularVelocity() + b->ApplyInvInertia(p));
+    }
+
+    void ApplyVelocityChangeAtPoint(RigidBody* a, RigidBody* b,
+                                    const math::Vector3& rA, const math::Vector3& rB,
+                                    const math::Vector3& deltaV,
+                                    float maxImpulse)
+    {
+        const float magnitude = deltaV.Length();
+        if (magnitude <= kMinViolation) return;
+
+        const math::Vector3 n = deltaV * (1.0f / magnitude);
+        const float wSum = GeneralizedInverseMass(a, rA, n) + GeneralizedInverseMass(b, rB, n);
+        if (wSum <= kMinInverseMass) return;
+
+        float impulse = magnitude / wSum;
+        if (maxImpulse > 0.0f && impulse > maxImpulse) impulse = maxImpulse;
+
+        const math::Vector3 p = n * impulse;
+        if (a) {
+            a->SetVelocity(a->GetVelocity() - p * a->GetInvMass());
+            a->SetAngularVelocity(a->GetAngularVelocity() -
+                                  a->ApplyInvInertia(math::Vector3::Cross(rA, p)));
+        }
+        if (b) {
+            b->SetVelocity(b->GetVelocity() + p * b->GetInvMass());
+            b->SetAngularVelocity(b->GetAngularVelocity() +
+                                  b->ApplyInvInertia(math::Vector3::Cross(rB, p)));
+        }
     }
 
     math::Vector3 RotationVector(const math::Quaternion& q)

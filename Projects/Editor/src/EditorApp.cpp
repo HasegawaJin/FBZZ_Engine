@@ -409,6 +409,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_ctx.resources   = &resources;
     auto& application = core::Application::Get();
     m_ctx.memorySystem = &application.GetMemorySystem();
+    m_ctx.memoryLeakDiff = &m_memoryLeakDiff;
     // EditorはApplication所有とは別のProjectRuntimeを更新するため、音響を明示的に接続する。
     m_runtime.GetSceneManager().SetAudioManager(application.GetAudioManager());
     m_terrainTool     = std::make_unique<TerrainTool>();
@@ -639,6 +640,7 @@ void EditorApp::Shutdown()
     m_settings.gizmoPivot         = static_cast<int>(m_ctx.gizmoPivot);
     m_settings.showLightRange     = m_ctx.showLightRange;
     m_settings.showVFXGizmos      = m_ctx.showVFXGizmos;
+    m_settings.showRagdoll        = m_ctx.showRagdoll;
     m_settings.showSkeleton       = m_ctx.showSkeleton;
     m_settings.showStats          = m_ctx.showStats;
     m_settings.sceneViewOcclusionCulling = m_ctx.sceneViewOcclusionCulling;
@@ -790,6 +792,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_ctx.gizmoPivot         = static_cast<EditorContext::GizmoPivot>(std::clamp(m_settings.gizmoPivot, 0, 1));
         m_ctx.showLightRange     = m_settings.showLightRange;
         m_ctx.showVFXGizmos      = m_settings.showVFXGizmos;
+        m_ctx.showRagdoll        = m_settings.showRagdoll;
         m_ctx.showSkeleton       = m_settings.showSkeleton;
         m_ctx.showStats          = m_settings.showStats;
         m_ctx.sceneViewOcclusionCulling = m_settings.sceneViewOcclusionCulling;
@@ -1746,7 +1749,13 @@ void EditorApp::OnUpdate(float dt)
             }
             m_navMeshPlayCache.clear();
         }
+
+        // 復元したシーンがリソースを作り直し終えるまで数フレーム待ってから数える。
+        m_memoryLeakDiff.ScheduleCompare(3, "Play -> Stop");
     }
+
+    if (m_ctx.resources != nullptr)
+        static_cast<void>(m_memoryLeakDiff.Tick(*m_ctx.resources));
 
     if (!playMode->IsPlaying()) {
         m_debugCamera.moveSpeed = m_ctx.cameraSpeed;
@@ -2018,6 +2027,7 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         sceneRenderSettings.showGrid        = m_ctx.showGrid;
         sceneRenderSettings.showLightRange  = m_ctx.showLightRange;
         sceneRenderSettings.showVFXGizmos   = m_ctx.showVFXGizmos;
+        sceneRenderSettings.showRagdoll     = m_ctx.showRagdoll;
         sceneRenderSettings.showConstraints = sceneRenderSettings.showColliders;
         if (m_playMode.IsPlaying())
             sceneRenderSettings.showNavMesh = false;

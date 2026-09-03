@@ -4,10 +4,9 @@
 /// @date    2026-05-22
 ///
 /// IRenderer の非公開生成 API を呼び、ResourceHandle と実体を対応付ける。
-/// 上位システムが shared_ptr を直接保持しないための境界。
+/// 実体の所有はここ 1 か所に集約し、上位システムはハンドルだけを持つ。
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Renderer/AssetPathService.hpp>
 #include <cstdint>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/IBuffer.hpp>
@@ -19,6 +18,7 @@
 #include <Engine/Renderer/IStructuredBuffer.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Time.hpp>
 #include <algorithm>
 #include <cassert>
 
@@ -30,11 +30,9 @@ ResourceManager* s_activeResourceManager = nullptr;
 // Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
 std::string TextureCacheKey(std::string_view path)
 {
-    std::string key;
-    std::string spriteName;
     // Sprite参照はGPU上では親Textureを共有する。サブアセット名をキャッシュキーへ
     // 含めると同じ画像を重複ロードするため、ここで親パスへ正規化する。
-    (void)asset::ParseSpriteReference(path, key, spriteName);
+    std::string key = NormalizeTextureKey(path);
     std::replace(key.begin(), key.end(), '\\', '/');
     return key;
 }
@@ -62,8 +60,10 @@ ResourceManager::ResourceManager(IRenderer& renderer)
 
 ResourceManager::~ResourceManager()
 {
-    ReleaseOwnedResourcesForShutdown();
+    // WHY 解放より先に数えるか: ReleaseOwnedForShutdown() は台帳ごと畳むので、
+    //     後で数えると常に 0 になる (以前はここが逆で、報告が出ることは無かった)。
     LogLiveDebugResources();
+    ReleaseOwnedResourcesForShutdown();
 
     if (s_activeResourceManager == this)
         s_activeResourceManager = nullptr;
@@ -133,9 +133,6 @@ void ResourceManager::Reset()
     // WHY: デバイスロスト復帰後に旧ネイティブリソースへ触るとクラッシュするため、
     //      RenderSystem 側は GetResetVersion() の変化を検知して static handle を再作成する。
     ReleaseOwnedResourcesForShutdown();
-    // 追跡していたハンドルも一緒に無効になる。返しにいくと «リセット後に作られた
-    // 別の実体» を巻き添えにするので、控えだけ捨てる。
-    m_trackedMeshes.clear();
     ++m_resetVersion;
     FBZZ_LOG_INFO("ResourceManager: reset renderer resources (version=%llu)",
                   static_cast<unsigned long long>(m_resetVersion));
@@ -151,8 +148,7 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     // WHY: .mat / Scene は Assets/ 起点の相対パスを保存するが、DX11Texture は実ファイルパスを要求する。
     //      ResourceManager が AssetManager と同じ解決規則を通すことで、呼び出し側ごとの cwd 依存をなくす。
     std::string sourcePath;
-    const std::string resolvedPath = asset::AssetManager::ResolveAssetPath(key);
-    if (!asset::TexDescSerializer::ResolveSourcePath(resolvedPath, sourcePath)) {
+    if (!ResolveTextureSource(ResolveAssetPath(key), sourcePath)) {
         FBZZ_LOG_ERROR("Texture path resolution failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
     }
@@ -177,8 +173,7 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
         return LoadTexture(path);
 
     std::string sourcePath;
-    const std::string resolvedPath = asset::AssetManager::ResolveAssetPath(key);
-    if (!asset::TexDescSerializer::ResolveSourcePath(resolvedPath, sourcePath)) {
+    if (!ResolveTextureSource(ResolveAssetPath(key), sourcePath)) {
         FBZZ_LOG_ERROR("ReloadTexture path resolution failed: %s", key.c_str());
         return it->second;
     }
@@ -216,7 +211,8 @@ std::size_t ResourceManager::EvictTexture(std::string_view path)
     return evicted;
 }
 
-ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height)
+ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height,
+                                                          Where where)
 {
     auto texture = m_renderer.CreateNativeTextureFromData(rgba, width, height);
     if (!texture) {
@@ -226,11 +222,21 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, u
     // WHY サイズを先に控えるか: 引数の評価順は未規定で、std::move した後に
     //     *texture を読むと空のポインタを参照しうる。
     const std::size_t bytes = EstimateTextureBytes(*texture);
-    return m_textures.Insert(std::move(texture), bytes, "TextureFromData", __FILE__, __LINE__);
+    return m_textures.Insert(std::move(texture), bytes, "TextureFromData", where.file_name(), static_cast<int>(where.line()));
+}
+
+ResourceHandle<TextureTag> ResourceManager::GetWhiteTexture()
+{
+    // Reset() はスロットの世代を進めるため、控えたハンドルの生死で作り直しを判断する。
+    if (Get(m_whiteTexture) == nullptr) {
+        static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
+        m_whiteTexture = CreateTexture(kWhite, 1, 1);
+    }
+    return m_whiteTexture;
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateTexture3D(
-    const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth)
+    const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth, Where where)
 {
     auto texture = m_renderer.CreateNativeTexture3DFromData(rgba, width, height, depth);
     if (!texture) {
@@ -238,42 +244,45 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture3D(
         return ResourceHandle<TextureTag>::Null();
     }
     const std::size_t bytes = EstimateTextureBytes(*texture);
-    return m_textures.Insert(std::move(texture), bytes, "Texture3DFromData", __FILE__, __LINE__);
+    return m_textures.Insert(std::move(texture), bytes, "Texture3DFromData", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride)
+ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride,
+                                                              Where where)
 {
     return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride), bytes,
-                            "VertexBuffer", __FILE__, __LINE__);
+                            "VertexBuffer", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<BufferTag> ResourceManager::CreateGpuWritableVertexBuffer(size_t bytes, uint32_t stride)
+ResourceHandle<BufferTag> ResourceManager::CreateGpuWritableVertexBuffer(size_t bytes, uint32_t stride,
+                                                                         Where where)
 {
     return m_buffers.Insert(m_renderer.CreateNativeGpuWritableVertexBuffer(bytes, stride), bytes,
-                            "GpuWritableVertexBuffer", __FILE__, __LINE__);
+                            "GpuWritableVertexBuffer", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count)
+ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count, Where where)
 {
     return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count),
                             static_cast<std::size_t>(count) * sizeof(uint32_t),
-                            "IndexBuffer", __FILE__, __LINE__);
+                            "IndexBuffer", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t sizeBytes)
+ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t sizeBytes, Where where)
 {
     return m_constantBuffers.Insert(m_renderer.CreateNativeConstantBuffer(sizeBytes), sizeBytes,
-                                    "ConstantBuffer", __FILE__, __LINE__);
+                                    "ConstantBuffer", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const PipelineStateDesc& desc)
+ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const PipelineStateDesc& desc, Where where)
 {
     // PSO は状態の束で、専有メモリと呼べる実体を持たない。
     return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc), 0,
-                                   "PipelineState", __FILE__, __LINE__);
+                                   "PipelineState", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
+ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount,
+                                                                    Where where)
 {
     auto rt = m_renderer.CreateNativeRenderTarget(width, height, colorCount);
     if (!rt) return ResourceHandle<RenderTargetTag>::Null();
@@ -287,7 +296,7 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
             RenderTargetTextureKind::Color);
         const std::size_t colorBytes = colorTexture ? EstimateTextureBytes(*colorTexture) : 0;
         colors.push_back(m_textures.Insert(std::move(colorTexture), colorBytes,
-                                           "RenderTargetColorTexture", __FILE__, __LINE__));
+                                           "RenderTargetColorTexture", where.file_name(), static_cast<int>(where.line())));
     }
 
     auto depthTexture = m_renderer.CreateNativeTextureFromRenderTarget(
@@ -297,19 +306,20 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
     const std::size_t depthBytes = depthTexture ? EstimateTextureBytes(*depthTexture) : 0;
     ResourceHandle<TextureTag> depth =
         m_textures.Insert(std::move(depthTexture), depthBytes,
-                          "RenderTargetDepthTexture", __FILE__, __LINE__);
+                          "RenderTargetDepthTexture", where.file_name(), static_cast<int>(where.line()));
 
     // WHY 0 か: RT のメモリは上で登録した色 / 深度テクスチャ側に計上済み。
     //          ここでも数えると同じ実体を二重に積む。
     ResourceHandle<RenderTargetTag> handle =
-        m_renderTargets.Insert(std::move(rt), 0, "RenderTarget", __FILE__, __LINE__);
+        m_renderTargets.Insert(std::move(rt), 0, "RenderTarget", where.file_name(), static_cast<int>(where.line()));
     const uint64_t key = Key(handle);
     m_renderTargetColors[key] = std::move(colors);
     m_renderTargetDepths[key] = depth;
     return handle;
 }
 
-ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint32_t size, uint32_t mipCount)
+ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint32_t size, uint32_t mipCount,
+                                                                           Where where)
 {
     auto rt = m_renderer.CreateNativeCubemapRenderTarget(size, mipCount);
     if (!rt) return ResourceHandle<RenderTargetTag>::Null();
@@ -323,11 +333,11 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint3
         // 6 面ぶん。GetWidth/GetHeight は 1 面の寸法しか返さない。
         const std::size_t cubeBytes = EstimateTextureBytes(*cubeTex) * 6u;
         colors.push_back(m_textures.Insert(std::move(cubeTex), cubeBytes,
-                                           "CubemapRenderTargetTexture", __FILE__, __LINE__));
+                                           "CubemapRenderTargetTexture", where.file_name(), static_cast<int>(where.line())));
     }
 
     ResourceHandle<RenderTargetTag> handle =
-        m_renderTargets.Insert(std::move(rt), 0, "CubemapRenderTarget", __FILE__, __LINE__);
+        m_renderTargets.Insert(std::move(rt), 0, "CubemapRenderTarget", where.file_name(), static_cast<int>(where.line()));
     m_renderTargetColors[Key(handle)] = std::move(colors);
     return handle;
 }
@@ -338,15 +348,15 @@ ResourceHandle<TextureTag> ResourceManager::GetCubemapTexture(ResourceHandle<Ren
     return GetColorTexture(rt, 0);
 }
 
-ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height)
+ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height, Where where)
 {
     return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height),
                              static_cast<std::size_t>(width) * height * 8u, // RGBA16F
-                             "ComputeTexture", __FILE__, __LINE__);
+                             "ComputeTexture", where.file_name(), static_cast<int>(where.line()));
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
-    uint32_t width, uint32_t height, uint32_t depth)
+    uint32_t width, uint32_t height, uint32_t depth, Where where)
 {
     auto texture = m_renderer.CreateNativeComputeTexture3D(width, height, depth);
     if (!texture) {
@@ -355,11 +365,11 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
         return ResourceHandle<TextureTag>::Null();
     }
     const std::size_t bytes = EstimateTextureBytes(*texture, 8u); // RGBA16F
-    return m_textures.Insert(std::move(texture), bytes, "ComputeTexture3D", __FILE__, __LINE__);
+    return m_textures.Insert(std::move(texture), bytes, "ComputeTexture3D", where.file_name(), static_cast<int>(where.line()));
 }
 
 ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
-    uint32_t width, uint32_t height, DynamicTextureFormat format)
+    uint32_t width, uint32_t height, DynamicTextureFormat format, Where where)
 {
     auto texture = m_renderer.CreateNativeDynamicTexture(width, height, format);
     if (!texture) {
@@ -370,17 +380,18 @@ ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
     }
     const std::size_t bytes =
         EstimateTextureBytes(*texture, format == DynamicTextureFormat::R8 ? 1u : 4u);
-    return m_textures.Insert(std::move(texture), bytes, "DynamicTexture", __FILE__, __LINE__);
+    return m_textures.Insert(std::move(texture), bytes, "DynamicTexture", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<TextureTag> ResourceManager::RegisterTexture(std::unique_ptr<ITexture> texture)
+ResourceHandle<TextureTag> ResourceManager::RegisterTexture(std::unique_ptr<ITexture> texture, Where where)
 {
     if (!texture) return ResourceHandle<TextureTag>::Null();
     const std::size_t bytes = EstimateTextureBytes(*texture);
-    return m_textures.Insert(std::move(texture), bytes, "AdoptedTexture", __FILE__, __LINE__);
+    return m_textures.Insert(std::move(texture), bytes, "AdoptedTexture", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride,
+                                                                            Where where)
 {
     auto sb = m_renderer.CreateNativeStructuredBuffer(data, elementCount, stride);
     if (!sb) {
@@ -388,11 +399,11 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(cons
         return ResourceHandle<StructuredBufferTag>::Null();
     }
     return m_structuredBuffers.Insert(std::move(sb), static_cast<std::size_t>(elementCount) * stride,
-                                      "StructuredBuffer", __FILE__, __LINE__);
+                                      "StructuredBuffer", where.file_name(), static_cast<int>(where.line()));
 }
 
 ResourceHandle<StructuredBufferTag> ResourceManager::CreateGpuLocalStructuredBuffer(
-    const void* data, uint32_t elementCount, uint32_t stride)
+    const void* data, uint32_t elementCount, uint32_t stride, Where where)
 {
     auto sb = m_renderer.CreateNativeGpuLocalStructuredBuffer(data, elementCount, stride);
     if (!sb) {
@@ -401,10 +412,11 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateGpuLocalStructuredBuf
         return ResourceHandle<StructuredBufferTag>::Null();
     }
     return m_structuredBuffers.Insert(std::move(sb), static_cast<std::size_t>(elementCount) * stride,
-                                      "GpuLocalStructuredBuffer", __FILE__, __LINE__);
+                                      "GpuLocalStructuredBuffer", where.file_name(), static_cast<int>(where.line()));
 }
 
-ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride,
+                                                                              Where where)
 {
     auto sb = m_renderer.CreateNativeRWStructuredBuffer(data, elementCount, stride);
     if (!sb) {
@@ -412,7 +424,7 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(co
         return ResourceHandle<StructuredBufferTag>::Null();
     }
     return m_structuredBuffers.Insert(std::move(sb), static_cast<std::size_t>(elementCount) * stride,
-                                      "RWStructuredBuffer", __FILE__, __LINE__);
+                                      "RWStructuredBuffer", where.file_name(), static_cast<int>(where.line()));
 }
 
 IShader* ResourceManager::Get(ResourceHandle<ShaderTag> h) { return m_shaders.Get(h); }
@@ -503,70 +515,117 @@ void ResourceManager::ReleaseOwnedResourcesForShutdown()
     m_shaders.ReleaseOwnedForShutdown();
 }
 
+namespace {
+
+struct OriginTotal {
+    const char* allocatorName = "Unknown";
+    const char* file = "Unknown";
+    int         line = 0;
+    std::size_t count = 0;
+    std::size_t bytes = 0;
+};
+
+// 生存リソースを «発生位置ごとの本数» に畳んで、多い順に返す。
+//
+// WHY 1 件ずつ並べないか: プロセス寿命のキャッシュ (シェーダー / テクスチャ / 既定メッシュ) は
+//     最後まで生きているのが正しく、生の一覧では数百行のうちどれが漏れなのか読めない。
+//     同じ file:line が何本あるかで並べれば «撒いた数だけ増えているもの» が一目で分かる。
+std::vector<OriginTotal> SummarizeByOrigin(const std::vector<core::AllocationInfo>& live)
+{
+    std::vector<OriginTotal> totals;
+    for (const core::AllocationInfo& info : live) {
+        const auto found = std::find_if(totals.begin(), totals.end(), [&](const OriginTotal& t) {
+            return t.line == info.line && t.file == info.file && t.allocatorName == info.allocatorName;
+        });
+        OriginTotal& total = (found != totals.end())
+            ? *found
+            : totals.emplace_back(OriginTotal{ info.allocatorName, info.file, info.line, 0, 0 });
+        ++total.count;
+        total.bytes += info.size;
+    }
+    std::sort(totals.begin(), totals.end(), [](const OriginTotal& a, const OriginTotal& b) {
+        return a.count > b.count;
+    });
+    return totals;
+}
+
+void LogOriginTotals(const std::vector<OriginTotal>& totals, std::size_t maxRows)
+{
+    const std::size_t reportCount = (std::min)(totals.size(), maxRows);
+    for (std::size_t i = 0; i < reportCount; ++i) {
+        const OriginTotal& total = totals[i];
+        FBZZ_LOG_WARN("  x%zu %s %zu bytes (%s:%d)",
+                      total.count, total.allocatorName, total.bytes, total.file, total.line);
+    }
+    if (totals.size() > reportCount) {
+        FBZZ_LOG_WARN("  ... %zu more origins", totals.size() - reportCount);
+    }
+}
+
+} // namespace
+
 void ResourceManager::LogLiveDebugResources() const
 {
-    const std::size_t liveCount = GetLiveDebugResourceCount();
-    if (liveCount == 0) {
+    std::vector<core::AllocationInfo> live;
+    CollectLiveDebugResources(live);
+    if (live.empty()) {
         return;
     }
 
-    FBZZ_LOG_WARN("ResourceManager shutdown: %zu externally-held renderer resources remain", liveCount);
+    FBZZ_LOG_WARN("ResourceManager shutdown: %zu renderer resources still held (%zu bytes) — "
+                  "process-lifetime caches are expected here; look for one origin with an unusual count",
+                  live.size(), GetLiveDebugResourceBytes());
+    LogOriginTotals(SummarizeByOrigin(live), 16);
+}
 
-    const std::size_t reportCount = (std::min)(liveCount, static_cast<std::size_t>(16));
-    for (std::size_t i = 0; i < reportCount; ++i) {
-        const core::AllocationInfo* info = GetLiveDebugResource(i);
-        if (info == nullptr) {
-            continue;
-        }
+std::size_t ResourceManager::GetLiveDebugResourceBytes() const
+{
+    return m_shaders.GetLiveDebugBytes()
+         + m_textures.GetLiveDebugBytes()
+         + m_buffers.GetLiveDebugBytes()
+         + m_constantBuffers.GetLiveDebugBytes()
+         + m_pipelineStates.GetLiveDebugBytes()
+         + m_renderTargets.GetLiveDebugBytes()
+         + m_structuredBuffers.GetLiveDebugBytes();
+}
 
-        FBZZ_LOG_WARN(
-            "  #%llu %s %zu bytes (%s:%d)",
-            static_cast<unsigned long long>(info->allocationId),
-            info->allocatorName,
-            info->size,
-            info->file,
-            info->line);
+void ResourceManager::TickLeakWatchdog()
+{
+#if defined(FBZZ_GPU_VALIDATION)
+    // 連続で増え続けた «フレーム数» のしきい値。まばらな生成 (シーン読み込み・
+    // プールの立ち上がり) で鳴らないよう、数秒ぶん増え続けたときだけ疑う。
+    constexpr uint32_t kGrowthFrames = 180;
+    // 同じ実行で何度も出しても読み切れない。上限を決めて黙る。
+    constexpr uint32_t kMaxReports = 3;
+
+    // エディタは 1 フレームで Scene / Game の 2 面を描く。フレームが変わったときだけ数える。
+    if (m_watchdogFrame == Time::frameCount)
+        return;
+    m_watchdogFrame = Time::frameCount;
+
+    const std::size_t bytes = GetLiveDebugResourceBytes();
+    if (bytes > m_watchdogLastBytes) {
+        ++m_watchdogGrowthFrames;
+    } else {
+        m_watchdogGrowthFrames = 0;
     }
+    m_watchdogLastBytes = bytes;
 
-    if (liveCount > reportCount) {
-        FBZZ_LOG_WARN("  ... %zu more externally-held renderer resources", liveCount - reportCount);
-    }
+    if (m_watchdogGrowthFrames < kGrowthFrames || m_watchdogReportCount >= kMaxReports)
+        return;
+    m_watchdogGrowthFrames = 0;
+    ++m_watchdogReportCount;
+
+    std::vector<core::AllocationInfo> live;
+    CollectLiveDebugResources(live);
+    FBZZ_LOG_WARN("ResourceManager: renderer resources grew for %u consecutive frames "
+                  "(now %zu resources / %zu bytes). 発生位置の多い順:",
+                  kGrowthFrames, live.size(), bytes);
+    LogOriginTotals(SummarizeByOrigin(live), 8);
+#endif
 }
 
 // ── Mesh のバッファの寿命 ─────────────────────────────────────────────────────
-
-// WHY ReleaseMeshBuffers(Mesh&) と分かれているか: こちらが呼ばれるのは «Mesh の実体が
-// もう無い» ときで、Mesh を逆参照できない。控えておいたハンドルだけを頼りに返す。
-std::size_t ResourceManager::ReleaseTrackedMeshBuffers(TrackedMesh& tracked)
-{
-    std::size_t released = 0;
-    if (tracked.vertexBuffer.IsValid()) { Release(tracked.vertexBuffer); ++released; }
-    if (tracked.indexBuffer.IsValid())  { Release(tracked.indexBuffer);  ++released; }
-    tracked.vertexBuffer = {};
-    tracked.indexBuffer  = {};
-    return released;
-}
-
-void ResourceManager::TrackMeshBuffers(const std::shared_ptr<Mesh>& mesh)
-{
-    if (!mesh) return;
-
-    for (TrackedMesh& tracked : m_trackedMeshes) {
-        if (tracked.key != mesh.get()) continue;
-
-        // WHY 期限切れなら先に返すか: 同じ番地に別の Mesh が生まれることがある。
-        //     そのまま上書きすると、前の Mesh のバッファを返す機会が永久に失われる。
-        if (tracked.mesh.expired()) ReleaseTrackedMeshBuffers(tracked);
-
-        tracked.mesh         = mesh;
-        tracked.vertexBuffer = mesh->vertexBuffer;
-        tracked.indexBuffer  = mesh->indexBuffer;
-        return;
-    }
-
-    m_trackedMeshes.push_back(
-        TrackedMesh{ mesh.get(), mesh, mesh->vertexBuffer, mesh->indexBuffer });
-}
 
 std::size_t ResourceManager::ReleaseMeshBuffers(Mesh& mesh)
 {
@@ -575,22 +634,6 @@ std::size_t ResourceManager::ReleaseMeshBuffers(Mesh& mesh)
     if (mesh.indexBuffer.IsValid())  { Release(mesh.indexBuffer);  ++released; }
     mesh.vertexBuffer = {};
     mesh.indexBuffer  = {};
-    return released;
-}
-
-std::size_t ResourceManager::SweepOrphanedMeshBuffers()
-{
-    std::size_t released = 0;
-    for (std::size_t i = 0; i < m_trackedMeshes.size();) {
-        if (!m_trackedMeshes[i].mesh.expired()) {
-            ++i;
-            continue;
-        }
-        released += ReleaseTrackedMeshBuffers(m_trackedMeshes[i]);
-        // 順序に意味は無いので、末尾と入れ替えて縮める。
-        m_trackedMeshes[i] = m_trackedMeshes.back();
-        m_trackedMeshes.pop_back();
-    }
     return released;
 }
 
@@ -605,37 +648,20 @@ std::size_t ResourceManager::GetLiveDebugResourceCount() const
          + m_structuredBuffers.GetLiveDebugCount();
 }
 
-const core::AllocationInfo* ResourceManager::GetLiveDebugResource(std::size_t index) const
+void ResourceManager::CollectLiveDebugResources(std::vector<core::AllocationInfo>& out) const
 {
-    const std::size_t shaderCount = m_shaders.GetLiveDebugCount();
-    if (index < shaderCount) return m_shaders.GetLiveDebugInfo(index);
-    index -= shaderCount;
-
-    const std::size_t textureCount = m_textures.GetLiveDebugCount();
-    if (index < textureCount) return m_textures.GetLiveDebugInfo(index);
-    index -= textureCount;
-
-    const std::size_t bufferCount = m_buffers.GetLiveDebugCount();
-    if (index < bufferCount) return m_buffers.GetLiveDebugInfo(index);
-    index -= bufferCount;
-
-    const std::size_t constantBufferCount = m_constantBuffers.GetLiveDebugCount();
-    if (index < constantBufferCount) return m_constantBuffers.GetLiveDebugInfo(index);
-    index -= constantBufferCount;
-
-    const std::size_t pipelineStateCount = m_pipelineStates.GetLiveDebugCount();
-    if (index < pipelineStateCount) return m_pipelineStates.GetLiveDebugInfo(index);
-    index -= pipelineStateCount;
-
-    const std::size_t renderTargetCount = m_renderTargets.GetLiveDebugCount();
-    if (index < renderTargetCount) return m_renderTargets.GetLiveDebugInfo(index);
-    index -= renderTargetCount;
-
-    return m_structuredBuffers.GetLiveDebugInfo(index);
+    m_shaders.CollectLiveDebugInfo(out);
+    m_textures.CollectLiveDebugInfo(out);
+    m_buffers.CollectLiveDebugInfo(out);
+    m_constantBuffers.CollectLiveDebugInfo(out);
+    m_pipelineStates.CollectLiveDebugInfo(out);
+    m_renderTargets.CollectLiveDebugInfo(out);
+    m_structuredBuffers.CollectLiveDebugInfo(out);
 }
 
 bool SizedRenderTarget::Ensure(ResourceManager& resources,
-                               uint32_t width, uint32_t height, uint32_t colorCount)
+                               uint32_t width, uint32_t height, uint32_t colorCount,
+                               Where where)
 {
     const uint64_t resetVersion = resources.GetResetVersion();
     if (m_resetVersion != resetVersion) {
@@ -651,7 +677,7 @@ bool SizedRenderTarget::Ensure(ResourceManager& resources,
         return false;
 
     if (m_handle.IsValid()) resources.Release(m_handle);
-    m_handle     = resources.CreateRenderTarget(width, height, colorCount);
+    m_handle     = resources.CreateRenderTarget(width, height, colorCount, where);
     m_width      = width;
     m_height     = height;
     m_colorCount = colorCount;

@@ -12,6 +12,9 @@ namespace fbzz::physics
     namespace
     {
         constexpr float kMinAngle = 1.0e-6f;
+        // 診断で «可動域に当たっている» と報告する食い込み量 [rad] ≒ 0.6°。
+        // kMinAngle で報告すると数値誤差でほぼ常に true になり、切り分けに使えない。
+        constexpr float kReportAngle = 0.01f;
 
         float ClampToRange(float value, float low, float high)
         {
@@ -128,6 +131,7 @@ namespace fbzz::physics
         m_swingAngleY = swingVector.y;
         m_swingAngleZ = swingVector.z;
 
+        m_limited = false;
         if (!m_limits.enabled) return;
 
         // スイング: 軸ごとの超過分をまとめて 1 回の角度補正にする。厳密には Y と Z の
@@ -140,6 +144,8 @@ namespace fbzz::physics
         if (std::abs(excessY) > kMinAngle || std::abs(excessZ) > kMinAngle) {
             const math::Vector3 correction = parentFrame * math::Vector3{ 0.0f, excessY, excessZ };
             SolveAngular(m_child, m_parent, correction, m_limits.compliance, h, m_lambdaSwing);
+            m_limited = m_limited ||
+                        std::abs(excessY) > kReportAngle || std::abs(excessZ) > kReportAngle;
         }
 
         // ツイスト: スイングで傾いた «後» の骨の軸まわりに戻す。親フレームの X で回すと、
@@ -151,6 +157,7 @@ namespace fbzz::physics
                 (parentFrame * (swing * math::Vector3::RIGHT)).NormalizedOr(math::Vector3::RIGHT);
             SolveAngular(m_child, m_parent, axis * excessTwist,
                          m_limits.compliance, h, m_lambdaTwist);
+            m_limited = m_limited || std::abs(excessTwist) > kReportAngle;
         }
     }
 

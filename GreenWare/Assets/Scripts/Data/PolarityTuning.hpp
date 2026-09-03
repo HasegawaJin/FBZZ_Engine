@@ -41,18 +41,18 @@ public:
     // WHY 発生を最初に触る値と決めておくか: 近接の «当たらない» はほぼ全部ここが原因で、
     //     射程や角度を広げても直らない。振ってから判定が出るまでが遅いと、
     //     目で見えている間合いと実際に当たる間合いがずれる。
-    FBZZ_FIELD_RANGE(float, bladeStartup, 0.22f, "Startup", 0.0f, 0.5f)
+    FBZZ_FIELD_RANGE(float, bladeStartup, 0.12f, "Startup", 0.0f, 0.5f)
     FBZZ_TOOLTIP("振り始めてから判定が出るまで [秒]。手触りが決まらないときは最初にここ。"
                  "斬撃クリップの再生速度もここから導出されるので、"
                  "縮めればモーションも同じだけ速くなる")
     // WHY 最終段だけ別に持つか: 3 段目は «止めた» ことが手に返る段で、そこだけ
     //     振りかぶりが長い。1・2 段目と同じ発生にすると、最も大きい一撃が
     //     最も軽い絵になる。ノックバックを別に持っているのと同じ理由。
-    FBZZ_FIELD_RANGE(float, bladeFinisherStartup, 0.32f, "Startup (finisher)", 0.0f, 0.8f)
+    FBZZ_FIELD_RANGE(float, bladeFinisherStartup, 0.20f, "Startup (finisher)", 0.0f, 0.8f)
     FBZZ_TOOLTIP("最終段の発生 [秒]。長いほど溜めて見えるが、遅すぎると差し込まれる")
-    FBZZ_FIELD_RANGE(float, bladeRecovery, 0.30f, "Recovery", 0.02f, 1.0f)
+    FBZZ_FIELD_RANGE(float, bladeRecovery, 0.22f, "Recovery", 0.02f, 1.0f)
     FBZZ_TOOLTIP("単発で止めたときの硬直。連撃中との «差» が繋がっている感触の正体")
-    FBZZ_FIELD_RANGE(float, bladeComboRecovery, 0.12f, "Recovery (combo)", 0.02f, 1.0f)
+    FBZZ_FIELD_RANGE(float, bladeComboRecovery, 0.10f, "Recovery (combo)", 0.02f, 1.0f)
     FBZZ_FIELD_RANGE(float, bladeComboWindow, 0.45f, "Combo Window", 0.05f, 2.0f)
     FBZZ_TOOLTIP("次の入力を受け付ける猶予。長いと押しっぱなしで繋がる")
     FBZZ_FIELD_RANGE_INT(int, bladeComboLength, 3, "Combo Length", 1, 8)
@@ -74,9 +74,36 @@ public:
     //   «斬りたい方向» を決めているのはプレイヤーのカメラで、ロック対象へ向きを寄せるのは
     //   あくまで補助。どれだけ寄せるかは手触りの好みそのものなので、0 (完全に手動) から
     //   1 (必ず相手を向く) まで連続で選べる 1 つの値にする。
-    FBZZ_FIELD_RANGE(float, bladeAimAssist, 0.0f, "Aim Assist", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, bladeAimAssist, 0.45f, "Aim Assist", 0.0f, 1.0f)
     FBZZ_TOOLTIP("斬る向きをロック対象へどれだけ寄せるか。0 = カメラの正面そのまま (補正なし)、"
                  "1 = 必ず相手を向く")
+
+    // 踏み込み ─ ロックしている相手が射程の外なら、そこまで詰めながら斬る。
+    //
+    // WHY 要るか: 射程は 2.6m しかないので、相手が大きいほど «斬る → 離れる →
+    //     詰め直す» の «詰め直す» が毎回手作業になる。連撃が繋がる時間 (0.45 秒) は
+    //     詰め直すには短く、テンポはここで削られる。
+    //
+    // WHY 速度ではなく «届く距離» を上限に持つか: 速さだけを決めると、遠い相手ほど
+    //     長く滑って «吸い付く» になる。届く範囲を先に決めておけば、
+    //     外へ出た相手には «届かないものは届かない» で済む。
+    FBZZ_FIELD_RANGE(float, bladeDashRange, 6.0f, "Dash Range", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("射程の外に居るロック対象へ、この距離まで踏み込む。0 で踏み込まない")
+    FBZZ_FIELD_RANGE(float, bladeDashSpeed, 16.0f, "Dash Speed", 1.0f, 40.0f)
+    FBZZ_TOOLTIP("踏み込む速さ [m/s]。発生のあいだに届き切る速さでないと «振ってから寄る» になる")
+    // ボスの極と刃の極の突き合わせ。逆極なら打ち消し、同極なら弾かれる。
+    //
+    // WHY 同極を 0 にしないか: «斬っても何も起きない» は、この作品が一番長く抱えていた
+    //     問題そのもの。間違えた一振りにも数字が返れば «外したが無駄ではない» になり、
+    //     弾かれること自体が罰として立つ。0 にすると罰が «無反応» に化ける。
+    FBZZ_FIELD_RANGE(float, bladeSamePolarityScale, 0.25f, "Same Polarity x", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("ボスと同じ極の剣で斬ったときに通る割合。逆極なら 1.0 で、さらに極を打ち消す")
+    FBZZ_FIELD_RANGE(float, bladeBounceSpeed, 11.0f, "Bounce Speed", 0.0f, 30.0f)
+    FBZZ_TOOLTIP("同極で斬って弾かれる速さ [m/s]。0 で «弾かれない» (ダメージだけ減る)")
+
+    FBZZ_FIELD_RANGE(float, bladeDashDepth, 1.0f, "Dash Depth", 0.0f, 5.0f)
+    FBZZ_TOOLTIP("射程の縁ちょうどで止めず、このぶん内側まで踏み込む。"
+                 "0 だと «ぎりぎり届く» 位置で止まり、当たったり当たらなかったりする")
 
     // ── 溜め斬り ────────────────────────────────────────────────────────────
     //
@@ -96,7 +123,7 @@ public:
     FBZZ_FIELD_RANGE(float, bladeChargeFull, 0.75f, "Charge Time", 0.1f, 3.0f)
     FBZZ_TOOLTIP("溜めが始まってから満溜めになるまで [秒]。満溜め前に離しても溜め斬りは出る "
                  "(威力と範囲が溜め比で決まる)")
-    FBZZ_FIELD_RANGE(float, bladeChargedStartup, 0.30f, "Startup (charged)", 0.02f, 1.0f)
+    FBZZ_FIELD_RANGE(float, bladeChargedStartup, 0.22f, "Startup (charged)", 0.02f, 1.0f)
     FBZZ_TOOLTIP("溜め斬りの発生 [秒]。通常より長く、振り抜きの重さがここで決まる")
     FBZZ_FIELD_RANGE(float, bladeChargedRecovery, 0.45f, "Recovery (charged)", 0.02f, 1.5f)
     FBZZ_FIELD_RANGE(float, bladeChargedRangeScale, 1.8f, "Range x (charged)", 1.0f, 4.0f)

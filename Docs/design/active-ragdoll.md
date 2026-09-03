@@ -13,11 +13,11 @@
 
 ## 1. 現状と課題
 
-### 1.1 今あるもの
+### 1.1 置き換え前の実装 (〜M2b-1 / 2026-09-03 に撤去済み)
 
 [`RagdollComponent`](../../Projects/Engine/include/Engine/Scene/Components/RagdollComponent.hpp) /
 [`RagdollSystem`](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp) は、
-骨 1 本を質点 1 個とする Verlet + 距離拘束で組んである。
+骨 1 本を質点 1 個とする Verlet + 距離拘束で組んであった。
 
 | 要素 | 実装 |
 |---|---|
@@ -172,7 +172,7 @@ Math
 | 逆慣性テンソル | `m_invInertiaDiag` + `ApplyInvInertia()` が `R·(diag⊙(Rᵀv))` を正しく計算する |
 | 慣性の自動計算 | `SetInertiaFromCollider()` |
 | トルク | `ApplyTorque()` |
-| **点インパルス** | **無い**。`ApplyImpulse()` は重心のみ。`ApplyImpulseAtPoint(J, r)` を追加する (10 行) |
+| **点インパルス** | `ApplyImpulseAtPoint(J, worldPoint)` を追加済み (M4)。瓦礫へ反作用を返すのに使う |
 
 **関節**は新規。実装は [`XPBDJoint`](../../Projects/Physics/include/Physics/XPBDJoint.hpp)
 （可動域は `XPBDJointLimits`、ドライブは `XPBDJointDrive` に分けた）。関節フレームは
@@ -258,6 +258,19 @@ Scene 側 (`RagdollSystem`) の責務。現行の構造をほぼそのまま使�
 「毎フレーム目標を取り直す」は現行 Active の `RefreshRest` と同じ考え方で、
 **目標が位置ではなく相対回転になる**点だけが違う。
 
+### 4.4.1 根は繋ぎ止めが要る（当初の設計に抜けていた）
+
+関節は**隣の骨との相対**しか拘束しない。根の骨は何にも繋がっていないので、Active で
+走らせるとサーボが形を保ったまま全体が重力で落ちていく。質点系では「全質点を FK へ
+寄せる」筋力が根も引いていたので問題にならず、この差に気付いていなかった。
+
+倒れる数秒だけ走らせる分には見えないが、**立っている間ずっと走らせると胴が床下へ沈む**。
+[`XPBDPoseAnchor`](../../Projects/Physics/include/Physics/XPBDPoseAnchor.hpp) が
+根の剛体を FK の姿勢へ引き止める。完全固定にしないのは、固定すると押しても胴が動かず
+「押されて沈む」が手足のたわみだけになるため ─ サーボと同じく compliance と力の上限を
+持たせ、力も自重比 (`rootAnchor`) で持つ。押された瞬間は `impactSlack` が繋ぎ止めにも
+掛かるので、胴が動いて戻る。**脱力 (Passive) では外す。**
+
 ### 4.5 既存 `RagdollComponent` の扱い
 
 外向きの API (`ScriptRagdollProxy`) は変えない。
@@ -337,18 +350,49 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
 
 | 段階 | 相手 | 生成 |
 |---|---|---|
-| M3 | 静的コライダ | ラグドールのカプセルで `World` の BVH を問い合わせ、接触を拘束として生成 |
-| M4 | 動的剛体 | 同じアイランドに入れて双方向に解く |
+| M2b-2 | 水平面 1 枚 | [`XPBDPlaneContact`](../../Projects/Physics/include/Physics/XPBDPlaneContact.hpp) をカプセルの両端に張る |
+| M3 ✅ | 静的コライダ | 全身を包む球で `World::OverlapSphere` を **1 回**引き、AABB で絞ってから既存の `PhysicsSolver::NarrowPhase` へ丸投げする。返った `ContactPoint` を [`XPBDContact`](../../Projects/Physics/include/Physics/XPBDContact.hpp) に包んでソルバの transient 拘束にする |
+| M4 ✅ | 動的剛体 | 同じ経路。解き方だけ «壁として解いて反作用を返す» に分かれる (§7) |
 | M5 | 全部 | `World::Step` の substep ループが全接触を生成・解決 |
 
-摩擦は Coulomb で、位置パスで静摩擦、速度パスで動摩擦。既存の `PhysicsMaterial` を使う。
+**接触の «検出» は 1 行も書いていない。** カプセル vs 三角メッシュも地形も、既存の
+NarrowPhase がそのまま効く ─ Macklin (2019) の主張は解法ではなく刻みの話なので、
+接触の作り方を変える理由が無い。
+
+摩擦は Coulomb で、位置パスで静摩擦 (この substep で滑った距離を `|λ_t| ≤ μ|λ_n|`
+の範囲で打ち消す)、速度パスで動摩擦。反発も速度パス。既存の `PhysicsMaterial` の
+合成規則で骨側と世界側を混ぜる。
+
+**Active の間は世界の接触を切ってある** (`RagdollComponent::contactWhileActive`、既定 false)。
+立っている間 «足をどこに置くか» を決めているのはクリップで、床はその通りに踏まれている
+前提で作ってある。そこへカプセルの半径ぶんの押し出しを重ねると、足が半径だけ浮いた所で
+サーボと釣り合い、体が宙に浮く。世界と噛み合わせたいのは «崩れてから» なので、
+支えている間は切る。自己衝突は姿勢がクリップの近くに居る限り新しく重ならないので残す。
+
+**水平面 1 枚は抜け止めとして残してある** (`RagdollComponent::groundPlane`)。面は
+«オーナーの足元» と «今のクリップの最下点» の低い方に置くので、床コライダーがある限り
+世界側が先に受け止めて何もしない。床を置き忘れたシーンで «床下へ消えていく» のが
+いちばん原因の分かりにくい壊れ方なので、そこだけを拾う。段差や多層の地形では切る。
+
+### 5.5.1 1 剛体につき 3 形状
+
+NarrowPhase が返す接触点は形状の組ごとに 1 個で、寝かせた胴が «1 点で床に触れている»
+状態になり、その点を軸にくるくる回る。そこでカプセルに加えて**両端の球**も当てる。
+球はカプセルの内側にあるのでカプセルより深い接触を報告することはなく、3 点で押さえられる。
+自己衝突はカプセルどうしだけ ─ 端の球まで当てると同じ重なりを 9 通り報告してしまう。
 
 ### 5.6 自己衝突の除外
 
-親子関係にある剛体どうしは除外する（関節で繋がっているので必ず重なる）。
-祖父–孫までを除外するかはプロファイルで持つ（首・肩は 2 段でも重なる）。
-[`Layer`](../../Projects/Physics/include/Physics/Layer.hpp) とは別に、
-関節グラフ上の距離で判定するフィルタを `XPBDSolver` に持たせる。
+除外の規則は 2 つ。どちらも `RagdollRig` が持つ（`XPBDSolver` はラグドールを知らない）。
+
+1. **関節グラフ上の距離** — 先祖を `selfSkip` 段まで遡って相手に当たれば除外する。
+   1 で親子、2 で祖父–孫まで（首・肩は 2 段でも重なる）。既定は 2
+2. **組んだ時点で重なっていた組** — 肩と胸のように、関節で繋がっていなくても
+   元から重ねてある組がある。当てると起動した瞬間に押し合って自壊するので、
+   `Build()` で AABB の重なりを記録し、その組は永久に外す
+
+[`Layer`](../../Projects/Physics/include/Physics/Layer.hpp) は使わない ─
+レイヤーは «誰と誰が» をシーン全体で決める仕組みで、骨ごとに違う除外は表現できない。
 
 ---
 
@@ -360,6 +404,69 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
 骨名のパターンマッチ（`*Thigh*` → 股関節、`*Knee*|*Shin*` → 蝶番）で当てる。
 最初は `MechProfile` / `HumanoidProfile` の 2 つを組み込みで持ち、
 エディタから上書きできる形にする（オーサリング UI は M2 の後で足す。クリティカルパスに入れない）。
+
+**当たらなかった骨は黙って通さない。** `Build()` が fallback に落ちた骨名を集め、
+組み直したときに 1 度だけログへ名指しする（数は Inspector の Unmatched Bones）。
+当たらなくても設定は返るので、外していても «なんとなく柔らかいラグドール» にしか
+見えない ─ 骨格を差し替えるたびに起きる種類の失敗なので、症状ではなく原因を出す。
+
+### 6.1.1 骨格に依らない量で書く
+
+絶対値で書いた設定は、骨格を差し替えた瞬間に意味を失う。実際に Boss_01 で全部外した。
+
+| 持ち方 | 単位 | なぜ |
+|---|---|---|
+| `density` | kg/m³ | 質量を直に書くと、節が長い骨格で «短い骨が重すぎる» |
+| `radiusRatio` | 骨の長さ比 | 半径を直に書くと «長い骨が針金のように細い»。Boss_01 の脛は 2.7m あり、人型の想定で置いた 0.14m は当たり判定 (0.38m) の 3 分の 1 だった |
+| `torqueScale` | 自重比 | トルクを直に書くと桁が合わない。人型の想定で置いた 14,000 N·m は、8 トンの Boss_01 の股関節には必要量の 1/3 しかなかった |
+| `holdSag` | rad | compliance は [rad/(N·m)] なので質量に依存する。«上限を出し切るまでのたわみ角» なら依らない |
+
+`torqueScale` の基準は「**その関節から先を、重力に対して真横へ伸ばした姿勢で支える**のに要るトルク」。
+バインドポーズでは脚がまっすぐ下を向いていて重力に垂直な腕がほぼ 0 になるため、そちらを基準にすると
+「必要トルク 0」と出てしまう。姿勢に依らず決まる「関節からの距離」を腕に採ると、倍率がそのまま
+「どこまで傾けても耐えるか」になる。実トルクは `Build()` が部分木の質量から埋め、重力を変えれば追従する。
+
+### 6.1.2 Boss_01 のリグとの対応
+
+実リグは `Root → Body` の下に、突起 4 本と脚 4 本：
+
+| 骨 | 扱い | 剛体 (骨 → 最初の子) |
+|---|---|---|
+| `RootNode` / `Boss_Armature` / `Root_Motion` / `Root` | `noBodyPatterns` | **なし**（枝は辿る）。Root → Body は 4.5m あり、拾うと胴から原点へ棒が 1 本できる |
+| `Body` | `body` | Body → Head。半径 1.74m のほぼ球になり、当たり判定 (1.90m) と揃う |
+| `Head` / `Rear` / `Ring` | — | **なし**（葉） |
+| `Core` | `core` | Core → Muzzle。砲身 |
+| `Yaw_XX` | `yaw` | Yaw → Thigh。脚の付け根の球 |
+| `Thigh_XX` | `thigh` | Thigh → Shin。股関節 |
+| `Shin_XX` | `shin` | Shin → Hock。膝。片方向の蝶番 |
+| `Hock_XX` | `hock` | Hock → Foot。飛節。膝と同じ蝶番で**逆向き**。接地するのはこの節 |
+| `Foot_XX` | — | **なし**（下が全部 exclude なので葉になる） |
+| `Toe*` / `Heel*` | `excludePatterns` | **なし**（枝ごと落とす）。拾うと脚 1 本あたり剛体が 8 個増える |
+
+**剛体 18 個 / 関節 17 本**（胴 1 + 砲身 1 + 脚 4 × 4）。総質量は約 14 トン。
+実機の Inspector がこの数と大きく違うなら、`_$AssimpFbx$_` 分割ノードで骨が拾えていない。
+
+### 6.1.3 可動域はクリップから測る
+
+**可動域の上下限の符号は骨格依存。** 関節フレームの Z 軸は骨の向きから作るので、
+どちらが «前» かは FBX のボーン軸で決まる。手で書くと必ず外す。
+
+そこで `learnLimits`（既定 on）が、毎フレーム**ドライブ目標そのものを swing/twist へ
+分解**して「クリップがこの関節に要求している角度」を測り、可動域をそこまで広げる。
+広げるだけで狭めないので、**クリップが使う範囲は必ず可動域の内側**になる。
+符号も、クリップが曲げる側だけが開くので自動で決まる。
+
+これが無いと、プロファイルに書いた狭い可動域がクリップの動きより狭いときに
+サーボが目標へ行けず、**「アニメーションが崩れる」**として現れる。崩しているのは
+物理ではなく「物理が許していない」方で、原因の切り分けには `Limited`
+（可動域に食い込んでいる関節の数）を見る。
+
+| 症状 | 見る値 | 原因 |
+|---|---|---|
+| クリップどおりに動かない | **Limited > 0** | 可動域がクリップより狭い。`learnLimits` を入れる |
+| 支え切れず垂れる・畳まれる | **Saturated > 0** | トルク不足。`torqueScale` / Muscle を上げる |
+| 全体がじわじわ落ちる | Deviation が伸び続ける | 根の繋ぎ止め (`rootAnchor`) が弱い |
+| 震える | — | `substeps` 不足、または可動域とサーボが押し合っている |
 
 ### 6.2 ロボット / 人間 / 死体
 
@@ -396,11 +503,24 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
 | **M1** ✅ | `XPBDSolver` 骨格。substep 積分 + 拘束インターフェース。ラグドールのアイランドだけ回す | — | × | 完了（ビルド未検証） |
 | **M2a** ✅ | 関節 (`XPBDJoint`): ボールソケット / swing-twist 制限 / 角度ドライブ + トルク上限 | 関節単体としての可動域・力負け（テストで検証） | × | 完了（ビルド未検証） |
 | **M2b-1** ✅ | `RagdollProfile` (骨名 → 太さ/密度/可動域/サーボ)、`RagdollRig` (骨の並び ↔ 剛体の往復) | 関節体としての組み立てと姿勢の往復（テストで検証） | × | 完了（ビルド未検証） |
-| **M2b-2** | `RagdollSystem` の差し替え（Skeleton → 骨配列の変換、質点系の撤去） | **ロボット感・角度制限・ツイスト・慣性・力負けが画面に出る** | ○ | 2 日 |
-| **M3** | 接触を同じソルバの拘束として実装 (vs 静的ワールド) | 坂・段差・壁で倒れる | ○ | 3 日 |
-| **M4** | 動的剛体を同じアイランドへ。`ApplyImpulseAtPoint` 追加 | 瓦礫を蹴る・押される | ○ **GreenWare の完成形** | 3 日 |
+| **M2b-2** ✅ | `RagdollSystem` の差し替え（Skeleton → 骨配列の変換、質点系の撤去） | **ロボット感・角度制限・ツイスト・慣性・力負けが画面に出る** | ○ | 完了（実機での調整は未) |
+| **M3** ✅ | 接触を同じソルバの拘束として実装 (vs 静的ワールド) + 自己衝突 | 坂・段差・壁で倒れる。腕が胴を貫通しない | ○ | 完了（実機での調整は未) |
+| **M4** ✅ | 動的剛体との接触。`ApplyImpulseAtPoint` 追加 | 瓦礫を蹴る・押される | ○ **GreenWare の完成形** | 完了（実機での調整は未) |
 | **M5** | `World::Step` を substep 化し、関節と接触を同じ substep で解く | — (既存の統合) | ○ **HFF の土台** | 5 日 + 既存の再調整 |
 | **M6** | 掴み拘束・プレイヤー入力・バランス制御 | HFF 型ラグドール | — | 内容次第 |
+
+### M4 の «同じアイランド» をどう実装したか
+
+M5 まで `World::Step` は substep 化されないので、**World が積分している剛体を XPBD の
+substep の中で動かすと 1 フレームに 2 回進む**。そこで M4 では相手の扱いを 2 通りに分けた。
+
+| 相手 | substep 内 | 反作用 |
+|---|---|---|
+| 自分の骨 | 双方を動かす (`solveOther = true`) | 拘束が両側へ配るので不要 |
+| World の剛体 | **動かさない**。«今の姿勢の壁» として解く | 法線力積を溜め、フレーム末に `ApplyImpulseAtPoint` で 1 回返す |
+
+これで «蹴る» (溜めた力積が瓦礫へ入る) と «弾かれる» (動いている瓦礫が壁として押し込む)
+の両方が出る。**M5 で両者が同じ substep に入れば、この分岐ごと消える。**
 
 ### 受け入れ条件
 
@@ -414,8 +534,16 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
   → [`RagdollRigTests.cpp`](../../Projects/Tests/Engine/Auto/RagdollRigTests.cpp)
 - **M2b-2**: ボスのスケルトンで、(a) 膝が逆に折れない、(b) `maxTorque` を下げると腰から崩れる、
   (c) 無負荷でクリップと一致する（`GetDeviation()` が 0 付近）、(d) 押すと沈んで戻る
+  → 実装は入った。**シーン上での確認と数値の詰めは残っている**。
+  診断は `BossRagdollComponent` の Debug グループ（Bodies / Saturated / Deviation）で見る ─
+  Saturated が常に 0 なら Muscle が強すぎ、常に全部なら弱すぎる
 - **M3**: 傾斜地形の上で倒すと、地形に沿って止まる。階段で足が沈まない
+  → 世界のコライダーで止まること・繋がった骨が自己衝突しないことは
+  [`RagdollRigTests.cpp`](../../Projects/Tests/Engine/Auto/RagdollRigTests.cpp) で自動検証。
+  **傾斜と階段での見え方はシーン上で確認する**
 - **M4**: 倒れたボスが近くの動的剛体を弾く。逆に弾かれる
+  → 弾く側は `RagdollRigTests.cpp` で自動検証。弾かれる側は接触が «壁» として効くだけなので
+  同じ経路。**手応えの調整はシーン上で**
 - **M5**: 既存の CharacterController・瓦礫の挙動が M4 以前と同等（回帰確認）
 - **M6**: 別途
 
@@ -425,17 +553,17 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
 
 | 資産 | 扱い |
 |---|---|
-| `ScriptRagdollProxy` の API | **そのまま**。呼び出し側 (GreenWare) は変更なし |
+| `ScriptRagdollProxy` の API | **そのまま**。`GetSaturatedJointCount()` (力負けしている関節の数) だけ追加した |
 | `RagdollComponent` の phase / weight / blendIn / blendOut | **そのまま** |
 | `RagdollStatus` (診断) | **そのまま**。項目を増やす |
 | `CommitBoneWorldPose` / スキニング更新 | **そのまま** |
 | 捕獲 (FK → 物理) の考え方 | **そのまま**。書き写す先が質点から剛体になる |
 | `BossRagdollComponent` の Stagger / Topple | **そのまま**。パラメータの単位だけ変わる |
-| `RagdollParticle` / `RagdollLink` | 置き換え |
-| `braceStiffness` | 廃止（角度制限へ） |
-| `groundHeight` / `groundThickness` / `SolveGround` | 廃止（接触拘束へ） |
-| `muscleStiffness` / `muscleFalloff` / `muscleDamping` | compliance へ改名・単位変更 |
-| `collapseDistance` | COM ベースの判定へ置き換え |
+| `RagdollParticle` / `RagdollLink` | 撤去。`RagdollRig` (剛体 + `XPBDJoint`) へ |
+| `braceStiffness` / `boneRadius` / `iterations` / `damping` | 撤去。太さと重さはプロファイル、`iterations` は `substeps`、`damping` は剛体の `linearDrag` / `angularDrag` へ |
+| `groundHeight` / `groundThickness` / `SolveGround` | 撤去。`XPBDPlaneContact` へ (M3 で実接触に差し替え) |
+| `muscleStiffness` / `muscleFalloff` / `muscleDamping` | `driveScale` / `driveFalloff` / `driveDamping` へ改名。**プロファイルの値への «倍率»** になり、`SetMuscle()` の引数の意味だけが変わる (シグネチャは同じ) |
+| `collapseDistance` | 据え置き。COM ベースの判定は M3 以降 (`RagdollRig::CenterOfMass` は実装済み) |
 
 ---
 
@@ -443,15 +571,20 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
 
 | リスク | 対処 |
 |---|---|
-| substep 数の増加によるコスト | ラグドールは常時ではなく「倒れる数秒 / ひるむ 0.3 秒」しか走らない。M5 で World 全体を substep 化するときに初めて全体コストになるので、そこでプロファイルを取る |
+| substep 数の増加によるコスト | **前提が変わった。** GreenWare のボスは `alwaysActive` で常時走らせるので、「倒れる数秒だけ」ではなくなった。剛体 18 個 × 12 substep が毎フレーム回る ─ `RagdollSystem` の `FBZZ_PROFILE_SCOPE` を Analysis で見て、重ければ `substeps` を落とす。Active はクリップに追従しているだけなので、倒れるときほどの刻みは要らないはず |
 | M5 の既存挙動への波及 | M4 までで止められる設計にしてある。M5 は独立したブランチで、CharacterController と瓦礫の回帰を通してからマージ |
 | 質量比による発散 | substep を細かくするのが唯一の対処。M1 の受け入れ条件に「substep 数を変えても静止位置が変わらない」を入れてある |
-| プロファイルの当てが外れる (骨名が合わない) | 現行と同じく `RagdollStatus` で名指しする。「剛体 0 個」を無言で通さない |
+| プロファイルの当てが外れる (骨名が合わない) | **実際に外れた** (Boss_01 の `Body` と `Hock`)。fallback に落ちた骨名を `Build()` が集めてログへ名指しし、数を Inspector に出す。「剛体 0 個」も無言で通さない |
 | オーサリングの手間 | カプセルは骨長から自動生成。手で詰めるのは可動域だけ。UI は M2 の後 |
 
-デバッグ表示は既存の `ConstraintDebugGeometry` / `ColliderDebugGeometry` を使う。
-関節の可動域（錐）と、ドライブが飽和している関節の色分けは M2 の一部として入れる
-（「どの関節が力負けしたか」が見えないと、ロボット感の調整ができない）。
+デバッグ表示は `RagdollDebugPass` (Viewport の Overlays > Ragdoll、
+operator `render.show_ragdoll`)。剛体のカプセルは水色、関節の可動域（角錐）は緑、
+**トルク上限に張り付いている関節は赤**、接触点と押し返す向きは黄で描く。
+「赤が出たら支え切れていない」だけ覚えれば読める配色にしてある。
+
+数字だけの確認は `ScriptRagdollProxy` の `GetSaturatedJointCount()` / `GetContactCount()`
+（GreenWare では `BossRagdollComponent` の Debug グループ）。
+**倒れているのに Contacts が 0 なら、床に Collider が無いか Contact World が切れている。**
 
 ---
 
@@ -459,8 +592,10 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
 
 1. **プロファイルの持ち方** — 組み込みの 2 種で始めるが、最終的にアセット (`.ragdoll`) にするか
    `RagdollComponent` のシリアライズに埋めるか
-2. **M5 で PGS を残すか XPBD へ寄せるか** — 接触は PGS のまま substep 内で回すのが低リスクだが、
-   関節と接触で解法が違うままになる。M4 の結果を見て決める
+2. **M5 で PGS を残すか XPBD へ寄せるか** — M3/M4 で「検出は既存の NarrowPhase、解決は
+   XPBD」の形が動いたので、**接触も XPBD へ寄せる方に倒れた**。M5 で必要なのは
+   `World::Step` の substep 化と、`XPBDContact` を World 側の剛体にも使うこと。
+   CharacterController と瓦礫の回帰が通るかが判断材料になる
 3. **バランス制御の形** — COM + 支持多角形までは決まっているが、
    「踏ん張って一歩出す」を入れるかは M6 の設計で
 4. **HFF 側の入力設計** — 腕の目標をカーソルで動かすのか、掴み対象へ IK で伸ばすのか

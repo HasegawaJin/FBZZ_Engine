@@ -153,9 +153,45 @@ constexpr float RASTER_PIXEL_HEIGHT_STEPS[] = {
 } // namespace
 
 FontAtlas::FontAtlas()                                  = default;
-FontAtlas::~FontAtlas()                                 = default;
 FontAtlas::FontAtlas(FontAtlas&&) noexcept              = default;
-FontAtlas& FontAtlas::operator=(FontAtlas&&) noexcept   = default;
+
+FontAtlas::~FontAtlas()
+{
+    // WHY Active() を使うか: アトラスはキャッシュ (UISystemContext) の要素として畳まれるため、
+    //     破棄地点へ ResourceManager& を渡す経路が無い。Material と同じ扱い。
+    //     ResourceManager より後に消えるアトラスでは Active() が空で、そのときは
+    //     返す先そのものが既に無いので何もしないのが正しい。
+    if (ResourceManager* resources = ResourceManager::Active())
+        ReleaseGpuResources(*resources);
+}
+
+// NOTE: メンバーを足したらここにも足すこと (既定のムーブに任せられないのは、
+//       上書きされる側のページを先に返す必要があるため)。
+FontAtlas& FontAtlas::operator=(FontAtlas&& other) noexcept
+{
+    if (this == &other) return *this;
+    // 上書きされる側のページを先に返す。ムーブ代入で «元のページを捨てる» のは
+    // フォントを焼き直したときに通る (同じキーへ新しいアトラスを入れ直す)。
+    if (ResourceManager* resources = ResourceManager::Active())
+        ReleaseGpuResources(*resources);
+
+    m_pages           = std::move(other.m_pages);
+    m_glyphs          = std::move(other.m_glyphs);
+    m_kernings        = std::move(other.m_kernings);
+    m_dynamic         = std::move(other.m_dynamic);
+    m_lineHeight      = other.m_lineHeight;
+    m_base            = other.m_base;
+    m_fallbackAdvance = other.m_fallbackAdvance;
+    other.m_pages.clear();
+    return *this;
+}
+
+void FontAtlas::ReleaseGpuResources(ResourceManager& resources)
+{
+    for (ResourceHandle<TextureTag>& page : m_pages)
+        if (page.IsValid()) resources.Release(page);
+    m_pages.clear();
+}
 
 bool FontAtlas::IsDynamicFontPath(const std::string& path)
 {

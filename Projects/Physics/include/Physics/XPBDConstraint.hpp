@@ -65,11 +65,15 @@ namespace fbzz::physics
     ///                   **A はこの向きと逆へ動く。**
     /// @param compliance 0 で剛。単位は [m/N]。
     /// @param lambda    この substep で蓄積した λ。拘束が持ち、ResetLambda で捨てる。
+    /// @param maxLambda λ の絶対値の上限。0 以下で無制限。
+    ///                  クーロン摩擦は «接線の λ ≤ μ × 法線の λ» なので、法線側の λ に
+    ///                  μ を掛けて渡すと «滑り出すまでは止まる» がそのまま書ける。
     /// @return 今回加えた Δλ。力に直すと Δλ/h² [N]。
     float SolvePositional(RigidBody* a, RigidBody* b,
                           const math::Vector3& rA, const math::Vector3& rB,
                           const math::Vector3& correction,
-                          float compliance, float h, float& lambda);
+                          float compliance, float h, float& lambda,
+                          float maxLambda = 0.0f);
 
     /// 角度拘束を 1 回解く。b に null を渡すと «回らない相手» になる。
     ///
@@ -94,6 +98,17 @@ namespace fbzz::physics
     ///                   «出せないはずのトルクで荷重を支える» ことになる。
     void ApplyAngularVelocityChange(RigidBody* a, RigidBody* b,
                                     const math::Vector3& deltaOmega,
+                                    float maxImpulse = 0.0f);
+
+    /// 接触点での相対速度を deltaV だけ変える。反発と動摩擦に使う。
+    /// a の速度が -deltaV 側、b が +deltaV 側へ動く。b に null を渡すと «動かない相手»。
+    ///
+    /// @param rA,rB      各剛体の重心から接触点へのワールドベクトル。
+    /// @param maxImpulse 力積の上限 [N·s]。0 以下で無制限。
+    ///                   動摩擦を «法線力積 × μ» で切るために使う。
+    void ApplyVelocityChangeAtPoint(RigidBody* a, RigidBody* b,
+                                    const math::Vector3& rA, const math::Vector3& rB,
+                                    const math::Vector3& deltaV,
                                     float maxImpulse = 0.0f);
 
     /// クォータニオンを «軸 × 角度» [rad] へ直す。常に短い方の弧を採る。

@@ -150,8 +150,19 @@ struct UISystemContext {
     std::unordered_map<std::string, renderer::FontAtlas>  fontAtlasCache;
     // .mat のパスで引く。1 フレームに何度も同じマテリアルが出てくるうえ、
     // 解決はシェーダーのロードとリフレクションを伴うので毎回やる値段ではない。
-    // UISystemFlushCache がシーン破棄・アセットリロードで捨てる。
     std::unordered_map<std::string, UIMaterialBinding>    materialCache;
+
+    // 上の 2 つのキャッシュを «いつ捨てるか» の判定に使う版数。
+    // UISystem の入口で ResourceManager / AssetManager の現在値と突き合わせる。
+    //
+    // WHY 呼び出し側に任せないか: 捨てる必要があるのはデバイスロストとアセット再取り込みの
+    //     2 つだが、どちらも UI の呼び出し側 (Editor / Runtime) が知らされる仕組みが無い。
+    //     «忘れずに呼ぶ» を期待した結果、UI の .mat を編集しても再起動まで反映されない
+    //     状態が長く残った。版数を持っている側と突き合わせて自分で捨てる。
+    // WHY 初期値が 0 か: ResourceManager の版数は 1 始まり、AssetManager は 0 始まりで
+    //     «1 度も同期していない» を表せる。初回は空のキャッシュを捨てるだけで無害。
+    std::uint64_t cachedResetVersion    = 0;
+    int           cachedAssetGeneration = -1;
 
     // 子要素を sortOrder 順に並べる作業領域。UI 階層の深さでインデックスする。
     //
@@ -207,6 +218,14 @@ struct UISystemContext {
 // UIText.fontPath が空のときに使用するデフォルトフォントアトラスのベースパス (拡張子なし) を設定する。
 void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePath);
 
+/// Context が抱えている頂点バッファを ResourceManager へ返す。
+///
+/// UISystemContext は ResourceManager を知らないため、デストラクタでは返せない。
+/// Context を捨てる側が明示的に呼ぶこと。Play セッションごとに作り直される
+/// ProjectRuntime::m_gameUICtx がこれを呼ばないと、往復のたびに DrawCall 数ぶんの
+/// 頂点バッファが取り残される。
+void UISystemReleaseGpuResources(UISystemContext& ctx, renderer::ResourceManager& resources);
+
 /// 直近の UI 入力処理で、ポインターがいずれかの UI 要素に吸われたか。
 ///
 /// WHY 要るか: これが無いと、メニューの上でクリックした入力がそのまま
@@ -220,8 +239,14 @@ void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePat
 /// richText が false なら単純な UTF-8 の文字数。
 [[nodiscard]] std::size_t UITextVisibleLength(const std::string& text, bool richText);
 
-// フォントアトラスキャッシュをクリアする。シーン破棄・アセットリロード時に呼ぶ。
-void UISystemFlushCache(UISystemContext& ctx);
+/// フォントアトラスとマテリアル解決のキャッシュを捨てる。
+///
+/// 通常は UISystem が入口で版数を見て自分で呼ぶ (UISystemContext の版数フィールドを参照)。
+/// 明示的に呼ぶのは «版数では表せない» 捨て方をしたいときだけ。
+///
+/// @param resources 抱えている GPU リソースの返却先。デバイスリセット後は nullptr を渡すこと
+///                  (実体はもう無く、ハンドルだけが残っている)。
+void UISystemFlushCache(UISystemContext& ctx, renderer::ResourceManager* resources);
 
 // cameraWorldPos / cameraWorldRot:
 //   WorldSpace ヒット判定と ScreenSpaceCamera モードのためのカメラ姿勢。

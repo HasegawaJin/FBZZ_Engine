@@ -34,12 +34,30 @@ namespace fbzz::scene {
 ///   実現していた。DX12 の Release は遅延解放なので正しくはあるが、線 1 本につき
 ///   GPU リソース操作が毎フレーム 4 回走る。タイトル画面の電極 61 本で
 ///   毎フレーム 122 回の生成 + 122 回の解放になり、それだけで 15ms 掛かっていた。
+///
+/// WHY unique_ptr か (shared_ptr をやめた理由):
+///   以前は shared_ptr で持ち、ResourceManager が weak_ptr で «誰も見なくなった Mesh» を
+///   毎フレーム拾って GPU バッファを返していた。所有者は常にこの Component 1 つなので
+///   参照カウントは要らず、«いつ返るか» が掃除の巡回まで遅れるだけだった。
+///   単独所有にして、Component が畳まれる 3 か所 (SceneRenderResources) で必ず返す。
 struct DoubleBufferedMesh {
-    std::shared_ptr<renderer::Mesh> slots[2];
+    std::unique_ptr<renderer::Mesh> slots[2];
     /// 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
     std::size_t signature = 0;
     /// 今 slots のどちらを描いているか。
     std::uint32_t current = 0;
+
+    DoubleBufferedMesh() = default;
+    ~DoubleBufferedMesh() = default;
+    DoubleBufferedMesh(DoubleBufferedMesh&&) noexcept = default;
+    DoubleBufferedMesh& operator=(DoubleBufferedMesh&&) noexcept = default;
+
+    // WHY コピーで中身を連れていかないか: Component は複製・プレファブ展開で値ごとコピーされる。
+    //     GPU バッファまで写すと 2 つの GameObject が同じバッファへ交互に書き、
+    //     どちらかが畳まれた時点でもう片方が消えたバッファを描くことになる。
+    //     複製先は «まだ焼いていない» 状態から始めるのが正しい (次のフレームで焼き直す)。
+    DoubleBufferedMesh(const DoubleBufferedMesh&) {}
+    DoubleBufferedMesh& operator=(const DoubleBufferedMesh&) { return *this; }
 
     [[nodiscard]] renderer::Mesh* Current() const { return slots[current].get(); }
     [[nodiscard]] bool HasMesh() const { return static_cast<bool>(slots[current]); }
@@ -98,8 +116,6 @@ struct SortingGroupComponent {
     bool enabled = true;
     int sortingLayer = 0;
     int orderInLayer = 0;
-    std::shared_ptr<renderer::Mesh> runtimeMesh;
-    std::size_t runtimeSignature = 0;
 
     const char* GetTypeName() const { return "Sorting Group"; }
     void Reflect(IReflector& r)

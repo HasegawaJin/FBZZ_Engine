@@ -4,12 +4,14 @@
 /// @date    2026-07-15
 #include "DX12Context.hpp"
 
+#include "../GpuValidation.hpp"
+
 #include <Engine/Core/Logger.hpp>
 #include <cstring>
 #include <algorithm>
-#if defined(_DEBUG)
+#include <iterator>
+#if defined(FBZZ_GPU_VALIDATION)
 #include <d3d12sdklayers.h>
-#include <dxgidebug.h>
 #endif
 
 namespace fbzz::renderer {
@@ -41,16 +43,17 @@ bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
     m_height = height;
     FBZZ_LOG_INFO("DX12Context::Initialize: 開始 (%ux%u)", width, height);
 
-#if defined(_DEBUG)
+#if defined(FBZZ_GPU_VALIDATION)
     Microsoft::WRL::ComPtr<ID3D12Debug> debug;
-    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
+    // FBZZ_GPU_VALIDATION=0 を環境変数に入れると、ビルドし直さずに切れる。
+    if (gpuvalidation::IsEnabled() && SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
         debug->EnableDebugLayer();
         FBZZ_LOG_INFO("DX12Context: デバッグレイヤー有効化");
         // WHY: GPU-Based Validationは全Draw/Dispatchへ検証処理を挿入し、Scene/Gameの
         //      2 Viewを描くEditorでは数十FPSまで低下する。通常のDebug Layerは維持し、
         //      GPU-Based ValidationはPIX等で問題を局所調査するときだけ一時的に有効化する。
         FBZZ_LOG_INFO("DX12Context: GPU-Based Validation 無効 (通常Debug実行)");
-    } else {
+    } else if (gpuvalidation::IsEnabled()) {
         FBZZ_LOG_WARN("DX12Context: D3D12GetDebugInterface 取得不可 (デバッグレイヤーなしで続行)");
     }
 #endif
@@ -76,10 +79,22 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
 {
     (void)hwnd;
     UINT flags = 0;
-#if defined(_DEBUG)
-    flags |= DXGI_CREATE_FACTORY_DEBUG;
+#if defined(FBZZ_GPU_VALIDATION)
+    if (gpuvalidation::IsEnabled())
+        flags |= DXGI_CREATE_FACTORY_DEBUG;
 #endif
-    if (!CheckResult(CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory)), "DXGI Factory の生成"))
+    HRESULT factoryResult = CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory));
+#if defined(FBZZ_GPU_VALIDATION)
+    if (FAILED(factoryResult) && (flags & DXGI_CREATE_FACTORY_DEBUG) != 0) {
+        // WHY 落とさず作り直すか: 検証つきの Factory は «グラフィックス ツール» が入って
+        //     いない機械では作れない。検証が無いだけで動く構成を、起動できない構成にしない。
+        FBZZ_LOG_WARN("DX12Context: 検証つき DXGI Factory を作れません "
+                      "(オプション機能「グラフィックス ツール」未導入?)。検証なしで続行します");
+        flags &= ~static_cast<UINT>(DXGI_CREATE_FACTORY_DEBUG);
+        factoryResult = CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory));
+    }
+#endif
+    if (!CheckResult(factoryResult, "DXGI Factory の生成"))
         return false;
     FBZZ_LOG_INFO("DX12Context: DXGI Factory 生成 OK (flags=0x%X)", flags);
 
@@ -136,26 +151,30 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
         return false;
     }
 
-#if defined(_DEBUG)
+#if defined(FBZZ_GPU_VALIDATION)
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
-    if (SUCCEEDED(m_device.As(&infoQueue))) {
-        // DX11 と同じく、検証は維持しつつ Warning/Info の蓄積と定期フラッシュを止める。
-        // WHY: D3D12 はリソース遷移・ディスクリプタ操作の通知が多く、毎フレーム蓄積すると
-        //      Development/Debug 実行の CPU コストとメモリ使用量が Release と大きく離れる。
-        infoQueue->SetMuteDebugOutput(FALSE);
-        infoQueue->SetMessageCountLimit(-1);
+    if (gpuvalidation::IsEnabled() && SUCCEEDED(m_device.As(&infoQueue))) {
+        // DX11 と同じ方針: 検証は維持し、読み出しは終了時の 1 回だけにする。
+        // WHY: D3D12 はリソース遷移・ディスクリプタ操作の通知が多く、毎フレーム読み出すと
+        //      Development/Debug 実行の CPU コストが Release と大きく離れる。
+        // 止めるのはデバッガーが居るときだけ (GpuValidation::ShouldBreakOnError の WHY)。
+        const BOOL breakOnError = gpuvalidation::ShouldBreakOnError() ? TRUE : FALSE;
+        // メッセージ 1 件ごとの OutputDebugString はデバッガー接続時ミリ秒級。
+        // 溜めるのは続け、Shutdown() で一度に読む (DX11 側と同じ理由)。
+        infoQueue->SetMuteDebugOutput(TRUE);
+        infoQueue->SetMessageCountLimit(
+            static_cast<UINT64>(gpuvalidation::kMaxStoredMessages));
         infoQueue->ClearStoredMessages();
-        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, breakOnError);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, breakOnError);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, FALSE);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_INFO, FALSE);
         infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_MESSAGE, FALSE);
 
-        // ERROR 以上は残し、Warning 以下は蓄積自体を止める。
+        // WARNING 以上は残す (解放漏れ・状態違反はここに出る)。実況になる 2 つだけ止める。
         D3D12_MESSAGE_SEVERITY denySeverities[] = {
             D3D12_MESSAGE_SEVERITY_INFO,
             D3D12_MESSAGE_SEVERITY_MESSAGE,
-            D3D12_MESSAGE_SEVERITY_WARNING,
         };
         D3D12_INFO_QUEUE_FILTER filter{};
         filter.DenyList.NumSeverities = static_cast<UINT>(std::size(denySeverities));
@@ -478,14 +497,21 @@ void DX12Context::Shutdown()
     m_deferredResources.clear();
     m_swapChain.Reset();
     m_commandQueue.Reset();
+
+#if defined(FBZZ_GPU_VALIDATION)
+    // デバイスを手放す前に、溜まった検証メッセージを回収する。
+    if (m_device) {
+        Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+            gpuvalidation::DrainStoredMessages<D3D12_MESSAGE>(*infoQueue.Get(), "DX12Context");
+    }
+#endif
+
     m_device.Reset();
     m_factory.Reset();
-#if defined(_DEBUG)
-    Microsoft::WRL::ComPtr<IDXGIDebug1> dxgiDebug;
-    if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
-        dxgiDebug->ReportLiveObjects(
-            DXGI_DEBUG_D3D12, static_cast<DXGI_DEBUG_RLO_FLAGS>(
-                DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
+
+#if defined(FBZZ_GPU_VALIDATION)
+    gpuvalidation::ReportLiveObjects(DXGI_DEBUG_D3D12, "D3D12");
 #endif
 }
 

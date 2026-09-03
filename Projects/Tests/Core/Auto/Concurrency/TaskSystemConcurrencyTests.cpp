@@ -2,7 +2,8 @@
 /// @brief   TaskSystem の複数タスク完了とワーカー数設定を自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
 
@@ -12,14 +13,16 @@
 
 namespace fbzz::tests {
 
-TEST(TaskSystemConcurrencyTest, UsesTheRequestedWorkerCount)
+class TaskSystemConcurrencyTest : public testkit::EngineFixture {};
+
+TEST_F(TaskSystemConcurrencyTest, UsesTheRequestedWorkerCount)
 {
     fbzz::TaskSystem::Init(1);
     EXPECT_EQ(fbzz::TaskSystem::WorkerCount(), 1);
     fbzz::TaskSystem::Shutdown();
 }
 
-TEST(TaskSystemConcurrencyTest, CompletesAllSubmittedTasks)
+TEST_F(TaskSystemConcurrencyTest, CompletesAllSubmittedTasks)
 {
     fbzz::TaskSystem::Init(2);
     constexpr int TASK_COUNT = 8;

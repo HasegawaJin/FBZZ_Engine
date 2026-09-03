@@ -7,7 +7,8 @@
 /// ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
-#include <Engine/Util/TomlReflector.hpp>
+#include <Engine/Core/Memory/MakeUnique.hpp>
+#include <Engine/Scene/TomlReflector.hpp>
 #include <cstddef>
 #include <vector>
 #include <Physics/Layer.hpp>
@@ -121,7 +122,7 @@ void NormalizeTomlFloats(toml::node& node)
     }
 }
 
-// 値型 ⇔ TOML 配列の変換は util 共通版を使う (Engine/Util/TomlReflector.hpp)。
+// 値型 ⇔ TOML 配列の変換は util 共通版を使う (Engine/Scene/TomlReflector.hpp)。
 using util::ArrToQuat;
 using util::ArrToVec2;
 using util::ArrToVec3;
@@ -859,7 +860,7 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
         if (type.empty()) continue;
 
         ScriptEntry& dstEntry = dst.scripts.emplace_back();
-        dstEntry.serialized = std::make_shared<SerializedScriptData>();
+        dstEntry.serialized = core::MakeUnique<SerializedScriptData>();
         dstEntry.serialized->type       = type;
         dstEntry.serialized->enabled    = enabled;
         dstEntry.serialized->fieldsToml = fieldsToml;
@@ -1806,19 +1807,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ragdollTbl.insert("enabled",          ragdoll->enabled);
             ragdollTbl.insert("rootBoneName",     ragdoll->rootBoneName);
             ragdollTbl.insert("maxDepth",         (int64_t)ragdoll->maxDepth);
+            ragdollTbl.insert("profile",          (int64_t)ragdoll->profile);
             ragdollTbl.insert("gravity",          (double)ragdoll->gravity);
-            ragdollTbl.insert("damping",          (double)ragdoll->damping);
-            ragdollTbl.insert("iterations",       (int64_t)ragdoll->iterations);
-            ragdollTbl.insert("braceStiffness",   (double)ragdoll->braceStiffness);
-            ragdollTbl.insert("boneRadius",       (double)ragdoll->boneRadius);
+            ragdollTbl.insert("substeps",         (int64_t)ragdoll->substeps);
+            ragdollTbl.insert("linearDrag",       (double)ragdoll->linearDrag);
+            ragdollTbl.insert("angularDrag",      (double)ragdoll->angularDrag);
+            ragdollTbl.insert("friction",         (double)ragdoll->friction);
+            ragdollTbl.insert("restitution",      (double)ragdoll->restitution);
+            ragdollTbl.insert("contactWorld",     ragdoll->contactWorld);
+            ragdollTbl.insert("contactDynamic",   ragdoll->contactDynamic);
+            ragdollTbl.insert("contactSelf",      ragdoll->contactSelf);
+            ragdollTbl.insert("contactWhileActive", ragdoll->contactWhileActive);
+            ragdollTbl.insert("selfSkip",         (int64_t)ragdoll->selfSkip);
+            ragdollTbl.insert("groundPlane",      ragdoll->groundPlane);
             ragdollTbl.insert("groundOffset",     (double)ragdoll->groundOffset);
-            ragdollTbl.insert("groundFriction",   (double)ragdoll->groundFriction);
             ragdollTbl.insert("blendIn",          (double)ragdoll->blendIn);
             ragdollTbl.insert("blendOut",         (double)ragdoll->blendOut);
             ragdollTbl.insert("simulateInEditor", ragdoll->simulateInEditor);
-            ragdollTbl.insert("muscleStiffness",  (double)ragdoll->muscleStiffness);
-            ragdollTbl.insert("muscleFalloff",    (double)ragdoll->muscleFalloff);
-            ragdollTbl.insert("muscleDamping",    (double)ragdoll->muscleDamping);
+            ragdollTbl.insert("driveScale",       (double)ragdoll->driveScale);
+            ragdollTbl.insert("driveFalloff",     (double)ragdoll->driveFalloff);
+            ragdollTbl.insert("driveDamping",     (double)ragdoll->driveDamping);
+            ragdollTbl.insert("learnLimits",      ragdoll->learnLimits);
+            ragdollTbl.insert("limitMargin",      (double)ragdoll->limitMargin);
+            ragdollTbl.insert("rootAnchor",       (double)ragdoll->rootAnchor);
+            ragdollTbl.insert("rootAnchorSag",    (double)ragdoll->rootAnchorSag);
+            ragdollTbl.insert("rootAnchorTilt",   (double)ragdoll->rootAnchorTilt);
             ragdollTbl.insert("impactSlack",      (double)ragdoll->impactSlack);
             ragdollTbl.insert("recoverySeconds",  (double)ragdoll->recoverySeconds);
             ragdollTbl.insert("collapseDistance", (double)ragdoll->collapseDistance);
@@ -2012,7 +2025,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                     const std::string type = entry.script->GetTypeName();
                     const bool enabled = entry.script->enabled;
                     if (!entry.serialized)
-                        entry.serialized = std::make_shared<SerializedScriptData>();
+                        entry.serialized = core::MakeUnique<SerializedScriptData>();
                     entry.serialized->type = type;
                     entry.serialized->enabled = enabled;
                     entry.serialized->fieldsToml = TomlTableToString(fieldsTbl);
@@ -3076,26 +3089,40 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
         // RagdollComponent
         //
-        // 実行状態 (particles / links / phase) は保存しない。ラグドールは倒れる数秒の
-        // ための一時状態で、シーンに焼き付いていると Play した瞬間に崩れている。
+        // 実行状態 (rig / phase) は保存しない。ラグドールは倒れる数秒のための一時状態で、
+        // シーンに焼き付いていると Play した瞬間に崩れている。
         if (auto* ragdollTbl = (*goTbl)["RagdollComponent"].as_table()) {
             RagdollComponent ragdoll{};
             ragdoll.enabled        = (*ragdollTbl)["enabled"].value_or(true);
             ragdoll.rootBoneName   = (*ragdollTbl)["rootBoneName"].value_or(std::string{});
             ragdoll.maxDepth       = (int)(*ragdollTbl)["maxDepth"].value_or((int64_t)0);
+            ragdoll.profile        = (RagdollProfileKind)std::clamp(
+                (int)(*ragdollTbl)["profile"].value_or((int64_t)0), 0, 1);
             ragdoll.gravity        = (float)(*ragdollTbl)["gravity"].value_or(26.0);
-            ragdoll.damping        = (float)(*ragdollTbl)["damping"].value_or(0.04);
-            ragdoll.iterations     = (int)(*ragdollTbl)["iterations"].value_or((int64_t)10);
-            ragdoll.braceStiffness = (float)(*ragdollTbl)["braceStiffness"].value_or(0.55);
-            ragdoll.boneRadius     = (float)(*ragdollTbl)["boneRadius"].value_or(0.28);
+            ragdoll.substeps       = (int)(*ragdollTbl)["substeps"].value_or((int64_t)12);
+            ragdoll.linearDrag     = (float)(*ragdollTbl)["linearDrag"].value_or(0.35);
+            ragdoll.angularDrag    = (float)(*ragdollTbl)["angularDrag"].value_or(0.60);
+            ragdoll.friction       = (float)(*ragdollTbl)["friction"].value_or(0.90);
+            ragdoll.restitution    = (float)(*ragdollTbl)["restitution"].value_or(0.0);
+            ragdoll.contactWorld   = (*ragdollTbl)["contactWorld"].value_or(true);
+            ragdoll.contactDynamic = (*ragdollTbl)["contactDynamic"].value_or(true);
+            ragdoll.contactSelf    = (*ragdollTbl)["contactSelf"].value_or(true);
+            ragdoll.contactWhileActive =
+                (*ragdollTbl)["contactWhileActive"].value_or(false);
+            ragdoll.selfSkip       = (int)(*ragdollTbl)["selfSkip"].value_or((int64_t)2);
+            ragdoll.groundPlane    = (*ragdollTbl)["groundPlane"].value_or(true);
             ragdoll.groundOffset   = (float)(*ragdollTbl)["groundOffset"].value_or(0.0);
-            ragdoll.groundFriction = (float)(*ragdollTbl)["groundFriction"].value_or(0.55);
             ragdoll.blendIn        = (float)(*ragdollTbl)["blendIn"].value_or(0.06);
             ragdoll.blendOut       = (float)(*ragdollTbl)["blendOut"].value_or(0.40);
             ragdoll.simulateInEditor = (*ragdollTbl)["simulateInEditor"].value_or(false);
-            ragdoll.muscleStiffness  = (float)(*ragdollTbl)["muscleStiffness"].value_or(0.45);
-            ragdoll.muscleFalloff    = (float)(*ragdollTbl)["muscleFalloff"].value_or(0.86);
-            ragdoll.muscleDamping    = (float)(*ragdollTbl)["muscleDamping"].value_or(0.18);
+            ragdoll.driveScale       = (float)(*ragdollTbl)["driveScale"].value_or(1.0);
+            ragdoll.driveFalloff     = (float)(*ragdollTbl)["driveFalloff"].value_or(0.90);
+            ragdoll.driveDamping     = (float)(*ragdollTbl)["driveDamping"].value_or(1.0);
+            ragdoll.learnLimits      = (*ragdollTbl)["learnLimits"].value_or(true);
+            ragdoll.limitMargin      = (float)(*ragdollTbl)["limitMargin"].value_or(5.0);
+            ragdoll.rootAnchor       = (float)(*ragdollTbl)["rootAnchor"].value_or(3.0);
+            ragdoll.rootAnchorSag    = (float)(*ragdollTbl)["rootAnchorSag"].value_or(0.04);
+            ragdoll.rootAnchorTilt   = (float)(*ragdollTbl)["rootAnchorTilt"].value_or(0.05);
             ragdoll.impactSlack      = (float)(*ragdollTbl)["impactSlack"].value_or(0.60);
             ragdoll.recoverySeconds  = (float)(*ragdollTbl)["recoverySeconds"].value_or(0.50);
             ragdoll.collapseDistance = (float)(*ragdollTbl)["collapseDistance"].value_or(0.90);
@@ -3311,7 +3338,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             }
 
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized = core::MakeUnique<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
@@ -3796,7 +3823,7 @@ bool SceneSerializer::AppendObjects(
             if (auto* fieldsTbl = scTbl["fields"].as_table())
                 preservedFieldsToml = TomlTableToString(*fieldsTbl);
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized = core::MakeUnique<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;

@@ -19,6 +19,7 @@
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/Mesh.hpp>
+#include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Util/Uuid.hpp>
@@ -901,7 +902,7 @@ struct ThumbnailWaterVertex {
 
 static renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<renderer::Mesh>> s_cache;
+    static std::unordered_map<int, std::unique_ptr<renderer::Mesh>> s_cache;
     if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
 
     auto* surface = renderer::PrimitiveMesh::Sphere(resources, segments);
@@ -920,7 +921,8 @@ static renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& res
         verts.push_back(sv);
     }
 
-    auto mesh = std::shared_ptr<renderer::Mesh>(new renderer::Mesh());
+    auto mesh = core::MakeUnique<renderer::Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(verts.data(), verts.size() * sizeof(renderer::SkinnedVertex), sizeof(renderer::SkinnedVertex));
     mesh->indexBuffer = resources.CreateIndexBuffer(surface->cpuIndices.data(), static_cast<uint32_t>(surface->cpuIndices.size()));
     mesh->vertexCount = static_cast<uint32_t>(verts.size());
@@ -929,13 +931,14 @@ static renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& res
     mesh->cpuSkinnedVertices = std::move(verts);
     mesh->cpuIndices = surface->cpuIndices;
     mesh->ComputeBounds();
-    s_cache[segments] = mesh;
-    return mesh.get();
+    renderer::Mesh* result = mesh.get();
+    s_cache[segments] = std::move(mesh);
+    return result;
 }
 
 static renderer::Mesh* CreateWaterPreviewSphere(renderer::ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<renderer::Mesh>> s_cache;
+    static std::unordered_map<int, std::unique_ptr<renderer::Mesh>> s_cache;
     if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
 
     auto* surface = renderer::PrimitiveMesh::Sphere(resources, segments);
@@ -946,7 +949,8 @@ static renderer::Mesh* CreateWaterPreviewSphere(renderer::ResourceManager& resou
     for (const auto& v : surface->cpuVertices)
         verts.push_back({ v.position, v.uv });
 
-    auto mesh = std::shared_ptr<renderer::Mesh>(new renderer::Mesh());
+    auto mesh = core::MakeUnique<renderer::Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(verts.data(), verts.size() * sizeof(ThumbnailWaterVertex), sizeof(ThumbnailWaterVertex));
     mesh->indexBuffer = resources.CreateIndexBuffer(surface->cpuIndices.data(), static_cast<uint32_t>(surface->cpuIndices.size()));
     mesh->vertexCount = static_cast<uint32_t>(verts.size());
@@ -954,8 +958,9 @@ static renderer::Mesh* CreateWaterPreviewSphere(renderer::ResourceManager& resou
     mesh->cpuVertices = surface->cpuVertices;
     mesh->cpuIndices = surface->cpuIndices;
     mesh->ComputeBounds();
-    s_cache[segments] = mesh;
-    return mesh.get();
+    renderer::Mesh* result = mesh.get();
+    s_cache[segments] = std::move(mesh);
+    return result;
 }
 
 static math::Vector3 MeshBoundsCenter(const renderer::Mesh& mesh)

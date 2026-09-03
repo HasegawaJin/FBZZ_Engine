@@ -30,6 +30,7 @@
 #include <Scripts/Player/PlayerPolarityComponent.hpp>
 #include <Scripts/Player/PolarityBladeComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
+#include <Scripts/Vfx/PlayerArcVfxComponent.hpp>
 #include <Scripts/Vfx/SlashArcComponent.hpp>
 #include <functional>
 #include <utility>
@@ -120,6 +121,9 @@ private:
     // 刃が通った軌跡。剣の «判定» から分ける ─ 弧の見た目を触っても射程や発生には
     // 波及しないし、軌跡を外しても «斬る → 極が乗る → 飛ぶ» の芯は全部成立する。
     SlashArcComponent        m_slashArc;
+    // 纏っている極を体の外へ出す放電。«いつ帯びるか» は m_polarity が持ち、
+    // こちらはそれを読んで走らせるだけ ─ 切っても芯は成立する。
+    PlayerArcVfxComponent    m_arcVfx;
 };
 
 // PlayerComponent 自身の fzdata 参照と、責務別モジュールの Inspector 項目を同じカードへ並べる。
@@ -139,6 +143,7 @@ inline void PlayerComponent::Reflect(::fbzz::scene::IReflector& r_)
     m_polarity.Reflect(r_);
     m_blades.Reflect(r_);
     m_slashArc.Reflect(r_);
+    m_arcVfx.Reflect(r_);
 }
 
 inline void PlayerComponent::BindModules()
@@ -152,6 +157,7 @@ inline void PlayerComponent::BindModules()
     m_polarity.AdoptContext(*this);
     m_blades.AdoptContext(*this);
     m_slashArc.AdoptContext(*this);
+    m_arcVfx.AdoptContext(*this);
 
     m_controller.tuning.ref = tuning.ref;
     m_health.tuning.ref = tuning.ref;
@@ -175,6 +181,7 @@ inline void PlayerComponent::BindModules()
     m_blades.SetController(&m_controller);
     m_blades.SetPolarity(&m_polarity);
     m_blades.SetSlashArc(&m_slashArc);
+    m_arcVfx.SetPolarity(&m_polarity);
 }
 
 inline bool PlayerComponent::HasRequiredAssets() const
@@ -210,6 +217,7 @@ inline void PlayerComponent::OnStart()
     m_polarity.OnStart();
     m_blades.OnStart();
     m_slashArc.OnStart();
+    m_arcVfx.OnStart();
 }
 
 inline void PlayerComponent::OnUpdate()
@@ -236,6 +244,9 @@ inline void PlayerComponent::OnUpdate()
     // 判定が出た瞬間と光が走り出す瞬間が 1 フレームもずれない。
     updateModule(m_slashArc);
     updateModule(m_polarity);
+    // 放電は纏いの «結果» を読むだけなので、纏いより後。先に回すと 1 フレーム前の
+    // 極で走り、左右を斬り分けた瞬間だけ色が前の剣のまま出る。
+    updateModule(m_arcVfx);
     updateModule(m_controller);
     // コントローラーが同じフレームで受けた抜く / 収める要求を、その場で進める。
     // 先に回すと要求が 1 フレーム寝てしまい、押した感触が鈍る。
@@ -282,6 +293,7 @@ inline void PlayerComponent::OnDestroy()
     m_aimMarker.OnDestroy();
     m_headLook.OnDestroy();
     m_slashArc.OnDestroy();
+    m_arcVfx.OnDestroy();
     // 溜めの震え・唸り・パッドは «押している間» 続く。畳まずに消えると鳴りっぱなしになる。
     m_blades.OnDestroy();
 }

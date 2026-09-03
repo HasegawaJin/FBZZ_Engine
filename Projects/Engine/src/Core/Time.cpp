@@ -4,7 +4,6 @@
 /// @date    2026-05-21
 #include "Engine/Core/Time.hpp"
 
-#define NOMINMAX
 #include <Windows.h>
 #include <algorithm>
 

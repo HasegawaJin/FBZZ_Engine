@@ -140,6 +140,14 @@ public:
     // ページ数 (1 以上)。
     [[nodiscard]] std::size_t GetPageCount() const { return m_pages.size(); }
 
+    // 焼いたページ (テクスチャ) を ResourceManager へ返す。
+    //
+    // WHY 明示的な関数も要るか: 破棄時には ResourceManager::Active() 経由で返すが、
+    //     «まだ生きているアトラスを捨てる» (フォント差し替え・アセットリロード) では
+    //     破棄を待たずにその場で返したい。動的モードの SDF ページは 1 枚 MB 級で、
+    //     キャッシュを捨てるたびに残ると効いてくる。
+    void ReleaseGpuResources(ResourceManager& resources);
+
 private:
     // BMFont テキスト形式をパースする。成功したら true。
     bool ParseBMFont(const std::string& fntText,

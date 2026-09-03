@@ -67,6 +67,11 @@ target_compile_definitions(Scripts PRIVATE GAMESCRIPTS_EXPORTS)
 target_include_directories(Scripts PRIVATE Assets Src)
 target_link_libraries(Scripts PRIVATE FBZZ::Engine)
 
+# Scripts だけをビルドしたときもランタイムを SDK と揃える。
+# これが無いと Binaries/ の FBZZEngine.dll は GreenWareStandalone を建てた日のまま
+# 取り残され、Scripts.dll とバージョンが食い違ったまま気付けない。
+fbzz_stage_runtime(Scripts)
+
 # ゲーム側は共有 Editor を生成せず、配布・Play 用 Standalone だけを所有する。
 add_executable(GreenWareStandalone
     Src/AppMain.cpp

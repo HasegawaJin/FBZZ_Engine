@@ -5,6 +5,10 @@
 #include <Editor/Panels/AnalysisPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/FrameTimeGraph.hpp>
+#include <Editor/Util/ConsoleSink.hpp>
+#include <Editor/Util/MemoryLeakDiff.hpp>
+#include <Editor/Util/SourceOpen.hpp>
+#include <Editor/Util/Toast.hpp>
 
 #include <Engine/Core/Memory/MemorySystem.hpp>
 #include <Engine/Profiler/Profiler.hpp>
@@ -17,6 +21,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <string>
@@ -244,21 +249,21 @@ void AccumulateTrackedRendererResources(renderer::ResourceManager* resources,
         return;
     }
 
-    const std::size_t liveResourceCount = resources->GetLiveDebugResourceCount();
-    for (std::size_t i = 0; i < liveResourceCount; ++i) {
-        const core::AllocationInfo* info = resources->GetLiveDebugResource(i);
-        if (info == nullptr || !info->isActive) {
-            continue;
-        }
+    // WHY 一括で取るか: 索引指定の GetLiveDebugResource() は 1 件ごとに台帳を先頭から
+    //     走るので、全件を回すと本数の 2 乗になる。1 回のパスで集める。
+    std::vector<core::AllocationInfo> live;
+    live.reserve(512);
+    resources->CollectLiveDebugResources(live);
 
-        const auto tagIndex = static_cast<std::size_t>(info->tag);
+    for (const core::AllocationInfo& info : live) {
+        const auto tagIndex = static_cast<std::size_t>(info.tag);
         if (tagIndex >= tagStats.size()) {
             continue;
         }
 
         core::MemoryStats& stats = tagStats[tagIndex];
-        stats.used += info->size;
-        stats.peakUsed += info->size;
+        stats.used += info.size;
+        stats.peakUsed += info.size;
         ++stats.allocationCount;
         ++stats.activeCount;
     }
@@ -394,6 +399,296 @@ void DrawProfilerCategorySummary(const std::vector<profiler::ProfileRecord>& rec
         ImGui::SameLine();
         ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(totals[i].color),
                            "%s %.3f ms", totals[i].name, totals[i].elapsedMs);
+    }
+}
+
+// Console から «問題» だけを抜き出して報告へ足す。
+// WHY 一緒にするか: リークの相談は «残っているリソース» と «そのとき出ていた警告» が
+//     揃って初めて意味を持つ。2 つのパネルから別々に写させると、片方が落ちる。
+std::string FormatConsoleProblems(const ConsoleSink* sink, std::size_t maxLines = 200)
+{
+    if (sink == nullptr) return {};
+
+    std::vector<const core::LogEntry*> problems;
+    for (const core::LogEntry& entry : sink->GetEntries()) {
+        if (entry.level == core::LogLevel::WARNING || entry.level == core::LogLevel::LOG_ERROR)
+            problems.push_back(&entry);
+    }
+    if (problems.empty()) return "\n-- console (warnings & errors) --\n(none)\n";
+
+    // 直近から maxLines 件。古い方を落とすのは、原因より結果が後に出るため。
+    const std::size_t begin = (problems.size() > maxLines) ? problems.size() - maxLines : 0;
+
+    std::string out = "\n-- console (warnings & errors) --\n";
+    if (begin > 0)
+        out += "(older " + std::to_string(begin) + " lines omitted)\n";
+    for (std::size_t i = begin; i < problems.size(); ++i) {
+        out += (problems[i]->level == core::LogLevel::LOG_ERROR) ? "[ERROR] " : "[WARN ] ";
+        out += problems[i]->message;
+        out += '\n';
+    }
+    return out;
+}
+
+// 貼り付け用の一括コピー。押した瞬間の «全部» をクリップボードへ入れる。
+void DrawCopyReportButton(EditorContext& ctx)
+{
+    const bool ready = (ctx.resources != nullptr && ctx.memoryLeakDiff != nullptr);
+    ImGui::BeginDisabled(!ready);
+    if (ImGui::Button("Copy report##memory") && ready) {
+        std::string text = FormatMemoryReport(*ctx.resources, *ctx.memoryLeakDiff);
+        text += FormatConsoleProblems(ctx.consoleSink);
+        ImGui::SetClipboardText(text.c_str());
+        Toast::Success("Copied the memory report to the clipboard");
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("生存リソースを発生位置ごとに畳んだ一覧 (全件) + 基準からの差分 +\n"
+                          "直近の Play->Stop の差分 + Console の警告・エラーを 1 つの文へ。\n"
+                          "そのまま貼り付けて共有できます。");
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Console 側は Console パネルの Copy Visible / Copy Selected でも取れます。");
+    ImGui::Separator();
+}
+
+// "file:line" をボタンにして、押したらエディターでその行を開く。
+void DrawOriginButton(const std::string& origin, int id)
+{
+    const std::size_t colon = origin.find_last_of(':');
+    const std::size_t slash = origin.find_last_of("/\\");
+    // パス全体は列に収まらない。表示はファイル名だけにして、全体はツールチップへ。
+    const std::string shortOrigin =
+        (slash == std::string::npos) ? origin : origin.substr(slash + 1);
+
+    ImGui::PushID(id);
+    if (ImGui::SmallButton(shortOrigin.c_str()) && colon != std::string::npos) {
+        OpenSourceInExternalEditor(origin.substr(0, colon),
+                                   std::atoi(origin.c_str() + colon + 1));
+    }
+    ImGui::PopID();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", origin.c_str());
+}
+
+// 生存リソース一覧の表示状態。集計は台帳を全走査するため、毎フレームは回さない。
+struct LiveResourceState {
+    std::vector<MemoryLeakGroup> groups;
+    float       elapsed   = 0.0f;
+    bool        collected = false;
+    std::size_t liveCount = 0;
+    std::size_t liveBytes = 0;
+};
+LiveResourceState s_liveResources;
+
+// 生存中の Renderer リソースを «発生位置ごと» に出す。
+//
+// WHY 個体を並べないか: 以前は先頭 24 件を生のまま並べていた。個体番号とバイト数が
+//     並ぶだけでは «どれが余分か» が読めず、しかも 24 件を超えたぶんは見えなかった。
+//     同じ file:line が何本あるかで並べれば、撒いた数だけ増えているものが先頭へ来る。
+void DrawLiveResources(EditorContext& ctx)
+{
+    if (ctx.resources == nullptr) return;
+
+    constexpr float kRefreshInterval = 0.5f;
+    s_liveResources.elapsed += ImGui::GetIO().DeltaTime;
+    if (s_liveResources.elapsed >= kRefreshInterval || !s_liveResources.collected) {
+        s_liveResources.elapsed   = 0.0f;
+        s_liveResources.collected = true;
+        s_liveResources.groups    = SummarizeLiveResources(*ctx.resources);
+        s_liveResources.liveCount = 0;
+        s_liveResources.liveBytes = 0;
+        for (const MemoryLeakGroup& group : s_liveResources.groups) {
+            s_liveResources.liveCount += group.count;
+            s_liveResources.liveBytes += group.bytes;
+        }
+    }
+
+    char bytes[32]{};
+    ImGui::Separator();
+    ImGui::Text("Live renderer resources: %zu (%s) / %zu origins",
+                s_liveResources.liveCount,
+                FormatBytes(s_liveResources.liveBytes, bytes),
+                s_liveResources.groups.size());
+
+    if (s_liveResources.groups.empty()) return;
+
+    constexpr ImGuiTableFlags kFlags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY;
+    const float height =
+        (std::min)(static_cast<float>(s_liveResources.groups.size()) * 22.0f + 28.0f, 200.0f);
+    if (!ImGui::BeginTable("LiveResources##Analysis", 4, kFlags, { -1.0f, height }))
+        return;
+
+    ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+    ImGui::TableSetupColumn("Bytes", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+    ImGui::TableSetupColumn("Allocator", ImGuiTableColumnFlags_WidthFixed, 170.0f);
+    ImGui::TableSetupColumn("Origin");
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableHeadersRow();
+
+    for (std::size_t i = 0; i < s_liveResources.groups.size(); ++i) {
+        const MemoryLeakGroup& group = s_liveResources.groups[i];
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::Text("x%zu", group.count);
+        ImGui::TableNextColumn();
+        char rowBytes[32]{};
+        ImGui::TextUnformatted(FormatBytes(group.bytes, rowBytes));
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(group.allocatorName.c_str());
+        ImGui::TableNextColumn();
+        DrawOriginButton(group.origin, static_cast<int>(i) + 0x10000);
+    }
+    ImGui::EndTable();
+}
+
+// リーク差分の表示状態。比較は台帳を全走査するため、毎フレームは回さない。
+struct LeakDiffState {
+    MemoryLeakReport live;
+    MemoryLeakReport session;
+    float            elapsed        = 0.0f;
+    float            refreshInterval = 0.5f;
+    bool             autoRefresh    = true;
+    bool             showPinned     = true;
+};
+LeakDiffState s_leakDiff;
+
+void DrawLeakRows(const MemoryLeakReport& report, const char* tableId)
+{
+    if (report.rows.empty()) {
+        ImGui::TextDisabled("No origin grew since the baseline.");
+        return;
+    }
+
+    constexpr ImGuiTableFlags kFlags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY;
+    const float height = (std::min)(static_cast<float>(report.rows.size()) * 22.0f + 28.0f, 220.0f);
+    if (!ImGui::BeginTable(tableId, 4, kFlags, { -1.0f, height }))
+        return;
+
+    ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+    ImGui::TableSetupColumn("Bytes", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+    ImGui::TableSetupColumn("Allocator", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+    ImGui::TableSetupColumn("Origin");
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableHeadersRow();
+
+    for (std::size_t i = 0; i < report.rows.size(); ++i) {
+        const MemoryLeakRow& row = report.rows[i];
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::Text("+%lld (%zu->%zu)", static_cast<long long>(row.countDelta), row.baseCount, row.nowCount);
+        ImGui::TableNextColumn();
+        char bytes[32]{};
+        ImGui::TextUnformatted(FormatBytes(static_cast<std::size_t>((std::max)(row.bytesDelta,
+                                                                              static_cast<std::ptrdiff_t>(0))),
+                                           bytes));
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(row.allocatorName.c_str());
+        ImGui::TableNextColumn();
+        DrawOriginButton(row.origin, static_cast<int>(i));
+    }
+    ImGui::EndTable();
+}
+
+void DrawLeakReportSummary(const MemoryLeakReport& report)
+{
+    char bytes[32]{};
+    const bool grew = report.Grew();
+    const ImVec4 color = grew ? ImVec4(1.0f, 0.55f, 0.35f, 1.0f) : ImVec4(0.55f, 0.85f, 0.55f, 1.0f);
+    ImGui::TextColored(color, "%s%s / %+lld resources  (live %zu)",
+                       report.totalBytesDelta < 0 ? "-" : "+",
+                       FormatBytes(static_cast<std::size_t>(report.totalBytesDelta < 0
+                                                                ? -report.totalBytesDelta
+                                                                : report.totalBytesDelta),
+                                   bytes),
+                       static_cast<long long>(report.totalCountDelta),
+                       report.liveCount);
+}
+
+// Renderer リソースの «基準からの増分» を発生位置ごとに出す。
+// WHY 個体一覧と別に置くか: Live 一覧は «今あるもの» の羅列で、Play/Stop のように
+//     作り直しが挟まると何が余分なのか読めない。増えた発生位置だけを残して見せる。
+void DrawLeakDiff(EditorContext& ctx)
+{
+    if (ctx.memoryLeakDiff == nullptr || ctx.resources == nullptr)
+        return;
+
+    MemoryLeakDiff& diff = *ctx.memoryLeakDiff;
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Leak diff (renderer resources)");
+
+    if (ImGui::Button("Snapshot##leakDiff")) {
+        diff.CaptureBaseline(*ctx.resources, "Manual");
+        s_leakDiff.live = diff.Compare(*ctx.resources);
+        s_leakDiff.elapsed = 0.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Compare now##leakDiff")) {
+        s_leakDiff.live = diff.Compare(*ctx.resources);
+        s_leakDiff.elapsed = 0.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Clear##leakDiff")) {
+        diff.ClearBaseline();
+        // 累計の基準も一緒に捨てる。«ここから数え直す» が押した人の意図。
+        diff.ClearSessionBaseline();
+        s_leakDiff.live    = {};
+        s_leakDiff.session = {};
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("Auto##leakDiff", &s_leakDiff.autoRefresh);
+
+    if (!diff.HasBaseline()) {
+        ImGui::TextDisabled("No baseline. Press Snapshot, or start Play (a baseline is taken automatically).");
+    } else {
+        ImGui::TextDisabled("Baseline: %s (%zu resources)",
+                            diff.GetBaselineLabel().c_str(), diff.GetBaselineCount());
+
+        if (s_leakDiff.autoRefresh) {
+            s_leakDiff.elapsed += ImGui::GetIO().DeltaTime;
+            if (s_leakDiff.elapsed >= s_leakDiff.refreshInterval) {
+                s_leakDiff.elapsed = 0.0f;
+                // 比較は台帳の全走査なので、2 本まとめてこの間隔でだけ回す。
+                s_leakDiff.live = diff.Compare(*ctx.resources);
+                if (diff.HasSessionBaseline())
+                    s_leakDiff.session = diff.CompareSession(*ctx.resources);
+            }
+        }
+
+        if (s_leakDiff.live.valid) {
+            DrawLeakReportSummary(s_leakDiff.live);
+            DrawLeakRows(s_leakDiff.live, "LeakDiffLive##Analysis");
+        }
+    }
+
+    const MemoryLeakReport& pinned = diff.GetPinnedReport();
+    if (pinned.valid) {
+        ImGui::Spacing();
+        ImGui::Checkbox("Last Play -> Stop##leakDiff", &s_leakDiff.showPinned);
+        if (s_leakDiff.showPinned) {
+            DrawLeakReportSummary(pinned);
+            DrawLeakRows(pinned, "LeakDiffPinned##Analysis");
+        }
+    }
+
+    // 累計。«初回だけ増えた» のか «毎回増える» のかは 1 往復では判定できない。
+    const int cycles = diff.GetCycleCount();
+    if (s_leakDiff.session.valid && cycles > 0) {
+        ImGui::Spacing();
+        ImGui::Text("Since first Play (%d cycles, %+lld bytes/cycle)", cycles,
+                    static_cast<long long>(s_leakDiff.session.totalBytesDelta / cycles));
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("往復のたびに比例して伸びる行がリークです。\n"
+                              "初回の Play で 1 度だけ増えるもの (LoadTexture / LoadShader /\n"
+                              ".mat 解決のキャッシュ) は、2 往復目以降は増えません。");
+        }
+        DrawLeakReportSummary(s_leakDiff.session);
+        DrawLeakRows(s_leakDiff.session, "LeakDiffSession##Analysis");
     }
 }
 
@@ -677,6 +972,8 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
         }
     }
 
+    DrawCopyReportButton(ctx);
+
     ImGui::SetNextItemWidth(200.0f);
     ImGui::InputText("Filter tags##memory", s_memoryFilter.tagFilter, sizeof(s_memoryFilter.tagFilter));
     if (s_memoryFilter.tagFilter[0] != '\0') {
@@ -740,28 +1037,8 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
     ImGui::TextDisabled("Only RENDERER is instrumented; other tags stay 0 until their "
                         "subsystems record into MemoryTracker.");
 
-    if (ctx.resources != nullptr) {
-        const std::size_t liveResourceCount = ctx.resources->GetLiveDebugResourceCount();
-        ImGui::Separator();
-        ImGui::Text("Live renderer resources: %zu", liveResourceCount);
-
-        const std::size_t visibleCount = (std::min)(liveResourceCount, static_cast<std::size_t>(24));
-        for (std::size_t i = 0; i < visibleCount; ++i) {
-            const core::AllocationInfo* info = ctx.resources->GetLiveDebugResource(i);
-            if (info == nullptr)
-                continue;
-
-            ImGui::BulletText("#%llu %s %zu bytes (%s:%d)",
-                              static_cast<unsigned long long>(info->allocationId),
-                              info->allocatorName,
-                              info->size,
-                              info->file,
-                              info->line);
-        }
-        if (liveResourceCount > visibleCount) {
-            ImGui::TextDisabled("... %zu more", liveResourceCount - visibleCount);
-        }
-    }
+    DrawLiveResources(ctx);
+    DrawLeakDiff(ctx);
 
     if (!s_memHistory.tagUsedMB.empty()) {
         ImGui::Separator();

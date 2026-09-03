@@ -2,7 +2,8 @@
 /// @brief   Scheduler の Build、名前検索、初期化、更新契約を自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Scheduler/SystemScheduler.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -12,6 +13,8 @@
 #include <string_view>
 
 namespace fbzz::tests {
+
+class SystemSchedulerTest : public testkit::EngineFixture {};
 
 class RecordingSystem final : public fbzz::ISystem {
 public:
@@ -36,7 +39,7 @@ public:
     int* shutdownCounter = nullptr;
 };
 
-TEST(SystemSchedulerTest, BuildsAndFindsASystemByItsPublicName)
+TEST_F(SystemSchedulerTest, BuildsAndFindsASystemByItsPublicName)
 {
     fbzz::SystemScheduler scheduler;
     int shutdownCount = 0;
@@ -53,7 +56,7 @@ TEST(SystemSchedulerTest, BuildsAndFindsASystemByItsPublicName)
     EXPECT_EQ(shutdownCount, 1);
 }
 
-TEST(SystemSchedulerTest, UpdatesSystemsInTheirConfiguredPhase)
+TEST_F(SystemSchedulerTest, UpdatesSystemsInTheirConfiguredPhase)
 {
     fbzz::SystemScheduler scheduler;
     auto system = std::make_unique<RecordingSystem>();

@@ -53,6 +53,17 @@ void RigidBody::ApplyImpulse(const math::Vector3& impulse)
     m_velocity = ApplyPositionFreeze(m_velocity + impulse * m_invMass, math::Vector3::ZERO);
 }
 
+void RigidBody::ApplyImpulseAtPoint(const math::Vector3& impulse,
+                                    const math::Vector3& worldPoint)
+{
+    if (impulse.LengthSq() <= 1e-12f) return;
+    WakeUp();
+    m_velocity = ApplyPositionFreeze(m_velocity + impulse * m_invMass, math::Vector3::ZERO);
+    m_angularVelocity = ApplyRotationFreeze(
+        m_angularVelocity +
+        ApplyInvInertia(math::Vector3::Cross(worldPoint - m_position, impulse)));
+}
+
 void RigidBody::ApplyAngularImpulse(const math::Vector3& angularImpulse)
 {
     if (angularImpulse.LengthSq() > 1e-12f) WakeUp();

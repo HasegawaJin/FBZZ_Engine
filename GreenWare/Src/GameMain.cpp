@@ -103,6 +103,7 @@
 #include "Scripts/Vfx/ImpactVfxComponent.hpp"
 #include "Scripts/Vfx/LaunchVfxComponent.hpp"
 #include "Scripts/Vfx/NeutralizeVfxComponent.hpp"
+#include "Scripts/Vfx/PlayerArcVfxComponent.hpp"
 #include "Scripts/Vfx/RunDustVfxComponent.hpp"
 #include "Scripts/Vfx/SlashArcComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END

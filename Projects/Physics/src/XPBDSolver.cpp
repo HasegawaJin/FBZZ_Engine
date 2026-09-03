@@ -56,6 +56,16 @@ namespace fbzz::physics
         m_constraints.clear();
     }
 
+    void XPBDSolver::ClearTransient()
+    {
+        m_transient.clear();
+    }
+
+    void XPBDSolver::AddTransient(XPBDConstraint* constraint)
+    {
+        if (constraint) m_transient.push_back(constraint);
+    }
+
     void XPBDSolver::Step(float dt)
     {
         if (dt <= 0.0f || m_bodies.empty()) return;
@@ -70,10 +80,15 @@ namespace fbzz::physics
                 constraint->ResetLambda();
                 constraint->SolvePosition(h);
             }
+            for (XPBDConstraint* constraint : m_transient) {
+                constraint->ResetLambda();
+                constraint->SolvePosition(h);
+            }
 
             for (const BodyState& state : m_bodies) DeriveVelocity(state, h);
 
             for (auto& constraint : m_constraints) constraint->SolveVelocity(h);
+            for (XPBDConstraint* constraint : m_transient) constraint->SolveVelocity(h);
         }
     }
 

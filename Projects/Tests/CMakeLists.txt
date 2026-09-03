@@ -1,132 +1,97 @@
-# FBZZ Engine
-# Projects/Tests/CMakeLists.txt
-# GoogleTest による自動テストと、開発者が直接起動する手動テストの構成。
+# 自動テストと手動テストの構成。規約は Docs/conventions/test.md を参照。
+#
+# ソースは file(GLOB) で拾わない。新規ファイルが CMake 再実行まで拾われず、
+# 「書いたのに一度も実行されていないテスト」が生まれるため。
 
-include(FetchContent)
-include(GoogleTest)
+add_subdirectory(TestKit)
 
-option(FBZZ_FETCH_GOOGLETEST "Fetch GoogleTest when it is not installed" ON)
+include("${CMAKE_SOURCE_DIR}/CMake/FBZZTests.cmake")
 
-find_package(GTest CONFIG QUIET)
-if(NOT GTest_FOUND)
-    if(NOT FBZZ_FETCH_GOOGLETEST)
-        message(FATAL_ERROR
-            "GoogleTest was not found. Install GTest or enable FBZZ_FETCH_GOOGLETEST.")
-    endif()
-
-    # WHY: MSVC の Engine と GoogleTest の CRT を揃え、DLL 境界で STL を共有しても
-    #      Debug/Release のランタイム不一致を起こさない。
-    set(gtest_force_shared_crt ON CACHE BOOL "Use the shared MSVC runtime" FORCE)
-    FetchContent_Declare(googletest
-        URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
-    )
-    FetchContent_MakeAvailable(googletest)
-endif()
-
-set(FBZZ_TEST_OUTPUT_DIR "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests")
-
-# 共有 DLL は Engine 本体の出力先からテスト出力先へコピーする。
-# WHY: Visual Studio からテスト exe だけを起動しても、DLL の検索先を手動設定しなくてよいようにする。
-add_custom_target(FBZZTestsStageRuntime
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${FBZZ_TEST_OUTPUT_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FBZZMath> "${FBZZ_TEST_OUTPUT_DIR}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FBZZPhysics> "${FBZZ_TEST_OUTPUT_DIR}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FBZZEngine> "${FBZZ_TEST_OUTPUT_DIR}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
-        "${FBZZ_TEST_OUTPUT_DIR}/"
-    DEPENDS FBZZMath FBZZPhysics FBZZEngine
-    COMMENT "Staging FBZZ runtime DLLs for GoogleTest"
+# --- Math -------------------------------------------------------------------
+fbzz_add_test_suite(MathAuto
+    SOURCES
+        Math/Auto/Vector3Tests.cpp
+        Math/Auto/QuaternionTests.cpp
+        Math/Auto/Matrix4Tests.cpp
 )
 
-add_executable(FBZZTestsCoreAuto
-    Core/Auto/Memory/LinearAllocatorTests.cpp
-    Core/Auto/Memory/StackAllocatorTests.cpp
-    Core/Auto/Memory/PoolAllocatorTests.cpp
-    Core/Auto/Memory/FrameAllocatorTests.cpp
-    Core/Auto/Memory/MemoryTrackerTests.cpp
-    Core/Auto/Memory/MemoryDebugTests.cpp
-    Core/Auto/Memory/MemorySystemTests.cpp
-    Core/Auto/Signal/SignalTests.cpp
-    Core/Auto/Logger/LoggerTests.cpp
-    Core/Auto/Time/TimeConfigurationTests.cpp
-    Core/Auto/Time/TimeTickTests.cpp
-    Core/Auto/Concurrency/TaskSystemSubmitTests.cpp
-    Core/Auto/Concurrency/TaskSystemConcurrencyTests.cpp
-    Core/Auto/Scheduler/SchedulerDeclarationTests.cpp
-    Core/Auto/Scheduler/SchedulerExecutionTests.cpp
+# --- Core -------------------------------------------------------------------
+fbzz_add_test_suite(CoreAuto
+    SOURCES
+        Core/Auto/Memory/LinearAllocatorTests.cpp
+        Core/Auto/Memory/StackAllocatorTests.cpp
+        Core/Auto/Memory/PoolAllocatorTests.cpp
+        Core/Auto/Memory/FrameAllocatorTests.cpp
+        Core/Auto/Memory/MemoryTrackerTests.cpp
+        Core/Auto/Memory/MemoryDebugTests.cpp
+        Core/Auto/Memory/MemorySystemTests.cpp
+        Core/Auto/Signal/SignalTests.cpp
+        Core/Auto/Logger/LoggerTests.cpp
+        Core/Auto/Time/TimeConfigurationTests.cpp
+        Core/Auto/Time/TimeTickTests.cpp
+        Core/Auto/Concurrency/TaskSystemSubmitTests.cpp
+        Core/Auto/Concurrency/TaskSystemConcurrencyTests.cpp
+        Core/Auto/Scheduler/SchedulerDeclarationTests.cpp
+        Core/Auto/Scheduler/SchedulerExecutionTests.cpp
+    LINKS
+        FBZZTestKitEngine
+        FBZZPhysics   # SchedulerExecutionTests がコンポーネント型として参照する
 )
-set_target_properties(FBZZTestsCoreAuto PROPERTIES
-    OUTPUT_NAME "FBZZTestsCoreAuto"
-    RUNTIME_OUTPUT_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
+
+# --- Physics ----------------------------------------------------------------
+fbzz_add_test_suite(PhysicsAuto
+    SOURCES
+        Physics/Auto/AABBTests.cpp
+        Physics/Auto/ColliderTests.cpp
+        Physics/Auto/GJKTests.cpp
+        Physics/Auto/EPATests.cpp
+        Physics/Auto/BVHTests.cpp
+        Physics/Auto/XPBDSolverTests.cpp
+        Physics/Auto/XPBDJointTests.cpp
+    LINKS
+        FBZZTestKitPhysics
 )
-target_link_libraries(FBZZTestsCoreAuto
-    PRIVATE
-        GTest::gtest_main
-        FBZZEngine
+
+# --- Engine -----------------------------------------------------------------
+fbzz_add_test_suite(EngineAuto
+    SOURCES
+        Engine/Auto/RagdollRigTests.cpp
+    LINKS
+        FBZZTestKitEngine
         FBZZPhysics
 )
-add_dependencies(FBZZTestsCoreAuto FBZZTestsStageRuntime)
-gtest_discover_tests(FBZZTestsCoreAuto
-    DISCOVERY_TIMEOUT 60
-    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
-)
 
-add_executable(FBZZTestsPhysicsAuto
-    Physics/Auto/XPBDSolverTests.cpp
-    Physics/Auto/XPBDJointTests.cpp
+# --- ビジュアル検証ベンチ ---------------------------------------------------
+# CTest には載せない。合否をコードで判定しないため。
+# WHY テスト実行機能を持たせないか: 自動テストの正は CTest / VS のテストエクスプローラー。
+#      ここでも走らせられるようにすると «どちらの結果が正しいのか» が分からなくなる。
+add_executable(FBZZTestBench
+    Bench/main.cpp
+    Bench/BenchApp.cpp
+    Bench/Viewport2D.cpp
+    Bench/Scenes/XPBDConvergenceScene.cpp
+    Bench/Scenes/XPBDJointChainScene.cpp
+    Bench/Scenes/ContactScene.cpp
+    Bench/Scenes/BVHQueryScene.cpp
+    # コンソール制御だけ TestKit と共有する。
+    # WHY リンクせずソースを直接足すか: FBZZTestKit は gtest / gmock を引き連れてくる。
+    #      ベンチはテストフレームワークに依存させたくないので、この 1 ファイルだけ借りる。
+    TestKit/src/Console.cpp
 )
+target_include_directories(FBZZTestBench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/TestKit/include")
+target_link_libraries(FBZZTestBench PRIVATE FBZZEngine FBZZPhysics FBZZMath ImGui)
+set_target_properties(FBZZTestBench PROPERTIES FOLDER "Tests")
+fbzz_set_test_output_dir(FBZZTestBench)
+fbzz_apply_app_manifest(FBZZTestBench)
+fbzz_stage_test_runtime(FBZZTestBench)
 
-add_executable(FBZZTestsEngineAuto
-    Engine/Auto/RagdollRigTests.cpp
+# --- 手動テスト -------------------------------------------------------------
+# Window / Cursor は OS の状態を書き換えるため CTest に登録しない。
+# 開発者が Visual Studio から意図的に起動したときだけ実行する。
+fbzz_add_test_suite(CoreManual MANUAL
+    SOURCES
+        Core/ManualTest/WindowManualTests.cpp
+        Core/ManualTest/CursorManualTests.cpp
+    LINKS
+        FBZZTestKitEngine
 )
-set_target_properties(FBZZTestsEngineAuto PROPERTIES
-    OUTPUT_NAME "FBZZTestsEngineAuto"
-    RUNTIME_OUTPUT_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
-)
-target_link_libraries(FBZZTestsEngineAuto
-    PRIVATE
-        GTest::gtest_main
-        FBZZEngine
-        FBZZPhysics
-)
-add_dependencies(FBZZTestsEngineAuto FBZZTestsStageRuntime)
-gtest_discover_tests(FBZZTestsEngineAuto
-    DISCOVERY_TIMEOUT 60
-    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
-)
-set_target_properties(FBZZTestsPhysicsAuto PROPERTIES
-    OUTPUT_NAME "FBZZTestsPhysicsAuto"
-    RUNTIME_OUTPUT_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
-)
-target_link_libraries(FBZZTestsPhysicsAuto
-    PRIVATE
-        GTest::gtest_main
-        FBZZPhysics
-)
-add_dependencies(FBZZTestsPhysicsAuto FBZZTestsStageRuntime)
-gtest_discover_tests(FBZZTestsPhysicsAuto
-    DISCOVERY_TIMEOUT 60
-    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
-)
-
-# ManualTest は CTest に登録しない。Window/Cursor の OS 状態を変更するため、
-# 開発者が Visual Studio から意図的に起動した場合だけ実行する。
-add_executable(FBZZTestsCoreManual
-    Core/ManualTest/WindowManualTests.cpp
-    Core/ManualTest/CursorManualTests.cpp
-)
-set_target_properties(FBZZTestsCoreManual PROPERTIES
-    OUTPUT_NAME "FBZZTestsCoreManual"
-    RUNTIME_OUTPUT_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
-)
-target_link_libraries(FBZZTestsCoreManual
-    PRIVATE
-        GTest::gtest_main
-        FBZZEngine
-        FBZZPhysics
-)
-add_dependencies(FBZZTestsCoreManual FBZZTestsStageRuntime)

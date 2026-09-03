@@ -21,15 +21,17 @@
 #include "DX11Texture.hpp"
 #include "DX11RenderTarget.hpp"
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Renderer/AssetPathService.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
 #include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
+#include "../GpuValidation.hpp"
 #include <DirectXTex.h>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <dxgi1_5.h>
+#include <iterator>
 #include <string>
-#ifdef _DEBUG
+#ifdef FBZZ_GPU_VALIDATION
 #include <d3d11sdklayers.h>  // ID3D11InfoQueue
 #endif
 
@@ -80,59 +82,81 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
                                                        ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
                                                        : 0u;
 
-    // DEBUG ビルドではデバッグレイヤーを有効化し、DX11 の検証エラーを OutputDebugString に出力する
+    // Debug / Development では検証レイヤーを立てる (Release は素通し)。
+    // FBZZ_GPU_VALIDATION=0 を環境変数に入れると、ビルドし直さずに切れる。
     UINT flags = 0;
-#ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
+#ifdef FBZZ_GPU_VALIDATION
+    if (gpuvalidation::IsEnabled())
+        flags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
     // D3D_FEATURE_LEVEL_11_0 を明示して、それ未満の GPU でエラーを即座に返す
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-    FBZZ_HR_CHECK(D3D11CreateDeviceAndSwapChain(
-        nullptr,                        // 既定アダプター
-        D3D_DRIVER_TYPE_HARDWARE,       // GPU ドライバーを使用
-        nullptr,
-        flags,
-        &featureLevel, 1,
-        D3D11_SDK_VERSION,
-        &scDesc,
-        m_swapChain.GetAddressOf(),
-        m_device.GetAddressOf(),
-        nullptr,
-        m_context.GetAddressOf()));
+    const auto createDevice = [&](UINT createFlags) {
+        return D3D11CreateDeviceAndSwapChain(
+            nullptr,                        // 既定アダプター
+            D3D_DRIVER_TYPE_HARDWARE,       // GPU ドライバーを使用
+            nullptr,
+            createFlags,
+            &featureLevel, 1,
+            D3D11_SDK_VERSION,
+            &scDesc,
+            m_swapChain.GetAddressOf(),
+            m_device.GetAddressOf(),
+            nullptr,
+            m_context.GetAddressOf());
+    };
+    HRESULT hr = createDevice(flags);
+#ifdef FBZZ_GPU_VALIDATION
+    if (FAILED(hr) && (flags & D3D11_CREATE_DEVICE_DEBUG) != 0) {
+        // WHY 落とさず作り直すか: 検証レイヤーは Windows の «グラフィックス ツール» が
+        //     入っていない機械では生成そのものが失敗する。検証が無いだけで動く構成を、
+        //     起動できない構成にはしない。
+        FBZZ_LOG_WARN("DX11Renderer: 検証レイヤーを有効化できません "
+                      "(オプション機能「グラフィックス ツール」未導入?)。検証なしで続行します");
+        flags &= ~static_cast<UINT>(D3D11_CREATE_DEVICE_DEBUG);
+        hr = createDevice(flags);
+    }
+#endif
+    FBZZ_HR_CHECK(hr);
 
     if (!CreateRenderTargetView())  return false;
     if (!CreateDepthStencilView())  return false;
 
-#ifdef _DEBUG
-    // D3D11 Debug Layer はデフォルトで検証メッセージを約2秒ごとにフラッシュし、
-    // その際に定期的な FPS スパイクを引き起こす。
-    // InfoQueue でストレージフィルタを空にすることでメッセージ蓄積量を最小化し、
-    // フラッシュコストを抑える。エラーだけはブレークポイントで捕捉する。
-    // WHY: ポートフォリオ動作確認で Release 以外のビルドも一定の FPS 安定性が必要なため。
+#ifdef FBZZ_GPU_VALIDATION
+    // 検証は効かせたまま、読み出しの重さだけを消す。
+    // WHY 溜めて終了時に読むか: InfoQueue の取り出しはメッセージ 1 件につき COM 呼び出し 2 回で、
+    //     毎フレーム触ると検証レイヤー本体より重い。上限付きで溜め、Shutdown() で一度に吐く。
+    //     WARNING を捨てないのは、リソースの取り違えや解放漏れがそこに出るため。
+    if (gpuvalidation::IsEnabled())
     {
         Microsoft::WRL::ComPtr<ID3D11InfoQueue> infoQueue;
         if (SUCCEEDED(m_device.As(&infoQueue)))
         {
-            infoQueue->SetMuteDebugOutput(FALSE);
-            infoQueue->SetMessageCountLimit(-1);            // メッセージ上限を解除
+            // WHY デバッガー接続時だけ止めるか: ブレークポイント例外は、デバッガーが
+            //     居ない実行では «原因不明のクラッシュ» にしかならない。
+            const BOOL breakOnError = gpuvalidation::ShouldBreakOnError() ? TRUE : FALSE;
+            // WHY 実況を黙らせるか: メッセージ 1 件ごとの OutputDebugString は、デバッガーが
+            //     付いていると 1 回あたりミリ秒級のラウンドトリップになる。検証レイヤー本体より
+            //     この «出力» の方が重い。溜めるのは続け、Shutdown() で一度に読む。
+            infoQueue->SetMuteDebugOutput(TRUE);
+            infoQueue->SetMessageCountLimit(
+                static_cast<UINT64>(gpuvalidation::kMaxStoredMessages));
             infoQueue->ClearStoredMessages();
 
-            // ERROR / CORRUPTION だけブレーク、INFO / WARNING は蓄積しない
-            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR,      TRUE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, breakOnError);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR,      breakOnError);
             infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_WARNING,    FALSE);
             infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_INFO,       FALSE);
             infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_MESSAGE,    FALSE);
 
-            // WARNING 以下をフィルタアウトして蓄積自体を止める
+            // INFO / MESSAGE は «状態が変わった» の実況で、量が桁違いに多い。蓄積を止める。
             D3D11_MESSAGE_SEVERITY denySeverities[] = {
                 D3D11_MESSAGE_SEVERITY_INFO,
                 D3D11_MESSAGE_SEVERITY_MESSAGE,
-                D3D11_MESSAGE_SEVERITY_WARNING,
             };
             D3D11_INFO_QUEUE_FILTER filter = {};
-            filter.DenyList.NumSeverities  = 3u;
+            filter.DenyList.NumSeverities  = static_cast<UINT>(std::size(denySeverities));
             filter.DenyList.pSeverityList  = denySeverities;
             infoQueue->AddStorageFilterEntries(&filter);
         }
@@ -188,9 +212,24 @@ void DX11Renderer::Shutdown()
     m_depthStencilView.Reset();
     m_renderTargetView.Reset();
     m_swapChain.Reset();
+
+#ifdef FBZZ_GPU_VALIDATION
+    // デバイスを手放す前に、溜まった検証メッセージを回収する。
+    if (m_device) {
+        Microsoft::WRL::ComPtr<ID3D11InfoQueue> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+            gpuvalidation::DrainStoredMessages<D3D11_MESSAGE>(*infoQueue.Get(), "DX11Renderer");
+    }
+#endif
+
     m_context.Reset();
     m_device.Reset();
     m_currentRT = nullptr;
+
+#ifdef FBZZ_GPU_VALIDATION
+    // 参照を全部落とした «後» に数える。ここで残っているものが本当の解放漏れ。
+    gpuvalidation::ReportLiveObjects(DXGI_DEBUG_D3D11, "D3D11");
+#endif
 
     FBZZ_LOG_INFO("DX11Renderer shutdown");
 }
@@ -425,8 +464,7 @@ bool DX11Renderer::BakeSkyLight(ResourceHandle<RenderTargetTag> envCubeRT, Resou
     // 入力キューブは mip0 のみ (SkyCapture)。prefilter の env LOD は mip0 を参照する (envMipCount=1)。
     // ConvolveCubeToTextures は結果を戻り値で返す (out 引数ではない)。
     // WHY: プロジェクトへEngine shaderを複製せず、GameHubが選択したSDKの共有assetを使う。
-    const std::string compiledShaders =
-        asset::AssetManager::ResolveAssetPath("Assets/Shaders/compiled/");
+    const std::string compiledShaders = ResolveAssetPath("Assets/Shaders/compiled/");
     IblTextureSet set = m_runtimeIblBaker->ConvolveCubeToTextures(
         envSRV, compiledShaders,
         irradianceSize, prefilterSize, prefilterMips, sampleCount, /*envMipCount=*/1);

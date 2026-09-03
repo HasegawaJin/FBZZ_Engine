@@ -14,6 +14,7 @@
 #include <Editor/Util/ConsoleSink.hpp>
 #include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/EditorSettings.hpp>
+#include <Editor/Util/MemoryLeakDiff.hpp>
 #include <Editor/Util/SceneDirtyTracker.hpp>
 #include <Editor/PlayModeController.hpp>
 // TerrainTool は src/ 内の内部ヘッダーなので前方宣言で対応する
@@ -310,6 +311,8 @@ private:
     // Play 開始時の描画設定。Play 中のスクリプトが graphics プロキシで画質や明るさを
     // 変えても、Stop でここへ戻して編集側とプロジェクト設定を汚さない。
     renderer::RenderSettings m_renderSettingsPlaySnapshot;
+    // Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
+    MemoryLeakDiff     m_memoryLeakDiff;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
     std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
     std::string                     m_normalLayoutIni;

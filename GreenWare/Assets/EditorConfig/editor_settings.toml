@@ -40,13 +40,13 @@ version = '1.0.0'
     path = 'Assets/Scenes/Title.scene'
 
 [camera]
-last_pos_x = -1.9952486753463745
-last_pos_y = 6.399084568023682
-last_pos_z = -26.2613525390625
-last_rot_w = 0.9845110774040222
-last_rot_x = 0.16820159554481506
-last_rot_y = 0.04875117912888527
-last_rot_z = -0.008329033851623535
+last_pos_x = 3.4539284706115723
+last_pos_y = 9.673006057739258
+last_pos_z = -54.15922546386719
+last_rot_w = 0.9979259967803955
+last_rot_x = 0.06322210282087326
+last_rot_y = -0.012082807719707489
+last_rot_z = 0.0007654880755580962
 ortho_height = 20.0
 orthographic = false
 sensitivity = 0.15000000596046448
@@ -56,10 +56,10 @@ speed = 5.0
 auto_scroll = true
 clear_on_play = false
 collapse = false
-show_debug = false
+show_debug = true
 show_detail = true
 show_error = true
-show_info = false
+show_info = true
 show_warn = true
 
 [debug]
@@ -561,7 +561,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 352696072
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 361012331
@@ -1045,7 +1045,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 1206712166
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 1212701157
@@ -1649,7 +1649,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 2281658262
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 2291116281
@@ -2408,6 +2408,10 @@ k = 3746803985
 v = false
 
 [[inspector_sections.states]]
+k = 3760663340
+v = false
+
+[[inspector_sections.states]]
 k = 3764139602
 v = true
 
@@ -2465,7 +2469,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 3947225618
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 3954395121
@@ -2537,7 +2541,7 @@ v = true
 
 [[inspector_sections.states]]
 k = 4068757142
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 4081936864
@@ -2738,7 +2742,7 @@ open = false
 
 [[panels.visible]]
 name = 'Analysis'
-open = true
+open = false
 
 [[panels.visible]]
 name = 'Dependency View'
@@ -2791,6 +2795,7 @@ grid_size = 1.0
 scene_view_occlusion_culling = false
 show_grid = false
 show_light_range = false
+show_ragdoll = true
 show_skeleton = false
 show_stats = true
 show_vfx_gizmos = false

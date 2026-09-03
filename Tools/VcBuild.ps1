@@ -15,22 +15,23 @@
 # 使い方:
 #   VcBuild.ps1 configure <configurePreset>
 #   VcBuild.ps1 build     <configurePreset> <buildPreset> [追加の cmake 引数...]
-#   VcBuild.ps1 test      <configurePreset>
+#   VcBuild.ps1 test      <configurePreset> [追加の ctest 引数...]
+#   VcBuild.ps1 run       <configurePreset> <exe 名>       [追加の実行時引数...]
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('configure', 'build', 'test')]
+    [ValidateSet('configure', 'build', 'test', 'run')]
     [string] $Verb,
 
     [Parameter(Mandatory = $true)]
     [string] $ConfigurePreset,
 
-    # build 検証時のみ必須。configure / test では使わない。
+    # build では buildPreset、run では実行する exe 名。configure / test では使わない。
     [Parameter(Mandatory = $false)]
     [string] $BuildPreset,
 
-    # --target 等、cmake へそのまま渡す追加引数。
+    # --target 等、cmake / ctest / exe へそのまま渡す追加引数。
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $CMakeArguments = @()
 )
@@ -144,7 +145,28 @@ switch ($Verb) {
         # gtest_discover_tests() が CTest へ個別テストを登録済みなので、exe を直接叩かず
         # ctest を通す。失敗したテストの出力だけがそのままターミナルへ出る。
         # ManualTest は Window/Cursor の OS 状態を触るため CTest 未登録で、ここでは走らない。
-        & ctest --test-dir $BinaryDirectory -C $Configuration --output-on-failure
+        # 追加引数はそのまま ctest へ渡す (-R で名前を絞る等)。
+        & ctest --test-dir $BinaryDirectory -C $Configuration --output-on-failure @CMakeArguments
+        exit $LASTEXITCODE
+    }
+
+    'run' {
+        # WHY ここで解決するか: テスト成果物の置き場は構成ごとに分かれる。
+        #     tasks.json 側に書くと preset を足すたびに全タスクへ同じパスが増える。
+        #     「どこに出るか」を知っているのはこのファイルだけ、という状態を保つ。
+        if ([string]::IsNullOrWhiteSpace($BuildPreset)) {
+            Write-Host "[VcBuild] run には exe 名が必要です。" -ForegroundColor Red
+            exit 1
+        }
+
+        $executable = Join-Path $BinaryDirectory "Binaries/$Configuration/Tests/$BuildPreset.exe"
+        if (-not (Test-Path -LiteralPath $executable)) {
+            Write-Host "[VcBuild] 実行ファイルが見つかりません: $executable" -ForegroundColor Red
+            Write-Host "[VcBuild] 先に対応するビルドタスクを実行してください。"
+            exit 1
+        }
+
+        & $executable @CMakeArguments
         exit $LASTEXITCODE
     }
 }

@@ -81,6 +81,11 @@ namespace fbzz::physics
         [[nodiscard]] math::Quaternion GetFrameChild()  const { return m_frameChild;  }
         [[nodiscard]] math::Vector3    GetAnchorChild() const { return m_anchorChild;  }
 
+        /// 可動域を «今どこを向いているか» ごと描くための、ワールドでの関節フレーム。
+        [[nodiscard]] math::Quaternion GetParentFrameWorld() const { return ParentFrameWorld(); }
+        [[nodiscard]] math::Quaternion GetChildFrameWorld()  const { return ChildFrameWorld();  }
+        [[nodiscard]] math::Vector3    GetAnchorParentWorld() const { return ParentAnchorWorld(); }
+
         void ResetLambda() override;
         void SolvePosition(float h) override;
         void SolveVelocity(float h) override;
@@ -91,6 +96,12 @@ namespace fbzz::physics
         [[nodiscard]] float GetSwingAngleZ() const { return m_swingAngleZ; }
         /// ドライブがトルク上限に張り付いているか。«どの関節が力負けしたか» の表示に使う。
         [[nodiscard]] bool  IsDriveSaturated() const { return m_driveSaturated; }
+        /// 可動域に食い込んで押し戻されているか。
+        ///
+        /// WHY 飽和と分けるか: «アニメーションどおりに動かない» の原因は «力が足りない»
+        ///     (飽和) と «そこまで曲げてよいことになっていない» (可動域) の 2 つあり、
+        ///     絵はどちらも同じ «崩れる» にしか見えない。切り分けが要る。
+        [[nodiscard]] bool  IsLimited() const { return m_limited; }
 
     private:
         [[nodiscard]] math::Quaternion ParentFrameWorld() const;
@@ -122,5 +133,6 @@ namespace fbzz::physics
         float m_swingAngleY    = 0.0f;
         float m_swingAngleZ    = 0.0f;
         bool  m_driveSaturated = false;
+        bool  m_limited        = false;
     };
 } // namespace fbzz::physics

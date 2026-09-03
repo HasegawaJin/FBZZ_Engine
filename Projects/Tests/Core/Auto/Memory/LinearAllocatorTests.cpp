@@ -2,13 +2,16 @@
 /// @brief   LinearAllocator の一括再利用と容量契約を自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/LinearAllocator.hpp>
 
 namespace fbzz::tests {
 
-TEST(LinearAllocatorTest, InitializesAndAllocatesWithinCapacity)
+class LinearAllocatorTest : public testkit::EngineFixture {};
+
+TEST_F(LinearAllocatorTest, InitializesAndAllocatesWithinCapacity)
 {
     core::LinearAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(128));
@@ -24,7 +27,7 @@ TEST(LinearAllocatorTest, InitializesAndAllocatesWithinCapacity)
     EXPECT_FALSE(allocator.IsInitialized());
 }
 
-TEST(LinearAllocatorTest, ResetReusesTheWholeRegion)
+TEST_F(LinearAllocatorTest, ResetReusesTheWholeRegion)
 {
     core::LinearAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(128));
@@ -37,7 +40,7 @@ TEST(LinearAllocatorTest, ResetReusesTheWholeRegion)
     allocator.Shutdown();
 }
 
-TEST(LinearAllocatorTest, RejectsAnAllocationThatExceedsCapacity)
+TEST_F(LinearAllocatorTest, RejectsAnAllocationThatExceedsCapacity)
 {
     core::LinearAllocator allocator;
     ASSERT_TRUE(allocator.Initialize(128));

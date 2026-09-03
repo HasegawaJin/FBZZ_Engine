@@ -3,7 +3,7 @@ file_format_version = 1
 [cache]
 baked_container = 'Library/Baked/<asset-guid>'
 settings_hash = '18f10c26b1ca5223'
-source_hash = '87fc9a5fcdf8c534'
+source_hash = 'edf746b89e012c26'
 
 [meta]
 guid = 'f9afc042bf0ff57266eb135e1c6a347c'

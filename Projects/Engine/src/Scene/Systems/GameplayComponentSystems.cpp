@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #include <Engine/Scene/Systems/GameplayComponentSystems.hpp>
+#include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
@@ -581,8 +582,9 @@ void PresentationSystem::Update(SystemContext& ctx)
                                 std::vector<renderer::Vertex> vertices,
                                 std::vector<uint32_t> indices) {
         target.current ^= 1u;
-        std::shared_ptr<renderer::Mesh>& slot = target.slots[target.current];
-        if (!slot) slot = std::make_shared<renderer::Mesh>();
+        std::unique_ptr<renderer::Mesh>& slot = target.slots[target.current];
+        if (!slot) slot = core::MakeUnique<renderer::Mesh>();
+        if (!slot) return;
         renderer::Mesh& mesh = *slot;
 
         mesh.cpuVertices = std::move(vertices);
@@ -617,11 +619,6 @@ void PresentationSystem::Update(SystemContext& ctx)
             resources.Update(mesh.indexBuffer, mesh.cpuIndices.data(),
                              static_cast<size_t>(mesh.indexCount) * sizeof(uint32_t));
 
-        // 誰も参照しなくなったらバッファを返してもらう。ここで作る Mesh は
-        // 手続きメッシュと線の «その GameObject 専用» で、GameObject が畳まれると
-        // shared_ptr ごと消える ─ その瞬間に返す先が無くなるのを防ぐ。
-        // (毎フレーム呼ぶが、同じ Mesh は控えを上書きするだけ)
-        resources.TrackMeshBuffers(slot);
     };
     const auto applyMaterial = [](GameObject& go, const std::string& path,
                                   const math::Vector4& color, const std::string& texture,

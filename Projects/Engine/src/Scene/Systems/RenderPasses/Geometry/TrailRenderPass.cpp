@@ -304,8 +304,7 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
             const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
             if (!trail.texture.IsValid() || trail.loadedTexturePath != resolvedTex) {
                 if (resolvedTex.empty()) {
-                    static const uint8_t white[4] = { 255, 255, 255, 255 };
-                    trail.texture = resources.CreateTexture(white, 1, 1);
+                    trail.texture = resources.GetWhiteTexture();
                 } else {
                     trail.texture = resources.LoadTexture(resolvedTex);
                 }
@@ -313,8 +312,8 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
             }
         }
     } else if (!trail.texture.IsValid()) {
-        static const uint8_t white[4] = { 255, 255, 255, 255 };
-        trail.texture = resources.CreateTexture(white, 1, 1);
+        // 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
+        trail.texture = resources.GetWhiteTexture();
         trail.loadedTexturePath.clear();
     }
 }

@@ -15,7 +15,7 @@
 #pragma comment(lib, "ole32.lib") // DirectXTex が内部で WIC を使う
 
 #include "DX11IblBaker.hpp"
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>

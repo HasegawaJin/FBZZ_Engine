@@ -8,7 +8,7 @@
 /// → Mixamo アニメーション専用 FBX はメッシュボーンを持たないため、
 /// アニメーショントラック名と骨ノード名を対応付けるだけの骨階層を提供する。
 #include <Editor/Import/SkelSubExporter.hpp>
-#include <Engine/Asset/FzAssetFormat.hpp>
+#include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/scene.h>
 #include <cstring>

@@ -2,13 +2,16 @@
 /// @brief   MemorySystem の所有するフレームアロケータとライフサイクルを自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#include <gtest/gtest.h>
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Core/Memory/MemorySystem.hpp>
 
 namespace fbzz::tests {
 
-TEST(MemorySystemTest, InitializesAndShutsDownItsFrameAllocator)
+class MemorySystemTest : public testkit::EngineFixture {};
+
+TEST_F(MemorySystemTest, InitializesAndShutsDownItsFrameAllocator)
 {
     core::MemorySystem memory;
 

@@ -22,7 +22,8 @@
 | `Projects/Engine/include/Engine/Core/Memory/` | Frame / Linear / Pool / Stack アロケーター |
 | `Projects/Engine/include/Engine/Core/Scheduler/` | SystemScheduler / Phase / ComponentAccess |
 | `Projects/Engine/include/Engine/Renderer/` | IRenderer / IBuffer / ITexture / IShader 等インターフェース |
-| `Projects/Engine/src/Renderer/Platform/DX11/` | DX11 具体実装 (上位レイヤーから直接参照禁止) |
+| `Projects/Engine/src/Renderer/Platform/DX11/` | DX11 具体実装 (別モジュール `FBZZRenderDX11`。外からは include 不可) |
+| `Projects/Engine/src/Renderer/Platform/DX12/` | DX12 具体実装 (`FBZZRenderDX12`。`FBZZ_ENABLE_DX12` で切れる) |
 | `Projects/Engine/include/Engine/Scene/` | Scene / GameObject / Transform / Script |
 | `Projects/Engine/include/Engine/Scene/Components/` | 全コンポーネントヘッダー |
 | `Projects/Engine/include/Engine/Scene/Systems/` | 全システムヘッダー |
@@ -57,6 +58,7 @@
 
 - GLM / GLFW / Bullet / PhysX / Box2D **使用禁止**
 - `DX11Renderer*` へのダウンキャスト **禁止** — 上位レイヤーは `IRenderer&` のみ参照
+  (2026-09-03 以降は CMake が強制。DX ヘッダーは各バックエンドの PRIVATE include にしか無い)
 - `new` / `delete` 直接使用 **禁止** — `make_unique` / `make_shared` を使う
 - `throw` / `std::exception` **禁止**
 - スクリプトから Engine 実装に直接依存 **禁止** — `ScriptProxy` 経由でアクセス

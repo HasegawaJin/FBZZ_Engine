@@ -30,6 +30,13 @@ namespace fbzz::physics
         void ApplyForceAtPoint(const math::Vector3& force,
                                 const math::Vector3& worldPoint);
         void ApplyImpulse(const math::Vector3& impulse);
+        // 重心から外れた点へのインパルス。並進と回転の両方が変わる。
+        //
+        // WHY ApplyImpulse と分けるか: 重心へのインパルスは物体を «押す» だけだが、
+        //     端を殴れば回る。ラグドールが瓦礫を蹴るときに必要なのは後者で、
+        //     重心へ入れると «回らずに滑って行く» 不自然な弾き方になる。
+        void ApplyImpulseAtPoint(const math::Vector3& impulse,
+                                 const math::Vector3& worldPoint);
         void ApplyAngularImpulse(const math::Vector3& angularImpulse); // PhysicsSolver から使用
         void ApplyTorque(const math::Vector3& torque);
 

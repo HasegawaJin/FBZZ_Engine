@@ -12,6 +12,7 @@
 #include <Editor/Util/ColliderFit.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
+#include <Editor/Util/MemoryLeakDiff.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/Selection.hpp>
@@ -1042,7 +1043,17 @@ void DrawComponentSection(scene::GameObject* go,
     ImGui::PopID();
 
     if (removeRequested) {
-        const T removed = *comp;
+        // 外す直前を基準に取り、数フレーム後の残りを Console と Analysis へ出す。
+        // «外したのに減らない» が、その場で分かる形にしておく。
+        if (ctx.memoryLeakDiff != nullptr && ctx.resources != nullptr) {
+            ctx.memoryLeakDiff->CaptureBaseline(*ctx.resources, std::string("Before remove ") + label);
+            ctx.memoryLeakDiff->ScheduleCompare(3, std::string("Remove ") + label);
+        }
+        // WHY ハンドルを消したコピーを持つか: RemoveComponent<T>() はこの Component が
+        //     抱えていた GPU リソースを返す。同じハンドルを持ったままやり直すと、
+        //     既に別のリソースへ再利用された枠を掴んだ Component が復活する。
+        T removed = *comp;
+        scene::ClearComponentGpuHandles(removed);
         scene::Scene* scene = ctx.activeScene;
         const std::string instanceId = go->instanceId;
         const auto markDirty = ctx.markSceneDirty;

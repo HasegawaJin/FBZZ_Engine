@@ -95,6 +95,7 @@ FBZZ_SCRIPT_ENTRY(sandbox, ChargeVfxComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, ImpactVfxComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, LaunchVfxComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, NeutralizeVfxComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PlayerArcVfxComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, RunDustVfxComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, SlashArcComponent)
 // @@FBZZ_SCRIPT_ENTRIES_END

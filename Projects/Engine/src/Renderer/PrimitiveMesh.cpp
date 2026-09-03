@@ -7,17 +7,19 @@
 /// アセット読み込みなしでデバッグ・既定形状を使えるようにする。
 #include "Engine/Renderer/PrimitiveMesh.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Math/MathUtils.hpp>
 #include <cmath>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace fbzz::renderer {
 
 Mesh* PrimitiveMesh::Cube(ResourceManager& resources)
 {
-    static std::shared_ptr<Mesh> s_mesh;
+    static std::unique_ptr<Mesh> s_mesh;
     if (s_mesh) return s_mesh.get();
     // 6面 × 4頂点 = 24頂点。面ごとに法線が異なるため頂点共有なし
     // tangent は面の U 軸方向 (法線マップ対応。現在は旧シェーダーで未使用)
@@ -65,7 +67,8 @@ Mesh* PrimitiveMesh::Cube(ResourceManager& resources)
         20, 21, 22,  20, 22, 23,   // -X
     };
 
-    s_mesh = std::shared_ptr<Mesh>(new Mesh());
+    s_mesh = core::MakeUnique<Mesh>();
+    if (!s_mesh) return nullptr;
     s_mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
     s_mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 36);
     s_mesh->vertexCount  = 24;
@@ -78,7 +81,7 @@ Mesh* PrimitiveMesh::Cube(ResourceManager& resources)
 
 Mesh* PrimitiveMesh::Sphere(ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<Mesh>> s_cache;
+    static std::unordered_map<int, std::unique_ptr<Mesh>> s_cache;
     if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
@@ -116,7 +119,8 @@ Mesh* PrimitiveMesh::Sphere(ResourceManager& resources, int segments)
         }
     }
 
-    auto mesh = std::shared_ptr<Mesh>(new Mesh());
+    auto mesh = core::MakeUnique<Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), static_cast<uint32_t>(idx.size()));
@@ -125,13 +129,14 @@ Mesh* PrimitiveMesh::Sphere(ResourceManager& resources, int segments)
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
     mesh->ComputeBounds();
-    s_cache[segments] = mesh;
-    return mesh.get();
+    Mesh* result = mesh.get();
+    s_cache[segments] = std::move(mesh);
+    return result;
 }
 
 Mesh* PrimitiveMesh::Plane(ResourceManager& resources)
 {
-    static std::shared_ptr<Mesh> s_mesh;
+    static std::unique_ptr<Mesh> s_mesh;
     if (s_mesh) return s_mesh.get();
 
     const Vertex verts[] = {
@@ -142,7 +147,8 @@ Mesh* PrimitiveMesh::Plane(ResourceManager& resources)
     };
     const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
 
-    s_mesh = std::shared_ptr<Mesh>(new Mesh());
+    s_mesh = core::MakeUnique<Mesh>();
+    if (!s_mesh) return nullptr;
     s_mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
     s_mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 6);
     s_mesh->vertexCount  = 4;
@@ -155,7 +161,7 @@ Mesh* PrimitiveMesh::Plane(ResourceManager& resources)
 
 Mesh* PrimitiveMesh::Quad(ResourceManager& resources)
 {
-    static std::shared_ptr<Mesh> s_mesh;
+    static std::unique_ptr<Mesh> s_mesh;
     if (s_mesh) return s_mesh.get();
 
     const Vertex verts[] = {
@@ -166,7 +172,8 @@ Mesh* PrimitiveMesh::Quad(ResourceManager& resources)
     };
     const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
 
-    s_mesh = std::shared_ptr<Mesh>(new Mesh());
+    s_mesh = core::MakeUnique<Mesh>();
+    if (!s_mesh) return nullptr;
     s_mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
     s_mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 6);
     s_mesh->vertexCount  = 4;
@@ -179,7 +186,7 @@ Mesh* PrimitiveMesh::Quad(ResourceManager& resources)
 
 Mesh* PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<Mesh>> s_cache;
+    static std::unordered_map<int, std::unique_ptr<Mesh>> s_cache;
     if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
 
     std::vector<Vertex>   verts;
@@ -242,7 +249,8 @@ Mesh* PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
         idx.push_back(T0); idx.push_back(T1); idx.push_back(B1);
     }
 
-    auto mesh = std::shared_ptr<Mesh>(new Mesh());
+    auto mesh = core::MakeUnique<Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -251,13 +259,14 @@ Mesh* PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
     mesh->ComputeBounds();
-    s_cache[segments] = mesh;
-    return mesh.get();
+    Mesh* result = mesh.get();
+    s_cache[segments] = std::move(mesh);
+    return result;
 }
 
 Mesh* PrimitiveMesh::Cone(ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<Mesh>> s_cache;
+    static std::unordered_map<int, std::unique_ptr<Mesh>> s_cache;
     if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
 
     std::vector<Vertex>   verts;
@@ -305,7 +314,8 @@ Mesh* PrimitiveMesh::Cone(ResourceManager& resources, int segments)
         idx.push_back(botRing + (s + 1) % segments);
     }
 
-    auto mesh = std::shared_ptr<Mesh>(new Mesh());
+    auto mesh = core::MakeUnique<Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -314,13 +324,14 @@ Mesh* PrimitiveMesh::Cone(ResourceManager& resources, int segments)
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
     mesh->ComputeBounds();
-    s_cache[segments] = mesh;
-    return mesh.get();
+    Mesh* result = mesh.get();
+    s_cache[segments] = std::move(mesh);
+    return result;
 }
 
 Mesh* PrimitiveMesh::Torus(ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<Mesh>> s_cache;
+    static std::unordered_map<int, std::unique_ptr<Mesh>> s_cache;
     if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
 
     std::vector<Vertex>   verts;
@@ -360,7 +371,8 @@ Mesh* PrimitiveMesh::Torus(ResourceManager& resources, int segments)
         }
     }
 
-    auto mesh = std::shared_ptr<Mesh>(new Mesh());
+    auto mesh = core::MakeUnique<Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -369,13 +381,14 @@ Mesh* PrimitiveMesh::Torus(ResourceManager& resources, int segments)
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
     mesh->ComputeBounds();
-    s_cache[segments] = mesh;
-    return mesh.get();
+    Mesh* result = mesh.get();
+    s_cache[segments] = std::move(mesh);
+    return result;
 }
 
 Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
 {
-    static std::unordered_map<int, std::shared_ptr<Mesh>> s_cache;
+    static std::unordered_map<int, std::unique_ptr<Mesh>> s_cache;
     if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
 
     std::vector<Vertex>   verts;
@@ -494,7 +507,8 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
         idx.push_back(b);     idx.push_back(b + 1); idx.push_back(a);
     }
 
-    auto mesh = std::shared_ptr<Mesh>(new Mesh());
+    auto mesh = core::MakeUnique<Mesh>();
+    if (!mesh) return nullptr;
     mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
     mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
@@ -503,8 +517,9 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
     mesh->ComputeBounds();
-    s_cache[segments] = mesh;
-    return mesh.get();
+    Mesh* result = mesh.get();
+    s_cache[segments] = std::move(mesh);
+    return result;
 }
 
 } // namespace fbzz::renderer

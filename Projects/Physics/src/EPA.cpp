@@ -33,8 +33,13 @@ namespace fbzz::physics
             const float lenSq = n.LengthSq();
             if (lenSq < 1e-12f)
             {
+                // 面積が潰れた面は法線を定義できない。
+                // WHY 距離を 0 でなく最遠にするか: 0 にすると «原点に最も近い面» として
+                //     毎回選ばれ、同じ方向のサポート点を足しては面を増やす無限膨張になる。
+                //     軸に揃った対称な配置 (球どうしを真横に重ねる等) で実際に起きる。
+                //     選ばれない距離に置き、実体のある面だけで拡張を進ませる。
                 f.normal = math::Vector3::UP;
-                f.dist   = 0.0f;
+                f.dist   = std::numeric_limits<float>::max();
             }
             else
             {
@@ -195,6 +200,11 @@ namespace fbzz::physics
                 }
             }
 
+            // 実体のある面が 1 つも残っていない (すべて潰れている)。
+            // ここで進むと最遠に置いた番兵の距離を貫通量として返すことになる。
+            if (minDist == std::numeric_limits<float>::max())
+                return result;
+
             const EPAFace& closestFace = faces[minIdx];
             const math::Vector3& n = closestFace.normal;
 
@@ -250,6 +260,10 @@ namespace fbzz::physics
                     minIdx  = i;
                 }
             }
+            // 潰れた面しか残っていない場合は近似の元が無い。無効を返す。
+            if (minDist == std::numeric_limits<float>::max())
+                return result;
+
             BarycentricContact(faces[minIdx], result.contactA, result.contactB);
             result.normal = faces[minIdx].normal;
             result.depth  = minDist;
