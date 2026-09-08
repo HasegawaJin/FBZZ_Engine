@@ -5,6 +5,7 @@
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <algorithm>
@@ -124,6 +125,48 @@ std::string ToRuntimeRef(const std::string& absPath, const std::string& suffix)
     return absPath + suffix;
 }
 
+// Sprite の接尾辞を、保存形 (ID) と読める形 (名前) の 2 つに分けて返す。
+// 権威は ID、ヒントは名前、という規約はパスヒントとまったく同じ。
+// ID が引けなかったときに «名前で書かれた参照» をそのまま通すため、変換できない
+// トークンは触らずに返す (データを勝手に捨てない)。
+struct SpriteSuffixParts {
+    std::string authority;  ///< "::sprite::<id>" (引けなければ入力のまま)
+    std::string hintName;   ///< "<name>" (引けなければ空)
+};
+
+SpriteSuffixParts SplitSpriteSuffix(const std::string& absTexturePath,
+                                    const std::string& suffix)
+{
+    constexpr std::string_view kSpriteMarker = "::sprite::";
+    if (!suffix.starts_with(kSpriteMarker)) return { suffix, {} };
+
+    const std::string token = suffix.substr(kSpriteMarker.size());
+    const std::string id   = LookupSpriteId(absTexturePath, token);
+    const std::string name = LookupSpriteName(absTexturePath, token);
+    if (id.empty()) return { suffix, name };
+    return { std::string(kSpriteMarker) + id, name };
+}
+
+// 保存された ID が .meta から消えていたら、併記した名前で拾い直す。
+// WHY: パスヒントによるファイル復旧とまったく同じ考え方。権威 (ID) が引けなく
+//      なったときだけ読める側の控えで生かし、復旧したことは必ずログに出す。
+//      黙って拾うとアトラスを切り直すたびに参照が入れ替わっても気付けない。
+std::string ReconcileSpriteSuffix(const std::string& absTexturePath,
+                                  const std::string& suffix,
+                                  const std::string& hintName)
+{
+    constexpr std::string_view kSpriteMarker = "::sprite::";
+    if (!suffix.starts_with(kSpriteMarker) || hintName.empty()) return suffix;
+
+    const std::string token = suffix.substr(kSpriteMarker.size());
+    if (!LookupSpriteId(absTexturePath, token).empty()) return suffix;
+    if (LookupSpriteId(absTexturePath, hintName).empty()) return suffix;
+
+    FBZZ_LOG_WARN("GuidRefCodec: sprite id unresolved, recovered by name hint [%s]",
+                  hintName.c_str());
+    return std::string(kSpriteMarker) + hintName;
+}
+
 } // namespace
 
 std::string EncodeGuidRef(const std::string& pathOrRef)
@@ -142,12 +185,18 @@ std::string EncodeGuidRef(const std::string& pathOrRef)
     const std::string guid = AssetDatabase::TryGetGuidFromPath(absPath);
     if (guid.empty()) return pathOrRef;
 
-    std::string encoded = std::string(AssetDatabase::kGuidPrefix) + guid + parts.suffix;
+    // Sprite は「保存は ID、併記は名前」へ正規化する。名前で書かれた参照
+    // ("Atlas.png::sprite::Key_W") はここで ID へ寄せられ、ディスク上には
+    // リネームに強い形だけが残る。
+    const SpriteSuffixParts sprite = SplitSpriteSuffix(absPath, parts.suffix);
+    std::string encoded = std::string(AssetDatabase::kGuidPrefix) + guid + sprite.authority;
 
     // 読める形を後ろへ併記する。権威はあくまで guid で、ヒントは読み手のためと
     // guid が引けなくなったときの復旧経路にしか使わない。
-    if (const std::string hint = ToProjectRelative(absPath); !hint.empty())
+    if (std::string hint = ToProjectRelative(absPath); !hint.empty()) {
+        if (!sprite.hintName.empty()) hint += "::sprite::" + sprite.hintName;
         encoded += AssetDatabase::kRefHintSeparator + hint;
+    }
     return encoded;
 }
 
@@ -157,17 +206,34 @@ std::string DecodeGuidRef(const std::string& ref)
 
     // ヒントを先に切り離す。パスにはドットもコロンも入りうるので、
     // SplitAssetReference へ渡す前に落とさないとサブアセット接尾辞と混ざる。
-    const std::string hint = AssetDatabase::HintFromRef(ref);
+    const std::string hintRaw = AssetDatabase::HintFromRef(ref);
     const size_t sep = ref.find(AssetDatabase::kRefHintSeparator);
     const std::string guidRef = sep == std::string::npos ? ref : ref.substr(0, sep);
 
-    const AssetReferenceParts parts = SplitAssetReference(guidRef);
-    const std::string abs = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(parts.base));
+    // ヒント側も「パス + Sprite 名」の形を取りうる。パスとして使う前に分ける。
+    std::string hint;
+    std::string hintSpriteName;
+    (void)ParseSpriteReference(hintRaw, hint, hintSpriteName);
+
+    // guid 参照の本体は "guid:" + 32hex で長さが決まっている。サブアセット接尾辞は
+    // その後ろだけを取る。
+    //
+    // WHY ここで SplitAssetReference を使わないか:
+    //   あれは "foo.fbx:2" のように «最後のコロンの後ろが全部数字なら submesh 番号»
+    //   と見なす。guid が偶然 10 進数字だけで構成されていると (16 進なので起こりうる)、
+    //   "guid:" 自身のコロンを区切りと誤読して本体が "guid" になり、参照が解けなくなる。
+    //   本体の長さは数えられるのだから、推測させる必要がない。
+    const std::string guid = AssetDatabase::GuidFromRef(guidRef);
+    const std::size_t bodyLength = AssetDatabase::kGuidPrefix.size() + guid.size();
+    const std::string suffix =
+        bodyLength < guidRef.size() ? guidRef.substr(bodyLength) : std::string{};
+
+    const std::string abs = AssetDatabase::PathFromGuid(guid);
     // WHY 実体の有無まで見るか: 索引に載っていてもファイルを消していれば参照は切れている。
     //     索引だけで成功扱いにすると、その先の読み込み失敗が「空のアセット」として
     //     静かに流れ、Console にも何も出ないまま見た目だけが壊れる。
     if (!abs.empty() && util::FileSystem::Exists(abs))
-        return ToRuntimeRef(abs, parts.suffix);
+        return ToRuntimeRef(abs, ReconcileSpriteSuffix(abs, suffix, hintSpriteName));
 
     // guid が引けない / 実体が消えている。.meta を作り直した後などに起きる。
     // ヒントの実体が残っているなら、そちらで拾い直して参照を生かす。
@@ -176,7 +242,8 @@ std::string DecodeGuidRef(const std::string& ref)
         if (util::FileSystem::Exists(recovered)) {
             FBZZ_LOG_WARN("GuidRefCodec: guid unresolved, recovered by path hint [%s]",
                           hint.c_str());
-            return ToRuntimeRef(recovered, parts.suffix);
+            return ToRuntimeRef(recovered,
+                                ReconcileSpriteSuffix(recovered, suffix, hintSpriteName));
         }
     }
 
@@ -185,7 +252,7 @@ std::string DecodeGuidRef(const std::string& ref)
     if (!abs.empty()) {
         FBZZ_LOG_ERROR("GuidRefCodec: asset file is missing [%s]\n  guid ref: %s",
                        abs.c_str(), ref.c_str());
-        return ToRuntimeRef(abs, parts.suffix);
+        return ToRuntimeRef(abs, suffix);
     }
 
     FBZZ_LOG_ERROR("GuidRefCodec: unresolved guid reference [%s]%s%s",
