@@ -1,7 +1,7 @@
 [mask]
 default_include = false
 name = 'M_Boss_Hit'
-skeleton_source = 'Assets/Models/Boss/Boss.fbx'
+skeleton_source = 'Assets/Models/Boss_01/Boss.fbx'
 skeleton_source_signature = ''
 version = 1
 

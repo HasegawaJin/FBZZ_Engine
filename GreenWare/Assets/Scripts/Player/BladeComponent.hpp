@@ -1006,6 +1006,14 @@ inline void BladeComponent::ResolveHit()
         const int    dealt     = static_cast<int>(SlashDamage() * staggered);
         (void)part->Damage(dealt);
 
+        // コアだけ別の音を重ねる。**勝ち筋そのものなので、脚を斬ったのと同じ音では困る。**
+        //
+        // WHY 斬撃音を差し替えず «重ねる» か: 手応え (刃が何かに当たった) は
+        //     どの部位でも同じで、そこを消すと «当たったのか外したのか» が
+        //     分からなくなる。上に 1 枚足して «今のはコアだった» だけを言う。
+        if (object && object->name == "HB_Core")
+            se::Play(audio, se::kImpactCoreHit, 1.0f);
+
         // 叩いた部位へバーを乗り移らせ、数値をその場で跳ねさせる。
         if (auto* hud = PartDamageHudComponent::Instance())
             hud->Show(object, dealt, part->HealthNormalized(),
@@ -1210,6 +1218,10 @@ inline void BladeComponent::DashToTarget()
     if (speed <= 0.0f) return;
 
     m_controller->Knockback(delta / distance, speed, seconds);
+    // WHY 踏み込みだけ別の音か: 詰めるのは «届かない間合いから入った» ときだけで、
+    //     振りの音と同じだと «自分が滑ったのか、ただ振ったのか» が区別できない。
+    //     gap > 0 のときしか来ないので、毎回の斬撃に重なることはない。
+    se::Play(audio, se::kBladeDash, 0.8f);
 }
 
 inline int BladeComponent::SlashDamage() const

@@ -58,6 +58,7 @@
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Camera/BossCameraDirectorComponent.hpp>
 #include <Scripts/Utils/PlayerActionState.hpp>
+#include <Scripts/Utils/LoopVoice.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Vfx/BladeTrailComponent.hpp>
 #include <algorithm>
@@ -82,6 +83,10 @@ public:
     FBZZ_TOOLTIP("プレイヤーがこの距離まで来たら起きる。0 で «置いた瞬間から戦っている»")
     FBZZ_FIELD_RANGE(float, engageDelay, 1.0f, "Engage Delay", 0.0f, 8.0f)
     FBZZ_TOOLTIP("起きてから最初の口が光るまで。踏み込んだ足が止まる時間")
+
+    FBZZ_GROUP("音")
+    FBZZ_FIELD_RANGE(float, crawlVolume, 0.7f, "匍匐の音量", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("這っている間の定常音。頭の速さに比例して鳴り、止まると切れる。0 で «音も無く迫る蛇» になる")
 
     FBZZ_GROUP("移動軌跡")
     FBZZ_FIELD_RANGE(float, exposedMeters, 11.2f, "露出", 2.0f, 24.0f)
@@ -637,6 +642,12 @@ private:
     bool        m_rushSurfaced = false;
     /// 渡りの «床»。追い掛けはこれより前だけで、ここが構える位置に届いたら渡り終わり。
     float       m_cruiseFloor  = 0.0f;
+    /// 匍匐の定常音。頭の速さで音量と高さを動かす。
+    ///
+    /// WHY 持ち主の AudioSource で鳴らさないか: 主 voice は 1 本しか無く、
+    ///     その音量は噛みつきや被弾の一発ものにも掛かる。速さで絞ると
+    ///     «止まっている蛇に噛まれても音が小さい» になる (LoopVoice.hpp)。
+    se::LoopVoice m_crawl;
     /// 触れて痛かった後の冷却。手ごとの «1 回だけ» とは別に数える。
     float       m_contactCool  = 0.0f;
     /// 走りの削り跡を «最後に置いた» 弧長。距離で刻むために持つ。
@@ -843,6 +854,9 @@ inline void SerpentAiComponent::OnStart()
     m_sweepTrail.AdoptContext(*this);
     // 帯の実体名を分ける。プレイヤーと同じ名前だと互いの帯を奪い合う。
     m_sweepTrail.trailObjectName = "SerpentSweepTrail";
+    // 匍匐音の口。盤面のどこかで鳴っている 3D の SE として出す。
+    m_crawl.SetKey("SerpentCrawl");
+    m_crawl.SetOutput("SE", 1.0f);
     // 振りかぶりは別の状態 (SweepWindup) が持っている。この窓の中は全部斬り抜けなので、
     // 頭を落とすと «薙ぎ始めが写らない» だけになる。
     m_sweepTrail.trailStartDelay = 0.0f;
@@ -2132,6 +2146,18 @@ inline void SerpentAiComponent::OnUpdate()
     auto*       spine = Spine();
     auto*       path  = Path();
     debugTimer = m_timer;
+
+    // 匍匐。頭が動いている間だけ鳴らし、速さで «急いでいる» を出す。
+    // WHY 状態ではなく速さで駆動するか: 蛇は渡り・追い掛け・薙ぎ戻しのどれでも
+    //     体が這っていて、状態の数だけ条件を書くと必ずどれかで音が切れる。
+    if (spine && IsAlive() && m_state != State::Dormant) {
+        const float ratio = Clamp01(spine->HeadSpeedNow() / Max(spine->headSpeed, 0.1f));
+        if (ratio > 0.06f) m_crawl.Update(*this, se::kSerpentCrawlLoop.First(),
+                                          crawlVolume * ratio, 0.85f + 0.35f * ratio);
+        else               m_crawl.Stop(*this);
+    } else {
+        m_crawl.Stop(*this);
+    }
 
     m_cageCooldown = Max(m_cageCooldown - dt, 0.0f);
     m_rushCooldown = Max(m_rushCooldown - dt, 0.0f);

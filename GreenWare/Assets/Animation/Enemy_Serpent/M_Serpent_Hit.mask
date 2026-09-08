@@ -1,8 +1,8 @@
 [mask]
 default_include = false
 name = 'M_Serpent_Hit'
-skeleton_source = 'Assets/Models/Enemy_Serpent/Z_Serpent.fbx'
-skeleton_source_signature = '134318882714285968:262684'
+skeleton_source = 'Assets/Models/Boss_02/Serpent.fbx'
+skeleton_source_signature = ''
 version = 1
 
 [[entries]]

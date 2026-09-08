@@ -426,6 +426,136 @@ weight = 1.0
         toStateName = 'HitIdle'
         transitionDuration = 0.11999999731779099
 
+[[layers]]
+anyStateTransitions = []
+defaultStateName = 'Sealed'
+enabled = true
+maskPath = 'guid:8329909c9a5348fb9e5d7145fd55435a|Assets/Animation/Boss/M_Boss_Hatch.mask'
+mode = 0
+name = 'Hatch'
+retargetMappings = []
+weight = 1.0
+
+    [layers.additiveReference]
+    clipName = ''
+    sourcePath = ''
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.10000000149011612
+    fadeOutDuration = 0.15000000596046448
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = ''
+    ikWeight = 1.0
+    loop = true
+    mode = 0
+    name = 'Sealed'
+    sourcePath = ''
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+        [[layers.states.transitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Open'
+        transitionDuration = 0.0
+
+            [[layers.states.transitions.conditions]]
+            op = 4
+            paramName = 'HatchOpen'
+            threshold = 0.0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Hatch_Open'
+    ikWeight = 1.0
+    loop = false
+    mode = 0
+    name = 'Open'
+    sourcePath = 'Library/Baked/99873989b2ec78a861c40ea675a6bc5d/anims/Hatch_Open.anim'
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+        [[layers.states.transitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Closing'
+        transitionDuration = 0.0
+
+            [[layers.states.transitions.conditions]]
+            op = 5
+            paramName = 'HatchOpen'
+            threshold = 0.0
+
+    [[layers.states]]
+    clipIndex = -1
+    clipName = 'Hatch_Close'
+    ikWeight = 1.0
+    loop = false
+    mode = 0
+    name = 'Closing'
+    sourcePath = 'Library/Baked/b4c4e07685b194d6fd64df500737b932/anims/Hatch_Close.anim'
+    speed = 1.0
+
+        [layers.states.blendTree1D]
+        dampTime = 0.0
+        motions = []
+        paramName = ''
+        syncNormalizedTime = false
+
+        [layers.states.blendTree2D]
+        dampTime = 0.0
+        motions = []
+        paramX = ''
+        paramY = ''
+        syncNormalizedTime = false
+        type = 0
+
+        [[layers.states.transitions]]
+        conditions = []
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = true
+        toStateName = 'Sealed'
+        transitionDuration = 0.0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'HatchOpen'
+type = 2
+
 [[parameters]]
 boolValue = false
 floatValue = 0.0
