@@ -43,6 +43,7 @@ foreach(REQUIRED_PATH
     "${ASSIMP_LIB_RELEASE}"
     "${STB_INCLUDE}/stb_truetype.h"
     "${STB_INCLUDE}/stb_rect_pack.h"
+    "${STB_INCLUDE}/stb_image.h"
 )
     if(NOT EXISTS "${REQUIRED_PATH}")
         message(FATAL_ERROR "Required third-party dependency was not found: ${REQUIRED_PATH}")
@@ -68,11 +69,13 @@ set(FBZZ_ENGINE_DEFINES
 
 # 統合してはいけない翻訳単位。
 #   StbFontImpl.cpp   STB_TRUETYPE_IMPLEMENTATION / STB_RECT_PACK_IMPLEMENTATION の展開場所
+#   Cursor.cpp        STB_IMAGE_IMPLEMENTATION の展開場所 (カーソル画像のデコード)
 #   Window.cpp        DPI_AWARENESS_CONTEXT_* と WM_DPICHANGED を #undef せずに定義する
 #   Input.cpp         WIN32_LEAN_AND_MEAN を定義するため、同じバッチの後続ファイルの
 #                     Windows.h の中身が変わってしまう
 set(FBZZ_ENGINE_UNITY_EXCLUDE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/StbFontImpl.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Cursor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Window.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Input/Input.cpp"
 )

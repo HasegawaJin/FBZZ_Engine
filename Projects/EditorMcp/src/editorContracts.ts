@@ -65,6 +65,11 @@ export type EditorQuery =
     | { t: 'asset.inspect'; path: string }
     | { t: 'asset.findUnused'; limit?: number | undefined }
     | { t: 'asset.thumbnail'; path: string }
+    // ── Sprite (Texture のサブアセット) ──
+    // Sprite は独立したファイルではないので asset.list に出ない。一覧と切り抜き画像を
+    // 出せないと、AI は .meta の UUID を書き写す以外に割り当てる手段が無い。
+    | { t: 'sprite.list'; path: string }
+    | { t: 'sprite.thumbnail'; path: string; sprite: string }
     // ── Behavior Tree ──
     // 木の構造・Blackboard・検証結果。order が優先度そのものなので必ず含まれる。
     | { t: 'bt.tree'; path: string }
@@ -171,6 +176,9 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     z.object({ t: z.literal('asset.inspect'), path: z.string().min(1) }).strict(),
     z.object({ t: z.literal('asset.findUnused'), limit: z.number().int().min(1).max(500).optional() }).strict(),
     z.object({ t: z.literal('asset.thumbnail'), path: z.string().min(1) }).strict(),
+    z.object({ t: z.literal('sprite.list'), path: z.string().min(1).max(1024) }).strict(),
+    z.object({ t: z.literal('sprite.thumbnail'), path: z.string().min(1).max(1024),
+        sprite: z.string().min(1).max(256) }).strict(),
     z.object({ t: z.literal('bt.tree'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.lint'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.guide') }).strict(),
@@ -309,6 +317,17 @@ export type EditorCommand =
     | { t: 'bt.template.apply'; template: string; path: string;
         name?: string | undefined; description?: string | undefined }
     | { t: 'vfx.generateMotionVectors'; texturePath: string; columns: number; rows: number; searchRadius?: number | undefined; loop?: boolean | undefined }
+    // Sprite の名前は「参照キーを兼ねる別名」。ID は触らないので、名前を付け直しても
+    // 保存済みの参照は切れない。slice も重なりで ID を引き継ぐ。
+    | { t: 'sprite.rename'; path: string; sprite: string; name: string }
+    | { t: 'sprite.slice'; path: string; type?: 'grid' | 'automatic' | undefined;
+        columns?: number | undefined; rows?: number | undefined;
+        cellWidth?: number | undefined; cellHeight?: number | undefined;
+        offsetX?: number | undefined; offsetY?: number | undefined;
+        paddingX?: number | undefined; paddingY?: number | undefined;
+        pivotX?: number | undefined; pivotY?: number | undefined;
+        keepEmptyRects?: boolean | undefined;
+        prefix?: string | undefined; mode?: 'smart' | 'safe' | 'replace' | undefined }
     | { t: 'animation.control'; id: string; action: 'play' | 'pause' | 'stop' | 'seek'; clipName?: string | undefined; clipIndex?: number | undefined; state?: string | undefined; time?: number | undefined; frame?: number | undefined }
     | { t: 'animation.setParameter'; id: string; name: string; value?: number | boolean | undefined }
     | { t: 'animation.addTransition'; id: string; layer?: string | undefined; from?: string | undefined; to: string; hasExitTime?: boolean | undefined; exitTime?: number | undefined; fixedDuration?: boolean | undefined; transitionDuration?: number | undefined }
@@ -430,6 +449,24 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             columns: z.number().int().min(1).max(64), rows: z.number().int().min(1).max(64),
             searchRadius: z.number().int().min(1).max(64).optional(),
             loop: z.boolean().optional() }).strict(),
+        // ── Sprite ──
+        z.object({ t: z.literal('sprite.rename'), path: z.string().min(1).max(1024),
+            sprite: z.string().min(1).max(256), name: z.string().min(1).max(128) }).strict(),
+        z.object({ t: z.literal('sprite.slice'), path: z.string().min(1).max(1024),
+            type: z.enum(['grid', 'automatic']).optional(),
+            columns: z.number().int().min(1).max(256).optional(),
+            rows: z.number().int().min(1).max(256).optional(),
+            cellWidth: z.number().int().min(1).max(16384).optional(),
+            cellHeight: z.number().int().min(1).max(16384).optional(),
+            offsetX: z.number().int().min(0).max(16384).optional(),
+            offsetY: z.number().int().min(0).max(16384).optional(),
+            paddingX: z.number().int().min(0).max(16384).optional(),
+            paddingY: z.number().int().min(0).max(16384).optional(),
+            pivotX: z.number().min(0).max(1).optional(),
+            pivotY: z.number().min(0).max(1).optional(),
+            keepEmptyRects: z.boolean().optional(),
+            prefix: z.string().min(1).max(64).optional(),
+            mode: z.enum(['smart', 'safe', 'replace']).optional() }).strict(),
         // ── Behavior Tree ──
         z.object({ t: z.literal('bt.node.add'), path: z.string().min(1).max(1024),
             nodeType: z.string().min(1).max(64), parentId: z.number().int().min(1).optional(),
@@ -814,4 +851,16 @@ export const AssetThumbnailResultSchema = z.object({
     mimeType: z.enum(['image/png', 'image/jpeg']),
     base64: z.string().min(1),
     path: z.string().min(1),
+}).strict();
+
+// 切り抜き 1 コマ。reference をそのまま component_set へ渡せる形で返す。
+export const SpriteThumbnailResultSchema = z.object({
+    mimeType: z.literal('image/png'),
+    base64: z.string().min(1),
+    width: z.number().int(),
+    height: z.number().int(),
+    sourceWidth: z.number().int(),
+    sourceHeight: z.number().int(),
+    name: z.string(),
+    reference: z.string().min(1),
 }).strict();

@@ -80,6 +80,13 @@ export type EditorQuery = {
     t: 'asset.thumbnail';
     path: string;
 } | {
+    t: 'sprite.list';
+    path: string;
+} | {
+    t: 'sprite.thumbnail';
+    path: string;
+    sprite: string;
+} | {
     t: 'bt.tree';
     path: string;
 } | {
@@ -353,6 +360,28 @@ export type EditorCommand = {
     rows: number;
     searchRadius?: number | undefined;
     loop?: boolean | undefined;
+} | {
+    t: 'sprite.rename';
+    path: string;
+    sprite: string;
+    name: string;
+} | {
+    t: 'sprite.slice';
+    path: string;
+    type?: 'grid' | 'automatic' | undefined;
+    columns?: number | undefined;
+    rows?: number | undefined;
+    cellWidth?: number | undefined;
+    cellHeight?: number | undefined;
+    offsetX?: number | undefined;
+    offsetY?: number | undefined;
+    paddingX?: number | undefined;
+    paddingY?: number | undefined;
+    pivotX?: number | undefined;
+    pivotY?: number | undefined;
+    keepEmptyRects?: boolean | undefined;
+    prefix?: string | undefined;
+    mode?: 'smart' | 'safe' | 'replace' | undefined;
 } | {
     t: 'animation.control';
     id: string;
@@ -667,4 +696,14 @@ export declare const AssetThumbnailResultSchema: z.ZodObject<{
     }>;
     base64: z.ZodString;
     path: z.ZodString;
+}, z.core.$strict>;
+export declare const SpriteThumbnailResultSchema: z.ZodObject<{
+    mimeType: z.ZodLiteral<"image/png">;
+    base64: z.ZodString;
+    width: z.ZodNumber;
+    height: z.ZodNumber;
+    sourceWidth: z.ZodNumber;
+    sourceHeight: z.ZodNumber;
+    name: z.ZodString;
+    reference: z.ZodString;
 }, z.core.$strict>;
