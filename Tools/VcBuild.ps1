@@ -146,7 +146,13 @@ switch ($Verb) {
         # ctest を通す。失敗したテストの出力だけがそのままターミナルへ出る。
         # ManualTest は Window/Cursor の OS 状態を触るため CTest 未登録で、ここでは走らない。
         # 追加引数はそのまま ctest へ渡す (-R で名前を絞る等)。
-        & ctest --test-dir $BinaryDirectory -C $Configuration --output-on-failure @CMakeArguments
+        #
+        # --timeout: 1 件でも «終わらないテスト» があると、そこから先が丸ごと実行されない。
+        #   CMake 側でも TIMEOUT プロパティを付けているが、古いビルドツリー
+        #   (再 configure していない) には載っていないため、ここでも上限を渡す。
+        # --no-tests=error: フィルタの打ち間違いで 0 件になったとき «全部成功» に見せない。
+        & ctest --test-dir $BinaryDirectory -C $Configuration --output-on-failure `
+            --timeout 30 --no-tests=error @CMakeArguments
         exit $LASTEXITCODE
     }
 
