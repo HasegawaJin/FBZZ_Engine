@@ -1,0 +1,456 @@
+# FX_BOSS_Topple.vfx — 転倒 (break-parry.md «満ちる (100) と転倒»)
+# 6m の重機が床へ落ちた «ドンッ»。明るさではなく «床が動いた» で重さを出す:
+#   Ground Ring … 締まった輪が床を走る (14m)
+#   Dust Wall   … 土煙の壁が外へ押し出される (T_Dust_Puff、無彩色)
+#   Dust Column … 中央の煙柱 (FlipFlop、ゆっくり立ち上がる)
+#   Grit / Shards … 砂粒と装甲片が飛んで落ちる (床に当たって跳ねる)
+#   Crater      … 放射のひび (T_Crack_Radial)。6 秒残して薄れる
+#   Blast Push  … 既に舞っている粒を外へ押す力場
+#   Thud Light  … 暗く短い光。閃光ではなく «影が一瞬動いた» 程度
+# 極性色は乗せない (転倒は極の出来事ではない)。ScreenEffect / CameraShake / TimeScale は置かない。
+
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BOSS_Topple"
+instanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "ToppleVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+dustColor = [0.66, 0.63, 0.58, 0.55]
+scale = 1.0
+crackSize = 9.0
+thudLight = 8.0
+
+[[gameobjects]]
+name = "Ground Ring"
+instanceId = "0f1cda46-cd58-462f-9a08-214f51f9354b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 0.15, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 床に寝かせる (renderMode = 2)。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.5
+maxParticles = 2
+shape = 0
+sizeStart = 1.5
+sizeEnd = 14.0
+sizeCurvePower = 0.32
+lifetime = 0.45
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
+renderMode = 2
+sortMode = 0
+renderPriority = 56
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.97, 0.9, 0.9], [0.3, 1.0, 0.95, 0.85, 0.6], [1.0, 1.0, 0.9, 0.8, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Dust Wall"
+instanceId = "77a3d13f-cd50-4e4b-820d-b27178b2647d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 土煙の壁。球の縁から生まれ、radialVelocity で外へ加速する。前縁が最も濃く、
+# 後ろへ薄く伸びるので «押し寄せる» に見える。Dust Color は ToppleVfxComponent が書く。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.5
+maxParticles = 64
+shape = 1
+sphereRadius = 1.6
+sizeStart = 1.6
+sizeEnd = 5.5
+sizeCurvePower = 0.55
+lifetime = 1.5
+lifetimeRandom = 0.35
+emitVelocity = [0.0, 0.8, 0.0]
+velocitySpread = 2.2
+velocityDamping = 1.7
+radialVelocity = 22.0
+gravity = [0.0, 0.25, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+sortMode = 1
+angularVelocityMin = -1.2
+angularVelocityMax = 1.2
+renderPriority = 20
+colorVariation = 0.1
+useColorGradient = true
+colorGradient = [[0.0, 0.66, 0.63, 0.58, 0.0], [0.1, 0.66, 0.63, 0.58, 0.55], [0.55, 0.6, 0.58, 0.54, 0.4], [1.0, 0.55, 0.53, 0.5, 0.0]]
+bursts = [{ time = 0.0, count = 34, cycles = 2, interval = 0.02, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Dust Column"
+instanceId = "a6ba5f4f-6476-4654-9d91-39cb553f6046"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 中央に立ち上がる煙柱。FlipFlop (湧いて崩れる) を 1.6 秒で。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.4
+maxParticles = 12
+shape = 1
+sphereRadius = 1.2
+sizeStart = 2.4
+sizeEnd = 6.0
+sizeCurvePower = 0.6
+lifetime = 1.7
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 2.2, 0.0]
+velocitySpread = 1.0
+velocityDamping = 1.4
+gravity = [0.0, 0.5, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
+sortMode = 1
+angularVelocityMin = -0.6
+angularVelocityMax = 0.6
+renderPriority = 18
+colorVariation = 0.08
+useColorGradient = true
+colorGradient = [[0.0, 0.6, 0.58, 0.55, 0.0], [0.12, 0.58, 0.56, 0.53, 0.6], [1.0, 0.5, 0.48, 0.46, 0.0]]
+bursts = [{ time = 0.0, count = 8, cycles = 1, interval = 0.03, probability = 1.0 }]
+startDelay = 0.04
+
+[[gameobjects]]
+name = "Grit"
+instanceId = "23ebdb06-49af-4ecf-91dc-2ca2dcecd33b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 160
+shape = 1
+sphereRadius = 1.4
+sizeStart = 0.11
+sizeEnd = 0.04
+sizeCurvePower = 1.3
+lifetime = 1.1
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 6.5, 0.0]
+velocitySpread = 7.5
+velocityDamping = 0.8
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+sortMode = 0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.04
+collisionBounciness = 0.25
+collisionDamping = 0.6
+renderPriority = 34
+simulationMode = 0
+colorVariation = 0.15
+colorStart = [0.62, 0.58, 0.52, 1.0]
+colorEnd = [0.5, 0.47, 0.43, 0.0]
+bursts = [{ time = 0.0, count = 110, cycles = 1, interval = 0.0, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Shards"
+instanceId = "9f961a5f-6afd-407b-bca8-1633e9889ba5"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 0.5, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 装甲片。回転しながら落ちて床で跳ねる。無彩色。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 30
+shape = 1
+sphereRadius = 1.6
+sizeStart = 0.28
+sizeEnd = 0.22
+lifetime = 1.3
+lifetimeRandom = 0.4
+emitVelocity = [0.0, 5.0, 0.0]
+velocitySpread = 7.0
+velocityDamping = 0.6
+gravity = [0.0, -13.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Shard_Lit.mat"
+sortMode = 1
+angularVelocityMin = -24.0
+angularVelocityMax = 24.0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.08
+collisionBounciness = 0.3
+collisionDamping = 0.65
+renderPriority = 36
+simulationMode = 0
+colorVariation = 0.08
+colorStart = [0.7, 0.72, 0.75, 1.0]
+colorEnd = [0.5, 0.52, 0.55, 0.0]
+bursts = [{ time = 0.0, count = 18, cycles = 1, interval = 0.0, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Dust Settle"
+instanceId = "5cf3e5aa-dd1d-418a-8833-e693ee632e1b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 0.35 秒遅れの薄い土煙。前縁が抜けた後に低く残る層で、«重い物が床に居る» を数秒言う。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.6
+maxParticles = 30
+shape = 1
+sphereRadius = 3.5
+sizeStart = 2.0
+sizeEnd = 4.5
+sizeCurvePower = 0.7
+lifetime = 2.4
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 0.3, 0.0]
+velocitySpread = 0.8
+velocityDamping = 1.0
+radialVelocity = 3.0
+gravity = [0.0, 0.1, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+sortMode = 1
+angularVelocityMin = -0.5
+angularVelocityMax = 0.5
+renderPriority = 16
+colorVariation = 0.08
+useColorGradient = true
+colorGradient = [[0.0, 0.64, 0.61, 0.57, 0.0], [0.2, 0.64, 0.61, 0.57, 0.28], [1.0, 0.58, 0.56, 0.52, 0.0]]
+bursts = [{ time = 0.0, count = 14, cycles = 2, interval = 0.04, probability = 1.0 }]
+startDelay = 0.35
+
+[[gameobjects]]
+name = "Blast Push"
+instanceId = "524d6458-70af-49ad-b716-e472c3076c48"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 既に舞っている粒 (直前の踏みつけの土煙など) を外へ押す。
+[gameobjects.ParticleForceField]
+enabled = true
+fieldType = 2
+strength = 26.0
+radius = 9.0
+falloffPower = 2.0
+direction = [0.0, 1.0, 0.0]
+noiseFrequency = 0.5
+noiseSpeed = 1.0
+channels = -1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.3
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[[gameobjects]]
+name = "Thud Light"
+instanceId = "c5eb5daa-3d43-49f1-ab5f-06908bec0ed1"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, 1.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 閃光ではない。«影が一瞬動く» 程度の弱い光。Thud Light は ToppleVfxComponent が書く。
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 0.9, 0.78]
+intensity = 8.0
+enabled = true
+range = 12.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.3
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.2, 0.5], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }
+
+[[gameobjects]]
+name = "Crater"
+instanceId = "f2dd75ea-0149-46f7-9989-f318cce2746e"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BOSS_Topple"
+parentInstanceId = "4a92a517-2f7f-4467-b4cb-cf1b29b2110e"
+
+[gameobjects.transform]
+position = [0.0, -1.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [9.0, 3.0, 9.0]
+
+# 放射のひび。倒れている 5 秒のあいだ残り、起き上がると薄れて消える。Crack Size は Y 以外を書く。
+[gameobjects.DecalComponent]
+enabled = true
+material = ""
+albedoTex = "Assets/VFX/Textures/T_Crack_Radial.png"
+normalTex = ""
+emissiveTex = ""
+albedo = [0.12, 0.11, 0.11, 0.85]
+normalStrength = 0.0
+angleFadeStrength = 1.0
+angleFadeDegrees = 70.0
+emissiveColor = [1.0, 1.0, 1.0]
+emissiveScale = 0.0
+lifetime = 6.0
+fadeTime = 1.5
+age = 0.0
+receiverLayerMask = -1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.05
+duration = 6.0
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXDecalEnvelope]
+enabled = true
+fadeCurve = { interp = 0, keys = [[0.0, 1.0], [0.7, 0.95], [1.0, 0.0]] }
+driveEmissive = false
+emissiveCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 0.0]] }

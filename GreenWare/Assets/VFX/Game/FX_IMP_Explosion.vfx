@@ -34,7 +34,7 @@ type = "ImpactVfxComponent"
 enabled = true
 
 [gameobjects.ScriptComponents.fields]
-polarityColor = [1.0, 1.0, 1.0, 1.0]
+tintColor = [1.0, 1.0, 1.0, 1.0]
 sparkPower = 11.0
 smokeAmount = 4.2
 blastLight = 22.0
@@ -211,8 +211,8 @@ shape = 1
 sphereRadius = 0.25
 sizeStart = 1.5
 sizeEnd = 3.4
-sizeCurvePower = 0.5
-lifetime = 0.42
+sizeCurvePower = 0.42
+lifetime = 0.36
 lifetimeRandom = 0.15
 velocitySpread = 1.2
 velocityDamping = 3.0
@@ -253,9 +253,9 @@ maxParticles = 12
 shape = 1
 sphereRadius = 0.55
 sizeStart = 1.8
-sizeEnd = 4.8
+sizeEnd = 5.2
 sizeCurvePower = 0.6
-lifetime = 0.85
+lifetime = 1.0
 lifetimeRandom = 0.3
 velocitySpread = 2.4
 velocityDamping = 2.6
@@ -265,10 +265,10 @@ sortMode = 1
 angularVelocityMin = -1.4
 angularVelocityMax = 1.4
 renderPriority = 20
-colorVariation = 0.12
+colorVariation = 0.1
 colorStart = [1.0, 1.0, 1.0, 1.0]
 colorEnd = [0.0, 0.0, 0.0, 0.0]
-bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.03, probability = 1.0 }]
+bursts = [{ time = 0.0, count = 4, cycles = 1, interval = 0.03, probability = 1.0 }]
 startDelay = 0.01
 
 [[gameobjects]]
@@ -296,12 +296,12 @@ emitRate = 0.0
 maxParticles = 3
 shape = 0
 sizeStart = 0.6
-sizeEnd = 8.0
-sizeCurvePower = 0.3
-lifetime = 0.38
+sizeEnd = 9.0
+sizeCurvePower = 0.28
+lifetime = 0.32
 velocitySpread = 0.0
 gravity = [0.0, 0.0, 0.0]
-materialPath = "Assets/Materials/Effects/FX_RingGrad_Additive.mat"
+materialPath = "Assets/Materials/Effects/FX_RingThin_Additive.mat"
 renderMode = 2
 sortMode = 0
 angularVelocityMin = 0.0
@@ -386,10 +386,10 @@ lifetimeRandom = 0.45
 velocitySpread = 11.0
 velocityDamping = 2.4
 gravity = [0.0, -14.0, 0.0]
-materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+materialPath = "Assets/Materials/Effects/FX_StreakLong_Additive.mat"
 renderMode = 1
 stretchedVelocityScale = 0.14
-stretchedLengthScale = 2.6
+stretchedLengthScale = 2.2
 collisionMode = 3
 collisionResponse = 0
 collisionRadius = 0.02
@@ -436,11 +436,11 @@ sphereRadius = 0.8
 sizeStart = 1.4
 sizeEnd = 4.2
 sizeCurvePower = 0.7
-lifetime = 1.5
+lifetime = 1.6
 lifetimeRandom = 0.4
 velocitySpread = 1.8
 velocityDamping = 1.6
-gravity = [0.0, 0.35, 0.0]
+gravity = [0.0, 0.25, 0.0]
 materialPath = "Assets/Materials/Effects/FX_Smoke_Alpha.mat"
 sortMode = 1
 angularVelocityMin = -0.9
@@ -616,3 +616,98 @@ enabled = true
 fadeCurve = { interp = 0, keys = [[0.0, 1.0], [0.65, 0.95], [1.0, 0.0]] }
 driveEmissive = false
 emissiveCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 0.0]] }
+
+[[gameobjects]]
+name = "Glint Stars"
+instanceId = "1cf431d2-6f42-4e8f-98bb-800dd87f0fd0"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "First Frame (0.00s)"
+parentInstanceId = "9f5eb976-75ad-473a-94b8-96f21b71336b"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 金属どうしがぶつかった «キラッ»。極性色を乗せる層 (閃光側)。数を絞る ─ 重ねると白い板になる。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 1
+sphereRadius = 0.5
+sizeStart = 0.8
+sizeEnd = 0.0
+sizeCurvePower = 0.7
+lifetime = 0.22
+lifetimeRandom = 0.35
+velocitySpread = 1.5
+velocityDamping = 3.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlintStar_Additive.mat"
+sortMode = 0
+angularVelocityMin = -0.6
+angularVelocityMax = 0.6
+renderPriority = 66
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 3, cycles = 1, interval = 0.015, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Armor Chunks"
+instanceId = "6aafa2e9-0e61-4b05-bdbb-7f8a4b2d5167"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "Debris (無彩色)"
+parentInstanceId = "331d848e-f942-41ac-bbdd-9ebd00af8f94"
+
+[gameobjects.transform]
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 装甲パーツの飛散 (presentation.md «衝突»)。無彩色。回転しながら落ちて床で跳ねる。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 14
+shape = 1
+sphereRadius = 0.3
+sizeStart = 0.2
+sizeEnd = 0.16
+lifetime = 1.0
+lifetimeRandom = 0.4
+emitVelocity = [0.0, 3.5, 0.0]
+velocitySpread = 7.0
+velocityDamping = 0.8
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_Shard_Lit.mat"
+sortMode = 1
+angularVelocityMin = -26.0
+angularVelocityMax = 26.0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.06
+collisionBounciness = 0.3
+collisionDamping = 0.65
+renderPriority = 38
+simulationMode = 0
+colorVariation = 0.08
+colorStart = [0.72, 0.74, 0.77, 1.0]
+colorEnd = [0.5, 0.52, 0.55, 0.0]
+bursts = [{ time = 0.0, count = 8, cycles = 1, interval = 0.0, probability = 1.0 }]
+startDelay = 0.0

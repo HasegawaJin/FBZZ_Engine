@@ -56,23 +56,56 @@
 | `T_Sym_Minus.png` | 128² | `FX_POL_Mark`（－） | ビルボード |
 | `T_Sym_Cross.png` | 128² | `FX_POL_XWarn`（中和警告） | ビルボード |
 
+### 第 2 期 (2026-09-07 追加: 弾き・転倒・とどめ・斬撃用)
+
+| ファイル | サイズ | 用途 | 備考 |
+|---|---|---|---|
+| `T_Slash_Arc.png` | 512×256 | 刀が通った弧 (`FX_SlashArc_Additive`) | 左が振り始め (太い)、右が抜け (細い) |
+| `T_Ring_Thin.png` | 512² | 締まった衝撃波 (`FX_RingThin_Additive`) | 外縁が鋭い。弾き・転倒・衝突の輪は全てこれへ移した |
+| `T_Glint_Star.png` | 256² | 金属の «キラッ» (`FX_GlintStar_Additive`) | 4 本光条。数を絞る |
+| `T_Burst_Rays.png` | 512² | Just 弾きの放射 (`FX_BurstRays_Additive`) | 1 枚だけ置く |
+| `T_Shard_2x2.png` | 512² / 2×2 | 装甲片 (`FX_Shard_Lit`) | 面ごとに明暗。`flipbook_mode = random` |
+| `T_Dust_Puff_2x2.png` | 512² / 2×2 | 静止した土煙 (`FX_DustPuff_Alpha`) | 走行・衝撃波・転倒。FlipFlop の煙より軽い |
+| `T_Crack_Radial.png` | 1024² | 転倒のクレーター (デカール) | 放射のひび + 陥没。暗くする方向 |
+| `T_Bolt.png` | 512×128 | 稲妻 1 本 (`FX_Bolt_Additive`) | 付与の放電・焼け跡のアーク |
+| `T_Cut_Line.png` | 512×64 | 溶断の縫い目 (`FX_CutLine_Additive`) | **X 方向シームレス。** 黒体放射で色を作る |
+| `T_Ember_Dot.png` | 64² | 火の粉 (`FX_EmberDot_Additive`) | 大量に撒いても白く抜けにくい |
+| `T_Streak_Long.png` | 512×64 | 長い速度線 (`FX_StreakLong_Additive`) | 頭が X=88%。Stretched Billboard 必須 |
+
 ---
 
 ## 生成スクリプト
 
 すべて手続き生成。再生成すれば別バリエーションが出る。
+スクリプトは `Tools/VfxTextureGen/` に置く (Assets の下に置くとエディターが .py まで取り込む)。
+必要なのは numpy / Pillow / scipy。
 
 ```
-python gen_textures.py                    # 静止テクスチャ13点
-MODE=explosion python gen_flip.py         # 爆発FlipFlop
-MODE=smoke     python gen_flip.py         # 煙FlipFlop
-MODE=explosion SEED=12 python gen_flip.py # 別の乱数で作り直す
-MODE=explosion RES=256 python gen_flip.py # 1コマ128pxの軽量版
+cd Tools/VfxTextureGen
+OUT=../../GreenWare/Assets/VFX/Textures python gen_textures_v2.py   # 第 2 期の静止テクスチャ 11 点
+MODE=explosion OUT=.../FX_Explosion_8x8.png python gen_flip.py       # 爆発FlipFlop (v3)
+MODE=smoke     OUT=.../FX_Smoke_8x8.png     python gen_flip.py       # 煙FlipFlop (v3)
+MODE=explosion SEED=12 python gen_flip.py                            # 別の乱数で作り直す
+MODE=explosion RES=1024 python gen_flip.py                           # 1コマ128pxの軽量版
 ```
 
-`gen_explosion.py` / `gen_smoke.py` は `gen_flip.py` を呼ぶだけのラッパー。
+第 1 期の 13 点 (`gen_textures.py`) はリポジトリに入っていない。差し替えるときは第 2 期の
+`gen_textures_v2.py` に関数を足す形で書く。
 
-### FlipFlop の作り（v2）
+### FlipFlop の作り（v3, 2026-09-07）
+
+v2 の「残っている弱点」を解いた。
+
+| 弱点 | v3 での対応 |
+|---|---|
+| 炎のフィラメントが出ない | 中心から放たれる筋状の火 (curl ノイズで曲がる) を序盤 22 コマに描く。`FILAMENTS` / `FIL_T` |
+| 後半の崩れが一様 | 房 (ローブ) ごとに消散の時刻をずらした。`DISS0` / `DISS_SPREAD` / `DISS_W` |
+| 立ち上がりが遅い | 1 コマ目で最終径の 25%、6 コマ目で 70%。`TAU` |
+| 塊が平板 | 粒を «球として陰影を付けて over 合成» するカリフラワー描画 (`splat_lit_spheres`)。平均ではなく手前が奥を隠す |
+
+ループ再生は相変わらず想定していない (頭と尻はつながらない)。
+
+### FlipFlop の作り（v2, 参考）
 
 シルエットが丸くなる問題を、以下の4段で解いている。
 
