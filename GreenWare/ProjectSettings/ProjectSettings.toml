@@ -31,8 +31,11 @@ voiceLimit = 48
     volume = 1.0
 
 [cursor]
-lock_mode = 'Locked'
-visible = true
+hardware = true
+
+    [cursor.shapes.Default]
+    hotspot = [ 2.0, 2.0 ]
+    image = 'Assets/Sprites/HUD/pointer_c_shaded.png'
 
 [layers]
 names = [
@@ -91,7 +94,7 @@ particleBudgetEnabled = true
 passViewerEnabled = false
 pcssEnabled = true
 pcssLightRadius = 3.0
-pipeline = 'Forward+'
+pipeline = 'Deferred+'
 shadow = true
 shadowAutoFitDistance = 60.0
 shadowCascadeBlend = 0.1

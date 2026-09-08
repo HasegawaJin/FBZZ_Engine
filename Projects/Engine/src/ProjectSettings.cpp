@@ -128,6 +128,25 @@ const char* RenderingPipelineToString(renderer::RenderingPipeline pipeline)
 
 } // namespace
 
+void CursorAppearance::Apply(const std::string& projectRoot) const
+{
+    // 先に全部畳む。前のプロジェクト / 前の Play で読んだ絵が «設定を空にしても
+    // 残り続ける» のを防ぐ。
+    core::Cursor::ClearShapeImages();
+    if (!hardwareCursor) return;
+
+    const std::filesystem::path root(projectRoot);
+    for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+        const ShapeImage& entry = shapes[i];
+        if (entry.path.empty()) continue;
+
+        std::filesystem::path full(entry.path);
+        if (full.is_relative() && !root.empty()) full = root / full;
+        core::Cursor::SetShapeImage(static_cast<core::CursorShape>(i),
+                                    full.string().c_str(), entry.hotspotX, entry.hotspotY);
+    }
+}
+
 ProjectSettings ProjectSettings::Default()
 {
     ProjectSettings ps;
@@ -323,10 +342,25 @@ bool ProjectSettings::Load(const std::string& path)
         if (window.height < 1) window.height = 1;
     }
 
+    // 旧 [cursor] の lock_mode / visible は読まない。拘束と表示はスクリプトが持つ
+    // ランタイム状態になり、設定ファイルは «絵» だけを持つ (CursorAppearance を参照)。
+    // 古いファイルに残っていてもここで黙って捨てられ、次の Save で消える。
     if (auto* cursorTbl = tbl["cursor"].as_table()) {
-        if (auto mode = (*cursorTbl)["lock_mode"].value<std::string>())
-            cursor.lockMode = core::CursorLockModeFromString(*mode);
-        cursor.visible = (*cursorTbl)["visible"].value_or(cursor.visible);
+        cursor.hardwareCursor = (*cursorTbl)["hardware"].value_or(cursor.hardwareCursor);
+        if (auto* shapesTbl = (*cursorTbl)["shapes"].as_table()) {
+            for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+                const auto shape = static_cast<core::CursorShape>(i);
+                auto* shapeTbl = (*shapesTbl)[core::ToString(shape)].as_table();
+                if (!shapeTbl) continue;
+                auto& entry = cursor.shapes[i];
+                entry.path = (*shapeTbl)["image"].value_or(entry.path);
+                if (auto* hotspot = (*shapeTbl)["hotspot"].as_array();
+                    hotspot && hotspot->size() >= 2) {
+                    entry.hotspotX = (float)hotspot->get(0)->value_or(0.0);
+                    entry.hotspotY = (float)hotspot->get(1)->value_or(0.0);
+                }
+            }
+        }
     }
 
     if (auto* uiTbl = tbl["ui"].as_table())
@@ -455,8 +489,22 @@ bool ProjectSettings::Save(const std::string& path) const
     runtimeTbl.insert("start_scene", game.runtime.startScene);
 
     toml::table cursorTbl;
-    cursorTbl.insert("lock_mode", core::ToString(cursor.lockMode));
-    cursorTbl.insert("visible",   cursor.visible);
+    cursorTbl.insert("hardware", cursor.hardwareCursor);
+    {
+        // 画像を割り当てていない種類は書き出さない。全種類を空文字で並べても
+        // «設定してあるのはどれか» が読めなくなるだけで、既定へ倒す判断は Load 側が持つ。
+        toml::table shapesTbl;
+        for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+            const auto& entry = cursor.shapes[i];
+            if (entry.path.empty()) continue;
+            toml::table shapeTbl;
+            shapeTbl.insert("image", entry.path);
+            shapeTbl.insert("hotspot", toml::array{ entry.hotspotX, entry.hotspotY });
+            shapesTbl.insert(core::ToString(static_cast<core::CursorShape>(i)),
+                             std::move(shapeTbl));
+        }
+        if (!shapesTbl.empty()) cursorTbl.insert("shapes", std::move(shapesTbl));
+    }
 
     toml::table uiTbl;
     uiTbl.insert("default_font", ui.defaultFontPath);

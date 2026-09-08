@@ -5,7 +5,7 @@
 ///
 /// WHY 1 箇所に集めるか:
 ///   Time::timeScale は誰でも書けるグローバルな 1 変数で、書き手が 2 つになった瞬間に
-///   壊れる。実際 PolarityFieldComponent のヒットストップは「開始前のスケールを保存して
+///   壊れる。実際ヒットストップは「開始前のスケールを保存して
 ///   戻す」方式だったが、これはスローと重なると復帰後にスローの値を消してしまう。
 ///   逆にスロー側が後から書けばヒットストップが解除される。
 ///   「誰が最後に書いたか」で結果が決まる作りは、症状が入力タイミング依存になって
@@ -33,13 +33,13 @@ class TimeManagerComponent : public Script {
     FBZZ_SCRIPT(TimeManagerComponent)
 
 public:
-    FBZZ_GROUP("Blend")
+    FBZZ_GROUP("ブレンド")
     FBZZ_FIELD_RANGE(float, defaultBlendSeconds, 0.12f, "Default Blend", 0.0f, 2.0f)
     FBZZ_TOOLTIP("スローの掛け始め / 戻しに掛ける秒数。0 で瞬間的に切り替わる")
     FBZZ_FIELD_RANGE(float, minScale, 0.0f, "Min Scale", 0.0f, 1.0f)
     FBZZ_TOOLTIP("要求されたスケールの下限。0 未満や暴走値で完全停止するのを防ぐ")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(float, debugScale, 1.0f, "Current Scale")
     FBZZ_FIELD_READ_ONLY(std::string, debugSource, "Normal", "Source")
 
@@ -53,6 +53,16 @@ public:
     void ClearSlow(float blendSeconds = -1.0f);
     // seconds 秒だけスローにして自動で戻す。時間は実時間で数える。
     void SlowFor(float scale, float seconds, float blendSeconds = -1.0f);
+    // 掛け始めと戻しで別の秒数を使う版。
+    //
+    // WHY 戻しを別に持つか: 掛け始めは «出来事が起きた瞬間» なので速く、戻しは
+    //     «世界が動き出す» ので長く取りたい。1 つの秒数だと、速く掛けると速く戻って
+    //     «止まって、急に走り出した» に見える (回避のスローが重く見えた原因)。
+    void SlowFor(float scale, float seconds, float blendIn, float blendOut);
+
+    /// 今どれだけ遅いか [0,1]。0 で等速、1 で完全停止。画面効果がこれを読む
+    /// (Override = ヒットストップは含めない。あちらは Freeze が別に描く)。
+    [[nodiscard]] float Slow01() const { return Clamp01(1.0f - m_blended); }
 
     // --- ポーズ (スローより優先、解除するまで維持) ---
     void SetPaused(bool paused) { m_paused = paused; }
@@ -87,6 +97,7 @@ private:
     float m_blended      = 1.0f;   // 実際に適用している下位層の値
     float m_slowRemaining = 0.0f;  // SlowFor の残り (実時間)。0 以下で無期限
     bool  m_slowTimed    = false;
+    float m_slowOutBlend = -1.0f;  // SlowFor が戻すときの秒数。負なら既定
     bool  m_paused       = false;
     bool  m_hasOverride  = false;
     float m_overrideScale = 1.0f;
@@ -141,6 +152,14 @@ inline void TimeManagerComponent::SlowFor(float scale, float seconds, float blen
     SetSlow(scale, blendSeconds);
     m_slowTimed     = true;
     m_slowRemaining = std::max(seconds, 0.0f);
+    m_slowOutBlend  = -1.0f;
+}
+
+inline void TimeManagerComponent::SlowFor(float scale, float seconds, float blendIn,
+                                          float blendOut)
+{
+    SlowFor(scale, seconds, blendIn);
+    m_slowOutBlend = std::max(blendOut, 0.0f);
 }
 
 inline void TimeManagerComponent::SetOverride(float scale)
@@ -157,7 +176,7 @@ inline void TimeManagerComponent::OnUpdate()
 
     if (m_slowTimed) {
         m_slowRemaining -= dt;
-        if (m_slowRemaining <= 0.0f) ClearSlow();
+        if (m_slowRemaining <= 0.0f) ClearSlow(m_slowOutBlend);
     }
 
     const float target = m_paused ? 0.0f : m_slowTarget;
