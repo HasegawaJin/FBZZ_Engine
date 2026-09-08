@@ -301,8 +301,13 @@ private:
     /// 添字は m_anchorBody と対。
     std::vector<physics::XPBDPoseAnchor*>   m_anchors;
     std::vector<int>                        m_anchorBody;
-    /// 根から見た全身の質量モーメント [kg·m] と総質量 [kg]。繋ぎ止める力の素。
-    float m_rootMoment = 0.0f;
+    /// 根 1 本ごとの «その先の» 総質量 [kg] と質量モーメント [kg·m]。繋ぎ止める力の素。
+    ///
+    /// WHY 根ごとに持つか: 骨の並びは 1 本の木とは限らない。繋がっていない部分木を
+    ///     同じソルバへ載せる構成 (壊れた脚だけを落とす等) で全身の合計を配ると、
+    ///     部分木 1 つの繋ぎ止めが «全部を支える力» になる。添字は m_anchors と対。
+    std::vector<float> m_anchorMass;
+    std::vector<float> m_anchorMoment;
     float m_totalMass  = 0.0f;
     bool  m_learnLimits = false;
     float m_limitMargin = 0.09f;

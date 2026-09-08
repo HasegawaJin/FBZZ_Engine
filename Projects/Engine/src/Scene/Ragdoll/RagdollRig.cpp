@@ -81,7 +81,8 @@ void RagdollRig::Clear()
     m_ground.clear();
     m_anchors.clear();
     m_anchorBody.clear();
-    m_rootMoment = 0.0f;
+    m_anchorMass.clear();
+    m_anchorMoment.clear();
     m_totalMass  = 0.0f;
     m_contacts.clear();
     m_contactPoints.clear();
@@ -267,14 +268,30 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
         link.holdMoment = moment;
     }
 
-    // 繋ぎ止めの強さの素。根から見た全身の «重さ» と «倒れにくさ»。
-    for (const BodyLink& link : m_bodies) m_totalMass += link.mass;
-    if (!m_anchors.empty()) {
+    // 繋ぎ止めの強さの素。**根 1 本ごとに、その根がぶら下げている部分木だけ**を数える。
+    //
+    // WHY 全身の合計にしないか: 骨の並びは 1 本の木とは限らない。壊れた脚だけを
+    //     落とす構成 (BossPolarityRigComponent) では、繋がっていない脚が 4 本
+    //     同じソルバに乗る。全身の合計を全部の根へ配ると、脚 1 本の繋ぎ止めが
+    //     «4 本ぶんを支える力» になり、脱力させたはずの脚がクリップへ吸い付く。
+    //     部分木ごとに数えれば、根が 1 本の従来の構成では合計と一致する。
+    m_anchorMass.assign(m_anchors.size(), 0.0f);
+    m_anchorMoment.assign(m_anchors.size(), 0.0f);
+    for (std::size_t a = 0; a < m_anchorBody.size(); ++a) {
+        const int anchorBody = m_anchorBody[a];
         const math::Vector3 root =
-            m_bodies[static_cast<std::size_t>(m_anchorBody.front())].body->GetPosition();
-        for (const BodyLink& link : m_bodies)
-            m_rootMoment += link.mass * (link.body->GetPosition() - root).Length();
+            m_bodies[static_cast<std::size_t>(anchorBody)].body->GetPosition();
+        for (std::size_t b = 0; b < m_bodies.size(); ++b) {
+            int ancestor = static_cast<int>(b);
+            while (ancestor >= 0 && ancestor != anchorBody)
+                ancestor = m_bodies[static_cast<std::size_t>(ancestor)].parentBody;
+            if (ancestor != anchorBody) continue;
+            m_anchorMass[a]   += m_bodies[b].mass;
+            m_anchorMoment[a] += m_bodies[b].mass *
+                                 (m_bodies[b].body->GetPosition() - root).Length();
+        }
     }
+    for (const BodyLink& link : m_bodies) m_totalMass += link.mass;
 
     // 接地はカプセルの両端で取る。中心 1 点だと寝かせた胴が床へ半分めり込む。
     //
@@ -348,10 +365,13 @@ void RagdollRig::ApplyDrive()
 
     // 繋ぎ止めもサーボと同じ «自重比» で持つ。重力を変えれば必要な力も変わる。
     const float anchorStrength = std::max(m_anchorScale, 0.0f);
-    for (physics::XPBDPoseAnchor* anchor : m_anchors)
-        anchor->SetStrength(m_totalMass * gravity * anchorStrength,
-                            m_rootMoment * gravity * anchorStrength,
-                            std::max(m_anchorSag, 0.0f), std::max(m_anchorTilt, 0.0f));
+    for (std::size_t a = 0; a < m_anchors.size(); ++a) {
+        const float mass   = a < m_anchorMass.size()   ? m_anchorMass[a]   : m_totalMass;
+        const float moment = a < m_anchorMoment.size() ? m_anchorMoment[a] : 0.0f;
+        m_anchors[a]->SetStrength(mass * gravity * anchorStrength,
+                                  moment * gravity * anchorStrength,
+                                  std::max(m_anchorSag, 0.0f), std::max(m_anchorTilt, 0.0f));
+    }
 
     for (JointLink& link : m_joints) {
         const float strength =
@@ -687,31 +707,34 @@ void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones)
         link.joint->Drive().target = target;
 
         if (!m_learnLimits) continue;
-        physics::XPBDJointLimits& limits = link.joint->Limits();
-        if (!limits.enabled) continue;
 
-        // 目標そのものを swing / twist へ分解すれば «クリップがこの関節に要求している
-        // 角度» が出る。可動域と同じ «たわみ 0 からの量» なので、そのまま比べられる。
-        math::Quaternion swing;
-        math::Quaternion twist;
-        physics::DecomposeSwingTwist(target, swing, twist);
-        const math::Vector3 swingVector = physics::RotationVector(swing);
-        // twist は X 軸まわりだけなので、回転ベクトルの X 成分がそのまま角になる。
-        const float twistAngle = physics::RotationVector(twist).x;
-
-        limits.twistMin  = std::min(limits.twistMin,  twistAngle - m_limitMargin);
-        limits.twistMax  = std::max(limits.twistMax,  twistAngle + m_limitMargin);
-        limits.swingMinY = std::min(limits.swingMinY, swingVector.y - m_limitMargin);
-        limits.swingMaxY = std::max(limits.swingMaxY, swingVector.y + m_limitMargin);
-        limits.swingMinZ = std::min(limits.swingMinZ, swingVector.z - m_limitMargin);
-        limits.swingMaxZ = std::max(limits.swingMaxZ, swingVector.z + m_limitMargin);
+        // 角の測り方は関節側 (押し戻しに使うのと同じ分解) に任せる。
+        // WHY ここで測らないか: 学習側と検査側で分解や符号の扱いが 1 つでも違うと、
+        //     «広げたはずなのに押し戻される» という形でしか表面化しない。
+        //     測る関数を 1 つにして、食い違いようが無い状態にする。
+        link.joint->LearnLimits(target, m_limitMargin);
     }
 }
 
 void RagdollRig::SetLimitLearning(bool enabled, float margin)
 {
+    const bool wasEnabled = m_learnLimits;
     m_learnLimits = enabled;
     m_limitMargin = std::max(margin, 0.0f);
+
+    if (!m_learnLimits || wasEnabled) return;
+
+    // 有効にした «その瞬間の姿勢» は、可動域の内側であることにする。
+    //
+    // WHY 有効化の 1 回だけか: 毎フレーム今の姿勢を取り込むと、崩れて押し込まれた角まで
+    //     «許可された角» として焼き込み、可動域が時間とともに意味を失う。
+    //     ここは false → true の遷移だけなので、そうはならない
+    //     (RagdollSystem は毎フレーム同じ値で呼ぶ)。
+    // WHY それでも要るか: 有効にするのはふつう捕獲の直後で、その姿勢が既に可動域の
+    //     外まで曲がっていることがある。UpdateDriveTargets が目標から学習するより先に
+    //     1 ステップ回ると、そこで押し戻されて «学習が効く前に崩れる»。
+    //     クリップの要求値ではなく «実際に置いた姿勢» を測るので、両者がずれていても効く。
+    for (JointLink& link : m_joints) link.joint->LearnLimitsFromCurrentPose(m_limitMargin);
 }
 
 int RagdollRig::CountLimitedJoints() const

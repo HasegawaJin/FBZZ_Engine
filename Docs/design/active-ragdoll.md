@@ -5,6 +5,19 @@
 - Date: 2026-09-02
 - Scope: `fbzz::physics` (ソルバ・拘束), `fbzz::scene` (RagdollSystem / RagdollComponent), GreenWare (ボスの被弾反応)
 
+> **2026-09-04: GreenWare 側の使い手 (`BossRagdollComponent`) は撤去した。**
+> 転倒は `Boss_Crash` クリップ、被弾のひるみは脚の揺れもの + `BossCollapsePostureComponent`
+> の傾けに戻してある。本書の GreenWare への言及は、撤去前の経路の記録として読むこと。
+> エンジン側 (RagdollSystem / XPBD) の設計と実装はこの決定で変わらない。
+>
+> **2026-09-05: «部位だけ» 落とす形で戻した。**全身を物理にすると 21 クリップの予兆が
+> 崩れるという撤去理由は、落とす範囲を部位に絞れば起きない。`RagdollComponent` に
+> 根を複数取れるようにし (`extraRootBones`)、**壊れた脚の `Thigh_XX` だけ**を根にして
+> Passive で落とす (`BossPolarityRigComponent::RefreshRagdollLegs`)。生きている脚と胴は
+> Animator のままなので、予兆は 1 コマも壊れない。§4.4 の «根は繋ぎ止めが要る» は
+> 根ごとに独立した部分木として効く ─ 繋ぎ止めの強さもその根の部分木だけで数える
+> ように直した (以前は全身の合計を全部の根へ配っていた)。
+
 骨を質点として落とす現行ラグドールを、**剛体と関節で組む XPBD ベースの関節体**へ置き換える。
 狙いは 2 つ。GreenWare のボスに「機械が力負けする」画を出すことと、
 後から Human Fall Flat 型のプレイヤー操作ラグドールを**同じソルバのパラメータ違い**で作れる形にすること。

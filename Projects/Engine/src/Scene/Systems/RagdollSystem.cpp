@@ -172,20 +172,23 @@ void DecomposeAffine(const math::Matrix4& matrix,
     outRotation = math::Quaternion::FromMatrix4(rotation).Normalized();
 }
 
-// 根から幅優先で辿り、親が必ず子より前に来る順で骨の並びを作る。
-// RagdollRig はこの順序を前提に «剛体を持たない骨を親から埋める» ので、崩すと葉が飛ぶ。
-void BuildBoneList(RagdollComponent& ragdoll,
-                   const asset::Skeleton& skeleton,
-                   const SkinnedMeshRenderer& smr,
-                   const RagdollProfile& profile)
+// 根 1 本ぶんを幅優先で辿り、既にある並びの後ろへ足す。
+// 親が必ず子より前に来る順を保つこと ─ RagdollRig はこの順序を前提に
+// «剛体を持たない骨を親から埋める» ので、崩すと葉が飛ぶ。
+//
+// @param claimed ノードを既に拾ったか。根が複数あるとき、後の根が先の根の部分木へ
+//                潜り込むのを防ぐ。同じ骨に剛体を 2 つ作ると、両方が同じ骨へ
+//                書き戻して震える。
+void AppendBoneTree(RagdollRuntime& runtime,
+                    const asset::Skeleton& skeleton,
+                    const SkinnedMeshRenderer& smr,
+                    const RagdollProfile& profile,
+                    int rootNode,
+                    int maxDepth,
+                    std::vector<bool>& claimed)
 {
-    RagdollRuntime& runtime = ragdoll.runtime;
-    runtime.bones.clear();
-    runtime.boneNodes.clear();
-    runtime.boneScales.clear();
-
-    const int rootNode = FindNode(skeleton, ragdoll.rootBoneName);
-    if (rootNode < 0) return;
+    if (rootNode < 0 || rootNode >= static_cast<int>(skeleton.nodes.size())) return;
+    if (claimed[static_cast<std::size_t>(rootNode)]) return;
 
     struct Pending { int node; int parent; int depth; };
     std::vector<Pending> queue;
@@ -197,6 +200,8 @@ void BuildBoneList(RagdollComponent& ragdoll,
             continue;
         if (current.node >= static_cast<int>(smr.nodeEntities.size()))
             continue;
+        if (claimed[static_cast<std::size_t>(current.node)]) continue;
+        claimed[static_cast<std::size_t>(current.node)] = true;
 
         RagdollBonePose bone;
         bone.parent = current.parent;
@@ -205,8 +210,7 @@ void BuildBoneList(RagdollComponent& ragdoll,
         runtime.bones.push_back(std::move(bone));
         runtime.boneNodes.push_back(current.node);
 
-        const bool depthReached =
-            ragdoll.maxDepth > 0 && current.depth + 1 >= ragdoll.maxDepth;
+        const bool depthReached = maxDepth > 0 && current.depth + 1 >= maxDepth;
         if (depthReached) continue;
 
         for (int child : skeleton.nodes[static_cast<std::size_t>(current.node)].children) {
@@ -218,6 +222,32 @@ void BuildBoneList(RagdollComponent& ragdoll,
                 continue;
             queue.push_back({ child, index, current.depth + 1 });
         }
+    }
+}
+
+// すべての根を 1 本の並びへ畳む。根が 1 本なら従来と同じ結果になる。
+//
+// WHY 1 本の配列にまとめるか: 繋がっていない部分木でも、自己衝突・接触・書き戻しは
+//     «全部まとめて 1 回» でよい。リグを根の数だけ持つと、ソルバも接触の探索も
+//     根の数だけ走ることになる。RagdollRig は親を持たない剛体を根として個別に
+//     繋ぎ止めるので、森のまま載せられる。
+void BuildBoneList(RagdollComponent& ragdoll,
+                   const asset::Skeleton& skeleton,
+                   const SkinnedMeshRenderer& smr,
+                   const RagdollProfile& profile)
+{
+    RagdollRuntime& runtime = ragdoll.runtime;
+    runtime.bones.clear();
+    runtime.boneNodes.clear();
+    runtime.boneScales.clear();
+
+    std::vector<bool> claimed(skeleton.nodes.size(), false);
+    AppendBoneTree(runtime, skeleton, smr, profile,
+                   FindNode(skeleton, ragdoll.rootBoneName), ragdoll.maxDepth, claimed);
+    for (const std::string& extra : ragdoll.extraRootBones) {
+        if (extra.empty()) continue;
+        AppendBoneTree(runtime, skeleton, smr, profile,
+                       FindNode(skeleton, extra), ragdoll.maxDepth, claimed);
     }
 
     runtime.boneScales.assign(runtime.bones.size(), math::Vector3::ONE);
@@ -291,10 +321,11 @@ bool NeedsRebuild(const RagdollComponent& ragdoll, const asset::Skeleton& skelet
 {
     const RagdollRuntime& runtime = ragdoll.runtime;
     return !runtime.rig
-        || runtime.builtSkeleton != &skeleton
-        || runtime.builtRoot     != ragdoll.rootBoneName
-        || runtime.builtMaxDepth != ragdoll.maxDepth
-        || runtime.builtProfile  != ragdoll.profile;
+        || runtime.builtSkeleton   != &skeleton
+        || runtime.builtRoot       != ragdoll.rootBoneName
+        || runtime.builtExtraRoots != ragdoll.extraRootBones
+        || runtime.builtMaxDepth   != ragdoll.maxDepth
+        || runtime.builtProfile    != ragdoll.profile;
 }
 
 // 衝撃で抜けた力みを戻す。
@@ -490,7 +521,12 @@ void RagdollSystem::Update(SystemContext& ctx)
         const asset::Skeleton& skeleton = *smr->model->skeleton;
         RagdollRuntime& runtime = ragdoll->runtime;
 
-        if (NeedsRebuild(*ragdoll, skeleton)) {
+        // 落とす部分木が増減すると組み直しになる (壊れた脚が 1 本増えた等)。
+        // 既に走っている最中なら、組み直した剛体をこのフレームの姿勢で捕獲し直す
+        // 必要がある ── 組み上がりはバインドポーズなので、捕獲しないと
+        // 既に垂れていた部分木がバインドポーズへ 1 フレームで跳ね上がる。
+        const bool rebuilding = NeedsRebuild(*ragdoll, skeleton);
+        if (rebuilding) {
             const RagdollProfile profile = ragdoll->ResolveProfile();
             BuildBoneList(*ragdoll, skeleton, *smr, profile);
             runtime.rig = std::make_unique<RagdollRig>();
@@ -498,10 +534,11 @@ void RagdollSystem::Update(SystemContext& ctx)
                 runtime.rig->Build(
                     BuildBindPose(runtime, skeleton, go->transform.GetWorldMatrix()), profile);
             }
-            runtime.builtSkeleton = &skeleton;
-            runtime.builtRoot     = ragdoll->rootBoneName;
-            runtime.builtMaxDepth = ragdoll->maxDepth;
-            runtime.builtProfile  = ragdoll->profile;
+            runtime.builtSkeleton   = &skeleton;
+            runtime.builtRoot       = ragdoll->rootBoneName;
+            runtime.builtExtraRoots = ragdoll->extraRootBones;
+            runtime.builtMaxDepth   = ragdoll->maxDepth;
+            runtime.builtProfile    = ragdoll->profile;
 
             // «剛体は組めたが可動域が全部 fallback» は画面では «なんとなく柔らかい»
             // としか見えない。組み直したときだけ出るので、ログが溢れることもない。
@@ -535,6 +572,19 @@ void RagdollSystem::Update(SystemContext& ctx)
         }
 
         RagdollRig& rig = *runtime.rig;
+
+        // 走っている最中に組み直した。今の姿勢を «たわみ 0» として拾い直す。
+        // beginRequested の経路と同じことをするが、段階 (phase) と重みは触らない ─
+        // 触ると部分木が 1 つ増えるたびに全体がブレンドし直しになる。
+        if (rebuilding && ragdoll->phase != RagdollPhase::Idle && !ragdoll->beginRequested) {
+            rig.Capture(runtime.bones);
+            rig.UpdateDriveTargets(runtime.bones);
+            std::vector<const physics::Collider*> ignored;
+            CollectOwnColliders(*go, ignored);
+            rig.SetIgnoredColliders(std::move(ignored));
+            if (auto* rigidBody = go->GetComponent<RigidBodyComponent>())
+                rig.SetIgnoredBody(rigidBody->rigidBody.get());
+        }
 
         if (ragdoll->beginRequested) {
             ragdoll->beginRequested = false;

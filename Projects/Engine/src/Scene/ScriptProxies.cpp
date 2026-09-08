@@ -576,6 +576,19 @@ void ScriptInputProxy::CancelRebind() const
     input::InputActionMap::CancelRebind();
 }
 
+CursorRequest ScriptCursorProxy::Push(CursorLockMode mode, bool visible, int priority) const
+{
+    // owner に index+1 を渡す。index 0 は正当な GameObject なので、
+    // 0 を «無所属» に使っている Cursor 側と衝突させない。
+    std::uint32_t owner = 0;
+    if (script) {
+        if (GameObject* self = script->scene.Self(); self && self->IsValid())
+            owner = self->GetID().index + 1;
+    }
+    const char* label = script ? script->GetTypeName() : nullptr;
+    return CursorRequest(core::Cursor::Push({ mode, visible }, priority, owner, label));
+}
+
 void ScriptCursorProxy::SetVisible(bool visible) const
 {
     core::Cursor::SetVisible(visible);
@@ -594,6 +607,21 @@ void ScriptCursorProxy::SetLockMode(CursorLockMode mode) const
 CursorLockMode ScriptCursorProxy::GetLockMode() const
 {
     return core::Cursor::GetLockMode();
+}
+
+void ScriptCursorProxy::SetShape(CursorShape shape) const
+{
+    core::Cursor::SetShape(shape);
+}
+
+CursorShape ScriptCursorProxy::GetShape() const
+{
+    return core::Cursor::GetShape();
+}
+
+bool ScriptCursorProxy::HasShapeImage(CursorShape shape) const
+{
+    return core::Cursor::HasShapeImage(shape);
 }
 
 void ScriptCursorProxy::ResetForEditor() const
@@ -7295,6 +7323,29 @@ void ScriptRagdollProxy::End() const
     if (!ragdoll || ragdoll->phase == RagdollPhase::Idle) return;
     ragdoll->endRequested  = true;
     ragdoll->holdRemaining = 0.0f;
+}
+
+void ScriptRagdollProxy::SetRoots(const std::vector<std::string>& rootBoneNames,
+                                  int maxDepth) const
+{
+    auto* ragdoll = EnsureRagdoll(script);
+    if (!ragdoll) return;
+
+    // 先頭を rootBoneName、残りを extraRootBones へ分ける。呼ぶ側にこの非対称を
+    // 見せないための口なので、ここで畳む。空なら «骨格の根から» (＝全身) に戻る。
+    ragdoll->rootBoneName = rootBoneNames.empty() ? std::string{} : rootBoneNames.front();
+    ragdoll->extraRootBones.clear();
+    for (std::size_t i = 1; i < rootBoneNames.size(); ++i)
+        ragdoll->extraRootBones.push_back(rootBoneNames[i]);
+    ragdoll->maxDepth = maxDepth;
+}
+
+int ScriptRagdollProxy::GetRootCount() const
+{
+    const auto* ragdoll = SelfComponent<RagdollComponent>(script);
+    if (!ragdoll) return 0;
+    if (ragdoll->rootBoneName.empty() && ragdoll->extraRootBones.empty()) return 0;
+    return 1 + static_cast<int>(ragdoll->extraRootBones.size());
 }
 
 void ScriptRagdollProxy::Push(const math::Vector3& velocity) const
