@@ -164,6 +164,13 @@ inline constexpr std::string_view kPlayerWeaponStowPaths[] = {
     "Assets/Sound/SE/Player/SE_PL_Weapon_Stow_01.wav",
     "Assets/Sound/SE/Player/SE_PL_Weapon_Stow_02.wav",
 };
+// 脚を掴んで登るときの一手。0.83 秒周期で左右が入れ替わるので、変奏どうしの
+// 音量差 (-1.8 / 0.0 / -0.9 dB) はファイルに焼き込んである。ここで揃えないこと。
+inline constexpr std::string_view kPlayerClimbGrabPaths[] = {
+    "Assets/Sound/SE/Player/SE_PL_Climb_Grab_01.wav",
+    "Assets/Sound/SE/Player/SE_PL_Climb_Grab_02.wav",
+    "Assets/Sound/SE/Player/SE_PL_Climb_Grab_03.wav",
+};
 
 inline Bank kPlayerFootstepWalk { kPlayerFootstepWalkPaths };
 inline Bank kPlayerFootstepRun  { kPlayerFootstepRunPaths };
@@ -175,6 +182,7 @@ inline Bank kPlayerDeath        { kPlayerDeathPaths };
 inline Bank kPlayerServoTurn    { kPlayerServoTurnPaths };
 inline Bank kPlayerWeaponDeploy { kPlayerWeaponDeployPaths };
 inline Bank kPlayerWeaponStow   { kPlayerWeaponStowPaths };
+inline Bank kPlayerClimbGrab    { kPlayerClimbGrabPaths };
 
 // ── Blade (双剣) ────────────────────────────────────────────────────────────
 // 極ごとに音が分かれているのは企画書 12.2 の「赤と青を耳でも区別する」に対応する。
@@ -327,6 +335,15 @@ inline constexpr std::string_view kImpactCoreHitPaths[] = {
     "Assets/Sound/SE/Impact/SE_IMP_Core_Hit_01.wav",
     "Assets/Sound/SE/Impact/SE_IMP_Core_Hit_02.wav",
 };
+// 押し込み撃破。ハザードや壁へ «押して» 落としたときだけ鳴る。
+// WHY 通常の重い当たりと分けるか: 押し込みはランクの 2 軸の片方 (押した側) で、
+//     斬って倒したのと別に数えている。耳でも別でないと «今のは押しで入った» が
+//     分からず、評価だけが勝手に動いているように見える。
+inline constexpr std::string_view kImpactPushKillPaths[] = {
+    "Assets/Sound/SE/Impact/SE_IMP_PushKill_01.wav",
+    "Assets/Sound/SE/Impact/SE_IMP_PushKill_02.wav",
+    "Assets/Sound/SE/Impact/SE_IMP_PushKill_03.wav",
+};
 inline constexpr std::string_view kImpactFinalPaths[] = {
     "Assets/Sound/SE/Impact/SE_IMP_Final_01.wav",
     "Assets/Sound/SE/Impact/SE_IMP_Final_02.wav",
@@ -354,6 +371,7 @@ inline Bank kImpactWall        { kImpactWallPaths };
 inline Bank kImpactDebris      { kImpactDebrisPaths };
 inline Bank kImpactCoreHit     { kImpactCoreHitPaths };
 inline Bank kImpactFinal       { kImpactFinalPaths };
+inline Bank kImpactPushKill    { kImpactPushKillPaths };
 inline Bank kAttractWindup     { kAttractWindupPaths };
 inline Bank kAttractLaunch     { kAttractLaunchPaths };
 inline Bank kAttractConverge   { kAttractConvergePaths };
@@ -538,6 +556,15 @@ inline constexpr std::string_view kBossAppearPaths[] = {
     "Assets/Sound/SE/Boss/SE_BOSS_Appear.wav" };
 inline constexpr std::string_view kBossPhaseShiftPaths[] = {
     "Assets/Sound/SE/Boss/SE_BOSS_PhaseShift.wav" };
+// 背のコアを覆う蓋。開いている間だけコアが斬れるので、**開と閉は状態の合図**であって
+// 演出ではない。閉じる音を «開く音の逆再生» にしないのはそのため ─ 閉じは掛け金が
+// 噛む 1 発で終わらせて «窓が閉じた» と分かるようにしてある。
+inline constexpr std::string_view kBossHatchOpenPaths[] = {
+    "Assets/Sound/SE/Boss/SE_BOSS_Hatch_Open.wav",
+};
+inline constexpr std::string_view kBossHatchClosePaths[] = {
+    "Assets/Sound/SE/Boss/SE_BOSS_Hatch_Close.wav",
+};
 inline constexpr std::string_view kBossDestroyPaths[] = {
     "Assets/Sound/SE/Boss/SE_BOSS_Destroy.wav" };
 
@@ -563,6 +590,8 @@ inline Bank kBossDamaged        { kBossDamagedPaths };
 inline Bank kBossAppear         { kBossAppearPaths };
 inline Bank kBossPhaseShift     { kBossPhaseShiftPaths };
 inline Bank kBossDestroy        { kBossDestroyPaths };
+inline Bank kBossHatchOpen      { kBossHatchOpenPaths };
+inline Bank kBossHatchClose     { kBossHatchClosePaths };
 
 /// 刃が弾かれる «バンッ»。毎秒のように鳴るので、軽い衝突と同じ短さで扱う。
 ///

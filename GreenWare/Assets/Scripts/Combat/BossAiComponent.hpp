@@ -349,6 +349,18 @@ public:
     /// 倒れていなければ何もしない。
     void EndTopple();
 
+    /// 倒れている時間を «あと seconds 秒» まで延ばす。倒れていなければ何もしない。
+    ///
+    /// WHY 要るか (2026-09-08): 背へ登るには 納刀 0.62 + 登り 2.3 + 抜刀 0.60 で
+    ///     3.5 秒かかる。転倒 5 秒のうち残りは 1.3 秒しかなく、**登り切った頃には
+    ///     蓋が閉じている。**秒数を大きくして誤魔化すこともできるが、それだと
+    ///     «登らなかったとき» まで無駄に長く倒れたままになる。
+    ///     乗っている間だけ延ばせば、登った人にだけ時間が渡る。
+    ///
+    /// WHY 上限を持つか: 甲板に立ち続ければ永久に倒したままにできてしまう。
+    ///     1 回の転倒で延ばせる総量を kToppleHoldCap で締める。
+    void HoldTopple(float seconds);
+
     /// プレイヤーに一撃を弾かれた。出しかけの手に応じて崩れる (踏みつけは脚が跳ね、
     /// 突進は転ぶ)。BossCoreComponent が IBoss::OnParried から中継する。
     void OnParried(const Vector3& hitPoint);
@@ -502,6 +514,10 @@ private:
     float     m_cooldown   = 0.0f;
     /// 今の無防備がどれだけ続くか。激突は crashStunTime、転倒は呼んだ側が決める。
     float     m_stunSeconds = 0.0f;
+    /// この転倒の «素の» 長さ。HoldTopple の上限をここから測る。
+    float     m_toppleBase  = 0.0f;
+    /// 1 回の転倒で延ばせる総量 [秒]。乗り続けても倒したままにできないように。
+    static constexpr float kToppleHoldCap = 9.0f;
     /// 脚を引かれていて歩けない。BossRigComponent が毎フレーム申告する。
     bool      m_restrained  = false;
     /// 脚を失って二度と歩けない。restrained と違い、一度立つと戻らない。
@@ -1502,6 +1518,7 @@ inline void BossAiComponent::BeginCrash()
     m_act         = Act::CrashStun;
     m_timer       = 0.0f;
     m_stunSeconds = std::max(crashStunTime, 0.1f);
+    m_toppleBase  = m_stunSeconds;
     debugAct      = "Crash Stun";
     StopHorizontal();
 
@@ -1551,6 +1568,15 @@ inline void BossAiComponent::TickCrashStun(float dt)
     m_cooldown = 0.0f;
 }
 
+inline void BossAiComponent::HoldTopple(float seconds)
+{
+    if (m_act != Act::CrashStun || seconds <= 0.0f) return;
+    const float want = m_timer + seconds;
+    if (want <= m_stunSeconds) return;
+    const float cap = m_toppleBase + kToppleHoldCap;
+    m_stunSeconds = std::min(want, cap);
+}
+
 inline void BossAiComponent::Topple(float seconds, int selfDamage)
 {
     if (!IsAlive()) return;
@@ -1562,6 +1588,7 @@ inline void BossAiComponent::Topple(float seconds, int selfDamage)
     m_act         = Act::CrashStun;
     m_timer       = 0.0f;
     m_stunSeconds = std::max(seconds, 0.1f);
+    m_toppleBase  = m_stunSeconds;
     debugAct      = "Topple";
     StopHorizontal();
 

@@ -46,10 +46,10 @@ inline constexpr int kStageCount = 7;
 
 inline constexpr StageEntry kStages[kStageCount] = {
     { "Stage_01", "ARENA",
-      "ポラリティ・コア", "脚 4 本",
+      "ポラリティ・コア", "背のコア",
       "踏みつけ / 突進 → 激突",       "どちらも弾ける ・ 輪は跳んで越える",
       "＋ コアビーム / 磁力パルス",   "脚 2 本で据え付けの砲台へ",
-      "弾いて崩し、倒れた 5 秒に脚を落とす" },
+      "脚を落として倒し、登って背のコアを叩く" },
 
     { "Stage_02", "SERPENT PIT",
       "ポラリティ・サーペント", "28 → 6 節",

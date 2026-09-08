@@ -45,6 +45,12 @@ inline constexpr const char* kJump  = "Jump";
 inline constexpr const char* kDodge = "Dodge";
 // 弾き。ボスが倒れている間は同じボタンが «とどめ» になる (Docs/break-parry.md)。
 inline constexpr const char* kParry = "Parry";
+// 転倒したボスの脚に取り付いて登る (Docs/climb-core.md)。
+//
+// WHY ジャンプと分けるか: 取り付ける場所 (倒れた脚のそば) は跳びたい場所でもある。
+//     兼ねさせると «跳ぼうとして登る» が必ず起きるが、登りは 3 秒以上を拘束するので
+//     取り違えた側の代償が大きい。
+inline constexpr const char* kClimb = "Climb";
 
 // ── 刀の出し入れ ─────────────────────────────────────────────────────────────
 // Toggle はパッド用。1 ボタンで往復させる代わりに、どちらへ動くかは
@@ -83,6 +89,7 @@ inline constexpr ControlRow kControlRows[] = {
     { "parry",  kParry },
     { "dodge",  kDodge },
     { "jump",   kJump },
+    { "climb",  kClimb },
     { "pause",  kPause },
 };
 

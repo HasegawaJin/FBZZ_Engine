@@ -6,7 +6,9 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
@@ -21,16 +23,26 @@
 #include "GeometryPasses.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene {
 
 namespace {
 
-// MeshTrailCB — MeshTrailConstants(cbuffer b2) の C++ ミラー。
+// MeshTrailCB — MeshTrailConstants(cbuffer b6) の C++ ミラー。
+//
+// WHY b2 ではないか: シェーダーリフレクションは cbuffer 名 "MaterialConstants" を
+//     b2 に探す。エンジンがそこを占有すると、残像材質だけ .mat の [params] を
+//     1 つも持てない例外になる (Decal / Particle と同じ理由。Binding.hlsli 参照)。
 struct MeshTrailCB {
     math::Vector4 trailColor;
 };
+
+// DrawCall::constantBuffers の添字 = レジスタ番号。b6 は残像パスでは空いている。
+constexpr int kMeshTrailCBSlot = 6;
 
 // SkinningCB — Common/Constants.hlsli の SkinningConstants と同じレイアウト。
 struct SkinningCB {
@@ -38,6 +50,123 @@ struct SkinningCB {
 };
 
 static_assert(sizeof(MeshTrailCB) == 16, "MeshTrailCB layout mismatch");
+
+// .mat が宣言したカスタムシェーダーと [params] の解決結果。
+//
+// WHY .mat 単位でキャッシュするか: 解決にはシェーダーのロードとリフレクションが要る。
+//     プレイヤーの残像は部位ごとに 10 個以上の実体へ同じ .mat が張られるので、
+//     実体ごとに引くと 1 フレームでその回数ぶん繰り返すことになる。
+struct TrailMaterialBinding {
+    renderer::ResourceHandle<renderer::ShaderTag>         shader;
+    std::string                                           loadedShaderPath;
+    renderer::ShaderDescriptor                            descriptor;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> paramsCB;
+    std::vector<uint8_t>                                  paramData;
+    // paramsCB を確保したときのサイズ。ホットリロードで MaterialConstants の
+    // 大きさが変わったら作り直す (古い容量のまま書くと末尾が落ちる)。
+    uint32_t                                              paramsCBSize = 0;
+    asset::MeshType                                       meshType     = asset::MeshType::Any;
+    uint64_t                                              resolvedPass = 0;
+};
+
+std::unordered_map<std::string, TrailMaterialBinding> g_trailMaterials;
+std::unordered_set<std::string>                       g_warnedTrailMaterials;
+// Execute の呼び出し通番。0 は「未解決」を表すため 1 から始める。
+uint64_t                                              g_trailPassSerial = 0;
+
+bool WarnTrailMaterialOnce(const std::string& path)
+{
+    return g_warnedTrailMaterials.insert(path).second;
+}
+
+// .mat の shader と [params] を解決する。カスタムシェーダーが無ければ nullptr。
+//
+// WHY render_path = "trail" を要求するか: 残像の b6 は MeshTrailConstants、頂点は
+//     (Skinned なら) ボーン付きで来る。メッシュ用の .mat を割り当てると、落ちずに
+//     «静かに壊れた絵» になる。UI / Decal / Particle と同じ判断で宣言を要求する。
+const TrailMaterialBinding* ResolveTrailMaterialBinding(
+    renderer::ResourceManager& resources, const std::string& materialPath)
+{
+    if (materialPath.empty()) return nullptr;
+
+    TrailMaterialBinding& binding = g_trailMaterials[materialPath];
+    if (binding.resolvedPass == g_trailPassSerial)
+        return binding.shader.IsValid() ? &binding : nullptr;
+    binding.resolvedPass = g_trailPassSerial;
+
+    const auto matHandle = asset::AssetManager::LoadMaterial(materialPath);
+    const auto* mat = asset::AssetManager::GetMaterial(matHandle);
+    if (!mat) return nullptr;
+
+    const bool declaredForTrails = (mat->renderPath == asset::RenderPath::Trail);
+    if (!declaredForTrails && !mat->shaderPath.empty()
+        && WarnTrailMaterialOnce(materialPath)) {
+        FBZZ_LOG_WARN("Mesh trail material '%s' declares shader '%s' but is not declared for "
+                      "trails (render_path must be \"trail\") -> ignoring the shader and "
+                      "drawing with the built-in mesh trail shader.",
+                      materialPath.c_str(), mat->shaderPath.c_str());
+    }
+    const std::string shaderPath = declaredForTrails ? mat->shaderPath : std::string{};
+    binding.meshType = mat->meshType;
+
+    if (binding.loadedShaderPath != shaderPath) {
+        binding.loadedShaderPath = shaderPath;
+        binding.shader = shaderPath.empty()
+            ? renderer::ResourceHandle<renderer::ShaderTag>{}
+            : resources.LoadShader(shaderPath);
+        // 黙って組み込みへ落ちると «前と同じ絵» が出るだけで、材質を書いた側からは
+        // 「効いていない」としか見えない。コンパイル漏れが一番起きやすい。
+        if (!shaderPath.empty() && !binding.shader.IsValid()
+            && WarnTrailMaterialOnce(materialPath + "|load")) {
+            FBZZ_LOG_WARN("Mesh trail material '%s' references shader '%s' but it failed to load "
+                          "(not compiled?). Falling back to the built-in mesh trail shader.",
+                          materialPath.c_str(), shaderPath.c_str());
+        }
+    }
+    if (!binding.shader.IsValid()) return nullptr;
+
+    // MaterialConstants を宣言していないシェーダーは cbufferSize が 0 (= IsValid() が false)。
+    // その場合 b2 へは何も束縛しない。束縛規則そのものは asset::MaterialParamBinding が持つ。
+    binding.descriptor = {};
+    if (auto* compiled = resources.Get(binding.shader))
+        binding.descriptor = compiled->GetDescriptor();
+    if (!binding.descriptor.IsValid()) {
+        binding.paramsCB = {};
+        return &binding;
+    }
+
+    binding.paramData.assign(binding.descriptor.cbufferSize, uint8_t{ 0 });
+    asset::InitDefaultMaterialParams(binding.descriptor, binding.paramData);
+    asset::ApplyMaterialAssetParams(*mat, binding.descriptor, binding.paramData);
+
+    // WHY IsValid() で足りないか: このキャッシュはシーンの寿命もデバイスリセットも跨ぐ。
+    //     ハンドルの体裁は残るので、実体が居るかどうかで «作り直し» を判断する。
+    const bool cbLive = resources.Get(binding.paramsCB) != nullptr;
+    if (!cbLive) {
+        binding.paramsCB = {};
+    } else if (binding.paramsCBSize != binding.descriptor.cbufferSize) {
+        resources.Release(binding.paramsCB);
+        binding.paramsCB = {};
+    }
+    if (!binding.paramsCB.IsValid()) {
+        binding.paramsCB = resources.CreateConstantBuffer(binding.descriptor.cbufferSize);
+        binding.paramsCBSize = binding.descriptor.cbufferSize;
+    }
+    if (binding.paramsCB.IsValid()) {
+        resources.Update(binding.paramsCB, binding.paramData.data(),
+                         static_cast<uint32_t>(binding.paramData.size()));
+    }
+    return &binding;
+}
+
+// カスタムシェーダーをこの描画へ当ててよいか。VS の頂点入力が食い違うと
+// «落ちずに崩れた絵» になるので、.mat の mesh_type 宣言で弾く。
+bool TrailShaderMatchesMesh(const TrailMaterialBinding* binding, bool skinned)
+{
+    if (!binding || !binding->shader.IsValid()) return false;
+    return skinned ? (binding->meshType != asset::MeshType::Surface)
+                   : (binding->meshType != asset::MeshType::Skinned);
+}
 
 float DistanceSq(const math::Vector3& a, const math::Vector3& b)
 {
@@ -252,7 +381,8 @@ void DrawStaticMeshSample(
     MeshTrailSample& sample,
     MeshRenderer& mr,
     RenderPassContext& ctx,
-    float currentTime)
+    float currentTime,
+    const TrailMaterialBinding* material)
 {
     if (!mr.enabled || !mr.lodVisible || !mr.mesh || mr.mesh->isSkinned)
         return;
@@ -276,12 +406,15 @@ void DrawStaticMeshSample(
     dc.indexBuffer = mr.mesh->indexBuffer;
     dc.indexCount = mr.mesh->indexCount;
     dc.vertexCount = mr.mesh->vertexCount;
-    dc.shader = h.meshTrailShader;
+    const bool custom = TrailShaderMatchesMesh(material, false);
+    dc.shader = custom ? material->shader : h.meshTrailShader;
     dc.pipelineState = trail.doubleSided ? h.meshTrailDoubleSidedPSO : h.meshTrailPSO;
     dc.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
     dc.constantBuffers[0] = h.frameCB;
     dc.constantBuffers[1] = h.objectCB;
-    dc.constantBuffers[2] = trail.meshTrailCB;
+    // b2 は材質のもの。組み込みシェーダーは何も読まないので束縛しない。
+    if (custom) dc.constantBuffers[2] = material->paramsCB;
+    dc.constantBuffers[kMeshTrailCBSlot] = trail.meshTrailCB;
     dc.textures[0] = trail.texture;
     SubmitCounted(ctx, dc);
 }
@@ -291,7 +424,8 @@ void DrawSkinnedMeshSample(
     MeshTrailSample& sample,
     SkinnedMeshRenderer& smr,
     RenderPassContext& ctx,
-    float currentTime)
+    float currentTime,
+    const TrailMaterialBinding* material)
 {
     if (!smr.enabled || !smr.lodVisible || !smr.model)
         return;
@@ -309,6 +443,7 @@ void DrawSkinnedMeshSample(
     resources.Update(trail.meshTrailCB, &cb, sizeof(cb));
 
     const auto skinCB = EnsureSampleSkinningCB(sample, resources, h.bindPoseSkinningCB);
+    const bool custom = TrailShaderMatchesMesh(material, true);
 
     for (size_t meshIndex = 0; meshIndex < smr.SubmeshCount(); ++meshIndex) {
         // 対象の絞り込みは MeshTrailComponent::excludedMeshIndices で行う。
@@ -329,12 +464,14 @@ void DrawSkinnedMeshSample(
         dc.indexBuffer = meshPtr->indexBuffer;
         dc.indexCount = meshPtr->indexCount;
         dc.vertexCount = meshPtr->vertexCount;
-        dc.shader = h.skinnedMeshTrailShader;
+        dc.shader = custom ? material->shader : h.skinnedMeshTrailShader;
         dc.pipelineState = trail.doubleSided ? h.meshTrailDoubleSidedPSO : h.meshTrailPSO;
         dc.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
-        dc.constantBuffers[2] = trail.meshTrailCB;
+        // b2 は材質のもの。組み込みシェーダーは何も読まないので束縛しない。
+        if (custom) dc.constantBuffers[2] = material->paramsCB;
+        dc.constantBuffers[kMeshTrailCBSlot] = trail.meshTrailCB;
         dc.constantBuffers[7] = skinCB;
         dc.textures[0] = trail.texture;
         SubmitCounted(ctx, dc);
@@ -366,6 +503,9 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
     ctx.renderer.SetRenderTarget(h.hdrRT, resources);
 
     const float currentTime = Time::time;
+    // .mat の解決をこのパスで 1 回だけやり直すための通番。編集が次のフレームで
+    // 絵へ出つつ、同じ .mat を共有する実体ぶん引き直さない。
+    ++g_trailPassSerial;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask))
@@ -392,6 +532,8 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
             continue;
 
         EnsureComponentResources(*trail, resources);
+        const TrailMaterialBinding* material =
+            ResolveTrailMaterialBinding(resources, trail->materialPath);
         if (auto* emitter = go.GetComponent<ParticleEmitter>();
             emitter != nullptr && !emitter->settings.meshParticlePath.empty()) {
             auto* mesh = go.GetComponent<MeshRenderer>();
@@ -426,7 +568,7 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
                 const math::Vector4 authored = ParticleLinearToSrgb(particle.color);
                 trail->colorStart = authored;
                 trail->colorEnd = authored;
-                DrawStaticMeshSample(*trail, sample, *mesh, ctx, currentTime);
+                DrawStaticMeshSample(*trail, sample, *mesh, ctx, currentTime, material);
             }
             trail->colorStart = savedStart;
             trail->colorEnd = savedEnd;
@@ -443,9 +585,9 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
         for (int i = 0; i < trail->sampleCount; ++i) {
             auto& sample = SampleAt(*trail, i);
             if (auto* mr = go.GetComponent<MeshRenderer>())
-                DrawStaticMeshSample(*trail, sample, *mr, ctx, currentTime);
+                DrawStaticMeshSample(*trail, sample, *mr, ctx, currentTime, material);
             if (auto* smr = go.GetComponent<SkinnedMeshRenderer>())
-                DrawSkinnedMeshSample(*trail, sample, *smr, ctx, currentTime);
+                DrawSkinnedMeshSample(*trail, sample, *smr, ctx, currentTime, material);
         }
     }
 }

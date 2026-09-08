@@ -20,6 +20,7 @@
 #include <Engine/Scene/MeshBuilder.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/BossTelegraph.hpp>
+#include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -39,6 +40,8 @@ public:
     FBZZ_TOOLTIP("壁の高さ [m]。プレイヤー 2.5m が «越えられない» と読める程度に")
     FBZZ_FIELD_RANGE(float, ribScrollHz, 0.8f, "Rib Scroll", -4.0f, 4.0f)
     FBZZ_FIELD_RANGE_INT(int, segments, 24, "分割数", 2, 96)
+    FBZZ_FIELD_RANGE(float, warnVolume, 0.75f, "警告の音量", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("危険線が引かれた瞬間に 1 度だけ鳴る。0 で無音 (見ていない方向の線に気付けなくなる)")
     FBZZ_TOOLTIP("長さ方向の分割数。少ないと桟の流れがカクつく")
 
     FBZZ_GROUP("デバッグ")
@@ -72,6 +75,14 @@ public:
             debugState = "Hidden";
             return;
         }
+
+        // 出た瞬間に 1 度だけ警告。**線が引かれたことは画面の外でも起こる**ので、
+        // 見ていない方向へ引かれた線は音でしか気付けない。
+        //
+        // WHY 出続けている間は鳴らさないか: 予兆はボス側が既にビーム充填音などを
+        //     持っている。上に鳴らし続けると 2 つの «来るぞ» が重なって、
+        //     どちらが本体か分からなくなる。«引かれた» の 1 発だけを足す。
+        if (!m_visible) se::Play(audio, se::kEnvHazardWarn, warnVolume);
 
         Build();
         mesh.Apply(m_builder);

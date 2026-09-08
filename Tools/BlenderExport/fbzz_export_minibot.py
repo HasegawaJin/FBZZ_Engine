@@ -43,7 +43,11 @@ import fbzz_root_motion as rm  # noqa: E402
 import fbzz_anim_events as ev  # noqa: E402
 
 # ── リグ定義 ────────────────────────────────────────────────────────────
-# package : 出力パッケージ名 (= FBX のファイル名の接頭辞 / フォルダ名)
+# package : 出力パッケージ名 (= 出力フォルダ名)
+# mesh_name: メッシュ FBX の名前。省略時は package と同じ。
+#            WHY: ボスだけフォルダ Boss_01/ に対して原本が Boss.fbx で、
+#                 フォルダ名とファイル名が一致しない。既存のアセットと
+#                 .meta の GUID を動かさずに書き出すため、名前を分けて持てるようにした。
 # prefix  : このリグに属するアクションの接頭辞
 # root_motion: Root Motion 抽出を行うか (武器リグは不要)
 RIGS = [
@@ -85,6 +89,27 @@ RIGS = [
         "root_motion": False,
         "base_poses": None,
         "slot_filter": "OBWPN_Sword_L_Rig",
+    },
+
+    # ボス 1「ポラリティ・コア」。Boss.blend / Boss_Armature。
+    #
+    # WHY root_motion=True で ROOT_MOTION_EXTRACT_CLIPS が空か:
+    #      巡回 (2.4 m/s) も突進 (5.0 m/s) もエンジンの AI が座標を動かしていて、
+    #      クリップ側は原地アニメ。よって全クリップ mode="zero" ―― Root_Motion
+    #      ノードは付けるがキーは恒等になる。MiniBot と同じ扱い。
+    #
+    # WHY base_poses が Boss_Idle 1 本か:
+    #      bake_anim_use_all_bones=True で未キーのボーンにもキーが焼かれる。
+    #      ヒンジ 4 本 (Hatch_*) は Boss_Idle がキーしていないので、
+    #      基準ポーズ = rest = 蓋が閉じた状態で焼かれる。これが狙いどおり。
+    {
+        "package": "Boss_01",
+        "mesh_name": "Boss",
+        "armature": "Boss_Armature",
+        "prefix": "Boss_",
+        "root_bone": "Root",
+        "root_motion": True,
+        "base_poses": ["Boss_Idle"],
     },
 ]
 
@@ -386,6 +411,7 @@ def main(models_dir, rig_names=None, clip_filter=None, export_mesh=True,
     clip_filter      : クリップ名 (接頭辞除去後) のリスト。None なら全クリップ。
     package_override : 出力フォルダ名 / メッシュ FBX 名を差し替える。
                        例: MiniBot リグを GreenWare 側の Player パッケージへ出す。
+                       指定すると rig の mesh_name より優先される。
     """
     scene = bpy.context.scene
     saved_frame = scene.frame_current
@@ -399,6 +425,9 @@ def main(models_dir, rig_names=None, clip_filter=None, export_mesh=True,
 
         armature = bpy.data.objects[rig["armature"]]
         package_name = package_override or rig["package"]
+        # メッシュ FBX の名前はフォルダ名と別に持てる (ボスの Boss_01/Boss.fbx)。
+        # package_override が指定されたときはそちらを優先する。
+        mesh_name = package_override or rig.get("mesh_name") or rig["package"]
         output_dir = os.path.join(models_dir, package_name)
         os.makedirs(output_dir, exist_ok=True)
 
@@ -408,7 +437,7 @@ def main(models_dir, rig_names=None, clip_filter=None, export_mesh=True,
 
         if export_mesh:
             report.append({"rig": rig["package"], "mesh":
-                           export_mesh_package(rig, output_dir, package_name)})
+                           export_mesh_package(rig, output_dir, mesh_name)})
 
         for action in actions_for_rig(rig):
             clip = clip_name_for(rig, action)

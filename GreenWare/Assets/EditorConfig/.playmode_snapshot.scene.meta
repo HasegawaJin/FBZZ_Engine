@@ -36,10 +36,6 @@ locked_objects = []
     instance_id = 'a32b8f80-b125-4507-8ca5-9902943a2913'
 
     [[editor.game_objects]]
-    component_order = [ 'Skinned Mesh Renderer', 'Material', 'Socket Attachment' ]
-    instance_id = 'c4eae030-9d43-4ea6-86e0-6346120cc090'
-
-    [[editor.game_objects]]
     component_order = [
         'Camera',
         'Script:TpsCameraComponent',
@@ -50,8 +46,12 @@ locked_objects = []
     instance_id = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
 
     [[editor.game_objects]]
+    component_order = [ 'Skinned Mesh Renderer', 'Material', 'Socket Attachment' ]
+    instance_id = 'c4eae030-9d43-4ea6-86e0-6346120cc090'
+
+    [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '7f00224e-d247-49c8-b664-12b03be16d72'
+    instance_id = '85dfb354-3483-4b03-b795-408927f9fb0d'
 
     [[editor.game_objects]]
     component_order = [ 'Light' ]
@@ -59,7 +59,7 @@ locked_objects = []
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material', 'Mesh Collider' ]
-    instance_id = '85dfb354-3483-4b03-b795-408927f9fb0d'
+    instance_id = '7f00224e-d247-49c8-b664-12b03be16d72'
 
     [[editor.game_objects]]
     component_order = [ 'UI Text' ]
@@ -417,6 +417,10 @@ locked_objects = []
     [[editor.game_objects]]
     component_order = [ 'Skinned Mesh Renderer', 'Material' ]
     instance_id = '39850fb3-3b46-4aa7-98f4-fdbb4ab2de4b'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '7ca42c4a-b129-4283-9e51-d6b7f47e2901'
 
 [meta]
 guid = '631c90b31e4e21ea572442064fd9f14e'

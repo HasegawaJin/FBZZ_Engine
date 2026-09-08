@@ -58,6 +58,8 @@ public:
     FBZZ_FIELD_RANGE_INT(int, playerDamage, 8, "Player Damage", 0, 999)
     FBZZ_TOOLTIP("プレイヤーへ刻む量。0 で無害。即死にはしない (縁を使う遊びが消える)")
     FBZZ_FIELD_RANGE(float, playerTickSeconds, 0.6f, "Player Tick", 0.05f, 5.0f)
+    FBZZ_FIELD_RANGE(float, hazardVolume, 0.85f, "ハザードの音量", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("踏んでいる間の被弾音。Player Tick ごとに 1 回鳴るので、刻みを短くするとうるさくなる")
     FBZZ_TOOLTIP("プレイヤーへ刻む間隔 [秒]")
     FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
 
@@ -157,7 +159,7 @@ inline void ArenaHazardComponent::OnUpdate()
         combat->AddPushKill();
         ++m_pushKills;
         debugPushKills = m_pushKills;
-        se::PlayAt(audio, se::kImpactHeavy, object->transform.worldPosition);
+        se::PlayAt(audio, se::kImpactPushKill, object->transform.worldPosition);
     }
 
     // プレイヤー。痛いが通れる。即死にすると «縁に立って敵だけ落とす» が消える。
@@ -169,6 +171,9 @@ inline void ArenaHazardComponent::OnUpdate()
 
     m_playerTick = std::max(playerTickSeconds, 0.05f);
     if (combat) (void)combat->DamagePlayer(player, playerDamage);
+    // WHY 音が要るか: ハザードは «痛いが通れる» ので、通り抜けている間ずっと
+    //     削られる。画面はボスを見ているので、削られていることは耳でしか分からない。
+    se::Play(audio, se::kEnvHazardDamage, hazardVolume);
 }
 
 inline void ArenaHazardComponent::OnDrawGizmos()

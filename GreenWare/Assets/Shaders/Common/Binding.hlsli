@@ -58,6 +58,20 @@
                             // パーティクル材質のパラメータは CB_MATERIAL (b2)。
                             // 契約は Material/Effects/ParticleMaterial.hlsli が持つ。
 
+// 残像 1 枚ぶんの色 (古いサンプルほど colorEnd 寄り)。エンジンが毎ドロー埋める。
+//
+// WHY b2 に置かないか:
+//   CB_DECAL / CB_PARTICLE とまったく同じ理由。リフレクションは cbuffer 名
+//   "MaterialConstants" を b2 に探すため、ここを占有すると残像材質だけ .mat の
+//   [params] を 1 つも持てない例外になる。
+// WHY 新しい番号を作らず b6 を借りるか:
+//   b0〜b13 は既に全て別用途で埋まっている。残像の描画は大気も空も読まないので、
+//   このパスに限り b6 が空く (CB_PREV_SKINNING が b2 を借りるのと同じ作法)。
+//   MeshTrail / SkinnedMeshTrail とその材質シェーダー以外がこの名前を使ってはいけない。
+#define CB_MESHTRAIL    b6  // MeshTrailConstants per-sample
+                            // 残像材質のパラメータは CB_MATERIAL (b2)。
+                            // 契約は Material/Effects/MeshTrailMaterial.hlsli が持つ。
+
 // ---- Texture (マテリアル, per-draw) ----------------------------------
 #define TEX_ALBEDO          t0
 #define TEX_NORMAL          t1
