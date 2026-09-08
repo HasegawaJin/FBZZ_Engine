@@ -46,6 +46,15 @@ public:
     // WHY: Script DLLをFreeLibraryする前に、どちらのSceneに残る派生Scriptも破棄する必要がある。
     void ClearScenes();
 
+    // LoadScene で作った Manager 所有 Scene だけを破棄し、保留中の遷移要求も捨てる。
+    // WHY: Editor は Stop で外部 Scene へ戻るが、遷移先の Scene は誰も Update しないまま
+    //      Script ごと生き残る。保留要求も残すと、Stop の次フレームに外部バインドが
+    //      もう一度外れて「編集シーンが動かない」状態になる。
+    void ReleaseOwnedScene();
+
+    // 最後の LoadScene で切り替えた登録名。外部 Scene をバインドし直すと空に戻る。
+    [[nodiscard]] const std::string& ActiveSceneName() const { return m_activeName; }
+
     // 固定タイムステップの Hz (デフォルト 60)
     void SetPhysicsHz(int hz);
 
@@ -82,6 +91,7 @@ private:
     std::unordered_map<std::string, SceneFactory> m_factories;
     std::unique_ptr<Scene>                        m_active;
     std::string                                   m_pendingLoad;
+    std::string                                   m_activeName;
     Scene*                                        m_externalScene  = nullptr;
     bool                                          m_simulating     = true;
     bool                                          m_playing        = false;

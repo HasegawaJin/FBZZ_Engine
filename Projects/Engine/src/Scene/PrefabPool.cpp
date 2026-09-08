@@ -38,10 +38,23 @@ void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
             if (!script) continue;
             // 再利用時は OnAwake / OnStart が再発火しないため、コンテキストだけ張り直す。
             script->SetContext(&scene, &gameObject);
-            if (spawned)
+            if (spawned) {
                 script->ExecuteCallback(&Script::OnSpawn, "OnSpawn");
-            else
-                script->ExecuteCallback(&Script::OnDespawn, "OnDespawn");
+                continue;
+            }
+            script->ExecuteCallback(&Script::OnDespawn, "OnDespawn");
+            // 待機中の «時間で起きる仕事» は前の一生のもの。
+            //
+            // WHY ここで畳むか: 枠は非アクティブになるだけで Script は生き続け、
+            //     ScriptSystem は非アクティブな階層を進めない ─ Invoke もコルーチンも
+            //     «破棄» ではなく «一時停止» で残る。畳まないと、次に貸し出された実体で
+            //     前の演出の続きが途中から動き出す (モードをまたぐときに
+            //     ResetLifecycleState が畳むのと同じ理由)。
+            // WHY ResetLifecycleState を使わないか: あちらは購読も畳む。購読は
+            //     OnAwake / OnStart で張るのが普通で、再利用では再発火しないため、
+            //     外すとその実体は二度とイベントを受け取れなくなる。
+            script->CancelInvoke();
+            script->StopAllCoroutines();
         }
     }
 

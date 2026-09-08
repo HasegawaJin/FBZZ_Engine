@@ -9,6 +9,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 #include <algorithm>
 #include <sstream>
@@ -145,9 +146,9 @@ std::string FormatNodeForDisplay(const toml::node* node)
         }
         oneLine.push_back(ch);
     }
+    // substr はバイトで切るので、日本語の値が «□» で終わる。文字境界まで戻す。
     constexpr std::size_t kMaxLen = 64;
-    if (oneLine.size() > kMaxLen) oneLine = oneLine.substr(0, kMaxLen - 3) + "...";
-    return oneLine;
+    return util::StringUtils::TruncateUtf8(oneLine, kMaxLen);
 }
 
 bool ComputePrefabOverrides(scene::Scene& scene,

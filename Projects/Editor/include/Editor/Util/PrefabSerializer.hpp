@@ -35,10 +35,14 @@ public:
     // その値で上書きしてから生成する (インスタンス側の個別調整を保ったまま作り直す用)。
     // WHY: 生成後のライブなコンポーネントへ値を書き戻すのは型ごとの分岐が必要になるが、
     //      「展開直前の TOML を書き換える」なら 1 箇所で全コンポーネントに効く。
+    // preserveGuids は「プレファブ側 instanceId → 名乗らせたい instanceId」。
+    // 既存インスタンスの作り直しで元の guid を引き継ぐために Revert が渡す
+    // (詳細は Engine/Scene/PrefabInstantiate.hpp)。
     static bool Instantiate(scene::Scene& scene,
                             const std::string& path,
                             std::vector<scene::EntityID>& outRootEntities,
-                            const PrefabOverrideSet* overrides = nullptr);
+                            const PrefabOverrideSet* overrides = nullptr,
+                            const std::unordered_map<std::string, std::string>* preserveGuids = nullptr);
 
     // Apply: インスタンスの現在状態をプレファブアセットに書き戻す。
     // WHY: インスタンスを編集してプレファブに反映する Unity の "Apply to Prefab" に相当する。

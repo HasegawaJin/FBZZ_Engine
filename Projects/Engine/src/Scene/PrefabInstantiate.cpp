@@ -154,10 +154,52 @@ bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node
     }
 }
 
+namespace {
+
+// node 配下の文字列を辿り、guidMap の鍵と «完全一致» するものを新しい guid へ差し替える。
+void RemapGuidsInNode(toml::node& node,
+                      const std::unordered_map<std::string, std::string>& guidMap)
+{
+    const auto remapScalar = [&guidMap](toml::node& target) {
+        auto* text = target.as_string();
+        if (!text) return;
+        const auto found = guidMap.find(text->get());
+        if (found != guidMap.end()) text->get() = found->second;
+    };
+
+    if (auto* table = node.as_table()) {
+        for (auto&& [key, value] : *table) {
+            (void)key;
+            if (value.is_table() || value.is_array()) RemapGuidsInNode(value, guidMap);
+            else                                      remapScalar(value);
+        }
+        return;
+    }
+    if (auto* array = node.as_array()) {
+        for (auto& element : *array) {
+            if (element.is_table() || element.is_array()) RemapGuidsInNode(element, guidMap);
+            else                                         remapScalar(element);
+        }
+    }
+}
+
+// テーブル直下のスカラーには触れず、入れ子 (= コンポーネントの中身) だけを辿る。
+void RemapGuidsInChildNodes(toml::table& table,
+                            const std::unordered_map<std::string, std::string>& guidMap)
+{
+    for (auto&& [key, value] : table) {
+        (void)key;
+        if (value.is_table() || value.is_array()) RemapGuidsInNode(value, guidMap);
+    }
+}
+
+} // namespace
+
 bool InstantiatePrefabAsset(Scene& scene,
                             const std::string& path,
                             std::vector<EntityID>& outRootEntities,
-                            const PrefabOverrideSet* overrides)
+                            const PrefabOverrideSet* overrides,
+                            const std::unordered_map<std::string, std::string>* preserveGuids)
 {
     outRootEntities.clear();
 
@@ -203,7 +245,14 @@ bool InstantiatePrefabAsset(Scene& scene,
 
         const std::string oldGuid = (*source)["instanceId"].value_or(std::string{});
         if (!oldGuid.empty()) {
-            guidMap[oldGuid]       = util::GenerateUUID();
+            // 作り直しでは «元の実体と同じ guid» を名乗らせる。表に無い分だけ新規採番する。
+            std::string newGuid;
+            if (preserveGuids != nullptr) {
+                const auto preserved = preserveGuids->find(oldGuid);
+                if (preserved != preserveGuids->end()) newGuid = preserved->second;
+            }
+            if (newGuid.empty()) newGuid = util::GenerateUUID();
+            guidMap[oldGuid]       = newGuid;
             guidToNewName[oldGuid] = newName;
         }
     }
@@ -231,6 +280,20 @@ bool InstantiatePrefabAsset(Scene& scene,
                 }
             }
         }
+
+        // コンポーネント側に書かれた «プレファブ内部を指す guid» を新しい実体へ振り替える。
+        //
+        // WHY 総当たりか: 参照を持つキーは IKSolverComponent の targetGuid / poleGuid、
+        //     BoneComponent の skinnedMeshOwnerGuid、SkinnedMeshRenderer の
+        //     skeletonRootGuid、そして FBZZ_REF / EntityRef のスクリプトフィールド
+        //     (キー名は «フィールド名そのもの» で綴りに規則が無い) と際限がない。
+        //     キーを列挙する形では «列挙し忘れたものだけが黙って壊れる»。
+        //     guid はプレファブ内の instanceId と «文字列として完全一致» したときだけ
+        //     振り替えるので、外部を指す参照や普通の文字列は素通りする。
+        // WHY 入れ子だけか: instanceId / parentInstanceId / name / parent の 4 つは
+        //     直後の識別子処理が旧値を読んで振り直す。ここで先に書き換えると
+        //     その処理が «知らない guid» を見て新しい UUID を作り直し、親子が切れる。
+        RemapGuidsInChildNodes(copied, guidMap);
 
         const std::string oldParent = copied["parent"].value_or(std::string{});
         const std::string oldParentGuid = copied["parentInstanceId"].value_or(std::string{});
