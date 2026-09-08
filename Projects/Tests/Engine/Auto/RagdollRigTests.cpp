@@ -540,12 +540,18 @@ TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
     profile.fallback.limits.swingMaxZ = 0.01f;
     profile.fallback.servo.enabled    = true;
 
-    // 途中で折れ曲がった «クリップ» を作る。
+    // 骨 1 で折れ曲がった «クリップ» を作る。
+    //
+    // 曲げる骨の回転も一緒に回すこと。剛体は «その骨から次の骨へ» の区間を代表し、
+    // 向きは骨の rotation から作られる。回転を据え置いたまま子の位置だけ動かすと、
+    // 剛体の向きと関節の位置が食い違った «骨格として有り得ない姿勢» になり、
+    // 捕獲した瞬間にソケット拘束が 0.6m ぶん引き戻しにかかる。
+    // それは «可動域が狭い» のではなく «姿勢が壊れている» ので、この試験の対象ではない。
     auto bent = bones;
     const math::Quaternion bend = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 0.6f);
-    for (std::size_t i = 2; i < bent.size(); ++i) {
-        bent[i].rotation = (bend * bent[i].rotation).Normalized();
-        bent[i].position = bent[1].position + bend * (bones[i].position - bones[1].position);
+    for (std::size_t i = 1; i < bent.size(); ++i) {
+        bent[i].rotation = (bend * bones[i].rotation).Normalized();
+        bent[i].position = bones[1].position + bend * (bones[i].position - bones[1].position);
     }
 
     scene::RagdollRig rig;

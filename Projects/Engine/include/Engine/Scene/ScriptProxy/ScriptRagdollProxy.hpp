@@ -11,6 +11,9 @@
 
 #include <Math/Vector3.hpp>
 
+#include <string>
+#include <vector>
+
 namespace fbzz::scene {
 
 class Script;
@@ -38,6 +41,22 @@ struct ScriptRagdollProxy {
     void BeginActive(float holdSeconds = 0.0f) const;
     /// アニメーションへ戻し始める。blendOut 秒かけて FK ポーズへ寄る。
     void End() const;
+
+    /// 落とす部分木の根をまとめて差し替える。RagdollComponent が無ければ追加する。
+    ///
+    /// 互いに繋がっていない骨を並べてよい ─ «壊れた脚だけを脱力させる» のように、
+    /// 体の一部をいくつか落とす構成のための口。空の並びを渡すと骨格の根 1 本に戻る。
+    ///
+    /// WHY 1 つずつ足す口にしないか: 根が変わるとリグを組み直すので、1 本ずつ足すと
+    ///     «足した回数だけ組み直す» ことになる。壊れた脚が 2 本目・3 本目と増える
+    ///     場面がまさにそれなので、いま落としたい全部を 1 回で渡す形にする。
+    ///     走っている最中に呼んでも、組み直した剛体はその時の姿勢で捕獲されるので
+    ///     既に垂れている部分木が跳ね上がることはない。
+    ///
+    /// @param maxDepth 各根から何段まで剛体にするか。0 で葉まで。
+    void SetRoots(const std::vector<std::string>& rootBoneNames, int maxDepth = 0) const;
+    /// 今 落とす対象になっている根の数。0 なら骨格の根から (＝全身)。
+    [[nodiscard]] int GetRootCount() const;
 
     /// 全ての剛体へ一律に速度を足す [m/s]。倒す «向き» はここで決める。
     void Push(const math::Vector3& velocity) const;

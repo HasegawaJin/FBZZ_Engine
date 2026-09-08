@@ -103,9 +103,10 @@ struct RagdollRuntime {
     std::vector<math::Vector3>   boneScales;
 
     /// rig を組んだときの条件。1 つでも変わったら組み直す。
-    const asset::Skeleton* builtSkeleton = nullptr;
-    std::string            builtRoot;
-    int                    builtMaxDepth = -1;
+    const asset::Skeleton*   builtSkeleton = nullptr;
+    std::string              builtRoot;
+    std::vector<std::string> builtExtraRoots;
+    int                      builtMaxDepth = -1;
     RagdollProfileKind     builtProfile  = RagdollProfileKind::Mech;
 
     RagdollRuntime()  = default;
@@ -122,6 +123,7 @@ struct RagdollRuntime {
         boneScales.clear();
         builtSkeleton = nullptr;
         builtRoot.clear();
+        builtExtraRoots.clear();
         builtMaxDepth = -1;
         return *this;
     }
@@ -145,7 +147,17 @@ struct RagdollComponent {
 
     /// 落とし始める骨。空ならスケルトンの根から。
     std::string rootBoneName;
-    /// 根から何段まで剛体にするか。0 で葉まで。
+    /// 追加の根。**互いに繋がっていない部分木を同時に落とす**ときに使う。
+    ///
+    /// WHY 1 本の木に限らないか: «壊れた脚だけを脱力させる» のように、体の一部を
+    ///     いくつか落としたい構成がある。根 1 本しか取れないと «脚 1 本» か
+    ///     «全身» しか選べず、間が書けない。ここに足した骨はそれぞれ独立した
+    ///     部分木として組まれ、根ごとにアニメーションへ繋ぎ止められる。
+    ///
+    /// 重複と、既に他の根の下にある骨は Build 側で落とす ─ 同じ骨を 2 度剛体に
+    /// すると、2 つの剛体が同じ骨へ書き戻して震える。
+    std::vector<std::string> extraRootBones;
+    /// 根から何段まで剛体にするか。0 で葉まで。すべての根へ同じ深さが掛かる。
     int maxDepth = 0;
     /// 骨の太さ・重さ・可動域・サーボ特性を骨名から決めるプリセット。
     RagdollProfileKind profile = RagdollProfileKind::Mech;
@@ -322,6 +334,10 @@ struct RagdollComponent {
                                                        : RagdollProfile::Mech();
     }
 
+    // WHY extraRootBones を出さないか: 可変長配列は IReflector が扱えない
+    //     (SpringBoneComponent の chains / colliders と同じ)。加えて «どの部分木を
+    //     落とすか» は遊んでいる最中に決まる値 (壊れた脚が増えていく) なので、
+    //     シーンへ焼くと «最初から壊れているボス» がディスクに残る。実行時専用。
     void Reflect(IReflector& r)
     {
         r.Field("enabled",          enabled);
