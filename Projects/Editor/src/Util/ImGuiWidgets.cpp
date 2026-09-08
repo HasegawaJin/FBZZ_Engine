@@ -6,6 +6,7 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
@@ -58,7 +59,14 @@ struct PickerThumb {
 };
 // パス → サムネイル。ピッカーを開くたびにクリアして最新の見た目を反映する。
 std::unordered_map<std::string, PickerThumb> s_thumbCache;
-std::unordered_map<std::string, std::vector<asset::SpriteRect>> s_spriteCache;
+// ピッカーが並べる Sprite 一覧。.meta の書き込み時刻で必ず作り直す。
+// WHY: ここだけ無効化を持っていなかったため、Sprite Editor で切り直した直後に
+//      «既に消えた ID» を配り続け、割り当てた瞬間に参照が切れていた。
+struct CachedSpriteList {
+    std::filesystem::file_time_type writeTime{};
+    std::vector<asset::SpriteRect>  sprites;
+};
+std::unordered_map<std::string, CachedSpriteList> s_spriteCache;
 renderer::ResourceManager* s_thumbnailResources = nullptr;
 renderer::IImGuiRenderer* s_thumbnailImGui = nullptr;
 
@@ -67,6 +75,7 @@ struct AssignedSpriteThumb {
     ImVec2 uvMin = { 0.0f, 0.0f };
     ImVec2 uvMax = { 1.0f, 1.0f };
     std::string displayName;
+    std::string brokenReason;   ///< 非空なら参照が切れている (フィールドを赤で描く)
     std::filesystem::file_time_type metaWriteTime{};
     std::uint64_t resetVersion = 0;
     bool resolved = false;
@@ -124,25 +133,30 @@ const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& r
 // ピッカーを開いている間はキャッシュし、候補行ごとのTOML再解析を避ける。
 const std::vector<asset::SpriteRect>& ResolveSprites(const std::string& absPath)
 {
-    if (auto found = s_spriteCache.find(absPath); found != s_spriteCache.end())
-        return found->second;
+    std::error_code ec;
+    const auto writeTime = std::filesystem::last_write_time(
+        util::FileSystem::PathFromUtf8(absPath + ".meta"), ec);
 
-    std::vector<asset::SpriteRect> sprites;
-    asset::TextureAsset textureAsset;
-    asset::TexDescSerializer serializer;
-    const std::string metaPath = absPath + ".meta";
-    if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(metaPath))
-        && serializer.Load(metaPath, textureAsset)
-        && textureAsset.settings.type == asset::TextureType::Sprite) {
-        sprites = textureAsset.settings.sprites;
-        if (sprites.empty()) {
+    auto found = s_spriteCache.find(absPath);
+    if (found != s_spriteCache.end() && found->second.writeTime == writeTime)
+        return found->second.sprites;
+
+    CachedSpriteList entry;
+    entry.writeTime = writeTime;
+    asset::TextureImportSettings settings;
+    if (!ec && asset::GetCachedTextureImportSettings(absPath, settings)
+        && settings.type == asset::TextureType::Sprite) {
+        entry.sprites = settings.sprites;
+        if (entry.sprites.empty()) {
+            // sprites を持たない Single Texture の «全面 1 枚»。ID は無く、
+            // 参照は画像名で書く (ResolveSpriteReference の暗黙 Single と対)。
             asset::SpriteRect sprite;
             sprite.name = util::FileSystem::PathToUtf8(
                 util::FileSystem::PathFromUtf8(absPath).stem());
-            sprites.push_back(std::move(sprite));
+            entry.sprites.push_back(std::move(sprite));
         }
     }
-    return s_spriteCache.emplace(absPath, std::move(sprites)).first->second;
+    return (s_spriteCache[absPath] = std::move(entry)).sprites;
 }
 
 // Inspector に割り当て済みの Sprite 参照を、元 Texture と UV 矩形へ解決する。
@@ -173,39 +187,38 @@ const AssignedSpriteThumb& ResolveAssignedSpriteThumb(const std::string& referen
     cached.resetVersion = resetVersion;
     cached.resolved = true;
 
-    asset::TextureAsset textureAsset;
-    asset::TexDescSerializer serializer;
-    if (ec || !serializer.Load(metaPath, textureAsset)) return cached;
-    asset::SpriteRect implicitSingleSprite;
-    const asset::SpriteRect* sprite = asset::FindSprite(textureAsset.settings, spriteName);
-    if (sprite == nullptr
-        && textureAsset.settings.type == asset::TextureType::Sprite
-        && textureAsset.settings.spriteMode == asset::SpriteMode::Single) {
-        implicitSingleSprite.name = util::FileSystem::PathToUtf8(
-            util::FileSystem::PathFromUtf8(absPath).stem());
-        if (implicitSingleSprite.name == spriteName)
-            sprite = &implicitSingleSprite;
-    }
-    if (sprite == nullptr) return cached;
-    cached.displayName = sprite->name;
-
     const auto handle = s_thumbnailResources->LoadTexture(absPath);
     const renderer::ITexture* texture = handle.IsValid()
         ? s_thumbnailResources->Get(handle) : nullptr;
-    if (texture == nullptr) return cached;
+    if (texture == nullptr) {
+        cached.brokenReason = "元画像を読み込めません";
+        return cached;
+    }
 
-    cached.texId = s_thumbnailImGui->GetImTextureID(handle, *s_thumbnailResources);
+    // 矩形の取り出しは Viewport と同じ ResolveSpriteReference に任せる。
+    // WHY: 以前はここに独自の «ID 一致 + 暗黙 Single» を書いていて、フォールバックの
+    //      有無が描画側と食い違っていた。Inspector には切り抜きが出ているのに
+    //      画面はアトラス全面、という一番読み解けない食い違いが起きる。
     const float width = static_cast<float>(std::max<uint32_t>(1, texture->GetWidth()));
     const float height = static_cast<float>(std::max<uint32_t>(1, texture->GetHeight()));
-    const float spriteWidth = sprite->width > 0 ? static_cast<float>(sprite->width) : width;
-    const float spriteHeight = sprite->height > 0 ? static_cast<float>(sprite->height) : height;
+    const asset::ResolvedSprite resolved =
+        asset::ResolveSpriteReference(reference, width, height);
+    if (!resolved.resolved) {
+        cached.brokenReason = resolved.status == asset::SpriteResolveStatus::MetaMissing
+            ? "元画像の .meta を読めません (Sprite 型でインポートされていますか)"
+            : "この ID / 名前の Sprite が .meta にありません";
+        return cached;
+    }
+
+    cached.displayName = resolved.displayName.empty() ? spriteName : resolved.displayName;
+    cached.texId = s_thumbnailImGui->GetImTextureID(handle, *s_thumbnailResources);
     cached.uvMin = {
-        std::clamp(static_cast<float>(sprite->x) / width, 0.0f, 1.0f),
-        std::clamp(static_cast<float>(sprite->y) / height, 0.0f, 1.0f)
+        std::clamp(resolved.uvMin.x, 0.0f, 1.0f),
+        std::clamp(resolved.uvMin.y, 0.0f, 1.0f)
     };
     cached.uvMax = {
-        std::clamp((static_cast<float>(sprite->x) + spriteWidth) / width, 0.0f, 1.0f),
-        std::clamp((static_cast<float>(sprite->y) + spriteHeight) / height, 0.0f, 1.0f)
+        std::clamp(resolved.uvMax.x, 0.0f, 1.0f),
+        std::clamp(resolved.uvMax.y, 0.0f, 1.0f)
     };
     return cached;
 }
@@ -478,9 +491,15 @@ bool AssetPathField(const char* label, std::string& path,
             ? (spriteThumb.displayName.empty() ? spriteName : spriteThumb.displayName)
             : util::FileSystem::PathToUtf8(
                 util::FileSystem::PathFromUtf8(texturePath).stem());
-        std::string badge = isSprite ? "SPRITE" : (ext.size() > 1 ? ext.substr(1) : ext);
+        // 参照が切れているなら、それ自体を表示にする。
+        // WHY: 解決に失敗した Sprite はアトラス全面で描かれるため、画面だけを見ても
+        //      «そういう絵» と区別が付かない。割り当てた本人に見える場所で言う。
+        const bool spriteBroken = isSprite && !spriteThumb.brokenReason.empty();
+        std::string badge = isSprite ? (spriteBroken ? "MISSING" : "SPRITE")
+                                     : (ext.size() > 1 ? ext.substr(1) : ext);
         for (char& c : badge) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-        const ImVec4 badgeCol = ExtBadgeColor(ext);
+        const ImVec4 badgeCol = spriteBroken
+            ? ImVec4{ 0.95f, 0.35f, 0.35f, 1.0f } : ExtBadgeColor(ext);
 
         const ImVec2 boxMin  = ImGui::GetCursorScreenPos();
         const ImVec2 boxSize = {
@@ -501,7 +520,9 @@ bool AssetPathField(const char* label, std::string& path,
         dl->AddRectFilled(boxMin, boxMax,
             ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg),
             style.FrameRounding);
-        dl->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding);
+        dl->AddRect(boxMin, boxMax,
+            spriteBroken ? IM_COL32(242, 89, 89, 255) : ImGui::GetColorU32(ImGuiCol_Border),
+            style.FrameRounding);
 
         float tx = boxMin.x + style.FramePadding.x;
         const float ty = boxMin.y + (boxSize.y - ImGui::GetTextLineHeight()) * 0.5f;
@@ -556,6 +577,13 @@ bool AssetPathField(const char* label, std::string& path,
                 ImGui::Separator();
             }
             ImGui::TextUnformatted(path.c_str());
+            if (spriteBroken) {
+                ImGui::Separator();
+                ImGui::TextColored({ 0.95f, 0.35f, 0.35f, 1.0f }, "%s",
+                                   spriteThumb.brokenReason.c_str());
+                ImGui::TextDisabled("このまま実行するとアトラス全面が描かれます。"
+                                    "Sprite Editor で切り直すと ID が変わることがあります");
+            }
             ImGui::Separator();
             ImGui::TextDisabled("Click: Asset Browser で表示  /  Double-Click: 選択して Inspector へ");
             ImGui::TextDisabled("Right-Click: パス編集・コピー・クリア");
@@ -1302,28 +1330,34 @@ bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform, float sp
     return true;
 }
 
+std::string ElideToWidth(const char* text, float maxWidth, const char* ellipsis)
+{
+    if (!text) return {};
+    if (maxWidth <= 0.0f || ImGui::CalcTextSize(text).x <= maxWidth) return text;
+
+    const float       ellipsisW = ImGui::CalcTextSize(ellipsis).x;
+    const std::size_t length    = std::strlen(text);
+
+    std::size_t fit = 0;
+    for (std::size_t i = 1; i <= length; ++i) {
+        // 継続バイト (0b10xxxxxx) は文字の途中。幅の判定も打ち切りもせず、
+        // 次の文字境界まで進める。
+        if (i < length && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80) continue;
+        if (ImGui::CalcTextSize(text, text + i).x + ellipsisW > maxWidth) break;
+        fit = i;
+    }
+    return std::string(text, fit) + ellipsis;
+}
+
 void LabelEllipsis(const char* text, float maxWidth)
 {
     if (!text) return;
     ImGui::AlignTextToFramePadding();
 
-    if (maxWidth <= 0.0f || ImGui::CalcTextSize(text).x <= maxWidth) {
-        ImGui::TextUnformatted(text);
-        return;
-    }
-
-    // 収まる文字数まで縮めて "..." を足す。全文はツールチップで補う。
-    const float ellipsisW = ImGui::CalcTextSize("...").x;
-    const std::size_t length = std::strlen(text);
-    std::size_t fit = 0;
-    for (std::size_t i = 1; i <= length; ++i) {
-        if (ImGui::CalcTextSize(text, text + i).x + ellipsisW > maxWidth) break;
-        fit = i;
-    }
-    std::string shortened(text, fit);
-    shortened += "...";
-    ImGui::TextUnformatted(shortened.c_str());
-    if (ImGui::IsItemHovered())
+    const std::string shown = ElideToWidth(text, maxWidth);
+    ImGui::TextUnformatted(shown.c_str());
+    // 縮めたときだけ全文をツールチップで補う。
+    if (shown.size() != std::strlen(text) && ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", text);
 }
 
@@ -1856,8 +1890,9 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
         result.enabledChanged = ImGui::Checkbox("##en", enabled);
         ImGui::PopStyleVar();
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", *enabled ? "Enabled - uncheck to disable this component"
-                                             : "Disabled - check to enable this component");
+            ImGui::SetTooltip("%s", LOCT(*enabled
+                ? "Enabled - uncheck to disable this component"
+                : "Disabled - check to enable this component"));
     }
     x += boxH + style.ItemInnerSpacing.x;
 
@@ -1867,20 +1902,12 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
     const float labelAvail = std::max(ImGui::GetFontSize(),
                                       contentRight - btn - style.ItemInnerSpacing.x - x);
 
-    const char* shownLabel = label;
-    char clipped[96];
-    if (ImGui::CalcTextSize(label).x > labelAvail) {
-        const float dotsW  = ImGui::CalcTextSize("...").x;
-        const std::size_t length = std::strlen(label);
-        std::size_t fit = 0;
-        for (std::size_t i = 1; i <= length && i < sizeof(clipped) - 4; ++i) {
-            if (ImGui::CalcTextSize(label, label + i).x + dotsW > labelAvail) break;
-            fit = i;
-        }
-        std::memcpy(clipped, label, fit);
-        std::memcpy(clipped + fit, "...", 4);
-        shownLabel = clipped;
-    }
+    // 表示だけを訳す。ID は上の PushID(label) が原文から作っているので、
+    // カードの開閉状態 (EditorSettings::inspectorSectionState) は言語を跨いで保たれる。
+    const char* localized = LOCT(label);
+
+    const std::string shown      = ElideToWidth(localized, labelAvail);
+    const char*       shownLabel = shown.c_str();
 
     // 無効なコンポーネントは名前を沈める。値まで読む前に「効いていない」と分かる。
     const bool dimmed = enabled && !*enabled;
@@ -2032,7 +2059,8 @@ void SectionHeader(const char* label)
 
     ImGui::SetCursorScreenPos({ cursor.x + metrics.accent + gap, cursor.y });
     ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Text));
-    ImGui::TextUnformatted(label);
+    // 見出しは ID を作らない純粋な描画なので、素の訳で足りる。
+    ImGui::TextUnformatted(LOCT(label));
     ImGui::PopStyleColor();
 
     const ImVec2 textMax = ImGui::GetItemRectMax();

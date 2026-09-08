@@ -417,18 +417,7 @@ float NodeTextBudget(float zoom)
 //     ノードは長い方の行幅まで広がる。省略しないと幅は縮まらない。
 std::string ElideToWidth(const std::string& text, float budget)
 {
-    if (text.empty() || ImGui::CalcTextSize(text.c_str()).x <= budget) return text;
-    const float ellipsisWidth = ImGui::CalcTextSize("...").x;
-    std::size_t fit = 0;
-    for (std::size_t i = 1; i <= text.size(); ++i) {
-        // UTF-8 の途中で切ると豆腐になる。次のバイトが継続バイトなら文字の途中なので、
-        // 幅の判定も打ち切りもここでは行わない (次の文字境界まで進める)。
-        if (i < text.size() && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80) continue;
-        if (ImGui::CalcTextSize(text.c_str(), text.c_str() + i).x + ellipsisWidth > budget)
-            break;
-        fit = i;
-    }
-    return text.substr(0, fit) + "...";
+    return widgets::ElideToWidth(text.c_str(), budget);
 }
 
 void TextElided(const std::string& text, float budget)

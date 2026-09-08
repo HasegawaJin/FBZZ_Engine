@@ -28,6 +28,16 @@ public:
     static std::vector<std::string> Split(const std::string& s, char delim);
     static std::string Trim(const std::string& s);
 
+    /// UTF-8 の文字境界で maxBytes 以下へ切り詰める。切ったときだけ ellipsis を足す。
+    ///
+    /// WHY 要るか: `s.substr(0, n)` はバイトで切るので、日本語の途中で切ると
+    ///     壊れた列が残り、UI では «□» になる。「64 文字まで」のつもりで書いた
+    ///     切り詰めが、日本語のときだけ表示を壊す ── 英語で試している限り出ない。
+    ///
+    /// @param maxBytes ellipsis を含めた上限。これより短い結果しか返さない。
+    static std::string TruncateUtf8(const std::string& s, std::size_t maxBytes,
+                                    const std::string& ellipsis = "...");
+
     // Win32 API 用ワイド文字列変換
     static std::wstring ToWide(const std::string& s);
     static std::string  ToNarrow(const std::wstring& s);

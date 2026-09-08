@@ -20,7 +20,6 @@
 // TerrainTool は src/ 内の内部ヘッダーなので前方宣言で対応する
 // WHY: TerrainTool.hpp は imgui.h に依存しており、EditorApp.hpp に直接インクルードすると
 //      Engine 層のヘッダーが imgui に依存してしまう。std::unique_ptr で所有して隠蔽する。
-#include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/IModule.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -213,6 +212,8 @@ private:
     bool SaveScenePath(const std::string& requestedPath); // 保存の実体 (ダイアログ / AI 共通)
     void RemoveEditorHiding();   // Play/Save 前に editor-only 非表示を一時解除
     void RestoreEditorHiding();  // Play 復元/Save 後に editor-only 非表示を再適用
+    // Play 中のシーン読み書き要求を断る (断ったら true)。理由は Console と Toast へ。
+    bool RejectSceneIOWhilePlaying(const char* action);
 
     // Hierarchy の非表示 / ロックを Scene サイドカー (<scene>.meta) と往復させる。
     // WHY ctx が正本のままか: 非表示とロックはセッション中ずっと書き換わる。
@@ -323,11 +324,8 @@ private:
     const char*                     m_playIniFilename = nullptr;
     std::vector<bool>               m_playPanelVisibility;
     bool                            m_playViewportLayoutActive = false;
-    bool                            m_playCursorApplied  = false; // Play 開始時のカーソル方針を適用済みか
+    bool                            m_playCursorApplied  = false; // Play 開始時のカーソル初期化を済ませたか
     bool                            m_playCursorReleased = false; // Escape で一時解放したか (2 回目で Stop)
-    // 最後に押し込んだカーソル方針。ここと違う値になったときだけ再適用し、
-    // それ以外はスクリプトの cursor プロキシに任せる。
-    core::CursorPolicy              m_playCursorPolicy{};
     bool                            m_terrainToolWasActive = false;
     int                             m_terrainToolModeBeforeMap = 0;
     bool                            m_waterToolWasActive = false;

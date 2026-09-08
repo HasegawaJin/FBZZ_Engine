@@ -152,6 +152,14 @@ struct EditorSettings {
     std::vector<HotkeyOverride> hotkeyOverrides;
 
     // --- UI ---------------------------------------------------------------
+    /// エディター UI の表示言語 ("en" / "ja")。loc::Id / loc::FromId と対。
+    ///
+    /// WHY ProjectSettings ではなくここか: 表示言語は «誰が触っているか» で決まる
+    ///     個人の設定で、プロジェクトの性質ではない。ProjectSettings は Engine 側の
+    ///     型でランタイムにも配られるので、エディター UI の言語を持たせると
+    ///     配布ビルドまで «エディターの言語» を運ぶことになる。
+    ///     切り替えの UI は Project Settings パネルの Editor セクションに置く。
+    std::string              language = "ja";
     float                    editorUiScale = 1.0f; // UI 全体スケール (フォント+余白)
     // パネルを OS ウィンドウとして DockSpace 外へ分離できるマルチビューポート。
     // WHY: 既定 OFF。単一ウィンドウ前提の挙動 (OLE D&D 等) を壊さないよう、opt-in で有効化する。

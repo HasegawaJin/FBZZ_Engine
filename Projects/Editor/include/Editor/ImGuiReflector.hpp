@@ -7,6 +7,7 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/ParticleEditWidgets.hpp>  // カーブ / グラデーションのキャンバス編集
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
@@ -56,10 +57,41 @@ struct ImGuiReflector : scene::IReflector {
     // 描画中の行 (ホバー地色の高さ記録用)。行は入れ子にならないので 1 つで足りる。
     widgets::PropertyRowScope m_row{};
 
-    // シリアライズ用 lowerCamelCase キーを Inspector 用の読みやすい表示名へ変換する。
-    // WHY: Reflect() のキーを表示名に流用しても、シーン互換性を壊すキー変更なしで
-    //      "fontSize" を "Font Size" のような Editor 表示へ自動変換できる。
+    // シリアライズ用 lowerCamelCase キーを Inspector 用の読みやすい表示名へ変換し、
+    // 訳があれば訳へ差し替える。
+    //
+    // WHY ここで訳すか: Inspector に出るラベルは、組み込みコンポーネントも
+    //     ユーザープロジェクトのスクリプトも全部この 1 関数を通る。呼び出し側を
+    //     書き換えずに、エンジンの辞書へ 1 行足すだけで日本語になる。
+    //
+    // WHY ### を付けないか: 呼び出し元はどれも直前に PushID(PersistentKey(name)) を
+    //     しており、ImGui の ID はシリアライズキーから作られる。ラベルを訳しても
+    //     ID は動かないので、素の訳でよい (Text 系へ渡しても "###" が出ない)。
     static std::string HumanizeName(const char* name)
+    {
+        // 既に ASCII でない = プロジェクト側が表示名を自国語で書いている。
+        // 整形も辞書引きもせず、そのまま出す。
+        //
+        // WHY 素通しが要るか: ユーザープロジェクトのフィールド名は «そのゲームの語彙» で、
+        //     エンジンが訳語を持つ筋合いのものではない (エンジンの辞書に特定のゲームの
+        //     用語が溜まっていく)。表示名は FBZZ_FIELD の第 4 引数で書けるので、
+        //     作者が最初から日本語で書けばよい ── そこはプロジェクトの自由。
+        //     整形も通してはいけない: 下の toupper はロケール次第で UTF-8 の
+        //     先頭バイトを書き換えうるので、掛けると文字が壊れる。
+        if (IsNonAscii(name)) return name;
+
+        return loc::Text(RawHumanizeName(name).c_str());
+    }
+
+    static bool IsNonAscii(const char* text)
+    {
+        for (const char* p = text; *p != '\0'; ++p)
+            if (static_cast<unsigned char>(*p) >= 0x80) return true;
+        return false;
+    }
+
+    // 訳を通さない素の表示名。辞書の鍵はこちらの綴り。**ASCII 専用。**
+    static std::string RawHumanizeName(const char* name)
     {
         std::string result;
         for (size_t i = 0; name[i] != '\0'; ++i) {

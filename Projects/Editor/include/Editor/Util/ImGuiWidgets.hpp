@@ -6,6 +6,7 @@
 #pragma once
 #include <imgui.h>
 #include <algorithm>
+#include <Editor/Util/Localization.hpp>
 #include <Engine/Scene/ScriptAssetRef.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
@@ -108,6 +109,15 @@ inline bool ForceFieldChannelMask(const char* label, std::uint32_t& mask)
 [[nodiscard]] ImTextureID ToImTextureID(void* ptr);
 
 // セクションヘッダー (太字テキスト + 区切り線)
+/// text を maxWidth [px] に収まるところまで縮め、切ったときだけ ellipsis を足す。
+///
+/// WHY 1 箇所に集めるか: 同じ «収まる所まで縮める» ループがパネルごとに手書きされており、
+///     どれもバイト単位で切っていた。UTF-8 は 1 文字が 1〜4 バイトなので、日本語の
+///     途中で切ると壊れた列が残り «□...» になる。英語だけで動かしている限り出ないので、
+///     書くたびに同じ穴が開く。切り方を 1 つにしてそこだけ正しくする。
+[[nodiscard]] std::string ElideToWidth(const char* text, float maxWidth,
+                                       const char* ellipsis = "...");
+
 void SectionHeader(const char* label);
 
 // 色付きテキスト
@@ -191,11 +201,18 @@ void EndPropertyRow(const PropertyRowScope& row);
 // プロパティ行で値ウィジェットを開始する X (= ラベル列の幅、ウィンドウローカル)。
 // 自動生成の行と手書きの行で列位置がずれないよう、1 か所で決める。
 // 割合だけだと狭いドックで数値が欠け、広げると余白だけ伸びるので上下でクランプする。
+// ラベル列の幅。font (1em) 基準で、狭い窓では値の入力欄を潰さないよう頭打ちにする。
+//
+// WHY 言語で上限を変えるか: 上限の «9em» はラテン文字を前提に決めた値で、
+//     欧文は 1 文字が約 0.5em なので 18 文字ぶん入る。CJK は 1 文字が 1em なので
+//     同じ 9em では 9 文字しか入らず、«パーティクルエミッター» のような
+//     カタカナ語がほぼ全部«...»になる。列が足りないのではなく、文字の幅が違う。
 [[nodiscard]] inline float PropertyLabelColumnWidth()
 {
-    const float font  = ImGui::GetFontSize();
-    const float ratio = ImGui::GetWindowWidth() * 0.34f;
-    return (std::min)((std::max)(ratio, font * 5.0f), font * 9.0f);
+    const float font    = ImGui::GetFontSize();
+    const float maxEm   = loc::GetLanguage() == loc::Language::English ? 9.0f : 12.0f;
+    const float ratio   = ImGui::GetWindowWidth() * 0.34f;
+    return (std::min)((std::max)(ratio, font * 5.0f), font * maxEm);
 }
 
 // 手書きパネル用のプロパティ行。「地色 + 省略付きラベル + 列合わせ済みの値」を 1 回で用意する。

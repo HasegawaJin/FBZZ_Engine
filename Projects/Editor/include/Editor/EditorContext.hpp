@@ -79,7 +79,17 @@ struct EditorContext {
     };
 
     // エンジンオブジェクト (非所有)
+    // 今«見えている»シーン。Play 中に LoadScene が起きると、SceneManager が所有する
+    // 遷移後シーンを指す。パネル・ギズモ・AI クエリはこちらを見る。
     scene::Scene*     activeScene  = nullptr;
+    // 編集対象のシーン (ドキュメント本体)。currentScenePath が指すファイルの中身であり、
+    // Play 中もシーン遷移の影響を受けない。
+    // WHY activeScene と分けるか: 保存・読込を activeScene で行うと、Play 中に遷移した
+    //     あとの Ctrl+S が「遷移後シーンの中身」を「遷移前シーンのファイル」へ書き込む。
+    //     開いていたシーンが、最後に走っていたシーンで丸ごと潰れる。
+    scene::Scene*     editScene    = nullptr;
+    // Play 中に遷移した実行シーンの登録名 (遷移していなければ空)。表示専用。
+    std::string       playSceneName;
     // 編集中Sceneを駆動するProjectRuntime (EditorApp所有)。Physics World等の実行時系へアクセスする。
     // WHY: AI(EditorBusDispatcher)のraycast/overlap等はこのruntimeのPhysics Worldへ問い合わせる。
     scene::ProjectRuntime* runtime = nullptr;
@@ -272,22 +282,25 @@ struct EditorContext {
     //      カーソル拘束のように «外れると操作不能» な用途は、古い矩形を掴んではいけない。
     bool  gameViewportRectValid = false;
     bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
+    // Escape で解放したカーソルをゲームへ返す one-shot 要求。Game View をクリックしたときと
+    // オーバーレイの「Click to capture」から立ち、EditorApp が消費する。
+    bool  requestGameCursorCapture = false;
     // Play 開始時の «ウィンドウの並べ方»。カーソルの扱いはここでは決めない
-    // (ProjectSettings の [cursor] と playCursorOverride が決める)。
+    // (スクリプトの cursor.Push と playCursorOverride が決める)。
     enum class PlayFocusMode {
         Focused,
         Maximized,
         Unfocused
     };
     PlayFocusMode playFocusMode = PlayFocusMode::Maximized; // Unity の Play Focused / Maximized / Unfocused 相当
-    // Play 中のカーソル方針を、プロジェクト設定を書き換えずに一時的に外す口。
-    // WHY: Confined + 非表示のゲームを Editor で触るとき、Inspector を弄るたびに
-    //      ProjectSettings.toml を往復させたくない。
+    // Play 中のカーソル要求を、スクリプトを書き換えずに一時的に外す口。
+    // WHY: Confined + 非表示のゲームを Editor で触るとき、確認のたびに
+    //      スクリプトへ手を入れて再ビルドさせたくない。
     enum class PlayCursorOverride {
-        Project,   // ProjectSettings の [cursor] に従う
+        Game,      // ゲーム (cursor.Push / SetLockMode) の要求どおりにする
         Free       // 常に None + 表示 (デバッグ用)
     };
-    PlayCursorOverride playCursorOverride = PlayCursorOverride::Project;
+    PlayCursorOverride playCursorOverride = PlayCursorOverride::Game;
     bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
     bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
     // Map Editing Mode の選択中ツール。

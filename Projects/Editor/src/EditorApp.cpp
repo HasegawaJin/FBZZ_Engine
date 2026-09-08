@@ -13,6 +13,7 @@
 #include <Editor/Ai/EditorBusDispatcher.hpp>
 #include <Editor/Ai/NamedPipeServer.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/AssetPath.hpp>
@@ -588,6 +589,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     // OpenProject() が activeScene を参照するため Init() で確立しておく必要がある。
     m_scene = std::make_unique<scene::Scene>();
     m_ctx.activeScene = m_scene.get();
+    m_ctx.editScene   = m_scene.get();
     // AI(EditorBusDispatcher)のphysicsクエリが参照するProjectRuntimeを共有する。EditorAppが所有。
     m_ctx.runtime = &m_runtime;
     // AIのconsole.logsクエリが読むログシンクを共有する。EditorAppが所有。
@@ -665,6 +667,7 @@ void EditorApp::Shutdown()
         m_settings.cameraOrthoHeight  = m_ctx.editorCamera->m_orthoHeight;
     }
     m_settings.editorUiScale         = m_ctx.editorUiScale;
+    m_settings.language              = loc::Id(loc::GetLanguage());
     // アイコンサイズとツリー幅は AssetBrowserPanel::OnSaveSettings が書く
     // (ここでも書くと 2 つの書き手ができ、どちらが勝つか呼び順任せになる)。
     m_settings.assetBrowserBookmarks = m_ctx.assetBrowserBookmarks;
@@ -827,6 +830,9 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         }
         m_ctx.editorUiScale = m_settings.editorUiScale;
         EditorTheme::SetUiScale(m_ctx.editorUiScale); // ロードしたスケールを即適用
+        // 表示言語。辞書の作り直しだけなので、UI スケールと違ってフォントには触らない
+        // (EditorTheme が日本語グリフを最初から merge している)。
+        loc::SetLanguage(loc::FromId(m_settings.language));
         m_ctx.assetBrowserIconSize = m_settings.assetBrowserIconSize;
         m_ctx.assetBrowserTreeWidth = m_settings.assetBrowserTreeWidth;
         m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
@@ -929,14 +935,14 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     }
 
     if (!sceneToOpen.empty()) {
-        if (!SceneIO::Load(*m_ctx.activeScene, sceneToOpen)) {
+        if (!SceneIO::Load(*m_ctx.editScene, sceneToOpen)) {
             FBZZ_LOG_ERROR("Open project scene failed: %s", sceneToOpen.c_str());
             return false;
         }
         // WHY: SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。
         //      OnInit の WarmupRenderResources がスケジューラより前に描画するため、
         //      ここで即時フラッシュしてロード直後の最初のフレームも正しい位置で表示する。
-        scene::FlushWorldTransforms(*m_ctx.activeScene);
+        scene::FlushWorldTransforms(*m_ctx.editScene);
         m_settings.lastScenePath = sceneToOpen;
         m_ctx.currentScenePath   = sceneToOpen;
         ClearEntitySelection(m_ctx);
@@ -999,10 +1005,20 @@ void EditorApp::UpdateWindowTitle()
                ? "Untitled"
                : util::FileSystem::GetFilename(m_ctx.currentScenePath));
     const bool dirty = inPrefabEdit ? m_ctx.prefabEditDirty : m_ctx.sceneDirty;
+
+    // Play 中は「開いているシーン」と「走っているシーン」が食い違いうる。遷移したなら
+    // 走っている方の名前も出す。保存先は常に開いている方であることを見失わせない。
+    std::string playTag;
+    if (const PlayState state = m_playMode.GetState(); state != PlayState::Editor) {
+        playTag = (state == PlayState::Paused) ? " [Paused" : " [Playing";
+        if (!m_ctx.playSceneName.empty()) playTag += ": " + m_ctx.playSceneName;
+        playTag += "]";
+    }
+
     // 変化検知のキーにはモードを含める (同名でもモードが違えば描き直す)。
     const std::string titleKey =
         (inPrefabEdit ? "prefab:" : "scene:") +
-        (inPrefabEdit ? m_ctx.prefabEditPath : m_ctx.currentScenePath);
+        (inPrefabEdit ? m_ctx.prefabEditPath : m_ctx.currentScenePath) + playTag;
 
     if (m_titleInitialized &&
         m_lastTitleDirty     == dirty &&
@@ -1017,6 +1033,7 @@ void EditorApp::UpdateWindowTitle()
         ? "FBZZ Editor - [Prefab] " + displayName
         : "FBZZ Editor - " + displayName;
     if (dirty) title += "*";
+    title += playTag;
     // 使用中の描画バックエンド (DirectX 11 / 12) をタイトルに付す。
     // WHY: app 起動時に付けたタイトルは本メソッドで上書きされるため、ここでも同じタグを付け直す。
     //      バックエンド名は IRenderer 抽象越しに取得しダウンキャストしない。
@@ -1500,13 +1517,13 @@ void EditorApp::UpdatePlayCursorControls()
             core::Cursor::ResetForEditor();
             m_playCursorApplied  = false;
             m_playCursorReleased = false;
-            m_playCursorPolicy   = {};
         }
+        m_ctx.requestGameCursorCapture = false;
         // WHY 編集中も抑制を張り続けるか: FBZZ_EXECUTE_ALWAYS() の Script は Play を
         //     押していなくても OnStart / OnUpdate が走る。そこで cursor プロキシを
         //     触られると、シーンを開いただけで Editor の OS カーソルが消えたり
         //     ウィンドウ中央へ拘束されたりして、編集そのものができなくなる。
-        //     要求は Cursor 側に残しておき (Play で Apply が上書きする)、
+        //     要求は Cursor 側に残しておき (Play 開始時に StartPlayMode が畳む)、
         //     «OS へ流すか» だけをここで止める。
         core::Cursor::SetSuppressed(true);
         return;
@@ -1525,15 +1542,15 @@ void EditorApp::UpdatePlayCursorControls()
         core::Cursor::ClearClipRegion();
     }
 
-    // 押し込むのは «初期値が変わったとき» だけ。毎フレーム押し込むとスクリプトの
-    // cursor.SetLockMode が即座に潰される。逆に Play 開始の 1 回きりにすると、
-    // Play 中に Project Settings を直しても次の Play まで効かない。
-    const core::CursorPolicy policy = m_ctx.projectSettings.cursor;
-    const bool policyChanged = m_playCursorPolicy.lockMode != policy.lockMode
-                            || m_playCursorPolicy.visible  != policy.visible;
-    if (!m_playCursorApplied || policyChanged) {
-        core::Cursor::Apply(policy);
-        m_playCursorPolicy   = policy;
+    // ここでは拘束も表示も押し込まない。初期化 (要求を畳む・絵を読む) は
+    // StartPlayMode が済ませてあり、以降の正本はスクリプトの要求だけ。
+    //
+    // WHY 初期値を押し込まないか (2026-09-06 に廃止): 以前は ProjectSettings の
+    //     [cursor] を «起動時の初期値» として毎フレーム変化検知で押し込んでいた。
+    //     同じ 1 つの値を «初期値» と «実行中の要求» が共有していたため、Play 中に
+    //     設定を触るとスクリプトの要求が黙って消える。カーソルを取るかどうかは
+    //     画面ごとに変わるゲームの都合なので、名乗る側 (cursor.Push) だけが持つ。
+    if (!m_playCursorApplied) {
         m_playCursorApplied  = true;
         m_playCursorReleased = false;
     }
@@ -1547,11 +1564,17 @@ void EditorApp::UpdatePlayCursorControls()
     // WHY Cursor: Free を «初期値» でなく抑制で表すか: 初期値として押し込むと、
     //     スクリプトの OnStart が cursor.SetLockMode を呼んだ瞬間に上書きされて、
     //     デバッグのために外したはずのカーソルが戻ってこない。
+    // WHY クリックで畳むか (不具合修正): 解放を «Game View を離れたとき» だけで
+    //     畳んでいたため、Escape で解放したあと画面の中をクリックしても捕獲へ戻らず、
+    //     一度他のパネルへフォーカスを移す遠回りが要った。ゲーム画面を «クリックして
+    //     入り直す» のは Unity / Unreal と同じ操作で、Overlay の「Click to capture」
+    //     もこの入口を叩く。
     const bool freeOverride =
         m_ctx.playCursorOverride == EditorContext::PlayCursorOverride::Free;
     const bool gameFocused = m_ctx.gameViewportFocused;
-    if (!gameFocused)
+    if (!gameFocused || m_ctx.requestGameCursorCapture)
         m_playCursorReleased = false;
+    m_ctx.requestGameCursorCapture = false;
     core::Cursor::SetSuppressed(freeOverride || !gameFocused || m_playCursorReleased);
 
     // Locked の中央戻しはここが担い、Confined も他アプリに ClipCursor を取られると
@@ -1569,7 +1592,7 @@ void EditorApp::UpdatePlayCursorControls()
     // Escape を横取りしてよいのは «今まさにカーソルを取り上げているとき» と、
     // 従来どおり Focused 実行のとき。自由なカーソルで Maximized / Unfocused を
     // 回しているなら Escape はゲームのもので、終了はツールバー / Ctrl+P が担う。
-    const core::CursorPolicy request{ core::Cursor::GetLockMode(), core::Cursor::IsVisible() };
+    const core::CursorPolicy request = core::Cursor::GetEffectivePolicy();
     if (!core::Cursor::IsSuppressed() && request.CapturesCursor()) {
         // 1 回目は解放だけ。ゲームは動かしたまま Inspector を触りに行ける。
         m_playCursorReleased = true;
@@ -1595,7 +1618,6 @@ void EditorApp::UpdatePlayCursorControls()
     core::Cursor::ResetForEditor();
     m_playCursorApplied  = false;
     m_playCursorReleased = false;
-    m_playCursorPolicy   = {};
 }
 
 void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)
@@ -1716,14 +1738,26 @@ void EditorApp::OnUpdate(float dt)
 
     auto* playMode = m_ctx.playMode;
     if (playMode->ApplyPendingRestore(*m_scene)) {
+        // Play 中の LoadScene で m_externalScene が nullptr へ落ちる。Stop 後もそのままだと
+        // TransformEditorPreview がゲームシーン側で動き、m_scene の worldPosition が 0 のまま残る。
+        m_runtime.BindExternalScene(m_scene.get());
+        // 遷移していたなら、これから捨てるシーンを activeScene と選択が指している。
+        // OnRender の付け替えを待つと、その前に走る RestoreEditorHiding が解放済みの
+        // Scene を触る。
+        if (m_ctx.activeScene != m_scene.get()) {
+            ClearEntitySelection(m_ctx);
+            m_ctx.activeScene = m_scene.get();
+        }
+        // 遷移先のシーンは Stop の時点で用済み。World を作り直す前に捨てて、
+        // 実行中だった Script のデストラクタを «まだ生きている» World の下で走らせる。
+        // 保留中の遷移要求もここで消える (残すと次フレームに外部バインドが再び外れる)。
+        m_runtime.ReleaseOwnedScene();
+        m_ctx.playSceneName.clear();
         // WHY: World は m_contactCache / m_prevEvents を保持するため、
         //      Stop 復元時に丸ごとリセットしないと前 Play セッションの Collider* が残る。
         m_runtime.ResetPhysics(m_ctx.projectSettings);
         RestoreEditorHiding();  // Stop 復元後に editor-only 非表示を再適用
 
-        // Play 中の LoadScene で m_externalScene が nullptr へ落ちる。Stop 後もそのままだと
-        // TransformEditorPreview がゲームシーン側で動き、m_scene の worldPosition が 0 のまま残る。
-        m_runtime.BindExternalScene(m_scene.get());
         // WHY: SceneSerializer はローカル position のみ復元し worldPosition はゼロになる。
         //      この後の Update で TransformEditorPreview が走るが、同フレーム内の
         //      OnRender より先に worldPosition を正確にしておくため即時フラッシュする。
@@ -1851,6 +1885,14 @@ void EditorApp::OnRender()
         if (nextActive != m_ctx.activeScene)
             ClearEntitySelection(m_ctx);
         m_ctx.activeScene = nextActive;
+        // 遷移してもドキュメントは開いたままなので、走っているシーン名は別に見せる。
+        // これが出ていない限り、保存先は currentScenePath のまま動いていない。
+        m_ctx.playSceneName = m_playMode.IsInEditor()
+            ? std::string{}
+            : m_runtime.ActiveSceneName();
+        // Play / Pause の切り替えと Play 中の遷移はイベントを持たないので、ここで叩く。
+        // UpdateWindowTitle は前回と同じ内容なら何もしない。
+        UpdateWindowTitle();
     }
     // Animation Preview はウィンドウが閉じていても選択対象と再生時刻を保持する。
     // WHY: Preview パネルの OnRenderContent だけに任せると、非表示タブや Inspector の
@@ -1870,6 +1912,7 @@ void EditorApp::OnShutdown()
     m_runtime.Shutdown();
     // Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
     m_ctx.activeScene = nullptr;
+    m_ctx.editScene   = nullptr;
     Shutdown();
 }
 

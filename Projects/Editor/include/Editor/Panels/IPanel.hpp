@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Editor/Util/Localization.hpp>
 #include <imgui.h>
 
 namespace fbzz::editor { struct EditorContext; struct EditorSettings; }
@@ -41,7 +42,11 @@ public:
     void OnRender(EditorContext& ctx)
     {
         OnBeforeBegin(ctx);
-        bool open = ImGui::Begin(GetWindowName(), CanClose() ? &visible : nullptr, GetWindowFlags());
+        // タイトルだけを訳す。LOC は "訳###原文" を返すので ImGui の ID は原文のままで、
+        // 保存済みのドッキング配置 (imgui_layout.ini) も、名前で引く
+        // DockBuilderDockWindow / panelVisibility も、言語を切り替えても効き続ける。
+        bool open = ImGui::Begin(LOC(GetWindowName()), CanClose() ? &visible : nullptr,
+                                 GetWindowFlags());
         OnAfterBegin(ctx);
         if (!open || !visible) {
             m_contentRendered = false;

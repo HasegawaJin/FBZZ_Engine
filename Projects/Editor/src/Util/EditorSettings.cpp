@@ -144,6 +144,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     }
 
     // UI
+    if (auto v = tbl["ui"]["language"].value<std::string>()) language = *v;
     if (auto v = tbl["ui"]["scale"].value<float>()) editorUiScale = *v;
     if (auto v = tbl["ui"]["multi_viewport"].value<bool>()) multiViewportEnabled = *v;
 
@@ -482,6 +483,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     // UI スケール
     toml::table uiTbl;
+    uiTbl.insert("language", language);
     uiTbl.insert("scale", editorUiScale);
     uiTbl.insert("multi_viewport", multiViewportEnabled);
 
