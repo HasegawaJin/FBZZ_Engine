@@ -4368,7 +4368,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.621446, 0.758803, -17.061977 ]
-    rotation = [ 0.160268, -0.05215, 0.809176, 0.562876 ]
+    rotation = [ 0.160268, -0.05215, 0.809175, 0.562876 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5224,48 +5224,6 @@ tag = 'Player'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
-    type = 'PlayerBossBlockComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        bodyRadius = 1.75
-        debugBlocked = 0
-        drawShapes = false
-        legRadius = 0.42
-        playerRadius = 0.52
-        pushPerSecond = 14.0
-        skin = 0.02
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PlayerClimbComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        climbClipFile = 'guid:2c331a3fc4289104bf623dda30f469ad|Assets/Models/Player/Climb.fbx'
-        climbClipName = 'Climb'
-        climbSpeed = 3.4
-        climbVolume = 0.95
-        debugLeg = ''
-        debugPhase = 'None'
-        debugProgress = 0.0
-        deckAnchorBone = 'Body'
-        deckRise = 1.33
-        deckSideOffset = 1.55
-        drawClipFile = 'guid:9873c746d0c7f993161455bdcad44fd2|Assets/Models/Player/Katana_Draw.fbx'
-        drawClipName = 'Katana_Draw'
-        drawPath = true
-        drawSeconds = 0.6
-        grabInterval = 0.4165
-        holdSeconds = 3.2
-        layerName = 'Attack'
-        mountAction = 'Climb'
-        mountRange = 3.6
-        requireToppled = true
-        sheatheClipFile = 'guid:bf25e66cf0b7067fb10270753895d369|Assets/Models/Player/Katana_Sheathe.fbx'
-        sheatheClipName = 'Katana_Sheathe'
-        sheatheSeconds = 0.62
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
     type = 'PlayerComponent'
 
         [gameobjects.ScriptComponents.fields]
@@ -5559,6 +5517,61 @@ tag = 'Player'
         lowHealthThreshold = 0.35
         materialColorParam = 'fillColor'
         materialFillParam = 'fillRatio'
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'SeWarmupComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugDone = 0
+        debugTotal = 0
+        perFrame = 6
+        warmBlades = true
+        warmBoss = true
+        warmImpact = true
+        warmPlayer = true
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PlayerBossBlockComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bodyRadius = 1.75
+        debugBlocked = 0
+        drawShapes = false
+        legRadius = 0.42
+        playerRadius = 0.52
+        pushPerSecond = 14.0
+        skin = 0.02
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PlayerClimbComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        climbClipFile = 'guid:2c331a3fc4289104bf623dda30f469ad|Assets/Models/Player/Climb.fbx'
+        climbClipName = 'Climb'
+        climbSpeed = 3.4
+        climbVolume = 0.95
+        debugLeg = ''
+        debugPhase = 'None'
+        debugProgress = 0.0
+        deckAnchorBone = 'Body'
+        deckRise = 1.33
+        deckSideOffset = 1.55
+        drawClipFile = 'guid:9873c746d0c7f993161455bdcad44fd2|Assets/Models/Player/Katana_Draw.fbx'
+        drawClipName = 'Katana_Draw'
+        drawPath = true
+        drawSeconds = 0.6
+        grabInterval = 0.4165
+        holdSeconds = 3.2
+        layerName = 'Attack'
+        mountAction = 'Climb'
+        mountRange = 3.6
+        requireToppled = false
+        sheatheClipFile = 'guid:bf25e66cf0b7067fb10270753895d369|Assets/Models/Player/Katana_Sheathe.fbx'
+        sheatheClipName = 'Katana_Sheathe'
+        sheatheSeconds = 0.62
 
 [[gameobjects]]
 active = true
@@ -9949,21 +9962,6 @@ tag = 'Enemy'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
-    type = 'BossHatchComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        coreHitboxName = 'HB_Core'
-        debugExposed = false
-        debugOpen = false
-        debugTimer = 0.0
-        exposeDelay = 0.57
-        hatchVolume = 0.9
-        layerName = 'Hatch'
-        openParam = 'HatchOpen'
-        sealLead = 0.16
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
     type = 'BossBreakComponent'
 
         [gameobjects.ScriptComponents.fields]
@@ -9983,6 +9981,21 @@ tag = 'Enemy'
         streakBonus = 0.15
         streakCap = 4
         toppleSeconds = 5.0
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossHatchComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        coreHitboxName = 'HB_Core'
+        debugExposed = false
+        debugOpen = false
+        debugTimer = 0.0
+        exposeDelay = 0.57
+        hatchVolume = 0.9
+        layerName = 'Hatch'
+        openParam = 'HatchOpen'
+        sealLead = 0.16
 
 [[gameobjects]]
 active = true
@@ -11076,163 +11089,6 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 18.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = false
-instanceId = 'fa9e0001-0000-0000-0000-000000000004'
-layer = 0
-name = 'AMB_FloorHaze'
-parent = 'Ambience'
-parentInstanceId = 'fa9e0001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.ParticleEmitter]
-    angularVelocityMax = 5.0
-    angularVelocityMin = -5.0
-    birthSubEmitter = ''
-    blackbodyEnabled = false
-    blackbodyIntensity = 1.0
-    blackbodyReferenceTemperature = 1800.0
-    boxExtents = [ 22.0, 0.25, 22.0 ]
-    bursts = []
-    clearOnStop = false
-    collisionBounciness = 0.5
-    collisionDamping = 0.0
-    collisionMode = 0
-    collisionPlaneY = 0.0
-    collisionRadius = 0.05
-    collisionResponse = 0
-    collisionSubEmitter = ''
-    colorCurvePower = 1.0
-    colorEnd = [ 0.3, 0.32, 0.36, 0.0 ]
-    colorStart = [ 0.34, 0.36, 0.4, 0.17 ]
-    colorVariation = 0.05
-    coneAngleDegrees = 25.0
-    coneRadius = 1.0
-    cullingBoundsPadding = 0.25
-    cullingEnabled = false
-    deathSubEmitter = ''
-    duration = 8.0
-    emitPosition = [ 0.0, 0.0, 0.0 ]
-    emitRate = 3.6
-    emitVelocity = [ 0.0, 0.02, 0.0 ]
-    enabled = true
-    forceFieldChannels = 4294967295
-    gravity = [ 0.0, 0.0, 0.0 ]
-    inheritVelocity = 0.0
-    lifetime = 12.0
-    lifetimeRandom = 0.4
-    lodEnabled = false
-    lodFarDistance = 40.0
-    lodFarRateScale = 0.25
-    lodNearDistance = 12.0
-    lodNearRateScale = 1.0
-    loop = true
-    materialPath = 'guid:2ae5781f75ca47f0bbef713b0d0cdc10|Assets/Materials/Particles/Smoke09_Premultiplied.mat'
-    maxParticles = 52
-    meshParticlePath = ''
-    meshShapeFollowSkinnedAnimation = false
-    meshShapeIndex = -1
-    meshShapeNormalVelocity = 0.0
-    meshShapePath = ''
-    meshShapeScale = 1.0
-    noiseFrequency = 0.15
-    noiseSpeed = 0.1
-    noiseStrength = 0.03
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = 0.0
-    pauseWhenCulled = false
-    playing = true
-    prewarm = true
-    radialVelocity = 0.0
-    randomSeed = 4103
-    rateOverDistance = 0.0
-    receiveForceFields = false
-    renderMode = 2
-    renderPriority = 2
-    screenCoverageThreshold = 0.0
-    shape = 3
-    simulationMode = 0
-    simulationSpace = 0
-    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
-    sizeCurvePower = 0.6
-    sizeEnd = 8.0
-    sizeStart = 3.5
-    sortMode = 1
-    speedRange = 10.0
-    sphereRadius = 1.0
-    startDelay = 0.0
-    stretchedLengthScale = 1.0
-    stretchedVelocityScale = 0.1
-    subEmitterBurstCount = 1
-    trailAlphaScale = 0.5
-    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
-    trailEnabled = false
-    trailPointCount = 6
-    trailRibbon = false
-    trailRibbonWidth = 0.0
-    trailSampleInterval = 0.03
-    trailWidthScale = 0.6
-    useColorGradient = true
-    useDragCurve = false
-    useEmitRateCurve = false
-    useRotationCurve = false
-    useSizeCurve = false
-    useSpeedColorGradient = false
-    useSpeedSizeCurve = false
-    useVelocityCurve = false
-    velocityDamping = 0.35
-    velocitySpread = 0.15
-
-        [gameobjects.ParticleEmitter.colorGradient]
-        interp = 0
-        keys = [
-            [ 0.0, 0.34, 0.36, 0.4, 0.0 ],
-            [ 0.25, 0.34, 0.36, 0.4, 0.17 ],
-            [ 0.7, 0.32, 0.34, 0.38, 0.13 ],
-            [ 1.0, 0.3, 0.32, 0.36, 0.0 ]
-        ]
-        space = 0
-
-        [gameobjects.ParticleEmitter.dragCurve]
-        interp = 0
-        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
-
-        [gameobjects.ParticleEmitter.emitRateCurve]
-        interp = 0
-        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
-
-        [gameobjects.ParticleEmitter.rotationCurve]
-        interp = 0
-        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
-
-        [gameobjects.ParticleEmitter.sizeCurve]
-        interp = 0
-        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
-
-        [gameobjects.ParticleEmitter.speedColorGradient]
-        interp = 0
-        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
-        space = 0
-
-        [gameobjects.ParticleEmitter.speedSizeCurve]
-        interp = 0
-        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
-
-        [gameobjects.ParticleEmitter.temperatureCurve]
-        interp = 0
-        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
-
-        [gameobjects.ParticleEmitter.velocityCurve]
-        interp = 0
-        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.35, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
