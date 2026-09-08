@@ -33,8 +33,12 @@ class HitstopManagerComponent : public Script {
     FBZZ_SCRIPT(HitstopManagerComponent)
 
 public:
-    FBZZ_GROUP("Strength")
-    FBZZ_FIELD_RANGE(float, maxSeconds, 0.09f, "Max Seconds", 0.0f, 0.5f)
+    FBZZ_GROUP("強度")
+    // WHY 0.09 へ戻したか (2026-09-05): 一度 0.14 まで伸ばしたが、これは «世界» の止め。
+    //     止まっている間は移動入力も縮んだ時間で進むので、伸ばすほど操作が重くなる。
+    //     手応えを担当するのは下の Animation (当事者だけを固める) の方で、
+    //     そちらは 0.18 まで伸ばしてある。
+    FBZZ_FIELD_RANGE(float, maxSeconds, 0.09f, "最大秒数", 0.0f, 0.5f)
     FBZZ_TOOLTIP("最も強い当たりで止まる長さ。実際の長さは強さ (0..1) に比例して縮む")
     FBZZ_FIELD_RANGE(float, minSeconds, 0.02f, "Min Seconds", 0.0f, 0.5f)
     FBZZ_TOOLTIP("弱い当たりでも最低これだけは止める。0 にすると軽い接触が無反応になる")
@@ -54,8 +58,8 @@ public:
     // WHY 全体の止めより長くしてよいか:
     //   止まっているのが 1 体だけなら «画面が固まった» とは読まれない。格闘ゲームの
     //   ヒットストップも 5〜8 フレーム (0.08〜0.13 秒) の幅にある。
-    FBZZ_GROUP("Animation")
-    FBZZ_FIELD_RANGE(float, animMaxSeconds, 0.13f, "Anim Max", 0.0f, 0.6f)
+    FBZZ_GROUP("アニメーション")
+    FBZZ_FIELD_RANGE(float, animMaxSeconds, 0.18f, "Anim Max", 0.0f, 0.6f)
     FBZZ_TOOLTIP("最も強い当たりでアニメーションが固まる長さ。強さ (0..1) に比例して縮む")
     FBZZ_FIELD_RANGE(float, animMinSeconds, 0.05f, "Anim Min", 0.0f, 0.6f)
     FBZZ_TOOLTIP("弱い当たりでも最低これだけは固める")
@@ -63,7 +67,7 @@ public:
     FBZZ_TOOLTIP("固めている間の再生速度。0 で完全停止。0.1 前後にすると «めり込みながら"
                  "押し切る» 感じになる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(float, debugRemaining, 0.0f, "Remaining")
     FBZZ_FIELD_READ_ONLY(int, debugFrozen, 0, "Frozen Actors")
 

@@ -1,0 +1,227 @@
+/// @file    BossBreakComponent.hpp
+/// @brief   崩しゲージ。弾き・見切り・斬撃で溜まり、満ちたらボスが倒れる
+/// @author  Hasegawa Jin
+/// @date    2026-09-04
+///
+/// WHY HP と別の器か:
+///   ボスに HP は無い。あるのは «崩れるまでの余裕» で、崩れた 5 秒に «とどめ» を
+///   叩き込んで脚 (節) を落とすことだけが進行になる。HP に見せると «削れば勝てる» と
+///   読まれ、弾く理由が «損をしない» で終わる。ゲージは満ちるか戻るかしかなく、
+///   満ちた瞬間が必ず転倒という出来事になる。
+///
+/// WHY ボスの側に置くか (プレイヤーの側ではなく):
+///   崩れるのはボスで、耐えの量もボスごとに違う (4 足と蛇で同じ 100 でよい理由は無い)。
+///   転倒の長さも同じ。プレイヤーは «どれだけ溜めたか» を送るだけで、
+///   満ちたときに何が起きるかはボスが決める (onBreak)。
+///
+/// WHY 放っておくと戻るか:
+///   戻らないと «いつか満ちる» が保証され、弾かずに削るだけでも同じ所へ着く。
+///   手を止めると戻る形にして、«弾き続ける» ことに意味を残す。
+#pragma once
+
+#include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
+#include <algorithm>
+#include <functional>
+#include <string>
+
+using namespace fbzz::scene;
+using namespace fbzz::math;
+using fbzz::Time;
+
+namespace sandbox {
+
+class BossBreakComponent : public Script {
+    FBZZ_SCRIPT(BossBreakComponent)
+
+public:
+    FBZZ_GROUP("Gauge")
+    FBZZ_FIELD_RANGE(float, maxBreak, 100.0f, "Max", 10.0f, 1000.0f)
+    FBZZ_FIELD_RANGE(float, parryGain, 34.0f, "弾き", 0.0f, 500.0f)
+    FBZZ_TOOLTIP("弾き 1 回。3 回で満ちる量が既定。ここが戦いのテンポそのもの")
+    FBZZ_FIELD_RANGE(float, parryHeavyGain, 60.0f, "Parry (heavy)", 0.0f, 500.0f)
+    FBZZ_TOOLTIP("突進のような重い手を弾いたとき。読み切りの難しさに見合う量")
+    FBZZ_FIELD_RANGE(float, perfectDodgeGain, 16.0f, "Just Dodge", 0.0f, 500.0f)
+    FBZZ_TOOLTIP("ジャスト回避。弾けない手 (輪・ビーム) にも道を残すが、弾きより薄く")
+    // WHY 3.5 から 6.0 へ上げたか (2026-09-05):
+    //   «30 発近く» は 3 連の頃の見積もり。5 連に増えた今は 1 セット振り切れば 5 発
+    //   入るので、17 発 = 3〜4 セットで満ちる。斬るだけで満たす道が «無い» のではなく
+    //   «遠回り» であることは変わらない (弾きなら 3 回)。
+    FBZZ_FIELD_RANGE(float, slashGain, 6.0f, "Slash", 0.0f, 100.0f)
+    FBZZ_TOOLTIP("斬撃 1 発。«斬るだけ» で満たすには 17 発 (連撃 3〜4 セット) 要る量に留める")
+    FBZZ_FIELD_RANGE(float, chargedSlashGain, 12.0f, "Charged Slash", 0.0f, 200.0f)
+
+    // WHY «上手い弾き» に上乗せするか (2026-09-06):
+    //   弾きは窓 0.22 秒のどこで受けても同じ量だった。予兆を読み切って «叩きつけの
+    //   瞬間» に合わせた 1 回と、早押しで拾った 1 回が同じでは、読む理由が «損を
+    //   しない» で終わる。窓の頭で受けた弾きだけ量を上げ、被弾せずに続けた弾きは
+    //   回数で積み上がる。どちらも «次も弾く» 動機になる。
+    FBZZ_GROUP("Mastery")
+    FBZZ_FIELD_RANGE(float, justParryScale, 1.5f, "Just Parry x", 1.0f, 3.0f)
+    FBZZ_TOOLTIP("窓の頭 (Just Parry) で受けた弾きの倍率。1 で通常と同じ")
+    FBZZ_FIELD_RANGE(float, streakBonus, 0.15f, "Streak Bonus", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("被弾せずに続けた弾き 1 回ごとに足す倍率。被弾でリセット")
+    FBZZ_FIELD_RANGE_INT(int, streakCap, 4, "Streak Cap", 0, 10)
+    FBZZ_TOOLTIP("倍率が積み上がる上限の回数。4 × 0.15 = 最大 +60%")
+
+    FBZZ_GROUP("Decay")
+    // WHY 戻りを半分にしたか (2026-09-05):
+    //   8/秒 は «最後に溜めてから 2.5 秒» の後、12.5 秒で全部消える速さ。ボスの手番が
+    //   2〜5 秒あるので、1 回分の隙で稼いだぶんが次の隙まで持たず、何度弾いても
+    //   ゲージが «同じ所» に戻る。積み上がっている実感が出ないと、弾く動機が消える。
+    FBZZ_FIELD_RANGE(float, decayDelay, 4.0f, "保持", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("最後に溜めてからこの秒数は戻らない。連撃の合間に減り始めると «溜まらない» に見える")
+    FBZZ_FIELD_RANGE(float, decayPerSecond, 4.0f, "Decay / s", 0.0f, 200.0f)
+
+    FBZZ_GROUP("Topple")
+    FBZZ_FIELD_RANGE(float, toppleSeconds, 5.0f, "Topple Seconds", 0.5f, 15.0f)
+    FBZZ_TOOLTIP("満ちて倒れている時間。この間だけ «とどめ» が通る")
+
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(float, debugBreak, 0.0f, "Break")
+    FBZZ_FIELD_READ_ONLY(std::string, debugState, "Idle", "状態")
+    FBZZ_FIELD_READ_ONLY(std::string, debugLastSource, "-", "Last Source")
+    FBZZ_FIELD_READ_ONLY(int, debugStreak, 0, "Parry Streak")
+
+    /// 満ちた瞬間。ボス側が転倒へ繋ぐ。引数は転倒の長さ [秒]。
+    std::function<void(float seconds)> onBreak;
+
+    /// ゲージの比 [0,1]。倒れている間は «残り時間» の比になる。
+    [[nodiscard]] float Ratio() const;
+    [[nodiscard]] bool  IsToppled() const { return m_toppled; }
+    /// 倒れている残り [0,1]。倒れていなければ 0。
+    [[nodiscard]] float ToppleRemaining01() const
+    { return m_toppled ? Clamp01(m_toppleLeft / std::max(m_toppleSeconds, 0.01f)) : 0.0f; }
+    /// 直近に溜まった瞬間からの秒数。HUD の «伸びた» 演出が読む。
+    [[nodiscard]] float SinceLastGain() const { return m_idle; }
+
+    /// 弾き 1 回。just は窓の頭で受けた «読み切り»。連続の弾きは回数で倍率が積む。
+    void AddParry(bool heavy, bool just = false)
+    {
+        const float base   = heavy ? parryHeavyGain : parryGain;
+        const float streak = 1.0f + std::max(streakBonus, 0.0f)
+                           * static_cast<float>(std::min(m_parryStreak, std::max(streakCap, 0)));
+        const float scale  = (just ? std::max(justParryScale, 1.0f) : 1.0f) * streak;
+        ++m_parryStreak;
+        debugStreak = m_parryStreak;
+        Add(base * scale, just ? (heavy ? "Just Parry (heavy)" : "Just Parry")
+                               : (heavy ? "Parry (heavy)" : "Parry"));
+    }
+    void AddPerfectDodge()    { Add(perfectDodgeGain, "Just Dodge"); }
+    /// 被弾した。続けていた弾きの積み上げは消える。
+    void ResetParryStreak() { m_parryStreak = 0; debugStreak = 0; }
+    [[nodiscard]] int ParryStreak() const { return m_parryStreak; }
+    /// 全部の溜まり方に掛かる倍率。プレイヤーの «土壇場» (残り HP 僅か) が上げる。
+    void SetGainScale(float scale) { m_gainScale = std::max(scale, 0.0f); }
+    void AddSlash(bool charged) { Add(charged ? chargedSlashGain : slashGain, charged ? "Charged Slash" : "Slash"); }
+    /// 任意の量を溜める。満ちたら onBreak を 1 度だけ呼ぶ。倒れている間は無視する。
+    void Add(float amount, const char* source);
+
+    /// ボスが倒れた。ここから seconds 秒はゲージが «残り時間» を表す。
+    /// 突進の自滅激突のように、ゲージを経由せず倒れる経路もここへ来る。
+    void BeginTopple(float seconds);
+    /// 起き上がった (時間切れ・とどめ)。ゲージは 0 へ戻る。
+    void EndTopple();
+
+    void OnStart()  override;
+    void OnUpdate() override;
+
+private:
+    float m_break         = 0.0f;
+    float m_idle          = 0.0f;
+    bool  m_toppled       = false;
+    float m_toppleLeft    = 0.0f;
+    float m_toppleSeconds = 0.0f;
+    bool  m_warnedNoOwner = false;
+    int   m_parryStreak   = 0;
+    float m_gainScale     = 1.0f;
+};
+
+FBZZ_REFLECT(BossBreakComponent)
+
+inline float BossBreakComponent::Ratio() const
+{
+    if (m_toppled) return ToppleRemaining01();
+    return Clamp01(m_break / std::max(maxBreak, 1.0f));
+}
+
+inline void BossBreakComponent::OnStart()
+{
+    m_break         = 0.0f;
+    m_idle          = 0.0f;
+    m_toppled       = false;
+    m_toppleLeft    = 0.0f;
+    m_toppleSeconds = 0.0f;
+    m_warnedNoOwner = false;
+    m_parryStreak   = 0;
+    m_gainScale     = 1.0f;
+    debugBreak      = 0.0f;
+    debugState      = "Idle";
+    debugLastSource = "-";
+    debugStreak     = 0;
+}
+
+inline void BossBreakComponent::Add(float amount, const char* source)
+{
+    if (amount <= 0.0f || m_toppled) return;
+
+    m_break = std::min(m_break + amount * m_gainScale, std::max(maxBreak, 1.0f));
+    m_idle  = 0.0f;
+    debugBreak      = m_break;
+    debugLastSource = source ? source : "-";
+
+    if (m_break < std::max(maxBreak, 1.0f)) return;
+
+    // 満ちた。倒すのはボスの仕事で、こちらは合図を出すだけ。
+    // WHY 呼び先が無いことを言うか: 満ちたのに何も起きないと、ゲージが «飾り» に見える。
+    if (onBreak) {
+        onBreak(std::max(toppleSeconds, 0.5f));
+    } else if (!m_warnedNoOwner) {
+        m_warnedNoOwner = true;
+        debug.LogError("BossBreakComponent: the gauge is full but no boss subscribed to onBreak. "
+                       "The boss AI must set it (BossAiComponent / SerpentAiComponent).");
+    }
+}
+
+inline void BossBreakComponent::BeginTopple(float seconds)
+{
+    m_toppled       = true;
+    m_toppleSeconds = std::max(seconds, 0.05f);
+    m_toppleLeft    = m_toppleSeconds;
+    m_break         = std::max(maxBreak, 1.0f);
+    debugBreak      = m_break;
+    debugState      = "Toppled";
+}
+
+inline void BossBreakComponent::EndTopple()
+{
+    if (!m_toppled) return;
+    m_toppled    = false;
+    m_toppleLeft = 0.0f;
+    m_break      = 0.0f;
+    m_idle       = 0.0f;
+    debugBreak   = 0.0f;
+    debugState   = "Idle";
+}
+
+inline void BossBreakComponent::OnUpdate()
+{
+    const float dt = std::max(Time::deltaTime, 0.0f);
+
+    if (m_toppled) {
+        // 時間切れの起き上がりはボスが EndAct で告げる。ここでは残りを数えるだけ。
+        // 告げ忘れの保険として 0 で止める (負の残りをバーに出さない)。
+        m_toppleLeft = std::max(m_toppleLeft - dt, 0.0f);
+        debugBreak   = m_break;
+        return;
+    }
+
+    m_idle += dt;
+    if (m_break > 0.0f && m_idle >= std::max(decayDelay, 0.0f)) {
+        m_break = std::max(m_break - std::max(decayPerSecond, 0.0f) * dt, 0.0f);
+        debugBreak = m_break;
+    }
+    debugState = m_break > 0.0f ? "Charging" : "Idle";
+}
+
+} // namespace sandbox

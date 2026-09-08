@@ -21,6 +21,7 @@
 #include <Math/Vector3.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Scripts/Combat/PlayerHit.hpp>
 #include <unordered_map>
 
 using namespace fbzz::scene;
@@ -38,6 +39,19 @@ struct IDamageable {
     ///     IsAlive() を前後で見れば足りるが、「入ったのか弾かれたのか」は呼び出し側から
     ///     観測できない。無敵時間で弾かれた分を戦果に数えないために、こちらを返す。
     virtual bool ApplyDamage(int amount) = 0;
+
+    /// 一撃を受ける。無敵・回避・弾きで防げたかまで含めて返す。
+    /// @param fromWorld 当たった物の位置。弾きの絵と押しの向きに使う。nullptr 可。
+    /// @param kind      刀で弾ける一撃か。
+    ///
+    /// WHY ApplyDamage と別に持つか: 弾けるのはプレイヤーだけで、敵や的は «通ったか» しか
+    ///     持たない。既定は ApplyDamage へ流すだけにして、弾ける側だけが上書きする。
+    virtual PlayerHitResult ReceiveHit(int amount, const fbzz::math::Vector3* fromWorld,
+                                       PlayerHitKind kind)
+    {
+        (void)fromWorld; (void)kind;
+        return ApplyDamage(amount) ? PlayerHitResult::Damaged : PlayerHitResult::Ignored;
+    }
 
     [[nodiscard]] virtual int  CurrentHealth() const = 0;
     [[nodiscard]] virtual int  MaxHealth()     const = 0;
