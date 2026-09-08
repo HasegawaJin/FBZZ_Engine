@@ -10,9 +10,16 @@ include("${CMAKE_SOURCE_DIR}/CMake/FBZZTests.cmake")
 # --- Math -------------------------------------------------------------------
 fbzz_add_test_suite(MathAuto
     SOURCES
+        Math/Auto/Vector2Tests.cpp
         Math/Auto/Vector3Tests.cpp
+        Math/Auto/Vector4Tests.cpp
         Math/Auto/QuaternionTests.cpp
+        Math/Auto/Matrix3Tests.cpp
         Math/Auto/Matrix4Tests.cpp
+        Math/Auto/MathUtilsTests.cpp
+        Math/Auto/PlaneTests.cpp
+        Math/Auto/RayTests.cpp
+        Math/Auto/FrustumTests.cpp
 )
 
 # --- Core -------------------------------------------------------------------
@@ -48,6 +55,21 @@ fbzz_add_test_suite(PhysicsAuto
         Physics/Auto/BVHTests.cpp
         Physics/Auto/XPBDSolverTests.cpp
         Physics/Auto/XPBDJointTests.cpp
+        Physics/Auto/RigidBodyTests.cpp
+        Physics/Auto/BroadPhaseTests.cpp
+        Physics/Auto/CollisionMatrixTests.cpp
+        Physics/Auto/CCDTests.cpp
+        Physics/Auto/ConvexHullTests.cpp
+        Physics/Auto/WorldQueryTests.cpp
+        Physics/Auto/ContactResolveTests.cpp
+        Physics/Auto/MeshColliderTests.cpp
+        Physics/Auto/RigidBodySerializerTests.cpp
+        Physics/Auto/XPBDPlaneContactTests.cpp
+        Physics/Auto/XPBDPoseAnchorTests.cpp
+        Physics/Auto/ConstraintTests.cpp
+        Physics/Auto/ContactCacheTests.cpp
+        Physics/Auto/PhysicsMaterialTests.cpp
+        Physics/Auto/LayerTests.cpp
     LINKS
         FBZZTestKitPhysics
 )
@@ -56,6 +78,28 @@ fbzz_add_test_suite(PhysicsAuto
 fbzz_add_test_suite(EngineAuto
     SOURCES
         Engine/Auto/RagdollRigTests.cpp
+        Engine/Auto/AssetDatabaseTests.cpp
+        Engine/Auto/EventBusTests.cpp
+        Engine/Auto/FileSystemPathTests.cpp
+        Engine/Auto/ScriptTransformProxyTests.cpp
+        Engine/Auto/ColorTests.cpp
+        Engine/Auto/EasingTests.cpp
+        Engine/Auto/GuidRefCodecTests.cpp
+        Engine/Auto/SpriteReferenceTests.cpp
+        Engine/Auto/StringUtilsTests.cpp
+        Engine/Auto/TransformTests.cpp
+        Engine/Auto/Utf8Tests.cpp
+        Engine/Auto/UuidTests.cpp
+        Engine/Auto/AnimationSamplingTests.cpp
+        Engine/Auto/AudioBusTests.cpp
+        Engine/Auto/BlackboardTests.cpp
+        Engine/Auto/ComponentArrayTests.cpp
+        Engine/Auto/FzAssetFormatTests.cpp
+        Engine/Auto/InputActionMapTests.cpp
+        Engine/Auto/ParticleCodecTests.cpp
+        Engine/Auto/ParticleCurveTests.cpp
+        Engine/Auto/SceneSerializerTests.cpp
+        Engine/Auto/UIRectTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics
@@ -73,6 +117,9 @@ add_executable(FBZZTestBench
     Bench/Scenes/XPBDJointChainScene.cpp
     Bench/Scenes/ContactScene.cpp
     Bench/Scenes/BVHQueryScene.cpp
+    Bench/Scenes/CCDScene.cpp
+    Bench/Scenes/ConvexHullScene.cpp
+    Bench/Scenes/RagdollScene.cpp
     # コンソール制御だけ TestKit と共有する。
     # WHY リンクせずソースを直接足すか: FBZZTestKit は gtest / gmock を引き連れてくる。
     #      ベンチはテストフレームワークに依存させたくないので、この 1 ファイルだけ借りる。

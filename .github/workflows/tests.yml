@@ -45,9 +45,14 @@ jobs:
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
             --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsEngineAuto
 
+      # --timeout: 止まったテストがあってもそこで打ち切り、残りを最後まで走らせる。
+      #   これが無いと、1 件のハングでジョブがワークフローの上限まで待ち続ける。
+      # --no-tests=error: テストが 1 件も登録されていない状態を «成功» にしない。
       - name: Run tests
         shell: pwsh
-        run: ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG --output-on-failure
+        run: >
+          ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG
+          --output-on-failure --timeout 30 --no-tests=error
 
       - name: Install OpenCppCoverage
         shell: pwsh

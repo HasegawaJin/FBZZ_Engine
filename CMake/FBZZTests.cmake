@@ -8,6 +8,16 @@ include(GoogleTest)
 
 set(FBZZ_TEST_OUTPUT_DIR "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests")
 
+# 1 テストあたりの制限時間 [秒]。超えた時点で CTest がプロセスを殺し、次のテストへ進む。
+#
+# WHY 必ず付けるか: 無限ループや «押されるまで消えないダイアログ» を踏んだテストが 1 件でも
+#     あると、CTest はそこで永久に待ち続け、残り全部が実行されないまま終わる。
+#     実際 EPA の縮退した配置でポリトープが膨張し続け、そこから先が丸ごと走らなかった。
+#     落ちるテストより «止まるテスト» の方が被害が大きいので、上限は必ず与える。
+# 値の根拠: 自動テストは 1 件あたり数 ms で終わる設計 (sleep 禁止・固定刻み)。
+#     Debug の CI で負荷が乗っても 2 桁 ms には収まるため、30 秒は «明らかに異常» の線。
+set(FBZZ_TEST_TIMEOUT 30 CACHE STRING "1 テストあたりの制限時間 [秒]")
+
 # テスト成果物の出力先を構成ごとに固定する。
 # WHY 構成ごとに書くか: ルートの CMakeLists が CMAKE_RUNTIME_OUTPUT_DIRECTORY_<CONFIG> を
 #     設定しているため、各ターゲットは RUNTIME_OUTPUT_DIRECTORY_<CONFIG> を初期値として
@@ -84,6 +94,7 @@ function(fbzz_add_test_suite SUITE)
     gtest_discover_tests(${exeTarget}
         DISCOVERY_TIMEOUT 60
         WORKING_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
+        PROPERTIES TIMEOUT ${FBZZ_TEST_TIMEOUT}
     )
     set_property(GLOBAL APPEND PROPERTY FBZZ_TEST_SUITES ${SUITE})
 endfunction()

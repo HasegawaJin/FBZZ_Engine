@@ -13,11 +13,13 @@
 #include <Windows.h>
 
 #include <conio.h>
+#include <crtdbg.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
+#include <initializer_list>
 #include <iterator>
 #include <string_view>
 
@@ -179,6 +181,25 @@ void WaitForKey(const char* message)
         std::fflush(stdout);
     }
     _getch();
+}
+
+void SuppressBlockingErrorDialogs()
+{
+    // クリティカルエラーと «アプリケーションエラー» の窓を出さずに終了させる。
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+
+    // abort() の «Debug Error!» ダイアログを止め、メッセージだけ stderr へ残す。
+    _set_abort_behavior(_WRITE_ABORT_MSG, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+
+#ifdef _DEBUG
+    // assert 失敗の報告先をダイアログから stderr へ切り替える。
+    // WHY 3 種類とも指定するか: assert は _CRT_ASSERT だが、CRT の内部検査
+    //     (イテレーターの範囲外・二重解放) は _CRT_ERROR で上がる。どちらも止まる。
+    for (const int reportType : { _CRT_ASSERT, _CRT_ERROR, _CRT_WARN }) {
+        _CrtSetReportMode(reportType, _CRTDBG_MODE_FILE);
+        _CrtSetReportFile(reportType, _CRTDBG_FILE_STDERR);
+    }
+#endif
 }
 
 } // namespace fbzz::testkit

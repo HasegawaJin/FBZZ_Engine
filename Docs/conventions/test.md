@@ -377,6 +377,26 @@ ctest --test-dir build/Debug -C Debug -R "Physics"        # 名前で絞る
 `--test-dir` は CMakePresets の `binaryDir`（構成ごとに `build/<Preset>`）を指す。
 `build` を渡しても `CTestTestfile.cmake` が無く「テスト 0 件」で成功扱いになる。
 
+### 1 件で止まっても最後まで走ること
+
+**「失敗」より「終わらない」の方が被害が大きい。** 失敗は次のテストへ進むが、
+終わらないテストは残り全部を道連れにする。実際、EPA の縮退した配置でポリトープが
+膨張し続け、そこから後ろのテストが 1 件も実行されないまま終わったことがある。
+
+止まる原因は 2 つしかない。両方とも基盤側で塞いである。
+
+| 止まり方 | 対策 | 置き場所 |
+|---|---|---|
+| 無限ループ・異常に遅い | **1 テスト 30 秒で強制終了**し、Timeout として記録して次へ進む | `CMake/FBZZTests.cmake` の `FBZZ_TEST_TIMEOUT`（`gtest_discover_tests` の `PROPERTIES TIMEOUT`）と `Tools/VcBuild.ps1` / CI の `--timeout` |
+| 押されるまで消えないダイアログ<br>（`assert` 失敗・`abort`・アクセス違反） | 自動実行では**ダイアログを出さず stderr へ流して落とす** | `TestKit::SuppressBlockingErrorDialogs()` を `Main.cpp` が自動実行時だけ呼ぶ |
+
+- **上限を延ばして通そうとしない。** 30 秒に届く自動テストは、書き方かコードのどちらかが
+  間違っている。自動テストは 1 件あたり数 ms で終わる前提で設計している（`sleep` 禁止・固定刻み）
+- **ダイアログ抑止は自動実行のときだけ。** 対話実行（Visual Studio / ターミナル）では
+  そのまま出す。人が居るなら、デバッガーで止めてスタックを見られる方が有益
+- CI と `Tests: Run (Debug)` には `--no-tests=error` も付けてある。フィルタの打ち間違いで
+  0 件になったとき、「全部成功」に見えてしまうのを防ぐ
+
 ### 単体 exe（絞り込み・調査）
 
 ```bash
