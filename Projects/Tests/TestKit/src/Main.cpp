@@ -21,7 +21,13 @@ int main(int argc, char** argv)
     const bool automated = fbzz::testkit::IsAutomatedRun(argc, argv);
 
     bool ownsConsole = false;
-    if (!automated) ownsConsole = fbzz::testkit::EnsureConsole();
+    if (automated) {
+        // 人が居ない実行では «押されるまで消えないダイアログ» が即ハングになる。
+        // 1 件の assert / クラッシュで残り全部が走らなくなるのを防ぐ。
+        fbzz::testkit::SuppressBlockingErrorDialogs();
+    } else {
+        ownsConsole = fbzz::testkit::EnsureConsole();
+    }
 
     // InitGoogleMock は内部で InitGoogleTest も呼ぶ。--gtest_* / --gmock_* の両方が効く。
     ::testing::InitGoogleMock(&argc, argv);

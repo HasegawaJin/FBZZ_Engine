@@ -14,5 +14,8 @@ std::unique_ptr<BenchScene> MakeXPBDConvergenceScene();
 std::unique_ptr<BenchScene> MakeXPBDJointChainScene();
 std::unique_ptr<BenchScene> MakeContactScene();
 std::unique_ptr<BenchScene> MakeBVHQueryScene();
+std::unique_ptr<BenchScene> MakeCCDScene();
+std::unique_ptr<BenchScene> MakeConvexHullScene();
+std::unique_ptr<BenchScene> MakeRagdollScene();
 
 } // namespace fbzz::bench

@@ -777,9 +777,13 @@ toml::table MakeScriptEntryTable(const std::string& type, bool enabled, toml::ta
 
 // 実体は Scene/MeshResolver.cpp。実行中の meshPath 差し替えからも同じ解決を使うため、
 // ここから括り出してある。
-renderer::Mesh* ResolveMesh(const std::string& path, renderer::ResourceManager& resources)
+//
+// resources == nullptr は «GPU リソースを作らない» 復元 (SceneSerializer::LoadData)。
+// メッシュは張らず、meshPath だけをコンポーネントに残す。
+renderer::Mesh* ResolveMesh(const std::string& path, renderer::ResourceManager* resources)
 {
-    return ResolveMeshPath(path, resources);
+    if (resources == nullptr) return nullptr;
+    return ResolveMeshPath(path, *resources);
 }
 
 // SceneSerializer が扱う Asset パスを、現在保存/読込している Scene の場所から解決する。
@@ -2065,7 +2069,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 // Load
 // -----------------------------------------------------------------------
 std::unique_ptr<Scene> SceneSerializer::Load(
-    const std::string& path, renderer::ResourceManager& resources)
+    const std::string& path, renderer::ResourceManager* resources)
 {
     // assert しない。シーンファイルの欠落や破損はデータ側の事故で、不変条件の破れではない。
     // abort させると壊れたシーンへ遷移しただけでエディタが落ちる。ログにして nullptr を返す。
@@ -2078,7 +2082,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 }
 
 std::unique_ptr<Scene> SceneSerializer::LoadFromText(
-    const std::string& tomlText, renderer::ResourceManager& resources,
+    const std::string& tomlText, renderer::ResourceManager* resources,
     const std::string& sourcePath)
 {
     auto result = toml::parse(tomlText);
@@ -3507,10 +3511,26 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 // -----------------------------------------------------------------------
 // 既存 Scene への読み込み
 // -----------------------------------------------------------------------
+int SceneSerializer::ResolveMeshes(Scene& scene, renderer::ResourceManager& resources)
+{
+    // LoadData で復元した Scene を «描けるようにする» ための後段。
+    // 既に mesh を持つものは触らない ─ 二重に載せると同じ頂点バッファが 2 本になる。
+    int resolved = 0;
+    for (auto& gameObject : scene.GameObjects()) {
+        auto* mr = gameObject.GetComponent<MeshRenderer>();
+        if (mr == nullptr || mr->mesh != nullptr || mr->meshPath.empty()) continue;
+
+        mr->mesh = ResolveMesh(mr->meshPath, &resources);
+        if (mr->mesh) ++resolved;
+        else FBZZ_LOG_WARN("SceneSerializer: failed to resolve mesh '%s'", mr->meshPath.c_str());
+    }
+    return resolved;
+}
+
 bool SceneSerializer::LoadInPlace(
     Scene& scene, const std::string& path, renderer::ResourceManager& resources)
 {
-    auto newScene = Load(path, resources);
+    auto newScene = Load(path, &resources);
     if (!newScene) return false;
     scene = std::move(*newScene);
     // Scene object自体をmoveしたため、Scriptが保持する非所有contextを移動先へ張り直す。
@@ -3530,7 +3550,7 @@ bool SceneSerializer::LoadInPlace(
 // -----------------------------------------------------------------------
 bool SceneSerializer::AppendObjects(
     Scene& scene, const std::string& tomlText,
-    renderer::ResourceManager& resources,
+    renderer::ResourceManager* resources,
     std::vector<EntityID>& outRoots)
 {
     outRoots.clear();

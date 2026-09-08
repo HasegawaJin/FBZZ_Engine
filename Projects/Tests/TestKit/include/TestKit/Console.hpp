@@ -38,4 +38,13 @@ bool EnsureConsole(const ConsoleOptions& options = {});
 /// キー入力を待つ。EnsureConsole が true を返したときだけ呼ぶこと。
 void WaitForKey(const char* message = "何かキーを押すと閉じます...");
 
+/// 「OK を押すまで消えないダイアログ」を全部止め、内容を stderr へ流す。
+///
+/// WHY: assert 失敗・abort・アクセス違反は、既定ではモーダルダイアログを出す。
+///      人が居ない実行 (CTest / CI) では誰も押さないため、そのテストは «失敗» ではなく
+///      «永久に終わらない» になり、後続のテストが 1 件も走らなくなる。
+///      落ちるところまで進ませて、原因を stderr に残し、プロセスを終わらせる。
+/// NOTE: 対話実行では呼ばない。デバッガーで止まってスタックを見られる方が有益なため。
+void SuppressBlockingErrorDialogs();
+
 } // namespace fbzz::testkit

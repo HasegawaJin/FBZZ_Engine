@@ -13,12 +13,62 @@
 
 #include <imgui.h>
 
+#include <filesystem>
+
 namespace fbzz::bench {
 
 namespace {
 constexpr float kFixedStep = 1.0f / 120.0f;
 /// 1 フレームで進める上限。ブレークポイントで止めた後に一気に飛ぶのを防ぐ。
 constexpr int kMaxStepsPerFrame = 16;
+constexpr float kFontSize = 17.0f;
+
+/// 日本語グリフを持つフォントを読む。
+///
+/// WHY 必須か: ImGui のバンドルフォントは ASCII しか持たない。入れないと場面の名前も
+///     «見るべきところ» も «???» になり、**そもそも何を見ればいいか分からない画面**に
+///     なる。合否を人が決める道具なので、文字が出ないことは機能不全と同じ。
+///
+/// WHY Editor の EditorTheme を使わないか: ベンチは Editor へ依存させない
+///     (Editor は Panel も Command も引き連れてくる)。要るのはフォント 1 枚だけ。
+ImFont* LoadJapaneseFont(ImGuiIO& io)
+{
+    static constexpr const char* kCandidates[] = {
+        "C:/Windows/Fonts/YuGothM.ttc",
+        "C:/Windows/Fonts/meiryo.ttc",
+        "C:/Windows/Fonts/msgothic.ttc",
+    };
+
+    // BuildRanges の結果はアトラス生成 (最初の NewFrame) まで生きている必要がある。
+    static ImVector<ImWchar> ranges;
+    if (ranges.empty()) {
+        ImFontGlyphRangesBuilder builder;
+        builder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
+        builder.AddRanges(io.Fonts->GetGlyphRangesDefault()); // « » を含む Latin-1
+        static const ImWchar kSymbols[] = {
+            0x2000, 0x206F, // 約物 (─ に使う 二重ダッシュ・…)
+            0x2190, 0x21FF, // 矢印
+            0x2500, 0x257F, // 罫線 (─)
+            0x25A0, 0x25FF, // 幾何形
+            0,
+        };
+        builder.AddRanges(kSymbols);
+        builder.BuildRanges(&ranges);
+    }
+
+    ImFontConfig cfg;
+    cfg.OversampleH = 2;
+    cfg.OversampleV = 2;
+
+    for (const char* path : kCandidates) {
+        // 存在確認してから渡す。ImGui は読めないファイルで IM_ASSERT する。
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec)) continue;
+        if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, kFontSize, &cfg, ranges.Data))
+            return font;
+    }
+    return nullptr;
+}
 } // namespace
 
 bool BenchApp::OnInit()
@@ -27,12 +77,19 @@ bool BenchApp::OnInit()
     m_scenes.push_back(MakeXPBDJointChainScene());
     m_scenes.push_back(MakeContactScene());
     m_scenes.push_back(MakeBVHQueryScene());
+    m_scenes.push_back(MakeCCDScene());
+    m_scenes.push_back(MakeConvexHullScene());
+    m_scenes.push_back(MakeRagdollScene());
 
     m_imguiContext = ImGui::CreateContext();
     ImGuiIO& io    = ImGui::GetIO();
     io.IniFilename = nullptr; // 配置を保存しない。毎回同じ見え方で開く。
     ImGui::StyleColorsDark();
 
+    if (ImFont* font = LoadJapaneseFont(io)) io.FontDefault = font;
+    else                                     io.Fonts->AddFontDefault();
+
+    // フォントアトラスはこの中で GPU テクスチャになる。フォントを足すのは必ずこの前。
     core::Application::Get().GetImGuiRenderer().ImGuiInit(
         core::Application::Get().GetWindow().GetHandle());
 
@@ -127,18 +184,17 @@ void BenchApp::DrawUI()
 
 void BenchApp::DrawSidebar()
 {
-    ImGui::BeginChild("##sidebar", {360.0f, 0.0f}, ImGuiChildFlags_Borders);
+    ImGui::BeginChild("##sidebar", {430.0f, 0.0f}, ImGuiChildFlags_Borders);
 
     ImGui::TextUnformatted("ビジュアル検証ベンチ");
     ImGui::TextDisabled("合否はコードではなく目で判断する");
-    ImGui::Separator();
 
+    ImGui::SeparatorText("場面");
     for (int i = 0; i < static_cast<int>(m_scenes.size()); ++i) {
         if (ImGui::Selectable(m_scenes[static_cast<size_t>(i)]->Name(), i == m_selected))
             SelectScene(i);
     }
 
-    ImGui::Separator();
     ImGui::SeparatorText("再生");
     if (ImGui::Button(m_paused ? "再生" : "一時停止", {110.0f, 0.0f})) m_paused = !m_paused;
     ImGui::SameLine();
