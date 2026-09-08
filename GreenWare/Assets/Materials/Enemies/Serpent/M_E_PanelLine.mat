@@ -1,0 +1,19 @@
+# GreenWare
+# M_E_PanelLine.mat
+# 蛇の節の合わせ目。溝は擦れないので周りの板より滑らかにして、
+# 同じ色のまま «別の部品» として分かれて見えるようにする。
+version = 1
+name = 'M_E_PanelLine'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.11, 0.12, 0.14, 1.0 ]
+metallic = 1.0
+roughness = 0.24
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

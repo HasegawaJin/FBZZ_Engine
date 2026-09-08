@@ -41,20 +41,25 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Combat/BossBreakComponent.hpp>
 #include <Scripts/Combat/BossTelegraph.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
+#include <Scripts/Combat/PlayerHit.hpp>
 #include <Scripts/Combat/SerpentApertureComponent.hpp>
 #include <Scripts/Combat/SerpentBodyComponent.hpp>
 #include <Scripts/Combat/LaserVolleyComponent.hpp>
 #include <Scripts/Combat/SerpentDeathVfxComponent.hpp>
 #include <Scripts/Combat/SerpentPathComponent.hpp>
-#include <Scripts/Combat/SerpentPolarityRigComponent.hpp>
+#include <Scripts/Combat/SerpentRigComponent.hpp>
 #include <Scripts/Combat/SerpentSpineComponent.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
+#include <Scripts/Camera/BossCameraDirectorComponent.hpp>
+#include <Scripts/Utils/PlayerActionState.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
+#include <Scripts/Vfx/BladeTrailComponent.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -71,15 +76,15 @@ class SerpentAiComponent : public Script {
     FBZZ_SCRIPT(SerpentAiComponent)
 
 public:
-    FBZZ_GROUP("Engage")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
+    FBZZ_GROUP("戦闘開始")
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
     FBZZ_FIELD_RANGE(float, engageRadius, 24.0f, "Engage Radius", 0.0f, 60.0f)
     FBZZ_TOOLTIP("プレイヤーがこの距離まで来たら起きる。0 で «置いた瞬間から戦っている»")
     FBZZ_FIELD_RANGE(float, engageDelay, 1.0f, "Engage Delay", 0.0f, 8.0f)
     FBZZ_TOOLTIP("起きてから最初の口が光るまで。踏み込んだ足が止まる時間")
 
-    FBZZ_GROUP("Travel")
-    FBZZ_FIELD_RANGE(float, exposedMeters, 11.2f, "Exposed", 2.0f, 24.0f)
+    FBZZ_GROUP("移動軌跡")
+    FBZZ_FIELD_RANGE(float, exposedMeters, 11.2f, "露出", 2.0f, 24.0f)
     FBZZ_TOOLTIP("地上に出す弧の長さ。14 節 = 約 11 m (boss-serpent.md「床の穴と露出」)")
     FBZZ_FIELD_RANGE(float, holdRatio, 0.88f, "Hold At", 0.1f, 1.0f)
     FBZZ_TOOLTIP("渡りきる手前のどこで構えるか。1.0 だと頭が入る穴に刺さったまま止まる")
@@ -104,8 +109,8 @@ public:
                  "頭が床へ突っ込む角度になり、«睨んでいる» に見えない")
 
     FBZZ_GROUP("Attacks")
-    FBZZ_FIELD_RANGE(float, attackIntervalMin, 2.2f, "Interval Min", 0.2f, 12.0f)
-    FBZZ_FIELD_RANGE(float, attackIntervalMax, 3.4f, "Interval Max", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackIntervalMin, 2.2f, "間隔の下限", 0.2f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackIntervalMax, 3.4f, "間隔の上限", 0.2f, 12.0f)
 
     // 突き上げ ─ 足元の穴から節が跳ね上がる。予兆は穴の縁が光る (18F)。
     //
@@ -117,61 +122,69 @@ public:
     //     避けるというより «歩き続けていれば当たらない» になる。足元とその周りを
     //     まとめて塞げば «立てる場所» が消え、どこへ動くかを選ばされる。
     FBZZ_GROUP("Thrust")
-    FBZZ_FIELD_RANGE(float, thrustTelegraph, 0.90f, "Telegraph", 0.1f, 4.0f)
-    FBZZ_FIELD_RANGE(float, thrustRadius, 3.0f, "Radius", 0.5f, 10.0f)
-    FBZZ_FIELD_RANGE_INT(int, thrustDamage, 1, "Damage", 0, 100)
-    FBZZ_FIELD_RANGE_INT(int, thrustHoles, 3, "Holes", 1, 3)
+    FBZZ_FIELD_RANGE(float, thrustTelegraph, 0.90f, "予告", 0.1f, 4.0f)
+    FBZZ_FIELD_RANGE(float, thrustRadius, 4.0f, "半径", 0.5f, 10.0f)
+    FBZZ_TOOLTIP("口の中心から届く距離 [m]。4.0 は «内輪の隣どうし (8.00 m) の円が"
+                 "ちょうど接する» 値で、6 口が連続した壁になる。外輪 (9.89 m) には"
+                 "1.89 m の隙間が残るので «内側は塞がるが外側は抜けられる» と読める。"
+                 "5.0 を超えると外輪まで塞がって避け方が無くなる。"
+                 "外輪から届く半径は 16 + ここ ─ 壁 (22 m) まで塞ぐには 6.0 要る")
+    FBZZ_FIELD_RANGE_INT(int, thrustDamage, 1, "ダメージ", 0, 100)
+    FBZZ_FIELD_RANGE_INT(int, thrustHoles, 3, "穴", 1, 3)
     FBZZ_TOOLTIP("同時に吹く口の数。足元に近い順に選ぶ。予兆の枠が 3 つなので上限も 3")
     FBZZ_FIELD_RANGE_INT(int, thrustHolesFromPhase, 2, "Multi From Phase", 1, 3)
     FBZZ_TOOLTIP("複数同時にするのはこの段から。第 1 段は 1 口のまま")
 
     // 薙ぎ ─ 胴が一度しなってから水平に薙ぐ (27F → 15F)。
-    FBZZ_GROUP("Sweep")
-    FBZZ_FIELD_RANGE(float, sweepTelegraph, 0.90f, "Telegraph", 0.1f, 4.0f)
-    FBZZ_FIELD_RANGE(float, sweepSeconds, 0.50f, "Sweep", 0.1f, 3.0f)
-    FBZZ_FIELD_RANGE(float, sweepRadius, 2.6f, "Radius", 0.5f, 10.0f)
-    FBZZ_FIELD_RANGE(float, sweepReach, 3.5f, "Reach", 0.0f, 12.0f)
+    FBZZ_GROUP("薙ぎ")
+    FBZZ_FIELD_RANGE(float, sweepTelegraph, 0.90f, "予告", 0.1f, 4.0f)
+    FBZZ_FIELD_RANGE(float, sweepSeconds, 0.50f, "薙ぎ", 0.1f, 3.0f)
+    FBZZ_FIELD_RANGE(float, sweepRadius, 2.6f, "半径", 0.5f, 10.0f)
+    FBZZ_FIELD_RANGE(float, sweepReach, 3.5f, "届く距離", 0.0f, 12.0f)
     FBZZ_TOOLTIP("薙ぐあいだ胴が経路上を前後する距離。«しなり» の見た目そのもの")
-    FBZZ_FIELD_RANGE_INT(int, sweepDamage, 1, "Damage", 0, 100)
+    FBZZ_FIELD_RANGE_INT(int, sweepDamage, 1, "ダメージ", 0, 100)
+    FBZZ_FIELD_RANGE_INT(int, sweepTrailJoint, 4, "Trail Joint", 1, 12)
+    FBZZ_TOOLTIP("軌跡の «鍔» 側にする節の番号 (0 = 頭)。大きいほど帯が太くなる。"
+                 "節の間隔より広く取ると、胴のしなりが帯の «ねじれ» として出る")
 
     // 頭の突進 ─ 喉のコアが溜まってから 8 m を詰め、外すと硬直する (21F → 10F → 36F)。
     FBZZ_GROUP("Lunge")
-    FBZZ_FIELD_RANGE(float, lungeTelegraph, 0.70f, "Telegraph", 0.1f, 4.0f)
-    FBZZ_FIELD_RANGE(float, lungeMeters, 8.0f, "Distance", 1.0f, 20.0f)
-    FBZZ_FIELD_RANGE(float, lungeSpeedScale, 3.2f, "Speed", 1.0f, 10.0f)
-    FBZZ_FIELD_RANGE(float, lungeRadius, 2.4f, "Radius", 0.5f, 10.0f)
-    FBZZ_FIELD_RANGE_INT(int, lungeDamage, 2, "Damage", 0, 100)
-    FBZZ_FIELD_RANGE(float, lungeRecover, 1.20f, "Recover", 0.0f, 5.0f)
+    FBZZ_FIELD_RANGE(float, lungeTelegraph, 0.70f, "予告", 0.1f, 4.0f)
+    FBZZ_FIELD_RANGE(float, lungeMeters, 8.0f, "距離", 1.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, lungeSpeedScale, 3.2f, "速さ", 1.0f, 10.0f)
+    FBZZ_FIELD_RANGE(float, lungeRadius, 2.4f, "半径", 0.5f, 10.0f)
+    FBZZ_FIELD_RANGE_INT(int, lungeDamage, 2, "ダメージ", 0, 100)
+    FBZZ_FIELD_RANGE(float, lungeRecover, 1.20f, "復帰", 0.0f, 5.0f)
     FBZZ_TOOLTIP("外したときの硬直。36F。頭が地上に居る唯一の «触れる» 時間")
 
     // せり上がり ─ 弧を伸ばして山を上げ、一息で戻して胴を床へ叩きつける。
-    FBZZ_GROUP("Slam")
-    FBZZ_FIELD_RANGE(float, slamTelegraph, 0.85f, "Rise", 0.1f, 4.0f)
+    FBZZ_GROUP("叩きつけ")
+    FBZZ_FIELD_RANGE(float, slamTelegraph, 0.85f, "立ち上がり", 0.1f, 4.0f)
     FBZZ_TOOLTIP("せり上がりきるまで。«上がっていること» 自体が予兆なので、"
                  "円や線より先にこの時間が読ませる仕事をする")
     FBZZ_FIELD_RANGE(float, slamRise, 5.0f, "Rise Meters", 0.0f, 14.0f)
     FBZZ_TOOLTIP("弧長に足す長さ。弦は口で固定なので、足したぶんが山の高さになる "
                  "(11.2 → 16.2 m で山 3.3 → 5.4 m)")
-    FBZZ_FIELD_RANGE(float, slamHold, 0.16f, "Hold", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, slamHold, 0.16f, "保持", 0.0f, 2.0f)
     FBZZ_TOOLTIP("上げきってから落とすまでの «溜め»。0 だと折り返しが読めない")
-    FBZZ_FIELD_RANGE(float, slamSeconds, 0.16f, "Slam", 0.05f, 2.0f)
-    FBZZ_FIELD_RANGE(float, slamRadius, 2.6f, "Radius", 0.5f, 10.0f)
-    FBZZ_FIELD_RANGE_INT(int, slamDamage, 2, "Damage", 0, 100)
-    FBZZ_FIELD_RANGE(float, slamRecover, 0.45f, "Recover", 0.0f, 3.0f)
+    FBZZ_FIELD_RANGE(float, slamSeconds, 0.16f, "叩きつけ", 0.05f, 2.0f)
+    FBZZ_FIELD_RANGE(float, slamRadius, 2.6f, "半径", 0.5f, 10.0f)
+    FBZZ_FIELD_RANGE_INT(int, slamDamage, 2, "ダメージ", 0, 100)
+    FBZZ_FIELD_RANGE(float, slamRecover, 0.45f, "復帰", 0.0f, 3.0f)
 
     // 囲い込み ─ 短い弧を 2 本繋いで «壁» にし、プレイヤーを角に閉じ込める。
     FBZZ_GROUP("Enclose")
-    FBZZ_FIELD(bool, enclose, true, "Enable")
+    FBZZ_FIELD(bool, enclose, true, "有効にする")
     FBZZ_FIELD_RANGE(float, cageExposed, 9.5f, "Wall Arc", 4.0f, 16.0f)
     FBZZ_TOOLTIP("壁 1 枚ぶんの弧長。2 枚 + 継ぎ目のリンクが胴 (24 m) に収まる必要がある。"
                  "長くすると壁は高くなるが、奥の壁が床下に残って «檻» にならない")
-    FBZZ_FIELD_RANGE(float, cageSeconds, 7.0f, "Hold", 1.0f, 30.0f)
+    FBZZ_FIELD_RANGE(float, cageSeconds, 7.0f, "保持", 1.0f, 30.0f)
     FBZZ_TOOLTIP("檻が立っている時間。ここが «出口を自分で作る» ための持ち時間")
     FBZZ_FIELD_RANGE(float, cageWarn, 1.6f, "Warn", 0.0f, 6.0f)
     FBZZ_TOOLTIP("締め上げの前触れを出す残り時間。壁が波打ち始める")
     FBZZ_FIELD_RANGE(float, cageRadius, 2.6f, "Snap Radius", 0.5f, 10.0f)
     FBZZ_FIELD_RANGE_INT(int, cageDamage, 2, "Snap Damage", 0, 100)
-    FBZZ_FIELD_RANGE(float, cageCooldown, 16.0f, "Cooldown", 0.0f, 90.0f)
+    FBZZ_FIELD_RANGE(float, cageCooldown, 16.0f, "クールダウン", 0.0f, 90.0f)
 
     // 連続突進 ─ 口から口へ «走り抜ける»。渡りそのものを手にした形。
     //
@@ -180,18 +193,18 @@ public:
     //     どこにも無い。同じ経路を 10 倍の速さで走らせれば、床に伏せた 11 m の弧が
     //     そのまま «避けなければ当たるもの» になる。新しい判定も新しい経路も要らない。
     FBZZ_GROUP("Rush")
-    FBZZ_FIELD(bool, rush, true, "Enable")
+    FBZZ_FIELD(bool, rush, true, "有効にする")
     FBZZ_FIELD_RANGE_INT(int, rushHops, 3, "Hops", 1, 6)
     FBZZ_TOOLTIP("一息で走り抜ける口の数。3 なら «出て・潜って» を 3 回繰り返す")
-    FBZZ_FIELD_RANGE(float, rushTelegraph, 0.90f, "Telegraph", 0.1f, 4.0f)
+    FBZZ_FIELD_RANGE(float, rushTelegraph, 0.90f, "予告", 0.1f, 4.0f)
     FBZZ_TOOLTIP("走り出すまでの溜め。この間に通り道の口がすべて開くので、"
                  "光った縁の並びが «どこを走るか» の予兆そのものになる")
-    FBZZ_FIELD_RANGE(float, rushSpeedScale, 2.60f, "Speed", 1.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, rushSpeedScale, 2.60f, "速さ", 1.0f, 8.0f)
     FBZZ_TOOLTIP("走るときの速さの倍率。既定で約 15 m/s ─ 歩いて避けられない速さ")
-    FBZZ_FIELD_RANGE(float, rushRadius, 2.20f, "Radius", 0.5f, 10.0f)
-    FBZZ_FIELD_RANGE_INT(int, rushDamage, 2, "Damage", 0, 100)
-    FBZZ_FIELD_RANGE(float, rushCooldown, 14.0f, "Cooldown", 0.0f, 90.0f)
-    FBZZ_FIELD_RANGE_INT(int, rushFromPhase, 2, "From Phase", 1, 3)
+    FBZZ_FIELD_RANGE(float, rushRadius, 2.20f, "半径", 0.5f, 10.0f)
+    FBZZ_FIELD_RANGE_INT(int, rushDamage, 2, "ダメージ", 0, 100)
+    FBZZ_FIELD_RANGE(float, rushCooldown, 14.0f, "クールダウン", 0.0f, 90.0f)
+    FBZZ_FIELD_RANGE_INT(int, rushFromPhase, 2, "開始位相", 1, 3)
     FBZZ_TOOLTIP("この段から出す。第 1 段は «盤面を作る練習の段» なので既定は 2")
 
     // 構えている間、頭がプレイヤーの正面へ滑る。
@@ -203,8 +216,8 @@ public:
     // WHY それでも渡りきるか: 追うだけにすると弧の上で永久に止まり、«止まらない» が
     //     壊れる。渡りの進みは «床» として持ち、追うのはその前だけにする。
     FBZZ_GROUP("Stalk")
-    FBZZ_FIELD(bool, stalk, true, "Enable")
-    FBZZ_FIELD_RANGE(float, stalkSpeedScale, 1.10f, "Speed", 0.5f, 8.0f)
+    FBZZ_FIELD(bool, stalk, true, "有効にする")
+    FBZZ_FIELD_RANGE(float, stalkSpeedScale, 1.10f, "速さ", 0.5f, 8.0f)
     FBZZ_TOOLTIP("狙いの位置へ滑る速さの倍率。渡りの «床» より速くないと追いつけない")
     FBZZ_FIELD_RANGE(float, stalkLead, 1.20f, "Lead", 0.0f, 6.0f)
     FBZZ_TOOLTIP("プレイヤーの弧長より «先» を狙う量 [m]。0 で真横に張り付く")
@@ -218,7 +231,7 @@ public:
     // WHY 柱と槍を 1 つの手にまとめないか: 柱は床 (自分が通る口) から、槍は頭から出る。
     //     出どころが違えば «どこを見て避けるか» も違うので、別の手として覚えさせる。
     FBZZ_GROUP("Laser")
-    FBZZ_FIELD(bool, laser, true, "Enable")
+    FBZZ_FIELD(bool, laser, true, "有効にする")
     FBZZ_FIELD_RANGE_INT(int, laserColumns, 4, "Columns", 1, 8)
     FBZZ_TOOLTIP("同時に立てる柱の数。プレイヤーに近い口から選ぶので、多いほど逃げ場が減る")
     FBZZ_FIELD_RANGE(float, laserCooldown, 11.0f, "Column Cooldown", 0.0f, 90.0f)
@@ -227,7 +240,30 @@ public:
     FBZZ_FIELD_RANGE(float, lanceRange, 26.0f, "Lance Range", 4.0f, 60.0f)
     FBZZ_TOOLTIP("槍が伸びる長さ [m]。狙った先で止めず突き抜けさせる ─ "
                  "«線» にしないと避ける方向が読めない")
-    FBZZ_FIELD_RANGE_INT(int, lanceFromPhase, 2, "Lance From Phase", 1, 3)
+    FBZZ_FIELD_RANGE_INT(int, lanceFromPhase, 1, "Lance From Phase", 1, 3)
+    FBZZ_TOOLTIP("この段から槍を吐く。1 でなければならない ─ 口は内輪 (r=8) と"
+                 "外輪 (r=16) にしか無く、胴が来られるのは中心から 6.93 m より外。"
+                 "第 1 段で槍を止めると «場の中心 (半径 4.3 m)» と «壁際 (20 m 超)» が"
+                 "どの手も届かない完全な安全地帯になり、そこで待つのが最適手になる")
+
+    // 扇 ─ 頭から全方位へ等間隔に線を出す。«逃げる方向» そのものを塞ぐ手。
+    //
+    // WHY 近〜中距離だけで使うか (外周には効かない): 隙間の幅は «2 · 距離 · sin(π/本数)»
+    //     なので、6 本なら 5 m 先で 5.0 m・15 m 先で 15 m 空く。壁際 (頭から 15 m 前後)
+    //     の相手には歩いて抜けられる幅にしかならず、«塞いだ» ことにならない。
+    //     遠くを否定するのは槍 (狙って撃つ 1 本) の仕事で、扇は «近づいた相手の
+    //     逃げ道を消す» ための手。
+    FBZZ_GROUP("Fan")
+    FBZZ_FIELD(bool, fan, true, "有効にする")
+    FBZZ_FIELD_RANGE_INT(int, fanBeams, 7, "ビーム", 3, 12)
+    FBZZ_TOOLTIP("同時に出す線の数。奇数にすると隙間が «頭の正面» に来ないので、"
+                 "«下がれば安全» が成立しない。7 本なら 6 m 先で隙間 5.2 m")
+    FBZZ_FIELD_RANGE(float, fanRange, 22.0f, "範囲", 4.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, fanReach, 11.0f, "Use Within", 2.0f, 30.0f)
+    FBZZ_TOOLTIP("頭からこの距離までに相手が居るときだけ出す。遠いと隙間が広がって"
+                 "«歩いて抜けられる扇» になり、避ける手を教えられない")
+    FBZZ_FIELD_RANGE(float, fanCooldown, 13.0f, "クールダウン", 0.0f, 90.0f)
+    FBZZ_FIELD_RANGE_INT(int, fanFromPhase, 2, "開始位相", 1, 3)
 
     // 速い胴は触れると痛い。
     //
@@ -236,15 +272,15 @@ public:
     //     決まっていれば、覚えることは «速い胴は避ける／遅い胴は斬る» の 1 行で済む。
     //     手ごとの当たり (薙ぎ・叩きつけ・走り) とは別に、独立した冷却で数える。
     FBZZ_GROUP("Contact")
-    FBZZ_FIELD(bool, contactDamage, true, "Enable")
+    FBZZ_FIELD(bool, contactDamage, true, "有効にする")
     FBZZ_FIELD_RANGE(float, contactSpeed, 8.0f, "Fast Above", 0.5f, 30.0f)
     FBZZ_TOOLTIP("この速さ [m/s] を超えて動いている胴だけが当たる。"
                  "構えの渡りは 1.4 m/s 前後なので、既定では斬っても痛くない")
-    FBZZ_FIELD_RANGE(float, contactRadius, 1.60f, "Radius", 0.3f, 6.0f)
+    FBZZ_FIELD_RANGE(float, contactRadius, 1.60f, "半径", 0.3f, 6.0f)
     FBZZ_TOOLTIP("節の芯からの距離。手の判定 (2.2〜2.6) より小さくして、"
                  "«掠った» で毎回持っていかれないようにする")
-    FBZZ_FIELD_RANGE_INT(int, contactDamageAmount, 1, "Damage", 0, 100)
-    FBZZ_FIELD_RANGE(float, contactCooldown, 0.90f, "Cooldown", 0.1f, 5.0f)
+    FBZZ_FIELD_RANGE_INT(int, contactDamageAmount, 1, "ダメージ", 0, 100)
+    FBZZ_FIELD_RANGE(float, contactCooldown, 0.90f, "クールダウン", 0.1f, 5.0f)
 
     // 段が進むほど盤面が速く流れる。
     FBZZ_GROUP("Pressure")
@@ -252,16 +288,30 @@ public:
     FBZZ_TOOLTIP("段が 1 つ上がるごとに «渡りの速さ» と «手の頻度» を何割上げるか。"
                  "0.28 なら第 3 段で 1.56 倍 ─ 極を乗せた節が運ばれて消えるまでの"
                  "持ち時間がそのぶん短くなる")
+    FBZZ_FIELD_RANGE(float, phaseTelegraphCut, 0.15f, "Telegraph Cut / Phase", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("段が 1 つ上がるごとに予兆を何割詰めるか。"
+                 "0.15 なら第 3 段で 0.72 倍 ─ 噛みつきの 0.70 秒が 0.50 秒になる。"
+                 "«手の頻度» だけを上げても、覚えた避け方はそのまま通ってしまう。"
+                 "予兆そのものを詰めると «同じ手が終盤で再び難しくなる»")
+    FBZZ_FIELD_RANGE(float, telegraphFloor, 0.34f, "Telegraph Floor", 0.1f, 1.0f)
+    FBZZ_TOOLTIP("詰めても割らない下限 [秒]。人が «見てから» 動ける限界がここ ─ "
+                 "これを下回ると読む手ではなく暗記する手になる")
 
-    // 選択潜行 ─ 極を乗せた節を、対にされる前に床下へ引く。
-    FBZZ_GROUP("Evade")
-    FBZZ_FIELD(bool, evadeCharged, true, "Evade Charged")
-    FBZZ_TOOLTIP("極が乗った節が地上に居ると、構えを切り上げて渡り始める。"
-                 "ボスは極を塗り替えないので、妨害はこれだけ (boss-serpent.md)")
-    FBZZ_FIELD_RANGE(float, evadeGrace, 2.4f, "Grace", 0.0f, 10.0f)
-    FBZZ_TOOLTIP("1 節目が乗ってから逃げ出すまでの猶予。2 節目を仕込む持ち時間そのもの")
-    FBZZ_FIELD_RANGE(float, evadeSpeedScale, 1.7f, "Speed", 0.5f, 5.0f)
-    FBZZ_TOOLTIP("逃げるときの渡りの速さ。普段の渡りより速いことが «逃げた» の合図")
+    // 居座り罰 ─ «どの手の射程にも入っていない» 時間を数え、続いたら遠距離の手を通す。
+    //
+    // WHY 距離ではなく «届いていない時間» で見るか: 安全地帯は 1 箇所ではない
+    //     (場の中心と壁際の 2 つ) うえ、どこが安全かは段と冷却で毎秒変わる。
+    //     «今どこに立っているか» を条件にすると、その 2 箇所を名指しで書くことになり、
+    //     口の数や半径を触った瞬間に嘘になる。«実際に届いていない» を数えれば、
+    //     盤面をどう変えても «待てば安全» だけが原理的に消える。
+    FBZZ_GROUP("Stall")
+    FBZZ_FIELD(bool, punishStall, true, "Punish Camping")
+    FBZZ_FIELD_RANGE(float, stallSeconds, 5.0f, "Grace", 1.0f, 20.0f)
+    FBZZ_TOOLTIP("どの手も届かない時間がこれを超えたら、冷却を無視して遠距離の手を通す")
+    FBZZ_FIELD_RANGE(float, stallReach, 3.0f, "Threat Margin", 0.0f, 10.0f)
+    FBZZ_TOOLTIP("«届いている» と見なす余裕 [m]。0 だと当たる寸前まで «安全» と"
+                 "数えることになり、罰が遅れる")
+
 
     // 予兆 ─ 地面のデカール。ボス 1 と同じ «円と帯» の 2 形だけ (BossTelegraph.hpp)。
     //
@@ -269,29 +319,55 @@ public:
     //   蛇は 1 度に 2 つ出す手がある (檻の壁 2 枚)。ボス 1 の «1 枚だけ持つ» 前提を
     //   崩さずに枠を増やすには別の持ち主が要る。手の形を持っているのはここなので、
     //   ここが描く ─ 付け忘れると予兆だけ出ない、という組み立てミスも消える。
-    FBZZ_GROUP("Telegraph")
+    FBZZ_GROUP("予告")
     FBZZ_FIELD(bool, showTelegraph, true, "Show Telegraph")
     FBZZ_FIELD_FILE(telegraphMaterial, "Assets/Materials/Decal/DecalBossTelegraph.mat",
                     "Material", ".mat")
-    FBZZ_FIELD_RANGE(float, telegraphDepth, 6.0f, "Depth", 0.2f, 30.0f)
+    FBZZ_FIELD_RANGE(float, telegraphDepth, 6.0f, "奥行き", 0.2f, 30.0f)
     FBZZ_TOOLTIP("投影の厚み [m]。薄いと坂で切れ、厚いと段差の裏にも回り込む")
-    FBZZ_FIELD_RANGE(float, telegraphFadeIn, 0.12f, "Fade In", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, telegraphBlinkHz, 6.0f, "Blink Hz", 0.0f, 20.0f)
-    FBZZ_TOOLTIP("着弾間際の明滅。0 で明滅なし")
-    FBZZ_FIELD_RANGE(float, telegraphBlinkFrom, 0.70f, "Blink From", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, telegraphStripeScrollHz, 0.45f, "Stripe Scroll", -4.0f, 4.0f)
+    FBZZ_FIELD_RANGE(float, telegraphFadeIn, 0.12f, "フェードイン", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE_INT(int, telegraphPips, 3, "ピップの数", 0, 8)
+    FBZZ_TOOLTIP("枠に刻む拍の数。明るい弧が目盛りを 1 つ越えるたびに 1 拍光る。"
+                 "3 なら «3・2・1» で数えられる。0 で拍なし。"
+                 "進みを等分するので、予兆の尺が段で詰まっても拍の数は変わらない")
+    FBZZ_FIELD_RANGE(float, telegraphStrikeFrom, 0.82f, "打撃の起点", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("回避窓の入口。ここから枠が白へ寄って太り、斜線の流れが止まる。"
+                 "0.82 は予兆 0.7〜0.9 秒に対して最後の 0.13〜0.16 秒 ─ "
+                 "«量» ではなく «質» が変わることで «今» が読める")
+    FBZZ_FIELD_RANGE(float, telegraphStripeScrollHz, 0.45f, "縞のスクロール", -4.0f, 4.0f)
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(std::string, debugState, "Dormant", "State")
-    FBZZ_FIELD_READ_ONLY(std::string, debugRoute, "-", "Route")
+    // 弾いて崩す (Docs/break-parry.md)。噛みつき (Lunge) と薙ぎ (Sweep) は弾ける。
+    // 崩しが満ちたら Toppled へ落ち、その間の とどめ で節がまとめて飛ぶ。
+    FBZZ_GROUP("Break")
+    FBZZ_FIELD_RANGE_INT(int, executeSegments, 4, "Execute Segments", 1, 12)
+    FBZZ_TOOLTIP("とどめ 1 回で飛ぶ節の数。28 節 → 6 節が決着なので、既定なら 5〜6 回")
+    FBZZ_FIELD_RANGE(float, parryRecoverScale, 1.6f, "Parried Recover x", 0.5f, 4.0f)
+    FBZZ_TOOLTIP("噛みつきを弾かれたときの硬直の倍率 (外したときの Recover に掛かる)")
+
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugState, "Dormant", "状態")
+    FBZZ_FIELD_READ_ONLY(std::string, debugRoute, "-", "経路")
     FBZZ_FIELD_READ_ONLY(float, debugTimer, 0.0f, "Timer")
     FBZZ_FIELD(bool, drawTelegraph, false, "Draw Debug Lines")
     FBZZ_TOOLTIP("予兆の形を線でも出す。エディタでしか見えないので、確認用")
 
     /// 戦闘が始まっているか。IBoss::IsEngaged() がそのまま読む。
     [[nodiscard]] bool IsEngaged() const { return m_state != State::Dormant; }
-    /// 硬直中か。突進を外した後の 36F。
-    [[nodiscard]] bool IsStaggered() const { return m_state == State::LungeRecover; }
+    /// 硬直中か。突進を外した後の 36F と、崩しで倒れている間。
+    [[nodiscard]] bool IsStaggered() const
+    { return m_state == State::LungeRecover || m_state == State::Toppled; }
+    /// 崩しが満ちて倒れているか。この間だけ とどめ が通る。
+    [[nodiscard]] bool IsToppled() const { return m_state == State::Toppled; }
+
+    /// 崩しが満ちた。seconds 秒のあいだ胴を止めて晒す。
+    void Topple(float seconds);
+    /// 倒れているのを起こす (時間切れ・とどめ)。
+    void EndTopple();
+    /// 一撃を弾かれた。噛みつきなら硬直へ、薙ぎなら止めて構え直す。
+    void OnParried(const Vector3& hitPoint);
+    /// 倒れている胴の節へ とどめ。当たった節から尾の側へ executeSegments 本を飛ばす。
+    /// 飛ばせたら true。倒れていない・節でない・もう飛んでいるなら false。
+    bool Execute(GameObject* part, const Vector3& from);
 
     void OnStart() override;
     void OnUpdate() override;
@@ -320,6 +396,7 @@ private:
         Rush,           ///< 口から口へ走り抜ける。胴そのものが当たる
         Laser,          ///< 柱か槍を撃っている。線の管理は LaserVolleyComponent
         Transit,        ///< 口へ潜り、床下を通って別の口から出る
+        Toppled,        ///< 崩しが満ちて晒している。とどめが通る唯一の時間
         Dead,
     };
 
@@ -327,10 +404,6 @@ private:
     [[nodiscard]] SerpentSpineComponent* Spine() const { return scene.GetScript<SerpentSpineComponent>(); }
     [[nodiscard]] SerpentBodyComponent*  Body()  const { return scene.GetScript<SerpentBodyComponent>(); }
     [[nodiscard]] SerpentApertureComponent* Aperture() const;
-    [[nodiscard]] SerpentPolarityRigComponent* PolarityRig() const
-    {
-        return scene.GetScript<SerpentPolarityRigComponent>();
-    }
     [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag); }
     [[nodiscard]] bool IsAlive() const;
 
@@ -343,8 +416,7 @@ private:
     ///
     /// WHY 口を 2 つ選ぶか: 潜った口からそのまま出ると «穴を覗いて引っ込んだ» に
     ///     見える。企画の潜行は «別の穴から出る» で、床下のリンクがその移動そのもの。
-    /// @param evading 極を乗せられた節から逃げる渡りか。速さと «見え» が変わる。
-    bool BeginTransit(bool evading = false);
+    bool BeginTransit();
 
     /// 檻を組める盤面か。
     [[nodiscard]] bool CanEnclose() const;
@@ -368,11 +440,53 @@ private:
         return scene.GetScript<LaserVolleyComponent>();
     }
     /// 床の開口から柱を立てる。@ret 始めたら true。
-    bool BeginColumns();
+    /// @param force 冷却と段のゲートを無視する (居座り罰)。
+    bool BeginColumns(bool force = false);
     /// 頭から槍を吐く。@ret 始めたら true。
-    bool BeginLance();
+    bool BeginLance(bool force = false);
+    /// 頭から全方位へ扇を撃つ。近づいた相手の «逃げる方向» を塞ぐ。@ret 始めたら true。
+    bool BeginFan(bool force = false);
+
+    /// 予兆に掛かる倍率。段が上がるほど詰まる。
+    [[nodiscard]] float TelegraphScale() const;
+    /// 予兆へ入る。尺を控えてから状態へ落とす。
+    ///
+    /// WHY 尺を控えるか: 予兆の進み (円が満ちる / 帯が濃くなる) は «残り時間 ÷ 尺»
+    ///     で出している。段で尺を詰めるようになった以上、Inspector の値で割ると
+    ///     進みが 0 ではなく «1 − 倍率» から始まる ─ 第 3 段の予兆が出た瞬間に
+    ///     3 割満ちた状態で現れることになる。
+    void EnterTelegraph(State state, float seconds);
+    /// 今の予兆の進み [0,1]。0 = 出たばかり / 1 = 着弾。
+    [[nodiscard]] float TelegraphProgress() const
+    {
+        return 1.0f - Clamp01(m_timer / Max(m_telegraph, 0.1f));
+    }
+    /// 今プレイヤーが «どれかの手の射程» に居るか。居座り罰がこれを数える。
+    ///
+    /// WHY 手ごとに書き下すか: 射程は «胴からの距離» と «口からの距離» の 2 系統しか
+    ///     無い。前者は薙ぎ・叩きつけ・突進・接触、後者は突き上げと柱。どちらにも
+    ///     入っていない位置が «待てば安全な場所» そのものになる。
+    [[nodiscard]] bool PlayerInReach() const;
+    /// 居座りを数え、閾値を超えたら遠距離の手を通す。@ret 手を出したら true。
+    bool TickStall(float dt);
     /// 走る道の «残り» を帯で出す。1 本ずつ出すと、3 つ先まで読めない。
     void PushRushTelegraph(float progress);
+    /// 地上に出ている胴が床を «削っている» 点を等間隔で置く。
+    ///
+    /// WHY 距離で刻むか: 走りは 15 m/s なので、フレームごとに置くと 0.25 m 間隔の
+    ///     «壁» になり、秒ごとに置くと 15 m 空いて線に見えない。距離で刻めば
+    ///     速さが変わっても «跡の密度» は同じままになる。
+    void TickRushWake();
+    // 弧の «足元» (胴が床に刺さっている 2 点) の常時の土煙は、口の側が持つ
+    // (SerpentApertureComponent::ReportPassage)。
+    //
+    // WHY ここに置かないか: 弧の両端はそのまま 2 つの口の中心なので、AI が別に撒くと
+    //     同じ場所へ 2 系統が重なって枠を食い合う。しかも AI 側からは «その口を今
+    //     胴が占めているか» を弧長でしか見られず、まだ誰も居ない «入る口» にも
+    //     撒いてしまう。口の側なら «頭と尾で挟まれている口» だけに絞れる。
+
+    /// 薙いでいる胴の下に埃を置く。帯 (BladeTrail) だけだと床を舐めた事実が残らない。
+    void TickSweepDust(float dt);
     /// 段が上がるほど盤面が速く流れる倍率。
     [[nodiscard]] float PhasePressure() const;
     /// 速く動いている胴に触れていたら痛い。手ごとの当たりとは別に数える。
@@ -397,7 +511,8 @@ private:
     [[nodiscard]] float HoldArc() const;
 
     void TickSettle(float dt);
-    void BeginThrust();
+    /// 足元の口から突き上げる。届く口が 1 つも無ければ出さない。@ret 始めたら true。
+    bool BeginThrust();
     void BeginSweep();
     void BeginLunge();
 
@@ -419,23 +534,39 @@ private:
     /// 次に出てくる口を «今» 決めて開けておく。
     ///
     /// WHY 渡り始めてから開けないか: 構えの位置から口までは約 12 m で、羽が開くのに
-    ///     要る 1.2 秒とほぼ同じ。逃げの渡り (速い) では間に合わず、頭が縁の手前で
+    ///     要る 1.2 秒とほぼ同じ。渡りが速いと間に合わず、頭が縁の手前で
     ///     停まる ─ 胴ごと止まって見える。先に開けておけば待つ必要が無く、
     ///     光っている縁がそのまま «次はここから出る» の予兆になる。
     void PrepareNextExit();
 
     void ClearTelegraphs() { m_telegraphCount = 0; }
     void PushTelegraphCircle(const Vector3& center, float radius, float progress);
+    /// @param travels 帯に沿って «走ってくる» 手か (薙ぎ・噛みつき・走り)。
+    ///                false なら一斉に落ちる / 立つ (叩きつけ・檻)。
     void PushTelegraphLine(const Vector3& from, const Vector3& to, float halfWidth,
-                           float progress);
+                           float progress, bool travels = false);
     /// 予兆のデカールを置く / 畳む。
     void DriveTelegraphDecals();
+    /// 薙いでいる間だけ、頭が通った面を帯にする。
+    void DriveSweepTrail();
+
+    // 薙ぎの軌跡。シーンへは付けず、この AI が内部モジュールとして持つ
+    // (プレイヤーの各モジュールと同じ形)。持ち主が違うだけで中身は斬撃と同一。
+    BladeTrailComponent m_sweepTrail;
+    /// 今の薙ぎでもう Play を呼んだか。毎フレーム呼ぶと窓が開き直って
+    /// Start Delay が効き続け、帯が 1 点も残らない。
+    bool m_sweepTrailLive = false;
     [[nodiscard]] GameObject* EnsureDecal(int slot);
 
     /// 中心から半径 radius 以内のプレイヤーへ 1 度だけ入れる。@ret 入ったら true。
-    bool HitPlayerInSphere(const Vector3& center, float radius, int amount);
+    /// 弾かれたら OnParried へ流す (入ったことにはならない)。
+    bool HitPlayerInSphere(const Vector3& center, float radius, int amount,
+                           PlayerHitKind kind = PlayerHitKind::Unblockable);
     /// 地上に出ている胴のどこかが届いていたら入れる。
-    bool HitPlayerAlongBody(float radius, int amount);
+    bool HitPlayerAlongBody(float radius, int amount,
+                            PlayerHitKind kind = PlayerHitKind::Unblockable);
+    /// 崩しゲージ。無い盤面では nullptr。
+    [[nodiscard]] BossBreakComponent* Break() const { return scene.GetScript<BossBreakComponent>(); }
     void DrawCircle(const Vector3& center, float radius, const Vector4& color) const;
     /// 弧の «床への影»。叩きつけが届く範囲そのもの。
     void DrawArcShadow(const Vector4& color) const;
@@ -443,11 +574,35 @@ private:
     [[nodiscard]] static bool InsideTriangle(const Vector3& p, const Vector3& a, const Vector3& b,
                                              const Vector3& c);
 
-    static constexpr int kTelegraphSlots = 3;
+    /// 予兆の枠。
+    ///
+    /// WHY 6 か: 3 だと «同時に出したい形» の上限がそのまま 3 になり、溢れた分は
+    ///     PushTelegraph* が黙って捨てる。走りは Hops (最大 6) ぶんの帯を出すので、
+    ///     既定の 3 から上げた瞬間に 4 本目以降の道が理由なく見えなくなっていた。
+    static constexpr int kTelegraphSlots = 6;
     /// 口から «出きった» と見なす弧長 [m]。頭 (1.9 m) が縁を越える分。
     static constexpr float kEmergeLead = 2.0f;
     /// 羽が開くのを待つ上限 [s]。開閉に要るのは 1.2 秒なので、その倍以上。
     static constexpr float kMaxWaitSeconds = 3.0f;
+    /// 追い掛けの «隙間 1 m あたり何 m/s 速くするか»。6.6 m/s の上限には約 4 m で届く。
+    static constexpr float kStalkGain = 1.3f;
+    /// 走り出す前に引く距離 [m]。溜めの長さに依らずここで決まる。
+    static constexpr float kRushCoil = 1.2f;
+    /// 走りの削り跡を置く «距離» の刻み [m]。時間で刻むと速さが変わるたびに密度が変わる。
+    static constexpr float kRushWakeStep = 1.8f;
+    /// 薙いでいる間の埃の刻み [s]。薙ぎは 0.5 秒なので 3〜4 発が乗る。
+    static constexpr float kSweepDustInterval = 0.14f;
+    /// 口の «通っている» を鳴らし始める余裕 [m]。頭の当たりが縁から 1.9 m 伸びる分。
+    static constexpr float kPassageMargin = 1.9f;
+    /// 手を振り分ける間合い [m]。胴の一番近い節からの距離で測る。
+    ///
+    /// 近 (≤5.5): 薙ぎ (Reach 3.5 + Radius 2.6) と噛みつき (8 m 詰める) が成立する幅。
+    /// 中 (〜13): 突き上げ (口から 4.0) と柱が届く帯。胴も «寄れば» 届く。
+    /// 遠 (>13): 胴では原理的に届かない ─ 槍だけが仕事をする。
+    static constexpr float kCloseRange = 5.5f;
+    static constexpr float kMidRange   = 13.0f;
+    /// 手の最中でも切らさない狙いの重み。0 にすると首が経路の接線へ戻って «目を離す»。
+    static constexpr float kIdleAimWeight = 0.25f;
 
     State       m_state   = State::Dormant;
     float       m_timer   = 0.0f;
@@ -475,22 +630,32 @@ private:
     /// 走る道の口 (出る口だけ) と、そこへ着く弧長。予兆の帯を引くのに使う。
     std::vector<std::pair<std::string, std::string>> m_rushLegs;
     float       m_rushTo       = 0.0f;
+    /// 走り出す前に控えた弧長。溜めの «引き» はここからの相対で指す。
+    float       m_rushFrom     = 0.0f;
     float       m_rushCooldown = 0.0f;
     /// 前フレームに地上へ出ていたか。口から出るたびに当たりを入れ直す札。
     bool        m_rushSurfaced = false;
     /// 渡りの «床»。追い掛けはこれより前だけで、ここが構える位置に届いたら渡り終わり。
     float       m_cruiseFloor  = 0.0f;
-    /// 前フレームの頭の弧長。胴の速さ (＝触れると痛いか) をここから出す。
-    float       m_lastHeadArc  = 0.0f;
     /// 触れて痛かった後の冷却。手ごとの «1 回だけ» とは別に数える。
     float       m_contactCool  = 0.0f;
+    /// 走りの削り跡を «最後に置いた» 弧長。距離で刻むために持つ。
+    float       m_wakeArc      = 0.0f;
+    bool        m_wakeValid    = false;
+    /// 薙いでいる間の埃を撒く刻み。頻度は距離ではなく時間で足りる。
+    float       m_sweepDust    = 0.0f;
+    /// この噛みつきでもう喉の溜めを出したか。当たりの札 (m_dealt) とは別に持つ。
+    bool        m_biteCharged  = false;
     /// レーザーの冷却と、柱のために開けた口 (撃ち終わったら閉じる)。
     float       m_laserCool    = 0.0f;
     float       m_lanceCool    = 0.0f;
+    float       m_fanCool      = 0.0f;
     std::vector<std::string> m_laserHoles;
+    /// «どの手も届いていない» 時間。居座り罰がこれを見る。
+    float       m_safeFor      = 0.0f;
+    /// 今の予兆の尺 [s]。段で詰めた後の実効値で、進みの分母になる。
+    float       m_telegraph    = 1.0f;
     /// 極が乗った節が地上に居る時間。猶予を超えたら渡り始める。
-    float       m_evade    = 0.0f;
-    bool        m_evading  = false;
     /// 次に出てくる口。先に開けてあるので、渡りで待たされない。
     std::string m_nextExit;
     /// «渡り先が無い» を 1 度だけ言うための札。
@@ -500,6 +665,8 @@ private:
     bool        m_waitWarned  = false;
 
     BossTelegraph m_telegraphs[kTelegraphSlots]{};
+    /// 枠ごとの «時刻»。拍・回避窓・着弾の弾けをここが持つ。
+    BossTelegraphCue m_cues[kTelegraphSlots]{};
     int           m_telegraphCount = 0;
     /// 予兆のデカール。DLL リロードで空へ戻るので、名前で拾い直す。
     EntityRef     m_decals[kTelegraphSlots];
@@ -507,6 +674,11 @@ private:
     float         m_shown[kTelegraphSlots]{};
     /// 沈みきった後に床を閉じたか。撃破の後始末を 1 度だけ通すための札。
     bool        m_sealed    = false;
+    /// 崩しゲージへ «倒れる» を結んだか。
+    bool        m_breakHooked = false;
+    /// 弾かれた反動。この秒数のあいだ頭を m_recoilArc へ押し戻す (蛇に被弾クリップは無い)。
+    float       m_recoil      = 0.0f;
+    float       m_recoilArc   = 0.0f;
 };
 
 FBZZ_REFLECT(SerpentAiComponent)
@@ -548,10 +720,107 @@ inline const char* SerpentAiComponent::StateName() const
     case State::RushWindup:   return "Rush (windup)";
     case State::Rush:         return "Rush";
     case State::Laser:        return "Laser";
-    case State::Transit:      return m_evading ? "Transit (evade)" : "Transit";
+    case State::Transit:      return "Transit";
+    case State::Toppled:      return "Toppled";
     case State::Dead:         return "Dead";
     }
     return "-";
+}
+
+inline void SerpentAiComponent::Topple(float seconds)
+{
+    if (m_state == State::Dormant || m_state == State::Dead || m_state == State::Toppled) return;
+
+    // 出しかけの手を畳む。せり上がっていれば弧を戻し、撃っていれば線を消す。
+    if (m_state == State::RearWindup || m_state == State::Slam) DriveRise(0.0f);
+    if (auto* volley = Laserer()) volley->Stop();
+    for (std::string& hole : m_cage) hole.clear();
+    m_rushLegs.clear();
+
+    Enter(State::Toppled, std::max(seconds, 0.5f));
+    if (auto* brk = Break()) brk->BeginTopple(std::max(seconds, 0.5f));
+
+    if (auto* camera = BossCameraDirectorComponent::Instance()) {
+        auto* spine = Spine();
+        camera->PlayAt(BossShot::Topple,
+                       spine ? spine->HeadPosition() : transform.worldPosition);
+    }
+
+    se::Play(audio, se::kBossChargeCrash);
+    if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.75f);
+    if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.9f, 0.6f, 0.35f);
+    // 床の側の絵。蛇は胴が細いので、コア (6m 級) の 0.7 倍で出す。
+    if (auto* vfx = VfxManagerComponent::Instance())
+        vfx->PlayTopple(transform.worldPosition, 0.7f);
+}
+
+inline void SerpentAiComponent::EndTopple()
+{
+    if (m_state != State::Toppled) return;
+    if (auto* brk = Break()) brk->EndTopple();
+    // 起きた直後は間を置かない。倒れていた 5 秒が既に隙だった。
+    m_attackIn = 0.4f;
+    Enter(State::Settle);
+}
+
+inline void SerpentAiComponent::OnParried(const Vector3& hitPoint)
+{
+    (void)hitPoint;
+    // 蛇には被弾クリップが無い (骨は Script が並べる)。反動は «頭が経路上を後ろへ
+    // 弾かれる» で作る。噛みついた勢いのぶんだけ戻るので、弾いた手応えが体で出る。
+    //
+    // WHY 反動を立てるのを «硬直へ落とす手» に限るか: 消費するのは LungeRecover と
+    //     SlamRecover の 2 状態だけなので、それ以外で弾かれた回 (渡っている最中に
+    //     胴が掠った等) に立てると、m_recoil が使われないまま残る。次にどちらかの
+    //     硬直へ入った瞬間、そのときの位置とは無関係な古い m_recoilArc へ頭が飛ぶ。
+    const bool recoils = m_state == State::Lunge || m_state == State::Sweep;
+    if (recoils)
+        if (auto* spine = Spine()) {
+            m_recoil    = 0.35f;
+            m_recoilArc = spine->HeadArc() - 1.6f;
+        }
+    switch (m_state) {
+    case State::Lunge:
+        // 噛みつきを弾かれた。外したときと同じ硬直へ、少し長めに。
+        m_dealt = true;
+        Enter(State::LungeRecover, Max(lungeRecover, 0.0f) * Max(parryRecoverScale, 0.1f));
+        se::Play(audio, se::kBossDamaged);
+        break;
+    case State::Sweep:
+        // 薙ぎを弾かれた。しなりを止めて構え直す間だけ晒す。
+        m_dealt = true;
+        Enter(State::SlamRecover, Max(slamRecover, 0.0f) * Max(parryRecoverScale, 0.1f));
+        se::Play(audio, se::kBossDamaged);
+        break;
+    default:
+        break;
+    }
+}
+
+inline bool SerpentAiComponent::Execute(GameObject* part, const Vector3& from)
+{
+    if (m_state != State::Toppled) return false;
+    auto* rig  = scene.GetScript<SerpentHitboxRigComponent>();
+    auto* body = Body();
+    if (!rig || !body || !part) return false;
+
+    const int index = rig->SegmentOf(part);
+    if (index < 1) return false;   // 頭は飛ばない。胴だけ
+
+    const Vector3 at = part->transform.worldPosition;
+    const int crushed = body->Sever(index, std::max(executeSegments, 1));
+    if (crushed <= 0) return false;
+
+    // 斬った節の «溶断»。節は脚より細いので弧も小さく。
+    if (auto* vfx = VfxManagerComponent::Instance()) {
+        Vector3 away = at - from;
+        away.y = 0.0f;
+        vfx->PlayExecute(at, away.NormalizedOr(Vector3::FORWARD), 0.7f);
+    }
+
+    // とどめは倒れている時間を使い切る手。飛ばした瞬間に起こす。
+    EndTopple();
+    return true;
 }
 
 inline void SerpentAiComponent::Enter(State state, float timer)
@@ -565,17 +834,37 @@ inline void SerpentAiComponent::Enter(State state, float timer)
 
 inline void SerpentAiComponent::OnStart()
 {
+    // 薙ぎの軌跡。内部モジュールなので、親と同じ実行コンテキストを渡してから起こす。
+    //
+    // WHY 値をコードで決めるか: SerpentAiComponent の Reflect は自動生成で、
+    //     モジュールの項目を混ぜるには手書きの Reflect へ書き換えることになる。
+    //     見た目の «質» は共有の .mat が持っているので、ここで触るのは
+    //     «この持ち主に固有の事情» だけに絞る。
+    m_sweepTrail.AdoptContext(*this);
+    // 帯の実体名を分ける。プレイヤーと同じ名前だと互いの帯を奪い合う。
+    m_sweepTrail.trailObjectName = "SerpentSweepTrail";
+    // 振りかぶりは別の状態 (SweepWindup) が持っている。この窓の中は全部斬り抜けなので、
+    // 頭を落とすと «薙ぎ始めが写らない» だけになる。
+    m_sweepTrail.trailStartDelay = 0.0f;
+    // 蛇は刀より遅く、太く、長く残る。頭の移動は 7 m/s 前後なので基準もそこへ。
+    m_sweepTrail.trailMinSpeed   = 1.2f;
+    m_sweepTrail.trailSpeedRef   = 7.0f;
+    m_sweepTrail.trailLifetime   = 0.42f;
+    m_sweepTrail.OnStart();
+    m_sweepTrailLive = false;
+
     m_state    = State::Dormant;
     m_timer    = Max(engageDelay, 0.0f);
     m_attackIn = 0.0f;
     m_sealed   = false;
+    m_breakHooked = false;
+    m_recoil      = 0.0f;
+    m_recoilArc   = 0.0f;
     m_from.clear();
     m_to.clear();
     m_thrustHoles.clear();
     m_mouths.clear();
     m_arcBase      = 0.0f;
-    m_evade        = 0.0f;
-    m_evading      = false;
     m_cageWarned   = false;
     // 開幕から檻は出さない。まず «渡って構える» を見せてからでないと、
     // 壁が «蛇の胴» だと分からない。
@@ -584,10 +873,17 @@ inline void SerpentAiComponent::OnStart()
     m_rushSurfaced = false;
     m_rushLegs.clear();
     m_cruiseFloor  = 0.0f;
-    m_lastHeadArc  = 0.0f;
     m_contactCool  = 0.0f;
+    m_rushFrom     = 0.0f;
+    m_wakeArc      = 0.0f;
+    m_wakeValid    = false;
+    m_sweepDust    = 0.0f;
+    m_biteCharged  = false;
     m_laserCool    = Max(laserCooldown, 0.0f) * 0.6f;
     m_lanceCool    = Max(lanceCooldown, 0.0f) * 0.6f;
+    m_fanCool      = Max(fanCooldown, 0.0f) * 0.6f;
+    m_safeFor      = 0.0f;
+    m_telegraph    = 1.0f;
     m_laserHoles.clear();
     for (std::string& hole : m_cage) hole.clear();
     m_nextExit.clear();
@@ -596,6 +892,8 @@ inline void SerpentAiComponent::OnStart()
     m_waitWarned     = false;
     m_stallWarned    = false;
     for (float& shown : m_shown) shown = 0.0f;
+    // 拍は «3・2・1» で始まる。畳まないと DLL リロード後の 1 手目が途中の拍から出る。
+    for (BossTelegraphCue& cue : m_cues) cue.Reset();
     debugState = StateName();
     debugRoute = "-";
 
@@ -711,6 +1009,19 @@ inline void SerpentAiComponent::TickMouths()
     if (aperture) {
         for (const auto& mouth : m_mouths) aperture->Open(mouth.first);
         if (!m_nextExit.empty()) aperture->Open(m_nextExit);
+
+        // «今この口を胴が通っている» を申告する。
+        //
+        // WHY 尾と頭で挟むか: 口の弧長が «尾より前・頭より後ろ» にある間だけ、
+        //     その口の中を胴が占めている。頭が通り過ぎた口も、尾が抜けるまでは
+        //     まだ擦れている ─ 出る側と入る側の両方が 1 つの条件で書ける。
+        //     縁からの余裕 (kPassageMargin) は頭 (1.9 m) が縁を割る手前から
+        //     鳴らすためのもので、0 だと «割った後» にしか出ない。
+        const float head = spine->HeadArc() + kPassageMargin;
+        const float tail = spine->TailArc() - kPassageMargin;
+        for (const auto& mouth : m_mouths)
+            if (mouth.second <= head && mouth.second >= tail)
+                aperture->ReportPassage(mouth.first);
     }
 
     // 尾より後ろの弧はもう誰も乗っていない。抱えたままにすると 1 戦分の弧が溜まる。
@@ -763,7 +1074,7 @@ inline bool SerpentAiComponent::BeginFirstRoute()
     return true;
 }
 
-inline bool SerpentAiComponent::BeginTransit(bool evading)
+inline bool SerpentAiComponent::BeginTransit()
 {
     auto* aperture = Aperture();
     auto* path     = Path();
@@ -798,12 +1109,10 @@ inline bool SerpentAiComponent::BeginTransit(bool evading)
     RecordMouth(m_to, path->LastArcEnd());
     debugRoute = m_from + " -> " + m_to;
 
-    m_evading = evading;
-    m_evade   = 0.0f;
     m_nextExit.clear();
     for (std::string& hole : m_cage) hole.clear();
 
-    se::Play(audio, se::kSerpentRear, evading ? 1.0f : 0.8f);
+    se::Play(audio, se::kSerpentRear, 0.8f);
     Enter(State::Transit);
     return true;
 }
@@ -850,23 +1159,48 @@ inline bool SerpentAiComponent::DriveCruise(float dt)
     const float speed = span / Max(crossSeconds, 1.0f) * PhasePressure();
 
     // 渡りの進みは «床»。ここが上がりきったら渡り終わりで、追う分はその前だけ。
-    m_cruiseFloor = Max(m_cruiseFloor, path->LastArcStart());
+    //
+    // WHY 新しい弧では «頭の居る所» から始めるか: 渡りは口から kEmergeLead (2 m)
+    //     出た所で始まるので、床を弧の始まりに置くと目標が頭の 2 m 後ろになる。
+    //     床は 1.4 m/s で追い、頭は 1.4 m/s で下がるので、出てきたばかりの蛇が
+    //     0.7 秒かけて 1 m «後ずさり» してから進み直していた。
+    if (m_cruiseFloor < path->LastArcStart())
+        m_cruiseFloor = Max(path->LastArcStart(), spine->HeadArc());
     m_cruiseFloor = Min(m_cruiseFloor + speed * dt, HoldArc());
 
     float target = m_cruiseFloor;
     float scale  = speed / Max(spine->headSpeed, 0.1f);
+
+    // 追い掛けは «速いか遅いか» の 2 択にしない。
+    //
+    // WHY 二値だと壊れるか: 以前は «床より前にプレイヤーが居るか» の真偽だけで
+    //     倍率を 0.23 (1.4 m/s) と 1.10 (6.6 m/s) の間で切り替えていた。プレイヤーが
+    //     弦の方向へ半歩動くたびに条件が反転するので、頭が毎フレーム «4.7 倍の加速»
+    //     と «減速して逆走» を往復する。構えている 7 秒のあいだずっとこれが続く。
+    //
+    // WHY 隙間に比例させるか: 遠いほど速く、追いついたら渡りの速さへ滑らかに戻る。
+    //     切り替わる瞬間が無いので、条件が反転しても絵は連続したまま。
+    //     上限は今までと同じ 6.6 m/s ─ 触れると痛い しきい値 (8 m/s) の下に留める。
     if (stalk) {
         if (GameObject* player = Player()) {
             const float wanted =
                 path->ProjectOnLastArc(player->transform.worldPosition) + Max(stalkLead, 0.0f);
             // 床より後ろへは下がらない。下がれると «渡らない蛇» になる。
             const float chase = Clamp(wanted, m_cruiseFloor, HoldArc());
-            if (chase > target) {
-                target = chase;
-                scale  = Max(stalkSpeedScale, 0.1f) * PhasePressure();
-            }
+            const float gap   = Max(chase - m_cruiseFloor, 0.0f);
+            const float top   = Max(stalkSpeedScale, 0.1f) * PhasePressure() *
+                                Max(spine->headSpeed, 0.1f);
+            // 隙間 kStalkGain m で上限に届く。近いところでは渡りの速さのまま。
+            const float want  = Min(speed + gap * kStalkGain, top);
+            target = chase;
+            scale  = want / Max(spine->headSpeed, 0.1f);
         }
     }
+
+    // 渡りで頭を «後ろへ» は動かさない。薙ぎや突進で前へ出た後、床が追い付くまで
+    // 押し戻すと、入る口の手前で行ったり来たりして見える。待つのは «進まない» だけ
+    // ─ 止まって見えないぶんは蠕動とねじれが受け持つ。
+    target = Max(target, spine->HeadArc());
 
     (void)spine->DriveHeadArc(target, dt, scale);
     return m_cruiseFloor >= HoldArc() - 0.01f;
@@ -899,7 +1233,7 @@ inline void SerpentAiComponent::PushTelegraphCircle(const Vector3& center, float
 }
 
 inline void SerpentAiComponent::PushTelegraphLine(const Vector3& from, const Vector3& to,
-                                                  float halfWidth, float progress)
+                                                  float halfWidth, float progress, bool travels)
 {
     if (!showTelegraph || m_telegraphCount >= kTelegraphSlots) return;
 
@@ -914,6 +1248,7 @@ inline void SerpentAiComponent::PushTelegraphLine(const Vector3& from, const Vec
     telegraph.length    = length;
     telegraph.radius    = Max(halfWidth, 0.05f);
     telegraph.progress  = Clamp01(progress);
+    telegraph.travels   = travels;
 }
 
 inline GameObject* SerpentAiComponent::EnsureDecal(int slot)
@@ -953,7 +1288,19 @@ inline void SerpentAiComponent::DriveTelegraphDecals()
         GameObject* object = EnsureDecal(slot);
         if (!object) continue;
 
-        if (slot >= m_telegraphCount) {
+        const bool alive = slot < m_telegraphCount;
+
+        // 時刻の言葉は共有の 1 つを通す (BossTelegraphCue)。ここが持っていた
+        // «絶対時刻の正弦波» は、予兆が出た瞬間の位相が毎回違うので «何回光ったら来る»
+        // が成立していなかった。
+        m_cues[slot].pips       = Max(telegraphPips, 0);
+        m_cues[slot].strikeFrom = Clamp01(telegraphStrikeFrom);
+        m_cues[slot].scrollHz   = telegraphStripeScrollHz;
+        m_cues[slot].Tick(alive ? m_telegraphs[slot].progress : 1.0f, dt, alive);
+
+        // 着弾の «弾け» が残っている間は、消えた枠でも 1 コマ描き続ける。
+        // 即座に消すと «避けきったのか当たったのか» が絵に残らない。
+        if (!m_cues[slot].visible) {
             if (object->activeSelf()) object->SetActive(false);
             m_shown[slot] = 0.0f;
             continue;
@@ -967,6 +1314,14 @@ inline void SerpentAiComponent::DriveTelegraphDecals()
 
         auto* decal = object->GetComponent<DecalComponent>();
         if (!decal) continue;
+
+        // 弾けている間は最後に出した形をそのまま使う。位置を書き換えないので、
+        // 下の transform の更新も飛ばす。
+        if (!alive) {
+            decal->materialParamOverrides["burstFade"] = { m_cues[slot].burstFade };
+            decal->materialParamOverrides["progress"]  = { 1.0f };
+            continue;
+        }
 
         const BossTelegraph& telegraph = m_telegraphs[slot];
         const bool  line  = telegraph.shape == BossTelegraphShape::Line;
@@ -990,23 +1345,25 @@ inline void SerpentAiComponent::DriveTelegraphDecals()
             object->transform.scale = { diameter, depth, diameter };
         }
 
-        // 立ち上がりの薄さと、着弾間際の明滅。最初から点滅していると «今すぐ来る» と
-        // 言い続けることになり、いつ避けるかが読めない。
-        float gain = telegraphFadeIn > 0.0f ? Clamp01(m_shown[slot] / telegraphFadeIn) : 1.0f;
-        if (telegraphBlinkHz > 0.0f && telegraph.progress >= Clamp01(telegraphBlinkFrom)) {
-            const float wave = std::sin(Time::time * telegraphBlinkHz * TWO_PI) * 0.5f + 0.5f;
-            gain *= Lerp(0.65f, 1.0f, wave);
-        }
+        // 立ち上がりの薄さ。出た瞬間に満濃度で現れると «もう来る» に見える。
+        // 拍の跳ねと回避窓は cue が持つ。
+        const float fadeIn =
+            telegraphFadeIn > 0.0f ? Clamp01(m_shown[slot] / telegraphFadeIn) : 1.0f;
 
         decal->materialParamOverrides["shape"]    = { line ? 1.0f : 0.0f };
         decal->materialParamOverrides["progress"] = { Clamp01(telegraph.progress) };
-        decal->materialParamOverrides["pulse"]    = { Max(gain, 0.0f) };
-        decal->materialParamOverrides["stripeScroll"] = { m_shown[slot] *
-                                                          telegraphStripeScrollHz };
+        decal->materialParamOverrides["pulse"]    = { Max(m_cues[slot].pulse * fadeIn, 0.0f) };
+        decal->materialParamOverrides["stripeScroll"] = { m_cues[slot].scroll };
+        decal->materialParamOverrides["travel"]       = { telegraph.travels ? 1.0f : 0.0f };
+        decal->materialParamOverrides["strikeWindow"] = { Clamp01(telegraphStrikeFrom) };
+        decal->materialParamOverrides["countPips"]    =
+            { static_cast<float>(Max(telegraphPips, 0)) };
+        decal->materialParamOverrides["burstFade"]    = { m_cues[slot].burstFade };
     }
 }
 
-inline bool SerpentAiComponent::HitPlayerInSphere(const Vector3& center, float radius, int amount)
+inline bool SerpentAiComponent::HitPlayerInSphere(const Vector3& center, float radius, int amount,
+                                                  PlayerHitKind kind)
 {
     if (m_dealt || amount <= 0) return false;
     GameObject* player = Player();
@@ -1021,22 +1378,39 @@ inline bool SerpentAiComponent::HitPlayerInSphere(const Vector3& center, float r
     auto* combat = CombatManagerComponent::Instance();
     if (!combat) return false;
     // 押し出しの起点は当たった «物» の位置。渡さないと押されない。
-    (void)combat->DamagePlayer(player, amount, &center);
+    const PlayerHitResult result = combat->HitPlayer(player, amount, &center, kind);
+    if (result == PlayerHitResult::Parried) {
+        // 弾かれた。手触りは弾いた側が返す。こちらは出しかけの手を崩す。
+        OnParried(center);
+        return false;
+    }
+    if (result != PlayerHitResult::Damaged) return false;
     if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.45f);
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.75f, 0.5f, 0.25f);
     return true;
 }
 
-inline bool SerpentAiComponent::HitPlayerAlongBody(float radius, int amount)
+inline bool SerpentAiComponent::HitPlayerAlongBody(float radius, int amount, PlayerHitKind kind)
 {
     auto* spine = Spine();
     auto* body  = Body();
     if (!spine) return false;
 
+    // ⚠ «弾かれたら止める» を m_dealt だけで見てはいけない。
+    //   弾きは HitPlayerInSphere の «中» で解決する:
+    //     HitPlayerInSphere → CombatManager::HitPlayer → PlayerComponent::ReceiveHit
+    //       → PlayerParryComponent::OnParried → IBoss::OnParried → こちらの OnParried
+    //   その OnParried が Enter() を呼び、Enter は m_dealt を false へ戻す。つまり
+    //   «弾かれた直後だけ» m_dealt が落ちていて、ループが次の節で殴り直していた
+    //   ─ 弾きの窓はもう使い切っているので、2 節目は素通しで当たる。
+    //   状態が変わったこと自体を «もう当てに行かない» の合図にする。
+    const State began = m_state;
     for (int i = 1; i <= serpent::kSegmentCount; ++i) {
         if (body && !body->IsAlive(i)) continue;
         if (!spine->IsExposed(i)) continue;
-        if (HitPlayerInSphere(spine->JointPosition(i), radius, amount)) return true;
+        if (HitPlayerInSphere(spine->JointPosition(i), radius, amount, kind)) return true;
+        // 当たった / かわされた (m_dealt が立つ) か、弾かれた (状態が変わる) なら終わり。
+        if (m_dealt || m_state != began) return false;
     }
     return false;
 }
@@ -1089,11 +1463,11 @@ inline void SerpentAiComponent::DrawCircle(const Vector3& center, float radius,
     }
 }
 
-inline void SerpentAiComponent::BeginThrust()
+inline bool SerpentAiComponent::BeginThrust()
 {
     auto* aperture = Aperture();
     GameObject* player = Player();
-    if (!aperture || !player) { Enter(State::Settle); return; }
+    if (!aperture || !player) return false;
 
     const auto* body  = Body();
     const int   phase = body ? body->Phase() : 1;
@@ -1111,37 +1485,53 @@ inline void SerpentAiComponent::BeginThrust()
                        < Vector3{ pb.x - stand.x, 0.0f, pb.z - stand.z }.LengthSq();
               });
 
+    // 一番近い口ですら届かないなら、この手は «出しても何も起きない»。
+    //
+    // WHY 出さずに諦めるか: 口は内輪 (r=8) と外輪 (r=16) にしか無い。場の中心
+    //     (r<4) と壁際 (r>20) はどの口からも Radius の外なので、そこに立たれると
+    //     突き上げは 0.9 秒の予兆ごと空振りする ─ 手を 1 つ消費した上に
+    //     «避ける必要が無い» を教えることになる。false を返して遠距離の手へ回す。
+    const float reach = Max(thrustRadius, 0.5f);
+    const Vector3 nearest = aperture->HoleCenter(holes.empty() ? std::string{} : holes.front());
+    if (holes.empty() ||
+        Vector3{ nearest.x - stand.x, 0.0f, nearest.z - stand.z }.Length() > reach)
+        return false;
+
     m_thrustHoles.clear();
     for (const std::string& hole : holes) {
         if (static_cast<int>(m_thrustHoles.size()) >= want) break;
         m_thrustHoles.push_back(hole);
         aperture->Open(hole);
     }
-    if (m_thrustHoles.empty()) { Enter(State::Settle); return; }
+    if (m_thrustHoles.empty()) return false;
 
     se::Play(audio, se::kBossStompRaise);
-    Enter(State::ThrustWindup, Max(thrustTelegraph, 0.1f));
+    EnterTelegraph(State::ThrustWindup, thrustTelegraph);
+    return true;
 }
 
 inline void SerpentAiComponent::BeginSweep()
 {
     auto* spine = Spine();
     m_sweepBase = spine ? spine->HeadArc() : 0.0f;
+    // 前の薙ぎの残りを持ち越さない。持ち越すと «最初の 1 発が遅れる薙ぎ» が混ざる。
+    m_sweepDust = 0.0f;
     se::Play(audio, se::kSerpentRear);
-    Enter(State::SweepWindup, Max(sweepTelegraph, 0.1f));
+    EnterTelegraph(State::SweepWindup, sweepTelegraph);
 }
 
 inline void SerpentAiComponent::BeginLunge()
 {
     auto* spine = Spine();
     auto* path  = Path();
+    m_biteCharged = false;
     if (!spine || !path) { Enter(State::Settle); return; }
 
     // 突進は経路の先へ 8 m。頭が地上へ出る唯一の手なので、入る穴を越えない
     // ところまでに留める (越えると頭ごと床下へ入って «触れる瞬間» が消える)。
     m_lungeTo = Min(spine->HeadArc() + Max(lungeMeters, 1.0f), path->LastArcEnd());
     se::Play(audio, se::kBossChargeWindup);
-    Enter(State::LungeWindup, Max(lungeTelegraph, 0.1f));
+    EnterTelegraph(State::LungeWindup, lungeTelegraph);
 }
 
 inline bool SerpentAiComponent::BeginSlam()
@@ -1152,7 +1542,7 @@ inline bool SerpentAiComponent::BeginSlam()
     m_arcBase = path->LastArcLength();
     se::Play(audio, se::kSerpentRear);
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.20f, 0.12f, 0.30f);
-    Enter(State::RearWindup, Max(slamTelegraph, 0.1f));
+    EnterTelegraph(State::RearWindup, slamTelegraph);
     return true;
 }
 
@@ -1169,15 +1559,90 @@ inline float SerpentAiComponent::PhasePressure() const
     return 1.0f + Max(phaseSpeedUp, 0.0f) * static_cast<float>(phase - 1);
 }
 
-inline bool SerpentAiComponent::BeginColumns()
+inline float SerpentAiComponent::TelegraphScale() const
+{
+    const auto* body  = Body();
+    const int   phase = body ? body->Phase() : 1;
+    return Max(1.0f - Max(phaseTelegraphCut, 0.0f) * static_cast<float>(phase - 1), 0.05f);
+}
+
+inline void SerpentAiComponent::EnterTelegraph(State state, float seconds)
+{
+    // 下限は割らない。«見てから動ける» 限界を下回ると、読む手ではなく暗記する手になる。
+    m_telegraph = Max(Max(seconds, 0.1f) * TelegraphScale(), Max(telegraphFloor, 0.1f));
+    Enter(state, m_telegraph);
+}
+
+inline bool SerpentAiComponent::PlayerInReach() const
+{
+    GameObject* player = Player();
+    const auto* spine  = Spine();
+    if (!player) return true;   // 相手が居ないなら «居座り» も無い
+
+    Vector3 stand = player->transform.worldPosition;
+    stand.y += 0.9f;
+    const float margin = Max(stallReach, 0.0f);
+
+    // 胴の側 ─ 薙ぎ・叩きつけ・走り・接触はすべてここから測る。一番遠くまで
+    // 届く手 (薙ぎ / 叩きつけ 2.6) を代表に採る。
+    if (spine) {
+        const float reach = Max(Max(sweepRadius, slamRadius), rushRadius) + margin;
+        const auto* body  = Body();
+        for (int i = 1; i <= serpent::kSegmentCount; ++i) {
+            if (body && !body->IsAlive(i)) continue;
+            if (!spine->IsExposed(i)) continue;
+            if ((stand - spine->JointPosition(i)).LengthSq() <= reach * reach) return true;
+        }
+    }
+
+    // 口の側 ─ 突き上げと柱。どの口からも Radius の外なら、床からは何も来ない。
+    if (const auto* aperture = Aperture()) {
+        const float reach = Max(thrustRadius, 0.5f) + margin;
+        for (const std::string& id : aperture->Holes()) {
+            const Vector3 c = aperture->HoleCenter(id);
+            if (Vector3{ c.x - stand.x, 0.0f, c.z - stand.z }.LengthSq() <= reach * reach)
+                return true;
+        }
+    }
+    return false;
+}
+
+inline bool SerpentAiComponent::TickStall(float dt)
+{
+    if (!punishStall) { m_safeFor = 0.0f; return false; }
+
+    m_safeFor = PlayerInReach() ? 0.0f : m_safeFor + dt;
+    if (m_safeFor < Max(stallSeconds, 1.0f)) return false;
+
+    // 冷却も段のゲートも無視する。«待てば安全» を成立させないことの方が、
+    // 手の出し分けの都合より優先される。
+    //
+    // WHY 柱を入れないか: ここへ来ている時点で PlayerInReach() は false ─ つまり
+    //     どの口からも thrustRadius (4.0) + 余裕 の外に居る。柱の判定は 0.95 m
+    //     なので、突き上げが届かない相手に柱が届くことは原理的に無い。
+    //     «罰したつもりで空の斉射を撃ち、時計だけ 0 へ戻す» を作らないため外す。
+    //
+    // WHY 槍が主役か: 26 m の線で、どこに立っていても届く唯一の手。扇は距離が
+    //     開くほど隙間が広がる (7 本なら 15 m 先で 6.5 m) ので、近くへ来たときの
+    //     押さえにしかならない ─ 届く可能性がある方から順に試す。
+    if (BeginLance(true) || BeginFan(true)) {
+        m_safeFor = 0.0f;
+        return true;
+    }
+    // どちらも出せない (頭が床下・扇の間合いの外)。時計は戻さず、頭が出た所で罰する。
+    return false;
+}
+
+inline bool SerpentAiComponent::BeginColumns(bool force)
 {
     auto*       aperture = Aperture();
     auto*       volley   = Laserer();
     GameObject* player   = Player();
-    if (!laser || !aperture || !volley || !player || m_laserCool > 0.0f) return false;
+    if (!laser || !aperture || !volley || !player) return false;
+    if (!force && m_laserCool > 0.0f) return false;
 
     const auto* body = Body();
-    if (body && body->Phase() < laserFromPhase) return false;
+    if (!force && body && body->Phase() < laserFromPhase) return false;
 
     // プレイヤーに近い口から。«今立っている所» とその周りを塞ぐので、
     // 立ち止まっていると必ず 1 本の中に居ることになる。
@@ -1209,16 +1674,17 @@ inline bool SerpentAiComponent::BeginColumns()
     return true;
 }
 
-inline bool SerpentAiComponent::BeginLance()
+inline bool SerpentAiComponent::BeginLance(bool force)
 {
     auto*       spine  = Spine();
     auto*       volley = Laserer();
     GameObject* player = Player();
-    if (!laser || !spine || !volley || !player || m_lanceCool > 0.0f) return false;
+    if (!laser || !spine || !volley || !player) return false;
+    if (!force && m_lanceCool > 0.0f) return false;
     if (!spine->HeadIsExposed()) return false;   // 床下の頭からは吐けない
 
     const auto* body = Body();
-    if (body && body->Phase() < lanceFromPhase) return false;
+    if (!force && body && body->Phase() < lanceFromPhase) return false;
 
     // 狙いは «撃つ瞬間のプレイヤー» で固定。追尾させると避ける手が無くなる。
     const Vector3 head = spine->HeadPosition();
@@ -1236,14 +1702,49 @@ inline bool SerpentAiComponent::BeginLance()
     return true;
 }
 
+inline bool SerpentAiComponent::BeginFan(bool force)
+{
+    auto*       spine  = Spine();
+    auto*       volley = Laserer();
+    GameObject* player = Player();
+    if (!fan || !laser || !spine || !volley || !player) return false;
+    if (!force && m_fanCool > 0.0f) return false;
+    if (!spine->HeadIsExposed()) return false;   // 床下の頭からは吐けない
+
+    const auto* body = Body();
+    if (!force && body && body->Phase() < fanFromPhase) return false;
+
+    // 遠い相手には出さない。隙間は «2 · 距離 · sin(π/本数)» で開くので、
+    // 7 本でも 15 m 先では 6.5 m 空く ─ 歩いて抜けられる幅は «塞いだ» ではない。
+    const Vector3 head = spine->HeadPosition();
+    const float   range =
+        Vector3{ player->transform.worldPosition.x - head.x, 0.0f,
+                 player->transform.worldPosition.z - head.z }.Length();
+    if (range > Max(fanReach, 2.0f)) return false;
+
+    // 位相は毎回振る。固定すると «いつも同じ所が空いている» を覚えられて、
+    // 全方位を塞ぐ手が «決まった 1 方向へ歩く» 手に落ちる。
+    volley->FireFan(head, Max(fanBeams, 3), Max(fanRange, 4.0f),
+                    random.Range(0.0f, 360.0f));
+
+    m_fanCool = Max(fanCooldown, 0.0f);
+    se::Play(audio, se::kSerpentRear);
+    Enter(State::Laser, volley->TotalSeconds());
+    return true;
+}
+
 inline void SerpentAiComponent::TickBodyContact(float dt)
 {
     auto*       spine  = Spine();
     GameObject* player = Player();
 
-    const float arc   = spine ? spine->HeadArc() : m_lastHeadArc;
-    const float speed = dt > EPSILON ? std::fabs(arc - m_lastHeadArc) / dt : 0.0f;
-    m_lastHeadArc = arc;
+    // 速さは積分している側から借りる。
+    //
+    // WHY 位置の差分をやめたか: 加速度を入れて以降、弧長は «速度を積んだ結果» で
+    //     動くので、その速度そのものが正本になった。差分で測り直すと、状態が
+    //     切り替わったフレームだけ 1 コマぶんの跳ねを拾い、遅い胴が «速い» と
+    //     判定されて «斬りに行っただけで痛い» が稀に出る。
+    const float speed = spine ? spine->HeadSpeedNow() : 0.0f;
 
     m_contactCool = Max(m_contactCool - dt, 0.0f);
     if (!contactDamage || !spine || !player || m_contactCool > 0.0f) return;
@@ -1265,6 +1766,13 @@ inline void SerpentAiComponent::TickBodyContact(float dt)
         if (!combat) return;
         m_contactCool = Max(contactCooldown, 0.1f);
         (void)combat->DamagePlayer(player, Max(contactDamageAmount, 0), &joint);
+        // 触れた節の側に火花を出す。揺れと振動だけだと «何に当たったか» が
+        // 画面に残らず、«速い胴は避ける / 遅い胴は斬る» を覚える手掛かりが消える。
+        if (auto* vfx = VfxManagerComponent::Instance()) {
+            Vector3 away = point - joint;
+            away.y = 0.0f;
+            vfx->PlaySerpentRush(joint, away.NormalizedOr(spine->HeadForward()), 1.0f);
+        }
         if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.30f);
         if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.55f, 0.35f, 0.20f);
         return;
@@ -1311,6 +1819,7 @@ inline bool SerpentAiComponent::BeginRush()
     if (m_rushLegs.empty()) return false;
 
     m_rushTo       = path->HoldArc(holdRatio);
+    m_rushFrom     = Spine() ? Spine()->HeadArc() : 0.0f;
     m_rushSurfaced = false;
     m_nextExit.clear();
     for (std::string& hole : m_cage) hole.clear();
@@ -1318,8 +1827,55 @@ inline bool SerpentAiComponent::BeginRush()
 
     se::Play(audio, se::kSerpentRear);
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.25f, 0.18f, 0.35f);
-    Enter(State::RushWindup, Max(rushTelegraph, 0.1f));
+    EnterTelegraph(State::RushWindup, rushTelegraph);
     return true;
+}
+
+inline void SerpentAiComponent::TickRushWake()
+{
+    auto* spine = Spine();
+    auto* path  = Path();
+    if (!spine || !path || !path->Valid()) return;
+
+    const float arc = spine->HeadArc();
+    if (!m_wakeValid) {
+        m_wakeValid = true;
+        m_wakeArc   = arc;
+        return;
+    }
+
+    // 床下では削らない。潜っている胴の跡が床に出ると «見えない所を走っている» が壊れる。
+    if (!path->OnSurface(arc)) {
+        m_wakeArc = arc;
+        return;
+    }
+    if (arc - m_wakeArc < kRushWakeStep) return;
+    m_wakeArc = arc;
+
+    // 置くのは «弧の上» ではなく «その真下の床»。弧は山なりなので頂上は 3 m 上にあり、
+    // そこへ土煙を置くと空中で埃が湧く。走りの予兆 (床の帯) と同じ面に置けば、
+    // 予兆と実際に走った跡が重なって «そこを通った» が読める。
+    const Vector3 on = path->At(arc);
+    if (auto* vfx = VfxManagerComponent::Instance())
+        vfx->PlaySerpentRush(Vector3{ on.x, 0.0f, on.z }, path->Tangent(arc), 1.0f);
+}
+
+inline void SerpentAiComponent::TickSweepDust(float dt)
+{
+    auto* spine = Spine();
+    if (!spine) return;
+
+    m_sweepDust -= dt;
+    if (m_sweepDust > 0.0f) return;
+    m_sweepDust = kSweepDustInterval;
+
+    // 帯の «鍔» 側の節の真下。頭で採ると、薙ぎ終わりに口へ入る所で床下へ置く。
+    const int   joint = std::clamp(sweepTrailJoint, 1, serpent::kSegmentCount);
+    if (!spine->IsExposed(joint)) return;
+    const Vector3 at = spine->JointPosition(joint);
+
+    if (auto* vfx = VfxManagerComponent::Instance())
+        vfx->PlaySerpentRush(Vector3{ at.x, 0.0f, at.z }, spine->HeadForward(), 0.55f);
 }
 
 inline void SerpentAiComponent::PushRushTelegraph(float progress)
@@ -1342,7 +1898,7 @@ inline void SerpentAiComponent::PushRushTelegraph(float progress)
             const float   len = ab.Length();
             if (len > 0.1f && Vector3::Dot(ab / len, ah) > len) continue;
         }
-        PushTelegraphLine(a, b, rushRadius, progress);
+        PushTelegraphLine(a, b, rushRadius, progress, /*travels=*/true);
     }
 }
 
@@ -1426,7 +1982,6 @@ inline bool SerpentAiComponent::BeginEnclose()
     if (!path->AppendRoute(h1, aperture->HoleCenter(h1), h2, aperture->HoleCenter(h2), wall)) {
         // 壁 1 は張れている。普通の渡りとして続ける。
         debugRoute = m_from + " -> " + m_to;
-        m_evading  = false;
         Enter(State::Transit);
         return true;
     }
@@ -1440,8 +1995,6 @@ inline bool SerpentAiComponent::BeginEnclose()
     m_cage[2]    = h2;
     m_from       = h1;
     m_to         = h2;
-    m_evading    = false;
-    m_evade      = 0.0f;
     m_cageWarned = false;
     debugRoute   = h0 + " [" + h1 + "] " + h2;
 
@@ -1474,25 +2027,24 @@ inline void SerpentAiComponent::TickSettle(float dt)
     AimAtPlayer(1.0f);
     PrepareNextExit();
 
+    // カメラが盤面を止めているあいだは手を出さない。渡りは続ける (出てくる所を見せる画)。
+    if (cutscene::HoldsBoss(Time::unscaledTime)) {
+        m_attackIn = Max(m_attackIn, 0.35f);
+        return;
+    }
+
     m_attackIn -= dt;
 
     // 長さがそのまま段階。頭の突進は第 2 段から入る (boss-serpent.md「撃破までの形」)。
     const auto* body = Body();
     const int   phase = body ? body->Phase() : 1;
 
-    // 極を塗り替えられないボスの唯一の妨害 ─ 対になる前に床下へ引く。
+    // 居座り罰は «手番» より先に見る。
     //
-    // WHY 引き合いが始まってからは逃げないか: 対が揃ってからの 0.85 秒は «見せ場» で、
-    //     ここを潜って無効にすると «揃えたのに取り消された» になる。逃げるのは
-    //     1 節目だけが乗っている «仕込みの途中» まで。
-    if (evadeCharged && phase >= 2) {
-        const auto* rig     = PolarityRig();
-        const bool  setting = rig && rig->ChargedCount() > 0 && !rig->IsPulling();
-        m_evade = setting ? m_evade + dt : 0.0f;
-        if (m_evade >= Max(evadeGrace, 0.0f) && BeginTransit(true)) return;
-    } else {
-        m_evade = 0.0f;
-    }
+    // WHY 手の間隔 (m_attackIn) を待たないか: 待てば安全な場所に立たれている間は、
+    //     間隔が明けるたびに «届かない手» が 1 つ消費されるだけで何も起きない。
+    //     届いていない時間そのものを数えて、閾値で割り込む。
+    if (TickStall(dt)) return;
 
     // 渡りきったらそのまま潜る。組めなかったときだけ、その場で手を出しながら次を待つ。
     if (arrived) {
@@ -1515,22 +2067,62 @@ inline void SerpentAiComponent::TickSettle(float dt)
     if (CanEnclose() && BeginEnclose()) return;
     // 走りは «居場所» を否定する手。冷却が明けていれば他の手より先に出す。
     if (BeginRush()) return;
-    // 遠くに居るなら «離れていること» を否定する手から。近ければ足元を塞ぐ。
-    {
-        GameObject* player = Player();
-        auto*       spine  = Spine();
-        // WHY 変数名が far ではないか: windef.h が far / near を空マクロとして定義
-        //     しているので、`const float far` はその場で消えて構文エラーになる。
-        const float range = (player && spine)
-            ? (player->transform.worldPosition - spine->HeadPosition()).Length() : 0.0f;
-        if (range > 12.0f) { if (BeginLance() || BeginColumns()) return; }
-        else               { if (BeginColumns() || BeginLance()) return; }
+
+    // 手は «届く物» の中から選ぶ。
+    //
+    // WHY サイコロだけでは足りないか: 以前は薙ぎ・叩きつけ・突き上げ・噛みつきを
+    //     等確率で振っていて、届くかどうかを一度も見ていなかった。口は内輪 (r=8) と
+    //     外輪 (r=16) にしか無く、胴が来られるのは中心から 6.93 m より外なので、
+    //     場の中心 (半径 4.3 m) と壁際 (20 m 超) に立たれると **どの手も空振りする**。
+    //     1 回 1.4〜1.5 秒の手がまるごと無駄になるうえ、«避ける必要が無い» を
+    //     教えることになる ─ 盤面の 29% がそういう場所だった。
+    //
+    // WHY 距離を «胴» で測るか: 薙ぎも叩きつけも走りも当たるのは胴で、頭はその先端に
+    //     すぎない。頭で測ると、胴の真横に立っているのに «遠い» と判定される。
+    GameObject* player = Player();
+    auto*       spine  = Spine();
+    // WHY 変数名が far / near ではないか: windef.h が両方を空マクロとして定義して
+    //     いるので、`const float far` はその場で消えて構文エラーになる。
+    float range = 0.0f;
+    if (player && spine) {
+        range = 1.0e9f;
+        const auto* alive = Body();
+        for (int i = 0; i <= serpent::kSegmentCount; ++i) {
+            if (i > 0 && alive && !alive->IsAlive(i)) continue;
+            if (!spine->IsExposed(i)) continue;
+            range = Min(range, (player->transform.worldPosition -
+                                spine->JointPosition(i)).Length());
+        }
+        if (range > 1.0e8f)   // 胴が 1 節も地上に居ない (渡っている最中)
+            range = (player->transform.worldPosition - spine->HeadPosition()).Length();
     }
 
-    const int roll = random.Range(0, phase >= 2 ? 3 : 2);
-    if (roll == 0)      BeginThrust();
-    else if (roll == 1) BeginSweep();
-    else if (roll == 2) { if (!BeginSlam()) BeginSweep(); }
+    // 遠 ─ 胴では届かない。«離れていること» を否定する手だけ。
+    if (range > kMidRange) {
+        if (BeginLance() || BeginColumns()) return;
+        // 撃てるものが無いなら足元を塞ぎに行く。届かなければ BeginThrust が断る。
+        if (BeginThrust()) return;
+        // どれも出せないなら手を捨てて次の間合いを待つ ─ 空振りより «間» の方が良い。
+        m_attackIn = Min(m_attackIn, 0.8f);
+        return;
+    }
+
+    // 近 ─ 胴が当たる間合い。ここでだけ薙ぎと噛みつきが成立する。
+    if (range <= kCloseRange) {
+        // 扇は «近づいた相手の逃げ道を消す» 手。近い時ほど隙間が狭い。
+        if (BeginFan()) return;
+        const int roll = random.Range(0, phase >= 2 ? 2 : 1);
+        if (roll == 0)      BeginSweep();
+        else if (roll == 1) { if (!BeginSlam()) BeginSweep(); }
+        else                BeginLunge();
+        return;
+    }
+
+    // 中 ─ 足元を塞ぐ手と、間合いを詰める手。
+    if (BeginColumns()) return;
+    const int roll = random.Range(0, phase >= 2 ? 2 : 1);
+    if (roll == 0)      { if (!BeginThrust()) BeginSlam(); }
+    else if (roll == 1) { if (!BeginSlam()) BeginSweep(); }
     else                BeginLunge();
 }
 
@@ -1545,9 +2137,17 @@ inline void SerpentAiComponent::OnUpdate()
     m_rushCooldown = Max(m_rushCooldown - dt, 0.0f);
     m_laserCool    = Max(m_laserCool - dt, 0.0f);
     m_lanceCool    = Max(m_lanceCool - dt, 0.0f);
+    m_fanCool      = Max(m_fanCool - dt, 0.0f);
 
     // 予兆は毎フレーム作り直す。手が終わった瞬間に消えるのが正しい。
     ClearTelegraphs();
+
+    // 崩しが満ちたら倒れる。開始順に依存しないよう、繋がるまで毎フレーム試す。
+    if (!m_breakHooked)
+        if (auto* brk = Break()) {
+            brk->onBreak = [this](float seconds) { Topple(seconds); };
+            m_breakHooked = true;
+        }
 
     if (!IsAlive() && m_state != State::Dead) {
         // せり上がっている途中で倒れたら弧を戻す。伸ばしたままだと «山だけ立った
@@ -1556,6 +2156,12 @@ inline void SerpentAiComponent::OnUpdate()
         // 頭から尾へ爆ぜていく «崩れ» を始める。体を溶かすのは
         // EnemyDeathVfxComponent の側 (EnemyHealthComponent が撃破の瞬間に呼ぶ)。
         if (auto* death = scene.GetScript<SerpentDeathVfxComponent>()) death->Begin();
+        // 引きながら回り込む決着の画。コアと同じ演出で、Boss02 を見つめる。
+        if (auto* camera = BossCameraDirectorComponent::Instance()) {
+            auto* spine = Spine();
+            camera->PlayAt(BossShot::Death,
+                           spine ? spine->HeadPosition() : transform.worldPosition);
+        }
         // 倒れたら胴を床下へ引き取る。決着の «見え» は撃破演出が持つので、
         // ここは «もう手を出さない» だけを保証する。
         //
@@ -1565,10 +2171,26 @@ inline void SerpentAiComponent::OnUpdate()
         Enter(State::Dead);
     }
 
+    // 手の最中も «弱く見続ける»。
+    //
+    // WHY 既定を «狙わない» にできないか: SetAim は押されなかったフレームに重みが
+    //     0 へ落ちる約束なので、狙いを書いていない状態 (薙ぎ・叩きつけ・檻・走り・
+    //     レーザー・硬直) では首が 0.17 秒で経路の接線へ戻る。構え (1.0) → 薙ぎ (0) →
+    //     構え (1.0) のたびに頭が振れて戻り、檻に至っては 7 秒間ずっと目を離していた。
+    //     ここで «下限» を押しておけば、強く狙う状態はそのまま上書きするだけで済み、
+    //     手を足したときに «その手だけ目を離す» が構造的に起きなくなる。
+    if (m_state != State::Dormant && m_state != State::Dead && m_state != State::Toppled)
+        AimAtPlayer(kIdleAimWeight);
+
     // 口の開け閉めは手番ではなく «尾がどこまで来たか» で決まる。
     if (m_state != State::Dormant) TickMouths();
     // 触れて痛いかは «状態» ではなく «速さ» で決まる。手番の外側で毎フレーム見る。
     if (m_state != State::Dormant && m_state != State::Dead) TickBodyContact(dt);
+
+    // 走っている間だけ削り跡を置く。走りを抜けたら «次に走り出した所» から数え直す。
+    if (m_state == State::Rush) TickRushWake();
+    else                        m_wakeValid = false;
+    if (m_state == State::Sweep) TickSweepDust(dt);
 
     switch (m_state) {
     case State::Dormant: {
@@ -1585,6 +2207,15 @@ inline void SerpentAiComponent::OnUpdate()
             if (BeginFirstRoute()) {
                 se::Play(audio, se::kBossAppear);
                 Enter(State::Emerge);
+                // 出てくる所を見せる。渡り (Cross / Settle) は演出の一部なので止めず、
+                // 手 (TickSettle の攻撃) だけを cutscene::HoldsBoss で止める。
+                if (auto* camera = BossCameraDirectorComponent::Instance()) {
+                    auto* spine = Spine();
+                    // 出てくる口の上を見る。根 (Boss02) は闘技場の中心で、そこには何も居ない。
+                    const Vector3 at = spine ? spine->HeadPosition() : transform.worldPosition;
+                    camera->PlayAt(BossShot::Intro,
+                                   Vector3{ at.x, transform.worldPosition.y + 1.5f, at.z });
+                }
             } else {
                 m_timer = 1.0f;   // 経路が組めない。次のフレームで諦めず作り直す
             }
@@ -1625,7 +2256,7 @@ inline void SerpentAiComponent::OnUpdate()
         AimAtPlayer(1.0f);
         m_timer -= dt;
         if (auto* aperture = Aperture()) {
-            const float progress = 1.0f - Clamp01(m_timer / Max(thrustTelegraph, 0.1f));
+            const float progress = TelegraphProgress();
             for (const std::string& hole : m_thrustHoles) {
                 const Vector3 center = aperture->HoleCenter(hole);
                 PushTelegraphCircle(center, thrustRadius, progress);
@@ -1639,21 +2270,26 @@ inline void SerpentAiComponent::OnUpdate()
                     // «避けられなかった» ではなく «避け方が無い» になる。
                     (void)HitPlayerInSphere(center + Vector3{ 0.0f, 1.0f, 0.0f },
                                             thrustRadius, thrustDamage);
-                    // 突き上げは «下から噴き上がる» 手。土煙を真上へ吹かせて縦の柱にする。
+                    // 突き上げは «下から噴き上がる» 手。専用の縦のグラフで出す。
                     //
-                    // WHY 向きだけで分けるか: 囲い込みも叩きつけも同じ GroundBlast を
-                    //     使っていて、10 種類ある手のうち柱と槍以外は全部同じ絵だった。
-                    //     シルエットが «縦 / 横 / 面» で割れていれば、色を増やさずに
-                    //     «何が来たか» が読める (12.2 は赤青琥珀で埋まっている)。
-                    if (auto* vfx = VfxManagerComponent::Instance()) {
-                        vfx->PlayGroundBlast(center, Polarity::None, 1.0f);
-                        vfx->PlayGroundDust(center, Vector3::UP, 1.0f, 1.8f);
-                    }
+                    // WHY 汎用の土煙をやめたか: PlayGroundDust は渡した向きの y 成分を
+                    //     捨ててから正規化するので、Vector3::UP は退化して水平のパフに
+                    //     落ちていた ─ «シルエットで手を読み分ける» という仕組みの
+                    //     土台が、書いてあるのに一度も働いていなかった。
+                    //     加えて GroundBlast は爆発なので «壊れた» の印になり、
+                    //     何も壊していない突き上げでは嘘の合図になる。
+                    if (auto* vfx = VfxManagerComponent::Instance())
+                        vfx->PlaySerpentGeyser(center, 1.0f, 1.8f);
                     // 胴が乗っている口は閉じない。閉じると渡っている最中の胴の上で
                     // 羽が戻り、床と胴が刺さる (経路の口は尾が過ぎてから閉じる)。
                     if (!MouthInUse(hole)) aperture->Close(hole);
                 }
                 se::Play(audio, se::kBossStompImpact);
+                // 3 口が同時に吹く手なのに揺れが無かった。叩きつけ (0.60) より
+                // 弱く ─ 主語は «足元の穴» で、胴そのものは動いていない。
+                if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.35f);
+                if (auto* pad = RumbleManagerComponent::Instance())
+                    pad->Rumble(0.55f, 0.40f, 0.22f);
                 m_thrustHoles.clear();
                 Enter(State::Settle);
             }
@@ -1665,14 +2301,24 @@ inline void SerpentAiComponent::OnUpdate()
 
     case State::SweepWindup: {
         // 胴を «一度しならせる»。経路上を少し引いてから前へ薙ぐ。
-        if (spine) (void)spine->DriveHeadArc(m_sweepBase - Max(sweepReach, 0.0f) * 0.35f, dt);
+        //
+        // WHY 溜めの尺で引くか: 引く距離 (1.2 m) は既定の速さなら 0.2 秒で終わる。
+        //     溜めは 0.9 秒あるので、残りの 0.7 秒は «止まった胴» を見せていた
+        //     ─ 予兆の 8 割が静止画になる。溜めきる所でちょうど引ききるように配ると、
+        //     しなりそのものが «これから薙ぐ» を言い続ける。
+        if (spine) {
+            const float coil = Max(sweepReach, 0.0f) * 0.35f;
+            const float t    = TelegraphProgress();
+            // 後半ほど速く引く。等速だと «下がっている» だけで «溜めている» に見えない。
+            (void)spine->DriveHeadArc(m_sweepBase - coil * (t * t), dt, 0.6f);
+        }
         m_timer -= dt;
         // 薙ぐのは «これから胴が通る» 帯。弧の床への影がそのままその形になる。
         if (path) {
             const float to = Min(m_sweepBase + Max(sweepReach, 0.0f), path->LastArcEnd());
             PushTelegraphLine(path->At(m_sweepBase - Max(sweepReach, 0.0f) * 0.35f), path->At(to),
                               sweepRadius,
-                              1.0f - Clamp01(m_timer / Max(sweepTelegraph, 0.1f)));
+                              TelegraphProgress(), /*travels=*/true);
         }
         if (m_timer <= 0.0f) {
             se::Play(audio, se::kBossBeamSweep);
@@ -1690,7 +2336,9 @@ inline void SerpentAiComponent::OnUpdate()
         if (spine) (void)spine->DriveHeadArc(sweepTo, dt,
                                              Max(sweepReach, 0.0f) / Max(sweepSeconds, 0.1f) /
                                                  Max(spine->headSpeed, 0.1f));
-        (void)HitPlayerAlongBody(sweepRadius, sweepDamage);
+        // 薙ぎは弾ける手。弾かれると OnParried が構え直しへ落とす。
+        (void)HitPlayerAlongBody(sweepRadius, sweepDamage, PlayerHitKind::Parryable);
+        if (m_state != State::Sweep) break;
         m_timer -= dt;
         if (m_timer <= 0.0f) Enter(State::Settle);
         break;
@@ -1700,10 +2348,21 @@ inline void SerpentAiComponent::OnUpdate()
         (void)DriveCruise(dt);
         // 溜めのあいだだけ食いつく。«どこへ来るか» はこの向きが全部言っている。
         AimAtPlayer(1.0f);
+        // 喉が溜まる。頭が地上に居る唯一の手なので、ここに絵が無いと
+        // «近づいてよい 1 秒» が伝わらない (床のデカールは足元しか言わない)。
+        //
+        // WHY m_dealt を借りないか: あれは «当たりを 1 回だけ» の札で、Enter が
+        //     状態ごとに畳む。溜めの絵はその都合と無関係なので、混ぜると
+        //     «当たり判定を触ったら演出が消えた» が起きうる。
+        if (!m_biteCharged && spine && spine->HeadIsExposed()) {
+            m_biteCharged = true;
+            if (auto* vfx = VfxManagerComponent::Instance())
+                vfx->PlaySerpentBite(spine->HeadPosition(), spine->HeadForward(), true);
+        }
         m_timer -= dt;
         if (spine && path) {
             PushTelegraphLine(spine->HeadPosition(), path->At(m_lungeTo), lungeRadius,
-                              1.0f - Clamp01(m_timer / Max(lungeTelegraph, 0.1f)));
+                              TelegraphProgress(), /*travels=*/true);
             if (drawTelegraph)
                 debug.DrawLine(spine->HeadPosition(), path->At(m_lungeTo),
                                Vector4{ 1.0f, 0.30f, 0.20f, 1.0f });
@@ -1718,24 +2377,46 @@ inline void SerpentAiComponent::OnUpdate()
         // 出てしまえばもう曲げられない。溜めで決まった向きを少しだけ引きずる。
         AimAtPlayer(0.3f);
         const bool arrived = spine && spine->DriveHeadArc(m_lungeTo, dt, lungeSpeedScale);
-        if (spine) (void)HitPlayerInSphere(spine->HeadPosition(), lungeRadius, lungeDamage);
+        // 噛みつきは弾ける手。弾かれると OnParried が硬直へ落とす。
+        if (spine) (void)HitPlayerInSphere(spine->HeadPosition(), lungeRadius, lungeDamage,
+                                           PlayerHitKind::Parryable);
+        if (m_state != State::Lunge) break;
         if (arrived) {
             // 外したら硬直する。頭が地上に居る唯一の «触れる» 時間。
             if (m_dealt) Enter(State::Settle);
-            else         Enter(State::LungeRecover, Max(lungeRecover, 0.0f));
+            else {
+                // 空振って床へ突っ込んだ。溜めた光がここで途切れることに意味がある
+                // ので、着弾は必ず出す ─ 以前は外しても無音無絵で、«硬直している»
+                // という一番近づいてよい瞬間の合図が何も無かった。
+                if (spine && spine->HeadIsExposed()) {
+                    const Vector3 head = spine->HeadPosition();
+                    if (auto* vfx = VfxManagerComponent::Instance())
+                        vfx->PlaySerpentBite(Vector3{ head.x, 0.0f, head.z },
+                                             spine->HeadForward(), false);
+                    se::PlayAt(audio, se::kBossStompImpact, head, 0.8f);
+                    if (auto* shake = CameraShakeManagerComponent::Instance())
+                        shake->Shake(0.30f);
+                }
+                Enter(State::LungeRecover, Max(lungeRecover, 0.0f));
+            }
         }
         break;
     }
 
     case State::LungeRecover:
         m_timer -= dt;
+        // 弾かれた反動。外しただけの硬直では 0 なので、頭はその場に留まる。
+        if (m_recoil > 0.0f && spine) {
+            m_recoil -= dt;
+            (void)spine->DriveHeadArc(m_recoilArc, dt, 2.5f);
+        }
         if (m_timer <= 0.0f) Enter(State::Settle);
         break;
 
     case State::RearWindup: {
         m_timer -= dt;
         // 弧を伸ばすと山だけが上がる。«上がっていること» がそのまま予兆になる。
-        const float t = 1.0f - Clamp01(m_timer / Max(slamTelegraph, 0.1f));
+        const float t = TelegraphProgress();
         DriveRise(1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t));
         // WHY 頭を «進めない» か: 胴は弧長で置いてあるので、経路を伸ばすだけで
         //     同じ場所に居るまま持ち上がる。ここで構える位置 (弧の 88%) を
@@ -1771,15 +2452,12 @@ inline void SerpentAiComponent::OnUpdate()
         if (m_timer <= 0.0f) {
             DriveRise(0.0f);
             if (path) {
-                const Vector3 center = path->LastArcGroundCenter();
-                if (auto* vfx = VfxManagerComponent::Instance()) {
-                    vfx->PlayGroundBlast(center, Polarity::None, 1.0f);
-                    // 埃は弧の «両足» から。中心だけだと 11 m の胴が落ちた大きさが出ない。
-                    const Vector3 a = path->At(path->LastArcStart());
-                    const Vector3 b = path->At(path->LastArcEnd());
-                    vfx->PlayGroundDust(a, (a - center).NormalizedOr(Vector3::UP), 0.8f, 1.6f);
-                    vfx->PlayGroundDust(b, (b - center).NormalizedOr(Vector3::UP), 0.8f, 1.6f);
-                }
+                // 落ちてきたのは «線»。危険なのは 2 つの口を結ぶ帯そのものなので、
+                // 絵も帯で出す ─ 中心 1 点の爆発 + 両足の土煙では、締め上げと
+                // 同じ絵になってしまい、逃げる向き (横 / 外) の違いが出せない。
+                if (auto* vfx = VfxManagerComponent::Instance())
+                    vfx->PlaySerpentSlam(path->At(path->LastArcStart()),
+                                         path->At(path->LastArcEnd()), 1.0f);
             }
             se::Play(audio, se::kBossStompImpact);
             if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.60f);
@@ -1792,7 +2470,13 @@ inline void SerpentAiComponent::OnUpdate()
     case State::SlamRecover:
         m_timer -= dt;
         AimAtPlayer(0.6f);
-        (void)DriveCruise(dt);
+        // 薙ぎを弾かれた反動が残っていれば、渡りより先に頭を押し戻す。
+        if (m_recoil > 0.0f && spine) {
+            m_recoil -= dt;
+            (void)spine->DriveHeadArc(m_recoilArc, dt, 2.5f);
+        } else {
+            (void)DriveCruise(dt);
+        }
         if (m_timer <= 0.0f) Enter(State::Settle);
         break;
 
@@ -1846,7 +2530,9 @@ inline void SerpentAiComponent::OnUpdate()
             }
             if (!m_cageWarned) {
                 m_cageWarned = true;
-                se::Play(audio, se::kBossPolSwitchWarn);
+                // 踏みつけの予備動作で代用している。専用の予告音は素材ごと失われた
+                // (2026-09-08)。作り直したら差し替えること。
+                se::Play(audio, se::kBossStompRaise);
                 if (auto* pad = RumbleManagerComponent::Instance())
                     pad->Rumble(0.30f, 0.22f, 0.35f);
             }
@@ -1861,9 +2547,14 @@ inline void SerpentAiComponent::OnUpdate()
     case State::RushWindup: {
         m_timer -= dt;
         // 溜めは «少し引く»。走る前に縮む形が、その後の速さの説明になる。
-        if (spine) (void)spine->DriveHeadArc(spine->HeadArc() - 1.2f, dt, 0.5f);
+        //
+        // WHY 相対で指してはいけないか: 毎フレーム «今の位置 − 1.2 m» を目標にすると
+        //     目標が頭と一緒に逃げ続けるので、引きが止まらない。溜め 0.9 秒 × 3 m/s で
+        //     2.7 m 下がり、溜めを伸ばすとそのぶん青天井に増えていた。
+        //     走り出す位置は入った瞬間に決まっているべきなので、そこを控えて指す。
+        if (spine) (void)spine->DriveHeadArc(m_rushFrom - kRushCoil, dt, 0.5f);
         AimAtPlayer(1.0f);
-        PushRushTelegraph(1.0f - Clamp01(m_timer / Max(rushTelegraph, 0.1f)));
+        PushRushTelegraph(TelegraphProgress());
         if (m_timer <= 0.0f) {
             se::Play(audio, se::kBossChargeRun);
             if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.25f);
@@ -1923,15 +2614,10 @@ inline void SerpentAiComponent::OnUpdate()
             if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(0.70f);
             if (auto* vfx = VfxManagerComponent::Instance())
                 if (auto* aperture = Aperture()) {
-                    // 角で砕け、2 枚の足元から外へ埃が抜ける ─ «寄った» の向きを出す。
-                    const Vector3 corner = aperture->HoleCenter(m_cage[1]);
-                    vfx->PlayGroundBlast(corner, Polarity::None, 0.85f);
-                    for (int i = 0; i < 3; i += 2) {
-                        if (m_cage[i].empty()) continue;
-                        const Vector3 foot = aperture->HoleCenter(m_cage[i]);
-                        vfx->PlayGroundDust(foot, (foot - corner).NormalizedOr(Vector3::UP), 0.7f,
-                                            1.3f);
-                    }
+                    // 角で砕けて放射に抜ける。逃げるのは角から «外» へなので、
+                    // 絵も角 1 点からの放射で言う (叩きつけの «帯» と対になる形)。
+                    if (!m_cage[1].empty())
+                        vfx->PlaySerpentSnap(aperture->HoleCenter(m_cage[1]), 1.0f);
                 }
             m_cageCooldown = Max(cageCooldown, 0.0f);
             for (std::string& hole : m_cage) hole.clear();
@@ -1964,15 +2650,22 @@ inline void SerpentAiComponent::OnUpdate()
             ready ? out : Max(Min(out, path->LastArcStart() - 1.0f), spine->HeadArc());
 
         // 潜っているあいだは狙わない。振り返ると «逃げている» が読めなくなる。
-        // 逃げの渡りではそもそも見ない ─ 背を向けていることが «逃げた» の合図。
-        if (spine->HeadIsExposed() && !m_evading) AimAtPlayer(0.45f);
+        if (spine->HeadIsExposed()) AimAtPlayer(0.45f);
 
-        const float speed = m_evading ? Max(evadeSpeedScale, 0.1f) : transitSpeedScale;
+        const float speed = transitSpeedScale;
         if (spine->DriveHeadArc(target, dt, speed) && ready) {
             m_attackIn = random.Range(0.6f, 1.4f);
-            m_evading  = false;
             Enter(State::Settle);
         }
+        break;
+    }
+
+    case State::Toppled: {
+        // 胴は動かさない。渡りも狙いも止め、晒したまま数える。頭だけ弱くプレイヤーを
+        // 見る ─ 完全に止めると «倒れている» ではなく «止まった» に見える。
+        AimAtPlayer(0.2f);
+        m_timer -= dt;
+        if (m_timer <= 0.0f) EndTopple();
         break;
     }
 
@@ -2004,10 +2697,52 @@ inline void SerpentAiComponent::OnLateUpdate()
 {
     // 骨が解かれた後に置く。頭の位置を見る予兆 (突進) が 1 フレーム遅れないように。
     DriveTelegraphDecals();
+    DriveSweepTrail();
+}
+
+// WHY 薙ぎに軌跡を出すか:
+//   薙ぎ (Sweep) と突進 (Charge) には予兆 (部位が光る) はあるが、«通った跡» が
+//   何も残らない。かわした後の画面には何も起きていないので、«今どこを薙がれたか»
+//   が体感として残らず、次に同じ手が来たときの読みに繋がらない。
+//   プレイヤーの斬撃と同じ帯を敵にも出せば、避けた «後» まで軌跡が残って、
+//   間合いの学習がその場でできる。
+//
+// WHY ソケットではなく座標を押し込むか:
+//   蛇は 28 節の連なりで、刀のような «鍔と切っ先» のソケットを持たない。
+//   刃に当たるのは «頭とその手前の節» で、これは SerpentSpineComponent が
+//   毎フレーム解いた結果からしか取れない。BladeTrailComponent の SetSource は
+//   まさにこの «ソケットを持たない持ち主» のための入口。
+inline void SerpentAiComponent::DriveSweepTrail()
+{
+    auto* spine = Spine();
+    if (!spine) return;
+
+    // 薙いでいる間だけ。突進や巡航でも出すと、蛇が常時光った帯を引きずることになり、
+    // «今は攻撃している» という情報が帯から消える。
+    const bool sweeping = m_state == State::Sweep;
+    if (sweeping) {
+        // 帯の «刃» は頭から数節ぶん。JointPosition(0) が頭で、番号が増えるほど手前。
+        // 節をまたぐ幅にすると、薙ぎの «厚み» がそのまま帯の幅になる。
+        m_sweepTrail.SetSource(TrailSlot::A, spine->JointPosition(sweepTrailJoint),
+                               spine->JointPosition(0));
+        if (!m_sweepTrailLive) {
+            m_sweepTrailLive = true;
+            // 発生は薙ぎの尺そのもの。別の数を持つと、薙ぎを速くしたときに
+            // 帯だけが以前の長さで残る。
+            m_sweepTrail.Play(TrailSlot::A, false, Max(sweepSeconds, 0.1f), 1.0f);
+        }
+    } else {
+        m_sweepTrailLive = false;
+    }
+
+    m_sweepTrail.ExecuteCallback(&Script::OnLateUpdate, m_sweepTrail.GetTypeName());
 }
 
 inline void SerpentAiComponent::OnDestroy()
 {
+    // 軌跡もルートへ帯と光を作る。持ち主が畳まないと Play のたびに増える。
+    m_sweepTrail.OnDestroy();
+
     // ルートに置いた以上、蛇と一緒には消えない。持ち主が畳む。
     for (EntityRef& ref : m_decals) {
         if (GameObject* object = ref.Resolve(scene)) scene.Destroy(*object);

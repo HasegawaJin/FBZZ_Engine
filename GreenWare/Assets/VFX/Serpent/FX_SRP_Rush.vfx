@@ -1,0 +1,253 @@
+# FBZZ Engine
+# FX_SRP_Rush.vfx — 15 m/s で走り抜ける胴が床を削った 1 点。
+#
+# WHY 走行の土煙 (FX_PLR_RunDust) や重量の土煙 (FX_BOSS_ShockDust) を流用しないか:
+#   どちらも «1 点で起きた» 絵で、寿命のあいだその場に留まる。走りは 0.12 秒ごとに
+#   1.8 m 間隔で置かれるので、留まる絵だと点が数珠に並んで «足跡» に見える。
+#   ここは 1 発の中で «後ろへ流れて薄れる» を作り、置いた点が線として読めるようにする。
+#
+# WHY 火花を混ぜるか:
+#   煙だけでは «速い» が出ない。装甲が床を削って散る火花は速度そのものの表示で、
+#   遅い胴 (斬ってよい) と速い胴 (触れると痛い / しきい値 8 m/s) を絵で分ける
+#   唯一の手掛かりになる。
+#
+# WHY 1 発を軽く作るか:
+#   走りは 3 ホップで 2 秒ほど続き、その間ずっと 0.12 秒ごとに鳴る (約 16 発)。
+#   1 発を重くすると «壁» になって走っている胴そのものが見えなくなる。
+#   陽炎も光源も置かない ─ どちらも同時生存数がそのまま負荷になる。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_SRP_Rush"
+instanceId = "7b04ce16-2d59-4f30-91a8-6e527c3ba014"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "SerpentRushVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+dustColor = [0.66, 0.63, 0.58, 0.42]
+sparkColor = [1.0, 0.66, 0.22, 1.0]
+wakeSpeed = 7.0
+puffSize = 1.5
+sparkPower = 14.0
+scrapeWidth = 1.4
+
+# 後ろへ流れる煙。層は «ローカル +Z が走っている向き» なので、噴出は負の Z。
+[[gameobjects]]
+name = "Wake Smoke"
+instanceId = "a3f7208d-64b1-4e97-b5c0-d81e35704f2b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Rush"
+parentInstanceId = "7b04ce16-2d59-4f30-91a8-6e527c3ba014"
+
+[gameobjects.transform]
+position = [0.0, 0.18, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.15
+loop = false
+emitRate = 0.0
+maxParticles = 10
+shape = 2
+coneAngleDegrees = 30.0
+coneRadius = 0.3
+sizeStart = 0.35
+sizeEnd = 1.5
+sizeCurvePower = 0.5
+lifetime = 0.55
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 2.1, -7.0]
+velocitySpread = 0.7
+velocityDamping = 3.4
+gravity = [0.0, 0.2, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -30.0
+angularVelocityMax = 30.0
+renderPriority = 28
+colorVariation = 0.08
+useColorGradient = true
+colorGradient = [[0.0, 0.7, 0.67, 0.61, 0.0], [0.12, 0.66, 0.63, 0.58, 0.42], [1.0, 0.52, 0.5, 0.47, 0.0]]
+bursts = [{ time = 0.0, count = 4, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+# 削れた砂。走った跡が «掘れている» ことを «物» で言う。
+[[gameobjects]]
+name = "Scrape Grit"
+instanceId = "16d9b83e-70a4-4c62-8d15-24f0e97b5a3c"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Rush"
+parentInstanceId = "7b04ce16-2d59-4f30-91a8-6e527c3ba014"
+
+[gameobjects.transform]
+position = [0.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.12
+loop = false
+emitRate = 0.0
+maxParticles = 12
+shape = 2
+coneAngleDegrees = 34.0
+coneRadius = 0.2
+sizeStart = 0.09
+sizeEnd = 0.03
+sizeCurvePower = 1.4
+lifetime = 0.6
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 3.85, -8.4]
+velocitySpread = 1.5
+velocityDamping = 0.9
+gravity = [0.0, -9.8, 0.0]
+materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+renderMode = 1
+stretchedVelocityScale = 0.08
+stretchedLengthScale = 1.5
+sortMode = 0
+renderPriority = 36
+colorVariation = 0.12
+colorStart = [0.66, 0.63, 0.58, 1.0]
+colorEnd = [0.42, 0.4, 0.36, 0.0]
+bursts = [{ time = 0.0, count = 6, cycles = 1, interval = 0.015, probability = 1.0 }]
+startDelay = 0.0
+
+# 火花。«速い胴» を絵で言う担当。少数を長く伸ばす ─ 数を増やすと走りが «燃えて» 見える。
+[[gameobjects]]
+name = "Sparks"
+instanceId = "5c1a4906-e738-42bd-90f4-b62037da8e51"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Rush"
+parentInstanceId = "7b04ce16-2d59-4f30-91a8-6e527c3ba014"
+
+[gameobjects.transform]
+position = [0.0, 0.12, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.1
+loop = false
+emitRate = 0.0
+maxParticles = 10
+shape = 2
+coneAngleDegrees = 44.0
+coneRadius = 0.18
+sizeStart = 0.18
+sizeEnd = 0.02
+sizeCurvePower = 1.9
+lifetime = 0.4
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 6.3, -4.9]
+velocitySpread = 2.4
+velocityDamping = 1.4
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.1
+stretchedLengthScale = 2.6
+sortMode = 0
+renderPriority = 46
+colorVariation = 0.12
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.94, 0.74, 1.0], [0.3, 1.0, 0.66, 0.22, 0.95], [1.0, 0.68, 0.24, 0.04, 0.0]]
+bursts = [{ time = 0.0, count = 5, cycles = 1, interval = 0.012, probability = 1.0 }]
+startDelay = 0.0
+
+# 削り跡。1 発は短いが、0.12 秒ごとに置かれるので «走った線» として繋がって残る。
+#
+# WHY 寿命を短く取るか: 3 ホップで 16 枚が同時に生きる。長く残すと走り終えた後も
+#   アリーナに線が残り、次の走りの予兆 (帯のデカール) と紛らわしくなる。
+[[gameobjects]]
+name = "Scrape Mark"
+instanceId = "d80e37c2-95ab-4160-b74d-3ea51c96f082"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Rush"
+parentInstanceId = "7b04ce16-2d59-4f30-91a8-6e527c3ba014"
+
+[gameobjects.transform]
+position = [0.0, -0.8, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.4, 2.4, 3.4]
+
+[gameobjects.DecalComponent]
+enabled = true
+material = ""
+albedoTex = "Assets/VFX/Textures/T_Scorch_Decal.png"
+normalTex = ""
+emissiveTex = ""
+albedo = [0.15, 0.14, 0.13, 0.55]
+normalStrength = 0.0
+angleFadeStrength = 1.0
+angleFadeDegrees = 70.0
+emissiveColor = [1.0, 1.0, 1.0]
+emissiveScale = 0.0
+lifetime = 1.6
+fadeTime = 0.7
+age = 0.0
+receiverLayerMask = -1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 1.6
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXDecalEnvelope]
+enabled = true
+fadeCurve = { interp = 0, keys = [[0.0, 1.0], [0.5, 0.8], [1.0, 0.0]] }
+driveEmissive = false

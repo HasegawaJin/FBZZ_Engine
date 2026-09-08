@@ -35,7 +35,7 @@
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Utils/ShockFalloff.hpp>
 #include <algorithm>
@@ -52,39 +52,46 @@ class SerpentDeathVfxComponent : public Script {
     FBZZ_SCRIPT(SerpentDeathVfxComponent)
 
 public:
-    FBZZ_GROUP("Target")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
+    FBZZ_GROUP("対象")
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
     FBZZ_TOOLTIP("衝撃の減衰を測る相手。パッドを持っているのはプレイヤー本人")
 
     FBZZ_GROUP("Break Up")
-    FBZZ_FIELD_RANGE(float, buildupSeconds, 1.40f, "Buildup", 0.1f, 8.0f)
+    FBZZ_FIELD_RANGE(float, buildupSeconds, 1.40f, "蓄積", 0.1f, 8.0f)
     FBZZ_TOOLTIP("決定打までの秒数。EnemyDeathVfxComponent の Body Dissolve > Delay と "
                  "同じ値にすること (崩れ始めが決定打に重なる)")
-    FBZZ_FIELD_RANGE_INT(int, blastCount, 10, "Blast Count", 0, 32)
+    FBZZ_FIELD_RANGE_INT(int, blastCount, 10, "爆発の数", 0, 32)
     FBZZ_TOOLTIP("頭から尾へ走らせる爆発の数。地上に出ている胴の上だけに置く")
-    FBZZ_FIELD_RANGE(float, blastSpread, 0.45f, "Blast Spread", 0.0f, 6.0f)
+    FBZZ_FIELD_RANGE(float, blastSpread, 0.45f, "爆発の拡がり", 0.0f, 6.0f)
     FBZZ_TOOLTIP("節の芯からどれだけ散らすか [m]。0 だと関節の中心で毎回光る")
-    FBZZ_FIELD_RANGE(float, blastStrengthStart, 0.30f, "Strength (first)", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, blastStrengthEnd, 0.70f, "Strength (last)", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, blastStrengthStart, 0.30f, "強度 (最初)", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, blastStrengthEnd, 0.70f, "強度 (最後)", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, blastBias, 2.0f, "Timing Bias", 0.5f, 5.0f)
+    FBZZ_TOOLTIP("頭側を «速く»・尾側を «遅く» する強さ。1.0 で等間隔。"
+                 "上げるほど «端から一気に走って、最後はゆっくり大きく» になる")
+    FBZZ_FIELD_RANGE_INT(int, heavyEvery, 3, "Heavy Every", 1, 8)
+    FBZZ_TOOLTIP("何発に 1 発を «爆発» にするか。残りは光も陽炎も持たない軽い破片。"
+                 "1 にすると 10 発すべてが爆発になり、同時に生きる陽炎が 7〜8 枚"
+                 "＝ 全画面コピーがその数だけ走る")
 
     FBZZ_GROUP("Head Detonation")
-    FBZZ_FIELD_RANGE(float, climaxStrength, 1.0f, "Strength", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, climaxLift, 0.5f, "Lift", -4.0f, 8.0f)
-    FBZZ_FIELD_RANGE(float, climaxSurgeSeconds, 0.55f, "Surge", 0.0f, 3.0f)
+    FBZZ_FIELD_RANGE(float, climaxStrength, 1.0f, "強度", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, climaxLift, 0.5f, "浮き", -4.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, climaxSurgeSeconds, 0.55f, "サージ", 0.0f, 3.0f)
     FBZZ_FIELD_COLOR(climaxSurgeColor, (Vector4{ 1.00f, 0.72f, 0.30f, 1.00f }), "Surge Color")
-    FBZZ_TOOLTIP("ディゾルブの縁と粒に合わせた琥珀。極性色 (赤 / 青) を使うと "
-                 "«どちらかの極でやられた» と読める")
+    FBZZ_TOOLTIP("ディゾルブの縁と粒に合わせた琥珀。刀の色 (赤 / 青) を使うと "
+                 "«どちらかの刀でやられた» と読める")
 
-    FBZZ_GROUP("Feedback")
-    FBZZ_FIELD_RANGE(float, shakeRatio, 0.80f, "Shake Ratio", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, feedbackRange, 30.0f, "Falloff Range", 1.0f, 80.0f)
-    FBZZ_FIELD_RANGE(float, feedbackNear, 4.0f, "Full Strength Within", 0.0f, 20.0f)
-    FBZZ_FIELD_RANGE(float, blastVolume, 0.85f, "Blast Volume", 0.0f, 2.0f)
-    FBZZ_FIELD_RANGE(float, climaxVolume, 1.0f, "Detonation Volume", 0.0f, 2.0f)
+    FBZZ_GROUP("手応え")
+    FBZZ_FIELD_RANGE(float, shakeRatio, 0.80f, "揺れの比率", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, feedbackRange, 30.0f, "減衰の範囲", 1.0f, 80.0f)
+    FBZZ_FIELD_RANGE(float, feedbackNear, 4.0f, "全開になる距離", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, blastVolume, 0.85f, "爆発の音量", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, climaxVolume, 1.0f, "起爆の音量", 0.0f, 2.0f)
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(std::string, debugStage, "Idle", "Stage")
-    FBZZ_FIELD_READ_ONLY(int, debugBlastsFired, 0, "Blasts Fired")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugStage, "Idle", "ステージ")
+    FBZZ_FIELD_READ_ONLY(int, debugBlastsFired, 0, "発射した爆発")
 
     /// 撃破された瞬間に 1 度だけ呼ぶ。2 度目以降は無視する。
     void Begin();
@@ -105,7 +112,14 @@ private:
     }
     [[nodiscard]] GameObject* Player() const { return scene.FindWithTag(playerTag); }
 
-    void Blast(const Vector3& point, float strength01, float volume, const se::Bank& bank) const;
+    /// 1 発。heavy なら爆発 (光と陽炎を持つ)、そうでなければ軽い破片だけ。
+    ///
+    /// WHY 全部を爆発にしないか: 1 発は焦げ跡まで含めて 4 秒あるので、1.4 秒に
+    ///     10 発置くと常時 7〜8 発が生きている。爆発は陽炎の層を持ち、歪む
+    ///     エミッター 1 つにつき全画面コピーが 1 回走る ─ 絵としても «端から
+    ///     死んでいく» が白い帯に潰れる。要所だけ爆発にして、間は破片で繋ぐ。
+    void Blast(const Vector3& point, float strength01, float volume, const se::Bank& bank,
+               bool heavy) const;
     /// index 番目 (0 = 頭側) の爆発を置く点。
     [[nodiscard]] Vector3 BlastPoint(int index) const;
     /// 地上に出ていて生きている節のうち、headIndex 以降で最初に見つかるもの。
@@ -156,13 +170,16 @@ inline Vector3 SerpentDeathVfxComponent::BlastPoint(int index) const
 }
 
 inline void SerpentDeathVfxComponent::Blast(const Vector3& point, float strength01, float volume,
-                                            const se::Bank& bank) const
+                                            const se::Bank& bank, bool heavy) const
 {
     const float strength = Clamp01(strength01);
     if (strength <= 0.0f) return;
 
-    if (auto* vfx = VfxManagerComponent::Instance())
-        vfx->PlayImpact(point, Polarity::None, strength, /*againstAnchor=*/false);
+    if (auto* vfx = VfxManagerComponent::Instance()) {
+        if (heavy) vfx->PlayImpact(point, BladeSide::None, strength, /*againstAnchor=*/false);
+        // 破片は «そこも爆ぜた» だけを言う。光も陽炎も持たないので何発重ねても軽い。
+        else       vfx->PlaySerpentGeyser(point, strength, 0.6f + 0.7f * strength);
+    }
     se::PlayAt(audio, bank, point, volume);
 
     // 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ
@@ -203,14 +220,25 @@ inline void SerpentDeathVfxComponent::OnUpdate()
     const float buildup = Max(buildupSeconds, 0.0f);
 
     while (m_next < count) {
-        const float at = buildup * (static_cast<float>(m_next) + 0.5f)
-                       / static_cast<float>(count + 1);
-        if (m_elapsed < at) break;
-
         const float t = count > 1
             ? static_cast<float>(m_next) / static_cast<float>(count - 1) : 1.0f;
+
+        // 頭側を速く、尾側を遅く。
+        //
+        // WHY 等間隔をやめたか: 強さの傾斜 (0.30 → 0.70) だけでは «10 発が等間隔で
+        //     鳴った» としか見えず、«長いものが端から死んでいく» にならない。
+        //     時間の方を曲げると、頭のあたりで一気に走って尾で溜める形になり、
+        //     最後の頭の決定打 (Climax) までの «間» もそこで作れる。
+        const float shape = std::pow(t, Max(blastBias, 0.5f));
+        const float at    = buildup * (shape * static_cast<float>(count) + 0.5f)
+                          / static_cast<float>(count + 1);
+        if (m_elapsed < at) break;
+
+        // 要所だけ «爆発»。全部を爆発にすると同時に生きる陽炎が 7〜8 枚になる。
+        const int  every = Max(heavyEvery, 1);
+        const bool heavy = (m_next % every) == 0 || m_next == count - 1;
         Blast(BlastPoint(m_next), Lerp(blastStrengthStart, blastStrengthEnd, t), blastVolume,
-              se::kImpactHeavy);
+              heavy ? se::kImpactHeavy : se::kImpactDebris, heavy);
         ++m_next;
         debugBlastsFired = m_next;
     }
@@ -223,7 +251,7 @@ inline void SerpentDeathVfxComponent::OnUpdate()
 
     Vector3 head = Spine() ? Spine()->HeadPosition() : transform.worldPosition;
     head.y += climaxLift;
-    Blast(head, climaxStrength, climaxVolume, se::kSerpentDestroy);
+    Blast(head, climaxStrength, climaxVolume, se::kSerpentDestroy, /*heavy=*/true);
     ++debugBlastsFired;
 
     // WHY 白いフラッシュではなくサージか: 画面を塗る白は «こちらが受けた» を表す語で、

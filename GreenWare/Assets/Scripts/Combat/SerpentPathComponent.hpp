@@ -51,7 +51,7 @@ class SerpentPathComponent : public Script {
     FBZZ_SCRIPT(SerpentPathComponent)
 
 public:
-    FBZZ_GROUP("Window")
+    FBZZ_GROUP("受付時間")
     // 渡れる間隔には上下の窓がある。狭いと折れ角が上限を超える。
     //
     // WHY 上限が «露出長より短く» なければならないか (企画の 11.5 m から下げた理由):
@@ -79,12 +79,12 @@ public:
                  "渡っている最中に胴が全部床下へ入ってしまう。"
                  "床スラブ (厚み 0.6 m) と胴の太さ (半径 0.62 m) を抜ける分があれば足りる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD(bool, drawPath, false, "Draw Path")
-    FBZZ_FIELD_READ_ONLY(std::string, debugRoute, "-", "Route")
+    FBZZ_FIELD_READ_ONLY(std::string, debugRoute, "-", "経路")
     FBZZ_FIELD_READ_ONLY(float, debugChord, 0.0f, "Chord")
     FBZZ_FIELD_READ_ONLY(float, debugApex, 0.0f, "Apex")
-    FBZZ_FIELD_READ_ONLY(float, debugRadius, 0.0f, "Radius")
+    FBZZ_FIELD_READ_ONLY(float, debugRadius, 0.0f, "半径")
     FBZZ_FIELD_READ_ONLY(float, debugLink, 0.0f, "Link Length")
     FBZZ_FIELD_READ_ONLY(int, debugPieces, 0, "Pieces")
 

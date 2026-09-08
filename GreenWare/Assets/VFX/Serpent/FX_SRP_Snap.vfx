@@ -1,0 +1,340 @@
+# FBZZ Engine
+# FX_SRP_Snap.vfx — 檻の壁 2 枚が角へ寄って砕けた。逃げるのは角から «外» へ。
+#
+# WHY 叩きつけ (FX_SRP_Slam) と別のグラフか:
+#   締め上げは «角を軸に寄る» 手で、危険なのは角の周り。叩きつけは «線» が落ちる手で、
+#   危険なのは 2 口を結ぶ帯。逃げる向きが違う以上、絵も違わなければ «予兆を見て
+#   いなければ区別が付かない» 状態が残る。
+#
+# WHY 放射を radialVelocity で作るか:
+#   固定の向き (emitVelocity) で外へ押すと 1 方向だけが濃くなり、«どちら側から
+#   寄ってきたか» という嘘の向きが出る。放射は粒ごとに向きが違わなければ成立しない。
+#
+# WHY 輪を出さないか:
+#   輪は «弾いた» の印 (VFX/Game/README.md「弾き・当たり・転倒・とどめの読み分け」)。
+#   締め上げで輪を出すと «弾ける手» だと読まれる ─ 実際には弾けない。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_SRP_Snap"
+instanceId = "2f75d81c-6390-4e42-bb08-a1e4c937520d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "SerpentSnapVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+dustColor = [0.66, 0.63, 0.58, 0.6]
+rimColor = [1.0, 0.62, 0.16, 1.0]
+outwardSpeed = 9.0
+cloudSize = 4.0
+sparkPower = 12.0
+crackSize = 6.0
+snapLight = 9.0
+
+# 角で立ち上がる煙。壁 2 枚 (高さ約 3 m) を包む高さまで上がってから外へ抜ける。
+[[gameobjects]]
+name = "Corner Smoke"
+instanceId = "8a1e60c4-b537-4d09-92f1-4e73c05a8b16"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Snap"
+parentInstanceId = "2f75d81c-6390-4e42-bb08-a1e4c937520d"
+
+[gameobjects.transform]
+position = [0.0, 0.6, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.4
+loop = false
+emitRate = 0.0
+maxParticles = 40
+shape = 1
+sphereRadius = 1.3
+sizeStart = 1.0
+sizeEnd = 4.0
+sizeCurvePower = 0.55
+lifetime = 1.35
+lifetimeRandom = 0.35
+emitVelocity = [0.0, 1.98, 0.0]
+velocitySpread = 1.4
+velocityDamping = 2.0
+radialVelocity = 23.4
+gravity = [0.0, 0.3, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -16.0
+angularVelocityMax = 16.0
+renderPriority = 30
+colorVariation = 0.09
+useColorGradient = true
+colorGradient = [[0.0, 0.7, 0.67, 0.61, 0.0], [0.09, 0.66, 0.63, 0.58, 0.6], [0.58, 0.6, 0.58, 0.54, 0.4], [1.0, 0.52, 0.5, 0.47, 0.0]]
+bursts = [{ time = 0.0, count = 20, cycles = 2, interval = 0.03, probability = 1.0 }]
+startDelay = 0.0
+
+# 床すれすれを走る «掃き出し»。角から外へ抜ける向きをいちばん低い所で言う。
+[[gameobjects]]
+name = "Ground Wash"
+instanceId = "b30c7f95-1d84-46a2-8e57-620f9dc41a73"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Snap"
+parentInstanceId = "2f75d81c-6390-4e42-bb08-a1e4c937520d"
+
+[gameobjects.transform]
+position = [0.0, 0.05, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.35
+loop = false
+emitRate = 0.0
+maxParticles = 20
+shape = 1
+sphereRadius = 0.9
+sizeStart = 1.2
+sizeEnd = 6.4
+sizeCurvePower = 0.5
+lifetime = 1.0
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 0.0, 0.0]
+velocitySpread = 0.5
+velocityDamping = 2.6
+radialVelocity = 30.6
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Smoke04_Premultiplied.mat"
+renderMode = 2
+sortMode = 1
+angularVelocityMin = -18.0
+angularVelocityMax = 18.0
+renderPriority = 24
+colorVariation = 0.07
+colorStart = [0.66, 0.63, 0.58, 0.6]
+colorEnd = [0.5, 0.48, 0.45, 0.0]
+bursts = [{ time = 0.0, count = 10, cycles = 1, interval = 0.03, probability = 1.0 }]
+startDelay = 0.0
+
+[[gameobjects]]
+name = "Grit"
+instanceId = "5e2843d0-0af6-4b71-96c3-8d15702be49f"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Snap"
+parentInstanceId = "2f75d81c-6390-4e42-bb08-a1e4c937520d"
+
+[gameobjects.transform]
+position = [0.0, 0.15, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.25
+loop = false
+emitRate = 0.0
+maxParticles = 32
+shape = 1
+sphereRadius = 1.0
+sizeStart = 0.11
+sizeEnd = 0.04
+sizeCurvePower = 1.4
+lifetime = 1.0
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 7.65, 0.0]
+velocitySpread = 1.6
+velocityDamping = 0.8
+radialVelocity = 18.0
+gravity = [0.0, -9.8, 0.0]
+materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+renderMode = 1
+stretchedVelocityScale = 0.08
+stretchedLengthScale = 1.5
+sortMode = 0
+renderPriority = 38
+colorVariation = 0.12
+colorStart = [0.66, 0.63, 0.58, 1.0]
+colorEnd = [0.42, 0.4, 0.36, 0.0]
+bursts = [{ time = 0.0, count = 14, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+# 装甲どうしが噛んだ火花。«硬い物が当たった» の音の相方で、これが無いと
+# 締め上げが «煙が出ただけ» になる。色は熱色 (12.2 の «火花は無彩色と熱色» の内側)。
+[[gameobjects]]
+name = "Sparks"
+instanceId = "c74f19b6-83d2-40e5-a168-95b0e2743cd8"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Snap"
+parentInstanceId = "2f75d81c-6390-4e42-bb08-a1e4c937520d"
+
+[gameobjects.transform]
+position = [0.0, 0.5, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.2
+loop = false
+emitRate = 0.0
+maxParticles = 26
+shape = 1
+sphereRadius = 0.5
+sizeStart = 0.2
+sizeEnd = 0.02
+sizeCurvePower = 1.9
+lifetime = 0.55
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 6.0, 0.0]
+velocitySpread = 2.2
+velocityDamping = 1.2
+radialVelocity = 26.4
+gravity = [0.0, -12.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.1
+stretchedLengthScale = 2.2
+sortMode = 0
+renderPriority = 46
+colorVariation = 0.12
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.94, 0.72, 1.0], [0.35, 1.0, 0.62, 0.16, 0.95], [1.0, 0.68, 0.22, 0.03, 0.0]]
+bursts = [{ time = 0.0, count = 13, cycles = 1, interval = 0.015, probability = 1.0 }]
+startDelay = 0.0
+
+# 角に残るひび。«ここが締まった» が数秒残る。
+[[gameobjects]]
+name = "Crack"
+instanceId = "9017ea53-4c26-4f8b-b3d9-e5720ac16847"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Snap"
+parentInstanceId = "2f75d81c-6390-4e42-bb08-a1e4c937520d"
+
+[gameobjects.transform]
+position = [0.0, -1.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [6.0, 3.0, 6.0]
+
+[gameobjects.DecalComponent]
+enabled = true
+material = ""
+albedoTex = "Assets/VFX/Textures/T_Crack_Radial.png"
+normalTex = ""
+emissiveTex = ""
+albedo = [0.12, 0.11, 0.11, 0.8]
+normalStrength = 0.0
+angleFadeStrength = 1.0
+angleFadeDegrees = 70.0
+emissiveColor = [1.0, 1.0, 1.0]
+emissiveScale = 0.0
+lifetime = 4.5
+fadeTime = 1.3
+age = 0.0
+receiverLayerMask = -1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.02
+duration = 4.5
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXDecalEnvelope]
+enabled = true
+fadeCurve = { interp = 0, keys = [[0.0, 1.0], [0.65, 0.9], [1.0, 0.0]] }
+driveEmissive = false
+
+[[gameobjects]]
+name = "Snap Light"
+instanceId = "e6b25470-19fd-4a83-8c04-7361df952ba0"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Snap"
+parentInstanceId = "2f75d81c-6390-4e42-bb08-a1e4c937520d"
+
+[gameobjects.transform]
+position = [0.0, 1.4, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 0.62, 0.16]
+intensity = 9.0
+enabled = true
+range = 11.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.35
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.2, 0.5], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

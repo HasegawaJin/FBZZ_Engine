@@ -11,9 +11,9 @@ shader = 'Assets/Shaders/Material/Skinned/SkinnedEnemyDissolve.hlsl'
 version = 1
 
 [params]
-albedo = [ 0.215, 0.225, 0.245, 1.0 ]
-metallic = 0.0
-roughness = 0.4
+albedo = [ 0.30, 0.315, 0.34, 1.0 ]
+metallic = 1.0
+roughness = 0.44
 # 0 = 無傷。スクリプトがここだけを動かす。
 dissolveAmount = 0.0
 # 先に消える向き (ローカル空間)。既定は足元から。
