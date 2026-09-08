@@ -13,6 +13,8 @@
 #include <Engine/Input/Gamepad.hpp>
 #include <Engine/Input/InputActionMap.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/PipelineDiagnostics.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
@@ -35,7 +37,10 @@ namespace fbzz::editor {
 
 namespace {
 
-constexpr float SIDEBAR_WIDTH = 180.0f;
+// セクション名の列。px 直値だと UI スケールを上げたときにも幅が変わらず、
+// 拡大したぶんだけ名前がはみ出す (日本語だと «アプリケーション» が最初に溢れる)。
+// 文字の大きさに追従させる。
+float SidebarWidth() { return ImGui::GetFontSize() * 11.0f; }
 
 bool SectionButton(const char* label, ProjectSettingsPanel::Section value, ProjectSettingsPanel::Section& current)
 {
@@ -118,23 +123,26 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 
 void ProjectSettingsPanel::DrawSidebar()
 {
-    ImGui::BeginChild("##ProjectSettingsSidebar", { SIDEBAR_WIDTH, 0.0f }, true);
+    ImGui::BeginChild("##ProjectSettingsSidebar", { SidebarWidth(), 0.0f }, true);
 
     // 検索バー — 入力文字列に部分一致するセクションのみ表示する。
     static char s_filter[64] = {};
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##search", "Search...", s_filter, sizeof(s_filter));
+    ImGui::InputTextWithHint("##search", LOCT("Search..."), s_filter, sizeof(s_filter));
     ImGui::Separator();
 
     // 空フィルター時は全表示、入力時は大文字小文字無視の部分一致フィルタリング。
     // keywords は「そのセクションに含まれるが名前には出てこない語」。
     // WHY 必要か: 項目を統合したことで "Screen" や "Bloom" のような
     //      旧項目名・内容語で引いたときに何も出なくなる。検索の当たりを維持する。
+    // 検索は原文と訳の両方に当てる。日本語表示中に "physics" で引けないと、
+    // 英語の資料を見ながら設定を探す使い方ができなくなる。
     auto btn = [&](const char* name, Section sec, const char* keywords = "") {
         const bool match = s_filter[0] == '\0'
             || util::StringUtils::ContainsCI(name, s_filter)
+            || util::StringUtils::ContainsCI(LOCT(name), s_filter)
             || (keywords[0] != '\0' && util::StringUtils::ContainsCI(keywords, s_filter));
-        if (match) SectionButton(name, sec, m_currentSection);
+        if (match) SectionButton(LOC(name), sec, m_currentSection);
     };
 
     btn("Application",    Section::Application,
@@ -146,6 +154,7 @@ void ProjectSettingsPanel::DrawSidebar()
     btn("Audio",          Section::Audio,   "volume bgm se 音量");
     btn("Tags & Layers",  Section::TagsAndLayers, "tag layer タグ レイヤー");
     btn("Import",         Section::Import,  "fbx preset model texture インポート");
+    btn("Editor",         Section::Editor,  "language english japanese 言語 日本語 表示");
 
     ImGui::EndChild();
 }
@@ -154,13 +163,14 @@ void ProjectSettingsPanel::DrawSection(EditorContext& ctx)
 {
     auto& settings = ctx.projectSettings;
     switch (m_currentSection) {
-    case Section::Application:   DrawApplication(settings); break;
+    case Section::Application:   DrawApplication(ctx, settings); break;
     case Section::Graphics:      DrawGraphics(ctx, settings.render); break;
     case Section::Physics:       DrawPhysics(settings); break;
     case Section::Input:         DrawInput(ctx); break;
     case Section::Audio:         DrawAudio(settings); break;
     case Section::TagsAndLayers: DrawTagsAndLayers(settings); break;
     case Section::Import:        DrawImport(ctx); break;
+    case Section::Editor:        DrawEditor(ctx); break;
     }
 }
 
@@ -380,7 +390,7 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
     }
 }
 
-void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
+void ProjectSettingsPanel::DrawApplication(EditorContext& ctx, ProjectSettings& settings)
 {
     ImGui::TextUnformatted("Application");
     ImGui::Separator();
@@ -413,53 +423,48 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
 
     ImGui::Spacing();
     ImGui::SeparatorText("Cursor");
-    DrawCursor(settings.cursor);
+    DrawCursor(ctx, settings.cursor);
 }
 
-void ProjectSettingsPanel::DrawCursor(core::CursorPolicy& cursor)
+void ProjectSettingsPanel::DrawCursor(EditorContext& ctx, CursorAppearance& cursor)
 {
-    // WHY Play Focus Mode と別に置くか: Focus Mode は Game View の並べ方の話で、
-    //     カーソルを取るかどうかはゲームの作りで決まる。ここが正本で、Standalone は起動時、
-    //     Editor は Play 開始時に同じ値を適用する。実行中はスクリプトが上書きしてよい。
-    struct Entry { core::CursorLockMode mode; const char* label; const char* help; };
-    static constexpr Entry kModes[] = {
-        { core::CursorLockMode::None,     "None",
-          "拘束しない。マウスは画面外へ出られる" },
-        { core::CursorLockMode::Confined, "Confined",
-          "ゲーム画面の中へ閉じ込める。マウスの絶対座標は生きるので、\n"
-          "自前のカーソルを描くゲームはこちら。マルチモニターでも出て行かない" },
-        { core::CursorLockMode::Locked,   "Locked",
-          "毎フレーム中央へ戻し、移動量だけを渡す (FPS のマウスルック用)。\n"
-          "絶対座標が消えるため、ゲーム内カーソルは中央に貼り付く" },
-    };
+    // WHY 拘束モードがここに無いか: 拘束と表示は «その画面が今どう遊ばれているか» で
+    //     決まるもので、スクリプトが cursor.Push で名乗る。設定が持つのは差し替え可能な
+    //     «絵» だけ。以前は初期値としてここにも置いていたが、実行中の要求と同じ値を
+    //     共有していたため、Play 中にここを触るとスクリプトの要求が黙って消えていた。
+    ImGui::Checkbox("Hardware Cursor", &cursor.hardwareCursor);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("OS カーソルの絵を下の画像で差し替える。\n"
+                          "外すと常に既定の矢印になる (自前で UI に描く場合など)");
 
-    const auto* current = &kModes[0];
-    for (const Entry& e : kModes)
-        if (e.mode == cursor.lockMode) current = &e;
+    if (!cursor.hardwareCursor) ImGui::BeginDisabled();
 
-    if (ImGui::BeginCombo("Lock Mode", current->label)) {
-        for (const Entry& e : kModes) {
-            const bool selected = cursor.lockMode == e.mode;
-            if (ImGui::Selectable(e.label, selected)) cursor.lockMode = e.mode;
+    for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
+        const auto shape = static_cast<core::CursorShape>(i);
+        ImGui::PushID(static_cast<int>(i));
+        auto& entry = cursor.shapes[i];
+
+        widgets::AssetPathField(core::ToString(shape), entry.path,
+                                ".png,.tga,.bmp", ctx.projectRoot);
+        if (!entry.path.empty()) {
+            float hotspot[2] = { entry.hotspotX, entry.hotspotY };
+            if (ImGui::DragFloat2("Hotspot", hotspot, 1.0f, 0.0f, 4096.0f, "%.0f")) {
+                entry.hotspotX = hotspot[0];
+                entry.hotspotY = hotspot[1];
+            }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("%s", e.help);
-            if (selected) ImGui::SetItemDefaultFocus();
+                ImGui::SetTooltip("画像の左上から «実際に指す点» までの画素。\n"
+                                  "矢印なら先端、十字なら中心");
         }
-        ImGui::EndCombo();
+        ImGui::PopID();
     }
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("%s", current->help);
 
-    ImGui::Checkbox("Visible", &cursor.visible);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("OS のカーソルを出すか。ゲーム内カーソルを描くなら外す");
+    if (!cursor.hardwareCursor) ImGui::EndDisabled();
 
-    if (!cursor.visible && cursor.lockMode == core::CursorLockMode::None) {
-        // 非表示だけではマルチモニターで破綻する。ShowCursor はスレッド単位で、
-        // 他アプリのウィンドウ上ではそのアプリのカーソルが出るため。
-        ImGui::TextColored({ 1.0f, 0.75f, 0.3f, 1.0f },
-            "非表示のみだと別モニターでカーソルが再出現します。Confined を推奨");
-    }
+    // WHY 編集中に反映しないか: 差し替え先はウィンドウクラスのカーソルで、Editor では
+    //     «エディタの窓全体» が対象になる。編集しながら適用すると、パネルの上でも
+    //     ゲームのカーソルが出てしまう。
+    ImGui::TextDisabled("画像は Play 開始時に読み込まれます");
 }
 
 void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render)
@@ -1232,6 +1237,55 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
         }
         ++m_editGeneration;
     }
+}
+
+// エディター自身の設定。書き込み先は ProjectSettings ではなく EditorSettings なので、
+// このセクションだけ Undo の対象にならない (OnRenderContent の Undo 追跡は
+// ProjectSettings の差分しか見ていない)。表示言語は «誰が触っているか» で決まる値で、
+// 元に戻す対象として履歴に積む種類の編集ではない。
+void ProjectSettingsPanel::DrawEditor(EditorContext& ctx)
+{
+    (void)ctx;
+
+    ImGui::TextUnformatted(LOCT("Editor"));
+    ImGui::Separator();
+
+    ImGui::SeparatorText(LOC("Language"));
+
+    const loc::Language current = loc::GetLanguage();
+    if (ImGui::BeginCombo(LOC("Language"), loc::DisplayName(current))) {
+        for (const loc::Language language : loc::kLanguages) {
+            // 表示名は常にその言語自身の表記。日本語表示のまま "英語" としか
+            // 出ないと、英語へ戻したい人が何を選べばよいか分からない。
+            if (ImGui::Selectable(loc::DisplayName(language), language == current))
+                loc::SetLanguage(language);
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::TextDisabled("%s", LOCT("Applies immediately. Saved to editor_settings.toml."));
+
+    if (current == loc::Language::English) return;
+
+    // 訳の埋まり具合。ここが無いと «日本語にしたのに英語のまま» の箇所を見たとき、
+    // 訳が無いのか仕組みが効いていないのかが区別できない。
+    ImGui::SeparatorText(LOC("Translation Coverage"));
+    ImGui::Text("%s: %d", LOCT("Entries"), loc::TranslationCount());
+
+    const std::vector<std::string>& missing = loc::MissingKeys();
+    ImGui::Text("%s: %zu", LOCT("Untranslated (seen this session)"), missing.size());
+    ImGui::TextDisabled("%s", LOCT("Open the panels you want translated, then add these to "
+                                   "Localization_ja.inl."));
+
+    if (missing.empty()) return;
+    if (ImGui::Button(LOC("Copy to Clipboard"))) {
+        std::string text;
+        for (const std::string& key : missing) text += "{ \"" + key + "\", \"\" },\n";
+        ImGui::SetClipboardText(text.c_str());
+    }
+    if (ImGui::BeginChild("##missing", { 0.0f, 260.0f }, true)) {
+        for (const std::string& key : missing) ImGui::TextUnformatted(key.c_str());
+    }
+    ImGui::EndChild();
 }
 
 void ProjectSettingsPanel::DrawTagsAndLayers(ProjectSettings& settings)

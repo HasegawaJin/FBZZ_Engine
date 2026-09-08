@@ -7,7 +7,9 @@
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <cstdio>
 #include <iterator>
 
 namespace fbzz::editor {
@@ -169,18 +171,18 @@ const char* GetPlayFocusModeLabel(EditorContext::PlayFocusMode mode)
 const char* GetPlayCursorOverrideLabel(EditorContext::PlayCursorOverride mode)
 {
     return mode == EditorContext::PlayCursorOverride::Free ? "Cursor: Free"
-                                                           : "Cursor: Project";
+                                                           : "Cursor: Game";
 }
 
-// Play 中のカーソルを取り上げさせない口。プロジェクト設定もスクリプトの要求も書き換えず、
-// «OS へ効かせるか» だけを止める。エディター再起動で Project へ戻るので、デバッグのために
+// Play 中のカーソルを取り上げさせない口。スクリプトの要求そのものは書き換えず、
+// «OS へ効かせるか» だけを止める。エディター再起動で Game へ戻るので、デバッグのために
 // 外したまま忘れても配布ビルドには影響しない。
 void DrawPlayCursorOverrideControl(EditorContext& ctx)
 {
     if (ImGui::BeginCombo("##play_cursor_override",
                           GetPlayCursorOverrideLabel(ctx.playCursorOverride))) {
         constexpr EditorContext::PlayCursorOverride kModes[] = {
-            EditorContext::PlayCursorOverride::Project,
+            EditorContext::PlayCursorOverride::Game,
             EditorContext::PlayCursorOverride::Free
         };
         for (EditorContext::PlayCursorOverride mode : kModes) {
@@ -193,9 +195,87 @@ void DrawPlayCursorOverrideControl(EditorContext& ctx)
         ImGui::EndCombo();
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("Project: ゲームの要求どおりにカーソルを拘束/非表示にする\n"
-                          "Free:    スクリプトが拘束を要求しても OS へ効かせない\n"
-                          "         (デバッグ用・保存されない)");
+        ImGui::SetTooltip("Game: ゲームの要求どおりにカーソルを拘束/非表示にする\n"
+                          "Free: スクリプトが拘束を要求しても OS へ効かせない\n"
+                          "      (デバッグ用・保存されない)");
+}
+
+// Game View の隅に出すカーソル状態のオーバーレイ。
+//
+// WHY 出すか: 拘束と非表示は «画面から消える» 形でしか現れないため、思ったとおりに
+//     効いていないときに «誰が何を要求しているのか» を見る場所がどこにも無かった。
+//     要求がスタックになった今は、上から順に並べればそのまま答えになる。
+void DrawCursorOverlay(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& size)
+{
+    const core::CursorPolicy policy = core::Cursor::GetEffectivePolicy();
+    const bool suppressed = core::Cursor::IsSuppressed();
+    const bool capturing  = policy.CapturesCursor() && !suppressed;
+    // 取り上げるはずの要求が «Editor の都合» で止まっている状態。ここだけ強く見せる。
+    const bool released   = policy.CapturesCursor() && suppressed;
+
+    char label[96];
+    if (capturing) {
+        std::snprintf(label, sizeof(label), "%s%s  |  Esc",
+                      core::ToString(policy.lockMode),
+                      policy.visible ? "" : " + Hidden");
+    } else if (released) {
+        std::snprintf(label, sizeof(label), "Cursor released  |  Click to capture");
+    } else {
+        std::snprintf(label, sizeof(label), "Cursor free");
+    }
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    ImVec4 surface = EditorTheme::Color(ThemeColor::SurfaceRaised);
+    surface.w = 0.90f;
+    ImGui::PushStyleColor(ImGuiCol_Button, released ? ImVec4{ 0.65f, 0.45f, 0.10f, 0.92f }
+                                                    : surface);
+
+    ImGui::SetCursorScreenPos({ viewportMin.x + 6.0f, viewportMin.y + size.y - 28.0f });
+    if (ImGui::SmallButton(label))
+        ImGui::OpenPopup("##cursor_overlay_popup");
+    const bool badgeHovered = ImGui::IsItemHovered();
+    ImGui::PopStyleColor();
+
+    if (badgeHovered)
+        ImGui::SetTooltip("クリックで «今カーソルを要求しているのは誰か» を開く");
+
+    if (ImGui::BeginPopup("##cursor_overlay_popup")) {
+        ImGui::TextUnformatted("Cursor requests");
+        ImGui::Separator();
+
+        const std::size_t count = core::Cursor::GetRequestCount();
+        if (count == 0) {
+            ImGui::TextDisabled("要求なし (基底: %s%s)",
+                                core::ToString(core::Cursor::GetBasePolicy().lockMode),
+                                core::Cursor::GetBasePolicy().visible ? "" : " + Hidden");
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            core::CursorRequestInfo info{};
+            if (!core::Cursor::GetRequest(i, info)) break;
+            if (info.active) ImGui::Bullet();
+            else             ImGui::Indent(ImGui::GetStyle().IndentSpacing * 0.5f);
+            ImGui::Text("%-3d %-16s %s%s", info.priority,
+                        info.label[0] ? info.label : "(unnamed)",
+                        core::ToString(info.policy.lockMode),
+                        info.policy.visible ? "" : " + Hidden");
+            if (!info.active) ImGui::Unindent(ImGui::GetStyle().IndentSpacing * 0.5f);
+        }
+
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(140.0f);
+        DrawPlayCursorOverrideControl(ctx);
+        if (released && ImGui::MenuItem("Capture now"))
+            ctx.requestGameCursorCapture = true;
+        ImGui::EndPopup();
+    }
+    ImGui::PopStyleVar();
+
+    // 解放中は «ここを押せば戻る» を絵でも示す。枠はボタンの当たり判定を邪魔しない。
+    if (released) {
+        ImGui::GetWindowDrawList()->AddRect(
+            viewportMin, { viewportMin.x + size.x, viewportMin.y + size.y },
+            IM_COL32(210, 150, 40, 180), 0.0f, 0, 2.0f);
+    }
 }
 
 void DrawGameViewportToolbar(EditorContext& ctx)
@@ -233,11 +313,8 @@ void DrawGameViewportToolbar(EditorContext& ctx)
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Play 開始時の Game View のレイアウトだけを決める。\n"
-                          "カーソルの拘束/表示は Project Settings の [cursor] が持つ");
-
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(120.0f);
-    DrawPlayCursorOverrideControl(ctx);
+                          "カーソルの拘束/表示はスクリプトの要求 (cursor.Push) が持ち、\n"
+                          "状態と一時解除は画面左下のオーバーレイから触る");
 
     ImGui::PopStyleVar(2);
 }
@@ -598,6 +675,18 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     if (isSceneView && !inPlayOrPause)
         DrawViewModeToolbar(ctx, viewportMin);
+
+    if (isGameView && inPlayOrPause) {
+        // WHY オーバーレイより先に判定するか: 「解放中にゲーム画面をクリックしたら
+        //     捕獲へ戻す」入口で、バッジやポップアップの上のクリックまで拾うと
+        //     «状態を見ようとしただけでカーソルを取られる» ことになる。
+        if (viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+            && !ImGui::IsAnyItemHovered()
+            && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+            ctx.requestGameCursorCapture = true;
+
+        DrawCursorOverlay(ctx, viewportMin, size);
+    }
 
     // Map Editing Mode のツールバーオーバーレイ (半透明ストリップ + 状態表示)
     if (isSceneView && !inPlayOrPause)

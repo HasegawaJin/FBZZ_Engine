@@ -7,7 +7,7 @@
 #include <cstdint>
 
 namespace fbzz { struct ProjectSettings; }
-namespace fbzz::core { struct CursorPolicy; }
+namespace fbzz { struct CursorAppearance; }
 namespace fbzz::renderer { struct RenderSettings; }
 
 namespace fbzz::editor {
@@ -27,6 +27,10 @@ public:
         Audio,
         TagsAndLayers,  // タグとレイヤーはどちらも ID テーブルなので同居させる
         Import,
+        // エディター自身の設定。値の保存先は ProjectSettings ではなく
+        // editor_settings.toml (EditorSettings) ─ 表示言語のような «誰が触っているか»
+        // で決まる設定は、配布ビルドまで運ばれる ProjectSettings には置けない。
+        Editor,
     };
 
     const char* GetWindowName()        const override { return "Project Settings"; }
@@ -39,9 +43,9 @@ private:
     void DrawSidebar();
     void DrawSection(EditorContext& ctx);
 
-    void DrawApplication(ProjectSettings& settings);
-    // ゲーム開始時のカーソル方針 (拘束モード + 表示)。
-    void DrawCursor(core::CursorPolicy& cursor);
+    void DrawApplication(EditorContext& ctx, ProjectSettings& settings);
+    // カーソルの絵 (種類ごとの画像とホットスポット)。拘束と表示はスクリプトが持つ。
+    void DrawCursor(EditorContext& ctx, CursorAppearance& cursor);
     void DrawImport(EditorContext& ctx);
 
     // Graphics セクション。中を 3 つの折りたたみに分ける。
@@ -64,6 +68,8 @@ private:
     void DrawInput(EditorContext& ctx);
 
     void DrawAudio(ProjectSettings& settings);
+
+    void DrawEditor(EditorContext& ctx);
 
     void DrawTagsAndLayers(ProjectSettings& settings);
     void DrawTags(ProjectSettings& settings);

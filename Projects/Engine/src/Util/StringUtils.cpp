@@ -79,6 +79,19 @@ std::string StringUtils::Trim(const std::string& s)
     return s.substr(start, end - start + 1);
 }
 
+std::string StringUtils::TruncateUtf8(const std::string& s, std::size_t maxBytes,
+                                      const std::string& ellipsis)
+{
+    if (s.size() <= maxBytes) return s;
+    // ellipsis すら入らない指定は «切れるだけ切る» に倒す。
+    const std::size_t budget = maxBytes > ellipsis.size() ? maxBytes - ellipsis.size() : 0;
+
+    // 継続バイト (0b10xxxxxx) は文字の途中。境界まで戻してから切る。
+    std::size_t cut = budget;
+    while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+    return s.substr(0, cut) + ellipsis;
+}
+
 std::wstring StringUtils::ToWide(const std::string& s)
 {
     if (s.empty()) return {};

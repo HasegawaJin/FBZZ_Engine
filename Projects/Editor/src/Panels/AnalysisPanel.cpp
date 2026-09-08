@@ -52,6 +52,15 @@ struct ProfilerDisplayState {
     bool paused = false;
     bool showAverage = true;
     bool showPeak = true;
+
+    // スパイクの自動捕捉。
+    // WHY: refreshInterval 間隔の取り込みでは «たまに詰まる» フレームにまず当たらない。
+    //      詰まった «そのフレーム» の内訳が残らないと、原因はどこにも出てこない。
+    bool     catchSpikes = true;
+    float    spikeThresholdMs = 20.0f;
+    std::vector<profiler::ProfileRecord> spikeRecords;
+    uint64_t spikeFrameIndex = 0;
+    double   spikeMs = 0.0;
 };
 
 ProfilerDisplayState s_profilerDisplay;
@@ -736,6 +745,33 @@ void AnalysisPanel::DrawProfiler()
     ImGui::SameLine();
     ImGui::Checkbox("Peak", &s_profilerDisplay.showPeak);
 
+    // 一番詰まったフレームだけを別枠で控える。Show を押すまで上書きされないので、
+    // 何度も再現しなくても «その 1 フレームの内訳» を落ち着いて読める。
+    ImGui::Checkbox("Catch spikes", &s_profilerDisplay.catchSpikes);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80.0f);
+    ImGui::InputFloat("ms##spikeThreshold", &s_profilerDisplay.spikeThresholdMs, 0.0f, 0.0f, "%.1f");
+    s_profilerDisplay.spikeThresholdMs = (std::max)(1.0f, s_profilerDisplay.spikeThresholdMs);
+    if (s_profilerDisplay.spikeMs > 0.0) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.62f, 0.35f, 1.0f), "worst %.1f ms (frame %llu)",
+                           s_profilerDisplay.spikeMs,
+                           static_cast<unsigned long long>(s_profilerDisplay.spikeFrameIndex));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Show##spike")) {
+            s_profilerDisplay.visibleRecords    = s_profilerDisplay.spikeRecords;
+            s_profilerDisplay.visibleFrameIndex = s_profilerDisplay.spikeFrameIndex;
+            s_profilerDisplay.paused            = true;
+            RebuildProfileHistoryStats();
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset##spike")) {
+            s_profilerDisplay.spikeRecords.clear();
+            s_profilerDisplay.spikeFrameIndex = 0;
+            s_profilerDisplay.spikeMs         = 0.0;
+        }
+    }
+
     ImGui::Separator();
     ImGui::SetNextItemWidth(180.0f);
     ImGui::InputText("Name##profFilter", s_profilerFilter.nameFilter, sizeof(s_profilerFilter.nameFilter));
@@ -756,6 +792,19 @@ void AnalysisPanel::DrawProfiler()
         s_profilerFilter.categoryFilterIndex = 0;
         s_profilerFilter.minMsFilter = 0.0f;
         s_profilerFilter.sortMode = 0;
+    }
+
+    // 判定は毎フレーム行う。取り込みの間隔に乗せると、詰まったフレームを取りこぼす。
+    // 尺度に DeltaTime を使うのは、体感の «カクつき» がフレームの実時間そのものだから
+    // (計測区間の合計は入れ子ぶん重複するので、この判定には使えない)。
+    if (s_profilerDisplay.catchSpikes) {
+        const double frameMs = static_cast<double>(ImGui::GetIO().DeltaTime) * 1000.0;
+        if (frameMs >= static_cast<double>(s_profilerDisplay.spikeThresholdMs)
+            && frameMs > s_profilerDisplay.spikeMs) {
+            s_profilerDisplay.spikeRecords    = profiler::Profiler::GetLastFrameRecords();
+            s_profilerDisplay.spikeFrameIndex = profiler::Profiler::GetLastFrameIndex();
+            s_profilerDisplay.spikeMs         = frameMs;
+        }
     }
 
     if (!s_profilerDisplay.paused) {

@@ -181,6 +181,17 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         ? "Untitled"
         : util::FileSystem::GetFilename(ctx.currentScenePath);
     ImGui::Text("Scene: %s", sceneName.c_str());
+    // Play 中に LoadScene で移った先は「今走っているシーン」であって編集対象ではない。
+    // 名前を並べておかないと、遷移したこと自体が画面のどこにも出ない。
+    if (!ctx.playSceneName.empty()) {
+        ImGui::SameLine(0.0f, 4.0f);
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Success), "\xE2\x96\xB6 %s",
+                           ctx.playSceneName.c_str());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Running scene (loaded during play) \xe2\x80\x94 "
+                              "saving still targets %s, so it is refused until you stop",
+                              sceneName.c_str());
+    }
     if (ctx.sceneDirty) {
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "\xE2\x97\x8F"); // ● 未保存

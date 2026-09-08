@@ -10,6 +10,9 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -230,9 +233,14 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     std::vector<int> filtered;
     filtered.reserve(cmds.size());
     for (int i = 0; i < static_cast<int>(cmds.size()); ++i) {
+        // 原文と訳の両方に当てる。日本語表示中でも英語の操作名で引けること ──
+        // 資料もログも英語で、覚えているのが "Frame Selected" のときに引けないと、
+        // パレットは «知っている名前で呼ぶ» 道具でなくなる。
         if (query.empty()
             || util::StringUtils::ContainsCI(cmds[i].label, query)
-            || util::StringUtils::ContainsCI(cmds[i].category, query))
+            || util::StringUtils::ContainsCI(LOCT(cmds[i].label.c_str()), query)
+            || util::StringUtils::ContainsCI(cmds[i].category, query)
+            || util::StringUtils::ContainsCI(LOCT(cmds[i].category.c_str()), query))
             filtered.push_back(i);
     }
 
@@ -268,14 +276,34 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         ImGui::PushID(row);
         if (!c.enabled) ImGui::BeginDisabled();
 
-        // "カテゴリ  ラベル" を1行で表示。選択行は Selectable のハイライトで示す。
-        char rowLabel[256];
-        std::snprintf(rowLabel, sizeof(rowLabel), "%-8s  %s", c.category.c_str(), c.label.c_str());
-        if (ImGui::Selectable(rowLabel, selected)) {
+        // "カテゴリ  ラベル" を 1 行で表示。選択行は Selectable のハイライトで示す。
+        //
+        // WHY 桁を "%-8s" で揃えないか: 空白詰めはバイト数で効くので、1 文字 3 バイトの
+        //     日本語では «AI» だけが 6 個も詰められ、カテゴリ列の右端が行ごとに動く。
+        //     文字数でもなく px で列を決めれば、どの言語でもラベルの左端がそろう。
+        const float catWidth = ImGui::GetFontSize() * 5.5f;
+        const float gap      = ImGui::GetFontSize() * 0.6f;
+        const ImVec2 rowPos  = ImGui::GetCursorScreenPos();
+
+        // 当たり判定は行全体。文字は上から重ねて描く。
+        if (ImGui::Selectable("##row", selected)) {
             m_commandPaletteSel = row;
             if (c.enabled && c.action) c.action();
             ImGui::CloseCurrentPopup();
         }
+
+        const float labelWidth = std::max(ImGui::GetContentRegionAvail().x - catWidth - gap,
+                                          ImGui::GetFontSize() * 4.0f);
+        const ImU32 catColor   = EditorTheme::ColorU32(
+            ThemeColor::TextFaint, c.enabled ? 1.0f : 0.5f);
+        const ImU32 labelColor = EditorTheme::ColorU32(
+            c.enabled ? ThemeColor::Text : ThemeColor::TextFaint, c.enabled ? 1.0f : 0.6f);
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(rowPos, catColor,
+                          widgets::ElideToWidth(LOCT(c.category.c_str()), catWidth).c_str());
+        drawList->AddText({ rowPos.x + catWidth + gap, rowPos.y }, labelColor,
+                          widgets::ElideToWidth(LOCT(c.label.c_str()), labelWidth).c_str());
         if (!c.enabled) ImGui::EndDisabled();
 
         // 選択行が見えるようスクロール追従する。
@@ -284,7 +312,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         ImGui::PopID();
     }
     if (filtered.empty())
-        ImGui::TextDisabled("  No matching commands");
+        ImGui::TextDisabled("  %s", LOCT("No matching commands"));
     ImGui::EndChild();
 
     // Enter (入力欄でも) で選択実行、Esc で閉じる。

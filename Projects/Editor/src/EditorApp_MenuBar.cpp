@@ -15,10 +15,12 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Scene/ScriptValidation.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Window.hpp>
 #include <Engine/Audio/AudioManager.hpp>
@@ -357,7 +359,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     ImGui::SameLine();
 
     // --- File ------------------------------------------------------------
-    if (ImGui::BeginMenu("File")) {
+    if (ImGui::BeginMenu(LOC("File"))) {
         // Prefab 編集モード中はシーン操作を伏せ、対象がアセットであることを明示する。
         // WHY: 項目名が "Save" のままだと、何が保存されるのかが読み取れない。
         const bool inPrefabEdit = ctx.InPrefabEditMode();
@@ -375,7 +377,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     }
 
     // --- Edit ------------------------------------------------------------
-    if (ImGui::BeginMenu("Edit")) {
+    if (ImGui::BeginMenu(LOC("Edit"))) {
         // 直前の操作名を添えて「何が戻るのか」を読めるようにする。
         // ラベルだけが動的で、実行可否と実体は operator 側にある。
         const bool canUndo = ctx.undoStack && ctx.undoStack->CanUndo();
@@ -399,10 +401,10 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     }
 
     // --- View ------------------------------------------------------------
-    if (ImGui::BeginMenu("View")) {
+    if (ImGui::BeginMenu(LOC("View"))) {
         // panel.set_visible の投影にすることで、人が押すのと同じ実体を AI も呼べる
         // (パネルが増えても operator は 1 つのまま)。
-        if (ImGui::BeginMenu("Panels")) {
+        if (ImGui::BeginMenu(LOC("Panels"))) {
             for (auto& panel : m_panels) {
                 if (!panel->ShowInViewMenu()) continue;
                 OpArgs args;
@@ -413,7 +415,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
 
         // Scene View の視点。軸ビューはナビゲーションギズモのクリックと同じ操作を指す。
-        if (ImGui::BeginMenu("Scene Camera")) {
+        if (ImGui::BeginMenu(LOC("Scene Camera"))) {
             MenuItemOp("view.toggle_projection");
             ImGui::Separator();
             MenuItemOp("view.axis_front");
@@ -431,7 +433,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         // スライダー自体は連続値のドラッグなので operator には乗らないが、
         // 適用は view.set_ui_scale を通す (範囲の宣言と適用処理を 1 箇所に保つ)。
         ImGui::Separator();
-        ImGui::TextDisabled("UI Scale");
+        ImGui::TextDisabled("%s", LOCT("UI Scale"));
         // 範囲は operator の params 宣言から引く。スライダー側に直書きすると、
         // 人は 0.5x にできるのに AI からは BAD_ARG で弾かれる (同じ操作の限界が
         // 面ごとに違う) という、この設計が消したいずれが範囲という形で再発する。
@@ -454,7 +456,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     }
 
     // --- Debug -----------------------------------------------------------
-    if (ImGui::BeginMenu("Debug")) {
+    if (ImGui::BeginMenu(LOC("Debug"))) {
         // WHY: Godot は表示パネル操作とデバッグ描画切替を別メニューに分けている。
         //      FBZZ でも View はレイアウト・パネル、Debug は実行/描画診断に寄せることで項目の意味を読み取りやすくする。
         MenuItemOp("tools.analysis", "Analysis");
@@ -472,7 +474,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         MenuItemOp("render.show_colliders",         "Colliders");
         MenuItemOp("render.show_terrain_collision", "Terrain Collision");
         MenuItemOp("render.show_navmesh",           "NavMesh");
-        if (ImGui::BeginMenu("NavMesh Draw Mode")) {
+        if (ImGui::BeginMenu(LOC("NavMesh Draw Mode"))) {
             const auto navModeItem = [this](const char* mode, const char* label) {
                 OpArgs args;
                 args.Set("mode", std::string(mode));
@@ -496,7 +498,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         // --- Tools ---
         MenuItemOp("debug.hot_reload", "Hot Reload");
         ImGui::Separator();
-        if (ImGui::BeginMenu("View Mode")) {
+        if (ImGui::BeginMenu(LOC("View Mode"))) {
             // 排他選択は 1 つの operator に引数で渡す。チェックは checked を
             // 同じ引数で評価した値なので、「表示は Lit なのに実体は Unlit」が作れない。
             const auto viewModeItem = [this](const char* mode, const char* label) {
@@ -518,10 +520,10 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Tools")) {
+    if (ImGui::BeginMenu(LOC("Tools"))) {
         MenuItemOp("tools.map_editing_mode");
         ImGui::Separator();
-        if (ImGui::BeginMenu("Terrain & Map")) {
+        if (ImGui::BeginMenu(LOC("Terrain & Map"))) {
             MenuItemOp("tools.terrain");
             MenuItemOp("tools.water");
             ImGui::EndMenu();
@@ -530,15 +532,15 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::Separator();
         // パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         // 名前を引数で渡す 1 つの操作で足りる。
-        if (m_iblBakePanel && ImGui::MenuItem("IBL Baker..."))
+        if (m_iblBakePanel && ImGui::MenuItem(LOC("IBL Baker...")))
             InvokePanelFocus(m_iblBakePanel);
-        if (m_navigationPanel && ImGui::MenuItem("Navigation..."))
+        if (m_navigationPanel && ImGui::MenuItem(LOC("Navigation...")))
             InvokePanelFocus(m_navigationPanel);
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("AI")) {
-        if (m_aiSettingsPanel && ImGui::MenuItem("AI Settings..."))
+    if (ImGui::BeginMenu(LOC("AI"))) {
+        if (m_aiSettingsPanel && ImGui::MenuItem(LOC("AI Settings...")))
             InvokePanelFocus(m_aiSettingsPanel);
         ImGui::Separator();
         // チェックマークは operator の checked (= 実際の待受状態) なので、
@@ -818,6 +820,14 @@ void EditorApp::StartPlayMode()
     }
 
     m_undoStack.Clear();
+    // 編集中に何かが基底を書いていても、Play は «誰も要求していない» 状態から始める。
+    // WHY ここで畳むか: UpdatePlayCursorControls はフレーム先頭で、Play を押した次の
+    //     フレームには既にスクリプトの OnStart が要求を積んでいる。あちらで畳むと
+    //     名乗ったばかりの要求を消してしまう。
+    core::Cursor::ClearRequests();
+    // カーソルの絵もここで読む。スクリプトの OnStart は «OS カーソルの絵があるか» で
+    // 自前のポインターを出すかどうかを決めるので、走り出す前に揃っている必要がある。
+    m_ctx.projectSettings.cursor.Apply(m_ctx.projectRoot);
     RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
     // navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
     // Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
@@ -921,7 +931,9 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
     if (const Hotkey* hk = m_hotkeys.FindByOperator(operatorId))
         shortcut = HotkeyManager::FormatBinding(*hk);
 
-    const char* label = (labelOverride != nullptr) ? labelOverride : op->label.c_str();
+    // 登録簿は英語のまま (op.list / AI バス / ホットキー保存の鍵になる)。訳すのは
+    // 描くときだけ。LOC は "訳###原文" を返すので、ID は英語版と同じままになる。
+    const char* label = LOC((labelOverride != nullptr) ? labelOverride : op->label.c_str());
     const bool  enabled = CanInvokeOperator(operatorId, args);
 
     // チェックマークも登録簿から引く。フラグを直接指すと表示と実体が別経路になり、

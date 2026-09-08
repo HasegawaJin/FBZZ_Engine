@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
@@ -164,12 +165,9 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         if (hov) ImGui::SetTooltip("%s", tooltip);
 
         // 名前テキスト (省略、中央揃え)
-        std::string disp(displayName);
-        const std::string full(displayName);
-        while (disp.size() > 2 &&
-               ImGui::CalcTextSize(disp.c_str()).x + ImGui::CalcTextSize("..").x > sz)
-            disp.pop_back();
-        if (disp.size() < full.size()) disp += "..";
+        // 1 バイトずつ pop_back すると日本語のファイル名が文字の途中で切れる。
+        // 文字境界を知っている共通の縮め方へ寄せる。
+        const std::string disp = widgets::ElideToWidth(displayName, sz, "..");
 
         const float ind = (sz - ImGui::CalcTextSize(disp.c_str()).x) * 0.5f;
         if (ind > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ind);

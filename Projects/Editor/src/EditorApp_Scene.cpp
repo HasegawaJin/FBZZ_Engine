@@ -9,8 +9,10 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
 #include <Editor/Util/Selection.hpp>
@@ -148,6 +150,44 @@ FILETIME GetLatestScriptSourceWriteTime(const std::filesystem::path& root)
     return latest;
 }
 
+// 開いたシーンの中で、アセット定義の方が新しくなっている Prefab インスタンスを揃える。
+//
+// WHY «開くとき» に要るか: 伝播の経路 (Apply / Prefab 編集の保存 / ディスク監視) は
+//     どれも «今開いているシーン» しか触らない。一方シーンファイルはインスタンスを
+//     展開済みの完全な状態で持つので、更新のときに閉じていたシーンは古い複製を
+//     抱えたまま固定され、次に開いて保存すると古さがそのまま焼き直される。
+//     «プレファブなのに片方のステージだけ直らない» はここで塞がないと消えない。
+// WHY 更新時刻で絞るか: 作り直しは EntityID を振り直すので、開くたびに全部走らせると
+//     «開いただけで dirty» が常態化する。シーンより後に書かれた .prefab だけで足りる。
+int ReconcileStalePrefabInstances(scene::Scene& scene,
+                                  const std::string& scenePath,
+                                  const std::string& projectRoot)
+{
+    FILETIME sceneTime{};
+    if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(scenePath), sceneTime)) return 0;
+
+    std::vector<std::string> assetPaths;
+    for (const auto& gameObject : scene.GameObjects()) {
+        const std::string& assetPath = gameObject.prefabAssetPath;
+        if (assetPath.empty()) continue;
+        if (std::find(assetPaths.begin(), assetPaths.end(), assetPath) != assetPaths.end())
+            continue;
+        assetPaths.push_back(assetPath);
+    }
+
+    int updated = 0;
+    for (const std::string& assetPath : assetPaths) {
+        const std::string diskPath = ToProjectAssetDiskPath(projectRoot, assetPath);
+        FILETIME assetTime{};
+        if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(diskPath), assetTime)) continue;
+        if (CompareFileTime(&assetTime, &sceneTime) <= 0) continue;
+
+        updated += PrefabSerializer::PropagateToInstances(
+            scene, assetPath, scene::EntityID{}, projectRoot);
+    }
+    return updated;
+}
+
 std::filesystem::path GetScriptScanRoot(const std::filesystem::path& scriptsSourceDir)
 {
     if (scriptsSourceDir.filename() == L"Scripts")
@@ -207,16 +247,32 @@ bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceD
 // シーン ダーティ追跡
 // =============================================================================
 
+// Play 中にシーンファイルを読み書きしようとしたら断る。
+// WHY: 走っているのはスナップショットを撮ったあとのシーンで、遷移していれば
+//      別のシーンファイルの中身ですらある。それを currentScenePath へ書けば、
+//      開いていたシーンが最後に走っていたシーンで丸ごと潰れる。
+bool EditorApp::RejectSceneIOWhilePlaying(const char* action)
+{
+    if (m_playMode.IsInEditor()) return false;
+
+    std::string message = std::string(action) + ": stop play mode first";
+    if (!m_ctx.playSceneName.empty())
+        message += " (running: " + m_ctx.playSceneName + ")";
+    FBZZ_LOG_WARN("%s", message.c_str());
+    Toast::Error(message);
+    return true;
+}
+
 void EditorApp::CaptureCleanScene()
 {
-    if (!m_ctx.activeScene) {
+    if (!m_ctx.editScene) {
         m_dirtyTracker.Reset();
         m_ctx.sceneDirty = false;
         return;
     }
 
     CacheSceneWriteTime();
-    m_dirtyTracker.CaptureClean(*m_ctx.activeScene);
+    m_dirtyTracker.CaptureClean(*m_ctx.editScene);
     m_ctx.sceneDirty = false;
     m_dirtyPollTimer = 0.0f;
     UpdateWindowTitle();
@@ -224,7 +280,7 @@ void EditorApp::CaptureCleanScene()
 
 void EditorApp::RefreshSceneDirtyState(bool force)
 {
-    if (!m_ctx.activeScene) return;
+    if (!m_ctx.editScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
     // WHY: Evaluate() はシーン全体を serialize して hash 化する重い処理（~80ms）。
@@ -251,7 +307,7 @@ void EditorApp::RefreshSceneDirtyState(bool force)
     m_dirtyPollTimer = 0.0f;
 
     const bool wasDirty = m_ctx.sceneDirty;
-    m_ctx.sceneDirty = m_dirtyTracker.Evaluate(*m_ctx.activeScene);
+    m_ctx.sceneDirty = m_dirtyTracker.Evaluate(*m_ctx.editScene);
     if (wasDirty != m_ctx.sceneDirty)
         UpdateWindowTitle();
 }
@@ -326,8 +382,9 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
 
 void EditorApp::NewScene()
 {
-    if (!m_ctx.activeScene) return;
-    m_ctx.activeScene->Clear();
+    if (!m_ctx.editScene) return;
+    if (RejectSceneIOWhilePlaying("New Scene")) return;
+    m_ctx.editScene->Clear();
     m_undoStack.Clear();
     ClearEntitySelection(m_ctx);
     m_ctx.graphLayouts.clear();
@@ -365,7 +422,7 @@ void EditorApp::RequestOpenScenePath(const std::string& path)
 
 bool EditorApp::OpenSceneFromDialog()
 {
-    if (!m_ctx.activeScene) return false;
+    if (!m_ctx.editScene) return false;
 
     std::string path;
     if (!FileDialog::OpenFile(m_hwnd, { SCENE_FILTER }, path)) return false;
@@ -374,16 +431,17 @@ bool EditorApp::OpenSceneFromDialog()
 
 bool EditorApp::OpenScenePath(const std::string& path)
 {
-    if (!m_ctx.activeScene || path.empty()) return false;
+    if (!m_ctx.editScene || path.empty()) return false;
+    if (RejectSceneIOWhilePlaying("Open Scene")) return false;
 
-    if (!SceneIO::Load(*m_ctx.activeScene, path)) {
+    if (!SceneIO::Load(*m_ctx.editScene, path)) {
         FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
         return false;
     }
     // WHY: SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。
     //      次フレームの TransformEditorPreview まで待つと 1 フレーム間オブジェクトが
     //      原点に表示されるため、ここで即時フラッシュして最初のフレームも正しくする。
-    scene::FlushWorldTransforms(*m_ctx.activeScene);
+    scene::FlushWorldTransforms(*m_ctx.editScene);
 
     // Undo コマンドは読込前シーンの EntityID と状態を保持するため、
     // 別シーンへ持ち越さず読込成功時点で破棄する。
@@ -395,6 +453,21 @@ bool EditorApp::OpenScenePath(const std::string& path)
     RebuildEditorUIFromScene();
     CaptureCleanScene();
     CaptureSceneDiskStamp();
+
+    // 閉じている間に更新された .prefab をここで取り込む。
+    // 清書後の状態を基準に採ってから走らせるので、揃え直した結果はそのまま
+    // 「ディスクとは違う = 保存が要る」として出る。
+    if (const int updated =
+            ReconcileStalePrefabInstances(*m_ctx.editScene, path, m_ctx.projectRoot);
+        updated > 0) {
+        scene::FlushWorldTransforms(*m_ctx.editScene);
+        ClearEntitySelection(m_ctx);
+        RebuildEditorUIFromScene();
+        MarkSceneDirty();
+        Toast::Info("Prefab updated: " + std::to_string(updated) + " instance(s)");
+        FBZZ_LOG_INFO("Opened scene: prefab assets were newer; %d instance(s) updated", updated);
+    }
+
     AddRecentScene(path);
     Toast::Info("Opened: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
@@ -407,7 +480,8 @@ bool EditorApp::OpenScenePath(const std::string& path)
 
 bool EditorApp::SaveScene()
 {
-    if (!m_ctx.activeScene) return false;
+    if (!m_ctx.editScene) return false;
+    if (RejectSceneIOWhilePlaying("Save Scene")) return false;
     // Prefab 編集モード中は m_scene の中身がプレファブなので、シーンとして保存すると
     // 元のシーンファイルをプレファブの内容で上書きしてしまう。
     // WHY: Ctrl+S は反射的に押される操作なので、ここで止めないと確実に事故になる。
@@ -425,7 +499,7 @@ bool EditorApp::SaveScene()
 
     CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.activeScene, m_settings.lastScenePath);
+    const bool ok = SceneIO::Save(*m_ctx.editScene, m_settings.lastScenePath);
     RestoreEditorHiding();
     if (!ok) {
         FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
@@ -444,7 +518,7 @@ bool EditorApp::SaveScene()
 
 bool EditorApp::SaveSceneAsDialog()
 {
-    if (!m_ctx.activeScene) return false;
+    if (!m_ctx.editScene) return false;
 
     std::string path;
     if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
@@ -457,7 +531,8 @@ bool EditorApp::SaveSceneAsDialog()
 //      真似ると、保存したのに dirty のままという食い違いが残る。
 bool EditorApp::SaveScenePath(const std::string& requestedPath)
 {
-    if (!m_ctx.activeScene || requestedPath.empty()) return false;
+    if (!m_ctx.editScene || requestedPath.empty()) return false;
+    if (RejectSceneIOWhilePlaying("Save Scene")) return false;
     const std::string path = WithFbzzExtension(requestedPath);
 
     // 別名保存は衝突しない。同じファイルを上書きするときだけ、読み込み後に他人が
@@ -475,7 +550,7 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath)
 
     CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
+    const bool ok = SceneIO::Save(*m_ctx.editScene, path);
     RestoreEditorHiding();
     if (!ok) {
         FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
@@ -563,7 +638,7 @@ void EditorApp::ClearSessionLock()
 void EditorApp::TickAutoSave(float dt)
 {
     if (!m_settings.autoSaveEnabled) return;
-    if (!m_ctx.activeScene) return;
+    if (!m_ctx.editScene) return;
     // Play 中は編集シーンを触らない。ダーティでなければ何もしない。
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
     if (!m_ctx.sceneDirty) { m_autoSaveTimer = 0.0f; return; }
@@ -580,7 +655,7 @@ void EditorApp::TickAutoSave(float dt)
     // 本保存 (SaveScene) とは別の中間ファイルへ書き出す。dirty 状態や lastScenePath は変えない。
     CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
+    const bool ok = SceneIO::Save(*m_ctx.editScene, path);
     RestoreEditorHiding();
     if (ok) {
         Toast::Info("Auto-saved");
@@ -605,9 +680,9 @@ void EditorApp::ProcessCrashRecovery()
         "An auto-saved version of the scene was found.\n\n"
         "Restore it? (Choosing No keeps the last saved scene.)",
         [this, autosavePath]() {
-            if (!m_ctx.activeScene) return;
-            if (SceneIO::Load(*m_ctx.activeScene, autosavePath)) {
-                scene::FlushWorldTransforms(*m_ctx.activeScene);
+            if (!m_ctx.editScene) return;
+            if (SceneIO::Load(*m_ctx.editScene, autosavePath)) {
+                scene::FlushWorldTransforms(*m_ctx.editScene);
                 m_undoStack.Clear();
                 ClearEntitySelection(m_ctx);
                 ApplyEditorViewStateFromSceneMeta();
@@ -655,7 +730,7 @@ void EditorApp::CheckHotReload()
     TickScriptCompile();
     TickHlslCompile();
 
-    if (m_settings.lastScenePath.empty() || !m_ctx.activeScene) return;
+    if (m_settings.lastScenePath.empty() || !m_ctx.editScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
     WIN32_FILE_ATTRIBUTE_DATA info{};
@@ -670,7 +745,7 @@ void EditorApp::CheckHotReload()
 
     if (CompareFileTime(&ft, &m_lastSceneWriteTime) != 0) {
         m_lastSceneWriteTime = ft;
-        if (!SceneIO::Load(*m_ctx.activeScene, m_settings.lastScenePath))
+        if (!SceneIO::Load(*m_ctx.editScene, m_settings.lastScenePath))
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
             ClearEntitySelection(m_ctx);

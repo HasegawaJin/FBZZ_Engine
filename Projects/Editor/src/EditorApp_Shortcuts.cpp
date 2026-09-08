@@ -9,6 +9,7 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <imgui.h>
@@ -80,8 +81,11 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
 
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                if (active) ImGui::TextUnformatted(hk.name.c_str());
-                else        ImGui::TextDisabled("%s", hk.name.c_str());
+                // 一覧の名前は operator の label と同じ出所なので、メニューと同じ訳を出す
+                // (片方だけ日本語だと «同じ操作» に見えなくなる)。
+                const char* shownName = LOCT(hk.name.c_str());
+                if (active) ImGui::TextUnformatted(shownName);
+                else        ImGui::TextDisabled("%s", shownName);
 
                 ImGui::TableSetColumnIndex(1);
                 const std::string binding = HotkeyManager::FormatBinding(hk);
