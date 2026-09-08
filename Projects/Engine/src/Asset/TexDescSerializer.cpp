@@ -161,6 +161,27 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
 {
     const TextureImportSettings& s = asset.settings;
 
+    // 既存 .meta の [meta] セクション (guid 等) を先に読む。
+    // WHY 先に読むか: guid は Sprite ID を補完するときの種でもある。Load 側が
+    //     [meta] guid を種にしているので、ここで absPath を種にすると同じ Sprite に
+    //     別の ID が付き、書いた瞬間に全参照が切れる。
+    // WHY 引き継ぐか: guid は AssetDatabase が発行する恒久 ID。テクスチャ設定の保存で
+    //     消してしまうとこの画像への guid 参照が全て切れるため、[texture] 以外は必ず残す。
+    toml::table root;
+    std::string spriteIdentity = absPath;
+    std::string existing;
+    if (util::FileSystem::ReadText(absPath, existing)) {
+        std::istringstream iss(existing);
+        const auto parsed = toml::parse(iss);
+        if (parsed) {
+            if (const auto* meta = parsed.table()["meta"].as_table()) {
+                root.insert("meta", *meta);
+                if (auto guid = (*meta)["guid"].value<std::string>(); guid && !guid->empty())
+                    spriteIdentity = *guid;
+            }
+        }
+    }
+
     toml::table tex;
     // source= は持たない。元画像は "<name>.<ext>.meta" から末尾 ".meta" を除いて導出する。
     tex.insert("type",                std::string(TypeToStr(s.type)));
@@ -194,12 +215,25 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
             spriteSources.push_back(std::move(sprite));
         }
 
+        // 名前は「別名キー」なので、テクスチャ内で一意でなければ参照が曖昧になる。
+        // 直すのは編集側 (Sprite Editor) の仕事なので、ここでは黙って書き換えず報告だけする。
+        for (std::size_t i = 0; i < spriteSources.size(); ++i) {
+            for (std::size_t j = i + 1; j < spriteSources.size(); ++j) {
+                if (spriteSources[i].name.empty()
+                    || spriteSources[i].name != spriteSources[j].name) continue;
+                FBZZ_LOG_WARN("TexDescSerializer: duplicated sprite name '%s' in [%s]. "
+                              "名前で書いた参照はどちらを指すか決まりません。",
+                              spriteSources[i].name.c_str(), absPath.c_str());
+                break;
+            }
+        }
+
         toml::array sprites;
         for (std::size_t index = 0; index < spriteSources.size(); ++index) {
             const SpriteRect& source = spriteSources[index];
             toml::table sprite;
             sprite.insert("id", source.id.empty()
-                ? MakeSpriteId(absPath, source.name, index) : source.id);
+                ? MakeSpriteId(spriteIdentity, source.name, index) : source.id);
             sprite.insert("name", source.name);
             sprite.insert("x", static_cast<int64_t>(source.x));
             sprite.insert("y", static_cast<int64_t>(source.y));
@@ -216,26 +250,16 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
         tex.insert("sprites", std::move(sprites));
     }
 
-    toml::table root;
-
-    // 既存 .meta の [meta] セクション (guid 等) を保持する。
-    // WHY: guid は AssetDatabase が発行する恒久 ID。テクスチャ設定の保存で消してしまうと
-    //      この画像への guid 参照が全て切れるため、[texture] 以外は必ず引き継ぐ。
-    std::string existing;
-    if (util::FileSystem::ReadText(absPath, existing)) {
-        std::istringstream iss(existing);
-        const auto parsed = toml::parse(iss);
-        if (parsed) {
-            if (const auto* meta = parsed.table()["meta"].as_table())
-                root.insert("meta", *meta);
-        }
-    }
-
     root.insert("texture", std::move(tex));
 
     std::ostringstream ss;
     ss << root;
-    return util::FileSystem::WriteText(absPath, ss.str());
+    if (!util::FileSystem::WriteText(absPath, ss.str())) return false;
+
+    // 書いた本人が共有キャッシュを潰す。書き込み時刻でも気付けるが、
+    // 同一秒内の連続 Apply では時刻が動かないことがある。
+    InvalidateTextureImportSettings(absPath);
+    return true;
 }
 
 bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset) const
