@@ -6,6 +6,7 @@
 /// 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
 /// RenderSystem は BeginFrame / EndFrame の都合でゲームループ側から呼ぶ。
 #include "Engine/Scene/SceneManager.hpp"
+#include "Engine/Core/Cursor.hpp"
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
@@ -151,6 +152,21 @@ bool SceneManager::LoadScene(const std::string& name)
 void SceneManager::SetScene(Scene* scene)
 {
     m_externalScene = scene;
+    // 外部 Scene を差し直した時点で、遷移で切り替えた名前は実行対象ではなくなる。
+    if (scene) m_activeName.clear();
+}
+
+void SceneManager::ReleaseOwnedScene()
+{
+    // 外部 Scene と同一実体になることはないが、なった場合に所有していない側を消さない。
+    if (m_active && m_active.get() != m_externalScene) {
+        // プールの待機列は EntityID を保持するため、Scene を空にする前に捨てる。
+        PrefabPool::Clear(*m_active);
+        m_active->Clear();
+        m_active.reset();
+    }
+    m_pendingLoad.clear();
+    m_activeName.clear();
 }
 
 void SceneManager::ClearScenes()
@@ -171,6 +187,7 @@ void SceneManager::ClearScenes()
     m_active.reset();
     m_externalScene = nullptr;
     m_pendingLoad.clear();
+    m_activeName.clear();
 }
 
 void SceneManager::SetPhysicsHz(int hz)
@@ -231,9 +248,18 @@ void SceneManager::Update(float dt, physics::World& world)
             return;
         }
 
+        // WHY ここでカーソルを畳むか: 要求はスクリプトの寿命に紐づくので、古い Scene を
+        //     捨てた時点でほとんどは自動的に外れる。残るのは cursor.SetLockMode で
+        //     基底を直接書いた分で、これは «誰も外さない» まま次の画面へ持ち越される。
+        //     画面をまたいで引き継いでよいカーソル状態は無い、と決めておく。
+        //     新しい Scene のスクリプトはこの直後の Update で名乗り直すため、
+        //     プレイヤーから見て既定へ戻る瞬間は現れない。
+        core::Cursor::ClearRequests();
+
         m_active = std::move(nextScene);
         // LoadScene は明示的な遷移要求なので、新しい owned Scene を外部 Scene より優先する。
         m_externalScene = nullptr;
+        m_activeName    = m_pendingLoad;
         m_pendingLoad.clear();
     }
 

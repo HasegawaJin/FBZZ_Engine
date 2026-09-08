@@ -36,6 +36,13 @@ public:
     /// Editor所有Sceneを実行対象としてバインドする。nullptrでowned Sceneへ戻す。
     void BindExternalScene(Scene* scene);
 
+    /// Play中のLoadSceneでManagerが所有したSceneを破棄し、保留中の遷移要求も捨てる。
+    /// EditorがStopで編集Sceneへ戻るときに呼ぶ。
+    void ReleaseOwnedScene();
+
+    /// 遷移で切り替わった実行中Sceneの登録名。遷移していなければ空。
+    [[nodiscard]] const std::string& ActiveSceneName() const { return m_sceneManager.ActiveSceneName(); }
+
     /// 登録済みScene名への遷移を要求する。
     void LoadScene(const std::string& sceneName);
 

@@ -85,6 +85,18 @@ bool HasSamePrefabAncestor(const scene::GameObject& go, const std::string& prefa
     return false;
 }
 
+// 階層をたどり「アセット側 instanceId → この実体が名乗っている guid」を集める。
+// prefabSourceId を持たない GO (手で足した子) は対応先が無いので飛ばす。
+void CollectPrefabSourceGuids(const scene::GameObject& go,
+                              std::unordered_map<std::string, std::string>& out)
+{
+    if (!go.prefabSourceId.empty() && !go.instanceId.empty())
+        out.emplace(go.prefabSourceId, go.instanceId);
+    for (int i = 0; i < go.GetChildCount(); ++i)
+        if (const scene::GameObject* child = go.GetChild(i))
+            CollectPrefabSourceGuids(*child, out);
+}
+
 // 自己書き込み記録 (ディスク監視の自己反応を弾くため)。
 // キーは比較しやすいよう小文字 + '/' 区切りに正規化する。
 std::string NormalizeForCompare(const std::string& path)
@@ -267,13 +279,14 @@ bool PrefabSerializer::SaveSelectionAndConnect(scene::Scene& scene,
 bool PrefabSerializer::Instantiate(scene::Scene& scene,
                                    const std::string& path,
                                    std::vector<scene::EntityID>& outRootEntities,
-                                   const PrefabOverrideSet* overrides)
+                                   const PrefabOverrideSet* overrides,
+                                   const std::unordered_map<std::string, std::string>* preserveGuids)
 {
     // 展開そのものは Engine が持つ (Engine/Scene/PrefabInstantiate.hpp)。
     // WHY: 以前はここが唯一の実装だったため、Editor を通らないスタンドアロン実行では
     //      プレファブが一切生成できなかった。オーサリング操作 (保存 / Apply / Revert /
     //      差分算出) だけを Editor に残し、「読んで展開する」側は Engine と共有する。
-    return scene::InstantiatePrefabAsset(scene, path, outRootEntities, overrides);
+    return scene::InstantiatePrefabAsset(scene, path, outRootEntities, overrides, preserveGuids);
 }
 
 bool PrefabSerializer::Apply(const scene::Scene& scene, scene::EntityID rootEntity,
@@ -332,6 +345,14 @@ bool PrefabSerializer::Revert(scene::Scene& scene,
     const scene::EntityID savedParentId =
         savedParent ? savedParent->GetID() : scene::EntityID{};
 
+    // 破棄する前に「アセット側 id → この実体が名乗っていた guid」を採る。
+    // WHY: 作り直しで新しい UUID を振ると、シーンの他のオブジェクトが持つ
+    //      «このインスタンスを指す参照» (カメラの追従先・IK のターゲット・
+    //      スクリプトの FBZZ_REF) が一斉に行き先を失う。プレファブを直しただけで
+    //      無関係に見える配線が切れるので、guid は実体から引き継ぐ。
+    std::unordered_map<std::string, std::string> preserveGuids;
+    CollectPrefabSourceGuids(*go, preserveGuids);
+
     // 旧階層を「即時」破棄する。
     // WHY: 旧実装は GameObject::Destroy(*go, 0.0f) で破棄を破棄キューへ積んでいたが、実際の
     //      削除は次フレーム末尾まで遅延する。その間に直後の Instantiate が走ると旧階層がまだ
@@ -341,7 +362,8 @@ bool PrefabSerializer::Revert(scene::Scene& scene,
     scene.DestroyGameObject(rootEntity);
 
     // 再インスタンス化 (keepOverrides があれば展開時に差分を当て直す)
-    if (!Instantiate(scene, diskPath, outNewRoots, keepOverrides) || outNewRoots.empty())
+    if (!Instantiate(scene, diskPath, outNewRoots, keepOverrides, &preserveGuids)
+        || outNewRoots.empty())
         return false;
 
     // 先頭ルートに旧 Transform / 親を復元する。

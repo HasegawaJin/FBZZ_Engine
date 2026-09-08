@@ -49,8 +49,8 @@ bool StandaloneProjectModule::OnInit()
     // ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
     // ファイルへ戻ることはない。
     app.SetActiveRenderSettings(&m_settings.render);
-    // カーソルの初期状態はプロジェクト設定が持つ。以降はスクリプトの cursor プロキシが正本。
-    core::Cursor::Apply(m_settings.cursor);
+    // カーソルの拘束と表示はスクリプトが名乗る (cursor.Push)。設定が持つのは «絵» だけ。
+    m_settings.cursor.Apply(m_projectRoot.string());
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
     return true;

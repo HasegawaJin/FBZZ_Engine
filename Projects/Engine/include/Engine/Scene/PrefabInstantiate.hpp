@@ -53,10 +53,22 @@ bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node
 ///
 /// overrides を渡すと、定義を展開したあと該当プロパティだけをその値で上書きしてから
 /// 生成する (インスタンス側の個別調整を保ったまま作り直す用)。
+///
+/// preserveGuids には「プレファブ側 instanceId → 生成後に名乗らせたい instanceId」を渡す。
+/// 既存インスタンスを作り直す経路 (Revert / Apply の伝播) で «元の実体と同じ guid» を
+/// 名乗らせるためのもの。
+/// WHY 要るか: 作り直しのたびに新しい UUID を振ると、シーンの他のオブジェクトが
+///     持つ «そのインスタンスを指す参照» (カメラの追従先・IK のターゲット・
+///     スクリプトの FBZZ_REF) が一斉に行き先を失う。表からは «プレファブを直したら
+///     カメラが動かなくなった» という形でしか見えない。
+/// 渡した guid が既にシーンで使われていないことは呼び出し側の責任 (作り直しでは
+/// 旧階層を先に破棄するため衝突しない)。表に無い分は従来どおり新規採番する。
+///
 /// path は絶対パスまたはプロジェクトルートからのパス。拡張子が無ければ .prefab を補う。
 bool InstantiatePrefabAsset(Scene& scene,
                             const std::string& path,
                             std::vector<EntityID>& outRootEntities,
-                            const PrefabOverrideSet* overrides = nullptr);
+                            const PrefabOverrideSet* overrides = nullptr,
+                            const std::unordered_map<std::string, std::string>* preserveGuids = nullptr);
 
 } // namespace fbzz::scene

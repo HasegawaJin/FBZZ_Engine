@@ -37,6 +37,11 @@ void ProjectRuntime::BindExternalScene(Scene* scene)
     m_sceneManager.SetScene(scene);
 }
 
+void ProjectRuntime::ReleaseOwnedScene()
+{
+    m_sceneManager.ReleaseOwnedScene();
+}
+
 void ProjectRuntime::LoadScene(const std::string& sceneName)
 {
     m_sceneManager.LoadScene(sceneName);
