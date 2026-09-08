@@ -79,6 +79,7 @@
 #include "Scripts/Player/AimMarkerComponent.hpp"
 #include "Scripts/Player/BladeComponent.hpp"
 #include "Scripts/Player/PlayerAimComponent.hpp"
+#include "Scripts/Player/PlayerBossBlockComponent.hpp"
 #include "Scripts/Player/PlayerClimbComponent.hpp"
 #include "Scripts/Player/PlayerComponent.hpp"
 #include "Scripts/Player/PlayerControllerComponent.hpp"
