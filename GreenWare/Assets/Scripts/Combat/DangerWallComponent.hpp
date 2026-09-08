@@ -35,14 +35,14 @@ class DangerWallComponent : public Script {
 
 public:
     FBZZ_GROUP("Wall")
-    FBZZ_FIELD_RANGE(float, height, 3.2f, "Height", 0.2f, 20.0f)
+    FBZZ_FIELD_RANGE(float, height, 3.2f, "高さ", 0.2f, 20.0f)
     FBZZ_TOOLTIP("壁の高さ [m]。プレイヤー 2.5m が «越えられない» と読める程度に")
     FBZZ_FIELD_RANGE(float, ribScrollHz, 0.8f, "Rib Scroll", -4.0f, 4.0f)
-    FBZZ_FIELD_RANGE_INT(int, segments, 24, "Segments", 2, 96)
+    FBZZ_FIELD_RANGE_INT(int, segments, 24, "分割数", 2, 96)
     FBZZ_TOOLTIP("長さ方向の分割数。少ないと桟の流れがカクつく")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(std::string, debugState, "Hidden", "State")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugState, "Hidden", "状態")
 
     /// 今フレームの予兆を受け取る。帯でなければ壁を畳む。
     ///
@@ -93,7 +93,7 @@ private:
     ///
     /// WHY ワールド座標のまま積むか: この GameObject は原点に置く前提で、
     ///     予兆はワールド座標で来る。ローカルへ落とすと «誰の原点か» を
-    ///     渡す側と合わせ続けることになる (SlashArc と同じ方針)。
+    ///     渡す側と合わせ続けることになる (BladeTrail と同じ方針)。
     void Build()
     {
         m_builder.Clear();

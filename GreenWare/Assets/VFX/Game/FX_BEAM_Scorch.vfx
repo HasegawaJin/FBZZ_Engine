@@ -34,7 +34,7 @@ type = "BeamScorchVfxComponent"
 enabled = true
 
 [gameobjects.ScriptComponents.fields]
-polarityColor = [1.0, 1.0, 1.0, 1.0]
+tintColor = [1.0, 1.0, 1.0, 1.0]
 emberRate = 26.0
 searSize = 0.35
 
@@ -226,14 +226,14 @@ emitRate = 0.0
 maxParticles = 6
 shape = 1
 sphereRadius = 0.12
-sizeStart = 0.4
-sizeEnd = 0.04
+sizeStart = 0.55
+sizeEnd = 0.1
 sizeCurvePower = 1.8
 lifetime = 0.13
 lifetimeRandom = 0.45
 velocitySpread = 0.45
 gravity = [0.0, 0.0, 0.0]
-materialPath = "Assets/Materials/Effects/FX_ArcNoise_Additive.mat"
+materialPath = "Assets/Materials/Effects/FX_Bolt_Additive.mat"
 renderMode = 0
 sortMode = 0
 angularVelocityMin = -22.0

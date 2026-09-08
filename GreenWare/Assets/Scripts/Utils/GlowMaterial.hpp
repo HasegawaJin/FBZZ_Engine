@@ -5,8 +5,7 @@
 ///
 /// WHY 1 箇所に集めるか:
 ///   キャラクターの光る部位はすべて Assets/Materials/Character/M_GlowPart.mat を共有し、
-///   «何色でどれだけ光るか» だけを GameObject 単位の override で決める。書き込む側は
-///   極性を持つ敵 (PolarityTargetComponent) と、持たない味方 (GlowPartComponent) の 2 つ。
+///   «何色でどれだけ光るか» だけを GameObject 単位の override で決める。
 ///   プロパティ名はシェーダー側の変数名と一致していないと MaterialInstance が黙って
 ///   書き込みを捨てるため、綴りが 2 箇所にあると片方だけ光らなくなる。
 ///
@@ -21,7 +20,7 @@ namespace sandbox {
 // SkinnedGlowPart.hlsl / SkinnedPBR.hlsl 共通の自発光パラメーター。
 //
 // WHY 完全修飾するか: アタッチしないユーティリティは using namespace を持たない
-//     (取り込んだ側の名前解決を汚さないため)。PolarityTypes.hpp と同じ方針。
+//     (取り込んだ側の名前解決を汚さないため)。BladeColors.hpp と同じ方針。
 inline constexpr fbzz::scene::MaterialPropertyId kEmissiveColorId{ "emissiveColor" };
 inline constexpr fbzz::scene::MaterialPropertyId kEmissiveScaleId{ "emissiveScale" };
 

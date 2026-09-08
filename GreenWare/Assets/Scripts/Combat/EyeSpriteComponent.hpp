@@ -61,13 +61,13 @@ public:
     //     瞬きだけ入れたいキャラクターにも 6 枚の割り当てを強いることになる。
     //     未設定の出来事は「反応しない」であって、目が消えるわけではない。
     FBZZ_GROUP("Sprites")
-    FBZZ_ASSET_FIELD(SpriteRef, idleSprite, "Idle")
+    FBZZ_ASSET_FIELD(SpriteRef, idleSprite, "待機")
     FBZZ_TOOLTIP("通常時の目。アトラス内の 1 コマを指定してよい")
     FBZZ_ASSET_FIELD(SpriteRef, blinkSprite, "Blink")
     FBZZ_TOOLTIP("瞬きの瞬間だけ表示する閉じ目。未設定なら瞬かない")
     FBZZ_ASSET_FIELD(SpriteRef, spottedSprite, "Spotted")
     FBZZ_TOOLTIP("相手を見つけたときの顔")
-    FBZZ_ASSET_FIELD(SpriteRef, attackSprite, "Attack")
+    FBZZ_ASSET_FIELD(SpriteRef, attackSprite, "攻撃")
     FBZZ_TOOLTIP("攻撃を出したときの顔")
     FBZZ_ASSET_FIELD(SpriteRef, hurtSprite, "Hurt")
     FBZZ_TOOLTIP("ダメージを受けたときの顔")
@@ -82,7 +82,7 @@ public:
     FBZZ_REF(GameObject, eyeRenderer, "Eye Renderer")
     FBZZ_TOOLTIP("目のマテリアルを持つ GameObject。空なら自分自身。先頭の Material を使用")
 
-    FBZZ_GROUP("Hold")
+    FBZZ_GROUP("保持")
     FBZZ_FIELD_RANGE(float, spottedHold, 0.8f, "Spotted Seconds", 0.0f, 6.0f)
     FBZZ_TOOLTIP("0 にすると、次の出来事まで続く顔になる (見つけている間ずっと睨む)")
     FBZZ_FIELD_RANGE(float, attackHold, 0.3f, "Attack Seconds", 0.0f, 6.0f)
@@ -90,9 +90,9 @@ public:
     FBZZ_FIELD_RANGE(float, hurtHold, 0.55f, "Hurt Seconds", 0.0f, 6.0f)
 
     FBZZ_GROUP("Blink")
-    FBZZ_FIELD_RANGE(float, intervalMin, 2.8f, "Interval Min", 0.2f, 15.0f)
+    FBZZ_FIELD_RANGE(float, intervalMin, 2.8f, "間隔の下限", 0.2f, 15.0f)
     FBZZ_TOOLTIP("瞬きから次の瞬きまでの最短秒数")
-    FBZZ_FIELD_RANGE(float, intervalMax, 6.0f, "Interval Max", 0.2f, 15.0f)
+    FBZZ_FIELD_RANGE(float, intervalMax, 6.0f, "間隔の上限", 0.2f, 15.0f)
     FBZZ_TOOLTIP("同・最長秒数。Min より小さくても自動で入れ替える")
     FBZZ_FIELD_RANGE(float, closedDuration, 0.09f, "Closed Duration", 0.02f, 0.6f)
     FBZZ_TOOLTIP("目を閉じている秒数。0.1 秒前後より長いと眠そうに見える")
@@ -101,7 +101,7 @@ public:
     FBZZ_FIELD_RANGE(float, doubleBlinkGap, 0.11f, "Double Blink Gap", 0.02f, 0.5f)
     FBZZ_TOOLTIP("2 連の 1 回目と 2 回目の間で目を開けている秒数")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     // WHY bool ではなく文字列か: IReflector::Readonly に bool 版が無く、暗黙変換で
     //     int 版に落ちて 0 / 1 と表示される。今どの顔かは一目で読めるべき値なので、
     //     状態名をそのまま出す。

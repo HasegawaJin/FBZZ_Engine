@@ -311,71 +311,6 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'f4000001-0000-0000-0000-000000000021'
-layer = 0
-name = 'PolarityField'
-parent = 'Manager'
-parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.AudioSourceComponent]
-    airAbsorption = 0.0
-    busName = 'SE'
-    clipPath = ''
-    dopplerLevel = 0.0
-    enabled = true
-    loop = false
-    maxDistance = 50.0
-    minDistance = 1.0
-    pitch = 1.0
-    playOnAwake = false
-    priority = 0
-    rolloffFactor = 1.0
-    spatialBlend = 1.0
-    volume = 1.0
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PolarityFieldComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
-        applyRepulsion = true
-        arcAmplitude = 0.5
-        arcIntensity = 1.6
-        arcRangeScale = 1.5
-        arcRate = 24.0
-        arcStrands = 2
-        arcWidth = 0.08
-        chainConverge = true
-        chainRangeScale = 2.6
-        consumePolarityOnImpact = true
-        debugChainWindow = 0.0
-        debugChargedCount = 0
-        debugConvergeCount = 0
-        debugLinkCount = 0
-        debugRepulseCount = 0
-        drawDebugLinks = true
-        drawLinkArcs = true
-        holdArmedBodies = true
-        implodeFullBodies = 5
-        implodeMinBodies = 2
-        implodeMinStrength = 0.45
-        implodeSeconds = 0.3
-        maxLinks = 8
-        repulseFlightSeconds = 1.0
-        repulseVfx = true
-        screenImplode = true
-
-[[gameobjects]]
-active = true
 instanceId = 'f4000001-0000-0000-0000-000000000012'
 layer = 0
 name = 'GameFlow'
@@ -447,6 +382,32 @@ tag = 'Untagged'
         defaultBlendSeconds = 0.12
         minScale = 0.0
 
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-0000000000d1'
+layer = 0
+name = 'PartDamageHud'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PartDamageHudComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugBarPart = '-'
+        debugLive = 0
+        showBar = true
+
 [[gameobjects]]
 active = true
 instanceId = 'f4000001-0000-0000-0000-000000000014'
@@ -468,7 +429,7 @@ tag = 'Untagged'
     type = 'HitstopManagerComponent'
 
         [gameobjects.ScriptComponents.fields]
-        animMaxSeconds = 0.13
+        animMaxSeconds = 0.18
         animMinSeconds = 0.05
         animSpeed = 0.0
         debugFrozen = 0
@@ -514,26 +475,18 @@ tag = 'Untagged'
     type = 'CombatManagerComponent'
 
         [gameobjects.ScriptComponents.fields]
-        chainDamageMax = 4.0
-        chainDamageStep = 0.35
         chainSeconds = 2.2
-        debugAnchorImpacts = 0
         debugBestChain = 0
         debugChain = 0
         debugChainHits = 0
-        debugCoresAlive = 0
         debugDamageToEnemies = 181
         debugDamageToPlayer = 0
-        debugEnemyImpacts = 0
         debugFaces = 2
         debugKills = 3
         debugPushKills = 0
         highChainCount = 4
-        killCoreHeight = 0.9
-        maxKillCores = 6
         playerKnockSeconds = 0.22
         playerKnockSpeed = 7.0
-        spawnKillCores = true
 
 [[gameobjects]]
 active = true
@@ -745,6 +698,7 @@ tag = 'Untagged'
         debugLightsTotal = 0
         debugSlots = 8
         emberRate = 26.0
+        geyserSlots = 14
         groundBlastSlots = 14
         groundDustGrit = 1.4
         groundDustKick = 4.2
@@ -756,6 +710,7 @@ tag = 'Untagged'
         runDustKickMin = 1.0
         runDustSizeMax = 0.9
         runDustSizeMin = 0.45
+        rushSlots = 20
         slotsPerEffect = 8
         sparkPowerMax = 20.0
         sparkPowerMin = 5.0
@@ -764,10 +719,6 @@ tag = 'Untagged'
             guid = ''
             path = ''
 
-            [gameobjects.ScriptComponents.fields.chargeVfx]
-            guid = 'f822f852a22fabfdeb4be1748f5dbf9a'
-            path = 'guid:f822f852a22fabfdeb4be1748f5dbf9a|Assets/VFX/Game/FX_POL_Charge.vfx'
-
             [gameobjects.ScriptComponents.fields.groundDustVfx]
             guid = ''
             path = ''
@@ -775,14 +726,6 @@ tag = 'Untagged'
             [gameobjects.ScriptComponents.fields.impactVfx]
             guid = 'a3ef2f1462a18ca75a7ccf1e1a8896e5'
             path = 'guid:a3ef2f1462a18ca75a7ccf1e1a8896e5|Assets/VFX/Game/FX_IMP_Explosion.vfx'
-
-            [gameobjects.ScriptComponents.fields.launchVfx]
-            guid = 'ad046f891e08741cd1bcd6e89fd5e5fc'
-            path = 'guid:ad046f891e08741cd1bcd6e89fd5e5fc|Assets/VFX/Game/FX_ATR_Launch.vfx'
-
-            [gameobjects.ScriptComponents.fields.neutralizeVfx]
-            guid = 'c568c0aae024618e9af6adcd83c32059'
-            path = 'guid:c568c0aae024618e9af6adcd83c32059|Assets/VFX/Game/FX_POL_Neutralize.vfx'
 
             [gameobjects.ScriptComponents.fields.runDustVfx]
             guid = ''
@@ -1226,8 +1169,6 @@ tag = 'Untagged'
         bossFill = 'f4000002-0000-0000-0000-000000000011'
         bossName = 'f4000002-0000-0000-0000-000000000012'
         bossObject = 'c5232611-5448-453e-a56e-5fabab07d416'
-        chargedPulseDepth = 0.22
-        chargedPulseHz = 3.2
         debugBoss = 'Boss'
         debugDrain = 0.77375
         debugRatio = 0.77375
@@ -1265,6 +1206,7 @@ tag = 'Untagged'
         holdEnemies = true
         holdPlayer = true
         playerTag = 'Player'
+        punishStall = true
         pushBack = 6.0
         radius = 20.0
         softMargin = 1.5
@@ -1304,41 +1246,6 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'f4000001-0000-0000-0000-0000000000a4'
-layer = 0
-name = 'PolarityRings'
-parent = 'Manager'
-parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'PolarityRingComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        angleFadeDegrees = 55.0
-        burstGain = 1.6
-        burstSeconds = 0.18
-        burstSlots = 6
-        burstWidth = 0.22
-        debugAimRing = false
-        debugLiveBursts = 0
-        holdFadeSeconds = 0.12
-        holdPulseDepth = 0.22
-        holdPulseHz = 1.1
-        holdSpinHz = 0.06
-        projectionDepth = 4.0
-        ringMaterial = 'guid:6a4d43d6056a64be1b674c4a0f6f17d2|Assets/Materials/Decal/DecalPolarityRing.mat'
-
-[[gameobjects]]
-active = true
 instanceId = '1f19e8f5-8344-416b-8948-75b67fe4cc59'
 layer = 0
 name = 'WPN_Sword_R'
@@ -1350,7 +1257,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:0a2013a587a24ce8dbf0a03b9d64c40e|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_MetalDark.mat'
+    material = 'Assets/Materials/Player/M_MetalDark.mat'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -1358,23 +1265,23 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:26a02a321eb4e2a1c66a35e044c914d7|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordSteel.mat'
+        material = 'Assets/Materials/Player/M_SwordSteel.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:0c83654c3a6a113ff1988eafaf1291a1|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorGrey.mat'
+        material = 'Assets/Materials/Player/M_ArmorGrey.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:94b2486afead42e8ba91f6a7239a25ea|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordAccent.mat'
+        material = 'Assets/Materials/Player/M_SwordAccent.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:603bec7abde99ad7fe4197cd9bcd595d|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_PanelLine.mat'
+        material = 'Assets/Materials/Player/M_PanelLine.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:4fa518d12ea23ea50a346419a5359f77|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorWhite.mat'
+        material = 'Assets/Materials/Player/M_ArmorWhite.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -1424,7 +1331,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:4171165b6083906753b520cc3ef456a5|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_MetalDark.mat'
+    material = 'Assets/Materials/Player/M_MetalDark.mat'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -1432,23 +1339,23 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:d445eb3c179619644fdea1e3b5d493ea|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordSteel.mat'
+        material = 'Assets/Materials/Player/M_SwordSteel.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:cf0d73a5513af24400f0b0c77c214a06|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorGrey.mat'
+        material = 'Assets/Materials/Player/M_ArmorGrey.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:819cdf59cddee3f7bc8edbbcfd24c099|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordAccent.mat'
+        material = 'Assets/Materials/Player/M_SwordAccent.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:1c412dee3ca368608d36d0c0a0ebfdf6|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_PanelLine.mat'
+        material = 'Assets/Materials/Player/M_PanelLine.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:57da4880a47fc814f2e5a6f34d87f016|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorWhite.mat'
+        material = 'Assets/Materials/Player/M_ArmorWhite.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -2244,7 +2151,7 @@ tag = 'Player'
         chargeShakeHz = 24.0
         chargeShakeLateral = 0.0
         chargeVoiceVolume = 0.45
-        chargedHitStop = 0.45
+        chargedHitStop = 0.9
         chargedRumble = 0.9
         chargedShake = 0.7
         clampDegrees = 55.0
@@ -2260,13 +2167,14 @@ tag = 'Player'
         debugLastHits = 0
         debugLiveArcs = 0
         debugPhase = 'Startup'
-        debugPolarity = 'Minus'
         debugRemaining = 0.816667
         debugTargetName = ''
         debugTimeToApex = 0.588715
         debugWeight = 0.85
         debugWorldGravity = 9.81
         dodgeCameraSlack = 0.7
+        drawClipFile = 'guid:f95e9fb9af1aadd78aa62a353427cf7d|Library/Baked/9873c746d0c7f993161455bdcad44fd2/anims/Katana_Draw.anim'
+        drawClipName = 'Katana_Draw'
         drawDebugAim = false
         drawDebugArc = false
         drawDebugLine = false
@@ -2309,7 +2217,7 @@ tag = 'Player'
         paramJumpTrigger = 'Jump'
         paramSpeed = 'Speed'
         paramVerticalSpeed = 'VerticalSpeed'
-        polarityTuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
+        bladeTuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/BladeTuning.fzdata'
         pulseDepth = 0.06
         pulseHz = 1.4
         response = 18.0
@@ -2320,24 +2228,24 @@ tag = 'Player'
         servoTurnRate = 60.0
         sfxDeath = ''
         sfxHurt = ''
+        sheatheClipFile = 'guid:0f86f25d3e776da5040d7badc8568677|Library/Baked/bf25e66cf0b7067fb10270753895d369/anims/Katana_Sheathe.anim'
+        sheatheClipName = 'Katana_Sheathe'
         sheatheDuration = 1.333333
         sheatheStateName = 'KatanaSheathe'
         sheatheTransferLeft = 0.733333
         sheatheTransferRight = 0.533333
         sheatheTriggerName = 'Sheathe'
-        showRepulsionRing = true
         slashFadeIn = 0.05
         slashFadeOut = 0.12
-        slashFinisherClipFile = 'guid:12deb7da34415ea7eae58fcc71945ab1|Library/Baked/68621dfe4a66ccf3f74cfd49ba4c7075/anims/Katana_Slash_Dual.anim'
-        slashFinisherClipName = 'Katana_Slash_Dual'
-        slashFinisherHitTime = 0.466667
-        slashHitTime = 0.4
+        slashHitTime = 0.266667
         slashLayerGain = 1.0
         slashLayerName = 'Attack'
         slashLeftClipFile = 'guid:df86ad597c33fe11e376bde87f62a4bf|Library/Baked/3c44e89bba0ce00b16bfcc71d0d09089/anims/Katana_Slash_L.anim'
         slashLeftClipName = 'Katana_Slash_L'
         slashRightClipFile = 'guid:f4b66683b4b00dd2699acea0edb05d70|Library/Baked/eb4f77f1e5395fbec0a9271e4462e095/anims/Katana_Slash_R.anim'
         slashRightClipName = 'Katana_Slash_R'
+        slotFadeIn = 0.08
+        slotFadeOut = 0.18
         startDrawn = true
         stopOnGeometry = true
         strideRun = 1.35
@@ -2349,8 +2257,7 @@ tag = 'Player'
         upAxisOverride = [ 0.0, 1.0, 0.0 ]
         useCameraForward = true
         useFootIK = true
-        useTargetPolarityColor = true
-        weaponLayerName = ''
+        weaponLayerName = 'Attack'
         weaponLeft = 'c4eae030-9d43-4ea6-86e0-6346120cc090'
         weaponRight = '1f19e8f5-8344-416b-8948-75b67fe4cc59'
         weightResponse = 6.0
@@ -2448,7 +2355,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:8a73d6d8592397296bf8b3334ebd79d3|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorGrey.mat'
+    material = 'Assets/Materials/Player/M_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -2477,7 +2384,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20a2c14f6500107fb0018dc7d0424989|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorWhite.mat'
+    material = 'Assets/Materials/Player/M_ArmorWhite.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -2593,7 +2500,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:eb136c6a518e09566a0fb23c89a7a184|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_MetalDark.mat'
+    material = 'Assets/Materials/Player/M_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -2622,7 +2529,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:7ae7ed1f56fcfe85be75042bcc54fc9b|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_PanelLine.mat'
+    material = 'Assets/Materials/Player/M_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5074,22 +4981,6 @@ tag = 'Enemy'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
-    type = 'PolarityTargetComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        Tuning = 'guid:62cd9c37b1fcfe9f43e7e080ab9caf7e|Assets/Data/PolarityTuning.fzdata'
-        acceptsPaint = false
-        debugRemaining = 0.0
-        emissiveSlot = 0
-        emissiveTargets = []
-        isAnchor = true
-        outlineEnabled = false
-        outlineWidth = 1.0
-        polarityClass = 0
-        selfDriven = true
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
     type = 'EnemyHealthComponent'
 
         [gameobjects.ScriptComponents.fields]
@@ -5162,16 +5053,24 @@ tag = 'Enemy'
         aimMaxPerJoint = 22.0
         aimResponse = 6.0
         bendLimitDegrees = 12.0
+        crushFadeSeconds = 0.2
         debugAim = 0.0
         debugBend = 0.0
         debugBodyLength = 0.0
         debugExposed = 0
         debugHeadArc = 0.0
+        debugHeadSpeed = 0.0
         debugNeckBend = 0.0
+        debugWaveClamp = 1.0
         drawSpine = false
+        headAccel = 48.0
         headSpeed = 6.0
         neckBendLimitDegrees = 40.0
         parkDepth = 40.0
+        rollDegrees = 20.0
+        rollFadeAtMouth = true
+        rollSpeed = 2.2
+        rollWavelength = 7.0
         rootBoneOffsetY = 0.0
         undulationMeters = 0.34
         undulationSpeed = 1.6
@@ -5206,13 +5105,16 @@ tag = 'Enemy'
         enclose = true
         engageDelay = 1.0
         engageRadius = 24.0
-        evadeCharged = true
-        evadeGrace = 2.4
-        evadeSpeedScale = 1.7
         exposedMeters = 11.2
+        fan = true
+        fanBeams = 7
+        fanCooldown = 13.0
+        fanFromPhase = 2
+        fanRange = 22.0
+        fanReach = 11.0
         holdRatio = 0.88
         lanceCooldown = 9.0
-        lanceFromPhase = 2
+        lanceFromPhase = 1
         lanceRange = 26.0
         laser = true
         laserColumns = 4
@@ -5226,6 +5128,7 @@ tag = 'Enemy'
         lungeTelegraph = 0.7
         mouthCloseMargin = 1.2
         phaseSpeedUp = 0.28
+        phaseTelegraphCut = 0.15
         playerTag = 'Player'
         rush = true
         rushCooldown = 14.0
@@ -5246,30 +5149,32 @@ tag = 'Enemy'
         stalk = true
         stalkLead = 1.2
         stalkSpeedScale = 1.1
+        stallReach = 3.0
+        stallSeconds = 5.0
         sweepDamage = 1
         sweepRadius = 2.6
         sweepReach = 3.5
         sweepSeconds = 0.5
         sweepTelegraph = 0.9
-        telegraphBlinkFrom = 0.7
-        telegraphBlinkHz = 6.0
+        telegraphPips = 3
+        telegraphStrikeFrom = 0.82
         telegraphDepth = 6.0
         telegraphFadeIn = 0.12
+        telegraphFloor = 0.34
         telegraphMaterial = 'guid:4e98b7faca372f484b5f42eadadb5ea4|Assets/Materials/Decal/DecalBossTelegraph.mat'
         telegraphStripeScrollHz = 0.45
         thrustDamage = 1
         thrustHoles = 3
         thrustHolesFromPhase = 2
-        thrustRadius = 3.0
+        thrustRadius = 4.0
         thrustTelegraph = 0.9
         transitSpeedScale = 1.35
 
     [[gameobjects.ScriptComponents]]
     enabled = true
-    type = 'SerpentPolarityRigComponent'
+    type = 'SerpentRigComponent'
 
         [gameobjects.ScriptComponents.fields]
-        debugCharged = 0
         debugPair = '-'
         debugPull = 0.0
         drawPullLink = true
@@ -5300,10 +5205,18 @@ tag = 'Enemy'
     type = 'LaserVolleyComponent'
 
         [gameobjects.ScriptComponents.fields]
+        arcBow = 0.8
+        arcBudget = 14
+        arcIntensity = 2.0
+        arcRate = 26.0
+        arcStrands = 2
+        arcWidth = 0.075
+        beamArcs = 2
+        beamLight = true
         chargeSeconds = 0.85
         columnColor = [ 1.0, 0.62, 0.18, 1.0 ]
         columnHeight = 9.0
-        columnMaterial = 'guid:612ddcd713935a337877c03856a9251e|Assets/Materials/Effects/FX_SRP_Column.mat'
+        columnMaterial = 'guid:fb07176e2b58b2a1a45f3a2e216c1ac4|Assets/Materials/Effects/FX_BOSS_Beam.mat'
         columnSink = 0.6
         columnWidth = 1.1
         damage = 2
@@ -5311,11 +5224,18 @@ tag = 'Enemy'
         debugStage = 'Idle'
         fadeSeconds = 0.18
         fireSeconds = 0.7
+        glowScale = 2.2
         hitRadius = 0.95
         lanceColor = [ 1.0, 0.78, 0.34, 1.0 ]
-        lanceMaterial = 'guid:e7f3cc4284646efcb1f9030adafde943|Assets/Materials/Effects/FX_SRP_Lance.mat'
+        lanceMaterial = 'guid:fb07176e2b58b2a1a45f3a2e216c1ac4|Assets/Materials/Effects/FX_BOSS_Beam.mat'
         lanceWidth = 0.55
+        lightIntensity = 12.0
+        lightRange = 7.0
+        needleWidth = 0.14
         playerTag = 'Player'
+        tipArcs = 2
+        tipReach = 2.4
+        tubeSegments = 10
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -5326,9 +5246,11 @@ tag = 'Enemy'
         blastSpread = 0.45
         blastStrengthEnd = 0.7
         blastStrengthStart = 0.3
+        blastBias = 2.0
         blastVolume = 0.85
         buildupSeconds = 1.4
         climaxLift = 0.5
+        heavyEvery = 3
         climaxStrength = 1.0
         climaxSurgeColor = [ 1.0, 0.72, 0.3, 1.0 ]
         climaxSurgeSeconds = 0.55
@@ -5371,6 +5293,28 @@ tag = 'Enemy'
             guid = ''
             path = ''
 
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BossBreakComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        chargedSlashGain = 9.0
+        debugBreak = 0.0
+        debugLastSource = '-'
+        debugState = 'Idle'
+        debugStreak = 0
+        decayDelay = 2.5
+        decayPerSecond = 8.0
+        justParryScale = 1.5
+        maxBreak = 100.0
+        parryGain = 40.0
+        parryHeavyGain = 60.0
+        perfectDodgeGain = 10.0
+        slashGain = 3.5
+        streakBonus = 0.15
+        streakCap = 4
+        toppleSeconds = 5.0
+
 [[gameobjects]]
 active = true
 instanceId = 'bef72db7-e91c-4590-ae41-10417ab9077d'
@@ -5384,7 +5328,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5413,7 +5357,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5442,7 +5386,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5471,7 +5415,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5500,7 +5444,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5529,7 +5473,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5558,7 +5502,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5587,7 +5531,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5616,7 +5560,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5645,7 +5589,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5674,7 +5618,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5703,7 +5647,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5732,7 +5676,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5761,7 +5705,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5790,7 +5734,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5819,7 +5763,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5848,7 +5792,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5877,7 +5821,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5906,7 +5850,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5935,7 +5879,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5964,7 +5908,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -5993,7 +5937,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6022,7 +5966,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6051,7 +5995,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6080,7 +6024,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6109,7 +6053,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6138,7 +6082,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6167,7 +6111,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6196,7 +6140,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:feb458c52495b97f9e9b7534e8854cd5|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_ArmorGrey.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6225,7 +6169,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6254,7 +6198,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6283,7 +6227,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6312,7 +6256,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6341,7 +6285,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6370,7 +6314,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6399,7 +6343,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6428,7 +6372,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6457,7 +6401,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6486,7 +6430,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6515,7 +6459,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6544,7 +6488,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6573,7 +6517,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6602,7 +6546,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6631,7 +6575,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6660,7 +6604,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6689,7 +6633,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6718,7 +6662,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6747,7 +6691,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6776,7 +6720,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6805,7 +6749,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6834,7 +6778,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6863,7 +6807,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6892,7 +6836,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6921,7 +6865,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6950,7 +6894,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6979,7 +6923,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7008,7 +6952,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7037,7 +6981,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:bd65d0ad2d024a28481c2e32fec3a26a|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_MetalDark.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7066,7 +7010,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7095,7 +7039,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7124,7 +7068,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7153,7 +7097,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7182,7 +7126,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7211,7 +7155,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7240,7 +7184,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7269,7 +7213,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7298,7 +7242,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7327,7 +7271,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7356,7 +7300,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7385,7 +7329,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7414,7 +7358,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7443,7 +7387,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7472,7 +7416,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7501,7 +7445,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7530,7 +7474,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7559,7 +7503,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7588,7 +7532,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7617,7 +7561,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7646,7 +7590,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7675,7 +7619,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7704,7 +7648,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7733,7 +7677,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7762,7 +7706,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7791,7 +7735,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7820,7 +7764,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7849,7 +7793,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -7878,7 +7822,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:a55cac6b667d961756370e398b3b5141|Library/Baked/95d078a7207c293672a9eb88689abfcb/materials/M_E_PanelLine.mat'
+    material = 'Assets/Materials/Enemies/Serpent/M_E_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -12350,6 +12294,10 @@ tag = 'Untagged'
         outerCount = 10
         outerPhaseDegrees = 18.0
         outerRadius = 16.0
+        passageBurst = 1.0
+        passageDust = true
+        passageInterval = 0.2
+        passageStrength = 0.75
         playDust = true
         playSound = true
         sinkMeters = 0.3

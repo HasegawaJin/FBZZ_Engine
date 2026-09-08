@@ -76,24 +76,24 @@ public:
     FBZZ_GROUP("Motes")
     FBZZ_ASSET_FIELD(MaterialRef, moteMaterial, "Material")
     FBZZ_TOOLTIP("未割り当てなら FX_GlowSoft_Additive.mat を使う")
-    FBZZ_FIELD_RANGE_INT(int, burstCount, 240, "Burst", 0, 4000)
+    FBZZ_FIELD_RANGE_INT(int, burstCount, 240, "バースト", 0, 4000)
     FBZZ_TOOLTIP("倒れた瞬間に一度に湧く数。輪郭が «一瞬で粒になる» 読みを作る")
-    FBZZ_FIELD_RANGE(float, emitRate, 380.0f, "Emit Rate", 0.0f, 4000.0f)
+    FBZZ_FIELD_RANGE(float, emitRate, 380.0f, "発生レート", 0.0f, 4000.0f)
     FBZZ_TOOLTIP("その後こぼれ続ける量 [個/秒]")
     FBZZ_FIELD_RANGE(float, emitSeconds, 0.55f, "Emit Seconds", 0.0f, 4.0f)
     FBZZ_TOOLTIP("こぼれ続ける時間。体が消えるより先に止める")
 
-    FBZZ_GROUP("Motion")
+    FBZZ_GROUP("動き")
     FBZZ_FIELD_RANGE(float, normalVelocity, 0.65f, "Normal Velocity", -10.0f, 10.0f)
     FBZZ_TOOLTIP("表面法線へ押し出す初速 [m/s]。負値は体へ吸い込む")
-    FBZZ_FIELD_RANGE(float, riseAcceleration, 2.3f, "Rise", -20.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, riseAcceleration, 2.3f, "立ち上がり", -20.0f, 20.0f)
     FBZZ_TOOLTIP("上向きの加速度 [m/s^2]。法線の勢いが切れた後の «昇り» を作る")
-    FBZZ_FIELD_RANGE(float, spread, 0.30f, "Spread", 0.0f, 5.0f)
-    FBZZ_FIELD_RANGE(float, damping, 3.4f, "Damping", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, spread, 0.30f, "拡がり", 0.0f, 5.0f)
+    FBZZ_FIELD_RANGE(float, damping, 3.4f, "減衰", 0.0f, 20.0f)
     FBZZ_TOOLTIP("法線の押し出しを早く殺すほど «膨らんでから昇る» が強く出る")
     FBZZ_FIELD_RANGE(float, turbulence, 0.85f, "Turbulence", 0.0f, 10.0f)
 
-    FBZZ_GROUP("Look")
+    FBZZ_GROUP("見た目")
     FBZZ_FIELD_COLOR(colorStart, (Vector4{ 0.52f, 1.00f, 0.72f, 1.00f }), "Start")
     FBZZ_FIELD_COLOR(colorEnd,   (Vector4{ 0.05f, 0.26f, 0.19f, 0.00f }), "End")
     FBZZ_FIELD_RANGE(float, sizeStart, 0.085f, "Size Start", 0.001f, 2.0f)
@@ -101,18 +101,18 @@ public:
     // WHY moteLifetime か: Script は lifetime という名前のプロキシを持っている。
     //     同じ名前のフィールドを足すと基底が隠れ、この先 lifetime.* を書いた誰かが
     //     «なぜかコンパイルが通らない» に当たる。
-    FBZZ_FIELD_RANGE(float, moteLifetime, 1.40f, "Lifetime", 0.05f, 8.0f)
+    FBZZ_FIELD_RANGE(float, moteLifetime, 1.40f, "寿命", 0.05f, 8.0f)
     FBZZ_FIELD_RANGE(float, moteLifetimeRandom, 0.45f, "Lifetime Random", 0.0f, 1.0f)
 
     FBZZ_GROUP("Body Dissolve")
-    FBZZ_FIELD_RANGE(float, fadeDelay, 0.22f, "Delay", 0.0f, 4.0f)
+    FBZZ_FIELD_RANGE(float, fadeDelay, 0.22f, "遅延", 0.0f, 4.0f)
     FBZZ_TOOLTIP("倒れてから体が崩れ始めるまで。0 だと死亡モーションが読めない")
-    FBZZ_FIELD_RANGE(float, fadeSeconds, 0.60f, "Duration", 0.01f, 4.0f)
+    FBZZ_FIELD_RANGE(float, fadeSeconds, 0.60f, "継続時間", 0.01f, 4.0f)
     FBZZ_FIELD(std::string, dissolveFolder, "", "Material Folder")
     FBZZ_TOOLTIP("ディゾルブ .mat の置き場。空ならモデルのフォルダ名から "
                  "Assets/Materials/Enemies/<キャラ> を組み立てる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugModel, "", "Shape Model")
     FBZZ_FIELD_READ_ONLY(std::string, debugDissolveFolder, "", "Dissolve Folder")
     FBZZ_FIELD_READ_ONLY(int, debugBodyParts, 0, "Body Parts")
@@ -333,9 +333,9 @@ inline void EnemyDeathVfxComponent::Begin()
             material.GetSharedMaterialPath(part.target, part.slot));
 
         const MaterialInstance before = material.Instance(part.target, part.slot);
-        // 発光色は GlowPartComponent / PolarityTargetComponent が override で持っている。
+        // 発光色は GlowPartComponent が override で持っている。
         // SetSharedMaterial はパスが変わると override を全消しするので、差し替えを跨いで
-        // 手で運ぶ。両者とも毎フレーム押し直す作りなので放っておいても翌フレームには戻るが、
+        // 手で運ぶ。毎フレーム押し直す作りなので放っておいても翌フレームには戻るが、
         // その 1 フレームだけコアが黒く落ちるのが «撃破の瞬間» に重なって目に付く。
         Vector3 emissiveColor{ 1.0f, 1.0f, 1.0f };
         float   emissiveScale = 0.0f;

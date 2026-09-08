@@ -6,7 +6,7 @@
 /// WHY 板ではなくデカールか:
 ///   板を 1 枚置くと、床の起伏・瓦礫・ボスの足元でめり込んで切れる。デカールは
 ///   深度から受け面を復元して投影するので、範囲が地形に沿って «敷かれた» 形になる
-///   (DecalPolarityRing と同じ理由)。
+///   (手続きデカールと同じ理由)。
 ///
 /// WHY 1 枚だけ持つか:
 ///   ボスは 1 度に 1 つの行動しか出さない (Act は排他)。枚数を増やしても同時に
@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -41,27 +42,40 @@ public:
     FBZZ_GROUP("Decal")
     FBZZ_FIELD_FILE(telegraphMaterial, "Assets/Materials/Decal/DecalBossTelegraph.mat",
                     "Material", ".mat")
-    FBZZ_FIELD_RANGE(float, projectionDepth, 6.0f, "Depth", 0.2f, 30.0f)
+    FBZZ_FIELD_RANGE(float, projectionDepth, 6.0f, "奥行き", 0.2f, 30.0f)
     FBZZ_TOOLTIP("投影の厚み [m]。薄いと坂で切れ、厚いと段差の裏にも回り込む")
 
-    FBZZ_GROUP("Feel")
+    FBZZ_GROUP("手触り")
     // WHY 出だしを薄くするか: 予兆が最初から満濃度で出ると «もう来た» に見える。
     //     立ち上がりに一拍あると «来る» と «来た» が分かれる。
-    FBZZ_FIELD_RANGE(float, fadeInSeconds, 0.12f, "Fade In", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, blinkHz, 0.0f, "Blink Hz", 0.0f, 20.0f)
-    FBZZ_TOOLTIP("着弾間際の明滅。0 で明滅なし。進みが Blink From を超えてから掛かる")
-    FBZZ_FIELD_RANGE(float, blinkFrom, 0.70f, "Blink From", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, blinkDepth, 0.35f, "Blink Depth", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, fadeInSeconds, 0.12f, "フェードイン", 0.0f, 1.0f)
+    // 拍と回避窓。
+    //
+    // WHY 明滅 (Blink Hz) を置き換えたか (2026-09-07): 旧実装は
+    //     `sin(Time::time * hz)` の絶対時刻で、予兆が出た瞬間の位相が毎回違った。
+    //     «何回光ったら来る» が成立しないので «そろそろ» としか言えず、しかも
+    //     既定が 0.0 だったのでボス 1 では明滅そのものが出ていなかった。
+    FBZZ_FIELD_RANGE_INT(int, pips, 3, "ピップの数", 0, 8)
+    FBZZ_TOOLTIP("枠に刻む拍の数。明るい弧が目盛りを 1 つ越えるたびに 1 拍光る。"
+                 "進みを等分するので、予兆の尺が手ごとに違っても拍の数は変わらない")
+    FBZZ_FIELD_RANGE(float, strikeFrom, 0.82f, "打撃の起点", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("回避窓の入口。ここから枠が白へ寄って太り、斜線の流れが止まる。"
+                 "«量» ではなく «質» が変わることで «今» が読める")
+    FBZZ_FIELD_RANGE(float, pipGain, 2.1f, "ピップの明滅", 1.0f, 4.0f)
+    FBZZ_TOOLTIP("拍の瞬間の明るさの跳ね。1.0 で跳ねなし")
+    FBZZ_FIELD_RANGE(float, burstSeconds, 0.12f, "バースト", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("着弾の瞬間に枠が太って薄れる尺 [秒]。0 で即座に消える ─ "
+                 "«避けきったのか当たったのか» が絵に残らなくなる")
 
     // WHY 模様を流すか: 止まった斜線は «床に描いてある柄» と区別が付かない。
     //     流れていると «今それが起きつつある» になり、帯では «どちらから来るか»
     //     まで同じ模様が言う。デカールの cbuffer に時刻が無いので、位相は
-    //     こちらが毎フレーム進めて渡す (DecalPolarityRing の spin と同じ形)。
-    FBZZ_FIELD_RANGE(float, stripeScrollHz, 0.45f, "Stripe Scroll", -4.0f, 4.0f)
+    //     こちらが毎フレーム進めて渡す (手続きデカールの spin と同じ形)。
+    FBZZ_FIELD_RANGE(float, stripeScrollHz, 0.45f, "縞のスクロール", -4.0f, 4.0f)
     FBZZ_TOOLTIP("斜線と矢羽根が流れる速さ [周/秒]。帯では正で «ボスから前へ» 流れる。"
                  "0 で止まる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugShape, "None", "Shape")
     FBZZ_FIELD_READ_ONLY(float, debugProgress, 0.0f, "Progress")
 
@@ -70,37 +84,53 @@ public:
     void OnDestroy() override;
 
 private:
-    [[nodiscard]] std::string DecalName() const;
-    /// デカールを拾い直す。無ければ作る。
-    [[nodiscard]] GameObject* EnsureDecal();
+    [[nodiscard]] std::string DecalName(int index) const;
+    /// index 枚目のデカールを拾い直す。無ければ作る。
+    [[nodiscard]] GameObject* EnsureDecal(int index);
     void Hide(GameObject& object);
     void Place(GameObject& object, const BossTelegraph& telegraph);
 
-    EntityRef m_decal;
+    /// 出している枚数ぶん。コアビームは «撃つ線» の本数だけ帯が要る。
+    ///
+    /// WHY 1 枚を使い回さないか: 帯は DecalComponent の transform そのものなので、
+    ///     1 フレームに 2 本描くことができない。本数ぶん持って、余ったぶんを
+    ///     伏せるのが «出す側が本数を決める» に対する素直な受け方。
+    std::vector<EntityRef> m_decals;
     /// 予兆が出てからの秒数。立ち上がりのフェードに使う。
     float m_shownFor = 0.0f;
+    /// 拍・回避窓・着弾の弾け。蛇と部位発光も同じ型を通る (BossTelegraph.hpp)。
+    BossTelegraphCue m_cue;
 };
 
 FBZZ_REFLECT(BossTelegraphComponent)
 
-inline std::string BossTelegraphComponent::DecalName() const
+inline std::string BossTelegraphComponent::DecalName(int index) const
 {
     GameObject* owner = scene.Self();
-    return "BossTelegraph_" + (owner ? owner->instanceId : std::string("orphan"));
+    std::string name = "BossTelegraph_" + (owner ? owner->instanceId : std::string("orphan"));
+    // 1 枚目だけは名前を変えない。既にシーンへ残っている帯を拾い直せなくなると、
+    // DLL リロードのたびに古い 1 枚が伏せられないまま床に残る。
+    if (index > 0) name += "_" + std::to_string(index);
+    return name;
 }
 
-inline GameObject* BossTelegraphComponent::EnsureDecal()
+inline GameObject* BossTelegraphComponent::EnsureDecal(int index)
 {
+    if (index < 0) return nullptr;
+    if (m_decals.size() <= static_cast<std::size_t>(index))
+        m_decals.resize(static_cast<std::size_t>(index) + 1);
+
     // WHY 先に拾い直すか: スクリプト DLL をリロードすると Script は作り直され
     //     EntityRef は空に戻るが、デカールの GameObject は Scene に残る。
     //     無条件に作るとリロードのたびに 1 枚ずつ増えていく。
-    if (GameObject* existing = m_decal.Resolve(scene)) return existing;
+    EntityRef& slot = m_decals[static_cast<std::size_t>(index)];
+    if (GameObject* existing = slot.Resolve(scene)) return existing;
 
-    GameObject* object = scene.Find(DecalName());
+    GameObject* object = scene.Find(DecalName(index));
     if (!object) {
         // WHY ボスの子にしないか: 子にすると位置と «向き» がボスの回転を引き継ぐ。
         //     予兆はワールドの形なので、ボスが旋回しただけで帯が振り回される。
-        GameObject& created = scene.Create(DecalName());
+        GameObject& created = scene.Create(DecalName(index));
         created.runtimeGenerated = true;
         object = &created;
     }
@@ -109,16 +139,13 @@ inline GameObject* BossTelegraphComponent::EnsureDecal()
     if (!decal) decal = &object->AddComponent<DecalComponent>();
     if (!telegraphMaterial.empty()) decal->materialPath = telegraphMaterial;
 
-    m_decal = EntityRef{ object->GetID() };
+    slot = EntityRef{ object->GetID() };
     return object;
 }
 
 inline void BossTelegraphComponent::Hide(GameObject& object)
 {
     object.SetActive(false);
-    m_shownFor    = 0.0f;
-    debugShape    = "None";
-    debugProgress = 0.0f;
 }
 
 inline void BossTelegraphComponent::Place(GameObject& object, const BossTelegraph& telegraph)
@@ -153,15 +180,9 @@ inline void BossTelegraphComponent::Place(GameObject& object, const BossTelegrap
         object.transform.scale = { diameter, depth, diameter };
     }
 
-    // 立ち上がりの薄さと、着弾間際の明滅。
-    //
-    // WHY 明滅を «終わり際» に限るか: 最初から点滅していると、予兆が出ている間ずっと
-    //     «今すぐ来る» と言い続けることになり、いつ避けるかが読めない。
-    float gain = fadeInSeconds > 0.0f ? Clamp01(m_shownFor / fadeInSeconds) : 1.0f;
-    if (blinkHz > 0.0f && progress >= Clamp01(blinkFrom)) {
-        const float wave = std::sin(Time::time * blinkHz * TWO_PI) * 0.5f + 0.5f;
-        gain *= Lerp(1.0f - Clamp01(blinkDepth), 1.0f, wave);
-    }
+    // 立ち上がりの薄さ。予兆が最初から満濃度で出ると «もう来た» に見える。
+    // 拍・回避窓・着弾の弾けは共有の BossTelegraphCue が持つ。
+    const float fadeIn = fadeInSeconds > 0.0f ? Clamp01(m_shownFor / fadeInSeconds) : 1.0f;
 
     decal->materialParamOverrides["shape"]    = { line ? 1.0f : 0.0f };
     decal->materialParamOverrides["progress"] = { progress };
@@ -169,17 +190,17 @@ inline void BossTelegraphComponent::Place(GameObject& object, const BossTelegrap
     // 攻撃の種類から引く (BossTelegraph.hpp の BossThreatOriginOf)。
     decal->materialParamOverrides["threatAbove"] =
         { BossThreatOriginOf(telegraph.kind) == BossThreatOrigin::Above ? 1.0f : 0.0f };
-    decal->materialParamOverrides["pulse"]    = { std::max(gain, 0.0f) };
-    // 位相は «出てからの経過» で進める。全体時計を渡すと、予兆が出た瞬間の模様の
-    // 位置が毎回違って «同じ攻撃が同じ絵で来る» が崩れる。
-    decal->materialParamOverrides["stripeScroll"] = { m_shownFor * stripeScrollHz };
-
-    debugShape    = line ? "Line" : "Circle";
-    debugProgress = progress;
-
-    // 帯の予兆は «立てて» も見せる。ボスの体で床が隠れる距離ほど、
-    // 通り道の高さが読めないと避けようがない (DangerWallComponent の WHY)。
-    if (auto* wall = scene.GetScript<DangerWallComponent>()) wall->Submit(telegraph);
+    decal->materialParamOverrides["pulse"]    = { std::max(m_cue.pulse * fadeIn, 0.0f) };
+    // 位相は cue が進める。回避窓へ入ると止まる ─ 動いていたものが止まるのは
+    // «構え終わった» の合図で、明るさの変化より視界の端でも拾いやすい。
+    decal->materialParamOverrides["stripeScroll"] = { m_cue.scroll };
+    // 突進は帯に沿って «走ってくる» 手。踏みつけ・着地・パルスは円、ビームは
+    // 撃った瞬間に線が通るので、走る絵になるのは突進だけ。
+    decal->materialParamOverrides["travel"] =
+        { (line && telegraph.kind == BossAttackKind::Charge) ? 1.0f : 0.0f };
+    decal->materialParamOverrides["strikeWindow"] = { Clamp01(strikeFrom) };
+    decal->materialParamOverrides["countPips"]    = { static_cast<float>(std::max(pips, 0)) };
+    decal->materialParamOverrides["burstFade"]    = { m_cue.burstFade };
 }
 
 inline void BossTelegraphComponent::OnStart()
@@ -191,36 +212,82 @@ inline void BossTelegraphComponent::OnStart()
         return;
     }
 
-    if (GameObject* object = EnsureDecal()) Hide(*object);
+    if (GameObject* object = EnsureDecal(0)) Hide(*object);
 }
 
 inline void BossTelegraphComponent::OnLateUpdate()
 {
     const auto* ai = scene.GetScript<BossAiComponent>();
-    GameObject* object = EnsureDecal();
-    if (!ai || !object) return;
+    if (!ai) return;
 
-    const BossTelegraph& telegraph = ai->CurrentTelegraph();
-    if (telegraph.shape == BossTelegraphShape::None) {
-        if (object->activeSelf()) Hide(*object);
+    const BossTelegraph&              primary = ai->CurrentTelegraph();
+    const std::vector<BossTelegraph>& extras  = ai->ExtraTelegraphs();
+    const bool shown = primary.shape != BossTelegraphShape::None;
+
+    // 出ていない間は «出てからの秒数» を進めない。1 枚目の状態で代表させるのは、
+    // 全部が同じ予兆の一部で、同時に出て同時に消えるため。
+    if (!shown) m_shownFor = 0.0f;
+    else        m_shownFor += std::max(Time::deltaTime, 0.0f);
+
+    // 時刻の言葉は共有の 1 つを通す。枚数が変わっても «同じ予兆の一部» なので、
+    // 拍も回避窓も 1 つで足りる ─ 枚ごとに持つと同じ攻撃の中で拍がずれる。
+    m_cue.pips         = std::max(pips, 0);
+    m_cue.pipGain      = pipGain;
+    m_cue.strikeFrom   = Clamp01(strikeFrom);
+    m_cue.scrollHz     = stripeScrollHz;
+    m_cue.burstSeconds = std::max(burstSeconds, 0.0f);
+    m_cue.Tick(shown ? primary.progress : 1.0f, std::max(Time::deltaTime, 0.0f), shown);
+
+    // 着弾の «弾け» が残っている間は、消えた予兆でも 1 コマ描き続ける。
+    // 即座に消すと «避けきったのか当たったのか» が絵に残らない。
+    if (!shown && m_cue.visible) {
+        for (std::size_t i = 0; i < m_decals.size(); ++i)
+            if (GameObject* object = EnsureDecal(static_cast<int>(i)))
+                if (object->activeSelf())
+                    if (auto* decal = object->GetComponent<DecalComponent>()) {
+                        decal->materialParamOverrides["burstFade"] = { m_cue.burstFade };
+                        decal->materialParamOverrides["progress"]  = { 1.0f };
+                    }
+        debugShape    = "Burst";
+        debugProgress = 1.0f;
         return;
     }
 
-    if (!object->activeSelf()) {
-        object->SetActive(true);
-        m_shownFor = 0.0f;
-    }
-    m_shownFor += std::max(Time::deltaTime, 0.0f);
+    // 1 枚目 + 続き。余った枚数は伏せる (本数は攻撃ごとに変わる)。
+    const std::size_t want = shown ? extras.size() + 1 : 0;
+    const std::size_t have = std::max(m_decals.size(), want);
+    for (std::size_t i = 0; i < have; ++i) {
+        GameObject* object = EnsureDecal(static_cast<int>(i));
+        if (!object) continue;
 
-    Place(*object, telegraph);
+        if (i >= want) {
+            if (object->activeSelf()) Hide(*object);
+            continue;
+        }
+        if (!object->activeSelf()) object->SetActive(true);
+        Place(*object, i == 0 ? primary : extras[i - 1]);
+    }
+
+    debugShape    = shown ? (primary.shape == BossTelegraphShape::Line ? "Line" : "Circle")
+                          : "None";
+    debugProgress = shown ? Clamp01(primary.progress) : 0.0f;
+
+    // 帯の予兆は «立てて» も見せる。ボスの体で床が隠れる距離ほど、
+    // 通り道の高さが読めないと避けようがない (DangerWallComponent の WHY)。
+    //
+    // WHY 1 枚目だけ渡すか: 壁は 1 枚しか立たない (Submit は最後の 1 つが勝つ)。
+    //     全部渡すと «最後に渡した線» の壁だけが立ち、どれが立っているのかが
+    //     出す側から見えなくなる。狙われている中心の線を代表させる。
+    if (auto* wall = scene.GetScript<DangerWallComponent>())
+        if (shown) wall->Submit(primary);
 }
 
 inline void BossTelegraphComponent::OnDestroy()
 {
     // ルートに置いた以上、ボスと一緒には消えない。持ち主が畳む。
-    if (GameObject* object = m_decal.Resolve(scene))
-        scene.Destroy(*object);
-    m_decal = {};
+    for (EntityRef& ref : m_decals)
+        if (GameObject* object = ref.Resolve(scene)) scene.Destroy(*object);
+    m_decals.clear();
 }
 
 } // namespace sandbox

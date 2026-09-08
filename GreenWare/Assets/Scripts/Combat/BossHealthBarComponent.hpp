@@ -10,7 +10,7 @@
 ///   対象ごとに 1 枚要るから。ボスは «画面に固定の 1 枚» なので置く側。
 ///
 /// WHY 極を «バーの色» ではなく名前の側に出すか:
-///   ボスは塗られる的になったので (BossPolarityCoreComponent の Player Charged)、
+///   ボスは塗られる的になったので (BossCoreComponent の Player Charged)、
 ///   «今どちらの極が乗っているか» は撃ち込めるかどうかを決める情報になった。
 ///   ただしバー本体は残り HP を表しており、そこへ極性色を混ぜると «赤いのは
 ///   ＋だからか、瀕死だからか» が読めなくなる。量はバー、極は文字、と分ける。
@@ -33,9 +33,10 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Combat/BossBreakComponent.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Combat/IBoss.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -50,13 +51,13 @@ class BossHealthBarComponent : public Script {
     FBZZ_SCRIPT(BossHealthBarComponent)
 
 public:
-    FBZZ_GROUP("Boss")
+    FBZZ_GROUP("ボス")
     // WHY 名簿で探すだけにしないか:
     //   IBoss の名簿 (IBoss.hpp) は «盤面に居るボス» を引く汎用の口で、ボスが
     //   1 体しか居ないこの盤面ではそれで足りる。ただしボス側が名乗り忘れると
     //   症状は «バーが出ない» だけになり、UI 側を疑って探し回ることになる。
     //   明示の割り当てを先に見て、空のときだけ名簿で探す。
-    FBZZ_REF(GameObject, bossObject, "Boss")
+    FBZZ_REF(GameObject, bossObject, "ボス")
     FBZZ_TOOLTIP("体力を出す相手。未設定なら IBoss を実装したオブジェクトを盤面から探す")
 
     FBZZ_GROUP("HUD")
@@ -75,8 +76,18 @@ public:
     FBZZ_FIELD_COLOR(fullColor,  (Vector4{ 0.95f, 0.62f, 0.18f, 1.00f }), "Full")
     FBZZ_TOOLTIP("満タン側の色。プレイヤーのバー (青緑) と混ざらない色にすること")
     FBZZ_FIELD_COLOR(emptyColor, (Vector4{ 0.95f, 0.20f, 0.15f, 1.00f }), "Empty")
-    FBZZ_FIELD_COLOR(neutralNameColor, (Vector4{ 0.62f, 0.66f, 0.72f, 1.00f }), "Name (No Polarity)")
+    FBZZ_FIELD_COLOR(neutralNameColor, (Vector4{ 0.62f, 0.66f, 0.72f, 1.00f }), "Name (No BladeSide)")
     FBZZ_TOOLTIP("無極のときのボス名の色。極が乗ると 12.2 の極性色へ切り替わる")
+
+    // 崩しゲージ (Docs/break-parry.md)。ボスに BossBreakComponent が付いていれば、
+    // バーは HP ではなく «崩れるまで» を描く。溜まるほど白へ寄り、倒れている間は
+    // 残り時間として減っていく。
+    FBZZ_GROUP("Break Gauge")
+    FBZZ_FIELD_COLOR(breakEmptyColor, (Vector4{ 0.42f, 0.50f, 0.60f, 1.00f }), "Break (empty)")
+    FBZZ_FIELD_COLOR(breakFullColor,  (Vector4{ 0.88f, 0.97f, 1.00f, 1.00f }), "Break (full)")
+    FBZZ_FIELD_COLOR(toppledColor,    (Vector4{ 1.00f, 0.84f, 0.30f, 1.00f }), "Toppled")
+    FBZZ_TOOLTIP("倒れている間の色。琥珀は «今が攻め時» の色 (予兆の色と同じ語)")
+    FBZZ_FIELD_RANGE(float, toppledPulseHz, 4.5f, "Toppled Pulse Hz", 0.0f, 12.0f)
 
     FBZZ_GROUP("Drain")
     FBZZ_FIELD_COLOR(drainColor, (Vector4{ 1.00f, 0.95f, 0.75f, 1.00f }), "Drain Color")
@@ -89,18 +100,11 @@ public:
     FBZZ_TOOLTIP("追従の速さ (残量割合 / 秒)。0.55 なら満タンから空まで約 1.8 秒。"
                  "バーが長いほど同じ割合でも «動いて見える» 距離が伸びるので、雑魚より遅くする")
 
-    FBZZ_GROUP("Charged Pulse")
-    // WHY 帯電中だけ明滅させるか: 極が乗っている数秒がプレイヤーの撃ち込み窓で、
-    //     そこを逃すと仕込んだ列が無駄になる。バーの残量とは別の情報なので、
-    //     色ではなく «動き» で出す (12.4 の «状態の変化は必ず画面で返す»)。
-    FBZZ_FIELD_RANGE(float, chargedPulseDepth, 0.22f, "Pulse Depth", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, chargedPulseHz, 3.2f, "Pulse Hz", 0.0f, 12.0f)
-
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(float, debugRatio, 0.0f, "Ratio")
     FBZZ_FIELD_READ_ONLY(float, debugDrain, 0.0f, "Drain")
     FBZZ_FIELD_READ_ONLY(bool, debugVisible, false, "Visible")
-    FBZZ_FIELD_READ_ONLY(std::string, debugBoss, "", "Boss Object")
+    FBZZ_FIELD_READ_ONLY(std::string, debugBoss, "", "ボスのオブジェクト")
     FBZZ_TOOLTIP("実際に読んでいる相手。空のままならボスを見つけられていない")
 
     void OnStart() override;
@@ -281,7 +285,10 @@ inline void BossHealthBarComponent::OnLateUpdate()
     //   0 まで «減り切る» のを見せ、追従帯が追いついてから引く (畳むまでの猶予は
     //   BossDeathVfxComponent の崩壊が持っているので、この間バーだけが浮くことはない)。
     const bool  alive = health->IsAlive();
-    const float ratio = alive ? health->Normalized() : 0.0f;
+    // 崩しゲージを持つボスは、バーが «崩れるまで» を描く。HP は動かないので出さない。
+    const auto* brk   = scene.GetScript<BossBreakComponent>(boss);
+    const bool  gauge = alive && brk != nullptr;
+    const float ratio = !alive ? 0.0f : gauge ? brk->Ratio() : health->Normalized();
     const float drain = AdvanceDrain(ratio);
     debugRatio = ratio;
     debugDrain = drain;
@@ -292,23 +299,18 @@ inline void BossHealthBarComponent::OnLateUpdate()
     }
     debugVisible = true;
 
-    const Vector4 base = emptyColor + (fullColor - emptyColor) * ratio;
+    const bool toppled = gauge && brk->IsToppled();
+    const Vector4 base = gauge
+        ? (toppled ? toppledColor : breakEmptyColor + (breakFullColor - breakEmptyColor) * ratio)
+        : emptyColor + (fullColor - emptyColor) * ratio;
 
-    // 帯電中だけ明滅させる。撃ち込める窓が開いていることを、残量とは別の軸で返す。
-    //
-    // WHY 倒れた後は無極として扱うか: 明滅と極性記号は «まだ撃ち込める» の合図。
-    //     0 まで減り切るのを見せている数百ミリ秒のあいだも出し続けると、決着が
-    //     «まだ続いている» に見える。倒れた時点でこの軸は黙らせる。
     const auto* bossScript = IBoss::Of(boss);
-    const Polarity polarity = (alive && bossScript) ? bossScript->CurrentPolarity()
-                                                    : Polarity::None;
 
     float pulse = 1.0f;
-    if (polarity != Polarity::None && chargedPulseDepth > 0.0f) {
-        // 実時間で回す。ヒットストップ中に止まると、撃ち込んだ瞬間の一番見せたい
-        // フレームだけが静止画になる。
-        const float phase = Time::unscaledTime * chargedPulseHz * TWO_PI;
-        pulse = 1.0f + std::sin(phase) * chargedPulseDepth;
+    // 倒れている間は «今が攻め時» の明滅。残り時間が減る動きと重なって急かす。
+    if (toppled && toppledPulseHz > 0.0f) {
+        const float phase = Time::unscaledTime * toppledPulseHz * TWO_PI;
+        pulse = 1.0f + std::sin(phase) * 0.22f;
     }
 
     // アルファは動かさない。透けると背景の明暗でバーの読みが変わる。
@@ -340,18 +342,20 @@ inline void BossHealthBarComponent::OnLateUpdate()
     if (GameObject* label = m_name.Resolve(scene)) {
         ui.SetTextEnabled(label, true);
         std::string text = bossScript ? bossScript->BossName() : "BOSS";
-        // 極性記号を添える。塗られる的になった以上、«今どちらが乗っているか» は
-        // 撃ち込めるかどうかそのもの。無極のときは何も足さない。
-        if (polarity != Polarity::None) {
-            text += "  ";
-            text += PolaritySymbol(polarity);
+        // 崩しの遊びでは進行を «残り本数» で出す。バーが HP でない以上、あとどれだけかは
+        // ここにしか無い。倒れている間はその旨を言う。
+        if (gauge) {
+            if (bossScript && bossScript->PartsTotal() > 0) {
+                text += "   " + std::to_string(std::max(bossScript->PartsRemaining(), 0))
+                      + " / " + std::to_string(bossScript->PartsTotal());
+            }
+            if (toppled) text += "   BREAK!";
         }
         // フェーズは 2 つしかないので «P2 に入った» ことだけ分かればよい。
         if (bossScript && bossScript->CurrentPhase() >= 2) text += "   PHASE 2";
 
         ui.SetText(label, text);
-        ui.SetTextColor(label, polarity == Polarity::None ? neutralNameColor
-                                                          : PolarityColor(polarity));
+        ui.SetTextColor(label, toppled ? toppledColor : neutralNameColor);
     }
 }
 

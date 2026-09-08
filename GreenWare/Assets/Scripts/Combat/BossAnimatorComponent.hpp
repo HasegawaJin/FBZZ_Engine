@@ -23,6 +23,7 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
+#include <Math/MathUtils.hpp>
 #include <Scripts/Combat/BossAnimParams.hpp>
 #include <algorithm>
 #include <cmath>
@@ -53,7 +54,7 @@ class BossAnimatorComponent : public Script {
     FBZZ_SCRIPT(BossAnimatorComponent)
 
 public:
-    FBZZ_GROUP("Locomotion")
+    FBZZ_GROUP("ロコモーション")
     FBZZ_FIELD(bool, autoDriveLocomotion, true, "Auto Drive")
     FBZZ_TOOLTIP("ワールド位置と向きの差分から Speed / Turn を毎フレーム流す。"
                  "AI が SetLocomotion() で明示的に与えるなら切る")
@@ -63,16 +64,27 @@ public:
     FBZZ_TOOLTIP("Speed / Turn の平滑化。差分から取った値は 1 フレーム単位で跳ねるので必ず要る")
 
     FBZZ_GROUP("Aim Layer")
-    FBZZ_FIELD(std::string, aimLayerName, "Aim", "Layer Name")
+    FBZZ_FIELD(std::string, aimLayerName, "Aim", "レイヤー名")
     FBZZ_TOOLTIP("Beam_Aim を上半身だけに重ねる Override レイヤー。照射中だけ立ち上げる")
     FBZZ_FIELD_RANGE(float, aimWeight, 1.0f, "Aim Weight", 0.0f, 1.0f)
     FBZZ_TOOLTIP("照射中に到達する重み。1 で上半身が完全に照準クリップへ移る")
-    FBZZ_FIELD_RANGE(float, aimFadeIn, 0.25f, "Fade In", 0.0f, 2.0f)
-    FBZZ_FIELD_RANGE(float, aimFadeOut, 0.35f, "Fade Out", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, aimFadeIn, 0.25f, "フェードイン", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, aimFadeOut, 0.35f, "フェードアウト", 0.0f, 2.0f)
 
-    FBZZ_GROUP("Preview")
+    // WHY 深さを重みで持つか (2026-09-06):
+    //   被弾の加算レイヤーは締めと弾きでしか鳴らしておらず、1〜4 段目の斬撃では
+    //   «斬られた側» の芝居が一切出ていなかった (止めと火花だけ)。毎段鳴らすと
+    //   同じ深さの仰け反りが連続して «痙攣» に見えるので、軽い一撃は重みを下げて
+    //   «触れた» に留め、締めだけ満額で «効いた» を出す。
+    FBZZ_GROUP("Hit Layer")
+    FBZZ_FIELD(std::string, hitLayerName, "Add_Hit", "レイヤー名")
+    FBZZ_TOOLTIP("Hit_Add を加算する Additive レイヤー。Trigger «Hit» で 1 発鳴る")
+    FBZZ_FIELD_RANGE(float, hitLightWeight, 0.40f, "Light Weight", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("strength 0 の被弾でのレイヤー重み。1 で全段が締めと同じ深さになる")
+
+    FBZZ_GROUP("プレビュー")
     FBZZ_FIELD_ENUM(BossMotionPreview, previewMotion, BossMotionPreview::StompFrontRight,
-                    "Motion",
+                    "動き",
                     "Stomp FR", "Stomp FL", "Stomp BR", "Stomp BL",
                     "Jump (大ジャンプ踏みつけ)", "Magnetic Pulse",
                     "Charge (突進)", "Charge → Crash (激突)",
@@ -83,14 +95,14 @@ public:
     FBZZ_BUTTON(PlayPreview, "Play Preview")
     void StopPreview();
     FBZZ_BUTTON(StopPreview, "Stop / Revive")
-    FBZZ_FIELD_RANGE(float, previewAirTime, 1.6f, "Air Time", 0.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, previewAirTime, 1.6f, "滞空時間", 0.0f, 8.0f)
     FBZZ_TOOLTIP("Jump プレビューで FallIdle を回し続ける秒数。この後に自動で接地させる")
     FBZZ_FIELD_RANGE(float, previewHoldTime, 2.5f, "Hold Time", 0.0f, 12.0f)
     FBZZ_TOOLTIP("Charge / Beam プレビューでループを回し続ける秒数")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(std::string, debugState, "", "State")
-    FBZZ_FIELD_READ_ONLY(float, debugSpeed, 0.0f, "Speed (m/s)")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugState, "", "状態")
+    FBZZ_FIELD_READ_ONLY(float, debugSpeed, 0.0f, "速さ (m/s)")
     FBZZ_FIELD_READ_ONLY(float, debugTurn, 0.0f, "Turn (-1..1)")
 
     void OnStart()  override;
@@ -129,8 +141,13 @@ public:
     void BeginBeam();
     void EndBeam();
 
-    /// 被弾リアクション。加算レイヤーへ 1 発差し込む。
-    void ReactToHit();
+    /// 被弾リアクション。加算レイヤーへ 1 発差し込む。strength は一撃の重さ [0,1] で、
+    /// レイヤーの重み (Light Weight 〜 1) になる。
+    ///
+    /// WHY 再生中の重ね掛けを気にしなくてよいか: Add_Hit の Hit ステートは自分自身への
+    ///     遷移を始めない (AnimatorSystem の自己遷移スキップ) ので、鳴っている最中の
+    ///     Trigger は HitIdle へ戻った直後に 1 発として出る。取りこぼしではなく後回し。
+    void ReactToHit(float strength = 1.0f);
 
     /// 撃破。Death は崩れたまま最終フレームで止まり、Idle へは戻らない。
     void SetDead(bool dead);
@@ -200,6 +217,8 @@ inline void BossAnimatorComponent::OnStart()
     animator.SetBool(bossanim::kBeaming,  false);
     animator.SetBool(bossanim::kIsDead,   false);
     animator.SetLayerWeight(aimLayerName, 0.0f);
+    // 被弾レイヤーは満額から。前の Play が軽い一撃で終わっていても、最初の被弾が浅くならない。
+    if (!hitLayerName.empty()) animator.SetLayerWeight(hitLayerName, 1.0f);
 }
 
 inline void BossAnimatorComponent::OnUpdate()
@@ -349,8 +368,14 @@ inline void BossAnimatorComponent::EndBeam()
     animator.SetBool(bossanim::kBeaming, false);
 }
 
-inline void BossAnimatorComponent::ReactToHit()
+inline void BossAnimatorComponent::ReactToHit(float strength)
 {
+    // 重みは «次の 1 発» の深さ。鳴り終わりまで持ち越すので、軽い一撃の直後に
+    // 締めが来れば深く、逆なら浅くなる (同時には鳴らないので取り合いは起きない)。
+    if (!hitLayerName.empty())
+        animator.SetLayerWeight(hitLayerName,
+                                Lerp(std::clamp(hitLightWeight, 0.0f, 1.0f), 1.0f,
+                                     std::clamp(strength, 0.0f, 1.0f)));
     animator.SetTrigger(bossanim::kHit);
 }
 

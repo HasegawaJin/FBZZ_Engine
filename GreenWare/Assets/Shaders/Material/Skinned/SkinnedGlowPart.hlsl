@@ -6,7 +6,7 @@
 /// 用途:
 ///   Mite / Serpent / Roller / ボス / プレイヤーの «光る部位» すべてがこの材質を共有する。
 ///   色と明るさは GameObject 単位の override で決まるので、材質は 1 つで足りる。
-///     - 敵   : PolarityTargetComponent が極性色と残り時間の明滅を書く
+///     - 敵   : 部位を持つスクリプトが色と明滅を書く
 ///     - 味方 : GlowPartComponent が固定色を 1 度だけ書く (12.2 の緑)
 ///
 /// WHY モデルごとに焼かれた M_E_Core_Plus / M_E_Ring_Plus をやめたか:

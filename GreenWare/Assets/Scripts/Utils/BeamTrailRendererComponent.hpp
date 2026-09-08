@@ -71,7 +71,7 @@ struct BeamTrailStyle {
     /// 芯層か裾層か。シェーダーの層別要素 (撚り・管の壁・リング) の入り切りを決める。
     bool    isCore = true;
     int     orderInLayer = 1;
-    std::string materialPath = "Assets/Materials/Effects/FX_WPN_Beam.mat";
+    std::string materialPath = "Assets/Materials/Effects/FX_BOSS_Beam.mat";
 
     // ── 断面 ──
     /// 板 (常にカメラを向く) か、実体のある筒か。
@@ -134,7 +134,7 @@ class BeamTrailRendererComponent : public Script {
     FBZZ_SCRIPT(BeamTrailRendererComponent)
 
 public:
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD(bool, drawDebugPath, false, "Draw Debug Path")
     FBZZ_TOOLTIP("生成した折れ線をデバッグ線で重ねる。揺れが判定線からどれだけ"
                  "外れているかを確かめるためのもの")

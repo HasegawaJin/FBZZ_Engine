@@ -39,7 +39,7 @@
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Utils/ShockFalloff.hpp>
 #include <algorithm>
@@ -66,43 +66,43 @@ class BossDeathVfxComponent : public Script {
     FBZZ_SCRIPT(BossDeathVfxComponent)
 
 public:
-    FBZZ_GROUP("Target")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
+    FBZZ_GROUP("対象")
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
     FBZZ_TOOLTIP("衝撃の減衰を測る相手。パッドを持っているのはプレイヤー本人")
 
     FBZZ_GROUP("Self Destruct")
-    FBZZ_FIELD_RANGE(float, buildupSeconds, 1.70f, "Buildup", 0.1f, 8.0f)
+    FBZZ_FIELD_RANGE(float, buildupSeconds, 1.70f, "蓄積", 0.1f, 8.0f)
     FBZZ_TOOLTIP("決定打までの秒数。EnemyDeathVfxComponent の Body Dissolve > Delay と "
                  "同じ値にすること (崩れ始めが決定打に重なる)")
-    FBZZ_FIELD_RANGE_INT(int, blastCount, 7, "Blast Count", 0, 32)
+    FBZZ_FIELD_RANGE_INT(int, blastCount, 7, "爆発の数", 0, 32)
     FBZZ_TOOLTIP("決定打までに順に爆ぜる数。体の «あちこち» を見せるための連発")
-    FBZZ_FIELD_RANGE(float, blastSpread, 0.9f, "Blast Spread", 0.0f, 6.0f)
+    FBZZ_FIELD_RANGE(float, blastSpread, 0.9f, "爆発の拡がり", 0.0f, 6.0f)
     FBZZ_TOOLTIP("ボーンからどれだけ散らして出すか [m]。0 だと関節の芯で毎回光る")
-    FBZZ_FIELD_RANGE(float, blastStrengthStart, 0.34f, "Strength (first)", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, blastStrengthEnd, 0.72f, "Strength (last)", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, blastStrengthStart, 0.34f, "強度 (最初)", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, blastStrengthEnd, 0.72f, "強度 (最後)", 0.0f, 1.0f)
     FBZZ_TOOLTIP("最後の 1 発ほど強く。決定打へ向けて «加速していく» 読みを作る")
 
     FBZZ_GROUP("Core Detonation")
-    FBZZ_FIELD_RANGE(float, climaxStrength, 1.0f, "Strength", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, climaxLift, 0.6f, "Lift", -4.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, climaxStrength, 1.0f, "強度", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, climaxLift, 0.6f, "浮き", -4.0f, 8.0f)
     FBZZ_TOOLTIP("コアの «上» どれだけで爆ぜるか [m]。0 でコアの芯そのもの")
-    FBZZ_FIELD_RANGE(float, climaxSurgeSeconds, 0.55f, "Surge", 0.0f, 3.0f)
+    FBZZ_FIELD_RANGE(float, climaxSurgeSeconds, 0.55f, "サージ", 0.0f, 3.0f)
     FBZZ_TOOLTIP("画面の縁が灼ける時間。0 で縁の演出を出さない")
     FBZZ_FIELD_COLOR(climaxSurgeColor, (Vector4{ 0.62f, 1.00f, 0.78f, 1.00f }), "Surge Color")
     FBZZ_TOOLTIP("ディゾルブの縁と同じ色にすること。極性色 (赤 / 青) を使うと "
                  "«どちらかの極でやられた» と読める")
 
-    FBZZ_GROUP("Feedback")
-    FBZZ_FIELD_RANGE(float, shakeRatio, 0.80f, "Shake Ratio", 0.0f, 1.0f)
+    FBZZ_GROUP("手応え")
+    FBZZ_FIELD_RANGE(float, shakeRatio, 0.80f, "揺れの比率", 0.0f, 1.0f)
     FBZZ_TOOLTIP("カメラ揺れを振動の何割で出すか。BossAiComponent と同じ比にすること")
-    FBZZ_FIELD_RANGE(float, feedbackRange, 30.0f, "Falloff Range", 1.0f, 80.0f)
-    FBZZ_FIELD_RANGE(float, feedbackNear, 4.0f, "Full Strength Within", 0.0f, 20.0f)
-    FBZZ_FIELD_RANGE(float, blastVolume, 0.85f, "Blast Volume", 0.0f, 2.0f)
-    FBZZ_FIELD_RANGE(float, climaxVolume, 1.0f, "Detonation Volume", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, feedbackRange, 30.0f, "減衰の範囲", 1.0f, 80.0f)
+    FBZZ_FIELD_RANGE(float, feedbackNear, 4.0f, "全開になる距離", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, blastVolume, 0.85f, "爆発の音量", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, climaxVolume, 1.0f, "起爆の音量", 0.0f, 2.0f)
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(std::string, debugStage, "Idle", "Stage")
-    FBZZ_FIELD_READ_ONLY(int, debugBlastsFired, 0, "Blasts Fired")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugStage, "Idle", "ステージ")
+    FBZZ_FIELD_READ_ONLY(int, debugBlastsFired, 0, "発射した爆発")
 
     /// 撃破された瞬間に 1 度だけ呼ぶ。2 度目以降は無視する。
     void Begin();
@@ -189,7 +189,7 @@ inline void BossDeathVfxComponent::Blast(const Vector3& point, float strength01,
     if (strength <= 0.0f) return;
 
     if (auto* vfx = VfxManagerComponent::Instance())
-        vfx->PlayImpact(point, Polarity::None, strength, /*againstAnchor=*/false);
+        vfx->PlayImpact(point, BladeSide::None, strength, /*againstAnchor=*/false);
     se::PlayAt(audio, bank, point, volume);
 
     // 近さは 1 度だけ出す。揺れと振動が別々に距離を測ると、画面は静かなのに手だけ

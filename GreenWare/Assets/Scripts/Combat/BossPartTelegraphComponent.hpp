@@ -19,7 +19,7 @@
 ///   «帯電しているのか危ないのか» が読めなくなる。分けるのは色ではなく «場所»。
 ///
 /// WHY 極性色を上書きしないか:
-///   ボスのコアとリングは極性色を出す担当が別に居る (BossPolarityCoreComponent)。
+///   ボスのコアとリングは極性色を出す担当が別に居る (BossCoreComponent)。
 ///   同じスロットを両方が毎フレーム書くと、後に走った方が勝つだけの競合になる。
 ///   ここが触るのは «予兆でしか光らない部位» に限り、コアとリングは
 ///   emissiveScale を «足す» のではなく持ち主へ任せる。
@@ -51,27 +51,30 @@ public:
     FBZZ_REF_LIST_FIELD(GameObject, frontLeftParts, "Front Left")
     FBZZ_REF_LIST_FIELD(GameObject, backRightParts, "Back Right")
     FBZZ_REF_LIST_FIELD(GameObject, backLeftParts, "Back Left")
-    FBZZ_REF_LIST_FIELD(GameObject, headParts, "Head")
+    FBZZ_REF_LIST_FIELD(GameObject, headParts, "頭")
     FBZZ_TOOLTIP("突進で光る頭部。ビームはコア側の担当なのでここには入れない")
     FBZZ_REF_LIST_FIELD(GameObject, bodyParts, "Body")
     FBZZ_TOOLTIP("磁力パルスで全周が光る胴。極性リング (E_RingGlow) は入れないこと ─ "
                  "あちらは極性色の担当が別に居る")
     FBZZ_FIELD_RANGE_INT(int, materialSlot, 0, "Material Slot", 0, 15)
 
-    FBZZ_GROUP("Look")
+    FBZZ_GROUP("見た目")
     FBZZ_FIELD_COLOR(warnColor, (Vector4{ 1.00f, 0.62f, 0.14f, 1.00f }), "Warn Color")
     FBZZ_TOOLTIP("危険の琥珀。DecalBossTelegraph の frameColor と揃えること")
     FBZZ_FIELD_RANGE(float, peakScale, 6.0f, "Peak Scale", 0.0f, 30.0f)
     FBZZ_TOOLTIP("着弾直前の発光量。Bloom のしきい値を越える値にしないと滲まない")
-    FBZZ_FIELD_RANGE(float, blinkHz, 6.0f, "Blink Hz", 0.0f, 30.0f)
-    FBZZ_TOOLTIP("明滅の速さ。0 で明滅せず、進みに比例して明るくなるだけになる")
-    FBZZ_FIELD_RANGE(float, blinkDepth, 0.45f, "Blink Depth", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, releaseSeconds, 0.12f, "Release", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE_INT(int, pips, 3, "ピップの数", 0, 8)
+    FBZZ_TOOLTIP("拍の数。床のデカールと同じ値にすること ─ 食い違うと足元と体が"
+                 "別々のリズムで光り、どちらでタイミングを取るのか決められない")
+    FBZZ_FIELD_RANGE(float, pipGain, 2.1f, "ピップの明滅", 1.0f, 4.0f)
+    FBZZ_FIELD_RANGE(float, strikeFrom, 0.82f, "打撃の起点", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("回避窓の入口。ここから脈が止まって張り付く")
+    FBZZ_FIELD_RANGE(float, releaseSeconds, 0.12f, "解放", 0.0f, 1.0f)
     FBZZ_TOOLTIP("予兆が消えてから光が引くまで。0 だと着弾の瞬間にパッと消えて «不発» に見える")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugKind, "None", "Kind")
-    FBZZ_FIELD_READ_ONLY(float, debugGlow, 0.0f, "Glow")
+    FBZZ_FIELD_READ_ONLY(float, debugGlow, 0.0f, "発光")
 
     void OnStart() override
     {
@@ -101,13 +104,24 @@ public:
             ? progress
             : (releaseSeconds > 0.0f ? m_release / releaseSeconds : 0.0f);
 
+        // 拍は床のデカールと同じ言葉で刻む (BossTelegraphCue)。
+        //
+        // WHY 自前の正弦波をやめたか (2026-09-07): `sin(Time::time * hz)` は絶対時刻
+        //     なので、予兆が出た瞬間の位相が毎回違った。しかも床のデカールも別の
+        //     位相で明滅していたので、**同じ攻撃なのに足元と体が別々のリズムで光る**。
+        //     部位発光は «床が本体で隠れるとき» の保険なのに、2 つが食い違うと
+        //     どちらを信じてよいか分からなくなる。
+        m_cue.pips         = std::max(pips, 0);
+        m_cue.pipGain      = pipGain;
+        m_cue.strikeFrom   = Clamp01(strikeFrom);
+        m_cue.burstSeconds = 0.0f;   // 消え際は releaseSeconds が持っている
+        m_cue.Tick(progress, std::max(Time::deltaTime, 0.0f), active);
+
         // 進みの二乗で立ち上げる。線形だと予兆の «前半» から明るく、
         // «あと少し» の情報が出ない。
         float glow = envelope * envelope * std::max(peakScale, 0.0f);
-        if (blinkHz > 0.0f && active) {
-            const float phase = std::sin(Time::time * blinkHz * 6.28318530718f) * 0.5f + 0.5f;
-            glow *= Lerp(1.0f - Clamp01(blinkDepth), 1.0f, phase);
-        }
+        // 回避窓では «脈» をやめて張り付かせる。明滅が止まることが «今» の合図になる。
+        if (active) glow *= m_cue.pulse * Lerp(1.0f, 1.35f, m_cue.strike);
 
         debugKind = KindName(m_kind);
         debugGlow = glow;
@@ -122,6 +136,9 @@ private:
         EntityRef ref;
         float     glow = 0.0f;
     };
+
+    /// 拍と回避窓。床のデカールと同じ型を通すことで、足元と体が同じリズムで光る。
+    BossTelegraphCue m_cue;
 
     void Clear() { m_lit.clear(); }
 
@@ -154,7 +171,7 @@ private:
             Add(bodyParts, glow);
             break;
         case BossAttackKind::Beam:
-            // コアは BossPolarityCoreComponent が極性色で握っている。
+            // コアは BossCoreComponent が極性色で握っている。
             // ここで琥珀を重ねると «どちらの極か» が読めなくなるので触らない。
             break;
         default:
