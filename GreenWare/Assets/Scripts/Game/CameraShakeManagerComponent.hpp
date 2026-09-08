@@ -32,14 +32,14 @@ class CameraShakeManagerComponent : public Script {
     FBZZ_SCRIPT(CameraShakeManagerComponent)
 
 public:
-    FBZZ_GROUP("Default Shape")
-    FBZZ_FIELD_RANGE(float, defaultAmplitude, 0.35f, "Amplitude", 0.0f, 3.0f)
+    FBZZ_GROUP("既定の形")
+    FBZZ_FIELD_RANGE(float, defaultAmplitude, 0.35f, "振幅", 0.0f, 3.0f)
     FBZZ_TOOLTIP("強さ 1.0 の要求で揺れる幅 (ワールド単位)")
     FBZZ_FIELD_RANGE(float, defaultFrequency, 32.0f, "Frequency", 1.0f, 120.0f)
     FBZZ_TOOLTIP("揺れの速さ。低いと重く、高いと鋭く感じる")
-    FBZZ_FIELD_RANGE(float, defaultDuration, 0.25f, "Duration", 0.0f, 3.0f)
+    FBZZ_FIELD_RANGE(float, defaultDuration, 0.25f, "継続時間", 0.0f, 3.0f)
 
-    FBZZ_GROUP("Limits")
+    FBZZ_GROUP("限界")
     FBZZ_FIELD_RANGE(float, maxAmplitude, 0.9f, "Max Amplitude", 0.0f, 5.0f)
     FBZZ_TOOLTIP("合成後の上限。加算なので、同時多発したときに画面が壊れるのを防ぐ")
     FBZZ_FIELD_RANGE_INT(int, maxShakes, 8, "Max Shakes", 1, 64)
@@ -47,7 +47,7 @@ public:
     FBZZ_FIELD_RANGE(float, verticalRatio, 0.65f, "Vertical Ratio", 0.0f, 2.0f)
     FBZZ_TOOLTIP("横に対する縦の振れ幅。1 未満だと横揺れ主体になる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugActive, 0, "Active Shakes")
     FBZZ_FIELD_READ_ONLY(float, debugAmplitude, 0.0f, "Blended Amplitude")
 
@@ -57,7 +57,13 @@ public:
     void Shake(float strength01);
     // 形まで指定する版。着地と衝突で揺れ方を描き分けたいときに使う。
     void Shake(float amplitude, float frequency, float duration);
-    void StopAll() { m_shakes.clear(); }
+    /// 揺れではなく «押し込み»。カメラのローカル空間で offset ぶん一瞬ずれ、seconds で戻る。
+    ///
+    /// WHY 揺れと別に持つか: 揺れは正弦波なので向きを持たず、«当たった方へ食い込む»
+    ///     が作れない。斬撃の手応えは「前へ数 cm 沈んで戻る」の 1 往復で、
+    ///     往復を繰り返す揺れとは別の語。
+    void Punch(const Vector3& localOffset, float seconds);
+    void StopAll() { m_shakes.clear(); m_punches.clear(); }
 
     // カメラが毎フレーム読む合成済みオフセット (カメラのローカル空間)。
     [[nodiscard]] Vector3 CurrentOffset() const { return m_offset; }
@@ -75,9 +81,16 @@ private:
         float seed      = 0.0f;
     };
 
+    struct Punch_ {
+        Vector3 offset    = Vector3::ZERO;
+        float   duration  = 0.0f;
+        float   remaining = 0.0f;
+    };
+
     static inline CameraShakeManagerComponent* s_instance = nullptr;
 
     std::vector<Shake_> m_shakes;
+    std::vector<Punch_> m_punches;
     Vector3 m_offset = Vector3::ZERO;
     float   m_seedCounter = 0.0f;
 };
@@ -126,6 +139,14 @@ inline void CameraShakeManagerComponent::Shake(float amplitude, float frequency,
     m_shakes.push_back({ amplitude, std::max(frequency, 1.0f), duration, duration, m_seedCounter });
 }
 
+inline void CameraShakeManagerComponent::Punch(const Vector3& localOffset, float seconds)
+{
+    const Vector3 offset = localOffset * GameSettingsComponent::ShakeScale();
+    if (offset.LengthSq() <= EPSILON || seconds <= 0.0f) return;
+    if (static_cast<int>(m_punches.size()) >= std::max(maxShakes, 1)) m_punches.erase(m_punches.begin());
+    m_punches.push_back({ offset, seconds, seconds });
+}
+
 inline void CameraShakeManagerComponent::OnLateUpdate()
 {
     // WHY 実時間で進めるか: ヒットストップ中も揺れは進めたい。停止中に完全静止すると
@@ -154,6 +175,19 @@ inline void CameraShakeManagerComponent::OnLateUpdate()
     const float length = sum.Length();
     const float limit  = std::max(maxAmplitude, 0.0f);
     if (length > limit && length > EPSILON) sum = sum * (limit / length);
+
+    // 押し込みは最初の 1 コマで最大、あとは二乗で戻る。揺れの上限には含めない
+    // (向きを持つずれを長さで削ると、押し込んだ方向そのものが変わる)。
+    for (auto it = m_punches.begin(); it != m_punches.end();) {
+        it->remaining -= dt;
+        if (it->remaining <= 0.0f || it->duration <= EPSILON) {
+            it = m_punches.erase(it);
+            continue;
+        }
+        const float falloff = Clamp01(it->remaining / it->duration);
+        sum += it->offset * (falloff * falloff);
+        ++it;
+    }
 
     m_offset = sum;
     debugActive    = static_cast<int>(m_shakes.size());

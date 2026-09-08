@@ -1,5 +1,5 @@
 /// @file    EnemyHealthComponent.hpp
-/// @brief   極性衝突だけで減る敵 HP と死亡処理。
+/// @brief   ダメージで減る HP と撃破処理。今の盤面ではボスだけが持つ
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 #pragma once
@@ -8,10 +8,8 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/EnemyDeathVfxComponent.hpp>
 #include <Scripts/Combat/IDamageable.hpp>
-#include <Scripts/Polarity/PolarityBodyComponent.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
-#include <cmath>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -20,20 +18,13 @@ namespace sandbox {
 
 class EnemyHealthComponent : public Script, public IDamageable {
     FBZZ_SCRIPT_DERIVED(EnemyHealthComponent, Script, IDamageable)
-    // 引力運動に必要な剛体を構成上の必須条件にする。銃撃ダメージ用の入口は意図的に持たない。
-    FBZZ_REQUIRE_COMPONENT(RigidBodyComponent)
     FBZZ_OPTIONAL_COMPONENT(AudioSourceComponent)
 
 public:
-    FBZZ_GROUP("Health")
-    FBZZ_FIELD_RANGE_INT(int, maxHealth, 100, "Max Health", 1, 10000)
+    FBZZ_GROUP("HP")
+    FBZZ_FIELD_RANGE_INT(int, maxHealth, 100, "最大 HP", 1, 10000)
 
-    FBZZ_GROUP("Impact Damage")
-    // 企画書 18.2 は数値を未決としているため、式を固定せず調整値として公開する。
-    FBZZ_FIELD_RANGE_INT(int, baseImpactDamage, 100, "Base Damage", 0, 10000)
-    FBZZ_FIELD_RANGE(float, speedDamageScale, 0.0f, "Speed Scale", 0.0f, 100.0f)
-    FBZZ_FIELD_RANGE(float, anchorDamageMultiplier, 1.0f, "Anchor Multiplier", 0.0f, 10.0f)
-    FBZZ_TOOLTIP("柱・壁へ叩きつけた場合だけ掛ける倍率")
+    FBZZ_GROUP("撃破")
     // 上限が 5 秒だとボスに足りない。ボスは撃破からリザルトへ移るまで数秒あり
     // (GameFlowComponent の Boss End Delay)、その間より先に消えると «倒した相手が
     // 居ないまま結果を待つ» 画になる。待ちを伸ばすときは必ずこちらも一緒に伸ばす。
@@ -41,18 +32,14 @@ public:
     FBZZ_TOOLTIP("倒れてから GameObject を畳むまでの秒数。撃破演出が付いていれば"
                  "その長さの方が優先される («最低でもこれだけは残す» の意味)")
 
-    FBZZ_GROUP("Feedback")
+    FBZZ_GROUP("手応え")
     FBZZ_FIELD_AUDIO(sfxHit, "", "SFX Hit")
-    FBZZ_FIELD_AUDIO(sfxDeath, "", "SFX Death")
+    FBZZ_FIELD_AUDIO(sfxDeath, "", "撃破の効果音")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "Health")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "HP")
 
     // ── IDamageable ─────────────────────────────────────────────────────────
-    // WHY 極性衝突の入口 (TakeImpact) と別に持つか: あちらは衝突の速度と柱倍率から
-    //     ダメージ量を算出する「この敵に固有の式」で、渡ってくるのは PolarityImpact。
-    //     こちらは量が決まった後の適用口で、罠や環境ダメージのように盤面を経由しない
-    //     経路から呼ばれる。式と適用を分けておくと、どちらを足しても片方に影響しない。
     bool ApplyDamage(int amount) override;
     [[nodiscard]] int  CurrentHealth() const override { return m_health; }
     [[nodiscard]] int  MaxHealth()     const override { return std::max(maxHealth, 1); }
@@ -67,16 +54,6 @@ public:
             : 0.0f;
     }
 
-    // true はこの呼び出しで死亡したことを表す。Wave/リザルト側が撃破数を重複加算しないために使う。
-    ///
-    /// @param chainMultiplier 連鎖の深さから来る倍率。既定 1.0 は «連鎖していない 1 発»。
-    ///
-    /// WHY 倍率を引数で受けるか: 何連鎖目かを知っているのは CombatManager だけで、
-    ///     敵 1 体は盤面の連鎖を見ていない。ここが数えに行くと、敵の耐久という
-    ///     この敵固有の話に «盤面の進行» が混ざる。量を決めるのは呼ぶ側、
-    ///     式を持つのはこちら、という今の分け方をそのまま保つ。
-    bool TakeImpact(const PolarityImpact& impact, float chainMultiplier = 1.0f);
-
     /// 撃破音を相手ごとの束へ差し替える。相手側が起動時に自分の束を預ける。
     ///
     /// WHY Inspector の欄で足りないか: sfxDeath は 1 本しか持てないので、変奏を
@@ -87,10 +64,10 @@ public:
 
     /// 被弾音を差し替える。撃破音と同じ «預ける» 向き。
     ///
-    /// WHY 必要か: 共通の束 (kEnemyFlinch) は雑魚の装甲が鳴る音で、ボスに当てると
-    ///     «同じくらいのものに当たった» と読める。ボスは銃では削れず、HP が減るのは
-    ///     帯電した雑魚が装甲へ激突したときだけなので、その 1 撃の重さが伝わらないと
-    ///     «今の攻め方で合っているのか» が耳から判断できなくなる。
+    /// WHY 必要か: 共通の束 (kEnemyFlinch) は軽い装甲が鳴る音で、ボスに当てると
+    ///     «同じくらいのものに当たった» と読める。ボスへ通る一撃はとどめだけなので、
+    ///     その 1 撃の重さが伝わらないと «今の攻め方で合っているのか» が
+    ///     耳から判断できなくなる。
     void SetFlinchVoice(const se::Bank* bank) { m_flinchVoice = bank; }
     void ResetHealth();
     void OnDestroy() override { IDamageable::Unbind(scene.Self(), this); }
@@ -99,16 +76,8 @@ public:
         ResetHealth();
         // «殴られる側» として名乗る (IDamageable::Of のコメント参照)。
         IDamageable::Bind(scene.Self(), this);
-        // 敵は盤面のあちこちに居る。どの方向で何が起きたかが分かる必要があるので 3D。
+        // ボスは盤面を動き回る。どの方向で何が起きたかが分かる必要があるので 3D。
         se::EnsureSource(scene, "SE", 1.0f);
-
-        // アンカーは «引かれない側» なので PolarityBodyComponent を持たないのが正しい構成
-        // (PolarityBodyComponent の設計意図。Roller とボスが該当する)。無条件に要求すると、
-        // 正しく組んだ的が毎回エラーを出し、本当に足りていない敵の警告が埋もれる。
-        const auto* target = scene.GetScript<PolarityTargetComponent>();
-        const bool  anchor = target && target->isAnchor;
-        if (!anchor && !scene.GetScript<PolarityBodyComponent>())
-            debug.LogError("EnemyHealthComponent requires PolarityBodyComponent on the same object.");
     }
 
 private:
@@ -135,22 +104,6 @@ inline bool EnemyHealthComponent::ApplyDamage(int amount)
     if (amount <= 0 || !IsAlive()) return false;
     Deal(amount);
     return true;
-}
-
-inline bool EnemyHealthComponent::TakeImpact(const PolarityImpact& impact, float chainMultiplier)
-{
-    if (!IsAlive()) return false;
-
-    const float speedPart = std::max(impact.speed, 0.0f) * std::max(speedDamageScale, 0.0f);
-    float damageValue = static_cast<float>(std::max(baseImpactDamage, 0)) + speedPart;
-    if (impact.struckIsAnchor)
-        damageValue *= std::max(anchorDamageMultiplier, 0.0f);
-    // 連鎖の深さは最後に掛ける。速さと柱倍率は «この 1 回の衝突» の性質で、
-    // 連鎖はそこへ至るまでの組み立ての長さ。順序を入れ替えても値は同じだが、
-    // 掛ける理由が別なので分けて書く。
-    damageValue *= std::max(chainMultiplier, 0.0f);
-
-    return Deal(std::max(1, static_cast<int>(std::lround(damageValue))));
 }
 
 inline bool EnemyHealthComponent::Deal(int damage)

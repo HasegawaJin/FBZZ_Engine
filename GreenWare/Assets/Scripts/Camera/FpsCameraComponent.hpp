@@ -57,7 +57,7 @@ class FpsCameraComponent : public Script {
     FBZZ_REQUIRE_COMPONENT(CameraComponent)
 
 public:
-    FBZZ_FIELD(std::string, targetTag, "Player", "Target Tag")
+    FBZZ_FIELD(std::string, targetTag, "Player", "対象のタグ")
 
     FBZZ_GROUP("Eye")
     FBZZ_FIELD_RANGE(float, eyeHeight, 1.70f, "Eye Height", 0.0f, 5.0f)
@@ -70,28 +70,28 @@ public:
     FBZZ_FIELD(bool, hideBody, true, "Hide Body")
     FBZZ_TOOLTIP("遊んでいる間だけプレイヤーのメッシュを止める。影も一緒に消える")
 
-    FBZZ_GROUP("View")
-    FBZZ_FIELD(float, yaw,   0.0f, "Yaw")
-    FBZZ_FIELD(float, pitch, 0.0f, "Pitch")
+    FBZZ_GROUP("表示")
+    FBZZ_FIELD(float, yaw,   0.0f, "ヨー")
+    FBZZ_FIELD(float, pitch, 0.0f, "ピッチ")
     // WHY TPS より広く取るか: 一人称では真上と真下が「見えない方向」になってはいけない。
     //     真上 (±90) 手前で止めるのは、極でヨーの意味が消えて視界が回るのを避けるため。
-    FBZZ_FIELD_RANGE(float, minPitch, -85.0f, "Min Pitch", -89.0f, 0.0f)
-    FBZZ_FIELD_RANGE(float, maxPitch,  85.0f, "Max Pitch",   0.0f, 89.0f)
-    FBZZ_FIELD_RANGE(float, mouseSensitivity, 0.2f, "Mouse Sensitivity", 0.01f, 5.0f)
+    FBZZ_FIELD_RANGE(float, minPitch, -85.0f, "ピッチ下限", -89.0f, 0.0f)
+    FBZZ_FIELD_RANGE(float, maxPitch,  85.0f, "ピッチ上限",   0.0f, 89.0f)
+    FBZZ_FIELD_RANGE(float, mouseSensitivity, 0.2f, "マウス感度", 0.01f, 5.0f)
     FBZZ_TOOLTIP("Option の「マウス感度」が既定値のときの旋回量。設定はこれに掛かる")
-    FBZZ_FIELD(bool, mouseOrbit, true, "Mouse Orbit")
+    FBZZ_FIELD(bool, mouseOrbit, true, "マウス旋回")
 
-    FBZZ_GROUP("Gamepad")
-    FBZZ_FIELD(bool, padOrbit, true, "Pad Orbit")
-    FBZZ_FIELD_RANGE(float, padLookSpeed, 200.0f, "Pad Look Speed", 10.0f, 720.0f)
+    FBZZ_GROUP("ゲームパッド")
+    FBZZ_FIELD(bool, padOrbit, true, "パッド旋回")
+    FBZZ_FIELD_RANGE(float, padLookSpeed, 200.0f, "パッドの視点速度", 10.0f, 720.0f)
     FBZZ_TOOLTIP("Option の「スティック感度」が既定値のときの旋回速度 (度/秒)")
-    FBZZ_FIELD(bool, padInvertY, false, "Pad Invert Y")
+    FBZZ_FIELD(bool, padInvertY, false, "パッドの Y 反転")
 
     FBZZ_GROUP("Ground Smoothing")
     // WHY 縦だけならすか: 段差と坂で CharacterController は接地点へ Y を跳ばす。
     //     そのまま目に乗せると、階段を上るたびに視界が段の高さぶん跳ねる。
     //     横をならさないのは、横の遅れがそのまま「入力が重い」として手に残るから。
-    FBZZ_FIELD_RANGE(float, verticalFollowSpeed, 20.0f, "Vertical Follow", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, verticalFollowSpeed, 20.0f, "縦の追従", 0.0f, 60.0f)
     FBZZ_TOOLTIP("接地中に目の高さが追い付く速さ。0 でならさない")
     FBZZ_FIELD_RANGE(float, snapDistance, 1.5f, "Snap Distance", 0.1f, 20.0f)
     FBZZ_TOOLTIP("この距離以上ずれたらならさず飛ぶ。復活や転送で視界が引きずられない")
@@ -145,6 +145,8 @@ private:
     // 生ポインタを保持すると、対象が破棄された次のフレームに解放済みメモリを読む。
     // EntityRef は generation まで Scene 側で検証するため、対象消滅を nullptr として扱える。
     EntityRef m_target;
+    // 視点操作の間だけカーソルを預かる要求。このカメラが消えれば自動で外れる。
+    CursorRequest m_cursor;
 
     bool  m_hasEye = false;
     float m_eyeY   = 0.0f;
@@ -182,17 +184,15 @@ inline void FpsCameraComponent::OnStart()
     // 視点はマウスの «移動量» で回す。Locked は毎フレーム OS カーソルを画面中央へ戻して
     // 移動量だけを渡すモードで、これが無いとカーソルが画面端に着いた時点で振り向けなくなる。
     //
-    // WHY 画面ごとに宣言するか: 同じゲームでもタイトルやオプションは «絶対座標» で
-    //     カーソルを動かす ([[GameCursorComponent]] は Confined を要求する)。
-    //     プロジェクト設定は起動時の初期値でしかないので、必要な側が名乗る。
+    // WHY 直書きでなく Push か: 同じゲームでもメニューやポーズは «絶対座標» で
+    //     カーソルを動かす。要求として積んでおけば、上に重ねたメニューが閉じたときに
+    //     視点操作の Locked へ自動で戻る。カメラが消えれば要求も一緒に消える。
     //
     // WHY Play 中だけか: このスクリプトは FBZZ_EXECUTE_ALWAYS() で編集中も走る。
     //     ガードが無いと、このカメラが居るシーンを開いただけで Editor の OS カーソルが
     //     消え、ウィンドウ中央へ拘束される。
-    if (app.IsPlaying()) {
-        cursor.SetLockMode(CursorLockMode::Locked);
-        cursor.SetVisible(false);
-    }
+    if (app.IsPlaying())
+        m_cursor = cursor.Push(CursorLockMode::Locked, false, CursorPriority::Camera);
 }
 
 inline Quaternion FpsCameraComponent::CurrentRotation() const

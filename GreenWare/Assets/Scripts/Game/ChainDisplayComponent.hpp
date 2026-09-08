@@ -40,7 +40,7 @@ public:
     FBZZ_REF(GameObject, countText, "Count")
     FBZZ_TOOLTIP("連鎖数を出す UIText。未設定なら HUD_Chain を名前で拾う")
 
-    FBZZ_GROUP("Look")
+    FBZZ_GROUP("見た目")
     FBZZ_FIELD(std::string, prefix, "CHAIN ", "Prefix")
     FBZZ_TOOLTIP("数字の前に付ける文字。空にすると数字だけになる")
     FBZZ_FIELD_COLOR(color, (Vector4{ 1.0f, 0.92f, 0.62f, 1.0f }), "Color")
@@ -48,11 +48,11 @@ public:
     FBZZ_TOOLTIP("これ未満は出さない。1 は「当たった」であって連鎖ではない")
     FBZZ_FIELD_RANGE(float, fadeBelow, 0.35f, "Fade Below", 0.0f, 1.0f)
     FBZZ_TOOLTIP("猶予の残りがこの割合を切ってから薄くなり始める")
-    FBZZ_FIELD_RANGE(float, popBoost, 0.6f, "Pop", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, popBoost, 0.6f, "はじけ", 0.0f, 2.0f)
     FBZZ_TOOLTIP("数字が伸びた瞬間の明るさの上乗せ。0 で光らせない")
     FBZZ_FIELD_RANGE(float, popSeconds, 0.14f, "Pop Seconds", 0.0f, 1.0f)
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugShown, 0, "Shown Chain")
 
     void OnStart() override;

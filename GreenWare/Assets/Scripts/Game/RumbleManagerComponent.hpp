@@ -54,20 +54,20 @@ class RumbleManagerComponent : public Script {
     FBZZ_SCRIPT(RumbleManagerComponent)
 
 public:
-    FBZZ_GROUP("Default Shape")
+    FBZZ_GROUP("既定の形")
     FBZZ_FIELD_RANGE(float, defaultLow, 0.55f, "Low Motor", 0.0f, 1.0f)
     FBZZ_TOOLTIP("強さ 1.0 の要求で回す低周波モーター (重い揺さぶり)")
     FBZZ_FIELD_RANGE(float, defaultHigh, 0.30f, "High Motor", 0.0f, 1.0f)
     FBZZ_TOOLTIP("強さ 1.0 の要求で回す高周波モーター (鋭い刺激)")
-    FBZZ_FIELD_RANGE(float, defaultDuration, 0.18f, "Duration", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, defaultDuration, 0.18f, "継続時間", 0.0f, 2.0f)
 
-    FBZZ_GROUP("Limits")
-    FBZZ_FIELD(bool, enabledOnStart, true, "Enabled")
+    FBZZ_GROUP("限界")
+    FBZZ_FIELD(bool, enabledOnStart, true, "有効")
     FBZZ_TOOLTIP("切ると全ての要求を無視する。振動が苦手な人向けの一括スイッチ")
     FBZZ_FIELD_RANGE(float, masterScale, 1.0f, "Master Scale", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE_INT(int, maxRequests, 8, "Max Requests", 1, 64)
+    FBZZ_FIELD_RANGE_INT(int, maxRequests, 8, "要求の上限", 1, 64)
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(float, debugLow, 0.0f, "Low Output")
     FBZZ_FIELD_READ_ONLY(float, debugHigh, 0.0f, "High Output")
 

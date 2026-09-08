@@ -66,6 +66,9 @@ set_target_properties(Scripts PROPERTIES OUTPUT_NAME "Scripts")
 target_compile_definitions(Scripts PRIVATE GAMESCRIPTS_EXPORTS)
 target_include_directories(Scripts PRIVATE Assets Src)
 target_link_libraries(Scripts PRIVATE FBZZ::Engine)
+# 全スクリプトが 1 つの翻訳単位 (GreenWareScriptsDll.cpp) に集まる。inline 定義が 100 本を
+# 超えたところで COFF のセクション上限 (C1128) に当たったので、大きいオブジェクト形式で出す。
+target_compile_options(Scripts PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
 
 # Scripts だけをビルドしたときもランタイムを SDK と揃える。
 # これが無いと Binaries/ の FBZZEngine.dll は GreenWareStandalone を建てた日のまま
@@ -82,6 +85,8 @@ add_dependencies(GreenWareStandalone Scripts)
 target_compile_definitions(GreenWareStandalone PRIVATE FBZZ_STANDALONE_TARGET)
 target_include_directories(GreenWareStandalone PRIVATE Assets Include Src)
 target_link_libraries(GreenWareStandalone PRIVATE FBZZ::Engine shell32 user32)
+# GameMain.cpp も同じ全スクリプトを取り込むので同じ上限に当たる。
+target_compile_options(GreenWareStandalone PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
 target_link_options(GreenWareStandalone PRIVATE
     "$<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>"
     "$<$<CONFIG:Release>:/ENTRY:mainCRTStartup>"

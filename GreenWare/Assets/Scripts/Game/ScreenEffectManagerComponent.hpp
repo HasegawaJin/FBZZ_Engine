@@ -13,7 +13,7 @@
 ///   自分が書いた結果を次のフレームの基準として読むと、効果が積み重なって発散する。
 ///   効果が 1 つも無い状態の設定を基準として保持し、常にそこから作り直す。
 ///
-/// WHY 専用シェーダー (PolarityImplode / HitstopFreeze) もここが持つか:
+/// WHY 専用シェーダー (Implode / HitstopFreeze) もここが持つか:
 ///   customEffects は PostProcessSettings の一部なので、上と同じ「まるごと差し替え」の
 ///   対象になる。他所で postprocess.AddCustom() したものは、このマネージャーが
 ///   1 フレーム書いた瞬間に消える。器を握っている側が自分の効果も一緒に載せる以外に、
@@ -28,8 +28,11 @@
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Scripts/Game/HitstopManagerComponent.hpp>
+#include <Scripts/Game/TimeManagerComponent.hpp>
+#include <Scripts/Utils/SceneTransition.hpp>
 #include <Scripts/Utils/ScreenProjection.hpp>
 #include <algorithm>
+#include <cmath>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -37,30 +40,49 @@ using namespace fbzz::math;
 namespace sandbox {
 
 // 専用パスの名前とシェーダー。名前は customEffects の中の識別にしか使わない。
-inline constexpr const char* kImplodeEffectName = "PolarityImplode";
+inline constexpr const char* kImplodeEffectName = "Implode";
 inline constexpr const char* kImplodeShaderPath =
-    "assets/shaders/PostProcess/Custom/PolarityImplode.hlsl";
+    "assets/shaders/PostProcess/Custom/Implode.hlsl";
 inline constexpr const char* kFreezeEffectName = "HitstopFreeze";
 inline constexpr const char* kFreezeShaderPath =
     "assets/shaders/PostProcess/Custom/HitstopFreeze.hlsl";
-inline constexpr const char* kOutlineEffectName = "PolarityOutline";
+inline constexpr const char* kOutlineEffectName = "Outline";
 inline constexpr const char* kOutlineShaderPath =
-    "assets/shaders/PostProcess/Custom/PolarityOutline.hlsl";
+    "assets/shaders/PostProcess/Custom/Outline.hlsl";
+inline constexpr const char* kVignetteEffectName = "GameVignette";
+inline constexpr const char* kVignetteShaderPath =
+    "assets/shaders/PostProcess/Custom/GameVignette.hlsl";
+inline constexpr const char* kSlowEffectName = "SlowMotion";
+inline constexpr const char* kSlowShaderPath =
+    "assets/shaders/PostProcess/Custom/SlowMotion.hlsl";
 
 class ScreenEffectManagerComponent : public Script {
     FBZZ_SCRIPT(ScreenEffectManagerComponent)
 
 public:
-    FBZZ_GROUP("Flash")
+    FBZZ_GROUP("閃光")
     FBZZ_FIELD_COLOR(defaultFlashColor, (Vector4{ 1.0f, 0.25f, 0.20f, 1.0f }), "Flash Color")
     FBZZ_FIELD_RANGE(float, defaultFlashStrength, 0.45f, "Flash Strength", 0.0f, 1.0f)
     FBZZ_TOOLTIP("強さ 1.0 の要求で画面を覆う濃さ。1.0 にすると一瞬完全に染まる")
-    FBZZ_FIELD_RANGE(float, defaultFlashSeconds, 0.22f, "Flash Seconds", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, defaultFlashSeconds, 0.22f, "閃光の長さ [秒]", 0.0f, 2.0f)
 
+    // 被弾・溜め・危機の縁。エンジンの楕円ビネットではなく GameVignette.hlsl が描く
+    // (方向・鼓動・縁取り・繊維を持つ。理由はシェーダーの冒頭)。
+    // Surge (極の色で縁が光る側) だけは今までどおりエンジンのビネットに乗せる。
     FBZZ_GROUP("Vignette")
-    FBZZ_FIELD_RANGE(float, vignetteIntensity, 0.45f, "Intensity", 0.0f, 1.0f)
-    FBZZ_TOOLTIP("スローや被弾中に足すビネットの濃さ")
-    FBZZ_FIELD_RANGE(float, vignetteSmoothness, 0.5f, "Smoothness", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, vignetteIntensity, 0.55f, "強さ", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("被弾 (Distort) 強さ 1.0 で縁が落ちる暗さ")
+    FBZZ_FIELD_RANGE(float, vignetteRadius, 0.62f, "半径", 0.2f, 1.2f)
+    FBZZ_TOOLTIP("ここより内側は素通し。画面の高さの半分に対する比")
+    FBZZ_FIELD_COLOR(vignetteRimColor, (Vector4{ 1.0f, 0.30f, 0.22f, 1.0f }), "Rim Color")
+    FBZZ_TOOLTIP("暗い縁の内側に走る細い光の帯。極の＋ (純赤) と紛れないよう彩度を落としてある")
+    FBZZ_FIELD_RANGE(float, vignetteLobe, 0.9f, "Direction Lobe", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("被弾した向きへ縁が張り出す量。0 で全周が均等")
+    // 危機 (残り HP が Last Stand 以下) の鼓動。プレイヤー側が毎フレーム SetDanger で申告する。
+    FBZZ_FIELD_RANGE(float, dangerDim, 0.42f, "Danger Dim", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("危機の間ずっと掛かる縁の暗さ。被弾の暗さより下に置く")
+    FBZZ_FIELD_RANGE(float, dangerPulseHz, 1.4f, "Danger Pulse (Hz)", 0.2f, 5.0f)
+    FBZZ_TOOLTIP("鼓動の速さ。速いほど焦る")
 
     FBZZ_GROUP("Chromatic Aberration")
     FBZZ_FIELD_RANGE(float, aberrationAmount, 0.008f, "Amount", 0.0f, 0.05f)
@@ -70,17 +92,17 @@ public:
     //   被弾と発射はどちらも «画面の縁» を使うが、向きが逆でなければならない。被弾は
     //   画面を塗って縁を «暗く» し、発射は縁だけを極の色で «明るく» する。同じ器で
     //   強さだけ変えると、＋ (赤) を撃った瞬間と被弾が同じ絵になり、撃つたびに手が止まる。
-    FBZZ_GROUP("Surge")
+    FBZZ_GROUP("サージ")
     FBZZ_FIELD_RANGE(float, surgeRim, 0.45f, "Rim", 0.0f, 1.0f)
     FBZZ_TOOLTIP("強さ 1.0 の要求で画面の縁を極の色に染める濃さ")
     FBZZ_FIELD_RANGE(float, surgeRimSmoothness, 0.6f, "Rim Smoothness", 0.0f, 1.0f)
     FBZZ_TOOLTIP("1 に近いほど内側まで色が入る。下げると額縁のように縁だけが光る")
-    FBZZ_FIELD_RANGE(float, surgeAberration, 0.012f, "Aberration", 0.0f, 0.05f)
+    FBZZ_FIELD_RANGE(float, surgeAberration, 0.012f, "色収差", 0.0f, 0.05f)
     FBZZ_FIELD_RANGE(float, surgePull, 0.04f, "Lens Pull", 0.0f, 0.2f)
     FBZZ_TOOLTIP("画面が内側へ吸い込まれる量。外へ膨らませる方向には動かさない "
                  "(Composite が画面外の uv を黒で返すため四隅が欠ける)")
 
-    // 7.9 の集束。起点へ画面ごと引き込む渦を PolarityImplode.hlsl が描く。
+    // 起点へ画面ごと引き込む渦を Implode.hlsl が描く。
     //
     // WHY ビネットや Surge の «縁» ではなく画面の中を歪めるか:
     //   集束は盤面の 1 点で起きる出来事で、画面のどこで起きたかに意味がある。
@@ -90,9 +112,9 @@ public:
     FBZZ_FIELD_RANGE(float, implodePull, 0.045f, "Pull", 0.0f, 0.25f)
     FBZZ_TOOLTIP("強さ 1.0 のときに画面が起点へ寄る最大量。画面の «高さ» に対する比。"
                  "尾のぼけも同じ量で伸びる")
-    FBZZ_FIELD_RANGE(float, implodeReach, 0.60f, "Reach", 0.05f, 1.5f)
+    FBZZ_FIELD_RANGE(float, implodeReach, 0.60f, "届く距離", 0.05f, 1.5f)
     FBZZ_TOOLTIP("渦が効く半径。画面の高さに対する比で、外側は素通しになる")
-    FBZZ_FIELD_RANGE(float, implodeAttack, 0.06f, "Attack", 0.0f, 0.5f)
+    FBZZ_FIELD_RANGE(float, implodeAttack, 0.06f, "攻撃", 0.0f, 0.5f)
     FBZZ_TOOLTIP("最大まで開くまでの時間。0 にすると 1 フレームで飛ぶ")
 
     // 12.6 の衝突。止まっている数フレームだけ画面を固める。
@@ -101,26 +123,48 @@ public:
     FBZZ_TOOLTIP("最も軽い当たりでの強さ。1 に近づけるほど、軽い接触も全力の激突も同じ絵になる")
     FBZZ_FIELD_RANGE(float, freezeLevels, 7.0f, "Levels", 2.0f, 32.0f)
     FBZZ_TOOLTIP("明るさを落とす段数。小さいほど硬い。色相は動かないので極の赤青は保たれる")
-    FBZZ_FIELD_RANGE(float, freezeAberration, 2.4f, "Aberration", 0.0f, 12.0f)
+    FBZZ_FIELD_RANGE(float, freezeAberration, 2.4f, "色収差", 0.0f, 12.0f)
     FBZZ_TOOLTIP("画面の縁での色収差 [px]。中央は割らない")
     FBZZ_FIELD_RANGE(float, freezeContrast, 0.18f, "Contrast", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, freezeGrain, 0.045f, "Grain", 0.0f, 0.3f)
     FBZZ_TOOLTIP("止めている間だけ乗る粒。動かないので «時間が止まった» 側に働く")
-    FBZZ_FIELD_RANGE(float, freezeRelease, 0.07f, "Release", 0.0f, 0.5f)
+    FBZZ_FIELD_RANGE(float, freezeRelease, 0.07f, "解放", 0.0f, 0.5f)
     FBZZ_TOOLTIP("止めが解けてから抜けきるまでの時間。掛かる側は常に 1 フレーム")
 
+    // スロー (TimeManager の下位層) の «時間が伸びている» 見え方。止め (Freeze) とは別。
+    //
+    // WHY 要求を受けずにスローを覗くか (Freeze と同じ理由):
+    //   回避・とどめ・演出、スローを掛ける場所は増える。掛けた側が絵も頼む形にすると、
+    //   頼み忘れた場所だけ «世界は遅いのに画面は普段どおり» になる。深さを写すだけなら
+    //   定義から一致する。
+    FBZZ_GROUP("Slow Motion")
+    FBZZ_FIELD(bool, slowLookEnabled, true, "有効")
+    FBZZ_FIELD_RANGE(float, slowDesaturate, 0.55f, "Desaturate (edge)", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("縁の彩度をどれだけ抜くか。中央は保つ (極の赤青を数える場所)")
+    FBZZ_FIELD_RANGE(float, slowStreak, 0.035f, "Radial Streak", 0.0f, 0.15f)
+    FBZZ_TOOLTIP("縁の画素が外へ流れる長さ (画面比)。0.05 を超えると «ズーム» に見える")
+    FBZZ_FIELD_RANGE(float, slowAberration, 3.0f, "Aberration (px)", 0.0f, 12.0f)
+    FBZZ_FIELD_RANGE(float, slowDarken, 0.35f, "Darken (edge)", 0.0f, 1.0f)
+    FBZZ_FIELD_COLOR(slowHeatColor, (Vector4{ 0.40f, 1.00f, 0.60f, 1.0f }), "Center Heat")
+    FBZZ_TOOLTIP("中央にごく薄く乗る色。プレイヤー色。«自分の時間» の印")
+    FBZZ_FIELD_RANGE(float, slowPulseHz, 1.2f, "Pulse (Hz)", 0.0f, 6.0f)
+    FBZZ_FIELD_RANGE(float, slowGamma, 0.7f, "追従", 0.2f, 2.0f)
+    FBZZ_TOOLTIP("深さ→強さの曲線。1 未満で浅いスローでも絵が出る")
+    FBZZ_FIELD_READ_ONLY(float, debugSlow, 0.0f, "スロー")
+    FBZZ_FIELD_READ_ONLY(float, debugWipe, 0.0f, "Wipe")
+
     // 極を帯びた対象へ掛かる放電の輪郭。誰を縁取るかは
-    // PolarityTargetComponent が輪郭マスクへ申告し、ここは «縁取り方» だけを持つ。
+    // 輪郭マスクへ申告するのは描く側で、ここは «縁取り方» だけを持つ。
     //
     // WHY 縁取るパスをここが載せるか:
     //   customEffects は «まるごと差し替え» の対象 (このファイルの WHY)。対象側が
     //   自分で AddCustom しても、次にこのマネージャーが書いた瞬間に消える。
-    FBZZ_GROUP("Polarity Outline")
-    FBZZ_FIELD_RANGE(float, outlineWidth, 5.0f, "Width", 1.0f, 16.0f)
+    FBZZ_GROUP("BladeSide Outline")
+    FBZZ_FIELD_RANGE(float, outlineWidth, 5.0f, "幅", 1.0f, 16.0f)
     FBZZ_TOOLTIP("輪郭の最大の太さ [px]。対象ごとの太さはこれに対する比で効く")
-    FBZZ_FIELD_RANGE(float, outlineCrackle, 0.55f, "Crackle", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, outlineCrackle, 0.55f, "はぜる音", 0.0f, 1.0f)
     FBZZ_TOOLTIP("方向ごとに届く距離を揺らす量。0 で等幅の滑らかな輪郭")
-    FBZZ_FIELD_RANGE(float, outlineSpeed, 6.0f, "Speed", 0.0f, 30.0f)
+    FBZZ_FIELD_RANGE(float, outlineSpeed, 6.0f, "速さ", 0.0f, 30.0f)
     FBZZ_TOOLTIP("明滅と放電の走る速さ [Hz]")
     FBZZ_FIELD_RANGE(float, outlineGain, 2.5f, "Gain", 0.0f, 8.0f)
 
@@ -128,7 +172,7 @@ public:
     //
     // WHY 削らないか: 電気で帯を欠けさせると、強くするほど輪郭が虫食いになって
     //     «どの脚が何極か» が読めなくなる。芯を成立させてから乗せる
-    //     (Vfx/SlashArcComponent で同じ結論に至っている)。
+    //     (Shaders/Material/Effects/WeaponTrail.hlsl で同じ結論に至っている)。
     FBZZ_FIELD_RANGE(float, outlineArcRate, 14.0f, "Arc Rate (Hz)", 0.0f, 60.0f)
     FBZZ_TOOLTIP("放電を引き直す速さ。速すぎると «放電» ではなく «画面のちらつき» になる。"
                  "2〜3 フレーム保つ 10〜20 あたりが電気に見える")
@@ -141,11 +185,11 @@ public:
     FBZZ_TOOLTIP("足す明るさ。HDR へ加算するので 1 を超えた分をブルームが拾う。"
                  "上げすぎると芯が白く飛んで極の色が読めなくなる")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(float, debugFade, 0.0f, "Fade")
-    FBZZ_FIELD_READ_ONLY(float, debugFlash, 0.0f, "Flash")
-    FBZZ_FIELD_READ_ONLY(float, debugDistortion, 0.0f, "Distortion")
-    FBZZ_FIELD_READ_ONLY(float, debugSurge, 0.0f, "Surge")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(float, debugFade, 0.0f, "フェード")
+    FBZZ_FIELD_READ_ONLY(float, debugFlash, 0.0f, "閃光")
+    FBZZ_FIELD_READ_ONLY(float, debugDistortion, 0.0f, "歪み")
+    FBZZ_FIELD_READ_ONLY(float, debugSurge, 0.0f, "サージ")
     FBZZ_FIELD_READ_ONLY(float, debugImplode, 0.0f, "Implode")
     FBZZ_FIELD_READ_ONLY(float, debugFreeze, 0.0f, "Freeze")
     FBZZ_FIELD_READ_ONLY(int, debugOutline, 0, "Outline")
@@ -165,9 +209,22 @@ public:
     void Distort(float strength01, float seconds);
     // 解除するまで維持する版。スロー中に掛けっぱなしにする用途。
     void SetSustainedDistortion(float strength01) { m_sustainedDistortion = Clamp01(strength01); }
+    /// 直近の被弾が «どこから» 来たか。Distort に向きを与える。
+    /// 縁はこの点をカメラの右・上へ落とした角度へ張り出す。Distort が消えれば忘れる。
+    void SetHurtSource(const Vector3& worldPoint)
+    {
+        m_hurtPoint = worldPoint;
+        m_hurtValid = true;
+    }
+    /// 危機 (残り体力が僅か) を申告する。0 で解除。鼓動する縁が掛かり続ける。
+    ///
+    /// WHY «秒» ではなく «状態» で受けるか: 危機は出来事ではなく続く状態で、
+    ///     解除されるのは回復か死のとき。申告側が毎フレーム書く形にすると、
+    ///     解除の呼び忘れが «鼓動が止まらない» になる。値で持てば 0 を書けば消える。
+    void SetDanger(float strength01) { m_danger = Clamp01(strength01); }
 
     // --- サージ: 縁が色付きで光る一撃 (時間で自動的に消える) ---
-    // color は «何が起きたか» を表す色をそのまま渡す (極性なら PolarityColor)。
+    // color は «何が起きたか» を表す色をそのまま渡す。
     void Surge(const Vector4& color, float strength01, float seconds);
 
     // --- 集束: 起点へ画面ごと引き込む (時間で自動的に消える) ---
@@ -211,6 +268,9 @@ private:
 
     /// 集束の起点を今フレームの画面 UV へ落とす。カメラの後ろなら false。
     [[nodiscard]] bool ResolveImplodeUv(Vector2& outUv);
+    /// 被弾の出どころを画面上の角度 [rad] へ落とす (右 = 0、上 = +π/2)。
+    /// 出どころが無ければ false。カメラの後ろでも角度は取れる (縁の話なので)。
+    [[nodiscard]] bool ResolveHurtAngle(float& outAngle);
 
     fbzz::renderer::PostProcessSettings m_base{};
     bool    m_hasBase = false;
@@ -242,6 +302,12 @@ private:
     // 止めは «掛かる» ではなく «掛かっている» 状態なので、要求ではなく現在値を持つ。
     float   m_freeze = 0.0f;
 
+    // 被弾の出どころと、危機の申告。鼓動の時計は実時間で進める。
+    Vector3 m_hurtPoint{ 0.0f, 0.0f, 0.0f };
+    bool    m_hurtValid  = false;
+    float   m_danger     = 0.0f;
+    float   m_pulseClock = 0.0f;
+
     // 今フレーム輪郭マスクへ申告した対象が居たか。OnLateUpdate が読んで倒す。
     bool    m_outlineRequested = false;
 };
@@ -266,6 +332,9 @@ inline void ScreenEffectManagerComponent::OnStart()
     m_implodeRemaining = 0.0f;
     m_freeze = 0.0f;
     m_outlineRequested = false;
+    m_hurtValid  = false;
+    m_danger     = 0.0f;
+    m_pulseClock = 0.0f;
 }
 
 inline void ScreenEffectManagerComponent::OnDestroy()
@@ -395,11 +464,36 @@ inline bool ScreenEffectManagerComponent::ResolveImplodeUv(Vector2& outUv)
     return screenproj::WorldToUv(*cameraObject, *camera, m_implodePoint, outUv);
 }
 
+inline bool ScreenEffectManagerComponent::ResolveHurtAngle(float& outAngle)
+{
+    if (!m_hurtValid) return false;
+    GameObject* cameraObject = scene.GetMainCameraObject();
+    if (!cameraObject) return false;
+
+    const Vector3 relative = m_hurtPoint - cameraObject->transform.worldPosition;
+    const float x = Vector3::Dot(relative, cameraObject->transform.right);
+    const float y = Vector3::Dot(relative, cameraObject->transform.up);
+    // 真正面 (右にも上にも成分が無い) は向きを持たない。全周へ落とす。
+    if (x * x + y * y < 1.0e-4f) return false;
+    outAngle = std::atan2(y, x);
+    return true;
+}
+
 inline void ScreenEffectManagerComponent::OnLateUpdate()
 {
     // WHY 実時間か: 画面効果はヒットストップ中こそ見せたい。止めると被弾の赤が
     //     停止解除まで出ないので、当たった瞬間の情報が遅れて届く。
     const float dt = std::max(time.UnscaledDeltaTime(), 0.0f);
+
+    // シーン遷移の扉は実時間で進める (スローやヒットストップの最中に切り替わっても止まらない)。
+    transition::Tick(dt, scene);
+    const float wipe = transition::Coverage();
+
+    // スローの深さ。止め (Override) は含まない ─ あちらは Freeze が描く。
+    float slow = 0.0f;
+    if (slowLookEnabled)
+        if (auto* timeManager = TimeManagerComponent::Instance())
+            slow = std::pow(Clamp01(timeManager->Slow01()), std::max(slowGamma, 0.05f));
 
     float flash = 0.0f;
     if (m_flashRemaining > 0.0f && m_flashSeconds > EPSILON) {
@@ -414,6 +508,19 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
         distortion = std::max(distortion,
                               m_distortStrength * Clamp01(m_distortRemaining / m_distortSeconds));
         if (m_distortRemaining <= 0.0f) m_distortStrength = 0.0f;
+    }
+    // 被弾の向きは被弾の縁と一緒に消える。次の被弾が向きを持たなければ全周に戻る。
+    if (m_distortRemaining <= 0.0f) m_hurtValid = false;
+
+    // 危機の鼓動。心拍のように «ドッ» と縮んで、ゆっくり戻る (sin の 3 乗)。
+    float pulse = 0.0f;
+    if (m_danger > 0.0f) {
+        m_pulseClock += dt * std::max(dangerPulseHz, 0.2f);
+        if (m_pulseClock > 64.0f) m_pulseClock -= 64.0f;
+        const float wave = 0.5f + 0.5f * std::sin(m_pulseClock * TWO_PI);
+        pulse = wave * wave * wave * m_danger;
+    } else {
+        m_pulseClock = 0.0f;
     }
 
     float surge = 0.0f;
@@ -479,9 +586,12 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     debugImplode    = implode;
     debugFreeze     = m_freeze;
     debugOutline    = outlineOn ? 1 : 0;
+    debugSlow       = slow;
+    debugWipe       = wipe;
 
     const bool active = m_fadeAlpha > 0.0f || flash > 0.0f || distortion > 0.0f
-                     || surge > 0.0f || implode > 0.0f || m_freeze > 0.0f || outlineOn;
+                     || surge > 0.0f || implode > 0.0f || m_freeze > 0.0f || outlineOn
+                     || m_danger > 0.0f || slow > 0.0f || wipe > 0.0f;
     if (!active) {
         // 何も掛かっていない間はランタイム上書きを外す。載せっぱなしにすると
         // シーンの PostProcessVolume が効かなくなる。
@@ -496,19 +606,17 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
     CaptureBase();
     fbzz::renderer::PostProcessSettings pp = m_base;
 
-    // 縁は «暗く締める側» (被弾・スロー) と «極の色で光る側» (照射) が取り合う。
-    // ビネットは色を 1 つしか持てないので、濃さで重み付けした 1 色へ畳む。
-    // どちらか一方を優先すると、被弾しながら撃ったときに片方が丸ごと消える。
-    const float dim = vignetteIntensity * distortion;
+    // 縁は «暗く締める側» (被弾・スロー・危機) と «極の色で光る側» (照射) で器を分ける。
+    // 暗く締める側は GameVignette.hlsl (下の専用パス) が描き、エンジンのビネットは
+    // 光る側だけが使う。同じ器に畳んでいた頃は、被弾しながら撃つと片方が消えていた。
     const float rim = surgeRim * surge;
-    if (dim > 0.0f || rim > 0.0f) {
-        const float mix = rim / (dim + rim);
+    if (rim > 0.0f) {
         pp.vignette.enabled    = true;
-        pp.vignette.intensity  = std::max(pp.vignette.intensity, Clamp01(dim + rim));
-        pp.vignette.smoothness = Lerp(vignetteSmoothness, surgeRimSmoothness, mix);
-        pp.vignette.color[0]   = Lerp(pp.vignette.color[0], m_surgeColor.x, mix);
-        pp.vignette.color[1]   = Lerp(pp.vignette.color[1], m_surgeColor.y, mix);
-        pp.vignette.color[2]   = Lerp(pp.vignette.color[2], m_surgeColor.z, mix);
+        pp.vignette.intensity  = std::max(pp.vignette.intensity, Clamp01(rim));
+        pp.vignette.smoothness = surgeRimSmoothness;
+        pp.vignette.color[0]   = m_surgeColor.x;
+        pp.vignette.color[1]   = m_surgeColor.y;
+        pp.vignette.color[2]   = m_surgeColor.z;
     }
 
     if (distortion > 0.0f || surge > 0.0f) {
@@ -568,7 +676,7 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
         //
         // WHY blendMode を渡さないか: LDR 段は blendMode を見ない。前段の画を t5 で
         //     受け取って全画面を描き直す実装なので、合成はシェーダーが自分で行う
-        //     (PolarityOutline.hlsl の NOTE)。加算を指定しても効かない。
+        //     (Outline.hlsl の NOTE)。加算を指定しても効かない。
         PushCustomEffect(pp, kOutlineEffectName, kOutlineShaderPath, 1.0f,
                          { outlineWidth, outlineCrackle, outlineSpeed, outlineGain },
                          fbzz::renderer::CustomPassStage::PostProcess,
@@ -580,10 +688,36 @@ inline void ScreenEffectManagerComponent::OnLateUpdate()
         PushCustomEffect(pp, kImplodeEffectName, kImplodeShaderPath, implode,
                          { implodeUv.x, implodeUv.y, implodePull, implodeReach });
     }
+    // スローの見え方。渦の後 (動かした結果を流す)、縁と止めの前 (流した上から締める)。
+    if (slow > 0.0f) {
+        PushCustomEffect(pp, kSlowEffectName, kSlowShaderPath, slow,
+                         { slowDesaturate, slowStreak, slowAberration, slowDarken },
+                         fbzz::renderer::CustomPassStage::PostProcess,
+                         fbzz::renderer::BlendMode::OPAQUE_BLEND,
+                         { slowHeatColor.x, slowHeatColor.y, slowHeatColor.z, slowPulseHz });
+    }
+    // 被弾・溜め・危機の縁。暗さは «被弾» と «危機» の強い方、向きは被弾だけが持つ。
+    //
+    // WHY 渦より後・止めより前か: 渦は画素を動かすので、縁を先に描くと縁ごと
+    //     引き込まれて楕円が歪む。止めは «染める» だけなので、縁の上から掛かっても
+    //     形は崩れない (むしろ止めの粒が縁にも乗って 1 枚の絵になる)。
+    const float dim = std::max(vignetteIntensity * distortion, dangerDim * m_danger);
+    if (dim > 0.0f) {
+        float angle = -10.0f;
+        if (distortion > 0.0f && !ResolveHurtAngle(angle)) angle = -10.0f;
+        PushCustomEffect(pp, kVignetteEffectName, kVignetteShaderPath, 1.0f,
+                         { Clamp01(dim), vignetteRadius, Clamp01(pulse), angle },
+                         fbzz::renderer::CustomPassStage::PostProcess,
+                         fbzz::renderer::BlendMode::OPAQUE_BLEND,
+                         { vignetteRimColor.x, vignetteRimColor.y, vignetteRimColor.z,
+                           Clamp01(vignetteLobe * distortion) });
+    }
     if (m_freeze > 0.0f) {
         PushCustomEffect(pp, kFreezeEffectName, kFreezeShaderPath, m_freeze,
                          { freezeLevels, freezeAberration, freezeGrain, freezeContrast });
     }
+    // 扉は最後。塗られた上に何かが乗ると «扉の向こうで何かが起きている» に見える。
+    transition::PushWipe(pp);
 
     postprocess.Set(pp);
     m_writing = true;

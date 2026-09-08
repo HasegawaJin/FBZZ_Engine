@@ -40,26 +40,26 @@ public:
     FBZZ_FIELD_RANGE(float, recoverSpeed, 4.0f, "Recover Speed", 0.5f, 30.0f)
     FBZZ_TOOLTIP("要求が切れてから密着へ戻る速さ。低いほど余韻が残る")
 
-    FBZZ_GROUP("Limits")
-    FBZZ_FIELD_RANGE_INT(int, maxRequests, 8, "Max Requests", 1, 32)
+    FBZZ_GROUP("限界")
+    FBZZ_FIELD_RANGE_INT(int, maxRequests, 8, "要求の上限", 1, 32)
     FBZZ_TOOLTIP("同時に保持する要求の本数。超えたら最も弱いものから捨てる")
 
     // WHY 画角の張り出しもここが持つか: 「その瞬間だけ画面の見え方を広げて衝撃を伝える」
     //     という点で、たるみとまったく同じ役割の値になる。カメラは合成済みの数字を
     //     読むだけ、要求する側は追従の作りを知らなくてよい、という形を崩さない。
-    FBZZ_GROUP("FOV Burst")
+    FBZZ_GROUP("FOV の跳ね")
     FBZZ_FIELD_RANGE(float, burstDegrees, 7.0f, "Burst Degrees", 0.0f, 30.0f)
     FBZZ_TOOLTIP("強さ 1.0 の要求で広がる画角 (度)")
-    FBZZ_FIELD_RANGE(float, burstAttack, 0.05f, "Attack", 0.0f, 0.5f)
+    FBZZ_FIELD_RANGE(float, burstAttack, 0.05f, "攻撃", 0.0f, 0.5f)
     FBZZ_TOOLTIP("広がりきるまでの時間。0 にすると 1 フレームで飛ぶ")
-    FBZZ_FIELD_RANGE(float, burstRelease, 0.35f, "Release", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, burstRelease, 0.35f, "解放", 0.0f, 2.0f)
     FBZZ_TOOLTIP("元の画角へ戻るまでの時間。長いほど余韻が残る")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugActive, 0, "Active Requests")
     FBZZ_FIELD_READ_ONLY(float, debugHorizontal, 0.0f, "Horizontal Slack")
     FBZZ_FIELD_READ_ONLY(float, debugVertical, 0.0f, "Vertical Slack")
-    FBZZ_FIELD_READ_ONLY(float, debugFovOffset, 0.0f, "FOV Offset")
+    FBZZ_FIELD_READ_ONLY(float, debugFovOffset, 0.0f, "FOV のオフセット")
 
     [[nodiscard]] static CameraFollowManagerComponent* Instance() { return s_instance; }
 

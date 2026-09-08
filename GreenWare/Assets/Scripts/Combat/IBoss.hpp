@@ -39,7 +39,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Math/Vector3.hpp>
 #include <unordered_map>
 
 using namespace fbzz::scene;
@@ -53,24 +53,6 @@ struct IBoss {
     /// WHY GameObject 名で代用しないか: シーン上の名前は開発の都合で変わるうえ、
     ///     プレイヤーに見せる名前 (「ポラリティ・コア」) とは別物になる。
     [[nodiscard]] virtual const char* BossName() const = 0;
-
-    // ── 極性 (企画書 8 章) ───────────────────────────────────────────────────
-    // ボスには極性を «付与できない»。代わりにボスが自分で ＋ ⇄ − を切り替え、
-    // プレイヤーはそれを読んで逆極の雑魚をぶつける。つまりボスの極は
-    // PolarityTargetComponent の «塗られた結果» ではなく、ボス自身が決める値になる。
-
-    /// 今ボスが帯びている極。None を返すボスは「今は無防備」を意味する
-    /// (突進が激突した後にリングが消灯する状態、8 章)。
-    [[nodiscard]] virtual Polarity CurrentPolarity() const = 0;
-
-    /// 次に極が切り替わるまでの秒数。切り替えを持たないボスは負を返す。
-    ///
-    /// WHY 周期そのものではなく残り時間を返すか: 企画書 8 章 / 10.6 は
-    ///     「切替 1 秒前からリング発光が明滅する」を予兆の仕様として要求している。
-    ///     周期 (P1 は 6 秒 / P2 は 4 秒) を渡すと、受け手が «いつ切り替わったか» を
-    ///     別途覚えて引き算することになり、フェーズが変わって周期が縮んだ瞬間に
-    ///     予兆だけ古い周期で出る。残り時間なら受け手は閾値と比べるだけで済む。
-    [[nodiscard]] virtual float PolaritySwitchRemaining() const = 0;
 
     // ── フェーズ (企画書 10.6) ───────────────────────────────────────────────
 
@@ -87,8 +69,8 @@ struct IBoss {
 
     /// 硬直中か。突進の激突スタン・踏みつけ後の脚が刺さっている間などが該当する。
     ///
-    /// WHY 「攻撃可能か」ではなく「硬直中か」か: ボスは銃では削れず、逆極の雑魚を
-    ///     ぶつける以外に手が無い (10.6)。つまりダメージが通るかどうかは常に同じで、
+    /// WHY 「攻撃可能か」ではなく「硬直中か」か: ボスは斬撃では削れず、とどめで部位を
+    ///     落とす以外に手が無い。つまりダメージが通るかどうかは常に同じで、
     ///     隙が意味するのは «プレイヤーが安全にコンボを組める時間» の方。
     ///     Vulnerable と名付けると「今なら撃てる」と読まれ、盤面の理解がずれる。
     [[nodiscard]] virtual bool IsStaggered() const = 0;
@@ -104,6 +86,23 @@ struct IBoss {
     /// WHY 純粋仮想にしないか: 登場の条件を持たないボス (置いた瞬間から戦っている)
     ///     の方が普通で、そちらに «true を返すだけ» を書かせる理由が無い。
     [[nodiscard]] virtual bool IsEngaged() const { return true; }
+
+    // ---- 弾いて崩す (Docs/break-parry.md) ----
+    // 硬直 (IsStaggered) は踏みつけ後の短い隙も含む。«とどめ» が通るのは崩しゲージが
+    // 満ちて倒れている間だけなので、別の問い合わせ口として分ける。
+
+    /// 崩しゲージが満ちて倒れているか。この間だけ Execute() が通る。
+    [[nodiscard]] virtual bool IsToppled() const { return false; }
+    /// プレイヤーに一撃を弾かれた。hitPoint は弾いた場所。攻撃を出しかけの脚が跳ねる等。
+    virtual void OnParried(const fbzz::math::Vector3& hitPoint) { (void)hitPoint; }
+    /// 倒れているボスの部位へ «とどめ» が入った。部位を落とせたら true。
+    /// @param part 斬った部位 (当たり判定のノード)
+    /// @param from 斬った側の位置
+    virtual bool Execute(GameObject* part, const fbzz::math::Vector3& from)
+    { (void)part; (void)from; return false; }
+    /// 進行の物差し。脚なら残り本数、蛇なら残り節数。持たないボスは負を返す。
+    [[nodiscard]] virtual int PartsRemaining() const { return -1; }
+    [[nodiscard]] virtual int PartsTotal() const { return 0; }
 
     // ── 名簿 (IDamageable と同じ形) ──────────────────────────────────────────
     // 実装側は OnStart で Bind、OnDestroy で Unbind すること。書き忘れると
