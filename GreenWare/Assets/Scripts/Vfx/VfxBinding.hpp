@@ -105,6 +105,18 @@ inline void ParticleEmitVelocity(GameObject& root, std::string_view node, const 
             emitter->settings.emitVelocity = value;
 }
 
+/// 原点から外向きの加速度 [m/s²]。負で «吸い込み»。
+///
+/// WHY emitVelocity で代用できないか: あちらは層のローカル軸へ固定の初速を与えるので、
+///     «全方位へ同じだけ広がる» を書くと 1 方向だけが濃くなる。放射は粒ごとに向きが
+///     違わなければならず、それを持っているのは発生位置 (球・円錐) だけ。
+inline void ParticleRadialVelocity(GameObject& root, std::string_view node, float value)
+{
+    if (GameObject* target = Find(root, node))
+        if (auto* emitter = target->GetComponent<ParticleEmitter>())
+            emitter->settings.radialVelocity = value;
+}
+
 /// 層そのものの位置。旧 schemaPath "localPosition"。
 inline void NodePosition(GameObject& root, std::string_view node, const Vector3& value)
 {

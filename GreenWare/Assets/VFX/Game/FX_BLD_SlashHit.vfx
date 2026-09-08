@@ -1,0 +1,260 @@
+# FX_BLD_SlashHit.vfx — 刀が当たった瞬間 (presentation.md «斬撃»)
+# 弾き (FX_PLR_Parry) の流用をやめた理由: 輪と閃光は «弾いた» の印で、当たりに輪が
+# 出ると 1 秒に何度も弾いているように読める。ここにあるのは
+#   Slash Arc … 刃が通った «弧» 1 枚 (極性色)。0.12 秒 (トレイルと同じ寿命)
+#   Hit Flash … 芯の小さな閃光 (極性色)
+#   Sparks    … 熱色の火花 (無彩色側。極性色を乗せない)
+#   Glint     … 金属の «キラッ» 2 粒
+#   Hit Light … 当たった対象の輪郭を極の色で一瞬照らす点光源
+# 全部 0.35 秒で消える。煙・焦げ・輪は無い。毎秒出ても盤面に残らない。
+
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_BLD_SlashHit"
+instanceId = "6c2d3aa2-70fe-4bf4-a90e-6923a2e41367"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "SlashHitVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+tint = [1.0, 1.0, 1.0, 1.0]
+sparkPower = 10.0
+flashLight = 6.0
+arcSize = 1.4
+
+[[gameobjects]]
+name = "Slash Arc"
+instanceId = "8aefb44d-91e8-432e-a01c-ba508717e2d3"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_SlashHit"
+parentInstanceId = "6c2d3aa2-70fe-4bf4-a90e-6923a2e41367"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.15
+maxParticles = 2
+shape = 0
+sizeStart = 0.7
+sizeEnd = 1.4
+sizeCurvePower = 0.45
+lifetime = 0.12
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SlashArc_Additive.mat"
+sortMode = 0
+angularVelocityMin = -4.0
+angularVelocityMax = 4.0
+renderPriority = 74
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 1.0, 1.0, 1.0], [0.4, 1.0, 1.0, 1.0, 0.85], [1.0, 1.0, 1.0, 1.0, 0.0]]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Hit Flash"
+instanceId = "3591f6ed-e2a1-44d3-986c-2b551f49617b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_SlashHit"
+parentInstanceId = "6c2d3aa2-70fe-4bf4-a90e-6923a2e41367"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.1
+maxParticles = 2
+shape = 0
+sizeStart = 1.1
+sizeEnd = 0.1
+sizeCurvePower = 2.2
+lifetime = 0.07
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlowCore_Additive.mat"
+sortMode = 0
+renderPriority = 80
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Sparks"
+instanceId = "79db3d83-bffe-43b4-9b02-1280785eb375"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_SlashHit"
+parentInstanceId = "6c2d3aa2-70fe-4bf4-a90e-6923a2e41367"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 火花は熱色のまま (12.2)。Spark Power (速さ) は SlashHitVfxComponent が書く。
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.3
+maxParticles = 30
+shape = 1
+sphereRadius = 0.08
+sizeStart = 0.13
+sizeEnd = 0.02
+lifetime = 0.26
+lifetimeRandom = 0.45
+velocitySpread = 10.0
+velocityDamping = 2.8
+gravity = [0.0, -14.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_SparkStreak_Additive.mat"
+renderMode = 1
+stretchedVelocityScale = 0.1
+stretchedLengthScale = 2.0
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.02
+collisionBounciness = 0.35
+collisionDamping = 0.55
+renderPriority = 60
+simulationMode = 0
+colorVariation = 0.12
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.96, 0.85, 1.0], [0.3, 1.0, 0.7, 0.28, 1.0], [1.0, 0.65, 0.16, 0.02, 0.0]]
+bursts = [{ time = 0.0, count = 14, cycles = 1, interval = 0.01, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Glint"
+instanceId = "3927b7f3-53d0-4701-ae36-968ea7ada3ad"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_SlashHit"
+parentInstanceId = "6c2d3aa2-70fe-4bf4-a90e-6923a2e41367"
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+loop = false
+emitRate = 0.0
+duration = 0.25
+maxParticles = 4
+shape = 1
+sphereRadius = 0.25
+sizeStart = 0.45
+sizeEnd = 0.0
+sizeCurvePower = 0.8
+lifetime = 0.18
+lifetimeRandom = 0.3
+velocitySpread = 0.6
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Effects/FX_GlintStar_Additive.mat"
+sortMode = 0
+angularVelocityMin = -0.5
+angularVelocityMax = 0.5
+renderPriority = 78
+colorStart = [1.0, 1.0, 1.0, 1.0]
+colorEnd = [1.0, 1.0, 1.0, 0.0]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+[[gameobjects]]
+name = "Hit Light"
+instanceId = "921544ba-537d-46b1-8d1e-09c36357a09b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_BLD_SlashHit"
+parentInstanceId = "6c2d3aa2-70fe-4bf4-a90e-6923a2e41367"
+
+[gameobjects.transform]
+position = [0.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+# 極の色で当たった所を照らす。«当たった対象の輪郭が極の色で一瞬光る» の実体。0.1 秒。
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 1.0, 1.0]
+intensity = 6.0
+enabled = true
+range = 4.5
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.1
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 1.0], [0.4, 0.4], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

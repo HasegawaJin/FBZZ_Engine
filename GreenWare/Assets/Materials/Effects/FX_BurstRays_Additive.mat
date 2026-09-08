@@ -1,0 +1,21 @@
+# FBZZ Engine
+# FX_BurstRays_Additive.mat
+# 素材: Assets/VFX/Textures/T_Burst_Rays.png (512² / 放射の光条)
+# Just 弾きの «読み切った»。1 枚を大きく置いて 0.15 秒で消す。2 枚以上重ねると白く抜ける。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:0eb1af6642774272b3ee37dab1b94a50"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.0

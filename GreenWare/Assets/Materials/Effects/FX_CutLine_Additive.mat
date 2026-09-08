@@ -1,0 +1,23 @@
+# FBZZ Engine
+# FX_CutLine_Additive.mat
+# 素材: Assets/VFX/Textures/T_Cut_Line.png (512x64 / X 方向シームレス)
+# 溶断の縫い目。脚がもげた切断面に残る赤熱した線。Stretched Billboard で刃の向きへ寝かせる。
+version = 1
+shader = ""
+blend_mode = "Additive"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:f33357a61cce4698b1a289ee8c06cdef"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+emissive_scale = 2.6
+soft_particles = true
+soft_particle_fade_distance = 0.2
