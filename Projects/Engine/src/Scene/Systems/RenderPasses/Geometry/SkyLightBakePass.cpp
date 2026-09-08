@@ -47,6 +47,12 @@ void ExecuteSkyLightBakePass(RenderPassContext& ctx)
     // 成否に関わらずフラグを消費する。失敗フレームを毎回リトライして固まらないようにし、
     // 次に SkyCapture が dirty を検知したときに再度焼き直す。
     env->needsConvolution = false;
+    // まだ一度も焼けていないのに失敗したら、次フレームの SkyCapture を強制 dirty にする。
+    // WHY: ConsumeDirty は SkyCapture の時点で署名を進めてしまうので、ここで何もしないと
+    //     太陽が 1.5° 動くか大気設定を触るまで再試行されず、その間 IBL は ambient 落ちのまま
+    //     (真っ暗な画面 + 無言)。既に焼けた組があるなら古い方を使い続ける方がましなので触らない。
+    if (!ok && !env->HasBakedTextures())
+        env->MarkDirty();
 }
 
 } // namespace fbzz::scene

@@ -7,6 +7,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <algorithm>
 #include <unordered_set>
 
 namespace fbzz::scene {
@@ -110,6 +111,24 @@ void RenderPipeline::SetGpuProfilerHooks(std::function<void(std::string_view)> b
     m_gpuEnd   = std::move(end);
 }
 
+renderer::ResourceHandle<renderer::RenderTargetTag>
+RenderPipeline::AcquirePooledRT(const renderer::RenderGraph::ResourceDesc& desc,
+                                renderer::ResourceManager& resources)
+{
+    const PhysicalRTKey key{ desc.kind, desc.width, desc.height, desc.format };
+    const auto found = std::find_if(m_freeRTs.begin(), m_freeRTs.end(),
+        [&key](const FreeRT& free) { return free.key == key; });
+    if (found != m_freeRTs.end()) {
+        const auto handle = found->handle;
+        m_freeRTs.erase(found);
+        return handle;
+    }
+
+    const uint32_t w = desc.width  > 0 ? desc.width  : 1;
+    const uint32_t h = desc.height > 0 ? desc.height : 1;
+    return resources.CreateRenderTarget(w, h, 1);
+}
+
 void RenderPipeline::RebuildTransientPool(
     const renderer::RenderGraph::ExecutionReport& report,
     renderer::ResourceManager& resources)
@@ -117,8 +136,18 @@ void RenderPipeline::RebuildTransientPool(
     // WHAT: ライフタイム解析で同一 aliasGroup に割り当てられたトランジェントリソースは
     //       1 つの物理 RT を共有できる。グループごとに RT を 1 つ確保し、
     //       m_nameToAliasGroup でリソース名から高速にハンドルを引けるようにする。
-    for (auto& [group, pr] : m_aliasGroupPool)
-        resources.Release(pr.handle);
+    //
+    // WHY 解放せず空き枠へ戻すか: 再構築の引き金であるパス構成の変化は、設定の変更
+    //     だけでなく «その内容がフレームごとに変わるパス» でも起きる。輪郭のマスク申告
+    //     (objectMaskEnabled) やスクリプトが積むユーザーパス、カスタムポストの on/off は
+    //     ゲーム中に何度も往復し、そのたびに全画面 RT を «全部捨てて全部作り直す» と
+    //     数フレームおきに描画がつっかえる。寸法の同じ実体はそのまま貸し直す。
+    for (auto& [group, pooled] : m_aliasGroupPool) {
+        (void)group;
+        if (!pooled.handle.IsValid()) continue;
+        const auto& d = pooled.desc;
+        m_freeRTs.push_back({ PhysicalRTKey{ d.kind, d.width, d.height, d.format }, pooled.handle, 0 });
+    }
     m_aliasGroupPool.clear();
     m_nameToAliasGroup.clear();
 
@@ -133,13 +162,22 @@ void RenderPipeline::RebuildTransientPool(
         // このグループ用に物理 RT を 1 つ確保する。
         // WHY: aliasGroup が同じリソースはライフタイムが重ならないため、
         //      同一の物理 RT バッファを順番に使い回してもアクセス競合が起きない。
-        const auto& desc = lt.desc;
-        const uint32_t w = desc.width  > 0 ? desc.width  : 1;
-        const uint32_t h = desc.height > 0 ? desc.height : 1;
         PooledRT pr;
-        pr.desc   = desc;
-        pr.handle = resources.CreateRenderTarget(w, h, 1);
+        pr.desc   = lt.desc;
+        pr.handle = AcquirePooledRT(lt.desc, resources);
         m_aliasGroupPool.emplace(lt.aliasGroup, std::move(pr));
+    }
+
+    // 貸し出されないまま再構築をまたいだ枠は、VRAM を握り続けないよう返す。
+    // 往復するパス構成を吸収するのが目的なので、猶予は数回で足りる。
+    constexpr uint32_t FREE_RT_IDLE_REBUILD_LIMIT = 4;
+    for (auto it = m_freeRTs.begin(); it != m_freeRTs.end(); ) {
+        if (++it->idleRebuilds > FREE_RT_IDLE_REBUILD_LIMIT) {
+            resources.Release(it->handle);
+            it = m_freeRTs.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     m_poolDirty = false;
@@ -155,6 +193,11 @@ void RenderPipeline::ReleaseTransientPool(renderer::ResourceManager& resources)
     }
     m_aliasGroupPool.clear();
     m_nameToAliasGroup.clear();
+    // 空き枠は Viewport の寿命に属する。寸法が変わる境界なので貸し直せる相手は居ない。
+    for (auto& free : m_freeRTs)
+        if (free.handle.IsValid())
+            resources.Release(free.handle);
+    m_freeRTs.clear();
     m_poolDirty = true;
 }
 

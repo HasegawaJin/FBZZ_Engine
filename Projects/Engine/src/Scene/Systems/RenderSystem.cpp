@@ -182,6 +182,10 @@ struct ViewRenderTargets {
     renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    // Volumetric CS 出力
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;         // TAA ping-pong A
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;         // TAA ping-pong B
+    // TAA の ping-pong の向き。RenderPassHandles はフレームごとに作り直すので、
+    // ここに持たないと毎フレーム false から始まり «A を読んで B に書く» しか起きない。
+    // A は一度も書かれず、履歴は最初の中身のまま固定される。
+    bool taaFlip = false;
     renderer::ResourceHandle<renderer::TextureTag>        motionBlurResult;    // Motion Blur CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             // GTAO RAW CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            // GTAO Blur CS 出力
@@ -190,6 +194,15 @@ struct ViewRenderTargets {
     // static で共有すると SceneView と GameView が互いのカメラ行列を引き、
     // MotionBlur / TAA の再投影が常に壊れる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
+    // ---- 自動露出 (ビュー単位・解像度非依存) ----
+    // exposureResult は「順応済みの平均輝度」でフレームをまたぐ状態。static で共有すると
+    // SceneView と GameView が交互に順応を進め、互いの明るさへ引きずられて露出が振れる。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> exposureHistogram;
+    renderer::ResourceHandle<renderer::StructuredBufferTag> exposureResult;
+    uint32_t exposureResetGeneration = 0;
+    // ---- 体積雲の作業 RT (ビュー単位・解像度依存) ----
+    renderer::SizedRenderTarget cloudRT;
+    renderer::SizedRenderTarget cloudDepthRT;
     // ---- フロクセル霧 (ビュー単位・解像度非依存) ----
     // グリッドは視錐台に貼り付くので、共有すると互いの履歴を上書きして霧が明滅する。
     // 寸法は設定値 (既定 160x90x64) で画面サイズと無関係なので、リサイズでは作り直さない。
@@ -269,7 +282,17 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     const uint32_t savedFroxelGrid[3] = { targets.froxelGrid[0], targets.froxelGrid[1],
                                           targets.froxelGrid[2] };
     auto savedFroxelState = targets.froxelState;
+    // 露出の順応も解像度非依存。リサイズで捨てると画面が一瞬白飛び / 黒潰れする。
+    auto savedExposureHistogram = targets.exposureHistogram;
+    auto savedExposureResult    = targets.exposureResult;
+    const uint32_t savedExposureGeneration = targets.exposureResetGeneration;
+    // 雲の作業 RT は解像度依存。`targets = {}` で握ったまま忘れると漏れるので先に返す。
+    targets.cloudRT.Release(resources);
+    targets.cloudDepthRT.Release(resources);
     targets = {};
+    targets.exposureHistogram       = savedExposureHistogram;
+    targets.exposureResult          = savedExposureResult;
+    targets.exposureResetGeneration = savedExposureGeneration;
     targets.froxelScatter        = savedFroxelA;
     targets.froxelScatterHistory = savedFroxelB;
     targets.froxelIntegrated     = savedFroxelInt;
@@ -782,18 +805,7 @@ void RenderSystem(Scene& scene,
     static auto clusterIndexBuffer = resources.CreateRWStructuredBuffer(
         nullptr, kClusterCount * kClusterStride, static_cast<uint32_t>(sizeof(uint32_t)));
 
-    // 自動露出。ヒストグラムは「読んだ後に自分でクリアする」設計なので初回だけ 0 が要る
-    // (DEFAULT ヒープの初期内容は未定義)。
-    static auto exposureHistogram = [&] {
-        const std::vector<uint32_t> zeros(kExposureHistogramBins, 0u);
-        return resources.CreateRWStructuredBuffer(
-            zeros.data(), kExposureHistogramBins, static_cast<uint32_t>(sizeof(uint32_t)));
-    }();
-    static auto exposureResult = [&] {
-        // 負値は「まだ順応していない」の印。CS 側が reset と同じ扱いで拾う。
-        const float initial = -1.0f;
-        return resources.CreateRWStructuredBuffer(&initial, 1, static_cast<uint32_t>(sizeof(float)));
-    }();
+    // 自動露出のバッファはビュー単位 (ViewRenderTargets) で確保する。シェーダーだけ共有。
     static auto exposureHistogramCS =
         resources.LoadShader("Assets/Shaders/PostProcess/Color/ExposureHistogram.cs.hlsl");
     static auto exposureAverageCS =
@@ -1191,6 +1203,19 @@ void RenderSystem(Scene& scene,
     if (!viewTargets.advancedGraphicsCB.IsValid())
         viewTargets.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
     auto& advancedGraphicsCB = viewTargets.advancedGraphicsCB;
+    // 自動露出。ヒストグラムは「読んだ後に自分でクリアする」設計なので初回だけ 0 が要る
+    // (DEFAULT ヒープの初期内容は未定義)。
+    if (!viewTargets.exposureHistogram.IsValid()) {
+        const std::vector<uint32_t> zeros(kExposureHistogramBins, 0u);
+        viewTargets.exposureHistogram = resources.CreateRWStructuredBuffer(
+            zeros.data(), kExposureHistogramBins, static_cast<uint32_t>(sizeof(uint32_t)));
+    }
+    if (!viewTargets.exposureResult.IsValid()) {
+        // 負値は「まだ順応していない」の印。CS 側が reset と同じ扱いで拾う。
+        const float initial = -1.0f;
+        viewTargets.exposureResult =
+            resources.CreateRWStructuredBuffer(&initial, 1, static_cast<uint32_t>(sizeof(float)));
+    }
 
     // 出力先の実寸。UI と最終合成はこの寸法で描く (描画スケールの影響を受けない)。
     uint32_t nativeW = 0;
@@ -2084,8 +2109,11 @@ void RenderSystem(Scene& scene,
     passHandles.cookieBlitCB      = cookieBlitCB;
     passHandles.cookieBlitPSO     = postprocPSO;
 
-    passHandles.exposureHistogram   = exposureHistogram;
-    passHandles.exposureResult      = exposureResult;
+    passHandles.exposureHistogram   = viewTargets.exposureHistogram;
+    passHandles.exposureResult      = viewTargets.exposureResult;
+    passHandles.exposureResetGeneration = viewTargets.exposureResetGeneration;
+    passHandles.cloudRT             = &viewTargets.cloudRT;
+    passHandles.cloudDepthRT        = &viewTargets.cloudDepthRT;
     passHandles.exposureHistogramCS = exposureHistogramCS;
     passHandles.exposureAverageCS   = exposureAverageCS;
     passHandles.exposureCB          = exposureCB;
@@ -2240,6 +2268,7 @@ void RenderSystem(Scene& scene,
     // TAA (ping-pong)
     passHandles.taaHistoryA          = taaHistoryA;
     passHandles.taaHistoryB          = taaHistoryB;
+    passHandles.taaFlip              = viewTargets.taaFlip;
     passHandles.taaShader            = taaShader;
     passHandles.taaPSO               = taaPSO;
     // Motion Blur
@@ -2305,6 +2334,15 @@ void RenderSystem(Scene& scene,
     }
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
     passCtx.objectMaskEnabled      = objectMaskEnabled;
+    // 登録条件 (Forward: forwardGBufferPrepass / Deferred: useGBufferOpaquePipeline) と
+    // ExecuteSSRPass / ExecuteVolumetricLightPass の早期 return を合わせた «本当に走るか»。
+    passCtx.ssrPassActive =
+        rs.ssr.enabled && screenSpaceReady &&
+        ssrShader.IsValid() && ssrResult.IsValid() && gbufferRT.IsValid();
+    passCtx.volumetricLightPassActive =
+        rs.volumetricLight.enabled &&
+        volumetricShader.IsValid() && volumetricResult.IsValid() &&
+        passHandles.shadowMapRT.IsValid();
     // UI 要素の矩形も 3D と同じ選択マスクへ乗せ、輪郭の描き方を 1 か所に保つ。
     // 寸法が nativeW/H なのは、UI がポストプロセス後の outputRT へ実寸で描かれ、
     // Canvas Scaler の解釈も出力実寸で決まるため (渡すのはクリップ空間の行列)。
@@ -3270,6 +3308,11 @@ void RenderSystem(Scene& scene,
     renderer.GpuProfEndFrame();
     assert(graphExecuted);
     (void)graphExecuted;
+    // パスが書き換えたフレームをまたぐ状態をビューへ戻す。
+    // TAA は反転させた向き (次フレームは «書いた方» を履歴として読む)、
+    // 自動露出は消費したリセット世代。
+    viewTargets.taaFlip                 = passHandles.taaFlip;
+    viewTargets.exposureResetGeneration = passHandles.exposureResetGeneration;
 
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::ScriptPostRender");

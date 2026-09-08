@@ -419,7 +419,15 @@ void ApplySubtree(GameObject& root, VFXComponent& vfx)
 // アクティブな VFXTimeScale を集計して Time::timeScale へ反映する。
 // WHY: 複数のヒットストップが重なることは普通にある。最も遅い要求を採用し、
 //      1 つも無い状態では必ず 1.0 へ戻す (書き込みが残って世界が止まる事故を防ぐ)。
-void ApplyVFXTimeScale(Scene& scene)
+//
+// 注意 (書き手はここだけではない): Time::timeScale はグローバルな 1 変数で、
+//   ゲーム側が独自の時間管理をスクリプトで持つこともある。その場合ここは
+//   Phase::LateScript ─ スクリプトより «後» ─ で走るので、同じフレームに
+//   スクリプトが書いた値を上書きする。VFXTimeScale と script 側の時間管理は
+//   どちらか一方に寄せること。
+//
+// @param ownsTimeScale 呼び出し側が持つ「前フレームに自分が書いたか」の記憶。
+void ApplyVFXTimeScale(Scene& scene, bool& ownsTimeScale)
 {
     float slowest = 1.0f;
     bool any = false;
@@ -433,13 +441,12 @@ void ApplyVFXTimeScale(Scene& scene)
     // VFX が書いた間だけ責任を持ち、要求が消えた最初のフレームで等速へ戻す。
     // WHY: 常時 1.0 を書き戻すと、デバッグ用のスロー再生など外部の timeScale 設定を
     //      毎フレーム踏み潰してしまう。自分が触ったときだけ後始末する。
-    static bool s_ownsTimeScale = false;
     if (any) {
         Time::timeScale = (std::max)(slowest, 0.0f);
-        s_ownsTimeScale = true;
-    } else if (s_ownsTimeScale) {
+        ownsTimeScale = true;
+    } else if (ownsTimeScale) {
         Time::timeScale = 1.0f;
-        s_ownsTimeScale = false;
+        ownsTimeScale = false;
     }
 }
 
@@ -475,7 +482,13 @@ void UpdateRoot(SystemContext& ctx, GameObject& owner, VFXComponent& vfx, bool n
     if (!vfx.initialized) {
         vfx.initialized = true;
         vfx.time = 0.0f;
-        vfx.playing = vfx.playOnAwake;
+        // WHY restartRequested を見るか: playOnAwake は «誰も指示しなかったときの既定» で、
+        //     Restart() は «鳴らせ» という明示の指示。初期化はこの実体を初めて見た
+        //     フレームまで遅れるので、生成した直後に Restart() を呼ぶ経路
+        //     (プールの枠を鳴らす形) では、指示より «後» にここが走って既定に潰される。
+        //     潰されると playing=false のまま time が 0 で止まり、開始位置に居る要素が
+        //     ずっと «窓の中» と判定される ─ 光がひとつ点きっぱなしで残る。
+        if (!vfx.restartRequested) vfx.playing = vfx.playOnAwake;
         ResetSubtree(owner);
     }
     if (vfx.restartRequested) {
@@ -524,7 +537,7 @@ OrderingHints VFXSystem::GetOrder() const
 void VFXSystem::Update(SystemContext& ctx)
 {
     // ヒットストップはゲーム実行時だけ。エディタプレビューで効かせるとエディタ全体が遅くなる。
-    if (ctx.simulating) ApplyVFXTimeScale(ctx.scene);
+    if (ctx.simulating) ApplyVFXTimeScale(ctx.scene, m_ownsTimeScale);
 
     // GetEntities は Scene 内部ストレージを指す span を返すため、ループ内で GameObject を
     // 生成/破棄すると無効化される。イテレーション前にコピーしてスナップショットを取る。

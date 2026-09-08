@@ -212,12 +212,17 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         ? h.motionBlurResult
         : resources.GetColorTexture(h.hdrRT, 0);
     compositeDC.textures[7] = resources.GetDepthTexture(h.hdrRT);
-    compositeDC.textures[10] = pp.bloom.enabled ? h.bloomFull : renderer::ResourceHandle<renderer::TextureTag>{};
+    // t10 / t19 / t20 は RenderGraph の外にある永続テクスチャなので、書き手のパスが
+    // 走らなかったフレームは前の中身が残る。«設定が有効» ではなく «今フレーム書かれた» で
+    // 束縛を決める。未束縛の SRV は 0 を返すので、シェーダー側は分岐なしで素通しになる。
+    const bool bloomWritten = pp.bloom.enabled
+        && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid();
+    compositeDC.textures[10] = bloomWritten ? h.bloomFull : renderer::ResourceHandle<renderer::TextureTag>{};
     // SSR 反射結果 (t19) — Composite.hlsl が ssrIntensity に基づいてブレンドする
-    if (rs.ssr.enabled && h.ssrResult.IsValid())
+    if (ctx.ssrPassActive && h.ssrResult.IsValid())
         compositeDC.textures[19] = h.ssrResult;
     // Volumetric Light 結果 (t20) — Composite.hlsl が volLightIntensity で加算する
-    if (rs.volumetricLight.enabled && h.volumetricResult.IsValid())
+    if (ctx.volumetricLightPassActive && h.volumetricResult.IsValid())
         compositeDC.textures[20] = h.volumetricResult;
     // Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。
     if (rs.lutColorGrading.enabled && h.proceduralColorLut.IsValid())

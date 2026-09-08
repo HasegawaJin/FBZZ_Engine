@@ -20,15 +20,19 @@
 namespace fbzz::scene {
 
 namespace {
-// 初回フレームだけ順応を飛ばして即座に合わせるためのフラグ。
+// リセット要求の世代。各ビューは handles.exposureResetGeneration にこの値を写し、
+// 食い違っているフレームで 1 度だけ順応を捨てて即座に合わせる。
 // WHY 必要か: 起動直後は「前フレームの露出」が存在しない。順応させると、
 //     暗い初期値から正しい露出まで数秒かけて明るくなる立ち上がりが毎回入る。
-bool s_needsReset = true;
+// WHY bool でないか: 順応の状態はビュー単位 (SceneView / GameView)。1 本の bool を
+//     最初に走ったビューが消費すると、もう片方はリセットされないまま古い順応を引きずる。
+//     ビュー側の初期値 0 は世代 1 と食い違うので、初回フレームは必ずリセットになる。
+uint32_t s_resetGeneration = 1u;
 } // namespace
 
 void RequestAutoExposureReset()
 {
-    s_needsReset = true;
+    ++s_resetGeneration;
 }
 
 void ExecuteAutoExposurePass(RenderPassContext& ctx)
@@ -41,7 +45,7 @@ void ExecuteAutoExposurePass(RenderPassContext& ctx)
     if (!ae.enabled) {
         // 無効な間は順応の状態を捨てる。次に有効化したとき、前回の値から
         // ゆっくり動き出すのではなく、その場の明るさへ即座に合う。
-        s_needsReset = true;
+        h.exposureResetGeneration = 0u;
         return;
     }
     if (!h.exposureHistogramCS.IsValid() || !h.exposureAverageCS.IsValid()
@@ -63,7 +67,7 @@ void ExecuteAutoExposurePass(RenderPassContext& ctx)
     data.compensation = ae.compensation;
     data.minEVClamp   = ae.minExposureEV;
     data.maxEVClamp   = (std::max)(ae.maxExposureEV, ae.minExposureEV);
-    data.reset        = s_needsReset ? 1u : 0u;
+    data.reset        = (h.exposureResetGeneration != s_resetGeneration) ? 1u : 0u;
     resources.Update(h.exposureCB, &data, sizeof(AutoExposureCB));
 
     // ---- 1. ヒストグラム ----
@@ -90,7 +94,7 @@ void ExecuteAutoExposurePass(RenderPassContext& ctx)
     average.dispatchZ          = 1;
     renderer.Dispatch(average, resources);
 
-    s_needsReset = false;
+    h.exposureResetGeneration = s_resetGeneration;
 }
 
 } // namespace fbzz::scene

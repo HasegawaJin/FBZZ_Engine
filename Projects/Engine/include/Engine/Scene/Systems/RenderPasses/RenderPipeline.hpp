@@ -109,6 +109,30 @@ private:
     std::unordered_map<std::string, int>     m_nameToAliasGroup;
     bool                                     m_poolDirty = true;
 
+    // どの物理 RT を貸し出せるかを決める鍵。RenderGraph::CanAlias と同じ 4 項目で揃える。
+    struct PhysicalRTKey {
+        renderer::RenderGraph::ResourceKind kind = renderer::RenderGraph::ResourceKind::Unknown;
+        uint32_t width  = 0;
+        uint32_t height = 0;
+        uint32_t format = 0;
+        bool operator==(const PhysicalRTKey&) const = default;
+    };
+
+    // aliasGroup から外れて貸し出し待ちになっている物理 RT。
+    // WHY 即座に返さないか: パス構成は «申告が 1 フレーム途切れた» 程度で揺れるため、
+    //     解放と再生成を往復すると、その 1 フレームだけ全画面 RT の作り直しが乗る。
+    struct FreeRT {
+        PhysicalRTKey                                       key;
+        renderer::ResourceHandle<renderer::RenderTargetTag> handle;
+        uint32_t                                            idleRebuilds = 0;
+    };
+    std::vector<FreeRT> m_freeRTs;
+
+    // 空き枠から寸法の合う RT を引き当て、無ければ新規に確保する。
+    renderer::ResourceHandle<renderer::RenderTargetTag>
+        AcquirePooledRT(const renderer::RenderGraph::ResourceDesc& desc,
+                        renderer::ResourceManager& resources);
+
     // 直前の Plan() 結果を使ってトランジェント RT プールを再構築する。
     // WHY: 毎フレーム呼ぶとアロケーションが走るため、m_poolDirty フラグで
     //      パイプライン構成変更時のみ再構築するように制御する。

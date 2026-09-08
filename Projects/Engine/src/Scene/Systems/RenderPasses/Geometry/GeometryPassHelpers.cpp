@@ -69,62 +69,29 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
     if (albedoReference.empty()) return;
 
     std::string texturePath;
-    std::string spriteName;
-    if (!asset::ParseSpriteReference(albedoReference, texturePath, spriteName)) return;
+    std::string spriteToken;
+    if (!asset::ParseSpriteReference(albedoReference, texturePath, spriteToken)) return;
 
-    struct CachedTransform {
-        std::filesystem::file_time_type metaWriteTime{};
-        float scaleX = 1.0f;
-        float scaleY = 1.0f;
-        float offsetX = 0.0f;
-        float offsetY = 0.0f;
-        bool resolved = false;
-    };
-    static std::unordered_map<std::string, CachedTransform> s_cache;
-
+    // 矩形の取り出しは ResolveSpriteReference が持つ (ID / 名前 / 暗黙 Single と
+    // .meta のキャッシュまで含めて 1 箇所)。ここは UV への合成だけを受け持つ。
     const std::string absoluteTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
-    const std::string metaPath = absoluteTexturePath + ".meta";
-    std::error_code ec;
-    const auto metaWriteTime = std::filesystem::last_write_time(metaPath, ec);
-    CachedTransform& transform = s_cache[std::string(albedoReference)];
-    if (!transform.resolved || transform.metaWriteTime != metaWriteTime) {
-        transform = {};
-        transform.metaWriteTime = metaWriteTime;
-        transform.resolved = true;
-        if (!ec) {
-            asset::TextureAsset textureAsset;
-            asset::TexDescSerializer serializer;
-            if (serializer.Load(metaPath, textureAsset)) {
-                asset::SpriteRect implicitSingle;
-                const asset::SpriteRect* sprite = asset::FindSprite(textureAsset.settings, spriteName);
-                if (sprite == nullptr
-                    && textureAsset.settings.type == asset::TextureType::Sprite
-                    && textureAsset.settings.spriteMode == asset::SpriteMode::Single) {
-                    implicitSingle.name = util::FileSystem::PathToUtf8(
-                        util::FileSystem::PathFromUtf8(absoluteTexturePath).stem());
-                    if (implicitSingle.name == spriteName) sprite = &implicitSingle;
-                }
-                const auto textureHandle = resources.LoadTexture(absoluteTexturePath);
-                const renderer::ITexture* texture = resources.Get(textureHandle);
-                if (sprite != nullptr && texture != nullptr) {
-                    const float width = static_cast<float>(std::max<uint32_t>(1, texture->GetWidth()));
-                    const float height = static_cast<float>(std::max<uint32_t>(1, texture->GetHeight()));
-                    const float sourceSpriteWidth = sprite->width > 0
-                        ? static_cast<float>(sprite->width) : width;
-                    const float sourceSpriteHeight = sprite->height > 0
-                        ? static_cast<float>(sprite->height) : height;
-                    const float spriteX = std::clamp(static_cast<float>(sprite->x), 0.0f, width);
-                    const float spriteY = std::clamp(static_cast<float>(sprite->y), 0.0f, height);
-                    const float spriteWidth = std::clamp(sourceSpriteWidth, 0.0f, width - spriteX);
-                    const float spriteHeight = std::clamp(sourceSpriteHeight, 0.0f, height - spriteY);
-                    transform.scaleX = spriteWidth / width;
-                    transform.scaleY = spriteHeight / height;
-                    transform.offsetX = spriteX / width;
-                    transform.offsetY = spriteY / height;
-                }
-            }
-        }
-    }
+    const renderer::ITexture* texture = resources.Get(resources.LoadTexture(absoluteTexturePath));
+    if (texture == nullptr) return;
+
+    const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
+        albedoReference,
+        static_cast<float>(std::max<uint32_t>(1, texture->GetWidth())),
+        static_cast<float>(std::max<uint32_t>(1, texture->GetHeight())));
+    if (!resolved.resolved) return;
+
+    // 矩形が画像からはみ出していても UV は画像内へ収める。
+    // はみ出した分を素通しすると Clamp サンプリングで端の 1 列が伸びる。
+    struct { float scaleX, scaleY, offsetX, offsetY; } transform{
+        std::clamp(resolved.uvMax.x - resolved.uvMin.x, 0.0f, 1.0f),
+        std::clamp(resolved.uvMax.y - resolved.uvMin.y, 0.0f, 1.0f),
+        std::clamp(resolved.uvMin.x, 0.0f, 1.0f),
+        std::clamp(resolved.uvMin.y, 0.0f, 1.0f),
+    };
 
     const auto* tilingVar = desc.FindVar("uvTiling");
     const auto* offsetVar = desc.FindVar("uvOffset");

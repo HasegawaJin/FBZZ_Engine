@@ -843,11 +843,23 @@ struct RenderPassHandles {
     // ---- 自動露出 (眼の順応) ----
     // exposureHistogram は毎フレーム作り直す作業領域、exposureResult は
     // 「順応済みの平均輝度」1 要素でフレームをまたいで生き続ける状態。
+    // どちらもビュー単位 (SceneView と GameView で順応の状態を共有すると、互いの明るさへ
+    // 引きずられて露出が振れる)。正本は RenderSystem の ViewRenderTargets。
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureHistogram;
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureResult;
+    // 最後に順応をリセットした世代。RequestAutoExposureReset() が全体の世代を進め、
+    // 各ビューは自分の値と食い違ったフレームで 1 度だけリセットする。0 = まだ一度も走っていない。
+    // この構造体はフレームごとに作り直されるので、正本は ViewRenderTargets が持つ。
+    uint32_t exposureResetGeneration = 0;
     renderer::ResourceHandle<renderer::ShaderTag>           exposureHistogramCS;
     renderer::ResourceHandle<renderer::ShaderTag>           exposureAverageCS;
     renderer::ResourceHandle<renderer::ConstantBufferTag>   exposureCB;
+
+    // ---- 体積雲の作業 RT (ビュー単位) ----
+    // 雲はビューの解像度で描くので、static で共有すると SceneView と GameView が
+    // 1 フレーム内に寸法を取り合い、毎フレーム作り直しになる。所有は ViewRenderTargets。
+    renderer::SizedRenderTarget* cloudRT      = nullptr;
+    renderer::SizedRenderTarget* cloudDepthRT = nullptr;
 
     // ---- フロクセル ボリューメトリック フォグ ----
     // froxelScatter は散乱と消散の生値、froxelIntegrated は Z 積分後の
@@ -978,7 +990,9 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;     // ping-pong バッファ B
     renderer::ResourceHandle<renderer::ShaderTag>         taaShader;       // VS+PS
     renderer::ResourceHandle<renderer::PipelineStateTag>  taaPSO;
-    bool                                                  taaFlip = false; // A→B→A... の ping-pong フラグ
+    // A→B→A... の ping-pong フラグ。この構造体はフレームごとに作り直されるので、
+    // 正本はビュー側 (RenderSystem の ViewRenderTargets) が持ち、ここへは複写して渡す。
+    bool                                                  taaFlip = false;
 
     // Motion Blur
     renderer::ResourceHandle<renderer::TextureTag>        motionBlurResult;
@@ -1113,6 +1127,13 @@ struct RenderPassContext {
     bool selectionOutlineEnabled = false;
     // 今フレームに 1 件でも生きた輪郭要求があるか (RenderSettings::objectMaskRequests)。
     bool objectMaskEnabled = false;
+    // 今フレーム SSR / VolumetricLight のパスが実際に走るか。
+    // 出力先 (ssrResult / volumetricResult) は RenderGraph の外にある永続テクスチャで、
+    // 設定が有効でもパスが登録されない / 早期 return する経路がある (GBuffer 無し、Unlit、
+    // シェーダー未ロード)。設定だけを見て Composite が読むと、最後に書かれた絵が
+    // そのまま毎フレーム乗り続ける。
+    bool ssrPassActive = false;
+    bool volumetricLightPassActive = false;
     // 選択マスクへ UI 要素の矩形を追記する。UISystemContext を握っているのは
     // Viewport ごとの呼び出し元なので、パス側は「入っていれば呼ぶ」だけにする。
     std::function<void()> appendUISelectionMask;
