@@ -68,6 +68,31 @@ struct UISettings {
     std::string defaultFontPath = "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
 };
 
+// カーソルの «絵» だけを持つ設定。拘束と表示はここには置かない。
+//
+// WHY 拘束モードを設定から外したか (2026-09-06): 以前はここが «起動時の初期値» を
+//     持っていたが、実行中はスクリプトが正本という二重構造になっていた。同じ 1 つの値を
+//     «初期値» と «今の要求» で共有していたため、Play 中に設定を触るとスクリプトの
+//     要求が黙って消える。カーソルを取るかどうかは画面ごとに変わるゲームの都合で、
+//     プロジェクト全体の設定として持てるものではない。
+//     残したのは «どの絵を使うか» — こちらは差し替え可能なプロジェクトの資産であり、
+//     スクリプトは種類 (CursorShape) だけを指せばよくなる。
+struct CursorAppearance {
+    struct ShapeImage {
+        std::string path;              // プロジェクトルートからの相対パス。空なら OS の既定矢印
+        float       hotspotX = 0.0f;   // 画像左上から «実際に指す点» までの画素
+        float       hotspotY = 0.0f;
+    };
+
+    // OS カーソルの絵を差し替えるか。false なら常に既定の矢印を使う。
+    bool hardwareCursor = true;
+    std::array<ShapeImage, core::kCursorShapeCount> shapes{};
+
+    // 画像を読み込んで OS へ適用する。projectRoot は絶対パス。
+    // Play 開始時と Standalone の起動時に 1 回だけ呼ぶ。
+    void Apply(const std::string& projectRoot) const;
+};
+
 struct ProjectMetadataSettings {
     std::string name;
     std::string defaultScene = "Assets/Scenes/Main.scene";
@@ -105,11 +130,7 @@ struct ProjectSettings {
     ScreenSettings               screen;
     AppSettings                  app;
     WindowSettings               window;
-    // ゲーム開始時のカーソル状態。Standalone は起動時、Editor は Play 開始時に適用する。
-    // WHY Editor の Play Focus Mode と分けるか: Focus Mode は «ウィンドウの並べ方» の話で、
-    //     カーソルを取るかどうかはゲームの作りで決まる。同じ knob に載せると、
-    //     ゲーム内カーソルを持つ作品が Focused を選べなくなる。
-    core::CursorPolicy           cursor;
+    CursorAppearance             cursor;   // カーソルの絵だけ。拘束と表示はスクリプトが持つ
 
     static ProjectSettings Default();
     bool Load(const std::string& path);
