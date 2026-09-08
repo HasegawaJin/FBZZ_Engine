@@ -16,6 +16,7 @@
 #include <Scripts/Player/PlayerControllerComponent.hpp>
 #include <Scripts/Utils/GlowMaterial.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
+#include <Scripts/Utils/WeaponSockets.hpp>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -36,25 +37,25 @@ public:
     // PlayerComponent が必須 PlayerTuning を注入する。HP 値をこの Script に複製しない。
     fbzz::Asset<PlayerTuning> tuning{};
 
-    FBZZ_GROUP("Feedback")
+    FBZZ_GROUP("手応え")
     FBZZ_FIELD_AUDIO(sfxHurt, "", "SFX Hurt")
-    FBZZ_FIELD_AUDIO(sfxDeath, "", "SFX Death")
+    FBZZ_FIELD_AUDIO(sfxDeath, "", "撃破の効果音")
     // 被弾時の揺れ・振動・画面効果は ImpactFeedbackManagerComponent の Player Hurt が持つ。
     // 12 章の「強さは 1 箇所で持つ」方針を、被弾以外の出来事も含めた形へ広げたもの。
 
     // 無敵の «見せ方»。被弾直後の 0.6 秒 (PlayerTuning の hitInvulnerable) に掛かる。
     FBZZ_GROUP("Invulnerable Flash")
-    FBZZ_FIELD(bool, flashOnInvulnerable, true, "Flash")
+    FBZZ_FIELD(bool, flashOnInvulnerable, true, "閃光")
     FBZZ_FIELD_RANGE(float, flashHz, 9.0f, "Hz", 0.0f, 30.0f)
     FBZZ_TOOLTIP("明滅の速さ。遅いと «光っている» に見え、速すぎるとちらつく")
     FBZZ_FIELD_COLOR(flashColor, (Vector4{ 1.00f, 0.42f, 0.38f, 1.0f }), "Color")
     FBZZ_TOOLTIP("被弾の赤。極の赤 (＋) と紛れないよう、彩度を落とした肌色寄りにしてある")
-    FBZZ_FIELD_RANGE(float, flashStrength, 3.2f, "Strength", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, flashStrength, 3.2f, "強度", 0.0f, 20.0f)
     FBZZ_TOOLTIP("自発光の強さ。ブルームのしきい値 (4.0) より少し下 ─ "
                  "越えると画面が滲んで «攻撃を受けている» に見える")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "Health")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "HP")
     FBZZ_FIELD_READ_ONLY(int, debugFlashParts, 0, "Flash Parts")
 
     [[nodiscard]] int   Current() const { return m_health; }
@@ -135,9 +136,20 @@ inline void PlayerHealthComponent::OnStart()
 
     // 明滅させる先は «体を描いているもの» 全部。武器も含めるのは、
     // 手だけ光らないと «剣は別のもの» に見えるため。
+    //
+    // WHY 刀を «名前で» 足すか (2026-09-06 に塞いだ穴):
+    //   刀は Player の子ではなく、SocketAttachment で手のボーンへ追従するルート直下の
+    //   実体になっている (WeaponRigComponent の «WHY 親子を差し替えないか» を参照)。
+    //   自分の部分木を辿るだけでは 1 本も入らないので、上のコメントが言っている
+    //   «武器も含める» が実際には起きていなかった ─ 被弾すると体だけが赤く明滅して、
+    //   握っている 2 本の刀だけが素のまま残る。
     m_flash.clear();
     m_flashing = false;
     if (GameObject* self = scene.Self()) CollectFlashTargets(*self);
+    const HandSide hands[2] = { HandSide::Right, HandSide::Left };
+    for (const HandSide hand : hands)
+        if (GameObject* sword = scene.Find(SwordObjectName(hand)))
+            CollectFlashTargets(*sword);
     debugFlashParts = static_cast<int>(m_flash.size());
 }
 

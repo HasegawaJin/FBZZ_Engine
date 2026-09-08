@@ -8,7 +8,7 @@
 /// WHY 1 ファイルに集めるか:
 /// ソケット名は Blender (エクスポート) と エンジン (scene.Find) の両方に現れる文字列で、
 /// しかも片方だけ直しても *コンパイルは通る*。壊れ方が「実行して銃が原点に出るまで
-/// 気付かない」種類なので、リテラルを散らしてはいけない。PolarityTypes.hpp が配色を
+/// 気付かない」種類なので、リテラルを散らしてはいけない。BladeColors.hpp が配色を
 /// 1 箇所に閉じ込めているのと同じ理由でここへ集約する。
 ///
 /// WHY 旧名も持つか:
@@ -18,7 +18,7 @@
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <string_view>
 
 namespace sandbox {
@@ -113,11 +113,12 @@ inline constexpr float kKatanaSheatheDuration  = 40.0f / 30.0f; // Katana_Sheath
 //   データが左手として通ってしまう。どちらでもない値は必ず未指定として扱いたい。
 enum class HandSide : int { Left = 2, Right = 1 };
 
-// 11 章の操作表: 右入力 = 右銃 (＋) / 左入力 = 左銃 (−)。
-// この対応は操作の直感性そのものなので、極性から手を引くのは 1 箇所に閉じる。
-[[nodiscard]] inline HandSide HandOf(Polarity polarity)
+// 右刀は右手、左刀は左手。BladeSide::None は «どちらでもない» を表す値なので、
+// 手として引かれたら左手へ落とす (未指定を右手にすると、値を入れ忘れた側が
+// 利き手として通ってしまう)。
+[[nodiscard]] inline HandSide HandOf(BladeSide side)
 {
-    return polarity == Polarity::Plus ? HandSide::Right : HandSide::Left;
+    return side == BladeSide::Right ? HandSide::Right : HandSide::Left;
 }
 
 [[nodiscard]] inline const char* HandSocketName(HandSide hand)

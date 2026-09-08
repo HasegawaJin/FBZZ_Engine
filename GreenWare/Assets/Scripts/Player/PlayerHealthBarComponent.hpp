@@ -77,8 +77,8 @@ public:
     //     気付いた時には死んでいる。危険域だけ動きを足して視線を呼ぶ。
     FBZZ_FIELD_RANGE(float, lowHealthThreshold, 0.35f, "Threshold", 0.0f, 1.0f)
     FBZZ_TOOLTIP("この残量を下回ると点滅を始める。0 で点滅しない")
-    FBZZ_FIELD_RANGE(float, lowHealthPulseDepth, 0.28f, "Pulse Depth", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, lowHealthPulseHz, 2.6f, "Pulse Hz", 0.0f, 12.0f)
+    FBZZ_FIELD_RANGE(float, lowHealthPulseDepth, 0.28f, "脈動の深さ", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, lowHealthPulseHz, 2.6f, "脈動の周波数 [Hz]", 0.0f, 12.0f)
 
     void OnStart() override;
     void OnLateUpdate() override;

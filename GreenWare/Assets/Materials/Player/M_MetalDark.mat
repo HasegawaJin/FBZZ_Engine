@@ -1,0 +1,29 @@
+# GreenWare
+# M_MetalDark.mat
+# プレイヤーと刀の骨格・関節。FBX から取り込んだ同名の材質を差し替えるための実体。
+#
+# WHY Library/Baked を直さないか:
+#   あれは生成物のキャッシュで、再インポートで作り直される。しかも同じ材質が
+#   FBX ごとに別コピーを持つ (M_MetalDark は 13 か所にあった) ので、直す場所も
+#   1 つでは済まない。参照する側 (.scene) をこちらへ向けるのが唯一残る形。
+#
+# WHY albedo を取り込み値 (0.058) から持ち上げるか:
+#   金属では albedo が拡散色ではなく反射色 (F0) として使われる。取り込み値のまま
+#   metallic だけ 1 にすると、拡散も反射もほぼ 0 の «真っ黒な穴» になる。
+#   暗い鉄でも F0 は 0.15〜0.25 あたりで、そこまで上げて初めて «暗いが光る金属» になる。
+version = 1
+name = 'M_MetalDark'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.17, 0.18, 0.20, 1.0 ]
+metallic = 1.0
+roughness = 0.30
+# 削り目のある金属。ハイライトが 1 方向へ伸びて «挽いた鉄» に見える。
+anisotropy = 0.35
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]

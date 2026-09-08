@@ -68,9 +68,28 @@ public:
                  "切ると、握った手の形で何も持っていない絵になる")
 
     FBZZ_GROUP("Draw / Sheathe Animation")
-    // 空 = Base Layer。抜刀は全身のクリップなので、既定では Base に流す。
-    FBZZ_FIELD(std::string, weaponLayerName, "", "Katana Layer")
-    FBZZ_TOOLTIP("抜刀 / 納刀を流すレイヤー。空なら Base Layer の Trigger で遷移する")
+    // 抜刀 / 納刀は上半身だけに流す (2026-09-04)。Base に流すと走りながら抜いた瞬間に
+    // 脚が抜刀クリップの立ち姿へ切り替わり、走りが 1 秒止まる。斬撃と同じ Override
+    // レイヤー (Attack = Chest 以下) へ Slot で差し込めば、脚はロコモーションのまま。
+    // レイヤーの重みは BladeComponent が Slot の重みから毎フレーム流している。
+    //
+    // WHY 専用の «UpperBody» レイヤーを増やさないか: Attack のマスク M_Katana_Slash と
+    //     M_UpperBody は骨の集合が同一 (どちらも Chest 以下を重み 1、それ以外は 0)。
+    //     もう 1 枚重ねても被さる骨は変わらず、重みを毎フレーム流す口だけが増える。
+    FBZZ_FIELD(std::string, weaponLayerName, "Attack", "Katana Layer")
+    FBZZ_TOOLTIP("抜刀 / 納刀を Slot で流す Override レイヤー (上半身 = Chest 以下)。"
+                 "空にすると Base Layer の Trigger で全身クリップへ遷移する (旧挙動) ─ "
+                 "走りながら抜くと脚が止まるので、通常は空にしないこと")
+    FBZZ_FIELD_FILE(drawClipFile,
+        "guid:f95e9fb9af1aadd78aa62a353427cf7d|Library/Baked/9873c746d0c7f993161455bdcad44fd2/anims/Katana_Draw.anim",
+        "Draw Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, drawClipName, "Katana_Draw", "Draw Clip Name")
+    FBZZ_FIELD_FILE(sheatheClipFile,
+        "guid:0f86f25d3e776da5040d7badc8568677|Library/Baked/bf25e66cf0b7067fb10270753895d369/anims/Katana_Sheathe.anim",
+        "Sheathe Clip", ".anim,.fbx")
+    FBZZ_FIELD(std::string, sheatheClipName, "Katana_Sheathe", "Sheathe Clip Name")
+    FBZZ_FIELD_RANGE(float, slotFadeIn,  0.08f, "Slot Fade In",  0.0f, 0.5f)
+    FBZZ_FIELD_RANGE(float, slotFadeOut, 0.18f, "Slot Fade Out", 0.0f, 0.5f)
     FBZZ_FIELD(std::string, drawTriggerName,    "Draw",    "Draw Trigger")
     FBZZ_FIELD(std::string, sheatheTriggerName, "Sheathe", "Sheathe Trigger")
     FBZZ_FIELD(std::string, drawStateName,    "KatanaDraw",    "Draw State")
@@ -89,7 +108,7 @@ public:
     FBZZ_FIELD_RANGE(float, drawDuration,    kKatanaDrawDuration,    "Draw Duration",    0.05f, 3.0f)
     FBZZ_FIELD_RANGE(float, sheatheDuration, kKatanaSheatheDuration, "Sheathe Duration", 0.05f, 3.0f)
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD(bool, drawSocketGizmos, false, "Draw Socket Gizmos")
 
     // 刀を手に持っているか。斬撃の可否と UI がこれを見る。
@@ -253,10 +272,20 @@ inline void WeaponRigComponent::StartAction(bool draw)
     //   クリップが終わって別ステートへ抜けた次のフレームにもう一度発火する。
     //   Base Layer は Trigger だけ (クロスフェードが要る)、専用レイヤーを指定された
     //   ときはステート直指定だけ、と入口を 1 本に保つ。
-    if (weaponLayerName.empty())
+    if (weaponLayerName.empty()) {
         animator.SetTrigger(draw ? drawTriggerName : sheatheTriggerName);
-    else
-        animator.PlayLayerState(weaponLayerName, draw ? drawStateName : sheatheStateName);
+    } else {
+        // 上半身だけ。Slot なので Attack レイヤーにステートを足さなくてよい。
+        // WHY 抜刀 / 納刀の付け替え時刻を変えないか: 時刻はクリップ固有の事実で、
+        //     どのレイヤーで流しても手が背中へ届く瞬間は同じ。
+        const std::string& file = draw ? drawClipFile : sheatheClipFile;
+        const std::string& clip = draw ? drawClipName : sheatheClipName;
+        if (!file.empty())
+            animator.PlaySlot(weaponLayerName, file, clip, slotFadeIn, slotFadeOut, 1.0f,
+                              /*loop=*/false);
+        else
+            animator.PlayLayerState(weaponLayerName, draw ? drawStateName : sheatheStateName);
+    }
 }
 
 inline void WeaponRigComponent::OnUpdate()

@@ -10,12 +10,9 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
-#include <Scripts/Data/PolarityTuning.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
-#include <Scripts/Polarity/PolarityRingComponent.hpp>
-#include <Scripts/Polarity/PolarityTargetComponent.hpp>
 #include <Scripts/Utils/BodyBounds.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -32,28 +29,18 @@ class AimMarkerComponent : public Script {
     FBZZ_SCRIPT(AimMarkerComponent)
 
 public:
-    // PlayerComponent が注入する。反発半径をここへ複製しない。
-    fbzz::Asset<PolarityTuning> tuning{};
-    
-    FBZZ_FIELD(bool, showRepulsionRing, true, "Show Ring")
-    FBZZ_TOOLTIP("狙っている相手の足元に、同極が弾け合う距離を地面へ描く。"
-                 "見た目は PolarityRingComponent と DecalPolarityRing.hlsl が持つ")
-
-    FBZZ_GROUP("Layout")
+    FBZZ_GROUP("配置")
     FBZZ_FIELD_RANGE(float, padding, 0.25f, "Padding", 0.0f, 3.0f)
     FBZZ_TOOLTIP("体の外周から枠までのワールド距離。体にぴったり付けると輪郭に紛れる")
     FBZZ_FIELD_RANGE(float, cornerRatio, 0.34f, "Corner Ratio", 0.05f, 0.5f)
     FBZZ_TOOLTIP("角のブラケットが辺のどれだけを占めるか。0.5 で閉じた四角形になる")
-    FBZZ_FIELD_RANGE(float, lineWidth, 0.06f, "Line Width", 0.005f, 0.5f)
+    FBZZ_FIELD_RANGE(float, lineWidth, 0.06f, "線の幅", 0.005f, 0.5f)
     FBZZ_FIELD_RANGE(float, minSize, 0.6f, "Min Size", 0.1f, 5.0f)
     FBZZ_TOOLTIP("枠の最小の一辺。小さい敵でも読める大きさを保証する")
     FBZZ_FIELD_RANGE(float, fallbackBodySize, 1.6f, "Fallback Body Size", 0.1f, 10.0f)
     FBZZ_TOOLTIP("コライダーが無く寸法を測れない対象に使う一辺の長さ")
 
     FBZZ_GROUP("Color")
-    FBZZ_FIELD(bool, useTargetPolarityColor, true, "Use Target Polarity Color")
-    FBZZ_TOOLTIP("対象が帯びている極の色で枠を描く (12.2 の配色に従う)。"
-                 "切ると Marker Color の 1 色になる")
     FBZZ_FIELD_COLOR(markerColor, (Vector4{ 0.20f, 1.00f, 0.45f, 1.00f }), "Marker Color")
 
     FBZZ_GROUP("Acquire")
@@ -63,12 +50,12 @@ public:
     FBZZ_FIELD_RANGE(float, lockScale, 1.9f, "Acquire Scale", 1.0f, 4.0f)
     FBZZ_TOOLTIP("線に入った瞬間の枠の倍率。1.0 で演出なし")
     FBZZ_FIELD_RANGE(float, lockSeconds, 0.16f, "Lock Seconds", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, pulseDepth, 0.06f, "Pulse Depth", 0.0f, 0.5f)
+    FBZZ_FIELD_RANGE(float, pulseDepth, 0.06f, "脈動の深さ", 0.0f, 0.5f)
     FBZZ_TOOLTIP("追従中の呼吸。0 で止まった枠になる")
-    FBZZ_FIELD_RANGE(float, pulseHz, 1.4f, "Pulse Hz", 0.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, pulseHz, 1.4f, "脈動の周波数 [Hz]", 0.0f, 8.0f)
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(std::string, debugTargetName, "", "Target")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugTargetName, "", "対象")
 
     /// PlayerComponent が内部モジュールとして持つときに、同じ PlayerAimComponent を渡す。
     void SetAimComponent(PlayerAimComponent* aim) { m_aimOverride = aim; }
@@ -187,13 +174,8 @@ inline float AimMarkerComponent::FrameSize(GameObject& target) const
 
 inline Vector4 AimMarkerComponent::CurrentColor(GameObject& target) const
 {
-    if (!useTargetPolarityColor) return markerColor;
-
-    const auto* polarityTarget = scene.GetScript<PolarityTargetComponent>(&target);
-    const Polarity polarity = polarityTarget ? polarityTarget->Current() : Polarity::None;
-    // 無極は「まだ何も乗っていない」ので、極の色ではなくプレイヤー色で示す。
-    // 12.2 の無彩色を使うと、狙っていることそのものが読めなくなる。
-    return polarity == Polarity::None ? markerColor : PolarityColor(polarity);
+    (void)target;
+    return markerColor;
 }
 
 inline void AimMarkerComponent::LayoutBars(float size)
@@ -239,22 +221,9 @@ inline void AimMarkerComponent::OnLateUpdate()
     if (!target) {
         if (canvas) canvas->enabled = false;
         m_lastTarget = {};
-        // 環も «呼ばなくなった時点が解除»。ここで何もしないのが消す操作になる。
         return;
     }
     if (canvas) canvas->enabled = true;
-
-    // 反発半径の環。狙っている相手の «足元» へ出す。中心を体の高さに置くと、
-    // 地面へ落ちる投影が敵の背丈ぶん外れて、測っている距離が嘘になる。
-    if (showRepulsionRing && tuning) {
-        if (auto* rings = PolarityRingComponent::Instance()) {
-            Polarity polarity = Polarity::None;
-            if (const auto* state = scene.GetScript<PolarityTargetComponent>(target))
-                polarity = state->Current();
-            rings->ShowRadius(target->transform.worldPosition,
-                              tuning->repulsionRadius, polarity);
-        }
-    }
 
     // 乗り移った瞬間だけ大きく出す。同じ相手を指し続けている間は演出しない。
     if (target->GetID() != m_lastTarget) {
