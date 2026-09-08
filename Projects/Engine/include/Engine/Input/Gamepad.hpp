@@ -61,17 +61,6 @@ public:
                              float durationSeconds, int pad = 0);
     static void StopVibration(int pad = 0);
     static void StopAllVibration();
-
-    // --- テスト用フック ---
-    // 実機を接続せずに Gamepad の状態遷移を検証するための注入口。
-    // 有効化すると Update() は XInput をポーリングせず、注入値のみを反映する。
-    // WHY 必要か: CI や自動テストに実 XInput デバイスは存在しない。
-    //             注入口が無いと Gamepad のロジックが一切テストできなくなる。
-    static void SetSimulationEnabled(bool enabled);
-    [[nodiscard]] static bool IsSimulationEnabled();
-    static void SimulateConnected(int pad, bool connected);
-    static void SimulateButton(GamepadButton button, bool pressed, int pad = 0);
-    static void SimulateAxis(GamepadAxis axis, float value, int pad = 0);
 };
 
 } // namespace fbzz::input

@@ -69,7 +69,6 @@ struct PadState {
 
 struct GamepadContext {
     std::array<PadState, Gamepad::MAX_PADS> pads = {};
-    bool  simulationEnabled = false;
 
     // 前回 Update からの実時間を測るための QPC 値。0 は未初期化。
     int64_t lastCounter = 0;
@@ -155,8 +154,6 @@ void Gamepad::Update()
             }
         }
 
-        // シミュレーション中は XInput をポーリングせず、注入された値をそのまま使う。
-        if (context.simulationEnabled) continue;
 
         // --- 未接続スロットの再試行スロットリング ---
         if (!pad.connected) {
@@ -283,8 +280,7 @@ void Gamepad::SetVibration(float lowFrequency, float highFrequency,
     state.vibrationRemaining = durationSeconds;
     state.vibrationActive    = true;
 
-    if (context.simulationEnabled) return;
-    if (!state.connected)          return;
+    if (!state.connected) return;
 
     XINPUT_VIBRATION vibration{};
     vibration.wLeftMotorSpeed = static_cast<WORD>(
@@ -303,7 +299,6 @@ void Gamepad::StopVibration(int pad)
     state.vibrationRemaining = 0.0f;
     state.vibrationActive    = false;
 
-    if (context.simulationEnabled) return;
 
     // 未接続でも停止要求は投げる。抜き挿しの隙間で振動が残るのを防ぐ。
     XINPUT_VIBRATION vibration{};
@@ -314,61 +309,6 @@ void Gamepad::StopAllVibration()
 {
     for (int index = 0; index < MAX_PADS; ++index) {
         StopVibration(index);
-    }
-}
-
-// ── テスト用フック ───────────────────────────────────────────────────────────
-
-void Gamepad::SetSimulationEnabled(bool enabled)
-{
-    GamepadContext& context = Ctx();
-    if (context.simulationEnabled == enabled) return;
-
-    context.simulationEnabled = enabled;
-    // モード切替時に状態を持ち越すと、実機の押下が注入値として残るなど混乱の元になる。
-    for (PadState& pad : context.pads) {
-        pad.current.fill(false);
-        pad.previous.fill(false);
-        pad.axes.fill(0.0f);
-        pad.connected  = false;
-        pad.retryTimer = 0.0f;
-    }
-}
-
-bool Gamepad::IsSimulationEnabled()
-{
-    return Ctx().simulationEnabled;
-}
-
-void Gamepad::SimulateConnected(int pad, bool connected)
-{
-    if (!IsValidPad(pad)) return;
-    Ctx().pads[static_cast<size_t>(pad)].connected = connected;
-}
-
-void Gamepad::SimulateButton(GamepadButton button, bool pressed, int pad)
-{
-    if (!IsValidPad(pad) || button >= GamepadButton::COUNT) return;
-    Ctx().pads[static_cast<size_t>(pad)].current[static_cast<size_t>(button)] = pressed;
-}
-
-void Gamepad::SimulateAxis(GamepadAxis axis, float value, int pad)
-{
-    if (!IsValidPad(pad) || axis >= GamepadAxis::COUNT) return;
-
-    PadState& state = Ctx().pads[static_cast<size_t>(pad)];
-    const bool isTrigger = axis == GamepadAxis::LEFT_TRIGGER || axis == GamepadAxis::RIGHT_TRIGGER;
-    const float clamped  = isTrigger ? std::clamp(value, 0.0f, 1.0f)
-                                     : std::clamp(value, -1.0f, 1.0f);
-    state.axes[static_cast<size_t>(axis)] = clamped;
-
-    // 実機経路と同様、トリガー軸の注入はボタン状態にも反映する。
-    if (axis == GamepadAxis::LEFT_TRIGGER) {
-        state.current[static_cast<size_t>(GamepadButton::LEFT_TRIGGER)] =
-            clamped >= GAMEPAD_TRIGGER_BUTTON_THRESHOLD;
-    } else if (axis == GamepadAxis::RIGHT_TRIGGER) {
-        state.current[static_cast<size_t>(GamepadButton::RIGHT_TRIGGER)] =
-            clamped >= GAMEPAD_TRIGGER_BUTTON_THRESHOLD;
     }
 }
 
