@@ -1,0 +1,24 @@
+version = 1
+name = 'UIMenuBand'
+shader = "Assets/Shaders/UI/Material/UIMenuBand.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+albedo = "guid:affe2fcad3d54c98a229268a01909d26"
+
+[params]
+# 帯の色は極の ＋ (UIMenuItem の activeColor と同じ芯)。a が帯の濃さ。
+# 青極の行は ui.SetMaterialColor(go, "bandColor", ...) で要素ごとに上書きする。
+bandColor = [ 1.0, 0.415686, 0.360784, 0.16 ]
+flashColor = [ 1.0, 0.96, 0.92, 0.9 ]
+# selected / flash は要素ごとに script が動かす。.mat は «閉じている» を既定にする。
+selected = 0.0
+flash = 0.0
+phase = 0.0
+hatchStrength = 0.35
+hatchPeriod = 14.0
+edgeWidth = 22.0
+pulse = 0.06

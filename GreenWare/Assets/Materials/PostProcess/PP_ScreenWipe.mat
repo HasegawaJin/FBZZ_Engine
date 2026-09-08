@@ -1,0 +1,19 @@
+# FBZZ Engine
+# PP_ScreenWipe.mat
+# シーン遷移のワイプ (ScreenWipe.hlsl)。albedo = マスク (R が «塗られる順» 0..1)。
+# 覆い・柔らかさ・色は ScreenEffectManager / SceneManagerScript が customParameters で毎フレーム書く。
+# マスクを差し替えるなら albedo を T_Wipe_Iris / T_Wipe_Scan へ (Assets/Textures/UI)。
+version = 1
+name = 'PP_ScreenWipe'
+shader = 'Assets/Shaders/PostProcess/Custom/ScreenWipe.hlsl'
+blend_mode = 'Opaque'
+double_sided = false
+depth_write = false
+render_queue = 3000
+render_path = 'post_process'
+mesh_type = 'surface'
+
+[textures]
+albedo = 'guid:2cafde3bb28a4b6abe4e6189f926bd64'
+
+[params]

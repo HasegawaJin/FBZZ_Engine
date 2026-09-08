@@ -189,6 +189,44 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'c357ac08-f617-4f2b-81c2-fe27f90321e1'
+layer = 0
+name = 'Logo_Arc'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:ebee499293db4752897d80c934b397cb|Assets/Materials/UI/UIElectricLine.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 2
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:c458a78d0944a568e3715de982a0eb9c|Assets/UI/Title/Logo_Rule.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 84.0, 447.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 786.0, 100.0, 1.0 ]
+
+[[gameobjects]]
+active = true
 instanceId = 'a1000001-0000-0000-0000-000000000006'
 layer = 0
 name = 'Law_Icon'
@@ -297,6 +335,44 @@ tag = 'Untagged'
     position = [ 59.0, 605.22998, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 630.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-0000000000b1'
+layer = 0
+name = 'Band'
+parent = 'MenuRow_START'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000008'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:80598c4f0d2044a59c8f48571a0f579b|Assets/Materials/UI/UIMenuBand.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:affe2fcad3d54c98a229268a01909d26|Assets/Textures/UI/T_UI_MenuBand.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -14.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 644.0, 72.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -411,6 +487,44 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'a1000001-0000-0000-0000-0000000000b2'
+layer = 0
+name = 'Band'
+parent = 'MenuRow_OPTIONS'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000011'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:80598c4f0d2044a59c8f48571a0f579b|Assets/Materials/UI/UIMenuBand.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:affe2fcad3d54c98a229268a01909d26|Assets/Textures/UI/T_UI_MenuBand.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -14.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 644.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
 instanceId = 'a1000001-0000-0000-0000-000000000012'
 layer = 0
 name = 'Bar'
@@ -488,7 +602,7 @@ tag = 'Untagged'
     [gameobjects.transform]
     position = [ 106.5, -1.429965, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 275.445007, 54.0, 1.0 ]
+    scale = [ 275.444977, 54.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -519,6 +633,44 @@ tag = 'Untagged'
     position = [ 59.0, 776.22998, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 630.0, 72.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-0000000000b3'
+layer = 0
+name = 'Band'
+parent = 'MenuRow_EXIT'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000014'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:80598c4f0d2044a59c8f48571a0f579b|Assets/Materials/UI/UIMenuBand.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:affe2fcad3d54c98a229268a01909d26|Assets/Textures/UI/T_UI_MenuBand.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -14.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 644.0, 72.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -599,10 +751,10 @@ tag = 'Untagged'
     [gameobjects.transform]
     position = [ 106.5, -1.429965, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 139.230011, 54.0, 1.0 ]
+    scale = [ 139.229996, 54.0, 1.0 ]
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = 'a1000001-0000-0000-0000-000000000017'
 layer = 0
 name = 'LawText'
@@ -635,7 +787,7 @@ tag = 'Untagged'
     sortOrder = 2
     stretchX = false
     stretchY = false
-    text = '異なる極は引き合い、ぶつかって壊れる'
+    text = '斬撃では崩れない。崩すのは弾きだけ'
     verticalAlign = 0
     visibleCharacters = -1
 
@@ -643,6 +795,249 @@ tag = 'Untagged'
     position = [ 274.0, 954.599976, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 328.649963, 18.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '605bc126-68b1-4926-aaa0-6bf349cfe32d'
+layer = 0
+name = 'HintIcon_0'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_82'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1700.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '03e3446e-4ad3-468e-86a4-0c6d6bfddda0'
+layer = 0
+name = 'HintText_0'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1740.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1df5b3fa-6c01-4351-9a1a-2b41d2a3928d'
+layer = 0
+name = 'HintIcon_1'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3b47d37d-2b6b-4441-a362-d2d3a489ff5e|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_20'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1500.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '14bf5cd5-69d6-461a-adca-254f9dd03b89'
+layer = 0
+name = 'HintText_1'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1540.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '36c4c505-e595-4323-a644-8a805fd32211'
+layer = 0
+name = 'HintIcon_2'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b|Assets/Sprites/HUD/xbox-series_sheet_default.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1300.0, 1010.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30.0, 30.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'a7543dd7-bd18-4508-a666-9e417d1bee72'
+layer = 0
+name = 'HintText_2'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    stretchX = false
+    stretchY = false
+    text = ''
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 1340.0, 1014.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -667,9 +1062,16 @@ tag = 'Untagged'
         [gameobjects.ScriptComponents.fields]
         blendSeconds = 0.09
         debugHovered = '-'
+        debugIntro = 0.0
+        hoverNudge = 10.0
+        introDelay = 0.55
+        introSeconds = 0.46
+        introSlide = -40.0
+        introStagger = 0.09
         labelActiveColor = [ 1.0, 1.0, 1.0, 1.0 ]
         labelDimColor = [ 0.462745, 0.454902, 0.439216, 1.0 ]
         optionsScene = 'Options'
+        releaseSeconds = 0.18
         startScene = 'StageSelect'
 
     [[gameobjects.ScriptComponents]]
@@ -677,16 +1079,57 @@ tag = 'Untagged'
     type = 'ScreenDressingComponent'
 
         [gameobjects.ScriptComponents.fields]
+        arcName = 'Logo_Arc'
         backdropCoverage = 0.1
         backdropName = 'Backdrop'
         backdropSpeed = 1.0
+        crackleInterval = 5.5
+        crackleSeconds = 0.32
+        crackleStrength = 0.85
         debugPhase = 0.0
         debugSheen = 0.0
         debugTargets = 0
+        revealDelay = 0.2
+        revealSeconds = 0.9
+        revealStagger = 0.12
         sheenInterval = 6.5
         sheenSeconds = 1.1
         sheenStagger = 0.13
         sheenTargets = [ 'Logo_Word', 'Logo_Mark', 'Logo_Rule' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiRevealComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugElapsed = 0.0
+        debugSlots = 0
+        delay = 0.12
+        duration = 0.42
+        fromX = -28.0
+        fromY = 0.0
+        includeChildren = false
+        stagger = 0.06
+        targets = [ 'Logo_Mark', 'Logo_Word', 'Logo_Rule', 'Version', 'Law_Icon', 'LawText' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHintBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bottomMargin = 58.0
+        debugBuilt = 0
+        debugPad = false
+        entries = [ 'Confirm:決定', 'Navigate:選択' ]
+        fontSize = 16.0
+        gapEntries = 30.0
+        gapIconText = 8.0
+        hitColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        iconSize = 30.0
+        introDelay = 0.9
+        introSeconds = 0.45
+        rightMargin = 132.0
+        textColor = [ 0.662745, 0.65098, 0.627451, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -736,6 +1179,7 @@ tag = 'Untagged'
         padDeadzone = 0.18
         padSpeed = 1400.0
         spriteOffset = [ 10.0, 10.0 ]
+        useHardwareCursor = true
 
 [[gameobjects]]
 active = true
@@ -781,7 +1225,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.776199
+    aspectRatio = 1.777156
     backgroundColor = [ 0.0, 0.0, 0.0, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -1407,7 +1851,7 @@ tag = 'Untagged'
         swirlStrength = -4.0
 
 [[gameobjects]]
-active = false
+active = true
 instanceId = '3b7692b4-2d69-408d-a293-fe10adb0c5c5'
 layer = 0
 name = 'Post Process Volume'

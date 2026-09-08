@@ -30,7 +30,7 @@ gridColor = [ 0.085, 0.095, 0.115, 1.0 ]
 majorColor = [ 0.20, 0.215, 0.245, 1.0 ]
 horizonColor = [ 0.055, 0.062, 0.078, 1.0 ]
 zenithColor = [ 0.004, 0.005, 0.008, 1.0 ]
-# PolarityTypes::kColorPlus / kColorMinus と同じ値。正本はあちらで、
+# BladeColors::kColorRight / kColorLeft と同じ値。正本はあちらで、
 # スクリプトが毎フレーム送り直す。
 plusColor = [ 1.0, 0.12, 0.14, 1.0 ]
 minusColor = [ 0.10, 0.35, 1.0, 1.0 ]

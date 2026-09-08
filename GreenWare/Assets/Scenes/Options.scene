@@ -182,7 +182,7 @@ tag = 'Untagged'
     fontPath = 'guid:4e1baf19ad5d5b4a0e99eb4ee7c55932|Assets/UI/Font/GW-Sans-Light.ttf'
     fontSize = 72.0
     letterSpacing = 14.4
-    materialPath = ''
+    materialPath = 'guid:7395b44080874640b3c2f7e0baa5331d|Assets/Materials/UI/UITextHero.mat'
     maxWidth = 0.0
     pivot = [ 0.0, 0.0 ]
     sortOrder = 2
@@ -693,7 +693,7 @@ tag = 'Untagged'
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000021'
 layer = 0
-name = 'CtrlDiv_lgun'
+name = 'CtrlDiv_blade'
 parent = 'Canvas'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
@@ -739,7 +739,7 @@ tag = 'Untagged'
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000022'
 layer = 0
-name = 'CtrlL_lgun'
+name = 'CtrlL_blade'
 parent = 'Canvas'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
@@ -758,7 +758,7 @@ tag = 'Untagged'
     maxWidth = 0.0
     pivot = [ 0.0, 0.0 ]
     sortOrder = 2
-    text = '左銃を照射'
+    text = '斬る'
 
     [gameobjects.transform]
     position = [ 1268.0, 539.179993, 0.0 ]
@@ -767,26 +767,14 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'b2000001-0000-0000-0000-000000000023'
+instanceId = 'b2000001-0000-0000-0000-000000000025'
 layer = 0
-name = 'CtrlDiv_rgun'
+name = 'CtrlDiv_parry'
 parent = 'Canvas'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
-
-    [gameobjects.UIButton]
-    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
-    disabledSprite = ''
-    enabled = true
-    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
-    hoveredSprite = ''
-    isInteractable = true
-    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
-    normalSprite = ''
-    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
-    pressedSprite = ''
 
     [gameobjects.UIImage]
     anchor = [ 0.0, 0.0 ]
@@ -813,9 +801,9 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'b2000001-0000-0000-0000-000000000024'
+instanceId = 'b2000001-0000-0000-0000-000000000026'
 layer = 0
-name = 'CtrlL_rgun'
+name = 'CtrlL_parry'
 parent = 'Canvas'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
 prefabAssetPath = ''
@@ -834,74 +822,10 @@ tag = 'Untagged'
     maxWidth = 0.0
     pivot = [ 0.0, 0.0 ]
     sortOrder = 2
-    text = '右銃を照射'
+    text = '弾き / とどめ'
 
     [gameobjects.transform]
     position = [ 1268.0, 583.179993, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 79.749992, 17.4, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b2000001-0000-0000-0000-000000000025'
-layer = 0
-name = 'CtrlDiv_fire'
-parent = 'Canvas'
-parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.UIImage]
-    anchor = [ 0.0, 0.0 ]
-    border = [ 0.0, 0.0, 0.0, 0.0 ]
-    color = [ 1.0, 1.0, 1.0, 1.0 ]
-    enabled = true
-    fillAmount = 1.0
-    fillClockwise = true
-    fillMethod = 0
-    fillOrigin = 0
-    imageType = 0
-    materialPath = 'Assets/Materials/UI/UIRule.mat'
-    pivot = [ 0.0, 0.0 ]
-    pixelsPerUnitMultiplier = 1.0
-    sortOrder = 1
-    texturePath = 'guid:54f69404e10b3cfa237bc4c719a39b1c|Assets/UI/Options/CtrlRow_div.png'
-    uvMax = [ 1.0, 1.0 ]
-    uvMin = [ 0.0, 0.0 ]
-
-    [gameobjects.transform]
-    position = [ 1236.0, 642.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 585.0, 65.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b2000001-0000-0000-0000-000000000026'
-layer = 0
-name = 'CtrlL_fire'
-parent = 'Canvas'
-parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.UIText]
-    align = 0
-    anchor = [ 0.0, 0.0 ]
-    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
-    enabled = true
-    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
-    fontSize = 17.4
-    letterSpacing = 1.45
-    materialPath = ''
-    maxWidth = 0.0
-    pivot = [ 0.0, 0.0 ]
-    sortOrder = 2
-    text = '起爆'
-
-    [gameobjects.transform]
-    position = [ 1268.0, 627.179993, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 31.899998, 17.4, 1.0 ]
 
@@ -947,7 +871,7 @@ tag = 'Untagged'
     uvMin = [ 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 1236.0, 686.0, 0.0 ]
+    position = [ 1236.0, 642.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 585.0, 65.0, 1.0 ]
 
@@ -977,7 +901,7 @@ tag = 'Untagged'
     text = '回避'
 
     [gameobjects.transform]
-    position = [ 1268.0, 671.179993, 0.0 ]
+    position = [ 1268.0, 627.179993, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 31.899998, 17.4, 1.0 ]
 
@@ -1307,7 +1231,7 @@ tag = 'Untagged'
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000039'
 layer = 0
-name = 'CtrlR_KBM_lgun'
+name = 'CtrlR_KBM_blade'
 parent = 'CtrlR_KBM'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000031'
 prefabAssetPath = ''
@@ -1326,7 +1250,7 @@ tag = 'Untagged'
     maxWidth = 0.0
     pivot = [ 1.0, 0.0 ]
     sortOrder = 2
-    text = '長押し'
+    text = '長押しで溜め'
 
     [gameobjects.transform]
     position = [ 1788.0, 539.76001, 0.0 ]
@@ -1337,7 +1261,7 @@ tag = 'Untagged'
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000040'
 layer = 0
-name = 'CtrlIcon_KBM_lgun_0'
+name = 'CtrlIcon_KBM_blade_0'
 parent = 'CtrlR_KBM'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000031'
 prefabAssetPath = ''
@@ -1369,9 +1293,9 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'b2000001-0000-0000-0000-000000000041'
+instanceId = 'b2000001-0000-0000-0000-000000000043'
 layer = 0
-name = 'CtrlR_KBM_rgun'
+name = 'CtrlR_KBM_parry'
 parent = 'CtrlR_KBM'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000031'
 prefabAssetPath = ''
@@ -1390,18 +1314,19 @@ tag = 'Untagged'
     maxWidth = 0.0
     pivot = [ 1.0, 0.0 ]
     sortOrder = 2
-    text = '長押し'
+    text = ''
 
     [gameobjects.transform]
     position = [ 1788.0, 583.76001, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 44.52, 16.799999, 1.0 ]
+    scale = [ 133.559982, 16.799999, 1.0 ]
+
 
 [[gameobjects]]
 active = true
-instanceId = 'b2000001-0000-0000-0000-000000000042'
+instanceId = 'b2000001-0000-0000-0000-000000000401'
 layer = 0
-name = 'CtrlIcon_KBM_rgun_0'
+name = 'CtrlIcon_KBM_parry_0'
 parent = 'CtrlR_KBM'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000031'
 prefabAssetPath = ''
@@ -1427,40 +1352,9 @@ tag = 'Untagged'
     uvMin = [ 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 1707.72998, 578.0, 0.0 ]
+    position = [ 1758.25, 578.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 34.0, 34.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b2000001-0000-0000-0000-000000000043'
-layer = 0
-name = 'CtrlR_KBM_fire'
-parent = 'CtrlR_KBM'
-parentInstanceId = 'b2000001-0000-0000-0000-000000000031'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.UIText]
-    align = 2
-    anchor = [ 0.0, 0.0 ]
-    color = [ 0.870588, 0.858824, 0.835294, 1.0 ]
-    enabled = true
-    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
-    fontSize = 16.799999
-    letterSpacing = 0.84
-    materialPath = ''
-    maxWidth = 0.0
-    pivot = [ 1.0, 0.0 ]
-    sortOrder = 2
-    text = '同じボタンをタップ'
-
-    [gameobjects.transform]
-    position = [ 1788.0, 627.76001, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 133.559982, 16.799999, 1.0 ]
-
 [[gameobjects]]
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000044'
@@ -1487,7 +1381,7 @@ tag = 'Untagged'
     text = ''
 
     [gameobjects.transform]
-    position = [ 1788.0, 671.76001, 0.0 ]
+    position = [ 1788.0, 627.76001, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 46.0, 16.799999, 1.0 ]
 
@@ -1516,12 +1410,12 @@ tag = 'Untagged'
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
     sortOrder = 2
-    texturePath = 'guid:2ed3edb2e457f35bfb9e0d03e43e5f35::sprite::285b99f9-693b-425d-af31-9e341253b3a7|Assets/Sprites/HUD/keyboard-&-mouse_sheet_default.png'
+    texturePath = 'guid:2ed3edb2e457f35bfb9e0d03e43e5f35::sprite::0f64bf66-5622-4cd0-aa8b-c16200307c7e|Assets/Sprites/HUD/keyboard-&-mouse_sheet_default.png'
     uvMax = [ 1.0, 1.0 ]
     uvMin = [ 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 1758.25, 666.0, 0.0 ]
+    position = [ 1758.25, 622.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 34.0, 34.0, 1.0 ]
 
@@ -1737,7 +1631,7 @@ tag = 'Untagged'
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000053'
 layer = 0
-name = 'CtrlR_PAD_lgun'
+name = 'CtrlR_PAD_blade'
 parent = 'CtrlR_PAD'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
 prefabAssetPath = ''
@@ -1756,7 +1650,7 @@ tag = 'Untagged'
     maxWidth = 0.0
     pivot = [ 1.0, 0.0 ]
     sortOrder = 2
-    text = '長押し'
+    text = '長押しで溜め'
 
     [gameobjects.transform]
     position = [ 1788.0, 539.76001, 0.0 ]
@@ -1767,71 +1661,7 @@ tag = 'Untagged'
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000054'
 layer = 0
-name = 'CtrlIcon_PAD_lgun_0'
-parent = 'CtrlR_PAD'
-parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.UIImage]
-    anchor = [ 0.0, 0.0 ]
-    border = [ 0.0, 0.0, 0.0, 0.0 ]
-    color = [ 1.0, 1.0, 1.0, 1.0 ]
-    enabled = true
-    fillAmount = 1.0
-    fillClockwise = true
-    fillMethod = 0
-    fillOrigin = 0
-    imageType = 0
-    materialPath = ''
-    pivot = [ 0.0, 0.0 ]
-    pixelsPerUnitMultiplier = 1.0
-    sortOrder = 2
-    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::ad36dbb2-d2e1-4f98-b852-90c89d0ef870|Assets/Sprites/HUD/xbox-series_sheet_default.png'
-    uvMax = [ 1.0, 1.0 ]
-    uvMin = [ 0.0, 0.0 ]
-
-    [gameobjects.transform]
-    position = [ 1680.25, 534.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 34.0, 34.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b2000001-0000-0000-0000-000000000055'
-layer = 0
-name = 'CtrlR_PAD_rgun'
-parent = 'CtrlR_PAD'
-parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.UIText]
-    align = 2
-    anchor = [ 0.0, 0.0 ]
-    color = [ 0.870588, 0.858824, 0.835294, 1.0 ]
-    enabled = true
-    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
-    fontSize = 16.799999
-    letterSpacing = 0.84
-    materialPath = ''
-    maxWidth = 0.0
-    pivot = [ 1.0, 0.0 ]
-    sortOrder = 2
-    text = '長押し'
-
-    [gameobjects.transform]
-    position = [ 1788.0, 583.76001, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 72.0, 16.799999, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'b2000001-0000-0000-0000-000000000056'
-layer = 0
-name = 'CtrlIcon_PAD_rgun_0'
+name = 'CtrlIcon_PAD_blade_0'
 parent = 'CtrlR_PAD'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
 prefabAssetPath = ''
@@ -1857,7 +1687,7 @@ tag = 'Untagged'
     uvMin = [ 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 1680.25, 578.0, 0.0 ]
+    position = [ 1680.25, 534.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 34.0, 34.0, 1.0 ]
 
@@ -1865,7 +1695,7 @@ tag = 'Untagged'
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000057'
 layer = 0
-name = 'CtrlR_PAD_fire'
+name = 'CtrlR_PAD_parry'
 parent = 'CtrlR_PAD'
 parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
 prefabAssetPath = ''
@@ -1884,13 +1714,47 @@ tag = 'Untagged'
     maxWidth = 0.0
     pivot = [ 1.0, 0.0 ]
     sortOrder = 2
-    text = '同じトリガーをタップ'
+    text = ''
 
     [gameobjects.transform]
-    position = [ 1788.0, 627.76001, 0.0 ]
+    position = [ 1788.0, 583.76001, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 148.0, 16.799999, 1.0 ]
 
+
+[[gameobjects]]
+active = true
+instanceId = 'b2000001-0000-0000-0000-000000000402'
+layer = 0
+name = 'CtrlIcon_PAD_parry_0'
+parent = 'CtrlR_PAD'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 2
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::5b07f278-b88f-4abc-8b97-eda5c05ce19b|Assets/Sprites/HUD/xbox-series_sheet_default.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1758.25, 578.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 34.0, 34.0, 1.0 ]
 [[gameobjects]]
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000058'
@@ -1917,7 +1781,7 @@ tag = 'Untagged'
     text = ''
 
     [gameobjects.transform]
-    position = [ 1788.0, 671.76001, 0.0 ]
+    position = [ 1788.0, 627.76001, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 9.0, 16.799999, 1.0 ]
 
@@ -1946,12 +1810,12 @@ tag = 'Untagged'
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
     sortOrder = 2
-    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png'
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::cf52d251-9771-41b7-bded-c444768c0468|Assets/Sprites/HUD/xbox-series_sheet_default.png'
     uvMax = [ 1.0, 1.0 ]
     uvMin = [ 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 1758.25, 666.0, 0.0 ]
+    position = [ 1758.25, 622.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 34.0, 34.0, 1.0 ]
 
@@ -2019,6 +1883,210 @@ tag = 'Untagged'
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 34.0, 34.0, 1.0 ]
 
+
+[[gameobjects]]
+active = true
+instanceId = 'b2000001-0000-0000-0000-000000000403'
+layer = 0
+name = 'CtrlDiv_jump'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    disabledColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    disabledSprite = ''
+    enabled = true
+    hoverColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    hoveredSprite = ''
+    isInteractable = true
+    normalColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    normalSprite = ''
+    pressedColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    pressedSprite = ''
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'Assets/Materials/UI/UIRule.mat'
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 1
+    texturePath = 'guid:54f69404e10b3cfa237bc4c719a39b1c|Assets/UI/Options/CtrlRow_div.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1236.0, 686.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 585.0, 65.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b2000001-0000-0000-0000-000000000404'
+layer = 0
+name = 'CtrlL_jump'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 17.4
+    letterSpacing = 1.45
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    sortOrder = 2
+    text = 'ジャンプ'
+
+    [gameobjects.transform]
+    position = [ 1268.0, 671.179993, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 62.833328, 17.4, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b2000001-0000-0000-0000-000000000405'
+layer = 0
+name = 'CtrlR_KBM_jump'
+parent = 'CtrlR_KBM'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000031'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.870588, 0.858824, 0.835294, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 0.84
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 1.0, 0.0 ]
+    sortOrder = 2
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1788.0, 671.76001, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b2000001-0000-0000-0000-000000000406'
+layer = 0
+name = 'CtrlIcon_KBM_jump_0'
+parent = 'CtrlR_KBM'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000031'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 2
+    texturePath = 'guid:2ed3edb2e457f35bfb9e0d03e43e5f35::sprite::285b99f9-693b-425d-af31-9e341253b3a7|Assets/Sprites/HUD/keyboard-&-mouse_sheet_default.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1758.25, 666.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 34.0, 34.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b2000001-0000-0000-0000-000000000407'
+layer = 0
+name = 'CtrlR_PAD_jump'
+parent = 'CtrlR_PAD'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.870588, 0.858824, 0.835294, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 16.799999
+    letterSpacing = 0.84
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 1.0, 0.0 ]
+    sortOrder = 2
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1788.0, 671.76001, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.0, 16.799999, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b2000001-0000-0000-0000-000000000408'
+layer = 0
+name = 'CtrlIcon_PAD_jump_0'
+parent = 'CtrlR_PAD'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000048'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 2
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1758.25, 666.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 34.0, 34.0, 1.0 ]
 [[gameobjects]]
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000062'
@@ -6909,6 +6977,350 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'a7ecce50-2b8f-4619-a23d-b18003f1e0e8'
+layer = 0
+name = 'HintIcon_0'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_82'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1700, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8978bf4d-0272-4ed7-aca3-c0e223e70697'
+layer = 0
+name = 'HintText_0'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1740, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '800af1ce-bfd9-4d3b-9601-7f5f3392cf00'
+layer = 0
+name = 'HintIcon_1'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::cf52d251-9771-41b7-bded-c444768c0468|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_84'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1500, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '24c500a4-0ac0-40ac-9ede-d3df9f8c1a39'
+layer = 0
+name = 'HintText_1'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1540, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'fc5d89fe-8785-4ec8-bada-241da7603aa9'
+layer = 0
+name = 'HintIcon_2'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3b47d37d-2b6b-4441-a362-d2d3a489ff5e|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_20'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1300, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2a61ab92-e873-4e8e-88b4-b98ef0c6aea6'
+layer = 0
+name = 'HintText_2'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1340, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f6cfd067-e4a4-4c72-9f33-dcc3562ab501'
+layer = 0
+name = 'CtrlGuide_Box'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = 'guid:fa201070ffa1147e7115fb84cf94d847|Assets/Materials/UI/UIPanel.mat'
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:bff088597ad4932e019f0557374f047c|Assets/UI/Options/Divider.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1268, 806, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 520, 132, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1c1f21f1-9daf-43bc-be7d-22cab715f81b'
+layer = 0
+name = 'CtrlGuide_Tag'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.556863, 0.545098, 0.521569, 1.0 ]
+    enabled = true
+    fontPath = 'guid:b406a74e56cec2d1766d2752f9a94738|Assets/UI/Font/GW-Mono-Bold.ttf'
+    fontSize = 13.0
+    letterSpacing = 4.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 2
+    text = 'GUIDE'
+
+    [gameobjects.transform]
+    position = [ 1286, 820, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 13.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3ca84da3-733d-4ddd-8f3c-9609ac17f038'
+layer = 0
+name = 'CtrlGuide_Body'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 17.0
+    letterSpacing = 1.5
+    lineSpacing = 1.45
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = true
+    sortOrder = 2
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1286, 846, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 17.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '681d53f3-108d-434d-8c55-ce4103b5916e'
+layer = 0
+name = 'CtrlGuide_Device'
+parent = 'Canvas'
+parentInstanceId = 'b2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 2
+    anchor = [ 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = 'guid:39a356816786e26c3103cb7c0c00195a|Assets/UI/Font/GW-Mono-Regular.ttf'
+    fontSize = 13.0
+    letterSpacing = 3.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 1.0, 0.0 ]
+    richText = true
+    sortOrder = 2
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1788, 416, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 13.0, 1.0 ]
+
+[[gameobjects]]
+active = true
 instanceId = 'b2000001-0000-0000-0000-000000000210'
 layer = 0
 name = 'OptionsScreen'
@@ -6928,6 +7340,12 @@ tag = 'Untagged'
     type = 'OptionsScreenComponent'
 
         [gameobjects.ScriptComponents.fields]
+        pageDelay = 0.10
+        pageSeconds = 0.34
+        pageStagger = 0.045
+        pageSlide = 34.0
+        focusSeconds = 0.07
+        navNudge = 8.0
         backScene = 'Title'
         blendSeconds = 0.09
         debugRow = '-'
@@ -6953,6 +7371,76 @@ tag = 'Untagged'
         sheenSeconds = 1.1
         sheenStagger = 0.13
         sheenTargets = [ 'Head_Mark', 'Head_Rule' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiRevealComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugElapsed = 0.0
+        debugSlots = 0
+        delay = 0.1
+        duration = 0.42
+        fromX = -28.0
+        fromY = 0.0
+        includeChildren = false
+        stagger = 0.06
+        targets = [ 'Head_Mark', 'Head_Rule', 'HeadWord', 'Version', 'Sym_p', 'Sym_m', 'Ctrl_Rule', 'CtrlTitle' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHintBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bottomMargin = 58.0
+        debugBuilt = 0
+        debugPad = false
+        entries = [ 'Confirm:決定', 'Cancel:戻る', 'Navigate:選択' ]
+        fontSize = 16.0
+        gapEntries = 30.0
+        gapIconText = 8.0
+        hitColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        iconSize = 30.0
+        introDelay = 0.9
+        introSeconds = 0.45
+        rightMargin = 132.0
+        textColor = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'ControlsGuideComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bodyColor = [ 0.870588, 0.858824, 0.835294, 1.0 ]
+        boxH = 132.0
+        boxW = 520.0
+        boxX = 1268.0
+        boxY = 806.0
+        debugRow = '-'
+        decodeSeconds = 0.32
+        introDelay = 0.45
+        introSeconds = 0.4
+        introSlide = 28.0
+        introStagger = 0.05
+        labelActiveColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        labelDimColor = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+        nudge = 6.0
+        tagColor = [ 0.556863, 0.545098, 0.521569, 1.0 ]
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHeroTextComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugBound = 0
+        introDelay = 0.15
+        introSeconds = 0.85
+        introStagger = 0.18
+        sweepInterval = 4.2
+        sweepSeconds = 0.9
+        sweepStagger = 0.12
+        sweepWidth = 0.35
+        targets = [ 'HeadWord' ]
+
 [[gameobjects]]
 active = true
 instanceId = 'b2000001-0000-0000-0000-000000000211'

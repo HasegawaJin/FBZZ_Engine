@@ -21,7 +21,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Game/GameResultState.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <cmath>
 
 using namespace fbzz::scene;
@@ -77,8 +77,8 @@ public:
     FBZZ_FIELD(float, failIntensity,  0.34f, "Fail Intensity")
     FBZZ_TOOLTIP("負けたときは場が弱い。文字が主役なので、ここは上げすぎないこと")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(float, debugPulse, 0.0f, "Pulse")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(float, debugPulse, 0.0f, "脈動")
 
     /// 文字が噛み合う瞬間に、場をひと突きする。ResultPresenter から呼ぶ。
     /// WHY static か: 演出の «間» は文字側が持っている。時刻を両方に書くと、
@@ -145,8 +145,8 @@ inline void ResultFieldGridComponent::OnUpdate()
     mat.SetVector4(kPHorizonColor, Vector4{ 0.042f, 0.048f, 0.060f, 1.0f });
     mat.SetVector4(kPGridColor, Vector4{ 0.062f, 0.070f, 0.086f, 1.0f });
     mat.SetVector4(kPMajorColor, Vector4{ 0.135f, 0.150f, 0.175f, 1.0f });
-    mat.SetVector4(kPPlusColor, kColorPlus);
-    mat.SetVector4(kPMinusColor, kColorMinus);
+    mat.SetVector4(kPPlusColor, kColorRight);
+    mat.SetVector4(kPMinusColor, kColorLeft);
 
     // ── 格子 ────────────────────────────────────────────────────────────
     // Title より 1 段細かく、遠くで早く消す。文字の裏に線が残ると読みが落ちる。

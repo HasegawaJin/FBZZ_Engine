@@ -13,18 +13,21 @@
 /// autoDelay      = 遷移までの秒数 (フェードイン完了後にカウント開始)
 /// targetScene    は OnStart で s_next から自動セットされる。
 ///
-/// フェード動作:
-/// fadeEnabled=true のとき、遷移前に黒フェードアウト、遷移先シーンで黒フェードインを行う。
-/// fadeDuration でフェードイン/アウト各々の秒数を制御する。
-/// シーン間の状態受け渡しは s_fadeIn 静的変数で行う。
+/// 遷移の絵:
+/// fadeEnabled=true のとき、マスクのワイプ (Utils/SceneTransition.hpp / ScreenWipe.hlsl) で
+/// 塗ってから切り替え、遷移先で剥がす。fadeDuration は塗り (出) の秒数。
+/// 状態はシーンをまたぐ静的な transition::State が持つ。
 ///
 /// WHY: シーンごとに個別コントローラーを作らず、1 スクリプトで全遷移パターンを賄う。
-/// ポストプロセスの screenFadeAlpha を使うことで UI に依存せず真の最終レイヤーでフェードできる。
+/// 進めるのは transition::Tick で、ScreenEffectManager の居るシーンでは絵をそちらへ
+/// 載せてもらい、居ないシーン (メニュー) では自分で PostProcessSettings を書く。
+/// 2026-09-07 に黒の lerp (screenFadeAlpha) からマスクのワイプへ移した (ScreenWipe.hlsl の WHY)。
 #pragma once
 
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
+#include <Scripts/Utils/SceneTransition.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
 #include <string>
@@ -50,9 +53,9 @@ public:
     // true のとき autoDelay 秒後に targetScene へ自動遷移 (Load.scene 用)
     FBZZ_FIELD(bool,  autoTransition, false, "Auto Transition")
     FBZZ_FIELD(float, autoDelay,      1.5f,  "Auto Delay")
-    // フェードの有効/無効とフェードイン・アウト各々の長さ (秒)
-    FBZZ_FIELD(bool,  fadeEnabled,    true,  "Fade Enabled")
-    FBZZ_FIELD(float, fadeDuration,   0.5f,  "Fade Duration")
+    // ワイプの有効/無効と塗り (出) の長さ (秒)。剥がし (入) は 1.2 倍
+    FBZZ_FIELD(bool,  fadeEnabled,    true,  "Wipe Enabled")
+    FBZZ_FIELD(float, fadeDuration,   0.55f, "Wipe Seconds")
     // ボタンモードで、クリックの代わりにこのアクションでも遷移させる。
     //
     // WHY フォーカス移動ではなくボタンごとに割り当てるか:
@@ -65,30 +68,29 @@ public:
     FBZZ_TOOLTIP("ProjectSettings/Input.inputactions のアクション名。"
                  "Submit / Cancel を割り当てるとパッドとキーボードで押せるようになる")
 
-    // シーンをまたいで「次シーンはフェードインで開始」を伝達する静的変数群。
+    // 中継シーンへ «本当の目的地» を渡す静的変数。
     // WHY: LoadScene でシーンが切り替わると現スクリプトも破棄されるため、
-    //      次シーンの OnStart が読める静的変数でフェード状態を引き継ぐ。
+    //      次シーンの OnStart が読める静的変数で引き継ぐ。ワイプの状態は
+    //      transition::State (同じ理由で静的) が持つ。
     static inline std::string s_next;
-    static inline bool        s_fadeIn = false;
 
     void OnStart()  override;
     void OnUpdate() override;
 
 private:
-    // フェードアウト開始。fadeEnabled=false なら即 ExecuteLoad() へ。
+    // 塗り始める。fadeEnabled=false なら即 ExecuteLoad() へ。
     void BeginFadeOut();
-    // LoadScene を実際に呼ぶ。viaScene がある場合は中継シーンを経由する。
+    // LoadScene を実際に呼ぶ (ワイプ無しの経路)。viaScene がある場合は中継シーンを経由する。
     void ExecuteLoad();
-    // 現在の m_fadeAlpha を postprocess に書き込む。
-    void ApplyFade();
-
-    enum class FadeState { Idle, FadeOut, FadeIn };
+    // マネージャーが居ないシーンで、今フレームの覆いを PostProcessSettings へ書く。
+    void ApplyWipe();
+    // 遷移先。viaScene があればそちら (目的地は s_next へ)。
+    [[nodiscard]] std::string Destination();
 
     UIButton*  m_btn       = nullptr;
     float      m_elapsed   = 0.0f;
-    float      m_fadeAlpha = 0.0f;
-    FadeState  m_fadeState = FadeState::Idle;
     bool       m_fired     = false; // ボタン / タイマー二重発火防止
+    bool       m_writing   = false; // 自分で postprocess を書いた (マネージャー無し)
 };
 
 FBZZ_REFLECT(SceneManagerScript)
@@ -96,14 +98,6 @@ FBZZ_REFLECT(SceneManagerScript)
 // ── 実装 (inline) ─────────────────────────────────────────────────────────────
 inline void SceneManagerScript::OnStart()
 {
-    // 前シーンがフェードアウトして遷移してきた場合、黒から始めてフェードインする。
-    if (s_fadeIn && fadeEnabled) {
-        m_fadeAlpha = 1.0f;
-        m_fadeState = FadeState::FadeIn;
-        s_fadeIn    = false;
-        ApplyFade();
-    }
-
     if (autoTransition) {
         // Load.scene モード: 静的変数から遷移先を受け取る
         if (!s_next.empty())
@@ -112,42 +106,22 @@ inline void SceneManagerScript::OnStart()
         // ボタンモード: 同 GO の UIButton をキャッシュ
         m_btn = scene.GetComponent<UIButton>();
     }
+    // 塗られたまま来た (前のシーンが塗った) なら、最初のフレームから覆いを出す。
+    ApplyWipe();
 }
 
 inline void SceneManagerScript::OnUpdate()
 {
-    // フェードイン: alpha 1→0
-    if (m_fadeState == FadeState::FadeIn) {
-        m_fadeAlpha -= Time::deltaTime / std::max(fadeDuration, 0.01f);
-        if (m_fadeAlpha <= 0.0f) {
-            m_fadeAlpha = 0.0f;
-            m_fadeState = FadeState::Idle;
-        }
-        // WHY 0 でも ApplyFade を通すか: マネージャーが居るシーンでは postprocess を
-        //     直接クリアしてはいけない。他の画面効果まで巻き添えで消える。
-        //     解除の判断も含めて書き手へ一本化する。
-        ApplyFade();
-        return;
-    }
+    // 扉は実時間で進める。同じフレームに ScreenEffectManager も呼ぶが、進むのは 1 回。
+    ApplyWipe();
 
-    // フェードアウト: alpha 0→1, 完了後 LoadScene
-    if (m_fadeState == FadeState::FadeOut) {
-        m_fadeAlpha += Time::deltaTime / std::max(fadeDuration, 0.01f);
-        if (m_fadeAlpha >= 1.0f) {
-            m_fadeAlpha = 1.0f;
-            ApplyFade();
-            m_fadeState = FadeState::Idle; // 再入防止 (SceneManager は次フレームで切り替える)
-            s_fadeIn    = fadeEnabled;
-            ExecuteLoad();
-        } else {
-            ApplyFade();
-        }
-        return;
-    }
-
+    // 塗っている / 剥がしている最中は押せない (押した瞬間にもう 1 枚扉が開く)。
+    if (transition::Busy()) return;
     if (m_fired) return;
 
     if (autoTransition) {
+        // 剥がし切ってから数える。剥がしている最中に数えると «見えた瞬間に去る» になる。
+        if (transition::Active()) return;
         m_elapsed += Time::deltaTime;
         if (m_elapsed >= autoDelay && !targetScene.empty()) {
             m_fired = true;
@@ -164,66 +138,50 @@ inline void SceneManagerScript::OnUpdate()
     BeginFadeOut();
 }
 
-inline void SceneManagerScript::ApplyFade()
+inline void SceneManagerScript::ApplyWipe()
 {
-    // WHY マネージャーがあればそちらへ渡すか:
-    //   ランタイムの PostProcessSettings は「まるごと差し替える」器なので、
-    //   フェードと被弾フラッシュが別々に書くとどちらかが必ず消える。
-    //   ScreenEffectManagerComponent を置いたシーンでは書き手をそちらへ一本化する。
-    if (auto* screen = ScreenEffectManagerComponent::Instance()) {
-        if (m_fadeAlpha > 0.0f) screen->SetFade(m_fadeAlpha);
-        else                    screen->ClearFade();
-        return;
-    }
+    // WHY マネージャーがあれば描かないか:
+    //   ランタイムの PostProcessSettings は「まるごと差し替える」器なので、書き手は
+    //   1 人でないと互いを消す。ScreenEffectManagerComponent を置いたシーンでは
+    //   あちらが transition::PushWipe で載せる。進めるのはどちらでも 1 回だけ。
+    (void)transition::Drive(std::max(time.UnscaledDeltaTime(), 0.0f), scene, postprocess,
+                            m_writing, ScreenEffectManagerComponent::Instance() != nullptr);
+}
 
-    // マネージャーを置いていないシーン向けの直接書き込み。
-    // 既存のランタイム PostProcess 設定を引き継ぎ、screenFadeAlpha だけ上書きする。
-    // WHY: ブルームや被写界深度など他のエフェクトを消さずにフェードだけを重ねるため。
-    fbzz::renderer::PostProcessSettings pp =
-        postprocess.TryGet() ? *postprocess.TryGet() : fbzz::renderer::PostProcessSettings{};
-    pp.screenFadeAlpha    = m_fadeAlpha;
-    pp.screenFadeColor[0] = 0.0f; // 黒フェード
-    pp.screenFadeColor[1] = 0.0f;
-    pp.screenFadeColor[2] = 0.0f;
-    postprocess.Set(pp);
+inline std::string SceneManagerScript::Destination()
+{
+    // 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
+    if (!viaScene.empty()) s_next = targetScene;
+    return viaScene.empty() ? targetScene : viaScene;
 }
 
 inline void SceneManagerScript::BeginFadeOut()
 {
     if (!fadeEnabled) {
-        // フェードなし: 即座に遷移
-        s_fadeIn = false;
+        // ワイプなし: 即座に遷移
         ExecuteLoad();
         return;
     }
-    m_fadeAlpha = 0.0f;
-    m_fadeState = FadeState::FadeOut;
+    transition::Style& style = transition::StyleRef();
+    style.outSeconds = std::max(fadeDuration, 0.05f);
+    style.inSeconds  = std::max(fadeDuration, 0.05f) * 1.2f;
+    if (!transition::Begin(Destination())) {
+        // 既に扉が動いている。押した事実だけ戻して、次に任せる。
+        m_fired = false;
+    }
 }
 
 inline void SceneManagerScript::ExecuteLoad()
 {
-    // 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
-    const std::string destination = viaScene.empty() ? targetScene : viaScene;
-    if (!viaScene.empty()) s_next = targetScene;
-
+    const std::string destination = Destination();
     if (scene.LoadScene(destination)) return;
 
-    // WHY 失敗をここで拾うか: 遷移はフェードアウトの後に呼ばれる。要求が通らなかった場合、
-    //     暗転したまま何も起きない画面が残り、操作も効かないので原因が読めない。
-    //     入力の受付を戻し、暗転していたなら明転させてから、理由をログへ出す。
+    // WHY 失敗をここで拾うか: 要求が通らなかった場合、何も起きない画面が残り、
+    //     操作も効かないので原因が読めない。入力の受付を戻して理由をログへ出す。
     debug.LogError("SceneManagerScript: could not switch to scene '" + destination
                    + "'. Staying here (the SceneManager error above has the reason).");
     s_next.clear();
-    s_fadeIn = false;
-    m_fired  = false;
-
-    // 暗転済みのときだけ明転させる。フェード無しの経路で入れると余計な暗転が 1 回挟まる。
-    if (m_fadeAlpha > 0.0f) {
-        m_fadeState = FadeState::FadeIn;
-    } else {
-        m_fadeState = FadeState::Idle;
-        ApplyFade();
-    }
+    m_fired = false;
 }
 
 } // namespace sandbox

@@ -57,7 +57,7 @@ tag = 'Untagged'
     fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    materialPath = 'Assets/Materials/UI/UITitleBackdrop.mat'
+    materialPath = 'guid:f1625738ab6293eee66b06ad81751287|Assets/Materials/UI/UITitleBackdrop.mat'
     offsetMax = [ 0.0, 0.0 ]
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
@@ -149,7 +149,7 @@ tag = 'Untagged'
     fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    materialPath = 'Assets/Materials/UI/UITitleSheen.mat'
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
     offsetMax = [ 0.0, 0.0 ]
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
@@ -187,7 +187,7 @@ tag = 'Untagged'
     fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    materialPath = 'Assets/Materials/UI/UITitleSheen.mat'
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
     offsetMax = [ 0.0, 0.0 ]
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
@@ -225,7 +225,7 @@ tag = 'Untagged'
     fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    materialPath = 'Assets/Materials/UI/UITitleSheen.mat'
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
     offsetMax = [ 0.0, 0.0 ]
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
@@ -263,7 +263,7 @@ tag = 'Untagged'
     fillMethod = 0
     fillOrigin = 0
     imageType = 0
-    materialPath = 'Assets/Materials/UI/UITitleSheen.mat'
+    materialPath = 'guid:29420149904522db59bb308f04210400|Assets/Materials/UI/UITitleSheen.mat'
     offsetMax = [ 0.0, 0.0 ]
     pivot = [ 0.0, 0.0 ]
     pixelsPerUnitMultiplier = 1.0
@@ -389,7 +389,7 @@ tag = 'Untagged'
     fontSize = 124.800003
     letterSpacing = 10.4
     lineSpacing = 1.0
-    materialPath = ''
+    materialPath = 'guid:7395b44080874640b3c2f7e0baa5331d|Assets/Materials/UI/UITextHero.mat'
     maxHeight = 0.0
     maxWidth = 0.0
     offsetMax = [ 0.0, 0.0 ]
@@ -3602,6 +3602,216 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '97331707-3f98-4bb7-a3a7-9000b199e02f'
+layer = 0
+name = 'HintIcon_0'
+parent = 'Canvas'
+parentInstanceId = 'bc73ac77-3548-4644-a791-b0dc8b1aacbe'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_82'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1700, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '29881957-fae2-4d9a-8729-2de942a4f2d0'
+layer = 0
+name = 'HintText_0'
+parent = 'Canvas'
+parentInstanceId = 'bc73ac77-3548-4644-a791-b0dc8b1aacbe'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1740, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd76573c2-bd53-44ca-92db-85b90ae089a6'
+layer = 0
+name = 'HintIcon_1'
+parent = 'Canvas'
+parentInstanceId = 'bc73ac77-3548-4644-a791-b0dc8b1aacbe'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3b47d37d-2b6b-4441-a362-d2d3a489ff5e|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_20'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1500, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'dc4bc5bd-e8d2-4e8a-9e43-72ec3e7d2d58'
+layer = 0
+name = 'HintText_1'
+parent = 'Canvas'
+parentInstanceId = 'bc73ac77-3548-4644-a791-b0dc8b1aacbe'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1540, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '6ac7e7b4-a519-40f4-855d-c581d085ff09'
+layer = 0
+name = 'HintIcon_2'
+parent = 'Canvas'
+parentInstanceId = 'bc73ac77-3548-4644-a791-b0dc8b1aacbe'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'Assets/Sprites/HUD/xbox-series_sheet_default.png'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1300, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'acb98390-ff4a-49dd-a0fe-bc6da5f418b2'
+layer = 0
+name = 'HintText_2'
+parent = 'Canvas'
+parentInstanceId = 'bc73ac77-3548-4644-a791-b0dc8b1aacbe'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1340, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
 instanceId = '273c8056-4460-46b9-ad20-2d86b4ad3262'
 layer = 0
 name = 'ResultPresenter'
@@ -3637,7 +3847,6 @@ tag = 'Untagged'
     type = 'ResultPresenterComponent'
 
         [gameobjects.ScriptComponents.fields]
-        previewResult = 0
         actorName = 'Player'
         debugCursor = '2'
         dotOffColor = [ 0.169, 0.18, 0.2, 1.0 ]
@@ -3645,12 +3854,16 @@ tag = 'Untagged'
         idleBreath = 1.6
         introSeconds = 0.52
         introSpread = 34.0
+        previewResult = 0
         rankAColor = [ 0.949, 0.941, 0.925, 1.0 ]
         rankBColor = [ 0.604, 0.592, 0.569, 1.0 ]
         rankCColor = [ 0.42, 0.408, 0.384, 1.0 ]
         rankSColor = [ 0.31, 0.851, 0.478, 1.0 ]
         retryScene = 'Stage_01'
+        selectGhost = 5.0
         selectScene = 'StageSelect'
+        selectSlide = 10.0
+        selectTravel = 15.0
         titleScene = 'Title'
 
     [[gameobjects.ScriptComponents]]
@@ -3658,8 +3871,8 @@ tag = 'Untagged'
     type = 'ScreenDressingComponent'
 
         [gameobjects.ScriptComponents.fields]
-        backdropName = 'Backdrop'
         backdropCoverage = 0.08
+        backdropName = 'Backdrop'
         backdropSpeed = 1.0
         debugPhase = 0.0
         debugSheen = 0.0
@@ -3668,6 +3881,40 @@ tag = 'Untagged'
         sheenSeconds = 1.1
         sheenStagger = 0.13
         sheenTargets = [ 'Mark_Clear', 'Rule_Clear', 'Mark_Fail', 'Rule_Fail' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHintBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bottomMargin = 58.0
+        debugBuilt = 0
+        debugPad = false
+        entries = [ 'Confirm:決定', 'Navigate:選択' ]
+        fontSize = 16.0
+        gapEntries = 30.0
+        gapIconText = 8.0
+        hitColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        iconSize = 30.0
+        introDelay = 0.9
+        introSeconds = 0.45
+        rightMargin = 132.0
+        textColor = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHeroTextComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugBound = 0
+        introDelay = 0.15
+        introSeconds = 0.85
+        introStagger = 0.18
+        sweepInterval = 4.2
+        sweepSeconds = 0.9
+        sweepStagger = 0.12
+        sweepWidth = 0.35
+        targets = [ 'Word' ]
+
 [[gameobjects]]
 active = true
 instanceId = '3cfca925-3433-4e9c-bfcc-ec415d5095ac'
@@ -3685,6 +3932,7 @@ tag = 'Untagged'
     controllerPath = ''
     defaultStateName = 'Victory'
     enabled = true
+    externalPose = false
     layers = []
     parameters = []
     playing = true
@@ -3826,7 +4074,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:8a73d6d8592397296bf8b3334ebd79d3|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorGrey.mat'
+    material = 'Assets/Materials/Player/M_ArmorGrey.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -3855,7 +4103,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:20a2c14f6500107fb0018dc7d0424989|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_ArmorWhite.mat'
+    material = 'Assets/Materials/Player/M_ArmorWhite.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -3971,7 +4219,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:eb136c6a518e09566a0fb23c89a7a184|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_MetalDark.mat'
+    material = 'Assets/Materials/Player/M_MetalDark.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -4000,7 +4248,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:7ae7ed1f56fcfe85be75042bcc54fc9b|Library/Baked/b69dd6e3c3f9f1d299240c48c6073452/materials/M_PanelLine.mat'
+    material = 'Assets/Materials/Player/M_PanelLine.mat'
     visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -4203,7 +4451,7 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3cfca925-3433-4e9c-bfcc-ec415d5095ac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
+    position = [ -0.006374, 0.0, 0.073652 ]
     rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
@@ -4228,7 +4476,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.8695, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    rotation = [ -0.025518, -0.016483, 0.040643, 0.998712 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4252,7 +4500,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.187, 0.0 ]
-    rotation = [ -0.103083, 0.0, 0.0, 0.994673 ]
+    rotation = [ -0.008182, -0.015721, 0.034759, 0.999239 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4276,7 +4524,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.4435, 0.0 ]
-    rotation = [ -0.122989, 0.0, 0.0, 0.992408 ]
+    rotation = [ 0.008398, -0.009554, -0.034816, 0.999313 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4300,7 +4548,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.6772, 0.1357 ]
-    rotation = [ 0.216497, 0.0, 0.0, 0.976283 ]
+    rotation = [ 0.186039, 0.0, 0.0, 0.982542 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4323,8 +4571,8 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3cfca925-3433-4e9c-bfcc-ec415d5095ac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.121823, 0.0 ]
-    rotation = [ 0.083992, 0.0, 0.0, 0.996467 ]
+    position = [ 0.0, 0.121824, 0.0 ]
+    rotation = [ -0.002773, 0.0, 0.0, 0.999996 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4348,7 +4596,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.100002, 0.0 ]
-    rotation = [ 0.067907, 0.0, 0.0, 0.997692 ]
+    rotation = [ 0.015391, 0.0, 0.0, 0.999882 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4372,7 +4620,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.221, 0.2885, 0.0 ]
-    rotation = [ 0.065926, -0.139538, 0.953442, -0.259096 ]
+    rotation = [ -0.011176, 0.04171, 0.965025, -0.258578 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4396,7 +4644,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.282, 0.0 ]
-    rotation = [ -0.039925, -0.003754, -0.008394, 0.99916 ]
+    rotation = [ -0.112232, 0.0, 0.0, 0.993682 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4420,7 +4668,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.284, 0.0 ]
-    rotation = [ 0.260179, -0.006184, -0.096704, 0.960686 ]
+    rotation = [ 0.005337, -1.3e-05, -0.002463, 0.999983 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4660,7 +4908,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.034566, 0.088171, -0.085 ]
-    rotation = [ -0.336517, -0.803736, 0.473602, 0.128323 ]
+    rotation = [ 0.336517, 0.803736, -0.473602, -0.128323 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4732,7 +4980,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.000557, 0.112999, -0.045 ]
-    rotation = [ -0.498767, -0.50123, -0.50123, -0.498767 ]
+    rotation = [ 0.498767, 0.50123, 0.50123, 0.498767 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4756,8 +5004,8 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.025, 0.06, 0.057 ]
-    rotation = [ -0.984808, -0.173648, 0.0, 0.0 ]
-    scale = [ 0.999999, 1.0, 1.0 ]
+    rotation = [ 0.984808, 0.173648, 0.0, 0.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -4780,7 +5028,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.221, 0.2885, 0.0 ]
-    rotation = [ -0.065926, -0.139538, 0.953442, 0.259096 ]
+    rotation = [ 0.011176, 0.04171, 0.965025, 0.258578 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4804,7 +5052,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.282, 0.0 ]
-    rotation = [ -0.039925, 0.003754, 0.008394, 0.99916 ]
+    rotation = [ -0.112232, 0.0, 0.0, 0.993682 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4828,7 +5076,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.284, 0.0 ]
-    rotation = [ 0.260179, 0.006184, 0.096704, 0.960686 ]
+    rotation = [ 0.005337, 1.3e-05, 0.002463, 0.999983 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5068,7 +5316,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.034566, 0.088171, -0.085 ]
-    rotation = [ 0.336517, -0.803736, 0.473602, -0.128323 ]
+    rotation = [ -0.336517, 0.803736, -0.473602, 0.128323 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5140,7 +5388,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.000557, 0.112999, -0.045 ]
-    rotation = [ 0.498767, -0.50123, -0.50123, 0.498767 ]
+    rotation = [ -0.498767, 0.50123, 0.50123, -0.498767 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5164,8 +5412,8 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.025, 0.06, 0.057 ]
-    rotation = [ -0.984808, 0.173648, 0.0, 0.0 ]
-    scale = [ 0.999999, 1.0, 1.0 ]
+    rotation = [ 0.984808, -0.173648, 0.0, 0.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -5188,7 +5436,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.2285, -0.27 ]
-    rotation = [ 0.0, -0.707107, 0.707107, 0.0 ]
+    rotation = [ 0.0, 0.707107, -0.707107, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5260,7 +5508,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.17, 0.3955, 0.01 ]
-    rotation = [ 0.0, -0.707107, 0.707107, 0.0 ]
+    rotation = [ 0.0, 0.707107, -0.707107, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5284,7 +5532,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.17, 0.3955, 0.01 ]
-    rotation = [ 0.0, -0.707107, 0.707107, 0.0 ]
+    rotation = [ 0.0, 0.707107, -0.707107, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5404,7 +5652,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.185, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 1.0, 0.0 ]
+    rotation = [ -0.210133, -0.268514, 0.939006, 0.044858 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5428,7 +5676,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.29, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    rotation = [ 0.575675, 0.0, 0.0, 0.817679 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5452,7 +5700,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.3875, 0.0 ]
-    rotation = [ -0.367976, 0.0, 0.0, 0.929835 ]
+    rotation = [ -0.650653, 0.0, 0.0, 0.759375 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5476,7 +5724,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.178281, 0.0 ]
-    rotation = [ -0.366012, 0.0, 0.0, 0.93061 ]
+    rotation = [ -0.398666, 0.0, 0.0, 0.917096 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5500,7 +5748,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.185, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 1.0, 0.0 ]
+    rotation = [ 0.220692, -0.203541, 0.952962, 0.041586 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5524,7 +5772,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.29, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    rotation = [ 0.459097, 0.0, 0.0, 0.888386 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5548,7 +5796,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.3875, 0.0 ]
-    rotation = [ -0.367976, 0.0, 0.0, 0.929835 ]
+    rotation = [ -0.632125, 0.0, 0.0, 0.774867 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5893,7 +6141,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:0a2013a587a24ce8dbf0a03b9d64c40e|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_MetalDark.mat'
+    material = 'Assets/Materials/Player/M_MetalDark.mat'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -5901,23 +6149,23 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:26a02a321eb4e2a1c66a35e044c914d7|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordSteel.mat'
+        material = 'Assets/Materials/Player/M_SwordSteel.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:0c83654c3a6a113ff1988eafaf1291a1|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorGrey.mat'
+        material = 'Assets/Materials/Player/M_ArmorGrey.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:94b2486afead42e8ba91f6a7239a25ea|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordAccent.mat'
+        material = 'Assets/Materials/Player/M_SwordAccent.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:603bec7abde99ad7fe4197cd9bcd595d|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_PanelLine.mat'
+        material = 'Assets/Materials/Player/M_PanelLine.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:4fa518d12ea23ea50a346419a5359f77|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_ArmorWhite.mat'
+        material = 'Assets/Materials/Player/M_ArmorWhite.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -5950,8 +6198,8 @@ tag = 'Untagged'
     target = '3cfca925-3433-4e9c-bfcc-ec415d5095ac'
 
     [gameobjects.transform]
-    position = [ -0.175, 1.391039, 0.262986 ]
-    rotation = [ 0.310323, 0.558233, -0.434022, 0.635374 ]
+    position = [ -0.256843, 1.245283, 0.28508 ]
+    rotation = [ 0.319007, 0.594384, -0.335673, 0.65747 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -6255,7 +6503,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'guid:4171165b6083906753b520cc3ef456a5|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_MetalDark.mat'
+    material = 'Assets/Materials/Player/M_MetalDark.mat'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -6263,23 +6511,23 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:d445eb3c179619644fdea1e3b5d493ea|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordSteel.mat'
+        material = 'Assets/Materials/Player/M_SwordSteel.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:cf0d73a5513af24400f0b0c77c214a06|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorGrey.mat'
+        material = 'Assets/Materials/Player/M_ArmorGrey.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:819cdf59cddee3f7bc8edbbcfd24c099|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordAccent.mat'
+        material = 'Assets/Materials/Player/M_SwordAccent.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:1c412dee3ca368608d36d0c0a0ebfdf6|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_PanelLine.mat'
+        material = 'Assets/Materials/Player/M_PanelLine.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:57da4880a47fc814f2e5a6f34d87f016|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_ArmorWhite.mat'
+        material = 'Assets/Materials/Player/M_ArmorWhite.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -6312,8 +6560,8 @@ tag = 'Untagged'
     target = '3cfca925-3433-4e9c-bfcc-ec415d5095ac'
 
     [gameobjects.transform]
-    position = [ 0.175, 1.399447, 0.303114 ]
-    rotation = [ 0.310323, -0.558233, 0.434022, 0.635374 ]
+    position = [ 0.085667, 1.301283, 0.346172 ]
+    rotation = [ 0.38606, -0.575754, 0.450044, 0.562962 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -6789,7 +7037,7 @@ tag = 'Untagged'
     autoSize = false
     autoSizeMax = 0.0
     autoSizeMin = 8.0
-    color = [ 0.10, 0.35, 1.0, 0.0 ]
+    color = [ 0.1, 0.35, 1.0, 0.0 ]
     enabled = true
     fontPath = 'guid:903038b2d7351007f9d9f55e4746310c|Assets/UI/Font/GW-Sans-Bold.ttf'
     fontSize = 30.0

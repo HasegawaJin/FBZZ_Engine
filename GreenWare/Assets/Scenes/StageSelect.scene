@@ -346,7 +346,7 @@ tag = 'Untagged'
     fontSize = 74.400002
     letterSpacing = 14.88
     lineSpacing = 1.0
-    materialPath = ''
+    materialPath = 'guid:7395b44080874640b3c2f7e0baa5331d|Assets/Materials/UI/UITextHero.mat'
     maxHeight = 0.0
     maxWidth = 0.0
     offsetMax = [ 0.0, 0.0 ]
@@ -389,7 +389,7 @@ tag = 'Untagged'
     fontSize = 74.400002
     letterSpacing = 3.72
     lineSpacing = 1.0
-    materialPath = ''
+    materialPath = 'guid:7395b44080874640b3c2f7e0baa5331d|Assets/Materials/UI/UITextHero.mat'
     maxHeight = 0.0
     maxWidth = 0.0
     offsetMax = [ 0.0, 0.0 ]
@@ -4951,6 +4951,216 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'e0ecf062-a121-454b-b3e6-9da7b1ac0e51'
+layer = 0
+name = 'HintIcon_0'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3cb1a753-0e0e-45e8-b278-55f88fdf36dd|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_82'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1700, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '19a090e8-69e4-4793-982d-33057054c004'
+layer = 0
+name = 'HintText_0'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1740, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4f3f68c4-2b45-4511-8131-1926d1637e64'
+layer = 0
+name = 'HintIcon_1'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::cf52d251-9771-41b7-bded-c444768c0468|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_84'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1500, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '16d6fd7c-8525-4338-b62f-dc22886f35fb'
+layer = 0
+name = 'HintText_1'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1540, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0d167cc7-cd28-4d85-bebb-7c6ff7b0be69'
+layer = 0
+name = 'HintIcon_2'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 20
+    stretchX = false
+    stretchY = false
+    texturePath = 'guid:6da33f611e15b5bd9197cc706b0ed55b::sprite::3b47d37d-2b6b-4441-a362-d2d3a489ff5e|Assets/Sprites/HUD/xbox-series_sheet_default.png::sprite::xbox-series_sheet_default_20'
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 1300, 1010, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 30, 30, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'edd3ce1f-56e0-4d11-84c9-276e548c2b1d'
+layer = 0
+name = 'HintText_2'
+parent = 'Canvas'
+parentInstanceId = 'c4ac23cf-abab-4c5b-b967-251283b78264'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    color = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    enabled = true
+    fontPath = 'guid:c0b33940ef635a4baeb790408fdc25b4|Assets/UI/Font/GW-Sans-Regular.ttf'
+    fontSize = 16.0
+    letterSpacing = 2.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxWidth = 0.0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 21
+    text = ''
+
+    [gameobjects.transform]
+    position = [ 1340, 1014, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 100.0, 16.0, 1.0 ]
+
+[[gameobjects]]
+active = true
 instanceId = '87d6c2c7-f288-4450-93b8-629951579fc3'
 layer = 0
 name = 'StageSelect'
@@ -4970,6 +5180,14 @@ tag = 'Untagged'
     type = 'StageSelectComponent'
 
         [gameobjects.ScriptComponents.fields]
+        nameNudge = 8.0
+        paneStagger = 0.008
+        paneSeconds = 0.22
+        paneSlide = 18.0
+        introSlide = -36.0
+        introSeconds = 0.4
+        introStagger = 0.05
+        introDelay = 0.3
         debugCursor = '0'
         rowPitch = 76.0
         titleScene = 'Title'
@@ -4990,3 +5208,51 @@ tag = 'Untagged'
         sheenStagger = 0.13
         sheenTargets = [ 'Mark', 'Rule' ]
         visibleRows = 6
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiRevealComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugElapsed = 0.0
+        debugSlots = 0
+        delay = 0.1
+        duration = 0.42
+        fromX = -28.0
+        fromY = 0.0
+        includeChildren = true
+        stagger = 0.06
+        targets = [ 'Head', 'Dividers', 'ListFade' ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHintBarComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bottomMargin = 58.0
+        debugBuilt = 0
+        debugPad = false
+        entries = [ 'Confirm:決定', 'Cancel:戻る', 'Navigate:選択' ]
+        fontSize = 16.0
+        gapEntries = 30.0
+        gapIconText = 8.0
+        hitColor = [ 1.0, 1.0, 1.0, 1.0 ]
+        iconSize = 30.0
+        introDelay = 0.9
+        introSeconds = 0.45
+        rightMargin = 132.0
+        textColor = [ 0.662745, 0.65098, 0.627451, 1.0 ]
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'UiHeroTextComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        debugBound = 0
+        introDelay = 0.15
+        introSeconds = 0.85
+        introStagger = 0.18
+        sweepInterval = 4.2
+        sweepSeconds = 0.9
+        sweepStagger = 0.12
+        sweepWidth = 0.35
+        targets = [ 'Head_Word', 'Head_Word2' ]

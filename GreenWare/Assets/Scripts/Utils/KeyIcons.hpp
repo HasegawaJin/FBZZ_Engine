@@ -14,6 +14,10 @@
 ///   UIImage.texturePath / ui.SetImageTexture() が "<png>::sprite::<id>" を直接受ける。
 ///   切り出し矩形とピボットは .meta から自動で解決されるので、呼ぶ側は寸法を知らなくてよい。
 ///
+/// ⚠ 表そのもの (kbm:: / pad:: の定数) は Tools の生成物。手で編集しないこと。
+///   下の Action / Prompt は «どの操作にどの絵を当てるか» という遊び側の決定なので、
+///   ここは手で書く。
+///
 /// 使い方:
 ///   ui.SetImageTexture(go, keyicon::pad::kA);
 ///   ui.SetImageTexture(go, keyicon::Prompt(usingPad, keyicon::Action::Dodge));
@@ -93,24 +97,26 @@ inline constexpr const char* kDPad =
 
 /// ゲーム中のプロンプトで使う操作の種類。
 enum class Action {
-    MoveAxis, LookAxis, GunLeft, GunRight, Dodge, PolarityDodge, Pause, Confirm, Cancel,
+    MoveAxis, LookAxis, Attack, Parry, Dodge, Jump, Pause, Confirm, Cancel,
 };
 
 /// 入力機器に応じたアイコンを返す。該当が無ければ空文字列 (呼び出し側は文字で出す)。
 ///
 /// WHY 1 つの関数にまとめるか: プロンプトを出す側は「回避のボタン」を知りたいだけで、
 ///     パッドかキーボードかで分岐を書きたいわけではない。分岐をここに閉じる。
+///
+/// ⚠ 返す絵は ProjectSettings/Input.inputactions の «既定の» 割り当てと対にすること。
+///   差し替えた行はアイコンをやめて文字を出す仕組みなので (OptionsScreenComponent)、
+///   ここがずれると «既定のまま遊んでいる人にだけ違うキーが出る» という形で出る。
 [[nodiscard]] inline std::string_view Prompt(bool usingPad, Action action)
 {
     switch (action) {
     case Action::MoveAxis: return usingPad ? pad::kLS    : kbm::kW;      // 代表 1 つ
     case Action::LookAxis: return usingPad ? pad::kRS    : kbm::kMouse;
-    case Action::GunLeft:  return usingPad ? pad::kLT    : kbm::kMouseLeft;
-    case Action::GunRight: return usingPad ? pad::kRT    : kbm::kMouseRight;
-    case Action::Dodge:    return usingPad ? pad::kA     : kbm::kSpace;
-    // 極性回避は «回避 + トリガー» の同時押し。2 枚並べる必要があるので、
-    // ここは代表として回避側だけを返し、トリガーは呼び出し側が GunLeft / GunRight で足す。
-    case Action::PolarityDodge: return usingPad ? pad::kA : kbm::kSpace;
+    case Action::Attack:   return usingPad ? pad::kRT    : kbm::kMouseLeft;
+    case Action::Parry:    return usingPad ? pad::kLB    : kbm::kMouseRight;
+    case Action::Dodge:    return usingPad ? pad::kB     : kbm::kShift;
+    case Action::Jump:     return usingPad ? pad::kA     : kbm::kSpace;
     case Action::Pause:    return usingPad ? pad::kStart : kbm::kEsc;
     case Action::Confirm:  return usingPad ? pad::kA     : kbm::kEnter;
     case Action::Cancel:   return usingPad ? pad::kB     : kbm::kEsc;
