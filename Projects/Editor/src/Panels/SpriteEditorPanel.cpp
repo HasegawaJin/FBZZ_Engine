@@ -14,6 +14,7 @@
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <Engine/Util/Uuid.hpp>
 #include <imgui.h>
 #include <stb_image.h>
@@ -23,7 +24,6 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
-#include <queue>
 #include <unordered_map>
 #include <utility>
 
@@ -240,165 +240,31 @@ void SpriteEditorPanel::PushUndoSnapshot(
 // Texture全体を指定行列で均等分割する。
 void SpriteEditorPanel::SliceGrid(uint32_t textureWidth, uint32_t textureHeight)
 {
-    const int offsetX = std::clamp(m_sliceOffsetX, 0, static_cast<int>(textureWidth) - 1);
-    const int offsetY = std::clamp(m_sliceOffsetY, 0, static_cast<int>(textureHeight) - 1);
-    const int paddingX = std::max(0, m_slicePaddingX);
-    const int paddingY = std::max(0, m_slicePaddingY);
+    spriteslice::GridParams params;
+    params.byCellCount    = m_sliceType == SliceType::CellCount;
+    params.columns        = m_gridColumns;
+    params.rows           = m_gridRows;
+    params.cellWidth      = m_cellWidth;
+    params.cellHeight     = m_cellHeight;
+    params.offsetX        = m_sliceOffsetX;
+    params.offsetY        = m_sliceOffsetY;
+    params.paddingX       = m_slicePaddingX;
+    params.paddingY       = m_slicePaddingY;
+    params.pivotX         = m_slicePivotX;
+    params.pivotY         = m_slicePivotY;
+    params.keepEmptyRects = m_keepEmptyRects;
+    params.baseName       = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(m_texturePath).stem()) + "_";
 
-    int columns = 1;
-    int rows = 1;
-    int cellWidth = 1;
-    int cellHeight = 1;
-    if (m_sliceType == SliceType::CellCount) {
-        columns = std::clamp(m_gridColumns, 1, static_cast<int>(textureWidth));
-        rows = std::clamp(m_gridRows, 1, static_cast<int>(textureHeight));
-        const int usableWidth = static_cast<int>(textureWidth) - offsetX
-            - paddingX * (columns - 1);
-        const int usableHeight = static_cast<int>(textureHeight) - offsetY
-            - paddingY * (rows - 1);
-        if (usableWidth < columns || usableHeight < rows) {
-            m_status = "Offset / Padding leaves no room for the requested grid.";
-            return;
-        }
-        cellWidth = usableWidth / columns;
-        cellHeight = usableHeight / rows;
-    } else {
-        cellWidth = std::clamp(m_cellWidth, 1, static_cast<int>(textureWidth));
-        cellHeight = std::clamp(m_cellHeight, 1, static_cast<int>(textureHeight));
-        columns = std::max(1,
-            (static_cast<int>(textureWidth) - offsetX + paddingX) / (cellWidth + paddingX));
-        rows = std::max(1,
-            (static_cast<int>(textureHeight) - offsetY + paddingY) / (cellHeight + paddingY));
+    const spriteslice::Result generated =
+        spriteslice::GenerateGrid(m_texturePath, textureWidth, textureHeight, params);
+    if (!generated.error.empty()) {
+        m_status = generated.error;
+        return;
     }
 
-    const std::string baseName = util::FileSystem::PathToUtf8(
-        util::FileSystem::PathFromUtf8(m_texturePath).stem());
-
-    int decodedWidth = 0;
-    int decodedHeight = 0;
-    int decodedChannels = 0;
-    stbi_uc* decodedPixels = nullptr;
-    if (!m_keepEmptyRects) {
-        decodedPixels = stbi_load(
-            m_texturePath.c_str(), &decodedWidth, &decodedHeight, &decodedChannels, 4);
-    }
-
-    const auto hasVisiblePixels = [&](const asset::SpriteRect& rect) {
-        if (decodedPixels == nullptr || decodedWidth <= 0 || decodedHeight <= 0)
-            return true;
-        const uint32_t maxX = std::min<uint32_t>(
-            rect.x + rect.width, static_cast<uint32_t>(decodedWidth));
-        const uint32_t maxY = std::min<uint32_t>(
-            rect.y + rect.height, static_cast<uint32_t>(decodedHeight));
-        for (uint32_t y = rect.y; y < maxY; ++y) {
-            for (uint32_t x = rect.x; x < maxX; ++x) {
-                const size_t pixel = (static_cast<size_t>(y) * decodedWidth + x) * 4;
-                if (decodedPixels[pixel + 3] > 8) return true;
-            }
-        }
-        return false;
-    };
-
-    std::vector<asset::SpriteRect> generated;
-    const int countUsableWidth = static_cast<int>(textureWidth) - offsetX
-        - paddingX * (columns - 1);
-    const int countUsableHeight = static_cast<int>(textureHeight) - offsetY
-        - paddingY * (rows - 1);
-    for (int row = 0; row < rows; ++row) {
-        for (int column = 0; column < columns; ++column) {
-            const bool sliceByCount = m_sliceType == SliceType::CellCount;
-            const int x = sliceByCount
-                ? offsetX + (countUsableWidth * column) / columns + paddingX * column
-                : offsetX + column * (cellWidth + paddingX);
-            const int y = sliceByCount
-                ? offsetY + (countUsableHeight * row) / rows + paddingY * row
-                : offsetY + row * (cellHeight + paddingY);
-            if (x >= static_cast<int>(textureWidth) || y >= static_cast<int>(textureHeight))
-                continue;
-            const int generatedWidth = sliceByCount
-                ? (countUsableWidth * (column + 1)) / columns
-                    - (countUsableWidth * column) / columns
-                : cellWidth;
-            const int generatedHeight = sliceByCount
-                ? (countUsableHeight * (row + 1)) / rows
-                    - (countUsableHeight * row) / rows
-                : cellHeight;
-            asset::SpriteRect sprite;
-            sprite.id = util::GenerateUUID();
-            sprite.name = baseName + "_" + std::to_string(generated.size());
-            sprite.x = static_cast<uint32_t>(x);
-            sprite.y = static_cast<uint32_t>(y);
-            sprite.width = std::min<uint32_t>(
-                static_cast<uint32_t>(generatedWidth), textureWidth - sprite.x);
-            sprite.height = std::min<uint32_t>(
-                static_cast<uint32_t>(generatedHeight), textureHeight - sprite.y);
-            sprite.pivotX = std::clamp(m_slicePivotX, 0.0f, 1.0f);
-            sprite.pivotY = std::clamp(m_slicePivotY, 0.0f, 1.0f);
-            if (m_keepEmptyRects || hasVisiblePixels(sprite))
-                generated.push_back(std::move(sprite));
-        }
-    }
-    if (decodedPixels) stbi_image_free(decodedPixels);
-
-    const auto overlapArea = [](const asset::SpriteRect& lhs, const asset::SpriteRect& rhs) {
-        const std::uint64_t left = std::max(lhs.x, rhs.x);
-        const std::uint64_t top = std::max(lhs.y, rhs.y);
-        const std::uint64_t right = std::min(
-            static_cast<std::uint64_t>(lhs.x) + lhs.width,
-            static_cast<std::uint64_t>(rhs.x) + rhs.width);
-        const std::uint64_t bottom = std::min(
-            static_cast<std::uint64_t>(lhs.y) + lhs.height,
-            static_cast<std::uint64_t>(rhs.y) + rhs.height);
-        return right > left && bottom > top
-            ? (right - left) * (bottom - top) : 0ULL;
-    };
-
-    std::vector<asset::SpriteRect> result;
-    if (m_sliceExistingMode == SliceExistingMode::DeleteExisting) {
-        result = std::move(generated);
-    } else {
-        result = m_working.settings.sprites;
-        const auto makeUniqueName = [&result](const std::string& requested) {
-            auto exists = [&result](const std::string& name) {
-                return std::any_of(result.begin(), result.end(),
-                    [&name](const asset::SpriteRect& sprite) {
-                        return sprite.name == name;
-                    });
-            };
-            if (!exists(requested)) return requested;
-            for (int suffix = 1; ; ++suffix) {
-                const std::string candidate =
-                    requested + "_" + std::to_string(suffix);
-                if (!exists(candidate)) return candidate;
-            }
-        };
-        for (asset::SpriteRect& candidate : generated) {
-            int bestIndex = -1;
-            std::uint64_t bestArea = 0;
-            for (int index = 0; index < static_cast<int>(result.size()); ++index) {
-                const std::uint64_t area = overlapArea(
-                    candidate, result[static_cast<size_t>(index)]);
-                if (area > bestArea) {
-                    bestArea = area;
-                    bestIndex = index;
-                }
-            }
-            if (bestIndex < 0) {
-                candidate.name = makeUniqueName(candidate.name);
-                result.push_back(std::move(candidate));
-            } else if (m_sliceExistingMode == SliceExistingMode::Smart) {
-                asset::SpriteRect& existing = result[static_cast<size_t>(bestIndex)];
-                existing.x = candidate.x;
-                existing.y = candidate.y;
-                existing.width = candidate.width;
-                existing.height = candidate.height;
-                existing.pivotX = candidate.pivotX;
-                existing.pivotY = candidate.pivotY;
-            }
-        }
-    }
-
-    m_working.settings.sprites = std::move(result);
+    m_working.settings.sprites = spriteslice::MergeIntoExisting(
+        m_working.settings.sprites, generated.sprites, m_sliceExistingMode);
     m_working.settings.spriteMode = asset::SpriteMode::Multiple;
     m_selected = m_working.settings.sprites.empty() ? -1 : 0;
     m_undoDescription = "Slice Sprite Sheet";
@@ -410,125 +276,23 @@ void SpriteEditorPanel::SliceGrid(uint32_t textureWidth, uint32_t textureHeight)
 // Automatic Slice として、alpha が連結した島ごとに外接矩形を生成する。
 void SpriteEditorPanel::AutoTrim(uint32_t textureWidth, uint32_t textureHeight)
 {
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    stbi_uc* pixels = stbi_load(m_texturePath.c_str(), &width, &height, &channels, 4);
-    if (pixels == nullptr || width <= 0 || height <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        m_status = "Automatic Slice could not decode this image.";
+    spriteslice::AutoTrimParams params;
+    params.pivotX   = m_slicePivotX;
+    params.pivotY   = m_slicePivotY;
+    params.baseName = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(m_texturePath).stem()) + "_";
+
+    const spriteslice::Result generated =
+        spriteslice::GenerateAutoTrim(m_texturePath, params);
+    if (!generated.error.empty()) {
+        m_status = generated.error;
         return;
     }
 
-    const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
-    std::vector<uint8_t> visited(pixelCount, 0);
-    std::vector<asset::SpriteRect> trimmed;
-    const std::string baseName = util::FileSystem::PathToUtf8(
-        util::FileSystem::PathFromUtf8(m_texturePath).stem());
-    constexpr uint8_t ALPHA_THRESHOLD = 8;
-    constexpr int DX[4] = { -1, 1, 0, 0 };
-    constexpr int DY[4] = { 0, 0, -1, 1 };
-
-    for (int seedY = 0; seedY < height; ++seedY) {
-        for (int seedX = 0; seedX < width; ++seedX) {
-            const size_t seed = static_cast<size_t>(seedY) * static_cast<size_t>(width)
-                + static_cast<size_t>(seedX);
-            if (visited[seed] || pixels[seed * 4 + 3] <= ALPHA_THRESHOLD) continue;
-
-            int minX = seedX;
-            int minY = seedY;
-            int maxX = seedX;
-            int maxY = seedY;
-            std::queue<std::pair<int, int>> pending;
-            pending.push({ seedX, seedY });
-            visited[seed] = 1;
-            while (!pending.empty()) {
-                const auto [x, y] = pending.front();
-                pending.pop();
-                minX = std::min(minX, x);
-                minY = std::min(minY, y);
-                maxX = std::max(maxX, x);
-                maxY = std::max(maxY, y);
-                for (int direction = 0; direction < 4; ++direction) {
-                    const int nx = x + DX[direction];
-                    const int ny = y + DY[direction];
-                    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-                    const size_t next = static_cast<size_t>(ny) * static_cast<size_t>(width)
-                        + static_cast<size_t>(nx);
-                    if (visited[next] || pixels[next * 4 + 3] <= ALPHA_THRESHOLD) continue;
-                    visited[next] = 1;
-                    pending.push({ nx, ny });
-                }
-            }
-
-            asset::SpriteRect sprite;
-            sprite.id = util::GenerateUUID();
-            sprite.name = baseName + "_" + std::to_string(trimmed.size());
-            sprite.x = static_cast<uint32_t>(minX);
-            sprite.y = static_cast<uint32_t>(minY);
-            sprite.width = static_cast<uint32_t>(maxX - minX + 1);
-            sprite.height = static_cast<uint32_t>(maxY - minY + 1);
-            sprite.pivotX = std::clamp(m_slicePivotX, 0.0f, 1.0f);
-            sprite.pivotY = std::clamp(m_slicePivotY, 0.0f, 1.0f);
-            trimmed.push_back(std::move(sprite));
-        }
-    }
-    stbi_image_free(pixels);
-
-    if (trimmed.empty()) {
-        m_status = "Automatic Slice found no visible alpha islands.";
-        return;
-    }
-    if (m_sliceExistingMode == SliceExistingMode::DeleteExisting) {
-        m_working.settings.sprites = std::move(trimmed);
-    } else {
-        std::vector<asset::SpriteRect> merged = m_working.settings.sprites;
-        const auto overlapArea = [](const asset::SpriteRect& lhs, const asset::SpriteRect& rhs) {
-            const std::uint64_t left = std::max(lhs.x, rhs.x);
-            const std::uint64_t top = std::max(lhs.y, rhs.y);
-            const std::uint64_t right = std::min(
-                static_cast<std::uint64_t>(lhs.x) + lhs.width,
-                static_cast<std::uint64_t>(rhs.x) + rhs.width);
-            const std::uint64_t bottom = std::min(
-                static_cast<std::uint64_t>(lhs.y) + lhs.height,
-                static_cast<std::uint64_t>(rhs.y) + rhs.height);
-            return right > left && bottom > top
-                ? (right - left) * (bottom - top) : 0ULL;
-        };
-        for (asset::SpriteRect& candidate : trimmed) {
-            int bestIndex = -1;
-            std::uint64_t bestArea = 0;
-            for (int index = 0; index < static_cast<int>(merged.size()); ++index) {
-                const std::uint64_t area = overlapArea(
-                    candidate, merged[static_cast<size_t>(index)]);
-                if (area > bestArea) {
-                    bestArea = area;
-                    bestIndex = index;
-                }
-            }
-            if (bestIndex < 0) {
-                std::string uniqueName = candidate.name;
-                for (int suffix = 1; std::any_of(
-                         merged.begin(), merged.end(),
-                         [&uniqueName](const asset::SpriteRect& sprite) {
-                             return sprite.name == uniqueName;
-                         }); ++suffix) {
-                    uniqueName = candidate.name + "_" + std::to_string(suffix);
-                }
-                candidate.name = std::move(uniqueName);
-                merged.push_back(std::move(candidate));
-            } else if (m_sliceExistingMode == SliceExistingMode::Smart) {
-                asset::SpriteRect& existing = merged[static_cast<size_t>(bestIndex)];
-                existing.x = candidate.x;
-                existing.y = candidate.y;
-                existing.width = candidate.width;
-                existing.height = candidate.height;
-            }
-        }
-        m_working.settings.sprites = std::move(merged);
-    }
+    m_working.settings.sprites = spriteslice::MergeIntoExisting(
+        m_working.settings.sprites, generated.sprites, m_sliceExistingMode);
     m_working.settings.spriteMode = asset::SpriteMode::Multiple;
-    m_selected = 0;
+    m_selected = m_working.settings.sprites.empty() ? -1 : 0;
     m_undoDescription = "Auto Slice Sprite Sheet";
     m_dirty = true;
     m_status = "Automatic Slice created "
@@ -640,6 +404,61 @@ SpriteEditorPanel::ValidationResult SpriteEditorPanel::Validate(
         }
     }
     return result;
+}
+
+void SpriteEditorPanel::RefreshReferrerCount(const EditorContext& ctx)
+{
+    m_referrerCount = 0;
+    m_referrerFileCount = 0;
+    if (ctx.projectRoot.empty()) return;
+
+    // ID は .scene / .prefab / .mat のほか、スクリプトへ文字列で埋め込まれることもある
+    // (KeyIcons.hpp のような生成表)。テキストとして開けるものは全部見る。
+    static const std::vector<std::string> kTextExtensions = {
+        ".scene", ".prefab", ".mat", ".animcontroller", ".vfx", ".sequence",
+        ".fzdata", ".toml", ".json", ".hpp", ".cpp", ".terrain"
+    };
+    std::vector<std::string> ids;
+    ids.reserve(m_working.settings.sprites.size());
+    for (const asset::SpriteRect& sprite : m_working.settings.sprites)
+        if (!sprite.id.empty()) ids.push_back(sprite.id);
+    if (ids.empty()) return;
+
+    std::error_code ec;
+    const std::filesystem::path assetsRoot =
+        util::FileSystem::PathFromUtf8(ctx.projectRoot) / "Assets";
+    for (std::filesystem::recursive_directory_iterator
+             it(assetsRoot, std::filesystem::directory_options::skip_permission_denied, ec), end;
+         it != end; it.increment(ec)) {
+        if (ec) { ec.clear(); continue; }
+        if (!it->is_regular_file(ec)) continue;
+        const std::string ext = util::StringUtils::ToLower(
+            util::FileSystem::PathToUtf8(it->path().extension()));
+        if (std::find(kTextExtensions.begin(), kTextExtensions.end(), ext)
+            == kTextExtensions.end()) continue;
+        if (it->file_size(ec) > 8u * 1024u * 1024u) continue;
+
+        std::string text;
+        if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(it->path()), text)) continue;
+        int hits = 0;
+        for (const std::string& id : ids)
+            if (text.find(id) != std::string::npos) ++hits;
+        if (hits > 0) {
+            m_referrerCount += hits;
+            ++m_referrerFileCount;
+        }
+    }
+}
+
+void SpriteEditorPanel::RenameAll(const std::string& prefix, int startIndex)
+{
+    if (m_working.settings.sprites.empty()) return;
+    int index = startIndex;
+    for (asset::SpriteRect& sprite : m_working.settings.sprites)
+        sprite.name = prefix + std::to_string(index++);
+    m_undoDescription = "Rename Sprites";
+    m_dirty = true;
+    m_status = "Renamed " + std::to_string(m_working.settings.sprites.size()) + " Sprites.";
 }
 
 // Unity と同様に、選択中 SpriteRect の情報をキャンバス右下の小パネルへ描画する。
@@ -1248,7 +1067,14 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
     if (ImGui::Button("Slice")) {
         openSlicePopup = true;
         m_slicePopupOpen = true;
+        RefreshReferrerCount(ctx);
     }
+    ImGui::SameLine();
+    const bool openRenamePopup = ImGui::Button("Rename");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("全 Sprite を «接頭辞 + 連番» で付け直します。\n"
+                          "名前は参照キーを兼ねるので、人と AI が呼べる名前にしておくと\n"
+                          "\"Atlas.png::sprite::Key_W\" と書けるようになります");
     ImGui::SameLine();
     const bool hasSelection = m_selected >= 0
         && m_selected < static_cast<int>(m_working.settings.sprites.size());
@@ -1292,6 +1118,35 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
     if (validation.valid && (applyClicked || applyShortcut)) Apply(ctx);
     ImGui::EndChild();
 
+    if (openRenamePopup) {
+        if (m_renamePrefix[0] == '\0') {
+            const std::string stem = util::FileSystem::PathToUtf8(
+                util::FileSystem::PathFromUtf8(m_texturePath).stem());
+            std::snprintf(m_renamePrefix, sizeof(m_renamePrefix), "%s_", stem.c_str());
+        }
+        ImGui::OpenPopup("##sprite_rename_popup");
+    }
+    ImGui::SetNextWindowSize({ 340.0f, 0.0f }, ImGuiCond_Appearing);
+    if (ImGui::BeginPopup("##sprite_rename_popup")) {
+        ImGui::TextUnformatted("Rename All");
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(200.0f);
+        ImGui::InputText("Prefix", m_renamePrefix, sizeof(m_renamePrefix));
+        ImGui::SetNextItemWidth(200.0f);
+        ImGui::InputInt("Start", &m_renameStartIndex);
+        ImGui::TextDisabled("%s%d, %s%d, …",
+                            m_renamePrefix, m_renameStartIndex,
+                            m_renamePrefix, m_renameStartIndex + 1);
+        // ID は変えないので、既存の参照は名前を付け直しても切れない。
+        ImGui::TextDisabled("ID は変わりません (既存の参照はそのまま)");
+        ImGui::Separator();
+        if (ImGui::Button("Rename", { 100.0f, 0.0f })) {
+            RenameAll(m_renamePrefix, m_renameStartIndex);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     if (openSlicePopup) ImGui::OpenPopup("##slice_popup");
     ImGui::SetNextWindowSize({ 370.0f, 0.0f }, ImGuiCond_Appearing);
     if (ImGui::BeginPopup("##slice_popup")) {
@@ -1313,6 +1168,19 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SetNextItemWidth(210.0f);
         if (ImGui::Combo("Method", &existingMode, kExistingModeNames, 3))
             m_sliceExistingMode = static_cast<SliceExistingMode>(existingMode);
+
+        // Delete Existing だけは既存の ID を全部捨てる。何が壊れるかをここで言う。
+        // Smart / Safe は重なりで ID を引き継ぐので、既存の参照は生き残る。
+        if (m_sliceExistingMode == SliceExistingMode::DeleteExisting) {
+            if (m_referrerCount > 0) {
+                ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f },
+                    "既存の Sprite ID を作り直します:\n参照 %d 件 (%d ファイル) が切れます",
+                    m_referrerCount, m_referrerFileCount);
+                ImGui::TextDisabled("矩形を引き継ぐなら Smart を選んでください");
+            } else if (m_referrerCount == 0) {
+                ImGui::TextDisabled("この Sprite を参照しているファイルはありません");
+            }
+        }
 
         if (m_sliceType == SliceType::CellCount) {
             ImGui::SetNextItemWidth(210.0f);

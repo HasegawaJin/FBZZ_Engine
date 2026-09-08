@@ -78,6 +78,9 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('asset.inspect'), path: z.string().min(1) }).strict(),
     z.object({ t: z.literal('asset.findUnused'), limit: z.number().int().min(1).max(500).optional() }).strict(),
     z.object({ t: z.literal('asset.thumbnail'), path: z.string().min(1) }).strict(),
+    z.object({ t: z.literal('sprite.list'), path: z.string().min(1).max(1024) }).strict(),
+    z.object({ t: z.literal('sprite.thumbnail'), path: z.string().min(1).max(1024),
+        sprite: z.string().min(1).max(256) }).strict(),
     z.object({ t: z.literal('bt.tree'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.lint'), path: z.string().min(1).max(1024) }).strict(),
     z.object({ t: z.literal('bt.guide') }).strict(),
@@ -236,6 +239,24 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         columns: z.number().int().min(1).max(64), rows: z.number().int().min(1).max(64),
         searchRadius: z.number().int().min(1).max(64).optional(),
         loop: z.boolean().optional() }).strict(),
+    // ── Sprite ──
+    z.object({ t: z.literal('sprite.rename'), path: z.string().min(1).max(1024),
+        sprite: z.string().min(1).max(256), name: z.string().min(1).max(128) }).strict(),
+    z.object({ t: z.literal('sprite.slice'), path: z.string().min(1).max(1024),
+        type: z.enum(['grid', 'automatic']).optional(),
+        columns: z.number().int().min(1).max(256).optional(),
+        rows: z.number().int().min(1).max(256).optional(),
+        cellWidth: z.number().int().min(1).max(16384).optional(),
+        cellHeight: z.number().int().min(1).max(16384).optional(),
+        offsetX: z.number().int().min(0).max(16384).optional(),
+        offsetY: z.number().int().min(0).max(16384).optional(),
+        paddingX: z.number().int().min(0).max(16384).optional(),
+        paddingY: z.number().int().min(0).max(16384).optional(),
+        pivotX: z.number().min(0).max(1).optional(),
+        pivotY: z.number().min(0).max(1).optional(),
+        keepEmptyRects: z.boolean().optional(),
+        prefix: z.string().min(1).max(64).optional(),
+        mode: z.enum(['smart', 'safe', 'replace']).optional() }).strict(),
     // ── Behavior Tree ──
     z.object({ t: z.literal('bt.node.add'), path: z.string().min(1).max(1024),
         nodeType: z.string().min(1).max(64), parentId: z.number().int().min(1).optional(),
@@ -603,5 +624,16 @@ export const AssetThumbnailResultSchema = z.object({
     mimeType: z.enum(['image/png', 'image/jpeg']),
     base64: z.string().min(1),
     path: z.string().min(1),
+}).strict();
+// 切り抜き 1 コマ。reference をそのまま component_set へ渡せる形で返す。
+export const SpriteThumbnailResultSchema = z.object({
+    mimeType: z.literal('image/png'),
+    base64: z.string().min(1),
+    width: z.number().int(),
+    height: z.number().int(),
+    sourceWidth: z.number().int(),
+    sourceHeight: z.number().int(),
+    name: z.string(),
+    reference: z.string().min(1),
 }).strict();
 //# sourceMappingURL=editorContracts.js.map

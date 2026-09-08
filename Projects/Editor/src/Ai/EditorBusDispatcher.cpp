@@ -23,6 +23,8 @@
 #include <Tools/TerrainBrush.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
+// Sprite の切り直しは Sprite Editor と同じ実装を共有する (ID の引き継ぎ規則を割らない)。
+#include <Editor/Util/SpriteSlicer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -47,6 +49,8 @@
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/FlipbookMotionVectors.hpp>
 #include <Engine/Asset/TextureAnalysis.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/ParticleCurvePresets.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -81,9 +85,15 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 
+// Sprite のコマ切り抜き (sprite.thumbnail)。stb は StbImage.cpp が実装を持ち、
+// miniz は CMakeLists.txt が C ソースとして別コンパイルしている。
+#include <stb_image.h>
+#include <miniz.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <cmath>
 #include <fstream>
@@ -1773,6 +1783,197 @@ Outcome DoAssetThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
     return Outcome::Ok(std::move(result));
 }
 
+// ---------------------------------------------------------------------------
+// Sprite (Texture のサブアセット)
+//
+// WHY 専用の op を持つか:
+//   Sprite は独立したファイルではないので asset.list に出ない。asset.thumbnail も
+//   ファイル丸ごとしか返せず、シートの «何番目がどの絵か» は AI から一切見えない。
+//   一覧 (sprite.list) と切り抜き画像 (sprite.thumbnail) が無いと、AI は
+//   UUID を書き写す以外に割り当てる方法が無い。規約は Docs/design/sprite-reference.md。
+// ---------------------------------------------------------------------------
+
+// sprites を 1 つも持たない Single Texture は «全面 1 枚» を画像名で参照できる
+// (ResolveSpriteReference の暗黙 Single)。この 1 枚だけは ID を持たないので、
+// ID が引けないことを «壊れている» と判定してはいけない。
+bool IsImplicitSingleSprite(const std::string& texturePath, const std::string& token)
+{
+    asset::TextureImportSettings settings;
+    if (!asset::GetCachedTextureImportSettings(texturePath, settings)) return false;
+    if (settings.type != asset::TextureType::Sprite
+        || settings.spriteMode != asset::SpriteMode::Single
+        || !settings.sprites.empty()) return false;
+    return token == util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(texturePath).stem());
+}
+
+// 参照文字列は「そのまま貼れる完成形」を返す。AI に組み立てさせると、
+// 区切り (::sprite::) の写し間違いが静かな «アトラス全面» になって返ってくる。
+std::string MakeSpriteReferenceFor(const std::string& relativeTexturePath,
+                                   const asset::SpriteRect& sprite,
+                                   bool nameIsUnique)
+{
+    const bool useName = nameIsUnique && !sprite.name.empty();
+    return asset::MakeSpriteReference(relativeTexturePath,
+                                      useName ? sprite.name : sprite.id);
+}
+
+bool LoadSpriteSettings(editor::EditorContext& ctx, const JsonValue& payload,
+                        std::filesystem::path& outFile, std::string& outRelative,
+                        asset::TextureImportSettings& outSettings, Outcome& err)
+{
+    std::error_code ec;
+    if (!ResolveProjectFile(ctx, StringField(payload, "path"), outFile, outRelative)
+        || !std::filesystem::is_regular_file(outFile, ec)) {
+        err = Outcome::Err("ASSET_NOT_FOUND", "projectRoot 配下のテクスチャを指定してください");
+        return false;
+    }
+    if (!asset::GetCachedTextureImportSettings(outFile.generic_string(), outSettings)) {
+        err = Outcome::Err("NO_SPRITE_META",
+            "この画像に .meta がありません。Inspector で Texture Type を Sprite にしてください");
+        return false;
+    }
+    if (outSettings.type != asset::TextureType::Sprite) {
+        err = Outcome::Err("NOT_A_SPRITE",
+            "Texture Type が Sprite ではありません: " + outRelative);
+        return false;
+    }
+    return true;
+}
+
+// 名前がテクスチャ内で一意かを引けるようにする。重複した名前で参照を作ると
+// どちらを指すか決まらないので、その Sprite だけ ID で返す。
+std::unordered_map<std::string, int> CountSpriteNames(
+    const asset::TextureImportSettings& settings)
+{
+    std::unordered_map<std::string, int> counts;
+    for (const asset::SpriteRect& sprite : settings.sprites) ++counts[sprite.name];
+    return counts;
+}
+
+Outcome DoSpriteList(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    std::filesystem::path file;
+    std::string relative;
+    asset::TextureImportSettings settings;
+    Outcome err = Outcome::Ok(JsonValue::MakeObject());
+    if (!LoadSpriteSettings(ctx, payload, file, relative, settings, err)) return err;
+
+    const auto nameCounts = CountSpriteNames(settings);
+    JsonValue sprites = JsonValue::MakeArray();
+    for (const asset::SpriteRect& sprite : settings.sprites) {
+        const auto found = nameCounts.find(sprite.name);
+        const bool unique = found != nameCounts.end() && found->second == 1;
+        JsonValue item = JsonValue::MakeObject();
+        item.Set("id", JsonValue(sprite.id));
+        item.Set("name", JsonValue(sprite.name));
+        item.Set("x", JsonValue(static_cast<int>(sprite.x)));
+        item.Set("y", JsonValue(static_cast<int>(sprite.y)));
+        item.Set("width", JsonValue(static_cast<int>(sprite.width)));
+        item.Set("height", JsonValue(static_cast<int>(sprite.height)));
+        item.Set("pivotX", JsonValue(static_cast<double>(sprite.pivotX)));
+        item.Set("pivotY", JsonValue(static_cast<double>(sprite.pivotY)));
+        item.Set("reference", JsonValue(MakeSpriteReferenceFor(relative, sprite, unique)));
+        if (!unique) item.Set("nameIsAmbiguous", JsonValue(true));
+        sprites.Push(std::move(item));
+    }
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("path", JsonValue(relative));
+    result.Set("spriteMode", JsonValue(settings.spriteMode == asset::SpriteMode::Multiple
+                                       ? "Multiple" : "Single"));
+    result.Set("pixelsPerUnit", JsonValue(static_cast<double>(settings.pixelsPerUnit)));
+    result.Set("count", JsonValue(static_cast<int>(settings.sprites.size())));
+    result.Set("sprites", std::move(sprites));
+    result.Set("hint", JsonValue(std::string(
+        "reference をそのまま UIImage.texturePath / SpriteRenderer.spritePath / "
+        ".mat の albedo へ入れてください (component_set)。"
+        "どのコマがどの絵かは sprite_thumbnail で確認できます。"
+        "名前は sprite_rename で付け直せます (ID は変わらないので既存の参照は切れません)。")));
+    return Outcome::Ok(std::move(result));
+}
+
+// sprite.thumbnail — 1 コマだけを切り抜いた PNG を返す。
+// WHY 切り抜いて返すか: シート全体を返しても «何番目» は見えない。AI が絵を見て
+//     選べる形にすることが、名前付けと割り当てを任せられる最低条件になる。
+Outcome DoSpriteThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
+{
+    std::filesystem::path file;
+    std::string relative;
+    asset::TextureImportSettings settings;
+    Outcome err = Outcome::Ok(JsonValue::MakeObject());
+    if (!LoadSpriteSettings(ctx, payload, file, relative, settings, err)) return err;
+
+    const std::string token = StringField(payload, "sprite");
+    if (token.empty()) return Outcome::Err("BAD_ARG", "sprite (ID または名前) が必要です");
+    const asset::SpriteRect* sprite = asset::FindSprite(settings, token);
+    if (sprite == nullptr)
+        return Outcome::Err("SPRITE_NOT_FOUND",
+            "この ID / 名前の Sprite がありません: " + token + " (sprite_list で確認してください)");
+
+    int sourceWidth = 0;
+    int sourceHeight = 0;
+    int channels = 0;
+    stbi_uc* pixels = stbi_load(util::FileSystem::PathToUtf8(file).c_str(),
+                                &sourceWidth, &sourceHeight, &channels, 4);
+    if (pixels == nullptr || sourceWidth <= 0 || sourceHeight <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        return Outcome::Err("DECODE_FAILED", "画像をデコードできません: " + relative);
+    }
+
+    // 幅 / 高さ 0 は「画像全体」を意味する (Single Sprite の表現)。
+    const int rectX = std::clamp(static_cast<int>(sprite->x), 0, sourceWidth - 1);
+    const int rectY = std::clamp(static_cast<int>(sprite->y), 0, sourceHeight - 1);
+    const int rectW = sprite->width > 0
+        ? std::min(static_cast<int>(sprite->width), sourceWidth - rectX) : sourceWidth - rectX;
+    const int rectH = sprite->height > 0
+        ? std::min(static_cast<int>(sprite->height), sourceHeight - rectY) : sourceHeight - rectY;
+    if (rectW <= 0 || rectH <= 0) {
+        stbi_image_free(pixels);
+        return Outcome::Err("EMPTY_RECT", "Sprite の矩形が空です");
+    }
+
+    // 転送量を抑えるため長辺 256 までへ間引く。コマの識別に等倍は要らない。
+    constexpr int kMaxSide = 256;
+    const int step = std::max(1, (std::max(rectW, rectH) + kMaxSide - 1) / kMaxSide);
+    const int outWidth = std::max(1, rectW / step);
+    const int outHeight = std::max(1, rectH / step);
+    std::vector<uint8_t> cropped(static_cast<size_t>(outWidth) * outHeight * 4);
+    for (int y = 0; y < outHeight; ++y) {
+        for (int x = 0; x < outWidth; ++x) {
+            const size_t src = (static_cast<size_t>(rectY + y * step) * sourceWidth
+                                + static_cast<size_t>(rectX + x * step)) * 4;
+            const size_t dst = (static_cast<size_t>(y) * outWidth + x) * 4;
+            std::memcpy(cropped.data() + dst, pixels + src, 4);
+        }
+    }
+    stbi_image_free(pixels);
+
+    size_t pngSize = 0;
+    void* png = tdefl_write_image_to_png_file_in_memory_ex(
+        cropped.data(), outWidth, outHeight, 4, &pngSize, 6, MZ_FALSE);
+    if (png == nullptr || pngSize == 0) {
+        if (png) mz_free(png);
+        return Outcome::Err("ENCODE_FAILED", "PNG へ変換できません");
+    }
+    const std::vector<uint8_t> bytes(static_cast<uint8_t*>(png),
+                                     static_cast<uint8_t*>(png) + pngSize);
+    mz_free(png);
+
+    const auto nameCounts = CountSpriteNames(settings);
+    const auto found = nameCounts.find(sprite->name);
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("mimeType", JsonValue("image/png"));
+    result.Set("base64", JsonValue(Base64Encode(bytes)));
+    result.Set("width", JsonValue(outWidth));
+    result.Set("height", JsonValue(outHeight));
+    result.Set("sourceWidth", JsonValue(rectW));
+    result.Set("sourceHeight", JsonValue(rectH));
+    result.Set("name", JsonValue(sprite->name));
+    result.Set("reference", JsonValue(MakeSpriteReferenceFor(
+        relative, *sprite, found != nameCounts.end() && found->second == 1)));
+    return Outcome::Ok(std::move(result));
+}
+
 // viewport.capture — 指定ViewのRTを PNG(base64) にして返す。実RTサイズを width/height に載せる。
 Outcome DoViewportCapture(editor::EditorContext& ctx, renderer::ResourceHandle<renderer::RenderTargetTag> rt)
 {
@@ -3150,6 +3351,169 @@ void RenameAnimatorState(scene::AnimatorComponent& animator,
     if (animator.blendToState == oldName) animator.blendToState = newName;
 }
 
+// sprite.rename / sprite.slice — .meta の [texture].sprites を書き換える。
+//
+// WHY ID を触らないか: ID はこの Sprite への参照そのもの。名前を変えたいだけで
+//     ID まで振り直すと、.scene に保存済みの参照が «アトラス全面» に化ける。
+//     slice も重なりで ID を引き継ぐ (Sprite Editor の Smart と同じ規則)。
+std::unique_ptr<ICommand> BuildSpriteCommand(editor::EditorContext& ctx,
+                                             const std::string& type,
+                                             const JsonValue& payload,
+                                             Outcome& err,
+                                             JsonValue* detailSink)
+{
+    namespace fs = std::filesystem;
+    fs::path absolute;
+    std::string relative;
+    asset::TextureImportSettings settings;
+    if (!LoadSpriteSettings(ctx, payload, absolute, relative, settings, err)) return nullptr;
+
+    const std::string metaPath = absolute.generic_string() + ".meta";
+    const asset::TextureImportSettings before = settings;
+
+    if (type == "sprite.rename") {
+        const std::string token = StringField(payload, "sprite");
+        const std::string newName = StringField(payload, "name");
+        if (token.empty() || newName.empty()) {
+            err = Outcome::Err("BAD_ARG", "sprite (ID または名前) と name が必要です");
+            return nullptr;
+        }
+        const asset::SpriteRect* target = asset::FindSprite(settings, token);
+        if (target == nullptr) {
+            err = Outcome::Err("SPRITE_NOT_FOUND", "この ID / 名前の Sprite がありません: " + token);
+            return nullptr;
+        }
+        // 添字で指す。ID が空の (移行前の) .meta でも 1 件だけを確実に書き換えるため。
+        const std::size_t targetIndex =
+            static_cast<std::size_t>(target - settings.sprites.data());
+        const std::string targetId = target->id;
+        for (std::size_t i = 0; i < settings.sprites.size(); ++i) {
+            if (i != targetIndex && settings.sprites[i].name == newName) {
+                err = Outcome::Err("DUPLICATE_NAME",
+                    "同じ名前の Sprite が既にあります: " + newName
+                    + " (名前は参照キーを兼ねるのでテクスチャ内で一意である必要があります)");
+                return nullptr;
+            }
+        }
+        settings.sprites[targetIndex].name = newName;
+
+        if (detailSink != nullptr) {
+            detailSink->Set("path", JsonValue(relative));
+            detailSink->Set("id", JsonValue(targetId));
+            detailSink->Set("name", JsonValue(newName));
+            detailSink->Set("reference",
+                JsonValue(asset::MakeSpriteReference(relative, newName)));
+        }
+    } else if (type == "sprite.slice") {
+        // 生成も畳み込みも Sprite Editor と同じ実装を通す (Editor/Util/SpriteSlicer.hpp)。
+        const std::string imagePath = util::FileSystem::PathToUtf8(absolute);
+        const auto intField = [&payload](const char* key, int fallback) {
+            const JsonValue* value = payload.Find(key);
+            return value != nullptr ? value->AsInt(fallback) : fallback;
+        };
+        const auto floatField = [&payload](const char* key, float fallback) {
+            const JsonValue* value = payload.Find(key);
+            return value != nullptr
+                ? static_cast<float>(value->AsNumber(static_cast<double>(fallback)))
+                : fallback;
+        };
+        const std::string modeName = StringField(payload, "mode");
+        const spriteslice::ExistingMode mode =
+            modeName == "replace" ? spriteslice::ExistingMode::DeleteExisting
+          : modeName == "safe"    ? spriteslice::ExistingMode::Safe
+                                  : spriteslice::ExistingMode::Smart;
+        const std::string prefix = StringField(payload, "prefix").empty()
+            ? util::FileSystem::PathToUtf8(absolute.stem()) + "_"
+            : StringField(payload, "prefix");
+
+        spriteslice::Result generated;
+        if (StringField(payload, "type") == "automatic") {
+            spriteslice::AutoTrimParams params;
+            params.pivotX   = floatField("pivotX", 0.5f);
+            params.pivotY   = floatField("pivotY", 0.5f);
+            params.baseName = prefix;
+            generated = spriteslice::GenerateAutoTrim(imagePath, params);
+        } else {
+            int imageWidth = 0;
+            int imageHeight = 0;
+            if (!stbi_info(imagePath.c_str(), &imageWidth, &imageHeight, nullptr)
+                || imageWidth <= 0 || imageHeight <= 0) {
+                err = Outcome::Err("DECODE_FAILED", "画像の寸法を取得できません: " + relative);
+                return nullptr;
+            }
+            spriteslice::GridParams params;
+            params.columns        = intField("columns", 0);
+            params.rows           = intField("rows", 0);
+            params.cellWidth      = intField("cellWidth", 0);
+            params.cellHeight     = intField("cellHeight", 0);
+            params.byCellCount    = params.columns > 0 || params.rows > 0;
+            if (!params.byCellCount && (params.cellWidth <= 0 || params.cellHeight <= 0)) {
+                err = Outcome::Err("BAD_ARG",
+                    "columns/rows か cellWidth/cellHeight のどちらかを指定してください "
+                    "(type=automatic なら不要です)");
+                return nullptr;
+            }
+            if (params.byCellCount) {
+                params.columns = std::max(1, params.columns);
+                params.rows    = std::max(1, params.rows);
+            }
+            params.offsetX        = intField("offsetX", 0);
+            params.offsetY        = intField("offsetY", 0);
+            params.paddingX       = intField("paddingX", 0);
+            params.paddingY       = intField("paddingY", 0);
+            params.pivotX         = floatField("pivotX", 0.5f);
+            params.pivotY         = floatField("pivotY", 0.5f);
+            params.keepEmptyRects = payload.Find("keepEmptyRects") != nullptr
+                ? payload.Find("keepEmptyRects")->AsBool() : true;
+            params.baseName       = prefix;
+            generated = spriteslice::GenerateGrid(
+                imagePath, static_cast<uint32_t>(imageWidth),
+                static_cast<uint32_t>(imageHeight), params);
+        }
+        if (!generated.error.empty()) {
+            err = Outcome::Err("EMPTY_SLICE", generated.error);
+            return nullptr;
+        }
+
+        int reused = 0;
+        settings.sprites = spriteslice::MergeIntoExisting(
+            before.sprites, std::move(generated.sprites), mode, &reused);
+        settings.spriteMode = asset::SpriteMode::Multiple;
+
+        if (detailSink != nullptr) {
+            detailSink->Set("path", JsonValue(relative));
+            detailSink->Set("count", JsonValue(static_cast<int>(settings.sprites.size())));
+            detailSink->Set("reusedIds", JsonValue(reused));
+            // replace 以外は既存の矩形を消さないので、参照が切れるのは replace のときだけ。
+            detailSink->Set("brokenReferences",
+                JsonValue(mode == spriteslice::ExistingMode::DeleteExisting
+                          ? static_cast<int>(before.sprites.size()) : 0));
+        }
+    } else {
+        err = Outcome::Err("UNKNOWN_TYPE", "未対応の sprite 操作です: " + type);
+        return nullptr;
+    }
+
+    const auto write = [metaPath, absolute](const asset::TextureImportSettings& value) {
+        asset::TextureAsset asset;
+        asset.sourcePath = absolute.generic_string();
+        asset.settings = value;
+        const asset::TexDescSerializer serializer;
+        (void)serializer.Save(asset, metaPath);
+    };
+    editor::EditorContext* context = &ctx;
+    const asset::TextureImportSettings after = settings;
+    return std::make_unique<LambdaCommand>("AI: " + type,
+        [write, after, context]() {
+            write(after);
+            context->requestAssetBrowserRefresh = true;
+        },
+        [write, before, context]() {
+            write(before);
+            context->requestAssetBrowserRefresh = true;
+        });
+}
+
 // WHY VFX と同じ「アセット丸ごとスナップショット」方式にするか:
 //     木は最大でも数十ノードで、丸ごと持っても軽い。差分 Undo は
 //     「親を付け替えたら order も変わる」ような連動を取りこぼしやすい。
@@ -3708,6 +4072,10 @@ Outcome DoSceneSave(editor::EditorContext& ctx, const JsonValue& payload, bool d
 {
     if (!ctx.saveScenePathImmediate) return Outcome::Err("NO_HOST", "シーン保存機能が未接続です");
     if (ctx.InPrefabEditMode()) return Outcome::Err("PREFAB_EDIT_MODE", "Prefab 編集モード中はシーンを保存できません");
+    // Play 中に保存すると、走っているシーン (遷移後なら別ファイルの中身) を
+    // currentScenePath へ書き込むことになる。
+    if (ctx.playMode != nullptr && !ctx.playMode->IsInEditor())
+        return Outcome::Err("INVALID_PLAY_STATE", "Play 中はシーンを保存できません。先に play_control stop を実行してください");
 
     const std::string requested = StringField(payload, "path");
     std::string relative;
@@ -4634,6 +5002,8 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
             },
             []() {});
     }
+    // Sprite の編集は .meta の中だけで完結する。Scene 不要 (Sprite Editor と同じ)。
+    if (type.starts_with("sprite.")) return BuildSpriteCommand(ctx, type, payload, err, detailSink);
     // .behaviortree の編集も Scene を必要としない (アセット単体で完結する)。
     if (type.starts_with("bt.")) return BuildBehaviorTreeCommand(ctx, type, payload, err, detailSink);
     scene::Scene* scene = ctx.activeScene;
@@ -5551,6 +5921,22 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
         const JsonValue* oldValue = oldFields ? oldFields->Find(field) : nullptr;
         if (oldValue == nullptr) { err = Outcome::Err("UNKNOWN_FIELD", "未知のフィールド: " + field); return nullptr; }
         if (!CompatibleJsonType(*oldValue, *valuePtr)) { err = Outcome::Err("TYPE_MISMATCH", "field '" + field + "' の型が一致しません"); return nullptr; }
+        // Sprite 参照は «解決できないと静かにアトラス全面» になる。書けてしまう前に止める。
+        // WHY ここで見るか: 成功を返してから絵だけが違う、が一番追えない壊れ方で、
+        //     AI からは «割り当てたのに効かない» としか見えない。
+        if (valuePtr->IsString()) {
+            const std::string reference = valuePtr->AsString();
+            std::string spriteTexturePath;
+            std::string spriteToken;
+            if (asset::ParseSpriteReference(reference, spriteTexturePath, spriteToken)
+                && asset::LookupSpriteId(spriteTexturePath, spriteToken).empty()
+                && !IsImplicitSingleSprite(spriteTexturePath, spriteToken)) {
+                err = Outcome::Err("SPRITE_NOT_FOUND",
+                    "この Sprite 参照は解決できません: " + reference
+                    + " (sprite_list で ID / 名前を確認してください)");
+                return nullptr;
+            }
+        }
         auto newVal = std::make_shared<JsonValue>(*valuePtr);
         auto oldVal = std::make_shared<JsonValue>(*oldValue);
         return std::make_unique<LambdaCommand>("AI: Set Component Field",
@@ -6563,6 +6949,10 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
             outcome = DoAssetFindUnused(m_context, payload);
         } else if (type == "asset.thumbnail") {
             outcome = DoAssetThumbnail(m_context, payload);
+        } else if (type == "sprite.list") {
+            outcome = DoSpriteList(m_context, payload);
+        } else if (type == "sprite.thumbnail") {
+            outcome = DoSpriteThumbnail(m_context, payload);
         } else if (type == "bt.tree") {
             outcome = DoBehaviorTree(m_context, payload);
         } else if (type == "bt.lint") {
