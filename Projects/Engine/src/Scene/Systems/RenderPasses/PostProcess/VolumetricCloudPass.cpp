@@ -159,14 +159,17 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     //      depth へ描かれる。GBuffer depth には地形が含まれないため、そこを読むと雲が地形を貫通して
     //      手前に描かれてしまう。常に hdrRT の depth（全不透明を含む）を終端判定に使う。
     static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    static renderer::SizedRenderTarget s_cloudDepthRT;
     static uint64_t s_resetVersion = 0;
     if (s_resetVersion != ctx.resources.GetResetVersion()) {
         s_resetVersion = ctx.resources.GetResetVersion();
         depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     }
-    (void)s_cloudDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, 0);
-    ctx.renderer.SetRenderTarget(s_cloudDepthRT, ctx.resources);
+    // 作業 RT はビューが持つ (RenderPassHandles::cloudRT の WHY)。
+    if (!ctx.handles.cloudRT || !ctx.handles.cloudDepthRT) return;
+    renderer::SizedRenderTarget& cloudDepthRT = *ctx.handles.cloudDepthRT;
+    renderer::SizedRenderTarget& cloudRT      = *ctx.handles.cloudRT;
+    (void)cloudDepthRT.Ensure(ctx.resources, ctx.width, ctx.height, 0);
+    ctx.renderer.SetRenderTarget(cloudDepthRT, ctx.resources);
     ctx.renderer.ClearDepth();
     if (depthCopyShader.IsValid()) {
         renderer::DrawCall depthDC;
@@ -181,14 +184,13 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     // オフスクリーン RT(RGBA16F) に scatter.rgb + alpha を描き、後段でフル解像度へアップスケール合成する。
     // フル解像度時は 1:1 サンプル(ピクセル中心)になるため無損失。
     const uint32_t kCloudResShift = cloud->halfResolution ? 1u : 0u;
-    static renderer::SizedRenderTarget s_cloudRT;
     const uint32_t cloudW = (ctx.width  >> kCloudResShift) < 1u ? 1u : (ctx.width  >> kCloudResShift);
     const uint32_t cloudH = (ctx.height >> kCloudResShift) < 1u ? 1u : (ctx.height >> kCloudResShift);
-    (void)s_cloudRT.Ensure(ctx.resources, cloudW, cloudH, 1);
+    (void)cloudRT.Ensure(ctx.resources, cloudW, cloudH, 1);
 
     // 1) レイマーチをオフスクリーン RT へ描く (OPAQUE 書き込み・深度オフ)。
     //    SetRenderTarget が RT サイズへビューポートを自動調整するため解像度に依らず同じ UV で走る。
-    ctx.renderer.SetRenderTarget(s_cloudRT, ctx.resources);
+    ctx.renderer.SetRenderTarget(cloudRT, ctx.resources);
     ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     renderer::DrawCall dc;
@@ -198,7 +200,7 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     dc.constantBuffers[0] = ctx.handles.frameCB;
     dc.constantBuffers[2] = ctx.handles.volumetricCloudCB;
     dc.constantBuffers[3] = ctx.handles.lightCB;
-    dc.textures[7]  = ctx.resources.GetDepthTexture(s_cloudDepthRT);
+    dc.textures[7]  = ctx.resources.GetDepthTexture(cloudDepthRT);
     dc.textures[26] = ctx.handles.cloudShapeTex;   // TEX_CLOUD_SHAPE
     dc.textures[27] = ctx.handles.cloudDetailTex;  // TEX_CLOUD_DETAIL
     ctx.renderer.Submit(dc, ctx.resources);
@@ -211,7 +213,7 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     up.shader = ctx.handles.cloudUpscaleShader;
     up.pipelineState = ctx.handles.volumetricCloudPremultipliedPSO; // PREMULTIPLIED / DEPTH_OFF
     up.vertexCount = 3;
-    up.textures[0] = ctx.resources.GetColorTexture(s_cloudRT);
+    up.textures[0] = ctx.resources.GetColorTexture(cloudRT);
     ctx.renderer.Submit(up, ctx.resources);
 }
 

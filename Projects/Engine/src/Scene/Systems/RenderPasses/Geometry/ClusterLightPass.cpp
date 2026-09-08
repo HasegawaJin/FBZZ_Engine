@@ -31,6 +31,15 @@ void ExecuteClusterLightCullPass(RenderPassContext& ctx)
         || !h.clusterCB.IsValid())
         return;
 
+    // b0 をこのビューのカメラで書いてから使う。
+    // WHY ここで書くか: このパスは Shadow より前に走るので、b0 には直前に書いた誰か
+    //     (前フレームの ShadowPass の光源行列、もう片方のビューのカメラ、プローブ捕捉) が
+    //     残っている。その行列でクラスタ AABB を切ると、ライトは別の視点の画面位置に
+    //     割り当てられ、このビューでは端のタイルにしか届かない (SceneView と GameView を
+    //     同時に出すと必ず起きる)。b0 の中身は ForwardPasses が後で同じ値に書き直す。
+    const PerFrameCB frameData = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    resources.Update(h.frameCB, &frameData, sizeof(PerFrameCB));
+
     renderer::ComputeCall cc;
     cc.shader             = h.clusterCullCS;
     cc.constantBuffers[0] = h.frameCB;    // b0: view / projection (クラスタ AABB の逆投影に使う)
