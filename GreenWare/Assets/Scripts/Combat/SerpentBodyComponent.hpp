@@ -1,12 +1,12 @@
 /// @file    SerpentBodyComponent.hpp
-/// @brief   胴の長さと «折る» 操作。逆極の 2 節で輪を閉じ、間を潰して繋ぎ直す
+/// @brief   胴の長さと «折る» 操作。とどめで斬った所から潰し、両端を繋ぎ直す
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
 ///
 /// WHY 千切って後ろを落とさないか (boss-serpent.md「胴を折る」):
-///   3 節目と 7 節目を組んだだけで 8〜16 節が丸ごと消えてしまい、1 回で大半が飛ぶ。
-///   輪を潰す形にすると «2 節の距離がそのまま削れる長さ» になり、
-///   刻むか一気に行くかの判断が毎回生まれる。
+///   斬った所から後ろを丸ごと落とすと 1 回で大半が飛び、«あと何回» が読めなくなる。
+///   潰した節ぶんだけ縮めて両端を繋ぎ直す形なら、1 回で削れる長さが毎回同じになり、
+///   残りの節数がそのまま «あと何回とどめを通すか» になる。
 ///
 /// WHY 骨を減らさず «リンクを畳む» 形にするか:
 ///   骨の親子は書き出しで固定されていて、途中の 1 本を抜くことはできない。
@@ -31,6 +31,7 @@
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
+#include <Math/Vector3.hpp>
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -44,7 +45,7 @@ class SerpentBodyComponent : public Script {
     FBZZ_SCRIPT(SerpentBodyComponent)
 
 public:
-    FBZZ_GROUP("Length")
+    FBZZ_GROUP("長さ")
     FBZZ_FIELD_RANGE_INT(int, minSegments, 6, "Min Segments", 1, 28)
     FBZZ_TOOLTIP("ここまで削ったら決着。床下に隠せる長さがゼロになる所")
     FBZZ_FIELD_RANGE_INT(int, phase2At, 22, "Phase 2 At", 1, 28)
@@ -52,18 +53,18 @@ public:
     FBZZ_FIELD_RANGE_INT(int, phase3At, 14, "Phase 3 At", 1, 28)
     FBZZ_TOOLTIP("この節数を下回ったら第 3 段 (隠せる床下がゼロ・頭が斬れる)")
 
-    FBZZ_GROUP("Damage")
+    FBZZ_GROUP("ダメージ")
     FBZZ_FIELD_RANGE_INT(int, damagePerSegment, 45, "Per Segment", 0, 1000)
     FBZZ_TOOLTIP("節 1 本を潰したときに入る HP。体力バーは «あと何本» を映す物差しなので、"
                  "削れる節数 × ここ が最大 HP とおおよそ揃っている必要がある")
 
-    FBZZ_GROUP("Feel")
-    FBZZ_FIELD_RANGE(float, foldHitStop, 0.34f, "Hitstop", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, foldShake, 0.70f, "Shake", 0.0f, 1.0f)
+    FBZZ_GROUP("手触り")
+    FBZZ_FIELD_RANGE(float, foldHitStop, 0.34f, "ヒットストップ", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, foldShake, 0.70f, "揺れ", 0.0f, 1.0f)
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugSegments, 28, "Segments")
-    FBZZ_FIELD_READ_ONLY(int, debugPhase, 1, "Phase")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(int, debugSegments, 28, "分割数")
+    FBZZ_FIELD_READ_ONLY(int, debugPhase, 1, "位相")
     FBZZ_FIELD_READ_ONLY(std::string, debugLastFold, "-", "Last Fold")
 
     /// 残っている節の数。28 から減る。
@@ -78,20 +79,34 @@ public:
     /// 頭に斬撃が通る段か。終盤だけ。
     [[nodiscard]] bool HeadIsVulnerable() const { return m_count <= phase3At; }
 
-    /// 逆極の 2 節で輪を閉じる。間の節を潰して両端を繋ぎ直す。
-    /// @ret 潰せた節の数。0 なら成立しなかった。
-    int TryFold(int a, int b);
+    /// とどめ (Docs/break-parry.md)。headIndex から尾の側へ count 本を潰す。
+    /// @ret 潰せた節の数。0 なら何も起きなかった。
+    ///
+    /// WHY 斬った場所で本数が変わらないか: 飛ぶ節の数を選ぶのはプレイヤーではなく
+    ///     «何回倒したか» なので、どこを斬っても同じ長さだけ短くなる方が読める。
+    int Sever(int headIndex, int count);
 
     /// 潰れた節が «居なかったこと» になっているか (絵と当たりの後始末が済んだか)。
     void OnStart() override;
     void OnUpdate() override;
 
 private:
-    /// 節 1 本を潰す。絵を伏せ、当たりを畳み、破片をその場で爆ぜさせる。
+    /// 節 1 本を潰す。絵を伏せ、当たりを畳む。@ret 潰した節が居た所 (ワールド)。
     ///
-    /// WHY 破片をその場に残さないか: この蛇の芯は «離れた 2 節を選ぶ» ことで、
-    ///     盤面に帯電体が増えるほど選びにくくなる (boss-serpent.md「潰した節の破片」)。
-    void Crush(int headIndex);
+    /// WHY ここで爆発を鳴らさないか: 折りは «輪が閉じて間が潰れる» という 1 つの
+    ///     出来事で、潰れる節の数は 2 節の距離で決まる (最大 20 本超)。節ごとに
+    ///     1 発ずつ鳴らすと、同じフレームに同じ爆発が 20 発重なる ─ 光源は
+    ///     先着 3 発が満光、陽炎も同数、絵としては «白い塊» にしかならず、
+    ///     «どこからどこまでが潰れたか» という肝心の情報が消える。
+    ///     鳴らすのは呼ぶ側 (Sever) が «1 回ぶん» としてまとめる。
+    ///
+    /// WHY 破片をその場に残さないか: 盤面に物が増えるほど «次にどこを斬るか» が
+    ///     読みにくくなる (boss-serpent.md「潰した節の破片」)。
+    Vector3 Crush(int headIndex);
+    /// 潰した一続きを 1 つの出来事として鳴らす。
+    /// @param at 潰れた節が居た所 (頭側から順)
+    /// @param heavy 折り (重い) か、とどめ (軽い) か。
+    void CollapseBurst(const std::vector<Vector3>& at, bool heavy);
     /// その節の分割メッシュ (`E_*_S07`) を集める。
     void CollectMeshes();
     [[nodiscard]] SerpentHitboxRigComponent* Rig() const
@@ -169,47 +184,43 @@ inline void SerpentBodyComponent::CollectMeshes()
     m_meshesBuilt = found > 0;
 }
 
-inline int SerpentBodyComponent::TryFold(int a, int b)
+inline int SerpentBodyComponent::Sever(int headIndex, int count)
 {
-    if (a == b) return 0;
-    if (!IsAlive(a) || !IsAlive(b)) return 0;
+    if (headIndex < 1 || headIndex > serpent::kSegmentCount || count <= 0) return 0;
 
-    const int low  = std::min(a, b);
-    const int high = std::max(a, b);
-
-    // 削れる長さは «その 2 節の間に残っている節の数»。既に潰した節は数えない ─
-    // 数えると «見えていない所を削った» ことになり、選んだ 2 節の距離と
-    // 実際に縮む長さが合わなくなる。
+    // 斬った節から尾へ向かって、生きている節を count 本。尾側が足りなければ頭側へ戻る
+    // (尾の付け根を斬ったときに «何も飛ばない» にしない)。
     std::vector<int> crushed;
-    for (int i = low + 1; i < high; ++i)
+    for (int i = headIndex; i <= serpent::kSegmentCount && static_cast<int>(crushed.size()) < count; ++i)
         if (m_alive[i]) crushed.push_back(i);
-
+    for (int i = headIndex - 1; i >= 1 && static_cast<int>(crushed.size()) < count; --i)
+        if (m_alive[i]) crushed.push_back(i);
     if (crushed.empty()) return 0;
 
     // 最小の長さは割らない。«繋がったまま短くなる» が «消える» になってしまう。
-    const int remaining = m_count - static_cast<int>(crushed.size());
-    if (remaining < minSegments) {
-        // 削りすぎる組でも «何も起きない» にはしない。届く所まで潰す。
-        const int allowed = m_count - minSegments;
-        if (allowed <= 0) return 0;
-        crushed.resize(static_cast<std::size_t>(allowed));
-    }
+    const int allowed = m_count - minSegments;
+    if (allowed <= 0) return 0;
+    if (static_cast<int>(crushed.size()) > allowed) crushed.resize(static_cast<std::size_t>(allowed));
 
-    for (const int index : crushed) Crush(index);
+    std::vector<Vector3> at;
+    at.reserve(crushed.size());
+    for (const int index : crushed) at.push_back(Crush(index));
+    // とどめは «切断» の絵 (PlayExecute) を呼ぶ側が斬った所へ出す。ここは
+    // 飛んだ節が居た所を軽く言うだけ ─ 芯を 2 つ置くと閃光が重なって白く抜ける。
+    CollapseBurst(at, /*heavy=*/false);
 
     m_count -= static_cast<int>(crushed.size());
     debugSegments = m_count;
     debugPhase    = Phase();
-    debugLastFold = serpent::PartSuffix(low) + " / " + serpent::PartSuffix(high) + " -> -" +
+    debugLastFold = "Execute " + serpent::PartSuffix(headIndex) + " -> -" +
                     std::to_string(static_cast<int>(crushed.size()));
 
     if (auto* stop = HitstopManagerComponent::Instance()) stop->Hit(Clamp01(foldHitStop));
     if (auto* shake = CameraShakeManagerComponent::Instance()) shake->Shake(Clamp01(foldShake));
     if (auto* pad = RumbleManagerComponent::Instance()) pad->Rumble(0.9f, 0.65f, 0.30f);
-    se::Play(audio, se::kAttractConverge);
+    se::Play(audio, se::kSerpentDestroy);
     se::Play(audio, se::kImpactHeavy);
 
-    // HP は «あと何本» の写しでしかない。折った本数ぶんだけ削る。
     if (auto* combat = CombatManagerComponent::Instance())
         if (GameObject* self = scene.Self())
             (void)combat->DamageEnemyDirect(
@@ -218,9 +229,9 @@ inline int SerpentBodyComponent::TryFold(int a, int b)
     return static_cast<int>(crushed.size());
 }
 
-inline void SerpentBodyComponent::Crush(int headIndex)
+inline Vector3 SerpentBodyComponent::Crush(int headIndex)
 {
-    if (headIndex < 1 || headIndex > serpent::kSegmentCount) return;
+    if (headIndex < 1 || headIndex > serpent::kSegmentCount) return Vector3::ZERO;
     m_alive[headIndex] = false;
 
     Vector3 at = Vector3::ZERO;
@@ -228,7 +239,7 @@ inline void SerpentBodyComponent::Crush(int headIndex)
         if (GameObject* hitbox = rig->SegmentHitbox(headIndex)) {
             at = hitbox->transform.worldPosition;
             // 絵だけ消して当たりが残ると «見えない節を斬れる» になる。
-            if (auto* part = scene.GetScript<BossPartPolarityComponent>(hitbox)) part->Break();
+            if (auto* part = scene.GetScript<BossPartComponent>(hitbox)) part->Break();
             hitbox->SetActive(false);
         }
     }
@@ -241,10 +252,38 @@ inline void SerpentBodyComponent::Crush(int headIndex)
             piece->SetActive(false);
         }
     }
+    return at;
+}
 
-    // 破片は床下へ落ちる扱い。その場に «帯電できる残骸» を残さない。
-    if (auto* vfx = VfxManagerComponent::Instance())
-        vfx->PlayImpact(at, Polarity::None, 1.0f, true);
+inline void SerpentBodyComponent::CollapseBurst(const std::vector<Vector3>& at, bool heavy)
+{
+    auto* vfx = VfxManagerComponent::Instance();
+    if (!vfx || at.empty()) return;
+
+    // 芯は «真ん中» に 1 発。潰れた一続きの重心がそのまま «どこが縮んだか» になる。
+    Vector3 centre = Vector3::ZERO;
+    for (const Vector3& point : at) centre = centre + point;
+    centre = centre / static_cast<float>(at.size());
+    vfx->PlayImpact(centre, BladeSide::None, heavy ? 1.0f : 0.7f, /*againstAnchor=*/true);
+
+    // 残りは «破片» として軽く。爆発を並べると光と陽炎がその数だけ増えるので、
+    // 光源も陽炎も持たない土煙のグラフで «そこも潰れた» だけを言う。
+    //
+    // WHY 全部の節に置かないか: 20 本潰れる回でも読めるのは «端から端まで» で、
+    //     間の 1 本 1 本ではない。両端と、その間を 3 つに割った点で足りる。
+    const std::size_t count = at.size();
+    const auto puff = [&](std::size_t index) {
+        if (index >= count) return;
+        Vector3 away = at[index] - centre;
+        away.y = 0.0f;
+        vfx->PlaySerpentRush(at[index], away.NormalizedOr(Vector3::FORWARD), 0.8f);
+    };
+    puff(0);
+    puff(count - 1);
+    if (count >= 4) {
+        puff(count / 3);
+        puff((count * 2) / 3);
+    }
 }
 
 inline void SerpentBodyComponent::OnUpdate()

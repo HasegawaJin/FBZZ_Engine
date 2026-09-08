@@ -1,0 +1,299 @@
+# FBZZ Engine
+# FX_SRP_Geyser.vfx — 床の口から «噴き上がる» 縦の柱。
+#
+# WHY FX_BOSS_ShockDust と分けるか:
+#   あちらは «床が横へ押し退けられた» 絵で、層の噴出はローカル +Z (水平) が主役。
+#   突き上げ (Thrust) は下から噴き上がる手なので、シルエットが «縦» でなければ
+#   «何が来たか» を色を増やさずに読ませる仕組み (縦 / 横 / 面) が成立しない。
+#   実際、以前は PlayGroundDust へ Vector3::UP を渡していたが、あの口は y 成分を
+#   捨ててから正規化するので、真上を渡しても水平のパフに落ちていた。
+#
+# WHY 胴が口を通るときも同じグラフを使うか:
+#   «この穴から何かが噴き上がった» という 1 つの出来事で、違うのは規模だけ。
+#   枠は VfxManager がタグ (Thrust / Mouth) で分けて回すので、攻撃の 1 発が
+#   出入りの土煙を押し出すことはない。
+#
+# WHY 爆発 (FX_IMP_Explosion) を混ぜないか:
+#   閃光は «壊れた / 斬った» の印 (VFX/Game/README.md)。突き上げも出入りも
+#   何も壊していないので、光は縁の琥珀が一瞬強まる程度に留める。
+#   陽炎の層も置かない ─ 1 回に 3 口が吹くので、そのぶん全画面コピーが増える。
+[scene]
+format_version = 1
+
+[prefab]
+format_version = 1
+root_count = 1
+
+[[gameobjects]]
+name = "FX_SRP_Geyser"
+instanceId = "3c81f0a4-51d6-4b7a-9e23-71ac0d5f8b16"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = ""
+parentInstanceId = ""
+
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = false
+speed = 1.0
+duration = 0.0
+autoDestroy = true
+
+[[gameobjects.ScriptComponents]]
+type = "SerpentGeyserVfxComponent"
+enabled = true
+
+[gameobjects.ScriptComponents.fields]
+dustColor = [0.66, 0.63, 0.58, 0.5]
+rimColor = [1.0, 0.62, 0.16, 1.0]
+riseSpeed = 11.0
+columnWidth = 1.6
+skirtSpread = 2.2
+emberPower = 8.0
+rimLight = 7.0
+
+# 柱の芯。細い円錐で上へ吹き、寿命の後半で広がって «立ち上がった» に見せる。
+#
+# WHY 円錐を細く取るか (10 度): 太くすると根元から広がって «湧いた» になる。
+#   噴き上がりは «出口が狭い» ことで速さが出るので、広がるのは上でよい。
+[[gameobjects]]
+name = "Column Smoke"
+instanceId = "5a2e7b19-0c48-4d31-86f5-2b90ce147a3d"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Geyser"
+parentInstanceId = "3c81f0a4-51d6-4b7a-9e23-71ac0d5f8b16"
+
+[gameobjects.transform]
+position = [0.0, 0.15, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.35
+loop = false
+emitRate = 0.0
+maxParticles = 26
+shape = 2
+coneAngleDegrees = 10.0
+coneRadius = 0.55
+sizeStart = 0.75
+sizeEnd = 3.2
+sizeCurvePower = 0.6
+lifetime = 1.05
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 11.0, 0.0]
+velocitySpread = 0.9
+velocityDamping = 1.6
+gravity = [0.0, 0.4, 0.0]
+materialPath = "Assets/Materials/Effects/FX_DustPuff_Alpha.mat"
+renderMode = 0
+sortMode = 1
+angularVelocityMin = -18.0
+angularVelocityMax = 18.0
+renderPriority = 30
+colorVariation = 0.08
+useColorGradient = true
+colorGradient = [[0.0, 0.72, 0.68, 0.62, 0.0], [0.09, 0.68, 0.65, 0.6, 0.5], [0.6, 0.6, 0.58, 0.54, 0.36], [1.0, 0.52, 0.5, 0.47, 0.0]]
+bursts = [{ time = 0.0, count = 8, cycles = 3, interval = 0.06, probability = 1.0 }]
+startDelay = 0.0
+
+# 裾。根元で外へ逃げる空気。縦の勢いは «これとの対比» でしか読めない。
+[[gameobjects]]
+name = "Skirt"
+instanceId = "9d40c862-7f15-4ba9-a0d7-63e2418bc59f"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Geyser"
+parentInstanceId = "3c81f0a4-51d6-4b7a-9e23-71ac0d5f8b16"
+
+[gameobjects.transform]
+position = [0.0, 0.06, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 14
+shape = 1
+sphereRadius = 0.7
+sizeStart = 0.5
+sizeEnd = 2.4
+sizeCurvePower = 0.5
+lifetime = 0.7
+lifetimeRandom = 0.3
+emitVelocity = [0.0, 1.1, 0.0]
+velocitySpread = 0.5
+velocityDamping = 3.2
+radialVelocity = 6.6
+gravity = [0.0, 0.0, 0.0]
+materialPath = "Assets/Materials/Particles/Smoke04_Premultiplied.mat"
+renderMode = 2
+sortMode = 1
+angularVelocityMin = -24.0
+angularVelocityMax = 24.0
+renderPriority = 26
+colorVariation = 0.07
+colorStart = [0.66, 0.63, 0.58, 0.5]
+colorEnd = [0.5, 0.48, 0.45, 0.0]
+bursts = [{ time = 0.0, count = 6, cycles = 1, interval = 0.03, probability = 1.0 }]
+startDelay = 0.0
+
+# 砂粒。重力そのままで落とす ─ «物» が無いと噴き上がりに重さが出ない。
+[[gameobjects]]
+name = "Grit"
+instanceId = "b7f39a05-2d64-41e8-95c1-08ae72d6304b"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Geyser"
+parentInstanceId = "3c81f0a4-51d6-4b7a-9e23-71ac0d5f8b16"
+
+[gameobjects.transform]
+position = [0.0, 0.1, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.25
+loop = false
+emitRate = 0.0
+maxParticles = 30
+shape = 2
+coneAngleDegrees = 18.0
+coneRadius = 0.4
+sizeStart = 0.1
+sizeEnd = 0.035
+sizeCurvePower = 1.4
+lifetime = 1.1
+lifetimeRandom = 0.45
+emitVelocity = [0.0, 15.95, 0.0]
+velocitySpread = 1.8
+velocityDamping = 0.5
+gravity = [0.0, -9.8, 0.0]
+materialPath = "Assets/Materials/Particles/Dirt02_Premultiplied.mat"
+renderMode = 1
+stretchedVelocityScale = 0.07
+stretchedLengthScale = 1.6
+sortMode = 0
+renderPriority = 38
+colorVariation = 0.12
+colorStart = [0.66, 0.63, 0.58, 1.0]
+colorEnd = [0.42, 0.4, 0.36, 0.0]
+bursts = [{ time = 0.0, count = 12, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+# 火の粉。開口の縁と同じ琥珀で、«機械が開いた穴から» を色で言う唯一の層。
+[[gameobjects]]
+name = "Embers"
+instanceId = "e18b56d3-4a72-49c0-b3f6-9c05d871ea24"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Geyser"
+parentInstanceId = "3c81f0a4-51d6-4b7a-9e23-71ac0d5f8b16"
+
+[gameobjects.transform]
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.ParticleEmitter]
+cullingEnabled = false
+lodEnabled = false
+duration = 0.3
+loop = false
+emitRate = 0.0
+maxParticles = 20
+shape = 2
+coneAngleDegrees = 26.0
+coneRadius = 0.6
+sizeStart = 0.14
+sizeEnd = 0.02
+sizeCurvePower = 1.8
+lifetime = 0.85
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 8.0, 0.0]
+velocitySpread = 1.6
+velocityDamping = 0.8
+gravity = [0.0, -5.5, 0.0]
+materialPath = "Assets/Materials/Effects/FX_EmberDot_Additive.mat"
+renderMode = 0
+sortMode = 0
+renderPriority = 44
+colorVariation = 0.14
+useColorGradient = true
+colorGradient = [[0.0, 1.0, 0.86, 0.5, 1.0], [0.4, 1.0, 0.62, 0.16, 0.9], [1.0, 0.7, 0.25, 0.04, 0.0]]
+bursts = [{ time = 0.0, count = 9, cycles = 1, interval = 0.02, probability = 1.0 }]
+startDelay = 0.0
+
+# 縁の光。閃光ではない ─ 開いた口が一瞬強く光る程度。
+[[gameobjects]]
+name = "Rim Light"
+instanceId = "6f0d24b8-8e39-4c57-a71b-d4529f038c6e"
+tag = "Untagged"
+layer = 0
+active = true
+prefabAssetPath = ""
+prefabSourceId = ""
+parent = "FX_SRP_Geyser"
+parentInstanceId = "3c81f0a4-51d6-4b7a-9e23-71ac0d5f8b16"
+
+[gameobjects.transform]
+position = [0.0, 0.9, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.LightComponent]
+type = "Point"
+color = [1.0, 0.62, 0.16]
+intensity = 7.0
+enabled = true
+range = 8.0
+castShadows = false
+shadowBias = 1.0
+shadowStrength = 1.0
+shadowDistance = 0.0
+shadowNearPlane = 0.1
+
+[gameobjects.VFXElement]
+enabled = true
+startDelay = 0.0
+duration = 0.4
+loop = false
+weightCurve = { interp = 0, keys = [[0.0, 1.0], [1.0, 1.0]] }
+trigger = ""
+
+[gameobjects.VFXLightEnvelope]
+enabled = true
+useIntensityCurve = true
+useColorGradient = false
+intensityCurve = { interp = 0, keys = [[0.0, 0.3], [0.12, 1.0], [1.0, 0.0]] }
+colorGradient = { interp = 0, space = 0, keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]] }

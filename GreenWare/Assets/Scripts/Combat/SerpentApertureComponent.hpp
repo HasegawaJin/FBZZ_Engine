@@ -35,7 +35,7 @@
 #include <Math/MathUtils.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Utils/GlowMaterial.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
@@ -54,25 +54,25 @@ class SerpentApertureComponent : public Script {
 
 public:
     // 30fps 前提のフレーム数を秒へ直した値 (boss-serpent.md「開口の動き」)。
-    FBZZ_GROUP("Timing")
-    FBZZ_FIELD_RANGE(float, telegraphSeconds, 0.60f, "Telegraph", 0.0f, 3.0f)
+    FBZZ_GROUP("タイミング")
+    FBZZ_FIELD_RANGE(float, telegraphSeconds, 0.60f, "予告", 0.0f, 3.0f)
     FBZZ_TOOLTIP("縁が灯りきるまで。18F。«ここが開く» を読む時間そのもの")
     FBZZ_FIELD_RANGE(float, unlockSeconds, 0.20f, "Unlock", 0.0f, 2.0f)
     FBZZ_TOOLTIP("カラーが半ピッチ回って歯が外れるまで。6F")
-    FBZZ_FIELD_RANGE(float, sinkSeconds, 0.13f, "Sink", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, sinkSeconds, 0.13f, "沈み", 0.0f, 2.0f)
     FBZZ_TOOLTIP("羽が床下へ抜けるまで。4F")
-    FBZZ_FIELD_RANGE(float, slideSeconds, 0.27f, "Slide", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, slideSeconds, 0.27f, "滑り", 0.0f, 2.0f)
     FBZZ_TOOLTIP("羽が外へ滑りきるまで。8F")
 
-    FBZZ_GROUP("Motion")
+    FBZZ_GROUP("動き")
     FBZZ_FIELD_RANGE(float, lockDegrees, 22.5f, "Collar Turn", 0.0f, 45.0f)
     FBZZ_TOOLTIP("カラーの回転。歯 8 枚 45 度おきの半ピッチで爪の隙間へ来る")
-    FBZZ_FIELD_RANGE(float, sinkMeters, 0.30f, "Sink", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, slideMeters, 2.53f, "Slide", 0.0f, 5.0f)
+    FBZZ_FIELD_RANGE(float, sinkMeters, 0.30f, "沈み", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, slideMeters, 2.53f, "滑り", 0.0f, 5.0f)
     FBZZ_TOOLTIP("羽が外へ逃げる距離。口の法線 (中心から見た放射) に沿う")
 
-    FBZZ_GROUP("Telegraph")
-    FBZZ_FIELD_RANGE(float, glowStrength, 6.0f, "Glow", 0.0f, 20.0f)
+    FBZZ_GROUP("予告")
+    FBZZ_FIELD_RANGE(float, glowStrength, 6.0f, "発光", 0.0f, 20.0f)
     FBZZ_TOOLTIP("開く口の縁の自発光。0 だと予兆が出ないので、口が突然開く。"
                  "ブルームのしきい値 (Default.fzdata で 4.0) を越える値にしておくと、"
                  "予兆だけが滲んで «そこが開く» が視界の端でも読める")
@@ -82,7 +82,7 @@ public:
                  "既定は M_AR_RimGlow の emissiveScale と同じ値")
     FBZZ_FIELD_COLOR(glowColor, (Vector4{ 1.00f, 0.62f, 0.16f, 1.0f }), "Glow Color")
     FBZZ_TOOLTIP("中立の琥珀。極の赤青を使うと «その口が帯電している» と読まれる")
-    FBZZ_FIELD_RANGE(float, glowPulseHz, 4.0f, "Pulse Hz", 0.0f, 16.0f)
+    FBZZ_FIELD_RANGE(float, glowPulseHz, 4.0f, "脈動の周波数 [Hz]", 0.0f, 16.0f)
     FBZZ_TOOLTIP("灯りきるまでの明滅。0 で滑らかに上がるだけ")
 
     // 輪の作り。既定はビルダー (serpent_map_build.py の RINGS) と同じ。
@@ -100,7 +100,7 @@ public:
     // WHY 段ごとに別の音を鳴らすか: 開くまでの 1.2 秒はほぼ全部が予兆で、その間に
     //     プレイヤーが決めるのは «そこから離れるか» の 1 点。歯が外れる音・羽が滑る音・
     //     閉じ切る音が別々に鳴れば、画面の外の口でも «いまどこまで進んだか» が耳で読める。
-    FBZZ_GROUP("Feel")
+    FBZZ_GROUP("手触り")
     FBZZ_FIELD(bool, playSound, true, "Sound")
     FBZZ_FIELD_RANGE(float, soundVolume, 0.85f, "Volume", 0.0f, 2.0f)
     FBZZ_FIELD(bool, playDust, true, "Dust")
@@ -110,14 +110,35 @@ public:
     FBZZ_TOOLTIP("隣り合う口でカラーの回る向きを逆にする。16 個が同じ向きに回ると"
                  "«1 つの仕掛けのコピー» に見える")
 
+    // 胴が口を «通っている» 間の絵。
+    //
+    // WHY 羽の埃だけでは足りないか: 埃は羽が滑り出した 1 フレームにしか出ない。
+    //     そこから先、11 m の胴が床を突き破って出てきて、また潜っていく ─
+    //     戦闘中いちばん多く見る動作 (約 7 秒ごと) に粒が 1 つも無かった。
+    //     しかも羽は «蛇が来る前» に開くので、埃と胴の出入りは時間的に重なりもしない。
+    //
+    // WHY 口の側が持つか: どの口を今どの弧長で使っているかは AI が知っているが、
+    //     «縁がどこにあるか» を持っているのはここだけ。AI へ書くと、口を増やす
+    //     たびに演出の側も直すことになる。
+    FBZZ_GROUP("Passage")
+    FBZZ_FIELD(bool, passageDust, true, "Body Dust")
+    FBZZ_TOOLTIP("胴が縁を出入りしている間、口から土煙を吹く")
+    FBZZ_FIELD_RANGE(float, passageInterval, 0.20f, "間隔", 0.02f, 1.0f)
+    FBZZ_TOOLTIP("通っている間に吹く刻み [秒]。詰めると口が煙で埋まって胴が見えない。"
+                 "枠の勘定も要る ─ 渡っている最中は 2 口が同時に鳴るので、"
+                 "«2 ÷ ここ» が VfxManager の Geyser Slots ÷ 1.05 秒 を超えないこと")
+    FBZZ_FIELD_RANGE(float, passageStrength, 0.75f, "強度", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, passageBurst, 1.0f, "バースト", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("«通り始めた 1 発» の強さの倍率。頭が縁を割る瞬間だけ一段強くする")
+
     FBZZ_GROUP("Collision")
     FBZZ_FIELD(bool, driveShutterCollision, true, "Drive Shutter Floor")
     FBZZ_TOOLTIP("閉じている間だけ COL_Shutter_<口> を床として有効にする。"
                  "切ると 16 口が最初から穴になり、乗ると落ちる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugOpen, "-", "Open")
-    FBZZ_FIELD_READ_ONLY(int, debugHoles, 0, "Holes")
+    FBZZ_FIELD_READ_ONLY(int, debugHoles, 0, "穴")
     FBZZ_FIELD_READ_ONLY(int, debugMissing, 0, "Missing Nodes")
     FBZZ_FIELD(bool, drawHoles, false, "Draw Holes")
     FBZZ_TOOLTIP("口の中心と半径を線で出す。位置が合っているかの確認用")
@@ -141,6 +162,14 @@ public:
     [[nodiscard]] float HoleDistance(const std::string& a, const std::string& b) const;
     /// 点に最も近い口。盤面に口が無ければ空。
     [[nodiscard]] std::string NearestHole(const Vector3& point) const;
+
+    /// この口を «今、胴が通っている»。AI が経路の口ごとに毎フレーム申告する。
+    ///
+    /// WHY 押し込む形にするか: 通っているかは «その口の弧長と、頭 / 尾の弧長» を
+    ///     突き合わせないと分からず、経路を持っているのは AI だけ。ここが自分で
+    ///     調べようとすると、口の側が経路の形まで知ることになる。
+    ///     押されなかった口は自然に止まる (SetAim / SetUndulationScale と同じ約束)。
+    void ReportPassage(const std::string& hole);
 
     void OnStart() override;
     void OnUpdate() override;
@@ -173,6 +202,11 @@ private:
         bool        collisionReady = false;
         /// 最後に書いた床の有効/無効。SetActive を毎フレーム叩かないための札。
         bool        floorActive = true;
+        /// 今フレーム «胴が通っている» と申告されたか。押されなければ止まる。
+        bool        passing     = false;
+        bool        wasPassing  = false;
+        /// 次に土煙を吹くまでの残り [秒]。
+        float       passageTimer = 0.0f;
     };
 
     [[nodiscard]] float TelegraphEnd() const { return Max(telegraphSeconds, 0.0f); }
@@ -185,6 +219,8 @@ private:
     void  ApplyHole(Hole& hole);
     /// 段をまたいだ «瞬間» に音と埃を返す。
     void  ReportStages(const Hole& hole);
+    /// 胴が通っている間の土煙。通り始めの 1 発だけ強くする。
+    void  TickPassage(Hole& hole, float dt);
     void  EnsureShutterFloor(Hole& hole);
     [[nodiscard]] Hole*       Find(const std::string& id);
     [[nodiscard]] const Hole* Find(const std::string& id) const;
@@ -233,6 +269,40 @@ inline void SerpentApertureComponent::ReportStages(const Hole& hole)
             vfx->PlayGroundDust(center, -hole.normal, Clamp01(dustStrength), 1.4f);
         }
     }
+}
+
+inline void SerpentApertureComponent::ReportPassage(const std::string& hole)
+{
+    if (Hole* found = Find(hole)) found->passing = true;
+}
+
+inline void SerpentApertureComponent::TickPassage(Hole& hole, float dt)
+{
+    // 押されなかったフレームは «通っていない»。次に通り始めたときへ向けて畳む。
+    const bool passing = hole.passing;
+    hole.passing = false;
+
+    if (!passageDust || !passing) {
+        hole.wasPassing  = passing;
+        hole.passageTimer = 0.0f;
+        return;
+    }
+
+    // 通り始めの 1 発は «頭が縁を割った» 瞬間なので、続きの刻みより強く出す。
+    const bool first = !hole.wasPassing;
+    hole.wasPassing = true;
+
+    hole.passageTimer -= dt;
+    if (!first && hole.passageTimer > 0.0f) return;
+    hole.passageTimer = Max(passageInterval, 0.02f);
+
+    if (auto* vfx = VfxManagerComponent::Instance()) {
+        const float strength = Clamp01(passageStrength) *
+                               (first ? Max(passageBurst, 0.0f) : 1.0f);
+        vfx->PlaySerpentMouth(HoleCenter(hole.id), Clamp01(strength));
+    }
+    if (first && playSound)
+        se::PlayAt(audio, se::kImpactDebris, HoleCenter(hole.id), soundVolume * 0.7f);
 }
 
 inline void SerpentApertureComponent::BuildHoles()
@@ -310,15 +380,27 @@ inline Vector3 SerpentApertureComponent::ToLocalOffset(const Vector3& worldOffse
                     worldOffset.z / (std::fabs(s.z) > EPSILON ? s.z : 1.0f) };
 }
 
+// WHY 親のスケールを «掛けない» か (2026-09-05・蛇が出てこなかった原因):
+//   Inner / Outer Radius は builder (serpent_map_build.py の RINGS) と同じ **メートル**
+//   で、8.0m / 16.0m は闘技場の実効半径 22m の内側に置いた実寸そのもの。
+//   一方 Boss02_Arena_Map のルートには取り込みの unit scale 100 が残っている
+//   (Stage_01 の Boss_Arena_Map も同じ)。ここで掛けると口が 800m / 1600m へ飛び、
+//   口どうしの間隔も 100 倍になる。
+//
+//   間隔が壊れると «蛇が渡れる窓» (SerpentPathComponent の Min/Max Chord 8.0〜10.5m)
+//   に入る口が 1 つも無くなり、BeginFirstRoute() が毎秒失敗し続ける。
+//   蛇は Dormant のまま床下 40m (parkDepth) に居座るので、**画面には何も出ず、
+//   エラーも «口が窓の中に無い» という間接的な警告しか出ない。**
+//
+//   すぐ上の ToLocalOffset() が «スケールを割り戻して移動量をメートルに保つ» と
+//   書いているとおり、この系の値はすべてメートル。位置と向きだけ親から借りる。
 inline Vector3 SerpentApertureComponent::HoleCenter(const std::string& hole) const
 {
     const Hole* found = Find(hole);
     GameObject* self  = scene.Self();
     if (!found || !self) return Vector3::ZERO;
 
-    const Vector3& s = self->transform.worldScale;
-    const Vector3 scaled{ found->center.x * s.x, found->center.y * s.y, found->center.z * s.z };
-    return self->transform.worldPosition + self->transform.worldRotation * scaled;
+    return self->transform.worldPosition + self->transform.worldRotation * found->center;
 }
 
 inline float SerpentApertureComponent::HoleDistance(const std::string& a,
@@ -502,6 +584,7 @@ inline void SerpentApertureComponent::OnUpdate()
                                          : Max(hole.phase - dt, target);
         ApplyHole(hole);
         ReportStages(hole);
+        TickPassage(hole, dt);
 
         if (hole.phase > 0.0f) {
             if (!open.empty()) open += " ";

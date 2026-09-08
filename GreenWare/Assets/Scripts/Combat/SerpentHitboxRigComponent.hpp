@@ -24,7 +24,6 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
-#include <Scripts/Combat/BossPartPolarityComponent.hpp>
 #include <Scripts/Combat/SerpentBones.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
@@ -40,22 +39,14 @@ class SerpentHitboxRigComponent : public Script {
     FBZZ_SCRIPT(SerpentHitboxRigComponent)
 
 public:
-    FBZZ_GROUP("Radii")
+    FBZZ_GROUP("半径")
     FBZZ_TOOLTIP("節の長さは骨の間隔から出す。ここで決めるのは太さだけ")
-    FBZZ_FIELD_RANGE(float, headRadius, 0.72f, "Head", 0.05f, 3.0f)
+    FBZZ_FIELD_RANGE(float, headRadius, 0.72f, "頭", 0.05f, 3.0f)
     FBZZ_FIELD_RANGE(float, neckRadius, 0.48f, "Neck (S01)", 0.05f, 3.0f)
     FBZZ_FIELD_RANGE(float, peakRadius, 0.62f, "Peak (S06)", 0.05f, 3.0f)
     FBZZ_TOOLTIP("一番太い所。モデルは頭の後ろ (S06〜S07) が直径 1.24 m")
     FBZZ_FIELD_RANGE(float, tailRadius, 0.12f, "Tail (S28)", 0.02f, 3.0f)
-    FBZZ_FIELD_RANGE(float, radiusScale, 1.0f, "Scale All", 0.1f, 3.0f)
-
-    FBZZ_GROUP("Reach")
-    FBZZ_FIELD_RANGE(float, slashMargin, 0.55f, "Slash Margin", 0.0f, 3.0f)
-    FBZZ_TOOLTIP("斬撃の扇へ足す太さの上乗せ。節は細いので、素の中心距離だけでは "
-                 "«見えているのに当たらない» になる")
-    FBZZ_FIELD_RANGE(float, chargeSeconds, 7.0f, "Charge Duration", 0.5f, 30.0f)
-    FBZZ_TOOLTIP("乗せた極が残る秒数。«離れたもう 1 節を塗りに行く» 猶予そのもの。"
-                 "ボス 1 の脚 (5 秒) より長いのは、選ぶ相手が 14 節あって歩く距離も長いから")
+    FBZZ_FIELD_RANGE(float, radiusScale, 1.0f, "全体スケール", 0.1f, 3.0f)
 
     FBZZ_GROUP("Rest Lengths")
     FBZZ_FIELD_RANGE(float, fallbackSegment, 0.80f, "Segment", 0.05f, 4.0f)
@@ -63,17 +54,15 @@ public:
     FBZZ_FIELD_RANGE(float, headLength, 1.90f, "Head Length", 0.05f, 6.0f)
     FBZZ_TOOLTIP("頭の当たりの長さ。頭には子の骨が無いので測れない")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugHitboxes, 0, "Hitboxes")
-    FBZZ_FIELD_READ_ONLY(int, debugMissingBones, 0, "Missing Bones")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(int, debugHitboxes, 0, "ヒットボックス")
+    FBZZ_FIELD_READ_ONLY(int, debugMissingBones, 0, "見つからないボーン")
     FBZZ_FIELD(bool, drawHitboxes, false, "Draw Hitboxes")
 
     /// 頭からの添字 (0 = Head / 1..28 = Seg01..Seg28) のボーン。
     [[nodiscard]] GameObject* SegmentBone(int headIndex) const;
     /// その節の当たり判定オブジェクト。
     [[nodiscard]] GameObject* SegmentHitbox(int headIndex) const;
-    /// その節に乗っている極の入れ物。
-    [[nodiscard]] BossPartPolarityComponent* SegmentPart(int headIndex) const;
     /// 当たったオブジェクトから節の番号を引く。読めなければ -1。
     [[nodiscard]] int SegmentOf(GameObject* hit) const;
     /// 当たったオブジェクトから蛇の本体を引く。
@@ -125,18 +114,14 @@ inline GameObject* SerpentHitboxRigComponent::SegmentHitbox(int headIndex) const
     return m_hitboxes[headIndex].Resolve(scene);
 }
 
-inline BossPartPolarityComponent* SerpentHitboxRigComponent::SegmentPart(int headIndex) const
-{
-    GameObject* hitbox = SegmentHitbox(headIndex);
-    return hitbox ? scene.GetScript<BossPartPolarityComponent>(hitbox) : nullptr;
-}
-
 inline int SerpentHitboxRigComponent::SegmentOf(GameObject* hit) const
 {
-    for (GameObject* go = hit; go; go = go->GetParent()) {
-        if (const auto* part = scene.GetScript<BossPartPolarityComponent>(go))
-            return serpent::IndexFromSuffix(part->legSuffix);
-    }
+    // WHY 名前で照合しないか: 当たったのは «とどめ» が斬った物で、節そのものとは
+    //     限らない (子を挟むこともある)。生成したときの参照と突き合わせれば、
+    //     命名を変えても番号の引き当てだけは外れない。
+    for (GameObject* go = hit; go; go = go->GetParent())
+        for (int i = 0; i < serpent::kBoneCount; ++i)
+            if (SegmentHitbox(i) == go) return i;
     return -1;
 }
 
@@ -247,14 +232,6 @@ inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
     if (!collider) collider = &hitbox->AddComponent<CapsuleColliderComponent>();
     collider->SetCapsule(radius, Max(length * 0.5f - radius, 0.01f));
     collider->isTrigger = true;
-
-    // 極を持てる部位はここで宣言する。斬撃の扇は BossPartPolarityComponent を
-    // 名指しで探すので、付いていない節は «斬っても何も乗らない» になる。
-    auto* part = scene.GetScript<BossPartPolarityComponent>(hitbox);
-    if (!part) part = &hitbox->AddScript<BossPartPolarityComponent>();
-    part->legSuffix = serpent::PartSuffix(headIndex);
-    part->hitRadius = radius + Max(slashMargin, 0.0f);
-    part->duration  = Max(chargeSeconds, 0.5f);
     return true;
 }
 

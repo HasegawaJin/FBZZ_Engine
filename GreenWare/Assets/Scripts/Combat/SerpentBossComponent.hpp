@@ -13,12 +13,7 @@
 ///       `EnemyHealthComponent` を名指しで引いている (無いとステージが終わらない)。
 ///   «ボスバーがどちらを読むかで割れる» という企画の懸念はそのままで、
 ///   割れないようにする答えが «IBoss 側に重ねない» になっている ─ ボス 1 の
-///   `BossPolarityCoreComponent` と同じ形。
-///
-/// WHY 極を返さないか:
-///   この蛇は極を塗り替えない (boss-serpent.md「ボス 1 との違い」)。体に乗るのは
-///   プレイヤーが剣で置いた極だけで、ボス自身は何極でもない。Neutral を返すのは
-///   «今は無防備» の意味ではなく «この軸をこのボスは持たない» という宣言。
+///   `BossCoreComponent` と同じ形。
 #pragma once
 
 #include <Engine/Scene/Scene.hpp>
@@ -38,22 +33,17 @@ class SerpentBossComponent : public Script, public IBoss {
     FBZZ_SCRIPT_DERIVED(SerpentBossComponent, Script, IBoss)
 
 public:
-    FBZZ_GROUP("Identity")
-    FBZZ_FIELD(std::string, bossName, "POLARITY SERPENT", "Name")
+    FBZZ_GROUP("識別")
+    FBZZ_FIELD(std::string, bossName, "POLARITY SERPENT", "名前")
     FBZZ_TOOLTIP("ボスバーに出す表示名。シーン上の GameObject 名とは別物")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugSegments, 28, "Segments")
-    FBZZ_FIELD_READ_ONLY(int, debugPhase, 1, "Phase")
-    FBZZ_FIELD_READ_ONLY(bool, debugEngaged, false, "Engaged")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(int, debugSegments, 28, "分割数")
+    FBZZ_FIELD_READ_ONLY(int, debugPhase, 1, "位相")
+    FBZZ_FIELD_READ_ONLY(bool, debugEngaged, false, "交戦中")
 
     // ── IBoss ───────────────────────────────────────────────────────────────
     [[nodiscard]] const char* BossName() const override { return bossName.c_str(); }
-
-    /// この蛇では意味を持たない。ボスは極を塗り替えないので «何極か» が無い。
-    [[nodiscard]] Polarity CurrentPolarity() const override { return Polarity::None; }
-    /// 切り替えを持たないので負を返す (IBoss.hpp の取り決め)。
-    [[nodiscard]] float PolaritySwitchRemaining() const override { return -1.0f; }
 
     /// 段階は «残り節数» から出す。フェーズ変数を別に持たない。
     [[nodiscard]] int CurrentPhase() const override
@@ -73,6 +63,29 @@ public:
         const auto* ai = Ai();
         return ai && ai->IsEngaged();
     }
+
+    // ── 弾いて崩す (Docs/break-parry.md) ──────────────────────────────────────
+    [[nodiscard]] bool IsToppled() const override
+    {
+        const auto* ai = Ai();
+        return ai && ai->IsToppled();
+    }
+    void OnParried(const fbzz::math::Vector3& hitPoint) override
+    {
+        if (auto* ai = Ai()) ai->OnParried(hitPoint);
+    }
+    bool Execute(GameObject* part, const fbzz::math::Vector3& from) override
+    {
+        auto* ai = Ai();
+        return ai && ai->Execute(part, from);
+    }
+    /// 進行は残り節数。28 から 6 まで削って決着。
+    [[nodiscard]] int PartsRemaining() const override
+    {
+        const auto* body = Body();
+        return body ? body->SegmentCount() : -1;
+    }
+    [[nodiscard]] int PartsTotal() const override { return serpent::kSegmentCount; }
 
     void OnStart() override;
     void OnUpdate() override;

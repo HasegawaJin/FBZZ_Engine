@@ -16,7 +16,7 @@
                               │
         ┌─────────────────────┼─────────────────────┐
         │                     │                     │
-  SerpentAiComponent    SerpentBodyComponent   SerpentPolarityRigComponent
+  SerpentAiComponent    SerpentBodyComponent   SerpentRigComponent
    手を選ぶ / 実行        長さ・折る・露出         節の極と輪郭
         │                     │                     │
         ├──────────┬──────────┘                     │
@@ -30,7 +30,7 @@
 ```
 
 **依存の向きは一方通行**。下ほど「言われたとおり動かすだけ」で、上ほど「決める」。
-ボス1で `BossPolarityRigComponent` → `BossCollapsePostureComponent` の参照が
+ボス1で `BossRigComponent` → `BossCollapsePostureComponent` の参照が
 循環しかけたので、**下から上を引かない**こと（押し込む側が上）。
 
 ---
@@ -44,7 +44,7 @@
 | 1 | `SerpentApertureComponent` | 口が開く。予兆が光る |
 | 2 | `SerpentSpineComponent` + `SerpentPathComponent` | 穴から出て別の穴へ潜る |
 | 3 | `SerpentHitboxRigComponent` | 胴に当たれる／斬れる |
-| 4 | `SerpentPolarityRigComponent` | 節に極が乗る。輪郭で読める |
+| 4 | `SerpentRigComponent` | 斬られた節が輪郭で光る |
 | 5 | `SerpentBodyComponent` | 胴が折れて短くなる |
 | 6 | `SerpentAiComponent` | 手が出る |
 | 7 | `SerpentBossComponent` | HUD・進行に繋がる |
@@ -223,17 +223,15 @@ bool IsExposed(int index) const;               // 地上に出ているか
 
 ---
 
-## 4. SerpentPolarityRigComponent
+## 4. SerpentRigComponent
 
-`Assets/Scripts/Combat/SerpentPolarityRigComponent.hpp` — **付ける先: `Boss02`**
+`Assets/Scripts/Combat/SerpentRigComponent.hpp` — **付ける先: `Boss02`**
 
-節ごとの極と、その表示。ボス1の `BossPolarityRigComponent` が
+斬られた節の輪郭表示。ボス1の `BossRigComponent` が
 `E_*_<接尾辞>` を集めて `std::vector<EntityRef> meshes` に積んでいるのと同じ形。
 
 ```cpp
-void     SetPolarity(int segment, Polarity p);
-Polarity PolarityOf(int segment) const;
-bool     CanTakePolarity(int segment) const;   // 地上に出ている節だけ
+// 節に極を乗せる設計は 2026-09-08 に撤去した。今は輪郭だけを描く。
 ```
 
 - 部位名は `Head` と `S01`…`S28`。`E_<材質>_<部位>` の 4 メッシュで 1 節。
@@ -302,7 +300,7 @@ class SerpentBossComponent : public Script, public IDamageable, public IBoss {
 ```
 
 `IBoss` が要求するもの（`IBoss.hpp`）:
-`BossName()` / `CurrentPolarity()` / `PolaritySwitchRemaining()` /
+`BossName()` /
 `CurrentPhase()` / `PhaseCount()` / `IsStaggered()` / `IsEngaged()`
 
 `IDamageable` が要求するもの:
@@ -311,8 +309,6 @@ class SerpentBossComponent : public Script, public IDamageable, public IBoss {
 - **HP は `IDamageable` の口で受ける。**`IBoss` に重ねない（ボスバーがどちらを
   読むかで割れる）。
 - `CurrentPhase()` は残り節数から出す。フェーズ変数を別に持たない。
-- `CurrentPolarity()` は**この蛇では意味を持たない**（ボスは極を塗り替えない）。
-  `Polarity::Neutral` を返し、その理由をコメントに書く。
 
 ---
 
@@ -338,7 +334,7 @@ class SerpentBossComponent : public Script, public IDamageable, public IBoss {
 
 | 企画 | 実装 | なぜ |
 |---|---|---|
-| `SerpentBossComponent : Script, IDamageable, IBoss` | `IBoss` だけ。HP は `EnemyHealthComponent` | `IDamageable::Registry()` は GameObject をキーにした 1 対 1 の名簿で、2 つ載せると後から名乗った方が黙って上書きする。しかも `GameFlowComponent` / `BossHealthBarComponent` は既に `EnemyHealthComponent` を名指しで引いていて、無いとステージが終わらない。ボス1の `BossPolarityCoreComponent` と同じ形に揃えた |
+| `SerpentBossComponent : Script, IDamageable, IBoss` | `IBoss` だけ。HP は `EnemyHealthComponent` | `IDamageable::Registry()` は GameObject をキーにした 1 対 1 の名簿で、2 つ載せると後から名乗った方が黙って上書きする。しかも `GameFlowComponent` / `BossHealthBarComponent` は既に `EnemyHealthComponent` を名指しで引いていて、無いとステージが終わらない。ボス1の `BossCoreComponent` と同じ形に揃えた |
 | `SerpentBodyComponent::ExposedCount()` | `SerpentSpineComponent` が持つ | 露出は経路と頭の位置で決まる。Body に置くと Body → Spine → Body で include が輪になる |
 | 口の位置は `ARENA_Rim` の `worldPosition` | 輪の式から解く | 上の「シーン側の契約」参照 |
 | — | `SerpentBones.hpp` を追加 | 骨名・部位名・当たり名を 3 箇所で綴らないため（`BossTelegraph.hpp` と同じ「アタッチしないユーティリティ」） |
@@ -527,7 +523,7 @@ Inspector の Animator に「External Pose」として出る。
   100 のままだと半径 2200 m のアリーナになる）
 - `COL_Shutter_<口>` 16 枚に `MeshCollider`（閉じている間の床。無いと 16 口が最初から
   落とし穴になる）
-- `Boss02`: tag `Enemy` / `RigidBody`(static) / `PolarityTarget`(anchor + selfDriven) /
+- `Boss02`: tag `Enemy` / `RigidBody`(static) /
   `EnemyHealth`(HP 990) / `Animator`(externalPose) / `Serpent*` 7 本
 - `Boss02_Arena_Map`: `SerpentApertureComponent`
 - `Enviorment/ArenaLights` に 27 灯（下の「ライティング」参照）

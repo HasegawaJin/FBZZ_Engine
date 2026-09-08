@@ -1,0 +1,29 @@
+# GreenWare
+# M_E_MetalDark.mat
+# 蛇の骨格・関節。FBX から取り込んだ同名の材質 (metallic = 0) を差し替える実体。
+#
+# WHY Library/Baked を直さないか:
+#   あれは生成物のキャッシュで、再インポートで作り直される。参照する側 (.scene) を
+#   こちらへ向けるのが唯一残る形。
+#
+# WHY albedo を取り込み値 (0.055) から持ち上げるか:
+#   金属では albedo が反射色 (F0) になる。取り込み値のまま metallic だけ 1 にすると
+#   拡散も反射もほぼ 0 の «真っ黒な穴» になる。暗い鉄の F0 は 0.15〜0.25。
+#
+# NOTE: 撃破ディゾルブ用の M_E_MetalDark_Dissolve.mat とは «無傷のとき同じ絵» で
+#       あることが前提。ここを触ったら向こうの albedo / metallic / roughness も揃える。
+version = 1
+name = 'M_E_MetalDark'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+mesh_type = 'skinned'
+render_path = 'auto'
+
+[params]
+albedo = [ 0.17, 0.18, 0.20, 1.0 ]
+metallic = 1.0
+roughness = 0.30
+anisotropy = 0.35
+clearcoat = 0.0
+clearcoatRoughness = 0.10
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]
