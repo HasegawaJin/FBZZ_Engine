@@ -42,12 +42,12 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <Scripts/Combat/BossPolarityCoreComponent.hpp>
+#include <Scripts/Combat/BossCoreComponent.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
@@ -72,22 +72,22 @@ public:
                  "«点» が出てから広がるので、生まれた瞬間が読めない")
     FBZZ_FIELD_RANGE(float, maxRadius, 20.0f, "Max Radius", 1.0f, 60.0f)
     FBZZ_TOOLTIP("ここまで広がったら消える [m]。アリーナ半径 (実測 20m) が既定")
-    FBZZ_FIELD_RANGE(float, speed, 11.0f, "Speed", 1.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, speed, 11.0f, "速さ", 1.0f, 40.0f)
     FBZZ_TOOLTIP("広がる速さ [m/s]。プレイヤーの移動 6.0 m/s より明確に速くないと、"
                  "«走って逃げ切る» が最適解になって跳ぶ理由が消える")
     FBZZ_FIELD_RANGE(float, bandWidth, 1.0f, "Band Width", 0.1f, 5.0f)
     FBZZ_TOOLTIP("当たる帯の半幅 [m]。狭いほど «跳ぶ時刻» がシビアになる")
-    FBZZ_FIELD_RANGE_INT(int, damage, 2, "Damage", 0, 100)
+    FBZZ_FIELD_RANGE_INT(int, damage, 2, "ダメージ", 0, 100)
     FBZZ_TOOLTIP("直撃 (BossAi の Jump Stomp Damage) より軽く置く。"
                  "避け方が用意されている攻撃なので、当たった罰は腹下に居た罰より小さい")
 
     FBZZ_GROUP("Clearance")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
-    FBZZ_FIELD_RANGE(float, clearHeight, 0.90f, "Clear Height", 0.0f, 4.0f)
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
+    FBZZ_FIELD_RANGE(float, clearHeight, 0.90f, "クリアランス高さ", 0.0f, 4.0f)
     FBZZ_TOOLTIP("波の面からこの高さ以上に足が有れば越えられる [m]。"
-                 "PlayerTuning の Apex Height (既定 2.8m) より十分低く保つこと。"
+                 "PlayerTuning の Apex Height (既定 4.0m) より十分低く保つこと。"
                  "近づけるほど «跳躍の頂点でしか抜けられない» になり、超えると理不尽になる")
-    FBZZ_FIELD_RANGE(float, playerRadius, 0.45f, "Player Radius", 0.0f, 3.0f)
+    FBZZ_FIELD_RANGE(float, playerRadius, 0.45f, "プレイヤーの半径", 0.0f, 3.0f)
     FBZZ_TOOLTIP("プレイヤーの当たり半径 [m]。帯の半幅へ足して判定する")
 
     // WHY 等速をやめるか:
@@ -98,7 +98,7 @@ public:
     // WHY 加速側にしか振らないか:
     //   Speed は «走って逃げ切れない» を保証している下限 (上の Speed の WHY)。
     //   減速側へ振ると外周で速度が落ち、逃げ切りが最適解に戻る。倍率は必ず 1 以上。
-    FBZZ_GROUP("Burst")
+    FBZZ_GROUP("バースト")
     FBZZ_FIELD_RANGE(float, burstMultiplier, 2.4f, "Initial Speed x", 1.0f, 6.0f)
     FBZZ_TOOLTIP("生まれた瞬間の速さ倍率。1 で等速")
     FBZZ_FIELD_RANGE(float, burstFalloff, 5.0f, "Falloff", 0.5f, 20.0f)
@@ -118,7 +118,7 @@ public:
     FBZZ_TOOLTIP("囲む爆発を置く半径 [m]。ボスの腹の差し渡しに合わせる")
     FBZZ_FIELD_RANGE_INT(int, landingSmokeCount, 16, "Smoke Points", 0, 32)
     FBZZ_TOOLTIP("落下点を囲む土煙の数。輪の «生まれた瞬間» を作る")
-    FBZZ_FIELD_RANGE(float, landingSmokeScale, 1.9f, "Smoke Scale", 0.2f, 4.0f)
+    FBZZ_FIELD_RANGE(float, landingSmokeScale, 1.9f, "煙のスケール", 0.2f, 4.0f)
     FBZZ_TOOLTIP("VfxManager の Ground Dust に掛ける倍率。波の途中より大きく置く")
 
     // WHY «少しずつ撒き続ける» をやめて «輪を 1 枚ずつ置く» にするか:
@@ -137,7 +137,7 @@ public:
     //   (VfxManager の Ground Dust Slots) を «1 枚の点数 x 生きている輪の枚数» が
     //   超えた瞬間、古い輪が途中で消えて «内側から欠けていく円» になる。
     FBZZ_GROUP("Ring")
-    FBZZ_FIELD_RANGE(float, ringInterval, 0.20f, "Interval", 0.05f, 1.0f)
+    FBZZ_FIELD_RANGE(float, ringInterval, 0.20f, "間隔", 0.05f, 1.0f)
     FBZZ_TOOLTIP("輪を 1 枚置く間隔 [秒]。速さ 11m/s なら 0.20 秒で約 2.2m ごとの段になる。"
                  "短くするほど連続した壁に近づき、長くするほど «だん、だん» と段が読める")
     FBZZ_FIELD_RANGE(float, ringSpacing, 4.0f, "Point Spacing", 1.0f, 12.0f)
@@ -150,7 +150,7 @@ public:
     FBZZ_FIELD_RANGE(float, ringJitter, 0.4f, "Jitter", 0.0f, 3.0f)
     FBZZ_TOOLTIP("点を内側へ散らす幅 [m]。0 だと真円すぎて «描いた図形» に見える。"
                  "外側へは散らさない ─ 当たらない場所に絵が出ないため")
-    FBZZ_FIELD_RANGE(float, smokeScale, 1.0f, "Smoke Scale", 0.2f, 4.0f)
+    FBZZ_FIELD_RANGE(float, smokeScale, 1.0f, "煙のスケール", 0.2f, 4.0f)
     FBZZ_FIELD_RANGE(float, smokeStrength, 1.0f, "Smoke Strength", 0.0f, 1.0f)
     FBZZ_TOOLTIP("蹴り出しの強さ。1 で Ground Dust の既定どおり押し出す")
 
@@ -165,7 +165,7 @@ public:
     FBZZ_GROUP("Blast")
     FBZZ_FIELD_RANGE_INT(int, blastsPerRing, 2, "Per Ring", 0, 6)
     FBZZ_TOOLTIP("輪 1 枚に混ぜる爆発の数。0 で煙だけになる。点と点の «間» へ置く")
-    FBZZ_FIELD_RANGE(float, blastStrength, 0.42f, "Strength", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, blastStrength, 0.42f, "強度", 0.0f, 1.0f)
     FBZZ_TOOLTIP("上げると «激突» と同じ大きさで弾けるので、波の 1 点で起きる出来事"
                  "としては強すぎる。着地の Blast より必ず小さく置くこと")
 
@@ -174,9 +174,9 @@ public:
     //   絵が無い。跳ぶ時刻をそこから読むと «煙が来る前に食らった» が起きる。
     //   自分へ向かってくる縁にだけ、輪の合間も点を置き続けて線の «今» を示す。
     FBZZ_GROUP("Front Marker")
-    FBZZ_FIELD_RANGE(float, frontInterval, 0.09f, "Interval", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, frontInterval, 0.09f, "間隔", 0.0f, 1.0f)
     FBZZ_TOOLTIP("プレイヤーの方角へ点を置く間隔 [秒]。0 で出さない (輪だけになる)")
-    FBZZ_FIELD_RANGE(float, frontScale, 0.8f, "Scale", 0.2f, 4.0f)
+    FBZZ_FIELD_RANGE(float, frontScale, 0.8f, "スケール", 0.2f, 4.0f)
     FBZZ_TOOLTIP("輪の点より小さく置く。同じ大きさだと «自分を追ってくる塊» に見えて、"
                  "輪の一部として読めなくなる")
 
@@ -192,12 +192,12 @@ public:
     FBZZ_FIELD_FILE(crackMaterial, "Assets/Materials/Decal/DecalCrack.mat",
                     "Material", ".mat")
     FBZZ_TOOLTIP("render_path = \"decal\" の .mat。手続きで割れを描く DecalCrack が既定")
-    FBZZ_FIELD_RANGE(float, crackInterval, 0.09f, "Interval", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, crackInterval, 0.09f, "間隔", 0.0f, 1.0f)
     FBZZ_TOOLTIP("亀裂を落とす間隔 [秒]。0 で残さない")
     FBZZ_FIELD_RANGE_INT(int, crackPerBurst, 3, "Points / Burst", 1, 8)
-    FBZZ_FIELD_RANGE(float, crackSize, 2.2f, "Size", 0.2f, 10.0f)
+    FBZZ_FIELD_RANGE(float, crackSize, 2.2f, "サイズ", 0.2f, 10.0f)
     FBZZ_TOOLTIP("1 枚の差し渡し [m]。波の帯幅より少し大きいと «縁が割れた» に見える")
-    FBZZ_FIELD_RANGE(float, crackGrowSeconds, 0.12f, "Grow", 0.01f, 1.0f)
+    FBZZ_FIELD_RANGE(float, crackGrowSeconds, 0.12f, "成長", 0.01f, 1.0f)
     FBZZ_TOOLTIP("中心から先端まで伸びきる秒数。長いと «描かれていく» に見える")
     FBZZ_FIELD_RANGE(float, crackLife, 3.5f, "Life", 0.2f, 20.0f)
     FBZZ_TOOLTIP("消えるまでの秒数。跡が «直前に起きたこと» で居られる長さ")
@@ -209,14 +209,14 @@ public:
     // WHY 越えた側にも返すか: 跳んで抜けた «成功» に何も返らないと、当たらなかったのが
     //     読み勝ちなのか、そもそも判定が無かったのかプレイヤーには区別できない。
     //     足の下を通ったことを手で返して初めて、跳ぶ操作が答えとして確定する。
-    FBZZ_GROUP("Feedback")
+    FBZZ_GROUP("手応え")
     FBZZ_FIELD_RANGE(float, passRumble, 0.45f, "Pass Rumble", 0.0f, 1.0f)
     FBZZ_TOOLTIP("波がプレイヤーの位置を通り過ぎた瞬間。当たった側は被弾側が返すので、"
                  "ここは «越えた» の合図として軽く置く")
-    FBZZ_FIELD_RANGE(float, passShakeRatio, 0.5f, "Shake Ratio", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, passShakeRatio, 0.5f, "揺れの比率", 0.0f, 1.0f)
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(float, debugRadius, 0.0f, "Radius")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(float, debugRadius, 0.0f, "半径")
     FBZZ_FIELD_READ_ONLY(bool, debugDealt, false, "Dealt")
     FBZZ_FIELD(bool, drawDebugBand, false, "Draw Band")
     FBZZ_TOOLTIP("当たる帯の内外を線で引く。煙は散らして置くので、絵と当たりが"
@@ -251,7 +251,7 @@ private:
     /// 波がプレイヤーの立っている半径を追い越した瞬間を 1 度だけ返す。
     void NotifyPass(const Vector3& playerPoint);
     /// ボスの極性。消灯中 (激突スタン) でも無極の爆発にはしない。
-    [[nodiscard]] Polarity WavePolarity() const;
+    [[nodiscard]] BladeSide WaveSide() const;
     /// 波の上の 1 点。angle は中心から見た方角、inset は前縁から内側へ引く距離 [m]。
     [[nodiscard]] Vector3 PointOnFront(float angle, float inset) const;
     /// 水平距離。高さは «越えたか» の判定にしか使わないので、帯の測りには入れない。
@@ -308,11 +308,10 @@ inline Vector3 BossShockwaveComponent::PointOnFront(float angle, float inset) co
              m_center.z + std::sin(angle) * radius };
 }
 
-inline Polarity BossShockwaveComponent::WavePolarity() const
+inline BladeSide BossShockwaveComponent::WaveSide() const
 {
-    if (const auto* core = scene.GetScript<BossPolarityCoreComponent>())
-        if (core->CurrentPolarity() != Polarity::None) return core->CurrentPolarity();
-    return Polarity::Plus;
+    // ボスは色を切り替えない。波の色は 1 本に固定する。
+    return BladeSide::Right;
 }
 
 inline void BossShockwaveComponent::OnStart()
@@ -373,12 +372,12 @@ inline void BossShockwaveComponent::EmitLanding()
     auto* vfx = VfxManagerComponent::Instance();
     if (!vfx) return;
 
-    const Polarity polarity = WavePolarity();
+    const BladeSide side = WaveSide();
 
     if (landingBlast > 0.0f) {
         // 爆発は落下点そのもの。少しでも浮かせると床から切り離されて «空中で爆ぜた»
         // ように見え、この後に走り出す煙と繋がらない。
-        vfx->PlayGroundBlast(m_center, polarity, Clamp01(landingBlast));
+        vfx->PlayGroundBlast(m_center, side, Clamp01(landingBlast));
 
         // 中心の 1 発を囲む。腹の下いっぱいが割れた «広さ» は、1 発を大きくしても
         // 出ない ─ 離れた場所で同時に起きて初めて、割れた面積として読める。
@@ -391,7 +390,7 @@ inline void BossShockwaveComponent::EmitLanding()
                 const float radius = std::max(landingBlastSpread, 0.5f);
                 vfx->PlayGroundBlast(Vector3{ m_center.x + std::cos(angle) * radius, m_center.y,
                                               m_center.z + std::sin(angle) * radius },
-                                     polarity, Clamp01(landingBlast) * 0.7f);
+                                     side, Clamp01(landingBlast) * 0.7f);
             }
         }
     }
@@ -454,11 +453,11 @@ inline void BossShockwaveComponent::EmitRing(float dt)
     if (blasts <= 0 || blastStrength <= 0.0f) return;
 
     const float blastStep = TWO_PI / static_cast<float>(blasts);
-    const Polarity polarity = WavePolarity();
+    const BladeSide side = WaveSide();
     for (int i = 0; i < blasts; ++i) {
         // 煙の点と点の «間» (半区間ぶんずらす)。芯に重ねると閃光が煙に隠れる。
         const float angle = m_ringPhase + step * 0.5f + blastStep * static_cast<float>(i);
-        vfx->PlayGroundBlast(PointOnFront(angle, 0.0f), polarity, Clamp01(blastStrength));
+        vfx->PlayGroundBlast(PointOnFront(angle, 0.0f), side, Clamp01(blastStrength));
     }
 }
 

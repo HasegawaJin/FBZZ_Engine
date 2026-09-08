@@ -35,7 +35,7 @@ class ArenaBoundsComponent : public Script {
 
 public:
     FBZZ_GROUP("Bounds")
-    FBZZ_FIELD_RANGE(float, radius, 20.0f, "Radius", 1.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, radius, 20.0f, "半径", 1.0f, 60.0f)
     FBZZ_TOOLTIP("戦闘に使う範囲の半径 [m]。床の実体は 40m あるが、"
                  "引力の作用半径 12m に対して広すぎるので内側で閉じる")
     FBZZ_FIELD_RANGE(float, softMargin, 1.5f, "Soft Margin", 0.0f, 10.0f)
@@ -43,13 +43,13 @@ public:
     FBZZ_FIELD_RANGE(float, pushBack, 6.0f, "Push Back", 0.0f, 30.0f)
     FBZZ_TOOLTIP("縁で内向きに掛ける速さ [m/s]。強いほど «跳ね返された» に見える")
 
-    FBZZ_GROUP("Targets")
+    FBZZ_GROUP("対象")
     FBZZ_FIELD(bool, holdEnemies, true, "Hold Enemies")
     FBZZ_TOOLTIP("敵を範囲内に留める。弾き飛ばされて外へ出た相手もここで戻る")
-    FBZZ_FIELD(bool, holdPlayer, true, "Hold Player")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
+    FBZZ_FIELD(bool, holdPlayer, true, "プレイヤーを固める")
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugHeld, 0, "Held / frame")
     FBZZ_FIELD(bool, drawBounds, true, "Draw Bounds")
 

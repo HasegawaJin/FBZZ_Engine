@@ -25,10 +25,9 @@
 
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Combat/BossAnimatorComponent.hpp>
-#include <Scripts/Combat/BossPolarityCoreComponent.hpp>
+#include <Scripts/Combat/BossCoreComponent.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Utils/LoopVoice.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 
@@ -65,7 +64,7 @@ inline constexpr float kBossStompPullFrame   = 46.0f;
 inline constexpr float kBossWalkCycleFrames   = 40.0f;
 inline constexpr float kBossChargeCycleFrames = 30.0f;
 
-/// 切替の «瞬間» から磁力パルスまでの間 (素材 README)。
+/// 予備動作から磁力パルスまでの間 (素材 README)。
 inline constexpr float kBossMagPulseDelay = 0.020f;
 
 /// 復帰音の長さ。スタンが明ける «前» に流し始めないと、立ち上がってから復帰音が鳴る。
@@ -81,7 +80,7 @@ public:
 
     FBZZ_GROUP("Servo Bed")
     FBZZ_TOOLTIP("常時鳴らす土台。これがあると «そこに居る» が姿を見る前に届く")
-    FBZZ_FIELD_RANGE(float, servoIdleVolume, 0.45f, "Idle", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, servoIdleVolume, 0.45f, "待機", 0.0f, 1.0f)
     FBZZ_TOOLTIP("停止中の音量。素材 README の «停止中は 0.4〜0.5 で敷く»")
     FBZZ_FIELD_RANGE(float, servoMoveVolume, 0.90f, "Moving", 0.0f, 1.0f)
     FBZZ_TOOLTIP("全速で動いているときの音量")
@@ -99,8 +98,8 @@ public:
     FBZZ_FIELD_RANGE(float, beamLoopVolume, 0.85f, "Beam Loop", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, stunLoopVolume, 0.70f, "Stun Loop", 0.0f, 1.0f)
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(float, debugSpeed, 0.0f, "Speed (m/s)")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(float, debugSpeed, 0.0f, "速さ (m/s)")
     FBZZ_FIELD_READ_ONLY(int, debugStompCue, -1, "Stomp Cue")
 
     void OnStart()  override;
@@ -138,7 +137,7 @@ public:
     /// 芯が落ちて絞りが閉じるまで。
     void EndBeam();
 
-    /// 磁力パルス。極の切替そのものは OnUpdate が拾うので、ここは «撃った» だけを言う。
+    /// 磁力パルス。
     void MagneticPulse();
 
     /// 大ジャンプの着地。
@@ -149,8 +148,8 @@ private:
     void DriveLocomotion(float dt);
     /// 踏みつけの表を 1 つずつ消化する。
     void TickStomp(float dt);
-    /// 極の切替・予告・フェーズ移行を BossPolarityCoreComponent から拾う。
-    void TickPolarity(float dt);
+    /// フェーズ移行を BossCoreComponent から拾う。
+    void TickPhase(float dt);
     /// スタンの復帰と磁力パルスの遅延を進める。
     void TickPending(float dt);
     /// 鳴り続けている音を全部畳む。倒れたときと無効化のとき。
@@ -160,8 +159,8 @@ private:
     [[nodiscard]] float Speed() const;
     [[nodiscard]] bool  IsAlive() const;
 
-    [[nodiscard]] BossPolarityCoreComponent* Core() const
-    { return scene.GetScript<BossPolarityCoreComponent>(); }
+    [[nodiscard]] BossCoreComponent* Core() const
+    { return scene.GetScript<BossCoreComponent>(); }
 
     // WHY 4 本に分けるか: 土台・突進・照射・スタンは互いに重なりうる。
     //     突進からそのまま激突すればクロールとスタンが 1 フレーム重なるし、
@@ -186,11 +185,8 @@ private:
     float m_stunRemaining = -1.0f;
     bool  m_stunRecoverPlayed = false;
 
-    /// 前フレームの極とフェーズ。切替と移行は «変わった瞬間» にしか鳴らさない。
-    Polarity m_lastPolarity = Polarity::None;
+    /// 前フレームのフェーズ。移行は «変わった瞬間» にしか鳴らさない。
     int      m_lastPhase    = 1;
-    /// 今の周期で予告を鳴らしたか。1 周期に 1 度だけ。
-    bool     m_warnedThisCycle = false;
 
     /// 突進のクロールが鳴っている間。単発の足音を止めるためだけに持つ。
     bool m_charging = false;
@@ -209,7 +205,6 @@ inline void BossAudioComponent::OnStart()
     m_pulseDelay        = -1.0f;
     m_stunRemaining     = -1.0f;
     m_stunRecoverPlayed = false;
-    m_warnedThisCycle   = false;
     m_charging          = false;
     m_silenced          = false;
 
@@ -234,11 +229,10 @@ inline void BossAudioComponent::OnStart()
     }
 
     if (const auto* core = Core()) {
-        m_lastPolarity = core->CurrentPolarity();
-        m_lastPhase    = core->CurrentPhase();
+        m_lastPhase = core->CurrentPhase();
     } else {
-        debug.LogError("BossAudioComponent requires a BossPolarityCoreComponent on the same "
-                       "object (polarity switch cues are read from it).");
+        debug.LogError("BossAudioComponent requires a BossCoreComponent on the same "
+                       "object (phase cues are read from it).");
     }
 
     if (playAppearOnStart) Appear();
@@ -276,7 +270,7 @@ inline void BossAudioComponent::OnUpdate()
 
     DriveLocomotion(dt);
     TickStomp(dt);
-    TickPolarity(dt);
+    TickPhase(dt);
     TickPending(dt);
 }
 
@@ -440,38 +434,16 @@ inline void BossAudioComponent::JumpLand()
     se::Play(audio, se::kBossStompSettle);
 }
 
-inline void BossAudioComponent::TickPolarity(float dt)
+inline void BossAudioComponent::TickPhase(float dt)
 {
     (void)dt;
     const auto* core = Core();
     if (!core) return;
 
-    // 10.6 の «HP50% でフェーズが上がる»。上がった瞬間に 1 度だけ。
+    // フェーズが上がった瞬間に 1 度だけ。
     const int phase = core->CurrentPhase();
     if (phase > m_lastPhase) se::Play(audio, se::kBossPhaseShift);
     m_lastPhase = phase;
-
-    const Polarity now = core->CurrentPolarity();
-
-    // 切替の予告。終端が切替の瞬間に合うよう書かれているので、残り時間が
-    // 予告の長さを切った «その瞬間» に流す。リングの明滅と同じしきい値を読むので、
-    // 見えている予兆と聞こえている予兆が必ず一致する。
-    const float remaining = core->PolaritySwitchRemaining();
-    const float lead      = std::max(core->switchWarnSeconds, 0.0f);
-    if (!m_warnedThisCycle && lead > 0.0f && remaining > 0.0f && remaining <= lead &&
-        now != Polarity::None) {
-        m_warnedThisCycle = true;
-        se::Play(audio, se::kBossPolSwitchWarn);
-    }
-    // 周期が入れ替わったら予告を張り直す。残り時間が予告の長さより戻った時点が
-    // 新しい周期の始まり。
-    if (remaining > lead) m_warnedThisCycle = false;
-
-    // 極が入れ替わった «瞬間»。硬直中の消灯 (None) は切替ではないので、
-    // None を挟んだ往復では鳴らさない。
-    if (now != m_lastPolarity && now != Polarity::None && m_lastPolarity != Polarity::None)
-        se::Play(audio, se::BossPolSwitch(now));
-    m_lastPolarity = now;
 }
 
 inline void BossAudioComponent::TickPending(float dt)

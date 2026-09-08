@@ -31,7 +31,7 @@
 #include <Scripts/Camera/BossCameraDirectorComponent.hpp>
 #include <Scripts/Combat/BossAiComponent.hpp>
 #include <Scripts/Combat/BossAudioComponent.hpp>
-#include <Scripts/Combat/BossPolarityCoreComponent.hpp>
+#include <Scripts/Combat/BossCoreComponent.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -46,25 +46,25 @@ class BossRoomTriggerComponent : public Script {
 
 public:
     FBZZ_GROUP("Room")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
     FBZZ_FIELD(Vector3, roomOffset, (Vector3::ZERO), "Offset")
     FBZZ_TOOLTIP("部屋の中心をボスからずらす [m]。ボスが部屋の中央に立っていないときだけ使う")
-    FBZZ_FIELD_RANGE(float, roomRadius, 12.0f, "Radius", 1.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, roomRadius, 12.0f, "半径", 1.0f, 60.0f)
     FBZZ_TOOLTIP("この距離まで近づいたら起きる。踏み込んだことが分かる大きさにすること "
                  "(狭すぎると «殴れる距離» と区別が付かない)")
-    FBZZ_FIELD_RANGE(float, roomHeight, 12.0f, "Height", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, roomHeight, 12.0f, "高さ", 0.0f, 60.0f)
     FBZZ_TOOLTIP("高さ方向の厚み [m]。上下に通路があるアリーナで «真上を通っただけ» で "
                  "起きないようにする。0 で高さを見ない")
 
-    FBZZ_GROUP("Wake")
-    FBZZ_FIELD_RANGE(float, wakeDelay, 1.0f, "Delay", 0.0f, 8.0f)
+    FBZZ_GROUP("航跡")
+    FBZZ_FIELD_RANGE(float, wakeDelay, 1.0f, "遅延", 0.0f, 8.0f)
     FBZZ_TOOLTIP("踏み込んでからボスが動き出すまで [s]。0 だと入った瞬間に殴られる。"
                  "この間もバーと弾薬の供給は始まっているので、身構える時間になる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD(bool, drawRoom, true, "Draw Room")
-    FBZZ_FIELD_READ_ONLY(bool, debugEngaged, false, "Engaged")
-    FBZZ_FIELD_READ_ONLY(float, debugDistance, 0.0f, "Distance")
+    FBZZ_FIELD_READ_ONLY(bool, debugEngaged, false, "交戦中")
+    FBZZ_FIELD_READ_ONLY(float, debugDistance, 0.0f, "距離")
 
     /// 部屋に入らずに始める。デバッグと、演出から直接始めたい場合の入口。
     void Engage();
@@ -97,7 +97,7 @@ inline void BossRoomTriggerComponent::SetAiRunning(bool running) const
 
 inline void BossRoomTriggerComponent::PublishEngaged() const
 {
-    if (auto* core = scene.GetScript<BossPolarityCoreComponent>()) core->SetEngaged(m_engaged);
+    if (auto* core = scene.GetScript<BossCoreComponent>()) core->SetEngaged(m_engaged);
 }
 
 inline void BossRoomTriggerComponent::OnStart()
@@ -110,10 +110,10 @@ inline void BossRoomTriggerComponent::OnStart()
     SetAiRunning(false);
     PublishEngaged();
 
-    if (!scene.GetScript<BossPolarityCoreComponent>()) {
+    if (!scene.GetScript<BossCoreComponent>()) {
         // 交戦中かどうかを盤面へ公開する口が無いと、体力バーも弾薬の供給も
         // «まだ» のまま止まる。症状は «部屋に入っても何も始まらない» だけになる。
-        debug.LogError("BossRoomTriggerComponent requires a BossPolarityCoreComponent on the "
+        debug.LogError("BossRoomTriggerComponent requires a BossCoreComponent on the "
                        "same object (it is what publishes the engaged state to the board).");
     }
 }
@@ -158,13 +158,18 @@ inline void BossRoomTriggerComponent::OnUpdate()
 {
     if (!m_engaged) {
         // 交戦していないことは毎フレーム押し直す。他のスクリプトの OnStart 順に
-        // 関係なく «まだ» が保たれる (BossPolarityCoreComponent の m_engaged の WHY)。
+        // 関係なく «まだ» が保たれる (BossCoreComponent の m_engaged の WHY)。
         PublishEngaged();
         if (PlayerInside()) Engage();
         return;
     }
 
     if (m_delayRemaining <= 0.0f) return;
+
+    // 登場の画が流れているあいだは数えない。Delay は «画が終わってから身構える間»。
+    // 画より先に数え切ると、見上げている最中に踏まれる。
+    if (auto* camera = BossCameraDirectorComponent::Instance())
+        if (camera->Current() == BossShot::Intro) return;
 
     // WHY 実時間ではなくスケール時間か: 身構える «間» は盤面の時間の一部で、
     //     踏み込んだ瞬間にヒットストップが入ればその間も一緒に止まってよい。

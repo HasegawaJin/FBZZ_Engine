@@ -62,7 +62,7 @@ class BossStepDustComponent : public Script {
     FBZZ_SCRIPT(BossStepDustComponent)
 
 public:
-    FBZZ_GROUP("Step")
+    FBZZ_GROUP("1 フレーム進める")
     FBZZ_FIELD_RANGE(float, minSpeed, 0.35f, "Dust Above (m/s)", 0.0f, 5.0f)
     FBZZ_TOOLTIP("これより遅ければ出さない。止まっているボスの脚も呼吸で微かに動くので、"
                  "0 にすると立っているだけで足元から煙が湧く")
@@ -76,14 +76,14 @@ public:
     FBZZ_TOOLTIP("同じ脚が続けて鳴るまでの最短間隔 [秒]。接地の前後で骨が細かく震える"
                  "モーションだと、1 歩が 2 発に割れることがある")
 
-    FBZZ_GROUP("Look")
-    FBZZ_FIELD_RANGE(float, dustScale, 0.85f, "Scale", 0.1f, 4.0f)
+    FBZZ_GROUP("見た目")
+    FBZZ_FIELD_RANGE(float, dustScale, 0.85f, "スケール", 0.1f, 4.0f)
     FBZZ_TOOLTIP("VfxManager の Ground Dust に掛ける倍率。衝撃波の 1 発より小さく置く ─ "
                  "歩幅ごとに «叩きつけた» と同じ煙が出ると、着地との区別が消える")
-    FBZZ_FIELD_RANGE(float, groundOffset, 0.0f, "Ground Offset", -1.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, groundOffset, 0.0f, "接地のオフセット", -1.0f, 1.0f)
     FBZZ_TOOLTIP("胴体の足元から見た床の高さ [m]。煙が床へ潜る / 浮く場合だけ触る")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugSteps, 0, "Steps")
     FBZZ_FIELD_READ_ONLY(float, debugLift, 0.0f, "Widest Lift")
     FBZZ_FIELD(bool, drawDebugFeet, false, "Draw Feet")

@@ -15,11 +15,9 @@
 ///   出せば、リグが変わってもそのまま追従する。
 ///
 /// WHY トリガーにするか:
-///   衝突応答を持たせると、雑魚がボスへ飛び込んだときに «脚に当たった» 事実が
-///   PolarityBodyComponent::OnCollisionEnter へ届き、ボス本体ではなく脚の
-///   GameObject を «ぶつけられた側» として記録してしまう。脚には HP も極性も無いので、
-///   ダメージがどこにも入らないまま飛行だけが終わる。判定用は物理応答を持たない。
-///   ボスを押し返すのはルートのカプセル 1 個だけ、という役割分担を崩さない。
+///   衝突応答を持たせると、脚 1 本ずつがプレイヤーを押し返す体になる。全高 6m の相手の
+///   脚の間へ潜り込むのが とどめ の間合いなので (Docs/break-parry.md)、そこで押されると
+///   寄れない。ボスを押し返すのはルートのカプセル 1 個だけ、という役割分担を崩さない。
 ///
 /// WHY ランタイム生成か:
 ///   生成物は runtimeGenerated を立てるのでシーンには保存されない。Play のたびに
@@ -35,7 +33,6 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/BossAnimParams.hpp>
-#include <Scripts/Combat/BossPartPolarityComponent.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
 #include <cmath>
@@ -51,19 +48,19 @@ class BossHitboxRigComponent : public Script {
     FBZZ_SCRIPT(BossHitboxRigComponent)
 
 public:
-    FBZZ_GROUP("Radii")
+    FBZZ_GROUP("半径")
     FBZZ_TOOLTIP("節の長さはボーン間隔から出す。ここで決めるのは太さだけ")
     FBZZ_FIELD_RANGE(float, torsoRadius, 1.90f, "Torso", 0.05f, 6.0f)
-    FBZZ_FIELD_RANGE(float, headRadius, 0.70f, "Head", 0.05f, 4.0f)
+    FBZZ_FIELD_RANGE(float, headRadius, 0.70f, "頭", 0.05f, 4.0f)
     FBZZ_FIELD_RANGE(float, rearRadius, 0.95f, "Rear", 0.05f, 4.0f)
     FBZZ_FIELD_RANGE(float, coreRadius, 0.55f, "Core", 0.05f, 4.0f)
-    FBZZ_FIELD_RANGE(float, legRadius, 0.38f, "Leg", 0.05f, 3.0f)
-    FBZZ_FIELD_RANGE(float, radiusScale, 1.0f, "Scale All", 0.1f, 3.0f)
+    FBZZ_FIELD_RANGE(float, legRadius, 0.38f, "脚", 0.05f, 3.0f)
+    FBZZ_FIELD_RANGE(float, radiusScale, 1.0f, "全体スケール", 0.1f, 3.0f)
     FBZZ_TOOLTIP("全体の太さ。個別の比率を保ったまま «当たりの甘さ» だけを動かす")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugHitboxes, 0, "Hitboxes")
-    FBZZ_FIELD_READ_ONLY(int, debugMissingBones, 0, "Missing Bones")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(int, debugHitboxes, 0, "ヒットボックス")
+    FBZZ_FIELD_READ_ONLY(int, debugMissingBones, 0, "見つからないボーン")
 
     void OnStart() override;
 
@@ -73,7 +70,7 @@ public:
     [[nodiscard]] GameObject* CoreBone() const { return m_core.Resolve(scene); }
 
     /// 当たったオブジェクトからボス本体を引く。
-    /// WHY 親を遡るか: 当たるのは脚に生えた子オブジェクトで、HP も極性もルートにある。
+    /// WHY 親を遡るか: 当たるのは脚に生えた子オブジェクトで、HP もスクリプトもルートにある。
     ///     ヒットボックスの側に持ち主を書き込むと、階層を組み替えるたびに貼り直しになる。
     [[nodiscard]] static GameObject* BossRootOf(GameObject* hit);
 
@@ -83,13 +80,13 @@ private:
         std::string from;
         std::string to;      // 空なら球
         float       radius = 0.3f;
-        /// 斬って極を乗せられる部位か。
+        /// とどめ の的になる部位か (Docs/break-parry.md)。
         ///
         /// WHY 脚の «下» だけか: プレイヤーの射程は 2.6m でボスは全高 6m ある。
-        ///     Thigh は届かない高さにあるので、乗せられる的として置くと
-        ///     «狙っているのに乗らない» になる。届くのは膝から下だけ。
-        bool        chargeable = false;
-        /// 脚の接尾辞 ("_FR" など)。極を持てる部位だけが持つ。
+        ///     Thigh は届かない高さにあるので、的として置くと «狙っているのに
+        ///     届かない» になる。届くのは膝から下だけ。
+        bool        severable = false;
+        /// 脚の接尾辞 ("_FR" など)。とどめ の的だけが持つ。
         std::string suffix;
     };
 
@@ -246,15 +243,11 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
         collider.isTrigger = true;
     }
 
-    // 極を持てる部位はここで宣言する。斬撃の扇は BossPartPolarityComponent を
-    // 名指しで探すので、付いていない部位は «斬っても何も乗らない» になる。
-    if (segment.chargeable) {
-        auto& part = hitbox.AddScript<BossPartPolarityComponent>();
-        part.legSuffix = segment.suffix;
-        // 四足の脚は «ボスが帯びていて、プレイヤーが逆極で斬る» 的。塗られる側ではない
-        // (蛇の節は塗られる側なので、あちらでは立てない)。
-        part.selfDriven = true;
-    }
+    // WHY 的の印を «名前» で済ませるか: とどめ が通るのは膝下 (`HB_Hock_*`) だけで、
+    //     その 4 つは骨の名前から決まっている。印のためだけにスクリプトを 1 枚
+    //     足すと、«付け忘れた脚だけ とどめ が入らない» という壊れ方が増える。
+    //     脚を引くのは BossRigComponent::LegSuffixOf。
+    (void)segment.severable;
 
     return true;
 }

@@ -51,7 +51,7 @@ using fbzz::Time;
 
 namespace sandbox {
 
-/// 崩れた体を作る層。BossPolarityRigComponent が «どの脚を失ったか» を押し込む。
+/// 崩れた体を作る層。BossRigComponent が «どの脚を失ったか» を押し込む。
 class BossCollapsePostureComponent : public Script {
     FBZZ_SCRIPT(BossCollapsePostureComponent)
 
@@ -84,19 +84,19 @@ public:
     //     書き込む先は VisualPivot 1 つしかない。別のスクリプトから書くと、崩れて
     //     いない間 (m_blend == 0) にこちらが毎フレーム ZERO へ戻すので、よろめきが
     //     1 フレームも残らない。ピボットの書き手は 1 つに保ち、ここで足す。
-    FBZZ_GROUP("Stagger")
-    FBZZ_FIELD(bool, stagger, true, "Stagger")
+    FBZZ_GROUP("のけぞり")
+    FBZZ_FIELD(bool, stagger, true, "のけぞり")
     FBZZ_TOOLTIP("斬られた脚の側へ体を泳がせる。切ると脚だけが反応する")
     FBZZ_FIELD_RANGE(float, staggerDegrees, 4.5f, "Degrees", 0.0f, 30.0f)
     FBZZ_TOOLTIP("一撃で傾く角度。全高 6m では 5 度でも足元が 0.5m 動くので、"
                  "«よろめき» には 3〜6 度で足りる")
     FBZZ_FIELD_RANGE(float, staggerMaxDegrees, 9.0f, "Max Degrees", 0.0f, 45.0f)
     FBZZ_TOOLTIP("連続で斬られても傾きはここで頭打ち。無いと連撃で体が回り続ける")
-    FBZZ_FIELD_RANGE(float, staggerSink, 0.22f, "Sink", 0.0f, 2.0f)
+    FBZZ_FIELD_RANGE(float, staggerSink, 0.22f, "沈み", 0.0f, 2.0f)
     FBZZ_TOOLTIP("傾きに連動して沈む量 [m]。支えを失った «荷重が抜けた» 感を作る")
-    FBZZ_FIELD_RANGE(float, staggerStiffness, 90.0f, "Stiffness", 1.0f, 400.0f)
+    FBZZ_FIELD_RANGE(float, staggerStiffness, 90.0f, "硬さ", 1.0f, 400.0f)
     FBZZ_TOOLTIP("立ち姿へ戻ろうとする強さ。大きいほど速く戻る")
-    FBZZ_FIELD_RANGE(float, staggerDamping, 11.0f, "Damping", 0.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, staggerDamping, 11.0f, "減衰", 0.0f, 60.0f)
     FBZZ_TOOLTIP("揺り戻しの収まり。小さいと «ゆらゆら» 続き、大きいと戻るだけになる")
 
     FBZZ_GROUP("Legs")
@@ -104,16 +104,16 @@ public:
     FBZZ_TOOLTIP("残った脚を IK で床へ留める。切ると脚も一緒に傾いて宙に浮く。"
                  "3 本残っている間はまだ歩くので、留めるのは 2 本以下になってから")
     FBZZ_FIELD_RANGE(float, footIkWeight, 1.0f, "IK Weight", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, footSpread, 1.15f, "Spread", 0.5f, 2.0f)
+    FBZZ_FIELD_RANGE(float, footSpread, 1.15f, "拡がり", 0.5f, 2.0f)
     FBZZ_TOOLTIP("残った脚を外へ張り出させる倍率。荷重が 2 本に寄るので、"
                  "立っていたときの位置のままだと支えているように見えない")
-    FBZZ_FIELD_RANGE(float, groundOffset, 0.0f, "Ground Offset", -1.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, groundOffset, 0.0f, "接地のオフセット", -1.0f, 1.0f)
     FBZZ_TOOLTIP("足を置く高さの微調整。ボス本体の足元を床とみなす")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     // 戦わずに崩れ «方» だけを見る口。倒れる向き・角・沈みの調整はここで回す。
     //
-    // WHY 実際にもぐボタン (BossPolarityRigComponent の Break FR 等) と別に持つか:
+    // WHY 実際にもぐボタン (BossRigComponent の Break FR 等) と別に持つか:
     //   あちらは本番と同じ道を通るので «一度もぐと Stop するまで戻らない»。角度を
     //   1 度ずつ詰める作業には向かない。こちらは見た目だけを差し替えるので、
     //   チェックを外せばその場で立ち姿へ戻る。AI も判定も動かない。
@@ -125,11 +125,11 @@ public:
                  "実際の欠損より優先される。調整が済んだら全部外すこと "
                  "(入れたまま保存すると最初から崩れたボスになる)")
     FBZZ_FIELD_READ_ONLY(std::string, debugPose, "-", "Pose")
-    FBZZ_FIELD_READ_ONLY(float, debugBlend, 0.0f, "Blend")
+    FBZZ_FIELD_READ_ONLY(float, debugBlend, 0.0f, "ブレンド")
 
     /// 失った脚のビット (FR=1 / FL=2 / BR=4 / BL=8)。壊した側から押し込む。
     ///
-    /// WHY こちらから引かないか: 脚の状態を持っているのは BossPolarityRigComponent で、
+    /// WHY こちらから引かないか: 脚の状態を持っているのは BossRigComponent で、
     ///     あちらは既にこちらを include している。引き返すと include が循環する。
     void SetBrokenMask(int mask) { m_mask = mask & 0xF; }
     [[nodiscard]] int  BrokenMask() const
@@ -655,7 +655,7 @@ inline void BossCollapsePostureComponent::OnUpdate()
     // 崩れた姿勢の «上へ» 足す。崩れているほど効きを弱めるのは ApplyStagger 側の仕事。
     ApplyStagger(*pivot, dt);
 
-    // 3 本残っている間はまだ歩ける (BossPolarityRigComponent の crippleAtBrokenLegs)。
+    // 3 本残っている間はまだ歩ける (BossRigComponent の crippleAtBrokenLegs)。
     // そこで足を床へ縫い付けると、かしいだ体の下で歩行クリップの脚だけが止まって
     // «滑って移動する置物» になる。留めるのは歩けなくなってからにする。
     if (!holdFeet || alive > 2) {

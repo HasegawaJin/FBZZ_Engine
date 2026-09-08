@@ -1,19 +1,19 @@
 /// @file    GlowPartComponent.hpp
-/// @brief   極性を持たない発光パーツへ固定色を流す。M_GlowPart を敵以外でも使うための駆動側
+/// @brief   発光パーツへ固定色を流す。M_GlowPart を色ごとに複製しないための駆動側
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
 ///
 /// WHY 材質を分けずにスクリプトで色を書くか:
 ///   M_GlowPart は «光り方» を決める 1 枚で、色は GameObject 単位の override が決める、
 ///   という形になっている。プレイヤーの緑だけ専用の .mat を作ると、光り方を直したときに
-///   «敵は直ったがプレイヤーだけ古い» が起きる。12.2 は色に意味を持たせる設計なので、
-///   色の担当と光り方の担当は分けたままにしておきたい。
+///   «敵は直ったがプレイヤーだけ古い» が起きる。発光色は盤面を読むための情報
+///   (Utils/BladeColors.hpp) なので、色の担当と光り方の担当は分けたままにしておきたい。
 ///
 /// WHY 毎フレーム書くか (OnStart の 1 回で済まさないか):
 ///   override は MaterialComponent 側に持たれていて、材質のホットリロードや Play/Stop の
 ///   往復で作り直される経路がある。1 度きりの書き込みは、そのときだけ静かに消えて
 ///   «なぜかプレイヤーだけ光らない» になる。書き込みは 2 本の定数更新でしかないので、
-///   毎フレーム同じ値を押し直す方が安い。極性側 (PolarityTargetComponent) も同じ形。
+///   毎フレーム同じ値を押し直す方が安い。
 ///
 /// NOTE: 明滅 (pulse) と点光源の自動生成は 2026-08-26 に撤去した。
 ///   明滅は自発光を上下させるだけでは画面に出ず (トーンマップとブルームが振れ幅を潰す)、
@@ -39,32 +39,19 @@ class GlowPartComponent : public Script {
     FBZZ_OPTIONAL_COMPONENT(MaterialComponent)
 
 public:
-    FBZZ_GROUP("Glow")
+    FBZZ_GROUP("発光")
     FBZZ_FIELD_COLOR(glowColor, (Vector4{ 0.20f, 1.00f, 0.45f, 1.00f }), "Color")
-    FBZZ_TOOLTIP("12.2 の配色から選ぶこと。緑 = プレイヤー / 赤 = ＋ / 青 = －")
-    FBZZ_FIELD_RANGE(float, intensity, 0.65f, "Intensity", 0.0f, 4.0f)
-    FBZZ_TOOLTIP("発光量。極性の敵と揃えるなら 0.65 前後")
+    FBZZ_TOOLTIP("Utils/BladeColors.hpp の配色から選ぶこと。緑 = プレイヤー / 赤 = 右刀 / 青 = 左刀")
+    FBZZ_FIELD_RANGE(float, intensity, 0.65f, "強さ", 0.0f, 4.0f)
+    FBZZ_TOOLTIP("発光量。既定は kEmissiveBase (0.65) ─ 白飛びさせずに色が残る上限")
 
-    FBZZ_GROUP("Target")
+    FBZZ_GROUP("対象")
     // WHY GameObject ではなく MaterialComponent で受けるか: このスロットへ挿せるのは
     //     «材質を持っている» GameObject だけ。型で受ければピッカーにその候補しか出ず、
     //     材質の無いノードを挿して «光らない» と悩む経路が消える。
     FBZZ_REF(MaterialComponent, glowTarget, "Glow Target")
     FBZZ_TOOLTIP("発光メッシュを持つ GameObject。空なら自分自身")
-    FBZZ_FIELD_RANGE_INT(int, emissiveSlot, 0, "Emissive Slot", 0, 15)
-
-    /// 今フレームだけ別の色で光らせる。極を纏っているプレイヤー
-    /// (PlayerPolarityComponent) が、緑をその極の色へ一時的に置き換えるのに使う。
-    ///
-    /// WHY 1 フレームで失効するか: «戻す» を別に呼ぶ作りにすると、解除の呼び忘れ 1 回で
-    ///     プレイヤーが赤いまま張り付く。押し続けている間だけ効いて、呼ばれなくなった
-    ///     時点が解除になる形にする (PlayerControllerComponent の移動倍率と同じ)。
-    void RequestColor(const Vector4& color, float overrideIntensity)
-    {
-        m_requestedColor     = color;
-        m_requestedIntensity = Max(overrideIntensity, 0.0f);
-        m_hasRequest         = true;
-    }
+    FBZZ_FIELD_RANGE_INT(int, emissiveSlot, 0, "発光スロット", 0, 15)
 
     void OnStart()  override;
     void OnUpdate() override;
@@ -75,10 +62,6 @@ private:
         // glowTarget 未アサインなら EntityRef が無効になり、Instance が自分自身へ落ちる。
         return material.Instance(glowTarget.ref, static_cast<uint32_t>(emissiveSlot));
     }
-
-    Vector4 m_requestedColor     = Vector4{ 0.0f, 0.0f, 0.0f, 1.0f };
-    float   m_requestedIntensity = 0.0f;
-    bool    m_hasRequest         = false;
 };
 
 FBZZ_REFLECT(GlowPartComponent)
@@ -94,15 +77,11 @@ inline void GlowPartComponent::OnStart()
 
 inline void GlowPartComponent::OnUpdate()
 {
-    const Vector4 color = m_hasRequest ? m_requestedColor : glowColor;
-    const float   scale = m_hasRequest ? m_requestedIntensity : Max(intensity, 0.0f);
-    m_hasRequest = false;
-
     const MaterialInstance instance = Target();
     if (!instance.IsValid()) return;
 
-    instance.SetVector3(kEmissiveColorId, { color.x, color.y, color.z });
-    instance.SetFloat(kEmissiveScaleId, scale);
+    instance.SetVector3(kEmissiveColorId, { glowColor.x, glowColor.y, glowColor.z });
+    instance.SetFloat(kEmissiveScaleId, Max(intensity, 0.0f));
 }
 
 } // namespace sandbox

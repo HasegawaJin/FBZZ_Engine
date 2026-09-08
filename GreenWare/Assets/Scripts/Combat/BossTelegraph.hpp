@@ -86,6 +86,126 @@ enum class BossAttackKind : int {
     }
 }
 
+/// 予兆の «時刻» の作り方。床のデカール・部位発光・レーザーの溜めが同じ 1 つを通る。
+///
+/// WHY 明滅を各自に持たせないか (2026-09-07):
+///   3 か所とも `sin(Time::time * hz)` で明滅していた。**絶対時刻で回すので、予兆が
+///   出た瞬間の位相が毎回違う** ─ 同じ手でも「何回光ったら来る」が成立せず、
+///   明滅は «そろそろ» としか言えていなかった。避ける判断に要るのは «そろそろ» では
+///   なく «今» で、それは進みに位相を揃えた離散的な合図でしか出せない。
+///
+/// WHY 拍 (pips) にするか:
+///   進みは満ちる面と枠の明るさで既に連続量として出ている。人は連続量から着弾時刻を
+///   当てるのが苦手なので、等間隔の «拍» を数えさせる。3 拍なら «3・2・1» で、
+///   足元が本体に隠れていても耳と周辺視でタイミングが取れる。
+///
+/// WHY 回避窓を別に持つか:
+///   拍は «あと何回» を言うが «今» は言わない。最後の窓だけ色と太さを切り替えれば、
+///   量ではなく質の変化になって «この瞬間» が読める。
+struct BossTelegraphCue {
+    // ── 設定 ──
+    /// 拍の数。最後の 1 拍が着弾に重なる。0 で拍なし。
+    int   pips = 3;
+    /// 拍が来た瞬間の明るさの跳ね。1.0 で跳ねなし。
+    float pipGain = 2.1f;
+    /// 跳ねが収まるまで [秒]。長いと «光りっぱなし» になって拍が数えられない。
+    float pipDecay = 0.10f;
+    /// 回避窓の入口 [0,1]。ここから «今» の状態へ入る。
+    float strikeFrom = 0.82f;
+    /// 斜線の流れ [周/秒]。回避窓では止める ─ 動きが止まると «決まった» が出る。
+    float scrollHz = 0.45f;
+    /// 着弾の弾けの尺 [秒]。
+    float burstSeconds = 0.12f;
+
+    // ── 出力 (Tick が書く) ──
+    /// 全体の明るさ倍率。拍の跳ねが乗る。
+    float pulse = 1.0f;
+    /// 回避窓の中での位置 [0,1]。0 = まだ / 1 = 着弾。
+    float strike = 0.0f;
+    /// 斜線の位相。回避窓に入ると進まなくなる。
+    float scroll = 0.0f;
+    /// 弾けの残り [0,1]。1 = 通常 / 0 = 弾け切り。
+    float burstFade = 1.0f;
+    /// 予兆が今フレーム «見えているか»。着弾後の弾けの間も true。
+    bool  visible = false;
+
+    /// @param progress 予兆の進み [0,1]
+    /// @param dt       秒
+    /// @param alive    今フレーム予兆が出ているか。false なら着弾後の弾けへ入る
+    void Tick(float progress, float dt, bool alive)
+    {
+        const float step = dt > 0.0f ? dt : 0.0f;
+
+        if (!alive) {
+            // 出ていた予兆が消えた ＝ 着弾した。少しだけ残して «今のが着弾» を見せる。
+            if (m_wasAlive) {
+                m_wasAlive = false;
+                m_burst    = burstSeconds > 0.0f ? burstSeconds : 0.0f;
+            }
+            m_burst   = m_burst > step ? m_burst - step : 0.0f;
+            burstFade = burstSeconds > 0.0f ? m_burst / burstSeconds : 0.0f;
+            // 弾けている間は素の明るさで。ここで拍を跳ねさせると着弾が 2 回に見える。
+            pulse   = 1.0f;
+            strike  = 1.0f;
+            visible = burstFade > 0.0f;
+            return;
+        }
+
+        if (!m_wasAlive) Reset();
+        m_wasAlive = true;
+        burstFade  = 1.0f;
+        visible    = true;
+
+        const float p = progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress);
+
+        // 拍。進みを pips 等分し、境目を跨いだフレームで 1 度だけ跳ねる。
+        //
+        // WHY 進みで数えるか: 予兆の尺は手ごとに違い、段でも詰まる (Telegraph Cut)。
+        //     秒で刻むと手によって拍の数が変わり、«3・2・1» が «4・3・2・1» になる。
+        //     進みで割れば、尺がいくつでも拍の数は必ず同じになる。
+        if (pips > 0) {
+            const int beat = static_cast<int>(p * static_cast<float>(pips));
+            if (beat > m_beat) {
+                m_beat  = beat;
+                m_spike = pipDecay > 0.0f ? pipDecay : 0.0f;
+            }
+        }
+        m_spike = m_spike > step ? m_spike - step : 0.0f;
+        const float spike01 = pipDecay > 0.0f ? m_spike / pipDecay : 0.0f;
+        // 跳ねは «鋭く落ちる»。線形だと明滅ではなく «脈» に見える。
+        pulse = 1.0f + (pipGain - 1.0f) * spike01 * spike01;
+
+        const float from = strikeFrom < 0.0f ? 0.0f : (strikeFrom > 1.0f ? 1.0f : strikeFrom);
+        strike = p <= from ? 0.0f : (p - from) / (1.0f - from > 1.0e-3f ? 1.0f - from : 1.0e-3f);
+
+        // 回避窓では模様を止める。動いているものが止まるのは «構え終わった» の合図で、
+        // 明るさの変化より視界の端でも拾いやすい。
+        if (strike <= 0.0f) m_scroll += step * scrollHz;
+        scroll = m_scroll;
+    }
+
+    void Reset()
+    {
+        m_beat     = -1;
+        m_spike    = 0.0f;
+        m_scroll   = 0.0f;
+        m_burst    = 0.0f;
+        m_wasAlive = false;
+        pulse      = 1.0f;
+        strike     = 0.0f;
+        scroll     = 0.0f;
+        burstFade  = 1.0f;
+        visible    = false;
+    }
+
+private:
+    int   m_beat     = -1;
+    float m_spike    = 0.0f;
+    float m_scroll   = 0.0f;
+    float m_burst    = 0.0f;
+    bool  m_wasAlive = false;
+};
+
 /// 今フレーム出すべき予兆。shape が None なら何も出さない。
 struct BossTelegraph {
     BossTelegraphShape shape = BossTelegraphShape::None;
@@ -101,6 +221,13 @@ struct BossTelegraph {
     float radius = 0.0f;
     /// 予兆の進み [0,1]。1 で着弾。
     float progress = 0.0f;
+    /// 帯が «始点から終点へ走る» 手か。Circle では使わない。
+    ///
+    /// WHY 要るか: 帯の満ちは中心線から横へ広がる作りだったので、薙ぎ・噛みつき・
+    ///     走りのように «帯に沿って» 来る手でも «太っていく» 絵しか出せなかった。
+    ///     叩きつけと檻は一斉に来るので、そちらは太るのが正しい ─ 手の側しか
+    ///     どちらか知らないので、出す側が言う。
+    bool travels = false;
 };
 
 } // namespace sandbox

@@ -31,16 +31,17 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <Scripts/Combat/BossPolarityCoreComponent.hpp>
+#include <Scripts/Combat/BossCoreComponent.hpp>
 #include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/ScreenEffectManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
+#include <Scripts/Utils/BeamLook.hpp>
 #include <Scripts/Utils/BeamTrailRendererComponent.hpp>
 #include <Scripts/Utils/ElectricArc.hpp>
-#include <Scripts/Utils/PolarityBeam.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BeamGeometry.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/ShockFalloff.hpp>
 #include <Scripts/Utils/WeaponSockets.hpp>
 #include <algorithm>
@@ -59,11 +60,8 @@ namespace sandbox {
 ///     違えば黙って捨てる。綴りの突き合わせ先を 1 箇所へ閉じる。
 inline constexpr MaterialPropertyId kBossBeamChargeId{ "charge" };
 
-/// 位相と模様の送りを巻き取る周期。シェーダーの frac(sin(x * 12.9898)) は x が
-/// 大きくなるほど精度を失い、放置すると乱れが縞へ潰れる。
-/// 整数で巻けば、巻き戻ったフレームでも絵は 1 ドットも動かない。
-inline constexpr float kBossBeamPhaseWrap  = 128.0f;
-inline constexpr float kBossBeamScrollWrap = 1024.0f;
+/// 線と焦げの色。ボスは色を切り替えないので 1 本に固定する。
+inline constexpr BladeSide kBeamSide = BladeSide::Right;
 
 /// 薙ぎの «下地» で低周波モーターを高周波の何割で回すか。
 /// WHY 高周波を主にするか: 低周波は «一撃» の器で、数秒回し続けると手が痺れて
@@ -76,7 +74,7 @@ class BossBeamComponent : public Script {
 public:
     FBZZ_GROUP("Aperture")
     FBZZ_FIELD(std::string, apertureBone, "Muzzle", "Aperture Bone")
-    FBZZ_TOOLTIP("下面アパーチャのボーン (8 章)。見つからなければ胴体の下から撃つ")
+    FBZZ_TOOLTIP("下面アパーチャのボーン (Docs/boss.md)。見つからなければ胴体の下から撃つ")
     FBZZ_FIELD_RANGE(float, apertureFallbackHeight, 3.6f, "Fallback Height", 0.0f, 10.0f)
     FBZZ_TOOLTIP("ボーンが引けなかったときに使う、ボス原点からの高さ [m]")
 
@@ -87,9 +85,9 @@ public:
     FBZZ_TOOLTIP("芯層の帯の太さ [m]。当たり判定の太さとは別 (Hit Radius が正本)")
     FBZZ_FIELD_RANGE(float, glowWidth, 1.90f, "Glow Width", 0.0f, 8.0f)
     FBZZ_TOOLTIP("裾層の太さ [m]。0 で裾を出さない")
-    FBZZ_FIELD_RANGE_INT(int, tubeSegments, 12, "Tube Segments", 3, 32)
+    FBZZ_FIELD_RANGE_INT(int, tubeSegments, 12, "筒の分割数", 3, 32)
     FBZZ_TOOLTIP("筒の円周分割数。少ないと近寄ったとき角が見え、増やしても遠目には変わらない")
-    FBZZ_FIELD_RANGE(float, intensity, 1.6f, "Intensity", 0.0f, 8.0f)
+    FBZZ_FIELD_RANGE(float, intensity, 1.6f, "強さ", 0.0f, 8.0f)
     FBZZ_FIELD_RANGE(float, wobble, 0.05f, "Wobble", 0.0f, 1.0f)
     FBZZ_TOOLTIP("10m 先での帯の振れ幅 [m]。ボスの線は «変わらない» のが読みなので浅く")
     FBZZ_FIELD_RANGE(float, scrollSpeed, 2.2f, "Scroll Speed", -20.0f, 20.0f)
@@ -97,23 +95,23 @@ public:
     FBZZ_TOOLTIP("乱れの位相が進む速さ。段が落ちる速さもこれに乗る")
 
     FBZZ_GROUP("Ignition")
-    FBZZ_FIELD_RANGE(float, chargeTime, 1.00f, "Charge", 0.0f, 4.0f)
+    FBZZ_FIELD_RANGE(float, chargeTime, 1.00f, "チャージ", 0.0f, 4.0f)
     FBZZ_TOOLTIP("Beam_Start の 30F = 1.0 秒。針から本径まで太る時間")
     FBZZ_FIELD_RANGE(float, dischargeTime, 0.80f, "Discharge", 0.0f, 4.0f)
     FBZZ_TOOLTIP("Beam_End の 24F = 0.8 秒。細って消えるまで")
 
     FBZZ_GROUP("Hit")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
-    FBZZ_FIELD_RANGE(float, hitRadius, 1.15f, "Hit Radius", 0.1f, 6.0f)
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
+    FBZZ_FIELD_RANGE(float, hitRadius, 1.15f, "当たり半径", 0.1f, 6.0f)
     FBZZ_TOOLTIP("線の «当たりの太さ» [m]。見た目の帯より少し細くして、"
                  "«掠って見えたのに食らった» を避ける")
-    FBZZ_FIELD_RANGE(float, playerRadius, 0.45f, "Player Radius", 0.0f, 3.0f)
+    FBZZ_FIELD_RANGE(float, playerRadius, 0.45f, "プレイヤーの半径", 0.0f, 3.0f)
     FBZZ_FIELD_RANGE(float, playerCenterHeight, 1.25f, "Player Center", 0.0f, 4.0f)
     FBZZ_TOOLTIP("プレイヤー原点 (足元) から胴体中心までの高さ [m]。"
                  "線を持ち上げたとき、足元との距離で測ると «胸を貫いているのに当たらない» になる")
     FBZZ_FIELD_RANGE(float, tickInterval, 0.35f, "Tick", 0.05f, 3.0f)
     FBZZ_TOOLTIP("照射中にダメージが入る間隔。毎フレームだと一瞬触れただけで溶ける")
-    FBZZ_FIELD_RANGE_INT(int, damage, 1, "Damage", 0, 100)
+    FBZZ_FIELD_RANGE_INT(int, damage, 1, "ダメージ", 0, 100)
     FBZZ_FIELD_RANGE(float, traceRange, 30.0f, "Trace Range", 1.0f, 80.0f)
     FBZZ_TOOLTIP("射線を伸ばす上限 [m]。何にも当たらなければここで線を切る。"
                  "振り上げたビームが壁へ届くよう、アリーナの差し渡しより長く取る")
@@ -121,22 +119,22 @@ public:
     FBZZ_GROUP("Arcs")
     FBZZ_FIELD_RANGE_INT(int, apertureArcs, 3, "Aperture", 0, 8)
     FBZZ_TOOLTIP("点火中にアパーチャの周りで暴れる筋。«来る» を読ませる予兆そのもの")
-    FBZZ_FIELD_RANGE_INT(int, beamArcs, 3, "Along Beam", 0, 8)
+    FBZZ_FIELD_RANGE_INT(int, beamArcs, 3, "ビームに沿って", 0, 8)
     FBZZ_TOOLTIP("筒の外側を這う筋。筒だけだと表面が硬いので、輪郭を崩す役")
     FBZZ_FIELD_RANGE_INT(int, groundArcs, 5, "At Contact", 0, 12)
     FBZZ_TOOLTIP("接地点から面を這って逃げる筋。焼いている «場所» を広く見せる")
-    FBZZ_FIELD_RANGE_INT(int, arcStrands, 2, "Strands", 1, 6)
+    FBZZ_FIELD_RANGE_INT(int, arcStrands, 2, "筋の数", 1, 6)
     FBZZ_TOOLTIP("1 束あたりの筋の数。束の数 × これが実際の本数になる")
-    FBZZ_FIELD_RANGE(float, arcWidth, 0.085f, "Width", 0.005f, 0.6f)
-    FBZZ_FIELD_RANGE(float, arcRate, 26.0f, "Strike Rate", 1.0f, 60.0f)
+    FBZZ_FIELD_RANGE(float, arcWidth, 0.085f, "幅", 0.005f, 0.6f)
+    FBZZ_FIELD_RANGE(float, arcRate, 26.0f, "打撃の頻度", 1.0f, 60.0f)
     FBZZ_TOOLTIP("形を組み替える頻度 [Hz]。上げるほど «ビリビリ» が細かくなる")
-    FBZZ_FIELD_RANGE(float, arcIntensity, 2.0f, "Intensity", 0.0f, 10.0f)
-    FBZZ_FIELD_RANGE(float, arcBow, 1.1f, "Bow", 0.0f, 6.0f)
+    FBZZ_FIELD_RANGE(float, arcIntensity, 2.0f, "強さ", 0.0f, 10.0f)
+    FBZZ_FIELD_RANGE(float, arcBow, 1.1f, "たわみ", 0.0f, 6.0f)
     FBZZ_TOOLTIP("線に沿う筋が筒からどれだけ外へ膨らむか [m]")
     FBZZ_FIELD_RANGE(float, groundArcReach, 4.5f, "Contact Reach", 0.2f, 20.0f)
     FBZZ_FIELD_RANGE(float, apertureArcReach, 1.7f, "Aperture Reach", 0.1f, 8.0f)
 
-    FBZZ_GROUP("Effects")
+    FBZZ_GROUP("エフェクト")
     FBZZ_FIELD_RANGE(float, scorchRate, 16.0f, "Scorch Rate", 0.0f, 60.0f)
     FBZZ_TOOLTIP("接地点へ焦げと火花を置く頻度 [回/秒]。0 で出さない")
     FBZZ_FIELD_RANGE(float, scorchSize, 1.6f, "Scorch Size", 0.05f, 2.0f)
@@ -144,14 +142,14 @@ public:
     FBZZ_TOOLTIP("接地点に点光源を置く。線そのものは地面を照らさないので、"
                  "これが無いと «焼いている» のに床が暗いままになる")
     FBZZ_FIELD_RANGE(float, lightIntensity, 24.0f, "Light Intensity", 0.0f, 200.0f)
-    FBZZ_FIELD_RANGE(float, lightRange, 9.0f, "Light Range", 0.5f, 40.0f)
+    FBZZ_FIELD_RANGE(float, lightRange, 9.0f, "ライトの範囲", 0.5f, 40.0f)
 
     // WHY 予兆と薙ぎで測る場所を分けるか:
     //   アパーチャは常にボスの腹下にあり、接地点は薙ぎに連れて盤面を走る。1 点で
     //   兼ねると «ボスが唸り始めた» と «焼く線が自分へ寄ってきた» が同じ強さで返り、
     //   どちらも «ビームが出ている» としか読めなくなる。8 章がこの攻撃に与えた
     //   «移動を強制する» は、線が寄ってきたことが判って初めて成立する。
-    FBZZ_GROUP("Feedback")
+    FBZZ_GROUP("手応え")
     FBZZ_FIELD_RANGE(float, chargeRumble, 0.45f, "Charge Rumble", 0.0f, 1.0f)
     FBZZ_TOOLTIP("点火の予兆。太りきるまで上がり続ける低周波の唸り。0 で出さない")
     FBZZ_FIELD_RANGE(float, chargeRange, 30.0f, "Charge Range", 1.0f, 80.0f)
@@ -163,7 +161,7 @@ public:
     FBZZ_TOOLTIP("線に触れているあいだ。焼かれていることは距離に関わらず振り切る")
     FBZZ_FIELD_RANGE(float, contactRange, 14.0f, "Contact Range", 1.0f, 60.0f)
     FBZZ_TOOLTIP("接地点からこの距離まで離れると、薙ぎの揺れも振動も 0 になる")
-    FBZZ_FIELD_RANGE(float, contactNear, 2.0f, "Full Strength Within", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, contactNear, 2.0f, "全開になる距離", 0.0f, 20.0f)
     FBZZ_TOOLTIP("この距離までは減衰させない。足元を舐めた線が薄まらないための床")
     FBZZ_FIELD_RANGE(float, sweepShake, 0.35f, "Sweep Shake", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, shakeInterval, 0.12f, "Shake Interval", 0.02f, 1.0f)
@@ -173,9 +171,9 @@ public:
     FBZZ_FIELD_RANGE(float, burnDistortion, 0.70f, "Burn Distortion", 0.0f, 1.0f)
     FBZZ_TOOLTIP("線に触れているあいだ掛け続ける画面の歪み。抜けた瞬間に 0 へ戻る")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(float, debugCharge, 0.0f, "Charge")
-    FBZZ_FIELD_READ_ONLY(float, debugLength, 0.0f, "Length")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(float, debugCharge, 0.0f, "チャージ")
+    FBZZ_FIELD_READ_ONLY(float, debugLength, 0.0f, "長さ")
     FBZZ_FIELD(bool, drawDebugHit, false, "Draw Hit Line")
 
     void OnStart()      override;
@@ -192,6 +190,10 @@ public:
         m_apertureArcs.clear();
         m_beamArcs.clear();
         m_groundArcs.clear();
+        // 着弾点の光も筋と同じくルートに置いた実体。破棄では OnDisable が呼ばれない
+        // (Scene::Destroy は OnDestroy だけを回す) ので、照射中に消えると点いたまま残る。
+        if (GameObject* light = m_light.Resolve(scene)) scene.Destroy(*light);
+        m_light = {};
     }
 
     // ── AI からの入口 ───────────────────────────────────────────────────────
@@ -253,11 +255,14 @@ private:
     void EnsureArcs(std::vector<ElectricArcBundle>& bundles, int count, const char* tag);
     /// 3 系統が共有する基本の見た目。膨らみ方と長さだけ呼び出し側が変える。
     [[nodiscard]] ElectricArcStyle ArcStyleBase(float brightness) const;
-    /// axis に垂直な 2 軸。放電を «軸のまわり» や «面の上» へ散らすのに使う。
-    static void PerpendicularBasis(const Vector3& axis, Vector3& outSide, Vector3& outUp);
 
+    /// 今フレームの «線の質»。斉射 (LaserVolleyComponent) と同じ器へ詰めて渡す。
+    [[nodiscard]] beamlook::Look LookOf() const;
     /// 層 1 枚ぶんの見た目を組む。
-    [[nodiscard]] BeamTrailStyle StyleOf(bool isCore) const;
+    [[nodiscard]] BeamTrailStyle StyleOf(bool isCore) const
+    {
+        return beamlook::Style(LookOf(), isCore);
+    }
 
     EntityRef m_core;
     EntityRef m_glow;
@@ -405,92 +410,31 @@ inline Vector3 BossBeamComponent::TraceContact(const Vector3& from, const Vector
 
 inline Vector4 BossBeamComponent::BeamColor() const
 {
-    Polarity polarity = Polarity::Plus;
-    if (const auto* core = scene.GetScript<BossPolarityCoreComponent>()) {
-        const Polarity current = core->CurrentPolarity();
-        // 消灯中 (激突スタン) は極が無い。そのとき撃つことは無いが、色だけ黒くなって
-        // «見えないビーム» になるのは避ける。
-        if (current != Polarity::None) polarity = current;
-    }
-
-    const Vector4 tint = PolarityColor(polarity);
+    // ボスは色を切り替えない。線の色は 1 本に固定する。
+    const Vector4 tint = BladeColor(kBeamSide);
     const float   gain = std::max(intensity, 0.0f);
     return { tint.x * gain, tint.y * gain, tint.z * gain, 1.0f };
 }
 
 inline Vector4 BossBeamComponent::BeamHue() const
 {
-    // 12.2 の «色が意味を持つ» を保つ。明るさは各所が自分の倍率で決めるので、
-    // 色として使いたい側は «どの極か» だけを取り出す。
-    const Vector4 tint = BeamColor();
-    const float   peak = std::max({ tint.x, tint.y, tint.z, 1.0e-4f });
-    return { tint.x / peak, tint.y / peak, tint.z / peak, 1.0f };
+    // 明るさは各所が自分の倍率で決めるので、色として使いたい側は色相だけを取り出す。
+    return beamlook::Hue(BeamColor());
 }
 
-inline BeamTrailStyle BossBeamComponent::StyleOf(bool isCore) const
+inline beamlook::Look BossBeamComponent::LookOf() const
 {
-    const float ignite = Clamp01(m_charge);
-
-    BeamTrailStyle style;
-    style.materialPath = beamMaterial;
-    style.isCore = isCore;
-    style.width  = isCore ? std::max(coreWidth, 0.01f) : std::max(glowWidth, 0.01f);
-    style.color  = BeamColor();
-
-    // 実体のある筒として張る。
-    //
-    // WHY プレイヤーのビーム (板) と違えるか:
-    //   板は区間ごとに 1 枚の四角形をカメラへ向けるだけなので、太いものほど紙に見える。
-    //   ボスのビームは «質量» を読ませたい線で、しかも床へ突き刺さる。ジオメトリが
-    //   筒なら輪郭も深度も実体が持つので、床との交差が «刺さっている» になり、
-    //   軸へ視線が寄っても板のように潰れない。断面の厚みはシェーダーが視線と円柱を
-    //   交差させて出す (BossBeam.hlsl の BossBeamCylinder)。
-    style.shape          = LineShape::Tube;
-    style.radialSegments = std::clamp(tubeSegments, 3, 32);
-    style.tubeRadius     = style.width * 0.5f;
-    // 裾を芯より手前に描く。逆にすると裾のアルファが芯を薄めて線が濁る。
-    style.orderInLayer = isCore ? 2 : 1;
-
-    // 帯の揺れ。芯と裾には同じ seed の同じ波を渡し、裾だけ浅くして «芯を鈍く追う» にする。
-    style.seed        = 5011u;
-    style.wobble      = std::max(wobble, 0.0f);
-    style.wobbleScale = isCore ? 1.0f : 0.6f;
-    style.wobbleFrequency = 2.0f;
-    style.wobbleTravel    = 1.1f;
-    style.wobbleBias      = 0.6f;
-
-    // ── 断面 ──
-    // WHY .mat に書いてあるのにここでも持つか:
-    //   BeamTrailRendererComponent::PushMaterial はこれらを «無条件に» per-instance で
-    //   書き込む (層ごとに芯を持たせる / 持たせないを切り替えるため)。つまり
-    //   BeamTrailStyle の既定値が .mat を上書きする。既定はプレイヤーのビーム用に
-    //   調整された値なので、ここで渡さないとボスの線がプレイヤーの断面になる。
-    //   .mat 側の同じキーは «スクリプトを外したときのフォールバック» という位置づけ。
-    style.coreWidth   = 0.30f;
-    style.edgeFalloff = 2.0f;
-    style.coreBoost   = 2.6f;
-    style.muzzleFade  = 0.05f;
-    style.tipFade     = 0.04f;
-    style.beadDensity = 7.0f;
-    style.beadFalloff = 9.0f;
-    style.arcFreq     = 5.0f;
-
-    // 点火中だけ荒れさせる。太りきった線が暴れていると «出力が不安定» に見えて、
-    // 8 章がこの攻撃へ与えた «避けるしかない» という性格が薄まる。
-    const float unrest = ignite * (1.0f - ignite) * 4.0f;
-    style.arcAmp  = 0.06f + 0.20f * unrest;
-    style.crackle = 0.18f + 0.45f * unrest;
-    style.flicker = 0.12f + 0.35f * unrest;
-
-    // 流れ。
-    // WHY tiling を長さで割らないか: BeamTrailRendererComponent が長さを掛ける。
-    //     ここは «1m あたり何回繰り返すか» を渡す。
-    style.tiling = 3.0f;
-    style.scroll = std::fmod(-Time::time * scrollSpeed, kBossBeamScrollWrap);
-    style.phase  = std::fmod(Time::time * std::max(churnRate, 0.0f), kBossBeamPhaseWrap);
-    // 点火の «張り»。太りきる直前がいちばん張っている、という出方にする。
-    style.surge  = unrest;
-    return style;
+    beamlook::Look look;
+    look.materialPath = beamMaterial;
+    look.color        = BeamColor();
+    look.coreWidth    = std::max(coreWidth, 0.01f);
+    look.glowWidth    = std::max(glowWidth, 0.01f);
+    look.tubeSegments = tubeSegments;
+    look.charge       = m_charge;
+    look.wobble       = wobble;
+    look.scrollSpeed  = scrollSpeed;
+    look.churnRate    = churnRate;
+    return look;
 }
 
 inline void BossBeamComponent::Show(const Vector3& from, const Vector3& to)
@@ -536,7 +480,7 @@ inline void BossBeamComponent::ResolveHit(const Vector3& from, const Vector3& to
     GameObject* player = scene.FindWithTag(playerTag);
     if (!player) return;
 
-    // WHY 物理の掃引を使わないか: PolarityBeam.hpp と同じ理由。判定したい相手は
+    // WHY 物理の掃引を使わないか: 判定したい相手は
     //     プレイヤー 1 体だけで、線分との距離を直接測る方が単純で速く、
     //     «見た目の線と同じ線» で測っていることがコードから読める。
     // 胴体中心で測る。プレイヤーの原点は足元にあるので、線を持ち上げた途端に
@@ -545,11 +489,11 @@ inline void BossBeamComponent::ResolveHit(const Vector3& from, const Vector3& to
     body.y += std::max(playerCenterHeight, 0.0f);
 
     float along = 0.0f;
-    const float distance = polaritybeam::DistanceToSegment(body, from, to, along);
+    const float distance = beamgeom::DistanceToSegment(body, from, to, along);
 
     // 点火しきる前は当たらない。針の段階で削られると «避けようがない» になる。
     const float reach = std::max(hitRadius, 0.0f) * Clamp01(m_charge);
-    if (!polaritybeam::Touches(distance, reach, playerRadius)) return;
+    if (!beamgeom::Touches(distance, reach, playerRadius)) return;
 
     m_touching = true;
     if (m_hitTimer > 0.0f) return;
@@ -565,15 +509,6 @@ inline void BossBeamComponent::ResolveHit(const Vector3& from, const Vector3& to
         return;
     }
     (void)combat->DamagePlayer(player, std::max(damage, 0));
-}
-
-inline void BossBeamComponent::PerpendicularBasis(const Vector3& axis,
-                                                  Vector3& outSide, Vector3& outUp)
-{
-    // 軸が真上に近いときだけ基準を前方へ倒す (外積が縮退するため)。
-    const Vector3 reference = std::fabs(axis.y) > 0.9f ? Vector3::FORWARD : Vector3::UP;
-    outSide = Vector3::Cross(axis, reference).NormalizedOr(Vector3::RIGHT);
-    outUp   = Vector3::Cross(outSide, axis).NormalizedOr(Vector3::UP);
 }
 
 inline void BossBeamComponent::EnsureArcs(std::vector<ElectricArcBundle>& bundles,
@@ -593,25 +528,8 @@ inline void BossBeamComponent::EnsureArcs(std::vector<ElectricArcBundle>& bundle
 
 inline ElectricArcStyle BossBeamComponent::ArcStyleBase(float brightness) const
 {
-    const Vector4 hue = BeamHue();
-
-    ElectricArcStyle style;
-    style.strandCount = std::clamp(arcStrands, 1, 6);
-    style.width       = std::max(arcWidth, 0.001f);
-    style.strikeRate  = std::max(arcRate, 1.0f);
-    style.intensity   = std::max(arcIntensity, 0.0f) * brightness;
-    // ビームより手前に出す。筒の «外» を這っていることが分かる並びにする。
-    style.orderInLayer = 3;
-    // 距離での減衰は切る。ビームは 20m を超えることがあり、既定の 7m だと
-    // «長く撃つほど放電だけ消える» という読めない挙動になる。
-    style.strikeRange = 0.0f;
-    style.breakup     = 0.5f;
-    style.travel      = 9.0f;
-    // 12.2 の «色が意味を持つ» を保つ。両端とも極性色にして、芯だけ白熱させる。
-    style.fromColor   = hue;
-    style.toColor     = hue;
-    style.coreTint    = 0.35f;
-    return style;
+    return beamlook::ArcStyle(LookOf(), brightness, arcStrands, arcWidth, arcRate,
+                              arcIntensity);
 }
 
 inline void BossBeamComponent::DriveArcs(const Vector3& from, const Vector3& to, float dt)
@@ -627,7 +545,7 @@ inline void BossBeamComponent::DriveArcs(const Vector3& from, const Vector3& to,
 
     const Vector3 axis = delta / length;
     Vector3 side, up;
-    PerpendicularBasis(axis, side, up);
+    beamlook::PerpendicularBasis(axis, side, up);
 
     // 回し続ける。止めると同じ形が明滅するだけの «静止した飾り» になる。
     m_arcSpin = std::fmod(m_arcSpin + dt * 1.7f, TWO_PI);
@@ -676,7 +594,7 @@ inline void BossBeamComponent::DriveArcs(const Vector3& from, const Vector3& to,
     // ── 接地点 ──────────────────────────────────────────────────────────────
     // 焼いている面に沿って外へ逃がす。法線を使うので、床でも壁でも面へ寝る。
     Vector3 floorSide, floorUp;
-    PerpendicularBasis(m_contactNormal.NormalizedOr(Vector3::UP), floorSide, floorUp);
+    beamlook::PerpendicularBasis(m_contactNormal.NormalizedOr(Vector3::UP), floorSide, floorUp);
     for (std::size_t i = 0; i < m_groundArcs.size(); ++i) {
         const float phase = -m_arcSpin * 2.3f + static_cast<float>(i) * TWO_PI
                           / static_cast<float>(std::max<std::size_t>(m_groundArcs.size(), 1));
@@ -714,14 +632,10 @@ inline void BossBeamComponent::DriveEffects(float dt)
     auto* vfx = VfxManagerComponent::Instance();
     if (!vfx) return;
 
-    Polarity polarity = Polarity::Plus;
-    if (const auto* core = scene.GetScript<BossPolarityCoreComponent>())
-        if (core->CurrentPolarity() != Polarity::None) polarity = core->CurrentPolarity();
-
     // 焦げは当たった面の法線へ向けて置く。床を焼いている間は上向き、振り上げて
     // 壁へ移ったら壁の法線になるので、火花が面へ潜らない。薙いでいる間は終端が
     // 毎フレーム動くので、置いた点の列がそのまま «焼き払った跡» になる。
-    vfx->PlayBeamScorch(m_contact, m_contactNormal, polarity,
+    vfx->PlayBeamScorch(m_contact, m_contactNormal, kBeamSide,
                         std::clamp(scorchSize * Clamp01(m_charge), 0.05f, 2.0f));
 }
 

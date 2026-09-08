@@ -12,7 +12,7 @@
 ///   プレイヤーが選ぶのは «どの 2 本で組むか» で、その判断は脚を見ながら行う。
 ///   画面の隅に 4 本並べると、盤面と HUD を往復しないと選べなくなる。
 ///
-/// WHY BossPolarityRigComponent に同居させないか:
+/// WHY BossRigComponent に同居させないか:
 ///   あちらは «引き合わせて転倒させる» 仕組みで、こちらは «その状態を絵にする» 側。
 ///   混ぜると、バーの見た目を触るたびに転倒の判定が載ったファイルを開くことになる。
 ///   状態はリグの公開 API (LegDurabilityRatio / LegAnchor) からだけ読む。
@@ -23,8 +23,8 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
-#include <Scripts/Combat/BossPolarityRigComponent.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Combat/BossRigComponent.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <algorithm>
 #include <string>
 
@@ -37,7 +37,7 @@ class BossLegHealthBarComponent : public Script {
     FBZZ_SCRIPT(BossLegHealthBarComponent)
 
 public:
-    FBZZ_GROUP("Layout")
+    FBZZ_GROUP("配置")
     FBZZ_FIELD_RANGE(float, headroom, 0.55f, "Headroom", 0.0f, 5.0f)
     FBZZ_TOOLTIP("膝下の当たり判定の中心からバーまでのワールド高さ。"
                  "上げすぎると胴体に隠れ、下げすぎると床に埋まる")
@@ -47,12 +47,9 @@ public:
 
     FBZZ_GROUP("Color")
     FBZZ_FIELD_COLOR(backgroundColor, (Vector4{ 0.02f, 0.02f, 0.03f, 0.78f }), "Background")
-    // WHY 無傷の色を極の色にしないか: 極は «乗っているとき» にだけ意味を持つ。
-    //     常に極色で出すと、乗っていない脚と乗っている脚が同じ色になり、
-    //     輪郭で読ませている «どちらの極か» と食い違う。素は無彩色に置く。
+    // WHY 無彩色に置くか: 赤青は «どちらの刀か» に割り当ててある (BladeColors.hpp)。
+    //     脚のバーがその 2 色を出すと、プレイヤーの刀の色と同じ語で喋ることになる。
     FBZZ_FIELD_COLOR(neutralColor, (Vector4{ 0.72f, 0.76f, 0.80f, 1.0f }), "Neutral")
-    FBZZ_FIELD_RANGE(float, chargedBrightness, 1.35f, "Charged Brightness", 0.5f, 4.0f)
-    FBZZ_TOOLTIP("極が乗っている脚のバーを、その極の色でこの倍率だけ明るく出す")
 
     FBZZ_GROUP("Visibility")
     // WHY 無傷のうちは隠すか: 4 本とも満タンのバーが常時出ていると、盤面に情報が
@@ -60,7 +57,7 @@ public:
     FBZZ_FIELD(bool, hideWhenFull, true, "Hide When Full")
     FBZZ_TOOLTIP("無傷の脚のバーを隠す。切ると 4 本とも常時出る")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugVisible, 0, "Visible Bars")
 
     void OnStart() override;
@@ -73,8 +70,8 @@ private:
     // 数字が敵とボスで違う大きさになる。
     static constexpr float kPixelsPerUnit = 100.0f;
 
-    [[nodiscard]] BossPolarityRigComponent* Rig() const
-    { return scene.GetScript<BossPolarityRigComponent>(); }
+    [[nodiscard]] BossRigComponent* Rig() const
+    { return scene.GetScript<BossRigComponent>(); }
 
     /// 脚 1 本ぶんのバー名。DLL リロードで拾い直せるよう、所有者と脚で一意にする。
     [[nodiscard]] std::string CanvasName(const GameObject& owner, int leg) const;
@@ -102,7 +99,7 @@ inline std::string BossLegHealthBarComponent::CanvasName(const GameObject& owner
 
 inline bool BossLegHealthBarComponent::Adopt(GameObject& owner)
 {
-    for (int leg = 0; leg < BossPolarityRigComponent::LegCount(); ++leg) {
+    for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
         GameObject* canvasObject = scene.Find(CanvasName(owner, leg));
         if (!canvasObject || !canvasObject->GetComponent<UICanvas>()) return false;
 
@@ -132,7 +129,7 @@ inline void BossLegHealthBarComponent::Build(GameObject& owner)
     //
     // WHY 4 本ぶんを作り切ってから参照を取るか: scene.Create は GameObject 配列を
     //     再確保する。作りながら掴んだポインタは次の Create で無効になる。
-    for (int leg = 0; leg < BossPolarityRigComponent::LegCount(); ++leg) {
+    for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
         const std::string name = CanvasName(owner, leg);
 
         GameObject& canvasObject = scene.Create(name);
@@ -144,7 +141,7 @@ inline void BossLegHealthBarComponent::Build(GameObject& owner)
         m_bars[leg].canvas = EntityRef{ canvasObject.GetID() };
     }
 
-    for (int leg = 0; leg < BossPolarityRigComponent::LegCount(); ++leg) {
+    for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
         GameObject* canvasObject = m_bars[leg].canvas.Resolve(scene);
         if (!canvasObject) continue;
 
@@ -163,7 +160,7 @@ inline void BossLegHealthBarComponent::Build(GameObject& owner)
 
     // 親付けは全部作り終えてから。SetParent はワールド姿勢を保つ実装でも、
     // 生成の途中で掴んだ参照は無効になりうる。
-    for (int leg = 0; leg < BossPolarityRigComponent::LegCount(); ++leg) {
+    for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
         GameObject* canvasObject = m_bars[leg].canvas.Resolve(scene);
         GameObject* background   = m_bars[leg].background.Resolve(scene);
         GameObject* fillObject   = m_bars[leg].fill.Resolve(scene);
@@ -208,7 +205,7 @@ inline void BossLegHealthBarComponent::OnStart()
     if (!owner) return;
 
     if (!Rig()) {
-        debug.LogError("BossLegHealthBarComponent requires BossPolarityRigComponent "
+        debug.LogError("BossLegHealthBarComponent requires BossRigComponent "
                        "on the same object (it owns the legs and their durability).");
         enabled = false;
         return;
@@ -228,7 +225,7 @@ inline void BossLegHealthBarComponent::OnLateUpdate()
 
     debugVisible = 0;
 
-    for (int leg = 0; leg < BossPolarityRigComponent::LegCount(); ++leg) {
+    for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
         GameObject* canvasObject = m_bars[leg].canvas.Resolve(scene);
         if (!canvasObject) continue;
 
@@ -246,10 +243,7 @@ inline void BossLegHealthBarComponent::OnLateUpdate()
         anchor.y += headroom;
         LayoutOne(leg, anchor);
 
-        const Polarity polarity = rig->LegPolarity(leg);
-        Vector4 color = polarity == Polarity::None
-            ? neutralColor
-            : PolarityColor(polarity) * Max(chargedBrightness, 0.0f);
+        Vector4 color = neutralColor;
         color.w = 1.0f;
 
         ui.SetImageColor(m_bars[leg].background.Resolve(scene), backgroundColor);

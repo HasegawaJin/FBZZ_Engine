@@ -4,7 +4,7 @@
 # コア / リングの発光部位を崩す版。E_CoreGlow と E_RingGlow が共有の M_GlowPart.mat を
 # 使っているので、置き場だけ Boss へ分けて «ボスの体格に合った» 範囲とノイズを持たせる。
 #
-# 発光色は BossPolarityCoreComponent が override で毎フレーム押している。差し替えを
+# 発光色は BossCoreComponent が override で毎フレーム押している。差し替えを
 # 跨いで運ぶのは EnemyDeathVfxComponent の仕事なので、ここには既定値しか持たない。
 blend_mode = 'Opaque'
 double_sided = false

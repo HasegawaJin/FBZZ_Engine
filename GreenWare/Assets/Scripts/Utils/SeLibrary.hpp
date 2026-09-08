@@ -23,7 +23,7 @@
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -107,7 +107,6 @@ inline std::string_view Bank::Next() const
     return variants[cursor];
 }
 
-
 // ── Player ──────────────────────────────────────────────────────────────────
 // WHY 変奏を 1 つも省かないか:
 //   足音の変奏はピッチ違いではなく «接地の構造» ごと別に合成されていて、素材側は
@@ -176,7 +175,6 @@ inline Bank kPlayerDeath        { kPlayerDeathPaths };
 inline Bank kPlayerServoTurn    { kPlayerServoTurnPaths };
 inline Bank kPlayerWeaponDeploy { kPlayerWeaponDeployPaths };
 inline Bank kPlayerWeaponStow   { kPlayerWeaponStowPaths };
-
 
 // ── Blade (双剣) ────────────────────────────────────────────────────────────
 // 極ごとに音が分かれているのは企画書 12.2 の「赤と青を耳でも区別する」に対応する。
@@ -274,26 +272,26 @@ inline Bank kBladeChargeSlashL { kBladeChargeSlashLPaths };
 inline Bank kBladeDash        { kBladeDashPaths };
 inline Bank kNeutralize       { kNeutralizePaths };
 
-/// 空振りの «ヒュッ»。stage は «これから振る段» (0 起点)。
+/// 空振りの «ヒュッ»。stage は 0 = 入口 / 1 = 途中 / 2 = 締め の 3 段階。
 ///
-/// WHY 段を丸めるか: コンボ長は PlayerTuning 側の値で、3 段とは限らない。
-///     素材は 3 種類しか無いので、範囲外は最後の段へ寄せる。鳴らないより、
-///     «締めの音が続く» 方が連撃の終わりとして読める。
-[[nodiscard]] inline const Bank& BladeSwing(Polarity p, int stage)
+/// WHY 段番号そのものを受け取らないか: 素材は 3 種類しか無いのに連撃は 5 段ある。
+///     ここで «4 段目は何の音か» を決めると、段構成を変えるたびに音の割り当てが
+///     置き去りになる。«連撃のどこか» へ畳むのは段を数えている呼び出し側の仕事。
+[[nodiscard]] inline const Bank& BladeSwing(BladeSide p, int stage)
 {
     const int s = stage < 0 ? 0 : (stage > 2 ? 2 : stage);
-    if (p == Polarity::Plus)
+    if (p == BladeSide::Right)
         return s == 0 ? kBladeSwingR1 : s == 1 ? kBladeSwingR2 : kBladeSwingR3;
     return s == 0 ? kBladeSwingL1 : s == 1 ? kBladeSwingL2 : kBladeSwingL3;
 }
-[[nodiscard]] inline const Bank& BladeHit(Polarity p)
-{ return p == Polarity::Plus ? kBladeHitR : kBladeHitL; }
-[[nodiscard]] inline const Bank& BladeHitFinish(Polarity p)
-{ return p == Polarity::Plus ? kBladeHitFinishR : kBladeHitFinishL; }
-[[nodiscard]] inline const Bank& BladeCharge(Polarity p)
-{ return p == Polarity::Plus ? kBladeChargePlus : kBladeChargeMinus; }
-[[nodiscard]] inline const Bank& BladeChargeSlash(Polarity p)
-{ return p == Polarity::Plus ? kBladeChargeSlashR : kBladeChargeSlashL; }
+[[nodiscard]] inline const Bank& BladeHit(BladeSide p)
+{ return p == BladeSide::Right ? kBladeHitR : kBladeHitL; }
+[[nodiscard]] inline const Bank& BladeHitFinish(BladeSide p)
+{ return p == BladeSide::Right ? kBladeHitFinishR : kBladeHitFinishL; }
+[[nodiscard]] inline const Bank& BladeCharge(BladeSide p)
+{ return p == BladeSide::Right ? kBladeChargePlus : kBladeChargeMinus; }
+[[nodiscard]] inline const Bank& BladeChargeSlash(BladeSide p)
+{ return p == BladeSide::Right ? kBladeChargeSlashR : kBladeChargeSlashL; }
 
 // ── Impact ──────────────────────────────────────────────────────────────────
 inline constexpr std::string_view kImpactLightPaths[] = {
@@ -373,7 +371,6 @@ inline Bank kAttractTravelLoop { kAttractTravelLoopPaths };
     return kImpactHeavy;
 }
 
-
 // ── Enemy ───────────────────────────────────────────────────────────────────
 inline constexpr std::string_view kEnemySpawnPaths[] = {
     "Assets/Sound/SE/Enemy/SE_ENE_Spawn_01.wav",
@@ -402,7 +399,6 @@ inline Bank kEnemyDestroy    { kEnemyDestroyPaths };
 inline Bank kEnemyCoreSpawn  { kEnemyCoreSpawnPaths };
 inline Bank kEnemyCoreLoop   { kEnemyCoreLoopPaths };
 inline Bank kEnemyCoreExpire { kEnemyCoreExpirePaths };
-
 
 // ── Mite / Serpent / Roller ────────────────────────────────────
 // WHY 共通の敵バンクと分けるか:
@@ -465,8 +461,7 @@ inline Bank kRollerAnchor     { kRollerAnchorPaths };
 inline Bank kRollerCharge     { kRollerChargePaths };
 inline Bank kRollerDestroy    { kRollerDestroyPaths };
 
-
-// ── Polarity ────────────────────────────────────────────────────────────────
+// ── BladeSide ────────────────────────────────────────────────────────────────
 // WHY Boss だけ «クロールの 1 周期» を丸ごと 1 ファイルで持つか:
 //   4 脚が順に接地する歩容は、接地 1 回ぶんを切り出して 4 回鳴らしても再現しない
 //   (常に 3 本が接地したまま体重が移る音なので、脚どうしが重なっている部分が芯になる)。
@@ -519,12 +514,6 @@ inline constexpr std::string_view kBossStompHoldPaths[] = {
 inline constexpr std::string_view kBossStompPullPaths[] = {
     "Assets/Sound/SE/Boss/SE_BOSS_Stomp_Pull.wav" };
 
-inline constexpr std::string_view kBossPolSwitchWarnPaths[] = {
-    "Assets/Sound/SE/Boss/SE_BOSS_PolSwitch_Warn.wav" };
-inline constexpr std::string_view kBossPolSwitchPlusPaths[] = {
-    "Assets/Sound/SE/Boss/SE_BOSS_PolSwitch_01.wav" };
-inline constexpr std::string_view kBossPolSwitchMinusPaths[] = {
-    "Assets/Sound/SE/Boss/SE_BOSS_PolSwitch_02.wav" };
 inline constexpr std::string_view kBossMagPulsePaths[] = {
     "Assets/Sound/SE/Boss/SE_BOSS_MagPulse.wav" };
 
@@ -565,9 +554,6 @@ inline Bank kBossStompImpact    { kBossStompImpactPaths };
 inline Bank kBossStompSettle    { kBossStompSettlePaths };
 inline Bank kBossStompHold      { kBossStompHoldPaths };
 inline Bank kBossStompPull      { kBossStompPullPaths };
-inline Bank kBossPolSwitchWarn  { kBossPolSwitchWarnPaths };
-inline Bank kBossPolSwitchPlus  { kBossPolSwitchPlusPaths };
-inline Bank kBossPolSwitchMinus { kBossPolSwitchMinusPaths };
 inline Bank kBossMagPulse       { kBossMagPulsePaths };
 inline Bank kBossBeamCharge     { kBossBeamChargePaths };
 inline Bank kBossBeamLoop       { kBossBeamLoopPaths };
@@ -578,52 +564,18 @@ inline Bank kBossAppear         { kBossAppearPaths };
 inline Bank kBossPhaseShift     { kBossPhaseShiftPaths };
 inline Bank kBossDestroy        { kBossDestroyPaths };
 
-/// 切り替わった «先» の極で選ぶ。01 = ＋ (低く重い) / 02 = − (高く鋭い)。
-[[nodiscard]] inline const Bank& BossPolSwitch(Polarity p)
-{ return p == Polarity::Plus ? kBossPolSwitchPlus : kBossPolSwitchMinus; }
-
-
-inline constexpr std::string_view kPolarityInfectPaths[] = {
-    "Assets/Sound/SE/Polarity/SE_POL_Infect_01.wav",
-    "Assets/Sound/SE/Polarity/SE_POL_Infect_02.wav",
-};
-inline constexpr std::string_view kPolarityExpirePaths[] = {
-    "Assets/Sound/SE/Polarity/SE_POL_Expire_01.wav",
-    "Assets/Sound/SE/Polarity/SE_POL_Expire_02.wav",
-};
-inline constexpr std::string_view kPolarityExpireWarnPaths[] = {
-    "Assets/Sound/SE/Polarity/SE_POL_Expire_Warn.wav" };
-inline constexpr std::string_view kPolarityChargedLoopPlusPaths[] = {
-    "Assets/Sound/SE/Polarity/SE_POL_Charged_Loop_Plus.wav" };
-inline constexpr std::string_view kPolarityChargedLoopMinusPaths[] = {
-    "Assets/Sound/SE/Polarity/SE_POL_Charged_Loop_Minus.wav" };
-inline constexpr std::string_view kPolarityLinkTrailPaths[] = {
-    "Assets/Sound/SE/Polarity/SE_POL_LinkTrail.wav" };
-
-inline Bank kPolarityInfect            { kPolarityInfectPaths };
-inline Bank kPolarityExpire            { kPolarityExpirePaths };
-inline Bank kPolarityExpireWarn        { kPolarityExpireWarnPaths };
-inline Bank kPolarityChargedLoopPlus   { kPolarityChargedLoopPlusPaths };
-inline Bank kPolarityChargedLoopMinus  { kPolarityChargedLoopMinusPaths };
-inline Bank kPolarityLinkTrail         { kPolarityLinkTrailPaths };
-
-/// 同極が弾き合う «バンッ»。毎秒のように鳴るので、軽い衝突と同じ短さで扱う。
+/// 刃が弾かれる «バンッ»。毎秒のように鳴るので、軽い衝突と同じ短さで扱う。
 ///
 /// WHY 残響を掛けていないか: Docs/presentation.md が «画面に残らないこと» を要件に
 ///     挙げている。アリーナの反射を足すと 1 発ごとに 230ms 尾を引いて、連続で
 ///     弾いたときに «まだ前のが鳴っている» 状態になる。
-inline constexpr std::string_view kPolarityRepulsePaths[] = {
-    "Assets/Sound/SE/Polarity/SE_POL_Repulse_01.wav",
-    "Assets/Sound/SE/Polarity/SE_POL_Repulse_02.wav",
-    "Assets/Sound/SE/Polarity/SE_POL_Repulse_03.wav",
-    "Assets/Sound/SE/Polarity/SE_POL_Repulse_04.wav",
+inline constexpr std::string_view kBladeRepulsePaths[] = {
+    "Assets/Sound/SE/Impact/SE_IMP_Repulse_01.wav",
+    "Assets/Sound/SE/Impact/SE_IMP_Repulse_02.wav",
+    "Assets/Sound/SE/Impact/SE_IMP_Repulse_03.wav",
+    "Assets/Sound/SE/Impact/SE_IMP_Repulse_04.wav",
 };
-inline Bank kPolarityRepulse           { kPolarityRepulsePaths };
-
-
-[[nodiscard]] inline const Bank& PolarityChargedLoop(Polarity p)
-{ return p == Polarity::Plus ? kPolarityChargedLoopPlus : kPolarityChargedLoopMinus; }
-
+inline Bank kBladeRepulse           { kBladeRepulsePaths };
 
 // ── UI ──────────────────────────────────────────────────────────────────────
 inline constexpr std::string_view kUiGameClearPaths[] = {
@@ -676,7 +628,6 @@ inline Bank kUiRankC     { kUiRankCPaths };
     }
 }
 
-
 // ── Env ─────────────────────────────────────────────────────────────────────
 inline constexpr std::string_view kEnvArenaAmbPaths[]    = {
     "Assets/Sound/SE/Env/SE_ENV_Arena_Amb.wav" };
@@ -696,7 +647,6 @@ inline Bank kEnvCorridorAmb  { kEnvCorridorAmbPaths };
 inline Bank kEnvHazardWarn   { kEnvHazardWarnPaths };
 inline Bank kEnvHazardLoop   { kEnvHazardLoopPaths };
 inline Bank kEnvHazardDamage { kEnvHazardDamagePaths };
-
 
 // ── 再生の入口 ───────────────────────────────────────────────────────────────
 
@@ -735,7 +685,6 @@ inline void PlayAt(const ScriptAudioProxy& audio, const Bank& bank,
     const std::string_view path = bank.Pick();
     if (!path.empty()) audio.PlayAtPoint(path, position, volume);
 }
-
 
 // ── 構成の自己修復 ───────────────────────────────────────────────────────────
 

@@ -39,19 +39,19 @@ public:
     // WHY 円で持つか: アリーナが円形なので、中央を «削る» 形も円が素直に読める。
     //     コライダーで取ると、その形をシーンで編集できてしまい、
     //     «どこまでが危険か» の答えがシーンとコードの 2 つになる。
-    FBZZ_FIELD_RANGE(float, radius, 6.0f, "Radius", 0.0f, 30.0f)
+    FBZZ_FIELD_RANGE(float, radius, 6.0f, "半径", 0.0f, 30.0f)
     FBZZ_TOOLTIP("このスクリプトの位置を中心とした危険半径 [m]")
-    FBZZ_FIELD_RANGE(float, height, 3.0f, "Height", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, height, 3.0f, "高さ", 0.0f, 20.0f)
     FBZZ_TOOLTIP("この高さまでを «中に居る» と見なす。跳び越えられる高さにしない")
 
-    FBZZ_GROUP("State")
+    FBZZ_GROUP("状態")
     // Wave3 以降で作動させる。作動前は無害な床として見えているのが正しい。
     FBZZ_FIELD(bool, activeOnStart, false, "Active On Start")
     FBZZ_TOOLTIP("開始時から作動させるか。Wave 進行から SetActiveHazard で切り替える")
     FBZZ_FIELD_RANGE(float, warmupSeconds, 1.2f, "Warmup", 0.0f, 6.0f)
     FBZZ_TOOLTIP("作動を宣言してから実際に効き始めるまで。予告なしに殺さないための間")
 
-    FBZZ_GROUP("Damage")
+    FBZZ_GROUP("ダメージ")
     FBZZ_FIELD_RANGE_INT(int, enemyDamage, 9999, "Enemy Damage", 1, 99999)
     FBZZ_TOOLTIP("敵へ 1 回で入れる量。既定は即撃破。«落ちたら死ぬ» が読めないと、"
                  "押し込むという手を覚えられない")
@@ -59,10 +59,10 @@ public:
     FBZZ_TOOLTIP("プレイヤーへ刻む量。0 で無害。即死にはしない (縁を使う遊びが消える)")
     FBZZ_FIELD_RANGE(float, playerTickSeconds, 0.6f, "Player Tick", 0.05f, 5.0f)
     FBZZ_TOOLTIP("プレイヤーへ刻む間隔 [秒]")
-    FBZZ_FIELD_TAG(playerTag, "Player", "Player Tag")
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(int, debugPushKills, 0, "Push Kills")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(int, debugPushKills, 0, "押しで倒す")
     FBZZ_TOOLTIP("ハザードで落とした数。ランク評価の «押し込み撃破» はここを読む")
     FBZZ_FIELD_READ_ONLY(bool, debugArmed, false, "Armed")
     FBZZ_FIELD(bool, drawArea, true, "Draw Area")
