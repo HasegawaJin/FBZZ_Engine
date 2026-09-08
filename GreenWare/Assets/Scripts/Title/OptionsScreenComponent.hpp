@@ -27,6 +27,12 @@
 ///   状態として持っている。スクリプトが別に持つと、ずれた瞬間にどちらが正しいのか
 ///   判断できなくなる。
 ///
+/// WHY タブを切り替えたとき行を «置き直す» か (SetActive で入れ替えるだけにしないか):
+///   ページが一瞬で入れ替わると、どの行が新しく来たのかが目で追えず、
+///   «同じ画面の文字が書き換わった» ように見える。上の行から順に数十 ms ずつ
+///   遅れて滑り込むと、«別の一覧が来た» ことが分かる。順番は上からで固定 ─
+///   タブの並び順に関わらず、一覧は常に上から読むため。
+///
 /// WHY ドラッグを自前で書かないか:
 ///   UISlider が掴み判定と値の写像を持っている。同じ計算をスクリプトへ写すと、
 ///   Canvas Scaler や入れ子の変換が絡んだ場面でだけずれる。
@@ -37,12 +43,17 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Game/GameSettingsComponent.hpp>
+#include <Scripts/Game/GameSettingsRegistry.hpp>
+#include <Scripts/UI/UiMotion.hpp>
+#include <Scripts/UI/UiTextFx.hpp>
 #include <Scripts/Utils/InputActions.hpp>
+#include <Scripts/Utils/SceneTransition.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 using namespace fbzz::scene;
@@ -62,20 +73,32 @@ class OptionsScreenComponent : public Script {
     FBZZ_SCRIPT(OptionsScreenComponent)
 
 public:
-    FBZZ_GROUP("Flow")
+    FBZZ_GROUP("流れ")
     FBZZ_FIELD(std::string, backScene, "Title", "Back Scene")
     FBZZ_TOOLTIP("Esc / B で戻る先。戻る前に設定を保存する。空なら戻らない")
 
-    FBZZ_GROUP("Look")
+    FBZZ_GROUP("見た目")
     FBZZ_FIELD_COLOR(navDimColor, (Vector4{ 0.435294f, 0.427451f, 0.407843f, 1.0f }), "Nav Dim")
     FBZZ_FIELD_COLOR(navActiveColor, (Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }), "Nav Active")
     FBZZ_FIELD_COLOR(rowDimColor, (Vector4{ 0.662745f, 0.650980f, 0.627451f, 1.0f }), "Row Dim")
     FBZZ_TOOLTIP("カーソルが乗っていない行のラベル色。Reference の rgb(169,166,160)")
     FBZZ_FIELD_COLOR(rowActiveColor, (Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }), "Row Active")
     FBZZ_FIELD_COLOR(valueDimColor, (Vector4{ 0.870588f, 0.858824f, 0.835294f, 1.0f }), "Value Dim")
-    FBZZ_FIELD_RANGE(float, blendSeconds, 0.09f, "Blend", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, blendSeconds, 0.09f, "ブレンド", 0.0f, 1.0f)
+    FBZZ_FIELD(float, navNudge, 8.0f, "Nav Nudge")
+    FBZZ_TOOLTIP("選択中・ホバー中のタブ文字を右へ押し出す量 [px]")
+    FBZZ_FIELD_RANGE(float, focusSeconds, 0.07f, "Focus Follow", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("フォーカスバーが行へ寄る速さ。0 で瞬間移動")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("Page")
+    FBZZ_FIELD(float, pageSlide, 34.0f, "滑り")
+    FBZZ_TOOLTIP("タブを切り替えたとき、行が出る前の位置のずれ [px]。正で右から滑り込む")
+    FBZZ_FIELD_RANGE(float, pageStagger, 0.045f, "のけぞり", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, pageSeconds, 0.34f, "継続時間", 0.05f, 2.0f)
+    FBZZ_FIELD_RANGE(float, pageDelay, 0.10f, "First Delay", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("画面に入った最初の 1 回だけ、題字の出現 (UiReveal) を待つ秒数")
+
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugTab, "-", "Tab")
     FBZZ_FIELD_READ_ONLY(std::string, debugRow, "-", "Hovered Row")
 
@@ -83,26 +106,20 @@ public:
     void OnUpdate() override;
 
 private:
-    /// 値の見せ方。入力の受け方はウィジェットが持つので、ここは表示だけを決める。
-    enum class Show {
-        Percent,   ///< 0-1 を百分率で
-        Number,    ///< 実数。decimals と suffix で整える
-        Toggle,    ///< ON / OFF
-        Choice,    ///< 選択肢の名前
-    };
-
-    struct Row {
-        const char* page;   ///< 属するページ (Tab_ 以下の名前)
-        const char* key;    ///< 行 ID。オブジェクト名は <TAB>_Row_<key>
-        Show  show;
-        float min = 0.0f, max = 1.0f;   ///< スライダー 0-1 と実値の対応
-        const char* suffix = "";
-        int   decimals = 0;
-    };
-
-    static const std::vector<Row>& Table();
-    [[nodiscard]] static const std::vector<std::string>* Choices(const char* key);
-
+    bool m_wipeWriting = false;   ///< 扉を自分で postprocess へ書いたか (transition::Drive)
+    /// 見せ方も範囲も選択肢も宣言簿 (GameSettingsRegistry.hpp) が持つ。
+    ///
+    /// WHY 画面側に行の表を持たないか (2026-09-07 に外した):
+    ///   以前はここに 24 行の表があり、値の出し入れも 2 本の if 連鎖で書いていた。
+    ///   設定を 1 つ増やすのに «構造体 / 表 / GetValue / SetValue / 選択肢» の
+    ///   5 か所を触ることになり、しかも 1 つ書き忘れても画面には «出るが保存
+    ///   されない» としか出ない。宣言を 1 か所へ畳めば、書き忘れる場所が消える。
+    ///
+    /// WHY 宣言の page ではなくシーンの有無で行を決めるか:
+    ///   INPUT のページはキーボードとパッドで 2 枚あり、同じ id (device) の行が
+    ///   両方に居る。宣言に «どのページか» を持たせると 1 つしか書けない。
+    ///   «そのページに行のオブジェクトがあるか» で決めれば、置いた場所がそのまま
+    ///   答えになり、行を増やすのもシーン側だけで済む。
     void SelectTab(int tab);
     void BindSettings();
     void ApplyDeviceGroups();
@@ -123,11 +140,11 @@ private:
     [[nodiscard]] int CurrentDevice() const;
     ///@}
 
-    [[nodiscard]] float GetValue(const Row& row) const;
-    void  SetValue(const Row& row, float value);
+    /// 宣言簿へ書き、この画面だけの副作用 (試聴・ページの入れ替え) を足す。
+    void  SetValue(const settings::Setting& setting, float value);
     /// 今つまんだ強さでパッドを 1 度回す。振動は数字を読んでも決められない。
     void  PreviewVibration(float scale01) const;
-    [[nodiscard]] std::string FormatValue(const Row& row, float value) const;
+    [[nodiscard]] std::string FormatValue(const settings::Setting& setting, float value) const;
     /// 行の子を名前で引く。子の名前 (Label / Value / Slider) は行をまたいで同じ。
     [[nodiscard]] static GameObject* Child(GameObject* parent, std::string_view name);
 
@@ -139,12 +156,54 @@ private:
     GameObject* m_navLabels[kTabs] = {};
     GameObject* m_focusBar = nullptr;
     float m_navAmount[kTabs] = {};
+    Vector3 m_navOrigin[kTabs] = {};   ///< タブ文字の置き場所 (寄りの基準)
+    std::string m_navText[kTabs];      ///< タブの素の文言
+    std::string m_navRich[kTabs];      ///< 最後に流し込んだ文字列
+    float m_navClock = 0.0f;           ///< 走査の位相
+    /// フォーカスバー。行へ «寄る» ので、目標と今の位置を別に持つ。
+    float m_focusY      = 0.0f;
+    float m_focusTarget = 0.0f;
+    float m_focusAmount = 0.0f;
+    bool  m_focusPlaced = false;
+
+    /// ページの出現。行ごとに «置いてあった位置» と «子の色» を控える。
+    ///
+    /// WHY GameObject* で引くか: SelectTab は宣言簿の版が変わるたびに m_bound を
+    ///     作り直す。そのたびに位置を控え直すと、滑り込みの途中で控えた位置が
+    ///     «本来の位置» にすり替わって行が流れる。行の実体で引けば、同じ行は
+    ///     最初に控えた位置を持ち続ける。
+    struct PageRow {
+        Vector3                     origin = {};
+        std::vector<uimotion::Slot> parts;   ///< Divider / Track / Fill / Knob
+    };
+    std::unordered_map<GameObject*, PageRow> m_pageRows;
+    std::string m_pageName;        ///< 今出しているページ。変わったときだけ出現をやり直す
+    float m_page     = 0.0f;       ///< ページを出し始めてからの秒数
+    bool  m_pageDone = true;
+    bool  m_firstPage = true;      ///< 画面に入って最初のページか (題字を待つ)
+
+    /// 行 1 本の «出現 × ホバー» の見た目を書く。
+    void PaintRow(std::size_t index, GameObject* go, bool hovered);
+    /// 出現の途中で切り替えるとき、行を本来の位置へ戻してから隠す。
+    void SettlePage();
+    [[nodiscard]] float RowReveal(std::size_t index) const;
 
     /// 表示中のページに属する行。SelectTab のたびに引き直す。
     /// WHY 毎フレーム探さないか: scene.Find はシーン全体の名前検索で、
     ///     行 6 本ぶんを毎フレーム回すと 200 オブジェクトを何度も走査することになる。
-    struct RowBinding { const Row* row; GameObject* go; };
+    ///
+    /// WHY Setting* ではなく id を控えるか: 宣言が増えると宣言簿の vector が
+    ///     再確保され、控えたポインタは無効になる。id なら宣言簿が伸びても指し続ける。
+    struct RowBinding { std::string id; GameObject* go; };
     std::vector<RowBinding> m_bound;
+    /// m_bound を作ったときの宣言簿の版。増えていたら行を引き直す。
+    int m_boundRevision = -1;
+    /// m_bound を作り直すたびに 1 進む。
+    ///
+    /// WHY 要るか: 入力機器の行を押すと SetValue の中で SelectTab が走り、
+    ///     走査中の m_bound がその場で作り直される。番号が変わったら走査を
+    ///     打ち切らないと、消えた要素を指したまま回り続ける。
+    int m_bindGeneration = 0;
 
     int  m_tab = 2;                  // Reference と同じ VIDEO から開く
     bool m_ctrlLaidOut = false;
@@ -174,67 +233,6 @@ private:
 FBZZ_REFLECT(OptionsScreenComponent)
 
 // ── 行の表 ──────────────────────────────────────────────────────────────────
-inline const std::vector<OptionsScreenComponent::Row>& OptionsScreenComponent::Table()
-{
-    using S = Show;
-    static const std::vector<Row> table = {
-        { "Tab_INPUT", "device",      S::Choice },
-        { "Tab_INPUT", "mouseSens",   S::Number, 0.1f, 10.0f, "", 2 },
-
-        { "Tab_INPUT_PAD", "device",    S::Choice },
-        { "Tab_INPUT_PAD", "stickSens", S::Number, 0.1f, 10.0f, "", 2 },
-        { "Tab_INPUT_PAD", "curve",     S::Choice },
-        // WHY Percent ではないか: デッドゾーンは 0-0.5 の量で、スライダー全域を
-        //     0-1 に写すと後半が「スティックを半分倒すまで無入力」という
-        //     操作にならない領域になる。実値の範囲をそのまま持たせる。
-        { "Tab_INPUT_PAD", "deadzone",  S::Number, 0.0f, 0.5f, "", 2 },
-        { "Tab_INPUT_PAD", "vibration", S::Percent },
-
-        { "Tab_GAME", "fov",      S::Number, 60.0f, 110.0f, "\xc2\xb0", 0 },
-        { "Tab_GAME", "shake",    S::Percent },
-        { "Tab_GAME", "hitstop",  S::Percent },
-        { "Tab_GAME", "fovBurst", S::Toggle },
-        { "Tab_GAME", "chain",    S::Toggle },
-
-        { "Tab_VIDEO", "displayMode", S::Choice },
-        { "Tab_VIDEO", "resolution",  S::Choice },
-        { "Tab_VIDEO", "vsync",       S::Toggle },
-        { "Tab_VIDEO", "fpsCap",      S::Choice },
-        { "Tab_VIDEO", "brightness",  S::Number, 0.5f, 2.0f, "", 2 },
-        { "Tab_VIDEO", "bloom",       S::Percent },
-        { "Tab_VIDEO", "quality",     S::Choice },
-        { "Tab_VIDEO", "renderScale", S::Number, 0.5f, 2.0f, "", 2 },
-
-        { "Tab_AUDIO", "master", S::Percent },
-        { "Tab_AUDIO", "sfx",    S::Percent },
-        { "Tab_AUDIO", "bgm",    S::Percent },
-        { "Tab_AUDIO", "ui",     S::Percent },
-    };
-    return table;
-}
-
-inline const std::vector<std::string>* OptionsScreenComponent::Choices(const char* key)
-{
-    static const std::vector<std::string> device      = { "マウス＆キーボード", "ゲームパッド" };
-    static const std::vector<std::string> curve       = { "リニア", "標準", "強め" };
-    static const std::vector<std::string> displayMode = { "ウィンドウ", "フルスクリーン" };
-    static const std::vector<std::string> fpsCap      = { "無制限", "30", "60", "120", "144", "240" };
-    static const std::vector<std::string> quality     = { "低", "中", "高", "最高" };
-    const std::string k = key;
-    if (k == "device")      return &device;
-    if (k == "curve")       return &curve;
-    if (k == "displayMode") return &displayMode;
-    if (k == "fpsCap")      return &fpsCap;
-    if (k == "quality")     return &quality;
-    return nullptr;   // resolution は実行時のモニター依存なので別扱い
-}
-
-inline int FpsCapValue(int index)
-{
-    static const int values[] = { 0, 30, 60, 120, 144, 240 };
-    return values[std::clamp(index, 0, 5)];
-}
-
 inline GameObject* OptionsScreenComponent::Child(GameObject* parent, std::string_view name)
 {
     if (!parent) return nullptr;
@@ -244,81 +242,22 @@ inline GameObject* OptionsScreenComponent::Child(GameObject* parent, std::string
 }
 
 // ── 値の読み書き ────────────────────────────────────────────────────────────
-inline float OptionsScreenComponent::GetValue(const Row& row) const
+// 値の出し入れは宣言簿が持つ。ここに残るのは «この画面でだけ起きること» の 2 つで、
+// どちらも設定の値ではなく操作への応答なので、宣言の側へは移さない。
+inline void OptionsScreenComponent::SetValue(const settings::Setting& setting, float value)
 {
-    auto* s = GameSettingsComponent::Instance();
-    if (!s) return 0.0f;
-    const std::string k = row.key;
-    const auto& v = s->Video();  const auto& a = s->Audio();
-    const auto& i = s->Input();  const auto& g = s->Game();
+    const std::string id = setting.id;   // Set が宣言簿を触るので、先に写しておく
+    settings::Set(id, value);
 
-    if (k == "device")      return static_cast<float>(i.device);
-    if (k == "mouseSens")   return i.mouseSens;
-    if (k == "stickSens")   return i.stickSens;
-    if (k == "curve")       return static_cast<float>(i.curve);
-    if (k == "deadzone")    return i.deadzone;
-    if (k == "vibration")   return i.vibration;
-    if (k == "fov")         return g.fov;
-    if (k == "shake")       return g.shake;
-    if (k == "hitstop")     return g.hitstop;
-    if (k == "fovBurst")    return g.fovBurst ? 1.0f : 0.0f;
-    if (k == "chain")       return g.chain ? 1.0f : 0.0f;
-    if (k == "displayMode") return v.fullscreen ? 1.0f : 0.0f;
-    if (k == "resolution")  return static_cast<float>(s->ResolutionIndex());
-    if (k == "vsync")       return v.vsync ? 1.0f : 0.0f;
-    if (k == "fpsCap") {
-        for (int n = 0; n < 6; ++n) if (FpsCapValue(n) == v.targetFps) return static_cast<float>(n);
-        return 2.0f;
+    // 入力機器を変えると INPUT のページそのものが入れ替わる。行の束を引き直さないと、
+    // 前のページの行を掴んだまま別のページを見ることになる。
+    if (id == "device") {
+        ApplyDeviceGroups();
+        SelectTab(m_tab);
+        return;
     }
-    if (k == "brightness")  return v.brightness;
-    if (k == "bloom")       return v.bloom;
-    // 未選択のうちは ProjectSettings の設定がそのまま効いている。保存値ではなく
-    // 実際に効いている段を出す。保存値 (-1) を出すと「低」に見えてしまう。
-    if (k == "quality")     return static_cast<float>(
-        v.quality >= 0 ? v.quality : static_cast<int>(graphics.GetQualityPreset()));
-    if (k == "renderScale") return v.renderScale;
-    if (k == "master")      return a.master;
-    if (k == "sfx")         return a.se;
-    if (k == "bgm")         return a.bgm;
-    if (k == "ui")          return a.ui;
-    return 0.0f;
-}
-
-inline void OptionsScreenComponent::SetValue(const Row& row, float value)
-{
-    auto* s = GameSettingsComponent::Instance();
-    if (!s) return;
-    const std::string k = row.key;
-    auto& v = s->MutableVideo();  auto& a = s->MutableAudio();
-    auto& i = s->MutableInput();  auto& g = s->MutableGame();
-    const int n = static_cast<int>(std::lround(value));
-
-    if      (k == "device")      { i.device = n; ApplyDeviceGroups(); SelectTab(m_tab); }
-    else if (k == "mouseSens")   i.mouseSens = value;
-    else if (k == "stickSens")   i.stickSens = value;
-    else if (k == "curve")       i.curve = n;
-    else if (k == "deadzone")    i.deadzone = value;
-    else if (k == "vibration")   { i.vibration = value; PreviewVibration(value); }
-    else if (k == "fov")         g.fov = value;
-    else if (k == "shake")       g.shake = value;
-    else if (k == "hitstop")     g.hitstop = value;
-    else if (k == "fovBurst")    g.fovBurst = n != 0;
-    else if (k == "chain")       g.chain = n != 0;
-    else if (k == "displayMode") v.fullscreen = n != 0;
-    else if (k == "resolution")  { s->SetResolutionIndex(n); return; }   // 内部で Apply する
-    else if (k == "vsync")       v.vsync = n != 0;
-    else if (k == "fpsCap")      v.targetFps = FpsCapValue(n);
-    else if (k == "brightness")  v.brightness = value;
-    else if (k == "bloom")       v.bloom = value;
-    // 画質は「プレイヤーが選んだ」という事実まで記録する必要がある。
-    // 素の代入だと、ProjectSettings の描画設定を上書きしてよいかが判らない。
-    else if (k == "quality")     { s->SetQualityPreset(n); return; }
-    else if (k == "renderScale") v.renderScale = value;
-    else if (k == "master")      a.master = value;
-    else if (k == "sfx")         a.se = value;
-    else if (k == "bgm")         a.bgm = value;
-    else if (k == "ui")          a.ui = value;
-    s->Apply();
+    // 振動は数字を読んでも決められない。つまんだ強さでその場で 1 度回す。
+    if (id == "vibration") PreviewVibration(value);
 }
 
 inline void OptionsScreenComponent::PreviewVibration(float scale01) const
@@ -336,30 +275,26 @@ inline void OptionsScreenComponent::PreviewVibration(float scale01) const
                        kVibrationPreviewSeconds);
 }
 
-inline std::string OptionsScreenComponent::FormatValue(const Row& row, float value) const
+inline std::string OptionsScreenComponent::FormatValue(const settings::Setting& setting,
+                                                       float value) const
 {
     char buffer[64] = {};
-    switch (row.show) {
-    case Show::Percent:
+    switch (setting.kind) {
+    case settings::Kind::Percent:
         std::snprintf(buffer, sizeof(buffer), "%d%%", static_cast<int>(std::lround(value * 100.0f)));
         return buffer;
-    case Show::Number:
-        std::snprintf(buffer, sizeof(buffer), "%.*f%s", row.decimals, value, row.suffix);
+    case settings::Kind::Number:
+        std::snprintf(buffer, sizeof(buffer), "%.*f%s", setting.decimals, value,
+                      setting.suffix.c_str());
         return buffer;
-    case Show::Toggle:
+    case settings::Kind::Toggle:
         return value >= 0.5f ? "ON" : "OFF";
-    case Show::Choice: {
-        const int index = static_cast<int>(std::lround(value));
-        if (const std::string k = row.key; k == "resolution") {
-            auto* s = GameSettingsComponent::Instance();
-            if (!s || s->Resolutions().empty()) return "-";
-            const auto& r = s->Resolutions()[std::clamp<size_t>(index, 0, s->Resolutions().size() - 1)];
-            std::snprintf(buffer, sizeof(buffer), "%u \xc3\x97 %u", r.width, r.height);
-            return buffer;
-        }
-        const auto* list = Choices(row.key);
-        if (!list || list->empty()) return "-";
-        return (*list)[std::clamp<size_t>(index, 0, list->size() - 1)];
+    case settings::Kind::Choice: {
+        if (setting.choices.empty()) return "-";
+        const std::size_t index = static_cast<std::size_t>(
+            std::clamp(static_cast<int>(std::lround(value)), 0,
+                       static_cast<int>(setting.choices.size()) - 1));
+        return setting.choices[index];
     }
     }
     return "-";
@@ -381,8 +316,21 @@ inline void OptionsScreenComponent::OnStart()
         if (!m_navBars[i] || !m_navLabels[i])
             debug.LogWarning(std::string("OptionsScreen: Nav") + kTabNames[i] + " が見つかりません");
         m_navAmount[i] = (i == m_tab) ? 1.0f : 0.0f;
+        if (m_navLabels[i]) {
+            m_navOrigin[i] = m_navLabels[i]->transform.position;
+            if (auto* t = m_navLabels[i]->GetComponent<UIText>()) {
+                t->richText  = true;   // 色付き文字列を流す
+                m_navText[i] = t->text;
+            }
+        }
     }
     m_focusBar = scene.Find("FocusBar");
+    if (m_focusBar) {
+        m_focusY = m_focusTarget = m_focusBar->transform.position.y;
+        // 最初はどの行にも居ないので消しておく (出したまま置くと 1 本目の行に
+        // 乗る前から光っている)。
+        ui.SetMaterialFloat(m_focusBar, "selected", 0.0f);
+    }
 
     // CONTROLS の補足文字はシーンが正本。差し替え表示で潰す前に控える。
     for (int deviceIndex = 0; deviceIndex < 2; ++deviceIndex) {
@@ -429,24 +377,129 @@ inline void OptionsScreenComponent::SelectTab(int tab)
 {
     m_tab = (tab + kTabs) % kTabs;
     const std::string page = PageOfTab(m_tab);
+    const bool pageChanged = (page != m_pageName);
+    // 別のページへ移るなら、今のページの行を本来の位置へ戻してから隠す
+    // (滑り込みの途中で隠すと、次に出したときその位置が «置き場所» になる)。
+    if (pageChanged) SettlePage();
     for (const char* name : { "Tab_INPUT", "Tab_INPUT_PAD", "Tab_GAME", "Tab_VIDEO", "Tab_AUDIO" })
         if (auto* go = scene.Find(name)) go->SetActive(page == name);
 
+    // 宣言簿の全項目に対して «このページに行のオブジェクトがあるか» を見る。
+    // 置いてある行だけが出るので、設定を増やすのは «宣言 1 つ + 行 1 つ» で済む。
     const std::string tag = page.substr(4);   // "Tab_VIDEO" -> "VIDEO"
     m_bound.clear();
-    for (const Row& row : Table()) {
-        if (page != row.page) continue;
-        if (GameObject* go = scene.Find(tag + "_Row_" + row.key))
-            m_bound.push_back({ &row, go });
+    for (const settings::Setting& setting : settings::All()) {
+        if (GameObject* go = scene.Find(tag + "_Row_" + setting.id))
+            m_bound.push_back({ setting.id, go });
     }
+    m_boundRevision = settings::Revision();
+    ++m_bindGeneration;
     debugTab = kTabNames[m_tab];
+
+    // 行の置き場所と子の色を控える。控え済みの行 (同じページの引き直し) はそのまま。
+    if (pageChanged) m_pageRows.clear();
+    for (const RowBinding& b : m_bound) {
+        if (!b.go || m_pageRows.count(b.go)) continue;
+        PageRow row;
+        row.origin = b.go->transform.position;
+        for (const char* part : { "Divider", "Track", "Fill", "Knob" }) {
+            GameObject* child = Child(b.go, part);
+            if (!child) continue;
+            uimotion::Slot slot;
+            slot.go     = child;
+            slot.origin = child->transform.position;
+            slot.image  = true;
+            slot.color  = ui.GetImageColor(child);
+            row.parts.push_back(slot);
+        }
+        m_pageRows.emplace(b.go, row);
+    }
+    if (pageChanged) {
+        m_pageName = page;
+        // 最初の 1 回だけ題字の出現を待つ。タブを押した後は待たない
+        // (押した手応えが遅れると «効いていない» と思わせる)。
+        m_page     = m_firstPage ? -pageDelay : 0.0f;
+        m_pageDone = m_bound.empty();
+        m_firstPage = false;
+        // 1 フレーム目から «出ていない» で描く。
+        for (std::size_t i = 0; i < m_bound.size(); ++i) PaintRow(i, m_bound[i].go, false);
+    }
+}
+
+inline float OptionsScreenComponent::RowReveal(std::size_t index) const
+{
+    return uimotion::Stagger(m_page, static_cast<int>(index), pageStagger, pageSeconds);
+}
+
+inline void OptionsScreenComponent::SettlePage()
+{
+    for (auto& [go, row] : m_pageRows) {
+        if (!go) continue;
+        go->transform.position = row.origin;
+        for (uimotion::Slot& part : row.parts)
+            if (part.go) ui.SetImageColor(part.go, part.color);
+    }
+    // Label / Value の α は PollRows が毎フレーム 1 で書き直すので、ここでは触らない。
+}
+
+inline void OptionsScreenComponent::PaintRow(std::size_t index, GameObject* go, bool hovered)
+{
+    auto it = m_pageRows.find(go);
+    if (it == m_pageRows.end() || !go) return;
+    PageRow& row = it->second;
+
+    const float t     = RowReveal(index);
+    const float e     = uimotion::OutCubic(t);
+    const float alpha = uimotion::OutQuint(t * 1.25f);
+
+    go->transform.position = { row.origin.x + pageSlide * (1.0f - e), row.origin.y, row.origin.z };
+    for (uimotion::Slot& part : row.parts) {
+        if (!part.go) continue;
+        ui.SetImageColor(part.go, { part.color.x, part.color.y, part.color.z, part.color.w * alpha });
+    }
+    if (GameObject* label = Child(go, "Label")) {
+        const Vector4 c = hovered ? rowActiveColor : rowDimColor;
+        ui.SetTextColor(label, { c.x, c.y, c.z, c.w * alpha });
+    }
+    if (GameObject* valueText = Child(go, "Value")) {
+        const Vector4 c = hovered ? rowActiveColor : valueDimColor;
+        ui.SetTextColor(valueText, { c.x, c.y, c.z, c.w * alpha });
+    }
 }
 
 inline void OptionsScreenComponent::OnUpdate()
 {
     const float dt = (std::max)(time.UnscaledDeltaTime(), 0.0f);
 
+    // ページの出現は扉 (ワイプ) が開いている最中も進める。止めると、扉が
+    // 開き切った瞬間に行が一斉に飛び出す。
+    if (!m_pageDone) {
+        m_page += dt;
+        const float total = pageStagger * static_cast<float>(m_bound.empty() ? 0 : m_bound.size() - 1)
+                          + pageSeconds;
+        if (m_page >= total) { m_page = total; m_pageDone = true; }
+    }
+    // フォーカスバーは行へ «寄る»。瞬間移動だと、隣の行へ移るたびに 2 本あるように見える。
+    if (m_focusBar) {
+        m_focusY = uimotion::Approach(m_focusY, m_focusTarget, dt, focusSeconds);
+        const Vector3 p = m_focusBar->transform.position;
+        m_focusBar->transform.position = { p.x, m_focusY, p.z };
+        ui.SetMaterialFloat(m_focusBar, "selected", m_focusAmount);
+    }
+
+    // 扉 (ワイプ)。塗っている / 剥がしている最中は入力を受けない。
+    if (transition::Drive(dt, scene, postprocess, m_wipeWriting, false)) {
+        // 見た目だけは書き続ける (出現の途中で扉が閉まっても行が固まらない)。
+        for (std::size_t i = 0; i < m_bound.size(); ++i) PaintRow(i, m_bound[i].go, false);
+        RefreshNav(dt);
+        return;
+    }
+
     if (!m_settingsBound) BindSettings();
+    // スクリプトが後から設定を宣言したら、その行を拾い直す。
+    // WHY 毎フレーム引き直さないか: SelectTab は宣言の数だけ scene.Find を回す。
+    //     版が変わったときだけで足り、変わらない限りは 1 回の整数比較で済む。
+    if (m_boundRevision != settings::Revision()) SelectTab(m_tab);
 
     // 差し替え待ちの間は他を一切受けない。押した「次の 1 入力」がそのまま
     // 割り当てになるので、同じ入力でタブが動いたり画面を抜けたりすると、
@@ -468,7 +521,7 @@ inline void OptionsScreenComponent::OnUpdate()
                          && input.GetPadButtonDown(fbzz::input::GamepadButton::B));
     if (cancel && !m_lastCancel && !backScene.empty()) {
         if (auto* s = GameSettingsComponent::Instance()) s->Save();
-        scene.LoadScene(backScene);
+        (void)transition::Begin(backScene);
         return;
     }
     m_lastCancel = cancel;
@@ -632,9 +685,9 @@ inline void OptionsScreenComponent::RefreshAllControlRows()
 inline void OptionsScreenComponent::PollRows()
 {
     // 設定の実体が無いときは何も触らない。
-    // WHY 早期に抜けるか: GetValue が 0 を返すので、そのまま同期すると
-    //     「掴んでも離すと 0 へ戻る」形でスライダーが潰れる。値が無いことと
-    //     値が 0 であることは別で、無いなら UI をオーサリング値のまま残す。
+    // WHY 早期に抜けるか: 読む側は宣言簿があるので値は返るが、書く側 (組み込み項目の
+    //     set) は実体を通る。実体が居ないまま行を触らせると、つまみを掴んでも
+    //     どこにも書かれず「離すと戻る」形で潰れる。読めることと直せることは別。
     if (!GameSettingsComponent::Instance()) {
         if (!m_warnedNoSettings) {
             debug.LogError("OptionsScreen: GameSettingsComponent がシーンに居ません。"
@@ -646,55 +699,66 @@ inline void OptionsScreenComponent::PollRows()
     }
 
     debugRow = "-";
-    for (const auto& [rowPtr, go] : m_bound) {
-        const Row& row = *rowPtr;
-        const bool hovered = ui.IsHovered(go) || ui.IsPressed(go);
-        if (hovered) debugRow = row.key;
+    bool anyHovered = false;
+    const float dt = (std::max)(time.UnscaledDeltaTime(), 0.0f);
+    const int generation = m_bindGeneration;
+    for (std::size_t index = 0; index < m_bound.size(); ++index) {
+        // SetValue の中で行の束が作り直されたら、そこで走査を打ち切る
+        // (m_bindGeneration の WHY)。
+        if (m_bindGeneration != generation) return;
 
-        float value = GetValue(row);
+        const std::string id = m_bound[index].id;
+        GameObject* go = m_bound[index].go;
+        const settings::Setting* found = settings::Find(id);
+        if (!found || !go) continue;
+
+        const bool hovered = ui.IsHovered(go) || ui.IsPressed(go);
+        if (hovered) debugRow = id;
+
+        const bool  percent = found->kind == settings::Kind::Percent;
+        const float minimum = found->min;
+        const float maximum = found->max;
+        float value = settings::Get(id);
 
         GameObject* sliderGO = Child(go, "Slider");
         auto* slider = sliderGO ? sliderGO->GetComponent<UISlider>() : nullptr;
         if (slider) {
             if (slider->onValueChanged) {
                 // ドラッグの結果はウィジェットが持っている。0-1 を実値へ写すだけ。
-                value = (row.show == Show::Percent)
-                    ? slider->value
-                    : row.min + slider->value * (row.max - row.min);
-                SetValue(row, value);
+                value = percent ? slider->value
+                                : minimum + slider->value * (maximum - minimum);
+                SetValue(*found, value);
             } else if (!slider->runtimeDragging) {
                 // 外から変わった値 (プリセット適用・初期化) をつまみへ戻す。
-                const float ratio = (row.show == Show::Percent)
+                const float ratio = percent
                     ? value
-                    : (value - row.min) / (std::max)(row.max - row.min, 1e-4f);
+                    : (value - minimum) / (std::max)(maximum - minimum, 1e-4f);
                 slider->value = std::clamp(ratio, 0.0f, 1.0f);
             }
         } else if (ui.WasClicked(go)) {
             // スライダーの無い行は、押すたびに次の値へ送る。
-            if (row.show == Show::Toggle) {
+            if (found->kind == settings::Kind::Toggle) {
                 value = value >= 0.5f ? 0.0f : 1.0f;
-            } else if (row.show == Show::Choice) {
-                int count = 2;
-                if (const std::string k = row.key; k == "resolution") {
-                    auto* s = GameSettingsComponent::Instance();
-                    count = s ? static_cast<int>(s->Resolutions().size()) : 1;
-                } else if (const auto* list = Choices(row.key)) {
-                    count = static_cast<int>(list->size());
-                }
+            } else if (found->kind == settings::Kind::Choice) {
+                const int count = found->ChoiceCount();
                 if (count > 0)
                     value = static_cast<float>((static_cast<int>(std::lround(value)) + 1) % count);
             }
-            SetValue(row, value);
-            value = GetValue(row);
+            SetValue(*found, value);
+            if (m_bindGeneration != generation) return;
+            value = settings::Get(id);
         }
 
+        // SetValue が宣言簿を触りうるので、書き出しの直前に引き直す。
+        found = settings::Find(id);
+        if (!found) continue;
+        const settings::Setting& row = *found;
+
         // ── 見た目 ────────────────────────────────────────────────────────
-        if (GameObject* label = Child(go, "Label"))
-            ui.SetTextColor(label, hovered ? rowActiveColor : rowDimColor);
-        if (GameObject* valueText = Child(go, "Value")) {
+        if (GameObject* valueText = Child(go, "Value"))
             ui.SetText(valueText, FormatValue(row, value));
-            ui.SetTextColor(valueText, hovered ? rowActiveColor : valueDimColor);
-        }
+        // 出現 (位置と α) とホバー (色) はまとめて 1 か所で書く。
+        PaintRow(index, go, hovered);
         if (slider) {
             // 素材は左右に 32px の余白を持つ。芯の ratio 割は (pad + ratio*芯幅) / PNG幅。
             constexpr float kTrackW = 230.0f, kPngW = 295.0f, kPad = 32.0f, kKnobHalfW = 1.5f;
@@ -710,15 +774,25 @@ inline void OptionsScreenComponent::PollRows()
         }
         if (hovered && m_focusBar) {
             // フォーカスバーは行の左。行の枠から出すので文言に依らない。
+            // 目標だけ置き、寄るのは OnUpdate (滑り込み中の行の x は目標にしない)。
+            auto it = m_pageRows.find(go);
+            const float rowY = it != m_pageRows.end() ? it->second.origin.y
+                                                      : go->transform.position.y;
             const Vector3 p = m_focusBar->transform.position;
-            m_focusBar->transform.position = { 395.0f, go->transform.position.y + 20.0f, p.z };
-            ui.SetMaterialFloat(m_focusBar, "selected", 1.0f);
+            m_focusBar->transform.position = { 395.0f, p.y, p.z };
+            m_focusTarget = rowY + 20.0f;
+            if (!m_focusPlaced) { m_focusY = m_focusTarget; m_focusPlaced = true; }
+            anyHovered = true;
         }
     }
+    // どの行にも乗っていなければバーは消える (乗るまで前の行に居座らない)。
+    m_focusAmount = uimotion::Approach(m_focusAmount, anyHovered ? 1.0f : 0.0f, dt,
+                                       anyHovered ? blendSeconds : blendSeconds * 2.0f);
 }
 
 inline void OptionsScreenComponent::RefreshNav(float dt)
 {
+    m_navClock += dt;
     const float response = blendSeconds <= 0.0f ? 1.0f : 1.0f - std::exp(-dt / blendSeconds);
     for (int i = 0; i < kTabs; ++i) {
         // 選択中のタブは常時点灯。ホバー中のタブも「押せる」ことを見せるため点ける。
@@ -731,12 +805,21 @@ inline void OptionsScreenComponent::RefreshNav(float dt)
         if (m_navBars[i]) ui.SetMaterialFloat(m_navBars[i], "selected", m_navAmount[i]);
         if (!m_navLabels[i]) continue;
         const float t = m_navAmount[i];
-        ui.SetTextColor(m_navLabels[i], {
-            navDimColor.x + (navActiveColor.x - navDimColor.x) * t,
-            navDimColor.y + (navActiveColor.y - navDimColor.y) * t,
-            navDimColor.z + (navActiveColor.z - navDimColor.z) * t,
-            navDimColor.w + (navActiveColor.w - navDimColor.w) * t,
-        });
+        // 点いたタブは文字が芯から押し出される (TitleMenu の行と同じ語彙)。
+        m_navLabels[i]->transform.position = {
+            m_navOrigin[i].x + navNudge * uimotion::OutCubic(t), m_navOrigin[i].y, m_navOrigin[i].z,
+        };
+        // 色は文字列側 (UiTextFx)。選択中のタブだけ 2.4 秒に 1 本、光が字面を舐める。
+        const Vector4 c = textfx::Mix(navDimColor, navActiveColor, t);
+        std::string rich;
+        if (i == m_tab) {
+            const float head = -0.45f + 1.9f * std::fmod(m_navClock, 2.4f) / 2.4f;
+            rich = textfx::Sweep(m_navText[i], c, { 1.0f, 1.0f, 1.0f, 1.0f }, head, 0.38f);
+        } else {
+            rich = textfx::Wrap(m_navText[i], c);
+        }
+        if (rich != m_navRich[i]) { ui.SetText(m_navLabels[i], rich); m_navRich[i] = std::move(rich); }
+        ui.SetTextColor(m_navLabels[i], { 1.0f, 1.0f, 1.0f, c.w });
     }
 }
 

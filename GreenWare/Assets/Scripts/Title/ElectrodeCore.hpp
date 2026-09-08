@@ -4,7 +4,7 @@
 /// @date    2026-08-24
 ///
 /// WHY 色があるのに記号も出すか:
-///   PolarityTypes.hpp の 12.3 が «色覚に頼らず読めるようにするための二重表現» として
+///   ElectrodePole.hpp の 12.3 が «色覚に頼らず読めるようにするための二重表現» として
 ///   ＋ / − の記号を要求している。タイトルは盤面のルールを最初に見せる場所なので、
 ///   赤青の対比だけでなく符号そのものを置く。
 ///
@@ -38,7 +38,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector4.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Title/ElectrodePole.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -73,7 +73,7 @@ struct ElectrodeCoreStyle {
     /// 明滅の速さ [Hz] と深さ [0,1]。深さ 0 で止まる。
     float pulseRate   = 1.6f;
     float pulseDepth  = 0.18f;
-    /// 極性色。ElectrodeRig が PolarityTypes から入れる。
+    /// 極性色。ElectrodeRig が ElectrodePole から入れる。
     Vector4 color     = { 1.0f, 0.16f, 0.18f, 1.0f };
     /// 芯の色。白熱させるため 1 を超える値を入れる。
     Vector4 coreColor = { 4.2f, 3.9f, 3.7f, 1.0f };
@@ -88,7 +88,7 @@ struct ElectrodeCoreStyle {
 class ElectrodeCoreGlyph {
 public:
     /// 毎フレーム呼ぶ。center はワールド座標。
-    void Update(Script& owner, Polarity polarity, const Vector3& center,
+    void Update(Script& owner, Pole pole, const Vector3& center,
                 const ElectrodeCoreStyle& style, float dt);
     /// 部品ごと片付ける。
     void Detach(const Script& owner);
@@ -168,11 +168,11 @@ inline void ElectrodeCoreGlyph::PushMaterial(const Script& owner, EntityID id,
     instance.SetFloat(MaterialPropertyId("erode"), 0.02f);
 }
 
-inline void ElectrodeCoreGlyph::Update(Script& owner, Polarity polarity, const Vector3& center,
+inline void ElectrodeCoreGlyph::Update(Script& owner, Pole pole, const Vector3& center,
                                        const ElectrodeCoreStyle& style, float dt)
 {
     // 輪 1 本 + 符号。＋ は横棒と縦棒、− は横棒だけで、本数がそのまま符号になる。
-    const std::size_t strokes = polarity == Polarity::Plus ? 2u : 1u;
+    const std::size_t strokes = pole == Pole::Plus ? 2u : 1u;
     const std::size_t wanted  = style.size <= 0.0f ? 0u : strokes + 1u;
     EnsureParts(owner, wanted, style);
     if (m_parts.empty()) return;

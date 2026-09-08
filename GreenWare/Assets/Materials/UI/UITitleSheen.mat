@@ -19,6 +19,21 @@ tintStrength = 0.55
 sheenColor = [ 0.78, 0.86, 1.0, 0.55 ]
 sheenWidth = 0.13
 sheenTilt = 0.35
-# sheenPhase は TitleDressingComponent が進める。0 は «帯が左端の外» の位置。
+# sheenPhase は ScreenDressingComponent が進める。0 は «帯が左端の外» の位置。
 sheenPhase = 0.0
 edgeGlow = 0.0
+# ── 光・出現・放電 (2026-09-07) ─────────────────────────────────────────
+# reveal / crackle / phase は ScreenDressingComponent が要素ごとに上書きする。
+# .mat は «置き切った・放電なし» を既定にする (エディタで開いた絵が正本)。
+reveal = 1.0
+crackle = 0.0
+phase = 0.0
+# 外側の光。字より冷たい白。上げすぎると «看板» になる。
+glowColor = [ 0.78, 0.86, 1.0, 0.45 ]
+glowStrength = 0.8
+glowRadius = 2.5
+splitTexels = 2.0
+dissolveScale = 26.0
+# 刀の芯の色 (BladeColors と同じ)。熱色・放電・色ずれに使う。
+polePlus = [ 1.0, 0.415686, 0.360784, 1.0 ]
+poleMinus = [ 0.388235, 0.643137, 1.0, 1.0 ]

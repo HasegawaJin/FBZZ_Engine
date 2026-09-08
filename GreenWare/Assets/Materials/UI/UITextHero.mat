@@ -1,0 +1,29 @@
+version = 1
+name = 'UITextHero'
+shader = "Assets/Shaders/UI/Material/UITextHero.hlsl"
+render_path = "ui"
+blend_mode = "AlphaBlend"
+double_sided = true
+render_queue = 4000
+
+[textures]
+
+[params]
+# 字の色は Reference の見出し (rgb 244,242,238)。
+bodyColor = [ 0.956863, 0.949020, 0.933333, 1.0 ]
+# 外側の光。a が上限。色は字より少し冷たく (暖色にすると «焼けた字» になる)。
+glowColor = [ 0.78, 0.86, 1.0, 0.55 ]
+# 出現の縁と走査の芯。ほぼ白の熱色。
+heatColor = [ 1.0, 0.97, 0.90, 1.0 ]
+# 色は BladeColors と同じ芯。a で染めの重み。
+plusColor = [ 1.0, 0.415686, 0.360784, 1.0 ]
+minusColor = [ 0.388235, 0.643137, 1.0, 1.0 ]
+outlineColor = [ 0.02, 0.03, 0.05, 0.0 ]
+outlineWidth = 0.0
+glowRadius = 2.2
+glowStrength = 0.9
+tintStrength = 0.22
+dissolveScale = 38.0
+splitTexels = 1.6
+sheenGain = 1.0
+# 頂点色は制御値 (UITextHero.hlsl の頭)。文字列は Scripts/UI/UiTextFx.hpp の Encode で組む。

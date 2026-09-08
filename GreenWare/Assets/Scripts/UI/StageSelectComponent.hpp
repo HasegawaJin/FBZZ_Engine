@@ -18,18 +18,30 @@
 /// WHY 未解放の行にもカーソルが乗るか:
 ///   解放条件を読ませたい。ただし選べるようには見せないので、
 ///   選択中でも Bar_lock（赤くない芯）を出す。
+///
+/// WHY カーソルを動かすたびに右パネルを «置き直す» か:
+///   パネルの文字だけが書き換わると、記録が «同じ紙の上で数字が変わった» ように
+///   見えて、別のステージを見ていることが伝わらない。右から数 px 滑り込みつつ
+///   浮かび上がると、«次の紙が来た» と読める。距離は短く、時間も 0.2 秒前後 ─
+///   長いと上下キーを連打したときに追いつかず、パネルが常に薄い。
 #pragma once
 
+#include <Engine/Scene/Components/UIElement.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/UI/StageProgressState.hpp>
+#include <Scripts/UI/UiMotion.hpp>
 #include <Scripts/UI/UiNavSe.hpp>
+#include <Scripts/UI/UiTextFx.hpp>
+#include <Scripts/Utils/SceneTransition.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace fbzz::scene;
 
@@ -46,18 +58,35 @@ public:
     FBZZ_FIELD(int,   visibleRows, 6,     "Visible Rows")
     FBZZ_TOOLTIP("一覧に入る行数。レールのつまみの長さをこれで決める")
 
-    FBZZ_GROUP("Flow")
+    FBZZ_GROUP("導入")
+    FBZZ_FIELD_RANGE(float, introDelay, 0.30f, "遅延", 0.0f, 3.0f)
+    FBZZ_TOOLTIP("画面に入ってから 1 行目が動き始めるまで。題字の出現 (UiReveal) の後に")
+    FBZZ_FIELD_RANGE(float, introStagger, 0.05f, "のけぞり", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, introSeconds, 0.40f, "継続時間", 0.05f, 3.0f)
+    FBZZ_FIELD(float, introSlide, -36.0f, "滑り")
+    FBZZ_TOOLTIP("行が出る前の位置のずれ [px]。負で左から滑り込む")
+
+    FBZZ_GROUP("Pane")
+    FBZZ_FIELD(float, paneSlide, 18.0f, "滑り")
+    FBZZ_TOOLTIP("選択が変わったとき、パネルが出る前の位置のずれ [px]。正で右から")
+    FBZZ_FIELD_RANGE(float, paneSeconds, 0.22f, "継続時間", 0.05f, 2.0f)
+    FBZZ_FIELD_RANGE(float, paneStagger, 0.008f, "のけぞり", 0.0f, 0.2f)
+    FBZZ_FIELD(float, nameNudge, 8.0f, "Name Nudge")
+    FBZZ_TOOLTIP("選択中の行の名前を右へ押し出す量 [px]")
+
+    FBZZ_GROUP("流れ")
     // WHY PLAY のシーン名を持たないか: 行ごとに違う。どのシーンを読むかは
     //     StageCatalog.hpp の台帳が持ち、ここは «選んだ行» を渡すだけにする。
-    FBZZ_FIELD(std::string, titleScene, "Title", "CANCEL")
+    FBZZ_FIELD(std::string, titleScene, "Title", "キャンセル")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(std::string, debugCursor, "0", "Cursor")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugCursor, "0", "カーソル")
 
     void OnStart() override;
     void OnUpdate() override;
 
 private:
+    bool m_wipeWriting = false;   ///< 扉を自分で postprocess へ書いたか (transition::Drive)
     static constexpr int kRows = StageProgressState::kCount;
     /// «選べる» 行か。解放されていて、かつシーンの実体があること。
     [[nodiscard]] static bool Selectable(int index)
@@ -78,13 +107,35 @@ private:
     GameObject* m_row[kRows] = {};
     int   m_cursor = 0;
     float m_repeat = 0.0f;
+
+    /// 行の出現。行そのものの位置と、子の «置いてあった色» を控える。
+    ::fbzz::math::Vector3        m_rowOrigin[kRows]  = {};
+    ::fbzz::math::Vector3        m_nameOrigin[kRows] = {};
+    ::fbzz::math::Vector4        m_nameColor[kRows]  = {};   ///< Refresh が決めた名前の色
+    std::vector<uimotion::Slot>  m_rowParts[kRows];          ///< Name 以外の子
+    float m_nudge[kRows] = {};                                ///< 名前の寄り 0..1
+    float m_intro = 0.0f;
+    std::string m_nameText[kRows];   ///< 行の名前の素の文言 (Refresh が決める)
+    std::string m_nameRich[kRows];   ///< 最後に流し込んだ文字列
+    float m_selSince = 0.0f;         ///< 選択が動いてからの秒数 (名前の走査)
+    std::string m_paneNameText;      ///< パネルの見出しの素の文言
+    std::string m_paneNameRich;
+
+    /// 右パネル。子を全部控え、選択が変わるたびに置き直す。
+    std::vector<uimotion::Slot> m_pane;
+    float m_paneClock = 1.0e3f;   ///< 置き直しを始めてからの秒数。大きい = 済んでいる
+
+    void PaintRows(float dt);
+    void PaintPane();
+    void RestartPane() { m_paneClock = 0.0f; m_selSince = 0.0f; PaintPane(); }
 };
 
 FBZZ_REFLECT(StageSelectComponent)
 
 inline void StageSelectComponent::OnStart()
 {
-    StageProgressState::EnsureInit();
+    // 解放と自己ベストはここでディスクから読む (起動して最初に触る画面なので)。
+    StageProgressState::EnsureInit(save);
     for (int i = 0; i < kRows; ++i) {
         m_row[i] = N("Row" + std::to_string(i));
         if (!m_row[i]) debug.LogWarning("StageSelect: Row" + std::to_string(i) + " が無い");
@@ -101,6 +152,118 @@ inline void StageSelectComponent::OnStart()
     }
     se::EnsureSource(scene, "UI");
     Refresh();
+
+    // 出現のために «置いてあった位置と色» を控える。Refresh の後で控えるのは、
+    // 名前と番号の色は Refresh が決めるので、その結果を基準にしたいため。
+    for (int i = 0; i < kRows; ++i) {
+        GameObject* row = m_row[i];
+        if (!row) continue;
+        m_rowOrigin[i] = row->transform.position;
+        m_rowParts[i].clear();
+        for (int c = 0, n = row->GetChildCount(); c < n; ++c) {
+            GameObject* child = row->GetChild(c);
+            if (!child) continue;
+            if (child->name == "Name") {
+                m_nameOrigin[i] = child->transform.position;
+                if (auto* t = child->GetComponent<UIText>()) t->richText = true;   // 色付き文字列を流す
+                continue;
+            }
+            uimotion::Slot slot;
+            slot.go     = child;
+            slot.origin = child->transform.position;
+            slot.image  = child->GetComponent<UIImage>() != nullptr;
+            slot.text   = child->GetComponent<UIText>() != nullptr;
+            if (slot.image)     slot.color = ui.GetImageColor(child);
+            else if (slot.text) slot.color = ui.GetTextColor(child);
+            m_rowParts[i].push_back(slot);
+        }
+    }
+    if (GameObject* name = N("Pane_Name"))
+        if (auto* t = name->GetComponent<UIText>()) t->richText = true;
+    if (GameObject* pane = N("Pane")) {
+        m_pane.clear();
+        for (int c = 0, n = pane->GetChildCount(); c < n; ++c) {
+            GameObject* child = pane->GetChild(c);
+            if (!child) continue;
+            uimotion::Slot slot;
+            slot.go     = child;
+            slot.origin = child->transform.position;
+            slot.image  = child->GetComponent<UIImage>() != nullptr;
+            slot.text   = child->GetComponent<UIText>() != nullptr;
+            if (slot.image)     slot.color = ui.GetImageColor(child);
+            else if (slot.text) slot.color = ui.GetTextColor(child);
+            m_pane.push_back(slot);
+        }
+    }
+    m_intro = 0.0f;
+    // 1 フレーム目から «出ていない» で描く。
+    PaintRows(0.0f);
+    m_paneClock = -introDelay;   // パネルも行と同じ拍で最初の 1 回を出す
+    PaintPane();
+}
+
+inline void StageSelectComponent::PaintRows(float dt)
+{
+    for (int i = 0; i < kRows; ++i) {
+        GameObject* row = m_row[i];
+        if (!row) continue;
+        const float t     = uimotion::Stagger(m_intro - introDelay, i, introStagger, introSeconds);
+        const float e     = uimotion::OutCubic(t);
+        const float alpha = uimotion::OutQuint(t * 1.25f);
+        row->transform.position = { m_rowOrigin[i].x + introSlide * (1.0f - e),
+                                    m_rowOrigin[i].y, m_rowOrigin[i].z };
+        for (uimotion::Slot& part : m_rowParts[i]) {
+            if (!part.go) continue;
+            const ::fbzz::math::Vector4 c = { part.color.x, part.color.y, part.color.z,
+                                              part.color.w * alpha };
+            if (part.image)     ui.SetImageColor(part.go, c);
+            else if (part.text) ui.SetTextColor(part.go, c);
+        }
+        // 選択中の行は名前が芯から押し出される。戻りは寄りより遅く。
+        const bool sel = (i == m_cursor);
+        m_nudge[i] = uimotion::Approach(m_nudge[i], sel ? 1.0f : 0.0f, dt, sel ? 0.08f : 0.16f);
+        if (GameObject* name = ui.Find(row, "Name")) {
+            name->transform.position = { m_nameOrigin[i].x + nameNudge * uimotion::OutCubic(m_nudge[i]),
+                                         m_nameOrigin[i].y, m_nameOrigin[i].z };
+            // 出現は解読、選ばれた直後は走査 1 本、それ以外は 1 色。
+            std::string rich;
+            const std::uint32_t tick = static_cast<std::uint32_t>(m_intro * 30.0f);
+            if (t < 1.0f) {
+                rich = textfx::Decode(m_nameText[i], t, 0x3A7Fu + static_cast<std::uint32_t>(i), tick,
+                                      m_nameColor[i], { 1.0f, 1.0f, 1.0f, 1.0f },
+                                      textfx::Mix(m_nameColor[i], { 0.0f, 0.0f, 0.0f, 1.0f }, 0.35f));
+            } else if (sel && m_selSince < 0.55f) {
+                rich = textfx::Sweep(m_nameText[i], m_nameColor[i], { 1.0f, 1.0f, 1.0f, 1.0f },
+                                     -0.4f + 1.8f * (m_selSince / 0.55f), 0.35f);
+            } else {
+                rich = textfx::Wrap(m_nameText[i], m_nameColor[i]);
+            }
+            if (rich != m_nameRich[i]) { ui.SetText(name, rich); m_nameRich[i] = std::move(rich); }
+            ui.SetTextColor(name, { 1.0f, 1.0f, 1.0f, alpha });
+        }
+    }
+}
+
+inline void StageSelectComponent::PaintPane()
+{
+    // 見出しは解読で出す。他の子は位置と α だけ (数字まで乱すと記録が読めない)。
+    if (GameObject* name = N("Pane_Name")) {
+        const float p = std::clamp(m_paneClock / (std::max)(paneSeconds * 1.4f, 0.05f), 0.0f, 1.0f);
+        const ::fbzz::math::Vector4 base = { 0.949f, 0.941f, 0.925f, 1.0f };
+        std::string rich = textfx::Decode(m_paneNameText, p, 0xC0FFEEu + static_cast<std::uint32_t>(m_cursor),
+                                          static_cast<std::uint32_t>(m_paneClock * 30.0f), base,
+                                          { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.45f, 0.46f, 0.50f, 0.9f });
+        if (rich != m_paneNameRich) { ui.SetText(name, rich); m_paneNameRich = std::move(rich); }
+    }
+    for (std::size_t i = 0; i < m_pane.size(); ++i) {
+        uimotion::Slot& slot = m_pane[i];
+        if (!slot.go) continue;
+        const float t = uimotion::Stagger(m_paneClock, static_cast<int>(i), paneStagger, paneSeconds);
+        const ::fbzz::math::Vector4 c =
+            uimotion::Place(slot, t, { paneSlide, 0.0f, 0.0f }, uimotion::OutQuint(t * 1.25f));
+        if (slot.image)     ui.SetImageColor(slot.go, c);
+        else if (slot.text) ui.SetTextColor(slot.go, c);
+    }
 }
 
 inline void StageSelectComponent::Refresh()
@@ -122,12 +285,13 @@ inline void StageSelectComponent::Refresh()
         char no[8] = {};
         std::snprintf(no, sizeof(no), "%02d", i + 1);
         if (GameObject* t = ui.Find(row, "No"))   ui.SetText(t, no);
-        if (GameObject* t = ui.Find(row, "Name")) {
-            ui.SetText(t, open ? StageAt(i).name : "????");
-            ui.SetTextColor(t, sel ? (open ? ::fbzz::math::Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
-                                           : ::fbzz::math::Vector4{ 0.490f, 0.478f, 0.459f, 1.0f })
-                                   : (open ? ::fbzz::math::Vector4{ 0.463f, 0.455f, 0.439f, 1.0f }
-                                           : ::fbzz::math::Vector4{ 0.247f, 0.239f, 0.227f, 1.0f }));
+        // 名前は文言も色も控えるだけ。書くのは PaintRows (解読 / 走査 / α をまとめて書く)。
+        {
+            m_nameText[i] = open ? StageAt(i).name : "????";
+            m_nameColor[i] = sel ? (open ? ::fbzz::math::Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
+                                         : ::fbzz::math::Vector4{ 0.490f, 0.478f, 0.459f, 1.0f })
+                                 : (open ? ::fbzz::math::Vector4{ 0.463f, 0.455f, 0.439f, 1.0f }
+                                         : ::fbzz::math::Vector4{ 0.247f, 0.239f, 0.227f, 1.0f });
         }
         if (GameObject* t = ui.Find(row, "Rank"))
             ui.SetText(t, r.cleared ? StageProgressState::RankLabel(r.bestScore) : "");
@@ -148,7 +312,7 @@ inline void StageSelectComponent::RefreshPane()
     char no[16] = {};
     std::snprintf(no, sizeof(no), "STAGE %02d", m_cursor + 1);
     Text("Pane_Eyebrow", no);
-    Text("Pane_Name", open ? info.name : "????");
+    m_paneNameText = open ? info.name : "????";
 
     // 記録は «クリアしたことがある» ときだけ数字になる。
     const auto clock = [](float s) {
@@ -158,11 +322,14 @@ inline void StageSelectComponent::RefreshPane()
     };
     const std::string val[3] = {
         r.cleared ? clock(r.bestSeconds) : "--",
-        r.cleared ? std::to_string(r.bestChain) + " 体" : "--",
-        r.cleared ? std::to_string(r.bestPush) + " 体"  : "--",
+        r.cleared ? GameResultState::ChainText(r.bestChain) : "--",
+        r.cleared && r.leastDamage >= 0 ? GameResultState::DamageText(r.leastDamage) : "--",
     };
     for (int i = 0; i < 3; ++i) {
         const std::string p = "Pane_Row" + std::to_string(i) + "_";
+        // 見出しと達成ラインは採点表から引く。リザルトと別の文字を持つと片方だけ古くなる。
+        Text(p + "Name", GameResultState::kAxes[i].name);
+        Text(p + "Th",   GameResultState::kAxes[i].thresholds);
         Text(p + "Value", val[i]);
         Text(p + "Best",  val[i]);
         for (int k = 0; k < 3; ++k) {
@@ -174,8 +341,10 @@ inline void StageSelectComponent::RefreshPane()
     Text("Pane_Rank_Pts",    r.cleared ? std::to_string(r.bestScore) + " / 9" : "– / 9");
 
     // ボスの構成は初回クリアまで伏せる。選択画面を «予習» ではなく «記録» にする。
-    static constexpr const char* kBossKey[5] = { "BOSS", "HP", "PHASE 1", "PHASE 2", "SOLUTION" };
-    const char* bossVal[5] = { info.boss, info.hp, info.phase1, info.phase2, info.solution };
+    // WHY «HP» ではなく «PARTS» か: ボスに HP は無い。進行はもぎ取った部位の数だけで
+    //     刻まれる (Docs/break-parry.md)。数字を HP と名乗ると «削れば勝てる» と読まれる。
+    static constexpr const char* kBossKey[5] = { "BOSS", "PARTS", "PHASE 1", "PHASE 2", "SOLUTION" };
+    const char* bossVal[5] = { info.boss, info.parts, info.phase1, info.phase2, info.solution };
     const char* bossSub[5] = { "", "", info.phase1Sub, info.phase2Sub, "" };
     for (int i = 0; i < 5; ++i) {
         const std::string p = "Pane_Boss" + std::to_string(i) + "_";
@@ -202,14 +371,24 @@ inline void StageSelectComponent::Play(int index)
     audio.PlayOneShot(uinav::kConfirm);
 
     const std::string target = StageAt(index).scene;
-    if (!scene.LoadScene(target))
-        debug.LogError("StageSelect: シーンを読み込めません -> " + target +
+    if (!transition::Begin(target))
+        debug.LogError("StageSelect: シーンへの扉を開けません -> " + target +
                        " (StageCatalog.hpp の scene 名と Assets/Scenes/ を突き合わせること)");
 }
 
 inline void StageSelectComponent::OnUpdate()
 {
     const float dt = (std::max)(time.UnscaledDeltaTime(), 0.0f);
+
+    // 出現は扉 (ワイプ) が開いている最中も進める (止めると開き切った瞬間に飛び出す)。
+    m_intro     += dt;
+    m_paneClock += dt;
+    m_selSince  += dt;
+    PaintRows(dt);
+    PaintPane();
+
+    // 扉 (ワイプ)。塗っている / 剥がしている最中は入力を受けない。
+    if (transition::Drive(dt, scene, postprocess, m_wipeWriting, false)) return;
 
     // ---- カーソル（マウス / パッド）----
     // 行そのものが UIButton なので、芯の 4px や文字の字面ではなく行全体で拾える。
@@ -220,6 +399,7 @@ inline void StageSelectComponent::OnUpdate()
         m_cursor = hovered;
         audio.PlayOneShot(uinav::kMove);
         Refresh();
+        RestartPane();
     }
     for (int i = 0; i < kRows; ++i)
         if (m_row[i] && ui.WasClicked(m_row[i])) { Play(i); return; }
@@ -233,14 +413,15 @@ inline void StageSelectComponent::OnUpdate()
         m_repeat = 0.20f;
         audio.PlayOneShot(uinav::kMove);
         Refresh();
+        RestartPane();
     }
 
     if (input.GetActionDown("Submit")) {
         Play(m_cursor);
     } else if (input.GetActionDown("Cancel")) {
         audio.PlayOneShot(uinav::kCancel);
-        if (!scene.LoadScene(titleScene))
-            debug.LogError("StageSelect: シーンを読み込めません -> " + titleScene);
+        if (!transition::Begin(titleScene))
+            debug.LogError("StageSelect: シーンへの扉を開けません -> " + titleScene);
     }
 }
 

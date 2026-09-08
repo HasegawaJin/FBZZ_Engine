@@ -18,6 +18,7 @@
 #include <Scripts/Player/PlayerComponent.hpp>
 #include <Scripts/Utils/LoopVoice.hpp>
 #include <Scripts/Utils/ManagerWatch.hpp>
+#include <Scripts/Utils/SceneTransition.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <string>
@@ -37,11 +38,11 @@ public:
     //   のは盤面で最も重い壊れ方なのに、原因は画面のどこにも出ない。
     //   BossHealthBarComponent と同じく、明示の割り当てを先に見て、
     //   空のときだけ型で探す。
-    FBZZ_GROUP("Boss")
-    FBZZ_REF(GameObject, bossObject, "Boss")
+    FBZZ_GROUP("ボス")
+    FBZZ_REF(GameObject, bossObject, "ボス")
     FBZZ_TOOLTIP("これを倒したらクリア。未設定なら IBoss を実装したオブジェクトを盤面から探す")
 
-    FBZZ_GROUP("Scenes")
+    FBZZ_GROUP("シーン")
     FBZZ_FIELD(std::string, resultScene, "Result", "Result Scene")
     FBZZ_FIELD_RANGE(float, endDelay, 0.8f, "End Delay", 0.0f, 5.0f)
     // WHY ボス撃破だけ別の待ちを持つか:
@@ -71,9 +72,9 @@ public:
     FBZZ_FIELD_RANGE(float, ambienceVolume, 0.30f, "Arena", 0.0f, 1.0f)
     FBZZ_TOOLTIP("アリーナの環境音の音量。0 で鳴らさない")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD_READ_ONLY(float, debugElapsed, 0.0f, "Elapsed")
-    FBZZ_FIELD_READ_ONLY(std::string, debugBoss, "", "Boss Object")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(float, debugElapsed, 0.0f, "経過")
+    FBZZ_FIELD_READ_ONLY(std::string, debugBoss, "", "ボスのオブジェクト")
     FBZZ_TOOLTIP("勝利条件として見ている相手。空ならボスがまだ眠っている")
     FBZZ_FIELD_READ_ONLY(std::string, debugOutcome, "-", "Outcome")
 
@@ -200,10 +201,18 @@ inline void GameFlowComponent::BeginEnd(bool victory)
 inline void GameFlowComponent::RefreshHud()
 {
     if (GameObject* text = scene.Find(objectiveTextName)) {
-        // 目的は «削り切る» ではなく «転ばせる»。極を乗せる相手はボスの脚で、
-        // 異極を対で作ると引き合ってもげる ─ それを 1 行で言い切る。
-        ui.SetText(text, m_ending ? (m_victory ? "AREA CLEAR" : "SYSTEM DOWN")
-                                  : "CHARGE OPPOSITE POLES ON ITS LEGS");
+        // 目的は «削り切る» ではなく «弾いて崩し、とどめで脚を落とす»。倒れている間だけ
+        // 言い方を変える ─ その 5 秒に何を押すかが、この遊びで一番迷う所だから。
+        // WHY キー名を書かないか: 弾きの割り当ては差し替えられる (OPTIONS の parry 行)
+        //     し、既定も動く ─ 実際 Q から右クリックへ移した後もここだけ [Q] のまま
+        //     残っていた。文言は «何をするか» だけを言い、どのキーかは OPTIONS と
+        //     操作案内 (UiHintBar) に任せる。
+        const char* objective = "PARRY  >  BREAK  >  EXECUTE A LEG";
+        if (!m_ending)
+            if (GameObject* boss = FindBoss())
+                if (const auto* iboss = IBoss::Of(boss))
+                    if (iboss->IsToppled()) objective = "EXECUTE!  GET CLOSE TO A LEG";
+        ui.SetText(text, m_ending ? (m_victory ? "AREA CLEAR" : "SYSTEM DOWN") : objective);
     }
 }
 
@@ -276,18 +285,21 @@ inline void GameFlowComponent::OnUpdate()
     GameResultState::victory = m_victory;
     GameResultState::clearSeconds = m_elapsed;
     GameResultState::defeatedEnemies = combat ? combat->Kills() : 0;
-    GameResultState::enemyImpacts = combat ? combat->EnemyImpacts() : 0;
-    GameResultState::anchorImpacts = combat ? combat->AnchorImpacts() : 0;
-    // ランク評価の 3 軸のうち、時間以外の 2 つ。引き (まとめた数) と押し (落とした数) を
-    // 別々に運ぶ (Docs/game-flow.md「評価とランク」)。
-    GameResultState::bestChain = combat ? combat->BestChain() : 0;
-    GameResultState::pushKills = combat ? combat->PushKills() : 0;
+    // ランク評価の 3 軸のうち、時間以外の 2 つ。攻め (途切れなかった斬撃) と
+    // 守り (受けた量) を別々に運ぶ (Docs/game-flow.md「評価とランク」)。
+    GameResultState::bestChain     = combat ? combat->BestChain() : 0;
+    GameResultState::damageTaken   = combat ? combat->DamageTaken() : 0;
+    GameResultState::perfectDodges = combat ? combat->PerfectDodges() : 0;
 
     // WHY 戻り値を見るか: 読み込めないと «決着はついたのに何も起きない» で止まる。
     //     この関数はここまで来ると毎フレーム通るので、黙って捨てると同じ失敗を
     //     延々と繰り返しながら画面には何も出ない、という一番追いにくい形になる。
     //     1 度だけ名指しで言い、以後は試み続ける (アセットを直せばその場で復帰する)。
-    if (!scene.LoadScene(resultScene) && !m_warnedNoResultScene) {
+    // 扉 (ワイプ) で塗ってから切り替える。進めて描くのは ScreenEffectManager。
+    // 塗っている最中はここへ毎フレーム来ても何もしない。切り替えに失敗すると扉は
+    // 開き直す (Idle へ戻る) ので、また塗り始める ─ 直せばその場で復帰する。
+    if (transition::Active()) return;
+    if (!transition::Begin(resultScene) && !m_warnedNoResultScene) {
         m_warnedNoResultScene = true;
         debugOutcome = "Result scene missing";
         debug.LogError("GameFlowComponent could not load the result scene '" + resultScene

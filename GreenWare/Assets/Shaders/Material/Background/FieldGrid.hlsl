@@ -45,9 +45,9 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float4 horizonColor;
     /// 天頂の色。ほぼ黒。
     float4 zenithColor;
-    /// ＋極の接地色。PolarityTypes::kColorPlus をスクリプトが送る。
+    /// 右刀の接地色。BladeColors::kColorRight をスクリプトが送る。
     float4 plusColor;
-    /// −極の接地色。PolarityTypes::kColorMinus をスクリプトが送る。
+    /// 左刀の接地色。BladeColors::kColorLeft をスクリプトが送る。
     float4 minusColor;
 
     /// 細線の間隔 [m]。

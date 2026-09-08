@@ -26,7 +26,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector4.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Title/ElectrodePole.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -81,7 +81,7 @@ struct ElectrodeFieldStyle {
     ///   力線どうしは交わらない性質から入れ子の束になり、間が編んだように詰まる。
     float seedStagger = 0.0f;
 
-    /// 根元の色 = この極の極性色。ElectrodeRig が PolarityTypes から入れる。
+    /// 根元の色 = この極の極性色。ElectrodeRig が ElectrodePole から入れる。
     Vector4 color     = { 1.0f, 0.16f, 0.18f, 1.0f };
     /// 相手の極まで届いた線の先端の色 = 逆極の極性色。対になっていることを線で示す。
     Vector4 tipColor  = { 0.10f, 0.35f, 1.00f, 1.0f };
@@ -123,7 +123,7 @@ struct ElectrodeFieldStyle {
 class ElectrodeFieldLines {
 public:
     /// 毎フレーム呼ぶ。origin と charges はワールド座標。
-    void Update(Script& owner, Polarity polarity, const Vector3& origin,
+    void Update(Script& owner, Pole pole, const Vector3& origin,
                 const std::vector<ElectrodeCharge>& charges,
                 const ElectrodeFieldStyle& style, float dt);
     /// 線ごと片付ける。
@@ -207,7 +207,7 @@ inline bool ElectrodeFieldLines::BuildPath(std::vector<Vector3>& out, const Vect
     return false;
 }
 
-inline void ElectrodeFieldLines::Update(Script& owner, Polarity polarity, const Vector3& origin,
+inline void ElectrodeFieldLines::Update(Script& owner, Pole pole, const Vector3& origin,
                                         const std::vector<ElectrodeCharge>& charges,
                                         const ElectrodeFieldStyle& style, float dt)
 {
@@ -222,7 +222,7 @@ inline void ElectrodeFieldLines::Update(Script& owner, Polarity polarity, const 
     m_phase = std::fmod(m_phase + dt, 1024.0f);
 
     // ＋は場に沿って外へ、−は場を遡って外へ。符号 1 つで «出る / 入る» が入れ替わる。
-    const float flow = polarity == Polarity::Minus ? -1.0f : 1.0f;
+    const float flow = pole == Pole::Minus ? -1.0f : 1.0f;
     // 輝点の流れる向きは «電荷から見た向き» に合わせる。−極は根元へ吸い込まれて見える。
     const float travel = style.travel * flow;
 

@@ -12,7 +12,7 @@ render_queue = 4000
 # 下地は «消灯した装置の中»。真っ黒にすると手前の黒い UI が浮くので、
 # わずかに青を残した炭色にしてある。
 baseColor = [ 0.043, 0.047, 0.055, 1.0 ]
-# 極の色は PolarityTypes の ＋ / − と同じ芯 (Menu_Bar_red / _blue の実測値)。
+# 色は BladeColors の 右 / 左 と同じ芯 (Menu_Bar_red / _blue の実測値)。
 plusColor = [ 1.0, 0.415686, 0.360784, 1.0 ]
 minusColor = [ 0.388235, 0.643137, 1.0, 1.0 ]
 glowStrength = 0.16
@@ -28,5 +28,16 @@ phase = 0.0
 # (後ろに何も無い画面 = Options / StageSelect の見え方) にしておく。
 coverage = 1.0
 edgeCoverage = 0.35
+# ── 場 (2026-09-07) ──────────────────────────────────────────────────────
+# 磁力線。＋ (左下) から − (右上) へ張る双極子の流線。density は整数にすること
+# (2 極を結ぶ線分で流線関数が 1 周ぶん飛ぶ。整数なら飛びが線の番号に吸われる)。
+fieldStrength = 0.075
+fieldDensity = 14.0
+fieldSpeed = 0.045
+# 塵。画面ピクセル基準の格子 1 セルに 1 粒。数を増やしたいなら scale を下げる。
+moteStrength = 0.30
+moteScale = 96.0
+# 低周波の霞。奥行きのムラ。上げすぎると «雲» になる。
+hazeStrength = 0.10
 # NOTE: 後ろに 3D が居る画面は ScreenDressingComponent が coverage を 0.1 前後まで
 #       下げる。額縁 (edgeCoverage) は coverage と独立に効くので、中央だけが抜ける。

@@ -7,7 +7,7 @@
 /// ここが送るのは「マテリアルには置けないもの」だけ:
 ///   - 電極の位置と極性 — ElectrodeRig がカーソル追従で毎フレーム動かす
 ///   - 時間             — ジオメトリ描画では PostProcConstants (b6) の time が束縛されない
-///   - 極性色           — [[PolarityTypes]] が正本。.mat へ写すと 12.2 の配色が二重管理になる
+///   - 極性色           — [[ElectrodePole]] が正本。.mat へ写すと 12.2 の配色が二重管理になる
 ///
 /// WHY 電極を型で探さないか:
 ///   ＋と−は別のコンポーネントなので、型で引くと 2 回走査したうえ «どちらが先か» で
@@ -24,7 +24,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Title/ElectrodeRig.hpp>
 #include <Scripts/Utils/GameCursorComponent.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Title/ElectrodePole.hpp>
 #include <cstddef>
 
 using namespace fbzz::scene;
@@ -46,7 +46,7 @@ class TitleFieldGridComponent : public Script {
     FBZZ_SCRIPT(TitleFieldGridComponent)
 
 public:
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugElectrodes, 0, "Electrodes")
     FBZZ_TOOLTIP("いま格子を歪ませている電極の数。0 のままなら送り先が届いていない "
                  "(FieldGrid.mat が付いていないか、電極がまだ OnStart を通っていない)")
@@ -71,8 +71,8 @@ inline void TitleFieldGridComponent::OnUpdate()
 
     // WHY 毎フレーム送り直すか: 色は変わらないが、Play/Stop の往復や .mat の再読み込みで
     //     per-instance の上書きが落ちる。書き込み 2 回で «落ちたら戻る» が保証できる。
-    instance.SetVector4(kFieldGridPlusId,  kColorPlus);
-    instance.SetVector4(kFieldGridMinusId, kColorMinus);
+    instance.SetVector4(kFieldGridPlusId,  kColorRight);
+    instance.SetVector4(kFieldGridMinusId, kColorLeft);
 
     // WHY 巻き取らないか: phase は輪の進み (r - phase * speed) にしか入らない。
     //     ハッシュへ渡す Beam の phase と違い、大きくしても縞へ潰れる場所が無い。
@@ -91,7 +91,7 @@ inline void TitleFieldGridComponent::OnUpdate()
         if (rig) {
             const Vector3 position = rig->Position();
             packed = { position.x, position.y, position.z,
-                       rig->Pole() == Polarity::Plus ? 1.0f : -1.0f };
+                       rig->PoleOf() == Pole::Plus ? 1.0f : -1.0f };
             ++active;
         }
         instance.SetVector4(kFieldGridElectrodeIds[slot], packed);

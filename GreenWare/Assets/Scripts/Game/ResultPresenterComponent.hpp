@@ -7,7 +7,7 @@
 ///   Canvas
 ///     Common        ─ ＋−マーク / 罫線 / STAGE 01 / ヒーロー語
 ///     Group_Clear   ─ 採点3項目 ＋ RANK（Group_Rank / Group_NoRank）
-///     Group_Failed  ─ ボスHPバー ＋ 経過時間・最大コンボ・押し込み撃破
+///     Group_Failed  ─ ボスHPバー ＋ 経過時間・最大連撃・被ダメージ
 ///     Actions       ─ Act0..2（Bar / Label / Hint）
 ///
 /// WHY 1 つの UIText に流し込まないか（旧実装からの変更）:
@@ -28,10 +28,11 @@
 #include <Scripts/Game/GameResultState.hpp>
 #include <Scripts/Game/ResultFieldGridComponent.hpp>
 #include <Scripts/Title/ScreenDressingComponent.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/UI/StageCatalog.hpp>
 #include <Scripts/UI/StageProgressState.hpp>
 #include <Scripts/UI/UiNavSe.hpp>
+#include <Scripts/Utils/SceneTransition.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
 #include <cmath>
@@ -48,14 +49,14 @@ class ResultPresenterComponent : public Script {
     FBZZ_SCRIPT(ResultPresenterComponent)
 
 public:
-    FBZZ_GROUP("Flow")
+    FBZZ_GROUP("流れ")
     FBZZ_FIELD(std::string, retryScene,  "Stage_01",    "RETRY")
     FBZZ_FIELD(std::string, selectScene, "StageSelect", "STAGE SELECT")
     FBZZ_FIELD(std::string, titleScene,  "Title",       "TITLE")
     FBZZ_FIELD(std::string, actorName,   "Player",      "Actor")
     FBZZ_TOOLTIP("右側に出すキャラクター。Victory / Lose ステートを持つ Animator が要る")
 
-    FBZZ_GROUP("Look")
+    FBZZ_GROUP("見た目")
     FBZZ_FIELD_COLOR(dotOnColor,  (::fbzz::math::Vector4{ 0.310f, 0.851f, 0.478f, 1.0f }), "Dot On")
     FBZZ_TOOLTIP("点の入った項目。Reference の rgb(79,217,122)")
     FBZZ_FIELD_COLOR(dotOffColor, (::fbzz::math::Vector4{ 0.169f, 0.180f, 0.200f, 1.0f }), "Dot Off")
@@ -64,32 +65,33 @@ public:
     FBZZ_FIELD_COLOR(rankBColor,  (::fbzz::math::Vector4{ 0.604f, 0.592f, 0.569f, 1.0f }), "Rank B")
     FBZZ_FIELD_COLOR(rankCColor,  (::fbzz::math::Vector4{ 0.420f, 0.408f, 0.384f, 1.0f }), "Rank C")
 
-    FBZZ_GROUP("Intro")
-    FBZZ_FIELD(float, introSpread,  34.0f, "Spread")
+    FBZZ_GROUP("導入")
+    FBZZ_FIELD(float, introSpread,  34.0f, "拡がり")
     FBZZ_TOOLTIP("＋と−の写しが離れて始まる距離 (px)。0 にすると演出が消える")
     FBZZ_FIELD(float, introSeconds, 0.52f, "Converge")
     FBZZ_TOOLTIP("2 極が寄り切るまでの秒数")
     FBZZ_FIELD(float, idleBreath,   1.6f,  "Breath")
 
     FBZZ_GROUP("Select")
-    FBZZ_FIELD(float, selectSlide,  10.0f, "Slide")
+    FBZZ_FIELD(float, selectSlide,  10.0f, "滑り")
     FBZZ_TOOLTIP("選択中の行が右へずれる量 (px)")
     FBZZ_FIELD(float, selectGhost,  5.0f,  "Ghost")
     FBZZ_TOOLTIP("選択中の行に出す＋−の色ずれ (px)。0 で消える")
-    FBZZ_FIELD(float, selectTravel, 15.0f, "Travel")
+    FBZZ_FIELD(float, selectTravel, 15.0f, "移動軌跡")
     FBZZ_TOOLTIP("選択が行から行へ移る速さ。大きいほど即座に飛ぶ")
     FBZZ_TOOLTIP("寄り切ったあとに残す色ずれ (px)。0 で完全に白へ収める")
 
-    FBZZ_GROUP("Debug")
-    FBZZ_FIELD(int, previewResult, 0, "Preview")
+    FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD(int, previewResult, 0, "プレビュー")
     FBZZ_TOOLTIP("エディタで見た目を確かめる用。0=実際の結果 / 1=CLEAR / 2=FAILED。"
                  "ゲームから来た結果を握り潰すので、確認が済んだら 0 へ戻すこと")
-    FBZZ_FIELD_READ_ONLY(std::string, debugCursor, "0", "Cursor")
+    FBZZ_FIELD_READ_ONLY(std::string, debugCursor, "0", "カーソル")
 
     void OnStart() override;
     void OnUpdate() override;
 
 private:
+    bool m_wipeWriting = false;   ///< 扉を自分で postprocess へ書いたか (transition::Drive)
     static constexpr int kActions = 3;
 
     [[nodiscard]] GameObject* N(std::string_view name) const { return scene.Find(std::string(name)); }
@@ -169,13 +171,13 @@ inline void ResultPresenterComponent::OnStart()
     // 下地の極を勝敗へ寄せる。勝ちは − (寒色) 側、負けは ＋ (暖色) 側。
     //
     // WHY 色ではなく «寄せ方» を渡すか: ここが知っているのは勝敗だけで、極が
-    //     何色かは知らない。配色を持っているのは向こう (と PolarityTypes) で、
+    //     何色かは知らない。配色を持っているのは向こう (と BladeColors) で、
     //     こちらが色を書くと極の配色を変えたときにリザルトだけ古い色で残る。
     //
     // WHY 勝ちを寒色にするか: 負けの画面は «焼けた» 側へ寄せたい。暖色を勝ちへ
     //     割り当てると、負けたときに画面が冷えて «静かに終わった» に見える。
     if (auto* dressing = scene.GetScript<ScreenDressingComponent>())
-        dressing->SetPolarityBias(m_victory ? -0.65f : 0.75f);
+        dressing->SetPoleBias(m_victory ? -0.65f : 0.75f);
 
     // ---- 右側のキャラクター。勝敗でクリップを差し替えて、あとはループに任せる ----
     // Animator の defaultStateName は Victory なので、負けたときだけ切り替えれば足りる。
@@ -276,8 +278,10 @@ inline void ResultPresenterComponent::OnStart()
     // そのままベストとして併記され、更新できたかどうかが読めない。
     GameResultState::CommitBest();
     if (m_victory) {
-        StageProgressState::EnsureInit();
-        StageProgressState::Commit(StageProgressState::cursor);
+        StageProgressState::EnsureInit(save);
+        if (!StageProgressState::Commit(StageProgressState::cursor, save))
+            debug.LogWarning("Result: 進行データを保存できませんでした ("
+                             + StageProgressState::ResolvePath() + ")");
     }
 }
 
@@ -285,32 +289,34 @@ inline void ResultPresenterComponent::FillClear()
 {
     const int score = GameResultState::Score();
     const int pts[3] = {
-        GameResultState::clearSeconds <= 180.0f ? 3 : GameResultState::clearSeconds <= 240.0f ? 2
-                                                  : GameResultState::clearSeconds <= 300.0f ? 1 : 0,
-        GameResultState::bestChain >= 5 ? 3 : GameResultState::bestChain >= 4 ? 2
-                                          : GameResultState::bestChain >= 3 ? 1 : 0,
-        GameResultState::pushKills >= 8 ? 3 : GameResultState::pushKills >= 5 ? 2
-                                          : GameResultState::pushKills >= 3 ? 1 : 0,
+        GameResultState::TimePoints(GameResultState::clearSeconds),
+        GameResultState::ChainPoints(GameResultState::bestChain),
+        GameResultState::DamagePoints(GameResultState::damageTaken),
     };
     const std::string value[3] = {
         Clock(GameResultState::clearSeconds),
-        std::to_string(GameResultState::bestChain) + " 体",
-        std::to_string(GameResultState::pushKills) + " 体",
+        GameResultState::ChainText(GameResultState::bestChain),
+        GameResultState::DamageText(GameResultState::damageTaken),
     };
     const StageRecord& rec = StageProgressState::stages[StageProgressState::cursor];
     const std::string best[3] = {
         rec.bestSeconds > 0.0f ? Clock(rec.bestSeconds) : "--",
-        rec.bestChain > 0 ? std::to_string(rec.bestChain) + " 体" : "--",
-        rec.bestPush  > 0 ? std::to_string(rec.bestPush)  + " 体" : "--",
+        rec.bestChain > 0 ? GameResultState::ChainText(rec.bestChain) : "--",
+        rec.leastDamage >= 0 ? GameResultState::DamageText(rec.leastDamage) : "--",
     };
+    // 被ダメージは «少ない方» が更新。他の 2 軸と向きが逆。
     const bool isNew[3] = {
         rec.bestSeconds <= 0.0f || GameResultState::clearSeconds < rec.bestSeconds,
         GameResultState::bestChain > rec.bestChain,
-        GameResultState::pushKills > rec.bestPush,
+        rec.leastDamage < 0 || GameResultState::damageTaken < rec.leastDamage,
     };
 
     for (int r = 0; r < 3; ++r) {
         const std::string p = "Clear_Row" + std::to_string(r) + "_";
+        // 見出しと達成ラインはシーンに焼かず採点表から流す。雑魚を畳んだ後も
+        // «押し込み撃破» の行が残っていたのは、ここが固定文字だったため。
+        Text(p + "Name", GameResultState::kAxes[r].name);
+        Text(p + "Th",   GameResultState::kAxes[r].thresholds);
         Text(p + "Value", value[r]);
         Text(p + "Pts",   std::to_string(pts[r]));
         // 更新した行は BEST 欄を今回の値に置き換えて、NEW を出す。
@@ -361,9 +367,11 @@ inline void ResultPresenterComponent::FillFailed()
         ui.SetImageFillAmount(fill, (pad + damaged) / (inner + pad * 2.0f));
     }
 
+    Text("Fail_Row1_Name",  GameResultState::kAxes[1].name);
+    Text("Fail_Row2_Name",  GameResultState::kAxes[2].name);
     Text("Fail_Row0_Value", Clock(GameResultState::clearSeconds));
-    Text("Fail_Row1_Value", std::to_string(GameResultState::bestChain) + " 体");
-    Text("Fail_Row2_Value", std::to_string(GameResultState::pushKills) + " 体");
+    Text("Fail_Row1_Value", GameResultState::ChainText(GameResultState::bestChain));
+    Text("Fail_Row2_Value", GameResultState::DamageText(GameResultState::damageTaken));
 }
 
 /// 見出しの導入。＋と−の写しが外から寄ってきて白い本体へ収束し、
@@ -398,13 +406,13 @@ inline void ResultPresenterComponent::UpdateIntro(float dt)
         Vector3 p = m_wordPlus->transform.position;
         p.x = m_wordX - gap - breath;
         m_wordPlus->transform.position = p;
-        ui.SetTextColor(m_wordPlus, Vector4{ kColorPlus.x, kColorPlus.y, kColorPlus.z, ghostA });
+        ui.SetTextColor(m_wordPlus, Vector4{ kColorRight.x, kColorRight.y, kColorRight.z, ghostA });
     }
     if (m_wordMinus) {
         Vector3 p = m_wordMinus->transform.position;
         p.x = m_wordX + gap + breath;
         m_wordMinus->transform.position = p;
-        ui.SetTextColor(m_wordMinus, Vector4{ kColorMinus.x, kColorMinus.y, kColorMinus.z, ghostA });
+        ui.SetTextColor(m_wordMinus, Vector4{ kColorLeft.x, kColorLeft.y, kColorLeft.z, ghostA });
     }
 
     // 本体は «2 極が重なってきたぶんだけ» 現れる。最初から白があると、
@@ -502,11 +510,11 @@ inline void ResultPresenterComponent::UpdateSelection(float dt)
 
     if (m_ghostPlus) {
         m_ghostPlus->transform.position  = Vector3{ baseX - gap, rowY, 0.0f };
-        ui.SetTextColor(m_ghostPlus,  Vector4{ kColorPlus.x,  kColorPlus.y,  kColorPlus.z,  a });
+        ui.SetTextColor(m_ghostPlus,  Vector4{ kColorRight.x,  kColorRight.y,  kColorRight.z,  a });
     }
     if (m_ghostMinus) {
         m_ghostMinus->transform.position = Vector3{ baseX + gap, rowY, 0.0f };
-        ui.SetTextColor(m_ghostMinus, Vector4{ kColorMinus.x, kColorMinus.y, kColorMinus.z, a });
+        ui.SetTextColor(m_ghostMinus, Vector4{ kColorLeft.x, kColorLeft.y, kColorLeft.z, a });
     }
 }
 
@@ -514,6 +522,9 @@ inline void ResultPresenterComponent::OnUpdate()
 {
     // リザルトはヒットストップやスローの影響を受けない。
     const float dt = (std::max)(time.UnscaledDeltaTime(), 0.0f);
+
+    // 扉 (ワイプ)。塗っている / 剥がしている最中は入力を受けない。
+    if (transition::Drive(dt, scene, postprocess, m_wipeWriting, false)) return;
 
     UpdateIntro(dt);
 
@@ -561,8 +572,8 @@ inline void ResultPresenterComponent::Submit(int index)
     if (m_targetStage[index] >= 0) StageProgressState::cursor = m_targetStage[index];
 
     audio.PlayOneShot(uinav::kConfirm);
-    if (!scene.LoadScene(target))
-        debug.LogError("ResultPresenter: シーンを読み込めません -> " + target);
+    if (!transition::Begin(target))
+        debug.LogError("ResultPresenter: シーンへの扉を開けません -> " + target);
 }
 
 } // namespace sandbox

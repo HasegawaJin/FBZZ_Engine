@@ -30,7 +30,7 @@
 #include <Scripts/Title/ElectrodeCore.hpp>
 #include <Scripts/Title/ElectrodeFieldLines.hpp>
 #include <Scripts/Utils/GameCursorComponent.hpp>
-#include <Scripts/Utils/PolarityTypes.hpp>
+#include <Scripts/Title/ElectrodePole.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -49,9 +49,9 @@ inline constexpr uint32_t kElectrodeChannelMinus = 1u << 1;
 inline constexpr uint32_t kElectrodeChannelBoth  =
     kElectrodeChannelPlus | kElectrodeChannelMinus;
 
-[[nodiscard]] inline uint32_t ElectrodeChannelOf(Polarity polarity)
+[[nodiscard]] inline uint32_t ElectrodeChannelOf(Pole pole)
 {
-    return polarity == Polarity::Minus ? kElectrodeChannelMinus : kElectrodeChannelPlus;
+    return pole == Pole::Minus ? kElectrodeChannelMinus : kElectrodeChannelPlus;
 }
 
 /// 電極 1 本の調整値。Plus/Minus コンポーネントが自分の FBZZ_FIELD から詰めて渡す。
@@ -148,13 +148,13 @@ struct ElectrodeTuning {
 class ElectrodeRig {
 public:
     /// OnStart から呼ぶ。エミッターが無ければ作り、力場の子を組み、登録簿へ載せる。
-    void Attach(Script& owner, Polarity polarity, const ElectrodeTuning& tuning);
+    void Attach(Script& owner, Pole pole, const ElectrodeTuning& tuning);
     /// OnUpdate から呼ぶ。調整値を流し込み、極どうしの運動を 1 ステップ進める。
     void Tick(Script& owner, const ElectrodeTuning& tuning, float dt);
     /// OnDestroy から呼ぶ。登録簿と放電を外す。力場の子は GameObject の破棄に随伴する。
     void Detach(const Script& owner);
 
-    [[nodiscard]] Polarity      Pole()     const { return m_polarity; }
+    [[nodiscard]] Pole    PoleOf()   const { return m_pole; }
     [[nodiscard]] Vector3 Position() const { return m_position; }
 
     /// 盤面に居る電極すべて。相手の型を知らずに走査するための窓口。
@@ -170,7 +170,7 @@ private:
     [[nodiscard]] static ParticleForceField* ResolveField(const Script& owner, EntityID id);
 
     /// 極とシミュレーション経路から既定の .mat を選ぶ。
-    [[nodiscard]] static const char* DefaultMaterialPath(Polarity polarity,
+    [[nodiscard]] static const char* DefaultMaterialPath(Pole pole,
                                                         ParticleSimulationMode mode);
     /// この rig が入れた既定の .mat か。ユーザーが差した素材は上書きしないための判定。
     [[nodiscard]] static bool IsDefaultMaterialPath(std::string_view path);
@@ -207,7 +207,7 @@ private:
     ElectrodeFieldLines             m_fieldLines;
     /// 力線を曲げる盤面の電荷。毎フレームの再確保を避けるための作業領域。
     std::vector<ElectrodeCharge>    m_charges;
-    Polarity      m_polarity = Polarity::Plus;
+    Pole      m_pole = Pole::Plus;
     EntityID      m_pullId   = EntityID::INVALID;
     EntityID      m_pushId   = EntityID::INVALID;
     EntityID      m_swirlId  = EntityID::INVALID;
@@ -252,25 +252,25 @@ inline ParticleForceField* ElectrodeRig::ResolveField(const Script& owner, Entit
     return object ? object->GetComponent<ParticleForceField>() : nullptr;
 }
 
-inline const char* ElectrodeRig::DefaultMaterialPath(Polarity polarity,
+inline const char* ElectrodeRig::DefaultMaterialPath(Pole pole,
                                                     ParticleSimulationMode mode)
 {
     if (mode == ParticleSimulationMode::Gpu) {
-        return polarity == Polarity::Minus
+        return pole == Pole::Minus
             ? "Assets/Materials/Effects/ElectricChargeMinusGPU.mat"
             : "Assets/Materials/Effects/ElectricChargePlusGPU.mat";
     }
-    return polarity == Polarity::Minus
+    return pole == Pole::Minus
         ? "Assets/Materials/Effects/ElectricChargeMinus.mat"
         : "Assets/Materials/Effects/ElectricChargePlus.mat";
 }
 
 inline bool ElectrodeRig::IsDefaultMaterialPath(std::string_view path)
 {
-    return path == DefaultMaterialPath(Polarity::Plus,  ParticleSimulationMode::Cpu)
-        || path == DefaultMaterialPath(Polarity::Plus,  ParticleSimulationMode::Gpu)
-        || path == DefaultMaterialPath(Polarity::Minus, ParticleSimulationMode::Cpu)
-        || path == DefaultMaterialPath(Polarity::Minus, ParticleSimulationMode::Gpu);
+    return path == DefaultMaterialPath(Pole::Plus,  ParticleSimulationMode::Cpu)
+        || path == DefaultMaterialPath(Pole::Plus,  ParticleSimulationMode::Gpu)
+        || path == DefaultMaterialPath(Pole::Minus, ParticleSimulationMode::Cpu)
+        || path == DefaultMaterialPath(Pole::Minus, ParticleSimulationMode::Gpu);
 }
 
 inline void ElectrodeRig::ApplySimulationMode(Script& owner, const ElectrodeTuning& tuning)
@@ -298,9 +298,9 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     //   CPU 用シェーダーを差したまま Gpu にすると «縮退した» とも言われないまま
     //   粒が 1 つも出ない。simulationMode に追従させて、そこを踏ませない。
     if (emitter.materialPath.empty() || IsDefaultMaterialPath(emitter.materialPath))
-        emitter.materialPath = DefaultMaterialPath(m_polarity, emitter.simulationMode);
+        emitter.materialPath = DefaultMaterialPath(m_pole, emitter.simulationMode);
 
-    emitter.forceFieldChannels = ElectrodeChannelOf(m_polarity);
+    emitter.forceFieldChannels = ElectrodeChannelOf(m_pole);
     emitter.receiveForceFields = true;
 
     emitter.maxParticles   = (std::max)(tuning.maxParticles, 1);
@@ -318,9 +318,9 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     emitter.velocityDamping = tuning.particleDamping;
     emitter.gravity        = Vector3::ZERO;
 
-    const Vector4 pole = PolarityColor(m_polarity);
-    emitter.colorStart = pole;
-    emitter.colorEnd   = { pole.x, pole.y, pole.z, 0.0f };
+    const Vector4 tint = PoleColor(m_pole);
+    emitter.colorStart = tint;
+    emitter.colorEnd   = { tint.x, tint.y, tint.z, 0.0f };
 
     // 寿命に沿った色。全キーが極性色の «比率» を保ち、白いキーを 1 本も置かない。
     //
@@ -347,10 +347,10 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     //     混ぜると中間が濁る。光として足し合わせたいので Linear を選ぶ。
     gradient.colorSpace    = ParticleColorSpace::Linear;
     const float hot = Max(tuning.hotCore, 0.05f);
-    gradient.keys[0] = { 0.00f, { pole.x * hot,  pole.y * hot,  pole.z * hot,  1.00f } };
-    gradient.keys[1] = { 0.18f, { pole.x,        pole.y,        pole.z,        1.00f } };
-    gradient.keys[2] = { 0.55f, { pole.x * 0.6f, pole.y * 0.6f, pole.z * 0.6f, 0.80f } };
-    gradient.keys[3] = { 1.00f, { pole.x * 0.2f, pole.y * 0.2f, pole.z * 0.2f, 0.00f } };
+    gradient.keys[0] = { 0.00f, { tint.x * hot,  tint.y * hot,  tint.z * hot,  1.00f } };
+    gradient.keys[1] = { 0.18f, { tint.x,        tint.y,        tint.z,        1.00f } };
+    gradient.keys[2] = { 0.55f, { tint.x * 0.6f, tint.y * 0.6f, tint.z * 0.6f, 0.80f } };
+    gradient.keys[3] = { 1.00f, { tint.x * 0.2f, tint.y * 0.2f, tint.z * 0.2f, 0.00f } };
 
     // 生まれた瞬間に立ち上がり、ほぼ最大のまま保ち、最後に畳んで消える。
     //
@@ -406,10 +406,10 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     emitter.noiseSpeed     = 2.0f;
 }
 
-inline void ElectrodeRig::Attach(Script& owner, Polarity polarity,
+inline void ElectrodeRig::Attach(Script& owner, Pole pole,
                                  const ElectrodeTuning& tuning)
 {
-    m_polarity = polarity;
+    m_pole = pole;
     m_anchor   = owner.transform.position;
     m_home     = m_anchor;
     m_position = m_home;
@@ -425,8 +425,8 @@ inline void ElectrodeRig::Attach(Script& owner, Polarity polarity,
     emitter.settings.duration = 0.0f; // 0 = 打ち切らない
     emitter.settings.playing  = true;
     emitter.settings.enabled  = true;
-    const uint32_t own      = ElectrodeChannelOf(m_polarity);
-    const uint32_t opposite = ElectrodeChannelOf(OppositeOf(m_polarity));
+    const uint32_t own      = ElectrodeChannelOf(m_pole);
+    const uint32_t opposite = ElectrodeChannelOf(OppositePole(m_pole));
     m_pullId  = MakeField(owner, "Pull",  ParticleForceFieldType::Attract, opposite);
     m_pushId  = MakeField(owner, "Push",  ParticleForceFieldType::Repulse, own);
     m_swirlId = MakeField(owner, "Swirl", ParticleForceFieldType::Vortex,  kElectrodeChannelBoth);
@@ -536,7 +536,7 @@ inline void ElectrodeRig::Integrate(Script& owner, const ElectrodeTuning& tuning
         // 最接近距離で coupling そのもの、そこから 1/d^2 で落ちる。素の 1/d^2 は
         // 接触寸前に発散して、ぶつかった瞬間に極が画面外へ弾き飛ばされる。
         const float falloff = minGapSq / Max(dist * dist, minGapSq);
-        const float sign    = IsAttracting(m_polarity, other->m_polarity) ? 1.0f : -1.0f;
+        const float sign    = ArePolesAttracting(m_pole, other->m_pole) ? 1.0f : -1.0f;
         force = force + dir * (sign * tuning.coupling * falloff);
 
         // 逆極どうしは放っておくと重なって 1 点に潰れる。近すぎるぶんだけ押し戻す。
@@ -617,10 +617,10 @@ inline void ElectrodeRig::Tick(Script& owner, const ElectrodeTuning& tuning, flo
 
 inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tuning, float dt)
 {
-    // 色の対応は PolarityTypes が唯一の正本。ここで赤青を書き直さない。
+    // 色の対応は ElectrodePole が唯一の正本。ここで赤青を書き直さない。
     ElectrodeCoreStyle core = tuning.core;
-    core.color = PolarityColor(m_polarity);
-    m_core.Update(owner, m_polarity, m_position, core, dt);
+    core.color = PoleColor(m_pole);
+    m_core.Update(owner, m_pole, m_position, core, dt);
 
     // 力線は盤面の全電荷が作る場をなぞる。相手の型を知らずに済むよう、
     // 登録簿から «位置と符号» だけを写して渡す。
@@ -628,15 +628,15 @@ inline void ElectrodeRig::UpdateCharge(Script& owner, const ElectrodeTuning& tun
     m_charges.reserve(s_rigs.size());
     for (const ElectrodeRig* rig : s_rigs)
         m_charges.push_back({ rig->m_position,
-                              rig->m_polarity == Polarity::Minus ? -1.0f : 1.0f });
+                              rig->m_pole == Pole::Minus ? -1.0f : 1.0f });
 
     ElectrodeFieldStyle field = tuning.field;
-    field.color    = PolarityColor(m_polarity);
-    field.tipColor = PolarityColor(OppositeOf(m_polarity));
+    field.color    = PoleColor(m_pole);
+    field.tipColor = PoleColor(OppositePole(m_pole));
     // ＋と−で種を半間隔ずらす。同じ場の同じ族なので、揃えると同じ曲線を 2 度描く
     // (ElectrodeFieldStyle::seedStagger の WHY を参照)。
-    field.seedStagger = m_polarity == Polarity::Minus ? 0.5f : 0.0f;
-    m_fieldLines.Update(owner, m_polarity, m_position, m_charges, field, dt);
+    field.seedStagger = m_pole == Pole::Minus ? 0.5f : 0.0f;
+    m_fieldLines.Update(owner, m_pole, m_position, m_charges, field, dt);
 }
 
 inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tuning, float dt)
@@ -645,7 +645,7 @@ inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tunin
     //   放電は対の持ち物で、両極が張ると同じ 2 点に 2 束が重なる。見た目は
     //   «明るさだけ倍の 1 本» になり、本数を増やした意味が消えたうえに負荷だけ倍になる。
     //   ＋から−へ流れる向きは電流の慣習と一致するので、担当を＋に決めるのは恣意的でない。
-    if (m_polarity != Polarity::Plus) {
+    if (m_pole != Pole::Plus) {
         if (!m_arcs.empty()) {
             for (ElectricArcBundle& bundle : m_arcs) bundle.Detach(owner);
             m_arcs.clear();
@@ -655,7 +655,7 @@ inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tunin
 
     std::size_t used = 0;
     for (const ElectrodeRig* other : s_rigs) {
-        if (other == this || other->m_polarity == m_polarity) continue;
+        if (other == this || other->m_pole == m_pole) continue;
 
         if (used >= m_arcs.size()) {
             m_arcs.emplace_back();
@@ -664,10 +664,10 @@ inline void ElectrodeRig::UpdateArcs(Script& owner, const ElectrodeTuning& tunin
             m_arcs.back().SetKey("Electrode" + std::to_string(used));
         }
 
-        // 色の対応は PolarityTypes が唯一の正本。ここで赤青を書き直さない。
+        // 色の対応は ElectrodePole が唯一の正本。ここで赤青を書き直さない。
         ElectricArcStyle style = tuning.arc;
-        style.fromColor = PolarityColor(m_polarity);
-        style.toColor   = PolarityColor(other->m_polarity);
+        style.fromColor = PoleColor(m_pole);
+        style.toColor   = PoleColor(other->m_pole);
         m_arcs[used].Update(owner, m_position, other->m_position, style, dt);
         ++used;
     }

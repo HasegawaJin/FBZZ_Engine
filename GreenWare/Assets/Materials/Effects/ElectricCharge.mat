@@ -1,7 +1,7 @@
 # FBZZ Engine
 # ElectricCharge.mat
 # 無極の電荷パーティクル。chargeSign = 0 なので記号を持たず、丸い芯だけで光る。
-# PolarityTypes.hpp の Polarity::None (帯電していない状態) に対応する。
+# BladeColors.hpp の BladeSide::None (帯電していない状態) に対応する。
 # ＋ / − を出したいときは ElectricChargePlus.mat / ElectricChargeMinus.mat を使う。
 version = 1
 name = 'ElectricCharge'

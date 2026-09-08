@@ -1,19 +1,23 @@
 [editor]
 format_version = 2
-hidden_objects = [ 'a1000001-0000-0000-0000-000000000030' ]
+hidden_objects = []
 locked_objects = []
-
-    [[editor.game_objects]]
-    component_order = [ 'UI Text' ]
-    instance_id = 'a1000001-0000-0000-0000-000000000013'
 
     [[editor.game_objects]]
     component_order = [ 'UI Button' ]
     instance_id = 'a1000001-0000-0000-0000-000000000008'
 
     [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000013'
+
+    [[editor.game_objects]]
     component_order = [ 'UI Canvas' ]
     instance_id = 'a1000001-0000-0000-0000-000000000001'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '03e3446e-4ad3-468e-86a4-0c6d6bfddda0'
 
     [[editor.game_objects]]
     component_order = [ 'UI Image' ]
@@ -25,11 +29,11 @@ locked_objects = []
 
     [[editor.game_objects]]
     component_order = [ 'UI Image' ]
-    instance_id = 'a1000001-0000-0000-0000-000000000015'
+    instance_id = 'a1000001-0000-0000-0000-000000000006'
 
     [[editor.game_objects]]
     component_order = [ 'UI Image' ]
-    instance_id = 'a1000001-0000-0000-0000-000000000006'
+    instance_id = 'a1000001-0000-0000-0000-000000000015'
 
     [[editor.game_objects]]
     component_order = [ 'UI Image' ]
@@ -38,6 +42,10 @@ locked_objects = []
     [[editor.game_objects]]
     component_order = [ 'UI Image' ]
     instance_id = 'a1000001-0000-0000-0000-000000000004'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '605bc126-68b1-4926-aaa0-6bf349cfe32d'
 
     [[editor.game_objects]]
     component_order = [ 'UI Image' ]
@@ -52,12 +60,21 @@ locked_objects = []
     instance_id = 'a1000001-0000-0000-0000-000000000017'
 
     [[editor.game_objects]]
-    component_order = [ 'Script:TitleMenuComponent' ]
+    component_order = [
+        'Script:TitleMenuComponent',
+        'Script:ScreenDressingComponent',
+        'Script:UiRevealComponent',
+        'Script:UiHintBarComponent'
+    ]
     instance_id = 'a1000001-0000-0000-0000-000000000018'
 
     [[editor.game_objects]]
     component_order = [ 'UI Image', 'Script:GameCursorComponent' ]
     instance_id = 'a1000001-0000-0000-0000-000000000019'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '1df5b3fa-6c01-4351-9a1a-2b41d2a3928d'
 
     [[editor.game_objects]]
     component_order = [ 'UI Image' ]
@@ -98,6 +115,22 @@ locked_objects = []
     [[editor.game_objects]]
     component_order = [ 'UI Button' ]
     instance_id = 'a1000001-0000-0000-0000-000000000011'
+
+    [[editor.game_objects]]
+    component_order = [ 'Script:GameSettingsComponent' ]
+    instance_id = 'a1000001-0000-0000-0000-000000000020'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '36c4c505-e595-4323-a644-8a805fd32211'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'a7543dd7-bd18-4508-a666-9e417d1bee72'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = '14bf5cd5-69d6-461a-adca-254f9dd03b89'
 
 [meta]
 guid = '32b164641e684ec1a7b325764a8b75d3'
