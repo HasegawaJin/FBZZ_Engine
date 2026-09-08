@@ -34,6 +34,7 @@ namespace fbzz::physics
 
         void ResetLambda() override;
         void SolvePosition(float h) override;
+        void SolveVelocity(float h) override;
 
         /// 直前の substep で押し返した深さ [m]。0 なら接触していない。
         [[nodiscard]] float GetPenetration() const { return m_penetration; }

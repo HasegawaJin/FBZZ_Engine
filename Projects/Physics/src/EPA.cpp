@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <vector>
 
@@ -111,14 +112,28 @@ namespace fbzz::physics
             outB = face.verts[0].suppB * u + face.verts[1].suppB * v + face.verts[2].suppB * w;
         }
 
+        /// ポリトープが縮退して貫通量を出せなかったとみなす閾値。
+        /// 原点がポリトープの «面の上» に乗っている状態で、深さ 0 の接触は解決に使えない。
+        constexpr float kDegenerateDepth = 1.0e-5f;
+
+        /// ポリトープの面数の上限。
+        /// WHY: 原点がポリトープの稜線上に乗る配置 (球どうしを 1 軸方向にだけずらす等) では、
+        ///      同一平面の面が «向きだけ逆» の対で残り、シルエットエッジが打ち消し
+        ///      合わなくなる。1 反復ごとに面が増え続け、maxIter に達する前に
+        ///      メモリと O(E²) のエッジ探索で事実上停止する (テストがハングした原因)。
+        ///      反復数とは別に面数でも必ず止まるようにする。
+        constexpr std::size_t kMaxFaces = 256;
+
         void RefineCardinalAxis(const void* shapeA, SupportFn supportA,
                                 const void* shapeB, SupportFn supportB,
-                                EPAResult& result)
+                                EPAResult& result,
+                                bool force)
         {
             const float ax = std::abs(result.normal.x);
             const float ay = std::abs(result.normal.y);
             const float az = std::abs(result.normal.z);
-            if (std::max({ ax, ay, az }) >= 0.75f) return;
+            // force = ポリトープからは深さが出なかった。軸ごとの重なりで測り直す。
+            if (!force && std::max({ ax, ay, az }) >= 0.75f) return;
 
             const math::Vector3 axes[6] = {
                 math::Vector3::RIGHT, -math::Vector3::RIGHT,
@@ -186,8 +201,19 @@ namespace fbzz::physics
         faces.push_back(MakeFace(v[0], v[3], v[1]));
         faces.push_back(MakeFace(v[1], v[3], v[2]));
 
+        // 収束せずに打ち切ったか。true ならポリトープの出す深さは信用しない。
+        bool abandoned = false;
+
         for (int iter = 0; iter < maxIter; ++iter)
         {
+            // 面が増え続けている = 縮退した配置で拡張が収束していない。
+            // ここで抜けて、その時点で最も近い面から近似値を作る。
+            if (faces.size() > kMaxFaces)
+            {
+                abandoned = true;
+                break;
+            }
+
             // 原点に最も近い面を選ぶ
             int   minIdx  = 0;
             float minDist = std::numeric_limits<float>::max();
@@ -223,7 +249,8 @@ namespace fbzz::physics
                 result.normal = n;
                 result.depth  = minDist;
                 result.valid  = true;
-                RefineCardinalAxis(shapeA, supportA, shapeB, supportB, result);
+                RefineCardinalAxis(shapeA, supportA, shapeB, supportB, result,
+                                   minDist <= kDegenerateDepth);
                 return result;
             }
 
@@ -268,7 +295,10 @@ namespace fbzz::physics
             result.normal = faces[minIdx].normal;
             result.depth  = minDist;
             result.valid  = true;
-            RefineCardinalAxis(shapeA, supportA, shapeB, supportB, result);
+            // 打ち切りで抜けた場合、原点が面の上に乗ったまま (深さ 0) のことがある。
+            // その値では «接触しているのに押し戻せない» ので、軸ごとの重なりで測り直す。
+            RefineCardinalAxis(shapeA, supportA, shapeB, supportB, result,
+                               abandoned || minDist <= kDegenerateDepth);
         }
 
         return result;

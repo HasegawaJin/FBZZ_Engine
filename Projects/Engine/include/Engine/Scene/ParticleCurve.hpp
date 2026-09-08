@@ -49,7 +49,13 @@ enum class ParticleCurveInterpolation : uint8_t {
 // (GPU 側は ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation)。
 inline float ApplyCurveInterpolation(float alpha, ParticleCurveInterpolation mode)
 {
-    if (mode == ParticleCurveInterpolation::Step) return 0.0f;
+    // Step は次のキーへ «到達した時点で» 切り替える。区間は [前のキー, 次のキー)。
+    //
+    // WHY 常に 0 にしないか: 評価は «次のキー以下» の区間で行われるので、常に 0 だと
+    //     最後のキーの値はその時刻を越えたときにしか出ない。寿命 0..1 のカーブでは
+    //     t=1.0 が最後のフレームなので、フリップブックの最終コマや消え際の点滅が
+    //     一度も表示されないまま粒子が死ぬ。
+    if (mode == ParticleCurveInterpolation::Step) return alpha >= 1.0f ? 1.0f : 0.0f;
     if (mode == ParticleCurveInterpolation::Smooth) return alpha * alpha * (3.0f - 2.0f * alpha);
     return alpha;
 }

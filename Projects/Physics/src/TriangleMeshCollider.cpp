@@ -120,7 +120,12 @@ namespace fbzz::physics
         : m_localPositions(positions)
         , m_indices(indices)
     {
-        assert(indices.size() % 3 == 0 && "インデックス数は 3 の倍数である必要があります");
+        // 端数は «回復可能なエラー» として捨てる。インデックスの出どころは
+        // インポートしたアセットとスクリプトの手続きメッシュで、どちらもプログラマーが
+        // 書いた値ではない ── 壊れた 1 ファイルでプロセスごと落とす種類の誤りではない。
+        // ここで切っておかないと BVH (indices/3) と m_indices が食い違う。
+        m_indices.resize(m_indices.size() - m_indices.size() % 3);
+
         // 初期状態: スケール 1、原点に配置
         RebuildBVH(math::Vector3::ZERO, math::Quaternion::Identity(), {1.0f, 1.0f, 1.0f});
     }

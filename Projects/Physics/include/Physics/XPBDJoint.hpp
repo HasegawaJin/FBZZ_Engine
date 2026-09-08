@@ -103,6 +103,21 @@ namespace fbzz::physics
         ///     絵はどちらも同じ «崩れる» にしか見えない。切り分けが要る。
         [[nodiscard]] bool  IsLimited() const { return m_limited; }
 
+        /// 与えられた関節角が可動域の内側へ入るまで、範囲を広げる (狭めはしない)。
+        ///
+        /// WHY 押し戻し側と同じクラスに置くか: 学習側と検査側で «角度の測り方» が
+        ///     1 つでも違うと、«広げたはずなのに押し戻される» という形でしか現れない。
+        ///     どちらも SolveLimits と同じ分解 (DecomposeSwingTwist + TwistAngle) を
+        ///     通すことで、食い違いようが無い状態にする。
+        ///
+        /// @param deviation 親フレームから見た子フレームの相対回転。
+        /// @param margin    測った角へ足す余裕 [rad]。押されて少し越える分を吸収する。
+        void LearnLimits(const math::Quaternion& deviation, float margin);
+
+        /// 今の姿勢をそのまま可動域へ取り込む。
+        /// クリップの要求値だけを学習すると、捕獲直後の «実際の角» が範囲外に残ることがある。
+        void LearnLimitsFromCurrentPose(float margin);
+
     private:
         [[nodiscard]] math::Quaternion ParentFrameWorld() const;
         [[nodiscard]] math::Quaternion ChildFrameWorld()  const;

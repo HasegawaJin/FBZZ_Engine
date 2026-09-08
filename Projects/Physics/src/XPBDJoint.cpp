@@ -161,6 +161,33 @@ namespace fbzz::physics
         }
     }
 
+    void XPBDJoint::LearnLimits(const math::Quaternion& deviation, float margin)
+    {
+        if (!m_limits.enabled) return;
+
+        const float safeMargin = std::max(margin, 0.0f);
+
+        math::Quaternion swing;
+        math::Quaternion twist;
+        DecomposeSwingTwist(deviation.Normalized(), swing, twist);
+
+        // SolveLimits が押し戻しの判定に使うのと同じ 3 つの角。
+        const math::Vector3 swingVector = RotationVector(swing);
+        const float         twistAngle  = TwistAngle(twist);
+
+        m_limits.twistMin  = std::min(m_limits.twistMin,  twistAngle - safeMargin);
+        m_limits.twistMax  = std::max(m_limits.twistMax,  twistAngle + safeMargin);
+        m_limits.swingMinY = std::min(m_limits.swingMinY, swingVector.y - safeMargin);
+        m_limits.swingMaxY = std::max(m_limits.swingMaxY, swingVector.y + safeMargin);
+        m_limits.swingMinZ = std::min(m_limits.swingMinZ, swingVector.z - safeMargin);
+        m_limits.swingMaxZ = std::max(m_limits.swingMaxZ, swingVector.z + safeMargin);
+    }
+
+    void XPBDJoint::LearnLimitsFromCurrentPose(float margin)
+    {
+        LearnLimits((ParentFrameWorld().Inverse() * ChildFrameWorld()).Normalized(), margin);
+    }
+
     void XPBDJoint::SolveSocket(float h)
     {
         const math::Vector3 rChild = m_child->GetRotation() * m_anchorChild;
