@@ -272,7 +272,7 @@ void ApplyForceFields(float3 position, inout float3 velocity)
 float ApplyCurveInterpolation(float alpha, float mode)
 {
     if (mode > 1.5f) return alpha * alpha * (3.0f - 2.0f * alpha); // Smooth
-    if (mode > 0.5f) return 0.0f;                                  // Step
+    if (mode > 0.5f) return alpha >= 1.0f ? 1.0f : 0.0f;           // Step (区間は [前, 次))
     return alpha;                                                  // Linear
 }
 

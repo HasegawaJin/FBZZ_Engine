@@ -5,6 +5,15 @@
 ///
 /// dense 配列で連続メモリを保ち、System の走査を高速化する。
 /// Remove は末尾要素との swap で O(1) にする。
+///
+/// WHY Get() が assert で、«無ければ nullptr» を返す口を持たないか:
+///   持っている前提で書ける場所と、持っているか分からない場所は別のコード。
+///   ここは前者 ── System が Data() / Entities() で «実際に持っているものだけ» を
+///   走査するための容器で、Has() を確かめずに Get() を呼ぶのは呼び出し側の誤りになる。
+///   後者 (参照が生きているか分からない) の入口は Ref<T> と GameObject::GetComponent<T>()
+///   で、どちらも nullptr を返して呼び出し側に判断させる。
+///   ここへ nullable な取得口を足すと «同じことをする 2 つの道» ができ、
+///   どちらを使うべきかがコードから読めなくなる。
 #pragma once
 #include "Entity.hpp"
 #include <span>

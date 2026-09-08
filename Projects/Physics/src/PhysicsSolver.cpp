@@ -696,6 +696,21 @@ namespace fbzz::physics
                     if (hit && swapped)
                         cp.normal = -cp.normal;
                 }
+                else if ((tA == ColliderType::CONVEX_HULL && tB == ColliderType::HEIGHT_FIELD) ||
+                         (tA == ColliderType::HEIGHT_FIELD && tB == ColliderType::CONVEX_HULL))
+                {
+                    // WHY ここで受けるか: この分岐は CONVEX_HULL を含む組を «先に» 全部拾う。
+                    //     下の HEIGHT_FIELD 分岐には制御が届かないため、地形との組もここで
+                    //     捌かないと «凸包だけ地形をすり抜ける» ことになる。
+                    const bool swapped = (tA == ColliderType::HEIGHT_FIELD);
+                    const auto& hull = *static_cast<ConvexHullCollider*>(
+                        (swapped ? pair.colliderB : pair.colliderA)->collider);
+                    const auto& field = *static_cast<HeightFieldCollider*>(
+                        (swapped ? pair.colliderA : pair.colliderB)->collider);
+                    hit = TestConvexHullHeightField(hull, field, cp);
+                    if (hit && swapped)
+                        cp.normal = -cp.normal;
+                }
                 else
                 {
                     // ConvexHull を常に B 側に正規化する
@@ -1321,17 +1336,37 @@ namespace fbzz::physics
 
         if (dist < 1e-6f)
         {
-            // 球中心がAABB内部: 最も浅い面に押し出す
-            out.normal = math::Vector3::UP;
-            out.depth  = s.m_radius;
+            // 球中心が AABB の内部にある。最近点が中心そのものになるため法線を作れない。
+            // 6 面のうち «一番近い面» を選び、そこから押し出す。
+            // WHY 上向き固定にしないか: 壁の中に生成された・高速に貫通した球が、
+            //     形状に関係なく真上へ飛び出す。抜ける先は最短の面でなければならない。
+            const float toFace[6] = {
+                center.x - aabb.min.x, aabb.max.x - center.x,
+                center.y - aabb.min.y, aabb.max.y - center.y,
+                center.z - aabb.min.z, aabb.max.z - center.z
+            };
+            const math::Vector3 outward[6] = {
+                -math::Vector3::RIGHT,   math::Vector3::RIGHT,
+                -math::Vector3::UP,      math::Vector3::UP,
+                -math::Vector3::FORWARD, math::Vector3::FORWARD
+            };
+
+            int best = 0;
+            for (int i = 1; i < 6; ++i)
+                if (toFace[i] < toFace[best]) best = i;
+
+            out.normal = outward[best];
+            // 面まで戻る分と、そこから半径ぶん抜ける分の合計。
+            out.depth  = s.m_radius + toFace[best];
+            out.point  = center + outward[best] * toFace[best];
         }
         else
         {
             out.normal = diff * (1.0f / dist);
             out.depth  = s.m_radius - dist;
+            out.point  = closest;
         }
 
-        out.point = closest;
         return true;
     }
 
@@ -1409,6 +1444,50 @@ namespace fbzz::physics
         return true;
     }
 
+    namespace
+    {
+        /// 箱の内部に埋まった線分を外へ出すときの «出口»。
+        struct BoxExit
+        {
+            math::Vector3 outward;     ///< 押し出す向き (ワールド空間)
+            float         distance;    ///< 線分の最深点を面まで戻すのに要る距離
+            bool          bindsStart;  ///< その距離を決めているのが線分の始点側か
+        };
+
+        /// 箱の 6 面のうち «線分全体を出すのに一番浅くて済む面» を選ぶ。
+        ///
+        /// WHY 1 点で決めないか: 線分が箱に埋まっていると最近点は距離 0 の点が無数にあり、
+        ///     どれが返るかはサンプリングの刻み次第になる。たまたま拾った端点が底面へ
+        ///     接していると、カプセル全体は箱の中央に居るのに «下へ抜ける» が答えになる。
+        ///     押し出す先は 1 点ではなく «線分全体» で決めなければならない。
+        /// WHY 端点だけ見れば足りるか: 面は平面なので、線分上で最も深い点は必ず端点のどちらか。
+        ///
+        /// localStart / localEnd は箱の中心を原点、axes を基底とした座標。
+        BoxExit ShallowestBoxExit(const math::Vector3& localStart,
+                                  const math::Vector3& localEnd,
+                                  const math::Vector3& halfExtents,
+                                  const math::Vector3 axes[3])
+        {
+            const float head[3]   = { localStart.x,  localStart.y,  localStart.z  };
+            const float tail[3]   = { localEnd.x,    localEnd.y,    localEnd.z    };
+            const float extent[3] = { halfExtents.x, halfExtents.y, halfExtents.z };
+
+            BoxExit best{ axes[0], std::numeric_limits<float>::max(), true };
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                // + 側の面から出すなら一番 - 寄りの点が、- 側から出すなら + 寄りの点が縛りになる。
+                const float toPositive = extent[axis] - std::min(head[axis], tail[axis]);
+                const float toNegative = extent[axis] + std::max(head[axis], tail[axis]);
+
+                if (toPositive < best.distance)
+                    best = { axes[axis], toPositive, head[axis] <= tail[axis] };
+                if (toNegative < best.distance)
+                    best = { -axes[axis], toNegative, head[axis] >= tail[axis] };
+            }
+            return best;
+        }
+    } // namespace
+
     bool PhysicsSolver::TestAABBCapsule(const AABBCollider& b,
                                         const CapsuleCollider& c,
                                         ContactPoint& out)
@@ -1441,34 +1520,23 @@ namespace fbzz::physics
         const float dist = std::sqrt(bestDistSq);
         if (dist < 1e-6f)
         {
-            const float toMinX = bestCapsulePoint.x - aabb.min.x;
-            const float toMaxX = aabb.max.x - bestCapsulePoint.x;
-            const float toMinY = bestCapsulePoint.y - aabb.min.y;
-            const float toMaxY = aabb.max.y - bestCapsulePoint.y;
-            const float toMinZ = bestCapsulePoint.z - aabb.min.z;
-            const float toMaxZ = aabb.max.z - bestCapsulePoint.z;
-
-            float faceDistance = toMinX;
-            math::Vector3 faceOut = -math::Vector3::RIGHT;
-            auto SelectFace = [&](float distance, const math::Vector3& outward)
-            {
-                if (distance < faceDistance)
-                {
-                    faceDistance = distance;
-                    faceOut = outward;
-                }
+            // カプセル軸がボックスの内部に埋まっている。最近点が軸上の点そのものになるため
+            // 法線を作れない。線分全体を «一番浅い面» から押し出す。
+            const math::Vector3 center = aabb.Center();
+            const math::Vector3 worldAxes[3] = {
+                math::Vector3::RIGHT, math::Vector3::UP, math::Vector3::FORWARD
             };
-            SelectFace(toMaxX, math::Vector3::RIGHT);
-            SelectFace(toMinY, -math::Vector3::UP);
-            SelectFace(toMaxY, math::Vector3::UP);
-            SelectFace(toMinZ, -math::Vector3::FORWARD);
-            SelectFace(toMaxZ, math::Vector3::FORWARD);
+            const BoxExit boxExit = ShallowestBoxExit(c.GetSegmentStart() - center,
+                                                   c.GetSegmentEnd() - center,
+                                                   aabb.Extents(), worldAxes);
 
-            // 接触法線は「B(カプセル)→A(ボックス)」方向に統一。
-            // カプセル軸がボックス内部に埋まっている場合、最近接面の外向きノーマルの反対方向へ押し出す。
-            out.normal = -faceOut;
-            out.depth = c.m_radius + faceDistance;
-            bestBoxPoint = bestCapsulePoint + faceOut * faceDistance;
+            // 接触法線は「B(カプセル)→A(ボックス)」方向に統一。押し出す向きの逆。
+            out.normal = -boxExit.outward;
+            out.depth  = c.m_radius + boxExit.distance;
+
+            const math::Vector3 deepest =
+                boxExit.bindsStart ? c.GetSegmentStart() : c.GetSegmentEnd();
+            bestBoxPoint = deepest + boxExit.outward * boxExit.distance;
         }
         else
         {
@@ -1900,12 +1968,10 @@ namespace fbzz::physics
                                        ContactPoint& out)
     {
         const math::Vector3 axes[3] = { b.GetAxis(0), b.GetAxis(1), b.GetAxis(2) };
-        const float extents[3] = { b.m_halfExtents.x, b.m_halfExtents.y, b.m_halfExtents.z };
         const math::Vector3 segment = c.GetSegmentEnd() - c.GetSegmentStart();
 
         math::Vector3 bestCapsulePoint = c.GetSegmentStart();
         math::Vector3 bestBoxPoint = b.GetCenter();
-        math::Vector3 bestLocalPoint = math::Vector3::ZERO;
         float bestDistSq = std::numeric_limits<float>::max();
 
         for (int i = 0; i <= 8; ++i)
@@ -1934,7 +2000,6 @@ namespace fbzz::physics
                 bestDistSq = distSq;
                 bestCapsulePoint = capsulePoint;
                 bestBoxPoint = boxPoint;
-                bestLocalPoint = localPoint;
             }
         }
 
@@ -1943,29 +2008,30 @@ namespace fbzz::physics
         const float dist = std::sqrt(bestDistSq);
         if (dist < 1e-6f)
         {
-            float faceDistance = extents[0] - std::abs(bestLocalPoint.x);
-            int faceAxis = 0;
-            float faceSign = bestLocalPoint.x >= 0.0f ? 1.0f : -1.0f;
+            // カプセル軸が OBB の内部に埋まっている。AABB 版と同じく、拾った 1 点ではなく
+            // 線分全体を出せる面を選ぶ。
+            const math::Vector3 toStart = c.GetSegmentStart() - b.GetCenter();
+            const math::Vector3 toEnd   = c.GetSegmentEnd()   - b.GetCenter();
+            const math::Vector3 localStart = {
+                math::Vector3::Dot(toStart, axes[0]),
+                math::Vector3::Dot(toStart, axes[1]),
+                math::Vector3::Dot(toStart, axes[2])
+            };
+            const math::Vector3 localEnd = {
+                math::Vector3::Dot(toEnd, axes[0]),
+                math::Vector3::Dot(toEnd, axes[1]),
+                math::Vector3::Dot(toEnd, axes[2])
+            };
+            const BoxExit boxExit =
+                ShallowestBoxExit(localStart, localEnd, b.m_halfExtents, axes);
 
-            for (int axis = 1; axis < 3; ++axis)
-            {
-                const float localValue =
-                    axis == 1 ? bestLocalPoint.y : bestLocalPoint.z;
-                const float distance = extents[axis] - std::abs(localValue);
-                if (distance < faceDistance)
-                {
-                    faceDistance = distance;
-                    faceAxis = axis;
-                    faceSign = localValue >= 0.0f ? 1.0f : -1.0f;
-                }
-            }
+            // 接触法線は「B(カプセル)→A(OBB)」方向に統一。押し出す向きの逆。
+            out.normal = -boxExit.outward;
+            out.depth  = c.m_radius + boxExit.distance;
 
-            const math::Vector3 faceOut = axes[faceAxis] * faceSign;
-            // 接触法線は「B(カプセル)→A(OBB)」方向に統一。
-            // OBB 内部では最近接面の外向きノーマルの反対方向へカプセルを押し出す。
-            out.normal = -faceOut;
-            out.depth = c.m_radius + faceDistance;
-            bestBoxPoint = bestCapsulePoint + faceOut * faceDistance;
+            const math::Vector3 deepest =
+                boxExit.bindsStart ? c.GetSegmentStart() : c.GetSegmentEnd();
+            bestBoxPoint = deepest + boxExit.outward * boxExit.distance;
         }
         else
         {
