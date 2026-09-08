@@ -38,7 +38,7 @@ class GameCursorComponent : public Script {
 
 public:
     FBZZ_GROUP("Pad")
-    FBZZ_FIELD_RANGE(float, padSpeed, 1400.0f, "Speed", 100.0f, 4000.0f)
+    FBZZ_FIELD_RANGE(float, padSpeed, 1400.0f, "速さ", 100.0f, 4000.0f)
     FBZZ_TOOLTIP("スティックを倒しきったときのカーソル速度 (Canvas px/秒)")
     FBZZ_FIELD_RANGE(float, padDeadzone, 0.18f, "Deadzone", 0.0f, 0.6f)
     FBZZ_TOOLTIP("この値までの傾きは無視する。触れただけでカーソルが流れるのを防ぐ")
@@ -50,8 +50,12 @@ public:
     FBZZ_TOOLTIP("絵をポインターからずらす量 (Canvas px、右と下が +)。"
                  "矢印の先端のように、絵の中で実際に指している点が中心にない素材を合わせるのに使う。"
                  "既定値は pointer_c_shaded.png を 36px で置いたときの実測")
+    FBZZ_FIELD(bool, useHardwareCursor, true, "OS Cursor For Mouse")
+    FBZZ_TOOLTIP("マウス操作中は OS のカーソルを見せる (Project Settings の [cursor] に "
+                 "Default の画像が要る)。この絵は 1 フレーム遅れないので、マウスでは常に "
+                 "こちらが自然。パッド操作中は自動で下の UIImage へ切り替わる")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugDevice, "-", "Device")
 
     /// 直近に触った機器がパッドか。UI 側が表示を切り替えるのに使う。
@@ -118,6 +122,11 @@ private:
     Vector2 m_lastMouse{};
     Vector2 m_canvasSize{ 1920.0f, 1080.0f };
     Vector2 m_size{ 24.0f, 24.0f };
+    // このカーソルが生きている間だけの拘束要求。ポーズ等がこの上に重なっても、
+    // 閉じた時点でここへ戻る。
+    CursorRequest m_cursor;
+    // OS のカーソルを見せてよいか (画像が設定されているときだけ)。
+    bool m_hardwareAvailable = false;
 };
 
 FBZZ_REFLECT(GameCursorComponent)
@@ -144,10 +153,13 @@ inline void GameCursorComponent::OnStart()
     // Confined なら座標は生きたまま、ポインターがゲーム画面の外 (別モニター) へ
     // 出て行くことだけを止められる。
     //
-    // WHY OS カーソルを隠すか: 隠さないと矢印が 2 つ見える。Confined と対で使うこと。
-    //     非表示だけだと、別モニターへ出た先で OS の矢印が戻ってくる。
-    cursor.SetLockMode(CursorLockMode::Confined);
-    cursor.SetVisible(false);
+    // 表示するかは OnUpdate が機器ごとに決める。OS カーソルの絵が用意されていれば
+    // マウス操作中はそちらを見せ、パッド操作中だけこの UIImage を出す。
+    //
+    // WHY 両方は出さないか: 隠さないと矢印が 2 つ見える。そして «非表示だけ» では
+    //     別モニターへ出た先で OS の矢印が戻ってくるので、Confined と対で使うこと。
+    m_hardwareAvailable = useHardwareCursor && cursor.HasShapeImage(CursorShape::Default);
+    m_cursor = cursor.Push(CursorLockMode::Confined, m_hardwareAvailable, CursorPriority::UI);
 }
 
 inline void GameCursorComponent::OnDestroy()
@@ -229,6 +241,13 @@ inline void GameCursorComponent::OnUpdate()
     // UI のヒット判定はここで差し替わる。毎フレーム宣言しないと OS のマウスへ戻る。
     ui.SetPointer(s_position, pressed);
 
+    // ── どちらのカーソルを見せるか ────────────────────────────────────────
+    // マウスは OS のカーソルに任せる方が良い。こちらの絵は «前フレームの位置» を
+    // 描くので、速く振ると必ず遅れて見える。パッドはそもそも OS カーソルを動かせない
+    // ので、こちらの絵しか選べない。
+    const bool showOsCursor = m_hardwareAvailable && !s_usingPad;
+    m_cursor.Set(CursorLockMode::Confined, showOsCursor);
+
     // 見た目。矩形の中心をポインターへ合わせ、そこから spriteOffset だけずらす。
     //
     // WHY anchor/pivot を読むか: transform.position は「基準点からのずれ」でしかなく、
@@ -237,7 +256,10 @@ inline void GameCursorComponent::OnUpdate()
     //     意味を失う。ここは常に逆算しておき、offset は素材のずれだけを担当させる。
     if (GameObject* self = scene.Self()) {
         UIAnchor anchoring{};
-        if (const auto* image = self->GetComponent<UIImage>()) anchoring = image->anchoring;
+        if (auto* image = self->GetComponent<UIImage>()) {
+            anchoring = image->anchoring;
+            image->enabled = !showOsCursor;
+        }
 
         self->transform.position = {
             s_position.x - m_canvasSize.x * anchoring.anchor.x
@@ -247,7 +269,7 @@ inline void GameCursorComponent::OnUpdate()
             0.0f,
         };
     }
-    debugDevice = s_usingPad ? "Gamepad" : "Mouse";
+    debugDevice = s_usingPad ? "Gamepad" : (showOsCursor ? "Mouse (OS cursor)" : "Mouse");
 }
 
 inline Vector2 GameCursorComponent::VisibleCanvasSize(const UICanvas& canvas, float aspect)
