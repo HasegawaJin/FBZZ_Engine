@@ -27,7 +27,8 @@ locked_objects = []
         'Script:BossStepDustComponent',
         'Script:LaserVolleyComponent',
         'Script:BossPartTelegraphComponent',
-        'Script:BossBreakComponent'
+        'Script:BossBreakComponent',
+        'Script:BossHatchComponent'
     ]
     instance_id = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
@@ -82,7 +83,10 @@ locked_objects = []
         'Script:PlayerComponent',
         'Script:PlayerHealthBarComponent',
         'IK Solver',
-        'Audio Source'
+        'Audio Source',
+        'Script:SeWarmupComponent',
+        'Script:PlayerBossBlockComponent',
+        'Script:PlayerClimbComponent'
     ]
     instance_id = '7e2bd121-6dc0-40fb-9986-db6abd43f721'
 
@@ -409,10 +413,6 @@ locked_objects = []
     [[editor.game_objects]]
     component_order = [ 'Particle Emitter' ]
     instance_id = 'fa9e0001-0000-0000-0000-000000000003'
-
-    [[editor.game_objects]]
-    component_order = [ 'Particle Emitter' ]
-    instance_id = 'fa9e0001-0000-0000-0000-000000000004'
 
     [[editor.game_objects]]
     component_order = [ 'Particle Emitter' ]

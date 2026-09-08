@@ -103,6 +103,7 @@
 #include "Scripts/Utils/BeamTrailRendererComponent.hpp"
 #include "Scripts/Utils/GameCursorComponent.hpp"
 #include "Scripts/Utils/GlowPartComponent.hpp"
+#include "Scripts/Utils/SeWarmupComponent.hpp"
 #include "Scripts/Vfx/BeamScorchVfxComponent.hpp"
 #include "Scripts/Vfx/BladeChargeGlowComponent.hpp"
 #include "Scripts/Vfx/BladeTrailComponent.hpp"

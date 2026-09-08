@@ -207,14 +207,11 @@ inline void GameFlowComponent::RefreshHud()
         //     し、既定も動く ─ 実際 Q から右クリックへ移した後もここだけ [Q] のまま
         //     残っていた。文言は «何をするか» だけを言い、どのキーかは OPTIONS と
         //     操作案内 (UiHintBar) に任せる。
-        // WHY 転倒中だけ «登れ» に変えるか (2026-09-08): 決着はコアへ移った。
-        //     倒れている窓でやることは «脚をもぐ» から «脚を登ってコアを叩く» になり、
-        //     ここが古いままだと «脚を落とし続ければ勝てる» と読ませてしまう。
-        const char* objective = "PARRY  >  BREAK  >  CLIMB  >  STRIKE THE CORE";
+        const char* objective = "PARRY  >  BREAK  >  EXECUTE A LEG";
         if (!m_ending)
             if (GameObject* boss = FindBoss())
                 if (const auto* iboss = IBoss::Of(boss))
-                    if (iboss->IsToppled()) objective = "IT'S DOWN!  CLIMB A LEG";
+                    if (iboss->IsToppled()) objective = "EXECUTE!  GET CLOSE TO A LEG";
         ui.SetText(text, m_ending ? (m_victory ? "AREA CLEAR" : "SYSTEM DOWN") : objective);
     }
 }

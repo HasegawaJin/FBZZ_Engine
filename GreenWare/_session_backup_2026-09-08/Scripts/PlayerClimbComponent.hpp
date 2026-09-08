@@ -21,9 +21,7 @@
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
-#include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
-#include <Scripts/Combat/BossAiComponent.hpp>
 #include <Scripts/Combat/IBoss.hpp>
 #include <Scripts/Utils/InputActions.hpp>
 #include <Scripts/Utils/PlayerActionState.hpp>
@@ -45,8 +43,7 @@ public:
     FBZZ_GROUP("取り付き")
     FBZZ_FIELD_RANGE(float, mountRange, 3.6f, "取り付ける距離", 0.5f, 12.0f)
     FBZZ_TOOLTIP("脚の «足» からこの距離まで寄ると登れる。とどめ の 3.4m と揃えてある")
-    FBZZ_FIELD(std::string, mountAction, actions::kClimb, "入力")
-    FBZZ_TOOLTIP("取り付く入力。既定は専用の «登る» (F / パッド Y)。ジャンプと兼ねると «跳ぼうとして登る» が起きる")
+    FBZZ_FIELD(std::string, mountAction, actions::kJump, "入力")
     FBZZ_TOOLTIP("取り付きの入力。とどめ (Parry) と competing しないよう跳躍を使う")
 
     FBZZ_GROUP("速さ")
@@ -64,8 +61,6 @@ public:
     FBZZ_FIELD_RANGE(float, deckRise, 1.33f, "甲板の高さ", 0.0f, 6.0f)
     FBZZ_TOOLTIP("胴の骨から甲板までの高さ [m]。Blender 実測で 5.83 − 4.50 = 1.33")
     FBZZ_FIELD_RANGE(float, deckSideOffset, 1.55f, "蓋からの距離", 0.0f, 4.0f)
-    FBZZ_FIELD_RANGE(float, holdSeconds, 3.2f, "乗っている間の猶予 [s]", 0.0f, 10.0f)
-    FBZZ_TOOLTIP("背に乗っているあいだ «あと何秒» 倒れたままにするか。降りるとここから数えて起き上がる。ボス側の上限 (9 秒) を超えては延ばせない")
     FBZZ_TOOLTIP("着地点を蓋の中心からどれだけ横へずらすか [m]。0 だとコアに埋まる")
 
     FBZZ_GROUP("クリップ")
@@ -84,18 +79,17 @@ public:
     FBZZ_FIELD(std::string, drawClipName, "Katana_Draw", "Draw Clip Name")
 
     FBZZ_GROUP("デバッグ")
+    // WHY 転倒条件を外せるようにするか: 登りの «見た目» を直すたびにボスを転倒させるのは
+    //     現実的でない。これは確認用の足場であって、遊びの条件ではない。
+    //     既定は true のままなので、外さなければ挙動は変わらない。
     FBZZ_GROUP("音")
     FBZZ_FIELD_RANGE(float, climbVolume, 0.95f, "登攀の音量", 0.0f, 2.0f)
     FBZZ_FIELD_RANGE(float, grabInterval, 0.4165f, "手を掛ける間隔 [s]", 0.05f, 2.0f)
     FBZZ_TOOLTIP("Climb クリップ (25F/0.83s) の半分。左右 1 回ずつ手が掛かるので、クリップの尺を変えたらここも半分に合わせる")
 
     FBZZ_GROUP("デバッグ")
-    // WHY 既定を «いつでも» にしたか (2026-09-08): 転倒中だけだと窓が短すぎて、
-    //     そもそも取り付く機会がほとんど来なかった。歩いているボスにも飛びつけると、
-    //     «隙を待つ» から «隙を作りに行く» へ手触りが変わる。
-    //     転倒はもう «登れる条件» ではなく «登りやすい状態» になる。
-    FBZZ_FIELD(bool, requireToppled, false, "転倒中だけ登れる")
-    FBZZ_TOOLTIP("on にすると倒れているボスにしか取り付けない。off なら歩いていても飛びつく")
+    FBZZ_FIELD(bool, requireToppled, true, "転倒中だけ登れる")
+    FBZZ_TOOLTIP("外すと «いつでも脚に取り付ける»。モーション確認用で、遊びの条件ではない")
     FBZZ_FIELD(bool, drawPath, true, "経路を描く")
     FBZZ_FIELD_READ_ONLY(std::string, debugPhase, "None", "状態")
     FBZZ_FIELD_READ_ONLY(float, debugProgress, 0.0f, "進捗 [m]")
@@ -114,8 +108,6 @@ public:
 private:
     /// 今このボスに取り付けるか。既定では転倒中だけ。
     [[nodiscard]] bool Climbable(const IBoss* boss) const;
-    /// 甲板に立っている間、ボスが動いたぶんだけプレイヤーを運ぶ。
-    void CarryWithBoss();
     enum class Phase { None, Sheathe, Climb, Draw, Deck };
 
     /// 一番近い脚の «足» を探す。見つからなければ false。
@@ -137,12 +129,6 @@ private:
     /// 二刀の 2 本目までの残り [秒]。0 以下で «鳴らさない»。
     float m_stowSecond = 0.0f;
     float m_drawSecond = 0.0f;
-    /// 前フレームの «甲板の基準骨» の姿勢。差分を渡すために持つ。
-    Vector3    m_carryPos;
-    Quaternion m_carryRot;
-    bool       m_carryValid = false;
-    /// 取り付いた直後の «離す» 誤爆よけ [秒]。
-    float      m_mountGrace = 0.0f;
     std::string          m_suffix;
     std::vector<Vector3> m_path;
     EntityRef            m_boss;
@@ -257,7 +243,6 @@ inline void PlayerClimbComponent::OnStart()
 {
     m_phase = Phase::None; m_timer = 0.0f; m_travel = 0.0f;
     m_grabTimer = 0.0f; m_stowSecond = 0.0f; m_drawSecond = 0.0f;
-    m_carryValid = false; m_mountGrace = 0.0f;
     m_path.clear(); m_boss = {}; m_suffix.clear();
     debugPhase = "None"; debugProgress = 0.0f; debugLeg.clear();
 }
@@ -281,23 +266,9 @@ inline void PlayerClimbComponent::OnUpdate()
     GameObject* boss = Boss();
     const IBoss* iboss = IBoss::Of(boss);
 
-    // 乗っているあいだは倒れたままにしてもらう。
-    // WHY 毎フレーム «あと holdSeconds 秒» と言い続けるか: 降りた瞬間に言うのをやめれば、
-    //     ボスは holdSeconds 後に起き上がる。«いつ降りたか» を別に伝える必要がない。
-    if (m_phase != Phase::None && boss)
-        if (auto* ai = scene.GetScript<BossAiComponent>(boss))
-            ai->HoldTopple(std::max(holdSeconds, 0.0f));
-
-    // 降りるのは «ボスが居なくなった» か «自分で離した» ときだけ。
-    //
-    // WHY 起き上がりで降ろさないか (2026-09-08): 以前は転倒が解けた瞬間に落としていたが、
-    //     それだと «登り切る前に必ず落ちる»。掴まっている以上、ボスが立ち上がっても
-    //     振り落とされるまでは付いていくのが自然で、そのほうが絵としても強い。
-    if (m_phase != Phase::None && !boss) Dismount();
-    // 掴んでいる最中にもう一度押したら手を離す。
-    if (m_phase != Phase::None && m_mountGrace <= 0.0f && input.GetActionDown(mountAction))
+    // 登っている最中にボスが起き上がった / 倒された → 降ろす。
+    if (m_phase != Phase::None && (!iboss || (!Climbable(iboss) && m_phase != Phase::Deck)))
         Dismount();
-    if (m_mountGrace > 0.0f) m_mountGrace -= dt;
 
     switch (m_phase) {
     case Phase::None: {
@@ -312,8 +283,6 @@ inline void PlayerClimbComponent::OnUpdate()
         if (m_path.size() < 2) break;
 
         m_phase = Phase::Sheathe; m_timer = 0.0f; m_travel = 0.0f;
-        // 取り付いた同じフレームの入力で «すぐ離す» にならないように 1 拍置く。
-        m_mountGrace = 0.20f;
         // 登っているあいだプレイヤーの入力を止める。ボスは転倒の演出が持っている。
         cutscene::Publish(/*holdBoss=*/false, /*holdPlayer=*/true, Time::time);
         // 刀を背へ回す音。二刀なので «必ず 2 回鳴る» のが素材側の前提
@@ -371,40 +340,16 @@ inline void PlayerClimbComponent::OnUpdate()
         }
         break;
     case Phase::Deck:
-        // 甲板の上では普通に歩ける。座標は握らず、**ボスが動いたぶんだけ運ぶ**。
-        //
-        // WHY 座標を貼り直さないか: 貼り直すと甲板の上を歩けなくなる。
-        // WHY それでも運ぶ必要があるか (2026-09-08): 歩いているボスにも取り付ける
-        //     ようにしたので、何もしないと «ボスだけ歩いて行って自分は空中に置き去り»
-        //     になる。動いた差分だけ足せば、歩ける乗り物として成立する。
-        CarryWithBoss();
+        // ボスが起き上がる / 撃破される → 降りる。
+        // WHY 位置を毎フレーム貼り直さないか: 甲板に立ったら普通の移動へ戻すので、
+        //     ここで座標を握り続けると甲板の上を歩けなくなる。ボスが動き出したら
+        //     どのみち降ろすので、追従は要らない。
+        if (!Climbable(iboss)) Dismount();
         break;
     }
 
     static constexpr const char* kName[] = { "None", "Sheathe", "Climb", "Draw", "Deck" };
     debugPhase = kName[static_cast<int>(m_phase)];
-}
-
-inline void PlayerClimbComponent::CarryWithBoss()
-{
-    GameObject* boss = Boss();
-    GameObject* anchor = boss ? FindInSubtree(*boss, deckAnchorBone) : nullptr;
-    if (!anchor) { m_carryValid = false; return; }
-
-    const Vector3    now    = anchor->transform.worldPosition;
-    const Quaternion nowRot = anchor->transform.worldRotation;
-
-    if (m_carryValid) {
-        // 平行移動と «向きの変化» の両方を渡す。
-        // WHY 回転も要るか: ボスがその場で向きを変えると、甲板の上の点は円を描いて動く。
-        //     平行移動だけ渡すと、旋回した瞬間に甲板から滑り落ちる。
-        const Quaternion delta = nowRot * m_carryRot.Inverse();
-        const Vector3    local = transform.worldPosition - m_carryPos;
-        transform.worldPosition = now + delta * local;
-    }
-    m_carryPos   = now;
-    m_carryRot   = nowRot;
-    m_carryValid = true;
 }
 
 inline void PlayerClimbComponent::OnDrawGizmos()
