@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-03
 ///
-/// WHY BossAiComponent から PolarityBladeComponent を直接読ませないか:
-///   include すると BossAi → PolarityBlade → BossPolarityRig → BossAi で環になる
-///   (BossPolarityRigComponent は SetCrippled を呼ぶために BossAi を見ている)。
+/// WHY BossAiComponent から BladeComponent を直接読ませないか:
+///   include すると BossAi → Blade → BossRig → BossAi で環になる
+///   (BossRigComponent は SetCrippled を呼ぶために BossAi を見ている)。
 ///   申告する側と読む側の両方が葉のヘッダーだけを見る形にすれば、依存の向きが増えない。
 ///
 /// WHY 問い合わせではなく «置いていく» か:
@@ -58,3 +58,47 @@ inline void Publish(bool swinging, bool finisher, bool recovering,
 }
 
 } // namespace sandbox::playeraction
+
+/// カメラ演出が «今、盤面を止めている» の一枚。BossCameraDirectorComponent が置き、
+/// ボス AI とプレイヤーの入力が読む。
+///
+/// WHY ここに置くか: 置く側 (カメラ) と読む側 (ボス / プレイヤー) が互いを include せずに
+///     済む葉のヘッダーが要る。playeraction と同じ «時刻付きで置いていく» 形にして、
+///     演出の途中でカメラが消えても «永遠に止まったまま» が残らないようにする。
+namespace sandbox::cutscene {
+
+struct Snapshot {
+    /// ボスは手を出さない (登場など)。
+    bool  holdBoss   = false;
+    /// プレイヤーは入力を受けない。
+    bool  holdPlayer = false;
+    float stamp      = -1.0f;
+};
+
+inline Snapshot& Mutable()
+{
+    static Snapshot state;
+    return state;
+}
+
+/// 演出が毎フレーム申告する。演出が終わったら holdBoss / holdPlayer とも false で置く
+/// (置かなくても maxAge で切れるが、1 フレームでも早く返した方が操作は軽い)。
+inline void Publish(bool holdBoss, bool holdPlayer, float now)
+{
+    Snapshot& state  = Mutable();
+    state.holdBoss   = holdBoss;
+    state.holdPlayer = holdPlayer;
+    state.stamp      = now;
+}
+
+[[nodiscard]] inline Snapshot Read(float now, float maxAge = 0.25f)
+{
+    const Snapshot& state = Mutable();
+    if (state.stamp < 0.0f || now - state.stamp > maxAge) return Snapshot{};
+    return state;
+}
+
+[[nodiscard]] inline bool HoldsBoss(float now)   { return Read(now).holdBoss; }
+[[nodiscard]] inline bool HoldsPlayer(float now) { return Read(now).holdPlayer; }
+
+} // namespace sandbox::cutscene

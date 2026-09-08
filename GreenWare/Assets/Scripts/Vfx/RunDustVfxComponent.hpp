@@ -25,12 +25,12 @@ class RunDustVfxComponent : public Script {
     FBZZ_SCRIPT(RunDustVfxComponent)
 
 public:
-    FBZZ_GROUP("Ground")
+    FBZZ_GROUP("接地")
     FBZZ_FIELD_COLOR(dustColor, (Vector4{ 0.66f, 0.63f, 0.58f, 0.4f }), "Dust Color")
-    FBZZ_TOOLTIP("床の色。極性色は乗せない (12.2)。アルファが煙の濃さになる")
+    FBZZ_TOOLTIP("床の色。刀の赤青は乗せない (土は誰が立てても同じ色)。アルファが煙の濃さになる")
 
-    FBZZ_GROUP("Kick")
-    FBZZ_FIELD_RANGE(float, puffSize, 0.78f, "Puff Size", 0.1f, 3.0f)
+    FBZZ_GROUP("蹴り上げ")
+    FBZZ_FIELD_RANGE(float, puffSize, 0.78f, "煙の大きさ", 0.1f, 3.0f)
     FBZZ_TOOLTIP("煙が最後に広がる大きさ。速いほど大きく")
     FBZZ_FIELD_RANGE(float, kickSpeed, 1.6f, "Kick Speed", 0.0f, 8.0f)
     FBZZ_TOOLTIP("後ろへ蹴り出す速さ [m/s]。走行速度に比例させる")

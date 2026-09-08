@@ -57,7 +57,7 @@ public:
     FBZZ_TOOLTIP("首を回せる限界。リグの拘束が ±60 度なのでそれ以内に収める")
     // WHY 腕より速くするか: 頭・胸・腕・腰が同じ速さで動くと、ひねりが一枚板に見える。
     //     頭が先に振れて胴体が追う時間差が「人が振り向いた」に読み替えられる。
-    FBZZ_FIELD_RANGE(float, response, 18.0f, "Response", 1.0f, 40.0f)
+    FBZZ_FIELD_RANGE(float, response, 18.0f, "追従", 1.0f, 40.0f)
     FBZZ_TOOLTIP("腕 (Aim Response 14) より速くすると、頭が先に振れて体が追う段差が出る")
     FBZZ_FIELD_RANGE(float, weightResponse, 6.0f, "Weight Response", 1.0f, 30.0f)
     FBZZ_TOOLTIP("対象を失ったときに視線が正面へ戻る速さ")
@@ -65,7 +65,7 @@ public:
     //     頭だけなら「気にしている」に読めるので、同じ判断を持ち込まない。
     FBZZ_FIELD(bool, lookWhenHolstered, true, "Look When Holstered")
 
-    FBZZ_GROUP("Axes")
+    FBZZ_GROUP("軸")
     // 頭のローカル軸のうちどれが前かは FBX の軸変換とボーンロールで決まり、
     // リグを差し替えると変わる。既定は実行時に解決し、狂ったときだけ手で入れる。
     FBZZ_FIELD(bool, autoResolveAxis, true, "Auto Resolve Axis")
@@ -74,7 +74,7 @@ public:
     FBZZ_FIELD(Vector3, upAxisOverride, (Vector3::UP), "Up Axis")
     FBZZ_TOOLTIP("ゼロにすると首の横倒しを補正しない")
 
-    FBZZ_GROUP("Debug")
+    FBZZ_GROUP("デバッグ")
     FBZZ_FIELD(bool, drawDebugLine, false, "Draw Debug Line")
     FBZZ_FIELD_READ_ONLY(float, debugWeight, 0.0f, "Applied Weight")
     FBZZ_FIELD_READ_ONLY(std::string, debugAxes, "", "Resolved Axes")

@@ -7,10 +7,9 @@
 /// 可変フレームで入力を採取し、固定ステップで物理へ反映することで、
 /// 短いキー入力の取りこぼしとフレームレート依存を防ぐ。
 ///
-/// WHY 回避に無敵時間を付けないか:
-/// ジャスト回避は本バージョンでは実装しない (Docs/open-questions.md)。極性回避と
-/// 役割が重なるため。ここでは純粋な移動アクションとして実装し、判定と報酬は
-/// 後から足せる形にしておく。
+/// WHY 回避の無敵をここで判定しないか:
+/// ここは «今回避中か» と «何回目の回避か» を答えるだけ。攻撃を弾いてジャスト回避の
+/// 報酬を配るのは PlayerComponent (ダメージの入口) で、移動側は殴られた事実を知らない。
 ///
 /// WHY 水平速度の出どころを移動入力 1 つに閉じるか:
 /// 攻撃や纏いから «外からの速度» を受け取れるようにしていたが、押していない
@@ -25,6 +24,8 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Game/CameraFollowManagerComponent.hpp>
+#include <Scripts/Utils/PlayerActionState.hpp>
+#include <Scripts/Game/CameraShakeManagerComponent.hpp>
 #include <Scripts/Game/ImpactFeedbackManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Player/PlayerAimComponent.hpp>
@@ -59,14 +60,14 @@ public:
     // Inspector では PlayerTuning.fzdata だけが調整値の正本になる。
     fbzz::Asset<PlayerTuning> tuning{};
 
-    FBZZ_GROUP("Movement")
-    FBZZ_FIELD_RANGE(float, modelYawOffsetDegrees, 180.0f, "Model Yaw Offset",  0.0f, 360.0f)
-    FBZZ_FIELD(bool, useCameraForward,      true, "Use Camera Forward")
-    FBZZ_FIELD(bool, rotateToMoveDirection, true, "Rotate To Move Dir")
-    FBZZ_FIELD(bool, useFootIK,             true, "Use Foot IK")
+    FBZZ_GROUP("移動")
+    FBZZ_FIELD_RANGE(float, modelYawOffsetDegrees, 180.0f, "モデルのヨー補正",  0.0f, 360.0f)
+    FBZZ_FIELD(bool, useCameraForward,      true, "カメラの正面を使う")
+    FBZZ_FIELD(bool, rotateToMoveDirection, true, "進行方向へ向く")
+    FBZZ_FIELD(bool, useFootIK,             true, "足 IK を使う")
 
     FBZZ_GROUP("Dodge")
-    FBZZ_TOOLTIP("無敵時間は持たない (11 章 / 19 章がジャスト回避を本バージョンから外しているため)")
+    FBZZ_TOOLTIP("速さと距離。無敵とジャスト回避は PlayerTuning の Dodge (Docs/camera-controls.md)")
 
     // WHY キーバインドの項目を持たないか:
     //   物理入力を Inspector に持つと、その 1 行のためにゲームパッド対応も
@@ -74,7 +75,7 @@ public:
     //   このスクリプトは論理名だけを知り、実際の割り当ては
     //   ProjectSettings/Input.inputactions が持つ。名前は InputActions.hpp を参照。
 
-    FBZZ_GROUP("Animator Params")
+    FBZZ_GROUP("アニメーターのパラメーター")
     FBZZ_FIELD(std::string, paramSpeed,         "Speed",        "Speed Param")
     FBZZ_TOOLTIP("移動の速さ (m/s)。ロコモーションの Idle → Walk_F → Run_F がこれで決まる")
     // WHY 2 軸 (MoveX / MoveY) を持たないか:
@@ -86,32 +87,59 @@ public:
     FBZZ_FIELD(std::string, paramJumpTrigger,   "Jump",         "Jump Trigger Param")
     FBZZ_FIELD(std::string, paramDodgeTrigger,  "Dodge",        "Dodge Trigger Param")
 
+    // WHY 転がりの «尺» をここに持つか (2026-09-05 のテレポート修正):
+    //   回避が瞬間移動に見えていた原因は速さではなく、進む時間 (Dodge Duration) と
+    //   転がるクリップの長さが違っていたこと。0.24 秒で 4.5m 運びきる一方、
+    //   Katana_Dodge_Roll は 0.567 秒あるので、移動が終わった時点で転がりはまだ
+    //   4 割しか進んでいない ─ 踏み切りの姿勢のまま体だけが 4.5m 先に居る絵になる。
+    //
+    //   直し方は «クリップを再生する速さ» で長さを合わせること。ところが 1 ステートの
+    //   速度は Script から書けない (animator.SetSpeed は Animator 全体に掛かる) ので、
+    //   実際に速度を持つのは Player.animcontroller の Dodge_Roll ステート。
+    //   ここに置いたクリップ長から «その speed に入れるべき値» を導出して Debug へ出す。
+    //   Dodge Duration を触った人が «次に何を直すか» を Inspector 上で見つけられれば、
+    //   離れた 2 つのファイルの数字が黙ってずれることは無い。
+    FBZZ_FIELD_RANGE(float, dodgeClipSeconds, 17.0f / 30.0f, "回避クリップの尺 [秒]", 0.05f, 3.0f)
+    FBZZ_TOOLTIP("Katana_Dodge_Roll の尺 [秒] (17F / 30fps)。クリップを差し替えたら直すこと")
+    FBZZ_FIELD_READ_ONLY(float, debugDodgeClipSpeed, 0.0f, "回避クリップの再生速度")
+    FBZZ_TOOLTIP("Player.animcontroller の Dodge_Roll ステートの speed に入れる値。"
+                 "Dodge Duration を変えたらこの数字を写す")
+
     // WHY 9 セルのエイム (AimYaw / AimPitch / Aim レイヤー) が無いか:
     //   腕で狙う姿勢そのものが双剣で無くなった (Docs/blades.md)。クリップ 10 本ごと
     //   捨てたので、パラメーターとレイヤー名だけ残すと «設定はあるのに何も起きない»
     //   になる。ロックオンした相手を向くのは、下の «立ち止まったときの旋回» だけ。
-    FBZZ_GROUP("Lock-On Turn")
-    FBZZ_FIELD(bool, turnToAim, true, "Turn To Aim")
+    FBZZ_GROUP("ロックオン旋回")
+    FBZZ_FIELD(bool, turnToAim, true, "狙いの方へ向く")
     FBZZ_TOOLTIP("立ち止まっているあいだ、ロック対象の方へ体を回す (移動入力が無いときだけ)")
-    FBZZ_FIELD_RANGE(float, aimTurnDeadzoneDegrees, 38.0f, "Aim Turn Deadzone", 0.0f, 90.0f)
+    FBZZ_FIELD_RANGE(float, aimTurnDeadzoneDegrees, 38.0f, "旋回の不感帯", 0.0f, 90.0f)
     FBZZ_TOOLTIP("この角度までは体を回さない。0 に近づけるほど対象へ吸い付く")
 
-    FBZZ_GROUP("Jump (derived)")
+    FBZZ_GROUP("跳躍 (導出値)")
     // 重力は ProjectSettings の [physics] gravity、到達点は PlayerTuning。
     // 導出結果をここに出さないと、重力を触った影響が Play するまで分からない。
-    FBZZ_FIELD_READ_ONLY(float, debugWorldGravity, 0.0f, "World Gravity")
-    FBZZ_FIELD_READ_ONLY(float, debugJumpSpeed, 0.0f, "Jump Speed")
-    FBZZ_FIELD_READ_ONLY(float, debugTimeToApex, 0.0f, "Time To Apex")
-    FBZZ_FIELD(bool, autoTuneGrounding, true, "Auto Tune Grounding")
+    FBZZ_FIELD_READ_ONLY(float, debugWorldGravity, 0.0f, "ワールドの重力")
+    FBZZ_FIELD_READ_ONLY(float, debugJumpSpeed, 0.0f, "跳躍の初速")
+    FBZZ_FIELD_READ_ONLY(float, debugTimeToApex, 0.0f, "頂点までの時間")
+    FBZZ_FIELD(bool, autoTuneGrounding, true, "接地判定を自動調整")
     FBZZ_TOOLTIP("接地判定のしきい値を重力から決め直す。"
                  "切ると CharacterController に入っている値をそのまま使う")
 
-    FBZZ_GROUP("Camera Feedback")
+    FBZZ_GROUP("カメラの手応え")
     // WHY カメラ側ではなくここに置くか: 「跳ぶとどれくらい緩めたいか」は動作を持つ
     //     こちらの意図で、「緩んだときカメラがどう動くか」はカメラの作り。
     //     混ぜると、カメラの追従方式を変えるたびに動作側の数値を入れ直すことになる。
     FBZZ_FIELD_RANGE(float, airCameraSlack, 0.85f, "Air Slack (Vertical)", 0.0f, 1.0f)
     FBZZ_TOOLTIP("空中にいる間、カメラの縦追従を緩める量。0 で従来どおり密着する")
+    // WHY 押した «事実» を預かるか: 回避はクールダウン中でも回避中でも押される。
+    //     その瞬間に捨てると «連打しているのに出ない» になり、しかも出なかった理由が
+    //     画面に出ない。押し忘れではなく早すぎただけの入力を、明けた 1 フレーム目へ運ぶ。
+    FBZZ_FIELD_RANGE(float, dodgeBufferSeconds, 0.15f, "Dodge Buffer", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("回避入力を預かる秒数。クールダウンや回避中に押しても、明けた瞬間に出る。"
+                 "0 で先行入力なし (押した瞬間しか受け付けない)")
+    FBZZ_FIELD_RANGE(float, dodgeCameraKick, 0.4f, "Dodge Camera Kick (m)", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("回避の出だしにカメラを後ろへ引く距離。揺れではなく 1 往復の押し込み。"
+                 "画角が開くぶん、同じ速度でも速く見える")
     FBZZ_FIELD_RANGE(float, dodgeCameraSlack, 0.7f, "Dodge Slack (Horizontal)", 0.0f, 1.0f)
     FBZZ_TOOLTIP("回避中、カメラの横追従を緩める量")
     // WHY 走行中も緩めるか: 密着したままだと、走っていても画面の中でプレイヤーは
@@ -123,6 +151,23 @@ public:
                  "速度に比例するので歩き出しではほとんど緩まない。0 で従来どおり密着する")
     FBZZ_FIELD_RANGE(float, landFeedbackSpeed, 12.0f, "Land Feedback At", 0.0f, 60.0f)
     FBZZ_TOOLTIP("この落下速度 (m/s) で着地の反応が最大になる。0 で着地演出を切る")
+    // WHY 揺れとは別に «沈み» を持つか: 揺れは向きを持たないので、着地の «重さが
+    //     床へ落ちた» 向きが出ない。カメラが一瞬下がって戻ると、膝が沈んだのと同じ
+    //     方向に画面が動いて、体重が伝わる。
+    FBZZ_FIELD_RANGE(float, landCameraDip, 0.14f, "Land Camera Dip (m)", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("最大の落下で着地した瞬間にカメラが下へ沈む距離。1 往復で戻る")
+
+    // WHY 旋回で上体を傾けるか: 走りながら向きを変えると、脚は進行方向へ回るが
+    //     上体は真っ直ぐ立ったままで、氷の上を滑る台車に見える。曲がる側へ
+    //     上体を少し倒すと、遠心力に逆らっている «体重» が絵に出る。
+    //     坂の前傾 (UpdateSlopeLean) と同じ Spine IK の目標を借りるので、
+    //     新しいボーン操作は増えていない。
+    FBZZ_GROUP("Turn Lean")
+    FBZZ_FIELD_RANGE(float, turnLeanPerTurn, 0.30f, "Lean Per Turn (m)", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("毎秒 1 回転 (360 deg/s) で回ったときに上体を曲がる側へ倒す量。"
+                 "0 で切る。速さに比例して効くので、歩きではほとんど倒れない")
+    FBZZ_FIELD_RANGE(float, turnLeanMax, 0.16f, "Lean Max (m)", 0.0f, 0.5f)
+    FBZZ_TOOLTIP("倒す量の上限。急旋回で上体が横へ飛ぶのを止める")
 
     // WHY アニメーションイベントではなく距離で鳴らすか:
     //   足接地のタイミングはクリップが持っているので、本来は Event Track が正しい。
@@ -153,9 +198,18 @@ public:
     //   刻むと、走り出しや坂で片方だけ出る瞬間ができ、音と絵が別々の動作に見える。
     //   歩きで出さないのも同じ理由で «走り» の判定を 1 つに保つため (量が欲しければ
     //   Run At を下げる)。濃さ・大きさは VfxManagerComponent の Run Dust が持つ。
-    FBZZ_GROUP("Run Dust")
-    FBZZ_FIELD(bool, runDust, true, "Run Dust")
+    FBZZ_GROUP("走りの砂埃")
+    FBZZ_FIELD(bool, runDust, true, "走りの砂埃")
     FBZZ_TOOLTIP("走っているあいだ、足が着くたびに足元へ土煙を出す")
+    // WHY 回避の途中にもう 1 発足すか:
+    //   回避で床に残るのは «踏み切り» と «踏ん張り» の 2 発だけで、そのあいだ
+    //   いちばん速く動いている 0.2 秒ほどは床に何も起きない。転がっているのに
+    //   床と関わっていないので、跳んでいるように見える。体がいちばん低くなる
+    //   あたりで擦れの煙を 1 発置くと、転がりが «床の上の動き» に戻る。
+    //   出す / 出さないは走りの砂埃と同じ 1 つのスイッチ (上の runDust) に従う。
+    FBZZ_FIELD_RANGE(float, dodgeScuffAt, 0.42f, "回避の擦れ", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("回避のどこで床を擦る煙を出すか (0 = 踏み切り / 1 = 抜け際)。"
+                 "1.0 で踏ん張りの煙と重なるので実質オフ")
     FBZZ_FIELD(std::string, footBoneLeftName,  "Foot_L", "Left Foot Bone")
     FBZZ_FIELD(std::string, footBoneRightName, "Foot_R", "Right Foot Bone")
     FBZZ_TOOLTIP("土煙を立てる位置。見つからなければプレイヤー原点から出す")
@@ -169,8 +223,21 @@ public:
 
     // 回避中か。被弾処理や敵 AI が「今は掴めない」を判断するのに使える。
     [[nodiscard]] bool  IsDodging() const { return m_dodgeRemaining > 0.0f; }
+    /// 回避を始めた回数。ジャスト回避の報酬を «同じ 1 回の回避» で二重に配らないための札。
+    [[nodiscard]] int   DodgeSerial() const { return m_dodgeSerial; }
+    /// 今の回避が運んでいる向き (水平・正規化済み)。
+    ///
+    /// WHY 体の正面 (transform.forward) で代用できないか: モデルのヨー補正が
+    ///     180 度入っているので、根の «正面» は進んでいる向きの逆を指す。
+    [[nodiscard]] const Vector3& DodgeDirection() const { return m_dodgeDirection; }
     // UI 用。1 = 回避可能 / 0 = 使った直後。
     [[nodiscard]] float DodgeCharge() const;
+    /// 今の回避がどこまで進んだか。0 = 踏み切った瞬間 / 1 = 抜け切る直前。
+    ///
+    /// WHY 外へ出すか: 回避の速さは出だしが最大で終わりに向けて落ちる
+    ///     (Dodge End Speed x)。見せる側 (残像) がこれを知らないと、減速し切った
+    ///     終わり際まで出だしと同じ濃さで残り、«最後まで同じ速さで滑った» に見える。
+    [[nodiscard]] float DodgeProgress01() const;
 
     void OnStart() override;
     void OnUpdate() override;
@@ -193,7 +260,7 @@ public:
     // 武器の挙動そのものは WeaponRigComponent が持つ。ここは要求を渡すだけ。
     void SetWeaponRig(WeaponRigComponent* rig) { m_weaponRig = rig; }
 
-    /// 外から掛ける移動速度の倍率。溜めている間に足を鈍らせる用途 (PolarityBladeComponent)。
+    /// 外から掛ける移動速度の倍率。溜めている間に足を鈍らせる用途 (BladeComponent)。
     ///
     /// WHY 掛ける側が毎フレーム設定するか: «掴んでいる» を知っているのは手の側だけで、
     ///     ここが相手を名指しで問い合わせると、手を 1 つ足すたびに移動側を触ることになる。
@@ -207,7 +274,7 @@ public:
     /// この向きへ体を向けるよう 1 フレームぶん要求する (斬撃が振る向きを渡す)。
     ///
     /// WHY 攻撃側が向きまで決めるか: 斬る向きを決めているのは剣
-    ///     (PolarityBladeComponent::SwingDirection) で、吸い付き補正を 0 にすると
+    ///     (BladeComponent::SwingDirection) で、吸い付き補正を 0 にすると
     ///     それはカメラの正面になる。こちらが独自にロック対象へ向き続けると、
     ///     «体は敵を向いているのに刃は画面の奥へ抜ける» という、当たらない理由が
     ///     画面から読めない食い違いが生まれる。振る向きは 1 つでなければならない。
@@ -281,6 +348,8 @@ private:
     [[nodiscard]] float DodgeSpeed()    const { return tuning->dodgeSpeed; }
     [[nodiscard]] float DodgeDuration() const { return tuning->dodgeDuration; }
     [[nodiscard]] float DodgeCooldown() const { return tuning->dodgeCooldown; }
+    [[nodiscard]] float DodgeEndSpeedRatio() const
+    { return Clamp(tuning->dodgeEndSpeedRatio, 0.05f, 1.0f); }
 
     PlayerAimComponent* m_aimOverride = nullptr;
     WeaponRigComponent* m_weaponRig   = nullptr;
@@ -296,6 +365,9 @@ private:
     float   m_dodgeRemaining = 0.0f;
     float   m_dodgeCooldown  = 0.0f;
     Vector3 m_dodgeDirection = Vector3::ZERO;
+    int     m_dodgeSerial    = 0;
+    /// この回避で擦れの煙をもう出したか。1 回の回避につき 1 発。
+    bool    m_dodgeScuffed   = false;
 
     // 被弾の押し。残り時間で細らせながら入力へ混ぜる。
     Vector3 m_knockDir     = Vector3::ZERO;
@@ -308,6 +380,8 @@ private:
     Vector3 m_lastFacing       = Vector3::FORWARD;
     bool    m_hasLastFacing    = false;
     float   m_servoTurnCooldown = 0.0f;
+    /// 符号付きの旋回速度 [deg/s]。正が右回り。上体の傾きが読む。
+    float   m_yawRateDegrees   = 0.0f;
     // 可変フレームで採取した入力を、次の固定ステップで一度だけ物理へ適用する。
     Vector3 m_moveDirection = Vector3::ZERO;
     // スティックの倒し量 0..1。キーボードは押していれば常に 1。
@@ -322,6 +396,8 @@ private:
     Vector3 m_requestedFacing = Vector3::ZERO;
     bool    m_jumpRequested = false;
     bool    m_dodgeRequested = false;
+    /// 預かっている回避入力の残り [秒]。0 より大きい間は «押されている» として扱う。
+    float   m_dodgeBuffer    = 0.0f;
 
     // ジャンプキーを押している間だけ上りの重力を軽いままにする。
     bool  m_jumpHeld = false;
@@ -353,6 +429,9 @@ inline void PlayerControllerComponent::OnStart()
     physics.SetFreezeRotation(true, true, true);
     m_dodgeRemaining = 0.0f;
     m_dodgeCooldown  = 0.0f;
+    m_dodgeBuffer    = 0.0f;
+    m_dodgeSerial    = 0;
+    m_dodgeScuffed   = false;
     m_moveDirection  = Vector3::ZERO;
     m_moveMagnitude  = 0.0f;
     m_hasMoveInput   = false;
@@ -366,6 +445,7 @@ inline void PlayerControllerComponent::OnStart()
     // «一気に回った» ことになり、立っているだけでサーボ音が鳴る。
     m_hasLastFacing     = false;
     m_servoTurnCooldown = 0.0f;
+    m_yawRateDegrees    = 0.0f;
     m_facing            = Vector3::ZERO;
     m_requestedFacing   = Vector3::ZERO;
 
@@ -389,12 +469,19 @@ inline void PlayerControllerComponent::OnUpdate()
     m_facing          = m_requestedFacing;
     m_requestedFacing = Vector3::ZERO;
 
+    // 転がりの尺を回避の尺へ合わせるのに要る値。Inspector で回避を詰めている最中に
+    // 見えていないと «直す先がある» ことに気付けない (フィールドの WHY を参照)。
+    debugDodgeClipSpeed = dodgeClipSeconds / std::max(DodgeDuration(), 0.0001f);
+
     const Vector3 forward = GetMoveForward();
     const Vector3 right   = GetMoveRight(forward);
 
     // WASD と左スティックの両方がここへ合流する。半径方向のデッドゾーンも
     // アクション層が済ませているので、斜めに倒したときの実効感度が方向で変わらない。
-    const Vector2 axis = input.GetMoveAxis();
+    // カメラ演出 (登場・撃破・とどめ) のあいだは入力を受けない。物理と重力は
+    // そのまま進める ─ 止めると演出の最中に空中で固まる。
+    const bool held = cutscene::HoldsPlayer(Time::unscaledTime);
+    const Vector2 axis = held ? Vector2{ 0.0f, 0.0f } : input.GetMoveAxis();
     // WHY 倒し量を残すか: 正規化だけしてしまうと、スティックを半分倒しても
     //     全力疾走になり、パッドでの歩き / 走りの作り分けが消える。
     //     キーボードは常に 1.0 になるので、従来の挙動は変わらない。
@@ -406,14 +493,14 @@ inline void PlayerControllerComponent::OnUpdate()
         ? (right * axis.x + forward * axis.y).Normalized()
         : Vector3::ZERO;
 
-    m_jumpRequested  = m_jumpRequested  || input.GetActionDown(actions::kJump);
-    m_dodgeRequested = m_dodgeRequested || input.GetActionDown(actions::kDodge);
+    m_jumpRequested  = m_jumpRequested  || (!held && input.GetActionDown(actions::kJump));
+    m_dodgeRequested = m_dodgeRequested || (!held && input.GetActionDown(actions::kDodge));
     // 押しっぱなしかどうかは押した瞬間では分からない。上昇中の重力を決めるために
     // 保持状態そのものを持つ。可変フレーム側で採り、固定ステップ側で使う。
-    m_jumpHeld = input.GetAction(actions::kJump);
+    m_jumpHeld = !held && input.GetAction(actions::kJump);
     // 入力はここまで。抜く / 納める の中身は WeaponRigComponent の担当で、
     // このスクリプトは刀の存在もソケットも知らない。
-    if (m_weaponRig) {
+    if (m_weaponRig && !held) {
         if (input.GetActionDown(actions::kDrawWeapons))    m_weaponRig->RequestDraw();
         if (input.GetActionDown(actions::kHolsterWeapons)) m_weaponRig->RequestSheathe();
         // パッドはボタンが足りないので 1 つで往復させる。どちらへ動かすかは
@@ -493,6 +580,24 @@ inline void PlayerControllerComponent::TickLanding(const CharacterControllerComp
         const float strength = Clamp01(m_peakFallSpeed / landFeedbackSpeed);
         if (auto* feedback = ImpactFeedbackManagerComponent::Instance())
             feedback->Play(FeedbackEvent::PlayerLand, strength);
+        // 床が押し退けられた煙。揺れと音は «画面の外» の情報で、着地した «場所»
+        // には今まで何も出ていなかった。跳んだ高さで煙の大きさが変わる。
+        //
+        // WHY 走行の土煙ではなく Ground Dust か: 走行のそれは «足が後ろへ掻いた»
+        //     跡なので 1 方向へ吹く。着地は全周へ押し退けるので、向きを持たない
+        //     方の口を使う (向きは吹く先の目安としてだけ渡す)。
+        if (runDust && strength > 0.05f)
+            if (auto* vfx = VfxManagerComponent::Instance()) {
+                Vector3 outward = phy.GetVelocity();
+                outward.y = 0.0f;
+                vfx->PlayGroundDust(transform.worldPosition, outward.NormalizedOr(
+                                        transform.worldRotation * Vector3::FORWARD),
+                                    strength, Lerp(0.35f, 0.7f, strength));
+            }
+        // カメラを下へ沈める。膝が沈む向きと同じで、揺れより «重さ» が出る。
+        if (landCameraDip > 0.0f && strength > 0.05f)
+            if (auto* shake = CameraShakeManagerComponent::Instance())
+                shake->Punch(Vector3{ 0.0f, -landCameraDip * strength, 0.0f }, 0.16f);
     }
     m_wasGrounded   = true;
     m_peakFallSpeed = 0.0f;
@@ -506,15 +611,18 @@ inline void PlayerControllerComponent::TickServoTurn(float planarSpeed, float dt
     const Vector3 forward = Vector3{ facing.x, 0.0f, facing.z }.NormalizedOr(m_lastFacing);
 
     if (!m_hasLastFacing || dt <= 0.0f) {
-        m_lastFacing    = forward;
-        m_hasLastFacing = true;
+        m_lastFacing     = forward;
+        m_hasLastFacing  = true;
+        m_yawRateDegrees = 0.0f;
         return;
     }
 
-    // 符号付きの回転角。Cross の y 成分が回転の向きをそのまま持っている。
+    // 符号付きの回転角。Cross の y 成分が回転の向きをそのまま持っている
+    // (左手系 Y-up では FORWARD → RIGHT の回転で +y、つまり正が右回り)。
     const float cross   = Vector3::Cross(m_lastFacing, forward).y;
     const float dot     = std::clamp(Vector3::Dot(m_lastFacing, forward), -1.0f, 1.0f);
-    const float yawRate = std::fabs(ToDeg(std::atan2f(cross, dot))) / dt;
+    m_yawRateDegrees    = ToDeg(std::atan2f(cross, dot)) / dt;
+    const float yawRate = std::fabs(m_yawRateDegrees);
     m_lastFacing = forward;
 
     m_servoTurnCooldown = Max(0.0f, m_servoTurnCooldown - dt);
@@ -660,9 +768,14 @@ inline void PlayerControllerComponent::OnFixedUpdate()
     cc->Tick(&phy, dt);
 
     const bool jumpRequested = m_jumpRequested;
-    const bool dodgeRequested = m_dodgeRequested;
     m_jumpRequested = false;
+
+    // 押した瞬間を «預かり» へ移し替える。TickDodge が実際に出したときだけ空にする。
+    if (m_dodgeRequested) m_dodgeBuffer = std::max(dodgeBufferSeconds, 0.0f);
     m_dodgeRequested = false;
+    const bool dodgeRequested = m_dodgeBuffer > 0.0f;
+    m_dodgeBuffer = std::max(0.0f, m_dodgeBuffer - dt);
+
     TickDodge(m_moveDirection, m_hasMoveInput, dodgeRequested, phy, dt);
 
     // 回避中は開始方向を維持し、通常移動の旋回・速度制御を適用しない。
@@ -674,6 +787,16 @@ inline void PlayerControllerComponent::OnFixedUpdate()
             cc->JumpAtVelocity(&phy, std::max(JumpSpeed(), 0.0f));
             animator.SetBool(paramIsGrounded, false);
             animator.SetTrigger(paramJumpTrigger);
+            // 踏み切りの煙。足が床を蹴った «場所» に出る唯一の印で、これが無いと
+            // 跳んだ瞬間が «浮き始めた» にしか見えない。走行の土煙を後ろへ吹かせる。
+            if (runDust)
+                if (auto* vfx = VfxManagerComponent::Instance()) {
+                    Vector3 dir = phy.GetVelocity();
+                    dir.y = 0.0f;
+                    vfx->PlayRunDust(PlantedFootWorld(),
+                                     dir.NormalizedOr(transform.worldRotation * Vector3::FORWARD),
+                                     0.8f);
+                }
         }
 
         // WHY 抜刀していても進行方向を向くか:
@@ -681,7 +804,7 @@ inline void PlayerControllerComponent::OnFixedUpdate()
         //   これは横走り・後ろ走りのクリップが揃っていて初めて成立する。双剣では
         //   ロコモーションを Katana_Idle / Walk_F / Run_F の前進 3 本だけにしたので、
         //   体を照準へ固定すると «正面を向いたまま横へ滑る» になる。
-        //   斬る向きは体の向きではなく PolarityBladeComponent::SwingDirection() が
+        //   斬る向きは体の向きではなく BladeComponent::SwingDirection() が
         //   ロックオン対象から決めるので、体まで対象へ縛る理由はもう無い。
         //   立ち止まっているときだけ TickAimTurn が体を対象へ向ける。
         // 振っている間の «刃の向き» が最優先。走りの向きにもロック対象にも譲らない
@@ -829,6 +952,12 @@ inline float PlayerControllerComponent::DodgeCharge() const
     return Clamp01(1.0f - m_dodgeCooldown / cooldown);
 }
 
+inline float PlayerControllerComponent::DodgeProgress01() const
+{
+    if (m_dodgeRemaining <= 0.0f) return 1.0f;
+    return Clamp01(1.0f - m_dodgeRemaining / std::max(DodgeDuration(), 0.0001f));
+}
+
 inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
                                                  bool hasInput,
                                                  bool dodgeRequested,
@@ -843,18 +972,56 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
         if (!dodgeRequested) return;
         if (m_dodgeCooldown > 0.0f) return;
 
-        // 入力方向へ跳ぶ。無入力なら後方へ下がる (敵から離れるのが自然な既定動作)。
-        Vector3 direction = hasInput ? moveDirection : -GetMoveForward();
+        // 入力方向へ跳ぶ。無入力なら «前» へ踏み込む。
+        //
+        // WHY 後退ではなく前進か (2026-09-05 に反転):
+        //   1. 回避クリップは前方への踏み切り 1 本しか無い。後ろへ運ぶと、
+        //      横回避と同じ «クリップと進行方向が食い違う» 滑りが残る。
+        //   2. ボス 1 体との近接戦では、離れることは «次の一手が遠くなる» でしかない。
+        //      とっさに押した回避が毎回間合いを空けると、詰め直しに戦闘時間を使う。
+        //   3. ジャスト回避の報酬は «次の一振りが満溜め» (Flux)。射程 2.6m の技なので、
+        //      4.5m 下がると報酬を使う前に走って戻ることになる。
+        //   無敵は全区間にあるので、前進はそのまま «攻撃を潜り抜ける» になる。
+        Vector3 direction = hasInput ? moveDirection : GetMoveForward();
         direction.y = 0.0f;
         if (direction.LengthSq() < EPSILON) return;
 
         m_dodgeDirection = direction.Normalized();
         m_dodgeRemaining = DodgeDuration();
+        m_dodgeBuffer    = 0.0f;   // 出した。預かりはここで空にする
+        m_dodgeScuffed   = false;
+        ++m_dodgeSerial;
+
+        // 体を回避方向へ向ける。
+        //
+        // WHY 入力があるときだけか: 無入力の «前» はカメラ前方で、体はロック対象へ
+        //     向いている (TickAimTurn)。両者は Aim Turn Deadzone のぶんまでずれるので、
+        //     ここで回すと狙っている相手から最大 38 度だけ体が跳ねる。
+        //     どちらもほぼ同じ向きなので、回さない方が絵が落ち着く。
+        // WHY 補間せず即入れるか: 0.24 秒しかない動きを普段の追従で回すと «跳び終わって
+        //     から向き終わる»。回避クリップは前方への踏み切り 1 本しか無いので、
+        //     向かないまま横へ運ぶと «正面を向いたまま滑る» になる。
+        if (hasInput) {
+            phy.SetRotation(
+                (Quaternion::LookRotation(m_dodgeDirection) *
+                 Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees)))
+                    .Normalized());
+        }
         // クールダウンは回避の開始から数える。実質的な待ち時間は
         // DodgeCooldown - DodgeDuration になる。
         m_dodgeCooldown  = DodgeCooldown();
         animator.SetTrigger(paramDodgeTrigger);
         se::Play(audio, se::kPlayerDodge);
+
+        // 出だしを «弾けた» と読ませる。走りと回避の違いは速さだけなので、
+        // 蹴り出しの煙とカメラの引きが無いと «少し速く走った» にしか見えない。
+        if (runDust)
+            if (auto* vfx = VfxManagerComponent::Instance())
+                vfx->PlayRunDust(PlantedFootWorld(), m_dodgeDirection, 1.0f);
+        // カメラを 1 往復ぶん後ろへ引く。画角が開いて、同じ速度でも速く見える。
+        if (dodgeCameraKick > 0.0f)
+            if (auto* shake = CameraShakeManagerComponent::Instance())
+                shake->Punch(Vector3{ 0.0f, 0.0f, -dodgeCameraKick }, 0.18f);
         // 開始フレームからそのまま下の速度上書きへ進む。
         // ここで return すると 1 フレームだけ慣性で滑り、出だしが鈍る。
     } else {
@@ -863,6 +1030,28 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
             // 終わり際の踏ん張り。開始音だけだと、回避がいつ終わって
             // 次の入力を受け付けるのかが耳から分からない。
             se::Play(audio, se::kPlayerDodgeEnd);
+            // 抜けた足元の «踏ん張り» の煙。出だしの煙だけだと、回避が «どこで
+            // 終わったか» が床に残らず、転がりの距離が絵から読めない。
+            if (runDust)
+                if (auto* vfx = VfxManagerComponent::Instance())
+                    vfx->PlayRunDust(PlantedFootWorld(), m_dodgeDirection, 0.6f);
+
+            // 抜けた «瞬間» に走りの速さまで落とす。
+            //
+            // WHY 通常移動の減速に任せないか: この後を引き継ぐのは Ground Decel で、
+            //     回避速度 (走りの 2.8 倍) から落とし切るまで時間が要る。100 m/s² でも
+            //     28 → 10 に 0.18 秒かかり、そのあいだ入力と無関係に滑り続ける。
+            //     回避の距離を伸ばすほどこの尾も伸びるので、速さで距離を作る設計とは
+            //     両立しない。向きは保ったまま «走っている状態» へ直接繋ぐ。
+            Vector3 vel = phy.GetVelocity();
+            const float planar = std::sqrt(vel.x * vel.x + vel.z * vel.z);
+            const float cap    = MoveSpeed();
+            if (planar > cap && planar > EPSILON) {
+                const float scale = cap / planar;
+                vel.x *= scale;
+                vel.z *= scale;
+                phy.SetVelocity(vel);
+            }
             return;  // 今フレームで終了
         }
     }
@@ -871,9 +1060,24 @@ inline void PlayerControllerComponent::TickDodge(const Vector3& moveDirection,
     // WHY 開始時に一度入れて終わりにしないか: 敵や壁に接触した瞬間にソルバーが
     //     速度を削るため、途中で失速して「跳んだのに動かない」になる。持続時間の
     //     あいだ毎フレーム入れ直すことで、移動距離が入力に対して安定する。
+    //
+    // 速さは出だしが最大で、終わりに向けて Dodge End Speed x まで線形に落ちる。
+    // 等速で運ぶと «床を一定速度で滑っている» 絵になり、距離を伸ばすほど氷に見える。
+    const float total    = std::max(DodgeDuration(), 0.0001f);
+    const float progress = Clamp01(1.0f - m_dodgeRemaining / total);
+    const float speed    = DodgeSpeed() * Lerp(1.0f, DodgeEndSpeedRatio(), progress);
+
+    // 転がっている最中に床を擦る 1 発。踏み切りと踏ん張りの «あいだ» を埋める。
+    // 煙は体が通り過ぎた側へ流れるので、進行方向の逆へ吹かせる。
+    if (!m_dodgeScuffed && runDust && dodgeScuffAt > 0.0f && progress >= dodgeScuffAt) {
+        m_dodgeScuffed = true;
+        if (auto* vfx = VfxManagerComponent::Instance())
+            vfx->PlayGroundDust(PlantedFootWorld(), -m_dodgeDirection, 0.35f, 0.7f);
+    }
+
     Vector3 vel = phy.GetVelocity();
-    vel.x = m_dodgeDirection.x * DodgeSpeed();
-    vel.z = m_dodgeDirection.z * DodgeSpeed();
+    vel.x = m_dodgeDirection.x * speed;
+    vel.z = m_dodgeDirection.z * speed;
     phy.SetVelocity(vel);
 }
 
@@ -928,6 +1132,23 @@ inline void PlayerControllerComponent::UpdateSlopeLean(
             const Vector3 localMoveDirection =
                 (transform.worldRotation.Inverse() * moveDirection).Normalized();
             desiredOffset = localMoveDirection * lean;
+        }
+        // 旋回の傾き。曲がっている側へ上体を倒す (Turn Lean の WHY)。
+        // 回避中は転がりのクリップが体の向きを持っているので触らない。
+        Vector3 planar = rb->rigidBody->GetVelocity();
+        planar.y = 0.0f;
+        const float speed = planar.Length();
+        if (turnLeanPerTurn > 0.0f && speed > 0.5f && !IsDodging()) {
+            // 正の旋回速度は右回り。右回りなら右へ倒す = 進行方向の右手側。
+            const Vector3 right = Vector3::Cross(Vector3::UP, planar / speed);
+            const float turns   = m_yawRateDegrees / 360.0f;
+            const float amount  = Clamp(turns * turnLeanPerTurn,
+                                        -std::max(turnLeanMax, 0.0f),
+                                         std::max(turnLeanMax, 0.0f))
+                                * Clamp01(speed / std::max(MoveSpeed(), EPSILON));
+            const Vector3 localRight =
+                (transform.worldRotation.Inverse() * right).NormalizedOr(Vector3::RIGHT);
+            desiredOffset += localRight * amount;
         }
     }
 
