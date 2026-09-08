@@ -4368,7 +4368,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.621446, 0.758803, -17.061977 ]
-    rotation = [ 0.160268, -0.05215, 0.809176, 0.562876 ]
+    rotation = [ 0.160268, -0.05215, 0.809175, 0.562876 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5224,6 +5224,19 @@ tag = 'Player'
 
     [[gameobjects.ScriptComponents]]
     enabled = true
+    type = 'PlayerBossBlockComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        bodyRadius = 1.75
+        debugBlocked = 0
+        drawShapes = false
+        legRadius = 0.42
+        playerRadius = 0.52
+        pushPerSecond = 14.0
+        skin = 0.02
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
     type = 'PlayerClimbComponent'
 
         [gameobjects.ScriptComponents.fields]
@@ -5242,8 +5255,9 @@ tag = 'Player'
         drawPath = true
         drawSeconds = 0.6
         grabInterval = 0.4165
+        holdSeconds = 3.2
         layerName = 'Attack'
-        mountAction = 'Jump'
+        mountAction = 'Climb'
         mountRange = 3.6
         requireToppled = true
         sheatheClipFile = 'guid:bf25e66cf0b7067fb10270753895d369|Assets/Models/Player/Katana_Sheathe.fbx'
@@ -5658,7 +5672,7 @@ tag = 'Untagged'
     submeshIndices = [ 3 ]
 
     [gameobjects.transform]
-    position = [ 5e-06, -3e-06, -3.1e-05 ]
+    position = [ 5e-06, -3e-06, -2.9e-05 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 0.999994, 1.0, 0.999994 ]
 
@@ -9507,6 +9521,7 @@ tag = 'Enemy'
         legRadius = 0.38
         radiusScale = 1.0
         rearRadius = 0.95
+        solidLegs = false
         torsoRadius = 1.9
 
     [[gameobjects.ScriptComponents]]

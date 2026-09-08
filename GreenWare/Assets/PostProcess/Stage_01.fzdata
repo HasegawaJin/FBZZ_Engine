@@ -41,8 +41,8 @@ maxEV = 14.71264362335205
 maxExposureEV = 9.808428764343262
 minEV = -7.1724138259887695
 minExposureEV = -8.0
-speedDown = 14.482757568359375
-speedUp = 9.425287246704102
+speedDown = 2.8604624271392822
+speedUp = 2.0465087890625
 type = 'AutoExposure'
 
 [[overrides]]

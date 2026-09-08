@@ -63,6 +63,15 @@ public:
     FBZZ_FIELD_RANGE_INT(int, coreHealth, 90, "コア", 1, 1000)
     FBZZ_TOOLTIP("背のコアを削り切るのに要る量。蓋が開いているあいだしか削れない")
     FBZZ_FIELD_RANGE(float, legRadius, 0.38f, "脚", 0.05f, 3.0f)
+    // WHY 既定を false に戻したか (2026-09-08): 固くするとボス自身が飛んでいった。
+    //     このエンジンには衝突レイヤーのマトリクスが無く (ProjectSettings の [layers] は
+    //     タグで、コライダー側に layerMask が無い)、ボス配下に置いた solid は
+    //     **ボス自身の胴カプセルと RigidBody (mass 400) に必ず当たる。**
+    //     ボーンは毎フレーム «瞬間移動» するので、めり込み解決が巨大な力になって弾け飛ぶ。
+    //     すり抜けを止めるのは PlayerBossBlockComponent (プレイヤーだけを押し出す) の役目。
+    FBZZ_FIELD(bool, solidLegs, false, "脚と胴でぶつかる (自己衝突するので既定 off)")
+    FBZZ_TOOLTIP("固くするとボス自身の胴カプセルと当たって吹き飛ぶ。すり抜け対策は "
+                 "PlayerBossBlockComponent 側で行う。ここは検証用に残してあるだけ")
     FBZZ_FIELD_RANGE(float, radiusScale, 1.0f, "全体スケール", 0.1f, 3.0f)
     FBZZ_TOOLTIP("全体の太さ。個別の比率を保ったまま «当たりの甘さ» だけを動かす")
 
@@ -105,6 +114,13 @@ private:
         bool        damageable = false;
         /// 部位の耐久。0 なら BossPartComponent の既定値のまま。
         int         health = 0;
+        /// プレイヤーがぶつかる «固い» 当たりにするか。
+        ///
+        /// WHY 部位ごとに分けるか: 脚は «ぶつかって回り込む» 対象で、塞がないと
+        ///     6m の重機の中をすり抜けて歩けてしまう。一方でコアは甲板に立った
+        ///     プレイヤーが斬る的なので、固いと自分の足元に壁が生えることになる。
+        ///     頭は届かない高さにあり、塞ぐ意味が無いうえ空中で引っ掛かる元になる。
+        bool        blocking = false;
     };
 
     void Build();
@@ -182,7 +198,7 @@ inline void BossHitboxRigComponent::Build()
     const float scale = std::max(radiusScale, 0.01f);
 
     std::vector<Segment> segments;
-    segments.push_back({ "Body", "",       torsoRadius * scale });
+    segments.push_back({ "Body", "",       torsoRadius * scale, false, "", false, 0, solidLegs });
     segments.push_back({ "Head", "",       headRadius  * scale });
     segments.push_back({ "Rear", "",       rearRadius  * scale });
     // WHY 球にするか (2026-09-08): 以前は Core→Muzzle のカプセルだった。
@@ -196,11 +212,11 @@ inline void BossHitboxRigComponent::Build()
     static constexpr const char* kLegSuffix[4] = { "_FR", "_FL", "_BR", "_BL" };
     for (const char* suffix : kLegSuffix) {
         segments.push_back({ std::string("Thigh") + suffix, std::string("Shin") + suffix,
-                             legRadius * scale });
+                             legRadius * scale, false, "", false, 0, solidLegs });
         segments.push_back({ std::string("Shin") + suffix,  std::string("Hock") + suffix,
-                             legRadius * scale });
+                             legRadius * scale, false, "", false, 0, solidLegs });
         segments.push_back({ std::string("Hock") + suffix,  std::string("Foot") + suffix,
-                             legRadius * scale, true, suffix, true, legHealth });
+                             legRadius * scale, true, suffix, true, legHealth, solidLegs });
     }
 
     for (const Segment& segment : segments) {
@@ -312,14 +328,18 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
     hitbox.transform.position = center;
     hitbox.transform.rotation = rotation;
 
+    // WHY トリガーのままでよい部位があるか: 斬撃は物理を使わず BossPartComponent を
+    //     型で集めて扇の内側かを測る (BladeComponent)。当たり判定としては
+    //     トリガーで足りていて、solid にするのは «プレイヤーがぶつかる» ためだけ。
+    const bool solid = segment.blocking;
     if (capsule) {
         auto& collider = hitbox.AddComponent<CapsuleColliderComponent>();
         collider.SetCapsule(radius, halfHeight);
-        collider.isTrigger = true;
+        collider.isTrigger = !solid;
     } else {
         auto& collider = hitbox.AddComponent<SphereColliderComponent>();
         collider.SetRadius(radius);
-        collider.isTrigger = true;
+        collider.isTrigger = !solid;
     }
 
     // 斬撃の扇は BossPartComponent を名指しで探す。付いていない部位は
