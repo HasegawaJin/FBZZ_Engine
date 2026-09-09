@@ -273,6 +273,11 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = gbufMatCB;
+        // b8: GBuffer.hlsl は ApplyWetness() で weatherWetness / weatherDarkening /
+        //     weatherPuddle を読む。束縛しないと cbuffer は全ゼロで読まれ、Deferred の
+        //     不透明メッシュだけ «天候が一切効かない» 状態になる (Forward と Skinned は
+        //     b8 を渡しているため、パイプラインを切り替えたときだけ絵が変わる)。
+        dc.constantBuffers[8] = h.advancedGraphicsCB;
         if (material)
             for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
