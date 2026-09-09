@@ -12,6 +12,7 @@
 
 #include <Physics/GJK.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 namespace fbzz::tests {
@@ -26,6 +27,23 @@ physics::GJKResult Intersect(const testkit::SupportSphere& a, const testkit::Sup
 physics::GJKResult Intersect(const testkit::SupportBox& a, const testkit::SupportBox& b)
 {
     return physics::GJK_Intersect(&a, testkit::kBoxSupport, &b, testkit::kBoxSupport);
+}
+
+physics::GJKResult Distance(const testkit::SupportBox& a, const testkit::SupportBox& b)
+{
+    return physics::GJK_Distance(&a, testkit::kBoxSupport, &b, testkit::kBoxSupport);
+}
+
+/// 軸整合の箱どうしの隙間は閉じた式で出る。軸ごとのはみ出し量を並べたベクトルの長さ。
+/// 重なっている軸は 0 になるので、面・辺・角のどの配置でも同じ 1 本の式で書ける。
+float AnalyticGap(const testkit::SupportBox& a, const testkit::SupportBox& b)
+{
+    const math::Vector3 delta = b.center - a.center;
+    const math::Vector3 sum   = a.halfExtents + b.halfExtents;
+    const math::Vector3 gap{ std::max(0.0f, std::abs(delta.x) - sum.x),
+                             std::max(0.0f, std::abs(delta.y) - sum.y),
+                             std::max(0.0f, std::abs(delta.z) - sum.z) };
+    return gap.Length();
 }
 
 } // namespace
@@ -308,7 +326,8 @@ TEST_F(GJKDistanceTest, ReportsTheGapFromABoxFaceToAPoint)
 
 TEST_F(GJKDistanceTest, ReportsTheGapFromABoxCornerToAPoint)
 {
-    // 対角線上の点。最近傍は面ではなく «角» になり、単体が三角形まで育つ経路を通る。
+    // 対角線上の点。最近傍は面ではなく «角» — 箱の支持点そのものなので、
+    // 単体は 1 頂点のまま収束する。三角形まで育つ配置は下の «面の内側» が受け持つ。
     const testkit::SupportBox   box{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
     const testkit::SupportPoint point{math::Vector3(3.0f, 3.0f, 3.0f)};
 
@@ -396,6 +415,71 @@ TEST_F(GJKDistanceTest, DistanceGrowsMonotonicallyAsShapesSeparate)
         EXPECT_GT(result.distance, previous) << "span = " << span;
         previous = result.distance;
     }
+}
+
+// --- 最近傍が «頂点そのもの» ではない配置 -----------------------------------
+//
+// 箱の支持関数は必ず 8 隅のどれかを返す。最近傍点が隅と一致する配置では、単体は
+// 1 頂点のまま答えに届いてしまう。最近傍が面や辺の «内側» に落ちる配置でだけ、
+// GJK は複数の隅を集めて重心座標で内分する経路へ入る。
+// 既存の面どうしのテストは Y も Z も揃っているせいで、たまたま最初の支持点が
+// 答えそのものになる。ここでは軸をずらして、その近道を塞ぐ。
+
+TEST_F(GJKDistanceTest, ReportsTheGapWhenTheClosestPointFallsInsideAFace)
+{
+    // X 方向へ離し、Y と Z を «隅では釣り合わない» 量だけずらす。
+    const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
+    const testkit::SupportBox b{math::Vector3(5.0f, 0.3f, 0.4f), math::Vector3(1.0f, 1.0f, 1.0f)};
+
+    const physics::GJKResult result = Distance(a, b);
+
+    ASSERT_FALSE(result.intersects);
+    EXPECT_NEAR(result.distance, AnalyticGap(a, b), testkit::kLooseTolerance);
+    // 隙間は X 方向だけ。ずらした Y / Z は «面の中で» 吸収され、距離には出ない。
+    EXPECT_NEAR(result.closestA.x, 1.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(result.closestB.x, 4.0f, testkit::kLooseTolerance);
+}
+
+TEST_F(GJKDistanceTest, ReportsTheGapWhenTheClosestFeatureIsAnEdge)
+{
+    // 2 軸で離し、残る 1 軸だけ重なりを残す。最近傍は «辺の内側の 1 点»。
+    const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(1.0f, 1.0f, 1.0f)};
+    const testkit::SupportBox b{math::Vector3(4.0f, 4.0f, 0.3f), math::Vector3(1.0f, 1.0f, 1.0f)};
+
+    const physics::GJKResult result = Distance(a, b);
+
+    ASSERT_FALSE(result.intersects);
+    EXPECT_NEAR(result.distance, AnalyticGap(a, b), testkit::kLooseTolerance);
+}
+
+TEST_F(GJKDistanceTest, AgreesWithTheAnalyticGapForRandomBoxPairs)
+{
+    // 面・辺・角のどれが最近傍になるかを配置任せにして、式と突き合わせる。
+    // 単体が 1 頂点で止まる配置と、複数頂点を内分する配置の両方がここを通る。
+    int checked = 0;
+    for (int i = 0; i < 200; ++i) {
+        const testkit::SupportBox a{Rng().NextVector3(-1.0f, 1.0f),
+                                    Rng().NextVector3(0.3f, 1.5f)};
+        const testkit::SupportBox b{Rng().NextVector3(-6.0f, 6.0f),
+                                    Rng().NextVector3(0.3f, 1.5f)};
+
+        // 重なりぎわは EPA の領分。GJK_Distance は隙間を測ることだけを受け持つ。
+        const float expected = AnalyticGap(a, b);
+        if (expected < 0.05f) continue;
+
+        const physics::GJKResult result = Distance(a, b);
+
+        ASSERT_FALSE(result.intersects)
+            << "a = " << ::testing::PrintToString(a.center)
+            << " b = " << ::testing::PrintToString(b.center);
+        EXPECT_NEAR(result.distance, expected, testkit::kLooseTolerance)
+            << "a = " << ::testing::PrintToString(a.center)
+            << " b = " << ::testing::PrintToString(b.center);
+        ++checked;
+    }
+
+    // 全部が «重なりぎわ» で弾かれると、何も確かめないまま緑になる。
+    EXPECT_GT(checked, 50);
 }
 
 } // namespace fbzz::tests

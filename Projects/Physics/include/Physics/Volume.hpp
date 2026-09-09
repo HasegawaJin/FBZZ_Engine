@@ -15,6 +15,11 @@ namespace fbzz::physics
 
         virtual bool Contains(const math::Vector3& position) const = 0;
         virtual void Apply(RigidBody& body, float dt) = 0;
+
+        // 以下の既定はどれも «その効果を持たない» ＝ 中立値。効果を 1 つだけ足す Volume が
+        // 残りを書かずに済むようにするためのもので、純粋仮想にはしない。
+        // 実装し忘れても «何も起きない» が正しい振る舞いになる点が、既定が黙って誤りになる
+        // XPBDConstraint::ResetLambda との違い。
         virtual float GetTimeScale() const { return 1.0f; }
         virtual bool OverridesGravity() const { return false; }
         virtual bool IsExpired() const { return false; }

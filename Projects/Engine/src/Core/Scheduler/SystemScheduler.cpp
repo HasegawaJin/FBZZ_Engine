@@ -315,7 +315,9 @@ void SystemScheduler::DumpGraph() const
             oss << "\n";
         }
     }
-    FBZZ_LOG_INFO("{}", oss.str());
+    // WHY %s か: Logger は printf 形式の可変長引数。"{}" は書式指定として解釈されず
+    //     そのまま出力されるうえ、std::string を ... へ渡すのは未定義動作になる。
+    FBZZ_LOG_INFO("%s", oss.str().c_str());
 }
 
 } // namespace fbzz

@@ -46,13 +46,13 @@ speedUp = 2.0465087890625
 type = 'AutoExposure'
 
 [[overrides]]
-active = true
+active = false
 density = 0.001990049844607711
 edgeFade = 1.0
 heightFalloff = 0.0
 heightStart = 500.0
 intensity = 0.9116267561912537
-maxDistance = 925.5
+maxDistance = 642.6994018554688
 minDistance = 500.0
 scattering = 0.007662835065275431
 steps = 48

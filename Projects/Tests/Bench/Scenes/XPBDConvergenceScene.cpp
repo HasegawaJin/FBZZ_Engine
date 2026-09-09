@@ -13,7 +13,9 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 
@@ -24,6 +26,15 @@ namespace {
 constexpr float kStartHeight = 3.0f;
 constexpr float kRadius      = 0.25f;
 constexpr float kSpacing     = 1.6f;
+
+/// 落ち着いたと見なす条件。時間だけで決めると、過渡の途中を静止と読み違える。
+constexpr float kSettleSeconds = 2.0f;
+constexpr float kSettleSpeed   = 0.02f;
+/// 静止後に許す «刻みによる差»。この場面の主張そのものなので、緩めない。
+constexpr float kSettleSpread  = 1.0e-3f;
+constexpr float kRestTolerance = 5.0e-3f;
+/// 床への食い込み。compliance 0 の拘束なので、目に見える量が出たら解けていない。
+constexpr float kPenetration   = 1.0e-3f;
 
 /// 1 本の «落として止める» 試験台。substep 数だけが違う個体を並べる。
 struct Column {
@@ -90,6 +101,40 @@ public:
         }
     }
 
+    void DetectAnomalies(AnomalyLog& log) override
+    {
+        float lowest  = kStartHeight;
+        float highest = -kStartHeight;
+
+        for (const Column& column : m_columns) {
+            const math::Vector3 position = column.body->GetPosition();
+
+            char label[48];
+            std::snprintf(label, sizeof(label), "substep %d の位置", column.substeps);
+            if (!log.CheckFinite(label, position, 1.0e3f)) return;
+
+            log.ReportIf(position.y < kRadius - kPenetration, Severity::Error,
+                         "substep %d の球が床へ %.4f m 食い込んでいる",
+                         column.substeps, kRadius - position.y);
+
+            lowest  = (std::min)(lowest, position.y);
+            highest = (std::max)(highest, position.y);
+        }
+
+        // 落ち着くまでは差が出てよい。固定するのは «静止位置» だけ。
+        if (m_elapsed < kSettleSeconds || !Settled()) return;
+
+        log.ReportIf(highest - lowest > kSettleSpread, Severity::Error,
+                     "静止したのに高さが substep 数で %.5f m ばらついている", highest - lowest);
+
+        for (const Column& column : m_columns) {
+            const float error = column.body->GetPosition().y - kRadius;
+            log.ReportIf(std::fabs(error) > kRestTolerance, Severity::Warning,
+                         "substep %d の静止位置が半径から %+.5f m ずれている",
+                         column.substeps, error);
+        }
+    }
+
     void DrawControls() override
     {
         ImGui::Text("経過 %.2f 秒", m_elapsed);
@@ -140,6 +185,13 @@ public:
     }
 
 private:
+    bool Settled() const
+    {
+        for (const Column& column : m_columns)
+            if (column.body->GetVelocity().Length() > kSettleSpeed) return false;
+        return true;
+    }
+
     static constexpr std::array<int, 3> kSubstepChoices{2, 8, 32};
 
     std::array<Column, 3> m_columns;

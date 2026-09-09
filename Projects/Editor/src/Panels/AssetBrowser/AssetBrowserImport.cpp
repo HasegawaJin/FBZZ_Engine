@@ -268,7 +268,7 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
         < FbxMetaSerializer::kModelImporterVersion)
         return true;
 
-    // 原本と設定の fingerprint を、前回 import 成功時に .meta へ焼いた値と突き合わせる。
+    // 原本と設定の fingerprint を、前回 import 成功時に焼いた値 (ImportCacheStore) と突き合わせる。
     //
     // WHY mtime 比較をやめたか:
     //   import は「生成物を書く → 原本の .meta を書く」順で走るため、成功直後は必ず
@@ -287,8 +287,8 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
             || cache.settingsHash != FbxMetaSerializer::SettingsHash(options);
     }
 
-    // fingerprint 未記録の古い .meta / .meta 自体が無いケースは mtime へフォールバックする。
-    // 一度再インポートが走れば [cache] が書かれ、以降は上の経路に乗る。
+    // fingerprint が未記録のケース (Library を消した / .meta が無い) は mtime へフォールバックする。
+    // 一度再インポートが走れば ImportCacheStore へ記録され、以降は上の経路に乗る。
     std::error_code ec;
     const auto srcTime   = fs::last_write_time(p,         ec); if (ec) return false;
     const auto assetTime = fs::last_write_time(modelFile,  ec); if (ec) return false;

@@ -28,6 +28,7 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Memory/LinearAllocatorTests.cpp
         Core/Auto/Memory/StackAllocatorTests.cpp
         Core/Auto/Memory/PoolAllocatorTests.cpp
+        Core/Auto/Memory/AllocatorMoveTests.cpp
         Core/Auto/Memory/FrameAllocatorTests.cpp
         Core/Auto/Memory/MemoryTrackerTests.cpp
         Core/Auto/Memory/MemoryDebugTests.cpp
@@ -40,6 +41,7 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Concurrency/TaskSystemConcurrencyTests.cpp
         Core/Auto/Scheduler/SchedulerDeclarationTests.cpp
         Core/Auto/Scheduler/SchedulerExecutionTests.cpp
+        Core/Auto/Scheduler/SchedulerBatchingTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics   # SchedulerExecutionTests がコンポーネント型として参照する
@@ -61,15 +63,25 @@ fbzz_add_test_suite(PhysicsAuto
         Physics/Auto/CCDTests.cpp
         Physics/Auto/ConvexHullTests.cpp
         Physics/Auto/WorldQueryTests.cpp
+        Physics/Auto/WorldRaycastShapeTests.cpp
+        Physics/Auto/WorldSceneSyncTests.cpp
+        Physics/Auto/WorldStepTests.cpp
+        Physics/Auto/WorldCollisionEventTests.cpp
         Physics/Auto/ContactResolveTests.cpp
+        Physics/Auto/ContactIslandTests.cpp
+        Physics/Auto/NarrowPhaseContactTests.cpp
         Physics/Auto/MeshColliderTests.cpp
         Physics/Auto/RigidBodySerializerTests.cpp
+        Physics/Auto/XPBDContactTests.cpp
         Physics/Auto/XPBDPlaneContactTests.cpp
         Physics/Auto/XPBDPoseAnchorTests.cpp
         Physics/Auto/ConstraintTests.cpp
         Physics/Auto/ContactCacheTests.cpp
         Physics/Auto/PhysicsMaterialTests.cpp
         Physics/Auto/LayerTests.cpp
+        Physics/Auto/ColliderVolumeTests.cpp
+        Physics/Auto/ColliderDebugGeometryTests.cpp
+        Physics/Auto/ConstraintDebugGeometryTests.cpp
     LINKS
         FBZZTestKitPhysics
 )
@@ -111,6 +123,7 @@ fbzz_add_test_suite(EngineAuto
 #      ここでも走らせられるようにすると «どちらの結果が正しいのか» が分からなくなる。
 add_executable(FBZZTestBench
     Bench/main.cpp
+    Bench/AnomalyLog.cpp
     Bench/BenchApp.cpp
     Bench/Viewport2D.cpp
     Bench/Scenes/XPBDConvergenceScene.cpp

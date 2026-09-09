@@ -45,11 +45,15 @@ $RepositoryRoot = Split-Path -Parent $PSScriptRoot
 # WHY: 初回の自動 configure 判定 (CMakeCache.txt の有無) と ctest の実行先を知るために
 #      binaryDir が要る。preset を追加したらここへも 1 行足すこと。
 #      ずれると初回ビルドが「未 configure なのに configure されない」状態になる。
+#
+#      coverage は Ninja の単一構成ビルド。CMAKE_BUILD_TYPE=Debug なので、CMake が
+#      参照する出力先プロパティは他と同じ *_DEBUG 系になり、Binaries/Debug/ へ出る。
 $PresetLayout = @{
     'debug'       = @{ BinaryDir = 'build/Debug';       Configuration = 'Debug' }
     'release'     = @{ BinaryDir = 'build/Release';     Configuration = 'Release' }
     'development' = @{ BinaryDir = 'build/Development'; Configuration = 'Development' }
     'sdk'         = @{ BinaryDir = 'build/SDK';         Configuration = 'Development' }
+    'coverage'    = @{ BinaryDir = 'build/Coverage';    Configuration = 'Debug' }
 }
 
 $PresetKey = $ConfigurePreset.ToLowerInvariant()
@@ -137,7 +141,20 @@ switch ($Verb) {
         #      「プロジェクト数 × /MP」で cl.exe が掛け算に増える。Inspector 等の
         #      /bigobj が要る重い翻訳単位は cl.exe 1 つで 1〜2GB 使うため、
         #      物理メモリを使い切ってマシン全体がスワップに巻き込まれる。
-        & cmake --build --preset $BuildPreset --parallel 1 @CMakeArguments
+        #
+        #      coverage preset だけは Ninja。/MP を渡していないので «並列はジェネレーターが
+        #      全部持つ» 側になり、ここで 1 を渡すとビルド全体が本当に直列になる。
+        #      物理メモリから同時実行数を決め直す (clang-cl 1 プロセス = 1GB 見積り)。
+        if ($PresetKey -eq 'coverage') {
+            $memoryMB = [int]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
+            $jobs = [Math]::Min([Environment]::ProcessorCount - 2, [int]($memoryMB / 1024))
+            $jobs = [Math]::Max(2, [Math]::Min(12, $jobs))
+        }
+        else {
+            $jobs = 1
+        }
+
+        & cmake --build --preset $BuildPreset --parallel $jobs @CMakeArguments
         exit $LASTEXITCODE
     }
 

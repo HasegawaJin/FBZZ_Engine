@@ -71,7 +71,7 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_normalParams;         // w=normalStrength (xyz は旧 normalMap スクロール枠・未使用)
     float4   g_timeParams;           // w=time (xyz は旧 normalMap スクロール枠・未使用)
     float4   g_foamParams;           // x=threshold, y=fade, z=strength, w=foamNoiseScale
-    float4   g_refractionFlowParams; // x=refraction, y=flowSpeed, z=未使用, w=未使用
+    float4   g_refractionFlowParams; // x=refraction, y=flowSpeed, zw=外周フェード幅 (UV 単位, 0 で無効)
     float4   g_waveDir[4];           // xy=direction, z=steepness, w=enabled
     float4   g_waveParams[4];        // x=amplitude, y=wavelength, z=omega, w=k
     float4   g_detailParams;         // x=detailScale, y=detailSpeed, z=detailStrength, w=smoothness
@@ -231,14 +231,21 @@ float3 WaterNoiseD(float2 p)
 }
 
 // オクターブごとの固有ドリフト。同じ向きに揃うと縞が流れて見えるため方向をばらす。
-static const float2 kWaterDrift[4] = {
+#define WATER_DETAIL_OCTAVES 5
+static const float2 kWaterDrift[WATER_DETAIL_OCTAVES] = {
     float2( 0.31f,  0.17f), float2(-0.23f,  0.41f),
-    float2( 0.47f, -0.29f), float2(-0.37f, -0.13f)
+    float2( 0.47f, -0.29f), float2(-0.37f, -0.13f),
+    float2( 0.11f,  0.53f)
 };
+// 振幅 0.55^i (i = 0..4) の総和。途中で打ち切っても正規化がぶれないよう定数で持つ。
+static const float kWaterDetailNorm = 2.110381f;
 
 // さざ波の高さ勾配 (∂h/∂x, ∂h/∂z) をワールド XZ で積む。
 // WHY ワールド座標: UV で評価すると extent の違う水面どうしでさざ波の細かさが揃わない。
-float2 WaterDetailGradient(float2 worldXZ, float time)
+//
+// @param footprint このピクセルが覆うワールド距離 [m]。遠いほど・浅い角度ほど大きい。
+// @ret   xy = 勾配, z = Nyquist で落とした細部の割合 (0 = 全部残った, 1 = 全部落ちた)。
+float3 WaterDetailGradient(float2 worldXZ, float time, float footprint)
 {
     float scale = max(g_detailParams.x, 1.0e-4f);
     float speed = g_detailParams.y;
@@ -249,33 +256,62 @@ float2 WaterDetailGradient(float2 worldXZ, float time)
     const float2x2 step = float2x2(0.80f, -0.60f, 0.60f, 0.80f);
 
     float2 grad = float2(0.0f, 0.0f);
-    float amp = 1.0f, freq = scale, norm = 0.0f;
+    float amp = 1.0f, freq = scale, kept = 0.0f;
 
-    [unroll]
-    for (int i = 0; i < 4; ++i)
+    [loop]
+    for (int i = 0; i < WATER_DETAIL_OCTAVES; ++i)
     {
+        // 1 ピクセルに 1 周期以上入るオクターブは、平均すれば «ざらつき» しか残らない。
+        // WHY 落とすか: 残すとカメラが動くたびに遠景の水面が総毛立って明滅する。
+        //      周期がピクセルの 2 倍を切ったところから滑らかに寝かせ、遠くの水面は
+        //      «細部が消えて鏡に近づく» という実際の見え方へ収束させる。
+        // freq は単調増加なので、ここで潰れた先のオクターブはすべて潰れている。
+        float fade = saturate(1.0f - footprint * freq * 2.0f);
+        if (fade <= 0.0f) break;
+
         float2 q = mul(rot, worldXZ) * freq + (flow + kWaterDrift[i] * (time * speed)) * freq;
         float3 n = WaterNoiseD(q);
         // 勾配は回した座標系で出るので、rot の逆 (= 転置) を掛けて元の軸へ戻す。
-        grad += mul(n.xy, rot) * (amp * freq);
-        norm += amp;
+        grad += mul(n.xy, rot) * (amp * freq * fade);
+        kept += amp * fade;
         rot   = mul(step, rot);
         amp  *= 0.55f;
         freq *= 2.07f;
     }
-    return grad / max(norm, 1.0e-4f);
+
+    const float invNorm = 1.0f / kWaterDetailNorm;
+    return float3(grad * invNorm, saturate(1.0f - kept * invNorm));
 }
 
 // 接空間法線。tangent = +X(world), binormal = +Z(world) なので xy がそのまま world XZ に対応する。
-float3 SampleWaterNormal(float2 worldXZ, float2 uv, float time)
+// @ret xyz = 接空間法線, w = 落とした細部量 (specular AA で粗さへ回す)。
+float4 SampleWaterNormal(float2 worldXZ, float2 uv, float time, float footprint)
 {
-    float2 grad = WaterDetailGradient(worldXZ, time) * max(g_detailParams.z, 0.0f);
+    float3 detail = WaterDetailGradient(worldXZ, time, footprint);
+    float2 grad = detail.xy * max(g_detailParams.z, 0.0f);
     float3 waveNormal = normalize(float3(-grad.x, -grad.y, 1.0f));
 
     float2 ripple = g_rippleTex.Sample(g_samplerClamp, uv).rg * 2.0f - 1.0f;
     float3 rippleNormal = float3(ripple.xy, sqrt(saturate(1.0f - dot(ripple.xy, ripple.xy))));
     waveNormal = normalize(waveNormal + rippleNormal * 0.5f);
-    return normalize(lerp(float3(0.0f, 0.0f, 1.0f), waveNormal, g_normalParams.w));
+    return float4(normalize(lerp(float3(0.0f, 0.0f, 1.0f), waveNormal, g_normalParams.w)), detail.z);
+}
+
+// 水面メッシュ外周のフェード係数。矩形の縁でアルファを落とす。
+//
+// WHY 必要か: 水面はゼロ厚のシートなので、矩形の縁では «板の切り口» のような直線で
+//     シーンが切り替わる。水に厚みが無いことがその 1 本の線で分かってしまう。
+//     縁へ向かって消していけば «岸に向かって薄くなる水» として読めるようになる。
+// WHY 幅を UV で受け取るか: CPU 側が «メートル / extent» を軸ごとに割って渡す。
+//     こうすると extent が違う軸でも、縦横で帯の実寸が揃う。
+// 上限 0.15: 小さな水面で幅を大きく取ると、中央まで薄まって水が消える。
+float WaterEdgeFade(float2 uv, float2 widthUV)
+{
+    float2 w = min(max(widthUV, 0.0f), 0.15f);
+    float2 d = min(uv, 1.0f - uv); // 最も近い縁までの距離 [0, 0.5]
+    float fx = w.x > 1.0e-5f ? smoothstep(0.0f, w.x, d.x) : 1.0f;
+    float fy = w.y > 1.0e-5f ? smoothstep(0.0f, w.y, d.y) : 1.0f;
+    return fx * fy;
 }
 
 float LinearizeDepth(float rawDepth)
@@ -339,10 +375,22 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float time = g_timeParams.w;
     float2 screenUV = p.screenPos.xy / p.screenPos.w * float2(0.5f, -0.5f) + 0.5f;
 
-    float3 tangentNormal = SampleWaterNormal(p.worldPos.xz, p.uv, time);
+    // 1 ピクセルが覆うワールド距離。さざ波の LOD と specular AA の両方がこれを基準にする。
+    float2 footprintDX = ddx(p.worldPos.xz);
+    float2 footprintDY = ddy(p.worldPos.xz);
+    float  footprint   = max(length(footprintDX), length(footprintDY));
+
+    float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, time, footprint);
+    float3 tangentNormal = normalSample.xyz;
+    float  lostDetail    = normalSample.w;
+
     float3x3 tbn = float3x3(normalize(p.tangent), normalize(p.binormal), normalize(p.normal));
     float3 N = normalize(mul(tangentNormal, tbn));
     float3 V = normalize(cameraPos - p.worldPos);
+    // 水面下から見上げているときは面の裏側を見ている (PSO は両面描画)。
+    // WHY 幾何法線で判定するか: さざ波を含む N で判定すると、浅い角度のピクセルだけが
+    //     ばらばらに反転して斑になる。向きの決定は滑らかな頂点法線に任せる。
+    if (dot(p.normal, V) < 0.0f) N = -N;
     float NdotV = saturate(dot(N, V));
 
     // Schlick フレネル。g_surfaceParams.z を水の F0 (実測 0.02 前後) として扱う。
@@ -393,13 +441,17 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     // 空反射は空連動 IBL の事前フィルタ済みキューブから引く (専用の環境テクスチャは不要)。
     // smoothness が低いほど粗い mip を引き、ざらついた水面では反射がぼける。
     float3 R = reflect(-V, N);
+    // 落とした細部はサブピクセルの法線ばらつきそのものなので、粗さへ移す (specular AA)。
+    // WHY: 移さないと «消えた細部» が反射とハイライトからだけ抜け落ち、遠景の水面が
+    //      磨いた金属板になる。粗さに戻せば «細かい波で反射がぼける» 側に着地する。
     float  roughness = saturate(1.0f - g_detailParams.w);
+    float  roughnessAA = saturate(roughness + lostDetail * (1.0f - roughness) * 0.70f);
     float3 reflectColor = skyReflectTint;
     [branch]
     if (g_reflectParams.x > 0.001f)
     {
         float3 sky = g_skyReflection.SampleLevel(g_samplerClamp, R,
-                                                 roughness * (float)max(iblMaxMipLevel, 0)).rgb;
+                                                 roughnessAA * (float)max(iblMaxMipLevel, 0)).rgb;
         reflectColor = lerp(skyReflectTint, sky, saturate(g_reflectParams.x));
     }
 
@@ -432,7 +484,9 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     //      無制限に正規化すると 1 ピクセルだけ数百の輝度が出て Bloom がちらつく。上限で挟む。
     float3 H = normalize(L + V);
     float NdotH = saturate(dot(N, H));
-    float specPower = exp2(saturate(g_detailParams.w) * 10.0f + 2.0f); // 4 .. 4096
+    // 指数は粗さ (specular AA 込み) から引く。遠景でハイライトが 1 ピクセルに縮んで
+    // 這うのを防ぐため、細部が消えたぶんだけ山を広く・低くする。
+    float specPower = exp2(saturate(1.0f - roughnessAA) * 10.0f + 2.0f); // 4 .. 4096
     float specNorm  = min((specPower + 8.0f) * 0.125f, 24.0f);
     float specular  = pow(NdotH, specPower) * specNorm * max(lightIntensity, 0.0f) * shadow;
     color += lightColor * specular * specularStrength * lerp(0.65f, 1.0f, shadow);
@@ -466,7 +520,9 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float2 foamP = p.worldPos.xz * max(g_foamParams.w, 1.0e-4f)
                  + g_flowParams.xy * (time * 0.35f);
     float foamTexVal = saturate(WaterNoiseD(foamP).z * 1.6f);
-    float foamAmount = max(foamMaskVal, shoreFoam) * foamTexVal;
+    // うねりの頂点で崩れる白波。岸が無い外洋でも波が «立って» 見えるかはここで決まる。
+    float crestFoam = smoothstep(0.45f, 0.90f, p.waveCrest) * 0.45f;
+    float foamAmount = max(max(foamMaskVal, shoreFoam), crestFoam) * foamTexVal;
     float foam = smoothstep(0.05f, 1.0f, foamAmount) * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
     float3 foamColor = lerp(float3(0.72f, 0.88f, 0.92f), float3(1.0f, 1.0f, 1.0f), saturate(foamTexVal));
     color = lerp(color, foamColor, saturate(foam));
@@ -482,5 +538,13 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float alpha = g_surfaceParams.x * lerp(minShallowAlpha, 1.0f, depthFactor);
     alpha = max(alpha, backgroundMask * 0.92f);
     alpha = saturate(max(alpha, max(foam * 0.9f, rippleRing * 0.95f)));
+
+    // 外周フェードは «最後に» 掛ける。上の max 群より前だと、泡や背景マスクが
+    // 縁のアルファを持ち上げ直してしまい、切り口の線がそのまま残る。
+    alpha *= WaterEdgeFade(p.uv, g_refractionFlowParams.zw);
+    // WHY 完全な透明を捨てるか: 水面は深度を書く (自分自身の重なりを解決するため)。
+    //     フェードで見えなくなった縁がそのまま深度を書くと、その裏にある半透明や
+    //     デカールを «見えない板» が遮る。絵に出ない画素は深度も残さない。
+    clip(alpha - 0.003f);
     return float4(color, alpha);
 }

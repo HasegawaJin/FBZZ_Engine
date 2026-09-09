@@ -9,6 +9,8 @@
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
+#include <Engine/Renderer/DrawCall.hpp>
+#include <Engine/Renderer/RenderState.hpp>
 
 namespace fbzz::scene {
 
@@ -51,6 +53,43 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     volDC.dispatchY          = (ctx.height + 7) / 8;
     volDC.dispatchZ          = 1;
     r.Dispatch(volDC, resources);
+
+    // 積分結果を HDR へ加算する。
+    //
+    // WHY Composite ではなくここで足すか: Composite は水も半透明も描き終わった後に走る。
+    //     レイは不透明深度で止まっているので、そこで足すと «水底までの光芒» が水面の
+    //     手前に描かれる。不透明しか無いこの時点で足しておけば、後続の透明描画が
+    //     普通に上へ乗り、遮蔽が正しくなる。
+    // NOTE: CS 出力は既に volLightIntensity を掛けてある。ここで再度掛けないこと。
+    static uint64_t s_resetVersion = resources.GetResetVersion();
+    static auto copyShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    // 加算合成の全画面三角形。深度は見ない (レイマーチ側が深度で終端を決めている)。
+    static auto additivePSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_OFF
+    });
+    if (s_resetVersion != resources.GetResetVersion()) {
+        s_resetVersion = resources.GetResetVersion();
+        copyShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+        additivePSO    = resources.CreatePipelineState({
+            renderer::RasterizerMode::SOLID,
+            renderer::BlendMode::ADDITIVE,
+            renderer::DepthMode::DEPTH_OFF
+        });
+    }
+    if (!copyShader.IsValid() || !additivePSO.IsValid())
+        return;
+
+    // Dispatch は OM の RTV/DSV を外すので、描く前に張り直す。
+    r.SetRenderTarget(h.hdrRT, resources);
+
+    renderer::DrawCall applyDC;
+    applyDC.shader        = copyShader;
+    applyDC.pipelineState = additivePSO;
+    applyDC.vertexCount   = 3;
+    applyDC.textures[5]   = h.volumetricResult; // TEX_GBUFFER0: CopyColor の入力スロット
+    r.Submit(applyDC, resources);
 }
 
 } // namespace fbzz::scene

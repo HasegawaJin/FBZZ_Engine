@@ -10,36 +10,104 @@
 #include <sstream>
 
 namespace fbzz::editor {
+namespace {
+
+// 個人の作業状態を置くファイル。Library は .gitignore 済みなので、clone しても
+// 他人の視点位置・開いていたシーン・パネル配置が付いてこない (Unity の UserSettings/ 相当)。
+// projectRoot が空 (プロジェクト未確定) なら保存先を決められないので空文字列を返す。
+std::string EditorLocalStatePath(const std::string& projectRoot)
+{
+    if (projectRoot.empty()) return {};
+    std::string root = projectRoot;
+    if (root.back() != '/' && root.back() != '\\') root.push_back('/');
+    return root + "Library/EditorLocalState.toml";
+}
+
+// 共有設定を読んだテーブルの上へ、個人状態のセクションを被せる。
+//
+// WHY セクションごと差し替えるか: 読み出し側 (Load 本体) は tbl["scene"] のような
+//     参照を 250 行にわたって持つ。ファイルが 2 つに割れたことを読み出し側へ持ち込むと
+//     どちらを見るかの分岐が全行に生えるので、読む前に 1 つのテーブルへ合流させる。
+//     旧 editor_settings.toml に同じセクションが残っていても local 側が勝つため、
+//     移行はこの上書きだけで完了する。
+void OverlayEditorLocalState(const std::string& projectRoot, toml::table& tbl)
+{
+    const std::string localPath = EditorLocalStatePath(projectRoot);
+    if (localPath.empty()) return;
+
+    std::string text;
+    if (!util::FileSystem::ReadText(localPath, text)) return;
+
+    auto result = toml::parse(text);
+    if (!result) {
+        // 壊れていても復旧は要らない。次の保存で書き直され、失うのは作業状態だけ。
+        FBZZ_LOG_WARN("EditorSettings: parse failed: %s", localPath.c_str());
+        return;
+    }
+
+    for (const auto& [key, value] : result.table()) {
+        if (const toml::table* section = value.as_table())
+            tbl.insert_or_assign(key.str(), *section);
+        else if (const toml::array* array = value.as_array())
+            tbl.insert_or_assign(key.str(), *array);
+    }
+}
+
+// 個人状態のセクションを Library/EditorLocalState.toml へ書き出す。
+bool SaveEditorLocalState(const std::string& projectRoot, toml::table&& localRoot)
+{
+    const std::string localPath = EditorLocalStatePath(projectRoot);
+    if (localPath.empty()) return false;
+
+    std::ostringstream ss;
+    ss << "# 自動生成 — このマシンのエディター作業状態。git には載せない (Library は .gitignore 済み)。\n"
+          "# 視点位置・開いていたシーン・パネル配置などは触るたびに変わり、人ごとに違う。\n"
+          "# 共有ファイルへ置くと、同じプロジェクトを触る全員がこの行で衝突し続ける。\n\n";
+    ss << localRoot;
+
+    util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(localPath));
+    if (util::FileSystem::WriteText(localPath, ss.str())) return true;
+    FBZZ_LOG_WARN("EditorSettings: local state write failed: %s", localPath.c_str());
+    return false;
+}
+
+} // namespace
 
 bool EditorSettings::Load(const std::string& path, const std::string& projectRoot)
 {
-    std::string text;
-    if (!util::FileSystem::ReadText(path, text)) {
-        // 設定ファイルがまだ無いプロジェクトでも、旧 BuildSettings.toml だけは引き継ぐ。
-        BuildSettings::LoadLegacyFile(projectRoot, build);
-        return false;
-    }
+    toml::table tbl;
+    bool sharedLoaded = false;
 
-    // TOML_EXCEPTIONS=0 なので parse_result で受ける
-    auto result = toml::parse(text);
-    if (!result) {
-        FBZZ_LOG_WARN("EditorSettings: parse failed: %s", path.c_str());
-        return false;
+    std::string text;
+    if (util::FileSystem::ReadText(path, text)) {
+        // TOML_EXCEPTIONS=0 なので parse_result で受ける
+        auto result = toml::parse(text);
+        if (!result) {
+            FBZZ_LOG_WARN("EditorSettings: parse failed: %s", path.c_str());
+            return false;
+        }
+        tbl = std::move(result.table());
+        sharedLoaded = true;
     }
-    auto& tbl = result.table();
+    // 共有設定がまだ無いプロジェクトでも読み出しは続ける。空テーブル相手なら
+    // 全項目が既定値のまま素通りし、個人状態と旧 BuildSettings.toml だけが拾われる。
+
+    // 個人状態を上書きで被せる。旧 editor_settings.toml に [camera] や [scene] が
+    // 残っていても local 側が勝つので、移行はこの 1 行で済む。
+    OverlayEditorLocalState(projectRoot, tbl);
 
     // カメラ
-    if (auto v = tbl["camera"]["speed"].value<float>())       cameraSpeed       = *v;
-    if (auto v = tbl["camera"]["sensitivity"].value<float>()) cameraSensitivity = *v;
-    if (auto v = tbl["camera"]["last_pos_x"].value<float>())  cameraLastPx      = *v;
-    if (auto v = tbl["camera"]["last_pos_y"].value<float>())  cameraLastPy      = *v;
-    if (auto v = tbl["camera"]["last_pos_z"].value<float>())  cameraLastPz      = *v;
-    if (auto v = tbl["camera"]["last_rot_x"].value<float>())  cameraLastRx      = *v;
-    if (auto v = tbl["camera"]["last_rot_y"].value<float>())  cameraLastRy      = *v;
-    if (auto v = tbl["camera"]["last_rot_z"].value<float>())  cameraLastRz      = *v;
-    if (auto v = tbl["camera"]["last_rot_w"].value<float>())  cameraLastRw      = *v;
-    if (auto v = tbl["camera"]["orthographic"].value<bool>()) cameraOrthographic = *v;
-    if (auto v = tbl["camera"]["ortho_height"].value<float>()) cameraOrthoHeight = *v;
+    if (auto v = tbl["camera"]["speed"].value<float>())        cameraSpeed        = *v;
+    if (auto v = tbl["camera"]["sensitivity"].value<float>())  cameraSensitivity  = *v;
+    if (auto v = tbl["camera"]["last_pos_x"].value<float>())   cameraLastPx       = *v;
+    if (auto v = tbl["camera"]["last_pos_y"].value<float>())   cameraLastPy       = *v;
+    if (auto v = tbl["camera"]["last_pos_z"].value<float>())   cameraLastPz       = *v;
+    if (auto v = tbl["camera"]["last_rot_x"].value<float>())   cameraLastRx       = *v;
+    if (auto v = tbl["camera"]["last_rot_y"].value<float>())   cameraLastRy       = *v;
+    if (auto v = tbl["camera"]["last_rot_z"].value<float>())   cameraLastRz       = *v;
+    if (auto v = tbl["camera"]["last_rot_w"].value<float>())   cameraLastRw       = *v;
+    if (auto v = tbl["camera"]["orthographic"].value<bool>())  cameraOrthographic = *v;
+    if (auto v = tbl["camera"]["ortho_height"].value<float>()) cameraOrthoHeight  = *v;
 
     // ビュー
     if (auto v = tbl["view"]["show_grid"].value<bool>())      showGrid      = *v;
@@ -264,12 +332,12 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         BuildSettings::LoadLegacyFile(projectRoot, build);
     }
 
-    return true;
+    return sharedLoaded;
 }
 
 bool EditorSettings::Save(const std::string& path, const std::string& projectRoot) const
 {
-    // カメラ
+    // カメラ。これだけ書き出し先が Library/EditorLocalState.toml (git 管理外)。
     toml::table camTbl;
     camTbl.insert("speed",       cameraSpeed);
     camTbl.insert("sensitivity", cameraSensitivity);
@@ -487,9 +555,25 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     uiTbl.insert("scale", editorUiScale);
     uiTbl.insert("multi_viewport", multiViewportEnabled);
 
+    // ── 個人の作業状態 (Library/EditorLocalState.toml) ─────────────────────
+    // 「その人がどこで何を開いて作業していたか」しか入っていないセクション。
+    // 共有しても相手の役に立たず、触るたびに書き換わるので分けて置く。
+    toml::table localRoot;
+    localRoot.insert("camera",             std::move(camTbl));
+    localRoot.insert("camera_bookmarks",   std::move(camBkArr));
+    localRoot.insert("scene",              std::move(sceneTbl));
+    localRoot.insert("asset_browser",      std::move(assetBrowserTbl));
+    localRoot.insert("panels",             std::move(panelsTbl));
+    localRoot.insert("console",            std::move(consoleTbl));
+    localRoot.insert("inspector_sections", std::move(inspectorTbl));
+
+    // 個人状態は共有ファイルより先に片付ける。ここが失敗しても共有側の保存は続ける
+    // (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。
+    (void)SaveEditorLocalState(projectRoot, std::move(localRoot));
+
+    // ── 共有設定 (Assets/EditorConfig/editor_settings.toml) ────────────────
     toml::table root;
     root.insert("ui",                 std::move(uiTbl));
-    root.insert("camera",             std::move(camTbl));
     root.insert("view",               std::move(viewTbl));
     root.insert("snap",               std::move(snapTbl));
     root.insert("gizmo",              std::move(gizmoTbl));
@@ -499,14 +583,8 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     root.insert("map_mode",           std::move(mapModeTbl));
     root.insert("hierarchy",          std::move(hierarchyTbl));
     root.insert("terrain_tool",       std::move(terrainToolTbl));
-    root.insert("camera_bookmarks",   std::move(camBkArr));
     root.insert("hotkeys",            std::move(hkTbl));
     root.insert("import",             std::move(importTbl));
-    root.insert("asset_browser",      std::move(assetBrowserTbl));
-    root.insert("console",            std::move(consoleTbl));
-    root.insert("panels",             std::move(panelsTbl));
-    root.insert("inspector_sections", std::move(inspectorTbl));
-    root.insert("scene",              std::move(sceneTbl));
     root.insert("autosave",           std::move(autosaveTbl));
     root.insert("debug",              std::move(debugTbl));
     root.insert("build",              std::move(buildTbl));

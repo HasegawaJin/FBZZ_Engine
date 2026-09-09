@@ -67,6 +67,10 @@ include("${CMAKE_SOURCE_DIR}/CMake/FBZZPch.cmake")
 # 翻訳単位の統合。既定 OFF、-DFBZZ_UNITY_BUILD=ON で有効。
 include("${CMAKE_SOURCE_DIR}/CMake/FBZZUnity.cmake")
 
+# clang-cl + llvm-cov のカバレッジ計装。既定 OFF、coverage preset だけが ON にする。
+# 計装対象の指定はターゲットが揃った後 (このファイル末尾) で行う。
+include("${CMAKE_SOURCE_DIR}/CMake/FBZZCoverage.cmake")
+
 set(FBZZ_RUNTIME_BUILD_EXE_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/Sandbox/SandboxStandalone.exe")
 set(FBZZ_RUNTIME_BUILD_EXE_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/Sandbox/SandboxStandalone.exe")
 set(FBZZ_RUNTIME_BUILD_EXE_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/Sandbox/SandboxStandalone.exe")
@@ -125,7 +129,15 @@ if(MSVC)
     # WHY: Inspector / schema の大きな翻訳単位はテンプレート展開によって通常 COFF の
     #      セクション数上限を超えることがある。/bigobj は形式上限だけを拡張し、
     #      実行コードや ABI を変えず C1128 を防ぐ。
-    add_compile_options(/utf-8 /MP${FBZZ_BUILD_JOBS} /FS $<$<COMPILE_LANGUAGE:CXX>:/bigobj>)
+    add_compile_options(/utf-8 $<$<COMPILE_LANGUAGE:CXX>:/bigobj>)
+
+    # WHY 分けるか: MSVC は «MSVC 互換フロントエンド» を持つ clang-cl でも真になる。
+    #     /MP (cl.exe の子プロセス並列) と /FS (PDB 書き込みの直列化) は cl.exe 固有で、
+    #     clang-cl では unknown argument 警告が翻訳単位の数だけ出て、本物の警告が埋もれる。
+    #     カバレッジ用の clang-cl ビルドは Ninja が並列を持つので /MP 自体が不要。
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_compile_options(/MP${FBZZ_BUILD_JOBS} /FS)
+    endif()
 
     # WHY ここで定義するか: <Windows.h> の min / max マクロは std::min / std::max を
     #     C2589 で壊す。以前は KeyCode.hpp が «Windows.h より先に NOMINMAX を定義する»
@@ -181,4 +193,12 @@ set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Sandbox)
 
 if(FBZZ_BUILD_TESTS)
     add_subdirectory(Projects/Tests)
+endif()
+
+# カバレッジの計装対象。OpenCppCoverage 側の --sources と同じ範囲に揃える。
+# FBZZCore は Engine/src/Core の OBJECT ライブラリで、成果物は FBZZEngine.dll に入る。
+# そのため «計装するのは FBZZCore、実行時ライブラリを要るのは FBZZEngine» とずれる。
+if(FBZZ_COVERAGE)
+    fbzz_instrument_for_coverage(FBZZMath FBZZPhysics FBZZCore)
+    fbzz_link_coverage_runtime(FBZZMath FBZZPhysics FBZZEngine)
 endif()

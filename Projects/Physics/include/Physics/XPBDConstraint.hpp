@@ -32,7 +32,11 @@ namespace fbzz::physics
         /// WHY 毎 substep 捨てるか: λ を跨いで持ち越すと «誤差を溜めて押し返す» 積分項に
         ///     なり、大きな誤差が続く場面 (被弾のひるみ) でワインドアップして、離した
         ///     瞬間に跳ね返る。定常誤差は compliance が決めるので溜める必要が無い。
-        virtual void ResetLambda() {}
+        ///
+        /// WHY 純粋仮想か: XPBDSolver は substep ごとに無条件で呼ぶ。空の既定実装を置くと
+        ///     λ を持つ拘束を新規に足したとき «実装し忘れても動いてしまい» 、上のワインド
+        ///     アップだけが症状として出る。λ を持たない拘束は空実装を明示的に書く。
+        virtual void ResetLambda() = 0;
 
         /// 位置パス。h は substep の刻み [s]。
         virtual void SolvePosition(float h) = 0;

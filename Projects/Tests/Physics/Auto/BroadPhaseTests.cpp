@@ -70,6 +70,44 @@ std::vector<physics::CollisionPair> Sweep(const std::vector<physics::ColliderIns
     return pairs;
 }
 
+/// Body はコピーできないので、まとめて作るときは所有権ごと持ち回る。
+using BodySet = std::vector<std::unique_ptr<Body>>;
+
+std::vector<physics::ColliderInstance> InstancesOf(BodySet& bodies)
+{
+    std::vector<physics::ColliderInstance> instances;
+    instances.reserve(bodies.size());
+    for (auto& body : bodies)
+        instances.push_back(body->Instance());
+    return instances;
+}
+
+/// «重なった 2 個» の組を、互いに遠く離して clusterCount 組ぶん撒く。
+/// 葉のしきい値を超える個数を axis 方向へ広げ、BroadPhase の BVH を分割させる。
+BodySet MakeSpreadClusters(int clusterCount, int axis)
+{
+    BodySet bodies;
+    for (int i = 0; i < clusterCount; ++i) {
+        math::Vector3 left  = math::Vector3::ZERO;
+        math::Vector3 right = math::Vector3::ZERO;
+        (&left.x)[axis]  = static_cast<float>(i) * 100.0f;
+        (&right.x)[axis] = static_cast<float>(i) * 100.0f + 1.0f;
+        bodies.push_back(std::make_unique<Body>(left));
+        bodies.push_back(std::make_unique<Body>(right));
+    }
+    return bodies;
+}
+
+/// 全員が互いに重なる密集。分割後も «組の総数» が C(n,2) から動かないことを見る。
+BodySet MakeCrowd(int count, float spacing)
+{
+    BodySet bodies;
+    for (int i = 0; i < count; ++i)
+        bodies.push_back(std::make_unique<Body>(
+            math::Vector3(static_cast<float>(i) * spacing, 0.0f, 0.0f)));
+    return bodies;
+}
+
 } // namespace
 
 class BroadPhaseTest : public testkit::Fixture {};
@@ -261,6 +299,49 @@ TEST_F(BroadPhaseTest, AppliesTheLayerFilterEvenToTriggers)
                              [](int layerA, int layerB) { return layerA == layerB; });
 
     EXPECT_TRUE(pairs.empty());
+}
+
+// --- BVH の分割 -------------------------------------------------------------
+//
+// 一時 BVH は葉に 4 個までしか入れず、超えると中央値で 2 つに割る。
+// 4 個以下しか試していないと «割った後の走査» が一度も走らない。実シーンは常に
+// こちら側なので、以下は «本番でしか通らない経路» を手前に引っ張り出すためのもの。
+
+TEST_F(BroadPhaseTest, KeepsFindingEveryPairAfterTheTreeSplits)
+{
+    BodySet bodies = MakeSpreadClusters(5, 0);
+
+    // 離れた 5 組は別々のノードへ落ちる。ノードをまたぐ走査が抜けていると 0 組になる。
+    EXPECT_EQ(Sweep(InstancesOf(bodies)).size(), 5u);
+}
+
+TEST_F(BroadPhaseTest, SplitsAlongWhicheverAxisTheCrowdIsSpreadOn)
+{
+    BodySet alongY = MakeSpreadClusters(5, 1);
+    BodySet alongZ = MakeSpreadClusters(5, 2);
+
+    // 分割軸は «中心の広がりが一番大きい軸»。X 決め打ちだと、縦に積んだ床や
+    // 奥行きに並んだ壁で木が痩せて総当たりに戻る。
+    EXPECT_EQ(Sweep(InstancesOf(alongY)).size(), 5u);
+    EXPECT_EQ(Sweep(InstancesOf(alongZ)).size(), 5u);
+}
+
+TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnceEvenWhenTheTreeSplits)
+{
+    // 6 個すべてが互いに重なる。分割後は «左の葉の中» «左と右» «右の葉の中» の
+    // 3 経路で走査されるので、境界の扱いを間違えると同じ組が二重に出る。
+    BodySet crowd = MakeCrowd(6, 0.2f);
+
+    EXPECT_EQ(Sweep(InstancesOf(crowd)).size(), 15u);
+}
+
+TEST_F(BroadPhaseTest, TerminatesWhenEveryColliderSharesTheSameCentre)
+{
+    // 中心が 1 点に潰れると分割軸の幅が 0 になる。«幅で切る» 作りだと片側が空になり、
+    // 同じ集合で無限に再帰する。中央値で必ず半分に割ることをここで縛る。
+    BodySet stacked = MakeCrowd(6, 0.0f);
+
+    EXPECT_EQ(Sweep(InstancesOf(stacked)).size(), 15u);
 }
 
 } // namespace fbzz::tests

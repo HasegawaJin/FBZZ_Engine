@@ -28,6 +28,8 @@ namespace {
 constexpr float       kStartX     = -6.0f;
 constexpr float       kEndX       = 6.0f;
 constexpr std::size_t kMaxSamples = 4000; ///< 低速 × 高フレームレートで発散しないための上限
+/// 停止位置に許すずれ。TOI は解析解なので、二次方程式の丸め以上に外れたら式が違う。
+constexpr float kTouchTolerance = 5.0e-3f;
 
 /// 障害物の種類。CCDSolver の 2 つの経路にそれぞれ対応させる。
 enum class Obstacle {
@@ -76,6 +78,38 @@ public:
         while (m_cursorTime >= count) m_cursorTime -= count;
     }
 
+    void DetectAnomalies(AnomalyLog& log) override
+    {
+        // 障害物は必ず進路上にある。返さないなら掃引そのものが解けていない。
+        if (!m_hit.hit) {
+            log.Report(Severity::Error, "進路上に障害物があるのに CCD がヒットを返していない");
+            return;
+        }
+
+        log.ReportIf(m_hit.toi < 0.0f || m_hit.toi > 1.0f, Severity::Error,
+                     "TOI が [0,1] の外 (%.5f)", m_hit.toi);
+        if (!log.CheckFinite("停止位置", m_hitCenter, 1.0e3f)) return;
+        if (!log.CheckFinite("法線", m_hit.normal, 1.0e2f)) return;
+
+        const float length = m_hit.normal.Length();
+        log.ReportIf(std::fabs(length - 1.0f) > 1.0e-3f, Severity::Error,
+                     "法線が単位長でない (|n| = %.5f)", length);
+
+        // 弾は -X から来る。法線が +X を向くと押し戻しが障害物の内側へ働く。
+        log.ReportIf(m_hit.normal.x > 0.0f, Severity::Error,
+                     "法線が障害物の内側を向いている (%+.2f, %+.2f, %+.2f)",
+                     m_hit.normal.x, m_hit.normal.y, m_hit.normal.z);
+
+        // 停止位置は «ちょうど接する» ところ。めり込んでも離れても TOI がずれている。
+        const float gap = m_hitCenter.x - TouchingX();
+        log.ReportIf(std::fabs(gap) > kTouchTolerance, Severity::Error,
+                     "TOI の停止位置が接触面から %+.4f m ずれている", gap);
+
+        // «不要» と言われた速度ですり抜けている ── しきい値が緩すぎる状態。
+        log.ReportIf(!NeedsCCD() && m_overlappingFrames == 0, Severity::Error,
+                     "NeedsCCD が拾わない速度ですり抜けている (しきい値が緩い)");
+    }
+
     void DrawControls() override
     {
         bool dirty = false;
@@ -104,9 +138,7 @@ public:
                     m_samples.size(), m_overlappingFrames);
 
         // NeedsCCD のしきい値そのもの。«不要» なのに跨ぐ速度があれば、そこが判定の穴。
-        physics::RigidBody probe;
-        probe.SetVelocity({m_speed, 0.0f, 0.0f});
-        const bool needsCCD = physics::CCDSolver::NeedsCCD(probe, m_radius, 1.0f / m_frameRate);
+        const bool needsCCD = NeedsCCD();
         if (needsCCD) ImGui::TextColored({1.0f, 0.72f, 0.36f, 1.0f}, "NeedsCCD: 必要");
         else          ImGui::TextColored({0.74f, 0.77f, 0.81f, 1.0f}, "NeedsCCD: 不要");
 
@@ -177,6 +209,20 @@ public:
 
 private:
     float StepLength() const { return m_speed / m_frameRate; }
+
+    bool NeedsCCD() const
+    {
+        physics::RigidBody probe;
+        probe.SetVelocity({m_speed, 0.0f, 0.0f});
+        return physics::CCDSolver::NeedsCCD(probe, m_radius, 1.0f / m_frameRate);
+    }
+
+    /// 弾が障害物にちょうど接するときの中心 X。TOI の «正解» はここ 1 点に決まる。
+    float TouchingX() const
+    {
+        const float half = m_obstacle == Obstacle::Wall ? m_wallHalf : m_targetRadius;
+        return -(half + m_radius);
+    }
 
     /// 離散判定が «越えてはいけない» 距離。ここより 1 フレームの移動量が大きいと穴が開く。
     float CrossingThickness() const

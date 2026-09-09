@@ -3,6 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-08
 #include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Import/ImportCacheStore.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
@@ -310,21 +313,38 @@ bool FbxMetaSerializer::SaveOptions(const std::string& fbxAbsPath, const FbxImpo
 
 bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxImportOptions& options)
 {
+    // guid の確定を .meta の読み込みより先に済ませる。
+    // WHY: GuidFromPath は guid が無ければ .meta を書いて発行する。後から呼ぶと、
+    //      その書き込み前に読んだ root で上書きしてしまい、発行した guid が消える。
+    const std::string guid = asset::AssetDatabase::GuidFromPath(fbxAbsPath);
+
+    ImportCacheStore::Entry entry;
+    entry.sourceHash   = ComputeSourceHash(fbxAbsPath);
+    entry.settingsHash = ComputeSettingsHash(options);
+    if (!ImportCacheStore::Save(guid, entry)) {
+        // 記録できないと IsOutdated が mtime 比較へ落ちるだけで、import 自体は成功している。
+        FBZZ_LOG_WARN("FbxMetaSerializer: import cache not recorded [%s]", fbxAbsPath.c_str());
+    }
+
     const std::string metaPath = MetaPathForSource(fbxAbsPath);
     toml::table root = LoadExistingRoot(metaPath);
     WriteOptionsToRoot(root, options);
-
-    toml::table cache;
-    cache.insert("source_hash", ComputeSourceHash(fbxAbsPath));
-    cache.insert("settings_hash", ComputeSettingsHash(options));
-    cache.insert("baked_container", "Library/Baked/<asset-guid>");
-    root.insert_or_assign("cache", std::move(cache));
+    // 旧形式で .meta へ焼かれていた [cache] を落とし、保管場所を Library へ一本化する。
+    root.erase("cache");
 
     return WriteRoot(metaPath, root);
 }
 
 FbxMetaSerializer::CacheInfo FbxMetaSerializer::LoadCacheInfo(const std::string& fbxAbsPath)
 {
+    // TryGetGuidFromPath を使う。判定のためだけに未 import の FBX へ .meta を発行しない。
+    const ImportCacheStore::Entry entry =
+        ImportCacheStore::Load(asset::AssetDatabase::TryGetGuidFromPath(fbxAbsPath));
+    if (!entry.Empty()) return { entry.sourceHash, entry.settingsHash };
+
+    // 移行フォールバック: Library へ移す前は .meta の [cache] に焼いていた。
+    // 記録が残っていれば読み、既存プロジェクトを丸ごと焼き直さずに済ませる。
+    // 次の import で [cache] は落ちるので、以降この経路は通らない。
     CacheInfo info;
     const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
     const toml::table* cache = root["cache"].as_table();

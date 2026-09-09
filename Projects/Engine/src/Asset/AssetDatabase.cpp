@@ -110,19 +110,23 @@ bool IsGeneratedModelPackageDir(const std::filesystem::path& dir)
     return fs::exists(dir / (stem + ".fzasset"), ec);
 }
 
-// 本体が存在しない孤児 .meta を削除する。
-// WHY: エディター外 (エクスプローラー / git) でアセットを消すと .meta だけが残る。
-//      放置すると Asset Browser には出ないのにファイルだけ増え続け、
-//      同名アセットを作り直したときに古い guid を拾って参照が入れ替わる。
-bool RemoveIfOrphanMeta(const std::filesystem::path& metaPath)
+// 本体が存在しない孤児 .meta か。索引には載せず、削除もしない。
+//
+// WHY 消さないか: 大容量のバイナリ素材 (png / fbx / wav) を .gitignore しつつ .meta だけを
+//     追跡するリポジトリでは、clone 直後に本体不在の .meta が大量に孤児として見える。
+//     ここで消すと .scene / .mat の guid 参照が一斉に切れるうえ、後から素材を入れ直しても
+//     GuidFromPath が新しい乱数 guid を振るため二度と元へ戻らない。残しておけば、
+//     本体が戻った時点で同じ guid のまま索引へ復帰する。
+//     エディター内の削除は本体と .meta を対で .fbzz/Trash へ移すので、ここへ来るのは
+//     エディター外 (git / エクスプローラー) で消された場合だけ。
+//
+// 代償: 同じパスへ «別の» アセットを作り直すと、残った .meta の guid を引き継ぐ。
+//       ファイルを消して入れ替えただけの場合は望ましい挙動なので、これは受け入れる。
+bool IsOrphanMeta(const std::filesystem::path& metaPath)
 {
     const std::string metaUtf8 = util::FileSystem::PathToUtf8(metaPath);
     // "Foo.png.meta" → "Foo.png" / "Textures.meta" → "Textures" (ディレクトリ)
-    const std::string ownerUtf8 = metaUtf8.substr(0, metaUtf8.size() - 5);
-    if (util::FileSystem::Exists(ownerUtf8)) return false;
-    if (!util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(metaUtf8))) return false;
-    FBZZ_LOG_INFO("AssetDatabase: removed orphan meta [%s]", metaUtf8.c_str());
-    return true;
+    return !util::FileSystem::Exists(metaUtf8.substr(0, metaUtf8.size() - 5));
 }
 
 // ロック取得済み前提でインデックスに登録する。guid 重複はエラーログを出し先勝ち。
@@ -372,9 +376,9 @@ void AssetDatabase::Init(const std::string& assetsRoot)
         const std::string absPath = NormalizePath(util::FileSystem::PathToUtf8(p));
         const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
 
-        // 孤児 .meta の掃除は索引構築と同じ 1 パスで行う。
+        // 孤児 .meta の検出は索引構築と同じ 1 パスで行う (件数はログにだけ出す)。
         if (ext == ".meta") {
-            if (RemoveIfOrphanMeta(p)) ++orphans;
+            if (IsOrphanMeta(p)) ++orphans;
             continue;
         }
 
@@ -414,8 +418,14 @@ void AssetDatabase::Init(const std::string& assetsRoot)
     }
 
     s_initialized = true;
-    FBZZ_LOG_INFO("AssetDatabase: indexed %zu assets (%zu meta healed, %zu orphans removed) under [%s]",
+    FBZZ_LOG_INFO("AssetDatabase: indexed %zu assets (%zu meta healed, %zu orphan meta kept) under [%s]",
                   s_guidToPath.size(), healed, orphans, assetsRoot.c_str());
+    // 孤児が多い＝本体がローカルに揃っていない (LFS 未取得 / 素材が git 管理外) 状態。
+    // 参照切れの原因がここにあると分かるよう、黙って進めずに一度だけ警告する。
+    if (orphans > 0)
+        FBZZ_LOG_WARN("AssetDatabase: %zu meta have no owner asset. "
+                      "References to them stay unresolved until the assets are restored.",
+                      orphans);
 
     // ── Library/Baked の生成物を導出 GUID で索引する ──────────────────────
     // WHY Assets の後か: 同じ実体が両方に居る移行期に、Assets 側 (人が編集しうる方) の

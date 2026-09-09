@@ -9,9 +9,12 @@
 
 namespace fbzz::editor {
 
-// FBX 本体の横に置く "<FBX>.meta" の [model] / [cache] セクションを扱う。
+// FBX 本体の横に置く "<FBX>.meta" の [model] セクションを扱う。
 // WHY: .fzasset を UI から隠す設計では、原本 FBX の GUID と import 設定を .meta に集約すると
 //      リネーム耐性と再インポート再現性を Unity と同じ粒度で維持できるため。
+//
+// 再インポート判定に使う fingerprint はここではなく ImportCacheStore
+// (Library/ImportCache.toml) が持つ。マシンごとに違う値なので追跡ファイルへ置けない。
 class FbxMetaSerializer final {
 public:
     [[nodiscard]] static std::string MetaPathForSource(const std::string& fbxAbsPath);
@@ -19,11 +22,13 @@ public:
     [[nodiscard]] static bool LoadOptions(const std::string& fbxAbsPath, FbxImportOptions& outOptions);
     [[nodiscard]] static bool SaveOptions(const std::string& fbxAbsPath, const FbxImportOptions& options);
 
-    // import 成功後に、元 FBX と設定の fingerprint を記録する。
-    // WHY: source mtime だけでは import 設定変更を検出できないため、cache 情報を .meta 側に残す。
+    // import 成功後に、元 FBX と設定の fingerprint を ImportCacheStore へ記録する。
+    // WHY: source mtime だけでは import 設定変更を検出できないため。
+    // 併せて、旧形式で .meta に残っている [cache] を落とす。
     [[nodiscard]] static bool SaveCacheInfo(const std::string& fbxAbsPath, const FbxImportOptions& options);
 
-    // .meta の [cache] に記録済みの fingerprint。未記録・読めない場合は空文字が入る。
+    // 記録済みの fingerprint。未記録・読めない場合は空文字が入る。
+    // ImportCacheStore を引き、無ければ旧形式 (.meta の [cache]) へフォールバックする。
     struct CacheInfo {
         std::string sourceHash;
         std::string settingsHash;

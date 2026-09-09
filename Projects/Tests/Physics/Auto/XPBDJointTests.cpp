@@ -297,4 +297,47 @@ TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
     EXPECT_LT(std::abs(rig.joint->GetTwistAngle()), 0.25f);
 }
 
+// --- 外から関節を «読む» 経路 -----------------------------------------------
+//
+// 可動域のデバッグ表示 (RagdollRig) は const な関節しか持たない。ここが壊れると、
+// 崩れ方を調べるための «絵» だけが実際の関節と食い違い、コードは正しいのに
+// 見ている図が嘘という、最も切り分けの難しい状態になる。
+
+TEST_F(XPBDJointTest, ReportsTheParentJointFrameFollowingTheParentRotation)
+{
+    // Build() は «今の姿勢» をたわみ 0 に据える。ワールド版が組み立て時の値を返すと、
+    // 可動域の角錐が体に付いて回らず、原点に取り残された図になる。
+    JointRig               rig;
+    const math::Quaternion turn = math::Quaternion::FromAxisAngle(math::Vector3::UP, 1.0f);
+
+    rig.parent->SetRotation(turn);
+
+    EXPECT_QUAT_NEAR(rig.joint->GetParentFrameWorld(), turn, testkit::kTolerance);
+}
+
+TEST_F(XPBDJointTest, ReportsTheChildJointFrameFollowingTheChildRotation)
+{
+    JointRig               rig;
+    const math::Quaternion turn =
+        math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, -0.75f);
+
+    rig.child->SetRotation(turn);
+
+    EXPECT_QUAT_NEAR(rig.joint->GetChildFrameWorld(), turn, testkit::kTolerance);
+}
+
+TEST_F(XPBDJointTest, ExposesTheSameLimitsAndDriveThroughConstAccess)
+{
+    // const 版が値のコピーを返すと «設定したのに表示は初期値» になり、調整している側からは
+    // 可動域を書き換えても効いていないようにしか見えない。
+    JointRig rig;
+    rig.joint->Limits().twistMax = 0.75f;
+    rig.joint->Drive().maxTorque = 12.0f;
+
+    const physics::XPBDJoint& readOnly = *rig.joint;
+
+    EXPECT_FLOAT_EQ(readOnly.Limits().twistMax, 0.75f);
+    EXPECT_FLOAT_EQ(readOnly.Drive().maxTorque, 12.0f);
+}
+
 } // namespace fbzz::tests

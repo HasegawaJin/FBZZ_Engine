@@ -102,9 +102,48 @@ public:
         ImGui::Checkbox("葉だけ表示", &m_leafOnly);
 
         ImGui::Text("三角形 %zu 枚 / ノード %zu 個", m_tree.triangles.size(), m_tree.nodes.size());
-        ImGui::Text("ヒット %zu 枚 (総当たり %zu 枚)", m_hits.size(), m_bruteForceCount);
-        if (m_hits.size() != m_bruteForceCount) {
+        ImGui::Text("ヒット %zu 枚 (総当たり %zu 枚)", m_hits.size(), m_bruteForce.size());
+        if (m_hits != m_bruteForce) {
             ImGui::TextColored({1.0f, 0.36f, 0.41f, 1.0f}, "総当たりと一致していない");
+        }
+    }
+
+    void DetectAnomalies(AnomalyLog& log) override
+    {
+        // 枝刈りが結果を変えていないこと。BVH の契約はこれ 1 つに尽きる。
+        for (const uint32_t index : m_bruteForce)
+            log.ReportIf(m_hits.count(index) == 0, Severity::Error,
+                         "三角形 %u を取りこぼした (総当たりでは当たる)", index);
+        for (const uint32_t index : m_hits)
+            log.ReportIf(m_bruteForce.count(index) == 0, Severity::Error,
+                         "三角形 %u を誤って返した (総当たりでは当たらない)", index);
+
+        // 木の不変条件。子が親からはみ出すと、親で枝を切った瞬間に取りこぼす。
+        // 結果が合っている «今の» 問い合わせ位置では見えないので、木そのものを見る。
+        const int nodeCount = static_cast<int>(m_tree.nodes.size());
+        for (int i = 0; i < nodeCount; ++i) {
+            const physics::BVHNode& node = m_tree.nodes[static_cast<size_t>(i)];
+
+            if (node.IsLeaf()) {
+                log.ReportIf(static_cast<int>(node.triIndices.size()) > m_maxLeafTris,
+                             Severity::Warning, "葉 %d が三角形を %zu 枚持っている (上限 %d)",
+                             i, node.triIndices.size(), m_maxLeafTris);
+                for (const uint32_t index : node.triIndices)
+                    log.ReportIf(!Contains(node.aabb, TriangleBounds(m_tree.triangles[index])),
+                                 Severity::Error, "葉 %d の境界が三角形 %u を包んでいない",
+                                 i, index);
+                continue;
+            }
+
+            const int children[2]{node.left, node.right};
+            for (const int child : children) {
+                if (child < 0 || child >= nodeCount) {
+                    log.Report(Severity::Error, "ノード %d の子 %d が範囲外", i, child);
+                    continue;
+                }
+                log.ReportIf(!Contains(node.aabb, m_tree.nodes[static_cast<size_t>(child)].aabb),
+                             Severity::Error, "ノード %d の境界が子 %d を包んでいない", i, child);
+            }
         }
     }
 
@@ -159,17 +198,33 @@ private:
         m_tree.Query(query, [this](const physics::Triangle& tri) { m_hits.insert(tri.index); });
 
         // 総当たりと突き合わせ、枝刈りが結果を変えていないことをその場で示す。
-        m_bruteForceCount = 0;
-        for (const physics::Triangle& tri : m_tree.triangles) {
-            physics::AABB bounds{tri.v[0], tri.v[0]};
-            for (int k = 1; k < 3; ++k) bounds = bounds.Merge({tri.v[k], tri.v[k]});
-            if (bounds.Overlaps(query)) ++m_bruteForceCount;
-        }
+        // 件数ではなく «どの三角形か» で持つ ── 取りこぼしと偽陽性が 1 枚ずつ起きると
+        // 件数は一致したまま中身が入れ替わる。
+        m_bruteForce.clear();
+        for (const physics::Triangle& tri : m_tree.triangles)
+            if (TriangleBounds(tri).Overlaps(query)) m_bruteForce.insert(tri.index);
+    }
+
+    static physics::AABB TriangleBounds(const physics::Triangle& tri)
+    {
+        physics::AABB bounds{tri.v[0], tri.v[0]};
+        for (int k = 1; k < 3; ++k) bounds = bounds.Merge({tri.v[k], tri.v[k]});
+        return bounds;
+    }
+
+    /// outer が inner を完全に包んでいるか。境界がぴったり重なる分割は正常なので、
+    /// 浮動小数の丸め 1 つぶんだけ余裕を持たせる。
+    static bool Contains(const physics::AABB& outer, const physics::AABB& inner)
+    {
+        constexpr float kSlack = 1.0e-4f;
+        return inner.min.x >= outer.min.x - kSlack && inner.max.x <= outer.max.x + kSlack
+            && inner.min.y >= outer.min.y - kSlack && inner.max.y <= outer.max.y + kSlack
+            && inner.min.z >= outer.min.z - kSlack && inner.max.z <= outer.max.z + kSlack;
     }
 
     physics::BVHTree   m_tree;
     std::set<uint32_t> m_hits;
-    size_t             m_bruteForceCount = 0;
+    std::set<uint32_t> m_bruteForce;
 
     int           m_columns     = 8;
     int           m_rows        = 8;

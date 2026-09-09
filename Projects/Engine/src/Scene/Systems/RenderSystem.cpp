@@ -2335,14 +2335,10 @@ void RenderSystem(Scene& scene,
     passCtx.selectionOutlineEnabled = selectionOutlineEnabled;
     passCtx.objectMaskEnabled      = objectMaskEnabled;
     // 登録条件 (Forward: forwardGBufferPrepass / Deferred: useGBufferOpaquePipeline) と
-    // ExecuteSSRPass / ExecuteVolumetricLightPass の早期 return を合わせた «本当に走るか»。
+    // ExecuteSSRPass の早期 return を合わせた «本当に走るか»。
     passCtx.ssrPassActive =
         rs.ssr.enabled && screenSpaceReady &&
         ssrShader.IsValid() && ssrResult.IsValid() && gbufferRT.IsValid();
-    passCtx.volumetricLightPassActive =
-        rs.volumetricLight.enabled &&
-        volumetricShader.IsValid() && volumetricResult.IsValid() &&
-        passHandles.shadowMapRT.IsValid();
     // UI 要素の矩形も 3D と同じ選択マスクへ乗せ、輪郭の描き方を 1 か所に保つ。
     // 寸法が nativeW/H なのは、UI がポストプロセス後の outputRT へ実寸で描かれ、
     // Canvas Scaler の解釈も出力実寸で決まるため (渡すのはクリップ空間の行列)。
@@ -2907,6 +2903,20 @@ void RenderSystem(Scene& scene,
         }
     }
 
+    // VolumetricLight — ゴッドレイ・光柱を HDR バッファへ加算合成する。
+    //
+    // WHY 半透明より «前» か: レイは不透明深度で止まる。水や半透明は深度を書かないので、
+    //     レイの終端は水底のジオメトリになる。それを水面の描画より «後» に足すと、
+    //     水底までの光芒がまるごと水面の手前へ描かれ、水が光の靄で塗り潰される。
+    //     不透明深度が確定したこの位置で足しておけば、水面・トレイル・パーティクルが
+    //     光芒の上へ順番に乗り、遮蔽も屈折も普通の透明描画として処理される。
+    //     WaterCaustics が「Water の前でなければならない」のと同じ理由。
+    if (rs.volumetricLight.enabled) {
+        pipeline.AddRawPass("VolumetricLight", { "HDR", "ShadowMap" }, { "HDR" }, [&]() {
+            ExecuteVolumetricLightPass(passCtx);
+        });
+    }
+
     // WaterCaustics — 水面下の不透明ジオメトリへコースティクスを投影してから、水面本体を透明描画する。
     // WHY: Water の後に加算すると水面そのものへ模様が乗りやすいため、深度が不透明物だけを指す段階で実行する。
     pipeline.AddRawPass("WaterCaustics", { "HDR" }, { "HDR" }, [&]() {
@@ -3092,13 +3102,6 @@ void RenderSystem(Scene& scene,
             pipeline.AddRawPass("MotionBlur", { "HDR", "Velocity" }, { "HDR" }, motionBlurBody);
         else
             pipeline.AddRawPass("MotionBlur", { "HDR" }, { "HDR" }, motionBlurBody);
-    }
-    // VolumetricLight CS — ゴッドレイ・光柱を HDR バッファに加算合成する。
-    // WHY: Bloom の前に配置することで体積光が Bloom に乗り、より明るい光の広がりが出る。
-    if (rs.volumetricLight.enabled) {
-        pipeline.AddRawPass("VolumetricLight", { "HDR", "ShadowMap" }, { "HDR" }, [&]() {
-            ExecuteVolumetricLightPass(passCtx);
-        });
     }
     // LensFlare PS — 輝度抽出した光源を ADDITIVE で HDR へ合成する。
     // Bloom の前に置くのでフレアも Bloom に乗るが、その順序では bloomHalf に今フレームの

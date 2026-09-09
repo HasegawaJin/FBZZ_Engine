@@ -15,7 +15,7 @@ GoogleTest / GoogleMock による自動テストと、開発者が目で確か�
 |---|---|---|---|---|
 | **Auto** | `<Domain>/Auto/` | する | コードが自動判定 | 契約の回帰検出。CI で毎回回す |
 | **Manual** | `<Domain>/ManualTest/` | **しない** | 開発者が目で判定 | OS 状態やデバイスを触る確認 |
-| **Bench** | `Projects/Tests/Bench/` | しない | 開発者が絵を見て判定 | 数値では正しさが決まらない挙動の可視化 |
+| **Bench** | `Projects/Tests/Bench/` | しない | 開発者が絵を見て判定 (+ 場面自身の異常検知) | 数値では正しさが決まらない挙動の可視化 |
 
 ### どの層に書くか
 
@@ -334,7 +334,8 @@ EXPECT_EQ(sum.load(), 5050);
 | Tests: Shuffle Suite (Debug) | 順序を混ぜて 10 回。実行順に依存したテストを炙り出す |
 | CMake: Build Tests (Debug) | 全スイート + ベンチをビルド |
 | Tests: Run (Debug) | CTest で全件 |
-| Tests: Coverage (Debug) | OpenCppCoverage で計測して HTML を出す |
+| Tests: Coverage (Debug) | 行 (C0) カバレッジを計測して HTML / バッジ / lcov を出す |
+| Coverage: Branch + MC/DC (clang-cl) | 分岐 (C1) / 条件・MC/DC (C2) カバレッジを計測する |
 | Bench: Build & Run (Debug) | ビジュアル検証ベンチ |
 
 デバッガーを付けたいときは `F5`（実行とデバッグ）から
@@ -343,6 +344,8 @@ EXPECT_EQ(sum.load(), 5050);
 > **スイートを追加したら `.vscode/tasks.json` の `CMake: Build Tests (*)` へ
 > `--target` を 1 行足すこと。** 書き漏らしたスイートは「ビルドされない」だけで、
 > エラーも警告も出ない。実際に Math とベンチが丸ごと抜けたことがある。
+> `Coverage: Build (clang-cl)` も同じ理由で `--target` の列挙を持っている。
+> （計測スクリプト側は `FBZZTests*Auto.exe` を名前で拾うので追記不要）
 
 ### Visual Studio
 
@@ -412,6 +415,21 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 
 `FBZZTestBench.exe` を起動し、左のリストからシーンを選ぶ。判定は目で行う。
 
+サイドバーの **「異常検知」** は、その場面が自分で申告した不変条件の破れを出す。
+「検出なし」が緑で出ていれば、少なくとも **絵からは読み取れない破綻** (NaN・発散・貫通・
+法線の裏返り・BVH の取りこぼし) は起きていない。赤が Error、橙が Warning。
+
+各場面は `BenchScene::DetectAnomalies(AnomalyLog&)` を実装する。ここに書くのは
+**設定を動かして初めて破れるもの** だけ ── 配置を固定して判定できる契約は Auto の担当で、
+両方に書くと「どちらの結果が正しいのか」が分からなくなる。
+
+> **常時点灯する警告を作らない。** 上限で切り捨てた点が包みの外に残る、といった
+> 「仕様どおりだが不変条件は破れる」状態は Warning に落とすか、そもそも報告しない。
+> いつも赤い画面は、誰も読まない画面と同じ。
+
+1 フレームだけ出て消えた異常は、リストではなく「この場面で N フレーム検出 / 最初: …」の
+履歴にしか残らない。放置して回している間に一度だけ出た NaN はここで拾う。
+
 ---
 
 ## 11. 新しいテストを追加する手順
@@ -454,3 +472,103 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 | **書かない** | 単なる getter / setter | 契約が無いのでテストが実装のコピーになる |
 
 **カバレッジ率を目標にしない。** 「壊れたときに一番痛い順」に書く。
+
+---
+
+## 13. カバレッジ
+
+率を上げるためではなく、**「自分が通したつもりの経路を本当に通したか」を確かめるため**に測る。
+率そのものを目標にすると、`ReturnsNullptrWhenExhausted` のような契約テストより
+「行を踏むだけのテスト」を書いた方が数字が伸びてしまう。
+
+### 2 系統
+
+| | 網羅基準 | 何が分かるか | ツールチェーン |
+|---|---|---|---|
+| **C0** | 命令網羅 | その行を 1 度でも実行したか | MSVC + OpenCppCoverage |
+| **C1** | 分岐網羅 | `if` の真と偽を両方通ったか | clang-cl + llvm-cov |
+| **C2** | 条件網羅 | `a && b` の `a` と `b` を個別に両方通ったか | 同上 |
+| **MC/DC** | 改良条件判定網羅 | 各条件が**単独で**結果を変える組み合わせを通ったか | 同上 |
+
+**普段は C0 だけを回す。** C1 以降は clang-cl での再ビルドが要るので、
+分岐の入り組んだコード（`GJK` の縮退処理、`XPBDSolver` の収束判定、`Scheduler` の依存解決）
+を触った後にだけ回す。
+
+> C1 と C2 が同じ列に入るのは、clang が `&&` / `||` の**項ごと**に分岐リージョンを作るため。
+> llvm-cov の `branch` は判定単位ではなく条件単位まで数えており、C1 を測ると C2 も付いてくる。
+
+### 実行
+
+```powershell
+# C0 — 事前に winget install OpenCppCoverage.OpenCppCoverage
+#      HTML / バッジ / lcov も要るなら dotnet tool install -g dotnet-reportgenerator-globaltool
+.\Tools\RunCoverage.ps1
+
+# C1 / C2 — VS Code タスク "Coverage: Build (clang-cl)" でビルドしてから
+.\Tools\RunCoverageLLVM.ps1
+```
+
+`Tools/` の分担は次のとおり。
+
+| スクリプト | 役割 |
+|---|---|
+| `RunCoverage.ps1` | OpenCppCoverage を回す入口。以下 3 つを順に呼ぶ |
+| `NormalizeCoverageXml.ps1` | Cobertura のパスをリポジトリ相対へ直す（後述） |
+| `CoverageReport.ps1` | `summary.md`。**CI のしきい値判定が読む正の数字** |
+| `CoverageHtmlReport.ps1` | ReportGenerator で HTML / 履歴 / バッジ / lcov |
+| `RunCoverageLLVM.ps1` | clang-cl 版の入口。実行 → profdata マージ → HTML / lcov / JSON |
+| `CoverageReportLLVM.ps1` | llvm-cov の JSON から分岐・MC/DC の要約 |
+
+### 計測対象を広げない
+
+分母は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` の 3 つだけ。
+「12. 何をテストするか」で**書かないと決めた領域を分母に入れると数字が意味を失う**ため、
+Renderer / Editor / Tests / ThirdParty は両系統とも除外している。
+
+対象を変えるときは 4 箇所を同時に直すこと。ずれると C0 と C1 が別の母集団の比較になる。
+
+- `Tools/RunCoverage.ps1` の `--sources`
+- `Tools/RunCoverageLLVM.ps1` の `$sourceFilters`
+- `CMakeLists.txt` 末尾の `fbzz_instrument_for_coverage()`
+- `.github/workflows/tests.yml` の `--sources`
+
+### 数字を見る前にレポートを見る
+
+率は「今どこに居るか」しか言わない。次に何を書くかを決められるのはこちら。
+
+| 見るもの | 場所 | 何が分かるか |
+|---|---|---|
+| **履歴グラフ** | `Artifacts/Coverage/report/index.html`（`history/` に蓄積） | コミットを跨いだ推移。下がった回が特定できる |
+| **未到達の分岐 上位 10** | `Artifacts/CoverageLLVM/summary.md` | 1 本のテストで最も多くの分岐を潰せるファイル |
+| **エディターの色** | Coverage Gutters（後述） | 読んでいるコードのどこを通っていないか |
+
+> ReportGenerator の **Risk Hotspots**（循環的複雑度 × 低カバレッジ）は**出ない**。
+> 複雑度を読めるのは dotCover / OpenCover 形式のときだけで、OpenCppCoverage の Cobertura は
+> `complexity="0"` しか書かない（llvm-cov の lcov も同じ）。
+> 「次にどこを触るか」を出すのは `CoverageReportLLVM.ps1` の未到達分岐ランキングの方。
+
+### VS Code のエディター上で見る
+
+`ryanluker.vscode-coverage-gutters`（`.vscode/extensions.json` で推奨済み）を入れて、
+`Ctrl+Shift+P` → `Coverage Gutters: Watch`。行番号の横に到達 / 未到達が色で出る。
+
+`.vscode/settings.json` は `.gitignore` 対象なので、各自で次を入れる。
+
+```jsonc
+{
+    // Artifacts/ の下だけを探す。既定値 (`**`) だと
+    // Projects/GameHub/node_modules/**/.tap/coverage まで拾う。
+    "coverage-gutters.coverageBaseDir": "Artifacts/**",
+    "coverage-gutters.coverageFileNames": ["lcov.info", "coverage.xml"],
+    "coverage-gutters.showGutterCoverage": true,
+    "coverage-gutters.showLineCoverage": false,
+    "coverage-gutters.showRulerCoverage": true
+}
+```
+
+> **`NormalizeCoverageXml.ps1` を外さないこと。** OpenCppCoverage は Cobertura の
+> `<source>` にドライブ文字だけ (`C:`) を置き、`filename` を「ドライブを外した絶対パス」
+> (`Users\<名前>\...`) にする。計測した開発機でしか解けない形なので、
+> これを直さないと Coverage Gutters も ReportGenerator もソースを開けず、
+> **色が付かない / 行が空欄の HTML になる**。CI（ランナーのユーザー名は `runneradmin`）
+> との突き合わせも同じ理由で壊れる。

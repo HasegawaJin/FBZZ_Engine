@@ -153,7 +153,18 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float3 accumulated = float3(0.0f, 0.0f, 0.0f);
     // 手前の大気に吸われるぶんの透過率。volDensity = 0 なら 1 のまま (減衰なし)。
     float  transmittance = 1.0f;
-    float  jitter = InterleavedGradientNoise(float2(id.xy));
+
+    // ディザ位相を毎フレーム回す。
+    // WHY: IGN をピクセル座標だけで引くと、レイマーチの縞が «画面に焼き付いたまま動かない»
+    //      模様になる。カメラを回しても模様だけが残るので、体積光そのものが画面空間で
+    //      計算されているように見える。TAA は Composite の後に走るので、位相さえフレーム毎に
+    //      変えれば 8 フレームで平らに収束する。逆に位相が固定だと TAA には «動かない絵» に
+    //      しか見えず、何フレーム積んでも縞は消えない。
+    // WHY ジッターを種にするか: TAA が無効なフレームは taaJitter が 0 になるので、
+    //      そのまま従来の固定ディザへ落ちる。TAA 無しで位相だけ振ると画面がちらつく。
+    float2 taaOffsetPx = float2(taaJitterX * screenWidth, taaJitterY * screenHeight) * 0.5f;
+    float  temporalPhase = frac(taaOffsetPx.x * 1.61803399f + taaOffsetPx.y * 2.41421356f);
+    float  jitter = frac(InterleavedGradientNoise(float2(id.xy)) + temporalPhase);
 
     float3 lightCol = lightColor * skyDimmer * volTint;
     float  fadeSpan = saturate(volEdgeFade);
@@ -218,6 +229,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // ---- 出力 ----------------------------------------------------------------
 
-    // 強度は Composite 側で一度だけ適用する。ここでも掛けると intensity が二乗される。
-    OutputVolumetric[id.xy] = float4(accumulated, 1.0f);
+    // ユーザー強度はここで一度だけ掛ける。
+    // WHY 出力側で掛けないか: 合成は VolumetricLightPass が «水・半透明より前» で
+    //      加算ブレンド (SrcBlend = SRC_ALPHA) の全画面描画として行う。ブレンド側に
+    //      係数を渡す口が無いので、強度は書き込む値そのものへ乗せておく。
+    //      alpha はブレンド係数として使われるため 1 のままにすること。
+    OutputVolumetric[id.xy] = float4(accumulated * max(volLightIntensity, 0.0f), 1.0f);
 }

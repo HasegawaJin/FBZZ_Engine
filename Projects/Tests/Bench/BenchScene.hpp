@@ -5,9 +5,13 @@
 ///
 /// 自動テストで «数値が合っている» ことを確かめた上で、それでも目で見ないと
 /// 判断できないもの (収束の様子、姿勢の崩れ方、法線の向き) をここに置く。
-/// 合否はコードではなく人が決める ── だから Simulate と Draw しか持たない。
+/// 合否はコードではなく人が決める。
+///
+/// ただし «人が見れば分かる» と «人が見続けていないと分からない» は別。後者を埋めるのが
+/// DetectAnomalies で、絵からは読み取れない破綻 (NaN・貫通・法線の裏返り) を場面自身が申告する。
 #pragma once
 
+#include "AnomalyLog.hpp"
 #include "Viewport2D.hpp"
 
 namespace fbzz::bench {
@@ -26,6 +30,10 @@ public:
 
     /// 時間を進める。一時停止中は呼ばれない。
     virtual void Simulate(float dt) = 0;
+
+    /// この場面の不変条件を検査し、破れたものだけ log へ積む。毎フレーム呼ばれる。
+    /// «設定次第で起こりうること» は書かない ── 常時点灯する警告は誰も読まなくなる。
+    virtual void DetectAnomalies(AnomalyLog& log) = 0;
 
     /// この場面固有の設定 UI。
     virtual void DrawControls() = 0;
