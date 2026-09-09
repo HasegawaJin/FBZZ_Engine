@@ -385,6 +385,11 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.constantBuffers[2] = drawMaterial->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
+        // b8: SkinnedPBR.hlsl は天候の濡れ (ApplyWetness) だけでなく iblIntensity /
+        //     screenAoStrength / pcssEnabled もここから読む。束縛しないと cbuffer は
+        //     全ゼロで読まれ、«不透明スキンドだけ IBL も濡れも乗らない» 状態になる。
+        //     同じパスの静的メッシュと半透明スキンドは渡していたので差が出ていた。
+        dc.constantBuffers[8] = h.advancedGraphicsCB;
         dc.constantBuffers[7] = skinCB;
         BindForwardShadingResources(dc, ctx);
         for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)

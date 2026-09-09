@@ -47,6 +47,11 @@ OrderingHints WeatherSystem::GetOrder() const
 
 void WeatherSystem::Update(SystemContext& ctx)
 {
+    // Pause 中 (playing かつ !simulating) は «時間を止めている» だけなので何も進めない。
+    // 編集中 (!playing) は時間が無いので、積分ではなく目標値へ即座に合わせる。
+    const bool editing = !ctx.playing;
+    if (!editing && !ctx.simulating) return;
+
     for (auto& go : ctx.scene.GameObjects()) {
         auto* weather = go.GetComponent<WeatherComponent>();
         if (!weather || !weather->enabled) continue;
@@ -54,16 +59,24 @@ void WeatherSystem::Update(SystemContext& ctx)
         const float rain = std::clamp(weather->rainIntensity, 0.0f, 1.0f);
 
         if (weather->autoWetness) {
-            const bool  wetting  = rain > weather->wetness;
-            const float duration = (std::max)(
-                wetting ? weather->wetDuration : weather->dryDuration, 0.001f);
+            if (editing) {
+                // WHY 積分しないか: 編集中は dt が «再生していない時間» で、ランプに乗せると
+                //     雨量を上げても絵が変わらない。ここは «雨量をこの値にしたら最終的に
+                //     どう見えるか» を出す場所なので、到達点そのものを入れる。
+                //     手で置いた wetness を残したい場合は autoWetness を切る。
+                weather->wetness = rain;
+            } else {
+                const bool  wetting  = rain > weather->wetness;
+                const float duration = (std::max)(
+                    wetting ? weather->wetDuration : weather->dryDuration, 0.001f);
 
-            // 到達点まで duration 秒かかる線形移動。指数緩和にすると「いつまでも乾ききらない」
-            // 尻尾が残り、雨上がりの絵が止まったように見える。
-            const float step = ctx.dt / duration;
-            weather->wetness = wetting
-                ? (std::min)(weather->wetness + step, rain)
-                : (std::max)(weather->wetness - step, rain);
+                // 到達点まで duration 秒かかる線形移動。指数緩和にすると「いつまでも乾ききらない」
+                // 尻尾が残り、雨上がりの絵が止まったように見える。
+                const float step = ctx.dt / duration;
+                weather->wetness = wetting
+                    ? (std::min)(weather->wetness + step, rain)
+                    : (std::max)(weather->wetness - step, rain);
+            }
         }
 
         DriveRainEmitters(go, (std::max)(weather->rainEmitRate, 0.0f) * rain, rain > 0.0f);
