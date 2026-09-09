@@ -221,9 +221,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     // SSR 反射結果 (t19) — Composite.hlsl が ssrIntensity に基づいてブレンドする
     if (ctx.ssrPassActive && h.ssrResult.IsValid())
         compositeDC.textures[19] = h.ssrResult;
-    // Volumetric Light 結果 (t20) — Composite.hlsl が volLightIntensity で加算する
-    if (ctx.volumetricLightPassActive && h.volumetricResult.IsValid())
-        compositeDC.textures[20] = h.volumetricResult;
+    // Volumetric Light はここでは束縛しない。VolumetricLightPass が水・半透明より前で
+    // HDR へ加算済みで、ここで足すと二重になるうえ水面の手前へ光芒が乗る。
     // Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。
     if (rs.lutColorGrading.enabled && h.proceduralColorLut.IsValid())
         compositeDC.textures[22] = h.proceduralColorLut;

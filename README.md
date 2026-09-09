@@ -561,7 +561,8 @@ VS Code から `Ctrl+Shift+P` → `Tasks: Run Task`：
 | `Tests: Build & Run Suite (Debug)` | スイートを選んでビルド → 実行 |
 | `Tests: Shuffle Suite (Debug)` | 順序を混ぜて 10 回。実行順依存の炙り出し |
 | `CMake: Build Tests (Debug)` | 全スイート + ベンチをビルド |
-| `Tests: Coverage (Debug)` | カバレッジ計測 |
+| `Tests: Coverage (Debug)` | 行 (C0) カバレッジ計測 |
+| `Coverage: Branch + MC/DC (clang-cl)` | 分岐 (C1) / 条件・MC/DC (C2) カバレッジ計測 |
 | `Bench: Build & Run (Debug)` | ビジュアル検証ベンチ |
 
 デバッガーを付けるときは `F5` から `Tests: Physics Auto (Debug)` 等を選ぶ（`--gtest_filter` を対話入力）。
@@ -587,16 +588,52 @@ ctest --test-dir build/Debug -C Debug -R Physics          # 名前で絞る
 
 ### カバレッジ
 
-行カバレッジを [OpenCppCoverage](https://github.com/OpenCppCoverage/OpenCppCoverage) で計測し、CI が PR にコメントする。
+網羅基準ごとに 2 系統ある。**普段は C0 の方だけを回す。**
+
+| | 計測 | 網羅基準 | ツールチェーン |
+|---|---|---|---|
+| **C0** | `Tools\RunCoverage.ps1` | 命令網羅 | MSVC + OpenCppCoverage |
+| **C1 / C2** | `Tools\RunCoverageLLVM.ps1` | 分岐・条件網羅 + MC/DC | clang-cl + llvm-cov |
+
+計測対象はどちらも `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。両者の分母を揃えてあるので、C0 と C1 の数字はそのまま並べて読める。
+
+#### C0 — 行カバレッジ (CI が回すのはこちら)
 
 ```powershell
-choco install opencppcoverage
-.\Tools\RunCoverage.ps1              # Artifacts/Coverage/html/index.html に出力
+winget install OpenCppCoverage.OpenCppCoverage
+dotnet tool install -g dotnet-reportgenerator-globaltool   # HTML / バッジ / lcov 用 (任意)
+
+.\Tools\RunCoverage.ps1
 ```
 
-計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core` に限定している。テストを書かないと決めた Renderer / Editor を分母に入れると、数値が実態を表さなくなるため。
+| 出力 | 中身 |
+|---|---|
+| `Artifacts/Coverage/summary.md` | CI のしきい値判定が読む**正の数字** |
+| `Artifacts/Coverage/report/index.html` | ReportGenerator の HTML。**履歴グラフ**（`history/` に測定を貯め、コミットを跨いだ推移を描く）付き |
+| `Artifacts/Coverage/report/badge_*.svg` | README へ貼れるバッジ |
+| `Artifacts/Coverage/report/lcov.info` | VS Code の Coverage Gutters が読む |
+| `Artifacts/Coverage/html/index.html` | OpenCppCoverage 素の HTML (ReportGenerator 未導入時の保険) |
 
-> MSVC + OpenCppCoverage が出せるのは**行カバレッジ (C0 相当)** で、分岐 (C1) カバレッジは含まない。分岐まで測るには clang-cl + llvm-cov による 2 本目のツールチェーンが必要になる。
+#### C1 / C2 — 分岐・条件・MC/DC
+
+MSVC には分岐を数える機構が無いため、こちらだけ clang-cl でビルドし直す (`build/Coverage`、Ninja + clang-cl)。Visual Studio インストーラーの **「C++ Clang compiler for Windows」**が要る。
+
+```powershell
+# VS Code タスク "Coverage: Build (clang-cl)" でビルドしてから
+.\Tools\RunCoverageLLVM.ps1
+```
+
+| 出力 | 中身 |
+|---|---|
+| `Artifacts/CoverageLLVM/summary.md` | line / branch / MC/DC / region の要約と、**未到達の分岐が多いファイル 上位 10** |
+| `Artifacts/CoverageLLVM/html/index.html` | 分岐の実行回数と MC/DC をソース上に重ねた HTML |
+| `Artifacts/CoverageLLVM/lcov.info` | Coverage Gutters 用 (分岐情報つき) |
+
+clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、`branch` は判定単位 (C1) だけでなく条件単位 (C2) まで数えている。`mcdc` はさらに厳しく、「各条件が単独で結果を変える組み合わせを通ったか」を見る。
+
+#### エディター上で見る
+
+`ryanluker.vscode-coverage-gutters` を入れると、行番号の横に到達 / 未到達が色で出る。`Ctrl+Shift+P` → `Coverage Gutters: Watch`。設定値は [`Docs/conventions/test.md`](Docs/conventions/test.md) のカバレッジ章にある。
 
 ### CI
 

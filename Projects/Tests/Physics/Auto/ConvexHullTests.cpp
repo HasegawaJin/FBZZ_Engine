@@ -222,6 +222,50 @@ TEST_F(ConvexHullTest, SurvivesPointsOnASingleLine)
                 1.0f, testkit::kLooseTolerance);
 }
 
+// 4 点以下は «そのまま包み» の近道を通るので、Quickhull 本体は一度も走らない。
+// 退化した点群が壊すのは初期四面体を組む側なので、そこへ届く点数で当てる。
+TEST_F(ConvexHullTest, SurvivesManyPointsOnASingleLine)
+{
+    std::vector<math::Vector3> line;
+    for (int i = 0; i < 32; ++i)
+        line.push_back({ static_cast<float>(i) * 0.1f - 1.5f, 0.0f, 0.0f });
+
+    physics::ConvexHullCollider hull(line);
+    hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    // 面は張れない。それでも «その向きで一番遠い点» は答えられなければならない。
+    EXPECT_TRUE(hull.GetFaces().empty());
+    for (int i = 0; i < 32; ++i)
+        ExpectSupportsAtLeast(hull, line, Rng().NextUnitVector3());
+}
+
+TEST_F(ConvexHullTest, SurvivesManyPointsOnOnePlane)
+{
+    std::vector<math::Vector3> plane;
+    for (int i = 0; i < 6; ++i)
+        for (int k = 0; k < 6; ++k)
+            plane.push_back({ static_cast<float>(i) * 0.4f - 1.0f, 0.0f,
+                              static_cast<float>(k) * 0.4f - 1.0f });
+
+    physics::ConvexHullCollider hull(plane);
+    hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    EXPECT_TRUE(hull.GetFaces().empty());
+    for (int i = 0; i < 32; ++i)
+        ExpectSupportsAtLeast(hull, plane, Rng().NextUnitVector3());
+}
+
+TEST_F(ConvexHullTest, SurvivesManyCopiesOfTheSamePoint)
+{
+    const std::vector<math::Vector3> cloud(32, math::Vector3(0.7f, -0.3f, 0.2f));
+
+    physics::ConvexHullCollider hull(cloud);
+    hull.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    EXPECT_VEC3_NEAR(hull.SupportPoint(math::Vector3::RIGHT),
+                     math::Vector3(0.7f, -0.3f, 0.2f), testkit::kTolerance);
+}
+
 TEST_F(ConvexHullTest, CapsTheVertexCount)
 {
     // サポート点探索は頂点数に比例する。上限を外すと、細かいメッシュを 1 つ

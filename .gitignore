@@ -48,6 +48,18 @@ CMakeUserPresets.json
 imgui.ini
 editor_config/hub_imgui.ini
 
+# プロジェクト内 (<Project>/Assets/EditorConfig/) のエディター個人設定。
+# ウィンドウ配置と Play 中の一時退避で、触った人の分だけ毎回書き換わる。
+# 共有する意味が無いうえ、追跡すると全員が同じ行で衝突し続ける。
+# editor_settings.toml は起動シーン等の共有設定を持つので追跡したままにする。
+**/Assets/EditorConfig/imgui_layout.ini
+**/Assets/EditorConfig/vfx_editor.ini
+**/Assets/EditorConfig/.playmode_snapshot.scene
+# 本体を追跡しないので .meta も持たない (孤児 .meta を作らないため)。
+**/Assets/EditorConfig/imgui_layout.ini.meta
+**/Assets/EditorConfig/vfx_editor.ini.meta
+**/Assets/EditorConfig/.playmode_snapshot.scene.meta
+
 # Claude Code (ローカル設定)
 .claude/
 

@@ -7,6 +7,17 @@
 /// プロジェクト設定とは独立して保存したい。
 /// ProjectSettings はゲームランタイムに影響する設定であり、
 /// EditorSettings はエディター操作の快適性に関するユーザー個人設定のため分離している。
+///
+/// 保存先は 2 つに分かれる。Load / Save が振り分けるので、利用側は意識しなくてよい。
+///   Assets/EditorConfig/editor_settings.toml — チームで揃える設定 (git 追跡)。
+///     ビュー / スナップ / ギズモ / ホットキー / 既定インポート設定 / ビルド設定など。
+///   <projectRoot>/Library/EditorLocalState.toml — 個人の作業状態 (git 管理外)。
+///     カメラ・カメラブックマーク・シーン履歴・Asset Browser・パネル開閉・
+///     コンソールフィルター・Inspector 折り畳み。
+///
+/// WHY 分けるか: 後者は「その人がどこで何を開いて作業していたか」でしかなく、
+///     触るたびに書き換わる。共有ファイルへ混ぜると、同じプロジェクトを触る全員が
+///     同じ行で衝突し続ける (Unity が UserSettings/ を分けているのと同じ理由)。
 #pragma once
 #include <Editor/BuildSettings.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
@@ -19,7 +30,7 @@
 namespace fbzz::editor {
 
 struct EditorSettings {
-    // --- カメラ -----------------------------------------------------------
+    // --- カメラ (EditorLocalState.toml) -------------------------------------
     // WHY: DebugCamera の moveSpeed / mouseSens は起動のたびリセットされる。
     //      ここに保存して EditorContext 経由で DebugCamera へ適用する。
     float cameraSpeed         = 5.0f;
@@ -108,7 +119,7 @@ struct EditorSettings {
     int      terrainSculptMode    = 0;       // SculptMode::Raise
     uint32_t terrainPaintLayer    = 0;
 
-    // --- シーン -----------------------------------------------------------
+    // --- シーン (EditorLocalState.toml) --------------------------------------
     // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後に無効になる。
     //      Load/Save 時に projectRoot との相対パスへ変換している。
     std::string lastScenePath;
@@ -124,7 +135,7 @@ struct EditorSettings {
     bool  autoSaveEnabled     = true;
     int   autoSaveIntervalSec = 300; // 既定 5 分
 
-    // --- Camera Bookmarks (最大 9 件) -------------------------------------
+    // --- Camera Bookmarks (最大 9 件 / EditorLocalState.toml) ---------------
     struct CameraBookmark {
         float px = 0.0f, py = 0.0f, pz = 0.0f;   // position
         float rx = 0.0f, ry = 0.0f, rz = 0.0f, rw = 1.0f; // rotation quaternion
@@ -165,7 +176,7 @@ struct EditorSettings {
     // WHY: 既定 OFF。単一ウィンドウ前提の挙動 (OLE D&D 等) を壊さないよう、opt-in で有効化する。
     bool                     multiViewportEnabled = false;
 
-    // --- Asset Browser ----------------------------------------------------
+    // --- Asset Browser (EditorLocalState.toml) ------------------------------
     float                    assetBrowserIconSize = 84.0f;
     float                    assetBrowserTreeWidth = 180.0f;
     std::vector<std::string> assetBrowserBookmarks;
@@ -176,7 +187,7 @@ struct EditorSettings {
     // 前回いたフォルダ。lastScenePath と同じく projectRoot 相対で持つ。
     std::string              assetBrowserCurrentFolder;
 
-    // --- Console ----------------------------------------------------------
+    // --- Console (EditorLocalState.toml) ------------------------------------
     // WHY: ログレベルの絞り込みは「今追っている問題」に紐づく。毎起動で全部 ON に
     //      戻ると、追跡中のエラーがまた INFO の洪水に埋もれるところからやり直しになる。
     bool consoleShowDebug   = false;
@@ -188,13 +199,13 @@ struct EditorSettings {
     bool consoleClearOnPlay = false;
     bool consoleShowDetail  = true;
 
-    // --- パネル表示状態 ----------------------------------------------------
+    // --- パネル表示状態 (EditorLocalState.toml) -------------------------------
     // ウィンドウ名 → 開いているか。View > Panels に出るパネルだけを対象にする。
     // WHY: ImGui の .ini はウィンドウの位置・サイズ・ドック先しか覚えず、
     //      「閉じた」という状態は持たない。閉じたパネルが毎起動で開き直る。
     std::vector<std::pair<std::string, bool>> panelVisibility;
 
-    // --- Inspector セクション折り畳み状態 -----------------------------------
+    // --- Inspector セクション折り畳み状態 (EditorLocalState.toml) --------------
     // ImGui の CollapsingHeader が使う ImGuiID (uint32) と open フラグのペアを保存する。
     // WHY: ImGui の .ini はウィンドウ位置・サイズしか保存しない。
     //      ここで StateStorage を丸ごとスナップショットして永続化する。

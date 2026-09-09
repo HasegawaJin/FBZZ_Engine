@@ -20,8 +20,6 @@ Texture3D          texLUT      : register(TEX_LUT_COLOR_GRADE); // 3D カラー�
 // ---- Advanced Graphics ----
 // SSR 反射 — ssrIntensity > 0 のとき alpha チャンネルをブレンド係数として HDR に乗せる
 Texture2D<float4>  texSSR        : register(TEX_SSR);
-// Volumetric Light — volLightIntensity > 0 のとき HDR に加算合成する
-Texture2D<float4>  texVolumetric : register(TEX_VOLUMETRIC);
 // 全画面フェッチはすべてこれ 1 本で引く。
 // WHY s0 (SAMPLER_DEFAULT) を使わないか: DX12 の静的サンプラーでは s0 が WRAP
 //     (メッシュテクスチャのタイリング用) になっている。色収差やレンズ歪みは uv を
@@ -217,14 +215,9 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
         // alpha は Fresnel・roughness を含む信頼度。強度はここで一度だけ適用する。
         hdr = lerp(hdr, ssrSample.rgb, saturate(ssrSample.a * ssrIntensity));
     }
-    // ---- Volumetric Light を HDR に加算合成する ----
-    // WHY: 加算なので暗い領域に光の筋が自然に乗り、tonemapper がクランプする。
-    if (volLightIntensity > 0.0f)
-    {
-        float3 volSample = texVolumetric.Sample(sampLinearClamp, uv).rgb;
-        // Compute は物理量だけを書き、ユーザー強度はこのパスで一度だけ適用する。
-        hdr += volSample * volLightIntensity;
-    }
+    // NOTE: Volumetric Light はここでは足さない。VolumetricLightPass が «水・半透明より前» で
+    //       HDR へ加算済み。ここで足すとレイの終端 (不透明深度) までの光芒が水面の手前へ
+    //       描かれ、水が光の靄で塗り潰される。
 
     // フロクセル霧は HDR のまま、トーンマップより前に乗せる。
     // WHY: 霧は光そのもので、露出とトーンマップを一緒に受けるべきもの。

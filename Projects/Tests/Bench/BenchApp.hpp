@@ -29,11 +29,13 @@ private:
     void SelectScene(int index);
     void DrawUI();
     void DrawSidebar();
+    void DrawAnomalies();
     void DrawViewportPanel();
 
     std::vector<std::unique_ptr<BenchScene>> m_scenes;
     int                                      m_selected = 0;
     Viewport2D                               m_view;
+    AnomalyLog                               m_anomalies;
 
     bool  m_paused        = false;
     bool  m_stepRequested = false;

@@ -17,6 +17,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -63,6 +64,12 @@ constexpr RestBone kSkeleton[] = {
 };
 
 constexpr std::size_t kBoneCount = sizeof(kSkeleton) / sizeof(kSkeleton[0]);
+
+/// 床の貫通と見なす深さ。XPBD は 1 刻みぶん沈んでから戻るので、そこは異常にしない。
+constexpr float kGroundTolerance = 0.02f;
+/// 骨の伸縮に許す割合と、短い骨で割合が効かなくなる分の下駄。
+constexpr float kSpanTolerance = 0.05f;
+constexpr float kSpanFloor     = 1.0e-3f;
 
 ImU32 ColorOf(scene::RagdollDebugLine::Kind kind)
 {
@@ -129,6 +136,40 @@ public:
         m_rig->WritePose(m_clip, m_positions, m_rotations);
         m_deviation = m_rig->MeasureDeviation(m_clip);
         m_rig->BuildDebugLines(m_lines);
+    }
+
+    void DetectAnomalies(AnomalyLog& log) override
+    {
+        if (!m_rig) return;
+
+        if (!log.CheckFinite("重心", m_rig->CenterOfMass(), 1.0e3f)) return;
+        if (!log.CheckFinite("クリップとのずれ", m_deviation, 1.0e3f)) return;
+
+        // 床の判定は剛体のデバッグ幾何で見る。骨の位置で見ると、剛体を持たない骨
+        // (規則に当たらなかった骨) が親に引かれて沈むだけで嘘の貫通が出る。
+        if (m_useGround) {
+            float deepest = 0.0f;
+            for (const scene::RagdollDebugLine& line : m_lines) {
+                if (line.kind != scene::RagdollDebugLine::Kind::Body) continue;
+                deepest = (std::min)(deepest, (std::min)(line.from.y, line.to.y));
+            }
+            log.ReportIf(deepest < -kGroundTolerance, Severity::Error,
+                         "剛体が床を %.3f m 貫通している", -deepest);
+        }
+
+        for (std::size_t i = 0; i < m_positions.size() && i < kBoneCount; ++i) {
+            const RestBone& rest = kSkeleton[i];
+            if (!log.CheckFinite(rest.name, m_positions[i], 1.0e3f)) return;
+            if (rest.parent < 0) continue;
+
+            // 骨は伸び縮みしない。ここが動くのはソケットが解けているとき。
+            const float bind = math::Vector3(rest.offsetX, rest.offsetY, 0.0f).Length();
+            const float span = (m_positions[i]
+                                - m_positions[static_cast<std::size_t>(rest.parent)]).Length();
+            log.ReportIf(std::fabs(span - bind) > bind * kSpanTolerance + kSpanFloor,
+                         Severity::Error, "%s の骨が %.3f m (バインド %.3f m から伸縮)",
+                         rest.name, span, bind);
+        }
     }
 
     void DrawControls() override

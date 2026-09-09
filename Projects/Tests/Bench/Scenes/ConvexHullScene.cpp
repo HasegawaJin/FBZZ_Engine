@@ -137,6 +137,47 @@ public:
         }
     }
 
+    void DetectAnomalies(AnomalyLog& log) override
+    {
+        log.ReportIf(!m_points.empty() && m_worldVerts.empty(), Severity::Error,
+                     "入力 %zu 点に対して包みの頂点が 0", m_points.size());
+
+        for (const math::Vector3& vertex : m_worldVerts)
+            if (!log.CheckFinite("包みの頂点", vertex, 1.0e4f)) return;
+
+        // 描画側は壊れた面を黙って捨てているが、GJK / EPA は面をそのまま信じる。
+        for (std::size_t i = 0; i < m_faces.size(); ++i) {
+            const std::array<uint32_t, 3>& face = m_faces[i];
+            if (face[0] >= m_worldVerts.size() || face[1] >= m_worldVerts.size()
+                || face[2] >= m_worldVerts.size()) {
+                log.Report(Severity::Error, "面 %zu が範囲外の頂点を指している", i);
+                continue;
+            }
+            log.ReportIf(face[0] == face[1] || face[1] == face[2] || face[2] == face[0],
+                         Severity::Error, "面 %zu が同じ頂点を 2 度使っている (法線が作れない)", i);
+        }
+
+        // 頂点上限を超えた点は BuildHull が入力ごと捨てる。捨てた点が包みの外に残るのは
+        // 仕様どおりなので、そこを Error にすると «上限を試す» たびに嘘の異常が点く。
+        const Severity coverage = Truncated() ? Severity::Warning : Severity::Error;
+
+        log.ReportIf(m_outsideCount > 0, coverage,
+                     "包みの外に出た入力点が %d 個 (最大 %.4f m)%s", m_outsideCount, m_worstOutside,
+                     Truncated() ? " ── 頂点上限で捨てた点なら正常" : "");
+
+        // サポート関数の定義そのもの。どの入力点にも負けてはいけない。
+        const math::Vector3 direction = Direction();
+        const math::Vector3 support   = SupportPoint();
+        if (!log.CheckFinite("サポート点", support, 1.0e4f)) return;
+
+        const float best  = math::Vector3::Dot(support, direction);
+        float       rival = best;
+        for (const math::Vector3& p : m_rotatedPoints)
+            rival = (std::max)(rival, math::Vector3::Dot(p, direction));
+        log.ReportIf(rival > best + 1.0e-3f, coverage,
+                     "サポート点より %.4f m 遠い入力点がある", rival - best);
+    }
+
     void DrawControls() override
     {
         bool dirty = false;
@@ -217,6 +258,12 @@ public:
     }
 
 private:
+    /// 入力が頂点上限で切り捨てられているか。切り捨てた点は包みに含まれない。
+    bool Truncated() const
+    {
+        return static_cast<int>(m_points.size()) > physics::ConvexHullCollider::MAX_HULL_VERTS;
+    }
+
     math::Vector3 Direction() const
     {
         return { std::cos(m_dirAngle), std::sin(m_dirAngle), 0.0f };

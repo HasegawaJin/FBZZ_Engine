@@ -721,6 +721,14 @@ void WaterTool::DrawSurfaceEditor(
     slider("Foam Strength",   "foamStrength",  0.55f, 0.0f, 2.0f, "%.2f");
     slider("Foam Noise Scale", "foamNoiseScale", 0.5f, 0.02f, 3.0f, "%.3f");
 
+    ImGui::SeparatorText("Edge");
+    slider("Edge Fade", "edgeFade", 1.5f, 0.0f, 20.0f, "%.2f m");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "水面メッシュ外周を消し込む幅 [m]。\n"
+            "0 にすると矩形の縁がそのまま «板の切り口» として出ます。\n"
+            "岸が地形に隠れている水面では見た目に影響しません。");
+
     if (changed) {
         MarkWaterVisualDirty(water);
         markDirty();

@@ -50,7 +50,9 @@ struct WaterVertex {
     math::Vector2 uv;
 };
 
-// WaterChunk — チャンク 1 個分の GPU リソースと AABB。
+// WaterChunk — チャンク 1 個分の GPU リソースと «波を乗せる前» のローカル AABB。
+// WHY 波のマージンを焼き込まないか: 波の振幅は meshDirty を立てずに変わる。焼き込むと
+//     振幅を上げた瞬間から AABB だけ古いままになり、見えている端のチャンクが消える。
 struct WaterChunk {
     renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
     renderer::ResourceHandle<renderer::BufferTag> indexBuffer;
@@ -64,6 +66,28 @@ struct WaterMesh {
     math::Vector3 aabbMin;
     math::Vector3 aabbMax;
 };
+
+// 頂点が Gerstner 変位で平面から出る量。水平は Q*A、垂直は A の総和が上限。
+struct WaveMargin {
+    float horizontal = 0.0f;
+    float vertical   = 0.0f;
+};
+
+WaveMargin ComputeWaveMargin(const WaterComponent& water)
+{
+    WaveMargin margin;
+    if (water.enableGerstnerWaves) {
+        for (const GerstnerWave& wave : water.waves) {
+            const float amplitude = (std::max)(wave.amplitude, 0.0f);
+            margin.vertical   += amplitude;
+            margin.horizontal += amplitude * math::Clamp01(wave.steepness);
+        }
+    }
+    // さざ波・法線ゆらぎのぶんだけ余裕を持たせる。
+    margin.horizontal += 0.5f;
+    margin.vertical   += 0.5f;
+    return margin;
+}
 
 // 水面が使うテクスチャはエンジンが生成する泡マスクだけ。
 // WHY: 法線・泡・環境反射をすべて手続き / 空連動 IBL から取るようにしたため、
@@ -177,20 +201,22 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     const float ox = -water.extentX * 0.5f;
     const float oz = -water.extentZ * 0.5f;
 
-    float maxAmp = 0.0f;
-    for (const auto& w : water.waves) maxAmp += w.amplitude;
-    const float yMargin = maxAmp + 0.5f;
-
-    const uint32_t numChunks = (std::max)(water.chunkCount, 1u);
-    const uint32_t cellsPerChunkX = (water.resolutionX + numChunks - 1) / numChunks;
-    const uint32_t cellsPerChunkZ = (water.resolutionZ + numChunks - 1) / numChunks;
+    // WHY 切り上げでなく «境界を按分» で分けるか: ceil(res/chunks) を全チャンクに掛けると
+    //     最後のほうのチャンクは開始セルが res を追い越す。その差は符号なしで折り返して
+    //     4G 要素の reserve になり、解像度を上げた瞬間に確保失敗で落ちていた。
+    const uint32_t numChunks =
+        (std::min)((std::max)(water.chunkCount, 1u), (std::min)(water.resolutionX, water.resolutionZ));
+    auto splitAt = [](uint32_t cells, uint32_t index, uint32_t count) {
+        return static_cast<uint32_t>((static_cast<uint64_t>(cells) * index) / count);
+    };
 
     for (uint32_t cz = 0; cz < numChunks; ++cz) {
         for (uint32_t cx = 0; cx < numChunks; ++cx) {
-            const uint32_t ixStart = cx * cellsPerChunkX;
-            const uint32_t izStart = cz * cellsPerChunkZ;
-            const uint32_t ixEnd = (std::min)(ixStart + cellsPerChunkX, water.resolutionX);
-            const uint32_t izEnd = (std::min)(izStart + cellsPerChunkZ, water.resolutionZ);
+            const uint32_t ixStart = splitAt(water.resolutionX, cx,     numChunks);
+            const uint32_t ixEnd   = splitAt(water.resolutionX, cx + 1, numChunks);
+            const uint32_t izStart = splitAt(water.resolutionZ, cz,     numChunks);
+            const uint32_t izEnd   = splitAt(water.resolutionZ, cz + 1, numChunks);
+            if (ixEnd <= ixStart || izEnd <= izStart) continue;
 
             const uint32_t vertCols = ixEnd - ixStart + 1;
             const uint32_t vertRows = izEnd - izStart + 1;
@@ -227,14 +253,14 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
             chunk.indexBuffer = resources.CreateIndexBuffer(
                 indices.data(), static_cast<uint32_t>(indices.size()));
             chunk.indexCount = static_cast<uint32_t>(indices.size());
-            chunk.aabbMin = { ox + static_cast<float>(ixStart) * dx, -yMargin, oz + static_cast<float>(izStart) * dz };
-            chunk.aabbMax = { ox + static_cast<float>(ixEnd)   * dx,  yMargin, oz + static_cast<float>(izEnd)   * dz };
+            chunk.aabbMin = { ox + static_cast<float>(ixStart) * dx, 0.0f, oz + static_cast<float>(izStart) * dz };
+            chunk.aabbMax = { ox + static_cast<float>(ixEnd)   * dx, 0.0f, oz + static_cast<float>(izEnd)   * dz };
             mesh.chunks.push_back(std::move(chunk));
         }
     }
 
-    mesh.aabbMin = { ox, -yMargin, oz };
-    mesh.aabbMax = { -ox, yMargin, -oz };
+    mesh.aabbMin = { ox, 0.0f, oz };
+    mesh.aabbMax = { -ox, 0.0f, -oz };
 }
 
 renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
@@ -245,8 +271,12 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
     float foamFade,
     renderer::ResourceManager& resources)
 {
-    const uint32_t width = water.resolutionX + 1;
-    const uint32_t height = water.resolutionZ + 1;
+    // 岸沿いのマスクは «帯» が出れば十分で、メッシュ解像度に追随させる理由がない。
+    // WHY 上限を置くか: 解像度に比例した VRAM を毎回焼き直すことになり、スライダーを
+    //     動かしている間だけで数百 MB を使う。粗さの差は泡の手続きノイズに埋もれる。
+    constexpr uint32_t kMaxFoamMaskSide = 257u;
+    const uint32_t width  = (std::min)(water.resolutionX + 1u, kMaxFoamMaskSide);
+    const uint32_t height = (std::min)(water.resolutionZ + 1u, kMaxFoamMaskSide);
     std::vector<uint8_t> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u, 0u);
 
     TerrainComponent* terrain = nullptr;
@@ -261,19 +291,26 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
     if (!terrain || !terrainTransform)
         return resources.CreateTexture(pixels.data(), width, height);
 
-    const float dx = water.extentX / static_cast<float>(water.resolutionX);
-    const float dz = water.extentZ / static_cast<float>(water.resolutionZ);
+    // WHY ワールド行列を通すか: 水面が子オブジェクトだったり拡大されていると、
+    //     ローカル position 基準では泡の帯だけが実際の水際からずれる。
+    const math::Matrix4 waterWorld = waterTransform.GetWorldMatrix();
     const float ox = -water.extentX * 0.5f;
     const float oz = -water.extentZ * 0.5f;
+    // テクセル «中心» を標本点にする。シェーダー側は uv → (u*width - 0.5) で引くため、
+    // 角合わせで焼くと泡の帯が半テクセルぶん岸からずれる。
+    const float du = water.extentX / static_cast<float>(width);
+    const float dv = water.extentZ / static_cast<float>(height);
 
     for (uint32_t iz = 0; iz < height; ++iz) {
         for (uint32_t ix = 0; ix < width; ++ix) {
-            const float worldX = waterTransform.position.x + ox + static_cast<float>(ix) * dx;
-            const float worldZ = waterTransform.position.z + oz + static_cast<float>(iz) * dz;
-            const float localX = worldX - terrainTransform->position.x;
-            const float localZ = worldZ - terrainTransform->position.z;
-            const float terrainY = terrain->GetHeightAt(localX, localZ) + terrainTransform->position.y;
-            const float heightDiff = waterTransform.position.y - terrainY;
+            const math::Vector4 surface = waterWorld * math::Vector4{
+                ox + (static_cast<float>(ix) + 0.5f) * du, 0.0f,
+                oz + (static_cast<float>(iz) + 0.5f) * dv, 1.0f
+            };
+            const float localX = surface.x - terrainTransform->worldPosition.x;
+            const float localZ = surface.z - terrainTransform->worldPosition.z;
+            const float terrainY = terrain->GetHeightAt(localX, localZ) + terrainTransform->worldPosition.y;
+            const float heightDiff = surface.y - terrainY;
             const float foam = ComputeFoamWeight(heightDiff, foamThreshold, foamFade);
 
             const size_t p = (static_cast<size_t>(iz) * width + ix) * 4u;
@@ -412,11 +449,15 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         // 泡のムラはワールド座標で評価するため、旧 foamTiling(UV 倍率) とは単位が違う。
         WGetF(mat, "foamNoiseScale",    0.5f)
     };
+    // 外周フェードの幅はメートルで持ち、軸ごとに extent で割って UV へ直す。
+    // WHY メートルで持つか: UV 比で持つと、同じ設定でも大きい水面ほど帯が広くなる。
+    //     «縁から何 m で消えるか» は水面の大きさに依らず一定であってほしい。
+    const float edgeFadeMeters = (std::max)(WGetF(mat, "edgeFade", 1.5f), 0.0f);
     cb.refractionFlowParams = {
         WGetF(mat, "refractionStrength", 0.03f),
         WGetF(mat, "flowSpeed",          0.3f),
-        0.0f,
-        0.0f
+        edgeFadeMeters / (std::max)(water.extentX, 0.0001f),
+        edgeFadeMeters / (std::max)(water.extentZ, 0.0001f)
     };
     cb.detailParams = {
         WGetF(mat, "detailScale",    0.35f),
@@ -434,7 +475,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     cb.reflectParams = {
         skyReflection * math::Clamp01(WGetF(mat, "skyReflection", 1.0f)),
         0.0f, // y は未使用 (mip 数は b8 の iblMaxMipLevel を使う)
-        transform.position.y,
+        transform.worldPosition.y,
         (std::max)(waveHeightSum, 0.01f)
     };
     const auto flowDir = WGetF2(mat, "flowDirection", { 1.0f, 0.0f });
@@ -484,20 +525,46 @@ WaterEffectParams BuildWaterEffectParams(const asset::MaterialAsset* mat)
     return params;
 }
 
-bool AabbVisible(const math::Frustum& frustum, const math::Vector3& tfPos,
+// ローカル AABB をワールド行列で包み直して可視判定する。
+//
+// WHY 平行移動だけで済まさないか: 描画側は Transform::GetWorldMatrix() を使うため、
+//     親の変換・回転・スケールがすべて乗る。カリングだけローカル position を基準に
+//     すると、水面を子にしたり拡大した瞬間に «映っているのに消える» ずれ方をする。
+bool AabbVisible(const math::Frustum& frustum, const math::Matrix4& world,
                  const math::Vector3& localMin, const math::Vector3& localMax)
 {
-    const math::Vector3 center = {
-        tfPos.x + (localMin.x + localMax.x) * 0.5f,
-        tfPos.y + (localMin.y + localMax.y) * 0.5f,
-        tfPos.z + (localMin.z + localMax.z) * 0.5f,
+    const math::Vector3 localCenter = {
+        (localMin.x + localMax.x) * 0.5f,
+        (localMin.y + localMax.y) * 0.5f,
+        (localMin.z + localMax.z) * 0.5f,
     };
-    const math::Vector3 extents = {
+    const math::Vector3 localExtents = {
         (localMax.x - localMin.x) * 0.5f,
         (localMax.y - localMin.y) * 0.5f,
         (localMax.z - localMin.z) * 0.5f,
     };
-    return frustum.IntersectsAABB(center, extents);
+
+    const math::Vector4 center =
+        world * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
+    // 回転した箱を軸並行で包み直す = |M| を half-extent に掛ける。
+    auto projectRow = [&](int row) {
+        return std::abs(world.m[row][0]) * localExtents.x
+             + std::abs(world.m[row][1]) * localExtents.y
+             + std::abs(world.m[row][2]) * localExtents.z;
+    };
+    const math::Vector3 extents = { projectRow(0), projectRow(1), projectRow(2) };
+    return frustum.IntersectsAABB({ center.x, center.y, center.z }, extents);
+}
+
+// 波のマージンを乗せたローカル AABB。チャンクにも水面全体にも同じ広げ方をする。
+void ExpandByWaveMargin(const WaveMargin& margin, math::Vector3& outMin, math::Vector3& outMax)
+{
+    outMin.x -= margin.horizontal;
+    outMin.z -= margin.horizontal;
+    outMax.x += margin.horizontal;
+    outMax.z += margin.horizontal;
+    outMin.y -= margin.vertical;
+    outMax.y += margin.vertical;
 }
 
 } // namespace
@@ -607,15 +674,26 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     //      場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
     static uint64_t s_resetVersion = resources.GetResetVersion();
     static auto waterShader = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
+    // 深度«書き込みあり» で描く。
+    //
+    // WHY 半透明なのに書くか: 水面は «1 枚の面» で、重なるのは自分自身しかない。
+    //     書き込みを切ると水面どうしが深度で解決されず、submit した順 — チャンクは
+    //     -Z→+Z の行優先 — がそのままブレンド順になる。カメラが +Z を向いていると
+    //     奥のチャンクが後から手前のチャンクへ上塗りされ、水面の «向こう側» の縁が
+    //     手前の水の上に線となって現れる。うねりの裏面 (SOLID_NOCULL なので描かれる) も
+    //     同じ理由で表面の上に出る。深度を書けば «一番手前の水面» だけが残り、
+    //     チャンクの提出順に関係なく正しくなる。
+    // NOTE: 水中の «向こう» にある不透明物は屈折用のシーンカラーコピーから引いており、
+    //       ブレンドで透かしているわけではない。深度を書いても水底は見えたままになる。
     static auto waterPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
-        renderer::DepthMode::DEPTH_READ
+        renderer::DepthMode::DEPTH_ON
     });
     static auto waterWireframePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::WIREFRAME,
         renderer::BlendMode::ALPHA_BLEND,
-        renderer::DepthMode::DEPTH_READ
+        renderer::DepthMode::DEPTH_ON
     });
     static auto cameraCBH = resources.CreateConstantBuffer(288);
     static auto waterCBH  = resources.CreateConstantBuffer(sizeof(WaterCB));
@@ -646,8 +724,8 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     if (s_resetVersion != resources.GetResetVersion()) {
         s_resetVersion    = resources.GetResetVersion();
         waterShader       = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
-        waterPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
-        waterWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME,    renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        waterPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_ON });
+        waterWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME,    renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_ON });
         cameraCBH         = resources.CreateConstantBuffer(288);
         waterCBH          = resources.CreateConstantBuffer(sizeof(WaterCB));
         defaultEffectCBH  = [&] { WaterEffectParams d{}; auto h = resources.CreateConstantBuffer(sizeof(WaterEffectParams)); resources.Update(h, &d, sizeof(WaterEffectParams)); return h; }();
@@ -656,6 +734,11 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         neutralRippleTex  = [&] { const uint8_t r[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(r, 1, 1); }();
         copyColorShader   = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         depthCopyShader   = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+        // WHY 返さずに捨てるか: Reset() は実体をすべて破棄済みで、握っているのは
+        //     失効したハンドルだけ。空にすれば次のループが素直に作り直す。
+        s_meshCache.clear();
+        s_texCache.clear();
+        s_rippleStates.clear();
     }
     // 無効になったエンティティのキャッシュを解放する
     {
@@ -671,8 +754,10 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             }
             return true;
         });
-        std::erase_if(s_texCache, [&validIndices](auto& kv) {
-            return !validIndices.count(kv.first);
+        std::erase_if(s_texCache, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            if (kv.second.foamMask.IsValid()) resources.Release(kv.second.foamMask);
+            return true;
         });
         std::erase_if(s_rippleStates, [&validIndices, &resources](auto& kv) {
             if (validIndices.count(kv.first)) return false;
@@ -700,12 +785,11 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         if (!go || !go->activeInHierarchy()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
 
-        float maxAmp = 0.0f;
-        for (const auto& wave : water.waves) maxAmp += wave.amplitude;
-        const float yMargin = maxAmp + 0.5f;
-        const math::Vector3 waterMin = { -water.extentX * 0.5f, -yMargin, -water.extentZ * 0.5f };
-        const math::Vector3 waterMax = {  water.extentX * 0.5f,  yMargin,  water.extentZ * 0.5f };
-        if (AabbVisible(frustum, transform.position, waterMin, waterMax)) {
+        const WaveMargin margin = ComputeWaveMargin(water);
+        math::Vector3 waterMin = { -water.extentX * 0.5f, 0.0f, -water.extentZ * 0.5f };
+        math::Vector3 waterMax = {  water.extentX * 0.5f, 0.0f,  water.extentZ * 0.5f };
+        ExpandByWaveMargin(margin, waterMin, waterMax);
+        if (AabbVisible(frustum, transform.GetWorldMatrix(), waterMin, waterMax)) {
             hasVisibleWater = true;
             break;
         }
@@ -848,13 +932,15 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
         }
 
-        float maxAmp = 0.0f;
-        for (const auto& wave : water.waves) maxAmp += wave.amplitude;
-        const float yMargin = maxAmp + 0.5f;
-        const math::Vector3 waterMin = { -water.extentX * 0.5f, -yMargin, -water.extentZ * 0.5f };
-        const math::Vector3 waterMax = {  water.extentX * 0.5f,  yMargin,  water.extentZ * 0.5f };
-        if (!AabbVisible(frustum, transform.position, waterMin, waterMax))
-            continue;
+        const math::Matrix4 waterWorld = transform.GetWorldMatrix();
+        const WaveMargin margin = ComputeWaveMargin(water);
+        {
+            math::Vector3 waterMin = { -water.extentX * 0.5f, 0.0f, -water.extentZ * 0.5f };
+            math::Vector3 waterMax = {  water.extentX * 0.5f, 0.0f,  water.extentZ * 0.5f };
+            ExpandByWaveMargin(margin, waterMin, waterMax);
+            if (!AabbVisible(frustum, waterWorld, waterMin, waterMax))
+                continue;
+        }
 
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {
@@ -872,7 +958,11 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         }
 
         if (water.texDirty || water.foamDirty || !s_texCache.contains(eid.index)) {
-            s_texCache[eid.index] = BuildTextureSet(
+            WaterTextures& cached = s_texCache[eid.index];
+            // WHY 上書き前に返すか: 焼き直しは解像度スライダーを動かしている間フレーム毎に
+            //     走る。返さずに差し替えると 1 フレームぶんの泡マスクがそのまま漏れ続ける。
+            if (cached.foamMask.IsValid()) resources.Release(cached.foamMask);
+            cached = BuildTextureSet(
                 water, transform, scene, resources, foamThreshold, foamFade);
             water.texDirty = false;
             water.foamDirty = false;
@@ -883,8 +973,13 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             UpdateRippleState(rippleState, dt, resources);
 
         const WaterMesh& mesh = s_meshCache.at(eid.index);
-        if (!AabbVisible(frustum, transform.position, mesh.aabbMin, mesh.aabbMax))
-            continue;
+        {
+            math::Vector3 meshMin = mesh.aabbMin;
+            math::Vector3 meshMax = mesh.aabbMax;
+            ExpandByWaveMargin(margin, meshMin, meshMax);
+            if (!AabbVisible(frustum, waterWorld, meshMin, meshMax))
+                continue;
+        }
 
         // 空反射は空連動 IBL のキューブが焼けているときだけ有効にする。
         // WHY: DX12 の未バインドスロットは Texture2D の null ディスクリプタなので、
@@ -918,8 +1013,11 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             // 水面チャンクも地形と同様、独立にカリングされる描画候補として数える。
             ++ctx.statsTotalObjects;
             // 地形チャンクと同様、カメラの Frustum Culling を切っている間は落とさない。
+            math::Vector3 chunkMin = chunk.aabbMin;
+            math::Vector3 chunkMax = chunk.aabbMax;
+            ExpandByWaveMargin(margin, chunkMin, chunkMax);
             if (ctx.frustumCullingEnabled &&
-                !AabbVisible(frustum, transform.position, chunk.aabbMin, chunk.aabbMax)) {
+                !AabbVisible(frustum, waterWorld, chunkMin, chunkMax)) {
                 ++ctx.statsFrustumCulled;
                 continue;
             }

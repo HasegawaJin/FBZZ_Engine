@@ -1127,13 +1127,12 @@ struct RenderPassContext {
     bool selectionOutlineEnabled = false;
     // 今フレームに 1 件でも生きた輪郭要求があるか (RenderSettings::objectMaskRequests)。
     bool objectMaskEnabled = false;
-    // 今フレーム SSR / VolumetricLight のパスが実際に走るか。
-    // 出力先 (ssrResult / volumetricResult) は RenderGraph の外にある永続テクスチャで、
-    // 設定が有効でもパスが登録されない / 早期 return する経路がある (GBuffer 無し、Unlit、
-    // シェーダー未ロード)。設定だけを見て Composite が読むと、最後に書かれた絵が
-    // そのまま毎フレーム乗り続ける。
+    // 今フレーム SSR のパスが実際に走るか。
+    // 出力先 (ssrResult) は RenderGraph の外にある永続テクスチャで、設定が有効でも
+    // パスが登録されない / 早期 return する経路がある (GBuffer 無し、Unlit、シェーダー未ロード)。
+    // 設定だけを見て Composite が読むと、最後に書かれた絵がそのまま毎フレーム乗り続ける。
+    // NOTE: VolumetricLight は自分のパス内で HDR へ加算するので、この種のフラグは要らない。
     bool ssrPassActive = false;
-    bool volumetricLightPassActive = false;
     // 選択マスクへ UI 要素の矩形を追記する。UISystemContext を握っているのは
     // Viewport ごとの呼び出し元なので、パス側は「入っていれば呼ぶ」だけにする。
     std::function<void()> appendUISelectionMask;

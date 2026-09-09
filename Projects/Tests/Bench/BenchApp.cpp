@@ -7,6 +7,7 @@
 #include "Scenes/Scenes.hpp"
 
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Window.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -15,6 +16,10 @@
 
 #include <filesystem>
 
+// imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg,
+                                                             WPARAM wParam, LPARAM lParam);
+
 namespace fbzz::bench {
 
 namespace {
@@ -22,6 +27,10 @@ constexpr float kFixedStep = 1.0f / 120.0f;
 /// 1 フレームで進める上限。ブレークポイントで止めた後に一気に飛ぶのを防ぐ。
 constexpr int kMaxStepsPerFrame = 16;
 constexpr float kFontSize = 17.0f;
+
+constexpr ImVec4 kOkColor    {0.48f, 0.90f, 0.55f, 1.0f};
+constexpr ImVec4 kWarnColor  {1.00f, 0.72f, 0.36f, 1.0f};
+constexpr ImVec4 kErrorColor {1.00f, 0.36f, 0.41f, 1.0f};
 
 /// 日本語グリフを持つフォントを読む。
 ///
@@ -93,6 +102,14 @@ bool BenchApp::OnInit()
     core::Application::Get().GetImGuiRenderer().ImGuiInit(
         core::Application::Get().GetWindow().GetHandle());
 
+    // WHY 必須か: ImGui は Win32 のメッセージを自分では拾わない。ここを繋がないと
+    //     マウスもキーも一切届かず、«描画はされるがボタンが押せない» 画面になる。
+    //     ビューポートのパン・ズームも同じ経路なので、丸ごと死ぬ。
+    core::Application::Get().GetWindow().SetWndProcHook(
+        [](HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) -> bool {
+            return ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam) != 0;
+        });
+
     SelectScene(0);
     return true;
 }
@@ -119,7 +136,17 @@ void BenchApp::OnUpdate(float dt)
     if (steps == kMaxStepsPerFrame) m_accumulator = 0.0f;
 }
 
-void BenchApp::OnLateUpdate(float) {}
+/// WHY 描画中ではなくここで検査するか: DrawControls はスライダーを触った時点で場面を
+///     組み直す。描画の途中で検査すると «同じフレームの中で設定前と設定後が混ざった状態» を
+///     見ることになり、触った瞬間だけ偽の異常が出る。
+void BenchApp::OnLateUpdate(float)
+{
+    if (m_scenes.empty()) return;
+
+    m_anomalies.BeginFrame();
+    m_scenes[static_cast<size_t>(m_selected)]->DetectAnomalies(m_anomalies);
+    m_anomalies.EndFrame();
+}
 
 void BenchApp::OnRender()
 {
@@ -145,6 +172,10 @@ void BenchApp::OnShutdown()
     // 場面が持つ剛体より先にソルバを畳ませる。破棄順は各場面のデストラクタが持つ。
     m_scenes.clear();
 
+    // ImGui を畳む前にフックを外す。残したまま context を壊すと、終了処理中に来た
+    // 1 通のメッセージが破棄済みの context を触りに行く。
+    core::Application::Get().GetWindow().SetWndProcHook(nullptr);
+
     core::Application::Get().GetImGuiRenderer().ImGuiShutdown();
     if (m_imguiContext) {
         ImGui::DestroyContext(static_cast<ImGuiContext*>(m_imguiContext));
@@ -158,6 +189,9 @@ void BenchApp::SelectScene(int index)
 
     m_selected    = index;
     m_accumulator = 0.0f;
+    // 前の場面の履歴を持ち越さない。«この場面で何回出たか» が読めなくなる。
+    m_anomalies.BeginFrame();
+    m_anomalies.ClearHistory();
 
     BenchScene& scene = *m_scenes[static_cast<size_t>(index)];
     scene.Reset();
@@ -208,6 +242,8 @@ void BenchApp::DrawSidebar()
     if (!m_scenes.empty()) {
         BenchScene& scene = *m_scenes[static_cast<size_t>(m_selected)];
 
+        DrawAnomalies();
+
         ImGui::SeparatorText("見るべきところ");
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextUnformatted(scene.WhatToLookFor());
@@ -218,6 +254,34 @@ void BenchApp::DrawSidebar()
     }
 
     ImGui::EndChild();
+}
+
+/// 場面が自分で申告した異常を出す。«目で見て気づけないもの» はここにしか出ない。
+void BenchApp::DrawAnomalies()
+{
+    ImGui::SeparatorText("異常検知");
+
+    if (m_anomalies.Clean()) {
+        ImGui::TextColored(kOkColor, "検出なし");
+    } else {
+        ImGui::PushTextWrapPos(0.0f);
+        for (const Anomaly& anomaly : m_anomalies.Current()) {
+            ImGui::TextColored(anomaly.severity == Severity::Error ? kErrorColor : kWarnColor,
+                               "%s", anomaly.message.c_str());
+        }
+        ImGui::PopTextWrapPos();
+        if (m_anomalies.Suppressed() > 0)
+            ImGui::TextDisabled("ほか %d 件", m_anomalies.Suppressed());
+    }
+
+    // 1 フレームだけ出て消えた異常はここにしか残らない。放置して回している間の分も拾う。
+    if (m_anomalies.Frames() > 0) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("この場面で %d フレーム検出 / 最初: %s", m_anomalies.Frames(),
+                            m_anomalies.FirstSeen().c_str());
+        ImGui::PopTextWrapPos();
+        if (ImGui::SmallButton("履歴を消す")) m_anomalies.ClearHistory();
+    }
 }
 
 void BenchApp::DrawViewportPanel()

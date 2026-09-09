@@ -23,6 +23,12 @@ namespace fbzz::bench {
 namespace {
 
 constexpr float kBoneSpan = 0.7f;
+constexpr float kRadToDeg = 57.2957795f;
+
+/// ソケットに許す伸縮の割合。ここを超えると絵でも «骨が伸びた» と分かる。
+constexpr float kSpanTolerance = 0.05f;
+/// 可動域の判定に持たせる余裕 [rad]。境界ちょうどで震える 1 刻みぶんを異常にしない。
+constexpr float kLimitSlack = 0.05f;
 
 class XPBDJointChainScene final : public BenchScene {
 public:
@@ -84,6 +90,39 @@ public:
         m_solver.Step(dt);
     }
 
+    void DetectAnomalies(AnomalyLog& log) override
+    {
+        math::Vector3 previous = m_root ? m_root->GetPosition() : math::Vector3::ZERO;
+        if (!log.CheckFinite("根元", previous, 1.0e4f)) return;
+
+        for (size_t i = 0; i < m_bones.size(); ++i) {
+            const math::Vector3 position = m_bones[i]->GetPosition();
+
+            char label[32];
+            std::snprintf(label, sizeof(label), "骨 %zu の位置", i);
+            if (!log.CheckFinite(label, position, 1.0e4f)) return;
+
+            // ソケットは «長さ» の拘束そのもの。伸びたらそこが解けていない。
+            const float span  = (position - previous).Length();
+            const float error = std::fabs(span - kBoneSpan);
+            log.ReportIf(error > kBoneSpan * kSpanTolerance, Severity::Error,
+                         "骨 %zu が %.3f m に伸縮している (基準 %.2f m から %.0f%%)",
+                         i, span, kBoneSpan, error / kBoneSpan * 100.0f);
+
+            previous = position;
+        }
+
+        if (!m_limitsEnabled) return;
+
+        // 有効にした可動域を越えているなら、制限そのものが解けていない。
+        const float limit = m_swingLimitDeg / kRadToDeg + kLimitSlack;
+        for (size_t i = 0; i < m_joints.size(); ++i) {
+            const float swing = std::fabs(m_joints[i]->GetSwingAngleZ());
+            log.ReportIf(swing > limit, Severity::Error,
+                         "関節 %zu が可動域を %.1f 度 超えている", i, (swing - limit) * kRadToDeg);
+        }
+    }
+
     void DrawControls() override
     {
         bool rebuild = false;
@@ -135,7 +174,7 @@ public:
         if (!m_joints.empty()) {
             char label[96];
             std::snprintf(label, sizeof(label), "根元のたわみ %.1f 度",
-                          m_joints.front()->GetSwingAngleZ() * 57.2957795f);
+                          m_joints.front()->GetSwingAngleZ() * kRadToDeg);
             view.DrawText({0.1f, 0.35f, 0.0f}, colors::kHint, label);
         }
     }
@@ -149,7 +188,7 @@ public:
 private:
     void ApplyJointSettings(physics::XPBDJoint& joint) const
     {
-        const float swing = m_swingLimitDeg * 0.01745329252f;
+        const float swing = m_swingLimitDeg / kRadToDeg;
 
         physics::XPBDJointLimits& limits = joint.Limits();
         limits.enabled   = m_limitsEnabled;

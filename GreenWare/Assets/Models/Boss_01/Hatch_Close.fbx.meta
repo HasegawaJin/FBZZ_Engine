@@ -1,10 +1,5 @@
 file_format_version = 1
 
-[cache]
-baked_container = 'Library/Baked/<asset-guid>'
-settings_hash = '18f10c26b1ca5223'
-source_hash = '3ea4bebb92285418'
-
 [meta]
 guid = 'b4c4e07685b194d6fd64df500737b932'
 

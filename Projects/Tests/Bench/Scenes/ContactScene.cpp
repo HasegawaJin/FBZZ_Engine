@@ -151,6 +151,45 @@ public:
         Evaluate();
     }
 
+    void DetectAnomalies(AnomalyLog& log) override
+    {
+        const physics::AABB boundsA = m_a.collider->GetAABB();
+        const physics::AABB boundsB = m_b.collider->GetAABB();
+        const bool          overlap = boundsA.Overlaps(boundsB);
+
+        // WHY «AABB は重なるのに接触 0» をここへ入れないか: 球どうしを斜めに置くだけで
+        //     普通に起きる。いつも点いている警告は読まれなくなるので、人の判断が要る話は
+        //     設定欄の説明文に残し、ここには白黒つくものだけ置く。
+        if (m_contacts.empty()) return;
+
+        // AABB が離れていれば形も必ず離れている。ここで接触が出るのは偽陽性。
+        log.ReportIf(!overlap, Severity::Error,
+                     "AABB が離れているのに接触が %zu 点出ている", m_contacts.size());
+
+        const math::Vector3 bToA    = m_a.position - m_b.position;
+        const float         maxDepth = boundsA.Extents().Length() + boundsB.Extents().Length();
+
+        for (const physics::ContactPoint& contact : m_contacts) {
+            if (!log.CheckFinite("接触点", contact.point, 1.0e4f)) continue;
+            if (!log.CheckFinite("接触法線", contact.normal, 1.0e2f)) continue;
+
+            const float length = contact.normal.Length();
+            log.ReportIf(std::fabs(length - 1.0f) > 1.0e-3f, Severity::Error,
+                         "法線が単位長でない (|n| = %.5f)", length);
+
+            // 逆を向いた法線は、押し出しではなく相手への吸い込みになる。
+            log.ReportIf(math::Vector3::Dot(contact.normal, bToA) < 0.0f, Severity::Error,
+                         "法線が B→A の逆を向いている (%+.3f, %+.3f, %+.3f)",
+                         contact.normal.x, contact.normal.y, contact.normal.z);
+
+            log.ReportIf(contact.depth < 0.0f, Severity::Error,
+                         "貫通量が負 (%.4f m)", contact.depth);
+            log.ReportIf(contact.depth > maxDepth, Severity::Error,
+                         "貫通量 %.4f m が形の大きさ (%.4f m) を超えている",
+                         contact.depth, maxDepth);
+        }
+    }
+
     void DrawControls() override
     {
         bool dirty = false;

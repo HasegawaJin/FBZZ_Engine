@@ -1,4 +1,4 @@
-# Cobertura XML から Markdown のカバレッジ要約を作る。
+﻿# Cobertura XML から Markdown のカバレッジ要約を作る。
 #
 # CI と手元で同じ出力にするためスクリプトへ切り出している。
 # サードパーティ Action に依存しないのは、ポートフォリオ公開リポジトリで
@@ -52,7 +52,8 @@ foreach ($package in $report.coverage.packages.package) {
 
 [void]$builder.AppendLine()
 [void]$builder.AppendLine('計測対象は `Projects/Math` / `Projects/Physics` / `Projects/Engine/src/Core`。')
-[void]$builder.AppendLine('MSVC + OpenCppCoverage が出せるのは行カバレッジ (C0 相当) で、分岐 (C1) は含まない。')
+[void]$builder.AppendLine('MSVC + OpenCppCoverage が出せるのは行カバレッジ (C0) まで。')
+[void]$builder.AppendLine('分岐 (C1) / 条件・MC/DC (C2) は `Tools/RunCoverageLLVM.ps1` (clang-cl + llvm-cov) で測る。')
 
 $markdown = $builder.ToString()
 $markdown | Out-File -FilePath $OutputPath -Encoding utf8

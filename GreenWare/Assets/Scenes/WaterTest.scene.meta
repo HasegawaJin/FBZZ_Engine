@@ -1,0 +1,23 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Water' ]
+    instance_id = '438952bc-daa5-4679-9faa-1dcad0e04075'
+
+    [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+
+    [[editor.game_objects]]
+    component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Volumetric Cloud', 'Environment Light', 'Atmospheric Scattering' ]
+    instance_id = 'a32b8f80-b125-4507-8ca5-9902943a2913'
+
+    [[editor.game_objects]]
+    component_order = [ 'Post Process Volume' ]
+    instance_id = '29f249cf-bc13-44e7-a403-cc15ee729734'
+
+[meta]
+guid = '16dc053a9693f1afbfd9d6c7bd77cfa6'

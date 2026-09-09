@@ -1,0 +1,100 @@
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+type = 'FXAA'
+
+[[overrides]]
+active = true
+intensity = 4.0
+radius = 10.0
+slices = 4
+stepsPerSlice = 6
+type = 'GTAO'
+
+[[overrides]]
+active = true
+rayLength = 0.6000000238418579
+steps = 12
+strength = 0.6372091770172119
+thickness = 0.07999999821186066
+type = 'ContactShadow'
+
+[[overrides]]
+active = true
+intensity = 0.10000000149011612
+softKnee = 1.0
+threshold = 4.0
+type = 'Bloom'
+
+[[overrides]]
+active = true
+exposure = 1.0
+type = 'Exposure'
+
+[[overrides]]
+active = true
+compensation = 0.0
+highPercent = 0.6505747437477112
+lowPercent = 0.6952107548713684
+maxEV = 14.71264362335205
+maxExposureEV = 9.808428764343262
+minEV = -7.1724138259887695
+minExposureEV = -8.0
+speedDown = 2.8604624271392822
+speedUp = 2.0465087890625
+type = 'AutoExposure'
+
+[[overrides]]
+active = true
+samples = 8
+strength = 0.30000001192092896
+type = 'MotionBlur'
+
+[[overrides]]
+active = true
+intensity = 1.0
+maxDistance = 200.0
+steps = 8
+thickness = 2.0
+type = 'SSR'
+
+[[overrides]]
+active = true
+distortion = 0.0
+type = 'LensDistortion'
+
+[[overrides]]
+active = true
+albedo = [ 1.0, 1.0, 1.0 ]
+ambient = 0.6976743936538696
+anisotropy = 0.949999988079071
+density = 0.031627919524908066
+emissive = [ 0.0, 0.0, 0.0 ]
+farDistance = 139.09527587890625
+heightFalloff = 0.037790697067976
+heightStart = -72.09317016601562
+nearDistance = 10.0
+type = 'FroxelFog'
+
+[[overrides]]
+active = true
+distortion = 0.47906920313835144
+ghostCount = 16
+haloWidth = 0.3790694773197174
+intensity = 0.06046454980969429
+type = 'LensFlare'
+
+[[overrides]]
+active = true
+density = 0.01930229738354683
+edgeFade = 1.0
+heightFalloff = 0.0
+heightStart = 500.0
+intensity = 1.0046499967575073
+maxDistance = 2867.14404296875
+minDistance = 500.0
+scattering = 0.7651161551475525
+steps = 48
+tint = [ 1.0, 0.9700000286102295, 0.9200000166893005 ]
+type = 'VolumetricLight'
