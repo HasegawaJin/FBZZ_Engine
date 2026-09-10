@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string_view>
 
@@ -190,7 +191,34 @@ std::string ComputeSettingsHash(const FbxImportOptions& options)
     return Hex64(hash);
 }
 
-std::string ComputeSourceHash(const std::string& fbxAbsPath)
+// 原本を丸ごと読んでハッシュする。
+//
+// WHY サイズと更新時刻ではなく中身か: それらは «触られたか» しか表さない。
+//     git pull / clone / コピーはどれも中身を変えずに両方を動かすので、
+//     1 バイトも違わない FBX で全件焼き直しが走っていた。
+std::string ComputeContentHash(const std::string& fbxAbsPath)
+{
+    std::ifstream in(util::FileSystem::PathFromUtf8(fbxAbsPath), std::ios::binary);
+    if (!in) return {};
+
+    uint64_t hash  = 1469598103934665603ull;
+    uint64_t total = 0;
+    char buffer[64 * 1024];
+    while (in.read(buffer, sizeof(buffer)) || in.gcount() > 0) {
+        const std::streamsize read = in.gcount();
+        for (std::streamsize i = 0; i < read; ++i) {
+            hash ^= static_cast<unsigned char>(buffer[i]);
+            hash *= 1099511628211ull;
+        }
+        total += static_cast<uint64_t>(read);
+        if (!in) break;   // 最終ブロックを読み終えた (eofbit が立っている)
+    }
+    // 長さも混ぜる。FNV は末尾のゼロ埋めに鈍いので、伸びただけの差を落とさないため。
+    return Hex64(Fnv1a(std::to_string(total), hash));
+}
+
+// 旧形式の fingerprint。移行判定にだけ使う。
+std::string ComputeLegacyStampHash(const std::string& fbxAbsPath)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -319,8 +347,9 @@ bool FbxMetaSerializer::SaveCacheInfo(const std::string& fbxAbsPath, const FbxIm
     const std::string guid = asset::AssetDatabase::GuidFromPath(fbxAbsPath);
 
     ImportCacheStore::Entry entry;
-    entry.sourceHash   = ComputeSourceHash(fbxAbsPath);
+    entry.contentHash  = ComputeContentHash(fbxAbsPath);
     entry.settingsHash = ComputeSettingsHash(options);
+    (void)SourceStamp(fbxAbsPath, entry.size, entry.mtime);
     if (!ImportCacheStore::Save(guid, entry)) {
         // 記録できないと IsOutdated が mtime 比較へ落ちるだけで、import 自体は成功している。
         FBZZ_LOG_WARN("FbxMetaSerializer: import cache not recorded [%s]", fbxAbsPath.c_str());
@@ -340,7 +369,9 @@ FbxMetaSerializer::CacheInfo FbxMetaSerializer::LoadCacheInfo(const std::string&
     // TryGetGuidFromPath を使う。判定のためだけに未 import の FBX へ .meta を発行しない。
     const ImportCacheStore::Entry entry =
         ImportCacheStore::Load(asset::AssetDatabase::TryGetGuidFromPath(fbxAbsPath));
-    if (!entry.Empty()) return { entry.sourceHash, entry.settingsHash };
+    if (!entry.Empty())
+        return { entry.contentHash, entry.settingsHash, entry.size, entry.mtime,
+                 entry.legacyStamp };
 
     // 移行フォールバック: Library へ移す前は .meta の [cache] に焼いていた。
     // 記録が残っていれば読み、既存プロジェクトを丸ごと焼き直さずに済ませる。
@@ -349,14 +380,36 @@ FbxMetaSerializer::CacheInfo FbxMetaSerializer::LoadCacheInfo(const std::string&
     const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
     const toml::table* cache = root["cache"].as_table();
     if (!cache) return info;
-    info.sourceHash   = (*cache)["source_hash"].value_or(std::string{});
+    // .meta 時代の source_hash も «パス + サイズ + 更新時刻» 形式。移行枠で受ける。
+    info.legacyStamp  = (*cache)["source_hash"].value_or(std::string{});
     info.settingsHash = (*cache)["settings_hash"].value_or(std::string{});
     return info;
 }
 
-std::string FbxMetaSerializer::SourceHash(const std::string& fbxAbsPath)
+std::string FbxMetaSerializer::SourceContentHash(const std::string& fbxAbsPath)
 {
-    return ComputeSourceHash(fbxAbsPath);
+    return ComputeContentHash(fbxAbsPath);
+}
+
+bool FbxMetaSerializer::SourceStamp(const std::string& fbxAbsPath,
+                                    uint64_t& outSize, int64_t& outMTime)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path path = util::FileSystem::PathFromUtf8(fbxAbsPath);
+    const uintmax_t size = fs::file_size(path, ec);
+    if (ec) return false;
+    const auto writeTime = fs::last_write_time(path, ec);
+    if (ec) return false;
+
+    outSize  = static_cast<uint64_t>(size);
+    outMTime = static_cast<int64_t>(writeTime.time_since_epoch().count());
+    return true;
+}
+
+std::string FbxMetaSerializer::LegacyStampHash(const std::string& fbxAbsPath)
+{
+    return ComputeLegacyStampHash(fbxAbsPath);
 }
 
 std::string FbxMetaSerializer::SettingsHash(const FbxImportOptions& options)

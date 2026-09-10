@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Import/ImportCacheStore.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Editor/Util/Toast.hpp>
@@ -239,6 +240,28 @@ std::filesystem::path MakeUniqueDestPath(const std::filesystem::path& desired)
     }
     return desired; // 事実上到達しない
 }
+
+// 旧形式 (パス + サイズ + 更新時刻) の記録を、中身のハッシュを持つ新形式へ書き換える。
+// 呼び出し側が «旧形式のまま一致している = 中身は変わっていない» と確認済みであること。
+//
+// WHY 焼き直さないか: 生成物は既に揃っている。ここで再インポートを走らせると、
+//     形式を新しくするためだけに全 FBX を焼き直すことになる。
+void MigrateImportRecord(const std::string& absPath, const FbxImportOptions& options,
+                         uint64_t size, int64_t mtime, bool haveStamp)
+{
+    const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(absPath);
+    if (guid.empty()) return;
+
+    ImportCacheStore::Entry entry;
+    entry.contentHash  = FbxMetaSerializer::SourceContentHash(absPath);
+    entry.settingsHash = FbxMetaSerializer::SettingsHash(options);
+    if (haveStamp) {
+        entry.size  = size;
+        entry.mtime = mtime;
+    }
+    if (entry.contentHash.empty()) return;
+    (void)ImportCacheStore::Save(guid, entry);
+}
 } // namespace
 
 bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
@@ -259,40 +282,84 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
     const fs::path modelFile = GetExistingImportedModelPath(p);
     if (modelFile.empty()) return false;
 
-    // インポータ自体が更新されていたら FBX の更新時刻に関係なく作り直す。
-    // WHY: 判定材料が「生成物の有無」と「FBX の更新時刻」だけだと、
-    //      インポータのコードを直しても古い生成物が使われ続けてしまう。
-    //      FBX を消して入れ直しても source_hash が変わらないため同じ罠にはまる。
+    // インポータ自体が更新されていたら、原本が変わっていなくても作り直す。
+    // WHY: 原本と設定だけを見ていると、インポータのコードを直しても
+    //      «どちらも変わっていない» ので古い生成物が使われ続けてしまう。
     //      (詳細は FbxMetaSerializer::kModelImporterVersion のコメント)
     if (FbxMetaSerializer::LoadImporterVersion(absPath)
         < FbxMetaSerializer::kModelImporterVersion)
         return true;
 
-    // 原本と設定の fingerprint を、前回 import 成功時に焼いた値 (ImportCacheStore) と突き合わせる。
+    // 前回 import 成功時の記録 (ImportCacheStore) と突き合わせる。見るのは 2 つだけ:
+    // 「設定が変わったか」と「原本の中身が変わったか」。
     //
-    // WHY mtime 比較をやめたか:
-    //   import は「生成物を書く → 原本の .meta を書く」順で走るため、成功直後は必ず
-    //   meta の mtime > 生成物の mtime になる。旧実装はこれを「古い」と読んでいたので、
-    //   一度 import したモデルは永久に再インポート対象のままだった。結果として
-    //   起動のたびに全 FBX が焼き直され、↻ バッジも消えなかった。
-    //   fingerprint なら「原本が変わったか」「設定が変わったか」だけを見るので、
-    //   .meta を書き直す手順そのものが判定に混ざらない。
-    //   Inspector やテキストエディタで .meta の import 設定を触った場合も
+    // WHY mtime を判定材料にしないか:
+    //   mtime が答えるのは «触られたか» であって «変わったか» ではない。git pull・clone・
+    //   コピーはどれも中身を 1 バイトも変えずに mtime を動かすので、材料にすると
+    //   全 FBX の焼き直しが走る。逆に import 直後は必ず生成物より .meta が新しくなるため、
+    //   «原本より生成物が古い» という比較も成立しない (以前これで永久に再インポート対象だった)。
+    //
+    //   そこで mtime とサイズは «中身を読まずに変わっていないと言い切る» 目印としてだけ使う。
+    //   どちらかが動いていたら原本を読み、中身のハッシュで最終判断する。
+    //   Inspector やテキストエディタで .meta の import 設定を触った場合は
     //   settings_hash が動くため、同じ 1 本の判定で拾える。
     const FbxMetaSerializer::CacheInfo cache = FbxMetaSerializer::LoadCacheInfo(absPath);
-    if (!cache.sourceHash.empty() && !cache.settingsHash.empty()) {
+    const bool haveRecord =
+        (!cache.contentHash.empty() || !cache.legacyStamp.empty()) && !cache.settingsHash.empty();
+    if (haveRecord) {
         FbxImportOptions options{};
         (void)FbxMetaSerializer::LoadOptions(absPath, options);
-        return cache.sourceHash   != FbxMetaSerializer::SourceHash(absPath)
-            || cache.settingsHash != FbxMetaSerializer::SettingsHash(options);
+        if (cache.settingsHash != FbxMetaSerializer::SettingsHash(options)) return true;
+
+        uint64_t size = 0;
+        int64_t  mtime = 0;
+        const bool haveStamp = FbxMetaSerializer::SourceStamp(absPath, size, mtime);
+
+        // 旧形式 (パス + サイズ + 更新時刻) しか無い記録は、その形式のまま突き合わせる。
+        // 一致していれば中身も変わっていないので、焼き直さずに新形式へ書き換えるだけにする。
+        if (cache.contentHash.empty()) {
+            if (cache.legacyStamp != FbxMetaSerializer::LegacyStampHash(absPath)) return true;
+            MigrateImportRecord(absPath, options, size, mtime, haveStamp);
+            return false;
+        }
+
+        if (!haveStamp) return false;   // 原本を stat できない。触らない方が安全
+
+        // サイズが違えば中身が違う。読むまでもない。
+        if (cache.size != 0 && cache.size != size) return true;
+        // サイズも更新時刻も前回のままなら、触られてすらいない。ここが通常の経路。
+        if (cache.size == size && cache.mtime == mtime) return false;
+
+        // 触られてはいるが中身は同じかもしれない。ここで初めて原本を読む。
+        // (git pull / clone / コピーはどれも中身を変えずに更新時刻を動かす)
+        if (cache.contentHash == FbxMetaSerializer::SourceContentHash(absPath)) {
+            // 次回から上の «更新時刻が同じ» で抜けられるよう、目印だけ今の値にする。
+            const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(absPath);
+            if (!guid.empty()) ImportCacheStore::RefreshStamp(guid, size, mtime);
+            return false;
+        }
+        return true;
     }
 
-    // fingerprint が未記録のケース (Library を消した / .meta が無い) は mtime へフォールバックする。
-    // 一度再インポートが走れば ImportCacheStore へ記録され、以降は上の経路に乗る。
+    // fingerprint が未記録のケース (Library を消した / 記録が失われた) は mtime へ落とす。
     std::error_code ec;
     const auto srcTime   = fs::last_write_time(p,         ec); if (ec) return false;
     const auto assetTime = fs::last_write_time(modelFile,  ec); if (ec) return false;
-    return srcTime > assetTime;
+    if (srcTime > assetTime) return true;
+
+    // 生成物の方が新しい = 今の原本から焼かれたもの、と見なせる。ここで記録を作っておく。
+    //
+    // WHY 記録まで作るか: 作らないと «記録が無いから mtime を見る» を毎回繰り返し、
+    //     この経路から永久に抜けられない。mtime は触っただけで動くので、
+    //     git pull のたびに焼き直しが走り続けることになる。原本を 1 度読む代わりに、
+    //     以降は «中身が変わったか» で判定できるようになる。
+    FbxImportOptions options{};
+    (void)FbxMetaSerializer::LoadOptions(absPath, options);
+    uint64_t size = 0;
+    int64_t  mtime = 0;
+    const bool haveStamp = FbxMetaSerializer::SourceStamp(absPath, size, mtime);
+    MigrateImportRecord(absPath, options, size, mtime, haveStamp);
+    return false;
 }
 
 bool AssetBrowserPanel::IsAlreadyImported(const std::string& absPath)
@@ -558,6 +625,13 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         FinalizeExternalDrop();
     AcceptExternalDrop(ctx);
 
+    // ファイル監視とインポートは 1 枚目のパネルだけが回す。
+    // WHY: Asset Browser は複数開けるが、監視もインポートもプロジェクト全体に対する
+    //      1 つの仕事で、枚数ぶん走らせると同じファイルを何度も焼き、
+    //      インポート確認ウィンドウも枚数ぶん出る。他の枚は純粋な閲覧側に徹し、
+    //      一覧の作り直しは ctx の世代番号を通じて受け取る。
+    if (!IsAssetPipelineOwner()) return;
+
     // ── ファイルシステム監視 ──────────────────────────────────────────────
     // WHY: Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でも
     //      イベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
@@ -698,6 +772,9 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         if (!util::FileSystem::IsDirectory(m_currentPath))
             m_currentPath = m_rootPath;
         RefreshDirectory();
+        // 他の枚も同じ変更を反映させる (監視しているのはこのパネルだけなので、
+        // 伝えないと 2 枚目以降は古い一覧のままになる)。
+        ctx.requestAssetBrowserRefresh = true;
     }
 
     // 書き込みが落ち着いた候補をインポートキューへ流す。ここから先は

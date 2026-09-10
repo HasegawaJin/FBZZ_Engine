@@ -145,17 +145,24 @@ bool IsModelPackageDirectory(const std::filesystem::path& dirPath)
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
+AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath, std::size_t instanceIndex)
     : m_rootPath(util::FileSystem::NormalizePathSeparators(rootPath)),
-      m_currentPath(util::FileSystem::NormalizePathSeparators(rootPath)) {}
+      m_currentPath(util::FileSystem::NormalizePathSeparators(rootPath)),
+      m_instanceIndex(instanceIndex)
+{
+    // 2 枚目以降は "Asset Browser 2" のように番号を付ける。
+    // WHY 名前を実体に持たせるか: ImGui はウィンドウを名前で識別するので、
+    //     同名のパネルが 2 枚あるとドッキング配置も可視状態も混ざる。
+    m_windowName = instanceIndex == 0
+        ? "Asset Browser"
+        : "Asset Browser " + std::to_string(instanceIndex + 1);
+}
 
 void AssetBrowserPanel::OnInit(EditorContext& ctx)
 {
     m_resources = ctx.resources;
-    m_iconSize = ctx.assetBrowserIconSize;
-    m_treeWidth = ctx.assetBrowserTreeWidth;
     RefreshDirectory();
-    if (!m_rootPath.empty()) {
+    if (!m_rootPath.empty() && IsAssetPipelineOwner()) {
         m_watcher.Start(m_rootPath);
         ScanAndQueueUnimported(m_rootPath);
     }
@@ -166,21 +173,26 @@ void AssetBrowserPanel::OnLoadSettings(const EditorSettings& settings)
     // WHY OnInit ではなくここか (不具合修正): OnInit は projectRoot が決まる前に走るため、
     //     そこで読める EditorContext はまだ既定値のまま。アイコンサイズとツリー幅は
     //     保存だけされて復元されず、毎起動で 84 / 180 に戻っていた。
-    m_iconSize  = std::clamp(settings.assetBrowserIconSize, 56.0f, 132.0f);
-    m_treeWidth = std::clamp(settings.assetBrowserTreeWidth, 140.0f, 420.0f);
+    const EditorSettings::AssetBrowserPanelState state =
+        settings.AssetBrowserPanelAt(m_instanceIndex);
 
-    m_viewMode   = static_cast<ViewMode>(std::clamp(settings.assetBrowserViewMode, 0, 1));
-    m_sortMode   = static_cast<SortMode>(std::clamp(settings.assetBrowserSortMode, 0, 3));
-    m_typeFilter = static_cast<TypeFilter>(
-        std::clamp(settings.assetBrowserTypeFilter,
-                   0, static_cast<int>(TypeFilter::Asset)));
-    m_searchAllFolders = settings.assetBrowserSearchAllFolders;
+    m_iconSize  = std::clamp(state.iconSize, 56.0f, 132.0f);
+    m_treeWidth = std::clamp(state.treeWidth, 140.0f, 420.0f);
+
+    m_viewMode   = static_cast<ViewMode>(std::clamp(state.viewMode, 0, 1));
+    m_sortMode   = static_cast<SortMode>(std::clamp(state.sortMode, 0, 3));
+    // All (bit 0) は「絞り込みなし」の番兵なので、ビットとしては常に落とす。
+    constexpr uint32_t kValidFilterBits =
+        ((1u << static_cast<int>(TypeFilter::COUNT)) - 1u) & ~1u;
+    m_typeFilterMask   = state.typeFilterMask & kValidFilterBits;
+    m_searchAllFolders = state.searchAllFolders;
+    m_treeShowFiles    = state.treeShowFiles;
 
     // 前回のフォルダは「今のプロジェクトの中に実在する」ときだけ復元する。
     // プロジェクトを開き直した直後は SetRootPath がルートへ戻した状態なので、
     // 解決できない保存値は黙って捨ててルート表示のままにする。
     const std::string folder =
-        util::FileSystem::NormalizePathSeparators(settings.assetBrowserCurrentFolder);
+        util::FileSystem::NormalizePathSeparators(state.currentFolder);
     if (!folder.empty() && !m_rootPath.empty()
         && folder.rfind(m_rootPath, 0) == 0
         && util::FileSystem::Exists(folder)) {
@@ -191,13 +203,16 @@ void AssetBrowserPanel::OnLoadSettings(const EditorSettings& settings)
 
 void AssetBrowserPanel::OnSaveSettings(EditorSettings& settings) const
 {
-    settings.assetBrowserIconSize  = m_iconSize;
-    settings.assetBrowserTreeWidth = m_treeWidth;
-    settings.assetBrowserViewMode   = static_cast<int>(m_viewMode);
-    settings.assetBrowserSortMode   = static_cast<int>(m_sortMode);
-    settings.assetBrowserTypeFilter = static_cast<int>(m_typeFilter);
-    settings.assetBrowserSearchAllFolders = m_searchAllFolders;
-    settings.assetBrowserCurrentFolder    = m_currentPath;
+    EditorSettings::AssetBrowserPanelState& state =
+        settings.AssetBrowserPanelAt(m_instanceIndex);
+    state.iconSize         = m_iconSize;
+    state.treeWidth        = m_treeWidth;
+    state.viewMode         = static_cast<int>(m_viewMode);
+    state.sortMode         = static_cast<int>(m_sortMode);
+    state.typeFilterMask   = m_typeFilterMask;
+    state.searchAllFolders = m_searchAllFolders;
+    state.treeShowFiles    = m_treeShowFiles;
+    state.currentFolder    = m_currentPath;
 }
 
 void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
@@ -210,9 +225,9 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
     m_pendingImports.clear();
     // 旧プロジェクトのパスを持ち越さない。監視先が変わった時点で待機中の候補は無効。
     m_scheduledReimports.clear();
-    m_watcher.Start(m_rootPath);
+    if (IsAssetPipelineOwner()) m_watcher.Start(m_rootPath);
     RefreshDirectory();
-    ScanAndQueueUnimported(m_rootPath);
+    if (IsAssetPipelineOwner()) ScanAndQueueUnimported(m_rootPath);
 }
 
 namespace {
@@ -267,7 +282,7 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
         m_searchResultsTypeFilter = -1;
     }
     // タイプフィルタで除外されていると選択しても見えないので、Reveal では常に外す。
-    m_typeFilter = TypeFilter::All;
+    m_typeFilterMask = 0;
 
     // FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
     // 原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
