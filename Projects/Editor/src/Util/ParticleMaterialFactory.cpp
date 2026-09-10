@@ -13,7 +13,6 @@
 #include <Engine/Util/FileSystem.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 
 namespace fbzz::editor {
@@ -21,17 +20,6 @@ namespace {
 
 // Particle 用 .mat の置き場。テンプレートが同梱している 25 枚もここにある。
 constexpr const char* kParticleMaterialDir = "Assets/Materials/Particles";
-
-constexpr std::array<const char*, 5> kTextureExtensions = {
-    ".png", ".tga", ".dds", ".jpg", ".jpeg"
-};
-
-[[nodiscard]] std::string ToLower(std::string value)
-{
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return value;
-}
 
 [[nodiscard]] const char* BlendModeName(scene::ParticleBlendMode blend)
 {
@@ -42,46 +30,13 @@ constexpr std::array<const char*, 5> kTextureExtensions = {
     }
 }
 
-// ファイル名に使う短い識別子。BlendModeName と分けているのは、
-// .mat 本文には parser が受ける正式名 ("AlphaBlend") を、ファイル名には
-// 既存アセットと揃う短い名 ("Alpha") を使うため。
-[[nodiscard]] const char* BlendFileSuffix(scene::ParticleBlendMode blend)
-{
-    switch (blend) {
-    case scene::ParticleBlendMode::Alpha:         return "Alpha";
-    case scene::ParticleBlendMode::Premultiplied: return "Premultiplied";
-    default:                                      return "Additive";
-    }
-}
-
-// "flame_03" -> "Flame03"。区切りを落として各語の頭を大文字にするだけの決定的な変換。
-// WHY: 同梱の 25 枚と同じ名前へ落ちることで、テンプレートが既に使っている .mat を
-//      作り直さずそのまま再利用できる。命名がぶれると同じ素材の .mat が二重に増える。
-[[nodiscard]] std::string ToMaterialStem(const std::string& textureStem)
-{
-    std::string result;
-    result.reserve(textureStem.size());
-    bool atWordStart = true;
-    for (const char c : textureStem) {
-        if (c == '_' || c == '-' || c == ' ' || c == '.') {
-            atWordStart = true;
-            continue;
-        }
-        const unsigned char uc = static_cast<unsigned char>(c);
-        if (!std::isalnum(uc)) continue;
-        result.push_back(atWordStart ? static_cast<char>(std::toupper(uc)) : c);
-        atWordStart = false;
-    }
-    return result.empty() ? std::string("Particle") : result;
-}
-
 } // namespace
 
 bool IsTextureAssetPath(const std::string& path)
 {
-    const std::string ext = ToLower(util::FileSystem::GetExtension(path));
-    return std::find(kTextureExtensions.begin(), kTextureExtensions.end(), ext)
-        != kTextureExtensions.end();
+    // 判定もエンジン側の 1 つに寄せる。ここに写しを置くと «Editor は受けるのに
+    // エンジンは救わない» 拡張子が生まれる。
+    return asset::IsParticleTexturePath(path);
 }
 
 std::string EnsureParticleMaterial(const std::string& projectRoot,
@@ -103,12 +58,11 @@ std::string EnsureParticleMaterial(const std::string& projectRoot,
     if (!util::FileSystem::Exists(textureDisk))
         return fail("テクスチャが見つかりません");
 
-    std::string stem = util::FileSystem::GetFilename(assetTexture);
-    if (const size_t dot = stem.rfind('.'); dot != std::string::npos) stem.resize(dot);
-
-    const std::string materialName =
-        ToMaterialStem(stem) + "_" + BlendFileSuffix(blend) + ".mat";
-    const std::string assetMaterial = std::string(kParticleMaterialDir) + "/" + materialName;
+    // 命名規則はエンジン側 (ParticleMaterialSettings) が正本。ここで組み立て直すと、
+    // «作る先» と «ParticlePass が探す先» が食い違って移行が空振りする。
+    const std::string assetMaterial =
+        asset::ParticleMaterialPathForTexture(assetTexture, blend);
+    if (assetMaterial.empty()) return fail("素材名を作れませんでした");
     const std::string materialDisk = ToProjectAssetDiskPath(projectRoot, assetMaterial);
 
     // 既存ならそのまま使う。上書きすると担当者が手で調整した .mat を壊す。
@@ -123,6 +77,10 @@ std::string EnsureParticleMaterial(const std::string& projectRoot,
     std::string textureRef = assetTexture;
     if (const std::string guid = asset::AssetDatabase::GuidFromPath(textureDisk); !guid.empty())
         textureRef = std::string(asset::AssetDatabase::kGuidPrefix) + guid;
+
+    // 見出しは «素材名» だけを出す。パスは下の「素材:」行と重複する。
+    const std::string materialName =
+        assetMaterial.substr(assetMaterial.find_last_of('/') + 1);
 
     std::string body;
     body += "# FBZZ Engine\n";
