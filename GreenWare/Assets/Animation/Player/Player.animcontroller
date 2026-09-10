@@ -183,9 +183,28 @@ transitionDuration = 0.15000000596046448
 
 [[layers]]
 anyStateTransitions = []
+defaultStateName = ''
+enabled = true
+maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
+mode = 0
+name = 'UpperBody'
+retargetMappings = []
+weight = 0.0
+
+    [layers.additiveReference]
+    clipName = ''
+    sourcePath = ''
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.07999999821186066
+    fadeOutDuration = 0.18000000715255737
+
+[[layers]]
+anyStateTransitions = []
 defaultStateName = 'AttackStance'
 enabled = true
-maskPath = 'guid:6c53dfcaca5b471ca001fb80f4fbf937|Assets/Animation/Player/M_Katana_Attack.mask'
+maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
 mode = 0
 name = 'Attack'
 retargetMappings = []
@@ -398,6 +417,25 @@ weight = 0.0
         paramY = ''
         syncNormalizedTime = false
         type = 0
+
+[[layers]]
+anyStateTransitions = []
+defaultStateName = ''
+enabled = true
+maskPath = 'guid:328750624304cb9808548b4930d0e50a|Assets/Animation/Player/Player_Base.mask'
+mode = 0
+name = 'FullBody'
+retargetMappings = []
+weight = 0.0
+
+    [layers.additiveReference]
+    clipName = ''
+    sourcePath = ''
+    time = 0.0
+
+    [layers.slot]
+    fadeInDuration = 0.10000000149011612
+    fadeOutDuration = 0.11999999731779099
 
 [[layers]]
 anyStateTransitions = []

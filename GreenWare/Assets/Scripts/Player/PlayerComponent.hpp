@@ -37,6 +37,7 @@
 #include <Scripts/Player/BladeComponent.hpp>
 #include <Scripts/Player/WeaponRigComponent.hpp>
 #include <Scripts/Vfx/BladeChargeGlowComponent.hpp>
+#include <Scripts/Vfx/BladeSteelComponent.hpp>
 #include <Scripts/Vfx/BladeTrailComponent.hpp>
 #include <Scripts/Vfx/DodgeAfterimageComponent.hpp>
 #include <Scripts/Vfx/SlashScarComponent.hpp>
@@ -129,6 +130,33 @@ public:
 
     void PlayHitAnimation() { m_controller.PlayHitAnimation(); }
 
+    // ── 座標を外から置く演出 (登攀) ───────────────────────────────────────────
+    // WHY Player 越しに渡すか: 操作は PlayerComponent が抱える内部モジュールで、
+    //     scene からは見つからない。個別モジュールを探させない方針
+    //     (「外部システムは個別モジュールを探さず、Player の公開 API だけを使う」)
+    //     に合わせて、押し続ける形の要求だけをここから通す。
+
+    /// 移動・跳躍・回避・重力の適用を 1 フレームぶん止める。
+    /// lockInput を立てると刀の入力 (斬撃・弾き・とどめ) まで止まる。
+    void RequestSuspend(bool lockInput) { m_controller.RequestSuspend(lockInput); }
+    /// この向きへ体を向けるよう 1 フレームぶん要求する。
+    void RequestFacing(const fbzz::math::Vector3& direction) { m_controller.RequestFacing(direction); }
+    /// 拘束中の体を倒す角度 [度]。pitch は前へ、roll は右へ。1 フレームぶん。
+    void RequestLean(float pitchDegrees, float rollDegrees)
+    { m_controller.RequestLean(pitchDegrees, rollDegrees); }
+
+    /// 刀を背へ納める / 手へ戻す。
+    ///
+    /// WHY 演出側がクリップを流すだけでは足りないか: 納刀は «クリップ» ではなく
+    ///     «刀がどのソケットに付いているか» の変更で、移し替える時刻も左右で違う
+    ///     (WeaponRigComponent)。クリップだけ流すと、納刀の芝居をしながら刀は
+    ///     手に握られたまま ── 両手で壁を掴むはずの登攀で刀が壁を貫く。
+    void RequestSheatheWeapons() { m_weaponRig.RequestSheathe(); }
+    void RequestDrawWeapons()    { m_weaponRig.RequestDraw(); }
+    // 刀が手にあるかは AreWeaponsDrawn() が既に答える。
+    /// 刀の入力まで止まっているか。
+    [[nodiscard]] bool IsInputLocked() const { return m_controller.IsInputLocked(); }
+
 private:
     // 内部 Script は通常の ScriptSystem から呼ばれないため、親と同じ実行コンテキストを渡す。
     void BindModules();
@@ -174,6 +202,8 @@ private:
     DodgeAfterimageComponent m_dodgeGhost;
     // 溜めている量を «剣そのもの» で伝える発光。剣の挙動には触らない。
     BladeChargeGlowComponent m_bladeGlow;
+    // 刀身の焼き。溜め・振り・段・弾きを «刃» で言う層で、剣の挙動には触れない。
+    BladeSteelComponent      m_bladeSteel;
     // 斬った面へ残る痕。«何回斬ったか» を盤面に残す層で、切っても芯は成立する。
     SlashScarComponent       m_slashScar;
 };
@@ -197,6 +227,7 @@ inline void PlayerComponent::Reflect(::fbzz::scene::IReflector& r_)
     m_bladeTrail.Reflect(r_);
     m_dodgeGhost.Reflect(r_);
     m_bladeGlow.Reflect(r_);
+    m_bladeSteel.Reflect(r_);
     m_slashScar.Reflect(r_);
 }
 
@@ -213,6 +244,7 @@ inline void PlayerComponent::BindModules()
     m_bladeTrail.AdoptContext(*this);
     m_dodgeGhost.AdoptContext(*this);
     m_bladeGlow.AdoptContext(*this);
+    m_bladeSteel.AdoptContext(*this);
     m_slashScar.AdoptContext(*this);
 
     m_controller.tuning.ref = tuning.ref;
@@ -236,6 +268,9 @@ inline void PlayerComponent::BindModules()
     m_dodgeGhost.SetController(&m_controller);
     // 発光は溜めの «結果» を読むだけ。剣の側は発光を知らない。
     m_bladeGlow.SetBlades(&m_blades);
+    // 刃も «結果» を読むだけ。弾きが無くても刃文と帯は動く。
+    m_bladeSteel.SetBlades(&m_blades);
+    m_bladeSteel.SetParry(&m_parry);
     m_blades.SetSlashScar(&m_slashScar);
 }
 
@@ -355,6 +390,17 @@ inline void PlayerComponent::OnStart()
         return;
     }
 
+    // 再生速度を素へ戻す。
+    //
+    // WHY 要るか (2026-09-11): 当事者の凍結 (ヒットストップ) は
+    // `animator.SetSpeed(go, 0)` で作られ、戻すのは固めた側 (HitstopManagerComponent)
+    // が持つ残り秒数。**その最中に Script DLL をリロードすると管理側だけ作り直され、
+    // 誰も 0 を戻せなくなる** ── プレイヤーのアニメーションが固まったまま操作だけ
+    // 動く、という原因の見えない止まり方をする。ボスは足の運びのために毎フレーム
+    // 速度を書いているので自力で戻るが、プレイヤーは書き手が居ない。
+    // 入口で 1 度戻せば、リロードでも Play でも必ず素から始まる。
+    animator.SetSpeed(1.0f);
+
     // «殴られる側» として名乗る。CombatManager はこの名簿からしか引けない
     // (理由は IDamageable::Of のコメント)。
     IDamageable::Bind(scene.Self(), this);
@@ -372,6 +418,7 @@ inline void PlayerComponent::OnStart()
     m_bladeTrail.OnStart();
     m_dodgeGhost.OnStart();
     m_bladeGlow.OnStart();
+    m_bladeSteel.OnStart();
     m_slashScar.OnStart();
 }
 
@@ -405,6 +452,7 @@ inline void PlayerComponent::OnUpdate()
     updateModule(m_dodgeGhost);
     // 発光は剣より後。先に回すと 1 フレーム前の溜め比で光り、押した瞬間だけ暗い。
     updateModule(m_bladeGlow);
+    updateModule(m_bladeSteel);
     updateModule(m_slashScar);
     // コントローラーが同じフレームで受けた抜く / 収める要求を、その場で進める。
     // 先に回すと要求が 1 フレーム寝てしまい、押した感触が鈍る。
