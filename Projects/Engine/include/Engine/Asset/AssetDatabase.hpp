@@ -17,8 +17,10 @@
 // スレッド規約: Init はメインスレッドで 1 回。以後の参照系 (PathFromGuid 等) は
 // 内部 mutex で保護されるため任意スレッドから呼べる。
 #pragma once
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fbzz::asset {
 
@@ -122,6 +124,56 @@ public:
     //      パスで覚えるとリネームで壊れるのはファイルと同じなので、guid を持たせる。
     //      引数はフォルダ名のみ (パスではない)。ドット始まり・生成物置き場は除外する。
     [[nodiscard]] static bool ShouldHaveFolderMeta(std::string_view folderName);
+
+    // 同じ guid を名乗る実体が 2 つ以上見つかった記録。
+    //
+    // WHY 記録を残すか: 索引は先勝ちで、後から来た側は «自分の guid» を名乗り続けるのに
+    //     PathFromGuid は先勝ちした別の実体を返す。参照が静かに他人へ吸われるだけで、
+    //     壊れた形では現れない。修復には「どれとどれが衝突しているか」が要る。
+    struct GuidConflict {
+        std::string guid;
+        std::string keptPath;       // 索引が採用しているアセット絶対パス
+        std::string duplicatePath;  // 索引から弾かれた側
+    };
+
+    // 現在の衝突一覧。呼び出しのたびに .meta を読み直し、解消済みの記録は捨てる。
+    // ディスクを叩くので毎フレームではなく、要求されたときだけ呼ぶこと。
+    [[nodiscard]] static std::vector<GuidConflict> GuidConflicts();
+
+    // 記録されている衝突の件数。ディスクを叩かないので毎フレーム呼んでよい。
+    // 解消済みの記録が残りうるため、正確な数は GuidConflicts() で取り直す。
+    [[nodiscard]] static size_t GuidConflictCount();
+
+    // absPath の .meta へ新しい guid を振り直し、索引を更新する。
+    //
+    // WHY 参照を書き換えないか: 既存の "guid:" 参照は衝突中も先勝ちした側へ解決されている。
+    //     後から来た側に新しい guid を振れば、参照の解決先は今日と同じまま重複だけが消える。
+    //     参照側を触らないので、どのファイルを壊す可能性も無い。
+    static bool ReassignGuid(const std::string& absPath, std::string& outNewGuid);
+
+    // Library/Baked の掃除結果。
+    struct BakedSweepResult {
+        size_t   scanned    = 0;  // 走査した guid ディレクトリ数
+        size_t   removed    = 0;  // 消した孤児コンテナ数
+        uint64_t bytesFreed = 0;
+        bool     aborted    = false;  // 安全弁が働いて 1 件も消していない
+        std::string abortReason;      // aborted のときだけ埋まる
+        std::vector<std::string> removedGuids;  // 後片付け (ImportCache 等) 用
+    };
+
+    // Library/Baked/<guid>/ のうち、どの .meta もその guid を名乗っていないものを消す。
+    //
+    // guid は生成物の置き場所そのものなので、原本が消えたり guid が振り直されたりすると
+    // 古いコンテナがそのまま残る。中身は原本から焼き直せるため、参照を失った時点で
+    // 価値が無い。放っておくと索引の走査対象と容量だけが増え続ける。
+    //
+    // WHY 割合で止めないか: «孤児が多いこと» 自体は異常ではない (今日 8 割が孤児という
+    //     状態も普通に起きる)。危ないのは «索引が不完全なまま消すこと» なので、
+    //     安全弁は索引側の健全性で張る。索引が空、または Assets ルートを読めなければ
+    //     1 件も消さずに aborted で返す。
+    //
+    // dryRun なら数えるだけで何も消さない。Init 済みであること。
+    static BakedSweepResult SweepOrphanedBaked(bool dryRun);
 
     // 登録済みアセット数 (デバッグ / EditorUI 表示用)。
     [[nodiscard]] static size_t Count();

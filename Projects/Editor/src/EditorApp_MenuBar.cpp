@@ -10,6 +10,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Panels/AiSettingsPanel.hpp>
+#include <Editor/Panels/AssetMaintenancePanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -18,6 +19,7 @@
 #include <Editor/Util/Localization.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Toast.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Scene/ScriptValidation.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Cursor.hpp>
@@ -211,6 +213,7 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t OPEN_BUILD       = 502;
     constexpr uint16_t OPEN_IBL         = 503;
     constexpr uint16_t OPEN_NAVIGATION  = 504;
+    constexpr uint16_t OPEN_ASSET_MAINT = 505;
     constexpr uint16_t OPEN_AI_SETTINGS = 600;
     constexpr uint16_t PANEL_BASE       = 1000;
 
@@ -277,7 +280,8 @@ void EditorApp::InstallNativeMenuBar()
         command("Map Editing Mode", TOGGLE_MAP),
         submenu("Terrain & Map", std::move(terrainTools)),
         command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL),
-        command("Navigation...", OPEN_NAVIGATION)
+        command("Navigation...", OPEN_NAVIGATION),
+        command("Asset Maintenance...", OPEN_ASSET_MAINT)
     }));
     menus.push_back(submenu("AI", { command("AI Settings...", OPEN_AI_SETTINGS) }));
 
@@ -332,6 +336,7 @@ void EditorApp::InstallNativeMenuBar()
         // operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
         case OPEN_NAVIGATION:  InvokePanelFocus(m_navigationPanel); break;
+        case OPEN_ASSET_MAINT: InvokePanelFocus(m_assetMaintenancePanel); break;
         case OPEN_AI_SETTINGS: InvokePanelFocus(m_aiSettingsPanel); break;
         case 510: InvokeOperator("tools.terrain"); break;
         case 511: InvokeOperator("tools.water"); break;
@@ -536,6 +541,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             InvokePanelFocus(m_iblBakePanel);
         if (m_navigationPanel && ImGui::MenuItem(LOC("Navigation...")))
             InvokePanelFocus(m_navigationPanel);
+        if (m_assetMaintenancePanel && ImGui::MenuItem(LOC("Asset Maintenance...")))
+            InvokePanelFocus(m_assetMaintenancePanel);
         ImGui::EndMenu();
     }
 
@@ -779,6 +786,37 @@ void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
     ImGui::SameLine();
     if (ImGui::SmallButton("Dismiss")) {
         ctx.buildConsole->DismissNotification();
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+}
+
+void EditorApp::DrawGuidConflictBar(EditorContext& /*ctx*/)
+{
+    const size_t count = asset::AssetDatabase::GuidConflictCount();
+    if (count == 0) return;
+    // 閉じた後に «増えた» ときだけ出し直す。同じ件数のまま出し続けない。
+    if (m_guidConflictBarDismissed && count <= m_dismissedGuidConflicts) return;
+    m_guidConflictBarDismissed = false;
+
+    const float barH = ImGui::GetFrameHeight() + 4.0f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, EditorTheme::Color(ThemeColor::SurfaceRaised));
+    ImGui::BeginChild("##GuidConflictBar", ImVec2(0.0f, barH), false, ImGuiWindowFlags_NoScrollbar);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                       "  %zu duplicate guid(s)  \xE2\x80\x94  "
+                       "references resolve to one side only", count);
+
+    const float btnW = 150.0f;
+    ImGui::SameLine(ImGui::GetWindowWidth() - btnW);
+    if (ImGui::SmallButton("Fix...") && m_assetMaintenancePanel)
+        InvokePanelFocus(m_assetMaintenancePanel);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Dismiss##guid")) {
+        m_guidConflictBarDismissed = true;
+        m_dismissedGuidConflicts   = count;
     }
 
     ImGui::EndChild();

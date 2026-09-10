@@ -45,8 +45,11 @@
 #include <Editor/Panels/SpriteEditorPanel.hpp>
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
+#include <Editor/Panels/AssetMaintenancePanel.hpp>
 #include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/Panels/AiSettingsPanel.hpp>
+#include <Editor/Import/ImportCacheStore.hpp>
+#include <Editor/Util/Toast.hpp>
 #include "Tools/TerrainTool.hpp"
 #include "Tools/WaterTool.hpp"
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -507,9 +510,15 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_buildOutputPanel = buildOutput.get();
         m_panels.push_back(std::move(buildOutput));
     }
-    {
-        auto assets = std::make_unique<AssetBrowserPanel>("Assets");
-        m_assetBrowserPanel = assets.get();
+    // Asset Browser は Unity の Project ウィンドウと同じく複数開ける。
+    // WHY 実行時に足すのではなく最初から全部作るか: m_panels は描画ループが走査中で、
+    //     途中で push_back すると要素の再配置でイテレータと生ポインタ (m_assetBrowserPanel)
+    //     が無効化される。2 枚目以降は非表示で常駐させ、View > Panels で出し入れする。
+    //     ウィンドウ名でドッキング配置も可視状態も永続化されるため、閉じても位置は残る。
+    for (std::size_t i = 0; i < AssetBrowserPanel::kMaxInstances; ++i) {
+        auto assets = std::make_unique<AssetBrowserPanel>("Assets", i);
+        if (i == 0) m_assetBrowserPanel = assets.get();
+        m_assetBrowserPanels.push_back(assets.get());
         m_panels.push_back(std::move(assets));
     }
     m_statusBar = std::make_unique<StatusBar>();
@@ -545,6 +554,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         auto navigation = std::make_unique<NavigationPanel>();
         m_navigationPanel = navigation.get();
         m_panels.push_back(std::move(navigation));
+    }
+    {
+        auto maintenance = std::make_unique<AssetMaintenancePanel>();
+        m_assetMaintenancePanel = maintenance.get();
+        m_panels.push_back(std::move(maintenance));
     }
     {
         auto aiSettings = std::make_unique<AiSettingsPanel>();
@@ -671,6 +685,10 @@ void EditorApp::Shutdown()
     // アイコンサイズとツリー幅は AssetBrowserPanel::OnSaveSettings が書く
     // (ここでも書くと 2 つの書き手ができ、どちらが勝つか呼び順任せになる)。
     m_settings.assetBrowserBookmarks = m_ctx.assetBrowserBookmarks;
+    m_settings.assetBrowserFolderColors.assign(m_ctx.assetBrowserFolderColors.begin(),
+                                               m_ctx.assetBrowserFolderColors.end());
+    m_settings.assetBrowserRecentFolderColors.assign(
+        m_ctx.assetBrowserRecentFolderColors.begin(), m_ctx.assetBrowserRecentFolderColors.end());
     m_settings.defaultImportOptions  = m_ctx.defaultImportOptions;
     // ホットキーバインドをオーバーライドとして保存 (デフォルト値でも全件保存して確実に復元)
     m_settings.hotkeyOverrides.clear();
@@ -833,9 +851,13 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         // 表示言語。辞書の作り直しだけなので、UI スケールと違ってフォントには触らない
         // (EditorTheme が日本語グリフを最初から merge している)。
         loc::SetLanguage(loc::FromId(m_settings.language));
-        m_ctx.assetBrowserIconSize = m_settings.assetBrowserIconSize;
-        m_ctx.assetBrowserTreeWidth = m_settings.assetBrowserTreeWidth;
         m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
+        m_ctx.assetBrowserFolderColors.clear();
+        for (const auto& [path, color] : m_settings.assetBrowserFolderColors)
+            m_ctx.assetBrowserFolderColors.emplace(path, color);
+        m_ctx.assetBrowserRecentFolderColors.assign(
+            m_settings.assetBrowserRecentFolderColors.begin(),
+            m_settings.assetBrowserRecentFolderColors.end());
         m_ctx.defaultImportOptions  = m_settings.defaultImportOptions;
         for (std::size_t i = 0; i < 9; ++i) {
             const auto& s = m_settings.cameraBookmarks[i];
@@ -878,9 +900,31 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         SceneIO::SetProjectRoot(projectRoot);
     }
 
+    // 参照を失った import 生成物を片付ける。
+    // WHY SetRootPath より前か: ルートを配ると Asset Browser が未 import の走査を始める。
+    //     その前に孤児を落としておかないと、これから消す物を数え直すことになる。
+    if (m_settings.sweepOrphanedBakedOnOpen) {
+        const auto sweep = asset::AssetDatabase::SweepOrphanedBaked(/*dryRun=*/false);
+        if (sweep.aborted) {
+            FBZZ_LOG_WARN("EditorApp: baked sweep skipped (%s)", sweep.abortReason.c_str());
+        } else if (sweep.removed > 0) {
+            // 生成物と fingerprint はキーが同じ guid。片方だけ残すと «記録はあるのに
+            // 焼き上がりが無い» 状態になり、再インポートの判定が狂う。
+            ImportCacheStore::Forget(sweep.removedGuids);
+            Toast::Info("Cleaned " + std::to_string(sweep.removed)
+                        + " unused import cache folders ("
+                        + std::to_string(sweep.bytesFreed / (1024 * 1024)) + " MB)");
+        }
+    }
+
     LoadRuntimeBuildMetadata(m_ctx);
-    if (m_assetBrowserPanel && !m_projectRoot.empty())
-        m_assetBrowserPanel->SetRootPath(m_projectRoot + "/Assets");
+    // ルートは開いている枚数ぶん全部に配る。
+    // WHY 1 枚目だけではないか: 2 枚目以降が前のプロジェクトの Assets を指したままになり、
+    //     消えたパスを一覧しようとする。
+    if (!m_projectRoot.empty()) {
+        for (AssetBrowserPanel* browser : m_assetBrowserPanels)
+            browser->SetRootPath(m_projectRoot + "/Assets");
+    }
 
     // パネル固有の設定を適用する。
     // WHY SetRootPath より後か: Asset Browser は前回のフォルダをルート配下かどうかで
@@ -1121,6 +1165,7 @@ void EditorApp::BeginFrame()
         DrawPrefabEditBar(m_ctx);
         DrawSceneReloadBar(m_ctx);
         DrawBuildNotificationBar(m_ctx);
+        DrawGuidConflictBar(m_ctx);
 
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
         ProcessMapEditingModeTransition(static_cast<uint32_t>(dockId));
@@ -1946,8 +1991,11 @@ void EditorApp::WarmupRenderResources()
         const scene::CameraCullingSettings warmupSceneViewCulling{};
         renderer::Camera warmupCamera = m_debugCamera.camera;
         warmupCamera.m_backgroundColor = scene::ResolveGameBackgroundColor(*m_scene);
+        // WHY 既定値で描かないか: 温めたいのは «本番で使うシェーダーと PSO» で、
+        //     nullptr を渡すと既定 (Forward) の組み合わせが作られる。Deferred+ の
+        //     プロジェクトでは 1 つも当たらず、最初の可視フレームで結局作り直す。
         scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
-                            warmupCamera, sceneRT, nullptr,
+                            warmupCamera, sceneRT, &m_ctx.projectSettings.render,
                             fbzz::Layer::Everything, &uiOptions, nullptr,
                             &warmupSceneViewCulling);
     }

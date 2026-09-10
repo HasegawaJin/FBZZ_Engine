@@ -11,6 +11,7 @@
 
 #include <Engine/Asset/AssetDatabase.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -169,6 +170,19 @@ TEST_F(AssetRefTest, GeneratedArtefactsDoNotGetMeta)
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("blur.cso"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("scripts.dll"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("playercomponent.generated.hpp"));
+}
+
+TEST_F(AssetRefTest, AtomicSaveTempFilesDoNotGetMeta)
+{
+    // 原子的な保存の途中経過。rename で消える相手に .meta を発行すると孤児が残る。
+    // 一時名は .tmp の «後ろ» に pid とハッシュが付くので、末尾拡張子だけでは弾けない。
+    EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("stage_01.scene.tmp.3588.b6c904700d2b"));
+    EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("keyicons.hpp.tmp.3588.44fddd02650a"));
+    EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.tmp"));
+
+    // 名前の一部として ".tmp." を含まない通常のアセットは巻き込まない。
+    EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("tmp_backup.scene"));
+    EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("effect.tmpl.mat"));
 }
 
 TEST_F(AssetRefTest, NonFileLikeNamesDoNotGetMeta)
@@ -379,6 +393,133 @@ TEST_F(AssetDatabaseTest, ProjectRootIsTheParentOfTheAssetsFolder)
 
     EXPECT_EQ(projectRoot, AssetDatabase::AssetsRoot().substr(
                                0, AssetDatabase::AssetsRoot().size() - 7));
+}
+
+
+// ── Library/Baked の掃除 ──────────────────────────────────────────────────
+
+TEST_F(AssetDatabaseTest, SweepRemovesBakedContainersNobodyClaims)
+{
+    const std::filesystem::path model = AssetsRoot() / "Models" / "Player.fbx";
+    WriteFile(model, "fbx");
+    WriteFile(model.string() + ".meta",
+              "file_format_version = 1\n\n[meta]\n"
+              "guid = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'\n");
+    InitDatabase();
+
+    const std::filesystem::path baked = AssetsRoot().parent_path() / "Library" / "Baked";
+    WriteFile(baked / "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" / "Player.fzasset", "live");
+    WriteFile(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" / "Old.fzasset", "orphan");
+    // guid 以外の名前は掃除の対象外。
+    WriteFile(baked / "notaguid" / "keep.txt", "keep");
+
+    const auto result = AssetDatabase::SweepOrphanedBaked(/*dryRun=*/false);
+
+    EXPECT_FALSE(result.aborted);
+    EXPECT_EQ(result.removed, 1u);
+    EXPECT_TRUE(std::filesystem::exists(baked / "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+    EXPECT_FALSE(std::filesystem::exists(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+    EXPECT_TRUE(std::filesystem::exists(baked / "notaguid"));
+}
+
+TEST_F(AssetDatabaseTest, SweepDryRunReportsWithoutDeleting)
+{
+    const std::filesystem::path model = AssetsRoot() / "Models" / "Player.fbx";
+    WriteFile(model, "fbx");
+    WriteFile(model.string() + ".meta",
+              "file_format_version = 1\n\n[meta]\n"
+              "guid = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'\n");
+    InitDatabase();
+
+    const std::filesystem::path baked = AssetsRoot().parent_path() / "Library" / "Baked";
+    WriteFile(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" / "Old.fzasset", "orphan");
+
+    const auto result = AssetDatabase::SweepOrphanedBaked(/*dryRun=*/true);
+
+    EXPECT_EQ(result.removed, 1u);
+    EXPECT_TRUE(std::filesystem::exists(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+}
+
+TEST_F(AssetDatabaseTest, SweepRefusesToRunWithoutAnIndex)
+{
+    // 索引を作らずに呼ぶ。«誰も名乗っていない» の判定ができないので 1 件も消さない。
+    const std::filesystem::path baked = AssetsRoot().parent_path() / "Library" / "Baked";
+    WriteFile(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" / "Old.fzasset", "orphan");
+
+    const auto result = AssetDatabase::SweepOrphanedBaked(/*dryRun=*/false);
+
+    EXPECT_TRUE(result.aborted);
+    EXPECT_EQ(result.removed, 0u);
+    EXPECT_TRUE(std::filesystem::exists(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+}
+
+
+// ── 同じ guid を名乗る 2 つの実体 ────────────────────────────────────────
+
+TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
+{
+    // エンジンは共通シェーダーをプロジェクトの Assets へ配る。.meta ごとコピーされるので
+    // guid も同じになるが、これは «同じアセットが 2 箇所にある» だけで衝突ではない。
+    const std::string guid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const std::string meta =
+        "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n";
+
+    const std::filesystem::path projShader = AssetsRoot() / "Shaders" / "Lit.hlsl";
+    WriteFile(projShader, "shader");
+    WriteFile(projShader.string() + ".meta", meta);
+    InitDatabase();
+
+    // エンジン側は Init の走査範囲外。参照解決で «後から» 索引に載る。
+    const std::filesystem::path engineShader =
+        AssetsRoot().parent_path() / "EngineAssets" / "Assets" / "Shaders" / "Lit.hlsl";
+    WriteFile(engineShader, "shader");
+    WriteFile(engineShader.string() + ".meta", meta);
+
+    EXPECT_EQ(AssetDatabase::TryGetGuidFromPath(Utf8(engineShader)), guid);
+    EXPECT_EQ(AssetDatabase::GuidConflictCount(), 0u);
+    // 実体として引けるのはプロジェクト側。
+    EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(projShader));
+}
+
+TEST_F(AssetDatabaseTest, DifferentAssetsSharingAGuidAreStillReported)
+{
+    // Assets からの相対パスが違う = 別のアセットが同じ guid を名乗っている。
+    // これは参照が黙って他人へ吸われる本物の衝突なので、報告しなければならない。
+    const std::string guid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const std::string meta =
+        "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n";
+
+    const std::filesystem::path first  = AssetsRoot() / "Textures" / "Player.png";
+    const std::filesystem::path second = AssetsRoot() / "Textures" / "Enemy.png";
+    WriteFile(first,  "a");
+    WriteFile(first.string()  + ".meta", meta);
+    WriteFile(second, "b");
+    WriteFile(second.string() + ".meta", meta);
+
+    InitDatabase();
+
+    EXPECT_EQ(AssetDatabase::GuidConflictCount(), 1u);
+}
+
+
+TEST_F(AssetDatabaseTest, TheSameFileUnderTwoSpellingsIsNotADuplicate)
+{
+    // 索引には絶対パスが載るが、参照解決は大文字小文字や区切りの違う表記で入ってくる。
+    // 同じ実体なら «重複» ではないので、警告も衝突記録もしてはいけない。
+    const std::string guid = "cccccccccccccccccccccccccccccccc";
+    const std::filesystem::path texture = AssetsRoot() / "Textures" / "Player.png";
+    WriteFile(texture, "png");
+    WriteFile(texture.string() + ".meta",
+              "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n");
+    InitDatabase();
+
+    // 同じファイルを «別表記» で引く (区切りをバックスラッシュに変えたもの)。
+    std::string spelled = Utf8(texture);
+    std::replace(spelled.begin(), spelled.end(), '/', '\\');
+
+    EXPECT_EQ(AssetDatabase::TryGetGuidFromPath(spelled), guid);
+    EXPECT_EQ(AssetDatabase::GuidConflictCount(), 0u);
+    EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(texture));
 }
 
 } // namespace fbzz::tests

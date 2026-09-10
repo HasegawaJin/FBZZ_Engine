@@ -15,6 +15,7 @@
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,8 @@ bool        s_initialized = false;
 std::string s_assetsRoot;  // Init に渡された Assets ルート (末尾 '/' 付き正規化)
 // 索引が最後の書き出し以降に変わったか。FlushIndexFile が見る。
 bool        s_indexDirty = false;
+// 先勝ちで弾いた重複の記録。修復ツールと通知バーが読む。
+std::vector<AssetDatabase::GuidConflict> s_conflicts;
 
 std::string NormalizePath(std::string p)
 {
@@ -129,6 +132,56 @@ bool IsOrphanMeta(const std::filesystem::path& metaPath)
     return !util::FileSystem::Exists(metaUtf8.substr(0, metaUtf8.size() - 5));
 }
 
+// ロック取得済み前提。同じ (guid, 弾かれたパス) を二重に積まない。
+// WHY: 索引の再構築や watcher の再通知で同じ衝突が何度も通る。件数がそのたびに
+//      増えると、通知バーの「N 件」が実際の重複数と合わなくなる。
+void RecordConflictLocked(const std::string& guid, const std::string& keptPath,
+                          const std::string& duplicatePath)
+{
+    const std::string dupKey = PathKey(duplicatePath);
+    for (const AssetDatabase::GuidConflict& c : s_conflicts) {
+        if (c.guid == guid && PathKey(c.duplicatePath) == dupKey) return;
+    }
+    s_conflicts.push_back({ guid, NormalizePath(keptPath), NormalizePath(duplicatePath) });
+}
+
+// "…/Assets/" 以降を返す。含まなければ空。
+// WHY 先頭の "Assets/" も見るか: 索引には絶対パスが載るが、参照解決は
+//     "Assets/Models/Foo.fbx" のような論理パスのまま入ってくることがある。
+//     区切りだけを探すと、先頭に来た "Assets/" を取りこぼして «別物» と判定する。
+std::string RelativeToAnyAssetsRoot(const std::string& absPath)
+{
+    static constexpr std::string_view kLeading = "assets/";
+    static constexpr std::string_view kEmbedded = "/assets/";
+
+    const std::string lower = LowerCopy(NormalizePath(absPath));
+    if (lower.rfind(kLeading, 0) == 0) return lower.substr(kLeading.size());
+    const size_t pos = lower.rfind(kEmbedded);
+    if (pos == std::string::npos) return {};
+    return lower.substr(pos + kEmbedded.size());
+}
+
+// 同じ guid を名乗る 2 つのパスが、同じアセットの «コピー» か。
+//
+// WHY 要るか: エンジンは共通シェーダーをプロジェクトの Assets へ配る。コピーは .meta ごと
+//     複製されるので guid も同一になるが、これは «同じアセットが 2 箇所にある» のであって、
+//     参照が別物へ吸われる本物の衝突ではない。区別せずに重複として鳴らすと、起動のたびに
+//     エラーが出るうえ Asset Maintenance の一覧にも並び、«直す» と guid が振り直されて
+//     どちらか一方の参照が本当に壊れる。
+bool IsSameAssetCopyLocked(const std::string& a, const std::string& b)
+{
+    const std::string relA = RelativeToAnyAssetsRoot(a);
+    return !relA.empty() && relA == RelativeToAnyAssetsRoot(b);
+}
+
+// absPath が «開いているプロジェクトの» Assets 配下か。
+bool IsUnderProjectAssetsLocked(const std::string& absPath)
+{
+    if (s_assetsRoot.empty()) return false;
+    const std::string key = PathKey(absPath);
+    return key.rfind(LowerCopy(s_assetsRoot), 0) == 0;
+}
+
 // ロック取得済み前提でインデックスに登録する。guid 重複はエラーログを出し先勝ち。
 // guid → path の登録。
 //
@@ -154,8 +207,34 @@ void RegisterLocked(const std::string& guid, const std::string& absPath, bool pr
             else         s_pathToGuid.try_emplace(key, guid);
             return;
         }
+        // 同じ実体を 2 通りのパス表記で登録しただけなら、そもそも衝突ではない。
+        //
+        // WHY 文字列比較で足りないか: 相対と絶対、ドライブ文字や中間ディレクトリの
+        //     大文字小文字、ジャンクション経由 — どれも «違う文字列で同じファイル» を作る。
+        //     PathKey の正規化は小文字化と区切りの統一までで、ここを吸収できない。
+        //     ファイルシステムに «同じものか» を聞けば、経路によらず一度で判定できる。
+        if (std::error_code ec; std::filesystem::equivalent(
+                util::FileSystem::PathFromUtf8(it->second),
+                util::FileSystem::PathFromUtf8(absPath), ec) && !ec) {
+            // 実体は 1 つ。guid→path は先に入った表記を保ち、逆引きだけ増やす。
+            if (primary) s_pathToGuid[key] = guid;
+            else         s_pathToGuid.try_emplace(key, guid);
+            return;
+        }
+        // エンジン内蔵 Assets とプロジェクト Assets に配られた同じアセット。
+        // 衝突ではないので記録も警告もせず、プロジェクト側を «実体» として採用する。
+        if (IsSameAssetCopyLocked(it->second, absPath)) {
+            if (IsUnderProjectAssetsLocked(absPath)
+                && !IsUnderProjectAssetsLocked(it->second))
+                s_guidToPath[guid] = NormalizePath(absPath);
+            // 逆引きはどちらのパスからも引けてよい。参照はパスで来ることがある。
+            if (primary) s_pathToGuid[key] = guid;
+            else         s_pathToGuid.try_emplace(key, guid);
+            return;
+        }
         FBZZ_LOG_ERROR("AssetDatabase: duplicate guid [%s]\n  kept: %s\n  dup : %s",
                        guid.c_str(), it->second.c_str(), absPath.c_str());
+        RecordConflictLocked(guid, it->second, NormalizePath(absPath));
         return;
     }
     s_guidToPath[guid] = NormalizePath(absPath);
@@ -208,6 +287,12 @@ bool AssetDatabase::ShouldHaveMeta(std::string_view lowerFileName)
     for (const auto s : kExcludedSuffixes)
         if (lowerFileName.size() >= s.size()
             && lowerFileName.substr(lowerFileName.size() - s.size()) == s) return false;
+
+    // 原子的な保存の途中経過 ("Stage_01.scene.tmp.<pid>.<hash>")。
+    // WHY 末尾の ".tmp" 判定では足りないか: 一時名は .tmp の «後ろ» に pid とハッシュを
+    //     足すため、拡張子として見えるのは ".<hash>" になる。英字を含む短い英数字列なので
+    //     上の書式検査を通ってしまい、rename で消える相手に .meta を発行して孤児が残る。
+    if (lowerFileName.find(".tmp.") != std::string_view::npos) return false;
 
     return true;
 }
@@ -340,6 +425,7 @@ void AssetDatabase::Init(const std::string& assetsRoot)
     s_guidToPath.clear();
     s_pathToGuid.clear();
     s_movedPathAliases.clear();
+    s_conflicts.clear();
     s_assetsRoot = NormalizePath(assetsRoot);
     if (!s_assetsRoot.empty() && s_assetsRoot.back() != '/') s_assetsRoot.push_back('/');
 
@@ -426,6 +512,13 @@ void AssetDatabase::Init(const std::string& assetsRoot)
         FBZZ_LOG_WARN("AssetDatabase: %zu meta have no owner asset. "
                       "References to them stay unresolved until the assets are restored.",
                       orphans);
+    // 重複は 1 件ごとにエラーを出しているが、スキャン中の行は起動ログに流れて気づかれない。
+    // 総数だけをもう一度、通知バーと同じ文言で残す。
+    if (!s_conflicts.empty())
+        FBZZ_LOG_ERROR("AssetDatabase: %zu duplicate guid(s). "
+                       "References resolve to one side only \xe2\x80\x94 "
+                       "fix them in Tools > Asset Maintenance.",
+                       s_conflicts.size());
 
     // ── Library/Baked の生成物を導出 GUID で索引する ──────────────────────
     // WHY Assets の後か: 同じ実体が両方に居る移行期に、Assets 側 (人が編集しうる方) の
@@ -444,6 +537,7 @@ void AssetDatabase::Shutdown()
     s_guidToPath.clear();
     s_pathToGuid.clear();
     s_movedPathAliases.clear();
+    s_conflicts.clear();
     s_initialized = false;
 }
 
@@ -578,6 +672,211 @@ void AssetDatabase::OnAssetRemoved(const std::string& absPath)
         else
             ++iter;
     }
+
+    // 消えた実体を巻き込んだ衝突は、もう衝突ではない。
+    std::erase_if(s_conflicts, [&](const GuidConflict& c) {
+        const std::string dupKey  = PathKey(c.duplicatePath);
+        const std::string keptKey = PathKey(c.keptPath);
+        return dupKey == key || dupKey.rfind(prefix, 0) == 0
+            || keptKey == key || keptKey.rfind(prefix, 0) == 0;
+    });
+}
+
+std::vector<AssetDatabase::GuidConflict> AssetDatabase::GuidConflicts()
+{
+    std::lock_guard lock(s_mutex);
+    // 記録した後にどちらかが消えた / 振り直された場合を、読み出しのたびに落とす。
+    // WHY ここで捨てるか: 衝突が解けるきっかけ (外部ツールでの削除、手での .meta 編集) は
+    //     索引を通らずに起きる。通知を出す側から見て「まだ残っているか」の判定は、
+    //     結局ディスクを読むしかない。読む場所をここ 1 つに寄せる。
+    std::erase_if(s_conflicts, [](const GuidConflict& c) {
+        return ReadGuidFromMeta(c.keptPath + ".meta") != c.guid
+            || ReadGuidFromMeta(c.duplicatePath + ".meta") != c.guid;
+    });
+    return s_conflicts;
+}
+
+size_t AssetDatabase::GuidConflictCount()
+{
+    std::lock_guard lock(s_mutex);
+    return s_conflicts.size();
+}
+
+namespace {
+
+// import 生成物のコンテナ Library/Baked/<guid>/ を新しい guid の名前へ移す。
+// 生成物が無い (未 import / 生成物を持たない種類) 場合も成功として扱う。
+// s_mutex を «取っていない» 状態で呼ぶこと。AssetsRoot() が内部でロックを取る。
+bool MoveBakedContainer(const std::string& oldGuid, const std::string& newGuid)
+{
+    if (oldGuid.empty() || newGuid.empty() || oldGuid == newGuid) return true;
+
+    const std::string assetsRoot = AssetDatabase::AssetsRoot();
+    constexpr size_t  kAssetsLen = 7;  // "Assets/"
+    if (assetsRoot.size() <= kAssetsLen) return true;
+
+    const std::string bakedRoot = assetsRoot.substr(0, assetsRoot.size() - kAssetsLen)
+                                + "Library/Baked/";
+    const std::string src = bakedRoot + oldGuid;
+    const std::string dst = bakedRoot + newGuid;
+    if (!util::FileSystem::Exists(src)) return true;
+
+    // 新 guid は 128bit 乱数。既に居るのは «移送済み» か本物の衝突かの区別が付かない。
+    // どちらにせよ上書きは生成物を壊すので、振り直しごと失敗させる。
+    if (util::FileSystem::Exists(dst)) return false;
+
+    return util::FileSystem::Rename(util::FileSystem::PathFromUtf8(src),
+                                    util::FileSystem::PathFromUtf8(dst));
+}
+
+} // namespace
+
+bool AssetDatabase::ReassignGuid(const std::string& absPath, std::string& outNewGuid)
+{
+    if (!util::FileSystem::Exists(absPath)) return false;
+
+    const std::string metaPath = absPath + ".meta";
+    const std::string oldGuid  = ReadGuidFromMeta(metaPath);
+    const std::string newGuid  = GenerateGuid();
+
+    // guid は参照キーであると同時に import 生成物の «置き場所» でもある
+    // (Library/Baked/<guid>/)。.meta だけ書き換えると生成物が迷子になり、
+    // 起動のたびに «未 import» と判定されて焼き直しが走り続ける。
+    // 先に move し、失敗したら guid も振り直さない。
+    if (!MoveBakedContainer(oldGuid, newGuid)) {
+        FBZZ_LOG_ERROR("AssetDatabase: cannot move baked container [%s -> %s]",
+                       oldGuid.c_str(), newGuid.c_str());
+        return false;
+    }
+
+    // .meta の他セクション (importer 設定) は WriteGuidToMeta が残す。
+    if (!WriteGuidToMeta(metaPath, newGuid)) {
+        FBZZ_LOG_ERROR("AssetDatabase: cannot rewrite meta [%s]", metaPath.c_str());
+        MoveBakedContainer(newGuid, oldGuid);  // .meta が旧 guid のままなので戻す
+        return false;
+    }
+
+    std::lock_guard lock(s_mutex);
+    const std::string key = PathKey(absPath);
+
+    // 旧 guid の guid→path は «先勝ちした別の実体» を指していることがある。
+    // 自分が指されている場合だけ外す。
+    if (const auto it = s_pathToGuid.find(key); it != s_pathToGuid.end()) {
+        if (const auto g = s_guidToPath.find(it->second);
+            g != s_guidToPath.end() && PathKey(g->second) == key)
+            s_guidToPath.erase(g);
+        s_pathToGuid.erase(it);
+    }
+    RegisterLocked(newGuid, absPath);
+
+    std::erase_if(s_conflicts, [&](const GuidConflict& c) {
+        return PathKey(c.duplicatePath) == key || PathKey(c.keptPath) == key;
+    });
+
+    // 自分が先勝ち側だった場合、旧 guid の席が空く。同じ guid で弾かれていた実体を
+    // 入れ直さないと、衝突を解いたのに誰も索引に載っていない状態になる。
+    if (!oldGuid.empty()) {
+        std::vector<std::string> pending;
+        for (const GuidConflict& c : s_conflicts) {
+            if (c.guid == oldGuid) pending.push_back(c.duplicatePath);
+        }
+        for (const std::string& path : pending) {
+            if (util::FileSystem::Exists(path)) RegisterLocked(oldGuid, path);
+        }
+    }
+
+    outNewGuid = newGuid;
+    return true;
+}
+
+AssetDatabase::BakedSweepResult AssetDatabase::SweepOrphanedBaked(bool dryRun)
+{
+    namespace fs = std::filesystem;
+    BakedSweepResult result;
+
+    // ── 安全弁 ───────────────────────────────────────────────────────────
+    // 索引が «全部読めている» ことだけを条件にする。ここを通れば、載っていない
+    // guid は本当に誰も名乗っていない。
+    std::unordered_set<std::string> live;
+    std::string bakedRoot;
+    {
+        std::lock_guard lock(s_mutex);
+        if (!s_initialized) {
+            result.aborted = true;
+            result.abortReason = "asset database not initialized";
+            return result;
+        }
+        if (s_pathToGuid.empty()) {
+            result.aborted = true;
+            result.abortReason = "asset index is empty";
+            return result;
+        }
+        constexpr size_t kAssetsLen = 7;  // "Assets/"
+        if (s_assetsRoot.size() <= kAssetsLen) {
+            result.aborted = true;
+            result.abortReason = "assets root not resolved";
+            return result;
+        }
+        if (!util::FileSystem::Exists(s_assetsRoot)) {
+            result.aborted = true;
+            result.abortReason = "assets root missing on disk";
+            return result;
+        }
+        live.reserve(s_pathToGuid.size());
+        for (const auto& [path, guid] : s_pathToGuid) live.insert(guid);
+        bakedRoot = s_assetsRoot.substr(0, s_assetsRoot.size() - kAssetsLen)
+                  + "Library/Baked";
+    }
+
+    if (!util::FileSystem::Exists(bakedRoot)) return result;
+
+    std::vector<fs::path> doomed;
+    std::error_code ec;
+    for (fs::directory_iterator it(bakedRoot, ec), last; !ec && it != last; it.increment(ec)) {
+        std::error_code dirEc;
+        if (!it->is_directory(dirEc) || dirEc) continue;
+
+        // ディレクトリ名が原本の guid。それ以外の名前には触らない。
+        const std::string name =
+            LowerCopy(util::FileSystem::PathToUtf8(it->path().filename()));
+        if (name.size() != 32) continue;
+        if (!std::all_of(name.begin(), name.end(),
+                         [](unsigned char c) { return std::isxdigit(c) != 0; })) continue;
+
+        ++result.scanned;
+        if (live.find(name) == live.end()) doomed.push_back(it->path());
+    }
+    if (ec) {
+        // 走査が途中で止まった＝ «誰も名乗っていない» の判定が不完全。消さない。
+        result.aborted = true;
+        result.abortReason = "baked scan failed: " + ec.message();
+        return result;
+    }
+
+    for (const fs::path& dir : doomed) {
+        uint64_t bytes = 0;
+        for (const fs::path& file : util::FileSystem::ListFilesRecursive(dir)) {
+            std::error_code sizeEc;
+            const uintmax_t size = fs::file_size(file, sizeEc);
+            if (!sizeEc) bytes += static_cast<uint64_t>(size);
+        }
+        if (!dryRun && !util::FileSystem::RemoveAll(dir)) {
+            FBZZ_LOG_WARN("AssetDatabase: cannot remove baked container [%s]",
+                          util::FileSystem::PathToUtf8(dir).c_str());
+            continue;
+        }
+        ++result.removed;
+        result.bytesFreed += bytes;
+        result.removedGuids.push_back(
+            LowerCopy(util::FileSystem::PathToUtf8(dir.filename())));
+    }
+
+    if (result.removed > 0)
+        FBZZ_LOG_INFO("AssetDatabase: %s %zu orphaned baked container(s), %.1f MB (%zu kept)",
+                      dryRun ? "would remove" : "removed",
+                      result.removed, static_cast<double>(result.bytesFreed) / (1024.0 * 1024.0),
+                      result.scanned - result.removed);
+    return result;
 }
 
 size_t AssetDatabase::Count()

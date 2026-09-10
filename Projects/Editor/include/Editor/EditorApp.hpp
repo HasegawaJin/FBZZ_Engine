@@ -53,6 +53,7 @@ class ConsolePanel;
 class AnalysisPanel;
 class MapEditorPanel;
 class IblBakePanel;
+class AssetMaintenancePanel;
 class NavigationPanel;
 class AiSettingsPanel;
 class TerrainTool;
@@ -119,6 +120,10 @@ private:
     void BuildPlayToolbar(EditorContext& ctx);
     // ビルド失敗時に、ツールバー下へ消えない通知バーを描画する (Show / Dismiss)。
     void DrawBuildNotificationBar(EditorContext& ctx);
+    // GUID 重複を抱えているとき、同じ場所へ通知バーを描画する。
+    // WHY 画面に出すか: 重複はスキャン中の Console エラーでしか報告されず、
+    //     起動ログに流れて誰も気づかないまま参照が別のアセットへ吸われ続けていた。
+    void DrawGuidConflictBar(EditorContext& ctx);
     void ProcessMapEditingModeTransition(uint32_t dockId);
     void ProcessPlayViewportLayoutTransition(uint32_t dockId);
     void EnterMapEditingMode(uint32_t dockId);
@@ -430,12 +435,19 @@ private:
     ViewportPanel*                           m_uiViewportPanel        = nullptr;
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
     BuildSettingsPanel*                      m_buildSettingsPanel     = nullptr;
+    // 1 枚目の Asset Browser (ファイル監視とインポートを担当する枚)。
     AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
+    // 開いている Asset Browser 全部。ルートの差し替えのように全枚に配る操作で使う。
+    std::vector<AssetBrowserPanel*>          m_assetBrowserPanels;
     // StatusBar から Asset Browser と同じ操作感で開閉するため、専用ポインタで保持する。
     ConsolePanel*                            m_consolePanel           = nullptr;
     AnalysisPanel*                           m_analysisPanel          = nullptr;
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
     IblBakePanel*                            m_iblBakePanel           = nullptr;
+    AssetMaintenancePanel*                   m_assetMaintenancePanel  = nullptr;
+    // 通知バーを閉じたときの件数。これより増えたらもう一度出す。
+    size_t m_dismissedGuidConflicts = 0;
+    bool   m_guidConflictBarDismissed = false;
     NavigationPanel*                         m_navigationPanel        = nullptr;
     AiSettingsPanel*                         m_aiSettingsPanel        = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
