@@ -90,6 +90,16 @@ public:
     /// 固めている相手を全部その場で戻す。
     void ThawAnimations();
 
+    /// この相手を今固めているか。
+    ///
+    /// WHY 公開するか (2026-09-11): 当事者の凍結は `animator.SetSpeed(go, 0)` で
+    ///     作っているので、**その相手の再生速度を毎フレーム書く側が居ると次の
+    ///     フレームで解けてしまう**。ボスは足の運びを実速へ合わせるために毎フレーム
+    ///     書いているので、固めている間だけ書くのをやめてもらう必要がある。
+    ///     «固めた側» が答えるのが唯一の正で、書く側が自分で秒数を数え直すと
+    ///     Option (ヒットストップの長さ) が二重に掛かる。
+    [[nodiscard]] bool IsAnimationFrozen(const GameObject* target) const;
+
     [[nodiscard]] bool IsActive() const { return m_remaining > 0.0f; }
 
     // 今かかっている止めの重さ 0..1。止まっていなければ 0。
@@ -263,6 +273,14 @@ inline void HitstopManagerComponent::ThawAnimations()
         actor.target    = {};
     }
     debugFrozen = 0;
+}
+
+inline bool HitstopManagerComponent::IsAnimationFrozen(const GameObject* target) const
+{
+    if (!target) return false;
+    for (const FrozenActor& actor : m_frozen)
+        if (actor.remaining > 0.0f && actor.target.Resolve(scene) == target) return true;
+    return false;
 }
 
 inline void HitstopManagerComponent::TickAnimations(float dt)

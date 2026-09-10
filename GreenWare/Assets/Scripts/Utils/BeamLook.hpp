@@ -17,6 +17,8 @@
 ///   .mat 側の同じキーは «スクリプトを外したときのフォールバック» という位置づけ。
 #pragma once
 
+#include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -26,6 +28,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 using namespace fbzz::math;
 using fbzz::Time;
@@ -62,6 +65,25 @@ struct Look {
     float       churnRate    = 1.4f;
     uint32_t    seed         = kSeed;
     std::string materialPath = kMaterial;
+
+    // ── 放電と光 (2026-09-11 にここへ移した) ────────────────────────────────
+    //
+    // WHY 筒の断面だけでなく «描き込みの量» まで持つか:
+    //   薙ぎの中央 (コアビーム) は 1 本に 3 束・幅 0.085・たわみ 1.1 の筋を這わせ、
+    //   左右 (斉射) は 2 束・0.075・0.80 だった。断面と色を揃えても、隣り合った線の
+    //   «荒れ方» が違えば «中央だけ描き込みが多い» として割れて見える。
+    //   点光源も同じ ─ 明るさと範囲が違うと、同じ攻撃の中で線ごとに床の焼け方が変わる。
+    /// 線に沿って這わせる束の数。予算 (斉射の Bundle Budget) の範囲で尊重される。
+    int   arcAlong     = 3;
+    int   arcStrands   = 2;
+    float arcWidth     = 0.085f;
+    float arcRate      = 26.0f;
+    float arcIntensity = 2.0f;
+    /// 筋が筒からどれだけ外へ膨らむか [m]。
+    float arcBow       = 1.1f;
+    /// 線に添える点光源。
+    float lightIntensity = 24.0f;
+    float lightRange     = 9.0f;
 };
 
 /// 点火の «張り»。太りきる直前がいちばん張っている、という出方にする。
@@ -76,6 +98,47 @@ struct Look {
 {
     const float peak = std::max({ color.x, color.y, color.z, 1.0e-4f });
     return { color.x / peak, color.y / peak, color.z / peak, 1.0f };
+}
+
+/// 射線を伸ばし、最初に当たった «地形» で止める。何にも当たらなければ range で切る。
+///
+/// WHY 撃つ側ごとに書かないか (2026-09-11):
+///   薙ぎは 3 本を同時に出すが、中央 (コアビーム) だけが面で止まり、左右 (斉射) は
+///   決め打ちの長さで宙で切れていた。中央は床を焼いて壁へ刺さるのに、その両脇は
+///   壁を突き抜けて空中で終わる ─ 同じ口から出た線に見えなくなる。
+///   «どこで止まるか» も線の質のうちなので、断面や放電と同じくここが正本になる。
+///
+/// WHY 最初の 1 件ではなく全件を見るか:
+///   間にプレイヤーが立っていると Raycast はそこで止まる。線がプレイヤーの手前で
+///   途切れると «当たっているのに刺さっていない» 絵になる。当たりは線分の側で別に
+///   測っているので、線そのものは地形だけで止める。
+[[nodiscard]] inline Vector3 TraceSurface(const fbzz::scene::Script& owner, const Vector3& from,
+                                          const Vector3& direction, float range,
+                                          const std::string& playerTag, Vector3& outNormal)
+{
+    outNormal = Vector3::UP;
+
+    const float   reach = std::max(range, 0.5f);
+    const Vector3 dir   = direction.NormalizedOr(Vector3{ 0.0f, -1.0f, 0.0f });
+
+    fbzz::scene::GameObject* self = owner.scene.Self();
+    const fbzz::scene::RaycastHit* nearest = nullptr;
+    const std::vector<fbzz::scene::RaycastHit> hits = owner.physics.RaycastAll(from, dir, reach);
+    for (const fbzz::scene::RaycastHit& hit : hits) {
+        fbzz::scene::GameObject* object = hit.gameObject;
+        if (!object) continue;
+        // 自分の部位 (脚のヒットボックス) で止まると、線が脚の上で切れる。
+        if (object == self || (self && object->IsDescendantOf(*self))) continue;
+        if (!playerTag.empty() && object->tag == playerTag) continue;
+        if (!nearest || hit.distance < nearest->distance) nearest = &hit;
+    }
+
+    if (nearest) {
+        outNormal = nearest->normal.NormalizedOr(Vector3::UP);
+        return nearest->point;
+    }
+    // 何にも当たらないまま抜けた。線は最大距離で切る (空へ伸ばしっぱなしにしない)。
+    return from + dir * reach;
 }
 
 /// axis に垂直な 2 軸。放電を «軸のまわり» や «面の上» へ散らすのに使う。

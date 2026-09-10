@@ -18,7 +18,7 @@
 | `FX_PLR_ParryJust.vfx` | 同上、窓の頭で受けた Just 弾き (`PlayParry(..., just)`) | break-parry «Just 窓» |
 | `FX_BLD_SlashHit.vfx` | `BladeComponent::ResolveHit` の刀の当たり (`PlaySlashHit`) | presentation «斬撃» |
 | `FX_BOSS_Topple.vfx` | `BossAiComponent::Topple` / `SerpentAiComponent::Topple` (`PlayTopple`) | break-parry «転倒» |
-| `FX_BOSS_Execute.vfx` | `BossRigComponent::ExecuteLeg` / `SerpentAiComponent::Execute` (`PlayExecute`) | break-parry «とどめ» |
+| `FX_BOSS_Execute.vfx` | `BossRigComponent::ExecutePart` / `SerpentAiComponent::Execute` (`PlayExecute`) | break-parry «とどめ» |
 
 呼び出しは全部 `VfxManagerComponent`（シーンの `Manager/VfxManager`）を通る。
 枠（GameObject）は `.vfx` の種類ごとにリングで持ち回すので、鳴らす側は

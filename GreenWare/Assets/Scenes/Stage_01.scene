@@ -18,7 +18,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.776557
+    aspectRatio = 1.777583
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -2399,11 +2399,15 @@ tag = 'Untagged'
         executeLight = 30.0
         executeSpark = 18.0
         geyserSlots = 14
-        groundBlastSlots = 14
+        groundBlastSlots = 20
         groundDustGrit = 1.4
         groundDustKick = 4.2
         groundDustSize = 2.4
-        groundDustSlots = 56
+        groundDustSlots = 96
+        legSmokeColor = [ 0.24, 0.23, 0.22, 0.5 ]
+        legSmokeRise = 1.6
+        legSmokeSize = 1.1
+        legSmokeSlots = 24
         lightFalloffCount = 3
         parryLightMax = 28.0
         parryLightMin = 12.0
@@ -4193,6 +4197,87 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'f4000002-0000-0000-0000-000000000020'
+layer = 0
+name = 'HUD_ClimbIcon'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    border = [ 0.0, 0.0, 0.0, 0.0 ]
+    color = [ 1.0, 1.0, 1.0, 0.0 ]
+    enabled = true
+    fillAmount = 1.0
+    fillClockwise = true
+    fillMethod = 0
+    fillOrigin = 0
+    imageType = 0
+    materialPath = ''
+    offsetMax = [ 0.0, 0.0 ]
+    pivot = [ 0.0, 0.0 ]
+    pixelsPerUnitMultiplier = 1.0
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 890.0, 736.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 48.0, 48.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4000002-0000-0000-0000-000000000021'
+layer = 0
+name = 'HUD_ClimbLabel'
+parent = 'HUD_Canvas'
+parentInstanceId = 'f4000002-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    align = 0
+    anchor = [ 0.0, 0.0 ]
+    anchorMax = [ 1.0, 1.0 ]
+    autoSize = false
+    autoSizeMax = 0.0
+    autoSizeMin = 8.0
+    color = [ 0.92, 0.95, 1.0, 0.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 28.0
+    letterSpacing = 0.0
+    lineSpacing = 1.0
+    materialPath = ''
+    maxHeight = 0.0
+    maxWidth = 0.0
+    offsetMax = [ 0.0, 0.0 ]
+    overflow = 0
+    pivot = [ 0.0, 0.0 ]
+    richText = false
+    sortOrder = 0
+    stretchX = false
+    stretchY = false
+    text = '登る'
+    verticalAlign = 0
+    visibleCharacters = -1
+
+    [gameobjects.transform]
+    position = [ 952.0, 746.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 21.122807, 28.0, 1.0 ]
+
+[[gameobjects]]
+active = true
 instanceId = 'f4000001-0000-0000-0000-00000000001f'
 layer = 0
 name = 'BossHealthBar'
@@ -4264,6 +4349,42 @@ tag = 'Untagged'
         softMargin = 1.5
 
 [[gameobjects]]
+active = true
+instanceId = 'f4000001-0000-0000-0000-0000000000a5'
+layer = 0
+name = 'ClimbPrompt'
+parent = 'Manager'
+parentInstanceId = 'f4000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = false
+    type = 'ClimbPromptComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        baseY = 760.0
+        centerX = 960.0
+        debugCanMount = false
+        debugReveal = 0.0
+        fadeInSeconds = 0.14
+        fadeOutSeconds = 0.22
+        fontSize = 28.0
+        gap = 14.0
+        iconName = 'HUD_ClimbIcon'
+        iconSize = 48.0
+        label = '登る'
+        labelName = 'HUD_ClimbLabel'
+        lift = 16.0
+        textColor = [ 0.92, 0.95, 1.0, 1.0 ]
+
+[[gameobjects]]
 active = false
 instanceId = 'f4000001-0000-0000-0000-0000000000a2'
 layer = 0
@@ -4314,11 +4435,11 @@ tag = 'Untagged'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:17dac89feb564a3a0100d9fec10d11a0|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordCore_Plus.mat'
+        material = 'guid:fd1f0e043c8d0e135c693575afed6ef5|Assets/Materials/Player/M_SwordCore_R.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:7b11e307da27a67e53d8a3bcbb5bd924|Assets/Materials/Player/M_SwordSteel.mat'
+        material = 'guid:ba5572dbdb7e02f17d1d2947e7aeb0a0|Assets/Materials/Player/M_SwordBlade.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -4338,11 +4459,11 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:4eeec6fe8a3dc430aea0b9cba6b9f2ea|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordMark_Plus.mat'
+        material = 'guid:43ac8206aa317f8f854ff9722f096aa6|Assets/Materials/Player/M_SwordMark_R.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:63a19707f308ee342939732d505542ca|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordGlow_Plus.mat'
+        material = 'guid:1d388fd44e60954067582d50296c9f55|Assets/Materials/Player/M_SwordGlow_R.mat'
         visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -4388,11 +4509,11 @@ tag = 'Untagged'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:2a21ffa8826930cd47015e43bbfd66c3|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordCore_Minus.mat'
+        material = 'guid:0259738dc18293864636c8e1f7d521ce|Assets/Materials/Player/M_SwordCore_L.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:7b11e307da27a67e53d8a3bcbb5bd924|Assets/Materials/Player/M_SwordSteel.mat'
+        material = 'guid:ba5572dbdb7e02f17d1d2947e7aeb0a0|Assets/Materials/Player/M_SwordBlade.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -4412,11 +4533,11 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:4beb739f4a36f997cf3417059e440f81|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordMark_Minus.mat'
+        material = 'guid:b8818f6dd46654f3fe1cd4962bc7f0f4|Assets/Materials/Player/M_SwordMark_L.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:c20db6c98c8de25bda86da37f9d15ca1|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordGlow_Minus.mat'
+        material = 'guid:7588acb62a8e187d78172d3ccf210860|Assets/Materials/Player/M_SwordGlow_L.mat'
         visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -4542,9 +4663,35 @@ tag = 'Player'
 
         [[gameobjects.AnimatorComponent.layers]]
         enabled = true
-        maskPath = 'guid:6c53dfcaca5b471ca001fb80f4fbf937|Assets/Animation/Player/M_Katana_Attack.mask'
+        maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
+        mode = 0
+        name = 'UpperBody'
+        retargetMappings = []
+        weight = 0.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = ''
+            sourcePath = ''
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:e646144a041865c0439591c32d9b33d4|Assets/Animation/Player/M_UpperBody.mask'
         mode = 0
         name = 'Attack'
+        retargetMappings = []
+        weight = 0.0
+
+            [gameobjects.AnimatorComponent.layers.additiveReference]
+            clipName = ''
+            sourcePath = ''
+            time = 0.0
+
+        [[gameobjects.AnimatorComponent.layers]]
+        enabled = true
+        maskPath = 'guid:328750624304cb9808548b4930d0e50a|Assets/Animation/Player/Player_Base.mask'
+        mode = 0
+        name = 'FullBody'
         retargetMappings = []
         weight = 0.0
 
@@ -5304,6 +5451,7 @@ tag = 'Player'
         executeClipFile = 'guid:9881396f555b1ba645879af4182ab242|Assets/Models/Player/Katana_Iai.fbx'
         executeClipName = 'Katana_Iai'
         executeFov = 1.0
+        executeHeight = 3.0
         executeHitStop = 1.0
         executeHitTime = 0.866667
         executeLock = 1.05
@@ -5486,7 +5634,7 @@ tag = 'Player'
         upAxisOverride = [ 0.0, 1.0, 0.0 ]
         useCameraForward = true
         useFootIK = true
-        weaponLayerName = 'Attack'
+        weaponLayerName = 'UpperBody'
         weaponLeft = 'c4eae030-9d43-4ea6-86e0-6346120cc090'
         weaponRight = '1f19e8f5-8344-416b-8948-75b67fe4cc59'
         weightResponse = 6.0
@@ -5538,40 +5686,64 @@ tag = 'Player'
         [gameobjects.ScriptComponents.fields]
         bodyRadius = 1.75
         debugBlocked = 0
+        debugOnBack = false
+        deckAnchorBone = 'Body'
+        deckGrip = 1.2
+        deckRadius = 1.6
+        deckRise = 1.33
         drawShapes = false
         legRadius = 0.42
         playerRadius = 0.52
         pushPerSecond = 14.0
         skin = 0.02
+        standOnBack = false
 
     [[gameobjects.ScriptComponents]]
-    enabled = true
+    enabled = false
     type = 'PlayerClimbComponent'
 
         [gameobjects.ScriptComponents.fields]
-        climbClipFile = 'guid:2c331a3fc4289104bf623dda30f469ad|Assets/Models/Player/Climb.fbx'
+        climbClipFile = 'guid:2b9e5f8999f3b8894368f43bc1d4e153|Library/Baked/2c331a3fc4289104bf623dda30f469ad/anims/Climb.anim'
         climbClipName = 'Climb'
-        climbSpeed = 3.4
         climbVolume = 0.95
+        debugLean = 0.0
         debugLeg = ''
         debugPhase = 'None'
         debugProgress = 0.0
+        debugSlot = 0.0
+        debugStep = 0
         deckAnchorBone = 'Body'
         deckRise = 1.33
         deckSideOffset = 1.55
-        drawClipFile = 'guid:9873c746d0c7f993161455bdcad44fd2|Assets/Models/Player/Katana_Draw.fbx'
-        drawClipName = 'Katana_Draw'
+        detachCollider = true
+        drawGrip = false
         drawPath = true
         drawSeconds = 0.6
+        faceTangentMin = 0.12
+        footTrail = 0.3
+        forceFullBody = true
         grabInterval = 0.4165
+        grabRumble = 0.16
+        gripBlend = 0.18
+        gripIk = true
+        gripRadius = 0.42
+        gripWeight = 1.0
+        handLead = 0.25
         holdSeconds = 3.2
-        layerName = 'Attack'
+        layerName = 'FullBody'
+        leanMax = 34.0
+        leanScale = 0.42
+        leanSmooth = 9.0
+        lengthInfluence = 0.35
         mountAction = 'Climb'
         mountRange = 3.6
-        requireToppled = false
-        sheatheClipFile = 'guid:bf25e66cf0b7067fb10270753895d369|Assets/Models/Player/Katana_Sheathe.fbx'
-        sheatheClipName = 'Katana_Sheathe'
-        sheatheSeconds = 0.62
+        requireToppled = true
+        sheatheSeconds = 0.76
+        stepBounce = 0.07
+        stepReference = 1.1
+        stepSeconds = 0.34
+        stepSettle = 0.2
+        swayDegrees = 6.0
 
 [[gameobjects]]
 active = true
@@ -8212,7 +8384,7 @@ tag = 'Untagged'
 [[gameobjects]]
 active = true
 instanceId = '5fe47bed-33f0-498b-88b6-5469850ccaac'
-layer = 0
+layer = 8
 name = 'Boss'
 parent = ''
 parentInstanceId = ''
@@ -9484,6 +9656,10 @@ tag = 'Enemy'
         aimLayerName = 'Aim'
         aimWeight = 1.0
         autoDriveLocomotion = true
+        chargeClipSpeed = 5.0
+        clipSpeedMax = 2.8
+        clipSpeedMin = 0.35
+        debugClipSpeed = 1.0
         debugSpeed = 0.0
         debugState = 'Locomotion'
         debugTurn = 0.0
@@ -9493,7 +9669,9 @@ tag = 'Enemy'
         previewAirTime = 1.6
         previewHoldTime = 2.5
         previewMotion = 0
+        scaleClipToSpeed = true
         turnFullRate = 45.0
+        walkClipSpeed = 2.0
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -9525,11 +9703,17 @@ tag = 'Enemy'
     type = 'BossHitboxRigComponent'
 
         [gameobjects.ScriptComponents.fields]
+        buildDeck = true
         coreHealth = 90
         coreRadius = 0.55
         debugHitboxes = 16
         debugMissingBones = 0
+        deckAnchorBone = 'Body'
+        deckHalfWidth = 1.6
+        deckRise = 1.33
+        deckThickness = 0.6
         headRadius = 0.7
+        hitboxLayer = 9
         legHealth = 150
         legRadius = 0.38
         radiusScale = 1.0
@@ -9542,9 +9726,13 @@ tag = 'Enemy'
     type = 'BossRigComponent'
 
         [gameobjects.ScriptComponents.fields]
+        aimOutlineColor = [ 0.55, 0.8, 1.0, 1.0 ]
+        aimOutlineWidthScale = 0.55
         breakHitStop = 0.3
         breakLegs = true
         breakShake = 0.55
+        brokenLegSmoke = true
+        coreExecuteDamage = 30
         crippleAtBrokenLegs = 2
         damageFlashColor = [ 1.0, 0.97, 0.9, 1.0 ]
         damageFlashStrength = 1.0
@@ -9565,10 +9753,17 @@ tag = 'Enemy'
         flinchForce = 95.0
         flinchOnHit = true
         flinchSeconds = 0.32
+        hitArmorVolume = 0.55
+        hitSparkScale = 0.55
+        keepBrokenLegMesh = true
+        outlineAimedLeg = true
         outlineAllLegs = false
         outlineLegs = true
         outlineThroughWalls = true
         outlineWidth = 0.7
+        smokeInterval = 0.3
+        smokeScale = 0.8
+        smokeSpread = 0.35
         springDamping = 0.45
         springDepth = 4
         springLimitAngle = 40.0
@@ -9639,40 +9834,51 @@ tag = 'Enemy'
         [gameobjects.ScriptComponents.fields]
         bandWidth = 1.0
         blastStrength = 0.42
-        blastsPerRing = 2
+        blastsPerRing = 1
         burstFalloff = 5.0
-        burstMultiplier = 2.4
+        burstMultiplier = 1.5
         clearHeight = 0.9
         crackGrowSeconds = 0.12
+        crackArcDegrees = 50.0
+        crackArcShare = 0.75
+        crackStep = 1.25
         crackHeatSeconds = 0.45
-        crackInterval = 0.09
+        crackInterval = 0.03
         crackLife = 3.5
         crackMaterial = 'guid:ad3b5e73aee032c59abfa00f26803b1c|Assets/Materials/Decal/DecalCrack.mat'
-        crackPerBurst = 3
+        crackPerBurst = 8
         crackProjectionDepth = 1.2
         crackSize = 2.2
         damage = 2
         debugDealt = false
         debugRadius = 0.0
         drawDebugBand = false
-        frontInterval = 0.09
-        frontScale = 0.8
+        frontInterval = 0.12
+        frontArcDegrees = 100.0
+        frontArcShare = 0.7
+        frontLight = true
+        frontLightColor = [ 1.0, 0.55, 0.22, 1.0 ]
+        frontLightHeight = 1.1
+        frontLightIntensity = 16.0
+        frontLightRange = 9.0
+        frontScale = 1.5
         landingBlast = 1.0
         landingBlastCount = 4
         landingBlastSpread = 3.2
-        landingSmokeCount = 16
+        landingSmokeCount = 10
         landingSmokeScale = 1.9
         maxRadius = 20.0
         passRumble = 0.45
         passShakeRatio = 0.5
         playerRadius = 0.45
         playerTag = 'Player'
-        ringInterval = 0.2
-        ringJitter = 0.4
-        ringMaxPoints = 16
-        ringMinPoints = 8
+        ringInterval = 0.1
+        ringJitter = 0.25
+        ringMaxPoints = 8
+        ringMinPoints = 5
+        ringStep = 2.0
         ringSpacing = 4.0
-        smokeScale = 1.0
+        smokeScale = 1.3
         smokeStrength = 1.0
         speed = 11.0
         startRadius = 1.5
@@ -9688,23 +9894,31 @@ tag = 'Enemy'
         beamLength = 20.0
         beamMinRange = 8.0
         beamNearReach = 5.0
+        beamOriginLift = 0.0
         beamRays = 3
         beamRiseHeight = 3.2
         beamSpreadDegrees = 26.0
         beamStartTime = 1.6
+        beatPips = true
+        beatSeconds = 0.5
         breakChargeRatio = 0.35
-        chargeDamage = 2
+        chainChance = 0.65
+        chainGapBeats = 1
+        chainMax = 2
+        chargeDamage = 3
         chargeHitRadius = 3.0
         chargeMaxSeconds = 3.0
         chargeMinRange = 12.0
-        chargeSpeed = 5.0
+        chargeSpeed = 13.0
         chargeWindupTime = 1.5
         crashRumble = 0.9
         crashSelfDamage = 200
-        crashStunTime = 5.0
+        crashStunTime = 9.0
         crippledSpeedScale = 0.35
         deathRumble = 1.0
         debugAct = 'Idle'
+        debugBeat = 0.0
+        debugChain = 0
         debugDistance = 3.993774
         debugLastHit = 'Stomp 3.7/3.2m out'
         debugReaction = '-'
@@ -9713,7 +9927,6 @@ tag = 'Enemy'
         fanBeams = 6
         fanCooldown = 16.0
         fanFromPhase = 2
-        fanHeight = 1.6
         fanLength = 26.0
         feedbackNear = 3.0
         feedbackRange = 26.0
@@ -9734,7 +9947,7 @@ tag = 'Enemy'
         landTotalTime = 2.6
         parryRecoilSeconds = 0.9
         parryStagger = 2.6
-        patrolSpeed = 2.4
+        patrolSpeed = 5.0
         playerTag = 'Player'
         pulseDamage = 1
         pulseHitTime = 0.85
@@ -9742,8 +9955,10 @@ tag = 'Enemy'
         pulseRumble = 0.8
         pulseTotalTime = 2.0
         punishRange = 7.5
+        quantizeToBeat = true
         reactCooldown = 2.4
         reactToPlayer = true
+        recoveryBeats = 2
         shakeRatio = 0.8
         stompDamage = 2
         stompHitTime = 0.8
@@ -9868,6 +10083,11 @@ tag = 'Enemy'
         debugBlend = 0.0
         debugPose = '-'
         fallRatio = 1.0
+        foldBrokenLegs = true
+        foldReach = 0.55
+        foldSeconds = 0.45
+        foldSpread = 0.45
+        foldWeight = 1.0
         footIkWeight = 1.0
         footSpread = 1.15
         groundOffset = 0.0
@@ -9980,7 +10200,7 @@ tag = 'Enemy'
         slashGain = 3.5
         streakBonus = 0.15
         streakCap = 4
-        toppleSeconds = 5.0
+        toppleSeconds = 9.0
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -11462,14 +11682,14 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 5
-    boneName = 'Core'
+    boneName = 'Muzzle'
     generated = true
     nodeIndex = 8
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.4, 0.3 ]
+    position = [ 0.0, 0.4, 1.74 ]
     rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
@@ -11486,15 +11706,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 6
-    boneName = 'Muzzle'
+    boneName = 'Yaw_FR'
     generated = true
     nodeIndex = 9
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 1.44, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    position = [ 2.28, 3.42, -0.2 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11510,15 +11730,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 7
-    boneName = 'Yaw_FR'
+    boneName = 'Thigh_FR'
     generated = true
     nodeIndex = 10
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 2.28, 3.42, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.0, 0.48, 0.0 ]
+    rotation = [ 0.777909, 0.356052, 0.356052, -0.375914 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11534,15 +11754,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 8
-    boneName = 'Thigh_FR'
+    boneName = 'Shin_FR'
     generated = true
     nodeIndex = 11
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.777909, 0.356052, 0.356052, -0.375914 ]
+    position = [ 0.0, 1.509172, 0.0 ]
+    rotation = [ 0.67817, 0.34701, 0.205325, 0.614419 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11558,15 +11778,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 9
-    boneName = 'Shin_FR'
+    boneName = 'Hock_FR'
     generated = true
     nodeIndex = 12
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.67817, 0.34701, 0.205325, 0.614419 ]
+    position = [ 0.0, 2.685275, 0.0 ]
+    rotation = [ 0.267085, 0.351587, 0.390578, 0.807775 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11582,15 +11802,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 10
-    boneName = 'Hock_FR'
+    boneName = 'Foot_FR'
     generated = true
     nodeIndex = 13
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ 0.267085, 0.351587, 0.390578, 0.807775 ]
+    position = [ 0.0, 2.309416, 0.0 ]
+    rotation = [ -0.109078, -0.220447, -0.220447, 0.943879 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11606,15 +11826,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 11
-    boneName = 'Foot_FR'
+    boneName = 'Toe1A_FR'
     generated = true
     nodeIndex = 14
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ -0.109078, -0.220447, -0.220447, 0.943879 ]
+    position = [ 0.099636, 0.28, -0.008529 ]
+    rotation = [ -0.414932, -0.466985, -0.466986, 0.625844 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11630,15 +11850,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 12
-    boneName = 'Toe1A_FR'
+    boneName = 'Toe1B_FR'
     generated = true
     nodeIndex = 15
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.099636, 0.28, -0.008529 ]
-    rotation = [ -0.414932, -0.466985, -0.466986, 0.625844 ]
+    position = [ 0.0, 0.409999, 0.0 ]
+    rotation = [ -0.016254, -0.015213, -0.003094, 0.999747 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11654,15 +11874,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 13
-    boneName = 'Toe1B_FR'
+    boneName = 'Toe2A_FR'
     generated = true
     nodeIndex = 16
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.409999, 0.0 ]
-    rotation = [ -0.016254, -0.015213, -0.003094, 0.999747 ]
+    position = [ 0.070711, 0.28, -0.070711 ]
+    rotation = [ -0.576995, -0.266592, -0.266592, 0.724524 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11678,15 +11898,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 14
-    boneName = 'Toe2A_FR'
+    boneName = 'Toe2B_FR'
     generated = true
     nodeIndex = 17
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.576995, -0.266592, -0.266592, 0.724524 ]
+    position = [ 1e-06, 0.468722, 0.0 ]
+    rotation = [ -0.012342, -0.005161, -0.000929, 0.99991 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11702,15 +11922,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 15
-    boneName = 'Toe2B_FR'
+    boneName = 'Toe3A_FR'
     generated = true
     nodeIndex = 18
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 1e-06, 0.468722, 0.0 ]
-    rotation = [ -0.012342, -0.005161, -0.000929, 0.99991 ]
+    position = [ 0.008529, 0.28, -0.099636 ]
+    rotation = [ -0.623992, -0.029628, -0.029628, 0.780307 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11726,15 +11946,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 16
-    boneName = 'Toe3A_FR'
+    boneName = 'Toe3B_FR'
     generated = true
     nodeIndex = 19
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.008529, 0.28, -0.099636 ]
-    rotation = [ -0.623992, -0.029628, -0.029628, 0.780307 ]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016545, -0.000714, -0.000146, 0.999863 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11750,15 +11970,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 17
-    boneName = 'Toe3B_FR'
+    boneName = 'HeelA_FR'
     generated = true
     nodeIndex = 20
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016545, -0.000714, -0.000146, 0.999863 ]
+    position = [ -0.070711, 0.28, 0.070711 ]
+    rotation = [ -0.048507, 0.605052, 0.605053, 0.515238 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11774,15 +11994,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 18
-    boneName = 'HeelA_FR'
+    boneName = 'HeelB_FR'
     generated = true
     nodeIndex = 21
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.070711, 0.28, 0.070711 ]
-    rotation = [ -0.048507, 0.605052, 0.605053, 0.515238 ]
+    position = [ 0.0, 0.342053, 0.0 ]
+    rotation = [ -0.020312, 0.054402, 0.013047, 0.998227 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11798,15 +12018,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 19
-    boneName = 'HeelB_FR'
+    boneName = 'Yaw_FL'
     generated = true
     nodeIndex = 22
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.020312, 0.054402, 0.013047, 0.998227 ]
+    position = [ -2.28, 3.42, -0.2 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11822,15 +12042,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 20
-    boneName = 'Yaw_FL'
+    boneName = 'Thigh_FL'
     generated = true
     nodeIndex = 23
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -2.28, 3.42, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.0, 0.48, 0.0 ]
+    rotation = [ 0.777909, -0.356052, -0.356052, -0.375914 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11846,15 +12066,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 21
-    boneName = 'Thigh_FL'
+    boneName = 'Shin_FL'
     generated = true
     nodeIndex = 24
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.777909, -0.356052, -0.356052, -0.375914 ]
+    position = [ 0.0, 1.509172, 0.0 ]
+    rotation = [ 0.67817, -0.34701, -0.205325, 0.614419 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11870,15 +12090,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 22
-    boneName = 'Shin_FL'
+    boneName = 'Hock_FL'
     generated = true
     nodeIndex = 25
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.67817, -0.34701, -0.205325, 0.614419 ]
+    position = [ 0.0, 2.685275, 0.0 ]
+    rotation = [ 0.267085, -0.351587, -0.390578, 0.807775 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11894,15 +12114,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 23
-    boneName = 'Hock_FL'
+    boneName = 'Foot_FL'
     generated = true
     nodeIndex = 26
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ 0.267085, -0.351587, -0.390578, 0.807775 ]
+    position = [ 0.0, 2.309416, 0.0 ]
+    rotation = [ -0.109078, 0.220447, 0.220447, 0.943879 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11918,15 +12138,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 24
-    boneName = 'Foot_FL'
+    boneName = 'Toe1A_FL'
     generated = true
     nodeIndex = 27
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ -0.109078, 0.220447, 0.220447, 0.943879 ]
+    position = [ -0.008529, 0.28, -0.099636 ]
+    rotation = [ -0.623992, 0.029628, 0.029628, 0.780307 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11942,15 +12162,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 25
-    boneName = 'Toe1A_FL'
+    boneName = 'Toe1B_FL'
     generated = true
     nodeIndex = 28
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.008529, 0.28, -0.099636 ]
-    rotation = [ -0.623992, 0.029628, 0.029628, 0.780307 ]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016545, 0.000714, 0.000146, 0.999863 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11966,15 +12186,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 26
-    boneName = 'Toe1B_FL'
+    boneName = 'Toe2A_FL'
     generated = true
     nodeIndex = 29
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016545, 0.000714, 0.000146, 0.999863 ]
+    position = [ -0.070711, 0.28, -0.070711 ]
+    rotation = [ -0.576995, 0.266592, 0.266592, 0.724524 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -11990,15 +12210,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 27
-    boneName = 'Toe2A_FL'
+    boneName = 'Toe2B_FL'
     generated = true
     nodeIndex = 30
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.576995, 0.266592, 0.266592, 0.724524 ]
+    position = [ -1e-06, 0.468722, 0.0 ]
+    rotation = [ -0.012342, 0.005161, 0.000929, 0.99991 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12014,15 +12234,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 28
-    boneName = 'Toe2B_FL'
+    boneName = 'Toe3A_FL'
     generated = true
     nodeIndex = 31
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -1e-06, 0.468722, 0.0 ]
-    rotation = [ -0.012342, 0.005161, 0.000929, 0.99991 ]
+    position = [ -0.099636, 0.28, -0.008529 ]
+    rotation = [ -0.414932, 0.466985, 0.466986, 0.625844 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12038,15 +12258,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 29
-    boneName = 'Toe3A_FL'
+    boneName = 'Toe3B_FL'
     generated = true
     nodeIndex = 32
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.099636, 0.28, -0.008529 ]
-    rotation = [ -0.414932, 0.466985, 0.466986, 0.625844 ]
+    position = [ 0.0, 0.409999, 0.0 ]
+    rotation = [ -0.016254, 0.015213, 0.003094, 0.999747 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12062,15 +12282,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 30
-    boneName = 'Toe3B_FL'
+    boneName = 'HeelA_FL'
     generated = true
     nodeIndex = 33
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.409999, 0.0 ]
-    rotation = [ -0.016254, 0.015213, 0.003094, 0.999747 ]
+    position = [ 0.070711, 0.28, 0.070711 ]
+    rotation = [ -0.048507, -0.605052, -0.605053, 0.515238 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12086,15 +12306,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 31
-    boneName = 'HeelA_FL'
+    boneName = 'HeelB_FL'
     generated = true
     nodeIndex = 34
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.070711, 0.28, 0.070711 ]
-    rotation = [ -0.048507, -0.605052, -0.605053, 0.515238 ]
+    position = [ 0.0, 0.342053, 0.0 ]
+    rotation = [ -0.020312, -0.054402, -0.013047, 0.998227 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12110,15 +12330,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 32
-    boneName = 'HeelB_FL'
+    boneName = 'Yaw_BR'
     generated = true
     nodeIndex = 35
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.020312, -0.054402, -0.013047, 0.998227 ]
+    position = [ 2.28, -2.62, -0.2 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12134,15 +12354,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 33
-    boneName = 'Yaw_BR'
+    boneName = 'Thigh_BR'
     generated = true
     nodeIndex = 36
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 2.28, -2.62, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.0, 0.48, 0.0 ]
+    rotation = [ 0.692475, 0.502388, 0.502389, -0.125262 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12158,15 +12378,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 34
-    boneName = 'Thigh_BR'
+    boneName = 'Shin_BR'
     generated = true
     nodeIndex = 37
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.692475, 0.502388, 0.502389, -0.125262 ]
+    position = [ 0.0, 1.509172, 0.0 ]
+    rotation = [ 0.664902, 0.647109, 0.244906, 0.281385 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12182,15 +12402,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 35
-    boneName = 'Shin_BR'
+    boneName = 'Hock_BR'
     generated = true
     nodeIndex = 38
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.664902, 0.647109, 0.244906, 0.281385 ]
+    position = [ 0.0, 2.685275, 0.0 ]
+    rotation = [ -0.261815, 0.339809, 0.39413, 0.8128 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12206,15 +12426,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 36
-    boneName = 'Hock_BR'
+    boneName = 'Foot_BR'
     generated = true
     nodeIndex = 39
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ -0.261815, 0.339809, 0.39413, 0.8128 ]
+    position = [ 0.0, 2.309416, 0.0 ]
+    rotation = [ 0.185757, -0.161212, -0.161212, 0.95578 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12230,15 +12450,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 37
-    boneName = 'Foot_BR'
+    boneName = 'Toe1A_BR'
     generated = true
     nodeIndex = 40
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ 0.185757, -0.161212, -0.161212, 0.95578 ]
+    position = [ 0.00853, 0.28, 0.099636 ]
+    rotation = [ 0.572972, -0.248892, -0.248891, 0.740141 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12254,15 +12474,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 38
-    boneName = 'Toe1A_BR'
+    boneName = 'Toe1B_BR'
     generated = true
     nodeIndex = 41
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.00853, 0.28, 0.099636 ]
-    rotation = [ 0.572972, -0.248892, -0.248891, 0.740141 ]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ 0.01162, -0.057918, -0.011779, 0.998184 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12278,15 +12498,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 39
-    boneName = 'Toe1B_BR'
+    boneName = 'Toe2A_BR'
     generated = true
     nodeIndex = 42
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ 0.01162, -0.057918, -0.011779, 0.998184 ]
+    position = [ 0.070711, 0.28, 0.070711 ]
+    rotation = [ 0.103069, 0.627193, 0.627193, -0.45015 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12302,15 +12522,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 40
-    boneName = 'Toe2A_BR'
+    boneName = 'Toe2B_BR'
     generated = true
     nodeIndex = 43
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.070711, 0.28, 0.070711 ]
-    rotation = [ 0.103069, 0.627193, 0.627193, -0.45015 ]
+    position = [ 0.0, 0.468721, 0.0 ]
+    rotation = [ -0.011246, -0.028743, -0.005169, 0.99951 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12326,15 +12546,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 41
-    boneName = 'Toe2B_BR'
+    boneName = 'Toe3A_BR'
     generated = true
     nodeIndex = 44
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.468721, 0.0 ]
-    rotation = [ -0.011246, -0.028743, -0.005169, 0.99951 ]
+    position = [ 0.099636, 0.28, 0.008529 ]
+    rotation = [ -0.364116, -0.507606, -0.507606, 0.593374 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12350,15 +12570,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 42
-    boneName = 'Toe3A_BR'
+    boneName = 'Toe3B_BR'
     generated = true
     nodeIndex = 45
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.099636, 0.28, 0.008529 ]
-    rotation = [ -0.364116, -0.507606, -0.507606, 0.593374 ]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016136, -0.017985, -0.003658, 0.999701 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12374,15 +12594,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 43
-    boneName = 'Toe3B_BR'
+    boneName = 'HeelA_BR'
     generated = true
     nodeIndex = 46
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016136, -0.017985, -0.003658, 0.999701 ]
+    position = [ -0.070711, 0.28, -0.070711 ]
+    rotation = [ -0.547063, 0.262989, 0.262989, 0.74993 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12398,15 +12618,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 44
-    boneName = 'HeelA_BR'
+    boneName = 'HeelB_BR'
     generated = true
     nodeIndex = 47
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.547063, 0.262989, 0.262989, 0.74993 ]
+    position = [ 0.0, 0.342053, 0.0 ]
+    rotation = [ -0.024019, 0.01012, 0.002427, 0.999657 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12422,15 +12642,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 45
-    boneName = 'HeelB_BR'
+    boneName = 'Yaw_BL'
     generated = true
     nodeIndex = 48
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.024019, 0.01012, 0.002427, 0.999657 ]
+    position = [ -2.28, -2.62, -0.2 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12446,15 +12666,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 46
-    boneName = 'Yaw_BL'
+    boneName = 'Thigh_BL'
     generated = true
     nodeIndex = 49
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -2.28, -2.62, -0.2 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.0, 0.48, 0.0 ]
+    rotation = [ 0.692475, -0.502388, -0.502389, -0.125262 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12470,15 +12690,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 47
-    boneName = 'Thigh_BL'
+    boneName = 'Shin_BL'
     generated = true
     nodeIndex = 50
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.48, 0.0 ]
-    rotation = [ 0.692475, -0.502388, -0.502389, -0.125262 ]
+    position = [ 0.0, 1.509172, 0.0 ]
+    rotation = [ 0.664902, -0.647109, -0.244906, 0.281385 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12494,15 +12714,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 48
-    boneName = 'Shin_BL'
+    boneName = 'Hock_BL'
     generated = true
     nodeIndex = 51
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 1.509172, 0.0 ]
-    rotation = [ 0.664902, -0.647109, -0.244906, 0.281385 ]
+    position = [ 0.0, 2.685275, 0.0 ]
+    rotation = [ -0.261815, -0.339809, -0.39413, 0.8128 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12518,15 +12738,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 49
-    boneName = 'Hock_BL'
+    boneName = 'Foot_BL'
     generated = true
     nodeIndex = 52
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.685275, 0.0 ]
-    rotation = [ -0.261815, -0.339809, -0.39413, 0.8128 ]
+    position = [ 0.0, 2.309416, 0.0 ]
+    rotation = [ 0.185757, 0.161212, 0.161212, 0.95578 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12542,15 +12762,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 50
-    boneName = 'Foot_BL'
+    boneName = 'Toe1A_BL'
     generated = true
     nodeIndex = 53
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 2.309416, 0.0 ]
-    rotation = [ 0.185757, 0.161212, 0.161212, 0.95578 ]
+    position = [ -0.099636, 0.28, 0.008529 ]
+    rotation = [ -0.364116, 0.507606, 0.507606, 0.593374 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12566,15 +12786,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 51
-    boneName = 'Toe1A_BL'
+    boneName = 'Toe1B_BL'
     generated = true
     nodeIndex = 54
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.099636, 0.28, 0.008529 ]
-    rotation = [ -0.364116, 0.507606, 0.507606, 0.593374 ]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ -0.016136, 0.017985, 0.003658, 0.999701 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12590,15 +12810,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 52
-    boneName = 'Toe1B_BL'
+    boneName = 'Toe2A_BL'
     generated = true
     nodeIndex = 55
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ -0.016136, 0.017985, 0.003658, 0.999701 ]
+    position = [ -0.070711, 0.28, 0.070711 ]
+    rotation = [ -0.103069, 0.627193, 0.627193, 0.45015 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12614,15 +12834,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 53
-    boneName = 'Toe2A_BL'
+    boneName = 'Toe2B_BL'
     generated = true
     nodeIndex = 56
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.070711, 0.28, 0.070711 ]
-    rotation = [ -0.103069, 0.627193, 0.627193, 0.45015 ]
+    position = [ 0.0, 0.468721, 0.0 ]
+    rotation = [ -0.011246, 0.028743, 0.005169, 0.99951 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12638,15 +12858,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 54
-    boneName = 'Toe2B_BL'
+    boneName = 'Toe3A_BL'
     generated = true
     nodeIndex = 57
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.468721, 0.0 ]
-    rotation = [ -0.011246, 0.028743, 0.005169, 0.99951 ]
+    position = [ -0.00853, 0.28, 0.099636 ]
+    rotation = [ 0.572972, 0.248892, 0.248891, 0.740141 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12662,15 +12882,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 55
-    boneName = 'Toe3A_BL'
+    boneName = 'Toe3B_BL'
     generated = true
     nodeIndex = 58
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ -0.00853, 0.28, 0.099636 ]
-    rotation = [ 0.572972, 0.248892, 0.248891, 0.740141 ]
+    position = [ 0.0, 0.41, 0.0 ]
+    rotation = [ 0.01162, 0.057918, 0.011779, 0.998184 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12686,15 +12906,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 56
-    boneName = 'Toe3B_BL'
+    boneName = 'HeelA_BL'
     generated = true
     nodeIndex = 59
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.41, 0.0 ]
-    rotation = [ 0.01162, 0.057918, 0.011779, 0.998184 ]
+    position = [ 0.070711, 0.28, -0.070711 ]
+    rotation = [ -0.547063, -0.262989, -0.262989, 0.74993 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12710,15 +12930,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 57
-    boneName = 'HeelA_BL'
+    boneName = 'HeelB_BL'
     generated = true
     nodeIndex = 60
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.070711, 0.28, -0.070711 ]
-    rotation = [ -0.547063, -0.262989, -0.262989, 0.74993 ]
+    position = [ 0.0, 0.342053, 0.0 ]
+    rotation = [ -0.024019, -0.01012, -0.002427, 0.999657 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12734,15 +12954,15 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = 58
-    boneName = 'HeelB_BL'
+    boneName = 'Hatch_R'
     generated = true
     nodeIndex = 61
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.342053, 0.0 ]
-    rotation = [ -0.024019, -0.01012, -0.002427, 0.999657 ]
+    position = [ 0.765439, -1.689205, -1.36 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12757,16 +12977,16 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_ArmorGrey_BL'
+    boneIndex = 59
+    boneName = 'Hatch_F'
     generated = true
     nodeIndex = 62
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.689205, -0.234561, -1.36 ]
+    rotation = [ 0.0, 0.0, 0.707107, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12781,16 +13001,16 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_ArmorGrey_BR'
+    boneIndex = 60
+    boneName = 'Hatch_L'
     generated = true
     nodeIndex = 63
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ -0.765439, -0.310796, -1.36 ]
+    rotation = [ 0.0, 0.0, 1.0, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12805,16 +13025,16 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_ArmorGrey_Body'
+    boneIndex = 61
+    boneName = 'Hatch_B'
     generated = true
     nodeIndex = 64
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ -0.689205, -1.765439, -1.36 ]
+    rotation = [ 0.0, 0.0, -0.707107, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12829,16 +13049,16 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_ArmorGrey_FL'
+    boneIndex = 62
+    boneName = 'Core_Lift'
     generated = true
     nodeIndex = 65
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.0, -1.0, -0.5 ]
+    rotation = [ -0.707107, 0.0, 0.0, 0.707107 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12853,16 +13073,16 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
-    boneIndex = -1
-    boneName = 'E_ArmorGrey_FR'
+    boneIndex = 63
+    boneName = 'Core'
     generated = true
     nodeIndex = 66
     skinnedMeshOwner = 'Boss'
     skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    position = [ 0.0, 0.771653, -2e-06 ]
+    rotation = [ 1.0, 0.0, 0.0, 0.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -12878,7 +13098,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_CoreGlow'
+    boneName = 'E_ArmorGrey_BL'
     generated = true
     nodeIndex = 67
     skinnedMeshOwner = 'Boss'
@@ -12902,7 +13122,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_Hazard'
+    boneName = 'E_ArmorGrey_BR'
     generated = true
     nodeIndex = 68
     skinnedMeshOwner = 'Boss'
@@ -12926,7 +13146,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_MetalDark_BL'
+    boneName = 'E_ArmorGrey_Body'
     generated = true
     nodeIndex = 69
     skinnedMeshOwner = 'Boss'
@@ -12950,7 +13170,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_MetalDark_BR'
+    boneName = 'E_ArmorGrey_CoreHatch'
     generated = true
     nodeIndex = 70
     skinnedMeshOwner = 'Boss'
@@ -12974,7 +13194,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_MetalDark_Body'
+    boneName = 'E_ArmorGrey_FL'
     generated = true
     nodeIndex = 71
     skinnedMeshOwner = 'Boss'
@@ -12998,7 +13218,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_MetalDark_FL'
+    boneName = 'E_ArmorGrey_FR'
     generated = true
     nodeIndex = 72
     skinnedMeshOwner = 'Boss'
@@ -13022,7 +13242,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_MetalDark_FR'
+    boneName = 'E_CoreGlow'
     generated = true
     nodeIndex = 73
     skinnedMeshOwner = 'Boss'
@@ -13046,7 +13266,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_PanelLine_BL'
+    boneName = 'E_Hazard'
     generated = true
     nodeIndex = 74
     skinnedMeshOwner = 'Boss'
@@ -13070,7 +13290,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_PanelLine_BR'
+    boneName = 'E_Hazard_CoreRim'
     generated = true
     nodeIndex = 75
     skinnedMeshOwner = 'Boss'
@@ -13094,7 +13314,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_PanelLine_Body'
+    boneName = 'E_MetalDark_BL'
     generated = true
     nodeIndex = 76
     skinnedMeshOwner = 'Boss'
@@ -13118,7 +13338,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_PanelLine_FL'
+    boneName = 'E_MetalDark_BR'
     generated = true
     nodeIndex = 77
     skinnedMeshOwner = 'Boss'
@@ -13142,7 +13362,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_PanelLine_FR'
+    boneName = 'E_MetalDark_Body'
     generated = true
     nodeIndex = 78
     skinnedMeshOwner = 'Boss'
@@ -13166,7 +13386,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_RingGlow'
+    boneName = 'E_MetalDark_FL'
     generated = true
     nodeIndex = 79
     skinnedMeshOwner = 'Boss'
@@ -13190,7 +13410,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_Stencil_BL'
+    boneName = 'E_MetalDark_FR'
     generated = true
     nodeIndex = 80
     skinnedMeshOwner = 'Boss'
@@ -13214,7 +13434,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_Stencil_BR'
+    boneName = 'E_PanelLine_BL'
     generated = true
     nodeIndex = 81
     skinnedMeshOwner = 'Boss'
@@ -13238,7 +13458,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_Stencil_Body'
+    boneName = 'E_PanelLine_BR'
     generated = true
     nodeIndex = 82
     skinnedMeshOwner = 'Boss'
@@ -13262,7 +13482,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_Stencil_FL'
+    boneName = 'E_PanelLine_Body'
     generated = true
     nodeIndex = 83
     skinnedMeshOwner = 'Boss'
@@ -13286,7 +13506,7 @@ tag = 'Untagged'
 
     [gameobjects.BoneComponent]
     boneIndex = -1
-    boneName = 'E_Stencil_FR'
+    boneName = 'E_PanelLine_FL'
     generated = true
     nodeIndex = 84
     skinnedMeshOwner = 'Boss'
@@ -13313,8 +13533,8 @@ tag = 'Untagged'
     boneName = 'E_PanelLine_FR'
     generated = true
     nodeIndex = 85
-    skinnedMeshOwner = ''
-    skinnedMeshOwnerGuid = ''
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -13337,8 +13557,8 @@ tag = 'Untagged'
     boneName = 'E_RingGlow'
     generated = true
     nodeIndex = 86
-    skinnedMeshOwner = ''
-    skinnedMeshOwnerGuid = ''
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -13361,8 +13581,8 @@ tag = 'Untagged'
     boneName = 'E_Stencil_BL'
     generated = true
     nodeIndex = 87
-    skinnedMeshOwner = ''
-    skinnedMeshOwnerGuid = ''
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -13385,8 +13605,8 @@ tag = 'Untagged'
     boneName = 'E_Stencil_BR'
     generated = true
     nodeIndex = 88
-    skinnedMeshOwner = ''
-    skinnedMeshOwnerGuid = ''
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -13409,8 +13629,8 @@ tag = 'Untagged'
     boneName = 'E_Stencil_Body'
     generated = true
     nodeIndex = 89
-    skinnedMeshOwner = ''
-    skinnedMeshOwnerGuid = ''
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -13433,8 +13653,8 @@ tag = 'Untagged'
     boneName = 'E_Stencil_FL'
     generated = true
     nodeIndex = 90
-    skinnedMeshOwner = ''
-    skinnedMeshOwnerGuid = ''
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -13457,8 +13677,8 @@ tag = 'Untagged'
     boneName = 'E_Stencil_FR'
     generated = true
     nodeIndex = 91
-    skinnedMeshOwner = ''
-    skinnedMeshOwnerGuid = ''
+    skinnedMeshOwner = 'Boss'
+    skinnedMeshOwnerGuid = '5fe47bed-33f0-498b-88b6-5469850ccaac'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]

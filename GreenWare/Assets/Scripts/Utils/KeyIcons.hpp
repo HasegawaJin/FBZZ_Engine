@@ -97,7 +97,7 @@ inline constexpr const char* kDPad =
 
 /// ゲーム中のプロンプトで使う操作の種類。
 enum class Action {
-    MoveAxis, LookAxis, Attack, Parry, Dodge, Jump, Pause, Confirm, Cancel,
+    MoveAxis, LookAxis, Attack, Parry, Dodge, Jump, Pause, Confirm, Cancel, Climb,
 };
 
 /// 入力機器に応じたアイコンを返す。該当が無ければ空文字列 (呼び出し側は文字で出す)。
@@ -120,6 +120,9 @@ enum class Action {
     case Action::Pause:    return usingPad ? pad::kStart : kbm::kEsc;
     case Action::Confirm:  return usingPad ? pad::kA     : kbm::kEnter;
     case Action::Cancel:   return usingPad ? pad::kB     : kbm::kEsc;
+    // 登る (Input.inputactions の Climb)。E は WASD の隣で、走り寄って押すまでが
+    // 指 1 本で繋がる。パッドは Y ─ 攻撃 (RT) や回避 (B) と指が競合しない。
+    case Action::Climb:    return usingPad ? pad::kY     : kbm::kE;
     }
     return {};
 }

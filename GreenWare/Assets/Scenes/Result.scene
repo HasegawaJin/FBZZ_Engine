@@ -6145,11 +6145,11 @@ tag = 'Untagged'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:17dac89feb564a3a0100d9fec10d11a0|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordCore_Plus.mat'
+        material = 'guid:fd1f0e043c8d0e135c693575afed6ef5|Assets/Materials/Player/M_SwordCore_R.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'Assets/Materials/Player/M_SwordSteel.mat'
+        material = 'Assets/Materials/Player/M_SwordBlade.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -6169,11 +6169,11 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:4eeec6fe8a3dc430aea0b9cba6b9f2ea|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordMark_Plus.mat'
+        material = 'guid:43ac8206aa317f8f854ff9722f096aa6|Assets/Materials/Player/M_SwordMark_R.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:63a19707f308ee342939732d505542ca|Library/Baked/9b1f7164411da865c5369d277c7e4cd4/materials/M_SwordGlow_Plus.mat'
+        material = 'guid:1d388fd44e60954067582d50296c9f55|Assets/Materials/Player/M_SwordGlow_R.mat'
         visible = true
 
     [gameobjects.SkinnedMeshRenderer]
@@ -6507,11 +6507,11 @@ tag = 'Untagged'
     visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:2a21ffa8826930cd47015e43bbfd66c3|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordCore_Minus.mat'
+        material = 'guid:0259738dc18293864636c8e1f7d521ce|Assets/Materials/Player/M_SwordCore_L.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'Assets/Materials/Player/M_SwordSteel.mat'
+        material = 'Assets/Materials/Player/M_SwordBlade.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
@@ -6531,11 +6531,11 @@ tag = 'Untagged'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:4beb739f4a36f997cf3417059e440f81|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordMark_Minus.mat'
+        material = 'guid:b8818f6dd46654f3fe1cd4962bc7f0f4|Assets/Materials/Player/M_SwordMark_L.mat'
         visible = true
 
         [[gameobjects.MaterialComponent.slots]]
-        material = 'guid:c20db6c98c8de25bda86da37f9d15ca1|Library/Baked/9781b7ca481827f51dc20d52720dd59d/materials/M_SwordGlow_Minus.mat'
+        material = 'guid:7588acb62a8e187d78172d3ccf210860|Assets/Materials/Player/M_SwordGlow_L.mat'
         visible = true
 
     [gameobjects.SkinnedMeshRenderer]

@@ -97,6 +97,9 @@ inline constexpr const char* kVfxSerpentBitePath   = "Assets/VFX/Serpent/FX_SRP_
 // 同じ .vfx を «その場の爆発» と «床» で共有しても、枠は別々になる。
 inline constexpr const char* kGroundPool = "Ground";
 
+// 壊れた脚から立ちのぼる煙。同じ土煙のグラフを «常時鳴り続ける絵» として回す札。
+inline constexpr const char* kLegSmokePool = "LegSmoke";
+
 // 噴き上がり (FX_SRP_Geyser) を «手» と «出入り» で分けて回すための札。
 //
 // WHY 分けるか: 突き上げは 1 回に 3 口ぶん撒く «手» で、口の通過は 7 秒ごとに
@@ -241,6 +244,23 @@ public:
                  "煙が前縁に貼り付いて «押し寄せている» に見える")
     FBZZ_FIELD_RANGE(float, groundDustGrit, 1.4f, "Grit Spread", 0.0f, 4.0f)
 
+    // もげずに残った脚の «壊れている» を言い続ける煙。土煙のグラフを流用し、
+    // 色と向きだけを差し替える。
+    //
+    // WHY 土煙と枠を分けるか: これは «出来事» ではなく、脚が壊れているあいだ
+    //     ずっと鳴り続ける常時の絵。床の枠へ相乗りさせると、脚 2 本ぶんの煙が
+    //     衝撃波の土煙を毎回押し出して «踏まれたのに床が鳴らない» になる。
+    FBZZ_GROUP("壊れた脚の煙")
+    FBZZ_FIELD_COLOR(legSmokeColor, (Vector4{ 0.24f, 0.23f, 0.22f, 0.5f }), "煙の色")
+    FBZZ_TOOLTIP("焼けた機械から出る煙なので、床の土煙より暗く。アルファが濃さ")
+    FBZZ_FIELD_RANGE(float, legSmokeSize, 1.1f, "煙の大きさ", 0.2f, 6.0f)
+    FBZZ_TOOLTIP("1 発が最後に広がる大きさ [m]。Scale 1.0 のときの値")
+    FBZZ_FIELD_RANGE(float, legSmokeRise, 1.6f, "立ち上がり", 0.0f, 8.0f)
+    FBZZ_TOOLTIP("真上へ押し出す速さ [m/s]。0 だと切断面に溜まって «湧いている» に見える")
+    FBZZ_FIELD_RANGE_INT(int, legSmokeSlots, 24, "スロット", 1, 64)
+    FBZZ_TOOLTIP("同時に生きていられる煙の数。1 発は 1.6 秒あるので、"
+                 "«脚の本数 ÷ 間隔 x 1.6» を下回ると古い煙から消えて筋が途切れる")
+
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugSlots, 0, "Live Slots")
     FBZZ_FIELD_READ_ONLY(std::string, debugLast, "", "Last Effect")
@@ -311,6 +331,14 @@ public:
     /// WHY 床の爆発 (PlayGroundBlast) を使わないか: 爆発は閃光と熱が主役で、転倒は床が主役。
     ///     倒れた瞬間に画面が白く光ると «撃破» と読まれ、5 秒の転倒が «終わった» に見える。
     void PlayTopple(const Vector3& point, float scale = 1.0f);
+    /// 壊れたまま本体に残っている脚から立ちのぼる煙。point は煙の出どころ (膝の破断面)、
+    /// drift は横へ流れる向き (水平)。scale は 1.0 で Leg Smoke の既定の大きさ。
+    ///
+    /// WHY 床の土煙と別の口にするか: あちらは «床が押し退けられた» で水平に吹くが、
+    ///     こちらは «壊れた物から立ちのぼる» で主役は上。同じ関数で兼ねると、
+    ///     呼ぶ側が渡す向きの意味が 2 通りになる (PlayGroundDust の WHY と同じ)。
+    void PlayLegSmoke(const Vector3& point, const Vector3& drift, float strength01,
+                      float scale = 1.0f);
     /// とどめで脚 / 節がもげた瞬間。point は切断面、away は刃が抜けた向き (斬った側から離れる向き)。
     /// scale は 1.0 でコアの脚。蛇の節は 0.7 程度。
     void PlayExecute(const Vector3& point, const Vector3& away, float scale = 1.0f);
@@ -937,6 +965,33 @@ inline void VfxManagerComponent::PlaySerpentBite(const Vector3& point, const Vec
     if (auto* params = root->GetScript<SerpentBiteVfxComponent>()) {
         params->dustColor  = runDustColor;
         params->impactPose = !charge;
+        params->Apply();
+    }
+    Fire(*root);
+}
+
+inline void VfxManagerComponent::PlayLegSmoke(const Vector3& point, const Vector3& drift,
+                                              float strength01, float scale)
+{
+    const float strength = Clamp01(strength01);
+    const float size     = std::max(scale, 0.05f);
+
+    // 層の Cone はローカル +Z へ吹く。煙の主役は «上» なので、+Z を真上へ向けて
+    // 流れる向きは «枠の上» として渡す ── こうすると横のばらけが drift 側へ寄る。
+    Vector3 side{ drift.x, 0.0f, drift.z };
+    side = side.NormalizedOr(Vector3::FORWARD);
+
+    GameObject* root = Prepare(PathOf(groundDustVfx, kVfxGroundDustPath), point,
+                               Quaternion::LookRotation(Vector3::UP, side), "LegSmoke",
+                               kLegSmokePool, legSmokeSlots);
+    if (!root) return;
+
+    if (auto* params = root->GetScript<RunDustVfxComponent>()) {
+        params->dustColor = legSmokeColor;
+        params->puffSize  = std::max(legSmokeSize, 0.05f) * size * Lerp(0.7f, 1.0f, strength);
+        params->kickSpeed = std::max(legSmokeRise, 0.0f) * Lerp(0.6f, 1.0f, strength);
+        // 砂粒は床の話。機械の破断面から «土» が飛ぶと、壊れたのが脚だと読めなくなる。
+        params->gritPower = 0.0f;
         params->Apply();
     }
     Fire(*root);
