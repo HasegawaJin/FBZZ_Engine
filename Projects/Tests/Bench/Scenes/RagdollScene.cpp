@@ -132,7 +132,12 @@ public:
         m_rig->RefreshContacts(nullptr);
         m_rig->Step(dt);
         m_rig->ApplyContactReactions();
+    }
 
+    /// 姿勢の書き戻しとデバッグ幾何は «最後の 1 回» しか絵に出ない。刻みごとに作らない。
+    void Present() override
+    {
+        if (!m_rig) return;
         m_rig->WritePose(m_clip, m_positions, m_rotations);
         m_deviation = m_rig->MeasureDeviation(m_clip);
         m_rig->BuildDebugLines(m_lines);
@@ -207,6 +212,18 @@ public:
         ImGui::SliderFloat("クリップの振り幅", &m_clipAmount, 0.0f, 2.0f, "%.2f");
         ImGui::SliderFloat("クリップの速さ", &m_clipSpeed, 0.0f, 3.0f, "%.2f");
 
+        // 3 つの骨格が重なると、どれがどれか読めなくなる。1 つずつ消して見る口。
+        ImGui::Separator();
+        ImGui::TextDisabled("表示");
+        ImGui::Checkbox("クリップ (灰)", &m_showClip);
+        ImGui::SameLine();
+        ImGui::Checkbox("剛体 (青)", &m_showBodies);
+        ImGui::Checkbox("書き戻した骨 (黄)", &m_showBones);
+        ImGui::SameLine();
+        ImGui::Checkbox("可動域と接触", &m_showJoints);
+        ImGui::SameLine();
+        ImGui::Checkbox("重心", &m_showCom);
+
         ImGui::Separator();
         if (!m_rig) return;
         ImGui::Text("剛体 %d / 関節 %d / 接触 %d",
@@ -236,27 +253,33 @@ public:
         if (m_useGround) view.DrawGroundLine(0.0f, colors::kGround);
 
         // クリップの骨格。物理を切っても必ずここへ戻るべき «正解»。
-        for (std::size_t i = 0; i < kBoneCount; ++i) {
-            const int parent = kSkeleton[i].parent;
-            if (parent < 0) continue;
-            view.DrawLine(m_clip[static_cast<std::size_t>(parent)].position, m_clip[i].position,
-                          colors::kHint, 1.0f);
+        if (m_showClip) {
+            for (std::size_t i = 0; i < kBoneCount; ++i) {
+                const int parent = kSkeleton[i].parent;
+                if (parent < 0) continue;
+                view.DrawLine(m_clip[static_cast<std::size_t>(parent)].position, m_clip[i].position,
+                              colors::kHint, 1.0f);
+            }
         }
 
         // 物理が出した剛体・可動域・接触。エンジン自身のデバッグ幾何をそのまま描く。
-        for (const scene::RagdollDebugLine& line : m_lines)
-            view.DrawLine(line.from, line.to, ColorOf(line.kind),
-                          line.kind == scene::RagdollDebugLine::Kind::Body ? 3.0f : 1.5f);
-
-        // 書き戻した骨。ここが灰線に重なっていれば «物理が付いてきている»。
-        for (std::size_t i = 0; i < m_positions.size() && i < kBoneCount; ++i) {
-            const int parent = kSkeleton[i].parent;
-            if (parent < 0) continue;
-            view.DrawLine(m_positions[static_cast<std::size_t>(parent)], m_positions[i],
-                          colors::kQuery, 1.0f);
+        for (const scene::RagdollDebugLine& line : m_lines) {
+            const bool isBody = line.kind == scene::RagdollDebugLine::Kind::Body;
+            if (isBody ? !m_showBodies : !m_showJoints) continue;
+            view.DrawLine(line.from, line.to, ColorOf(line.kind), isBody ? 3.0f : 1.5f);
         }
 
-        if (m_rig) view.DrawPoint(m_rig->CenterOfMass(), colors::kContact, 5.0f);
+        // 書き戻した骨。ここが灰線に重なっていれば «物理が付いてきている»。
+        if (m_showBones) {
+            for (std::size_t i = 0; i < m_positions.size() && i < kBoneCount; ++i) {
+                const int parent = kSkeleton[i].parent;
+                if (parent < 0) continue;
+                view.DrawLine(m_positions[static_cast<std::size_t>(parent)], m_positions[i],
+                              colors::kQuery, 1.0f);
+            }
+        }
+
+        if (m_rig && m_showCom) view.DrawPoint(m_rig->CenterOfMass(), colors::kContact, 5.0f);
     }
 
     void ConfigureView(Viewport2D& view) override
@@ -360,6 +383,12 @@ private:
     bool  m_learnLimits  = false;
     float m_time         = 0.0f;
     float m_deviation    = 0.0f;
+
+    bool  m_showClip     = true;
+    bool  m_showBodies   = true;
+    bool  m_showBones    = true;
+    bool  m_showJoints   = true;
+    bool  m_showCom      = true;
 };
 
 } // namespace
