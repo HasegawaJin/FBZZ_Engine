@@ -28,7 +28,9 @@ float MaskWeightOf(const LayerInfo& layer,
                    const std::string& bonePath,
                    const std::string& boneName)
 {
-    if (!layer.mask) return 1.0f;
+    // AnimatorSystem::LayerBoneWeight と同じ規則。マスクを «指定した» のに読めない間は
+    // 全身ではなく 0 として扱う。ここが食い違うと、監査だけが «効いている» と答える。
+    if (!layer.mask) return layer.maskLoadFailed ? 0.0f : 1.0f;
     return asset::EvaluateAvatarMaskWeight(*layer.mask, bonePath, boneName);
 }
 
@@ -63,6 +65,7 @@ std::vector<LayerInfo> CollectLayers(scene::AnimatorComponent& animator)
                 layer.mask.asset = asset::AvatarMaskAsset{};
                 layer.mask.loaded = asset::LoadAvatarMaskAsset(
                     asset::AssetManager::ResolveAssetPath(layer.mask.path), layer.mask.asset);
+                layer.mask.failed = !layer.mask.loaded;
             }
             if (layer.mask.loaded) info.mask = &layer.mask.asset;
             else                   info.maskLoadFailed = true;

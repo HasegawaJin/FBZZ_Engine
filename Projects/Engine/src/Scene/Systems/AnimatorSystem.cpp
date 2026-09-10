@@ -2316,31 +2316,45 @@ static void ApplyClipSideEffects(GameObject& owner,
 static void EnsureMaskLoaded(AnimationMaskRef& ref)
 {
     if (ref.path.empty()) {
-        if (ref.loaded) {
+        if (ref.loaded || ref.failed) {
             ref.loaded = false;
+            ref.failed = false;
             ref.asset = asset::AvatarMaskAsset{};
             ref.loadedPath.clear();
         }
         return;
     }
-    if (ref.loaded && ref.loadedPath == ref.path) return;
+    if ((ref.loaded || ref.failed) && ref.loadedPath == ref.path) return;
 
     ref.loadedPath = ref.path;
     ref.asset      = asset::AvatarMaskAsset{};
     const std::string resolved = asset::AssetManager::ResolveAssetPath(ref.path);
     ref.loaded = asset::LoadAvatarMaskAsset(resolved, ref.asset);
-    if (!ref.loaded)
-        FBZZ_LOG_WARN("AnimatorSystem: avatar mask load failed [%s]", ref.path.c_str());
+    ref.failed = !ref.loaded;
+    if (ref.failed) {
+        // ERROR にするのは、これが «静かに全身へ効く» ではなく «レイヤーが黙る» へ
+        // 変わったため。上半身だけのはずのレイヤーが消えたら、まずここを見る。
+        FBZZ_LOG_ERROR("AnimatorSystem: avatar mask load failed [%s] "
+                       "- layer is disabled until it loads", ref.path.c_str());
+    }
 }
 
-// このレイヤーが対象ボーンへ効く割合 0..1 を返す。.mask が無ければ全身に適用する。
+// このレイヤーが対象ボーンへ効く割合 0..1 を返す。
 // 0/1 の二値だと境界ボーン (Spine 等) でポーズが折れるので、blendDepth で数階層かけて立ち上げる。
+//
+// WHY マスク未ロードで 0 を返すか: 以前は 1.0 (= 全身) へ落ちていた。guid の破損や
+//     パス解決の失敗で「上半身だけのはずのレイヤーが全身を上書きする」に化け、
+//     症状が «マスクが無視された» としか見えなかった。マスクを «指定した» なら、
+//     それが読めない間は効かせない方が原因に辿り着ける。
+//     マスク «未指定» (path が空) は従来どおり全身に効く。
 static float LayerBoneWeight(const AnimationLayer& layer,
                              const std::string& path,
                              const std::string& nodeName)
 {
     if (layer.mask.loaded)
         return asset::EvaluateAvatarMaskWeight(layer.mask.asset, path, nodeName);
+    if (!layer.mask.path.empty())
+        return 0.0f;
 
     (void)path;
     (void)nodeName;
@@ -2459,7 +2473,8 @@ struct LayerBonePose {
     math::Vector3    deltaScale   = math::Vector3::ZERO;
     float            accumWeight  = 0.0f;
     bool             hasRotation  = false;
-    float            boneWeight   = 1.0f;
+    // AccumulateLayerClips が積むたびに max で更新するため、初期値は 0。
+    float            boneWeight   = 0.0f;
 };
 
 // 1 レイヤーぶんのクリップ集合を評価して、ボーンごとのポーズを積む。
@@ -2533,8 +2548,11 @@ static void AccumulateLayerClips(AnimatorComponent& animator,
                 poses.push_back(LayerBonePose{});
                 pose = &poses.back();
                 pose->target = target;
-                pose->boneWeight = boneWeight;
             }
+            // 同じレイヤー内なら同じマスクなので毎回同じ値になるが、retarget で
+            // ボーンパスが変わる経路があるため «後から来た方» ではなく最大値を採る。
+            // 初回だけ代入する形だと、どのクリップが先に積まれたかで結果が変わる。
+            pose->boneWeight = (std::max)(pose->boneWeight, boneWeight);
 
             if (layer.mode == AnimationLayerMode::Override) {
                 // 累積ウェイトに対する比率で積み、順序に依存しない加重平均にする。

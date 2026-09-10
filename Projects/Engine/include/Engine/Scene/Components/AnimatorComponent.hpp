@@ -195,12 +195,16 @@ struct AnimationMaskRef {
     // ── ランタイム専用。Controller / Scene には保存しない。────────────────
     std::string            loadedPath;
     bool                   loaded = false;
+    // loadedPath のロードが失敗した。再試行とログの抑止に使う。
+    // WHY: loaded だけだと失敗のたびに毎フレーム TOML を開き直し、警告も毎フレーム出る。
+    bool                   failed = false;
     asset::AvatarMaskAsset asset;
 
     // path を書き換えたあと、次フレームに読み直させる。
     void Invalidate()
     {
         loaded = false;
+        failed = false;
         loadedPath.clear();
     }
 };
@@ -366,6 +370,21 @@ struct RootMotionClipSample {
     math::Quaternion rotation = math::Quaternion::Identity();
     std::uint64_t    frame    = 0;     // 前回サンプルしたフレーム番号
 };
+
+// 存在しないレイヤー名で命令系 API を叩いたことを報告する。同じ (API, 名前) の組は
+// 最初の 1 回だけ出す。
+//
+// WHY 要るか: PlaySlot / StopSlot / PlayLayerState / SetLayerWeight は名前が一致しないと
+//     何もせず戻る。名前を打ち間違えても、レイヤーを消しても、Controller の読み込みが
+//     まだでも、症状はすべて «無反応» で同じ。実際に「抜刀が出ない」の原因究明が
+//     ここで止まったことがある。
+// WHY 宣言だけ置くか: 実装には Logger が要るが、このヘッダーは Script から Editor まで
+//     広く include される。Logger.hpp を持ち込むと前処理量が全 TU に乗るため、
+//     定義は src/Scene/Components/AnimatorComponent.cpp に置く。
+// NOTE: 一致に失敗したときしか呼ばれない。成功経路には何も足さない。
+void ReportUnknownAnimationLayer(const char* api,
+                                 std::string_view layerName,
+                                 const std::vector<AnimationLayer>& available);
 
 // ── AnimatorComponent ────────────────────────────────────────────────────────
 
@@ -604,8 +623,9 @@ struct AnimatorComponent {
 
     void SetLayerWeight(std::string_view layerName, float w)
     {
-        if (AnimationLayer* l = FindLayer(layerName))
-            l->weight = std::clamp(w, 0.0f, MAX_LAYER_WEIGHT);
+        AnimationLayer* l = FindLayer(layerName);
+        if (!l) { ReportUnknownAnimationLayer("SetLayerWeight", layerName, layers); return; }
+        l->weight = std::clamp(w, 0.0f, MAX_LAYER_WEIGHT);
     }
 
     [[nodiscard]] float GetLayerWeight(std::string_view layerName) const
@@ -684,7 +704,7 @@ struct AnimatorComponent {
     void PlayLayerState(std::string_view layerName, std::string_view stateName)
     {
         AnimationLayer* l = FindLayer(layerName);
-        if (!l) return;
+        if (!l) { ReportUnknownAnimationLayer("PlayLayerState", layerName, layers); return; }
         // Controller の初回ロード前でも要求をランタイム状態へ保持する。
         // WHY: Script は AnimatorSystem より先に実行されるため、開始直後の入力で
         //      states がまだ空だと PlayLayerState が無言で消え、次のフレームの
@@ -710,7 +730,7 @@ struct AnimatorComponent {
                   bool  slotLoop = false)
     {
         AnimationLayer* l = FindLayer(layerName);
-        if (!l) return;
+        if (!l) { ReportUnknownAnimationLayer("PlaySlot", layerName, layers); return; }
         l->slot.sourcePath      = std::string(sourcePath);
         l->slot.clipName        = std::string(clipName);
         l->slot.fadeInDuration  = (std::max)(fadeIn, 0.0f);
@@ -727,7 +747,9 @@ struct AnimatorComponent {
     void StopSlot(std::string_view layerName, float fadeOut = -1.0f)
     {
         AnimationLayer* l = FindLayer(layerName);
-        if (!l || !l->slot.active) return;
+        if (!l) { ReportUnknownAnimationLayer("StopSlot", layerName, layers); return; }
+        // 鳴っていない Slot を止めるのは «空振り» ではなく通常の使い方なので報告しない。
+        if (!l->slot.active) return;
         if (fadeOut >= 0.0f) l->slot.fadeOutDuration = fadeOut;
         l->slot.stopping = true;
     }

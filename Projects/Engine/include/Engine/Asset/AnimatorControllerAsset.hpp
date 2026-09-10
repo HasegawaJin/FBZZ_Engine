@@ -19,6 +19,8 @@ struct AnimatorGraphLayout {
 
     Vec2 entryPosition    = { -220.0f, 80.0f };
     Vec2 anyStatePosition = { -220.0f, 260.0f };
+    // Slot 疑似ノード (レイヤーへ差し込むワンショット再生の表示)。Base Layer には出ない。
+    Vec2 slotPosition     = { -220.0f, 440.0f };
     std::unordered_map<std::string, Vec2> nodePositions;
     std::unordered_map<std::string, std::vector<Vec2>> blendTreeMotionPositions;
 };

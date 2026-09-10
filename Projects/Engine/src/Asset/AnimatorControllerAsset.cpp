@@ -94,6 +94,8 @@ toml::table WriteEditorLayout(const AnimatorGraphLayout& layout)
     table.insert("entryY", static_cast<double>(layout.entryPosition.y));
     table.insert("anyStateX", static_cast<double>(layout.anyStatePosition.x));
     table.insert("anyStateY", static_cast<double>(layout.anyStatePosition.y));
+    table.insert("slotX", static_cast<double>(layout.slotPosition.x));
+    table.insert("slotY", static_cast<double>(layout.slotPosition.y));
 
     toml::array nodes;
     for (const auto& [stateName, pos] : layout.nodePositions) {
@@ -130,6 +132,10 @@ AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
     layout.anyStatePosition = {
         static_cast<float>(table["anyStateX"].value_or(-220.0)),
         static_cast<float>(table["anyStateY"].value_or(260.0))
+    };
+    layout.slotPosition = {
+        static_cast<float>(table["slotX"].value_or(-220.0)),
+        static_cast<float>(table["slotY"].value_or(440.0))
     };
 
     if (const auto* nodes = table["nodes"].as_array()) {

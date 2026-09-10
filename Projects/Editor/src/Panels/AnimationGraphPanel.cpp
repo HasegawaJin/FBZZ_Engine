@@ -39,6 +39,7 @@
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -92,6 +93,7 @@ GraphLayout ToEditorGraphLayout(const asset::AnimatorGraphLayout& source)
     GraphLayout layout;
     layout.entryPosition = ImVec2(source.entryPosition.x, source.entryPosition.y);
     layout.anyStatePosition = ImVec2(source.anyStatePosition.x, source.anyStatePosition.y);
+    layout.slotPosition = ImVec2(source.slotPosition.x, source.slotPosition.y);
     for (const auto& [stateName, pos] : source.nodePositions)
         layout.nodePositions[stateName] = ImVec2(pos.x, pos.y);
     for (const auto& [stateName, positions] : source.blendTreeMotionPositions) {
@@ -906,6 +908,192 @@ bool HasFloatParameter(const scene::AnimatorComponent& animator, const std::stri
         });
 }
 
+bool HasParameter(const scene::AnimatorComponent& animator, const std::string& name)
+{
+    return std::any_of(
+        animator.parameters.begin(),
+        animator.parameters.end(),
+        [&name](const scene::AnimatorParameter& parameter) { return parameter.name == name; });
+}
+
+// パラメーター名を参照している場所すべてに fn(std::string&) を適用する。
+//
+// WHY 全レイヤーを一度に舐めるか: パラメーターは Animator 全体で 1 つなのに、参照側は
+//     Base Layer と各 AnimationLayer に散っている。片方だけ直すと、見えていない
+//     レイヤーの条件だけが古い名前を指したまま残る。
+// NOTE: LayerGraphScope が有効な間は animator.states と layer->states の中身が
+//       入れ替わっているが、「animator 直下 + 全レイヤー」の和集合は入れ替えの
+//       有無によらず常に全体と一致するため、スコープの内外どちらから呼んでもよい。
+template <typename Fn>
+void ForEachParameterReference(scene::AnimatorComponent& animator, Fn&& fn)
+{
+    const auto visitStates = [&fn](std::vector<scene::AnimationState>& states) {
+        for (auto& state : states) {
+            fn(state.blendTree1D.paramName);
+            fn(state.blendTree2D.paramX);
+            fn(state.blendTree2D.paramY);
+            for (auto& transition : state.transitions)
+                for (auto& condition : transition.conditions)
+                    fn(condition.paramName);
+        }
+    };
+    const auto visitAnyState = [&fn](std::vector<scene::AnimationTransition>& transitions) {
+        for (auto& transition : transitions)
+            for (auto& condition : transition.conditions)
+                fn(condition.paramName);
+    };
+
+    visitStates(animator.states);
+    visitAnyState(animator.anyStateTransitions);
+    for (auto& layer : animator.layers) {
+        visitStates(layer.states);
+        visitAnyState(layer.anyStateTransitions);
+    }
+}
+
+int CountParameterReferences(scene::AnimatorComponent& animator, const std::string& name)
+{
+    int count = 0;
+    ForEachParameterReference(animator, [&](std::string& reference) {
+        if (reference == name) ++count;
+    });
+    return count;
+}
+
+void RenameParameterEverywhere(scene::AnimatorComponent& animator,
+                               const std::string& oldName,
+                               const std::string& newName)
+{
+    if (oldName.empty() || oldName == newName) return;
+    ForEachParameterReference(animator, [&](std::string& reference) {
+        if (reference == oldName) reference = newName;
+    });
+}
+
+// 実行するまで分からない壊れ方を 1 件ずつ表す。stateName が空でない項目はクリックで飛べる。
+//
+// WHY 3 段階か: 「遷移が絶対に通らない」と「script からしか入らない」を同じ赤で出すと、
+//     GreenWare の Player.animcontroller だけで後者が 6 件出て、赤が常時点いた状態になる。
+//     常に点いている警告は読まれなくなるので、バッジを光らせるのは Error/Warning だけにし、
+//     静的解析では判断できない事実は Info として «並べるが騒がない» に置く。
+enum class IssueLevel { Error, Warning, Info };
+
+struct GraphIssue {
+    IssueLevel  level = IssueLevel::Error;
+    std::string stateName;
+    std::string text;
+};
+
+// 今表示しているグラフ (Base Layer / 選択中レイヤー) を検査する。
+//
+// WHY 表示中のグラフだけか: 直せるのは今開いている面だけで、他レイヤーの件数を混ぜると
+//     「どこを直せばこれが消えるのか」が分からないリストになる。レイヤーを切り替えれば
+//     そのレイヤーの結果が出る。
+std::vector<GraphIssue> CollectGraphIssues(const scene::AnimatorComponent& animator)
+{
+    std::vector<GraphIssue> issues;
+
+    const auto stateExists = [&animator](const std::string& name) {
+        return FindStateIndexByName(animator, name) >= 0;
+    };
+
+    // どこかから入って来られるか。既定ステートと Any State の宛先は「入れる」とみなす。
+    std::unordered_set<std::string> reachable;
+    if (!animator.defaultStateName.empty()) reachable.insert(animator.defaultStateName);
+    else if (!animator.states.empty()) reachable.insert(animator.states.front().name);
+    for (const auto& transition : animator.anyStateTransitions)
+        reachable.insert(transition.toStateName);
+    for (const auto& state : animator.states)
+        for (const auto& transition : state.transitions)
+            reachable.insert(transition.toStateName);
+
+    const auto checkConditions = [&](const scene::AnimationTransition& transition,
+                                     const std::string& owner,
+                                     const std::string& label) {
+        for (const auto& condition : transition.conditions) {
+            if (condition.paramName.empty()) {
+                issues.push_back({ IssueLevel::Error, owner,
+                    label + ": condition has no parameter" });
+            } else if (!HasParameter(animator, condition.paramName)) {
+                issues.push_back({ IssueLevel::Error, owner,
+                    label + ": condition uses missing parameter '" + condition.paramName + "'" });
+            }
+        }
+        if (!transition.toStateName.empty() && !stateExists(transition.toStateName)) {
+            issues.push_back({ IssueLevel::Error, owner,
+                label + ": target state '" + transition.toStateName + "' does not exist" });
+        }
+        // AnimatorSystem::EvaluateTransition は「条件が空かつ Exit Time 無し」を
+        // 無効定義として扱い、常に false を返す。線は引かれているのに絶対に通らない。
+        if (transition.conditions.empty() && !transition.hasExitTime) {
+            issues.push_back({ IssueLevel::Error, owner,
+                label + ": no conditions and no exit time - this transition never fires" });
+        }
+    };
+
+    // このステートがどこかでクリップを参照しているか。
+    // WHY BlendTree の motions まで見るか: LoadClips は state.sourcePath だけでなく
+    //     blendTree1D/2D の motions からもソースを集める (mode に関係なく)。この性質を
+    //     使って «再生はしないがクリップを常駐させておく» Preload ステートが作られており
+    //     (Player の PreloadKatanaSlash)、sourcePath だけを見ると空に見えてしまう。
+    const auto referencesAnyClip = [](const scene::AnimationState& state) {
+        if (!state.sourcePath.empty() || !state.clipName.empty()) return true;
+        for (const auto& motion : state.blendTree1D.motions)
+            if (!motion.sourcePath.empty()) return true;
+        for (const auto& motion : state.blendTree2D.motions)
+            if (!motion.sourcePath.empty()) return true;
+        return false;
+    };
+
+    for (const auto& state : animator.states) {
+        switch (state.mode) {
+        case scene::AnimationStateMode::Clip:
+            // クリップを持たない既定ステートは «何も出さない休止状態» という定石で、
+            // Slot 専用レイヤーの土台になっている (Add_Hit の HitSlot, Hatch の Sealed)。
+            // 既定ステート «以外» で、どこからもクリップを参照していないものだけが
+            // 置き忘れとして意味を持つ。
+            if (!referencesAnyClip(state) && state.name != animator.defaultStateName)
+                issues.push_back({ IssueLevel::Warning, state.name,
+                    "no clip assigned - this state outputs nothing" });
+            break;
+        case scene::AnimationStateMode::BlendTree1D:
+            if (!HasFloatParameter(animator, state.blendTree1D.paramName))
+                issues.push_back({ IssueLevel::Error, state.name,
+                    "blend tree uses missing Float parameter '"
+                        + state.blendTree1D.paramName + "'" });
+            break;
+        case scene::AnimationStateMode::BlendTree2D:
+            if (!HasFloatParameter(animator, state.blendTree2D.paramX) ||
+                !HasFloatParameter(animator, state.blendTree2D.paramY))
+                issues.push_back({ IssueLevel::Error, state.name,
+                    "blend tree uses missing Float parameters" });
+            break;
+        }
+
+        for (std::size_t ti = 0; ti < state.transitions.size(); ++ti) {
+            checkConditions(state.transitions[ti], state.name,
+                            "-> " + state.transitions[ti].toStateName);
+        }
+
+        // 遷移で入って来られないステートは «壊れている» とは限らない。Script が
+        // Play / PlayLayerState で直接叩く入り方があり、GreenWare の必殺技・勝利・敗北は
+        // 全部それ。静的には区別できないので、事実だけを Info として置く。
+        if (!reachable.contains(state.name))
+            issues.push_back({ IssueLevel::Info, state.name,
+                "no transition leads here - entered only by script, if at all" });
+    }
+
+    for (std::size_t ti = 0; ti < animator.anyStateTransitions.size(); ++ti) {
+        checkConditions(animator.anyStateTransitions[ti], {},
+                        "Any State -> " + animator.anyStateTransitions[ti].toStateName);
+    }
+
+    // 重い順に。同じ段の中では登録順を保ち、«動かない» 側から潰せるようにする。
+    std::stable_sort(issues.begin(), issues.end(),
+        [](const GraphIssue& a, const GraphIssue& b) { return a.level < b.level; });
+    return issues;
+}
+
 void DrawBlendTreeWarnings(const scene::AnimatorComponent& animator,
                            const scene::AnimationState& state)
 {
@@ -1395,6 +1583,12 @@ void AnimationGraphPanel::CaptureCanvasSelection(const scene::AnimatorComponent&
             if (m_selectedKind == NodeKind::None) m_selectedKind = NodeKind::Entry;
             continue;
         }
+        // Slot はステートではないので、選択しても Inspector の編集対象にはならない。
+        // 種別だけ覚えて、Delete や Make Transition の対象から外す。
+        if (nodeId == SlotNodeId()) {
+            if (m_selectedKind == NodeKind::None) m_selectedKind = NodeKind::Slot;
+            continue;
+        }
         for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
             if (NodeId(i) != nodeId) continue;
             m_selectedKind = NodeKind::State;   // ステートが 1 つでもあればステート選択とみなす
@@ -1448,6 +1642,7 @@ int AnimationGraphPanel::AnyStateLinkId(int transitionIndex)
 int AnimationGraphPanel::EntryNodeId() { return 1000010; }
 int AnimationGraphPanel::EntryOutputPinId() { return 1000012; }
 int AnimationGraphPanel::EntryLinkId() { return 0x60000000; }
+int AnimationGraphPanel::SlotNodeId() { return 1000020; }
 
 void AnimationGraphPanel::DrawNodeCanvas(
     EditorContext& ctx,
@@ -1513,16 +1708,75 @@ void AnimationGraphPanel::DrawNodeCanvas(
     };
     view.nodes.push_back(std::move(anyState));
 
+    // Slot 疑似ノード。Base Layer には Slot が無いので、レイヤーを見ているときだけ出す。
+    //
+    // WHY グラフに置くか: Slot はレイヤーへ «外から» 差し込まれる再生で、遷移グラフには
+    //     一切現れない。GreenWare の抜刀・斬撃・被弾リアクションは全部これなのに、
+    //     Slot 専用レイヤーを開くと空のキャンバスしか出ず、「何がこのレイヤーを鳴らして
+    //     いるのか」「レイヤーの重みを誰が動かしているのか」がエディターから見えなかった。
+    if (scene::AnimationLayer* slotLayer = animator.FindLayer(m_editingLayer)) {
+        GraphNodeView slot;
+        slot.id = SlotNodeId();
+        slot.position = layout.slotPosition;
+        slot.title = "Slot";
+        slot.titleColor = slotLayer->slot.active
+            ? IM_COL32(50, 145, 82, 255) : IM_COL32(58, 96, 128, 255);
+        slot.backgroundColor = IM_COL32(40, 58, 74, 255);
+        slot.drawDefaultInputs = false;
+        slot.drawDefaultOutputs = false;
+        slot.minWidth = STATE_NODE_WIDTH;
+        slot.tooltip =
+            "スクリプトから PlaySlot(\"" + slotLayer->name + "\", ...) で差し込まれる\n"
+            "ワンショット再生。ステートマシンの出力へ被さる。\n"
+            "Slot はレイヤーに 1 本しかないので、複数の書き手が同じレイヤーへ\n"
+            "差し込むと後から来た方が前の再生を消す。";
+        slot.drawBody = [this, slotLayer, &ctx]() {
+            const float budget = NodeTextBudget(m_canvasZoom);
+            const auto& slotState = slotLayer->slot;
+            if (slotState.active) {
+                TextElided(slotState.clipName.empty()
+                    ? (slotState.sourcePath.empty()
+                        ? std::string("(no clip)") : SourceFileName(slotState.sourcePath))
+                    : slotState.clipName, budget);
+                char meta[64];
+                std::snprintf(meta, sizeof(meta), "slot %.0f%%  layer %.0f%%%s",
+                              slotState.weight * 100.0f, slotLayer->weight * 100.0f,
+                              slotState.stopping ? "  fading out" : "");
+                TextElidedDisabled(meta, budget);
+                ImGui::ProgressBar(std::clamp(slotState.weight, 0.0f, 1.0f), { -1.0f, 4.0f }, "");
+            } else {
+                TextElidedDisabled("idle", budget);
+                // 停止中はフェード時間がこのノードの唯一の «設定» なので、その場で触らせる。
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::DragFloat("##slot_fade_in", &slotLayer->slot.fadeInDuration,
+                                     0.005f, 0.0f, 2.0f, "in %.3fs"))
+                    MarkDirty(ctx);
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::DragFloat("##slot_fade_out", &slotLayer->slot.fadeOutDuration,
+                                     0.005f, 0.0f, 2.0f, "out %.3fs"))
+                    MarkDirty(ctx);
+            }
+        };
+        view.nodes.push_back(std::move(slot));
+    }
+
     for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
         auto* state = &animator.states[static_cast<std::size_t>(i)];
         GraphNodeView node;
         node.id = NodeId(i);
         node.position = layout.nodePositions[state->name];
         node.title = state->name;
-        node.titleColor = state->name == animator.currentStateName
-            ? IM_COL32(50, 145, 82, 255)
-            : (state->name == animator.defaultStateName
-                ? IM_COL32(154, 107, 40, 255) : IM_COL32(72, 82, 98, 255));
+        // タイトル帯は静的な状態を表す面 (GraphView.hpp の色使い分け規約)。
+        // 検索ヒットは「今これを探している」という一時的だが静的な状態なので、
+        // 実行中 (緑) / 既定 (橙) より優先して染める。
+        const bool searchHit =
+            std::find(m_searchHits.begin(), m_searchHits.end(), state->name) != m_searchHits.end();
+        node.titleColor = searchHit
+            ? IM_COL32(28, 118, 168, 255)
+            : (state->name == animator.currentStateName
+                ? IM_COL32(50, 145, 82, 255)
+                : (state->name == animator.defaultStateName
+                    ? IM_COL32(154, 107, 40, 255) : IM_COL32(72, 82, 98, 255)));
         node.backgroundColor = IM_COL32(52, 58, 69, 255);
         node.outlineColor = i == m_selectedNode ? IM_COL32(255, 198, 92, 255) : 0;
         node.outlineThickness = i == m_selectedNode ? 2.5f : 0.0f;
@@ -1629,6 +1883,44 @@ void AnimationGraphPanel::DrawNodeCanvas(
         link.arrowSize = 7.0f;
         view.links.push_back(link);
     }
+    // 再生中の遷移を線の上で進める。
+    //
+    // WHY 数字だけでは足りないか: 進捗はツールバーに "-> KatanaDraw 43%" と出ていたが、
+    //     どの線がその遷移なのかは対応させられなかった。Any State は線が何本も出るので
+    //     「今どれが引いたのか」が特に読めない。
+    // NOTE: 同じ遷移先へ «そのステートからの遷移» と «Any State からの遷移» が両方ある場合、
+    //       どちらが発火したかはランタイムが残していないので、ステート自身の遷移を優先する。
+    if (!animator.blendToState.empty() && animator.blendWeight > 0.0f) {
+        const float progress = std::clamp(animator.blendWeight, 0.0f, 1.0f);
+        const int from = FindStateIndexByName(animator, animator.currentStateName);
+        int activeLinkId = 0;
+        if (from >= 0) {
+            const auto& transitions = animator.states[static_cast<std::size_t>(from)].transitions;
+            for (int ti = 0; ti < static_cast<int>(transitions.size()); ++ti) {
+                if (transitions[static_cast<std::size_t>(ti)].toStateName == animator.blendToState) {
+                    activeLinkId = LinkId(from, ti);
+                    break;
+                }
+            }
+        }
+        if (activeLinkId == 0) {
+            for (int ti = 0; ti < static_cast<int>(animator.anyStateTransitions.size()); ++ti) {
+                if (animator.anyStateTransitions[static_cast<std::size_t>(ti)].toStateName
+                        == animator.blendToState) {
+                    activeLinkId = AnyStateLinkId(ti);
+                    break;
+                }
+            }
+        }
+        for (auto& link : view.links) {
+            if (link.id != activeLinkId) continue;
+            link.progress = progress;
+            link.progressColor = IM_COL32(126, 245, 168, 255);
+            link.thickness = 4.0f;
+            break;
+        }
+    }
+
     int entryTarget = FindStateIndexByName(animator, animator.defaultStateName);
     if (entryTarget < 0 && !animator.states.empty()) entryTarget = 0;
     if (entryTarget >= 0) {
@@ -1690,6 +1982,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
     for (const auto& move : interaction.movedNodes) {
         if (move.nodeId == EntryNodeId()) layout.entryPosition = move.position;
         else if (move.nodeId == AnyStateNodeId()) layout.anyStatePosition = move.position;
+        else if (move.nodeId == SlotNodeId()) layout.slotPosition = move.position;
         else {
             for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
                 if (NodeId(i) == move.nodeId) {
@@ -1826,6 +2119,9 @@ void AnimationGraphPanel::DrawNodeCanvas(
         } else if (contextNode == EntryNodeId()) {
             ClearSelectionState();
             m_selectedKind = NodeKind::Entry;
+        } else if (contextNode == SlotNodeId()) {
+            ClearSelectionState();
+            m_selectedKind = NodeKind::Slot;
         } else {
             for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
                 if (NodeId(i) != contextNode) continue;
@@ -1870,6 +2166,12 @@ void AnimationGraphPanel::DrawNodeCanvas(
             if (ImGui::MenuItem("Rename", "F2")) beginRename(m_selectedNode);
         } else if (m_selectedAnyState) {
             ImGui::TextDisabled("Any State");
+        } else if (m_selectedKind == NodeKind::Slot) {
+            // Slot は定義がスクリプト側にあるので、ここから作れるものが無い。
+            // 何も出さないと «メニューが壊れている» ように見えるため、理由を書く。
+            ImGui::TextDisabled("Slot");
+            ImGui::Separator();
+            ImGui::TextDisabled("Driven by script (PlaySlot / StopSlot)");
         }
         ImGui::EndPopup();
     }
@@ -2544,12 +2846,17 @@ void AnimationGraphPanel::DrawLayerSelector(
         }
         for (const auto& layer : animator.layers) {
             const bool selected = (layer.name == m_editingLayer);
-            char label[192];
-            std::snprintf(label, sizeof(label), "%s  [%s %.0f%%]%s",
+            // WHY "(no graph)" と書かないか: ステートを持たず Slot だけで鳴らすレイヤーは
+            //     «欠落» ではなく正しい使い方 (抜刀・被弾リアクションがこれ)。
+            //     欠落に見えるラベルを出すと、要らないステートを足す方向へ誘導してしまう。
+            // マスク未指定は «全身に効く» という意味なので、黙らせずに書く。
+            char label[224];
+            std::snprintf(label, sizeof(label), "%s  [%s %.0f%%]%s%s",
                           layer.name.c_str(),
                           layer.mode == scene::AnimationLayerMode::Additive ? "Additive" : "Override",
                           layer.weight * 100.0f,
-                          layer.states.empty() ? "  (no graph)" : "");
+                          layer.states.empty() ? "  (slot only)" : "",
+                          layer.mask.path.empty() ? "  (no mask = full body)" : "");
             if (ImGui::Selectable(label, selected) && !selected) {
                 m_editingLayer = layer.name;
                 resetSelection();
@@ -2571,6 +2878,30 @@ void AnimationGraphPanel::DrawLayerSelector(
         m_editingLayer = created;
         resetSelection();
         MarkDirty(ctx);
+    }
+    // レイヤーの並び順は Override の勝ち負けそのもの (後ろのレイヤーが前を上書きする)
+    // なのに、今まで並べ替える手段が .animcontroller の直編集しか無かった。
+    if (!m_editingLayer.empty()) {
+        const auto moveLayer = [&](int delta) {
+            const auto found = std::find_if(
+                animator.layers.begin(), animator.layers.end(),
+                [&](const scene::AnimationLayer& l) { return l.name == m_editingLayer; });
+            if (found == animator.layers.end()) return;
+            const auto index = static_cast<int>(std::distance(animator.layers.begin(), found));
+            const int target = index + delta;
+            if (target < 0 || target >= static_cast<int>(animator.layers.size())) return;
+            std::swap(animator.layers[static_cast<std::size_t>(index)],
+                      animator.layers[static_cast<std::size_t>(target)]);
+            MarkDirty(ctx);
+        };
+        ImGui::SameLine();
+        if (ImGui::SmallButton("^##graph_layer_up")) moveLayer(-1);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("1 つ前へ。前のレイヤーほど先に適用され、後ろに上書きされる");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("v##graph_layer_down")) moveLayer(1);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("1 つ後ろへ。後ろのレイヤーほど強い (同じ骨なら勝つ)");
     }
     if (!m_editingLayer.empty()) {
         ImGui::SameLine();
@@ -2888,6 +3219,128 @@ void AnimationGraphPanel::DrawToolbar(EditorContext& ctx, scene::AnimatorCompone
     }
 
     DrawZoomControls();
+
+    // 検索と Issues はグラフを書き換えない。呼び出し元は Play Mode 中 BeginDisabled で
+    // 囲まれているが、この 2 つだけ有効へ戻す (最後に同じ条件で囲み直して釣り合わせる)。
+    // WHY 特に Play Mode で要るか: そのときグラフは «実行中の監視画面» になり、
+    //     どのステートが今動いているかを追うために探す必要が最も高い。
+    ImGui::EndDisabled();
+    DrawSearchBox(ctx, animator);
+    DrawGraphIssues(ctx, animator);
+    ImGui::BeginDisabled(!CanEditAnimationGraph(ctx));
+}
+
+void AnimationGraphPanel::DrawSearchBox(EditorContext& ctx, const scene::AnimatorComponent& animator)
+{
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        !ImGui::GetIO().WantTextInput &&
+        ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F))
+        m_searchFocusPending = true;
+
+    ImGui::SameLine();
+    if (m_searchFocusPending) {
+        ImGui::SetKeyboardFocusHere();
+        m_searchFocusPending = false;
+    }
+    ImGui::SetNextItemWidth(160.0f);
+    const bool submitted = ImGui::InputTextWithHint(
+        "##graph_search", "Find state (Ctrl+F)", m_searchBuffer, sizeof(m_searchBuffer),
+        ImGuiInputTextFlags_EnterReturnsTrue);
+
+    // ヒットは毎フレーム作り直す。ノードのタイトル帯を染めるのに使うため、
+    // キャンバスを組み立てる前 (= ツールバーの時点) で確定している必要がある。
+    m_searchHits.clear();
+    const std::string needle = util::StringUtils::ToLower(m_searchBuffer);
+    if (!needle.empty()) {
+        for (const auto& state : animator.states)
+            if (util::StringUtils::ToLower(state.name).find(needle) != std::string::npos)
+                m_searchHits.push_back(state.name);
+    }
+
+    // 打つたびにビューが飛ぶと、候補を絞り込んでいる最中に画面が落ち着かない。
+    // 染めるのは打つたび、寄せるのは Enter のときだけ。
+    if (submitted && !m_searchHits.empty()) {
+        std::vector<int> nodeIds;
+        nodeIds.reserve(m_searchHits.size());
+        for (const auto& name : m_searchHits) {
+            const int index = IndexOfState(animator, name);
+            if (index >= 0) nodeIds.push_back(NodeId(index));
+        }
+        m_graphCanvas.RequestSelection(std::move(nodeIds));
+        m_graphCanvas.RequestFrameSelection();
+    }
+
+    if (!needle.empty()) {
+        ImGui::SameLine();
+        if (m_searchHits.empty())
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "0 hits");
+        else
+            ImGui::TextDisabled("%d hit%s", static_cast<int>(m_searchHits.size()),
+                                m_searchHits.size() == 1 ? "" : "s");
+    }
+    (void)ctx;
+}
+
+void AnimationGraphPanel::DrawGraphIssues(EditorContext& ctx, scene::AnimatorComponent& animator)
+{
+    const std::vector<GraphIssue> issues = CollectGraphIssues(animator);
+    int errorCount = 0;
+    int warningCount = 0;
+    for (const auto& issue : issues) {
+        if (issue.level == IssueLevel::Error) ++errorCount;
+        else if (issue.level == IssueLevel::Warning) ++warningCount;
+    }
+
+    ImGui::SameLine();
+    // バッジは Error / Warning にだけ反応させる。Info まで光らせると、script から
+    // 叩くだけのステートを持つグラフでは常時点灯して意味を失う。
+    char label[64];
+    std::snprintf(label, sizeof(label), "%s Issues%s", m_showIssues ? "v" : ">",
+                  errorCount > 0 ? " !" : (warningCount > 0 ? " ?" : ""));
+    if (ImGui::SmallButton(label)) m_showIssues = !m_showIssues;
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+        if (issues.empty())
+            ImGui::SetTooltip("このグラフに問題は見つからなかった");
+        else
+            ImGui::SetTooltip("Error %d / Warning %d / Info %d\n"
+                              "実行しないと分からない壊れ方を集めている",
+                              errorCount, warningCount,
+                              static_cast<int>(issues.size()) - errorCount - warningCount);
+    }
+
+    if (!m_showIssues || issues.empty()) return;
+
+    ImGui::BeginChild("##AnimationGraphIssues", ImVec2(0.0f, 132.0f), true);
+    for (int i = 0; i < static_cast<int>(issues.size()); ++i) {
+        const GraphIssue& issue = issues[static_cast<std::size_t>(i)];
+        ImGui::PushID(i);
+        switch (issue.level) {
+        case IssueLevel::Error:
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "ERROR");
+            break;
+        case IssueLevel::Warning:
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "WARN ");
+            break;
+        case IssueLevel::Info:
+            ImGui::TextDisabled("INFO ");
+            break;
+        }
+        ImGui::SameLine();
+        const std::string line = issue.stateName.empty()
+            ? issue.text : (issue.stateName + "  " + issue.text);
+        // クリックでそのステートへ飛ぶ。読むだけのリストにすると、名前を目で探し直すことになる。
+        if (ImGui::Selectable(line.c_str(), false) && !issue.stateName.empty()) {
+            SelectStateByName(animator, issue.stateName);
+            const int index = IndexOfState(animator, issue.stateName);
+            if (index >= 0) {
+                m_graphCanvas.RequestSelection({ NodeId(index) });
+                m_graphCanvas.RequestFrameSelection();
+            }
+        }
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+    (void)ctx;
 }
 
 void AnimationGraphPanel::DrawZoomControls()
@@ -2934,15 +3387,33 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
         }
         ImGui::SameLine();
 
+        // WHY 入力の 1 文字ごとに反映しないか: 以前はキーを叩くたびに param.name を
+        //     書き換えていたため、"Speed" を "Speeed" へ直そうとした時点で、この
+        //     パラメーターを見ている条件が全部«存在しない名前»を指す孤児になっていた。
+        //     参照側の追従も無かったので、気付く手段が実行時の「遷移しない」だけだった。
+        //     確定 (Enter / フォーカスを外す) の瞬間に、参照ごと一括で改名する。
         char nameBuffer[96]{};
         std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", param.name.c_str());
         ImGui::SetNextItemWidth(112.0f);
-        if (ImGui::InputText("##Name", nameBuffer, sizeof(nameBuffer))) {
-            param.name = nameBuffer;
-            MarkDirty(ctx);
+        const bool nameCommittedByEnter = ImGui::InputText(
+            "##Name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        if (nameCommittedByEnter || ImGui::IsItemDeactivatedAfterEdit()) {
+            const std::string requested = nameBuffer;
+            const std::string previous  = param.name;
+            if (requested.empty()) {
+                Toast::Warning("Parameter name cannot be empty.");
+            } else if (requested != previous && HasParameter(animator, requested)) {
+                Toast::Warning("A parameter named '" + requested + "' already exists.");
+            } else if (requested != previous) {
+                param.name = requested;
+                RenameParameterEverywhere(animator, previous, requested);
+                MarkDirty(ctx);
+            }
         }
         ImGui::SameLine();
         if (ImGui::SmallButton("x")) removeIndex = i;
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("このパラメーターを削除する。参照している条件があれば確認する");
 
         switch (param.type) {
         case scene::ParamType::Float:
@@ -2969,9 +3440,49 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
         ImGui::PopID();
     }
 
+    // 参照が 1 つも無ければそのまま消す。あるなら «何本の条件が壊れるか» を見せてから聞く。
+    // WHY: 削除は参照側を無言で孤児にする唯一の操作で、しかも取り消すには
+    //      同じ名前・同じ型で作り直すしかない。件数を出さずに消させない。
     if (removeIndex >= 0) {
-        animator.parameters.erase(animator.parameters.begin() + removeIndex);
-        MarkDirty(ctx);
+        const std::string name = animator.parameters[static_cast<size_t>(removeIndex)].name;
+        const int references = CountParameterReferences(animator, name);
+        if (references == 0) {
+            animator.parameters.erase(animator.parameters.begin() + removeIndex);
+            MarkDirty(ctx);
+        } else {
+            m_paramPendingDelete = name;
+            m_paramPendingDeleteRefs = references;
+            ImGui::OpenPopup("##AnimationParamDeleteConfirm");
+        }
+    }
+
+    if (ImGui::BeginPopupModal("##AnimationParamDeleteConfirm", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                           "'%s' is used by %d condition%s.",
+                           m_paramPendingDelete.c_str(),
+                           m_paramPendingDeleteRefs,
+                           m_paramPendingDeleteRefs == 1 ? "" : "s");
+        ImGui::TextDisabled("削除すると、その条件は評価されず遷移が発火しなくなる。");
+        ImGui::Separator();
+        if (ImGui::Button("Delete anyway")) {
+            const std::string target = m_paramPendingDelete;
+            animator.parameters.erase(
+                std::remove_if(animator.parameters.begin(), animator.parameters.end(),
+                    [&target](const scene::AnimatorParameter& p) { return p.name == target; }),
+                animator.parameters.end());
+            m_paramPendingDelete.clear();
+            m_paramPendingDeleteRefs = 0;
+            MarkDirty(ctx);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            m_paramPendingDelete.clear();
+            m_paramPendingDeleteRefs = 0;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 
     if (ImGui::Button("+ Add Parameter", ImVec2(-1.0f, 0.0f))) {
@@ -3338,21 +3849,38 @@ static void DrawTransitionEditor(EditorContext& ctx,
         auto& condition = transition.conditions[static_cast<size_t>(i)];
         ImGui::PushID(i);
 
-        std::vector<const char*> paramNames;
-        paramNames.reserve(animator.parameters.size());
-        int paramIndex = 0;
-        for (int pi = 0; pi < static_cast<int>(animator.parameters.size()); ++pi) {
-            paramNames.push_back(animator.parameters[static_cast<size_t>(pi)].name.c_str());
-            if (animator.parameters[static_cast<size_t>(pi)].name == condition.paramName) paramIndex = pi;
-        }
+        // WHY 見つからないときに 0 番へ丸めないか: 以前は paramIndex の初期値が 0 だったため、
+        //     パラメーターを消した / 改名した条件が «parameters[0] にバインドされている» 顔で
+        //     表示されていた。実行時は該当パラメーターが無いので遷移は永久に発火せず、
+        //     グラフ上は正しく見えるのに動かない、という一番たどりにくい壊れ方になる。
+        //     解決できない参照は解決できないまま見せる。
+        const bool paramMissing = !HasParameter(animator, condition.paramName);
+        std::string paramPreview = condition.paramName.empty()
+            ? std::string("<none>")
+            : (paramMissing ? "<missing> " + condition.paramName : condition.paramName);
 
         ImGui::SetNextItemWidth(150.0f);
-        if (!paramNames.empty() &&
-            ImGui::Combo("##Param", &paramIndex, paramNames.data(), static_cast<int>(paramNames.size()))) {
-            condition.paramName = paramNames[static_cast<size_t>(paramIndex)];
-            MarkDirty(ctx);
-        } else if (paramNames.empty()) {
+        if (animator.parameters.empty()) {
             ImGui::TextDisabled("No parameter");
+        } else {
+            if (paramMissing)
+                ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Danger));
+            if (ImGui::BeginCombo("##Param", paramPreview.c_str())) {
+                for (const auto& parameter : animator.parameters) {
+                    const bool selected = parameter.name == condition.paramName;
+                    if (ImGui::Selectable(parameter.name.c_str(), selected) && !selected) {
+                        condition.paramName = parameter.name;
+                        MarkDirty(ctx);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (paramMissing) ImGui::PopStyleColor();
+            if (paramMissing && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip(
+                    "'%s' というパラメーターは存在しない。この条件は実行時に評価されず、\n"
+                    "遷移は発火しない。ここで既存のパラメーターへ繋ぎ直すこと",
+                    condition.paramName.c_str());
         }
         ImGui::SameLine();
 

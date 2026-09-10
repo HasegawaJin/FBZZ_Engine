@@ -51,7 +51,7 @@ private:
     //     符号なしの規約で表現していた。判定を書くたびに読み手がその対応を思い出す必要があり、
     //     実際に Entry (ノード ID 1000010) がコンテキストメニューの分岐から漏れて、
     //     直前の選択のままメニューが開く不具合になっていた。種別は型で持つ。
-    enum class NodeKind { None, State, AnyState, Entry };
+    enum class NodeKind { None, State, AnyState, Entry, Slot };
 
     struct LinkRef {
         int fromStateIndex = -1;   // -2 = Any State 由来 (ResolveSelectionIndices が設定する)
@@ -102,6 +102,8 @@ private:
     static int EntryNodeId();
     static int EntryOutputPinId();
     static int EntryLinkId();
+    // Slot 疑似ノード。遷移グラフに繋がらないためピンを持たない。
+    static int SlotNodeId();
 
     // 編集対象レイヤー (Base Layer / 各 AnimationLayer) を切り替えるツールバー。
     void DrawLayerSelector(EditorContext& ctx, scene::AnimatorComponent& animator,
@@ -111,6 +113,14 @@ private:
     // WHY パネルにするか: マスクを 1 枚ずつ開いても「Base が何 % 残るか」は出てこない。
     //      合成後の数字は、レイヤーを並べているこの画面にしか置き場がない。
     void DrawLayerComposition(EditorContext& ctx, scene::AnimatorComponent& animator);
+    // 名前でステートを探し、一致したノードを選択してビューを寄せる。
+    // WHY: レイヤー合成ビューにはボーンの絞り込みがあるのに、グラフ本体には
+    //      ステートを探す手段が無く、20 ステート級のグラフでは目視走査になっていた。
+    void DrawSearchBox(EditorContext& ctx, const scene::AnimatorComponent& animator);
+    // 実行しないと分からない壊れ方 (参照切れ・クリップ未設定・到達不能) を 1 箇所に集める。
+    // WHY: 警告が BlendTree 編集画面とマスク監査に散っていて、遷移条件の参照切れは
+    //      どこからも出ていなかった。出す場所が無い警告は書かれない。
+    void DrawGraphIssues(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawZoomControls();
     // ホイールズーム (カーソル位置固定) + Shift/Alt ホイールパン。
     // メインキャンバスと Blend Tree キャンバスで同じ操作感を共有する。
@@ -204,6 +214,16 @@ private:
     bool                  m_showComposition = false;
     bool                  m_compositionIssuesOnly = false;
     char                  m_compositionFilter[64] = {};
+    // ステート検索 (Ctrl+F)。空なら検索していない。
+    char                  m_searchBuffer[64] = {};
+    bool                  m_searchFocusPending = false;
+    // 検索にヒットしたステート名。ノードのタイトル帯を染めるために毎フレーム作り直す。
+    std::vector<std::string> m_searchHits;
+    // Issues ビューの開閉。
+    bool                  m_showIssues = false;
+    // 削除しようとしているパラメーターと、それを参照している条件の本数。
+    std::string           m_paramPendingDelete;
+    int                   m_paramPendingDeleteRefs = 0;
     // RequestOpen() で積まれた「次に開くパス」。描画の先頭で 1 回だけ消費する。
     std::string           m_requestedPath;
 };
