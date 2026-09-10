@@ -49,15 +49,25 @@ struct WeatherComponent {
     const char* GetTypeName() const { return "Weather"; }
     void Reflect(IReflector& r)
     {
-        r.Field("enabled",       enabled);
-        r.Field("rainIntensity", rainIntensity);
-        r.Field("autoWetness",   autoWetness);
-        r.Field("wetDuration",   wetDuration);
-        r.Field("dryDuration",   dryDuration);
-        r.Field("wetness",       wetness);
-        r.Field("darkening",     darkening);
-        r.Field("puddleAmount",  puddleAmount);
-        r.Field("rainEmitRate",  rainEmitRate);
+        r.Field("enabled", enabled);
+
+        r.Group("Rain");
+        r.FloatRange("rainIntensity", rainIntensity, 0.0f, 1.0f);
+        r.Tooltip("降雨量。0 では雨も濡れも出ない。\n"
+                  "この GameObject と子の Particle Emitter の発生量を決める");
+        r.Field("rainEmitRate", rainEmitRate);
+        r.Tooltip("rainIntensity = 1 のときの雨粒の発生量 [個/秒]");
+
+        r.Group("Wetness");
+        r.Field("autoWetness", autoWetness);
+        r.Tooltip("rainIntensity から wetness を時間積分する。\n"
+                  "手付けでカーブを作るときは切る");
+        r.Field("wetDuration", wetDuration);
+        r.Field("dryDuration", dryDuration);
+        r.FloatRange("wetness", wetness, 0.0f, 1.0f);
+        r.Tooltip("autoWetness が有効な間は毎フレーム上書きされる");
+        r.FloatRange("darkening", darkening, 0.0f, 1.0f);
+        r.FloatRange("puddleAmount", puddleAmount, 0.0f, 1.0f);
     }
 };
 
