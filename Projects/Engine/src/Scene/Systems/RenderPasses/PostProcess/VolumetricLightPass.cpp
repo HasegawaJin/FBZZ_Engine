@@ -23,7 +23,7 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
 
     if (!vol.enabled ||
         !h.volumetricShader.IsValid() || !h.volumetricResult.IsValid() ||
-        !h.shadowMapRT.IsValid())
+        !ctx.Res().Target("ShadowMap").IsValid())
         return;
 
     // 雲の切れ間から差す光の線は、シャドウマップに写らない頭上の雲で光芒を遮って作る。
@@ -44,8 +44,8 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     // t7: シーン深度。レイ終端に使うため、Terrain を含む完全な不透明深度が要る。
     // WHY: それらは Deferred でも hdrRT の depth へ描かれる。GBuffer depth には地形が無いため、
     //      そこを読むとゴッドレイが地形を貫通して手前に漏れる（雲と同じ不具合）。常に hdrRT を読む。
-    volDC.srvInputs[7]       = resources.GetDepthTexture(h.hdrRT);
-    volDC.srvInputs[8]       = resources.GetDepthTexture(h.shadowMapRT); // t8: Shadow map
+    volDC.srvInputs[7]       = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    volDC.srvInputs[8]       = resources.GetDepthTexture(ctx.Res().Target("ShadowMap")); // t8: Shadow map
     if (cloudActive)
         volDC.srvInputs[26]  = h.cloudShapeTex;       // t26: TEX_CLOUD_SHAPE
     volDC.uavOutputs[4]      = h.volumetricResult;    // u4: UAV_VOLUMETRIC
@@ -82,7 +82,7 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
         return;
 
     // Dispatch は OM の RTV/DSV を外すので、描く前に張り直す。
-    r.SetRenderTarget(h.hdrRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     renderer::DrawCall applyDC;
     applyDC.shader        = copyShader;

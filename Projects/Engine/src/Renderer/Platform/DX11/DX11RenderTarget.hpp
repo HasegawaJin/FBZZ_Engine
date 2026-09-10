@@ -19,6 +19,7 @@
 #include <wrl/client.h>
 #include <cstdint>
 #include <vector>
+#include <Engine/Renderer/Format.hpp>
 #include <Engine/Renderer/IRenderTarget.hpp>
 
 namespace fbzz::renderer
@@ -27,9 +28,10 @@ namespace fbzz::renderer
 class DX11RenderTarget : public IRenderTarget
 {
 public:
-    // colorCount: 同時出力カラーバッファ数 (0 = 深度専用, 最大 MAX_COLOR)
-    // 全スロット RGBA16_FLOAT で生成する (符号付き法線ベクトルも収容できる精度)
-    bool Init(ID3D11Device* device, uint32_t width, uint32_t height, uint32_t colorCount = 1);
+    // desc.colorCount: 同時出力カラーバッファ数 (0 = 深度専用, 最大 MAX_COLOR)
+    // desc.format:     全カラースロット共通の形式
+    // desc.withDepth:  深度バッファ (R32_TYPELESS + DSV/SRV) を持つか
+    bool Init(ID3D11Device* device, uint32_t width, uint32_t height, const RenderTargetDesc& desc);
 
     // InitCubemap — 6 面キューブマップを描画先として生成する (空連動 IBL の SkyCapture 用)。
     // WHY: 空を実行時にキューブマップへ焼くには「面ごとに RTV を持つ描画先」が要る。

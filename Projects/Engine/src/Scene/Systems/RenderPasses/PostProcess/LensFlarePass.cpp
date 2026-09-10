@@ -22,7 +22,7 @@ void ExecuteLensFlarePass(RenderPassContext& ctx)
     if (!lf.enabled || lf.intensity <= 0.0f ||
         !h.lensFlareShader.IsValid() || !h.lensFlarePSO.IsValid() ||
         !h.bloomDownShader.IsValid() ||
-        !h.bloomHalf.IsValid()       || !h.hdrRT.IsValid())
+        !h.bloomHalf.IsValid()       || !ctx.Res().Target("HDR").IsValid())
         return;
 
     // 光源抽出は Bloom と同じ CS を使い回すので、CB も BloomDownsample の規約で埋める。
@@ -54,14 +54,14 @@ void ExecuteLensFlarePass(RenderPassContext& ctx)
     renderer::ComputeCall brightDC;
     brightDC.shader             = h.bloomDownShader;
     brightDC.constantBuffers[5] = h.postprocCB;
-    brightDC.srvInputs[10]      = resources.GetColorTexture(h.hdrRT, 0);
+    brightDC.srvInputs[10]      = resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
     brightDC.uavOutputs[0]      = h.bloomHalf;
     brightDC.dispatchX = (std::max(1u, ctx.width  / 2) + 7) / 8;
     brightDC.dispatchY = (std::max(1u, ctx.height / 2) + 7) / 8;
     brightDC.dispatchZ = 1;
     r.Dispatch(brightDC, resources);
 
-    r.SetRenderTarget(h.hdrRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     renderer::DrawCall flareDC;
     flareDC.shader             = h.lensFlareShader;

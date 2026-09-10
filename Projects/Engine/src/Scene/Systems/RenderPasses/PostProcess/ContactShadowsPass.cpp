@@ -22,7 +22,7 @@ void ExecuteContactShadowsPass(RenderPassContext& ctx)
     const auto& cs  = ctx.settings.contactShadow;
 
     if (!cs.enabled ||
-        !h.contactShadowShader.IsValid() || !h.contactShadowResult.IsValid())
+        !h.contactShadowShader.IsValid() || !ctx.Res().Texture("ContactShadowResult").IsValid())
         return;
 
     // WHAT: 深度バッファ(t7)からビュー空間位置を復元し、ライト方向に沿って
@@ -39,8 +39,8 @@ void ExecuteContactShadowsPass(RenderPassContext& ctx)
     //     isDeferred が false のまま GBuffer の深度だけが揃っている。isDeferred で
     //     判定すると hdrRT を読みに行き、そこはまだ本描画前で空 (接触影が全面に出る)。
     csDC.srvInputs[7]       = resources.GetDepthTexture(
-        ctx.gbufferDepthReady ? h.gbufferRT : h.hdrRT);
-    csDC.uavOutputs[3]      = h.contactShadowResult; // u3: UAV_CONTACT_SHADOW (UAV_SSR スロットを時分割で再利用)
+        ctx.gbufferDepthReady ? ctx.Res().Target("GBuffer") : ctx.Res().Target("HDR"));
+    csDC.uavOutputs[3]      = ctx.Res().Texture("ContactShadowResult"); // u3: UAV_CONTACT_SHADOW (UAV_SSR スロットを時分割で再利用)
     csDC.dispatchX          = (ctx.width  / 2 + 7) / 8;
     csDC.dispatchY          = (ctx.height / 2 + 7) / 8;
     csDC.dispatchZ          = 1;

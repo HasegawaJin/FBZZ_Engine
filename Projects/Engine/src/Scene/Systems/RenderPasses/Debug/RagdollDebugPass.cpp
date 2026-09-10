@@ -31,17 +31,19 @@ math::Vector4 ColorOf(RagdollDebugLine::Kind kind)
 
 std::string_view RagdollDebugPass::Name() const { return "RagdollDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess>
-RagdollDebugPass::DeclareAccesses(const RenderPassContext&) const
+void RagdollDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void RagdollDebugPass::Execute(RenderPassContext& ctx)
+bool RagdollDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showRagdoll) return;
+    return ctx.settings.showRagdoll;
+}
 
+void RagdollDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     const auto entities = ctx.scene.GetEntities<RagdollComponent>();
     if (entities.empty()) return;
 

@@ -10,16 +10,19 @@ namespace fbzz::scene {
 
 std::string_view GridDebugPass::Name() const { return "GridDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> GridDebugPass::DeclareAccesses(const RenderPassContext&) const
+void GridDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void GridDebugPass::Execute(RenderPassContext& ctx)
+bool GridDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showGrid) return;
+    return ctx.settings.showGrid;
+}
 
+void GridDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     constexpr float         kCellSize   = 1.0f;
     constexpr int           kHalfCount  = 20;
     constexpr math::Vector4 kGridColor  = { 0.28f, 0.28f, 0.28f, 1.0f };

@@ -44,13 +44,28 @@ void SubmitTerrainShadowCasters(
 
 void TerrainSelectionMaskSystem(RenderPassContext& ctx);
 
-// IRenderPass 実装 — RenderPipeline::AddPass<TerrainRenderPass>() で登録する。
+/// 地形を «どこへ» 描くか。描き先とシェーダーだけが違い、収集と描画の手順は同じ。
+///
+/// WHY ctx.isDeferred で分けないか: 以前は Forward の GBuffer プリパスの間だけ
+///     ctx.isDeferred を立てて地形を «入れ子で» Execute していた。その経路では
+///     Setup が呼ばれず、申告はホスト側のラムダが代理していた。パスがどこへ描くかは
+///     パス自身の属性なので、登録時に決めて持たせる。
+enum class TerrainDrawMode {
+    GBuffer,  ///< GBuffer へ書く (Deferred 本体 / Forward のプリパス)
+    Forward,  ///< HDR へ直接ライティング結果を描く
+};
+
+// IRenderPass 実装 — RenderPipeline::AddPass<TerrainRenderPass>(mode) で登録する。
 class TerrainRenderPass final : public IRenderPass {
 public:
+    explicit TerrainRenderPass(TerrainDrawMode mode) : m_mode(mode) {}
+
     std::string_view Name() const override;
-    std::vector<renderer::RenderGraph::ResourceAccess> DeclareAccesses(
-        const RenderPassContext& ctx) const override;
-    void Execute(RenderPassContext& ctx) override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+
+private:
+    TerrainDrawMode m_mode;
 };
 
 } // namespace fbzz::scene

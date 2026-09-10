@@ -73,6 +73,10 @@ std::unordered_map<std::string, TrailMaterialBinding> g_trailMaterials;
 std::unordered_set<std::string>                       g_warnedTrailMaterials;
 // Execute の呼び出し通番。0 は「未解決」を表すため 1 から始める。
 uint64_t                                              g_trailPassSerial = 0;
+// ResourceManager::Reset() の世代。キャッシュはシェーダーと定数バッファのハンドルを
+// 握るので、世代が変われば中身は失効している。
+// WHY 返さずに捨てるか: Reset() は実体を破棄済みで、残っているのは失効したハンドルだけ。
+uint32_t                                              g_resetVersion = 0;
 
 bool WarnTrailMaterialOnce(const std::string& path)
 {
@@ -484,13 +488,12 @@ void DrawSkinnedMeshSample(
 
 std::string_view MeshTrailRenderPass::Name() const { return "MeshTrail"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> MeshTrailRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+void MeshTrailRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
+void MeshTrailRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
@@ -500,7 +503,13 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
     if (!h.meshTrailPSO.IsValid() || !h.meshTrailDoubleSidedPSO.IsValid())
         return;
 
-    ctx.renderer.SetRenderTarget(h.hdrRT, resources);
+    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
+
+    if (g_resetVersion != resources.GetResetVersion()) {
+        g_resetVersion = resources.GetResetVersion();
+        g_trailMaterials.clear();
+        g_warnedTrailMaterials.clear();
+    }
 
     const float currentTime = Time::time;
     // .mat の解決をこのパスで 1 回だけやり直すための通番。編集が次のフレームで

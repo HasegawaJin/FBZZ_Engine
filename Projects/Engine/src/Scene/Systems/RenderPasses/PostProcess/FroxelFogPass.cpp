@@ -144,9 +144,9 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
         if (ctx.clusterLightMode == ClusterLightMode::Clustered)
             inject.srvBuffers[30] = h.clusterIndexBuffer;     // t30: クラスタごとのライト番号
     }
-    inject.srvInputs[8]        = resources.GetDepthTexture(h.shadowMapRT);       // t8
-    inject.srvInputs[28]       = resources.GetDepthTexture(h.punctualShadowRT);  // t28
-    inject.srvInputs[31]       = resources.GetColorTexture(h.lightCookieRT, 0);  // t31
+    inject.srvInputs[8]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));       // t8
+    inject.srvInputs[28]       = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));  // t28
+    inject.srvInputs[31]       = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);  // t31
     if (data.historyValid != 0u)
         inject.srvInputs[20]   = h.froxelScatterHistory;  // t20: 前フレームの散乱
     inject.uavOutputs[0]       = h.froxelScatter;     // u0

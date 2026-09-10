@@ -84,7 +84,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     const auto& rs  = ctx.settings;
     const auto& cam = ctx.camera;
 
-    renderer.SetRenderTarget(h.hdrRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     ClearForCamera(renderer, cam);
 
     const PerFrameCB frameData = MakeCameraFrameCB(cam, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
@@ -94,7 +94,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     UpdateShadowConstants(ctx);
     UpdatePunctualShadowConstants(ctx);
 
-    const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
+    const auto shadowDepthTex = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
 
     // =========================================================================
     // Phase 1: フラスタムカリング + ギャザー

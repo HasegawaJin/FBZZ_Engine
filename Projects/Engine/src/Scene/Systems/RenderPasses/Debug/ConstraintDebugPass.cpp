@@ -14,16 +14,19 @@ namespace fbzz::scene {
 
 std::string_view ConstraintDebugPass::Name() const { return "ConstraintDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> ConstraintDebugPass::DeclareAccesses(const RenderPassContext&) const
+void ConstraintDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void ConstraintDebugPass::Execute(RenderPassContext& ctx)
+bool ConstraintDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showConstraints || !ctx.physicsWorld) return;
+    return ctx.settings.showConstraints && ctx.physicsWorld != nullptr;
+}
 
+void ConstraintDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     constexpr math::Vector4 kColor = { 1.0f, 0.82f, 0.18f, 1.0f };
 
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());

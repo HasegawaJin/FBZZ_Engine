@@ -178,20 +178,20 @@ void BindDeclaredInputs(renderer::DrawCall& dc, RenderPassContext& ctx,
     auto& resources = ctx.resources;
 
     if ((inputs & renderer::CUSTOM_PASS_INPUT_OBJECT_MASK) != 0u
-        && ctx.objectMaskEnabled && h.objectMaskRT.IsValid()) {
-        dc.textures[6] = resources.GetColorTexture(h.objectMaskRT, 0);
-        if (allowDepth) dc.textures[8] = resources.GetDepthTexture(h.objectMaskRT);
+        && ctx.objectMaskEnabled && ctx.Res().Target("ObjectMask").IsValid()) {
+        dc.textures[6] = resources.GetColorTexture(ctx.Res().Target("ObjectMask"), 0);
+        if (allowDepth) dc.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ObjectMask"));
     }
     if ((inputs & renderer::CUSTOM_PASS_INPUT_SCENE_DEPTH) != 0u && allowDepth)
-        dc.textures[7] = resources.GetDepthTexture(h.hdrRT);
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_SSAO) != 0u && h.ssaoBlur.IsValid())
-        dc.textures[9] = h.ssaoBlur;
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_BLOOM) != 0u && h.bloomFull.IsValid())
-        dc.textures[10] = h.bloomFull;
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_VELOCITY) != 0u && h.velocityRT.IsValid())
-        dc.textures[11] = resources.GetColorTexture(h.velocityRT, 0);
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_NORMAL) != 0u && h.gbufferRT.IsValid())
-        dc.textures[12] = resources.GetColorTexture(h.gbufferRT, 1);
+        dc.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_SSAO) != 0u && ctx.Res().Texture("SSAO").IsValid())
+        dc.textures[9] = ctx.Res().Texture("SSAO");
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_BLOOM) != 0u && ctx.Res().Texture("Bloom").IsValid())
+        dc.textures[10] = ctx.Res().Texture("Bloom");
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_VELOCITY) != 0u && ctx.Res().Target("Velocity").IsValid())
+        dc.textures[11] = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_NORMAL) != 0u && ctx.Res().Target("GBuffer").IsValid())
+        dc.textures[12] = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
 }
 
 /// blendMode ごとの全画面 PSO。深度は常に切る (全画面三角形に深度の意味が無い)。
@@ -289,7 +289,7 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
-    r.SetRenderTarget(needsIntermediate ? h.customPostProcessRT[outputIndex] : ctx.outputRT, resources);
+    r.SetRenderTarget(needsIntermediate ? h.customPostProcessRT[outputIndex] : ctx.chainOutputRT, resources);
 
     // 縮小も反復もこの段では効かない (ファイル冒頭の WHY)。uvScale は常に 1。
     const PostProcCB postData = MakeCustomPostProcCB(custom, ctx.width, ctx.height, 1.0f, 0, 1);
@@ -302,7 +302,7 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     customDC.constantBuffers[5] = h.postprocCB;
     customDC.textures[5] = h.postProcessInput.IsValid()
         ? h.postProcessInput
-        : resources.GetColorTexture(h.ldrRT, 0);
+        : resources.GetColorTexture(ctx.Res().Target("LDR"), 0);
     BindMaterial(customDC, resolved);
     BindDeclaredInputs(customDC, ctx, custom.inputs, true);
     r.Submit(customDC, resources);
@@ -317,7 +317,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
 {
     auto& h = ctx.handles;
     const auto& pp = ctx.settings.postProcess;
-    if (customIndex >= pp.customEffects.size() || !h.hdrRT.IsValid()) return;
+    if (customIndex >= pp.customEffects.size() || !ctx.Res().Target("HDR").IsValid()) return;
 
     const auto& custom = pp.customEffects[customIndex];
     const ResolvedCustomPass resolved = ResolveCustomPass(ctx, customIndex);
@@ -364,10 +364,10 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
             // 置き換えるなら «今の HDR» を退避してから描き戻す。
             if (replaces) {
                 r.SetRenderTarget(scratchA, resources);
-                drawCopy(resources.GetColorTexture(h.hdrRT, 0));
+                drawCopy(resources.GetColorTexture(ctx.Res().Target("HDR"), 0));
             }
 
-            r.SetRenderTarget(h.hdrRT, resources);
+            r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
             renderer::DrawCall dc;
             dc.shader = resolved.shader;
             dc.pipelineState = CustomPassPSO(ctx, resolved.blendMode);
@@ -397,7 +397,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
         resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
         r.SetRenderTarget(scratchA, resources);
         r.SetViewport(0, 0, reducedW, reducedH);
-        drawCopy(resources.GetColorTexture(h.hdrRT, 0));
+        drawCopy(resources.GetColorTexture(ctx.Res().Target("HDR"), 0));
     }
 
     auto source = scratchA;
@@ -425,7 +425,7 @@ void ExecuteCustomHdrPass(RenderPassContext& ctx, uint32_t customIndex)
     }
 
     // 実寸へ戻す。ここで初めて blendMode が効く (加算ならこの 1 枚を足す)。
-    r.SetRenderTarget(h.hdrRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     renderer::DrawCall composeDC;
     composeDC.shader = h.customComposeShader;
     composeDC.pipelineState = CustomPassPSO(ctx, resolved.blendMode);

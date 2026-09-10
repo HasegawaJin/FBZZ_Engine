@@ -14,6 +14,12 @@ void ExecuteSSAOPass(RenderPassContext& ctx);
 void ExecuteCausticsPass(RenderPassContext& ctx);
 void ExecuteCompositePass(RenderPassContext& ctx);
 void ExecuteFxaaPass(RenderPassContext& ctx);
+// 内部解像度で仕上がった ctx.chainOutputRT を ctx.outputRT の実寸へ解像する。
+// 等倍のフレームでは登録されない (チェーンが outputRT へ直接書き終えている)。
+void ExecuteUpscalePass(RenderPassContext& ctx);
+// UI を outputRT へ合成する。ポストプロセスではないが «最終出力へ載せる» 段の一員。
+// ctx.uiOptions が null / 無効なら何もしない。
+void ExecuteUIPass(RenderPassContext& ctx);
 void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, uint32_t outputIndex);
 // HDR の段 (AfterOpaque / SceneHDR) のユーザーシェーダーを hdrRT へ適用する。
 // blendMode が OPAQUE_BLEND なら «退避 → 描き戻し»、それ以外は直接。

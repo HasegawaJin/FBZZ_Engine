@@ -48,7 +48,7 @@ void ExecuteLightCookiePass(RenderPassContext& ctx)
     for (int i = count; i < kMaxLightCookies; ++i) s_baked[i] = BakedCookie{};
 
     if (count == 0) return;
-    if (!h.lightCookieRT.IsValid() || !h.cookieBlitShader.IsValid()
+    if (!ctx.Res().Target("LightCookieAtlas").IsValid() || !h.cookieBlitShader.IsValid()
         || !h.cookieBlitCB.IsValid() || !h.cookieBlitPSO.IsValid()) {
         return;
     }
@@ -66,7 +66,7 @@ void ExecuteLightCookiePass(RenderPassContext& ctx)
     }
     if (!anyDirty) return;
 
-    renderer.SetRenderTarget(h.lightCookieRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("LightCookieAtlas"), resources);
     // クリアは白 (= 素通り)。
     // WHY 黒でないか: Cookie は乗算マスクなので、焼けなかったタイルが黒だと
     //     そのライトが完全に消える。素通りに倒せば「Cookie が効かないだけ」で済む。

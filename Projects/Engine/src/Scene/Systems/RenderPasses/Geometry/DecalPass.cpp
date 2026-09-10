@@ -232,7 +232,7 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, fbzz::LayerMask markMask)
         !h.decalMaskPSO.IsValid() || !h.decalReceiverCB.IsValid())
         return false;
 
-    const auto depthTex = resources.GetDepthTexture(h.decalDepthRT);
+    const auto depthTex = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
     if (!depthTex.IsValid()) return false;
 
     r.SetRenderTarget(h.decalMaskRT, resources);
@@ -338,7 +338,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
 
     // DecalDepthCopy が decalDepthRT を束縛したままここへ入ってくる。以降のパスは
     // HDR が束縛されている前提なので、デカールが 1 つも無い経路も含めて必ず戻す。
-    r.SetRenderTarget(h.hdrRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     if (!h.decalShader.IsValid() || !h.decalPSO.IsValid() ||
         !h.decalCB.IsValid() || !h.decalMaterialCB.IsValid())
@@ -349,7 +349,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
 
     // decalDepthRT はデカールパス直前にコピーされた深度専用 RT。
     // hdrRT の深度をそのまま使うと DX11 が DSV/SRV 競合で SRV をサイレント解除する。
-    const auto depthTex = resources.GetDepthTexture(h.decalDepthRT);
+    const auto depthTex = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
     if (!depthTex.IsValid())
         return;
 
@@ -394,7 +394,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
     const bool receiverBufferReady =
         anyFiltered && RenderDecalReceiverLayers(ctx, ~alwaysReceive);
     if (receiverBufferReady)
-        r.SetRenderTarget(h.hdrRT, resources);
+        r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     for (const auto& entry : pending) {
         GameObject& go          = *entry.go;
@@ -480,6 +480,25 @@ void ExecuteDecalPass(RenderPassContext& ctx)
     for (EntityID id : expiredDecals) {
         ctx.scene.DestroyGameObject(id);
     }
+}
+
+void ExecuteDecalDepthCopyPass(RenderPassContext& ctx)
+{
+    auto& r         = ctx.renderer;
+    auto& resources = ctx.resources;
+    auto& h         = ctx.handles;
+
+    r.SetRenderTarget(ctx.Res().Target("DecalDepth"), resources);
+    r.ClearDepth();
+    if (!h.depthCopyShader.IsValid()) return;
+
+    renderer::DrawCall dc;
+    dc.shader        = h.depthCopyShader;
+    dc.pipelineState = h.defaultPSO;
+    dc.vertexCount   = 3;
+    dc.textures[7]   = ctx.isDeferred ? resources.GetDepthTexture(ctx.Res().Target("GBuffer"))
+                                      : resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    r.Submit(dc, resources);
 }
 
 } // namespace fbzz::scene

@@ -14,6 +14,7 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/EnvironmentResources.hpp>
+#include <Engine/Scene/Systems/RenderPasses/PassResources.hpp>
 #include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
@@ -52,19 +53,27 @@ struct UserRenderPassDesc {
     bool allowCulling = true;
 };
 
-// GPU パーティクル CS が参照する力場 1 本分 (48 bytes)。
+// GPU パーティクル CS が参照する力場 1 本分 (96 bytes)。
 // LAYOUT: ParticleGpuSim.cs.hlsl の GpuForceField と完全に一致させること。
+//
+// WHY 定数バッファではなく StructuredBuffer か:
+//   cbuffer は固定長なので «渡せる力の本数» に上限が要り、あふれた分は捨てるしかない。
+//   捨てられたのが重力だと粒子がその場に浮くという、設定ミスと区別の付かない壊れ方をする。
+//   SRV にすれば上限そのものが消える。速度場のためにこの構造体を太らせても、
+//   cbuffer のオフセットが動かないという利点もある (b0 は «末尾追加のみ» が規約)。
 struct GpuForceField {
-    math::Vector4 posRadius;   // xyz=ワールド位置, w=影響半径 (<=0 で無限)
-    math::Vector4 dirStrength; // xyz=風向き/渦軸 (ワールド・正規化済み), w=強さ
-    math::Vector4 params;      // x=種類(ParticleForceFieldType), y=falloffPower,
-                               // z=noiseFrequency, w=noiseSpeed
+    math::Vector4 posRadius;     // xyz=ワールド位置, w=影響半径 (<=0 で無限)
+    math::Vector4 dirStrength;   // xyz=風向き/渦軸 (ワールド・正規化済み), w=強さ
+    math::Vector4 params;        // x=種類(ParticleForceFieldType), y=falloffPower,
+                                 // z=noiseFrequency (Drag では «内蔵の力か» の 0/1), w=noiseSpeed
+    // ── VectorField 型のときだけ使う ──
+    math::Vector4 fieldRotation; // ワールド → 場のローカルへ戻す逆回転 (xyzw = クォータニオン)
+    math::Vector4 fieldExtents;  // xyz=ワールド半径 [m], w=tightness
+    math::Vector4 fieldTile;     // x=アトラスのタイル番号 (<0 で無効), y=maxMagnitude, zw=予約
 };
 
-// 1 フレームに GPU パーティクルへ渡せる力場の上限。
-// WHY: cbuffer は固定長のため上限を切る。超過分は ParticlePass が近い順ではなく
-//      シーン順で切り捨てる (力場が 8 本を超えるシーンは想定しない)。
-inline constexpr int kMaxGpuForceFields = 8;
+static_assert(sizeof(GpuForceField) == 96,
+    "GpuForceField must match ParticleGpuSim.cs.hlsl (96 bytes)");
 
 // GPU パーティクル CS 用定数バッファ (b0) — 688 bytes, 16-byte aligned
 struct GpuParticleEmitterCB {
@@ -91,11 +100,16 @@ struct GpuParticleEmitterCB {
     float         noiseStrength;    // エミッター固有乱流の強さ (0 で無効)
     float         noiseFrequency;
     float         noiseSpeed;
-    uint32_t      forceFieldCount;  // gForceFields の有効本数
+    uint32_t      forceFieldCount;  // gParticleForces (SRV) の有効本数
     uint32_t      flipbookMode;
     float         flipbookFramesPerSecond;
     float         pad1;
-    GpuForceField forceFields[kMaxGpuForceFields];
+    // 力場は StructuredBuffer へ移った (2026-09-11)。枠は **空けたまま残す**。
+    // WHY 詰めないか: この配列は b0 の途中にあり、消すと後続の全オフセットがずれて
+    //      HLSL 側の gViewProjection 以降が丸ごと別の値を読む。定数バッファは
+    //      «末尾追加のみ» が規約で、途中を削るのは追加より危ない。
+    //      384 バイトの無駄より、レイアウトが動かないことのほうが価値がある。
+    math::Vector4 reservedForceFields[24];
     math::Vector4 curveFlags;       // x=size, y=velocity, z=gradient, w=frameBlend
     math::Vector4 sizeCurveKeys01;  // time0,value0,time1,value1
     math::Vector4 sizeCurveKeys23;
@@ -738,16 +752,13 @@ struct DecalReceiverCB {
 static_assert(sizeof(DecalReceiverCB) == 16, "DecalReceiverCB size mismatch");
 
 struct RenderPassHandles {
-    renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
-    renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
-    renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
-    renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
-    renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
+    // selectionMaskRT / outlineRT はここから外した。
+    // 名前 "SelectionMask" / "Outline" を申告したパスが res.Target() で引く。
+    // WHY 減らすか: ここは «申告とは別の» 第 2 の正本で、両者が食い違っても
+    //      誰も気付けない。名前 1 本に寄せ切るまで、引ける経路を順に閉じていく。
     // ランタイムの輪郭マスク (RGB=要求された色 / A=太さ)。エディタ選択のマスクとは
     // 別に持つ。あちらは «選ばれているか» の 1 ビットで、色を載せると成立しない。
-    renderer::ResourceHandle<renderer::RenderTargetTag> objectMaskRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
-    renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
 
     // Bloom のミップ連鎖と、各段の実寸。テクセルサイズを CB へ入れるのに要る。
     // GetDimensions で引けなくはないが、書き込み先しか分からないため
@@ -758,9 +769,7 @@ struct RenderPassHandles {
     uint32_t bloomChainWidth[kBloomMipCount]  = {};
     uint32_t bloomChainHeight[kBloomMipCount] = {};
     renderer::ResourceHandle<renderer::TextureTag> bloomHalf;   // = bloomChain[0]
-    renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
-    renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
     renderer::ResourceHandle<renderer::TextureTag> shadowDepthTex;
     renderer::ResourceHandle<renderer::TextureTag> fxaaInput;
     renderer::ResourceHandle<renderer::TextureTag> postProcessInput;
@@ -783,6 +792,8 @@ struct RenderPassHandles {
     // 縮小して走ったカスタムパスの結果を実寸へ戻す。
     renderer::ResourceHandle<renderer::ShaderTag> customComposeShader;
     renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
+    // 内部解像度の最終画を出力先の実寸へ引き伸ばす。等倍のフレームでは使わない。
+    renderer::ResourceHandle<renderer::ShaderTag> upscaleShader;
     std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
 
     renderer::ResourceHandle<renderer::PipelineStateTag> selectionMaskPSO;
@@ -800,7 +811,6 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectMaskCB;
 
-    renderer::ResourceHandle<renderer::RenderTargetTag>   decalDepthRT;
     // 可視サーフェスのレイヤー番号 + 1 を持つ受信バッファ。レイヤーフィルタを持つ
     // デカールが 1 つでもある フレームだけ描く。
     renderer::ResourceHandle<renderer::RenderTargetTag>   decalMaskRT;
@@ -821,7 +831,6 @@ struct RenderPassHandles {
     // ---- モーションベクター ----
     // RG = 現 UV - 前フレーム UV、B = 書き込み済みフラグ。TAA / MotionBlur が t26 で読む。
     // RGBA16F を使うのは CreateRenderTarget にフォーマット引数が無く RG16F を作れないため。
-    renderer::ResourceHandle<renderer::RenderTargetTag>   velocityRT;
     renderer::ResourceHandle<renderer::ShaderTag>         velocityShader;
     renderer::ResourceHandle<renderer::ShaderTag>         velocitySkinnedShader;
 
@@ -829,13 +838,11 @@ struct RenderPassHandles {
     // Directional の CSM (shadowMapRT) とは別のアトラス。t28 へ束縛する。
     // CSM のタイル数は視錐台の分割で、こちらは影付きライトの本数で決まる。
     // 面積を奪い合わせると、ライトを 1 つ置いただけで遠景カスケードが粗くなる。
-    renderer::ResourceHandle<renderer::RenderTargetTag>   punctualShadowRT;
     renderer::ResourceHandle<renderer::ConstantBufferTag> punctualShadowCB;
 
     // ---- ライト Cookie (投影テクスチャ) ----
     // 複数の Cookie を 1 枚へ敷き詰めたアトラス。t31 へ束縛する。
     // 1 回の PS 呼び出しの中でまとめて評価するので、ライトごとに差し替えられない。
-    renderer::ResourceHandle<renderer::RenderTargetTag>   lightCookieRT;
     renderer::ResourceHandle<renderer::ShaderTag>         cookieBlitShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> cookieBlitCB;
     renderer::ResourceHandle<renderer::PipelineStateTag>  cookieBlitPSO;
@@ -860,6 +867,22 @@ struct RenderPassHandles {
     // 1 フレーム内に寸法を取り合い、毎フレーム作り直しになる。所有は ViewRenderTargets。
     renderer::SizedRenderTarget* cloudRT      = nullptr;
     renderer::SizedRenderTarget* cloudDepthRT = nullptr;
+
+    // ---- 水面の屈折用コピー (ビュー単位) ----
+    // hdrRT を RTV として束縛したまま同じ色と深度を SRV で読めないので、水面を描く前に
+    // 別 RT へ写す。雲と同じ理由でビューが持つ (static だと 2 ビューで寸法を取り合う)。
+    // 水面が 1 つも見えないフレームでは確保しない。
+    renderer::SizedRenderTarget* waterSceneColorRT = nullptr;
+    renderer::SizedRenderTarget* waterSceneDepthRT = nullptr;
+
+    // ---- パーティクル / コースティクスの作業 RT (ビュー単位) ----
+    // particleSceneColorRT は歪みパーティクルが屈折する «背景の退避»、
+    // particleOverdrawRT は重なり枚数の計数先、causticsDepthRT は深度のコピー。
+    // 3 つとも水面と同じ理由でビューが持つ。static のままだと SceneView と GameView が
+    // 1 枚を取り合い、寸法の違うフレームごとに作り直しが走る。
+    renderer::SizedRenderTarget* particleSceneColorRT = nullptr;
+    renderer::SizedRenderTarget* particleOverdrawRT   = nullptr;
+    renderer::SizedRenderTarget* causticsDepthRT      = nullptr;
 
     // ---- フロクセル ボリューメトリック フォグ ----
     // froxelScatter は散乱と消散の生値、froxelIntegrated は Z 積分後の
@@ -1000,12 +1023,10 @@ struct RenderPassHandles {
 
     // GTAO (Ground Truth Ambient Occlusion)
     renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;
-    renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;
     renderer::ResourceHandle<renderer::ShaderTag>         gtaoShader;
     renderer::ResourceHandle<renderer::ShaderTag>         gtaoBlurShader;
 
     // Contact Shadows
-    renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult;
     renderer::ResourceHandle<renderer::ShaderTag>         contactShadowShader;
 
     // Lens Flare
@@ -1084,6 +1105,12 @@ struct LightCookieView {
     float         rotationRad = 0.0f;
 };
 
+// UI 合成パスの設定。実体は RenderSystem.hpp 側 (呼び出し元の Viewport が持つ)。
+struct RenderSystemUIOptions;
+
+// グラフの外から引くときの «申告» (空)。申告チェックを素通しにするために使う。
+inline const std::vector<renderer::RenderGraph::ResourceAccess> kOutsideGraphAccesses{};
+
 struct RenderPassContext {
     Scene& scene;
     renderer::IRenderer& renderer;
@@ -1124,6 +1151,55 @@ struct RenderPassContext {
 
     uint32_t width = 0;
     uint32_t height = 0;
+    // 出力先 (outputRT) の実寸。width/height は描画スケールを掛けた内部解像度なので、
+    // 両者が食い違うフレームだけ UpscalePass が最終解像へ引き伸ばす。
+    uint32_t outputWidth  = 0;
+    uint32_t outputHeight = 0;
+    // LDR チェーンの終着点。等倍なら outputRT そのもので、描画スケールが効いている
+    // フレームは内部解像度の中継 RT を指す。
+    // WHY: Composite / CustomPP / SelectionOutline / FXAA が outputRT へ直接書くと、
+    //      チェーンの «最後の 1 段» だけが実寸で走る。ここを噛ませると全段が内部解像度に
+    //      揃い、実寸で走るのは UpscalePass の 1 回だけになる。
+    renderer::ResourceHandle<renderer::RenderTargetTag> chainOutputRT;
+    // Composite の書き先。後段のチェーンがあれば ldrRT、無ければ chainOutputRT。
+    // WHY 渡すか: 以前は Composite 側が «後段があるか» を自前で組み直していて、
+    //      RenderSystem の hasPostCompositeEffects と食い違っていた。あちらは
+    //      PostProcess 段のカスタムパスだけを数え、こちらは全段のシェーダーを見ていたため、
+    //      AfterOpaque 段のカスタムパスだけがあるシーンで «Output を誰も書かない»
+    //      フレームが出た。判定は 1 か所に置き、パスは書き先を受け取るだけにする。
+    renderer::ResourceHandle<renderer::RenderTargetTag> compositeOutputRT;
+    // 名前 → 実ハンドルの対応表。パイプラインを組む側が毎フレーム埋め、
+    // パスは PassResources 越しに «申告した名前» でだけ引く。
+    RenderResourceRegistry resourceRegistry;
+
+    // 実行中のパスの引き出し口。RenderPipeline が Execute の直前に差し、直後に外す。
+    //
+    // WHY 自由関数の引数にしないか: パス本体は 35 本以上の自由関数に散っていて、
+    //     さらにその中のヘルパーへも渡す必要がある。署名を全部変えても «申告した名前
+    //     からしか引けない» という保証は 1 mm も強くならない ── 強制しているのは
+    //     PassResources 自身であって、引数の渡し方ではないため。
+    PassResources* passResources = nullptr;
+
+    /// 名前から実体を引く。
+    ///
+    /// パス実行中は «申告した名前しか引けない» PassResources を通す。
+    /// グラフの外から呼ばれる処理 (反射プローブ捕捉・空のキャプチャ・IBL ベイク) は
+    /// 申告する相手が居ないので、登録簿を直接引く。
+    ///
+    /// WHY 素通しにするか: 以前は *passResources を無条件に返していたため、
+    ///     グラフ外の呼び出しが null 参照になっていた。実際に
+    ///     ExecuteReflectionProbeCapturePass がそこを踏み、影マップを引けずに
+    ///     «プローブが真っ黒 = 環境光が死ぬ» という形で出た。
+    [[nodiscard]] PassResources Res() const
+    {
+        return passResources
+            ? *passResources
+            : PassResources{ resourceRegistry, kOutsideGraphAccesses, "<outside graph>" };
+    }
+    // UI 合成パスの設定。呼び出し元の Viewport が所有する。null なら UI を描かない。
+    // WHY ctx へ通すか: これだけが «RenderSystem の引数» のままで、パス本体を
+    //     RenderSystem の外へ出せない唯一の理由になっていた。
+    const RenderSystemUIOptions* uiOptions = nullptr;
     bool selectionOutlineEnabled = false;
     // 今フレームに 1 件でも生きた輪郭要求があるか (RenderSettings::objectMaskRequests)。
     bool objectMaskEnabled = false;
@@ -1264,10 +1340,6 @@ struct RenderPassContext {
     int statsParticleCulled = 0;
     int statsParticleBudgetDropped = 0;
 
-    // トランジェント RT リゾルバ。RenderPipeline::Execute() が設定する。
-    // パスコールバックが RenderPipeline を直接参照しないよう、コールバックで渡す。
-    // DeclareResource で transient=true のリソースのみ有効。未設定なら空ハンドル。
-    std::function<renderer::ResourceHandle<renderer::RenderTargetTag>(std::string_view)> getTransientRT;
 };
 
 // DrawCall 1 件が描く三角形数。

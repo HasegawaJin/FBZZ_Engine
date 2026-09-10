@@ -17,10 +17,10 @@ namespace fbzz::scene {
 
 std::string_view DebugCollidersPass::Name() const { return "DebugColliders"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> DebugCollidersPass::DeclareAccesses(const RenderPassContext&) const
+void DebugCollidersPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
 namespace {
@@ -93,10 +93,13 @@ void DrawCollidersOfType(RenderPassContext& ctx, const math::Vector4& color)
 
 } // namespace
 
-void DebugCollidersPass::Execute(RenderPassContext& ctx)
+bool DebugCollidersPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showColliders) return;
+    return ctx.settings.showColliders;
+}
 
+void DebugCollidersPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     constexpr math::Vector4 kColor = { 0.1f, 1.0f, 0.35f, 1.0f };
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
 

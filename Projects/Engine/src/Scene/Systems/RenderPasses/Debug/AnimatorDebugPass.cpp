@@ -106,16 +106,19 @@ bool ResolveNodeGlobals(const asset::Skeleton& skeleton,
 
 std::string_view AnimatorDebugPass::Name() const { return "AnimatorDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> AnimatorDebugPass::DeclareAccesses(const RenderPassContext&) const
+void AnimatorDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void AnimatorDebugPass::Execute(RenderPassContext& ctx)
+bool AnimatorDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showSkeleton) return;
+    return ctx.settings.showSkeleton;
+}
 
+void AnimatorDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
 
     // WHY Animator ではなく SkinnedMeshRenderer を入口にするか: 骨格を持っているのは

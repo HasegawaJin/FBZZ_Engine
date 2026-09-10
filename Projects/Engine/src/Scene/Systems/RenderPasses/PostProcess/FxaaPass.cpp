@@ -13,9 +13,9 @@ void ExecuteFxaaPass(RenderPassContext& ctx)
     auto& h = ctx.handles;
     const auto& rs = ctx.settings;
 
-    if (rs.postProcess.fxaaEnabled && h.fxaaShader.IsValid() && h.ldrRT.IsValid())
+    if (rs.postProcess.fxaaEnabled && h.fxaaShader.IsValid() && ctx.Res().Target("LDR").IsValid())
     {
-        ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
+        ctx.renderer.SetRenderTarget(ctx.chainOutputRT, ctx.resources);
 
         // FXAA.hlsl はサンプル間隔を b5 の texelSize だけで決める。
         // WHY: 直前に b5 を書いたのが Composite か CustomPostProcess かでたまたま正しい値が
@@ -44,7 +44,7 @@ void ExecuteTAABlitPass(RenderPassContext& ctx)
     //      TAA 後の出力はエッジがほぼ平滑化済みなので FXAA の追加処理量は極小。
     if (!h.fxaaShader.IsValid() || !h.fxaaInput.IsValid()) return;
 
-    ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
+    ctx.renderer.SetRenderTarget(ctx.chainOutputRT, ctx.resources);
 
     const PostProcCB blitData = MakeScreenPostProcCB(ctx.width, ctx.height);
     ctx.resources.Update(h.postprocCB, &blitData, sizeof(PostProcCB));

@@ -416,10 +416,11 @@ std::unique_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const Pi
     return pso;
 }
 
-std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
+std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height,
+                                                                     const RenderTargetDesc& desc)
 {
     auto rt = std::make_unique<DX11RenderTarget>();
-    if (!rt->Init(m_device.Get(), width, height, colorCount))
+    if (!rt->Init(m_device.Get(), width, height, desc))
         return nullptr;
     return rt;
 }

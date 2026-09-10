@@ -365,13 +365,12 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, f
 
 std::string_view TrailRenderPass::Name() const { return "Trail"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> TrailRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+void TrailRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void TrailRenderPass::Execute(RenderPassContext& ctx)
+void TrailRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     auto& renderer = ctx.renderer;
     auto& resources = ctx.resources;
@@ -380,7 +379,7 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
     if (!h.trailShader.IsValid() || !h.trailPSO.IsValid())
         return;
 
-    renderer.SetRenderTarget(h.hdrRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     const float currentTime = Time::time;
     std::vector<TrailVertex> vertices;

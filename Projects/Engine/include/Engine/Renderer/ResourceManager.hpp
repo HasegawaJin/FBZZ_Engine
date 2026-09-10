@@ -7,6 +7,7 @@
 /// 実体は ResourcePool が unique_ptr で単独所有し、上位システムは ResourceHandle だけを持つ。
 #pragma once
 #include <Engine/Core/Memory/AllocationInfo.hpp>
+#include <Engine/Renderer/Format.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourcePool.hpp>
 #include <Engine/Renderer/RenderState.hpp>
@@ -96,6 +97,12 @@ public:
                                                            Where where = Where::current());
     ResourceHandle<PipelineStateTag> CreatePipelineState(const PipelineStateDesc& desc,
                                                           Where where = Where::current());
+    /// 形式と深度の有無を明示して生成する。
+    /// @note colorCount = 0 は深度専用。withDepth = false かつ colorCount = 0 は作れない。
+    ResourceHandle<RenderTargetTag> CreateRenderTarget(uint32_t width, uint32_t height,
+                                                       const RenderTargetDesc& desc,
+                                                       Where where = Where::current());
+    /// 従来どおり RGBA16F + 深度付きで生成する短縮形。
     ResourceHandle<RenderTargetTag> CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1,
                                                        Where where = Where::current());
     // 6 面キューブマップ描画先を生成する (空連動 IBL の SkyCapture 用)。
