@@ -14,6 +14,7 @@
 ///   そちらは «VFX の生存窓» を持たない。時間の駆動元を持つ側 (VFX) に
 ///   エンベロープを置く方が、駆動されない場面での意味が明確になる。
 #pragma once
+#include <Engine/Scene/Components/VFXElement.hpp>  // VFXCaptured
 #include <Engine/Scene/ParticleCurve.hpp>
 #include <Engine/Scene/Script.hpp>
 
@@ -39,9 +40,11 @@ struct VFXAudioEnvelope {
     // --- ランタイム ---
     // 捕獲した基準値。VFXLightEnvelope と同じ理由で、掴み直すと
     // «下げた後の音量» を新しい基準にしてしまい、鳴らすたびに小さくなる。
-    float baseVolume = 1.0f;
-    float basePitch  = 1.0f;
-    bool  captured   = false;
+    struct Base {
+        float volume = 1.0f;
+        float pitch  = 1.0f;
+    };
+    VFXCaptured<Base> base;
 
     const char* GetTypeName() const { return "VFX Audio Envelope"; }
 

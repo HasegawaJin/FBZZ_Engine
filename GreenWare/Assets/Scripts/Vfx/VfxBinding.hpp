@@ -127,7 +127,7 @@ inline void NodePosition(GameObject& root, std::string_view node, const Vector3&
 ///
 /// WHY エンベロープの基準値も一緒に書くか:
 ///   VFXLightEnvelope は «Inspector に置かれた値をピークとして掴み、毎フレーム
-///   カーブを掛け直す» 作りになっている (baseIntensity)。掴んだ後に
+///   カーブを掛け直す» 作りになっている (VFXCaptured<Base>)。掴んだ後に
 ///   LightComponent 側だけ書き換えても、次のフレームで基準値から作り直されて消える。
 ///   1 発ごとに強さを変えるには基準値の方を書く必要がある。
 inline void Light(GameObject& root, std::string_view node,
@@ -141,15 +141,15 @@ inline void Light(GameObject& root, std::string_view node,
     auto* envelope = target->GetComponent<VFXLightEnvelope>();
     if (color != nullptr) {
         light->color = *color;
-        if (envelope != nullptr) envelope->baseColor = *color;
+        if (envelope != nullptr) envelope->base.value.color = *color;
     }
     if (intensity != nullptr) {
         light->intensity = *intensity;
-        if (envelope != nullptr) envelope->baseIntensity = *intensity;
+        if (envelope != nullptr) envelope->base.value.intensity = *intensity;
     }
     // 以降 «掴み直し» をさせない。掴み直されると、カーブを掛けた後の暗い値を
     // 新しいピークとして拾ってしまい、撃つたびに暗くなる。
-    if (envelope != nullptr) envelope->captured = true;
+    if (envelope != nullptr) envelope->base.captured = true;
 }
 
 inline void LightColor(GameObject& root, std::string_view node, const Vector3& color)

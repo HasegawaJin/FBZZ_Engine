@@ -169,23 +169,42 @@ void RewindPlayback(GameObject& gameObject)
 //     掴んでしまい、ループのたびに暗く (あるいは小さく) なっていく。
 void RestoreEnvelopes(GameObject& gameObject)
 {
-    if (auto* env = gameObject.GetComponent<VFXLightEnvelope>(); env != nullptr && env->captured) {
+    if (auto* env = gameObject.GetComponent<VFXLightEnvelope>()) {
         if (auto* light = gameObject.GetComponent<LightComponent>()) {
-            light->intensity = env->baseIntensity;
-            light->color = env->baseColor;
+            VFXLightEnvelope::Base restored;
+            if (env->base.Restore(restored)) {
+                light->intensity = restored.intensity;
+                light->color     = restored.color;
+            }
         }
     }
-    if (auto* env = gameObject.GetComponent<VFXTransformEnvelope>(); env != nullptr && env->captured)
-        gameObject.transform.scale = env->baseScale;
-    if (auto* env = gameObject.GetComponent<VFXDecalEnvelope>(); env != nullptr && env->captured) {
+    if (auto* env = gameObject.GetComponent<VFXTransformEnvelope>())
+        env->base.Restore(gameObject.transform.scale);
+
+    if (auto* env = gameObject.GetComponent<VFXDecalEnvelope>()) {
         if (auto* decal = gameObject.GetComponent<DecalComponent>())
-            decal->emissiveScale = env->baseEmissiveScale;
+            env->base.Restore(decal->emissiveScale);
     }
-    if (auto* env = gameObject.GetComponent<VFXAudioEnvelope>(); env != nullptr && env->captured) {
+    if (auto* env = gameObject.GetComponent<VFXAudioEnvelope>()) {
         if (auto* audio = gameObject.GetComponent<AudioSourceComponent>()) {
-            audio->volume = env->baseVolume;
-            audio->pitch = env->basePitch;
+            VFXAudioEnvelope::Base restored;
+            if (env->base.Restore(restored)) {
+                audio->volume = restored.volume;
+                audio->pitch  = restored.pitch;
+            }
         }
+    }
+    // マテリアルは «元の値» ではなく «上書きが無い» 状態へ戻す。
+    // 自分が書いたキーだけを消す (手で足した override を巻き込まないため)。
+    if (auto* env = gameObject.GetComponent<VFXMaterialEnvelope>()) {
+        if (auto* material = gameObject.GetComponent<MaterialComponent>()) {
+            if (!env->writtenColorParam.empty())
+                material->paramOverrides.erase(env->writtenColorParam);
+            if (!env->writtenParam.empty())
+                material->paramOverrides.erase(env->writtenParam);
+        }
+        env->writtenColorParam.clear();
+        env->writtenParam.clear();
     }
 }
 
@@ -266,13 +285,9 @@ void ApplyEnvelopes(GameObject& gameObject, float progress)
 {
     if (auto* env = gameObject.GetComponent<VFXLightEnvelope>(); env != nullptr && env->enabled) {
         if (auto* light = gameObject.GetComponent<LightComponent>()) {
-            if (!env->captured) {
-                env->baseIntensity = light->intensity;
-                env->baseColor = light->color;
-                env->captured = true;
-            }
+            env->base.Capture({ light->intensity, light->color });
             if (env->useIntensityCurve) {
-                light->intensity = env->baseIntensity
+                light->intensity = env->base.value.intensity
                     * (std::max)(env->intensityCurve.Evaluate(progress), 0.0f);
             }
             if (env->useColorGradient) {
@@ -285,35 +300,32 @@ void ApplyEnvelopes(GameObject& gameObject, float progress)
 
     if (auto* env = gameObject.GetComponent<VFXTransformEnvelope>();
         env != nullptr && env->enabled && env->useScaleCurve) {
-        if (!env->captured) {
-            env->baseScale = gameObject.transform.scale;
-            env->captured = true;
-        }
-        gameObject.transform.scale = env->baseScale * env->scaleCurve.Evaluate(progress);
+        env->base.Capture(gameObject.transform.scale);
+        gameObject.transform.scale = env->base.value * env->scaleCurve.Evaluate(progress);
     }
 
     if (auto* env = gameObject.GetComponent<VFXMaterialEnvelope>(); env != nullptr && env->enabled) {
         if (auto* material = gameObject.GetComponent<MaterialComponent>()) {
+            // 書いたキーを覚えておく。RestoreEnvelopes がこれだけを取り除く。
             if (env->useColorGradient && !env->colorParamName.empty()) {
                 const math::Vector4 color = env->colorGradient.Evaluate(progress);
                 material->paramOverrides[env->colorParamName] = { color.x, color.y, color.z, color.w };
+                env->writtenColorParam = env->colorParamName;
             }
-            if (!env->paramName.empty())
+            if (!env->paramName.empty()) {
                 material->paramOverrides[env->paramName] = { env->paramCurve.Evaluate(progress) };
+                env->writtenParam = env->paramName;
+            }
         }
     }
 
     if (auto* env = gameObject.GetComponent<VFXAudioEnvelope>(); env != nullptr && env->enabled) {
         if (auto* audio = gameObject.GetComponent<AudioSourceComponent>()) {
-            if (!env->captured) {
-                env->baseVolume = audio->volume;
-                env->basePitch = audio->pitch;
-                env->captured = true;
-            }
-            audio->volume = env->baseVolume
+            env->base.Capture({ audio->volume, audio->pitch });
+            audio->volume = env->base.value.volume
                 * std::clamp(env->volumeCurve.Evaluate(progress), 0.0f, 1.0f);
             if (env->usePitchCurve) {
-                audio->pitch = env->basePitch
+                audio->pitch = env->base.value.pitch
                     * (std::max)(env->pitchCurve.Evaluate(progress), 0.01f);
             }
         }
@@ -321,17 +333,14 @@ void ApplyEnvelopes(GameObject& gameObject, float progress)
 
     if (auto* env = gameObject.GetComponent<VFXDecalEnvelope>(); env != nullptr && env->enabled) {
         if (auto* decal = gameObject.GetComponent<DecalComponent>()) {
-            if (!env->captured) {
-                env->baseEmissiveScale = decal->emissiveScale;
-                env->captured = true;
-            }
+            env->base.Capture(decal->emissiveScale);
             // WHY albedoColor ではなく opacity か: albedoColor は組み込み経路の値で、
             //     .mat を割り当てた瞬間にシェーダーへ届かなくなる。カーブで作った
             //     減り方がマテリアルの有無で消えては困るので、投影側の倍率へ掛ける。
             decal->opacity = std::clamp(env->fadeCurve.Evaluate(progress), 0.0f, 1.0f);
             // エミッシブは組み込み経路のパラメータ。.mat 経路では材質が持つので触らない。
             if (env->driveEmissive && decal->materialPath.empty()) {
-                decal->emissiveScale = env->baseEmissiveScale
+                decal->emissiveScale = env->base.value
                     * (std::max)(env->emissiveCurve.Evaluate(progress), 0.0f);
             }
         }
