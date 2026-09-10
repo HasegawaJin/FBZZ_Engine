@@ -47,6 +47,15 @@ public:
     FBZZ_FIELD_RANGE(float, damageFlashStrength, 1.0f, "被弾フラッシュ倍率", 0.0f, 1.0f)
     FBZZ_TOOLTIP("0 で «斬られても光らない»。輪郭をどれだけ太らせるか")
 
+    // 斬撃の吸い付き先を振る «前» に返す。意味は BossRigComponent 側と同じ ─
+    // «狙っている» と «入った» は別の合図なので、色も太さも分ける。
+    FBZZ_FIELD(bool, outlineAimedSegment, true, "Outline Aimed Segment")
+    FBZZ_TOOLTIP("斬撃の吸い付き先に選ばれている節を薄く縁取る。切ると振るまで分からなくなる")
+    FBZZ_FIELD_COLOR(aimOutlineColor, (Vector4{ 0.55f, 0.80f, 1.0f, 1.0f }), "Aim Outline")
+    FBZZ_TOOLTIP("狙っている節の輪郭色。斬られた合図 (Damage Flash) と見分けが付く色にする")
+    FBZZ_FIELD_RANGE(float, aimOutlineWidthScale, 0.55f, "狙い線の細さ", 0.1f, 1.0f)
+    FBZZ_TOOLTIP("上の 幅 に対する比。斬られた合図より必ず細くする")
+
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugOutlined, 0, "輪郭を出す")
 
@@ -76,14 +85,22 @@ inline void SerpentRigComponent::OnUpdate()
         const auto* part = scene.GetScript<BossPartComponent>(hitbox);
         if (!part) continue;
         const float flash = part->DamageFlash();
-        if (flash <= 0.0f) continue;
+        const bool  aimed = outlineAimedSegment && part->AimHighlight() > 0.0f;
+        if (flash <= 0.0f && !aimed) continue;
         if (!body->IsAlive(i)) continue;
         if (spine && !spine->IsExposed(i)) continue;
 
         // マスクの意味は読む側 (Outline.hlsl) との取り決め: RGB = 色 / A = 太さ。
-        const float   k     = Clamp01(flash) * Clamp01(damageFlashStrength);
-        const Vector4 color{ damageFlashColor.x, damageFlashColor.y, damageFlashColor.z, 1.0f };
-        const float   width = Clamp01(Lerp(Clamp01(outlineWidth), 1.0f, k));
+        // 斬られた合図が出ているあいだは必ずそちらを採る ─ 入った合図の途中で
+        // 狙いの色へ落ちると、当たったことが薄まる。
+        const float   k   = Clamp01(flash) * Clamp01(damageFlashStrength);
+        const bool    hit = flash > 0.0f;
+        const Vector4 color = hit
+            ? Vector4{ damageFlashColor.x, damageFlashColor.y, damageFlashColor.z, 1.0f }
+            : Vector4{ aimOutlineColor.x, aimOutlineColor.y, aimOutlineColor.z, 1.0f };
+        const float   width = hit
+            ? Clamp01(Lerp(Clamp01(outlineWidth), 1.0f, k))
+            : Clamp01(Clamp01(outlineWidth) * Clamp01(aimOutlineWidthScale));
 
         for (const EntityRef& ref : body->Meshes(i))
             if (GameObject* piece = ref.Resolve(scene)) {

@@ -170,6 +170,39 @@ public:
     ///     以後どれだけボスが回っても線は動かない ─ «固定» はここで保証される。
     void FireRays(const Vector3& origin, const std::vector<Vector3>& directions,
                   float length, float heightAboveOrigin = 0.0f);
+    /// 撃った後も狙点を差し替える。FireRays で撃った線«だけ» が動く。
+    ///
+    /// WHY «固定» の例外を開けるか (2026-09-11):
+    ///     薙ぎの中央 (コアビーム) は撃っている間に終端を持ち上げて、床を焼く線から
+    ///     胴を薙ぐ高さへ振り上がる。左右をここで固定したままにすると、中央だけが
+    ///     上がって左右は床に貼り付き、3 本が同じ 1 回の攻撃に見えなくなる。
+    ///
+    /// WHY それでも «避けられる» か: 動くのは高さだけで、水平の向きは撃った瞬間の
+    ///     まま。逃げ道の «位置» は変わらないので、読んで入った隙間は最後まで隙間。
+    ///
+    /// @param origin  口 (ワールド)。中央と同じ穴から出すためのもの。
+    /// @param aimBase 狙点の起点 (ボスの足元)。ここから向き × reach、さらに lift だけ上。
+    /// @param reach   狙点までの水平距離 [m]。
+    /// @param lift    狙点を足元から持ち上げる量 [m]。
+    /// @param range   射線を伸ばす上限 [m]。最初に当たった地形で線を切る。
+    void AimRays(const Vector3& origin, const Vector3& aimBase, float reach, float lift,
+                 float range);
+
+    /// この 1 射のあいだ、線の質を丸ごと外から借りる。毎フレーム押し直すこと。
+    ///
+    /// WHY 1 射ぶんの上書きにするか: 借りるのは «同じ攻撃の一部として撃たれた» 線
+    ///     だけで、扇や柱は自分の色と太さで撃つ。フィールドを書き換えると、誰も
+    ///     設定していない値が次の斉射へ残る (OverrideTiming と同じ判断)。
+    ///
+    /// WHY 毎フレーム押すのか、撃ち始めの 1 回では駄目か: 質は点火で毎フレーム
+    ///     変わる。撃ち始めの値を握ると、左右だけが «点火した瞬間の太さ» のまま
+    ///     照射の最後まで固まる。
+    void AdoptLook(const beamlook::Look& look)
+    {
+        m_adopted    = look;
+        m_hasAdopted = true;
+    }
+
     /// 次の 1 射だけ時間割を差し替える。撃つ側の時計と «同じ瞬間» を作りたいときに使う。
     ///
     /// WHY 1 射だけか: ボスの薙ぎは 3 本のうち中央がコアビームで、そちらの時計は
@@ -263,6 +296,12 @@ private:
     float m_fireOverride   = 0.0f;
     /// 放電を回す角度。止めると «同じ形が明滅している» に見える。
     float m_arcSpin  = 0.0f;
+    /// FireRays で撃った線の向き。AimRays が狙点を組み直すのに要る
+    /// (端点そのものを覚えると、振り上げるたびに前フレームの高さが混ざる)。
+    std::vector<Vector3> m_rayDirs;
+    /// 外から借りている線の質。押されていない間は自前の LookAt を使う。
+    beamlook::Look m_adopted;
+    bool           m_hasAdopted = false;
     /// 溜めの拍と回避窓。床のデカールと同じ型を通す (BossTelegraph.hpp)。
     ///
     /// WHY 線にも要るか: 線は床へ絵を置かないので、予兆は «針から本径へ» の太さ
@@ -424,8 +463,10 @@ inline void LaserVolleyComponent::FireRays(const Vector3& origin,
 
     std::vector<Vector3> from;
     std::vector<Vector3> to;
+    std::vector<Vector3> flats;
     from.reserve(directions.size());
     to.reserve(directions.size());
+    flats.reserve(directions.size());
     for (const Vector3& direction : directions) {
         // 水平に寝かせる。上下に振れた向きを渡されると «床を焼く線» にならず、
         // 予兆の帯 (床のデカール) と実際の線がずれる。
@@ -433,8 +474,29 @@ inline void LaserVolleyComponent::FireRays(const Vector3& origin,
                                  .NormalizedOr(Vector3::FORWARD);
         from.push_back(hub);
         to.push_back(hub + flat * reach);
+        flats.push_back(flat);
     }
     Begin(from, to, /*column=*/false);
+    // Begin は Stop を通るので、覚えるのはその後。
+    m_rayDirs = std::move(flats);
+}
+
+inline void LaserVolleyComponent::AimRays(const Vector3& origin, const Vector3& aimBase,
+                                          float reach, float lift, float range)
+{
+    if (m_rayDirs.empty()) return;
+
+    const std::size_t count = Min(m_rayDirs.size(), m_shots.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        // 狙点は «ボスの足元から» 組む。口から組むと、腹下のアパーチャの高さぶん
+        // だけ線が寝てしまい、中央だけが床を焼いて左右は床の手前を素通りする。
+        const Vector3 aim = aimBase + m_rayDirs[i] * Max(reach, 0.1f)
+                          + Vector3::UP * Max(lift, 0.0f);
+        Vector3 normal;
+        m_shots[i].from = origin;
+        m_shots[i].to   = beamlook::TraceSurface(*this, origin, aim - origin, range,
+                                                 playerTag, normal);
+    }
 }
 
 inline void LaserVolleyComponent::Stop()
@@ -450,6 +512,9 @@ inline void LaserVolleyComponent::Stop()
             if (auto* light = object->GetComponent<LightComponent>()) light->enabled = false;
     }
     m_shots.clear();
+    m_rayDirs.clear();
+    // 借り物は 1 射で返す。返さないと、次に撃った扇が薙ぎの色と太さを引き継ぐ。
+    m_hasAdopted = false;
     m_stage    = Stage::Idle;
     m_elapsed  = 0.0f;
     // 次の 1 射は «3 拍目» からではなく最初から数え直す。
@@ -460,6 +525,25 @@ inline void LaserVolleyComponent::Stop()
 
 inline beamlook::Look LaserVolleyComponent::LookAt(float charge01) const
 {
+    // 借りているあいだは «そのまま» 使う。
+    //
+    // WHY 針 (needleWidth) と拍 (m_cue) を重ねないか: どちらもこの斉射の予兆で、
+    //     借りている相手 (コアビーム) は持っていない。重ねると左右だけが細って脈打ち、
+    //     質を借りた意味が消える。薙ぎの予兆は中央の点火が 3 本ぶん担う。
+    if (m_hasAdopted) {
+        beamlook::Look look = m_adopted;
+        // 消えぎわだけは自分の時計で細らせる。貸し手 (コアビーム) の消灯は
+        // Discharge 0.8 秒で、こちらの Fade と同じ長さとは限らない ─ 借りたまま
+        // だと «当たり判定がいつ切れたか» が読めないまま、ぱっと消える。
+        if (m_stage == Stage::Fade) {
+            const float fade = Clamp01(charge01);
+            look.coreWidth *= fade;
+            look.glowWidth *= fade;
+            look.charge    *= fade;
+        }
+        return look;
+    }
+
     beamlook::Look look;
     look.materialPath = m_column ? columnMaterial : lanceMaterial;
     look.color        = m_column ? columnColor : lanceColor;
@@ -492,6 +576,17 @@ inline beamlook::Look LaserVolleyComponent::LookAt(float charge01) const
     look.color.z = Lerp(look.color.z, 0.86f, toWhite);
 
     look.glowWidth = look.coreWidth * Max(glowScale, 0.0f);
+    // 借りていないとき (扇・柱) は自分の値で埋める。以後 DriveArcs / DriveLight は
+    // フィールドではなく look だけを見る ─ 借り物と自前で読む場所が分かれていると、
+    // 借りたときに «断面だけ揃って放電は自分のまま» という半端が必ず戻ってくる。
+    look.arcAlong       = beamArcs;
+    look.arcStrands     = arcStrands;
+    look.arcWidth       = arcWidth;
+    look.arcRate        = arcRate;
+    look.arcIntensity   = arcIntensity;
+    look.arcBow         = arcBow;
+    look.lightIntensity = lightIntensity;
+    look.lightRange     = lightRange;
     return look;
 }
 
@@ -539,12 +634,12 @@ inline void LaserVolleyComponent::DriveArcs(Shot& shot, int index,
         const Vector3 offset = (side * std::cos(phase) + up * std::sin(phase))
                              * (look.coreWidth * 0.5f);
 
-        ElectricArcStyle style = beamlook::ArcStyle(look, ignite, arcStrands,
-                                                    Max(arcWidth, 0.001f) * 0.85f,
-                                                    arcRate, arcIntensity);
+        ElectricArcStyle style = beamlook::ArcStyle(look, ignite, look.arcStrands,
+                                                    Max(look.arcWidth, 0.001f) * 0.85f,
+                                                    look.arcRate, look.arcIntensity);
         // 折れ点は長さで決める。20m を 24 点で折ると 1 区間 0.8m の «稲妻» になる。
         style.segments  = std::clamp(static_cast<int>(length * 2.5f), 16, 56);
-        style.amplitude = Max(arcBow, 0.0f) * ignite;
+        style.amplitude = Max(look.arcBow, 0.0f) * ignite;
         // 出口の側で暴れさせる。焼いている所がいちばん荒れている、という当たり前。
         style.taperBias = 0.72f;
         shot.arcsAlong[i].Update(*this, shot.from + offset, shot.to + offset, style, dt);
@@ -564,9 +659,9 @@ inline void LaserVolleyComponent::DriveArcs(Shot& shot, int index,
         const Vector3 end = mouth + (side * std::cos(phase) + up * std::sin(phase)) * reach
                           + inward * (reach * 0.35f);
 
-        ElectricArcStyle style = beamlook::ArcStyle(look, ignite * 1.15f, arcStrands,
-                                                    Max(arcWidth, 0.001f), arcRate,
-                                                    arcIntensity);
+        ElectricArcStyle style = beamlook::ArcStyle(look, ignite * 1.15f, look.arcStrands,
+                                                    Max(look.arcWidth, 0.001f), look.arcRate,
+                                                    look.arcIntensity);
         style.segments  = 20;
         style.amplitude = reach * 0.42f;
         // 先端で暴れさせる。根元が暴れると «線がどこから出ているか» が読めなくなる。
@@ -606,8 +701,8 @@ inline void LaserVolleyComponent::DriveLight(Shot& shot, int index,
     const Vector4 hue = beamlook::Hue(look.color);
     light->type      = LightComponent::Type::Point;
     light->color     = { hue.x, hue.y, hue.z };
-    light->intensity = Max(lightIntensity, 0.0f) * Clamp01(look.charge);
-    light->range     = Max(lightRange, 0.1f);
+    light->intensity = Max(look.lightIntensity, 0.0f) * Clamp01(look.charge);
+    light->range     = Max(look.lightRange, 0.1f);
     light->castShadows = false;
 }
 
@@ -619,9 +714,12 @@ inline void LaserVolleyComponent::Draw(float charge01, float dt)
     //
     // WHY 沿う筋を先に取るか: 輪郭を崩すのは筒に張り付く筋の仕事で、これが無いと
     //     線が «硬い棒» に戻る。先端の散りは «出口の説明» なので、削るならこちらから。
+    // WHY 束の数だけ look 経由にするか: 借りた線は中央と同じ «描き込みの量» で
+    //     なければ揃わないが、扇は 1 度に 6 本走るので上限 (Bundle Budget) は
+    //     こちらが持ったままでなければならない。要求は借り、天井は自分で決める。
     const int shots = std::max(static_cast<int>(m_shots.size()), 1);
     const int quota = std::max(arcBudget, 0) / shots;
-    const int along = std::min(std::max(beamArcs, 0), (quota + 1) / 2);
+    const int along = std::min(std::max(look.arcAlong, 0), (quota + 1) / 2);
     const int tip   = std::min(std::max(tipArcs, 0), std::max(quota - along, 0));
 
     for (std::size_t i = 0; i < m_shots.size(); ++i) {

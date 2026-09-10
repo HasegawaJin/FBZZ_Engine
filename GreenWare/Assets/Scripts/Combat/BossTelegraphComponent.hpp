@@ -231,7 +231,9 @@ inline void BossTelegraphComponent::OnLateUpdate()
 
     // 時刻の言葉は共有の 1 つを通す。枚数が変わっても «同じ予兆の一部» なので、
     // 拍も回避窓も 1 つで足りる ─ 枚ごとに持つと同じ攻撃の中で拍がずれる。
-    m_cue.pips         = std::max(pips, 0);
+    // 拍数は出す側が言ってきたらそれに従う (盤面の拍で割った値)。
+    // ここの «ピップの数» は、言ってこない手のための既定。
+    m_cue.pips         = primary.pips > 0 ? primary.pips : std::max(pips, 0);
     m_cue.pipGain      = pipGain;
     m_cue.strikeFrom   = Clamp01(strikeFrom);
     m_cue.scrollHz     = stripeScrollHz;

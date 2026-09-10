@@ -41,6 +41,16 @@ public:
     FBZZ_FIELD_RANGE(float, damageFlashSeconds, 0.18f, "閃光", 0.0f, 1.0f)
     FBZZ_TOOLTIP("斬られた部位の輪郭が白へ寄っている秒数。0 で光らない")
 
+    // 吸い付きの当て先に選ばれている «あいだ» の保持時間。斬撃側が毎フレーム置き直す。
+    //
+    // WHY 真偽値を毎フレーム消さずに «保持» にするか: 置く側 (BladeComponent) と
+    //     読む側 (BossRigComponent の DriveOutline) の実行順は保証されていない。
+    //     フレーム頭で false に戻す形にすると、読む順によって 1 フレームおきに
+    //     消えて輪郭がちらつく。少しだけ持たせれば順番に依らない。
+    FBZZ_FIELD_RANGE(float, aimHoldSeconds, 0.10f, "狙い保持", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("吸い付きの当て先として光っている合図の保持秒数。"
+                 "置く側と読む側の実行順に依らせないための猶予なので、短くて足りる")
+
     FBZZ_GROUP("HP")
     FBZZ_FIELD_RANGE_INT(int, maxHealth, 150, "最大 HP", 1, 1000)
     FBZZ_TOOLTIP("この部位を削り切るのに要る量。斬撃 1 発は BladeTuning の Damage (既定 25)")
@@ -53,6 +63,9 @@ public:
     FBZZ_FIELD_READ_ONLY(std::string, legSuffix, "", "脚")
     FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "HP")
     FBZZ_FIELD_READ_ONLY(bool, debugBroken, false, "Broken")
+    // 輪郭が出ないときの切り分け用。ここが false なら斬撃側が当て先に選んでいない、
+    // true なのに画面に何も無いなら BossRigComponent 以降 (脚の対応 / ポストプロセス)。
+    FBZZ_FIELD_READ_ONLY(bool, debugAimed, false, "Aimed")
 
     /// もぎ取られた。以後この部位は削れない。
     void Break();
@@ -69,6 +82,11 @@ public:
     /// 1 = 斬られた瞬間 / 0 = 光っていない。
     [[nodiscard]] float DamageFlash() const;
 
+    /// 吸い付きの当て先に選ばれている合図を置く。斬撃側が毎フレーム置き直す。
+    void MarkAimed() { m_aimed = std::max(aimHoldSeconds, 0.0f); }
+    /// 1 = 今狙われている / 0 = 狙われていない。
+    [[nodiscard]] float AimHighlight() const;
+
     [[nodiscard]] bool  IsBroken()    const { return m_broken; }
     [[nodiscard]] int   Health()      const { return std::max(m_health, 0); }
     [[nodiscard]] bool  IsDepleted()  const { return m_health == 0; }
@@ -82,6 +100,8 @@ private:
     bool  m_broken = false;
     /// 斬られた合図の残り [秒]。
     float m_flash  = 0.0f;
+    /// 狙われている合図の残り [秒]。
+    float m_aimed  = 0.0f;
     // -1 = 未初期化。BossHitboxRigComponent が実行時に組むので、OnStart より先に
     // 斬られうる (同じフレームに扇が通る)。
     int   m_health = -1;
@@ -123,10 +143,20 @@ inline void BossPartComponent::OnStart()
     if (m_health < 0) m_health = std::max(maxHealth, 1);
 }
 
+inline float BossPartComponent::AimHighlight() const
+{
+    if (m_aimed <= 0.0f || aimHoldSeconds <= 0.0f) return 0.0f;
+    // 残り比を返さず «出ているか» だけを返す。保持は実行順を吸収するための猶予で、
+    // 減っていく様子を絵に出すと «狙いが外れかけている» ように見える。
+    return 1.0f;
+}
+
 inline void BossPartComponent::OnUpdate()
 {
     if (m_flash > 0.0f) m_flash = std::max(m_flash - Time::deltaTime, 0.0f);
+    if (m_aimed > 0.0f) m_aimed = std::max(m_aimed - Time::deltaTime, 0.0f);
     debugHealth = Health();
+    debugAimed  = m_aimed > 0.0f;
 }
 
 } // namespace sandbox
