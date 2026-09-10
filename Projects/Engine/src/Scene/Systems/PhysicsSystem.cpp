@@ -168,6 +168,26 @@ void AddColliderInstance(Scene& scene,
     auto* rb = go.GetComponent<RigidBodyComponent>();
     physics::RigidBody* body = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
 
+    // 祖先の剛体へ属させる指定。自分に剛体が無いときだけ遡る。
+    //
+    // WHY 既定で遡らないか: 既存のシーンには «親が剛体・子は静的な床» を意図して
+    //     組んだ場所がありうる。遡るかどうかはコライダー側の申告に任せ、
+    //     立てた所だけが «同じ体の一部» になる。
+    // WHY 質量は遡らせないか: 下の FromDensity は «この剛体の体積» を積む。
+    //     子の当たり (骨に生やしたヒットボックス等) まで数えると、形を 1 つ足す
+    //     たびに質量が勝手に増える。質量を持つのは自分の GameObject の分だけ。
+    bool attachedToAncestor = false;
+    if (!body && col.attachToParentBody) {
+        for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent()) {
+            auto* parentRb = parent->GetComponent<RigidBodyComponent>();
+            if (parentRb && parentRb->enabled && parentRb->rigidBody) {
+                body = parentRb->rigidBody.get();
+                attachedToAncestor = true;
+                break;
+            }
+        }
+    }
+
     // 共有 .physmat を参照しているなら、この時点で実効値へ解決する。
     // WHY 毎フレームか: エディタで .physmat を編集した結果を、参照している全コライダーへ
     //     待ち時間なく反映させるため。未参照なら即 return、参照ありでも AssetManager の
@@ -178,7 +198,19 @@ void AddColliderInstance(Scene& scene,
     if (rb && rb->massMode == MassMode::FromDensity && col.collider)
         rb->computedMass += col.collider->ComputeVolume() * col.material.density;
 
-    const math::Vector3 centerOffset = ColliderCenterOffset(go, col);
+    // 剛体を持つコライダーの姿勢は World::UpdateColliders が
+    // «body の位置 + body の回転 × centerOffset» で組む。剛体が自分の GameObject に
+    // 乗っているときは body の姿勢 = 自分の姿勢なので、centerOffset はローカルの
+    // center そのままでよい。祖先の剛体へ属させたときは両者がずれるので、
+    // «body から見た自分» へ直さないと、当たりが親の位置に生えてしまう。
+    //
+    // ⚠ 回転は body のものが使われる。祖先へ属させてよいのは、向きが剛体と揃っている
+    //    当たりだけ (骨と一緒に回る当たりは、この経路では正しく回らない)。
+    math::Vector3 centerOffset = ColliderCenterOffset(go, col);
+    if (attachedToAncestor && body) {
+        centerOffset = body->GetRotation().Inverse()
+                     * (ColliderWorldCenter(go, col) - body->GetPosition());
+    }
     physics::ColliderInstance instance{ col.collider.get(), body, &col.material, centerOffset, col.isTrigger, go.layer };
     col.colliderHandle = world.SyncCollider(col.colliderHandle, instance);
     colliderOwners[col.collider.get()] = { &go, &col };

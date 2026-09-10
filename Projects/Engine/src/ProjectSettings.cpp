@@ -209,6 +209,20 @@ bool ProjectSettings::Load(const std::string& path)
         physics.hz      = (int)(*physicsTbl)["hz"].value_or((int64_t)physics.hz);
         physics.substeps = (int)(*physicsTbl)["substeps"].value_or((int64_t)physics.substeps);
         physics.gravity = ArrToVec3((*physicsTbl)["gravity"].as_array(), physics.gravity);
+
+        // 衝突行列は «ぶつからない組» だけを書く。32x32 = 1024 個の true を並べても
+        // 読めないうえ、レイヤーを 1 つ足すたびに差分が全面になる。
+        physics.collisionMatrix = LayerCollisionMatrix{};
+        if (auto* ignoreArr = (*physicsTbl)["ignoreCollisions"].as_array()) {
+            for (const auto& entry : *ignoreArr) {
+                const auto* pair = entry.as_array();
+                if (!pair || pair->size() < 2) continue;
+                const auto a = (*pair)[0].value<int64_t>();
+                const auto b = (*pair)[1].value<int64_t>();
+                if (!a || !b) continue;
+                physics.collisionMatrix.Set(static_cast<int>(*a), static_cast<int>(*b), false);
+            }
+        }
     }
 
     if (physics.hz < 1)        physics.hz = 1;
@@ -405,6 +419,19 @@ bool ProjectSettings::Save(const std::string& path) const
     physicsTbl.insert("hz",       (int64_t)physics.hz);
     physicsTbl.insert("substeps", (int64_t)physics.substeps);
     physicsTbl.insert("gravity",  Vec3ToArr(physics.gravity));
+
+    // 対称行列なので下三角 (a <= b) だけ書く。両方書くと、手で片方を消したときに
+    // «消したのに効いている» が起きる。
+    toml::array ignoreArr;
+    for (int a = 0; a < 32; ++a)
+        for (int b = a; b < 32; ++b) {
+            if (physics.collisionMatrix.CanCollide(a, b)) continue;
+            toml::array pair;
+            pair.push_back((int64_t)a);
+            pair.push_back((int64_t)b);
+            ignoreArr.push_back(std::move(pair));
+        }
+    if (!ignoreArr.empty()) physicsTbl.insert("ignoreCollisions", std::move(ignoreArr));
 
     toml::array outlineColorArr;
     outlineColorArr.push_back((double)render.outlineColor[0]);

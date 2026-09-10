@@ -19,6 +19,8 @@
 #include <Physics/HingeConstraint.hpp>
 #include <Physics/FixedConstraint.hpp>
 #include <Physics/SliderConstraint.hpp>
+#include <Physics/Layer.hpp>
+#include <cstring>
 #include <functional>
 #include <vector>
 #include <map>
@@ -77,7 +79,40 @@ namespace fbzz::physics
         const std::vector<std::unique_ptr<Constraint>>& GetConstraints() const;
 
         // サブステップ、Volume、制約、衝突検出、衝突解決、イベント分類をこの順で実行する。
+        // layerFilter を渡すとその 1 回だけ使い、渡さなければ SetLayerFilter の値が効く。
         void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
+
+        // レイヤーの組がぶつかるか。設定しなければ全部ぶつかる。
+        //
+        // WHY Step の引数と別に持つか: 衝突行列はプロジェクト設定で、フレームごとに
+        //     変わるものではない。呼び出し側が毎フレーム組み立てて渡す形だと、
+        //     渡し忘れた経路 (エディタのプレビュー等) だけ黙ってフィルタが外れる。
+        //
+        // WHY 変わったときだけ組み直すか: 設定の適用は毎フレーム走る
+        //     (ProjectRuntime::Update)。行列は 1KB あり、std::function に包むと
+        //     その都度ヒープを踏む。中身が同じなら何もしない。
+        void SetCollisionMatrix(const LayerCollisionMatrix& matrix)
+        {
+            if (m_hasCollisionMatrix &&
+                std::memcmp(&m_collisionMatrix, &matrix, sizeof(matrix)) == 0) return;
+            m_collisionMatrix    = matrix;
+            m_hasCollisionMatrix = true;
+            // 値で captures する。this を掴むと World の代入 (ProjectRuntime::ResetPhysics が
+            // `world = World{}` で作り直す) で消えたオブジェクトを指し続ける。
+            const LayerCollisionMatrix copy = matrix;
+            m_defaultLayerFilter = [copy](int a, int b) { return copy.CanCollide(a, b); };
+        }
+
+        // この 2 つのレイヤーがぶつかるか。行列を設定していなければ常に true。
+        //
+        // WHY 問い合わせられるようにするか: «自分の当たりを自分の剛体へ当てない»
+        //     ような形は、行列が正しく組まれていて初めて成立する。設定が外れると
+        //     «押され続けて勝手に動く» という、原因の見えない壊れ方をする。
+        //     組み立てる側が前提を確かめて、駄目なら安全側へ倒せるようにする。
+        [[nodiscard]] bool LayersCollide(int a, int b) const
+        {
+            return !m_hasCollisionMatrix || m_collisionMatrix.CanCollide(a, b);
+        }
 
         void          SetGravity(const math::Vector3& gravity);
         math::Vector3 GetGravity() const { return m_gravity; }
@@ -158,6 +193,10 @@ namespace fbzz::physics
         int m_substeps = 1;
         // BroadPhase 中に使う一時フィルタ。Scene の LayerCollisionMatrix から渡される。
         std::function<bool(int, int)> m_layerFilter;
+        // Step に何も渡されなかったときに使う既定。プロジェクト設定の衝突行列が入る。
+        std::function<bool(int, int)> m_defaultLayerFilter;
+        LayerCollisionMatrix          m_collisionMatrix;
+        bool                          m_hasCollisionMatrix = false;
 
         // 現フレームの Step() に渡す非所有ビュー (EndSceneSync で再構築)
         std::vector<RigidBody*>                 m_bodies;

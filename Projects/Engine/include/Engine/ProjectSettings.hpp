@@ -12,6 +12,7 @@
 #include <Engine/Core/Cursor.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/RendererBackend.hpp>
+#include <Physics/Layer.hpp>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,18 @@ struct PhysicsSettings {
     int           hz       = 60;
     int           substeps = 1;
     math::Vector3 gravity  = { 0.0f, -9.81f, 0.0f };
+
+    /// レイヤー同士がぶつかるか。既定は «全部ぶつかる»。
+    ///
+    /// WHY 要るか: ボーンに生やした当たり (BossHitboxRigComponent) のように、
+    ///     «自分の親の剛体とは当たってほしくないが、プレイヤーとは当たってほしい»
+    ///     形が実際にある。これが無いと、片方を諦めるか、当たり判定を物理の外で
+    ///     手書きするしかない。BroadPhase 側の受け口 (World::Step の layerFilter) は
+    ///     元からあり、渡す値の置き場だけが無かった。
+    ///
+    /// WHY 対称行列で持つか: «A は B を無視するが B は A を見る» は解けない要求で
+    ///     (衝突の解決は 1 組に 1 回しか起きない)、片側だけ書けると必ず食い違う。
+    LayerCollisionMatrix collisionMatrix;
 };
 
 struct AudioSettings {

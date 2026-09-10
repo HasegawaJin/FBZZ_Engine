@@ -671,7 +671,7 @@ namespace fbzz::physics
 
     void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
-        m_layerFilter = std::move(layerFilter);
+        m_layerFilter = layerFilter ? std::move(layerFilter) : m_defaultLayerFilter;
         // WHY: Sleep 済みのシーンでは接触集合が変わらないため、毎 substep の
         //      UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない。
         //      Terrain/TriangleMesh がある resting scene ではここが World::Step の主な CPU 負荷になる。

@@ -46,6 +46,20 @@ struct ColliderComponent {
     bool isTrigger = false;
     bool enabled = true;
 
+    // このコライダーを «祖先の剛体» へ属させる。既定 false = 自分の GameObject に
+    // RigidBody が無ければ静的コライダー。
+    //
+    // WHY 要るか: 骨に生やした当たり (BossHitboxRigComponent) のように、剛体は親に 1 つで
+    //     形だけが子に何個もぶら下がる作りがある。既定のままだと子の当たりは «世界に
+    //     固定された静的コライダー» になり、**親の剛体を押す。**ボーンは毎フレーム
+    //     瞬間移動するので、その押しは «勝手に動く / 吹き飛ぶ» という形で出る。
+    //     祖先の剛体へ属させれば、同じ剛体のコライダー同士は衝突しなくなり
+    //     (PhysicsSolver の同一ボディ除外)、自己衝突が原理的に起きない。
+    //
+    // WHY 既定を false にするか: 既存のシーンで «親が剛体・子が静的コライダー» を
+    //     意図して組んでいる場所の意味を変えないため。要る所だけが立てる。
+    bool attachToParentBody = false;
+
     ColliderComponent() = default;
     ~ColliderComponent() = default;
     // WHY: collider は abstract 型のため clone 不可。
@@ -59,6 +73,7 @@ struct ColliderComponent {
         , center(o.center)
         , isTrigger(o.isTrigger)
         , enabled(o.enabled)
+        , attachToParentBody(o.attachToParentBody)
     {}
     ColliderComponent& operator=(const ColliderComponent& o)
     {
@@ -70,6 +85,7 @@ struct ColliderComponent {
             center              = o.center;
             isTrigger           = o.isTrigger;
             enabled             = o.enabled;
+            attachToParentBody  = o.attachToParentBody;
         }
         return *this;
     }
@@ -82,6 +98,7 @@ struct ColliderComponent {
         r.Field("enabled", enabled);
         r.Field("center", center);
         r.Field("isTrigger", isTrigger);
+        r.Field("attachToParentBody", attachToParentBody);
         r.Field("physicsMaterial", physicsMaterialPath);
         // WHY 共有アセットを使っていてもインライン値を保存し続けるか:
         //     .physmat が見つからない (削除された・別プロジェクトへ持ち出した) 場合に

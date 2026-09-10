@@ -744,6 +744,15 @@ math::Vector3 ScriptPhysicsProxy::GetWorldGravity() const
     return Script::s_physicsWorld->GetGravity();
 }
 
+bool ScriptPhysicsProxy::LayersCollide(int a, int b) const
+{
+    // World が無い (編集中) ときは «ぶつかる» を返す。無いことを «切れている» と
+    // 読ませると、Play していない間だけ組み立てが安全側へ倒れて、
+    // エディタで見ている当たりと Play 中の当たりが別物になる。
+    if (!Script::s_physicsWorld) return true;
+    return Script::s_physicsWorld->LayersCollide(a, b);
+}
+
 void ScriptPhysicsProxy::SetVelocity(const math::Vector3& v) const
 {
     if (auto* rb = SelfRigidBody(script)) rb->SetVelocity(v);
@@ -2393,7 +2402,7 @@ void ScriptParticleProxy::Clear() const
 
 void ScriptParticleProxy::SetGravity(const math::Vector3& gravity) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.gravity = gravity;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.SetGravityAcceleration(gravity);
 }
 
 void ScriptParticleProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
@@ -2577,7 +2586,8 @@ void ScriptParticleProxy::SetSubEmitters(std::string_view birthEmitter,
 
 void ScriptParticleProxy::SetVelocityDamping(float damping) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->settings.velocityDamping = (std::max)(damping, 0.0f);
+    if (auto* p = SelfComponent<ParticleEmitter>(script))
+        p->settings.EnsureLocalForce(ParticleForceFieldType::Drag).strength = (std::max)(damping, 0.0f);
 }
 
 void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) const
@@ -2591,9 +2601,11 @@ void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) con
 void ScriptParticleProxy::SetNoise(float strength, float frequency, float speed) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        p->settings.noiseStrength  = (std::max)(strength, 0.0f);
-        p->settings.noiseFrequency = (std::max)(frequency, 0.0001f);
-        p->settings.noiseSpeed     = speed;
+        ParticleForceFieldSettings& turbulence =
+            p->settings.EnsureLocalForce(ParticleForceFieldType::Turbulence);
+        turbulence.strength       = (std::max)(strength, 0.0f);
+        turbulence.noiseFrequency = (std::max)(frequency, 0.0001f);
+        turbulence.noiseSpeed     = speed;
     }
 }
 
@@ -4083,13 +4095,11 @@ void ScriptAnimatorProxy::Play(GameObject* go, std::string_view stateName) const
 
 void ScriptAnimatorProxy::SetLayerWeight(std::string_view layerName, float weight) const
 {
-    if (auto* animator = SelfComponent<AnimatorComponent>(script)) {
-        for (auto& layer : animator->layers)
-            if (layer.name == layerName) {
-                layer.weight = std::clamp(weight, 0.0f, MAX_LAYER_WEIGHT);
-                return;
-            }
-    }
+    // 名前引きと診断は AnimatorComponent 側に集約してある (このファイルの方針どおり
+    // «Script から自 GameObject の Animator を引くだけ» に留める)。以前ここだけ
+    // 探索を書き写していたため、レイヤー名を間違えたときの報告が漏れていた。
+    if (auto* animator = SelfComponent<AnimatorComponent>(script))
+        animator->SetLayerWeight(layerName, weight);
 }
 
 float ScriptAnimatorProxy::GetLayerWeight(std::string_view layerName) const
@@ -4132,7 +4142,7 @@ void ScriptAnimatorProxy::SetLayerMask(
     auto* animator = SelfComponent<AnimatorComponent>(script);
     if (!animator) return;
     AnimationLayer* layer = animator->FindLayer(layerName);
-    if (!layer) return;
+    if (!layer) { ReportUnknownAnimationLayer("SetLayerMask", layerName, animator->layers); return; }
     layer->mask.path = std::string(maskPath);
     // ロード済みキャッシュを落とし、次フレームの AnimatorSystem に読み直させる。
     layer->mask.Invalidate();

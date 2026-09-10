@@ -17,6 +17,7 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
 {
     world.SetGravity(settings.physics.gravity);
     world.SetSubsteps(settings.physics.substeps);
+    world.SetCollisionMatrix(settings.physics.collisionMatrix);
 }
 
 void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx)
