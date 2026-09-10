@@ -157,6 +157,27 @@ public:
     /// 刀の入力まで止まっているか。
     [[nodiscard]] bool IsInputLocked() const { return m_controller.IsInputLocked(); }
 
+    // ── 撃破された ──────────────────────────────────────────────────────────
+    //
+    // WHY ラグドールで倒すか (2026-09-11): 撃破は `onDeath` → GameFlow の
+    //   「音を鳴らして endDelay を待つ」だけで、**体は最後に再生していたクリップの
+    //   まま立っていた。**「SYSTEM DOWN」の文字が出ているのに本人は無傷に見えるので、
+    //   負けたことが画面の中で一度も起きていない。
+    //
+    // WHY 死亡クリップを焼かずに物理で倒すか: 倒れる向きは «何に殺されたか» で毎回
+    //   違う (踏みつけは真上から、突進は正面から、穴は真下)。クリップ 1 本だと
+    //   どの死に方でも同じ向きへ倒れ、**最後の一撃と倒れ方が繋がらない。**
+    //   ラグドールなら殺した一撃の向きがそのまま倒れる向きになる。
+    FBZZ_GROUP("撃破された")
+    FBZZ_FIELD(bool, deathRagdoll, true, "ラグドールで倒れる")
+    FBZZ_TOOLTIP("撃破されたら脱力して崩れる。切ると最後のクリップのまま立っている")
+    FBZZ_FIELD_RANGE(float, deathPush, 4.5f, "吹き飛び [m/s]", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("殺した一撃から離れる向きへの速さ。0 でその場に崩れ落ちる")
+    FBZZ_FIELD_RANGE(float, deathLift, 2.2f, "浮き [m/s]", 0.0f, 20.0f)
+    FBZZ_TOOLTIP("上へ跳ねる速さ。少し入れないと «崩れた» ではなく «沈んだ» に見える")
+    FBZZ_FIELD_RANGE(float, deathBlendIn, 0.06f, "脱力までの時間 [s]", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("クリップから物理へ寄り切るまで。長いと «力が抜ける» が緩慢になる")
+
 private:
     // 内部 Script は通常の ScriptSystem から呼ばれないため、親と同じ実行コンテキストを渡す。
     void BindModules();
@@ -171,6 +192,9 @@ private:
     void OnDamaged(const fbzz::math::Vector3* fromWorld);
     /// 土壇場 (残り HP が Last Stand 以下) を画面とボスの崩しへ申告する。
     void DriveLastStand();
+    /// 撃破された。今の姿勢を捕獲して崩れ落ちる。1 回きり。
+    /// @param fromWorld 殺した一撃の出どころ。無ければ後ろへ倒れる。
+    void BeginDeathRagdoll(const fbzz::math::Vector3* fromWorld);
     [[nodiscard]] bool IsLastStand() const
     { return tuning && tuning->lastStandHealth > 0 && m_health.IsAlive()
           && m_health.Current() <= tuning->lastStandHealth; }
@@ -179,6 +203,8 @@ private:
     int m_lastFluxDodge = 0;
     /// 前フレームに申告した土壇場。変わったフレームだけボスを引き直す。
     bool m_lastStandSent = false;
+    /// 崩れ落ちる処理を通したか。撃破は «状態» として毎フレーム来るので、出来事は 1 度だけ。
+    bool m_deathRagdollDone = false;
 
     PlayerControllerComponent m_controller;
     // 抜く / 収める はコントローラーから独立させる。入力の受け付け条件を触っても
@@ -306,6 +332,31 @@ inline void PlayerComponent::OnDamaged(const fbzz::math::Vector3* fromWorld)
     // 土壇場に入った瞬間は同じフレームで申告する。次の OnUpdate を待つと、
     // 落ちた HP の赤と鼓動が 1 フレームずれて «別々の出来事» に見える。
     DriveLastStand();
+
+    // 撃破もこのフレームで返す。onDeath (GameFlow) は音と幕を出すだけで、
+    // 体をどうするかは持っていない。
+    if (!m_health.IsAlive()) BeginDeathRagdoll(fromWorld);
+}
+
+inline void PlayerComponent::BeginDeathRagdoll(const fbzz::math::Vector3* fromWorld)
+{
+    if (!deathRagdoll || m_deathRagdollDone) return;
+    m_deathRagdollDone = true;
+
+    // 根を空へ戻して全身を落とす。部位だけ落とす構成 (壊れた脚) が前に走っていても、
+    // ここで «骨格の根 1 本» へ畳み直される (ScriptRagdollProxy::SetRoots の約束)。
+    ragdoll.SetRoots({}, 0);
+    ragdoll.SetBlend((std::max)(deathBlendIn, 0.0f), 0.2f);
+    // holdSeconds 0 ＝ 起こさない。撃破からリザルトまで倒れたままでいてほしい。
+    ragdoll.Begin(0.0f, 1.0f, 1.0f);
+
+    // 倒れる向きは «殺した一撃から離れる» 側。出どころの無い経路 (落下・毒) では
+    // 後ろへ倒す ─ 前へ倒れると、最後に見ていた方へ踏み出したように見える。
+    fbzz::math::Vector3 away = fromWorld ? (transform.worldPosition - *fromWorld)
+                                         : -(transform.worldRotation * fbzz::math::Vector3::FORWARD);
+    away.y = 0.0f;
+    ragdoll.Push(away.NormalizedOr(fbzz::math::Vector3::FORWARD) * (std::max)(deathPush, 0.0f) +
+                 fbzz::math::Vector3::UP * (std::max)(deathLift, 0.0f));
 }
 
 inline void PlayerComponent::DriveLastStand()
@@ -383,8 +434,9 @@ inline void PlayerComponent::OnPerfectDodge(const fbzz::math::Vector3* fromWorld
 inline void PlayerComponent::OnStart()
 {
     BindModules();
-    m_lastFluxDodge = 0;
-    m_lastStandSent = false;
+    m_lastFluxDodge    = 0;
+    m_lastStandSent    = false;
+    m_deathRagdollDone = false;
     if (!HasRequiredAssets()) {
         enabled = false;
         return;
@@ -434,6 +486,13 @@ inline void PlayerComponent::OnUpdate()
         if (module.enabled)
             module.ExecuteCallback(&Script::OnUpdate, module.GetTypeName());
     };
+
+    // 崩れ落ちている間は操作を止め続ける。
+    //
+    // WHY 毎フレーム言い直すか: RequestSuspend は «1 フレームぶんの要求» で、
+    //     押し続けている間だけ効く。1 度きりにすると、次のフレームには
+    //     コントローラーが重力と入力を当て直し、**倒れている体の下で足が走る。**
+    if (m_deathRagdollDone) m_controller.RequestSuspend(true);
 
     // 剣 → 纏い → コントローラー、の順で回す。
     //

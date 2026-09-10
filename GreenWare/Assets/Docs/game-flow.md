@@ -62,9 +62,24 @@ Title ──> StageSelect ──> Stage_NN ──> Result ──┬─> 次の�
 | 出来事 | 実装 |
 |---|---|
 | 開始 | `GameFlowComponent::OnStart`。計測開始（`debugElapsed`） |
-| 目的の 1 行 | `HUD_Objective` に `PARRY [Q] > BREAK > EXECUTE A LEG`。**転倒中だけ** `EXECUTE! [Q] NEAR A LEG` |
+| 目的の 1 行 | `HUD_Objective` に `PARRY > BREAK > EXECUTE`。**転倒中だけ** `IT'S DOWN!  EXECUTE` |
 | 勝ち | `IBoss` が全部の部位を失った → `AREA CLEAR` → `bossEndDelay`（5 秒）後に Result |
-| 負け | プレイヤーの HP が 0 → `SYSTEM DOWN` → `endDelay`（0.8 秒）後に Result |
+| 負け | プレイヤーの HP が 0 → **その場でラグドールになって崩れる** → `SYSTEM DOWN` → `endDelay`（0.8 秒）後に Result |
+
+> **WHY 負けだけ体が倒れなかったか（2026-09-11 に修正）:** `onDeath` は音を鳴らして
+> 幕を出すだけで、**体は最後に再生していたクリップのまま立っていた。**
+> 「SYSTEM DOWN」の文字が出ているのに本人は無傷に見えるので、
+> 負けたことが画面の中で一度も起きていなかった。
+> 今は `PlayerComponent::BeginDeathRagdoll` が全身を脱力させ、
+> **殺した一撃から離れる向きへ倒れる**（`deathPush` / `deathLift`）。
+
+> **WHY 死亡クリップを焼かずに物理で倒すか:** 倒れる向きは「何に殺されたか」で毎回
+> 違う（踏みつけは真上から、突進は正面から、穴は真下）。クリップ 1 本だとどの死に方でも
+> 同じ向きへ倒れ、**最後の一撃と倒れ方が繋がらない。**
+
+> **WHY 崩れている間ずっと拘束を言い直すか:** `RequestSuspend` は 1 フレームぶんの
+> 要求。1 度きりにすると次のフレームからコントローラーが重力と入力を当て直し、
+> **倒れている体の下で足が走る。**
 
 ⚠ **ボスは `IBoss::Bind` で名乗る。**新しいボスを足したら必ず書くこと。
 横断インターフェースは型で引けない（`scene.GetScript<IBoss>()` は必ず空を返す）ので、

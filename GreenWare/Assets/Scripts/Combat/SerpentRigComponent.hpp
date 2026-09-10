@@ -17,6 +17,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Combat/BossBreakComponent.hpp>
 #include <Scripts/Combat/BossPartComponent.hpp>
 #include <Scripts/Combat/SerpentBodyComponent.hpp>
 #include <Scripts/Combat/SerpentBones.hpp>
@@ -56,6 +57,22 @@ public:
     FBZZ_FIELD_RANGE(float, aimOutlineWidthScale, 0.55f, "狙い線の細さ", 0.1f, 1.0f)
     FBZZ_TOOLTIP("上の 幅 に対する比。斬られた合図より必ず細くする")
 
+    // «今は斬る番» を胴そのものが言う。檻 (SerpentAiComponent の 檻の中の斬撃倍率) が
+    // 立っている間だけ、地上に出ている節を全部縁取る。
+    //
+    // WHY 要るか: 檻の 7 秒で斬撃の崩しが跳ね上がることは、**数字を見ない限り
+    //     画面のどこにも出ない。**答えが用意されていても、あることに気付けなければ
+    //     «7 秒待たされている» という体験は 1 ミリも変わらない。
+    //
+    // WHY 崩しゲージ側の倍率を直に読むか: 檻かどうかを AI へ聞くと
+    //     SerpentRig → SerpentAi の include が環になる (あちらはこちらを include して
+    //     いる)。**«斬撃が濃いか» という 1 つの事実**を持っているのはゲージなので、
+    //     光らせる条件と実際に得をする条件が原理的にずれない。
+    FBZZ_FIELD(bool, outlineWhenSlashPays, true, "斬る番を縁取る")
+    FBZZ_FIELD_COLOR(feastOutlineColor, (Vector4{ 1.0f, 0.42f, 0.12f, 1.0f }), "斬る番の色")
+    FBZZ_TOOLTIP("檻の間、地上の胴を囲う色。斬られた合図 (白) とも狙い (青) とも"
+                 "違う色にする ─ 意味が «そこを斬れ» で 3 つ目だから")
+
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugOutlined, 0, "輪郭を出す")
 
@@ -79,6 +96,10 @@ inline void SerpentRigComponent::OnUpdate()
     auto* spine = Spine();
     if (!rig || !body) return;
 
+    // 斬撃が濃くなっている盤面か (檻)。持っているのはゲージ 1 か所だけ。
+    const auto* brk  = scene.GetScript<BossBreakComponent>();
+    const bool  pays = outlineWhenSlashPays && brk && brk->SlashScale() > 1.001f;
+
     for (int i = 1; i <= serpent::kSegmentCount; ++i) {
         GameObject* hitbox = rig->SegmentHitbox(i);
         if (!hitbox) continue;
@@ -86,18 +107,22 @@ inline void SerpentRigComponent::OnUpdate()
         if (!part) continue;
         const float flash = part->DamageFlash();
         const bool  aimed = outlineAimedSegment && part->AimHighlight() > 0.0f;
-        if (flash <= 0.0f && !aimed) continue;
+        if (flash <= 0.0f && !aimed && !pays) continue;
         if (!body->IsAlive(i)) continue;
         if (spine && !spine->IsExposed(i)) continue;
 
         // マスクの意味は読む側 (Outline.hlsl) との取り決め: RGB = 色 / A = 太さ。
         // 斬られた合図が出ているあいだは必ずそちらを採る ─ 入った合図の途中で
         // 狙いの色へ落ちると、当たったことが薄まる。
+        // 優先順は «入った» > «狙っている» > «斬る番»。後ろの 2 つは «これから» の話で、
+        // 入った合図の途中でそちらへ落ちると、当たったことが薄まる。
         const float   k   = Clamp01(flash) * Clamp01(damageFlashStrength);
         const bool    hit = flash > 0.0f;
         const Vector4 color = hit
             ? Vector4{ damageFlashColor.x, damageFlashColor.y, damageFlashColor.z, 1.0f }
-            : Vector4{ aimOutlineColor.x, aimOutlineColor.y, aimOutlineColor.z, 1.0f };
+            : aimed ? Vector4{ aimOutlineColor.x, aimOutlineColor.y, aimOutlineColor.z, 1.0f }
+                    : Vector4{ feastOutlineColor.x, feastOutlineColor.y,
+                               feastOutlineColor.z, 1.0f };
         const float   width = hit
             ? Clamp01(Lerp(Clamp01(outlineWidth), 1.0f, k))
             : Clamp01(Clamp01(outlineWidth) * Clamp01(aimOutlineWidthScale));

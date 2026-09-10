@@ -285,7 +285,7 @@ HUD を足さずに状態が読める、というのが本作の方針（[企画
 
 **脚の欠損は残す。**ただし勝利条件ではなく**難度調整**になる ──
 脚が減れば胴が下がり、**コアに届きやすくなる**。
-とどめ・破片・2 本で砲台化（`BossRigComponent` / `BossLegDebrisComponent`）は 1 行も捨てない。
+とどめ・破片・2 本で砲台化（`BossRigComponent` / `BossPartDebrisComponent`）は 1 行も捨てない。
 
 > **WHY 突進の激突を «即転倒» のまま残さないか:** 現行は
 > `BossAiComponent::OnParried` の `ChargeRun` が直接 `BeginCrash()` → `BeginTopple()` を呼ぶ。
