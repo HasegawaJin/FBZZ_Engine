@@ -22,10 +22,10 @@ namespace fbzz::scene {
 
 std::string_view NavMeshDebugPass::Name() const { return "NavMeshDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> NavMeshDebugPass::DeclareAccesses(const RenderPassContext&) const
+void NavMeshDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
 namespace {
@@ -297,10 +297,13 @@ void DrawVoxelGrid(RenderPassContext& ctx, const NavMeshBakeDebugGrid& grid,
 
 } // namespace
 
-void NavMeshDebugPass::Execute(RenderPassContext& ctx)
+bool NavMeshDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showNavMesh && !ctx.settings.showNavSensors) return;
+    return ctx.settings.showNavMesh || ctx.settings.showNavSensors;
+}
 
+void NavMeshDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
 
     if (ctx.settings.showNavMesh) {

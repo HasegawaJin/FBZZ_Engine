@@ -647,18 +647,19 @@ void WaterSelectionMaskSystem(RenderPassContext& ctx)
 
 std::string_view WaterRenderPass::Name() const { return "WaterForward"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> WaterRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+void WaterRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    return {
-        { "HDR",                renderer::RenderGraph::ResourceUsage::ReadWrite },
-        { "ShadowMap",          renderer::RenderGraph::ResourceUsage::Read },
-        { "PunctualShadowMap",  renderer::RenderGraph::ResourceUsage::Read },
-        { "LightCookieAtlas",   renderer::RenderGraph::ResourceUsage::Read }
-    };
+    // 水面は平行光の影しか読まない (t9)。点光源の影と Cookie は束縛していないので
+    // 申告しない ── 申告だけ残すと LightCookie パスが水面のためだけに生き続ける。
+    //
+    // 屈折用のシーンカラー / 深度のコピーはこのパスの中で作って読み切る作業用で、
+    // 他のパスからは見えない。元の HDR は下の ReadWrite で押さえてある。
+    // SetAutoTarget は呼ばない。屈折用のコピーを作る間に束縛を 3 回切り替えるので、
+    // 描き先は Execute の中で自分で張る。
+    builder.ReadWrite("HDR").Read("ShadowMap");
 }
 
-void WaterRenderPass::Execute(RenderPassContext& ctx)
+void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     Scene& scene = ctx.scene;
     renderer::IRenderer& renderer = ctx.renderer;
@@ -666,7 +667,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     const renderer::Camera& camera = ctx.camera;
     const renderer::RenderSettings* settings = &ctx.settings;
     const auto lightCB = ctx.handles.lightCB;
-    const auto shadowDepthTexture = resources.GetDepthTexture(ctx.handles.shadowMapRT);
+    const auto shadowDepthTexture = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     const auto shadowCB = ctx.handles.shadowCB;
     const float elapsedTime = Time::time;
 
@@ -718,8 +719,6 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     //      binding hdrRT as the output RT, since DX11 prohibits simultaneous read/write.
     static auto copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
     static auto depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    static renderer::SizedRenderTarget s_sceneColorRT;
-    static renderer::SizedRenderTarget s_sceneDepthRT;
 
     if (s_resetVersion != resources.GetResetVersion()) {
         s_resetVersion    = resources.GetResetVersion();
@@ -799,35 +798,40 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         return;
     }
 
-    (void)s_sceneColorRT.Ensure(resources, ctx.width, ctx.height, 1);
-    (void)s_sceneDepthRT.Ensure(resources, ctx.width, ctx.height, 0);
-    renderer.SetRenderTarget(s_sceneColorRT, resources);
+    // 作業 RT はビューが持つ (RenderPassHandles::waterSceneColorRT の WHY)。
+    if (!ctx.handles.waterSceneColorRT || !ctx.handles.waterSceneDepthRT) return;
+    renderer::SizedRenderTarget& sceneColorRT = *ctx.handles.waterSceneColorRT;
+    renderer::SizedRenderTarget& sceneDepthRT = *ctx.handles.waterSceneDepthRT;
+
+    (void)sceneColorRT.Ensure(resources, ctx.width, ctx.height, 1);
+    (void)sceneDepthRT.Ensure(resources, ctx.width, ctx.height, 0);
+    renderer.SetRenderTarget(sceneColorRT, resources);
     if (copyColorShader.IsValid()) {
         renderer::DrawCall copyDC;
         copyDC.shader = copyColorShader;
         copyDC.pipelineState = ctx.handles.postprocPSO;
         copyDC.vertexCount = 3;
-        copyDC.textures[5] = resources.GetColorTexture(ctx.handles.hdrRT, 0);
+        copyDC.textures[5] = resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
         renderer.Submit(copyDC, resources);
     }
-    const auto sceneColor = resources.GetColorTexture(s_sceneColorRT, 0);
+    const auto sceneColor = resources.GetColorTexture(sceneColorRT, 0);
 
     // WHAT: HDR の depth を Water 専用の深度 RT へコピーし、PS ではその SRV を読む。
     // WHY: hdrRT を RTV/DSV として Water 描画に使いながら同じ depth を SRV(t5) で読むと
     //      DX11 の read/write 競合で SRV が解除され、背景判定・水深・泡が破綻する。
-    renderer.SetRenderTarget(s_sceneDepthRT, resources);
+    renderer.SetRenderTarget(sceneDepthRT, resources);
     renderer.ClearDepth();
     if (depthCopyShader.IsValid()) {
         renderer::DrawCall depthDC;
         depthDC.shader = depthCopyShader;
         depthDC.pipelineState = ctx.handles.defaultPSO;
         depthDC.vertexCount = 3;
-        depthDC.textures[7] = resources.GetDepthTexture(ctx.handles.hdrRT);
+        depthDC.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
         renderer.Submit(depthDC, resources);
     }
-    const auto sceneDepth = resources.GetDepthTexture(s_sceneDepthRT);
+    const auto sceneDepth = resources.GetDepthTexture(sceneDepthRT);
 
-    renderer.SetRenderTarget(ctx.handles.hdrRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     // スプラッシュ GO 生成（前フレームのキューを消費）
     for (const SplashEvent& ev : s_pendingSplashes) {

@@ -111,6 +111,7 @@ void DX12Renderer::BeginFrame()
         m_computeBatchActive = false;
         m_computeBatchWrittenResources.clear();
         m_currentRenderTarget = nullptr;
+        m_currentRenderTargetHandle = {};
         m_currentCubeRtv = {};
         // WHAT: shader-visible SRVリングはフレーム単位で巻き戻るため、前フレームのGPUテーブル
         //       キャッシュは無効。次Submitで必ず再割当・再コピーさせる。
@@ -156,8 +157,10 @@ void DX12Renderer::Clear(const math::Vector4& color)
         //      RenderSystem は GBuffer / HDR パス開始時に Clear(色) しか呼ばない。
         //      DX12 側で深度を残すと初期値 0 のまま LESS 比較が全滅し、
         //      深度テストを使う全ジオメトリが 1 ピクセルも描画されない。
-        m_context.GetCommandList()->ClearDepthStencilView(
-            m_currentRenderTarget->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        if (m_currentRenderTarget->HasDepth()) {
+            m_context.GetCommandList()->ClearDepthStencilView(
+                m_currentRenderTarget->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        }
     } else {
         m_context.GetCommandList()->ClearRenderTargetView(m_context.GetCurrentRtv(), clearColor, 0, nullptr);
         // バックバッファも DX11 と同じく色クリア時に深度を 1.0 へ戻す。
@@ -170,6 +173,7 @@ void DX12Renderer::ClearDepth(float depth)
 {
     if (m_context.IsFrameOpen()) {
         if (m_currentRenderTarget && m_currentRenderTarget->IsCubemap()) return;
+        if (m_currentRenderTarget && !m_currentRenderTarget->HasDepth()) return;
         const auto dsv = m_currentRenderTarget ? m_currentRenderTarget->GetDsv() : m_context.GetDsv();
         m_context.GetCommandList()->ClearDepthStencilView(
             dsv, D3D12_CLEAR_FLAG_DEPTH, depth, 0, 0, nullptr);
@@ -606,15 +610,24 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
 {
     if (!m_context.IsFrameOpen()) return;
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
-    if (m_currentRenderTarget) {
-        for (uint32_t index = 0; index < m_currentRenderTarget->GetColorCount(); ++index)
-            m_stateTracker.QueueTransition(m_currentRenderTarget->GetColorResource(index),
+    // 前の RT はハンドルから引き直す。生ポインタのまま触ると、束縛したあとに解放された
+    // RT (リサイズで作り直された中間 RT 等) を «読める状態へ戻す» つもりで破棄済みの
+    // オブジェクトから番地を引くことになる。解放済みなら Get が nullptr を返し、
+    // 戻し忘れたぶんの遷移は次にそのリソースを束縛する側が積み直す。
+    auto* previousBase = resources.Get(m_currentRenderTargetHandle);
+    auto* previous = previousBase ? static_cast<DX12RenderTarget*>(previousBase) : nullptr;
+    if (previous) {
+        for (uint32_t index = 0; index < previous->GetColorCount(); ++index)
+            m_stateTracker.QueueTransition(previous->GetColorResource(index),
                                            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        m_stateTracker.QueueTransition(m_currentRenderTarget->GetDepthResource(),
-                                       D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        if (previous->HasDepth()) {
+            m_stateTracker.QueueTransition(previous->GetDepthResource(),
+                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        }
     }
     auto* targetBase = resources.Get(handle);
     m_currentRenderTarget = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
+    m_currentRenderTargetHandle = targetBase ? handle : ResourceHandle<RenderTargetTag>{};
     m_currentCubeRtv = {};
     if (!m_currentRenderTarget) {
         m_stateTracker.FlushBarriers(commands);
@@ -635,12 +648,16 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
                                        D3D12_RESOURCE_STATE_RENDER_TARGET);
         rtvs[index] = m_currentRenderTarget->GetRtv(index);
     }
-    m_stateTracker.QueueTransition(m_currentRenderTarget->GetDepthResource(),
-                                   D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    const bool hasDepth = m_currentRenderTarget->HasDepth();
+    if (hasDepth) {
+        m_stateTracker.QueueTransition(m_currentRenderTarget->GetDepthResource(),
+                                       D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    }
     // WHAT: 旧RTの解放遷移と新RTのバインド遷移をまとめて1回のResourceBarrierで発行する。
     m_stateTracker.FlushBarriers(commands);
     const auto dsv = m_currentRenderTarget->GetDsv();
-    commands->OMSetRenderTargets(m_currentRenderTarget->GetColorCount(), rtvs.data(), FALSE, &dsv);
+    commands->OMSetRenderTargets(m_currentRenderTarget->GetColorCount(), rtvs.data(), FALSE,
+                                 hasDepth ? &dsv : nullptr);
     D3D12_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(m_currentRenderTarget->GetWidth()),
                             static_cast<float>(m_currentRenderTarget->GetHeight()), 0.0f, 1.0f};
     D3D12_RECT scissor{0, 0, static_cast<LONG>(m_currentRenderTarget->GetWidth()),
@@ -675,6 +692,7 @@ void DX12Renderer::SetRenderTargetFace(
     auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
     if (!target || !target->IsCubemap() || face >= 6 || mip >= target->GetMipCount()) return;
     m_currentRenderTarget = target;
+    m_currentRenderTargetHandle = handle;
     m_currentCubeRtv = target->GetFaceRtv(face, mip);
     m_stateTracker.Transition(m_context.GetCommandList(), target->GetCubeResource(),
                               D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -834,10 +852,10 @@ std::unique_ptr<IPipelineState> DX12Renderer::CreateNativePipelineState(const Pi
     return std::make_unique<DX12PipelineState>(desc);
 }
 std::unique_ptr<IRenderTarget> DX12Renderer::CreateNativeRenderTarget(
-    uint32_t width, uint32_t height, uint32_t colorCount)
+    uint32_t width, uint32_t height, const RenderTargetDesc& desc)
 {
     auto target = std::make_unique<DX12RenderTarget>();
-    if (!target->Init(&m_context, &m_stateTracker, width, height, colorCount))
+    if (!target->Init(&m_context, &m_stateTracker, width, height, desc))
         return nullptr;
     return target;
 }

@@ -95,21 +95,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     const auto& rs = ctx.settings;
 
     const auto& pp = rs.postProcess;
-    bool hasCustomPostProcess = false;
-    for (const auto shader : h.customPostProcessShaders) {
-        if (shader.IsValid()) {
-            hasCustomPostProcess = true;
-            break;
-        }
-    }
-    // WHY: TAA は Composite の出力 (ldrRT) を t5 として読む。
-    //      taa.enabled の場合も ldrRT に書かないと TAA が stale なバッファを読んで黒になる。
-    //      RenderSystem 側の needsLdrIntermediate と必ず一致させること。
-    const bool needsLdrIntermediate =
-        pp.fxaaEnabled || ctx.selectionOutlineEnabled ||
-        (hasCustomPostProcess && h.customPostProcessRT[0].IsValid()) ||
-        rs.IsTaaActive();
-    r.SetRenderTarget(needsLdrIntermediate ? h.ldrRT : ctx.outputRT, resources);
+    // 書き先はパイプラインを組んだ側が決める (ctx.compositeOutputRT の WHY)。
+    r.SetRenderTarget(ctx.compositeOutputRT, resources);
 
     PostProcCB postData{};
     postData.texelSize[0] = 1.0f / static_cast<float>(ctx.width);
@@ -210,14 +197,14 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     //      Composite はそれを HDR ソースとして読めばよい。Composite.hlsl の変更は不要。
     compositeDC.textures[5] = (rs.motionBlur.enabled && h.motionBlurResult.IsValid())
         ? h.motionBlurResult
-        : resources.GetColorTexture(h.hdrRT, 0);
-    compositeDC.textures[7] = resources.GetDepthTexture(h.hdrRT);
+        : resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
+    compositeDC.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
     // t10 / t19 / t20 は RenderGraph の外にある永続テクスチャなので、書き手のパスが
     // 走らなかったフレームは前の中身が残る。«設定が有効» ではなく «今フレーム書かれた» で
     // 束縛を決める。未束縛の SRV は 0 を返すので、シェーダー側は分岐なしで素通しになる。
     const bool bloomWritten = pp.bloom.enabled
         && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid();
-    compositeDC.textures[10] = bloomWritten ? h.bloomFull : renderer::ResourceHandle<renderer::TextureTag>{};
+    compositeDC.textures[10] = bloomWritten ? ctx.Res().Texture("Bloom") : renderer::ResourceHandle<renderer::TextureTag>{};
     // SSR 反射結果 (t19) — Composite.hlsl が ssrIntensity に基づいてブレンドする
     if (ctx.ssrPassActive && h.ssrResult.IsValid())
         compositeDC.textures[19] = h.ssrResult;
@@ -228,7 +215,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         compositeDC.textures[22] = h.proceduralColorLut;
     r.Submit(compositeDC, resources);
 
-    h.postProcessInput = resources.GetColorTexture(h.ldrRT, 0);
+    h.postProcessInput = resources.GetColorTexture(ctx.Res().Target("LDR"), 0);
     h.fxaaInput = h.postProcessInput;
 }
 

@@ -176,7 +176,7 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
         depthDC.shader = depthCopyShader;
         depthDC.pipelineState = ctx.handles.defaultPSO;
         depthDC.vertexCount = 3;
-        depthDC.textures[7] = ctx.resources.GetDepthTexture(ctx.handles.hdrRT);
+        depthDC.textures[7] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
         ctx.renderer.Submit(depthDC, ctx.resources);
     }
 
@@ -207,7 +207,7 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
 
     // 2) フル解像度 HDR へアップスケールし ALPHA_BLEND 合成する。
     //    フル解像度時(kCloudResShift=0)は 1:1 サンプルで無損失、ハーフ時はバイリニア拡大。
-    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
 
     renderer::DrawCall up;
     up.shader = ctx.handles.cloudUpscaleShader;

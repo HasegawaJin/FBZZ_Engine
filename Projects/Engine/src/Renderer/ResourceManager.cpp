@@ -284,7 +284,15 @@ ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const Pipe
 ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount,
                                                                     Where where)
 {
-    auto rt = m_renderer.CreateNativeRenderTarget(width, height, colorCount);
+    return CreateRenderTarget(width, height, RenderTargetDesc{ colorCount, Format::RGBA16F, true }, where);
+}
+
+ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t width, uint32_t height,
+                                                                    const RenderTargetDesc& desc,
+                                                                    Where where)
+{
+    const uint32_t colorCount = desc.colorCount;
+    auto rt = m_renderer.CreateNativeRenderTarget(width, height, desc);
     if (!rt) return ResourceHandle<RenderTargetTag>::Null();
 
     std::vector<ResourceHandle<TextureTag>> colors;
@@ -299,14 +307,18 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
                                            "RenderTargetColorTexture", where.file_name(), static_cast<int>(where.line())));
     }
 
-    auto depthTexture = m_renderer.CreateNativeTextureFromRenderTarget(
-        *rt,
-        0,
-        RenderTargetTextureKind::Depth);
-    const std::size_t depthBytes = depthTexture ? EstimateTextureBytes(*depthTexture) : 0;
-    ResourceHandle<TextureTag> depth =
-        m_textures.Insert(std::move(depthTexture), depthBytes,
-                          "RenderTargetDepthTexture", where.file_name(), static_cast<int>(where.line()));
+    // 深度を持たない RT では SRV も作らない。GetDepthTexture は無効ハンドルを返し、
+    // 束縛しようとした側で «読めない» ことが分かる。
+    ResourceHandle<TextureTag> depth = ResourceHandle<TextureTag>::Null();
+    if (desc.withDepth) {
+        auto depthTexture = m_renderer.CreateNativeTextureFromRenderTarget(
+            *rt,
+            0,
+            RenderTargetTextureKind::Depth);
+        const std::size_t depthBytes = depthTexture ? EstimateTextureBytes(*depthTexture) : 0;
+        depth = m_textures.Insert(std::move(depthTexture), depthBytes,
+                                  "RenderTargetDepthTexture", where.file_name(), static_cast<int>(where.line()));
+    }
 
     // WHY 0 か: RT のメモリは上で登録した色 / 深度テクスチャ側に計上済み。
     //          ここでも数えると同じ実体を二重に積む。

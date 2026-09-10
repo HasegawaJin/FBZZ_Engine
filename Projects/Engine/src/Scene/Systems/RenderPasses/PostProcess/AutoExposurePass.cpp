@@ -50,7 +50,7 @@ void ExecuteAutoExposurePass(RenderPassContext& ctx)
     }
     if (!h.exposureHistogramCS.IsValid() || !h.exposureAverageCS.IsValid()
         || !h.exposureHistogram.IsValid() || !h.exposureResult.IsValid()
-        || !h.exposureCB.IsValid() || !h.hdrRT.IsValid()) {
+        || !h.exposureCB.IsValid() || !ctx.Res().Target("HDR").IsValid()) {
         return;
     }
 
@@ -74,7 +74,7 @@ void ExecuteAutoExposurePass(RenderPassContext& ctx)
     renderer::ComputeCall histogram;
     histogram.shader             = h.exposureHistogramCS;
     histogram.constantBuffers[2] = h.exposureCB;
-    histogram.srvInputs[5]       = resources.GetColorTexture(h.hdrRT, 0); // t5: TEX_GBUFFER0
+    histogram.srvInputs[5]       = resources.GetColorTexture(ctx.Res().Target("HDR"), 0); // t5: TEX_GBUFFER0
     histogram.uavBuffers[0]      = h.exposureHistogram;                   // u2
     histogram.dispatchX          = (ctx.width  + 15) / 16;
     histogram.dispatchY          = (ctx.height + 15) / 16;

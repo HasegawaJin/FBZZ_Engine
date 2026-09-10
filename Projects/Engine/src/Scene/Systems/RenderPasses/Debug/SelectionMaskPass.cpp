@@ -1,4 +1,4 @@
-﻿/// @file    SelectionMaskPass.cpp
+/// @file    SelectionMaskPass.cpp
 /// @brief   Selection mask render pass implementation.
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
@@ -196,7 +196,7 @@ void DrawGpuParticleSelectionMask(ParticleEmitter& emitter, RenderPassContext& c
 
 } // namespace
 
-void ExecuteSelectionMaskPass(RenderPassContext& ctx)
+void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
 {
     if (!ctx.selectionOutlineEnabled) return;
 
@@ -204,7 +204,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
 
-    r.SetRenderTarget(h.selectionMaskRT, resources);
+    r.SetRenderTarget(res.Target("SelectionMask"), resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     for (auto& go : ctx.scene.GameObjects()) {
@@ -281,7 +281,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
     WaterSelectionMaskSystem(ctx);
     if (ctx.appendUISelectionMask) ctx.appendUISelectionMask();
 
-    r.SetRenderTarget(h.hdrRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
 } // namespace fbzz::scene

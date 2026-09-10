@@ -6,6 +6,7 @@
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Renderer/RenderBindingGuard.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <algorithm>
 #include <unordered_set>
@@ -30,8 +31,7 @@ const char* InternRenderPassProfileName(std::string_view name)
 void RenderPipeline::BeginBuild()
 {
     // WHAT: パス本体と raw pass のラムダは RenderPassContext を参照するため毎フレーム破棄する。
-    // WHY: Plan 結果とトランジェント RT プールは別の永続状態として残すことで、
-    //      構成不変フレームの依存解析と D3D リソース再生成を省略できる。
+    // WHY: Plan 結果は別の永続状態として残すことで、構成不変フレームの依存解析を省略できる。
     m_entries.clear();
     m_resources.clear();
     m_outputs.clear();
@@ -48,16 +48,14 @@ void RenderPipeline::AddRawPass(
 {
     using U  = renderer::RenderGraph::ResourceUsage;
     using RA = renderer::RenderGraph::ResourceAccess;
-    Entry e;
-    e.name         = std::string(name);
-    e.allowCulling = allowCulling;
-    e.fn           = std::move(fn);
-    e.accesses.reserve(reads.size() + writes.size());
+    std::vector<RA> accesses;
+    accesses.reserve(reads.size() + writes.size());
     for (std::string_view r : reads)
-        e.accesses.push_back(RA{ std::string(r), U::Read });
+        accesses.push_back(RA{ std::string(r), U::Read });
     for (std::string_view w : writes)
-        e.accesses.push_back(RA{ std::string(w), U::Write });
-    m_entries.push_back(std::move(e));
+        accesses.push_back(RA{ std::string(w), U::Write });
+    m_entries.push_back(
+        std::make_unique<LambdaPass>(name, std::move(accesses), std::move(fn), allowCulling));
 }
 
 void RenderPipeline::AddRawPass(
@@ -66,12 +64,10 @@ void RenderPipeline::AddRawPass(
     renderer::RenderGraph::ExecuteFn fn,
     bool allowCulling)
 {
-    Entry e;
-    e.name         = std::string(name);
-    e.allowCulling = allowCulling;
-    e.fn           = std::move(fn);
-    e.accesses.assign(accesses.begin(), accesses.end());
-    m_entries.push_back(std::move(e));
+    m_entries.push_back(std::make_unique<LambdaPass>(
+        name,
+        std::vector<renderer::RenderGraph::ResourceAccess>(accesses.begin(), accesses.end()),
+        std::move(fn), allowCulling));
 }
 
 void RenderPipeline::AddRawPass(
@@ -80,20 +76,46 @@ void RenderPipeline::AddRawPass(
     renderer::RenderGraph::ExecuteFn fn,
     bool allowCulling)
 {
-    Entry e;
-    e.name         = std::string(name);
-    e.allowCulling = allowCulling;
-    e.fn           = std::move(fn);
-    e.accesses     = std::move(accesses);
-    m_entries.push_back(std::move(e));
+    m_entries.push_back(
+        std::make_unique<LambdaPass>(name, std::move(accesses), std::move(fn), allowCulling));
+}
+
+void RenderPipeline::AddRawPass(
+    std::string_view name,
+    std::initializer_list<std::string_view> reads,
+    std::initializer_list<std::string_view> writes,
+    LambdaPass::PassFn fn,
+    bool allowCulling)
+{
+    using U  = renderer::RenderGraph::ResourceUsage;
+    using RA = renderer::RenderGraph::ResourceAccess;
+    std::vector<RA> accesses;
+    accesses.reserve(reads.size() + writes.size());
+    for (std::string_view r : reads)
+        accesses.push_back(RA{ std::string(r), U::Read });
+    for (std::string_view w : writes)
+        accesses.push_back(RA{ std::string(w), U::Write });
+    m_entries.push_back(
+        std::make_unique<LambdaPass>(name, std::move(accesses), std::move(fn), allowCulling));
+}
+
+void RenderPipeline::AddRawPass(
+    std::string_view name,
+    std::initializer_list<renderer::RenderGraph::ResourceAccess> accesses,
+    LambdaPass::PassFn fn,
+    bool allowCulling)
+{
+    m_entries.push_back(std::make_unique<LambdaPass>(
+        name,
+        std::vector<renderer::RenderGraph::ResourceAccess>(accesses.begin(), accesses.end()),
+        std::move(fn), allowCulling));
 }
 
 void RenderPipeline::DeclareResource(std::string_view name,
                                       renderer::RenderGraph::ResourceDesc desc)
 {
-    // リソース記述の変更検出は Execute() のグラフ指紋で一括して行う。
-    // WHY: 毎フレーム同じ transient 宣言を登録するだけでプールを dirty にすると、
-    //      永続化した物理 RT を再利用できず毎フレーム再生成へ戻ってしまうため。
+    // 申告は依存解析と寿命解析のためのもの。実体の確保は伴わない。
+    // 記述の変更検出は Execute() のグラフ指紋で一括して行う。
     m_resources.emplace_back(std::string(name), desc);
 }
 
@@ -111,106 +133,11 @@ void RenderPipeline::SetGpuProfilerHooks(std::function<void(std::string_view)> b
     m_gpuEnd   = std::move(end);
 }
 
-renderer::ResourceHandle<renderer::RenderTargetTag>
-RenderPipeline::AcquirePooledRT(const renderer::RenderGraph::ResourceDesc& desc,
-                                renderer::ResourceManager& resources)
+void RenderPipeline::ReleaseViewResources(renderer::ResourceManager& resources)
 {
-    const PhysicalRTKey key{ desc.kind, desc.width, desc.height, desc.format };
-    const auto found = std::find_if(m_freeRTs.begin(), m_freeRTs.end(),
-        [&key](const FreeRT& free) { return free.key == key; });
-    if (found != m_freeRTs.end()) {
-        const auto handle = found->handle;
-        m_freeRTs.erase(found);
-        return handle;
-    }
-
-    const uint32_t w = desc.width  > 0 ? desc.width  : 1;
-    const uint32_t h = desc.height > 0 ? desc.height : 1;
-    return resources.CreateRenderTarget(w, h, 1);
-}
-
-void RenderPipeline::RebuildTransientPool(
-    const renderer::RenderGraph::ExecutionReport& report,
-    renderer::ResourceManager& resources)
-{
-    // WHAT: ライフタイム解析で同一 aliasGroup に割り当てられたトランジェントリソースは
-    //       1 つの物理 RT を共有できる。グループごとに RT を 1 つ確保し、
-    //       m_nameToAliasGroup でリソース名から高速にハンドルを引けるようにする。
-    //
-    // WHY 解放せず空き枠へ戻すか: 再構築の引き金であるパス構成の変化は、設定の変更
-    //     だけでなく «その内容がフレームごとに変わるパス» でも起きる。輪郭のマスク申告
-    //     (objectMaskEnabled) やスクリプトが積むユーザーパス、カスタムポストの on/off は
-    //     ゲーム中に何度も往復し、そのたびに全画面 RT を «全部捨てて全部作り直す» と
-    //     数フレームおきに描画がつっかえる。寸法の同じ実体はそのまま貸し直す。
-    for (auto& [group, pooled] : m_aliasGroupPool) {
-        (void)group;
-        if (!pooled.handle.IsValid()) continue;
-        const auto& d = pooled.desc;
-        m_freeRTs.push_back({ PhysicalRTKey{ d.kind, d.width, d.height, d.format }, pooled.handle, 0 });
-    }
-    m_aliasGroupPool.clear();
-    m_nameToAliasGroup.clear();
-
-    for (const auto& lt : report.lifetimes) {
-        if (lt.desc.external || !lt.desc.transient) continue;
-        if (lt.aliasGroup < 0) continue;
-
-        m_nameToAliasGroup[lt.name] = lt.aliasGroup;
-
-        if (m_aliasGroupPool.contains(lt.aliasGroup)) continue;
-
-        // このグループ用に物理 RT を 1 つ確保する。
-        // WHY: aliasGroup が同じリソースはライフタイムが重ならないため、
-        //      同一の物理 RT バッファを順番に使い回してもアクセス競合が起きない。
-        PooledRT pr;
-        pr.desc   = lt.desc;
-        pr.handle = AcquirePooledRT(lt.desc, resources);
-        m_aliasGroupPool.emplace(lt.aliasGroup, std::move(pr));
-    }
-
-    // 貸し出されないまま再構築をまたいだ枠は、VRAM を握り続けないよう返す。
-    // 往復するパス構成を吸収するのが目的なので、猶予は数回で足りる。
-    constexpr uint32_t FREE_RT_IDLE_REBUILD_LIMIT = 4;
-    for (auto it = m_freeRTs.begin(); it != m_freeRTs.end(); ) {
-        if (++it->idleRebuilds > FREE_RT_IDLE_REBUILD_LIMIT) {
-            resources.Release(it->handle);
-            it = m_freeRTs.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    m_poolDirty = false;
-}
-
-void RenderPipeline::ReleaseTransientPool(renderer::ResourceManager& resources)
-{
-    // ResourceHandle は非所有の整数 ID なので、ResourceManager 経由で明示的に解放する。
-    for (auto& [group, pooled] : m_aliasGroupPool) {
-        (void)group;
-        if (pooled.handle.IsValid())
-            resources.Release(pooled.handle);
-    }
-    m_aliasGroupPool.clear();
-    m_nameToAliasGroup.clear();
-    // 空き枠は Viewport の寿命に属する。寸法が変わる境界なので貸し直せる相手は居ない。
-    for (auto& free : m_freeRTs)
-        if (free.handle.IsValid())
-            resources.Release(free.handle);
-    m_freeRTs.clear();
-    m_poolDirty = true;
-}
-
-renderer::ResourceHandle<renderer::RenderTargetTag>
-RenderPipeline::GetTransientRT(std::string_view name) const
-{
-    auto it = m_nameToAliasGroup.find(std::string(name));
-    if (it == m_nameToAliasGroup.end())
-        return {};
-    auto poolIt = m_aliasGroupPool.find(it->second);
-    if (poolIt == m_aliasGroupPool.end())
-        return {};
-    return poolIt->second.handle;
+    // 毒用の RT は呼び出し元 (ReleaseViewRenderTargets) がこの直後に RenderPipeline ごと
+    // 作り直すので、ここで返さないとハンドルを握ったまま消える。
+    m_bindingPoisonRT.Release(resources);
 }
 
 bool RenderPipeline::Execute(RenderPassContext& ctx)
@@ -221,12 +148,27 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
     std::vector<size_t> enabledNow;
     enabledNow.reserve(m_entries.size());
     for (size_t i = 0; i < m_entries.size(); ++i) {
-        const auto& e = m_entries[i];
-        if (e.pass ? e.pass->IsEnabled(ctx) : bool(e.fn))
+        if (m_entries[i] && m_entries[i]->IsEnabled(ctx))
             enabledNow.push_back(i);
     }
 
+    // 申告はこのフレームで 1 回だけ引く。Setup は Execute からも参照するので、
+    // グラフへ渡した後も生き続ける場所へ置く (ラムダは参照で掴む)。
+    m_setups.assign(m_entries.size(), {});
+    for (const size_t i : enabledNow) {
+        PassBuilder builder;
+        m_entries[i]->Setup(builder, ctx);
+        m_setups[i].accesses   = builder.Accesses();
+        m_setups[i].autoTarget = builder.AutoTarget();
+    }
+
     renderer::RenderGraph graph;
+
+    // 束縛毒 (RenderBindingGuard)。立っているときだけ 1x1 の RT を用意し、
+    // 各パスの実行直前に束縛して «前のパスが残した RT» を当てにできなくする。
+    const bool poisonBindings = renderer::bindingguard::IsEnabled();
+    if (poisonBindings)
+        m_bindingPoisonRT.Ensure(ctx.resources, 1, 1, 1);
 
     {
         FBZZ_PROFILE_SCOPE("RenderPipeline::BuildGraph");
@@ -236,18 +178,31 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
         for (const auto& o : m_outputs)
             graph.AddOutput(o);
 
-        for (size_t i : enabledNow) {
-            auto& e = m_entries[i];
-            if (e.pass) {
-                IRenderPass* p = e.pass.get();
-                graph.AddPass(
-                    p->Name(),
-                    p->DeclareAccesses(ctx),
-                    [p, &ctx] { p->Execute(ctx); },
-                    p->AllowCulling());
-            } else {
-                graph.AddPass(std::string_view(e.name), e.accesses, e.fn, e.allowCulling);
-            }
+        const auto poison = m_bindingPoisonRT.Handle();
+        for (const size_t i : enabledNow) {
+            IRenderPass* pass  = m_entries[i].get();
+            const PassSetup& s = m_setups[i];
+            graph.AddPass(
+                pass->Name(),
+                s.accesses,
+                [this, pass, &s, &ctx, poisonBindings, poison] {
+                    // 束縛毒。前のパスが残した RT を当てにできなくする。
+                    if (poisonBindings)
+                        ctx.renderer.SetRenderTarget(poison, ctx.resources);
+                    // 申告した書き先を自動束縛する (SetAutoTarget を呼んだパスだけ)。
+                    if (!s.autoTarget.empty()) {
+                        const auto target = ctx.resourceRegistry.Target(s.autoTarget);
+                        if (target.IsValid())
+                            ctx.renderer.SetRenderTarget(target, ctx.resources);
+                    }
+                    PassResources resources(ctx.resourceRegistry, s.accesses, pass->Name());
+                    // 自由関数へ散ったパス本体からも ctx.Res() で引けるようにする。
+                    // パスは順に実行されるので、実行中の 1 本だけが差さっている。
+                    ctx.passResources = &resources;
+                    pass->Execute(resources, ctx);
+                    ctx.passResources = nullptr;
+                },
+                pass->AllowCulling());
         }
     }
 
@@ -314,31 +269,20 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
                 // どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
                 FBZZ_LOG_ERROR("RenderGraph::Plan() failed — dependency cycle or missing resource writer.");
                 for (size_t i : enabledNow) {
-                    FBZZ_LOG_ERROR("  enabled pass[%zu]: %s", i, m_entries[i].name.c_str());
+                    const std::string_view name = m_entries[i]->Name();
+                    FBZZ_LOG_ERROR("  enabled pass[%zu]: %.*s", i,
+                                   static_cast<int>(name.size()), name.data());
                 }
                 return false;
             }
-            m_lastEnabledEntryIndices = std::move(enabledNow);
-            m_lastGraphFingerprint    = fingerprint;
             m_planValid = true;
-            m_poolDirty = true; // トポロジ変化時はプールも必ず再構築する
+            // 構成が変わったときだけ作る。毎フレーム作ると文字列連結が乗るうえ、
+            // 差分を見たいのは «変わった瞬間» だけ。
+            m_lastPlanDescription = graph.DescribeLastPlan();
         } else {
             graph.InjectPlan(m_lastReport);
         }
     }
-
-    // Phase 2: プールが古い場合 (パイプライン構成変更後の初回フレーム) に再構築する。
-    if (m_poolDirty) {
-        FBZZ_PROFILE_SCOPE("RenderPipeline::RebuildTransientPool");
-        RebuildTransientPool(graph.GetLastReport(), ctx.resources);
-    }
-
-    // Phase 3: ctx.getTransientRT をパイプラインのプールに接続してからコールバックを実行する。
-    // WHY: 各パスコールバックが ctx.getTransientRT(name) でハンドルを取得できるように、
-    //      Execute() より前にラムダを設定しておく必要がある。
-    ctx.getTransientRT = [this](std::string_view name) {
-        return GetTransientRT(name);
-    };
 
     bool ok = false;
     {

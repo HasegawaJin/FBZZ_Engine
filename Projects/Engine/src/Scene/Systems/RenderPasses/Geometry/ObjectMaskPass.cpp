@@ -67,7 +67,7 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[2] = h.objectMaskCB;
-            dc.textures[7] = resources.GetDepthTexture(h.hdrRT);
+            dc.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
             r.Submit(dc, resources);
             ++g_objectMaskDraws;
         }
@@ -105,7 +105,7 @@ void DrawObjectMask(GameObject& go, RenderPassContext& ctx)
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = h.objectMaskCB;
         dc.constantBuffers[7] = skinCB;
-        dc.textures[7] = resources.GetDepthTexture(h.hdrRT);
+        dc.textures[7] = resources.GetDepthTexture(ctx.Res().Target("HDR"));
         r.Submit(dc, resources);
         ++g_objectMaskDraws;
     }
@@ -129,13 +129,13 @@ void DrawSubtreeMask(GameObject& go, bool includeChildren, RenderPassContext& ct
 
 void ExecuteObjectMaskPass(RenderPassContext& ctx)
 {
-    if (!ctx.objectMaskEnabled || !ctx.handles.objectMaskRT.IsValid()) return;
+    if (!ctx.objectMaskEnabled || !ctx.Res().Target("ObjectMask").IsValid()) return;
 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
 
-    r.SetRenderTarget(h.objectMaskRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("ObjectMask"), resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     g_objectMaskDraws = 0;
@@ -182,7 +182,7 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
         }
     }
 
-    r.SetRenderTarget(h.hdrRT, resources);
+    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
 } // namespace fbzz::scene

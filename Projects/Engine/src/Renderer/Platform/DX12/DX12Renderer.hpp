@@ -80,7 +80,8 @@ private:
     std::unique_ptr<ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(IRenderTarget&, uint32_t, RenderTargetTextureKind) override;
     std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc&) override;
-    std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t, uint32_t) override;
+    std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t,
+                                                            const RenderTargetDesc&) override;
     std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t, uint32_t) override;
     std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget&) override;
     std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override;
@@ -100,6 +101,11 @@ private:
     std::vector<ID3D12Resource*> m_computeBatchWrittenResources;
     bool m_computeBatchActive = false;
     class DX12RenderTarget* m_currentRenderTarget = nullptr;
+    // 束縛中の RT のハンドル。生ポインタと二重に持つのは «消えたかどうか» を問えるようにするため。
+    // WHY: RT は描画の途中でも解放される (ビューポートのリサイズ、ViewRenderTargets の作り直し)。
+    //      解放されたものを次の SetRenderTarget が «前の RT» として触ると、破棄済みの
+    //      オブジェクトから GetColorResource を引いて、無関係な番地へバリアを積む。
+    ResourceHandle<RenderTargetTag> m_currentRenderTargetHandle;
     std::unique_ptr<class DX12IblBaker> m_iblBaker;
     D3D12_CPU_DESCRIPTOR_HANDLE m_currentCubeRtv{};
     D3D12_GPU_VIRTUAL_ADDRESS m_nullConstantAddress = 0;

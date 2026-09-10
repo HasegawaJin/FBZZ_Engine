@@ -70,10 +70,18 @@ static DynamicVertexBufferPool s_triPool;
 // ローカルヘルパー
 // =============================================================================
 
+// ResourceManager::Reset() の世代。シェーダー / CB / PSO は実体ごと捨てられるので、
+// 世代が変わったら «IsValid だが失効しているハンドル» を握ったままになる。
+// WHY 頂点バッファのプールを気にしなくてよいか: DynamicVertexBufferPool が自分で
+//     世代を見てキャッシュを捨てる (DynamicVertexBufferPool::Acquire)。
+static uint32_t s_resetVersion = 0;
+
 static void EnsureInit(ResourceManager& resources)
 {
-    if (s_shader.IsValid()) return; // 初期化済み
+    if (s_shader.IsValid() && s_resetVersion == resources.GetResetVersion())
+        return; // 初期化済み
 
+    s_resetVersion = resources.GetResetVersion();
     s_shader   = resources.LoadShader("Assets/Shaders/Debug/DebugDraw.hlsl");
     s_cameraCB = resources.CreateConstantBuffer(sizeof(DebugCamCB));
     s_pso      = resources.CreatePipelineState({ RasterizerMode::SOLID,

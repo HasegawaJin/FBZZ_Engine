@@ -544,27 +544,27 @@ static TerrainTextures BuildTextureSet(
 
 // ─── IRenderPass ──────────────────────────────────────────────────────────
 
-std::string_view TerrainRenderPass::Name() const { return "TerrainForward"; }
-
-std::vector<renderer::RenderGraph::ResourceAccess> TerrainRenderPass::DeclareAccesses(
-    const RenderPassContext& ctx) const
+std::string_view TerrainRenderPass::Name() const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    // Deferred では GBuffer へ書き込み、DeferredLighting/GTAO/SSAO/SSR/ContactShadows に地形を含める。
-    // Forward では従来どおり HDR へ直接ライティング結果を描く。
-    if (ctx.isDeferred)
-        return { { "GBuffer", U::ReadWrite } };
-    return { { "ShadowMap",        U::Read },
-             { "PunctualShadowMap", U::Read },
-             { "LightCookieAtlas",  U::Read },
-             { "HDR",              U::ReadWrite } };
+    return m_mode == TerrainDrawMode::GBuffer ? "TerrainGBuffer" : "TerrainForward";
 }
 
-void TerrainRenderPass::Execute(RenderPassContext& ctx)
+void TerrainRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    // Deferred: GBuffer(MRT) へ書く。Forward: HDR へ直接描く。
-    ctx.renderer.SetRenderTarget(
-        ctx.isDeferred ? ctx.handles.gbufferRT : ctx.handles.hdrRT, ctx.resources);
+    // 影と Cookie の束縛は GBuffer / Forward で分岐していない (Execute の t13 / t28 / t31)。
+    // 以前は Deferred のときだけ申告から抜けていて、依存辺が張られないまま
+    // «同じ GBuffer を書く DeferredGBuffer が先に走るから» という偶然で順序が保たれていた。
+    builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+
+    // GBuffer へ書けば DeferredLighting/GTAO/SSAO/SSR/ContactShadows に地形が含まれる。
+    // Forward では HDR へ直接ライティング結果を描く。
+    const char* const target = m_mode == TerrainDrawMode::GBuffer ? "GBuffer" : "HDR";
+    builder.ReadWrite(target).SetAutoTarget(target);
+}
+
+void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    // 描き先の束縛は Setup の SetAutoTarget が済ませている。
 
     // エイリアス: TerrainRenderSystem の旧シグネチャ変数名を ctx から引く
     Scene&                     scene               = ctx.scene;
@@ -572,7 +572,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     renderer::ResourceManager& resources           = ctx.resources;
     const renderer::Camera&    camera              = ctx.camera;
     const renderer::RenderSettings* settings       = &ctx.settings;
-    auto shadowDepthTexture = ctx.resources.GetDepthTexture(ctx.handles.shadowMapRT);
+    auto shadowDepthTexture = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     auto shadowCB           = ctx.handles.shadowCB;
     auto lightCB            = ctx.handles.lightCB;
 
@@ -845,7 +845,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 call.vertexBuffer  = chunk.vertexBuffer;
                 call.indexBuffer   = chunk.indexBufferLOD[lod];
                 // Deferred: GBuffer 書き込みシェーダ。Forward: 自前ライティングシェーダ。
-                call.shader        = ctx.isDeferred ? terrainGBufferShader : terrainShader;
+                call.shader        = m_mode == TerrainDrawMode::GBuffer ? terrainGBufferShader
+                                                                        : terrainShader;
                 call.pipelineState = (settings && settings->IsWireframe()) ? terrainWireframePSO : terrainPSO;
                 call.indexCount    = chunk.indexCountLOD[lod];
                 call.layer         = renderer::RenderLayer::OPAQUE_LAYER;

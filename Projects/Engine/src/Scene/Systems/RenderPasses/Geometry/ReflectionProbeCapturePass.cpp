@@ -135,7 +135,7 @@ void RenderSceneFace(RenderPassContext& ctx, const GameObject& probeObject,
         draw.constantBuffers[4] = h.shadowCB;
         for (size_t i = 0; i < gpuMaterial->textures.size() && i < 8; ++i)
             if (gpuMaterial->textures[i].IsValid()) draw.textures[i] = gpuMaterial->textures[i];
-        draw.textures[8] = resources.GetDepthTexture(h.shadowMapRT);
+        draw.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
         // 点光源まわり (b9 / t29 / t30 / b12 / t28 / t31) をまとめて束縛する。
         //
         // WHY プローブ捕捉でも要るか: ここで描くのは通常のマテリアルシェーダーで、

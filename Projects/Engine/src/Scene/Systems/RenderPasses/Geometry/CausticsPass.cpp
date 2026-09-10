@@ -136,8 +136,10 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     static std::string s_loadedPath;
     static renderer::ResourceHandle<renderer::TextureTag> s_loadedTexture;
     static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    static renderer::SizedRenderTarget s_causticsDepthRT;
     static uint64_t s_resetVersion = 0;
+    // 深度のコピー先はビューが持つ (RenderPassHandles::causticsDepthRT の WHY)。
+    if (!ctx.handles.causticsDepthRT) return;
+    renderer::SizedRenderTarget& s_causticsDepthRT = *ctx.handles.causticsDepthRT;
 
     if (s_resetVersion != ctx.resources.GetResetVersion()) {
         s_resetVersion = ctx.resources.GetResetVersion();
@@ -185,11 +187,11 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
         depthDC.shader = depthCopyShader;
         depthDC.pipelineState = ctx.handles.defaultPSO;
         depthDC.vertexCount = 3;
-        depthDC.textures[7] = ctx.resources.GetDepthTexture(ctx.handles.hdrRT);
+        depthDC.textures[7] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
         ctx.renderer.Submit(depthDC, ctx.resources);
     }
 
-    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
 
     renderer::DrawCall dc;
     dc.shader = ctx.handles.causticsShader;

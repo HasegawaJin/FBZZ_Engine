@@ -427,19 +427,19 @@ void ExecuteShadowPass(RenderPassContext& ctx)
 
     const int punctualViewCount =
         std::clamp(ctx.punctualShadowViewCount, 0, kMaxPunctualShadows);
-    const bool hasPunctualAtlas = h.punctualShadowRT.IsValid();
+    const bool hasPunctualAtlas = ctx.Res().Target("PunctualShadowMap").IsValid();
 
     // Spot / Point のアトラスも毎フレームまっさらにしてから始める。
     // WHY 本数 0 でもクリアするか: スロットの割り当てはフレームごとに変わる
     //     (カメラが動けば近い順が入れ替わる)。前フレームの深度が残っていると、
     //     割り当て直後の 1 フレームだけ別のライトの遮蔽を引いてしまう。
     if (hasPunctualAtlas) {
-        renderer.SetRenderTarget(h.punctualShadowRT, resources);
+        renderer.SetRenderTarget(ctx.Res().Target("PunctualShadowMap"), resources);
         renderer.ClearDepth();
     }
 
     // クリアはアトラス全面へ 1 回。カスケードごとのビューポートを張る前に行う。
-    renderer.SetRenderTarget(h.shadowMapRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("ShadowMap"), resources);
     renderer.ClearDepth();
 
     if (!rs.shadowEnabled) return;
@@ -483,13 +483,13 @@ void ExecuteShadowPass(RenderPassContext& ctx)
 
     if (needDirectional) {
         // クリアの後に punctual アトラスを触っている可能性があるので、束縛し直す。
-        renderer.SetRenderTarget(h.shadowMapRT, resources);
+        renderer.SetRenderTarget(ctx.Res().Target("ShadowMap"), resources);
         for (int i = 0; i < cascadeCount; ++i)
             RenderShadowCascade(ctx, ctx.shadowCascades[i], i, casters);
     }
 
     if (needPunctual) {
-        renderer.SetRenderTarget(h.punctualShadowRT, resources);
+        renderer.SetRenderTarget(ctx.Res().Target("PunctualShadowMap"), resources);
         for (int i = 0; i < punctualViewCount; ++i)
             RenderPunctualShadowView(ctx, ctx.punctualShadowViews[i], i, casters);
     }

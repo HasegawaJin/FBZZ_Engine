@@ -71,7 +71,7 @@ void ExecuteBloomPass(RenderPassContext& ctx)
 
     if (!rs.postProcess.bloom.enabled
         || !h.bloomDownShader.IsValid() || !h.bloomUpShader.IsValid()
-        || !h.bloomFull.IsValid())
+        || !ctx.Res().Texture("Bloom").IsValid())
         return;
 
     // 連鎖のうち実際に使える段数。解像度が小さいと下の段が 1px に潰れるので、
@@ -87,7 +87,7 @@ void ExecuteBloomPass(RenderPassContext& ctx)
     // ---- 1. ダウンサンプル ----
     // 1 段目だけ HDR から読み、輝度閾値で「何を光らせるか」を選別する。
     BloomStep(ctx, h.bloomDownShader,
-              ctx.resources.GetColorTexture(h.hdrRT, 0), ctx.width, ctx.height,
+              ctx.resources.GetColorTexture(ctx.Res().Target("HDR"), 0), ctx.width, ctx.height,
               h.bloomChain[0], h.bloomChainWidth[0], h.bloomChainHeight[0],
               /*applyThreshold=*/true);
 
@@ -119,7 +119,7 @@ void ExecuteBloomPass(RenderPassContext& ctx)
     // 加算にすると毎フレーム明るさが積み上がって発散する。
     BloomStep(ctx, h.bloomUpShader,
               srcTex,      h.bloomChainWidth[srcIdx], h.bloomChainHeight[srcIdx],
-              h.bloomFull, ctx.width,                 ctx.height,
+              ctx.Res().Texture("Bloom"), ctx.width,                 ctx.height,
               false);
 }
 

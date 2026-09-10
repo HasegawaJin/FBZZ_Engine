@@ -13,6 +13,7 @@
 #include <vector>
 #include "ComputeCall.hpp"
 #include "DrawCall.hpp"
+#include "Format.hpp"
 #include "IIblBaker.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
@@ -184,7 +185,8 @@ private:
         uint32_t index,
         RenderTargetTextureKind kind) = 0;
     virtual std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
-    virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
+    virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height,
+                                                                    const RenderTargetDesc& desc) = 0;
     // 6 面キューブマップ描画先。未対応バックエンドは nullptr を返してよい (DX11 のみ実装)。
     virtual std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t /*size*/, uint32_t /*mipCount*/) { return nullptr; }
     // キューブマップ RT の TextureCube SRV を ITexture 化する (TextureTag として束縛可能にする)。

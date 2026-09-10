@@ -69,6 +69,14 @@ const math::Matrix4& AdvancePrevWorld(RendererComponent& component,
     return component.prevWorldMatrix;
 }
 
+bool SameMatrix(const math::Matrix4& a, const math::Matrix4& b)
+{
+    for (int row = 0; row < 4; ++row)
+        for (int col = 0; col < 4; ++col)
+            if (a.m[row][col] != b.m[row][col]) return false;
+    return true;
+}
+
 } // namespace
 
 void ExecuteVelocityPass(RenderPassContext& ctx)
@@ -77,9 +85,9 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
 
-    if (!h.velocityRT.IsValid() || !h.velocityShader.IsValid()) return;
+    if (!ctx.Res().Target("Velocity").IsValid() || !h.velocityShader.IsValid()) return;
 
-    renderer.SetRenderTarget(h.velocityRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("Velocity"), resources);
     // B チャンネルが 0 の画素は「Velocity パスが触っていない」= 空・未描画。
     // TAA / MotionBlur はそこだけ従来の深度再投影へ落ちる。
     renderer.Clear(math::Vector4{ 0.0f, 0.0f, 0.0f, 0.0f });
@@ -119,6 +127,23 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
         VelocityObjectCB objData{};
         objData.world     = go.transform.GetWorldMatrix();
         objData.prevWorld = AdvancePrevWorld(*mr, objData.world, frameStamp);
+
+        // 静止している不透明は描かない。
+        //
+        // WHY 落として良いか: このパスが触っていない画素 (B = 0) は、消費側
+        //     (TAA.hlsl / MotionBlur.cs.hlsl の velocity.z > 0.5 分岐) が従来の
+        //     深度再投影へ落ちる。そして深度再投影は «動いていない物» に対しては
+        //     厳密に正しい ─ このパスが足したのは元々「オブジェクトの動き」だけで、
+        //     カメラの動きは前から復元できていた。静止した物を描くのは、
+        //     同じ答えを不透明の再ラスタライズと引き換えに得ているだけになる。
+        //     地形・アリーナ・小物は不透明の大半を占めるので、ここが丸ごと消える。
+        //
+        // WHY それでも AdvancePrevWorld を «先に» 通すか: snapshot を進めるのは
+        //     ここだけ。飛ばすと動き出した最初のフレームで prev が古いままになり、
+        //     止まっていた物が動く瞬間に嘘の速度が出る。行列は必ず進めて、
+        //     描画だけを省く。
+        if (SameMatrix(objData.world, objData.prevWorld)) continue;
+
         resources.Update(h.objectCB, &objData, sizeof(VelocityObjectCB));
 
         renderer::DrawCall dc;

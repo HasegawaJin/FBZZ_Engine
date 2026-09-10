@@ -1,4 +1,4 @@
-﻿/// @file    RenderPasses/Geometry/GeometryPasses.hpp
+/// @file    RenderPasses/Geometry/GeometryPasses.hpp
 /// @brief   ジオメトリ描画パスの宣言とインラインヘルパー。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
@@ -85,9 +85,9 @@ inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const Rend
     if (ctx.handles.punctualShadowCB.IsValid()) {
         drawCall.constantBuffers[12] = ctx.handles.punctualShadowCB;   // b12
         drawCall.textures[28] =
-            ctx.resources.GetDepthTexture(ctx.handles.punctualShadowRT); // t28
+            ctx.resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap")); // t28
         drawCall.textures[31] =
-            ctx.resources.GetColorTexture(ctx.handles.lightCookieRT, 0); // t31
+            ctx.resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0); // t31
     }
 
     if (ctx.clusterLightMode == ClusterLightMode::Legacy)
@@ -296,6 +296,9 @@ void ExecuteParticlePass                   (RenderPassContext& ctx);
 //      ctx.settings.particleOverdrawView が true のときだけ Particle パスの直後に走る。
 void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
+// 不透明の深度をデカール専用の深度 RT へ写す。
+// WHY 写すか: 描き先 (hdrRT / gbufferRT) の深度を SRV として同時に読めないため。
+void ExecuteDecalDepthCopyPass             (RenderPassContext& ctx);
 // RenderSettings::objectMaskRequests のシルエットを objectMaskRT へ描く (RGB=色 / A=太さ)。
 // 輪郭そのものは描かない ─ 見た目は CustomPostProcess のシェーダーが決める。
 //

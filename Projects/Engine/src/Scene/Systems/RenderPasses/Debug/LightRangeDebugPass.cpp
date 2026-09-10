@@ -14,16 +14,19 @@ namespace fbzz::scene {
 
 std::string_view LightRangeDebugPass::Name() const { return "LightRangeDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess> LightRangeDebugPass::DeclareAccesses(const RenderPassContext&) const
+void LightRangeDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void LightRangeDebugPass::Execute(RenderPassContext& ctx)
+bool LightRangeDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showLightRange) return;
+    return ctx.settings.showLightRange;
+}
 
+void LightRangeDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     constexpr math::Vector4 kColor   = { 1.0f, 0.90f, 0.30f, 1.0f };
     constexpr float         kDeg2Rad = 3.14159265f / 180.0f;
 

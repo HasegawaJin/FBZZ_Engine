@@ -14,6 +14,15 @@ void DX12StateTracker::Register(ID3D12Resource* resource, D3D12_RESOURCE_STATES 
 void DX12StateTracker::Remove(ID3D12Resource* resource)
 {
     m_states.erase(resource);
+    // 溜めたまま発行していないバリアも一緒に捨てる。
+    // WHY: 消えるリソースを名指ししたバリアを残すと、次の Flush が «もう無い物» を
+    //      遷移させる。同じ番地に別のリソースが載っていれば、その新しい方が身に覚えの
+    //      ない StateBefore で遷移させられ、中身が壊れる (リサイズで RT を作り直した
+    //      直後に出る)。
+    std::erase_if(m_pendingBarriers, [resource](const D3D12_RESOURCE_BARRIER& barrier) {
+        return barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION
+            && barrier.Transition.pResource == resource;
+    });
 }
 
 void DX12StateTracker::Transition(ID3D12GraphicsCommandList* commands, ID3D12Resource* resource,

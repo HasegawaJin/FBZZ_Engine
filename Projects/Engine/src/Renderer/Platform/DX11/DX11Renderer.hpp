@@ -131,7 +131,8 @@ private:
         uint32_t index,
         RenderTargetTextureKind kind) override;
     std::unique_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
-    std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
+    std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height,
+                                                              const RenderTargetDesc& desc) override;
     std::unique_ptr<IRenderTarget>   CreateNativeCubemapRenderTarget(uint32_t size, uint32_t mipCount) override;
     std::unique_ptr<ITexture>        CreateNativeCubeTextureFromRenderTarget(IRenderTarget& rt) override;
     std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
