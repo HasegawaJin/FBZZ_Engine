@@ -64,7 +64,7 @@ struct UserRenderPassDesc {
 struct GpuForceField {
     math::Vector4 posRadius;     // xyz=ワールド位置, w=影響半径 (<=0 で無限)
     math::Vector4 dirStrength;   // xyz=風向き/渦軸 (ワールド・正規化済み), w=強さ
-    math::Vector4 params;        // x=種類(ParticleForceFieldType), y=falloffPower,
+    math::Vector4 params;        // x=種類(ForceFieldType), y=falloffPower,
                                  // z=noiseFrequency (Drag では «内蔵の力か» の 0/1), w=noiseSpeed
     // ── VectorField 型のときだけ使う ──
     math::Vector4 fieldRotation; // ワールド → 場のローカルへ戻す逆回転 (xyzw = クォータニオン)

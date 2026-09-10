@@ -1371,7 +1371,7 @@ private:
     friend struct ScriptMaterialProxy;
     friend class MaterialInstance;
     friend struct ScriptParticleProxy;
-    friend struct ScriptParticleForceFieldProxy;
+    friend struct ScriptForceFieldProxy;
     friend struct ScriptCloudProxy;
     friend struct ScriptSunMoonProxy;
     friend struct ScriptPatrolProxy;

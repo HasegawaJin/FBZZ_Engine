@@ -379,7 +379,7 @@ struct EditorContext {
 
     // 表示オプション (エディター固有)
     // 力場の影響体積とエミッター発生形状のワイヤー表示。
-    // シーンへ直接置いた ParticleForceField / ParticleEmitter にも効く。
+    // シーンへ直接置いた ForceField / ParticleEmitter にも効く。
     bool showVFXGizmos = false;
     // ラグドールの剛体・可動域・接触点。飽和した関節が赤く出る。
     // 常時出すと骨の絵が線で埋まるので、可動域とサーボを詰めるときだけ点ける。

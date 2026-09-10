@@ -13,7 +13,6 @@
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
-#include "Engine/Scene/Components/WindZoneComponent.hpp"
 #include "Engine/Scene/Components/WeatherComponent.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
@@ -692,28 +691,6 @@ bool IsWithinCullDistance(const RenderPassContext& ctx,
     return distance - bounds.radius <= cullDistance;
 }
 
-ActiveWindZone FindActiveWindZone(Scene& scene)
-{
-    ActiveWindZone result;
-    for (auto& go : scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
-        const auto* wind = go.GetComponent<WindZoneComponent>();
-        if (!wind || !wind->enabled) continue;
-        // direction はローカル指定。GameObject を回せば風向きも回る。
-        const math::Vector3 worldDir = go.transform.worldRotation * wind->direction;
-        const float len = worldDir.Length();
-        if (len > 1.0e-4f)
-            result.direction = worldDir * (1.0f / len);
-        result.active         = true;
-        result.strength       = (std::max)(wind->strength, 0.0f);
-        result.turbulence     = (std::max)(wind->turbulence, 0.0f);
-        result.pulseFrequency = (std::max)(wind->pulseFrequency, 0.0f);
-        break; // シーンに 1 つ想定。複数ある場合は最初の有効な 1 つを使う
-
-    }
-    return result;
-}
-
 ActiveWeather FindActiveWeather(Scene& scene)
 {
     ActiveWeather result;
@@ -724,7 +701,7 @@ ActiveWeather FindActiveWeather(Scene& scene)
         result.wetness      = std::clamp(weather->wetness, 0.0f, 1.0f);
         result.darkening    = std::clamp(weather->darkening, 0.0f, 1.0f);
         result.puddleAmount = std::clamp(weather->puddleAmount, 0.0f, 1.0f);
-        break; // シーンに 1 つ想定。WindZone と同じ扱い
+        break; // シーンに 1 つ想定。環境風と同じ扱い
     }
     return result;
 }

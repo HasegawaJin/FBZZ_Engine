@@ -51,11 +51,10 @@
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/Components/VFXComponent.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
-#include <Engine/Scene/Components/WindZoneComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
@@ -2587,7 +2586,7 @@ void ScriptParticleProxy::SetSubEmitters(std::string_view birthEmitter,
 void ScriptParticleProxy::SetVelocityDamping(float damping) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script))
-        p->settings.EnsureLocalForce(ParticleForceFieldType::Drag).strength = (std::max)(damping, 0.0f);
+        p->settings.EnsureLocalForce(ForceFieldType::Drag).strength = (std::max)(damping, 0.0f);
 }
 
 void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) const
@@ -2601,8 +2600,8 @@ void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) con
 void ScriptParticleProxy::SetNoise(float strength, float frequency, float speed) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
-        ParticleForceFieldSettings& turbulence =
-            p->settings.EnsureLocalForce(ParticleForceFieldType::Turbulence);
+        ForceFieldSettings& turbulence =
+            p->settings.EnsureLocalForce(ForceFieldType::Turbulence);
         turbulence.strength       = (std::max)(strength, 0.0f);
         turbulence.noiseFrequency = (std::max)(frequency, 0.0001f);
         turbulence.noiseSpeed     = speed;
@@ -5783,69 +5782,89 @@ void ScriptLifetimeProxy::Kill() const
     if (auto* lc = SelfLifetime(script)) lc->remaining = 0.0f;
 }
 
-// ScriptParticleForceFieldProxy
-void ScriptParticleForceFieldProxy::SetEnabled(bool enabled) const
+// ScriptForceFieldProxy
+//
+// 力場は «1 本» から «リスト» になった (旧 WindZone を吸収するため)。
+// スクリプト API は 1 本を触る形のままにしてあり、対象は **先頭の力**。
+// WHY 先頭か: このプロキシを使うスクリプトは «この GameObject の力» を 1 つだと思って
+//      書かれている。束ねて置いた 2 本目以降を触りたい用途はまだ無く、あるとしたら
+//      «どれを» を指す API が別に要る。黙って全部へ配ると、風だけ強めたつもりで
+//      乱れまで動く。
+namespace {
+
+ForceFieldSettings* SelfPrimaryForce(const Script* script)
 {
-    if (auto* field = SelfComponent<ParticleForceField>(script)) field->enabled = enabled;
+    auto* field = SelfComponent<ForceField>(script);
+    if (field == nullptr || field->forces.empty()) return nullptr;
+    return &field->forces.front();
 }
-void ScriptParticleForceFieldProxy::SetType(ScriptParticleForceFieldType type) const
+
+} // namespace
+
+void ScriptForceFieldProxy::SetEnabled(bool enabled) const
 {
-    if (auto* field = SelfComponent<ParticleForceField>(script)) {
-        const int value = (std::max)(0, (std::min)(static_cast<int>(type), 5));
-        field->fieldType = static_cast<ParticleForceFieldType>(value);
+    if (auto* force = SelfPrimaryForce(script)) force->enabled = enabled;
+}
+void ScriptForceFieldProxy::SetType(ScriptForceFieldType type) const
+{
+    if (auto* force = SelfPrimaryForce(script)) {
+        const int value = std::clamp(static_cast<int>(type), 0, kForceFieldTypeCount - 1);
+        force->fieldType = static_cast<ForceFieldType>(value);
     }
 }
-void ScriptParticleForceFieldProxy::SetStrength(float strength) const
+void ScriptForceFieldProxy::SetStrength(float strength) const
 {
-    if (auto* field = SelfComponent<ParticleForceField>(script)) field->strength = strength;
+    if (auto* force = SelfPrimaryForce(script)) force->strength = strength;
 }
-void ScriptParticleForceFieldProxy::SetRadius(float radius, float falloffPower) const
+void ScriptForceFieldProxy::SetRadius(float radius, float falloffPower) const
 {
-    if (auto* field = SelfComponent<ParticleForceField>(script)) {
-        field->radius = radius;
-        field->falloffPower = (std::max)(falloffPower, 0.01f);
+    if (auto* force = SelfPrimaryForce(script)) {
+        force->radius = radius;
+        force->falloffPower = (std::max)(falloffPower, 0.01f);
     }
 }
-void ScriptParticleForceFieldProxy::SetDirection(const math::Vector3& direction) const
+void ScriptForceFieldProxy::SetDirection(const math::Vector3& direction) const
 {
-    if (auto* field = SelfComponent<ParticleForceField>(script)) field->direction = direction;
+    if (auto* force = SelfPrimaryForce(script)) force->direction = direction;
 }
-void ScriptParticleForceFieldProxy::SetTurbulence(float frequency, float speed) const
+void ScriptForceFieldProxy::SetTurbulence(float frequency, float speed) const
 {
-    if (auto* field = SelfComponent<ParticleForceField>(script)) {
-        field->noiseFrequency = (std::max)(frequency, 0.0f);
-        field->noiseSpeed = speed;
+    if (auto* force = SelfPrimaryForce(script)) {
+        force->noiseFrequency = (std::max)(frequency, 0.0f);
+        force->noiseSpeed = speed;
     }
 }
-void ScriptParticleForceFieldProxy::SetChannels(uint32_t channels) const
+void ScriptForceFieldProxy::SetChannels(uint32_t channels) const
 {
-    if (auto* field = SelfComponent<ParticleForceField>(script)) field->channels = channels;
+    // チャンネルは «この力場が誰に効くか» で、束ねた力で分ける意味が無いので全部へ配る。
+    if (auto* field = SelfComponent<ForceField>(script))
+        for (auto& force : field->forces) force.channels = channels;
 }
-bool ScriptParticleForceFieldProxy::IsEnabled() const
+bool ScriptForceFieldProxy::IsEnabled() const
 {
-    const auto* field = SelfComponent<ParticleForceField>(script);
-    return field && field->enabled;
+    const auto* force = SelfPrimaryForce(script);
+    return force && force->enabled;
 }
-float ScriptParticleForceFieldProxy::GetStrength() const
+float ScriptForceFieldProxy::GetStrength() const
 {
-    const auto* field = SelfComponent<ParticleForceField>(script);
-    return field ? field->strength : 0.0f;
+    const auto* force = SelfPrimaryForce(script);
+    return force ? force->strength : 0.0f;
 }
-float ScriptParticleForceFieldProxy::GetRadius() const
+float ScriptForceFieldProxy::GetRadius() const
 {
-    const auto* field = SelfComponent<ParticleForceField>(script);
-    return field ? field->radius : 0.0f;
+    const auto* force = SelfPrimaryForce(script);
+    return force ? force->radius : 0.0f;
 }
-ScriptParticleForceFieldType ScriptParticleForceFieldProxy::GetType() const
+ScriptForceFieldType ScriptForceFieldProxy::GetType() const
 {
-    const auto* field = SelfComponent<ParticleForceField>(script);
-    return field ? static_cast<ScriptParticleForceFieldType>(static_cast<int>(field->fieldType))
-                 : ScriptParticleForceFieldType::WIND;
+    const auto* force = SelfPrimaryForce(script);
+    return force ? static_cast<ScriptForceFieldType>(static_cast<int>(force->fieldType))
+                 : ScriptForceFieldType::WIND;
 }
-uint32_t ScriptParticleForceFieldProxy::GetChannels() const
+uint32_t ScriptForceFieldProxy::GetChannels() const
 {
-    const auto* field = SelfComponent<ParticleForceField>(script);
-    return field ? field->channels : 0u;
+    const auto* force = SelfPrimaryForce(script);
+    return force ? force->channels : 0u;
 }
 
 // ScriptCloudProxy
@@ -5994,25 +6013,67 @@ bool ScriptPatrolProxy::GetWaypoint(size_t index, math::Vector3& position) const
 }
 
 // ScriptWindProxy
+//
+// 環境風は ForceField の «radius 0 の Wind (+ Turbulence)» になった
+// (旧 WindZoneComponent は廃止)。スクリプトから見た API は «風» のままにしてあるので、
+// ここで役割ごとの 1 本を引き当てる。
+namespace {
+
+/// この GameObject の力場から、型で 1 本を引く。無ければ足す。
+/// WHY 役割で引くか: スクリプトは «風» を触りたいのであって、リストの何番目かは知らない。
+ForceFieldSettings* FindWindForce(const Script* script, ForceFieldType type,
+                                  bool createIfMissing)
+{
+    auto* field = SelfComponent<ForceField>(script);
+    if (field == nullptr) return nullptr;
+    for (auto& force : field->forces)
+        if (force.fieldType == type) return &force;
+    if (!createIfMissing) return nullptr;
+
+    ForceFieldSettings added;
+    added.fieldType    = type;
+    added.space        = ForceFieldSpace::World;
+    added.radius       = 0.0f;
+    added.falloffPower = 1.0f;
+    // 足しただけで絵が変わらないように。強さは呼び出し側が続けて入れる。
+    added.strength = 0.0f;
+    field->forces.push_back(added);
+    return &field->forces.back();
+}
+
+} // namespace
+
 void ScriptWindProxy::SetEnabled(bool enabled) const
 {
-    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->enabled = enabled;
+    // 風という概念全体の on/off。乱れも一緒に切る。
+    if (auto* field = SelfComponent<ForceField>(script)) {
+        for (auto& force : field->forces) {
+            if (force.fieldType == ForceFieldType::Wind
+                || force.fieldType == ForceFieldType::Turbulence)
+                force.enabled = enabled;
+        }
+    }
 }
 void ScriptWindProxy::SetDirection(const math::Vector3& direction) const
 {
-    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->direction = direction;
+    if (auto* wind = FindWindForce(script, ForceFieldType::Wind, true))
+        wind->direction = direction;
 }
 void ScriptWindProxy::SetStrength(float strength) const
 {
-    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->strength = strength;
+    if (auto* wind = FindWindForce(script, ForceFieldType::Wind, true))
+        wind->strength = strength;
 }
 void ScriptWindProxy::SetTurbulence(float turbulence) const
 {
-    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->turbulence = (std::max)(turbulence, 0.0f);
+    if (auto* turb = FindWindForce(script, ForceFieldType::Turbulence, true))
+        turb->strength = (std::max)(turbulence, 0.0f);
 }
 void ScriptWindProxy::SetPulseFrequency(float frequency) const
 {
-    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->pulseFrequency = (std::max)(frequency, 0.0f);
+    // 脈動の速さ = 乱流のノイズ時間スクロール速度 (旧 WindZone と同じ対応)。
+    if (auto* turb = FindWindForce(script, ForceFieldType::Turbulence, true))
+        turb->noiseSpeed = (std::max)(frequency, 0.0f);
 }
 
 bool ScriptGameplayProxy::SetSprite(std::string_view assetPath) const

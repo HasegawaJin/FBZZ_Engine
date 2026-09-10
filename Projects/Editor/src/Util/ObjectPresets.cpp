@@ -273,10 +273,14 @@ scene::GameObject* MakeReflectionProbe(EditorContext& ctx)
     return &go;
 }
 
+// 環境風。専用コンポーネントは廃止し、«radius 0 の Wind + Turbulence» という
+// 力場 2 本のプリセットになった。置いたときの操作感は従来どおり。
 scene::GameObject* MakeWindZone(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Wind Zone");
-    go.AddComponent<scene::WindZoneComponent>();
+    scene::ForceField field{};
+    field.forces = scene::MakeAmbientWindForces();
+    go.AddComponent<scene::ForceField>(field);
     return &go;
 }
 
@@ -446,10 +450,10 @@ scene::GameObject* MakeParticleEmitter(EditorContext& ctx)
     return &go;
 }
 
-scene::GameObject* MakeParticleForceField(EditorContext& ctx)
+scene::GameObject* MakeForceField(EditorContext& ctx)
 {
-    auto& go = ctx.activeScene->CreateGameObject("Particle Force Field");
-    go.AddComponent<scene::ParticleForceField>();
+    auto& go = ctx.activeScene->CreateGameObject("Force Field");
+    go.AddComponent<scene::ForceField>();
     return &go;
 }
 
@@ -555,11 +559,13 @@ scene::GameObject* MakeVFXMeshShell(EditorContext& ctx)
 scene::GameObject* MakeVFXForceField(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Blast Push");
-    scene::ParticleForceField field;
-    field.fieldType = scene::ParticleForceFieldType::Repulse;
-    field.strength = 20.0f;
-    field.radius = 4.5f;
-    go.AddComponent<scene::ParticleForceField>(std::move(field));
+    scene::ForceFieldSettings push;
+    push.fieldType = scene::ForceFieldType::Repulse;
+    push.strength = 20.0f;
+    push.radius = 4.5f;
+    scene::ForceField field;
+    field.forces = { push };
+    go.AddComponent<scene::ForceField>(std::move(field));
     scene::VFXElement element;
     element.duration = 0.25f;
     go.AddComponent<scene::VFXElement>(std::move(element));
@@ -856,7 +862,7 @@ constexpr ObjectPreset kPresets[] = {
     { "env.volumetricCloud",  "Environment", "Volumetric Cloud",       "ボリューメトリック雲", &MakeVolumetricCloud },
     { "env.postProcess",      "Environment", "Post Process Volume",    "ルック設定 (Post Process Profile を割り当てて使う)", &MakePostProcessVolume },
     { "env.reflectionProbe",  "Environment", "Reflection Probe",       "反射プローブ。周囲をキューブマップへ焼く", &MakeReflectionProbe },
-    { "env.windZone",         "Environment", "Wind Zone",              "風。植生とパーティクルを揺らす", &MakeWindZone },
+    { "env.windZone",         "Environment", "Wind Zone",              "環境風 (Wind + 乱れの力場)。雲と粒子が同じ向きへ流れる", &MakeWindZone },
     { "env.weather",          "Environment", "Weather",                "天候。雨量と路面の濡れ (雨エミッターを子に持つ)", &MakeWeather },
 
     { "terrain.terrain", "Terrain", "Terrain",      "平坦な地形 (65x65) + Terrain Collider + 既定レイヤーマテリアル", &MakeTerrain },
@@ -870,7 +876,7 @@ constexpr ObjectPreset kPresets[] = {
     { "nav.aiAgent",    "Navigation", "AI Agent",         "Agent + Sensor + Patrol + BehaviorTree。敵 1 体の骨格一式", &MakeAIAgent },
 
     { "fx.particle",   "Effects", "Particle Emitter",     "ParticleEmitter 単体", &MakeParticleEmitter },
-    { "fx.forceField", "Effects", "Particle Force Field", "パーティクルへ働く力場", &MakeParticleForceField },
+    { "fx.forceField", "Effects", "Force Field",           "粒子・雲・風に働く力の場", &MakeForceField },
     { "fx.trail",      "Effects", "Trail",                "移動軌跡を帯で描く", &MakeTrail },
     { "fx.meshTrail",  "Effects", "Mesh Trail",           "メッシュの残像を残す", &MakeMeshTrail },
 

@@ -8,7 +8,7 @@
 ///   «力» は粒子の発生や描画とは独立した層になった。同じファイルに置いておくと、
 ///   力を 1 種類足すたびに 2800 行のファイルを開くことになる。
 #pragma once
-#include "Engine/Scene/Components/ParticleForceField.hpp"
+#include "Engine/Scene/Components/ForceField.hpp"
 #include <cstdint>
 #include <vector>
 #include <Math/Quaternion.hpp>
@@ -24,13 +24,13 @@ struct ParticleEmitter;
 struct RenderPassContext;
 
 /// 1 フレーム分に解決した力場 1 本 (ワールド空間へ解決済み)。
-/// シーンに置いた ParticleForceField と、エミッターが内蔵する力の両方がこの形になる。
+/// シーンに置いた ForceField と、エミッターが内蔵する力の両方がこの形になる。
 struct ActiveForceField {
     math::Vector3          position;
     float                  radius;
     math::Vector3          direction; // Wind: 風向き / Vortex: 回転軸 (正規化済み)
     float                  strength;
-    ParticleForceFieldType type;
+    ForceFieldType type;
     float                  falloffPower;
     float                  noiseFrequency;
     float                  noiseSpeed;
@@ -54,12 +54,28 @@ struct ActiveForceField {
 
 /// 設定 1 本をワールド空間の ActiveForceField へ解決する。
 /// origin / rotation は «この力をどの座標系で置くか» を呼び出し側が決めて渡す。
-[[nodiscard]] ActiveForceField ResolveForceField(const ParticleForceFieldSettings& settings,
+[[nodiscard]] ActiveForceField ResolveForceField(const ForceFieldSettings& settings,
                                                  const math::Vector3&    origin,
                                                  const math::Quaternion& rotation,
                                                  bool                    isLocal);
 
-/// シーンから有効な ParticleForceField を収集しワールド空間へ解決する。
+/// «このシーンの風»。粒子以外 (雲・草) は点ごとに力を積分せず、方向と速さだけを
+/// 自分のシェーダーへ渡すので、力場から 1 本ぶんの値を要約して受け取る。
+///
+/// WHY WindZoneComponent を廃したか: 環境風は «radius 0 の Wind + Turbulence» と
+///   まったく同じもので、粒子側では既にその 2 本へ変換していた。型を分けておくと
+///   «風» の言い方が 2 通りになり、片方にだけ機能が付く。
+struct AmbientWind {
+    bool          active = false;
+    math::Vector3 direction = { 0.7071f, 0.0f, 0.7071f };
+    float         strength = 0.0f;
+    float         turbulence = 0.0f;
+    float         pulseFrequency = 1.0f;
+};
+
+[[nodiscard]] AmbientWind FindAmbientWind(Scene& scene);
+
+/// シーンから有効な ForceField を収集しワールド空間へ解決する。
 /// パス先頭で 1 回だけ収集して全エミッターで共有する (エミッターごとに走査すると
 /// O(エミッター数×オブジェクト数) になる)。
 [[nodiscard]] std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMask);

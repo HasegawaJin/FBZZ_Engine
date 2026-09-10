@@ -114,7 +114,7 @@ inline void ParticleRadialVelocity(GameObject& root, std::string_view node, floa
 {
     if (GameObject* target = Find(root, node))
         if (auto* emitter = target->GetComponent<ParticleEmitter>())
-            emitter->settings.EnsureLocalForce(ParticleForceFieldType::Repulse).strength = value;
+            emitter->settings.EnsureLocalForce(ForceFieldType::Repulse).strength = value;
 }
 
 /// 層そのものの位置。旧 schemaPath "localPosition"。

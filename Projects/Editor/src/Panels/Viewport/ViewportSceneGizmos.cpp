@@ -11,9 +11,8 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
-#include <Engine/Scene/Components/WindZoneComponent.hpp>
 
 namespace fbzz::editor {
 
@@ -347,8 +346,8 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
 
     forEachIcon(ComponentTag<scene::AudioSourceComponent>{},      IM_COL32(140, 220, 150, 210), badge("A"));
     forEachIcon(ComponentTag<scene::ParticleEmitter>{},           IM_COL32(230, 150, 230, 210), badge("P"));
-    forEachIcon(ComponentTag<scene::ParticleForceField>{},        IM_COL32(200, 120, 240, 210), badge("F"));
-    forEachIcon(ComponentTag<scene::WindZoneComponent>{},         IM_COL32(150, 220, 235, 210), badge("W"));
+    forEachIcon(ComponentTag<scene::ForceField>{},        IM_COL32(200, 120, 240, 210), badge("F"));
+    // 環境風は ForceField の 1 種類になったので、専用アイコンは持たない。
     forEachIcon(ComponentTag<scene::NavMeshAgentComponent>{},     IM_COL32(120, 190, 120, 210), badge("N"));
     forEachIcon(ComponentTag<scene::ReflectionProbeComponent>{},  IM_COL32(190, 190, 240, 210), badge("R"));
     forEachIcon(ComponentTag<scene::DecalComponent>{},            IM_COL32(240, 180, 120, 210), badge("D"));

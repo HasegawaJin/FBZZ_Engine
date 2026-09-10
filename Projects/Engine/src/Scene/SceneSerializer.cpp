@@ -22,8 +22,8 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
-#include <Engine/Scene/Components/WindZoneComponent.hpp>
+#include <Engine/Scene/ComponentReflectionCodec.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
@@ -93,6 +93,56 @@ namespace fbzz::scene {
 // 内部ヘルパー
 // -----------------------------------------------------------------------
 namespace {
+
+// 力場コンポーネントを読む。旧い 2 つの形をここで吸収する。
+//
+//   (a) 2026-09-11 以前の ForceField … 力 1 本ぶんのキーが直下にフラットに並ぶ
+//   (b) WindZoneComponent                  … 廃止。radius 0 の Wind + Turbulence へ写す
+//
+// WHY 自動で移すか: 環境風と力場は «空気が動く» という同じ 1 つの概念で、型が 2 つ
+//     あること自体が設計の穴だった。捨てると既存シーンの風が黙って止まる ——
+//     しかも «風が弱い» と区別が付かない。値は移して、言い方だけを 1 つにする。
+void ReadForceFieldComponent(GameObject& go, const toml::table& goTbl)
+{
+    std::vector<ForceFieldSettings> forces;
+
+    // 型が ParticleForceField → ForceField になったのでキーも変わった (2026-09-11)。
+    // 出荷済みシーンは旧キーで書かれているので、両方を受ける。
+    const auto* fieldTbl = goTbl["ForceField"].as_table();
+    if (fieldTbl == nullptr) fieldTbl = goTbl["ParticleForceField"].as_table();
+    if (fieldTbl != nullptr) {
+        if (fieldTbl->contains("forces")) {
+            ForceField component{};
+            DeserializeReflected(*fieldTbl, component);
+            forces = std::move(component.forces);
+        } else {
+            // 旧フラット形式。1 本ぶんとして読む。
+            ForceFieldSettings single{};
+            DeserializeReflected(*fieldTbl, single);
+            forces.push_back(single);
+        }
+    }
+
+    if (const auto* windTbl = goTbl["WindZoneComponent"].as_table()) {
+        const bool enabled = (*windTbl)["enabled"].value_or(true);
+        const math::Vector3 direction =
+            util::ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
+        const float strength   = (float)(*windTbl)["strength"].value_or(1.0);
+        const float turbulence = (float)(*windTbl)["turbulence"].value_or(0.0);
+        const float pulse      = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
+
+        for (ForceFieldSettings& wind :
+             MakeAmbientWindForces(direction, strength, turbulence, pulse)) {
+            wind.enabled = enabled;
+            forces.push_back(wind);
+        }
+    }
+
+    if (forces.empty()) return;
+    ForceField component{};
+    component.forces = std::move(forces);
+    go.AddComponent<ForceField>(component);
+}
 
 double RoundTomlFloat(double value)
 {
@@ -1154,79 +1204,14 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("ParticleEmitter", asset::SerializeParticleEmitterSettings(pe->settings));
         }
 
-        // ParticleForceField
-        if (auto* ff = go.GetComponent<ParticleForceField>()) {
-            toml::table ffTbl;
-            ffTbl.insert("enabled",        ff->enabled);
-            ffTbl.insert("fieldType",      (int64_t)static_cast<int>(ff->fieldType));
-            ffTbl.insert("strength",       (double)ff->strength);
-            ffTbl.insert("radius",         (double)ff->radius);
-            ffTbl.insert("falloffPower",   (double)ff->falloffPower);
-            ffTbl.insert("direction",      Vec3ToArr(ff->direction));
-            ffTbl.insert("noiseFrequency", (double)ff->noiseFrequency);
-            ffTbl.insert("noiseSpeed",     (double)ff->noiseSpeed);
-            ffTbl.insert("channels",       (int64_t)ff->channels);
-            goTbl.insert("ParticleForceField", std::move(ffTbl));
-        }
-
-        // WindZoneComponent
-        if (auto* wind = go.GetComponent<WindZoneComponent>()) {
-            toml::table windTbl;
-            windTbl.insert("enabled",        wind->enabled);
-            windTbl.insert("direction",      Vec3ToArr(wind->direction));
-            windTbl.insert("strength",       (double)wind->strength);
-            windTbl.insert("turbulence",     (double)wind->turbulence);
-            windTbl.insert("pulseFrequency", (double)wind->pulseFrequency);
-            goTbl.insert("WindZoneComponent", std::move(windTbl));
-        }
+        // ForceField
+        WriteComponentReflected<ForceField>(go, goTbl, "ForceField");
 
         // TrailComponent
-        if (auto* trail = go.GetComponent<TrailComponent>()) {
-            toml::table trailTbl;
-            trailTbl.insert("enabled",            trail->enabled);
-            trailTbl.insert("duration",           (double)trail->duration);
-            trailTbl.insert("maxPoints",          (int64_t)trail->maxPoints);
-            trailTbl.insert("sampleInterval",     (double)trail->sampleInterval);
-            trailTbl.insert("minVertexDist",      (double)trail->minVertexDist);
-            trailTbl.insert("widthStart",         (double)trail->widthStart);
-            trailTbl.insert("widthEnd",           (double)trail->widthEnd);
-            trailTbl.insert("beamMode",           trail->beamMode);
-            trailTbl.insert("beamStart",          Vec3ToArr(trail->beamStart));
-            trailTbl.insert("beamEnd",            Vec3ToArr(trail->beamEnd));
-            trailTbl.insert("widthEasing",        (int64_t)static_cast<int>(trail->widthEasing));
-            trailTbl.insert("colorStart",         Vec4ToArr(trail->colorStart));
-            trailTbl.insert("colorEnd",           Vec4ToArr(trail->colorEnd));
-            trailTbl.insert("alignment",          (int64_t)static_cast<int>(trail->alignment));
-            trailTbl.insert("smoothSubdivisions", (int64_t)trail->smoothSubdivisions);
-            trailTbl.insert("attachBone",         trail->attachBone);
-            trailTbl.insert("attachOffset",       Vec3ToArr(trail->attachOffset));
-            trailTbl.insert("clearOnDisable",     trail->clearOnDisable);
-            trailTbl.insert("materialPath",       trail->materialPath);
-            trailTbl.insert("uvMode",             (int64_t)static_cast<int>(trail->uvMode));
-            trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
-            trailTbl.insert("uvTiling",           (double)trail->uvTiling);
-            goTbl.insert("TrailComponent", std::move(trailTbl));
-        }
+        WriteComponentReflected<TrailComponent>(go, goTbl, "TrailComponent");
 
         // MeshTrailComponent
-        if (auto* trail = go.GetComponent<MeshTrailComponent>()) {
-            toml::table trailTbl;
-            trailTbl.insert("enabled",        trail->enabled);
-            trailTbl.insert("duration",       (double)trail->duration);
-            trailTbl.insert("sampleInterval", (double)trail->sampleInterval);
-            trailTbl.insert("minVertexDist",  (double)trail->minVertexDist);
-            trailTbl.insert("maxSamples",     (int64_t)trail->maxSamples);
-            trailTbl.insert("colorStart",     Vec4ToArr(trail->colorStart));
-            trailTbl.insert("colorEnd",       Vec4ToArr(trail->colorEnd));
-            trailTbl.insert("doubleSided",    trail->doubleSided);
-            trailTbl.insert("clearOnDisable", trail->clearOnDisable);
-            trailTbl.insert("materialPath",   trail->materialPath);
-            toml::array excludedMeshIndices;
-            for (int meshIndex : trail->excludedMeshIndices)
-                excludedMeshIndices.push_back((int64_t)meshIndex);
-            trailTbl.insert("excludedMeshIndices", std::move(excludedMeshIndices));
-            goTbl.insert("MeshTrailComponent", std::move(trailTbl));
-        }
+        WriteComponentReflected<MeshTrailComponent>(go, goTbl, "MeshTrailComponent");
 
         if (auto* col = go.GetComponent<AabbColliderComponent>()) {
             toml::table colTbl = SerializeCollider(*col);
@@ -2378,96 +2363,14 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
-        // ParticleForceField
-        if (auto* ffTbl = (*goTbl)["ParticleForceField"].as_table()) {
-            ParticleForceField ff{};
-            ff.enabled      = (*ffTbl)["enabled"].value_or(true);
-            int fieldType   = (int)(*ffTbl)["fieldType"].value_or((int64_t)0);
-            fieldType       = fieldType < 0 ? 0 : (fieldType > 5 ? 5 : fieldType);
-            ff.fieldType    = static_cast<ParticleForceFieldType>(fieldType);
-            ff.strength     = (float)(*ffTbl)["strength"].value_or(5.0);
-            ff.radius       = (float)(*ffTbl)["radius"].value_or(5.0);
-            ff.falloffPower = (float)(*ffTbl)["falloffPower"].value_or(2.0);
-            ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
-            ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
-            ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
-            // 旧シーンにキーが無ければ全チャンネル。マスクを知らない資産の挙動を変えない。
-            ff.channels     = static_cast<uint32_t>(
-                (*ffTbl)["channels"].value_or((int64_t)0xFFFFFFFF));
-            go.AddComponent<ParticleForceField>(ff);
-        }
-
-        // WindZoneComponent
-        if (auto* windTbl = (*goTbl)["WindZoneComponent"].as_table()) {
-            WindZoneComponent wind{};
-            wind.enabled        = (*windTbl)["enabled"].value_or(true);
-            wind.direction      = ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
-            wind.strength       = (float)(*windTbl)["strength"].value_or(1.0);
-            wind.turbulence     = (float)(*windTbl)["turbulence"].value_or(0.0);
-            wind.pulseFrequency = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
-            go.AddComponent<WindZoneComponent>(wind);
-        }
+        // 力場 (旧 WindZoneComponent と旧フラット形式もここで吸収する)
+        ReadForceFieldComponent(go, *goTbl);
 
         // TrailComponent
-        if (auto* trailTbl = (*goTbl)["TrailComponent"].as_table()) {
-            TrailComponent trail{};
-            trail.enabled        = (*trailTbl)["enabled"].value_or(true);
-            trail.duration       = (float)(*trailTbl)["duration"].value_or(1.0);
-            trail.maxPoints      = (int)(*trailTbl)["maxPoints"].value_or((int64_t)64);
-            trail.sampleInterval = (float)(*trailTbl)["sampleInterval"].value_or(1.0 / 30.0);
-            trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
-            trail.widthStart     = (float)(*trailTbl)["widthStart"].value_or(0.20);
-            trail.widthEnd       = (float)(*trailTbl)["widthEnd"].value_or(0.02);
-            trail.beamMode       = (*trailTbl)["beamMode"].value_or(false);
-            trail.beamStart      = ArrToVec3((*trailTbl)["beamStart"].as_array(), math::Vector3::ZERO);
-            trail.beamEnd        = ArrToVec3((*trailTbl)["beamEnd"].as_array(), { 0.0f, 0.0f, 5.0f });
-            int widthEasing = (int)(*trailTbl)["widthEasing"].value_or((int64_t)0);
-            widthEasing = widthEasing < 0 ? 0 : (widthEasing > 3 ? 3 : widthEasing);
-            trail.widthEasing = static_cast<TrailWidthEasing>(widthEasing);
-            trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
-                                              { 1.0f, 1.0f, 1.0f, 1.0f });
-            trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
-                                             { 1.0f, 1.0f, 1.0f, 0.0f });
-            int alignment = (int)(*trailTbl)["alignment"].value_or((int64_t)0);
-            alignment = alignment < 0 ? 0 : (alignment > 1 ? 1 : alignment);
-            trail.alignment      = static_cast<TrailAlignment>(alignment);
-            trail.smoothSubdivisions = (int)(*trailTbl)["smoothSubdivisions"].value_or((int64_t)0);
-            trail.attachBone     = (*trailTbl)["attachBone"].value_or(std::string{});
-            trail.attachOffset   = ArrToVec3((*trailTbl)["attachOffset"].as_array(), math::Vector3::ZERO);
-            trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
-            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            int uvMode = (int)(*trailTbl)["uvMode"].value_or((int64_t)0);
-            uvMode = uvMode < 0 ? 0 : (uvMode > 1 ? 1 : uvMode);
-            trail.uvMode         = static_cast<TrailUVMode>(uvMode);
-            trail.uvScrollSpeed  = (float)(*trailTbl)["uvScrollSpeed"].value_or(0.0);
-            trail.uvTiling       = (float)(*trailTbl)["uvTiling"].value_or(1.0);
-            go.AddComponent<TrailComponent>(std::move(trail));
-        }
+        ReadComponentReflected<TrailComponent>(go, *goTbl, "TrailComponent");
 
         // MeshTrailComponent
-        if (auto* trailTbl = (*goTbl)["MeshTrailComponent"].as_table()) {
-            MeshTrailComponent trail{};
-            trail.enabled        = (*trailTbl)["enabled"].value_or(true);
-            trail.duration       = (float)(*trailTbl)["duration"].value_or(0.5);
-            trail.sampleInterval = (float)(*trailTbl)["sampleInterval"].value_or(1.0 / 15.0);
-            trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
-            trail.maxSamples     = (int)(*trailTbl)["maxSamples"].value_or((int64_t)12);
-            trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
-                                             { 0.35f, 0.75f, 1.0f, 0.35f });
-            trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
-                                               { 0.35f, 0.75f, 1.0f, 0.0f });
-            trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
-            trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
-            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
-            if (const auto* excludedArr = (*trailTbl)["excludedMeshIndices"].as_array()) {
-                for (const auto& node : *excludedArr) {
-                    const int meshIndex = (int)node.value_or((int64_t)-1);
-                    if (meshIndex >= 0)
-                        trail.excludedMeshIndices.push_back(meshIndex);
-                }
-            }
-            go.AddComponent<MeshTrailComponent>(std::move(trail));
-        }
+        ReadComponentReflected<MeshTrailComponent>(go, *goTbl, "MeshTrailComponent");
 
         if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
             AabbColliderComponent col{};
@@ -3723,33 +3626,7 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
-        if (auto* ffTbl = (*goTbl)["ParticleForceField"].as_table()) {
-            ParticleForceField ff{};
-            ff.enabled      = (*ffTbl)["enabled"].value_or(true);
-            int fieldType   = (int)(*ffTbl)["fieldType"].value_or((int64_t)0);
-            fieldType       = fieldType < 0 ? 0 : (fieldType > 5 ? 5 : fieldType);
-            ff.fieldType    = static_cast<ParticleForceFieldType>(fieldType);
-            ff.strength     = (float)(*ffTbl)["strength"].value_or(5.0);
-            ff.radius       = (float)(*ffTbl)["radius"].value_or(5.0);
-            ff.falloffPower = (float)(*ffTbl)["falloffPower"].value_or(2.0);
-            ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
-            ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
-            ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
-            // 旧シーンにキーが無ければ全チャンネル。マスクを知らない資産の挙動を変えない。
-            ff.channels     = static_cast<uint32_t>(
-                (*ffTbl)["channels"].value_or((int64_t)0xFFFFFFFF));
-            go.AddComponent<ParticleForceField>(ff);
-        }
-
-        if (auto* windTbl = (*goTbl)["WindZoneComponent"].as_table()) {
-            WindZoneComponent wind{};
-            wind.enabled        = (*windTbl)["enabled"].value_or(true);
-            wind.direction      = ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
-            wind.strength       = (float)(*windTbl)["strength"].value_or(1.0);
-            wind.turbulence     = (float)(*windTbl)["turbulence"].value_or(0.0);
-            wind.pulseFrequency = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
-            go.AddComponent<WindZoneComponent>(wind);
-        }
+        ReadForceFieldComponent(go, *goTbl);
 
         if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
             AabbColliderComponent col{};

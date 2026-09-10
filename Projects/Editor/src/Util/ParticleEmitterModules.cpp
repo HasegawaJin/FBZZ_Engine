@@ -65,25 +65,25 @@ void EndModule()
 // 力場 1 本ぶんの編集。型によって意味のある項目だけを出す。
 // WHY 型で出し分けるか: 12 項目すべてを常に出すと、Wind に noiseFrequency が、
 //     Turbulence に direction が並ぶ。効かない値が編集できると «設定したのに変わらない» になる。
-// WHY 公開するか: 同じ設定型がシーンの ParticleForceField とエミッター内蔵の力の
+// WHY 公開するか: 同じ設定型がシーンの ForceField とエミッター内蔵の力の
 //     両方で使われる。UI が 2 本あると «片方にだけ Vector Field 欄が無い» が起きる。
-bool DrawParticleForceFieldSettings(scene::ParticleForceFieldSettings& force, EditorContext& ctx,
+bool DrawForceFieldSettings(scene::ForceFieldSettings& force, EditorContext& ctx,
                                     bool showSpace)
 {
-    using Type  = scene::ParticleForceFieldType;
-    using Space = scene::ParticleForceFieldSpace;
+    using Type  = scene::ForceFieldType;
+    using Space = scene::ForceFieldSpace;
 
     static const char* kTypeLabels[] = {
         "Wind (constant)", "Attract", "Repulse", "Vortex", "Turbulence", "Drag", "Vector Field"
     };
-    static_assert(static_cast<int>(std::size(kTypeLabels)) == scene::kParticleForceFieldTypeCount,
+    static_assert(static_cast<int>(std::size(kTypeLabels)) == scene::kForceFieldTypeCount,
                   "力の種類を足したらラベルも足すこと");
 
     bool changed = false;
     changed |= ImGui::Checkbox("Enabled", &force.enabled);
 
     int typeValue = static_cast<int>(force.fieldType);
-    if (ImGui::Combo("Type", &typeValue, kTypeLabels, scene::kParticleForceFieldTypeCount)) {
+    if (ImGui::Combo("Type", &typeValue, kTypeLabels, scene::kForceFieldTypeCount)) {
         force.fieldType = static_cast<Type>(typeValue);
         changed = true;
     }
@@ -143,21 +143,20 @@ bool DrawParticleForceFieldSettings(scene::ParticleForceFieldSettings& force, Ed
     return changed;
 }
 
-namespace {
-
-// 内蔵の力のリスト。追加・削除を持つ。
-bool DrawLocalForceList(scene::ParticleEmitterSettings& pe, EditorContext& ctx)
+// 力のリスト。追加・削除を持つ。エミッター内蔵の力とシーンの力場が共用する。
+bool DrawForceFieldList(std::vector<scene::ForceFieldSettings>& forces,
+                               EditorContext& ctx, bool showSpace)
 {
-    using Type = scene::ParticleForceFieldType;
+    using Type = scene::ForceFieldType;
     static const char* kShortNames[] = {
         "Wind", "Attract", "Repulse", "Vortex", "Turbulence", "Drag", "Vector Field"
     };
 
     bool changed = false;
     int removeIndex = -1;
-    for (std::size_t index = 0; index < pe.localForces.size(); ++index) {
+    for (std::size_t index = 0; index < forces.size(); ++index) {
         ImGui::PushID(static_cast<int>(index));
-        auto& force = pe.localForces[index];
+        auto& force = forces[index];
         char header[96];
         std::snprintf(header, sizeof(header), "%zu. %s###force", index,
                       kShortNames[static_cast<int>(force.fieldType)]);
@@ -166,34 +165,34 @@ bool DrawLocalForceList(scene::ParticleEmitterSettings& pe, EditorContext& ctx)
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 18.0f);
         if (ImGui::SmallButton("x")) removeIndex = static_cast<int>(index);
         if (open) {
-            changed |= DrawParticleForceFieldSettings(force, ctx);
+            changed |= DrawForceFieldSettings(force, ctx, showSpace);
             ImGui::TreePop();
         }
         ImGui::PopID();
     }
     if (removeIndex >= 0) {
-        pe.localForces.erase(pe.localForces.begin() + removeIndex);
+        forces.erase(forces.begin() + removeIndex);
         changed = true;
     }
 
     if (ImGui::Button("Add Force")) ImGui::OpenPopup("add_force");
     if (ImGui::BeginPopup("add_force")) {
-        for (int type = 0; type < scene::kParticleForceFieldTypeCount; ++type) {
+        for (int type = 0; type < scene::kForceFieldTypeCount; ++type) {
             if (!ImGui::MenuItem(kShortNames[type])) continue;
             // EnsureLocalForce は «同じ型が既にあれば足さない»。ここでは «2 本目の Wind» を
             // 作れる必要がある (別方向の風、別半径の吸引) ので直接足す。
-            scene::ParticleForceFieldSettings force;
+            scene::ForceFieldSettings force;
             force.fieldType = static_cast<Type>(type);
             force.radius = 0.0f;
             if (type == static_cast<int>(Type::Vortex) || type == static_cast<int>(Type::Repulse)
                 || type == static_cast<int>(Type::Attract))
-                force.space = scene::ParticleForceFieldSpace::Emitter;
-            pe.localForces.push_back(force);
+                force.space = scene::ForceFieldSpace::Emitter;
+            forces.push_back(force);
             changed = true;
         }
         ImGui::EndPopup();
     }
-    if (pe.localForces.empty())
+    if (forces.empty())
         ImGui::TextDisabled("力がありません。粒子は初速のまま等速で飛びます。");
     return changed;
 }
@@ -223,6 +222,8 @@ bool SubEmitterCombo(const char* label, std::string& target, EditorContext& ctx)
     ImGui::EndCombo();
     return changed;
 }
+
+namespace {
 
 // Shape のプレビュー付き 2D ギズモ。ドラッグで半径 / Extents を直接編集できる。
 bool DrawShapeGizmo(scene::ParticleEmitterSettings& pe)
@@ -373,16 +374,16 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             changed = true;
         }
         {
-            scene::ParticleForceFieldSettings* drag =
-                pe.FindLocalForce(scene::ParticleForceFieldType::Drag);
+            scene::ForceFieldSettings* drag =
+                pe.FindLocalForce(scene::ForceFieldType::Drag);
             float damping = drag ? drag->strength : 0.0f;
             if (ImGui::DragFloat("Velocity Damping", &damping, 0.01f, 0.0f, 100.0f)) {
                 // 0 のときに Drag を足さないのは、力リストが «効いていない 1 本» で
                 // 埋まらないようにするため。0 へ戻したら消す。
                 if (damping > 0.0f)
-                    pe.EnsureLocalForce(scene::ParticleForceFieldType::Drag).strength = damping;
+                    pe.EnsureLocalForce(scene::ForceFieldType::Drag).strength = damping;
                 else if (drag)
-                    pe.RemoveLocalForce(scene::ParticleForceFieldType::Drag);
+                    pe.RemoveLocalForce(scene::ForceFieldType::Drag);
                 changed = true;
             }
         }
@@ -616,7 +617,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
 
     // ── Forces: 内蔵の力そのもの (重力・空気抵抗も含む) ─────────────────────
     if (BeginModule("Forces", nullptr, /*defaultOpen=*/false, changed)) {
-        changed |= DrawLocalForceList(pe, ctx);
+        changed |= DrawForceFieldList(pe.localForces, ctx, /*showSpace=*/true);
         EndModule();
     }
 
@@ -680,7 +681,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
 
     // Noise モジュールは Forces の Turbulence 1 本になった (専用の枠を持たない)。
 
-    // ── External Forces: シーンの ParticleForceField を受けるか ───────────────
+    // ── External Forces: シーンの ForceField を受けるか ───────────────
     if (BeginModule("External Forces", &pe.receiveForceFields, /*defaultOpen=*/false, changed)) {
         ImGui::TextDisabled("Receives Wind / Attract / Vortex / Turbulence force fields in the scene.");
         if (widgets::ForceFieldChannelMask("Channels", pe.forceFieldChannels)) changed = true;

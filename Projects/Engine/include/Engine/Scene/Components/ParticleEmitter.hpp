@@ -7,7 +7,7 @@
 #include <Engine/Asset/ParticleMaterialSettings.hpp> // .mat の [particle] + Particle* 列挙
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Components/ParticleColorSpace.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Entity.hpp>
 // ParticleCurve / ParticleGradient は Script からも宣言できるよう別ヘッダーに住む。
 #include <Engine/Scene/ParticleCurve.hpp>
@@ -135,11 +135,11 @@ struct MeshShapeTriangle {
 // WHY 関数か: 集約初期化のメンバー既定値としてリストを 1 本用意するため。
 //      «新しく置いた粒子が落ちない» は既定値の変更として最も気付かれにくい退行なので、
 //      移行前と同じ加速度をここで固定する。
-inline std::vector<ParticleForceFieldSettings> MakeDefaultLocalForces()
+inline std::vector<ForceFieldSettings> MakeDefaultLocalForces()
 {
-    ParticleForceFieldSettings gravity;
-    gravity.fieldType = ParticleForceFieldType::Wind;
-    gravity.space     = ParticleForceFieldSpace::World;
+    ForceFieldSettings gravity;
+    gravity.fieldType = ForceFieldType::Wind;
+    gravity.space     = ForceFieldSpace::World;
     gravity.direction = { 0.0f, -1.0f, 0.0f };
     gravity.strength  = 5.0f;
     gravity.radius    = 0.0f; // 無限 (減衰なし)
@@ -153,6 +153,8 @@ inline void ReflectParticleBursts(IReflector& r, std::vector<ParticleBurst>& bur
 {
     r.BeginField("bursts", "Bursts");
     const std::size_t count = r.BeginObjectList("Bursts", bursts.size());
+    // 要素の中の Field は自分のキーで通す (ReflectForceFieldList と同じ理由)。
+    r.EndField();
     bursts.resize(count);
     for (std::size_t index = 0; index < bursts.size(); ++index) {
         r.BeginObjectElement(index);
@@ -169,20 +171,13 @@ inline void ReflectParticleBursts(IReflector& r, std::vector<ParticleBurst>& bur
     r.EndField();
 }
 
-inline void ReflectLocalForces(IReflector& r, std::vector<ParticleForceFieldSettings>& forces)
+// 内蔵の力の並びは ForceField::forces と同じ形。実体は ReflectForceFieldList 1 つで、
+// ここはキー名 (localForces) を与えるだけ。
+// WHY キーを分けるか: 同じ GameObject に «エミッター内蔵の力» と «シーンの力場» が
+//      両方付くことがある。同じキー名だと TOML の同じ枠を奪い合う。
+inline void ReflectLocalForces(IReflector& r, std::vector<ForceFieldSettings>& forces)
 {
-    r.BeginField("localForces", "Forces");
-    const std::size_t count = r.BeginObjectList("Forces", forces.size());
-    forces.resize(count);
-    for (std::size_t index = 0; index < forces.size(); ++index) {
-        r.BeginObjectElement(index);
-        forces[index].Reflect(r);
-        r.EndObjectElement();
-    }
-    const std::size_t removeIndex = r.EndObjectList();
-    if (removeIndex < forces.size())
-        forces.erase(forces.begin() + static_cast<std::ptrdiff_t>(removeIndex));
-    r.EndField();
+    ReflectForceFieldList(r, forces, "localForces", "Forces");
 }
 
 // materialPath 未設定の Emitter が使う既定 .mat。加算の丸い光。
@@ -377,14 +372,14 @@ struct ParticleEmitterSettings {
     ///
     /// WHY 個別のフィールドをやめたか:
     ///   gravity / velocityDamping / noise* / orbital* / radialVelocity は
-    ///   ParticleForceField の Wind / Drag / Turbulence / Vortex / Repulse と
+    ///   ForceField の Wind / Drag / Turbulence / Vortex / Repulse と
     ///   «同じ式» だった。型が違うだけで評価関数が CPU に 2 本・HLSL に 2 本あり、
     ///   力を 1 種類足すたびに 4 か所へ書く必要があった。同じ型にすれば、
     ///   シーンに置いた力場と内蔵の力を 1 本の評価器が区別せず処理できる。
     ///
     /// @note シーンに置いた力場と違い、これはエミッターに追従する固有の運動として効く。
     ///       channels は内蔵の力では意味を持たない (既に相手が 1 体に決まっている)。
-    std::vector<ParticleForceFieldSettings> localForces = MakeDefaultLocalForces();
+    std::vector<ForceFieldSettings> localForces = MakeDefaultLocalForces();
 
     // WHY: std::rand() のグローバル状態を避け、エミッター単位で再現可能な分布にする。
     uint32_t      randomSeed     = 1;
@@ -507,11 +502,11 @@ struct ParticleEmitterSettings {
     bool pauseWhenCulled = false;
 
     // 乱流 (Turbulence) と速度場 (VectorField) も localForces に入る。
-    // シーン内の ParticleForceField から力を受けるか。
+    // シーン内の ForceField から力を受けるか。
     // WHY: UI 演出用パーティクルなど、環境の風に反応させたくないエミッターを除外できるようにする。
     bool receiveForceFields = true;
 
-    /// 受け取る力場を選ぶビットマスク。ParticleForceField::channels と 1 ビットでも
+    /// 受け取る力場を選ぶビットマスク。ForceField::channels と 1 ビットでも
     /// 重なった力場だけがこのエミッターに作用する。receiveForceFields が false なら無関係。
     /// 既定は全ビット ON で、従来どおり全力場を受け取る。
     uint32_t forceFieldChannels = 0xFFFFFFFFu;
@@ -572,14 +567,14 @@ struct ParticleEmitterSettings {
     //     リストの何番目かを知らない。役割で引ければ、保存形式がリストに変わっても
     //     呼び出し側は «重力» のまま書ける。同じ型が複数あれば先頭を返す。
 
-    [[nodiscard]] const ParticleForceFieldSettings* FindLocalForce(ParticleForceFieldType type) const
+    [[nodiscard]] const ForceFieldSettings* FindLocalForce(ForceFieldType type) const
     {
         for (const auto& force : localForces)
             if (force.fieldType == type) return &force;
         return nullptr;
     }
 
-    [[nodiscard]] ParticleForceFieldSettings* FindLocalForce(ParticleForceFieldType type)
+    [[nodiscard]] ForceFieldSettings* FindLocalForce(ForceFieldType type)
     {
         for (auto& force : localForces)
             if (force.fieldType == type) return &force;
@@ -587,36 +582,36 @@ struct ParticleEmitterSettings {
     }
 
     /// 無ければ既定値で 1 本足して返す。space は型ごとに «その力が意味を持つ座標系» へ倒す。
-    ParticleForceFieldSettings& EnsureLocalForce(ParticleForceFieldType type)
+    ForceFieldSettings& EnsureLocalForce(ForceFieldType type)
     {
-        if (ParticleForceFieldSettings* existing = FindLocalForce(type)) return *existing;
-        ParticleForceFieldSettings force;
+        if (ForceFieldSettings* existing = FindLocalForce(type)) return *existing;
+        ForceFieldSettings force;
         force.fieldType = type;
         force.radius    = 0.0f; // 内蔵の力は既定で «エミッター全体に効く»
         // 周回と放射はエミッター原点が要る。それ以外は世界の性質なので World のまま。
-        force.space = (type == ParticleForceFieldType::Vortex
-                    || type == ParticleForceFieldType::Repulse
-                    || type == ParticleForceFieldType::Attract)
-                        ? ParticleForceFieldSpace::Emitter
-                        : ParticleForceFieldSpace::World;
-        if (type == ParticleForceFieldType::Drag || type == ParticleForceFieldType::Turbulence)
+        force.space = (type == ForceFieldType::Vortex
+                    || type == ForceFieldType::Repulse
+                    || type == ForceFieldType::Attract)
+                        ? ForceFieldSpace::Emitter
+                        : ForceFieldSpace::World;
+        if (type == ForceFieldType::Drag || type == ForceFieldType::Turbulence)
             force.strength = 0.0f; // 足しただけで挙動が変わらないように
         localForces.push_back(force);
         return localForces.back();
     }
 
-    void RemoveLocalForce(ParticleForceFieldType type)
+    void RemoveLocalForce(ForceFieldType type)
     {
         localForces.erase(
             std::remove_if(localForces.begin(), localForces.end(),
-                           [type](const ParticleForceFieldSettings& f) { return f.fieldType == type; }),
+                           [type](const ForceFieldSettings& f) { return f.fieldType == type; }),
             localForces.end());
     }
 
     /// 重力加速度 [m/s^2]。内蔵の Wind 力を «向き × 強さ» として読む。
     [[nodiscard]] math::Vector3 GravityAcceleration() const
     {
-        const ParticleForceFieldSettings* wind = FindLocalForce(ParticleForceFieldType::Wind);
+        const ForceFieldSettings* wind = FindLocalForce(ForceFieldType::Wind);
         return wind ? wind->direction * wind->strength : math::Vector3::ZERO;
     }
 
@@ -625,7 +620,7 @@ struct ParticleEmitterSettings {
     ///     +X へ飛ぶ。「0 にした」は「向きを忘れてよい」ではない。
     void SetGravityAcceleration(const math::Vector3& acceleration)
     {
-        ParticleForceFieldSettings& wind = EnsureLocalForce(ParticleForceFieldType::Wind);
+        ForceFieldSettings& wind = EnsureLocalForce(ForceFieldType::Wind);
         const float magnitude = acceleration.Length();
         if (magnitude > 1.0e-6f) {
             wind.direction = acceleration * (1.0f / magnitude);
@@ -634,7 +629,7 @@ struct ParticleEmitterSettings {
             wind.strength = 0.0f;
         }
         wind.radius = 0.0f;
-        wind.space  = ParticleForceFieldSpace::World;
+        wind.space  = ForceFieldSpace::World;
     }
 
     void Reflect(IReflector& r)

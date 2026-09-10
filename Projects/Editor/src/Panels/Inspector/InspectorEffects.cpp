@@ -25,15 +25,21 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
         });
 
 
-    DrawComponentSection<scene::ParticleForceField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Force Field",
-        [](scene::ParticleForceField& ff, EditorContext& ctx) {
-            // 型ごとの出し分けはエミッター内蔵の力と同一。UI は 1 本に寄せてある。
-            // 座標系は GameObject の Transform が決めるので選択を出さない。
-            DrawParticleForceFieldSettings(ff, ctx, /*showSpace=*/false);
+    DrawComponentSection<scene::ForceField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Force Field",
+        [](scene::ForceField& ff, EditorContext& ctx) {
+            // 力のリストはエミッター内蔵の力と同じ UI。座標系は GameObject の Transform が
+            // 決めるので選択は出さない。
+            DrawForceFieldList(ff.forces, ctx, /*showSpace=*/false);
             // channels はシーンに置いた力場だけの概念 (内蔵の力は相手が決まっている)。
-            widgets::ForceFieldChannelMask("Channels", ff.channels);
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Only emitters sharing a bit with this mask receive this field.");
+            // 力ごとに持てるが、束ねて置く用途では全部同じにしたいことが多いので
+            // «先頭に合わせて全部へ» 配る。個別に分けたいなら GameObject を分ける。
+            if (!ff.forces.empty()) {
+                std::uint32_t mask = ff.forces.front().channels;
+                if (widgets::ForceFieldChannelMask("Channels", mask))
+                    for (auto& force : ff.forces) force.channels = mask;
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Only emitters sharing a bit with this mask receive these forces.");
+            }
         });
 
     DrawComponentSection<scene::TrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Trail",

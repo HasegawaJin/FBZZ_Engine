@@ -9,7 +9,7 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
-#include "Engine/Scene/Components/ParticleForceField.hpp"
+#include "Engine/Scene/Components/ForceField.hpp"
 #include "Engine/Scene/Components/ParticleGpuSimulation.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
@@ -1484,14 +1484,14 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         // params.z は Turbulence では noiseFrequency、Drag では «内蔵の力か» の印。
         // WHY 兼用するか: Drag は乱流のパラメーターを使わない。1 枠を空けて足すより、
         //     使われない枠に意味を持たせるほうが構造体が小さく保てる。
-        const bool isDrag = f.type == ParticleForceFieldType::Drag;
+        const bool isDrag = f.type == ForceFieldType::Drag;
         const float paramZ = isDrag ? (f.local ? 1.0f : 0.0f) : f.noiseFrequency;
         gf.params = { static_cast<float>(f.type), f.falloffPower, paramZ, f.noiseSpeed };
 
         // 速度場はアトラスのタイル番号で指す。常駐していない場は tile < 0 で «無効»
         // として送り、CS 側は何もしない (送らないと本数がずれて別の力に化ける)。
         gf.fieldTile = { -1.0f, 1.0f, 0.0f, 0.0f };
-        if (f.type == ParticleForceFieldType::VectorField && f.vectorField != nullptr) {
+        if (f.type == ForceFieldType::VectorField && f.vectorField != nullptr) {
             const int tile = ResolveVelocityFieldTile(*f.vectorField, ctx.resources);
             gf.fieldRotation = { f.inverseRotation.x, f.inverseRotation.y,
                                  f.inverseRotation.z, f.inverseRotation.w };
@@ -2198,8 +2198,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         emitter->settings.sizeCurvePower = (std::max)(emitter->settings.sizeCurvePower, 0.001f);
         emitter->settings.colorCurvePower = (std::max)(emitter->settings.colorCurvePower, 0.001f);
         // 空気抵抗が負だと 1 - impulse が 1 を超え、速度が毎フレーム増えて発散する。
-        for (ParticleForceFieldSettings& force : emitter->settings.localForces) {
-            if (force.fieldType == ParticleForceFieldType::Drag)
+        for (ForceFieldSettings& force : emitter->settings.localForces) {
+            if (force.fieldType == ForceFieldType::Drag)
                 force.strength = (std::max)(force.strength, 0.0f);
         }
         UpdateParticleBounds(*emitter, tf);

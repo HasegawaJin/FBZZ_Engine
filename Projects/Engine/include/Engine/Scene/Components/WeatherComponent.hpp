@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
 ///
-/// WindZoneComponent / EnvironmentLightComponent と同じ「シーンに 1 つ」パターン。
+/// EnvironmentLightComponent と同じ「シーンに 1 つ」パターン。
 /// 複数ある場合は最初の有効な 1 つを使う。
 #pragma once
 #include <Engine/Scene/Script.hpp>

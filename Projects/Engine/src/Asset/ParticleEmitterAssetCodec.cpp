@@ -75,7 +75,7 @@ void ReadCurve(const toml::table& table, const char* name, scene::ParticleCurve&
     DeserializeParticleCurve(table, name, curve);
 }
 
-toml::table WriteForce(const scene::ParticleForceFieldSettings& force)
+toml::table WriteForce(const scene::ForceFieldSettings& force)
 {
     toml::table item;
     item.insert("enabled", force.enabled);
@@ -94,12 +94,12 @@ toml::table WriteForce(const scene::ParticleForceFieldSettings& force)
     return item;
 }
 
-scene::ParticleForceFieldSettings ReadForce(const toml::table& item)
+scene::ForceFieldSettings ReadForce(const toml::table& item)
 {
-    scene::ParticleForceFieldSettings force;
+    scene::ForceFieldSettings force;
     force.enabled = item["enabled"].value_or(force.enabled);
     force.fieldType = ReadEnum(item, "fieldType", force.fieldType,
-                               scene::kParticleForceFieldTypeCount - 1);
+                               scene::kForceFieldTypeCount - 1);
     force.space = ReadEnum(item, "space", force.space, 1);
     force.strength = ReadFloat(item, "strength", force.strength);
     force.radius = ReadFloat(item, "radius", force.radius);
@@ -123,9 +123,9 @@ scene::ParticleForceFieldSettings ReadForce(const toml::table& item)
 //     しかも «浮いている» は設定ミスと区別が付かない。値は移して、形だけ変える。
 void MigrateLegacyForces(const toml::table& table, scene::ParticleEmitterSettings& emitter)
 {
-    using scene::ParticleForceFieldSettings;
-    using scene::ParticleForceFieldSpace;
-    using scene::ParticleForceFieldType;
+    using scene::ForceFieldSettings;
+    using scene::ForceFieldSpace;
+    using scene::ForceFieldType;
 
     // 既定の localForces (重力 1 本) は «新規エミッターの初期値» であって、
     // このファイルが意図した内容ではない。旧ファイルの記述だけを正とする。
@@ -134,9 +134,9 @@ void MigrateLegacyForces(const toml::table& table, scene::ParticleEmitterSetting
     const math::Vector3 gravity = ReadVector3(table["gravity"], math::Vector3{ 0.0f, -5.0f, 0.0f });
     const float gravityMagnitude = gravity.Length();
     if (gravityMagnitude > 1.0e-6f) {
-        ParticleForceFieldSettings wind;
-        wind.fieldType = ParticleForceFieldType::Wind;
-        wind.space     = ParticleForceFieldSpace::World;
+        ForceFieldSettings wind;
+        wind.fieldType = ForceFieldType::Wind;
+        wind.space     = ForceFieldSpace::World;
         wind.direction = gravity * (1.0f / gravityMagnitude);
         wind.strength  = gravityMagnitude;
         wind.radius    = 0.0f;
@@ -144,18 +144,18 @@ void MigrateLegacyForces(const toml::table& table, scene::ParticleEmitterSetting
     }
 
     if (const float damping = ReadFloat(table, "velocityDamping", 0.0f); damping > 0.0f) {
-        ParticleForceFieldSettings drag;
-        drag.fieldType = ParticleForceFieldType::Drag;
-        drag.space     = ParticleForceFieldSpace::World;
+        ForceFieldSettings drag;
+        drag.fieldType = ForceFieldType::Drag;
+        drag.space     = ForceFieldSpace::World;
         drag.strength  = damping;
         drag.radius    = 0.0f;
         emitter.localForces.push_back(drag);
     }
 
     if (const float noise = ReadFloat(table, "noiseStrength", 0.0f); noise > 0.0f) {
-        ParticleForceFieldSettings turbulence;
-        turbulence.fieldType      = ParticleForceFieldType::Turbulence;
-        turbulence.space          = ParticleForceFieldSpace::World;
+        ForceFieldSettings turbulence;
+        turbulence.fieldType      = ForceFieldType::Turbulence;
+        turbulence.space          = ForceFieldSpace::World;
         turbulence.strength       = noise;
         turbulence.radius         = 0.0f;
         turbulence.noiseFrequency = ReadFloat(table, "noiseFrequency", 0.5f);
@@ -164,9 +164,9 @@ void MigrateLegacyForces(const toml::table& table, scene::ParticleEmitterSetting
     }
 
     if (const float orbital = ReadFloat(table, "orbitalVelocity", 0.0f); orbital != 0.0f) {
-        ParticleForceFieldSettings vortex;
-        vortex.fieldType = ParticleForceFieldType::Vortex;
-        vortex.space     = ParticleForceFieldSpace::Emitter;
+        ForceFieldSettings vortex;
+        vortex.fieldType = ForceFieldType::Vortex;
+        vortex.space     = ForceFieldSpace::Emitter;
         vortex.direction = ReadVector3(table["orbitalAxis"], math::Vector3{ 0.0f, 1.0f, 0.0f });
         vortex.strength  = orbital;
         vortex.radius    = 0.0f;
@@ -176,9 +176,9 @@ void MigrateLegacyForces(const toml::table& table, scene::ParticleEmitterSetting
     // 旧 radialVelocity は «正で外向き / 負で吸い込み»。Repulse の strength と同じ符号規約
     // なので、負のまま Repulse として持たせれば挙動が一致する (Attract へ倒す必要はない)。
     if (const float radial = ReadFloat(table, "radialVelocity", 0.0f); radial != 0.0f) {
-        ParticleForceFieldSettings repulse;
-        repulse.fieldType = ParticleForceFieldType::Repulse;
-        repulse.space     = ParticleForceFieldSpace::Emitter;
+        ForceFieldSettings repulse;
+        repulse.fieldType = ForceFieldType::Repulse;
+        repulse.space     = ForceFieldSpace::Emitter;
         repulse.strength  = radial;
         repulse.radius    = 0.0f;
         emitter.localForces.push_back(repulse);
@@ -350,7 +350,6 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
 
     // FBZZ_VFX_INT は int を経由するため 0xFFFFFFFF が符号付きで潰れる。マスクは別に書く。
     table.insert("forceFieldChannels", static_cast<std::int64_t>(emitter.forceFieldChannels));
-    table.insert("orbitalAxis", WriteVector3(emitter.orbitalAxis));
     table.insert("trailColorTint", WriteVector4(emitter.trailColorTint));
     WriteCurve(table, "sizeCurve", emitter.sizeCurve);
     WriteCurve(table, "velocityCurve", emitter.velocityCurve);
@@ -475,7 +474,6 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     emitter.forceFieldChannels = static_cast<std::uint32_t>(
         table["forceFieldChannels"].value_or(
             static_cast<std::int64_t>(emitter.forceFieldChannels)));
-    emitter.orbitalAxis = ReadVector3(table["orbitalAxis"], emitter.orbitalAxis);
     emitter.trailColorTint = ReadVector4(table["trailColorTint"], emitter.trailColorTint);
     ReadCurve(table, "sizeCurve", emitter.sizeCurve);
     ReadCurve(table, "velocityCurve", emitter.velocityCurve);

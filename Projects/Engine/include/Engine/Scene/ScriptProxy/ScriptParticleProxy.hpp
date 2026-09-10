@@ -165,9 +165,9 @@ struct ScriptParticleProxy {
     void SetAngularVelocity(float minValue, float maxValue) const;
     // ノイズモジュール (カールノイズ乱流)。strength 0 で無効。
     void SetNoise(float strength, float frequency = 0.5f, float speed = 1.0f) const;
-    // シーン内の ParticleForceField から力を受けるか
+    // シーン内の ForceField から力を受けるか
     void SetReceiveForceFields(bool receive) const;
-    /// 受け取る力場をビットマスクで絞る。ParticleForceField::channels と 1 ビットでも
+    /// 受け取る力場をビットマスクで絞る。ForceField::channels と 1 ビットでも
     /// 重なった力場だけが効く。SetReceiveForceFields(false) が優先される。
     void SetForceFieldChannels(uint32_t channels) const;
 

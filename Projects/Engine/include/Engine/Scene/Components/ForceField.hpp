@@ -1,4 +1,4 @@
-/// @file    ParticleForceField.hpp
+/// @file    ForceField.hpp
 /// @brief   パーティクルへ風・吸引・渦・乱流・速度場を加えるベクトルフィールド。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
@@ -7,13 +7,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <Math/Vector3.hpp>
 
 namespace fbzz::scene {
 
 // WHY: エミッター単体の gravity/velocityDamping では表現できない「空間の場」による挙動を
 //      種類ごとに分ける。数値は GPU 定数バッファへ float として渡すため順序を変更しないこと。
-enum class ParticleForceFieldType : uint8_t {
+enum class ForceFieldType : uint8_t {
     Wind = 0,    // direction 方向へ一定加速 (風)
     Attract,     // 力場中心へ引き寄せる (吸引)
     Repulse,     // 力場中心から遠ざける (反発)
@@ -25,7 +26,7 @@ enum class ParticleForceFieldType : uint8_t {
 
 /// enum の要素数。Reflect / codec / UI の clamp がここを見る。
 /// WHY: 三か所に散らばった «> 5 ? 5 :» が、種類を足したときに 1 つだけ直し漏れる。
-inline constexpr int kParticleForceFieldTypeCount = 7;
+inline constexpr int kForceFieldTypeCount = 7;
 
 /// 力の «原点と向き» をどこから取るか。
 ///
@@ -33,7 +34,7 @@ inline constexpr int kParticleForceFieldTypeCount = 7;
 ///      «誰の座標系で解決するか» だけを外から指定できる必要がある。
 ///      重力はエミッターを傾けても下を向き続けるので World、周回はエミッター原点が
 ///      要るので Emitter、と 1 本の列挙で足りる。
-enum class ParticleForceFieldSpace : uint8_t {
+enum class ForceFieldSpace : uint8_t {
     World = 0,  ///< 位置と向きをそのままワールドとして扱う (シーン配置の力場は常にこちら)
     Emitter,    ///< 原点 = エミッター位置、向き = エミッターの回転を受ける
 };
@@ -41,14 +42,14 @@ enum class ParticleForceFieldSpace : uint8_t {
 /// 力場 1 本の設定。**GameObject に依存しない値の塊**。
 ///
 /// WHY コンポーネントから分けるか:
-///   同じ «力» が 2 か所に住んでいた — シーンへ置く ParticleForceField と、
+///   同じ «力» が 2 か所に住んでいた — シーンへ置く ForceField と、
 ///   ParticleEmitter が内蔵していた gravity / velocityDamping / noise* / orbital* / radial*。
 ///   式はどちらも同じなのに型が違うため、評価関数が CPU で 2 本・HLSL で 2 本に分かれ、
 ///   «片方にだけ機能が足される» が起きていた。設定型を 1 つにすれば評価器も 1 本で済む。
-struct ParticleForceFieldSettings {
+struct ForceFieldSettings {
     bool enabled = true;
-    ParticleForceFieldType fieldType = ParticleForceFieldType::Wind;
-    ParticleForceFieldSpace space = ParticleForceFieldSpace::World;
+    ForceFieldType fieldType = ForceFieldType::Wind;
+    ForceFieldSpace space = ForceFieldSpace::World;
     // 加速度の大きさ [m/s^2]。Drag のときは減衰係数 [1/s] として扱う。
     float strength = 5.0f;
     // 影響半径 [m]。0 以下でシーン全体へ減衰なしに作用する (グローバル風など)。
@@ -84,11 +85,11 @@ struct ParticleForceFieldSettings {
         r.Field("enabled", enabled);
         int typeValue = static_cast<int>(fieldType);
         r.Field("fieldType", typeValue);
-        typeValue = std::clamp(typeValue, 0, kParticleForceFieldTypeCount - 1);
-        fieldType = static_cast<ParticleForceFieldType>(typeValue);
+        typeValue = std::clamp(typeValue, 0, kForceFieldTypeCount - 1);
+        fieldType = static_cast<ForceFieldType>(typeValue);
         int spaceValue = static_cast<int>(space);
         r.Field("space", spaceValue);
-        space = static_cast<ParticleForceFieldSpace>(std::clamp(spaceValue, 0, 1));
+        space = static_cast<ForceFieldSpace>(std::clamp(spaceValue, 0, 1));
         r.Field("strength", strength);
         r.Field("radius", radius);
         r.Field("falloffPower", falloffPower);
@@ -108,17 +109,36 @@ struct ParticleForceFieldSettings {
     }
 };
 
-// ParticleForceField — シーンへ置く力場コンポーネント。
+/// 力のリストを Reflect する。ParticleEmitter::localForces と ForceField::forces が共用する。
+/// WHY 自由関数か: 同じ «力の並び» を 2 つの型が持つ。片方だけキー名を変えると、
+///      エミッター内蔵の力とシーンの力場で保存形式が分かれる。
+void ReflectForceFieldList(IReflector& r, std::vector<ForceFieldSettings>& forces,
+                           const char* key, const char* displayName);
+
+// ForceField — シーンへ置く力場コンポーネント。
 // 力場の中心は GameObject の Transform.worldPosition、
 // direction は Transform.worldRotation で回転してワールド空間へ変換される。
 // WHY: エミッターから独立した GameObject として配置することで、
 //      1 つの風・渦を複数エミッターへ同時に効かせたり、動く力場を作れるようにする。
-// WHY 継承か: 設定の実体は ParticleForceFieldSettings 1 つで、コンポーネントは
-//      «それが GameObject に付いている» という事実しか足さない。メンバーを包むと
-//      既存の ff->strength が全て ff->settings.strength になるだけで、得るものが無い。
-struct ParticleForceField : ParticleForceFieldSettings {
-    const char* GetTypeName() const { return "Particle Force Field"; }
-    void Reflect(IReflector& r) { ParticleForceFieldSettings::Reflect(r); }
+struct ForceField {
+    /// この GameObject が発する力。
+    ///
+    /// WHY 1 本ではなくリストか:
+    ///   «環境風» は「一定方向の風」と「乱れ」の 2 本で 1 つの概念だった (旧 WindZoneComponent)。
+    ///   1 コンポーネント = 1 力にすると、風を置くのに GameObject が 2 つ要る。
+    ///   ParticleEmitter::localForces と同じ形にしておけば、内蔵の力とシーンの力場で
+    ///   オーサリングも評価器も 1 つに揃う。
+    std::vector<ForceFieldSettings> forces = { ForceFieldSettings{} };
+
+    const char* GetTypeName() const { return "Force Field"; }
+    void Reflect(IReflector& r) { ReflectForceFieldList(r, forces, "forces", "Forces"); }
 };
+
+/// 旧 WindZoneComponent 相当の 2 本 (一定方向の風 + 乱れ) を組み立てる。
+/// WHY 残すか: «風を置く» は最頻出の操作で、Wind と Turbulence を毎回 2 本足させるのは後退。
+///      WindZone というコンポーネントは消したが、語彙はプリセットとして残す。
+[[nodiscard]] std::vector<ForceFieldSettings> MakeAmbientWindForces(
+    const math::Vector3& direction = { 0.7071f, 0.0f, 0.7071f },
+    float strength = 1.0f, float turbulence = 0.0f, float pulseFrequency = 1.0f);
 
 } // namespace fbzz::scene
