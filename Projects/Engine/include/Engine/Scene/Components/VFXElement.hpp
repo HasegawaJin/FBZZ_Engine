@@ -7,8 +7,8 @@
 ///   時間の正本は 1 オブジェクトにつき 1 箇所、という規約でエフェクトを組む。
 ///   ParticleEmitter (startDelay/duration/loop) ・TrailComponent (duration) ・
 ///   DecalComponent (lifetime/fadeTime) は自前で時間を持つので、VFXElement を付けない。
-///   時間を持たない LightComponent / ParticleForceField / MeshRenderer /
-///   WindZoneComponent / VFXScreenEffect 系にだけ付けて、窓と重みを与える。
+///   時間を持たない LightComponent / ForceField / MeshRenderer /
+///   VFXScreenEffect 系にだけ付けて、窓と重みを与える。
 ///   両方に duration があると「どちらが効くのか」が読めなくなる。
 ///
 /// WHY エンベロープを VFX 専用にしないか:
@@ -22,6 +22,42 @@
 #include <string>
 
 namespace fbzz::scene {
+
+/// エンベロープが書き換える前の値を 1 組だけ覚えておく箱。
+///
+/// WHY 型にするか:
+///   捕獲 (VFXSystem::ApplyEnvelopes) と復元 (RestoreEnvelopes) は別の関数にあり、
+///   エンベロープごとに «base* を足す» と «戻す» を人手で 2 か所へ書いていた。
+///   片方だけ足すと 2 通りに壊れる ——
+///     捕獲を忘れる → 書き換え後の値を基準に掴み、ループのたびに暗く (小さく) なる
+///     復元を忘れる → 効果が終わっても値が戻らない
+///   どちらもエラーにならず、数ループ回して初めて «だんだんおかしい» と気付く。
+///   1 つの型を通せば、捕獲と復元が必ず同じフィールドを指す。
+///
+/// @note シーンには保存しない。実行中の «元の値» でしかなく、保存すると
+///       «書き換え途中の値» がオーサリング値として焼き付く。
+template<class T>
+struct VFXCaptured {
+    T    value{};
+    bool captured = false;
+
+    /// 初回だけ現在値を覚える。2 回目以降は何もしない。
+    void Capture(const T& current)
+    {
+        if (captured) return;
+        value = current;
+        captured = true;
+    }
+
+    /// 覚えていれば書き戻す。覚えていなければ何もしない。
+    /// @return 書き戻したか
+    bool Restore(T& target) const
+    {
+        if (!captured) return false;
+        target = value;
+        return true;
+    }
+};
 
 /// VFX ルートの時刻に対する、この GameObject の生存窓。
 ///
@@ -98,9 +134,12 @@ struct VFXLightEnvelope {
     ParticleGradient colorGradient;
 
     // --- ランタイム ---
-    float         baseIntensity = 0.0f;
-    math::Vector3 baseColor     = { 1.0f, 1.0f, 1.0f };
-    bool          captured      = false;
+    /// 書き換える前の LightComponent の値。
+    struct Base {
+        float         intensity = 0.0f;
+        math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
+    };
+    VFXCaptured<Base> base;
 
     const char* GetTypeName() const { return "VFX Light Envelope"; }
 
@@ -128,8 +167,8 @@ struct VFXTransformEnvelope {
         3, ParticleCurveInterpolation::Smooth };
 
     // --- ランタイム ---
-    math::Vector3 baseScale = math::Vector3::ONE;
-    bool          captured  = false;
+    /// 書き換える前の localScale。
+    VFXCaptured<math::Vector3> base;
 
     const char* GetTypeName() const { return "VFX Transform Envelope"; }
 
@@ -165,6 +204,19 @@ struct VFXMaterialEnvelope {
     std::string   paramName;
     ParticleCurve paramCurve;
 
+    // --- ランタイム ---
+    /// 自分が paramOverrides へ書き込んだキー。復元でこれだけを取り除く。
+    ///
+    /// WHY 要るか: 他のエンベロープは «元の値» を覚えて書き戻していたが、ここだけ
+    ///   書きっぱなしだった (捕獲と復元が別関数にあり、片方を書き忘れても気付けない
+    ///   —— まさに VFXCaptured を作った理由の実例)。プールから使い回すエフェクトでは、
+    ///   前回の最後の値 (たいていフェード後の透明) を持ったまま再出現し、
+    ///   次の Apply が走るまでの 1 フレーム消えて見える。
+    /// WHY 値ではなくキーを覚えるか: paramOverrides は «上書き» なので、元の状態は
+    ///   «そのキーが無い» こと。空文字を書き戻すのではなく、消すのが正しい復元になる。
+    std::string writtenColorParam;
+    std::string writtenParam;
+
     const char* GetTypeName() const { return "VFX Material Envelope"; }
 
     void Reflect(IReflector& r)
@@ -197,8 +249,8 @@ struct VFXDecalEnvelope {
     ParticleCurve emissiveCurve;
 
     // --- ランタイム ---
-    float baseEmissiveScale = 0.0f;
-    bool  captured          = false;
+    /// 書き換える前の emissiveScale。
+    VFXCaptured<float> base;
 
     const char* GetTypeName() const { return "VFX Decal Envelope"; }
 
