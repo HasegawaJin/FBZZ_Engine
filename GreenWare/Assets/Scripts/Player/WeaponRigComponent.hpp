@@ -69,15 +69,18 @@ public:
 
     FBZZ_GROUP("Draw / Sheathe Animation")
     // 抜刀 / 納刀は上半身だけに流す (2026-09-04)。Base に流すと走りながら抜いた瞬間に
-    // 脚が抜刀クリップの立ち姿へ切り替わり、走りが 1 秒止まる。斬撃と同じ Override
-    // レイヤー (Attack = Chest 以下) へ Slot で差し込めば、脚はロコモーションのまま。
-    // レイヤーの重みは BladeComponent が Slot の重みから毎フレーム流している。
+    // 脚が抜刀クリップの立ち姿へ切り替わり、走りが 1 秒止まる。Override レイヤー
+    // (UpperBody = Chest 以下) へ Slot で差し込めば、脚はロコモーションのまま。
     //
-    // WHY 専用の «UpperBody» レイヤーを増やさないか: Attack のマスク M_Katana_Slash と
-    //     M_UpperBody は骨の集合が同一 (どちらも Chest 以下を重み 1、それ以外は 0)。
-    //     もう 1 枚重ねても被さる骨は変わらず、重みを毎フレーム流す口だけが増える。
-    FBZZ_FIELD(std::string, weaponLayerName, "Attack", "Katana Layer")
+    // WHY 斬撃の Attack レイヤーに相乗りしないか (2026-09-10 に分離):
+    //     Slot はレイヤーに 1 本しかない (AnimatorComponent::AnimationLayer::slot)。
+    //     相乗りすると、斬撃中の抜刀が斬撃の Slot を上書きして振りが消える。
+    //     さらに Attack の重みは BladeComponent が Slot の重みから流しているため、
+    //     BladeComponent が居ない / 無効な場面では抜刀が一切出なかった。
+    //     骨の集合が同じでも、Slot 枠と重みの駆動元は共有できない。
+    FBZZ_FIELD(std::string, weaponLayerName, "UpperBody", "Katana Layer")
     FBZZ_TOOLTIP("抜刀 / 納刀を Slot で流す Override レイヤー (上半身 = Chest 以下)。"
+                 "重みはこのコンポーネントが Slot の重みから毎フレーム流す。"
                  "空にすると Base Layer の Trigger で全身クリップへ遷移する (旧挙動) ─ "
                  "走りながら抜くと脚が止まるので、通常は空にしないこと")
     FBZZ_FIELD_FILE(drawClipFile,
@@ -132,6 +135,11 @@ private:
     enum class Action { None, Draw, Sheathe };
 
     void StartAction(bool draw);
+    // 抜刀レイヤーの重みを Slot のフェード量に追従させる。
+    // WHY: Override レイヤーの被せ量は layer.weight × ボーンの mask weight で決まり、
+    //      Slot 自身のフェードはそこに掛からない (AnimatorSystem::ApplyAnimationLayers)。
+    //      重みを 1 に固定すると抜き始めた瞬間に上半身が抜刀の立ち姿へ飛ぶ。
+    void DriveWeaponLayerWeight();
     // 刀 1 振りぶんの追従設定。Play 開始時に 1 度だけ組む。
     void SetupAttachment(HandSide hand);
     // 行き先ソケット名を書き換えるだけ。移動はエンジンが行う。
@@ -166,6 +174,10 @@ inline void WeaponRigComponent::OnStart()
     m_transferred[0] = false;
     m_transferred[1] = false;
     m_drawn          = startDrawn;
+
+    // Play を跨いで前回の重みが残ると、抜刀していないのに上半身が抜刀の姿勢で始まる。
+    if (!weaponLayerName.empty())
+        animator.SetLayerWeight(weaponLayerName, 0.0f);
 
     SetupAttachment(HandSide::Left);
     SetupAttachment(HandSide::Right);
@@ -288,8 +300,19 @@ inline void WeaponRigComponent::StartAction(bool draw)
     }
 }
 
+inline void WeaponRigComponent::DriveWeaponLayerWeight()
+{
+    if (weaponLayerName.empty()) return;
+    // 動作が終わっても Slot はフェードアウトの途中。m_action で切ると、
+    // 抜き終わりに上半身がロコモーションへ 1 フレームで戻る。
+    animator.SetLayerWeight(weaponLayerName,
+                            std::clamp(animator.GetSlotWeight(weaponLayerName), 0.0f, 1.0f));
+}
+
 inline void WeaponRigComponent::OnUpdate()
 {
+    DriveWeaponLayerWeight();
+
     if (m_action == Action::None)
         return;
 

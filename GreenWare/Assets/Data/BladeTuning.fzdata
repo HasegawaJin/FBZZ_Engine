@@ -1,4 +1,5 @@
 bladeAimAssist = 0.45
+bladeAimPartRange = 7.0
 bladeAngleDegrees = 120.0
 bladeChargeDelay = 0.16
 bladeChargeFull = 0.75

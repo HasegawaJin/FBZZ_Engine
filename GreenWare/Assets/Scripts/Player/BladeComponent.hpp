@@ -379,6 +379,28 @@ private:
     /// 今フレーム狙っている相手 (居なければ nullptr)。
     [[nodiscard]] GameObject* AimTarget() const;
 
+    /// 吸い付きと踏み込みの当て先を引く。生きている部位 (脚・コア) を優先し、
+    /// 無ければロック対象の中心。寄せる相手が居なければ false。
+    ///
+    /// WHY 部位を «中心» より先に見るか (2026-09-11): 寄せる相手をロック対象の
+    ///     worldPosition にしていたので、当て先はボスの腹の中心だった。射程は 2.6m
+    ///     しかないのに中心はそこから 3m 以上先にあり、脚の横に立って振っても
+    ///     向きが腹の方へ 45% 引っぱられていた。このゲームで斬るのは脚なので、
+    ///     当て先は «今そこに立っている脚» でなければ吸い付きが逆に働く。
+    ///
+    /// @param point       寄せる先のワールド座標。
+    /// @param reachRadius 射程へ足す太さ。部位は本人の申告 (hitRadius)、
+    ///                    本体は描画バウンズ ─ ResolveHit の測り方と一致させる。
+    [[nodiscard]] bool AimAnchor(Vector3& point, float& reachRadius) const;
+
+    /// 吸い付きの当て先に選ぶ部位 (居なければ nullptr)。生きている部位のうち、
+    /// 最もカメラの奥を向いている 1 つ。
+    [[nodiscard]] GameObject* AimedPart() const;
+
+    /// 今の当て先へ «狙っている» 合図を置く。振る前に見せるための 1 本なので
+    /// 毎フレーム呼ぶ。
+    void MarkAimedPart() const;
+
     [[nodiscard]] PlayerAimComponent* Aim() const
     { return m_aim ? m_aim : scene.GetScript<PlayerAimComponent>(); }
 
@@ -500,6 +522,93 @@ inline GameObject* BladeComponent::AimTarget() const
     return aim ? aim->CurrentTarget() : nullptr;
 }
 
+inline GameObject* BladeComponent::AimedPart() const
+{
+    const float capture = Max(tuning->bladeAimPartRange, 0.0f);
+    if (capture <= 0.0f) return nullptr;
+
+    GameObject*   target = AimTarget();
+    const Vector3 origin = transform.worldPosition;
+
+    // 画面の奥を «選んだ脚» の基準にする。近さだけで選ぶと、腹の下では
+    // 見ていない側の脚へ吸い付き、どれを斬るかが手から離れる。
+    Vector3 look = Vector3::ZERO;
+    if (GameObject* camera = scene.GetMainCameraObject()) {
+        Vector3 forward = camera->transform.forward;
+        forward.y = 0.0f;
+        look = forward.NormalizedOr(Vector3::ZERO);
+    }
+
+    GameObject* best = nullptr;
+    // score の下限は -0.35 (下の重み)。-2 なら必ず更新される。
+    float       bestScore = -2.0f;
+
+    for (GameObject* object : scene.FindObjectsOfType<BossPartComponent>()) {
+        if (!object || !object->activeInHierarchy()) continue;
+        auto* part = scene.GetScript<BossPartComponent>(object);
+        if (!part) continue;
+
+        // もいだ脚・削り切った部位へは寄せない。«無い脚へ吸い付いて空を斬る» のは、
+        // 壊した手応えをその場で否定する一番まずい絵になる (BossAi の PickStompLeg と同じ理由)。
+        if (part->IsBroken() || part->IsDepleted()) continue;
+
+        // ロックしている体の部位だけを見る。2 体居る盤面でロックしていない側の
+        // 脚へ寄ると、枠を付けたことの意味が消える。
+        if (target) {
+            GameObject* root = BossHitboxRigComponent::BossRootOf(object);
+            if (!root) root = SerpentHitboxRigComponent::SerpentRootOf(object);
+            if (root && root != target) continue;
+        }
+
+        Vector3 delta = object->transform.worldPosition - origin;
+        delta.y = 0.0f;
+        const float distance = delta.Length();
+        if (distance > capture) continue;
+
+        const bool  measurable = distance > EPSILON && look.LengthSq() > EPSILON;
+        const float aligned    = measurable ? Vector3::Dot(delta / distance, look) : 1.0f;
+        // 背中側の脚は候補にしない。«振り向いて斬る» を吸い付きが勝手にやると、
+        // カメラで狙うという前提そのものが崩れる。
+        if (aligned < 0.0f) continue;
+
+        // 向きを主・近さを従にする。同じくらい正面を向いているなら近い方を採る。
+        const float score = aligned - (distance / capture) * 0.35f;
+        if (score <= bestScore) continue;
+
+        best      = object;
+        bestScore = score;
+    }
+
+    return best;
+}
+
+inline void BladeComponent::MarkAimedPart() const
+{
+    // 振り出してからは動かさない。判定の直前に当て先が変わると、光っていた脚と
+    // 斬れた脚が食い違い、合図が «嘘をついた» ことになる。
+    if (m_phase != Phase::Idle) return;
+
+    if (GameObject* object = AimedPart())
+        if (auto* part = scene.GetScript<BossPartComponent>(object)) part->MarkAimed();
+}
+
+inline bool BladeComponent::AimAnchor(Vector3& point, float& reachRadius) const
+{
+    if (GameObject* object = AimedPart()) {
+        auto* part  = scene.GetScript<BossPartComponent>(object);
+        point       = object->transform.worldPosition;
+        reachRadius = part ? Max(part->hitRadius, 0.0f) : 0.0f;
+        return true;
+    }
+
+    // 部位を持たない相手 (と、部位が 1 つも捕まらなかったとき) は今までどおり中心。
+    GameObject* target = AimTarget();
+    if (!target) return false;
+    point       = target->transform.worldPosition;
+    reachRadius = bodybounds::RadiusWorld(*target);
+    return true;
+}
+
 inline Vector3 BladeComponent::SwingDirection() const
 {
     // 基準は必ずカメラの前方。TPS では «画面の奥» が振る向きとして最も素直で、
@@ -525,10 +634,11 @@ inline Vector3 BladeComponent::SwingDirection() const
     const float assist = Clamp01(tuning->bladeAimAssist);
     if (assist <= 0.0f) return aimed;
 
-    GameObject* target = AimTarget();
-    if (!target) return aimed;
+    Vector3 anchor{ Vector3::ZERO };
+    float   radius = 0.0f;
+    if (!AimAnchor(anchor, radius)) return aimed;
 
-    Vector3 delta = target->transform.worldPosition - transform.worldPosition;
+    Vector3 delta = anchor - transform.worldPosition;
     delta.y = 0.0f;
     if (delta.LengthSq() <= EPSILON) return aimed;
 
@@ -576,7 +686,10 @@ inline void BladeComponent::ReadInput()
     BladeSide pressed = BladeSide::None;
     // カメラ演出のあいだは振らない (押した事実も預からない ─ 返った瞬間に振り出すと
     // «勝手に斬った» に見える)。
-    const bool held = cutscene::HoldsPlayer(Time::unscaledTime);
+    // 登攀のように数秒またぐ拘束は cutscene には乗らない (演出が毎フレーム
+    // 置き直すので順番次第で外れる)。掛けている側が押し続けている錠も見る。
+    const bool held = cutscene::HoldsPlayer(Time::unscaledTime)
+                   || (m_controller && m_controller->IsInputLocked());
     if (!held && input.GetActionDown(actions::kAttack)) pressed = NextSwingSide();
 
     // 回避中は振り出さない。押した «事実» だけ預かり、回避が明けた 1 フレーム目で出す。
@@ -1197,17 +1310,23 @@ inline void BladeComponent::DashToTarget()
     const float dashRange = Max(tuning->bladeDashRange, 0.0f);
     if (dashRange <= 0.0f) return;
 
-    GameObject* target = AimTarget();
-    if (!target) return;
+    Vector3 anchor{ Vector3::ZERO };
+    float   radius = 0.0f;
+    if (!AimAnchor(anchor, radius)) return;
 
-    Vector3 delta = target->transform.worldPosition - transform.worldPosition;
+    Vector3 delta = anchor - transform.worldPosition;
     delta.y = 0.0f;
     const float distance = delta.Length();
     if (distance < EPSILON) return;
 
     // 届く距離の測り方は判定 (ResolveHit) とまったく同じにする。別々に持つと
     // «踏み込んだのに当たらない» / «届いているのに踏み込む» が両方起きる。
-    const float reach = Max(tuning->bladeRange, 0.0f) + bodybounds::RadiusWorld(*target);
+    //
+    // WHY 太さを当て先から受け取るか (2026-09-11): ここが描画バウンズ固定だった
+    //     あいだ、ボスは半径 3m 級なので reach が 5.6m を超え、gap は常に 0 以下 ──
+    //     踏み込みは一度も発動していなかった。部位の太さ (1.2m) で測れば
+    //     «脚は射程の外・体は目の前» という本来の間合いが出る。
+    const float reach = Max(tuning->bladeRange, 0.0f) + radius;
     const float gap   = distance - reach;
     if (gap <= 0.0f || gap > dashRange) return;
 
@@ -1242,6 +1361,10 @@ inline void BladeComponent::OnUpdate()
     // 硬直が明けてもクリップは振り抜きの途中に居る。段の状態機械とは切り離して、
     // Slot が畳まれるまで毎フレーム面倒を見る。
     DriveSlashLayerWeight();
+
+    // 吸い付き先を «振る前に» 返す。どの脚を削るかはこのゲームの判断そのものなのに、
+    // 当て先が見えないと «振ってみるまで分からない» ままになる。
+    MarkAimedPart();
 
     // Flux は使わなければ流れて消える。スロー中も同じ時計で数える ─ かわした直後の
     // 遅い数フレームは «押す時間» なので、そこで削れると報酬が見えないまま消える。
