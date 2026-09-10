@@ -416,15 +416,17 @@ void ApplySubtree(GameObject& root, VFXComponent& vfx)
 // ヒットストップの集計
 // --------------------------------------------------------------------------
 
-// アクティブな VFXTimeScale を集計して Time::timeScale へ反映する。
+// アクティブな VFXTimeScale を集計して Time::vfxTimeScale へ反映する。
 // WHY: 複数のヒットストップが重なることは普通にある。最も遅い要求を採用し、
 //      1 つも無い状態では必ず 1.0 へ戻す (書き込みが残って世界が止まる事故を防ぐ)。
 //
-// 注意 (書き手はここだけではない): Time::timeScale はグローバルな 1 変数で、
-//   ゲーム側が独自の時間管理をスクリプトで持つこともある。その場合ここは
-//   Phase::LateScript ─ スクリプトより «後» ─ で走るので、同じフレームに
-//   スクリプトが書いた値を上書きする。VFXTimeScale と script 側の時間管理は
-//   どちらか一方に寄せること。
+// WHY Time::timeScale ではなく専用の枠へ書くか (2026-09-11):
+//   `timeScale` はゲーム側 (スクリプト / Inspector) の枠で、こちらは
+//   `Phase::LateScript` ─ スクリプトより «後» ─ で走る。同じ変数へ書いていた頃は、
+//   同じフレームにゲームが決めたヒットストップやスローを丸ごと踏み潰していた
+//   (要求が消えた最初のフレームに 1.0 を書き戻すので、そこでも 1 フレーム消える)。
+//   «.vfx を 1 つ足したら別の機能が壊れる» という壊れ方だったので、入力を 2 本に
+//   割って Time::Tick が掛け合わせる形にした。ここは自分の枠だけを見ればよい。
 //
 // @param ownsTimeScale 呼び出し側が持つ「前フレームに自分が書いたか」の記憶。
 void ApplyVFXTimeScale(Scene& scene, bool& ownsTimeScale)
@@ -442,10 +444,10 @@ void ApplyVFXTimeScale(Scene& scene, bool& ownsTimeScale)
     // WHY: 常時 1.0 を書き戻すと、デバッグ用のスロー再生など外部の timeScale 設定を
     //      毎フレーム踏み潰してしまう。自分が触ったときだけ後始末する。
     if (any) {
-        Time::timeScale = (std::max)(slowest, 0.0f);
+        Time::vfxTimeScale = (std::max)(slowest, 0.0f);
         ownsTimeScale = true;
     } else if (ownsTimeScale) {
-        Time::timeScale = 1.0f;
+        Time::vfxTimeScale = 1.0f;
         ownsTimeScale = false;
     }
 }
