@@ -33,7 +33,10 @@
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTweenProxy.hpp>
 #include <Math/MathUtils.hpp>
+#include <Scripts/Combat/PlayerHit.hpp>
+#include <Scripts/Game/CombatManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
+#include <Scripts/Player/PlayerComponent.hpp>
 #include <Scripts/Utils/GlowMaterial.hpp>
 #include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
@@ -136,7 +139,46 @@ public:
     FBZZ_TOOLTIP("閉じている間だけ COL_Shutter_<口> を床として有効にする。"
                  "切ると 16 口が最初から穴になり、乗ると落ちる")
 
+    // 開いた口へプレイヤーが落ちたときの後始末。
+    //
+    // WHY «無条件で撃破» にしないか (2026-09-11):
+    //   穴が開くのはプレイヤーの操作と無関係に起きる。渡りは入る前に次の口を開けて
+    //   おくし (PrepareNextExit)、突き上げに至っては «足元とその周りの 3 口» を開ける
+    //   のが手そのものなので、**予兆なしで足元が抜ける瞬間が原理的にありうる。**
+    //   そのうえプレイヤーの体力は 5 で、踏みつけ 2 / 突進 3 / 突き上げ 1 と
+    //   «3 発は耐える» 前提で目盛りが組んである ─ ここに即死を 1 つ混ぜると、
+    //   他の攻撃の数字が全部意味を失う。
+    //   «立てる場所を消す» のは蛇の仕事で、消された場所に落ちるのは
+    //   **蛇の手が通った結果** ＝ 重い一撃であって、死ではない。
+    //
+    // WHY 縦坑の底で歩かせないか: 坑は半径 2.2m・深さ 7m で四方が壁。落ちたら
+    //   出る手段が無い ─ 撃破より悪い «動けるが何もできない» で止まる。
+    //   実際、落下の受け皿は 2026-09-11 まで 1 つも無かった。
+    FBZZ_GROUP("落ちたとき")
+    FBZZ_FIELD(bool, rescueFallen, true, "落ちたら引き上げる")
+    FBZZ_TOOLTIP("開いた口へ落ちたプレイヤーへダメージを入れ、床へ引き上げる。"
+                 "切ると縦坑の底に取り残される (出る手段は無い)")
+    FBZZ_FIELD_TAG(playerTag, "Player", "プレイヤーのタグ")
+    FBZZ_FIELD_RANGE(float, holeRadius, 2.2f, "開口の半径 [m]", 0.5f, 6.0f)
+    FBZZ_TOOLTIP("戻す先を選ぶのに使う。ARENA_Rim の実寸に合わせること")
+    FBZZ_FIELD_RANGE(float, fallY, -1.6f, "落下と見なす高さ [m]", -20.0f, 2.0f)
+    FBZZ_TOOLTIP("床 (0) からこれより下へ行ったら «落ちた»。羽の沈み (-0.30m) より"
+                 "深く取らないと、開きかけの床で誤爆する")
+    FBZZ_FIELD_RANGE(float, floorY, 0.0f, "床の高さ [m]", -10.0f, 10.0f)
+    FBZZ_FIELD_RANGE_INT(int, fallDamage, 2, "ダメージ", 0, 10)
+    FBZZ_TOOLTIP("叩きつけ・踏みつけと同格に置く。体力 5 なので **3 回落ちると死ぬ** ─ "
+                 "緊張は残しつつ、蛇が作った状況で一瞬で終わることはない")
+    FBZZ_FIELD_RANGE(float, rescueSeconds, 0.60f, "引き上げ [s]", 0.05f, 3.0f)
+    FBZZ_FIELD_RANGE(float, rescueArc, 1.40f, "引き上げの山 [m]", 0.0f, 6.0f)
+    FBZZ_TOOLTIP("引き上げる軌道の山の高さ。0 だと坑の壁を斜めに突き抜けて上がる")
+    FBZZ_FIELD_RANGE(float, rescueMargin, 1.30f, "縁からの余白 [m]", 0.0f, 5.0f)
+    FBZZ_TOOLTIP("戻す先を縁からどれだけ離すか。0 だと縁ちょうどに置かれ、"
+                 "着地の 1 歩でまた落ちる")
+    FBZZ_FIELD_RANGE(float, arenaRadius, 20.0f, "闘技場の実効半径 [m]", 1.0f, 60.0f)
+    FBZZ_TOOLTIP("戻す先がここより外なら別の向きを探す。壁の中へ置かないための枠")
+
     FBZZ_GROUP("デバッグ")
+    FBZZ_FIELD_READ_ONLY(std::string, debugRescue, "-", "引き上げ")
     FBZZ_FIELD_READ_ONLY(std::string, debugOpen, "-", "Open")
     FBZZ_FIELD_READ_ONLY(int, debugHoles, 0, "穴")
     FBZZ_FIELD_READ_ONLY(int, debugMissing, 0, "Missing Nodes")
@@ -171,10 +213,20 @@ public:
     ///     押されなかった口は自然に止まる (SetAim / SetUndulationScale と同じ約束)。
     void ReportPassage(const std::string& hole);
 
+    /// 今プレイヤーを引き上げている最中か。演出・AI が «触るな» を読むための窓。
+    [[nodiscard]] bool IsRescuing() const { return m_rescueTime >= 0.0f; }
+
     void OnStart() override;
     void OnUpdate() override;
 
 private:
+    /// 落ちたプレイヤーを床へ戻す。毎フレーム。
+    void DriveFallRescue(float dt);
+    /// 引き上げ先。落ちた口の «縁の外» で、他のどの開いた口にも掛からない点。
+    [[nodiscard]] Vector3 SafeSpot(const Vector3& from) const;
+    /// その点が «開いている / 開きかけの» 口に掛かっているか。
+    [[nodiscard]] bool OverOpenHole(const Vector3& at, float margin) const;
+
     /// 口 1 つぶんの状態。
     struct Hole {
         std::string id;
@@ -232,6 +284,11 @@ private:
     std::vector<std::string> m_ids;
     /// 輪の作りが変わったら組み直すための札。
     float m_builtSignature = -1.0f;
+
+    /// 引き上げの経過 [秒]。負なら引き上げていない。
+    float   m_rescueTime = -1.0f;
+    Vector3 m_rescueFrom;
+    Vector3 m_rescueTo;
 };
 
 FBZZ_REFLECT(SerpentApertureComponent)
@@ -242,6 +299,106 @@ inline void SerpentApertureComponent::OnStart()
     BuildHoles();
     // 口は盤面のあちこちにある。どの方向で何が起きたかが分かる必要があるので 3D。
     se::EnsureSource(scene, "SE", 1.0f);
+}
+
+inline bool SerpentApertureComponent::OverOpenHole(const Vector3& at, float margin) const
+{
+    const float reach = Max(holeRadius, 0.1f) + Max(margin, 0.0f);
+    for (const Hole& hole : m_holes) {
+        // 閉じきっている口は «床»。開いている口と、開閉の途中 (羽が沈んでいる) は避ける。
+        if (!IsOpen(hole.id) && !IsBusy(hole.id)) continue;
+        const Vector3 c = HoleCenter(hole.id);
+        if (Vector3{ at.x - c.x, 0.0f, at.z - c.z }.Length() <= reach) return true;
+    }
+    return false;
+}
+
+inline Vector3 SerpentApertureComponent::SafeSpot(const Vector3& from) const
+{
+    const Vector3 center = transform.worldPosition;
+    const float   lift   = floorY + 0.05f;
+    const Vector3 flat{ from.x, lift, from.z };
+
+    const std::string hole = NearestHole(flat);
+    if (hole.empty()) return flat;
+
+    const Vector3 mouth = HoleCenter(hole);
+    const float   out   = Max(holeRadius, 0.1f) + Max(rescueMargin, 0.0f);
+
+    // 落ちた口のまわりを 8 方向。«壁の内側» で «他のどの開いた口にも掛からない»
+    // 最初の点を採る。
+    //
+    // WHY 1 方向で済ませないか: 内輪の口は隣と 8.0m しか離れておらず、突き上げは
+    //     3 口を同時に開ける。決め打ちの向きだと隣の開いた口の上へ置いてしまい、
+    //     **引き上げた次の 1 歩でまた落ちる。**
+    for (int i = 0; i < 8; ++i) {
+        const float   angle = TWO_PI * static_cast<float>(i) / 8.0f;
+        const Vector3 at{ mouth.x + std::cos(angle) * out, lift,
+                          mouth.z + std::sin(angle) * out };
+        if (Vector3{ at.x - center.x, 0.0f, at.z - center.z }.Length() > Max(arenaRadius, 1.0f))
+            continue;
+        if (OverOpenHole(at, Max(rescueMargin, 0.0f) * 0.5f)) continue;
+        return at;
+    }
+
+    // 8 方向とも塞がっている。場の中心は内輪 (r=8) の内側なので口が無い ─
+    // どこにも置けないときの最後の床になる。
+    return Vector3{ center.x, lift, center.z };
+}
+
+inline void SerpentApertureComponent::DriveFallRescue(float dt)
+{
+    if (!rescueFallen) { debugRescue = "Off"; return; }
+
+    GameObject* player = scene.FindWithTag(playerTag);
+    if (!player) { debugRescue = "No player"; return; }
+
+    if (m_rescueTime >= 0.0f) {
+        m_rescueTime += dt;
+        const float t = Clamp01(m_rescueTime / Max(rescueSeconds, 0.05f));
+
+        // 拘束は毎フレーム言い直す。RequestSuspend は «1 フレームぶんの要求» で、
+        // 押し続けている間だけ効く。
+        //
+        // WHY PlayerControllerComponent を直に引かないか: あれは PlayerComponent の
+        //     **内部メンバー**で、GameObject に別スクリプトとして載っていない ─
+        //     `scene.GetScript<PlayerControllerComponent>()` は空を返す。
+        //     外から触る口は Player の公開 API だけ、という約束にも合う。
+        if (auto* control = scene.GetScript<PlayerComponent>(player))
+            control->RequestSuspend(true);
+        physics.SetVelocity(player, Vector3::ZERO);
+
+        Vector3 at = Vector3::Lerp(m_rescueFrom, m_rescueTo, t);
+        // 縦は山を描く。直線だと坑の壁を斜めに突き抜けて上がる。
+        at.y += std::sin(t * PI) * Max(rescueArc, 0.0f);
+        // WHY position も書くか: 置き直した worldPosition は、次の PrePhysics が
+        //     local から組み直した時点で捨てられる。両方書いて初めて «そこへ置いた»
+        //     になる (プレイヤーを動かすときの共通の落とし穴)。
+        player->transform.position      = at;
+        player->transform.worldPosition = at;
+
+        if (t >= 1.0f) { m_rescueTime = -1.0f; debugRescue = "-"; }
+        else           { debugRescue = "Lifting"; }
+        return;
+    }
+
+    if (player->transform.worldPosition.y > fallY) { debugRescue = "-"; return; }
+
+    m_rescueFrom = player->transform.worldPosition;
+    m_rescueTo   = SafeSpot(m_rescueFrom);
+    m_rescueTime = 0.0f;
+    debugRescue  = "Lifting";
+
+    // WHY 押し (source) を渡さないか: 押しは «殴られた向きへ流される» ための物で、
+    //     引き上げの軌道と正面から喧嘩する。落下は向きを持たない出来事なので、
+    //     ダメージだけを入れる。
+    if (auto* combat = CombatManagerComponent::Instance())
+        (void)combat->HitPlayer(player, std::max(fallDamage, 0), nullptr,
+                                PlayerHitKind::Unblockable);
+
+    se::Play(audio, se::kImpactHeavy, 0.8f);
+    if (auto* vfx = VfxManagerComponent::Instance())
+        vfx->PlayGroundDust(m_rescueTo, Vector3::UP, 0.8f, 1.4f);
 }
 
 inline void SerpentApertureComponent::ReportStages(const Hole& hole)
@@ -608,6 +765,10 @@ inline void SerpentApertureComponent::OnUpdate()
     }
 
     debugOpen = open.empty() ? "-" : open;
+
+    // 落ちた後始末は口を全部進めてから。開閉の途中の口を «避けるべき穴» として
+    // 数えるので、この 1 フレームの開き具合が確定した後でないと 1 コマぶんずれる。
+    DriveFallRescue(dt);
 
     // 名前が 1 つでも外れると «その口だけ開かない» という形でしか出ない。名指しで言う。
     if (debugMissing > 0)

@@ -19,9 +19,16 @@
 ///   «節は 14 なのにフェーズは 1» という、盤面と食い違った状態が作れてしまう。
 #pragma once
 
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
+#include <Math/Quaternion.hpp>
+#include <Scripts/Combat/BossPartDebrisComponent.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Combat/SerpentBones.hpp>
 #include <Scripts/Combat/SerpentHitboxRigComponent.hpp>
@@ -31,8 +38,11 @@
 #include <Scripts/Game/RumbleManagerComponent.hpp>
 #include <Scripts/Game/VfxManagerComponent.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
+#include <Scripts/Utils/WeaponSockets.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -57,6 +67,41 @@ public:
     FBZZ_FIELD_RANGE_INT(int, damagePerSegment, 45, "Per Segment", 0, 1000)
     FBZZ_TOOLTIP("節 1 本を潰したときに入る HP。体力バーは «あと何本» を映す物差しなので、"
                  "削れる節数 × ここ が最大 HP とおおよそ揃っている必要がある")
+
+    // とどめ 1 回につき、潰れた一続きの **先頭 1 本だけ** を床へ落とす
+    // (Docs/part-break.md「柱 3 — 戦利品」)。
+    //
+    // WHY 4 本まとめて落とさないか: 1 回のとどめで 4 節が飛ぶので、全部残すと
+    //     28 → 6 節の道中に 22 本が床へ出る。**開口 16 口の場が全部塞がって
+    //     蛇が渡れなくなる** ── 塞ぐことが «戦術» ではなく «詰み» になる。
+    //     落ちるのは «斬った節» ＝ プレイヤーが選んだ 1 本だけにする。
+    //
+    // WHY «その場に残さない» をやめたか (2026-09-11): 破片を床下へ落としていた
+    //     理由は «盤面に帯電体が増えると離れた 2 節を選びにくくなる» で、
+    //     これは極性の遊びの都合だった (boss-serpent.md「潰した節の破片」)。
+    //     極性は 2026-09-08 に撤去済みなので、この禁止はもう理由を失っている。
+    //     残せば、落ちた節が **床の口を塞ぎ**、蛇はそれを突き上げ・薙ぎで
+    //     吹き飛ばし、吹き飛んだ節は弾ける一撃になって返ってくる。
+    FBZZ_GROUP("落ちた節")
+    FBZZ_FIELD(bool, dropDebris, true, "節を床へ落とす")
+    FBZZ_TOOLTIP("とどめで潰れた先頭の 1 本を剛体として床へ落とす。"
+                 "落ちた節は口を塞ぎ、突き上げ・薙ぎで吹き飛ばされて弾ける一撃になる")
+    FBZZ_FIELD_RANGE_INT(int, maxDebris, 3, "上限 [本]", 0, 10)
+    FBZZ_TOOLTIP("盤面に置ける本数。**16 口のうち何口まで塞がってよいか**と読む ─ "
+                 "多いと渡れる組が尽きて、蛇が同じ 2 口を往復するだけになる")
+    // WHY 立方体で囲うか: 節の «長い向き» はバインド姿勢の骨の +Y だが、落ちた節の
+    //     当たりはモデル空間の軸に沿った箱でしか作れない。向きを取り違えた細長い箱は
+    //     «見えている所で止まらない» という直しようのないずれになるので、
+    //     節長 0.80m と太さ 1.24m の両方を包む立方体で囲う。
+    FBZZ_FIELD_RANGE(float, debrisRadius, 0.75f, "当たりの半径 [m]", 0.1f, 3.0f)
+    FBZZ_TOOLTIP("落ちた節を囲う立方体の半径。節は長さ 0.80m・太さは前 1.24m 〜 尾 0.20m")
+    FBZZ_FIELD_RANGE(float, debrisMass, 30.0f, "Mass", 1.0f, 300.0f)
+    FBZZ_FIELD_RANGE(float, debrisKick, 5.0f, "蹴り [m/s]", 0.0f, 30.0f)
+    FBZZ_TOOLTIP("潰れた瞬間に斬った側から離れる速さ")
+    FBZZ_FIELD_RANGE(float, debrisLift, 4.5f, "浮き [m/s]", 0.0f, 20.0f)
+    FBZZ_FIELD_RANGE(float, debrisSpin, 5.0f, "回転 [rad/s]", 0.0f, 30.0f)
+    FBZZ_FIELD_RANGE(float, debrisDrag, 0.30f, "Drag", 0.0f, 5.0f)
+    FBZZ_FIELD_READ_ONLY(int, debugDebris, 0, "落とした節")
 
     FBZZ_GROUP("手触り")
     FBZZ_FIELD_RANGE(float, foldHitStop, 0.34f, "ヒットストップ", 0.0f, 1.0f)
@@ -109,6 +154,24 @@ private:
     void CollapseBurst(const std::vector<Vector3>& at, bool heavy);
     /// その節の分割メッシュ (`E_*_S07`) を集める。
     void CollectMeshes();
+
+    /// 節 1 本を剛体として床へ落とす。
+    ///
+    /// WHY 静的メッシュで写すか: 骨は SerpentSpineComponent が毎フレーム経路へ
+    ///     沿わせているので、潰した節«だけ»を別に動かす経路が無い。同じ submesh を
+    ///     `Serpent.fbx:N` として静的に描けば、バインド姿勢の節がそのまま «物» になる
+    ///     (BossRigComponent::SpawnLegDebris と同じ形)。
+    ///
+    /// WHY scene.Create を呼ぶ側の最後に置くか: Create は GameObject 配列を再確保する。
+    ///     潰す処理の途中で作ると、握っている GameObject* が無効になる。
+    void DropDebris(int headIndex, const Vector3& at);
+
+    /// 節の骨のバインド姿勢を控える。落とした節の静的メッシュをどこへ置けば
+    /// «今の節» に重なるかは、これが無いと解けない。
+    ///
+    /// WHY OnStart で 1 回だけか: 骨を動かすのは SerpentSpineComponent の OnUpdate で、
+    ///     OnStart はそれより前に必ず通る ─ そこがバインドに一番近い。
+    void CaptureBind();
     [[nodiscard]] SerpentHitboxRigComponent* Rig() const
     {
         return scene.GetScript<SerpentHitboxRigComponent>();
@@ -121,6 +184,10 @@ private:
     bool  m_meshesBuilt = false;
     /// 決着へ落とす処理を 1 度だけ通すための札。
     bool  m_finished = false;
+    /// 節ごとのバインド姿勢 (蛇の根空間)。CaptureBind が書く。
+    bool       m_bindCaptured = false;
+    Vector3    m_bindPos[serpent::kBoneCount];
+    Quaternion m_bindRot[serpent::kBoneCount];
 
 public:
     /// 節 1 本ぶんの分割メッシュ。輪郭を描く側が読む。
@@ -149,7 +216,28 @@ inline void SerpentBodyComponent::OnStart()
     debugSegments = m_count;
     debugPhase    = Phase();
     debugLastFold = "-";
+    debugDebris   = 0;
     CollectMeshes();
+    CaptureBind();
+}
+
+inline void SerpentBodyComponent::CaptureBind()
+{
+    GameObject* self = scene.Self();
+    if (!self || m_bindCaptured) return;
+
+    const Vector3    rootPos = self->transform.worldPosition;
+    const Quaternion rootInv = self->transform.worldRotation.Inverse();
+
+    bool any = false;
+    for (int i = 0; i < serpent::kBoneCount; ++i) {
+        GameObject* bone = FindInSubtree(*self, serpent::BoneName(i));
+        if (!bone) continue;
+        any = true;
+        m_bindPos[i] = rootInv * (bone->transform.worldPosition - rootPos);
+        m_bindRot[i] = (rootInv * bone->transform.worldRotation).Normalized();
+    }
+    m_bindCaptured = any;
 }
 
 inline void SerpentBodyComponent::CollectMeshes()
@@ -226,7 +314,130 @@ inline int SerpentBodyComponent::Sever(int headIndex, int count)
             (void)combat->DamageEnemyDirect(
                 self, std::max(static_cast<int>(crushed.size()) * damagePerSegment, 1));
 
+    // 落とすのは «斬った 1 本» だけ、そして必ず最後に。scene.Create が
+    // GameObject 配列を再確保するので、ここより前に置くと self が無効になる。
+    DropDebris(crushed.front(), at.front());
+
     return static_cast<int>(crushed.size());
+}
+
+inline void SerpentBodyComponent::DropDebris(int headIndex, const Vector3& at)
+{
+    if (!dropDebris || debugDebris >= std::max(maxDebris, 0)) return;
+    if (headIndex < 1 || headIndex > serpent::kSegmentCount) return;
+
+    GameObject* self = scene.Self();
+    if (!self) return;
+    if (!m_bindCaptured) CaptureBind();
+    if (!m_bindCaptured) return;
+
+    GameObject* bone = FindInSubtree(*self, serpent::BoneName(headIndex));
+    if (!bone) return;
+
+    // 今の骨の姿勢に、バインド姿勢の節を重ねる。静的メッシュはモデル空間
+    // (＝ 蛇の根空間のバインド) で描かれるので、根をどこへ置けば節が一致するかを解く。
+    const Quaternion rot =
+        (bone->transform.worldRotation * m_bindRot[headIndex].Inverse()).Normalized();
+    const Vector3 pos = bone->transform.worldPosition - rot * m_bindPos[headIndex];
+
+    // scene.Create の前に読み終える (Create は GameObject 配列を再確保する)。
+    struct Piece {
+        std::string   model;
+        std::uint32_t submesh = 0;
+        std::string   material;
+    };
+    std::vector<Piece> pieces;
+    for (const EntityRef& ref : m_meshes[headIndex]) {
+        GameObject* piece = ref.Resolve(scene);
+        if (!piece) continue;
+        auto* skin = piece->GetComponent<SkinnedMeshRenderer>();
+        if (!skin || skin->modelPath.empty()) continue;
+        Piece entry;
+        // "guid:xxx|Assets/..." の形なら、パスの側だけを使う。
+        const std::size_t bar = skin->modelPath.find('|');
+        entry.model = bar == std::string::npos ? skin->modelPath
+                                               : skin->modelPath.substr(bar + 1);
+        entry.submesh = skin->submeshIndices.empty() ? 0u : skin->submeshIndices[0];
+        if (auto* material = piece->GetComponent<MaterialComponent>())
+            entry.material = material->materialPath;
+        pieces.push_back(entry);
+    }
+    if (pieces.empty()) return;
+
+    const std::string name = "SerpentDebris_" + serpent::PartSuffix(headIndex);
+    const EntityRef   root{ scene.Create(name).GetID() };
+
+    // 子を先に全部作る。作りながら root を掴み続けると、途中で無効になる。
+    std::vector<EntityRef> children;
+    children.reserve(pieces.size());
+    for (std::size_t i = 0; i < pieces.size(); ++i)
+        children.push_back(EntityRef{ scene.Create(name + "_" + std::to_string(i)).GetID() });
+
+    GameObject* debris = root.Resolve(scene);
+    if (!debris) return;
+    debris->runtimeGenerated        = true;
+    debris->transform.position      = pos;
+    debris->transform.rotation      = rot;
+    debris->transform.worldPosition = pos;
+    debris->transform.worldRotation = rot;
+
+    for (std::size_t i = 0; i < pieces.size(); ++i) {
+        GameObject* child  = children[i].Resolve(scene);
+        GameObject* parent = root.Resolve(scene);
+        if (!child || !parent) continue;
+        child->runtimeGenerated = true;
+        child->SetParent(*parent);
+        child->transform.position = Vector3::ZERO;
+        child->transform.rotation = Quaternion::Identity();
+
+        auto& renderer = child->AddComponent<MeshRenderer>();
+        renderer.meshPath      = pieces[i].model + ":" + std::to_string(pieces[i].submesh);
+        renderer.meshPathDirty = true;
+        renderer.castShadows   = true;
+        if (!pieces[i].material.empty()) {
+            auto& material = child->AddComponent<MaterialComponent>();
+            material.SetMaterialPath(pieces[i].material);
+        }
+    }
+
+    debris = root.Resolve(scene);
+    if (!debris) return;
+
+    const float r = Max(debrisRadius, 0.1f);
+    {
+        auto& box = debris->AddComponent<BoxColliderComponent>();
+        box.SetSize(Vector3{ r * 2.0f, r * 2.0f, r * 2.0f });
+        // 当たりは «節が居るところ»。静的メッシュは 24m の胴まるごとの座標系で
+        // 描かれているので、原点に置くと 10m 離れた所に箱が立つ。
+        box.center = m_bindPos[headIndex];
+    }
+    {
+        RigidBodyComponent rb{};
+        rb.rigidBody = std::make_unique<fbzz::physics::RigidBody>();
+        rb.rigidBody->SetMass(Max(debrisMass, 1.0f));
+        rb.rigidBody->SetPosition(pos);
+        rb.rigidBody->SetRotation(rot);
+        rb.rigidBody->m_linearDrag  = Max(debrisDrag, 0.0f);
+        rb.rigidBody->m_angularDrag = Max(debrisDrag, 0.0f) * 1.5f;
+        rb.rigidBody->m_useCCD      = true;
+        rb.rigidBody->m_ccdRadius   = r;
+        rb.ResetPhysicsSyncState(pos, rot);
+        debris->AddComponent<RigidBodyComponent>(std::move(rb));
+    }
+
+    // 斬った側から離れる向きへ蹴る。at は潰れた節が居た所なので、蛇の根から見て
+    // その外向きが «飛んだ向き»。
+    Vector3 away = at - self->transform.worldPosition;
+    away.y = 0.0f;
+    away = away.NormalizedOr(Vector3::FORWARD);
+
+    const Vector3 velocity = away * Max(debrisKick, 0.0f) + Vector3::UP * Max(debrisLift, 0.0f);
+    const Vector3 axis     = Vector3::Cross(Vector3::UP, away).NormalizedOr(Vector3::FORWARD);
+
+    auto& script = debris->AddScript<BossPartDebrisComponent>();
+    script.Setup(velocity, axis * Max(debrisSpin, 0.0f), r * 2.0f);
+
+    ++debugDebris;
 }
 
 inline Vector3 SerpentBodyComponent::Crush(int headIndex)

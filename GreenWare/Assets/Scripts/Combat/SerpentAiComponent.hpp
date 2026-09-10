@@ -42,6 +42,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/BossBreakComponent.hpp>
+#include <Scripts/Combat/BossPartDebrisComponent.hpp>
 #include <Scripts/Combat/BossTelegraph.hpp>
 #include <Scripts/Combat/EnemyHealthComponent.hpp>
 #include <Scripts/Combat/PlayerHit.hpp>
@@ -140,6 +141,46 @@ public:
     FBZZ_FIELD_RANGE_INT(int, thrustHolesFromPhase, 2, "Multi From Phase", 1, 3)
     FBZZ_TOOLTIP("複数同時にするのはこの段から。第 1 段は 1 口のまま")
 
+    // とどめで落ちた節は床に残り、乗っている口を «塞ぐ»
+    // (Docs/part-break.md「柱 3 — 戦利品」)。
+    //
+    // WHY 蛇にとってこれが効くか: 経路も潜行も連続突進も囲い込みも、行き先はすべて
+    //     16 口から選ぶ。口が減ることは **蛇の «動ける形» が減る**ということで、
+    //     «居場所を否定する» のを仕事にしている相手に同じことを返す手になる。
+    //
+    // WHY 蛇が自分で空け直せるようにするか: 塞ぎっぱなしにできると、プレイヤーは
+    //     内輪 6 口を潰して蛇を外へ締め出すだけで勝てる ─ 盤面を作る遊びが
+    //     «一度作ったら終わり» になる。突き上げと薙ぎが栓を吹き飛ばし、
+    //     **吹き飛んだ節はそのままプレイヤーへ向かう弾になる**。
+    FBZZ_GROUP("落ちた節")
+    FBZZ_FIELD_RANGE(float, debrisBlockRadius, 2.6f, "口を塞ぐ半径 [m]", 0.0f, 8.0f)
+    FBZZ_TOOLTIP("口の中心からこの距離に節が転がっていたら、その口は経路に選ばれない。"
+                 "開口の半径は 2.2m。0 で «塞がらない» (2026-09-11 以前の挙動)")
+    FBZZ_FIELD_RANGE(float, debrisSweepRadius, 5.0f, "薙ぎが吹き飛ばす半径 [m]", 0.0f, 15.0f)
+    FBZZ_TOOLTIP("薙いだ所からこの距離の節を撃ち出す。0 で薙ぎでは飛ばさない")
+
+    // 口を塞ぐと、そのぶん地上に出ている胴が長くなる。
+    //
+    // WHY 要るか: 塞ぐ報酬が «蛇の行き先が減る» だけだと、プレイヤーの側からは
+    //   何も起きていないように見える (減った選択肢は画面に出ない)。潜れる場所が
+    //   減ったぶん胴が地上に留まる、という形にすると **塞いだ結果がそのまま
+    //   «蛇が長く晒される» として返る。**
+    //
+    // WHY 頭に効くか: 頭は露出した弧の先端に居る。弧が伸びれば頭が地上に居る時間も
+    //   伸びるので、**«頭を斬りたい» という欲求が 14 節まで待たずに少しずつ叶う** ─
+    //   企画で一番長く放置されている動機がここで回収できる。
+    //
+    // WHY 弧を伸ばすのが安全か: 折れ角を決めているのは «弦» の方で、弧を伸ばしても
+    //   ほとんど変わらない (boss-serpent.md の実測: 弧 9m で 8.5度 / 13m で 11.4度)。
+    //   伸びたぶんは山の高さになる ＝ 頭が高く上がる。
+    FBZZ_FIELD_RANGE(float, blockedExposedBonus, 1.2f, "栓 1 つあたりの露出 [m]", 0.0f, 4.0f)
+    FBZZ_TOOLTIP("塞がれた口 1 つにつき露出長へ足す長さ。0 で «塞いでも晒されない»。"
+                 "上げすぎると弧が伸びきって «床に寝た棒» になる")
+    FBZZ_FIELD_RANGE(float, blockedExposedCap, 4.0f, "露出の上乗せ上限 [m]", 0.0f, 12.0f)
+
+    FBZZ_FIELD_READ_ONLY(int, debugBlockedHoles, 0, "塞がれた口")
+    FBZZ_FIELD_READ_ONLY(float, debugExposed, 11.2f, "実露出 [m]")
+
     // 薙ぎ ─ 胴が一度しなってから水平に薙ぐ (27F → 15F)。
     FBZZ_GROUP("薙ぎ")
     FBZZ_FIELD_RANGE(float, sweepTelegraph, 0.90f, "予告", 0.1f, 4.0f)
@@ -190,6 +231,25 @@ public:
     FBZZ_FIELD_RANGE(float, cageRadius, 2.6f, "Snap Radius", 0.5f, 10.0f)
     FBZZ_FIELD_RANGE_INT(int, cageDamage, 2, "Snap Damage", 0, 100)
     FBZZ_FIELD_RANGE(float, cageCooldown, 16.0f, "クールダウン", 0.0f, 90.0f)
+    // 檻の中でだけ斬撃の崩しが跳ね上がる ── これが「出口を自分で作る」の中身。
+    //
+    // WHY 要るか (2026-09-11): `保持` のツールチップは «ここが出口を自分で作るための
+    //   持ち時間» と宣言しているのに、**出口を作る手段が盤面に 1 つも無かった。**
+    //   元の答えは «逆極の 2 節を引き合わせて壁を折る» で、極性ごと 2026-09-08 に
+    //   撤去されている。とどめは転倒中しか通らず、檻の中で弾ける手は 1 つも出ず、
+    //   斬撃 3.5 では 7 秒で崩しが半分にも届かない ─ 蛇の «中心» と呼ばれている手が、
+    //   «7 秒待たされて 2 ダメージか走って逃げる» だけの空洞になっていた。
+    //
+    // WHY 斬撃で解くか: 檻の壁は蛇が**自分から差し出した胴 11m**で、しかも逃げない。
+    //   «斬る番» が盤面のどこにも無かったこのゲームで、ここだけは斬撃が唯一の答えに
+    //   なれる ── 閉じ込められるが、閉じ込めた本人が一番斬りやすい所に居る。
+    //
+    // WHY 2.4 か: 3.5 × 2.4 = 8.4/発。7 秒で当てられるのは連撃 2〜3 セット (12〜14 発)
+    //   なので 100〜118 ── **振り切れれば届くが、避けに使った時間のぶんだけ届かない。**
+    //   締め上げまでに崩せれば転倒、間に合わなければ 2 ダメージ。
+    FBZZ_FIELD_RANGE(float, cageSlashScale, 2.4f, "檻の中の斬撃倍率", 1.0f, 8.0f)
+    FBZZ_TOOLTIP("檻が立っている間だけ斬撃の崩しに掛ける倍率。1.0 で «檻の中で何もできない» "
+                 "(2026-09-11 以前の挙動) へ戻る")
 
     // 連続突進 ─ 口から口へ «走り抜ける»。渡りそのものを手にした形。
     //
@@ -508,6 +568,28 @@ private:
     [[nodiscard]] bool MouthInUse(const std::string& hole) const;
     /// from から «窓の中» にある口を集める。弧の真ん中がプレイヤーに近い順。
     /// @param avoid 直前に出てきた口。他に選べるならここへは戻らない。
+    /// 口の上に «落ちた節» が乗っているか。乗っている口は経路に選ばない。
+    [[nodiscard]] bool HoleBlocked(const std::string& hole) const;
+
+    /// 今フレームの露出長 [m]。塞がれた口のぶんだけ素の `露出` へ上乗せする。
+    ///
+    /// WHY 塞がれた数を毎回数え直さないか: 数えるのは 16 口 × 落ちた節で、
+    ///     弧を組む場所は 3 か所ある。数え直すと同じ 1 フレームで 3 回走るので、
+    ///     OnUpdate が 1 度だけ数えた `debugBlockedHoles` を読む。
+    [[nodiscard]] float ExposedMeters() const
+    {
+        const float bonus = Max(blockedExposedBonus, 0.0f) *
+                            static_cast<float>(std::max(debugBlockedHoles, 0));
+        return Max(exposedMeters, 2.0f) + Min(bonus, Max(blockedExposedCap, 0.0f));
+    }
+
+    /// point から radius 以内に落ちている節をプレイヤーへ撃ち出す。@ret 撃った本数。
+    ///
+    /// WHY 突き上げと薙ぎの両方から呼ぶか: 塞がれた口を空け直す手が «足元の穴が吹く»
+    ///     しか無いと、プレイヤーから遠い口の栓は最後まで残る。胴が薙ぐ所は
+    ///     蛇が実際に使っている経路の上なので、そこも空くようにする。
+    int LaunchDebrisNear(const Vector3& point, float radius);
+
     void CandidatesFrom(const std::string& from, const std::string& avoid,
                         std::vector<std::string>& out) const;
     /// 頭をプレイヤーへ向ける。重みは «どれだけ食いつくか»。
@@ -620,6 +702,8 @@ private:
     std::string m_to;
     /// 経路上の口と、その口の弧長。尾が過ぎたら閉じて捨てる。
     std::vector<std::pair<std::string, float>> m_mouths;
+    /// 今の薙ぎでもう栓を吹き飛ばしたか。薙ぎ 1 回につき 1 度きり。
+    bool m_sweptDebris = false;
     /// 薙ぎで前後する起点。
     float       m_sweepBase = 0.0f;
     /// 突進の終点。
@@ -915,6 +999,48 @@ inline void SerpentAiComponent::OnStart()
     se::EnsureSource(scene, "SE", 1.0f);
 }
 
+inline bool SerpentAiComponent::HoleBlocked(const std::string& hole) const
+{
+    auto* aperture = Aperture();
+    if (!aperture || debrisBlockRadius <= 0.0f) return false;
+
+    const Vector3 center = aperture->HoleCenter(hole);
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
+        if (!object || !object->activeInHierarchy()) continue;
+        const auto* part = scene.GetScript<BossPartDebrisComponent>(object);
+        // 飛んでいる最中・吸い上げられている最中の節は栓にならない。床に居るものだけ。
+        if (!part || !part->IsResting()) continue;
+
+        const Vector3 at = object->transform.worldPosition;
+        if (Vector3{ at.x - center.x, 0.0f, at.z - center.z }.Length() <= debrisBlockRadius)
+            return true;
+    }
+    return false;
+}
+
+inline int SerpentAiComponent::LaunchDebrisNear(const Vector3& point, float radius)
+{
+    GameObject* player = Player();
+    if (!player || radius <= 0.0f) return 0;
+
+    // 狙いは «吹き飛ばした瞬間» のプレイヤー。飛んでいる間に追わせると弾く意味が消える。
+    const Vector3 target = player->transform.worldPosition;
+
+    int fired = 0;
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
+        if (!object || !object->activeInHierarchy()) continue;
+        auto* part = scene.GetScript<BossPartDebrisComponent>(object);
+        if (!part || !part->IsResting()) continue;
+
+        const Vector3 at = object->transform.worldPosition;
+        if (Vector3{ at.x - point.x, 0.0f, at.z - point.z }.Length() > radius) continue;
+
+        part->Launch(target);
+        ++fired;
+    }
+    return fired;
+}
+
 inline void SerpentAiComponent::CandidatesFrom(const std::string& from,
                                                const std::string& avoid,
                                                std::vector<std::string>& out) const
@@ -943,6 +1069,22 @@ inline void SerpentAiComponent::CandidatesFrom(const std::string& from,
         for (const std::string& id : out)
             if (id != avoid) fresh.push_back(id);
         if (!fresh.empty()) out.swap(fresh);
+    }
+
+    // 落ちた節が乗っている口は使わない (Docs/part-break.md「柱 3 — 戦利品」)。
+    //
+    // WHY ここ 1 箇所で足りるか: 渡り・逃げの潜行・連続突進・囲い込みは、行き先の口を
+    //     全部この関数から取る。ここで外せば «塞がった口は経路に入らない» が
+    //     手ごとに書かなくても全部へ効く。
+    //
+    // WHY 空になったら許すか (avoid と同じ形): 塞がれた結果 1 つも渡れなくなると、
+    //     蛇は次の口へ行けず**胴が半分床に埋まったまま止まる**。塞ぐのは «選択肢を
+    //     削る» ことであって «詰ませる» ことではない。最後の 1 本は必ず残す。
+    if (!out.empty()) {
+        std::vector<std::string> open;
+        for (const std::string& id : out)
+            if (!HoleBlocked(id)) open.push_back(id);
+        if (!open.empty()) out.swap(open);
     }
 
     // 並べ替えの基準は «弧の真ん中がプレイヤーにどれだけ近いか»。
@@ -1071,7 +1213,7 @@ inline bool SerpentAiComponent::BeginFirstRoute()
     m_to   = candidates[static_cast<std::size_t>(pick)];
 
     path->BeginRoute(m_from, m_to, aperture->HoleCenter(m_from), aperture->HoleCenter(m_to),
-                     Max(exposedMeters, 2.0f));
+                     ExposedMeters());
     if (!path->Valid()) return false;
 
     aperture->Open(m_from);
@@ -1112,7 +1254,7 @@ inline bool SerpentAiComponent::BeginTransit()
     const std::string nextHole = arrivals[static_cast<std::size_t>(pickNext)];
 
     if (!path->AppendRoute(exitHole, aperture->HoleCenter(exitHole), nextHole,
-                           aperture->HoleCenter(nextHole), Max(exposedMeters, 2.0f)))
+                           aperture->HoleCenter(nextHole), ExposedMeters()))
         return false;
 
     m_from = exitHole;
@@ -1529,7 +1671,8 @@ inline void SerpentAiComponent::BeginSweep()
     auto* spine = Spine();
     m_sweepBase = spine ? spine->HeadArc() : 0.0f;
     // 前の薙ぎの残りを持ち越さない。持ち越すと «最初の 1 発が遅れる薙ぎ» が混ざる。
-    m_sweepDust = 0.0f;
+    m_sweepDust   = 0.0f;
+    m_sweptDebris = false;
     se::Play(audio, se::kSerpentRear);
     EnterTelegraph(State::SweepWindup, sweepTelegraph);
 }
@@ -1819,7 +1962,7 @@ inline bool SerpentAiComponent::BeginRush()
         const std::string nextHole = arrivals.front();
 
         if (!path->AppendRoute(exitHole, aperture->HoleCenter(exitHole), nextHole,
-                               aperture->HoleCenter(nextHole), Max(exposedMeters, 2.0f)))
+                               aperture->HoleCenter(nextHole), ExposedMeters()))
             break;
 
         aperture->Open(exitHole);
@@ -2147,6 +2290,24 @@ inline void SerpentAiComponent::OnUpdate()
     auto*       path  = Path();
     debugTimer = m_timer;
 
+    // 塞がれた口の数。«蛇が同じ 2 口を往復し始めた» ときに、経路の都合なのか
+    // 栓のせいなのかは画面からは見分けられない。
+    debugBlockedHoles = 0;
+    if (auto* aperture = Aperture())
+        for (const std::string& id : aperture->Holes())
+            if (HoleBlocked(id)) ++debugBlockedHoles;
+
+    // 檻が立っている間だけ «斬る番» にする。
+    //
+    // WHY 状態の出入りではなく毎フレーム書くか: 檻から抜ける道は時間切れ・締め上げ・
+    //     転倒・撃破・Inspector の組み直しと何本もある。出口ごとに «戻す» を書くと、
+    //     どれか 1 本を書き忘れたときに **戦いの最後まで斬撃が濃いまま**になる。
+    //     状態から毎フレーム引き直せば、書き忘れようがない。
+    if (auto* brk = Break())
+        brk->SetSlashScale(m_state == State::CageHold ? Max(cageSlashScale, 1.0f) : 1.0f);
+
+    debugExposed = ExposedMeters();
+
     // 匍匐。頭が動いている間だけ鳴らし、速さで «急いでいる» を出す。
     // WHY 状態ではなく速さで駆動するか: 蛇は渡り・追い掛け・薙ぎ戻しのどれでも
     //     体が這っていて、状態の数だけ条件を書くと必ずどれかで音が切れる。
@@ -2306,6 +2467,15 @@ inline void SerpentAiComponent::OnUpdate()
                     //     何も壊していない突き上げでは嘘の合図になる。
                     if (auto* vfx = VfxManagerComponent::Instance())
                         vfx->PlaySerpentGeyser(center, 1.0f, 1.8f);
+
+                    // 口に乗っている «落ちた節» をここで吹き飛ばす。
+                    //
+                    // WHY 突き上げが栓を抜く手になるか: この手の主語は «足元の穴» で、
+                    //     下から噴き上がるものが口の上の物を持ち上げないのは嘘になる。
+                    //     塞いだ側から見れば «塞いだ口を狙って立つと栓が飛ぶ» ので、
+                    //     どこを塞ぐかとどこに立つかが 1 つの判断になる。
+                    (void)LaunchDebrisNear(center, Max(thrustRadius, 0.5f));
+
                     // 胴が乗っている口は閉じない。閉じると渡っている最中の胴の上で
                     // 羽が戻り、床と胴が刺さる (経路の口は尾が過ぎてから閉じる)。
                     if (!MouthInUse(hole)) aperture->Close(hole);
@@ -2365,6 +2535,21 @@ inline void SerpentAiComponent::OnUpdate()
         // 薙ぎは弾ける手。弾かれると OnParried が構え直しへ落とす。
         (void)HitPlayerAlongBody(sweepRadius, sweepDamage, PlayerHitKind::Parryable);
         if (m_state != State::Sweep) break;
+
+        // 薙いだ先に転がっている節を吹き飛ばす。
+        //
+        // WHY 薙ぎからも飛ばすか: 栓を抜く手が突き上げ (足元の穴) だけだと、
+        //     プレイヤーが近寄らない口の栓は最後まで残る。薙ぐのは蛇が今まさに
+        //     使っている経路の上なので、**蛇の道を塞いだ栓ほど飛ばされやすい**
+        //     ── 塞ぐ場所を選ぶ意味がそこで生まれる。
+        //
+        // WHY 1 度きりにするか: 薙ぎは 0.5 秒あり、毎フレーム呼ぶと Resting へ
+        //     戻った節を同じ薙ぎで撃ち直せてしまう。当たりと同じ «1 回» に揃える。
+        if (!m_sweptDebris && path) {
+            m_sweptDebris = true;
+            (void)LaunchDebrisNear(path->At(sweepTo), Max(debrisSweepRadius, 0.0f));
+        }
+
         m_timer -= dt;
         if (m_timer <= 0.0f) Enter(State::Settle);
         break;
