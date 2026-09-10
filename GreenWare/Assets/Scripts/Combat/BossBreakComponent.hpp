@@ -74,8 +74,12 @@ public:
     FBZZ_FIELD_RANGE(float, decayPerSecond, 4.0f, "Decay / s", 0.0f, 200.0f)
 
     FBZZ_GROUP("Topple")
-    FBZZ_FIELD_RANGE(float, toppleSeconds, 5.0f, "Topple Seconds", 0.5f, 15.0f)
-    FBZZ_TOOLTIP("満ちて倒れている時間。この間だけ «とどめ» が通る")
+    // WHY 5 → 9 秒か (2026-09-10): 倒れている間にやることが «脚へ とどめ» から
+    //     «脚を登って背のコアへ とどめ» に変わった。登攀だけで 3.5 秒あり、
+    //     5 秒では甲板へ着いた頃に起き上がられる。
+    FBZZ_FIELD_RANGE(float, toppleSeconds, 9.0f, "Topple Seconds", 0.5f, 15.0f)
+    FBZZ_TOOLTIP("満ちて倒れている時間。この間だけ «とどめ» が通り、脚を登れる。"
+                 "登攀 3.5 秒 ＋ 蓋の開閉 0.7 秒を収める長さが要る")
 
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(float, debugBreak, 0.0f, "Break")
@@ -120,6 +124,9 @@ public:
     /// ボスが倒れた。ここから seconds 秒はゲージが «残り時間» を表す。
     /// 突進の自滅激突のように、ゲージを経由せず倒れる経路もここへ来る。
     void BeginTopple(float seconds);
+    /// 倒れている残りを «あと remaining 秒» へ伸ばす。倒れていなければ何もしない。
+    /// 縮めることはできない ─ バーが逆走すると «起きかけて座り直した» に見える。
+    void ExtendTopple(float remaining);
     /// 起き上がった (時間切れ・とどめ)。ゲージは 0 へ戻る。
     void EndTopple();
 
@@ -191,6 +198,14 @@ inline void BossBreakComponent::BeginTopple(float seconds)
     m_break         = std::max(maxBreak, 1.0f);
     debugBreak      = m_break;
     debugState      = "Toppled";
+}
+
+inline void BossBreakComponent::ExtendTopple(float remaining)
+{
+    if (!m_toppled || remaining <= m_toppleLeft) return;
+    m_toppleLeft = remaining;
+    // 分母も一緒に伸ばす。残りだけ増やすと比が 1 を超え、バーが枠から溢れる。
+    m_toppleSeconds = std::max(m_toppleSeconds, remaining);
 }
 
 inline void BossBreakComponent::EndTopple()

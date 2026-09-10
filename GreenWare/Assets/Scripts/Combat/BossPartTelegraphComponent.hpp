@@ -111,7 +111,9 @@ public:
         //     位相で明滅していたので、**同じ攻撃なのに足元と体が別々のリズムで光る**。
         //     部位発光は «床が本体で隠れるとき» の保険なのに、2 つが食い違うと
         //     どちらを信じてよいか分からなくなる。
-        m_cue.pips         = std::max(pips, 0);
+        // 拍数も床と同じ値を使う ── 出す側が盤面の拍で割った数を渡してくる。
+        // ここで自前の既定を使うと、床と体で «あと何拍» が違う数になる。
+        m_cue.pips         = telegraph.pips > 0 ? telegraph.pips : std::max(pips, 0);
         m_cue.pipGain      = pipGain;
         m_cue.strikeFrom   = Clamp01(strikeFrom);
         m_cue.burstSeconds = 0.0f;   // 消え際は releaseSeconds が持っている

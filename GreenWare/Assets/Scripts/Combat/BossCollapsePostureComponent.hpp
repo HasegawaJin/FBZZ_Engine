@@ -110,6 +110,37 @@ public:
     FBZZ_FIELD_RANGE(float, groundOffset, 0.0f, "接地のオフセット", -1.0f, 1.0f)
     FBZZ_TOOLTIP("足を置く高さの微調整。ボス本体の足元を床とみなす")
 
+    // 壊れた脚は本体に残る (BossRigComponent の «壊れた脚を残す»)。残っている以上、
+    // 崩れた体と一緒に床へ突き刺さる ── 脚が «伸びたまま» 動かないからで、
+    // 傾きの側の問題ではない。
+    //
+    // WHY «畳む» で解くか: 壊れた脚に起きたことは «支えを失った» で、支えを失った脚は
+    //   伸びたまま残らない ─ 荷重で膝から潰れて畳まれる。IK の的を «付け根の真下・
+    //   床の上・伸びきらない距離» へ置けば、その 3 つが同時に満たされる:
+    //     ・足は床より下へ行かない (的が床の上にしか無い)
+    //     ・脚は伸びきらない (的までの距離を伸びきり長さより短く取る)
+    //     ・体が沈むほど脚が畳まれる (付け根が下がると的も畳み代が減る)
+    //   «貫通しないように上げる» のではなく «潰れた形にする» ので、直した結果が
+    //   そのまま «壊れた脚» の絵になる。
+    //
+    // WHY メッシュを消す / 傾きを浅くする方を採らないか: 消せば «残す» が無くなり、
+    //   傾きを浅くすれば «脚を失って崩れた» が弱まる。どちらも、直したい絵ではない方を
+    //   削ることになる。
+    FBZZ_GROUP("壊れた脚")
+    FBZZ_FIELD(bool, foldBrokenLegs, true, "壊れた脚を畳む")
+    FBZZ_TOOLTIP("壊れた脚を膝から畳んで床の上へ置く。切ると脚がクリップのまま伸びて"
+                 "床を貫く (脚を消す構成なら切ってよい)")
+    FBZZ_FIELD_RANGE(float, foldReach, 0.55f, "畳む深さ", 0.15f, 1.0f)
+    FBZZ_TOOLTIP("伸びきり長さに対する «付け根から足まで» の比。小さいほど深く潰れる。"
+                 "1.0 に近づけると伸びたままになり、また床へ刺さる")
+    FBZZ_FIELD_RANGE(float, foldSpread, 0.45f, "外への逃がし [m]", 0.0f, 2.0f)
+    FBZZ_TOOLTIP("畳んだ脚を体の外側へどれだけ逃がすか。0 だと胴の真下で潰れて"
+                 "自分の腹に埋まる")
+    FBZZ_FIELD_RANGE(float, foldSeconds, 0.45f, "畳むまで [s]", 0.05f, 3.0f)
+    FBZZ_TOOLTIP("もげた瞬間から畳み切るまで。短いほど «折れた»、長いほど «崩れ落ちた»")
+    FBZZ_FIELD_RANGE(float, foldWeight, 1.0f, "IK Weight", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("畳みの効き。0 でクリップのまま (＝貫通する)")
+
     FBZZ_GROUP("デバッグ")
     // 戦わずに崩れ «方» だけを見る口。倒れる向き・角・沈みの調整はここで回す。
     //
@@ -173,6 +204,12 @@ private:
     void EnsureTargets();
     [[nodiscard]] IKChain* EnsureChain(int leg);
     void ReleaseChains();
+    /// 壊れた脚を膝から畳んで床の上へ置く。崩れているかに関わらず毎フレーム。
+    ///
+    /// WHY 崩れ (m_blend) と切り離すか: 脚が伸びたまま残るのは «崩れているとき» の話では
+    ///     ない。1 本失って倒れているだけの間も、歩いて体が上下するだけの間も、
+    ///     壊れた脚はクリップのまま床を出入りする。畳むのは «壊れているから» で足りる。
+    void DriveBrokenLegs(GameObject& self, float groundY, float dt);
     /// 蝶番の軸・場所・倒す向き・倒れ角 (rad) を解く。1 本も失っていなければ false。
     [[nodiscard]] bool SolveHinge(Vector3& axisLocal, Vector3& pivotLocal,
                                   float& sign, float& angleRad) const;
@@ -228,6 +265,9 @@ private:
         bool      planted = false;
     };
     LegPlant m_legs[4];
+    /// 壊れた脚を畳み切った度合い [0,1]。もげた瞬間に IK を全開で入れると、
+    /// 伸びた脚が 1 フレームで潰れて «消えた» ように見える。
+    float    m_fold[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 };
 
 FBZZ_REFLECT(BossCollapsePostureComponent)
@@ -301,14 +341,65 @@ inline void BossCollapsePostureComponent::ReleaseChains()
     GameObject* self = scene.Self();
     if (!self) return;
     if (auto* ik = self->GetComponent<IKSolverComponent>())
-        for (IKChain& chain : ik->chains)
-            if (chain.type == IKSolverType::FABRIK &&
-                chain.order >= kChainOrder && chain.order < kChainOrder + 4) {
-                chain.enabled = false;
-                chain.weight  = 0.0f;
-            }
+        for (IKChain& chain : ik->chains) {
+            if (chain.type != IKSolverType::FABRIK) continue;
+            if (chain.order < kChainOrder || chain.order >= kChainOrder + 4) continue;
+            // 畳んだ脚は手放さない。ここで解くと、崩れていない間 (歩けるうちに 1 本
+            // 失った等) だけ脚が伸びて床へ刺さる ── 直したはずの絵が状況で戻る。
+            if (foldBrokenLegs && IsBroken(chain.order - kChainOrder)) continue;
+            chain.enabled = false;
+            chain.weight  = 0.0f;
+        }
     // 置き場は消さない。植え直すのは «失った脚が変わったとき» だけで、
     // ここで消すと崩れた直後の 1 フレームで控えた値が飛ぶ。
+}
+
+inline void BossCollapsePostureComponent::DriveBrokenLegs(GameObject& self, float groundY,
+                                                          float dt)
+{
+    for (int leg = 0; leg < 4; ++leg) {
+        if (!foldBrokenLegs || !IsBroken(leg)) { m_fold[leg] = 0.0f; continue; }
+
+        IKChain* chain = EnsureChain(leg);
+        GameObject* target = m_legs[leg].target.Resolve(scene);
+        if (!chain || !target) continue;
+
+        m_fold[leg] = std::clamp(m_fold[leg] + dt / std::max(foldSeconds, 0.05f), 0.0f, 1.0f);
+
+        Vector3 hip{};
+        if (!HipWorld(leg, hip)) continue;
+        if (m_legs[leg].reach <= 0.0f) m_legs[leg].reach = LegReach(leg);
+        const float reach = m_legs[leg].reach;
+        if (reach <= 0.0f) continue;
+
+        // 逃がす向きは «体の中心から付け根へ» の水平。脚が付いている側そのものなので、
+        // どの脚でも «外へ» になる。
+        Vector3 outward = hip - self.transform.worldPosition;
+        outward.y = 0.0f;
+        outward = outward.NormalizedOr(self.transform.Right());
+
+        // 的は «付け根の真下、少し外、床の上»。
+        Vector3 goal{ hip.x + outward.x * std::max(foldSpread, 0.0f),
+                      groundY,
+                      hip.z + outward.z * std::max(foldSpread, 0.0f) };
+
+        // 伸びきらせない。的が遠いと FABRIK は «真っ直ぐ伸ばして的を指す» ので、
+        // 潰れた脚のはずが «床を突いて踏ん張っている脚» になる。
+        const Vector3 toGoal = goal - hip;
+        const float   span   = toGoal.Length();
+        const float   limit  = std::max(reach * std::clamp(foldReach, 0.15f, 1.0f), 0.05f);
+        if (span > limit && span > 0.0001f) goal = hip + toGoal * (limit / span);
+
+        // 縮めた結果が床より下に来ることはないが、床の高さは体の足元から取っている
+        // ので、傾いた体では下回りうる。床より下は «貫通» そのものなので必ず戻す。
+        goal.y = std::max(goal.y, groundY);
+
+        target->transform.position      = goal;
+        target->transform.worldPosition = goal;
+
+        chain->enabled = true;
+        chain->weight  = std::clamp(m_fold[leg] * std::max(foldWeight, 0.0f), 0.0f, 1.0f);
+    }
 }
 
 inline bool BossCollapsePostureComponent::ToLocal(const GameObject* bone, Vector3& out) const
@@ -604,6 +695,14 @@ inline void BossCollapsePostureComponent::OnUpdate()
                 }
             }
     }
+    // 床は «ボス本体の足元»。崩れの足留めと同じ基準にしないと、畳んだ脚だけが
+    // 別の高さへ置かれて «片脚だけ床が違う» になる。
+    const float groundY = self->transform.worldPosition.y + groundOffset;
+
+    // 壊れた脚を畳むのは崩れの前。崩れていない間も脚は壊れたままで、
+    // 伸びていれば床を出入りする (DriveBrokenLegs の WHY)。
+    DriveBrokenLegs(*self, groundY, dt);
+
     const bool down = collapse && m_solved;
 
     // 崩れは不可逆なので戻りは «切られたとき» だけ。入りだけ時間を掛ける。
@@ -663,16 +762,18 @@ inline void BossCollapsePostureComponent::OnUpdate()
         return;
     }
 
-    const float groundY = self->transform.worldPosition.y + groundOffset;
-
     for (int leg = 0; leg < 4; ++leg) {
         IKChain* chain = EnsureChain(leg);
         if (!chain) continue;
 
+        // 壊れた脚は DriveBrokenLegs が畳んで持っている。ここで触ると的が
+        // «床へ留める» と «畳む» で毎フレーム奪い合う。
         if (IsBroken(leg)) {
-            chain->enabled = false;
-            chain->weight  = 0.0f;
             m_legs[leg].planted = false;
+            if (!foldBrokenLegs) {
+                chain->enabled = false;
+                chain->weight  = 0.0f;
+            }
             continue;
         }
 

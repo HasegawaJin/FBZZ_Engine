@@ -63,17 +63,60 @@ public:
     FBZZ_FIELD_RANGE_INT(int, coreHealth, 90, "コア", 1, 1000)
     FBZZ_TOOLTIP("背のコアを削り切るのに要る量。蓋が開いているあいだしか削れない")
     FBZZ_FIELD_RANGE(float, legRadius, 0.38f, "脚", 0.05f, 3.0f)
-    // WHY 既定を false に戻したか (2026-09-08): 固くするとボス自身が飛んでいった。
-    //     このエンジンには衝突レイヤーのマトリクスが無く (ProjectSettings の [layers] は
-    //     タグで、コライダー側に layerMask が無い)、ボス配下に置いた solid は
-    //     **ボス自身の胴カプセルと RigidBody (mass 400) に必ず当たる。**
-    //     ボーンは毎フレーム «瞬間移動» するので、めり込み解決が巨大な力になって弾け飛ぶ。
-    //     すり抜けを止めるのは PlayerBossBlockComponent (プレイヤーだけを押し出す) の役目。
-    FBZZ_FIELD(bool, solidLegs, false, "脚と胴でぶつかる (自己衝突するので既定 off)")
-    FBZZ_TOOLTIP("固くするとボス自身の胴カプセルと当たって吹き飛ぶ。すり抜け対策は "
-                 "PlayerBossBlockComponent 側で行う。ここは検証用に残してあるだけ")
+    // WHY 既定が false のままか (2026-09-10):
+    //     衝突レイヤーの行列を物理へ通したので、原理上は «自分の胴とは当たらないが
+    //     プレイヤーとは当たる» が作れる。だが**成立の条件が別ファイルにある**
+    //     (ProjectSettings.toml の [physics] ignoreCollisions) のに、そのファイルは
+    //     エディタが開いていると古い設定で上書き保存されて消える。
+    //     消えた瞬間の壊れ方が «ボスが吹き飛ぶ» ── 一番重い部類なので、
+    //     既定は «行列を要らない側» に置く。
+    //     すり抜けを止めるのは PlayerBossBlockComponent (プレイヤーだけを押し出す)。
+    //     on にするなら、行列を確かめてからにすること (SolidAllowed が毎フレーム見る)。
+    FBZZ_FIELD(bool, solidLegs, false, "脚と胴でぶつかる (要・衝突行列)")
+    FBZZ_TOOLTIP("プレイヤーが 6m の重機をすり抜けないようにする物理の当たり。"
+                 "ProjectSettings > Physics の衝突行列で «当たりのレイヤー × ボス本体» と "
+                 "«自分自身» を切っていないと自己衝突でボスが吹き飛ぶ。"
+                 "行列が無い間は自動でトリガーへ畳まれ、ログに何を設定すべきか出る。"
+                 "off のままなら PlayerBossBlockComponent がすり抜けを止める")
     FBZZ_FIELD_RANGE(float, radiusScale, 1.0f, "全体スケール", 0.1f, 3.0f)
     FBZZ_TOOLTIP("全体の太さ。個別の比率を保ったまま «当たりの甘さ» だけを動かす")
+
+    FBZZ_GROUP("レイヤー")
+    // WHY 当たりだけ別レイヤーへ置くか: ボス本体 (胴カプセル + RigidBody) と、
+    //     骨に生やした当たりは «同じ物体の 2 つの表現» で、互いにぶつかってはいけない。
+    //     行列で切れるのはレイヤーの組なので、分けておかないと切りようが無い。
+    FBZZ_FIELD_RANGE_INT(int, hitboxLayer, 9, "当たりのレイヤー", 0, 31)
+    FBZZ_TOOLTIP("生成する当たりに入れるレイヤー番号。ProjectSettings > Physics の "
+                 "衝突行列で «このレイヤー × ボス本体のレイヤー» と «自分自身» を "
+                 "切っておくこと。切らないとボスが自分の脚に押されて吹き飛ぶ")
+
+    // WHY 甲板だけ別扱いか: 胴の球 (torsoRadius) の «上» に立たせると、球面なので
+    //     必ず滑り落ちる。登った先は立って戦う場所なので、平らな面が要る。
+    //     骨の子にしないのは、Blender のボーンはローカル +Y が骨の向きで、
+    //     どちら向きに «上» があるかがボーンごとに違うから。ボスのルート姿勢
+    //     (PlayerClimbComponent が着地点を測るのと同じ基準) から毎フレーム置く。
+    FBZZ_GROUP("甲板")
+    // WHY 甲板だけ物理の当たりでよいか (2026-09-10):
+    //     箱は `attachToParentBody` を立ててボス本体の剛体へ属させる。同じ剛体の
+    //     コライダー同士は当たらないので (PhysicsSolver の同一ボディ除外)、
+    //     胴のカプセルと重なっても押し合わない ── 衝突行列が要らない。
+    //     脚を同じ手で固くできないのは、**姿勢が剛体のものになる**から
+    //     (骨と一緒に回る当たりはこの経路では正しく回らない) と、
+    //     脚は地面に届くので «自分の脚で床を押して浮く» が起きるため。
+    FBZZ_FIELD(bool, buildDeck, true, "甲板の足場を作る")
+    FBZZ_TOOLTIP("背に立てる平らな当たり。ボス本体の剛体へ属させるので自己衝突しない。"
+                 "off にすると登っても足場が無く、甲羅をすり抜けて落ちる")
+    FBZZ_FIELD(std::string, deckAnchorBone, "Body", "基準の骨")
+    FBZZ_TOOLTIP("PlayerClimbComponent の «基準の骨» と必ず同じにする。"
+                 "食い違うと «登り着いた点» と «足場» が別の高さになる")
+    FBZZ_FIELD_RANGE(float, deckRise, 1.33f, "甲板の高さ", 0.0f, 6.0f)
+    FBZZ_TOOLTIP("基準の骨から足場の «上面» までの高さ [m]。"
+                 "PlayerClimbComponent の同名の値と揃える")
+    FBZZ_FIELD_RANGE(float, deckHalfWidth, 1.60f, "甲板の広さ (半分)", 0.2f, 5.0f)
+    FBZZ_TOOLTIP("足場の半分の幅 [m]。襟の半径 1.34 より少し広くとって、"
+                 "縁に立ったときに落ちないようにする")
+    FBZZ_FIELD_RANGE(float, deckThickness, 0.60f, "甲板の厚み", 0.05f, 3.0f)
+    FBZZ_TOOLTIP("足場の厚み [m]。薄いと高速で降りてきたときにすり抜ける")
 
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(int, debugHitboxes, 0, "ヒットボックス")
@@ -142,11 +185,44 @@ private:
     /// 次に作り直しを試すまでの残り [秒]。
     float     m_retryCooldown = 0.0f;
     bool      m_reported = false;
+    /// 衝突行列の不備を 1 度だけ言うための旗。毎フレーム言うとログが埋まる。
+    bool      m_solidWarned = false;
     static constexpr float kRetryInterval  = 0.20f;
     static constexpr float kGiveUpSeconds  = 6.0f;
     EntityRef m_feet[4];
     EntityRef m_core;
     void ResolveAnchors();
+
+    /// 当たりを «固く» してよいか。衝突行列が前提を満たしていなければ false。
+    ///
+    /// WHY 毎回確かめるか (2026-09-10): 行列は ProjectSettings.toml に書いてあるだけで、
+    ///     エディタが開いていると古い設定で上書き保存されて消えることがある。
+    ///     消えたまま固くすると、ボスは自分の当たり (胴の球・甲板の箱・脚 12 本) に
+    ///     押されて **毎フレーム前へずれ続ける**。速度を 0 にしても止まらない
+    ///     ── めり込み解決は位置を直接動かすので、StopHorizontal では効かない。
+    ///     しかも «AI が前進させている» ようにしか見えないので、原因に辿り着けない。
+    ///     前提が崩れていたら固くせず、代わりに何を設定すべきかを名指しで言う。
+    [[nodiscard]] bool SolidAllowed();
+    /// «固い» つもりの当たりへ、今の判定を書き込む。
+    ///
+    /// WHY 作った後にも書き換えられるようにするか: Build が走るのは OnStart で、
+    ///     物理ワールドがまだスクリプトへ渡っていない可能性がある。そこで 1 度きり
+    ///     決め打ちにすると «ワールドが無かったから安全側» のまま固まる。
+    ///     Inspector で solidLegs を触ったときにも Play 中に効く。
+    void ApplySolidity(bool solid);
+    /// 固くするつもりの当たり (脚・胴・甲板)。頭やコアは常にトリガーなので入れない。
+    std::vector<EntityRef> m_solidParts;
+    /// 直近に書いた «固さ»。変わったフレームだけ書き直す。
+    bool m_solidApplied = false;
+    /// 背の «立てる面»。作れたら true。基準の骨がまだ無ければ false。
+    bool EnsureDeck();
+    /// 甲板をボスのルート姿勢へ合わせて置き直す。毎フレーム。
+    void UpdateDeck();
+    EntityRef m_deck;
+    EntityRef m_deckAnchor;
+    /// 基準の骨を探し直すまでの残り [秒]。骨はまだ無いのが正常なので、
+    /// 見つからない間ずっと全サブツリーを歩き続けないよう間隔を空ける。
+    float     m_deckProbeCooldown = 0.0f;
 };
 
 FBZZ_REFLECT(BossHitboxRigComponent)
@@ -181,6 +257,12 @@ inline Quaternion BossHitboxRigComponent::AlignUpTo(const Vector3& direction)
 inline void BossHitboxRigComponent::OnStart()
 {
     m_core = {};
+    m_deck = {};
+    m_deckAnchor = {};
+    m_deckProbeCooldown = 0.0f;
+    m_solidParts.clear();
+    m_solidWarned  = false;
+    m_solidApplied = false;
     for (EntityRef& foot : m_feet) foot = {};
     m_pending.clear();
     m_waited          = 0.0f;
@@ -224,6 +306,8 @@ inline void BossHitboxRigComponent::Build()
         else                       m_pending.push_back(segment);
     }
     debugMissingBones = static_cast<int>(m_pending.size());
+    // 作った時点の判定を覚えておく。OnUpdate はここから «変わったか» だけを見る。
+    m_solidApplied = SolidAllowed();
 
     ResolveAnchors();
 }
@@ -243,8 +327,128 @@ inline void BossHitboxRigComponent::ResolveAnchors()
         m_core = EntityRef{ core->GetID() };
 }
 
+inline bool BossHitboxRigComponent::SolidAllowed()
+{
+    if (!solidLegs) return false;
+
+    GameObject* self = scene.Self();
+    const int mine  = hitboxLayer & 31;
+    const int owner = self ? (self->layer & 31) : 0;
+
+    // 自分の剛体 (ボス本体) と、当たりどうし。この 2 組が切れていて初めて固くできる。
+    const bool separated = !physics.LayersCollide(mine, owner)
+                        && !physics.LayersCollide(mine, mine);
+    if (separated) return true;
+
+    if (!m_solidWarned) {
+        m_solidWarned = true;
+        debug.LogError(
+            "BossHitboxRigComponent: layer " + std::to_string(mine) +
+            " still collides with the boss body (layer " + std::to_string(owner) +
+            ") or with itself, so the hitboxes stay triggers. "
+            "Without this the boss is pushed by its own colliders and drifts forward every frame. "
+            "Set ProjectSettings > Physics > Layer Collision Matrix to uncheck "
+            + std::to_string(mine) + "x" + std::to_string(owner) + " and "
+            + std::to_string(mine) + "x" + std::to_string(mine) +
+            " (ProjectSettings.toml: [physics] ignoreCollisions).");
+    }
+    return false;
+}
+
+inline bool BossHitboxRigComponent::EnsureDeck()
+{
+    if (GameObject* deck = m_deck.Resolve(scene)) {
+        // 走っている最中に off にされたら畳む。作り直しは Stop → Play で足りる。
+        if (!buildDeck) { deck->SetActive(false); return false; }
+        deck->SetActive(true);
+        return true;
+    }
+    if (!buildDeck) return false;
+
+    m_deckProbeCooldown -= std::max(Time::deltaTime, 0.0f);
+    if (m_deckProbeCooldown > 0.0f) return false;
+    m_deckProbeCooldown = kRetryInterval;
+
+    GameObject* self = scene.Self();
+    if (!self) return false;
+    GameObject* anchor = FindInSubtree(*self, deckAnchorBone);
+    if (!anchor) return false;
+    m_deckAnchor = EntityRef{ anchor->GetID() };
+
+    GameObject& deck = scene.Create("HB_Deck");
+    deck.runtimeGenerated = true;
+    deck.tag   = "Enemy";
+    deck.layer = hitboxLayer & 31;
+    // 親はボスのルート。骨の子にすると、骨のローカル軸に «上» が乗ってしまう。
+    //
+    // 引き直してから繋ぐ。scene.Create が GameObject 配列を再確保するので、
+    // 上で掴んだ self は既に無効かもしれない (BuildSegment と同じ理由)。
+    if (GameObject* owner = scene.Self()) deck.SetParent(*owner);
+
+    auto& collider = deck.AddComponent<BoxColliderComponent>();
+    const float half = std::max(deckHalfWidth, 0.05f);
+    collider.SetSize({ half * 2.0f, std::max(deckThickness, 0.02f), half * 2.0f });
+    // 甲板は «立つ» のが役目なので固い。
+    collider.isTrigger = false;
+    // ボス本体の剛体へ属させる。これが無いと «世界に固定された静的コライダー» として
+    // 胴のカプセルを押し、ボスが勝手に動く / 吹き飛ぶ。
+    collider.attachToParentBody = true;
+
+    m_deck = EntityRef{ deck.GetID() };
+    return true;
+}
+
+inline void BossHitboxRigComponent::UpdateDeck()
+{
+    GameObject* deck = m_deck.Resolve(scene);
+    if (!deck) return;
+
+    GameObject* anchor = m_deckAnchor.Resolve(scene);
+    GameObject* self   = scene.Self();
+    if (!anchor || !self) { deck->SetActive(false); return; }
+
+    // 上面を «骨から deckRise» に置く。箱の中心はそこから厚みの半分ぶん下。
+    //
+    // WHY ローカルで書くか: 甲板はボスのルートの子なので、ワールド姿勢は
+    //     TransformSystem が «親 × ローカル» から毎フレーム組み直す。
+    //     worldPosition へ書いても、走る順によっては同じフレームで捨てられる。
+    //
+    // 向きはルートに合わせる (ローカル回転は恒等) ─ 転倒で骨が回っても、
+    // 立つ面はボスの «背中の向き» であってほしい
+    // (PlayerClimbComponent が着地点を測るのと同じ基準)。
+    const float      half = std::max(deckThickness, 0.02f) * 0.5f;
+    const Quaternion inv  = self->transform.worldRotation.Inverse();
+    Vector3 local = inv * (anchor->transform.worldPosition - self->transform.worldPosition);
+    local.y += std::max(deckRise, 0.0f) - half;
+
+    deck->SetActive(true);
+    deck->transform.position = local;
+    deck->transform.rotation = Quaternion::Identity();
+}
+
+inline void BossHitboxRigComponent::ApplySolidity(bool solid)
+{
+    for (EntityRef& ref : m_solidParts) {
+        GameObject* object = ref.Resolve(scene);
+        if (!object) continue;
+        if (auto* capsule = object->GetComponent<CapsuleColliderComponent>()) capsule->isTrigger = !solid;
+        if (auto* sphere  = object->GetComponent<SphereColliderComponent>())  sphere->isTrigger  = !solid;
+        if (auto* box     = object->GetComponent<BoxColliderComponent>())     box->isTrigger     = !solid;
+    }
+}
+
 inline void BossHitboxRigComponent::OnUpdate()
 {
+    if (EnsureDeck()) UpdateDeck();
+
+    // 前提が満たされたか / 崩れたかを追う。Build は OnStart で走るので、そこでは
+    // まだ物理ワールドがスクリプトへ渡っていないことがある。
+    const bool solid = SolidAllowed();
+    if (solid != m_solidApplied) {
+        ApplySolidity(solid);
+        m_solidApplied = solid;
+    }
+
     if (m_pending.empty()) return;
 
     // WHY 毎フレーム試さないか (2026-09-08): BuildSegment は 1 本ごとにボスの全サブツリーを
@@ -319,6 +523,9 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
     // 部位はボス本体と同じ «敵» として扱わせる。Mite の接地レイキャストは
     // タグで敵を捨てているので、これが無いとボスの脚を地面と読んで脚の上に浮く。
     hitbox.tag = "Enemy";
+    // 当たりのレイヤー。ボス本体と分けないと、固くした瞬間に自分の胴カプセルを
+    // 押してボスが吹き飛ぶ (solidLegs の WHY)。
+    hitbox.layer = hitboxLayer & 31;
 
     // 親を引き直してから繋ぐ。ローカル姿勢は «繋いだ後» に書く
     // (SetParent がワールド姿勢を保つ実装でも、後から書けば必ずこちらが勝つ)。
@@ -331,7 +538,10 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
     // WHY トリガーのままでよい部位があるか: 斬撃は物理を使わず BossPartComponent を
     //     型で集めて扇の内側かを測る (BladeComponent)。当たり判定としては
     //     トリガーで足りていて、solid にするのは «プレイヤーがぶつかる» ためだけ。
-    const bool solid = segment.blocking;
+    // «固くするつもりか» (segment.blocking) と «今このフレーム固くしてよいか» を分ける。
+    // 前者は作者の意図で、後者は衝突行列が前提を満たしているかで決まる。
+    const bool solid = segment.blocking && SolidAllowed();
+    if (segment.blocking) m_solidParts.push_back(EntityRef{ hitbox.GetID() });
     if (capsule) {
         auto& collider = hitbox.AddComponent<CapsuleColliderComponent>();
         collider.SetCapsule(radius, halfHeight);

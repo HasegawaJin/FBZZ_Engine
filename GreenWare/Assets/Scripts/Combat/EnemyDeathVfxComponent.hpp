@@ -281,11 +281,14 @@ inline void EnemyDeathVfxComponent::ConfigureEmitter(ParticleEmitterSettings& em
     emitter.emitVelocity    = Vector3::ZERO;
     emitter.velocitySpread  = spread;
     // 法線の押し出しを早く殺し、代わりに上向きの加速度だけを残す。
-    emitter.velocityDamping = damping;
-    emitter.gravity         = { 0.0f, riseAcceleration, 0.0f };
-    emitter.noiseStrength   = turbulence;
-    emitter.noiseFrequency  = 0.8f;
-    emitter.noiseSpeed      = 1.2f;
+    emitter.EnsureLocalForce(ParticleForceFieldType::Drag).strength = damping;
+    emitter.SetGravityAcceleration({ 0.0f, riseAcceleration, 0.0f });
+    {
+        auto& noise = emitter.EnsureLocalForce(ParticleForceFieldType::Turbulence);
+        noise.strength       = turbulence;
+        noise.noiseFrequency = 0.8f;
+        noise.noiseSpeed     = 1.2f;
+    }
 
     emitter.lifetime       = moteLifetime;
     emitter.lifetimeRandom = moteLifetimeRandom;

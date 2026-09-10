@@ -25,6 +25,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/BossAnimParams.hpp>
+#include <Scripts/Game/HitstopManagerComponent.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -100,10 +101,38 @@ public:
     FBZZ_FIELD_RANGE(float, previewHoldTime, 2.5f, "Hold Time", 0.0f, 12.0f)
     FBZZ_TOOLTIP("Charge / Beam プレビューでループを回し続ける秒数")
 
+    // WHY 再生速度を実速へ比例させるか (2026-09-11):
+    //   Locomotion のブレンドツリーは Speed で Idle → Walk_Crawl を混ぜるだけで、
+    //   クリップの再生速度は 1.0 固定だった。歩調は «しきい値の 2 m/s» で作って
+    //   あるので、それより速く動かすと **脚は同じ速さで掻いているのに体だけ滑る**。
+    //   突進 (Charge_Run) も同じで、速さを上げるほど «氷の上を滑る重機» になる。
+    //   体の実速をクリップの想定速度で割って再生速度にすれば、速さを何 m/s に
+    //   変えても足の運びが付いてくる ── 速さの調整とアニメーションの調整が
+    //   別々の数字にならない。
+    //
+    // WHY 攻撃中は掛けないか: 踏みつけ・照射・跳躍は «当たる時刻» を Inspector の
+    //   秒数とクリップのフレームで合わせて作ってある (README の f23 等)。
+    //   再生速度を触ると判定と絵がずれる ── 走りと突進だけが対象。
+    FBZZ_GROUP("再生速度")
+    FBZZ_FIELD(bool, scaleClipToSpeed, true, "速さに再生を比例させる")
+    FBZZ_TOOLTIP("走り / 突進の再生速度を «実速 ÷ 想定速度» にする。"
+                 "切ると 1.0 固定 (速く動かすほど足が滑る)")
+    FBZZ_FIELD_RANGE(float, walkClipSpeed, 2.0f, "Walk_Crawl の実速 [m/s]", 0.2f, 20.0f)
+    FBZZ_TOOLTIP("Walk_Crawl を 1.0 倍で再生したときに足が滑らない速さ。"
+                 "Boss.animcontroller のブレンドしきい値 (2.0) と同じ値にしてある")
+    FBZZ_FIELD_RANGE(float, chargeClipSpeed, 5.0f, "Charge_Run の実速 [m/s]", 0.5f, 30.0f)
+    FBZZ_TOOLTIP("Charge_Run を 1.0 倍で再生したときに足が滑らない速さ。"
+                 "BossAiComponent の突進速度をこれで割った値が再生速度になる")
+    FBZZ_FIELD_RANGE(float, clipSpeedMin, 0.35f, "再生の下限", 0.05f, 1.0f)
+    FBZZ_FIELD_RANGE(float, clipSpeedMax, 2.80f, "再生の上限", 1.0f, 6.0f)
+    FBZZ_TOOLTIP("上限を下げると «滑らない» を捨てて «脚の速さが自然» を採ることになる。"
+                 "突進 13 m/s ÷ 5 m/s = 2.6 なので、2.6 以上で完全に追従する")
+
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugState, "", "状態")
     FBZZ_FIELD_READ_ONLY(float, debugSpeed, 0.0f, "速さ (m/s)")
     FBZZ_FIELD_READ_ONLY(float, debugTurn, 0.0f, "Turn (-1..1)")
+    FBZZ_FIELD_READ_ONLY(float, debugClipSpeed, 1.0f, "再生速度")
 
     void OnStart()  override;
     void OnUpdate() override;
@@ -152,6 +181,14 @@ public:
     /// 撃破。Death は崩れたまま最終フレームで止まり、Idle へは戻らない。
     void SetDead(bool dead);
 
+    /// 盤面のテンポ (BossAiComponent の Tempo) を預ける。
+    ///
+    /// WHY AI から直に Animator の速度を書かせないか: 再生速度は 1 つしか無く、
+    ///     こちらは足の運びを実速へ合わせるために同じ値を書く。2 か所から書くと
+    ///     後から書いた方が相手を消す ── テンポが効かなくなるか、足が滑るかの
+    ///     どちらかが «たまに» 起きる。掛け合わせる場所を 1 つに決める。
+    void SetTempo(float tempo) { m_tempo = std::max(tempo, 0.0f); }
+
     /// 今の移動速度 [m/s]。歩容を選ぶのに使った «均した後» の値。
     ///
     /// WHY 公開するか: 足音も同じ速さで歩容 (巡回クロール / 突進クロール) を選ぶ。
@@ -181,6 +218,8 @@ private:
 
     float m_speed = 0.0f;
     float m_turn  = 0.0f;
+    /// 預かっている盤面のテンポ。再生速度は これ × 足の運びの比。
+    float m_tempo = 1.0f;
 
     bool  m_beaming     = false;
     bool  m_charging    = false;
@@ -235,6 +274,38 @@ inline void BossAnimatorComponent::OnUpdate()
     debugState = animator.GetCurrentState();
     debugSpeed = m_speed;
     debugTurn  = m_turn;
+
+    // 対象は «走っている» 状態だけ。突進は Locomotion ではない別のステートなので、
+    // 走り (IsBusy() が false) と突進 (m_charging) の 2 つを明示的に採る。
+    float scale = 1.0f;
+    // 止まっているときに比を掛けると Idle の呼吸まで遅くなる。
+    // 動いていない間は素の 1.0 に戻す。
+    if (scaleClipToSpeed && (m_charging || !IsBusy()) && m_speed > 0.2f) {
+        const float reference = std::max(m_charging ? chargeClipSpeed : walkClipSpeed, 0.1f);
+        scale = std::clamp(m_speed / reference,
+                           std::max(clipSpeedMin, 0.01f), std::max(clipSpeedMax, 0.01f));
+    }
+    // 当事者の凍結 (ヒットストップの手応え) が掛かっている間は書かない。
+    //
+    // WHY 要るか (2026-09-11): 凍結は «この相手の再生速度を 0 にする» で作られている
+    //     ので、こちらが毎フレーム書き続けると **次のフレームで解けて凍結が
+    //     一切効かない**。斬った手応えの担当 (animMaxSeconds、既定 0.18 秒) が
+    //     丸ごと死ぬ ── しかも «少し軽い» ではなく «無い» になるので、
+    //     ヒットストップを触っても何も変わらないという迷い方をする。
+    //     秒数を数えるのは固めた側の仕事なので、こちらは «今固まっているか» だけ聞く。
+    const auto* stop = HitstopManagerComponent::Instance();
+    if (stop && stop->IsAnimationFrozen(scene.Self())) {
+        debugClipSpeed = 0.0f;
+        return;
+    }
+
+    // WHY テンポを掛けて «ここだけ» が書くか: Animator の再生速度は 1 つしか無いのに、
+    //     書きたい理由が 2 つある (盤面のテンポと足の運び)。別々に書くと後から
+    //     書いた方が相手を消すので、AI はテンポを SetTempo で預け、掛け合わせるのは
+    //     この 1 か所に閉じる。比を掛けない構成 (トグル off) でもここが書くので、
+    //     テンポが «黙って 1.0 に戻る» 経路が残らない。
+    animator.SetSpeed(m_tempo * scale);
+    debugClipSpeed = scale;
 }
 
 inline void BossAnimatorComponent::SampleLocomotion(float dt)

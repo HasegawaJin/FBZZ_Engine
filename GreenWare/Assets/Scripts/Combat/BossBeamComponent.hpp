@@ -221,13 +221,29 @@ public:
     /// 今フレーム、線がプレイヤーへ触れているか。
     [[nodiscard]] bool IsTouchingPlayer() const { return m_touching; }
 
+    /// 線が出る «口» のワールド位置。腹下のアパーチャ (骨 `Muzzle`) そのもの。
+    ///
+    /// WHY 公開するか (2026-09-11): 左右の線と扇は別のコンポーネント
+    ///     (LaserVolleyComponent) が撃つので、高さを各自の数値で持っていた。
+    ///     結果、同じ «斉射» の中で線ごとに出どころの高さが違い、
+    ///     «1 つの口から出ている» が絵として崩れていた。口の高さを知っているのは
+    ///     ここだけなので、他はここへ合わせる。
+    [[nodiscard]] Vector3 AperturePoint() const;
+
+    /// 今フレームの «線の質»。同じ攻撃の左右を撃つ斉射がこれを借りて質を揃える。
+    ///
+    /// WHY 値を配るのか、Inspector を見に行かせないのか: 質は点火 (m_charge) で
+    ///     毎フレーム変わる。撃つ側どうしが互いのフィールドを読むと «どの瞬間の値か»
+    ///     が呼ぶ順で変わり、左右だけ 1 フレーム前の太さで出る回ができる。
+    [[nodiscard]] beamlook::Look CurrentLook() const { return LookOf(); }
+    /// 射線を伸ばす上限 [m]。同じ面で止めたい線が同じ距離を使うために公開する。
+    [[nodiscard]] float TraceRange() const { return traceRange; }
+
 private:
     /// 帯 1 層ぶんの GameObject を用意する。DLL リロードをまたいでも増えない。
     [[nodiscard]] GameObject* BuildLayer(const std::string& name);
     [[nodiscard]] std::string LayerName(const char* layer) const;
     [[nodiscard]] BeamTrailRendererComponent* TrailOf(const EntityRef& ref) const;
-    /// 下面アパーチャのワールド位置。
-    [[nodiscard]] Vector3 AperturePoint() const;
     /// アパーチャから狙点へ向けて射線を伸ばし、最初に当たった面で止める。
     /// 何にも当たらなければ最大距離まで伸ばす。outNormal には当たった面の法線。
     [[nodiscard]] Vector3 TraceContact(const Vector3& from, const Vector3& aimPoint,
@@ -374,38 +390,15 @@ inline Vector3 BossBeamComponent::AperturePoint() const
 inline Vector3 BossBeamComponent::TraceContact(const Vector3& from, const Vector3& aimPoint,
                                                Vector3& outNormal) const
 {
-    outNormal = Vector3::UP;
-
-    const float   range = std::max(traceRange, 0.5f);
-    const Vector3 dir   = (aimPoint - from).NormalizedOr(Vector3{ 0.0f, -1.0f, 0.0f });
-
     // WHY 真下ではなく射線に沿って探すか:
     //   薙ぎ終わりに線を振り上げると、狙点の «真下» には何も無い。真下を探す実装だと
     //   終端が空中に取り残され、焦げと火花が宙に湧く。射線を伸ばせば、下を向いている間は
     //   床に、振り上げた後はアリーナの壁に当たる。どちらでも «何かを焼いている» になる。
     //
-    // WHY 最初の 1 件ではなく全件か:
-    //   間にプレイヤーが立っていると、Raycast はそこで止まる。線がプレイヤーの手前で
-    //   途切れると «当たっているのに刺さっていない» 絵になる。当たり判定は線分の側で
-    //   別に測っているので、線そのものは «地形» だけで止める。
-    GameObject* self = scene.Self();
-    const RaycastHit* nearest = nullptr;
-    const std::vector<RaycastHit> hits = physics.RaycastAll(from, dir, range);
-    for (const RaycastHit& hit : hits) {
-        GameObject* object = hit.gameObject;
-        if (!object) continue;
-        // 自分の部位 (脚のヒットボックス) で止まると、線が脚の上で切れる。
-        if (object == self || (self && object->IsDescendantOf(*self))) continue;
-        if (object->tag == playerTag) continue;
-        if (!nearest || hit.distance < nearest->distance) nearest = &hit;
-    }
-
-    if (nearest) {
-        outNormal = nearest->normal.NormalizedOr(Vector3::UP);
-        return nearest->point;
-    }
-    // 何にも当たらないまま抜けた。線は最大距離で切る (空へ伸ばしっぱなしにしない)。
-    return from + dir * range;
+    // 止め方そのもの (全件から最も近い地形を採る) は左右の線と共通なので、正本は
+    // beamlook::TraceSurface に置いてある。
+    return beamlook::TraceSurface(*this, from, aimPoint - from, traceRange,
+                                  playerTag, outNormal);
 }
 
 inline Vector4 BossBeamComponent::BeamColor() const
@@ -434,6 +427,15 @@ inline beamlook::Look BossBeamComponent::LookOf() const
     look.wobble       = wobble;
     look.scrollSpeed  = scrollSpeed;
     look.churnRate    = churnRate;
+    // 放電と光も «質» の一部。同じ攻撃の左右を撃つ斉射がこれを借りる。
+    look.arcAlong       = beamArcs;
+    look.arcStrands     = arcStrands;
+    look.arcWidth       = arcWidth;
+    look.arcRate        = arcRate;
+    look.arcIntensity   = arcIntensity;
+    look.arcBow         = arcBow;
+    look.lightIntensity = lightIntensity;
+    look.lightRange     = lightRange;
     return look;
 }
 
