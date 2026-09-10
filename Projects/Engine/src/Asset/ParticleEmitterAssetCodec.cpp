@@ -75,6 +75,116 @@ void ReadCurve(const toml::table& table, const char* name, scene::ParticleCurve&
     DeserializeParticleCurve(table, name, curve);
 }
 
+toml::table WriteForce(const scene::ParticleForceFieldSettings& force)
+{
+    toml::table item;
+    item.insert("enabled", force.enabled);
+    item.insert("fieldType", static_cast<std::int64_t>(force.fieldType));
+    item.insert("space", static_cast<std::int64_t>(force.space));
+    item.insert("strength", force.strength);
+    item.insert("radius", force.radius);
+    item.insert("falloffPower", force.falloffPower);
+    item.insert("direction", WriteVector3(force.direction));
+    item.insert("noiseFrequency", force.noiseFrequency);
+    item.insert("noiseSpeed", force.noiseSpeed);
+    item.insert("channels", static_cast<std::int64_t>(force.channels));
+    item.insert("vectorFieldPath", force.vectorFieldPath);
+    item.insert("vectorFieldExtents", WriteVector3(force.vectorFieldExtents));
+    item.insert("vectorFieldTightness", force.vectorFieldTightness);
+    return item;
+}
+
+scene::ParticleForceFieldSettings ReadForce(const toml::table& item)
+{
+    scene::ParticleForceFieldSettings force;
+    force.enabled = item["enabled"].value_or(force.enabled);
+    force.fieldType = ReadEnum(item, "fieldType", force.fieldType,
+                               scene::kParticleForceFieldTypeCount - 1);
+    force.space = ReadEnum(item, "space", force.space, 1);
+    force.strength = ReadFloat(item, "strength", force.strength);
+    force.radius = ReadFloat(item, "radius", force.radius);
+    force.falloffPower = ReadFloat(item, "falloffPower", force.falloffPower);
+    force.direction = ReadVector3(item["direction"], force.direction);
+    force.noiseFrequency = ReadFloat(item, "noiseFrequency", force.noiseFrequency);
+    force.noiseSpeed = ReadFloat(item, "noiseSpeed", force.noiseSpeed);
+    force.channels = static_cast<std::uint32_t>(
+        item["channels"].value_or(static_cast<std::int64_t>(force.channels)));
+    force.vectorFieldPath = item["vectorFieldPath"].value_or(force.vectorFieldPath);
+    force.vectorFieldExtents = ReadVector3(item["vectorFieldExtents"], force.vectorFieldExtents);
+    force.vectorFieldTightness = ReadFloat(item, "vectorFieldTightness", force.vectorFieldTightness);
+    return force;
+}
+
+// 内蔵の力が個別フィールドだった頃 (〜2026-09-11) の .scene / .particle / .vfx を読む。
+//
+// WHY 自動で移すか: 見た目のキー (.mat へ移した 34 項目) は «一度だけ警告して捨てる» で
+//     済んだ。あれは «素材側で設定し直す» という行き先が人間に見える話だったからだ。
+//     こちらは重力そのものなので、捨てると既存のエフェクトが全部その場に浮く。
+//     しかも «浮いている» は設定ミスと区別が付かない。値は移して、形だけ変える。
+void MigrateLegacyForces(const toml::table& table, scene::ParticleEmitterSettings& emitter)
+{
+    using scene::ParticleForceFieldSettings;
+    using scene::ParticleForceFieldSpace;
+    using scene::ParticleForceFieldType;
+
+    // 既定の localForces (重力 1 本) は «新規エミッターの初期値» であって、
+    // このファイルが意図した内容ではない。旧ファイルの記述だけを正とする。
+    emitter.localForces.clear();
+
+    const math::Vector3 gravity = ReadVector3(table["gravity"], math::Vector3{ 0.0f, -5.0f, 0.0f });
+    const float gravityMagnitude = gravity.Length();
+    if (gravityMagnitude > 1.0e-6f) {
+        ParticleForceFieldSettings wind;
+        wind.fieldType = ParticleForceFieldType::Wind;
+        wind.space     = ParticleForceFieldSpace::World;
+        wind.direction = gravity * (1.0f / gravityMagnitude);
+        wind.strength  = gravityMagnitude;
+        wind.radius    = 0.0f;
+        emitter.localForces.push_back(wind);
+    }
+
+    if (const float damping = ReadFloat(table, "velocityDamping", 0.0f); damping > 0.0f) {
+        ParticleForceFieldSettings drag;
+        drag.fieldType = ParticleForceFieldType::Drag;
+        drag.space     = ParticleForceFieldSpace::World;
+        drag.strength  = damping;
+        drag.radius    = 0.0f;
+        emitter.localForces.push_back(drag);
+    }
+
+    if (const float noise = ReadFloat(table, "noiseStrength", 0.0f); noise > 0.0f) {
+        ParticleForceFieldSettings turbulence;
+        turbulence.fieldType      = ParticleForceFieldType::Turbulence;
+        turbulence.space          = ParticleForceFieldSpace::World;
+        turbulence.strength       = noise;
+        turbulence.radius         = 0.0f;
+        turbulence.noiseFrequency = ReadFloat(table, "noiseFrequency", 0.5f);
+        turbulence.noiseSpeed     = ReadFloat(table, "noiseSpeed", 1.0f);
+        emitter.localForces.push_back(turbulence);
+    }
+
+    if (const float orbital = ReadFloat(table, "orbitalVelocity", 0.0f); orbital != 0.0f) {
+        ParticleForceFieldSettings vortex;
+        vortex.fieldType = ParticleForceFieldType::Vortex;
+        vortex.space     = ParticleForceFieldSpace::Emitter;
+        vortex.direction = ReadVector3(table["orbitalAxis"], math::Vector3{ 0.0f, 1.0f, 0.0f });
+        vortex.strength  = orbital;
+        vortex.radius    = 0.0f;
+        emitter.localForces.push_back(vortex);
+    }
+
+    // 旧 radialVelocity は «正で外向き / 負で吸い込み»。Repulse の strength と同じ符号規約
+    // なので、負のまま Repulse として持たせれば挙動が一致する (Attract へ倒す必要はない)。
+    if (const float radial = ReadFloat(table, "radialVelocity", 0.0f); radial != 0.0f) {
+        ParticleForceFieldSettings repulse;
+        repulse.fieldType = ParticleForceFieldType::Repulse;
+        repulse.space     = ParticleForceFieldSpace::Emitter;
+        repulse.strength  = radial;
+        repulse.radius    = 0.0f;
+        emitter.localForces.push_back(repulse);
+    }
+}
+
 } // namespace
 
 // カーブとグラデーションは補間モードとキー配列を 1 テーブルへまとめて保存する。
@@ -196,7 +306,6 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     table.insert("emitVelocity", WriteVector3(emitter.emitVelocity));
     table.insert("colorStart", WriteVector4(emitter.colorStart));
     table.insert("colorEnd", WriteVector4(emitter.colorEnd));
-    table.insert("gravity", WriteVector3(emitter.gravity));
     table.insert("boxExtents", WriteVector3(emitter.boxExtents));
     table.insert("sizeAxisScale", WriteVector3(emitter.sizeAxisScale));
     FBZZ_VFX_FLOAT(velocitySpread); FBZZ_VFX_FLOAT(sizeStart); FBZZ_VFX_FLOAT(sizeEnd);
@@ -215,13 +324,13 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     FBZZ_VFX_FLOAT(collisionBounciness); FBZZ_VFX_FLOAT(collisionDamping); FBZZ_VFX_FLOAT(collisionPlaneY);
     FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath);
     FBZZ_VFX_FLOAT(colorVariation);
-    FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
+    FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
     FBZZ_VFX_BOOL(useSizeCurve); FBZZ_VFX_BOOL(useVelocityCurve); FBZZ_VFX_BOOL(useColorGradient);
     FBZZ_VFX_BOOL(useEmitRateCurve); FBZZ_VFX_FLOAT(speedRange);
     FBZZ_VFX_BOOL(useSpeedSizeCurve); FBZZ_VFX_BOOL(useSpeedColorGradient);
     FBZZ_VFX_BOOL(useRotationCurve); FBZZ_VFX_BOOL(useDragCurve);
-    FBZZ_VFX_FLOAT(orbitalVelocity); FBZZ_VFX_FLOAT(radialVelocity); FBZZ_VFX_FLOAT(inheritVelocity);
+    FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
     FBZZ_VFX_STRING(deathSubEmitter); FBZZ_VFX_STRING(collisionSubEmitter); FBZZ_VFX_INT(subEmitterBurstCount);
     FBZZ_VFX_BOOL(trailEnabled); FBZZ_VFX_INT(trailPointCount);
@@ -233,7 +342,6 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
     FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
     FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
     FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
-    FBZZ_VFX_FLOAT(noiseStrength); FBZZ_VFX_FLOAT(noiseFrequency); FBZZ_VFX_FLOAT(noiseSpeed);
     FBZZ_VFX_BOOL(receiveForceFields);
 #undef FBZZ_VFX_FLOAT
 #undef FBZZ_VFX_INT
@@ -264,6 +372,10 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitterSetting
         bursts.push_back(std::move(item));
     }
     table.insert("bursts", std::move(bursts));
+
+    toml::array forces;
+    for (const auto& force : emitter.localForces) forces.push_back(WriteForce(force));
+    table.insert("localForces", std::move(forces));
     return table;
 }
 
@@ -311,7 +423,7 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     emitter.emitVelocity = ReadVector3(table["emitVelocity"], emitter.emitVelocity);
     emitter.colorStart = ReadVector4(table["colorStart"], emitter.colorStart);
     emitter.colorEnd = ReadVector4(table["colorEnd"], emitter.colorEnd);
-    emitter.gravity = ReadVector3(table["gravity"], emitter.gravity);
+    // 旧 gravity キーは MigrateLegacyForces が localForces へ組み直す (この関数の末尾)。
     emitter.boxExtents = ReadVector3(table["boxExtents"], emitter.boxExtents);
     emitter.sizeAxisScale = ReadVector3(table["sizeAxisScale"], emitter.sizeAxisScale);
     FBZZ_VFX_FLOAT(velocitySpread); FBZZ_VFX_FLOAT(sizeStart); FBZZ_VFX_FLOAT(sizeEnd);
@@ -336,13 +448,13 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(collisionDamping); FBZZ_VFX_FLOAT(collisionPlaneY);
     FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath);
     FBZZ_VFX_FLOAT(colorVariation);
-    FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
+    FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
     FBZZ_VFX_BOOL(useSizeCurve); FBZZ_VFX_BOOL(useVelocityCurve); FBZZ_VFX_BOOL(useColorGradient);
     FBZZ_VFX_BOOL(useEmitRateCurve); FBZZ_VFX_FLOAT(speedRange);
     FBZZ_VFX_BOOL(useSpeedSizeCurve); FBZZ_VFX_BOOL(useSpeedColorGradient);
     FBZZ_VFX_BOOL(useRotationCurve); FBZZ_VFX_BOOL(useDragCurve);
-    FBZZ_VFX_FLOAT(orbitalVelocity); FBZZ_VFX_FLOAT(radialVelocity); FBZZ_VFX_FLOAT(inheritVelocity);
+    FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
     FBZZ_VFX_STRING(deathSubEmitter); FBZZ_VFX_STRING(collisionSubEmitter); FBZZ_VFX_INT(subEmitterBurstCount);
     FBZZ_VFX_BOOL(trailEnabled); FBZZ_VFX_INT(trailPointCount);
@@ -354,7 +466,6 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
     FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
     FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
-    FBZZ_VFX_FLOAT(noiseStrength); FBZZ_VFX_FLOAT(noiseFrequency); FBZZ_VFX_FLOAT(noiseSpeed);
     FBZZ_VFX_BOOL(receiveForceFields);
 #undef FBZZ_VFX_FLOAT
 #undef FBZZ_VFX_INT
@@ -389,6 +500,19 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
             emitter.bursts.push_back(burst);
         }
     }
+
+    // 内蔵の力。キーがあれば新形式、無ければ旧フィールドから組み立てる。
+    // 「空のリストを保存した」と「旧ファイル」は区別が要る。前者は力ゼロが意図なので、
+    // キーの有無で判定する (要素数では区別できない)。
+    if (const auto* forces = table["localForces"].as_array()) {
+        emitter.localForces.clear();
+        for (const auto& node : *forces) {
+            if (const auto* item = node.as_table()) emitter.localForces.push_back(ReadForce(*item));
+        }
+    } else {
+        MigrateLegacyForces(table, emitter);
+    }
+
     // ランタイム状態はここでは触れない (この型が持っていない)。
     // コンポーネントへ流し込んだ呼び出し側が ResetPlayback() で初期化する。
 }

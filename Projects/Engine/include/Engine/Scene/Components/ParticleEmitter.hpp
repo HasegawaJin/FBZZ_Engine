@@ -7,12 +7,14 @@
 #include <Engine/Asset/ParticleMaterialSettings.hpp> // .mat の [particle] + Particle* 列挙
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Components/ParticleColorSpace.hpp>
+#include <Engine/Scene/Components/ParticleForceField.hpp>
 #include <Engine/Scene/Entity.hpp>
 // ParticleCurve / ParticleGradient は Script からも宣言できるよう別ヘッダーに住む。
 #include <Engine/Scene/ParticleCurve.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -129,6 +131,60 @@ struct MeshShapeTriangle {
     float    cumulativeArea = 0.0f;
 };
 
+// 新しいエミッターが持つ内蔵の力。従来の既定 gravity = (0, -5, 0) と同じ落ち方をする。
+// WHY 関数か: 集約初期化のメンバー既定値としてリストを 1 本用意するため。
+//      «新しく置いた粒子が落ちない» は既定値の変更として最も気付かれにくい退行なので、
+//      移行前と同じ加速度をここで固定する。
+inline std::vector<ParticleForceFieldSettings> MakeDefaultLocalForces()
+{
+    ParticleForceFieldSettings gravity;
+    gravity.fieldType = ParticleForceFieldType::Wind;
+    gravity.space     = ParticleForceFieldSpace::World;
+    gravity.direction = { 0.0f, -1.0f, 0.0f };
+    gravity.strength  = 5.0f;
+    gravity.radius    = 0.0f; // 無限 (減衰なし)
+    return { gravity };
+}
+
+// Burst と内蔵の力は構造体の可変長リスト。IReflector の BeginObjectList /
+// BeginObjectElement / EndObjectList がそのまま使える (SequencePlayerComponent と同じ形)。
+// WHY 自由関数か: Reflect() の本体が長くなりすぎると «どこまでが 1 項目か» が読めなくなる。
+inline void ReflectParticleBursts(IReflector& r, std::vector<ParticleBurst>& bursts)
+{
+    r.BeginField("bursts", "Bursts");
+    const std::size_t count = r.BeginObjectList("Bursts", bursts.size());
+    bursts.resize(count);
+    for (std::size_t index = 0; index < bursts.size(); ++index) {
+        r.BeginObjectElement(index);
+        r.Field("time", bursts[index].time);
+        r.Field("count", bursts[index].count);
+        r.Field("cycles", bursts[index].cycles);
+        r.Field("interval", bursts[index].interval);
+        r.Field("probability", bursts[index].probability);
+        r.EndObjectElement();
+    }
+    const std::size_t removeIndex = r.EndObjectList();
+    if (removeIndex < bursts.size())
+        bursts.erase(bursts.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+    r.EndField();
+}
+
+inline void ReflectLocalForces(IReflector& r, std::vector<ParticleForceFieldSettings>& forces)
+{
+    r.BeginField("localForces", "Forces");
+    const std::size_t count = r.BeginObjectList("Forces", forces.size());
+    forces.resize(count);
+    for (std::size_t index = 0; index < forces.size(); ++index) {
+        r.BeginObjectElement(index);
+        forces[index].Reflect(r);
+        r.EndObjectElement();
+    }
+    const std::size_t removeIndex = r.EndObjectList();
+    if (removeIndex < forces.size())
+        forces.erase(forces.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+    r.EndField();
+}
+
 // materialPath 未設定の Emitter が使う既定 .mat。加算の丸い光。
 // 何も無いと 1x1 白 (alpha=1) へ落ち、粒子が「不透明な四角」として描かれる。
 // これが無いプロジェクトでは従来どおり白へ落ちる (存在しなくても壊れない)。
@@ -209,6 +265,10 @@ struct ParticleRuntime {
     // GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuParticleBuffer; // RWStructuredBuffer: CS が更新
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;    // DYNAMIC SRV: CPU がスポーンデータを書く
+    // このエミッターに効く力場一式 (内蔵 + シーン)。定数バッファではなく SRV なので
+    // 本数に上限が無い。容量が足りなくなったときだけ作り直す。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuForceBuffer;
+    uint32_t gpuForceCapacity = 0;
     renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuEmitterCB;      // CS 用エミッター定数バッファ
     renderer::ResourceHandle<renderer::ConstantBufferTag>   renderCB;          // VS/PS 描画モード・Soft Particle
     // GPU ソート。sortMode != None のときだけ確保する。並べ替えるのは (キー, 粒子 index)
@@ -312,8 +372,20 @@ struct ParticleEmitterSettings {
     float         lifetimeRandom = 0.0f;
     float         emitRate       = 30.0f;
     int           maxParticles   = 300;
-    // WHY: 固定重力では炎・煙・火花の挙動を作り分けられないため、エミッター単位で加速度を持つ。
-    math::Vector3 gravity        = { 0.0f, -5.0f, 0.0f };
+
+    /// エミッターが内蔵する力。重力・空気抵抗・乱流・周回・放射がすべてここに入る。
+    ///
+    /// WHY 個別のフィールドをやめたか:
+    ///   gravity / velocityDamping / noise* / orbital* / radialVelocity は
+    ///   ParticleForceField の Wind / Drag / Turbulence / Vortex / Repulse と
+    ///   «同じ式» だった。型が違うだけで評価関数が CPU に 2 本・HLSL に 2 本あり、
+    ///   力を 1 種類足すたびに 4 か所へ書く必要があった。同じ型にすれば、
+    ///   シーンに置いた力場と内蔵の力を 1 本の評価器が区別せず処理できる。
+    ///
+    /// @note シーンに置いた力場と違い、これはエミッターに追従する固有の運動として効く。
+    ///       channels は内蔵の力では意味を持たない (既に相手が 1 体に決まっている)。
+    std::vector<ParticleForceFieldSettings> localForces = MakeDefaultLocalForces();
+
     // WHY: std::rand() のグローバル状態を避け、エミッター単位で再現可能な分布にする。
     uint32_t      randomSeed     = 1;
     bool          enabled        = true;
@@ -368,7 +440,6 @@ struct ParticleEmitterSettings {
     float colorVariation = 0.0f;
     float sizeCurvePower = 1.0f;
     float colorCurvePower = 1.0f;
-    float velocityDamping = 0.0f;
     float angularVelocityMin = 0.0f;
     float angularVelocityMax = 0.0f;
     bool useSizeCurve = false;
@@ -382,8 +453,10 @@ struct ParticleEmitterSettings {
     // 「勢いよく回り始めて減速する」火の粉・破片の動きが作れない。
     bool useRotationCurve = false;
     ParticleCurve rotationCurve;
-    // velocityDamping に掛ける時間倍率。噴き出し直後は素直に飛び、
+    // 内蔵の Drag 力に掛ける時間倍率。噴き出し直後は素直に飛び、
     // 後半で急に空気抵抗が効く、といった減衰の作り分けに使う。
+    // @note 掛かる相手は localForces の Drag 型すべて。シーンに置いた力場には効かない
+    //       (あちらは «空間の性質» で、粒子の寿命とは無関係のため)。
     bool useDragCurve = false;
     ParticleCurve dragCurve;
 
@@ -405,12 +478,7 @@ struct ParticleEmitterSettings {
     bool useSpeedColorGradient = false;
     ParticleGradient speedColorGradient;  // 寿命の色へ乗算する
 
-    // ── 速度モジュール (エミッター原点まわりの周回・放射) ──
-    // WHY: 重力とノイズだけでは「渦を巻きながら広がる」魔法陣・竜巻・吸い込みが作れない。
-    //      ForceField はシーン全体の場だが、こちらはエミッターに追従する固有の運動として効く。
-    math::Vector3 orbitalAxis = { 0.0f, 1.0f, 0.0f }; // 周回の回転軸 (正規化して使う)
-    float orbitalVelocity = 0.0f;  // 軸まわりの接線加速度 [m/s^2]
-    float radialVelocity  = 0.0f;  // 原点から外向きの加速度 [m/s^2]。負で吸い込み
+    // 周回 (Vortex) と放射 (Repulse) は localForces に space = Emitter で入る。
     // 発生時にエミッター自身の移動速度を初速へ加算する割合 [0,1]。
     // 移動する剣・ロケットから出る火花が置き去りにならず、引きずられて見えるようになる。
     float inheritVelocity = 0.0f;
@@ -438,14 +506,7 @@ struct ParticleEmitterSettings {
     float screenCoverageThreshold = 0.0f;
     bool pauseWhenCulled = false;
 
-    // ── ノイズモジュール (乱流ベクトルフィールド) ──
-    // カールノイズ (発散ゼロのベクトル場) を粒子速度へ加算する。炎の揺らぎ・煙の乱れ用。
-    // WHY: ParticleForceField(Turbulence) はシーン全体の場だが、こちらはエミッター固有の
-    //      揺らぎとして粒子ごとに常時作用させたいケース (Unity の Noise モジュール相当) に使う。
-    float noiseStrength  = 0.0f;  // 加速度の大きさ [m/s^2]。0 で無効
-    float noiseFrequency = 0.5f;  // ノイズ格子の空間周波数 [1/m]
-    float noiseSpeed     = 1.0f;  // 時間スクロール速度
-
+    // 乱流 (Turbulence) と速度場 (VectorField) も localForces に入る。
     // シーン内の ParticleForceField から力を受けるか。
     // WHY: UI 演出用パーティクルなど、環境の風に反応させたくないエミッターを除外できるようにする。
     bool receiveForceFields = true;
@@ -505,6 +566,77 @@ struct ParticleEmitterSettings {
     std::string deathSubEmitter;
     std::string collisionSubEmitter;
 
+    // ── 内蔵の力を «役割» で引く ──
+    // WHY 添字で扱わないか: Inspector の Gravity 欄・プリセット・ScriptProxy の
+    //     SetGravity はいずれも «下向きの一定加速 1 本» を編集する UI で、それが
+    //     リストの何番目かを知らない。役割で引ければ、保存形式がリストに変わっても
+    //     呼び出し側は «重力» のまま書ける。同じ型が複数あれば先頭を返す。
+
+    [[nodiscard]] const ParticleForceFieldSettings* FindLocalForce(ParticleForceFieldType type) const
+    {
+        for (const auto& force : localForces)
+            if (force.fieldType == type) return &force;
+        return nullptr;
+    }
+
+    [[nodiscard]] ParticleForceFieldSettings* FindLocalForce(ParticleForceFieldType type)
+    {
+        for (auto& force : localForces)
+            if (force.fieldType == type) return &force;
+        return nullptr;
+    }
+
+    /// 無ければ既定値で 1 本足して返す。space は型ごとに «その力が意味を持つ座標系» へ倒す。
+    ParticleForceFieldSettings& EnsureLocalForce(ParticleForceFieldType type)
+    {
+        if (ParticleForceFieldSettings* existing = FindLocalForce(type)) return *existing;
+        ParticleForceFieldSettings force;
+        force.fieldType = type;
+        force.radius    = 0.0f; // 内蔵の力は既定で «エミッター全体に効く»
+        // 周回と放射はエミッター原点が要る。それ以外は世界の性質なので World のまま。
+        force.space = (type == ParticleForceFieldType::Vortex
+                    || type == ParticleForceFieldType::Repulse
+                    || type == ParticleForceFieldType::Attract)
+                        ? ParticleForceFieldSpace::Emitter
+                        : ParticleForceFieldSpace::World;
+        if (type == ParticleForceFieldType::Drag || type == ParticleForceFieldType::Turbulence)
+            force.strength = 0.0f; // 足しただけで挙動が変わらないように
+        localForces.push_back(force);
+        return localForces.back();
+    }
+
+    void RemoveLocalForce(ParticleForceFieldType type)
+    {
+        localForces.erase(
+            std::remove_if(localForces.begin(), localForces.end(),
+                           [type](const ParticleForceFieldSettings& f) { return f.fieldType == type; }),
+            localForces.end());
+    }
+
+    /// 重力加速度 [m/s^2]。内蔵の Wind 力を «向き × 強さ» として読む。
+    [[nodiscard]] math::Vector3 GravityAcceleration() const
+    {
+        const ParticleForceFieldSettings* wind = FindLocalForce(ParticleForceFieldType::Wind);
+        return wind ? wind->direction * wind->strength : math::Vector3::ZERO;
+    }
+
+    /// 重力加速度を書く。長さ 0 なら向きを保ったまま強さだけ 0 にする。
+    /// WHY 向きを残すか: Inspector で一度 0 にすると向きが失われ、値を戻したときに
+    ///     +X へ飛ぶ。「0 にした」は「向きを忘れてよい」ではない。
+    void SetGravityAcceleration(const math::Vector3& acceleration)
+    {
+        ParticleForceFieldSettings& wind = EnsureLocalForce(ParticleForceFieldType::Wind);
+        const float magnitude = acceleration.Length();
+        if (magnitude > 1.0e-6f) {
+            wind.direction = acceleration * (1.0f / magnitude);
+            wind.strength  = magnitude;
+        } else {
+            wind.strength = 0.0f;
+        }
+        wind.radius = 0.0f;
+        wind.space  = ParticleForceFieldSpace::World;
+    }
+
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
@@ -519,7 +651,6 @@ struct ParticleEmitterSettings {
         r.Field("lifetimeRandom", lifetimeRandom);
         r.Field("emitRate", emitRate);
         r.Field("maxParticles", maxParticles);
-        r.Field("gravity", gravity);
         r.Field("playing", playing);
         r.Field("loop", loop);
         r.Field("duration", duration);
@@ -565,9 +696,12 @@ struct ParticleEmitterSettings {
         r.Field("stretchedLengthScale", stretchedLengthScale);
         r.Field("sizeCurvePower", sizeCurvePower);
         r.Field("colorCurvePower", colorCurvePower);
-        r.Field("velocityDamping", velocityDamping);
         r.Field("angularVelocityMin", angularVelocityMin);
         r.Field("angularVelocityMax", angularVelocityMax);
+        r.Field("renderPriority", renderPriority);
+        r.Field("sizeAxisScale", sizeAxisScale);
+        r.Field("colorVariation", colorVariation);
+        r.Field("inheritVelocity", inheritVelocity);
         r.Field("useSizeCurve", useSizeCurve);
         r.Field("useVelocityCurve", useVelocityCurve);
         r.Field("useColorGradient", useColorGradient);
@@ -586,14 +720,78 @@ struct ParticleEmitterSettings {
         r.Field("lodFarRateScale", lodFarRateScale);
         r.Field("screenCoverageThreshold", screenCoverageThreshold);
         r.Field("pauseWhenCulled", pauseWhenCulled);
-        r.Field("noiseStrength", noiseStrength);
-        r.Field("noiseFrequency", noiseFrequency);
-        r.Field("noiseSpeed", noiseSpeed);
         r.Field("receiveForceFields", receiveForceFields);
         // IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
         int channelsValue = static_cast<int>(forceFieldChannels);
         r.Field("forceFieldChannels", channelsValue);
         forceFieldChannels = static_cast<uint32_t>(channelsValue);
+
+        // ── ここから下は以前 Reflect に無く、コーデックにしか居なかった 44 項目 ──
+        // WHY 揃える必要があるか: シーン保存はコーデック経由だが、AI バス
+        //     (EditorBusDispatcher) と汎用 Inspector は Reflect() を使う。片方にしか
+        //     無いフィールドは「保存はされるのに外から読み書きできない」状態になり、
+        //     しかもエラーが出ないので存在自体に気付けない。正本を 1 つにする。
+
+        // 速度による見た目
+        r.Field("speedRange", speedRange);
+        r.Field("useSpeedSizeCurve", useSpeedSizeCurve);
+        r.Field("useSpeedColorGradient", useSpeedColorGradient);
+        r.Field("useRotationCurve", useRotationCurve);
+        r.Field("useDragCurve", useDragCurve);
+        r.Field("useEmitRateCurve", useEmitRateCurve);
+
+        // 衝突
+        int collisionModeValue = static_cast<int>(collisionMode);
+        r.Field("collisionMode", collisionModeValue);
+        collisionMode = static_cast<ParticleCollisionMode>(std::clamp(collisionModeValue, 0, 3));
+        int collisionResponseValue = static_cast<int>(collisionResponse);
+        r.Field("collisionResponse", collisionResponseValue);
+        collisionResponse = static_cast<ParticleCollisionResponse>(std::clamp(collisionResponseValue, 0, 2));
+        r.Field("collisionRadius", collisionRadius);
+        r.Field("collisionBounciness", collisionBounciness);
+        r.Field("collisionDamping", collisionDamping);
+        r.Field("collisionPlaneY", collisionPlaneY);
+
+        // 黒体放射
+        r.Field("blackbodyEnabled", blackbodyEnabled);
+        r.Field("blackbodyReferenceTemperature", blackbodyReferenceTemperature);
+        r.Field("blackbodyIntensity", blackbodyIntensity);
+
+        // per-particle トレイル
+        r.Field("trailEnabled", trailEnabled);
+        r.Field("trailPointCount", trailPointCount);
+        r.Field("trailSampleInterval", trailSampleInterval);
+        r.Field("trailWidthScale", trailWidthScale);
+        r.Field("trailAlphaScale", trailAlphaScale);
+        r.ColorField("trailColorTint", trailColorTint);
+        r.Field("trailRibbon", trailRibbon);
+        r.Field("trailRibbonWidth", trailRibbonWidth);
+
+        // サブエミッター (scopeRoot はランタイム専用なので出さない)
+        r.Field("birthSubEmitter", birthSubEmitter);
+        r.Field("deathSubEmitter", deathSubEmitter);
+        r.Field("collisionSubEmitter", collisionSubEmitter);
+        r.Field("subEmitterBurstCount", subEmitterBurstCount);
+
+        // カーブとグラデーション。IReflector は専用の仮想関数を持っているので、
+        // コーデックの手書きと同じ形をそのまま表現できる。
+        r.BeginField("sizeCurve", "Size over Lifetime");
+        r.Field("sizeCurve", sizeCurve);
+        r.EndField();
+        r.Field("velocityCurve", velocityCurve);
+        r.Field("rotationCurve", rotationCurve);
+        r.Field("dragCurve", dragCurve);
+        r.Field("emitRateCurve", emitRateCurve);
+        r.Field("speedSizeCurve", speedSizeCurve);
+        r.BeginField("temperatureCurve", "Temperature (K)");
+        r.SetFieldMax(3000.0f);
+        r.Field("temperatureCurve", temperatureCurve);
+        r.EndField();
+        r.Field("colorGradient", colorGradient);
+        r.Field("speedColorGradient", speedColorGradient);
+
+        ReflectParticleBursts(r, bursts);
+        ReflectLocalForces(r, localForces);
     }
 };
 

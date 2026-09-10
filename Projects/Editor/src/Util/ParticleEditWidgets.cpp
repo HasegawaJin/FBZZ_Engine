@@ -7,10 +7,16 @@
 // プリセット表は Engine 側に 1 つだけ置き、Editor UI と AI が同じ語彙を使う。
 #include <Engine/Asset/ParticleCurvePresets.hpp>
 
+#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/ParticleCurveAsset.hpp>
+#include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 namespace fbzz::editor::widgets {
 namespace {
@@ -20,6 +26,72 @@ constexpr float kKeyHitRadius = 9.0f;  // キーのヒット判定半径 [px] (�
 constexpr float kMarkerWidth  = 10.0f; // グラデーションキーマーカーの幅 [px]
 
 float Clamp01(float value) { return std::clamp(value, 0.0f, 1.0f); }
+
+// ラベルからファイル名を作る。空白と区切りを詰めるだけで、日本語はそのまま通す。
+std::string CurveAssetFileName(const char* label)
+{
+    std::string name = label ? label : "Curve";
+    for (char& c : name) {
+        if (c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?'
+            || c == '"' || c == '<' || c == '>' || c == '|')
+            c = '_';
+    }
+    return name.empty() ? std::string("Curve") : name;
+}
+
+// 保存済みの «形» を出し入れするメニュー項目。既存の "..." ポップアップの中へ出す。
+//
+// WHY 専用のライブラリを Assets/Curves に決め打ちするか: ファイルピッカーを開かせると、
+//   «良い形ができたので残す» という一瞬の操作が中断されて結局誰も保存しなくなる。
+//   1 か所に集めておけば «この演出で使う減衰» が一覧になり、選ぶだけで揃う。
+//   置き場所を変えたければアセットブラウザーで動かせばよい (読み出しは走査なので追従する)。
+//
+// @return true if the inline curve/gradient was replaced by a loaded asset
+bool CurveAssetMenuItems(const char* label, scene::ParticleCurve* curve,
+                         scene::ParticleGradient* gradient, const std::string& projectRoot)
+{
+    const bool isGradient = gradient != nullptr;
+    const char* extension = isGradient ? ".gradient" : ".curve";
+    const std::string dir = projectRoot + "/Assets/Curves";
+
+    bool replaced = false;
+
+    if (ImGui::MenuItem(isGradient ? "Save As .gradient" : "Save As .curve")) {
+        asset::ParticleCurveAsset out;
+        if (isGradient) { out.gradient = *gradient; out.hasGradient = true; }
+        else            { out.curve    = *curve;    out.hasCurve    = true; }
+
+        util::FileSystem::EnsureDirectory(dir);
+        const std::string base = dir + "/" + CurveAssetFileName(label);
+        std::string path = base + extension;
+        for (int suffix = 1; util::FileSystem::Exists(path) && suffix < 1000; ++suffix)
+            path = base + " " + std::to_string(suffix) + extension;
+
+        if (asset::SaveParticleCurveAsset(path, out))
+            FBZZ_LOG_INFO("Curve: 保存しました %s", path.c_str());
+    }
+
+    if (ImGui::BeginMenu("Load")) {
+        // 走査は «メニューを開いている間だけ»。数十ファイルの列挙なので毎フレームでも軽い。
+        const std::vector<std::string> files = util::FileSystem::ListFiles(dir, extension);
+        if (files.empty()) {
+            ImGui::TextDisabled("Assets/Curves に %s がありません", extension);
+        }
+        for (const std::string& file : files) {
+            const size_t slash = file.find_last_of("/\\");
+            const std::string name = slash == std::string::npos ? file : file.substr(slash + 1);
+            if (!ImGui::MenuItem(name.c_str())) continue;
+            asset::ParticleCurveAsset loaded;
+            if (!asset::LoadParticleCurveAssetFile(file, loaded)) continue;
+            // 参照は残さず中身だけを写す。参照を持つと «アセットとインラインの
+            // どちらが正か» が生まれ、Inspector で触った値が次に開くと戻る。
+            if (isGradient && loaded.hasGradient) { *gradient = loaded.gradient; replaced = true; }
+            else if (!isGradient && loaded.hasCurve) { *curve = loaded.curve; replaced = true; }
+        }
+        ImGui::EndMenu();
+    }
+    return replaced;
+}
 
 // キー配列を time 昇順に保つ。ドラッグで隣を追い越した場合も表示・評価が破綻しないようにする。
 template <typename Keys>
@@ -49,7 +121,8 @@ bool                    s_hasGradientClipboard = false;
 
 } // namespace
 
-bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue, float height)
+bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue, float height,
+                 const std::string* projectRoot)
 {
     bool changed = false;
     maxValue = (std::max)(maxValue, 0.0001f);
@@ -101,6 +174,11 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("同じ減衰を size / velocity / drag へ揃えるときに使います");
+            // クリップボードはセッション内、アセットは演出をまたいで «形» を残す。
+            if (projectRoot != nullptr) {
+                ImGui::Separator();
+                if (CurveAssetMenuItems(label, &curve, nullptr, *projectRoot)) changed = true;
+            }
             ImGui::Separator();
             // 数値入力。ドラッグでは 0.5 や 1.0 をちょうど掴めないため、
             // 「ここは厳密に 0 にしたい」類の指定はこちらで行う。
@@ -263,7 +341,8 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
     return changed;
 }
 
-bool GradientEditor(const char* label, scene::ParticleGradient& gradient)
+bool GradientEditor(const char* label, scene::ParticleGradient& gradient,
+                    const std::string* projectRoot)
 {
     bool changed = false;
     gradient.keyCount = std::clamp<uint32_t>(gradient.keyCount, 2u,
@@ -315,6 +394,10 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient)
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("芯炎と外炎で色温度を揃えるときに使います");
+            if (projectRoot != nullptr) {
+                ImGui::Separator();
+                if (CurveAssetMenuItems(label, nullptr, &gradient, *projectRoot)) changed = true;
+            }
             ImGui::Separator();
             // 「終端のアルファを厳密に 0 にする」はグラデーション調整で最頻出の要求で、
             // マーカーのドラッグでは正確に 0 を掴めない。数値で入れられるようにする。

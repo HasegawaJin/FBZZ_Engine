@@ -37,6 +37,7 @@
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
+#include <Engine/Asset/VectorFieldAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
@@ -2858,6 +2859,69 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SameLine();
         ImGui::TextDisabled(s_physmatDirty && s_physmatDirtyPath == relPath
                             ? "Saving on release..." : "Auto-saved");
+    } else if (ext == ".vfield" || ext == ".fga") {
+        // ── VectorField (焼いた速度場) ────────────────────────────────────
+        // 焼き直しは «レシピ → グリッド» の一方通行で、元のレシピはファイルに残らない
+        // (残すと «ファイルの中身とレシピのどちらが正か» が生まれる)。ここはあくまで
+        // «この設定で焼き直す» ボタンで、開くたびに既定のレシピが表示される。
+        const std::string relPath = NormalizeAssetPath(absPath);
+        const auto handle = asset::AssetManager::Load<asset::VectorFieldAsset>(relPath);
+        auto* field = asset::AssetManager::Get<asset::VectorFieldAsset>(handle);
+        if (!field) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load %s", ext.c_str());
+            return;
+        }
+
+        ImGui::Text("Grid: %u x %u x %u  (%zu vectors)",
+                    field->sizeX, field->sizeY, field->sizeZ, field->data.size());
+        ImGui::Text("Bounds: [%.2f %.2f %.2f] .. [%.2f %.2f %.2f]",
+                    field->boundsMin.x, field->boundsMin.y, field->boundsMin.z,
+                    field->boundsMax.x, field->boundsMax.y, field->boundsMax.z);
+        ImGui::Text("Max magnitude: %.3f", field->maxMagnitude);
+        // 取り込みで固定解像度へ揃えるので、焼いた解像度と表示は一致しないことがある。
+        ImGui::TextDisabled("取り込み時に %u³ へ揃えられます (GPU アトラスのタイル寸法)",
+                            asset::kVelocityFieldTileResolution);
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Re-bake");
+
+        static const char* kRecipeLabels[] = { "Curl", "Vortex", "Tornado", "Sphere", "Turbulence" };
+        static int   s_recipe     = 0;
+        static int   s_resolution = 32;
+        static float s_extents[3] = { 5.0f, 5.0f, 5.0f };
+        static int   s_seed       = 1;
+        static float s_strength   = 1.0f;
+
+        ImGui::Combo("Recipe", &s_recipe, kRecipeLabels, IM_ARRAYSIZE(kRecipeLabels));
+        ImGui::SliderInt("Resolution", &s_resolution, 8, 64);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("1 辺のテクセル数。64 で 262144 ベクトルになります。\n"
+                              "粒子の乱流としては 32 前後で十分で、細かくしても絵には出ません。");
+        ImGui::DragFloat3("Extents [m]", s_extents, 0.05f, 0.01f, 1000.0f);
+        ImGui::DragInt("Seed", &s_seed, 1, 1, 100000);
+        ImGui::DragFloat("Strength", &s_strength, 0.01f, -100.0f, 100.0f);
+
+        if (ImGui::Button("Bake and Save")) {
+            asset::VectorFieldAsset baked;
+            asset::BakeVectorField(static_cast<asset::VectorFieldRecipe>(s_recipe),
+                                   static_cast<uint32_t>(s_resolution),
+                                   { s_extents[0], s_extents[1], s_extents[2] },
+                                   static_cast<uint32_t>(s_seed), s_strength, baked);
+            // 拡張子が .fga でも書き出しは .vfield 形式。読み込みだけが両対応で、
+            // «Unreal の形式で書き戻す» 用途は無い。
+            std::string savePath = absPath;
+            if (ext == ".fga") savePath = absPath.substr(0, absPath.size() - 4) + ".vfield";
+            if (asset::SaveVectorField(savePath, baked)) {
+                // ストア上の実体を差し替える。GPU テクスチャは古い物が残るが、
+                // ここで手放すと同じフレームに描いているパスが無効ハンドルを引く。
+                // 差し替えの正しい手順はプロジェクトの再読み込み。
+                asset::AssetManager::Unload<asset::VectorFieldAsset>(
+                    NormalizeAssetPath(savePath));
+                asset::AssetManager::BumpAssetGeneration();
+            }
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("焼き直すと、この場を参照する全エミッターの流れが変わります。");
     } else {
         ImGui::TextDisabled("Type: %s", ext.c_str());
         ImGui::Spacing();

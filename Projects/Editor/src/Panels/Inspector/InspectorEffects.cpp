@@ -26,25 +26,11 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
 
     DrawComponentSection<scene::ParticleForceField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Force Field",
-        [](scene::ParticleForceField& ff, EditorContext&) {
-            const char* typeItems[] = { "Wind", "Attract", "Repulse", "Vortex", "Turbulence", "Drag" };
-            int type = static_cast<int>(ff.fieldType);
-            if (ImGui::Combo("Field Type", &type, typeItems, 6))
-                ff.fieldType = static_cast<scene::ParticleForceFieldType>(type);
-            ImGui::DragFloat("Strength", &ff.strength, 0.05f, -1000.0f, 1000.0f);
-            ImGui::DragFloat("Radius", &ff.radius, 0.05f, 0.0f, 1000.0f);
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("0 or less = infinite range (no falloff)");
-            ImGui::DragFloat("Falloff Power", &ff.falloffPower, 0.01f, 0.001f, 10.0f);
-            // Wind / Vortex 以外では direction を使わないため種類に応じて表示を絞る
-            if (ff.fieldType == scene::ParticleForceFieldType::Wind ||
-                ff.fieldType == scene::ParticleForceFieldType::Vortex)
-                widgets::DragVec3(ff.fieldType == scene::ParticleForceFieldType::Wind
-                                      ? "Direction" : "Axis", ff.direction, 0.01f);
-            if (ff.fieldType == scene::ParticleForceFieldType::Turbulence) {
-                ImGui::DragFloat("Noise Frequency", &ff.noiseFrequency, 0.01f, 0.001f, 100.0f);
-                ImGui::DragFloat("Noise Speed", &ff.noiseSpeed, 0.01f, -100.0f, 100.0f);
-            }
+        [](scene::ParticleForceField& ff, EditorContext& ctx) {
+            // 型ごとの出し分けはエミッター内蔵の力と同一。UI は 1 本に寄せてある。
+            // 座標系は GameObject の Transform が決めるので選択を出さない。
+            DrawParticleForceFieldSettings(ff, ctx, /*showSpace=*/false);
+            // channels はシーンに置いた力場だけの概念 (内蔵の力は相手が決まっている)。
             widgets::ForceFieldChannelMask("Channels", ff.channels);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Only emitters sharing a bit with this mask receive this field.");

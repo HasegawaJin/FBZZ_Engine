@@ -64,6 +64,10 @@ enum class ParticleGpuFallbackReason {
     //     しかも CPU と «必ず同じ式» を保つ約束があるため、GPU 側だけ 2 色補間で
     //     近似する逃げ方も取れない。載せるなら CB の作り直しから始める話になる。
     SpeedModule,
+    // 予約: 速度場 (.vfield) は 2026-09-11 に GPU 対応した (VelocityFieldAtlas)。
+    // WHY 枠を残すか: この enum は Script DLL が数値で受け取る。詰めると、
+    //     再ビルドしていないスクリプトが SpeedModule を «その次の理由» と読む。
+    ReservedVectorField,
 };
 
 enum class ParticleSimulationSpace : uint8_t {

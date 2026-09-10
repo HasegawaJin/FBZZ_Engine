@@ -1,16 +1,16 @@
 /// @file    ParticleForceField.hpp
-/// @brief   パーティクルへ風・吸引・渦・乱流を加えるベクトルフィールド。
+/// @brief   パーティクルへ風・吸引・渦・乱流・速度場を加えるベクトルフィールド。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
-
 #pragma once
 #include <Engine/Scene/Script.hpp>
+#include <algorithm>
 #include <cstdint>
+#include <string>
 #include <Math/Vector3.hpp>
 
 namespace fbzz::scene {
 
-// 力場の種類。
 // WHY: エミッター単体の gravity/velocityDamping では表現できない「空間の場」による挙動を
 //      種類ごとに分ける。数値は GPU 定数バッファへ float として渡すため順序を変更しないこと。
 enum class ParticleForceFieldType : uint8_t {
@@ -20,45 +20,75 @@ enum class ParticleForceFieldType : uint8_t {
     Vortex,      // direction を軸とした接線方向の渦
     Turbulence,  // カールノイズによる発散ゼロの乱流ベクトル場
     Drag,        // 速度に比例した減速 (空気抵抗)
+    VectorField, // 焼いた .vfield をサンプルして任意の流れを与える
 };
 
-// ParticleForceField — パーティクルへ作用する力場 1 つ分の設定。
-// 力場の中心は GameObject の Transform.worldPosition、
-// direction は Transform.worldRotation で回転してワールド空間へ変換される。
-// WHY: エミッターから独立した GameObject として配置することで、
-//      1 つの風・渦を複数エミッターへ同時に効かせたり、動く力場を作れるようにする。
-struct ParticleForceField {
+/// enum の要素数。Reflect / codec / UI の clamp がここを見る。
+/// WHY: 三か所に散らばった «> 5 ? 5 :» が、種類を足したときに 1 つだけ直し漏れる。
+inline constexpr int kParticleForceFieldTypeCount = 7;
+
+/// 力の «原点と向き» をどこから取るか。
+///
+/// WHY: 同じ設定型をシーン配置の力場とエミッター内蔵の力の両方で使うため、
+///      «誰の座標系で解決するか» だけを外から指定できる必要がある。
+///      重力はエミッターを傾けても下を向き続けるので World、周回はエミッター原点が
+///      要るので Emitter、と 1 本の列挙で足りる。
+enum class ParticleForceFieldSpace : uint8_t {
+    World = 0,  ///< 位置と向きをそのままワールドとして扱う (シーン配置の力場は常にこちら)
+    Emitter,    ///< 原点 = エミッター位置、向き = エミッターの回転を受ける
+};
+
+/// 力場 1 本の設定。**GameObject に依存しない値の塊**。
+///
+/// WHY コンポーネントから分けるか:
+///   同じ «力» が 2 か所に住んでいた — シーンへ置く ParticleForceField と、
+///   ParticleEmitter が内蔵していた gravity / velocityDamping / noise* / orbital* / radial*。
+///   式はどちらも同じなのに型が違うため、評価関数が CPU で 2 本・HLSL で 2 本に分かれ、
+///   «片方にだけ機能が足される» が起きていた。設定型を 1 つにすれば評価器も 1 本で済む。
+struct ParticleForceFieldSettings {
     bool enabled = true;
     ParticleForceFieldType fieldType = ParticleForceFieldType::Wind;
+    ParticleForceFieldSpace space = ParticleForceFieldSpace::World;
     // 加速度の大きさ [m/s^2]。Drag のときは減衰係数 [1/s] として扱う。
     float strength = 5.0f;
     // 影響半径 [m]。0 以下でシーン全体へ減衰なしに作用する (グローバル風など)。
     float radius = 5.0f;
     // 距離減衰カーブ: influence = (1 - dist/radius)^falloffPower。radius <= 0 のとき無効。
     float falloffPower = 2.0f;
-    // Wind: 風向き / Vortex: 回転軸 (ローカル空間)。
+    // Wind: 風向き / Vortex: 回転軸。space が決める座標系で解釈する。
     math::Vector3 direction = { 1.0f, 0.0f, 0.0f };
     // Turbulence 用: ノイズ格子の空間周波数 [1/m] とスクロール速度。
     float noiseFrequency = 0.5f;
     float noiseSpeed = 1.0f;
-
-    /// この力場を受け取るエミッターを選ぶビットマスク。
     /// ParticleEmitter::forceFieldChannels と 1 ビットでも重なったエミッターにだけ作用する。
-    ///
     /// WHY: 力場は本来シーン全体へ一律に効く。それだけでは「＋の粒子は−の電極へ引かれるが
     ///      ＋の電極には反発する」のように、同じ空間に住む粒子を別々の場で動かす表現が作れない。
     ///      Attract を 1 つ置いた瞬間に全エミッターの粒子が同じ 1 点へ collapse してしまう。
     ///      既定は全ビット ON なので、マスクを触らない既存シーンの挙動は変わらない。
     uint32_t channels = 0xFFFFFFFFu;
 
-    const char* GetTypeName() const { return "Particle Force Field"; }
+    // ── VectorField 型のときだけ意味を持つ ──
+    /// 焼いた速度場 (.vfield / .fga)。空なら VectorField は何もしない。
+    std::string vectorFieldPath;
+    /// 場の AABB をワールドでどの寸法へ写すか (半径 [m])。
+    /// WHY: アセット側の bounds をそのまま使うと、同じ場を «部屋いっぱいの渦» と
+    ///      «手のひらの渦» に使い回せない。1 枚を寸法違いで貼れるようにする。
+    math::Vector3 vectorFieldExtents = { 5.0f, 5.0f, 5.0f };
+    /// 0 = 場を加速度として加算 / 1 = 粒子速度を場の値そのものへ寄せきる。
+    /// 途中の値は「どれだけ強く場へ従わせるか」。1 に寄せるほど初速や重力を無視して
+    /// 流れに乗るので、レールの上を走らせる演出はこちらを上げる。
+    float vectorFieldTightness = 0.0f;
+
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
         int typeValue = static_cast<int>(fieldType);
         r.Field("fieldType", typeValue);
-        typeValue = typeValue < 0 ? 0 : (typeValue > 5 ? 5 : typeValue);
+        typeValue = std::clamp(typeValue, 0, kParticleForceFieldTypeCount - 1);
         fieldType = static_cast<ParticleForceFieldType>(typeValue);
+        int spaceValue = static_cast<int>(space);
+        r.Field("space", spaceValue);
+        space = static_cast<ParticleForceFieldSpace>(std::clamp(spaceValue, 0, 1));
         r.Field("strength", strength);
         r.Field("radius", radius);
         r.Field("falloffPower", falloffPower);
@@ -69,7 +99,26 @@ struct ParticleForceField {
         int channelsValue = static_cast<int>(channels);
         r.Field("channels", channelsValue);
         channels = static_cast<uint32_t>(channelsValue);
+        r.BeginField("vectorFieldPath", "Vector Field");
+        r.SetFileExtensions(".vfield,.fga");
+        r.Field("vectorFieldPath", vectorFieldPath);
+        r.EndField();
+        r.Field("vectorFieldExtents", vectorFieldExtents);
+        r.Field("vectorFieldTightness", vectorFieldTightness);
     }
+};
+
+// ParticleForceField — シーンへ置く力場コンポーネント。
+// 力場の中心は GameObject の Transform.worldPosition、
+// direction は Transform.worldRotation で回転してワールド空間へ変換される。
+// WHY: エミッターから独立した GameObject として配置することで、
+//      1 つの風・渦を複数エミッターへ同時に効かせたり、動く力場を作れるようにする。
+// WHY 継承か: 設定の実体は ParticleForceFieldSettings 1 つで、コンポーネントは
+//      «それが GameObject に付いている» という事実しか足さない。メンバーを包むと
+//      既存の ff->strength が全て ff->settings.strength になるだけで、得るものが無い。
+struct ParticleForceField : ParticleForceFieldSettings {
+    const char* GetTypeName() const { return "Particle Force Field"; }
+    void Reflect(IReflector& r) { ParticleForceFieldSettings::Reflect(r); }
 };
 
 } // namespace fbzz::scene

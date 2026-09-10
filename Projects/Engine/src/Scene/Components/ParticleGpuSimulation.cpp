@@ -68,6 +68,7 @@ const char* ParticleGpuFallbackFieldName(ParticleGpuFallbackReason reason)
     case ParticleGpuFallbackReason::SubEmitter:            return "subEmitter";
     case ParticleGpuFallbackReason::SelfShadow:            return "selfShadowStrength";
     case ParticleGpuFallbackReason::SpeedModule:           return "useSpeedSizeCurve";
+    case ParticleGpuFallbackReason::ReservedVectorField:   return "";
     }
     return "";
 }
@@ -112,6 +113,8 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
                "速さで大きさと色を変える処理は CPU 側にしかありません。"
                "粒子数が要る場面では、寿命カーブ (useSizeCurve / useColorGradient) で"
                "近い絵を作れないか先に試してください。";
+    case ParticleGpuFallbackReason::ReservedVectorField:
+        return "";
     }
     return "";
 }
