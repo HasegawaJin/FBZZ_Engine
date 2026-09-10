@@ -49,7 +49,7 @@ bool AffectsEmitter(const ActiveForceField& field, uint32_t emitterChannels)
 
 // WHY 共通化するか: シーンに置いた力場とエミッター内蔵の力で、falloff の下限や
 //      方向の正規化がずれていると «同じ設定なのに置き方で効き方が違う» になる。
-ActiveForceField ResolveForceField(const ParticleForceFieldSettings& settings,
+ActiveForceField ResolveForceField(const ForceFieldSettings& settings,
                                    const math::Vector3&    origin,
                                    const math::Quaternion& rotation,
                                    bool                    isLocal)
@@ -68,7 +68,7 @@ ActiveForceField ResolveForceField(const ParticleForceFieldSettings& settings,
     f.noiseSpeed     = settings.noiseSpeed;
     f.channels       = settings.channels;
     f.local          = isLocal;
-    if (settings.fieldType == ParticleForceFieldType::VectorField) {
+    if (settings.fieldType == ForceFieldType::VectorField) {
         // 速度場の効く範囲は extents (焼いた AABB の貼り先) が決める。radius まで見ると
         // 球で二重にクリップされる。Inspector は VectorField のとき Radius を出さないので、
         // 型を切り替えて残った値が «見えないのに効く» ことのないよう無効化する。
@@ -86,47 +86,51 @@ ActiveForceField ResolveForceField(const ParticleForceFieldSettings& settings,
 
 std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMask)
 {
+    // 環境風 (旧 WindZoneComponent) も «radius 0 の Wind + Turbulence» としてここに並ぶ。
+    // 特別扱いが要らなくなったので、変換コードは無くなった。
     std::vector<ActiveForceField> fields;
     for (auto& go : scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, cullingMask)) continue;
-        auto* ff = go.GetComponent<ParticleForceField>();
-        if (!ff || !ff->enabled) continue;
-        // direction はローカル指定。GameObject を回せば風向き・渦軸も回る。
-        fields.push_back(ResolveForceField(*ff, go.transform.worldPosition,
-                                           go.transform.worldRotation, /*isLocal=*/false));
-    }
-
-    // WindZone をシーングローバルの風 (+乱流) として力場リストへ追加する。
-    // 草・雲と同じ WindZone 1 つでパーティクルもなびく。個別に強い風が要るなら
-    // ParticleForceField(Wind) を置く。
-    const ActiveWindZone windZone = FindActiveWindZone(scene);
-    if (windZone.active && windZone.strength > 0.0f) {
-        ActiveForceField wind{};
-        wind.position       = math::Vector3::ZERO;
-        wind.radius         = 0.0f; // 無限 (減衰なし)
-        wind.direction      = windZone.direction;
-        wind.strength       = windZone.strength;
-        wind.type           = ParticleForceFieldType::Wind;
-        wind.falloffPower   = 1.0f;
-        wind.noiseFrequency = 0.5f;
-        wind.noiseSpeed     = 1.0f;
-        wind.channels       = 0xFFFFFFFFu; // 環境風はチャンネルで除外させない
-        fields.push_back(wind);
-    }
-    if (windZone.active && windZone.turbulence > 0.0f) {
-        ActiveForceField turb{};
-        turb.position       = math::Vector3::ZERO;
-        turb.radius         = 0.0f;
-        turb.direction      = windZone.direction;
-        turb.strength       = windZone.turbulence;
-        turb.type           = ParticleForceFieldType::Turbulence;
-        turb.falloffPower   = 1.0f;
-        turb.noiseFrequency = 0.5f;
-        turb.noiseSpeed     = windZone.pulseFrequency;
-        turb.channels       = 0xFFFFFFFFu;
-        fields.push_back(turb);
+        auto* ff = go.GetComponent<ForceField>();
+        if (ff == nullptr) continue;
+        for (const ForceFieldSettings& settings : ff->forces) {
+            if (!settings.enabled) continue;
+            // direction はローカル指定。GameObject を回せば風向き・渦軸も回る。
+            fields.push_back(ResolveForceField(settings, go.transform.worldPosition,
+                                               go.transform.worldRotation, /*isLocal=*/false));
+        }
     }
     return fields;
+}
+
+AmbientWind FindAmbientWind(Scene& scene)
+{
+    // 最初に見つかったグローバル (radius <= 0) の Wind を «このシーンの風» とする。
+    // WHY 1 本目で決めるか: 草も雲も «方向 1 つと速さ 1 つ» しか受け取れない。
+    //     合成すると «どこの» 風か言えなくなるので、順序で 1 本に決めきる。
+    //     局所的な風は半径を持つはずで、そちらは環境風として扱わない。
+    AmbientWind result;
+    for (auto& go : scene.GameObjects()) {
+        if (!go.activeInHierarchy()) continue;
+        const auto* ff = go.GetComponent<ForceField>();
+        if (ff == nullptr) continue;
+        for (const ForceFieldSettings& settings : ff->forces) {
+            if (!settings.enabled || settings.radius > 0.0f) continue;
+            if (settings.fieldType == ForceFieldType::Wind && !result.active) {
+                const math::Vector3 worldDir = go.transform.worldRotation * settings.direction;
+                const float length = worldDir.Length();
+                result.direction = length > 1.0e-4f ? worldDir * (1.0f / length)
+                                                    : math::Vector3{ 0.0f, 1.0f, 0.0f };
+                result.strength  = settings.strength;
+                result.active    = true;
+            } else if (settings.fieldType == ForceFieldType::Turbulence) {
+                result.turbulence     = (std::max)(result.turbulence, settings.strength);
+                result.pulseFrequency = settings.noiseSpeed;
+            }
+        }
+        if (result.active) break;
+    }
+    return result;
 }
 
 std::vector<ActiveForceField> GatherForceFields(RenderPassContext& ctx)
@@ -152,20 +156,20 @@ void ApplyForceFields(const std::vector<ActiveForceField>& fields,
         }
         float impulse = f.strength * influence * dt;
         // 寿命による減衰の作り分けは «この粒子の設定» なので、内蔵の Drag にだけ掛ける。
-        if (f.local && f.type == ParticleForceFieldType::Drag) impulse *= dragScale;
+        if (f.local && f.type == ForceFieldType::Drag) impulse *= dragScale;
         switch (f.type) {
-        case ParticleForceFieldType::Wind:
+        case ForceFieldType::Wind:
             velocity = velocity + f.direction * impulse;
             break;
-        case ParticleForceFieldType::Attract:
-        case ParticleForceFieldType::Repulse: {
+        case ForceFieldType::Attract:
+        case ForceFieldType::Repulse: {
             const float dist = (std::max)(toParticle.Length(), 1.0e-4f);
             const math::Vector3 dir = toParticle * (1.0f / dist);
-            velocity = velocity + dir * (f.type == ParticleForceFieldType::Repulse
+            velocity = velocity + dir * (f.type == ForceFieldType::Repulse
                                              ? impulse : -impulse);
             break;
         }
-        case ParticleForceFieldType::Vortex: {
+        case ForceFieldType::Vortex: {
             // 軸×粒子方向の外積 = 接線方向。軸周りに回す
             const math::Vector3 tangent = math::Vector3::Cross(f.direction, toParticle);
             const float len = tangent.Length();
@@ -173,15 +177,15 @@ void ApplyForceFields(const std::vector<ActiveForceField>& fields,
                 velocity = velocity + tangent * (impulse / len);
             break;
         }
-        case ParticleForceFieldType::Turbulence:
+        case ForceFieldType::Turbulence:
             velocity = velocity + CurlNoise(TurbulenceSamplePoint(
                 position, f.noiseFrequency, f.noiseSpeed, time)) * impulse;
             break;
-        case ParticleForceFieldType::Drag:
+        case ForceFieldType::Drag:
             // strength を減衰係数 [1/s] として扱う
             velocity = velocity * (std::max)(0.0f, 1.0f - impulse);
             break;
-        case ParticleForceFieldType::VectorField: {
+        case ForceFieldType::VectorField: {
             if (f.vectorField == nullptr || f.vectorField->Empty()) break;
             // 場のローカルへ: 平行移動 → 逆回転 → 指定した寸法で正規化。
             // 式は ParticleGpuSim.cs.hlsl の FF_VECTOR_FIELD 分岐と一致させること。
@@ -245,11 +249,11 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
 
     const math::Vector3 emitterOrigin = TransformEmitterPoint(tf, emitter.settings.emitPosition);
 
-    for (const ParticleForceFieldSettings& force : emitter.settings.localForces) {
+    for (const ForceFieldSettings& force : emitter.settings.localForces) {
         if (!force.enabled) continue;
         // Emitter 空間の力 (周回・放射) だけがエミッターの位置と回転に追従する。
         // 重力や乱流を追従させると、エミッターを傾けただけで下が変わってしまう。
-        const bool emitterSpace = force.space == ParticleForceFieldSpace::Emitter;
+        const bool emitterSpace = force.space == ForceFieldSpace::Emitter;
         ActiveForceField resolved = ResolveForceField(
             force,
             emitterSpace ? emitterOrigin : math::Vector3::ZERO,

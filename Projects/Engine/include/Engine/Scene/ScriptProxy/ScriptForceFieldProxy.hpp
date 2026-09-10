@@ -1,5 +1,5 @@
-/// @file    ScriptParticleForceFieldProxy.hpp
-/// @brief   Script から ParticleForceField (ベクトルフィールド) を操作するプロキシ。
+/// @file    ScriptForceFieldProxy.hpp
+/// @brief   Script から ForceField (ベクトルフィールド) を操作するプロキシ。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 
@@ -12,7 +12,7 @@ namespace fbzz::scene {
 
 class Script;
 
-enum class ScriptParticleForceFieldType : uint8_t {
+enum class ScriptForceFieldType : uint8_t {
     WIND = 0,
     ATTRACT,
     REPULSE,
@@ -21,11 +21,11 @@ enum class ScriptParticleForceFieldType : uint8_t {
     DRAG
 };
 
-struct ScriptParticleForceFieldProxy {
+struct ScriptForceFieldProxy {
     Script* script = nullptr;
 
     void SetEnabled(bool enabled) const;
-    void SetType(ScriptParticleForceFieldType type) const;
+    void SetType(ScriptForceFieldType type) const;
     void SetStrength(float strength) const;
     void SetRadius(float radius, float falloffPower = 2.0f) const;
     void SetDirection(const math::Vector3& direction) const;
@@ -39,7 +39,7 @@ struct ScriptParticleForceFieldProxy {
     [[nodiscard]] bool  IsEnabled() const;
     [[nodiscard]] float GetStrength() const;
     [[nodiscard]] float GetRadius() const;
-    [[nodiscard]] ScriptParticleForceFieldType GetType() const;
+    [[nodiscard]] ScriptForceFieldType GetType() const;
     [[nodiscard]] uint32_t GetChannels() const;
 };
 

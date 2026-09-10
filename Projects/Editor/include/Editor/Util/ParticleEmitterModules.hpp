@@ -7,11 +7,12 @@
 /// Unity Particle System と同じ「チェックボックス付き折りたたみモジュール」へ再構成し、
 /// VFX Editor と Inspector の両方から同じ実装を呼ぶことで UI の二重管理を解消する。
 #pragma once
+#include <vector>
 
 namespace fbzz::scene {
 struct ParticleEmitter;
 struct ParticleEmitterSettings;
-struct ParticleForceFieldSettings;
+struct ForceFieldSettings;
 }
 
 namespace fbzz::editor {
@@ -33,13 +34,20 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& emitter, EditorC
 // VFX Editor のトランスポートと Inspector の Main モジュールが共用する。
 void DrawParticleEmitterPlaybackButtons(scene::ParticleEmitter& emitter);
 
-// 力場 1 本の編集 UI。シーンに置いた ParticleForceField と、エミッター内蔵の力
+// 力場 1 本の編集 UI。シーンに置いた ForceField と、エミッター内蔵の力
 // (ParticleEmitterSettings::localForces) の両方が同じ設定型なので UI も共有する。
 // channels マスクは含まない (内蔵の力では相手が 1 体に決まっていて意味を持たない)。
 // @param showSpace 座標系の選択を出すか。シーンに置いた力場は原点も向きも GameObject の
 //        Transform が決めるので false にする (出すと «効かない選択肢» を編集させることになる)。
 // @return true if any field was changed
-bool DrawParticleForceFieldSettings(scene::ParticleForceFieldSettings& force, EditorContext& ctx,
+bool DrawForceFieldSettings(scene::ForceFieldSettings& force, EditorContext& ctx,
                                     bool showSpace = true);
+
+// 力のリスト (追加・削除つき)。エミッター内蔵の力 (ParticleEmitter::localForces) と
+// シーンに置いた力場 (ForceField::forces) が同じ UI を共有する。
+// @param showSpace 座標系の選択を出すか。シーンの力場は Transform が原点を決めるので false。
+// @return true if any field was changed
+bool DrawForceFieldList(std::vector<scene::ForceFieldSettings>& forces,
+                                EditorContext& ctx, bool showSpace = true);
 
 } // namespace fbzz::editor

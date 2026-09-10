@@ -55,7 +55,7 @@ inline bool ColorEdit4(const char* label, math::Vector4& color) {
     return false;
 }
 
-/// 力場チャンネル (32bit マスク) の編集欄。ParticleForceField と ParticleEmitter が共有する。
+/// 力場チャンネル (32bit マスク) の編集欄。ForceField と ParticleEmitter が共有する。
 /// @return 値が変わったら true。
 ///
 /// WHY ポップアップに畳むか: 既定は全ビット ON で、大半のエミッターは一度も触らない。

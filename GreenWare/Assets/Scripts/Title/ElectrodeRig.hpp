@@ -14,14 +14,14 @@
 ///   登録させれば、どちらのコンポーネントも相手の型を知らないまま盤面全体を見られる。
 ///
 /// WHY 力場をチャンネルで分けるか:
-///   ParticleForceField は本来シーン全体へ一律に効く。＋電極に Attract を 1 つ置いた瞬間、
+///   ForceField は本来シーン全体へ一律に効く。＋電極に Attract を 1 つ置いた瞬間、
 ///   −の粒子だけでなく＋の粒子まで同じ点へ吸い込まれ、2 つの雲が中点で団子になる。
-///   ParticleEmitterSettings::forceFieldChannels と ParticleForceField::channels を極ごとに分けて、
+///   ParticleEmitterSettings::forceFieldChannels と ForceField::channels を極ごとに分けて、
 ///   「＋の粒子は−の電極にだけ引かれ、＋の電極からは押し返される」を成立させる。
 #pragma once
 
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -166,8 +166,8 @@ private:
     //   足すと、2 本目を足した時点で 1 本目に返ったポインタが無効になりうる。
     //   同じことは他の電極が後から組み立てられたときにも起きる。ID なら影響を受けない。
     EntityID MakeField(Script& owner, const char* suffix,
-                       ParticleForceFieldType type, uint32_t channels) const;
-    [[nodiscard]] static ParticleForceField* ResolveField(const Script& owner, EntityID id);
+                       ForceFieldType type, uint32_t channels) const;
+    [[nodiscard]] static ForceFieldSettings* ResolveField(const Script& owner, EntityID id);
 
     /// 極とシミュレーション経路から既定の .mat を選ぶ。
     [[nodiscard]] static const char* DefaultMaterialPath(Pole pole,
@@ -225,7 +225,7 @@ private:
 // ── 実装 (inline) ─────────────────────────────────────────────────────────────
 
 inline EntityID ElectrodeRig::MakeField(Script& owner, const char* suffix,
-                                        ParticleForceFieldType type,
+                                        ForceFieldType type,
                                         uint32_t channels) const
 {
     GameObject* self = owner.scene.Self();
@@ -237,19 +237,25 @@ inline EntityID ElectrodeRig::MakeField(Script& owner, const char* suffix,
     fieldObject.transform.position = Vector3::ZERO;
     fieldObject.SetParent(*self);
 
-    ParticleForceField& field = fieldObject.AddComponent<ParticleForceField>();
-    field.fieldType = type;
-    field.channels  = channels;
+    // 力場は 1 GameObject へ複数本を持てるが、この rig は «1 オブジェクト = 1 力» で組む。
+    // 3 本を別オブジェクトへ分けるのは、極ごとに channels と位置を独立に動かすため。
+    ForceFieldSettings force;
+    force.fieldType = type;
+    force.channels  = channels;
     // 渦の軸だけ意味を持つ。Attract / Repulse は direction を見ない。
-    field.direction = Vector3::UP;
+    force.direction = Vector3::UP;
+    ForceField& field = fieldObject.AddComponent<ForceField>();
+    field.forces = { force };
     return id;
 }
 
-inline ParticleForceField* ElectrodeRig::ResolveField(const Script& owner, EntityID id)
+inline ForceFieldSettings* ElectrodeRig::ResolveField(const Script& owner, EntityID id)
 {
     if (!id.IsValid()) return nullptr;
     GameObject* object = owner.scene.GetGameObject(id);
-    return object ? object->GetComponent<ParticleForceField>() : nullptr;
+    ForceField* field = object ? object->GetComponent<ForceField>() : nullptr;
+    if (field == nullptr || field->forces.empty()) return nullptr;
+    return &field->forces.front();
 }
 
 inline const char* ElectrodeRig::DefaultMaterialPath(Pole pole,
@@ -315,7 +321,7 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     emitter.emitVelocity   = Vector3::ZERO;
     emitter.sizeStart      = tuning.sizeStart;
     emitter.sizeEnd        = tuning.sizeEnd;
-    emitter.EnsureLocalForce(ParticleForceFieldType::Drag).strength = tuning.particleDamping;
+    emitter.EnsureLocalForce(ForceFieldType::Drag).strength = tuning.particleDamping;
     emitter.SetGravityAcceleration(Vector3::ZERO);
 
     const Vector4 tint = PoleColor(m_pole);
@@ -385,9 +391,9 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
 
     // 芯から外向き + 極を軸にした周回。力場だけだと粒子が素直に相手へ向かうので、
     // 湧き出し口のあたりで «巻いてから飛ぶ» 一手間を足す。
-    emitter.EnsureLocalForce(ParticleForceFieldType::Repulse).strength = tuning.radialBurst;
+    emitter.EnsureLocalForce(ForceFieldType::Repulse).strength = tuning.radialBurst;
     {
-        auto& spin = emitter.EnsureLocalForce(ParticleForceFieldType::Vortex);
+        auto& spin = emitter.EnsureLocalForce(ForceFieldType::Vortex);
         spin.strength  = tuning.spin;
         spin.direction = Vector3::UP;
     }
@@ -404,7 +410,7 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     //   流れの向きは力場と放電が示すので、粒そのものは丸のままにする。
     emitter.renderMode = ParticleRenderMode::Billboard;
 
-    auto& crackle = emitter.EnsureLocalForce(ParticleForceFieldType::Turbulence);
+    auto& crackle = emitter.EnsureLocalForce(ForceFieldType::Turbulence);
     crackle.strength       = tuning.crackle;
     crackle.noiseFrequency = 1.2f;
     crackle.noiseSpeed     = 2.0f;
@@ -431,9 +437,9 @@ inline void ElectrodeRig::Attach(Script& owner, Pole pole,
     emitter.settings.enabled  = true;
     const uint32_t own      = ElectrodeChannelOf(m_pole);
     const uint32_t opposite = ElectrodeChannelOf(OppositePole(m_pole));
-    m_pullId  = MakeField(owner, "Pull",  ParticleForceFieldType::Attract, opposite);
-    m_pushId  = MakeField(owner, "Push",  ParticleForceFieldType::Repulse, own);
-    m_swirlId = MakeField(owner, "Swirl", ParticleForceFieldType::Vortex,  kElectrodeChannelBoth);
+    m_pullId  = MakeField(owner, "Pull",  ForceFieldType::Attract, opposite);
+    m_pushId  = MakeField(owner, "Push",  ForceFieldType::Repulse, own);
+    m_swirlId = MakeField(owner, "Swirl", ForceFieldType::Vortex,  kElectrodeChannelBoth);
     ApplyFields(owner, tuning);
 
     if (std::find(s_rigs.begin(), s_rigs.end(), this) == s_rigs.end())

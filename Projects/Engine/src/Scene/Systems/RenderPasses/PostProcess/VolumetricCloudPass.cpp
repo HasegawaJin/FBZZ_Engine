@@ -8,6 +8,7 @@
 /// レンダー解像度は kCloudResShift で Full/Half を切り替える (既定 Full)。
 #include "PostProcessPasses.hpp"
 #include "../Geometry/GeometryPasses.hpp"
+#include "../Geometry/ParticleForces.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -64,18 +65,19 @@ bool UpdateVolumetricCloudConstants(RenderPassContext& ctx)
         return false;
     }
 
-    // WindZone があればシーングローバル風で雲を流す (XZ 平面へ射影)。
-    // WHY: 草・パーティクルと雲の流れる向きを 1 コンポーネントで揃えるため。
-    //      WindZone のないシーンは従来どおりコンポーネント固有の windDirection を使う。
+    // 環境風があれば雲もその向きへ流す (XZ 平面へ射影)。
+    // WHY: 粒子と雲の流れる向きを 1 か所で揃えるため。環境風は «radius 0 の Wind 力場» で、
+    //      粒子が受ける風とまったく同じものを見ている (旧 WindZoneComponent は廃止)。
+    //      風が置かれていないシーンは従来どおりコンポーネント固有の windDirection を使う。
     math::Vector2 wind = cloud->windDirection.Normalized();
     float windSpeed = cloud->windSpeed;
-    const ActiveWindZone windZone = FindActiveWindZone(ctx.scene);
-    if (windZone.active) {
-        const float xzLen = std::sqrt(windZone.direction.x * windZone.direction.x
-                                    + windZone.direction.z * windZone.direction.z);
+    const AmbientWind ambient = FindAmbientWind(ctx.scene);
+    if (ambient.active) {
+        const float xzLen = std::sqrt(ambient.direction.x * ambient.direction.x
+                                    + ambient.direction.z * ambient.direction.z);
         if (xzLen > 1.0e-4f)
-            wind = { windZone.direction.x / xzLen, windZone.direction.z / xzLen };
-        windSpeed = cloud->windSpeed * windZone.strength;
+            wind = { ambient.direction.x / xzLen, ambient.direction.z / xzLen };
+        windSpeed = cloud->windSpeed * ambient.strength;
     }
     const float topHeight = cloud->bottomHeight + (std::max)(cloud->thickness, 1.0f);
 

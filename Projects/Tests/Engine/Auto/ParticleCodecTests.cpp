@@ -179,8 +179,8 @@ TEST_F(ParticleCodecTest, ADefaultCurveSurvivesTheRoundTripUnchanged)
 // 旧いシーンと .particle にはまだ個別キーが残っているので、読み込みで力へ組み直す。
 // ここが落ちると、既存のエフェクトが全部その場に浮く。
 
-const scene::ParticleForceFieldSettings* FindForce(
-    const scene::ParticleEmitterSettings& emitter, scene::ParticleForceFieldType type)
+const scene::ForceFieldSettings* FindForce(
+    const scene::ParticleEmitterSettings& emitter, scene::ForceFieldType type)
 {
     return emitter.FindLocalForce(type);
 }
@@ -193,7 +193,7 @@ TEST_F(ParticleCodecTest, LegacyGravityKeyBecomesAWindForce)
     scene::ParticleEmitterSettings emitter;
     asset::DeserializeParticleEmitterSettings(legacy, emitter);
 
-    const auto* wind = FindForce(emitter, scene::ParticleForceFieldType::Wind);
+    const auto* wind = FindForce(emitter, scene::ForceFieldType::Wind);
     ASSERT_NE(wind, nullptr);
     EXPECT_NEAR(wind->strength, 9.8f, testkit::kTolerance);
     EXPECT_VEC3_NEAR(wind->direction, math::Vector3(0.0f, -1.0f, 0.0f), testkit::kTolerance);
@@ -219,28 +219,28 @@ TEST_F(ParticleCodecTest, LegacyMotionKeysBecomeTheMatchingForces)
     scene::ParticleEmitterSettings emitter;
     asset::DeserializeParticleEmitterSettings(legacy, emitter);
 
-    const auto* drag = FindForce(emitter, scene::ParticleForceFieldType::Drag);
+    const auto* drag = FindForce(emitter, scene::ForceFieldType::Drag);
     ASSERT_NE(drag, nullptr);
     EXPECT_NEAR(drag->strength, 2.5f, testkit::kTolerance);
 
-    const auto* turbulence = FindForce(emitter, scene::ParticleForceFieldType::Turbulence);
+    const auto* turbulence = FindForce(emitter, scene::ForceFieldType::Turbulence);
     ASSERT_NE(turbulence, nullptr);
     EXPECT_NEAR(turbulence->strength, 3.0f, testkit::kTolerance);
     EXPECT_NEAR(turbulence->noiseFrequency, 1.25f, testkit::kTolerance);
     EXPECT_NEAR(turbulence->noiseSpeed, 2.0f, testkit::kTolerance);
 
-    const auto* vortex = FindForce(emitter, scene::ParticleForceFieldType::Vortex);
+    const auto* vortex = FindForce(emitter, scene::ForceFieldType::Vortex);
     ASSERT_NE(vortex, nullptr);
     EXPECT_NEAR(vortex->strength, 4.0f, testkit::kTolerance);
     EXPECT_VEC3_NEAR(vortex->direction, math::Vector3(0.0f, 0.0f, 1.0f), testkit::kTolerance);
     // 周回はエミッター原点まわりの運動。World にすると原点が世界の中心へ飛ぶ。
-    EXPECT_EQ(vortex->space, scene::ParticleForceFieldSpace::Emitter);
+    EXPECT_EQ(vortex->space, scene::ForceFieldSpace::Emitter);
 
     // 旧 radialVelocity の負値は «吸い込み»。Repulse の負の強さと同じ規約なので符号を保つ。
-    const auto* repulse = FindForce(emitter, scene::ParticleForceFieldType::Repulse);
+    const auto* repulse = FindForce(emitter, scene::ForceFieldType::Repulse);
     ASSERT_NE(repulse, nullptr);
     EXPECT_NEAR(repulse->strength, -1.5f, testkit::kTolerance);
-    EXPECT_EQ(repulse->space, scene::ParticleForceFieldSpace::Emitter);
+    EXPECT_EQ(repulse->space, scene::ForceFieldSpace::Emitter);
 }
 
 TEST_F(ParticleCodecTest, LegacyFileWithoutMotionKeysGetsNoForces)
@@ -276,9 +276,9 @@ TEST_F(ParticleCodecTest, AVectorFieldForceSurvivesTheRoundTrip)
 {
     scene::ParticleEmitterSettings original;
     original.localForces.clear();
-    scene::ParticleForceFieldSettings field;
-    field.fieldType            = scene::ParticleForceFieldType::VectorField;
-    field.space                = scene::ParticleForceFieldSpace::Emitter;
+    scene::ForceFieldSettings field;
+    field.fieldType            = scene::ForceFieldType::VectorField;
+    field.space                = scene::ForceFieldSpace::Emitter;
     field.strength             = 3.5f;
     field.vectorFieldPath      = "Assets/VFX/Tornado.vfield";
     field.vectorFieldExtents   = { 2.0f, 8.0f, 2.0f };
@@ -291,8 +291,8 @@ TEST_F(ParticleCodecTest, AVectorFieldForceSurvivesTheRoundTrip)
 
     ASSERT_EQ(restored.localForces.size(), 1u);
     const auto& r = restored.localForces[0];
-    EXPECT_EQ(r.fieldType, scene::ParticleForceFieldType::VectorField);
-    EXPECT_EQ(r.space, scene::ParticleForceFieldSpace::Emitter);
+    EXPECT_EQ(r.fieldType, scene::ForceFieldType::VectorField);
+    EXPECT_EQ(r.space, scene::ForceFieldSpace::Emitter);
     EXPECT_NEAR(r.strength, 3.5f, testkit::kTolerance);
     EXPECT_EQ(r.vectorFieldPath, "Assets/VFX/Tornado.vfield");
     EXPECT_VEC3_NEAR(r.vectorFieldExtents, math::Vector3(2.0f, 8.0f, 2.0f), testkit::kTolerance);

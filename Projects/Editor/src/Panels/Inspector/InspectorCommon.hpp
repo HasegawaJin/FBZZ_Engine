@@ -28,8 +28,7 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
-#include <Engine/Scene/Components/WindZoneComponent.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Components/WeatherComponent.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -310,7 +309,7 @@ FBZZ_COMPONENT_UNDO_REFLECTS(NavMeshSurfaceComponent)
 // Reflect() は編集可能な状態の一部 (Trail / Collision / 各カーブ / bursts 等) しか覆わない。
 // 宣言すると digest が一致し、編集しても Undo に積まれず «保存されず黙って消える» になる。
 // Reflect() が codec と一致したらここへ戻すこと。
-FBZZ_COMPONENT_UNDO_REFLECTS(ParticleForceField)
+FBZZ_COMPONENT_UNDO_REFLECTS(ForceField)
 FBZZ_COMPONENT_UNDO_REFLECTS(PostProcessVolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(ReflectionProbeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(RigidBodyComponent)
@@ -323,7 +322,6 @@ FBZZ_COMPONENT_UNDO_REFLECTS(VolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(VolumetricCloudComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(WaterComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(WeatherComponent)
-FBZZ_COMPONENT_UNDO_REFLECTS(WindZoneComponent)
 
 #undef FBZZ_COMPONENT_UNDO_REFLECTS
 

@@ -15,7 +15,7 @@
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -25,16 +25,16 @@ namespace {
 
 // 力場の種別ごとに色を変える。同じ場所に複数の力場を重ねる構成 (炎の Updraft + Convection)
 // では、色が同じだとどちらの半径を触っているのか分からなくなる。
-math::Vector4 ForceFieldColor(ParticleForceFieldType type)
+math::Vector4 ForceFieldColor(ForceFieldType type)
 {
     switch (type) {
-    case ParticleForceFieldType::Wind:       return { 0.35f, 0.85f, 1.00f, 1.0f }; // 水色
-    case ParticleForceFieldType::Attract:    return { 0.45f, 1.00f, 0.55f, 1.0f }; // 緑
-    case ParticleForceFieldType::Repulse:    return { 1.00f, 0.55f, 0.35f, 1.0f }; // 橙
-    case ParticleForceFieldType::Vortex:     return { 0.80f, 0.55f, 1.00f, 1.0f }; // 紫
-    case ParticleForceFieldType::Turbulence: return { 1.00f, 0.85f, 0.35f, 1.0f }; // 黄
-    case ParticleForceFieldType::Drag:       return { 0.65f, 0.68f, 0.75f, 1.0f }; // 灰
-    case ParticleForceFieldType::VectorField: return { 0.35f, 1.00f, 0.90f, 1.0f }; // 水緑
+    case ForceFieldType::Wind:       return { 0.35f, 0.85f, 1.00f, 1.0f }; // 水色
+    case ForceFieldType::Attract:    return { 0.45f, 1.00f, 0.55f, 1.0f }; // 緑
+    case ForceFieldType::Repulse:    return { 1.00f, 0.55f, 0.35f, 1.0f }; // 橙
+    case ForceFieldType::Vortex:     return { 0.80f, 0.55f, 1.00f, 1.0f }; // 紫
+    case ForceFieldType::Turbulence: return { 1.00f, 0.85f, 0.35f, 1.0f }; // 黄
+    case ForceFieldType::Drag:       return { 0.65f, 0.68f, 0.75f, 1.0f }; // 灰
+    case ForceFieldType::VectorField: return { 0.35f, 1.00f, 0.90f, 1.0f }; // 水緑
     }
     return { 1.0f, 1.0f, 1.0f, 1.0f };
 }
@@ -42,38 +42,43 @@ math::Vector4 ForceFieldColor(ParticleForceFieldType type)
 // 力場の「向き」を矢印で示す。Wind は風向、Vortex は回転軸。
 // それ以外 (Attract/Repulse/Turbulence/Drag) は等方なので向きを描かない
 // — 意味の無い矢印を出すと「この向きに効くのか」と誤解させる。
-bool HasDirection(ParticleForceFieldType type)
+bool HasDirection(ForceFieldType type)
 {
-    return type == ParticleForceFieldType::Wind || type == ParticleForceFieldType::Vortex;
+    return type == ForceFieldType::Wind || type == ForceFieldType::Vortex;
 }
 
 void DrawForceFields(RenderPassContext& ctx)
 {
     for (auto& object : ctx.scene.GameObjects()) {
         if (!object.activeInHierarchy()) continue;
-        const auto* field = object.GetComponent<ParticleForceField>();
-        if (field == nullptr || !field->enabled) continue;
-        // radius <= 0 はシーン全体へ減衰なしに効く設定。描くべき境界が存在しないので、
-        // 「無限」であることが伝わるよう中心に小さなマーカーだけ置く。
-        const math::Vector3  center = object.transform.worldPosition;
-        const math::Vector4  color  = ForceFieldColor(field->fieldType);
-        if (field->radius > 0.0f)
-            renderer::DebugDraw::Sphere(ctx.renderer, center, field->radius, color);
-        else
-            renderer::DebugDraw::Sphere(ctx.renderer, center, 0.25f, color);
+        const auto* field = object.GetComponent<ForceField>();
+        if (field == nullptr) continue;
+        const math::Vector3 center = object.transform.worldPosition;
 
-        if (!HasDirection(field->fieldType)) continue;
-        // direction はローカル指定なので、Transform の回転でワールドへ移す
-        // (ParticleForceField.hpp の規約に合わせる — ここがずれると矢印だけ嘘になる)。
-        math::Vector3 direction = object.transform.worldRotation * field->direction;
-        const float length = direction.Length();
-        if (length <= 1.0e-5f) continue;
-        direction = direction * (1.0f / length);
-        // 矢印の長さは影響半径に比例させる。固定長だと大きな力場で見えなくなる。
-        const float arrowLength = field->radius > 0.0f
-            ? (std::max)(field->radius * 0.6f, 0.3f) : 1.0f;
-        renderer::DebugDraw::Arrow(ctx.renderer, center, center + direction * arrowLength,
-                                   arrowLength * 0.18f, arrowLength * 0.06f, color);
+        // 1 つの GameObject が複数の力を発する (環境風 = 風 + 乱れ)。全部描く。
+        for (const ForceFieldSettings& settings : field->forces) {
+            if (!settings.enabled) continue;
+            // radius <= 0 はシーン全体へ減衰なしに効く設定。描くべき境界が存在しないので、
+            // 「無限」であることが伝わるよう中心に小さなマーカーだけ置く。
+            const math::Vector4 color = ForceFieldColor(settings.fieldType);
+            if (settings.radius > 0.0f)
+                renderer::DebugDraw::Sphere(ctx.renderer, center, settings.radius, color);
+            else
+                renderer::DebugDraw::Sphere(ctx.renderer, center, 0.25f, color);
+
+            if (!HasDirection(settings.fieldType)) continue;
+            // direction はローカル指定なので、Transform の回転でワールドへ移す
+            // (ForceField.hpp の規約に合わせる — ここがずれると矢印だけ嘘になる)。
+            math::Vector3 direction = object.transform.worldRotation * settings.direction;
+            const float length = direction.Length();
+            if (length <= 1.0e-5f) continue;
+            direction = direction * (1.0f / length);
+            // 矢印の長さは影響半径に比例させる。固定長だと大きな力場で見えなくなる。
+            const float arrowLength = settings.radius > 0.0f
+                ? (std::max)(settings.radius * 0.6f, 0.3f) : 1.0f;
+            renderer::DebugDraw::Arrow(ctx.renderer, center, center + direction * arrowLength,
+                                       arrowLength * 0.18f, arrowLength * 0.06f, color);
+        }
     }
 }
 

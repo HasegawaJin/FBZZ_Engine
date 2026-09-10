@@ -7,8 +7,7 @@
 #include "Components/MeshRenderer.hpp"
 #include "Components/MaterialComponent.hpp"
 #include "Components/ParticleEmitter.hpp"
-#include "Components/ParticleForceField.hpp"
-#include "Components/WindZoneComponent.hpp"
+#include "Components/ForceField.hpp"
 #include "Components/WeatherComponent.hpp"
 #include "Components/ColliderComponent.hpp"
 #include "Components/RigidBodyComponent.hpp"
@@ -157,8 +156,7 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(MeshRenderer, Rendering, "Mesh Renderer"),
     FBZZ_CUSTOM_COMPONENT(MaterialComponent, Rendering, "Material"),
     FBZZ_CUSTOM_COMPONENT(ParticleEmitter, Effects, "Particle Emitter"),
-    FBZZ_CUSTOM_COMPONENT(ParticleForceField, Effects, "Particle Force Field"),
-    FBZZ_CUSTOM_COMPONENT(WindZoneComponent, Environment, "Wind Zone"),
+    FBZZ_CUSTOM_COMPONENT(ForceField, Effects, "Force Field"),
     FBZZ_CUSTOM_COMPONENT(AabbColliderComponent, Physics, "AABB Collider"),
     FBZZ_CUSTOM_COMPONENT(BoxColliderComponent, Physics, "Box Collider"),
     FBZZ_CUSTOM_COMPONENT(SphereColliderComponent, Physics, "Sphere Collider"),

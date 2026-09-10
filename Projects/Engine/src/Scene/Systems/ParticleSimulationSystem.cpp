@@ -9,8 +9,7 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/ParticleForceField.hpp>
-#include <Engine/Scene/Components/WindZoneComponent.hpp>
+#include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
@@ -34,8 +33,7 @@ ComponentAccess ParticleSimulationSystem::GetAccess() const
     return ComponentAccess{}
         .Reads<Transform>()
         .Reads<AnimatorComponent>()
-        .Reads<ParticleForceField>()
-        .Reads<WindZoneComponent>()
+        .Reads<ForceField>()
         .Writes<ParticleEmitter>();
 }
 
