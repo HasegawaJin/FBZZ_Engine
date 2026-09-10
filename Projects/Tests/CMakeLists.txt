@@ -111,6 +111,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ParticleCodecTests.cpp
         Engine/Auto/ParticleCurveTests.cpp
         Engine/Auto/VectorFieldTests.cpp
+        Engine/Auto/ParticleMaterialPathTests.cpp
         Engine/Auto/RenderGraphTests.cpp
         Engine/Auto/RenderGraphLifetimeTests.cpp
         Engine/Auto/SceneSerializerTests.cpp

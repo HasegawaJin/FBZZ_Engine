@@ -24,6 +24,7 @@
 
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp> // Particle* 列挙
 #include <string>
+#include <string_view>
 
 namespace fbzz::asset {
 
@@ -101,5 +102,27 @@ struct ParticleMaterialSettings {
     /// 粒子色に掛かる倍率。HDR (1 超) にするとブルームが拾う。
     float emissiveScale = 1.0f;
 };
+
+// ── materialPath はテクスチャを受けない、という規約を守るための道具 ──
+//
+// ParticleEmitter::materialPath は .mat 専用で、テクスチャは .mat の [textures] から来る。
+// ところが «貼りたいのは .png» という要求は消えないので、Editor の素材欄は
+// テクスチャを落とすと決まった名前の .mat へ包んでからパスを書く。
+//
+// WHY 命名規則をエンジン側へ置くか:
+//   包む側 (Editor) と、«テクスチャが materialPath に入ってしまった» ときに
+//   救う側 (ParticlePass) が別々に名前を組み立てると、移行先が食い違って
+//   «作った .mat があるのに見つけられない» が起きる。規則は 1 か所に置く。
+
+/// パスがテクスチャか (.png / .tga / .dds / .jpg / .jpeg)。
+[[nodiscard]] bool IsParticleTexturePath(std::string_view path);
+
+/// テクスチャ 1 枚に対応する Particle 用 .mat の **決まった名前**。
+///
+/// "Assets/.../flame_03.png" + Additive → "Assets/Materials/Particles/Flame03_Additive.mat"
+/// 決定的なので、同じテクスチャ・同じブレンドなら常に同じ .mat を指す。
+/// @note 実在するかは確かめない。作る側と探す側で «どこを見るか» を揃えるためだけの関数。
+[[nodiscard]] std::string ParticleMaterialPathForTexture(std::string_view texturePath,
+                                                         scene::ParticleBlendMode blend);
 
 } // namespace fbzz::asset
