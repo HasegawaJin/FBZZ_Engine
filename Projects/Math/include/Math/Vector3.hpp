@@ -24,10 +24,11 @@ struct Vector3 {
 
     float   Length()     const;
     float   LengthSq()   const;
-    /// 長さ 0 は契約違反として assert する。呼ぶ側が非ゼロを保証できる場合だけ使う。
+    /// 長さ 0 は契約違反。ZERO を返し、発生位置つきで 1 度だけ報告する (MathContract.hpp)。
+    /// 呼ぶ側が非ゼロを保証できる場合だけ使う。
     Vector3 Normalized() const;
     /// 長さ 0 なら fallback を返す。退化した入力が正常系に含まれうる箇所 (接触法線・
-    /// 進行方向・視線ベクトル) はこちらを使い、assert で実行を止めない。
+    /// 進行方向・視線ベクトル) はこちらを使い、違反として報告させない。
     Vector3 NormalizedOr(const Vector3& fallback) const;
 
     static float   Dot(const Vector3& a, const Vector3& b);

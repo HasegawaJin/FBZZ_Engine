@@ -5,7 +5,7 @@
 #include "Math/Vector3.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>
-#include <cassert>
+#include "Math/MathContract.hpp"
 
 namespace fbzz::math {
 
@@ -27,7 +27,11 @@ float   Vector3::LengthSq()   const { return x * x + y * y + z * z; }
 float   Vector3::Length()     const { return std::sqrt(LengthSq()); }
 Vector3 Vector3::Normalized() const {
     float len = Length();
-    assert(!NearlyZero(len) && "Cannot normalize a zero-length vector");
+    // 契約違反でも実行は止めない。0 を返すのは NaN と違って «伝播しても検出できる» ため。
+    FBZZ_MATH_CONTRACT(!NearlyZero(len),
+                       "zero-length vector normalized; returning (0,0,0). "
+                       "use NormalizedOr(fallback) where degenerate input is normal");
+    if (NearlyZero(len)) return ZERO;
     return *this / len;
 }
 
