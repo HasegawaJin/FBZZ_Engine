@@ -64,6 +64,28 @@ public:
     FBZZ_FIELD_RANGE_INT(int, streakCap, 4, "Streak Cap", 0, 10)
     FBZZ_TOOLTIP("倍率が積み上がる上限の回数。4 × 0.15 = 最大 +60%")
 
+    // 刃の熱 ── 斬った分が «次の弾き 1 回» に乗る。
+    //
+    // WHY 要るか (2026-09-11): プレイヤーの動詞は 3 つあるのに、輪になっているのは
+    //   2 つだけだった ──
+    //     回避 → ジャスト回避で Flux → 次の一振りが満溜め全周   (繋がっている)
+    //     斬撃 → ???                                          (**切れている**)
+    //     弾き → 崩し → 転倒 → とどめ                          (繋がっている)
+    //   斬撃 3.5 は «斬るだけで満たすには 30 発» という正しい量で、ここを上げると
+    //   弾く理由が消える。だから **崩しを増やさずに «弾きを濃くする»** 側へ返す。
+    //   斬った分が次の 1 回に乗るなら、«斬る時間が弾く機会になる» という既存の理屈が
+    //   比喩ではなく数字になり、3 つの動詞が一周する。
+    //
+    // WHY 溜め置きできないか: 熱が乗るのは AddSlash ＝ **実際に当たった斬撃**だけ。
+    //   当てるには踏みつけの間合いへ入るしかないので、熱を溜めること自体が危険を伴う。
+    //   さらに被弾で消える (連続弾きと同じ器で畳む)。
+    FBZZ_FIELD_RANGE(float, edgeBonus, 0.10f, "刃の熱", 0.0f, 1.0f)
+    FBZZ_TOOLTIP("弾く前に当てた斬撃 1 発ごとに、その弾きへ足す倍率。"
+                 "弾いた瞬間に使い切る。被弾で消える")
+    FBZZ_FIELD_RANGE_INT(int, edgeCap, 5, "熱の上限 [発]", 0, 20)
+    FBZZ_TOOLTIP("熱が積み上がる上限の発数。5 × 0.10 = 最大 +50%。"
+                 "**連撃 1 セット (5 連) がちょうど上限**になるように置いてある")
+
     FBZZ_GROUP("Decay")
     // WHY 戻りを半分にしたか (2026-09-05):
     //   8/秒 は «最後に溜めてから 2.5 秒» の後、12.5 秒で全部消える速さ。ボスの手番が
@@ -86,6 +108,7 @@ public:
     FBZZ_FIELD_READ_ONLY(std::string, debugState, "Idle", "状態")
     FBZZ_FIELD_READ_ONLY(std::string, debugLastSource, "-", "Last Source")
     FBZZ_FIELD_READ_ONLY(int, debugStreak, 0, "Parry Streak")
+    FBZZ_FIELD_READ_ONLY(int, debugEdge, 0, "刃の熱")
 
     /// 満ちた瞬間。ボス側が転倒へ繋ぐ。引数は転倒の長さ [秒]。
     std::function<void(float seconds)> onBreak;
@@ -99,25 +122,51 @@ public:
     /// 直近に溜まった瞬間からの秒数。HUD の «伸びた» 演出が読む。
     [[nodiscard]] float SinceLastGain() const { return m_idle; }
 
-    /// 弾き 1 回。just は窓の頭で受けた «読み切り»。連続の弾きは回数で倍率が積む。
+    /// 弾き 1 回。just は窓の頭で受けた «読み切り»。連続の弾きは回数で倍率が積み、
+    /// 直前に当てた斬撃 (刃の熱) はここで使い切られる。
     void AddParry(bool heavy, bool just = false)
     {
         const float base   = heavy ? parryHeavyGain : parryGain;
         const float streak = 1.0f + std::max(streakBonus, 0.0f)
                            * static_cast<float>(std::min(m_parryStreak, std::max(streakCap, 0)));
-        const float scale  = (just ? std::max(justParryScale, 1.0f) : 1.0f) * streak;
+        const float edge   = 1.0f + std::max(edgeBonus, 0.0f)
+                           * static_cast<float>(std::min(m_edge, std::max(edgeCap, 0)));
+        const float scale  = (just ? std::max(justParryScale, 1.0f) : 1.0f) * streak * edge;
         ++m_parryStreak;
         debugStreak = m_parryStreak;
+        // 熱は «次の 1 回» に乗る物なので、乗せたら必ず 0 へ戻す。残すと
+        // 1 回斬っておけば以後ずっと濃い弾きになり、斬る動機が最初の 1 回で終わる。
+        m_edge    = 0;
+        debugEdge = 0;
         Add(base * scale, just ? (heavy ? "Just Parry (heavy)" : "Just Parry")
                                : (heavy ? "Parry (heavy)" : "Parry"));
     }
     void AddPerfectDodge()    { Add(perfectDodgeGain, "Just Dodge"); }
-    /// 被弾した。続けていた弾きの積み上げは消える。
-    void ResetParryStreak() { m_parryStreak = 0; debugStreak = 0; }
+    /// 被弾した。続けていた弾きの積み上げも刃の熱も消える。
+    void ResetParryStreak() { m_parryStreak = 0; m_edge = 0; debugStreak = 0; debugEdge = 0; }
     [[nodiscard]] int ParryStreak() const { return m_parryStreak; }
+    /// 今の刃の熱 [発]。HUD が «次の弾きがどれだけ濃いか» を出すのに読む。
+    [[nodiscard]] int Edge() const { return std::min(m_edge, std::max(edgeCap, 0)); }
     /// 全部の溜まり方に掛かる倍率。プレイヤーの «土壇場» (残り HP 僅か) が上げる。
     void SetGainScale(float scale) { m_gainScale = std::max(scale, 0.0f); }
-    void AddSlash(bool charged) { Add(charged ? chargedSlashGain : slashGain, charged ? "Charged Slash" : "Slash"); }
+
+    /// 斬撃だけに掛かる倍率。盤面が «斬る番» になっている間だけボスが上げる。
+    ///
+    /// WHY 全体の倍率 (SetGainScale) と分けるか: あちらはプレイヤーの状態 (土壇場) で、
+    ///     弾きにも回避にも等しく乗る。こちらは «今この瞬間、斬撃だけが答えになる
+    ///     盤面» のための物 ── 蛇の檻がそれで、混ぜると檻の中で弾きまで濃くなる。
+    void SetSlashScale(float scale) { m_slashScale = std::max(scale, 0.0f); }
+    [[nodiscard]] float SlashScale() const { return m_slashScale; }
+
+    void AddSlash(bool charged)
+    {
+        // 熱を 1 発ぶん溜める。上限で頭打ちにしておかないと、連撃を延々当てた後の
+        // 1 回だけが桁違いに濃くなる。
+        if (m_edge < std::max(edgeCap, 0)) ++m_edge;
+        debugEdge = m_edge;
+        Add((charged ? chargedSlashGain : slashGain) * m_slashScale,
+            charged ? "Charged Slash" : "Slash");
+    }
     /// 任意の量を溜める。満ちたら onBreak を 1 度だけ呼ぶ。倒れている間は無視する。
     void Add(float amount, const char* source);
 
@@ -141,6 +190,9 @@ private:
     float m_toppleSeconds = 0.0f;
     bool  m_warnedNoOwner = false;
     int   m_parryStreak   = 0;
+    /// 弾く前に当てた斬撃の数 (刃の熱)。次の弾きで使い切る。
+    int   m_edge          = 0;
+    float m_slashScale    = 1.0f;
     float m_gainScale     = 1.0f;
 };
 
@@ -161,11 +213,14 @@ inline void BossBreakComponent::OnStart()
     m_toppleSeconds = 0.0f;
     m_warnedNoOwner = false;
     m_parryStreak   = 0;
+    m_edge          = 0;
     m_gainScale     = 1.0f;
+    m_slashScale    = 1.0f;
     debugBreak      = 0.0f;
     debugState      = "Idle";
     debugLastSource = "-";
     debugStreak     = 0;
+    debugEdge       = 0;
 }
 
 inline void BossBreakComponent::Add(float amount, const char* source)

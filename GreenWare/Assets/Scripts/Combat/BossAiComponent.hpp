@@ -26,7 +26,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Scripts/Camera/BossCameraDirectorComponent.hpp>
 #include <Scripts/Combat/BossAnimatorComponent.hpp>
-#include <Scripts/Combat/BossArmorPlateComponent.hpp>
+#include <Scripts/Combat/BossPartDebrisComponent.hpp>
 #include <Scripts/Combat/BossAudioComponent.hpp>
 #include <Scripts/Combat/BossBeamComponent.hpp>
 #include <Scripts/Combat/BossBreakComponent.hpp>
@@ -113,6 +113,26 @@ public:
     FBZZ_FIELD_RANGE(float, tempoPerLegLost, 0.15f, "脚 1 本ごと", 0.0f, 0.6f)
     FBZZ_TOOLTIP("失った脚 1 本につきテンポへ足す量。0.15 なら 4 本 → 1 本で 1.15 → 1.60。"
                  "**上げすぎると予兆が «見えているのに間に合わない» 側へ落ちる**")
+    FBZZ_FIELD(bool, crippledDoubleStomp, true, "据え付けの踏みつけを 2 連にする")
+    FBZZ_TOOLTIP("2 本欠け以降、踏みつけを 1 拍空けてもう 1 回出す。"
+                 "**終盤に残る «弾ける手» が踏みつけ 1 種だけになる**のを埋める。"
+                 "切ると畳み掛けの 2 手目はパルス (弾けない手) へ振れる")
+
+    // 背のコアへ とどめ を入れると、増悪したテンポが少し戻る。
+    //
+    // WHY 要るか (2026-09-11): 転倒の 5 秒は 4 回とも «膝下へ寄って Q» で、
+    //   選択が 1 つも無かった。一方でコアは転倒中だけ斬撃の届く高さまで降りてくるのに
+    //   (`HB_Core` への とどめ は既に通る)、**誰も狙う理由が無い**。
+    //   ここに «脚 = 進行 + 増悪 / コア = 進行の裏道 + 息継ぎ» の二択を置くと、
+    //   倒した 5 秒そのものが判断になる。
+    //
+    // WHY 素のテンポより下へは戻さないか: 戻せるようにすると «コアだけ叩いて
+    //   ずっと開幕の速さで戦う» が最適になり、増悪そのものが無効化できる。
+    //   戻せるのは «自分で上げたぶん» だけ ─ 借金を返せるが貯金はできない。
+    FBZZ_FIELD_RANGE(float, coreExecuteTempoRelief, 0.10f, "コアで戻るテンポ", 0.0f, 0.6f)
+    FBZZ_TOOLTIP("背のコアへ とどめ を 1 発入れるたびにテンポから引く量。"
+                 "脚 1 本ぶん (0.15) より小さくしないと «コアを叩くほど楽になる» に化ける。"
+                 "0 で二択が消える (脚を斬る以外の理由がコアから無くなる)")
     FBZZ_FIELD_READ_ONLY(float, debugTempo, 1.15f, "実テンポ")
     // WHY 5.0 へ上げたか (2026-09-11): 2.4 m/s はプレイヤーの走り (10 m/s) の 4 分の 1 で、
     //     «離れる» を選ばれた時点で二度と間合いが詰まらない ── 遠くから眺めるのが
@@ -489,6 +509,10 @@ public:
     void SetCrippled(bool crippled);
     [[nodiscard]] bool IsCrippled() const { return m_crippled; }
 
+    /// 背のコアへ とどめ が入った。増悪したテンポを amount ぶん戻す。
+    /// 呼ぶのは BossRigComponent::ExecutePart（`HB_Core` の枝）。
+    void RelieveTempo(float amount);
+
     /// 1 本が壊れた。BossRigComponent が壊した瞬間に申告する。
     ///
     /// WHY 押し込む形にするか (こちらから IsLegBroken を引かないか):
@@ -559,12 +583,12 @@ private:
     void BeginCharge();
     void BeginBeam();
     void BeginPulse();
-    /// 床に落ち着いている装甲板が 1 枚でもあるか。パルスを表へ入れる条件。
-    [[nodiscard]] bool HasRestingPlate() const;
-    /// 床に落ちている装甲板を磁力で吸い上げる。パルスの予兆と同時。
-    void DrawArmorPlates();
-    /// 浮いている装甲板をプレイヤーへ撃ち出す。パルスのヒットと同時。撃った枚数を返す。
-    int FireArmorPlates();
+    /// 床に落ち着いているもげた脚が 1 本でもあるか。パルスを表へ入れる条件。
+    [[nodiscard]] bool HasFallenPart() const;
+    /// 床に落ちているもげた脚を磁力で吸い上げる。パルスの予兆と同時。
+    void DrawFallenParts();
+    /// 浮いている脚をプレイヤーへ撃ち出す。パルスのヒットと同時。撃った本数を返す。
+    int FireFallenParts();
     /// 放射状のレーザー。@ret 出したら true。
     bool BeginFanBeam();
     void BeginCrash();
@@ -713,6 +737,8 @@ private:
     /// 撃破の一撃を返したか。倒れた «状態» は毎フレーム来るので、出来事は 1 度だけ。
     bool m_deathAnnounced = false;
     float m_appliedTempo  = -1.0f;
+    /// コアへの とどめ で戻したテンポの合計。素の Tempo より下へは効かない。
+    float m_tempoRelief   = 0.0f;
 
     /// Animator の再生速度を tempo に揃える。値が変わったときだけ書く。
     ///
@@ -762,6 +788,7 @@ inline void BossAiComponent::OnStart()
     m_lastAct  = Act::Idle;
     debugChain = 0;
     m_preferPulse = false;
+    m_tempoRelief = 0.0f;
     m_breakHooked = false;
     m_warnedNoCombat = false;
     m_deathAnnounced = false;
@@ -854,7 +881,16 @@ inline float BossAiComponent::Tempo() const
     for (bool leg : m_legBroken)
         if (leg) ++lost;
 
-    return base + std::max(tempoPerLegLost, 0.0f) * static_cast<float>(lost);
+    const float risen = std::max(tempoPerLegLost, 0.0f) * static_cast<float>(lost);
+    // 戻せるのは上がったぶんだけ。素のテンポより下へは行かない (フィールドの WHY)。
+    return base + std::max(risen - m_tempoRelief, 0.0f);
+}
+
+inline void BossAiComponent::RelieveTempo(float amount)
+{
+    if (amount <= 0.0f) return;
+    m_tempoRelief += amount;
+    debugTempo = Tempo();
 }
 
 inline float BossAiComponent::AttackInterval() const
@@ -1395,7 +1431,26 @@ inline bool BossAiComponent::SelectAttack()
         if (BeginFanBeam()) return true;
 
         if (distance <= std::max(stompMaxRange, 0.0f)) {
-            const bool stomp = HasStompLeg() && !(vary && m_lastAct == Act::Stomp);
+            // 据え付けの体は踏みつけを «2 連» で出す。
+            //
+            // WHY 要るか (2026-09-11): 2 本欠けで突進が封じられるので、**終盤に残る
+            //     弾ける手が踏みつけ 1 種だけ**になる。崩しを溜める入口が 2 つから
+            //     1 つへ減るのに、テンポの増悪だけを乗せても «読む対象が増えないまま
+            //     速くなる» にしかならない。同じ手をもう 1 拍で重ねれば、弾きの機会が
+            //     2 回になって連続弾きが乗り、そのぶん後の休みが長くなる
+            //     (EndAct の 畳み掛けた後の休み)。
+            //
+            // WHY 畳み掛けの «同じ手を並べない» 規則を曲げるか: あの規則は
+            //     «読む対象を増やす» ためにある。だが選べる手が 1 つしか無い盤面では、
+            //     規則を守った結果が «パルスへ振る» ＝ 弾けない手になり、
+            //     守るほど読む対象が減る。踏みつけは左右の脚で来る向きが変わるので、
+            //     2 連にしても «同じ攻撃の連打» にはならない。
+            // 重ねるのは «2 発目» ちょうどまで。m_chain の上限 (既定 2) に任せると
+            // 3 連まで伸びて «返す場所が無い» に寄る。
+            const bool doubleStomp =
+                crippledDoubleStomp && m_chain == 1 && m_lastAct == Act::Stomp;
+            const bool stomp = HasStompLeg() &&
+                               (doubleStomp || !(vary && m_lastAct == Act::Stomp));
             if (stomp) BeginStomp();
             else       BeginPulse();
             return true;
@@ -1414,17 +1469,17 @@ inline bool BossAiComponent::SelectAttack()
     // 表どおりの手だけだと、距離さえ保てば安全という盤面が最後まで残る。
     if (BeginFanBeam()) return true;
 
-    // 床に装甲板が落ちているなら、パルスも «全域» の手として表の前へ入る。
+    // 床にもげた脚が落ちているなら、パルスも «全域» の手として表の前へ入る。
     //
-    // WHY 板があるときだけか: 8 章の表ではパルスは «踏める脚が 1 本も無い» ときの
-    //     代役でしかなく、実際には据え付け化 (2 本欠け) まで一度も出ない。
-    //     板を落とした 1 本目の時点で «拾って投げる手» が生まれるのに、
-    //     投げる手が盤面に出てこない ── 落とした板が 2 本目まで死んだままになる。
-    //     板が無い間のパルスは押し戻すだけの空白なので、表には入れない。
+    // WHY 脚が落ちているときだけか: 8 章の表ではパルスは «踏める脚が 1 本も無い»
+    //     ときの代役でしかなく、実際には据え付け化 (2 本欠け) まで一度も出ない。
+    //     1 本目をもいだ時点で «自分の脚を拾って投げる手» が生まれるのに、
+    //     投げる手が盤面に出てこない ── 落とした脚が 2 本目まで死んだままになる。
+    //     脚が無い間のパルスは押し戻すだけの空白なので、表には入れない。
     //
-    // WHY 交互にするか: 板がある限り毎回パルスになると、落とすほど盤面が
-    //     «板を投げるだけ» に寄って、踏みつけと線の読み合いが消える。
-    if (!(vary && m_lastAct == Act::Pulse) && HasRestingPlate()) {
+    // WHY 交互にするか: 脚がある限り毎回パルスになると、もぐほど盤面が
+    //     «脚を投げるだけ» に寄って、踏みつけと線の読み合いが消える。
+    if (!(vary && m_lastAct == Act::Pulse) && HasFallenPart()) {
         m_preferPulse = !m_preferPulse;
         if (m_preferPulse) { BeginPulse(); return true; }
     }
@@ -2146,34 +2201,34 @@ inline void BossAiComponent::BeginPulse()
     // «パルスを撃った» だけ。P1 では切替の音だけが鳴り、衝撃波は鳴らない。
     if (auto* sfx = Sfx()) sfx->MagneticPulse();
 
-    // 床に落ちている装甲板を吸い上げる (Docs/part-break.md「柱 3 — 戦利品」)。
+    // 床に落ちている «自分の脚» を吸い上げる (Docs/part-break.md「柱 3 — 戦利品」)。
     //
     // WHY 予兆の «間» に浮かせるか: リングの明滅 0.85 秒は今まで «押し戻される» の
-    //     予告でしかなかった。板が上がっていく絵をそこへ重ねると、
-    //     **予兆が «板が来る» の予告に変わる** ── 盤面に置いた物と手が結ばれる。
-    DrawArmorPlates();
+    //     予告でしかなかった。もいだ脚が上がっていく絵をそこへ重ねると、
+    //     **予兆が «あれが飛んでくる» の予告に変わる** ── 盤面に置いた物と手が結ばれる。
+    DrawFallenParts();
 }
 
-inline bool BossAiComponent::HasRestingPlate() const
+inline bool BossAiComponent::HasFallenPart() const
 {
-    for (GameObject* object : scene.FindObjectsOfType<BossArmorPlateComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
-        const auto* plate = scene.GetScript<BossArmorPlateComponent>(object);
-        if (plate && plate->IsAvailable()) return true;
+        const auto* part = scene.GetScript<BossPartDebrisComponent>(object);
+        if (part && part->IsResting()) return true;
     }
     return false;
 }
 
-inline void BossAiComponent::DrawArmorPlates()
+inline void BossAiComponent::DrawFallenParts()
 {
-    for (GameObject* object : scene.FindObjectsOfType<BossArmorPlateComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
-        auto* plate = scene.GetScript<BossArmorPlateComponent>(object);
-        if (plate && plate->IsAvailable()) plate->Draw(transform.worldPosition);
+        auto* part = scene.GetScript<BossPartDebrisComponent>(object);
+        if (part && part->IsResting()) part->Draw(transform.worldPosition);
     }
 }
 
-inline int BossAiComponent::FireArmorPlates()
+inline int BossAiComponent::FireFallenParts()
 {
     GameObject* player = Player();
     if (!player) return 0;
@@ -2183,11 +2238,11 @@ inline int BossAiComponent::FireArmorPlates()
     const Vector3 target = player->transform.worldPosition;
 
     int fired = 0;
-    for (GameObject* object : scene.FindObjectsOfType<BossArmorPlateComponent>()) {
+    for (GameObject* object : scene.FindObjectsOfType<BossPartDebrisComponent>()) {
         if (!object || !object->activeInHierarchy()) continue;
-        auto* plate = scene.GetScript<BossArmorPlateComponent>(object);
-        if (plate && plate->IsDrawn()) {
-            plate->Launch(target);
+        auto* part = scene.GetScript<BossPartDebrisComponent>(object);
+        if (part && part->IsDrawn()) {
+            part->Launch(target);
             ++fired;
         }
     }
@@ -2204,14 +2259,14 @@ inline void BossAiComponent::TickPulse(float dt)
         m_dealt = true;
         const Vector3 center = transform.worldPosition;
 
-        // 吸い上げた板を同じ瞬間に撃ち出す。輪と板が別の拍で出ると
-        // «押し戻された» と «板が来た» が 2 つの出来事に割れる。
-        const int fired = FireArmorPlates();
+        // 吸い上げた脚を同じ瞬間に撃ち出す。輪と脚が別の拍で出ると
+        // «押し戻された» と «脚が飛んできた» が 2 つの出来事に割れる。
+        const int fired = FireFallenParts();
 
-        // WHY 板を撃った回はパルス自身のダメージを載せないか: 輪の半径は 22m ＝
-        //     闘技場の全域で、**避ける手が無い «必ず 1 減る» 判定**。板が飛ぶ回に
-        //     これを重ねると、板を完璧に弾いても 1 減る ── 弾く意味がその場で否定される。
-        //     板が 1 枚でも飛んだら、その回の «当たり» は弾ける側 (板) だけが持つ。
+        // WHY 脚を撃った回はパルス自身のダメージを載せないか: 輪の半径は 22m ＝
+        //     闘技場の全域で、**避ける手が無い «必ず 1 減る» 判定**。脚が飛ぶ回に
+        //     これを重ねると、完璧に弾いても 1 減る ── 弾く意味がその場で否定される。
+        //     1 本でも飛んだら、その回の «当たり» は弾ける側 (脚) だけが持つ。
         //     押し戻す輪の絵と音はそのまま出す ── 出来事としては 1 つのパルス。
         if (fired == 0) (void)HitPlayerInSphere(center, pulseRadius, pulseDamage);
 

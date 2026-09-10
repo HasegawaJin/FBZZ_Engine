@@ -27,6 +27,7 @@
 | 重い手（突進など）を弾いた | **+60** |
 | **Just 弾き**（窓の頭 0.08 秒） | 上記の **×1.5**（`justParryScale`） |
 | **連続弾き**（被弾でリセット） | 1 回ごとに **+15%**、上限 4 回 = +60%（`streakBonus` / `streakCap`） |
+| **刃の熱**（弾く前に当てた斬撃） | 1 発ごとに **+10%**、上限 5 発 = +50%（`edgeBonus` / `edgeCap`）。**弾いた瞬間に使い切る** |
 | **土壇場**（残り HP 1） | さらに **×1.25**（`lastStandBreakScale`） |
 | ジャスト回避 | +10 |
 | 斬撃 1 発 | **+3.5** ＝ 斬るだけで満たすには **約 30 発** |
@@ -36,6 +37,12 @@
 > **WHY 斬撃を 3.5 に揃えたか:** `BladeComponent::ResolveHit` のコメントが
 > 「斬るだけで満たすには 30 発近く要る量にしてある」と宣言している。
 > Stage_01 だけ 6.0 で、17 発で満ちていた（弾かずに斬るだけで転倒させられた）。
+
+> **WHY «刃の熱» を足したか（2026-09-11）:** 3.5 は正しい量だが、その結果
+> **プレイヤーが一番多く押すボタンが勝利に一切繋がっていなかった。**
+> 回避は Flux で斬撃に繋がり、弾きは崩しに繋がるのに、斬撃だけが行き止まり。
+> 崩しを増やすと弾く理由が消えるので、**斬った分を「次の弾き」へ返す**形にして
+> 3 つの動詞を一周させた（[部位破壊と増悪](part-break.md#柱-4--動詞を一周させる刃の熱2-体共通)）。
 
 ### 揃えないボスが 1 体だけ居る（予定）
 
@@ -67,8 +74,8 @@
 
 | ボス | 弾ける（右クリック / LB） | 跳ぶ | 回避・走る |
 |---|---|---|---|
-| ポラリティ・コア | 踏みつけ／突進の激突／**飛んでくる装甲板** | 衝撃波の輪 | ビーム／扇／磁力パルス／着地の直撃／**破断面の放電** |
-| サーペント | 噛みつき（Lunge）／薙ぎ（Sweep）／槍 | 突き上げ／叩きつけ | 柱／走り抜け／締め上げ |
+| ポラリティ・コア | 踏みつけ／突進の激突／**投げつけられる«もげた脚»** | 衝撃波の輪 | ビーム／扇／磁力パルス／着地の直撃／**破断面の放電** |
+| サーペント | 噛みつき（Lunge）／薙ぎ（Sweep）／槍／**吹き飛ばされる«落ちた節»** | 突き上げ／叩きつけ | 柱／走り抜け／締め上げ |
 
 弾かれたボスの反応:
 - **踏みつけ** — 脚が跳ね上がって刺さったままの硬直へ飛ぶ（+0.9 秒）。体が泳ぐ。
@@ -109,9 +116,12 @@
 `Katana_Iai`（1.5 倍速、斬り下ろし 0.58 秒）で とどめ。
 
 - **コア:** その脚がもげる（1 本ごとにテンポが上がり → 2 本で据え付け化 → 4 本で決着）。
-  同時に**装甲板が 1 枚剥がれて床に残り**、以後の磁力パルスがそれを吸い上げて撃ってくる。
-  もいだ脚の破断面は、次の転倒から**周期で放電する** ── 詳細は [部位破壊と増悪](part-break.md)。
+  **もげた脚は床に落ちて残り**、以後の磁力パルスがそれを吸い上げて投げてくる（弾ける）。
+  破断面は次の転倒から**周期で放電する**。
 - **サーペント:** 斬った節から尾側へ 4 節が飛ぶ。28 → 6 節で決着。
+  **斬った 1 節は床に落ちて残り、乗っている口を塞ぐ** ── 蛇は突き上げと薙ぎで
+  それを吹き飛ばし、飛んできた節は弾ける。
+- 落ちた部位まわりは [部位破壊と増悪](part-break.md) が正本。
 - 入った瞬間にボスは起きる。1 回の転倒で 1 本。
 
 > **WHY 攻撃ボタンでもとどめが出るか:** 倒れた 5 秒の最初の 1 秒を「どのボタンだったか」に使わせない。
@@ -134,7 +144,7 @@
 | コアの反応 | `BossAiComponent::OnParried / EndTopple`、`BossRigComponent::ExecutePart` |
 | 蛇の反応 | `SerpentAiComponent::OnParried / Topple / Execute`、`SerpentBodyComponent::Sever` |
 | 弾きの絵 | `Assets/VFX/Game/FX_PLR_Parry.vfx` (Just は `FX_PLR_ParryJust.vfx`) + `Vfx/ParryVfxComponent.hpp`、`VfxManagerComponent::PlayParry` |
-| とどめの絵 | `Assets/VFX/Game/FX_BOSS_Execute.vfx` + `Vfx/ExecuteVfxComponent.hpp`、`VfxManagerComponent::PlayExecute`。もげた脚は `Combat/BossLegDebrisComponent.hpp`（[boss.md](boss.md#もげた脚はどこへ行くか部位破壊--2026-09-07)） |
+| とどめの絵 | `Assets/VFX/Game/FX_BOSS_Execute.vfx` + `Vfx/ExecuteVfxComponent.hpp`、`VfxManagerComponent::PlayExecute`。もげた脚は `Combat/BossPartDebrisComponent.hpp`（[boss.md](boss.md#もげた脚はどこへ行くか部位破壊--2026-09-07)） |
 | カメラ | `Camera/BossCameraDirectorComponent.hpp`。登場 / 転倒 / 撃破 / とどめ (`Execute` = 居合の 0.62 秒だけ切断面へ寄る)。演出中に盤面を止めるのは `cutscene::Publish`（`Utils/PlayerActionState.hpp`）で、ボス AI とプレイヤーの入力が読む。登場は両方、転倒はどちらも止めない、撃破と とどめ はプレイヤーだけ |
 | 入力 | `Parry`（右クリック / LB）。`InputActions.hpp` と `Input.inputactions` |
 
