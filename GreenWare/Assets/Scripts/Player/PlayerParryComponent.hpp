@@ -42,6 +42,7 @@
 #include <Scripts/Utils/BladeColors.hpp>
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 using namespace fbzz::scene;
@@ -95,6 +96,12 @@ public:
     FBZZ_TOOLTIP("とどめの間、他の入力を受け付けない時間。斬り下ろしより少し長く")
     FBZZ_FIELD_RANGE(float, executeRange, 3.4f, "Execute Range", 0.5f, 10.0f)
     FBZZ_TOOLTIP("倒れたボスの部位からこの距離以内なら、押した瞬間にとどめへ入る")
+    // WHY 高さの帯が要るか (2026-09-10): 届くかどうかは水平距離だけで測っている。
+    //     背のコアが とどめ の的になったので、地上に立っていても «真上 5m の
+    //     コア» が水平 0m として届いてしまい、何も無い空へ居合が出る。
+    FBZZ_FIELD_RANGE(float, executeHeight, 3.0f, "Execute Height", 0.5f, 20.0f)
+    FBZZ_TOOLTIP("足元からこの高さの帯にある部位だけが とどめ の的になる。"
+                 "甲板 (足元から +5m 上) のコアと地上の脚を混ぜないための仕切り")
     FBZZ_FIELD_RANGE(float, moveScale, 0.35f, "Move Scale (busy)", 0.05f, 1.0f)
 
     // «パキッ» の配分。止め・閃光・破片は一瞬で、余韻を残さない。
@@ -133,6 +140,16 @@ public:
     [[nodiscard]] bool IsParryActive() const { return m_phase == Phase::Window; }
     /// 弾きかとどめの最中か。剣はこの間、攻撃を受け付けない。
     [[nodiscard]] bool IsBusy() const { return m_phase != Phase::Idle; }
+
+    // ── 出来事の回数 ────────────────────────────────────────────────────────
+    // WHY «起きた» を伝える通知ではなく回数で返すか:
+    //     弾きは 1 フレームの出来事で、見ている側 (刃の焼き・HUD) は自分の更新順で
+    //     読む。通知を配ると受け手ごとに «取り逃した / 二重に受けた» が出るが、
+    //     回数なら前フレームとの差だけで «今フレームに何回起きたか» が誰にでも出る。
+    [[nodiscard]] int ParryCount() const { return m_parries; }
+    /// 読み切って弾いた回数。ParryCount の内数。
+    [[nodiscard]] int JustParryCount() const { return m_justParries; }
+    [[nodiscard]] int ExecuteCount() const { return m_executions; }
 
     /// 弾けた。手触りを返し、崩しを溜め、ボスへ «弾かれた» を伝える。
     /// @param amount 弾いた一撃のダメージ (重さの判定に使う)
@@ -232,10 +249,19 @@ inline GameObject* PlayerParryComponent::FindExecutablePart(GameObject*& outRoot
         if (!part || part->IsBroken()) continue;
         if (RootOf(object) != boss) continue;
 
-        Vector3 delta = object->transform.worldPosition - origin;
-        delta.y = 0.0f;
-        const float distance = delta.Length() - std::max(part->hitRadius, 0.0f);
-        if (distance > reach) continue;
+        const Vector3 delta  = object->transform.worldPosition - origin;
+        const float   radius = std::max(part->hitRadius, 0.0f);
+        if (std::abs(delta.y) > std::max(executeHeight, 0.1f) + radius) continue;
+
+        Vector3 flat = delta;
+        flat.y = 0.0f;
+        if (flat.Length() - radius > reach) continue;
+
+        // WHY 選ぶのは 3 次元の近さか (2026-09-10): 届くかどうかは水平で測る
+        //     (脚の膝下は胸の高さにあり、3D で測ると立ち位置で届かなくなる) が、
+        //     «どれを斬るか» まで水平で決めると、甲板に立ったとき真下 5m の脚と
+        //     目の前のコアが同じ «0m» になる。届く的の中から一番近いものを選ぶ。
+        const float distance = delta.Length() - radius;
         if (!best || distance < bestDist) {
             best     = object;
             bestDist = distance;
@@ -408,8 +434,10 @@ inline void PlayerParryComponent::OnUpdate()
     if (!enabled) return;
     const float dt = std::max(Time::deltaTime, 0.0f);
 
-    if (!cutscene::HoldsPlayer(Time::unscaledTime)
-        && input.GetActionDown(actions::kParry) && !IsBusy()) {
+    // 登攀のように数秒またぐ拘束は cutscene には乗らない (BladeComponent と同じ理由)。
+    const bool held = cutscene::HoldsPlayer(Time::unscaledTime)
+                   || (m_controller && m_controller->IsInputLocked());
+    if (!held && input.GetActionDown(actions::kParry) && !IsBusy()) {
         // 倒れている相手が届く所に居れば とどめ。居なければ弾き。
         if (!TryExecute()) BeginParry();
     }

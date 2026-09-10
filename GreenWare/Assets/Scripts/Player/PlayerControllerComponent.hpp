@@ -289,6 +289,43 @@ public:
         if (flat.LengthSq() > EPSILON) m_requestedFacing = flat.Normalized();
     }
 
+    /// 座標を外から置く演出のあいだ、移動・跳躍・回避・重力の適用を止める。
+    /// RequestMoveSpeedScale と同じく、押し続けている間だけ効く。
+    ///
+    /// WHY cutscene::HoldsPlayer では足りないか: あちらが止めるのは «入力» だけで、
+    ///     重力と衝突解決はそのまま進む (「止めると演出の最中に空中で固まる」)。
+    ///     登攀は 3 秒以上かけて座標を毎フレーム置き換えるので、その間ずっと
+    ///     落下速度が積み上がり、甲板に着いた瞬間にその速度で落ちる。
+    ///     向きだけは残す ── 登っている向きを掛ける側が決められなくなる。
+    ///
+    /// `lockInput` を立てると刀の入力 (斬撃・弾き・とどめ) まで止まる。
+    /// cutscene の申告は «最後に書いた人が勝つ» 一枚で、ボスのカメラ演出が毎フレーム
+    /// holdPlayer=false を置き直している。数秒またぐ拘束をそこへ相乗りさせると
+    /// 演出の順番次第で途中から外れるので、押し続ける形の錠をこちらに持つ。
+    void RequestSuspend(bool lockInput = false)
+    {
+        m_requestedSuspend = true;
+        m_requestedInputLock = m_requestedInputLock || lockInput;
+    }
+
+    /// 拘束中の体をこの角度だけ倒す。pitch は前へ、roll は右へ (どちらも度)。
+    /// RequestFacing と同じく押し続けている間だけ効く。
+    ///
+    /// WHY 向き (RequestFacing) と分けるか: 向きは «どこを向くか» で、これは
+    ///     «どう構えるか»。壁を登る体は、脚へ正対したまま斜面へ倒れ込んでいる ──
+    ///     1 つの要求にまとめると、倒す角度を変えるたびに向きが回ってしまう。
+    ///
+    /// WHY 拘束中だけ効かせるか: 普段の姿勢は接地・移動・回避が奪い合っていて、
+    ///     そこへ外からの傾けを足すと «誰が体を倒したのか» が追えなくなる。
+    ///     座標ごと外から置かれている間 (登攀) は、体の姿勢も置く側の持ち物。
+    void RequestLean(float pitchDegrees, float rollDegrees)
+    {
+        m_requestedLeanPitch = pitchDegrees;
+        m_requestedLeanRoll  = rollDegrees;
+    }
+    [[nodiscard]] bool IsSuspended()   const { return m_suspended; }
+    [[nodiscard]] bool IsInputLocked() const { return m_inputLocked; }
+
     // 見た目の正面を +Z とする回転。transform.worldRotation はモデルのヨーオフセットを
     // 含むため、そのまま使うと「敵が正面に居るのに腕が真後ろを向く」になる。
     // 公開しているのは、狙いの向きを扱う他のモジュールが同じヨーオフセットを
@@ -394,6 +431,19 @@ private:
     // 振っている間だけ «刃の向き» が体の向きになる。長さ 0 は «要求なし»。
     Vector3 m_facing          = Vector3::ZERO;
     Vector3 m_requestedFacing = Vector3::ZERO;
+    // 拘束中の «構え»。前傾と横倒しを度で持つ。要求が来なくなれば 0 へ戻る。
+    float   m_leanPitch          = 0.0f;
+    float   m_leanRoll           = 0.0f;
+    float   m_requestedLeanPitch = 0.0f;
+    float   m_requestedLeanRoll  = 0.0f;
+    // 座標を外から置かれている間。移動速度の倍率と同じ «押し続けている間だけ» の要求。
+    bool    m_suspended          = false;
+    bool    m_requestedSuspend   = false;
+    // 刀の入力まで止めているか。剣と弾きがここを読む。
+    bool    m_inputLocked        = false;
+    bool    m_requestedInputLock = false;
+    /// 剛体を静的にしたか。掛けた側と戻す側を 1 つの旗で対にする。
+    bool    m_suspendApplied     = false;
     bool    m_jumpRequested = false;
     bool    m_dodgeRequested = false;
     /// 預かっている回避入力の残り [秒]。0 より大きい間は «押されている» として扱う。
@@ -448,6 +498,12 @@ inline void PlayerControllerComponent::OnStart()
     m_yawRateDegrees    = 0.0f;
     m_facing            = Vector3::ZERO;
     m_requestedFacing   = Vector3::ZERO;
+    m_suspended          = false;
+    m_requestedSuspend   = false;
+    m_inputLocked        = false;
+    m_requestedInputLock = false;
+    // Play をまたぐと剛体は作り直されるので、静的の «掛けた» 記録も捨てる。
+    m_suspendApplied     = false;
 
     // 足音・回避音の出どころ。プレイヤー本人なので減衰を掛けずに 2D で鳴らす。
     se::EnsureSource(scene);
@@ -468,6 +524,14 @@ inline void PlayerControllerComponent::OnUpdate()
     m_requestedMoveScale = 1.0f;
     m_facing          = m_requestedFacing;
     m_requestedFacing = Vector3::ZERO;
+    m_leanPitch          = m_requestedLeanPitch;
+    m_leanRoll           = m_requestedLeanRoll;
+    m_requestedLeanPitch = 0.0f;
+    m_requestedLeanRoll  = 0.0f;
+    m_suspended          = m_requestedSuspend;
+    m_requestedSuspend   = false;
+    m_inputLocked        = m_requestedInputLock;
+    m_requestedInputLock = false;
 
     // 転がりの尺を回避の尺へ合わせるのに要る値。Inspector で回避を詰めている最中に
     // 見えていないと «直す先がある» ことに気付けない (フィールドの WHY を参照)。
@@ -480,7 +544,7 @@ inline void PlayerControllerComponent::OnUpdate()
     // アクション層が済ませているので、斜めに倒したときの実効感度が方向で変わらない。
     // カメラ演出 (登場・撃破・とどめ) のあいだは入力を受けない。物理と重力は
     // そのまま進める ─ 止めると演出の最中に空中で固まる。
-    const bool held = cutscene::HoldsPlayer(Time::unscaledTime);
+    const bool held = m_suspended || cutscene::HoldsPlayer(Time::unscaledTime);
     const Vector2 axis = held ? Vector2{ 0.0f, 0.0f } : input.GetMoveAxis();
     // WHY 倒し量を残すか: 正規化だけしてしまうと、スティックを半分倒しても
     //     全力疾走になり、パッドでの歩き / 走りの作り分けが消える。
@@ -765,6 +829,82 @@ inline void PlayerControllerComponent::OnFixedUpdate()
 
     RigidBody& phy = *rb->rigidBody;
     const float dt = std::max(Time::fixedDeltaTime, 0.0f);
+
+    // 座標を外から置かれている間 (登攀)。速度を毎ステップ 0 に落として重力も切る。
+    //
+    // WHY 速度を «0 にし続ける» 必要があるか: テレポート扱いの位置書き込みは
+    //     PhysicsSystem が受け付けるが、速度は誰も触らない。切らずに置くと落下速度が
+    //     登っている 3 秒ぶん積み上がり、操作を返した瞬間にその速さで甲板から落ちる。
+    if (m_suspended) {
+        // WHY 静的にするか: 剛体は物理世界に残ったままなので、脚や胴の当たりへ
+        //     座標を置くたびにソルバーが押し戻す。静的な剛体は積分も衝突解決も
+        //     飛ばされる (RigidBody::m_isStatic) ので、置いた座標がそのまま残る。
+        if (!m_suspendApplied) {
+            m_suspendApplied = true;
+            physics.SetStatic(true);
+        }
+        phy.SetVelocity(Vector3::ZERO);
+        phy.SetAngularVelocity(Vector3::ZERO);
+        physics.SetGravityScale(0.0f);
+        // 接地の «モード» は変えない (ForceGrounded は Automatic へ戻すまで latch する)。
+        // Tick を回していない間はこの値がそのまま残るので、旗を直に立てれば足りる。
+        cc->isGrounded  = true;
+        cc->verticalSpeed = 0.0f;
+        // 向きだけは掛ける側 (登攀) が決められるよう残す。脚へ正対しないと、
+        // 横を向いたまま経路を滑り上がる絵になる。
+        if (m_facing.LengthSq() > EPSILON) {
+            Quaternion targetRotation =
+                (Quaternion::LookRotation(m_facing) *
+                 Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
+
+            // 傾けは «世界の軸» で外から掛ける。向いている先へ倒す軸は Cross(UP, facing)
+            // ── 前後左右のどちらへ倒すかを、ヨーオフセットの有無に関わらず同じ式で書ける
+            //    (BossCollapsePostureComponent の傾けと同じ規則)。
+            if (std::abs(m_leanPitch) > EPSILON || std::abs(m_leanRoll) > EPSILON) {
+                const Vector3 right = Vector3::Cross(Vector3::UP, m_facing).NormalizedOr(Vector3::ZERO);
+                if (right.LengthSq() > EPSILON) {
+                    targetRotation = (Quaternion::FromAxisAngle(right, ToRad(m_leanPitch)) *
+                                      Quaternion::FromAxisAngle(Vector3::Cross(Vector3::UP, right),
+                                                                ToRad(m_leanRoll)) *
+                                      targetRotation).Normalized();
+                }
+            }
+
+            // WHY 剛体ではなく Transform へ書くか (2026-09-10):
+            //   静的な剛体の姿勢は «毎ステップ Transform から上書きされる»
+            //   (PhysicsSystem::SyncRigidBodies は IsStatic() を無条件の
+            //   テレポート扱いにする)。ここで phy.SetRotation() を呼んでも、
+            //   同じフレームのうちに古い Transform の値で塗り直され、
+            //   ステップ後の書き戻しでその古い値が Transform へ返る ──
+            //   **向きも傾きも 1 度も変わらない**。座標を Place() で
+            //   Transform へ書いているのと同じ理由で、姿勢も Transform が正本。
+            //
+            //   ワールド値も一緒に書くのは、この固定ステップが PrePhysics
+            //   (local → world の組み直し) より後に走るため。ローカルだけ書くと、
+            //   同じフレームの同期には «組み直す前の world» が渡る。
+            GameObject* self = scene.Self();
+            const Quaternion current = self ? self->transform.worldRotation : phy.GetRotation();
+            const Quaternion next = Quaternion::Slerp(
+                current, targetRotation,
+                1.0f - std::exp(-std::max(TurnSpeed(), 0.0f) * 3.0f * dt)).Normalized();
+            if (self) {
+                // プレイヤーはシーンのルートなので local = world。
+                self->transform.rotation      = next;
+                self->transform.worldRotation = next;
+            }
+            phy.SetRotation(next);
+        }
+        return;
+    }
+
+    // 拘束が解けた。静的と重力は必ず戻す ─ 戻し忘れると «立ったまま動かない
+    // プレイヤー» になり、原因が操作にも物理にも見えない止まり方をする。
+    if (m_suspendApplied) {
+        m_suspendApplied = false;
+        physics.SetStatic(false);
+        physics.SetGravityScale(1.0f);
+    }
+
     cc->Tick(&phy, dt);
 
     const bool jumpRequested = m_jumpRequested;

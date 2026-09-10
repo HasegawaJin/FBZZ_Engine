@@ -1,6 +1,6 @@
 # 弾いて崩す — 見切りと弾きの近接ボス戦
 
-> 親: [企画書](企画書.md) ／ 関連: [ボス](boss.md) [ボス2](boss-serpent.md) [二刀](blades.md) [操作](camera-controls.md)
+> 親: [企画書](企画書.md) ／ 関連: [ボス](boss.md) [部位破壊と増悪](part-break.md) [ボス2](boss-serpent.md) [二刀](blades.md) [操作](camera-controls.md)
 > 実装: `Scripts/Player/PlayerParryComponent.hpp` `Scripts/Combat/BossBreakComponent.hpp`
 > 2026-09-04 に極性の色合わせを捨て、この形へ移った。**本作の中核。**
 
@@ -67,7 +67,7 @@
 
 | ボス | 弾ける（右クリック / LB） | 跳ぶ | 回避・走る |
 |---|---|---|---|
-| ポラリティ・コア | 踏みつけ／突進の激突 | 衝撃波の輪 | ビーム／扇／磁力パルス／着地の直撃 |
+| ポラリティ・コア | 踏みつけ／突進の激突／**飛んでくる装甲板** | 衝撃波の輪 | ビーム／扇／磁力パルス／着地の直撃／**破断面の放電** |
 | サーペント | 噛みつき（Lunge）／薙ぎ（Sweep）／槍 | 突き上げ／叩きつけ | 柱／走り抜け／締め上げ |
 
 弾かれたボスの反応:
@@ -108,7 +108,9 @@
 倒れたボスの部位（脚の膝下 / 蛇の節）から 3.4m 以内で **Q を押す**か**攻撃ボタンを押す**と、
 `Katana_Iai`（1.5 倍速、斬り下ろし 0.58 秒）で とどめ。
 
-- **コア:** その脚がもげる（既存の欠損 → 2 本で据え付け化 → 落とすたびに転倒し、登攀の窓が開く）。
+- **コア:** その脚がもげる（1 本ごとにテンポが上がり → 2 本で据え付け化 → 4 本で決着）。
+  同時に**装甲板が 1 枚剥がれて床に残り**、以後の磁力パルスがそれを吸い上げて撃ってくる。
+  もいだ脚の破断面は、次の転倒から**周期で放電する** ── 詳細は [部位破壊と増悪](part-break.md)。
 - **サーペント:** 斬った節から尾側へ 4 節が飛ぶ。28 → 6 節で決着。
 - 入った瞬間にボスは起きる。1 回の転倒で 1 本。
 
@@ -129,7 +131,7 @@
 | 弾きと とどめ | `Player/PlayerParryComponent.hpp`（PlayerComponent の内部モジュール） |
 | 崩しゲージ | `Combat/BossBreakComponent.hpp`。ボスに 1 つ。`onBreak` をボス AI が結ぶ |
 | ボスの問い合わせ口 | `IBoss::IsToppled / OnParried / Execute / PartsRemaining` |
-| コアの反応 | `BossAiComponent::OnParried / EndTopple`、`BossRigComponent::ExecuteLeg` |
+| コアの反応 | `BossAiComponent::OnParried / EndTopple`、`BossRigComponent::ExecutePart` |
 | 蛇の反応 | `SerpentAiComponent::OnParried / Topple / Execute`、`SerpentBodyComponent::Sever` |
 | 弾きの絵 | `Assets/VFX/Game/FX_PLR_Parry.vfx` (Just は `FX_PLR_ParryJust.vfx`) + `Vfx/ParryVfxComponent.hpp`、`VfxManagerComponent::PlayParry` |
 | とどめの絵 | `Assets/VFX/Game/FX_BOSS_Execute.vfx` + `Vfx/ExecuteVfxComponent.hpp`、`VfxManagerComponent::PlayExecute`。もげた脚は `Combat/BossLegDebrisComponent.hpp`（[boss.md](boss.md#もげた脚はどこへ行くか部位破壊--2026-09-07)） |

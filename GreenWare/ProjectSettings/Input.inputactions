@@ -117,7 +117,7 @@ bindings = [
 [[action]]
 name = "Climb"
 bindings = [
-    { source = "Key", code = 70 },                        # F
+    { source = "Key", code = 69 },                        # E
     { source = "GamepadButton", button = "Y" },
 ]
 

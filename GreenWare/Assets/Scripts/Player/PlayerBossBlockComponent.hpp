@@ -3,11 +3,25 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
 ///
-/// WHY 物理のコライダーでやらないか:
+/// **2026-09-10: これが正本に戻った。**一度は物理のコライダー
+///   (`BossHitboxRigComponent::solidLegs`) へ移したが、成立の条件が
+///   `ProjectSettings.toml` の衝突行列という**別ファイル**にあり、そのファイルは
+///   エディタが開いていると古い設定で上書き保存されて消える。消えた瞬間の壊れ方が
+///   «ボスが吹き飛ぶ» で、しかも原因が «AI が歩かせている» ようにしか見えない。
+///   **一番重い壊れ方を、消えうる設定に賭けさせない。**
+///   物理の方は残してあるが既定 off で、行列を確かめてから入れる物にした。
+///
+/// **背に乗るのはここではない** (2026-09-10 深夜)。足場は `BossHitboxRigComponent` が
+///   背に置く本物の当たり (`HB_Deck`) が持つ。あちらは `attachToParentBody` で
+///   ボス本体の剛体へ属していて、同じ剛体のコライダー同士は当たらないので
+///   自己衝突しない。こちらの `standOnBack` は «剛体を持たない体» 用の予備で既定 off
+///   ── 両方を有効にすると同じフレームで 2 回持ち上げて震える。
+///
+/// WHY 当時は物理のコライダーでやらなかったか:
 ///   最初はボスの当たり (BossHitboxRigComponent) を isTrigger=false にして塞いだが、
-///   **ボスが吹き飛んだ。**このエンジンには衝突レイヤーのマトリクスが無く
-///   (ProjectSettings の [layers] はタグで、コライダー側に layerMask が無い)、
-///   ボス配下に置いた solid はボス自身の胴カプセルと RigidBody (mass 400) に必ず当たる。
+///   **ボスが吹き飛んだ。**衝突レイヤーの行列が物理へ渡っておらず
+///   (受け口 World::Step(layerFilter) はあったが誰も渡していなかった)、
+///   ボス配下に置いた solid はボス自身の胴カプセルと RigidBody (mass 400) に必ず当たった。
 ///   しかもボーンは毎フレーム «瞬間移動» するので、めり込み解決が巨大な力になる。
 ///
 /// WHY プレイヤーを押す側に置くか:
@@ -50,9 +64,29 @@ public:
                  "1 フレームで飛ぶとカメラが追従しきれないため")
     FBZZ_FIELD_RANGE(float, skin, 0.02f, "余白", 0.0f, 0.5f)
 
+    FBZZ_GROUP("背に乗る")
+    // WHY 既定を off にしたか (2026-09-10): 足場は BossHitboxRigComponent が背に置く
+    //     本物の当たり (HB_Deck) が持つようになった。あちらはボス本体の剛体へ
+    //     属しているので自己衝突しない。こちらは «剛体を持たない体» 用の予備で、
+    //     両方を有効にすると同じフレームで 2 回持ち上げて震える。
+    FBZZ_FIELD(bool, standOnBack, false, "背に乗れる (物理の足場が無いとき用)")
+    FBZZ_TOOLTIP("座標で持ち上げる予備の足場。BossHitboxRig の «甲板の足場» が "
+                 "on なら要らない。両方 on にすると震える")
+    FBZZ_FIELD(std::string, deckAnchorBone, "Body", "基準の骨")
+    FBZZ_TOOLTIP("PlayerClimbComponent の «基準の骨» と必ず同じにする")
+    FBZZ_FIELD_RANGE(float, deckRise, 1.33f, "甲板の高さ", 0.0f, 6.0f)
+    FBZZ_TOOLTIP("基準の骨から足場の面までの高さ [m]。"
+                 "PlayerClimbComponent の同名の値と揃える")
+    FBZZ_FIELD_RANGE(float, deckRadius, 1.60f, "甲板の広さ", 0.2f, 5.0f)
+    FBZZ_TOOLTIP("面の半径 [m]。この外へ出ると乗らなくなって落ちる")
+    FBZZ_FIELD_RANGE(float, deckGrip, 1.20f, "拾い上げる深さ", 0.05f, 4.0f)
+    FBZZ_TOOLTIP("面より下この距離までなら «乗っている» として持ち上げる。"
+                 "浅いと登り着いた直後にすり抜け、深いと甲羅の中から吸い上がる")
+
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD(bool, drawShapes, false, "形を描く")
     FBZZ_FIELD_READ_ONLY(int, debugBlocked, 0, "押し出した本数")
+    FBZZ_FIELD_READ_ONLY(bool, debugOnBack, false, "背に乗っている")
 
     void OnStart()  override;
     void OnUpdate() override;
@@ -72,6 +106,21 @@ private:
     [[nodiscard]] static Vector3 ClosestOnSegment(const Vector3& a, const Vector3& b,
                                                   const Vector3& p);
     void CollectLimbs(GameObject& boss);
+    /// 背の «面» に乗せる。乗せたら true。
+    ///
+    /// WHY 面を «円 + 深さ» で書くか: 甲板は骨から測った点で、そこに形は無い。
+    ///     箱を置くと物理の当たりが要り、それはボス自身を押す危険に戻る。
+    ///     «この円の中で、面より少し下に居るなら面へ上げる» だけなら、
+    ///     動くのは必ずプレイヤーだけになる。
+    bool HoldOnBack(GameObject& boss);
+    /// プレイヤーをこのワールド座標へ置く。
+    ///
+    /// WHY ローカルまで書くか: スクリプトの次に走る TransformSystem (PrePhysics) が
+    ///     ルートから «ローカル値でワールドを組み直す» ので、ワールドだけ書いた 1 行は
+    ///     物理へ渡る前に捨てられる ── 押し出しも «面へ上げる» も黙って効かなくなる
+    ///     (PlayerClimbComponent::Place と同じ理由)。プレイヤーはルートなので
+    ///     local = world。
+    void Place(const Vector3& world);
 
     EntityRef          m_boss;
     std::vector<Limb>  m_limbs;
@@ -88,6 +137,12 @@ inline void PlayerBossBlockComponent::OnStart()
     m_limbs.clear();
     m_probeCooldown = 0.0f;
     debugBlocked = 0;
+}
+
+inline void PlayerBossBlockComponent::Place(const Vector3& world)
+{
+    transform.position      = world;
+    transform.worldPosition = world;
 }
 
 inline GameObject* PlayerBossBlockComponent::Boss() const
@@ -143,19 +198,61 @@ inline void PlayerBossBlockComponent::CollectLimbs(GameObject& boss)
                             std::max(bodyRadius, 0.01f) });
 }
 
+inline bool PlayerBossBlockComponent::HoldOnBack(GameObject& boss)
+{
+    if (!standOnBack) return false;
+    GameObject* anchor = FindInSubtree(boss, deckAnchorBone);
+    if (!anchor) return false;
+
+    const Vector3 up      = boss.transform.up;
+    const Vector3 surface = anchor->transform.worldPosition + up * std::max(deckRise, 0.0f);
+
+    Vector3 offset = transform.worldPosition - surface;
+    // 面からの «高さ» と «横のずれ» に分ける。転倒で背が傾いても面に沿う。
+    const float height = Vector3::Dot(offset, up);
+    Vector3     flat   = offset - up * height;
+    if (flat.Length() > std::max(deckRadius, 0.05f)) return false;
+
+    // 面より上に居るなら何もしない ─ 落ちてくる途中を掴むと «空中で止まる» になる。
+    // 下に居ても deckGrip より深ければ、甲羅の «中» なので拾わない。
+    if (height > 0.0f || height < -std::max(deckGrip, 0.05f)) return false;
+
+    Place(transform.worldPosition - up * height);
+
+    // 面に乗せたのに落下速度が残っていると、次のステップでまた沈んで «震える»。
+    if (auto* rb = scene.GetComponent<RigidBodyComponent>();
+        rb && rb->enabled && rb->rigidBody) {
+        Vector3 velocity = rb->rigidBody->GetVelocity();
+        const float into = Vector3::Dot(velocity, up);
+        if (into < 0.0f) rb->rigidBody->SetVelocity(velocity - up * into);
+    }
+    return true;
+}
+
 inline void PlayerBossBlockComponent::OnUpdate()
 {
     debugBlocked = 0;
+    debugOnBack  = false;
 
     GameObject* boss = Boss();
     if (!boss) { m_limbs.clear(); return; }
     m_boss = EntityRef{ boss->GetID() };
 
-    // 登っている / 背に乗っている間は押し出さない。
+    const auto* climb = scene.GetScript<PlayerClimbComponent>();
+
+    // 登っている間は押し出さない。
     // WHY 切るか: 登攀は経路の上へ座標を置く手で、そこへ «脚から離れろ» を足すと
     //     脚の表面を這うはずのプレイヤーが毎フレーム外へ弾かれる。
-    if (const auto* climb = scene.GetScript<PlayerClimbComponent>())
-        if (climb->IsClimbing() || climb->IsOnDeck()) { m_limbs.clear(); return; }
+    if (climb && climb->IsClimbing()) { m_limbs.clear(); return; }
+
+    // 背に乗っている間は «乗せる» だけ。脚の押し出しは掛けない ── 甲板の真下に
+    // 脚があるので、掛けると立っているだけで横へ滑り出す。
+    if (climb && climb->IsOnDeck()) {
+        m_limbs.clear();
+        debugOnBack = HoldOnBack(*boss);
+        return;
+    }
+    debugOnBack = HoldOnBack(*boss);
 
     // 骨の «探索» は高いが、位置を読むのは安い。探し直しは間隔を空ける。
     m_probeCooldown -= std::max(Time::deltaTime, 0.0f);
@@ -198,7 +295,7 @@ inline void PlayerBossBlockComponent::OnUpdate()
         ++debugBlocked;
     }
 
-    if (debugBlocked > 0) transform.worldPosition = pos;
+    if (debugBlocked > 0) Place(pos);
 }
 
 inline void PlayerBossBlockComponent::OnDrawGizmos()
