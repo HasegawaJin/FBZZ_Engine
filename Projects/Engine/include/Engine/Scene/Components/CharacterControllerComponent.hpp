@@ -75,25 +75,50 @@ struct CharacterControllerComponent {
 
     void Reflect(IReflector& r)
     {
-        r.Field("Enabled", enabled);
+        // WHY BeginField で «保存キー» と «表示名» を分けるか:
+        //   以前は r.Field("Jump Min Air Time", ...) のように表示名をそのまま保存キーに
+        //   していた。.scene は jumpMinAirTime で書かれているので、Reflect を通る経路
+        //   (AI バス・汎用 Inspector・スナップショット) だけが別のキーを見ることになり、
+        //   同じ 1 つの値が経路によって «あるのに無い» ように振る舞っていた。
+        //   保存キーはフィールド名に揃え、読みやすい名前は表示側だけに置く。
+        r.BeginField("enabled", "Enabled");
+        r.Field("enabled", enabled);
+        r.EndField();
         {
             static constexpr const char* kGroundingModeLabels[] = {
                 "Automatic", "Forced Grounded", "Forced Airborne"
             };
             int mode = static_cast<int>(groundingMode);
+            r.BeginField("groundingMode", "Grounding Mode");
             r.Enum("Grounding Mode", mode, kGroundingModeLabels);
+            r.EndField();
             mode = std::clamp(mode, 0, 2);
             groundingMode = static_cast<CharacterGroundingMode>(mode);
         }
-        r.Field("Jump Min Air Time",        jumpMinAirTime);
-        r.Field("Fall Vel Threshold",       fallVelThreshold);
-        r.Field("Ground Vel Threshold",     groundVelThreshold);
-        r.Field("Ledge Fall Threshold",     ledgeFallThreshold);
-        r.Field("Min Ground Normal Y",      minGroundNormalY);
-        r.Field("Ground Contact Grace",     groundContactGrace);
-        r.Field("Jump Ground Ignore Time",  jumpGroundIgnoreTime);
-        r.Field("Grounded Vel Snap",        groundedVelSnap);
-        r.Field("Intentional Jump MaxTime", intentionalJumpMaxTime);
+
+        // 保存キー / 表示名 / 値 の 3 つ組。並べて書くと «キーだけ直し忘れる» が起きにくい。
+        const auto tuned = [&r](const char* key, const char* display, float& value) {
+            r.BeginField(key, display);
+            r.Field(display, value);
+            r.EndField();
+        };
+        tuned("jumpMinAirTime",         "Jump Min Air Time",        jumpMinAirTime);
+        tuned("fallVelThreshold",       "Fall Vel Threshold",       fallVelThreshold);
+        tuned("groundVelThreshold",     "Ground Vel Threshold",     groundVelThreshold);
+        tuned("ledgeFallThreshold",     "Ledge Fall Threshold",     ledgeFallThreshold);
+        tuned("minGroundNormalY",       "Min Ground Normal Y",      minGroundNormalY);
+        tuned("groundContactGrace",     "Ground Contact Grace",     groundContactGrace);
+        tuned("jumpGroundIgnoreTime",   "Jump Ground Ignore Time",  jumpGroundIgnoreTime);
+        tuned("groundedVelSnap",        "Grounded Vel Snap",        groundedVelSnap);
+        tuned("intentionalJumpMaxTime", "Intentional Jump MaxTime", intentionalJumpMaxTime);
+
+        // 接地は実行時の状態だが .scene に保存されていた。読む側が既定 true なので
+        // 落としても実害は無いが、«保存されていたものが黙って消える» を避けて残す。
+        // Inspector には出さない (触れる値ではない)。
+        r.BeginField("isGrounded", "Is Grounded");
+        r.SetFieldHidden(true);
+        r.Field("isGrounded", isGrounded);
+        r.EndField();
     }
 
     // ── Script から呼ぶ API ───────────────────────────────────────────────────

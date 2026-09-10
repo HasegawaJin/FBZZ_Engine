@@ -20,6 +20,7 @@
 #include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <memory>
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -108,6 +109,19 @@ struct ColliderComponent {
         r.Field("staticFriction", material.staticFriction);
         r.Field("dynamicFriction", material.dynamicFriction);
         r.Field("density", material.density);
+        // 合成規則。.scene には保存されていたのに Reflect に無く、AI バスと汎用
+        // Inspector からだけ見えない状態だった («跳ね返りが噛み合わない» の原因を
+        // 外から確かめられない)。
+        int restitutionCombineValue = static_cast<int>(material.restitutionCombine);
+        r.Field("restitutionCombine", restitutionCombineValue);
+        // Average / GeometricMean / Minimum / Multiply / Maximum の 5 種。
+        constexpr int kCombineMax = static_cast<int>(physics::PhysicsMaterialCombine::Maximum);
+        material.restitutionCombine = static_cast<physics::PhysicsMaterialCombine>(
+            std::clamp(restitutionCombineValue, 0, kCombineMax));
+        int frictionCombineValue = static_cast<int>(material.frictionCombine);
+        r.Field("frictionCombine", frictionCombineValue);
+        material.frictionCombine = static_cast<physics::PhysicsMaterialCombine>(
+            std::clamp(frictionCombineValue, 0, kCombineMax));
     }
 
     // Script / Editor から共通で使う安全なランタイム更新 API。

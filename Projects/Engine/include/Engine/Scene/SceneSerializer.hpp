@@ -42,6 +42,19 @@ public:
     // 設計書と異なり Scene&。GetComponent が const 未対応のため
     static bool Save(Scene& scene, const std::string& path);
 
+    // Scene を TOML テキストへ直列化する。失敗時は空文字。
+    //
+    // WHY 分けるか: 直列化したテキストだけが欲しい場面 (変更検知のハッシュ、
+    //     プレハブの切り出し、差分表示) でファイルを経由すると、書き込み先の
+    //     用意が要るうえ、失敗が «空文字» として返って «中身が空» と区別できない。
+    //     読み込み側には既に LoadDataFromText があるので、それと対にする。
+    //
+    // scenePath は «シーンをどこへ置くか»。Terrain は .terrain と .mat の実体を
+    // シーンの隣へ書き出す副作用を持つため、その基準に要る (参照だけ保存すると
+    // 実体が古いまま残り、再起動後に白地形になる)。
+    // 省略 (空) すると副作用を起こさず、純粋にテキストだけを返す。
+    static std::string SaveToText(Scene& scene, const std::string& scenePath = {});
+
     // .fbzz ファイルから Scene を復元する
     //
     // resources == nullptr で「データだけ復元する」。詳細は LoadData を参照。
