@@ -196,32 +196,22 @@ void BuildTrailVertices(
     if (points.size() < 2)
         return;
 
-    std::vector<math::Vector3> normals(points.size(), math::Vector3::RIGHT);
-    for (size_t i = 0; i < points.size(); ++i) {
-        math::Vector3 nLeft = math::Vector3::RIGHT;
-        math::Vector3 nRight = math::Vector3::RIGHT;
-        bool hasLeft = false;
-        bool hasRight = false;
+    // 各点の幅方向。マイター接合そのものは粒子リボンと共通で、Trail だけが
+    // alignment (View / Local / Velocity) で幅方向の決め方を変える。
+    //
+    // NOTE: 長さ 0 の線分の扱いが変わった。以前は FORWARD へ倒して «向きがある» ものと
+    //       して扱っていたが、共通版では寄与しない。重なった点は minVertexDist で
+    //       間引かれるので実データでは出ないが、出れば «前後の向きだけで決まる» 側になる。
+    std::vector<math::Vector3> positions;
+    positions.reserve(points.size());
+    for (const TrailPoint& point : points) positions.push_back(point.position);
 
-        if (i > 0) {
-            const math::Vector3 dir = SafeNormalize(points[i].position - points[i - 1u].position, math::Vector3::FORWARD);
-            nLeft = ComputeRibbonNormal(dir, trail.alignment, cameraPos, points[i].position);
-            hasLeft = true;
-        }
-        if (i + 1u < points.size()) {
-            const math::Vector3 dir = SafeNormalize(points[i + 1u].position - points[i].position, math::Vector3::FORWARD);
-            nRight = ComputeRibbonNormal(dir, trail.alignment, cameraPos, points[i].position);
-            hasRight = true;
-        }
-
-        if (hasLeft && hasRight) {
-            math::Vector3 miter = SafeNormalize(nLeft + nRight, nRight);
-            const float cosHalfAngle = (std::max)(math::Vector3::Dot(miter, nLeft), 0.5f);
-            normals[i] = miter * (1.0f / cosHalfAngle);
-        } else {
-            normals[i] = hasRight ? nRight : nLeft;
-        }
-    }
+    std::vector<math::Vector3> normals;
+    BuildRibbonMiterNormals(positions,
+        [&](const math::Vector3& direction, const math::Vector3& point) {
+            return ComputeRibbonNormal(direction, trail.alignment, cameraPos, point);
+        },
+        normals);
 
     const float duration = (std::max)(trail.duration, math::EPSILON);
     const float birthTime = currentTime - duration;
