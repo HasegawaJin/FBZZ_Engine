@@ -76,7 +76,13 @@ struct VFXCameraShake {
     }
 };
 
-// ヒットストップ。VFXGraphSystem が集計して Time::timeScale へ書き込む。
+// ヒットストップ。VFXSystem が集計して **Time::vfxTimeScale** へ書き込む。
+//
+// WHY ゲームの timeScale と別枠か: あちらの書き手はゲーム側 (スクリプト /
+//     Inspector) で、こちらの集計は Phase::LateScript ── スクリプトより後 ──
+//     で走る。同じ変数を使うと、.vfx を 1 つ足しただけでゲーム側の止めや
+//     スローを踏み潰す。2 本は Time::Tick が掛け合わせるので、
+//     «両方効く» が既定になる (Time.hpp の WHY)。
 struct VFXTimeScale {
     bool enabled = true;
     float weight = 0.0f;      // 0..1 のブレンド量

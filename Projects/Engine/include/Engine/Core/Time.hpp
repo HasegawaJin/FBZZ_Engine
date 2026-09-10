@@ -34,7 +34,24 @@ struct FBZZ_ENGINE_API Time {
 
     // ── 設定 (読み書き可) ────────────────────────────────────────────────
     // 0=停止, 0.5=スローモーション, 1=通常, 2=2倍速
+    //
+    // ここは «ゲームと Editor の» 時間倍率。書き手はゲーム側の時間管理
+    // (スクリプト / Inspector) だけで、エンジンのシステムはここを書かない。
     static float timeScale;
+    // .vfx の VFXTimeScale (ヒットストップ) が要求する倍率。書き手は VFXSystem だけ。
+    //
+    // WHY timeScale と分けるか (2026-09-11):
+    //   以前は VFXSystem が同じ `timeScale` へ直接書いていた。あちらは
+    //   `Phase::LateScript` ── スクリプトより **後** ── で走るので、同じフレームに
+    //   ゲームが決めたヒットストップやスローを丸ごと踏み潰す。しかも要求が消えた
+    //   最初のフレームには 1.0 を書き戻すので、そこでもゲーム側の止めが 1 フレーム
+    //   消える。「.vfx を 1 つ足したら別の機能が壊れる」という、原因が絵から
+    //   読めない壊れ方になっていた。
+    //
+    //   1 つの値に書き手が 2 つある限り、順番を入れ替えても «どちらかが負ける» が
+    //   残る。入力を 2 本に割って掛け合わせれば、どちらも他方を知らずに済み、
+    //   後始末 (1.0 へ戻す) も自分の枠の中で完結する。
+    static float vfxTimeScale;
     // 0=無制限, 正値=FPS 上限 (最低 30 FPS にクランプ)
     static int   targetFps;
 
@@ -47,6 +64,12 @@ struct FBZZ_ENGINE_API Time {
     //      ScriptProxy が同じ前提で時間制御できるようにする。
     static void  SetTimeScale(float scale);
     static float GetTimeScale();
+    /// 実際に deltaTime へ掛かっている倍率 (ゲーム × VFX)。
+    ///
+    /// WHY 要るか: `GetTimeScale()` は «ゲームが決めた倍率» を返す (Inspector と
+    ///     スクリプトが読み書きするのはそれ)。«今フレームの世界がどれだけ遅いか» を
+    ///     知りたい側は 2 本の積を見なければならない。
+    [[nodiscard]] static float GetEffectiveTimeScale();
     static void  SetTargetFps(int fps);
     static int   GetTargetFps();
 

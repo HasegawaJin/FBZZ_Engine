@@ -18,6 +18,7 @@ uint64_t Time::frameCount        = 0;
 // 実際の値は固定ステップ実行時に FixedScriptSystem が毎回上書きする。
 float    Time::fixedDeltaTime    = 1.0f / 60.0f;
 float    Time::timeScale         = 1.0f;
+float    Time::vfxTimeScale      = 1.0f;
 int      Time::targetFps         = 0;
 int64_t  Time::s_lastCount       = 0;
 int64_t  Time::s_frequency       = 0;
@@ -59,7 +60,9 @@ void Time::Tick()
 
     // デバッガで止めたとき等の暴走防止: 50ms キャップ
     unscaledDeltaTime  = std::min(raw, 0.05f);
-    deltaTime          = unscaledDeltaTime * std::max(timeScale, 0.0f);
+    // 2 本の倍率を掛ける。ゲーム側 (timeScale) と VFX 側 (vfxTimeScale) は
+    // 互いを知らずに自分の枠だけを書く ─ 同じ変数を奪い合わせない (Time.hpp の WHY)。
+    deltaTime          = unscaledDeltaTime * GetEffectiveTimeScale();
     time              += deltaTime;
     unscaledTime      += unscaledDeltaTime;
     ++frameCount;
@@ -70,6 +73,14 @@ void Time::Reset()
     time         = 0.0f;
     unscaledTime = 0.0f;
     frameCount   = 0;
+    // VFX の枠だけ素へ戻す。
+    //
+    // WHY timeScale は触らないか: あちらはゲームと Editor の設定で、リセットの
+    //     たびに 1.0 へ倒すと Inspector のスロー再生が黙って解除される。
+    //     こちらはエンジンが握っている一時的な要求なので、シーンをリセットした
+    //     時点で «誰も要求していない» が正しい ── 止めたまま Play を抜けた .vfx の
+    //     要求が残って «次の Play が最初から遅い» のを防ぐ。
+    vfxTimeScale = 1.0f;
 }
 
 void Time::SetTimeScale(float scale)
@@ -80,6 +91,11 @@ void Time::SetTimeScale(float scale)
 float Time::GetTimeScale()
 {
     return timeScale;
+}
+
+float Time::GetEffectiveTimeScale()
+{
+    return std::max(timeScale, 0.0f) * std::max(vfxTimeScale, 0.0f);
 }
 
 void Time::SetTargetFps(int fps)
