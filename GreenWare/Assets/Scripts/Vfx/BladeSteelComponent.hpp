@@ -361,7 +361,7 @@ inline void BladeSteelComponent::OnUpdate()
     // 段は振っているあいだだけ読む。硬直で段が残っていても刀は冷めていくので、
     // «続いている» の絵は帯が置いた熱 (afterHeat) が持つ。
     const int   step      = swinging ? Max(m_blades->ComboStep(), 0) : 0;
-    const bool  finisher  = swinging && m_blades->IsFinisher();
+    const bool  finisher  = swinging && m_blades->IsFinisherSwing();
     const float comboHeat = static_cast<float>(step) * Max(steelComboHeat, 0.0f);
     const float comboTemp = finisher
         ? Max(steelFinisherTemperature, 0.0f)

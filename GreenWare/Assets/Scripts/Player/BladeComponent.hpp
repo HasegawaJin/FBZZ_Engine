@@ -271,6 +271,14 @@ public:
     [[nodiscard]] BladeSide ChargingSide() const { return m_holding; }
     /// 連撃の段数 (0 起点)。剣の発光や UI が読む。
     [[nodiscard]] int ComboStep() const { return m_combo; }
+    /// 今 振っている一振りが最終段か。振り出しで決まり、硬直が明けるまで変わらない。
+    ///
+    /// WHY IsFinisher() を公開しないか: あちらは «これから振る段» を見るので、
+    ///     振っている最中に呼ぶと、判定が出て段 (m_combo) が進んだ瞬間に答えが
+    ///     入れ替わる ── 刀の熱や軌跡のような «この一振りの» 絵がそこで裏返る。
+    ///     外から読みたいのは常に «今の一振り» の方なので、そちらだけを出す
+    ///     (BladeTrail へ渡している値と同じもの)。
+    [[nodiscard]] bool IsFinisherSwing() const { return m_swingIsFinisher; }
 
     /// ジャスト回避の報酬。seconds のあいだ、次に押した一振りが溜め無しで満溜めの
     /// 全周斬りになる。重ねて呼ぶと猶予が延びるだけで 2 回ぶんにはならない。
