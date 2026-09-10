@@ -15,6 +15,7 @@
 /// WHY (Util の配置): Utf8ToWide / PathToUtf8 / Exists / ReadText 等の文字列・パス変換は
 /// EditorLauncher と Sandbox の両方で必要なため Engine/Util に集約した。
 /// ここでは Engine の API を直接呼ぶことで実装の重複を排除している。
+#include "JobBreakaway.hpp"
 #include "StandaloneApp.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
@@ -115,6 +116,11 @@ LaunchArgs ParseArgs()
 
 int Run()
 {
+    // 起動元が「閉じたら配下ごと殺す」Job に自分を入れている場合、その外へ自分を起動し直す。
+    // WHY 最初にやるか: ウィンドウもプロジェクトも作る前なら、作り直しの副作用が無い。
+    if (RelaunchOutsideKillOnCloseJob())
+        return 0;
+
     // WHY: FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
     //      新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
     if (fbzz::core::CheckEngineFreshnessAndRelaunch())
