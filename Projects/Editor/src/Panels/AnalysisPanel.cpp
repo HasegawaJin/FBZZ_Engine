@@ -12,6 +12,7 @@
 
 #include <Engine/Core/Memory/MemorySystem.hpp>
 #include <Engine/Profiler/Profiler.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 
@@ -23,7 +24,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -1123,6 +1127,42 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
     }
 }
 
+namespace {
+
+// RenderGraph の構成テキストをプロジェクト配下へ保存する。
+//
+// WHY 上書きしないか: 使い道は «改修の前後で差分を取る» ことなので、前に撮ったものが
+//     消えると意味が無い。時刻をファイル名に入れて溜める (1 回数 KB)。
+// WHY Artifacts か: レポート類の置き場として既に coverage が使っている。git 管理外。
+bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
+{
+    const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
+    if (projectRoot.empty()) return false;
+
+    std::error_code ec;
+    const std::filesystem::path dir =
+        std::filesystem::path(projectRoot) / "Artifacts" / "RenderGraph";
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return false;
+
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_s(&local, &now);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+
+    const std::filesystem::path file = dir / ("plan-" + std::string(stamp) + ".txt");
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << text;
+    if (!out) return false;
+
+    outPath = file.string();
+    return true;
+}
+
+} // namespace
+
 void AnalysisPanel::DrawRendering(EditorContext& ctx)
 {
     const renderer::RenderDebugOverlay::Snapshot& snap =
@@ -1328,6 +1368,43 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
             ImGui::PlotLines("##renderHistory", vals.data(), static_cast<int>(vals.size()),
                              0, overlay, 0.0f, (std::max)(maxVal * 1.2f, 1.0f),
                              { -1.0f, 60.0f });
+        }
+    }
+
+    // ── RenderGraph の構成 ─────────────────────────────────────────────────
+    // 実行順・カリング・エイリアス割り当てが «いつの間にか変わっていた» を捕まえるための口。
+    // 絵を見ても分からない種類の変化なので、テキストで差分を取るしかない。
+    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Render graph plan")) {
+        if (snap.planDescription.empty()) {
+            ImGui::TextDisabled("(まだ Plan が走っていません)");
+        } else {
+            if (ImGui::Button("Copy##renderPlan")) {
+                ImGui::SetClipboardText(snap.planDescription.c_str());
+                Toast::Success("Copied the render graph plan to the clipboard");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Save##renderPlan")) {
+                std::string savedPath;
+                if (SaveRenderGraphPlan(snap.planDescription, savedPath))
+                    Toast::Success("Saved the render graph plan to " + savedPath);
+                else
+                    Toast::Error("Failed to save the render graph plan");
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "パス構成が変わったフレームだけ更新されます (計測値は含みません)。\n"
+                    "Save は <Project>/Artifacts/RenderGraph/plan-<日時>.txt へ追加保存します。\n"
+                    "改修の前後で 1 回ずつ撮って差分を見ると、実行順やエイリアスの\n"
+                    "変化だけを取り出せます。");
+            }
+
+            ImGui::BeginChild("##renderPlanText", { 0.0f, fontH * 14.0f }, true,
+                              ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::TextUnformatted(snap.planDescription.c_str());
+            ImGui::EndChild();
         }
     }
 }

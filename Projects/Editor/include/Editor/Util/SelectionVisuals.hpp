@@ -105,6 +105,64 @@ inline void DrawTileSelection(ImDrawList* dl,
                 primary ? 2.0f : 1.2f);
 }
 
+// ── アセットタイルのカード表現 (Unreal Content Browser 方式) ────────────────
+// WHY: 選択されていないタイルは今まで背景を持たず、サムネイルが宙に浮いていた。
+//      種類の判別はアイコン内のラベル文字に頼るしかなく、一覧を「眺めて」
+//      目的の種類の塊を見つけることができない。Unreal のように
+//      「カードの下端をアセット種別の色で塗る」ことで、色の帯の並びだけで
+//      どこに何があるかを読めるようにする。色は EntryColor と同じ 1 系統。
+
+inline ImU32 TileCardFill(bool hovered)
+{
+    return EditorTheme::ColorU32(ThemeColor::Canvas, hovered ? 0.85f : 0.62f);
+}
+
+// カード下地。選択ハイライトより先に描き、選択色をこの上へ重ねる。
+inline void DrawAssetTileCard(ImDrawList* dl,
+                              ImVec2 min,
+                              ImVec2 max,
+                              bool hovered,
+                              float rounding = 5.0f)
+{
+    if (!dl) return;
+    dl->AddRectFilled(min, max, TileCardFill(hovered), rounding);
+    dl->AddRect(min, max, EditorTheme::ColorU32(ThemeColor::Border, 0.45f), rounding, 0, 1.0f);
+}
+
+// 名前欄の下地に敷く、アセット種別色の淡い面。
+// WHY: 4px の帯だけだと線が宙に浮いて見える。名前欄まで薄く色を通すことで
+//      「サムネイル + 帯 + 名前」が 1 枚のカードとしてまとまる。
+// 選択ハイライトより先に描き、選択時はその上から塗り潰させる。
+inline void DrawAssetTileTypeWash(ImDrawList* dl,
+                                  ImVec2 cardMin,
+                                  ImVec2 cardMax,
+                                  float footerY,
+                                  const ImVec4& typeColor,
+                                  float rounding = 5.0f)
+{
+    if (!dl) return;
+    const ImU32 wash = ImGui::ColorConvertFloat4ToU32(
+        { typeColor.x, typeColor.y, typeColor.z, 0.18f });
+    dl->AddRectFilled({ cardMin.x, footerY }, { cardMax.x, cardMax.y }, wash,
+                      rounding, ImDrawFlags_RoundCornersBottom);
+}
+
+// サムネイル下端に敷くアセット種別の色帯 (Unreal Content Browser の識別色)。
+// stripY は帯の上辺。カードの左右いっぱいに伸ばす。
+// WHY 最後に描くか: 選択ハイライトや名前欄の下地に覆われると種別が読めなくなる。
+//     この 1 本だけは常に最前面に残し、選択中でも色で種類を判別できるようにする。
+inline void DrawAssetTileTypeStrip(ImDrawList* dl,
+                                   ImVec2 cardMin,
+                                   ImVec2 cardMax,
+                                   float stripY,
+                                   const ImVec4& typeColor,
+                                   float height = 4.0f)
+{
+    if (!dl) return;
+    dl->AddRectFilled({ cardMin.x, stripY }, { cardMax.x, stripY + height },
+                      ImGui::ColorConvertFloat4ToU32(typeColor), 0.0f);
+}
+
 // 選択タイルの名前欄を塗り、白文字で乗せるための下地。
 // WHY: サムネイルの上下でコントラストが変わるため、名前だけは常に同じ読みやすさにする。
 inline void DrawTileLabelPlate(ImDrawList* dl,
