@@ -27,6 +27,9 @@
 #include <Engine/Asset/ModelImporter.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PhysicsMaterialImporter.hpp>
+#include <Engine/Asset/ParticleCurveImporter.hpp>
+#include <Engine/Asset/VectorFieldImporter.hpp>
+#include <Engine/Asset/VelocityFieldAtlas.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
@@ -525,6 +528,8 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     RegisterImporter<IblAsset>               (std::make_unique<IblImporter>());
     RegisterImporter<PhysicsMaterialAsset>    (std::make_unique<PhysicsMaterialImporter>());
     RegisterImporter<SequenceAsset>           (std::make_unique<SequenceImporter>());
+    RegisterImporter<VectorFieldAsset>        (std::make_unique<VectorFieldImporter>());
+    RegisterImporter<ParticleCurveAsset>      (std::make_unique<ParticleCurveImporter>());
 }
 
 void AssetManager::UnloadAll()
@@ -543,6 +548,11 @@ void AssetManager::UnloadAll()
     AssetStore<IblAsset>::Get().Clear();
     AssetStore<PhysicsMaterialAsset>::Get().Clear();
     AssetStore<SequenceAsset>::Get().Clear();
+    AssetStore<VectorFieldAsset>::Get().Clear();
+    // 速度場アトラスはストアの中身から作られる。捨て忘れると、前プロジェクトの場が
+    // 新しいプロジェクトのタイル番号に化けて «知らない流れ» として効く。
+    VelocityFieldAtlas::Reset();
+    AssetStore<ParticleCurveAsset>::Get().Clear();
 
     // 旧 API キャッシュをクリア
     s_models.clear();
@@ -781,6 +791,8 @@ void AssetManager::FlushFailed()
     FlushStore<IblAsset>();
     FlushStore<PhysicsMaterialAsset>();
     FlushStore<SequenceAsset>();
+    FlushStore<VectorFieldAsset>();
+    FlushStore<ParticleCurveAsset>();
 
     for (auto it = s_models.begin(); it != s_models.end(); )
         it = it->second ? ++it : s_models.erase(it);
@@ -865,6 +877,7 @@ int AssetManager::ReloadPath(const std::string& absPath)
     reloaded += ReloadFromStore<PhysicsMaterialAsset>(target);
     reloaded += ReloadFromStore<TerrainAsset>(target);
     reloaded += ReloadFromStore<SequenceAsset>(target);
+    reloaded += ReloadFromStore<ParticleCurveAsset>(target);
 
     // 旧 API の .mat は別のスロットプールに載る。レンダラーが参照しているのは
     // こちらなので、新 API 側だけ差し替えても画面は古いままになる。

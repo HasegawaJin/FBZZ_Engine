@@ -13,6 +13,7 @@
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/SequenceAsset.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
+#include <Engine/Asset/VectorFieldAsset.hpp>
 #include <Engine/Audio/Synth.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 #include <filesystem>
@@ -256,6 +257,22 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
+    }
+    if (ImGui::MenuItem("Vector Field")) {
+        std::string newPath = m_currentPath + "/New Vector Field.vfield";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Vector Field " + std::to_string(suffix++) + ".vfield";
+        // 既定は 32³ のカールノイズ。空のグリッドを置くと «貼っても何も起きない» という
+        // 最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
+        asset::VectorFieldAsset field;
+        asset::BakeVectorField(asset::VectorFieldRecipe::Curl, 32, { 5.0f, 5.0f, 5.0f },
+                               /*seed=*/1, /*strength=*/1.0f, field);
+        if (asset::SaveVectorField(newPath, field)) {
+            NotifyAssetCreated(newPath);
+            RefreshDirectory();
+            BeginRenameForPath(newPath, &ctx);
+        }
     }
     if (ImGui::MenuItem("Post Process Profile")) {
         std::string newPath = m_currentPath + "/New Post Process Profile.fzdata";

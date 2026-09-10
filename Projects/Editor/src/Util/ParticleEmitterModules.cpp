@@ -10,6 +10,7 @@
 #include <Editor/Util/ParticleEditWidgets.hpp>
 #include <Editor/Util/ParticleMaterialFactory.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Asset/VelocityFieldAtlas.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -17,6 +18,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <iterator>
 #include <string>
 #include <unordered_map>
 
@@ -56,6 +58,144 @@ void EndModule()
     ImGui::Unindent(8.0f);
     ImGui::Spacing();
     ImGui::PopID();
+}
+
+} // namespace
+
+// 力場 1 本ぶんの編集。型によって意味のある項目だけを出す。
+// WHY 型で出し分けるか: 12 項目すべてを常に出すと、Wind に noiseFrequency が、
+//     Turbulence に direction が並ぶ。効かない値が編集できると «設定したのに変わらない» になる。
+// WHY 公開するか: 同じ設定型がシーンの ParticleForceField とエミッター内蔵の力の
+//     両方で使われる。UI が 2 本あると «片方にだけ Vector Field 欄が無い» が起きる。
+bool DrawParticleForceFieldSettings(scene::ParticleForceFieldSettings& force, EditorContext& ctx,
+                                    bool showSpace)
+{
+    using Type  = scene::ParticleForceFieldType;
+    using Space = scene::ParticleForceFieldSpace;
+
+    static const char* kTypeLabels[] = {
+        "Wind (constant)", "Attract", "Repulse", "Vortex", "Turbulence", "Drag", "Vector Field"
+    };
+    static_assert(static_cast<int>(std::size(kTypeLabels)) == scene::kParticleForceFieldTypeCount,
+                  "力の種類を足したらラベルも足すこと");
+
+    bool changed = false;
+    changed |= ImGui::Checkbox("Enabled", &force.enabled);
+
+    int typeValue = static_cast<int>(force.fieldType);
+    if (ImGui::Combo("Type", &typeValue, kTypeLabels, scene::kParticleForceFieldTypeCount)) {
+        force.fieldType = static_cast<Type>(typeValue);
+        changed = true;
+    }
+
+    const bool needsOrigin = force.fieldType == Type::Attract || force.fieldType == Type::Repulse
+                          || force.fieldType == Type::Vortex  || force.fieldType == Type::VectorField;
+    if (showSpace && needsOrigin) {
+        int spaceValue = static_cast<int>(force.space);
+        static const char* kSpaceLabels[] = { "World", "Follow Emitter" };
+        if (ImGui::Combo("Space", &spaceValue, kSpaceLabels, 2)) {
+            force.space = static_cast<Space>(spaceValue);
+            changed = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Follow Emitter = 原点と向きがエミッターに追従します。\n"
+                              "渦や吸い込みはこちら。重力や乱流は World のままにしてください。");
+    }
+
+    const char* strengthLabel = force.fieldType == Type::Drag ? "Damping [1/s]" : "Strength [m/s^2]";
+    changed |= ImGui::DragFloat(strengthLabel, &force.strength, 0.05f, -1000.0f, 1000.0f);
+
+    if (force.fieldType == Type::Wind || force.fieldType == Type::Vortex)
+        changed |= widgets::DragVec3(force.fieldType == Type::Vortex ? "Axis" : "Direction",
+                                     force.direction, 0.01f);
+
+    if (force.fieldType != Type::VectorField) {
+        changed |= ImGui::DragFloat("Radius [m]", &force.radius, 0.05f, 0.0f, 1000.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("0 = 減衰なしで全体に効きます (重力・環境風はこちら)。");
+        if (force.radius > 0.0f)
+            changed |= ImGui::DragFloat("Falloff Power", &force.falloffPower, 0.01f, 0.01f, 16.0f);
+    }
+
+    if (force.fieldType == Type::Turbulence) {
+        changed |= ImGui::DragFloat("Noise Frequency [1/m]", &force.noiseFrequency, 0.01f, 0.001f, 100.0f);
+        changed |= ImGui::DragFloat("Noise Scroll Speed", &force.noiseSpeed, 0.01f, -100.0f, 100.0f);
+    }
+
+    if (force.fieldType == Type::VectorField) {
+        changed |= widgets::AssetPathField("Field", force.vectorFieldPath, ".vfield,.fga",
+                                           ctx.projectRoot);
+        changed |= widgets::DragVec3("Extents [m]", force.vectorFieldExtents, 0.05f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("焼いた場をワールドのどの寸法へ貼るか (半径)。\n"
+                              "同じ 1 枚を «部屋いっぱいの渦» と «手のひらの渦» に使い回せます。");
+        changed |= ImGui::SliderFloat("Tightness", &force.vectorFieldTightness, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("0 = 場を加速度として足すだけ。\n"
+                              "1 に寄せるほど初速も重力も無視して流れに乗ります (レール表現)。");
+        if (force.vectorFieldPath.empty())
+            ImGui::TextDisabled("Vector Field が未設定のため、この力は何もしません。");
+        else
+            ImGui::TextDisabled("CPU / GPU どちらのシミュレーションでも効きます\n"
+                                "(常駐できる場は %u 枚まで)。",
+                                asset::VelocityFieldAtlas::kMaxTiles);
+    }
+    return changed;
+}
+
+namespace {
+
+// 内蔵の力のリスト。追加・削除を持つ。
+bool DrawLocalForceList(scene::ParticleEmitterSettings& pe, EditorContext& ctx)
+{
+    using Type = scene::ParticleForceFieldType;
+    static const char* kShortNames[] = {
+        "Wind", "Attract", "Repulse", "Vortex", "Turbulence", "Drag", "Vector Field"
+    };
+
+    bool changed = false;
+    int removeIndex = -1;
+    for (std::size_t index = 0; index < pe.localForces.size(); ++index) {
+        ImGui::PushID(static_cast<int>(index));
+        auto& force = pe.localForces[index];
+        char header[96];
+        std::snprintf(header, sizeof(header), "%zu. %s###force", index,
+                      kShortNames[static_cast<int>(force.fieldType)]);
+        const bool open = ImGui::TreeNodeEx(header, ImGuiTreeNodeFlags_DefaultOpen
+                                                  | ImGuiTreeNodeFlags_AllowOverlap);
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 18.0f);
+        if (ImGui::SmallButton("x")) removeIndex = static_cast<int>(index);
+        if (open) {
+            changed |= DrawParticleForceFieldSettings(force, ctx);
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+    if (removeIndex >= 0) {
+        pe.localForces.erase(pe.localForces.begin() + removeIndex);
+        changed = true;
+    }
+
+    if (ImGui::Button("Add Force")) ImGui::OpenPopup("add_force");
+    if (ImGui::BeginPopup("add_force")) {
+        for (int type = 0; type < scene::kParticleForceFieldTypeCount; ++type) {
+            if (!ImGui::MenuItem(kShortNames[type])) continue;
+            // EnsureLocalForce は «同じ型が既にあれば足さない»。ここでは «2 本目の Wind» を
+            // 作れる必要がある (別方向の風、別半径の吸引) ので直接足す。
+            scene::ParticleForceFieldSettings force;
+            force.fieldType = static_cast<Type>(type);
+            force.radius = 0.0f;
+            if (type == static_cast<int>(Type::Vortex) || type == static_cast<int>(Type::Repulse)
+                || type == static_cast<int>(Type::Attract))
+                force.space = scene::ParticleForceFieldSpace::Emitter;
+            pe.localForces.push_back(force);
+            changed = true;
+        }
+        ImGui::EndPopup();
+    }
+    if (pe.localForces.empty())
+        ImGui::TextDisabled("力がありません。粒子は初速のまま等速で飛びます。");
+    return changed;
 }
 
 // シーン内の ParticleEmitter 持ち GameObject 名から選ぶ SubEmitter 用コンボ。
@@ -224,8 +364,28 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                               "同色の粒子が集まって一枚のベタ塗りに見えるのを防ぎ、\n"
                               "炎・火花に明度差と軽い色相差が出ます。");
 
-        changed |= widgets::DragVec3("Gravity", pe.gravity, 0.05f);
-        changed |= ImGui::DragFloat("Velocity Damping", &pe.velocityDamping, 0.01f, 0.0f, 100.0f);
+        // 重力と空気抵抗は内蔵の力リストの 1 本ずつだが、ここでは «いつもの 2 項目» のまま出す。
+        // WHY: 保存形式がリストになったことは担当者の関心事ではない。最も触る 2 つを
+        //      リストの中に沈めると、粒子を置くたびに «力を追加» から始めることになる。
+        math::Vector3 gravity = pe.GravityAcceleration();
+        if (widgets::DragVec3("Gravity", gravity, 0.05f)) {
+            pe.SetGravityAcceleration(gravity);
+            changed = true;
+        }
+        {
+            scene::ParticleForceFieldSettings* drag =
+                pe.FindLocalForce(scene::ParticleForceFieldType::Drag);
+            float damping = drag ? drag->strength : 0.0f;
+            if (ImGui::DragFloat("Velocity Damping", &damping, 0.01f, 0.0f, 100.0f)) {
+                // 0 のときに Drag を足さないのは、力リストが «効いていない 1 本» で
+                // 埋まらないようにするため。0 へ戻したら消す。
+                if (damping > 0.0f)
+                    pe.EnsureLocalForce(scene::ParticleForceFieldType::Drag).strength = damping;
+                else if (drag)
+                    pe.RemoveLocalForce(scene::ParticleForceFieldType::Drag);
+                changed = true;
+            }
+        }
         changed |= ImGui::DragInt("Max Particles", &pe.maxParticles, 1, 1, 100000);
 
         int seed = static_cast<int>(pe.randomSeed);
@@ -360,7 +520,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     // ── Velocity over Lifetime: 寿命に沿った速度スケールカーブ ───────────────
     if (BeginModule("Velocity over Lifetime", &pe.useVelocityCurve, /*defaultOpen=*/false, changed)) {
         if (pe.useVelocityCurve) {
-            changed |= widgets::CurveEditor("Speed Multiplier", pe.velocityCurve, 10.0f);
+            changed |= widgets::CurveEditor("Speed Multiplier", pe.velocityCurve, 10.0f, 96.0f, &ctx.projectRoot);
         } else {
             ImGui::TextDisabled("Enable the checkbox to scale particle speed over lifetime.");
         }
@@ -370,7 +530,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     // ── Size over Lifetime: カーブ or べき乗フォールバック ────────────────────
     if (BeginModule("Size over Lifetime", &pe.useSizeCurve, /*defaultOpen=*/false, changed)) {
         if (pe.useSizeCurve) {
-            changed |= widgets::CurveEditor("Size (Start -> End blend)", pe.sizeCurve, 1.0f);
+            changed |= widgets::CurveEditor("Size (Start -> End blend)", pe.sizeCurve, 1.0f, 96.0f, &ctx.projectRoot);
         } else {
             // カーブ無効時は Start->End の補間カーブ形状をべき乗で調整する既定動作
             changed |= ImGui::DragFloat("Size Curve Power", &pe.sizeCurvePower, 0.01f, 0.01f, 10.0f);
@@ -382,7 +542,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     // ── Color over Lifetime: グラデーション or べき乗フォールバック ────────────
     if (BeginModule("Color over Lifetime", &pe.useColorGradient, /*defaultOpen=*/false, changed)) {
         if (pe.useColorGradient) {
-            changed |= widgets::GradientEditor("Color Gradient", pe.colorGradient);
+            changed |= widgets::GradientEditor("Color Gradient", pe.colorGradient, &ctx.projectRoot);
             if (pe.blackbodyEnabled)
                 ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
                     "Blackbody 有効: RGB は色温度から作られ、ここでの RGB は使われません (アルファのみ有効)");
@@ -398,7 +558,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             if (!pe.useColorGradient)
                 ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
                     "Color over Lifetime を有効にしてください (アルファはグラデーション側が持ちます)");
-            changed |= widgets::CurveEditor("Temperature (K)", pe.temperatureCurve, 3000.0f);
+            changed |= widgets::CurveEditor("Temperature (K)", pe.temperatureCurve, 3000.0f, 96.0f, &ctx.projectRoot);
             ImGui::TextDisabled("炎 1000-1600K / 溶鉄 1800K / 爆轟閃光 3000K+ / 落雷 20000K");
             changed |= ImGui::DragFloat("Reference (K)", &pe.blackbodyReferenceTemperature,
                                         10.0f, 500.0f, 12000.0f);
@@ -435,7 +595,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         changed |= ImGui::DragFloat("Angular Velocity Max", &pe.angularVelocityMax, 0.01f, -100.0f, 100.0f);
         changed |= ImGui::Checkbox("Use Rotation Curve", &pe.useRotationCurve);
         if (pe.useRotationCurve) {
-            changed |= widgets::CurveEditor("Spin Multiplier", pe.rotationCurve, 2.0f);
+            changed |= widgets::CurveEditor("Spin Multiplier", pe.rotationCurve, 2.0f, 96.0f, &ctx.projectRoot);
             ImGui::TextDisabled("角速度への時間倍率。頭を高く末尾を 0 にすると"
                                 "「勢いよく回り始めて止まる」破片になります。");
         }
@@ -445,7 +605,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     // ── Drag over Lifetime: velocityDamping への時間倍率 ────────────────────
     if (BeginModule("Drag over Lifetime", &pe.useDragCurve, /*defaultOpen=*/false, changed)) {
         if (pe.useDragCurve) {
-            changed |= widgets::CurveEditor("Drag Multiplier", pe.dragCurve, 4.0f);
+            changed |= widgets::CurveEditor("Drag Multiplier", pe.dragCurve, 4.0f, 96.0f, &ctx.projectRoot);
             ImGui::TextDisabled("Main の Velocity Damping に掛かります。"
                                 "後半を高くすると噴き出した後で急に空気抵抗が効きます。");
         } else {
@@ -454,16 +614,14 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    // ── Orbital / Radial / Inherit: エミッター原点まわりの運動と移動の引き継ぎ ──
+    // ── Forces: 内蔵の力そのもの (重力・空気抵抗も含む) ─────────────────────
+    if (BeginModule("Forces", nullptr, /*defaultOpen=*/false, changed)) {
+        changed |= DrawLocalForceList(pe, ctx);
+        EndModule();
+    }
+
+    // ── Velocity Modules: 移動の引き継ぎ ─────────────────────────────────
     if (BeginModule("Velocity Modules", nullptr, /*defaultOpen=*/false, changed)) {
-        changed |= widgets::DragVec3("Orbital Axis", pe.orbitalAxis, 0.01f);
-        changed |= ImGui::DragFloat("Orbital Velocity", &pe.orbitalVelocity, 0.05f, -100.0f, 100.0f);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("軸まわりの接線加速度。渦・竜巻・魔法陣の回転に使います");
-        changed |= ImGui::DragFloat("Radial Velocity", &pe.radialVelocity, 0.05f, -100.0f, 100.0f);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("原点から外向きの加速度。負値で吸い込みになります");
-        ImGui::Separator();
         changed |= ImGui::SliderFloat("Inherit Velocity", &pe.inheritVelocity, 0.0f, 1.0f);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("発生時にエミッター自身の移動速度を初速へ加算する割合。\n"
@@ -520,29 +678,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         EndModule();
     }
 
-    // ── Noise: エミッター固有のカールノイズ乱流。strength 0 = 無効 ─────────────
-    {
-        bool noiseEnabled = pe.noiseStrength > 0.0f;
-        bool moduleChanged = false;
-        float& rememberedStrength = RememberedModuleValue<float>(&pe.noiseStrength, 1.0f);
-        if (noiseEnabled) rememberedStrength = pe.noiseStrength;
-        const bool open = BeginModule("Noise", &noiseEnabled, /*defaultOpen=*/false, moduleChanged);
-        if (moduleChanged) {
-            // 外したら 0 (= 無効)、戻したら «外す直前の強さ»。既定値へ丸めない。
-            pe.noiseStrength = noiseEnabled ? (std::max)(rememberedStrength, 0.0001f) : 0.0f;
-            changed = true;
-        }
-        if (open) {
-            if (noiseEnabled) {
-                changed |= ImGui::DragFloat("Strength", &pe.noiseStrength, 0.01f, 0.0f, 100.0f);
-                changed |= ImGui::DragFloat("Frequency", &pe.noiseFrequency, 0.01f, 0.001f, 100.0f);
-                changed |= ImGui::DragFloat("Scroll Speed", &pe.noiseSpeed, 0.01f, -100.0f, 100.0f);
-            } else {
-                ImGui::TextDisabled("Curl-noise turbulence for flame flicker / smoke wobble.");
-            }
-            EndModule();
-        }
-    }
+    // Noise モジュールは Forces の Turbulence 1 本になった (専用の枠を持たない)。
 
     // ── External Forces: シーンの ParticleForceField を受けるか ───────────────
     if (BeginModule("External Forces", &pe.receiveForceFields, /*defaultOpen=*/false, changed)) {
@@ -677,7 +813,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         if (ImGui::Button("Fire")) {
             pe.colorStart = { 1.0f, 0.35f, 0.05f, 1.0f };
             pe.colorEnd   = { 1.0f, 0.02f, 0.0f, 0.0f };
-            pe.gravity    = { 0.0f, 1.5f, 0.0f };
+            pe.SetGravityAcceleration({ 0.0f, 1.5f, 0.0f });
             pe.emitRate   = 80.0f;
             pe.lifetime   = 1.2f;
             pe.shape      = scene::ParticleEmitterShape::Cone;
@@ -687,7 +823,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         if (ImGui::Button("Smoke")) {
             pe.colorStart = { 0.25f, 0.25f, 0.25f, 0.65f };
             pe.colorEnd   = { 0.05f, 0.05f, 0.05f, 0.0f };
-            pe.gravity    = { 0.0f, 0.3f, 0.0f };
+            pe.SetGravityAcceleration({ 0.0f, 0.3f, 0.0f });
             pe.emitRate   = 25.0f;
             pe.lifetime   = 3.0f;
             pe.shape      = scene::ParticleEmitterShape::Sphere;
@@ -697,7 +833,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         if (ImGui::Button("Sparks")) {
             pe.colorStart = { 1.0f, 0.8f, 0.2f, 1.0f };
             pe.colorEnd   = { 1.0f, 0.1f, 0.0f, 0.0f };
-            pe.gravity    = { 0.0f, -9.8f, 0.0f };
+            pe.SetGravityAcceleration({ 0.0f, -9.8f, 0.0f });
             pe.emitRate   = 120.0f;
             pe.lifetime   = 0.8f;
             pe.shape      = scene::ParticleEmitterShape::Cone;
@@ -708,7 +844,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             // 連続放出ではなく t=0 の Burst 一発で構成する例。タイムライン編集のデモも兼ねる。
             pe.colorStart = { 1.0f, 0.6f, 0.15f, 1.0f };
             pe.colorEnd   = { 0.4f, 0.05f, 0.0f, 0.0f };
-            pe.gravity    = { 0.0f, -3.0f, 0.0f };
+            pe.SetGravityAcceleration({ 0.0f, -3.0f, 0.0f });
             pe.emitRate   = 0.0f;
             pe.lifetime   = 0.9f;
             pe.velocitySpread = 6.0f;

@@ -34,6 +34,7 @@ math::Vector4 ForceFieldColor(ParticleForceFieldType type)
     case ParticleForceFieldType::Vortex:     return { 0.80f, 0.55f, 1.00f, 1.0f }; // 紫
     case ParticleForceFieldType::Turbulence: return { 1.00f, 0.85f, 0.35f, 1.0f }; // 黄
     case ParticleForceFieldType::Drag:       return { 0.65f, 0.68f, 0.75f, 1.0f }; // 灰
+    case ParticleForceFieldType::VectorField: return { 0.35f, 1.00f, 0.90f, 1.0f }; // 水緑
     }
     return { 1.0f, 1.0f, 1.0f, 1.0f };
 }
@@ -136,17 +137,19 @@ void DrawEmitterShapes(RenderPassContext& ctx)
 
 std::string_view VFXGizmoDebugPass::Name() const { return "VFXGizmoDebug"; }
 
-std::vector<renderer::RenderGraph::ResourceAccess>
-VFXGizmoDebugPass::DeclareAccesses(const RenderPassContext&) const
+void VFXGizmoDebugPass::Setup(PassBuilder& builder, const RenderPassContext&) const
 {
-    using U = renderer::RenderGraph::ResourceUsage;
-    return { { "HDR", U::ReadWrite } };
+    // 描き先の束縛はフレームワークが行う (SetAutoTarget)。
+    builder.ReadWrite("HDR").SetAutoTarget("HDR");
 }
 
-void VFXGizmoDebugPass::Execute(RenderPassContext& ctx)
+bool VFXGizmoDebugPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    if (!ctx.settings.showVFXGizmos) return;
+    return ctx.settings.showVFXGizmos;
+}
 
+void VFXGizmoDebugPass::Execute(PassResources&, RenderPassContext& ctx)
+{
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetViewProjection());
     DrawForceFields(ctx);
     DrawEmitterShapes(ctx);

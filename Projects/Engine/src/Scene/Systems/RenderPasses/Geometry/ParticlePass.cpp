@@ -16,6 +16,10 @@
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Asset/MaterialParamBinding.hpp"
+#include "Engine/Asset/VectorFieldAsset.hpp"
+#include "Engine/Asset/VelocityFieldAtlas.hpp"
+#include "ParticleEmitterSpace.hpp"
+#include "ParticleForces.hpp"
 #include "Engine/Renderer/ShaderDescriptor.hpp"
 #include "Engine/Asset/Model.hpp"
 #include "Engine/Core/Logger.hpp"
@@ -50,281 +54,6 @@ inline math::Vector4 LerpVec4(const math::Vector4& a, const math::Vector4& b, fl
 float Clamp01(float value)
 {
     return (std::max)(0.0f, (std::min)(value, 1.0f));
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// カールノイズ (乱流ベクトルフィールド)
-// 式は ParticleGpuSim.cs.hlsl の同名関数と一致させること (CPU/GPU で挙動を揃える)。
-// ─────────────────────────────────────────────────────────────────────
-
-// 整数ハッシュ (PCG 系)。格子点から再現可能な擬似乱数を作る。
-inline uint32_t PcgHash(uint32_t x)
-{
-    x ^= x >> 16; x *= 0x7feb352du;
-    x ^= x >> 15; x *= 0x846ca68bu;
-    x ^= x >> 16;
-    return x;
-}
-
-// 格子点 (整数座標) → [-1, 1] の擬似乱数値
-inline float LatticeValue(int xi, int yi, int zi)
-{
-    const uint32_t h = PcgHash(static_cast<uint32_t>(xi) * 73856093u
-                             ^ static_cast<uint32_t>(yi) * 19349663u
-                             ^ static_cast<uint32_t>(zi) * 83492791u);
-    return static_cast<float>(h) * (2.0f / 4294967295.0f) - 1.0f;
-}
-
-// 3D 値ノイズ [-1, 1]。8 格子点を smoothstep 重みでトリリニア補間する。
-float ValueNoise3D(const math::Vector3& p)
-{
-    const float fx = std::floor(p.x);
-    const float fy = std::floor(p.y);
-    const float fz = std::floor(p.z);
-    const int xi = static_cast<int>(fx);
-    const int yi = static_cast<int>(fy);
-    const int zi = static_cast<int>(fz);
-    float tx = p.x - fx;
-    float ty = p.y - fy;
-    float tz = p.z - fz;
-    // smoothstep フェード: 格子境界で勾配を連続にする
-    tx = tx * tx * (3.0f - 2.0f * tx);
-    ty = ty * ty * (3.0f - 2.0f * ty);
-    tz = tz * tz * (3.0f - 2.0f * tz);
-    const float c000 = LatticeValue(xi,     yi,     zi);
-    const float c100 = LatticeValue(xi + 1, yi,     zi);
-    const float c010 = LatticeValue(xi,     yi + 1, zi);
-    const float c110 = LatticeValue(xi + 1, yi + 1, zi);
-    const float c001 = LatticeValue(xi,     yi,     zi + 1);
-    const float c101 = LatticeValue(xi + 1, yi,     zi + 1);
-    const float c011 = LatticeValue(xi,     yi + 1, zi + 1);
-    const float c111 = LatticeValue(xi + 1, yi + 1, zi + 1);
-    const float x00 = c000 + (c100 - c000) * tx;
-    const float x10 = c010 + (c110 - c010) * tx;
-    const float x01 = c001 + (c101 - c001) * tx;
-    const float x11 = c011 + (c111 - c011) * tx;
-    const float y0 = x00 + (x10 - x00) * ty;
-    const float y1 = x01 + (x11 - x01) * ty;
-    return y0 + (y1 - y0) * tz;
-}
-
-// カールノイズ: 3 成分のベクトルポテンシャル ψ の回転 (∇×ψ) を中心差分で求める。
-// WHY: 回転場は発散ゼロのため粒子が一点に溜まらず、煙・炎らしい滑らかな渦を作れる。
-math::Vector3 CurlNoise(const math::Vector3& p)
-{
-    // 各ポテンシャル成分は同じノイズを離れた位置からサンプリングして独立させる
-    const math::Vector3 p1 = { p.x + 31.341f, p.y + 31.341f, p.z + 31.341f };
-    const math::Vector3 p2 = { p.x - 47.853f, p.y - 47.853f, p.z - 47.853f };
-    const math::Vector3 p3 = { p.x + 12.793f, p.y + 12.793f, p.z + 12.793f };
-    constexpr float eps = 0.25f;
-    constexpr float invTwoEps = 1.0f / (2.0f * eps);
-    const math::Vector3 dx = { eps, 0.0f, 0.0f };
-    const math::Vector3 dy = { 0.0f, eps, 0.0f };
-    const math::Vector3 dz = { 0.0f, 0.0f, eps };
-    const float dp1dy = (ValueNoise3D(p1 + dy) - ValueNoise3D(p1 - dy)) * invTwoEps;
-    const float dp1dz = (ValueNoise3D(p1 + dz) - ValueNoise3D(p1 - dz)) * invTwoEps;
-    const float dp2dx = (ValueNoise3D(p2 + dx) - ValueNoise3D(p2 - dx)) * invTwoEps;
-    const float dp2dz = (ValueNoise3D(p2 + dz) - ValueNoise3D(p2 - dz)) * invTwoEps;
-    const float dp3dx = (ValueNoise3D(p3 + dx) - ValueNoise3D(p3 - dx)) * invTwoEps;
-    const float dp3dy = (ValueNoise3D(p3 + dy) - ValueNoise3D(p3 - dy)) * invTwoEps;
-    return { dp3dy - dp2dz, dp1dz - dp3dx, dp2dx - dp1dy };
-}
-
-// Turbulence / Noise モジュール共通のサンプル座標。時間スクロールは軸ごとに
-// 速度を変え、場全体が一方向へ流れて見えないようにする (HLSL 側と一致)。
-inline math::Vector3 TurbulenceSamplePoint(const math::Vector3& position,
-                                           float frequency, float speed, float time)
-{
-    const float scroll = time * speed;
-    return { position.x * frequency + scroll,
-             position.y * frequency + scroll * 0.35f,
-             position.z * frequency + scroll * 0.7f };
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// 力場 (ParticleForceField) の収集と適用
-// ─────────────────────────────────────────────────────────────────────
-
-// 1 フレーム分に収集した力場 1 本 (ワールド空間へ解決済み)
-struct ActiveForceField {
-    math::Vector3          position;
-    float                  radius;
-    math::Vector3          direction; // Wind: 風向き / Vortex: 回転軸 (正規化済み)
-    float                  strength;
-    ParticleForceFieldType type;
-    float                  falloffPower;
-    float                  noiseFrequency;
-    float                  noiseSpeed;
-    uint32_t               channels;  // ParticleEmitter::forceFieldChannels と AND を取る
-};
-
-// 力場がこのエミッターに作用するか。収集はパス先頭で 1 回だけ行い全エミッターで
-// 共有するので、絞り込みは適用時に行う。
-bool AffectsEmitter(const ActiveForceField& field, uint32_t emitterChannels)
-{
-    return (field.channels & emitterChannels) != 0u;
-}
-
-// シーンから有効な ParticleForceField を収集しワールド空間へ解決する。
-// パス先頭で 1 回だけ収集して全エミッターで共有する (エミッターごとに走査すると
-// O(エミッター数×オブジェクト数) になる)。
-std::vector<ActiveForceField> GatherForceFields(Scene& scene, uint32_t cullingMask)
-{
-    std::vector<ActiveForceField> fields;
-    for (auto& go : scene.GameObjects()) {
-        if (!ShouldRenderGameObject(go, cullingMask)) continue;
-        auto* ff = go.GetComponent<ParticleForceField>();
-        if (!ff || !ff->enabled) continue;
-        ActiveForceField f;
-        f.position = go.transform.worldPosition;
-        f.radius   = ff->radius;
-        // direction はローカル指定。GameObject を回せば風向き・渦軸も回る。
-        const math::Vector3 worldDir = go.transform.worldRotation * ff->direction;
-        const float dirLen = worldDir.Length();
-        f.direction      = dirLen > 1.0e-4f ? worldDir * (1.0f / dirLen)
-                                            : math::Vector3{ 0.0f, 1.0f, 0.0f };
-        f.strength       = ff->strength;
-        f.type           = ff->fieldType;
-        f.falloffPower   = (std::max)(ff->falloffPower, 0.001f);
-        f.noiseFrequency = (std::max)(ff->noiseFrequency, 0.0001f);
-        f.noiseSpeed     = ff->noiseSpeed;
-        f.channels       = ff->channels;
-        fields.push_back(f);
-    }
-
-    // WindZone をシーングローバルの風 (+乱流) として力場リストへ追加する。
-    // 草・雲と同じ WindZone 1 つでパーティクルもなびく。個別に強い風が要るなら
-    // ParticleForceField(Wind) を置く。
-    const ActiveWindZone windZone = FindActiveWindZone(scene);
-    if (windZone.active && windZone.strength > 0.0f) {
-        ActiveForceField wind{};
-        wind.position       = math::Vector3::ZERO;
-        wind.radius         = 0.0f; // 無限 (減衰なし)
-        wind.direction      = windZone.direction;
-        wind.strength       = windZone.strength;
-        wind.type           = ParticleForceFieldType::Wind;
-        wind.falloffPower   = 1.0f;
-        wind.noiseFrequency = 0.5f;
-        wind.noiseSpeed     = 1.0f;
-        wind.channels       = 0xFFFFFFFFu; // 環境風はチャンネルで除外させない
-        fields.push_back(wind);
-    }
-    if (windZone.active && windZone.turbulence > 0.0f) {
-        ActiveForceField turb{};
-        turb.position       = math::Vector3::ZERO;
-        turb.radius         = 0.0f;
-        turb.direction      = windZone.direction;
-        turb.strength       = windZone.turbulence;
-        turb.type           = ParticleForceFieldType::Turbulence;
-        turb.falloffPower   = 1.0f;
-        turb.noiseFrequency = 0.5f;
-        turb.noiseSpeed     = windZone.pulseFrequency;
-        turb.channels       = 0xFFFFFFFFu;
-        fields.push_back(turb);
-    }
-    return fields;
-}
-
-std::vector<ActiveForceField> GatherForceFields(RenderPassContext& ctx)
-{
-    return GatherForceFields(ctx.scene, ctx.cullingMask);
-}
-
-// 力場を粒子速度へ適用する。式は ParticleGpuSim.cs.hlsl の ApplyForceFields と一致させること。
-void ApplyForceFields(const std::vector<ActiveForceField>& fields,
-                      uint32_t             emitterChannels,
-                      const math::Vector3& position,
-                      math::Vector3&       velocity,
-                      float dt, float time)
-{
-    for (const auto& f : fields) {
-        if (!AffectsEmitter(f, emitterChannels)) continue;
-        const math::Vector3 toParticle = position - f.position;
-        float influence = 1.0f;
-        if (f.radius > 0.0f) {
-            const float dist = toParticle.Length();
-            if (dist >= f.radius) continue;
-            influence = std::pow(1.0f - dist / f.radius, f.falloffPower);
-        }
-        const float impulse = f.strength * influence * dt;
-        switch (f.type) {
-        case ParticleForceFieldType::Wind:
-            velocity = velocity + f.direction * impulse;
-            break;
-        case ParticleForceFieldType::Attract:
-        case ParticleForceFieldType::Repulse: {
-            const float dist = (std::max)(toParticle.Length(), 1.0e-4f);
-            const math::Vector3 dir = toParticle * (1.0f / dist);
-            velocity = velocity + dir * (f.type == ParticleForceFieldType::Repulse
-                                             ? impulse : -impulse);
-            break;
-        }
-        case ParticleForceFieldType::Vortex: {
-            // 軸×粒子方向の外積 = 接線方向。軸周りに回す
-            const math::Vector3 tangent = math::Vector3::Cross(f.direction, toParticle);
-            const float len = tangent.Length();
-            if (len > 1.0e-4f)
-                velocity = velocity + tangent * (impulse / len);
-            break;
-        }
-        case ParticleForceFieldType::Turbulence:
-            velocity = velocity + CurlNoise(TurbulenceSamplePoint(
-                position, f.noiseFrequency, f.noiseSpeed, time)) * impulse;
-            break;
-        case ParticleForceFieldType::Drag:
-            // strength を減衰係数 [1/s] として扱う (velocityDamping と同じ式)
-            velocity = velocity * (std::max)(0.0f, 1.0f - impulse);
-            break;
-        }
-    }
-}
-
-// エミッター固有ノイズ (Noise モジュール)。式は力場 Turbulence と同一。
-void ApplyEmitterNoise(const ParticleEmitter& emitter,
-                       const math::Vector3&   position,
-                       math::Vector3&         velocity,
-                       float dt, float time)
-{
-    if (emitter.settings.noiseStrength <= 0.0f) return;
-    velocity = velocity + CurlNoise(TurbulenceSamplePoint(
-        position, emitter.settings.noiseFrequency, emitter.settings.noiseSpeed, time))
-        * (emitter.settings.noiseStrength * dt);
-}
-
-// 周回 (orbital) と放射 (radial) の加速度を速度へ加える。
-// 式は ParticleGpuSim.cs.hlsl の ApplyOrbitalVelocity と一致させること。
-// origin は position と同じ空間でのエミッター原点 — 呼び出し側に空間を合わせさせることで
-// Local/World の両方で同じ式が使える (GPU 側の gEmitterPos も同じ理由)。
-void ApplyOrbitalVelocity(const ParticleEmitter& emitter,
-                          const math::Vector3&   origin,
-                          const math::Vector3&   position,
-                          math::Vector3&         velocity,
-                          float dt)
-{
-    if (emitter.settings.orbitalVelocity == 0.0f && emitter.settings.radialVelocity == 0.0f) return;
-
-    const math::Vector3 offset = position - origin;
-    const float distance = offset.Length();
-    // 原点に重なった粒子は接線・放射方向が定義できない。ゼロ除算を避けて素通しする。
-    if (distance < 1.0e-5f) return;
-    const math::Vector3 radialDirection = offset * (1.0f / distance);
-
-    if (emitter.settings.radialVelocity != 0.0f)
-        velocity = velocity + radialDirection * (emitter.settings.radialVelocity * dt);
-
-    if (emitter.settings.orbitalVelocity != 0.0f) {
-        const float axisLength = emitter.settings.orbitalAxis.Length();
-        if (axisLength > 1.0e-5f) {
-            const math::Vector3 axis = emitter.settings.orbitalAxis * (1.0f / axisLength);
-            // 接線 = axis × radial。軸と平行な粒子では長さ 0 になるので正規化前に確認する。
-            const math::Vector3 tangent = math::Vector3::Cross(axis, radialDirection);
-            const float tangentLength = tangent.Length();
-            if (tangentLength > 1.0e-5f) {
-                velocity = velocity
-                    + tangent * (1.0f / tangentLength) * (emitter.settings.orbitalVelocity * dt);
-            }
-        }
-    }
 }
 
 // 粒子の軌跡を一定間隔でサンプリングして履歴へ積む。
@@ -538,39 +267,6 @@ math::Vector4 ComputeSpriteRect(const ParticleEmitter& emitter, float normalized
                                 float ageSeconds = 0.0f, float spriteSeed = 0.0f)
 {
     return ComputeSpriteFrameState(emitter, normalizedAge, ageSeconds, spriteSeed).currentRect;
-}
-
-math::Vector3 TransformEmitterPoint(const Transform& transform, const math::Vector3& localPoint)
-{
-    // Transform::position は親基準のローカル座標なので、子 GO に置くと親の移動が乗らない。
-    // Particle はワールド空間で保持するので world* から発生点を解決する。
-    const math::Vector3 scaledLocal = {
-        localPoint.x * transform.worldScale.x,
-        localPoint.y * transform.worldScale.y,
-        localPoint.z * transform.worldScale.z
-    };
-    return transform.worldPosition + transform.worldRotation * scaledLocal;
-}
-
-math::Vector3 TransformEmitterVector(const Transform& transform, const math::Vector3& localVector)
-{
-    // WHAT: 速度は位置ではないため平行移動を含めず、Emitter のワールド回転だけを適用する。
-    return transform.worldRotation * localVector;
-}
-
-math::Vector3 InverseTransformEmitterPoint(const Transform& transform, const math::Vector3& worldPoint)
-{
-    const math::Vector3 rotated = transform.worldRotation.Inverse() * (worldPoint - transform.worldPosition);
-    return {
-        std::fabs(transform.worldScale.x) > 1.0e-6f ? rotated.x / transform.worldScale.x : 0.0f,
-        std::fabs(transform.worldScale.y) > 1.0e-6f ? rotated.y / transform.worldScale.y : 0.0f,
-        std::fabs(transform.worldScale.z) > 1.0e-6f ? rotated.z / transform.worldScale.z : 0.0f
-    };
-}
-
-math::Vector3 InverseTransformEmitterVector(const Transform& transform, const math::Vector3& worldVector)
-{
-    return transform.worldRotation.Inverse() * worldVector;
 }
 
 const AnimatorComponent* FindParticleAnimator(GameObject& object)
@@ -1002,6 +698,34 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
 // GPU ソートを実際に走らせるか。判定材料はシェーダーの有無だけ。
 // 「バッファが確保済みか」で見ると renderCB を作る時点と実行する時点で答えが食い違い、
 // 初回フレームだけソート無効の絵が出る。
+// 速度場をアトラスへ常駐させ、タイル番号を返す。常駐できなければ -1。
+int ResolveVelocityFieldTile(const asset::VectorFieldAsset& field,
+                             renderer::ResourceManager& resources)
+{
+    return asset::VelocityFieldAtlas::Acquire(field, resources);
+}
+
+// 力場バッファを用意して今フレームの内容を書き込む。
+// WHY 容量で作り直すか: 力の本数は «渦を 1 本足した» だけで変わる。毎回作り直すと
+//      GPU エミッターの数だけ確保と破棄が毎フレーム走る。足りなくなったときだけ広げる。
+void EnsureGpuForceBuffer(ParticleEmitter& emitter,
+                          const std::vector<GpuForceField>& forces,
+                          renderer::ResourceManager& resources)
+{
+    // 0 本でも 1 要素は確保する。要素数 0 の StructuredBuffer は作れず、
+    // 未束縛の SRV は DX12 で null ディスクリプタの次元不一致になる。
+    const uint32_t required = (std::max)(static_cast<uint32_t>(forces.size()), 1u);
+    if (!emitter.runtime.gpuForceBuffer.IsValid() || emitter.runtime.gpuForceCapacity < required) {
+        emitter.runtime.gpuForceBuffer = resources.CreateStructuredBuffer(
+            nullptr, required, sizeof(GpuForceField));
+        emitter.runtime.gpuForceCapacity = required;
+    }
+    if (!forces.empty()) {
+        resources.Update(emitter.runtime.gpuForceBuffer, forces.data(),
+                         forces.size() * sizeof(GpuForceField));
+    }
+}
+
 bool ShouldSortGpuParticles(const ParticleEmitter& emitter, const RenderPassHandles& handles)
 {
     return emitter.settings.sortMode != ParticleSortMode::None
@@ -1085,7 +809,7 @@ bool PrepareParticleSelfShadowTarget(RenderPassContext& ctx, bool& inoutClearedT
         ctx.renderer.SetRenderTarget(h.particleSelfShadowRT, resources);
         // 密度 0 でクリア。alpha=1 は積算へ影響しないが、他所で読み違えないよう明示する。
         ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 1.0f });
-        ctx.renderer.SetRenderTarget(h.hdrRT, resources);
+        ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
         // b0 を光源視点へ差し替える CB。VS が view の列 0/1 から右/上を取るので、
         // これだけでビルボードが光源へ正対する (シャドウマップと同じ扱いになる)。
@@ -1151,7 +875,7 @@ void AccumulateParticleSelfShadowDensity(const ParticleEmitter& emitter, int qua
     dc.textures[0]  = emitter.runtime.texture;
     renderer.Submit(dc, resources);
     // 本番描画へ戻す。呼び出し側が続けて HDR RT へ描くため、ここで必ず張り直す。
-    renderer.SetRenderTarget(h.hdrRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 }
 
 // 1 エミッターぶんの per-particle Trail を、連続した帯 (リボン) として描く。
@@ -1493,8 +1217,11 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     p.age = (std::max)(0.0f, (std::min)(initialAge, p.lifetime * 0.999f));
     if (p.age > 0.0f) {
         // Prewarmは開始時点の寿命分布を作る。逐次更新を避け、重力下の解析解で初期状態を近似する。
-        p.position = p.position + p.velocity * p.age + emitter.settings.gravity * (0.5f * p.age * p.age);
-        p.velocity = p.velocity + emitter.settings.gravity * p.age;
+        // 近似に使うのは内蔵の Wind 力 (＝重力) だけ。渦や速度場まで解析解にはできないので、
+        // それらが主役のエミッターでは prewarm の分布が実際の流れとずれる。
+        const math::Vector3 gravity = emitter.settings.GravityAcceleration();
+        p.position = p.position + p.velocity * p.age + gravity * (0.5f * p.age * p.age);
+        p.velocity = p.velocity + gravity * p.age;
         p.rotation += p.angularVelocity * p.age;
         const float normalizedAge = Clamp01(p.age / p.lifetime);
         p.color = EvaluateParticleColorLinear(emitter, p, normalizedAge);
@@ -1645,6 +1372,8 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         emitter.runtime.gpuSortBuffer = {};
         emitter.runtime.gpuSortCB = {};
         emitter.runtime.gpuSortCapacity = 0;
+        emitter.runtime.gpuForceBuffer = {};
+        emitter.runtime.gpuForceCapacity = 0;
     }
 
     // デバイスリセット (Play Mode 移行など) 後は古いハンドルが無効になるため再初期化する
@@ -1661,6 +1390,8 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         emitter.runtime.gpuSortBuffer     = {};
         emitter.runtime.gpuSortCB         = {};
         emitter.runtime.gpuSortCapacity   = 0;
+        emitter.runtime.gpuForceBuffer     = {};
+        emitter.runtime.gpuForceCapacity   = 0;
     }
 
     // バッファ未作成なら初期化 (要素ゼロで確保し CS が age>=lifetime で無視する)
@@ -1728,14 +1459,17 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     GpuParticleEmitterCB cb{};
     cb.emitterPos      = TransformEmitterPoint(tf, emitter.settings.emitPosition);
     cb.deltaTime       = dt;
-    cb.gravity         = emitter.settings.gravity;
+    // 重力・空気抵抗・乱流・周回・放射は専用スロットではなく gForceFields へ入る。
+    // HLSL 側はこれらのスロットを今も読むので、0 を入れて «何もしない» にしておく
+    // (定数バッファのレイアウトは末尾追加のみが規約で、途中を削ると全オフセットがずれる)。
+    cb.gravity         = math::Vector3::ZERO;
     cb.maxParticles    = static_cast<uint32_t>(maxP);
     cb.colorStart      = emitter.settings.colorStart;
     cb.colorEnd        = emitter.settings.colorEnd;
     cb.spawnCount      = emitter.runtime.gpuSpawnCount;
     cb.spawnOffset     = emitter.runtime.gpuWriteHead;
     cb.colorCurvePower = emitter.settings.colorCurvePower;
-    cb.velocityDamping = emitter.settings.velocityDamping;
+    cb.velocityDamping = 0.0f; // Drag は gForceFields 側へ
     cb.sizeStart       = emitter.settings.sizeStart;
     cb.sizeEnd         = emitter.settings.sizeEnd;
     cb.sizeCurvePower  = emitter.settings.sizeCurvePower;
@@ -1752,30 +1486,44 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         cb.spriteStartFrame = static_cast<uint32_t>(startFrame);
         cb.spriteEndFrame   = static_cast<uint32_t>(endFrame);
     }
-    // ノイズモジュール + 力場 (CPU シミュレーションと同じ式を CS 側で適用する)
     cb.time           = time;
-    cb.noiseStrength  = (std::max)(emitter.settings.noiseStrength, 0.0f);
-    cb.noiseFrequency = (std::max)(emitter.settings.noiseFrequency, 0.0001f);
-    cb.noiseSpeed     = emitter.settings.noiseSpeed;
+    cb.noiseStrength  = 0.0f; // Turbulence は gForceFields 側へ
+    cb.noiseFrequency = 0.5f;
+    cb.noiseSpeed     = 1.0f;
     cb.flipbookMode = static_cast<uint32_t>(emitter.runtime.material.flipbookMode);
     cb.flipbookFramesPerSecond = (std::max)(emitter.runtime.material.flipbookFramesPerSecond, 0.0f);
-    // チャンネルの判定はここで済ませ、作用する力場だけを送る。CS 側は届いた分を全部
-    // 適用すればよく、GpuForceField のレイアウトも HLSL も変えずに済む。
-    int fieldCount = 0;
-    if (emitter.settings.receiveForceFields) {
-        for (const ActiveForceField& f : forceFields) {
-            if (fieldCount >= kMaxGpuForceFields) break;
-            if (!AffectsEmitter(f, emitter.settings.forceFieldChannels)) continue;
-            cb.forceFields[fieldCount].posRadius =
-                { f.position.x, f.position.y, f.position.z, f.radius };
-            cb.forceFields[fieldCount].dirStrength =
-                { f.direction.x, f.direction.y, f.direction.z, f.strength };
-            cb.forceFields[fieldCount].params =
-                { static_cast<float>(f.type), f.falloffPower, f.noiseFrequency, f.noiseSpeed };
-            ++fieldCount;
+
+    // 内蔵の力もシーンの力場も同じ StructuredBuffer へ詰める。CS 側は届いた分を全部
+    // 適用すればよい。本数の上限は無いので «重力が捨てられて粒子が浮く» は起きない。
+    std::vector<ActiveForceField> emitterForces;
+    ResolveEmitterForces(emitter, tf, forceFields, emitterForces);
+    std::vector<GpuForceField> gpuForces;
+    gpuForces.reserve(emitterForces.size());
+    for (const ActiveForceField& f : emitterForces) {
+        GpuForceField gf{};
+        gf.posRadius   = { f.position.x, f.position.y, f.position.z, f.radius };
+        gf.dirStrength = { f.direction.x, f.direction.y, f.direction.z, f.strength };
+        // params.z は Turbulence では noiseFrequency、Drag では «内蔵の力か» の印。
+        // WHY 兼用するか: Drag は乱流のパラメーターを使わない。1 枠を空けて足すより、
+        //     使われない枠に意味を持たせるほうが構造体が小さく保てる。
+        const bool isDrag = f.type == ParticleForceFieldType::Drag;
+        const float paramZ = isDrag ? (f.local ? 1.0f : 0.0f) : f.noiseFrequency;
+        gf.params = { static_cast<float>(f.type), f.falloffPower, paramZ, f.noiseSpeed };
+
+        // 速度場はアトラスのタイル番号で指す。常駐していない場は tile < 0 で «無効»
+        // として送り、CS 側は何もしない (送らないと本数がずれて別の力に化ける)。
+        gf.fieldTile = { -1.0f, 1.0f, 0.0f, 0.0f };
+        if (f.type == ParticleForceFieldType::VectorField && f.vectorField != nullptr) {
+            const int tile = ResolveVelocityFieldTile(*f.vectorField, ctx.resources);
+            gf.fieldRotation = { f.inverseRotation.x, f.inverseRotation.y,
+                                 f.inverseRotation.z, f.inverseRotation.w };
+            gf.fieldExtents  = { f.extents.x, f.extents.y, f.extents.z, f.tightness };
+            gf.fieldTile     = { static_cast<float>(tile), f.vectorField->maxMagnitude, 0.0f, 0.0f };
         }
+        gpuForces.push_back(gf);
     }
-    cb.forceFieldCount = static_cast<uint32_t>(fieldCount);
+    cb.forceFieldCount = static_cast<uint32_t>(gpuForces.size());
+    EnsureGpuForceBuffer(emitter, gpuForces, resources);
     cb.curveFlags = {
         emitter.settings.useSizeCurve ? 1.0f : 0.0f,
         emitter.settings.useVelocityCurve ? 1.0f : 0.0f,
@@ -1858,14 +1606,10 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
         static_cast<float>(emitter.settings.rotationCurve.interpolation),
         static_cast<float>(emitter.settings.dragCurve.interpolation)
     };
-    // 軸は CPU 側で正規化して渡す。CS 側で毎粒子 normalize するより安く、
-    // 長さ 0 の軸を「周回なし」へ縮退させる判定も 1 か所で済む。
-    const float orbitalAxisLength = emitter.settings.orbitalAxis.Length();
-    cb.orbitalAxis = orbitalAxisLength > 1.0e-5f
-        ? emitter.settings.orbitalAxis * (1.0f / orbitalAxisLength)
-        : math::Vector3{ 0.0f, 1.0f, 0.0f };
-    cb.orbitalVelocity = orbitalAxisLength > 1.0e-5f ? emitter.settings.orbitalVelocity : 0.0f;
-    cb.radialVelocity = emitter.settings.radialVelocity;
+    // 周回と放射も gForceFields (Vortex / Repulse) 側へ移った。専用スロットは 0 で無効化する。
+    cb.orbitalAxis     = { 0.0f, 1.0f, 0.0f };
+    cb.orbitalVelocity = 0.0f;
+    cb.radialVelocity  = 0.0f;
     cb.spriteRandomFlags = (emitter.runtime.material.spriteRandomStartFrame ? 1u : 0u)
         | (emitter.runtime.material.spriteRandomRow ? 2u : 0u);
     resources.Update(emitter.runtime.gpuEmitterCB, &cb, sizeof(cb));
@@ -1879,7 +1623,11 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     cc.shader        = h.particleGpuSimCS;
     cc.constantBuffers[0] = emitter.runtime.gpuEmitterCB;
     cc.srvBuffers[15] = emitter.runtime.gpuSpawnBuffer;  // t15
-    cc.srvInputs[7] = resources.GetDepthTexture(h.decalDepthRT);
+    cc.srvBuffers[29] = emitter.runtime.gpuForceBuffer;  // t29 (SB_PARTICLE_FORCES)
+    cc.srvInputs[7] = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
+    // 速度場アトラス。場が 1 枚も無くても **必ず束縛する** — DX12 の null ディスクリプタは
+    // Texture2D 固定で、Texture3D を宣言したスロットを空にすると次元が食い違う。
+    cc.srvInputs[26] = asset::VelocityFieldAtlas::Texture(resources); // t26
     cc.uavBuffers[0] = emitter.runtime.gpuParticleBuffer; // u2
     cc.dispatchX = (static_cast<uint32_t>(maxP) + 63u) / 64u;
     cc.dispatchY = 1;
@@ -1887,7 +1635,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     renderer.Dispatch(cc, resources);
     // Dispatch() は OM のレンダーターゲットをアンバインドする。
     // 後続の Draw が正しい HDR RT へ出力されるよう再バインドする。
-    renderer.SetRenderTarget(h.hdrRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     }
 
     // ---- GPU ソート ---------------------------------------------------------
@@ -1949,7 +1697,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
                     dispatchSortStage(h.particleGpuSortStepCS, k, j, false);
                 }
             }
-            renderer.SetRenderTarget(h.hdrRT, resources);
+            renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
         }
     } else if (emitter.runtime.gpuSortBuffer.IsValid()) {
         // ソートを切ったら確保も解放する。VS 側は renderCB の gpuSortEnabled で判断するので、
@@ -2019,10 +1767,10 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     dc.textures[1]        = emitter.runtime.distortionTexture; // t1: 歪み専用マップ (未設定なら無効)
     dc.textures[5]        = sceneColor;
     dc.textures[6]        = emitter.runtime.motionVectorTexture;
-    dc.textures[7]        = resources.GetDepthTexture(h.decalDepthRT);
+    dc.textures[7]        = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
     // 受け影: CPU 経路と同じ b4 / t8 / サンプラー 1 を使う。
     dc.constantBuffers[4] = h.shadowCB;
-    dc.textures[8]        = resources.GetDepthTexture(h.shadowMapRT);
+    dc.textures[8]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     dc.vsBuffers[0]       = emitter.runtime.gpuParticleBuffer; // t14: StructuredBuffer<GpuParticle>
     // t15: ソート済み (key, index)。無効時は何もバインドしない
     // (VS は renderCB の gpuSortEnabled が 0 なら参照しない)。
@@ -2102,12 +1850,10 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
         emitter.runtime.burstPending = 0;
     }
 
-    // 周回・放射の回転中心。粒子位置と同じ空間へ揃えるため、ここで一度だけ解決する
-    // (粒子ごとに変換すると同じ計算を粒子数ぶん繰り返すことになる)。
-    const math::Vector3 orbitalOrigin =
-        emitter.settings.simulationSpace == ParticleSimulationSpace::Local
-            ? emitter.settings.emitPosition
-            : TransformEmitterPoint(tf, emitter.settings.emitPosition);
+    // このエミッターに効く力をワールド空間で 1 回だけ解決する
+    // (粒子ごとに解決すると同じ計算を粒子数ぶん繰り返すことになる)。
+    std::vector<ActiveForceField> emitterForces;
+    ResolveEmitterForces(emitter, tf, forceFields, emitterForces);
 
     for (auto it = emitter.runtime.particles.begin(); it != emitter.runtime.particles.end();) {
         it->age += dt;
@@ -2118,28 +1864,20 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             continue;
         }
         const float normalizedAge = Clamp01(it->age / (std::max)(it->lifetime, 0.001f));
-        it->velocity = it->velocity + emitter.settings.gravity * dt;
-        // 周回・放射。式は ParticleGpuSim.cs.hlsl の ApplyOrbitalVelocity と一致させること。
-        // 回転中心は粒子位置と同じ空間で渡す (Local はローカル原点、World はワールド変換後)。
-        ApplyOrbitalVelocity(emitter, orbitalOrigin, it->position, it->velocity, dt);
-        // drag カーブは既存の velocityDamping に対する時間倍率として掛ける。
+        // drag カーブは内蔵の Drag 力への時間倍率。ApplyForceFields が相手を選ぶ。
         const float dragScale = emitter.settings.useDragCurve
             ? (std::max)(emitter.settings.dragCurve.Evaluate(normalizedAge), 0.0f) : 1.0f;
-        it->velocity = it->velocity
-            * (std::max)(0.0f, 1.0f - emitter.settings.velocityDamping * dragScale * dt);
+        // 力はすべてワールドで効く。重力・空気抵抗・乱流・周回・放射・速度場・シーンの力場が
+        // 1 本の評価器を通るので、種類ごとに «どの空間で効くか» を覚える必要が無い。
         if (emitter.settings.simulationSpace == ParticleSimulationSpace::Local) {
-            math::Vector3 worldPosition = TransformEmitterPoint(tf, it->position);
+            const math::Vector3 worldPosition = TransformEmitterPoint(tf, it->position);
             math::Vector3 worldVelocity = TransformEmitterVector(tf, it->velocity);
-            if (emitter.settings.receiveForceFields)
-                ApplyForceFields(forceFields, emitter.settings.forceFieldChannels,
-                                 worldPosition, worldVelocity, dt, time);
-            ApplyEmitterNoise(emitter, worldPosition, worldVelocity, dt, time);
+            ApplyForceFields(emitterForces, emitter.settings.forceFieldChannels,
+                             worldPosition, worldVelocity, dt, time, dragScale);
             it->velocity = InverseTransformEmitterVector(tf, worldVelocity);
         } else {
-            if (emitter.settings.receiveForceFields)
-                ApplyForceFields(forceFields, emitter.settings.forceFieldChannels,
-                                 it->position, it->velocity, dt, time);
-            ApplyEmitterNoise(emitter, it->position, it->velocity, dt, time);
+            ApplyForceFields(emitterForces, emitter.settings.forceFieldChannels,
+                             it->position, it->velocity, dt, time, dragScale);
         }
         const float velocityScale = emitter.settings.useVelocityCurve
             ? (std::max)(emitter.settings.velocityCurve.Evaluate(normalizedAge), 0.0f) : 1.0f;
@@ -2403,7 +2141,9 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         });
     // 現在の HDR を退避 RT へコピーし、そのテクスチャを返す。失敗時は無効ハンドル。
     const auto captureSceneColor = [&]() -> renderer::ResourceHandle<renderer::TextureTag> {
-        static renderer::SizedRenderTarget sceneColorRT;
+        // 退避先はビューが持つ (RenderPassHandles::particleSceneColorRT の WHY)。
+        if (!h.particleSceneColorRT) return {};
+        renderer::SizedRenderTarget& sceneColorRT = *h.particleSceneColorRT;
         static std::uint64_t resetVersion = 0;
         static renderer::ResourceHandle<renderer::ShaderTag> copyShader;
         if (resetVersion != resources.GetResetVersion()) {
@@ -2415,9 +2155,9 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         renderer.SetRenderTarget(sceneColorRT, resources);
         renderer::DrawCall copy;
         copy.shader = copyShader; copy.pipelineState = h.postprocPSO; copy.vertexCount = 3;
-        copy.textures[5] = resources.GetColorTexture(h.hdrRT, 0);
+        copy.textures[5] = resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
         renderer.Submit(copy, resources);
-        renderer.SetRenderTarget(h.hdrRT, resources);
+        renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
         return resources.GetColorTexture(sceneColorRT, 0);
     };
     if (needsSceneColor) particleSceneColor = captureSceneColor();
@@ -2479,7 +2219,11 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         emitter->settings.startDelay = (std::max)(emitter->settings.startDelay, 0.0f);
         emitter->settings.sizeCurvePower = (std::max)(emitter->settings.sizeCurvePower, 0.001f);
         emitter->settings.colorCurvePower = (std::max)(emitter->settings.colorCurvePower, 0.001f);
-        emitter->settings.velocityDamping = (std::max)(emitter->settings.velocityDamping, 0.0f);
+        // 空気抵抗が負だと 1 - impulse が 1 を超え、速度が毎フレーム増えて発散する。
+        for (ParticleForceFieldSettings& force : emitter->settings.localForces) {
+            if (force.fieldType == ParticleForceFieldType::Drag)
+                force.strength = (std::max)(force.strength, 0.0f);
+        }
         UpdateParticleBounds(*emitter, tf);
         const float cameraDistance = (emitter->runtime.boundsCenter - ctx.camera.m_position).Length();
         const float coverage = emitter->runtime.boundsRadius / (std::max)(cameraDistance, 0.001f);
@@ -2701,8 +2445,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         dc.textures[1]        = emitter->runtime.distortionTexture;
         dc.textures[5]        = particleSceneColor;
         dc.textures[6]        = emitter->runtime.motionVectorTexture;
-        dc.textures[7]        = resources.GetDepthTexture(h.decalDepthRT);
-        dc.textures[8]        = resources.GetDepthTexture(h.shadowMapRT);
+        dc.textures[7]        = resources.GetDepthTexture(ctx.Res().Target("DecalDepth"));
+        dc.textures[8]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
         // t9: 自己影の密度。有効でないときは何もバインドしない
         // (シェーダーは selfShadowStrength が 0 なら参照しない)。
         if (selfShadowReady)
@@ -2730,7 +2474,9 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
 
     // 計数 RT とシェーダーは診断を有効にしたときだけ作る。
     // resetVersion を見て、デバイスロストや再初期化のあとで作り直す。
-    static renderer::SizedRenderTarget overdrawRT;
+    // 計数先はビューが持つ (RenderPassHandles::particleOverdrawRT の WHY)。
+    if (!h.particleOverdrawRT) return;
+    renderer::SizedRenderTarget& overdrawRT = *h.particleOverdrawRT;
     static renderer::ResourceHandle<renderer::ShaderTag> countShader;
     static renderer::ResourceHandle<renderer::ShaderTag> heatmapShader;
     static std::uint64_t resetVersion = 0;
@@ -2766,7 +2512,7 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
     }
 
     // ヒートマップ化して HDR へ上書きする。
-    renderer.SetRenderTarget(h.hdrRT, resources);
+    renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     // 要求があったフレームだけ、重なり枚数を数値として読み戻す。
     // WHY: ヒートマップは目で見る用で、閾値を持てない。「重なりすぎ」を機械的に言うには

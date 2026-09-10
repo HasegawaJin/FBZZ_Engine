@@ -10,6 +10,7 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/ParticleCurve.hpp>
 
 #include <toml++/toml.hpp>
@@ -170,6 +171,132 @@ TEST_F(ParticleCodecTest, ADefaultCurveSurvivesTheRoundTripUnchanged)
     EXPECT_EQ(restored.keyCount, original.keyCount);
     EXPECT_EQ(restored.interpolation, original.interpolation);
     EXPECT_NEAR(restored.Evaluate(0.5f), original.Evaluate(0.5f), testkit::kTolerance);
+}
+
+// ── 内蔵の力 (localForces) ────────────────────────────────────────────────
+//
+// 重力・空気抵抗・乱流・周回・放射は個別フィールドから力場のリストへ移った。
+// 旧いシーンと .particle にはまだ個別キーが残っているので、読み込みで力へ組み直す。
+// ここが落ちると、既存のエフェクトが全部その場に浮く。
+
+const scene::ParticleForceFieldSettings* FindForce(
+    const scene::ParticleEmitterSettings& emitter, scene::ParticleForceFieldType type)
+{
+    return emitter.FindLocalForce(type);
+}
+
+TEST_F(ParticleCodecTest, LegacyGravityKeyBecomesAWindForce)
+{
+    toml::table legacy;
+    legacy.insert("gravity", toml::array{ 0.0, -9.8, 0.0 });
+
+    scene::ParticleEmitterSettings emitter;
+    asset::DeserializeParticleEmitterSettings(legacy, emitter);
+
+    const auto* wind = FindForce(emitter, scene::ParticleForceFieldType::Wind);
+    ASSERT_NE(wind, nullptr);
+    EXPECT_NEAR(wind->strength, 9.8f, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(wind->direction, math::Vector3(0.0f, -1.0f, 0.0f), testkit::kTolerance);
+    // 半径 0 = 減衰なしで全体に効く。ここが 5 のままだと «エミッターから 5m 先で
+    // 重力が消える» という、遠くの粒だけ浮く壊れ方をする。
+    EXPECT_NEAR(wind->radius, 0.0f, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(emitter.GravityAcceleration(), math::Vector3(0.0f, -9.8f, 0.0f),
+                     testkit::kTolerance);
+}
+
+TEST_F(ParticleCodecTest, LegacyMotionKeysBecomeTheMatchingForces)
+{
+    toml::table legacy;
+    legacy.insert("gravity", toml::array{ 0.0, -5.0, 0.0 });
+    legacy.insert("velocityDamping", 2.5);
+    legacy.insert("noiseStrength", 3.0);
+    legacy.insert("noiseFrequency", 1.25);
+    legacy.insert("noiseSpeed", 2.0);
+    legacy.insert("orbitalVelocity", 4.0);
+    legacy.insert("orbitalAxis", toml::array{ 0.0, 0.0, 1.0 });
+    legacy.insert("radialVelocity", -1.5);
+
+    scene::ParticleEmitterSettings emitter;
+    asset::DeserializeParticleEmitterSettings(legacy, emitter);
+
+    const auto* drag = FindForce(emitter, scene::ParticleForceFieldType::Drag);
+    ASSERT_NE(drag, nullptr);
+    EXPECT_NEAR(drag->strength, 2.5f, testkit::kTolerance);
+
+    const auto* turbulence = FindForce(emitter, scene::ParticleForceFieldType::Turbulence);
+    ASSERT_NE(turbulence, nullptr);
+    EXPECT_NEAR(turbulence->strength, 3.0f, testkit::kTolerance);
+    EXPECT_NEAR(turbulence->noiseFrequency, 1.25f, testkit::kTolerance);
+    EXPECT_NEAR(turbulence->noiseSpeed, 2.0f, testkit::kTolerance);
+
+    const auto* vortex = FindForce(emitter, scene::ParticleForceFieldType::Vortex);
+    ASSERT_NE(vortex, nullptr);
+    EXPECT_NEAR(vortex->strength, 4.0f, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(vortex->direction, math::Vector3(0.0f, 0.0f, 1.0f), testkit::kTolerance);
+    // 周回はエミッター原点まわりの運動。World にすると原点が世界の中心へ飛ぶ。
+    EXPECT_EQ(vortex->space, scene::ParticleForceFieldSpace::Emitter);
+
+    // 旧 radialVelocity の負値は «吸い込み»。Repulse の負の強さと同じ規約なので符号を保つ。
+    const auto* repulse = FindForce(emitter, scene::ParticleForceFieldType::Repulse);
+    ASSERT_NE(repulse, nullptr);
+    EXPECT_NEAR(repulse->strength, -1.5f, testkit::kTolerance);
+    EXPECT_EQ(repulse->space, scene::ParticleForceFieldSpace::Emitter);
+}
+
+TEST_F(ParticleCodecTest, LegacyFileWithoutMotionKeysGetsNoForces)
+{
+    // 旧ファイルが gravity を書いていない = 既定 (0,-5,0) だった、が正しい復元。
+    // 新規エミッターの既定リストをそのまま残すと «書いていないのに力が増える» になる。
+    toml::table legacy;
+    legacy.insert("emitRate", 10.0);
+
+    scene::ParticleEmitterSettings emitter;
+    asset::DeserializeParticleEmitterSettings(legacy, emitter);
+
+    EXPECT_EQ(emitter.localForces.size(), 1u); // 既定の重力 1 本だけ
+    EXPECT_VEC3_NEAR(emitter.GravityAcceleration(), math::Vector3(0.0f, -5.0f, 0.0f),
+                     testkit::kTolerance);
+}
+
+TEST_F(ParticleCodecTest, AnEmptyForceListSurvivesTheRoundTrip)
+{
+    // «力を全部消した» と «旧ファイル» は区別が要る。前者で既定の重力が復活すると、
+    // 無重力に作ったエフェクトが開き直すたびに落ち始める。
+    scene::ParticleEmitterSettings original;
+    original.localForces.clear();
+
+    scene::ParticleEmitterSettings restored;
+    asset::DeserializeParticleEmitterSettings(
+        asset::SerializeParticleEmitterSettings(original), restored);
+
+    EXPECT_TRUE(restored.localForces.empty());
+}
+
+TEST_F(ParticleCodecTest, AVectorFieldForceSurvivesTheRoundTrip)
+{
+    scene::ParticleEmitterSettings original;
+    original.localForces.clear();
+    scene::ParticleForceFieldSettings field;
+    field.fieldType            = scene::ParticleForceFieldType::VectorField;
+    field.space                = scene::ParticleForceFieldSpace::Emitter;
+    field.strength             = 3.5f;
+    field.vectorFieldPath      = "Assets/VFX/Tornado.vfield";
+    field.vectorFieldExtents   = { 2.0f, 8.0f, 2.0f };
+    field.vectorFieldTightness = 0.75f;
+    original.localForces.push_back(field);
+
+    scene::ParticleEmitterSettings restored;
+    asset::DeserializeParticleEmitterSettings(
+        asset::SerializeParticleEmitterSettings(original), restored);
+
+    ASSERT_EQ(restored.localForces.size(), 1u);
+    const auto& r = restored.localForces[0];
+    EXPECT_EQ(r.fieldType, scene::ParticleForceFieldType::VectorField);
+    EXPECT_EQ(r.space, scene::ParticleForceFieldSpace::Emitter);
+    EXPECT_NEAR(r.strength, 3.5f, testkit::kTolerance);
+    EXPECT_EQ(r.vectorFieldPath, "Assets/VFX/Tornado.vfield");
+    EXPECT_VEC3_NEAR(r.vectorFieldExtents, math::Vector3(2.0f, 8.0f, 2.0f), testkit::kTolerance);
+    EXPECT_NEAR(r.vectorFieldTightness, 0.75f, testkit::kTolerance);
 }
 
 } // namespace fbzz::tests

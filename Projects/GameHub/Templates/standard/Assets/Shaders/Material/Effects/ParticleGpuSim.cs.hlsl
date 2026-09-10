@@ -6,6 +6,8 @@
 // スロット:
 //   b0  = GpuEmitterCB
 //   t15 = StructuredBuffer<GpuSpawnEntry>  (スポーンバッファ DYNAMIC SRV)
+//   t29 = StructuredBuffer<GpuForceField>  (このエミッターに効く力場一式)
+//   t26 = Texture3D<float4>                (速度場アトラス。空でも常に束縛される)
 //   u2  = RWStructuredBuffer<GpuParticle> (パーティクルプール DEFAULT)
 
 #include "Common/Binding.hlsli"
@@ -47,14 +49,18 @@ struct GpuSpawnEntry
     float  pad1;
 };
 
-// 力場 1 本分 (48 bytes)。
+// 力場 1 本分 (96 bytes)。StructuredBuffer で渡すので本数に上限が無い。
 // LAYOUT: RenderPassContext.hpp の GpuForceField と完全に一致させること。
 struct GpuForceField
 {
     float4 posRadius;   // xyz=ワールド位置, w=影響半径 (<=0 で無限)
     float4 dirStrength; // xyz=風向き/渦軸 (正規化済み), w=強さ
     float4 params;      // x=種類(ParticleForceFieldType), y=falloffPower,
-                        // z=noiseFrequency, w=noiseSpeed
+                        // z=noiseFrequency (Drag では «内蔵の力か» の 0/1), w=noiseSpeed
+    // ── FF_VECTOR_FIELD のときだけ使う ──
+    float4 fieldRotation; // ワールド → 場のローカルへ戻す逆回転 (クォータニオン)
+    float4 fieldExtents;  // xyz=ワールド半径 [m], w=tightness
+    float4 fieldTile;     // x=アトラスのタイル番号 (<0 で無効), y=maxMagnitude, zw=予約
 };
 
 // ParticleForceFieldType (C++ 側 enum と数値を一致させること)
@@ -64,8 +70,14 @@ struct GpuForceField
 #define FF_VORTEX     3
 #define FF_TURBULENCE 4
 #define FF_DRAG       5
+#define FF_VECTOR_FIELD 6
 
-#define MAX_FORCE_FIELDS 8
+// 速度場アトラスの 1 タイルの 1 辺。VectorFieldAsset.hpp の
+// kVelocityFieldTileResolution と一致させること。
+#define VELOCITY_FIELD_TILE 32
+// tightness を «場へ寄る速さ» へ直す係数 [1/s]。
+// ParticleForces.cpp の kVelocityFieldTightnessRate と一致させること。
+#define VELOCITY_FIELD_TIGHTNESS_RATE 20.0f
 
 // ---------- リソース -------------------------------------------------------
 
@@ -94,11 +106,13 @@ cbuffer GpuEmitterCB : register(b0)
     float    gNoiseStrength;    // エミッター固有乱流の強さ (0 で無効)
     float    gNoiseFrequency;
     float    gNoiseSpeed;
-    uint     gForceFieldCount;  // gForceFields の有効本数
+    uint     gForceFieldCount;  // gParticleForces (SRV) の有効本数
     uint     gFlipbookMode;
     float    gFlipbookFramesPerSecond;
     float    gPad1;
-    GpuForceField gForceFields[MAX_FORCE_FIELDS];
+    // 力場は StructuredBuffer (gParticleForces) へ移った (2026-09-11)。
+    // 枠は **空けたまま残す**。詰めると後続の gViewProjection 以降が丸ごと別の値を読む。
+    float4   gReservedForceFields[24];
     float4   gCurveFlags;       // x=size, y=velocity, z=gradient, w=frameBlend
     float4   gSizeCurveKeys01;
     float4   gSizeCurveKeys23;
@@ -148,6 +162,11 @@ cbuffer GpuEmitterCB : register(b0)
 StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
 RWStructuredBuffer<GpuParticle>   gParticles   : register(UAV_GPU_PARTICLES);
 Texture2D<float>                   gSceneDepth : register(TEX_DEPTH);
+// このエミッターに効く力場一式。本数は gForceFieldCount。上限は無い。
+StructuredBuffer<GpuForceField>    gParticleForces : register(SB_PARTICLE_FORCES);
+// 常駐中の速度場を積んだアトラス。場が 1 枚も無くても 1x1x1 が必ず束縛される。
+Texture3D<float4>                  gVelocityAtlas  : register(TEX_VELOCITY_FIELD);
+SamplerState                       gVelocitySamp   : register(SAMPLER_LINEAR_CLAMP);
 
 // ---------- カールノイズ (乱流ベクトルフィールド) ---------------------------
 // 式は ParticlePass.cpp の同名関数と一致させること (CPU/GPU で挙動を揃える)。
@@ -216,12 +235,46 @@ void ApplyOrbitalVelocity(float3 position, inout float3 velocity)
 // ---------- 力場 (ParticleForceField) --------------------------------------
 
 // 力場を粒子速度へ適用する。式は ParticlePass.cpp の ApplyForceFields と一致させること。
-void ApplyForceFields(float3 position, inout float3 velocity)
+// クォータニオン q でベクトル v を回す。CPU の math::Quaternion::operator* と同じ式。
+float3 QuatRotate(float4 q, float3 v)
+{
+    const float3 t = 2.0f * cross(q.xyz, v);
+    return v + q.w * t + cross(q.xyz, t);
+}
+
+// 速度場アトラスからタイル 1 枚ぶんを引く。
+//
+// WHY Z を手で補間するか: タイルは Z 方向に積んであるので、ハードウェアのトリリニアに
+//   任せると境界で隣の場が混ざる。タイル内へ閉じた 2 スライスを引いて自分で lerp すれば
+//   にじみが原理的に起きない。余白 (1 テクセルのボーダー) を入れる案より、
+//   テクセルを無駄にせず添字も素直なまま済む。
+// @param local 場のローカル正規化座標 [0,1]³
+float3 SampleVelocityField(uint tile, float3 local, float maxMagnitude)
+{
+    uint atlasW, atlasH, atlasD;
+    gVelocityAtlas.GetDimensions(atlasW, atlasH, atlasD);
+    const float tileTexels = (float)VELOCITY_FIELD_TILE;
+
+    const float z  = local.z * tileTexels - 0.5f;
+    const float z0 = clamp(floor(z), 0.0f, tileTexels - 1.0f);
+    const float z1 = min(z0 + 1.0f, tileTexels - 1.0f);
+    const float t  = saturate(z - z0);
+
+    const float base = (float)tile * tileTexels;
+    const float3 a = gVelocityAtlas.SampleLevel(
+        gVelocitySamp, float3(local.xy, (base + z0 + 0.5f) / (float)atlasD), 0.0f).rgb;
+    const float3 b = gVelocityAtlas.SampleLevel(
+        gVelocitySamp, float3(local.xy, (base + z1 + 0.5f) / (float)atlasD), 0.0f).rgb;
+    // 復元は CPU の QuantizeVectorFieldValue と同じ式。
+    return (lerp(a, b, t) * 2.0f - 1.0f) * maxMagnitude;
+}
+
+void ApplyForceFields(float3 position, inout float3 velocity, float dragScale)
 {
     [loop]
     for (uint fi = 0; fi < gForceFieldCount; ++fi)
     {
-        GpuForceField f = gForceFields[fi];
+        GpuForceField f = gParticleForces[fi];
         float3 toParticle = position - f.posRadius.xyz;
         float  radius     = f.posRadius.w;
         float  influence  = 1.0f;
@@ -260,8 +313,41 @@ void ApplyForceFields(float3 position, inout float3 velocity)
         }
         else if (fieldType == FF_DRAG)
         {
-            // strength を減衰係数 [1/s] として扱う (velocityDamping と同じ式)
-            velocity *= max(0.0f, 1.0f - impulse);
+            // strength を減衰係数 [1/s] として扱う。params.z は «内蔵の力か» の印で、
+            // 寿命による減衰の作り分け (Drag over Lifetime) は内蔵の力にだけ掛かる
+            // (シーンに置いた空気抵抗は «その場所の性質» で、粒子の寿命とは無関係)。
+            float dragImpulse = (f.params.z > 0.5f) ? impulse * dragScale : impulse;
+            velocity *= max(0.0f, 1.0f - dragImpulse);
+        }
+        else if (fieldType == FF_VECTOR_FIELD)
+        {
+            // 常駐できなかった場 (アトラス満杯・未読み込み) は tile < 0 で届く。
+            // 送らずに詰めると本数がずれて別の力に化けるので、無効として渡してここで捨てる。
+            if (f.fieldTile.x < 0.0f) continue;
+
+            // 場のローカルへ: 平行移動 → 逆回転 → 指定した寸法で正規化。
+            // 式は ParticleForces.cpp の VectorField 分岐と一致させること。
+            const float3 localOffset = QuatRotate(f.fieldRotation, toParticle);
+            const float3 uvw = localOffset / f.fieldExtents.xyz * 0.5f + 0.5f;
+            if (any(uvw < 0.0f) || any(uvw > 1.0f)) continue;
+
+            const float3 fieldValue =
+                SampleVelocityField((uint)f.fieldTile.x, uvw, f.fieldTile.y);
+            const float3 worldValue = QuatRotate(
+                float4(-f.fieldRotation.xyz, f.fieldRotation.w), fieldValue);
+
+            velocity += worldValue * (f.dirStrength.w * influence * gDeltaTime);
+
+            // tightness は «どれだけ強く場へ従わせるか»。指数接近にしてあるのは、
+            // 線形に混ぜるとフレームレートで収束速度が変わるため (30fps と 120fps で
+            // 別の軌跡になる)。半減期で書けば dt に依らず同じ絵になる。
+            const float tightness = f.fieldExtents.w;
+            if (tightness > 0.0f)
+            {
+                const float blend = 1.0f - exp2(-gDeltaTime * tightness * influence
+                                                * VELOCITY_FIELD_TIGHTNESS_RATE);
+                velocity += (worldValue - velocity) * blend;
+            }
         }
     }
 }
@@ -437,7 +523,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float damping = max(0.0f, 1.0f - gVelocityDamping * dragScale * gDeltaTime);
     p.velocity *= damping;
     // ベクトルフィールド: シーンの力場 + エミッター固有ノイズを速度へ加算 (CPU と同順)
-    ApplyForceFields(p.position, p.velocity);
+    ApplyForceFields(p.position, p.velocity, dragScale);
     if (gNoiseStrength > 0.0f)
     {
         p.velocity += CurlNoise(TurbulenceSamplePoint(

@@ -110,6 +110,13 @@
 //      t16 以降は Advanced Graphics が使い切っているため、空きスロットを増やすより時分割が安い。
 #define SB_GPU_SORT         t15  // VS: StructuredBuffer<uint2> (ソート済みインデックス)
 
+// 粒子に効く力場一式 (内蔵 + シーン)。StructuredBuffer<GpuForceField>。
+// WHY 定数バッファではないか: cbuffer は固定長なので «渡せる力の本数» に上限が要り、
+//      あふれた分は捨てるしかない。捨てられたのが重力だと粒子がその場に浮くという、
+//      設定ミスと区別の付かない壊れ方をする。SRV にすれば上限そのものが消える。
+// SB_PUNCTUAL_LIGHTS と同じ t29 を時分割する (粒子 CS はライトを読まない)。
+#define SB_PARTICLE_FORCES  t29
+
 // ---- UAV (コンピュートシェーダー出力) ---------------------------------
 #define UAV_OUTPUT      u0
 #define UAV_OUTPUT2     u1
@@ -181,6 +188,11 @@
 #define TEX_SCENE_DEPTH      t25  // Forward 不透明物を含む最終シーン深度 (SSR 遮蔽用)
 #define TEX_CLOUD_SHAPE      t26  // ボリューメトリック雲 Shape 3D ノイズ (128³ Perlin-Worley)
 #define TEX_CLOUD_DETAIL     t27  // ボリューメトリック雲 Detail 3D ノイズ (32³ Worley 高周波)
+
+// 常駐中の .vfield を積んだ Texture3D アトラス (32³ タイル × N)。
+// TEX_CLOUD_SHAPE と t26 を時分割する。**どちらも Texture3D** なので、
+// DX12 の null ディスクリプタ次元が食い違う心配が無い組み合わせになっている。
+#define TEX_VELOCITY_FIELD   t26
 
 // モーションベクター: RG = 現 UV - 前フレーム UV、B = 書き込み済みフラグ (1)。
 // B が 0 の画素 (空・未描画) では読み手が従来どおり深度再投影へフォールバックする。
