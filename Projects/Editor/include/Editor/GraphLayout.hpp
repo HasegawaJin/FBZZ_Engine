@@ -23,6 +23,7 @@ struct GraphLayout {
     // WHY: 予約名を map key にすると、ユーザー定義 State と競合するため。
     ImVec2 entryPosition = ImVec2(-220.0f, 80.0f);
     ImVec2 anyStatePosition = ImVec2(-220.0f, 260.0f);
+    ImVec2 slotPosition = ImVec2(-220.0f, 440.0f);
 };
 
 } // namespace fbzz::editor

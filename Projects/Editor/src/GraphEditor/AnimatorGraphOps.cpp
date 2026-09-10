@@ -25,6 +25,7 @@ asset::AnimatorGraphLayout ToAssetGraphLayout(const GraphLayout& source)
     asset::AnimatorGraphLayout layout;
     layout.entryPosition = { source.entryPosition.x, source.entryPosition.y };
     layout.anyStatePosition = { source.anyStatePosition.x, source.anyStatePosition.y };
+    layout.slotPosition = { source.slotPosition.x, source.slotPosition.y };
     for (const auto& [stateName, pos] : source.nodePositions)
         layout.nodePositions[stateName] = { pos.x, pos.y };
     for (const auto& [stateName, positions] : source.blendTreeMotionPositions) {
@@ -79,6 +80,7 @@ void AutoLayoutAnimatorStates(GraphLayout& layout, const scene::AnimatorComponen
     }
     layout.entryPosition = ImVec2(-220.0f, START_Y);
     layout.anyStatePosition = ImVec2(-220.0f, START_Y + options.rowStep);
+    layout.slotPosition = ImVec2(-220.0f, START_Y + options.rowStep * 2.0f);
 }
 
 bool SaveAnimatorControllerWithLayout(EditorContext& ctx,
