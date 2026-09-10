@@ -214,7 +214,16 @@ inline void TpsCameraComponent::OnLateUpdate()
     const Vector3 targetCamPos = focus - (rotation * Vector3::FORWARD) * distance;
 
     // WHY: 指数補間で dt に依存した補間率を計算。初回のみスナップして位置ずれを防ぐ。
-    const float safeDt = Max(Time::deltaTime, 0.0f);
+    //
+    // WHY 実時間 (Unscaled) で回すか (2026-09-11):
+    //   ヒットストップは世界の時間を 5% まで落とす。縮んだ時間で追従を回すと、
+    //   止まっている 0.09 秒のあいだカメラの補間も 20 分の 1 になり、
+    //   «当たった瞬間にカメラが引っ掛かる» ── 止めの手応えではなく «重い操作» に
+    //   見える。カメラは盤面の一員ではなく «見ている目» なので、世界が止まっても
+    //   目は動いていてよい。揺れ (CameraShakeManager) と たるみ
+    //   (CameraFollowManager) が既に実時間で回っているので、追従だけが
+    //   縮んだ時間に取り残されていた形になる。
+    const float safeDt = Max(Time::unscaledDeltaTime, 0.0f);
 
     // 緩めたい要求が無ければ、たるみは 0 のまま = 従来どおりの密着追従になる。
     float horizontalSlack = 0.0f;

@@ -315,8 +315,8 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     emitter.emitVelocity   = Vector3::ZERO;
     emitter.sizeStart      = tuning.sizeStart;
     emitter.sizeEnd        = tuning.sizeEnd;
-    emitter.velocityDamping = tuning.particleDamping;
-    emitter.gravity        = Vector3::ZERO;
+    emitter.EnsureLocalForce(ParticleForceFieldType::Drag).strength = tuning.particleDamping;
+    emitter.SetGravityAcceleration(Vector3::ZERO);
 
     const Vector4 tint = PoleColor(m_pole);
     emitter.colorStart = tint;
@@ -385,9 +385,12 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
 
     // 芯から外向き + 極を軸にした周回。力場だけだと粒子が素直に相手へ向かうので、
     // 湧き出し口のあたりで «巻いてから飛ぶ» 一手間を足す。
-    emitter.radialVelocity = tuning.radialBurst;
-    emitter.orbitalVelocity = tuning.spin;
-    emitter.orbitalAxis     = Vector3::UP;
+    emitter.EnsureLocalForce(ParticleForceFieldType::Repulse).strength = tuning.radialBurst;
+    {
+        auto& spin = emitter.EnsureLocalForce(ParticleForceFieldType::Vortex);
+        spin.strength  = tuning.spin;
+        spin.direction = Vector3::UP;
+    }
 
     // ブレンドは ElectricCharge*.mat の blend_mode (Additive) が決める。
     emitter.sortMode  = ParticleSortMode::None;
@@ -401,9 +404,10 @@ inline void ElectrodeRig::ConfigureEmitter(ParticleEmitterSettings& emitter,
     //   流れの向きは力場と放電が示すので、粒そのものは丸のままにする。
     emitter.renderMode = ParticleRenderMode::Billboard;
 
-    emitter.noiseStrength  = tuning.crackle;
-    emitter.noiseFrequency = 1.2f;
-    emitter.noiseSpeed     = 2.0f;
+    auto& crackle = emitter.EnsureLocalForce(ParticleForceFieldType::Turbulence);
+    crackle.strength       = tuning.crackle;
+    crackle.noiseFrequency = 1.2f;
+    crackle.noiseSpeed     = 2.0f;
 }
 
 inline void ElectrodeRig::Attach(Script& owner, Pole pole,

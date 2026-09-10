@@ -46,7 +46,7 @@ speedUp = 2.0465087890625
 type = 'AutoExposure'
 
 [[overrides]]
-active = false
+active = true
 density = 0.001990049844607711
 edgeFade = 1.0
 heightFalloff = 0.0

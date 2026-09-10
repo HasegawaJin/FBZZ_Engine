@@ -38,7 +38,7 @@ view_mode = 0
 
 [game_view]
 aspect = 6
-play_focus_mode = 1
+play_focus_mode = 2
 
 [gizmo]
 mode = 0
@@ -318,6 +318,7 @@ inspector_filter = true
 [misc]
 ai_command_bus = true
 hot_reload = true
+sweep_orphaned_baked = true
 
 [snap]
 enabled = true

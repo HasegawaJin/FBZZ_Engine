@@ -252,7 +252,10 @@ inline void FpsCameraComponent::OnLateUpdate()
     const Vector3 foot = target->transform.worldPosition;
     Vector3 eye = foot + Vector3::UP * eyeHeight + planarForward * eyeForward;
 
-    const float safeDt   = Max(Time::deltaTime, 0.0f);
+    // 実時間で回す。縮んだ時間で追うと、ヒットストップの 0.09 秒だけ目の追従が
+    // 20 分の 1 になって «当たると視点が引っ掛かる» に見える
+    // (TpsCameraComponent の safeDt の WHY と同じ)。
+    const float safeDt   = Max(Time::unscaledDeltaTime, 0.0f);
     const bool  grounded = IsGrounded(*target);
 
     // 空中は 1:1 で追う。跳躍と落下は縦の変位そのものが手応えなので、ならすと
