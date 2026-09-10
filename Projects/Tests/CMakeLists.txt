@@ -110,12 +110,50 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/InputActionMapTests.cpp
         Engine/Auto/ParticleCodecTests.cpp
         Engine/Auto/ParticleCurveTests.cpp
+        Engine/Auto/VectorFieldTests.cpp
+        Engine/Auto/RenderGraphTests.cpp
+        Engine/Auto/RenderGraphLifetimeTests.cpp
         Engine/Auto/SceneSerializerTests.cpp
         Engine/Auto/UIRectTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics
 )
+
+# --- Editor -----------------------------------------------------------------
+# WHY Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»
+#     という形でしか表に出ず、しかも直ったかどうかがローカルの mtime に左右される。
+#     再現条件をテストへ固定できないと、同じ回帰を何度も踏む。
+#     FBZZEditor は STATIC なので、テストが参照するオブジェクトだけが引き込まれる。
+fbzz_add_test_suite(EditorAuto
+  SOURCES
+    Editor/Auto/AnimatorMaskAuditTests.cpp
+    Editor/Auto/AssetDirtyRegistryTests.cpp
+    Editor/Auto/AssetPathTests.cpp
+    Editor/Auto/EditorBusDispatcherTests.cpp
+    Editor/Auto/EditorBusProtocolTests.cpp
+    Editor/Auto/EditorSettingsTests.cpp
+    Editor/Auto/GraphLayoutTests.cpp
+    Editor/Auto/ImportCacheStoreTests.cpp
+    Editor/Auto/ImportFingerprintTests.cpp
+    Editor/Auto/JsonTests.cpp
+    Editor/Auto/PrefabOverrideTests.cpp
+    Editor/Auto/PrefabSaveTests.cpp
+    Editor/Auto/SceneDirtyTrackerTests.cpp
+    Editor/Auto/ScriptCodeGenTests.cpp
+    Editor/Auto/SpriteSlicerTests.cpp
+    Editor/Auto/TerrainBrushTests.cpp
+    Editor/Auto/UndoStackTests.cpp
+  LINKS
+    FBZZTestKitEditor
+)
+
+# Editor の一部の道具はヘッダごと src/ に置かれている (公開 API ではないため)。
+# WHY テストからだけ覗くか: TerrainBrush の減衰カーブや座標変換は «なんとなく変» という
+#     形でしか壊れず、目視では追えない。公開範囲を広げる代わりに、テスト側だけが
+#     内部ヘッダを見られるようにする。
+target_include_directories(FBZZTestsEditorAutoObj
+    PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Editor/src")
 
 # --- ビジュアル検証ベンチ ---------------------------------------------------
 # CTest には載せない。合否をコードで判定しないため。

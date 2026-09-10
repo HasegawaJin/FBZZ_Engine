@@ -42,12 +42,18 @@ jobs:
             -DFBZZ_ENABLE_SOURCE_REBUILD=OFF `
             -DFBZZ_BUILD_JOBS=4
 
-      # Editor / Sandbox はテストに要らないので、テスト exe とその依存だけを建てる。
+      # テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
+      # WHY Editor が混ざるか: EditorAuto は FBZZEditor をリンクするため、その分だけは
+      #     依存として建つ。AI 連携や import 判定は «起動しないと分からない» 壊れ方をし、
+      #     CI で押さえないと手元でしか気づけない。
+      #
+      # スイートを足したら --target にも足すこと。書き漏らすと «ビルドされないだけ» で
+      # 通ってしまい、CTest には NOT_BUILT のプレースホルダーが 1 件出るだけになる。
       - name: Build test targets
         shell: pwsh
         run: |
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsEngineAuto
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsEngineAuto FBZZTestsEditorAuto
 
       # --timeout: 止まったテストがあってもそこで打ち切り、残りを最後まで走らせる。
       #   これが無いと、1 件のハングでジョブがワークフローの上限まで待ち続ける。
