@@ -29,3 +29,12 @@ add_library(FBZZTestKitEngine STATIC
 )
 target_link_libraries(FBZZTestKitEngine PUBLIC FBZZTestKit FBZZEngine)
 set_target_properties(FBZZTestKitEngine PROPERTIES OUTPUT_NAME "FBZZTestKitEngine" FOLDER "Tests")
+
+# Editor 層。EditorContext を «必要な分だけ» 組み立てる土台を置く。
+# WHY 分けるか: Engine のテストへ Editor をリンクさせると、依存方向
+#      (Editor -> Engine) がテスト側から逆流する。Editor を触るスイートだけが引く。
+add_library(FBZZTestKitEditor STATIC
+    src/Editor/EditorFixture.cpp
+)
+target_link_libraries(FBZZTestKitEditor PUBLIC FBZZTestKitEngine FBZZEditor)
+set_target_properties(FBZZTestKitEditor PROPERTIES OUTPUT_NAME "FBZZTestKitEditor" FOLDER "Tests")

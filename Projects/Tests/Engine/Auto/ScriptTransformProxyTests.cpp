@@ -203,8 +203,8 @@ TEST_F(TransformProxyTest, RotateNormalisesTheResult)
 
 TEST_F(TransformProxyTest, RotateIgnoresADegenerateAxis)
 {
-    // 長さ 0 の軸は Normalized() の assert を踏む。スクリプトの引数ミスで
-    // エディターごと落とさないための門。
+    // 長さ 0 の軸は Normalized() の契約違反になる。回転させずに素通しし、
+    // スクリプトの引数ミスが姿勢を壊さないようにするための門。
     const math::Quaternion before = m_object.transform.rotation;
 
     transform.Rotate(math::Vector3::ZERO, 90.0f);

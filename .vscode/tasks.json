@@ -204,7 +204,7 @@
         {
             "label": "CMake: Build Tests (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsCoreManual --target FBZZTestBench",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -212,7 +212,7 @@
         {
             "label": "CMake: Build Tests (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsCoreManual --target FBZZTestBench",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -220,7 +220,7 @@
         {
             "label": "CMake: Build Tests (Release)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsCoreManual --target FBZZTestBench",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto --target FBZZTestsCoreManual --target FBZZTestBench",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -345,7 +345,7 @@
             //     再ビルドの条件次第で数字が変わる。build/Coverage へ完全に分ける。
             "label": "Coverage: Build (clang-cl)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build coverage coverage --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build coverage coverage --target FBZZTestsMathAuto --target FBZZTestsCoreAuto --target FBZZTestsPhysicsAuto --target FBZZTestsEngineAuto --target FBZZTestsEditorAuto",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -616,6 +616,10 @@
                 {
                     "label": "Engine — RagdollRig",
                     "value": "FBZZTestsEngineAuto"
+                },
+                {
+                    "label": "Editor — AI 連携 / import 判定 / Undo / プレハブ / 地形",
+                    "value": "FBZZTestsEditorAuto"
                 },
                 {
                     "label": "Core Manual — Window / Cursor (OS 状態を書き換える)",

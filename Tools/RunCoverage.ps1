@@ -47,13 +47,24 @@ $reportDir = Join-Path $OutputDir 'report'
 $historyDir = Join-Path $OutputDir 'history'
 
 # --cover_children: ctest が起動する各テスト exe まで追う。
-# 計測対象は自作の 3 モジュールだけ。Renderer / Editor を混ぜると、テストしないと
-# 決めた領域が分母に入って数値が意味を失う。
+#
+# 計測対象は «テストで守ると決めた領域» だけに絞る。Renderer や ImGui のパネルまで
+# 混ぜると、そもそもテストしない領域が分母に入って数値が意味を失う。
+#
+# Editor はモジュール単位で入れる。Util / Import / Ai / GraphEditor / Tools は
+# 判定・変換・直列化といった «目視では追えない» ロジックで、テストで守る対象。
+# src\Panels は ImGui の描画そのものなので入れない (自動テストの対象外)。
 & $openCppCoverage `
     --cover_children `
     --sources "Projects\Math" `
     --sources "Projects\Physics" `
     --sources "Projects\Engine\src\Core" `
+    --sources "Projects\Engine\src\Asset" `
+    --sources "Projects\Editor\src\Util" `
+    --sources "Projects\Editor\src\Import" `
+    --sources "Projects\Editor\src\Ai" `
+    --sources "Projects\Editor\src\GraphEditor" `
+    --sources "Projects\Editor\src\Tools" `
     --excluded_sources "Projects\Tests" `
     --excluded_sources "ThirdParty" `
     --export_type "cobertura:$cobertura" `
