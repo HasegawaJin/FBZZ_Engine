@@ -33,14 +33,33 @@ namespace fbzz::editor {
 
 class AssetBrowserPanel : public IPanel {
 public:
-    explicit AssetBrowserPanel(const std::string& rootPath);
-    const char* GetWindowName() const override { return "Asset Browser"; }
+    // 同時に開ける Asset Browser の枚数。2 枚目以降は既定で非表示。
+    // WHY 上限を設けるか: パネルは起動時に全数を作って常駐させるため、
+    //     数だけ ImGui ウィンドウとファイル監視の器が増える。実用上 4 枚あれば足りる。
+    static constexpr std::size_t kMaxInstances = 4;
+
+    // instanceIndex は同時に開ける Asset Browser の何枚目か (0 が既定の 1 枚目)。
+    // ウィンドウ名と、EditorSettings 側のパネル状態の添字を決める。
+    explicit AssetBrowserPanel(const std::string& rootPath, std::size_t instanceIndex = 0);
+    const char* GetWindowName() const override { return m_windowName.c_str(); }
+    // 2 枚目以降は既定で非表示。View > Panels から出す (Unity の Project ウィンドウと同じ)。
+    bool GetDefaultVisibility() const override { return m_instanceIndex == 0; }
     void OnInit(EditorContext& ctx) override;
     void OnLoadSettings(const EditorSettings& settings) override;
     void OnSaveSettings(EditorSettings& settings) const override;
     void SetRootPath(const std::string& rootPath);
 
 private:
+    // --- Type フィルタの種別 -----------------------------------------------------
+    // WHY ここで定義するか: 下のメンバー関数宣言が引数型として使うため、
+    //     フィルタ関連のメンバー群 (m_typeFilterMask 等) より前に置く必要がある。
+    // Unreal の Filters と同じく複数タイプを同時に有効化できる。
+    // All は「絞り込みなし」を表す番兵で、マスクのビットとしては使わない。
+    // NOTE: Skeleton は無い。.skel は ShouldDisplayEntry が生成物として隠すため、
+    //       フィルタとして出しても必ず 0 件になる (項目があるほうが紛らわしい)。
+    enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab,
+                            Animation, Asset, COUNT };
+
     struct Entry {
         std::string path;
         std::string name;
@@ -85,6 +104,8 @@ private:
     void OnBeforeBegin(EditorContext& ctx) override;
     void RefreshDirectory();
     void DrawFolderTree(const std::string& dirPath, EditorContext& ctx);
+    // 左ツリーのファイル 1 行 (m_treeShowFiles が有効なときだけ描かれる葉)。
+    void DrawTreeFileRow(const Entry& e, EditorContext& ctx);
     void DrawEntry(const Entry& e, EditorContext& ctx, const SubAssetBand& band = {});
     void DrawCreateMenu(EditorContext& ctx);
     void UpdateMounts(const EditorContext& ctx);
@@ -101,7 +122,33 @@ private:
 
     static ImVec4      EntryColor(const Entry& e);
     static const char* EntryLabel(const Entry& e);
-    static void        DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false);
+    // フォルダの色分けを反映した表示色。フォルダに色が設定されていなければ EntryColor と同じ。
+    // WHY EntryColor と別か: EntryColor は static で、ユーザーが設定した色表 (ctx) を引けない。
+    [[nodiscard]] ImVec4 ResolveEntryColor(const Entry& e, const EditorContext& ctx) const;
+    // ユーザーが設定したフォルダ色。未設定なら false を返す。
+    [[nodiscard]] static bool TryGetFolderColor(const EditorContext& ctx,
+                                                const std::string& folderPath,
+                                                ImVec4& outColor);
+    // 右クリックメニューの "Set Color" (プリセット / 最近使った色 / カスタム / Reset)。
+    void DrawFolderColorMenu(const std::string& folderPath, EditorContext& ctx);
+    // folderPath に色を設定する。color が null なら解除。
+    // m_folderColorApplyRecursive が立っていれば配下のフォルダすべてに同じ操作をする。
+    void ApplyFolderColor(const std::string& folderPath, const uint32_t* color, EditorContext& ctx);
+    // 最近使った色の先頭へ積む (同じ色は重複させず先頭へ移し、上限を超えた分は捨てる)。
+    static void PushRecentFolderColor(uint32_t color, EditorContext& ctx);
+    // 最近使った色の保持数。1 行に収まる数に留める。
+    static constexpr std::size_t kMaxRecentFolderColors = 8;
+
+    // Custom ピッカーの作業色と、それがどのフォルダのものか。
+    // WHY パスを持つか: 別のフォルダでメニューを開いたときに前の編集値が残っていると、
+    //      関係のない色から編集を始めることになる。対象が変わったら現在色で初期化する。
+    std::string m_folderColorPickerPath;
+    ImVec4      m_folderColorPickerValue{ 0.5f, 0.5f, 0.5f, 1.0f };
+    // 次に選ぶ色を配下のフォルダにも適用するか (Unreal の Set Color と同じ選択肢)。
+    bool        m_folderColorApplyRecursive = false;
+    // colorOverride が非 null なら EntryColor の代わりにその色で描く (フォルダの色分け用)。
+    static void        DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false,
+                                      const ImVec4* colorOverride = nullptr);
     void               DrawAssetPreviewIconAt(ImVec2 origin, float sz, const Entry& e, EditorContext& ctx, bool hovered);
     void               ResetAssetPreviewCache(const std::string& path);
     // 全プレビューの GPU リソースを解放して捨てる (次の描画で作り直される)。
@@ -132,6 +179,8 @@ private:
     // FBX の従属アセット (Foo/materials/*.mat 等) は親 FBX を展開してから選択する。
     void HandleRevealRequest(EditorContext& ctx);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
+    // 単一の種別に当てはまるか。複数フィルタの OR 判定から呼ばれる。
+    [[nodiscard]] static bool MatchesTypeFilter(const Entry& e, TypeFilter type);
 
     // --- Ctrl+C / Ctrl+V (複数選択対応のアセットコピー&ペースト) -----------------
     // WHY: 既存の "Copy Path"/"Duplicate" はパス文字列コピーやその場複製のみで、
@@ -216,10 +265,22 @@ private:
     [[nodiscard]] static bool IsImportableRaw(const std::string& ext);
     [[nodiscard]] static bool IsTextureRaw(const std::string& ext);
 
-    // --- Type フィルタ -----------------------------------------------------------
-    enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab,
-                            Animation, Skeleton, Asset };
-    TypeFilter m_typeFilter = TypeFilter::All;
+    // --- Type フィルタ (種別の enum は Entry の上で定義済み) ----------------------
+    // bit N (N >= 1) = TypeFilter N が有効。0 なら絞り込みなし。
+    uint32_t m_typeFilterMask = 0;
+
+    [[nodiscard]] bool IsTypeFilterActive(TypeFilter type) const {
+        return (m_typeFilterMask & (1u << static_cast<int>(type))) != 0;
+    }
+    void ToggleTypeFilter(TypeFilter type) {
+        m_typeFilterMask ^= (1u << static_cast<int>(type));
+    }
+    // 有効な種別 1 つ 1 つを、その種別の色のピルとして並べる Unreal 風フィルターバー。
+    // 何も有効でなければ 1 行ぶんも占有しない。
+    void DrawFilterChips();
+    // Filters ボタンのドロップダウン (色付きチェックリスト)。
+    void DrawFilterMenu();
+    [[nodiscard]] static const char* TypeFilterLabel(TypeFilter type);
 
     // --- ソート方法 ------------------------------------------------------------
     enum class SortMode { NameAsc=0, NameDesc, Type, Modified };
@@ -237,6 +298,15 @@ private:
     // WHY: 新規作成の入口が「空 Entry 1 個」しか無いと、VFX で最も難しい
     //      層構成を毎回ゼロから積み直すことになる。VFX Editor と同じ
     //      カタログサービスを共有し、表示の食い違いを作らない。
+
+    // このパネルが何枚目か。ウィンドウ名と保存先スロットを決めるだけで、
+    // 中身の挙動は 1 枚目と完全に同じ。
+    std::size_t           m_instanceIndex = 0;
+    std::string           m_windowName;
+    // ファイル監視・インポート・未変換ファイルの走査を担当するのは 1 枚目だけ。
+    [[nodiscard]] bool    IsAssetPipelineOwner() const { return m_instanceIndex == 0; }
+    // 最後に反映した ctx.assetBrowserRefreshGeneration。
+    uint64_t              m_appliedRefreshGeneration = 0;
 
     std::string           m_rootPath;
     std::string           m_currentPath;
@@ -282,8 +352,14 @@ private:
     // TypeFilter を AssetSearch へ渡す拡張子リストへ変換する。
     // All の場合は空 (絞り込みなし) を返す。
     [[nodiscard]] std::vector<std::string> TypeFilterExtensions() const;
+    [[nodiscard]] static std::vector<std::string> ExtensionsForTypeFilter(TypeFilter type);
     float                 m_iconSize  = 84.0f;
     float                 m_treeWidth = 180.0f; // 左フォルダツリーの幅 (スプリッターでドラッグ可変)
+    // 左の階層ツリーにファイルも並べるか。
+    // WHY 既定 OFF か: フォルダだけの木は「どこに何があるか」の地図として読めるが、
+    //     ファイルを全部並べると数百行になり、木を畳んで俯瞰する用途が壊れる。
+    //     ファイルまで一気に辿りたいときだけ出す。
+    bool                  m_treeShowFiles  = false;
     bool                  m_resetScroll    = false; // ディレクトリ移動後に右ペインをトップへ戻す
     bool                  m_assetExpandDirty  = false; // FBX 展開トグル後の遅延 Refresh フラグ
 

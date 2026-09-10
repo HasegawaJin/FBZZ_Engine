@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <sstream>
@@ -63,8 +64,16 @@ std::string EnsureImportCacheLoaded()
         const toml::table* entry = value.as_table();
         if (!entry) continue;
         ImportCacheStore::Entry loaded;
-        loaded.sourceHash   = (*entry)["source"].value_or(std::string{});
+        loaded.contentHash  = (*entry)["content"].value_or(std::string{});
         loaded.settingsHash = (*entry)["settings"].value_or(std::string{});
+        // TOML の整数は int64_t。負値は «壊れた記録» なので目印を捨てる (0 = 未記録)。
+        const int64_t rawSize = (*entry)["size"].value_or(int64_t{0});
+        loaded.size  = rawSize > 0 ? static_cast<uint64_t>(rawSize) : 0;
+        loaded.mtime = (*entry)["mtime"].value_or(int64_t{0});
+        // 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値としては
+        // 使えないので、移行判定用の別枠で持つ。
+        if (loaded.contentHash.empty())
+            loaded.legacyStamp = (*entry)["source"].value_or(std::string{});
         if (loaded.Empty()) continue;
         s_importCacheEntries.emplace(std::string(guid.str()), std::move(loaded));
     }
@@ -77,16 +86,21 @@ bool WriteImportCacheFile(const std::string& projectRoot)
     std::ostringstream out;
     out << "# 自動生成 — import が成功するたびに書き直す。手で編集しても読み戻さない。\n"
            "# アセット GUID -> 前回 import 時の fingerprint。生成物の実体は\n"
-           "# Library/Baked/<guid>/ にあり、この 2 値が現在の原本・設定と食い違ったら焼き直す。\n"
+           "# Library/Baked/<guid>/ にあり、content / settings が現在と食い違ったら焼き直す。\n"
            "#\n"
-           "# WHY .meta ではなくここか: source は原本の絶対パスと更新時刻から作るため、\n"
-           "#     人・マシン・clone ごとに必ず違う。git 追跡下の .meta へ書くと\n"
-           "#     同じプロジェクトを触る全員の手元が常に差分になる。\n\n";
+           "# content = 原本の «中身» のハッシュ。size / mtime は «中身を読まずに\n"
+           "#           変わっていないと言い切る» ための目印で、判定の材料ではない。\n"
+           "#           どちらかが動いていたら中身を読み直し、content で最終判断する。\n"
+           "#\n"
+           "# WHY .meta ではなくここか: size / mtime は人・マシン・clone ごとに違う。\n"
+           "#     git 追跡下の .meta へ書くと、同じプロジェクトを触る全員の手元が常に差分になる。\n\n";
     out << "count = " << s_importCacheEntries.size() << "\n\n[hashes]\n";
     // guid も hash も hex に限定済みなので、リテラル文字列でエスケープが要らない。
     for (const auto& [guid, entry] : s_importCacheEntries) {
-        out << '\'' << guid << "' = { source = '" << entry.sourceHash
-            << "', settings = '" << entry.settingsHash << "' }\n";
+        out << '\'' << guid << "' = { content = '" << entry.contentHash
+            << "', settings = '" << entry.settingsHash
+            << "', size = " << entry.size
+            << ", mtime = " << entry.mtime << " }\n";
     }
 
     util::FileSystem::EnsureDirectory(projectRoot + "Library");
@@ -128,11 +142,63 @@ bool ImportCacheStore::Save(const std::string& assetGuid, const Entry& entry)
 
     const auto it = s_importCacheEntries.find(assetGuid);
     if (it != s_importCacheEntries.end()
-        && it->second.sourceHash   == entry.sourceHash
-        && it->second.settingsHash == entry.settingsHash)
+        && it->second.contentHash  == entry.contentHash
+        && it->second.settingsHash == entry.settingsHash
+        && it->second.size         == entry.size
+        && it->second.mtime        == entry.mtime)
         return true;
 
     s_importCacheEntries[assetGuid] = entry;
+    return WriteImportCacheFile(projectRoot);
+}
+
+bool ImportCacheStore::RefreshStamp(const std::string& assetGuid, uint64_t size, int64_t mtime)
+{
+    if (!IsWellFormedGuid(assetGuid)) return false;
+
+    std::lock_guard lock(s_importCacheMutex);
+    const std::string projectRoot = EnsureImportCacheLoaded();
+    if (projectRoot.empty()) return false;
+
+    const auto it = s_importCacheEntries.find(assetGuid);
+    if (it == s_importCacheEntries.end()) return false;
+    if (it->second.size == size && it->second.mtime == mtime) return true;
+
+    it->second.size  = size;
+    it->second.mtime = mtime;
+    return WriteImportCacheFile(projectRoot);
+}
+
+size_t ImportCacheStore::Forget(const std::vector<std::string>& guids)
+{
+    if (guids.empty()) return 0;
+
+    std::lock_guard lock(s_importCacheMutex);
+    const std::string projectRoot = EnsureImportCacheLoaded();
+    if (projectRoot.empty()) return 0;
+
+    size_t dropped = 0;
+    for (const std::string& guid : guids)
+        dropped += s_importCacheEntries.erase(guid);
+
+    if (dropped > 0) WriteImportCacheFile(projectRoot);
+    return dropped;
+}
+
+bool ImportCacheStore::Rekey(const std::string& oldGuid, const std::string& newGuid)
+{
+    if (!IsWellFormedGuid(oldGuid) || !IsWellFormedGuid(newGuid)) return false;
+    if (oldGuid == newGuid) return true;
+
+    std::lock_guard lock(s_importCacheMutex);
+    const std::string projectRoot = EnsureImportCacheLoaded();
+    if (projectRoot.empty()) return false;
+
+    const auto it = s_importCacheEntries.find(oldGuid);
+    if (it == s_importCacheEntries.end()) return true;  // 未記録なら移すものが無い
+
+    s_importCacheEntries[newGuid] = it->second;
+    s_importCacheEntries.erase(it);
     return WriteImportCacheFile(projectRoot);
 }
 

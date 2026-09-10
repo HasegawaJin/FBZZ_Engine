@@ -203,16 +203,66 @@ std::string UniqueDestPath(const std::string& srcPath, const std::string& destDi
     return {};
 }
 
+// 複製で持ち込まれた .meta の guid を振り直す。
+//
+// WHY .meta を捨てずに振り直すか: .meta は guid だけでなく importer 設定 (sRGB / 圧縮 /
+//     生成フラグ) を持つ。捨てれば複製は既定設定で再インポートされて見た目が変わり、
+//     そのまま複写すれば複製側の guid が原本と衝突して «複製への参照が原本へ吸われる»。
+//     設定は残し guid だけ新しくするのが、どちらの事故も踏まない唯一の形。
+void ReassignCopiedGuid(const std::string& assetAbsPath)
+{
+    if (!util::FileSystem::Exists(assetAbsPath + ".meta")) return;
+    std::string newGuid;
+    if (!asset::AssetDatabase::ReassignGuid(assetAbsPath, newGuid))
+        FBZZ_LOG_WARN("AssetBrowser: cannot reassign guid for copy [%s]", assetAbsPath.c_str());
+}
+
+// フォルダ複製は std::filesystem::copy が配下の .meta ごと複写するため、
+// 中身のすべてが GUID 重複になる。複製し終えた «複製先» を舐めて振り直す。
+void ReassignCopiedGuidsRecursive(const std::string& dirAbsPath)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::recursive_directory_iterator it(util::FileSystem::PathFromUtf8(dirAbsPath),
+                                        fs::directory_options::skip_permission_denied, ec);
+    const fs::recursive_directory_iterator last;
+    while (!ec && it != last) {
+        const std::string p = util::FileSystem::NormalizePathSeparators(
+            util::FileSystem::PathToUtf8(it->path()));
+        if (p.size() > 5 && util::StringUtils::ToLower(p.substr(p.size() - 5)) == ".meta")
+            ReassignCopiedGuid(p.substr(0, p.size() - 5));
+        it.increment(ec);
+    }
+    if (ec)
+        FBZZ_LOG_WARN("AssetBrowser: copy scan stopped [%s]", ec.message().c_str());
+}
+
 bool CopyAssetPath(const std::string& srcPath, const std::string& dstPath, bool isDir)
 {
     if (srcPath.empty() || dstPath.empty()) return false;
-    return isDir
-        ? util::FileSystem::CopyDirectoryRecursive(
-            util::FileSystem::PathFromUtf8(srcPath),
-            util::FileSystem::PathFromUtf8(dstPath))
-        : util::FileSystem::CopyFile(
-            util::FileSystem::PathFromUtf8(srcPath),
-            util::FileSystem::PathFromUtf8(dstPath));
+
+    if (isDir) {
+        if (!util::FileSystem::CopyDirectoryRecursive(
+                util::FileSystem::PathFromUtf8(srcPath),
+                util::FileSystem::PathFromUtf8(dstPath)))
+            return false;
+        ReassignCopiedGuidsRecursive(dstPath);
+        return true;
+    }
+
+    if (!util::FileSystem::CopyFile(util::FileSystem::PathFromUtf8(srcPath),
+                                    util::FileSystem::PathFromUtf8(dstPath)))
+        return false;
+
+    // FBX だけはサイドカーを持ち込まない。原本の隣の .meta は «Import 済み» の印で、
+    // 複製に付けて回ると Baked 生成物を持たないまま Import 済みに見える (AssetDatabase.hpp)。
+    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(srcPath)) != ".fbx"
+        && util::FileSystem::Exists(srcPath + ".meta")) {
+        util::FileSystem::CopyFile(util::FileSystem::PathFromUtf8(srcPath + ".meta"),
+                                   util::FileSystem::PathFromUtf8(dstPath + ".meta"));
+        ReassignCopiedGuid(dstPath);
+    }
+    return true;
 }
 
 std::string ResolveMoveSourcePath(const std::string& payloadPath, const EditorContext& ctx)
@@ -266,37 +316,74 @@ struct ExtGroup {
     const char*  label;
 };
 
+// 種別色は 8 つのファミリー + 無彩色に畳んである。
+//
+// WHY 拡張子ごとに色を分けないか: 人が確実に見分けられるカテゴリ色は 6〜8 程度で、
+//     26 色は覚えられない。それ以上に、近い色どうしは「区別できるはず」と目に
+//     思わせておいて実際には解像できないため、同じ色にするより悪い。
+//     (旧テーブルは .prefab と .mat が RGB 距離 0.087、.ttf と .fnt が 0.173 で、
+//      同じフォルダに並ぶのに見分けられなかった)
+//     ファミリー内は同じ色にし、細かい種類はアイコン内のラベル (ANIM / MASK …) が示す。
+//     色相は円周にほぼ等間隔で置き、どの 2 色も RGB 距離 0.30 以上を確保している。
+static constexpr ImVec4 kFamLook  { 0.23f, 0.62f, 0.82f, 1.0f }; // h=200 マテリアル / テクスチャ
+static constexpr ImVec4 kFamModel { 0.82f, 0.41f, 0.12f, 1.0f }; // h= 25 形状
+static constexpr ImVec4 kFamAnim  { 0.76f, 0.88f, 0.18f, 1.0f }; // h= 70 時間軸を持つもの
+static constexpr ImVec4 kFamCode  { 0.20f, 0.70f, 0.36f, 1.0f }; // h=140 コード / ロジック
+static constexpr ImVec4 kFamFont  { 0.33f, 0.33f, 0.88f, 1.0f }; // h=240 UI / フォント
+static constexpr ImVec4 kFamScene { 0.63f, 0.24f, 0.80f, 1.0f }; // h=282 シーン / プレファブ
+static constexpr ImVec4 kFamAudio { 0.72f, 0.18f, 0.52f, 1.0f }; // h=322 音
+static constexpr ImVec4 kFamVfx   { 0.98f, 0.37f, 0.47f, 1.0f }; // h=350 エフェクト
+static constexpr ImVec4 kFamData  { 0.58f, 0.58f, 0.58f, 1.0f }; // 無彩色 データ / テキスト
+
 static constexpr ExtGroup kExtGroups[] = {
-    { { ".hlsl", ".hlsli", nullptr },                          { 0.15f, 0.65f, 0.25f, 1.0f }, "HLSL"    },
-    { { ".hpp", ".cpp", ".h", ".c", ".cc", ".cxx" },            { 0.20f, 0.58f, 0.70f, 1.0f }, "CPP"     },
-    { { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga" },     { 0.15f, 0.40f, 0.80f, 1.0f }, "TEX"     },
-    { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
-    { { ".prefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
-    { { ".terrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
-    { { ".scene", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
-    { { ".asset", nullptr },                                 { 0.85f, 0.55f, 0.08f, 1.0f }, "ASSET"   },
-    { { ".anim", nullptr },                                  { 0.95f, 0.75f, 0.20f, 1.0f }, "ANIM"    },
-    { { ".animcontroller", nullptr },                        { 0.75f, 0.40f, 0.85f, 1.0f }, "ANIM CTRL" },
-    // Avatar Mask: アニメーションレイヤーの適用ボーン集合。Animator 系と同系色にする。
-    { { ".mask", nullptr },                                  { 0.55f, 0.45f, 0.90f, 1.0f }, "MASK"    },
-    { { ".vfx", nullptr },                                   { 0.95f, 0.35f, 0.55f, 1.0f }, "VFX"     },
-    { { ".behaviortree", nullptr },                          { 0.45f, 0.80f, 0.65f, 1.0f }, "AI"      },
-    // 演出タイムライン。時間軸を持つ仲間 (.anim / .animcontroller) と同系色。
-    { { ".sequence", nullptr },                              { 0.85f, 0.60f, 0.30f, 1.0f }, "SEQ"     },
-    { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
-    // 物理マテリアル。見た目の .mat と取り違えないよう、色は物理系 (青緑) から離す。
-    { { ".physmat", nullptr },                               { 0.90f, 0.50f, 0.25f, 1.0f }, "PHYSMAT" },
-    { { ".tex", nullptr },                                   { 0.40f, 0.80f, 0.90f, 1.0f }, "TEX"     },
-    { { ".mesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
-    { { ".animctrl", nullptr },                              { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
-    { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
-    { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
-    // 手続き効果音の定義。録音素材と並ぶので、同系色のまま明度を上げて区別する。
-    { { ".synth", nullptr },                                    { 0.90f, 0.35f, 0.70f, 1.0f }, "SYNTH"   },
-    { { ".ttf", ".ttc", ".otf", nullptr },                     { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
-    { { ".fnt", nullptr },                                     { 0.50f, 0.20f, 0.75f, 1.0f }, "FNT"     },
-    { { ".txt", ".md", ".rst", nullptr },                      { 0.55f, 0.55f, 0.55f, 1.0f }, "TEXT"    },
-    { { ".py", ".lua", ".cs", nullptr },                       { 0.20f, 0.70f, 0.55f, 1.0f }, "SCRIPT"  },
+    // ── Look ────────────────────────────────────────────────────────────────
+    { { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga" },     kFamLook,  "TEX"       },
+    { { ".mat", nullptr },                                     kFamLook,  "MAT"       },
+    // 物理マテリアルも「マテリアル」の一員。ラベルで見分ける。
+    { { ".physmat", nullptr },                                 kFamLook,  "PHYSMAT"   },
+    { { ".tex", nullptr },                                     kFamLook,  "TEXDESC"   },
+
+    // ── Model ───────────────────────────────────────────────────────────────
+    { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            kFamModel, "MESH"      },
+    { { ".mesh", nullptr },                                    kFamModel, "MESH"      },
+    { { ".terrain", nullptr },                                 kFamModel, "TERRAIN"   },
+
+    // ── Animation (時間軸を持つもの) ─────────────────────────────────────────
+    { { ".anim", nullptr },                                    kFamAnim,  "ANIM"      },
+    { { ".animcontroller", nullptr },                          kFamAnim,  "ANIM CTRL" },
+    { { ".animctrl", nullptr },                                kFamAnim,  "CTRL"      },
+    { { ".mask", nullptr },                                    kFamAnim,  "MASK"      },
+    { { ".sequence", nullptr },                                kFamAnim,  "SEQ"       },
+
+    // ── Code & Logic ────────────────────────────────────────────────────────
+    { { ".hlsl", ".hlsli", nullptr },                          kFamCode,  "HLSL"      },
+    { { ".hpp", ".cpp", ".h", ".c", ".cc", ".cxx" },           kFamCode,  "CPP"       },
+    { { ".py", ".lua", ".cs", nullptr },                       kFamCode,  "SCRIPT"    },
+    { { ".behaviortree", nullptr },                            kFamCode,  "AI"        },
+
+    // ── UI & Font ───────────────────────────────────────────────────────────
+    { { ".ttf", ".ttc", ".otf", nullptr },                     kFamFont,  "FONT"      },
+    { { ".fnt", nullptr },                                     kFamFont,  "FNT"       },
+
+    // ── Scene & Prefab ──────────────────────────────────────────────────────
+    { { ".scene", nullptr },                                   kFamScene, "SCENE"     },
+    { { ".prefab", nullptr },                                  kFamScene, "PREFAB"    },
+
+    // ── Audio ───────────────────────────────────────────────────────────────
+    { { ".wav", ".mp3", ".ogg", ".flac", nullptr },            kFamAudio, "SFX"       },
+    { { ".synth", nullptr },                                   kFamAudio, "SYNTH"     },
+
+    // ── VFX ─────────────────────────────────────────────────────────────────
+    { { ".vfx", nullptr },                                     kFamVfx,   "VFX"       },
+    { { ".vfield", ".fga", nullptr },                          kFamVfx,   "VFIELD"    },
+    // 曲線と色は «時間軸を持つもの» の一員。エフェクト以外でも使い回すので Anim 側に置く。
+    { { ".curve", nullptr },                                   kFamAnim,  "CURVE"     },
+    { { ".gradient", nullptr },                                kFamLook,  "GRADIENT"  },
+
+    // ── Data & Text ─────────────────────────────────────────────────────────
+    { { ".toml", ".json", ".yaml", ".yml", nullptr },          kFamData,  "DATA"      },
+    { { ".txt", ".md", ".rst", nullptr },                      kFamData,  "TEXT"      },
+    { { ".asset", nullptr },                                   kFamData,  "ASSET"     },
 };
 
 // 未知拡張子をハッシュで色付けする。
@@ -1505,6 +1592,179 @@ void AssetBrowserPanel::FinalizePendingAssetMove(EditorContext& ctx)
     Toast::Success("Moved " + util::FileSystem::GetFilename(dstAbs));
 }
 
+const char* AssetBrowserPanel::TypeFilterLabel(TypeFilter type)
+{
+    using TF = TypeFilter;
+    switch (type) {
+    case TF::Scene:     return "Scene";
+    case TF::Material:  return "Material";
+    case TF::Script:    return "Script";
+    case TF::Texture:   return "Texture";
+    case TF::Audio:     return "Audio";
+    case TF::Mesh:      return "Mesh";
+    case TF::Shader:    return "Shader";
+    case TF::Prefab:    return "Prefab";
+    case TF::Animation: return "Animation";
+    case TF::Asset:     return "Asset";
+    default:            return "All";
+    }
+}
+
+bool AssetBrowserPanel::TryGetFolderColor(const EditorContext& ctx,
+                                          const std::string& folderPath,
+                                          ImVec4& outColor)
+{
+    const auto it = ctx.assetBrowserFolderColors.find(
+        util::FileSystem::NormalizePathSeparators(folderPath));
+    if (it == ctx.assetBrowserFolderColors.end()) return false;
+    outColor = ImGui::ColorConvertU32ToFloat4(it->second);
+    return true;
+}
+
+ImVec4 AssetBrowserPanel::ResolveEntryColor(const Entry& e, const EditorContext& ctx) const
+{
+    ImVec4 folderColor;
+    if (e.isDir && TryGetFolderColor(ctx, e.path, folderColor)) return folderColor;
+    return EntryColor(e);
+}
+
+void AssetBrowserPanel::ApplyFolderColor(const std::string& folderPath,
+                                         const uint32_t* color,
+                                         EditorContext& ctx)
+{
+    const std::string key = util::FileSystem::NormalizePathSeparators(folderPath);
+    if (color) ctx.assetBrowserFolderColors[key] = *color;
+    else       ctx.assetBrowserFolderColors.erase(key);
+
+    if (!m_folderColorApplyRecursive) return;
+
+    for (const auto& child : util::FileSystem::ListAll(key)) {
+        if (!util::FileSystem::IsDirectory(child)) continue;
+        const std::string childPath = util::FileSystem::NormalizePathSeparators(child);
+        if (!ShouldDisplayEntry(childPath, util::FileSystem::GetFilename(child), true)) continue;
+        ApplyFolderColor(childPath, color, ctx);
+    }
+}
+
+void AssetBrowserPanel::PushRecentFolderColor(uint32_t color, EditorContext& ctx)
+{
+    auto& recent = ctx.assetBrowserRecentFolderColors;
+    recent.erase(std::remove(recent.begin(), recent.end(), color), recent.end());
+    recent.insert(recent.begin(), color);
+    if (recent.size() > kMaxRecentFolderColors) recent.resize(kMaxRecentFolderColors);
+}
+
+void AssetBrowserPanel::DrawFolderColorMenu(const std::string& folderPath, EditorContext& ctx)
+{
+    // 彩度を抑えた 8 色。フォルダの識別が目的なので、アセット種別の色と
+    // competing しない程度の明度に揃える (タイル一面が原色になると帯が読めない)。
+    static constexpr ImVec4 kPresets[] = {
+        { 0.86f, 0.30f, 0.30f, 1.0f }, { 0.90f, 0.55f, 0.20f, 1.0f },
+        { 0.88f, 0.80f, 0.25f, 1.0f }, { 0.40f, 0.78f, 0.38f, 1.0f },
+        { 0.28f, 0.72f, 0.72f, 1.0f }, { 0.32f, 0.56f, 0.90f, 1.0f },
+        { 0.62f, 0.42f, 0.88f, 1.0f }, { 0.88f, 0.45f, 0.72f, 1.0f },
+    };
+    constexpr ImGuiColorEditFlags kSwatchFlags =
+        ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoAlpha;
+
+    // 現在色はイテレータではなく値で持つ。
+    // WHY: このメニューの中で色を確定すると unordered_map へ挿入が起き、
+    //      保持していたイテレータが無効化される (以降の参照が未定義動作になる)。
+    const std::string key = util::FileSystem::NormalizePathSeparators(folderPath);
+    const auto found = ctx.assetBrowserFolderColors.find(key);
+    const bool     hasColor     = found != ctx.assetBrowserFolderColors.end();
+    const uint32_t currentColor = hasColor ? found->second : 0u;
+
+    // 設定済みかどうかはラベル自体で示す。
+    // WHY 色見本をラベルの左に描かないか: メニュー項目は行幅いっぱいに広がるため、
+    //     SameLine で図形を差し込むと項目の当たり判定と表示がずれる。
+    if (!ImGui::BeginMenu(hasColor ? "Set Color \xe2\x97\x8f" : "Set Color")) return;
+
+    // 色を確定する共通経路。最近使った色への記録と再描画の後始末をここに集約する。
+    const auto commit = [&](const ImVec4& picked) {
+        const uint32_t packed = ImGui::ColorConvertFloat4ToU32(picked);
+        ApplyFolderColor(folderPath, &packed, ctx);
+        PushRecentFolderColor(packed, ctx);
+    };
+
+    const float swatch = ImGui::GetFrameHeight();
+
+    // 現在の色。設定済みのフォルダで「今どれが効いているのか」を最初に見せる。
+    if (hasColor) {
+        ImGui::TextDisabled("Current");
+        ImGui::ColorButton("##current", ImGui::ColorConvertU32ToFloat4(currentColor),
+                           kSwatchFlags,
+                           { swatch * 4.0f + ImGui::GetStyle().ItemSpacing.x * 3.0f, swatch });
+        ImGui::Separator();
+    }
+
+    ImGui::TextDisabled("Presets");
+    for (int i = 0; i < IM_ARRAYSIZE(kPresets); ++i) {
+        ImGui::PushID(i);
+        if (ImGui::ColorButton("##preset", kPresets[i], kSwatchFlags, { swatch, swatch })) {
+            commit(kPresets[i]);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::PopID();
+        if (i % 4 != 3) ImGui::SameLine();
+    }
+
+    if (!ctx.assetBrowserRecentFolderColors.empty()) {
+        ImGui::Separator();
+        ImGui::TextDisabled("Recent");
+        for (std::size_t i = 0; i < ctx.assetBrowserRecentFolderColors.size(); ++i) {
+            const ImVec4 color = ImGui::ColorConvertU32ToFloat4(
+                ctx.assetBrowserRecentFolderColors[i]);
+            ImGui::PushID(static_cast<int>(i) + 1000);
+            if (ImGui::ColorButton("##recent", color, kSwatchFlags, { swatch, swatch })) {
+                commit(color);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopID();
+            if (i % 4 != 3 && i + 1 < ctx.assetBrowserRecentFolderColors.size())
+                ImGui::SameLine();
+        }
+    }
+
+    ImGui::Separator();
+    if (ImGui::BeginMenu("Custom...")) {
+        // 対象が変わったら、そのフォルダの現在色 (未設定なら既定のフォルダ色) から編集を始める。
+        if (m_folderColorPickerPath != key) {
+            m_folderColorPickerPath  = key;
+            m_folderColorPickerValue = hasColor
+                ? ImGui::ColorConvertU32ToFloat4(currentColor)
+                : ImVec4{ 0.80f, 0.60f, 0.10f, 1.0f };
+        }
+        // ピッカーの操作中は都度適用する。
+        // WHY: 決定してからでないと結果が見えないと、ツリーやタイルの中で
+        //      その色がどう見えるか分からないまま選ぶことになる。
+        if (ImGui::ColorPicker3("##custom", &m_folderColorPickerValue.x,
+                                ImGuiColorEditFlags_NoSidePreview |
+                                ImGuiColorEditFlags_NoSmallPreview |
+                                ImGuiColorEditFlags_DisplayHex)) {
+            const uint32_t packed = ImGui::ColorConvertFloat4ToU32(m_folderColorPickerValue);
+            ApplyFolderColor(folderPath, &packed, ctx);
+        }
+        if (ImGui::Button("Apply", { -FLT_MIN, 0.0f })) {
+            commit(m_folderColorPickerValue);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndMenu();
+    }
+
+    ImGui::Checkbox("Apply to Subfolders", &m_folderColorApplyRecursive);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("このフォルダ配下のフォルダにも同じ色 / 解除を適用します");
+
+    ImGui::Separator();
+    if (ImGui::MenuItem("Reset to Default", nullptr, false,
+                        hasColor || m_folderColorApplyRecursive)) {
+        ApplyFolderColor(folderPath, nullptr, ctx);
+    }
+
+    ImGui::EndMenu();
+}
+
 ImVec4 AssetBrowserPanel::EntryColor(const Entry& e)
 {
     if (e.isDir) return { 0.80f, 0.60f, 0.10f, 1.0f };
@@ -1537,22 +1797,30 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
     const std::string normDir = util::FileSystem::NormalizePathSeparators(dirPath);
     auto it = m_treeCache.find(normDir);
     if (it == m_treeCache.end()) {
-        std::vector<Entry> newDirs;
+        // フォルダとファイルの両方を積む。ファイルを描くかどうかは m_treeShowFiles が
+        // 決めるが、キャッシュには常に入れておく。
+        // WHY: トグルのたびにキャッシュを捨てると、木を開き直すたびに再走査が走る。
+        //      走査するのは「展開済みのフォルダ」だけなので、持っておく方が安い。
+        std::vector<Entry> newEntries;
         for (const auto& p : util::FileSystem::ListAll(normDir)) {
-            if (!util::FileSystem::IsDirectory(p)) continue;
             Entry e;
-            e.path = util::FileSystem::NormalizePathSeparators(p);
-            e.name = util::FileSystem::GetFilename(p);
-            e.isDir = true;
-            if (!ShouldDisplayEntry(e.path, e.name, true)) continue;
-            newDirs.push_back(std::move(e));
+            e.path  = util::FileSystem::NormalizePathSeparators(p);
+            e.name  = util::FileSystem::GetFilename(p);
+            e.isDir = util::FileSystem::IsDirectory(p);
+            if (!ShouldDisplayEntry(e.path, e.name, e.isDir)) continue;
+            if (!e.isDir)
+                e.ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(e.path));
+            newEntries.push_back(std::move(e));
         }
         // WHY: マウント (外部フォルダ) は Assets ツリーには混ぜず、左ペインの "EXTERNAL"
         //      セクション (OnRenderContent) で専用に列挙する。ここでは実フォルダのみ扱う。
-        std::stable_sort(newDirs.begin(), newDirs.end(), [](const Entry& a, const Entry& b) {
+        // フォルダを先に、その中で名前順。エクスプローラーと同じ並びにする。
+        std::stable_sort(newEntries.begin(), newEntries.end(),
+                         [](const Entry& a, const Entry& b) {
+            if (a.isDir != b.isDir) return a.isDir;
             return a.name < b.name;
         });
-        it = m_treeCache.emplace(normDir, std::move(newDirs)).first;
+        it = m_treeCache.emplace(normDir, std::move(newEntries)).first;
     }
     // WHY: 参照ではなくコピーを取る。
     //      再帰 DrawFolderTree / RefreshDirectory() が m_treeCache に insert/erase すると
@@ -1560,6 +1828,11 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
     const std::vector<Entry> dirs = it->second;
 
     for (const Entry& dir : dirs) {
+        // ファイルはフォルダの後ろにまとまっている (キャッシュ構築時にそう並べた)。
+        if (!dir.isDir) {
+            if (m_treeShowFiles) DrawTreeFileRow(dir, ctx);
+            continue;
+        }
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth;
         const bool isCurrent = util::FileSystem::SamePathText(dir.path, m_currentPath);
@@ -1569,7 +1842,13 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
         // 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
         if (isCurrent)
             ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+        // 色を設定したフォルダは行名自体をその色で描き、ツリーを畳んだ状態でも
+        // グリッド側のカードと同じ色で対応が取れるようにする。
+        ImVec4 folderColor;
+        const bool colored = !isCurrent && TryGetFolderColor(ctx, dir.path, folderColor);
+        if (colored) ImGui::PushStyleColor(ImGuiCol_Text, folderColor);
         bool open = ImGui::TreeNodeEx(dir.path.c_str(), flags, "%s", dir.name.c_str());
+        if (colored) ImGui::PopStyleColor();
         if (isCurrent)
             ImGui::PopStyleColor();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
@@ -1619,6 +1898,8 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
                     BeginRenameForPath(dstPath, &ctx);
                 }
             }
+            ImGui::Separator();
+            DrawFolderColorMenu(dir.path, ctx);
             ImGui::Separator();
             if (!already && ImGui::MenuItem("\xe2\x98\x85 Add to Favorites"))
                 bks.push_back(dir.path);
@@ -1675,11 +1956,76 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
     }
 }
 
+void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
+{
+    // WHY 行ごとに ID を分けるか: DrawEntryContextMenu は固定文字列 "##entry_ctx" で
+    //     ポップアップを引くため、囲まないと同じツリー内の全ファイル行が同一 ID になり、
+    //     1 行を右クリックしただけで全行がそのポップアップを開こうとする。
+    //     グリッド側 (DrawEntry) も同じ理由でパスを PushID している。
+    ImGui::PushID(e.path.c_str());
+
+    const bool selected = e.path == ctx.selectedAssetPath || m_selectedPaths.count(e.path) > 0;
+
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf
+                             | ImGuiTreeNodeFlags_NoTreePushOnOpen
+                             | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (selected) flags |= ImGuiTreeNodeFlags_Selected;
+
+    // 名前は通常の文字色で描く。
+    // WHY 種別で色を付けないか: ツリーで色が意味を持つのはフォルダの色分けだけ。
+    //     ファイルまで種類ごとに着色すると、色が 2 つの意味を持って読めなくなる。
+    ImGui::TreeNodeEx(e.path.c_str(), flags, "%s", e.name.c_str());
+
+    const bool hovered = ImGui::IsItemHovered();
+
+    // グリッドと同じ payload を出し、ツリーからも参照欄へ直接ドロップできるようにする。
+    if (ImGui::BeginDragDropSource()) {
+        const std::string payloadPath = ToAssetDragPayloadPath(e.path, ctx);
+        ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
+        ImGui::TextUnformatted(e.name.c_str());
+        ImGui::EndDragDropSource();
+    }
+
+    // 選択はここで完結させる。
+    // WHY HandleEntryClick を使わないか: あちらは Shift 範囲選択をグリッドの
+    //     m_entries に対して解決し、再クリックで遅延リネームに入る。どちらも
+    //     「今グリッドに出ているフォルダ」が前提で、ツリーの行には噛み合わない。
+    if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left)
+        && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+        if (ctrl) {
+            if (m_selectedPaths.count(e.path)) m_selectedPaths.erase(e.path);
+            else                               m_selectedPaths.insert(e.path);
+        } else {
+            m_selectedPaths.clear();
+        }
+        SelectAsset(ctx, e.path);
+        m_lastClickedPath = e.path;
+    }
+
+    // ダブルクリックはグリッドと同じ「開く」。加えて、そのファイルのフォルダへ移動して
+    // グリッド側の表示も揃える (木とグリッドが別々の場所を指したままにならない)。
+    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        const std::string folder = util::FileSystem::GetDirectory(e.path);
+        if (!util::FileSystem::SamePathText(folder, m_currentPath)) {
+            m_pendingNavigate = folder;
+            m_scrollToPath    = e.path;
+        }
+        HandleEntryDoubleClick(e, ctx, true);
+    }
+
+    if (hovered) ImGui::SetTooltip("%s", e.path.c_str());
+    DrawEntryContextMenu(e, ctx);
+
+    ImGui::PopID();
+}
+
 // ─── アイコン描画ユーティリティ ──────────────────────────────────────────────
 
-void AssetBrowserPanel::DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered)
+void AssetBrowserPanel::DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered,
+                                       const ImVec4* colorOverride)
 {
-    const ImVec4 base  = EntryColor(e);
+    const ImVec4 base  = colorOverride ? *colorOverride : EntryColor(e);
     const ImU32 cFill  = ImGui::ColorConvertFloat4ToU32(hovered ? Lighten(base) : base);
     const ImU32 cDark  = ImGui::ColorConvertFloat4ToU32(
         { base.x * 0.50f, base.y * 0.50f, base.z * 0.50f, 1.0f });
@@ -1711,7 +2057,9 @@ void AssetBrowserPanel::DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, 
 void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const Entry& e, EditorContext& ctx, bool hovered)
 {
     if (e.isDir) {
-        DrawFileIconAt(origin, sz, e, hovered);
+        ImVec4 folderColor;
+        const bool colored = TryGetFolderColor(ctx, e.path, folderColor);
+        DrawFileIconAt(origin, sz, e, hovered, colored ? &folderColor : nullptr);
         return;
     }
 
@@ -3100,6 +3448,10 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         m_searchResultsQuery.clear();
         m_searchResultsTypeFilter = -1;
     }
+    if (e.isDir && !e.isMount) {
+        DrawFolderColorMenu(e.path, ctx);
+        ImGui::Separator();
+    }
     if (ImGui::MenuItem("Reveal in Explorer")) {
         const std::wstring wpath = util::FileSystem::PathFromUtf8(e.path).wstring();
         const std::wstring args  = L"/select," + wpath;
@@ -3268,6 +3620,24 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
             band.isParent, band.OpenLeft(), band.OpenRight(), 5.0f);
     }
 
+    // ── Unreal Content Browser 方式のカード ────────────────────────────────
+    // 下地 → (色を付けたフォルダだけ) 色の面 → 選択ハイライト → サムネイル → 色の帯。
+    //
+    // WHY 拡張子ごとの色を敷かないか: 色の意味は 1 系統に保つ。フォルダの色分けが
+    //     「自分で割り当てた分類」を表すのに、種別でも色が付くと、目に入った色が
+    //     どちらの意味なのか毎回読み直すことになる。種別はサムネイルとアイコン内の
+    //     ラベル (MAT / MESH …) が示すので、面の色は使わない。
+    ImVec4 folderColor;
+    const bool tinted  = e.isDir && TryGetFolderColor(ctx, e.path, folderColor);
+    const float footerY = origin.y + sz;
+
+    // サブアセットは親の帯に載っているので、カード下地は描かない。
+    // WHY: 帯とカードの二重の面になり、親子のまとまりを示す帯が読めなくなる。
+    if (!band.active)
+        ui::DrawAssetTileCard(dl, tileMin, tileMax, hov, 5.0f);
+    if (tinted)
+        ui::DrawAssetTileTypeWash(dl, tileMin, tileMax, footerY, folderColor, 5.0f);
+
     ui::DrawTileSelection(dl, tileMin, tileMax, selected, hov, emphasized, panelFocused, 5.0f);
 
     // Ping: 参照欄クリックで飛んできた対象を短時間だけ光らせる。
@@ -3295,10 +3665,14 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     // 名前欄: 選択中は面で塗って白文字にし、サムネイルの絵柄に左右されず読めるようにする。
     if (selected && m_renamingPath != e.path) {
         ui::DrawTileLabelPlate(dl,
-                               { tileMin.x + 2.0f, origin.y + sz + 2.0f },
+                               { tileMin.x + 2.0f, origin.y + sz + 4.0f },
                                { tileMax.x - 2.0f, tileMax.y - 1.0f },
                                emphasized, panelFocused, 4.0f);
     }
+
+    // 色を付けたフォルダの帯。選択の塗りと名前欄の下地の上に載せ、常に見えるようにする。
+    if (tinted)
+        ui::DrawAssetTileTypeStrip(dl, tileMin, tileMax, footerY, folderColor, 4.0f);
 
     // ドラッグソース。フォルダも移動対象にし、左ペインのフォルダツリーへ直接整理できるようにする。
     if (!e.isMount && !e.isPackageAsset && ImGui::BeginDragDropSource()) {
