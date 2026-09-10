@@ -279,6 +279,16 @@ namespace fbzz::physics
                                        const std::function<bool(int, int)>& layerFilter)
         {
             if (layerFilter && !layerFilter(a.layer, b.layer)) return true;
+
+            // 同じ剛体に属するコライダー同士は当たらない。
+            //
+            // WHY: 1 つの体を «胴 + 脚 4 本» のように複数の形で表すのは普通の組み方で、
+            //      その形どうしは «同じ物» なので重なっていて当たり前。解こうとすると
+            //      体が自分自身を押すことになり、形を足すほど強く押される。
+            //      トリガーより先に見るのは、自分の体の一部に自分が入ったという
+            //      トリガー通知にも意味が無いため。
+            if (a.body && a.body == b.body) return true;
+
             if (a.isTrigger || b.isTrigger) return false;
 
             // WHY: 非 Trigger の Static / Sleeping 同士は解決しても状態が変わらない。

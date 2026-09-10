@@ -47,6 +47,14 @@ struct ScriptPhysicsProxy {
     // SetGravityScale は「これに対する倍率」なので、跳躍高さのように m/s^2 で
     // 決めた値を倍率へ直すには基準となるこの大きさが要る。
     [[nodiscard]] math::Vector3 GetWorldGravity() const;
+    // この 2 つのレイヤーがぶつかるか (ProjectSettings > Physics の衝突行列)。
+    // 行列が組まれていなければ常に true。
+    //
+    // WHY スクリプトから引けるようにするか: 自前で当たりを組み立てるもの
+    // (BossHitboxRigComponent) は «自分の剛体とは当たらない» ことを前提にしている。
+    // 設定が外れると «押され続けて勝手に動く» という原因の見えない壊れ方をするので、
+    // 組み立てる前に前提を確かめて、駄目なら安全側 (トリガー) へ倒せるようにする。
+    [[nodiscard]] bool LayersCollide(int a, int b) const;
     void SetVelocity(const math::Vector3& v) const;
     math::Vector3 GetVelocity() const;
     void SetVelocity(GameObject* go, const math::Vector3& v) const;
