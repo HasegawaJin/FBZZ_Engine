@@ -345,11 +345,23 @@ void NormalizeVectorField(VectorFieldAsset& field)
         field.sizeX = field.sizeY = field.sizeZ = kTile;
     }
 
-    // ── 2. 最大長で正規化して量子化 ──
+    // ── 2. 正規化係数を決めて量子化 ──
+    // 係数は «成分の絶対値の最大» を使う。EncodeVectorFieldByte が成分ごとに
+    // [-maxMagnitude, maxMagnitude] へ写す以上、長さで測ると各成分がバイト範囲を
+    // 使い切らず精度を捨てることになる (最悪で sqrt(3) 倍粗い)。
+    //
+    // WHY 冪等になるか: 係数と同じ大きさの成分はバイト 0 / 255 に当たり、復元しても
+    //   ちょうど ±maxMagnitude へ戻る。他の成分はその範囲に収まるので、量子化後の
+    //   データから測り直しても同じ係数が出る ── 2 度通しても値が動かない。
+    //   長さで測るとここが崩れる。丸めで最長ベクトルが少し縮み、次の呼び出しで
+    //   係数が変わり、格子ごと全成分がずれる。
     // 長さ 0 の場を焼いたときに 0 除算しない。
-    float maxLength = 0.0f;
-    for (const math::Vector3& v : field.data) maxLength = (std::max)(maxLength, v.Length());
-    field.maxMagnitude = maxLength > 1.0e-6f ? maxLength : 1.0f;
+    float maxComponent = 0.0f;
+    for (const math::Vector3& v : field.data) {
+        maxComponent = (std::max)(maxComponent,
+            (std::max)(std::abs(v.x), (std::max)(std::abs(v.y), std::abs(v.z))));
+    }
+    field.maxMagnitude = maxComponent > 1.0e-6f ? maxComponent : 1.0f;
 
     for (math::Vector3& value : field.data) value = QuantizeVectorFieldValue(value, field.maxMagnitude);
 }

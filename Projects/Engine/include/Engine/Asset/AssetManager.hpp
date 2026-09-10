@@ -25,7 +25,9 @@
 #include <cassert>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -134,6 +136,22 @@ public:
     /// 取り込みに失敗した場合は既存の中身を残す。書き込み途中のファイルを掴んで
     /// 動いていたアセットを壊さないため。
     static int ReloadPath(const std::string& absPath);
+
+    /// ホットリロードで「その場で中身を差し替えられる」拡張子の一覧。
+    ///
+    /// WHY 1 か所に置くか:
+    ///   ReloadPath が差し替える型と、Editor 側の監視ゲートが別々のリストを持っていた。
+    ///   «並びは AssetManager::ReloadPath と一致させること» というコメントで守る運用で、
+    ///   実際 .curve / .gradient を足したときに片方だけ更新されて
+    ///   «エンジンは差し替えられるのに通知が届かない» 状態になっていた。
+    ///
+    /// @note ここに載るのは «キャッシュ済みの値を入れ替えるだけで済む» 型だけ。
+    ///       GPU 資源を持つ型 (テクスチャ・モデル) は別経路で、ここには載せない
+    ///       (ReloadPath の WHY を参照)。
+    [[nodiscard]] static std::span<const std::string_view> HotReloadableExtensions();
+
+    /// 拡張子 (先頭のドット込み・大小問わず) がホットリロード対象か。
+    [[nodiscard]] static bool IsHotReloadableExtension(std::string_view extension);
 
     /// アセットの中身が変わるたびに進む世代番号。
     /// クリップのコピーやマスクのように、ストアの中身から派生キャッシュを作る側が

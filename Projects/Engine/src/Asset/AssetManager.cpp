@@ -861,6 +861,31 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
     return reloaded;
 }
 
+std::span<const std::string_view> AssetManager::HotReloadableExtensions()
+{
+    // ReloadPath がストアの中身を差し替える型の拡張子 + 直読みで差し替わる型。
+    // WHY 直読みのものも載せるか: 監視側から見た «差し替えたら通知が要るか» は同じ問い。
+    //     .mask / .fzdata / .synth はストアを通らないが、BumpAssetGeneration 経由で
+    //     派生キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
+    static constexpr std::string_view kExtensions[] = {
+        ".mat", ".anim", ".animcontroller", ".mask", ".fzdata", ".physmat",
+        ".synth", ".terrain", ".sequence", ".curve", ".gradient",
+        // 速度場。GPU 常駐はアトラスが持つのでアセット自体は CPU データだけ。
+        ".vfield", ".fga",
+    };
+    return kExtensions;
+}
+
+bool AssetManager::IsHotReloadableExtension(std::string_view extension)
+{
+    std::string lower(extension);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    for (const std::string_view candidate : HotReloadableExtensions())
+        if (lower == candidate) return true;
+    return false;
+}
+
 int AssetManager::ReloadPath(const std::string& absPath)
 {
     if (!s_initialized || absPath.empty()) return 0;
@@ -878,6 +903,12 @@ int AssetManager::ReloadPath(const std::string& absPath)
     reloaded += ReloadFromStore<TerrainAsset>(target);
     reloaded += ReloadFromStore<SequenceAsset>(target);
     reloaded += ReloadFromStore<ParticleCurveAsset>(target);
+    // .vfield は GPU 資源を持たない (常駐は VelocityFieldAtlas 側)。差し替えは安全だが、
+    // アトラスはアセットの実体をポインタで指しているので焼き直させる。
+    if (const int fields = ReloadFromStore<VectorFieldAsset>(target); fields > 0) {
+        reloaded += fields;
+        if (s_resources != nullptr) VelocityFieldAtlas::Invalidate(*s_resources);
+    }
 
     // 旧 API の .mat は別のスロットプールに載る。レンダラーが参照しているのは
     // こちらなので、新 API 側だけ差し替えても画面は古いままになる。

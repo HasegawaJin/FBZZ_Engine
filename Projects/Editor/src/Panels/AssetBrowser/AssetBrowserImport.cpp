@@ -46,12 +46,11 @@ namespace {
 //     値を入れ替えるだけで済む、軽くて失敗しても巻き戻せる対象に限る。
 bool IsHotReloadableAsset(const std::string& absPath)
 {
-    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
-    // 並びは AssetManager::ReloadPath が差し替える型と一致させること。
-    // 片方にだけ足すと「エンジンは差し替えられるのに通知が届かない」側へ倒れる。
-    return ext == ".mat"   || ext == ".anim"   || ext == ".animcontroller" ||
-           ext == ".mask"  || ext == ".fzdata" || ext == ".physmat"        ||
-           ext == ".synth" || ext == ".terrain" || ext == ".sequence";
+    // 判定は AssetManager が持つ 1 つの表。ここに写しを置いていた頃は
+    // «並びは ReloadPath と一致させること» というコメントで守る運用で、
+    // 実際 .curve / .gradient を足したときに片方だけ更新されていた。
+    return asset::AssetManager::IsHotReloadableExtension(
+        util::FileSystem::GetExtension(absPath));
 }
 
 const char* SourceDccLabel(FbxSourceDcc value)

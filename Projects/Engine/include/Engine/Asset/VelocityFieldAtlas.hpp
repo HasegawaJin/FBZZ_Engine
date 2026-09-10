@@ -47,7 +47,20 @@ public:
     /// シェーダーがタイル番号を UV へ直すのに使う。
     [[nodiscard]] static constexpr uint32_t AtlasDepth() { return kTileResolution * kMaxTiles; }
 
+    /// 常駐表を捨てて、次の Acquire で焼き直させる。
+    ///
+    /// WHY 必要か: 常駐表はアセットの実体を **ポインタ** で指している。.vfield の
+    ///   ホットリロードは AssetStore のスロットへ新しい実体を差し込むので、
+    ///   古いポインタは二度と一致しない。放っておくとタイルが 1 枚ずつ食い潰され、
+    ///   しかも粒子は古い中身の場を引き続き読む (「保存したのに流れが変わらない」)。
+    ///
+    /// WHY 丸ごと捨てるか: 差し替わった 1 枚だけを焼き直すには «どのパスがどのタイルか»
+    ///   を持つ必要がある。リロードは担当者が保存した瞬間しか起きないので、
+    ///   64 枚を焼き直す方が仕組みとして小さい。
+    static void Invalidate(renderer::ResourceManager& resources);
+
     /// プロジェクト切り替えで捨てる。常駐表とテクスチャの両方を手放す。
+    /// @note ResourceManager ごと破棄される前提なので、テクスチャは解放しない。
     static void Reset();
 };
 
