@@ -26,10 +26,9 @@
 #include <Math/MathUtils.hpp>
 #include <Scripts/Combat/BossAiComponent.hpp>
 #include <Scripts/Combat/BossAnimatorComponent.hpp>
-#include <Scripts/Combat/BossArmorPlateComponent.hpp>
 #include <Scripts/Combat/BossCollapsePostureComponent.hpp>
 #include <Scripts/Combat/BossHitboxRigComponent.hpp>
-#include <Scripts/Combat/BossLegDebrisComponent.hpp>
+#include <Scripts/Combat/BossPartDebrisComponent.hpp>
 #include <Scripts/Combat/BossPartComponent.hpp>
 #include <Scripts/Combat/BossCoreComponent.hpp>
 #include <Scripts/Combat/PlayerHit.hpp>
@@ -43,6 +42,7 @@
 #include <Scripts/Utils/SeLibrary.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -142,20 +142,22 @@ public:
     // WHY 引きずり (揺れもの) とラグドールを捨てたか (2026-09-07):
     //   壊れた脚を本体にぶら下げたまま «垂らす» と、生きている脚のクリップと壊れた脚の
     //   物理が付け根で押し合い、«壊れた» ではなく «動きがおかしい» に見えた。
-    //   壊れた脚は今も残すが (下の WHY)、動かすのはクリップだけ ─ 物理も揺れものも
-    //   乗せない。本体の 21 クリップは 1 コマも触らない。
-    //   もいで落とす道 (BossLegDebrisComponent) は構成として残してある。
+    //   脚は «もげて床に落ちる» 物で、本体に残す理由が無い。切り離せば本体の
+    //   21 クリップは 1 コマも触らずに済む。
+    //
+    // WHY «落として床に残す» へ戻したか (2026-09-11 / Docs/part-break.md):
+    //   2026-09-10 に «壊れた脚を本体へ残す» を既定にしたのは、落とすと数秒後には
+    //   «脚が 3 本しか無い、無傷に見えるボス» になるからだった。だが落ちた脚を
+    //   **砕かずに床へ残す**なら話が変わる ── どの脚をいつ落としたかは
+    //   «床に転がっている本数» が言い続けるし、同じ 1 本が遮蔽にも足場にも、
+    //   そして磁力パルスの弾にもなる。付け根から上がり続ける煙が «欠けている» を言う。
     FBZZ_GROUP("Part Destruction")
-    // WHY «残す» を既定にしたか (2026-09-10): もいで落とすと、その瞬間の重さは出るものの
-    //     数秒後には «脚が 3 本しか無い、無傷に見えるボス» になる。壊れた脚を付けたまま
-    //     煙を上げ続ければ、どの脚をいつ潰したかが戦っている間ずっと画面に残る。
-    //     登攀の経路も脚の骨から引くので、脚が居るほうが «そこを登る» が読める。
-    FBZZ_FIELD(bool, keepBrokenLegMesh, true, "壊れた脚を残す")
-    FBZZ_TOOLTIP("壊れた脚を消さずに本体へ残す。当たり判定・IK・AI は «失った» まま。"
-                 "切ると従来どおり脚が消える (Spawn Debris と組で使う)")
-    FBZZ_FIELD(bool, debrisEnabled, false, "Spawn Debris")
-    FBZZ_TOOLTIP("もげた脚を剛体として落とす。«壊れた脚を残す» が on の間は"
-                 "脚が本体に居るので鳴らない (落とすなら先にあちらを切る)")
+    FBZZ_FIELD(bool, keepBrokenLegMesh, false, "壊れた脚を残す")
+    FBZZ_TOOLTIP("壊れた脚を消さずに本体へ残す。**on にすると床に何も落ちない** ─ "
+                 "パルスが撃つ弾も、遮蔽も、口の栓も生まれない (Spawn Debris と排他)")
+    FBZZ_FIELD(bool, debrisEnabled, true, "Spawn Debris")
+    FBZZ_TOOLTIP("もげた脚を剛体として床へ落とす。落ちた脚は砕けずに残り、"
+                 "BossPartDebrisComponent が «拾われて飛ぶ» までの一生を持つ")
     FBZZ_FIELD(std::string, debrisRootBone, "Thigh", "ルートボーン")
     FBZZ_TOOLTIP("脚の付け根の骨。接尾辞 (_FR など) は自動で付く。もげた脚はこの骨の"
                  "«今の姿勢» に重ねて置かれる")
@@ -170,8 +172,6 @@ public:
     FBZZ_TOOLTIP("骨の並びから作る箱コライダーの余白 [m]。装甲の厚みぶん")
     FBZZ_FIELD_RANGE(float, debrisDrag, 0.35f, "Drag", 0.0f, 5.0f)
     FBZZ_TOOLTIP("空気抵抗。上げるとすぐ止まって «重い» が出る")
-    FBZZ_FIELD_RANGE(float, debrisRest, 2.6f, "静止", 0.0f, 15.0f)
-    FBZZ_TOOLTIP("床に落ち着いてから砕けて消えるまで [秒]。盤面を汚さないために消す")
     FBZZ_FIELD_READ_ONLY(int, debugDebrisSpawned, 0, "Debris Spawned")
 
     // 壊れた脚から立ちのぼる煙。«もう動かない脚» を言い続ける唯一の絵で、
@@ -219,28 +219,6 @@ public:
     FBZZ_TOOLTIP("放電する直前に壊れた脚を囲う色。斬られた合図 (Damage Flash) と"
                  "見分けが付く色にする")
     FBZZ_FIELD_READ_ONLY(int, debugVents, 0, "放電源")
-
-    // とどめ 1 回につき 1 枚もげて床に残る装甲板 (Docs/part-break.md「柱 3 — 戦利品」)。
-    //
-    // WHY 脚 1 本ではなく板 1 枚か: もげた脚を床に残すのをやめた理由は «6m 級が 4 本
-    //     転がると走る場所が減る» (BossLegDebrisComponent の WHY)。膝カバー相当の
-    //     1 枚に絞れば盤面を塞がず、遮蔽と足場としては効き、«何本落としたか» が床に残る。
-    //
-    // 板の «その後» (吸い上げ・射出・弾き) は BossArmorPlateComponent が持つ。
-    FBZZ_GROUP("装甲板")
-    FBZZ_FIELD(bool, armorPlates, true, "とどめで板を落とす")
-    FBZZ_TOOLTIP("とどめのたびに装甲板を 1 枚落とす。磁力パルスがこれを吸い上げて"
-                 "プレイヤーへ撃つ (弾ける)。切ると床に何も残らない")
-    FBZZ_FIELD_RANGE_INT(int, maxArmorPlates, 3, "上限 [枚]", 0, 8)
-    FBZZ_TOOLTIP("盤面に置ける枚数。脚 4 本ぶんもいでも 4 枚目は撃破と同時なので 3 で足りる")
-    FBZZ_FIELD_RANGE(float, plateWidth, 2.2f, "幅 [m]", 0.5f, 6.0f)
-    FBZZ_FIELD_RANGE(float, plateDepth, 1.6f, "奥行き [m]", 0.5f, 6.0f)
-    FBZZ_FIELD_RANGE(float, plateThickness, 0.22f, "厚み [m]", 0.05f, 1.0f)
-    FBZZ_FIELD_RANGE(float, plateMass, 24.0f, "Mass", 1.0f, 200.0f)
-    FBZZ_FIELD_RANGE(float, plateKick, 4.5f, "蹴り [m/s]", 0.0f, 20.0f)
-    FBZZ_TOOLTIP("剥がれた瞬間に斬った側から離れる速さ")
-    FBZZ_FIELD_RANGE(float, plateLift, 4.0f, "浮き [m/s]", 0.0f, 20.0f)
-    FBZZ_FIELD_READ_ONLY(int, debugPlates, 0, "落とした板")
 
     // 斬った脚が «効いている» を返す。当たった脚 1 本が揺れもので弾み、体は
     // BossCollapsePostureComponent の傾け (Stagger) で泳ぐ。
@@ -342,6 +320,10 @@ private:
     /// 脚 IK チェーンの order 起点。他が使っていない帯へ寄せて、脚 4 本ぶんを連番で持つ。
     static constexpr int kChainOrderBase = 700;
 
+    /// 放電の予兆で床に置く土煙の数。円として読める最小がこのあたりで、
+    /// 増やすと VfxManager のスロットを放電源の数だけ余分に食う。
+    static constexpr int kVentRingPoints = 12;
+
     /// 部位 1 つぶんの参照。位置は毎フレーム変わるので保持しない。
     struct Part {
         GameObject*                object = nullptr;
@@ -389,12 +371,6 @@ private:
     ///     状態になり、予兆が予兆として読めない。全部が同じ拍で光って同じ拍で撃てば、
     ///     プレイヤーは «次の 1 発» を 1 つだけ数えていればよくなる。
     void DriveVentDischarge(float dt);
-    /// とどめで剥がれた装甲板を 1 枚、床へ落とす。
-    ///
-    /// WHY scene.Create を最後に回すか: Create は GameObject 配列を再確保するので、
-    ///     呼んだ側が握っている GameObject* が無効になる。とどめの処理を全部
-    ///     終えてから作る (SpawnLegDebris と同じ約束)。
-    void SpawnArmorPlate(int leg, const Vector3& at, const Vector3& from);
     /// 脚 4 本の «バインド姿勢» を控える。もげた脚の静的メッシュをどこへ置けば
     /// 今の脚に重なるかは、これが無いと解けない。
     void CaptureBind();
@@ -997,6 +973,12 @@ inline bool BossRigComponent::ExecutePart(GameObject* partObject, const Vector3&
         if (part->IsBroken() || part->IsDepleted()) return false;
         (void)part->Damage(std::max(coreExecuteDamage, 1));
 
+        // 増悪したテンポを少し戻す。転倒の 5 秒に «脚 か コア か» の二択を作るのは
+        // ここ 1 行で、脚が «進行 + 増悪»、コアが «進行の裏道 + 息継ぎ» になる
+        // (Docs/part-break.md「転倒の 5 秒に二択を置く」)。
+        if (auto* ai = scene.GetScript<BossAiComponent>())
+            ai->RelieveTempo(ai->coreExecuteTempoRelief);
+
         const Vector3 at = partObject->transform.worldPosition;
         Vector3 away = at - from;
         away.y = 0.0f;
@@ -1043,10 +1025,6 @@ inline bool BossRigComponent::ExecutePart(GameObject* partObject, const Vector3&
         vfx->PlayGroundDust(at, flow, 1.0f, 1.6f);
     }
     se::Play(audio, se::kImpactHeavy);
-
-    // 板を落とすのは最後。scene.Create が GameObject 配列を再確保するので、
-    // ここより前に置くと partObject も self も無効になる。
-    SpawnArmorPlate(leg, at, from);
     return true;
 }
 
@@ -1067,8 +1045,7 @@ inline void BossRigComponent::DebugBreakLeg(int leg)
 
     // 引き合いで折れたときは «斬った部位» が着弾点になる。ボタンからは相手が
     // 居ないので、その脚の当たり判定の位置で代用する。
-    const Vector3 center = self->transform.worldPosition;
-    Vector3       at     = center;
+    Vector3 at = self->transform.worldPosition;
     if (GameObject* hitbox =
             FindInSubtree(*self, std::string("HB_Hock") + SuffixOf(leg)))
         at = hitbox->transform.worldPosition;
@@ -1076,9 +1053,6 @@ inline void BossRigComponent::DebugBreakLeg(int leg)
     m_broken[leg] = true;
     BreakLeg(leg, at);
     ApplyLegLoss();
-    // ボタンからも板を落とす。落ちた板は磁力パルスの弾になるので、
-    // «板が飛んでくる盤面» を斬らずに作れないと調整に毎回 4 回のとどめが要る。
-    SpawnArmorPlate(leg, at, center);
 }
 
 inline void BossRigComponent::DebugBreakFrontRight() { DebugBreakLeg(0); }
@@ -1204,26 +1178,35 @@ inline void BossRigComponent::DriveVentDischarge(float dt)
 
     const float warn = Min(Max(ventWarnSeconds, 0.0f), period * 0.9f);
     if (m_ventTimer >= period - warn) {
-        // 予兆は «壊れた脚を縁取る» で出す。煙は出っぱなしなので、そこだけ増やしても
-        // «今から撃つ» にならない ─ 形の外へ出る輪郭なら視界の端でも読める。
-        bool any = false;
-        for (int leg = 0; leg < LegCount(); ++leg) {
-            if (!IsLegBroken(leg)) continue;
-            for (const EntityRef& ref : m_legs[leg].meshes)
-                if (GameObject* piece = ref.Resolve(scene)) {
-                    objectMask.Set(*piece,
-                                   Vector4{ ventWarnColor.x, ventWarnColor.y,
-                                            ventWarnColor.z, 1.0f },
-                                   Clamp01(outlineWidth), true, !outlineThroughWalls);
-                    any = true;
-                }
-        }
-        if (any)
-            if (auto* screen = ScreenEffectManagerComponent::Instance()) screen->KeepOutline();
-
+        // 予兆は «床に円を描く» で出す。
+        //
+        // WHY 輪郭ではなく床の円か: 壊れた脚はもう本体に居ない (床に落ちている) ので、
+        //     縁取る物が付け根に無い。しかも読ませたいのは «どの脚か» ではなく
+        //     **«どこまで届くか»** ── とどめの射程と重なる半径そのものが答えなので、
+        //     半径ぶんの円を土煙で描くのが一番短い説明になる。
+        //
+        // WHY 毎フレーム描き直さないか: 煙は寿命を持つので、1 周ぶん置けば
+        //     予兆の間そこに残る。毎フレーム置くと VfxManager のスロットを食い潰す。
         if (!m_ventWarned) {
             m_ventWarned = true;
             se::Play(audio, se::kEnvHazardWarn, 0.7f);
+
+            if (auto* vfx = VfxManagerComponent::Instance()) {
+                const float radius = Max(ventRadius, 0.1f);
+                for (int leg = 0; leg < LegCount(); ++leg) {
+                    if (!IsLegBroken(leg)) continue;
+                    Vector3 at;
+                    if (!LegAnchor(leg, at)) continue;
+                    at.y = transform.worldPosition.y;
+
+                    for (int i = 0; i < kVentRingPoints; ++i) {
+                        const float angle =
+                            TWO_PI * static_cast<float>(i) / static_cast<float>(kVentRingPoints);
+                        const Vector3 out{ std::cos(angle), 0.0f, std::sin(angle) };
+                        vfx->PlayGroundDust(at + out * radius, out, 0.45f, 0.6f);
+                    }
+                }
+            }
         }
     }
 
@@ -1261,78 +1244,6 @@ inline void BossRigComponent::DriveVentDischarge(float dt)
     }
 
     se::Play(audio, se::kImpactMid, 0.75f);
-}
-
-inline void BossRigComponent::SpawnArmorPlate(int leg, const Vector3& at, const Vector3& from)
-{
-    if (!armorPlates || debugPlates >= std::max(maxArmorPlates, 0)) return;
-
-    GameObject* self = scene.Self();
-    if (!self) return;
-
-    // マテリアルは脚の装甲から借りる。読み終えてから Create へ入る
-    // (Create は GameObject 配列を再確保する)。
-    std::string materialPath;
-    for (const EntityRef& ref : m_legs[leg].meshes) {
-        GameObject* piece = ref.Resolve(scene);
-        if (!piece) continue;
-        if (auto* material = piece->GetComponent<MaterialComponent>()) {
-            materialPath = material->materialPath;
-            break;
-        }
-    }
-
-    Vector3 away = at - from;
-    away.y = 0.0f;
-    away = away.NormalizedOr(self->transform.worldRotation * Vector3::RIGHT);
-
-    // 切断面から少し外へ。真上に出すと、剥がれた瞬間に脚の当たりへめり込んで弾かれる。
-    const Vector3 pos = at + away * 0.7f + Vector3::UP * 0.5f;
-
-    const EntityRef root{
-        scene.Create(std::string("BossArmorPlate") + SuffixOf(leg)).GetID()
-    };
-    GameObject* plate = root.Resolve(scene);
-    if (!plate) return;
-
-    plate->runtimeGenerated        = true;
-    plate->transform.position      = pos;
-    plate->transform.worldPosition = pos;
-
-    const float width = Max(plateWidth, 0.1f);
-    const float depth = Max(plateDepth, 0.1f);
-    const float thick = Max(plateThickness, 0.02f);
-    {
-        auto& box = plate->AddComponent<BoxColliderComponent>();
-        box.SetSize(Vector3{ width, thick, depth });
-    }
-    {
-        RigidBodyComponent rb{};
-        rb.rigidBody = std::make_unique<fbzz::physics::RigidBody>();
-        rb.rigidBody->SetMass(Max(plateMass, 1.0f));
-        rb.rigidBody->SetPosition(pos);
-        rb.rigidBody->m_linearDrag  = 0.20f;
-        rb.rigidBody->m_angularDrag = 0.40f;
-        // 薄い板が高速で飛ぶので CCD が要る。切ると床と壁を抜ける。
-        rb.rigidBody->m_useCCD    = true;
-        rb.rigidBody->m_ccdRadius = Max(thick * 0.5f, 0.10f);
-        rb.ResetPhysicsSyncState(pos, Quaternion::Identity());
-        plate->AddComponent<RigidBodyComponent>(std::move(rb));
-    }
-
-    const Vector3 velocity = away * Max(plateKick, 0.0f) + Vector3::UP * Max(plateLift, 0.0f);
-    const Vector3 axis     = Vector3::Cross(Vector3::UP, away).NormalizedOr(Vector3::FORWARD);
-
-    auto& script = plate->AddScript<BossArmorPlateComponent>();
-    // 大きさだけはこちらが正本。コライダーと絵が別々の数字を持つと、
-    // «見えている板の縁で止まらない» という直しようのないずれになる。
-    script.plateWidth     = width;
-    script.plateDepth     = depth;
-    script.plateThickness = thick;
-    script.playerTag      = playerTag;
-    script.Setup(velocity, axis * 3.0f, materialPath);
-
-    ++debugPlates;
 }
 
 inline void BossRigComponent::CaptureBind()
@@ -1490,9 +1401,9 @@ inline void BossRigComponent::SpawnLegDebris(int leg, const Vector3& at)
     const Vector3 spin     = axis * Max(debrisSpin, 0.0f)
                            + Vector3::UP * (random.Range(-1.0f, 1.0f) * Max(debrisSpin, 0.0f) * 0.3f);
 
-    auto& script = debris->AddScript<BossLegDebrisComponent>();
-    script.restSeconds = Max(debrisRest, 0.0f);
-    script.Launch(velocity, spin, Max(size.x, Max(size.y, size.z)));
+    auto& script = debris->AddScript<BossPartDebrisComponent>();
+    script.playerTag = playerTag;
+    script.Setup(velocity, spin, Max(size.x, Max(size.y, size.z)));
 
     ++debugDebrisSpawned;
 }

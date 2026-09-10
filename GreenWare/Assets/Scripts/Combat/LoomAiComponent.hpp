@@ -488,7 +488,7 @@ inline bool LoomAiComponent::Execute(GameObject* part, const Vector3& from)
     --m_arms;
     debugArms     = m_arms;
     debugReaction = "Executed";
-    // TODO(絵): part の腕を畳んで BossLegDebrisComponent 相当へ渡す。
+    // TODO(絵): part の腕を畳んで BossPartDebrisComponent 相当へ渡す。
 
     // 入った瞬間に起きる (Docs/break-parry.md「とどめ」)。
     if (m_arms <= 0) {

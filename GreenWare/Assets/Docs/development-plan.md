@@ -32,7 +32,7 @@
 | 何 | どこ | 状態 |
 |---|---|---|
 | **ボス1 ポラリティ・コア**（4 足 / 21 クリップ / 脚 4 本） | `Combat/BossAiComponent.hpp` ほか | ✅ |
-| 脚の破壊・欠損・2 本で砲台化・もげた脚の落下 | `BossRigComponent` / `BossLegDebrisComponent` | ✅ |
+| 脚の破壊・欠損・2 本で砲台化・もげた脚の落下 | `BossRigComponent` / `BossPartDebrisComponent` | ✅ |
 | **ボス2 ポラリティ・サーペント**（28 → 6 節 / 床の開口） | `Combat/Serpent*.hpp`（7 本） | ✅ |
 | ボスカメラ（登場 / 転倒 / 撃破 / とどめ） | `Camera/BossCameraDirectorComponent.hpp` | ✅ |
 | 撃破演出（部位の飛散 + 粒になって立ち昇る） | `BossDeathVfxComponent` / `SerpentDeathVfxComponent` | ✅ |
