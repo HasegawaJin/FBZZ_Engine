@@ -149,6 +149,25 @@ VelocityFieldAtlas::Texture(renderer::ResourceManager& resources)
     return state.texture;
 }
 
+void VelocityFieldAtlas::Invalidate(renderer::ResourceManager& resources)
+{
+    AtlasState& state = State();
+    if (state.tiles.empty() && !state.texture.IsValid()) return;
+
+    // テクスチャは «すぐには» 捨てない。前フレームのコマンドリストがまだ読んでいる
+    // 可能性があり、即時解放は use-after-free になる (RebuildTexture と同じ理由)。
+    if (state.texture.IsValid())
+        state.retired.push_back({ state.texture, Time::frameCount });
+    FlushRetired(state, resources);
+
+    state.tiles.clear();
+    state.staging.clear();
+    state.texture = {};
+    state.tileCount = 0;
+    // unsupported は «このバックエンドで 3D テクスチャを作れない» という事実で、
+    // アセットの差し替えでは変わらない。落とすと毎回作り直しを試みることになる。
+}
+
 void VelocityFieldAtlas::Reset()
 {
     AtlasState& state = State();
