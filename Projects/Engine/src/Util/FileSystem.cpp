@@ -213,9 +213,12 @@ std::vector<std::string> FileSystem::ListAll(const std::string& dir)
 
 bool FileSystem::EnsureDirectory(const std::string& path)
 {
-    if (IsDirectory(path)) return true;
-    BOOL ok = CreateDirectoryW(Utf8ToWide(path).c_str(), nullptr);
-    return ok || GetLastError() == ERROR_ALREADY_EXISTS;
+    // WHY 委譲するか: 以前はここだけ CreateDirectoryW を 1 回呼んでおり、
+    //     中間ディレクトリを作らなかった。path 版は create_directories で
+    //     掘るので、同じ名前の関数が «引数の型によって深さが違う» 状態だった。
+    //     実プロジェクトでは親が既にあるため表に出ず、空のディレクトリから
+    //     組み立てたときだけ «作ったつもりで書き込みに失敗する» 形で現れる。
+    return EnsureDirectory(PathFromUtf8(path));
 }
 
 bool FileSystem::EnsureDirectory(const std::filesystem::path& path)
