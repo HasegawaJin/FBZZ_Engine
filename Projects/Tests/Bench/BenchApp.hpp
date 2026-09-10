@@ -30,6 +30,7 @@ private:
     void DrawUI();
     void DrawSidebar();
     void DrawAnomalies();
+    void DrawPerformance();
     void DrawViewportPanel();
 
     std::vector<std::unique_ptr<BenchScene>> m_scenes;
@@ -42,6 +43,13 @@ private:
     float m_speed         = 1.0f;
     /// 実時間の揺れを持ち込まないよう、固定刻みを溜めてから進める。
     float m_accumulator = 0.0f;
+
+    /// 溜まった刻みを消化しきれなかったフレーム数。0 でなければ絵は実時間より遅れている。
+    int   m_droppedFrames = 0;
+    int   m_stepsThisFrame = 0;
+    /// 表示用にならした値 [ms]。生の値は毎フレーム跳ねて読めない。
+    float m_simMsAvg      = 0.0f;
+    float m_frameMsAvg    = 0.0f;
 
     void* m_imguiContext = nullptr;
 };

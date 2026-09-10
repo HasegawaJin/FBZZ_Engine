@@ -14,6 +14,8 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 
 // imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
@@ -23,9 +25,26 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 namespace fbzz::bench {
 
 namespace {
-constexpr float kFixedStep = 1.0f / 120.0f;
-/// 1 フレームで進める上限。ブレークポイントで止めた後に一気に飛ぶのを防ぐ。
-constexpr int kMaxStepsPerFrame = 16;
+/// WHY 1/120 ではないか: 場面側 (XPBD) が自前で substep を刻むので、外側まで倍の頻度で
+///     回す必要が無い。倍の刻みは倍の負荷になり、重い場面 (ラグドール) では
+///     «1 フレームぶんの実時間を、1 フレームでは進めきれない» 側へ倒れる。
+constexpr float kFixedStep = 1.0f / 60.0f;
+/// 1 フレームで進める上限。
+///
+/// WHY 小さいか: ここが大きいと «遅い → 溜まる → もっと刻む → もっと遅い» の循環に入り、
+///     1 フレームに数百 ms 掛けて画面が固まる。上限を 2 にすると、負荷が刻みを
+///     追い越したとき絵は «スロー再生» になるだけで、操作は最後まで効く。
+///     どれだけ遅れているかは m_droppedFrames が申告する。
+constexpr int kMaxStepsPerFrame = 2;
+/// 1 フレームに取り込む実時間の上限 [s]。ブレークポイントで止めた後に一気に飛ぶのを防ぐ。
+constexpr float kMaxFrameDelta = 0.1f;
+/// 刻みに «あと少し» 足りないときも進めてしまう猶予 [s]。
+///
+/// WHY 要るか: 表示が 60Hz で刻みも 1/60 だと、実測 dt のわずかな揺れで «0 回 → 2 回» が
+///     交互に来る。物理は正しいのに絵だけがガタつき、«物理が不安定» と読み違える。
+constexpr float kStepSnap = 0.0004f;
+/// 表示用のならし係数 (1 フレームぶんの重み)。
+constexpr float kSmoothing = 0.1f;
 constexpr float kFontSize = 17.0f;
 
 constexpr ImVec4 kOkColor    {0.48f, 0.90f, 0.55f, 1.0f};
@@ -116,24 +135,37 @@ bool BenchApp::OnInit()
 
 void BenchApp::OnUpdate(float dt)
 {
+    m_frameMsAvg += (dt * 1000.0f - m_frameMsAvg) * kSmoothing;
+
+    m_stepsThisFrame = 0;
     if (m_scenes.empty()) return;
     BenchScene& scene = *m_scenes[static_cast<size_t>(m_selected)];
 
+    const auto begin = std::chrono::steady_clock::now();
+
     if (m_stepRequested) {
         scene.Simulate(kFixedStep);
-        m_stepRequested = false;
-        return;
+        m_stepsThisFrame = 1;
+        m_stepRequested  = false;
+    } else if (!m_paused) {
+        m_accumulator += (std::min)(dt, kMaxFrameDelta) * m_speed;
+        while (m_accumulator >= kFixedStep - kStepSnap &&
+               m_stepsThisFrame < kMaxStepsPerFrame) {
+            scene.Simulate(kFixedStep);
+            m_accumulator -= kFixedStep;
+            ++m_stepsThisFrame;
+        }
+        // 消化しきれなかったぶんは捨てる。持ち越すと次のフレームも上限に張り付き、
+        // 一度遅れたら二度と追いつけない。
+        if (m_accumulator >= kFixedStep - kStepSnap) {
+            m_accumulator = 0.0f;
+            ++m_droppedFrames;
+        }
     }
-    if (m_paused) return;
 
-    m_accumulator += dt * m_speed;
-    int steps = 0;
-    while (m_accumulator >= kFixedStep && steps < kMaxStepsPerFrame) {
-        scene.Simulate(kFixedStep);
-        m_accumulator -= kFixedStep;
-        ++steps;
-    }
-    if (steps == kMaxStepsPerFrame) m_accumulator = 0.0f;
+    const float simMs =
+        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - begin).count();
+    m_simMsAvg += (simMs - m_simMsAvg) * kSmoothing;
 }
 
 /// WHY 描画中ではなくここで検査するか: DrawControls はスライダーを触った時点で場面を
@@ -142,9 +174,13 @@ void BenchApp::OnUpdate(float dt)
 void BenchApp::OnLateUpdate(float)
 {
     if (m_scenes.empty()) return;
+    BenchScene& scene = *m_scenes[static_cast<size_t>(m_selected)];
+
+    // 検査も描画も Present が作った «このフレームの最終状態» だけを見る。
+    scene.Present();
 
     m_anomalies.BeginFrame();
-    m_scenes[static_cast<size_t>(m_selected)]->DetectAnomalies(m_anomalies);
+    scene.DetectAnomalies(m_anomalies);
     m_anomalies.EndFrame();
 }
 
@@ -187,8 +223,9 @@ void BenchApp::SelectScene(int index)
 {
     if (index < 0 || index >= static_cast<int>(m_scenes.size())) return;
 
-    m_selected    = index;
-    m_accumulator = 0.0f;
+    m_selected       = index;
+    m_accumulator    = 0.0f;
+    m_droppedFrames  = 0;
     // 前の場面の履歴を持ち越さない。«この場面で何回出たか» が読めなくなる。
     m_anomalies.BeginFrame();
     m_anomalies.ClearHistory();
@@ -239,6 +276,8 @@ void BenchApp::DrawSidebar()
     if (ImGui::Button("リセット", {100.0f, 0.0f})) SelectScene(m_selected);
     ImGui::SliderFloat("速度", &m_speed, 0.05f, 3.0f, "x%.2f");
 
+    DrawPerformance();
+
     if (!m_scenes.empty()) {
         BenchScene& scene = *m_scenes[static_cast<size_t>(m_selected)];
 
@@ -254,6 +293,28 @@ void BenchApp::DrawSidebar()
     }
 
     ImGui::EndChild();
+}
+
+/// WHY 出すか: «重い» は目で見ても «物理が変» と区別が付かない。数字が無いと、
+///     刻みが追いついていないだけの絵を «挙動がおかしい» と読んでしまう。
+void BenchApp::DrawPerformance()
+{
+    ImGui::SeparatorText("性能");
+
+    const float fps = m_frameMsAvg > 0.0f ? 1000.0f / m_frameMsAvg : 0.0f;
+    const ImVec4 fpsColor = fps >= 50.0f ? kOkColor : (fps >= 25.0f ? kWarnColor : kErrorColor);
+    ImGui::TextColored(fpsColor, "%.0f FPS  (%.2f ms/frame)", fps, m_frameMsAvg);
+
+    // 場面の負荷と «描画も含めた» 負荷の差が、物理以外に掛かっている分。
+    ImGui::Text("物理 %.2f ms / %d 刻み", m_simMsAvg, m_stepsThisFrame);
+
+    if (m_droppedFrames > 0) {
+        ImGui::TextColored(kWarnColor, "刻みが追いつかず %d フレーム分を捨てた",
+                           m_droppedFrames);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("消す##dropped")) m_droppedFrames = 0;
+        ImGui::TextDisabled("絵は実時間より遅い。負荷 (サブステップ・剛体数) を下げて比べる");
+    }
 }
 
 /// 場面が自分で申告した異常を出す。«目で見て気づけないもの» はここにしか出ない。
