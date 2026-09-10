@@ -30,6 +30,7 @@
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleForceField.hpp>
 #include <Engine/Scene/Components/WindZoneComponent.hpp>
+#include <Engine/Scene/Components/WeatherComponent.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -321,6 +322,7 @@ FBZZ_COMPONENT_UNDO_REFLECTS(TrailComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(VolumeComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(VolumetricCloudComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(WaterComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(WeatherComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(WindZoneComponent)
 
 #undef FBZZ_COMPONENT_UNDO_REFLECTS

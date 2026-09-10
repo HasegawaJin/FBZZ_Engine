@@ -288,7 +288,11 @@ scene::GameObject* MakeWindZone(EditorContext& ctx)
 scene::GameObject* MakeWeather(EditorContext& ctx)
 {
     auto& weatherGo = ctx.activeScene->CreateGameObject("Weather");
-    weatherGo.AddComponent<scene::WeatherComponent>();
+    // 既定の rainIntensity は 0 (＝雨も濡れも出ない)。置いた瞬間に何も起きないと
+    // «壊れている» と映るので、この導線からは降っている状態で置く。
+    scene::WeatherComponent weather;
+    weather.rainIntensity = 0.5f;
+    weatherGo.AddComponent<scene::WeatherComponent>(weather);
     const scene::EntityID weatherId = weatherGo.GetID();
 
     auto& rainGo = ctx.activeScene->CreateGameObject("Rain");
@@ -302,11 +306,11 @@ scene::GameObject* MakeWeather(EditorContext& ctx)
     s.emitPosition = { 0.0f, 12.0f, 0.0f };
     s.emitVelocity = { 0.0f, -14.0f, 0.0f };
     s.velocitySpread = 0.6f;
-    s.gravity        = { 0.0f, -9.0f, 0.0f };
+    s.SetGravityAcceleration({ 0.0f, -9.0f, 0.0f });
     s.lifetime       = 1.6f;
     s.lifetimeRandom = 0.2f;
-    // 発生量は WeatherSystem が rainIntensity から毎フレーム上書きする。
-    // ここは «雨量 0 で置かれる» 初期状態に合わせておく。
+    // 発生量は WeatherSystem が rainIntensity から毎フレーム上書きするので、
+    // ここの値は最初の 1 フレームぶんしか意味を持たない。
     s.emitRate     = 0.0f;
     s.maxParticles = 8000;
     s.sizeStart    = 0.05f;

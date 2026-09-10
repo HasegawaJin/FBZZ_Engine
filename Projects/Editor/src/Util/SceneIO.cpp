@@ -62,23 +62,17 @@ bool SceneIO::Load(scene::Scene& scene, const std::string& path)
 
 std::string SceneIO::Serialize(const scene::Scene& scene)
 {
-    // メモリ上の TOML 文字列を返したいが、Engine 側 API がファイル経由のみ対応しているため
-    // 一時ファイル (s_snapshotPath) を介してテキストを読み戻す。
-    (void)util::FileSystem::EnsureDirectory(s_snapshotDir);
-    if (!Save(scene, s_snapshotPath)) {
-        FBZZ_LOG_ERROR("SceneIO::Serialize save failed: %s", s_snapshotPath.c_str());
-        return {};
-    }
+    // Engine の SceneSerializer::Save が非 const Scene& を要求する設計になっているため
+    // const_cast で対応。直列化はシーンを変更しない。
+    scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
 
-    std::string text;
-    if (!util::FileSystem::ReadText(s_snapshotPath, text)) {
-        FBZZ_LOG_ERROR("SceneIO::Serialize read failed: %s", s_snapshotPath.c_str());
-        return {};
-    }
-    if (text.empty()) {
+    // WHY ファイルを経由しないか: 以前は一時ファイルへ書いて読み戻していた。
+    //     書き込み先が用意できないだけで空文字が返り、呼び出し側 (変更検知・
+    //     プレハブ切り出し) には «保存できない» ではなく «中身が空 = 変更なし» と
+    //     見えていた。テキストが欲しいだけの経路にディスクを挟まない。
+    std::string text = scene::SceneSerializer::SaveToText(mutableScene);
+    if (text.empty())
         FBZZ_LOG_ERROR("SceneIO::Serialize produced an empty snapshot");
-        return {};
-    }
     return text;
 }
 

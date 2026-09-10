@@ -44,6 +44,15 @@ private:
     [[nodiscard]] bool FiltersChanged() const;
     // 選択行の全文・発生位置・ジャンプボタンを出す下部ペイン。
     void DrawDetailPane(EditorContext& ctx);
+    // 一覧と詳細の境界。ドラッグで m_detailRatio を動かす。
+    void DrawDetailSplitter();
+    // ツールバー (レベルの件数付きトグル / 検索 / Options / 操作)。
+    // 戻り値は "Copy" が押されたか。実行は行の再構築が済んでから呼び出し側が行う。
+    [[nodiscard]] bool DrawToolbar();
+    // レベル 1 つぶんの件数付きトグル。押下状態と件数を 1 つのボタンで見せる。
+    void DrawLevelToggle(const char* label, core::LogLevel level, bool& enabled);
+    // 一覧の 1 行。レベルバー・バッジ・位置プレフィックス・本文をまとめて描く。
+    void DrawLogRow(EditorContext& ctx, int row, const core::LogEntry& entry);
     // メッセージから "[File.cpp:123]" を解決して外部エディターで開く。
     void JumpToSource(EditorContext& ctx, const std::string& message);
 
@@ -68,8 +77,16 @@ private:
     bool m_collapse    = false;
     bool m_clearOnPlay = false;
     bool m_showDetail  = true;
+    // 詳細ペインが占める高さの比率。スプリッタで動かし、設定へ持ち越す。
+    float m_detailRatio = 0.30f;
     std::array<char, 256> m_filterBuf = {};
     std::string m_visibleLogText;
+    // 詳細ペインへ渡す本文。InputTextMultiline は非 const バッファを要求するため、
+    // 表示中の行が変わったときだけ詰め直して使い回す。
+    // 折り返しは幅に依存するので、行が変わったときとペイン幅が動いたときだけ詰め直す。
+    std::string   m_detailText;
+    std::uint64_t m_detailTextSequence = 0;
+    float         m_detailTextWidth    = 0.0f;
 
     // --- 表示キャッシュ (RebuildRows が更新する) ---
     std::vector<Row> m_rows;
@@ -80,8 +97,10 @@ private:
     bool             m_cachedShowWarn  = false;
     bool             m_cachedShowError = false;
     bool             m_cachedCollapse  = false;
-    int              m_warnCount  = 0;   // フィルタ前の総数 (ツールバーのバッジ用)
-    int              m_errorCount = 0;
+    // フィルタ前の総数 (ツールバーのトグルに出す件数)。添字は LogLevel の値。
+    // WHY 全レベル数えるか: 以前は W / E だけを数えて別の場所に出していたため、
+    //     「INFO が何件あるのか」「DEBUG を出したら増えるのか」が分からなかった。
+    std::array<int, 4> m_levelCounts = {};
 
     // 選択中の行 (ConsoleSink の通し番号)。0 は「無し」を表す番兵で、
     // ConsoleSink の採番が 1 始まりなので実在の行とぶつからない。

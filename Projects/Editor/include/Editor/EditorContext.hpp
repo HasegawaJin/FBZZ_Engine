@@ -578,10 +578,24 @@ struct EditorContext {
     // save の path が空なら現在のシーンパスへ上書き保存する。
     std::function<bool(const std::string&)> openScenePathImmediate;
     std::function<bool(const std::string&)> saveScenePathImmediate;
-    float                                   assetBrowserIconSize       = 84.0f;
-    float                                   assetBrowserTreeWidth      = 180.0f; // 左フォルダツリーの幅 (永続化)
+    // NOTE: Asset Browser のアイコンサイズ / ツリー幅はここには持たない。
+    // WHY: パネルは複数開けるので「どのパネルの値か」が決まらない。1 パネルぶんの
+    //      状態は EditorSettings::assetBrowserPanels[instance] が唯一の持ち場で、
+    //      往復は OnLoadSettings / OnSaveSettings だけで完結する。
     float                                   editorUiScale              = 1.0f;   // UI 全体スケール (永続化)
     std::vector<std::string>                assetBrowserBookmarks;
+    // フォルダごとの色 (Unreal の Set Color 相当)。キーは絶対パス、値は IM_COL32 の packed 値。
+    // WHY パネルではなく ctx か: Favorites と同じく EditorSettings 経由で永続化され、
+    //      左ツリー・グリッド・パンくずの複数の描画箇所が同じ 1 つの表を引くため。
+    std::unordered_map<std::string, uint32_t> assetBrowserFolderColors;
+    // 一覧を作り直すべき変更が起きた回数。
+    // WHY 一発フラグ (requestAssetBrowserRefresh) だけでは足りないか: Asset Browser は
+    //     複数開けるので、最初に描いたパネルがフラグを消すと残りの枚に届かない。
+    //     フラグを受け取った側が世代を 1 つ進め、各パネルは自分が最後に適用した
+    //     世代と比べる。これなら何枚あっても、閉じていた枚が開いたときも 1 回だけ効く。
+    uint64_t                                 assetBrowserRefreshGeneration = 0;
+    // Set Color で最近使った色 (新しい順)。プリセットに無い色を選び直す手間を省く。
+    std::vector<uint32_t>                    assetBrowserRecentFolderColors;
 
     // カメラブックマーク (最大 9 件、Shift+1~9 で保存・1~9 で呼び出し)
     struct CameraBookmark {

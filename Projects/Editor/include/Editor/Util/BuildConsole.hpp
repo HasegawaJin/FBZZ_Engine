@@ -12,6 +12,8 @@
 /// 2. Tick ごと (Building中) : IngestFullLog(compiler.GetLog())   // 差分だけ取り込む
 /// 3. ビルド確定時          : EndBuild(success, exitCode) / EndBuildCancelled()
 #pragma once
+#include <array>
+#include <cstdint>
 #include <deque>
 #include <string>
 #include <vector>
@@ -77,13 +79,21 @@ public:
     void ClearHistory();
 
     // --- 失敗通知 (ツールバー下の通知バー) ---
-    // 最新レコードが Failed で、かつユーザーが Dismiss していない場合に true。
-    // 新しいビルド開始 or 成功で通知は自動的にリセットされる。
+    //
+    // 状態は Kind ごとに持つ。
+    // WHY: 履歴は Script と HLSL を 1 本に混ぜており、以前は「履歴の末尾」を見て
+    //      通知の要否を決めていた。そのため HLSL が 1 本コンパイルされただけで
+    //      «スクリプトは壊れたまま» 通知が消え、新しいビルドが走っている間も
+    //      末尾が Building になって消えていた。出す条件は種類ごとの «最後に確定した
+    //      結果» でなければならない (表示する中身は LatestFailure が種類ごとに返す)。
+    //
+    // いずれかの Kind に未 Dismiss の失敗があれば true。
     bool HasActiveFailure() const;
-    void DismissNotification() { m_notificationDismissed = true; }
-
-    // 最新の失敗レコード (通知・ジャンプ用)。無ければ nullptr。
+    // 通知に出すべき失敗レコード。無ければ nullptr。
+    // 両方失敗しているときは «新しい方» を返す。
     const BuildRecord* LatestFailure() const;
+    // 現在通知に出ている失敗を黙らせる (その Kind だけ)。次の失敗でまた出る。
+    void DismissNotification();
 
 private:
     // 完全な 1 行を解析し、診断抽出 or 「現在コンパイル中ファイル」更新を行う。
@@ -97,7 +107,20 @@ private:
     std::string m_lineBuffer;          // 改行未満の端数を次回まで保持
     std::string m_liveLog;             // 現在ビルドの全表示ログ (MAX_LOG_BYTES 上限)
     std::string m_currentFile;         // cl.exe がエコーした現在コンパイル中ファイル名
-    bool        m_notificationDismissed = false;
+
+    // Kind ごとの通知状態。添字は BuildRecord::Kind の値 (Script=0 / Hlsl=1)。
+    struct FailureState {
+        bool     failed    = false;  // 最後に «確定した» ビルドが失敗だったか
+        bool     dismissed = false;  // ユーザーが閉じたか
+        uint64_t sequence  = 0;      // 新しさの比較用 (両方失敗しているときの優先順)
+    };
+    static constexpr size_t kKindCount = 2;
+    std::array<FailureState, kKindCount> m_failures{};
+    uint64_t m_failureSequence = 0;
+
+    // 現在ビルド中のレコードの種類 (EndBuild が状態を書く先を決める)。
+    BuildRecord::Kind m_buildingKind = BuildRecord::Kind::Script;
+
     unsigned long long m_startTickMs = 0;  // duration 計測用 (GetTickCount64)
 };
 

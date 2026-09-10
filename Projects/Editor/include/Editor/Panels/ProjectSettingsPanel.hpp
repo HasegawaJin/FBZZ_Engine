@@ -5,6 +5,7 @@
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <cstdint>
+#include <string>
 
 namespace fbzz { struct ProjectSettings; }
 namespace fbzz { struct CursorAppearance; }
@@ -59,6 +60,11 @@ private:
     void DrawRenderDebug(renderer::RenderSettings& render);  // デバッグ表示・アウトライン
 
     void DrawPhysics(ProjectSettings& settings);
+    /// レイヤー同士がぶつかるかの表。名前の付いたレイヤーだけを並べる。
+    void DrawCollisionMatrix(ProjectSettings& settings);
+    /// 表の見出し。"8: Boss" のように番号を残す ─ シーンに保存されるのは番号なので、
+    /// 名前だけだと «どの番号を GameObject へ入れるのか» が読めない。
+    [[nodiscard]] static std::string LayerLabel(const ProjectSettings& settings, int layer);
 
     // 入力バインド (.inputactions) の編集。
     // WHY エディタのショートカット (HotkeyEditorPanel) と分けるか:

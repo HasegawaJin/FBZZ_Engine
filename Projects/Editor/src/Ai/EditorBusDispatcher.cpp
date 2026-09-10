@@ -6826,18 +6826,28 @@ EditorBusDispatcher::EditorBusDispatcher(editor::EditorContext& context) : m_con
 
 std::string EditorBusDispatcher::Handle(const std::string& requestLine)
 {
+    // 空行は NDJSON の区切りとして正常。要求ではないので黙って捨てる。
+    if (requestLine.find_first_not_of(" \t\r\n") == std::string::npos) return {};
+
     std::string parseError;
     std::optional<JsonValue> root = ParseJson(requestLine, &parseError);
-    if (!root.has_value()) return {}; // 相関 id を取れない → 送信側の timeout に委ねる
+    if (!root.has_value()) {
+        // 相関 id を取り出せないが、応答は返す。
+        //
+        // WHY 黙らないか: 以前は «id が無いので誰への応答か言えない» として何も返さず、
+        //     送信側の timeout に委ねていた。実際には受け手が数十秒固まるだけで、
+        //     しかも «届いていない» のか «壊れていた» のか区別が付かない。
+        //     id を空で返せば «この接続で何かが壊れた» とその場で分かる。
+        return SerializeJson(MakeErrorResponse({}, "BAD_JSON", parseError));
+    }
 
     std::optional<BusRequest> request = ParseBusRequest(*root, &parseError);
     if (!request.has_value()) {
-        // id が取れれば error 応答で明示する。
+        // id が取れればそれを載せる。取れなくても «壊れている» ことは返す。
         const JsonValue* id = root->Find("id");
-        if (id != nullptr && id->IsString()) {
-            return SerializeJson(MakeErrorResponse(id->AsString(), "BAD_REQUEST", parseError));
-        }
-        return {};
+        const std::string correlationId =
+            (id != nullptr && id->IsString()) ? id->AsString() : std::string{};
+        return SerializeJson(MakeErrorResponse(correlationId, "BAD_REQUEST", parseError));
     }
 
     const std::string type = request->PayloadType();

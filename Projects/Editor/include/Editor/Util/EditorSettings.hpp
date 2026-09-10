@@ -80,6 +80,9 @@ struct EditorSettings {
     // --- その他 -----------------------------------------------------------
     bool        hotReloadEnabled = true;
     bool        aiCommandBusEnabled = false; // AI 連携 (Claude/MCP) の Named Pipe 待受を起動時に自動開始するか
+    // プロジェクトを開いたとき、参照を失った Library/Baked/<guid>/ を消すか。
+    // 中身は原本から焼き直せるので、消しても失うのは «次回 import の時間» だけ。
+    bool        sweepOrphanedBakedOnOpen = true;
 
     // --- ツールウィンドウ表示 ---------------------------------------------
     bool        showTerrainTool  = false;
@@ -177,15 +180,43 @@ struct EditorSettings {
     bool                     multiViewportEnabled = false;
 
     // --- Asset Browser (EditorLocalState.toml) ------------------------------
-    float                    assetBrowserIconSize = 84.0f;
-    float                    assetBrowserTreeWidth = 180.0f;
+    // Asset Browser は Unity の Project ウィンドウと同じく複数開けるので、
+    // 1 パネルぶんの状態はここにまとめて配列で持つ (添字 = パネルのインスタンス番号)。
+    // WHY 全部を配列にしないか: お気に入り・フォルダ色・最近使った色は
+    //     「プロジェクトの見え方」であって個々のウィンドウの状態ではない。
+    //     パネルごとに別々だと、片方で色を付けてももう片方に出ず破綻する。
+    struct AssetBrowserPanelState {
+        float        iconSize         = 84.0f;
+        float        treeWidth        = 180.0f;
+        int          viewMode         = 0; // 0=Grid, 1=List
+        int          sortMode         = 0; // 0=NameAsc, 1=NameDesc, 2=Type, 3=Modified
+        // 有効なタイプフィルタのビット集合 (bit N = TypeFilter N)。0 = 絞り込みなし。
+        unsigned int typeFilterMask   = 0;
+        bool         searchAllFolders = false;
+        // 左の階層ツリーにファイルも並べるか。
+        bool         treeShowFiles    = false;
+        // 前回いたフォルダ。lastScenePath と同じく projectRoot 相対で持つ。
+        std::string  currentFolder;
+    };
+    std::vector<AssetBrowserPanelState> assetBrowserPanels;
+
     std::vector<std::string> assetBrowserBookmarks;
-    int                      assetBrowserViewMode   = 0; // 0=Grid, 1=List
-    int                      assetBrowserSortMode   = 0; // 0=NameAsc, 1=NameDesc, 2=Type, 3=Modified
-    int                      assetBrowserTypeFilter = 0; // 0=All (AssetBrowserPanel::TypeFilter)
-    bool                     assetBrowserSearchAllFolders = false;
-    // 前回いたフォルダ。lastScenePath と同じく projectRoot 相対で持つ。
-    std::string              assetBrowserCurrentFolder;
+    // フォルダの色分け (Unreal の Set Color 相当)。projectRoot 相対パス → IM_COL32 値。
+    std::vector<std::pair<std::string, unsigned int>> assetBrowserFolderColors;
+    // Set Color で最近使った色 (新しい順)。プロジェクトをまたいでも使い回せるよう保存する。
+    std::vector<unsigned int> assetBrowserRecentFolderColors;
+
+    // 添字 index のパネル状態。足りなければ既定値のまま伸ばして返す。
+    AssetBrowserPanelState& AssetBrowserPanelAt(std::size_t index)
+    {
+        if (assetBrowserPanels.size() <= index) assetBrowserPanels.resize(index + 1);
+        return assetBrowserPanels[index];
+    }
+    [[nodiscard]] AssetBrowserPanelState AssetBrowserPanelAt(std::size_t index) const
+    {
+        return index < assetBrowserPanels.size() ? assetBrowserPanels[index]
+                                                 : AssetBrowserPanelState{};
+    }
 
     // --- Console (EditorLocalState.toml) ------------------------------------
     // WHY: ログレベルの絞り込みは「今追っている問題」に紐づく。毎起動で全部 ON に
@@ -198,6 +229,8 @@ struct EditorSettings {
     bool consoleCollapse    = false;
     bool consoleClearOnPlay = false;
     bool consoleShowDetail  = true;
+    // 詳細ペインが占める高さの比率。スプリッタのドラッグで動く。
+    float consoleDetailRatio = 0.30f;
 
     // --- パネル表示状態 (EditorLocalState.toml) -------------------------------
     // ウィンドウ名 → 開いているか。View > Panels に出るパネルだけを対象にする。

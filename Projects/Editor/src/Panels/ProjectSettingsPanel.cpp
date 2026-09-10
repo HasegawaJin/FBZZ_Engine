@@ -780,6 +780,64 @@ void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)
     };
     if (ImGui::DragFloat3("Gravity", gravity, 0.05f, -1000.0f, 1000.0f))
         settings.physics.gravity = { gravity[0], gravity[1], gravity[2] };
+
+    DrawCollisionMatrix(settings);
+}
+
+void ProjectSettingsPanel::DrawCollisionMatrix(ProjectSettings& settings)
+{
+    ImGui::Spacing();
+    ImGui::SeparatorText(LOC("Layer Collision Matrix"));
+
+    // 名前の付いたレイヤーだけ並べる。32 本すべてを出すと 1024 マスになり、
+    // 実際に使っている数本を探せない。名前を付けることが «使う» の宣言になる。
+    std::vector<int> used;
+    for (int i = 0; i < 32; ++i)
+        if (i == Layer::Default ||
+            !settings.game.layerNames[static_cast<std::size_t>(i)].empty()) used.push_back(i);
+
+    if (used.size() < 2) {
+        ImGui::TextDisabled("%s", LOC("Name at least two layers in Tags & Layers to edit the matrix."));
+        return;
+    }
+
+    ImGui::TextDisabled("%s", LOC("Unchecked pairs never collide. Triggers are filtered too."));
+
+    // 行は «全レイヤー»、列は «自分より後ろのレイヤー» だけ。対称行列なので
+    // 全面を出すと同じ組が 2 回現れ、どちらを触ったのか分からなくなる。
+    if (ImGui::BeginTable("##collisionMatrix", static_cast<int>(used.size()) + 1,
+                          ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInner)) {
+        ImGui::TableSetupColumn("");
+        for (int column : used)
+            ImGui::TableSetupColumn(LayerLabel(settings, column).c_str());
+        ImGui::TableHeadersRow();
+
+        for (std::size_t row = 0; row < used.size(); ++row) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(LayerLabel(settings, used[row]).c_str());
+
+            for (std::size_t column = 0; column < used.size(); ++column) {
+                ImGui::TableNextColumn();
+                if (column < row) continue;   // 下三角は上三角と同じ組
+
+                const int a = used[row];
+                const int b = used[column];
+                bool collide = settings.physics.collisionMatrix.CanCollide(a, b);
+                ImGui::PushID(a * 32 + b);
+                if (ImGui::Checkbox("##pair", &collide))
+                    settings.physics.collisionMatrix.Set(a, b, collide);
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndTable();
+    }
+}
+
+std::string ProjectSettingsPanel::LayerLabel(const ProjectSettings& settings, int layer)
+{
+    const std::string& name = settings.game.layerNames[static_cast<std::size_t>(layer)];
+    return std::to_string(layer) + ": " + (name.empty() ? "Default" : name);
 }
 
 namespace {

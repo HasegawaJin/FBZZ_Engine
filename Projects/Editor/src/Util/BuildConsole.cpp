@@ -53,13 +53,16 @@ void BuildConsole::BeginBuild(BuildRecord::Kind kind)
     while (m_history.size() > MAX_HISTORY)
         m_history.pop_front();
 
-    m_building              = true;
-    m_consumedLen           = 0;
+    m_building     = true;
+    m_buildingKind = kind;
+    m_consumedLen  = 0;
     m_lineBuffer.clear();
     m_liveLog.clear();
     m_currentFile.clear();
-    m_notificationDismissed = false;
-    m_startTickMs           = GetTickCount64();
+    m_startTickMs  = GetTickCount64();
+    // WHY ここで通知を消さないか: ビルドを «始めた» ことは失敗が直った証拠ではない。
+    //     直ったかどうかは EndBuild で分かる。開始時に消すと、走っている間だけ
+    //     バーが消えて「出たり出なかったり」に見える。
 }
 
 BuildRecord* BuildConsole::CurrentRecord()
@@ -164,8 +167,14 @@ void BuildConsole::EndBuild(bool success, int exitCode)
 
     m_building = false;
     m_currentFile.clear();
-    // 成功時は前回失敗の通知フラグをリセット (次の失敗で再表示できるようにする)。
-    if (success) m_notificationDismissed = true;
+
+    // 確定した結果を «その種類の» 通知状態へ書く。
+    // WHY 種類ごとか: 以前は成功のたびに 1 つのフラグを畳んでいたため、HLSL の成功が
+    //     スクリプトの失敗通知まで消していた。直っていないものを黙らせてはいけない。
+    FailureState& state = m_failures[static_cast<size_t>(m_buildingKind)];
+    state.failed    = !success;
+    state.dismissed = false;
+    state.sequence  = ++m_failureSequence;
 }
 
 void BuildConsole::EndBuildCancelled()
@@ -176,7 +185,7 @@ void BuildConsole::EndBuildCancelled()
     }
     m_building = false;
     m_currentFile.clear();
-    m_notificationDismissed = true;
+    // 中断は «結果» ではないので、その種類の通知状態は前のまま据え置く。
 }
 
 void BuildConsole::ClearHistory()
@@ -189,23 +198,44 @@ void BuildConsole::ClearHistory()
     } else {
         m_history.clear();
     }
-    m_notificationDismissed = true;
+    // 履歴を消せば通知の中身も辿れなくなるので、通知自体も畳む。
+    for (FailureState& state : m_failures) state = {};
 }
 
 bool BuildConsole::HasActiveFailure() const
 {
-    if (m_notificationDismissed) return false;
-    const BuildRecord* latest = Latest();
-    return latest && latest->result == BuildRecord::Result::Failed;
+    return LatestFailure() != nullptr;
 }
 
 const BuildRecord* BuildConsole::LatestFailure() const
 {
-    // 履歴を末尾から遡り、最初に見つかった Failed を返す。
-    for (auto it = m_history.rbegin(); it != m_history.rend(); ++it) {
-        if (it->result == BuildRecord::Result::Failed) return &*it;
+    // 未 Dismiss の失敗を抱えている Kind のうち、いちばん新しいものを選ぶ。
+    // WHY 履歴を «ただ» 遡らないか: 履歴には直った後の古い失敗も残っている。
+    //     通知に出してよいのは «その種類の最後の結果が失敗» のものだけ。
+    const BuildRecord* best     = nullptr;
+    uint64_t           bestSeq  = 0;
+    for (size_t kind = 0; kind < kKindCount; ++kind) {
+        const FailureState& state = m_failures[kind];
+        if (!state.failed || state.dismissed) continue;
+        if (best != nullptr && state.sequence < bestSeq) continue;
+
+        // その種類の最新の Failed レコードを履歴から引く (診断とエラー件数の出所)。
+        for (auto it = m_history.rbegin(); it != m_history.rend(); ++it) {
+            if (static_cast<size_t>(it->kind) != kind) continue;
+            if (it->result != BuildRecord::Result::Failed) continue;
+            best    = &*it;
+            bestSeq = state.sequence;
+            break;
+        }
     }
-    return nullptr;
+    return best;
+}
+
+void BuildConsole::DismissNotification()
+{
+    // 今バーに出ているものだけを黙らせる。もう片方の失敗は残す。
+    if (const BuildRecord* shown = LatestFailure())
+        m_failures[static_cast<size_t>(shown->kind)].dismissed = true;
 }
 
 } // namespace fbzz::editor

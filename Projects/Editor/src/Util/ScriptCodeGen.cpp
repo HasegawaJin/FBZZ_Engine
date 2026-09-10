@@ -179,12 +179,6 @@ std::vector<ScriptRegistration> CollectRegistrations(const std::string& scriptsD
     return registrations;
 }
 
-bool EnsureDirectoriesRecursive(const std::string& path)
-{
-    if (path.empty()) return false;
-
-    return util::FileSystem::EnsureDirectory(util::FileSystem::PathFromUtf8(path));
-}
 
 // C++ スクリプトのテンプレートを生成する (新方式: 自己登録リフレクション + 1 ファイル inline)
 // WHY: 旧方式の .generated.hpp / 専用 .cpp / _IMPL ガードを廃止。
@@ -516,7 +510,7 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
     }
 
     // .hpp テンプレートを書き出す
-    if (!EnsureDirectoriesRecursive(scriptsDir)) {
+    if (!util::FileSystem::EnsureDirectory(scriptsDir)) {
         FBZZ_LOG_ERROR("ScriptCodeGen: failed to create Scripts directory: %s", scriptsDir.c_str());
         return {};
     }
@@ -693,7 +687,7 @@ std::string ScriptCodeGen::CreateHlsl(const std::string& name,
         break;
     }
 
-    if (!EnsureDirectoriesRecursive(subDir)) {
+    if (!util::FileSystem::EnsureDirectory(subDir)) {
         FBZZ_LOG_ERROR("ScriptCodeGen: failed to create HLSL directory: %s", subDir.c_str());
         return {};
     }

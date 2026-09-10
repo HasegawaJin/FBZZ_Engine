@@ -6,6 +6,7 @@
 #include <toml++/toml.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <sstream>
 
@@ -140,6 +141,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     // その他
     if (auto v = tbl["misc"]["hot_reload"].value<bool>()) hotReloadEnabled = *v;
     if (auto v = tbl["misc"]["ai_command_bus"].value<bool>()) aiCommandBusEnabled = *v;
+    if (auto v = tbl["misc"]["sweep_orphaned_baked"].value<bool>())
+        sweepOrphanedBakedOnOpen = *v;
 
     // ツールウィンドウ
     if (auto v = tbl["tools"]["show_terrain"].value<bool>()) showTerrainTool = *v;
@@ -230,18 +233,64 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     };
 
     // Asset Browser
-    if (auto v = tbl["asset_browser"]["icon_size"].value<float>()) assetBrowserIconSize = *v;
-    if (auto v = tbl["asset_browser"]["tree_width"].value<float>()) assetBrowserTreeWidth = *v;
-    if (auto v = tbl["asset_browser"]["view_mode"].value<int64_t>())   assetBrowserViewMode   = static_cast<int>(*v);
-    if (auto v = tbl["asset_browser"]["sort_mode"].value<int64_t>())   assetBrowserSortMode   = static_cast<int>(*v);
-    if (auto v = tbl["asset_browser"]["type_filter"].value<int64_t>()) assetBrowserTypeFilter = static_cast<int>(*v);
-    if (auto v = tbl["asset_browser"]["search_all_folders"].value<bool>()) assetBrowserSearchAllFolders = *v;
-    if (auto v = tbl["asset_browser"]["current_folder"].value<std::string>())
-        assetBrowserCurrentFolder = toAbsProjectPath(*v);
+    // 1 パネルぶんの状態を 1 つのテーブルから読む。旧形式 ([asset_browser] 直下の
+    // スカラー) も新形式 ([[asset_browser.panels]] の各要素) も同じ形なので共用する。
+    const auto readPanelState = [](const auto& src, AssetBrowserPanelState& dst,
+                                   const auto& toAbs) {
+        if (auto v = src["icon_size"].template value<float>())    dst.iconSize  = *v;
+        if (auto v = src["tree_width"].template value<float>())   dst.treeWidth = *v;
+        if (auto v = src["view_mode"].template value<int64_t>())  dst.viewMode  = static_cast<int>(*v);
+        if (auto v = src["sort_mode"].template value<int64_t>())  dst.sortMode  = static_cast<int>(*v);
+        // 新形式のマスクが無ければ、旧版が書いた単一 enum 値から組み立てる。
+        // WHY 名前を分けるか: if の条件変数のスコープは else 節まで伸びるため、
+        //     else if の初期化文で同じ名前を宣言すると再定義になる。
+        if (auto mask = src["type_filter_mask"].template value<int64_t>())
+            dst.typeFilterMask = static_cast<unsigned int>(*mask);
+        else if (auto legacy = src["type_filter"].template value<int64_t>(); legacy && *legacy > 0)
+            dst.typeFilterMask = 1u << static_cast<int>(*legacy);
+        if (auto v = src["search_all_folders"].template value<bool>()) dst.searchAllFolders = *v;
+        if (auto v = src["tree_show_files"].template value<bool>())    dst.treeShowFiles    = *v;
+        if (auto v = src["current_folder"].template value<std::string>())
+            dst.currentFolder = toAbs(*v);
+    };
+
+    assetBrowserPanels.clear();
+    if (auto* arr = tbl["asset_browser"]["panels"].as_array()) {
+        for (auto& elem : *arr) {
+            AssetBrowserPanelState state;
+            if (auto* entry = elem.as_table())
+                readPanelState(*entry, state, toAbsProjectPath);
+            assetBrowserPanels.push_back(std::move(state));
+        }
+    } else {
+        // 旧形式からの移行。1 枚目のパネルの状態として読み取る。
+        AssetBrowserPanelState state;
+        readPanelState(tbl["asset_browser"], state, toAbsProjectPath);
+        assetBrowserPanels.push_back(std::move(state));
+    }
+
     assetBrowserBookmarks.clear();
     if (auto* arr = tbl["asset_browser"]["bookmarks"].as_array()) {
         for (auto& elem : *arr)
             if (auto v = elem.value<std::string>()) assetBrowserBookmarks.push_back(*v);
+    }
+    assetBrowserFolderColors.clear();
+    if (auto* arr = tbl["asset_browser"]["folder_colors"].as_array()) {
+        for (auto& elem : *arr) {
+            auto* entry = elem.as_table();
+            if (!entry) continue;
+            auto path  = (*entry)["path"].value<std::string>();
+            auto color = (*entry)["color"].value<int64_t>();
+            if (!path || !color) continue;
+            assetBrowserFolderColors.emplace_back(toAbsProjectPath(*path),
+                                                  static_cast<unsigned int>(*color));
+        }
+    }
+    assetBrowserRecentFolderColors.clear();
+    if (auto* arr = tbl["asset_browser"]["recent_folder_colors"].as_array()) {
+        for (auto& elem : *arr)
+            if (auto v = elem.value<int64_t>())
+                assetBrowserRecentFolderColors.push_back(static_cast<unsigned int>(*v));
     }
 
     // Console
@@ -253,6 +302,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["console"]["collapse"].value<bool>())      consoleCollapse    = *v;
     if (auto v = tbl["console"]["clear_on_play"].value<bool>()) consoleClearOnPlay = *v;
     if (auto v = tbl["console"]["show_detail"].value<bool>())   consoleShowDetail  = *v;
+    if (auto v = tbl["console"]["detail_ratio"].value<double>())
+        consoleDetailRatio = std::clamp(static_cast<float>(*v), 0.10f, 0.80f);
 
     // パネル表示状態
     panelVisibility.clear();
@@ -385,6 +436,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table miscTbl;
     miscTbl.insert("hot_reload", hotReloadEnabled);
     miscTbl.insert("ai_command_bus", aiCommandBusEnabled);
+    miscTbl.insert("sweep_orphaned_baked", sweepOrphanedBakedOnOpen);
 
     // ツールウィンドウ
     toml::table toolsTbl;
@@ -434,17 +486,42 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     // Asset Browser
     toml::table assetBrowserTbl;
-    assetBrowserTbl.insert("icon_size", assetBrowserIconSize);
-    assetBrowserTbl.insert("tree_width", assetBrowserTreeWidth);
-    assetBrowserTbl.insert("view_mode",   static_cast<int64_t>(assetBrowserViewMode));
-    assetBrowserTbl.insert("sort_mode",   static_cast<int64_t>(assetBrowserSortMode));
-    assetBrowserTbl.insert("type_filter", static_cast<int64_t>(assetBrowserTypeFilter));
-    assetBrowserTbl.insert("search_all_folders", assetBrowserSearchAllFolders);
-    assetBrowserTbl.insert("current_folder", toRelProjectPath(assetBrowserCurrentFolder));
+    {
+        toml::array panelArr;
+        for (const AssetBrowserPanelState& state : assetBrowserPanels) {
+            toml::table entry;
+            entry.insert("icon_size",          state.iconSize);
+            entry.insert("tree_width",         state.treeWidth);
+            entry.insert("view_mode",          static_cast<int64_t>(state.viewMode));
+            entry.insert("sort_mode",          static_cast<int64_t>(state.sortMode));
+            entry.insert("type_filter_mask",   static_cast<int64_t>(state.typeFilterMask));
+            entry.insert("search_all_folders", state.searchAllFolders);
+            entry.insert("tree_show_files",    state.treeShowFiles);
+            entry.insert("current_folder",     toRelProjectPath(state.currentFolder));
+            panelArr.push_back(std::move(entry));
+        }
+        assetBrowserTbl.insert("panels", std::move(panelArr));
+    }
     {
         toml::array bkArr;
         for (const auto& bk : assetBrowserBookmarks) bkArr.push_back(bk);
         assetBrowserTbl.insert("bookmarks", std::move(bkArr));
+    }
+    {
+        toml::array colorArr;
+        for (const auto& [path, color] : assetBrowserFolderColors) {
+            toml::table entry;
+            entry.insert("path",  toRelProjectPath(path));
+            entry.insert("color", static_cast<int64_t>(color));
+            colorArr.push_back(std::move(entry));
+        }
+        assetBrowserTbl.insert("folder_colors", std::move(colorArr));
+    }
+    {
+        toml::array recentArr;
+        for (unsigned int color : assetBrowserRecentFolderColors)
+            recentArr.push_back(static_cast<int64_t>(color));
+        assetBrowserTbl.insert("recent_folder_colors", std::move(recentArr));
     }
 
     // Console
@@ -457,6 +534,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     consoleTbl.insert("collapse",      consoleCollapse);
     consoleTbl.insert("clear_on_play", consoleClearOnPlay);
     consoleTbl.insert("show_detail",   consoleShowDetail);
+    consoleTbl.insert("detail_ratio",  static_cast<double>(consoleDetailRatio));
 
     // パネル表示状態
     toml::array panelArr;
