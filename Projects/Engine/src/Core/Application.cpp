@@ -21,6 +21,7 @@
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RendererFactory.hpp"
 #include "Engine/Util/SaveStore.hpp"
+#include "Math/MathContract.hpp"
 
 namespace fbzz::core {
 
@@ -79,6 +80,14 @@ bool Application::Init(const Window::Config& windowConfig,
                        renderer::RendererBackend preferredBackend) {
     FBZZ_LOG_INFO("Application::Init: 開始 (preferred=%s)", renderer::ToString(preferredBackend));
     timeBeginPeriod(1);
+
+    // 数学の契約違反を Logger へ流す。Math は Engine に依存できないので、出力先はここで差す。
+    // WHY 落とさないか: ゼロ長ベクトルも特異行列も «ユーザーデータ» で普通に起きる。
+    //     abort すると未保存の作業ごとエディターが死ぬ (MathContract.hpp)。
+    math::SetContractHandler([](const math::ContractViolation& v) {
+        FBZZ_LOG_ERROR("[%s:%d] %s: %s (%s)",
+                       v.file, v.line, v.function, v.message, v.expr);
+    });
 
     // WHY: フレームアロケータとメモリ統計はエンジン全体の診断基盤なので、
     //      Window / Renderer より先に初期化し、以後のサブシステムから参照できる状態にする。

@@ -1,4 +1,4 @@
-file(GLOB_RECURSE MATH_SOURCES
+file(GLOB_RECURSE MATH_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     include/*.hpp
 )

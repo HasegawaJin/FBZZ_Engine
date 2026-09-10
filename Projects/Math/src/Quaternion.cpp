@@ -6,7 +6,7 @@
 #include "Math/Matrix4.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>
-#include <cassert>
+#include "Math/MathContract.hpp"
 
 namespace fbzz::math {
 
@@ -128,7 +128,9 @@ float Quaternion::Length() const {
 
 Quaternion Quaternion::Normalized() const {
     float len = Length();
-    assert(!NearlyZero(len) && "Cannot normalize a zero-length quaternion");
+    FBZZ_MATH_CONTRACT(!NearlyZero(len),
+                       "zero-length quaternion normalized; returning identity");
+    if (NearlyZero(len)) return Identity();
     float inv = 1.0f / len;
     return {x * inv, y * inv, z * inv, w * inv};
 }
@@ -137,7 +139,9 @@ Quaternion Quaternion::Conjugate() const { return {-x, -y, -z, w}; }
 
 Quaternion Quaternion::Inverse() const {
     float lenSq = x * x + y * y + z * z + w * w;
-    assert(!NearlyZero(lenSq) && "Cannot invert a zero quaternion");
+    FBZZ_MATH_CONTRACT(!NearlyZero(lenSq),
+                       "zero quaternion inverted; returning identity");
+    if (NearlyZero(lenSq)) return Identity();
     float inv = 1.0f / lenSq;
     return {-x * inv, -y * inv, -z * inv, w * inv};
 }

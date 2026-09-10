@@ -5,7 +5,7 @@
 #include "Math/Vector2.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>
-#include <cassert>
+#include "Math/MathContract.hpp"
 
 namespace fbzz::math {
 
@@ -26,7 +26,9 @@ float   Vector2::LengthSq()   const { return x * x + y * y; }
 float   Vector2::Length()     const { return std::sqrt(LengthSq()); }
 Vector2 Vector2::Normalized() const {
     float len = Length();
-    assert(!NearlyZero(len) && "Cannot normalize a zero-length vector");
+    FBZZ_MATH_CONTRACT(!NearlyZero(len),
+                       "zero-length vector normalized; returning (0,0)");
+    if (NearlyZero(len)) return ZERO;
     return *this / len;
 }
 

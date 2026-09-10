@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 #pragma once
 
+#include "MathContract.hpp"
 #include "MathUtils.hpp"
 #include "Vector2.hpp"
 #include "Vector3.hpp"
