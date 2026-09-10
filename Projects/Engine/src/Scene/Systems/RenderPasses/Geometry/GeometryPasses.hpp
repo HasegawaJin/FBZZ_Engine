@@ -10,6 +10,7 @@
 #include <Engine/Renderer/RenderState.hpp>
 #include "Engine/Scene/Transform.hpp"
 #include <Math/Frustum.hpp>
+#include <Math/MathUtils.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
@@ -18,6 +19,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -258,6 +260,47 @@ static_assert(sizeof(TrailCB) == 48, "TrailCB layout mismatch");
 //      視点によって「線」に潰れる。Trail ノードと粒子リボンで同じ式を使う。
 [[nodiscard]] math::Vector3 ComputeCameraFacingRibbonNormal(
     const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point);
+
+/// ポリラインの各点に「帯の幅方向」を割り当てる。隣り合う線分の法線を平均 (マイター) する。
+/// @param normalOf (正規化済み進行方向, 点) -> 幅方向。Trail ノードは alignment で、
+///                 粒子リボンはカメラ正対で決めるため、そこだけを呼び出し側に委ねる
+/// @note 長さ 0 の線分は寄与しない。前後とも 0 なら RIGHT を残す
+template<class NormalFn>
+void BuildRibbonMiterNormals(const std::vector<math::Vector3>& points,
+                             NormalFn&& normalOf,
+                             std::vector<math::Vector3>& outNormals)
+{
+    outNormals.assign(points.size(), math::Vector3::RIGHT);
+
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        math::Vector3 left{}, right{};
+        bool hasLeft = false, hasRight = false;
+        if (i > 0) {
+            const math::Vector3 direction = points[i] - points[i - 1u];
+            if (direction.LengthSq() > math::EPSILON * math::EPSILON) {
+                left = normalOf(direction.Normalized(), points[i]);
+                hasLeft = true;
+            }
+        }
+        if (i + 1u < points.size()) {
+            const math::Vector3 direction = points[i + 1u] - points[i];
+            if (direction.LengthSq() > math::EPSILON * math::EPSILON) {
+                right = normalOf(direction.Normalized(), points[i]);
+                hasRight = true;
+            }
+        }
+
+        if (hasLeft && hasRight) {
+            math::Vector3 miter = left + right;
+            miter = miter.LengthSq() > math::EPSILON * math::EPSILON ? miter.Normalized() : right;
+            // 鋭角では 1/cos が発散して帯が破裂する。0.5 (=120度) で頭打ちにする。
+            const float cosHalfAngle = (std::max)(math::Vector3::Dot(miter, left), 0.5f);
+            outNormals[i] = miter * (1.0f / cosHalfAngle);
+        } else if (hasLeft || hasRight) {
+            outNormals[i] = hasRight ? right : left;
+        }
+    }
+}
 
 // ---- パス宣言 ---------------------------------------------------------------
 // コンピュートスキニング。ボーン変形を 1 フレーム 1 回だけ計算し、静的メッシュと同じ

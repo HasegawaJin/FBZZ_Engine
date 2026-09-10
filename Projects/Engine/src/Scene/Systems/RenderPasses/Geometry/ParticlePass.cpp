@@ -929,35 +929,13 @@ void DrawParticleTrailRibbons(ParticleEmitter& emitter, const Transform& tf,
         }
         if (polyline.size() < 2) continue;
 
-        // 各点の幅方向。隣り合う線分の法線を平均 (マイター) して継ぎ目の折れを消す。
-        normals.assign(polyline.size(), math::Vector3::RIGHT);
-        for (std::size_t point = 0; point < polyline.size(); ++point) {
-            math::Vector3 left{}, right{};
-            bool hasLeft = false, hasRight = false;
-            if (point > 0) {
-                const math::Vector3 direction = polyline[point] - polyline[point - 1u];
-                if (direction.LengthSq() > math::EPSILON * math::EPSILON) {
-                    left = ComputeCameraFacingRibbonNormal(direction.Normalized(), cameraPos, polyline[point]);
-                    hasLeft = true;
-                }
-            }
-            if (point + 1u < polyline.size()) {
-                const math::Vector3 direction = polyline[point + 1u] - polyline[point];
-                if (direction.LengthSq() > math::EPSILON * math::EPSILON) {
-                    right = ComputeCameraFacingRibbonNormal(direction.Normalized(), cameraPos, polyline[point]);
-                    hasRight = true;
-                }
-            }
-            if (hasLeft && hasRight) {
-                math::Vector3 miter = left + right;
-                miter = miter.LengthSq() > math::EPSILON * math::EPSILON ? miter.Normalized() : right;
-                // 鋭角では 1/cos が発散して帯が破裂する。0.5 (=120度) で頭打ちにする。
-                const float cosHalfAngle = (std::max)(math::Vector3::Dot(miter, left), 0.5f);
-                normals[point] = miter * (1.0f / cosHalfAngle);
-            } else if (hasLeft || hasRight) {
-                normals[point] = hasRight ? right : left;
-            }
-        }
+        // 各点の幅方向。マイター接合そのものは Trail ノードと共通で、粒子リボンは
+        // 幅方向を常にカメラ正対で決める。
+        BuildRibbonMiterNormals(polyline,
+            [&](const math::Vector3& direction, const math::Vector3& point) {
+                return ComputeCameraFacingRibbonNormal(direction, cameraPos, point);
+            },
+            normals);
 
         // 幅。trailRibbonWidth が 0 以下なら粒子サイズを流用する。
         const float baseWidth = emitter.settings.trailRibbonWidth > 0.0f
