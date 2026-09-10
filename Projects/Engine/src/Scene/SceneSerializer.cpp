@@ -94,6 +94,35 @@ namespace fbzz::scene {
 // -----------------------------------------------------------------------
 namespace {
 
+// LightComponent を読む。`type` が文字列で書かれた旧シーンをここで吸収する。
+//
+// WHY 要るか: 2026-09-11 以前は手書きコーデックが `type` を "Directional" / "Tube" …
+//     という**文字列**で書いていた。`Reflect()` は他のすべての enum と同じく int を読むので、
+//     そのままでは文字列が読めず既定値の 0 (= Directional) に落ちる。
+//     しかも次の保存で 0 が書き戻され、Spot も Tube も**元に戻せない形で消える**。
+void ReadLightComponent(GameObject& go, const toml::table& goTbl)
+{
+    const auto* lightTbl = goTbl["LightComponent"].as_table();
+    if (lightTbl == nullptr) return;
+
+    LightComponent light{};
+    if (const auto* typeStr = (*lightTbl)["type"].as_string()) {
+        static constexpr std::string_view kTypeNames[] = {
+            "Directional", "Point", "Spot", "Area", "Sphere", "Tube" };
+        constexpr int kTypeCount = 6;
+        toml::table migrated = *lightTbl;
+        int index = 0;
+        for (int i = 0; i < kTypeCount; ++i) {
+            if (kTypeNames[i] == typeStr->get()) { index = i; break; }
+        }
+        migrated.insert_or_assign("type", index);
+        DeserializeReflected(migrated, light);
+    } else {
+        DeserializeReflected(*lightTbl, light);
+    }
+    go.AddComponent<LightComponent>(light);
+}
+
 // 力場コンポーネントを読む。旧い 2 つの形をここで吸収する。
 //
 //   (a) 2026-09-11 以前の ForceField … 力 1 本ぶんのキーが直下にフラットに並ぶ
@@ -1917,7 +1946,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
 
         // LightComponent
-        ReadComponentReflected<LightComponent>(go, *goTbl, "LightComponent");
+        ReadLightComponent(go, *goTbl);
 
         // CameraComponent
         if (auto* ccTbl = (*goTbl)["CameraComponent"].as_table()) {
@@ -2954,7 +2983,7 @@ bool SceneSerializer::AppendObjects(
         if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
             go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
 
-        ReadComponentReflected<LightComponent>(go, *goTbl, "LightComponent");
+        ReadLightComponent(go, *goTbl);
 
         // EnvironmentLightComponent
         ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");

@@ -410,4 +410,62 @@ direction = [0.0, 1.0, 0.0]
     EXPECT_NEAR(field->forces[0].radius, 6.0f, testkit::kTolerance);
 }
 
+// キー名が合っていても «値の書き方» が変わると同じように黙って壊れる。
+// LightComponent::type は手書き時代だけ文字列で、Reflect() は他の enum と同じ int を読む。
+// 移行が抜けると Spot も Tube も既定値の Directional に落ち、次の保存で書き戻されて消える。
+TEST_F(ComponentReflectionParityTest, LegacyStringLightTypeSurvivesLoad)
+{
+    const std::string legacy = R"(
+[[gameobjects]]
+name = "TubeLamp"
+instanceId = 1
+[gameobjects.LightComponent]
+type = 'Tube'
+enabled = true
+intensity = 4.0
+range = 7.0
+sourceLength = 2.5
+)";
+
+    std::unique_ptr<scene::Scene> loaded = scene::SceneSerializer::LoadDataFromText(legacy, "");
+    ASSERT_NE(loaded, nullptr);
+
+    scene::GameObject* object = nullptr;
+    for (auto& candidate : loaded->GameObjects())
+        if (candidate.name == "TubeLamp") object = &candidate;
+    ASSERT_NE(object, nullptr);
+
+    const auto* light = object->GetComponent<scene::LightComponent>();
+    ASSERT_NE(light, nullptr);
+    EXPECT_EQ(light->type, scene::LightComponent::Type::Tube);
+    EXPECT_NEAR(light->intensity, 4.0f, testkit::kTolerance);
+    EXPECT_NEAR(light->sourceLength, 2.5f, testkit::kTolerance);
+}
+
+TEST_F(ComponentReflectionParityTest, IntLightTypeStillLoads)
+{
+    const std::string current = R"(
+[[gameobjects]]
+name = "SpotLamp"
+instanceId = 1
+[gameobjects.LightComponent]
+type = 2
+enabled = true
+outerCone = 45.0
+)";
+
+    std::unique_ptr<scene::Scene> loaded = scene::SceneSerializer::LoadDataFromText(current, "");
+    ASSERT_NE(loaded, nullptr);
+
+    scene::GameObject* object = nullptr;
+    for (auto& candidate : loaded->GameObjects())
+        if (candidate.name == "SpotLamp") object = &candidate;
+    ASSERT_NE(object, nullptr);
+
+    const auto* light = object->GetComponent<scene::LightComponent>();
+    ASSERT_NE(light, nullptr);
+    EXPECT_EQ(light->type, scene::LightComponent::Type::Spot);
+    EXPECT_NEAR(light->outerCone, 45.0f, testkit::kTolerance);
+}
+
 } // namespace fbzz::tests
