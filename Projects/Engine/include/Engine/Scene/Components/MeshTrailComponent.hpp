@@ -130,6 +130,9 @@ struct MeshTrailComponent {
         r.Field("doubleSided", doubleSided);
         r.Field("clearOnDisable", clearOnDisable);
         r.Field("materialPath", materialPath);
+        // 保存はされていたのに Reflect に無く、AI バスと汎用 Inspector からだけ
+        // 見えない状態だった。キー名は保存済みシーンに合わせる。
+        r.ListField("excludedMeshIndices", excludedMeshIndices);
     }
 };
 

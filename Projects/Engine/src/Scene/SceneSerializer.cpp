@@ -938,6 +938,17 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
 // -----------------------------------------------------------------------
 bool SceneSerializer::Save(Scene& scene, const std::string& path)
 {
+    const std::string text = SaveToText(scene, path);
+    if (text.empty()) return false;
+    util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(path));
+    return util::FileSystem::WriteText(path, text);
+}
+
+std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePath)
+{
+    // Terrain のレイヤーマテリアルは «シーンの隣» へ書き出す副作用がある。
+    // 保存先が決まらない呼び出し (テキストだけ欲しい場合) では書き出さない。
+    const std::string& path = scenePath;
     toml::table doc;
 
     toml::table sceneTbl;
@@ -1042,44 +1053,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // LightComponent
-        if (auto* lc = go.GetComponent<LightComponent>()) {
-            static constexpr const char* kTypeNames[] = {
-                "Directional", "Point", "Spot", "Area", "Sphere", "Tube" };
-            toml::table lcTbl;
-            lcTbl.insert("type",      kTypeNames[static_cast<int>(lc->type)]);
-            lcTbl.insert("color",     Vec3ToArr(lc->color));
-            lcTbl.insert("intensity", (double)lc->intensity);
-            lcTbl.insert("enabled",   lc->enabled);
-            if (lc->useColorTemperature) {
-                lcTbl.insert("useColorTemperature", true);
-                lcTbl.insert("colorTemperature", (double)lc->colorTemperature);
-            }
-            if (lc->sourceRadius > 0.0f)
-                lcTbl.insert("sourceRadius", (double)lc->sourceRadius);
-            if (lc->type == LightComponent::Type::Tube)
-                lcTbl.insert("sourceLength", (double)lc->sourceLength);
-            if (lc->type != LightComponent::Type::Directional)
-                lcTbl.insert("range", (double)lc->range);
-            if (lc->type == LightComponent::Type::Spot) {
-                lcTbl.insert("innerCone", (double)lc->innerCone);
-                lcTbl.insert("outerCone", (double)lc->outerCone);
-            }
-            if (lc->type == LightComponent::Type::Area) {
-                lcTbl.insert("areaWidth",    (double)lc->areaWidth);
-                lcTbl.insert("areaHeight",   (double)lc->areaHeight);
-                lcTbl.insert("areaTwoSided", lc->areaTwoSided);
-            }
-            lcTbl.insert("castShadows",    lc->castShadows);
-            lcTbl.insert("shadowBias",     (double)lc->shadowBias);
-            lcTbl.insert("shadowStrength", (double)lc->shadowStrength);
-            lcTbl.insert("shadowDistance", (double)lc->shadowDistance);
-            lcTbl.insert("shadowNearPlane", (double)lc->shadowNearPlane);
-            if (!lc->cookiePath.empty()) {
-                lcTbl.insert("cookiePath",     lc->cookiePath);
-                lcTbl.insert("cookieRotation", (double)lc->cookieRotation);
-            }
-            goTbl.insert("LightComponent", std::move(lcTbl));
-        }
+        WriteComponentReflected<LightComponent>(go, goTbl, "LightComponent");
 
         // CameraComponent
         if (auto* cc = go.GetComponent<CameraComponent>()) {
@@ -1142,61 +1116,17 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // EnvironmentLightComponent
-        if (auto* elc = go.GetComponent<EnvironmentLightComponent>()) {
-            toml::table elcTbl;
-            elcTbl.insert("enabled",        elc->enabled);
-            elcTbl.insert("source",         (int64_t)static_cast<uint8_t>(elc->source));
-            elcTbl.insert("irradiancePath", elc->irradiancePath);
-            elcTbl.insert("prefilterPath",  elc->prefilterPath);
-            elcTbl.insert("intensity",      (double)elc->intensity);
-            elcTbl.insert("diffuseScale",   (double)elc->diffuseScale);
-            elcTbl.insert("specularScale",  (double)elc->specularScale);
-            elcTbl.insert("maxMipLevel",    (int64_t)elc->maxMipLevel);
-            goTbl.insert("EnvironmentLightComponent", std::move(elcTbl));
-        }
+        WriteComponentReflected<EnvironmentLightComponent>(go, goTbl, "EnvironmentLightComponent");
 
         // ReflectionProbeComponent
-        if (auto* rpc = go.GetComponent<ReflectionProbeComponent>()) {
-            toml::table rpcTbl;
-            rpcTbl.insert("enabled",         rpc->enabled);
-            rpcTbl.insert("cubemapPath",     rpc->cubemapPath);
-            rpcTbl.insert("captureMode",     (int64_t)static_cast<uint8_t>(rpc->captureMode));
-            rpcTbl.insert("captureResolution",(int64_t)rpc->captureResolution);
-            rpcTbl.insert("updateInterval",  (double)rpc->updateInterval);
-            rpcTbl.insert("influenceRadius", (double)rpc->influenceRadius);
-            rpcTbl.insert("intensity",       (double)rpc->intensity);
-            rpcTbl.insert("boxInfluence",    rpc->boxInfluence);
-            rpcTbl.insert("boxExtents",      Vec3ToArr(rpc->boxExtents));
-            goTbl.insert("ReflectionProbeComponent", std::move(rpcTbl));
-        }
+        WriteComponentReflected<ReflectionProbeComponent>(go, goTbl, "ReflectionProbeComponent");
 
         // AtmosphericScatteringComponent
-        if (auto* asc = go.GetComponent<AtmosphericScatteringComponent>()) {
-            toml::table ascAtmTbl;
-            ascAtmTbl.insert("enabled",    asc->enabled);
-            ascAtmTbl.insert("fogEnabled", asc->fogEnabled);
-            ascAtmTbl.insert("fogSource",  (int64_t)static_cast<uint8_t>(asc->fogSource));
-            ascAtmTbl.insert("fogDensity", (double)asc->fogDensity);
-            ascAtmTbl.insert("fogFar",     (double)asc->fogFar);
-            ascAtmTbl.insert("fogColor",   Vec3ToArr(asc->fogColor));
-            goTbl.insert("AtmosphericScatteringComponent", std::move(ascAtmTbl));
-        }
+        WriteComponentReflected<AtmosphericScatteringComponent>(go, goTbl, "AtmosphericScatteringComponent");
 
         // PostProcessVolumeComponent — ルック本体は .fzdata プロファイル側にあるため、
         // シーンにはボリュームの掛かり方 (参照・領域・優先度) だけを保存する。
-        if (auto* ppvc = go.GetComponent<PostProcessVolumeComponent>()) {
-            toml::table ppvcTbl;
-            ppvcTbl.insert("enabled",         ppvc->enabled);
-            // プロファイル参照は "Assets/..." パス文字列で保存する。
-            // 保存直前に GuidRefCodec が guid: へ変換するため、リネーム耐性が付く。
-            ppvcTbl.insert("profile",         ppvc->profile.ref.path);
-            ppvcTbl.insert("isGlobal",        ppvc->isGlobal);
-            ppvcTbl.insert("priority",        (int64_t)ppvc->priority);
-            ppvcTbl.insert("blendWeight",     (double)ppvc->blendWeight);
-            ppvcTbl.insert("influenceRadius", (double)ppvc->influenceRadius);
-            ppvcTbl.insert("blendDistance",   (double)ppvc->blendDistance);
-            goTbl.insert("PostProcessVolumeComponent", std::move(ppvcTbl));
-        }
+        WriteComponentReflected<PostProcessVolumeComponent>(go, goTbl, "PostProcessVolumeComponent");
 
         // ParticleEmitter。表を手書きで二重管理すると、.vfx 側にだけ項目が足されて
         // シーン直置きの Emitter が Play 往復で既定値へ戻る。コーデックへ委譲する。
@@ -1316,126 +1246,19 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // CharacterControllerComponent
-        if (auto* cc = go.GetComponent<CharacterControllerComponent>()) {
-            toml::table ccTbl;
-            ccTbl.insert("enabled",              cc->enabled);
-            ccTbl.insert("groundingMode",        static_cast<int>(cc->groundingMode));
-            ccTbl.insert("jumpMinAirTime",        (double)cc->jumpMinAirTime);
-            ccTbl.insert("fallVelThreshold",      (double)cc->fallVelThreshold);
-            ccTbl.insert("groundVelThreshold",    (double)cc->groundVelThreshold);
-            ccTbl.insert("ledgeFallThreshold",    (double)cc->ledgeFallThreshold);
-            ccTbl.insert("minGroundNormalY",      (double)cc->minGroundNormalY);
-            ccTbl.insert("groundContactGrace",    (double)cc->groundContactGrace);
-            ccTbl.insert("jumpGroundIgnoreTime",  (double)cc->jumpGroundIgnoreTime);
-            ccTbl.insert("groundedVelSnap",       (double)cc->groundedVelSnap);
-            ccTbl.insert("intentionalJumpMaxTime",(double)cc->intentionalJumpMaxTime);
-            // isGrounded はランタイム状態だが、エディタで false にした初期状態を
-            // 復元できるよう保存する。
-            ccTbl.insert("isGrounded",            cc->isGrounded);
-            goTbl.insert("CharacterControllerComponent", std::move(ccTbl));
-        }
+        WriteComponentReflected<CharacterControllerComponent>(go, goTbl, "CharacterControllerComponent");
 
         // VolumeComponent
-        if (auto* volume = go.GetComponent<VolumeComponent>()) {
-            toml::table volTbl;
-            volTbl.insert("enabled",          volume->enabled);
-            volTbl.insert("type",             VolumeTypeToString(volume->type));
-            volTbl.insert("gravity",          Vec3ToArr(volume->gravity));
-            volTbl.insert("magneticField",    Vec3ToArr(volume->magneticField));
-            volTbl.insert("swirlStrength",    (double)volume->swirlStrength);
-            volTbl.insert("inwardStrength",   (double)volume->inwardStrength);
-            volTbl.insert("liftStrength",     (double)volume->liftStrength);
-            volTbl.insert("buoyancy",         (double)volume->buoyancy);
-            volTbl.insert("drag",             (double)volume->drag);
-            volTbl.insert("explosionImpulse", (double)volume->explosionImpulse);
-            volTbl.insert("timeScale",        (double)volume->timeScale);
-            volTbl.insert("duration",         (double)volume->duration);
-            volTbl.insert("elapsed",          (double)volume->elapsed);
-            goTbl.insert("VolumeComponent", std::move(volTbl));
-        }
+        WriteComponentReflected<VolumeComponent>(go, goTbl, "VolumeComponent");
 
         // SkyRenderer
-        if (auto* sr = go.GetComponent<SkyRenderer>()) {
-            toml::table srTbl;
-            srTbl.insert("rayleighScattering", Vec3ToArr(sr->rayleighScattering));
-            srTbl.insert("mieScattering",      (double)sr->mieScattering);
-            srTbl.insert("skyScatterIntensity",(double)sr->skyScatterIntensity);
-            srTbl.insert("planetRadius",       (double)sr->planetRadius);
-            srTbl.insert("atmosphereRadius",   (double)sr->atmosphereRadius);
-            srTbl.insert("mieG",               (double)sr->mieG);
-            srTbl.insert("enabled",            sr->enabled);
-            srTbl.insert("dayNightEnabled",    sr->dayNightEnabled);
-            srTbl.insert("dayAltitude",        (double)sr->dayAltitude);
-            srTbl.insert("nightAltitude",      (double)sr->nightAltitude);
-            srTbl.insert("dayColor",           Vec3ToArr(sr->dayColor));
-            srTbl.insert("sunsetColor",        Vec3ToArr(sr->sunsetColor));
-            srTbl.insert("nightColor",         Vec3ToArr(sr->nightColor));
-            srTbl.insert("dayIntensity",       (double)sr->dayIntensity);
-            srTbl.insert("sunsetIntensity",    (double)sr->sunsetIntensity);
-            srTbl.insert("nightIntensity",     (double)sr->nightIntensity);
-            srTbl.insert("skyDayBrightness",   (double)sr->skyDayBrightness);
-            srTbl.insert("skySunsetBrightness",(double)sr->skySunsetBrightness);
-            srTbl.insert("skyNightBrightness", (double)sr->skyNightBrightness);
-            srTbl.insert("cloudShadowStrength",(double)sr->cloudShadowStrength);
-            srTbl.insert("cloudShadowCoverage",(double)sr->cloudShadowCoverage);
-            srTbl.insert("cloudShadowSize",    (double)sr->cloudShadowSize);
-            srTbl.insert("cloudShadowSpeed",   (double)sr->cloudShadowSpeed);
-            goTbl.insert("SkyRenderer", std::move(srTbl));
-        }
+        WriteComponentReflected<SkyRenderer>(go, goTbl, "SkyRenderer");
 
         // SunMoonRenderer
-        if (auto* smr = go.GetComponent<SunMoonRenderer>()) {
-            toml::table smrTbl;
-            smrTbl.insert("enabled",        smr->enabled);
-            smrTbl.insert("sunEnabled",     smr->sunEnabled);
-            smrTbl.insert("sunDiskIntensity", (double)smr->sunDiskIntensity);
-            smrTbl.insert("moonEnabled",    smr->moonEnabled);
-            smrTbl.insert("moonSize",       (double)smr->moonSize);
-            smrTbl.insert("moonBrightness", (double)smr->moonBrightness);
-            smrTbl.insert("moonColor",      Vec3ToArr(smr->moonColor));
-            goTbl.insert("SunMoonRenderer", std::move(smrTbl));
-        }
+        WriteComponentReflected<SunMoonRenderer>(go, goTbl, "SunMoonRenderer");
 
         // VolumetricCloudComponent
-        if (auto* cloud = go.GetComponent<VolumetricCloudComponent>()) {
-            toml::table cloudTbl;
-            cloudTbl.insert("enabled",           cloud->enabled);
-            cloudTbl.insert("bottomHeight",      (double)cloud->bottomHeight);
-            cloudTbl.insert("thickness",         (double)cloud->thickness);
-            cloudTbl.insert("coverage",          (double)cloud->coverage);
-            cloudTbl.insert("density",           (double)cloud->density);
-            cloudTbl.insert("cloudSize",         (double)cloud->cloudSize);
-            cloudTbl.insert("detailSize",        (double)cloud->detailSize);
-            cloudTbl.insert("detailStrength",    (double)cloud->detailStrength);
-            cloudTbl.insert("weatherSize",       (double)cloud->weatherSize);
-            cloudTbl.insert("weatherAmount",     (double)cloud->weatherAmount);
-            cloudTbl.insert("bottomSoftness",    (double)cloud->bottomSoftness);
-            cloudTbl.insert("topSoftness",       (double)cloud->topSoftness);
-            cloudTbl.insert("evolutionSpeed",    (double)cloud->evolutionSpeed);
-            cloudTbl.insert("windSpeed",         (double)cloud->windSpeed);
-            cloudTbl.insert("windDirection",     Vec2ToArr(cloud->windDirection));
-            cloudTbl.insert("lightAbsorption",   (double)cloud->lightAbsorption);
-            cloudTbl.insert("extinction",        (double)cloud->extinction);
-            cloudTbl.insert("sunIntensity",      (double)cloud->sunIntensity);
-            cloudTbl.insert("ambientStrength",   (double)cloud->ambientStrength);
-            cloudTbl.insert("ambientGradient",   (double)cloud->ambientGradient);
-            cloudTbl.insert("silverLining",      (double)cloud->silverLining);
-            cloudTbl.insert("multiScatter",      (double)cloud->multiScatter);
-            cloudTbl.insert("powderStrength",    (double)cloud->powderStrength);
-            cloudTbl.insert("anisotropy",        (double)cloud->anisotropy);
-            cloudTbl.insert("albedo",            Vec3ToArr(cloud->albedo));
-            cloudTbl.insert("sunTint",           Vec3ToArr(cloud->sunTint));
-            cloudTbl.insert("ambientTint",       Vec3ToArr(cloud->ambientTint));
-            cloudTbl.insert("lightShaftStrength",(double)cloud->lightShaftStrength);
-            cloudTbl.insert("minDistance",       (double)cloud->minDistance);
-            cloudTbl.insert("fadeDistance",      (double)cloud->fadeDistance);
-            cloudTbl.insert("horizonFade",       (double)cloud->horizonFade);
-            cloudTbl.insert("maxDistance",       (double)cloud->maxDistance);
-            cloudTbl.insert("stepCount",         (int64_t)cloud->stepCount);
-            cloudTbl.insert("lightStepCount",    (int64_t)cloud->lightStepCount);
-            cloudTbl.insert("halfResolution",    cloud->halfResolution);
-            goTbl.insert("VolumetricCloudComponent", std::move(cloudTbl));
-        }
+        WriteComponentReflected<VolumetricCloudComponent>(go, goTbl, "VolumetricCloudComponent");
 
         // SkinnedMeshRenderer
         if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
@@ -1791,42 +1614,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // RagdollComponent
-        if (auto* ragdoll = go.GetComponent<RagdollComponent>()) {
-            toml::table ragdollTbl;
-            ragdollTbl.insert("enabled",          ragdoll->enabled);
-            ragdollTbl.insert("rootBoneName",     ragdoll->rootBoneName);
-            ragdollTbl.insert("maxDepth",         (int64_t)ragdoll->maxDepth);
-            ragdollTbl.insert("profile",          (int64_t)ragdoll->profile);
-            ragdollTbl.insert("gravity",          (double)ragdoll->gravity);
-            ragdollTbl.insert("substeps",         (int64_t)ragdoll->substeps);
-            ragdollTbl.insert("linearDrag",       (double)ragdoll->linearDrag);
-            ragdollTbl.insert("angularDrag",      (double)ragdoll->angularDrag);
-            ragdollTbl.insert("friction",         (double)ragdoll->friction);
-            ragdollTbl.insert("restitution",      (double)ragdoll->restitution);
-            ragdollTbl.insert("contactWorld",     ragdoll->contactWorld);
-            ragdollTbl.insert("contactDynamic",   ragdoll->contactDynamic);
-            ragdollTbl.insert("contactSelf",      ragdoll->contactSelf);
-            ragdollTbl.insert("contactWhileActive", ragdoll->contactWhileActive);
-            ragdollTbl.insert("selfSkip",         (int64_t)ragdoll->selfSkip);
-            ragdollTbl.insert("groundPlane",      ragdoll->groundPlane);
-            ragdollTbl.insert("groundOffset",     (double)ragdoll->groundOffset);
-            ragdollTbl.insert("blendIn",          (double)ragdoll->blendIn);
-            ragdollTbl.insert("blendOut",         (double)ragdoll->blendOut);
-            ragdollTbl.insert("simulateInEditor", ragdoll->simulateInEditor);
-            ragdollTbl.insert("driveScale",       (double)ragdoll->driveScale);
-            ragdollTbl.insert("driveFalloff",     (double)ragdoll->driveFalloff);
-            ragdollTbl.insert("driveDamping",     (double)ragdoll->driveDamping);
-            ragdollTbl.insert("learnLimits",      ragdoll->learnLimits);
-            ragdollTbl.insert("limitMargin",      (double)ragdoll->limitMargin);
-            ragdollTbl.insert("rootAnchor",       (double)ragdoll->rootAnchor);
-            ragdollTbl.insert("rootAnchorSag",    (double)ragdoll->rootAnchorSag);
-            ragdollTbl.insert("rootAnchorTilt",   (double)ragdoll->rootAnchorTilt);
-            ragdollTbl.insert("impactSlack",      (double)ragdoll->impactSlack);
-            ragdollTbl.insert("recoverySeconds",  (double)ragdoll->recoverySeconds);
-            ragdollTbl.insert("collapseDistance", (double)ragdoll->collapseDistance);
-            ragdollTbl.insert("activateOnStart",  ragdoll->activateOnStart);
-            goTbl.insert("RagdollComponent", std::move(ragdollTbl));
-        }
+        WriteComponentReflected<RagdollComponent>(go, goTbl, "RagdollComponent");
 
         // ScriptComponent
         // TerrainComponent
@@ -1838,7 +1626,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             // WHY: シーン終了時の保存では Inspector の「Save Asset」ボタンを押さないため、
             //      参照だけ保存すると .terrain / .mat の実体が古いまま、または未作成のまま残る。
             //      Scene 保存と同じタイミングで外部アセットも更新し、再起動後の白地形を防ぐ。
-            if (!tc->terrainAssetPath.empty()) {
+            // scenePath が空 = «テキストだけ欲しい» 呼び出しなので、実体は書かない。
+            if (!path.empty() && !tc->terrainAssetPath.empty()) {
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
                 TerrainAssetSerializer::Save(*tc, terrainDiskPath);
@@ -1846,7 +1635,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::array layerMatArr;
             for (int li = 0; li < 4; ++li) {
                 layerMatArr.push_back(tc->layerMaterials[li]);
-                if (!tc->layerMaterials[li].empty()) {
+                // 保存先が決まっているときだけ、レイヤーマテリアルを実ファイルへ書く。
+                // scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
+                if (!path.empty() && !tc->layerMaterials[li].empty()) {
                     auto matHandle = asset::AssetManager::LoadMaterial(tc->layerMaterials[li]);
                     if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
                         const std::string matDiskPath =
@@ -1903,65 +1694,17 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // NavMeshSurfaceComponent — Bake 設定のみ保存。navMesh は再 Bake で再生成するため非保存。
-        if (auto* surface = go.GetComponent<NavMeshSurfaceComponent>()) {
-            toml::table volTbl;
-            volTbl.insert("enabled",           surface->enabled);
-            volTbl.insert("collectObjects",    static_cast<int64_t>(static_cast<uint8_t>(surface->collectObjects)));
-            volTbl.insert("size",              Vec3ToArr(surface->size));
-            volTbl.insert("cellSize",          static_cast<double>(surface->cellSize));
-            volTbl.insert("maxSlopeAngleDeg",  static_cast<double>(surface->maxSlopeAngleDeg));
-            volTbl.insert("agentRadius",       static_cast<double>(surface->agentRadius));
-            volTbl.insert("agentHeight",       static_cast<double>(surface->agentHeight));
-            volTbl.insert("maxClimb",          static_cast<double>(surface->maxClimb));
-            volTbl.insert("agentTypeId",       static_cast<int64_t>(surface->agentTypeId));
-            toml::array areaCostArr;
-            for (float cost : surface->areaCosts)
-                areaCostArr.push_back(static_cast<double>(cost));
-            volTbl.insert("areaCosts", std::move(areaCostArr));
-            goTbl.insert("NavMeshSurfaceComponent", std::move(volTbl));
-        }
+        WriteComponentReflected<NavMeshSurfaceComponent>(go, goTbl, "NavMeshSurfaceComponent");
 
-        if (auto* modifier = go.GetComponent<NavMeshModifierComponent>()) {
-            toml::table modTbl;
-            modTbl.insert("enabled",  modifier->enabled);
-            modTbl.insert("mode",     static_cast<int64_t>(static_cast<uint8_t>(modifier->mode)));
-            modTbl.insert("areaType", static_cast<int64_t>(modifier->areaType));
-            goTbl.insert("NavMeshModifierComponent", std::move(modTbl));
-        }
+        WriteComponentReflected<NavMeshModifierComponent>(go, goTbl, "NavMeshModifierComponent");
 
         // NavMeshAgentComponent — 移動パラメータのみ保存。目的地・パス等はランタイム状態のため非保存。
-        if (auto* agent = go.GetComponent<NavMeshAgentComponent>()) {
-            toml::table agentTbl;
-            agentTbl.insert("enabled",          agent->enabled);
-            agentTbl.insert("radius",           static_cast<double>(agent->radius));
-            agentTbl.insert("maxSpeed",         static_cast<double>(agent->maxSpeed));
-            agentTbl.insert("acceleration",     static_cast<double>(agent->acceleration));
-            agentTbl.insert("angularSpeedDeg",  static_cast<double>(agent->angularSpeedDeg));
-            agentTbl.insert("stoppingDistance", static_cast<double>(agent->stoppingDistance));
-            agentTbl.insert("avoidancePriority", static_cast<int64_t>(agent->avoidancePriority));
-            agentTbl.insert("agentTypeId",      static_cast<int64_t>(agent->agentTypeId));
-            agentTbl.insert("snapToNavMesh",    agent->snapToNavMesh);
-            agentTbl.insert("updatePosition",   agent->updatePosition);
-            agentTbl.insert("updateRotation",   agent->updateRotation);
-            agentTbl.insert("autoBraking",      agent->autoBraking);
-            agentTbl.insert("areaMask",         static_cast<int64_t>(agent->areaMask));
-            goTbl.insert("NavMeshAgentComponent", std::move(agentTbl));
-        }
+        WriteComponentReflected<NavMeshAgentComponent>(go, goTbl, "NavMeshAgentComponent");
 
         // NavMeshOffMeshLinkComponent — 非連続ポリゴン接続の設計値のみ保存する。
         // WHY: Bake 後の内部接続は navMesh と同じランタイム生成物なので、Prefab/Scene には
         //      編集可能な端点・方向・通過条件だけを永続化する。
-        if (auto* link = go.GetComponent<NavMeshOffMeshLinkComponent>()) {
-            toml::table linkTbl;
-            linkTbl.insert("enabled",       link->enabled);
-            linkTbl.insert("startPoint",    Vec3ToArr(link->startPoint));
-            linkTbl.insert("endPoint",      Vec3ToArr(link->endPoint));
-            linkTbl.insert("bidirectional", link->bidirectional);
-            linkTbl.insert("activated",     link->activated);
-            linkTbl.insert("traversalTime", static_cast<double>(link->traversalTime));
-            linkTbl.insert("agentTypeMask", static_cast<int64_t>(link->agentTypeMask));
-            goTbl.insert("NavMeshOffMeshLinkComponent", std::move(linkTbl));
-        }
+        WriteComponentReflected<NavMeshOffMeshLinkComponent>(go, goTbl, "NavMeshOffMeshLinkComponent");
 
         // NavMeshPatrolComponent — ウェイポイント・巡回設定を保存。進行状態はランタイムのため非保存。
         if (auto* patrol = go.GetComponent<NavMeshPatrolComponent>()) {
@@ -1985,20 +1728,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // NavMeshSensorComponent — 検知設定のみ保存。検知状態はランタイムのため非保存。
-        if (auto* sensor = go.GetComponent<NavMeshSensorComponent>()) {
-            toml::table sensorTbl;
-            sensorTbl.insert("enabled",            sensor->enabled);
-            sensorTbl.insert("viewDistance",       static_cast<double>(sensor->viewDistance));
-            sensorTbl.insert("viewAngleDeg",       static_cast<double>(sensor->viewAngleDeg));
-            sensorTbl.insert("targetTag",          sensor->targetTag);
-            sensorTbl.insert("useLineOfSight",     sensor->useLineOfSight);
-            sensorTbl.insert("autoChase",          sensor->autoChase);
-            sensorTbl.insert("chaseRepathInterval", static_cast<double>(sensor->chaseRepathInterval));
-            sensorTbl.insert("memoryTime",         static_cast<double>(sensor->memoryTime));
-            sensorTbl.insert("scanInterval",       static_cast<double>(sensor->scanInterval));
-            sensorTbl.insert("heightThreshold",    static_cast<double>(sensor->heightThreshold));
-            goTbl.insert("NavMeshSensorComponent", std::move(sensorTbl));
-        }
+        WriteComponentReflected<NavMeshSensorComponent>(go, goTbl, "NavMeshSensorComponent");
 
         WriteAutomaticComponents(go, goTbl, &scene);
 
@@ -2045,9 +1775,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
     std::ostringstream oss;
     oss << doc;
-
-    util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(path));
-    return util::FileSystem::WriteText(path, oss.str());
+    return oss.str();
 }
 
 // -----------------------------------------------------------------------
@@ -2189,38 +1917,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
 
         // LightComponent
-        if (auto* lcTbl = (*goTbl)["LightComponent"].as_table()) {
-            LightComponent lc{};
-            std::string typeStr = (*lcTbl)["type"].value_or(std::string{"Directional"});
-            if      (typeStr == "Point") lc.type = LightComponent::Type::Point;
-            else if (typeStr == "Spot")  lc.type = LightComponent::Type::Spot;
-            else if (typeStr == "Area")   lc.type = LightComponent::Type::Area;
-            else if (typeStr == "Sphere") lc.type = LightComponent::Type::Sphere;
-            else if (typeStr == "Tube")   lc.type = LightComponent::Type::Tube;
-            else                          lc.type = LightComponent::Type::Directional;
-
-            lc.color     = ArrToVec3((*lcTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f });
-            lc.intensity = (float)(*lcTbl)["intensity"].value_or(1.0);
-            lc.enabled   = (*lcTbl)["enabled"].value_or(true);
-            lc.range     = (float)(*lcTbl)["range"].value_or(10.0);
-            lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
-            lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
-            lc.areaWidth    = (float)(*lcTbl)["areaWidth"].value_or(1.0);
-            lc.areaHeight   = (float)(*lcTbl)["areaHeight"].value_or(1.0);
-            lc.areaTwoSided = (*lcTbl)["areaTwoSided"].value_or(false);
-            lc.castShadows    = (*lcTbl)["castShadows"].value_or(true);
-            lc.shadowBias     = (float)(*lcTbl)["shadowBias"].value_or(1.0);
-            lc.shadowStrength = (float)(*lcTbl)["shadowStrength"].value_or(1.0);
-            lc.shadowDistance = (float)(*lcTbl)["shadowDistance"].value_or(0.0);
-            lc.shadowNearPlane = (float)(*lcTbl)["shadowNearPlane"].value_or(0.1);
-            lc.cookiePath     = (*lcTbl)["cookiePath"].value_or(std::string{});
-            lc.cookieRotation = (float)(*lcTbl)["cookieRotation"].value_or(0.0);
-            lc.useColorTemperature = (*lcTbl)["useColorTemperature"].value_or(false);
-            lc.colorTemperature    = (float)(*lcTbl)["colorTemperature"].value_or(6500.0);
-            lc.sourceRadius        = (float)(*lcTbl)["sourceRadius"].value_or(0.0);
-            lc.sourceLength        = (float)(*lcTbl)["sourceLength"].value_or(1.0);
-            go.AddComponent<LightComponent>(lc);
-        }
+        ReadComponentReflected<LightComponent>(go, *goTbl, "LightComponent");
 
         // CameraComponent
         if (auto* ccTbl = (*goTbl)["CameraComponent"].as_table()) {
@@ -2288,61 +1985,16 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
 
         // EnvironmentLightComponent
-        if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
-            EnvironmentLightComponent elc{};
-            elc.enabled        = (*elcTbl)["enabled"].value_or(true);
-            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
-            elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
-            elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
-            elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
-            elc.diffuseScale   = (float)(*elcTbl)["diffuseScale"].value_or(1.0);
-            elc.specularScale  = (float)(*elcTbl)["specularScale"].value_or(1.0);
-            elc.maxMipLevel    = (int)(*elcTbl)["maxMipLevel"].value_or((int64_t)4);
-            go.AddComponent<EnvironmentLightComponent>(elc);
-        }
+        ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");
 
         // ReflectionProbeComponent
-        if (auto* rpcTbl = (*goTbl)["ReflectionProbeComponent"].as_table()) {
-            ReflectionProbeComponent rpc{};
-            rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
-            rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
-            rpc.captureMode     = static_cast<ReflectionProbeCaptureMode>(
-                static_cast<uint8_t>((*rpcTbl)["captureMode"].value_or((int64_t)0)));
-            rpc.captureResolution = static_cast<uint32_t>((*rpcTbl)["captureResolution"].value_or((int64_t)128));
-            rpc.updateInterval  = (float)(*rpcTbl)["updateInterval"].value_or(1.0);
-            rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
-            rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
-            rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
-            rpc.boxExtents      = ArrToVec3((*rpcTbl)["boxExtents"].as_array(), {1.0f, 1.0f, 1.0f});
-            go.AddComponent<ReflectionProbeComponent>(rpc);
-        }
+        ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
 
         // AtmosphericScatteringComponent
-        if (auto* ascAtmTbl = (*goTbl)["AtmosphericScatteringComponent"].as_table()) {
-            AtmosphericScatteringComponent atm{};
-            atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
-            atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
-            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
-            atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
-            atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
-            atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
-            go.AddComponent<AtmosphericScatteringComponent>(atm);
-        }
+        ReadComponentReflected<AtmosphericScatteringComponent>(go, *goTbl, "AtmosphericScatteringComponent");
 
         // PostProcessVolumeComponent — pp サブテーブルから PostProcessSettings を復元する。
-        if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
-            PostProcessVolumeComponent ppvc{};
-            ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
-            // 旧シーンの pp サブテーブル (インライン設定) は読み飛ばす。ルック設定の
-            // 所有者はプロファイル 1 本に統一したので、読み戻せる先が存在しない。
-            ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
-            ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
-            ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
-            ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
-            ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
-            ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
-            go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
-        }
+        ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");
 
         // ParticleEmitter
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
@@ -2464,146 +2116,19 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
 
         // CharacterControllerComponent
-        if (auto* ccTbl = (*goTbl)["CharacterControllerComponent"].as_table()) {
-            CharacterControllerComponent cc{};
-            cc.enabled                 = (*ccTbl)["enabled"].value_or(true);
-            const int groundingMode    = (*ccTbl)["groundingMode"].value_or(0);
-            cc.groundingMode           = static_cast<CharacterGroundingMode>(
-                std::clamp(groundingMode, 0, 2));
-            cc.jumpMinAirTime        = (float)(*ccTbl)["jumpMinAirTime"].value_or(0.2);
-            cc.fallVelThreshold      = (float)(*ccTbl)["fallVelThreshold"].value_or(-0.5);
-            cc.groundVelThreshold    = (float)(*ccTbl)["groundVelThreshold"].value_or(0.3);
-            cc.ledgeFallThreshold    = (float)(*ccTbl)["ledgeFallThreshold"].value_or(-1.0);
-            cc.minGroundNormalY      = (float)(*ccTbl)["minGroundNormalY"].value_or(0.5);
-            cc.groundContactGrace    = (float)(*ccTbl)["groundContactGrace"].value_or(0.12);
-            cc.jumpGroundIgnoreTime  = (float)(*ccTbl)["jumpGroundIgnoreTime"].value_or(0.12);
-            cc.groundedVelSnap       = (float)(*ccTbl)["groundedVelSnap"].value_or(0.35);
-            cc.intentionalJumpMaxTime= (float)(*ccTbl)["intentionalJumpMaxTime"].value_or(1.0);
-            cc.isGrounded            = (*ccTbl)["isGrounded"].value_or(true);
-            go.AddComponent<CharacterControllerComponent>(std::move(cc));
-        }
+        ReadComponentReflected<CharacterControllerComponent>(go, *goTbl, "CharacterControllerComponent");
 
         // VolumeComponent
-        if (auto* volTbl = (*goTbl)["VolumeComponent"].as_table()) {
-            VolumeComponent volume{};
-            volume.enabled          = (*volTbl)["enabled"].value_or(true);
-            volume.type             = StringToVolumeType(
-                (*volTbl)["type"].value_or(std::string{"Gravity"}));
-            volume.gravity          = ArrToVec3((*volTbl)["gravity"].as_array(),
-                                                { 0.0f, -9.81f, 0.0f });
-            volume.magneticField    = ArrToVec3((*volTbl)["magneticField"].as_array(),
-                                                { 0.0f, 1.0f, 0.0f });
-            volume.swirlStrength    = (float)(*volTbl)["swirlStrength"].value_or(1.0);
-            volume.inwardStrength   = (float)(*volTbl)["inwardStrength"].value_or(0.0);
-            volume.liftStrength     = (float)(*volTbl)["liftStrength"].value_or(0.0);
-            volume.buoyancy         = (float)(*volTbl)["buoyancy"].value_or(10.0);
-            volume.drag             = (float)(*volTbl)["drag"].value_or(1.0);
-            volume.explosionImpulse = (float)(*volTbl)["explosionImpulse"].value_or(10.0);
-            volume.timeScale        = (float)(*volTbl)["timeScale"].value_or(1.0);
-            volume.duration         = (float)(*volTbl)["duration"].value_or(-1.0);
-            volume.elapsed          = (float)(*volTbl)["elapsed"].value_or(0.0);
-            go.AddComponent<VolumeComponent>(volume);
-        }
+        ReadComponentReflected<VolumeComponent>(go, *goTbl, "VolumeComponent");
 
         // SkyRenderer
-        if (auto* srTbl = (*goTbl)["SkyRenderer"].as_table()) {
-            SkyRenderer sr{};
-            sr.rayleighScattering = ArrToVec3((*srTbl)["rayleighScattering"].as_array(),
-                                              { 5.8e-3f, 13.5e-3f, 33.1e-3f });
-            sr.mieScattering = (float)(*srTbl)["mieScattering"].value_or(21.0e-4);
-            // 旧キー sunIntensity は「大気散乱の明るさ」だった。太陽ディスク側 (SunMoonRenderer)
-            // と同名で紛らわしかったため役割の読める名前へ移行する。
-            sr.skyScatterIntensity = (float)(*srTbl)["sunIntensity"].value_or((double)sr.skyScatterIntensity);
-            sr.skyScatterIntensity = (float)(*srTbl)["skyScatterIntensity"].value_or((double)sr.skyScatterIntensity);
-            sr.planetRadius  = (float)(*srTbl)["planetRadius"].value_or(6371.0);
-            sr.atmosphereRadius = (float)(*srTbl)["atmosphereRadius"].value_or(6471.0);
-            sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
-            sr.enabled       = (*srTbl)["enabled"].value_or(true);
-            sr.dayNightEnabled = (*srTbl)["dayNightEnabled"].value_or(false);
-            // 既定値はコンポーネント側の 1 箇所だけが持つ (sr は既定構築済み)。
-            sr.dayAltitude   = (float)(*srTbl)["dayAltitude"].value_or((double)sr.dayAltitude);
-            sr.nightAltitude = (float)(*srTbl)["nightAltitude"].value_or((double)sr.nightAltitude);
-            sr.dayColor      = ArrToVec3((*srTbl)["dayColor"].as_array(), sr.dayColor);
-            sr.sunsetColor   = ArrToVec3((*srTbl)["sunsetColor"].as_array(), sr.sunsetColor);
-            sr.nightColor    = ArrToVec3((*srTbl)["nightColor"].as_array(), sr.nightColor);
-            sr.dayIntensity    = (float)(*srTbl)["dayIntensity"].value_or((double)sr.dayIntensity);
-            sr.sunsetIntensity = (float)(*srTbl)["sunsetIntensity"].value_or((double)sr.sunsetIntensity);
-            sr.nightIntensity  = (float)(*srTbl)["nightIntensity"].value_or((double)sr.nightIntensity);
-            sr.skyDayBrightness    = (float)(*srTbl)["skyDayBrightness"].value_or((double)sr.skyDayBrightness);
-            sr.skySunsetBrightness = (float)(*srTbl)["skySunsetBrightness"].value_or((double)sr.skySunsetBrightness);
-            sr.skyNightBrightness  = (float)(*srTbl)["skyNightBrightness"].value_or((double)sr.skyNightBrightness);
-            sr.cloudShadowStrength = (float)(*srTbl)["cloudShadowStrength"].value_or(0.0);
-            sr.cloudShadowCoverage = (float)(*srTbl)["cloudShadowCoverage"].value_or(0.5);
-            // 旧シーンは world→ノイズのスケールで保存されている。大きさ [m] へ読み替える。
-            if (auto legacy = (*srTbl)["cloudShadowScale"].value<double>(); legacy && *legacy > 1.0e-6)
-                sr.cloudShadowSize = 1.0f / (float)*legacy;
-            sr.cloudShadowSize     = (float)(*srTbl)["cloudShadowSize"].value_or(sr.cloudShadowSize);
-            sr.cloudShadowSpeed    = (float)(*srTbl)["cloudShadowSpeed"].value_or(1.0);
-            go.AddComponent<SkyRenderer>(sr);
-        }
+        ReadComponentReflected<SkyRenderer>(go, *goTbl, "SkyRenderer");
 
         // SunMoonRenderer
-        if (auto* smrTbl = (*goTbl)["SunMoonRenderer"].as_table()) {
-            SunMoonRenderer smr{};
-            smr.enabled        = (*smrTbl)["enabled"].value_or(true);
-            smr.sunEnabled     = (*smrTbl)["sunEnabled"].value_or(true);
-            // 旧キー sunIntensity は太陽ディスクの明るさ。SkyRenderer 側の同名キーと区別する。
-            smr.sunDiskIntensity = (float)(*smrTbl)["sunIntensity"].value_or((double)smr.sunDiskIntensity);
-            smr.sunDiskIntensity = (float)(*smrTbl)["sunDiskIntensity"].value_or((double)smr.sunDiskIntensity);
-            smr.moonEnabled    = (*smrTbl)["moonEnabled"].value_or(false);
-            smr.moonSize       = (float)(*smrTbl)["moonSize"].value_or(1.0);
-            smr.moonBrightness = (float)(*smrTbl)["moonBrightness"].value_or(0.6);
-            smr.moonColor      = ArrToVec3((*smrTbl)["moonColor"].as_array(), { 0.85f, 0.9f, 1.0f });
-            go.AddComponent<SunMoonRenderer>(smr);
-        }
+        ReadComponentReflected<SunMoonRenderer>(go, *goTbl, "SunMoonRenderer");
 
         // VolumetricCloudComponent
-        if (auto* cloudTbl = (*goTbl)["VolumetricCloudComponent"].as_table()) {
-            VolumetricCloudComponent cloud{}; // 未保存のキーは構造体の既定値のまま残す
-            cloud.enabled         = (*cloudTbl)["enabled"].value_or(true);
-            cloud.bottomHeight    = (float)(*cloudTbl)["bottomHeight"].value_or(cloud.bottomHeight);
-            cloud.thickness       = (float)(*cloudTbl)["thickness"].value_or(cloud.thickness);
-            cloud.coverage        = (float)(*cloudTbl)["coverage"].value_or(cloud.coverage);
-            cloud.density         = (float)(*cloudTbl)["density"].value_or(cloud.density);
-            // 旧シーンは world→ノイズのスケールで保存されている。大きさ [m] へ読み替える。
-            if (auto legacy = (*cloudTbl)["noiseScale"].value<double>(); legacy && *legacy > 1.0e-7)
-                cloud.cloudSize = 1.0f / (float)*legacy;
-            cloud.cloudSize       = (float)(*cloudTbl)["cloudSize"].value_or(cloud.cloudSize);
-            if (auto legacy = (*cloudTbl)["detailScale"].value<double>(); legacy && *legacy > 1.0e-4)
-                cloud.detailSize = cloud.cloudSize / (float)*legacy;
-            cloud.detailSize      = (float)(*cloudTbl)["detailSize"].value_or(cloud.detailSize);
-            cloud.detailStrength  = (float)(*cloudTbl)["detailStrength"].value_or(cloud.detailStrength);
-            if (auto legacy = (*cloudTbl)["weatherScale"].value<double>(); legacy && *legacy > 1.0e-9)
-                cloud.weatherSize = 1.0f / (float)*legacy;
-            cloud.weatherSize     = (float)(*cloudTbl)["weatherSize"].value_or(cloud.weatherSize);
-            cloud.weatherAmount   = (float)(*cloudTbl)["weatherAmount"].value_or(cloud.weatherAmount);
-            cloud.bottomSoftness  = (float)(*cloudTbl)["bottomSoftness"].value_or(cloud.bottomSoftness);
-            cloud.topSoftness     = (float)(*cloudTbl)["topSoftness"].value_or(cloud.topSoftness);
-            cloud.evolutionSpeed  = (float)(*cloudTbl)["evolutionSpeed"].value_or(cloud.evolutionSpeed);
-            cloud.windSpeed       = (float)(*cloudTbl)["windSpeed"].value_or(cloud.windSpeed);
-            cloud.windDirection   = ArrToVec2((*cloudTbl)["windDirection"].as_array(), cloud.windDirection);
-            cloud.lightAbsorption = (float)(*cloudTbl)["lightAbsorption"].value_or(cloud.lightAbsorption);
-            cloud.extinction      = (float)(*cloudTbl)["extinction"].value_or(cloud.extinction);
-            cloud.sunIntensity    = (float)(*cloudTbl)["sunIntensity"].value_or(cloud.sunIntensity);
-            cloud.ambientStrength = (float)(*cloudTbl)["ambientStrength"].value_or(cloud.ambientStrength);
-            cloud.ambientGradient = (float)(*cloudTbl)["ambientGradient"].value_or(cloud.ambientGradient);
-            cloud.silverLining    = (float)(*cloudTbl)["silverLining"].value_or(cloud.silverLining);
-            cloud.multiScatter    = (float)(*cloudTbl)["multiScatter"].value_or(cloud.multiScatter);
-            cloud.powderStrength  = (float)(*cloudTbl)["powderStrength"].value_or(cloud.powderStrength);
-            cloud.anisotropy      = (float)(*cloudTbl)["anisotropy"].value_or(cloud.anisotropy);
-            cloud.albedo          = ArrToVec3((*cloudTbl)["albedo"].as_array(), cloud.albedo);
-            cloud.sunTint         = ArrToVec3((*cloudTbl)["sunTint"].as_array(), cloud.sunTint);
-            cloud.ambientTint     = ArrToVec3((*cloudTbl)["ambientTint"].as_array(), cloud.ambientTint);
-            cloud.lightShaftStrength = (float)(*cloudTbl)["lightShaftStrength"].value_or(cloud.lightShaftStrength);
-            cloud.minDistance     = (float)(*cloudTbl)["minDistance"].value_or(cloud.minDistance);
-            cloud.fadeDistance    = (float)(*cloudTbl)["fadeDistance"].value_or(cloud.fadeDistance);
-            cloud.horizonFade     = (float)(*cloudTbl)["horizonFade"].value_or(cloud.horizonFade);
-            cloud.maxDistance     = (float)(*cloudTbl)["maxDistance"].value_or(cloud.maxDistance);
-            cloud.stepCount       = (int)(*cloudTbl)["stepCount"].value_or((int64_t)cloud.stepCount);
-            cloud.lightStepCount  = (int)(*cloudTbl)["lightStepCount"].value_or((int64_t)cloud.lightStepCount);
-            cloud.halfResolution  = (*cloudTbl)["halfResolution"].value_or(cloud.halfResolution);
-            go.AddComponent<VolumetricCloudComponent>(cloud);
-        }
+        ReadComponentReflected<VolumetricCloudComponent>(go, *goTbl, "VolumetricCloudComponent");
 
         // SkinnedMeshRenderer
         if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
@@ -2998,44 +2523,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         //
         // 実行状態 (rig / phase) は保存しない。ラグドールは倒れる数秒のための一時状態で、
         // シーンに焼き付いていると Play した瞬間に崩れている。
-        if (auto* ragdollTbl = (*goTbl)["RagdollComponent"].as_table()) {
-            RagdollComponent ragdoll{};
-            ragdoll.enabled        = (*ragdollTbl)["enabled"].value_or(true);
-            ragdoll.rootBoneName   = (*ragdollTbl)["rootBoneName"].value_or(std::string{});
-            ragdoll.maxDepth       = (int)(*ragdollTbl)["maxDepth"].value_or((int64_t)0);
-            ragdoll.profile        = (RagdollProfileKind)std::clamp(
-                (int)(*ragdollTbl)["profile"].value_or((int64_t)0), 0, 1);
-            ragdoll.gravity        = (float)(*ragdollTbl)["gravity"].value_or(26.0);
-            ragdoll.substeps       = (int)(*ragdollTbl)["substeps"].value_or((int64_t)12);
-            ragdoll.linearDrag     = (float)(*ragdollTbl)["linearDrag"].value_or(0.35);
-            ragdoll.angularDrag    = (float)(*ragdollTbl)["angularDrag"].value_or(0.60);
-            ragdoll.friction       = (float)(*ragdollTbl)["friction"].value_or(0.90);
-            ragdoll.restitution    = (float)(*ragdollTbl)["restitution"].value_or(0.0);
-            ragdoll.contactWorld   = (*ragdollTbl)["contactWorld"].value_or(true);
-            ragdoll.contactDynamic = (*ragdollTbl)["contactDynamic"].value_or(true);
-            ragdoll.contactSelf    = (*ragdollTbl)["contactSelf"].value_or(true);
-            ragdoll.contactWhileActive =
-                (*ragdollTbl)["contactWhileActive"].value_or(false);
-            ragdoll.selfSkip       = (int)(*ragdollTbl)["selfSkip"].value_or((int64_t)2);
-            ragdoll.groundPlane    = (*ragdollTbl)["groundPlane"].value_or(true);
-            ragdoll.groundOffset   = (float)(*ragdollTbl)["groundOffset"].value_or(0.0);
-            ragdoll.blendIn        = (float)(*ragdollTbl)["blendIn"].value_or(0.06);
-            ragdoll.blendOut       = (float)(*ragdollTbl)["blendOut"].value_or(0.40);
-            ragdoll.simulateInEditor = (*ragdollTbl)["simulateInEditor"].value_or(false);
-            ragdoll.driveScale       = (float)(*ragdollTbl)["driveScale"].value_or(1.0);
-            ragdoll.driveFalloff     = (float)(*ragdollTbl)["driveFalloff"].value_or(0.90);
-            ragdoll.driveDamping     = (float)(*ragdollTbl)["driveDamping"].value_or(1.0);
-            ragdoll.learnLimits      = (*ragdollTbl)["learnLimits"].value_or(true);
-            ragdoll.limitMargin      = (float)(*ragdollTbl)["limitMargin"].value_or(5.0);
-            ragdoll.rootAnchor       = (float)(*ragdollTbl)["rootAnchor"].value_or(3.0);
-            ragdoll.rootAnchorSag    = (float)(*ragdollTbl)["rootAnchorSag"].value_or(0.04);
-            ragdoll.rootAnchorTilt   = (float)(*ragdollTbl)["rootAnchorTilt"].value_or(0.05);
-            ragdoll.impactSlack      = (float)(*ragdollTbl)["impactSlack"].value_or(0.60);
-            ragdoll.recoverySeconds  = (float)(*ragdollTbl)["recoverySeconds"].value_or(0.50);
-            ragdoll.collapseDistance = (float)(*ragdollTbl)["collapseDistance"].value_or(0.90);
-            ragdoll.activateOnStart  = (*ragdollTbl)["activateOnStart"].value_or(false);
-            go.AddComponent<RagdollComponent>(std::move(ragdoll));
-        }
+        ReadComponentReflected<RagdollComponent>(go, *goTbl, "RagdollComponent");
 
         // TerrainComponent
         if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
@@ -3124,30 +2612,16 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         // NavMeshSurfaceComponent
         // navMesh は Bake で再生成するため needsBake=true で登録し非保存。
         {
-            const toml::table* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table();
-            if (surfTbl) {
+            // 値の読み込みは Reflect() が担う。既定は NavMeshSurfaceComponent{} から来るので、
+            // キーの無い古いシーンも構造体の既定で開く。
+            // (maxClimb は既定 0.4。0 で読むと «段差を無視して繋がる» 旧 NavMesh の状態が
+            //  固定され、しかも Inspector には 0 と出て設定として正しく見えてしまう。)
+            if (const auto* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table()) {
                 NavMeshSurfaceComponent surface{};
-                surface.enabled          = (*surfTbl)["enabled"].value_or(true);
-                surface.size             = ArrToVec3((*surfTbl)["size"].as_array(), { 50.0f, 10.0f, 50.0f });
-                surface.cellSize         = static_cast<float>((*surfTbl)["cellSize"].value_or(1.0));
-                surface.maxSlopeAngleDeg = static_cast<float>((*surfTbl)["maxSlopeAngleDeg"].value_or(45.0));
-                surface.agentRadius      = static_cast<float>((*surfTbl)["agentRadius"].value_or(0.4));
-                surface.agentHeight      = static_cast<float>((*surfTbl)["agentHeight"].value_or(2.0));
-                // WHY 既定を 0 にしないか: maxClimb が無かった頃のシーンは「段差を無視して
-                //     繋がる」NavMesh を持っている。0 で読むとその状態が固定され、
-                //     Inspector にも 0 と出るので設定として正しく見えてしまう。
-                surface.maxClimb         = static_cast<float>((*surfTbl)["maxClimb"].value_or(0.4));
-                surface.collectObjects   = static_cast<NavMeshCollectObjects>(
-                    static_cast<uint8_t>((*surfTbl)["collectObjects"].value_or(int64_t{0})));
-                surface.agentTypeId      = static_cast<int>((*surfTbl)["agentTypeId"].value_or(int64_t{0}));
-                if (auto* costArr = (*surfTbl)["areaCosts"].as_array()) {
-                    const size_t count = (std::min)(costArr->size(), std::size(surface.areaCosts));
-                    for (size_t i = 0; i < count; ++i) {
-                        const float cost = static_cast<float>((*costArr)[i].value_or(1.0));
-                        surface.areaCosts[i] = cost < 1.0f ? 1.0f : cost;
-                    }
-                }
-                surface.needsBake        = true;
+                DeserializeReflected(*surfTbl, surface);
+                // ベイク結果 (navMesh) は保存しないので、開いた直後は «設定はあるが面が無い»。
+                // シーンを開いたら必ず焼き直す。
+                surface.needsBake = true;
                 go.AddComponent<NavMeshSurfaceComponent>(std::move(surface));
             }
         }
@@ -3165,35 +2639,9 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             }
         }
 
-        if (auto* agentTbl = (*goTbl)["NavMeshAgentComponent"].as_table()) {
-            NavMeshAgentComponent agent{};
-            agent.enabled          = (*agentTbl)["enabled"].value_or(true);
-            agent.radius           = static_cast<float>((*agentTbl)["radius"].value_or(0.4));
-            agent.maxSpeed         = static_cast<float>((*agentTbl)["maxSpeed"].value_or(3.5));
-            agent.acceleration     = static_cast<float>((*agentTbl)["acceleration"].value_or(8.0));
-            agent.angularSpeedDeg  = static_cast<float>((*agentTbl)["angularSpeedDeg"].value_or(360.0));
-            agent.stoppingDistance = static_cast<float>((*agentTbl)["stoppingDistance"].value_or(0.1));
-            agent.avoidancePriority = static_cast<int>((*agentTbl)["avoidancePriority"].value_or(int64_t{0}));
-            agent.agentTypeId      = static_cast<int>((*agentTbl)["agentTypeId"].value_or(int64_t{0}));
-            agent.snapToNavMesh    = (*agentTbl)["snapToNavMesh"].value_or(false);
-            agent.updatePosition   = (*agentTbl)["updatePosition"].value_or(true);
-            agent.updateRotation   = (*agentTbl)["updateRotation"].value_or(true);
-            agent.autoBraking      = (*agentTbl)["autoBraking"].value_or(true);
-            agent.areaMask         = static_cast<int>((*agentTbl)["areaMask"].value_or(int64_t{-1}));
-            go.AddComponent<NavMeshAgentComponent>(std::move(agent));
-        }
+        ReadComponentReflected<NavMeshAgentComponent>(go, *goTbl, "NavMeshAgentComponent");
 
-        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
-            NavMeshOffMeshLinkComponent link{};
-            link.enabled       = (*linkTbl)["enabled"].value_or(true);
-            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
-            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
-            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
-            link.activated     = (*linkTbl)["activated"].value_or(true);
-            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
-            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
-            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
-        }
+        ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, *goTbl, "NavMeshOffMeshLinkComponent");
 
         if (auto* patrolTbl = (*goTbl)["NavMeshPatrolComponent"].as_table()) {
             NavMeshPatrolComponent patrol{};
@@ -3217,20 +2665,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             go.AddComponent<NavMeshPatrolComponent>(std::move(patrol));
         }
 
-        if (auto* sensorTbl = (*goTbl)["NavMeshSensorComponent"].as_table()) {
-            NavMeshSensorComponent sensor{};
-            sensor.enabled             = (*sensorTbl)["enabled"].value_or(true);
-            sensor.viewDistance        = static_cast<float>((*sensorTbl)["viewDistance"].value_or(10.0));
-            sensor.viewAngleDeg        = static_cast<float>((*sensorTbl)["viewAngleDeg"].value_or(90.0));
-            sensor.targetTag           = (*sensorTbl)["targetTag"].value_or(std::string{"Player"});
-            sensor.useLineOfSight      = (*sensorTbl)["useLineOfSight"].value_or(true);
-            sensor.autoChase           = (*sensorTbl)["autoChase"].value_or(true);
-            sensor.chaseRepathInterval = static_cast<float>((*sensorTbl)["chaseRepathInterval"].value_or(0.4));
-            sensor.memoryTime          = static_cast<float>((*sensorTbl)["memoryTime"].value_or(0.0));
-            sensor.scanInterval        = static_cast<float>((*sensorTbl)["scanInterval"].value_or(0.0));
-            sensor.heightThreshold     = static_cast<float>((*sensorTbl)["heightThreshold"].value_or(0.0));
-            go.AddComponent<NavMeshSensorComponent>(std::move(sensor));
-        }
+        ReadComponentReflected<NavMeshSensorComponent>(go, *goTbl, "NavMeshSensorComponent");
 
         ReadAutomaticComponents(go, *goTbl);
 
@@ -3519,94 +2954,19 @@ bool SceneSerializer::AppendObjects(
         if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
             go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
 
-        if (auto* lcTbl = (*goTbl)["LightComponent"].as_table()) {
-            LightComponent lc{};
-            std::string typeStr = (*lcTbl)["type"].value_or(std::string{"Directional"});
-            if      (typeStr == "Point") lc.type = LightComponent::Type::Point;
-            else if (typeStr == "Spot")  lc.type = LightComponent::Type::Spot;
-            else if (typeStr == "Area")   lc.type = LightComponent::Type::Area;
-            else if (typeStr == "Sphere") lc.type = LightComponent::Type::Sphere;
-            else if (typeStr == "Tube")   lc.type = LightComponent::Type::Tube;
-            else                          lc.type = LightComponent::Type::Directional;
-            lc.color     = ArrToVec3((*lcTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f });
-            lc.intensity = (float)(*lcTbl)["intensity"].value_or(1.0);
-            lc.enabled   = (*lcTbl)["enabled"].value_or(true);
-            lc.range     = (float)(*lcTbl)["range"].value_or(10.0);
-            lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
-            lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
-            lc.areaWidth    = (float)(*lcTbl)["areaWidth"].value_or(1.0);
-            lc.areaHeight   = (float)(*lcTbl)["areaHeight"].value_or(1.0);
-            lc.areaTwoSided = (*lcTbl)["areaTwoSided"].value_or(false);
-            lc.castShadows    = (*lcTbl)["castShadows"].value_or(true);
-            lc.shadowBias     = (float)(*lcTbl)["shadowBias"].value_or(1.0);
-            lc.shadowStrength = (float)(*lcTbl)["shadowStrength"].value_or(1.0);
-            lc.shadowDistance = (float)(*lcTbl)["shadowDistance"].value_or(0.0);
-            lc.shadowNearPlane = (float)(*lcTbl)["shadowNearPlane"].value_or(0.1);
-            lc.cookiePath     = (*lcTbl)["cookiePath"].value_or(std::string{});
-            lc.cookieRotation = (float)(*lcTbl)["cookieRotation"].value_or(0.0);
-            lc.useColorTemperature = (*lcTbl)["useColorTemperature"].value_or(false);
-            lc.colorTemperature    = (float)(*lcTbl)["colorTemperature"].value_or(6500.0);
-            lc.sourceRadius        = (float)(*lcTbl)["sourceRadius"].value_or(0.0);
-            lc.sourceLength        = (float)(*lcTbl)["sourceLength"].value_or(1.0);
-            go.AddComponent<LightComponent>(lc);
-        }
+        ReadComponentReflected<LightComponent>(go, *goTbl, "LightComponent");
 
         // EnvironmentLightComponent
-        if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
-            EnvironmentLightComponent elc{};
-            elc.enabled        = (*elcTbl)["enabled"].value_or(true);
-            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
-            elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
-            elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
-            elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
-            elc.diffuseScale   = (float)(*elcTbl)["diffuseScale"].value_or(1.0);
-            elc.specularScale  = (float)(*elcTbl)["specularScale"].value_or(1.0);
-            elc.maxMipLevel    = (int)(*elcTbl)["maxMipLevel"].value_or((int64_t)4);
-            go.AddComponent<EnvironmentLightComponent>(elc);
-        }
+        ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");
 
         // ReflectionProbeComponent
-        if (auto* rpcTbl = (*goTbl)["ReflectionProbeComponent"].as_table()) {
-            ReflectionProbeComponent rpc{};
-            rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
-            rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
-            rpc.captureMode     = static_cast<ReflectionProbeCaptureMode>(
-                static_cast<uint8_t>((*rpcTbl)["captureMode"].value_or((int64_t)0)));
-            rpc.captureResolution = static_cast<uint32_t>((*rpcTbl)["captureResolution"].value_or((int64_t)128));
-            rpc.updateInterval  = (float)(*rpcTbl)["updateInterval"].value_or(1.0);
-            rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
-            rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
-            rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
-            rpc.boxExtents      = ArrToVec3((*rpcTbl)["boxExtents"].as_array(), {1.0f, 1.0f, 1.0f});
-            go.AddComponent<ReflectionProbeComponent>(rpc);
-        }
+        ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
 
         // AtmosphericScatteringComponent
-        if (auto* ascAtmTbl = (*goTbl)["AtmosphericScatteringComponent"].as_table()) {
-            AtmosphericScatteringComponent atm{};
-            atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
-            atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
-            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
-            atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
-            atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
-            atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
-            go.AddComponent<AtmosphericScatteringComponent>(atm);
-        }
+        ReadComponentReflected<AtmosphericScatteringComponent>(go, *goTbl, "AtmosphericScatteringComponent");
 
         // PostProcessVolumeComponent
-        if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
-            PostProcessVolumeComponent ppvc{};
-            ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
-            // 旧シーンの pp サブテーブル (インライン設定) は読み飛ばす。ルック設定の
-            // 所有者はプロファイル 1 本に統一したので、読み戻せる先が存在しない。
-            ppvc.profile.ref.path = (*ppvcTbl)["profile"].value_or(std::string{});
-            ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
-            ppvc.priority        = (int)(*ppvcTbl)["priority"].value_or((int64_t)0);
-            ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
-            ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
-            ppvc.blendDistance   = (float)(*ppvcTbl)["blendDistance"].value_or(2.0);
-            go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
-        }
+        ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");
 
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
             ParticleEmitter pe{};
@@ -3698,17 +3058,7 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<RigidBodyComponent>(std::move(rb));
         }
 
-        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
-            NavMeshOffMeshLinkComponent link{};
-            link.enabled       = (*linkTbl)["enabled"].value_or(true);
-            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
-            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
-            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
-            link.activated     = (*linkTbl)["activated"].value_or(true);
-            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
-            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
-            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
-        }
+        ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, *goTbl, "NavMeshOffMeshLinkComponent");
 
         ReadAutomaticComponents(go, *goTbl);
 

@@ -7,7 +7,8 @@
 #include <Math/Vector3.hpp>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
+#include <cstddef>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -246,11 +247,20 @@ struct NavMeshSurfaceComponent {
         r.Field("collectObjects", collectObjectsValue);
         collectObjectsValue = collectObjectsValue < 0 ? 0 : (collectObjectsValue > 1 ? 1 : collectObjectsValue);
         collectObjects = static_cast<NavMeshCollectObjects>(collectObjectsValue);
-        for (int i = 0; i < 32; ++i) {
-            char key[16];
-            std::snprintf(key, sizeof(key), "areaCost_%d", i);
-            r.Field(key, areaCosts[i]);
-            if (areaCosts[i] < 1.0f) areaCosts[i] = 1.0f;
+        // エリアコストは 1 本の配列として持つ。
+        //
+        // WHY 32 個の areaCost_N をやめたか: 直列化が «手書きの配列» と
+        //   «Reflect の 32 キー» の 2 通りに分かれていて、同じ 1 つの値が
+        //   保存経路によって別の形になっていた。配列に寄せると、シーンも AI バスも
+        //   Inspector も同じ 1 つのキーを見る。
+        // WHY 実データを壊さないと言えるか: 移行時点でどちらの形も .scene / .prefab に
+        //   実在しなかった (既定のまま使われていた)。
+        std::vector<float> costs(std::begin(areaCosts), std::end(areaCosts));
+        r.ListField("areaCosts", costs);
+        // キーが無ければ ListField は costs へ触らないので、既定がそのまま残る。
+        for (std::size_t i = 0; i < std::size(areaCosts); ++i) {
+            const float cost = i < costs.size() ? costs[i] : 1.0f;
+            areaCosts[i] = cost < 1.0f ? 1.0f : cost;  // 0 以下は A* が進まなくなる
         }
         // navMesh は Bake で再生成できるランタイムキャッシュのため非保存。
     }

@@ -25,6 +25,9 @@ struct NavMeshOffMeshLinkComponent {
     const char* GetTypeName() const { return "Off-Mesh Link"; }
     void Reflect(IReflector& r)
     {
+        // enabled は保存されていたのに Reflect に無く、AI バスと汎用 Inspector から
+        // だけ見えない状態だった。キー名は保存済みシーンに合わせる。
+        r.Field("enabled",       enabled);
         r.Field("startPoint",    startPoint);
         r.Field("endPoint",      endPoint);
         r.Field("bidirectional", bidirectional);
