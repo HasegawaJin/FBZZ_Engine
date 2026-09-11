@@ -10,7 +10,10 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/BuildSettings.hpp>
 #include <Editor/BuildPipeline.hpp>
+#include <Editor/Util/BuildConsole.hpp>
+#include <Editor/Util/LogListView.hpp>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -69,6 +72,12 @@ private:
 
     // Reset 後も「どこに出たか」を残し、Explorer で開けるようにする。
     std::string m_lastOutputDir;
+
+    // CMake / MSBuild の出力。Build Output と同じ操作 (複数選択・コピー・検索) で読ませる。
+    LogListView   m_buildLogView{ "runtime_build_log" };
+    BuildLogFeed  m_buildLogFeed;
+    std::uint64_t m_buildLogGeneration = 0;     // ビルドを始めるたびに進め、前回の行を捨てさせる
+    bool          m_buildLogWasRunning = false;
 };
 
 } // namespace fbzz::editor

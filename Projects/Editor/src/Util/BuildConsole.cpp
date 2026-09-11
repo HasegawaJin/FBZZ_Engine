@@ -5,6 +5,7 @@
 #include <Editor/Util/BuildConsole.hpp>
 
 #include <Windows.h>   // GetTickCount64 / GetLocalTime
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>     // atoi
 #include <regex>
@@ -30,6 +31,11 @@ const std::regex kSourceEchoRegex(
     R"(^\s*([A-Za-z0-9_\-.]+\.(?:cpp|cxx|cc|c|hlsl))\s*$)",
     std::regex::optimize);
 
+// "CMake Error at CMakeLists.txt:12 (add_library):" / "CMake Warning (dev) at foo.cmake:3 (...)"
+const std::regex kCMakeDiagRegex(
+    R"(^\s*CMake (Error|Warning)(?: \(dev\))? at (.+):(\d+))",
+    std::regex::optimize);
+
 // 現在時刻を "HH:MM:SS" で返す。
 std::string LocalClockString()
 {
@@ -40,7 +46,121 @@ std::string LocalClockString()
     return buf;
 }
 
+// MSBuild は /m 並列時、行頭に "<node>>" (例: "2>") を付ける。
+// これを除去しないと file グループに "2>C:\..." が入り、行ジャンプが壊れる。
+std::string StripBuildNodePrefix(const std::string& rawLine)
+{
+    std::string line = rawLine;
+    size_t i = 0;
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+    size_t d = i;
+    while (d < line.size() && line[d] >= '0' && line[d] <= '9') ++d;
+    if (d > i && d < line.size() && line[d] == '>')
+        line.erase(0, d + 1);
+    return line;
+}
+
 } // namespace
+
+LogListLine MakeBuildLogLine(const std::string& text, std::uint64_t id)
+{
+    LogListLine out;
+    out.id   = id;
+    out.text = text;
+
+    // 大半の行は診断ではない。正規表現は «それらしい語» を含む行にだけ当てる。
+    const bool mayBeError   = text.find("rror")   != std::string::npos || text.find("FAILED") != std::string::npos;
+    const bool mayBeWarning = text.find("arning") != std::string::npos;
+    if (!mayBeError && !mayBeWarning) return out;
+
+    const std::string line = StripBuildNodePrefix(text);
+    std::smatch m;
+    if (std::regex_match(line, m, kDiagRegex)) {
+        out.severity = (m[4].str() == "warning") ? LogListSeverity::Warning : LogListSeverity::Error;
+        out.file     = m[1].str();
+        out.line     = m[2].matched ? std::atoi(m[2].str().c_str()) : 0;
+        return out;
+    }
+    if (std::regex_search(line, m, kCMakeDiagRegex)) {
+        out.severity = (m[1].str() == "Warning") ? LogListSeverity::Warning : LogListSeverity::Error;
+        out.file     = m[2].str();
+        out.line     = std::atoi(m[3].str().c_str());
+        return out;
+    }
+
+    // 形式に当てはまらなくても、ninja / clang / スクリプトの出力は «error:» の形で出る。
+    // WHY 素の "error" で拾わないか: MSBuild のサマリ "0 Error(s)" や
+    //     "-- Looking for error.h" まで赤くなり、本物が埋もれる。
+    if (line.find(": error") != std::string::npos || line.find("error:") != std::string::npos
+        || line.find("CMake Error") != std::string::npos || line.find("Build FAILED") != std::string::npos
+        || line.find("FAILED:") != std::string::npos) {
+        out.severity = LogListSeverity::Error;
+    } else if (line.find(": warning") != std::string::npos || line.find("warning:") != std::string::npos
+               || line.find("CMake Warning") != std::string::npos) {
+        out.severity = LogListSeverity::Warning;
+    }
+    return out;
+}
+
+void BuildLogFeed::Reset(LogListView& view, std::uint64_t generation, std::uint64_t firstLine)
+{
+    view.ClearLines();
+    m_generation  = generation;
+    m_firstLine   = firstLine;
+    m_parsedBytes = 0;
+    m_seenBytes   = 0;
+    m_lineBytes.clear();
+    m_hasPartial  = false;
+}
+
+void BuildLogFeed::Sync(const std::string& text, std::uint64_t generation, std::uint64_t firstLine,
+                        LogListView& view)
+{
+    if (generation != m_generation || firstLine < m_firstLine) {
+        Reset(view, generation, firstLine);
+    } else if (firstLine != m_firstLine) {
+        const std::uint64_t dropped = firstLine - m_firstLine;
+        if (dropped > m_lineBytes.size()) {
+            Reset(view, generation, firstLine);
+        } else {
+            for (std::uint64_t i = 0; i < dropped; ++i) {
+                m_parsedBytes -= m_lineBytes.front();
+                m_lineBytes.pop_front();
+            }
+            view.DropFrontLines(static_cast<std::size_t>(dropped));
+            m_firstLine = firstLine;
+            m_seenBytes = ~static_cast<std::size_t>(0);  // 下の «変化なし» 判定を通さない
+        }
+    }
+    if (text.size() < m_parsedBytes) Reset(view, generation, firstLine);
+    if (text.size() == m_seenBytes) return;
+    m_seenBytes = text.size();
+
+    // 書きかけだった末尾行は、続きが来たかもしれないので作り直す。id は同じ値で積み直る。
+    if (m_hasPartial) {
+        view.PopBackLine();
+        m_hasPartial = false;
+    }
+
+    std::size_t pos = m_parsedBytes;
+    while (true) {
+        const std::size_t nl = text.find('\n', pos);
+        if (nl == std::string::npos) break;
+        std::string line = text.substr(pos, nl - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        view.AppendLine(MakeBuildLogLine(line, m_firstLine + m_lineBytes.size()));
+        m_lineBytes.push_back(nl + 1 - pos);
+        pos = nl + 1;
+    }
+    m_parsedBytes = pos;
+
+    if (pos < text.size()) {
+        std::string tail = text.substr(pos);
+        if (!tail.empty() && tail.back() == '\r') tail.pop_back();
+        view.AppendLine(MakeBuildLogLine(tail, m_firstLine + m_lineBytes.size()));
+        m_hasPartial = true;
+    }
+}
 
 void BuildConsole::BeginBuild(BuildRecord::Kind kind)
 {
@@ -58,6 +178,8 @@ void BuildConsole::BeginBuild(BuildRecord::Kind kind)
     m_consumedLen  = 0;
     m_lineBuffer.clear();
     m_liveLog.clear();
+    m_liveLogFirstLine = 0;
+    ++m_liveLogGeneration;
     m_currentFile.clear();
     m_startTickMs  = GetTickCount64();
     // WHY ここで通知を消さないか: ビルドを «始めた» ことは失敗が直った証拠ではない。
@@ -88,8 +210,15 @@ void BuildConsole::IngestFullLog(const std::string& fullLog)
 
     // ライブ表示用ログへ追記し、上限を超えたら先頭を切り捨てる。
     m_liveLog += delta;
-    if (m_liveLog.size() > MAX_LOG_BYTES)
-        m_liveLog.erase(0, m_liveLog.size() - MAX_LOG_BYTES);
+    if (m_liveLog.size() > MAX_LOG_BYTES) {
+        // 行の途中で切ると先頭の欠けた行が残り、表示側の行番号もずれる。次の改行まで捨てる。
+        const size_t over = m_liveLog.size() - MAX_LOG_BYTES;
+        const size_t nl   = m_liveLog.find('\n', over);
+        const size_t cut  = (nl == std::string::npos) ? over : nl + 1;
+        m_liveLogFirstLine += static_cast<uint64_t>(
+            std::count(m_liveLog.begin(), m_liveLog.begin() + static_cast<std::ptrdiff_t>(cut), '\n'));
+        m_liveLog.erase(0, cut);
+    }
 
     // 端数バッファに連結し、完全な行だけを取り出して解析する。
     m_lineBuffer += delta;
@@ -110,17 +239,7 @@ void BuildConsole::ConsumeLine(const std::string& rawLine)
     BuildRecord* rec = CurrentRecord();
     if (!rec) return;
 
-    // MSBuild は /m 並列時、行頭に "<node>>" (例: "2>") を付ける。
-    // これを除去しないと file グループに "2>C:\..." が入り、行ジャンプが壊れる。
-    std::string line = rawLine;
-    {
-        size_t i = 0;
-        while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
-        size_t d = i;
-        while (d < line.size() && line[d] >= '0' && line[d] <= '9') ++d;
-        if (d > i && d < line.size() && line[d] == '>')
-            line.erase(0, d + 1);
-    }
+    const std::string line = StripBuildNodePrefix(rawLine);
 
     std::smatch m;
     if (std::regex_match(line, m, kDiagRegex)) {
