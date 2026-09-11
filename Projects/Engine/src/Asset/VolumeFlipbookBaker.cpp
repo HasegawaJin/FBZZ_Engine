@@ -36,6 +36,9 @@ constexpr std::uint32_t kDisplayRaw = 0;
 constexpr std::uint32_t kDisplayColor = 1;
 constexpr std::uint32_t kDisplayAlpha = 2;
 
+// ComputeCall::srvBuffers の添字 = レジスタ番号 (VolumeFill.cs.hlsl の gPuffs)。
+constexpr std::size_t kPuffBufferSlot = 14;
+
 // VolumeRaymarch.hlsl の cbuffer と 1:1。
 struct alignas(16) RaymarchConstants {
     float camRight[3];   float halfExtent;
@@ -44,13 +47,22 @@ struct alignas(16) RaymarchConstants {
     float toLight[3];    std::uint32_t shadowSteps;
     float lightColor[3]; float extinction;
     float ambient[3];    float emissionIntensity;
-    float smokeAlbedo[3]; float exposure;
     std::uint32_t displayMode;
     float anisotropy;
     float previewMotionScale;
     std::uint32_t background;
+    float exposure;
+    float liquidThreshold;
+    float liquidSoftness;
+    float liquidExtinction;
+    float liquidSpecular;
+    float liquidGloss;
+    float liquidFresnelF0;
+    float voxelSize;
+    float albedoRamp[kVolumeRampStops][4];
+    float emissionRamp[kVolumeRampStops][4];
 };
-static_assert(sizeof(RaymarchConstants) == 128, "VolumeRaymarch.hlsl の cbuffer と一致させること");
+static_assert(sizeof(RaymarchConstants) == 272, "VolumeRaymarch.hlsl の cbuffer と一致させること");
 
 void Store(float (&out)[3], const math::Vector3& v)
 {
@@ -59,8 +71,28 @@ void Store(float (&out)[3], const math::Vector3& v)
     out[2] = v.z;
 }
 
+// 位置は [0,1] に収め、前の点より手前へ戻らないよう揃える (シェーダーは昇順を前提に区間を探す)。
+float RampPosition(const VolumeColorRamp& ramp, int index, float previous)
+{
+    return (std::max)(previous, std::clamp(ramp.stops[static_cast<std::size_t>(index)].position, 0.0f, 1.0f));
+}
+
+void StoreRamp(float (&out)[kVolumeRampStops][4], const VolumeColorRamp& ramp)
+{
+    float previous = 0.0f;
+    for (int i = 0; i < kVolumeRampStops; ++i) {
+        const VolumeRampStop& stop = ramp.stops[static_cast<std::size_t>(i)];
+        previous = RampPosition(ramp, i, previous);
+        out[i][0] = (std::max)(stop.color.x, 0.0f);
+        out[i][1] = (std::max)(stop.color.y, 0.0f);
+        out[i][2] = (std::max)(stop.color.z, 0.0f);
+        out[i][3] = previous;
+    }
+}
+
 RaymarchConstants BuildRaymarchConstants(const VolumeFlipbookBakeSettings& settings, std::uint32_t tileSize,
-                                         std::uint32_t displayMode, std::uint32_t background)
+                                         std::uint32_t volumeResolution, std::uint32_t displayMode,
+                                         std::uint32_t background)
 {
     const VolumeFlipbookCamera camera = ComputeVolumeFlipbookCamera(settings);
     RaymarchConstants constants{};
@@ -70,7 +102,16 @@ RaymarchConstants BuildRaymarchConstants(const VolumeFlipbookBakeSettings& setti
     Store(constants.toLight, camera.toLight);
     Store(constants.lightColor, settings.lightColor);
     Store(constants.ambient, settings.ambient);
-    Store(constants.smokeAlbedo, { settings.smokeAlbedo, settings.smokeAlbedo, settings.smokeAlbedo });
+    StoreRamp(constants.albedoRamp, settings.albedoRamp);
+    StoreRamp(constants.emissionRamp, settings.emissionRamp);
+    constants.liquidThreshold = (std::max)(settings.liquid.threshold, 0.0f);
+    // 0 だと smoothstep の両端が一致して割り算が壊れる。
+    constants.liquidSoftness = (std::max)(settings.liquid.softness, 0.005f);
+    constants.liquidExtinction = (std::max)(settings.liquid.extinction, 0.0f);
+    constants.liquidSpecular = (std::max)(settings.liquid.specular, 0.0f);
+    constants.liquidGloss = std::clamp(settings.liquid.gloss, 1.0f, 2048.0f);
+    constants.liquidFresnelF0 = std::clamp(settings.liquid.fresnelF0, 0.0f, 1.0f);
+    constants.voxelSize = 2.0f / static_cast<float>((std::max)(volumeResolution, 1u));
     constants.halfExtent = (std::max)(settings.halfExtent, 0.05f);
     constants.tileSize = tileSize;
     constants.raySteps = static_cast<std::uint32_t>(std::clamp(settings.raySteps, 8, 512));
@@ -87,6 +128,42 @@ RaymarchConstants BuildRaymarchConstants(const VolumeFlipbookBakeSettings& setti
 }
 
 } // namespace
+
+math::Vector3 EvaluateVolumeRamp(const VolumeColorRamp& ramp, float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    float previous = RampPosition(ramp, 0, 0.0f);
+    if (t <= previous) return ramp.stops[0].color;
+    for (int i = 1; i < kVolumeRampStops; ++i) {
+        const float position = RampPosition(ramp, i, previous);
+        if (t <= position) {
+            const float f = std::clamp((t - previous) / (std::max)(position - previous, 1.0e-5f), 0.0f, 1.0f);
+            return math::Vector3::Lerp(ramp.stops[static_cast<std::size_t>(i - 1)].color,
+                                       ramp.stops[static_cast<std::size_t>(i)].color, f);
+        }
+        previous = position;
+    }
+    return ramp.stops[kVolumeRampStops - 1].color;
+}
+
+VolumeColorRamp EvenVolumeRamp(const math::Vector3& c0, const math::Vector3& c1,
+                               const math::Vector3& c2, const math::Vector3& c3)
+{
+    VolumeColorRamp ramp;
+    ramp.stops = { VolumeRampStop{ c0, 0.0f }, VolumeRampStop{ c1, 1.0f / 3.0f },
+                   VolumeRampStop{ c2, 2.0f / 3.0f }, VolumeRampStop{ c3, 1.0f } };
+    return ramp;
+}
+
+VolumeColorRamp UniformVolumeRamp(const math::Vector3& color)
+{
+    return EvenVolumeRamp(color, color, color, color);
+}
+
+VolumeColorRamp DefaultFireRamp()
+{
+    return EvenVolumeRamp({ 0.0f, 0.0f, 0.0f }, { 0.9f, 0.08f, 0.01f }, { 1.0f, 0.45f, 0.06f }, { 1.0f, 0.9f, 0.6f });
+}
 
 VolumeFlipbookCamera ComputeVolumeFlipbookCamera(const VolumeFlipbookBakeSettings& settings)
 {
@@ -117,9 +194,12 @@ VolumeFramingReport AnalyzeVolumeFraming(const VolumeFlipbookBakeSettings& setti
 
     report.frameIssues.assign(static_cast<std::size_t>(frames), 0);
     for (int frame = 0; frame < frames; ++frame) {
+        const float time = start + static_cast<float>(frame) * frameDt;
         std::uint8_t issues = 0;
-        for (const VolumeBound& bound :
-             CollectVisibleVolumeBounds(puffs, settings.noise, start + static_cast<float>(frame) * frameDt)) {
+        const std::uint32_t live = CountLiveVolumePuffs(puffs, time);
+        report.maxLivePuffs = (std::max)(report.maxLivePuffs, live);
+        if (live > kVolumeFillMaxPuffs) issues |= kFramingTooManyPuffs;
+        for (const VolumeBound& bound : CollectVisibleVolumeBounds(puffs, settings.noise, time)) {
             const math::Vector3& c = bound.center;
             const float r = bound.radius;
             if ((std::max)({ std::fabs(c.x), std::fabs(c.y), std::fabs(c.z) }) + r > 1.0f)
@@ -132,6 +212,7 @@ VolumeFramingReport AnalyzeVolumeFraming(const VolumeFlipbookBakeSettings& setti
         report.frameIssues[static_cast<std::size_t>(frame)] = issues;
         if (issues & kFramingCutByVolumeBox) ++report.boxCutFrames;
         if (issues & kFramingCutByTileEdge) ++report.tileCutFrames;
+        if (issues & kFramingTooManyPuffs) ++report.overflowFrames;
     }
     return report;
 }
@@ -146,6 +227,8 @@ bool VolumeFlipbookBaker::EnsureGpu(renderer::ResourceManager& resources, std::u
         m_pipeline = {};
         m_fillConstants = {};
         m_raymarchConstants = {};
+        m_puffBuffers = {};
+        m_puffRing = 0;
         m_medium = {};
         m_velocity = {};
         m_target = {};
@@ -168,9 +251,17 @@ bool VolumeFlipbookBaker::EnsureGpu(renderer::ResourceManager& resources, std::u
                                                      renderer::DepthMode::DEPTH_OFF });
     }
     if (!m_fillConstants.IsValid())
-        m_fillConstants = resources.CreateConstantBuffer(sizeof(VolumeFillConstants));
+        m_fillConstants = resources.CreateConstantBuffer(sizeof(VolumeFillHeader));
     if (!m_raymarchConstants.IsValid())
         m_raymarchConstants = resources.CreateConstantBuffer(sizeof(RaymarchConstants));
+    for (auto& buffer : m_puffBuffers) {
+        if (!buffer.IsValid())
+            buffer = resources.CreateStructuredBuffer(nullptr, kVolumeFillMaxPuffs, sizeof(VolumeFillPuffGpu));
+        if (!buffer.IsValid()) {
+            outError = "puff 用の StructuredBuffer を作れません";
+            return false;
+        }
+    }
 
     if (m_volumeResolution != volumeResolution) {
         if (m_medium.IsValid()) resources.Release(m_medium);
@@ -215,6 +306,10 @@ bool VolumeFlipbookBaker::Begin(const VolumeFlipbookBakeSettings& settings,
         outError = "出力先がありません";
         return false;
     }
+    if (FindVolumeSource(m_settings.source.preset) == nullptr) {
+        outError = "ソースが登録されていません: " + m_settings.source.preset;
+        return false;
+    }
 
     m_grid = ComputeFlipbookGrid(m_settings.source.frameCount, m_settings.columns);
     const auto tile = static_cast<std::uint32_t>(m_settings.tileSize);
@@ -249,19 +344,24 @@ void VolumeFlipbookBaker::RecordFrame(renderer::IRenderer& renderer, renderer::R
                                       const std::vector<VolumePuff>& puffs, float time,
                                       std::uint32_t displayMode, std::uint32_t background)
 {
-    VolumeFillConstants fill;
-    PackVolumeFillConstants(puffs, settings.noise, m_volumeResolution, time, settings.source.frameDt, fill);
-    resources.Update(m_fillConstants, &fill, sizeof(fill));
+    PackVolumeFill(puffs, settings.noise, m_volumeResolution, time, settings.source.frameDt, m_fill);
+    resources.Update(m_fillConstants, &m_fill.header, sizeof(m_fill.header));
+    const auto puffBuffer = m_puffBuffers[m_puffRing];
+    m_puffRing = (m_puffRing + 1) % kPuffBufferRing;
+    if (!m_fill.puffs.empty())
+        resources.Update(puffBuffer, m_fill.puffs.data(), m_fill.puffs.size() * sizeof(VolumeFillPuffGpu));
 
     renderer::ComputeCall compute;
     compute.shader = m_fillShader;
     compute.constantBuffers[0] = m_fillConstants;
+    compute.srvBuffers[kPuffBufferSlot] = puffBuffer;
     compute.uavOutputs[0] = m_medium;
     compute.uavOutputs[1] = m_velocity;
     compute.dispatchX = compute.dispatchY = compute.dispatchZ = (m_volumeResolution + 3) / 4;
     renderer.Dispatch(compute, resources);
 
-    const RaymarchConstants raymarch = BuildRaymarchConstants(settings, m_tileSize, displayMode, background);
+    const RaymarchConstants raymarch =
+        BuildRaymarchConstants(settings, m_tileSize, m_volumeResolution, displayMode, background);
     resources.Update(m_raymarchConstants, &raymarch, sizeof(raymarch));
 
     renderer.SetRenderTarget(m_target, resources);
@@ -415,7 +515,7 @@ void VolumeFlipbookBaker::Finish()
     m_baked.grid = m_grid;
     m_baked.motionStrength = strength;
     m_baked.frameDt = m_settings.source.frameDt;
-    m_baked.loop = m_settings.source.loop && m_settings.source.preset == VolumeFlipbookPreset::RisingPlume;
+    m_baked.loop = VolumeSourceLoops(m_settings.source);
     m_hasBaked = true;
     ReleaseCpuBuffers();
 }
@@ -492,7 +592,12 @@ void VolumeFlipbookBaker::Release(renderer::ResourceManager& resources)
         if (m_fillConstants.IsValid()) resources.Release(m_fillConstants);
         if (m_raymarchConstants.IsValid()) resources.Release(m_raymarchConstants);
         if (m_pipeline.IsValid()) resources.Release(m_pipeline);
+        for (const auto& buffer : m_puffBuffers)
+            if (buffer.IsValid()) resources.Release(buffer);
     }
+    m_puffBuffers = {};
+    m_puffRing = 0;
+    m_fill = {};
     m_medium = {};
     m_velocity = {};
     m_target = {};
