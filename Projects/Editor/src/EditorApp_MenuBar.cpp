@@ -12,6 +12,7 @@
 #include <Editor/Panels/AiSettingsPanel.hpp>
 #include <Editor/Panels/AssetMaintenancePanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
+#include <Editor/Panels/VolumeFlipbookBakePanel.hpp>
 #include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -214,6 +215,7 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t OPEN_IBL         = 503;
     constexpr uint16_t OPEN_NAVIGATION  = 504;
     constexpr uint16_t OPEN_ASSET_MAINT = 505;
+    constexpr uint16_t OPEN_VOLUME_FLIPBOOK = 506;
     constexpr uint16_t OPEN_AI_SETTINGS = 600;
     constexpr uint16_t PANEL_BASE       = 1000;
 
@@ -280,6 +282,7 @@ void EditorApp::InstallNativeMenuBar()
         command("Map Editing Mode", TOGGLE_MAP),
         submenu("Terrain & Map", std::move(terrainTools)),
         command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL),
+        command("Volume Flipbook Baker...", OPEN_VOLUME_FLIPBOOK),
         command("Navigation...", OPEN_NAVIGATION),
         command("Asset Maintenance...", OPEN_ASSET_MAINT)
     }));
@@ -335,6 +338,7 @@ void EditorApp::InstallNativeMenuBar()
         // パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
         // operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
+        case OPEN_VOLUME_FLIPBOOK: InvokePanelFocus(m_volumeFlipbookBakePanel); break;
         case OPEN_NAVIGATION:  InvokePanelFocus(m_navigationPanel); break;
         case OPEN_ASSET_MAINT: InvokePanelFocus(m_assetMaintenancePanel); break;
         case OPEN_AI_SETTINGS: InvokePanelFocus(m_aiSettingsPanel); break;
@@ -539,6 +543,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         // 名前を引数で渡す 1 つの操作で足りる。
         if (m_iblBakePanel && ImGui::MenuItem(LOC("IBL Baker...")))
             InvokePanelFocus(m_iblBakePanel);
+        if (m_volumeFlipbookBakePanel && ImGui::MenuItem(LOC("Volume Flipbook Baker...")))
+            InvokePanelFocus(m_volumeFlipbookBakePanel);
         if (m_navigationPanel && ImGui::MenuItem(LOC("Navigation...")))
             InvokePanelFocus(m_navigationPanel);
         if (m_assetMaintenancePanel && ImGui::MenuItem(LOC("Asset Maintenance...")))

@@ -45,6 +45,7 @@
 #include <Editor/Panels/SpriteEditorPanel.hpp>
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
+#include <Editor/Panels/VolumeFlipbookBakePanel.hpp>
 #include <Editor/Panels/AssetMaintenancePanel.hpp>
 #include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/Panels/AiSettingsPanel.hpp>
@@ -549,6 +550,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         auto iblBake = std::make_unique<IblBakePanel>();
         m_iblBakePanel = iblBake.get();
         m_panels.push_back(std::move(iblBake));
+    }
+    {
+        auto volumeFlipbook = std::make_unique<VolumeFlipbookBakePanel>();
+        m_volumeFlipbookBakePanel = volumeFlipbook.get();
+        m_panels.push_back(std::move(volumeFlipbook));
     }
     {
         auto navigation = std::make_unique<NavigationPanel>();
