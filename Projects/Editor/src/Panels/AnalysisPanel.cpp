@@ -428,7 +428,7 @@ void RebuildAnalysisProfStats()
 
     // WHY 出現したフレーム数でなく全フレーム数で割るか: たまにしか走らない処理の
     //     «1 フレームあたりの負担» を、毎フレーム走る処理と同じ尺度で比べたい。
-    const double frameCount = static_cast<double>((std::max)<std::size_t>(1u, s_profHistory.frames.size()));
+    const double frameCount = static_cast<double>((std::max)(std::size_t{1}, s_profHistory.frames.size()));
     s_profHistory.stats.clear();
     s_profHistory.stats.reserve(aggregates.size());
     for (const auto& [key, aggregate] : aggregates)
