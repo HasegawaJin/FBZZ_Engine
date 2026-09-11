@@ -53,6 +53,7 @@ class ConsolePanel;
 class AnalysisPanel;
 class MapEditorPanel;
 class IblBakePanel;
+class VolumeFlipbookBakePanel;
 class AssetMaintenancePanel;
 class NavigationPanel;
 class AiSettingsPanel;
@@ -444,6 +445,7 @@ private:
     AnalysisPanel*                           m_analysisPanel          = nullptr;
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
     IblBakePanel*                            m_iblBakePanel           = nullptr;
+    VolumeFlipbookBakePanel*                 m_volumeFlipbookBakePanel = nullptr;
     AssetMaintenancePanel*                   m_assetMaintenancePanel  = nullptr;
     // 通知バーを閉じたときの件数。これより増えたらもう一度出す。
     size_t m_dismissedGuidConflicts = 0;

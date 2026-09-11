@@ -113,6 +113,8 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/VectorFieldTests.cpp
         Engine/Auto/FlipbookMotionVectorEncodingTests.cpp
         Engine/Auto/FlipbookMotionVectorsTests.cpp
+        Engine/Auto/VolumeFlipbookAnalyticTests.cpp
+        Engine/Auto/VolumeFlipbookFramingTests.cpp
         Engine/Auto/ComponentReflectionParityTests.cpp
         Engine/Auto/VFXEnvelopeTests.cpp
         Engine/Auto/ParticleMaterialPathTests.cpp
