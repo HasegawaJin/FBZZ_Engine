@@ -192,4 +192,17 @@ TEST(TerrainWaterDefaults, WaterMaterialPathIsAnAssetsPath)
     EXPECT_EQ(path.rfind("Assets/", 0), 0u);
 }
 
+TEST(TerrainWaterDefaults, WaterPresetsStartWithTheDefaultAndPointAtDistinctMaterials)
+{
+    const auto presets = editor::WaterMaterialPresets();
+    ASSERT_FALSE(presets.empty());
+    // Create Water が既定と違う .mat を差すと、作った直後の Inspector でどのプリセットも選ばれていない。
+    EXPECT_STREQ(presets[0].path, editor::DefaultWaterMaterialPath());
+    for (size_t i = 0; i < presets.size(); ++i) {
+        EXPECT_EQ(std::string(presets[i].path).rfind("Assets/Materials/Water/", 0), 0u) << presets[i].label;
+        for (size_t j = i + 1; j < presets.size(); ++j)
+            EXPECT_STRNE(presets[i].path, presets[j].path);
+    }
+}
+
 } // namespace fbzz::tests

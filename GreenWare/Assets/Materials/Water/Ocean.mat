@@ -52,6 +52,24 @@ specularExponent = 80.0
 specularStrength = 0.8999999761581421
 sssColor = [ 0.10000000149011612, 0.5199999809265137, 0.5 ]
 sssStrength = 0.699999988079071
+currentSpeed = 0.0
+wave0Amplitude = 0.35
+wave0Direction = [ 1.0, 0.2 ]
+wave0Steepness = 0.4
+wave0Wavelength = 14.0
+wave1Amplitude = 0.2
+wave1Direction = [ -0.3, 0.95 ]
+wave1Steepness = 0.3
+wave1Wavelength = 22.0
+wave2Amplitude = 0.15
+wave2Direction = [ 0.7, -0.7 ]
+wave2Steepness = 0.25
+wave2Wavelength = 9.0
+wave3Amplitude = 0.1
+wave3Direction = [ -0.9, 0.4 ]
+wave3Steepness = 0.2
+wave3Wavelength = 18.0
+windResponse = 1.0
 
 [textures]
 albedo = ''

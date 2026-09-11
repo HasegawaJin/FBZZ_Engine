@@ -311,7 +311,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
             column = (column + 1) % 3;
         }
     }
-    ImGui::TextDisabled("Keys 1-4 switch tools while the Scene View is focused");
+    ImGui::TextDisabled("Keys 1-3 switch tools while the Scene View is focused");
 
     ImGui::Separator();
     ImGui::BeginChild("##MapToolSettings", { 0.0f, 0.0f }, false);
@@ -331,12 +331,6 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
             ctx.terrainTool->DrawPaintContent(
                 *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
             ctx.terrainTool->DrawBrushSettings();
-        }
-        break;
-    case EditorContext::MapTool::Water:
-        if (ctx.waterTool) {
-            ctx.waterTool->DrawContent(
-                *ctx.activeScene, ctx.projectRoot, ctx.markSceneDirty, ctx.undoStack);
         }
         break;
     case EditorContext::MapTool::Grid:

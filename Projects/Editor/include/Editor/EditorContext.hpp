@@ -27,7 +27,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; class ProjectRuntime; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; class MemoryLeakDiff; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; class MemoryLeakDiff; }
 
 namespace fbzz::editor {
 
@@ -309,7 +309,6 @@ struct EditorContext {
     enum class MapTool {
         TerrainSculpt,
         TerrainPaint,
-        Water,
         Grid
     };
     MapTool mapActiveTool = MapTool::TerrainSculpt;
@@ -392,7 +391,6 @@ struct EditorContext {
     bool sceneViewOcclusionCulling = false;
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
     bool showTerrainTool = false; // Terrain Tool ウィンドウを表示する
-    bool showWaterTool   = false; // Water Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
 
     // スクリプト DLL / HLSL ホットリロード状態 (StatusBar が表示する)
@@ -552,7 +550,6 @@ struct EditorContext {
     std::function<void(const std::string&)> openAnimationGraph;
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
-    WaterTool*          waterTool   = nullptr; // EditorApp が所有、ViewportPanel が使用
     // Inspector セクション折り畳み状態 (EditorSettings ↔ ImGui StateStorage の中継)
     std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
     // 現在の Scene に紐づく Editor 専用メタデータ。Scene 本体には保存しない。

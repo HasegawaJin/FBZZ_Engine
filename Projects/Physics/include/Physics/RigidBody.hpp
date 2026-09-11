@@ -39,6 +39,8 @@ namespace fbzz::physics
                                  const math::Vector3& worldPoint);
         void ApplyAngularImpulse(const math::Vector3& angularImpulse); // PhysicsSolver から使用
         void ApplyTorque(const math::Vector3& torque);
+        // World 内部用: Volume が毎 substep 掛ける環境トルク。ApplyForceNoWake と同じ理由で Wake しない。
+        void ApplyTorqueNoWake(const math::Vector3& torque);
 
         // 積分 (半陰的オイラー法、World::Step から呼ばれる)
         void Integrate(float dt);

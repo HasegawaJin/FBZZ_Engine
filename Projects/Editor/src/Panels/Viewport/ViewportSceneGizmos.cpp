@@ -13,6 +13,7 @@
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ForceField.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 
 namespace fbzz::editor {
 
@@ -235,6 +236,57 @@ ImU32 WithAlpha(ImU32 color, int alpha)
     return (color & 0x00FFFFFFu) | (static_cast<ImU32>(alpha) << IM_COL32_A_SHIFT);
 }
 
+// 選択中の水面の範囲・実効波・水流を描く。
+// WHY .mat の値ではなく実効波を描くか: 倍率と環境風を掛けた後の «実際に描かれている波» が
+//     見えないと、風を置いても何が変わったのか分からない。
+void DrawWaterGizmo(EditorContext& ctx, ImDrawList* dl, const scene::GameObject& go,
+                    const scene::WaterComponent& water, const ImVec2& vpMin, const ImVec2& vpSize)
+{
+    const math::Matrix4 world = go.transform.GetWorldMatrix();
+    const float hx = water.extentX * 0.5f;
+    const float hz = water.extentZ * 0.5f;
+    const math::Vector3 localCorners[4] = {
+        { -hx, 0.0f, -hz }, { hx, 0.0f, -hz }, { hx, 0.0f, hz }, { -hx, 0.0f, hz },
+    };
+    ImVec2 screen[4];
+    bool visible[4];
+    for (int i = 0; i < 4; ++i) {
+        const math::Vector4 corner = world * math::Vector4{
+            localCorners[i].x, localCorners[i].y, localCorners[i].z, 1.0f };
+        visible[i] = WorldToScreen({ corner.x, corner.y, corner.z }, ctx, vpMin, vpSize, screen[i]);
+    }
+    for (int i = 0; i < 4; ++i) {
+        const int next = (i + 1) % 4;
+        if (visible[i] && visible[next])
+            dl->AddLine(screen[i], screen[next], IM_COL32(80, 200, 255, 200), 1.5f);
+    }
+
+    // 色は .mat Inspector の Wave 0..3 と揃える。長さは振幅に比例させ、水面の外へは出さない。
+    static constexpr ImU32 kWaveColors[4] = {
+        IM_COL32(255, 230,  80, 230), IM_COL32(255, 160,  80, 220),
+        IM_COL32( 80, 255, 160, 220), IM_COL32(200,  80, 255, 220),
+    };
+    const math::Vector3 origin = go.transform.worldPosition;
+    const float maxLength = (std::max)(
+        (std::min)(hx * std::abs(go.transform.worldScale.x), hz * std::abs(go.transform.worldScale.z)) * 0.8f,
+        0.5f);
+    if (water.enableGerstnerWaves) {
+        for (size_t i = 0; i < water.waves.size(); ++i) {
+            const scene::GerstnerWave& wave = water.waves[i];
+            if (wave.amplitude < 1.0e-4f || wave.direction.LengthSq() < 1.0e-8f) continue;
+            const math::Vector2 dir = wave.direction.Normalized();
+            DrawDirectionLine(ctx, dl, origin, { dir.x, 0.0f, dir.y },
+                              (std::min)(wave.amplitude * 20.0f, maxLength), vpMin, vpSize, kWaveColors[i]);
+        }
+    }
+    if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f) {
+        DrawDirectionLine(ctx, dl, origin,
+                          { water.current.x / currentSpeed, 0.0f, water.current.y / currentSpeed },
+                          (std::min)(currentSpeed * 4.0f, maxLength), vpMin, vpSize,
+                          IM_COL32(90, 255, 230, 230));
+    }
+}
+
 } // namespace
 
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
@@ -351,6 +403,15 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
     forEachIcon(ComponentTag<scene::NavMeshAgentComponent>{},     IM_COL32(120, 190, 120, 210), badge("N"));
     forEachIcon(ComponentTag<scene::ReflectionProbeComponent>{},  IM_COL32(190, 190, 240, 210), badge("R"));
     forEachIcon(ComponentTag<scene::DecalComponent>{},            IM_COL32(240, 180, 120, 210), badge("D"));
+
+    // ── 水面 (選択中だけ) ─────────────────────────────────────────────────────
+    // WHY 選択中だけか: 水面は広く、常に描くと地形を触っている間じゅう枠線と矢印が視界を横切る。
+    for (const scene::EntityID id : ctx.activeScene->GetEntities<scene::WaterComponent>()) {
+        if (!isSelected(id)) continue;
+        const scene::GameObject* go = ctx.activeScene->GetGameObject(id);
+        const auto* water = ctx.activeScene->GetComponent<scene::WaterComponent>(id);
+        if (go && water) DrawWaterGizmo(ctx, dl, *go, *water, vpMin, vpSize);
+    }
 }
 
 // ---------------------------------------------------------------------------

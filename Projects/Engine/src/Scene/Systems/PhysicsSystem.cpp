@@ -51,6 +51,8 @@ struct ColliderOwner {
 // Script へのコールバック発火で使う。
 using ColliderOwnerMap = std::unordered_map<const physics::Collider*, ColliderOwner>;
 using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
+// 剛体ごとのコライダー体積の合計。水の浮力が «体がどれだけ沈んだか» を測るのに使う。
+using BodyVolumeMap = std::unordered_map<const physics::RigidBody*, float>;
 
 // Transform の直接編集は動的剛体に対するテレポート要求として扱う。
 // 浮動小数の再計算誤差では履歴をリセットしないよう、位置と回転に小さい許容値を持たせる。
@@ -68,47 +70,95 @@ bool PoseChanged(const RigidBodyComponent& component, const Transform& transform
     return positionChanged || (1.0f - rotationDot) > ROTATION_DOT_EPSILON;
 }
 
-// WaterBuoyancyVolume — WaterComponent の Gerstner 波を CPU 側で評価する浮力 Volume。
+// 剛体ごとの «水に浸かる大きさ»。コライダーの体積を、同じ体積の球の半径へ直して使う。
+// WHY 球で近似するか: Volume::Apply が受け取るのは RigidBody だけで、形状は分からない。
+//     浮力に要るのは «どれだけ沈んだか» の割合なので、体積さえ合っていれば形は球で足りる。
+using BodyRadiusMap = std::unordered_map<const physics::RigidBody*, float>;
+
+constexpr float kDefaultBodyRadius = 0.5f;
+
+std::shared_ptr<const BodyRadiusMap> MakeBodyRadii(const BodyVolumeMap& volumes)
+{
+    auto radii = std::make_shared<BodyRadiusMap>();
+    radii->reserve(volumes.size());
+    for (const auto& [body, volume] : volumes) {
+        const float radius = std::cbrt((std::max)(volume, 0.0f) * 3.0f / (4.0f * math::PI));
+        (*radii)[body] = math::Clamp(radius, 0.05f, 50.0f);
+    }
+    return radii;
+}
+
+// WaterBuoyancyVolume — WaterComponent の実効波を CPU 側で評価する浮力・水流 Volume。
 // WHY: physics モジュールに WaterComponent 依存を入れると依存方向が逆転するため、
 //      Engine の PhysicsSystem 内で physics::Volume を実装し、World には抽象 Volume として渡す。
 class WaterBuoyancyVolume final : public physics::Volume {
 public:
     WaterBuoyancyVolume(const WaterComponent& water,
                         const Transform& transform,
-                        const physics::VolumeSettings& settings)
+                        std::shared_ptr<const BodyRadiusMap> radii)
         : m_water(water)
         , m_position(transform.worldPosition)
-        , m_settings(settings)
+        , m_halfX(water.extentX * 0.5f * std::abs(transform.worldScale.x))
+        , m_halfZ(water.extentZ * 0.5f * std::abs(transform.worldScale.z))
+        , m_radii(std::move(radii))
         , m_time(Time::time)
     {
+        for (const auto& entry : *m_radii)
+            m_maxRadius = (std::max)(m_maxRadius, entry.second);
     }
 
     bool Contains(const math::Vector3& position) const override
     {
-        const float localX = position.x - m_position.x;
-        const float localZ = position.z - m_position.z;
-        if (std::abs(localX) > m_water.extentX * 0.5f || std::abs(localZ) > m_water.extentZ * 0.5f)
+        if (std::abs(position.x - m_position.x) > m_halfX ||
+            std::abs(position.z - m_position.z) > m_halfZ)
             return false;
-        const float surfaceY = SurfaceY(localX, localZ);
-        const float bottomY  = surfaceY - 10.0f;
-        return position.y <= surfaceY && position.y >= bottomY;
+        // 重心が水面より上でも、体の下側が浸かっていれば浮力は掛かる。一番大きい体の半径ぶん上へ広げる。
+        const float surfaceY = SurfaceY(position.x, position.z);
+        return position.y <= surfaceY + m_maxRadius
+            && position.y >= surfaceY - m_water.buoyancyDepth;
     }
 
     void Apply(physics::RigidBody& body, float /*dt*/) override
     {
         if (body.IsStatic()) return;
 
-        const math::Vector3 pos = body.GetPosition();
-        const float localX = pos.x - m_position.x;
-        const float localZ = pos.z - m_position.z;
-        const float surfaceY = SurfaceY(localX, localZ);
-        const float depth = (std::max)(surfaceY - pos.y, 0.0f);
-        const float submersion = math::Clamp01(depth / 10.0f);
+        const float radius = RadiusOf(body);
+        const float mass = body.GetMass();
+        const math::Vector3 center = body.GetPosition();
+        const math::Quaternion rotation = body.GetRotation();
 
-        // WHY: Water の浮力・抵抗は毎 substep 適用される環境力。
-        //      ApplyForce() で WakeUp すると、水面範囲内の静止 body が永久に Sleep できず World::Step が重くなる。
-        body.ApplyForceNoWake(math::Vector3::UP * (m_settings.buoyancy * body.GetMass() * submersion));
-        body.ApplyForceNoWake(-body.GetVelocity() * (m_settings.drag * submersion));
+        // 重心まわりの 4 点で水面と比べる。点ごとに沈み具合が違えば、その差が
+        // «波の斜面に沿って傾く» トルクになる。重心 1 点だけだと、船が波の上で水平のまま上下する。
+        const float arm = radius * 0.6f;
+        const math::Vector3 arms[4] = {
+            rotation * math::Vector3{  arm, 0.0f, 0.0f },
+            rotation * math::Vector3{ -arm, 0.0f, 0.0f },
+            rotation * math::Vector3{ 0.0f, 0.0f,  arm },
+            rotation * math::Vector3{ 0.0f, 0.0f, -arm },
+        };
+        float submersion = 0.0f;
+        math::Vector3 torque = math::Vector3::ZERO;
+        for (const math::Vector3& offset : arms) {
+            const math::Vector3 probe = center + offset;
+            const float surfaceY = SurfaceY(probe.x, probe.z);
+            const float sub = math::Clamp01((surfaceY - (probe.y - radius)) / (2.0f * radius));
+            if (sub <= 0.0f) continue;
+            submersion += sub * 0.25f;
+            const math::Vector3 lift = math::Vector3::UP * (m_water.buoyancy * mass * sub * 0.25f);
+            // WHY NoWake か: 浮力・抵抗は毎 substep 掛かる環境力。WakeUp すると、水面範囲内で
+            //     止まった body が永久に Sleep できず World::Step が重くなる。
+            body.ApplyForceNoWake(lift);
+            torque += math::Vector3::Cross(offset, lift);
+        }
+        if (submersion <= 0.0f) return;
+        body.ApplyTorqueNoWake(torque);
+
+        // 抵抗は «水に対する» 速度に掛ける。川では水流と同じ速さになるまで押し流される。
+        const math::Vector3 flow = { m_water.current.x, 0.0f, m_water.current.y };
+        body.ApplyForceNoWake((flow - body.GetVelocity()) * (m_water.waterDrag * mass * submersion));
+        // 回転も水が止める。止めないと、波で傾いた物体がいつまでも揺れ続ける。
+        const float inertia = 0.4f * mass * radius * radius;
+        body.ApplyTorqueNoWake(body.GetAngularVelocity() * (-m_water.waterDrag * inertia * submersion));
     }
 
     void Tick(float dt) override
@@ -117,14 +167,23 @@ public:
     }
 
 private:
-    float SurfaceY(float localX, float localZ) const
+    float SurfaceY(float worldX, float worldZ) const
     {
-        return m_position.y + m_water.GetSurfaceHeightAt(localX, localZ, m_time);
+        return m_position.y + m_water.GetSurfaceHeightAt(worldX, worldZ, m_time);
+    }
+
+    float RadiusOf(const physics::RigidBody& body) const
+    {
+        const auto it = m_radii->find(&body);
+        return it != m_radii->end() ? it->second : kDefaultBodyRadius;
     }
 
     WaterComponent m_water;
     math::Vector3 m_position;
-    physics::VolumeSettings m_settings;
+    float m_halfX = 0.0f;
+    float m_halfZ = 0.0f;
+    std::shared_ptr<const BodyRadiusMap> m_radii;
+    float m_maxRadius = kDefaultBodyRadius;
     float m_time = 0.0f;
 };
 
@@ -163,6 +222,7 @@ void AddColliderInstance(Scene& scene,
                          T& col,
                          physics::World& world,
                          ColliderOwnerMap& colliderOwners,
+                         BodyVolumeMap& bodyVolumes,
                          float dt)
 {
     auto* rb = go.GetComponent<RigidBodyComponent>();
@@ -214,6 +274,9 @@ void AddColliderInstance(Scene& scene,
     physics::ColliderInstance instance{ col.collider.get(), body, &col.material, centerOffset, col.isTrigger, go.layer };
     col.colliderHandle = world.SyncCollider(col.colliderHandle, instance);
     colliderOwners[col.collider.get()] = { &go, &col };
+    // トリガーは体の一部ではないので、浸かる大きさには数えない。
+    if (body && !col.isTrigger)
+        bodyVolumes[body] += col.collider->ComputeVolume();
 
     auto* volume = go.GetComponent<VolumeComponent>();
     if (volume && volume->enabled && col.isTrigger) {
@@ -232,14 +295,10 @@ void AddColliderInstance(Scene& scene,
         settings.explosionImpulse = volume->explosionImpulse;
         settings.timeScale = volume->timeScale;
         settings.duration = volume->duration;
-        if (settings.type == physics::VolumeType::Buoyancy) {
-            if (auto* water = go.GetComponent<WaterComponent>()) {
-                volume->volumeHandle = world.SyncVolume(
-                    volume->volumeHandle,
-                    std::make_unique<WaterBuoyancyVolume>(*water, go.transform, settings));
-                return;
-            }
-        }
+        // 水面の浮力は WaterComponent 自身が持つ (Update の SyncWaterVolumes)。旧来の
+        // «Buoyancy Volume を水面へ手で付ける» 構成も一緒に効かせると、浮力が 2 重に掛かる。
+        if (settings.type == physics::VolumeType::Buoyancy && go.GetComponent<WaterComponent>())
+            return;
 
         volume->volumeHandle = world.SyncVolume(
             volume->volumeHandle,
@@ -251,6 +310,7 @@ template<typename T>
 void SyncColliderComponents(Scene& scene,
                             physics::World& world,
                             ColliderOwnerMap& colliderOwners,
+                            BodyVolumeMap& bodyVolumes,
                             float dt)
 {
     // WHY: GameObject 全体を毎 fixed step 走査して各 Collider 型を GetComponent すると、
@@ -265,7 +325,7 @@ void SyncColliderComponents(Scene& scene,
         // 同じ手順をコライダー可視化 (DebugCollidersPass) も使うため、両者の見え方が一致する。
         if (!PrepareCollider(scene, *go, *col)) continue;
 
-        AddColliderInstance(scene, *go, *col, world, colliderOwners, dt);
+        AddColliderInstance(scene, *go, *col, world, colliderOwners, bodyVolumes, dt);
     }
 }
 
@@ -382,7 +442,7 @@ ComponentAccess PhysicsSystem::GetAccess() const
 {
     return ComponentAccess{}
         .Reads<ColliderComponent, RigidBodyComponent>()
-        .Writes<RigidBodyComponent, CharacterControllerComponent, VolumeComponent>();
+        .Writes<RigidBodyComponent, CharacterControllerComponent, VolumeComponent, WaterComponent>();
 }
 
 void PhysicsSystem::Update(SystemContext& ctx) {
@@ -404,6 +464,8 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         scene.GetEntities<MeshColliderComponent>().size() +
         scene.GetEntities<ConvexHullColliderComponent>().size() +
         scene.GetEntities<TerrainColliderComponent>().size());
+    static thread_local BodyVolumeMap bodyVolumes;
+    bodyVolumes.clear();
 
     world.BeginSceneSync();
 
@@ -441,14 +503,30 @@ void PhysicsSystem::Update(SystemContext& ctx) {
 
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncColliders");
-        SyncColliderComponents<AabbColliderComponent>(scene, world, colliderOwners, dt);
-        SyncColliderComponents<BoxColliderComponent>(scene, world, colliderOwners, dt);
-        SyncColliderComponents<SphereColliderComponent>(scene, world, colliderOwners, dt);
-        SyncColliderComponents<CapsuleColliderComponent>(scene, world, colliderOwners, dt);
-        SyncColliderComponents<CylinderColliderComponent>(scene, world, colliderOwners, dt);
-        SyncColliderComponents<MeshColliderComponent>(scene, world, colliderOwners, dt);
-        SyncColliderComponents<ConvexHullColliderComponent>(scene, world, colliderOwners, dt);
-        SyncColliderComponents<TerrainColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<AabbColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+        SyncColliderComponents<BoxColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+        SyncColliderComponents<SphereColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+        SyncColliderComponents<CapsuleColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+        SyncColliderComponents<CylinderColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+        SyncColliderComponents<MeshColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+        SyncColliderComponents<ConvexHullColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+        SyncColliderComponents<TerrainColliderComponent>(scene, world, colliderOwners, bodyVolumes, dt);
+    }
+
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncWaterVolumes");
+        std::shared_ptr<const BodyRadiusMap> radii;
+        for (EntityID id : scene.GetEntities<WaterComponent>()) {
+            auto* water = scene.GetComponent<WaterComponent>(id);
+            GameObject* go = scene.GetGameObject(id);
+            if (!water || !go || !go->activeInHierarchy() || !water->enabled || !water->buoyancyEnabled)
+                continue;
+            // 半径表は水面が 1 枚でもあるときだけ作り、全水面で共有する。
+            if (!radii) radii = MakeBodyRadii(bodyVolumes);
+            water->volumeHandle = world.SyncVolume(
+                water->volumeHandle,
+                std::make_unique<WaterBuoyancyVolume>(*water, go->transform, radii));
+        }
     }
 
     {

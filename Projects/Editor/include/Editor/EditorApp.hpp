@@ -58,7 +58,6 @@ class AssetMaintenancePanel;
 class NavigationPanel;
 class AiSettingsPanel;
 class TerrainTool;
-class WaterTool;
 
 class EditorApp final : public core::IModule {
 public:
@@ -321,7 +320,6 @@ private:
     // Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
     MemoryLeakDiff     m_memoryLeakDiff;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
-    std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
     std::string                     m_normalLayoutIni;
     const char*                     m_normalIniFilename = nullptr;
     std::string                     m_imguiIniPath;   // io.IniFilename が指すパス (文字列寿命を保持)
@@ -334,7 +332,6 @@ private:
     bool                            m_playCursorReleased = false; // Escape で一時解放したか (2 回目で Stop)
     bool                            m_terrainToolWasActive = false;
     int                             m_terrainToolModeBeforeMap = 0;
-    bool                            m_waterToolWasActive = false;
 
     // ビルドコンソール: Script / HLSL コンパイルの出力・診断・履歴を集約する。
     // WHY: m_ctx.buildConsole がこれを指し、Build Output パネル・StatusBar・通知バーが共有する。

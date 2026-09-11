@@ -11,8 +11,12 @@
 #include <Math/MathUtils.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
+#include <cstdint>
 
 namespace fbzz::scene {
+
+/// 波紋テクスチャの一辺 [texel]。水面 1 枚につき 1 枚だけ張る。
+inline constexpr uint32_t kWaterRippleTextureSize = 128;
 
 // AddWaterRipple — 水面ローカル UV [0,1] に動的なリング波紋を追加する。
 void AddWaterRipple(

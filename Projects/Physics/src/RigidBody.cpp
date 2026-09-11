@@ -76,6 +76,11 @@ void RigidBody::ApplyTorque(const math::Vector3& torque)
     m_torque += ApplyRotationFreeze(torque);
 }
 
+void RigidBody::ApplyTorqueNoWake(const math::Vector3& torque)
+{
+    m_torque += ApplyRotationFreeze(torque);
+}
+
 void RigidBody::SetMass(float mass)
 {
     m_mass    = mass;

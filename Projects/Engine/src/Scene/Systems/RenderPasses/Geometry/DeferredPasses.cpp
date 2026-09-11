@@ -73,7 +73,8 @@ bool IsCameraUnderwater(const RenderPassContext& ctx)
 
         // WHY: 水中では画面全体の濁りと散乱が支配的になり、SSAO の接触影がノイズに見えやすい。
         //      Deferred 合成時点で強度だけ 0 にして、既存の SSAO パス構成を変えずに見た目を無効化する。
-        const float surfaceY = transform.position.y + water.GetSurfaceHeightAt(localX, localZ, time);
+        const float surfaceY = transform.position.y
+            + water.GetSurfaceHeightAt(ctx.camera.m_position.x, ctx.camera.m_position.z, time);
         if (ctx.camera.m_position.y < surfaceY) {
             return true;
         }

@@ -122,6 +122,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/RenderGraphLifetimeTests.cpp
         Engine/Auto/SceneSerializerTests.cpp
         Engine/Auto/UIRectTests.cpp
+        Engine/Auto/WaterWaveTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics

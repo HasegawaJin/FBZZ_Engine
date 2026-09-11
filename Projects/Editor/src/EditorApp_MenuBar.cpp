@@ -242,7 +242,6 @@ void EditorApp::InstallNativeMenuBar()
 
     MenuList terrainTools;
     terrainTools.push_back(command("Terrain Tool", 510));
-    terrainTools.push_back(command("Water Tool", 511));
 
     MenuList menus;
     menus.push_back(submenu("File", {
@@ -343,7 +342,6 @@ void EditorApp::InstallNativeMenuBar()
         case OPEN_ASSET_MAINT: InvokePanelFocus(m_assetMaintenancePanel); break;
         case OPEN_AI_SETTINGS: InvokePanelFocus(m_aiSettingsPanel); break;
         case 510: InvokeOperator("tools.terrain"); break;
-        case 511: InvokeOperator("tools.water"); break;
         default: return false;
         }
         return true;
@@ -534,7 +532,6 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::Separator();
         if (ImGui::BeginMenu(LOC("Terrain & Map"))) {
             MenuItemOp("tools.terrain");
-            MenuItemOp("tools.water");
             ImGui::EndMenu();
         }
         MenuItemOp("tools.build_settings");

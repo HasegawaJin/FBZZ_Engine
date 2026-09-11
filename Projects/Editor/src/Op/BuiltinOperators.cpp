@@ -123,10 +123,17 @@ void EditorApp::RegisterBuiltinOperators()
         [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); });
 
     // Prefab 編集中は SaveScene が SavePrefabEdit へ読み替わるため、ここでは禁じない。
+    // WHY 未保存アセットも一緒に書くか: Ctrl+S は «今の編集を全部残す» つもりで押される。
+    //     Inspector の Material 配列から開いた .mat のインライン編集は «Save .mat» を
+    //     押さない限りディスクへ落ちず、シーンだけ保存されて編集が消えていた。
     add("scene.save", "Save", "File",
-        "現在のシーンを保存する (Prefab 編集中は編集中の Prefab を保存する)。",
+        "現在のシーンと未保存のアセットを保存する (Prefab 編集中は編集中の Prefab を保存する)。",
         OpKind::Action,
-        [this](OpContext&, const OpArgs&) { SaveScene(); return OpResult::Ok(); },
+        [this](OpContext&, const OpArgs&) {
+            AssetDirtyRegistry::SaveAll();
+            SaveScene();
+            return OpResult::Ok();
+        },
         hasScene);
 
     add("scene.save_as", "Save Scene As...", "File",
@@ -482,8 +489,6 @@ void EditorApp::RegisterBuiltinOperators()
 
     addWindowToggle("tools.terrain", "Terrain Tool",
         "地形編集ツールウィンドウの表示。", &EditorContext::showTerrainTool);
-    addWindowToggle("tools.water", "Water Tool",
-        "水面編集ツールウィンドウの表示。", &EditorContext::showWaterTool);
 
     // ── Panels ──────────────────────────────────────────────────────────────
     add("panel.command_palette", "Command Palette", "Panels",

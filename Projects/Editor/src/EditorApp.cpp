@@ -52,7 +52,6 @@
 #include <Editor/Import/ImportCacheStore.hpp>
 #include <Editor/Util/Toast.hpp>
 #include "Tools/TerrainTool.hpp"
-#include "Tools/WaterTool.hpp"
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
@@ -419,8 +418,6 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_runtime.GetSceneManager().SetAudioManager(application.GetAudioManager());
     m_terrainTool     = std::make_unique<TerrainTool>();
     m_ctx.terrainTool = m_terrainTool.get();
-    m_waterTool       = std::make_unique<WaterTool>();
-    m_ctx.waterTool   = m_waterTool.get();
     m_ctx.markSceneDirty  = [this]() { MarkSceneDirty(); };
     m_ctx.requestOpenScene = [this](const std::string& path) { RequestOpenScenePath(path); };
     // AI (Command Bus) からの入出力はモーダル確認を挟まない実体を直接呼ぶ。
@@ -669,7 +666,6 @@ void EditorApp::Shutdown()
     m_settings.hotReloadEnabled   = m_ctx.hotReloadEnabled;
     m_settings.aiCommandBusEnabled = m_ctx.aiCommandBusEnabled;
     m_settings.showTerrainTool    = m_ctx.showTerrainTool;
-    m_settings.showWaterTool      = m_ctx.showWaterTool;
     m_settings.gameViewportAspect = static_cast<int>(m_ctx.gameViewportAspect);
     m_settings.playFocusMode      = static_cast<int>(m_ctx.playFocusMode);
     m_settings.cameraSpeed           = m_ctx.cameraSpeed;
@@ -826,7 +822,6 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_ctx.hotReloadEnabled   = m_settings.hotReloadEnabled;
         m_ctx.aiCommandBusEnabled = m_settings.aiCommandBusEnabled;
         m_ctx.showTerrainTool    = m_settings.showTerrainTool;
-        m_ctx.showWaterTool      = m_settings.showWaterTool;
         m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(
             std::clamp(m_settings.gameViewportAspect,
                        0, static_cast<int>(EditorContext::GameViewportAspect::iPhoneLandscape)));
@@ -1415,7 +1410,6 @@ void EditorApp::EnterMapEditingMode(uint32_t dockId)
     m_terrainToolWasActive = m_terrainTool && m_terrainTool->IsActive();
     if (m_terrainTool)
         m_terrainToolModeBeforeMap = static_cast<int>(m_terrainTool->GetMode());
-    m_waterToolWasActive = m_waterTool && m_waterTool->IsActive();
 
     m_ctx.mapEditingMode = true;
     m_normalIniFilename = ImGui::GetIO().IniFilename;
@@ -1447,7 +1441,6 @@ void EditorApp::ExitMapEditingMode(uint32_t dockId)
         m_terrainTool->SetMode(
             static_cast<TerrainTool::Mode>(m_terrainToolModeBeforeMap));
     }
-    if (m_waterTool) m_waterTool->SetActive(m_waterToolWasActive);
 
     if (m_normalPanelVisibility.size() == m_panels.size()) {
         for (size_t index = 0; index < m_panels.size(); ++index)

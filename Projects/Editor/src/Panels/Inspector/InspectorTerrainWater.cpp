@@ -159,21 +159,40 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 
     DrawComponentSection<scene::WaterComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Water",
         [go](scene::WaterComponent& water, EditorContext& ctx) {
-            // ── Material (.mat) ─────────────────────────────────────────────
-            ImGui::SeparatorText("Material (.mat)");
+            // ── 水の種類 (.mat) ─────────────────────────────────────────────
+            // 色・波・風への反応・水流は .mat が丸ごと持つ。ここでは差し替えるだけで、
+            // 中身は .mat を選んで Inspector で編集する。
+            ImGui::SeparatorText("Water Type (.mat)");
+            {
+                const std::string current = NormalizeAssetPath(water.materialPath);
+                const auto presets = WaterMaterialPresets();
+                const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                const float count = static_cast<float>(presets.size());
+                const float buttonW = (ImGui::GetContentRegionAvail().x - spacing * (count - 1.0f)) / count;
+                for (size_t i = 0; i < presets.size(); ++i) {
+                    const WaterMaterialPreset& preset = presets[i];
+                    if (i > 0) ImGui::SameLine();
+                    const bool active = current == preset.path;
+                    if (active)
+                        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Secondary));
+                    if (ImGui::Button(preset.label, { buttonW, 0.0f }) && !active) {
+                        water.materialPath = preset.path;
+                        water.texDirty = true;
+                        water.foamDirty = true;
+                    }
+                    if (active)
+                        ImGui::PopStyleColor();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("%s\n%s", preset.tooltip, preset.path);
+                }
+            }
             // 変更時はテクスチャ・フォームキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", water.materialPath, ".mat", ctx.projectRoot)) {
                 water.texDirty = true;
                 water.foamDirty = true;
             }
-            if (water.materialPath.empty()) {
-                ImGui::TextDisabled("(no material — visual params missing)");
-                if (ImGui::Button("Use Default Water Material")) {
-                    water.materialPath = DefaultWaterMaterialPath();
-                    water.texDirty = true;
-                    water.foamDirty = true;
-                }
-            }
+            if (water.materialPath.empty())
+                ImGui::TextDisabled("(no material — built-in ocean waves, default look)");
 
             // ── Geometry ─────────────────────────────────────────────────────
             ImGui::Spacing();
@@ -212,49 +231,58 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 ImGui::TextDisabled("(%d x %d chunks = %d draw calls)", chunks, chunks, chunks * chunks);
             }
 
+            // ── Waves ─────────────────────────────────────────────────────────
+            ImGui::SeparatorText("Waves");
+            ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
+            ImGui::BeginDisabled(!water.enableGerstnerWaves);
+            if (ImGui::DragFloat("Amplitude Scale", &water.waveAmplitudeScale, 0.01f, 0.0f, 10.0f, "x%.2f"))
+                water.waveAmplitudeScale = (std::max)(water.waveAmplitudeScale, 0.0f);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip(".mat の波の高さに掛ける倍率。\n"
+                                  "同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるときに使います。");
+            ImGui::EndDisabled();
+            // 実際に描かれている波 (.mat × 倍率 × 環境風)。風の効き具合をここで確かめる。
+            for (size_t i = 0; i < water.waves.size(); ++i) {
+                const scene::GerstnerWave& wave = water.waves[i];
+                ImGui::TextDisabled("Wave %zu   A %.2f m   L %.1f m   Q %.2f",
+                                    i, wave.amplitude, wave.wavelength, wave.steepness);
+            }
+            if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f)
+                ImGui::TextDisabled("Current  %.2f m/s", currentSpeed);
+
             // ── Physics ───────────────────────────────────────────────────────
             ImGui::SeparatorText("Physics");
-            if (ImGui::Button("Setup Buoyancy Volume")) {
-                if (!go) return;
-                auto* box = go->GetComponent<scene::BoxColliderComponent>();
-                if (!box) box = &go->AddComponent<scene::BoxColliderComponent>();
-                box->enabled   = true;
-                box->isTrigger = true;
-                box->center    = { 0.0f, -2.5f, 0.0f };
-                box->size      = { water.extentX, 5.0f, water.extentZ };
+            ImGui::Checkbox("Buoyancy", &water.buoyancyEnabled);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("水面の範囲に入った RigidBody を浮かせます。\n"
+                                  "トリガーコライダーや Volume を別に付ける必要はありません。");
+            ImGui::BeginDisabled(!water.buoyancyEnabled);
+            ImGui::DragFloat("Lift", &water.buoyancy, 0.1f, 0.0f, 200.0f, "%.1f m/s^2");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("完全に沈んだときの上向き加速度。重力 (9.8) を超えると浮きます。");
+            ImGui::DragFloat("Drag", &water.waterDrag, 0.01f, 0.0f, 50.0f, "%.2f /s");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("水中での速度減衰。\n川では水流との速度差に掛かり、物体を流れに乗せます。");
+            if (ImGui::DragFloat("Depth", &water.buoyancyDepth, 0.1f, 0.1f, 1000.0f, "%.1f m"))
+                water.buoyancyDepth = (std::max)(water.buoyancyDepth, 0.1f);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("水面からこの深さまで浮力が届きます。");
+            ImGui::EndDisabled();
+            ImGui::Checkbox("Splash & Ripples", &water.splashEnabled);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("RigidBody が水面を通過したときに波紋としぶきを出し、\n"
+                                  "水面をまたいで進む物体には航跡を引かせます。");
 
-                auto* volume = go->GetComponent<scene::VolumeComponent>();
-                if (!volume) volume = &go->AddComponent<scene::VolumeComponent>();
-                volume->enabled  = true;
-                volume->type     = physics::VolumeType::Buoyancy;
-                volume->buoyancy = 15.0f;
-                volume->drag     = 2.0f;
-                volume->duration = -1.0f;
-                volume->elapsed  = 0.0f;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Sync Collider Size")) {
-                if (!go) return;
-                if (auto* box = go->GetComponent<scene::BoxColliderComponent>()) {
-                    box->isTrigger = true;
-                    box->size      = { water.extentX, box->size.y, water.extentZ };
+            // 以前の «Setup Buoyancy Volume» で付けた Volume は、Water の上では無視される。
+            // 残っていると «なぜ Volume の値が効かないのか» で迷うので、ここで知らせる。
+            if (go) {
+                if (const auto* volume = go->GetComponent<scene::VolumeComponent>();
+                    volume && volume->type == physics::VolumeType::Buoyancy) {
+                    ImGui::TextColored({ 1.0f, 0.75f, 0.3f, 1.0f }, "Buoyancy Volume on this object is ignored.");
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("浮力は Water 自身が持つようになりました。\n"
+                                          "Volume とトリガーコライダーは削除して構いません。");
                 }
-            }
-
-            // ── Gerstner Waves ────────────────────────────────────────────────
-            ImGui::SeparatorText("Gerstner Waves");
-            ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
-            for (int i = 0; i < static_cast<int>(water.waves.size()); ++i) {
-                auto& wave = water.waves[static_cast<size_t>(i)];
-                ImGui::PushID(i);
-                if (ImGui::TreeNodeEx("Wave", ImGuiTreeNodeFlags_DefaultOpen, "Wave %d", i)) {
-                    DragVec2("Direction", wave.direction, 0.01f, -1.0f, 1.0f);
-                    ImGui::DragFloat("Amplitude",  &wave.amplitude,  0.01f, 0.0f,  100.0f);
-                    ImGui::DragFloat("Wavelength", &wave.wavelength, 0.1f,  0.01f, 10000.0f);
-                    ImGui::DragFloat("Steepness",  &wave.steepness,  0.01f, 0.0f,  1.0f);
-                    ImGui::TreePop();
-                }
-                ImGui::PopID();
             }
         });
 

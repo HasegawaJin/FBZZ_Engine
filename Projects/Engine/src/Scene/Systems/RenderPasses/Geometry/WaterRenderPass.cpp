@@ -108,8 +108,8 @@ struct WaterRipple {
 struct WaterRippleState {
     std::vector<WaterRipple> ripples;
     std::vector<uint8_t> pixels;
-    uint32_t width = 128;
-    uint32_t height = 128;
+    uint32_t width = kWaterRippleTextureSize;
+    uint32_t height = kWaterRippleTextureSize;
     renderer::ResourceHandle<renderer::TextureTag> gpuTex;
     bool dirty = true;
 };
@@ -587,7 +587,12 @@ void AddWaterRipple(
     ripple.decayRate = (std::max)(decayRate, 0.0f);
     ripple.waveWidth = (std::max)(waveWidth, 0.005f);
 
+    // WHY 上限を置くか: 波紋テクスチャは «テクセル数 × 波紋数» を毎フレーム CPU で焼き直す。
+    //     物体を大量に水へ落とすと、波紋の数だけフレームが重くなる。古いものから捨てる。
+    constexpr size_t kMaxRipplesPerWater = 24;
     WaterRippleState& state = s_rippleStates[waterEntity.index];
+    if (state.ripples.size() >= kMaxRipplesPerWater)
+        state.ripples.erase(state.ripples.begin());
     state.ripples.push_back(ripple);
     state.dirty = true;
 }
@@ -836,6 +841,8 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     // スプラッシュ GO 生成（前フレームのキューを消費）
     for (const SplashEvent& ev : s_pendingSplashes) {
         auto& go = scene.CreateGameObject("__WaterSplash");
+        // 飛沫は数秒で消える演出用。保存に混ざると、開くたびに消えない GO が増える。
+        go.runtimeGenerated = true;
         go.transform.position = ev.worldPos;
 
         ParticleEmitter emitter;
