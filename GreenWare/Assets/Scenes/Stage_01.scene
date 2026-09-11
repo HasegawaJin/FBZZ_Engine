@@ -18,7 +18,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777583
+    aspectRatio = 1.777267
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -149,16 +149,26 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = true
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 1.0
+    outerCone = 30.0
+    range = 10.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 1.0
-    type = 'Directional'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 0
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -2787,11 +2797,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -2799,7 +2816,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -2819,11 +2836,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -2831,7 +2855,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -2851,11 +2875,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -2863,7 +2894,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -2883,11 +2914,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -2895,7 +2933,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -2915,11 +2953,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -2927,7 +2972,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -2947,11 +2992,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -2959,7 +3011,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -2979,11 +3031,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -2991,7 +3050,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3011,11 +3070,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3023,7 +3089,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3043,11 +3109,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3055,7 +3128,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3075,11 +3148,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3087,7 +3167,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3107,11 +3187,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3119,7 +3206,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3139,11 +3226,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 28.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3151,7 +3245,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3171,11 +3265,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3183,7 +3284,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3203,11 +3304,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3215,7 +3323,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3235,11 +3343,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3247,7 +3362,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3267,11 +3382,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3279,7 +3401,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3299,11 +3421,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3311,7 +3440,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3331,11 +3460,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3343,7 +3479,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3363,11 +3499,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3375,7 +3518,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3395,11 +3538,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3407,7 +3557,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3427,11 +3577,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3439,7 +3596,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3459,11 +3616,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3471,7 +3635,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3491,11 +3655,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3503,7 +3674,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3523,11 +3694,18 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 16.0
+    outerCone = 30.0
     range = 30.0
     shadowBias = 1.0
     shadowDistance = 0.0
@@ -3535,7 +3713,7 @@ tag = 'Untagged'
     shadowStrength = 0.0
     sourceLength = 19.0
     sourceRadius = 0.15
-    type = 'Tube'
+    type = 5
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3561,14 +3739,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3594,14 +3778,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3627,14 +3817,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3660,14 +3856,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3693,14 +3895,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3726,14 +3934,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3759,14 +3973,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3792,14 +4012,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3825,14 +4051,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3858,14 +4090,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3891,14 +4129,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3924,14 +4168,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3957,14 +4207,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -3990,14 +4246,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -4023,14 +4285,20 @@ tag = 'Untagged'
     castShadows = false
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 140.0
+    outerCone = 30.0
     range = 25.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 0.0
-    type = 'Area'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 3
     useColorTemperature = true
 
     [gameobjects.transform]
@@ -4489,7 +4757,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.621446, 0.758803, -17.061977 ]
-    rotation = [ 0.160268, -0.05215, 0.809176, 0.562876 ]
+    rotation = [ 0.160268, -0.05215, 0.809175, 0.562876 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5421,6 +5689,8 @@ tag = 'Player'
         debugLiveScars = 0
         debugParries = 0
         debugPhase = 'Startup'
+        debugSteelHeat = 0.0
+        debugSteelSlots = 0
         debugTargetName = ''
         debugTimeToApex = 0.588715
         debugTipSpeed = 0.0
@@ -5579,6 +5849,25 @@ tag = 'Player'
         spinClipName = 'Katana_Slash_Spin'
         spinHitTime = 0.433333
         startDrawn = true
+        steelComboHeat = 0.35
+        steelComboTemperature = 0.2
+        steelExecuteFlash = 8.4
+        steelExecuteFlashSeconds = 0.45
+        steelFinisherTemperature = 0.85
+        steelGuardHeat = 0.9
+        steelHamonCharged = 2.4
+        steelHamonCurve = 2.0
+        steelHamonFlash = 5.2
+        steelHamonFlashSeconds = 0.14
+        steelHamonIdle = 0.0
+        steelJustParryFlash = 7.6
+        steelMatch = 'SwordBlade'
+        steelParryFlash = 4.0
+        steelParryFlashSeconds = 0.22
+        steelRimReady = 1.4
+        steelSweepHeat = 1.4
+        steelSweepIntensity = 3.2
+        steelSweepSeconds = 0.16
         stopOnGeometry = true
         strideRun = 1.35
         strideWalk = 0.75
@@ -9742,13 +10031,13 @@ tag = 'Enemy'
         debrisLift = 3.5
         debrisMass = 60.0
         debrisPadding = 0.25
-        debrisRest = 2.6
         debrisRootBone = 'Thigh'
         debrisSpin = 4.0
         debugBrokenLegs = 0
         debugDebrisSpawned = 0
         debugLegMeshes = 16
         debugOutlined = 0
+        debugVents = 0
         flinchChargedScale = 2.2
         flinchForce = 95.0
         flinchOnHit = true
@@ -9761,6 +10050,7 @@ tag = 'Enemy'
         outlineLegs = true
         outlineThroughWalls = true
         outlineWidth = 0.7
+        playerTag = 'Player'
         smokeInterval = 0.3
         smokeScale = 0.8
         smokeSpread = 0.35
@@ -9773,6 +10063,13 @@ tag = 'Enemy'
         springWeight = 1.0
         staggerScale = 1.0
         toppleOnLegLossSeconds = 5.0
+        ventDamage = 1
+        ventDischarge = true
+        ventFirstDelay = 0.9
+        ventInterval = 1.1
+        ventRadius = 3.0
+        ventWarnColor = [ 1.0, 0.6, 0.18, 1.0 ]
+        ventWarnSeconds = 0.4
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -9838,10 +10135,9 @@ tag = 'Enemy'
         burstFalloff = 5.0
         burstMultiplier = 1.5
         clearHeight = 0.9
-        crackGrowSeconds = 0.12
         crackArcDegrees = 50.0
         crackArcShare = 0.75
-        crackStep = 1.25
+        crackGrowSeconds = 0.12
         crackHeatSeconds = 0.45
         crackInterval = 0.03
         crackLife = 3.5
@@ -9849,13 +10145,14 @@ tag = 'Enemy'
         crackPerBurst = 8
         crackProjectionDepth = 1.2
         crackSize = 2.2
+        crackStep = 1.25
         damage = 2
         debugDealt = false
         debugRadius = 0.0
         drawDebugBand = false
-        frontInterval = 0.12
         frontArcDegrees = 100.0
         frontArcShare = 0.7
+        frontInterval = 0.12
         frontLight = true
         frontLightColor = [ 1.0, 0.55, 0.22, 1.0 ]
         frontLightHeight = 1.1
@@ -9876,8 +10173,8 @@ tag = 'Enemy'
         ringJitter = 0.25
         ringMaxPoints = 8
         ringMinPoints = 5
-        ringStep = 2.0
         ringSpacing = 4.0
+        ringStep = 2.0
         smokeScale = 1.3
         smokeStrength = 1.0
         speed = 11.0
@@ -9911,9 +10208,11 @@ tag = 'Enemy'
         chargeMinRange = 12.0
         chargeSpeed = 13.0
         chargeWindupTime = 1.5
+        coreExecuteTempoRelief = 0.1
         crashRumble = 0.9
         crashSelfDamage = 200
         crashStunTime = 9.0
+        crippledDoubleStomp = true
         crippledSpeedScale = 0.35
         deathRumble = 1.0
         debugAct = 'Idle'
@@ -9922,7 +10221,9 @@ tag = 'Enemy'
         debugDistance = 3.993774
         debugLastHit = 'Stomp 3.7/3.2m out'
         debugReaction = '-'
+        debugTempo = 1.15
         drawDebugRanges = false
+        escalateOnLegLoss = true
         fanBeam = true
         fanBeams = 6
         fanCooldown = 16.0
@@ -9970,6 +10271,7 @@ tag = 'Enemy'
         stompTotalTime = 2.0
         telegraphBeamWidth = 1.6
         tempo = 1.15
+        tempoPerLegLost = 0.15
         turnSpeed = 70.0
         wallProbe = 4.0
 
@@ -10187,11 +10489,14 @@ tag = 'Enemy'
         [gameobjects.ScriptComponents.fields]
         chargedSlashGain = 9.0
         debugBreak = 0.0
+        debugEdge = 0
         debugLastSource = '-'
         debugState = 'Idle'
         debugStreak = 0
         decayDelay = 2.5
         decayPerSecond = 8.0
+        edgeBonus = 0.1
+        edgeCap = 5
         justParryScale = 1.5
         maxBreak = 100.0
         parryGain = 40.0
@@ -11041,7 +11346,6 @@ tag = 'Untagged'
     emitVelocity = [ 0.0, 0.0, 0.0 ]
     enabled = true
     forceFieldChannels = 4294967295
-    gravity = [ 0.0, -0.05, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 4.5
     lifetimeRandom = 0.45
@@ -11059,15 +11363,9 @@ tag = 'Untagged'
     meshShapeNormalVelocity = 0.0
     meshShapePath = ''
     meshShapeScale = 1.0
-    noiseFrequency = 0.4
-    noiseSpeed = 0.45
-    noiseStrength = 0.28
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = 0.0
     pauseWhenCulled = false
     playing = true
     prewarm = true
-    radialVelocity = 0.0
     randomSeed = 4101
     rateOverDistance = 0.0
     receiveForceFields = false
@@ -11104,7 +11402,6 @@ tag = 'Untagged'
     useSpeedColorGradient = false
     useSpeedSizeCurve = false
     useVelocityCurve = false
-    velocityDamping = 0.0
     velocitySpread = 0.12
 
         [gameobjects.ParticleEmitter.colorGradient]
@@ -11149,6 +11446,36 @@ tag = 'Untagged'
         [gameobjects.ParticleEmitter.velocityCurve]
         interp = 0
         keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, -1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 0
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.05
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 0.4
+        noiseSpeed = 0.45
+        radius = 0.0
+        space = 0
+        strength = 0.28
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 6.0 ]
@@ -11198,7 +11525,6 @@ tag = 'Untagged'
     emitVelocity = [ 0.0, -0.25, 0.0 ]
     enabled = true
     forceFieldChannels = 4294967295
-    gravity = [ 0.0, -0.12, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 11.0
     lifetimeRandom = 0.35
@@ -11216,15 +11542,9 @@ tag = 'Untagged'
     meshShapeNormalVelocity = 0.0
     meshShapePath = ''
     meshShapeScale = 1.0
-    noiseFrequency = 0.2
-    noiseSpeed = 0.15
-    noiseStrength = 0.05
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = 0.0
     pauseWhenCulled = false
     playing = true
     prewarm = true
-    radialVelocity = 0.0
     randomSeed = 4102
     rateOverDistance = 0.0
     receiveForceFields = false
@@ -11261,7 +11581,6 @@ tag = 'Untagged'
     useSpeedColorGradient = false
     useSpeedSizeCurve = false
     useVelocityCurve = false
-    velocityDamping = 0.0
     velocitySpread = 0.12
 
         [gameobjects.ParticleEmitter.colorGradient]
@@ -11306,6 +11625,36 @@ tag = 'Untagged'
         [gameobjects.ParticleEmitter.velocityCurve]
         interp = 0
         keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, -1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 0
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.12
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 0.2
+        noiseSpeed = 0.15
+        radius = 0.0
+        space = 0
+        strength = 0.05
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
 
     [gameobjects.transform]
     position = [ 0.0, 18.0, 0.0 ]
@@ -11355,7 +11704,6 @@ tag = 'Untagged'
     emitVelocity = [ 0.0, 0.55, 0.0 ]
     enabled = true
     forceFieldChannels = 4294967295
-    gravity = [ 0.0, 0.05, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 7.0
     lifetimeRandom = 0.5
@@ -11373,15 +11721,9 @@ tag = 'Untagged'
     meshShapeNormalVelocity = 0.0
     meshShapePath = ''
     meshShapeScale = 1.0
-    noiseFrequency = 0.5
-    noiseSpeed = 0.6
-    noiseStrength = 0.35
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = 0.0
     pauseWhenCulled = false
     playing = true
     prewarm = true
-    radialVelocity = 0.0
     randomSeed = 4104
     rateOverDistance = 0.0
     receiveForceFields = false
@@ -11418,7 +11760,6 @@ tag = 'Untagged'
     useSpeedColorGradient = false
     useSpeedSizeCurve = false
     useVelocityCurve = false
-    velocityDamping = 0.2
     velocitySpread = 0.25
 
         [gameobjects.ParticleEmitter.colorGradient]
@@ -11463,6 +11804,51 @@ tag = 'Untagged'
         [gameobjects.ParticleEmitter.velocityCurve]
         interp = 0
         keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, 1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 0
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.05
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 5
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.2
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 0.5
+        noiseSpeed = 0.6
+        radius = 0.0
+        space = 0
+        strength = 0.35
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
 
     [gameobjects.transform]
     position = [ 0.0, 0.5, 0.0 ]
