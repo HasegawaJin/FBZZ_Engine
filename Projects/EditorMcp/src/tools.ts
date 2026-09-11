@@ -1009,20 +1009,28 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
     }));
     server.registerTool('vfx_generate_motion_vectors', {
         description: 'フリップブックアトラスを解析してモーションベクターアトラス(<name>_mv.png)を生成します。'
-            + 'columns/rowsはアトラスの分割数です。生成後は component_set で'
-            + 'particle.motionVectorTexturePathへ割り当て、particle.motionVectorFlipbookを有効にしてください。',
+            + 'columns/rowsはアトラスの分割数です。MVは «次のコマへの移動量の逆符号» を、アトラス内の最大移動量Sで'
+            + '正規化して保存するため、パーティクルの .mat には [textures] tex5 = <name>_mv.png と'
+            + '[particle] motion_vector_strength = S / motion_vector_flipbook = true / flipbook_frame_blending = true'
+            + 'が揃っている必要があります。materialPath を渡すとこれらを自動で書き込みます (Sは他の手段では分かりません)。',
         inputSchema: {
             texturePath: z.string().min(1).max(1024),
             columns: z.number().int().min(1).max(64),
             rows: z.number().int().min(1).max(64),
             searchRadius: z.number().int().min(1).max(64).optional(),
             loop: z.boolean().optional(),
+            rowSequences: z.boolean().optional()
+                .describe('各行を独立したアニメーションとして扱う (.mat の sprite_random_row と揃える)'),
+            materialPath: z.string().min(1).max(1024).optional()
+                .describe('生成結果を割り当てるパーティクル .mat (projectRoot 相対)'),
         },
         annotations: writeAnnotations,
-    }, ({ texturePath, columns, rows, searchRadius, loop }) => run({
+    }, ({ texturePath, columns, rows, searchRadius, loop, rowSequences, materialPath }) => run({
         t: 'vfx.generateMotionVectors', texturePath, columns, rows,
         ...(searchRadius === undefined ? {} : { searchRadius }),
         ...(loop === undefined ? {} : { loop }),
+        ...(rowSequences === undefined ? {} : { rowSequences }),
+        ...(materialPath === undefined ? {} : { materialPath }),
     }));
 
     // ── Sprite ──

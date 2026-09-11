@@ -428,9 +428,15 @@ test('vfx_generate_motion_vectors は任意引数を省略した形で写像す�
             name: 'vfx_generate_motion_vectors',
             arguments: { texturePath, columns: 8, rows: 8, searchRadius: 12, loop: false },
         });
+        const materialPath = 'Assets/Materials/Smoke.mat';
+        await harness.client.callTool({
+            name: 'vfx_generate_motion_vectors',
+            arguments: { texturePath, columns: 8, rows: 8, rowSequences: true, materialPath },
+        });
         assert.deepEqual(harness.bus.commands, [
             { command: { t: 'vfx.generateMotionVectors', texturePath, columns: 8, rows: 8 }, dryRun: false },
             { command: { t: 'vfx.generateMotionVectors', texturePath, columns: 8, rows: 8, searchRadius: 12, loop: false }, dryRun: false },
+            { command: { t: 'vfx.generateMotionVectors', texturePath, columns: 8, rows: 8, rowSequences: true, materialPath }, dryRun: false },
         ]);
     } finally {
         await harness.close();

@@ -4989,18 +4989,59 @@ std::unique_ptr<ICommand> BuildCommand(editor::EditorContext& ctx, const std::st
             settings.searchRadius = radius->AsInt();
         if (const JsonValue* loopValue = payload.Find("loop"); loopValue != nullptr)
             settings.loop = loopValue->AsBool();
+        if (const JsonValue* rowValue = payload.Find("rowSequences"); rowValue != nullptr)
+            settings.rowSequences = rowValue->AsBool();
 
-        // 生成は既存アセットを書き換えず新規ファイルを足すだけなので、Undo は「何もしない」。
+        // 任意: 生成した MV と推奨 strength を .mat へ書き込む。
+        // WHY: strength は生成結果 (最大移動量) でしか決まらず、AI が別途設定する手段が無い。
+        //      生成は dryRun でもファイルを書かないよう Lambda 内で行うため、適用も同じ場所でやる。
+        fs::path materialFile;
+        std::string materialPath;
+        asset::MaterialAsset oldMaterial;
+        const bool applyToMaterial = !StringField(payload, "materialPath").empty();
+        if (applyToMaterial) {
+            if (!ResolveProjectFile(ctx, StringField(payload, "materialPath"), materialFile, materialPath)
+                || LowerAscii(materialFile.extension().string()) != ".mat"
+                || !fs::is_regular_file(materialFile)) {
+                err = Outcome::Err("MATERIAL_NOT_FOUND", "projectRoot 配下の .mat を指定してください");
+                return nullptr;
+            }
+            if (!asset::LoadMaterialAssetFromFile(materialFile.generic_string(), oldMaterial)) {
+                err = Outcome::Err("MATERIAL_READ_FAILED", "MaterialAsset を読み取れません: " + materialPath);
+                return nullptr;
+            }
+        }
+        fs::path motionRelative(texturePath);
+        motionRelative.replace_extension();
+        motionRelative += "_mv.png";
+
+        // MV の生成は新規ファイルを足すだけなので、Undo で消さない。
         // WHY: 同名の MV が既にあった場合、Undo で消すとユーザーが手で用意した
         //      アトラスを破壊しうる。生成物の削除は AssetBrowser から明示的に行わせる。
+        //      .mat を書き換えた場合だけ、その書き換えを元に戻す。
         editor::EditorContext* context = &ctx;
         const std::string resolved = textureFile.generic_string();
+        const std::string motionPath = motionRelative.generic_string();
         return std::make_unique<LambdaCommand>("AI: Generate Motion Vectors",
-            [context, resolved, settings]() {
+            [context, resolved, settings, applyToMaterial, materialFile, oldMaterial, motionPath]() {
                 const auto result = asset::GenerateFlipbookMotionVectors(resolved, settings);
-                if (result.success) context->requestAssetBrowserRefresh = true;
+                if (!result.success) return;
+                context->requestAssetBrowserRefresh = true;
+                if (!applyToMaterial) return;
+                asset::MaterialAsset updated = oldMaterial;
+                updated.textures["tex5"] = motionPath;
+                updated.particle.motionVectorFlipbook = true;
+                updated.particle.motionVectorStrength = result.recommendedStrength;
+                updated.particle.flipbookFrameBlending = true;
+                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), updated))
+                    asset::AssetManager::ReloadPath(materialFile.generic_string());
             },
-            []() {});
+            [context, applyToMaterial, materialFile, oldMaterial]() {
+                if (!applyToMaterial) return;
+                if (asset::SaveMaterialAssetToFile(materialFile.generic_string(), oldMaterial))
+                    asset::AssetManager::ReloadPath(materialFile.generic_string());
+                context->requestAssetBrowserRefresh = true;
+            });
     }
     // Sprite の編集は .meta の中だけで完結する。Scene 不要 (Sprite Editor と同じ)。
     if (type.starts_with("sprite.")) return BuildSpriteCommand(ctx, type, payload, err, detailSink);

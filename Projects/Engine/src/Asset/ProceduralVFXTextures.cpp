@@ -2,15 +2,12 @@
 /// @brief   VFX向けFlipbookとImpact DecalテクスチャのCPUプロシージャル生成実装。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-#pragma comment(lib, "ole32.lib") // DirectXTexのWIC PNGエンコーダーに必要
-
 #include <Engine/Asset/ProceduralVFXTextures.hpp>
 
-#include <Engine/Asset/TexDescSerializer.hpp>
+#include "FlipbookImageIO.hpp"
+
 #include <Engine/Asset/TextureAsset.hpp>
 
-#include <DirectXTex.h>
-#include <Windows.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -126,88 +123,13 @@ float WarpedNoise(float x, float y, float time, const ProceduralFlipbookSettings
                (y + warpY * settings.warpStrength) * scale - time, seed + 71u);
 }
 
-// 既存生成物を上書きしない連番付きベースパスを探索する。
-std::filesystem::path FindAvailableBase(const std::filesystem::path& directory,
-                                        std::string_view baseName,
-                                        std::initializer_list<std::string_view> suffixes)
-{
-    for (int index = 0; index <= 9999; ++index) {
-        std::string candidate(baseName);
-        if (index > 0) {
-            char number[8]{};
-            std::snprintf(number, sizeof(number), "_%03d", index);
-            candidate += number;
-        }
-        const std::filesystem::path base = directory / candidate;
-        bool occupied = false;
-        for (const std::string_view suffix : suffixes) {
-            std::error_code error;
-            if (std::filesystem::exists(base.string() + std::string(suffix), error)) {
-                occupied = true;
-                break;
-            }
-        }
-        if (!occupied) return base;
-    }
-    return {};
-}
+using detail::FindAvailableBase;
+using detail::SaveTextureMeta;
 
-// RGBAバッファをDirectXTexのWIC経由でPNGへ保存する。
 bool SavePng(const RgbaImage& source, const std::filesystem::path& path, std::string& outError)
 {
-    DirectX::ScratchImage image;
-    HRESULT hr = image.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM,
-                                    static_cast<std::size_t>(source.width),
-                                    static_cast<std::size_t>(source.height), 1, 1);
-    if (FAILED(hr)) {
-        outError = "PNG出力バッファを確保できません";
-        return false;
-    }
-
-    const DirectX::Image* destination = image.GetImage(0, 0, 0);
-    const std::size_t sourcePitch = static_cast<std::size_t>(source.width) * 4;
-    for (int y = 0; y < source.height; ++y) {
-        std::memcpy(destination->pixels + static_cast<std::size_t>(y) * destination->rowPitch,
-                    source.pixels.data() + static_cast<std::size_t>(y) * sourcePitch,
-                    sourcePitch);
-    }
-
-    hr = DirectX::SaveToWICFile(*destination, DirectX::WIC_FLAGS_NONE,
-                                DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), path.wstring().c_str());
-    if (FAILED(hr)) {
-        outError = "PNGを書き出せません: " + path.string();
-        return false;
-    }
-    return true;
-}
-
-// PNGと対になるインポート設定を保存し、色空間と圧縮によるチャンネル破壊を防ぐ。
-bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
-                     TextureCompression compression, AlphaMode alphaMode,
-                     bool mipmaps, std::string& outError)
-{
-    TextureAsset texture;
-    texture.sourcePath = sourcePath.string();
-    texture.settings = DefaultSettingsForType(type);
-    texture.settings.compression = compression;
-    texture.settings.alphaMode = alphaMode;
-    texture.settings.mipmaps = mipmaps;
-    texture.settings.maxSize = 16384;
-    if (!mipmaps) {
-        texture.settings.wrapU = TextureWrap::Clamp;
-        texture.settings.wrapV = TextureWrap::Clamp;
-        texture.settings.filter = TextureFilter::Bilinear;
-    }
-    // Data/Normalはチャンネル値をそのまま使うため明示的に線形化する。
-    if (type == TextureType::Data || type == TextureType::Normal)
-        texture.settings.srgb = false;
-    const std::string metaPath = sourcePath.string() + ".meta";
-    TexDescSerializer serializer;
-    if (!serializer.Save(texture, metaPath)) {
-        outError = "テクスチャ.metaを書き出せません: " + metaPath;
-        return false;
-    }
-    return true;
+    return detail::SavePngRgba8(path, static_cast<std::uint32_t>(source.width),
+                                static_cast<std::uint32_t>(source.height), source.pixels, outError);
 }
 
 // 膨張・上昇・散逸するグレースケール煙の1画素を生成する。

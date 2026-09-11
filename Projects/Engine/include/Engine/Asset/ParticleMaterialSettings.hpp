@@ -55,10 +55,13 @@ struct ParticleMaterialSettings {
     /// アトラスの各行を「見た目の異なるバリエーション」として扱い、粒子ごとに 1 行を選ぶ。
     /// 選ばれた行の中だけでアニメーションする (spriteStartFrame/EndFrame より優先)。
     bool spriteRandomRow = false;
-    /// Motion Vector アトラスは各フレームの RG を [-1,1] 速度として読み、隣接コマを双方向 warp する。
-    /// アトラスは [textures] の tex5 に置く。
+    /// Motion Vector アトラスは各フレームの RG を [-1,1] として読み、隣接コマを双方向 warp する。
+    /// アトラスは [textures] の tex5 に置く。保存値の規約は FlipbookMotionVectorEncoding.hpp。
     bool motionVectorFlipbook = false;
-    float motionVectorStrength = 1.0f;
+    /// MV アトラスを作ったときの最大移動量 S (Atlas UV)。生成器が返す recommendedStrength を入れる。
+    /// 典型値は 0.002〜0.02。既定の 0 は «warp しない» (普通のコマ補間と同じ)。
+    /// WHY 0 か: 旧既定の 1 は «Atlas 全幅ぶりずらす» 意味になり、MV を有効にした瞬間に絵が破綻する。
+    float motionVectorStrength = 0.0f;
 
     // ── ソフトパーティクル ──
     /// 背景との交差線を深度差でぼかす。板が地面へ突き刺さって見えるのを防ぐ。

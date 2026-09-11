@@ -208,6 +208,7 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
                                 result.albedoPath, mvSettings);
                             if (mvResult.success) {
                                 particle.motionVectorFlipbook = true;
+                                particle.motionVectorStrength = mvResult.recommendedStrength;
                                 material.textures["tex5"] = NormalizeAssetPath(mvResult.outputPath);
                                 procedural.status += "\n" + mvResult.message;
                             } else {
@@ -234,7 +235,10 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
             changed |= widgets::AssetPathField("Motion Vector Atlas (tex5)", material.textures["tex5"],
                                                widgets::kTextureAssetFilter, projectRoot);
             changed |= ImGui::DragFloat("Motion Strength", &particle.motionVectorStrength,
-                                        0.01f, 0.0f, 8.0f);
+                                        0.0002f, 0.0f, 1.0f, "%.4f");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("MV アトラスの最大移動量 (Atlas UV)。生成時に自動で設定されます。\n"
+                                  "生成した値以外にすると、コマの補間が行き過ぎたり足りなくなったりします。");
 
             // MV アトラスは外部ツールでしか作れず「機能はあるのに使えない」状態だったため、
             // 現在の albedo から生成してそのまま割り当てられるようにする。
@@ -255,6 +259,9 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
                 if (result.success) {
                     // 生成結果をそのまま割り当てる。手で貼り直す手間を残さない。
                     material.textures["tex5"] = NormalizeAssetPath(result.outputPath);
+                    particle.motionVectorStrength = result.recommendedStrength;
+                    // Frame Blending が無いと spriteBlend が 0 のままで、MV が一切効かない。
+                    particle.flipbookFrameBlending = true;
                     changed = true;
                 }
             }
