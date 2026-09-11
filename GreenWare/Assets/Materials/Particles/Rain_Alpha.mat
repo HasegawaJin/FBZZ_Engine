@@ -9,10 +9,10 @@ shader = 'guid:3113effe97127d6489ff713f1fbc7fa7|Assets/Shaders/Material/Effects/
 version = 1
 
 [params]
-albedo = [ 0.7799999713897705, 0.8500000238418579, 1.0, 1.0 ]
+albedo = [ 0.7803921699523926, 0.9411764740943909, 1.0, 1.0 ]
 coreSharpness = 3.0
 headSize = 0.18000000715255737
-opacity = 0.550000011920929
+opacity = 1.0
 tailFalloff = 1.600000023841858
 
 [particle]
