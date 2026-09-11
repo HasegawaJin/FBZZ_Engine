@@ -29,7 +29,6 @@
 namespace fbzz::editor {
 namespace {
 
-constexpr const char* kPresetNames[] = { "Puff", "RisingPlume", "Fireball" };
 constexpr int kVolumeResolutions[] = { 32, 48, 64, 96, 128 };
 constexpr int kTileSizes[] = { 128, 256, 512 };
 constexpr float kPreviewSides[] = { 256.0f, 384.0f, 512.0f };
@@ -63,6 +62,86 @@ bool ComboFromList(const char* label, int& value, const int (&items)[N])
         }
         ImGui::EndCombo();
     }
+    return changed;
+}
+
+// HDR のリニア色を、グラデーションのバーに塗る表示色へ。
+ImU32 ToDisplayColor(const math::Vector3& linear)
+{
+    const auto encode = [](float v) { return std::pow(std::clamp(v, 0.0f, 1.0f), 1.0f / 2.2f); };
+    return ImGui::ColorConvertFloat4ToU32({ encode(linear.x), encode(linear.y), encode(linear.z), 1.0f });
+}
+
+bool DrawRamp(asset::VolumeColorRamp& ramp)
+{
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float width = (std::max)(ImGui::CalcItemWidth(), 64.0f);
+    const float height = ImGui::GetFrameHeight();
+    constexpr int kSegments = 48;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    for (int i = 0; i < kSegments; ++i) {
+        const float t0 = static_cast<float>(i) / kSegments;
+        const float t1 = static_cast<float>(i + 1) / kSegments;
+        const math::Vector3 color = asset::EvaluateVolumeRamp(ramp, (t0 + t1) * 0.5f);
+        drawList->AddRectFilled({ origin.x + width * t0, origin.y }, { origin.x + width * t1, origin.y + height },
+                                ToDisplayColor(color));
+    }
+    ImGui::Dummy({ width, height });
+
+    bool changed = false;
+    for (int i = 0; i < asset::kVolumeRampStops; ++i) {
+        auto& stop = ramp.stops[static_cast<std::size_t>(i)];
+        ImGui::PushID(i);
+        changed |= ImGui::ColorEdit3("##Color", &stop.color.x,
+                                     ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth((std::max)(width - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x, 32.0f));
+        // 両隣の点を越えさせない。シェーダーは位置が昇順だと決め打ちで区間を探す。
+        const float lower = i > 0 ? ramp.stops[static_cast<std::size_t>(i - 1)].position : 0.0f;
+        const float upper = i + 1 < asset::kVolumeRampStops ? ramp.stops[static_cast<std::size_t>(i + 1)].position : 1.0f;
+        changed |= ImGui::SliderFloat("##Position", &stop.position, lower, (std::max)(lower, upper), "%.2f");
+        ImGui::PopID();
+    }
+    return changed;
+}
+
+bool DrawEmitterSettings(asset::VolumeEmitterSettings& e)
+{
+    bool changed = false;
+    changed |= ImGui::Checkbox("Burst", &e.burst);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("オン: 0 コマ目で全部出す一発もの\nオフ: 一定間隔で湧き続ける (Loop できる)");
+    changed |= ImGui::DragInt(e.burst ? "Count" : "Count / sec", &e.count, 1.0f, 1, 512);
+    changed |= ImGui::DragFloat3("Origin", &e.origin.x, 0.01f, -1.0f, 1.0f);
+    changed |= ImGui::DragFloat("Origin Radius", &e.originRadius, 0.005f, 0.0f, 0.5f);
+    changed |= ImGui::DragFloat3("Direction", &e.direction.x, 0.01f, -1.0f, 1.0f);
+    changed |= ImGui::SliderFloat("Cone Angle", &e.coneAngleDegrees, 0.0f, 180.0f, "%.0f deg");
+    changed |= ImGui::DragFloat("Speed", &e.speed, 0.01f, 0.0f, 5.0f);
+    changed |= ImGui::SliderFloat("Speed Random", &e.speedRandom, 0.0f, 1.0f);
+    changed |= ImGui::DragFloat3("Gravity", &e.gravity.x, 0.01f, -10.0f, 10.0f);
+    changed |= ImGui::DragFloat("Drag", &e.drag, 0.01f, 0.0f, 10.0f);
+    changed |= ImGui::DragFloat("Lifetime", &e.lifetime, 0.01f, 0.05f, 10.0f, "%.2f s");
+    changed |= ImGui::SliderFloat("Lifetime Random", &e.lifetimeRandom, 0.0f, 1.0f);
+    changed |= ImGui::DragFloat("Fade In", &e.fadeIn, 0.01f, 0.0f, 5.0f, "%.2f s");
+    changed |= ImGui::DragFloat("Fade Out", &e.fadeOut, 0.01f, 0.0f, 5.0f, "%.2f s");
+    changed |= ImGui::DragFloat("Radius", &e.radius, 0.002f, 0.005f, 0.5f);
+    changed |= ImGui::SliderFloat("Radius Random", &e.radiusRandom, 0.0f, 1.0f);
+    changed |= ImGui::DragFloat("Growth", &e.growth, 0.01f, 0.1f, 5.0f, "x%.2f");
+    changed |= ImGui::DragFloat("Spin", &e.spin, 0.05f, 0.0f, 20.0f, "%.2f rad/s");
+    changed |= ImGui::DragFloat("Density", &e.density, 0.01f, 0.0f, 5.0f);
+    changed |= ImGui::SliderFloat("Temperature", &e.temperature, 0.0f, 1.0f);
+    changed |= ImGui::DragFloat("Cooling Time", &e.coolingTime, 0.01f, 0.01f, 10.0f, "%.2f s");
+    changed |= ImGui::SliderFloat("Liquid", &e.liquid, 0.0f, 1.0f);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("0 = 煙 / 1 = 液体 (表面と反射を持つ)。描き方は Look > Liquid で決めます。");
+    changed |= ImGui::SliderFloat("Noise Scale", &e.noiseScale, 0.0f, 1.0f);
+    changed |= ImGui::DragFloat("Stretch", &e.stretch, 0.01f, 1.0f, 6.0f);
+    changed |= ImGui::DragFloat("Stretch / Speed", &e.stretchPerSpeed, 0.01f, 0.0f, 5.0f);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("進行方向への伸び = Stretch + Stretch/Speed × 速さ。速い液滴ほど細長い筋になります。");
+    changed |= ImGui::DragFloatRange2("Color Key", &e.colorKeyMin, &e.colorKeyMax, 0.01f, 0.0f, 1.0f);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("puff ごとにこの範囲から乱数で選び、Look > Albedo Ramp の色を引きます。");
     return changed;
 }
 
@@ -254,11 +333,25 @@ void VolumeFlipbookBakePanel::DrawSourceSettings()
     auto& source = m_settings.source;
     bool changed = false;
 
-    int preset = static_cast<int>(source.preset);
-    if (ImGui::Combo("Preset", &preset, kPresetNames, IM_ARRAYSIZE(kPresetNames))) {
-        source.preset = static_cast<asset::VolumeFlipbookPreset>(preset);
-        changed = true;
+    if (ImGui::BeginCombo("Preset", source.preset.c_str())) {
+        for (const asset::VolumeSourceDesc& desc : asset::VolumeSources()) {
+            const bool selected = desc.name == source.preset;
+            if (ImGui::Selectable(desc.name.c_str(), selected) && !selected) {
+                source.preset = desc.name;
+                // 似合う Look (液体の色・炎の明るさ) はソースごとに違う。選び直したら推奨へ寄せる。
+                asset::ApplyVolumeSourceLook(m_settings);
+                changed = true;
+            }
+            if (ImGui::IsItemHovered() && !desc.description.empty())
+                ImGui::SetTooltip("%s", desc.description.c_str());
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
     }
+    if (const asset::VolumeSourceDesc* desc = asset::FindVolumeSource(source.preset); desc == nullptr)
+        ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "登録されていないソースです: %s", source.preset.c_str());
+    else if (!desc->description.empty())
+        ImGui::TextDisabled("%s", desc->description.c_str());
     int seed = static_cast<int>(source.seed);
     if (ImGui::DragInt("Seed", &seed, 1.0f, 0, 1000000)) {
         source.seed = static_cast<std::uint32_t>((std::max)(seed, 0));
@@ -271,14 +364,17 @@ void VolumeFlipbookBakePanel::DrawSourceSettings()
         source.frameDt = 1.0f / std::clamp(framesPerSecond, 4.0f, 120.0f);
         changed = true;
     }
-    if (source.preset != asset::VolumeFlipbookPreset::RisingPlume)
-        ImGui::TextDisabled("一発ものは焼く長さ全体で動きが決まります (コマ数や FPS を変えても構図は同じ)。");
     changed |= ImGui::DragFloat("Start Time (-1 = preset)", &source.startTime, 0.01f, -1.0f, 30.0f, "%.2f");
-    if (source.preset == asset::VolumeFlipbookPreset::RisingPlume) {
+    if (asset::VolumeSourceCanLoop(source)) {
         changed |= ImGui::Checkbox("Loop", &source.loop);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("最終コマの次が先頭コマに厳密に繋がるよう、湧く間隔を調整します。\n"
                               "マテリアルは FPS モードで再生します。");
+    }
+    if (source.preset == asset::kVolumeEmitterSourceName
+        && ImGui::TreeNodeEx("Emitter", ImGuiTreeNodeFlags_DefaultOpen)) {
+        changed |= DrawEmitterSettings(source.emitter);
+        ImGui::TreePop();
     }
     changed |= ComboFromList("Volume Resolution", m_settings.volumeResolution, kVolumeResolutions);
     changed |= ComboFromList("Tile Size", m_settings.tileSize, kTileSizes);
@@ -295,6 +391,12 @@ void VolumeFlipbookBakePanel::DrawSourceSettings()
 void VolumeFlipbookBakePanel::DrawLookSettings()
 {
     bool changed = false;
+    if (ImGui::SmallButton("Reset Look")) {
+        asset::ApplyVolumeSourceLook(m_settings);
+        changed = true;
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("選んでいるソースの推奨 Look へ戻します (カメラと光の向きはそのまま)。");
     changed |= ImGui::SliderFloat("Camera Yaw", &m_settings.cameraYawDegrees, -180.0f, 180.0f, "%.0f deg");
     changed |= ImGui::DragFloat("Framing", &m_settings.halfExtent, 0.01f, 0.3f, 2.0f);
     if (ImGui::IsItemHovered())
@@ -305,7 +407,7 @@ void VolumeFlipbookBakePanel::DrawLookSettings()
     changed |= ImGui::ColorEdit3("Light Color", &m_settings.lightColor.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
     changed |= ImGui::ColorEdit3("Ambient", &m_settings.ambient.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
     changed |= ImGui::DragFloat("Extinction", &m_settings.extinction, 0.1f, 0.0f, 100.0f);
-    changed |= ImGui::SliderFloat("Smoke Albedo", &m_settings.smokeAlbedo, 0.0f, 1.0f);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("煙の濃さ。液体の濃さは Liquid > Extinction です。");
     changed |= ImGui::SliderFloat("Anisotropy", &m_settings.anisotropy, -0.9f, 0.9f);
     changed |= ImGui::DragFloat("Emission", &m_settings.emissionIntensity, 0.1f, 0.0f, 100.0f);
     if (ImGui::IsItemHovered())
@@ -316,12 +418,41 @@ void VolumeFlipbookBakePanel::DrawLookSettings()
                           "マテリアルの HDR Emissive に 1/Exposure を入れて明るさを戻します。");
     changed |= ImGui::DragInt("Ray Steps", &m_settings.raySteps, 1.0f, 16, 512);
     changed |= ImGui::DragInt("Shadow Steps", &m_settings.shadowSteps, 1.0f, 1, 64);
+
+    if (ImGui::TreeNode("Albedo Ramp")) {
+        ImGui::TextDisabled("puff の Color Key → 煙と液体の色");
+        changed |= DrawRamp(m_settings.albedoRamp);
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Emission Ramp")) {
+        ImGui::TextDisabled("温度 → 発光の色 (左 = 冷えた / 右 = 最も熱い)");
+        changed |= DrawRamp(m_settings.emissionRamp);
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Liquid")) {
+        auto& liquid = m_settings.liquid;
+        changed |= ImGui::DragFloat("Threshold", &liquid.threshold, 0.005f, 0.05f, 1.5f);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("密度がこの値を跨ぐところを液体の表面にします。");
+        changed |= ImGui::DragFloat("Softness", &liquid.softness, 0.002f, 0.005f, 0.5f);
+        changed |= ImGui::DragFloat("Extinction", &liquid.extinction, 0.5f, 0.0f, 200.0f);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("大きいほど不透明 (血)、小さいほど透ける (水)。");
+        changed |= ImGui::DragFloat("Specular", &liquid.specular, 0.01f, 0.0f, 4.0f);
+        changed |= ImGui::DragFloat("Gloss", &liquid.gloss, 1.0f, 1.0f, 512.0f);
+        changed |= ImGui::SliderFloat("Fresnel F0", &liquid.fresnelF0, 0.0f, 0.2f, "%.3f");
+        ImGui::TreePop();
+    }
     if (changed) MarkSettingsChanged();
 }
 
 void VolumeFlipbookBakePanel::DrawFramingWarnings()
 {
-    if (m_framing.boxCutFrames == 0 && m_framing.tileCutFrames == 0) return;
+    if (m_framing.boxCutFrames == 0 && m_framing.tileCutFrames == 0 && m_framing.overflowFrames == 0) return;
+    if (m_framing.overflowFrames > 0) {
+        ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "puff が多すぎます (最大 %u / 上限 %u): %s",
+                           m_framing.maxLivePuffs, asset::kVolumeFillMaxPuffs,
+                           DescribeFrameRange(m_framing.frameIssues, asset::kFramingTooManyPuffs).c_str());
+        ImGui::TextDisabled("  上限を超えた分は描かれません。Count か Lifetime を下げてください。");
+    }
     if (m_framing.boxCutFrames > 0) {
         ImGui::TextColored({ 1.0f, 0.45f, 0.3f, 1.0f }, "箱の面で煙が切れます: %s",
                            DescribeFrameRange(m_framing.frameIssues, asset::kFramingCutByVolumeBox).c_str());
@@ -397,7 +528,9 @@ void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
         ? m_framing.frameIssues[static_cast<std::size_t>(frame)] : 0;
     if (issues != 0 && !busy) {
         drawList->AddRect(imageMin, imageMax, kWarningColor, 0.0f, 0, 3.0f);
-        const char* label = (issues & asset::kFramingCutByVolumeBox) ? "箱の面で切れる" : "タイルの縁で切れる";
+        const char* label = (issues & asset::kFramingCutByVolumeBox) ? "箱の面で切れる"
+            : (issues & asset::kFramingCutByTileEdge)                ? "タイルの縁で切れる"
+                                                                     : "puff が多すぎる";
         drawList->AddText({ imageMin.x + 6.0f, imageMax.y - 20.0f }, kWarningColor, label);
     }
 
@@ -468,8 +601,8 @@ void VolumeFlipbookBakePanel::StartBake(EditorContext& ctx)
     if (ctx.resources == nullptr) return;
     asset::VolumeFlipbookBakeSettings settings = m_settings;
     settings.outputDirectory = GeneratedDirectory(ctx.projectRoot, "Assets/Textures/Generated/VFX");
-    settings.baseName = std::string(m_baseName.data()) + "_"
-        + kPresetNames[static_cast<int>(settings.source.preset)] + "_" + std::to_string(settings.source.seed);
+    settings.baseName = std::string(m_baseName.data()) + "_" + settings.source.preset + "_"
+        + std::to_string(settings.source.seed);
 
     std::string error;
     if (!m_baker.Begin(settings, *ctx.resources, error)) {
@@ -495,8 +628,8 @@ void VolumeFlipbookBakePanel::DrawBake(EditorContext& ctx)
         return;
     }
     if (ImGui::Button("Bake", { -1.0f, 0.0f })) StartBake(ctx);
-    if (m_framing.boxCutFrames > 0 || m_framing.tileCutFrames > 0)
-        ImGui::TextDisabled("構図の警告が出ています。このまま焼くと縁で切れたコマが入ります。");
+    if (m_framing.boxCutFrames > 0 || m_framing.tileCutFrames > 0 || m_framing.overflowFrames > 0)
+        ImGui::TextDisabled("構図の警告が出ています。このまま焼くと欠けたコマが入ります。");
     if (!m_status.empty()) {
         if (m_statusIsError)
             ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", m_status.c_str());
@@ -559,7 +692,7 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
     particle.motionVectorStrength = result.recommendedStrength;
     particle.emissiveScale = result.suggestedEmissiveScale;
     particle.distortion = false;
-    if (m_settings.source.loop && m_settings.source.preset == asset::VolumeFlipbookPreset::RisingPlume) {
+    if (asset::VolumeSourceLoops(m_settings.source)) {
         particle.flipbookMode = scene::ParticleFlipbookMode::FramesPerSecond;
         particle.flipbookFramesPerSecond = 1.0f / m_settings.source.frameDt;
     } else {

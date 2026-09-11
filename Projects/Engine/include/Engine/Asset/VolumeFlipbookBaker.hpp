@@ -14,10 +14,12 @@
 
 #include <Engine/Asset/FlipbookMotionVectorEncoding.hpp>
 #include <Engine/Asset/VolumeFlipbookAnalytic.hpp>
+#include <Engine/Asset/VolumeFlipbookSources.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -25,6 +27,42 @@
 namespace fbzz::renderer { class IRenderer; class ResourceManager; }
 
 namespace fbzz::asset {
+
+inline constexpr int kVolumeRampStops = 4;
+
+struct VolumeRampStop {
+    math::Vector3 color;
+    float position = 0.0f;
+};
+
+/// 4 点の折れ線グラデーション。position は昇順であること (EvaluateVolumeRamp は並べ替えない)。
+struct VolumeColorRamp {
+    std::array<VolumeRampStop, kVolumeRampStops> stops{};
+};
+
+/// VolumeRaymarch.hlsl の EvaluateRamp の写し。
+[[nodiscard]] math::Vector3 EvaluateVolumeRamp(const VolumeColorRamp& ramp, float t);
+/// 全点が同じ色。
+[[nodiscard]] VolumeColorRamp UniformVolumeRamp(const math::Vector3& color);
+/// 左端から右端へ等間隔に 4 色を置く。
+[[nodiscard]] VolumeColorRamp EvenVolumeRamp(const math::Vector3& c0, const math::Vector3& c1,
+                                             const math::Vector3& c2, const math::Vector3& c3);
+/// 温度 → 黒 → 暗い赤 → 橙 → ほぼ白。
+[[nodiscard]] VolumeColorRamp DefaultFireRamp();
+
+/// liquid が 1 の puff の描き方。密度が threshold を跨ぐところを表面として陰影を付ける。
+struct VolumeLiquidSettings {
+    float threshold = 0.35f;
+    /// 表面の厚み (密度の幅)。小さいほど縁が硬い。
+    float softness = 0.08f;
+    /// 大きいほど不透明 (血)、小さいほど透ける (水)。
+    float extinction = 60.0f;
+    float specular = 1.0f;
+    /// 鏡面反射の鋭さ (Blinn-Phong の指数)。
+    float gloss = 96.0f;
+    /// 正面から見た反射率 (水 0.02)。
+    float fresnelF0 = 0.02f;
+};
 
 struct VolumeFlipbookBakeSettings {
     VolumeSourceSettings source;
@@ -45,7 +83,11 @@ struct VolumeFlipbookBakeSettings {
     math::Vector3 lightColor{ 3.0f, 2.85f, 2.7f };
     math::Vector3 ambient{ 0.25f, 0.28f, 0.33f };
     float extinction = 10.0f;
-    float smokeAlbedo = 0.8f;
+    /// puff の colorKey → 散乱の色 (液体は表面の色)。
+    VolumeColorRamp albedoRamp = UniformVolumeRamp({ 0.8f, 0.8f, 0.8f });
+    /// 温度 → 発光の色。
+    VolumeColorRamp emissionRamp = DefaultFireRamp();
+    VolumeLiquidSettings liquid;
     float anisotropy = 0.3f;
     /// 不透明な炎の芯 (温度 1) の輝度。
     float emissionIntensity = 6.0f;
@@ -71,12 +113,16 @@ struct VolumeFlipbookCamera {
 
 inline constexpr std::uint8_t kFramingCutByVolumeBox = 1u << 0; ///< 箱 [-1,1] の面で煙が切れる
 inline constexpr std::uint8_t kFramingCutByTileEdge = 1u << 1;  ///< タイルの縁で煙が切れる
+inline constexpr std::uint8_t kFramingTooManyPuffs = 1u << 2;   ///< kVolumeFillMaxPuffs を超えて捨てる puff がある
 
 struct VolumeFramingReport {
-    /// コマごとの kFramingCut* のビット和。
+    /// コマごとの kFraming* のビット和。
     std::vector<std::uint8_t> frameIssues;
     int boxCutFrames = 0;
     int tileCutFrames = 0;
+    int overflowFrames = 0;
+    /// 1 コマに同時に生きている puff の最大数。
+    std::uint32_t maxLivePuffs = 0;
 };
 
 /// 焼く前に、各コマで煙が箱やタイルの縁にかかりそうかを解析的に見積もる。
@@ -176,6 +222,13 @@ private:
     renderer::ResourceHandle<renderer::PipelineStateTag> m_pipeline;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_fillConstants;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_raymarchConstants;
+    /// WHY 輪番で使うか: DX12 の DYNAMIC な StructuredBuffer は 1 枚の Upload Heap へ直接 memcpy する。
+    ///     1 枚を毎フレーム書き換えると、まだ GPU が読んでいない前のフレームの puff を上書きしてしまう
+    ///     (フレームは最大 2 枚まで同時に走る)。3 枚を回せば、書く 1 枚は必ず読み終わっている。
+    static constexpr std::size_t kPuffBufferRing = 3;
+    std::array<renderer::ResourceHandle<renderer::StructuredBufferTag>, kPuffBufferRing> m_puffBuffers{};
+    std::size_t m_puffRing = 0;
+    VolumeFillFrame m_fill;
     renderer::ResourceHandle<renderer::TextureTag> m_medium;
     renderer::ResourceHandle<renderer::TextureTag> m_velocity;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_target;
