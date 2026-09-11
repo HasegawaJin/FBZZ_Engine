@@ -1004,11 +1004,28 @@ AssetManager::AllocMaterialSlot(std::unique_ptr<MaterialAsset> asset)
     return { id, slot.gen };
 }
 
+// .mat のキャッシュキー。解決できる guid 参照は "Assets/..." 相対へ寄せる。
+//
+// WHY: シーンは "guid:<hex>|Assets/X.mat"、Inspector や D&D は "Assets/X.mat" で
+//      同じファイルを引く。キーが分かれると実体が 2 つでき、Inspector で触った側の
+//      編集が描画している側へ届かない (ディスクへ保存してホットリロードが走るまで)。
+//      切れた参照は元のキーのまま通し、ResolvePath の «参照切れ» 報告を残す。
+static std::string CanonicalMaterialKey(const std::string& normalizedKey)
+{
+    if (!AssetDatabase::IsGuidRef(normalizedKey)) return normalizedKey;
+    std::string abs = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(normalizedKey));
+    if (abs.empty() || !util::FileSystem::Exists(abs)) return normalizedKey;
+    std::replace(abs.begin(), abs.end(), '\\', '/');
+    const std::string root = AssetDatabase::AssetsRoot();
+    if (root.empty() || !StartsWithCI(abs, root.c_str())) return normalizedKey;
+    return "Assets/" + abs.substr(root.size());
+}
+
 renderer::ResourceHandle<renderer::MaterialAssetTag>
 AssetManager::LoadMaterial(const std::string& relativePath)
 {
     assert(s_initialized);
-    const std::string key = Normalize(relativePath);
+    const std::string key = CanonicalMaterialKey(Normalize(relativePath));
     auto it = s_materials.find(key);
     if (it != s_materials.end()) return it->second;
 
@@ -1031,7 +1048,7 @@ MaterialAsset* AssetManager::GetMaterial(renderer::ResourceHandle<renderer::Mate
 
 void AssetManager::UnloadMaterial(const std::string& relativePath)
 {
-    const std::string key = Normalize(relativePath);
+    const std::string key = CanonicalMaterialKey(Normalize(relativePath));
     auto it = s_materials.find(key);
     if (it == s_materials.end()) return;
     const auto h = it->second;
