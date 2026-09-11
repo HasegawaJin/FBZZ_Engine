@@ -316,7 +316,8 @@ export type EditorCommand =
     // 動く骨格を取り込む。path は存在しなくてよい (新規作成される)。
     | { t: 'bt.template.apply'; template: string; path: string;
         name?: string | undefined; description?: string | undefined }
-    | { t: 'vfx.generateMotionVectors'; texturePath: string; columns: number; rows: number; searchRadius?: number | undefined; loop?: boolean | undefined }
+    | { t: 'vfx.generateMotionVectors'; texturePath: string; columns: number; rows: number; searchRadius?: number | undefined; loop?: boolean | undefined;
+        rowSequences?: boolean | undefined; materialPath?: string | undefined }
     // Sprite の名前は「参照キーを兼ねる別名」。ID は触らないので、名前を付け直しても
     // 保存済みの参照は切れない。slice も重なりで ID を引き継ぐ。
     | { t: 'sprite.rename'; path: string; sprite: string; name: string }
@@ -448,7 +449,10 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
         z.object({ t: z.literal('vfx.generateMotionVectors'), texturePath: z.string().min(1).max(1024),
             columns: z.number().int().min(1).max(64), rows: z.number().int().min(1).max(64),
             searchRadius: z.number().int().min(1).max(64).optional(),
-            loop: z.boolean().optional() }).strict(),
+            loop: z.boolean().optional(),
+            rowSequences: z.boolean().optional(),
+            // 推奨 strength は生成結果でしか決まらないため、渡されたら .mat へ直接書き込む。
+            materialPath: z.string().min(1).max(1024).optional() }).strict(),
         // ── Sprite ──
         z.object({ t: z.literal('sprite.rename'), path: z.string().min(1).max(1024),
             sprite: z.string().min(1).max(256), name: z.string().min(1).max(128) }).strict(),
