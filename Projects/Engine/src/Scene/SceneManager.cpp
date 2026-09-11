@@ -28,6 +28,7 @@
 #include "Engine/Scene/Systems/UIAudioSystem.hpp"
 #include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
 #include "Engine/Scene/Systems/WeatherSystem.hpp"
+#include "Engine/Scene/Systems/WaterSystem.hpp"
 #include "Engine/Scene/Systems/SequenceSystem.hpp"
 #include "Engine/Scene/Systems/VFXSystem.hpp"
 #include "Engine/Scene/Systems/VFXBeamSystem.hpp"
@@ -68,6 +69,7 @@ void SceneManager::BuildScheduler()
 
     // PostPhysics
     m_scheduler.AddSystem<TransformPostPhysics>();
+    m_scheduler.AddSystem<WaterSystem>();
 
     // Navigation
     // 実行順は各 System の OrderingHints が決める:

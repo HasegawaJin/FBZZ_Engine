@@ -2287,7 +2287,7 @@ tag = 'Untagged'
     enabled = true
     extentX = 1000.0
     extentZ = 1000.0
-    materialPath = 'Assets/Materials/Water/Water.mat'
+    materialPath = 'Assets/Materials/Water/Ocean.mat'
     resolutionX = 64
     resolutionZ = 64
 

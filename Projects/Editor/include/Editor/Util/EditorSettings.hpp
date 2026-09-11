@@ -86,12 +86,11 @@ struct EditorSettings {
 
     // --- ツールウィンドウ表示 ---------------------------------------------
     bool        showTerrainTool  = false;
-    bool        showWaterTool    = false;
 
     // --- Map Mode フィルター ----------------------------------------------
     bool        mapHierarchyFilter = true;
     bool        mapInspectorFilter = true;
-    // EditorContext::MapTool の整数値。0=TerrainSculpt … 5=Grid
+    // EditorContext::MapTool の整数値。0=TerrainSculpt 1=TerrainPaint 2=Grid
     int         mapActiveTool      = 0;
 
     // --- Hierarchy --------------------------------------------------------

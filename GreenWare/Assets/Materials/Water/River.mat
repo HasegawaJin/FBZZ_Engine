@@ -43,6 +43,24 @@ smoothness = 0.88
 specularStrength = 0.7
 sssColor = [ 0.10, 0.40, 0.26 ]
 sssStrength = 0.5
+currentSpeed = 1.5
+wave0Amplitude = 0.1
+wave0Direction = [ 0.0, 1.0 ]
+wave0Steepness = 0.3
+wave0Wavelength = 5.0
+wave1Amplitude = 0.07
+wave1Direction = [ 0.1, 0.99 ]
+wave1Steepness = 0.25
+wave1Wavelength = 3.0
+wave2Amplitude = 0.05
+wave2Direction = [ -0.1, 1.0 ]
+wave2Steepness = 0.2
+wave2Wavelength = 7.0
+wave3Amplitude = 0.03
+wave3Direction = [ 0.05, 0.99 ]
+wave3Steepness = 0.15
+wave3Wavelength = 2.5
+windResponse = 0.2
 
 [textures]
 albedo = ''

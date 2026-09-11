@@ -1698,7 +1698,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             goTbl.insert("TerrainGridComponent", std::move(tbl));
         }
 
-        // WaterComponent — ジオメトリ・波・materialPath のみ保存。視覚パラメータは fzmat に委譲。
+        // WaterComponent — ジオメトリ・個体の補正・浮力・materialPath のみ保存。
+        // 水の種類 (色・波・風・水流) は .mat が持つ。waves / current は WaterSystem が毎フレーム作る。
         if (auto* water = go.GetComponent<WaterComponent>()) {
             toml::table waterTbl;
             waterTbl.insert("enabled",             water->enabled);
@@ -1709,16 +1710,12 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             waterTbl.insert("resolutionZ",         static_cast<int64_t>(water->resolutionZ));
             waterTbl.insert("chunkCount",          static_cast<int64_t>(water->chunkCount));
             waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
-            toml::array wavesArr;
-            for (const auto& w : water->waves) {
-                toml::table waveTbl;
-                waveTbl.insert("direction",  Vec2ToArr(w.direction));
-                waveTbl.insert("amplitude",  static_cast<double>(w.amplitude));
-                waveTbl.insert("wavelength", static_cast<double>(w.wavelength));
-                waveTbl.insert("steepness",  static_cast<double>(w.steepness));
-                wavesArr.push_back(std::move(waveTbl));
-            }
-            waterTbl.insert("waves", std::move(wavesArr));
+            waterTbl.insert("waveAmplitudeScale",  static_cast<double>(water->waveAmplitudeScale));
+            waterTbl.insert("buoyancyEnabled",     water->buoyancyEnabled);
+            waterTbl.insert("buoyancy",            static_cast<double>(water->buoyancy));
+            waterTbl.insert("waterDrag",           static_cast<double>(water->waterDrag));
+            waterTbl.insert("buoyancyDepth",       static_cast<double>(water->buoyancyDepth));
+            waterTbl.insert("splashEnabled",       water->splashEnabled);
             goTbl.insert("WaterComponent", std::move(waterTbl));
         }
 
@@ -2603,7 +2600,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             go.AddComponent<TerrainGridComponent>(std::move(tgc));
         }
 
-        // WaterComponent — ジオメトリ・波・materialPath のみロード。視覚パラメータは fzmat から。
+        // WaterComponent — ジオメトリ・個体の補正・浮力・materialPath のみロード。水の種類は .mat から。
         if (auto* waterTbl = (*goTbl)["WaterComponent"].as_table()) {
             WaterComponent water{};
             water.enabled             = (*waterTbl)["enabled"].value_or(true);
@@ -2617,20 +2614,13 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             water.chunkCount          = static_cast<uint32_t>(
                 std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
             water.enableGerstnerWaves = (*waterTbl)["enableGerstnerWaves"].value_or(true);
-
-            if (auto* wavesArr = (*waterTbl)["waves"].as_array()) {
-                size_t wi = 0;
-                for (auto& waveNode : *wavesArr) {
-                    if (wi >= water.waves.size()) break;
-                    if (auto* waveTbl = waveNode.as_table()) {
-                        auto& w      = water.waves[wi++];
-                        w.direction  = ArrToVec2((*waveTbl)["direction"].as_array(), { 1.0f, 0.0f });
-                        w.amplitude  = static_cast<float>((*waveTbl)["amplitude"].value_or(0.5));
-                        w.wavelength = static_cast<float>((*waveTbl)["wavelength"].value_or(10.0));
-                        w.steepness  = static_cast<float>((*waveTbl)["steepness"].value_or(0.5));
-                    }
-                }
-            }
+            water.waveAmplitudeScale  = static_cast<float>((*waterTbl)["waveAmplitudeScale"].value_or(1.0));
+            water.buoyancyEnabled     = (*waterTbl)["buoyancyEnabled"].value_or(true);
+            water.buoyancy            = static_cast<float>((*waterTbl)["buoyancy"].value_or(15.0));
+            water.waterDrag           = static_cast<float>((*waterTbl)["waterDrag"].value_or(2.0));
+            water.buoyancyDepth       = static_cast<float>((*waterTbl)["buoyancyDepth"].value_or(10.0));
+            water.splashEnabled       = (*waterTbl)["splashEnabled"].value_or(true);
+            // 旧形式の "waves" 配列は読まない。波は .mat へ移った (WaterComponent.hpp の WHY)。
 
             water.meshDirty = true;
             water.foamDirty = true;

@@ -149,21 +149,31 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
     castShadows = true
     color = [ 1.0, 1.0, 1.0 ]
     colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
     enabled = true
+    innerCone = 15.0
     intensity = 1.0
+    outerCone = 30.0
+    range = 10.0
     shadowBias = 1.0
     shadowDistance = 0.0
     shadowNearPlane = 0.1
     shadowStrength = 1.0
-    type = 'Directional'
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 0
     useColorTemperature = true
 
     [gameobjects.transform]
     position = [ 0.098, 33.136452, 0.004797 ]
-    rotation = [ -0.158863, 0.289674, -0.894559, 0.301025 ]
+    rotation = [ 0.363267, 0.894023, -0.094506, -0.244598 ]
     scale = [ 0.999992, 1.0, 0.999995 ]
 
 [[gameobjects]]
@@ -355,7 +365,6 @@ tag = 'Untagged'
     emitVelocity = [ 0.0, 0.0, 0.0 ]
     enabled = true
     forceFieldChannels = 4294967295
-    gravity = [ 0.0, -0.05, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 4.5
     lifetimeRandom = 0.45
@@ -373,15 +382,9 @@ tag = 'Untagged'
     meshShapeNormalVelocity = 0.0
     meshShapePath = ''
     meshShapeScale = 1.0
-    noiseFrequency = 0.4
-    noiseSpeed = 0.45
-    noiseStrength = 0.28
-    orbitalAxis = [ 0.0, 1.0, 0.0 ]
-    orbitalVelocity = 0.0
     pauseWhenCulled = false
     playing = true
     prewarm = true
-    radialVelocity = 0.0
     randomSeed = 4101
     rateOverDistance = 0.0
     receiveForceFields = false
@@ -418,7 +421,6 @@ tag = 'Untagged'
     useSpeedColorGradient = false
     useSpeedSizeCurve = false
     useVelocityCurve = false
-    velocityDamping = 0.0
     velocitySpread = 0.12
 
         [gameobjects.ParticleEmitter.colorGradient]
@@ -464,6 +466,36 @@ tag = 'Untagged'
         interp = 0
         keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
 
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 0.0, -1.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 0
+        noiseFrequency = 0.5
+        noiseSpeed = 1.0
+        radius = 0.0
+        space = 0
+        strength = 0.05
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
+        [[gameobjects.ParticleEmitter.localForces]]
+        channels = 4294967295
+        direction = [ 1.0, 0.0, 0.0 ]
+        enabled = true
+        falloffPower = 2.0
+        fieldType = 4
+        noiseFrequency = 0.4
+        noiseSpeed = 0.45
+        radius = 0.0
+        space = 0
+        strength = 0.28
+        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
+        vectorFieldPath = ''
+        vectorFieldTightness = 0.0
+
     [gameobjects.transform]
     position = [ 0.0, 0.0, 6.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
@@ -481,38 +513,20 @@ prefabSourceId = ''
 tag = 'Untagged'
 
     [gameobjects.WaterComponent]
+    buoyancy = 15.0
+    buoyancyDepth = 10.0
+    buoyancyEnabled = true
     chunkCount = 16
     enableGerstnerWaves = true
     enabled = true
     extentX = 512.0
     extentZ = 512.0
-    materialPath = 'guid:bb147ae4d42b4af38214ae4e8e2dd608|Assets/Materials/Water/Water.mat'
+    materialPath = 'guid:bb147ae4d42b4af38214ae4e8e2dd608|Assets/Materials/Water/Ocean.mat'
     resolutionX = 512
     resolutionZ = 512
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.35
-        direction = [ 1.0, 0.2 ]
-        steepness = 0.4
-        wavelength = 14.0
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.2
-        direction = [ -0.3, 0.95 ]
-        steepness = 0.3
-        wavelength = 22.0
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.15
-        direction = [ 0.7, -0.7 ]
-        steepness = 0.25
-        wavelength = 9.0
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.1
-        direction = [ -0.9, 0.4 ]
-        steepness = 0.2
-        wavelength = 18.0
+    splashEnabled = true
+    waterDrag = 2.0
+    waveAmplitudeScale = 1.0
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]

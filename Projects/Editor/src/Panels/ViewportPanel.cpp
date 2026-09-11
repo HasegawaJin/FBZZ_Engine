@@ -69,7 +69,7 @@ void DrawMapToolOverlay(EditorContext& ctx, const ImVec2& viewportMin)
     ImGui::PopStyleVar(2);
 }
 
-// Scene View フォーカス中の数字キー (1-6) で Map ツールを切り替える。
+// Scene View フォーカス中の数字キー (1 からツールの数まで) で Map ツールを切り替える。
 // WHY: カメラブックマークと同じ 1-9 キーを使うため、Map Editing Mode 中だけツール切替を優先する。
 // @return true if a key consumed the input (呼び出し側はブックマーク処理をスキップする)
 bool HandleMapToolHotkeys(EditorContext& ctx)
@@ -617,9 +617,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver()
                               || IsOrientationGizmoHovered() || IsOrientationGizmoActive();
-    const bool anyToolActive =
-        (ctx.terrainTool && ctx.terrainTool->IsActive()) ||
-        (ctx.waterTool   && ctx.waterTool->IsActive());
+    const bool anyToolActive = ctx.terrainTool && ctx.terrainTool->IsActive();
     // 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。
     // WHY: これらは同じ左ドラッグを使うため、選択・矩形選択・ギズモより先に処理して
     //      「掴んでいる」間は他の解釈をさせない。
@@ -883,24 +881,6 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             ctx.undoStack);
         if (ctx.showTerrainTool && !ctx.mapEditingMode)
             ctx.terrainTool->OnEditorGUI(*ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
-    }
-
-    // ── WaterTool: 水面の範囲・波向き可視化とツールウィンドウ ──────────────
-    if (isSceneView && ctx.waterTool && ctx.activeScene
-        && !(ctx.playMode && !ctx.playMode->IsInEditor()))
-    {
-        ctx.waterTool->Update(
-            *ctx.activeScene,
-            *ctx.editorCamera,
-            viewportMin,
-            size,
-            ctx.markSceneDirty);
-        if (ctx.showWaterTool && !ctx.mapEditingMode)
-            ctx.waterTool->OnEditorGUI(
-                *ctx.activeScene,
-                ctx.projectRoot,
-                ctx.markSceneDirty,
-                ctx.undoStack);
     }
 
     // Show play/pause state with a viewport border.

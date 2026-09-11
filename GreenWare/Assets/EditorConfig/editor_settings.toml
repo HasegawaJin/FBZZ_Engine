@@ -335,7 +335,6 @@ sculpt_mode = 0
 
 [tools]
 show_terrain = false
-show_water = true
 
 [ui]
 language = 'ja'

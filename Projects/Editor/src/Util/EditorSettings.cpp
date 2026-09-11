@@ -146,7 +146,6 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
     // ツールウィンドウ
     if (auto v = tbl["tools"]["show_terrain"].value<bool>()) showTerrainTool = *v;
-    if (auto v = tbl["tools"]["show_water"].value<bool>())   showWaterTool   = *v;
 
     // Map Mode フィルター
     if (auto v = tbl["map_mode"]["hierarchy_filter"].value<bool>()) mapHierarchyFilter = *v;
@@ -441,7 +440,6 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     // ツールウィンドウ
     toml::table toolsTbl;
     toolsTbl.insert("show_terrain", showTerrainTool);
-    toolsTbl.insert("show_water",   showWaterTool);
 
     // Map Mode フィルター
     toml::table mapModeTbl;

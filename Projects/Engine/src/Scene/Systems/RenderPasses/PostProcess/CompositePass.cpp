@@ -43,7 +43,8 @@ UnderwaterInfo EvaluateUnderwaterInfo(const RenderPassContext& ctx)
 
         // WHY: 水面は GPU で揺らすが、カメラ水没判定はポストプロセス前に CPU で決める必要がある。
         //      WaterComponent の Gerstner 評価を再利用し、描画された水面と近い高さで判定する。
-        const float surfaceY = transform.position.y + water.GetSurfaceHeightAt(localX, localZ, time);
+        const float surfaceY = transform.position.y
+            + water.GetSurfaceHeightAt(ctx.camera.m_position.x, ctx.camera.m_position.z, time);
         const float depth = surfaceY - ctx.camera.m_position.y;
         if (depth <= 0.0f || depth <= best.depth) continue;
 

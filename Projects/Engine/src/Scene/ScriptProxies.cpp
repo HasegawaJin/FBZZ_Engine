@@ -64,6 +64,8 @@
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Systems/WaterSystem.hpp>
+#include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
@@ -3886,11 +3888,8 @@ float ScriptSceneProxy::GetWaterSurfaceHeight(const math::Vector3& worldPos, flo
 {
     if (!script || !script->m_scene) return worldPos.y;
     for (auto& go : script->m_scene->GameObjects()) {
-        if (auto* water = go.GetComponent<WaterComponent>()) {
-            const float localX = worldPos.x - go.transform.worldPosition.x;
-            const float localZ = worldPos.z - go.transform.worldPosition.z;
-            return go.transform.worldPosition.y + water->GetSurfaceHeightAt(localX, localZ, time);
-        }
+        if (auto* water = go.GetComponent<WaterComponent>())
+            return go.transform.worldPosition.y + water->GetSurfaceHeightAt(worldPos.x, worldPos.z, time);
     }
     return worldPos.y;
 }
@@ -5120,52 +5119,59 @@ float ScriptWaterProxy::GetSurfaceHeightWorld(float worldX, float worldZ, float 
 {
     auto* wc = SelfWater(script);
     if (!wc || !script->m_gameObject) return 0.0f;
-
-    // ワールド座標 → ローカル座標 (回転・スケールを考慮)
-    const auto& t = script->m_gameObject->transform;
-    math::Vector3 delta = { worldX - t.worldPosition.x, 0.0f, worldZ - t.worldPosition.z };
-    const math::Vector3 local = t.worldRotation.Inverse() * delta;
-    const float lx = t.worldScale.x > 0.0f ? local.x / t.worldScale.x : local.x;
-    const float lz = t.worldScale.z > 0.0f ? local.z / t.worldScale.z : local.z;
-
-    return t.worldPosition.y + wc->GetSurfaceHeightAt(lx, lz, time);
+    return script->m_gameObject->transform.worldPosition.y + wc->GetSurfaceHeightAt(worldX, worldZ, time);
 }
 
 float ScriptWaterProxy::GetSurfaceHeightLocal(float localX, float localZ, float time) const
 {
     auto* wc = SelfWater(script);
-    return wc ? wc->GetSurfaceHeightAt(localX, localZ, time) : 0.0f;
+    if (!wc || !script->m_gameObject) return 0.0f;
+    // 波の位相はワールド XZ で決まる。ローカルのまま評価すると描画とずれる。
+    const auto& t = script->m_gameObject->transform;
+    const math::Vector3 world = t.worldPosition
+        + t.worldRotation * math::Vector3{ localX * t.worldScale.x, 0.0f, localZ * t.worldScale.z };
+    return wc->GetSurfaceHeightAt(world.x, world.z, time);
 }
 
-void ScriptWaterProxy::SetWaveAmplitude(int index, float amplitude) const
+void ScriptWaterProxy::SetWaveAmplitudeScale(float scale) const
 {
-    auto* wc = SelfWater(script);
-    if (wc && index >= 0 && index < 4) wc->waves[static_cast<size_t>(index)].amplitude = amplitude;
+    if (auto* wc = SelfWater(script)) wc->waveAmplitudeScale = scale < 0.0f ? 0.0f : scale;
 }
 
-void ScriptWaterProxy::SetWaveWavelength(int index, float wavelength) const
+float ScriptWaterProxy::GetWaveAmplitudeScale() const
 {
-    auto* wc = SelfWater(script);
-    if (wc && index >= 0 && index < 4) wc->waves[static_cast<size_t>(index)].wavelength = wavelength;
-}
-
-void ScriptWaterProxy::SetWaveSteepness(int index, float steepness) const
-{
-    auto* wc = SelfWater(script);
-    if (!wc || index < 0 || index >= 4) return;
-    float s = steepness < 0.0f ? 0.0f : (steepness > 1.0f ? 1.0f : steepness);
-    wc->waves[static_cast<size_t>(index)].steepness = s;
-}
-
-void ScriptWaterProxy::SetWaveDirection(int index, math::Vector2 dir) const
-{
-    auto* wc = SelfWater(script);
-    if (wc && index >= 0 && index < 4) wc->waves[static_cast<size_t>(index)].direction = dir;
+    const auto* wc = SelfWater(script);
+    return wc ? wc->waveAmplitudeScale : 0.0f;
 }
 
 void ScriptWaterProxy::SetGerstnerEnabled(bool enabled) const
 {
     if (auto* wc = SelfWater(script)) wc->enableGerstnerWaves = enabled;
+}
+
+math::Vector2 ScriptWaterProxy::GetCurrent() const
+{
+    const auto* wc = SelfWater(script);
+    return wc ? wc->current : math::Vector2::ZERO;
+}
+
+void ScriptWaterProxy::AddRipple(const math::Vector3& worldPos, float strength) const
+{
+    auto* wc = SelfWater(script);
+    if (!wc || !script->m_gameObject) return;
+    EmitWaterRipple(script->m_gameObject->GetID(), *wc, script->m_gameObject->transform, worldPos, strength);
+}
+
+void ScriptWaterProxy::Splash(const math::Vector3& worldPos, float intensity) const
+{
+    const float clamped = intensity < 0.0f ? 0.0f : (intensity > 1.0f ? 1.0f : intensity);
+    AddRipple(worldPos, 0.3f + 0.7f * clamped);
+    if (SelfWater(script)) QueueWaterSplash(worldPos, clamped);
+}
+
+void ScriptWaterProxy::SetBuoyancyEnabled(bool enabled) const
+{
+    if (auto* wc = SelfWater(script)) wc->buoyancyEnabled = enabled;
 }
 
 void ScriptWaterProxy::SetEnabled(bool enabled) const

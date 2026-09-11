@@ -4,12 +4,12 @@ hidden_objects = []
 locked_objects = []
 
     [[editor.game_objects]]
-    component_order = [ 'Water' ]
-    instance_id = '438952bc-daa5-4679-9faa-1dcad0e04075'
-
-    [[editor.game_objects]]
     component_order = [ 'Light' ]
     instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+
+    [[editor.game_objects]]
+    component_order = [ 'Water' ]
+    instance_id = '438952bc-daa5-4679-9faa-1dcad0e04075'
 
     [[editor.game_objects]]
     component_order = [ 'Sky Renderer', 'Sun Moon Renderer', 'Volumetric Cloud', 'Environment Light', 'Atmospheric Scattering' ]
@@ -18,6 +18,16 @@ locked_objects = []
     [[editor.game_objects]]
     component_order = [ 'Post Process Volume' ]
     instance_id = '29f249cf-bc13-44e7-a403-cc15ee729734'
+
+    [[editor.game_objects]]
+    component_order = [
+        'Camera',
+        'Audio Listener',
+        'Script:TpsCameraComponent',
+        'Script:FpsCameraComponent',
+        'Script:BossCameraDirectorComponent'
+    ]
+    instance_id = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
 
 [meta]
 guid = '16dc053a9693f1afbfd9d6c7bd77cfa6'

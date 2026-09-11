@@ -121,7 +121,7 @@ RenderGraph ベースの Deferred + Forward ハイブリッド。IBL / PCSS / GT
 | `ScriptCharacterProxy` | CharacterController の移動・ジャンプ操作 |
 | `ScriptMeshProxy` | メッシュの動的差し替え・可視制御 |
 | `ScriptIKProxy` | IK ターゲット位置・重みの設定 |
-| `ScriptWaterProxy` | 水面パラメーター (波高・速度) の変更 |
+| `ScriptWaterProxy` | 水面高さの照会・波の倍率・波紋 / 水しぶき・水流の取得 |
 | `ScriptEnvironmentProxy` | 環境光・大気パラメーターの変更 |
 | `ScriptDecalProxy` | デカールのサイズ・マテリアル変更 |
 | `ScriptVolumeProxy` | ポストプロセスボリュームのブレンド重み変更 |
@@ -154,7 +154,7 @@ RenderGraph ベースの Deferred + Forward ハイブリッド。IBL / PCSS / GT
 | `PostProcessVolumeComponent` | ローカルポストプロセスボリューム (ブレンド範囲指定) |
 | `TerrainComponent` | ハイトマップに基づくテレイン描画 |
 | `TerrainGridComponent` | テレイングリッド管理 |
-| `WaterComponent` | リアルタイム水面描画 |
+| `WaterComponent` | 水面描画・浮力・着水の波紋。水の種類 (Ocean / Lake / River / Flat) は .mat で切り替え、環境風で波が育ち川は物体を押し流す |
 | `DecalComponent` | デカール投影 |
 | `TrailComponent` | モーション軌跡トレイル |
 | `MeshTrailComponent` | メッシュベーストレイル |
@@ -335,7 +335,6 @@ RenderGraph ベースの **Deferred + Forward ハイブリッド**。パス間�
 | エディターツール | 概要 |
 |----------------|------|
 | TerrainTool | ハイトマップ・テクスチャ・法線のペイント |
-| WaterTool | 水面領域の定義とパラメーター調整 |
 
 | ユーティリティ | 概要 |
 |--------------|------|

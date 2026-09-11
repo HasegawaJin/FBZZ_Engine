@@ -31,7 +31,7 @@
 | `Projects/Engine/include/Engine/Asset/` | AssetManager / AssetHandle / FzAssetFormat / FzModelFormat |
 | `Projects/Editor/include/Editor/Panels/` | ImGui パネル群 |
 | `Projects/Editor/src/Panels/Inspector/` | Inspector カテゴリ別実装 |
-| `Projects/Editor/src/Tools/` | TerrainTool / WaterTool |
+| `Projects/Editor/src/Tools/` | TerrainTool |
 | `Projects/GameHub/src/` | プロジェクト管理ランチャー (Unity Hub 相当) |
 | `Assets/Shaders/` | HLSL ソース (`compiled/` に事前コンパイル済み .cso) |
 | `Assets/Scripts/` | ユーザースクリプト + コード生成済み `.generated.hpp` |
