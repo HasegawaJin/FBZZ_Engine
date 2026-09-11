@@ -8,11 +8,13 @@
 /// ダブルクリックで該当箇所を外部エディタで開けるようにする。
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Util/BuildConsole.hpp>
+#include <Editor/Util/LogListView.hpp>
+
+#include <cstddef>
+#include <string>
 
 namespace fbzz::editor {
-
-struct BuildRecord;
-class  BuildConsole;
 
 class BuildOutputPanel : public IPanel {
 public:
@@ -26,15 +28,24 @@ public:
 private:
     void OnRenderContent(EditorContext& ctx) override;
 
-    // 指定レコードの診断リストを描画する。ダブルクリックで OpenInEditor を呼ぶ。
-    void DrawDiagnostics(const BuildRecord& rec);
-    // 現在ビルド or 選択レコードの生ログを描画する。
-    void DrawRawLog(const BuildConsole& console, const BuildRecord* rec);
+    // 状態 (ビルド中 / 件数) と履歴・操作ボタンの 1 行。
+    void DrawHeader(EditorContext& ctx, BuildConsole& console, const BuildRecord* rec);
+    // 表示中レコードの診断を一覧へ流し込む。レコードか件数が変わったときだけ作り直す。
+    void SyncDiagnostics(const BuildRecord* rec);
+    // 診断と生ログの境界。ドラッグで m_splitRatio を動かす。
+    void DrawSplitter();
 
-    int  m_viewHistoryIndex = -1;    // -1 = 最新 (ライブ)。それ以外は History() のインデックス
-    bool m_focusFirstError  = false; // 次フレームで最初のエラー行へスクロール
-    bool m_autoScroll       = true;
-    bool m_errorsOnly       = false;
+    int   m_viewHistoryIndex = -1;    // -1 = 最新 (ライブ)。それ以外は History() のインデックス
+    bool  m_focusFirstError  = false; // 次フレームで最初のエラー行へスクロール
+    float m_splitRatio       = 0.45f; // 診断一覧が占める高さの比率
+
+    LogListView  m_diagView{ "build_diagnostics" };
+    LogListView  m_rawView{ "build_raw_output" };
+    BuildLogFeed m_rawFeed;
+
+    const BuildRecord* m_diagRecord = nullptr;
+    std::string        m_diagRecordClock;
+    std::size_t        m_diagCount  = ~static_cast<std::size_t>(0);
 };
 
 } // namespace fbzz::editor

@@ -12,7 +12,10 @@
 /// 2. Tick ごと (Building中) : IngestFullLog(compiler.GetLog())   // 差分だけ取り込む
 /// 3. ビルド確定時          : EndBuild(success, exitCode) / EndBuildCancelled()
 #pragma once
+#include <Editor/Util/LogListView.hpp>
+
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -72,6 +75,10 @@ public:
     bool               IsBuilding()  const { return m_building; }
     const std::string& CurrentFile() const { return m_currentFile; }  // 現在コンパイル中の .cpp 名 (無ければ空)
     const std::string& LiveLog()     const { return m_liveLog; }
+    /// LiveLog 先頭行の通し番号。上限超過で前方を捨てたぶんだけ進む。
+    uint64_t LiveLogFirstLine()  const { return m_liveLogFirstLine; }
+    /// BeginBuild のたびに進む。LiveLog が別ビルドの中身へ入れ替わったことを表示側へ伝える。
+    uint64_t LiveLogGeneration() const { return m_liveLogGeneration; }
 
     // --- 履歴 ---
     const std::deque<BuildRecord>& History() const { return m_history; }
@@ -106,6 +113,8 @@ private:
     size_t      m_consumedLen  = 0;    // IngestFullLog が消費済みの fullLog バイト数
     std::string m_lineBuffer;          // 改行未満の端数を次回まで保持
     std::string m_liveLog;             // 現在ビルドの全表示ログ (MAX_LOG_BYTES 上限)
+    uint64_t    m_liveLogFirstLine  = 0;
+    uint64_t    m_liveLogGeneration = 0;
     std::string m_currentFile;         // cl.exe がエコーした現在コンパイル中ファイル名
 
     // Kind ごとの通知状態。添字は BuildRecord::Kind の値 (Script=0 / Hlsl=1)。
@@ -122,6 +131,33 @@ private:
     BuildRecord::Kind m_buildingKind = BuildRecord::Kind::Script;
 
     unsigned long long m_startTickMs = 0;  // duration 計測用 (GetTickCount64)
+};
+
+/// ビルド出力 1 行を LogListView の行へ変換する。MSVC / CMake の診断形式なら
+/// 重大度と file:line を埋め、ダブルクリックで該当箇所を開けるようにする。
+[[nodiscard]] LogListLine MakeBuildLogLine(const std::string& text, std::uint64_t id);
+
+/// 伸びていくビルドログ全文を、LogListView へ差分で流し込む。
+///
+/// WHY 差分か: 1 行ごとに正規表現を当てるため、Tick ごとに全文を割り直すと
+///     数千行のビルドでエディタが目に見えて重くなる。
+class BuildLogFeed {
+public:
+    /// @param text       ログ全文
+    /// @param generation ビルドごとに変わる値。変わったら一覧を作り直す
+    /// @param firstLine  text 先頭行の通し番号 (前方を捨てたぶんだけ進む)
+    void Sync(const std::string& text, std::uint64_t generation, std::uint64_t firstLine,
+              LogListView& view);
+
+private:
+    void Reset(LogListView& view, std::uint64_t generation, std::uint64_t firstLine);
+
+    std::uint64_t           m_generation  = ~0ull;
+    std::uint64_t           m_firstLine   = 0;
+    std::size_t             m_parsedBytes = 0;   // 改行まで確定して取り込んだバイト数
+    std::size_t             m_seenBytes   = 0;   // 前回見た全文の長さ (変化の検出用)
+    std::deque<std::size_t> m_lineBytes;         // 確定行ごとのバイト数 (前方切り捨ての追従用)
+    bool                    m_hasPartial  = false; // 一覧末尾が改行待ちの書きかけ行か
 };
 
 } // namespace fbzz::editor

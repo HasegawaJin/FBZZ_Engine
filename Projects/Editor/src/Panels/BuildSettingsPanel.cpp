@@ -581,15 +581,16 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
             m_pipeline.Cancel();
     }
 
+    if (isStillBuilding && !m_buildLogWasRunning) ++m_buildLogGeneration;
+    m_buildLogWasRunning = isStillBuilding;
+
     const std::string& buildLog = m_pipeline.GetBuildLog();
     if (!buildLog.empty() &&
         (isStillBuilding || m_pipeline.GetState() == BuildPipeline::State::Failed)) {
         // WHY: CMake / MSBuild の失敗理由は標準出力に出るため、失敗後もログを残して原因を読めるようにする。
-        ImGui::BeginChild("##RuntimeBuildLog", { 0.0f, 180.0f }, true, ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui::TextUnformatted(buildLog.c_str());
-        if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
-            ImGui::SetScrollHereY(1.0f);
-        ImGui::EndChild();
+        m_buildLogFeed.Sync(buildLog, m_buildLogGeneration, 0, m_buildLogView);
+        m_buildLogView.DrawToolbar();
+        m_buildLogView.DrawList({ 0.0f, ImGui::GetTextLineHeightWithSpacing() * 14.0f });
     }
 
     // Build and Run: ビルド完了後に exe を起動する
