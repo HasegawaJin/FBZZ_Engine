@@ -15,6 +15,34 @@ float2 LensDistortUV(float2 uv, float amount)
     return centered * scale * 0.5f + 0.5f;
 }
 
+// 衝撃波リング — 中心から半径 radius の «輪» の上だけ、色を読む座標を外向きへずらす。
+//
+// WHY LensDistortUV で代用できないか: あちらは中心固定・r^2 比例の樽型で、
+//     «どこが今いちばん歪んでいるか» を選べない。叩きつけの «効いた感» は
+//     縁が通り過ぎることで出るので、半径を持つ細い帯でなければならない。
+// WHY 縦横比を補正するか: UV での等距離は画面上では楕円になる。16:9 では
+//     横へ 1.78 倍伸び、円ではなく «横へ広がる波» に見える。
+// WHY 帯の断面を (1-s^2)^2 にするか: (1-s^2) だと帯の縁で傾きが残り、
+//     歪みが切れる位置に «線» が出る。二乗すると縁で傾きも 0 になり、
+//     輪の外側と地続きになる。
+float2 ShockRingUV(float2 uv, float2 center, float radius, float width, float amplitude)
+{
+    if (amplitude <= 1.0e-5f || width <= 1.0e-5f)
+        return uv;
+
+    const float aspect = screenSize.x / max(screenSize.y, 1.0f);
+    const float2 toPixel = float2((uv.x - center.x) * aspect, uv.y - center.y);
+    const float radial = length(toPixel);
+    if (radial <= 1.0e-5f)
+        return uv;
+
+    const float s = clamp((radial - radius) / width, -1.0f, 1.0f);
+    const float band = 1.0f - s * s;
+    const float2 outward = toPixel / radial;
+    // ずらす «量» は画面空間で決め、UV へ戻すときに横方向だけ縦横比で割る。
+    return uv + float2(outward.x / aspect, outward.y) * (amplitude * band * band);
+}
+
 float3 ApplyWhiteBalance(float3 color, float temperature, float tint)
 {
     float3 balance = float3(

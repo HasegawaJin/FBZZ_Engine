@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Material/Effects/ParticleGpuSim.cs.hlsl | Compute Shader
-// GPU パーティクルシミュレーション: スポーン + 物理積分 + 力場/ノイズ + 色/サイズ/スプライト補間
+/// @file    ParticleGpuSim.cs.hlsl
+/// @brief   GPU パーティクルシミュレーション: スポーン + 物理積分 + 力場/ノイズ + 色/サイズ/スプライト補間
+/// @author  Hasegawa Jin
+/// @date    2026-06-14
 //
 // dispatch: ceil(maxParticles / 64) × 1 × 1
 // スロット:
@@ -30,7 +31,8 @@ struct GpuParticle
     float4 uvRect;
     // 粒子ごとの色倍率 (colorVariation)。毎フレーム作り直す色へ掛け直すために保持する。
     float3 colorScale;
-    float  colorScalePad;
+    float  spriteBlend;   // 次のコマへの補間率 (Frame Blending)
+    float4 nextUvRect;    // 次のコマの UV 矩形
 };
 
 struct GpuSpawnEntry
@@ -207,8 +209,10 @@ float3 TurbulenceSamplePoint(float3 position, float frequency, float speed, floa
 // ---------- 速度モジュール (周回 / 放射) ------------------------------------
 
 // 周回 (orbital) と放射 (radial) の加速度を速度へ加える。
-// 式は ParticlePass.cpp の ApplyOrbitalVelocity と一致させること (CPU/GPU で挙動を揃える)。
-// gOrbitalAxis は CPU 側で正規化済み。軸が退化していた場合は gOrbitalVelocity が 0 で渡る。
+// 対になる CPU 実装は無い。ParticlePass.cpp の同名関数は orbital スロットの廃止で削除済みで、
+// gOrbitalVelocity / gRadialVelocity は常に 0 が入るため、ここは実質 no-op。
+// WHY 消さないか: この 2 枠と gOrbitalAxis は GpuEmitterCB のレイアウトの一部で、
+//      式だけ削っても CB は縮まない。常に 0 なら素通りするので残しておく方が安全。
 void ApplyOrbitalVelocity(float3 position, inout float3 velocity)
 {
     if (gOrbitalVelocity == 0.0f && gRadialVelocity == 0.0f) return;
@@ -498,7 +502,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         //      グラデーション使用時は色が基準色と無関係になるため復元が成立せず、
         //      GPU だけゆらぎが化けていた。CPU/GPU で必ず同じ値を使う。
         p.colorScale = s.colorScale.rgb;
-        p.colorScalePad = 0.0f;
+        p.spriteBlend = 0.0f;
+        p.nextUvRect  = s.uvRect;
     }
     else
     {
@@ -513,7 +518,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // 物理積分 (半陽的オイラー)。スポーン直後も同フレームから重力・力場・Noiseを受ける。
     p.velocity += gGravity * gDeltaTime;
-    // 周回・放射。式は ParticlePass.cpp の ApplyOrbitalVelocity と一致させること。
+    // 周回・放射。定数が常に 0 で渡るため現状は no-op (ApplyOrbitalVelocity の注記を参照)。
     ApplyOrbitalVelocity(p.position, p.velocity);
     // 速度減衰: CPU の max(0, 1 - damping * dragScale * dt) と同じ式
     float dragScale = gCurveFlags2.y > 0.5f
@@ -587,7 +592,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         : pow(t, gSizeCurvePower);
     p.size = lerp(gSizeStart, gSizeEnd, sizeT);
 
-    // スプライトアニメーション (CPU の ComputeSpriteFrameState と一致させること)
+    // スプライトアニメーション (asset::EvaluateFlipbookFrame と 1:1 に保つこと)
     uint spriteStart = gSpriteStartFrame;
     uint spriteEnd   = gSpriteEndFrame;
     // Random Row: 粒子ごとに 1 行を選び、その行の中だけで再生する
@@ -598,15 +603,24 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         spriteEnd   = spriteStart + gSpriteColumns - 1u;
     }
     uint spriteSpan = spriteEnd - spriteStart;
-    uint relativeFrame = (uint)(t * (float)spriteSpan);
-    if (gFlipbookMode == 1 && spriteSpan > 0)
-        relativeFrame = (uint)(p.age * gFlipbookFramesPerSecond) % (spriteSpan + 1);
-    else if (gFlipbookMode == 2)
-        relativeFrame = (uint)(saturate(p.spriteSeed) * (float)spriteSpan);
-    else if (gFlipbookMode == 3 && spriteSpan > 0)
+    // コマ位置を小数で持ち、整数部 = 現コマ・小数部 = 次コマへの補間率とする。
+    float fps = max(gFlipbookFramesPerSecond, 0.0f);
+    float framePosition = saturate(t) * (float)spriteSpan;
+    bool  wrapNext = false;
+    if (gFlipbookMode == 1u)
     {
-        uint cycle = (uint)(p.age * gFlipbookFramesPerSecond) % max(spriteSpan * 2, 1u);
-        relativeFrame = cycle <= spriteSpan ? cycle : spriteSpan * 2 - cycle;
+        framePosition = spriteSpan > 0u ? fmod(p.age * fps, (float)(spriteSpan + 1u)) : 0.0f;
+        wrapNext = true;
+    }
+    else if (gFlipbookMode == 2u)
+    {
+        framePosition = floor(saturate(p.spriteSeed) * (float)spriteSpan);
+    }
+    else if (gFlipbookMode == 3u)
+    {
+        float cycleLength = (float)max(spriteSpan * 2u, 1u);
+        float cycleFrame  = fmod(p.age * fps, cycleLength);
+        framePosition = cycleFrame <= (float)spriteSpan ? cycleFrame : (float)(spriteSpan * 2u) - cycleFrame;
     }
     // Random Start Frame: 再生位相を粒子ごとにずらす (RandomFrame モードでは不要)。
     // seed の使い回しで行と位相が相関しないよう、CPU 側と同じ係数でずらして小数部を取る。
@@ -614,17 +628,24 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         float phaseSeed = saturate(p.spriteSeed) * 7.13f + 0.37f;
         float decorrelated = phaseSeed - floor(phaseSeed);
-        uint cycle = spriteSpan + 1u;
-        relativeFrame = (relativeFrame + (uint)(decorrelated * (float)cycle)) % cycle;
+        float cycle = (float)(spriteSpan + 1u);
+        framePosition = fmod(framePosition + floor(decorrelated * cycle), cycle);
+        wrapNext = true;
     }
-    uint frame = spriteStart + relativeFrame;
-    uint sx         = frame % gSpriteColumns;
-    uint sy         = frame / gSpriteColumns;
-    float invCols   = 1.0f / (float)gSpriteColumns;
-    float invRows   = 1.0f / (float)gSpriteRows;
-    p.uvRect = float4(
-        (float)sx * invCols,       (float)sy * invRows,
-        (float)(sx + 1) * invCols, (float)(sy + 1) * invRows);
+    uint relativeFrame     = min((uint)max(floor(framePosition), 0.0f), spriteSpan);
+    uint nextRelativeFrame = min(relativeFrame + 1u, spriteSpan);
+    if (wrapNext && relativeFrame == spriteSpan) nextRelativeFrame = 0u;
+    // curveFlags.w = Frame Blending。RandomFrame はコマが飛ぶだけなので混ぜない。
+    p.spriteBlend = (gCurveFlags.w > 0.5f && gFlipbookMode != 2u)
+        ? framePosition - floor(framePosition) : 0.0f;
+
+    float2 cellSize  = float2(1.0f / (float)gSpriteColumns, 1.0f / (float)gSpriteRows);
+    uint   frame     = spriteStart + relativeFrame;
+    uint   nextFrame = spriteStart + nextRelativeFrame;
+    float2 frameOrigin = float2((float)(frame % gSpriteColumns), (float)(frame / gSpriteColumns)) * cellSize;
+    float2 nextOrigin  = float2((float)(nextFrame % gSpriteColumns), (float)(nextFrame / gSpriteColumns)) * cellSize;
+    p.uvRect     = float4(frameOrigin, frameOrigin + cellSize);
+    p.nextUvRect = float4(nextOrigin, nextOrigin + cellSize);
 
     gParticles[i] = p;
 }

@@ -71,7 +71,8 @@ cbuffer DecalConstants : register(CB_DECAL)
     float    angleFadeCos;       // この cos より寝た面では完全に消える
     uint     decalFlags;         // bit0 = 受信レイヤーフィルタ有効
     uint     decalReceiverMask;  // 受信を許すレイヤーのビットマスク
-    float3   _decalPad3;
+    float2   decalFrameScale;    // フリップブック 1 コマぶんの UV スケール (無効なら (1,1))
+    float    decalFrameIndex;    // 今のコマ番号 (0 起点)
 };
 
 #define DECAL_FLAG_RECEIVER_FILTER 1u
@@ -173,6 +174,28 @@ bool DecalResolve(float2 screenUv, out DecalSurface surface)
 
     surface.alpha = decalAlpha * lerp(1.0f, angleFactor, saturate(angleFadeStrength));
     return surface.alpha >= 0.001f;
+}
+
+/// フリップブックの現在コマへ UV を写す。無効なデカールでは素通し。
+///
+/// WHY オフセットを受け取らず段数から組むか: DecalConstants は旧 pad の 3 float に
+///     収めてある (スケール 2 + 番号 1)。オフセットを別に持たせると cbuffer が
+///     1 レジスタ伸び、この .hlsli の 4 つのコピーと C++ 側の static_assert を
+///     «全部同時に» 直さないと、直し忘れた側が黙って別の値を読む。
+///
+/// NOTE: コマの境界ではバイリニアが隣のコマを拾う。アトラスは各コマの周囲に
+///       1〜2 画素の余白を持たせて作ること。
+float2 DecalApplyFlipbook(float2 uv)
+{
+    // スケールから «横のコマ数 / 縦の段数» を復元する。無効時は (1, 1) なので素通し。
+    float2 tiles = round(1.0f / max(decalFrameScale, 1.0e-6f));
+    if (tiles.x <= 1.0f && tiles.y <= 1.0f)
+        return uv;
+
+    float column = fmod(max(decalFrameIndex, 0.0f), max(tiles.x, 1.0f));
+    float row    = floor(max(decalFrameIndex, 0.0f) / max(tiles.x, 1.0f));
+    // frac は «タイリングを掛けた UV がコマから溢れる» のを防ぐためのもの。
+    return (frac(uv) + float2(column, row)) * decalFrameScale;
 }
 
 /// 接空間法線をデカールの投影基底でワールドへ移す。
