@@ -271,6 +271,7 @@
 { "IK Solver",                 "" },
 { "LOD Group",                 "" },
 { "Rigid Body",                "" },
+{ "Joint",                     "" },
 { "Character Controller",      "" },
 { "AABB Collider",             "" },
 { "Box Collider",              "" },

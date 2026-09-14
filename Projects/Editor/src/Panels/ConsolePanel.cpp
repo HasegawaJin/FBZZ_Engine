@@ -5,8 +5,10 @@
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/SourceOpen.hpp>
 #include <Engine/Core/ILogSink.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -73,16 +75,24 @@ float ConsoleRowHeight()
     return ImGui::GetTextLineHeight() + 6.0f;
 }
 
-// 色に頼らずレベルを読めるようにする 1 文字バッジ。
+// 色に頼らずレベルを読めるようにするバッジ。記号が使えない環境では 1 文字へ落ちる。
+// WHY 記号を優先するか: ログは «流し読みして異常だけ拾う» 画面で、形の違いは
+//     文字の違いより速く目に入る。色覚に依らない手がかりでもある。
 const char* LogLevelBadge(core::LogLevel level)
 {
     switch (level) {
-    case core::LogLevel::DEBUG:     return "D";
-    case core::LogLevel::INFO:      return "I";
-    case core::LogLevel::WARNING:   return "W";
-    case core::LogLevel::LOG_ERROR: return "E";
+    case core::LogLevel::DEBUG:     return icons::Or(icons::kDetail,  "D");
+    case core::LogLevel::INFO:      return icons::Or(icons::kInfo,    "I");
+    case core::LogLevel::WARNING:   return icons::Or(icons::kWarning, "W");
+    case core::LogLevel::LOG_ERROR: return icons::Or(icons::kError,   "E");
     default:                        return "?";
     }
+}
+
+// バッジ列の幅。記号は 1 文字より広いので、本文の開始 X をここで決める。
+float LogLevelBadgeWidth()
+{
+    return ImGui::CalcTextSize(LogLevelBadge(core::LogLevel::WARNING)).x;
 }
 
 // 詳細ペインの見出しに出すレベル名。
@@ -514,10 +524,10 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
     const float textY = origin.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f;
     float x = rowMin.x + 10.0f;
 
-    // レベルバッジ (D / I / W / E)。固定幅で置き、本文の開始位置を揃える。
+    // レベルバッジ。固定幅で置き、本文の開始位置を揃える。
     const char* badge = LogLevelBadge(r.level);
     dl->AddText({ x, textY }, ImGui::ColorConvertFloat4ToU32(levelColor), badge);
-    x += ImGui::CalcTextSize("W").x + 8.0f;
+    x += LogLevelBadgeWidth() + 8.0f;
 
     // "[File.cpp:123]" は本文と分けて淡色で出す。
     // WHY: 位置は「どこで出たか」の手がかりであって読む文ではない。本文と同じ濃さで

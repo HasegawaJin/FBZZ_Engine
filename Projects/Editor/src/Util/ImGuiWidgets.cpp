@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -42,6 +43,10 @@ struct AssetPickerState {
     bool                     open             = false;
     std::string*             target           = nullptr;
     std::string*             justPickedTarget = nullptr;
+    ImGuiID                  fieldId          = 0;
+    std::string              fieldValue;
+    bool                     fieldPicked      = false;
+    int                      fieldSeenFrame   = -1;
     std::string              projectRoot;
     std::vector<std::string> filterExts;
     char                     search[256]      = {};
@@ -49,6 +54,22 @@ struct AssetPickerState {
     ImVec2                   anchorPos        = {};  // "..." ボタンの直下位置
 };
 AssetPickerState s_picker;
+
+void CompleteAssetPick(const std::string& reference)
+{
+    if (s_picker.fieldId != 0) {
+        s_picker.fieldValue = reference;
+        s_picker.fieldPicked = true;
+    } else if (s_picker.target != nullptr) {
+        *s_picker.target = reference;
+        s_picker.justPickedTarget = s_picker.target;
+    }
+}
+
+const std::string* AssetPickerValue()
+{
+    return s_picker.fieldId != 0 ? &s_picker.fieldValue : s_picker.target;
+}
 
 // ピッカー行のサムネイル。texId があれば画像を、無ければ color スウォッチを描く。
 struct PickerThumb {
@@ -247,6 +268,25 @@ std::vector<std::string> SplitFilterExts(const char* exts)
     return AssetSearch::ParseExtensionFilter(exts);
 }
 
+// この欄は Sprite サブアセット参照を受けるか (kSpriteAssetFilter の規約)。
+// フィルター無し (= 何でも受ける欄) も受け皿に含める。
+bool FilterAllowsSprites(const std::vector<std::string>& allowed)
+{
+    return allowed.empty()
+        || std::find(allowed.begin(), allowed.end(), ".sprite") != allowed.end();
+}
+
+bool IsSpritePayload(const ImGuiPayload& payload)
+{
+    if (payload.Data == nullptr || payload.DataSize <= 1) return false;
+    std::string texturePath;
+    std::string spriteName;
+    return asset::ParseSpriteReference(
+        std::string(static_cast<const char*>(payload.Data),
+                    static_cast<std::size_t>(payload.DataSize) - 1),
+        texturePath, spriteName);
+}
+
 // カード / 区切り表現の寸法。すべて現在のフォントサイズから作る。
 // px 直値だと、UI スケールが文字だけを拡大するので倍率ごとに比率が崩れる。
 // ヘッダーと本文で別々に計算しないこと。継ぎ目で帯の太さが変わると段差になる。
@@ -336,7 +376,19 @@ bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
 {
     bool dropped = false;
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+        const std::vector<std::string> allowed = SplitFilterExts(filterExts);
+        const bool spritesAllowed = FilterAllowsSprites(allowed);
+
+        // 受けられない Sprite は «押しても何も起きない» にしない。掴んでいる間に理由を出す。
+        // WHY 受理してから捨てないか: 離した瞬間に消えると、狙いが外れたのか型が違うのかが
+        //     区別できない。ドロップ前に見えていれば、元の画像を掴み直せる。
+        if (const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            !spritesAllowed && peek != nullptr && peek->IsDataType("ASSET_PATH")
+            && IsSpritePayload(*peek)) {
+            ImGui::SetTooltip("この欄は Sprite の切り抜きを読めません。\n"
+                              "元の画像をドロップしてください (切り抜きは無視され、"
+                              "アトラス全面が使われます)");
+        } else if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
             const std::string candidate = NormalizeAssetPath(
                 std::string(static_cast<const char*>(p->Data),
                             static_cast<size_t>(p->DataSize) - 1));
@@ -345,7 +397,6 @@ bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
             (void)asset::ParseSpriteReference(candidate, texturePath, spriteName);
             const std::string extension = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(texturePath));
-            const std::vector<std::string> allowed = SplitFilterExts(filterExts);
             if (allowed.empty()
                 || std::find(allowed.begin(), allowed.end(), extension) != allowed.end()) {
                 outPath = candidate;
@@ -439,6 +490,19 @@ bool AssetPathField(const char* label, std::string& path,
 {
     ImGui::PushID(label);
     bool changed = false;
+    const ImGuiID fieldId = ImGui::GetID("##assetPickerOwner");
+
+    // 編集用コピーはフレーム末に破棄されるため、ピッカーは参照を保持せず次の描画へ値を返す。
+    if (s_picker.fieldId == fieldId) {
+        if (s_picker.fieldPicked && ImGui::GetFrameCount() - s_picker.fieldSeenFrame <= 1) {
+            path = s_picker.fieldValue;
+            changed = true;
+            s_picker.fieldPicked = false;
+            s_picker.fieldId = 0;
+        }
+        if (ImGui::GetFrameCount() - s_picker.fieldSeenFrame <= 1)
+            s_picker.fieldSeenFrame = ImGui::GetFrameCount();
+    }
 
     // ピッカーがこのターゲットを選択した直後 → 同フレームで changed を通知
     if (s_picker.justPickedTarget == &path) {
@@ -633,7 +697,12 @@ bool AssetPathField(const char* label, std::string& path,
         ImGui::SetTooltip("Browse Assets...");
     if (browse) {
         s_picker.open        = true;
-        s_picker.target      = &path;
+        s_picker.target      = nullptr;
+        s_picker.justPickedTarget = nullptr;
+        s_picker.fieldId = fieldId;
+        s_picker.fieldValue = path;
+        s_picker.fieldPicked = false;
+        s_picker.fieldSeenFrame = ImGui::GetFrameCount();
         s_picker.projectRoot = projectRoot;
         s_picker.filterExts  = SplitFilterExts(filterExts);
         s_picker.search[0]   = '\0';
@@ -658,6 +727,9 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
 {
     s_picker.open        = true;
     s_picker.target      = &target;
+    s_picker.fieldId = 0;
+    s_picker.fieldPicked = false;
+    s_picker.justPickedTarget = nullptr;
     s_picker.projectRoot = projectRoot;
     s_picker.filterExts  = SplitFilterExts(filterExts);
     s_picker.search[0]   = '\0';
@@ -670,6 +742,16 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
 {
     s_thumbnailResources = resources;
     s_thumbnailImGui = imgui;
+    if (s_picker.fieldId != 0 && ImGui::GetFrameCount() - s_picker.fieldSeenFrame > 1) {
+        s_picker.fieldId = 0;
+        s_picker.fieldPicked = false;
+        s_picker.open = false;
+        if (ImGui::BeginPopup("##asset_picker")) {
+            ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+        return;
+    }
     if (s_picker.open) {
         ImGui::OpenPopup("##asset_picker");
         s_picker.open = false;
@@ -756,12 +838,10 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
 
     // "(none)" — フィールドをクリアするオプション
     {
-        const bool selNone = (s_picker.target && s_picker.target->empty());
+        const std::string* current = AssetPickerValue();
+        const bool selNone = current != nullptr && current->empty();
         if (ImGui::Selectable("(none)", selNone)) {
-            if (s_picker.target) {
-                *s_picker.target          = {};
-                s_picker.justPickedTarget = s_picker.target;
-            }
+            CompleteAssetPick({});
             ImGui::CloseCurrentPopup();
         }
         ImGui::Separator();
@@ -786,7 +866,8 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
             firstReference = &firstReferenceStorage;
         }
 
-        const bool selected = s_picker.target && *s_picker.target == reference;
+        const std::string* current = AssetPickerValue();
+        const bool selected = current != nullptr && *current == reference;
         ImGui::PushID(reference.c_str());
         const ImVec2 rowMin = ImGui::GetCursorScreenPos();
         const float rowW = ImGui::GetContentRegionAvail().x;
@@ -929,10 +1010,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         ImGui::SetCursorScreenPos(rowMin);
         if (ImGui::Selectable("##row", selected,
                 ImGuiSelectableFlags_AllowOverlap, { rowW, rowH })) {
-            if (s_picker.target) {
-                *s_picker.target = reference;
-                s_picker.justPickedTarget = s_picker.target;
-            }
+            CompleteAssetPick(reference);
             ImGui::CloseCurrentPopup();
         }
         if (ImGui::IsItemHovered()) {
@@ -956,7 +1034,8 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         const std::string textureReference = NormalizeAssetPath(absPath);
         drawEntry(absPath, ext, filename, textureReference, nullptr);
 
-        if (!IsImageExt(ext)) continue;
+        // 切り抜きを読めない欄にコマを並べない。並べると «選べたのに効かない» になる。
+        if (!IsImageExt(ext) || !FilterAllowsSprites(s_picker.filterExts)) continue;
 
         // スプライトのサブ項目。親テクスチャ名が語に当たっているなら全部出し、
         // パス経由でしか当たっていないならスプライト名でも絞る。
@@ -991,10 +1070,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
     // 検索欄で Enter → 先頭の候補を決定する。1 件に絞れたときに
     // マウスへ手を戻さず確定できるようにする。
     if (firstReference != nullptr && enterPressed) {
-        if (s_picker.target) {
-            *s_picker.target = *firstReference;
-            s_picker.justPickedTarget = s_picker.target;
-        }
+        CompleteAssetPick(*firstReference);
         ImGui::CloseCurrentPopup();
     }
 
@@ -1021,6 +1097,187 @@ bool ColorEdit3(const char* label, math::Vector3& color)
     float arr[3] = { color.x, color.y, color.z };
     bool changed = ImGui::ColorEdit3(label, arr);
     if (changed) { color.x = arr[0]; color.y = arr[1]; color.z = arr[2]; }
+    return changed;
+}
+
+namespace {
+
+// 四則と括弧だけの再帰下降パーサー。関数も変数も持たない。
+// WHY それ以上を入れないか: ここは «暗算の代わり» で、式言語が欲しい場所ではない。
+//     sin や変数を足すと、打ち間違いの結果が «それらしい値» になって気付けなくなる。
+struct ExpressionParser {
+    const char* cursor = nullptr;
+    bool        ok     = true;
+
+    void SkipBlanks()
+    {
+        while (*cursor == ' ' || *cursor == '\t') ++cursor;
+    }
+
+    float ParsePrimary()
+    {
+        SkipBlanks();
+        if (*cursor == '(') {
+            ++cursor;
+            const float inner = ParseSum();
+            SkipBlanks();
+            if (*cursor == ')') ++cursor;
+            else                ok = false;
+            return inner;
+        }
+        if (*cursor == '+') { ++cursor; return ParsePrimary(); }
+        if (*cursor == '-') { ++cursor; return -ParsePrimary(); }
+
+        char* end = nullptr;
+        const float parsed = std::strtof(cursor, &end);
+        if (end == cursor) { ok = false; return 0.0f; }
+        cursor = end;
+        return parsed;
+    }
+
+    float ParseProduct()
+    {
+        float left = ParsePrimary();
+        for (;;) {
+            SkipBlanks();
+            if (*cursor == '*') {
+                ++cursor;
+                left *= ParsePrimary();
+            } else if (*cursor == '/') {
+                ++cursor;
+                const float right = ParsePrimary();
+                // 0 除算は inf を返さず «読めなかった» 扱いにする。inf が値へ入ると
+                // そのオブジェクトは以降どの操作でも戻せなくなる。
+                if (right == 0.0f) { ok = false; return 0.0f; }
+                left /= right;
+            } else {
+                return left;
+            }
+        }
+    }
+
+    float ParseSum()
+    {
+        float left = ParseProduct();
+        for (;;) {
+            SkipBlanks();
+            if (*cursor == '+')      { ++cursor; left += ParseProduct(); }
+            else if (*cursor == '-') { ++cursor; left -= ParseProduct(); }
+            else                     { return left; }
+        }
+    }
+};
+
+// 式を打っている最中の 1 つ。同時に 2 か所は編集できないので単一で足りる。
+ImGuiID s_expressionEditId = 0;
+char    s_expressionBuffer[64] = {};
+bool    s_expressionJustOpened = false;
+
+} // namespace
+
+bool EvaluateExpression(const char* text, float& out)
+{
+    if (text == nullptr || text[0] == '\0') return false;
+
+    ExpressionParser parser{ text, true };
+    const float value = parser.ParseSum();
+    parser.SkipBlanks();
+    // 末尾に読み残しがあるのは «式として読めなかった» ということ。
+    // ここを通すと "12abc" が 12 になり、打ち間違いが黙って通る。
+    if (!parser.ok || *parser.cursor != '\0') return false;
+    if (!std::isfinite(value)) return false;
+
+    out = value;
+    return true;
+}
+
+bool DragFloatExpr(const char* id, float& value, float speed, float min, float max,
+                   const char* fmt, ImGuiSliderFlags flags)
+{
+    const ImGuiID itemId = ImGui::GetID(id);
+
+    if (s_expressionEditId == itemId) {
+        ImGui::PushID(id);
+        if (s_expressionJustOpened) {
+            ImGui::SetKeyboardFocusHere();
+            s_expressionJustOpened = false;
+        }
+        const bool submitted = ImGui::InputText(
+            "##expr", s_expressionBuffer, sizeof(s_expressionBuffer),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        // Enter だけでなくフォーカスが外れたときも確定する。打ちっぱなしで
+        // 別の欄へ移ったときに «入力欄が残り続ける» のを避ける。
+        const bool finished = submitted || ImGui::IsItemDeactivated();
+        ImGui::PopID();
+        if (!finished) return false;
+
+        s_expressionEditId = 0;
+        float parsed = value;
+        if (!EvaluateExpression(s_expressionBuffer, parsed)) return false;
+        if (max > min) parsed = std::clamp(parsed, min, max);
+        if (parsed == value) return false;
+        value = parsed;
+        return true;
+    }
+
+    const bool changed = ImGui::DragFloat(id, &value, speed, min, max, fmt ? fmt : "%.3f",
+                                          flags | ImGuiSliderFlags_NoInput);
+
+    // タイプ入力へ入る条件は ImGui の既定 (Ctrl+Click) に、ダブルクリックを足したもの。
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool wantsTyping = ImGui::IsItemHovered() &&
+        ((io.KeyCtrl && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) ||
+         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left));
+    if (wantsTyping) {
+        s_expressionEditId     = itemId;
+        s_expressionJustOpened = true;
+        std::snprintf(s_expressionBuffer, sizeof(s_expressionBuffer), fmt ? fmt : "%.3f", value);
+    }
+    return changed;
+}
+
+bool DragIntExpr(const char* id, int& value, float speed, int min, int max,
+                 const char* fmt, ImGuiSliderFlags flags)
+{
+    const ImGuiID itemId = ImGui::GetID(id);
+
+    if (s_expressionEditId == itemId) {
+        ImGui::PushID(id);
+        if (s_expressionJustOpened) {
+            ImGui::SetKeyboardFocusHere();
+            s_expressionJustOpened = false;
+        }
+        const bool submitted = ImGui::InputText(
+            "##expr", s_expressionBuffer, sizeof(s_expressionBuffer),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        const bool finished = submitted || ImGui::IsItemDeactivated();
+        ImGui::PopID();
+        if (!finished) return false;
+
+        s_expressionEditId = 0;
+        float parsed = static_cast<float>(value);
+        if (!EvaluateExpression(s_expressionBuffer, parsed)) return false;
+        // 1920/7 のような割り切れない式でも «一番近い整数» を返す。切り捨てだと
+        // 打った式と 1 ずれた値が入り、原因が式なのか丸めなのか読めなくなる。
+        int rounded = static_cast<int>(std::lround(parsed));
+        if (max > min) rounded = std::clamp(rounded, min, max);
+        if (rounded == value) return false;
+        value = rounded;
+        return true;
+    }
+
+    const bool changed = ImGui::DragInt(id, &value, speed, min, max, fmt ? fmt : "%d",
+                                        flags | ImGuiSliderFlags_NoInput);
+
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool wantsTyping = ImGui::IsItemHovered() &&
+        ((io.KeyCtrl && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) ||
+         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left));
+    if (wantsTyping) {
+        s_expressionEditId     = itemId;
+        s_expressionJustOpened = true;
+        std::snprintf(s_expressionBuffer, sizeof(s_expressionBuffer), "%d", value);
+    }
     return changed;
 }
 
@@ -1065,8 +1322,7 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::SetNextItemWidth(inputW);
     const float dragSpeed = (max > min) ? (max - min) * 0.005f : 0.01f;
-    if (ImGui::DragFloat("##input", &value, dragSpeed, min, max, fmt,
-                         ImGuiSliderFlags_AlwaysClamp))
+    if (DragFloatExpr("##input", value, dragSpeed, min, max, fmt, ImGuiSliderFlags_AlwaysClamp))
         changed = true;
     hovered |= ImGui::IsItemHovered();
 
@@ -1124,8 +1380,8 @@ bool RangeField(const char* label, int& value, int min, int max, const char* fmt
     ImGui::SetNextItemWidth(inputW);
     // 刻みは範囲の 0.5% (最低 1)。広い範囲でもドラッグ 1 往復で端まで届く。
     const float dragSpeed = std::max(1.0f, static_cast<float>(max - min) * 0.005f);
-    if (ImGui::DragInt("##input", &value, dragSpeed, min, max, fmt ? fmt : "%d",
-                       ImGuiSliderFlags_AlwaysClamp))
+    if (DragIntExpr("##input", value, dragSpeed, min, max, fmt ? fmt : "%d",
+                    ImGuiSliderFlags_AlwaysClamp))
         changed = true;
     hovered |= ImGui::IsItemHovered();
 
@@ -1250,7 +1506,7 @@ bool DragAxes(const char* id, float* values, int count,
         // 頭文字を出せない狭さのときだけ、枠内の軸色マーカーで成分を示す。
         // 自前で後描きすると枠線の上に乗り、UI スケールにも追従しない。
         if (!showAxisLetter) ImGui::SetNextItemColorMarker(AxisMarkerColor(i));
-        if (ImGui::DragFloat(label, &values[i], axisSpeed, min, max, fmt ? fmt : "%.3f"))
+        if (DragFloatExpr(label, values[i], axisSpeed, min, max, fmt ? fmt : "%.3f"))
             changed = true;
     }
     ImGui::PopID();
@@ -1915,7 +2171,11 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
     ImGui::SetCursorScreenPos({ x, centerY - ImGui::GetTextLineHeight() * 0.5f });
     ImGui::PushStyleColor(ImGuiCol_Text,
         EditorTheme::Color(dimmed ? ThemeColor::TextFaint : ThemeColor::Text));
+    // 大きさは変えず太さだけ差し替える。渡すのは上の PushFont と同じ «倍率前» の値。
+    // GetFontSize() は倍率適用後なので、渡すと UI スケールが二重に掛かる。
+    ImGui::PushFont(EditorTheme::HeadingFont(), std::floor(style.FontSizeBase * kTitleScale));
     ImGui::TextUnformatted(shownLabel);
+    ImGui::PopFont();
     ImGui::PopStyleColor();
     if (shownLabel != label && ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", label);
@@ -2035,6 +2295,97 @@ void EndCard(const ComponentBodyScope& card)
     EndCardCommon(card);
 }
 
+void BeginHeadingFont(float scale)
+{
+    // PushFont には倍率を掛ける前の値 (style.FontSizeBase) を渡す。GetFontSize() は
+    // 倍率適用後なので、渡すと UI スケールが二重に掛かる (ImGui 1.92 の仕様)。
+    // 半端な値はラスタライズがにじむので整数へ丸める。
+    const float size = std::floor(ImGui::GetStyle().FontSizeBase * scale);
+    ImGui::PushFont(EditorTheme::HeadingFont(), size);
+}
+
+void EndHeadingFont()
+{
+    ImGui::PopFont();
+}
+
+bool EmptyState(const char* icon, const char* title, const char* hint, const char* actionLabel)
+{
+    const ImVec2 available = ImGui::GetContentRegionAvail();
+    // 高さが取れないほど狭い枠に中央寄せすると、上へ飛び出して読めなくなる。
+    // そのときは «ただの 1 行» に落とす (今までの見た目と同じ)。
+    const bool roomy = available.y > ImGui::GetTextLineHeightWithSpacing() * 6.0f;
+
+    // 次に描くものを枠の中央へ寄せる。ImGui は «自分の幅» を描く前に知らないので、
+    // 幅は呼び出し側が測って渡す。
+    const auto centerFor = [&available](float width) {
+        const float indent = (available.x - width) * 0.5f;
+        if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
+    };
+
+    if (roomy) {
+        // 上下の余りを 1:2 で分け、視線の高さ (やや上) に置く。
+        ImGui::Dummy({ 0.0f, available.y * 0.28f });
+    }
+
+    if (icon != nullptr && icon[0] != '\0') {
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+        BeginHeadingFont(2.6f);
+        centerFor(ImGui::CalcTextSize(icon).x);
+        ImGui::TextUnformatted(icon);
+        EndHeadingFont();
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
+    BeginHeadingFont(1.1f);
+    centerFor(ImGui::CalcTextSize(title).x);
+    ImGui::TextUnformatted(title);
+    EndHeadingFont();
+    ImGui::PopStyleColor();
+
+    if (hint != nullptr && hint[0] != '\0') {
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+        // 一言は折り返す。窓が細いパネル (Inspector) では 1 行に収まらない。
+        const float wrapWidth = (std::min)(available.x, ImGui::GetFontSize() * 24.0f);
+        centerFor((std::min)(wrapWidth, ImGui::CalcTextSize(hint).x));
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrapWidth);
+        ImGui::TextUnformatted(hint);
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+    }
+
+    bool pressed = false;
+    if (actionLabel != nullptr && actionLabel[0] != '\0') {
+        ImGui::Spacing();
+        const float buttonWidth =
+            ImGui::CalcTextSize(actionLabel).x + ImGui::GetStyle().FramePadding.x * 4.0f;
+        centerFor(buttonWidth);
+        pressed = ImGui::Button(actionLabel, { buttonWidth, 0.0f });
+    }
+    return pressed;
+}
+
+float Animate(ImGuiID id, float target, float speed)
+{
+    ImGuiStorage* storage = ImGui::GetStateStorage();
+    if (storage == nullptr) return target;
+
+    const float current = storage->GetFloat(id, target);
+    const float deltaTime = ImGui::GetIO().DeltaTime > 0.0f ? ImGui::GetIO().DeltaTime
+                                                            : (1.0f / 60.0f);
+    // 指数で寄せる。線形だと «止まる瞬間» が見えて機械的になる。
+    // 1 フレームが長いときに行き過ぎないよう、寄せる割合は 1 で止める。
+    const float t = (std::min)(deltaTime * speed, 1.0f);
+    float next = current + (target - current) * t;
+    // 端に十分近づいたら吸い付ける。残り続けると毎フレーム再描画の理由になる。
+    if (std::fabs(target - next) < 0.001f) next = target;
+
+    storage->SetFloat(id, next);
+    return next;
+}
+
 void SectionHeader(const char* label)
 {
     // WHAT: 左のブランドライン、見出し、残り幅の細い罫線を一行で描く。
@@ -2059,8 +2410,12 @@ void SectionHeader(const char* label)
 
     ImGui::SetCursorScreenPos({ cursor.x + metrics.accent + gap, cursor.y });
     ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Text));
+    // 大きさは変えず太さだけ変える。ここで大きくすると行の高さが動いて、
+    // 上で測った lineHeight とブランドラインの長さが合わなくなる。
+    BeginHeadingFont(1.0f);
     // 見出しは ID を作らない純粋な描画なので、素の訳で足りる。
     ImGui::TextUnformatted(LOCT(label));
+    EndHeadingFont();
     ImGui::PopStyleColor();
 
     const ImVec2 textMax = ImGui::GetItemRectMax();

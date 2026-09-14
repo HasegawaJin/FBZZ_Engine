@@ -12,6 +12,8 @@
 /// 「プロジェクト相対パス丸ごと」の一致で拾う。
 #include <Editor/Panels/DependencyViewPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/EditorIcons.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -114,7 +116,9 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
         Scan(cur, assetsRoot);
 
     if (m_scannedPath.empty()) {
-        ImGui::TextDisabled("Select an asset in the Asset Browser to view its references.");
+        widgets::EmptyState(icons::Or(icons::kLink, nullptr),
+                            LOCT("No asset selected"),
+                            LOCT("Pick an asset in the Asset Browser to see what points at it."));
         return;
     }
 

@@ -8,6 +8,8 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/EditorIcons.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
@@ -376,6 +378,7 @@ static constexpr ExtGroup kExtGroups[] = {
     // ── VFX ─────────────────────────────────────────────────────────────────
     { { ".vfx", nullptr },                                     kFamVfx,   "VFX"       },
     { { ".vfield", ".fga", nullptr },                          kFamVfx,   "VFIELD"    },
+    { { ".fluid", nullptr },                                   kFamVfx,   "FLUID"     },
     // 曲線と色は «時間軸を持つもの» の一員。エフェクト以外でも使い回すので Anim 側に置く。
     { { ".curve", nullptr },                                   kFamAnim,  "CURVE"     },
     { { ".gradient", nullptr },                                kFamLook,  "GRADIENT"  },
@@ -1462,6 +1465,81 @@ static void DrawThumbnailLabel(ImDrawList* dl, ImVec2 origin, float sz, const ch
     dl->AddText({ bMin.x + 4.0f, bMin.y + 2.0f }, IM_COL32(235, 240, 245, 230), badge);
 }
 
+// 球に焼けない .mat (Particle / Trail / UI / Decal / PostProcess) の種別バッジ。
+// WHY 言葉で出すか: 手続き系は素材すら持たないことがあり、色見本だけだと
+//     «この材質はこういう色» なのか «焼けなかった» のかが区別できない。
+static const char* MaterialThumbnailBadge(const asset::MaterialAsset& asset)
+{
+    switch (asset.renderPath) {
+        case asset::RenderPath::Particle:    return "PARTICLE";
+        case asset::RenderPath::Trail:       return "TRAIL";
+        case asset::RenderPath::UI:          return "UI";
+        case asset::RenderPath::Decal:       return "DECAL";
+        case asset::RenderPath::PostProcess: return "POST";
+        default: break;
+    }
+    // render_path = 'auto' のまま Effects へ置いてある .mat はここに来る。
+    // 判定元は DetectThumbnailShaderFlavor と同じ「シェーダーの置き場所」。
+    const std::string lower = ToLowerAssetPath(asset.shaderPath);
+    if (lower.find("trail") != std::string::npos)    return "TRAIL";
+    if (lower.find("particle") != std::string::npos) return "PARTICLE";
+    return "FX";
+}
+
+// 色見本に使う 1 色。SelectMaterialColor が見る標準名に加えて、手続き系がよく使う
+// 名前まで拾う。HDR (1 を超える値) はそのまま塗ると白く潰れるので明るさだけ畳む。
+static ImVec4 SelectSwatchColor(const asset::MaterialAsset& asset)
+{
+    static constexpr const char* PRIORITY_PARAMS[] = {
+        "base_color", "baseColor", "albedo", "coreColor", "tint", "color",
+        "startColor", "mainColor", "emissiveColor", "edgeColor",
+    };
+    const std::vector<float>* found = nullptr;
+    for (const char* name : PRIORITY_PARAMS) {
+        if (auto it = asset.params.find(name); it != asset.params.end() && it->second.size() >= 3) {
+            found = &it->second;
+            break;
+        }
+    }
+    if (!found) {
+        // 名前が独自でも «...Color» は色として扱える。params は unordered なので、
+        // 名前の小さい方に決めておかないと起動のたびにサムネイルの色が変わる。
+        const std::string* pick = nullptr;
+        for (const auto& [name, values] : asset.params) {
+            if (values.size() < 3) continue;
+            if (!name.ends_with("Color") && !name.ends_with("color")) continue;
+            if (pick == nullptr || name < *pick) {
+                pick  = &name;
+                found = &values;
+            }
+        }
+    }
+    if (!found) return { 0.55f, 0.58f, 0.66f, 1.0f };
+
+    const float peak = (std::max)({ (*found)[0], (*found)[1], (*found)[2], 1.0f });
+    return { (*found)[0] / peak, (*found)[1] / peak, (*found)[2] / peak, 1.0f };
+}
+
+// 3D に焼けない .mat の最後の受け皿。色と種別だけでも出して、拡張子アイコンに落とさない。
+static void DrawMaterialSwatchThumbnail(const asset::MaterialAsset& asset, const char* badge,
+                                        ImVec2 origin, float sz, bool hovered)
+{
+    DrawThumbnailFrame(origin, sz, hovered);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    const ImVec4 color = SelectSwatchColor(asset);
+    const ImU32  top    = ImGui::ColorConvertFloat4ToU32(color);
+    const ImU32  bottom = ImGui::ColorConvertFloat4ToU32(
+        { color.x * 0.35f, color.y * 0.35f, color.z * 0.35f, 1.0f });
+
+    const float inset = sz * 0.18f;
+    const ImVec2 chipMin = { origin.x + inset,      origin.y + inset };
+    const ImVec2 chipMax = { origin.x + sz - inset, origin.y + sz - inset };
+    dl->AddRectFilledMultiColor(chipMin, chipMax, top, top, bottom, bottom);
+    dl->AddRect(chipMin, chipMax, IM_COL32(20, 22, 26, 180), 0.0f, 0, 1.0f);
+    DrawThumbnailLabel(dl, origin, sz, badge);
+}
+
 static void DrawRenderTargetThumbnail(
     renderer::ResourceHandle<renderer::RenderTargetTag> rt,
     ImVec2 origin,
@@ -2214,6 +2292,22 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
             }
 
+            // 球に焼けない .mat はここで畳む。RT も確保しない (使わないまま 1 枚寝かせる)。
+            // 素材があればその絵、無ければ色見本。«何も出ない» で終わらせない。
+            const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(preview.asset);
+            if (flavor == ThumbnailShaderFlavor::Unsupported) {
+                const char* badge = MaterialThumbnailBadge(preview.asset);
+                if (preview.previewTexture.IsValid()) {
+                    if (void* rawID = ctx.imguiRenderer->GetImTextureID(preview.previewTexture, *ctx.resources)) {
+                        DrawSpriteThumbnail(rawID, preview.previewTextureWidth, preview.previewTextureHeight,
+                                            nullptr, badge, origin, sz, hovered);
+                        return;
+                    }
+                }
+                DrawMaterialSwatchThumbnail(preview.asset, badge, origin, sz, hovered);
+                return;
+            }
+
             EnsureThumbnailRT(preview, ctx);
             if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
                 if (!s_tr.materialSphere)
@@ -2222,7 +2316,6 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     s_tr.skinnedMaterialSphere = CreateSkinnedPreviewSphere(*ctx.resources, 64);
                 if (!s_tr.waterMaterialSphere)
                     s_tr.waterMaterialSphere = CreateWaterPreviewSphere(*ctx.resources, 64);
-                const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(preview.asset);
                 renderer::Mesh* previewMesh = nullptr;
                 if (flavor == ThumbnailShaderFlavor::Skinned)
                     previewMesh = s_tr.skinnedMaterialSphere;
@@ -2230,13 +2323,6 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     previewMesh = s_tr.waterMaterialSphere;
                 else if (flavor == ThumbnailShaderFlavor::Surface || flavor == ThumbnailShaderFlavor::Terrain)
                     previewMesh = s_tr.materialSphere;
-
-                if (flavor == ThumbnailShaderFlavor::Unsupported && preview.previewTexture.IsValid()) {
-                    if (void* rawID = ctx.imguiRenderer->GetImTextureID(preview.previewTexture, *ctx.resources)) {
-                        DrawTextureThumbnail(rawID, preview.previewTextureWidth, preview.previewTextureHeight, origin, sz, hovered);
-                        return;
-                    }
-                }
 
                 if (previewMesh && RebuildMaterialThumbnailGpuData(preview, ctx)) {
                     preview.thumbnailRendered = RenderMeshThumbnail(
@@ -2254,6 +2340,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
             }
             if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "MAT")) return;
+            // 球へは焼けるはずなのに焼けなかった .mat (シェーダーが壊れている・
+            // ShaderDescriptor が引けない等) も、色だけは出して拡張子アイコンに落とさない。
+            DrawMaterialSwatchThumbnail(preview.asset, "MAT", origin, sz, hovered);
+            return;
         }
     }
 
@@ -2599,6 +2689,81 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
+    // .vfx: 主役エミッターの .mat から素材テクスチャ 1 枚を出す。
+    // WHY 中身を焼かないか: 粒子は時間と GPU パスの産物で 1 枚絵にならない。
+    //     «何の絵か» だけ出して、確かめる導線は Inspector の Open in Prefab Mode に預ける。
+    if (e.ext == ".vfx" && ctx.resources && ctx.imguiRenderer) {
+        VfxPreview& preview = m_vfxPreviews[e.path];
+        const auto currentWriteTime = ReadLastWriteTime(e.path);
+        if (currentWriteTime != preview.lastWriteTime) {
+            preview = {};
+            preview.lastWriteTime = currentWriteTime;
+        }
+        if (!preview.parsed) {
+            preview.parsed = true;
+            std::string text;
+            if (util::FileSystem::ReadText(e.path, text)) {
+                toml::parse_result result = toml::parse(text);
+                if (result) {
+                    if (auto* gos = result.table()["gameobjects"].as_array()) {
+                        // 主役は一番手前に描かれるエミッター。同値なら粒の大きい方。
+                        std::string heroMaterial;
+                        int   heroPriority = (std::numeric_limits<int>::min)();
+                        float heroSize     = -1.0f;
+                        for (const auto& item : *gos) {
+                            const auto* goTbl = item.as_table();
+                            if (!goTbl) continue;
+                            const auto* emitterTbl = (*goTbl)["ParticleEmitter"].as_table();
+                            if (!emitterTbl) continue;
+                            const std::string matPath =
+                                (*emitterTbl)["materialPath"].value_or(std::string{});
+                            if (matPath.empty()) continue;
+                            const int   priority =
+                                static_cast<int>((*emitterTbl)["renderPriority"].value_or(int64_t{ 0 }));
+                            const float size =
+                                static_cast<float>((*emitterTbl)["sizeStart"].value_or(0.0));
+                            if (priority > heroPriority ||
+                                (priority == heroPriority && size > heroSize)) {
+                                heroPriority = priority;
+                                heroSize     = size;
+                                heroMaterial = matPath;
+                            }
+                        }
+                        if (!heroMaterial.empty()) {
+                            std::string absMatPath = heroMaterial;
+                            if (absMatPath.starts_with("Assets/") && !ctx.projectRoot.empty())
+                                absMatPath = ctx.projectRoot + "/" + absMatPath;
+                            asset::MaterialAsset heroAsset;
+                            if (asset::LoadMaterialAssetFromFile(absMatPath, heroAsset)) {
+                                const std::string texPath = SelectMaterialPreviewTexture(heroAsset);
+                                if (!texPath.empty()) {
+                                    preview.texturePath = ToTextureLoadPath(texPath, ctx);
+                                    preview.hasTexture  = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (preview.hasTexture) {
+            // 読み込みは通常のテクスチャサムネイルと同じ列に積む (3 件/フレーム)。
+            TexturePreview& texture = m_texturePreviews[preview.texturePath];
+            if (!texture.handle.IsValid() && !texture.queued && CanAttemptPreview(texture)) {
+                texture.queued = true;
+                m_texLoadQueue.push_back(preview.texturePath);
+            }
+            if (texture.handle.IsValid()) {
+                if (void* rawID = ctx.imguiRenderer->GetImTextureID(texture.handle, *ctx.resources)) {
+                    DrawSpriteThumbnail(rawID, texture.width, texture.height,
+                                        nullptr, "VFX", origin, sz, hovered);
+                    return;
+                }
+            }
+        }
+        // 素材を引けなければ拡張子アイコンへ落とす (末尾の DrawFileIconAt)。
+    }
+
     // .animcontroller: ステートマシン風アイコン (3ノード + 矢印)
     if (e.ext == ".animcontroller") {
         ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -2762,6 +2927,7 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     releaseAndErase(m_materialPreviews);
     releaseAndErase(m_meshPreviews);
     releaseAndErase(m_prefabPreviews);
+    releaseAndErase(m_vfxPreviews);
     releaseAndErase(m_terrainPreviews);
     {
         auto it = m_modelAssetPreviews.find(path);
@@ -2829,6 +2995,7 @@ void AssetBrowserPanel::ClearAllAssetPreviews()
     m_texturePreviews.clear();
     m_texDescPreviews.clear();
     m_spritePreviews.clear();
+    m_vfxPreviews.clear();
     m_texLoadQueue.clear();
 }
 
@@ -2956,6 +3123,8 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
         if (canRename && ctx.selectedAssetPath == e.path && m_selectedPaths.empty()) {
             m_pendingRenamePath  = e.path;
             m_pendingRenameTimer = static_cast<float>(ImGui::GetTime());
+            // 待っている間にどれだけ動いたかを測る原点。ここから離れたら «開く / 掴む» とみなす。
+            m_pendingRenameMouse = ImGui::GetIO().MousePos;
         } else {
             m_selectedPaths.clear();
             SelectAsset(ctx, e.path);
@@ -3001,10 +3170,15 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
         } else {
             FBZZ_LOG_ERROR("Failed to open scene: %s", path.c_str());
         }
-    } else if (ext == ".prefab" && ctx.activeScene && ImGui::GetIO().KeyAlt) {
+    } else if (ext == ".prefab" && ctx.activeScene &&
+               (ImGui::GetIO().KeyAlt || ctx.InPrefabEditMode())) {
         // Alt+ダブルクリック: シーンへ置くのではなく、プレファブ本体を編集面で開く。
         // WHY: 既定はこれまでどおり「配置」。編集は破壊的になりうるので、
         //      明示的な修飾キーと右クリックメニューからだけ入れるようにする。
+        //
+        // WHY Prefab 編集中は修飾キー無しでも «開く» か: 編集面に居る間は «別のプレハブへ
+        //     移る» が主な用件で、そこへの導線が他に無かった (Alt を知らないと戻れない)。
+        //     入れ子に «置く» ほうは Hierarchy / Scene View へのドロップが引き続き受け持つ。
         ctx.requestOpenPrefabEdit = NormalizeAssetPath(path);
     } else if (ext == ".prefab" && ctx.activeScene) {
         const bool canRecordUndo =
@@ -3104,7 +3278,7 @@ void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
 
 void AssetBrowserPanel::HandleClipboardShortcuts(EditorContext& ctx)
 {
-    if (!ctx.assetBrowserFocused) return;
+    if (!ctx.PanelScopeFocused(HotkeyScope::AssetBrowser)) return;
     // リネーム中や検索ボックス入力中の Ctrl+C/V はテキスト編集として扱う (横取りしない)。
     if (ImGui::GetIO().WantTextInput) return;
 
@@ -3578,17 +3752,6 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
 
 void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubAssetBand& band)
 {
-    // 遅延リネームタイマー: ダブルクリック判定後 0.5s 経過でリネーム開始
-    if (!m_pendingRenamePath.empty() && m_pendingRenamePath == e.path) {
-        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            m_pendingRenamePath.clear();
-        } else if (!e.isMount &&
-                   static_cast<float>(ImGui::GetTime()) - m_pendingRenameTimer > 0.5f) {
-            BeginRenameForPath(m_pendingRenamePath, &ctx);
-            m_pendingRenamePath.clear();
-        }
-    }
-
     ImGui::PushID(e.path.c_str());
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -3596,6 +3759,31 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
 
     ImGui::InvisibleButton("##icon", { sz, sz });
     const bool hov = ImGui::IsItemHovered();
+
+    // 遅延リネーム: «選択済みをもう一度クリック» から一定時間で名前欄へ入る (Explorer 方式)。
+    //
+    // WHY 取り消す条件をここまで足すか: この待ち時間は «開く» (ダブルクリック) と同じ
+    //     操作の上に乗っている。2 度目の押下が判定枠 (既定 0.30 秒) から少しでも遅れると、
+    //     開いたつもりが名前欄に入る。実際にそれで «Rename になってしまう» が起きた。
+    //     待っている間にカーソルが外れた・押した場所から動いた・ボタンが押された、の
+    //     どれかがあれば «開こうとしている / 掴もうとしている» ので、名前欄へは入らない。
+    //     リネーム自体は F2 と右クリックからも入れるので、この経路は厳しくしてよい。
+    if (!m_pendingRenamePath.empty() && m_pendingRenamePath == e.path) {
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        const float  dx    = mouse.x - m_pendingRenameMouse.x;
+        const float  dy    = mouse.y - m_pendingRenameMouse.y;
+        constexpr float kSlopPx = 4.0f;
+        const bool moved = (dx * dx + dy * dy) > (kSlopPx * kSlopPx);
+
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
+            ImGui::IsMouseDown(ImGuiMouseButton_Left) || !hov || moved) {
+            m_pendingRenamePath.clear();
+        } else if (!e.isMount &&
+                   static_cast<float>(ImGui::GetTime()) - m_pendingRenameTimer > 0.5f) {
+            BeginRenameForPath(m_pendingRenamePath, &ctx);
+            m_pendingRenamePath.clear();
+        }
+    }
 
     const bool primarySelected = !e.isDir && e.path == ctx.selectedAssetPath;
     const bool selected = primarySelected || m_selectedPaths.count(e.path) > 0;
@@ -3631,10 +3819,14 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     const bool tinted  = e.isDir && TryGetFolderColor(ctx, e.path, folderColor);
     const float footerY = origin.y + sz;
 
+    // ホバーは «点く» のではなく «灯る»。タイルは一覧を舐めるように見るものなので、
+    // 一瞬で切り替わると視線の通り道が全部チカチカする。
+    const float hoverT = widgets::Animate(ImGui::GetID("##tileHover"), hov ? 1.0f : 0.0f, 16.0f);
+
     // サブアセットは親の帯に載っているので、カード下地は描かない。
     // WHY: 帯とカードの二重の面になり、親子のまとまりを示す帯が読めなくなる。
     if (!band.active)
-        ui::DrawAssetTileCard(dl, tileMin, tileMax, hov, 5.0f);
+        ui::DrawAssetTileCard(dl, tileMin, tileMax, hoverT, 5.0f);
     if (tinted)
         ui::DrawAssetTileTypeWash(dl, tileMin, tileMax, footerY, folderColor, 5.0f);
 
@@ -3772,12 +3964,15 @@ void AssetBrowserPanel::DrawFindRefsPopup()
         ImGui::BeginChild("##refs_list", { 0.0f, avail }, true);
         for (const auto& ref : m_findRefs.results) {
             const std::string label = util::FileSystem::GetFilename(ref);
+            // 別フォルダの同名ファイルがあるので、表示名ではなくフルパスで ID を分ける。
+            ImGui::PushID(ref.c_str());
             if (ImGui::Selectable(label.c_str())) {
                 // クリックで親フォルダへナビゲート
                 m_pendingNavigate = util::FileSystem::GetDirectory(ref);
                 ImGui::CloseCurrentPopup();
             }
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", ref.c_str());
+            ImGui::PopID();
         }
         ImGui::EndChild();
     }

@@ -96,6 +96,8 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
                     scopeText += scopeText.empty() ? "Hierarchy" : " / Hierarchy";
                 if (HasScope(hk.scope, HotkeyScope::AssetBrowser))
                     scopeText += scopeText.empty() ? "Assets" : " / Assets";
+                if (HasScope(hk.scope, HotkeyScope::FluidEditor))
+                    scopeText += scopeText.empty() ? "Fluid Editor" : " / Fluid Editor";
             }
             ImGui::TextDisabled("%s", scopeText.c_str());
 

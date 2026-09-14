@@ -185,12 +185,9 @@ void AssetBrowserPanel::RefreshSearchResults()
 
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
-    // HotkeyManager の Scope::AssetBrowser 判定用。以前は誰も立てておらず
-    // 該当スコープのショートカットが常に無効化されていた。
-    // Asset Browser は複数開けるので、どれか 1 枚でも focus されていれば立てる
-    // (EditorApp が毎フレーム false へ戻してからパネルを描く)。
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
-        ctx.assetBrowserFocused = true;
+    // フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
+    // Asset Browser は複数開けるが、フォーカスを持てるのはそのうち 1 枚だけなので、
+    // «どれか 1 枚でも» を自前で OR する必要はない。
     HandleClipboardShortcuts(ctx);
 
     DrawImportSettingsModal(ctx);

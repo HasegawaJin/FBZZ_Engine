@@ -2,6 +2,8 @@
 /// @brief   Add Object プリセットの実体。SceneHierarchyPanel のメニューと AI (preset.create) が同じ表を使う。
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Engine/Scene/VFXLineGeometry.hpp>
 #include <Editor/Util/ObjectPresets.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -633,6 +635,21 @@ scene::GameObject* MakeVFXBeam(EditorContext& ctx)
     return &go;
 }
 
+scene::GameObject* MakeVFXLine(EditorContext& ctx, scene::VFXLinePreset preset, const char* name)
+{
+    auto& go = ctx.activeScene->CreateGameObject(name);
+    scene::VFXLineComponent line;
+    scene::ApplyVFXLinePreset(line, preset);
+    go.AddComponent<scene::VFXLineComponent>(std::move(line));
+    return &go;
+}
+
+scene::GameObject* MakeVFXLightning(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Lightning, "Lightning"); }
+scene::GameObject* MakeVFXElectricArc(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::ElectricArc, "Electric Arc"); }
+scene::GameObject* MakeVFXLaser(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Laser, "Laser"); }
+scene::GameObject* MakeVFXEnergyBeam(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::EnergyBeam, "Energy Beam"); }
+scene::GameObject* MakeVFXTether(EditorContext& ctx) { return MakeVFXLine(ctx, scene::VFXLinePreset::Tether, "Tether"); }
+
 scene::GameObject* MakeVFXDecal(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Ground Mark");
@@ -889,6 +906,11 @@ constexpr ObjectPreset kPresets[] = {
     { "vfx.forceField",   "VFX", "Force Field",   "爆風。周囲のパーティクルを押しのける", &MakeVFXForceField },
     { "vfx.decal",        "VFX", "Ground Mark",   "床の跡。濃さのカーブ付き", &MakeVFXDecal },
     { "vfx.beam",         "VFX", "Beam (2 点を結ぶ)", "Trail + VFXBeam。2 つの実体を結ぶ。引き寄せの線・電弧に使う", &MakeVFXBeam },
+    { "vfx.lightning",    "VFX", "Lightning (雷)",   "VFX Line。本流と枝を毎秒十数回打ち直す雷", &MakeVFXLightning },
+    { "vfx.electricArc",  "VFX", "Electric Arc",     "VFX Line。電極の間を細かく走る放電", &MakeVFXElectricArc },
+    { "vfx.laser",        "VFX", "Laser",            "VFX Line。まっすぐな光線 (芯とグロー)", &MakeVFXLaser },
+    { "vfx.energyBeam",   "VFX", "Energy Beam",      "VFX Line。うねりと流れる輝点を持つ太いビーム", &MakeVFXEnergyBeam },
+    { "vfx.tether",       "VFX", "Tether",           "VFX Line。垂れて揺れる引き寄せの線", &MakeVFXTether },
     { "vfx.screenEffect", "VFX", "Screen Flash",  "画面フラッシュ + ブルーム上乗せ", &MakeVFXScreenEffect },
     { "vfx.cameraShake",  "VFX", "Camera Shake",  "カメラ揺れ。頭でっかちに減衰する", &MakeVFXCameraShake },
     { "vfx.timeScale",    "VFX", "Hit Stop",      "一瞬の時間減速", &MakeVFXTimeScale },

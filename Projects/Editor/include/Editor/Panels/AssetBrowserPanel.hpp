@@ -42,6 +42,7 @@ public:
     // ウィンドウ名と、EditorSettings 側のパネル状態の添字を決める。
     explicit AssetBrowserPanel(const std::string& rootPath, std::size_t instanceIndex = 0);
     const char* GetWindowName() const override { return m_windowName.c_str(); }
+    HotkeyScope GetHotkeyScope() const override { return HotkeyScope::AssetBrowser; }
     // 2 枚目以降は既定で非表示。View > Panels から出す (Unity の Project ウィンドウと同じ)。
     bool GetDefaultVisibility() const override { return m_instanceIndex == 0; }
     void OnInit(EditorContext& ctx) override;
@@ -445,6 +446,16 @@ private:
         bool parsed = false;
         bool hasMesh = false;
     };
+    // .vfx: 主役エミッターの .mat から素材テクスチャ 1 枚を引いて「何の絵か」を出す。
+    // WHY シミュレーションを焼かないか: 粒子は時間と GPU パスの産物で、1 枚絵にはならない。
+    //      素材が分かるだけでも拡張子アイコンより一覧性が上がる、という割り切り。
+    //      中身を確かめる導線は Inspector の «Open in Prefab Mode» が持つ。
+    struct VfxPreview {
+        std::filesystem::file_time_type lastWriteTime{};
+        std::string texturePath; ///< m_texturePreviews のキー (実ファイルパス)
+        bool parsed = false;
+        bool hasTexture = false;
+    };
     struct TerrainPreview {
         MaterialPreview mat;
         std::filesystem::file_time_type lastWriteTime{};
@@ -481,6 +492,7 @@ private:
     std::unordered_map<std::string, MaterialPreview>      m_materialPreviews;
     std::unordered_map<std::string, MeshPreview>          m_meshPreviews;
     std::unordered_map<std::string, PrefabPreview>        m_prefabPreviews;
+    std::unordered_map<std::string, VfxPreview>           m_vfxPreviews;
     std::unordered_map<std::string, TerrainPreview>       m_terrainPreviews;
     std::unordered_map<std::string, ModelAssetPreview>    m_modelAssetPreviews;
     std::unordered_map<std::string, TexDescPreview>       m_texDescPreviews;
@@ -498,6 +510,8 @@ private:
     // Unity 風の遅延リネーム: 選択済みアイテムを再クリック後 0.5s 経過でリネーム開始
     std::string m_pendingRenamePath;
     float       m_pendingRenameTimer = 0.0f;
+    // 遅延リネームを待ち始めたときのカーソル位置。ここから動いたら取り消す。
+    ImVec2      m_pendingRenameMouse{ 0.0f, 0.0f };
     // D&D 判定: マウス押下→リリースの間にドラッグが発生したか
     bool        m_entryDragStarted    = false;
     // ダブルクリック判定: 2回目のリリースで余分な選択を防ぐ

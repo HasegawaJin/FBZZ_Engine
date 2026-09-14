@@ -44,6 +44,15 @@ struct BuildSettings {
     // 絶対パス / 相対パス両対応で出力先を解決する
     std::filesystem::path ResolveOutputPath(const std::string& projectRoot) const;
 
+    // 出力先が配布物の書き出し先として安全か判定する。
+    //
+    // WHY 必要か: コミットは出力先を remove_all してから _tmp を rename する。
+    //     空欄のままだと ResolveOutputPath がプロジェクトルートを返し、ビルドを
+    //     押した瞬間にプロジェクトごと消える。Browse... で作業フォルダを選んでも同じ。
+    // @param outReason false のときに UI とビルドログへ出す理由
+    // @ret 安全なら true
+    bool ValidateOutputPath(const std::string& projectRoot, std::string& outReason) const;
+
     // 旧形式 (<projectRoot>/BuildSettings.toml) を読み込む。EditorSettings に
     // [build] が無い場合の移行専用で、通常の保存経路では使わない。
     static bool LoadLegacyFile(const std::string& projectRoot, BuildSettings& out);

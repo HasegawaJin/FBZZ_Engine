@@ -6,11 +6,24 @@
 #include <Editor/Util/PrefabOverrides.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::scene { class Scene; }
 
 namespace fbzz::editor {
+
+/// ドロップやコマンドでシーンへそのまま実体化できるアセット拡張子か (先頭ドット付き・小文字)。
+///
+/// WHY 1 箇所にまとめるか: 同じ判定が Scene View のドロップ・Hierarchy の 2 つのドロップ先・
+///     AI の prefab.instantiate と 4 箇所に散っており、対応拡張子を増やすたびに
+///     «Hierarchy には置けるのに Scene View には置けない» 取りこぼしが出る。
+/// WHY .vfx を含めるか: .vfx は .prefab とまったく同じ prefab 形式 (TOML) で、
+///     展開経路 (scene::InstantiatePrefabAsset) も拡張子を見ていない。
+[[nodiscard]] inline bool IsInstantiableAssetExtension(std::string_view ext)
+{
+    return ext == ".prefab" || ext == ".vfx";
+}
 
 class PrefabSerializer {
 public:

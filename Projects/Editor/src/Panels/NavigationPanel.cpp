@@ -77,9 +77,11 @@ void DrawLegend(renderer::NavMeshDrawMode mode)
     }
 
     for (int i = 0; i < count; ++i) {
+        ImGui::PushID(i);
         ImGui::ColorButton("##legend", entries[i].color,
                            ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop,
                            ImVec2(12.0f, 12.0f));
+        ImGui::PopID();
         ImGui::SameLine();
         ImGui::TextColored(kDimColor, "%s", entries[i].text);
     }

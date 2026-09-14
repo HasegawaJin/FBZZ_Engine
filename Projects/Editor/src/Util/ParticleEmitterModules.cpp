@@ -213,10 +213,13 @@ bool SubEmitterCombo(const char* label, std::string& target, EditorContext& ctx)
         for (auto& go : ctx.activeScene->GameObjects()) {
             if (!go.GetComponent<scene::ParticleEmitter>()) continue;
             const bool selected = target == go.name;
+            // 同名の GameObject は珍しくないので、名前ではなく実体で ID を分ける。
+            ImGui::PushID(&go);
             if (ImGui::Selectable(go.name.c_str(), selected) && !selected) {
                 target = go.name;
                 changed = true;
             }
+            ImGui::PopID();
         }
     }
     ImGui::EndCombo();
@@ -575,10 +578,12 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             for (uint32_t i = 0; i < runtime.runtimeGradient.keyCount; ++i) {
                 if (i > 0) ImGui::SameLine();
                 const auto& color = runtime.runtimeGradient.keys[i].color;
+                ImGui::PushID(static_cast<int>(i));
                 ImGui::ColorButton("##baked",
                     ImVec4(color.x, color.y, color.z, 1.0f),
                     ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop,
                     ImVec2(28.0f, 16.0f));
+                ImGui::PopID();
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("t=%.2f  %.0fK  rgb(%.2f, %.2f, %.2f)",
                         runtime.runtimeGradient.keys[i].time,
@@ -634,32 +639,32 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
     }
 
     // ── Trails: 粒子1つ1つに尾を付ける (火の粉・魔法の軌跡) ────────────────────
-    if (BeginModule("Trails", &pe.trailEnabled, /*defaultOpen=*/false, changed)) {
-        if (pe.trailEnabled) {
-            changed |= ImGui::DragInt("Trail Points", &pe.trailPointCount, 1, 1,
+    if (BeginModule("Trails", &pe.trail.trailEnabled, /*defaultOpen=*/false, changed)) {
+        if (pe.trail.trailEnabled) {
+            changed |= ImGui::DragInt("Trail Points", &pe.trail.trailPointCount, 1, 1,
                                       scene::kMaxParticleTrailPoints);
-            changed |= ImGui::DragFloat("Sample Interval", &pe.trailSampleInterval,
+            changed |= ImGui::DragFloat("Sample Interval", &pe.trail.trailSampleInterval,
                                         0.001f, 0.001f, 1.0f, "%.3fs");
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("履歴を刻む間隔。短いほど尾が滑らかになりますが、"
                                   "同じ点数でも尾は短くなります。");
-            changed |= ImGui::SliderFloat("Tip Width", &pe.trailWidthScale, 0.0f, 1.0f);
-            changed |= ImGui::SliderFloat("Tip Alpha", &pe.trailAlphaScale, 0.0f, 1.0f);
-            float tint[4] = { pe.trailColorTint.x, pe.trailColorTint.y,
-                              pe.trailColorTint.z, pe.trailColorTint.w };
+            changed |= ImGui::SliderFloat("Tip Width", &pe.trail.trailWidthScale, 0.0f, 1.0f);
+            changed |= ImGui::SliderFloat("Tip Alpha", &pe.trail.trailAlphaScale, 0.0f, 1.0f);
+            float tint[4] = { pe.trail.trailColorTint.x, pe.trail.trailColorTint.y,
+                              pe.trail.trailColorTint.z, pe.trail.trailColorTint.w };
             if (ImGui::ColorEdit4("Trail Tint", tint)) {
-                pe.trailColorTint = { tint[0], tint[1], tint[2], tint[3] };
+                pe.trail.trailColorTint = { tint[0], tint[1], tint[2], tint[3] };
                 changed = true;
             }
-            changed |= ImGui::Checkbox("Continuous Ribbon", &pe.trailRibbon);
+            changed |= ImGui::Checkbox("Continuous Ribbon", &pe.trail.trailRibbon);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
                     "履歴点をポリラインとみなし、1 枚の連続した帯として描きます。\n"
                     "剣閃・魔法の軌跡のように「幅のある帯」が主役の表現に使います。\n"
                     "ビルボード方式は太くすると粒の連なりが露見するため、太い帯には向きません。");
             }
-            if (pe.trailRibbon) {
-                changed |= ImGui::DragFloat("Ribbon Width", &pe.trailRibbonWidth, 0.01f, 0.0f, 20.0f,
+            if (pe.trail.trailRibbon) {
+                changed |= ImGui::DragFloat("Ribbon Width", &pe.trail.trailRibbonWidth, 0.01f, 0.0f, 20.0f,
                                             "%.3f m");
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("0 のときは粒子サイズをそのまま帯の幅として使います。");
@@ -722,6 +727,14 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                 changed |= ImGui::DragFloat("Radius", &pe.collisionRadius, 0.001f, 0.0f, 10.0f);
                 changed |= ImGui::DragFloat("Bounciness", &pe.collisionBounciness, 0.01f, 0.0f, 1.0f);
                 changed |= ImGui::DragFloat("Damping", &pe.collisionDamping, 0.01f, 0.0f, 1.0f);
+                if (pe.collisionMode == scene::ParticleCollisionMode::Physics) {
+                    if (widgets::ForceFieldChannelMask("Collision Layers", pe.collisionLayerMask))
+                        changed = true;
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("当たってよいコライダーのレイヤーです (ビット n = レイヤー n)。\n"
+                                          "既定は全レイヤー。地面だけに当てたいときはここで絞ります。");
+                    ImGui::TextDisabled("トリガーには当たりません (通過を検知する体積で、跳ね返る面ではないため)");
+                }
                 if (pe.collisionMode == scene::ParticleCollisionMode::Plane)
                     changed |= ImGui::DragFloat("Plane Y", &pe.collisionPlaneY, 0.01f, -10000.0f, 10000.0f);
                 if (pe.collisionMode == scene::ParticleCollisionMode::Depth)
@@ -742,6 +755,16 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
         changed |= ImGui::DragInt("Burst Count", &pe.subEmitterBurstCount, 1, 1, 10000);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("Particles queued on the target emitter per event");
+        ImGui::TextDisabled("イベントの «発生した位置» が対象エミッターへ渡ります "
+                            "(当たった点 / 消えた点)");
+        ImGui::Separator();
+        changed |= ImGui::SliderFloat("Inherit Velocity##subEmitter",
+                                      &pe.subEmitterInheritVelocity, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("このエミッターが «発火元の粒子» に呼ばれたとき、その速度を初速へ継ぐ割合です。\n"
+                              "0 (既定) なら継ぎません。丸ごと継ぐと発火元と同じ向きへ流れるだけになるので、\n"
+                              "当たりの火花は 0.1〜0.3 程度から試してください。\n"
+                              "エミッター自身の移動を継ぐ Emission の Inherit Velocity とは別の値です。");
         EndModule();
     }
 
@@ -787,25 +810,57 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             ImGui::TextDisabled("ブレンド・フリップブック・歪み・煙・影は Material の Inspector で編集します");
         changed |= widgets::AssetPathField("Mesh Particle (optional)", pe.meshParticlePath,
                                            ".fbx,.obj,.mesh,.fzasset", ctx.projectRoot);
-        if (!pe.meshParticlePath.empty())
-            ImGui::TextDisabled("Mesh Particle uses deterministic CPU simulation.");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("«メッシュ粒子として描くか» のスイッチです。空でなければ有効。\n"
+                              "指定したパスは読み込まれません — 形は同じ GameObject の\n"
+                              "MeshRenderer が持ちます (互換のため型は文字列のまま)。");
+        if (!pe.meshParticlePath.empty()) {
+            // «別のモデルを指定したのに変わらない» / «何も出ない» の 2 つが、この欄で
+            // 一番多い詰まり方。要求を画面に出しておく (どちらも黙って失敗する)。
+            ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
+                "パスは使われません: 形は同じ GameObject の MeshRenderer が正本です");
+            ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
+                "CPU シミュレーションでは MeshTrailComponent も必須 (無いと 1 粒も描かれません)");
+        }
         EndModule();
     }
 
     // ── Culling & LOD ───────────────────────────────────────────────
     if (BeginModule("Culling & LOD", nullptr, /*defaultOpen=*/false, changed)) {
-        changed |= ImGui::Checkbox("Culling Enabled", &pe.cullingEnabled);
-        changed |= ImGui::DragFloat("Bounds Padding", &pe.cullingBoundsPadding, 0.01f, 0.0f, 100.0f);
-        changed |= ImGui::Checkbox("Pause When Culled", &pe.pauseWhenCulled);
-        changed |= ImGui::DragFloat("Screen Coverage Threshold", &pe.screenCoverageThreshold, 0.0001f, 0.0f, 1.0f, "%.4f");
+        changed |= ImGui::Checkbox("Culling Enabled", &pe.culling.cullingEnabled);
+        changed |= ImGui::DragFloat("Bounds Padding", &pe.culling.cullingBoundsPadding, 0.01f, 0.0f, 100.0f);
+        changed |= ImGui::Checkbox("Pause When Culled", &pe.culling.pauseWhenCulled);
+        changed |= ImGui::DragFloat("Screen Coverage Threshold", &pe.culling.screenCoverageThreshold, 0.0001f, 0.0f, 1.0f, "%.4f");
         ImGui::Separator();
-        changed |= ImGui::Checkbox("LOD Enabled", &pe.lodEnabled);
-        changed |= ImGui::DragFloat("LOD Near Distance", &pe.lodNearDistance, 0.1f, 0.0f, 10000.0f);
-        changed |= ImGui::DragFloat("LOD Far Distance", &pe.lodFarDistance, 0.1f, 0.0f, 10000.0f);
-        changed |= ImGui::DragFloat("LOD Near Rate", &pe.lodNearRateScale, 0.01f, 0.0f, 1.0f);
-        changed |= ImGui::DragFloat("LOD Far Rate", &pe.lodFarRateScale, 0.01f, 0.0f, 1.0f);
+        changed |= ImGui::Checkbox("LOD Enabled", &pe.culling.lodEnabled);
+        changed |= ImGui::DragFloat("LOD Near Distance", &pe.culling.lodNearDistance, 0.1f, 0.0f, 10000.0f);
+        changed |= ImGui::DragFloat("LOD Far Distance", &pe.culling.lodFarDistance, 0.1f, 0.0f, 10000.0f);
+        changed |= ImGui::DragFloat("LOD Near Rate", &pe.culling.lodNearRateScale, 0.01f, 0.0f, 1.0f);
+        changed |= ImGui::DragFloat("LOD Far Rate", &pe.culling.lodFarRateScale, 0.01f, 0.0f, 1.0f);
         ImGui::Text("Bounds: %.2f  Visible: %d  Culled: %s",
                     runtime.boundsRadius, runtime.visibleParticleCount, runtime.isCulledThisFrame ? "Yes" : "No");
+        EndModule();
+    }
+
+    // ── Lights: 粒子を点光源にする ─────────────────────────────────
+    if (BeginModule("Lights", &pe.light.lightEnabled, /*defaultOpen=*/false, changed)) {
+        auto& light = pe.light;
+        changed |= ImGui::SliderFloat("Ratio", &light.lightRatio, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("光らせる粒子の割合です。粒子ごとに固定で、寿命の間は変わりません。");
+        changed |= ImGui::DragInt("Max Lights", &light.lightMaxCount, 1.0f, 0, 64);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("このエミッターから出す本数の上限です。明るい順に選びます。\n"
+                              "ライトの枠は LightComponent と共有です (LightComponent が優先)。");
+        changed |= ImGui::DragFloat("Range", &light.lightRange, 0.05f, 0.0f, 100.0f, "%.2f m");
+        changed |= ImGui::Checkbox("Range x Particle Size", &light.lightRangeFromSize);
+        changed |= ImGui::DragFloat("Intensity", &light.lightIntensity, 0.05f, 0.0f, 1000.0f);
+        changed |= ImGui::ColorEdit3("Color", &light.lightColor.x, ImGuiColorEditFlags_Float);
+        changed |= ImGui::Checkbox("Multiply Particle Color", &light.lightUseParticleColor);
+        changed |= ImGui::Checkbox("Fade With Alpha", &light.lightFadeWithAlpha);
+        if (pe.simulationMode == scene::ParticleSimulationMode::Gpu)
+            ImGui::TextColored({ 1.0f, 0.65f, 0.3f, 1.0f },
+                               "Lights を入れると CPU シミュレーションへ縮退します "
+                               "(粒子の位置が CPU に無いと光源にできないため)");
         EndModule();
     }
 

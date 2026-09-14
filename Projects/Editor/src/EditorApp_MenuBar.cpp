@@ -17,6 +17,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Localization.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Toast.hpp>
@@ -559,7 +560,70 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
+    if (ImGui::BeginMenu(LOC("Help"))) {
+        if (ImGui::MenuItem(LOC("About FBZZ Studio..."))) m_aboutRequested = true;
+        ImGui::EndMenu();
+    }
+
     ImGui::EndMenuBar();
+}
+
+// ── About ───────────────────────────────────────────────────────────────────
+// WHY 素っ気ない 1 行にしないか: 起動して最初に «何を触っているのか» を名乗る場所が
+//     メニューバー隅のブランドマークしか無かった。制作物として人に見せる道具なので、
+//     名前・構成・出所をここで 1 枚にまとめる。
+void EditorApp::DrawAboutDialog()
+{
+    constexpr const char* kAboutPopupId = "##fbzz_about";
+    if (m_aboutRequested) {
+        ImGui::OpenPopup(kAboutPopupId);
+        m_aboutRequested = false;
+    }
+
+    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, { 0.5f, 0.5f });
+    ImGui::SetNextWindowSize({ ImGui::GetFontSize() * 24.0f, 0.0f }, ImGuiCond_Appearing);
+
+    if (!ImGui::BeginPopupModal(kAboutPopupId, nullptr,
+                                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings))
+        return;
+
+    widgets::BeginHeadingFont(2.2f);
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
+    ImGui::TextUnformatted("FBZZ");
+    ImGui::PopStyleColor();
+    ImGui::SameLine(0.0f, ImGui::GetFontSize() * 0.28f);
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
+    ImGui::TextUnformatted("STUDIO");
+    ImGui::PopStyleColor();
+    widgets::EndHeadingFont();
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("%s", LOCT("A C++20 game engine and editor built from scratch."));
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // 何で動いているかを 1 行ずつ。«自作» の範囲がここで読み取れるようにする。
+    const auto row = [](const char* label, const char* value) {
+        ImGui::TextDisabled("%s", label);
+        ImGui::SameLine(ImGui::GetFontSize() * 7.0f);
+        ImGui::TextUnformatted(value);
+    };
+    row(LOCT("Renderer"), m_ctx.renderer != nullptr ? m_ctx.renderer->GetBackendName() : "-");
+#if defined(_DEBUG)
+    row(LOCT("Build"), "Debug");
+#else
+    row(LOCT("Build"), "Release");
+#endif
+    row(LOCT("Built"), __DATE__);
+    row(LOCT("Author"), "Hasegawa Jin");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    if (ImGui::Button(LOC("Close"), { -1.0f, 0.0f })) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 void EditorApp::BuildPlayToolbar(EditorContext& ctx)
@@ -1145,6 +1209,18 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.RegisterInfo("Vertex snap",     "Hold V + drag",  Cat::Gizmo, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Surface snap",    "Ctrl + Shift + drag", Cat::Gizmo, Scope::SceneViewport);
 
+    // Fluid Editor はキーをパネル内で直接拾う (対象が «開いている文書» でありレジストリの
+    // operator にできない)。入力には関与しない説明専用エントリとして一覧にだけ出す。
+    // WHY: 一覧に出ないキーは «無い» のと同じ。特に Ctrl+S は、ここへ書いておかないと
+    //      「シーンの保存と何が違うのか」が画面のどこにも書かれていないことになる。
+    m_hotkeys.RegisterInfo("Save fluid document", "Ctrl+S", Cat::File, Scope::FluidEditor);
+    m_hotkeys.RegisterInfo("Play / pause preview", "Space", Cat::Play, Scope::FluidEditor);
+    m_hotkeys.RegisterInfo("Step frame",           "Left / Right", Cat::Play, Scope::FluidEditor);
+    m_hotkeys.RegisterInfo("Jump to start / end",  "Home / End",   Cat::Play, Scope::FluidEditor);
+    m_hotkeys.RegisterInfo("Delete selected part", "Delete",       Cat::Edit, Scope::FluidEditor);
+    m_hotkeys.RegisterInfo("Insert motion key at playhead", "K",   Cat::Edit, Scope::FluidEditor);
+    m_hotkeys.RegisterInfo("Rename selected part", "F2",           Cat::Edit, Scope::FluidEditor);
+
     // NOTE: 保存済みリバインドの適用は EditorApp::OpenProject が行う (設定を読むのがそこ)。
     //       Rebind は既定値を全部積んだ後でないと対象を引けないので、順序はここより後。
 
@@ -1152,14 +1228,15 @@ void EditorApp::RegisterDefaultHotkeys()
     // WHY: パネルは自分の描画中にしか自身のフォーカスを知れないため、
     //      ここで見るのは 1 フレーム前の状態になる。キー入力の応答としては問題ない。
     m_hotkeys.SetScopeResolver([this](HotkeyScope scope) {
-        if (HasScope(scope, HotkeyScope::SceneViewport) &&
-            (m_ctx.viewportFocused || m_ctx.sceneViewportHovered))
-            return true;
-        if (HasScope(scope, HotkeyScope::Hierarchy) && m_ctx.hierarchyFocused)
-            return true;
-        if (HasScope(scope, HotkeyScope::AssetBrowser) && m_ctx.assetBrowserFocused)
-            return true;
-        return false;
+        // 「今フォーカスされている面」は 1 つ (EditorContext::focusedPanelScope)。
+        // パネルが増えてもここは変わらない — 各パネルが IPanel::GetHotkeyScope() で名乗る。
+        if (m_ctx.PanelScopeFocused(scope)) return true;
+
+        // Scene View だけはホバーでも効かせる。
+        // WHY 例外を残すか: ギズモ切替やカメラ操作は «絵を見ながら» 押すもので、
+        //     先に一度クリックしてフォーカスを取る手順を挟むと手が止まる。
+        //     他の面は «選んだものに効く» 方が読めるので、フォーカスだけで判定する。
+        return HasScope(scope, HotkeyScope::SceneViewport) && m_ctx.sceneViewportHovered;
     });
 }
 

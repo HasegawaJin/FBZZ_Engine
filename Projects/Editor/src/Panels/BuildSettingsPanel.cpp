@@ -317,11 +317,16 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
 
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 90.0f);
     widgets::InputString("Output Directory", m_settings.outputDirectory);
+    // WHY 確定時だけ取り直すか: 出力先のチェックはディスクを読む。1 文字打つたびに
+    //     走らせる理由はないが、入れ替えたまま気付かずビルドを押せてもいけない。
+    if (ImGui::IsItemDeactivatedAfterEdit()) m_checksValid = false;
     ImGui::SameLine();
     if (ImGui::Button("Browse...")) {
         std::string chosen;
-        if (BrowseForFolder(GetForegroundWindow(), chosen))
+        if (BrowseForFolder(GetForegroundWindow(), chosen)) {
             m_settings.outputDirectory = chosen;
+            m_checksValid = false;
+        }
     }
 
     // WHY 解決後のパスを出すか: 出力先は相対でも絶対でも書ける。
@@ -347,7 +352,9 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
     ImGui::SameLine();
     ImGui::Checkbox("Strip editor & source files", &m_settings.stripEditorAssets);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("Excludes script sources (.hpp/.cpp), EditorConfig and docs.\n"
+        ImGui::SetTooltip("Excludes script sources (.hpp/.cpp), EditorConfig, docs, "
+                          "DCC originals (.blend/.psd) and anything under a folder "
+                          "whose name starts with '_'.\n"
                           "Shaders (.hlsl) and .meta always ship: the runtime needs them "
                           "to accept the precompiled .cso and to resolve guid references.");
 
@@ -371,6 +378,19 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
     }
 
     const std::filesystem::path root = util::FileSystem::PathFromUtf8(ctx.projectRoot);
+
+    // --- 出力先 ---
+    // WHY Error にするか: コミットは出力先を remove_all する。空欄やデスクトップを
+    //     指したままビルドを押せると、そのフォルダが中身ごと消える。
+    {
+        std::string reason;
+        if (m_settings.ValidateOutputPath(ctx.projectRoot, reason)) {
+            m_checks.push_back({ Check::Level::Ok, "Output",
+                util::FileSystem::PathToUtf8(m_settings.ResolveOutputPath(ctx.projectRoot)) });
+        } else {
+            m_checks.push_back({ Check::Level::Error, "Output", reason });
+        }
+    }
 
     // --- ツールチェーン (cmake / build.config) ---
     const ToolchainLocator::Result toolchain =

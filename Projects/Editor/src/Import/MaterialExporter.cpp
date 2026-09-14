@@ -143,6 +143,7 @@ std::string DumpEmbeddedAsPng(const aiTexture* texture,
 std::string ResolveTexture(const aiScene* scene,
                             const std::string& rawPath,
                             const std::string& fbxDir,
+                            const std::string& fbxBaseName,
                             const std::string& texturesDir)
 {
     // WHY: ここで texturesDir を掘らない。参照が解決できなければ 1 枚もコピーされず、
@@ -158,9 +159,21 @@ std::string ResolveTexture(const aiScene* scene,
     fs::path srcPath = util::FileSystem::PathFromUtf8(rawPath);
     if (srcPath.is_relative()) srcPath = util::FileSystem::PathFromUtf8(fbxDir) / srcPath;
     if (!util::FileSystem::Exists(srcPath)) {
-        const fs::path fallback = util::FileSystem::PathFromUtf8(fbxDir) / srcPath.filename();
-        if (util::FileSystem::Exists(fallback)) srcPath = fallback;
-        else return {};
+        // WHY: DCC が絶対パスを書いた FBX では原本の場所を再現できない。実体が残っているのは
+        //      FBX の隣か、FBX SDK が埋め込みメディアを展開した "<FBX名>.fbm/" のどちらか。
+        const fs::path fbxFsDir = util::FileSystem::PathFromUtf8(fbxDir);
+        const fs::path candidates[] = {
+            fbxFsDir / srcPath.filename(),
+            fbxFsDir / util::FileSystem::PathFromUtf8(fbxBaseName + ".fbm") / srcPath.filename(),
+        };
+        bool resolved = false;
+        for (const fs::path& candidate : candidates) {
+            if (!util::FileSystem::Exists(candidate)) continue;
+            srcPath  = candidate;
+            resolved = true;
+            break;
+        }
+        if (!resolved) return {};
     }
 
     const std::string filename = util::FileSystem::PathToUtf8(srcPath.filename());
@@ -197,6 +210,7 @@ bool FlipNormalMapGreen(const fs::path& texPath)
 bool MaterialExporter::Export(const aiMaterial* material,
                                   const aiScene* scene,
                                   const std::string& fbxDir,
+                                  const std::string& fbxBaseName,
                                   const std::string& texturesDir,
                                   const std::string& outputPath,
                                   bool skinned,
@@ -251,7 +265,7 @@ bool MaterialExporter::Export(const aiMaterial* material,
         aiString texPath;
         if (material->GetTexture(slot.type, 0, &texPath) == AI_SUCCESS) {
             const std::string filename =
-                ResolveTexture(scene, texPath.C_Str(), fbxDir, texturesDir);
+                ResolveTexture(scene, texPath.C_Str(), fbxDir, fbxBaseName, texturesDir);
             if (!filename.empty()) {
                 if (flipGreenChannel && std::string_view(slot.key) == "normal") {
                     const fs::path fullPath =

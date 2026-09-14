@@ -13,6 +13,7 @@
 /// 「キーを足したら一覧にも書き足す」という運用は必ず破れるので、
 /// 登録先を 1 箇所にして一覧を登録内容から生成する。
 #pragma once
+#include <Editor/Util/HotkeyScope.hpp>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -21,28 +22,9 @@
 
 namespace fbzz::editor {
 
-// ホットキーが効く文脈。ビットマスクなので複数指定できる
-// (例: Delete は Scene View と Hierarchy の両方で効く)。
-//
-// WHY: 同じキーがパネルごとに違う意味を持つ以上、「どこにフォーカスがあるか」を
-//      条件に含めないと 1 箇所へ集約できない。Scene View の W (ギズモ) と
-//      カメラ移動の W が衝突していたのも、この概念が無かったため。
-enum class HotkeyScope : std::uint32_t {
-    None          = 0,
-    Global        = 1u << 0,   // フォーカス位置によらず有効
-    SceneViewport = 1u << 1,
-    Hierarchy     = 1u << 2,
-    AssetBrowser  = 1u << 3,
-};
-
-constexpr HotkeyScope operator|(HotkeyScope a, HotkeyScope b)
-{
-    return static_cast<HotkeyScope>(static_cast<std::uint32_t>(a) | static_cast<std::uint32_t>(b));
-}
-constexpr bool HasScope(HotkeyScope set, HotkeyScope test)
-{
-    return (static_cast<std::uint32_t>(set) & static_cast<std::uint32_t>(test)) != 0;
-}
+// HotkeyScope の定義は Editor/Util/HotkeyScope.hpp にある。
+// WHY 分けたか: この enum はパネル (IPanel) と EditorContext も名乗る。
+//     そちらへ登録簿ごと include させないため。
 
 // 一覧のグループ見出し。表示の並び順にもなる。
 enum class HotkeyCategory {
@@ -109,6 +91,18 @@ public:
         m_scopeResolver = std::move(resolver);
     }
 
+    // このフレームだけ、その Operator に割り当てられた全体のホットキーを発火させない。
+    // WHY: ドキュメントを編集するパネル (Fluid Editor など) にフォーカスがあるとき、Ctrl+S は
+    //      そのドキュメントだけを保存してほしい。全体の scene.save も一緒に走ると、
+    //      «流体を保存したつもりがシーンまで保存されていた» が起きる。
+    //      ProcessInput のたびに消える。
+    //
+    // 呼ぶのは «自分で処理したフレーム» ではなく «フォーカスを持っている間ずっと» (毎フレーム)。
+    // WHY: ProcessInput は EditorApp::BeginFrame、どのパネルの描画よりも前に走る。
+    //      押された瞬間に申告しても全体のホットキーはもう発火した後なので、
+    //      次に来る ProcessInput へ向けて «今このキーは自分のもの» を先に置いておく。
+    void SuppressOperatorThisFrame(std::string_view operatorId);
+
     void ProcessInput();  // 毎フレーム EditorApp から呼ぶ
     void Clear();
 
@@ -145,6 +139,9 @@ private:
 
     std::vector<Hotkey>              m_hotkeys;
     std::function<bool(HotkeyScope)> m_scopeResolver;
+
+    // 前回の ProcessInput 以降に申告された operator id (重複は積まない)。
+    std::vector<std::string>         m_suppressedOperators;
 };
 
 } // namespace fbzz::editor

@@ -54,6 +54,12 @@ struct EditorTheme {
     // 現在の ImNodes コンテキストへ FBZZ Studio のグラフ配色を適用する。
     static void ApplyImNodes();
 
+    // 見出し用の太い書体。読み込めていなければ nullptr。
+    // WHY nullptr を返しうるか: Windows のシステムフォントを当てているので、
+    //     無い環境では «本文のまま組む» に落ちる。呼び出し側は
+    //     PushFont(nullptr, size) で本文を押し直せばよい。
+    [[nodiscard]] static ImFont* HeadingFont();
+
     // 独自描画や一時スタイルで使う意味色を返す。
     [[nodiscard]] static ImVec4 Color(ThemeColor color);
     [[nodiscard]] static ImU32  ColorU32(ThemeColor color, float alpha = 1.0f);

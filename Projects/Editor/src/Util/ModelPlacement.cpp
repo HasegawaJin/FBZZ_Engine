@@ -43,24 +43,22 @@ std::string SanitizeMaterialFileName(std::string name, uint32_t fallbackIndex)
     return name;
 }
 
-std::string ResolveImportedMaterialPath(const std::string& modelPath,
-                                        const asset::ModelAsset* modelAsset,
-                                        int meshIndex,
-                                        bool skinned)
+} // namespace
+
+std::string FindImportedMaterialPath(const std::string& modelPath,
+                                     const asset::ModelAsset* modelAsset,
+                                     int meshIndex)
 {
-    const char* fallbackPath = skinned
-        ? "Assets/Materials/Fallback/FallbackSkinned.mat"
-        : "Assets/Materials/Fallback/Fallback.mat";
     if (!modelAsset || modelAsset->lods.empty() || meshIndex < 0)
-        return fallbackPath;
+        return {};
 
     const auto& submeshes = modelAsset->lods[0].submeshes;
     if (meshIndex >= static_cast<int>(submeshes.size()))
-        return fallbackPath;
+        return {};
 
     const uint32_t slotIndex = submeshes[static_cast<size_t>(meshIndex)].materialSlotIndex;
     if (slotIndex >= modelAsset->materialSlotNames.size())
-        return fallbackPath;
+        return {};
 
     const bool isFbx =
         util::StringUtils::ToLower(util::FileSystem::GetExtension(modelPath)) == ".fbx";
@@ -97,16 +95,29 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
         // WHY: ここで Assets 側の物理パスだけを確認すると、現在の隔離配置を見失って
         //      常に Fallback.mat へ落ち、D&D 直後のモデルが元材質を失う。
         if (!util::FileSystem::Exists(asset::AssetManager::ResolveAssetPath(logicalPath)))
-            return fallbackPath;
+            return {};
         return logicalPath;
     }
 
     if (!util::FileSystem::Exists(matFsPath))
-        return fallbackPath;
+        return {};
 
     if (logicalPath != normalized)
         return logicalPath;
     return normalized;
+}
+
+namespace {
+
+std::string ResolveImportedMaterialPath(const std::string& modelPath,
+                                        const asset::ModelAsset* modelAsset,
+                                        int meshIndex,
+                                        bool skinned)
+{
+    std::string path = FindImportedMaterialPath(modelPath, modelAsset, meshIndex);
+    if (!path.empty()) return path;
+    return skinned ? "Assets/Materials/Fallback/FallbackSkinned.mat"
+                   : "Assets/Materials/Fallback/Fallback.mat";
 }
 
 std::string ResolveImportedMeshName(const std::string& modelPath,

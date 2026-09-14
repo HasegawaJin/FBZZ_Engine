@@ -57,7 +57,9 @@ math::Vector3 PrefabDropPosition(const EditorContext& ctx, const ImVec2& viewpor
 
 bool InstantiatePrefabAsset(EditorContext& ctx, const std::string& assetPath)
 {
-    if (!ctx.activeScene || util::FileSystem::GetExtension(assetPath) != ".prefab")
+    if (!ctx.activeScene) return false;
+    if (!IsInstantiableAssetExtension(
+            util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath))))
         return false;
 
     std::vector<scene::EntityID> roots;
@@ -93,7 +95,7 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
     // ホバープレビュー付きで処理するため、ここでは扱わない。
     if (ext == ".mat") return false;
 
-    if (ext != ".prefab") return false;
+    if (!IsInstantiableAssetExtension(ext)) return false;
     if (!InstantiatePrefabAsset(ctx, assetPath)) return false;
     for (scene::EntityID id : ctx.selectedEntities) {
         if (auto* go = ctx.activeScene->GetGameObject(id))

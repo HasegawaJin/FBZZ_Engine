@@ -59,15 +59,37 @@ bool IsEditorOnlyAsset(const std::filesystem::path& relative)
         //   WHY 拡張子で弾けないか: .playmode_snapshot.scene が入っており、
         //   拡張子だけ見ると「配布すべきシーン」と区別が付かない。
         // Scripts: スクリプト原本の置き場。ランタイムはコンパイル済みしか読まない。
-        if (topDir == "editorconfig" || topDir == "scripts") return true;
+        // Docs: 設計メモの置き場。中身の .md は拡張子でも落ちるが、フォルダ側は
+        //   Docs.meta / archive.meta が実体を失った孤児 meta として残ってしまう。
+        //   置き場ごと落として、将来ここへ画像や PDF が混ざっても配布されないようにする。
+        if (topDir == "editorconfig" || topDir == "scripts" || topDir == "docs") return true;
+    }
+
+    // "_" で始まるフォルダ / ファイルは作業用の置き場として配布から外す。
+    // WHY 名前で切るか: DCC の原本と退避コピーが Assets に同居している
+    //     (GreenWare の Assets/_src だけで 4.5 GB = 配布物の 97%)。拡張子だけを
+    //     潰していくと DCC やバックアップ規則が増えるたびに漏れるため、
+    //     「置き場の名前」を規約として切り、拡張子リストは補助に留める。
+    for (const std::filesystem::path& component : relative) {
+        const std::string name = LowerUtf8(component);
+        if (!name.empty() && name.front() == '_') return true;
     }
 
     const std::string ext = LowerUtf8(relative.extension());
-    static constexpr std::array<const char*, 13> kSourceExts = {
+    static constexpr std::array kSourceExts = std::to_array<const char*>({
         ".hpp", ".h", ".cpp", ".c", ".inl", ".md",
-        ".bat", ".ps1", ".py", ".sln", ".vcxproj", ".filters", ".user",
-    };
+        ".bat", ".cmd", ".ps1", ".py", ".sh", ".sln", ".vcxproj", ".filters", ".user",
+        // DCC の原本と作業ファイル。ランタイムが読む形式ではない。
+        ".blend", ".blend1", ".blend2", ".psd", ".xcf", ".npz",
+    });
     if (std::find(kSourceExts.begin(), kSourceExts.end(), ext) != kSourceExts.end())
+        return true;
+
+    // 編集ツールが原本の隣へ残す退避コピー (Boss.fbx.bak / Stage_02.scene.bak 等)。
+    static constexpr std::array kBackupExts = std::to_array<const char*>({
+        ".bak", ".tmp", ".orig", ".rej",
+    });
+    if (std::find(kBackupExts.begin(), kBackupExts.end(), ext) != kBackupExts.end())
         return true;
 
     const std::string name = LowerUtf8(relative.filename());
@@ -133,6 +155,15 @@ void BuildPipeline::Start(const BuildSettings& settings,
     m_outputDir  = settings.ResolveOutputPath(projectRoot);
     m_tmpDir     = m_outputDir;
     m_tmpDir    += L"_tmp";
+
+    // WHY 開始前に弾くか: CommitOutput は出力先を remove_all する。数分かけて
+    //     コンパイルし終えた後ではなく、ここで止めないと削除まで走ってしまう。
+    std::string outputReason;
+    if (!m_settings.ValidateOutputPath(m_projectRoot, outputReason)) {
+        m_tmpDir.clear();   // まだ作っていない。SetFailed の後始末対象にしない
+        SetFailed("Invalid output directory: " + outputReason);
+        return;
+    }
 
     ResolveProjectLayout();
 
@@ -331,8 +362,14 @@ void BuildPipeline::ResolveProjectLayout()
     if (util::FileSystem::ReadText(root / util::FileSystem::PathFromUtf8(m_settingsRelPath), settingsText)) {
         auto parsed = toml::parse(settingsText);
         if (parsed) {
-            m_rendererBackend = util::StringUtils::ToLower(
-                parsed.table()["renderer"].value_or(std::string{}));
+            // WHY [app] を先に見るか: ProjectSettings の renderer は [app] テーブルにある。
+            //      トップレベルだけを読んでいたため常に空になり、DX12 で dxcompiler.dll /
+            //      dxil.dll を必須にする CopyDlls のガードが一度も発火していなかった。
+            //      旧形式のトップレベルも読み続ける。
+            std::string backend = parsed.table()["app"]["renderer"].value_or(std::string{});
+            if (backend.empty())
+                backend = parsed.table()["renderer"].value_or(std::string{});
+            m_rendererBackend = util::StringUtils::ToLower(backend);
             const auto startScene = parsed.table()["runtime"]["start_scene"].value<std::string>();
             if (startScene && !startScene->empty() && startScene->rfind("{{", 0) != 0)
                 m_startSceneRel = makeRelative(*startScene);
@@ -613,6 +650,13 @@ bool BuildPipeline::ExecuteStep()
     // ------------------------------------------------------------------
     case Step::CommitOutput: {
         m_status = "Committing output...";
+        // WHY もう一度検証するか: Start から数分経っている。その間に出力先が
+        //      別物に差し替わっていても、remove_all の直前なら気付ける。
+        std::string outputReason;
+        if (!m_settings.ValidateOutputPath(m_projectRoot, outputReason)) {
+            SetFailed("Invalid output directory: " + outputReason);
+            return false;
+        }
         // WHY: アトミックな rename で旧ビルドを保持する。
         //      rename の前に旧出力先を削除する必要がある。
         if (!util::FileSystem::RemoveAll(m_outputDir) ||
@@ -640,22 +684,34 @@ void BuildPipeline::BeginEnumerateFiles()
 
     const std::filesystem::path root = util::FileSystem::PathFromUtf8(m_projectRoot);
 
+    struct TreeStats {
+        size_t filtered = 0;   // 配布対象外として落とした数
+        size_t shadowed = 0;   // プロジェクト側に同じ相対パスがあって落とした数
+    };
+
+    // shadowRoot を渡すと、そこに同じ相対パスのファイルがある分を列挙しない。
     const auto enqueueTree = [this](const std::filesystem::path& srcDir,
                                     const std::filesystem::path& dstDir,
-                                    bool applyFilter) -> size_t {
-        size_t skipped = 0;
+                                    bool applyFilter,
+                                    const std::filesystem::path& shadowRoot = {}) -> TreeStats {
+        TreeStats stats;
         for (const std::filesystem::path& src : util::FileSystem::ListFilesRecursive(srcDir)) {
             const std::filesystem::path rel = util::FileSystem::RelativePath(src, srcDir);
             if (rel.empty()) continue;
-            if (applyFilter && ShouldSkipAsset(src, rel)) { ++skipped; continue; }
+            if (applyFilter && ShouldSkipAsset(src, rel)) { ++stats.filtered; continue; }
+            if (!shadowRoot.empty() && util::FileSystem::Exists(shadowRoot / rel)) {
+                ++stats.shadowed;
+                continue;
+            }
             m_copyJobs.push_back({ src, dstDir / rel });
         }
-        return skipped;
+        return stats;
     };
 
     // 1) プロジェクトの Assets
     const std::filesystem::path assetsDir = root / L"Assets";
-    const size_t skipped = enqueueTree(assetsDir, m_tmpDir / L"Assets", m_settings.stripEditorAssets);
+    const size_t skipped =
+        enqueueTree(assetsDir, m_tmpDir / L"Assets", m_settings.stripEditorAssets).filtered;
     if (skipped > 0)
         FBZZ_LOG_INFO("BuildPipeline: skipped %zu editor-only asset files", skipped);
 
@@ -674,9 +730,20 @@ void BuildPipeline::BeginEnumerateFiles()
     // 3) EngineAssets — SDK 共有アセット。
     // WHY: 既定フォントのようにプロジェクト側へ実体を持たないアセットがあり、
     //      AssetManager は exe 隣の EngineAssets/ を engine base path として解決する。
+    //
+    // WHY プロジェクトに同じ相対パスがある分を落とすか:
+    //      AssetManager::ResolvePath は «プロジェクトの Assets/ に無ければ
+    //      EngineAssets/ を見る» というフォールバックで、プロジェクト側が常に勝つ。
+    //      GameHub のテンプレートが SDK の Assets を丸ごと複製しているため、
+    //      GreenWare では 345 MB / 1106 ファイルが «絶対に読まれない複製» だった
+    //      (sky_env.dds 256 MB が配布物に 2 つ入る)。
     const std::filesystem::path engineAssetsDir = m_exeSrcPath.parent_path() / L"EngineAssets";
     if (util::FileSystem::Exists(engineAssetsDir)) {
-        enqueueTree(engineAssetsDir, m_tmpDir / L"EngineAssets", m_settings.stripEditorAssets);
+        const TreeStats engineStats = enqueueTree(
+            engineAssetsDir, m_tmpDir / L"EngineAssets", m_settings.stripEditorAssets, assetsDir);
+        if (engineStats.shadowed > 0)
+            FBZZ_LOG_INFO("BuildPipeline: skipped %zu EngineAssets files already provided "
+                          "by the project", engineStats.shadowed);
     } else {
         FBZZ_LOG_WARN("BuildPipeline: EngineAssets not found next to the exe; "
                       "assets that only exist in the SDK (default font, etc.) will be missing");

@@ -4,6 +4,7 @@
 /// @date    2026-05-31
 
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/EditorIcons.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <imnodes.h>
@@ -68,6 +69,52 @@ constexpr float FONT_SIZE = 14.0f;
     return {};
 }
 
+[[nodiscard]] std::string ResolveIconFontPath()
+{
+    // Windows 11 の Segoe Fluent Icons を第一候補に、10 の Segoe MDL2 Assets へ落とす。
+    // どちらも PUA (U+E700〜) に同じ絵を同じ位置で持つので、EditorIcons.hpp の
+    // コードポイントはそのまま通る。
+    static constexpr const char* CANDIDATES[] = {
+        "C:/Windows/Fonts/SegoeIcons.ttf",
+        "C:/Windows/Fonts/segmdl2.ttf",
+    };
+
+    for (const char* path : CANDIDATES) {
+        if (util::FileSystem::Exists(path)) return path;
+    }
+    return {};
+}
+
+[[nodiscard]] std::string ResolveHeadingFontPath()
+{
+    // 見出しは本文より «太さ» で差を付ける。本文の Roboto-Medium に対して
+    // Segoe UI Semibold を当て、日本語は游ゴシック Bold を merge する。
+    // WHY 大きさだけで差を付けないか: 拡大した Medium は «近づいた本文» にしか
+    //     見えず、画面を斜めに見たときの «ここが見出し» が立たない。
+    static constexpr const char* CANDIDATES[] = {
+        "C:/Windows/Fonts/seguisb.ttf",
+        "C:/Windows/Fonts/segoeuib.ttf",
+    };
+
+    for (const char* path : CANDIDATES) {
+        if (util::FileSystem::Exists(path)) return path;
+    }
+    return {};
+}
+
+[[nodiscard]] std::string ResolveHeadingJapaneseFontPath()
+{
+    static constexpr const char* CANDIDATES[] = {
+        "C:/Windows/Fonts/YuGothB.ttc",
+        "C:/Windows/Fonts/meiryob.ttc",
+    };
+
+    for (const char* path : CANDIDATES) {
+        if (util::FileSystem::Exists(path)) return path;
+    }
+    return {};
+}
+
 // FBZZ Studio: 深いネイビーの階調に、制作対象へ視線を導くエレクトリックシアンを組み合わせる。
 constexpr ImVec4 CANVAS         { 0.047f, 0.063f, 0.094f, 1.0f }; // #0C1018
 constexpr ImVec4 SURFACE        { 0.067f, 0.090f, 0.133f, 1.0f }; // #111722
@@ -95,6 +142,8 @@ constexpr ImVec4 POPUP_BG       { 0.067f, 0.090f, 0.133f, 0.985f };
 ImGuiStyle s_baseStyle;
 bool       s_baseCaptured = false;
 float      s_uiScale      = 1.0f;
+// 見出し用の太い書体。読めなければ nullptr のままで、呼び出し側は本文のまま組む。
+ImFont*    s_headingFont  = nullptr;
 
 } // anonymous namespace
 
@@ -123,6 +172,11 @@ ImVec4 EditorTheme::Color(ThemeColor color)
     case ThemeColor::Info:          return INFO;
     }
     return TEXT_MAIN;
+}
+
+ImFont* EditorTheme::HeadingFont()
+{
+    return s_headingFont;
 }
 
 ImU32 EditorTheme::ColorU32(ThemeColor color, float alpha)
@@ -160,28 +214,29 @@ void EditorTheme::Apply()
     //      Windows 標準フォントを merge して補う。merge するグリフ範囲が狭いと UI の
     //      あちこちで「□ (豆腐)」が出るので、日本語 + ラテン + 主要記号を広めに含める。
     const std::string japaneseFontPath = ResolveJapaneseFontPath();
-    if (!japaneseFontPath.empty()) {
-        // WHY: BuildRanges() の結果はアトラス生成 (最初の NewFrame) まで生存させる必要があるため static。
-        static ImVector<ImWchar> s_glyphRanges;
-        if (s_glyphRanges.empty()) {
-            ImFontGlyphRangesBuilder builder;
-            builder.AddRanges(io.Fonts->GetGlyphRangesJapanese()); // かな・漢字・全角・CJK 句読点
-            builder.AddRanges(io.Fonts->GetGlyphRangesDefault());  // Basic Latin + Latin-1
-            // UI でよく使う記号 (約物・矢印・幾何形・チェック・丸数字・罫線) を明示追加して豆腐を防ぐ。
-            static const ImWchar kSymbols[] = {
-                0x2000, 0x206F, // 一般約物 (– — ‘ ’ “ ” • … 等)
-                0x2190, 0x21FF, // 矢印
-                0x2200, 0x22FF, // 数学記号
-                0x2460, 0x24FF, // 丸数字・囲み英数字
-                0x2500, 0x257F, // 罫線
-                0x25A0, 0x25FF, // 幾何形 (■ ● ▲ ▼ ◆ □ 等)
-                0x2600, 0x27BF, // その他記号・装飾 (★ ☆ ✓ ✗ ⚠ 等)
-                0,
-            };
-            builder.AddRanges(kSymbols);
-            builder.BuildRanges(&s_glyphRanges);
-        }
+    // WHY: BuildRanges() の結果はアトラス生成 (最初の NewFrame) まで生存させる必要があるため static。
+    //      本文と見出しの両方が同じ範囲を使うので、if の外へ出して 1 度だけ組む。
+    static ImVector<ImWchar> s_glyphRanges;
+    if (s_glyphRanges.empty()) {
+        ImFontGlyphRangesBuilder builder;
+        builder.AddRanges(io.Fonts->GetGlyphRangesJapanese()); // かな・漢字・全角・CJK 句読点
+        builder.AddRanges(io.Fonts->GetGlyphRangesDefault());  // Basic Latin + Latin-1
+        // UI でよく使う記号 (約物・矢印・幾何形・チェック・丸数字・罫線) を明示追加して豆腐を防ぐ。
+        static const ImWchar kSymbols[] = {
+            0x2000, 0x206F, // 一般約物 (– — ‘ ’ “ ” • … 等)
+            0x2190, 0x21FF, // 矢印
+            0x2200, 0x22FF, // 数学記号
+            0x2460, 0x24FF, // 丸数字・囲み英数字
+            0x2500, 0x257F, // 罫線
+            0x25A0, 0x25FF, // 幾何形 (■ ● ▲ ▼ ◆ □ 等)
+            0x2600, 0x27BF, // その他記号・装飾 (★ ☆ ✓ ✗ ⚠ 等)
+            0,
+        };
+        builder.AddRanges(kSymbols);
+        builder.BuildRanges(&s_glyphRanges);
+    }
 
+    if (!japaneseFontPath.empty()) {
         ImFontConfig japaneseCfg;
         japaneseCfg.MergeMode   = (baseFont != nullptr);
         japaneseCfg.OversampleH = 2;
@@ -193,10 +248,57 @@ void EditorTheme::Apply()
         }
     }
 
+    // 記号フォント (Segoe Fluent Icons / MDL2) を同じ 1 本へ merge する。
+    // WHY 別フォントにして PushFont しないか: アイコンはラベルと同じ行に混ぜて置くもので、
+    //     押し引きが要ると «付け忘れて豆腐» が必ずどこかで起きる。本文と同じ字として扱う。
+    const std::string iconFontPath = ResolveIconFontPath();
+    icons::detail::g_iconFontLoaded = false;
+    if (baseFont != nullptr && !iconFontPath.empty()) {
+        // EditorIcons.hpp が使う範囲だけ積む。PUA 全域 (U+E700〜U+F8FF) を積んでも
+        // 使うのは数十字で、アトラスに載せるだけ無駄になる。
+        static constexpr ImWchar kIconRanges[] = { 0xE700, 0xE9FF, 0 };
+
+        ImFontConfig iconCfg;
+        iconCfg.MergeMode   = true;
+        iconCfg.OversampleH = 2;
+        iconCfg.OversampleV = 2;
+        iconCfg.PixelSnapH  = false;
+        // 記号は本文より気持ち小さい方が、文字と並べたときに重さが揃う。
+        iconCfg.GlyphMinAdvanceX = FONT_SIZE;
+        if (io.Fonts->AddFontFromFileTTF(iconFontPath.c_str(), FONT_SIZE * 0.92f,
+                                         &iconCfg, kIconRanges) != nullptr) {
+            icons::detail::g_iconFontLoaded = true;
+        }
+    }
+
     if (!baseFont)
         io.Fonts->AddFontDefault();
     else
         io.FontDefault = baseFont; // どのウィンドウでも統合フォントを既定にする
+
+    // 見出し用に、太い書体をもう 1 本だけ積む (本文とは別の ImFont*)。
+    s_headingFont = nullptr;
+    if (const std::string headingPath = ResolveHeadingFontPath(); !headingPath.empty()) {
+        ImFontConfig headingCfg;
+        headingCfg.OversampleH = 2;
+        headingCfg.OversampleV = 2;
+        headingCfg.PixelSnapH  = false;
+        s_headingFont = io.Fonts->AddFontFromFileTTF(headingPath.c_str(), FONT_SIZE, &headingCfg);
+
+        // 見出しに日本語が来ても本文へ落ちないよう、太い和文も同じ 1 本へ merge する。
+        if (s_headingFont != nullptr) {
+            const std::string headingJapanese = ResolveHeadingJapaneseFontPath();
+            if (!headingJapanese.empty()) {
+                ImFontConfig japaneseHeadingCfg;
+                japaneseHeadingCfg.MergeMode   = true;
+                japaneseHeadingCfg.OversampleH = 2;
+                japaneseHeadingCfg.OversampleV = 2;
+                japaneseHeadingCfg.PixelSnapH  = false;
+                io.Fonts->AddFontFromFileTTF(headingJapanese.c_str(), FONT_SIZE,
+                                             &japaneseHeadingCfg, s_glyphRanges.Data);
+            }
+        }
+    }
 
     // --- スタイル変数 ---------------------------------------------------
     ImGuiStyle& style = ImGui::GetStyle();

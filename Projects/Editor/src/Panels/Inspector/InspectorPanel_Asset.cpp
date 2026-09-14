@@ -16,11 +16,13 @@
 #include <Editor/Util/AnimatorMaskAudit.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/FluidInspector.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/ParticleMaterialInspector.hpp>
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/VfxAssetSummary.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -216,9 +218,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             static constexpr std::array<const char*, 8> kCanonicalSlots = {
                 "albedo", "normal", "metallic", "emissive", "ao", "tex5", "tex6", "tex7"
             };
+            // Sprite のコマを受けるのはメッシュ描画 (Auto) の albedo だけ
+            // (理由は InspectorMaterial.cpp の同じ場所)。
+            const bool spriteAlbedo = mat.renderPath == asset::RenderPath::Auto;
             auto drawTexSlot = [&](const char* slot) {
                 std::string& path = mat.textures[slot];
-                if (widgets::AssetPathField(slot, path, widgets::kTextureAssetFilter, ctx.projectRoot))
+                const char* filter = spriteAlbedo && std::strcmp(slot, "albedo") == 0
+                    ? widgets::kSpriteAssetFilter : widgets::kTextureAssetFilter;
+                if (widgets::AssetPathField(slot, path, filter, ctx.projectRoot))
                     materialDirty = true;
             };
             if (desc && !desc->textures.empty()) {
@@ -293,7 +300,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         // パーティクルの «見た目» はこの .mat が正本。ParticleEmitter からは編集できない。
         if (mat.renderPath == asset::RenderPath::Particle)
-            materialDirty |= DrawParticleMaterialInspector(mat, ctx.projectRoot);
+            materialDirty |= DrawParticleMaterialInspector(mat, ctx.projectRoot, ctx.resources, ctx.imguiRenderer);
 
         // AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
         if (materialDirty)
@@ -414,10 +421,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SeparatorText("Preview");
         DrawMaterialPreviewWidget(ctx, mat, 240.0f);
     } else if (ext == ".vfx") {
-        // .vfx はプレファブなので、中身を見るのは Prefab 編集モード
-        // (ダブルクリック = asset.open) が受け持つ。Inspector は素性だけ出す。
-        ImGui::TextDisabled("Type: VFX (Prefab)");
-        ImGui::TextDisabled("ダブルクリックで中身を開きます。");
+        // .vfx の再生面は Prefab 編集モード (Docs/design/vfx-prefab.md §8.2)。
+        // ここが受け持つのは «開く前に中身の見当を付ける» ところまで。
+        DrawVfxAssetInspector(ctx, absPath);
     } else if (ext == ".animcontroller") {
         if (DrawAnimationGraphAssetInspector(ctx)) {
             // Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
@@ -890,7 +896,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                             std::find(selectedNames.begin(), selectedNames.end(), name)
                                 != selectedNames.end();
                         bool checked = selected;
-                        if (ImGui::Checkbox(name.c_str(), &checked)) {
+                        // FBX のメッシュ名は重複しうる ("Cube" が何個も並ぶ)。
+                        ImGui::PushID(&name);
+                        const bool toggled = ImGui::Checkbox(name.c_str(), &checked);
+                        ImGui::PopID();
+                        if (toggled) {
                             if (checked) {
                                 if (!allSelected &&
                                     std::find(selectedNames.begin(), selectedNames.end(), name)
@@ -2859,6 +2869,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SameLine();
         ImGui::TextDisabled(s_physmatDirty && s_physmatDirtyPath == relPath
                             ? "Saving on release..." : "Auto-saved");
+    } else if (ext == ".fluid") {
+        DrawFluidAssetInspector(absPath, ctx.resources, ctx.imguiRenderer, &ctx.requestVolumeFlipbookFluid);
     } else if (ext == ".vfield" || ext == ".fga") {
         // ── VectorField (焼いた速度場) ────────────────────────────────────
         // 焼き直しは «レシピ → グリッド» の一方通行で、元のレシピはファイルに残らない

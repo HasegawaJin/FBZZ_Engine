@@ -12,23 +12,31 @@ namespace fbzz::editor {
 class SceneHierarchyPanel : public IPanel {
 public:
     const char* GetWindowName() const override { return "Scene Hierarchy"; }
+    HotkeyScope GetHotkeyScope() const override { return HotkeyScope::Hierarchy; }
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
-    // HotkeyManager へ「今 Hierarchy にフォーカスがある」ことを伝え、
     // パネル内部の状態を要する要求 (F2 リネーム) だけをここで処理する。
     //
     // WHY: Delete / Ctrl+D / Ctrl+C / Ctrl+V / Ctrl+A / Esc はすべて
     //      EditorApp::RegisterDefaultHotkeys へ移した。以前はこの 3 つの表示モード
     //      それぞれに同じ判定が丸ごとコピーされており、片方だけ直る事故の温床だった。
     //      リネームだけは編集バッファとフォーカス制御がこのパネル内にあるため残す。
-    void PublishFocusAndHandleRequests(EditorContext& ctx);
+    //      フォーカスの申告は GetHotkeyScope() 経由で IPanel が行う。
+    void HandlePanelRequests(EditorContext& ctx);
 
     // 他の面 (Scene View / 検索 / Map / AI) が選んだ対象を、このツリー上で見えるようにする。
     // EditorContext::hierarchyRevealTarget を消費し、祖先チェーンとスクロール対象を決める。
     void ConsumeRevealRequest(EditorContext& ctx);
+
+    // ↑↓ / Home / End で選択を動かす。並びは m_visibleOrder (前フレームの描画順) が正本。
+    //
+    // WHY キーで動かせる必要があるか: 数百 GO のシーンでは «1 つ下» を選ぶだけでも
+    //     行を目で探して狙う必要があり、リネーム → 隣を選ぶ → リネーム、のような
+    //     連続作業が全部マウスの往復になる。検索欄は既にあるので、足りないのは移動だけ。
+    void HandleKeyboardNavigation(EditorContext& ctx);
 
     // SetParent 成功後、次フレームで強制 open するノードの EntityID
     scene::EntityID m_pendingExpand;

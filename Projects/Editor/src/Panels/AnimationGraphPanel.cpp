@@ -23,6 +23,7 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -879,11 +880,14 @@ bool DrawClipCombo(EditorContext& ctx,
                 continue;
             const auto& clip = animator.clips[static_cast<size_t>(i)];
             const bool selected = clipName == clip.name;
+            // 別の FBX から来たクリップは同名 ("mixamo.com" など) になりうる。
+            ImGui::PushID(i);
             if (ImGui::Selectable(clip.name.c_str(), selected)) {
                 clipName = clip.name;
                 clipIndex = i;
                 changed = true;
             }
+            ImGui::PopID();
             if (selected) ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
@@ -2693,16 +2697,18 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     // AnimatorComponent を直接編集する従来モード。
     scene::GameObject* go = ctx.GetSelectedGO();
     if (!go) {
-        ImGui::TextDisabled("No Animator Controller is open.");
-        ImGui::Spacing();
-        ImGui::TextDisabled("Open a .animcontroller from the Asset Browser (double-click),");
-        ImGui::TextDisabled("or select a GameObject that has an AnimatorComponent.");
+        widgets::EmptyState(icons::Or(icons::kTimeline, nullptr),
+                            LOCT("No Animator Controller is open"),
+                            LOCT("Double-click a .animcontroller in the Asset Browser, "
+                                 "or select a GameObject that has an AnimatorComponent."));
         return;
     }
 
     auto* animator = go->GetComponent<scene::AnimatorComponent>();
     if (!animator) {
-        ImGui::TextDisabled("Selected GameObject has no AnimatorComponent.");
+        widgets::EmptyState(icons::Or(icons::kTimeline, nullptr),
+                            LOCT("This GameObject has no Animator"),
+                            LOCT("Add an AnimatorComponent in the Inspector to author states here."));
         return;
     }
 

@@ -35,6 +35,11 @@ public:
     explicit ViewportPanel(Kind kind = Kind::Scene);
 
     const char* GetWindowName() const override { return m_windowName.c_str(); }
+    // キーの文脈を持つのは Scene ビューだけ。Game / UI ビューは自前のキーを持たない。
+    HotkeyScope GetHotkeyScope() const override
+    {
+        return m_kind == Kind::Scene ? HotkeyScope::SceneViewport : HotkeyScope::None;
+    }
 
     // EditorApp がパネル生成後に直接セットするためpublic。これらが有効でない間はプレースホルダを描画する
     renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;

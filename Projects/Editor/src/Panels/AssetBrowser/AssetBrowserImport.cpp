@@ -1504,7 +1504,11 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 for (const auto& name : all) {
                     bool checked = false;
                     for (const auto& s : selected) if (s == name) { checked = true; break; }
-                    if (ImGui::Checkbox(name.c_str(), &checked)) {
+                    // FBX のメッシュ名・クリップ名は重複しうる。
+                    ImGui::PushID(&name);
+                    const bool toggled = ImGui::Checkbox(name.c_str(), &checked);
+                    ImGui::PopID();
+                    if (toggled) {
                         if (checked) {
                             selected.push_back(name);
                         } else {
