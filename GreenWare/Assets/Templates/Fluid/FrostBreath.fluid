@@ -1,0 +1,65 @@
+# 凍える息 — «上らない気体» の見本。buoyancy を下げて weight を持たせ、運ぶのは wind に任せる。
+# 温度は熱ではなく «出たての勢い» として使い、すぐ冷ます (temperature_dissipation を上げる)。
+# 口は cone: 頂点が center で direction へ開くので、吹き出しの «広がり» が球より出る。
+version = 2
+kind = "gas"
+seed = 103
+
+[gas]
+buoyancy = 0.25
+weight = 0.12
+vorticity = 0.35
+turbulence = 0.3
+turbulence_scale = 5.0
+density_dissipation = 0.85
+temperature_dissipation = 1.8
+velocity_damping = 0.14
+wind = [0.9, -0.05, 0.0]
+
+[[source]]
+name = "Breath"
+shape = "cone"
+center = [-0.62, 0.12, 0.0]
+size = [0.08, 0.35, 0.08]
+direction = [1.0, 0.05, 0.0]
+density = 3.4
+temperature = 0.25
+noise = 0.8
+velocity = [2.4, 0.1, 0.0]
+duration = 0.5
+
+[[force]]
+name = "Settle"
+type = "drag"
+strength = 1.4
+start_time = 0.5
+
+[[force]]
+name = "Curl"
+type = "noise"
+strength = 0.85
+noise_frequency = 3.6
+noise_speed = 0.7
+
+[render]
+shading = "smoke"
+smoke_color = [0.82, 0.9, 0.98, 1.0]
+shadow_color = [0.3, 0.38, 0.5, 1.0]
+opacity = 1.5
+self_shadow = 0.8
+detail_strength = 0.5
+detail_scale = 10.0
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 1.6
+warmup = 0.0
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "2d"
+scattering_octaves = 3

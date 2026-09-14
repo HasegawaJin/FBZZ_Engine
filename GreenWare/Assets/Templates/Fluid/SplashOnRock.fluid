@@ -1,0 +1,55 @@
+# 岩に当たって砕ける水 — Collider (箱) に噴き上げた水をぶつける。
+# 障害物は焼いた絵に写らない。水の砕け方だけが残る。
+version = 2
+kind = "liquid"
+seed = 5
+
+[liquid]
+max_particles = 3000
+particle_radius = 0.012
+gravity = 6.5
+viscosity = 0.06
+cohesion = 0.35
+solver_iterations = 4
+floor = true
+floor_height = -0.95
+floor_friction = 0.8
+particle_lifetime = 0.75
+
+[[source]]
+name = "Jet"
+shape = "sphere"
+center = [-0.28, -0.88, 0.0]
+size = [0.12, 0.12, 0.12]
+velocity = [0.55, 3.8, 0.0]
+spread = 0.3
+count = 650
+duration = 0.45
+
+[[collider]]
+name = "Rock"
+shape = "box"
+center = [0.02, -0.42, 0.0]
+size = [0.2, 0.18, 0.28]
+friction = 0.9
+
+[render]
+shading = "liquid"
+liquid_color = [0.40, 0.66, 0.95, 0.82]
+liquid_radius_scale = 2.5
+liquid_threshold = 0.5
+specular = 0.9
+
+[output]
+frame_size = 256
+columns = 8
+rows = 8
+supersampling = 2
+duration = 0.9
+loop = false
+motion_vectors = true
+
+[bake]
+mode = "3d"
+volume_resolution = 64
+solver = "cpu"
