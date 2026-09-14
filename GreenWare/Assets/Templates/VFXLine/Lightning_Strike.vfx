@@ -1,0 +1,169 @@
+[prefab]
+format_version = 1
+root_count = 1
+
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'f1ab8fb8-de1e-49e7-9618-d2c1dd46db23'
+layer = 0
+name = 'Lightning_Strike'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.VFXComponent]
+    autoDestroy = true
+    duration = 0.25
+    enabled = true
+    loop = false
+    playOnAwake = true
+    speed = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '19b41ef6-dfc9-47a0-9c4f-40fabc3ceb73'
+layer = 0
+name = 'Line'
+parent = 'Lightning_Strike'
+parentInstanceId = 'f1ab8fb8-de1e-49e7-9618-d2c1dd46db23'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e993c489df75feb3c2f8db0b621eca37|Assets/Materials/Effects/VFXLine.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = ''
+
+    [gameobjects.VFXLineComponent]
+    beamSegments = 32
+    branchAngle = 35.0
+    branchBrightness = 0.6
+    branchCount = 4
+    branchLength = 0.35
+    branchWidth = 0.55
+    breakup = 0.4
+    chaos = 0.2
+    color = [ 0.35, 0.55, 1.0, 1.0 ]
+    coreColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    coreWidth = 0.25
+    detail = 7
+    disableWhenEndpointMissing = true
+    duration = 0.25
+    enabled = true
+    endTaper = 0.3
+    fadeIn = 0.0
+    fadeOut = 0.1
+    flicker = 0.7
+    fromEntity = ''
+    fromOffset = [ 0.0, 0.0, 0.0 ]
+    intensity = 6.0
+    jitter = 0.01
+    loop = false
+    materialPath = 'guid:e993c489df75feb3c2f8db0b621eca37|Assets/Materials/Effects/VFXLine.mat'
+    mode = 0
+    pulseDensity = 0.0
+    pulseSpeed = 0.0
+    sag = 0.0
+    seed = 1
+    strikeRate = 10.0
+    toEntity = ''
+    toPoint = [ 0.0, -6.0, 0.0 ]
+    width = 0.18
+    wobble = 0.0
+    wobbleFrequency = 3.0
+    wobbleWaves = 2.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'c5998c2a-8d9c-45ee-9fb8-fd1ac0c64fac'
+layer = 0
+name = 'Strike Light'
+parent = 'Lightning_Strike'
+parentInstanceId = 'f1ab8fb8-de1e-49e7-9618-d2c1dd46db23'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = false
+    color = [ 0.62, 0.75, 1.0 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 18.0
+    outerCone = 30.0
+    range = 12.0
+    shadowBias = 1.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 1
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.VFXElement]
+    duration = 0.25
+    enabled = true
+    loop = false
+    startDelay = 0.0
+    trigger = ''
+
+        [gameobjects.VFXElement.weightCurve]
+        interp = 0
+        keys = [ [ 0.0, 1.0 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.VFXLightEnvelope]
+    enabled = true
+    useColorGradient = false
+    useIntensityCurve = true
+
+        [gameobjects.VFXLightEnvelope.colorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.VFXLightEnvelope.intensityCurve]
+        interp = 0
+        keys = [ [ 0.0, 1.0 ], [ 0.1, 0.4 ], [ 0.45, 0.6 ], [ 1.0, 0.0 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.0, -5.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
