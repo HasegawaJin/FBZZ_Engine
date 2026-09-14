@@ -9,6 +9,8 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/FluidAssetWriters.hpp>
+#include <Editor/Util/FluidBakeService.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -16,20 +18,20 @@
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Util/Uuid.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <memory>
+#include <system_error>
 
 namespace fbzz::editor {
 namespace {
 
-constexpr int kVolumeResolutions[] = { 32, 48, 64, 96, 128 };
+constexpr int kVolumeResolutions[] = { 32, 48, 64, 96, 128, 160 };
 constexpr int kTileSizes[] = { 128, 256, 512 };
 constexpr float kPreviewSides[] = { 256.0f, 384.0f, 512.0f };
 constexpr ImU32 kWarningColor = IM_COL32(255, 80, 60, 255);
@@ -159,47 +161,9 @@ std::string DescribeFrameRange(const std::vector<std::uint8_t>& issues, std::uin
                          : "コマ " + std::to_string(first) + "〜" + std::to_string(last);
 }
 
-// ループするエミッター 1 つだけのプレビュー用 .vfx。形式は既存の .vfx (プレハブ TOML) と同じ。
-// WHY 手で書くか: PrefabSerializer は実在の Scene から保存するため、使うと編集中のシーンへ
-//     一時的な GameObject を足して消すことになる (Undo 履歴と «変更あり» 表示を汚す)。
-bool WritePreviewVfx(const std::filesystem::path& file, const std::string& rootName,
-                     const std::string& materialPath, float lifetime)
+std::string StemOf(const std::string& path)
 {
-    const std::string rootId = util::GenerateUUID();
-    const std::string emitterId = util::GenerateUUID();
-    char numbers[160]{};
-    // 1 粒ずつ、寿命いっぱいでアトラスを最後まで再生させる (Lifetime モード)。
-    std::snprintf(numbers, sizeof(numbers), "duration = %.4f\nemitRate = %.4f\nlifetime = %.4f\n",
-                  lifetime, 1.0f / lifetime, lifetime);
-
-    std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << "# FBZZ Engine\n"
-        << "# Volume Flipbook Baker が書き出したプレビュー用 .vfx。ベイクし直すたびに上書きされる。\n"
-        << "[scene]\nformat_version = 1\n\n"
-        << "[prefab]\nformat_version = 1\nroot_count = 1\n\n"
-        << "[[gameobjects]]\nname = \"" << rootName << "\"\ninstanceId = \"" << rootId << "\"\n"
-        << "tag = \"Untagged\"\nlayer = 0\nactive = true\nprefabAssetPath = \"\"\nprefabSourceId = \"\"\n"
-        << "parent = \"\"\nparentInstanceId = \"\"\n\n"
-        << "[gameobjects.transform]\nposition = [0.0, 0.0, 0.0]\nrotation = [0.0, 0.0, 0.0, 1.0]\n"
-        << "scale = [1.0, 1.0, 1.0]\n\n"
-        << "[gameobjects.VFXComponent]\nenabled = true\nplayOnAwake = true\nloop = true\nspeed = 1.0\n"
-        << "duration = 0.0\nautoDestroy = false\n\n"
-        << "[[gameobjects]]\nname = \"Flipbook\"\ninstanceId = \"" << emitterId << "\"\n"
-        << "tag = \"Untagged\"\nlayer = 0\nactive = true\nprefabAssetPath = \"\"\nprefabSourceId = \"\"\n"
-        << "parent = \"" << rootName << "\"\nparentInstanceId = \"" << rootId << "\"\n\n"
-        << "[gameobjects.transform]\nposition = [0.0, 1.0, 0.0]\nrotation = [0.0, 0.0, 0.0, 1.0]\n"
-        << "scale = [1.0, 1.0, 1.0]\n\n"
-        << "[gameobjects.ParticleEmitter]\ncullingEnabled = false\nlodEnabled = false\n"
-        << numbers
-        << "loop = true\nmaxParticles = 1\nshape = 0\nsizeStart = 2.0\nsizeEnd = 2.0\nsizeCurvePower = 1.0\n"
-        << "lifetimeRandom = 0.0\nemitVelocity = [0.0, 0.0, 0.0]\nvelocitySpread = 0.0\n"
-        << "velocityDamping = 0.0\ngravity = [0.0, 0.0, 0.0]\n"
-        << "materialPath = \"" << materialPath << "\"\n"
-        << "renderMode = 0\nsortMode = 1\nangularVelocityMin = 0.0\nangularVelocityMax = 0.0\n"
-        << "colorVariation = 0.0\ncolorStart = [1.0, 1.0, 1.0, 1.0]\ncolorEnd = [1.0, 1.0, 1.0, 1.0]\n"
-        << "startDelay = 0.0\n";
-    return static_cast<bool>(out);
+    return util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).stem());
 }
 
 } // namespace
@@ -219,8 +183,8 @@ void VolumeFlipbookBakePanel::OnInit(EditorContext& ctx)
 
 void VolumeFlipbookBakePanel::OnShutdown()
 {
+    // 共有 Baker の GPU 資源は FluidBakeService::Shutdown が返す。
     if (m_resources == nullptr) return;
-    m_baker.Release(*m_resources);
     m_compare->Release(*m_resources);
 }
 
@@ -242,52 +206,76 @@ float VolumeFlipbookBakePanel::PreviewWidth(float aspect) const
     return (std::min)(kPreviewSides[std::clamp(m_previewSize, 0, 2)] * aspect, (std::max)(available, 64.0f));
 }
 
+bool VolumeFlipbookBakePanel::JobActive(const EditorContext& ctx) const
+{
+    if (m_jobId == 0 || ctx.fluidBake == nullptr) return false;
+    const FluidJobStatus* status = ctx.fluidBake->Find(m_jobId);
+    return status != nullptr && !status->Finished();
+}
+
+void VolumeFlipbookBakePanel::HandleFinishedJob(EditorContext& ctx)
+{
+    if (m_jobId == 0 || ctx.fluidBake == nullptr) return;
+    FluidBakeService& service = *ctx.fluidBake;
+    const FluidJobStatus* status = service.Find(m_jobId);
+    if (status == nullptr) {
+        m_jobId = 0;
+        return;
+    }
+    if (!status->Finished()) return;
+    const std::uint32_t id = m_jobId;
+    m_jobId = 0;
+    m_status = status->message;
+    m_statusIsError = status->state != FluidJobState::Done;
+    const std::string materialPath = status->materialPath;
+    m_lastResult = {};
+    if (const asset::VolumeFlipbookBakeResult* result = service.FindVolumeResult(id)) m_lastResult = *result;
+    if (const asset::VolumeFlipbookBakeSettings* settings = service.FindVolumeSettings(id))
+        m_lastBakeSettings = *settings;
+    if (m_lastResult.success) {
+        if (!materialPath.empty() && m_materialPath.empty()) m_materialPath = NormalizeAssetPath(materialPath);
+        asset::BakedVolumeFlipbook baked;
+        std::string error;
+        if (service.TakeBakedVolumeFlipbook(id, baked)) {
+            if (m_compare->Upload(*ctx.resources, std::move(baked), error)) {
+                m_compareTime = 0.0f;
+                m_comparePlaying = true;
+                m_selectFlipbookTab = true;
+            } else {
+                m_status += "\n" + error;
+            }
+        }
+    }
+    // ベイクの最後のコマは表示用の変換をせずに描いてある。プレビューを描き直す。
+    m_previewDirty = true;
+}
+
 void VolumeFlipbookBakePanel::OnBeforeBegin(EditorContext& ctx)
 {
-    if (ctx.renderer == nullptr || ctx.resources == nullptr) return;
+    if (ctx.renderer == nullptr || ctx.resources == nullptr || ctx.fluidBake == nullptr) return;
+    FluidBakeService& service = *ctx.fluidBake;
 
     if (m_framingDirty) {
         m_framing = asset::AnalyzeVolumeFraming(m_settings);
         m_framingDirty = false;
     }
-    if (m_baker.IsBusy()) {
-        m_baker.Tick(*ctx.renderer, *ctx.resources);
-        return;
-    }
-    if (!m_resultHandled) {
-        m_resultHandled = true;
-        m_lastResult = m_baker.Result();
-        m_status = m_lastResult.message;
-        m_statusIsError = !m_lastResult.success;
-        if (m_lastResult.success) {
-            ctx.requestAssetBrowserRefresh = true;
-            asset::BakedVolumeFlipbook baked;
-            std::string error;
-            if (m_baker.TakeBakedFlipbook(baked)) {
-                if (m_compare->Upload(*ctx.resources, std::move(baked), error)) {
-                    m_compareTime = 0.0f;
-                    m_comparePlaying = true;
-                    m_selectFlipbookTab = true;
-                } else {
-                    m_status += "\n" + error;
-                }
-            }
-        }
-        // ベイクの最後のコマは表示用の変換をせずに描いてある。プレビューを描き直す。
-        m_previewDirty = true;
-    }
+    HandleFinishedJob(ctx);
 
     const float delta = ImGui::GetIO().DeltaTime;
-    if (m_playing) {
-        m_previewTime = std::fmod(m_previewTime + delta * m_playSpeed, (std::max)(BakeDuration(), 1.0e-3f));
+    if (!service.IsVolumeBakerFree()) {
+        // 焼き (か AI のプレビュー) が共有 Baker を使っている。空いたら描き直す。
         m_previewDirty = true;
-    }
-    if (m_previewDirty) {
-        m_previewDirty = false;
-        asset::VolumePreviewOptions options;
-        options.view = m_view == VolumeView::Alpha ? asset::VolumePreviewView::Alpha : asset::VolumePreviewView::Color;
-        options.background = m_background;
-        m_baker.RecordPreview(*ctx.renderer, *ctx.resources, m_settings, m_previewTime, options);
+    } else {
+        if (m_playing) {
+            m_previewTime = std::fmod(m_previewTime + delta * m_playSpeed, (std::max)(BakeDuration(), 1.0e-3f));
+            m_previewDirty = true;
+        }
+        if (m_previewDirty) {
+            asset::VolumePreviewOptions options;
+            options.view = m_view == VolumeView::Alpha ? asset::VolumePreviewView::Alpha : asset::VolumePreviewView::Color;
+            options.background = m_background;
+            if (service.RecordVolumePreview(ctx, m_settings, m_previewTime, options)) m_previewDirty = false;
+        }
     }
 
     if (m_compare->HasFlipbook()) {
@@ -303,9 +291,9 @@ void VolumeFlipbookBakePanel::OnBeforeBegin(EditorContext& ctx)
 
 void VolumeFlipbookBakePanel::OnRenderContent(EditorContext& ctx)
 {
-    const bool busy = m_baker.IsBusy();
+    const bool busy = JobActive(ctx);
     ImGui::BeginDisabled(busy);
-    if (ImGui::CollapsingHeader("Source", ImGuiTreeNodeFlags_DefaultOpen)) DrawSourceSettings();
+    if (ImGui::CollapsingHeader("Source", ImGuiTreeNodeFlags_DefaultOpen)) DrawSourceSettings(ctx);
     if (ImGui::CollapsingHeader("Look", ImGuiTreeNodeFlags_DefaultOpen)) DrawLookSettings();
     ImGui::EndDisabled();
     DrawFramingWarnings();
@@ -328,10 +316,12 @@ void VolumeFlipbookBakePanel::OnRenderContent(EditorContext& ctx)
     DrawApply(ctx);
 }
 
-void VolumeFlipbookBakePanel::DrawSourceSettings()
+void VolumeFlipbookBakePanel::DrawSourceSettings(EditorContext& /*ctx*/)
 {
     auto& source = m_settings.source;
     bool changed = false;
+
+    ImGui::TextDisabled(".fluid の 3D プレビューと焼きは Fluid Editor で行います");
 
     if (ImGui::BeginCombo("Preset", source.preset.c_str())) {
         for (const asset::VolumeSourceDesc& desc : asset::VolumeSources()) {
@@ -357,6 +347,7 @@ void VolumeFlipbookBakePanel::DrawSourceSettings()
         source.seed = static_cast<std::uint32_t>((std::max)(seed, 0));
         changed = true;
     }
+
     changed |= ImGui::DragInt("Frames", &source.frameCount, 1.0f, 2, 256);
     changed |= ImGui::DragInt("Columns (0 = auto)", &m_settings.columns, 1.0f, 0, 64);
     float framesPerSecond = 1.0f / source.frameDt;
@@ -418,7 +409,40 @@ void VolumeFlipbookBakePanel::DrawLookSettings()
                           "マテリアルの HDR Emissive に 1/Exposure を入れて明るさを戻します。");
     changed |= ImGui::DragInt("Ray Steps", &m_settings.raySteps, 1.0f, 16, 512);
     changed |= ImGui::DragInt("Shadow Steps", &m_settings.shadowSteps, 1.0f, 1, 64);
+    changed |= ImGui::Checkbox("Six-way Lightmaps", &m_settings.sixWayLightmaps);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("色の Atlas に加えて 6 方向ライトマップ (_6wayP / _6wayN) も焼きます。\n"
+                          "ランタイムで光の向きを変えても陰影が回り込みます (焼く時間は延びます)。");
 
+    if (ImGui::TreeNodeEx("Quality", ImGuiTreeNodeFlags_DefaultOpen)) {
+        changed |= ImGui::SliderInt("Scattering Octaves", &m_settings.scatteringOctaves, 1, 6);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("多重散乱の段数です (1 = 単散乱)。\n"
+                              "増やすほど光が煙の奥まで回り込み、内側から明るい柔らかい煙になります。");
+        changed |= ImGui::SliderFloat("Sky Occlusion", &m_settings.skyOcclusion, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("環境光を上に積もった煙が遮る割合です。煙の下側が暗くなり、塊に重さが出ます。");
+        changed |= ImGui::SliderFloat("Detail Strength", &m_settings.detailStrength, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("格子より細かい起伏を、流れに乗せたノイズで足します。\n"
+                              "低い解像度で解いた流体ほど効きます。");
+        if (m_settings.detailStrength > 0.0f) {
+            changed |= ImGui::DragFloat("Detail Scale", &m_settings.detailScale, 0.1f, 1.0f, 32.0f);
+            changed |= ImGui::DragFloat("Detail Period", &m_settings.detailPeriod, 0.01f, 0.1f, 4.0f, "%.2f s");
+        }
+        changed |= ImGui::SliderInt("Supersampling", &m_settings.supersampling, 1, 3, "x%d");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("焼くときだけ、1 コマをこの倍率で描いて縮めます (プレビューは等倍)。\n"
+                              "縁のギザギザと細い筋のちらつきが消えます。");
+        changed |= ImGui::Checkbox("Blackbody Emission", &m_settings.blackbodyEmission);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("発光の色を温度 → 黒体放射で決めます (輝度は温度の 4 乗)。\n"
+                              "芯だけが白く、外へ行くほど暗い赤になる本物の炎の階調です。");
+        if (m_settings.blackbodyEmission)
+            changed |= ImGui::DragFloatRange2("Kelvin", &m_settings.blackbodyMinKelvin, &m_settings.blackbodyMaxKelvin,
+                                              10.0f, 500.0f, 15000.0f, "%.0f K");
+        ImGui::TreePop();
+    }
     if (ImGui::TreeNode("Albedo Ramp")) {
         ImGui::TextDisabled("puff の Color Key → 煙と液体の色");
         changed |= DrawRamp(m_settings.albedoRamp);
@@ -482,7 +506,9 @@ void VolumeFlipbookBakePanel::DrawDisplayControls()
 
 void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
 {
-    const bool busy = m_baker.IsBusy();
+    if (ctx.fluidBake == nullptr) return;
+    const asset::VolumeFlipbookBaker& baker = ctx.fluidBake->VolumeBaker();
+    const bool busy = !ctx.fluidBake->IsVolumeBakerFree();
     ImGui::BeginDisabled(busy);
     if (ImGui::Button(m_playing ? "Pause" : "Play", { 64.0f, 0.0f })) m_playing = !m_playing;
     ImGui::SameLine();
@@ -493,7 +519,7 @@ void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
         m_playing = false;
         m_previewDirty = true;
     }
-    static constexpr const char* kViews[] = { "Color", "Alpha", "Motion" };
+    static constexpr const char* kViews[] = { "Color", "Alpha", "Motion", "6-way +", "6-way -" };
     int view = static_cast<int>(m_view);
     ImGui::SetNextItemWidth(110.0f);
     if (ImGui::Combo("View", &view, kViews, IM_ARRAYSIZE(kViews))) {
@@ -506,18 +532,23 @@ void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
     ImGui::Checkbox("Light Arrow", &m_showLightArrow);
     ImGui::EndDisabled();
 
-    const auto target = m_baker.PreviewTarget();
+    const auto target = baker.PreviewTarget();
     if (!target.IsValid() || ctx.imguiRenderer == nullptr || ctx.resources == nullptr) {
-        if (!m_baker.Result().message.empty() && !busy)
-            ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", m_baker.Result().message.c_str());
+        if (!baker.Result().message.empty() && !busy)
+            ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", baker.Result().message.c_str());
         return;
     }
     void* rawId = ctx.imguiRenderer->GetImTextureID(target, *ctx.resources, 0);
     if (rawId == nullptr) return;
 
     const float side = PreviewWidth(1.0f);
-    const float u0 = m_view == VolumeView::Motion ? 0.5f : 0.0f;
-    ImGui::Image(widgets::ToImTextureID(rawId), { side, side }, { u0, 0.0f }, { u0 + 0.5f, 1.0f });
+    // RT は 4 枚のタイルが横に並ぶ [色 | 速度 | 6-way + | 6-way -]。
+    const int tileIndex = m_view == VolumeView::Motion           ? 1
+                        : m_view == VolumeView::SixWayPositive   ? 2
+                        : m_view == VolumeView::SixWayNegative   ? 3
+                                                                 : 0;
+    const float u0 = static_cast<float>(tileIndex) * 0.25f;
+    ImGui::Image(widgets::ToImTextureID(rawId), { side, side }, { u0, 0.0f }, { u0 + 0.25f, 1.0f });
     const ImVec2 imageMin = ImGui::GetItemRectMin();
     const ImVec2 imageMax = ImGui::GetItemRectMax();
     ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -551,6 +582,10 @@ void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
     ImGui::TextDisabled("Frame %d / %d", frame, frames - 1);
     if (m_view == VolumeView::Motion)
         ImGui::TextDisabled("赤 = 右へ / 緑 = 下へ動く (灰色は静止)");
+    if (m_view == VolumeView::SixWayPositive || m_view == VolumeView::SixWayNegative)
+        ImGui::TextDisabled(m_settings.sixWayLightmaps
+                                ? "R / G / B = 右・上・奥 (−: 左・下・手前) から光が来たときの明るさ"
+                                : "Look > Six-way Lightmaps を有効にすると表示されます");
 }
 
 void VolumeFlipbookBakePanel::DrawFlipbookTab(EditorContext& ctx)
@@ -598,35 +633,45 @@ void VolumeFlipbookBakePanel::DrawFlipbookTab(EditorContext& ctx)
 
 void VolumeFlipbookBakePanel::StartBake(EditorContext& ctx)
 {
-    if (ctx.resources == nullptr) return;
+    if (ctx.fluidBake == nullptr) return;
+    FluidJobError error;
     asset::VolumeFlipbookBakeSettings settings = m_settings;
     settings.outputDirectory = GeneratedDirectory(ctx.projectRoot, "Assets/Textures/Generated/VFX");
     settings.baseName = std::string(m_baseName.data()) + "_" + settings.source.preset + "_"
         + std::to_string(settings.source.seed);
-
-    std::string error;
-    if (!m_baker.Begin(settings, *ctx.resources, error)) {
-        m_status = error;
+    const std::uint32_t id = ctx.fluidBake->EnqueueVolumeBake(ctx, settings, error);
+    if (id == 0) {
+        m_status = error.message;
         m_statusIsError = true;
         return;
     }
+    m_jobId = id;
     m_playing = false;
-    m_resultHandled = false;
     m_status.clear();
 }
 
 void VolumeFlipbookBakePanel::DrawBake(EditorContext& ctx)
 {
     ImGui::SeparatorText("Bake");
-    if (m_baker.IsBusy()) {
-        const int done = m_baker.CompletedFrames();
-        const int total = (std::max)(m_baker.TotalFrames(), 1);
-        char overlay[32]{};
-        std::snprintf(overlay, sizeof(overlay), "%d / %d", done, total);
-        ImGui::ProgressBar(static_cast<float>(done) / static_cast<float>(total), { -1.0f, 0.0f }, overlay);
-        if (ImGui::Button("Cancel", { -1.0f, 0.0f })) m_baker.Cancel();
+    const FluidJobStatus* job = m_jobId != 0 && ctx.fluidBake != nullptr ? ctx.fluidBake->Find(m_jobId) : nullptr;
+    if (job != nullptr && !job->Finished()) {
+        if (job->state == FluidJobState::Queued) {
+            ImGui::ProgressBar(0.0f, { -1.0f, 0.0f }, "待機中 (前の焼きが終わるのを待っています)");
+        } else if (job->state == FluidJobState::Encoding) {
+            ImGui::ProgressBar(1.0f, { -1.0f, 0.0f }, "書き出し中 (BC7 圧縮)...");
+        } else {
+            const asset::VolumeFlipbookBaker& baker = ctx.fluidBake->VolumeBaker();
+            char overlay[32]{};
+            std::snprintf(overlay, sizeof(overlay), "%d / %d", baker.CompletedFrames(),
+                          (std::max)(baker.TotalFrames(), 1));
+            ImGui::ProgressBar(job->progress, { -1.0f, 0.0f }, overlay);
+        }
+        if (ImGui::Button("Cancel", { -1.0f, 0.0f })) (void)ctx.fluidBake->Cancel(m_jobId);
+        ImGui::TextDisabled("パネルを閉じても焼きは続きます。");
         return;
     }
+    if (ctx.fluidBake != nullptr && !ctx.fluidBake->IsVolumeBakerFree())
+        ImGui::TextDisabled("別のジョブ (AI など) が 3D の Baker を使っています。Bake は順番待ちになります。");
     if (ImGui::Button("Bake", { -1.0f, 0.0f })) StartBake(ctx);
     if (m_framing.boxCutFrames > 0 || m_framing.tileCutFrames > 0 || m_framing.overflowFrames > 0)
         ImGui::TextDisabled("構図の警告が出ています。このまま焼くと欠けたコマが入ります。");
@@ -638,7 +683,12 @@ void VolumeFlipbookBakePanel::DrawBake(EditorContext& ctx)
     }
     if (m_lastResult.success) {
         ImGui::TextDisabled("%s", NormalizeAssetPath(m_lastResult.colorPath).c_str());
-        ImGui::TextDisabled("%s", NormalizeAssetPath(m_lastResult.motionPath).c_str());
+        if (!m_lastResult.motionPath.empty())
+            ImGui::TextDisabled("%s", NormalizeAssetPath(m_lastResult.motionPath).c_str());
+        if (!m_lastResult.sixWayPositivePath.empty()) {
+            ImGui::TextDisabled("%s", NormalizeAssetPath(m_lastResult.sixWayPositivePath).c_str());
+            ImGui::TextDisabled("%s", NormalizeAssetPath(m_lastResult.sixWayNegativePath).c_str());
+        }
     }
 }
 
@@ -646,18 +696,20 @@ void VolumeFlipbookBakePanel::DrawApply(EditorContext& ctx)
 {
     ImGui::SeparatorText("Apply to Material");
     widgets::AssetPathField("Particle Material", m_materialPath, ".mat", ctx.projectRoot);
-    const bool busy = m_baker.IsBusy();
+    const bool busy = JobActive(ctx);
     ImGui::BeginDisabled(!m_lastResult.success || m_materialPath.empty() || busy);
     if (ImGui::Button("Apply", { -1.0f, 0.0f })) ApplyToMaterial(ctx);
     ImGui::EndDisabled();
     ImGui::TextDisabled("albedo / tex5 / コマ割り / Frame Blending / Motion Strength /\n"
-                        "Premultiplied / HDR Emissive をまとめて設定します。");
+                        "Premultiplied / HDR Emissive をまとめて設定します。\n"
+                        "6-way を焼いていれば albedo / emissive へ 6 方向マップを入れ、光に追従させます。");
 
-    ImGui::BeginDisabled(m_materialPath.empty() || busy || ctx.InPrefabEditMode());
+    ImGui::BeginDisabled(m_materialPath.empty() || busy);
     if (ImGui::Button("Preview as VFX", { -1.0f, 0.0f })) OpenInPrefabPreview(ctx);
     ImGui::EndDisabled();
     if (ctx.InPrefabEditMode())
-        ImGui::TextDisabled("Prefab 編集中は開けません (先に閉じてください)。");
+        // 編集中でも開ける。今のプレハブは保存して閉じてから切り替わる。
+        ImGui::TextDisabled("今開いている Prefab を保存して、プレビュー用の .vfx へ切り替えます。");
     else
         ImGui::TextDisabled("この .mat を使うエミッター 1 つだけの .vfx を作り、Prefab 編集モードで再生します。\n"
                             "今のシーンは一時退避され、Prefab を閉じると戻ります。");
@@ -673,31 +725,9 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
         return;
     }
 
-    const asset::VolumeFlipbookBakeResult& result = m_lastResult;
+    // ループ判定と FPS は «今の» 設定ではなく焼いたときの設定で決める。
     asset::MaterialAsset newAsset = oldAsset;
-    newAsset.textures["albedo"] = NormalizeAssetPath(result.colorPath);
-    newAsset.textures["tex5"] = NormalizeAssetPath(result.motionPath);
-    newAsset.blendMode = renderer::BlendMode::PREMULTIPLIED;
-    auto& particle = newAsset.particle;
-    particle.alphaSource = scene::ParticleAlphaSource::TextureAlpha;
-    particle.spriteColumns = result.columns;
-    particle.spriteRows = result.rows;
-    particle.spriteStartFrame = 0;
-    particle.spriteEndFrame = result.frameCount - 1;
-    particle.spriteRandomRow = false;
-    particle.spriteRandomStartFrame = false;
-    // MV は spriteBlend が 0 だと一切効かない。
-    particle.flipbookFrameBlending = true;
-    particle.motionVectorFlipbook = true;
-    particle.motionVectorStrength = result.recommendedStrength;
-    particle.emissiveScale = result.suggestedEmissiveScale;
-    particle.distortion = false;
-    if (asset::VolumeSourceLoops(m_settings.source)) {
-        particle.flipbookMode = scene::ParticleFlipbookMode::FramesPerSecond;
-        particle.flipbookFramesPerSecond = 1.0f / m_settings.source.frameDt;
-    } else {
-        particle.flipbookMode = scene::ParticleFlipbookMode::Lifetime;
-    }
+    ApplyFluidBakeToMaterial(FluidMaterialSource::FromVolume(m_lastResult, m_lastBakeSettings), newAsset);
 
     EditorContext* context = &ctx;
     const auto applyToDisk = [context, file](const asset::MaterialAsset& value) {
@@ -719,7 +749,7 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
 void VolumeFlipbookBakePanel::OpenInPrefabPreview(EditorContext& ctx)
 {
     const std::string materialPath = NormalizeAssetPath(m_materialPath);
-    const std::string stem = std::filesystem::path(materialPath).stem().string();
+    const std::string stem = StemOf(materialPath);
     const std::filesystem::path directory = GeneratedDirectory(ctx.projectRoot, "Assets/VFX/Generated");
     std::error_code directoryError;
     std::filesystem::create_directories(directory, directoryError);
@@ -727,8 +757,9 @@ void VolumeFlipbookBakePanel::OpenInPrefabPreview(EditorContext& ctx)
 
     // 1 粒の寿命でアトラスを 1 周させる。焼いた長さそのままにすると、焼いたときの速さで動く。
     const int frames = m_lastResult.success ? m_lastResult.frameCount : m_settings.source.frameCount;
-    const float lifetime = (std::max)(static_cast<float>(frames) * m_settings.source.frameDt, 0.1f);
-    if (directoryError || !WritePreviewVfx(file, stem + "_Preview", materialPath, lifetime)) {
+    const float frameDt = m_lastResult.success ? m_lastBakeSettings.source.frameDt : m_settings.source.frameDt;
+    const float lifetime = (std::max)(static_cast<float>(frames) * frameDt, 0.1f);
+    if (directoryError || !WriteSingleEmitterVfx(file, stem + "_Preview", materialPath, lifetime)) {
         m_status = "プレビュー用の .vfx を書き出せません: " + file.string();
         m_statusIsError = true;
         return;
