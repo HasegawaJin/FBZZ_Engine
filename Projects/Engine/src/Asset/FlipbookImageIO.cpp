@@ -111,4 +111,76 @@ bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
     return true;
 }
 
+bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std::uint32_t height,
+                     std::span<const std::uint8_t> pixels, std::uint32_t tileWidth, std::uint32_t tileHeight,
+                     FlipbookMipContent content, FlipbookDdsCompression compression, std::string& outError)
+{
+    const std::vector<FlipbookMipLevel> levels =
+        BuildFlipbookMips(pixels, width, height, tileWidth, tileHeight, content);
+    if (levels.empty()) {
+        outError = "DDS へ書く画素が足りません: " + path.string();
+        return false;
+    }
+    DirectX::ScratchImage chain;
+    if (FAILED(chain.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, levels.size()))) {
+        outError = "DDS の出力バッファを確保できません";
+        return false;
+    }
+    for (std::size_t level = 0; level < levels.size(); ++level) {
+        const DirectX::Image* image = chain.GetImage(level, 0, 0);
+        const FlipbookMipLevel& source = levels[level];
+        const std::size_t sourcePitch = static_cast<std::size_t>(source.width) * 4;
+        for (std::uint32_t y = 0; y < source.height; ++y)
+            std::memcpy(image->pixels + static_cast<std::size_t>(y) * image->rowPitch,
+                        source.rgba.data() + static_cast<std::size_t>(y) * sourcePitch, sourcePitch);
+    }
+
+    const DirectX::ScratchImage* output = &chain;
+    DirectX::ScratchImage compressed;
+    if (width % 4 != 0 || height % 4 != 0) compression = FlipbookDdsCompression::None;
+    if (compression != FlipbookDdsCompression::None) {
+        const DXGI_FORMAT format =
+            compression == FlipbookDdsCompression::BC5 ? DXGI_FORMAT_BC5_UNORM : DXGI_FORMAT_BC7_UNORM;
+        const DirectX::TEX_COMPRESS_FLAGS flags = compression == FlipbookDdsCompression::BC7
+            ? DirectX::TEX_COMPRESS_BC7_QUICK : DirectX::TEX_COMPRESS_DEFAULT;
+        if (FAILED(DirectX::Compress(chain.GetImages(), chain.GetImageCount(), chain.GetMetadata(), format, flags,
+                                     DirectX::TEX_THRESHOLD_DEFAULT, compressed))) {
+            outError = "DDS を圧縮できません: " + path.string();
+            return false;
+        }
+        output = &compressed;
+    }
+    if (FAILED(DirectX::SaveToDDSFile(output->GetImages(), output->GetImageCount(), output->GetMetadata(),
+                                      DirectX::DDS_FLAGS_NONE, path.wstring().c_str()))) {
+        outError = "DDS を書き出せません: " + path.string();
+        return false;
+    }
+    return true;
+}
+
+bool SaveFlipbookMeta(const std::filesystem::path& sourcePath, TextureType type, TextureCompression compression,
+                      AlphaMode alphaMode, std::string& outError)
+{
+    TextureAsset texture;
+    texture.sourcePath = sourcePath.string();
+    texture.settings = DefaultSettingsForType(type);
+    texture.settings.compression = compression;
+    texture.settings.alphaMode = alphaMode;
+    texture.settings.mipmaps = true;
+    texture.settings.maxSize = 16384;
+    texture.settings.wrapU = TextureWrap::Clamp;
+    texture.settings.wrapV = TextureWrap::Clamp;
+    texture.settings.filter = TextureFilter::Trilinear;
+    if (type == TextureType::Data || type == TextureType::Normal)
+        texture.settings.srgb = false;
+
+    const std::string metaPath = sourcePath.string() + ".meta";
+    TexDescSerializer serializer;
+    if (!serializer.Save(texture, metaPath)) {
+        outError = "テクスチャ .meta を書き出せません: " + metaPath;
+        return false;
+    }
+    return true;
+}
+
 } // namespace fbzz::asset::detail

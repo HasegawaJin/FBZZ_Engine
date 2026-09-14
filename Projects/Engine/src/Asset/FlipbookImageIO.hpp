@@ -7,6 +7,7 @@
 ///   同じ処理が生成器ごとの無名名前空間に 3 通り重複していたため、ここへ寄せる。
 #pragma once
 
+#include <Engine/Asset/FlipbookMips.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 
 #include <cstdint>
@@ -34,5 +35,19 @@ namespace fbzz::asset::detail {
 [[nodiscard]] bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
                                    TextureCompression compression, AlphaMode alphaMode,
                                    bool mipmaps, std::string& outError);
+
+enum class FlipbookDdsCompression : std::uint8_t { BC7, BC5, None };
+
+/// コマを跨がないミップ (BuildFlipbookMips) 付きの DDS。PNG は 1 段しか読まれないので、
+/// 実行時に使うフリップブックはこちらを参照させる。BC7 は «速い» モードで圧縮する。
+/// @note 0 段目の寸法が 4 の倍数でなければ BC 圧縮はできないので無圧縮で書く。
+[[nodiscard]] bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std::uint32_t height,
+                                   std::span<const std::uint8_t> pixels, std::uint32_t tileWidth,
+                                   std::uint32_t tileHeight, FlipbookMipContent content,
+                                   FlipbookDdsCompression compression, std::string& outError);
+
+/// ミップ付きフリップブックの .meta。ラップは Clamp (Atlas の端のコマが反対側から滲まないように)。
+[[nodiscard]] bool SaveFlipbookMeta(const std::filesystem::path& sourcePath, TextureType type,
+                                    TextureCompression compression, AlphaMode alphaMode, std::string& outError);
 
 } // namespace fbzz::asset::detail

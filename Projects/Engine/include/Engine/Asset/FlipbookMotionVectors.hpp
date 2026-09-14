@@ -35,7 +35,7 @@ struct FlipbookMotionVectorSettings {
     // ループするアトラス (最終コマ → 先頭コマ) の動きも解析するか。
     bool loop = true;
     // 各行を独立したアニメーション列として扱う。
-    // WHY: ParticleEmitter::spriteRandomRow は行末から同じ行の先頭へ戻るため、
+    // WHY: ParticleFlipbookSettings::spriteRandomRow は行末から同じ行の先頭へ戻るため、
     //      アトラス全体を直列解析すると行境界だけ別バリエーションへの誤った速度になる。
     bool rowSequences = false;
 };
