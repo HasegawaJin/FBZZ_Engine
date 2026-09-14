@@ -29,6 +29,17 @@ namespace fbzz::editor::widgets {
 inline constexpr const char* kTextureAssetFilter =
     ".fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp,.hdr,.exr";
 
+// 上に «Sprite サブアセット参照 ("<画像>::sprite::<ID>") も受ける» を足したもの。
+// 中身は kTextureAssetFilter と揃えること (片方だけ増やすと欄によって候補が変わる)。
+//
+// WHY 擬似拡張子 ".sprite" で表すか:
+//   切り抜きを活かせるかどうかは «欄» が決める (UI・Sprite Renderer・.mat の albedo・
+//   流体のマスクだけが矩形を読む)。フィルター文字列は全部の欄が既に持っているので、
+//   そこへ 1 つ足すだけで「ピッカーがコマを並べるか」「D&D を受けるか」が同じ 1 か所で決まる。
+//   これが無いと、読めない欄がドロップだけ黙って受け取り、実行時にアトラス全面が出る。
+inline constexpr const char* kSpriteAssetFilter =
+    ".sprite,.fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp,.hdr,.exr";
+
 // 音声クリップ選択欄の共通フィルター。
 // 正本は Engine 側 (scene::kAudioClipExtensions) — スクリプトの FBZZ_FIELD_AUDIO と
 // Editor のピッカーが同じ集合を指す必要があるため、Editor 側では別定義せず参照する。
@@ -120,6 +131,36 @@ inline bool ForceFieldChannelMask(const char* label, std::uint32_t& mask)
 
 void SectionHeader(const char* label);
 
+/// 見出し用の太い書体で 1 行だけ組む (読めない環境では本文のまま組む)。
+/// 対で EndHeadingFont() を呼ぶこと。
+void BeginHeadingFont(float scale = 1.0f);
+void EndHeadingFont();
+
+/// 何も無いパネルの中身。アイコン・見出し・一言・(あれば) 次の一手のボタンを中央へ置く。
+///
+/// WHY 共通化するか: «何も無い» は全パネルに必ず現れる状態なのに、灰色の 1 行で
+///     済ませていた。何が足りないのかも、次に何をすればいいのかも書いていないので、
+///     初めて開いた人はそこで止まる。出す形を 1 つにして、言葉だけ各パネルが決める。
+///
+/// @param icon        EditorIcons の字 (icons::Or 済み)。nullptr なら絵を出さない
+/// @param title       状態の名前 (「まだ何も無い」)。必須
+/// @param hint        次に何をすればよいか。nullptr なら出さない
+/// @param actionLabel 押せる次の一手。nullptr ならボタンを出さない
+/// @return actionLabel のボタンが押された
+bool EmptyState(const char* icon, const char* title,
+                const char* hint = nullptr, const char* actionLabel = nullptr);
+
+/// id ごとに保持した値を target へ寄せて返す (0〜1 の進捗に使う)。
+///
+/// WHY 即時モードで «前回» を持てるか: ImGui はウィンドウごとに ImGuiStorage を
+///     持っていて、そこに id をキーに float を置ける。ウィジェットの状態と同じ寿命なので、
+///     パネル側に «アニメーション用のメンバー» を生やさずに済む。
+///
+/// @param id     ImGui::GetID() などで作った一意な ID
+/// @param target 目標値
+/// @param speed  1 秒あたりに詰める割合 (既定はおよそ 100ms で到達する速さ)
+[[nodiscard]] float Animate(ImGuiID id, float target, float speed = 12.0f);
+
 // 色付きテキスト
 void ColoredText(const char* text, ImVec4 color);
 
@@ -138,6 +179,28 @@ bool RangeField(const char* label, int& value, int min, int max,
 
 bool RangeField(const char* label, float& value, float min, float max,
                 const char* fmt = "%.3f", const char* tooltip = nullptr);
+
+/// 四則と括弧だけの式を評価する ("1920/2"・"45*2"・"-(3+1)*0.5")。数値だけでも通る。
+///
+/// WHY 数値欄に式を通すか: 座標合わせ・角度・タイル配置では «画面幅の半分» や
+///     «45 度の 2 倍» を暗算してから打ち込んでいた。暗算した時点で
+///     «何をしたかったのか» が数値に埋もれ、あとから直せなくなる。
+///
+/// @return 読めたら true (out へ書く)。読めなければ false で out は触らない。
+[[nodiscard]] bool EvaluateExpression(const char* text, float& out);
+
+/// ImGui::DragFloat の置き換え。ドラッグの挙動は同じで、
+/// Ctrl+Click / ダブルクリックのタイプ入力だけ EvaluateExpression を通す。
+///
+/// @note ImGui 側のタイプ入力 (ImGuiSliderFlags_NoInput) は切る。式を読むのはこちらの役目。
+bool DragFloatExpr(const char* id, float& value, float speed,
+                   float min = 0.0f, float max = 0.0f, const char* fmt = "%.3f",
+                   ImGuiSliderFlags flags = 0);
+
+/// 整数版。式の結果は四捨五入してから範囲へ収める。
+bool DragIntExpr(const char* id, int& value, float speed,
+                 int min = 0, int max = 0, const char* fmt = "%d",
+                 ImGuiSliderFlags flags = 0);
 
 // ─── 数値調整をやりやすくするための共通部品 ───────────────────────────────
 // 掴みやすさ (どの成分か即座に分かる) と刻みの妥当さをウィジェット側で担保する。
@@ -373,9 +436,12 @@ void RequestAssetReveal(std::string assetPath, bool selectInInspector);
 [[nodiscard]] bool ConsumeAssetRevealRequest(AssetRevealRequest& out);
 
 // アセットパス入力フィールド。"..." ボタンで projectRoot/ 以下を検索できるモーダルを開く。
-// filterExts: カンマ区切り拡張子 ".mat,.hlsl" (空 = すべてのファイル)
+// filterExts: カンマ区切り拡張子 ".mat,.hlsl" (空 = すべてのファイル)。
+//             ".sprite" を含む欄だけが Sprite サブアセット参照を受ける (kSpriteAssetFilter)。
 // 操作: シングルクリック = AssetBrowser で Ping / ダブルクリック = 選択して Inspector を切替 /
 //       右クリック = パス直接編集・コピー・クリア / D&D と "..." は従来どおり。
+/// ピッカーの結果は次の同一 ImGui ID の呼び出しで反映する。path は呼び出し中だけ生存すればよい。
+/// 編集対象を切り替える呼び手は、その対象の識別子も PushID に含めること。
 // @return true if path was changed (InputText 編集 / drag-drop / picker 選択のいずれか)
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
@@ -408,6 +474,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources = nullptr,
 //      選択時に target へ正規化済み相対パスが書き込まれる。描画は DrawAssetPickerModal() が担う。
 //   filterExts: カンマ区切り拡張子 (".prefab" / ".fzdata" 等、空ですべて)
 //   anchorPos : ポップアップを出す画面座標 (通常は呼び出し元ボタンの直下)
+/// target は選択完了まで生存すること。一時コピーの編集には AssetPathField を使う。
 void OpenAssetPicker(std::string& target, const char* filterExts,
                      const std::string& projectRoot, ImVec2 anchorPos);
 
@@ -416,6 +483,8 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
 //      定型がパス欄やリスト行に散在していたため集約する。ドロップ後の処理 (拡張子除去・
 //      リロード等の特殊挙動) は呼び出し側に委ねるので、既存挙動を保ったまま重複だけ消せる。
 // filterExts が指定された場合は手入力欄と同じ拡張子制約をドロップにも適用する。
+// Sprite サブアセットのドロップは filterExts に ".sprite" がある欄だけが受け取る
+// (受けない欄はドラッグ中に理由を出して弾く)。
 // @return true if an asset path was dropped (outPath に正規化済みパスを格納)
 bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts = nullptr);
 

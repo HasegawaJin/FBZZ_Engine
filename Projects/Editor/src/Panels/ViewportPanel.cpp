@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 #include "Viewport/ViewportCommon.hpp"
 #include "MapToolCommon.hpp"
+#include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
@@ -438,9 +439,11 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
         ImGui::SameLine();
     };
-    gizmoBtn("Move",  EditorContext::GizmoMode::Translate, "Translate gizmo");
-    gizmoBtn("Rot",   EditorContext::GizmoMode::Rotate,    "Rotate gizmo");
-    gizmoBtn("Scale", EditorContext::GizmoMode::Scale,     "Scale gizmo");
+    // 記号が使えるときは絵にする。3 つ並ぶ切替は形の違いの方が速く読め、
+    // 幅も詰まって «絵を見る» 面積が残る。読めない環境では従来の短い語へ落ちる。
+    gizmoBtn(icons::Or(icons::kMove,   "Move"),  EditorContext::GizmoMode::Translate, "Translate gizmo");
+    gizmoBtn(icons::Or(icons::kRotate, "Rot"),   EditorContext::GizmoMode::Rotate,    "Rotate gizmo");
+    gizmoBtn(icons::Or(icons::kScale,  "Scale"), EditorContext::GizmoMode::Scale,     "Scale gizmo");
 
     {
         const bool world = ctx.gizmoSpace == EditorContext::GizmoSpace::World;
@@ -471,7 +474,7 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         ImGui::PushStyleColor(ImGuiCol_Button, ctx.snapEnabled
             ? EditorTheme::Color(ThemeColor::AccentActive)
             : overlaySurface);
-        if (ImGui::SmallButton("Snap")) ctx.snapEnabled = !ctx.snapEnabled;
+        if (ImGui::SmallButton(icons::Or(icons::kSnapGrid, "Snap"))) ctx.snapEnabled = !ctx.snapEnabled;
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Toggle gizmo snapping (also in the status bar)");

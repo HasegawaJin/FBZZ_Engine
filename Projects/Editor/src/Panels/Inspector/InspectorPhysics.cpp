@@ -239,6 +239,93 @@ MeshColliderValue CaptureConvexHullValue(const scene::ConvexHullColliderComponen
              c.isTrigger, c.useTransformScale, c.enabled };
 }
 
+// ── Joint ───────────────────────────────────────────────────────────────────
+// 種別で使うフィールドが入れ替わるので、欄そのものは Reflect() の FieldIf に任せ、
+// ここは «Reflect() では表せないもの» だけを足す。
+// WHY 自動 Inspector に寄せないか: 関節は «張れているか» が分からないと詰められない。
+//     相手を指し忘れた・相手に剛体が無い・距離を自動で採ったといった状態は
+//     フィールドの一覧には出ないが、まさにそれが «垂れない» の原因になる。
+
+// Reflect() から欄を起こすリフレクタの下ごしらえ。参照スロットが GameObject 名を
+// 出せるよう、Script の Inspector (InspectorCore) と同じ解決器を繋ぐ。
+void ConfigureJointRefReflector(ComponentImGuiReflector& reflector, EditorContext& ctx)
+{
+    reflector.m_projectRoot = ctx.projectRoot;
+    if (!ctx.activeScene) return;
+
+    reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
+        auto* target = scene->GetGameObject(id);
+        return target ? target->name : "(Missing)";
+    };
+    reflector.m_goListProvider =
+        [scene = ctx.activeScene]() -> std::vector<std::pair<scene::EntityID, std::string>> {
+            std::vector<std::pair<scene::EntityID, std::string>> out;
+            for (auto& object : scene->GameObjects())
+                out.emplace_back(object.GetID(), object.name);
+            return out;
+        };
+    reflector.m_refTypeValidator =
+        [scene = ctx.activeScene](scene::EntityID id, const char* typeName) -> bool {
+            if (!typeName || !typeName[0]) return true;
+            auto* target = scene->GetGameObject(id);
+            return target && HasRegisteredComponentByName(*target, typeName);
+        };
+}
+
+void DrawJointStatus(const scene::JointComponent& joint, scene::GameObject& go, EditorContext& ctx)
+{
+    if (joint.connected) {
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Success));
+        ImGui::TextUnformatted("Connected");
+        ImGui::PopStyleColor();
+        if (joint.UsesDistance()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(distance %.3f m%s)", joint.resolvedDistance,
+                                joint.autoDistance ? ", auto" : "");
+        }
+        return;
+    }
+
+    // 張れていない理由を名指しする。Play 前は «まだ物理が回っていない» が普通なので、
+    // «設定が足りない» と区別できるようにしておく。
+    const bool hasSelfBody = go.GetComponent<scene::RigidBodyComponent>() != nullptr;
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
+    ImGui::TextUnformatted("Not connected");
+    ImGui::PopStyleColor();
+    if (!hasSelfBody) {
+        ImGui::TextDisabled("この GameObject に Rigid Body がありません");
+        return;
+    }
+    if (joint.type == scene::JointType::Chain) {
+        if (joint.chainBodies.empty())
+            ImGui::TextDisabled("Chain Bodies に 2 節目以降を並べてください");
+        return;
+    }
+    if (!joint.connectedBody.IsValid() && !joint.connectToParent) {
+        ImGui::TextDisabled("Connected Body を指すか Connect To Parent を入れてください");
+        return;
+    }
+    if (ctx.activeScene && joint.connectedBody.IsValid()) {
+        scene::GameObject* target = joint.connectedBody.Resolve(*ctx.activeScene);
+        if (!target)
+            ImGui::TextDisabled("Connected Body の参照先が見つかりません");
+        else if (!target->GetComponent<scene::RigidBodyComponent>())
+            ImGui::TextDisabled("相手 (%s) に Rigid Body がありません", target->name.c_str());
+        return;
+    }
+    ImGui::TextDisabled("Play 中に PhysicsSystem が張ります");
+}
+
+void DrawJoint(scene::JointComponent& joint, scene::GameObject& go, EditorContext& ctx)
+{
+    DrawJointStatus(joint, go, ctx);
+    ImGui::Spacing();
+
+    ComponentImGuiReflector reflector;
+    ConfigureJointRefReflector(reflector, ctx);
+    joint.Reflect(reflector);
+}
+
 void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColliderValue& v)
 {
     const bool geomChanged = c.meshPath != v.meshPath
@@ -374,6 +461,11 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             ImGui::DragFloat("Charge", &body.m_charge, 0.01f, -1000.0f, 1000.0f);
             ImGui::Checkbox("Gravity Source", &body.m_isGravitationalSource);
             ImGui::DragFloat("Gravity Mass", &body.m_gravitationalMass, 0.05f, 0.0f, 100000.0f);
+        });
+
+    DrawComponentSection<scene::JointComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Joint",
+        [go](scene::JointComponent& joint, EditorContext& ctx2) {
+            DrawJoint(joint, *go, ctx2);
         });
 
     DrawComponentSection<scene::VolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volume",

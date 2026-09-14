@@ -58,8 +58,9 @@ bool MatSubExporter::Export(FbxImportContext& ctx)
     // 決定論的に導出されるため、.meta も Library の永続性も要らない。
     //
     // NOTE (textures の再生成条件): 埋め込みテクスチャは FBX 自体から復元できる。
-    //   外部参照は FBX の隣 (fbxDir) から再コピーされるため、原本が Assets 内にあれば復元できる。
-    //   FBX がプロジェクト外の絶対パスを参照している場合だけは復元できない。
+    //   外部参照は FBX の隣 (fbxDir) と "<FBX名>.fbm/" から再コピーされるため、
+    //   原本が Assets 内にあれば復元できる。
+    //   FBX がプロジェクト外の絶対パスを参照し、実体もそのどちらにも無い場合だけは復元できない。
     //
     // WHY (ディレクトリを事前に作らない): materials/ は .mat を書く FileSystem::WriteText が、
     //   textures/ は DumpEmbeddedAsPng と FileSystem::CopyFile が、それぞれ書き込み直前に
@@ -85,6 +86,7 @@ bool MatSubExporter::Export(FbxImportContext& ctx)
                 ms->mMaterials[matIdx],
                 ms,
                 ctx.fbxDir,
+                ctx.baseName,
                 util::FileSystem::PathToUtf8(texDir),
                 matPath,
                 skinned,

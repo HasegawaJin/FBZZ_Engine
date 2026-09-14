@@ -11,10 +11,13 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/ModelPlacement.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -42,6 +45,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -485,6 +489,25 @@ struct PreviewState {
 
 PreviewState s_state;
 PreviewGpu s_gpu;
+
+// インポーターが書き出した .mat から組んだ描画用マテリアル。添字は model->meshes と同じ。
+// WHY: LoadModel が返す Model の materials は既定値の空 Material でシェーダーを持たないため、
+//      それだけを見るとプレビューが常にグレーになる。AssetBrowser のサムネイルや
+//      シーン配置と同じ .mat を引いて描く。
+struct PreviewMaterialSlot {
+    std::string materialPath;
+    renderer::ResourceHandle<renderer::MaterialAssetTag> asset;
+    uint64_t revision = 0;
+    bool built = false;
+    std::unique_ptr<renderer::Material> material;
+};
+
+struct PreviewMaterialCache {
+    std::string modelPath;
+    std::vector<PreviewMaterialSlot> slots;
+};
+
+PreviewMaterialCache s_materialCache;
 
 // Avatar Mask Preview は通常の Animation Preview と同じ GPU / カメラを使うが、
 // メッシュをマスクウェイト色で描くための対象だけを別状態で保持する。
@@ -1114,6 +1137,62 @@ bool EnsurePreviewGpu(renderer::ResourceManager& resources)
            s_gpu.renderTarget.IsValid();
 }
 
+// meshIndex の submesh に割り当たる .mat から描画用 Material を返す。無ければ nullptr。
+// 束縛は MaterialParamBinding (シーン描画と同じ規則) に任せ、ここでは写さない。
+renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
+                                                    renderer::ResourceManager& resources,
+                                                    size_t meshCount,
+                                                    size_t meshIndex)
+{
+    if (s_materialCache.modelPath != s_state.target.modelPath ||
+        s_materialCache.slots.size() != meshCount) {
+        s_materialCache.modelPath = s_state.target.modelPath;
+        s_materialCache.slots.clear();
+        s_materialCache.slots.resize(meshCount);
+        const asset::ModelAsset* modelAsset = asset::AssetManager::Get(
+            asset::AssetManager::Load<asset::ModelAsset>(s_materialCache.modelPath));
+        for (size_t i = 0; i < meshCount; ++i)
+            s_materialCache.slots[i].materialPath = FindImportedMaterialPath(
+                s_materialCache.modelPath, modelAsset, static_cast<int>(i));
+    }
+    if (meshIndex >= s_materialCache.slots.size()) return nullptr;
+    PreviewMaterialSlot& slot = s_materialCache.slots[meshIndex];
+    if (slot.materialPath.empty()) return nullptr;
+
+    // 再インポートで .mat が読み直されるとハンドルが変わり、Inspector の未保存編集は
+    // リビジョンだけが進む。どちらでも組み直す。
+    const auto assetHandle = asset::AssetManager::LoadMaterial(slot.materialPath);
+    const uint64_t revision =
+        ctx.MaterialPreviewRevision(NormalizeAssetPath(slot.materialPath));
+    if (slot.built && slot.asset == assetHandle && slot.revision == revision)
+        return slot.material.get();
+
+    slot.asset = assetHandle;
+    slot.revision = revision;
+    slot.built = true;
+    slot.material.reset();
+    const asset::MaterialAsset* materialAsset = asset::AssetManager::GetMaterial(assetHandle);
+    if (!materialAsset || materialAsset->shaderPath.empty()) return nullptr;
+
+    auto material = std::make_unique<renderer::Material>();
+    material->shaderPath = materialAsset->shaderPath;
+    material->shader = resources.LoadShader(material->shaderPath);
+    auto* shader = resources.Get(material->shader);
+    if (!shader) return nullptr;
+    const auto& desc = shader->GetDescriptor();
+    material->paramData.assign(desc.cbufferSize, 0u);
+    asset::InitDefaultMaterialParams(desc, material->paramData);
+    asset::ApplyMaterialAssetParams(*materialAsset, desc, material->paramData);
+    const auto texturePaths = asset::ResolveMaterialTexturePaths(*materialAsset);
+    material->textures.resize(texturePaths.size());
+    for (size_t t = 0; t < texturePaths.size(); ++t)
+        if (!texturePaths[t].empty())
+            material->textures[t] = resources.LoadTexture(texturePaths[t]);
+    material->Upload(resources, desc);
+    slot.material = std::move(material);
+    return slot.material.get();
+}
+
 void ComputeModelBounds(const asset::Model& model, math::Vector3& outCenter, float& outRadius)
 {
     math::Vector3 minP{ FLT_MAX, FLT_MAX, FLT_MAX };
@@ -1667,21 +1746,21 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         if (!mesh || !mesh->vertexBuffer.IsValid() || !mesh->indexBuffer.IsValid()) continue;
         updateMeshObjectTransform(i, *mesh);
 
-        // モデルが持つマテリアルの shader / paramsBuffer / textures をそのまま使い、
-        // シーンビューと同じ見た目にする。
-        // WHY: 以前はアルベドテクスチャだけ拝借してグレー固定のフラット CB を
-        //   流し込んでいたため、色・エミッシブ・法線マップなどが一切反映されず、
-        //   プレビューだけ別物の見た目になっていた。
+        // インポート済み .mat を優先し、無いモデル (旧 Assimp 経路など) だけ
+        // Model 自身の materials へ落とす。
         renderer::Material* material =
-            (i < model->materials.size()) ? model->materials[i].get() : nullptr;
+            ResolveImportedPreviewMaterial(ctx, resources, model->meshes.size(), i);
+        if (!material && i < model->materials.size())
+            material = model->materials[i].get();
 
-        // スキンメッシュに非スキニングシェーダーが割り当たっている場合は使えない
-        // (頂点入力レイアウトが合わない)。描画パスと同じくフォールバックする。
+        // シェーダーの頂点入力がメッシュと合わなければ使えない。描画パスと同じくフォールバックする。
+        // WHY 逆向きも見るか: スキンモデルの .mat はインポーターが一律 Skinned で書くため、
+        //     同じ FBX 内の剛体メッシュ (武器など) にも Skinned シェーダーが付いてくる。
         const bool materialSupportsSkinning =
             material && material->shaderPath.find("/Skinned/") != std::string::npos;
         const bool useMaterial =
             material && material->shader.IsValid() && material->paramsBuffer.IsValid() &&
-            (!mesh->isSkinned || materialSupportsSkinning);
+            mesh->isSkinned == materialSupportsSkinning;
 
         renderer::DrawCall dc;
         dc.vertexBuffer = mesh->vertexBuffer;
@@ -1787,6 +1866,7 @@ void ShutdownAnimationPreview()
     // 次回起動時に無効なハンドルと前回のアタッチ FBX が残らないよう状態だけ初期化する。
     s_state = PreviewState{};
     s_gpu = PreviewGpu{};
+    s_materialCache = PreviewMaterialCache{};
     s_maskPreview = MaskPreviewState{};
 }
 
@@ -2501,23 +2581,28 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
                     for (const auto& clip : model->clips) {
                         const bool selected = s_state.target.animAssetPath.empty() &&
                                               clip.name == s_state.target.clipName;
+                        ImGui::PushID(&clip);
                         if (ImGui::Selectable(clip.name.c_str(), selected)) {
                             s_state.target.animAssetPath.clear();
                             s_state.target.clipName = clip.name;
                             s_state.time = 0.0f;
                         }
+                        ImGui::PopID();
                         if (selected) ImGui::SetItemDefaultFocus();
                     }
                 }
                 for (const auto& animPath : anims) {
                     const std::string name = util::FileSystem::GetFilename(animPath);
                     const bool selected = animPath == s_state.target.animAssetPath;
+                    // 埋め込みクリップと同名の .anim や、別フォルダの同名ファイルがありうる。
+                    ImGui::PushID(animPath.c_str());
                     if (ImGui::Selectable(name.c_str(), selected)) {
                         s_state.target.animAssetPath = animPath;
                         s_state.target.clipName.clear();
                         s_state.time = 0.0f;
                         s_state.playing = true;
                     }
+                    ImGui::PopID();
                     if (selected) ImGui::SetItemDefaultFocus();
                 }
                 ImGui::EndCombo();

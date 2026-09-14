@@ -16,6 +16,8 @@
 #include <Editor/Util/Localization.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
+#include <Editor/Util/FluidBakeService.hpp>
+#include <Editor/Util/FluidInspector.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
@@ -42,6 +44,7 @@
 #include <Editor/Panels/SequencePanel.hpp>
 #include <Editor/Panels/VFXTimelinePanel.hpp>
 #include <Editor/Panels/SfxEditorPanel.hpp>
+#include <Editor/Panels/FluidEditorPanel.hpp>
 #include <Editor/Panels/SpriteEditorPanel.hpp>
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
@@ -414,6 +417,10 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     auto& application = core::Application::Get();
     m_ctx.memorySystem = &application.GetMemorySystem();
     m_ctx.memoryLeakDiff = &m_memoryLeakDiff;
+    // パネルの OnInit より前に繋ぐ (Volume Flipbook Baker パネルが共有 Baker を使う)。
+    m_fluidBake = std::make_unique<FluidBakeService>();
+    m_ctx.fluidBake = m_fluidBake.get();
+    BindFluidInspectorContext(&m_ctx);
     // EditorはApplication所有とは別のProjectRuntimeを更新するため、音響を明示的に接続する。
     m_runtime.GetSceneManager().SetAudioManager(application.GetAudioManager());
     m_terrainTool     = std::make_unique<TerrainTool>();
@@ -469,6 +476,13 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
             sequencePtr->RequestOpen(path);
         };
         m_panels.push_back(std::move(sequence));
+    }
+    {
+        // .fluid は asset.open が ctx.requestOpenFluidEditor に積み、パネル自身が読んで消す。
+        // 未保存の確認をパネルが持つので、SFX Editor のような «開く» 関数は渡さない。
+        auto fluidEditor = std::make_unique<FluidEditorPanel>();
+        m_fluidEditorPanel = fluidEditor.get();
+        m_panels.push_back(std::move(fluidEditor));
     }
     // .vfx はプレハブ編集モードで開き、尺の詰めだけこのパネルが受け持つ。
     // アセットを渡す必要は無い (シーン上の VFX ルートを自分で見つける)。
@@ -623,6 +637,9 @@ void EditorApp::Shutdown()
 {
     // 接続中の AI ワーカーを Scene / Panel より先に停止し、破棄済み状態への要求を防ぐ。
     StopAiCommandBus();
+    // AI が止まった後に、レンダラーと ResourceManager が生きているうちに GPU 資源を返す。
+    if (m_fluidBake) m_fluidBake->Shutdown(m_ctx);
+    BindFluidInspectorContext(nullptr);
 
     // WHY ここで採るか: Map Mode / Play レイアウトはパネルの visible を一時的に潰す。
     //     この直後の Map Mode 復帰処理で mapEditingMode が落ちるため、判定できるのは今だけ。
@@ -1122,6 +1139,13 @@ void EditorApp::BeginFrame()
     ImGuizmo::BeginFrame();
     {
         FBZZ_PROFILE_SCOPE("EditorBegin::Hotkeys");
+        // ドキュメントを編集する面にフォーカスがある間、Ctrl+S はその面のものにする。
+        // WHY ここで申告するか: ProcessInput はパネル描画より前に走るので、パネル自身の
+        //     SuppressOperatorThisFrame は «次の» フレームにしか効かない。フォーカス状態は
+        //     前フレームの描画で確定済みなので、同じ判断をこの位置で先に済ませておけば、
+        //     フォーカスした直後の 1 回だけシーンまで保存される、が起きない。
+        if (m_ctx.PanelScopeFocused(HotkeyScope::FluidEditor))
+            m_hotkeys.SuppressOperatorThisFrame("scene.save");
         m_hotkeys.ProcessInput();
     }
     {
@@ -1167,6 +1191,7 @@ void EditorApp::BeginFrame()
         DrawSceneReloadBar(m_ctx);
         DrawBuildNotificationBar(m_ctx);
         DrawGuidConflictBar(m_ctx);
+        DrawAboutDialog();
 
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
         ProcessMapEditingModeTransition(static_cast<uint32_t>(dockId));
@@ -1193,12 +1218,11 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     m_undoStack.SetRecordingEnabled(m_playMode.IsInEditor());
 
     // HotkeyManager の scope 判定に使うフォーカス状態を落とし、パネルに立て直させる。
-    // 非表示のパネルは OnRenderContent が呼ばれずフラグを更新できないので、落とさないと
+    // 非表示のパネルは OnRender が呼ばれず申告できないので、落とさないと
     // 「閉じたパネルにフォーカスがある」ままキーが効き続ける。
+    ctx.focusedPanelScope    = HotkeyScope::None;
     ctx.viewportFocused      = false;
     ctx.sceneViewportHovered = false;
-    ctx.hierarchyFocused     = false;
-    ctx.assetBrowserFocused  = false;
     ctx.gameViewportRectValid = false;
     ctx.gameViewportFocused   = false;
 
@@ -1327,6 +1351,10 @@ void EditorApp::RenderPanels(EditorContext& ctx)
             }
         }
     }
+
+    // 要求を読んで消すのはパネル自身 (OnBeforeBegin)。ここは閉じていれば開くだけ。
+    if (!ctx.requestOpenFluidEditor.empty() && m_fluidEditorPanel != nullptr && !m_fluidEditorPanel->visible)
+        InvokePanelFocus(m_fluidEditorPanel);
 
     if (ctx.requestOpenSfxEditor) {
         ctx.requestOpenSfxEditor = false;
@@ -1914,6 +1942,10 @@ void EditorApp::OnRender()
     if (needGameView)
         RenderGameView(gameCamera, gameCullingMask);
 
+    // 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
+    // パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
+    if (m_fluidBake) m_fluidBake->Tick(m_ctx);
+
     m_renderer->SetRenderTarget({}, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
 
@@ -2018,9 +2050,12 @@ void EditorApp::WarmupRenderResources()
         uiOptions.viewportHeight = h;
         uiOptions.targetView    = scene::UIRenderTargetView::GameViewport;
         uiOptions.context       = &m_runtime.GetGameUIContext();
+        // 本番の Game View と同じ設定で温める (RenderGameView と同じく診断表示を外す)。
+        renderer::RenderSettings gameRenderSettings = m_ctx.projectSettings.render;
+        gameRenderSettings.StripDebugVisualization();
         scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
                             warmupCamera, gameRT,
-                            &m_ctx.projectSettings.render,
+                            &gameRenderSettings,
                             scene::ResolveGameCullingMask(*m_scene), &uiOptions);
     }
 
@@ -2178,9 +2213,12 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
     uiOptions.mousePressed       = mouseOverViewport && ImGui::GetIO().MouseDown[0];
     uiOptions.targetView         = scene::UIRenderTargetView::GameViewport;
     uiOptions.context            = &m_runtime.GetGameUIContext();
+    // Debug メニューの診断表示は Scene View 専用。Game View はゲームの見た目だけを描く。
+    renderer::RenderSettings gameRenderSettings = m_ctx.projectSettings.render;
+    gameRenderSettings.StripDebugVisualization();
     scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
                         gameCamera, gameRT,
-                        &m_ctx.projectSettings.render,
+                        &gameRenderSettings,
                         gameCullingMask, &uiOptions);
 }
 

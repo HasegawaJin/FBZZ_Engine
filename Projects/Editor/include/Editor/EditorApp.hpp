@@ -54,6 +54,7 @@ class AnalysisPanel;
 class MapEditorPanel;
 class IblBakePanel;
 class VolumeFlipbookBakePanel;
+class FluidEditorPanel;
 class AssetMaintenancePanel;
 class NavigationPanel;
 class AiSettingsPanel;
@@ -118,6 +119,9 @@ private:
     void BuildMenuBar(EditorContext& ctx);
     void InstallNativeMenuBar();
     void BuildPlayToolbar(EditorContext& ctx);
+    // Help > About。メニューの中で Begin すると閉じた瞬間に消えるので、毎フレーム別に描く。
+    void DrawAboutDialog();
+    bool m_aboutRequested = false;
     // ビルド失敗時に、ツールバー下へ消えない通知バーを描画する (Show / Dismiss)。
     void DrawBuildNotificationBar(EditorContext& ctx);
     // GUID 重複を抱えているとき、同じ場所へ通知バーを描画する。
@@ -319,6 +323,9 @@ private:
     renderer::RenderSettings m_renderSettingsPlaySnapshot;
     // Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
     MemoryLeakDiff     m_memoryLeakDiff;
+    // .fluid の焼き・プレビューのジョブ窓口 (m_ctx.fluidBake がこれを指す)。
+    // パネルではなくここが持つので、パネルを閉じても AI から頼んでも焼きが進む。
+    std::unique_ptr<FluidBakeService> m_fluidBake;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
     std::string                     m_normalLayoutIni;
     const char*                     m_normalIniFilename = nullptr;
@@ -443,6 +450,7 @@ private:
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
     IblBakePanel*                            m_iblBakePanel           = nullptr;
     VolumeFlipbookBakePanel*                 m_volumeFlipbookBakePanel = nullptr;
+    FluidEditorPanel*                        m_fluidEditorPanel       = nullptr;
     AssetMaintenancePanel*                   m_assetMaintenancePanel  = nullptr;
     // 通知バーを閉じたときの件数。これより増えたらもう一度出す。
     size_t m_dismissedGuidConflicts = 0;

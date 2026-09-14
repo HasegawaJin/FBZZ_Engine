@@ -1,13 +1,17 @@
 /// @file    PreviewPanel.cpp
-/// @brief   Animation / Material / VFX の共通ルーター。
+/// @brief   Animation / Material の共通ルーター。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
 /// WHY: 各アセット種別の描画実装は分離し、ここでは拡張子判定とパネルのライフサイクルだけを扱う。
+/// WHY .vfx を扱わないか: 専用の隔離プレビューを作らず Prefab 編集モードで開く判断
+/// (Docs/design/vfx-prefab.md §8.2)。入口は Inspector の .vfx 分岐が持つ。
 #include <Editor/Panels/PreviewPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/PreviewPanelRenderers.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/EditorIcons.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <algorithm>
 #include <cctype>
@@ -38,7 +42,7 @@ bool PreviewPanel::Supports(std::string_view extension) const
     return normalized == ".anim" || normalized == ".animcontroller" ||
            normalized == ".fbx" || normalized == ".obj" || normalized == ".gltf" ||
            normalized == ".glb" || normalized == ".fzasset" || normalized == ".mat" ||
-           normalized == ".vfx" || normalized == ".mask" || normalized == ".maskpreset";
+           normalized == ".mask" || normalized == ".maskpreset";
 }
 
 bool PreviewPanel::DrawPreview(EditorContext& ctx,
@@ -59,12 +63,13 @@ bool PreviewPanel::DrawPreview(EditorContext& ctx,
 void PreviewPanel::OnRenderContent(EditorContext& ctx)
 {
     const std::string extension = LowerPreviewExtension(ctx.selectedAssetPath);
-    if (extension == ".mat" || extension == ".vfx" ||
-        extension == ".mask" || extension == ".maskpreset") {
+    if (extension == ".mat" || extension == ".mask" || extension == ".maskpreset") {
         const float previewHeight =
             (std::max)(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing(), 120.0f);
         if (!DrawPreview(ctx, ctx.selectedAssetPath, previewHeight))
-            ImGui::TextDisabled("Select a supported asset to preview.");
+            widgets::EmptyState(icons::Or(icons::kView, nullptr),
+                                LOCT("Nothing to preview"),
+                                LOCT("Select a material, model, animation or avatar mask."));
         return;
     }
 

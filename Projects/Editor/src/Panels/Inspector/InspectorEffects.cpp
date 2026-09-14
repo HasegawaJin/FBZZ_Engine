@@ -5,7 +5,10 @@
 
 #include "InspectorEffects.hpp"
 
+#include <Editor/Util/ParticleEditWidgets.hpp>
 #include <Editor/Util/ParticleEmitterModules.hpp>
+#include <Editor/Util/VFXLineInspector.hpp>
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
 #include <algorithm>
 #include <iterator>
 
@@ -42,25 +45,61 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             }
         });
 
+    // 雷・ビーム。プリセットと «形が動くプレビュー» を上に置き、細かい値は Reflect の行で出す。
+    // WHY 専用にするか: 40 近い値のうち «どれを触ると枝が増えるか» は数値の列からは読めない。
+    //      触ったその場で形が変わるのを見せないと、雷は作れない。
+    DrawComponentSection<scene::VFXLineComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "VFX Line",
+        [](scene::VFXLineComponent& line, EditorContext& ctx) {
+            if (DrawVFXLinePresetBar(line) && ctx.markSceneDirty) ctx.markSceneDirty();
+            DrawVFXLinePreview(line);
+            ComponentImGuiReflector reflector;
+            reflector.m_projectRoot = ctx.projectRoot;
+            line.Reflect(reflector);
+        });
+
     DrawComponentSection<scene::TrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Trail",
         [](scene::TrailComponent& trail, EditorContext& ctx) {
             ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
             ImGui::DragInt("Max Points", &trail.maxPoints, 1, 2, 512);
             ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
             ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
-            ImGui::DragFloat("Width Start", &trail.widthStart, 0.001f, 0.0f, 10.0f);
-            ImGui::DragFloat("Width End", &trail.widthEnd, 0.001f, 0.0f, 10.0f);
-            const char* widthEasingItems[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
-            int widthEasing = static_cast<int>(trail.widthEasing);
-            if (ImGui::Combo("Width Easing", &widthEasing, widthEasingItems, 4))
-                trail.widthEasing = static_cast<scene::TrailWidthEasing>(widthEasing);
+            // 瞬間移動の切断。0 は «切らない» で、既存シーンの見た目を保つ既定。
+            ImGui::DragFloat("Break Distance", &trail.breakDistance, 0.01f, 0.0f, 500.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Cut the trail when it jumps farther than this in one frame. 0 = never cut.");
 
-            float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
-            if (ImGui::ColorEdit4("Color Start", cs))
-                trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
-            float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
-            if (ImGui::ColorEdit4("Color End", ce))
-                trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
+            // 幅は «2 点 + イージング» と «多キーカーブ» の二択。両方出すと
+            // どちらが効いているのか読めないので、有効な側だけを見せる。
+            //
+            // WHY キャンバスの戻り値を拾うか: カーブ / グラデーションはキーを
+            //     ドラッグして編集するため、ImGui の ActiveID 追跡では «変わった» を
+            //     取り切れない。捨てるとシーンの dirty が立たず、保存し忘れで消える。
+            bool curveChanged = false;
+            ImGui::Checkbox("Use Width Curve", &trail.widthCurveEnabled);
+            if (trail.widthCurveEnabled) {
+                ImGui::DragFloat("Width Scale", &trail.widthStart, 0.001f, 0.0f, 10.0f);
+                curveChanged |= widgets::CurveEditor("Width Curve", trail.widthCurve, 1.0f, 96.0f, &ctx.projectRoot);
+            } else {
+                ImGui::DragFloat("Width Start", &trail.widthStart, 0.001f, 0.0f, 10.0f);
+                ImGui::DragFloat("Width End", &trail.widthEnd, 0.001f, 0.0f, 10.0f);
+                const char* widthEasingItems[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
+                int widthEasing = static_cast<int>(trail.widthEasing);
+                if (ImGui::Combo("Width Easing", &widthEasing, widthEasingItems, 4))
+                    trail.widthEasing = static_cast<scene::TrailWidthEasing>(widthEasing);
+            }
+
+            ImGui::Checkbox("Use Color Gradient", &trail.colorGradientEnabled);
+            if (trail.colorGradientEnabled) {
+                curveChanged |= widgets::GradientEditor("Color Gradient", trail.colorGradient, &ctx.projectRoot);
+            } else {
+                float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
+                if (ImGui::ColorEdit4("Color Start", cs))
+                    trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
+                float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
+                if (ImGui::ColorEdit4("Color End", ce))
+                    trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
+            }
+            if (curveChanged && ctx.markSceneDirty) ctx.markSceneDirty();
 
             const char* alignmentItems[] = { "Camera Facing", "World Up" };
             int alignment = static_cast<int>(trail.alignment);

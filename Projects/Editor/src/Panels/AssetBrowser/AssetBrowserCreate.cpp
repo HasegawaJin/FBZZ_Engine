@@ -8,6 +8,7 @@
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
+#include <Engine/Asset/FluidRecipe.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
@@ -269,6 +270,19 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         asset::BakeVectorField(asset::VectorFieldRecipe::Curl, 32, { 5.0f, 5.0f, 5.0f },
                                /*seed=*/1, /*strength=*/1.0f, field);
         if (asset::SaveVectorField(newPath, field)) {
+            NotifyAssetCreated(newPath);
+            RefreshDirectory();
+            BeginRenameForPath(newPath, &ctx);
+        }
+    }
+    if (ImGui::MenuItem("Fluid Effect")) {
+        std::string newPath = m_currentPath + "/New Fluid.fluid";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Fluid " + std::to_string(suffix++) + ".fluid";
+        // 既定は煙のプリセット。空のレシピだと焼いても何も写らず、«壊れている» のか
+        // «設定が無い» のか区別できない。
+        if (asset::SaveFluidRecipe(newPath, asset::MakeFluidPreset(asset::FluidPreset::Smoke))) {
             NotifyAssetCreated(newPath);
             RefreshDirectory();
             BeginRenameForPath(newPath, &ctx);

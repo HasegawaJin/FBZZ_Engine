@@ -13,6 +13,7 @@
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/MemoryLeakDiff.hpp>
+#include <Editor/Util/ParticleEditWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/Selection.hpp>
@@ -38,6 +39,7 @@
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Systems/ColliderSync.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/JointComponent.hpp>
 #include <cstring>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
@@ -102,6 +104,7 @@
 #include <any>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -297,6 +300,7 @@ FBZZ_COMPONENT_UNDO_REFLECTS(ConvexHullColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(CylinderColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(DecalComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(EnvironmentLightComponent)
+FBZZ_COMPONENT_UNDO_REFLECTS(JointComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(LightComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(MeshColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(MeshTrailComponent)
@@ -1300,6 +1304,72 @@ void DrawComponentSectionCustom(
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
+// 明滅 (Flicker)。既定は Off なので、既存のライトでは «Flicker» の行 1 本しか増えない。
+//
+// WHY «Play 中だけ» と書き添えるか: 駆動する LightFlickerSystem は intensity という
+//     保存されるフィールドを書き換えるため、編集中は動かさない。注記が無いと
+//     「設定したのに Scene ビューが揺れない = 壊れている」と読める。
+inline void DrawLightFlickerFields(scene::LightComponent& lc)
+{
+    using Flicker = scene::LightComponent::FlickerMode;
+
+    ImGui::Separator();
+    ImGui::SeparatorText("Flicker");
+
+    static constexpr const char* kFlickerModeNames[] = { "Off", "Sine", "Noise", "Curve" };
+    int flickerMode = static_cast<int>(lc.flickerMode);
+    if (ImGui::Combo("Flicker Mode", &flickerMode, kFlickerModeNames,
+                     IM_ARRAYSIZE(kFlickerModeNames)))
+        lc.flickerMode = static_cast<Flicker>(flickerMode);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "Off   : 無効 (既定)。intensity はそのまま\n"
+            "Sine  : 滑らかな脈動。呼吸する光・ボスの目\n"
+            "Noise : 不規則な揺らぎ。たいまつ・壊れた蛍光灯\n"
+            "Curve : 下のカーブを 1 周期として繰り返す。放電のような作り込んだ形");
+    }
+
+    if (lc.flickerMode == Flicker::Off) {
+        ImGui::TextDisabled("intensity は揺れません");
+        return;
+    }
+
+    widgets::RangeField("Flicker Amplitude", lc.flickerAmplitude, 0.0f, 1.0f, "%.3f",
+        "揺れの深さ。倍率 = 1 - Amplitude * (1 - 波形)。\n"
+        "0 で無効 (常に 1 倍)、1 で消灯まで落ちます。\n"
+        "オーサリングした Intensity は «ピーク» として扱われ、上へは振れません。");
+    ImGui::DragFloat("Flicker Frequency", &lc.flickerFrequency, 0.05f, 0.0f, 60.0f, "%.2f Hz");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("1 秒あたりの周期数。Curve モードではカーブ 1 周の速さです。");
+    if (lc.flickerFrequency < 0.0f) lc.flickerFrequency = 0.0f;
+
+    if (lc.flickerMode != Flicker::Noise) {
+        widgets::RangeField("Flicker Noise", lc.flickerNoise, 0.0f, 1.0f, "%.3f",
+            "波形へ混ぜるノイズの量。0 で純粋な波形、1 で完全にノイズ。\n"
+            "きれいな脈動に «不安定さ» を足すのに使います。");
+    }
+
+    widgets::RangeField("Flicker Phase", lc.flickerPhase, 0.0f, 1.0f, "%.3f",
+        "位相オフセット。同じ設定のライトを並べたとき、揃って光らないようずらします。");
+
+    int flickerSeed = static_cast<int>(lc.flickerSeed);
+    if (ImGui::DragInt("Flicker Seed", &flickerSeed, 1.0f, 0, 65535)) {
+        lc.flickerSeed = static_cast<std::uint32_t>(flickerSeed < 0 ? 0 : flickerSeed);
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "ノイズ列の種。同じ Seed と同じ Phase なら、何度走らせても同じ揺れになります。\n"
+            "隣のたいまつと «違う揺れ» にしたいときだけ変えてください。");
+    }
+
+    if (lc.flickerMode == Flicker::Curve) {
+        // 縦軸は倍率。1 を超えると増幅になるので、上限は 2 まで取る。
+        widgets::CurveEditor("Flicker Curve", lc.flickerCurve, 2.0f);
+    }
+
+    ImGui::TextDisabled("揺れるのは Play 中だけです (保存値は Intensity のまま)");
+}
+
 // dayNightDriven — SkyRenderer の昼夜カーブがこのライトの色/強度を上書きしている状態。
 // WHY 引数で受けるか: 上書きは RenderSystem が毎フレーム行うので、Inspector の値を編集しても
 //     画面は変わらない。無効化して出典を書かないと「ライトが壊れている」と読めてしまう。
@@ -1426,6 +1496,8 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         if (!lc.cookiePath.empty())
             ImGui::DragFloat("Cookie Rotation", &lc.cookieRotation, 1.0f, -180.0f, 180.0f, "%.0f deg");
     }
+
+    DrawLightFlickerFields(lc);
 }
 inline scene::MeshRenderer CreateDefaultMeshRenderer()
 {

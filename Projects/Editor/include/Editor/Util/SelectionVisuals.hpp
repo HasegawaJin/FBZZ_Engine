@@ -112,21 +112,30 @@ inline void DrawTileSelection(ImDrawList* dl,
 //      「カードの下端をアセット種別の色で塗る」ことで、色の帯の並びだけで
 //      どこに何があるかを読めるようにする。色は EntryColor と同じ 1 系統。
 
-inline ImU32 TileCardFill(bool hovered)
+// hover は 0〜1 の連続量で受ける。カーソルを滑らせたときにカードが
+// «点いて消える» のではなく «灯る» ように見せるため (widgets::Animate が作る)。
+inline float ClampUnit(float value)
 {
-    return EditorTheme::ColorU32(ThemeColor::Canvas, hovered ? 0.85f : 0.62f);
+    return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+}
+
+inline ImU32 TileCardFill(float hover)
+{
+    return EditorTheme::ColorU32(ThemeColor::Canvas, 0.62f + 0.23f * ClampUnit(hover));
 }
 
 // カード下地。選択ハイライトより先に描き、選択色をこの上へ重ねる。
 inline void DrawAssetTileCard(ImDrawList* dl,
                               ImVec2 min,
                               ImVec2 max,
-                              bool hovered,
+                              float hover,
                               float rounding = 5.0f)
 {
     if (!dl) return;
-    dl->AddRectFilled(min, max, TileCardFill(hovered), rounding);
-    dl->AddRect(min, max, EditorTheme::ColorU32(ThemeColor::Border, 0.45f), rounding, 0, 1.0f);
+    dl->AddRectFilled(min, max, TileCardFill(hover), rounding);
+    // 縁もホバーで少し起こす。面だけだと «選べるもの» の輪郭が出ない。
+    const float borderAlpha = 0.45f + 0.35f * ClampUnit(hover);
+    dl->AddRect(min, max, EditorTheme::ColorU32(ThemeColor::Border, borderAlpha), rounding, 0, 1.0f);
 }
 
 // 名前欄の下地に敷く、アセット種別色の淡い面。

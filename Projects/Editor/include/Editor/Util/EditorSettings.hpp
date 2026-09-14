@@ -136,6 +136,21 @@ struct EditorSettings {
     // WHY: 編集中シーンを一定間隔で Library/AutoSave/ へ退避し、クラッシュ時に復旧できるようにする。
     bool  autoSaveEnabled     = true;
     int   autoSaveIntervalSec = 300; // 既定 5 分
+    // Fluid Editor で編集中の .fluid を、手を止めてしばらくしたら保存するか。
+    // WHY 既定 off か: .fluid は焼きと AI (fluid.set) も読み書きする共有ファイルで、
+    //     黙って書くと «誰が書いたか» が追えなくなる。使う人が選んで点ける。
+    bool  fluidEditorAutoSave = false;
+    /// Asset Browser で .fluid を選んだら Fluid Editor の編集対象を切り替えるか。
+    /// 切り替えるのは «未保存の変更が無いとき» だけ (Animation Graph が追従で変更を飛ばした前例がある)。
+    bool  fluidEditorFollowSelection = true;
+    /// Fluid Editor で最近開いた .fluid (新しい順, 最大 kMaxRecentFluids 件)。
+    /// WHY: 開き直すたびに Asset Browser のフォルダを辿り直していた。recentScenes と同じく
+    ///      projectRoot 相対で永続化し、ロード時に絶対パスへ戻す。
+    /// 保存先は EditorLocalState.toml の `[fluid_editor_state] recent` (個人の作業状態)。
+    /// 共有側の `[fluid_editor]` とは別の節にしてある — 同名だと Overlay がセクションごと
+    /// 差し替えるので、local 側が共有側の follow_selection を隠してしまう。
+    static constexpr int     kMaxRecentFluids = 10;
+    std::vector<std::string> recentFluids;
 
     // --- Camera Bookmarks (最大 9 件 / EditorLocalState.toml) ---------------
     struct CameraBookmark {

@@ -28,6 +28,8 @@
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/FluidAssetWriters.hpp>
+#include <Editor/Util/FluidBakeService.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -68,6 +70,37 @@ std::string ResolveExistingPath(const EditorContext& context, const std::string&
 
 void RegisterDocumentOperators(OperatorRegistry& registry)
 {
+    {
+        EditorOperator op;
+        op.id = "fluid.effect_template.create";
+        op.label = "Create Fluid Effect Template";
+        op.category = "VFX";
+        op.desc = "素材レシピを新規フォルダへ作成し、順にベイクして時間差のある複数層の VFX を作る。";
+        op.kind = OpKind::Action;
+        OpParam preset;
+        preset.name = "preset";
+        preset.desc = "演出テンプレート";
+        preset.enumValues = { "landing", "charge_release", "magic_eruption" };
+        op.params = { preset, PathParam("Assets 配下の未作成フォルダ。例: Assets/VFX/MyLanding") };
+        op.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.fluidBake != nullptr; };
+        op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
+            if (context.ctx.fluidBake == nullptr) return OpResult::Err("NO_SERVICE", "FluidBakeService がありません");
+            const std::string name = args.GetString("preset");
+            const auto preset = name == "landing" ? FluidEffectTemplate::LANDING
+                : name == "charge_release" ? FluidEffectTemplate::CHARGE_RELEASE
+                : name == "magic_eruption" ? FluidEffectTemplate::MAGIC_ERUPTION : FluidEffectTemplate::COUNT;
+            FluidJobError error;
+            const auto id = context.ctx.fluidBake->EnqueueEffectTemplate(context.ctx, preset, args.GetString("path"), error);
+            if (id == 0) return OpResult::Err(error.code, error.message);
+            context.ctx.requestAssetBrowserRefresh = true;
+            OpResult result;
+            result.message = "素材と演出テンプレートを作成しています";
+            result.data.Set("jobId", static_cast<int>(id));
+            return result;
+        };
+        registry.Register(std::move(op));
+    }
+
     // ── アセットを開く ──────────────────────────────────────────────────────
     {
         EditorOperator op;
@@ -77,7 +110,8 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
         op.desc     = "アセットを対応するエディター面で開く。"
                       ".scene はシーンを切り替え、.animcontroller は Animation Graph、"
                       ".behaviortree は Behavior Tree、.synth は SFX Editor、"
-                      ".sequence は Sequence、.prefab / .vfx は Prefab 編集モードへ渡す。"
+                      ".sequence は Sequence、.fluid は Fluid Editor、"
+                      ".prefab / .vfx は Prefab 編集モードへ渡す。"
                       "それ以外は Inspector の表示対象にする。"
                       "シーンへ «置く» のはこの操作ではない (prefab_instantiate を使う)。";
         op.caution  = ".scene を開くと現在のシーンを閉じる (未保存の変更は確認モーダルになる)。"
@@ -126,6 +160,10 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
                 if (ctx.openSequence) ctx.openSequence(path);
                 ctx.requestOpenSequence = true;
                 result.message = "Sequence で開きます";
+            } else if (ext == ".fluid") {
+                // 読んで消すのは Fluid Editor パネル (未保存の確認もパネルが持つ)。閉じていれば EditorApp が開く。
+                ctx.requestOpenFluidEditor = path;
+                result.message = "Fluid Editor で開きます";
             } else if (ext == ".vfx" || ext == ".prefab") {
                 // どちらも同じプレハブ形式。中身は Prefab 編集モードで開く
                 // (Hierarchy / Inspector / ギズモがそのまま使える)。
@@ -136,15 +174,17 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
                 //     同じ操作の意味が拡張子ごとに変わる。配置は prefab_instantiate が持つ。
                 //
                 // NOTE: AssetBrowser のダブルクリックは別の既定を持つ
-                //       (.prefab = 配置 / Alt+ダブルクリック = 編集)。そちらは «置く» 頻度が
-                //       高いという使われ方の違いによるもので、意図した非対称。
-                if (ctx.InPrefabEditMode()) {
-                    return OpResult::Err("PREFAB_EDIT_MODE",
-                                         "Prefab 編集中は別のプレハブを開けません "
-                                         "(退避先が 1 つしかありません)");
-                }
+                //       (シーン編集中の .prefab = 配置 / Alt+ダブルクリック = 編集)。
+                //       そちらは «置く» 頻度が高いという使われ方の違いによるもので、意図した非対称。
+                //
+                // WHY 編集中でも受け付けるか: EnterPrefabEditMode は編集中なら
+                //     保存して閉じてから開き直す (EditorApp_Prefab.cpp:64)。退避先は
+                //     閉じた時点で空くので 1 つで足りる。ここで弾くと «プレハブから
+                //     プレハブへ移る» 手段がどこにも無くなる。
                 ctx.requestOpenPrefabEdit = NormalizeAssetPath(path);
-                result.message = "Prefab 編集モードで開きます";
+                result.message = ctx.InPrefabEditMode()
+                    ? "今のプレハブを保存して切り替えます"
+                    : "Prefab 編集モードで開きます";
             } else {
                 // 既定は Inspector の表示対象にする (.mat / .physmat / テクスチャなど)。
                 SelectAsset(ctx, path);
@@ -168,13 +208,13 @@ void RegisterDocumentOperators(OperatorRegistry& registry)
         op.category = "File";
         op.desc     = "編集中のシーンを一時退避して .prefab の中身だけを開く。"
                       "シーンに 1 個も置いていない Prefab もこれで直せる。";
-        op.caution  = "現在のシーンは一時退避される。抜けるには prefab.close (保存は scene.save)。";
+        op.caution  = "現在のシーンは一時退避される。抜けるには prefab.close (保存は scene.save)。"
+                      "既に編集中のときは、そのプレハブを保存して閉じてから切り替える。";
         op.kind     = OpKind::Action;
         op.params   = { PathParam(".prefab の絶対パスまたは Assets 起点パス") };
 
         op.poll = [](const OpContext& context, const OpArgs& args) {
-            // Prefab 編集中の入れ子は扱えない (退避先が 1 つしかない)。
-            if (context.ctx.InPrefabEditMode()) return false;
+            // 編集中でも呼べる。EnterPrefabEditMode が保存して閉じてから開き直す。
             if (context.ctx.activeScene == nullptr) return false;
             if (!args.Has("path")) return true;
             return !ResolveExistingPath(context.ctx, args.GetString("path")).empty();

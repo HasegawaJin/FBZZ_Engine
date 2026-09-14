@@ -357,6 +357,21 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     // オートセーブ
     if (auto v = tbl["autosave"]["enabled"].value<bool>())       autoSaveEnabled     = *v;
     if (auto v = tbl["autosave"]["interval_sec"].value<int64_t>()) autoSaveIntervalSec = static_cast<int>(*v);
+    if (auto v = tbl["autosave"]["fluid_editor"].value<bool>())   fluidEditorAutoSave = *v;
+    if (auto v = tbl["fluid_editor"]["follow_selection"].value<bool>()) fluidEditorFollowSelection = *v;
+
+    // 最近 Fluid Editor で開いた .fluid
+    recentFluids.clear();
+    // WHY 節を分けるか: 履歴は個人の作業状態なので EditorLocalState.toml 側に置く。
+    //     OverlayEditorLocalState はセクション単位で差し替えるため、同じ [fluid_editor] を
+    //     両方のファイルに置くと local 側が共有側の follow_selection ごと隠してしまう。
+    if (auto* arr = tbl["fluid_editor_state"]["recent"].as_array()) {
+        for (auto& elem : *arr)
+            if (auto v = elem.value<std::string>()) recentFluids.push_back(toAbsProjectPath(*v));
+    }
+    // 手で書き足された / 古い形式で膨らんだファイルからでも件数は超えて持たない。
+    if (recentFluids.size() > static_cast<std::size_t>(kMaxRecentFluids))
+        recentFluids.resize(static_cast<std::size_t>(kMaxRecentFluids));
 
     // Build Settings
     if (auto* buildTbl = tbl["build"].as_table()) {
@@ -569,6 +584,19 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table autosaveTbl;
     autosaveTbl.insert("enabled",      autoSaveEnabled);
     autosaveTbl.insert("interval_sec", static_cast<int64_t>(autoSaveIntervalSec));
+    autosaveTbl.insert("fluid_editor",  fluidEditorAutoSave);
+
+    toml::table fluidEditorTbl;
+    fluidEditorTbl.insert("follow_selection", fluidEditorFollowSelection);
+
+    // 履歴は個人の作業状態。共有ファイルへ置くと、同じプロジェクトを触る全員がこの行で衝突する
+    // (recentScenes が [scene] で local 側に居るのと同じ理由)。
+    toml::table fluidEditorStateTbl;
+    {
+        toml::array recentArr;
+        for (const auto& p : recentFluids) recentArr.push_back(toRelProjectPath(p));
+        fluidEditorStateTbl.insert("recent", std::move(recentArr));
+    }
 
     // Debug メニュー - レンダリングオーバーレイ
     toml::table debugTbl;
@@ -642,6 +670,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     localRoot.insert("panels",             std::move(panelsTbl));
     localRoot.insert("console",            std::move(consoleTbl));
     localRoot.insert("inspector_sections", std::move(inspectorTbl));
+    localRoot.insert("fluid_editor_state", std::move(fluidEditorStateTbl));
 
     // 個人状態は共有ファイルより先に片付ける。ここが失敗しても共有側の保存は続ける
     // (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。
@@ -662,6 +691,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     root.insert("hotkeys",            std::move(hkTbl));
     root.insert("import",             std::move(importTbl));
     root.insert("autosave",           std::move(autosaveTbl));
+    root.insert("fluid_editor",       std::move(fluidEditorTbl));
     root.insert("debug",              std::move(debugTbl));
     root.insert("build",              std::move(buildTbl));
 

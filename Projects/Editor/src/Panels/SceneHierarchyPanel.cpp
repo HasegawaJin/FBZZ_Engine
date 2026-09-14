@@ -679,7 +679,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                     if (pendingExpand) *pendingExpand = id;
                     if (ctx.markSceneDirty) ctx.markSceneDirty();
                 };
-            } else if (ext == ".prefab") {
+            } else if (IsInstantiableAssetExtension(ext)) {
                 deferred = [&ctx, assetPath, id, pendingExpand]() {
                     ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, assetPath, id]() {
                         std::vector<scene::EntityID> roots;
@@ -1042,11 +1042,10 @@ void DrawHierarchyNode(EditorContext& ctx,
 
 } // namespace
 
-void SceneHierarchyPanel::PublishFocusAndHandleRequests(EditorContext& ctx)
+void SceneHierarchyPanel::HandlePanelRequests(EditorContext& ctx)
 {
-    // 次フレームの HotkeyManager が Hierarchy 用のキーを受け付けるかの判定材料。
-    ctx.hierarchyFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-
+    // フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
+    // ここに残すのは、パネル内部の状態 (編集バッファ) を要する要求だけ。
     if (!ctx.requestRenameSelected) return;
     ctx.requestRenameSelected = false;
 
@@ -1058,6 +1057,70 @@ void SceneHierarchyPanel::PublishFocusAndHandleRequests(EditorContext& ctx)
     std::strncpy(m_renameBuffer, go->name.c_str(), sizeof(m_renameBuffer) - 1);
     m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
     m_renameFocusPending = true;
+}
+
+void SceneHierarchyPanel::HandleKeyboardNavigation(EditorContext& ctx)
+{
+    if (ctx.activeScene == nullptr || m_visibleOrder.empty()) return;
+    // 検索欄やインラインリネームへ打っている間は奪わない。
+    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) return;
+    if (ImGui::GetIO().WantTextInput || m_renamingId.IsValid()) return;
+
+    // WHY IsKeyPressed ではなく Shortcut か: 矢印キーは ImGui のキーボードナビ
+    //     (ImGuiConfigFlags_NavEnableKeyboard) も使う。素のキー読みだと «ナビの枠» と
+    //     «選択» が別々に動いて 2 つ光る。Shortcut は routing でキーの所有権を取るので、
+    //     この窓にフォーカスがある間はナビ側が同じキーを消費しない。
+    // 押しっぱなしのリピートを受ける (一覧を流して見るのに要る)。
+    constexpr ImGuiInputFlags kRepeat = ImGuiInputFlags_Repeat;
+    int  step   = 0;
+    bool extend = false;
+    if (ImGui::Shortcut(ImGuiKey_DownArrow, kRepeat)) {
+        step = 1;
+    } else if (ImGui::Shortcut(ImGuiKey_UpArrow, kRepeat)) {
+        step = -1;
+    } else if (ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_DownArrow, kRepeat)) {
+        step = 1;  extend = true;
+    } else if (ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_UpArrow, kRepeat)) {
+        step = -1; extend = true;
+    }
+    const bool toHome = ImGui::Shortcut(ImGuiKey_Home);
+    const bool toEnd  = ImGui::Shortcut(ImGuiKey_End);
+    if (step == 0 && !toHome && !toEnd) return;
+
+    const int  last    = static_cast<int>(m_visibleOrder.size()) - 1;
+    const auto primary = ctx.PrimarySelected();
+
+    int index = -1;
+    for (int i = 0; i <= last; ++i)
+        if (m_visibleOrder[static_cast<std::size_t>(i)] == primary) { index = i; break; }
+
+    int next = 0;
+    if (toHome)          next = 0;
+    else if (toEnd)      next = last;
+    else if (index < 0)  next = (step > 0) ? 0 : last;   // 選択が無い / 畳まれて消えた
+    else                 next = std::clamp(index + step, 0, last);
+
+    const scene::EntityID target = m_visibleOrder[static_cast<std::size_t>(next)];
+    if (target == primary) return;
+
+    // Shift は «アンカーから今の行まで» を選ぶ。アンカーの決め方も範囲の作り方も
+    // Shift+クリック (DrawHierarchyNode) と同じにして、経路で結果が変わらないようにする。
+    if (extend && m_lastClickedEntity.IsValid()) {
+        auto from = std::find(m_visibleOrder.begin(), m_visibleOrder.end(), m_lastClickedEntity);
+        auto to   = std::find(m_visibleOrder.begin(), m_visibleOrder.end(), target);
+        if (from != m_visibleOrder.end() && to != m_visibleOrder.end()) {
+            if (from > to) std::swap(from, to);
+            std::vector<scene::EntityID> range;
+            for (auto it = from; it <= to; ++it) range.push_back(*it);
+            SelectEntities(ctx, std::move(range), SelectionReveal::Skip);
+        }
+    } else {
+        SelectEntity(ctx, target, SelectionReveal::Skip);
+        m_lastClickedEntity = target;
+    }
+
+    // 行まで運ぶ。ここは描画が終わったあとなので、次フレームの描画が拾う。
+    m_revealScrollTo = target;
 }
 
 void SceneHierarchyPanel::ConsumeRevealRequest(EditorContext& ctx)
@@ -1147,6 +1210,9 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     // 検索フィルタが有効なときはフラットリストで一致オブジェクトだけ表示する
     if (m_searchFilter[0] != '\0') {
         std::function<void()> deferred;
+        // キーボード移動の並びは «今画面に出ている行» が正本。検索中はこのフラット
+        // リストがそれなので、ツリーの並びを残したままにしない。
+        std::vector<scene::EntityID> visibleRows;
 
         for (auto& go : ctx.activeScene->GameObjects()) {
             if (!util::StringUtils::ContainsCI(go.name, m_searchFilter)) continue;
@@ -1166,6 +1232,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             }
             const scene::EntityID id = go.GetID();
             const bool selected = ContainsEntity(ctx.selectedEntities, id);
+            visibleRows.push_back(id);
             ImGui::PushID(static_cast<int>(id.index));
 
             // F2 インラインリネーム (検索リスト側)
@@ -1243,8 +1310,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
         m_revealOpenChain.clear();
         m_revealScrollTo = {};
+        m_visibleOrder   = std::move(visibleRows);
 
-        PublishFocusAndHandleRequests(ctx);
+        HandleKeyboardNavigation(ctx);
+        HandlePanelRequests(ctx);
         if (deferred)
             ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
         return;
@@ -1275,8 +1344,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         }
         m_revealOpenChain.clear();
         m_revealScrollTo = {};
+        m_visibleOrder   = std::move(mapVisible);
 
-        PublishFocusAndHandleRequests(ctx);
+        HandleKeyboardNavigation(ctx);
+        HandlePanelRequests(ctx);
         if (deferred)
             ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
         return;
@@ -1354,7 +1425,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                         if (ctx.markSceneDirty) ctx.markSceneDirty();
                     }
                 };
-            } else if (ext == ".prefab") {
+            } else if (IsInstantiableAssetExtension(ext)) {
                 deferred = [&ctx, assetPath]() {
                     ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, assetPath]() {
                         std::vector<scene::EntityID> roots;
@@ -1367,7 +1438,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndDragDropTarget();
     }
 
-    PublishFocusAndHandleRequests(ctx);
+    HandleKeyboardNavigation(ctx);
+    HandlePanelRequests(ctx);
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsWindowHovered() &&
         !ImGui::IsAnyItemHovered()) {

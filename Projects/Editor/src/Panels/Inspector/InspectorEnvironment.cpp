@@ -247,13 +247,67 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
             ImGui::SeparatorText("Lifetime");
             ImGui::DragFloat("Lifetime (s)",  &dc.lifetime, 0.1f, -1.0f, 3600.0f, dc.lifetime < 0.0f ? "Permanent" : "%.1f s");
+            ImGui::DragFloat("Fade In (s)",   &dc.fadeInTime, 0.05f, 0.0f, 60.0f,
+                             dc.fadeInTime <= 0.0f ? "Instant" : "%.2f s");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("出現時に濃くなっていく時間。0 でいきなり全濃度 (従来の挙動)。\n"
+                                  "血だまりが広がる・焦げが焼き付く、といった «痕が付く» 過程を作ります。\n"
+                                  "Permanent なデカールでも効きます。");
+            }
+            if (dc.fadeInTime < 0.0f) dc.fadeInTime = 0.0f;
             ImGui::DragFloat("Fade Time (s)", &dc.fadeTime, 0.05f, 0.0f, 60.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("消える前のフェード時間。Lifetime が Permanent のときは効きません。");
             ImGui::BeginDisabled();
             ImGui::DragFloat("Age (s)", &dc.age, 0.0f, 0.0f, 0.0f, "%.2f s");
             // VFX のフェードカーブとスクリプトが書くランタイム倍率。保存はされない。
             // 表示しておかないと「薄いのに設定はどこも薄くない」の理由が読めない。
             ImGui::DragFloat("Opacity", &dc.opacity, 0.0f, 0.0f, 0.0f, "%.2f");
             ImGui::EndDisabled();
+
+            ImGui::SeparatorText("Flipbook");
+            ImGui::DragInt("Frame Count", &dc.frameCount, 1.0f, 0, 4096,
+                           dc.frameCount > 1 ? "%d" : "Off");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("アトラスに詰めたコマ数。0 または 1 で無効 (UV は素通し)。\n"
+                                  "焦げの広がり・血の乾き・亀裂の進行をテクスチャだけで作れます。\n"
+                                  "コマの境界はバイリニアが隣を拾うので、各コマの周囲に余白を作ってください。");
+            }
+            if (dc.frameCount < 0) dc.frameCount = 0;
+            if (dc.frameCount > 1) {
+                ImGui::DragInt("Frames Per Row", &dc.framesPerRow, 1.0f, 1, dc.frameCount);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("横方向のコマ数。縦の段数は Frame Count から切り上げで決まります。");
+                dc.framesPerRow = std::clamp(dc.framesPerRow, 1, dc.frameCount);
+
+                ImGui::DragFloat("Frame Rate", &dc.frameRate, 0.5f, 0.0f, 240.0f,
+                                 dc.frameRate > 0.0f ? "%.1f fps" : "Fit lifetime");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("0 なら Lifetime いっぱいで 1 周します (Permanent では進みません)。\n"
+                                      ">0 なら秒あたりのコマ数。");
+                }
+                if (dc.frameRate < 0.0f) dc.frameRate = 0.0f;
+
+                ImGui::Checkbox("Frame Loop", &dc.frameLoop);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("OFF: 最後のコマで止まる (焦げ・傷が «進んで残る»)\n"
+                                      "ON : 先頭へ戻って繰り返す (電気の走る痕)");
+                }
+                if (dc.frameRate <= 0.0f && dc.lifetime < 0.0f) {
+                    ImGui::TextColored({ 1.0f, 0.75f, 0.35f, 1.0f },
+                        "Permanent + Frame Rate 0 では 1 コマ目のまま止まります");
+                }
+                const int rows = (dc.frameCount + dc.framesPerRow - 1) / dc.framesPerRow;
+                ImGui::TextDisabled("アトラス %d x %d コマ", dc.framesPerRow, rows);
+            }
+
+            ImGui::SeparatorText("Sorting");
+            ImGui::DragInt("Sort Order", &dc.sortOrder, 1.0f, -1024, 1024);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("小さいほど先に描く = 後ろになります。\n"
+                                  "デカールは深度を書かないので、合成する順番だけが重なりの前後を決めます。\n"
+                                  "同じ値のデカールは Hierarchy の並び順のままです。");
+            }
 
             ImGui::SeparatorText("Receiver Layer Mask");
             // ビット 0〜7 を個別チェックボックスで表示。残りは hex 入力で直接編集。

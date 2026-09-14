@@ -6,6 +6,7 @@
 #include <Editor/GraphLayout.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
+#include <Editor/Util/HotkeyScope.hpp>
 #include <Engine/Audio/SynthSpec.hpp>
 #include <Engine/ProjectSettings.hpp>
 // WHY 前方宣言で済ませないか: ProjectionMode は enum class なので、値をメンバーに持つ側は
@@ -27,7 +28,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; class ProjectRuntime; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; class MemoryLeakDiff; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class HotkeyManager; class BuildConsole; class ConsoleSink; class OperatorRegistry; class MemoryLeakDiff; class FluidBakeService; }
 
 namespace fbzz::editor {
 
@@ -110,6 +111,8 @@ struct EditorContext {
     renderer::IRenderer* renderer = nullptr;
     renderer::IImGuiRenderer* imguiRenderer = nullptr;
     renderer::ResourceManager* resources = nullptr;
+    /// .fluid の焼き・プレビューの窓口 (EditorApp が所有)。
+    FluidBakeService* fluidBake = nullptr;
     core::MemorySystem* memorySystem = nullptr;
     // Renderer リソースのリーク差分。EditorApp が所有し、Analysis パネルが読む。
     MemoryLeakDiff*     memoryLeakDiff = nullptr;
@@ -259,12 +262,25 @@ struct EditorContext {
     // ビューポート
     bool  viewportFocused  = false;
     bool  sceneViewportHovered = false; // シーンビューにマウスが乗っているか (ホイール制御に使う)
-    // HotkeyManager が「今どの文脈のキーを受け付けるか」を決めるためのフォーカス状態。
-    // WHY: 同じ Delete でも Scene View と Hierarchy では対象が違い、F2 は Hierarchy
-    //      だけで意味を持つ。各パネルが自分の描画中に立てて、次フレームの
-    //      HotkeyManager::ProcessInput が参照する (1 フレーム遅れるが実用上問題ない)。
-    bool  hierarchyFocused    = false;
-    bool  assetBrowserFocused = false;
+    // 今フォーカスされているパネルの «面»。キーの意味はここで決まる。
+    //
+    // WHY パネルごとの bool を持たないか (2026-09-12 の作り直し):
+    //   以前は hierarchyFocused / assetBrowserFocused / fluidEditorFocused … と
+    //   パネルの数だけ bool を並べ、各パネルが自分で立て、HotkeyManager の
+    //   scope 解決が手書きの if チェーンでそれを読んでいた。パネルを 1 つ足すたびに
+    //   enum・bool・if の 3 か所を触る必要があり、37 あるパネルのうち
+    //   参加できていたのは 4 つだけだった。«今どこにフォーカスがあるか» は
+    //   どの瞬間も 1 つしかないので、持つ値も 1 つでよい。
+    //
+    // 書くのは IPanel::OnRender だけ (パネルは GetHotkeyScope() で名乗る)。
+    // 毎フレーム None へ落としてから描画で立て直すため、参照側は 1 フレーム遅れで見る。
+    HotkeyScope focusedPanelScope = HotkeyScope::None;
+
+    /// その面に今フォーカスがあるか。パネル内のキー処理もここを通す。
+    [[nodiscard]] bool PanelScopeFocused(HotkeyScope scope) const
+    {
+        return HasScope(focusedPanelScope, scope);
+    }
     // F2 リネーム要求 (HotkeyManager → Hierarchy)。
     // WHY: リネームは編集バッファとフォーカス制御がパネル内部にあり、外へ出すと
     //      パネルの内部状態を公開することになる。キーの割り当てだけを
@@ -417,6 +433,12 @@ struct EditorContext {
     bool requestOpenBehaviorTree     = false; // .behaviortree ダブルクリック → BehaviorTreePanel を開く
     bool requestOpenSfxEditor        = false; // .synth ダブルクリック → SfxEditorPanel を開く
     bool requestOpenSequence         = false; // .sequence ダブルクリック → SequencePanel を開く
+    // .fluid Inspector の «Bake in 3D» → Volume Flipbook Baker を開き、この .fluid を Fluid ソースにする。
+    // one-shot。消すのはパネル (要求を読んだとき)。
+    std::string requestVolumeFlipbookFluid;
+    // .fluid ダブルクリック / Inspector の «Open in Fluid Editor» → Fluid Editor でこの .fluid を開く (実パス)。
+    // one-shot。消すのは Fluid Editor パネル (要求を読んだとき)。
+    std::string requestOpenFluidEditor;
 
     // Inspector 等のアセット参照欄 → AssetBrowser: 参照先を一覧上で選択させる要求 (one-shot)。
     // WHY: Unity の Object Field と同じく、参照を辿る動線が無いと「この .mat はどのファイルか」を

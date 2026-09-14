@@ -5,66 +5,17 @@
 
 #include <Editor/Util/ParticleMaterialInspector.hpp>
 
-#include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/FlipbookInspector.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
-#include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/FlipbookMotionVectors.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Asset/ProceduralVFXTextures.hpp>
 #include <imgui.h>
-#include <algorithm>
-#include <cstdint>
 #include <string>
 
 namespace fbzz::editor {
-namespace {
 
-struct ProceduralFlipbookUiState {
-    int preset = 0;
-    int frameSize = 128;
-    int columns = 8;
-    int rows = 2;
-    int seed = 1;
-    float noiseScale = 4.0f;
-    float warpStrength = 0.65f;
-    bool generateMotionVectors = false;
-    std::string status;
-    bool statusIsError = false;
-};
-
-// 生成ボタンの結果メッセージ。生成は数秒かかる同期処理で、押した直後に
-// 何が起きたか分からないと不安になるため結果をパネルへ残す。
-// Inspector は 1 つしか開かないため static で足りる。
-std::string s_motionVectorStatus;
-bool s_motionVectorStatusIsError = false;
-
-// Project ごとの Generated 配下へ出し、Engine 同梱 Assets を誤って変更しない。
-std::string ProceduralVFXOutputDirectory(const std::string& projectRoot)
-{
-    if (projectRoot.empty()) return "Assets/Textures/Generated/VFX";
-    return projectRoot + "/Assets/Textures/Generated/VFX";
-}
-
-// テクスチャ参照を画像ローダーが開ける実パスへ変換する。
-// WHY: [textures] は guid: 参照でも保存されるため、projectRoot を継ぎ足すだけでは開けない。
-std::string ResolveTextureDiskPath(const std::string& projectRoot, const std::string& reference)
-{
-    if (reference.empty()) return {};
-    if (std::string resolved = asset::AssetManager::ResolveAssetPath(reference); !resolved.empty())
-        return resolved;
-    return ToProjectAssetDiskPath(projectRoot, reference);
-}
-
-const std::string& TextureSlot(const asset::MaterialAsset& material, const char* slot)
-{
-    static const std::string kEmpty;
-    const auto it = material.textures.find(slot);
-    return it != material.textures.end() ? it->second : kEmpty;
-}
-
-} // namespace
-
-bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::string& projectRoot)
+bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::string& projectRoot,
+                                   renderer::ResourceManager* resources,
+                                   renderer::IImGuiRenderer* imguiRenderer)
 {
     auto& particle = material.particle;
     bool changed = false;
@@ -106,176 +57,18 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
         if (particle.softParticles)
             changed |= ImGui::DragFloat("Soft Fade Distance", &particle.softParticleFadeDistance,
                                         0.01f, 0.001f, 100.0f);
+
+        changed |= ImGui::DragFloat("Camera Fade Near##pm_camera_fade_near", &particle.cameraFadeNear,
+                                    0.01f, 0.0f, 100.0f);
+        changed |= ImGui::DragFloat("Camera Fade Far##pm_camera_fade_far", &particle.cameraFadeFar,
+                                    0.01f, 0.0f, 100.0f);
+        if (particle.cameraFadeNear >= particle.cameraFadeFar)
+            ImGui::TextDisabled("Near >= Far のあいだは無効 (カメラ距離で薄めません)。");
+        else if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Near より近い粒子を薄くする。カメラが煙に突っ込んで画面が埋まるのを防ぐ。");
     }
 
-    ImGui::SeparatorText("Texture Sheet Animation");
-    {
-        changed |= ImGui::DragInt("Columns", &particle.spriteColumns, 1, 1, 64);
-        changed |= ImGui::DragInt("Rows", &particle.spriteRows, 1, 1, 64);
-        changed |= ImGui::DragInt("Start Frame", &particle.spriteStartFrame, 1, 0, 4095);
-        changed |= ImGui::DragInt("End Frame", &particle.spriteEndFrame, 1, 0, 4095);
-        static constexpr const char* kFlipbookItems[] = { "Lifetime", "FPS", "Random", "Ping Pong" };
-        int flipbookMode = static_cast<int>(particle.flipbookMode);
-        if (ImGui::Combo("Mode", &flipbookMode, kFlipbookItems, IM_ARRAYSIZE(kFlipbookItems))) {
-            particle.flipbookMode = static_cast<scene::ParticleFlipbookMode>(flipbookMode);
-            changed = true;
-        }
-        if (particle.flipbookMode != scene::ParticleFlipbookMode::Lifetime
-            && particle.flipbookMode != scene::ParticleFlipbookMode::RandomFrame)
-            changed |= ImGui::DragFloat("FPS", &particle.flipbookFramesPerSecond, 0.1f, 0.0f, 240.0f);
-        changed |= ImGui::Checkbox("Frame Blending", &particle.flipbookFrameBlending);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("隣接コマを線形補間します。\n"
-                              "有効にすると GPU シミュレーションは使えません (CPU へ縮退)。");
-        changed |= ImGui::Checkbox("Random Start Frame", &particle.spriteRandomStartFrame);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("粒子ごとに再生位相をずらします。\n"
-                              "同時に湧いた煙が全部同じコマで回って一枚板に見えるのを防ぎます。");
-        changed |= ImGui::Checkbox("Random Row", &particle.spriteRandomRow);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("アトラスの各行を別バリエーションとして扱い、粒子ごとに1行を選びます。\n"
-                              "1枚のアトラスで見た目の異なる煙・爆炎を混ぜられます。\n"
-                              "有効時は Start/End Frame より行の範囲が優先されます。");
-
-        if (ImGui::TreeNode("Procedural Flipbook Generator")) {
-            // 関数ローカル static ならグローバル状態を増やさず、Inspector を閉じても設定を保持できる。
-            static ProceduralFlipbookUiState procedural;
-            static constexpr const char* kPresetNames[] = { "Smoke", "Fire", "Explosion", "Distortion" };
-            ImGui::Combo("Preset", &procedural.preset, kPresetNames, IM_ARRAYSIZE(kPresetNames));
-            ImGui::DragInt("Frame Size", &procedural.frameSize, 8.0f, 32, 512);
-            ImGui::DragInt("Frames", &procedural.columns, 1.0f, 2, 32);
-            ImGui::DragInt("Variants", &procedural.rows, 1.0f, 1, 16);
-            ImGui::DragInt("Seed", &procedural.seed, 1.0f, 0, 1000000);
-            ImGui::DragFloat("Noise Scale", &procedural.noiseScale, 0.05f, 0.25f, 32.0f);
-            ImGui::DragFloat("Warp Strength", &procedural.warpStrength, 0.01f, 0.0f, 3.0f);
-            const bool distortionPreset = procedural.preset
-                == static_cast<int>(asset::ProceduralFlipbookPreset::Distortion);
-            ImGui::BeginDisabled(distortionPreset);
-            ImGui::Checkbox("Generate Motion Vectors", &procedural.generateMotionVectors);
-            ImGui::EndDisabled();
-            if (distortionPreset)
-                ImGui::TextDisabled("Distortion は RG 自体が変位なので Motion Vector を生成しません。");
-            ImGui::TextDisabled("生成した PNG をこの .mat の albedo へ割り当て、\n"
-                                "プリセットに対応するブレンドとフリップブック設定を焼きます。");
-
-            if (ImGui::Button("Generate & Assign", { -1.0f, 0.0f })) {
-                asset::ProceduralFlipbookSettings settings;
-                settings.preset = static_cast<asset::ProceduralFlipbookPreset>(procedural.preset);
-                settings.frameSize = procedural.frameSize;
-                settings.columns = procedural.columns;
-                settings.rows = procedural.rows;
-                settings.seed = static_cast<std::uint32_t>((std::max)(procedural.seed, 0));
-                settings.noiseScale = procedural.noiseScale;
-                settings.warpStrength = procedural.warpStrength;
-                const auto result = asset::GenerateProceduralFlipbook(
-                    ProceduralVFXOutputDirectory(projectRoot), settings);
-                procedural.status = result.message;
-                procedural.statusIsError = !result.success;
-                if (result.success) {
-                    material.textures["albedo"] = NormalizeAssetPath(result.albedoPath);
-                    particle.spriteColumns = settings.columns;
-                    particle.spriteRows = settings.rows;
-                    particle.spriteStartFrame = 0;
-                    particle.spriteEndFrame = settings.columns * settings.rows - 1;
-                    particle.flipbookFrameBlending = true;
-                    particle.spriteRandomStartFrame = false;
-                    particle.spriteRandomRow = settings.rows > 1;
-                    particle.motionVectorFlipbook = false;
-                    material.textures["tex5"].clear();
-
-                    if (distortionPreset) {
-                        particle.flipbookMode = scene::ParticleFlipbookMode::FramesPerSecond;
-                        particle.flipbookFramesPerSecond = 24.0f;
-                        material.blendMode = renderer::BlendMode::ALPHA_BLEND;
-                        particle.distortion = true;
-                    } else {
-                        particle.flipbookMode = scene::ParticleFlipbookMode::Lifetime;
-                        particle.distortion = false;
-                        if (settings.preset == asset::ProceduralFlipbookPreset::Fire)
-                            material.blendMode = renderer::BlendMode::ADDITIVE;
-                        else if (settings.preset == asset::ProceduralFlipbookPreset::Explosion)
-                            material.blendMode = renderer::BlendMode::PREMULTIPLIED;
-                        else
-                            material.blendMode = renderer::BlendMode::ALPHA_BLEND;
-
-                        if (procedural.generateMotionVectors) {
-                            asset::FlipbookMotionVectorSettings mvSettings;
-                            mvSettings.columns = settings.columns;
-                            mvSettings.rows = settings.rows;
-                            mvSettings.loop = false;
-                            mvSettings.rowSequences = settings.rows > 1;
-                            const auto mvResult = asset::GenerateFlipbookMotionVectors(
-                                result.albedoPath, mvSettings);
-                            if (mvResult.success) {
-                                particle.motionVectorFlipbook = true;
-                                particle.motionVectorStrength = mvResult.recommendedStrength;
-                                material.textures["tex5"] = NormalizeAssetPath(mvResult.outputPath);
-                                procedural.status += "\n" + mvResult.message;
-                            } else {
-                                procedural.status += "\nMV生成失敗: " + mvResult.message;
-                                procedural.statusIsError = true;
-                            }
-                        }
-                    }
-                    changed = true;
-                }
-            }
-            if (!procedural.status.empty()) {
-                if (procedural.statusIsError)
-                    ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", procedural.status.c_str());
-                else
-                    ImGui::TextWrapped("%s", procedural.status.c_str());
-            }
-            ImGui::TreePop();
-        }
-
-        changed |= ImGui::Checkbox("Motion Vector Blending", &particle.motionVectorFlipbook);
-        if (particle.motionVectorFlipbook) {
-            // アトラスは [textures] tex5。ParticlePass が同じスロットから読む。
-            changed |= widgets::AssetPathField("Motion Vector Atlas (tex5)", material.textures["tex5"],
-                                               widgets::kTextureAssetFilter, projectRoot);
-            changed |= ImGui::DragFloat("Motion Strength", &particle.motionVectorStrength,
-                                        0.0002f, 0.0f, 1.0f, "%.4f");
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("MV アトラスの最大移動量 (Atlas UV)。生成時に自動で設定されます。\n"
-                                  "生成した値以外にすると、コマの補間が行き過ぎたり足りなくなったりします。");
-
-            // MV アトラスは外部ツールでしか作れず「機能はあるのに使えない」状態だったため、
-            // 現在の albedo から生成してそのまま割り当てられるようにする。
-            ImGui::Separator();
-            const std::string atlasPath =
-                ResolveTextureDiskPath(projectRoot, TextureSlot(material, "albedo"));
-            ImGui::BeginDisabled(atlasPath.empty());
-            if (ImGui::Button("Generate From Texture", { -1.0f, 0.0f })) {
-                asset::FlipbookMotionVectorSettings mvSettings;
-                mvSettings.columns = particle.spriteColumns;
-                mvSettings.rows = particle.spriteRows;
-                mvSettings.loop = particle.flipbookMode == scene::ParticleFlipbookMode::FramesPerSecond
-                    || particle.spriteRandomStartFrame;
-                mvSettings.rowSequences = particle.spriteRandomRow;
-                const auto result = asset::GenerateFlipbookMotionVectors(atlasPath, mvSettings);
-                s_motionVectorStatus = result.message;
-                s_motionVectorStatusIsError = !result.success;
-                if (result.success) {
-                    // 生成結果をそのまま割り当てる。手で貼り直す手間を残さない。
-                    material.textures["tex5"] = NormalizeAssetPath(result.outputPath);
-                    particle.motionVectorStrength = result.recommendedStrength;
-                    // Frame Blending が無いと spriteBlend が 0 のままで、MV が一切効かない。
-                    particle.flipbookFrameBlending = true;
-                    changed = true;
-                }
-            }
-            ImGui::EndDisabled();
-            if (atlasPath.empty())
-                ImGui::TextDisabled("albedo を設定すると生成できます。");
-            if (!s_motionVectorStatus.empty()) {
-                if (s_motionVectorStatusIsError)
-                    ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", s_motionVectorStatus.c_str());
-                else
-                    ImGui::TextWrapped("%s", s_motionVectorStatus.c_str());
-            }
-        }
-    }
+    changed |= DrawFlipbookInspector(material, projectRoot, resources, imguiRenderer);
 
     ImGui::SeparatorText("Distortion");
     {
@@ -325,6 +118,25 @@ bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::st
                 changed |= ImGui::DragFloat("Back Scatter Power", &particle.smokeBackScatterPower,
                                             0.1f, 0.1f, 64.0f);
         }
+
+        changed |= ImGui::Checkbox("Six-way Lightmaps", &particle.sixWayMaps);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Volume Flipbook Baker の 6-way 出力で陰影を付けます。\n"
+                              "albedo = _6wayP (右/上/奥/α)、emissive = _6wayN (左/下/手前/発光)。\n"
+                              "光を回すと、明暗が煙の形に沿って回り込みます。");
+        if (particle.sixWayMaps) {
+            const auto negative = material.textures.find("emissive");
+            if (negative == material.textures.end() || negative->second.empty())
+                ImGui::TextColored({ 1.0f, 0.65f, 0.3f, 1.0f }, "emissive スロットに _6wayN を割り当ててください");
+            changed |= ImGui::ColorEdit3("Six-way Emission", &particle.sixWayEmissionColor.x,
+                                         ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("_6wayN の A (発光マスク) に掛ける色です。炎の芯は影の中でも光ります。");
+        }
+        changed |= ImGui::Checkbox("Receive Point Lights", &particle.punctualLighting);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Point / Spot / 面光源を粒子の中心で受けます (松明の横の煙が照らされる)。\n"
+                              "画素ごとにライト一覧を走査するので、画面を覆う煙では重くなります。");
 
         if (ImGui::Checkbox("Volumetric Smoke", &particle.volumetric)) {
             if (particle.volumetric) particle.sixWayLighting = false;

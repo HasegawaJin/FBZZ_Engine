@@ -1,9 +1,9 @@
 /// @file    PreviewPanel.hpp
-/// @brief   Animation / Material / VFX の共通ルーターとプレビューウィンドウの宣言。
+/// @brief   Animation / Material の共通ルーターとプレビューウィンドウの宣言。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
-/// 各アセット種別の描画実装は AnimationPreview / MaterialPreview / VFXPreview へ分離する。
+/// 各アセット種別の描画実装は AnimationPreview / MaterialPreview へ分離する。
 /// WHY: グラフの数値編集だけでは遷移のブレンド感やクリップの動きを確認できず、
 /// Play Mode まで往復する反復コストが大きいため。
 #pragma once

@@ -5,6 +5,8 @@
 #include <Editor/Panels/VFXTimelinePanel.hpp>
 
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/EditorIcons.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Time.hpp>
@@ -128,8 +130,9 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
 {
     scene::GameObject* root = ResolveRoot(ctx);
     if (root == nullptr) {
-        ImGui::TextDisabled("VFX ルートが見つかりません。");
-        ImGui::TextDisabled("Create > VFX > VFX Root で作るか、.vfx を開いてください。");
+        widgets::EmptyState(icons::Or(icons::kTimeline, nullptr),
+                            "VFX ルートが見つかりません",
+                            "Create > VFX > VFX Root で作るか、.vfx をダブルクリックして開きます。");
         return;
     }
 
