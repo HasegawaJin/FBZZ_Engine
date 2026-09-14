@@ -1,7 +1,7 @@
 file_format_version = 1
 
 [meta]
-guid = 'b69dd6e3c3f9f1d299240c48c6073452'
+guid = '525ffbb293ed46df93b029cc8bc52509'
 
 [model]
 clips = []
@@ -11,10 +11,10 @@ generate_tangents = true
 generate_tex_descriptors = true
 importer = 'ModelImporter'
 importer_version = 4
-normal_map_convention = 'DirectX'
+normal_map_convention = 'OpenGL'
 root_motion_node = ''
 selected_animations = []
 selected_meshes = []
-source_dcc = 'Auto'
+source_dcc = 'Blender'
 unit_scale_multiplier = 1.0
 up_axis = 0

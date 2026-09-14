@@ -1,18 +1,18 @@
 [mask]
-default_include = false
-name = 'M_Arms'
-skeleton_source = 'Assets/Models/Player/Player.fbx'
-skeleton_source_signature = '134324202200158067:3751820'
 version = 1
+name = 'M_Arms'
+default_include = false
+skeleton_source = 'guid:525ffbb293ed46df93b029cc8bc52509|Assets/Models/Player/Player.fbx'
+skeleton_source_signature = ''
 
 [[entries]]
-blend_depth = 0
-bone = 'RootNode/MiniBot_Armature/Root/Pelvis/Chest/UpperArm_L'
+bone = 'LeftShoulder'
 include_children = true
+blend_depth = 0
 weight = 1.0
 
 [[entries]]
-blend_depth = 0
-bone = 'RootNode/MiniBot_Armature/Root/Pelvis/Chest/UpperArm_R'
+bone = 'RightShoulder'
 include_children = true
+blend_depth = 0
 weight = 1.0

@@ -1,0 +1,21 @@
+mesh_type = "surface"
+name = "Player_Sword"
+render_path = "auto"
+shader = "Assets/Shaders/Material/Surface/PBR.hlsl"
+version = 1
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+anisotropy = 0.0
+clearcoat = 0.0
+clearcoatRoughness = 0.10000000149011612
+metallic = 0.0
+roughness = 0.5
+sheen = 0.0
+sheenColor = [ 1.0, 1.0, 1.0 ]
+
+
+[textures]
+albedo = "guid:f50c9d8879b847d5bfcb6ab1431437ba|Assets/Models/Player/Textures/Sword_LOD0_BaseColor.png"
+normal = "guid:ed44e32ebd7940e0ba2a7fd8cb9d2f63|Assets/Models/Player/Textures/Sword_LOD0_Normal.png"
+
