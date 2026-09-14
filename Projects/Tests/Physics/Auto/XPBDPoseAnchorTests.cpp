@@ -176,4 +176,26 @@ TEST_F(XPBDPoseAnchorTest, TreatsANonPositiveLimitAsUnlimited)
     EXPECT_NEAR(m_body.GetPosition().y, 5.0f, 0.05f);
 }
 
+TEST_F(XPBDPoseAnchorTest, FiniteZeroLinearForceDoesNotDisableAngularSupport)
+{
+    auto& anchor = AddAnchor();
+    anchor.SetFiniteStrength(0.0f, 1000.0f, 0.1f, 0.1f);
+    const auto turned = math::Quaternion::FromAxisAngle(math::Vector3::UP, math::PI * 0.5f);
+    anchor.SetTarget(m_body.GetPosition(), turned);
+    Simulate(solver, 120);
+    EXPECT_LT(m_body.GetPosition().y, 1.0f);
+    EXPECT_QUAT_NEAR(m_body.GetRotation(), turned, 0.05f);
+}
+
+TEST_F(XPBDPoseAnchorTest, FiniteZeroTorqueDoesNotLockRotationOrDisableLinearSupport)
+{
+    auto& anchor = AddAnchor();
+    anchor.SetFiniteStrength(1000.0f, 0.0f, 0.1f, 0.1f);
+    const auto turned = math::Quaternion::FromAxisAngle(math::Vector3::UP, math::PI * 0.5f);
+    m_body.SetRotation(turned);
+    Simulate(solver, 120);
+    EXPECT_NEAR(m_body.GetPosition().y, 5.0f, 0.05f);
+    EXPECT_QUAT_NEAR(m_body.GetRotation(), turned, 0.05f);
+}
+
 } // namespace fbzz::tests

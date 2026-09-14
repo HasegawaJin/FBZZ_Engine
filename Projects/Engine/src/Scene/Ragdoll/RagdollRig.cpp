@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
 #include <Engine/Scene/Ragdoll/RagdollRig.hpp>
+#include <Engine/Scene/Ragdoll/StandingPose.hpp>
 
 #include <Math/MathUtils.hpp>
 #include <Physics/ColliderDebugGeometry.hpp>
@@ -92,6 +93,10 @@ void RagdollRig::Clear()
     m_unmatchedBones.clear();
     m_bodies.clear();
     m_boneToBody.clear();
+    m_standingTargets.clear();
+    m_standingPositions.clear();
+    m_standingRotations.clear();
+    m_standingLocalRotations.clear();
 }
 
 int RagdollRig::OwnBodyIndex(const physics::RigidBody* body) const
@@ -368,9 +373,11 @@ void RagdollRig::ApplyDrive()
     for (std::size_t a = 0; a < m_anchors.size(); ++a) {
         const float mass   = a < m_anchorMass.size()   ? m_anchorMass[a]   : m_totalMass;
         const float moment = a < m_anchorMoment.size() ? m_anchorMoment[a] : 0.0f;
-        m_anchors[a]->SetStrength(mass * gravity * anchorStrength,
+        m_anchors[a]->SetFiniteStrength(mass * gravity * anchorStrength,
                                   moment * gravity * anchorStrength,
-                                  std::max(m_anchorSag, 0.0f), std::max(m_anchorTilt, 0.0f));
+                                   std::max(m_anchorSag, 0.0f), std::max(m_anchorTilt, 0.0f));
+        // XPBD の上限 0 は無制限を意味する。自重比から算出した出力 0 は明示的に切る。
+        m_anchors[a]->SetEnabled(m_driveEnabled && anchorStrength > 0.0f && gravity > 0.0f);
     }
 
     for (JointLink& link : m_joints) {
@@ -390,6 +397,8 @@ void RagdollRig::ApplyDrive()
         // 大きさが変わっても «どれだけ余裕があるか» が保たれる (RagdollServo の WHY)。
         drive.maxTorque =
             link.holdMoment * gravity * std::max(link.baseServo.torqueScale, 0.0f) * strength;
+        drive.enabled = drive.maxTorque > 0.0f;
+        if (!drive.enabled) continue;
         // たわみ角 θ でのトルクは θ/α。α = holdSag / maxTorque と置くと、
         // «holdSag だけたわんだところで上限を出し切る» という一貫した意味になる。
         //
@@ -624,6 +633,16 @@ void RagdollRig::ApplyImpulse(const math::Vector3& origin,
     }
 }
 
+void RagdollRig::ApplyAngularVelocity(const math::Vector3& origin,
+                                      const math::Vector3& angularVelocity, float radius)
+{
+    for (const auto& link : m_bodies) {
+        const float scale = radius > 0.0f
+            ? 1.0f - math::Clamp01((link.body->GetPosition() - origin).Length() / radius) : 1.0f;
+        link.body->SetAngularVelocity(link.body->GetAngularVelocity() + angularVelocity * scale);
+    }
+}
+
 void RagdollRig::SetDrag(float linear, float angular)
 {
     for (BodyLink& link : m_bodies) {
@@ -642,6 +661,7 @@ void RagdollRig::BodyPoseFromBone(int bodyIndex, const RagdollBonePose& bone,
 
 void RagdollRig::Capture(const std::vector<RagdollBonePose>& bones)
 {
+    m_standingTargets = bones;
     for (std::size_t i = 0; i < m_bodies.size(); ++i) {
         const BodyLink& link = m_bodies[i];
         if (link.boneIndex < 0 || link.boneIndex >= static_cast<int>(bones.size())) continue;
@@ -664,6 +684,24 @@ void RagdollRig::Capture(const std::vector<RagdollBonePose>& bones)
 
 void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones)
 {
+    if (m_standingGuard && m_standingTargets.size() == bones.size()) {
+        // 根の移動はゲーム側が所有する。目標の移動を速度差へ変換すると、歩行速度に
+        // 比例した偽の衝撃が各フレームの最初の substep に入ってしまう。
+        for (const auto& link : m_bodies) {
+            int root = link.boneIndex;
+            while (bones[static_cast<std::size_t>(root)].parent >= 0 &&
+                   bones[static_cast<std::size_t>(root)].parent < root)
+                root = bones[static_cast<std::size_t>(root)].parent;
+            const auto index = static_cast<std::size_t>(root);
+            const auto delta = (bones[index].rotation * m_standingTargets[index].rotation.Inverse()).Normalized();
+            link.body->SetPosition(bones[index].position + delta *
+                (link.body->GetPosition() - m_standingTargets[index].position));
+            link.body->SetRotation((delta * link.body->GetRotation()).Normalized());
+            link.body->SetVelocity(delta * link.body->GetVelocity());
+            link.body->SetAngularVelocity(delta * link.body->GetAngularVelocity());
+        }
+    }
+    m_standingTargets = bones;
     // 目標は «この骨の姿勢なら関節はどれだけ曲がっているか»。剛体の «あるべき» 姿勢を
     // 骨から作り、関節フレームへ落として相対を取る。捕獲した姿勢と同じなら Identity に
     // なるので、無負荷での釣り合い点がそのままアニメーションになる。
@@ -692,8 +730,6 @@ void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones)
     }
 
     for (JointLink& link : m_joints) {
-        if (!link.joint->Drive().enabled) continue;
-
         math::Quaternion parentRotation;
         math::Quaternion childRotation;
         if (!rotationFromBone(link.parentBody, parentRotation)) continue;
@@ -743,6 +779,44 @@ int RagdollRig::CountLimitedJoints() const
     for (const JointLink& link : m_joints)
         if (link.joint->IsLimited()) ++count;
     return count;
+}
+
+void RagdollRig::SetStandingGuard(bool enabled, float maxDistance, float maxRadians)
+{
+    m_standingGuard = enabled;
+    m_standingMaxDistance = std::max(maxDistance, 0.0f);
+    m_standingMaxRadians = std::max(maxRadians, 0.0f);
+}
+
+void RagdollRig::ProjectStandingPose()
+{
+    if (m_standingTargets.size() != m_boneToBody.size()) return;
+    WritePose(m_standingTargets, m_standingPositions, m_standingRotations);
+    LimitStandingPose(m_standingTargets, m_standingMaxDistance, m_standingMaxRadians,
+                      m_standingPositions, m_standingRotations, m_standingLocalRotations);
+    for (std::size_t i = 0; i < m_bodies.size(); ++i) {
+        const auto boneIndex = static_cast<std::size_t>(m_bodies[i].boneIndex);
+        RagdollBonePose pose;
+        pose.position = m_standingPositions[boneIndex];
+        pose.rotation = m_standingRotations[boneIndex];
+        math::Vector3 position;
+        math::Quaternion rotation;
+        BodyPoseFromBone(static_cast<int>(i), pose, position, rotation);
+        m_bodies[i].body->SetPosition(position);
+        m_bodies[i].body->SetRotation(rotation);
+    }
+}
+
+void RagdollRig::Step(float dt)
+{
+    if (!m_standingGuard) {
+        m_solver.Step(dt);
+        return;
+    }
+    // 射影した位置から速度を導出するため、描画だけが立って物理が倒れ続けることはない。
+    m_solver.Step(dt, [](void* context) {
+        static_cast<RagdollRig*>(context)->ProjectStandingPose();
+    }, this);
 }
 
 void RagdollRig::WritePose(const std::vector<RagdollBonePose>& fallback,

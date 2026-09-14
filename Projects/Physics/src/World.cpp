@@ -471,6 +471,8 @@ namespace fbzz::physics
             slot.touched = false;
         for (auto& slot : m_volumePool)
             slot.touched = false;
+        for (auto& slot : m_constraintPool)
+            slot.touched = false;
     }
 
     BodyHandle World::SyncBody(BodyHandle handle, RigidBody* body)
@@ -647,16 +649,108 @@ namespace fbzz::physics
                 m_sceneSyncChanged = true;
             }
         }
+
+        for (auto& slot : m_constraintPool) {
+            if (slot.touched || !slot.constraint) continue;
+            slot.constraint.reset(); // World が所有しているので直接破棄する
+            slot.generation = NextGeneration(slot.generation);
+            m_sceneSyncChanged = true;
+        }
+        RebuildConstraintViews();
     }
 
     void World::AddConstraint(std::unique_ptr<Constraint> constraint)
     {
-        m_constraints.push_back(std::move(constraint));
+        m_ownedConstraints.push_back(std::move(constraint));
+        RebuildConstraintViews();
     }
 
-    const std::vector<std::unique_ptr<Constraint>>& World::GetConstraints() const
+    ConstraintHandle World::SyncConstraint(ConstraintHandle handle,
+                                           std::unique_ptr<Constraint> constraint)
     {
-        return m_constraints;
+        if (!constraint) return {};
+
+        if (handle.IsValid()) {
+            const size_t index = static_cast<size_t>(handle.slot - 1u);
+            if (index < m_constraintPool.size() &&
+                m_constraintPool[index].generation == handle.generation &&
+                !m_constraintPool[index].touched)
+            {
+                m_constraintPool[index].constraint = std::move(constraint);
+                m_constraintPool[index].touched = true;
+                m_sceneSyncChanged = true;
+                RebuildConstraintViews();
+                return handle;
+            }
+        }
+
+        for (size_t i = 0; i < m_constraintPool.size(); ++i) {
+            if (m_constraintPool[i].constraint || m_constraintPool[i].touched) continue;
+            m_constraintPool[i].constraint = std::move(constraint);
+            m_constraintPool[i].touched = true;
+            m_sceneSyncChanged = true;
+            RebuildConstraintViews();
+            return { static_cast<uint32_t>(i + 1u), m_constraintPool[i].generation };
+        }
+
+        ConstraintSlot slot;
+        slot.constraint = std::move(constraint);
+        slot.touched = true;
+        m_constraintPool.push_back(std::move(slot));
+        m_sceneSyncChanged = true;
+        RebuildConstraintViews();
+        return { static_cast<uint32_t>(m_constraintPool.size()),
+                 m_constraintPool.back().generation };
+    }
+
+    bool World::KeepConstraint(ConstraintHandle handle)
+    {
+        if (!handle.IsValid()) return false;
+        const size_t index = static_cast<size_t>(handle.slot - 1u);
+        if (index >= m_constraintPool.size()) return false;
+        ConstraintSlot& slot = m_constraintPool[index];
+        if (slot.generation != handle.generation || !slot.constraint) return false;
+        slot.touched = true;
+        return true;
+    }
+
+    Constraint* World::FindConstraint(ConstraintHandle handle) const
+    {
+        if (!handle.IsValid()) return nullptr;
+        const size_t index = static_cast<size_t>(handle.slot - 1u);
+        if (index >= m_constraintPool.size()) return nullptr;
+        const ConstraintSlot& slot = m_constraintPool[index];
+        if (slot.generation != handle.generation) return nullptr;
+        return slot.constraint.get();
+    }
+
+    void World::RemoveConstraint(ConstraintHandle handle)
+    {
+        if (!handle.IsValid()) return;
+        const size_t index = static_cast<size_t>(handle.slot - 1u);
+        if (index >= m_constraintPool.size()) return;
+        ConstraintSlot& slot = m_constraintPool[index];
+        if (slot.generation != handle.generation || !slot.constraint) return;
+        slot.constraint.reset();
+        slot.touched = false;
+        slot.generation = NextGeneration(slot.generation);
+        m_sceneSyncChanged = true;
+        RebuildConstraintViews();
+    }
+
+    void World::RebuildConstraintViews()
+    {
+        m_activeConstraints.clear();
+        m_activeConstraints.reserve(m_ownedConstraints.size() + m_constraintPool.size());
+        for (const auto& constraint : m_ownedConstraints)
+            if (constraint) m_activeConstraints.push_back(constraint.get());
+        for (const auto& slot : m_constraintPool)
+            if (slot.constraint) m_activeConstraints.push_back(slot.constraint.get());
+    }
+
+    const std::vector<Constraint*>& World::GetConstraints() const
+    {
+        return m_activeConstraints;
     }
 
     void World::SetGravity(const math::Vector3& gravity)
@@ -764,7 +858,7 @@ namespace fbzz::physics
 
     void World::ApplyConstraintForces(float dt)
     {
-        for (auto& constraint : m_constraints)
+        for (Constraint* constraint : m_activeConstraints)
         {
             if (constraint) constraint->ApplyForce(dt);
         }
@@ -805,7 +899,7 @@ namespace fbzz::physics
 
     void World::SolveConstraintPositions(float dt)
     {
-        for (auto& constraint : m_constraints)
+        for (Constraint* constraint : m_activeConstraints)
         {
             if (constraint) constraint->SolvePosition(dt);
         }

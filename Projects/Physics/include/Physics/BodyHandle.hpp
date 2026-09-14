@@ -27,4 +27,11 @@ namespace fbzz::physics
         uint32_t generation = 0;
         bool IsValid() const { return slot != 0; }
     };
+
+    struct ConstraintHandle
+    {
+        uint32_t slot = 0;
+        uint32_t generation = 0;
+        bool IsValid() const { return slot != 0; }
+    };
 } // namespace fbzz::physics

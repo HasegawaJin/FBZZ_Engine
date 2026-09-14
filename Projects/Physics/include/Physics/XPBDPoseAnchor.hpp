@@ -39,6 +39,8 @@ namespace fbzz::physics
         /// @param sag       上限の力を出し切るまでに沈む距離 [m]。
         /// @param tilt      上限のトルクを出し切るまでに傾く角 [rad]。
         void SetStrength(float maxForce, float maxTorque, float sag, float tilt);
+        /// 有限出力用。0 以下の軸は解かない。単位は SetStrength と同じ。
+        void SetFiniteStrength(float maxForce, float maxTorque, float sag, float tilt);
 
         void ResetLambda() override;
         void SolvePosition(float h) override;
@@ -51,6 +53,7 @@ namespace fbzz::physics
     private:
         RigidBody*       m_body = nullptr;
         bool             m_enabled = false;
+        bool             m_finiteStrength = false;
         math::Vector3    m_targetPosition;
         math::Quaternion m_targetRotation = math::Quaternion::Identity();
 

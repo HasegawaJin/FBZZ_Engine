@@ -101,13 +101,17 @@ struct RagdollRuntime {
     std::vector<int>             boneNodes;
     /// bones[i] の FK スケール。物理は姿勢しか動かさないので、書き戻しはこれを使う。
     std::vector<math::Vector3>   boneScales;
+    double remainingTime = 0.0;
 
     /// rig を組んだときの条件。1 つでも変わったら組み直す。
     const asset::Skeleton*   builtSkeleton = nullptr;
+    std::size_t builtNodeCount = 0;
+    math::Vector3 builtScale = math::Vector3::ONE;
     std::string              builtRoot;
     std::vector<std::string> builtExtraRoots;
     int                      builtMaxDepth = -1;
     RagdollProfileKind     builtProfile  = RagdollProfileKind::Mech;
+    std::vector<std::string> builtExcludedRoots;
 
     RagdollRuntime()  = default;
     ~RagdollRuntime() = default;
@@ -121,10 +125,15 @@ struct RagdollRuntime {
         bones.clear();
         boneNodes.clear();
         boneScales.clear();
+        remainingTime = 0.0;
         builtSkeleton = nullptr;
+        builtNodeCount = 0;
+        builtScale = math::Vector3::ONE;
         builtRoot.clear();
         builtExtraRoots.clear();
         builtMaxDepth = -1;
+        builtProfile = RagdollProfileKind::Mech;
+        builtExcludedRoots.clear();
         return *this;
     }
 };
@@ -135,6 +144,7 @@ struct RagdollImpulse {
     math::Vector3 velocity  = math::Vector3::ZERO;
     /// 0 以下なら全剛体へ一律に効く。
     float         radius    = 0.0f;
+    math::Vector3 angularVelocity = math::Vector3::ZERO;
 };
 
 /// スキンドメッシュの骨を一時的に物理へ渡す。AnimatorSystem / IKSystem / SpringBoneSystem
@@ -157,6 +167,8 @@ struct RagdollComponent {
     /// 重複と、既に他の根の下にある骨は Build 側で落とす ─ 同じ骨を 2 度剛体に
     /// すると、2 つの剛体が同じ骨へ書き戻して震える。
     std::vector<std::string> extraRootBones;
+    /// 指定したボーンとその全子孫を除外する。名前はスケルトンのノード名。
+    std::vector<std::string> excludedRootBones;
     /// 根から何段まで剛体にするか。0 で葉まで。すべての根へ同じ深さが掛かる。
     int maxDepth = 0;
     /// 骨の太さ・重さ・可動域・サーボ特性を骨名から決めるプリセット。
@@ -258,6 +270,10 @@ struct RagdollComponent {
     /// WHY 要るか: サーボにトルク上限があっても、押し続ければ «たわんだまま立っている»
     ///     に落ち着く。支え切れなくなったら倒れる、が入って初めて立っている絵に意味が出る。
     float collapseDistance = 0.90f;
+    /// 根位置・骨長を維持し、FK姿勢からの変位を制限する。駆動モードは変更しない。
+    bool standingGuard = false;
+    float standingMaxDistance = 0.15f;
+    float standingMaxDegrees = 15.0f;
     /// Play に入った時点で Active を起動する。スクリプト無しで立ったまま効かせる口。
     bool activateOnStart = false;
 
@@ -281,6 +297,7 @@ struct RagdollComponent {
     /// Hold に留まる残り秒数。0 以下なら End() が呼ばれるまで続く。
     float holdRemaining = 0.0f;
     float phaseTimer    = 0.0f;
+    float phaseStartWeight = 0.0f;
 
     /// 次の更新で捕獲し直す。Begin() が立てる。
     bool beginRequested = false;
@@ -334,14 +351,12 @@ struct RagdollComponent {
                                                        : RagdollProfile::Mech();
     }
 
-    // WHY extraRootBones を出さないか: 可変長配列は IReflector が扱えない
-    //     (SpringBoneComponent の chains / colliders と同じ)。加えて «どの部分木を
-    //     落とすか» は遊んでいる最中に決まる値 (壊れた脚が増えていく) なので、
-    //     シーンへ焼くと «最初から壊れているボス» がディスクに残る。実行時専用。
     void Reflect(IReflector& r)
     {
         r.Field("enabled",          enabled);
         r.Field("rootBoneName",     rootBoneName);
+        r.ListField("extraRootBones", extraRootBones);
+        r.ListField("excludedRootBones", excludedRootBones);
         r.Field("maxDepth",         maxDepth);
         {
             static constexpr const char* kProfileLabels[] = { "Mech", "Humanoid" };
@@ -376,6 +391,9 @@ struct RagdollComponent {
         r.Field("impactSlack",      impactSlack);
         r.Field("recoverySeconds",  recoverySeconds);
         r.Field("collapseDistance", collapseDistance);
+        r.Field("standingGuard", standingGuard);
+        r.Field("standingMaxDistance", standingMaxDistance);
+        r.Field("standingMaxDegrees", standingMaxDegrees);
         r.Field("activateOnStart",  activateOnStart);
     }
 };

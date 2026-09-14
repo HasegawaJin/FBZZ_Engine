@@ -162,4 +162,21 @@ TEST_F(XPBDSolverTest, IgnoresDuplicateBodyRegistration)
     solver.ClearBodies();
 }
 
+TEST_F(XPBDSolverTest, FinalProjectionIsIncludedInDerivedVelocity)
+{
+    physics::XPBDSolver solver;
+    solver.SetGravity(math::Vector3::ZERO);
+    solver.SetSubsteps(4);
+    auto body = MakeBody(math::Vector3::ZERO);
+    body->SetVelocity({10.0f, 0.0f, 0.0f});
+    solver.AddBody(body.get());
+    solver.Step(1.0f / 60.0f, [](void* context) {
+        auto* projected = static_cast<physics::RigidBody*>(context);
+        projected->SetPosition(math::Vector3::ZERO);
+    }, body.get());
+    EXPECT_VEC3_NEAR(body->GetPosition(), math::Vector3::ZERO, 1.0e-6f);
+    EXPECT_VEC3_NEAR(body->GetVelocity(), math::Vector3::ZERO, 1.0e-6f);
+    solver.ClearBodies();
+}
+
 } // namespace fbzz::tests

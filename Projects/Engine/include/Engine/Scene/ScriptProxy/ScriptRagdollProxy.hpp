@@ -17,6 +17,7 @@
 namespace fbzz::scene {
 
 class Script;
+enum class ScriptRagdollProfile { Mech, Humanoid };
 
 struct ScriptRagdollProxy {
     Script* script = nullptr;
@@ -64,6 +65,9 @@ struct ScriptRagdollProxy {
     void PushAt(const math::Vector3& origin,
                 const math::Vector3& velocity,
                 float radius) const;
+    /// ワールド空間の角速度を加算する [rad/s]。並進速度は変更しない。
+    void PushAngular(const math::Vector3& angularVelocity) const;
+    void PushAngularAt(const math::Vector3& origin, const math::Vector3& angularVelocity, float radius) const;
 
     [[nodiscard]] bool  IsActive() const;
     /// 筋力で支えている最中か。押されて崩れた瞬間に false へ落ちる。
@@ -113,8 +117,16 @@ struct ScriptRagdollProxy {
     /// @param impactSlack     衝撃で抜けるサーボ出力の割合 [0,1]。0 で «押されても硬い»。
     /// @param recoverySeconds 抜けた力みが戻るまでの秒数 ＝ こらえ直す時間。
     void SetRecovery(float impactSlack, float recoverySeconds) const;
-    /// 姿勢差がこの距離 [m] を超えたら脱力へ落ちる。0 で «何をされても立っている»。
+    /// 姿勢差がこの距離 [m] を超えたら脱力へ落ちる。0 は自動脱力のみ無効化する。
     void SetCollapse(float distance) const;
+    /// 根位置・骨長を保持し、目標からの変位[m]・回転[度]を制限する。他の設定は変更しない。
+    void SetStandingGuard(bool enabled, float maxDistance, float maxDegrees) const;
+    void SetProfile(ScriptRagdollProfile profile) const;
+    void SetExcludedBranches(const std::vector<std::string>& rootBoneNames) const;
+    /// 自重比の支持倍率、たわみ[m]、傾き[度]。
+    void SetRootAnchor(float scale, float sag, float tiltDegrees) const;
+    void SetContacts(bool world, bool dynamic, bool self, bool whileActive) const;
+    void SetGroundPlane(bool enabled, float offset = 0.0f) const;
 
     void SetEnabled(bool enabled) const;
     [[nodiscard]] bool IsEnabled() const;

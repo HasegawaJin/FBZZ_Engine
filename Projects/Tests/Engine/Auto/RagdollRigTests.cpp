@@ -92,6 +92,32 @@ float MaxRotationError(const std::vector<scene::RagdollBonePose>& expected,
 
 } // namespace
 
+TEST_F(RagdollRigTest, PlayerHumanoidProfileHandlesReportedBonesWithoutFallback)
+{
+    const auto profile = scene::RagdollProfile::Humanoid();
+    const char* accessories[] = {
+        "Mount_Back", "Ant_A", "Ant_B", "Grip_L", "Grip_R",
+        "F1A_L", "F2A_L", "F3A_L", "ThA_L", "F1B_L", "F2B_L", "F3B_L", "ThB_L",
+        "F1A_R", "F2A_R", "F3A_R", "ThA_R", "F1B_R", "F2B_R", "F3B_R", "ThB_R"
+    };
+    for (const char* name : accessories) EXPECT_TRUE(profile.IsExcluded(name)) << name;
+    for (const char* name : { "Hand_L", "Hand_R" }) {
+        bool matched = false;
+        const auto& hand = profile.Resolve(name, &matched);
+        EXPECT_TRUE(matched) << name;
+        EXPECT_FALSE(profile.IsExcluded(name));
+        EXPECT_TRUE(hand.limits.enabled);
+        EXPECT_LT(hand.limits.swingMaxY, profile.fallback.limits.swingMaxY);
+    }
+    bool matched = true;
+    (void)profile.Resolve("UnknownAppendage", &matched);
+    EXPECT_FALSE(matched);
+    EXPECT_FALSE(profile.IsExcluded("UnknownAppendage"));
+    EXPECT_FALSE(profile.IsExcluded("ForeArm_L"));
+    EXPECT_FALSE(profile.IsExcluded("Giant_Arm"));
+    EXPECT_TRUE(profile.IsExcluded("ant_a"));
+}
+
 TEST_F(RagdollRigTest, BuildsOneBodyPerBoneThatHasAChild)
 {
     const auto bones = StraightChain(4);
@@ -669,6 +695,127 @@ TEST_F(RagdollRigTest, CenterOfMassSitsInsideTheChain)
     EXPECT_GT(com.y, 0.0f);
     EXPECT_LT(com.y, 3.0f);
     EXPECT_NEAR(com.x, 0.0f, 1.0e-3f);
+}
+
+TEST_F(RagdollRigTest, ZeroRootStrengthDoesNotBecomeAnUnlimitedAnchor)
+{
+    const auto bones = StraightChain(2);
+    scene::RagdollRig rig;
+    rig.Build(bones, SoftProfile());
+    rig.Capture(bones);
+    rig.UpdateDriveTargets(bones);
+    rig.DisableGround();
+    rig.SetRootAnchor(0.0f, 0.04f, 0.05f);
+    rig.SetDrive(true, 0.0f, 1.0f, 1.0f);
+    for (int i = 0; i < 60; ++i) rig.Step(1.0f / 60.0f);
+    ASSERT_NE(rig.BodyOfBone(0), nullptr);
+    EXPECT_LT(rig.BodyOfBone(0)->GetPosition().y, -2.0f);
+}
+
+TEST_F(RagdollRigTest, ZeroGravityDoesNotTurnComputedZeroForceIntoAnUnlimitedAnchor)
+{
+    const auto bones = StraightChain(2);
+    scene::RagdollRig rig;
+    rig.Build(bones, SoftProfile());
+    rig.Capture(bones);
+    rig.UpdateDriveTargets(bones);
+    rig.DisableGround();
+    rig.SetGravity(math::Vector3::ZERO);
+    rig.SetDrag(0.0f, 0.0f);
+    rig.SetDrive(true, 1.0f, 1.0f, 1.0f);
+    rig.ApplyImpulse(math::Vector3::ZERO, {1.0f, 0.0f, 0.0f}, 0.0f);
+    for (int i = 0; i < 60; ++i) rig.Step(1.0f / 60.0f);
+    ASSERT_NE(rig.BodyOfBone(0), nullptr);
+    EXPECT_NEAR(rig.BodyOfBone(0)->GetPosition().x, 1.0f, 0.001f);
+}
+
+TEST_F(RagdollRigTest, LinearAndAngularInputsHaveTheSameMeaningInEitherGuardMode)
+{
+    for (const bool guarded : {false, true}) {
+        const auto bones = StraightChain(2);
+        scene::RagdollRig rig;
+        rig.Build(bones, SoftProfile());
+        rig.Capture(bones);
+        rig.SetStandingGuard(guarded, 0.12f, 0.25f);
+        rig.ApplyImpulse(math::Vector3::ZERO, math::Vector3::RIGHT, 0.0f);
+        EXPECT_VEC3_NEAR(rig.BodyOfBone(0)->GetVelocity(), math::Vector3::RIGHT, 1.0e-6f);
+        EXPECT_VEC3_NEAR(rig.BodyOfBone(0)->GetAngularVelocity(), math::Vector3::ZERO, 1.0e-6f);
+        const math::Vector3 angular{0.0f, 0.0f, 12.0f};
+        rig.ApplyAngularVelocity(math::Vector3::ZERO, angular, 0.0f);
+        EXPECT_VEC3_NEAR(rig.BodyOfBone(0)->GetAngularVelocity(), angular, 1.0e-6f);
+        EXPECT_VEC3_NEAR(rig.BodyOfBone(0)->GetVelocity(), math::Vector3::RIGHT, 1.0e-6f);
+    }
+}
+
+TEST_F(RagdollRigTest, ExplicitAngularInputRotatesTheTorsoWithoutMovingItsRoot)
+{
+    const auto bones = StraightChain(2);
+    scene::RagdollRig rig;
+    rig.Build(bones, SoftProfile());
+    rig.Capture(bones);
+    rig.SetGravity(math::Vector3::ZERO);
+    rig.DisableGround();
+    rig.SetDrive(false, 0.0f, 1.0f, 1.0f);
+    rig.SetStandingGuard(true, 0.12f, 0.25f);
+    rig.ApplyImpulse(math::Vector3::ZERO, math::Vector3::RIGHT, 0.0f);
+    rig.ApplyAngularVelocity(math::Vector3::ZERO, {0.0f, 0.0f, -2.0f}, 0.0f);
+    rig.Step(1.0f / 60.0f);
+    std::vector<math::Vector3> positions;
+    std::vector<math::Quaternion> rotations;
+    rig.WritePose(bones, positions, rotations);
+    EXPECT_VEC3_NEAR(positions[0], bones[0].position, 0.0001f);
+    EXPECT_GT((positions[1] - bones[1].position).Length(), 0.005f);
+    EXPECT_LE((positions[1] - bones[1].position).Length(), 0.1201f);
+}
+
+TEST_F(RagdollRigTest, StandingRootMotionDoesNotCreateASpuriousImpulse)
+{
+    auto bones = StraightChain(4);
+    scene::RagdollRig rig;
+    rig.Build(bones, SoftProfile());
+    rig.Capture(bones);
+    rig.SetStandingGuard(true, 0.12f, 0.25f);
+    rig.UpdateDriveTargets(bones);
+    for (auto& bone : bones) bone.position.x += 10.0f;
+    rig.UpdateDriveTargets(bones);
+    std::vector<math::Vector3> positions;
+    std::vector<math::Quaternion> rotations;
+    rig.WritePose(bones, positions, rotations);
+    EXPECT_VEC3_NEAR(positions[0], bones[0].position, 0.0001f);
+    EXPECT_VEC3_NEAR(rig.BodyOfBone(0)->GetVelocity(), math::Vector3::ZERO, 0.0001f);
+}
+
+TEST_F(RagdollRigTest, StandingProjectionPreservesLengthsAndPhysicalBodyCenters)
+{
+    const auto bones = StraightChain(4);
+    scene::RagdollRig rig;
+    rig.Build(bones, SoftProfile());
+    rig.Capture(bones);
+    rig.UpdateDriveTargets(bones);
+    rig.DisableGround();
+    rig.SetDrive(false, 0.0f, 1.0f, 1.0f);
+    rig.SetStandingGuard(true, 0.12f, 0.25f);
+    std::vector<math::Vector3> positions;
+    std::vector<math::Quaternion> rotations;
+    float largestResponse = 0.0f;
+    for (int frame = 0; frame < 240; ++frame) {
+        if (frame % 12 == 0) {
+            rig.GetBody(1)->SetAngularVelocity({4.0f, 0.0f, 0.0f});
+            rig.ApplyImpulse({0.0f, 2.0f, 0.0f}, {3.0f, -5.0f, 2.0f}, 2.0f);
+        }
+        rig.Step(1.0f / 120.0f);
+        rig.WritePose(bones, positions, rotations);
+        EXPECT_VEC3_NEAR(positions[0], bones[0].position, 0.0001f);
+        for (std::size_t i = 1; i < positions.size(); ++i) {
+            const float response = (positions[i] - bones[i].position).Length();
+            largestResponse = std::max(largestResponse, response);
+            EXPECT_LE(response, 0.1201f);
+            EXPECT_NEAR((positions[i] - positions[i - 1]).Length(), 1.0f, 0.0001f);
+            EXPECT_VEC3_NEAR(rig.BodyOfBone(static_cast<int>(i - 1))->GetPosition(),
+                             (positions[i - 1] + positions[i]) * 0.5f, 0.0001f);
+        }
+    }
+    EXPECT_GT(largestResponse, 0.0001f);
 }
 
 } // namespace fbzz::tests

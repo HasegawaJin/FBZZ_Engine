@@ -77,6 +77,8 @@ bool RagdollProfile::IsExcluded(std::string_view boneName) const
 {
     for (const std::string& pattern : excludePatterns)
         if (ContainsIgnoreCase(boneName, pattern)) return true;
+    for (const std::string& name : excludeNames)
+        if (boneName.size() == name.size() && ContainsIgnoreCase(boneName, name)) return true;
     return false;
 }
 
@@ -211,7 +213,13 @@ RagdollProfile RagdollProfile::Humanoid()
     RagdollProfile profile;
 
     profile.noBodyPatterns  = { "root", "armature", "motion", "scene" };
+    // Player の短縮名の指と装備・アンテナは親の姿勢へ追従させ、独立した剛体を作らない。
     profile.excludePatterns = { "finger", "thumb", "index", "middle", "pinky", "toe" };
+    profile.excludeNames = {
+        "Mount_Back", "Ant_A", "Ant_B", "Grip_L", "Grip_R",
+        "F1A_L", "F2A_L", "F3A_L", "ThA_L", "F1B_L", "F2B_L", "F3B_L", "ThB_L",
+        "F1A_R", "F2A_R", "F3A_R", "ThA_R", "F1B_R", "F2B_R", "F3B_R", "ThB_R"
+    };
 
     // 人体の平均密度は水と同じくらい。
     profile.fallback.radiusRatio = 0.18f;
@@ -249,6 +257,17 @@ RagdollProfile RagdollProfile::Humanoid()
         rule.settings.radiusMin   = 0.03f;
         rule.settings.limits      = Ball(70.0f, 40.0f);
         rule.settings.servo       = Servo(1.2f, 10.0f, 8.0f);
+        profile.rules.push_back(rule);
+    }
+
+    for (const char* wrist : { "hand", "wrist" }) {
+        Rule rule;
+        rule.pattern = wrist;
+        rule.settings.radiusRatio = 0.28f;
+        rule.settings.radiusMin = 0.02f;
+        rule.settings.density = 1000.0f;
+        rule.settings.limits = Ball(35.0f, 20.0f);
+        rule.settings.servo = Servo(1.0f, 12.0f, 8.0f);
         profile.rules.push_back(rule);
     }
 
