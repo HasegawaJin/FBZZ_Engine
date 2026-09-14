@@ -17,6 +17,7 @@ fbzz_add_test_suite(MathAuto
         Math/Auto/Matrix3Tests.cpp
         Math/Auto/Matrix4Tests.cpp
         Math/Auto/MathUtilsTests.cpp
+        Math/Auto/SegmentTests.cpp
         Math/Auto/PlaneTests.cpp
         Math/Auto/RayTests.cpp
         Math/Auto/FrustumTests.cpp
@@ -90,10 +91,13 @@ fbzz_add_test_suite(PhysicsAuto
 fbzz_add_test_suite(EngineAuto
     SOURCES
         Engine/Auto/RagdollRigTests.cpp
+        Engine/Auto/StandingPoseTests.cpp
+        Engine/Auto/RagdollSystemTests.cpp
         Engine/Auto/AssetDatabaseTests.cpp
         Engine/Auto/EventBusTests.cpp
         Engine/Auto/FileSystemPathTests.cpp
         Engine/Auto/ScriptTransformProxyTests.cpp
+        Engine/Auto/ScriptSceneQueryTests.cpp
         Engine/Auto/ColorTests.cpp
         Engine/Auto/EasingTests.cpp
         Engine/Auto/GuidRefCodecTests.cpp
@@ -108,6 +112,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ComponentArrayTests.cpp
         Engine/Auto/FzAssetFormatTests.cpp
         Engine/Auto/InputActionMapTests.cpp
+        Engine/Auto/JointComponentTests.cpp
         Engine/Auto/ParticleCodecTests.cpp
         Engine/Auto/ParticleCurveTests.cpp
         Engine/Auto/VectorFieldTests.cpp
@@ -117,16 +122,38 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/VolumeFlipbookFramingTests.cpp
         Engine/Auto/ComponentReflectionParityTests.cpp
         Engine/Auto/VFXEnvelopeTests.cpp
+        Engine/Auto/VFXSubEmitterScopeTests.cpp
         Engine/Auto/ParticleMaterialPathTests.cpp
+        Engine/Auto/ParticleFlipbookTests.cpp
+        Engine/Auto/FluidSolverTests.cpp
+        Engine/Auto/SixWayLightingTests.cpp
+        Engine/Auto/ParticleLightSelectionTests.cpp
+        Engine/Auto/ParticleGpuFallbackTests.cpp
+        Engine/Auto/VolumeFlipbookFluidTests.cpp
+        Engine/Auto/FlipbookMipsTests.cpp
+        Engine/Auto/FluidGpuStepTests.cpp
+        Engine/Auto/VFXLineGeometryTests.cpp
+        Engine/Auto/FluidLiquid3DTests.cpp
+        Engine/Auto/FluidRecipeBakeTests.cpp
+        Engine/Auto/FluidDeterminismTests.cpp
+        Engine/Auto/FluidOperatorEvalTests.cpp
+        Engine/Auto/FluidSegmentShapeTests.cpp
+        Engine/Auto/FluidAmountEnvelopeTests.cpp
+        Engine/Auto/FluidGpuLiquidTests.cpp
         Engine/Auto/RenderGraphTests.cpp
         Engine/Auto/RenderGraphLifetimeTests.cpp
+        Engine/Auto/RenderSettingsTests.cpp
         Engine/Auto/SceneSerializerTests.cpp
+        Engine/Auto/TrailMultiKeyTests.cpp
         Engine/Auto/UIRectTests.cpp
         Engine/Auto/WaterWaveTests.cpp
+        GreenWare/Auto/SerpentHitboxTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics
 )
+
+target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/GreenWare/Assets")
 
 # --- Editor -----------------------------------------------------------------
 # WHY Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»
@@ -138,9 +165,17 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/AnimatorMaskAuditTests.cpp
     Editor/Auto/AssetDirtyRegistryTests.cpp
     Editor/Auto/AssetPathTests.cpp
+    Editor/Auto/AssetPickerTests.cpp
+    Editor/Auto/BuildSettingsOutputPathTests.cpp
     Editor/Auto/EditorBusDispatcherTests.cpp
     Editor/Auto/EditorBusProtocolTests.cpp
     Editor/Auto/EditorSettingsTests.cpp
+    Editor/Auto/FluidAssetWritersTests.cpp
+    Editor/Auto/FluidDocumentTests.cpp
+    Editor/Auto/FluidEffectTemplateTests.cpp
+    Editor/Auto/FluidPartClipboardTests.cpp
+    Editor/Auto/FluidPartOverlayTests.cpp
+    Editor/Auto/FluidPreviewCacheTests.cpp
     Editor/Auto/GraphLayoutTests.cpp
     Editor/Auto/ImportCacheStoreTests.cpp
     Editor/Auto/ImportFingerprintTests.cpp
