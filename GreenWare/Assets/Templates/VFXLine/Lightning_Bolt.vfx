@@ -1,0 +1,95 @@
+[prefab]
+format_version = 1
+root_count = 1
+
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'c0c76e2d-acb9-4b0f-9a57-15b6eff97340'
+layer = 0
+name = 'Lightning_Bolt'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.VFXComponent]
+    autoDestroy = false
+    duration = 0.0
+    enabled = true
+    loop = true
+    playOnAwake = true
+    speed = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b4171eb6-3209-4b34-a713-d8ee66db37c9'
+layer = 0
+name = 'Line'
+parent = 'Lightning_Bolt'
+parentInstanceId = 'c0c76e2d-acb9-4b0f-9a57-15b6eff97340'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:e993c489df75feb3c2f8db0b621eca37|Assets/Materials/Effects/VFXLine.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = ''
+
+    [gameobjects.VFXLineComponent]
+    beamSegments = 32
+    branchAngle = 35.0
+    branchBrightness = 0.6
+    branchCount = 4
+    branchLength = 0.35
+    branchWidth = 0.55
+    breakup = 0.4
+    chaos = 0.2
+    color = [ 0.35, 0.55, 1.0, 1.0 ]
+    coreColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    coreWidth = 0.25
+    detail = 7
+    disableWhenEndpointMissing = true
+    duration = 0.0
+    enabled = true
+    endTaper = 0.3
+    fadeIn = 0.0
+    fadeOut = 0.2
+    flicker = 0.7
+    fromEntity = ''
+    fromOffset = [ 0.0, 0.0, 0.0 ]
+    intensity = 6.0
+    jitter = 0.01
+    loop = true
+    materialPath = 'guid:e993c489df75feb3c2f8db0b621eca37|Assets/Materials/Effects/VFXLine.mat'
+    mode = 0
+    pulseDensity = 0.0
+    pulseSpeed = 0.0
+    sag = 0.0
+    seed = 1
+    strikeRate = 10.0
+    toEntity = ''
+    toPoint = [ 0.0, 0.0, 5.0 ]
+    width = 0.18
+    wobble = 0.0
+    wobbleFrequency = 3.0
+    wobbleWaves = 2.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
