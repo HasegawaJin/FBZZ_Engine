@@ -10,6 +10,9 @@ Artifacts/
 # ゲームプロジェクトの配布ビルド出力。exe / dll だけでなく、その隣へ複製される
 # EngineAssets / Library まで丸ごと入るため (GreenWare で 480MB) ディレクトリごと除外する。
 Binaries/
+# DCC からの書き出しを Assets へ配備する前に一度受ける中継置き場。
+# 配備が済めば Assets 側が正本になり、ここは同じ FBX の二重持ちにしかならない。
+/Temp/
 
 # CMake
 CMakeCache.txt
@@ -134,6 +137,16 @@ Projects/GameHub/Templates/**/*.meta
 !GreenWare/Assets/**/*.wav
 !GreenWare/Assets/**/*.mp3
 !GreenWare/Assets/**/*.ogg
+
+# DCC の作業ファイル置き場 (.blend)。MiniBotC と Boss03 だけで 4.5GB あり、
+# LFS の無料枠 (1GB) にも GitHub の推奨リポジトリサイズにも収まらない。
+# エンジンは読まないので、clone 側は Assets/ に配備済みの FBX だけで動く。
+GreenWare/Assets/_src/
+GreenWare/Assets/_src.meta
+
+# モデル制作の記録 (レンダー画像・検証動画・Tripo への入力 zip)。112MB。
+# Assets/ の外なので LFS の対象にもならず、通常 blob で履歴に積み上がる。
+Docs/Art/
 
 # Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
 Projects/GameHub/Templates/standard/Assets/Nature/Tree/**
